@@ -1,0 +1,201 @@
+// Resident genuine GR00T policy: Coax owns preparation/graph/copy order and
+// every shape/argument/receipt. Native C executes only these effect choices.
+#load "groot-vision-metal-plan.coax";
+#load "groot-text-metal-plan.coax";
+#load "groot-action-dynamic-plan.coax";
+#load "groot-image.coax";
+#load "groot-vision.coax";
+#load "groot-embodiment.coax";
+#authority;
+PvnOpen :: struct {status:GvpStatus;at:int;tokens:int;rendered:int;}
+PvnOpenStep :: struct {status:GvpStatus;kind:int;allocate:bool;input_count:int;input_offset:int;output_count:int;receipt:int;destination:int;second:int;}
+PvnCursor :: struct {status:GvpStatus;phase:int;stage:int;node:int;copy:int;prep:int;tokens:int;}
+PvnStep :: struct {status:GvpStatus;kind:int;graph:int;sequence:int;index:int;nodes:int;flags:int;flag_buffer:int;source:int;destination:int;bytes:int;}
+PvnCapture :: struct {ok:bool;prefix:string;number:int;suffix:string;buffer:int;offset:int;count:int;}
+PvnBind :: struct {status:GvpStatus;read:bool;shard:int;begin:int;bytes:int;target:int;conversion:int;rows:int;cols:int;count:int;}
+PvnPrep :: struct {status:GvpStatus;kind:int;camera:int;first:int;rows:int;frames:int;height:int;width:int;input_count:int;output_count:int;destination:int;offset:int;}
+
+#test "resident global namespaces preserve all original graph resources and kernels" {
+  #assert pvn_buffer_count()==1106 && pvn_kernel_count()==32 && pvn_stage_count()==189;
+  for n:[2]int.[140,152] {for b:0..<1106 {expected:=ifx b<336 then gvp_buffer_bytes(b) else ifx b<538 then glp_buffer_bytes(b-336,n) else gad_buffer_bytes_for(n,b-538);#assert pvn_buffer_bytes(n,b)==expected && expected>0;}}
+  #assert pvn_buffer_bytes(136,0)==0 && pvn_buffer_bytes(152,-1)==0 && pvn_buffer_bytes(152,1106)==0;
+  for k:0..<32 {got:=pvn_kernel(k);old:=ifx k<9 then gvp_kernel(k) else ifx k<20 then glp_kernel(k-9) else gac_kernel(k-20);expected:=old.library;if expected==2 {expected=ifx k<9 then 2 else ifx k<20 then 4 else 5;}#assert got.name==old.name && got.library==expected;}
+  #assert pvn_kernel(-1).library==-1 && pvn_kernel(32).library==-1;
+  for at:0..<189 {p:=pvn_cache_stage(152,at);#assert p.index==at && p.status==GvpStatus.ok;for slot:0..<3 {c:=pvn_capture(152,p.graph,p.sequence,slot);if c.ok {#assert c.count>0 && c.buffer>=0 && c.buffer<1106;}}}#assert pvn_cache_stage(152,-1).status==GvpStatus.shape && pvn_cache_stage(152,189).status==GvpStatus.shape;
+}
+#test "resident cache descriptors remap views without changing numerical graph arguments" {
+  for g:0..<3 {count:=ifx g==0 then 29 else ifx g==1 then 18 else 142;offset:=ifx g==0 then 0 else ifx g==1 then 336 else 538;ko:=ifx g==0 then 0 else ifx g==1 then 9 else 20;
+    for seq:0..<count {s:=pvn_stage(152,g,seq);#assert s.status==GvpStatus.ok && s.kind==1 && s.graph==g && s.index==(ifx g==0 then seq else ifx g==1 then 29+seq else 47+seq);
+      old:=ifx g==0 then gvp_node(seq,0) else ifx g==1 then glp_node(seq,0,152) else gad_node_for(152,seq,0);n:=pvn_node(152,g,seq,0);#assert n.kernel==old.kernel+ko && n.items==old.items && n.argc==old.argc;
+      for a:0..<n.argc {#assert n.args[a].kind==old.args[a].kind && n.args[a].integer==old.args[a].integer && n.args[a].count==old.args[a].count && n.args[a].offset==old.args[a].offset && n.args[a].real==old.args[a].real;if n.args[a].kind==4 {#assert n.args[a].buffer==old.args[a].buffer+offset;}}
+    }
+  }
+  #assert pvn_stage(136,0,0).status==GvpStatus.shape && pvn_stage(152,3,0).status==GvpStatus.shape && pvn_stage(152,0,29).status==GvpStatus.shape;
+  #assert pvn_node(152,0,0,-1).status==GvpStatus.shape && pvn_node(152,0,0,3).status==GvpStatus.shape;
+}
+#test "resident opening receipts pin render tokens geometry and all static preparation" {
+  s:[1]PvnOpen;expected:=[8]int.[1752,152,912,152,152,19456,0,0];
+  for at:0..<8 {p:=pvn_open_step(s[0]);#assert p.status==GvpStatus.ok && p.kind==at && p.allocate==(at==3);#assert pvn_open_ack(s[..],at,0,expected[at])==GvpStatus.ok;}#assert pvn_open_step(s[0]).kind==-1 && s[0].tokens==152;
+  for bad:0..<4 {s[0]=PvnOpen.{};at:=0;status:=0;written:=1752;if bad==0 {at=1;}if bad==1 {status=2;}if bad==2 {written=0;}if bad==3 {written=8193;}#assert pvn_open_ack(s[..],at,status,written)!=GvpStatus.ok;}
+}
+#test "resident preparation and graph transfers require ordered receipts before publication" {
+  s:=[1]PvnCursor.[pvn_begin(152)];#assert s[0].phase==-1;
+  for at:0..<6 {step:=pvn_step(s[0]);#assert step.kind==0 && step.index==at;p:=pvn_prep(at);#assert p.status==GvpStatus.ok && p.output_count>0;#assert pvn_prep_ack(s[..],at,0,p.output_count)==GvpStatus.ok;}#assert s[0].phase==0 && pvn_step(s[0]).kind==1;
+  #assert pvn_sent(s[..],0,0)==GvpStatus.ok && s[0].node==1;s[0].node=0;#assert pvn_sent(s[..],1,0)==GvpStatus.order;
+  for i:0..<4 {s[0]=PvnCursor.{phase=1,copy=i,tokens=152};p:=pvn_step(s[0]);#assert p.kind==2 && p.source==331+i && p.destination==533+i && p.bytes==1048576;#assert pvn_copied(s[..],0)==GvpStatus.ok && (ifx i==3 then s[0].phase==2 else s[0].copy==i+1);}
+  s[0]=PvnCursor.{phase=3,tokens=152};p:=pvn_step(s[0]);#assert p.source==537 && p.destination==1075 && p.bytes==1245184;#assert pvn_copied(s[..],0)==GvpStatus.ok && s[0].phase==4;
+  s[0]=PvnCursor.{phase=5,tokens=152};#assert pvn_step(s[0]).kind==3;#assert pvn_begin(136).status==GvpStatus.shape;
+}
+#test "resident noise and final decoded output refuse nonfinite or incomplete private state atomically" {
+  bits:[5280]u32;noise:[5281]f32;bits[0]=0x3f800000;noise[5280]=7;#assert pvn_noise(bits[..],noise[..],false).written==5280 && noise[0]==1 && noise[5280]==7;
+  bits[5279]=0x7fc00001;noise[0]=7;#assert pvn_noise(bits[..],noise[..],false).status==GvpStatus.number && noise[0]==7;
+  #assert pvn_noise(bits[0..<5279],noise[..],false).status==GvpStatus.capacity && pvn_noise(bits[..],noise[..],true).status==GvpStatus.alias;
+  s:=[1]PvnCursor.[PvnCursor.{phase=5,tokens=152}];bits[0]=0;bits[5279]=0;normal:[5280]f32;decoded:[112]f32;out:[113]f32;out[112]=7;#assert pvn_publish(s[..],bits[..],normal[..],decoded[..],out[..],false).written==112 && s[0].phase==6 && out[112]==7;
+  #assert pvn_publish(s[..],bits[..],normal[..],decoded[..],out[..],false).status==GvpStatus.order;
+}
+#test "resident wait validates exact node and flag receipts before every phase advance" {
+  for phase:[3]int.[0,2,4] {last:=ifx phase==0 then 29 else ifx phase==2 then 18 else 142;s:=[1]PvnCursor.[PvnCursor.{phase=phase,stage=last-1,node=7,copy=9,tokens=152}];pvn_advance(s[..]);#assert s[0].phase==phase+1 && s[0].stage==0 && s[0].node==0 && s[0].copy==0;}
+  s:=[1]PvnCursor.[PvnCursor.{phase=4,tokens=152}];p:=pvn_step(s[0]);s[0].node=p.nodes;flags:[152]u8;#assert p.flags==152;#assert pvn_waited(s[..],0,flags[..])==GvpStatus.ok && s[0].stage==1;
+  inventory:=GLP_ORIGINAL;sizes:=[2]int.[4990519232,1919980184];for b:[8]int.[-1,315,335,514,537,1075,1105,1106] {r:=pvn_bind(b,inventory[..],sizes[..]);#assert !r.read && r.status==GvpStatus.ok;}
+  for b:[3]int.[0,336,538] {r:=pvn_bind(b,inventory[0..<0],sizes[..]);#assert r.read && r.status!=GvpStatus.ok;}
+}
+
+#test "resident descriptors preserve complete stage capture and argument identity" {
+ for g:0..<3 {last:=ifx g==0 then 29 else ifx g==1 then 18 else 142;offset:=ifx g==0 then 0 else ifx g==1 then 336 else 538;
+  for bad:[2]int.[-1,last] {#assert pvn_stage(152,g,bad).status==GvpStatus.shape && pvn_node(152,g,bad,0).status==GvpStatus.shape;}
+  for seq:0..<last {p:=pvn_stage(152,g,seq);#assert p.sequence==seq && p.flag_buffer==(ifx g==0 then 329 else ifx g==1 then 528 else 1105);
+   if g==0 {old:=gvp_stage(seq);#assert p.nodes==old.nodes && p.flags==old.flags;}else if g==1 {old:=glp_stage(seq,152);#assert p.nodes==old.nodes && p.flags==old.flags;}else {old:=gad_stage_for(152,seq);#assert p.nodes==old.nodes && p.flags==old.flags;}
+   for at:0..<p.nodes {if seq!=0 && seq!=last-1 && seq!=7 {continue;}old:=ifx g==0 then gvp_node(seq,at) else ifx g==1 then glp_node(seq,at,152) else gad_node_for(152,seq,at);n:=pvn_node(152,g,seq,at);#assert n.status==old.status && n.kernel==old.kernel+(ifx g==0 then 0 else ifx g==1 then 9 else 20) && n.items==old.items && n.lanes==old.lanes && n.block==old.block && n.argc==old.argc && n.flag_count==old.flag_count && n.flag_offset==old.flag_offset;for a:0..<16 {#assert n.args[a].kind==old.args[a].kind && n.args[a].integer==old.args[a].integer && n.args[a].count==old.args[a].count && n.args[a].offset==old.args[a].offset && n.args[a].real==old.args[a].real && n.args[a].buffer==old.args[a].buffer+(ifx a<old.argc && old.args[a].kind==4 then offset else 0);}}
+   for slot:0..<3 {c:=pvn_capture(152,g,seq,slot);if g==0 {old:=gvp_capture(seq,slot);#assert c.ok==old.ok && c.prefix==old.prefix && c.number==old.number && c.suffix==old.suffix && c.buffer==old.buffer && c.count==old.count && c.offset==0;}else if g==1 {old:=glp_capture(seq,152);#assert c.ok==(slot==0 && old.ok);if slot==0 {#assert c.prefix==old.prefix && c.number==old.number && c.suffix==old.suffix && c.buffer==old.buffer+336 && c.count==old.count && c.offset==0;}}else {old:=gad_capture_for(152,seq,slot);#assert c.ok==old.ok && c.prefix==old.name && c.number== -1 && c.suffix=="" && c.buffer==old.buffer+538 && c.offset==old.offset && c.count==old.count;}}
+  }
+ }
+ #assert pvn_node(136,0,0,0).status==GvpStatus.shape && pvn_node(152,-1,0,0).status==GvpStatus.shape && pvn_node(152,3,0,0).status==GvpStatus.shape;
+ #assert !pvn_capture(136,0,0,0).ok && !pvn_capture(152,3,0,0).ok;
+}
+#test "resident weight conversions retain every byte and original category layout" {
+ sizes:=[2]int.[4990519232,1919980184];
+ for p:0..<178 {one:=[1]P5Tensor.[GLP_ORIGINAL[p]];old:=glp_bind(p,one[..],sizes[..]);b:=pvn_bind(p+336,one[..],sizes[..]);#assert b.read && b.status==old.status && b.shard==old.shard && b.begin==old.begin && b.bytes==old.bytes && b.target==old.target_bytes && b.conversion==(ifx old.decode then 1 else 0) && b.rows==0 && b.cols==0 && b.count==old.count;}
+ for p:0..<537 {one:=[1]P5Tensor.[GAC_ORIGINAL[p]];old:=gac_bind(p,one[..],sizes[..]);b:=pvn_bind(p+538,one[..],sizes[..]);#assert b.read && b.status==old.status && b.shard==old.shard && b.begin==old.begin && b.bytes==old.bytes && b.target==old.target && b.conversion==(ifx old.transpose then 2 else ifx old.decode then 3 else 0) && b.rows==old.rows && b.cols==old.cols && b.count==p;}
+ for p:0..<2 {one:=[1]P5Tensor.[P5Tensor.{name=ifx p==0 then "backbone.model.model.visual.patch_embed.proj.weight" else "backbone.model.model.visual.patch_embed.proj.bias",dtype=PwDtype.bf16,shape=ifx p==0 then P5Shape.{rank=5,dims=[5]int.[1024,3,2,16,16]} else P5Shape.{rank=1,dims=[5]int.[1024,0,0,0,0]},begin=8,end=ifx p==0 then 3145736 else 2056,elements=ifx p==0 then 1572864 else 1024,shard=1}];old:=gvp_bind(p,one[..],sizes[..]);b:=pvn_bind(p,one[..],sizes[..]);#assert b.status==GvpStatus.ok && b.read && b.shard==old.shard && b.begin==old.begin && b.bytes==old.bytes && b.target==old.target_bytes && b.conversion==(ifx old.decode then 1 else 0) && b.count==old.count;}
+}
+#test "resident static and frame preparation specifies every dimension and buffer" {
+ expected:=[8][7]int.[[7]int.[0,0,8192,0,0,0,0],[7]int.[1752,0,2048,0,0,0,0],[7]int.[152,0,3072,912,0,0,0],[7]int.[152,0,152,152,530,0,1],[7]int.[152,0,152,152,531,0,0],[7]int.[456,456,19456,19456,532,0,0],[7]int.[512,0,1024,0,327,335,0],[7]int.[152,0,152,0,1078,1079,0]];
+ for at:0..<8 {p:=pvn_open_step(PvnOpen.{at=at,tokens=152,rendered=1752});e:=expected[at];#assert p.status==GvpStatus.ok && p.kind==at && p.input_count==e[0] && p.input_offset==e[1] && p.output_count==e[2] && p.receipt==e[3] && p.destination==e[4] && p.second==e[5] && p.allocate==(e[6]==1);}
+ for bad:[2]int.[-1,9] {#assert pvn_open_step(PvnOpen.{at=bad}).status==GvpStatus.order;}#assert pvn_open_step(PvnOpen.{status=GvpStatus.device}).status==GvpStatus.device;
+ for at:0..<6 {p:=pvn_prep(at);#assert p.status==GvpStatus.ok && p.first==0;if at<4 {#assert p.kind==at%2 && p.camera==at/2 && p.input_count==196608;if at%2==0 {#assert p.rows==256 && p.output_count==196608 && p.frames==0 && p.height==0 && p.width==0 && p.destination==0 && p.offset==0;}else {#assert p.rows==0 && p.frames==1 && p.height==256 && p.width==256 && p.output_count==393216 && p.destination==330 && p.offset==(at/2)*393216;}}else {#assert p.camera==0 && p.rows==0 && p.frames==0 && p.height==0 && p.width==0 && p.offset==0 && p.kind==at-2 && p.input_count==(ifx at==4 then 8 else 5280) && p.output_count==(ifx at==4 then 132 else 5280) && p.destination==(ifx at==4 then 1076 else 1077);}}
+ #assert pvn_prep(-1).status==GvpStatus.shape && pvn_prep(6).status==GvpStatus.shape;
+}
+#test "resident invalid receipts poison state and exact boundaries remain usable" {
+ o:[1]PvnOpen;#assert pvn_open_ack(o[0..<0],0,0,1)==GvpStatus.shape;
+ for length:[2]int.[1,8192] {o[0]=PvnOpen.{};#assert pvn_open_ack(o[..],0,0,length)==GvpStatus.ok && o[0].rendered==length && o[0].at==1;}
+ for length:[4]int.[136,137,512,513] {o[0]=PvnOpen.{at=1};got:=pvn_open_ack(o[..],1,0,length);#assert got==(ifx length==136 || length==513 then GvpStatus.shape else GvpStatus.ok);if got==GvpStatus.ok {#assert o[0].tokens==length && o[0].at==2;}}
+ for at:[3]int.[-1,8,9] {o[0]=PvnOpen.{at=at};#assert pvn_open_ack(o[..],at,0,0)==GvpStatus.order;}
+ o[0]=PvnOpen.{status=GvpStatus.number};#assert pvn_open_ack(o[..],0,0,1)==GvpStatus.number;
+ for at:2..<8 {o[0]=PvnOpen.{at=at,tokens=152};p:=pvn_open_step(o[0]);#assert pvn_open_ack(o[..],at,0,p.receipt+1)==GvpStatus.capacity && o[0].at==at;}
+ s:[1]PvnCursor;empty:[1]u8;#assert pvn_prep_ack(s[0..<0],0,0,0)==GvpStatus.shape && pvn_sent(s[0..<0],0,0)==GvpStatus.shape && pvn_waited(s[0..<0],0,empty[0..<0])==GvpStatus.shape && pvn_copied(s[0..<0],0)==GvpStatus.shape;
+ for mode:0..<6 {s[0]=pvn_begin(152);at:=0;status:=0;written:=196608;expected:=GvpStatus.order;if mode==0 {s[0].phase=0;}if mode==1 {at=1;}if mode==2 {at=-1;s[0].prep=-1;}if mode==3 {status=1;expected=GvpStatus.number;}if mode==4 {written-=1;expected=GvpStatus.number;}if mode==5 {s[0].status=GvpStatus.alias;expected=GvpStatus.alias;}#assert pvn_prep_ack(s[..],at,status,written)==expected;}
+ for mode:0..<7 {s[0]=PvnCursor.{phase=4,tokens=152};index:=0;effect:=0;expected:=GvpStatus.order;if mode==0 {s[0].phase=1;}if mode==1 {index=-1;}if mode==2 {index=1;s[0].node=1;}if mode==3 {s[0].node=-1;index=-1;}if mode==4 {effect=7;expected=GvpStatus.check;}if mode==5 {effect=1;expected=GvpStatus.device;}if mode==6 {s[0].status=GvpStatus.number;expected=GvpStatus.number;}#assert pvn_sent(s[..],index,effect)==expected;}
+ flags:[153]u8;
+ for mode:0..<10 {s[0]=PvnCursor.{phase=4,tokens=152,node=1};effect:=0;length:=152;flags[0]=0;flags[151]=0;expected:=GvpStatus.order;if mode==0 {s[0].phase=1;}if mode==1 {s[0].node=0;}if mode==2 {s[0].tokens=136;}if mode==3 {effect=7;expected=GvpStatus.check;}if mode==4 {effect=1;expected=GvpStatus.device;}if mode==5 {length=151;expected=GvpStatus.capacity;}if mode==6 {length=153;expected=GvpStatus.capacity;}if mode==7 {flags[0]=1;expected=GvpStatus.number;}if mode==8 {flags[151]=1;expected=GvpStatus.number;}if mode==9 {s[0].status=GvpStatus.alias;expected=GvpStatus.alias;}#assert pvn_waited(s[..],effect,flags[0..<length])==expected;}
+ s[0]=PvnCursor.{phase=0,stage=1,node=7,copy=9,tokens=152};pvn_advance(s[..]);#assert s[0].phase==0 && s[0].stage==2 && s[0].node==0 && s[0].copy==9;
+ for mode:0..<7 {s[0]=PvnCursor.{phase=1,copy=0,stage=7,node=9,tokens=152};effect:=0;expected:=GvpStatus.order;if mode==0 {s[0].phase=0;}if mode==1 {s[0].copy=-1;}if mode==2 {s[0].copy=4;}if mode==3 {effect=7;expected=GvpStatus.check;}if mode==4 {effect=1;expected=GvpStatus.device;}if mode==5 {s[0].status=GvpStatus.alias;expected=GvpStatus.alias;}if mode==6 {s[0].phase=3;s[0].copy=1;}#assert pvn_copied(s[..],effect)==expected;}
+ for phase:[2]int.[1,3] {s[0]=PvnCursor.{phase=phase,copy=ifx phase==1 then 3 else 0,stage=7,node=9,tokens=152};#assert pvn_copied(s[..],0)==GvpStatus.ok && s[0].phase==phase+1 && s[0].stage==0 && s[0].node==0 && s[0].copy==0;}
+ #assert pvn_step(PvnCursor.{phase=7,tokens=152}).status==GvpStatus.order && pvn_step(PvnCursor.{status=GvpStatus.device}).status==GvpStatus.device && pvn_step(PvnCursor.{tokens=136}).status==GvpStatus.shape && pvn_step(PvnCursor.{phase=6,tokens=152}).kind==4 && pvn_step(PvnCursor.{phase=5,tokens=152}).source==1077;
+}
+#test "resident publication checks exact capacities and copies every private decoded value" {
+ s:[1]PvnCursor;bits:[5280]u32;normal:[5280]f32;decoded:[112]f32;out:[112]f32;bits[0]=0x3f800000;bits[1]=0x3f000000;bits[5279]=0xbf800000;
+ for mode:0..<9 {s[0]=PvnCursor.{phase=5,tokens=152};nn:=5280;nd:=112;no:=112;overlap:=false;expected:=GvpStatus.capacity;if mode==0 {nn=5279;}if mode==1 {nd=111;}if mode==2 {no=111;}if mode==3 {overlap=true;expected=GvpStatus.alias;}if mode==4 {s[0].phase=4;expected=GvpStatus.order;}if mode==5 {s[0].tokens=136;expected=GvpStatus.order;}if mode==6 {s[0].status=GvpStatus.device;expected=GvpStatus.device;}if mode==7 {bits[5279]=0x7f800000;expected=GvpStatus.number;}if mode==8 {bits[5279]=0xbf800000;expected=GvpStatus.ok;}
+  for i:0..<112 {out[i]=9999;decoded[i]=8888;}r:=pvn_publish(s[..],bits[..],normal[0..<nn],decoded[0..<nd],out[0..<no],overlap);#assert r.status==expected;if expected==GvpStatus.ok {#assert r.written==112 && s[0].phase==6;for i:0..<112 {#assert out[i]==decoded[i] && out[i]!=9999;}#assert normal[0]==1 && normal[1]==0.5f32 && normal[5279]== -1;}else {for value:out {#assert value==9999;}}
+ }
+ #assert pvn_publish(s[0..<0],bits[..],normal[..],decoded[..],out[..],false).status==GvpStatus.shape;
+}
+
+pvn_buffer_count :: ()->int #export_c {return 1106;}
+pvn_kernel_count :: ()->int #export_c {return 32;}
+pvn_stage_count :: ()->int #export_c {return 189;}
+pvn_buffer_bytes :: (tokens:int,buffer:int)->int #export_c {if !gad_tokens(tokens) {return 0;}if buffer<336 {return gvp_buffer_bytes(buffer);}if buffer<538 {return glp_buffer_bytes(buffer-336,tokens);}return gad_buffer_bytes_for(tokens,buffer-538);}
+pvn_kernel :: (index:int)->GvpKernel #export_c {if index>=32 {return GvpKernel.{library=-1};}if index<9 {return gvp_kernel(index);}if index<20 {k:=glp_kernel(index-9);if k.library==2 {k.library=4;}return k;}k:=gac_kernel(index-20);if k.library==2 {k.library=5;}return k;}
+
+pvn_stage :: (tokens:int,graph:int,stage:int)->PvnStep #export_c {
+  if !gad_tokens(tokens) || graph<0 || graph>2 {return PvnStep.{status=GvpStatus.shape};}p:PvnStep;p.kind=1;p.graph=graph;
+  p.sequence=stage;if graph==0 {s:=gvp_stage(stage);p.status=s.status;p.nodes=s.nodes;p.flags=s.flags;p.flag_buffer=329;p.index=stage;}
+  else if graph==1 {s:=glp_stage(stage,tokens);p.status=s.status;p.nodes=s.nodes;p.flags=s.flags;p.flag_buffer=528;p.index=29+stage;}
+  else {s:=gad_stage_for(tokens,stage);p.status=s.status;p.nodes=s.nodes;p.flags=s.flags;p.flag_buffer=1105;p.index=47+stage;}return p;
+}
+pvn_cache_stage :: (tokens:int,index:int)->PvnStep #export_c {return ifx index<29 then pvn_stage(tokens,0,index) else ifx index<47 then pvn_stage(tokens,1,index-29) else pvn_stage(tokens,2,index-47);}
+
+pvn_capture :: (tokens:int,graph:int,stage:int,slot:int)->PvnCapture #export_c {
+  if !gad_tokens(tokens) {return PvnCapture.{};}if graph==0 {c:=gvp_capture(stage,slot);return PvnCapture.{ok=c.ok,prefix=c.prefix,number=c.number,suffix=c.suffix,buffer=c.buffer,count=c.count};}
+  if graph==1 {if slot!=0 {return PvnCapture.{};}c:=glp_capture(stage,tokens);return PvnCapture.{ok=c.ok,prefix=c.prefix,number=c.number,suffix=c.suffix,buffer=c.buffer+336,count=c.count};}
+  if graph==2 {c:=gad_capture_for(tokens,stage,slot);return PvnCapture.{ok=c.ok,prefix=c.name,number=-1,buffer=c.buffer+538,offset=c.offset,count=c.count};}return PvnCapture.{};
+}
+pvn_node :: (tokens:int,graph:int,stage:int,at:int)->GvpNode #export_c {
+  if !gad_tokens(tokens) || graph<0 || graph>2 {return GvpNode.{status=GvpStatus.shape};}
+  n:=ifx graph==0 then gvp_node(stage,at) else ifx graph==1 then glp_node(stage,at,tokens) else gad_node_for(tokens,stage,at);offset:=ifx graph==0 then 0 else ifx graph==1 then 336 else 538;n.kernel+=ifx graph==0 then 0 else ifx graph==1 then 9 else 20;
+  for a:0..<n.argc {if n.args[a].kind==4 {n.args[a].buffer+=offset;}}return n;
+}
+pvn_bind :: (buffer:int,inventory:[]P5Tensor,sizes:[]int)->PvnBind #export_c {
+  if buffer>=0 && buffer<315 {r:=gvp_bind(buffer,inventory,sizes);return PvnBind.{status=r.status,read=true,shard=r.shard,begin=r.begin,bytes=r.bytes,target=r.target_bytes,conversion=ifx r.decode then 1 else 0,count=r.count};}
+  if buffer>=336 && buffer<514 {r:=glp_bind(buffer-336,inventory,sizes);return PvnBind.{status=r.status,read=true,shard=r.shard,begin=r.begin,bytes=r.bytes,target=r.target_bytes,conversion=ifx r.decode then 1 else 0,count=r.count};}
+  if buffer>=538 && buffer<1075 {r:=gac_bind(buffer-538,inventory,sizes);return PvnBind.{status=r.status,read=true,shard=r.shard,begin=r.begin,bytes=r.bytes,target=r.target,conversion=ifx r.transpose then 2 else ifx r.decode then 3 else 0,rows=r.rows,cols=r.cols,count=buffer-538};}return PvnBind.{};
+}
+pvn_open_step :: (s:PvnOpen)->PvnOpenStep #export_c {
+  if s.status!=GvpStatus.ok {return PvnOpenStep.{status=s.status};}if s.at<0 || s.at>8 {return PvnOpenStep.{status=GvpStatus.order};}if s.at==8 {return PvnOpenStep.{kind=-1};}
+  p:=PvnOpenStep.{kind=s.at,allocate=s.at==3};if s.at==0 {p.output_count=8192;}
+  else if s.at==1 {p.input_count=s.rendered;p.output_count=2048;}
+  else if s.at==2 {p.input_count=s.tokens;p.output_count=3072;p.receipt=6*s.tokens;}
+  else if s.at==3 || s.at==4 {p.input_count=s.tokens;p.output_count=s.tokens;p.receipt=s.tokens;p.destination=ifx s.at==3 then 530 else 531;}
+  else if s.at==5 {p.input_count=3*s.tokens;p.input_offset=3*s.tokens;p.output_count=128*s.tokens;p.receipt=p.output_count;p.destination=532;}
+  else if s.at==6 {p.input_count=512;p.output_count=1024;p.destination=327;p.second=335;}
+  else {p.input_count=s.tokens;p.output_count=s.tokens;p.destination=1078;p.second=1079;}return p;
+}
+pvn_open_ack :: (s:[]PvnOpen,at:int,status:int,written:int)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_open_step(s[0]);
+  if at!=s[0].at || at<0 || at>=8 {s[0].status=GvpStatus.order;return s[0].status;}if status!=0 {s[0].status=GvpStatus.manifest;return s[0].status;}
+  if at==0 {if written<1 || written>8192 {s[0].status=GvpStatus.capacity;return s[0].status;}s[0].rendered=written;}
+  else if at==1 {if !gad_tokens(written) {s[0].status=GvpStatus.shape;return s[0].status;}s[0].tokens=written;}
+  else if written!=p.receipt {s[0].status=GvpStatus.capacity;return s[0].status;}s[0].at+=1;return GvpStatus.ok;
+}
+pvn_prep :: (at:int)->PvnPrep #export_c {
+  if at<0 || at>=6 {return PvnPrep.{status=GvpStatus.shape};}p:PvnPrep;
+  if at<4 {p.kind=at%2;p.camera=at/2;if p.kind==0 {p.rows=256;p.input_count=196608;p.output_count=196608;}else {p.frames=1;p.height=256;p.width=256;p.input_count=196608;p.output_count=393216;p.destination=330;p.offset=p.camera*393216;}}
+  else if at==4 {p.kind=2;p.input_count=8;p.output_count=132;p.destination=1076;}else {p.kind=3;p.input_count=5280;p.output_count=5280;p.destination=1077;}return p;
+}
+pvn_begin :: (tokens:int)->PvnCursor #export_c {return PvnCursor.{status=ifx gad_tokens(tokens) then GvpStatus.ok else GvpStatus.shape,phase=-1,tokens=tokens};}
+pvn_step :: (s:PvnCursor)->PvnStep #export_c {
+  if s.status!=GvpStatus.ok {return PvnStep.{status=s.status};}if !gad_tokens(s.tokens) {return PvnStep.{status=GvpStatus.shape};}
+  if s.phase==-1 {p:=pvn_prep(s.prep);return PvnStep.{status=p.status,kind=0,index=s.prep};}
+  if s.phase==0 || s.phase==2 || s.phase==4 {return pvn_stage(s.tokens,s.phase/2,s.stage);}
+  if s.phase==1 {if s.copy<0 || s.copy>=4 {return PvnStep.{status=GvpStatus.order};}return PvnStep.{kind=2,source=331+s.copy,destination=533+s.copy,bytes=1048576};}
+  if s.phase==3 && s.copy==0 {return PvnStep.{kind=2,source=537,destination=1075,bytes=s.tokens*2048*4};}
+  if s.phase==5 {return PvnStep.{kind=3,source=1077};}if s.phase==6 {return PvnStep.{kind=4};}return PvnStep.{status=GvpStatus.order};
+}
+pvn_prep_ack :: (s:[]PvnCursor,at:int,status:int,written:int)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_prep(at);
+  if s[0].phase!=-1 || at!=s[0].prep || p.status!=GvpStatus.ok {s[0].status=GvpStatus.order;return s[0].status;}if status!=0 || written!=p.output_count {s[0].status=GvpStatus.number;return s[0].status;}s[0].prep+=1;if s[0].prep==6 {s[0].phase=0;}return GvpStatus.ok;
+}
+pvn_sent :: (s:[]PvnCursor,index:int,effect:int)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_step(s[0]);
+  if p.kind!=1 || index!=s[0].node || index<0 || index>=p.nodes {s[0].status=GvpStatus.order;return s[0].status;}if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}s[0].node+=1;return GvpStatus.ok;
+}
+pvn_advance :: (s:[]PvnCursor) {last:=ifx s[0].phase==0 then 29 else ifx s[0].phase==2 then 18 else 142;s[0].stage+=1;s[0].node=0;if s[0].stage==last {s[0].phase+=1;s[0].copy=0;s[0].stage=0;}}
+pvn_waited :: (s:[]PvnCursor,effect:int,flags:[]u8)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_step(s[0]);
+  if p.kind!=1 || s[0].node!=p.nodes {s[0].status=GvpStatus.order;return s[0].status;}if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}
+  if flags.count!=p.flags {s[0].status=GvpStatus.capacity;return s[0].status;}for flag:flags {if flag!=0 {s[0].status=GvpStatus.number;return s[0].status;}}
+  pvn_advance(s);return GvpStatus.ok;
+}
+pvn_copied :: (s:[]PvnCursor,effect:int)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}p:=pvn_step(s[0]);if p.kind!=2 {s[0].status=GvpStatus.order;return s[0].status;}
+  if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}s[0].copy+=1;if s[0].copy==(ifx s[0].phase==1 then 4 else 1) {s[0].phase+=1;s[0].stage=0;s[0].node=0;s[0].copy=0;}return GvpStatus.ok;
+}
+pvn_noise :: (bits:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c {
+  if bits.count!=5280 || out.count<5280 {return GvpRead.{status=GvpStatus.capacity};}if overlap {return GvpRead.{status=GvpStatus.alias};}for b:bits {if !psionic_tensor_finite_bits(b) {return GvpRead.{status=GvpStatus.number};}}
+  for i:0..<5280 {out[i]=f32_from_bits(bits[i]);}return GvpRead.{written=5280};
+}
+pvn_publish :: (s:[]PvnCursor,bits:[]u32,normal:[]f32,decoded:[]f32,out:[]f32,overlap:bool)->GvpRead #export_c {
+  if s.count!=1 {return GvpRead.{status=GvpStatus.shape};}if s[0].status!=GvpStatus.ok {return GvpRead.{status=s[0].status};}if s[0].phase!=5 || !gad_tokens(s[0].tokens) {return GvpRead.{status=GvpStatus.order};}
+  if decoded.count<112 || out.count<112 {return GvpRead.{status=GvpStatus.capacity};}if overlap {return GvpRead.{status=GvpStatus.alias};}
+  copied:=pvn_noise(bits,normal,false);if copied.status!=GvpStatus.ok {return copied;}r:=ge_decode(normal[0..<5280],decoded,false);if r.written!=112 {return GvpRead.{status=GvpStatus.number};}
+  for i:0..<112 {out[i]=decoded[i];}s[0].phase=6;return GvpRead.{written=112};
+}

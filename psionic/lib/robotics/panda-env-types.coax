@@ -1,0 +1,3 @@
+PeStatus :: enum u8 {ok;shape;number;overlap;quaternion;range;profile;}
+PeRead :: struct {status:PeStatus;written:int;derived_lag:f64;quaternion_clamped:bool;}
+PeSuccess :: struct {status:PeStatus;success:bool;}

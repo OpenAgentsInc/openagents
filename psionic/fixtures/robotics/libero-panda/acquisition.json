@@ -1,0 +1,903 @@
+{
+  "schema": "psionic-libero-panda-acquisition-v1",
+  "metadata_only": true,
+  "dataset": {
+    "repository": "yifengzhu-hf/LIBERO-datasets",
+    "revision": "f13aa24a3da8c43c7225569f28c562979fa0e35a",
+    "path": "libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5",
+    "url": "https://huggingface.co/datasets/yifengzhu-hf/LIBERO-datasets/resolve/f13aa24a3da8c43c7225569f28c562979fa0e35a/libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5",
+    "bytes": 940528916,
+    "sha256": "2e0127d0cf73afceacc2c0854e505d5743b6d3d5aaf5572c842f84c6a1c8173b",
+    "whole_file_verified": true,
+    "card_declared_license": "apache-2.0",
+    "demonstrations": 50
+  },
+  "source_pins": {
+    "Isaac-GR00T": "c56f54128d92f743889b7e4cecfc1ceafd88739e",
+    "LIBERO": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+    "robosuite": "fbee5844ff5632f5b5698e204ec5357ca50be0df"
+  },
+  "source_files": [
+    {
+      "repository": "NVIDIA/Isaac-GR00T",
+      "revision": "c56f54128d92f743889b7e4cecfc1ceafd88739e",
+      "path": "gr00t/eval/sim/LIBERO/libero_env.py",
+      "bytes": 9682,
+      "sha256": "49a8017517f1f21b7c21bf5f599244189720c83785763e4ab05a3cd0292cf5b1",
+      "url": "https://github.com/NVIDIA/Isaac-GR00T/blob/c56f54128d92f743889b7e4cecfc1ceafd88739e/gr00t/eval/sim/LIBERO/libero_env.py"
+    },
+    {
+      "repository": "NVIDIA/Isaac-GR00T",
+      "revision": "c56f54128d92f743889b7e4cecfc1ceafd88739e",
+      "path": "gr00t/eval/sim/wrapper/multistep_wrapper.py",
+      "bytes": 17183,
+      "sha256": "8b2e7b8dea5399c1e1b51e9d9419aa32309aa9b46aaad88223d8dae6b3e56237",
+      "url": "https://github.com/NVIDIA/Isaac-GR00T/blob/c56f54128d92f743889b7e4cecfc1ceafd88739e/gr00t/eval/sim/wrapper/multistep_wrapper.py"
+    },
+    {
+      "repository": "Lifelong-Robot-Learning/LIBERO",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/envs/env_wrapper.py",
+      "bytes": 8781,
+      "sha256": "a782fb76c9792268d28979474fe72849e1e98ada49c8e997a65359a8d6b6acd0",
+      "url": "https://github.com/Lifelong-Robot-Learning/LIBERO/blob/8f1084e3132a39270c3a13ebe37270a43ece2a01/libero/libero/envs/env_wrapper.py"
+    },
+    {
+      "repository": "Lifelong-Robot-Learning/LIBERO",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/envs/bddl_base_domain.py",
+      "bytes": 32639,
+      "sha256": "055836670ac5fcac7e033fc86404718fd53854996e5776b1ff68b646f7bbcc9d",
+      "url": "https://github.com/Lifelong-Robot-Learning/LIBERO/blob/8f1084e3132a39270c3a13ebe37270a43ece2a01/libero/libero/envs/bddl_base_domain.py"
+    },
+    {
+      "repository": "Lifelong-Robot-Learning/LIBERO",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/envs/object_states/base_object_states.py",
+      "bytes": 8215,
+      "sha256": "ca6f53123336b6487bdb4feb02534ddb3a0627a4b847fe89da4460520ef01366",
+      "url": "https://github.com/Lifelong-Robot-Learning/LIBERO/blob/8f1084e3132a39270c3a13ebe37270a43ece2a01/libero/libero/envs/object_states/base_object_states.py"
+    },
+    {
+      "repository": "Lifelong-Robot-Learning/LIBERO",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/envs/objects/site_object.py",
+      "bytes": 3028,
+      "sha256": "4907bf2550945c395b85fd92725763ada4da533ad50966eb179e637dabeeebf6",
+      "url": "https://github.com/Lifelong-Robot-Learning/LIBERO/blob/8f1084e3132a39270c3a13ebe37270a43ece2a01/libero/libero/envs/objects/site_object.py"
+    },
+    {
+      "repository": "Lifelong-Robot-Learning/LIBERO",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/envs/predicates/base_predicates.py",
+      "bytes": 2650,
+      "sha256": "319137e95330dbb22a266a8dceb8110f18413c2bf17461550222228c4bc310a1",
+      "url": "https://github.com/Lifelong-Robot-Learning/LIBERO/blob/8f1084e3132a39270c3a13ebe37270a43ece2a01/libero/libero/envs/predicates/base_predicates.py"
+    },
+    {
+      "repository": "Lifelong-Robot-Learning/LIBERO",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/bddl_files/libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy.bddl",
+      "bytes": 2055,
+      "sha256": "07ca32c940d70c065e870452ef9c63e6dfa1d8506e6a86cf9b3763f652ba2d9f",
+      "url": "https://github.com/Lifelong-Robot-Learning/LIBERO/blob/8f1084e3132a39270c3a13ebe37270a43ece2a01/libero/libero/bddl_files/libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy.bddl"
+    },
+    {
+      "repository": "Lifelong-Robot-Learning/LIBERO",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "scripts/create_dataset.py",
+      "bytes": 8813,
+      "sha256": "6ff09687a6ca8cb5df16b828cce2326467099da2b4dd6e5af557644d3e60f37f",
+      "url": "https://github.com/Lifelong-Robot-Learning/LIBERO/blob/8f1084e3132a39270c3a13ebe37270a43ece2a01/scripts/create_dataset.py"
+    },
+    {
+      "repository": "Lifelong-Robot-Learning/LIBERO",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "LICENSE",
+      "bytes": 1080,
+      "sha256": "e2885fd30a08381b799c4a33385522b23d637b4051b8f9a7f9f2519944b68ff6",
+      "url": "https://github.com/Lifelong-Robot-Learning/LIBERO/blob/8f1084e3132a39270c3a13ebe37270a43ece2a01/LICENSE"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/controllers/config/osc_pose.json",
+      "bytes": 449,
+      "sha256": "f734733e8a3a14acdaf9e6c482a7edaa0e89885eec8e4a66a1c4c031de9f3f7f",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/controllers/config/osc_pose.json"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/controllers/osc.py",
+      "bytes": 19852,
+      "sha256": "a5887a950f53c16c67874c1e4f2ea6919dc0d0e5d1b618c15c699bd84e269477",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/controllers/osc.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/controllers/base_controller.py",
+      "bytes": 10223,
+      "sha256": "6dc278b614e78d8c3e7656b430c59cc600c42fcd1db0f4293bea1bf4925541dd",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/controllers/base_controller.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/utils/control_utils.py",
+      "bytes": 10007,
+      "sha256": "c599f39eaae07b581155ec42c498cb3888cd3e50f72062bd1d2ff13b69e164b5",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/utils/control_utils.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/robots/single_arm.py",
+      "bytes": 18658,
+      "sha256": "311c39f99ce498e603fc54d7c89b1f6544cb9c14fc434d89ce4f9de2df16937d",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/robots/single_arm.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/robots/robot.py",
+      "bytes": 15433,
+      "sha256": "b18e465bb900b6172ad299d66012bbaabd632327130aae21d6a48cec25b0eef7",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/robots/robot.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/robots/manipulator.py",
+      "bytes": 5142,
+      "sha256": "b9b5fc91f454cb5cb6251120675aa39daaf1881ffade8660b718a8ae46b64816",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/robots/manipulator.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/grippers/panda_gripper.py",
+      "bytes": 1751,
+      "sha256": "1c395d5ab96d097aa95e4542981901a6d54609d27fb72217788a7e63167052f5",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/models/grippers/panda_gripper.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/robots/manipulators/panda_robot.py",
+      "bytes": 1449,
+      "sha256": "a2b2ebc51a6bc8a2ba6b783c1359a38554d7f81d4cf71a2a8a42e7edab40edc5",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/models/robots/manipulators/panda_robot.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/environments/base.py",
+      "bytes": 31127,
+      "sha256": "16a044bf28cd39623c286d72f8be2f3789d53e215d77bef3b88ca33511c87687",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/environments/base.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/utils/binding_utils.py",
+      "bytes": 41810,
+      "sha256": "f282a5a48dd215363ce3f981ce4126d91639c6e00fa530f0615cd5ab598372a8",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/utils/binding_utils.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/utils/mjcf_utils.py",
+      "bytes": 31634,
+      "sha256": "840897a791b53cf9de8d66321e7b2d5c55bea0ffd74bb9ab836f4a8c914774c4",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/utils/mjcf_utils.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/macros.py",
+      "bytes": 1929,
+      "sha256": "cb26e24bbb2caa32ec41bb92ff5651e19c88423f5185fa8fc03ba01214d5a2f9",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/macros.py"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "LICENSE",
+      "bytes": 1474,
+      "sha256": "177978cbece0a4c454c2aaec5b3f145b39270814874c43109da9e829c39d9cba",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/LICENSE"
+    },
+    {
+      "repository": "ARISE-Initiative/robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/utils/transform_utils.py",
+      "bytes": 26577,
+      "sha256": "f2580092ef324104d3757a5c4b9ddec7d69601a86e1f7725a167ea36aa76fc7b",
+      "url": "https://github.com/ARISE-Initiative/robosuite/blob/fbee5844ff5632f5b5698e204ec5357ca50be0df/robosuite/utils/transform_utils.py"
+    }
+  ],
+  "assets": [
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/textures/light-gray-floor-tile.png",
+      "bytes": 73373,
+      "sha256": "a2aae4ba3b38c3ab9851eca9ad6e76cef9357ef75b3e9a4b280f694ca30acbc5"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/textures/martin_novak_wood_table.png",
+      "bytes": 940180,
+      "sha256": "9d714fbf44d4d44f279761c0ddd0b2fd7271446cdbb85fcbef8677fe5f929850"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/textures/light-gray-plaster.png",
+      "bytes": 516639,
+      "sha256": "d0bdaf13b44ab6ef3122451f6b3853e40bdf20bb9be7662649683ba525dfe191"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/study_wall_painting/study_wall_painting.png",
+      "bytes": 432815,
+      "sha256": "fa1bf8b6658d03b9b20ff6ea0276fed8b68d50894579d43caca2a94fd246063a"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/office_book_shelf/ceramic.png",
+      "bytes": 1442030,
+      "sha256": "beef464a2aa9143ba6a25a44adcbfd1f1aff16c5969edbf08019b61025388402"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/plant/plant_texture.png",
+      "bytes": 1583401,
+      "sha256": "216886be0ecd4a765b5f00fe664dd27f25d7af19caef1c2012c4cca429d66349"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/black_book/black_book_texture.png",
+      "bytes": 186624,
+      "sha256": "b743b0e878a10e579371707f3d135c6e7a80a8c307fffabfe1fea6a784830ec2"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/desk/desk_texture.png",
+      "bytes": 489350,
+      "sha256": "f1f228aca1dab2c88833d00d10983d3df62e64569bb61ad66865490cbd08a5c3"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/floor_lamp/lamp_texture.png",
+      "bytes": 24160,
+      "sha256": "a9735321ebc866113449bc4debb0c078752389d2b50541313ae7788f0fcde80d"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/turbosquid_objects/black_book/black_book_texture.png",
+      "bytes": 186624,
+      "sha256": "b743b0e878a10e579371707f3d135c6e7a80a8c307fffabfe1fea6a784830ec2"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/turbosquid_objects/white_yellow_mug/white_yellow_mug_texture.png",
+      "bytes": 8119611,
+      "sha256": "152a4b711c33e8cb6956233043580331bd0f54d5b3dbc13a9bc870201b295890"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/turbosquid_objects/desk_caddy/desk_caddy_texture.png",
+      "bytes": 11230178,
+      "sha256": "ea07fb85ab5ef7167040e459ae4442827d114d778aaf4f6a8229bc3898406238"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/study_wall_painting/visual/study_wall_painting_vis.msh",
+      "bytes": 98080,
+      "sha256": "ba42ab1796e320228178614b43b837531620c91503ba12b3b4b59f062e431821"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/office_book_shelf/visual/office_book_shelf_vis.msh",
+      "bytes": 45160,
+      "sha256": "6386615fc43e41bd8df6544cdf95acf18fc0becf6e36266bfb5c66b7410472a5"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/plant/visual/plant_vis.msh",
+      "bytes": 732472,
+      "sha256": "648fed3592f88784f1dfde93387ca744b1b428ffed5d6a3a7317108b3cae45c5"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/black_book/visual/black_book_vis.msh",
+      "bytes": 773296,
+      "sha256": "ca4a7f95bad5dee37a99c0374df132eadf5f8304770e5830f3286d730c844049"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/desk/visual/desk_vis.msh",
+      "bytes": 742624,
+      "sha256": "b883c91335372a5f7be2af0b83b95d2db429a5010110c8ca9739aef03d15f8f3"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/scenes/floor_lamp/visual/floor_lamp_vis.msh",
+      "bytes": 7983160,
+      "sha256": "6de4776381809fdc2f7a6eae997a8269fb40fe09ef977e05a3e4fa1949a4e949"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/meshes/link0.stl",
+      "bytes": 10084,
+      "sha256": "dfc6d94330de8ddb005b311bfdba9f3b8e1aa7c256b71592ee7ff32cb9a9a5aa"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/meshes/link1.stl",
+      "bytes": 625884,
+      "sha256": "d24e332dffccf260b91d05dde17c5998bb9559d37da8608a8ee5213d9661f603"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/meshes/link2.stl",
+      "bytes": 15084,
+      "sha256": "370f7605a0fae3529db169ded50f52f171024aa792d4d773bc84197301f6a039"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/meshes/link3.stl",
+      "bytes": 15084,
+      "sha256": "0a8d638b9349c6c0eefc4e888636ac4838c4b27170f18a51699321118af709c1"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/meshes/link4.stl",
+      "bytes": 15084,
+      "sha256": "0180ebb5772ec9840cb049750cffb29a9ddc90311752a16ea34757782ef9e48d"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/meshes/link5.stl",
+      "bytes": 15084,
+      "sha256": "dd17e688c7870e722283525879643d53a74c0024d328b0e14b034b54c8b6c31a"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/meshes/link6.stl",
+      "bytes": 10084,
+      "sha256": "20b768e99a0e0440b5754dcca108016434e57937cc356acd9c352ccd3cb27f77"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/meshes/link7.stl",
+      "bytes": 10084,
+      "sha256": "92ac6afcf7574c034d3170d8a68e95ac9048ab9d0dd5bbd8311b86e551b9ab1c"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_0.obj",
+      "bytes": 358725,
+      "sha256": "ff032aa0aa3514c0820f8c07a676892fe5a7a85977ed3e4818d8ee8080cd8a2c"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_1.obj",
+      "bytes": 122052,
+      "sha256": "d033464e59f40a3096d2d6cf7853afb5bdb258bf19accefa24fa040ea73763e2"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_2.obj",
+      "bytes": 731627,
+      "sha256": "5f8782b8a222da3981d0c0108930fb8dadf44639a16bd85bc89cd7401ee5a766"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_3.obj",
+      "bytes": 58037,
+      "sha256": "3fc91c0cd10c4aef9a493699fa83457c225d0854b28d55ccb0b47fe38f412f28"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_4.obj",
+      "bytes": 256094,
+      "sha256": "f23819a788f7ce26965e540cef7a9bf5970ed99da3c1b875a91b0e544511e39d"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_5.obj",
+      "bytes": 21416,
+      "sha256": "e8e5ff98258aaca852979fd62a39d929c1d726d9e6fa19f1acc030553cdf2ed3"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_6.obj",
+      "bytes": 4495,
+      "sha256": "41be78cbdc6b0d401efe4fa630fe6924ee3312e294403aa35a4e18a70f99139e"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_7.obj",
+      "bytes": 34000,
+      "sha256": "75e3a2661f6366bb6c665282cd77f18b0da09ec1eaa8df29617fccf279970f6f"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_8.obj",
+      "bytes": 3621712,
+      "sha256": "d751e2ad68ca735b0c3b0f8f11f7364026fe64166ebf4aab69446d4465c6129d"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_9.obj",
+      "bytes": 125294,
+      "sha256": "19817601101caeea79826ffe057ad0481b97f60e80870ee768fe32b6855ab9d2"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_10.obj",
+      "bytes": 407944,
+      "sha256": "5d879fddef79581242c8d28bc4dea19759712f5d83820b9a7c8bf519035d52d3"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link0_vis/link0_vis_11.obj",
+      "bytes": 24799,
+      "sha256": "1f47131b0f4a638b64065fa9d7fa0f6d196c7aa56ba717ce9d127d36a67338a5"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link1_vis/link1_vis.obj",
+      "bytes": 3676668,
+      "sha256": "7e6cffc2656cac8c8faa9b43e41cba312b35519c9cc4c5bddd7159f14df50f2d"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link2_vis/link2_vis.obj",
+      "bytes": 3713545,
+      "sha256": "42ada2805819bd9364e567e23b4c1b71b91d9ac02525598d823c14bf8d25dabd"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link3_vis/link3_vis_0.obj",
+      "bytes": 3499294,
+      "sha256": "6a1f18e21663f2acea23752dcb79b2a8e8ae96ab286dd9d90de1d61c0dd87c0b"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link3_vis/link3_vis_1.obj",
+      "bytes": 81340,
+      "sha256": "73ad9e69c96283cc865424a64e38b53b7cd4385a0ff9834cae91a258ab92cb97"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link3_vis/link3_vis_2.obj",
+      "bytes": 98021,
+      "sha256": "9cd5a95e3599005bfc76e3700f1e3b3051efe07665b0ae6efbce75860a89e7f9"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link3_vis/link3_vis_3.obj",
+      "bytes": 571618,
+      "sha256": "01f69ca50a96cceb1bc1a0fcb4de9a7fe2b5b11d1d2e2a5c445723acef7eb483"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link4_vis/link4_vis_0.obj",
+      "bytes": 99644,
+      "sha256": "76f42fd26edf4a6b78b055d3b48c4df59cebb93ffc36fc6e6e6c8d441dbec3c9"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link4_vis/link4_vis_1.obj",
+      "bytes": 3608854,
+      "sha256": "85907c1c058ea1133cd6cf5a23535a1b77257b4852c753e08cbf87f79c4003c2"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link4_vis/link4_vis_2.obj",
+      "bytes": 566926,
+      "sha256": "a019f7f862b782af509f649050ef45354ff73642742dea7525d8e1369a07fd94"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link4_vis/link4_vis_3.obj",
+      "bytes": 80397,
+      "sha256": "b0fcc4417a0680860ee11af60df227ecc328b4b1c66908b9872dedfa8620d992"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link5_vis/link5_vis_0.obj",
+      "bytes": 907061,
+      "sha256": "e30aa36ca950b2b57ba695423ee30da5da662b1a70b72d1533c5cd435b88355d"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link5_vis/link5_vis_1.obj",
+      "bytes": 45788,
+      "sha256": "1d4089d9f2d26ef677ff42b27a2cb4ba9691a8fcd19ac665ac5203b23d22b876"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link5_vis/link5_vis_2.obj",
+      "bytes": 4535777,
+      "sha256": "c095257424ff95526d2ebab4f396833a2d77227e0d2b3bb899a0019d19c38c49"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_0.obj",
+      "bytes": 181786,
+      "sha256": "ca3ca6f238a0ed1138bfd5d11982f610d96dfc98d2d663646f07fc4c2a3ea7b0"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_1.obj",
+      "bytes": 23299,
+      "sha256": "a96dc760e3b8b0f6ab4e098248e4019e67ec9fcf404c6ab944e216dfc752e590"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_2.obj",
+      "bytes": 10246,
+      "sha256": "bef85a944a58e7032a765cbb10445ac44450fe047f3fefe501e3a3ac90dd6caf"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_3.obj",
+      "bytes": 15976,
+      "sha256": "a8f1f77b3978a16fcc8b4dd00af50431d1bca26576ef92f73d90d984dd188211"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_4.obj",
+      "bytes": 18377,
+      "sha256": "0cf60228d09854089185c5bf9f23004603b3aef874b61b2b8dad7bdcc29178e1"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_5.obj",
+      "bytes": 15690,
+      "sha256": "dfdcbfb610c052e2a4830fbc26a53ec99c0658ec3664a179c5471ff42d6a60de"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_6.obj",
+      "bytes": 16884,
+      "sha256": "b13bafd7d8cee84a07e5a0667da8d1e1d9467112415332f23ef79c582421f8ce"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_7.obj",
+      "bytes": 2464,
+      "sha256": "52d8f9cac4326716f46fad9aa1314491d377b1b36a374258a97aae196b006e51"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_8.obj",
+      "bytes": 6323,
+      "sha256": "5e586f0aaa641cdae0d372bd2fb689600cf13fc629a52ba4ad6076bfa7b0834f"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_9.obj",
+      "bytes": 16367,
+      "sha256": "3a3caf4c3596ff2661d559ee291a9ac7f66a6d943ebfcc417f229de72962d0dc"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_10.obj",
+      "bytes": 462054,
+      "sha256": "915c2eedef0d04869814126a96da1ff70d1fc89fc65ac80021084b00cad5d757"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_11.obj",
+      "bytes": 30999,
+      "sha256": "6edb35baa656d0b647541ab9de4706c4d471ec831e732955f9f4d347f4bc02fb"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_12.obj",
+      "bytes": 4214,
+      "sha256": "5af3b6bdecc4de424eb0217627bf0f6185f126dbb0bc1a7fe39253f0a26f2907"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_13.obj",
+      "bytes": 4327,
+      "sha256": "21dfaf6cb5f27a8593be82cee6ca3023e3829d5f2be5e30af54b5955ea87a554"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_14.obj",
+      "bytes": 533553,
+      "sha256": "8aa89ae8b85fb54400771754d25d6813dfb41299821bc984f37498ac0d9cba14"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_15.obj",
+      "bytes": 819438,
+      "sha256": "a9c3bcfb59c80b0e9f67c62775ea7564f1f11f55faf94b971c7fa2ee436e91bc"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link6_vis/link6_vis_16.obj",
+      "bytes": 4284801,
+      "sha256": "0e76221e7c530dde22117afc57d95d48ddf30a5e586e3bd99ba6777a30b50e58"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link7_vis/link7_vis_0.obj",
+      "bytes": 1831721,
+      "sha256": "4a43571b6feb5dbb0b6f5b3d0a06f51f356371d27a10fc580c985107db16f2ac"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link7_vis/link7_vis_1.obj",
+      "bytes": 162840,
+      "sha256": "0fefd18ce20e90dac5ce7d181e676e6cf7504cca1f050c4d05c098169b417116"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link7_vis/link7_vis_2.obj",
+      "bytes": 280928,
+      "sha256": "44ae15f4a83bd36f4de3cce78e3f592c8a070ca1fd4539be3b1c58e21d8d8671"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link7_vis/link7_vis_3.obj",
+      "bytes": 164977,
+      "sha256": "08c6308530928ae7234edd1297039aff02b0d84d8bbfec8d01c5ab104fc4209b"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link7_vis/link7_vis_4.obj",
+      "bytes": 114146,
+      "sha256": "53e0bffb56a0fe9ebab0f43dc997512287ab14d8f9b2d77f1baf7f0c96367f59"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link7_vis/link7_vis_5.obj",
+      "bytes": 304295,
+      "sha256": "1fd161fb00e729732950770f20fb6e75c5a5ca1620bceac9d550c54f322d469d"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link7_vis/link7_vis_6.obj",
+      "bytes": 133885,
+      "sha256": "cd4f2b39adfd4857f922f3104fdd4cef01390265a5f2582c73d97f39dbc1755b"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/robots/panda/obj_meshes/link7_vis/link7_vis_7.obj",
+      "bytes": 1058189,
+      "sha256": "f4f9e3c8532df4d1588e1c2ff82fae10facfb30a52329b7f595ee37d7bad6229"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/mounts/meshes/rethink_mount/pedestal.stl",
+      "bytes": 1647684,
+      "sha256": "f96ff12bfb347c77580e4392556b15e47ef7228711c45b0f1193b100af22866a"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/grippers/meshes/panda_gripper/hand.stl",
+      "bytes": 10084,
+      "sha256": "94493e94f30fe940f2c8ca2f155c3bbe67bbff406d3edf5e261670d2f0f6e2ed"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/grippers/meshes/panda_gripper/hand_vis.stl",
+      "bytes": 353984,
+      "sha256": "fdeb1a924b8d0f1f997f47d6d8af102c7290a1d5144145efdc39501dc13f0fa1"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/grippers/meshes/panda_gripper/finger.stl",
+      "bytes": 1684,
+      "sha256": "2d07a740392f3b9b0816f65d64fff9927d3d57c897870fc4b6ff9c56fff3a0c8"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/grippers/meshes/panda_gripper/finger_vis.stl",
+      "bytes": 31284,
+      "sha256": "e49613148a74f1ba9b5793813078e5becf15833e0296073dc1c523508be35ae4"
+    },
+    {
+      "kind": "robosuite",
+      "revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+      "path": "robosuite/models/assets/grippers/meshes/panda_gripper/finger_longer.stl",
+      "bytes": 2884,
+      "sha256": "8857e33ee59c3a395c3036a11e4f1731c88c203c821bb03ca97737a2d04cba27"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/turbosquid_objects/black_book/visual/black_book_vis.msh",
+      "bytes": 773296,
+      "sha256": "ca4a7f95bad5dee37a99c0374df132eadf5f8304770e5830f3286d730c844049"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/turbosquid_objects/white_yellow_mug/visual/white_yellow_mug_vis.msh",
+      "bytes": 913048,
+      "sha256": "aeabcc3a57b84549568a1d6907542ef9e65ea126c101f6f3985deb8b55d3aa79"
+    },
+    {
+      "kind": "libero",
+      "revision": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+      "path": "libero/libero/assets/turbosquid_objects/desk_caddy/visual/desk_caddy_vis.msh",
+      "bytes": 2696776,
+      "sha256": "c2a31df6411aa382d91553a594faa2cb9577908c3881b9022616f9d6604333a4"
+    }
+  ],
+  "asset_bytes": 80495880,
+  "unique_assets": 85,
+  "source_license_records": [
+    {
+      "name": "dataset-card.md",
+      "url": "https://huggingface.co/datasets/yifengzhu-hf/LIBERO-datasets/raw/f13aa24a3da8c43c7225569f28c562979fa0e35a/README.md",
+      "bytes": 471,
+      "sha256": "748db8fe5f81047e3253e8ea269acd494e30b609eca3cd03de0f8fa7d84ef379"
+    },
+    {
+      "name": "openlibm-e_acos.c",
+      "url": "https://raw.githubusercontent.com/JuliaMath/openlibm/v0.8.7/src/e_acos.c",
+      "bytes": 3558,
+      "sha256": "16487816411d2c9179ec3218f0c909d2aecd1f780b9f03a1bea1995f82b831d2"
+    },
+    {
+      "name": "nvidia-source-LICENSE",
+      "url": "https://github.com/NVIDIA/Isaac-GR00T/blob/c56f54128d92f743889b7e4cecfc1ceafd88739e/LICENSE",
+      "bytes": 10808,
+      "sha256": "93363510f62ce25ad1a47605b0b06ab335edd82f1a444531c58dd30b6e5a5a0c"
+    },
+    {
+      "name": "mujoco-wheel-LICENSE",
+      "package": "mujoco==3.3.1",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    }
+  ],
+  "license_summary": {
+    "dataset_card": "Apache-2.0",
+    "LIBERO_source": "MIT",
+    "robosuite_source": "MIT",
+    "NVIDIA_reference_source": "Apache-2.0",
+    "MuJoCo3.3.1": "Apache-2.0",
+    "inverse_cosine_coefficients": "Sun fdlibm permissive notice preserved in Coax source; mathematical coefficients from OpenLibm0.8.7 e_acos.c"
+  },
+  "sdk": {
+    "versions": {
+      "mujoco": "3.3.1",
+      "h5py": "3.16.0",
+      "glfw": "2.11.0"
+    },
+    "binaries_and_header": [
+      {
+        "path": "mujoco/include/mujoco/mujoco.h",
+        "bytes": 72359,
+        "sha256": "723d3a0cd8c09560ea4db625de561d1a1c2f48b6f87b82eed9f6b89ad4f69f4a"
+      },
+      {
+        "path": "mujoco/libmujoco.3.3.1.dylib",
+        "bytes": 8017048,
+        "sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4"
+      },
+      {
+        "path": "mujoco/plugin/libactuator.dylib",
+        "bytes": 102064,
+        "sha256": "df1c0b832730790059eae55f81594475ccc2c802a97ccd07b7d992db84bd69ce"
+      },
+      {
+        "path": "mujoco/plugin/libelasticity.dylib",
+        "bytes": 145888,
+        "sha256": "15f6657e60d98a35840e6dd2d55a28c99ec777489f2438c70112f3d31d688a5f"
+      },
+      {
+        "path": "mujoco/plugin/libsdf.dylib",
+        "bytes": 1122192,
+        "sha256": "074c04c9b9d3d2c2136916d2dc1334dc743c94b674c1a4039a686e48f32dc46b"
+      },
+      {
+        "path": "mujoco/plugin/libsensor.dylib",
+        "bytes": 145392,
+        "sha256": "1c9c4155b00ff63ff86234048d6d252f1bfe29ed2b09418a6b751b54de5fe9f2"
+      }
+    ]
+  },
+  "security_boundary": {
+    "selected_XML_includes": 0,
+    "selected_XML_plugins": 0,
+    "DOCTYPE_ENTITY_rejected": true,
+    "asset_paths": "Mapped only to whitelisted exact pinned LIBERO/robosuite data files; local rewrites remain private.",
+    "source_checkout_scripts_or_imports_executed": false,
+    "physics_library": "Owner-selected independent evaluation backend; not a claim that Coax implements MuJoCo physics.",
+    "authenticity": "Hashes describe the captured authenticated immutable cache. Metadata strings do not authenticate arbitrary future payloads. Original HDF5 embeds mesh paths, not hashes of its historical collector filesystem; this profile fixes their referenced data to the recorded official Git revisions."
+  }
+}

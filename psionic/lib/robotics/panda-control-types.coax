@@ -1,0 +1,6 @@
+// Every array is fixed and row-major. No allocation/effects/annotation claim.
+PcStatus :: enum u8 {ok;shape;number;range;pose;mass;convergence;state;limits;}
+PcSample :: struct {position:[3]f64;rotation:[9]f64;q:[7]f64;qd:[7]f64;mass:[49]f64;jp:[21]f64;jr:[21]f64;velocity:[6]f64;bias:[7]f64;lower:[7]f64;upper:[7]f64;}
+PcState :: struct {ready:bool;goal_position:[3]f64;goal_rotation:[9]f64;home:[7]f64;grip:[2]f64;}
+PcOutput :: struct {status:PcStatus;torque:[7]f64;gripper:[2]f64;torque_clipped:int;action_clipped:int;}
+PcLayout :: struct {xyz:int;task:int;joints:int;}

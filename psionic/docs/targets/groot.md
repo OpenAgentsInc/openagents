@@ -7,8 +7,17 @@ original learned VLA on Metal for one prepared 140-token observation. Its
 qualifies same-input components, unchanged original action endpoints and the
 16×7 adapter. The separately recorded global hidden-trace diagnostic remains
 failed; source-default BF16 identity and arbitrary request lengths are not
-claimed. Chapter 169 still owns the matching simulated control loop. Chapter
-167's gantry and SingleArm excerpt remain distinct embodiments/profiles.
+claimed by that earlier fixture. Chapter 169 adds the matching original
+LIBERO/Panda control loop using an explicitly selected MuJoCo 3.3.1 evaluation
+backend. Its current resident launcher uses the genuine task's 152-token
+request; wider graph-helper bounds do not qualify every possible request or
+observation. [Panda source/evaluation records](../../fixtures/robotics/libero-panda/README.md)
+keep this scope separate from chapter 167's gantry and SingleArm excerpt.
+The [completed loop receipt](../../fixtures/robotics/libero-panda/closed-loop-qualification.json)
+records 3/6 task successes and exact replay of all 68,325 physics steps, plus
+four declared fault prefixes. Three timeouts remain task failures. The
+[separate current-main sanitizer prefix](../../fixtures/robotics/libero-panda/integration-qualification.json)
+checks regenerated C/Metal without relabeling the six full trials.
 
 ## Selected artifact and reference
 
@@ -42,7 +51,9 @@ transformers 4.57.3, diffusers 0.35.1, albumentations 1.4.18 and numpy 1.26.4.
 These identify a development reference, not dependencies for a shipped Coax
 runtime. The LIBERO submodule gitlink is
 `8f1084e3132a39270c3a13ebe37270a43ece2a01`; simulator, assets and task/init-state
-versions need their own explicit reference qualification for chapter 169.
+versions have their own pinned
+[Panda profile](../../fixtures/robotics/libero-panda/acquisition.json), separate
+from learned-network numerical qualification.
 
 The base `GR00T-N1.7-3B@2fc962b973bccdd5d8ce4f67cc63b264d6886495`
 does **not** supply this LIBERO processor profile. Its processor supports eight
@@ -208,8 +219,9 @@ uses the original fixed statistics and writes 132 values with zero padding.
 `ge_decode` accepts exactly `40 × 132` F32 model values, consumes only the first
 `16 × 7`, applies the original inverse statistics, rounds to F32 at the policy
 boundary, then applies the LIBERO gripper wrapper. The gripper tie preserves
-**negative zero**. Quaternion conversion and the simulator controller remain
-separate prerequisites.
+**negative zero**. Quaternion conversion and simulator control are separate
+operators in `panda-env.coax` and `panda-control.coax`; this adapter alone does
+not supply them or establish a closed-loop outcome.
 
 Both exports validate shape, caller-declared overlap and consumed finite
 numbers before publishing any output. Successful calls preserve output tails;
@@ -414,5 +426,91 @@ vision features into Coax text and all four Coax flow steps, then decodes the
 actions. An independent head reference consumes the same actual Coax backbone;
 the unchanged full-network reference separately checks observable action
 endpoints. This does not relabel the failed accumulated global hidden trace.
-Chapter 169 requires the matching simulated loop, timing, resets, held-out
-outcomes and recovery; the gantry cannot substitute for that qualification.
+Chapter 169 adds the matching simulated loop described below. Its measured
+outcomes and recovery behavior require their own records; the gantry cannot
+substitute for that qualification.
+
+## Evaluate the matching Panda through the SDK first
+
+The selected next step is genuine LIBERO/Panda evaluation with MuJoCo 3.3.1,
+while our own rigid-body/contact engine and its compiler/differentiability
+prerequisites remain separate roadmap work. The SDK supplies dynamics,
+contacts and rendering. Coax supplies the controller, observation conversion,
+supervisor, action publication and task predicate. This integration makes no
+claim of an own physics solver, compiler `#bounded` or typed-clock proof,
+differentiable simulation or physical-robot control.
+
+The [named evaluation profile](../../fixtures/robotics/libero-panda/evaluation-profile.json)
+uses the original book-to-caddy task, per-demo source XML/init-state pairs,
+nominal source Panda home and explicit fixed Gaussian noise. Demo 0 supplies
+implementation fixtures; evaluation demos 1, 10, 20, 30, 40 and 49 were frozen
+before task outcomes. The checkpoint may have trained on those demonstrations.
+This split measures implementation behavior, not model-training holdout
+generalization or the complete ten-task benchmark.
+
+Every source demo has its own fixed caddy pose in its XML. Restoring another
+demo's 45-word state under demo 0's XML is not the same scene. Our explicit
+reset clears SDK hidden state and initializes controller goals at the restored
+grip-site pose, with nominal home and internal gripper target zero. It differs
+from the NVIDIA wrapper's ordinary seeded reset, and does not reconstruct
+unrecorded historical goals, gripper state or solver warmstart. Source HDF5
+`states[t]` is pre-action, while `obs[t]` is post-action. Its synthesized final
+done/reward labels are not the online success oracle.
+
+Observation XYZ is the world position of `gripper0_grip_site`. Rotation is the
+**`robot0_right_hand` body quaternion**, converted to source axis-angle without
+forcing a positive scalar component or shortest arc. Angles above pi are
+valid. The OSC controller uses the grip site's different rotation and world
+Jacobian. Source gripper state contains both finger qpos values in metres.
+Raw C camera readout remains OpenGL RGB; the NVIDIA wrapper then reverses both
+spatial axes. The independently installed Python SDK Renderer already applies
+a vertical flip, which must be undone for raw-readout comparison.
+
+Each 20 Hz action executes 25 physical substeps at 0.002 seconds. The scheduler
+forwards and samples before each torque calculation, then steps the SDK. After
+the last step, it observes/renders without an extra forward: derived poses are
+one physics substep stale, matching the source; finger qpos is read directly.
+A fresh reset or explicit forward has zero derived lag. Inference pauses
+simulation, so logical 20 Hz is not a wall-clock throughput guarantee.
+
+The source controller scales normalized position increments by 0.05 m and
+rotation increments by 0.5 rad. These are deltas, not velocities or absolute
+world poses. Zero orientation delta retains the previous orientation goal.
+The gripper's internal target advances by 0.01 at every physics substep;
+zero command retains that target. At the owned reset's target zero, actuator
+targets are `[0.02,-0.02]` m even when restored physical fingers differ.
+This is not a promise to hold the current physical jaw positions. The current
+fallback asks for zero pose delta and no new gripper request, not zero motor
+torques.
+
+The success target is a site, whose source contact method always returns true.
+Coax reproduces its strict world AABB point test with
+`extent = abs(site_matrix @ site_size)` and a 0.01 m lower-z allowance. It does
+not replace this with a contact requirement or an improved oriented-box test.
+
+The SDK timestep must equal 0.002 seconds before reset. A separate native
+session guard checks every physical clock against
+`initial + (25*tick + substep)*0.002` with initial time in [0,100] seconds,
+ticks 0..719, substeps 1..25 and inclusive tolerance **2^-26 seconds**. The
+nominal elapsed horizon is at most 36 seconds. This is F64/integer SDK-clock
+validation, not R13 compiler typed clocks or a wall deadline. The first two
+completed episodes predated this live guard; their
+[retrospective clock receipt](../../fixtures/robotics/libero-panda/clock-qualification.json)
+checks all 9,700 existing clock values through the newly compiled native
+guard and independent standard-library arithmetic/SHA parsing, without
+rerunning inference or simulation.
+
+The runtime refuses existing case output directories. Unexpected effects or
+clock failures stop the case without publishing a completed ledger; partial
+SDK advancement is not a transaction rollback or resumable recovery promise.
+Exact physics replay applies the recorded controls to the same SDK/model/reset
+profile. It does not rerun neural inference, include rendering in its identity
+claim, or establish cross-platform simulator identity. Trace SHA chains are
+integrity checks, not signatures or remote model/scene authentication.
+
+Learned-network numerical evidence remains equally scoped: same-input
+component comparisons and unchanged original action endpoints are separate
+from accumulated global hidden traces. The failed global diagnostic is retained;
+conditional head parity does not turn it into a pass. Simulator task outcomes
+add behavioral evidence for the frozen cases, not uniform hidden-state parity,
+general robot reliability or hardware safety.

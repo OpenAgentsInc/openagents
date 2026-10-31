@@ -1,0 +1,71 @@
+// Private simulator evaluation orchestration. Fixed scenarios are declared
+// experiment inputs; none is a hardware controller or compiler #bounded proof.
+#load "../../lib/robotics/panda-loop.coax";
+#load "../../lib/robotics/panda-control.coax";
+#load "../../lib/robotics/panda-env.coax";
+#load "../../lib/robotics/panda-trace.coax";
+#authority;
+PsEffect :: enum u8 {stop;reset;infer;step;hold;}
+#test "profile digest and finite initial state admission have explicit boundaries" {
+  #assert ps_profile()=="panda-libero-mujoco331-gr00t-wide-fixed-noise-v1";
+  bytes:=[3]u8.[97,98,99];out:[32]u8;#assert ps_digest(bytes[..],out[..],false)==0 && out[0]==0xba && out[31]==0xad;
+  state:[46]u64;#assert ps_initial(state[0..<45]) && !ps_initial(state[..]) && !ps_initial(state[0..<44]);
+  for i:0..<45 {state[i]=0x7ff8000000000001;#assert !ps_initial(state[0..<45]);state[i]=0;}state[0]=f64_bits(100.0);#assert ps_initial(state[0..<45]);state[0]=f64_bits(101.0);#assert !ps_initial(state[0..<45]);state[0]=f64_bits(-1.0);#assert !ps_initial(state[0..<45]);
+  #assert ps_tokens(152) && !ps_tokens(151) && !ps_tokens(153);
+  a:PlAction;for i:0..<7 {a.v[i]=f32(i+1)*0.125f32;}d:=ps_action(a);for i:0..<7 {#assert d[i]==f64(i+1)*0.125;}
+  for mode:0..<8 {#assert ps_flags((mode&1)!=0,ifx (mode&2)!=0 then 1 else 0,(mode&4)!=0)==mode;}
+}
+#test "effects follow the supervisor and scenario inputs never override terminal states" {
+  h:=pl_reset_done(pl_new(),0).state;
+  #assert ps_effect(h,0)==PsEffect.infer && ps_effect(h,1)==PsEffect.hold && ps_effect(h,2)==PsEffect.infer;
+  h.tick=1;#assert ps_effect(h,1)==PsEffect.infer;h.tick=0;
+  h.phase=PlPhase.ready;#assert ps_effect(h,1)==PsEffect.step;h.phase=PlPhase.waiting;#assert ps_effect(h,0)==PsEffect.hold;
+  h.phase=PlPhase.resetting;#assert ps_effect(h,0)==PsEffect.reset;h.phase=PlPhase.stepping;#assert ps_effect(h,0)==PsEffect.stop;
+  h.phase=PlPhase.halted;#assert ps_effect(h,1)==PsEffect.stop;h.phase=PlPhase.finished;#assert ps_effect(h,1)==PsEffect.stop;
+  h=pl_new();h.epoch=0;#assert ps_effect(h,0)==PsEffect.stop;h=pl_new();#assert ps_effect(h,-1)==PsEffect.stop && ps_effect(h,5)==PsEffect.stop;
+  h=pl_reset_done(pl_new(),0).state;#assert ps_effect(h,4)==PsEffect.infer;
+  #assert ps_substeps()==25;
+}
+#test "declared delayed reply and corrupt command faults occur once at tick zero" {
+  #assert ps_delayed(2,0) && !ps_delayed(1,0) && !ps_delayed(2,1);
+  #assert ps_word(3,0,0,0)==0x3fc00000 && ps_word(3,1,0,0)==0 && ps_word(3,0,1,7)==7 && ps_word(2,0,0,0)==0;
+  s:=pc_fixture();r:=ps_sample(4,0,0,s);for x:r.bias {#assert x==500;}
+  for mode:0..<4 {r=ps_sample(mode,0,0,s);for i:0..<7 {#assert r.bias[i]==s.bias[i];}}
+  r=ps_sample(4,1,0,s);#assert r.bias[0]==s.bias[0];r=ps_sample(4,0,1,s);#assert r.bias[0]==s.bias[0];
+}
+#test "control wrapper admits exactly25 substeps and sets a fresh goal only at the first" {
+  sample:=pc_fixture();home:=pc_default_home();state:[1]PcState;#assert pc_reset(state[..],sample,home[..])==PcStatus.ok;
+  action:=[7]f64.[1,0,0,0,0,0,0];r:=ps_control(state[..],sample,action[..],0);#assert r.status==PcStatus.ok && state[0].goal_position[0]==0.05;
+  sample.position[0]=0.1;r=ps_control(state[..],sample,action[..],24);#assert r.status==PcStatus.ok && state[0].goal_position[0]==0.05;
+  #assert ps_control(state[..],sample,action[..],-1).status==PcStatus.shape && ps_control(state[..],sample,action[..],25).status==PcStatus.shape;
+}
+#test "SDK time must advance with every admitted physical substep" {
+  #assert ps_time(f64_bits(0.0),f64_bits(0.002),0,1) && ps_time(f64_bits(100.0),f64_bits(136.0),719,25);
+  epsilon:=0.00000001490116119384765625;
+  #assert ps_time(0,f64_bits(0.002+epsilon),0,1) && ps_time(0,f64_bits(0.002-epsilon),0,1);
+  #assert !ps_time(0,f64_bits(0.002+2*epsilon),0,1) && !ps_time(0,f64_bits(0.002-2*epsilon),0,1);
+  #assert !ps_time(f64_bits(-1.0),f64_bits(-0.998),0,1) && !ps_time(f64_bits(101.0),f64_bits(101.002),0,1);
+  #assert !ps_time(0,f64_bits(0.0),0,1) && !ps_time(0,f64_bits(0.002),-1,1) && !ps_time(0,f64_bits(36.002),720,1);
+  #assert !ps_time(0,0,0,0) && !ps_time(0,f64_bits(0.052),0,26) && !ps_time(0x7ff8000000000001,0,0,1) && !ps_time(0,0x7ff8000000000001,0,1);
+}
+ps_substeps :: ()->int #export_c {return 25;}
+ps_effect :: (s:PlState,scenario:int)->PsEffect #export_c {
+  if !pl_valid(s) || scenario<0 || scenario>4 {return PsEffect.stop;}
+  if s.phase==PlPhase.resetting {return PsEffect.reset;}if s.phase==PlPhase.empty {return ifx scenario==1 && s.tick==0 then PsEffect.hold else PsEffect.infer;}
+  if s.phase==PlPhase.ready {return PsEffect.step;}if s.phase==PlPhase.waiting {return PsEffect.hold;}return PsEffect.stop;
+}
+ps_delayed :: (scenario:int,tick:int)->bool #export_c {return scenario==2 && tick==0;}
+ps_word :: (scenario:int,tick:int,index:int,original:u32)->u32 #export_c {return ifx scenario==3 && tick==0 && index==0 then 0x3fc00000 else original;}
+ps_sample :: (scenario:int,tick:int,substep:int,sample:PcSample)->PcSample #export_c {out:=sample;if scenario==4 && tick==0 && substep==0 {for i:0..<7 {out.bias[i]=500;}}return out;}
+ps_control :: (state:[]PcState,sample:PcSample,action:[]f64,substep:int)->PcOutput #export_c {if substep<0 || substep>=25 {return PcOutput.{status=PcStatus.shape};}return pc_step(state,sample,action,substep==0);}
+ps_digest :: (input:[]u8,out:[]u8,overlap:bool)->u32 #export_c {return sha256_hash_checked(input,out,overlap);}
+ps_profile :: ()->string #export_c {return "panda-libero-mujoco331-gr00t-wide-fixed-noise-v1";}
+ps_initial :: (state:[]u64)->bool #export_c {if state.count!=45 {return false;}for bits:state {if (bits&0x7ff0000000000000)==0x7ff0000000000000 {return false;}}start:=f64_from_bits(state[0]);return start>=0 && start<=100;}
+ps_tokens :: (tokens:int)->bool #export_c {return tokens==152;}
+ps_action :: (action:PlAction)->[7]f64 #export_c {out:[7]f64;for i:0..<7 {out[i]=f64(action.v[i]);}return out;}
+ps_flags :: (fallback:bool,clipped:int,success:bool)->int #export_c {return (ifx fallback then 1 else 0)+(ifx clipped>0 then 2 else 0)+(ifx success then 4 else 0);}
+ps_time :: (initial:u64,current:u64,tick:int,substep:int)->bool #export_c {
+  if !pe_finite_bits(initial) || !pe_finite_bits(current) || tick<0 || tick>719 || substep<1 || substep>25 {return false;}
+  start:=f64_from_bits(initial);if start<0 || start>100 {return false;}
+  return abs(f64_from_bits(current)-(start+f64(tick*25+substep)*0.002))<=0.00000001490116119384765625;
+}

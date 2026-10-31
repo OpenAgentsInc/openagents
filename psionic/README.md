@@ -267,4 +267,4 @@ backbone and all four flow steps. The first profile accepts a prepared
 endpoints pass. Its separate global hidden-trace diagnostic remains outside
 its frozen bound. The [verification record](../docs/verification/psionic-ch113-2026-10-31.md)
 states the numerical profile, exact scope and reproduction commands. Simulator
-control and task success are the next chapter.
+control and task outcomes are now exercised in [chapter 169](book/ch169-close-the-simulated-control-loop.md): the genuine Panda loop uses original scene/state pairs, a resident Coax GPU policy, an own Coax controller and MuJoCo 3.3.1 as the evaluation backend. The chapter distinguishes exact controls-only physics replay, measured task outcomes, recovered declared faults and the remaining own-solver/compiler/differentiability work.

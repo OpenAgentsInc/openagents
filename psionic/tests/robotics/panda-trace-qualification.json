@@ -1,0 +1,49 @@
+{
+  "schema": "psionic-panda-trace-qualification-v1",
+  "passed": true,
+  "source_sha256": {
+    "psionic/lib/robotics/panda-trace.coax": "4e264ac9e6380bf4bcef4085e3ef9b0c9bdb4d1a957695a6056fee765217916f",
+    "psionic/tests/robotics/panda_trace_native.c": "8ac10bd85b1e9e44e22a331283a8bd8644630a93978f22d598528755a1e9f0c2",
+    "psionic/tests/robotics/panda_trace_reference.py": "3325bd591121ed27c9c8ced073cd934addab544f0472fe5f02445ffd3859083c",
+    "psionic/tests/robotics/check-panda-trace.sh": "b447451eae6d0bedc575617e79185ab7a89bce5f6e3371addda976a6e5f7519b",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9"
+  },
+  "reused_coax_evidence": {
+    "checks": 6,
+    "root_mutants": 200,
+    "killed": 200,
+    "survived": 0,
+    "provenance": "Parent completed frozen product source before new native oracle; no Coax test or mutation rerun by oracle author."
+  },
+  "new_native": {
+    "modes": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "assertions_each_mode": 6114,
+    "canonical_records_each_mode": 513,
+    "canonical_record_bytes_each_mode": 262656,
+    "sha_chain_steps_each_mode": 513,
+    "independent_oracle": "Python stdlib struct and hashlib, independent typed input stream and C canonical-layout oracle.",
+    "mode_outputs_byte_identical": true
+  },
+  "reference": {
+    "schema": "psionic-panda-trace-reference-v1",
+    "passed": true,
+    "canonical_records": 513,
+    "canonical_bytes": 262656,
+    "sha_chain_steps": 513,
+    "trace_bytes": 262720,
+    "trace_sha256": "cab8f2827364cccbd5571684d68ea29342c429b0855fc2bb62438333d288bc2b",
+    "final_chain_sha256": "d83ebe3f871147a367d2a217eed8d4b5f4cbefda21b51260cabab6e8df73bf3c",
+    "source_sha256": "3325bd591121ed27c9c8ced073cd934addab544f0472fe5f02445ffd3859083c",
+    "scope": "Owned codec fixtures, not a simulator trajectory or authenticated remote receipt."
+  },
+  "compiled_c_sha256": {
+    "debug": "9a171c714796fefe2917600bb4ea8b3376a960c12fd04f9799c1b309a95d199f",
+    "release": "866023cb69378d873495d783e73d2a391f584d9fcff22f28d9cb8de4a7bec2f1",
+    "sanitized": "9a171c714796fefe2917600bb4ea8b3376a960c12fd04f9799c1b309a95d199f"
+  },
+  "limits": "Owned codec fixtures, not real simulator trajectories. SHA chains are not signatures or model/scene authentication."
+}

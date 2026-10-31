@@ -990,6 +990,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/panda-supervisor.coax",
+      "chapter": "psionic/book/ch169-close-the-simulated-control-loop.md",
+      "stdout": "psionic/fixtures/panda-supervisor.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

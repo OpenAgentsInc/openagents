@@ -4,8 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 coax="${COAX:-$PWD/coax/bin/coax}";jobs=4;mutate=0;list=0;requested=();chosen=();explicit=()
-units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript)
-optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original)
+units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy)
+optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-loop-metal)
 while [[ $# -gt 0 ]];do
   case "$1" in
     --jobs) [[ $# -ge 2 && $2 =~ ^[1-9][0-9]*$ ]] || exit 2;jobs=$2;shift 2;;
@@ -38,6 +38,10 @@ for unit in "${chosen[@]}";do
     groot-vision-device|groot-vision-metal-plan) vision=1;;
     groot-text-metal-plan) text=1;;
     groot-action-metal-plan|groot-action-transcript) action_plan=1;;
+    groot-action-dynamic-plan) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-groot-action-dynamic-native.sh "$work/action-dynamic";native_groups=$((native_groups+1));;
+    panda-matrix|panda-control) echo "$unit: portable VM/release checks; independent source native gate is explicit panda-control-original";;
+    panda-env|panda-loop|panda-trace) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" "psionic/tests/robotics/check-$unit.sh" "$work/$unit";native_groups=$((native_groups+1));;
+    panda-policy) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-policy-native.sh "$work/panda-policy";native_groups=$((native_groups+1));;
     groot-action-metal-kernels|groot-action-wide-kernels) action=1;;
     groot-device-kernels) echo "$unit: portable VM/release checks; actual GPU/Torch gate is explicit groot-device-gpu";;
     groot-text-kernels) echo "$unit: portable VM/release checks; actual GPU/Torch gate is explicit groot-text-kernels-gpu";;
@@ -57,8 +61,13 @@ if [[ $example == 1 ]];then
   cmp psionic/fixtures/imitation-before-robotics-scale.out "$work/example-release.out"
 fi
 for unit in "${explicit[@]}";do
-  if [[ $unit != groot-linear-original && $(uname -s) != Darwin ]];then echo "$unit requires a compatible Apple Metal GPU; it is not skipped" >&2;exit 2;fi
+  if [[ $unit != groot-linear-original && $unit != panda-control-original && $(uname -s) != Darwin ]];then echo "$unit requires a compatible Apple Metal GPU; it is not skipped" >&2;exit 2;fi
   case "$unit" in
+    panda-control-original) COAX="$coax" COAX_CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-control.sh "${PSIONIC_PANDA_CONTROLLER_FIXTURES:?set PSIONIC_PANDA_CONTROLLER_FIXTURES to source PcSample captures}" "$work/panda-control-original";;
+    panda-env-sdk) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-env-sdk.sh "${PSIONIC_PANDA_SCENE:?set PSIONIC_PANDA_SCENE to an audited original XML}" "${PSIONIC_PANDA_INITIAL_STATE:?set PSIONIC_PANDA_INITIAL_STATE to its matching45F64 state}" "$work/panda-env-sdk";;
+    panda-loop-metal)
+      read -r -a panda_demo_ids <<< "${PSIONIC_PANDA_DEMOS:-001}"
+      COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/run-panda-loop-metal.sh "${PSIONIC_GROOT_SHARDS:?set PSIONIC_GROOT_SHARDS}" "${PSIONIC_PANDA_PST:?set PSIONIC_PANDA_PST to the authenticated original tokenizer}" "${PSIONIC_PANDA_NOISE:?set PSIONIC_PANDA_NOISE to the explicit noise artifact}" "${PSIONIC_PANDA_PAIRS:?set PSIONIC_PANDA_PAIRS to the audited per-demo pair directory}" "${PSIONIC_PANDA_OUTPUT:?set PSIONIC_PANDA_OUTPUT to a new persistent output directory}" "${PSIONIC_PANDA_TICKS:-720}" "${PSIONIC_PANDA_SCENARIO:-0}" "${panda_demo_ids[@]}";;
     groot-device-gpu) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-groot-device.sh "$work/device-gpu";;
     groot-text-kernels-gpu) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-groot-text-kernels.sh "$work/text-gpu";;
     groot-linear-original) COAX="$coax" COAX_CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-groot-original.sh "${PSIONIC_GROOT_STATE_WEIGHTS:?set PSIONIC_GROOT_STATE_WEIGHTS to the authenticated four category2 parts}" "$work/original-linear";;

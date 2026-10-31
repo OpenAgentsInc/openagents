@@ -1,0 +1,146 @@
+// Source-matched fixed Panda OSC_POSE profile. Pure bounded loops/fixed arrays;
+// no allocation, physics effects, physical robot connection or #bounded claim.
+#load "panda-control-types.coax";
+#load "panda-control-check-fixtures.coax";
+#load "panda-matrix.coax";
+#authority;
+
+#test "Panda source profile reset fixes explicit home site goals and fresh gripper" {
+ sample:=pc_fixture();home:=pc_default_home();state:[1]PcState;#assert pc_reset(state[..],sample,home[..])==PcStatus.ok && state[0].ready;
+ for i:0..<7 {#assert state[0].home[i]==sample.q[i];}for i:0..<3 {#assert state[0].goal_position[i]==sample.position[i];}for i:0..<9 {#assert state[0].goal_rotation[i]==sample.rotation[i];}#assert state[0].grip[0]==0 && state[0].grip[1]==0;
+ before:=state[0];#assert pc_reset(state[0..<0],sample,home[..])==PcStatus.shape && pc_reset(state[..],sample,home[0..<6])==PcStatus.shape;pc_unchanged(state[0],before);
+ sample.lower[6]=-80;#assert pc_reset(state[..],sample,home[..])==PcStatus.limits;pc_unchanged(state[0],before);
+}
+#test "Panda diagonal analytic task inertia gains nullspace and gravity are independent" {
+ sample:=pc_fixture();home:=pc_default_home();state:[1]PcState;#assert pc_reset(state[..],sample,home[..])==PcStatus.ok;
+ a:=[7]f64.[1,-1,0.5,0,0,0,1];r:=pc_step(state[..],sample,a[..],true);#assert r.status==PcStatus.ok && r.torque_clipped==0 && r.action_clipped==0;
+ #assert abs(r.torque[0]-7.5)<1e-12 && abs(r.torque[1]+7.5)<1e-12 && abs(r.torque[2]-3.75)<1e-12;
+ for i:3..<7 {#assert abs(r.torque[i])<1e-12;}#assert abs(r.gripper[0]-0.0198)<1e-15 && abs(r.gripper[1]+0.0198)<1e-15;
+ for tick:1..<25 {r=pc_step(state[..],sample,a[..],false);#assert r.status==PcStatus.ok;}#assert abs(state[0].grip[0]+0.25)<1e-14 && abs(r.gripper[0]-0.015)<1e-14 && abs(r.gripper[1]+0.015)<1e-14;
+ sample.position[0]=0.1;r=pc_step(state[..],sample,a[..],true);#assert r.status==PcStatus.ok && abs(state[0].goal_position[0]-0.15)<1e-14;
+ sample=pc_fixture();#assert pc_reset(state[..],sample,home[..])==PcStatus.ok;sample.qd[0]=0.2;sample.velocity[0]=0.2;sample.q[6]+=0.1;sample.qd[6]=0.2;sample.bias[1]=3;a=[7]f64.[0,0,0,0,0,0,0];r=pc_step(state[..],sample,a[..],false);
+ #assert r.status==PcStatus.ok && abs(r.torque[0]+2*sqrt(150.0)*0.2)<1e-12 && abs(r.torque[1]-3)<1e-12 && abs(r.torque[6]-(-1-2*sqrt(10.0)*0.2))<1e-12;
+}
+#test "Panda clipping zero-rotation retention world-frame increment and rank-zero nullspace" {
+ sample:=pc_fixture();home:=pc_default_home();state:[1]PcState;#assert pc_reset(state[..],sample,home[..])==PcStatus.ok;
+ old:=[9]f64.[0,-1,0,1,0,0,0,0,1];state[0].goal_rotation=old;a:=[7]f64.[2,-2,0,0,0,0,0];r:=pc_step(state[..],sample,a[..],true);#assert r.status==PcStatus.ok && r.action_clipped==2 && r.torque_clipped==1 && r.torque[5]==12;for i:0..<9 {#assert state[0].goal_rotation[i]==old[i];}
+ sample.rotation=old;a=[7]f64.[0,0,0,0.2,0,0,-1];r=pc_step(state[..],sample,a[..],true);#assert r.status==PcStatus.ok && abs(state[0].goal_rotation[1]+1)<1e-7 && state[0].goal_rotation[5]< -0.09 && state[0].goal_rotation[6]>0.09;
+ sample=pc_fixture();for i:0..<21 {sample.jp[i]=0;sample.jr[i]=0;}#assert pc_reset(state[..],sample,home[..])==PcStatus.ok;sample.q[0]+=1;a=[7]f64.[0,0,0,0,0,0,0];r=pc_step(state[..],sample,a[..],false);#assert r.status==PcStatus.ok && abs(r.torque[0]+10)<1e-12;
+ sample=pc_fixture();#assert pc_reset(state[..],sample,home[..])==PcStatus.ok;sample.bias[0]=100;sample.bias[5]=-20;r=pc_step(state[..],sample,a[..],false);#assert r.status==PcStatus.ok && r.torque_clipped==2 && r.torque[0]==80 && r.torque[5]==-12;
+}
+#test "Panda refusals preserve complete controller state and never publish motor commands" {
+ sample:=pc_fixture();home:=pc_default_home();state:[1]PcState;a:[7]f64;#assert pc_step(state[..],sample,a[..],true).status==PcStatus.state;
+ #assert pc_reset(state[..],sample,home[..])==PcStatus.ok;before:=state[0];#assert pc_step(state[0..<0],sample,a[..],true).status==PcStatus.shape && pc_step(state[..],sample,a[0..<6],true).status==PcStatus.shape;
+ for mode:0..<7 {bad:=sample;if mode==0 {bad.position[0]=101;}if mode==1 {bad.rotation[0]=2;}if mode==2 {bad.mass[0]=0;}if mode==3 {bad.upper[6]=80;}if mode==4 {state[0].grip[0]=2;}if mode==5 {state[0].home[0]=101;}if mode==6 {state[0].goal_rotation[0]=-1;}
+   changed:=state[0];r:=pc_step(state[..],bad,a[..],true);#assert r.status!=PcStatus.ok;pc_unchanged(state[0],changed);state[0]=before;
+ }
+}
+#test "Panda scalar finite counters strict limits signs and proper rotations have source boundaries" {
+ #assert pc_count(0,0,0)==1 && pc_count(2,0x7ff0000000000000,1)==2 && pc_count(2,f64_bits(2.0),1)==2;
+ for v:[5]f64.[-2,-1,0,1,2] {#assert pc_side(v,-1,1)==(ifx v< -1 then -1 else ifx v>1 then 1 else 0);#assert pc_clip(v,-1,1)==(ifx v< -1 then -1.0 else ifx v>1 then 1.0 else v);}
+ #assert pc_sign(-1)==-1 && pc_sign(0)==0 && pc_sign(1)==1 && pc_zero([3]f64.[0,-0.0,0]) && !pc_zero([3]f64.[0,0,1e-200]);
+ for i:0..<7 {#assert pc_limit(i)==(ifx i<5 then 80.0 else 12.0);}
+ r:=[9]f64.[1,0,0,0,1,0,0,0,1];#assert pc_rotation_ok(r,1e-8);r[0]=-1;#assert !pc_rotation_ok(r,1e-8);r[0]=2;#assert !pc_rotation_ok(r,1e-8);
+ r=pc_delta_rotation([3]f64.[0,0,0]);#assert r[0]==1 && r[4]==1 && r[8]==1 && r[1]==0;r=pc_delta_rotation([3]f64.[1e-200,0,0]);#assert r[0]==1 && r[4]==1 && r[8]==1;
+}
+
+pc_default_home :: ()->[7]f64 #export_c {return [7]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483];}
+pc_count :: (n:int,bits:u64,limit:f64)->int {if !pm_finite_bits(bits) {return n;}return n+(ifx abs(f64_from_bits(bits))<=limit then 1 else 0);}
+pc_values :: (n:int,a:[]f64,limit:f64)->int {checked:=n;for value:a {checked=pc_count(checked,f64_bits(value),limit);}return checked;}
+pc_side :: (value:f64,lo:f64,hi:f64)->int {if value<lo {return -1;}if value>hi {return 1;}return 0;}
+pc_clip :: (value:f64,lo:f64,hi:f64)->f64 {side:=pc_side(value,lo,hi);return ifx side<0 then lo else ifx side>0 then hi else value;}
+pc_sign :: (v:f64)->int {if v<0 {return -1;}if v>0 {return 1;}return 0;}
+pc_zero :: (v:[3]f64)->bool {return v[0]==0 && v[1]==0 && v[2]==0;}
+pc_limit :: (axis:int)->f64 {return ifx axis<5 then 80.0 else 12.0;}
+pc_rotation_ok :: (input:[9]f64,tolerance:f64)->bool {
+  r:=input;
+  checked:=pc_values(0,r[..],2);if checked!=9 {return false;}
+  for i:0..<3 {for j:0..<3 {dot:f64=0;for k:0..<3 {dot+=r[k*3+i]*r[k*3+j];}if !pc_close(dot-(ifx i==j then 1.0 else 0.0),tolerance) {return false;}}}
+  return pc_close(pc_determinant(r)-1,3*tolerance);
+}
+pc_sample :: (input:PcSample)->PcStatus {
+  s:=input;
+  checked:=pc_values(0,s.position[..],100);checked=pc_values(checked,s.rotation[..],2);checked=pc_values(checked,s.q[..],100);checked=pc_values(checked,s.qd[..],10000);checked=pc_values(checked,s.mass[..],1000000);checked=pc_values(checked,s.jp[..],10000);checked=pc_values(checked,s.jr[..],10000);checked=pc_values(checked,s.velocity[..],10000);checked=pc_values(checked,s.bias[..],1000000);checked=pc_values(checked,s.lower[..],1000000);checked=pc_values(checked,s.upper[..],1000000);
+  if checked!=144 {return PcStatus.number;}if !pc_rotation_ok(s.rotation,1e-8) {return PcStatus.pose;}
+  for i:0..<7 {if s.lower[i]!=-pc_limit(i) || s.upper[i]!=pc_limit(i) {return PcStatus.limits;}}return PcStatus.ok;
+}
+pc_state :: (input:PcState)->bool {s:=input;checked:=pc_values(0,s.goal_position[..],101);checked=pc_values(checked,s.goal_rotation[..],2);checked=pc_values(checked,s.home[..],100);checked=pc_values(checked,s.grip[..],1);return checked==21 && pc_rotation_ok(s.goal_rotation,2e-6);}
+pc_reset :: (state:[]PcState,sample:PcSample,home:[]f64)->PcStatus #export_c {
+  if state.count!=1 || home.count!=7 {return PcStatus.shape;}status:=pc_sample(sample);if status!=PcStatus.ok {return status;}
+  if pc_values(0,home,100)!=7 {return PcStatus.number;}mass:=pm_inverse(7,sample.mass);if mass.status!=PmCode.ok {return PcStatus.mass;}
+  fresh:PcState;fresh.ready=true;fresh.goal_position=sample.position;fresh.goal_rotation=sample.rotation;for i:0..<7 {fresh.home[i]=home[i];}state[0]=fresh;return PcStatus.ok;
+}
+// Source axisangle2quat isF64; quat2mat casts/reorders toF32, normalizes in
+// F32 storage, and forms anF32 outerproduct. NumPy1.26 scalar diagonals widen.
+pc_delta_rotation :: (d:[3]f64)->[9]f64 {
+  angle:=sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]);q:[4]f32;q[0]=f32(cos(angle/2));
+  if angle!=0 {for i:0..<3 {q[i+1]=f32((d[i]/angle)*sin(angle/2));}}return pc_quaternion_matrix(q);
+}
+pc_quaternion_matrix :: (input:[4]f32)->[9]f64 {
+  q:=input;n:f32=0;for x:q {n+=x*x;}if f64(n)<8.881784197001252e-16 {return [9]f64.[1,0,0,0,1,0,0,0,1];}
+  factor:=f32(sqrt(2.0/f64(n)));for i:0..<4 {q[i]*=factor;}
+  t:=pc_outer(q);
+  return [9]f64.[1.0-f64(t[10])-f64(t[15]),f64(t[6]-t[12]),f64(t[7]+t[8]),f64(t[6]+t[12]),1.0-f64(t[5])-f64(t[15]),f64(t[11]-t[4]),f64(t[7]-t[8]),f64(t[11]+t[4]),1.0-f64(t[5])-f64(t[10])];
+}
+pc_goal :: (old:PcState,sample:PcSample,action:[]f64)->PcState {
+  next:=old;delta:[3]f64;for i:0..<3 {next.goal_position[i]=sample.position[i]+pc_clip(action[i],-1,1)*0.05;delta[i]=pc_clip(action[i+3],-1,1)*0.5;}
+  if !pc_zero(delta) {r:=pc_delta_rotation(delta);for i:0..<3 {for j:0..<3 {next.goal_rotation[i*3+j]=0;for k:0..<3 {next.goal_rotation[i*3+j]+=r[i*3+k]*sample.rotation[k*3+j];}}}}return next;
+}
+pc_orientation_error :: (goal:[9]f64,current:[9]f64)->[3]f64 {
+  out:[3]f64;for column:0..<3 {for i:0..<3 {j:=(i+1)%3;k:=(i+2)%3;out[i]+=current[j*3+column]*goal[k*3+column]-current[k*3+column]*goal[j*3+column];}}
+  for i:0..<3 {out[i]*=0.5;}return out;
+}
+pc_step :: (state:[]PcState,sample:PcSample,action:[]f64,new_goal:bool)->PcOutput #export_c {
+  if state.count!=1 || action.count!=7 {return PcOutput.{status=PcStatus.shape};}if !state[0].ready {return PcOutput.{status=PcStatus.state};}
+  status:=pc_sample(sample);if status!=PcStatus.ok {return PcOutput.{status=status};}if !pc_state(state[0]) {return PcOutput.{status=PcStatus.state};}if pc_values(0,action,1e308)!=7 {return PcOutput.{status=PcStatus.number};}
+  dimensions:=pc_layout();next:=state[0];out:PcOutput;if new_goal {next=pc_goal(next,sample,action);for i:0..<6 {if pc_side(action[i],-1,1)!=0 {out.action_clipped+=1;}}}
+  if !pc_state(next) {return PcOutput.{status=PcStatus.pose};}
+  mass:=pm_inverse(dimensions.joints,sample.mass);if mass.status!=PmCode.ok {return PcOutput.{status=PcStatus.mass};}
+  j:[49]f64;jt:[49]f64;for row:0..<dimensions.xyz {for col:0..<dimensions.joints {j[row*7+col]=sample.jp[row*7+col];j[(row+dimensions.xyz)*7+col]=sample.jr[row*7+col];}}
+  for row:0..<dimensions.joints {for col:0..<dimensions.task {jt[row*7+col]=j[col*7+row];}}
+  jm:=pm_mul(dimensions.task,dimensions.joints,dimensions.joints,j,mass.value);if jm.status!=PmCode.ok {return PcOutput.{status=PcStatus.number};}inertia:=pm_mul(dimensions.task,dimensions.joints,dimensions.task,jm.value,jt);if inertia.status!=PmCode.ok {return PcOutput.{status=PcStatus.number};}
+  lp:[49]f64;lr:[49]f64;for row:0..<dimensions.xyz {for col:0..<dimensions.xyz {lp[row*7+col]=inertia.value[row*7+col];lr[row*7+col]=inertia.value[(row+dimensions.xyz)*7+col+dimensions.xyz];}}
+  full:=pm_pinv(dimensions.task,inertia.value);if full.status!=PmCode.ok {return PcOutput.{status=PcStatus.convergence};}pos:=pm_pinv(dimensions.xyz,lp);if pos.status!=PmCode.ok {return PcOutput.{status=PcStatus.convergence};}ori:=pm_pinv(dimensions.xyz,lr);if ori.status!=PmCode.ok {return PcOutput.{status=PcStatus.convergence};}
+  miJ:=pm_mul(dimensions.joints,dimensions.joints,dimensions.task,mass.value,jt);if miJ.status!=PmCode.ok {return PcOutput.{status=PcStatus.number};}bar:=pm_mul(dimensions.joints,dimensions.task,dimensions.task,miJ.value,full.value);if bar.status!=PmCode.ok {return PcOutput.{status=PcStatus.number};}projected:=pm_mul(dimensions.joints,dimensions.task,dimensions.joints,bar.value,j);if projected.status!=PmCode.ok {return PcOutput.{status=PcStatus.number};}
+  error:=pc_orientation_error(next.goal_rotation,sample.rotation);wrench:[6]f64;kd:=2*sqrt(150.0);
+  for row:0..<dimensions.xyz {for col:0..<dimensions.xyz {wrench[row]+=pos.value[row*7+col]*(150*(next.goal_position[col]-sample.position[col])-kd*sample.velocity[col]);wrench[row+dimensions.xyz]+=ori.value[row*7+col]*(150*error[col]-kd*sample.velocity[col+dimensions.xyz]);}}
+  posture:[7]f64;for row:0..<dimensions.joints {for col:0..<dimensions.joints {posture[row]+=sample.mass[row*7+col]*(10*(next.home[col]-sample.q[col])-2*sqrt(10.0)*sample.qd[col]);}}
+  for row:0..<dimensions.joints {value:=sample.bias[row];for col:0..<dimensions.task {value+=j[col*7+row]*wrench[col];}for col:0..<dimensions.joints {value+=((ifx col==row then 1.0 else 0.0)-projected.value[col*7+row])*posture[col];}out.torque[row]=value;}
+  if pc_values(0,out.torque[..],1e308)!=7 {return PcOutput.{status=PcStatus.number};}
+  for i:0..<7 {if pc_side(out.torque[i],sample.lower[i],sample.upper[i])!=0 {out.torque_clipped+=1;}out.torque[i]=pc_clip(out.torque[i],sample.lower[i],sample.upper[i]);}
+  grip:=f64(pc_sign(action[6]));next.grip[0]=pc_clip(next.grip[0]-0.01*grip,-1,1);next.grip[1]=pc_clip(next.grip[1]+0.01*grip,-1,1);out.gripper[0]=0.02+0.02*next.grip[0];out.gripper[1]=-0.02+0.02*next.grip[1];
+  state[0]=next;return out;
+}
+
+#test "Panda nontrivial rotation predicates orientation errors and declared dimensions are independent" {
+  d:=pc_layout();#assert d.xyz==3 && d.task==6 && d.joints==7;
+  #assert pc_close(1e-8,1e-8) && !pc_close(1.01e-8,1e-8);
+  r:=[9]f64.[4.0/30,-20.0/30,22.0/30,28.0/30,10.0/30,4.0/30,-10.0/30,20.0/30,20.0/30];#assert pc_rotation_ok(r,1e-8) && abs(pc_determinant(r)-1)<1e-14;
+  r=[9]f64.[1,2,3,0,1,4,5,6,0];#assert pc_determinant(r)==1;r=[9]f64.[1,0,0,0,1,0,0,0,1];r[0]=1+0.75e-8;#assert !pc_rotation_ok(r,1e-8);r[0]=3;#assert !pc_rotation_ok(r,1e-8);
+  identity:=[9]f64.[1,0,0,0,1,0,0,0,1];rx:=[9]f64.[1,0,0,0,0,-1,0,1,0];ry:=[9]f64.[0,0,1,0,1,0,-1,0,0];rz:=[9]f64.[0,-1,0,1,0,0,0,0,1];
+  ex:=pc_orientation_error(rx,identity);ey:=pc_orientation_error(ry,identity);ez:=pc_orientation_error(rz,identity);#assert ex[0]==1 && ex[1]==0 && ex[2]==0 && ey[0]==0 && ey[1]==1 && ey[2]==0 && ez[0]==0 && ez[1]==0 && ez[2]==1;
+  #assert !pc_zero([3]f64.[1e-200,0,0]) && !pc_zero([3]f64.[0,1e-200,0]);
+  sample:=pc_fixture();sample.position=[3]f64.[0.1,-0.2,0.3];home:=pc_default_home();home[0]=0.1;state:[1]PcState;#assert pc_reset(state[..],sample,home[..])==PcStatus.ok && state[0].home[0]==0.1 && state[0].goal_position[0]==0.1 && state[0].goal_position[1]==-0.2 && state[0].goal_position[2]==0.3;
+  sample.lower[0]=-1;#assert pc_sample(sample)==PcStatus.limits;
+}
+#test "Panda quaternion outer product matches independent axis-angle rotations and source float storage" {
+  for theta:[3]f64.[0.1,0.7,-0.4] {u:=[3]f64.[1.0/sqrt(14.0),2.0/sqrt(14.0),3.0/sqrt(14.0)];delta:=[3]f64.[theta*u[0],theta*u[1],theta*u[2]];r:=pc_delta_rotation(delta);c:=cos(theta);s:=sin(theta);k:=1-c;
+    expected:=[9]f64.[c+k*u[0]*u[0],k*u[0]*u[1]-s*u[2],k*u[0]*u[2]+s*u[1],k*u[1]*u[0]+s*u[2],c+k*u[1]*u[1],k*u[1]*u[2]-s*u[0],k*u[2]*u[0]-s*u[1],k*u[2]*u[1]+s*u[0],c+k*u[2]*u[2]];for i:0..<9 {#assert abs(r[i]-expected[i])<3e-7;}
+  }
+  a:=pc_quaternion_matrix([4]f32.[2,1,0,0]);#assert abs(a[4]-0.6)<3e-7 && abs(a[5]+0.8)<3e-7;
+  a=pc_quaternion_matrix([4]f32.[0,0,0,0]);#assert a[0]==1 && a[4]==1 && a[8]==1;
+  a=pc_quaternion_matrix([4]f32.[0,0.0000000298023223876953125,0,0]);#assert a[0]==1 && a[4]<-0.99 && a[8]<-0.99;
+  sample:=pc_fixture();sample.rotation=[9]f64.[4.0/30,-20.0/30,22.0/30,28.0/30,10.0/30,4.0/30,-10.0/30,20.0/30,20.0/30];old:PcState;old.goal_rotation=sample.rotation;action:=[7]f64.[0.1,-0.2,0.3,0.1,0.2,0.3,0];goal:=pc_goal(old,sample,action[..]);delta:=[3]f64.[0.05,0.1,0.15];rot:=pc_delta_rotation(delta);for i:0..<3 {for j:0..<3 {want:f64=0;for q:0..<3 {want+=rot[i*3+q]*sample.rotation[q*3+j];}#assert abs(goal.goal_rotation[i*3+j]-want)<1e-14;}}
+}
+pc_layout :: ()->PcLayout {return PcLayout.{xyz=3,task=6,joints=7};}
+pc_close :: (error:f64,tolerance:f64)->bool {return abs(error)<=tolerance;}
+pc_determinant :: (r:[9]f64)->f64 {return r[0]*(r[4]*r[8]-r[5]*r[7])-r[1]*(r[3]*r[8]-r[5]*r[6])+r[2]*(r[3]*r[7]-r[4]*r[6]);}
+
+#test "Panda complete F32 outer-product and all-axis damping preserve source arithmetic" {
+  q:=[4]f32.[1,2,3,4];t:=pc_outer(q);for i:0..<4 {for j:0..<4 {#assert t[i*4+j]==f32((i+1)*(j+1));}}
+  #assert pc_determinant([9]f64.[2,3,1,4,1,5,7,6,8])==-18;
+  sample:=pc_fixture();sample.position=[3]f64.[0.1,-0.2,0.3];sample.velocity=[6]f64.[0,0,0,0.2,-0.3,0.1];home:=pc_default_home();state:[1]PcState;#assert pc_reset(state[..],sample,home[..])==PcStatus.ok;action:[7]f64;r:=pc_step(state[..],sample,action[..],true);#assert r.status==PcStatus.ok;for i:0..<3 {#assert abs(r.torque[i])<1e-12 && abs(r.torque[i+3]+2*sqrt(150.0)*sample.velocity[i+3])<1e-12;}
+  sample=pc_fixture();#assert pc_reset(state[..],sample,home[..])==PcStatus.ok;action[6]=4;r=pc_step(state[..],sample,action[..],true);#assert r.status==PcStatus.ok && r.action_clipped==0 && r.gripper[0]<0.02;
+  for i:0..<7 {sample.bias[i]=500;}r=pc_step(state[..],sample,action[..],true);#assert r.status==PcStatus.ok && r.torque_clipped==7;for i:0..<7 {#assert r.torque[i]==pc_limit(i);}
+}
+pc_outer :: (q:[4]f32)->[16]f32 {t:[16]f32;for i:0..<4 {for j:0..<4 {t[i*4+j]=q[i]*q[j];}}return t;}

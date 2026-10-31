@@ -1,0 +1,96 @@
+{
+  "schema": "psionic-panda-env-qualification-v1",
+  "passed": true,
+  "scope": "Bounded selected Panda observation/predicate and independent installed-SDK effects. No learned policy task success or wall-clock control rate claimed.",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-env.coax": "65a97726171e175479d3da4fdbd919944d72032b3baebcb1dc0addbaa3a053ec",
+    "psionic/lib/robotics/panda-env-types.coax": "24419ee28de39785d971ed7ccaf84199c4f7405b0cdf8265028700e131b5ee2f",
+    "psionic/platform/panda-env.h": "7801cb4f50f664fa64c0be5de84fe105c03e1c5b7195cc1a0a7032e80d838713",
+    "psionic/platform/panda-env.c": "dfbc195dacdfe1c1fb6011c0cd1e44aa9fd0d9d53075c8d9eb991c00b0903cb0",
+    "psionic/tests/robotics/panda-env-native.c": "eca7d86cfb3264c8260845465dcefafbe34fadb3b8fac48deaec58d385c40f7f",
+    "psionic/tests/robotics/panda-env-capture.c": "1fd7e4662ded4dc6eb47d82e13ab5ca02e5ba52ae0e941a2c590dc2bca779bcc",
+    "psionic/tests/robotics/panda-env-sdk-native.c": "a1807274d1e9d62700def93743a7ebc5c742b62a845cd7313d24127eb7ca4e23",
+    "psionic/tests/robotics/panda_env_reference.py": "0a62f303bc88e830386f533e41632b30a38b8ac2f9575512382f763b731390e5",
+    "psionic/tests/robotics/panda_env_sdk_reference.py": "358e90b7b66dc6105eb14ee0a8a8a39de7fd93f9e6255825e953e9284cd22316",
+    "psionic/tests/robotics/check-panda-env.sh": "f1f0a96e5b71b10bcde9c41a36397db54c342fcb51c660446784c52776f635f5",
+    "psionic/tests/robotics/check-panda-env-sdk.sh": "e71a1c22343c1799c934ba92e2f9e8cdc7c9e521b1becb0a15ce3a2d7fdd17d5"
+  },
+  "coax": {
+    "checks": 8,
+    "focused_root_mutants": 220,
+    "killed": 220,
+    "survived": 0,
+    "equivalent_waivers": 0
+  },
+  "native": {
+    "modes": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "assertions_each_mode": 130112,
+    "observation_fixtures_each_mode": 12004,
+    "exact_f32_words_each_mode": 96032,
+    "oracle": "Independent libc acos and IEEE cast, not product inverse-cosine helper."
+  },
+  "numpy": {
+    "schema": "psionic-panda-env-numpy-v1",
+    "numpy": "1.26.4",
+    "observations": 6100,
+    "exact_f32_words": 48800,
+    "strict_predicate_cases": 6800,
+    "passed": true,
+    "source_checkout_executed": false,
+    "source_sha256": "0a62f303bc88e830386f533e41632b30a38b8ac2f9575512382f763b731390e5",
+    "library_sha256": "0105ab8ae324137faeebf56eeed58b1147ad01036f48c914ba99bfcb48ce2300",
+    "genuine_frame_sha256": "732498d81afea28d2cb56893e7839be8acaa3cac3a7fd0634f8fd847d85257fa"
+  },
+  "sdk_native": {
+    "modes": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "assertions_each_mode": 177,
+    "Coax_controlled_physics_steps_each_mode": 25,
+    "state_snapshots_each_mode": 26,
+    "control_profile": "Zero pose and hold gripper command through genuine Coax OSC, not zero motor torques.",
+    "release_sanitized_identity": "Every control, all 26 states, three telemetry snapshots and the eight-word observation are byte-identical to independently verified debug outputs."
+  },
+  "sdk_independent_reference": {
+    "schema": "psionic-panda-sdk-effects-reference-v1",
+    "passed": true,
+    "sdk": "3.3.1",
+    "source_checkout_executed": false,
+    "physics_steps": 25,
+    "snapshots": 26,
+    "exact_f64_words": 1689,
+    "exact_observation_f32_words": 8,
+    "separate_exact_render_bytes": 393216,
+    "renderer_in_physics_replay": false,
+    "window_created": false,
+    "controls": "Actual Coax zero-pose/grip-hold controller output; independent SDK replays exact actuator values.",
+    "xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+    "initial_state_sha256": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc",
+    "controls_sha256": "47585d449f709742f9c72fd2efc3a875bcba86bd80fb1eb81bf949970ebc0fb1",
+    "states_sha256": "77257333b3e05175f9e634249f152d3b288957df53a6a153e135660ad193cd2e",
+    "source_sha256": "358e90b7b66dc6105eb14ee0a8a8a39de7fd93f9e6255825e953e9284cd22316"
+  },
+  "renderer_sanitizer": {
+    "ASan_UBSan_passed": true,
+    "two_camera_bytes": 393216,
+    "exact_to_verified_debug_and_original_frame0": true,
+    "visible_window_created": false,
+    "audio_played": false,
+    "renderer_in_physics_replay_claim": false
+  },
+  "compiled_c_sha256": {
+    "debug.c": "a025e18f8b6227b90b0d600b666a4ff95018ad57d10a6d21ed5c0a029a914bd4",
+    "release.c": "d7222f666fa0ed017db16cbd41fde80a6c1bb45f6da074d0d19baa181ed73db0",
+    "control.c": "9d85e87f65a7db4b1d5c7e9bdd3f72e33ae711cea2800f82885c35b7d8cd37c6",
+    "control-release.c": "beaac94d4aa797c5cf763cc119f9de69607b17a9d234c5fb96796acd6052bd9b"
+  },
+  "source_identity_note": "Final numerical/effect implementations were exercised as recorded. The C header later clarified success1/failure0 in comments only, without changing ABI or executable logic. Reproduction wrappers describe the completed direct compile/run steps; their later packaging was syntax-checked rather than rerunning unchanged passing gates.",
+  "runtime_dependencies": "Coax-generated C plus platform C effects; MuJoCo is optional external simulation tooling. NumPy, h5py and installed PythonSDK reference are development tooling, not shipped runtime requirements.",
+  "source_checkout_scripts_or_imports_executed": false
+}

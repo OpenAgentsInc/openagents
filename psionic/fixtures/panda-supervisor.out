@@ -1,0 +1,5 @@
+portable supervisor: no policy or physics execution
+ordered action receipts: 8, acknowledged substeps: 200
+late reply refused, fallback ticks: 1, refusals: 1
+reset epoch: 2, old reply refused
+incomplete effect receipt halts without advancing a tick

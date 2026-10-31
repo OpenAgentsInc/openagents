@@ -1,0 +1,7 @@
+// Logical20Hz synchronous simulation; inference pauses physics. No realtime promise.
+PlStatus :: enum u8 {ok;shape;order;clock;stale;capacity;alias;number;limit;exhausted;effect;}
+PlPhase :: enum u8 {resetting;empty;waiting;ready;stepping;halted;finished;}
+PlTag :: struct {epoch:int;serial:int;tick:int;profile:int;}
+PlAction :: struct {v:[7]f32;}
+PlState :: struct {phase:PlPhase;epoch:int;serial:int;tick:int;origin:int;index:int;refusals:int;fallbacks:int;holding:bool;resume_waiting:bool;success:bool;}
+PlResult :: struct {status:PlStatus;state:PlState;tag:PlTag;slot:int;fallback:bool;}

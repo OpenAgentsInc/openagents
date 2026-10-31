@@ -1,0 +1,167 @@
+{
+  "controller_root": {
+    "checks": 8,
+    "killed": 462,
+    "mutants": 462,
+    "survived": 0
+  },
+  "date": "2026-10-31",
+  "emitted_c_sha256": {
+    "debug": "54c28bbe5ea69ecdb28fed86cd5a6d73118be27494d6bedbfd220634abb128f6",
+    "release": "91604a67e78db8481bedbe070c898a2ab9f37a77a6b06978178dc34a75fd1244",
+    "sanitized": "54c28bbe5ea69ecdb28fed86cd5a6d73118be27494d6bedbfd220634abb128f6"
+  },
+  "exact_default_pinv_cutoff": 1e-15,
+  "matrix_root": {
+    "checks": 6,
+    "killed": 297,
+    "mutants": 297,
+    "survived": 0
+  },
+  "native_reference": {
+    "controller_tolerance_frozen_before_observation": {
+      "atol": 2e-05,
+      "rtol": 2e-06
+    },
+    "inputs": {
+      "controller_cases": 112,
+      "home": [
+        0.0,
+        0.19634954084936207,
+        0.0,
+        -2.617993877991494,
+        0.0,
+        2.941592653589793,
+        0.7853981633974483
+      ],
+      "matrix_cases": 80,
+      "scope": "Seven frozen source-demo0 telemetry frames; owned action perturbations and fixed-state controller replay only.",
+      "source_samples": [
+        {
+          "bytes": 1152,
+          "row": 0,
+          "sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a"
+        },
+        {
+          "bytes": 1152,
+          "row": 1,
+          "sha256": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143"
+        },
+        {
+          "bytes": 1152,
+          "row": 2,
+          "sha256": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f"
+        },
+        {
+          "bytes": 1152,
+          "row": 3,
+          "sha256": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727"
+        },
+        {
+          "bytes": 1152,
+          "row": 64,
+          "sha256": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd"
+        },
+        {
+          "bytes": 1152,
+          "row": 128,
+          "sha256": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d"
+        },
+        {
+          "bytes": 1152,
+          "row": 232,
+          "sha256": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418"
+        }
+      ]
+    },
+    "matrix_tolerance": {
+      "atol": 1e-10,
+      "relative_frobenius": 1e-09,
+      "rtol": 1e-09
+    },
+    "modes": [
+      {
+        "clip_counts_match": true,
+        "controller_cases": 112,
+        "controller_sha256": "b84c2d3facf85e32f36fb3ea8671106f25c594f2532d5e6145e41a835e58322d",
+        "goal_rotation_max_abs_error": 1.1102230246251565e-16,
+        "matrix_cases": 80,
+        "matrix_max_relative_frobenius_error": 3.003715628592277e-15,
+        "matrix_ranks_match_default_numpy_pinv": true,
+        "matrix_sha256": "5e44fd26d6d7bfcab814d867c9fbf8e75a3ff8299ee0e23b7e3bf887f9cb8822",
+        "mode": "debug",
+        "native_modes_bit_identical": true,
+        "other_state_max_abs_error": 0.0,
+        "passed": true,
+        "torque_max_abs_error": 3.410605131648481e-13,
+        "torque_max_budget_fraction": 5.765560437838225e-09
+      },
+      {
+        "clip_counts_match": true,
+        "controller_cases": 112,
+        "controller_sha256": "b84c2d3facf85e32f36fb3ea8671106f25c594f2532d5e6145e41a835e58322d",
+        "goal_rotation_max_abs_error": 1.1102230246251565e-16,
+        "matrix_cases": 80,
+        "matrix_max_relative_frobenius_error": 3.003715628592277e-15,
+        "matrix_ranks_match_default_numpy_pinv": true,
+        "matrix_sha256": "5e44fd26d6d7bfcab814d867c9fbf8e75a3ff8299ee0e23b7e3bf887f9cb8822",
+        "mode": "release",
+        "native_modes_bit_identical": true,
+        "other_state_max_abs_error": 0.0,
+        "passed": true,
+        "torque_max_abs_error": 3.410605131648481e-13,
+        "torque_max_budget_fraction": 5.765560437838225e-09
+      },
+      {
+        "clip_counts_match": true,
+        "controller_cases": 112,
+        "controller_sha256": "b84c2d3facf85e32f36fb3ea8671106f25c594f2532d5e6145e41a835e58322d",
+        "goal_rotation_max_abs_error": 1.1102230246251565e-16,
+        "matrix_cases": 80,
+        "matrix_max_relative_frobenius_error": 3.003715628592277e-15,
+        "matrix_ranks_match_default_numpy_pinv": true,
+        "matrix_sha256": "5e44fd26d6d7bfcab814d867c9fbf8e75a3ff8299ee0e23b7e3bf887f9cb8822",
+        "mode": "sanitized",
+        "native_modes_bit_identical": true,
+        "other_state_max_abs_error": 0.0,
+        "passed": true,
+        "torque_max_abs_error": 3.410605131648481e-13,
+        "torque_max_budget_fraction": 5.765560437838225e-09
+      }
+    ],
+    "passed": true,
+    "profile": "F64 OSC with source F32 quat2mat staging, fixed arrays and one-sidedJacobi pinv1e-15; independently authored NumPy1.26 source formulas, no clonedsource execution/Numba identity claim.",
+    "runtime": {
+      "interpreter": "<private-reference-env>/bin/python",
+      "numpy": "1.26.4",
+      "python": "3.12.14"
+    },
+    "schema": "psionic-panda-controller-source-reference-v1",
+    "scope": "Frozen controller numerical/source semantics and refusal ABI only; no simulator integration or closed-loop success claim."
+  },
+  "no_bounded_annotation_claim": true,
+  "no_numba_identity_claim": true,
+  "original_source_sha256": {
+    "controllers/base_controller.py": "6dc278b614e78d8c3e7656b430c59cc600c42fcd1db0f4293bea1bf4925541dd",
+    "controllers/osc.py": "a5887a950f53c16c67874c1e4f2ea6919dc0d0e5d1b618c15c699bd84e269477",
+    "models/grippers/panda_gripper.py": "1c395d5ab96d097aa95e4542981901a6d54609d27fb72217788a7e63167052f5",
+    "models/robots/manipulators/panda_robot.py": "a2b2ebc51a6bc8a2ba6b783c1359a38554d7f81d4cf71a2a8a42e7edab40edc5",
+    "utils/control_utils.py": "c599f39eaae07b581155ec42c498cb3888cd3e50f72062bd1d2ff13b69e164b5",
+    "utils/transform_utils.py": "f2580092ef324104d3757a5c4b9ddec7d69601a86e1f7725a167ea36aa76fc7b"
+  },
+  "passed": true,
+  "schema": "psionic-panda-controller-qualification-v1",
+  "scope": "F64/source-F32quat OSC_POSE controller numerical and atomic-refusal profile only; no closed-loop or physical-control claim.",
+  "sdk_site_velocity_vs_arm_jacobian_qd_max_abs_error": 2.498001805406602e-16,
+  "source_revision": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-control-check-fixtures.coax": "1d2e336f81cd09575232a197d93586c68dafed83c7cd6a14e7055aaffddc216e",
+    "psionic/lib/robotics/panda-control-types.coax": "168dddd1822bee04fb85e710912f9f844f1c4b4745a13b952c8a9cc9094916d3",
+    "psionic/lib/robotics/panda-control.coax": "6a0ef9ad54cd0ea9d12a1ce77a1e73a48c957bbba173281e5a1de0cf6020bdbc",
+    "psionic/lib/robotics/panda-matrix-types.coax": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483",
+    "psionic/lib/robotics/panda-matrix.coax": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f",
+    "psionic/tests/robotics/check-panda-control.sh": "fea57e2b5e19e0593ddb11fb886938441727f6ad84997e0b96e5b450b5a7a462",
+    "psionic/tests/robotics/panda-control-native.c": "17adecd0b107aa4c0382b87852fcc5acca3b475868b287102e0672567d83e5f2",
+    "psionic/tests/robotics/panda_control_reference.py": "126436e3cfb9162613746a6aba7b81b150a28a25c0fa002b91f1b2a3f8733608"
+  }
+}

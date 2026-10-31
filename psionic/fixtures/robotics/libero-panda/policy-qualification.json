@@ -1,0 +1,814 @@
+{
+  "accepted_scope": "public endpoints",
+  "adapter_exact_against_coax_normalized_output": true,
+  "adapter_passed_against_original_sdk_public_output": true,
+  "buffers_cached": 1106,
+  "captures": [
+    {
+      "coax_sha256": "5ff4acb5925f215538a7f027c4f1836a4363294737c7f7f28bbf906aa4abf1c7",
+      "max_abs_error": 1.055002212524414e-05,
+      "max_budget_fraction": 0.0032186151671694425,
+      "name": "vision-patch-projection",
+      "passed": true,
+      "reference_sha256": "8f1222a547e35e916357f737d9be4bed9092d49fac1d51002c0f555a161d1a10",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "d77d43f4f33c35d2c590d43813e99cc2d4063bced82002b97016ef41a56a7e15",
+      "max_abs_error": 1.055002212524414e-05,
+      "max_budget_fraction": 0.0032667815156842903,
+      "name": "vision-preblocks",
+      "passed": true,
+      "reference_sha256": "f717f514adcb37ceea8ee6b369a6a95ea1615a5d740381b8749db925f31ee53a",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "df78a0551d8973bb4b08b798b17f0265fd02af4e2725977fc106aa7341770ee1",
+      "max_abs_error": 2.2172927856445312e-05,
+      "max_budget_fraction": 0.006584054948115523,
+      "name": "vision-block0",
+      "passed": true,
+      "reference_sha256": "e9d62028e9319679be87f25ac6bd16721c2ec9f9a978739ed7e55a63a2e60b61",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "ae5fa2aa443b7bb43a6f76389bfc4f4bbafe88ba937db67d1795b84a493ad423",
+      "max_abs_error": 3.266334533691406e-05,
+      "max_budget_fraction": 0.011450677718083018,
+      "name": "vision-block1",
+      "passed": true,
+      "reference_sha256": "8cb8814d40a364a95e0c78b0ec0ae03a5cba9c15838d2e142570f67f8ac9fd7d",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "1cfbb1dec61d191124f06096defbe18402533fc93a94ff3acfcc55eb6fd1e928",
+      "max_abs_error": 3.567337989807129e-05,
+      "max_budget_fraction": 0.016778056008168032,
+      "name": "vision-block2",
+      "passed": true,
+      "reference_sha256": "df473c47a88e7f4f6e201b5678dbfff873409087f1e6a412ae6e0474ab2debf9",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "5e26e0c92b202a7519d6843d0270891f7cfe02e271b56a3f6710a804af25018b",
+      "max_abs_error": 4.297494888305664e-05,
+      "max_budget_fraction": 0.01755191636796836,
+      "name": "vision-block3",
+      "passed": true,
+      "reference_sha256": "66b3b6638c516df81c0c87f9bb105d42893542caee3df89edda7694b7202172a",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "30d8d8f01edd36d603e274e1ced3ced155574d927f5fde1b6be0ca6b4308bd8d",
+      "max_abs_error": 4.8100948333740234e-05,
+      "max_budget_fraction": 0.01689981805827213,
+      "name": "vision-block4",
+      "passed": true,
+      "reference_sha256": "b0a2162a52bd4b6a1f9c1d0a75bfd3472a956020adc8b572c8c5ed5c13c04ca1",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "b7194a6e0134a64029aac414b6eada7ab767cc53fb17b665e40a98f95a2a35a9",
+      "max_abs_error": 5.0067901611328125e-05,
+      "max_budget_fraction": 0.01791895303559545,
+      "name": "vision-block5",
+      "passed": true,
+      "reference_sha256": "ed6deb8d94f048d2fb0463e3551924c94ee7caa029bb9353bafcadc12492fa8e",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "b7194a6e0134a64029aac414b6eada7ab767cc53fb17b665e40a98f95a2a35a9",
+      "max_abs_error": 5.0067901611328125e-05,
+      "max_budget_fraction": 0.01791895303559545,
+      "name": "vision-deepstack0-input",
+      "passed": true,
+      "reference_sha256": "ed6deb8d94f048d2fb0463e3551924c94ee7caa029bb9353bafcadc12492fa8e",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "554e2e79114500088a542b53746046d5a3bd181edcb43283507986b0bf73fdd1",
+      "max_abs_error": 1.239776611328125e-05,
+      "max_budget_fraction": 0.002828697092991891,
+      "name": "vision-deepstack0",
+      "passed": true,
+      "reference_sha256": "3c1d4c06fd535375cbba5762e23bf2d538ddaa2524281c8ab6cb709925f97293",
+      "values": 262144
+    },
+    {
+      "coax_sha256": "fff8cb1eed548ae7b316e562c218b63584455a7de9373e430d0a510951ee4c7e",
+      "max_abs_error": 5.364418029785156e-05,
+      "max_budget_fraction": 0.014807271414156982,
+      "name": "vision-block6",
+      "passed": true,
+      "reference_sha256": "d3f894c70f4b445485797642f166328730c503b2da5b674573a5a857ff0d102d",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "5014e39d8d2e30cb21342f2630405d4378718f6900bf86f64644c27a596470f6",
+      "max_abs_error": 6.270408630371094e-05,
+      "max_budget_fraction": 0.014818387421386482,
+      "name": "vision-block7",
+      "passed": true,
+      "reference_sha256": "485a2be2be29928d32366edcc049a4eebb9c09d788d09c56fcf50e0cd83d6a4d",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "8245b0b9db7aa3fa387989751494608c99dc9fe02b85f9e5c2ee21237ad9d159",
+      "max_abs_error": 5.53131103515625e-05,
+      "max_budget_fraction": 0.014767681768679415,
+      "name": "vision-block8",
+      "passed": true,
+      "reference_sha256": "305ffde3200bf884bf1ec17c230b641f96869cb0515089db498c129579b7d76c",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "d49775839cc50371f81330476e363923bcb569ff6d6a2c4c9bb475dabb3a6a0a",
+      "max_abs_error": 5.924701690673828e-05,
+      "max_budget_fraction": 0.016130409218549892,
+      "name": "vision-block9",
+      "passed": true,
+      "reference_sha256": "7a1dd64f667745a87b33105e9899f1a02c584540e4ba8ec25c506c6a4ac01725",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "50391ea7750550e59b98f78172b4b05aedafd91de00617c2fca41fe3ce1e4719",
+      "max_abs_error": 0.00045013427734375,
+      "max_budget_fraction": 0.026693716299183174,
+      "name": "vision-block10",
+      "passed": true,
+      "reference_sha256": "497b093f798b9c4027dc6c42e8a780a60ff699bf2d0759a9390abea46c715d08",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "f194430673241886f45748b5d6dd4caea1e06c18af9539c328b70fff2811069f",
+      "max_abs_error": 0.00048828125,
+      "max_budget_fraction": 0.04044603727582547,
+      "name": "vision-block11",
+      "passed": true,
+      "reference_sha256": "e009932773b4fea3d83812b1e33bc11c7d84931257a62bc5ff0018d3be013d7c",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "f194430673241886f45748b5d6dd4caea1e06c18af9539c328b70fff2811069f",
+      "max_abs_error": 0.00048828125,
+      "max_budget_fraction": 0.04044603727582547,
+      "name": "vision-deepstack1-input",
+      "passed": true,
+      "reference_sha256": "e009932773b4fea3d83812b1e33bc11c7d84931257a62bc5ff0018d3be013d7c",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "23d015ecf589e5eee260f4549360b79b5b3f314c851871d6f9aabfaa140efa02",
+      "max_abs_error": 2.041459083557129e-05,
+      "max_budget_fraction": 0.00933179847726437,
+      "name": "vision-deepstack1",
+      "passed": true,
+      "reference_sha256": "9f7eaed59f2af1f089165b1aad433846c0c78bf5c5c83c9b0e300ad5b8b534d9",
+      "values": 262144
+    },
+    {
+      "coax_sha256": "9db8841b54531936f9b5b83e5bbc91bf594ae8ef526e472e9f6c5208a8ba2d79",
+      "max_abs_error": 0.00048828125,
+      "max_budget_fraction": 0.056792661214341025,
+      "name": "vision-block12",
+      "passed": true,
+      "reference_sha256": "cc3b899ba5e362edafbd398d17fb525a2a630e10db4f1a5f2c799bfb488fd401",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "2e3ed8b47149a14c7c548aa2d8740ab8cbbc056e12e4293a4bc823456f6fe854",
+      "max_abs_error": 0.00063323974609375,
+      "max_budget_fraction": 0.05271668489039955,
+      "name": "vision-block13",
+      "passed": true,
+      "reference_sha256": "80439823e40bcda0d93264736176da058fca1d78a0a4f73bb52a9ccc327ea0bc",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "903cb092d0d09b1c3a43aa88a7aaf8a2fc4355881c7ea7b4e7127c3d5cad13a6",
+      "max_abs_error": 0.000637054443359375,
+      "max_budget_fraction": 0.06818597845968383,
+      "name": "vision-block14",
+      "passed": true,
+      "reference_sha256": "e1a576744e309c35ae3004b5e4a10fe437ba30438994ea34b9016897ff512d21",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "9fd79662fa2a23f90f356c022bd28e2fe9cdaa2145eebe4ac2d03babcaa23289",
+      "max_abs_error": 0.0007946491241455078,
+      "max_budget_fraction": 0.203618990270669,
+      "name": "vision-block15",
+      "passed": true,
+      "reference_sha256": "99a56bd7c75fcdbbfe7da442cb616ad094414f08549908bb7ebc66e9de04c0c6",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "4d3ea46cfd6276b7da4d2756f295a70dbf0c24a641c8639a80e192a6c139ab11",
+      "max_abs_error": 0.0014629364013671875,
+      "max_budget_fraction": 0.3767929381335294,
+      "name": "vision-block16",
+      "passed": true,
+      "reference_sha256": "98742b298afb8c94d039546f048c87c6eaaf123a66751009fdbd9f97a0a0bffb",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "b8546e0cc74b2de966ddcc4676ad6100f367189639643f88a46d4fea3d867621",
+      "max_abs_error": 0.002070903778076172,
+      "max_budget_fraction": 0.2509408284401735,
+      "name": "vision-block17",
+      "passed": true,
+      "reference_sha256": "767a9dcfe5cecdbee4ecccfe69435081bfa5c6c52c028a9fa2afdbd1950cd090",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "b8546e0cc74b2de966ddcc4676ad6100f367189639643f88a46d4fea3d867621",
+      "max_abs_error": 0.002070903778076172,
+      "max_budget_fraction": 0.2509408284401735,
+      "name": "vision-deepstack2-input",
+      "passed": true,
+      "reference_sha256": "767a9dcfe5cecdbee4ecccfe69435081bfa5c6c52c028a9fa2afdbd1950cd090",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "7c43132ffcb9b1643a02483b04e742c1e1600c1dbf8752771ced6c3823ad14af",
+      "max_abs_error": 0.00014257431030273438,
+      "max_budget_fraction": 0.030228641054621377,
+      "name": "vision-deepstack2",
+      "passed": true,
+      "reference_sha256": "1ef1234106be3eb29a7cf2ed03d0f90e9edd79884e743ff0d4c72922b6b4e701",
+      "values": 262144
+    },
+    {
+      "coax_sha256": "8e2ab93790939dab441bc5dc4cac590352726c26ab05304cf8dfec535e440525",
+      "max_abs_error": 0.0024852752685546875,
+      "max_budget_fraction": 0.25622016485091254,
+      "name": "vision-block18",
+      "passed": true,
+      "reference_sha256": "aff0bd6c111b860526b9552439ab37977095d5cd3a174e087fe8581656b61d7f",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "a41cffa5686ade639f6ce0ebd8d316316c216ae0efea2af49cadaa01cc54a4cc",
+      "max_abs_error": 0.0036792755126953125,
+      "max_budget_fraction": 0.3518018802711336,
+      "name": "vision-block19",
+      "passed": true,
+      "reference_sha256": "9bc1a25f56f010887f7b2a92a3feaabfe7ece55e602f13e855194c6d04b8331a",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "7996c6df6ec4ec1f625dfc230d4050c31ac2105991794d474977051bbcbda379",
+      "max_abs_error": 0.0043315887451171875,
+      "max_budget_fraction": 0.4645449053947595,
+      "name": "vision-block20",
+      "passed": true,
+      "reference_sha256": "f58d0e5fb5313f0a3d13466de924ded3d740f6010e522dc8dbea6365f0f4caeb",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "6b201fb69f864b1455a2ef4d8ab835961f9ed900bbed7d9817073509c839bdab",
+      "max_abs_error": 0.0047664642333984375,
+      "max_budget_fraction": 1.039955174535443,
+      "name": "vision-block21",
+      "passed": false,
+      "reference_sha256": "ee6905f907c63693d3517352580085d9b3d8ec7a5508aad4ec300e8fda2371b4",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "ff15aefbd47f7ef568f331bd144a91fb88d92518a6e68d0d570fdb0e358975b5",
+      "max_abs_error": 0.004267692565917969,
+      "max_budget_fraction": 1.4317364119328582,
+      "name": "vision-block22",
+      "passed": false,
+      "reference_sha256": "4aa924affdb6b3497dae2cb6e5174f81949668949f3e023dac9f09b57303ca98",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "dda7208227cadc7e3fb1aded21a0b3101fc08956b4bd20e462083242914022fd",
+      "max_abs_error": 0.818603515625,
+      "max_budget_fraction": 1.8309046774410387,
+      "name": "vision-block23",
+      "passed": false,
+      "reference_sha256": "6332354b5e65e361f78c8ba97fba30f9d14515da9e0cbdf581580054aeae74ff",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "dda7208227cadc7e3fb1aded21a0b3101fc08956b4bd20e462083242914022fd",
+      "max_abs_error": 0.818603515625,
+      "max_budget_fraction": 1.8309046774410387,
+      "name": "vision-merger-input",
+      "passed": false,
+      "reference_sha256": "6332354b5e65e361f78c8ba97fba30f9d14515da9e0cbdf581580054aeae74ff",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "9a357dbe97891114ceef76dca5cdd333e4fc2f7deb511fa71bea9a0954f60392",
+      "max_abs_error": 0.0006651878356933594,
+      "max_budget_fraction": 0.08826724573009871,
+      "name": "vision-merged",
+      "passed": true,
+      "reference_sha256": "64c81830d46265403668e7f0cfa86147554dde3916438bc3f9f91759c05f7ee7",
+      "values": 262144
+    },
+    {
+      "coax_sha256": "da99b70af7a614dc6bb4a96a6b40fbf7008c7bac1ff97516872576e354247f28",
+      "max_abs_error": 0.002556324005126953,
+      "max_budget_fraction": 0.6996658471132776,
+      "name": "backbone",
+      "passed": true,
+      "reference_sha256": "228622568b5ea25d6747ab5224a2815bfc28a5adf54ba4cca165bae3365d308c",
+      "values": 311296
+    },
+    {
+      "coax_sha256": "68a7c104c3d387ec7794f5391f9c0dc5b252789243b39085f67428f865e4975d",
+      "max_abs_error": 0.0013437271118164062,
+      "max_budget_fraction": 0.36145784398141584,
+      "name": "vl-conditioning",
+      "passed": true,
+      "reference_sha256": "a55f020a71f669eaa49bd4337ddb0a5d010eae40235fbda6da3c8faa6221ba3e",
+      "values": 311296
+    },
+    {
+      "coax_sha256": "94e0d1eb0af06fb641f902458b691743f1a318250319d3511eabf66e46c2ee44",
+      "max_abs_error": 0.0,
+      "max_budget_fraction": 0.0,
+      "name": "state-features",
+      "passed": true,
+      "reference_sha256": "94e0d1eb0af06fb641f902458b691743f1a318250319d3511eabf66e46c2ee44",
+      "values": 1536
+    },
+    {
+      "coax_sha256": "9833d446557f8408b7cf83eb77a0c9edcd12db1c660ee99c166508c2d2b9c908",
+      "max_abs_error": 0.000118255615234375,
+      "max_budget_fraction": 0.004433827113879582,
+      "name": "flow0-block0",
+      "passed": true,
+      "reference_sha256": "fb496f1206c125bc3015d3d57e98e64cd985120cf38f2ba20f9a720ff25d2bf3",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "e1871a1d4f9fa400ac1737cdad2153d1c3f88779718d8e665292f1558d01e8ae",
+      "max_abs_error": 0.0001373291015625,
+      "max_budget_fraction": 0.008363684095234766,
+      "name": "flow0-block1",
+      "passed": true,
+      "reference_sha256": "9cf6d54c9f7940ca9bb9418b5aaf5c1415b7c2f1aae429c71089222b371687fd",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "f44fd492e249532b5318b0ede35b89a44a18377f2e09c3ef6e5d10f42571be3d",
+      "max_abs_error": 0.00030517578125,
+      "max_budget_fraction": 0.009862661219869366,
+      "name": "flow0-block2",
+      "passed": true,
+      "reference_sha256": "eda1f885c95a2a62d9519b990fcbf4974dc70be597d018809913ed0233a68153",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "0c395619ea39cd8adf7d0417edaf16a818f54012e48b08795418847314465e5a",
+      "max_abs_error": 0.000335693359375,
+      "max_budget_fraction": 0.010229304679765436,
+      "name": "flow0-block3",
+      "passed": true,
+      "reference_sha256": "7216f5603daa6212b9ec1c5bf016ad0b1793f6bd436cb56ce35baefac5bd7402",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "f9e9ad0edd1d5779f08bce8d10cab229794d1fd6133874d8c622a7e45c950571",
+      "max_abs_error": 0.00048828125,
+      "max_budget_fraction": 0.06812255807519783,
+      "name": "flow0-block31",
+      "passed": true,
+      "reference_sha256": "20b5ed781c1d0c2e50a5ad48c44f2d7dc0d8833c7df82ed70ace849567c40507",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "6a07a6d5101fa536f64586c10b9ebd8e806c95c8a0bb368d9762857538d82a21",
+      "max_abs_error": 4.291534423828125e-06,
+      "max_budget_fraction": 0.00164138725126315,
+      "name": "flow0-velocity",
+      "passed": true,
+      "reference_sha256": "959171c6f409b8a6c182dbc0fc73c4aabbbe6517a4168cf889185241191e5f32",
+      "values": 5280
+    },
+    {
+      "coax_sha256": "b308bb37ea234a8b9cafe29cb0d6a60eea58aba4a0cb81f06a039f1e83e1b999",
+      "max_abs_error": 1.0728836059570312e-06,
+      "max_budget_fraction": 0.0004315941525349782,
+      "name": "flow0-actions",
+      "passed": true,
+      "reference_sha256": "0e7a11d524edaf4fc0aeeaa55b990264f28a00e4daf25b5a34a163c602748aa0",
+      "values": 5280
+    },
+    {
+      "coax_sha256": "b6f8ae54a4ffdb474ae97b722515e56ab12a27c01c2480c3f0a24b1e84b18462",
+      "max_abs_error": 6.103515625e-05,
+      "max_budget_fraction": 0.007309453098012021,
+      "name": "flow1-block0",
+      "passed": true,
+      "reference_sha256": "66315188f8953eade5f2285a2be4f40be0424b0c477813aeea2cc64b170c9267",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "de7e6e1cab2ba53eaed768548d479b028abd42581bbe3287e1fec3f9c2878310",
+      "max_abs_error": 6.103515625e-05,
+      "max_budget_fraction": 0.008411853127985267,
+      "name": "flow1-block1",
+      "passed": true,
+      "reference_sha256": "1737d06d38b9d56da00af402c2b4d956fa804f5c8be84888831a6383debf2a65",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "c878a2f28e39c638e359c745ba39b39522c344541d56653cf046be4572a6e180",
+      "max_abs_error": 0.0004425048828125,
+      "max_budget_fraction": 0.015284393082090625,
+      "name": "flow1-block2",
+      "passed": true,
+      "reference_sha256": "a0d0644c24d7b21a92833f93ca6937e38506023ccbdf135142d75f51d9d1b4e7",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "e3952be538a5c9f79bb27440b8595bd368f919495e5268d6263b506617530f8d",
+      "max_abs_error": 0.00042724609375,
+      "max_budget_fraction": 0.02327457257688443,
+      "name": "flow1-block3",
+      "passed": true,
+      "reference_sha256": "2bb58fafa449d473ba41d79113405fe2d99102c6c59fa2a3c6441ad4bd3ff68b",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "dae8c23cc4099a46dcb4352f2a0e5f25a9640fb7b446109bd4d6689c9ededb01",
+      "max_abs_error": 0.0004119873046875,
+      "max_budget_fraction": 0.08744521282340612,
+      "name": "flow1-block31",
+      "passed": true,
+      "reference_sha256": "fee328567d29d8dbcc3cab8ddf2d316946c5925c90c41d949c3bed9094d29179",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "8f0276b7b5713807be67932be28eb246d92affa9d2d349f927c80dac0e1b8704",
+      "max_abs_error": 6.109476089477539e-06,
+      "max_budget_fraction": 0.0024155455177266986,
+      "name": "flow1-velocity",
+      "passed": true,
+      "reference_sha256": "76373dd54cb993da430bdfddd3f4ca848664910e7b39dc63ca6a381f86108bf3",
+      "values": 5280
+    },
+    {
+      "coax_sha256": "6b8c8258e4c2b4301a28a91ae44278d65aa86ee84b437b9591e085c89b3001f6",
+      "max_abs_error": 2.592802047729492e-06,
+      "max_budget_fraction": 0.0010033154614551008,
+      "name": "flow1-actions",
+      "passed": true,
+      "reference_sha256": "440174e91133666a39975d8b5abcdb05a2bdf2aa55ca3cf005e1661c3203d5ba",
+      "values": 5280
+    },
+    {
+      "coax_sha256": "8a541cf2ee02b10e0dba12d906abf7f7edf0a7515a09942c92e6cae20ad170fb",
+      "max_abs_error": 7.62939453125e-05,
+      "max_budget_fraction": 0.01622475427124617,
+      "name": "flow2-block0",
+      "passed": true,
+      "reference_sha256": "54c038ab5815ad4ab8b868b85ac0cb065b229669b5a654436ab64411698fc2bc",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "cbefa34f923f637dcedd3a755ae00d92c696e0378ea0a420b9c239ad056b764b",
+      "max_abs_error": 0.000133514404296875,
+      "max_budget_fraction": 0.0326589120875047,
+      "name": "flow2-block1",
+      "passed": true,
+      "reference_sha256": "b3885353bda219ac3007f8030474ed1793a05519dbf1b28d359e03fda48b013f",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "cb10d6eec128731fd839dcc26105c40bc6cd8e12438314285b0742667c1a18da",
+      "max_abs_error": 0.00032806396484375,
+      "max_budget_fraction": 0.07344706244497318,
+      "name": "flow2-block2",
+      "passed": true,
+      "reference_sha256": "4dbc2f0bdf7592be31d6b6dc43a6e4382ec48cdb8999e396fbc848af86188268",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "a9b1cd571fcc76108a3f0461f775ea025d075b65e5f280dd2937b115e53d238e",
+      "max_abs_error": 0.00035858154296875,
+      "max_budget_fraction": 0.07888104818424681,
+      "name": "flow2-block3",
+      "passed": true,
+      "reference_sha256": "0bba8d4814380cae1f679f55d789bc1e35419ed99a70b130e321fcbcb9b6fe7e",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "09eb55a510ad01f3cf92644e9795700c5dd4f9a0873eb2f9649f1c0ccd3b92e2",
+      "max_abs_error": 0.00054931640625,
+      "max_budget_fraction": 0.10629226122494113,
+      "name": "flow2-block31",
+      "passed": true,
+      "reference_sha256": "b9df6132e620366adf8f4bee27075ec2b87b763453e104de6d45a2a10fe5e589",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "673bce5732354f7fa44fafcbdd3ae400a500c399ca334c3cf3dbadc969bf1a5f",
+      "max_abs_error": 8.344650268554688e-06,
+      "max_budget_fraction": 0.0025647687928478154,
+      "name": "flow2-velocity",
+      "passed": true,
+      "reference_sha256": "714a50e9f6339bb9402067f516aa3cbca7aca550fd9a98f7ecece1fddd9177e3",
+      "values": 5280
+    },
+    {
+      "coax_sha256": "2fcdf5fb8b33535e47cafa6073316da35844a54f961ac89f04f7e0cadf933d5d",
+      "max_abs_error": 4.231929779052734e-06,
+      "max_budget_fraction": 0.0018172346195831802,
+      "name": "flow2-actions",
+      "passed": true,
+      "reference_sha256": "cb35a45acd90cffd3ac8b944fceba747e197b77306f02b9cdb676d7a61d718a4",
+      "values": 5280
+    },
+    {
+      "coax_sha256": "4ecdd730deaf681cec0ee4b5dddb50633e1740f8f9056df63d8fb5f601be271b",
+      "max_abs_error": 0.00014829635620117188,
+      "max_budget_fraction": 0.04735853147694081,
+      "name": "flow3-block0",
+      "passed": true,
+      "reference_sha256": "ab9a3f9d1508c8e21e197845a4a517f0a9666f7fedf45718f1cb9758f6d501c9",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "0191cb5958879928ae951a8fdd57e0f3d9a1e9f70c2f533b143965633f2a811a",
+      "max_abs_error": 0.00028228759765625,
+      "max_budget_fraction": 0.09696896663561462,
+      "name": "flow3-block1",
+      "passed": true,
+      "reference_sha256": "75e85e39e8c10fa247c82cbe0c1743321cf09f81d8de2bedf3d20564c74daf8d",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "69a102f8d8f85a324c723de776f765f15a1f14affb55f8a3b973697b58d58c43",
+      "max_abs_error": 0.00042724609375,
+      "max_budget_fraction": 0.09899601295196843,
+      "name": "flow3-block2",
+      "passed": true,
+      "reference_sha256": "263f2178d74cb022e8c69fbb99288ec40285f311565def64368a71ae3bfaec8c",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "829459e8a3b2e41547b1ab33bb42478566f47e5c4030f23cefa7fdd4877a236a",
+      "max_abs_error": 0.00048065185546875,
+      "max_budget_fraction": 0.09939328054800374,
+      "name": "flow3-block3",
+      "passed": true,
+      "reference_sha256": "dd1752dae1b3882ed28afb704ad3a2623a4a1c867bee7aacd80d19567dc00748",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "902ab5614a0b8d9a72fcbd85dcc6e5afd392a17965b8b4090bbc8f68ebb3718c",
+      "max_abs_error": 0.000446319580078125,
+      "max_budget_fraction": 0.13643532692633037,
+      "name": "flow3-block31",
+      "passed": true,
+      "reference_sha256": "d1289fd796b233d5041662b9c2afdcba86d70c8770711e8006d904d39871b599",
+      "values": 62976
+    },
+    {
+      "coax_sha256": "64370ef5a7c37677945766f0408a81cd1bbff70d2c0d4294b08fab6cc66cf2bc",
+      "max_abs_error": 1.800060272216797e-05,
+      "max_budget_fraction": 0.0048149214009600505,
+      "name": "flow3-velocity",
+      "passed": true,
+      "reference_sha256": "e3dd6c859ed10d984674703b1363822f8eb3a133471e14e380878b119f137f80",
+      "values": 5280
+    },
+    {
+      "coax_sha256": "069b235f4452c325e0c109510bf98d583a284ffc22f6d4482459308ee0370147",
+      "max_abs_error": 7.659196853637695e-06,
+      "max_budget_fraction": 0.0031960278323534415,
+      "name": "flow3-actions",
+      "passed": true,
+      "reference_sha256": "d61667e84d31d69c9dc7c29ce87bde7dca129e413198d383aaa4ff319e0718d0",
+      "values": 5280
+    },
+    {
+      "coax_sha256": "069b235f4452c325e0c109510bf98d583a284ffc22f6d4482459308ee0370147",
+      "max_abs_error": 7.659196853637695e-06,
+      "max_budget_fraction": 0.0031960278323534415,
+      "name": "normalized-actions",
+      "passed": true,
+      "reference_sha256": "d61667e84d31d69c9dc7c29ce87bde7dca129e413198d383aaa4ff319e0718d0",
+      "values": 5280
+    }
+  ],
+  "category": 2,
+  "coax_dependency_source_sha256": {
+    "coax/lib/compute/apple.coax": "68507e75ba716ee13f005e917a8734986c5f487ee5fbceea143eb028bb56d4fb",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "psionic/fixtures/models/ch04/fixtures.coax": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+    "psionic/fixtures/text/ch05/goldens.coax": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0",
+    "psionic/fixtures/text/ch05/toy.coax": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547",
+    "psionic/lib/device/tile.coax": "c619fe1a32afc068473b085ab6832439bd589720067a68527ad705ce3fd02d8e",
+    "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+    "psionic/lib/model-io/rank5.coax": "b763f1b5077e1ab7b6b7f8ce43ed44bf17c597d7f4a6cf7a7f0b6fa1c69319e5",
+    "psionic/lib/model-io/reader.coax": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+    "psionic/lib/ops-contract.coax": "40610524dfded7d4c7b9746ea7b2a837ebf2c0e1697414477741ead38301c52d",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/robotics/groot-action-dynamic-plan.coax": "7ac9bd122ca23f4cb9470101147b7b51807a499e2d71f471b905aacdc66e8da2",
+    "psionic/lib/robotics/groot-action-metadata-fixtures.coax": "0059bfa82a6444fd74179a850428845f0d799844da5d1b4ed021458e3af116b4",
+    "psionic/lib/robotics/groot-action-metal-kernels.coax": "93e6474a9496f2693881c97c49e2c19ad8bed26c9ebcb2d8e5ec2625f63308e3",
+    "psionic/lib/robotics/groot-action-metal-plan.coax": "e2806f0e262b50dbc5cbed221c628fe370ab1b5a37000fdec6573cbcccacd3ff",
+    "psionic/lib/robotics/groot-action-metal-types.coax": "8f5f049c9ea209edee5a5b608d4405d836b1d9069f6142665333c2403d8a170d",
+    "psionic/lib/robotics/groot-action-trace-fixtures.coax": "55873160192e22d28b4cdaed553b0159373738ba5be49cc37688d3ceea8d7713",
+    "psionic/lib/robotics/groot-action-transcript.coax": "0142af0102a735c00a0c0f040cb6be1c3dfa5e848f24e05a95a6bb5c5b28bb0c",
+    "psionic/lib/robotics/groot-action-wide-kernels.coax": "273b955f6bc5467416aaf3c7a884d4ed3b58d21d8cd0c99d7a7febeb33ccd37c",
+    "psionic/lib/robotics/groot-artifact.coax": "9dae1ba455d87673696681ce8ebd5f8e2f64ba326c4f69908b907e71e2532c62",
+    "psionic/lib/robotics/groot-device-kernels.coax": "b04fd9f25f40cea80cce975ef5b1d8e4bf7a4ce0582b94c7d0d8f935207587af",
+    "psionic/lib/robotics/groot-embodiment-check-fixtures.coax": "71e88c0db05cea9fc11fc12cea08622b4f11a31ee887c4156188a78bf2d8e99a",
+    "psionic/lib/robotics/groot-embodiment-types.coax": "29a98db6066afbc3f039f914ed1d149b0a815723ce758e082137181d3b781640",
+    "psionic/lib/robotics/groot-embodiment.coax": "456d51c8d26a71a3e4ac112233178420f354f2aea5e423208d665603f5211337",
+    "psionic/lib/robotics/groot-image-check-fixtures.coax": "231d74c0152cfe9532f27e19b0ea93c4a171df34e75ccb043a09f67e4dc5c63e",
+    "psionic/lib/robotics/groot-image-types.coax": "80ec9a49bee1c0f37db5ef6fa751b3d918676fa92e8f76cf9b6c6ed76628c7dd",
+    "psionic/lib/robotics/groot-image.coax": "9c16d70b0ec51e482de53983f80cb0c34fd357dc21450990b96a88b58c413871",
+    "psionic/lib/robotics/groot-linear-check-fixtures.coax": "8270aae4fce241d70e5350168b5b4487e642d3707baabeb1ab62e0423f4a4e11",
+    "psionic/lib/robotics/groot-linear-types.coax": "3a6ca8232f2ebabbfd222e6fc92541e7d6df9f1f0378de2499a0ee8a3cc50d05",
+    "psionic/lib/robotics/groot-linear.coax": "91fe573f5a18cb3df20d8044e94a179f9baf8a91da3b7f779386edac416aa743",
+    "psionic/lib/robotics/groot-request-check-fixtures.coax": "c72a1669da9e56f94f8e1a80780aec118728746c5c8a51c857d6ba342c2c49c3",
+    "psionic/lib/robotics/groot-request-types.coax": "9a5b1e226be67aa1a3c9a4b8a8807a11e8131d87f0972f02b945ed5b2cb09f11",
+    "psionic/lib/robotics/groot-request.coax": "3222cd09e9b4cf12fe0fc4dfccb3d6318bd5a6e2ed76882e6f072f69d6c50ecd",
+    "psionic/lib/robotics/groot-text-kernels.coax": "88c0b2425c07b0bc61f5107ae63fe7b4c6a056d9c4f9563e8f7752f589ce1924",
+    "psionic/lib/robotics/groot-text-metal-check-fixtures.coax": "8f7aceb0de9a20e336b0c077dce2fe994009ab04df2a4f5b1c5cc51b3705b253",
+    "psionic/lib/robotics/groot-text-metal-contract-fixtures.coax": "6d2787d7538bc9c26b0ce410ded37574966917579b4bfaacd1984a6b1f6c6c8a",
+    "psionic/lib/robotics/groot-text-metal-plan.coax": "95c58cf76f16cfd69bbdcc9027d7d4493444c7760bf7464610b2ab5102b8e3a9",
+    "psionic/lib/robotics/groot-text-types.coax": "8232011ecfc7bb5c9dc626069194534af68eb4dbab39216a9fb786825f080482",
+    "psionic/lib/robotics/groot-text.coax": "1fff896d8bb2792d548b16197b80aefbf31d396b832c96c325fff1233c533631",
+    "psionic/lib/robotics/groot-vision-device.coax": "31b266a9c1d58bb7705024019385c65f07382e17d4090b4bb9176a2b8a5ca7cf",
+    "psionic/lib/robotics/groot-vision-metal-check-fixtures.coax": "219abddac099785ade76693490261e19259d04fa6b3b9d0011a99e507b429a42",
+    "psionic/lib/robotics/groot-vision-metal-plan.coax": "39c7ee071c940a3a0f78141a29addaef180115e6f9d33ffbd0bed4ca05f7677e",
+    "psionic/lib/robotics/groot-vision-metal-types.coax": "e7e115d3d7ecd9b2701d64d27fd6876233b98cabdf4b53afff2360306b3a429d",
+    "psionic/lib/robotics/groot-vision-types.coax": "f267c7f42eb0db6e443e799347c4201b9c6d8517af758cc3b33ec8506bcb6753",
+    "psionic/lib/robotics/groot-vision.coax": "ef96476d3d9dba666dde18389d88d442f72cdbe215566a7eb64f98f4675af694",
+    "psionic/lib/robotics/panda-policy.coax": "ff47118d0157aa344b3b93828b0d7e973309151ba18fdb60f05d47456c9dd56e",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/lib/text/tokenizer.coax": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027",
+    "psionic/lib/text/unicode.coax": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681"
+  },
+  "conditional_head_all31_passed": true,
+  "conditional_head_record_sha256": "eeb9b2604fe8ab3716655c51a0fefd6ef926d2f56ff6208db6974fa86d250238",
+  "conditional_head_record_sha256_committed": "eeb9b2604fe8ab3716655c51a0fefd6ef926d2f56ff6208db6974fa86d250238",
+  "cosmos_revision": "9ce19a195e423419c349abfc86fd07178b230561",
+  "decoded_public_values": 112,
+  "exact_gripper_decisions": 16,
+  "executed_coax_generated_metal_sha256": {
+    "action": "ad3f67e74753ee28009ac8fb7746add2b227885484a4ec1c4db3ec00a1a80f31",
+    "device": "2258055ec33f376b1c69150a5a7e4f05335308ebbd80a9697aa2a73bc862359d",
+    "text": "7513007e844eb19b0621c7cd1a6a1fcc35a389af51d28996414ecf8bde13a2b7",
+    "tile": "e998a0f6febd253b4ff12fdd994a73e1ee6f1ababfc1860fed0159be519dc8d0",
+    "vision": "1b55da19303ef4adc2f54e750b656984fffe90f0390bb4d9d0f59a06be4ecc72",
+    "wide": "3d67a475f65a9500e7d1751b28f26b164863eaf938b7df35d44f620c5d3ed822"
+  },
+  "executed_frame_binary_sha256": "a8510d93f2d5f98ac67ee5b1daa1c34256b06b6fa82abed5441a304966f9f426",
+  "executed_generated_c_sha256": "61b7e8537fb16c63340c8a5170f674c9197a35052ba045517117236ede4e61c0",
+  "initial_strict_global_audit": {
+    "passed": false,
+    "preserved_without_overwrite": true,
+    "public_endpoint_scope_recorded_separately": true,
+    "record_sha256": "2a9942ecda82124ea9fb2e675fdc70e53bfb15502f179fed3c00943fbd92492f",
+    "schema": "psionic-panda-resident-frame-v1"
+  },
+  "kernels_cached": 32,
+  "max_decoded_continuous_abs_error": 5.602836608886719e-06,
+  "model_revision": "2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21",
+  "modules_cached": 6,
+  "native_source_sha256": {
+    "psionic/tests/robotics/build-panda-policy.sh": "a89d01ad96668d30d3d898cb2bc0406b69aada1b2474bb115354c1cd14a6ec5e",
+    "psionic/tests/robotics/check-panda-policy-native.sh": "37c0471fc9a07462b9ca7a6c05bd9432f6dc3cceefcbbe1bd37dc39b332fc4bf",
+    "psionic/tests/robotics/panda-policy-native.c": "ec1e2750d4767daab2d8a36d7bada0b9452440dac5d426b8a35714c6b6704e76"
+  },
+  "numerical_profile": "Original BF16 weights decoded exactly; F32 learned arithmetic/storage; wide normalization statistics implemented with Coax Metal float-float; source-default BF16 identity is separate.",
+  "original_all9_public_normalized_endpoints_passed": true,
+  "original_authenticated_cache_reused": true,
+  "original_global_hidden_diagnostics": [],
+  "original_global_vision_diagnostics": [
+    {
+      "coax_sha256": "6b201fb69f864b1455a2ef4d8ab835961f9ed900bbed7d9817073509c839bdab",
+      "max_abs_error": 0.0047664642333984375,
+      "max_budget_fraction": 1.039955174535443,
+      "name": "vision-block21",
+      "passed": false,
+      "reference_sha256": "ee6905f907c63693d3517352580085d9b3d8ec7a5508aad4ec300e8fda2371b4",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "ff15aefbd47f7ef568f331bd144a91fb88d92518a6e68d0d570fdb0e358975b5",
+      "max_abs_error": 0.004267692565917969,
+      "max_budget_fraction": 1.4317364119328582,
+      "name": "vision-block22",
+      "passed": false,
+      "reference_sha256": "4aa924affdb6b3497dae2cb6e5174f81949668949f3e023dac9f09b57303ca98",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "dda7208227cadc7e3fb1aded21a0b3101fc08956b4bd20e462083242914022fd",
+      "max_abs_error": 0.818603515625,
+      "max_budget_fraction": 1.8309046774410387,
+      "name": "vision-block23",
+      "passed": false,
+      "reference_sha256": "6332354b5e65e361f78c8ba97fba30f9d14515da9e0cbdf581580054aeae74ff",
+      "values": 524288
+    },
+    {
+      "coax_sha256": "dda7208227cadc7e3fb1aded21a0b3101fc08956b4bd20e462083242914022fd",
+      "max_abs_error": 0.818603515625,
+      "max_budget_fraction": 1.8309046774410387,
+      "name": "vision-merger-input",
+      "passed": false,
+      "reference_sha256": "6332354b5e65e361f78c8ba97fba30f9d14515da9e0cbdf581580054aeae74ff",
+      "values": 524288
+    }
+  ],
+  "original_head_global_hidden_trace_all31_passed": true,
+  "original_reference_record_sha256": "bf0643b55bd1b6754948dc2079e3de1694d81d4c06d8211c442fce1221e91a5a",
+  "passed": true,
+  "prepared_input_sha256": {
+    "ids": "dca2b85b53599f2dec97ad4c6df4e7245a0857555bf40bc56bca24cb95ecef25",
+    "noise": "59e012a91bd82498415471c884fd6bc7f0e2a5fa920ddc48bf79d1a9c1e899a0",
+    "pixels": "6beb90f28b117bdf9a0c6b12fde5a3ebe714a4953c3ca9772f6644816b37ac8b",
+    "state": "ce80bf907916af572b44a577eb16146ff1be3589f2ab3911411e72fb962bfe0d"
+  },
+  "prepared_inputs_exact": true,
+  "public_vision_all4_endpoints_passed": true,
+  "qualification": {
+    "authored_checks": 11,
+    "checks_including_dependencies": 178,
+    "checks_passed": 178,
+    "killed": 653,
+    "native_cases_each": 191736,
+    "native_log_sha256": "692cc22a74fd8b969f0126d22f011af463a34052c9d5d64ab59bdbabbcb57c62",
+    "native_modes": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "native_token_lengths": [
+      137,
+      140,
+      152,
+      512
+    ],
+    "new_same_input_conditional_head_reference_runs": 1,
+    "new_sdk_full_reference_runs": 1,
+    "numerical_shaders_unchanged": true,
+    "root_mutants": 653,
+    "root_mutation_log_sha256": "e8ad9f772b15b3097f6d5f599dbc7c2c5c95e718d8e4cd863dc65f1478dc465c",
+    "survived": 0,
+    "unchanged_primitive_gates_repeated": false
+  },
+  "reference_sdk": {
+    "device": "mps",
+    "diffusers": "0.35.1",
+    "dtype": "float32",
+    "numpy": "1.26.4",
+    "torch": "2.9.0",
+    "transformers": "4.57.3"
+  },
+  "related_metadata_receipts": {
+    "conditional_head": "../groot-libero/panda-conditional-head-qualification.json",
+    "dynamic_action": "../groot-libero/dynamic-action-qualification.json",
+    "global_hidden_diagnostics": "policy-global-hidden-diagnostics.json"
+  },
+  "request_tokens": 152,
+  "resident_frame_timing_with_private_trace_capture": {
+    "action_gpu_seconds": 0.33322624967,
+    "context_open_and_scene_render_excluded": true,
+    "launches": 3561,
+    "prep_seconds": 0.00256300001638,
+    "text_gpu_seconds": 0.0830640000058,
+    "tokens": 152,
+    "vision_gpu_seconds": 0.205902000132,
+    "wall_seconds": 0.979324000014
+  },
+  "runtime": "Coax preprocessing/tokenization/vision24/text16/head32x4/decode; effects-only resident Metal C host",
+  "runtime_python": false,
+  "same_input_reference_reused_for_final_metadata_glue_change_only_after_all31_coax_output_hashes_matched": true,
+  "schema": "psionic-panda-resident-public-endpoints-v1",
+  "scope": "Genuine simulator fresh frame0 original-weight resident inference; no task success or physical robot claim",
+  "source_sha256": {
+    "psionic/lib/robotics/groot-action-dynamic-plan.coax": "7ac9bd122ca23f4cb9470101147b7b51807a499e2d71f471b905aacdc66e8da2",
+    "psionic/lib/robotics/panda-policy.coax": "ff47118d0157aa344b3b93828b0d7e973309151ba18fdb60f05d47456c9dd56e",
+    "psionic/platform/panda-policy.c": "fc09e6093f395074b558e8cea136043ef2b959e98c6db0c8ef3be9eb1f21ebf0",
+    "psionic/platform/panda-policy.h": "f2f9a806eaf5da388ccbe1198bccc35559395029abc707350452991794cfca2a",
+    "psionic/tests/robotics/panda_policy_frame.c": "0b68ef0515bed722e5fba98a57fd743a87d43016220bdee45efd30b5098f7ddd",
+    "psionic/tests/robotics/panda_policy_reference.py": "ce2e674957d8361407500dfe3e021b80bec45e721b1e2d757b6606e1591dca2c"
+  },
+  "text_endpoint_passed": true,
+  "tolerance_frozen_before_observation": {
+    "atol": 0.002,
+    "rtol": 0.002
+  },
+  "vendor_nn_runtime": false,
+  "vision_all34_passed": false,
+  "weights_cached": 1030,
+  "whole_shard_payload_hashes_rechecked_for_this_profile": false
+}

@@ -1,0 +1,133 @@
+// Simulator supervisor: eight commands/chunk,25physics substeps/command.
+// Every transition is a value; invalid admission preserves header/output.
+#load "panda-loop-types.coax";
+#authority;
+
+#test "Panda reset request chunk and eight actual25substep receipts are ordered" {
+  h:=pl_new();#assert h.phase==PlPhase.resetting && h.epoch==1 && pl_valid(h);
+  #assert pl_request(h).status==PlStatus.order;
+  r:=pl_reset_done(h,0);#assert r.status==PlStatus.ok && r.state.phase==PlPhase.empty;h=r.state;
+  r=pl_request(h);#assert r.status==PlStatus.ok && r.tag.epoch==1 && r.tag.serial==1 && r.tag.tick==0 && r.tag.profile==1;h=r.state;
+  words:[112]u32;actions:[9]PlAction;work:[8]PlAction;actions[8].v[0]=7;words[0]=0x3f800000;words[1]=0xbf800000;
+  r=pl_accept(h,r.tag,0,words[..],actions[..],work[..],false);#assert r.status==PlStatus.ok && r.state.phase==PlPhase.ready && actions[0].v[0]==1 && actions[0].v[1]==-1 && actions[8].v[0]==7;h=r.state;
+  for i:0..<8 {r=pl_choose(h,i);#assert r.status==PlStatus.ok && r.slot==i && !r.fallback && r.state.phase==PlPhase.stepping;h=r.state;
+    r=pl_commit(h,i,25,0);#assert r.status==PlStatus.ok && r.state.tick==i+1 && r.state.index==i+1;h=r.state;}
+  #assert h.phase==PlPhase.empty && pl_choose(h,8).status==PlStatus.order;
+  r=pl_request(h);#assert r.status==PlStatus.ok && r.tag.tick==8 && r.tag.serial==2;
+  reset:=pl_reset(r.state);#assert reset.status==PlStatus.ok && reset.state.epoch==2 && reset.state.phase==PlPhase.resetting && reset.state.serial==0;
+}
+#test "late or foreign model replies preserve all public actions and header" {
+  h:=pl_request(pl_reset_done(pl_new(),0).state);words:[112]u32;actions:[8]PlAction;work:[8]PlAction;
+  for i:0..<8 {for j:0..<7 {actions[i].v[j]=7;}}
+  for mode:0..<9 {tag:=h.tag;now:=0;n:=112;out:=8;wn:=8;overlap:=false;
+    if mode==0 {tag.epoch+=1;}if mode==1 {tag.serial+=1;}if mode==2 {tag.tick+=1;}if mode==3 {tag.profile=2;}if mode==4 {now=1;}if mode==5 {n=111;}if mode==6 {out=7;}if mode==7 {wn=7;}if mode==8 {overlap=true;}
+    r:=pl_accept(h.state,tag,now,words[0..<n],actions[0..<out],work[0..<wn],overlap);#assert r.status!=PlStatus.ok && r.state.serial==h.state.serial && r.state.phase==PlPhase.waiting;
+    for a:actions {for x:a.v {#assert x==7;}}
+  }
+}
+#test "every decoded command including unused execution tail must be finite and bounded" {
+  h:=pl_request(pl_reset_done(pl_new(),0).state);words:[112]u32;actions:[8]PlAction;work:[8]PlAction;
+  for i:0..<112 {for bad:[5]u32.[0x7f800000,0xff800000,0x7fc00001,0x3fc00000,0xbfc00000] {words[i]=bad;r:=pl_accept(h.state,h.tag,0,words[..],actions[..],work[..],false);#assert r.status!=PlStatus.ok && r.state.phase==PlPhase.waiting;words[i]=0;}}
+  words[6]=0x3f000000;#assert pl_accept(h.state,h.tag,0,words[..],actions[..],work[..],false).status==PlStatus.limit;
+  words[6]=0x80000000;#assert pl_accept(h.state,h.tag,0,words[..],actions[..],work[..],false).status==PlStatus.ok && f32_bits(actions[0].v[6])==0x80000000;
+}
+#test "missing observations hold pose and delayed replies are refused before recovery" {
+  request:=pl_request(pl_reset_done(pl_new(),0).state);r:=pl_hold(request.state,0);#assert r.status==PlStatus.ok && r.fallback && r.slot==-1;
+  h:=pl_commit(r.state,0,25,0).state;#assert h.phase==PlPhase.waiting && h.tick==1 && h.fallbacks==1;
+  words:[112]u32;a:[8]PlAction;w:[8]PlAction;#assert pl_accept(h,request.tag,1,words[..],a[..],w[..],false).status==PlStatus.stale;
+  r=pl_refuse(h);#assert r.status==PlStatus.ok && r.state.refusals==1 && r.state.phase==PlPhase.empty;
+  fresh:=pl_request(r.state);#assert fresh.tag.tick==1 && fresh.tag.serial==2;
+  #assert pl_accept(fresh.state,request.tag,1,words[..],a[..],w[..],false).status==PlStatus.stale;
+  r=pl_accept(fresh.state,fresh.tag,1,words[..],a[..],w[..],false);#assert r.status==PlStatus.ok;
+  #assert pl_choose(r.state,2).status==PlStatus.clock;
+  for mode:0..<3 {stepping:=pl_choose(r.state,1).state;failed:=pl_commit(stepping,ifx mode==0 then 2 else 1,ifx mode==1 then 24 else 25,ifx mode==2 then 1 else 0);#assert failed.status!=PlStatus.ok && failed.state.phase==PlPhase.halted;}
+}
+#test "supervisor horizons exhaustion reset failure and malformed headers fail closed" {
+  h:=pl_reset_done(pl_new(),0).state;
+  #assert pl_reset_done(h,0).status==PlStatus.order && pl_reset_done(pl_new(),1).state.phase==PlPhase.halted;
+  #assert pl_hold(pl_new(),0).status==PlStatus.order && pl_choose(h,0).status==PlStatus.order && pl_refuse(h).status==PlStatus.order;
+  h.tick=719;h.origin=719;r:=pl_hold(h,719);r=pl_commit(r.state,719,25,0);#assert r.status==PlStatus.ok && r.state.phase==PlPhase.finished && r.state.tick==720;
+  #assert pl_request(r.state).status==PlStatus.order;
+  h=pl_reset_done(pl_new(),0).state;h.epoch=1000000;#assert pl_reset(h).status==PlStatus.exhausted;
+  h=pl_reset_done(pl_new(),0).state;h.serial=1000000;#assert pl_request(h).status==PlStatus.exhausted;
+  h=pl_reset_done(pl_new(),0).state;h.phase=PlPhase.waiting;h.refusals=1000000;#assert pl_refuse(h).status==PlStatus.exhausted;
+  h=pl_reset_done(pl_new(),0).state;h.fallbacks=1000000;#assert pl_hold(h,0).status==PlStatus.exhausted;
+  for field:0..<12 {bad:=pl_new();if field==0 {bad.epoch=0;}if field==1 {bad.epoch=1000001;}if field==2 {bad.serial=-1;}if field==3 {bad.serial=1000001;}if field==4 {bad.tick=-1;}if field==5 {bad.tick=721;}if field==6 {bad.origin=-1;}if field==7 {bad.origin=1;}if field==8 {bad.index=-1;}if field==9 {bad.index=9;}if field==10 {bad.refusals=-1;}if field==11 {bad.fallbacks=1000001;}#assert !pl_valid(bad) && pl_request(bad).status==PlStatus.shape;}
+}
+
+#test "supervisor boundary receipts and all public cursor postconditions are explicit" {
+  #assert pl_phase_valid(0) && pl_phase_valid(6) && !pl_phase_valid(-1) && !pl_phase_valid(7);
+  #assert pl_counter(0) && pl_counter(1000000) && !pl_counter(-1) && !pl_counter(1000001);
+  h:=pl_reset_done(pl_new(),0).state;h.tick=8;h.origin=0;h.index=8;r:=pl_request(h);#assert r.state.origin==8 && r.state.index==0;
+  h=pl_reset_done(pl_new(),0).state;h.tick=720;#assert pl_request(h).status==PlStatus.exhausted && pl_hold(h,720).status==PlStatus.exhausted;
+  h.phase=PlPhase.ready;h.origin=720;h.index=0;#assert pl_choose(h,720).status==PlStatus.exhausted;
+  h=PlState.{epoch=1,phase=PlPhase.ready,tick=8,index=8};#assert pl_choose(h,8).status==PlStatus.exhausted;
+  h=PlState.{epoch=1,phase=PlPhase.ready,tick=1};#assert pl_choose(h,1).status==PlStatus.clock;
+  h=PlState.{epoch=1,phase=PlPhase.ready,holding=true,resume_waiting=true};r=pl_choose(h,0);#assert r.status==PlStatus.ok && !r.state.holding && !r.state.resume_waiting;
+  h=r.state;h.resume_waiting=true;r=pl_commit(h,0,25,0);#assert r.status==PlStatus.ok && !r.state.holding && !r.state.resume_waiting;
+  h=PlState.{epoch=1,phase=PlPhase.stepping,tick=720};r=pl_commit(h,720,25,0);#assert r.status==PlStatus.exhausted && r.state.phase==PlPhase.halted;
+  h=PlState.{epoch=1,phase=PlPhase.stepping,index=8};r=pl_commit(h,0,25,0);#assert r.status==PlStatus.exhausted && r.state.phase==PlPhase.halted;
+  h=PlState.{epoch=1,phase=PlPhase.stepping,holding=true,fallbacks=1000000};r=pl_commit(h,0,25,0);#assert r.status==PlStatus.exhausted && r.state.phase==PlPhase.halted;
+  h=PlState.{epoch=1,phase=PlPhase.ready,tick=3,index=3};r=pl_refuse(h);#assert r.status==PlStatus.ok && r.state.origin==3 && r.state.index==0 && r.state.refusals==1;
+  h=pl_reset_done(pl_new(),0).state;r=pl_hold(h,0);r=pl_commit(r.state,0,25,0);#assert r.status==PlStatus.ok && r.state.phase==PlPhase.empty && r.state.fallbacks==1 && !r.state.holding && !r.state.resume_waiting;
+  request:=pl_request(pl_reset_done(pl_new(),0).state);r=pl_hold(request.state,0);r=pl_commit(r.state,0,25,0);#assert !r.state.holding && !r.state.resume_waiting;
+  words:[112]u32;out:[8]PlAction;work:[8]PlAction;for row:0..<16 {words[row*7+6]=0x3f000000;#assert pl_accept(request.state,request.tag,0,words[..],out[..],work[..],false).status==PlStatus.limit;words[row*7+6]=0;}
+}
+#test "episode success latches after a complete step without hiding a failed physics effect" {
+  h:=pl_reset_done(pl_new(),0).state;r:=pl_finish(h,true);#assert r.status==PlStatus.ok && r.state.phase==PlPhase.finished && r.state.success;
+  r=pl_finish(r.state,false);#assert r.status==PlStatus.ok && r.state.success;
+  #assert pl_finish(pl_new(),true).status==PlStatus.order;
+  h.phase=PlPhase.stepping;#assert pl_finish(h,true).status==PlStatus.order;h.phase=PlPhase.halted;#assert pl_finish(h,true).status==PlStatus.order;
+  h.epoch=0;#assert pl_finish(h,true).status==PlStatus.shape;
+}
+
+pl_phase_valid :: (phase:int)->bool #export_c {return phase>=0 && phase<=6;}
+pl_counter :: (n:int)->bool {return n>=0 && n<=1000000;}
+pl_valid :: (s:PlState)->bool #export_c {
+  return pl_phase_valid(cast(int)s.phase) && s.epoch>=1 && s.epoch<=1000000 && pl_counter(s.serial) && s.tick>=0 && s.tick<=720 && s.origin>=0 && s.origin<=s.tick && s.index>=0 && s.index<=8 && pl_counter(s.refusals) && pl_counter(s.fallbacks);
+}
+pl_new :: ()->PlState #export_c {return PlState.{epoch=1};}
+pl_result :: (status:PlStatus,s:PlState)->PlResult {return PlResult.{status=status,state=s,slot=-1};}
+pl_reset :: (s:PlState)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.epoch==1000000 {return pl_result(PlStatus.exhausted,s);}return pl_result(PlStatus.ok,PlState.{epoch=s.epoch+1});
+}
+pl_reset_done :: (s:PlState,effect:int)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.resetting {return pl_result(PlStatus.order,s);}next:=s;
+  if effect!=0 {next.phase=PlPhase.halted;return pl_result(PlStatus.effect,next);}next.phase=PlPhase.empty;return pl_result(PlStatus.ok,next);
+}
+pl_request :: (s:PlState)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.empty {return pl_result(PlStatus.order,s);}if s.tick==720 || s.serial==1000000 {return pl_result(PlStatus.exhausted,s);}
+  next:=s;next.serial+=1;next.origin=s.tick;next.index=0;next.phase=PlPhase.waiting;r:=pl_result(PlStatus.ok,next);r.tag=PlTag.{epoch=s.epoch,serial=next.serial,tick=s.tick,profile=1};return r;
+}
+pl_finite :: (bits:u32)->bool {return (bits&0x7f800000)!=0x7f800000;}
+pl_accept :: (s:PlState,tag:PlTag,now:int,words:[]u32,out:[]PlAction,work:[]PlAction,overlap:bool)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.waiting {return pl_result(PlStatus.order,s);}if now!=s.tick {return pl_result(PlStatus.clock,s);}
+  if tag.epoch!=s.epoch || tag.serial!=s.serial || tag.tick!=s.origin || tag.profile!=1 || now!=s.origin {return pl_result(PlStatus.stale,s);}
+  if words.count!=112 {return pl_result(PlStatus.shape,s);}if out.count<8 || work.count<8 {return pl_result(PlStatus.capacity,s);}if overlap {return pl_result(PlStatus.alias,s);}
+  for i:0..<112 {bits:=words[i];if !pl_finite(bits) {return pl_result(PlStatus.number,s);}x:=f32_from_bits(bits);if abs(x)>1 || (i%7==6 && x!=0 && x!=1 && x!=-1) {return pl_result(PlStatus.limit,s);}if i<56 {work[i/7].v[i%7]=x;}}
+  for i:0..<8 {out[i]=work[i];}next:=s;next.phase=PlPhase.ready;return pl_result(PlStatus.ok,next);
+}
+pl_choose :: (s:PlState,now:int)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.ready {return pl_result(PlStatus.order,s);}if now!=s.tick || now!=s.origin+s.index {return pl_result(PlStatus.clock,s);}
+  if s.index==8 || s.tick==720 {return pl_result(PlStatus.exhausted,s);}next:=s;next.phase=PlPhase.stepping;next.holding=false;next.resume_waiting=false;r:=pl_result(PlStatus.ok,next);r.slot=s.index;return r;
+}
+pl_hold :: (s:PlState,now:int)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.empty && s.phase!=PlPhase.waiting {return pl_result(PlStatus.order,s);}if now!=s.tick {return pl_result(PlStatus.clock,s);}
+  if s.tick==720 || s.fallbacks==1000000 {return pl_result(PlStatus.exhausted,s);}next:=s;next.phase=PlPhase.stepping;next.holding=true;next.resume_waiting=s.phase==PlPhase.waiting;r:=pl_result(PlStatus.ok,next);r.fallback=true;return r;
+}
+pl_commit :: (s:PlState,now:int,physics_steps:int,effect:int)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.stepping {return pl_result(PlStatus.order,s);}next:=s;
+  if now!=s.tick || physics_steps!=25 || effect!=0 {next.phase=PlPhase.halted;return pl_result(PlStatus.effect,next);}
+  if s.tick==720 {next.phase=PlPhase.halted;return pl_result(PlStatus.exhausted,next);}next.tick+=1;
+  if s.holding {if s.fallbacks==1000000 {next.phase=PlPhase.halted;return pl_result(PlStatus.exhausted,next);}next.fallbacks+=1;next.phase=ifx s.resume_waiting then PlPhase.waiting else PlPhase.empty;}
+  else {if s.index==8 {next.phase=PlPhase.halted;return pl_result(PlStatus.exhausted,next);}next.index+=1;next.phase=ifx next.index==8 then PlPhase.empty else PlPhase.ready;}
+  next.holding=false;next.resume_waiting=false;if next.tick==720 {next.phase=PlPhase.finished;}return pl_result(PlStatus.ok,next);
+}
+pl_refuse :: (s:PlState)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase!=PlPhase.waiting && s.phase!=PlPhase.ready {return pl_result(PlStatus.order,s);}if s.refusals==1000000 {return pl_result(PlStatus.exhausted,s);}
+  next:=s;next.refusals+=1;next.phase=PlPhase.empty;next.origin=s.tick;next.index=0;return pl_result(PlStatus.ok,next);
+}
+pl_finish :: (s:PlState,success:bool)->PlResult #export_c {
+  if !pl_valid(s) {return pl_result(PlStatus.shape,s);}if s.phase==PlPhase.resetting || s.phase==PlPhase.stepping || s.phase==PlPhase.halted {return pl_result(PlStatus.order,s);}
+  next:=s;next.phase=PlPhase.finished;next.success=s.success || success;return pl_result(PlStatus.ok,next);
+}

@@ -1,0 +1,128 @@
+// Versioned unpadded137..512 action-head profile. The chapter168 140-token
+// exports and shader arithmetic stay unchanged; only token geometry varies.
+#load "groot-action-metal-plan.coax";
+#authority;
+GadCursor :: struct {status:GvpStatus;stage:int;node:int;tokens:int;}
+
+#test "dynamic action profile preserves all 140-token canonical descriptors and buffers" {
+  #assert gad_tokens(137) && gad_tokens(512) && !gad_tokens(136) && !gad_tokens(513);
+  for i:0..<568 {#assert gad_buffer_bytes_for(140,i)==gac_buffer_bytes(i);}
+  for seq:0..<142 {s:=gad_stage_for(140,seq);old:=gac_stage(seq);built:=gad_build(140,seq);#assert s.kind==old.kind && s.layer==old.layer && s.step==old.step && s.nodes==old.nodes && s.flags==old.flags && gact_digest(s,built.nodes[..])==GAC_TRACE[seq];}
+  #assert gad_buffer_bytes_for(136,0)==0 && gad_buffer_bytes_for(140,-1)==0 && gad_buffer_bytes_for(140,568)==0;
+}
+#test "dynamic action attention geometry exposes actual N and every writable view fits its allocation" {
+  for tokens:[3]int.[137,152,512] {for seq:0..<142 {s:=gad_stage_for(tokens,seq);b:=gad_build(tokens,seq);#assert s.status==GvpStatus.ok && s.nodes==b.count && s.flags<=gad_buffer_bytes_for(tokens,567);offset:=0;
+    for at:0..<s.nodes {n:=b.nodes[at];#assert n.status==GvpStatus.ok && n.flag_offset==offset;
+      for a:0..<n.argc {v:=n.args[a];if v.kind==4 {#assert v.offset+v.count*gad_element_bytes(n.kernel,a,n.argc)<=gad_buffer_bytes_for(tokens,v.buffer);}}
+      if n.flag_count>0 {f:=n.args[n.argc-1];#assert f.buffer==567 && f.count==n.flag_count && f.offset==offset;}offset+=n.flag_count;
+      if n.kernel==4 {expected_queries:=ifx s.kind==1 then tokens else 41;expected_keys:=ifx s.kind==1 || s.layer%2==0 then tokens else 41;#assert n.args[0].integer==expected_queries && n.args[1].integer==expected_keys && n.items==expected_queries*32*expected_keys;}
+    }#assert offset==s.flags;
+  }}
+  #assert gad_stage_for(136,0).status==GvpStatus.shape && gad_stage_for(140,-1).status==GvpStatus.shape && gad_stage_for(140,142).status==GvpStatus.shape;
+  #assert gad_node_for(152,0,-1).status==GvpStatus.shape && gad_node_for(152,0,1).status==GvpStatus.shape && gad_node_for(136,0,0).status==GvpStatus.shape;
+  n:=gad_node_for(152,0,0);#assert n.items==152 && n.args[3].count==311296 && n.args[6].count==311296;
+  c:=gad_capture_for(152,4,0);#assert c.ok && c.name=="vl-conditioning" && c.count==311296 && gad_capture_for(152,5,0).count==1536 && !gad_capture_for(136,4,0).ok;
+}
+#test "dynamic masks validate all IDs before publication and accept exact min max input extents" {
+  ids:[512]int;text:[513]u8;image:[513]u8;ids[4]=151655;ids[511]=151935;text[512]=9;image[512]=9;
+  for n:[3]int.[137,152,512] {#assert gad_masks_for(n,ids[0..<n],text[..],image[..],false)==GvpStatus.ok && text[0]==1 && image[4]==1 && text[4]==0 && image[0]==0;}#assert text[512]==9 && image[512]==9;
+  for f:0..<7 {n:=152;ni:=152;nt:=152;nm:=152;overlap:=false;ids[151]=0;expected:=GvpStatus.capacity;if f==0 {n=136;expected=GvpStatus.shape;}if f==1 {ni=151;}if f==2 {nt=151;}if f==3 {nm=151;}if f==4 {overlap=true;expected=GvpStatus.alias;}if f==5 {ids[151]= -1;expected=GvpStatus.shape;}if f==6 {ids[151]=151936;expected=GvpStatus.shape;}text[0]=9;image[0]=9;#assert gad_masks_for(n,ids[0..<ni],text[0..<nt],image[0..<nm],overlap)==expected && text[0]==9 && image[0]==9;}
+}
+#test "dynamic receipts bind token count across ordered stages waits and final publication" {
+  s:=[1]GadCursor.[gad_begin_for(152)];flags:[152]u8;#assert s[0].tokens==152 && s[0].status==GvpStatus.ok && gad_begin_for(136).status==GvpStatus.shape;
+  #assert gad_done_for(s[..],152,0,0,flags[..])==GvpStatus.order;s[0]=gad_begin_for(152);#assert gad_sent_for(s[..],140,0,0,0)==GvpStatus.order;s[0]=gad_begin_for(152);
+  #assert gad_sent_for(s[..],152,0,0,0)==GvpStatus.ok && gad_done_for(s[..],152,0,0,flags[..])==GvpStatus.ok && s[0].stage==1 && s[0].node==0;
+  for mode:0..<6 {s[0]=gad_begin_for(152);seq:=0;at:=0;effect:=0;expected:=GvpStatus.order;if mode==0 {seq=1;}if mode==1 {at=1;}if mode==2 {at= -1;s[0].node= -1;}if mode==3 {effect=7;expected=GvpStatus.check;}if mode==4 {effect=4;expected=GvpStatus.device;}if mode==5 {s[0].status=GvpStatus.number;expected=GvpStatus.number;}#assert gad_sent_for(s[..],152,seq,at,effect)==expected;}
+  words:[5280]u32;out:[5281]f32;words[0]=0x40000000;words[5279]=0xc0400000;out[5280]=7;s[0]=GadCursor.{stage=142,tokens=152};r:=gad_publish_for(s[..],152,words[..],out[..],false);#assert r.status==GvpStatus.ok && r.written==5280 && out[0]==2 && out[5279]== -3 && out[5280]==7 && s[0].stage==143;
+  s[0]=GadCursor.{stage=142,tokens=152};#assert gad_publish_for(s[..],140,words[..],out[..],false).status==GvpStatus.order;
+}
+
+#test "dynamic tensor contracts pin actual rows key counts projection tiles and ABI element widths" {
+  #assert gad_element_bytes(0,5,6)==4 && gad_element_bytes(1,7,8)==1 && gad_element_bytes(4,9,14)==1 && gad_element_bytes(4,10,14)==8 && gad_element_bytes(4,11,14)==4 && gad_element_bytes(5,2,5)==1 && gad_element_bytes(5,1,5)==4;
+  #assert gad_buffer_bytes_for(232,567)==8388608 && gad_buffer_bytes_for(233,567)==8425746 && gad_buffer_bytes_for(512,567)==23086080;
+  for tokens:[4]int.[137,152,160,512] {for seq:[7]int.[0,1,4,7,8,9,39] {s:=gad_stage_for(tokens,seq);b:=gad_build(tokens,seq);old:=gac_build(seq);
+    for at:0..<b.count {n:=b.nodes[at];o:=old.nodes[at];vl:=s.kind==0 || s.kind==1;cross:=s.kind==4 && s.layer%2==0;
+      if n.kernel==0 {t:=ifx vl || (cross && o.args[4].buffer==542) then tokens else o.args[2].integer;rows:=n.args[0].integer;cols:=n.args[1].integer;#assert n.args[2].integer==t && n.args[4].count==t*cols && n.args[5].count==t*rows && n.items==((rows+63)/64)*((t+15)/16) && n.flag_count==0;}
+      if n.kernel==1 {rows:=ifx vl then tokens else o.items;width:=n.args[0].integer;#assert n.items==rows && n.flag_count==rows && n.args[3].count==rows*width && n.args[6].count==rows*width;}
+      if n.kernel==7 {t:=ifx vl || (cross && (o.args[5].buffer==548 || o.args[5].buffer==549)) then tokens else o.items/o.args[0].integer;count:=t*n.args[0].integer;#assert n.items==count && n.flag_count==count && n.args[2].count==count && n.args[5].count==count && n.args[4].count==(ifx n.args[1].integer==1 then count else 0);}
+      if n.kernel==3 {count:=ifx vl then tokens*8192 else o.items;#assert n.items==count && n.flag_count==count && n.args[1].count==count && n.args[2].count==count;}
+      if n.kernel>=4 && n.kernel<=6 {q:=ifx vl then tokens else 41;k:=ifx vl || cross then tokens else 41;width:=ifx vl then 2048 else 1536;count:=q*32*k;
+        if n.kernel==4 {#assert n.args[0].integer==q && n.args[1].integer==k && n.args[7].count==q*width && n.args[8].count==k*width && n.args[11].count==count && n.args[12].count==count && n.flag_count==count && n.items==count;}
+        if n.kernel==5 {#assert n.args[0].integer==k && n.args[1].count==count && n.args[2].count==count && n.args[3].count==count && n.items==q*32 && n.flag_count==q*32;}
+        if n.kernel==6 {#assert n.args[0].integer==q && n.args[1].integer==k && n.args[5].count==count && n.args[6].count==k*width && n.args[7].count==q*width && n.items==q*width && n.flag_count==q*width;}
+      }
+    }
+  }}
+}
+#test "dynamic wait refuses every profile order status and flag error without advancing" {
+  s:[1]GadCursor;flags:[152]u8;
+  #assert gad_done_for(s[0..<0],152,0,0,flags[..])==GvpStatus.shape && gad_sent_for(s[0..<0],152,0,0,0)==GvpStatus.shape;
+  for mode:0..<9 {s[0]=GadCursor.{tokens=152,node=1};n:=152;seq:=0;effect:=0;count:=152;expected:=GvpStatus.order;
+    if mode==0 {n=140;}if mode==1 {n=136;s[0].tokens=136;}if mode==2 {seq= -1;s[0].stage= -1;s[0].node=0;count=0;}if mode==3 {seq=1;}if mode==4 {effect=7;expected=GvpStatus.check;}if mode==5 {effect=4;expected=GvpStatus.device;}if mode==6 {count=151;expected=GvpStatus.capacity;}if mode==7 {flags[151]=9;expected=GvpStatus.number;}if mode==8 {s[0].status=GvpStatus.number;expected=GvpStatus.number;}
+    #assert gad_done_for(s[..],n,seq,effect,flags[0..<count])==expected && s[0].status==expected && s[0].stage==(ifx mode==2 then -1 else 0);flags[151]=0;
+  }
+  s[0]=GadCursor.{tokens=152,node=1};#assert gad_sent_for(s[..],152,0,1,0)==GvpStatus.order;
+}
+
+gad_tokens :: (n:int)->bool #export_c {return n>=137 && n<=512;}
+gad_element_bytes :: (kernel:int,arg:int,argc:int)->int {
+  if kernel!=0 && arg==argc-1 {return 1;}if kernel==4 {if arg==9 || arg==12 {return 1;}if arg==10 {return 8;}}if kernel==5 && arg==2 {return 1;}return 4;
+}
+gad_resize_tokenwise :: (node:GvpNode,tokens:int)->GvpNode {
+  n:=node;
+  if n.kernel==0 {rows:=n.args[0].integer;cols:=n.args[1].integer;n.args[2].integer=tokens;n.args[4].count=tokens*cols;n.args[5].count=tokens*rows;n.items=((rows+63)/64)*((tokens+15)/16);}
+  else if n.kernel==1 {width:=n.args[0].integer;n.items=tokens;n.args[3].count=tokens*width;n.args[6].count=tokens*width;n.flag_count=tokens;}
+  else if n.kernel==7 {width:=n.args[0].integer;count:=tokens*width;n.items=count;n.args[2].count=count;n.args[4].count=ifx n.args[1].integer==1 then count else 0;n.args[5].count=count;n.flag_count=count;}
+  else if n.kernel==3 {count:=tokens*8192;n.items=count;n.args[1].count=count;n.args[2].count=count;n.flag_count=count;}
+  return n;
+}
+gad_resize_attention :: (node:GvpNode,queries:int,keys:int,width:int)->GvpNode {
+  n:=node;count:=queries*32*keys;
+  if n.kernel==4 {n.args[0].integer=queries;n.args[1].integer=keys;n.args[7].count=queries*width;n.args[8].count=keys*width;n.args[9].count=ifx n.args[5].integer==1 then keys else 0;n.args[11].count=count;n.args[12].count=count;n.items=count;n.flag_count=count;}
+  else if n.kernel==5 {n.args[0].integer=keys;n.args[1].count=count;n.args[2].count=count;n.args[3].count=count;n.items=queries*32;n.flag_count=queries*32;}
+  else if n.kernel==6 {n.args[0].integer=queries;n.args[1].integer=keys;n.args[5].count=count;n.args[6].count=keys*width;n.args[7].count=queries*width;n.items=queries*width;n.flag_count=queries*width;}
+  return n;
+}
+gad_build :: (tokens:int,sequence:int)->GacBuild {
+  b:=gac_build(sequence);s:=gac_schedule(sequence);offset:=0;
+  for i:0..<b.count {n:=b.nodes[i];
+    if s.kind==0 || s.kind==1 {n=gad_resize_tokenwise(n,tokens);n=gad_resize_attention(n,tokens,tokens,2048);}
+    else if s.kind==4 && s.layer%2==0 {
+      if (n.kernel==0 && n.args[4].buffer==542) || (n.kernel==7 && (n.args[5].buffer==548 || n.args[5].buffer==549)) {n=gad_resize_tokenwise(n,tokens);}
+      n=gad_resize_attention(n,41,tokens,1536);
+    }
+    n.flag_offset=offset;if n.flag_count!=0 {n.args[n.argc-1]=gac_vo(567,n.flag_count,offset);}offset+=n.flag_count;b.nodes[i]=n;
+  }b.flags=offset;return b;
+}
+gad_buffer_bytes_for :: (tokens:int,buffer:int)->int #export_c {
+  if !gad_tokens(tokens) {return 0;}
+  if buffer==537 || buffer==542 || (buffer>=546 && buffer<=549) || buffer==553 {return tokens*2048*4;}
+  if buffer==540 || buffer==541 {return tokens;}if buffer==550 || buffer==552 {return tokens*tokens*32*4;}if buffer==551 {return tokens*tokens*32;}
+  if buffer>=554 && buffer<=556 {return tokens*8192*4;}if buffer==567 {needed:=32*tokens*tokens+28706*tokens;return ifx tokens<=232 then 8388608 else needed;}
+  return gac_buffer_bytes(buffer);
+}
+gad_stage_for :: (tokens:int,sequence:int)->GacStage #export_c {s:=gac_schedule(sequence);if !gad_tokens(tokens) || s.status!=GvpStatus.ok {return GacStage.{status=GvpStatus.shape};}b:=gad_build(tokens,sequence);s.nodes=b.count;s.flags=b.flags;return s;}
+gad_node_for :: (tokens:int,sequence:int,index:int)->GvpNode #export_c {s:=gad_stage_for(tokens,sequence);if s.status!=GvpStatus.ok || index<0 || index>=s.nodes {return GvpNode.{status=GvpStatus.shape};}b:=gad_build(tokens,sequence);return b.nodes[index];}
+gad_capture_for :: (tokens:int,sequence:int,slot:int)->GacCapture #export_c {if !gad_tokens(tokens) {return GacCapture.{};}c:=gac_capture(sequence,slot);if c.ok && c.buffer==542 {c.count=tokens*2048;}return c;}
+gad_masks_for :: (tokens:int,ids:[]int,text:[]u8,image:[]u8,overlap:bool)->GvpStatus #export_c {
+  if !gad_tokens(tokens) {return GvpStatus.shape;}if ids.count!=tokens || text.count<tokens || image.count<tokens {return GvpStatus.capacity;}if overlap {return GvpStatus.alias;}
+  for id:ids {if id<0 || id>=151936 {return GvpStatus.shape;}}for i:0..<tokens {image[i]=ifx ids[i]==151655 then cast(u8)1 else cast(u8)0;text[i]=1-image[i];}return GvpStatus.ok;
+}
+gad_begin_for :: (tokens:int)->GadCursor #export_c {return GadCursor.{status=ifx gad_tokens(tokens) then GvpStatus.ok else GvpStatus.shape,tokens=tokens};}
+gad_sent_for :: (s:[]GadCursor,tokens:int,sequence:int,index:int,effect:int)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}
+  if !gad_tokens(tokens) || s[0].tokens!=tokens {s[0].status=GvpStatus.order;return s[0].status;}p:=gad_stage_for(tokens,sequence);
+  if p.status!=GvpStatus.ok || s[0].stage!=sequence || s[0].node!=index || index<0 || index>=p.nodes {s[0].status=GvpStatus.order;return s[0].status;}
+  if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}s[0].node+=1;return GvpStatus.ok;
+}
+gad_done_for :: (s:[]GadCursor,tokens:int,sequence:int,effect:int,flags:[]u8)->GvpStatus #export_c {
+  if s.count!=1 {return GvpStatus.shape;}if s[0].status!=GvpStatus.ok {return s[0].status;}
+  if !gad_tokens(tokens) || s[0].tokens!=tokens {s[0].status=GvpStatus.order;return s[0].status;}p:=gad_stage_for(tokens,sequence);
+  if p.status!=GvpStatus.ok || s[0].stage!=sequence || s[0].node!=p.nodes {s[0].status=GvpStatus.order;return s[0].status;}
+  if effect!=0 {s[0].status=gac_effect(effect);return s[0].status;}if flags.count!=p.flags {s[0].status=GvpStatus.capacity;return s[0].status;}
+  for f:flags {if f!=0 {s[0].status=GvpStatus.number;return s[0].status;}}s[0].stage+=1;s[0].node=0;return GvpStatus.ok;
+}
+gad_publish_for :: (s:[]GadCursor,tokens:int,private:[]u32,out:[]f32,overlap:bool)->GvpRead #export_c {
+  if s.count!=1 {return GvpRead.{status=GvpStatus.shape};}if !gad_tokens(tokens) || s[0].tokens!=tokens {return GvpRead.{status=GvpStatus.order};}
+  cursor:=[1]GvpCursor.[GvpCursor.{status=s[0].status,stage=s[0].stage,node=s[0].node}];r:=gac_publish(cursor[..],private,out,overlap);s[0].stage=cursor[0].stage;return r;
+}

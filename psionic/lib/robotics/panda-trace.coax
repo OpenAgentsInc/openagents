@@ -1,0 +1,89 @@
+// Canonical512byte simulator records. SHA chains detect accidental changes;
+// they are not signatures or remote model/scene authentication.
+#load "../../../coax/lib/crypto/sha256.coax";
+#authority;
+PrStatus :: enum u8 {ok;shape;number;range;overlap;canonical;}
+PrSample :: struct {epoch:int;serial:int;tick:int;substep:int;flags:int;action:[7]u32;control:[9]u64;state:[45]u64;}
+PrRead :: struct {status:PrStatus;sample:PrSample;}
+
+#test "canonical physics records match independent little endian positions and preserve their tail" {
+  s:=PrSample.{epoch=4660,serial=7,tick=2,substep=3,flags=5};for i:0..<7 {s.action[i]=0x3f123400+cast(u32)i;}s.action[6]=0x3f800000;for i:0..<9 {s.control[i]=0x3ff123456789abcd+cast(u64)i;}s.control[7]=f64_bits(0.01);s.control[8]=f64_bits(-0.02);for i:0..<45 {s.state[i]=0xbff23456789abcde+cast(u64)i;}out:[513]u8;for i:0..<513 {out[i]=0xa5;}
+  #assert pr_encode(s,out[..],false)==PrStatus.ok && out[512]==0xa5;
+  #assert out[0]==0x50 && out[1]==0x54 && out[2]==0x52 && out[3]==0x31 && out[4]==1 && out[5]==0 && out[6]==5 && out[7]==3;
+  #assert out[8]==0x34 && out[9]==0x12 && out[16]==7 && out[24]==2 && out[32]==53;
+  for i:0..<7 {for j:0..<4 {#assert out[48+i*4+j]==cast(u8)((s.action[i]>>cast(u32)(8*j))&255);}}
+  for i:0..<9 {for j:0..<8 {#assert out[76+i*8+j]==cast(u8)((s.control[i]>>cast(u64)(8*j))&255);}}
+  for i:0..<45 {for j:0..<8 {#assert out[148+i*8+j]==cast(u8)((s.state[i]>>cast(u64)(8*j))&255);}}
+  for j:40..<48 {#assert out[j]==0;}#assert out[508]==0x45 && out[509]==0x4e && out[510]==0x44 && out[511]==0x31;
+  r:=pr_decode(out[0..<512]);#assert r.status==PrStatus.ok && r.sample.epoch==s.epoch && r.sample.serial==7 && r.sample.tick==2 && r.sample.substep==3 && r.sample.flags==5;
+  for i:0..<7 {#assert r.sample.action[i]==s.action[i];}for i:0..<9 {#assert r.sample.control[i]==s.control[i];}for i:0..<45 {#assert r.sample.state[i]==s.state[i];}
+  for n:1..<9 {bytes:[10]u8;v:=cast(u64)0x123456789abcdef0;written:=pr_put(bytes[..],1,v,n);#assert written==1+n;#assert pr_get(bytes[..],1,n)==(v&((cast(u64)18446744073709551615)>>(cast(u64)(64-8*n))));}
+}
+#test "trace admission refuses invalid metadata and every nonfinite lane atomically" {
+  s:=PrSample.{epoch=4660,serial=7,tick=2,substep=3,flags=5};for i:0..<7 {s.action[i]=0x3f123400+cast(u32)i;}s.action[6]=0x3f800000;for i:0..<9 {s.control[i]=0x3ff123456789abcd+cast(u64)i;}s.control[7]=f64_bits(0.01);s.control[8]=f64_bits(-0.02);for i:0..<45 {s.state[i]=0xbff23456789abcde+cast(u64)i;}out:[512]u8;for i:0..<512 {out[i]=77;}
+  for mode:0..<10 {bad:=s;if mode==0 {bad.epoch=0;}if mode==1 {bad.epoch=1000001;}if mode==2 {bad.serial=-1;}if mode==3 {bad.serial=1000001;}if mode==4 {bad.tick=-1;}if mode==5 {bad.tick=720;}if mode==6 {bad.substep=0;}if mode==7 {bad.substep=26;}if mode==8 {bad.flags=-1;}if mode==9 {bad.flags=8;}#assert pr_encode(bad,out[..],false)==PrStatus.range;}
+  for i:0..<7 {bad:=s;bad.action[i]=0x7f800000;#assert pr_encode(bad,out[..],false)==PrStatus.number;}
+  for i:0..<9 {bad:=s;bad.control[i]=0xfff8000000000001;#assert pr_encode(bad,out[..],false)==PrStatus.number;}
+  for i:0..<45 {bad:=s;bad.state[i]=0x7ff0000000000000;#assert pr_encode(bad,out[..],false)==PrStatus.number;}
+  #assert pr_encode(s,out[0..<511],false)==PrStatus.shape && pr_encode(s,out[..],true)==PrStatus.overlap;
+  for x:out {#assert x==77;}
+  s.epoch=1000000;s.serial=0;s.tick=719;s.substep=25;s.flags=7;#assert pr_encode(s,out[..],false)==PrStatus.ok;
+  s.serial=1000000;s.tick=0;s.substep=1;s.flags=0;#assert pr_encode(s,out[..],false)==PrStatus.ok;
+}
+#test "decoder rejects changed magic counters step receipts and reserved bytes before publishing" {
+  s:=PrSample.{epoch=4660,serial=7,tick=2,substep=3,flags=5};for i:0..<7 {s.action[i]=0x3f123400+cast(u32)i;}s.action[6]=0x3f800000;for i:0..<9 {s.control[i]=0x3ff123456789abcd+cast(u64)i;}s.control[7]=f64_bits(0.01);s.control[8]=f64_bits(-0.02);for i:0..<45 {s.state[i]=0xbff23456789abcde+cast(u64)i;}out:[512]u8;#assert pr_encode(s,out[..],false)==PrStatus.ok;
+  #assert pr_decode(out[0..<511]).status==PrStatus.shape;
+  for index:[18]int.[0,1,2,3,4,5,32,33,34,35,36,37,38,39,508,509,510,511] {out[index]^=1;r:=pr_decode(out[..]);#assert r.status!=PrStatus.ok && r.sample.epoch==0;out[index]^=1;}
+  for index:[8]int.[40,41,42,43,44,45,46,47] {out[index]=1;#assert pr_decode(out[..]).status==PrStatus.canonical;out[index]=0;}
+  out[6]=8;#assert pr_decode(out[..]).status==PrStatus.range;out[6]=5;
+  out[51]=0x7f;out[50]=0x80;out[49]=0;out[48]=0;#assert pr_decode(out[..]).status==PrStatus.number;
+}
+#test "SHA chain is exactly previous digest followed by the canonical record and is atomic" {
+  prev:[32]u8;record:[512]u8;out:[33]u8;expected:[32]u8;joined:[544]u8;
+  for i:0..<32 {prev[i]=cast(u8)(i+1);joined[i]=prev[i];}for i:0..<512 {record[i]=cast(u8)((i+3)%251);joined[32+i]=record[i];}
+  #assert sha256_hash_checked(joined[..],expected[..],false)==SHA_OK;
+  #assert pr_chain(prev[..],record[..],out[0..<32],false)==0;for i:0..<32 {#assert out[i]==expected[i];}
+  #assert pr_chain(prev[0..<31],record[..],out[0..<32],false)==1 && pr_chain(prev[..],record[0..<511],out[0..<32],false)==1;
+  #assert pr_chain(prev[..],record[..],out[0..<31],false)==1 && pr_chain(prev[..],record[..],out[..],false)==1;
+  #assert pr_chain(prev[..],record[..],out[0..<32],true)==2;
+}
+#test "odd NaN payloads are refused before raw-word publication" {
+  s:=PrSample.{epoch=1,substep=1};out:[512]u8;s.action[0]=0x7fc00001;#assert pr_encode(s,out[..],false)==PrStatus.number;s.action[0]=0;s.state[0]=0x7ff8000000000001;#assert pr_encode(s,out[..],false)==PrStatus.number;
+}
+#test "replay admits only this Panda actuator profile and normalized source commands" {
+  s:=PrSample.{epoch=1,substep=1};out:[512]u8;
+  for i:0..<7 {bad:=s;bad.action[i]=f32_bits(1.5f32);#assert pr_encode(bad,out[..],false)==PrStatus.range;bad.action[i]=f32_bits(-1.5f32);#assert pr_encode(bad,out[..],false)==PrStatus.range;}
+  s.action[6]=f32_bits(0.5f32);#assert pr_encode(s,out[..],false)==PrStatus.range;s.action[6]=f32_bits(-1.0f32);#assert pr_encode(s,out[..],false)==PrStatus.ok;s.action[6]=0;
+  for i:0..<7 {limit:f64=ifx i<5 then 80.0 else 12.0;s.control[i]=f64_bits(limit);#assert pr_encode(s,out[..],false)==PrStatus.ok;s.control[i]=f64_bits(-limit);#assert pr_encode(s,out[..],false)==PrStatus.ok;s.control[i]=f64_bits(limit+0.000001);#assert pr_encode(s,out[..],false)==PrStatus.range;s.control[i]=0;}
+  s.control[7]=f64_bits(0.04);s.control[8]=f64_bits(-0.04);#assert pr_encode(s,out[..],false)==PrStatus.ok;
+  for i:7..<9 {bad:=s;bad.control[i]=f64_bits(ifx i==7 then -0.000001 else 0.000001);#assert pr_encode(bad,out[..],false)==PrStatus.range;bad.control[i]=f64_bits(ifx i==7 then 0.040001 else -0.040001);#assert pr_encode(bad,out[..],false)==PrStatus.range;}
+}
+pr_put :: (out:[]u8,offset:int,value:u64,count:int)->int {for i:0..<count {out[offset+i]=cast(u8)((value>>cast(u64)(8*i))&255);}return offset+count;}
+pr_get :: (input:[]u8,offset:int,count:int)->u64 {v:u64=0;for i:0..<count {v|=cast(u64)input[offset+i]<<cast(u64)(8*i);}return v;}
+pr_valid :: (s:PrSample)->PrStatus {
+  if s.epoch<1 || s.epoch>1000000 || s.serial<0 || s.serial>1000000 || s.tick<0 || s.tick>719 || s.substep<1 || s.substep>25 || s.flags<0 || s.flags>7 {return PrStatus.range;}
+  for bits:s.action {if (bits&0x7f800000)==0x7f800000 {return PrStatus.number;}}
+  for bits:s.control {if (bits&0x7ff0000000000000)==0x7ff0000000000000 {return PrStatus.number;}}
+  for bits:s.state {if (bits&0x7ff0000000000000)==0x7ff0000000000000 {return PrStatus.number;}}
+  for bits:s.action {if abs(f32_from_bits(bits))>1 {return PrStatus.range;}}grip:=f32_from_bits(s.action[6]);if grip!=0 && grip!=1 && grip!=-1 {return PrStatus.range;}
+  limits:=[9]f64.[80,80,80,80,80,12,12,0.04,0.04];
+  for i:0..<9 {x:=f64_from_bits(s.control[i]);if abs(x)>limits[i] || (i==7 && x<0) || (i==8 && x>0) {return PrStatus.range;}}return PrStatus.ok;
+}
+pr_encode :: (s:PrSample,out:[]u8,overlap:bool)->PrStatus #export_c {
+  if out.count<512 {return PrStatus.shape;}if overlap {return PrStatus.overlap;}status:=pr_valid(s);if status!=PrStatus.ok {return status;}
+  stage:[512]u8;cursor:=pr_put(stage[..],0,0x31525450,4);cursor=pr_put(stage[..],cursor,1,2);cursor=pr_put(stage[..],cursor,cast(u64)s.flags,1);cursor=pr_put(stage[..],cursor,cast(u64)s.substep,1);
+  cursor=pr_put(stage[..],cursor,cast(u64)s.epoch,8);cursor=pr_put(stage[..],cursor,cast(u64)s.serial,8);cursor=pr_put(stage[..],cursor,cast(u64)s.tick,8);cursor=pr_put(stage[..],cursor,cast(u64)(s.tick*25+s.substep),8);cursor=pr_put(stage[..],cursor,0,8);
+  for i:0..<7 {cursor=pr_put(stage[..],cursor,cast(u64)s.action[i],4);}for i:0..<9 {cursor=pr_put(stage[..],cursor,s.control[i],8);}for i:0..<45 {cursor=pr_put(stage[..],cursor,s.state[i],8);}cursor=pr_put(stage[..],cursor,0x31444e45,4);
+  for i:0..<512 {out[i]=stage[i];}return PrStatus.ok;
+}
+pr_decode :: (record:[]u8)->PrRead #export_c {
+  if record.count!=512 {return PrRead.{status=PrStatus.shape};}s:PrSample;
+  s.epoch=cast(int)pr_get(record,8,8);s.serial=cast(int)pr_get(record,16,8);s.tick=cast(int)pr_get(record,24,8);s.substep=cast(int)record[7];s.flags=cast(int)record[6];
+  for i:0..<7 {s.action[i]=cast(u32)pr_get(record,48+4*i,4);}for i:0..<9 {s.control[i]=pr_get(record,76+8*i,8);}for i:0..<45 {s.state[i]=pr_get(record,148+8*i,8);}
+  stage:[512]u8;status:=pr_encode(s,stage[..],false);if status!=PrStatus.ok {return PrRead.{status=status};}
+  for i:0..<512 {if record[i]!=stage[i] {return PrRead.{status=PrStatus.canonical};}}return PrRead.{sample=s};
+}
+pr_chain :: (previous:[]u8,record:[]u8,out:[]u8,overlap:bool)->u32 #export_c {
+  if previous.count!=32 || record.count!=512 || out.count!=32 {return 1;}if overlap {return 2;}
+  joined:[544]u8;for i:0..<32 {joined[i]=previous[i];}for i:0..<512 {joined[32+i]=record[i];}return sha256_hash_checked(joined[..],out,false);
+}

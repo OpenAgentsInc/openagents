@@ -1,0 +1,110 @@
+// Fixed1..7 matrices, stride7. Pure F64 CPU profile; no dynamic allocation.
+#load "panda-matrix-types.coax";
+#authority;
+
+#test "small matrix dimensions finite words and counted validation are explicit" {
+  #assert pm_size(1) && pm_size(7) && !pm_size(0) && !pm_size(8);
+  #assert pm_finite_bits(0) && pm_finite_bits(0x8000000000000000) && pm_finite_bits(0x7fefffffffffffff);
+  #assert !pm_finite_bits(0x7ff0000000000000) && !pm_finite_bits(0xfff0000000000000) && !pm_finite_bits(0x7ff0000000000001);
+  #assert pm_count(3,0)==4 && pm_count(3,0x7ff0000000000000)==3;
+  a:[49]f64;#assert pm_values(a);#assert pm_mul(0,1,1,a,a).status==PmCode.shape && pm_inverse(8,a).status==PmCode.shape && pm_pinv(0,a).status==PmCode.shape;
+}
+#test "small rectangular multiplication keeps stride7 and zero padding" {
+  a:[49]f64;b:[49]f64;for i:0..<2 {for j:0..<3 {a[i*7+j]=f64(1+i*3+j);}}for i:0..<3 {for j:0..<2 {b[i*7+j]=f64(1+i*2+j);}}
+  r:=pm_mul(2,3,2,a,b);#assert r.status==PmCode.ok && r.value[0]==22 && r.value[1]==28 && r.value[7]==49 && r.value[8]==64;
+  for i:0..<49 {if i!=0 && i!=1 && i!=7 && i!=8 {#assert r.value[i]==0;}}
+}
+#test "SPD inverse covers all dimensions positive pivots and original matrix residual" {
+  for n:1..<8 {a:[49]f64;for i:0..<n {a[i*7+i]=f64(i+1);}
+    r:=pm_inverse(n,a);#assert r.status==PmCode.ok && r.rank==n;
+    for i:0..<n {for j:0..<n {#assert abs(r.value[i*7+j]-(ifx i==j then 1.0/f64(i+1) else 0.0))<2e-15;}}
+  }
+  for n:1..<8 {a:[49]f64;for i:0..<n {for j:0..<n {a[i*7+j]=ifx i==j then 2.0 else 1.0;}}r:=pm_inverse(n,a);#assert r.status==PmCode.ok;for i:0..<n {for j:0..<n {#assert abs(r.value[i*7+j]-((ifx i==j then 1.0 else 0.0)-1.0/f64(n+1)))<2e-14;}}}
+  a:[49]f64;a[0]=4;a[1]=2;a[7]=2;a[8]=3;r:=pm_inverse(2,a);#assert r.status==PmCode.ok && abs(r.value[0]-0.375)<1e-14 && abs(r.value[1]+0.25)<1e-14 && abs(r.value[8]-0.5)<1e-14;
+  a[8]=1;#assert pm_inverse(2,a).status==PmCode.singular;a[8]=3;a[7]=3;#assert pm_inverse(2,a).status==PmCode.range;
+}
+#test "one sided Jacobi pseudoinverse uses actual default1e-15 cutoff and retains rank" {
+  for n:[3]int.[1,3,6] {a:[49]f64;for i:0..<n {a[i*7+i]=f64(i+1);}r:=pm_pinv(n,a);#assert r.status==PmCode.ok && r.rank==n;for i:0..<n {#assert abs(r.value[i*7+i]-1.0/f64(i+1))<1e-14;}}
+  a:[49]f64;a[0]=1;a[8]=2e-15;a[16]=5e-16;r:=pm_pinv(3,a);#assert r.status==PmCode.ok && r.rank==2 && abs(r.value[0]-1)<1e-14 && abs(r.value[8]*2e-15-1)<1e-14 && r.value[16]==0;
+  a[8]=1e-15;#assert pm_pinv(3,a).rank==1;
+  for n:[2]int.[3,6] {m:[49]f64;for i:0..<n {for j:0..<n {m[i*7+j]=ifx i==j then 2.0 else 1.0;}}p:=pm_pinv(n,m);#assert p.status==PmCode.ok && p.rank==n;for i:0..<n {for j:0..<n {#assert abs(p.value[i*7+j]-((ifx i==j then 1.0 else 0.0)-1.0/f64(n+1)))<1e-13;}}}
+  m:[49]f64;m[0]=1;m[1]=2;m[7]=3;m[8]=4;p:=pm_pinv(2,m);#assert p.status==PmCode.ok && p.rank==2 && abs(p.value[0]+2)<1e-12 && abs(p.value[1]-1)<1e-12 && abs(p.value[7]-1.5)<1e-12 && abs(p.value[8]+0.5)<1e-12;
+  z:[49]f64;#assert pm_pinv(6,z).status==PmCode.ok && pm_pinv(6,z).rank==0;
+  a=z;a[0]=1;a[1]=2;a[7]=2;a[8]=4;r=pm_pinv(2,a);#assert r.status==PmCode.ok && r.rank==1 && abs(r.value[0]-0.04)<1e-13 && abs(r.value[1]-0.08)<1e-13 && abs(r.value[8]-0.16)<1e-13;
+  a[0]=1e-151;#assert pm_pinv(1,a).status==PmCode.range;a[0]=1e151;#assert pm_pinv(1,a).status==PmCode.range;
+}
+#test "Jacobi rotation is stable for both signs equal norms and exact orthogonality" {
+  #assert pm_rotation(1,1,0)==0 && pm_rotation(1,1,1)==1;
+  #assert pm_rotation(1,2,0.25)>0 && pm_rotation(2,1,0.25)<0;
+  #assert abs(pm_rotation(1,1e151,0.5)-5e-152)<1e-165;
+}
+pm_size :: (n:int)->bool {return n>=1 && n<=7;}
+pm_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+pm_count :: (n:int,bits:u64)->int {return n+(ifx pm_finite_bits(bits) then 1 else 0);}
+pm_values :: (a:[49]f64)->bool {checked:=0;for x:a {checked=pm_count(checked,f64_bits(x));}return checked==49;}
+pm_mul :: (rows:int,inner:int,cols:int,a:[49]f64,b:[49]f64)->PmResult #export_c {
+  if !pm_size(rows) || !pm_size(inner) || !pm_size(cols) {return PmResult.{status=PmCode.shape};}
+  if !pm_pair(pm_values(a),pm_values(b)) {return PmResult.{status=PmCode.number};}r:PmResult;
+  for i:0..<rows {for j:0..<cols {sum:f64=0;for k:0..<inner {sum+=a[i*7+k]*b[k*7+j];}r.value[i*7+j]=sum;}}
+  if !pm_values(r.value) {return PmResult.{status=PmCode.number};}return r;
+}
+pm_inverse :: (n:int,a:[49]f64)->PmResult #export_c {
+  if !pm_size(n) {return PmResult.{status=PmCode.shape};}if !pm_values(a) {return PmResult.{status=PmCode.number};}
+  l:[49]f64;for i:0..<n {for j:0..<(i+1) {
+    if !pm_symmetric(a[i*7+j],a[j*7+i]) {return PmResult.{status=PmCode.range};}
+    sum:=a[i*7+j];for k:0..<j {sum-=l[i*7+k]*l[j*7+k];}
+    if i==j {if sum<=0 {return PmResult.{status=PmCode.singular};}l[i*7+j]=sqrt(sum);}else {l[i*7+j]=sum/l[j*7+j];}
+  }}
+  r:PmResult;r.rank=n;for column:0..<n {y:[7]f64;
+    for i:0..<n {value:=ifx i==column then 1.0 else 0.0;for j:0..<i {value-=l[i*7+j]*y[j];}y[i]=value/l[i*7+i];}
+    for back:0..<n {i:=n-1-back;value:=y[i];for j:(i+1)..<n {value-=l[j*7+i]*r.value[j*7+column];}r.value[i*7+column]=value/l[i*7+i];}
+  }
+  if !pm_values(r.value) {return PmResult.{status=PmCode.number};}return r;
+}
+pm_rotation :: (alpha:f64,beta:f64,gamma:f64)->f64 {
+  if gamma==0 {return 0;}z:=(beta-alpha)/(2*gamma);if pm_large_rotation(z) {return 0.5/z;}
+  magnitude:=1.0/(abs(z)+sqrt(1+z*z));return ifx z<0 then -magnitude else magnitude;
+}
+pm_pinv :: (n:int,a:[49]f64)->PmResult #export_c {return pm_pinv_limit(n,a,64);}
+pm_pinv_limit :: (n:int,a:[49]f64,sweeps:int)->PmResult {
+  if !pm_sweeps(sweeps) {return PmResult.{status=PmCode.range};}
+  if !pm_size(n) {return PmResult.{status=PmCode.shape};}if !pm_values(a) {return PmResult.{status=PmCode.number};}
+  scale:f64=0;for i:0..<n {for j:0..<n {if pm_greater(abs(a[i*7+j]),scale) {scale=abs(a[i*7+j]);}}}
+  if scale==0 {return PmResult.{};}if scale<1e-150 || scale>1e150 {return PmResult.{status=PmCode.range};}
+  b:[49]f64;v:[49]f64;for i:0..<n {v[i*7+i]=1;for j:0..<n {b[i*7+j]=a[i*7+j]/scale;}}
+  converged:=false;
+  for sweep:0..<sweeps {changed:=false;for p:0..<n {for q:(p+1)..<n {
+    alpha:f64=0;beta:f64=0;gamma:f64=0;for i:0..<n {x:=b[i*7+p];y:=b[i*7+q];alpha+=x*x;beta+=y*y;gamma+=x*y;}
+    if pm_orthogonal(alpha,beta,gamma) {continue;}
+    t:=pm_rotation(alpha,beta,gamma);c:=pm_cosine(t);s:=c*t;
+    for i:0..<n {x:=b[i*7+p];y:=b[i*7+q];b[i*7+p]=c*x-s*y;b[i*7+q]=s*x+c*y;x=v[i*7+p];y=v[i*7+q];v[i*7+p]=c*x-s*y;v[i*7+q]=s*x+c*y;}changed=true;
+  }}if !changed {converged=true;break;}}
+  if !converged {return PmResult.{status=PmCode.convergence};}
+  norms:[7]f64;largest:f64=0;for j:0..<n {for i:0..<n {norms[j]+=b[i*7+j]*b[i*7+j];}sigma:=sqrt(norms[j]);if pm_greater(sigma,largest) {largest=sigma;}}
+  r:PmResult;cutoff:=1e-15*largest;
+  for k:0..<n {if sqrt(norms[k])>cutoff {r.rank+=1;for i:0..<n {for j:0..<n {r.value[i*7+j]+=(v[i*7+k]*b[j*7+k]/norms[k])/scale;}}}}
+  if !pm_values(r.value) {return PmResult.{status=PmCode.number};}return r;
+}
+
+#test "matrix predicates expose profile boundaries and finite pair decisions" {
+  #assert pm_pair(true,true) && !pm_pair(true,false) && !pm_pair(false,true) && !pm_pair(false,false);
+  #assert pm_symmetric(0,1e-12) && !pm_symmetric(0,1.01e-12) && pm_symmetric(4,4+4e-12);
+  #assert !pm_large_rotation(1e150) && pm_large_rotation(1.01e150);
+  #assert pm_greater(1,0) && !pm_greater(0,0) && !pm_greater(0,1);
+  #assert pm_sweeps(0) && pm_sweeps(64) && !pm_sweeps(-1) && !pm_sweeps(65);
+  #assert pm_orthogonal(0,1,1e-200) && pm_orthogonal(1,0,1e-200) && pm_orthogonal(1,1,1e-15) && pm_orthogonal(4,9,5e-15) && !pm_orthogonal(4,9,1e-12);
+  #assert abs(pm_cosine(1)-sqrt(0.5))<1e-15;
+  a:[49]f64;a[0]=1;#assert pm_pinv_limit(1,a,0).status==PmCode.convergence && pm_pinv_limit(1,a,1).status==PmCode.ok && pm_pinv_limit(1,a,65).status==PmCode.range;
+  a[0]=1e-150;#assert pm_pinv(1,a).status==PmCode.ok;a[0]=1e150;#assert pm_pinv(1,a).status==PmCode.ok;
+  l:[49]f64;for i:0..<6 {for j:0..<(i+1) {l[i*7+j]=ifx i==j then f64(i+2) else f64((i+2*j)%5-2)/4;}}
+  a=[49]f64.[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];for i:0..<6 {for j:0..<6 {a[i*7+j]=0;for k:0..<6 {a[i*7+j]+=l[i*7+k]*l[j*7+k];}}}
+  direct:=pm_inverse(6,a);pseudo:=pm_pinv(6,a);#assert direct.status==PmCode.ok && pseudo.status==PmCode.ok && pseudo.rank==6;for i:0..<49 {#assert abs(direct.value[i]-pseudo.value[i])<1e-12;}
+  #assert pm_pinv_limit(6,a,1).status==PmCode.convergence;
+}
+pm_pair :: (a:bool,b:bool)->bool {return a && b;}
+pm_symmetric :: (a:f64,b:f64)->bool {return abs(a-b)<=1e-12*(1+abs(a));}
+pm_large_rotation :: (z:f64)->bool {return abs(z)>1e150;}
+pm_greater :: (a:f64,b:f64)->bool {return a>b;}
+pm_cosine :: (t:f64)->f64 {return 1.0/sqrt(1+t*t);}
+pm_sweeps :: (n:int)->bool {return n>=0 && n<=64;}
+pm_orthogonal :: (alpha:f64,beta:f64,gamma:f64)->bool {return alpha==0 || beta==0 || abs(gamma)<=1e-15*sqrt(alpha*beta);}

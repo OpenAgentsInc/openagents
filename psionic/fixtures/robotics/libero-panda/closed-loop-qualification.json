@@ -1,0 +1,1090 @@
+{
+  "aggregate_fault_prefixes": {
+    "all_declared_recovery_expectations_met": true,
+    "all_physics_replays_exact": true,
+    "holds": 3,
+    "model_calls": 10,
+    "physics_steps": 1600,
+    "prefixes": 4,
+    "refusals": 2,
+    "task_success_evaluation": false,
+    "ticks": 64,
+    "torque_axes_clipped": 7
+  },
+  "aggregate_full_episodes": {
+    "all_physics_replays_exact": true,
+    "cases": 6,
+    "holds": 0,
+    "model_calls": 343,
+    "observed_fraction": 0.5,
+    "observed_fraction_scope": "Three observed successes among six fixed recorded scene resets; no acceptance threshold or benchmark interpretation",
+    "physics_steps": 68325,
+    "refusals": 0,
+    "task_successes": 3,
+    "task_timeouts": 3,
+    "ticks": 2733,
+    "timing": {
+      "gpu_seconds": 219.8789735,
+      "inference_max_seconds": 1.549077,
+      "inference_seconds": 324.986617,
+      "mean_gpu_seconds_per_model_call": 0.6410465699708455,
+      "mean_inference_seconds": 0.9474828483965015,
+      "unique_model_context_open_seconds": 16.517834999999998,
+      "wall_seconds": 335.4904
+    },
+    "torque_axes_clipped": 5
+  },
+  "checkpoint_training_holdout": false,
+  "clock_evidence": {
+    "fault_prefixes": "LIVE guard,1600forward physics steps",
+    "first_two_episodes": "RETROSPECTIVE; the live clock guard did not execute in those episodes",
+    "guard_additions_changed_valid_numerical_program": false,
+    "live_cases": [
+      "demo_020",
+      "demo_030",
+      "demo_040",
+      "demo_049"
+    ],
+    "live_nominal_physics_steps": 58625,
+    "remaining_four_episodes": "LIVE guard in forward stepping and exact replay",
+    "retrospective_cases": [
+      "demo_001",
+      "demo_010"
+    ],
+    "retrospective_values_checked": 9700,
+    "scope": "Plain F64/integer SDK time checks; not compiler typed clocks, #bounded proofs or wall deadlines"
+  },
+  "clock_qualification": {
+    "bytes": 2211,
+    "file": "clock-qualification.json",
+    "sha256": "2628948cbb7cd75756e7cc61bdd0498c151e4c350fe21177af7570fd5b1c632f"
+  },
+  "completed": true,
+  "episodes": [
+    {
+      "SDK_clock_guard_evidence": "retrospective",
+      "build_id": "evaluation-slice-1",
+      "case": "demo_001",
+      "completed_private_ledger": {
+        "bytes": 702,
+        "sha256": "f31779213738469fde5fb162ad2e90ff5fbb0c6f908f903449c7d0fa4cc0c58b"
+      },
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "b54231d9fe10684e52f748c2f259eb1d08702f02ed45cf3926c78cd335170cf8"
+      },
+      "holds": 0,
+      "kind": "full-frozen-episode",
+      "model_calls": 25,
+      "outcome": "success",
+      "physics_replay_exact": true,
+      "physics_steps": 5000,
+      "physics_trace": {
+        "bytes": 2560064,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 0,
+        "final_chain_sha256": "5a949796487528f997740029485b0975045a6450bbc14b9a37e9e9f5732e7d9b",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 5000,
+        "seed_sha256": "3f80653235ba195457c5baeb39b621152b9d3049c99725d8b109dc9c01e15152",
+        "sha256": "d3e67422337d5ea24ba462702b0a0564597343bd733b807b2db8164330b4a4b3",
+        "torque_clipped_flagged_substeps": 0
+      },
+      "refusals": 0,
+      "retrospective_clock_values_checked": 5000,
+      "retrospective_maximum_clock_error_seconds": 6.590283874174929e-13,
+      "scenario": 0,
+      "task_success_observed": true,
+      "ticks": 200,
+      "timing": {
+        "gpu_seconds": 16.3952641,
+        "inference_max_seconds": 1.549077,
+        "inference_seconds": 29.438107,
+        "model_context_open_seconds": 9.213583,
+        "wall_seconds": 30.519793
+      },
+      "torque_axes_clipped": 0
+    },
+    {
+      "SDK_clock_guard_evidence": "retrospective",
+      "build_id": "evaluation-slice-1",
+      "case": "demo_010",
+      "completed_private_ledger": {
+        "bytes": 701,
+        "sha256": "15a122065a810edfd12218102326779920ee4bd32a590345e4edacb3f212c76e"
+      },
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "f5018ab217322fb2c7b0f91e691ac0d83395cf0875226d2af6358d3380fd8ba3"
+      },
+      "holds": 0,
+      "kind": "full-frozen-episode",
+      "model_calls": 24,
+      "outcome": "success",
+      "physics_replay_exact": true,
+      "physics_steps": 4700,
+      "physics_trace": {
+        "bytes": 2406464,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 0,
+        "final_chain_sha256": "fef59b60c6ffccc456a2afbfe6efc21c0052279ba4f3c4843c25b92b0b876ce2",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 4700,
+        "seed_sha256": "947dacc9afa8bae97c873fa5241efa8b7fcc6b1af15e52fb27fbbd443d94dc9a",
+        "sha256": "341393347913204b74fcb3845d2f163b63031a06de798886e552700b7c97ea65",
+        "torque_clipped_flagged_substeps": 0
+      },
+      "refusals": 0,
+      "retrospective_clock_values_checked": 4700,
+      "retrospective_maximum_clock_error_seconds": 6.590283874174929e-13,
+      "scenario": 0,
+      "task_success_observed": true,
+      "ticks": 188,
+      "timing": {
+        "gpu_seconds": 15.122252,
+        "inference_max_seconds": 0.973234,
+        "inference_seconds": 22.544307,
+        "model_context_open_seconds": 9.213583,
+        "wall_seconds": 23.380619
+      },
+      "torque_axes_clipped": 0
+    },
+    {
+      "SDK_clock_guard_evidence": "live",
+      "build_id": "evaluation-slice-2",
+      "case": "demo_020",
+      "completed_private_ledger": {
+        "bytes": 704,
+        "sha256": "12a72fed140b465314b6c21751d802eb3a7acdda7b2faee02b26617f610582e6"
+      },
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "c6c60be08f25adb9a20f71396f6bbd55adbe30fbbb04c21491133ae957e2b2a9"
+      },
+      "holds": 0,
+      "kind": "full-frozen-episode",
+      "model_calls": 90,
+      "outcome": "720-tick timeout",
+      "physics_replay_exact": true,
+      "physics_steps": 18000,
+      "physics_trace": {
+        "bytes": 9216064,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 0,
+        "final_chain_sha256": "1f3ce99d81c5fb7aebb9085edc5b950cfb09293095feb63e83a5ef0655736fa4",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 18000,
+        "seed_sha256": "ce67b45b5d7ab6d5034edc02e37956d988bfa28c92a289573ab4033948d68675",
+        "sha256": "73f5588ce226fcbc6ab42c073449974e8ff5265619fed7b701841c50adf93b6a",
+        "torque_clipped_flagged_substeps": 1
+      },
+      "refusals": 0,
+      "scenario": 0,
+      "task_success_observed": false,
+      "ticks": 720,
+      "timing": {
+        "gpu_seconds": 56.7302073,
+        "inference_max_seconds": 1.117201,
+        "inference_seconds": 81.071572,
+        "model_context_open_seconds": 6.411885,
+        "wall_seconds": 83.51955
+      },
+      "torque_axes_clipped": 1
+    },
+    {
+      "SDK_clock_guard_evidence": "live",
+      "build_id": "evaluation-slice-2",
+      "case": "demo_030",
+      "completed_private_ledger": {
+        "bytes": 705,
+        "sha256": "b8e7029a8e29bb7bf19b48ef67a0d189748c64c48a179852161a65df08f46f10"
+      },
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "b9a5827cb98ce24b8d881d77bf90ab726f93014021c069b0a0027d74c0c215ad"
+      },
+      "holds": 0,
+      "kind": "full-frozen-episode",
+      "model_calls": 90,
+      "outcome": "720-tick timeout",
+      "physics_replay_exact": true,
+      "physics_steps": 18000,
+      "physics_trace": {
+        "bytes": 9216064,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 0,
+        "final_chain_sha256": "5b64a46bfe341ab9441c3f3a1880a6f67713b57fe2495942c26f410a8b7cc948",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 18000,
+        "seed_sha256": "4b6bf787e4f25a765620c32edf64fc8ecb24ec93d80b63d0440bb1b53678a67b",
+        "sha256": "cecde48c3989173cedeea214899a0cb7b4dafa0e776fd0725fce4122cbf8cf1b",
+        "torque_clipped_flagged_substeps": 2
+      },
+      "refusals": 0,
+      "scenario": 0,
+      "task_success_observed": false,
+      "ticks": 720,
+      "timing": {
+        "gpu_seconds": 57.6999063,
+        "inference_max_seconds": 0.999188,
+        "inference_seconds": 82.613288,
+        "model_context_open_seconds": 6.411885,
+        "wall_seconds": 84.975222
+      },
+      "torque_axes_clipped": 2
+    },
+    {
+      "SDK_clock_guard_evidence": "live",
+      "build_id": "evaluation-slice-3",
+      "case": "demo_040",
+      "completed_private_ledger": {
+        "bytes": 704,
+        "sha256": "8fddb32181431ab61367f8aa6da79d96dd9f99008de18d48612147403090acc2"
+      },
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "df6cb01adec9be0550ccc188fe3f7e2c2d9a19751c24a9954caf0eabc1baf408"
+      },
+      "holds": 0,
+      "kind": "full-frozen-episode",
+      "model_calls": 90,
+      "outcome": "720-tick timeout",
+      "physics_replay_exact": true,
+      "physics_steps": 18000,
+      "physics_trace": {
+        "bytes": 9216064,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 0,
+        "final_chain_sha256": "f5bcfd9893cae1210450bcc93c0c6c21c4ac220cf0f257358bce0c1a9164579e",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 18000,
+        "seed_sha256": "607ae7682e593eefd5b5e6ffcc5ab74ad1fada83db36d2e460bed6553076f85e",
+        "sha256": "3b26635804bb503c94dc7aa75312286342775c1f43ee0806557620476ab06fe4",
+        "torque_clipped_flagged_substeps": 2
+      },
+      "refusals": 0,
+      "scenario": 0,
+      "task_success_observed": false,
+      "ticks": 720,
+      "timing": {
+        "gpu_seconds": 58.625881,
+        "inference_max_seconds": 1.081873,
+        "inference_seconds": 86.185458,
+        "model_context_open_seconds": 0.892367,
+        "wall_seconds": 89.049086
+      },
+      "torque_axes_clipped": 2
+    },
+    {
+      "SDK_clock_guard_evidence": "live",
+      "build_id": "evaluation-slice-3",
+      "case": "demo_049",
+      "completed_private_ledger": {
+        "bytes": 701,
+        "sha256": "98ff1bebef7fa3ab9c2dce5ffd9bfe3cddfd987b5754eb859daf6a7fc80e288b"
+      },
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "00fc7d51ede9b8dab532502399df328cfd8ddafd72b5c11c8d06e4ef954d1996"
+      },
+      "holds": 0,
+      "kind": "full-frozen-episode",
+      "model_calls": 24,
+      "outcome": "success",
+      "physics_replay_exact": true,
+      "physics_steps": 4625,
+      "physics_trace": {
+        "bytes": 2368064,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 0,
+        "final_chain_sha256": "3236e2b4ba96c9165df87664534ce93f65e8d33d57b0ac813433506d8d698bd0",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 4625,
+        "seed_sha256": "df9521d440da5cec2ff55e0d49c364ce48265fb15f615ff3069ecbebcb790b44",
+        "sha256": "9e8db71b939710b6d695f141a4ad5f1c57d40913c00919493244c61bb500c64e",
+        "torque_clipped_flagged_substeps": 0
+      },
+      "refusals": 0,
+      "scenario": 0,
+      "task_success_observed": true,
+      "ticks": 185,
+      "timing": {
+        "gpu_seconds": 15.3054628,
+        "inference_max_seconds": 1.076504,
+        "inference_seconds": 23.133885,
+        "model_context_open_seconds": 0.892367,
+        "wall_seconds": 24.04613
+      },
+      "torque_axes_clipped": 0
+    }
+  ],
+  "evaluation_held_out_from_implementation_fixtures_only": true,
+  "evaluation_profile": {
+    "bytes": 8296,
+    "file": "evaluation-profile.json",
+    "sha256": "aeeb005f6ae6315441716592c1b6d7d022f13898512d81e9b5ce262b1bf91587"
+  },
+  "executed_builds": [
+    {
+      "artifacts": {
+        "metal-host.o": {
+          "bytes": 18104,
+          "sha256": "743488b51f685d73501bd5fc95c51dd871f653456d998516f2480b45d9fa0d03"
+        },
+        "panda-loop": {
+          "bytes": 256472,
+          "sha256": "29ef9b889481aa62a63656466a99d047fbdac91c6e6881167efc441b0cf603e1"
+        },
+        "panda-policy-generated.c": {
+          "bytes": 551964,
+          "sha256": "61b7e8537fb16c63340c8a5170f674c9197a35052ba045517117236ede4e61c0"
+        },
+        "panda-policy-generated.h": {
+          "bytes": 54556,
+          "sha256": "596fc744fb6e4547224568eb53ad20a979ceaa0e672d8b0f50e314715b38f1a3"
+        },
+        "panda-session.c": {
+          "bytes": 205253,
+          "sha256": "05af6bdbc97203a1bd0b4750d898ab2eb5f0ec6191d257cc491b9662c4528208"
+        },
+        "panda-session.h": {
+          "bytes": 20293,
+          "sha256": "26c8bfe9ca2cb6ed2ec1001c801867c95e85ad8610bb8e5712069000797f7ca8"
+        }
+      },
+      "coax_generated_metal": {
+        "action": {
+          "bytes": 72453,
+          "sha256": "ad3f67e74753ee28009ac8fb7746add2b227885484a4ec1c4db3ec00a1a80f31"
+        },
+        "device": {
+          "bytes": 57896,
+          "sha256": "2258055ec33f376b1c69150a5a7e4f05335308ebbd80a9697aa2a73bc862359d"
+        },
+        "text": {
+          "bytes": 43099,
+          "sha256": "7513007e844eb19b0621c7cd1a6a1fcc35a389af51d28996414ecf8bde13a2b7"
+        },
+        "tile": {
+          "bytes": 32331,
+          "sha256": "e998a0f6febd253b4ff12fdd994a73e1ee6f1ababfc1860fed0159be519dc8d0"
+        },
+        "vision": {
+          "bytes": 42651,
+          "sha256": "1b55da19303ef4adc2f54e750b656984fffe90f0390bb4d9d0f59a06be4ecc72"
+        },
+        "wide": {
+          "bytes": 62112,
+          "sha256": "3d67a475f65a9500e7d1751b28f26b164863eaf938b7df35d44f620c5d3ed822"
+        }
+      },
+      "id": "evaluation-slice-1",
+      "live_SDK_clock_guard_present": false,
+      "same_generated_policy_c_as_independent_first_frame_qualification": true,
+      "same_six_modules_as_independent_first_frame_qualification": true,
+      "scope": "Historical executed artifacts; current repository source identities are listed separately."
+    },
+    {
+      "artifacts": {
+        "metal-host.o": {
+          "bytes": 18104,
+          "sha256": "743488b51f685d73501bd5fc95c51dd871f653456d998516f2480b45d9fa0d03"
+        },
+        "panda-loop": {
+          "bytes": 256584,
+          "sha256": "6074846630c94f2fb429800345a6b382d02d331323d1c64dc6fe707c759f91bc"
+        },
+        "panda-policy-generated.c": {
+          "bytes": 551964,
+          "sha256": "61b7e8537fb16c63340c8a5170f674c9197a35052ba045517117236ede4e61c0"
+        },
+        "panda-policy-generated.h": {
+          "bytes": 54556,
+          "sha256": "596fc744fb6e4547224568eb53ad20a979ceaa0e672d8b0f50e314715b38f1a3"
+        },
+        "panda-session.c": {
+          "bytes": 206044,
+          "sha256": "0796f80559076e2a75755c92502f861e521056cea6e228f174b75302aeba415e"
+        },
+        "panda-session.h": {
+          "bytes": 20375,
+          "sha256": "6cb2b52249750e8fffc46e137bbff0a3906c1bdce18abc56fbe2a4123df52f5b"
+        }
+      },
+      "coax_generated_metal": {
+        "action": {
+          "bytes": 72453,
+          "sha256": "ad3f67e74753ee28009ac8fb7746add2b227885484a4ec1c4db3ec00a1a80f31"
+        },
+        "device": {
+          "bytes": 57896,
+          "sha256": "2258055ec33f376b1c69150a5a7e4f05335308ebbd80a9697aa2a73bc862359d"
+        },
+        "text": {
+          "bytes": 43099,
+          "sha256": "7513007e844eb19b0621c7cd1a6a1fcc35a389af51d28996414ecf8bde13a2b7"
+        },
+        "tile": {
+          "bytes": 32331,
+          "sha256": "e998a0f6febd253b4ff12fdd994a73e1ee6f1ababfc1860fed0159be519dc8d0"
+        },
+        "vision": {
+          "bytes": 42651,
+          "sha256": "1b55da19303ef4adc2f54e750b656984fffe90f0390bb4d9d0f59a06be4ecc72"
+        },
+        "wide": {
+          "bytes": 62112,
+          "sha256": "3d67a475f65a9500e7d1751b28f26b164863eaf938b7df35d44f620c5d3ed822"
+        }
+      },
+      "id": "evaluation-slice-2",
+      "live_SDK_clock_guard_present": true,
+      "same_generated_policy_c_as_independent_first_frame_qualification": true,
+      "same_six_modules_as_independent_first_frame_qualification": true,
+      "scope": "Historical executed artifacts; current repository source identities are listed separately."
+    },
+    {
+      "artifacts": {
+        "metal-host.o": {
+          "bytes": 18104,
+          "sha256": "743488b51f685d73501bd5fc95c51dd871f653456d998516f2480b45d9fa0d03"
+        },
+        "panda-loop": {
+          "bytes": 256584,
+          "sha256": "2c86f5347be6d4d73677b1f747fe4bce92b1682fde6561b16e94814f1b919076"
+        },
+        "panda-policy-generated.c": {
+          "bytes": 551964,
+          "sha256": "61b7e8537fb16c63340c8a5170f674c9197a35052ba045517117236ede4e61c0"
+        },
+        "panda-policy-generated.h": {
+          "bytes": 54556,
+          "sha256": "596fc744fb6e4547224568eb53ad20a979ceaa0e672d8b0f50e314715b38f1a3"
+        },
+        "panda-session.c": {
+          "bytes": 206173,
+          "sha256": "f5a39628141a07f64231d72d3f1b88bf409bf6a23597235b1eb4e88d99d6de0a"
+        },
+        "panda-session.h": {
+          "bytes": 20375,
+          "sha256": "6cb2b52249750e8fffc46e137bbff0a3906c1bdce18abc56fbe2a4123df52f5b"
+        }
+      },
+      "coax_generated_metal": {
+        "action": {
+          "bytes": 72453,
+          "sha256": "ad3f67e74753ee28009ac8fb7746add2b227885484a4ec1c4db3ec00a1a80f31"
+        },
+        "device": {
+          "bytes": 57896,
+          "sha256": "2258055ec33f376b1c69150a5a7e4f05335308ebbd80a9697aa2a73bc862359d"
+        },
+        "text": {
+          "bytes": 43099,
+          "sha256": "7513007e844eb19b0621c7cd1a6a1fcc35a389af51d28996414ecf8bde13a2b7"
+        },
+        "tile": {
+          "bytes": 32331,
+          "sha256": "e998a0f6febd253b4ff12fdd994a73e1ee6f1ababfc1860fed0159be519dc8d0"
+        },
+        "vision": {
+          "bytes": 42651,
+          "sha256": "1b55da19303ef4adc2f54e750b656984fffe90f0390bb4d9d0f59a06be4ecc72"
+        },
+        "wide": {
+          "bytes": 62112,
+          "sha256": "3d67a475f65a9500e7d1751b28f26b164863eaf938b7df35d44f620c5d3ed822"
+        }
+      },
+      "id": "evaluation-slice-3",
+      "live_SDK_clock_guard_present": true,
+      "same_generated_policy_c_as_independent_first_frame_qualification": true,
+      "same_six_modules_as_independent_first_frame_qualification": true,
+      "scope": "Historical executed artifacts; current repository source identities are listed separately."
+    }
+  ],
+  "fault_build_identity": "Exactly evaluation-slice-3 binary; alternate shader cache contents verified byte-identical to all six qualified modules.",
+  "fault_prefixes": [
+    {
+      "SDK_clock_guard_evidence": "live",
+      "build_id": "evaluation-slice-3",
+      "case": "demo_000",
+      "completed_private_ledger": {
+        "bytes": 696,
+        "sha256": "0634ca956446146f38a8b7ee8c6185506f0b3749e37eb551fe05ffd61e4c5103"
+      },
+      "declared_recovery_expectations_met": true,
+      "fault": "request dropout at tick0",
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "90b3900b6161a190c07418406058158ddc7d64be3ee12a7b608c2666dba5282b"
+      },
+      "holds": 1,
+      "kind": "declared-16-tick-fault-prefix",
+      "model_calls": 2,
+      "physics_replay_exact": true,
+      "physics_steps": 400,
+      "physics_trace": {
+        "bytes": 204864,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 25,
+        "final_chain_sha256": "c2bbad178fdf9a002dd32f7f276ac4ec4f571fb222710c9ad2258cb560ca4127",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 400,
+        "seed_sha256": "ee1f8bffd36a384c99ea7d1fc99b197992fdd85a5e5bbc41e96eea65eb554005",
+        "sha256": "d50dc8f5ebccc6c30af5592883104671416a67ec4d313122b2172883a1dcb6ce",
+        "torque_clipped_flagged_substeps": 0
+      },
+      "refusals": 0,
+      "scenario": 1,
+      "scope": "Declared request/reply/control-boundary recovery prefix only; success:false is not a completed task-failure result.",
+      "task_outcome_evaluated": false,
+      "task_success_observed": false,
+      "ticks": 16,
+      "timing": {
+        "gpu_seconds": 1.2673235,
+        "inference_max_seconds": 0.961794,
+        "inference_seconds": 1.922032,
+        "model_context_open_seconds": 1.161029,
+        "wall_seconds": 2.212407
+      },
+      "torque_axes_clipped": 0
+    },
+    {
+      "SDK_clock_guard_evidence": "live",
+      "build_id": "evaluation-slice-3",
+      "case": "demo_000",
+      "completed_private_ledger": {
+        "bytes": 697,
+        "sha256": "74685948bd575c57af4022495d6afb80b85a178f64594455f5b39547ecff4940"
+      },
+      "declared_recovery_expectations_met": true,
+      "fault": "delayed stale reply at tick0",
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521"
+      },
+      "holds": 1,
+      "kind": "declared-16-tick-fault-prefix",
+      "model_calls": 3,
+      "physics_replay_exact": true,
+      "physics_steps": 400,
+      "physics_trace": {
+        "bytes": 204864,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 25,
+        "final_chain_sha256": "dea0172f2a7ca6225443278cd4a3d0c55b2b42f6671de1e14f770bdc1892b1e9",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 400,
+        "seed_sha256": "ee1f8bffd36a384c99ea7d1fc99b197992fdd85a5e5bbc41e96eea65eb554005",
+        "sha256": "c7257ad9963c9c0876a3c8cf7095df2c04f60599d54d7614f703f900f1bb00ff",
+        "torque_clipped_flagged_substeps": 0
+      },
+      "refusals": 1,
+      "scenario": 2,
+      "scope": "Declared request/reply/control-boundary recovery prefix only; success:false is not a completed task-failure result.",
+      "task_outcome_evaluated": false,
+      "task_success_observed": false,
+      "ticks": 16,
+      "timing": {
+        "gpu_seconds": 1.91683042,
+        "inference_max_seconds": 0.996649,
+        "inference_seconds": 2.920138,
+        "model_context_open_seconds": 1.336325,
+        "wall_seconds": 3.201836
+      },
+      "torque_axes_clipped": 0
+    },
+    {
+      "SDK_clock_guard_evidence": "live",
+      "build_id": "evaluation-slice-3",
+      "case": "demo_000",
+      "completed_private_ledger": {
+        "bytes": 697,
+        "sha256": "b7c81617db982d5d5972b99f94d7082f0171c8de74cc5fa54bb964dc290778dd"
+      },
+      "declared_recovery_expectations_met": true,
+      "fault": "out-of-limit decoded command at tick0",
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521"
+      },
+      "holds": 1,
+      "kind": "declared-16-tick-fault-prefix",
+      "model_calls": 3,
+      "physics_replay_exact": true,
+      "physics_steps": 400,
+      "physics_trace": {
+        "bytes": 204864,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 25,
+        "final_chain_sha256": "dea0172f2a7ca6225443278cd4a3d0c55b2b42f6671de1e14f770bdc1892b1e9",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 400,
+        "seed_sha256": "ee1f8bffd36a384c99ea7d1fc99b197992fdd85a5e5bbc41e96eea65eb554005",
+        "sha256": "c7257ad9963c9c0876a3c8cf7095df2c04f60599d54d7614f703f900f1bb00ff",
+        "torque_clipped_flagged_substeps": 0
+      },
+      "refusals": 1,
+      "scenario": 3,
+      "scope": "Declared request/reply/control-boundary recovery prefix only; success:false is not a completed task-failure result.",
+      "task_outcome_evaluated": false,
+      "task_success_observed": false,
+      "ticks": 16,
+      "timing": {
+        "gpu_seconds": 1.90873225,
+        "inference_max_seconds": 0.986272,
+        "inference_seconds": 2.904438,
+        "model_context_open_seconds": 1.348236,
+        "wall_seconds": 3.185005
+      },
+      "torque_axes_clipped": 0
+    },
+    {
+      "SDK_clock_guard_evidence": "live",
+      "build_id": "evaluation-slice-3",
+      "case": "demo_000",
+      "completed_private_ledger": {
+        "bytes": 697,
+        "sha256": "8437122990e5d04cff578eb35ce45864b45e763ab07c5cec63593783b776485a"
+      },
+      "declared_recovery_expectations_met": true,
+      "fault": "500Nm bias on all7arm axes at first substep",
+      "first_decoded_actions": {
+        "bytes": 448,
+        "sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521"
+      },
+      "holds": 0,
+      "kind": "declared-16-tick-fault-prefix",
+      "model_calls": 2,
+      "physics_replay_exact": true,
+      "physics_steps": 400,
+      "physics_trace": {
+        "bytes": 204864,
+        "canonical_header_tick_substep_indices_checked": true,
+        "fallback_flagged_substeps": 0,
+        "final_chain_sha256": "16c44e231a7f9d95696674aefd664d55efef6a5250f69cfe1b54362a90d47035",
+        "independent_stdlib_chain_recomputed": true,
+        "record_bytes": 512,
+        "records": 400,
+        "seed_sha256": "ee1f8bffd36a384c99ea7d1fc99b197992fdd85a5e5bbc41e96eea65eb554005",
+        "sha256": "201c92d7462157beabce3f8712d76c779cd813b92f15209b65aa871616e9bb94",
+        "torque_clipped_flagged_substeps": 1
+      },
+      "refusals": 0,
+      "scenario": 4,
+      "scope": "Declared request/reply/control-boundary recovery prefix only; success:false is not a completed task-failure result.",
+      "task_outcome_evaluated": false,
+      "task_success_observed": false,
+      "ticks": 16,
+      "timing": {
+        "gpu_seconds": 1.25613417,
+        "inference_max_seconds": 0.973995,
+        "inference_seconds": 1.931845,
+        "model_context_open_seconds": 1.321046,
+        "wall_seconds": 2.187525
+      },
+      "torque_axes_clipped": 7
+    }
+  ],
+  "first_frame_numerical_qualification": {
+    "bytes": 38085,
+    "file": "policy-qualification.json",
+    "sha256": "0f88bcf190b5381798157ba1ab2a6b00441d4c7046a826bd960f31582f29877b"
+  },
+  "frozen_before_policy_outcomes": true,
+  "instruction": "pick up the book and place it in the back compartment of the caddy",
+  "native_integration_sanitizers": {
+    "passed": true,
+    "receipt": "psionic/fixtures/robotics/libero-panda/integration-qualification.json",
+    "receipt_sha256": "7f2aedb435c06842e154a07812ef354575f9f6946c63d8bb72cf7998e3eb3409",
+    "scope": "Separate current-main ASan+UBSan integration prefix:1genuine request,8ticks,200physical steps with exact replay. Six full release trials are not relabelled sanitized."
+  },
+  "output_lifecycle": {
+    "current_driver_rejects_existing_case_directories": true,
+    "current_shell_rejects_existing_output_directory_before_build": true,
+    "fault_prefixes": "Only declared request/reply/control-boundary recovery is measured, not task success.",
+    "shell_preflight_added_after_completed_runs": true,
+    "unexpected_SDK_controller_or_clock_failure": "Abort without a completed case ledger; any incomplete trace prefix is not an outcome. Partial SDK advancement is not rolled back."
+  },
+  "qualification_scope": "Six frozen original scene/XML+init_state cases and four explicitly declared fault prefixes, using Coax-owned learned policy/control/supervision with approved MuJoCo SDK physics/rendering. No task-success acceptance threshold, NVIDIA benchmark, source reset/RNG parity or generalization claim.",
+  "receipt_integrity_passed": true,
+  "replay_scope": {
+    "controller_rerun_during_physics_replay": false,
+    "full_chain_recomputed_independently_by_this_metadata_audit": true,
+    "neural_forward_rerun_during_physics_replay": false,
+    "physical_state_words_exact": 45,
+    "recorded_controls_reapplied": 9,
+    "remote_authentication_claim": false,
+    "same_original_XML_and_init_state_restored": true
+  },
+  "request_tokens": 152,
+  "retained_global_hidden_diagnostics": {
+    "bytes": 23353,
+    "file": "policy-global-hidden-diagnostics.json",
+    "sha256": "a0a9baa2df664fdeb5f2140b287020fa20bd4a8178fb4869afa4359ca7e2a31b"
+  },
+  "runtime_profile": "panda-libero-mujoco331-gr00t-wide-fixed-noise-v1",
+  "schema": "psionic-libero-panda-closed-loop-qualification-v1",
+  "scope_limits": {
+    "NVIDIA_benchmark_result": false,
+    "NVIDIA_seeded_reset_distribution_parity": false,
+    "SDK_first_owner_approved": true,
+    "SDK_physics_and_offscreen_rendering": "MuJoCo3.3.1 C SDK; no cloned repository scripts or Python runtime in the control loop",
+    "actions_before_new_request": 8,
+    "checkpoint_generalization_estimate": false,
+    "controller": "Coax F64 Panda OSC, source nominal home, separately reset goal/gripper state",
+    "logical_control_hz": 20,
+    "maximum_ticks": 720,
+    "neural_forward": "Original-weight Coax Metal vision24/text16/action32x4; no vendor NN runtime",
+    "noise": {
+      "dtype": "F32",
+      "generator_for_frozen_fixture": "NumPy PCG64 seed 169 standard_normal then F32 assignment",
+      "raw_f32_sha256": "59e012a91bd82498415471c884fd6bc7f0e2a5fa920ddc48bf79d1a9c1e899a0",
+      "runtime_profile": "Explicit fixed captured noise, reused rather than claiming source RNG parity",
+      "shape": [
+        1,
+        40,
+        132
+      ]
+    },
+    "physics_steps_per_tick": 25,
+    "physics_timestep_seconds": 0.002,
+    "real_time_20Hz_wall_control_claim": false,
+    "reset": "Each original embedded XML paired with its own original45F64 init_state; fresh SDK reset+forward and separately explicit Coax controller reset, not NVIDIA seeded reset distribution.",
+    "simulation_pauses_during_inference": true,
+    "source_RNG_sequence_parity": false,
+    "task_success_acceptance_threshold": null
+  },
+  "source_contract": {
+    "bytes": 9512,
+    "file": "contract.json",
+    "sha256": "180bdc483b486b0625124de60399bb0ffa4ce13dea44414c64383b9f67f71fa2"
+  },
+  "source_dataset_revision": "f13aa24a3da8c43c7225569f28c562979fa0e35a",
+  "source_hdf5_sha256": "2e0127d0cf73afceacc2c0854e505d5743b6d3d5aaf5572c842f84c6a1c8173b",
+  "source_snapshot": {
+    "coax/lib/compute/apple.coax": {
+      "bytes": 7623,
+      "sha256": "68507e75ba716ee13f005e917a8734986c5f487ee5fbceea143eb028bb56d4fb"
+    },
+    "coax/lib/crypto/bytes.coax": {
+      "bytes": 11552,
+      "sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b"
+    },
+    "coax/lib/crypto/sha256.coax": {
+      "bytes": 13769,
+      "sha256": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9"
+    },
+    "coax/lib/nostr/fixtures/coax_relay.coax": {
+      "bytes": 365585,
+      "sha256": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046"
+    },
+    "coax/lib/nostr/fixtures/json_suite.coax": {
+      "bytes": 41864,
+      "sha256": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2"
+    },
+    "coax/lib/nostr/json.coax": {
+      "bytes": 37070,
+      "sha256": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f"
+    },
+    "coax/lib/proto/fingerprint.coax": {
+      "bytes": 19056,
+      "sha256": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a"
+    },
+    "psionic/fixtures/models/ch04/fixtures.coax": {
+      "bytes": 4015,
+      "sha256": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa"
+    },
+    "psionic/fixtures/text/ch05/goldens.coax": {
+      "bytes": 30961,
+      "sha256": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0"
+    },
+    "psionic/fixtures/text/ch05/toy.coax": {
+      "bytes": 61207,
+      "sha256": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547"
+    },
+    "psionic/lib/device/tile.coax": {
+      "bytes": 4380,
+      "sha256": "c619fe1a32afc068473b085ab6832439bd589720067a68527ad705ce3fd02d8e"
+    },
+    "psionic/lib/model-io/format.coax": {
+      "bytes": 7692,
+      "sha256": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca"
+    },
+    "psionic/lib/model-io/rank5.coax": {
+      "bytes": 16321,
+      "sha256": "b763f1b5077e1ab7b6b7f8ce43ed44bf17c597d7f4a6cf7a7f0b6fa1c69319e5"
+    },
+    "psionic/lib/model-io/reader.coax": {
+      "bytes": 14204,
+      "sha256": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627"
+    },
+    "psionic/lib/ops-contract.coax": {
+      "bytes": 8946,
+      "sha256": "40610524dfded7d4c7b9746ea7b2a837ebf2c0e1697414477741ead38301c52d"
+    },
+    "psionic/lib/ops.coax": {
+      "bytes": 16608,
+      "sha256": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1"
+    },
+    "psionic/lib/qwen-matvec.coax": {
+      "bytes": 4013,
+      "sha256": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae"
+    },
+    "psionic/lib/robotics/groot-action-dynamic-plan.coax": {
+      "bytes": 14283,
+      "sha256": "7ac9bd122ca23f4cb9470101147b7b51807a499e2d71f471b905aacdc66e8da2"
+    },
+    "psionic/lib/robotics/groot-action-metadata-fixtures.coax": {
+      "bytes": 109534,
+      "sha256": "0059bfa82a6444fd74179a850428845f0d799844da5d1b4ed021458e3af116b4"
+    },
+    "psionic/lib/robotics/groot-action-metal-kernels.coax": {
+      "bytes": 8475,
+      "sha256": "93e6474a9496f2693881c97c49e2c19ad8bed26c9ebcb2d8e5ec2625f63308e3"
+    },
+    "psionic/lib/robotics/groot-action-metal-plan.coax": {
+      "bytes": 30370,
+      "sha256": "e2806f0e262b50dbc5cbed221c628fe370ab1b5a37000fdec6573cbcccacd3ff"
+    },
+    "psionic/lib/robotics/groot-action-metal-types.coax": {
+      "bytes": 556,
+      "sha256": "8f5f049c9ea209edee5a5b608d4405d836b1d9069f6142665333c2403d8a170d"
+    },
+    "psionic/lib/robotics/groot-action-trace-fixtures.coax": {
+      "bytes": 6131,
+      "sha256": "55873160192e22d28b4cdaed553b0159373738ba5be49cc37688d3ceea8d7713"
+    },
+    "psionic/lib/robotics/groot-action-transcript.coax": {
+      "bytes": 1145,
+      "sha256": "0142af0102a735c00a0c0f040cb6be1c3dfa5e848f24e05a95a6bb5c5b28bb0c"
+    },
+    "psionic/lib/robotics/groot-action-wide-kernels.coax": {
+      "bytes": 2328,
+      "sha256": "273b955f6bc5467416aaf3c7a884d4ed3b58d21d8cd0c99d7a7febeb33ccd37c"
+    },
+    "psionic/lib/robotics/groot-artifact.coax": {
+      "bytes": 10615,
+      "sha256": "9dae1ba455d87673696681ce8ebd5f8e2f64ba326c4f69908b907e71e2532c62"
+    },
+    "psionic/lib/robotics/groot-device-kernels.coax": {
+      "bytes": 23639,
+      "sha256": "b04fd9f25f40cea80cce975ef5b1d8e4bf7a4ce0582b94c7d0d8f935207587af"
+    },
+    "psionic/lib/robotics/groot-embodiment-check-fixtures.coax": {
+      "bytes": 746,
+      "sha256": "71e88c0db05cea9fc11fc12cea08622b4f11a31ee887c4156188a78bf2d8e99a"
+    },
+    "psionic/lib/robotics/groot-embodiment-types.coax": {
+      "bytes": 304,
+      "sha256": "29a98db6066afbc3f039f914ed1d149b0a815723ce758e082137181d3b781640"
+    },
+    "psionic/lib/robotics/groot-embodiment.coax": {
+      "bytes": 8335,
+      "sha256": "456d51c8d26a71a3e4ac112233178420f354f2aea5e423208d665603f5211337"
+    },
+    "psionic/lib/robotics/groot-image-check-fixtures.coax": {
+      "bytes": 20650,
+      "sha256": "231d74c0152cfe9532f27e19b0ea93c4a171df34e75ccb043a09f67e4dc5c63e"
+    },
+    "psionic/lib/robotics/groot-image-types.coax": {
+      "bytes": 134,
+      "sha256": "80ec9a49bee1c0f37db5ef6fa751b3d918676fa92e8f76cf9b6c6ed76628c7dd"
+    },
+    "psionic/lib/robotics/groot-image.coax": {
+      "bytes": 4505,
+      "sha256": "9c16d70b0ec51e482de53983f80cb0c34fd357dc21450990b96a88b58c413871"
+    },
+    "psionic/lib/robotics/groot-linear-check-fixtures.coax": {
+      "bytes": 341,
+      "sha256": "8270aae4fce241d70e5350168b5b4487e642d3707baabeb1ab62e0423f4a4e11"
+    },
+    "psionic/lib/robotics/groot-linear-types.coax": {
+      "bytes": 152,
+      "sha256": "3a6ca8232f2ebabbfd222e6fc92541e7d6df9f1f0378de2499a0ee8a3cc50d05"
+    },
+    "psionic/lib/robotics/groot-linear.coax": {
+      "bytes": 13361,
+      "sha256": "91fe573f5a18cb3df20d8044e94a179f9baf8a91da3b7f779386edac416aa743"
+    },
+    "psionic/lib/robotics/groot-request-check-fixtures.coax": {
+      "bytes": 4176,
+      "sha256": "c72a1669da9e56f94f8e1a80780aec118728746c5c8a51c857d6ba342c2c49c3"
+    },
+    "psionic/lib/robotics/groot-request-types.coax": {
+      "bytes": 292,
+      "sha256": "9a5b1e226be67aa1a3c9a4b8a8807a11e8131d87f0972f02b945ed5b2cb09f11"
+    },
+    "psionic/lib/robotics/groot-request.coax": {
+      "bytes": 8868,
+      "sha256": "3222cd09e9b4cf12fe0fc4dfccb3d6318bd5a6e2ed76882e6f072f69d6c50ecd"
+    },
+    "psionic/lib/robotics/groot-text-kernels.coax": {
+      "bytes": 11531,
+      "sha256": "88c0b2425c07b0bc61f5107ae63fe7b4c6a056d9c4f9563e8f7752f589ce1924"
+    },
+    "psionic/lib/robotics/groot-text-metal-check-fixtures.coax": {
+      "bytes": 38478,
+      "sha256": "8f7aceb0de9a20e336b0c077dce2fe994009ab04df2a4f5b1c5cc51b3705b253"
+    },
+    "psionic/lib/robotics/groot-text-metal-contract-fixtures.coax": {
+      "bytes": 4069,
+      "sha256": "6d2787d7538bc9c26b0ce410ded37574966917579b4bfaacd1984a6b1f6c6c8a"
+    },
+    "psionic/lib/robotics/groot-text-metal-plan.coax": {
+      "bytes": 20852,
+      "sha256": "95c58cf76f16cfd69bbdcc9027d7d4493444c7760bf7464610b2ab5102b8e3a9"
+    },
+    "psionic/lib/robotics/groot-text-types.coax": {
+      "bytes": 173,
+      "sha256": "8232011ecfc7bb5c9dc626069194534af68eb4dbab39216a9fb786825f080482"
+    },
+    "psionic/lib/robotics/groot-text.coax": {
+      "bytes": 5326,
+      "sha256": "1fff896d8bb2792d548b16197b80aefbf31d396b832c96c325fff1233c533631"
+    },
+    "psionic/lib/robotics/groot-vision-device.coax": {
+      "bytes": 12158,
+      "sha256": "31b266a9c1d58bb7705024019385c65f07382e17d4090b4bb9176a2b8a5ca7cf"
+    },
+    "psionic/lib/robotics/groot-vision-metal-check-fixtures.coax": {
+      "bytes": 3659,
+      "sha256": "219abddac099785ade76693490261e19259d04fa6b3b9d0011a99e507b429a42"
+    },
+    "psionic/lib/robotics/groot-vision-metal-plan.coax": {
+      "bytes": 21777,
+      "sha256": "39c7ee071c940a3a0f78141a29addaef180115e6f9d33ffbd0bed4ca05f7677e"
+    },
+    "psionic/lib/robotics/groot-vision-metal-types.coax": {
+      "bytes": 946,
+      "sha256": "e7e115d3d7ecd9b2701d64d27fd6876233b98cabdf4b53afff2360306b3a429d"
+    },
+    "psionic/lib/robotics/groot-vision-types.coax": {
+      "bytes": 753,
+      "sha256": "f267c7f42eb0db6e443e799347c4201b9c6d8517af758cc3b33ec8506bcb6753"
+    },
+    "psionic/lib/robotics/groot-vision.coax": {
+      "bytes": 11559,
+      "sha256": "ef96476d3d9dba666dde18389d88d442f72cdbe215566a7eb64f98f4675af694"
+    },
+    "psionic/lib/robotics/panda-control-check-fixtures.coax": {
+      "bytes": 806,
+      "sha256": "1d2e336f81cd09575232a197d93586c68dafed83c7cd6a14e7055aaffddc216e"
+    },
+    "psionic/lib/robotics/panda-control-types.coax": {
+      "bytes": 574,
+      "sha256": "168dddd1822bee04fb85e710912f9f844f1c4b4745a13b952c8a9cc9094916d3"
+    },
+    "psionic/lib/robotics/panda-control.coax": {
+      "bytes": 17269,
+      "sha256": "6a0ef9ad54cd0ea9d12a1ce77a1e73a48c957bbba173281e5a1de0cf6020bdbc"
+    },
+    "psionic/lib/robotics/panda-env-types.coax": {
+      "bytes": 212,
+      "sha256": "24419ee28de39785d971ed7ccaf84199c4f7405b0cdf8265028700e131b5ee2f"
+    },
+    "psionic/lib/robotics/panda-env.coax": {
+      "bytes": 13159,
+      "sha256": "65a97726171e175479d3da4fdbd919944d72032b3baebcb1dc0addbaa3a053ec"
+    },
+    "psionic/lib/robotics/panda-loop-types.coax": {
+      "bytes": 594,
+      "sha256": "3dfa3af43145054fbac21680f5f99f8f8e5b22012769034409e7c5b6922b6abe"
+    },
+    "psionic/lib/robotics/panda-loop.coax": {
+      "bytes": 13785,
+      "sha256": "9a35fbd0fefaa34f23ed0bb6026dc7821d7dfa9f6ba9eafedb4fc8e583a4fcd8"
+    },
+    "psionic/lib/robotics/panda-matrix-types.coax": {
+      "bytes": 203,
+      "sha256": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483"
+    },
+    "psionic/lib/robotics/panda-matrix.coax": {
+      "bytes": 8993,
+      "sha256": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f"
+    },
+    "psionic/lib/robotics/panda-policy.coax": {
+      "bytes": 27248,
+      "sha256": "ff47118d0157aa344b3b93828b0d7e973309151ba18fdb60f05d47456c9dd56e"
+    },
+    "psionic/lib/robotics/panda-trace.coax": {
+      "bytes": 9894,
+      "sha256": "4e264ac9e6380bf4bcef4085e3ef9b0c9bdb4d1a957695a6056fee765217916f"
+    },
+    "psionic/lib/tensor.coax": {
+      "bytes": 13806,
+      "sha256": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6"
+    },
+    "psionic/lib/text/tokenizer.coax": {
+      "bytes": 12563,
+      "sha256": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027"
+    },
+    "psionic/lib/text/unicode.coax": {
+      "bytes": 16370,
+      "sha256": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681"
+    },
+    "psionic/platform/metal-host.h": {
+      "bytes": 4000,
+      "sha256": "69e9902d82b74d06f7eebce3043149870332046770dcef3ef6b029816645f377"
+    },
+    "psionic/platform/metal-host.m": {
+      "bytes": 10531,
+      "sha256": "557ec0faae9c72581e1d0ce3feb11ec03a3a63618ee290a9216ec4845a2d19f6"
+    },
+    "psionic/platform/panda-env.c": {
+      "bytes": 8240,
+      "sha256": "dfbc195dacdfe1c1fb6011c0cd1e44aa9fd0d9d53075c8d9eb991c00b0903cb0"
+    },
+    "psionic/platform/panda-env.h": {
+      "bytes": 2027,
+      "sha256": "7801cb4f50f664fa64c0be5de84fe105c03e1c5b7195cc1a0a7032e80d838713"
+    },
+    "psionic/platform/panda-policy.c": {
+      "bytes": 15361,
+      "sha256": "fc09e6093f395074b558e8cea136043ef2b959e98c6db0c8ef3be9eb1f21ebf0"
+    },
+    "psionic/platform/panda-policy.h": {
+      "bytes": 1955,
+      "sha256": "f2f9a806eaf5da388ccbe1198bccc35559395029abc707350452991794cfca2a"
+    },
+    "psionic/tests/robotics/groot_gpu_dispatch.h": {
+      "bytes": 1067,
+      "sha256": "1390e35f49513a4ae17f75ba4cbd53c0be02b1ad83caa1bcf1e520abc5a41a4d"
+    },
+    "psionic/tests/robotics/panda-session.coax": {
+      "bytes": 6442,
+      "sha256": "1bdf3eac860ac9d95391bf1bfcd27588fc0b811adfaa518108fb93973ae91c61"
+    },
+    "psionic/tests/robotics/panda_clock_reference.py": {
+      "bytes": 4592,
+      "sha256": "8cecc27f6ad97f684d750a8f5ada7ed5634977208322e6362fbce477ce4b201a"
+    },
+    "psionic/tests/robotics/panda_loop_metal.c": {
+      "bytes": 12423,
+      "sha256": "54916945411d08d1fe3d0b85fedbdfbcb2075464967b2f4f76eb4f15c8426147"
+    },
+    "psionic/tests/robotics/run-panda-loop-metal.sh": {
+      "bytes": 3145,
+      "sha256": "47f213178fd191465d92ed5c6faacb75d87053802ddb3919daaed97efca72a16"
+    }
+  },
+  "source_snapshot_scope": "Audited-current repository source identities. Historical binaries/generatedC remain separately pinned; first-slice clocks are retrospective rather than mislabelled live.",
+  "task": "STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy",
+  "timing_interpretation": {
+    "episode_wall": "Loop includes inference/render/control/SDK stepping and trace records; excludes model context open, environment setup and post-case physics replay.",
+    "fixed_machine_throughput_benchmark": false,
+    "gpu_seconds": "Sum of actual Metal command execution times from resident forwards.",
+    "inference_seconds": "Sum of full resident policy forward wall durations, with private development captures disabled.",
+    "model_context_open_seconds": "One context per two-episode slice; repeated per-case field must not be summed twice. Fault invocations each open their own context."
+  }
+}

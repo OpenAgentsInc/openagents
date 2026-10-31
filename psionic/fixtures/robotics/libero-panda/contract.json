@@ -1,0 +1,211 @@
+{
+  "schema": "psionic-libero-panda-contract-v1",
+  "sdk": {
+    "version": "3.3.1",
+    "use": "Independent opt-in simulation tooling; no cloned source imports/scripts.",
+    "physics_timestep_seconds": 0.002,
+    "control_frequency_hz": 20,
+    "physics_substeps_per_action": 25,
+    "renderer": "Raw mjr_readPixels RGB HWC bottom-up, source macros opengl; native CGL offscreen context can avoid all windows. SDK Python Renderer adds flipud and cannot be treated as raw readout.",
+    "physics_integration_order": [
+      "mj_forward",
+      "set new goal only when first substep of policy action",
+      "recompute OSC torque and gripper action every substep",
+      "mj_step",
+      "update observables without another forward"
+    ],
+    "observation_derived_state_lag_seconds": 0.002
+  },
+  "state": {
+    "xyz": "gripper0_grip_site world position, metres",
+    "rotation": "robot0_right_hand BODY quaternion wxyz->xyzw -> source axis-angle, radians; preserve quaternion sign, angles >pi are valid",
+    "controller_rotation": "gripper0_grip_site matrix, different from state body orientation",
+    "fingers": "qpos of gripper0_finger_joint1 and gripper0_finger_joint2, metres",
+    "conversion": "source clamps w[-1,1], den=sqrt(1-w*w); returns zero only if den isclose(0,abs_tol0), otherwise xyz*2*acos(w)/den; do not canonicalize to w>=0"
+  },
+  "action": {
+    "network_decode": "Reuse qualified ge_decode original q01/q99 -> first16x7, gripper -sign(2*g-1).",
+    "pose_scale": [
+      0.05,
+      0.05,
+      0.05,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "pose_input_clip": [
+      -1,
+      1
+    ],
+    "translation": "World-frame position increment, metres; NOT velocity or absolute target. Reanchor goal position at current EEF on each policy action.",
+    "orientation": "World-frame axis-angle increment in radians; goalR=R(delta)@current_site_R when any orientation component is nonzero. An exactly zero orientation delta retains previous goal orientation.",
+    "policy_execution_horizon": 8,
+    "model_horizon": 40,
+    "decoded_horizon": 16,
+    "panda_torque_limits_nm": [
+      80,
+      80,
+      80,
+      80,
+      80,
+      12,
+      12
+    ]
+  },
+  "osc": {
+    "numeric_profile": "Source NumPy float64 simulator/controller quantities; intended Coax f64 CPU controller, not neural BF16/F32 profile.",
+    "kp": 150,
+    "kd": 24.49489742783178,
+    "impedance": "fixed",
+    "uncouple_position_orientation": true,
+    "interpolator": null,
+    "mass": "7x7 arm block of mj_fullM",
+    "jacobian": "6x7 world grip-site translational then rotational Jacobian",
+    "orientation_error": "0.5*sum(cross(currentR[:,i],goalR[:,i]))",
+    "mass_inverse": "np.linalg.inv(M)",
+    "task_inertia": "np.linalg.pinv(J M^-1 J.T), separately position3/orientation3 and full6; no explicit 1e-5 cutoff in this pin. NumPy default rcond=1e-15.",
+    "nullspace": "Jbar=M^-1 J.T Lambda_full; N=I-Jbar J; tau_null=N.T M [10*(q_initial-q)-2sqrt(10)*qvel].",
+    "compensation": "qfrc_bias of seven arm DoFs",
+    "torques": "J.T concat(Lambda_pos*(kp*poserror-kd*linearvel),Lambda_ori*(kp*orierror-kd*angularvel)) + qfrc_bias + tau_null, clipped at actuator limits",
+    "source_initial_joint": [
+      0,
+      0.19634954084936207,
+      0,
+      -2.617993877991494,
+      0,
+      2.941592653589793,
+      0.7853981633974483
+    ]
+  },
+  "gripper": {
+    "speed": 0.01,
+    "update_frequency_hz": 500,
+    "state_update": "current_action=clip(current_action+[-1,+1]*.01*sign(command),-1,1), EVERY physics substep.",
+    "fresh_initial_current_action": [
+      0,
+      0
+    ],
+    "ctrl_ranges_metres": [
+      [
+        0,
+        0.04
+      ],
+      [
+        -0.04,
+        0
+      ]
+    ],
+    "control_map": "ctrl=(range_lo+range_hi)/2+(range_hi-range_lo)/2*current_action",
+    "commands": "-1=open,+1=close,0=hold internal target",
+    "reset_qpos": [
+      0.020833,
+      -0.020833
+    ],
+    "hidden_reset_state": "HDF5 flattened state lacks controller goal/initial_joint, gripper current_action and qacc_warmstart. Explicitly define fresh-controller reset; do not claim deterministic replay of missing hidden state."
+  },
+  "success": {
+    "goal": "In black_book_1 desk_caddy_1_back_contain_region",
+    "site": "desk_caddy_1_back_contain_region",
+    "object_body": "black_book_1_main",
+    "contact_required": false,
+    "reason": "SiteObjectState.check_contact always True.",
+    "formula": "extent=abs(site_xmat @ site_size); lower=site_xpos-extent; lower.z-=.01; upper=site_xpos+extent; all(book_body_xpos>lower) AND all(book_body_xpos<upper). Strict comparisons; source AABB approximation, not oriented-box or volume containment.",
+    "synthetic_dataset_labels": "create_dataset.py writes dones/rewards zeros and final1; never use as online success."
+  },
+  "reset": {
+    "nvidia_wrapper": "seed optional -> ordinary OffScreenRenderEnv.reset; no benchmark initstate selection or warmup in that path.",
+    "owned_private_profile": "Pair selected original demo model_file XML with that demo init_state. Different from NVIDIA wrapper seed reset distribution; label explicitly.",
+    "all50_demo_xmls_distinct": true,
+    "all50_fixed_caddy_poses_distinct": true,
+    "serialized_state_order": "time,nq23 qpos,nv21 qvel,na0 act =45F64",
+    "hdf5_temporal_alignment": "states[t] pre-action, obs[t] after action. Raw derived pose at post-action time is one .002s integration stale; matched five original pose/axis-angle observations to <=1.8e-15 using original next state minus last Euler integration."
+  },
+  "evaluation": {
+    "max_inner_env_steps": 720,
+    "truncate_after_counted_inner_actions_not_chunks": true,
+    "stop_on_success": true,
+    "wall_time": "20Hz denotes simulated controller cadence. Freeze wall latency and simulation-step timing separately; current113 component times are not a real-time control claim.",
+    "actual_book_task_request_tokens": 152,
+    "chapter113_full_graph_tokens": 140,
+    "prerequisite": "Extend and qualify actual fullvision/text/action plan for152token task instruction, not just request/text helpers."
+  },
+  "observation_stamps": {
+    "fresh_reset_or_explicit_forward_derived_lag_seconds": 0,
+    "after_mj_step_without_another_forward_derived_lag_seconds": 0.002,
+    "finger_qpos": "Post-integration direct qpos, as original observable.",
+    "Coax_admission": "Quaternion squared norm within 2^-20 of 1; component magnitude <= 2; output representable as F32. Task/object coordinate magnitude <= 1000 m, sizes in [0,1000] m, matrix component magnitude <= 1+2^-20. Additional bounded admission checks beyond the source equations."
+  },
+  "source_alignment_evidence": {
+    "states_are_pre_action": true,
+    "observations_are_post_action": true,
+    "derived_kinematics_lag_seconds": 0.002,
+    "sampled_checks": [
+      {
+        "post_action_state": 1,
+        "observation_row": 0,
+        "state_minus_physics_dt": 0.002,
+        "eef_position_max_abs_error": 3.3306690738754696e-16,
+        "body_axis_angle_max_abs_error": 1.7763568394002505e-15
+      },
+      {
+        "post_action_state": 2,
+        "observation_row": 1,
+        "state_minus_physics_dt": 0.002,
+        "eef_position_max_abs_error": 2.220446049250313e-16,
+        "body_axis_angle_max_abs_error": 1.3322676295501878e-15
+      },
+      {
+        "post_action_state": 3,
+        "observation_row": 2,
+        "state_minus_physics_dt": 0.002,
+        "eef_position_max_abs_error": 2.220446049250313e-16,
+        "body_axis_angle_max_abs_error": 1.3322676295501878e-15
+      },
+      {
+        "post_action_state": 232,
+        "observation_row": 231,
+        "state_minus_physics_dt": 0.002,
+        "eef_position_max_abs_error": 2.220446049250313e-16,
+        "body_axis_angle_max_abs_error": 8.881784197001252e-16
+      },
+      {
+        "post_action_state": 233,
+        "observation_row": 232,
+        "state_minus_physics_dt": 0.002,
+        "eef_position_max_abs_error": 6.661338147750939e-16,
+        "body_axis_angle_max_abs_error": 1.3322676295501878e-15
+      }
+    ],
+    "eef_position_site": "gripper0_grip_site",
+    "eef_orientation_body": "robot0_right_hand",
+    "quaternion_order_in_mujoco": "wxyz",
+    "wrapper_quaternion_order": "xyzw",
+    "controller_orientation_uses_site_matrix": true,
+    "dataset_done_reward_labels_synthesized_last_row_only": true
+  },
+  "source_control_reference_scope": "Fresh Coax controller reset at restored grip-site pose, nominal source home and zero internal gripper target. Explicit owned reset profile, not a replay of unrecorded historical controller or qacc warmstart state.",
+  "SDK_clock_guard": {
+    "initial_seconds_range": [
+      0,
+      100
+    ],
+    "physics_dt_seconds": 0.002,
+    "nominal_elapsed_horizon_seconds": 36,
+    "tick_range": [
+      0,
+      719
+    ],
+    "physical_substep_range": [
+      1,
+      25
+    ],
+    "tolerance_seconds": 1.4901161193847656e-08,
+    "inclusive_tolerance": true,
+    "finite_initial_and_current_words_required": true,
+    "model_timestep_verified_before_reset": true,
+    "formula": "initial + (25*tick + substep)*0.002",
+    "scope": "Plain F64 and integer logical SDK clock; not R13 compiler typed clocks, #bounded proof or wall deadlines.",
+    "failure": "Unexpected effects or clock mismatch abort without a completed case ledger; partial SDK advancement is not rolled back.",
+    "first_two_episode_evidence": "clock-qualification.json retrospectively checks existing traces; these episodes did not execute the new guard live."
+  }
+}

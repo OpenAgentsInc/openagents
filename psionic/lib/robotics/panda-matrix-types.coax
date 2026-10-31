@@ -1,0 +1,3 @@
+// Fixed stride7 storage for bounded small F64 controller algebra.
+PmCode :: enum u8 {ok;shape;number;range;singular;convergence;}
+PmResult :: struct {status:PmCode;value:[49]f64;rank:int;residual:f64;}

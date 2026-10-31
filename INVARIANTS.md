@@ -1,10 +1,52 @@
 # Invariants
 
+## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
+
+The chapter 169 profile uses the original LIBERO/Panda scene, selected GR00T
+weights and MuJoCo 3.3.1 as an independent evaluation backend. Coax owns
+observation conversion, OSC arithmetic, gripper targets, bounded request and
+action scheduling, success predicates and canonical trace admission. C performs
+SDK, file and GPU effects. This does not implement a Coax rigid-body/contact
+solver, differentiable simulation, compiler `#bounded`/typed-clock proofs or
+hardware control.
+
+Each source demo's XML stays paired with its own initial state. A fresh SDK
+reset clears hidden solver state; the explicit owned controller reset uses
+the nominal Panda home and zero internal gripper target. It does not reproduce
+unrecorded historical controller state or NVIDIA's ordinary random-reset
+distribution. The frozen implementation/evaluation split is not a checkpoint
+training holdout. Fixed captured noise does not establish source RNG parity.
+
+State position uses the grip site; quaternion rotation uses the right-hand
+body, preserving sign and axis-angle values greater than pi. The controller
+uses the grip site's different matrix/Jacobian. Each logical 20 Hz action has
+25 SDK steps of 0.002 seconds. Forward/sample precedes each torque evaluation;
+after the last step, observation/rendering retains the source's one-step stale
+derived poses, while finger qpos is read directly. A zero gripper command holds
+the internal target, not necessarily the current physical jaw position.
+
+The actual SDK timestep is admitted before reset. `ps_time` checks finite
+clock words against `initial + (25*tick + substep)*0.002`, with initial time
+in [0,100] seconds, ticks 0..719, substeps 1..25 and inclusive 2^-26-second
+tolerance. This is plain F64/integer logical-clock validation, not a wall
+deadline or compiler clock guarantee. Simulation pauses during inference.
+
+Stale/invalid results cannot replace an admitted command chunk. Unexpected
+effects or clock failures abort without a completed case ledger; partial SDK
+effects are not rolled back. Existing case directories are not overwritten.
+Recorded control replay qualifies exact SDK state replay for the recorded
+profile; SHA chains detect changes without authenticating remote models or
+scenes. Same-input learned-component and action-endpoint comparisons remain
+distinct from the independently failed accumulated global hidden diagnostic.
+Evidence and limits: `psionic/fixtures/robotics/libero-panda/README.md` and its
+clock receipt. The first two episodes' clocks were checked retrospectively;
+those executions are not relabeled as having used the later live guard.
+
 ## Original GR00T execution qualifies a prepared observation and explicit numerical profile
 
 `psionic/lib/robotics/groot-*` executes the pinned GR00T-N1.7-LIBERO
 `libero_10` category-2 learned network through its 16×7 action adapter. The
-current complete graph admits one 140-token prepared-observation profile:
+chapter 168 qualification covers one 140-token prepared-observation profile:
 two packed camera streams, normalized state and explicit initial noise.
 Coax owns tensor bindings, shapes, numerical operations, masks, every GPU
 launch argument/order, completion receipts and finite publication. Native C

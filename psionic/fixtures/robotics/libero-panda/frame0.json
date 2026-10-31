@@ -1,0 +1,50 @@
+{
+  "schema": "psionic-libero-panda-frame-v1",
+  "dataset_revision": "f13aa24a3da8c43c7225569f28c562979fa0e35a",
+  "hdf5_sha256": "2e0127d0cf73afceacc2c0854e505d5743b6d3d5aaf5572c842f84c6a1c8173b",
+  "demo": 0,
+  "source_state_row": 0,
+  "model_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "state_semantics": "Fresh reset+forward of original per-demo model_file and pre-action state; not original HDF5 post-action obs[0].",
+  "physics_steps": 0,
+  "renderer": "Own C MuJoCo3.3.1+CGL nonvisible mjr_readPixels rawOpenGL,256RGB; no PythonSDK Renderer flipud",
+  "instruction": "pick up the book and place it in the back compartment of the caddy",
+  "tokens": 152,
+  "noise": "Explicit PCG64(169) GaussianF32; no cross-runtime source RNG parity claim",
+  "preparation": "Original wrapper flip both axes,243crop[6:249],cv2INTER_AREA256,(pixel-127.5)/127.5 F32,NCHW,temporal-repeat2,sourcepatch order. Original tokenizer+source minmax with F32 ratioassignment.",
+  "numpy": "1.26.4",
+  "opencv": "4.11.0",
+  "files": {
+    "frame0.inputs.npz": {
+      "bytes": 3169580,
+      "sha256": "94ac36c66ece0cb6b5077a8d591e715738730e1d7c0cac6118c38cb04b04ee91"
+    },
+    "frame0.raw.npz": {
+      "bytes": 394860,
+      "sha256": "732498d81afea28d2cb56893e7839be8acaa3cac3a7fd0634f8fd847d85257fa"
+    },
+    "frame0.telemetry.f64": {
+      "bytes": 1384,
+      "sha256": "9beabd865f6b4ab7865401bceef27fa24d818d20af8a5174d5b411220559ddd3"
+    },
+    "frame0.pc-sample.f64": {
+      "bytes": 1152,
+      "sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a"
+    },
+    "frame0.agentview.rgb": {
+      "bytes": 196608,
+      "sha256": "d70588fa243b8f99bc285fdcbab2300807f803de3997fca9e0f94f683d1ca245"
+    },
+    "frame0.wrist.rgb": {
+      "bytes": 196608,
+      "sha256": "fb0ec5c7197b11adba58c9aa157b0f290443e6edbedcc73e07fc230cd2430bda"
+    },
+    "frame0.state8.f32": {
+      "bytes": 32,
+      "sha256": "1f8385a9d915ab6ae49b3d9a0114b5c36e2356f84f96c69a9f1c9c97b2410906"
+    }
+  },
+  "metadata_only": true,
+  "capture_binary_sha256": "bba687c69a23711d54b9a900e44e9db453603b03fd1fb356ceb9a311633c2a9f",
+  "scope": "Independent genuine source-scene prepared snapshot for a 152-token original-weight comparison. Not a stored HDF5 post-action frame, not an upsampled 128-pixel image, and not a task-success result."
+}

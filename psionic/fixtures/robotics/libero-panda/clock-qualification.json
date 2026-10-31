@@ -1,0 +1,46 @@
+{
+  "schema": "psionic-panda-retrospective-clock-v1",
+  "passed": true,
+  "source_session_sha256": "1bdf3eac860ac9d95391bf1bfcd27588fc0b811adfaa518108fb93973ae91c61",
+  "compiled_aggregate_c_sha256": "0796f80559076e2a75755c92502f861e521056cea6e228f174b75302aeba415e",
+  "compiled_header_sha256": "6cb2b52249750e8fffc46e137bbff0a3906c1bdce18abc56fbe2a4123df52f5b",
+  "native_library_sha256": "d67d2afe2c39a9c9d6f28faeed509485ba57425193a4003a4aaf347f20b63e25",
+  "oracle_sha256": "8cecc27f6ad97f684d750a8f5ada7ed5634977208322e6362fbce477ce4b201a",
+  "initial_seconds_range": [
+    0,
+    100
+  ],
+  "physics_dt_seconds": 0.002,
+  "nominal_elapsed_limit_seconds": 36,
+  "tolerance_seconds": 1.4901161193847656e-08,
+  "clock_values_checked": 9700,
+  "cases": [
+    {
+      "case": "demo_001",
+      "clock_values_checked": 5000,
+      "ticks": 200,
+      "initial_seconds": 0.25000000000000017,
+      "initial_state_sha256": "38a00e0e6d27ef267a9ed7989c6956a3aa6cb134cb5fd28ad1030fd975b6292a",
+      "trace_sha256": "d3e67422337d5ea24ba462702b0a0564597343bd733b807b2db8164330b4a4b3",
+      "trace_bytes": 2560064,
+      "final_chain_sha256": "5a949796487528f997740029485b0975045a6450bbc14b9a37e9e9f5732e7d9b",
+      "maximum_clock_error_seconds": 6.590283874174929e-13,
+      "native_ps_time_all_passed": true,
+      "stdlib_clock_and_sha_all_passed": true
+    },
+    {
+      "case": "demo_010",
+      "clock_values_checked": 4700,
+      "ticks": 188,
+      "initial_seconds": 0.25000000000000017,
+      "initial_state_sha256": "4733100f1ad72f3331ad8b41cbec4c469ca4c75e3925c1f5d179d93c798c572e",
+      "trace_sha256": "341393347913204b74fcb3845d2f163b63031a06de798886e552700b7c97ea65",
+      "trace_bytes": 2406464,
+      "final_chain_sha256": "fef59b60c6ffccc456a2afbfe6efc21c0052279ba4f3c4843c25b92b0b876ce2",
+      "maximum_clock_error_seconds": 6.590283874174929e-13,
+      "native_ps_time_all_passed": true,
+      "stdlib_clock_and_sha_all_passed": true
+    }
+  ],
+  "scope": "Retrospective native guard and independent stdlib validation of existing traces. These episodes predate the live guard; no neural/simulator replay occurred. Plain F64/integer SDK clock, not compiler typed clocks or wall deadlines."
+}

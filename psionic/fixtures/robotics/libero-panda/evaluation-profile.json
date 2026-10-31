@@ -1,0 +1,206 @@
+{
+  "schema": "psionic-libero-panda-evaluation-profile-v1",
+  "name": "libero10-book-caddy-panda-mujoco331-f64-nominalhome-fixednoise169-v1",
+  "task": "STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy",
+  "instruction": "pick up the book and place it in the back compartment of the caddy",
+  "whole_request_tokens": 152,
+  "source_dataset_revision": "f13aa24a3da8c43c7225569f28c562979fa0e35a",
+  "source_hdf5_sha256": "2e0127d0cf73afceacc2c0854e505d5743b6d3d5aaf5572c842f84c6a1c8173b",
+  "controller_and_neural_fixture_demo": 0,
+  "evaluation_demos": [
+    1,
+    10,
+    20,
+    30,
+    40,
+    49
+  ],
+  "frozen_before_policy_outcomes": true,
+  "split_scope": "Held out from controller and neural implementation fixtures, NOT checkpoint training. Frozen before policy task outcomes.",
+  "checkpoint_training_exposure": "Selected original checkpoint was fine-tuned for LIBERO10 and may have trained on these demonstration episodes. This is not a checkpoint-training holdout or a generalization estimate.",
+  "reset_profile": "Each original embedded XML paired with its own original45F64 init_state; fresh SDK reset+forward and separately explicit Coax controller reset, not NVIDIA seeded reset distribution.",
+  "nominal_home": [
+    0,
+    0.19634954084936207,
+    0,
+    -2.617993877991494,
+    0,
+    2.941592653589793,
+    0.7853981633974483
+  ],
+  "initial_controller_goal": "Restored current grip-site pose; fixed nominal home for nullspace and zero internal gripper current_action.",
+  "timing": {
+    "physics_dt_seconds": 0.002,
+    "logical_control_hz": 20,
+    "physics_steps_per_action": 25,
+    "actions_before_new_request": 8,
+    "maximum_inner_actions": 720,
+    "inference": "Synchronous; simulation pauses during inference. No wall-clock 20 Hz control claim."
+  },
+  "noise": {
+    "shape": [
+      1,
+      40,
+      132
+    ],
+    "dtype": "F32",
+    "generator_for_frozen_fixture": "NumPy PCG64 seed 169 standard_normal then F32 assignment",
+    "runtime_profile": "Explicit fixed captured noise, reused rather than claiming source RNG parity",
+    "raw_f32_sha256": "59e012a91bd82498415471c884fd6bc7f0e2a5fa920ddc48bf79d1a9c1e899a0"
+  },
+  "source_case_pairs": [
+    {
+      "id": "libero10-book-caddy-demo-000",
+      "demo": 0,
+      "role": "implementation-fixture",
+      "original_xml": {
+        "bytes": 60702,
+        "sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5"
+      },
+      "local_xml_at_executed_cache": {
+        "bytes": 66846,
+        "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f"
+      },
+      "init_state_f64": {
+        "bytes": 360,
+        "sha256": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc"
+      },
+      "pairing": "Use this demo XML and this demo init_state together; all 50 source XMLs and fixed caddy poses differ."
+    },
+    {
+      "id": "libero10-book-caddy-demo-001",
+      "demo": 1,
+      "role": "implementation-heldout-evaluation",
+      "original_xml": {
+        "bytes": 60702,
+        "sha256": "539bb6e1d9b515a3c0c64217cb756b2df14383899581df74c32c340af7aed11e"
+      },
+      "local_xml_at_executed_cache": {
+        "bytes": 66846,
+        "sha256": "43b0eaa45a42dbd2c5729ba46aa1395d45689e9b540a5db7209379b0d61a3ca4"
+      },
+      "init_state_f64": {
+        "bytes": 360,
+        "sha256": "38a00e0e6d27ef267a9ed7989c6956a3aa6cb134cb5fd28ad1030fd975b6292a"
+      },
+      "pairing": "Use this demo XML and this demo init_state together; all 50 source XMLs and fixed caddy poses differ."
+    },
+    {
+      "id": "libero10-book-caddy-demo-010",
+      "demo": 10,
+      "role": "implementation-heldout-evaluation",
+      "original_xml": {
+        "bytes": 60702,
+        "sha256": "e25022df7a7d024f691320b7f879d5b93e59f919c769eb7769e442c4fbf4effe"
+      },
+      "local_xml_at_executed_cache": {
+        "bytes": 66846,
+        "sha256": "80993d959de6db59a4b053a229dffb18e3e80e396a5bcda85d5b1a808be93e4e"
+      },
+      "init_state_f64": {
+        "bytes": 360,
+        "sha256": "4733100f1ad72f3331ad8b41cbec4c469ca4c75e3925c1f5d179d93c798c572e"
+      },
+      "pairing": "Use this demo XML and this demo init_state together; all 50 source XMLs and fixed caddy poses differ."
+    },
+    {
+      "id": "libero10-book-caddy-demo-020",
+      "demo": 20,
+      "role": "implementation-heldout-evaluation",
+      "original_xml": {
+        "bytes": 60701,
+        "sha256": "8a8581a983edc0467b748373e2f3f11e2deac0d9e44069274b11aacbc52e2e05"
+      },
+      "local_xml_at_executed_cache": {
+        "bytes": 66845,
+        "sha256": "a5e1da77ace7f910e99899ad70d3db3a3131f6a7edc6921a8206d3b1d2b625a3"
+      },
+      "init_state_f64": {
+        "bytes": 360,
+        "sha256": "3196a28bdd9821ca2e73ca4319b43b204b94b90810208e38350d60560f7fdada"
+      },
+      "pairing": "Use this demo XML and this demo init_state together; all 50 source XMLs and fixed caddy poses differ."
+    },
+    {
+      "id": "libero10-book-caddy-demo-030",
+      "demo": 30,
+      "role": "implementation-heldout-evaluation",
+      "original_xml": {
+        "bytes": 60702,
+        "sha256": "e1ff16b0f96532115d8e8fa418505715b04a1b00e64dfb3515fd1d86d44bd9f4"
+      },
+      "local_xml_at_executed_cache": {
+        "bytes": 66846,
+        "sha256": "2f1e3ad386864efd49c853adc885a7ebd3496e30ce986fb5d4bce9e526569422"
+      },
+      "init_state_f64": {
+        "bytes": 360,
+        "sha256": "e2d61ddb9bc9f396fa2aa3c66ffafa9c4b364b816c2b48d679aab34bd3bf7da4"
+      },
+      "pairing": "Use this demo XML and this demo init_state together; all 50 source XMLs and fixed caddy poses differ."
+    },
+    {
+      "id": "libero10-book-caddy-demo-040",
+      "demo": 40,
+      "role": "implementation-heldout-evaluation",
+      "original_xml": {
+        "bytes": 60702,
+        "sha256": "82d41e6c2498787808421e146a04d1ecea281a9bbfd5a9d061927826b1496a56"
+      },
+      "local_xml_at_executed_cache": {
+        "bytes": 66846,
+        "sha256": "856eb8acefdcf7085c435a262e4f4146fda7ba9c1c13adfe2814205234f87c50"
+      },
+      "init_state_f64": {
+        "bytes": 360,
+        "sha256": "83c9aa19c851bccc2e2dad9b1c34f00bc9a1e845b7bba58d12af1d9c782884d2"
+      },
+      "pairing": "Use this demo XML and this demo init_state together; all 50 source XMLs and fixed caddy poses differ."
+    },
+    {
+      "id": "libero10-book-caddy-demo-049",
+      "demo": 49,
+      "role": "implementation-heldout-evaluation",
+      "original_xml": {
+        "bytes": 60702,
+        "sha256": "1ece9bf28ff7b22a464ee3b245a7a590a2545523acd927066dd058dc7f660d2d"
+      },
+      "local_xml_at_executed_cache": {
+        "bytes": 66846,
+        "sha256": "c999ec7aab8ccd175f2f6d006abdd8c8e7ca4bfa62f3f14c4cf6c1af4a00ad10"
+      },
+      "init_state_f64": {
+        "bytes": 360,
+        "sha256": "530d7a859840d0099711a395cdcd83ee3314678a8cd4af4ae8784fb047255001"
+      },
+      "pairing": "Use this demo XML and this demo init_state together; all 50 source XMLs and fixed caddy poses differ."
+    }
+  ],
+  "task_outcomes": "Not asserted by this metadata; runtime results belong in a separate execution record.",
+  "SDK_clock_guard": {
+    "initial_seconds_range": [
+      0,
+      100
+    ],
+    "physics_dt_seconds": 0.002,
+    "nominal_elapsed_horizon_seconds": 36,
+    "tick_range": [
+      0,
+      719
+    ],
+    "physical_substep_range": [
+      1,
+      25
+    ],
+    "tolerance_seconds": 1.4901161193847656e-08,
+    "inclusive_tolerance": true,
+    "finite_initial_and_current_words_required": true,
+    "model_timestep_verified_before_reset": true,
+    "formula": "initial + (25*tick + substep)*0.002",
+    "scope": "Plain F64 and integer logical SDK clock; not R13 compiler typed clocks, #bounded proof or wall deadlines.",
+    "failure": "Unexpected effects or clock mismatch abort without a completed case ledger; partial SDK advancement is not rolled back.",
+    "first_two_episode_evidence": "clock-qualification.json retrospectively checks existing traces; these episodes did not execute the new guard live."
+  },
+  "runtime_profile": "panda-libero-mujoco331-gr00t-wide-fixed-noise-v1",
+  "output_lifecycle": "Existing case directories are refused. Unexpected effects abort without a completed ledger; an incomplete trace prefix is not a completed outcome."
+}

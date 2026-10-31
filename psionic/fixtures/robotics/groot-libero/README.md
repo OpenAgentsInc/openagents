@@ -59,3 +59,10 @@ model execution and simulated outcomes remain separate qualification gates.
 [request-sdk-qualification.json](request-sdk-qualification.json) additionally
 records direct installed-Transformers position/delta parity without allocating
 learned weights or running a model forward pass.
+
+The header/acquisition progress notes above retain their historical chapter
+labels. Current [chapter168](../../../book/ch168-execute-a-groot-policy.md)
+qualifies the prepared original learned network; [chapter169](../../../book/ch169-close-the-simulated-control-loop.md)
+now drives the genuine Panda SDK loop. Its distinct
+[simulation receipts](../libero-panda/README.md) separate measured task outcomes,
+exact controls-only replay and retained failed hidden-state diagnostics.

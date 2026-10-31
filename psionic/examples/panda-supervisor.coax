@@ -1,0 +1,61 @@
+// Portable supervisor protocol example. Receipts are authored inputs here:
+// no GR00T, SDK, physics, robot, camera or private dataset executes.
+#import "Basic";
+#load "../lib/robotics/panda-loop.coax";
+
+main :: () {
+    print("portable supervisor: no policy or physics execution\n");
+// book:begin chunk
+    reset:=pl_reset_done(pl_new(),0);
+    #assert reset.status==PlStatus.ok;
+    request:=pl_request(reset.state);
+    #assert request.status==PlStatus.ok;
+    words:[112]u32;actions:[8]PlAction;scratch:[8]PlAction;
+    for row:0..<16 {words[row*7]=f32_bits(0.125f32);}
+    admitted:=pl_accept(request.state,request.tag,0,words[..],actions[..],scratch[..],false);
+    #assert admitted.status==PlStatus.ok;
+    header:=admitted.state;
+    for tick:0..<8 {
+        selected:=pl_choose(header,tick);
+        #assert selected.status==PlStatus.ok && selected.slot==tick && !selected.fallback;
+        #assert actions[selected.slot].v[0]==0.125f32;
+        // Authored receipt for this protocol demonstration, not a physics run.
+        committed:=pl_commit(selected.state,tick,25,0);
+        #assert committed.status==PlStatus.ok;
+        header=committed.state;
+    }
+    #assert header.tick==8 && header.phase==PlPhase.empty;
+// book:end chunk
+    print("ordered action receipts: 8, acknowledged substeps: 200\n");
+
+// book:begin recover
+    delayed:=pl_request(header);
+    held:=pl_hold(delayed.state,8);
+    #assert held.status==PlStatus.ok && held.fallback;
+    header=pl_commit(held.state,8,25,0).state;
+    late:=pl_accept(header,delayed.tag,9,words[..],actions[..],scratch[..],false);
+    #assert late.status==PlStatus.stale && late.state.phase==PlPhase.waiting;
+    refused:=pl_refuse(header);
+    #assert refused.status==PlStatus.ok && refused.state.refusals==1;
+    fresh:=pl_request(refused.state);
+    admitted=pl_accept(fresh.state,fresh.tag,9,words[..],actions[..],scratch[..],false);
+    #assert admitted.status==PlStatus.ok && admitted.state.fallbacks==1;
+// book:end recover
+    print("late reply refused, fallback ticks: %, refusals: %\n",admitted.state.fallbacks,admitted.state.refusals);
+
+// book:begin reset
+    restarted:=pl_reset(admitted.state);
+    #assert restarted.status==PlStatus.ok && restarted.state.epoch==2;
+    ready:=pl_reset_done(restarted.state,0);
+    current:=pl_request(ready.state);
+    old:=pl_accept(current.state,request.tag,0,words[..],actions[..],scratch[..],false);
+    #assert old.status==PlStatus.stale;
+    admitted=pl_accept(current.state,current.tag,0,words[..],actions[..],scratch[..],false);
+    #assert admitted.status==PlStatus.ok;
+    selected:=pl_choose(admitted.state,0);
+    incomplete:=pl_commit(selected.state,0,24,0);
+    #assert incomplete.status==PlStatus.effect && incomplete.state.phase==PlPhase.halted;
+// book:end reset
+    print("reset epoch: %, old reply refused\n",restarted.state.epoch);
+    print("incomplete effect receipt halts without advancing a tick\n");
+}

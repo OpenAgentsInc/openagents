@@ -1,0 +1,133 @@
+// Original selected LIBERO/Panda observation and task boundary. SDK names are
+// selected here; native C only resolves handles and performs SDK effects.
+#load "panda-env-types.coax";
+#authority;
+
+#test "Panda source dimensions and physics step are exact profile facts" {
+  #assert pe_profile(23,21,9,0,45,0.002);
+  #assert !pe_profile(22,21,9,0,45,0.002) && !pe_profile(23,20,9,0,45,0.002);
+  #assert !pe_profile(23,21,8,0,45,0.002) && !pe_profile(23,21,9,1,45,0.002);
+  #assert !pe_profile(23,21,9,0,44,0.002) && !pe_profile(23,21,9,0,45,0.003);
+  #assert !pe_profile(23,21,9,0,45,f64_from_bits(f64_bits(0.002)+1));
+  #assert pe_finite_bits(0) && pe_finite_bits(0x8000000000000000) && pe_finite_bits(0x7fefffffffffffff);
+  #assert !pe_finite_bits(0x7ff0000000000000) && !pe_finite_bits(0xfff0000000000000) && !pe_finite_bits(0x7ff8000000000001);
+}
+#test "Panda SDK binding order distinguishes body pose and grip site" {
+  expected:=[24]string.["robot0_joint1","robot0_joint2","robot0_joint3","robot0_joint4","robot0_joint5","robot0_joint6","robot0_joint7","robot0_torq_j1","robot0_torq_j2","robot0_torq_j3","robot0_torq_j4","robot0_torq_j5","robot0_torq_j6","robot0_torq_j7","gripper0_finger_joint1","gripper0_finger_joint2","gripper0_grip_site","robot0_right_hand","desk_caddy_1_back_contain_region","black_book_1_main","agentview","robot0_eye_in_hand","gripper0_gripper_finger_joint1","gripper0_gripper_finger_joint2"];
+  for i:0..<24 {#assert pe_binding(i)==expected[i];}#assert pe_binding(-1)=="" && pe_binding(24)=="";
+}
+#test "Panda observed motor and finger ranges match the original controller" {
+  lo:=[8]f64.[-80,-80,-80,-80,-80,-12,-12,0];hi:=[8]f64.[80,80,80,80,80,12,12,0];fl:=[3]f64.[0,-0.04,0];fh:=[3]f64.[0.04,0,0];
+  #assert pe_ranges(lo[0..<7],hi[0..<7],fl[0..<2],fh[0..<2]);
+  #assert !pe_ranges(lo[..],hi[0..<7],fl[0..<2],fh[0..<2]) && !pe_ranges(lo[0..<7],hi[..],fl[0..<2],fh[0..<2]);
+  #assert !pe_ranges(lo[0..<7],hi[0..<7],fl[..],fh[0..<2]) && !pe_ranges(lo[0..<7],hi[0..<7],fl[0..<2],fh[..]);
+  for i:0..<7 {lo[i]-=1;#assert !pe_ranges(lo[0..<7],hi[0..<7],fl[0..<2],fh[0..<2]);lo[i]+=1;hi[i]+=1;#assert !pe_ranges(lo[0..<7],hi[0..<7],fl[0..<2],fh[0..<2]);hi[i]-=1;}
+  for i:0..<2 {fl[i]+=1;#assert !pe_ranges(lo[0..<7],hi[0..<7],fl[0..<2],fh[0..<2]);fl[i]-=1;fh[i]+=1;#assert !pe_ranges(lo[0..<7],hi[0..<7],fl[0..<2],fh[0..<2]);fh[i]-=1;}
+}
+#test "Panda body quaternion conversion keeps sign axis order and explicit lag" {
+  p:=[3]f64.[1,2,3];q:=[4]f64.[1,0,0,0];f:=[2]f64.[0.03,-0.02];out:[10]f32;for i:0..<10 {out[i]=7;}
+  r:=pe_observation(p[..],q[..],f[..],out[..],false,false);#assert r.status==PeStatus.ok && r.written==8 && r.derived_lag==0;
+  #assert out[0]==1 && out[1]==2 && out[2]==3 && out[3]==0 && out[4]==0 && out[5]==0 && out[6]==0.03f32 && out[7]== -0.02f32 && out[8]==7 && out[9]==7 && !r.quaternion_clamped;
+  q=[4]f64.[-1,0,0,0];r=pe_observation(p[..],q[..],f[..],out[..],true,false);#assert r.status==PeStatus.ok && r.derived_lag==0.002 && out[3]==0 && !r.quaternion_clamped;
+  q=[4]f64.[0,1,0,0];r=pe_observation(p[..],q[..],f[..],out[..],false,false);#assert r.status==PeStatus.ok && f32_bits(out[3])==0x40490fdb && out[4]==0 && out[5]==0;
+  q=[4]f64.[-0.5,0,sqrt(0.75),0];r=pe_observation(p[..],q[..],f[..],out[..],false,false);#assert r.status==PeStatus.ok && abs(out[4]-4.1887903f32)<0.0000005f32 && out[3]==0 && out[5]==0;
+  q=[4]f64.[0.5,0,0,sqrt(0.75)];r=pe_observation(p[..],q[..],f[..],out[..],false,false);#assert r.status==PeStatus.ok && abs(out[5]-2.0943952f32)<0.0000003f32;
+  q=[4]f64.[1.00000001,0,0,0];r=pe_observation(p[..],q[..],f[..],out[0..<8],false,false);#assert r.status==PeStatus.ok && out[3]==0 && r.quaternion_clamped;
+  q[0]= -1.00000001;r=pe_observation(p[..],q[..],f[..],out[0..<8],false,false);#assert r.status==PeStatus.ok && out[3]==0 && r.quaternion_clamped;
+  q=[4]f64.[1,0.0009765625,0,0];#assert pe_observation(p[..],q[..],f[..],out[..],false,false).status==PeStatus.ok;
+  q[1]=sqrt(0.00000095367431640625+0.0000000000000002220446049250313);#assert pe_observation(p[..],q[..],f[..],out[..],false,false).status==PeStatus.quaternion;
+  q=[4]f64.[1,0,0,0];p[0]=f64(f32_from_bits(0x7f7fffff));f[0]= -f64(f32_from_bits(0x7f7fffff));#assert pe_observation(p[..],q[..],f[..],out[..],false,false).status==PeStatus.ok;
+}
+#test "Panda observation refuses malformed spans overlap and quaternion atomically" {
+  p:[4]f64;q:=[5]f64.[1,0,0,0,0];f:[3]f64;out:[9]f32;for i:0..<9 {out[i]=9;}
+  #assert pe_observation(p[..],q[0..<4],f[0..<2],out[..],false,false).status==PeStatus.shape;
+  #assert pe_observation(p[0..<3],q[..],f[0..<2],out[..],false,false).status==PeStatus.shape;
+  #assert pe_observation(p[0..<3],q[0..<4],f[..],out[..],false,false).status==PeStatus.shape;
+  #assert pe_observation(p[0..<3],q[0..<4],f[0..<2],out[0..<7],false,false).status==PeStatus.shape;
+  #assert pe_observation(p[0..<3],q[0..<4],f[0..<2],out[..],false,true).status==PeStatus.overlap;
+  q[0]=0;#assert pe_observation(p[0..<3],q[0..<4],f[0..<2],out[..],false,false).status==PeStatus.quaternion;
+  q[0]=2;#assert pe_observation(p[0..<3],q[0..<4],f[0..<2],out[..],false,false).status==PeStatus.quaternion;
+  q[0]=f64_from_bits(f64_bits(2.0)+1);#assert pe_observation(p[0..<3],q[0..<4],f[0..<2],out[..],false,false).status==PeStatus.range;
+  q[0]=1;p[0]=1e39;#assert pe_observation(p[0..<3],q[0..<4],f[0..<2],out[..],false,false).status==PeStatus.range;
+  p[0]=0;f[0]= -1e39;#assert pe_observation(p[0..<3],q[0..<4],f[0..<2],out[..],false,false).status==PeStatus.range;
+  for v:out {#assert v==9;}
+}
+#test "Panda inverse cosine agrees with independent mathematical values" {
+  #assert abs(pe_acos(0)-1.5707963267948966)<1e-15;
+  #assert abs(pe_acos(0.5)-1.0471975511965979)<1e-15 && abs(pe_acos(-0.5)-2.0943951023931957)<1e-15;
+  #assert abs(pe_acos(0.9)-0.45102681179626236)<1e-15 && abs(pe_acos(-0.9)-2.6905658417935308)<1e-15;
+  #assert pe_acos(1)==0 && pe_acos(-1)==3.141592653589793;
+}
+#test "Panda source success is strict world AABB with lower z allowance" {
+  pos:[3]f64;mat:=[9]f64.[1,0,0,0,1,0,0,0,1];size:=[3]f64.[1,2,3];book:[3]f64;
+  #assert pe_success(pos[..],mat[..],size[..],book[..]).success;
+  for axis:0..<3 {book[axis]=size[axis];r:=pe_success(pos[..],mat[..],size[..],book[..]);#assert r.status==PeStatus.ok && !r.success;book[axis]=0;}
+  book[0]= -1;#assert !pe_success(pos[..],mat[..],size[..],book[..]).success;book[0]=0;book[1]= -2;#assert !pe_success(pos[..],mat[..],size[..],book[..]).success;book[1]=0;
+  book[2]= -3.005;#assert pe_success(pos[..],mat[..],size[..],book[..]).success;book[2]= -3.01;#assert !pe_success(pos[..],mat[..],size[..],book[..]).success;
+  c:=sqrt(0.5);mat=[9]f64.[c,-c,0,c,c,0,0,0,1];book=[3]f64.[1,0,0];#assert !pe_success(pos[..],mat[..],size[..],book[..]).success;book[0]=0.5;#assert pe_success(pos[..],mat[..],size[..],book[..]).success;
+  mat=[9]f64.[c,0,c,0,1,0,-c,0,c];book=[3]f64.[2,0,0];#assert pe_success(pos[..],mat[..],size[..],book[..]).success;
+}
+#test "Panda predicate spans and bounded SDK geometry refuse explicitly" {
+  pos:[4]f64;mat:=[10]f64.[1,0,0,0,1,0,0,0,1,0];size:=[4]f64.[1,2,3,0];book:[4]f64;
+  #assert pe_success(pos[..],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.shape;
+  #assert pe_success(pos[0..<3],mat[..],size[0..<3],book[0..<3]).status==PeStatus.shape;
+  #assert pe_success(pos[0..<3],mat[0..<9],size[..],book[0..<3]).status==PeStatus.shape;
+  #assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[..]).status==PeStatus.shape;
+  size[0]= -1;#assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.range;size[0]=1000;pos[0]=1000;book[0]=1000;
+  #assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.ok;
+  size[0]=1001;#assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.range;size[0]=1;pos[0]= -1001;#assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.range;pos[0]=0;book[0]=1001;#assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.range;book[0]=0;mat[0]=2;#assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.range;
+  mat[0]=1.00000095367431640625;size[0]=0;#assert pe_success(pos[0..<3],mat[0..<9],size[0..<3],book[0..<3]).status==PeStatus.ok;
+}
+
+pe_profile :: (nq:int,nv:int,nu:int,na:int,state_count:int,dt:f64)->bool #export_c {return nq==23 && nv==21 && nu==9 && na==0 && state_count==45 && dt==0.002;}
+pe_ranges :: (lower:[]f64,upper:[]f64,finger_lower:[]f64,finger_upper:[]f64)->bool #export_c {
+  if lower.count!=7 || upper.count!=7 || finger_lower.count!=2 || finger_upper.count!=2 {return false;}
+  for i:0..<7 {limit:f64=ifx i<5 then 80.0 else 12.0;if lower[i]!= -limit || upper[i]!=limit {return false;}}
+  return finger_lower[0]==0 && finger_lower[1]== -0.04 && finger_upper[0]==0.04 && finger_upper[1]==0;
+}
+pe_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+pe_finite :: (v:f64)->bool {return pe_finite_bits(f64_bits(v));}
+pe_binding :: (index:int)->string #export_c {
+  if index<0 || index>=24 {return "";}
+  names:=[24]string.["robot0_joint1","robot0_joint2","robot0_joint3","robot0_joint4","robot0_joint5","robot0_joint6","robot0_joint7","robot0_torq_j1","robot0_torq_j2","robot0_torq_j3","robot0_torq_j4","robot0_torq_j5","robot0_torq_j6","robot0_torq_j7","gripper0_finger_joint1","gripper0_finger_joint2","gripper0_grip_site","robot0_right_hand","desk_caddy_1_back_contain_region","black_book_1_main","agentview","robot0_eye_in_hand","gripper0_gripper_finger_joint1","gripper0_gripper_finger_joint2"];return names[index];
+}
+// Rational asin coefficients from Sun fdlibm, retained in OpenLibm0.8.7
+// https://github.com/JuliaMath/openlibm/blob/v0.8.7/src/e_acos.c
+// Copyright(C)1993 Sun Microsystems, Inc. All rights reserved.
+// Developed at SunSoft, a Sun Microsystems, Inc. business. Permission to use,
+// copy, modify, and distribute this software is freely granted, provided
+// that this notice is preserved. Quarter-angle reduction below is Coax.
+pe_asin_ratio :: (z:f64)->f64 {
+  p:=z*(0.166666666666666657415+z*(-0.325565818622400915405+z*(0.201212532134862925881+z*(-0.0400555345006794114027+z*(0.000791534994289814532176+z*0.0000347933107596021167570)))));
+  q:=1+z*(-2.40339491173441421878+z*(2.02094576023350569471+z*(-0.688283971605453293030+z*0.0770381505559019352791)));return p/q;
+}
+// Domain[-1,1], supplied after source clamp. Stable double half-angle keeps
+// rational argument<=sin(pi/8)^2 without subtracting nearly equal square roots.
+pe_acos :: (w:f64)->f64 {
+  a:=abs(w);c:=sqrt((1+a)/2);z:=(1-a)/(4*(1+c));s:=sqrt(z);angle:=4*(s+s*pe_asin_ratio(z));
+  return ifx (f64_bits(w)&0x8000000000000000)!=0 then 3.141592653589793-angle else angle;
+}
+pe_observation :: (position:[]f64,body_quat_wxyz:[]f64,fingers:[]f64,out:[]f32,after_step:bool,overlap:bool)->PeRead #export_c {
+  if position.count!=3 || body_quat_wxyz.count!=4 || fingers.count!=2 || out.count<8 {return PeRead.{status=PeStatus.shape};}
+  if overlap {return PeRead.{status=PeStatus.overlap};}
+  for v:position {if !pe_finite(v) {return PeRead.{status=PeStatus.number};}if abs(v)>f64(f32_from_bits(0x7f7fffff)) {return PeRead.{status=PeStatus.range};}}
+  for v:fingers {if !pe_finite(v) {return PeRead.{status=PeStatus.number};}if abs(v)>f64(f32_from_bits(0x7f7fffff)) {return PeRead.{status=PeStatus.range};}}
+  norm:f64=0;for v:body_quat_wxyz {if !pe_finite(v) {return PeRead.{status=PeStatus.number};}if abs(v)>2 {return PeRead.{status=PeStatus.range};}norm+=v*v;}
+  if abs(norm-1)>0.00000095367431640625 {return PeRead.{status=PeStatus.quaternion};}
+  w:=body_quat_wxyz[0];clamped:=false;if w>1 {w=1;clamped=true;}if w< -1 {w= -1;clamped=true;}den:=sqrt(1-w*w);staged:[8]f32;
+  for i:0..<3 {staged[i]=f32(position[i]);if den!=0 {staged[3+i]=f32(((body_quat_wxyz[1+i]*2)*pe_acos(w))/den);}}
+  staged[6]=f32(fingers[0]);staged[7]=f32(fingers[1]);for i:0..<8 {out[i]=staged[i];}
+  return PeRead.{written=8,derived_lag=ifx after_step then 0.002 else 0.0,quaternion_clamped=clamped};
+}
+pe_success :: (position:[]f64,matrix:[]f64,size:[]f64,object:[]f64)->PeSuccess #export_c {
+  if position.count!=3 || matrix.count!=9 || size.count!=3 || object.count!=3 {return PeSuccess.{status=PeStatus.shape};}
+  for v:position {if !pe_finite(v) {return PeSuccess.{status=PeStatus.number};}if abs(v)>1000 {return PeSuccess.{status=PeStatus.range};}}
+  for v:object {if !pe_finite(v) {return PeSuccess.{status=PeStatus.number};}if abs(v)>1000 {return PeSuccess.{status=PeStatus.range};}}
+  for v:matrix {if !pe_finite(v) {return PeSuccess.{status=PeStatus.number};}if abs(v)>1.00000095367431640625 {return PeSuccess.{status=PeStatus.range};}}
+  for v:size {if !pe_finite(v) {return PeSuccess.{status=PeStatus.number};}if v<0 || v>1000 {return PeSuccess.{status=PeStatus.range};}}
+  inside:=true;for axis:0..<3 {
+    extent:=abs((matrix[axis*3]*size[0]+matrix[axis*3+1]*size[1])+matrix[axis*3+2]*size[2]);lower:=position[axis]-extent;if axis==2 {lower-=0.01;}upper:=position[axis]+extent;
+    if !(object[axis]>lower && object[axis]<upper) {inside=false;}
+  }
+  return PeSuccess.{success=inside};
+}
