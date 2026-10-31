@@ -187,3 +187,7 @@ void ds_restore_tabs(void *g, void *desk, int32_t base) { coaxial_ds_restore_tab
 void ds_defaults(void *g, void *state) { coaxial_ds_defaults(ds_at(g), at(state)); }
 int32_t dsk_room_shown(void *desk) { return coaxial_desk_room_shown(desk_at(desk)) ? 1 : 0; }
 void dsk_show_room(void *desk) { coaxial_desk_show_room(desk_at(desk)); }
+void dsk_set_store(void *desk, int32_t i, const uint8_t *id, int32_t n) { coaxial_desk_set_store(desk_at(desk), i, str(id, n)); }
+int32_t dsk_store_id(void *desk, int32_t i, uint8_t *out, int32_t cap) { return (int32_t)coaxial_desk_store_id(desk_at(desk), i, (coax_v_u8){out, cap}); }
+int32_t dsk_store_take(void *desk, int32_t i, int32_t force, uint8_t *out, int32_t cap) { return (int32_t)coaxial_desk_store_take(desk_at(desk), i, force != 0, (coax_v_u8){out, cap}); }
+void dsk_store_load(void *desk, int32_t i, const uint8_t *text, int32_t n) { coaxial_desk_store_load(desk_at(desk), i, str(text, n)); }

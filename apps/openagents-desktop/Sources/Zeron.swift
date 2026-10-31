@@ -228,6 +228,26 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
     try? Data(out[0..<Int(n)]).write(to: URL(fileURLWithPath: path), options: .atomic)
   }
+  // sessions/<id>.jsonl beside settings.json (zeron/store.coax): each session's transcript
+  var storeDir: String? { settingsPath.map { (($0 as NSString).deletingLastPathComponent as NSString).appendingPathComponent("sessions") } }
+  func storeFile(_ i: Int32) -> String? {
+    guard let dir = storeDir else { return nil }
+    var buf = [UInt8](repeating: 0, count: 64)
+    let n = Int(dsk_store_id(desk, i, &buf, Int32(buf.count)))
+    return n > 0 ? (dir as NSString).appendingPathComponent(String(decoding: buf[0..<n], as: UTF8.self) + ".jsonl") : nil
+  }
+  // what each session finished since (at quit, force: all it has) goes on the end of its file
+  var storeOut = [UInt8](repeating: 0, count: 1 << 22)
+  func flushStore(force: Bool) {
+    guard let dir = storeDir else { return }
+    for i in 0..<dsk_count(desk) {
+      let n = Int(dsk_store_take(desk, i, force ? 1 : 0, &storeOut, Int32(storeOut.count)))
+      guard n > 0, let path = storeFile(i) else { continue }
+      try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+      if !FileManager.default.fileExists(atPath: path) { FileManager.default.createFile(atPath: path, contents: nil, attributes: [.posixPermissions: 0o600]) }
+      if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(Data(storeOut[0..<n])); h.closeFile() }
+    }
+  }
   // The saved frame, if any (the host sets the window to it).
   func savedFrame() -> NSRect? {
     var f = [Float](repeating: 0, count: 4)
@@ -318,6 +338,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     slot = (slot + 1) % 2
     let buf = vertices[slot]
     pumpRoom()
+    flushStore(force: false)
     let n = dsk_frame(desk, buf.contents().assumingMemoryBound(to: Float.self), Float(size.width), Float(size.height), Float(dpr), dt)
     // the graphemes and cells this frame wanted, for the next
     atlases[shown]!.serve(shown)
@@ -383,6 +404,10 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
         Array(dir.utf8).withUnsafeBufferPointer { zr_attach(chat, $0.baseAddress, Int32($0.count)) }
         add(chat, cwd: dir)
         ds_restore(settings, desk, i, dsk_count(desk) - 1)
+        if let file = storeFile(dsk_count(desk) - 1), let data = FileManager.default.contents(atPath: file) {
+          let text = [UInt8](data)
+          dsk_store_load(desk, dsk_count(desk) - 1, text, Int32(text.count))
+        }
       }
       if n > 0 { ds_restore_tabs(settings, desk, 0); return }
     }
@@ -394,7 +419,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     if let v = value("--access")?.lowercased(), let i = ["full", "edits", "supervised"].firstIndex(of: v) { zr_choose(state, 3, Int32(i)) }
   }
   func add(_ chat: UnsafeMutableRawPointer, cwd: String) {
-    _ = Array(cwd.utf8).withUnsafeBufferPointer { dsk_add(desk, chat, $0.baseAddress, Int32($0.count)) }
+    let i = Array(cwd.utf8).withUnsafeBufferPointer { dsk_add(desk, chat, $0.baseAddress, Int32($0.count)) }
+    if settingsPath != nil, i >= 0 { let id = Array(UUID().uuidString.lowercased().utf8); dsk_set_store(desk, i, id, Int32(id.count)) }
   }
   // A new session: its own chat (and engines) in a folder, shown in a new tab.
   func newSession(cwd: String) {
@@ -566,7 +592,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
                               bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)!
             let rep = NSBitmapImageRep(cgImage: g.makeImage()!)
             try? rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: path))
-            self.saveSettings(); dsk_quit(self.desk); exit(0)
+            self.flushStore(force: true); self.saveSettings(); dsk_quit(self.desk); exit(0)
           }
         }
       }

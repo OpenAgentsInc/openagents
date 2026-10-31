@@ -557,9 +557,20 @@ session starts with (the harness and access of the session shown at quit),
 the open tabs and the shown one, and every session: folder, harness, model,
 effort, access, title, and Claude Code's session id or Codex's thread. At
 launch each session comes back as its own chat in its folder and the next
-message resumes it (`--resume`, `thread/resume`); the transcript itself
-comes with desk-chat-store. `--settings PATH` uses another file (shots use
-none unless given one; `--demo` none). Not yet: shortcuts in the file.
+message resumes it (`--resume`, `thread/resume`). `--settings PATH` uses
+another file (shots use none unless given one; `--demo` none). Not yet:
+shortcuts in the file.
+
+Built (2026-10-31, zeron/store.coax): each session's transcript is kept in
+`sessions/<id>.jsonl` beside settings.json (mode 600), the id a UUID the
+session gets when it is made and settings.json keeps as `store`. One line a
+part (`{"k":"user"|"text"|"think"|"tool"|"notice"|"route","t":…}`, a tool
+with its kind, argument, input, output and whether it failed) and one at
+each turn's end (`{"k":"end","ms":…,"cost":…}`); the host appends a turn
+when it finishes and what there is at quit. At launch each restored session
+reads its file back into the same transcript, and the next message resumes
+it. check.sh store-quit then store-reopen: two sessions, quit, reopen, and
+a follow-up continues the same Claude Code session.
 
 No account is needed. A Nostr identity (the same one the phone uses for
 `/login`) comes later, for sync and for openagents.com projects.

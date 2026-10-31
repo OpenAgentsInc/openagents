@@ -254,7 +254,7 @@ final class App: NSObject, NSApplicationDelegate {
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
   // Claude Code's process group goes with the app.
-  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { v.saveSettings(); dsk_quit(v.desk) } }
+  func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { v.flushStore(force: true); v.saveSettings(); dsk_quit(v.desk) } }
 
   // Zeron's menu bar (crates/ui/src/app_menus.rs) for what this app has: the
   // app menu, File (New Session Cmd+N, New Session in Folder… Shift+Cmd+N, Close Tab Cmd+W), View (Toggle Sidebar Cmd+S), Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,

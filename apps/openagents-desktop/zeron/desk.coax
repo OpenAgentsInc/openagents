@@ -48,6 +48,8 @@ DskChat :: struct {
   call_args: [8192] u8; call_n: int;
   call_rpc: [64] u8; call_rpc_n: int;  // the MCP request's id, raw JSON, echoed in the answer
   title: [DSK_TITLE] u8; title_n: int;  // its title from settings.json, until a message gives it one
+  store: [64] u8; store_n: int;  // its file's name in sessions/ (store.coax), none for checks without --settings
+  stored: int;              // its session's parts already in the file
 }
 // An answer to a Codex MCP server, for the host to write to its connection.
 DskOut :: struct { conn: int; line: [RM_ANSWER + 512] u8; n: int; }

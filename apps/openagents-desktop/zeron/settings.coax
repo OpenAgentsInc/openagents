@@ -8,7 +8,7 @@
 // ds_restore), reopens the tabs (ds_restore_tabs) and writes it back at quit
 // (ds_save). Its transcripts are kept apart (desk-chat-store).
 
-#load "desk.coax";
+#load "store.coax";
 
 DS_JSON :: 65536;
 Settings :: struct {
@@ -61,6 +61,7 @@ ds_save :: (k: [] Desk, x: f32, y: f32, w: f32, h: f32, out: [] u8) -> int {
     title := dsk_title(k, i);
     if title != "New session" && !s[0].demo { cl_put(o[..], ",\"title\":"); cl_put_string(o[..], title); }
     if e[0].sid_n > 0 { cl_put(o[..], ",\"claude\":"); cl_put_string(o[..], e_str(e[0].sid[..], e[0].sid_n)); }
+    if k[0].chats[i].store_n > 0 { cl_put(o[..], ",\"store\":"); cl_put_string(o[..], cast(string) k[0].chats[i].store[0..<k[0].chats[i].store_n]); }
     if s[0].codex.count > 0 && s[0].codex[0].tid_n > 0 { cl_put(o[..], ",\"codex\":"); cl_put_string(o[..], cx_str(s[0].codex[0].tid[..], s[0].codex[0].tid_n)); }
     cl_put(o[..], "}");
   }
@@ -112,6 +113,7 @@ ds_restore :: (g: [] Settings, k: [] Desk, i: int, c: int) {
   ac := cl_int(t, "access"); if ac.ok { coaxial_zeron_choose(s, CH_ACCESS, cast(int) ac.value); }
   k[0].chats[c].title_n = e_copy(k[0].chats[c].title[..], 0, cl_str(ar[..], t, "title"));
   e[0].sid_n = e_set(e[0].sid[..], 0, cl_str(ar[..], t, "claude"));
+  k[0].chats[c].store_n = e_copy(k[0].chats[c].store[..], 0, cl_str(ar[..], t, "store"));
   if s[0].codex.count > 0 { s[0].codex[0].tid_n = e_set(s[0].codex[0].tid[..], 0, cl_str(ar[..], t, "codex")); }
 }
 // The tabs and the shown session, once every session is back (base: the desk's index of session 0).

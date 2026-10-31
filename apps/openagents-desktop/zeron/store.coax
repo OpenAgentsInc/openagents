@@ -1,0 +1,152 @@
+// Conversations kept locally (docs/desktop/coax-desktop.md, "Storage"): each
+// session's transcript appends to sessions/<id>.jsonl beside settings.json,
+// one JSON line a part (the message, text, thought, tool call with its
+// output, notice) and one at each turn's end (its cost and time). The host
+// appends what st_take gives it after every finished turn and at quit, and
+// at launch hands each restored session its file (st_load), which rebuilds
+// the same transcript; the next message resumes the harness's own session
+// (settings.json keeps Claude Code's session id and Codex's thread).
+
+#load "desk.coax";
+
+ST_KINDS :: [6] string.["user", "text", "think", "tool", "notice", "route"];
+ST_ARENA :: 262144;
+
+st_kind_of :: (name: string) -> int {
+  kinds := ST_KINDS;
+  for j: 0..<6 { if kinds[j] == name { return j; } }
+  return -1;
+}
+st_field :: (o: [] ClOut, key: string, v: string) { if v.count > 0 { cl_put(o, ","); cl_put_string(o, key); cl_put(o, ":"); cl_put_string(o, v); } }
+st_num :: (o: [] ClOut, key: string, v: int) { cl_put(o, ","); cl_put_string(o, key); cl_put(o, ":"); ds_put_num(o, v); }
+
+// Parts from..<to as lines, then the turn's end when it is over. Its length (0 when it did not fit).
+st_lines :: (s: [] Session, from: int, to: int, ended: bool, out: [] u8) -> int {
+  o: [1] ClOut; o[0].buf = out;
+  kinds := ST_KINDS;
+  for k: from..<to {
+    p := s[0].parts[k];
+    if p.kind < 0 || p.kind >= 6 { continue; }
+    cl_put(o[..], "{\"k\":"); cl_put_string(o[..], kinds[p.kind]);
+    st_field(o[..], "t", s_text_of(s, k));
+    if p.kind == P_NOTICE { st_num(o[..], "notice", p.notice); }
+    if p.kind == P_TOOL || p.kind == P_ROUTE {
+      st_num(o[..], "tk", p.tk);
+      st_field(o[..], "id", p.id); st_field(o[..], "arg", p.arg); st_field(o[..], "detail", p.detail);
+      st_field(o[..], "before", p.before); st_field(o[..], "after", p.after); st_field(o[..], "input", p.input);
+      st_field(o[..], "output", p.output);
+      if p.failed { cl_put(o[..], ",\"failed\":true"); }
+      if p.resolved { cl_put(o[..], ",\"resolved\":true"); }
+    }
+    cl_put(o[..], "}\n");
+  }
+  if ended {
+    cl_put(o[..], "{\"k\":\"end\"");
+    st_num(o[..], "ms", s[0].turn_ms);
+    cl_put(o[..], ",\"cost\":");
+    b: [32] u8; n := zr_put_int(b[..], 0, cast(int) (s[0].cost * 1000000.0));
+    cl_put(o[..], cast(string) b[0..<n]); cl_put(o[..], "e-6}\n");
+  }
+  return ifx o[0].failed then 0 else o[0].len;
+}
+
+// A recorded file back into a fresh session: the same parts, its turns, cost and last turn's time.
+st_load :: (s: [] Session, text: string) {
+  abuf: [ST_ARENA] u8; ar: [1] ClArena;
+  q := 0;
+  while q < text.count {
+    e := q; while e < text.count && text[e] != '\n' { e += 1; }
+    line := cast(string) text[q..<e];
+    q = e + 1;
+    if line.count < 2 { continue; }
+    ar[0].buf = abuf[..]; ar[0].at = 0; ar[0].full = false;
+    name := cl_str(ar[..], line, "k");
+    if name == "end" {
+      ms := cl_int(line, "ms"); if ms.ok { s[0].turn_ms = cast(int) ms.value; }
+      c := cl_num(line, "cost"); if c.ok { s[0].cost = c.value; }
+      continue;
+    }
+    kind := st_kind_of(name);
+    if kind < 0 { continue; }
+    k := s_part(s, kind);
+    if k < 0 { return; }
+    s_append(s, k, cl_str(ar[..], line, "t"));
+    if kind == P_USER { s[0].turns += 1; }
+    if kind == P_NOTICE { v := cl_int(line, "notice"); if v.ok { s[0].parts[k].notice = cast(int) v.value; } }
+    if kind == P_TOOL || kind == P_ROUTE {
+      p := s[0].parts[k];
+      v := cl_int(line, "tk"); if v.ok { p.tk = cast(int) v.value; }
+      p.id = s_put(s, cl_str(ar[..], line, "id")); p.arg = s_put(s, cl_str(ar[..], line, "arg"));
+      p.detail = s_put(s, cl_str(ar[..], line, "detail")); p.before = s_put(s, cl_str(ar[..], line, "before"));
+      p.after = s_put(s, cl_str(ar[..], line, "after")); p.input = s_put(s, cl_str(ar[..], line, "input"));
+      p.output = s_put(s, cl_str(ar[..], line, "output"));
+      p.failed = cl_bool(line, "failed").value; p.resolved = cl_bool(line, "resolved").value;
+      s[0].parts[k] = p;
+    }
+  }
+  s[0].changed = true;
+}
+
+// Chat i's new lines for its file: its finished turns (at quit, force: what there is). Its length.
+st_take :: (k: [] Desk, i: int, force: bool, out: [] u8) -> int {
+  if i < 0 || i >= k[0].n || k[0].chats[i].store_n == 0 { return 0; }
+  z := k[0].chats[i].s;
+  if z[0].demo { return 0; }
+  s := z[0].session[..];
+  if s[0].hint || (s[0].live && !force) { return 0; }
+  if k[0].chats[i].stored > s[0].n { k[0].chats[i].stored = s[0].n; }
+  from := k[0].chats[i].stored;
+  if from == s[0].n { return 0; }
+  n := st_lines(s, from, s[0].n, !s[0].live, out);
+  if n > 0 { k[0].chats[i].stored = s[0].n; }
+  return n;
+}
+
+coaxial_desk_set_store :: (k: [] Desk, i: int, id: string) #export_c {
+  if k.count < 1 || i < 0 || i >= k[0].n { return; }
+  k[0].chats[i].store_n = e_copy(k[0].chats[i].store[..], 0, id);
+}
+coaxial_desk_store_id :: (k: [] Desk, i: int, out: [] u8) -> int #export_c {
+  if k.count < 1 || i < 0 || i >= k[0].n { return 0; }
+  return e_copy(out, 0, cast(string) k[0].chats[i].store[0..<k[0].chats[i].store_n]);
+}
+coaxial_desk_store_take :: (k: [] Desk, i: int, force: bool, out: [] u8) -> int #export_c { if k.count < 1 { return 0; } return st_take(k, i, force, out); }
+coaxial_desk_store_load :: (k: [] Desk, i: int, text: string) #export_c {
+  if k.count < 1 || i < 0 || i >= k[0].n { return; }
+  s := k[0].chats[i].s[0].session[..];
+  st_load(s, text);
+  k[0].chats[i].stored = s[0].n;
+}
+
+#test "a recorded file reads back into the same transcript: messages, text, thoughts, tool calls with their output, notices, cost" {
+  s: [1] Session; pool: [65536] u8; s_init(s[..], pool[..]);
+  abuf: [16384] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  s_user(s[..], "Fix the \"sidebar\" width\nplease");
+  s_delta(s[..], P_THINK, "Looking at desk.coax");
+  s_tool_use(s[..], ar[..], "t1", "Edit", "{\"file_path\":\"/w/desk.coax\",\"old_string\":\"220\",\"new_string\":\"240\"}");
+  s_tool_result(s[..], ar[..], "{\"tool_use_id\":\"t1\",\"content\":\"ok\"}");
+  s_tool_use(s[..], ar[..], "t2", "Bash", "{\"command\":\"ls\\n -la\"}");
+  s_tool_result(s[..], ar[..], "{\"tool_use_id\":\"t2\",\"content\":\"denied\",\"is_error\":true}");
+  s_delta(s[..], P_TEXT, "Done: the sidebar is 240 px. ✓");
+  s[0].cost = 0.031; s[0].turn_ms = 12500;
+  s_turn_end(s[..], false, "");
+  s_user(s[..], "again");
+  s[0].stopping = true;
+  s_turn_end(s[..], false, "");
+  out: [65536] u8;
+  // the first turn, then the second appended after it
+  n1 := st_lines(s[..], 0, 5, true, out[..]);
+  n2 := st_lines(s[..], 5, s[0].n, true, out[n1..<out.count]);
+  #assert n1 > 0 && n2 > 0;
+  file := cast(string) out[0..<n1 + n2];
+  r: [1] Session; rpool: [65536] u8; s_init(r[..], rpool[..]);
+  st_load(r[..], file);
+  #assert r[0].n == s[0].n && r[0].turns == 2 && r[0].turn_ms == 12500 && r[0].cost > 0.0309 && r[0].cost < 0.0311;
+  for k: 0..<s[0].n {
+    a := s[0].parts[k]; b := r[0].parts[k];
+    #assert a.kind == b.kind && s_text_of(s[..], k) == s_text_of(r[..], k) && a.notice == b.notice;
+    #assert a.tk == b.tk && a.id == b.id && a.arg == b.arg && a.detail == b.detail && a.before == b.before && a.after == b.after;
+    #assert a.input == b.input && a.output == b.output && a.failed == b.failed && a.resolved == b.resolved;
+  }
+  #assert s_text_of(r[..], 0) == "Fix the \"sidebar\" width\nplease" && r[0].parts[3].failed && r[0].parts[6].kind == P_NOTICE && r[0].parts[6].notice == N_STOPPED;
+}

@@ -3,10 +3,15 @@
 # was started with (--model) or switched to (set_model), and sends the answer a few words at a time, a
 # fifth of a second apart, so a shot mid-turn shows part of it. Lines carry
 # the fields the stream-json parser requires, as 2.1.316 writes them.
+# Started with --resume SESSION it continues that session and says so.
 import json, sys, time
 S = "00000000-0000-0000-0000-000000000000"
 USAGE = {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
 model = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else "default"
+resume = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--resume=")), None)
+if "--resume" in sys.argv: resume = sys.argv[sys.argv.index("--resume") + 1]
+SID = resume or "5e55a0e1-0000-4000-8000-000000000001"
+started = False
 def out(x):
     sys.stdout.write(json.dumps(x) + "\n"); sys.stdout.flush()
 for line in sys.stdin:
@@ -17,7 +22,12 @@ for line in sys.stdin:
         if m.get("request", {}).get("subtype") == "set_model": model = m["request"].get("model") or model
         out({"type": "control_response", "response": {"subtype": "success", "request_id": m["request_id"], "response": {"models": []}}})
     elif t == "user":
-        words = ("Answered by " + model + ": two plus two is four, and the sum stays four however you group it.").split(" ")
+        if not started:
+            started = True
+            out({"type": "system", "subtype": "init", "cwd": "/tmp", "session_id": SID, "tools": [], "mcp_servers": [], "model": model, "permissionMode": "default",
+                 "slash_commands": [], "apiKeySource": "none", "claude_code_version": "2.1.316", "output_style": "default", "agents": [], "skills": [],
+                 "plugins": [], "capabilities": [], "uuid": S})
+        words = (("Continuing session " + resume + ". " if resume else "") + "Answered by " + model + ": two plus two is four, and the sum stays four however you group it.").split(" ")
         for i, w in enumerate(words):
             out({"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": (" " if i else "") + w}},
                  "parent_tool_use_id": None, "uuid": S, "session_id": S})

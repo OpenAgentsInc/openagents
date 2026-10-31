@@ -17,7 +17,7 @@ update=0; [[ "${1:-}" == --update ]] && update=1
 mkdir -p "$out" "$here/goldens"
 export BROWSER=/usr/bin/true PSIONIC_HOST=none
 
-home="$out/home"; rm -rf "$home" "$out/settings.json"; mkdir -p "$home/work/openagents" "$home/work/zeron"
+home="$out/home"; rm -rf "$home" "$out/settings.json" "$out/sessions" "$out/store"; mkdir -p "$home/work/openagents" "$home/work/zeron"
 so="$here/zeron/fixtures/signed-out:/usr/bin:/bin"
 asks="$here/zeron/fixtures/asks:/usr/bin:/bin"
 room="$here/zeron/fixtures/room:/usr/bin:/bin"
@@ -41,6 +41,8 @@ cases=(
   "room-codex-asks|2640,1760|wait 1 ; folder $home/work/zeron ; mode codex ; wait 1 ; send Ask Claude whether the build is green ; waitidle 20 ; wait 1 ; last|last: Claude says: The build is green. (tools: agents_list, ask_agent, tell_agent, room_read)|$room"
   "settings-quit|2640,1760|$three ; menu Toggle Sidebar ; keyevent cmd+1 ; menu Close Tab ; desk|desk: active=1 tabs=1,2 sessions=3 collapsed=1|$so|--settings $out/settings.json"
   "settings-reopen|2640,1760|wait 1 ; desk ; window|desk: active=1 tabs=1,2 sessions=3 collapsed=1|$so|--settings $out/settings.json"
+  "store-quit|2640,1760|wait 1 ; send What is two plus two? ; waitidle 10 ; folder $home/work/zeron ; wait 1 ; send Review the tab bar ; waitidle 10 ; desk|desk: active=1 tabs=0,1 sessions=2 collapsed=0|$stream|--settings $out/store/settings.json"
+  "store-reopen|2640,1760|wait 1 ; keyevent cmd+1 ; wait 0.5 ; send One more? ; waitidle 10 ; last|last: Continuing session 5e55a0e1-0000-4000-8000-000000000001. Answered by default: two plus two is four, and the sum stays four however you group it.|$stream|--settings $out/store/settings.json"
   "sidebar-open|2640,1760|$three||$so"
   "sidebar-900x600|1800,1200|$three||$so"
   "sidebar-shortcuts|2640,1760|$three ; keyevent cmd+1 ; keyevent shift+down ; keyevent shift+up ; menu Close Tab ; menu Toggle Sidebar ; menu New Session ; wait 1 ; desk|desk: active=3 tabs=0,2,3 sessions=4 collapsed=1|$so"
