@@ -52,6 +52,67 @@
         "PhoneSignin"
       ],
       "detail": "Actual platform host.h, voice.h and NostrSign.h included; verified 12-f32 identity and independent sizes/offsets for Joint, HauntInstance, HauntGPUlight and HudRect."
+    },
+    {
+      "command": "coax/web/wasm.sh SOURCE FACE OUTPUT [LIBRARIES...]",
+      "outcome": "passed",
+      "targets": [
+        {
+          "target": "realm",
+          "command": [
+            "$REPO/coax/web/wasm.sh",
+            "$REPO/apps/openagents-web/realm.coax",
+            "$REPO/apps/openagents-web/realm-face.c",
+            "/private$TMPDIR/coax-web-header-migration-d865eomq/realm.wasm",
+            "$REPO/verse/haunt.coax",
+            "$REPO/verse/haunt-buffer.coax",
+            "$REPO/verse/player.coax",
+            "$REPO/verse/grid.coax",
+            "$REPO/verse/particles.coax",
+            "$REPO/verse/cinematic.coax",
+            "$REPO/verse/setpiece.coax"
+          ],
+          "exit_code": 0,
+          "seconds": 4.503,
+          "bytes": 484873,
+          "sha256": "5b57ddbcc42aa0ccfdb7ae3b7a60a7fcc42e34e7ffe0626f07ef7b770aff6e7d",
+          "face_sha256": "96520eb4da538d7ae883460e5036543cc9c8d0df58a6592dff1537fcc6b65691"
+        },
+        {
+          "target": "icecream",
+          "command": [
+            "$REPO/coax/web/wasm.sh",
+            "$REPO/apps/openagents-web/icecream.coax",
+            "$REPO/apps/openagents-web/icecream-face.c",
+            "/private$TMPDIR/coax-web-header-migration-d865eomq/icecream.wasm",
+            "$REPO/verse/icecream/scene.coax"
+          ],
+          "exit_code": 0,
+          "seconds": 4.927,
+          "bytes": 416976,
+          "sha256": "cc8631effd9a048752c852647d742a0ba38330ae4dd81ba152bf9b208cf11d41",
+          "face_sha256": "17dc7727726df2f29c8e2a68cba752b483078b903fbe6843430a6efd7576cd9c"
+        },
+        {
+          "target": "everglade",
+          "command": [
+            "$REPO/coax/web/wasm.sh",
+            "$REPO/apps/openagents-web/everglade.coax",
+            "$REPO/apps/openagents-web/everglade-face.c",
+            "/private$TMPDIR/coax-web-header-migration-d865eomq/everglade.wasm",
+            "$REPO/verse/player.coax",
+            "$REPO/verse/grid.coax",
+            "$REPO/verse/everglade/river.coax",
+            "$REPO/verse/everglade/guard-decision.coax"
+          ],
+          "exit_code": 0,
+          "seconds": 41.699,
+          "bytes": 1622167,
+          "sha256": "25f19e23670e4b78eaca33192ab228b80d2d7a482eba78c983008fea74617a92",
+          "face_sha256": "5ccc58d31a9d17d4215be3ff4bd7c6ae0ff2351c70f2c5941a1ccaf210b2a90a"
+        }
+      ],
+      "compiler_sha256": "085a4724fe6821af574860427695b5b8e4aba594cacc8e70b1f619f749362134"
     }
   ],
   "plain_c_parity": [
@@ -142,10 +203,321 @@
     "detail": "Mandatory authority/check/mutation gates, exact C/header seed comparisons, combined compiler regeneration, final frontend regeneration and source/artifact provenance checks passed."
   },
   "limits": [
-    "No app launch, physical-device, Wasm or GPU test was run for this header-only change.",
+    "No native iOS app launch, physical-device or GPU compute conformance test was run. The broad headless WebGPU walk ran and failed nine image checks; those failures remain explicit.",
     "Structural C declaration compatibility is separate from logical Coax declaration identity, ownership, public protocol identity and semantic interchangeability.",
     "Related headers must be regenerated together.",
     "Losslessly encoded schema identifiers were exercised with Apple Clang C11/C++17; short-significant-identifier C toolchains are not qualified.",
     "The initial bootstrap attempt refused seeds refreshed with the wrong source-comment path convention; headers were regenerated using lib/compiler/NAME.coax from coax/ before the final bootstrap."
-  ]
+  ],
+  "wasm_equivalence": {
+    "scope": "Whole binary equivalence, baseline and final compilers over identical merged sources and flags; baseline Realm uses the old alias-bearing face. This identifies code unchanged by the header fix, not correctness of the prior implementation.",
+    "targets": [
+      {
+        "target": "verse",
+        "builds": [
+          {
+            "name": "baseline",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/baseline-wasm.sh",
+              "$REPO/apps/openagents-web/verse.coax",
+              "$REPO/apps/openagents-web/verse-face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/verse/baseline/verse.wasm"
+            ],
+            "exit_code": 0,
+            "seconds": 6.201,
+            "bytes": 137595,
+            "sha256": "7a5045406924f428c5ae8df60990f4cdf20e092c54013c98d3c447327cf9f987"
+          },
+          {
+            "name": "final",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/final-wasm.sh",
+              "$REPO/apps/openagents-web/verse.coax",
+              "$REPO/apps/openagents-web/verse-face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/verse/final/verse.wasm"
+            ],
+            "exit_code": 0,
+            "seconds": 4.098,
+            "bytes": 137595,
+            "sha256": "7a5045406924f428c5ae8df60990f4cdf20e092c54013c98d3c447327cf9f987"
+          }
+        ],
+        "byte_identical": true
+      },
+      {
+        "target": "thegrid",
+        "builds": [
+          {
+            "name": "baseline",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/baseline-wasm.sh",
+              "$REPO/apps/openagents-web/thegrid.coax",
+              "$REPO/apps/openagents-web/thegrid-face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/thegrid/baseline/thegrid.wasm",
+              "$REPO/verse/player.coax",
+              "$REPO/verse/grid.coax",
+              "$REPO/verse/cast.coax"
+            ],
+            "exit_code": 0,
+            "seconds": 9.201,
+            "bytes": 250418,
+            "sha256": "0275c0923d2b4cee23a821c4201b8462724ce4e569e26540029472e3be2ce830"
+          },
+          {
+            "name": "final",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/final-wasm.sh",
+              "$REPO/apps/openagents-web/thegrid.coax",
+              "$REPO/apps/openagents-web/thegrid-face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/thegrid/final/thegrid.wasm",
+              "$REPO/verse/player.coax",
+              "$REPO/verse/grid.coax",
+              "$REPO/verse/cast.coax"
+            ],
+            "exit_code": 0,
+            "seconds": 6.499,
+            "bytes": 250418,
+            "sha256": "0275c0923d2b4cee23a821c4201b8462724ce4e569e26540029472e3be2ce830"
+          }
+        ],
+        "byte_identical": true
+      },
+      {
+        "target": "splash",
+        "builds": [
+          {
+            "name": "baseline",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/baseline-wasm.sh",
+              "$REPO/apps/openagents-web/splash.coax",
+              "$REPO/apps/openagents-web/face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/splash/baseline/splash.wasm"
+            ],
+            "exit_code": 0,
+            "seconds": 3.576,
+            "bytes": 124912,
+            "sha256": "c364328fd716d7a6954c1ba63790129311370f8233adcff408131215ea14e179"
+          },
+          {
+            "name": "final",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/final-wasm.sh",
+              "$REPO/apps/openagents-web/splash.coax",
+              "$REPO/apps/openagents-web/face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/splash/final/splash.wasm"
+            ],
+            "exit_code": 0,
+            "seconds": 2.924,
+            "bytes": 124912,
+            "sha256": "c364328fd716d7a6954c1ba63790129311370f8233adcff408131215ea14e179"
+          }
+        ],
+        "byte_identical": true
+      },
+      {
+        "target": "villa",
+        "builds": [
+          {
+            "name": "baseline",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/baseline-wasm.sh",
+              "$REPO/apps/openagents-web/villa.coax",
+              "$REPO/apps/openagents-web/villa-face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/villa/baseline/villa.wasm",
+              "$REPO/verse/player.coax",
+              "$REPO/verse/grid.coax",
+              "$REPO/apps/openagents-web/villafig.coax"
+            ],
+            "exit_code": 0,
+            "seconds": 12.845,
+            "bytes": 416274,
+            "sha256": "0d197e56faf31a129e2ee4bd946a5065b269411a605c085471edd278c3529008"
+          },
+          {
+            "name": "final",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/final-wasm.sh",
+              "$REPO/apps/openagents-web/villa.coax",
+              "$REPO/apps/openagents-web/villa-face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/villa/final/villa.wasm",
+              "$REPO/verse/player.coax",
+              "$REPO/verse/grid.coax",
+              "$REPO/apps/openagents-web/villafig.coax"
+            ],
+            "exit_code": 0,
+            "seconds": 10.86,
+            "bytes": 416274,
+            "sha256": "0d197e56faf31a129e2ee4bd946a5065b269411a605c085471edd278c3529008"
+          }
+        ],
+        "byte_identical": true
+      },
+      {
+        "target": "realm",
+        "builds": [
+          {
+            "name": "baseline",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/baseline-wasm.sh",
+              "$REPO/apps/openagents-web/realm.coax",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/old-realm-face/realm-face.c",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/realm/baseline/realm.wasm",
+              "$REPO/verse/haunt.coax",
+              "$REPO/verse/haunt-buffer.coax",
+              "$REPO/verse/player.coax",
+              "$REPO/verse/grid.coax",
+              "$REPO/verse/particles.coax",
+              "$REPO/verse/cinematic.coax",
+              "$REPO/verse/setpiece.coax"
+            ],
+            "exit_code": 0,
+            "seconds": 8.474,
+            "bytes": 484873,
+            "sha256": "5b57ddbcc42aa0ccfdb7ae3b7a60a7fcc42e34e7ffe0626f07ef7b770aff6e7d"
+          },
+          {
+            "target": "realm",
+            "command": [
+              "$REPO/coax/web/wasm.sh",
+              "$REPO/apps/openagents-web/realm.coax",
+              "$REPO/apps/openagents-web/realm-face.c",
+              "/private$TMPDIR/coax-web-header-migration-d865eomq/realm.wasm",
+              "$REPO/verse/haunt.coax",
+              "$REPO/verse/haunt-buffer.coax",
+              "$REPO/verse/player.coax",
+              "$REPO/verse/grid.coax",
+              "$REPO/verse/particles.coax",
+              "$REPO/verse/cinematic.coax",
+              "$REPO/verse/setpiece.coax"
+            ],
+            "exit_code": 0,
+            "seconds": 4.503,
+            "bytes": 484873,
+            "sha256": "5b57ddbcc42aa0ccfdb7ae3b7a60a7fcc42e34e7ffe0626f07ef7b770aff6e7d",
+            "face_sha256": "96520eb4da538d7ae883460e5036543cc9c8d0df58a6592dff1537fcc6b65691",
+            "name": "final",
+            "reused": true,
+            "evidence": "$TMPDIR/coax-web-header-migration-d865eomq/result.json"
+          }
+        ],
+        "byte_identical": true
+      },
+      {
+        "target": "newland",
+        "builds": [
+          {
+            "name": "baseline",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/baseline-build-home.sh",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/newland/baseline/newland.wasm"
+            ],
+            "exit_code": 0,
+            "seconds": 24.332,
+            "bytes": 651530,
+            "sha256": "0af11ad0311451b4093bba930daa752807a064ec925d08798c395220312adfe5"
+          },
+          {
+            "name": "final",
+            "command": [
+              "bash",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/final-build-home.sh",
+              "$TMPDIR/coax-golden-wasm-parity-6y90jj3d/newland/final/newland.wasm"
+            ],
+            "exit_code": 0,
+            "seconds": 34.559,
+            "bytes": 651530,
+            "sha256": "0af11ad0311451b4093bba930daa752807a064ec925d08798c395220312adfe5"
+          }
+        ],
+        "byte_identical": true
+      }
+    ],
+    "fairy": {
+      "scope": "Same current Fairy Forest sources, face, library order, Wasm build script and flags; only selected compiler differs. Temporary build-script copies fix repository root explicitly and override the two compiler invocations.",
+      "commit": "e6e6acabe75b6fbe191ee5fa0a325b9f718f2d74",
+      "wasm_script_sha256": "95e1fcaa4b04bd1b8e9f95013542f81c7b5dd7a94123b2d3720bf7a2e109e50b",
+      "builds": [
+        {
+          "name": "baseline",
+          "compiler": "/tmp/coax-audit-baseline/coax",
+          "compiler_sha256": "a571bae225011e8639919536254e7d8cacb313429ea948b63a24b43cdabb9d77",
+          "command": [
+            "bash",
+            "$TMPDIR/coax-fairy-wasm-parity-o5nol6md/baseline.sh",
+            "$REPO/apps/openagents-web/fairy.coax",
+            "$REPO/apps/openagents-web/fairy-face.c",
+            "$TMPDIR/coax-fairy-wasm-parity-o5nol6md/baseline/fairy.wasm",
+            "$REPO/verse/player.coax",
+            "$REPO/verse/grid.coax",
+            "$REPO/verse/fairy-forest/stream.coax"
+          ],
+          "exit_code": 0,
+          "seconds": 7.942,
+          "bytes": 633293,
+          "sha256": "8d7a0f97ae06ae5eda9052d666829884bc13deb62be34e90c0c39c400404cf79"
+        },
+        {
+          "name": "final",
+          "compiler": "$REPO/coax/bin/coax",
+          "compiler_sha256": "085a4724fe6821af574860427695b5b8e4aba594cacc8e70b1f619f749362134",
+          "command": [
+            "bash",
+            "$TMPDIR/coax-fairy-wasm-parity-o5nol6md/final.sh",
+            "$REPO/apps/openagents-web/fairy.coax",
+            "$REPO/apps/openagents-web/fairy-face.c",
+            "$TMPDIR/coax-fairy-wasm-parity-o5nol6md/final/fairy.wasm",
+            "$REPO/verse/player.coax",
+            "$REPO/verse/grid.coax",
+            "$REPO/verse/fairy-forest/stream.coax"
+          ],
+          "exit_code": 0,
+          "seconds": 7.657,
+          "bytes": 633293,
+          "sha256": "8d7a0f97ae06ae5eda9052d666829884bc13deb62be34e90c0c39c400404cf79"
+        }
+      ],
+      "source_sha256": {
+        "apps/openagents-web/fairy.coax": "993f00f98d901f27ac047765285d00fe98991322f11d6b0236ffeab600e55de0",
+        "apps/openagents-web/fairy-face.c": "648921566dd00af51399b0374ebdbdf12364b188c6ab2a7984340d59a8cc3d38",
+        "verse/player.coax": "905fca6ef9eb76731e15b85104d30868ed3fd4d5c5ea3a79e52a54b437bf0d3a",
+        "verse/grid.coax": "b5e88d88f65af8bf2ea77a845153657aa8459130ff611c86337e8a40f874cd7f",
+        "verse/fairy-forest/stream.coax": "fa2f3b7df105a5622a99b2d883407d288922a8cef78d591f52c19c4704d86b7f"
+      },
+      "byte_identical": true
+    },
+    "all_byte_identical": true
+  },
+  "golden_gate": {
+    "command": "coax/web/golden-check.sh --commit e6e6acabe75b6fbe191ee5fa0a325b9f718f2d74",
+    "outcome": "failed",
+    "exit_status": 1,
+    "failed_checks": 9,
+    "flagged_pages": [
+      "the-grid",
+      "fairy-forest",
+      "haunted-house",
+      "galaxy",
+      "sandbox",
+      "hecates-cemetery",
+      "home",
+      "home-phone"
+    ],
+    "confirmed_baseline_causes": [
+      "Haunt/Sandbox goldens predate the GALAXY button committed in cb48d0f0aa4.",
+      "Galaxy uses unpinned live staging planet responses.",
+      "Fairy wing phase advances with real frame time during golden capture."
+    ],
+    "goldens_modified": false,
+    "owner_decision": "pending; no waiver or task completion asserted"
+  }
 }
