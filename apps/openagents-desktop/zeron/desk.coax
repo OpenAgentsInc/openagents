@@ -32,7 +32,7 @@ DSK_HOST_NONE :: 0; DSK_HOST_PICK_FOLDER :: 1;
 // A session's status.
 DSK_IDLE :: 0; DSK_WORKING :: 1; DSK_WAITING :: 2; DSK_ERROR :: 3;
 // What a press is on.
-DSK_ON_NONE :: 0; DSK_ON_NEW :: 1; DSK_ON_ROW :: 2; DSK_ON_TAB :: 3; DSK_ON_EDGE :: 4;
+DSK_ON_NONE :: 0; DSK_ON_NEW :: 1; DSK_ON_ROW :: 2; DSK_ON_TAB :: 3; DSK_ON_EDGE :: 4; DSK_ON_ROOM :: 5;
 
 DskChat :: struct {
   s: [] ZeronState;
@@ -77,6 +77,9 @@ Desk :: struct {
   room_exe: [1024] u8; room_exe_n: int;     // the app's binary, which Codex runs as the room's MCP server
   room_sock: [1024] u8; room_sock_n: int;   // the host's socket it talks to
   outs: [DSK_OUTS] DskOut; nout: int;
+  room_shown: bool;         // the ROOM tab is shown instead of a session
+  room_scroll: f32;         // the room's list scrolled up from its newest, px
+  room_seen: int;           // the room's messages when it was last shown
 }
 
 dsk_init :: (k: [] Desk) {
@@ -102,6 +105,7 @@ dsk_tab_of :: (k: [] Desk, i: int) -> int { for t: 0..<k[0].ntabs { if k[0].tabs
 // Shows a session, opening its tab after the shown one's when it has none.
 dsk_show :: (k: [] Desk, i: int) {
   if i < 0 || i >= k[0].n { return; }
+  k[0].room_shown = false;
   if dsk_tab_of(k, i) < 0 && k[0].ntabs < DSK_MAX {
     at := dsk_tab_of(k, k[0].active) + 1;
     if at <= 0 || at > k[0].ntabs { at = k[0].ntabs; }
@@ -129,6 +133,7 @@ dsk_pick_tab :: (k: [] Desk, n: int) -> bool {
   if n < 1 || n > 9 || k[0].ntabs == 0 { return false; }
   t := ifx n == 9 || n > k[0].ntabs then k[0].ntabs - 1 else n - 1;
   if n != 9 && n > k[0].ntabs { return false; }
+  k[0].room_shown = false;
   k[0].active = k[0].tabs[t];
   dsk_reveal(k, k[0].active);
   return true;
@@ -451,7 +456,7 @@ dsk_tell :: (k: [] Desk, from: int, to: int, text: string) -> int {
   n := e_copy(buf[..], 0, "Note from "); n = e_copy(buf[..], n, dsk_agent_name(k, from, nb[..])); n = e_copy(buf[..], n, ": ");
   n = e_copy(buf[..], n, text);
   k[0].room[0].agents = k[0].n;
-  return rm_tell(k[0].room[..], from, to, cast(string) buf[0..<n]);
+  return rm_tell_as(k[0].room[..], from, to, text, cast(string) buf[0..<n]);
 }
 dsk_ask :: (k: [] Desk, from: int, to: int, text: string) -> int {
   k[0].room[0].agents = k[0].n;
@@ -469,6 +474,7 @@ dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f3
   // the chat's width: the window's less the sidebar, in device px (at least a column's worth)
   cw := width - side * d;
   if cw < 320 * d { cw = 320 * d; }
+  dsk_mentions(k);
   dsk_room(k);
   for i: 0..<k[0].n {
     s := k[0].chats[i].s;
@@ -477,10 +483,11 @@ dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f3
     if ss[0].live || ss[0].n != k[0].chats[i].seen_n { k[0].chats[i].active_at = k[0].clock; k[0].chats[i].seen_n = ss[0].n; }
   }
   s := dsk_chat(k);
-  v := zr_paint(s, out);
-  dsk_shift(out, 0, v, side * d);
   a := s[0].atlas[..];
+  v := 0;
+  if !k[0].room_shown { v = zr_paint(s, out); dsk_shift(out, 0, v, side * d); }
   if !a[0].ready { return v; }
+  if k[0].room_shown { v = dsk_paint_room(k, out, v, a); k[0].room_seen = k[0].room[0].seq; }
   dsk_sort(k);
   k[0].nhit = 0;
   if !k[0].collapsed { v = dsk_paint_sidebar(k, out, v, a); }
@@ -577,19 +584,38 @@ dsk_paint_tabs :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
   x0: f32 = DSK_LIGHTS;
   if !k[0].collapsed { x0 = k[0].width + DSK_PAD; }
   avail := k[0].w - x0 - DSK_PAD;
+  start := at;
   if k[0].ntabs == 0 || avail <= 0 { return at; }
+  // the ROOM tab, at the right end, once agents have said something to each other
+  if k[0].room[0].count > 0 {
+    v0 := start;
+    rw := text_width(a, FONT_CHIP, "ROOM") + 20;
+    unseen := k[0].room[0].seq > k[0].room_seen && !k[0].room_shown;
+    if unseen { rw += 14; }
+    rx := k[0].w - DSK_PAD - rw;
+    ry := round_layout((TITLEBAR_HEIGHT - DSK_TAB_H) / 2);
+    if k[0].room_shown || dsk_over(k, rx, ry, rw, DSK_TAB_H) {
+      v0 = paint_quad(out, v0, d, rx, ry, rw, DSK_TAB_H, 6, ifx k[0].room_shown then 1.0f32 else 0.0f32, rgba(1, 1, 1, ifx k[0].room_shown then 0.08f32 else 0.04f32), th.border);
+    }
+    v0 = paint_text(out, v0, a, d, FONT_CHIP, "ROOM", rx + 10, ry, DSK_TAB_H, ifx k[0].room_shown then th.text else th.muted);
+    if unseen { dot := 6.0f32; v0 = paint_quad(out, v0, d, rx + rw - 10 - dot, ry + (DSK_TAB_H - dot) / 2, dot, dot, dot / 2, 0, th.accent, th.accent); }
+    dsk_hit(k, DSK_ON_ROOM, -1, rx, ry, rw, DSK_TAB_H);
+    start = v0;
+    avail -= rw + 8;
+    if avail <= 0 { return start; }
+  }
   tw := avail / cast(f32) k[0].ntabs;
   if tw > DSK_TAB_MAX { tw = DSK_TAB_MAX; }
   if tw < DSK_TAB_MIN { tw = DSK_TAB_MIN; }
   tw = round_layout(tw);
   y := round_layout((TITLEBAR_HEIGHT - DSK_TAB_H) / 2);
-  v := at;
+  v := start;
   first := v;
   for t: 0..<k[0].ntabs {
     i := k[0].tabs[t];
     x := x0 + cast(f32) t * (tw + 4);
     if x >= x0 + avail { break; }
-    shown := i == k[0].active;
+    shown := i == k[0].active && !k[0].room_shown;
     hover := dsk_over(k, x, y, tw, DSK_TAB_H);
     if shown || hover {
       fill := rgba(1, 1, 1, ifx shown then 0.08f32 else 0.04f32);
@@ -649,10 +675,12 @@ dsk_pointer :: (k: [] Desk, x: f32, y: f32, phase: int, clicks: int, mods: int) 
         if h.kind == DSK_ON_NEW { k[0].host_action = DSK_HOST_PICK_FOLDER; }
         else if h.kind == DSK_ON_ROW || h.kind == DSK_ON_TAB { dsk_show(k, h.i); }
         else if h.kind == DSK_ON_EDGE { k[0].drag_x = k[0].lx; k[0].drag_w = k[0].width; }
+        else if h.kind == DSK_ON_ROOM { k[0].room_shown = true; k[0].room_scroll = 0; }
       }
       dsk_update_cursor(k);
       return false;
     }
+    if k[0].room_shown { k[0].chat_press = false; k[0].press = DSK_ON_NONE; return false; }
     k[0].chat_press = true; k[0].press = DSK_ON_NONE;
     return coaxial_zeron_pointer(s, x - side * d, y, phase, clicks, mods);
   }
@@ -666,7 +694,7 @@ dsk_pointer :: (k: [] Desk, x: f32, y: f32, phase: int, clicks: int, mods: int) 
   if phase == 2 && !k[0].chat_press { k[0].press = DSK_ON_NONE; dsk_update_cursor(k); return false; }
   took := false;
   // a move over the sidebar or the tabs is the desk's hover; the chat sees it only while it holds a press
-  if k[0].chat_press || (k[0].lx >= side && dsk_at(k, k[0].lx, k[0].ly) < 0) { took = coaxial_zeron_pointer(s, x - side * d, y, phase, clicks, mods); }
+  if k[0].chat_press || (!k[0].room_shown && k[0].lx >= side && dsk_at(k, k[0].lx, k[0].ly) < 0) { took = coaxial_zeron_pointer(s, x - side * d, y, phase, clicks, mods); }
   if phase == 2 { k[0].chat_press = false; }
   dsk_update_cursor(k);
   return took;
@@ -684,7 +712,97 @@ dsk_wheel :: (k: [] Desk, dy: f32) -> bool {
     if k[0].scroll > most { k[0].scroll = most; }
     return k[0].scroll != was;
   }
+  if k[0].room_shown { was := k[0].room_scroll; k[0].room_scroll += dy; if k[0].room_scroll < 0 { k[0].room_scroll = 0; } return k[0].room_scroll != was; }
   return coaxial_zeron_wheel(dsk_chat(k), dy);
+}
+// The ROOM tab: every message between agents, newest at the bottom, each its
+// from → to line (the harness marks, what it was) over its text, wrapped to
+// the chat's column. Scrolls with the wheel.
+DSK_ROOM_COL :: 736.0;
+DSK_ROOM_LINE :: 20.0;
+dsk_paint_room :: (k: [] Desk, out: [] f32, at: int, a: [] Atlas) -> int {
+  th := zeron_dark(); d := k[0].d; r := k[0].room[..];
+  side := dsk_side(k);
+  cw := k[0].w - side;
+  colw := ifx cw - 64 < DSK_ROOM_COL then cw - 64 else DSK_ROOM_COL;
+  x := round_layout(side + (cw - colw) / 2);
+  top: f32 = TITLEBAR_HEIGHT + 8;
+  y: f32 = k[0].h - 24 + k[0].room_scroll;
+  v := paint_quad(out, at, d, side, TITLEBAR_HEIGHT, cw, k[0].h - TITLEBAR_HEIGHT, 0, 0, th.shell, th.shell);
+  first := at;
+  kinds := [5] string.["", "asks", "tells", "answers", "cancels"];
+  nb: [64] u8; nb2: [64] u8; head: [256] u8;
+  m := r[0].count - 1;
+  while m >= 0 && y > top {
+    text := rm_text(r, m);
+    lines := dsk_wrap_count(a, FONT_INPUT, text, colw);
+    hgt := 22 + cast(f32) lines * DSK_ROOM_LINE + 18;
+    y -= hgt;
+    if y + hgt < top - 200 { break; }
+    from := rm_from(r, m); to := rm_to(r, m);
+    hx := x;
+    if from >= 0 && from < k[0].n { v = paint_icon(out, v, a, d, dsk_mark(k, from), hx, y + 4, DSK_MARK, DSK_MARK, dsk_mark_tint(k, from)); hx += DSK_MARK + 6; }
+    hn := e_copy(head[..], 0, dsk_agent_name(k, from, nb[..])); hn = e_copy(head[..], hn, " → "); hn = e_copy(head[..], hn, dsk_agent_name(k, to, nb2[..]));
+    hn = e_copy(head[..], hn, " · "); hn = e_copy(head[..], hn, kinds[rm_kind(r, m)]);
+    v = paint_text(out, v, a, d, FONT_CHIP, cast(string) head[0..<hn], hx, y, 22, th.muted);
+    v = dsk_paint_wrapped(out, v, a, d, FONT_INPUT, text, x, y + 22, colw, th.text);
+    m -= 1;
+  }
+  gp_clip(out, first, v, d, side, TITLEBAR_HEIGHT, cw, k[0].h - TITLEBAR_HEIGHT);
+  // scrolled past the oldest: hold there
+  if m < 0 && y > top && k[0].room_scroll > 0 { k[0].room_scroll -= y - top; if k[0].room_scroll < 0 { k[0].room_scroll = 0; } }
+  return v;
+}
+// Text broken at spaces (and its own newlines) to fit w: the lines it takes, and painted.
+dsk_wrap_count :: (a: [] Atlas, font: int, text: string, w: f32) -> int { none: [1] f32; return dsk_wrap(a, font, text, w, none[..], 0, 0, 0, 0, Rgba.{}, false).lines; }
+DskWrap :: struct { lines: int; v: int; }
+dsk_paint_wrapped :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: string, x: f32, y: f32, w: f32, color: Rgba) -> int {
+  return dsk_wrap(a, font, text, w, out, at, d, x, y, color, true).v;
+}
+dsk_wrap :: (a: [] Atlas, font: int, text: string, w: f32, out: [] f32, at: int, d: f32, x: f32, y: f32, color: Rgba, paint: bool) -> DskWrap {
+  r := DskWrap.{lines = 0, v = at};
+  space := text_width(a, font, " ");
+  start := 0; lw: f32 = 0; i := 0; last_end := 0;
+  while i <= text.count {
+    if i == text.count || text[i] == ' ' || text[i] == '\n' {
+      ww := text_width(a, font, cast(string) text[last_end..<i]);
+      if lw > 0 && lw + ww > w {
+        // the line ends before this word
+        if paint { r.v = paint_text(out, r.v, a, d, font, cast(string) text[start..<last_end], x, y + cast(f32) r.lines * DSK_ROOM_LINE, DSK_ROOM_LINE, color); }
+        r.lines += 1;
+        start = last_end; while start < i && text[start] == ' ' { start += 1; }
+        lw = text_width(a, font, cast(string) text[start..<i]);
+      } else { lw += ww; }
+      if i == text.count || text[i] == '\n' {
+        if paint { r.v = paint_text(out, r.v, a, d, font, cast(string) text[start..<i], x, y + cast(f32) r.lines * DSK_ROOM_LINE, DSK_ROOM_LINE, color); }
+        r.lines += 1;
+        start = i + 1; lw = 0;
+        last_end = i + 1; i += 1;
+        continue;
+      }
+      last_end = i;
+    }
+    i += 1;
+  }
+  if r.lines == 0 { r.lines = 1; }
+  return r;
+}
+// @mentions: a line the person sent that starts with @ and an agent's name goes to that agent as a note (tell_agent) from the session it was typed in.
+dsk_mentions :: (k: [] Desk) {
+  nb: [64] u8;
+  for i: 0..<k[0].n {
+    s := k[0].chats[i].s;
+    // the names the chat's send looks for
+    nn := 0;
+    for j: 0..<k[0].n { if j != i { nn = e_copy(s[0].names[..], nn, dsk_agent_name(k, j, nb[..])); nn = e_copy(s[0].names[..], nn, "\n"); } }
+    s[0].names_n = nn;
+    while s[0].ntells > 0 {
+      s[0].ntells -= 1;
+      t := s[0].ntells;
+      to := dsk_agent(k, cast(string) s[0].tell_to[t][0..<s[0].tell_to_n[t]]);
+      if to >= 0 { got := dsk_tell(k, i, to, cast(string) s[0].tell_text[t][0..<s[0].tell_text_n[t]]); }
+    }
+  }
 }
 // A key the desk binds: Cmd+1..9 and Cmd+S; Shift+Up/Down while the composer is empty.
 dsk_key :: (k: [] Desk, key: int, mods: int) -> bool {
@@ -795,6 +913,8 @@ coaxial_room_mcp_result :: (reply: string, out: [] u8) -> int #export_c {
   cl_put(w[..], "}");
   return w[0].len;
 }
+coaxial_desk_room_shown :: (k: [] Desk) -> bool #export_c { return k.count > 0 && k[0].room_shown; }
+coaxial_desk_show_room :: (k: [] Desk) #export_c { if k.count > 0 && k[0].room[0].count > 0 { k[0].room_shown = true; k[0].room_scroll = 0; } }
 coaxial_desk_quit :: (k: [] Desk) #export_c {
   if k.count < 1 { return; }
   for i: 0..<k[0].n { coaxial_zeron_quit(k[0].chats[i].s); }
@@ -1020,3 +1140,39 @@ dsk_test_chat :: (s: [] ZeronState) { zr_test_screen(s); }
   #assert cast(string) res[0..<m] == "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Yes, green.\"}]}}";
 }
 cl_str_is :: (text: string, path: string, want: string) -> bool { abuf: [4096] u8; ar: [1] ClArena; ar[0].buf = abuf[..]; return cl_str(ar[..], text, path) == want; }
+
+#test "the ROOM tab and @mentions: a line to another agent becomes its note, the room shows it, and a press on ROOM shows the room" {
+  k: [1] Desk;
+  a: [1] ZeronState; b: [1] ZeronState;
+  dsk_test_chat(a[..]); dsk_test_chat(b[..]);
+  out: [200000] f32;
+  i := dsk_add(k[..], a[..], "/w/one"); i = dsk_add(k[..], b[..], "/w/two");
+  n := dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  // no messages yet: no ROOM tab
+  for j: 0..<k[0].nhit { #assert k[0].hits[j].kind != DSK_ON_ROOM; }
+  #assert zr_send(a[..], "@claude 2: the tests pass on main\nship it");
+  as := a[0].session[..];
+  #assert s_text_of(as, as[0].n - 1) == "ship it" && a[0].ntells == 1;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert k[0].room[0].count == 1 && rm_kind(k[0].room[..], 0) == RM_TELL && rm_text(k[0].room[..], 0) == "the tests pass on main" && cast(string) b[0].preface[0..<b[0].preface_n] == "Note from Claude 1: the tests pass on main";
+  #assert b[0].preface_n > 0;
+  // only a mention: it stays in the transcript, no turn
+  s_turn_end(as, false, "");
+  #assert zr_send(a[..], "@Claude 2 and the docs") && !as[0].live && k[0].room[0].count == 1;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert k[0].room[0].count == 2;
+  room := -1;
+  for j: 0..<k[0].nhit { if k[0].hits[j].kind == DSK_ON_ROOM { room = j; } }
+  #assert room >= 0;
+  h := k[0].hits[room];
+  took := dsk_pointer(k[..], (h.x + 4) * 2, (h.y + 4) * 2, 0, 1, 0);
+  #assert k[0].room_shown;
+  n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
+  #assert n > 0 && k[0].room_seen == k[0].room[0].seq;
+  // a session's tab shows it again
+  #assert dsk_key(k[..], '1', MOD_CMD) && !k[0].room_shown;
+  // wrapping: a long line takes more than one
+  #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "word word word word word word word word word word", 100) > 1;
+  #assert dsk_wrap_count(a[0].atlas[..], FONT_INPUT, "one\ntwo", 1000) == 2;
+}

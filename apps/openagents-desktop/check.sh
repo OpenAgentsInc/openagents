@@ -36,6 +36,8 @@ cases=(
   "approval-allow|2640,1760|access supervised ; send list the files ; wait 2 ; answer allow ; waitidle 10 ; status ; last|last: Allowed: ls found a.txt and b.txt.|$asks"
   "approval-deny|2640,1760|access supervised ; send list the files ; wait 2 ; answer deny ; waitidle 10 ; last|last: Refused: The user denied this.|$asks"
   "room-ask|2640,1760|wait 1 ; folder $home/work/zeron ; mode codex ; wait 1 ; keyevent cmd+1 ; send Ask Codex to review the diff ; waitidle 15 ; wait 1 ; last|last: Codex reviewed it: Review: the diff renames a to b; it reads well. (80 chars read)|$room"
+  "room-tab|2640,1760|wait 1 ; folder $home/work/zeron ; mode codex ; wait 1 ; keyevent cmd+1 ; send @Codex 1 the tests pass on main ; send Ask Codex to review the diff ; waitidle 15 ; wait 1 ; room ; wait 0.5||$room"
+  "room-target|2640,1760|wait 1 ; folder $home/work/zeron ; mode codex ; wait 1 ; keyevent cmd+1 ; send @Codex 1 the tests pass on main ; send Ask Codex to review the diff ; waitidle 15 ; wait 1 ; keyevent cmd+2 ; wait 0.5||$room"
   "room-codex-asks|2640,1760|wait 1 ; folder $home/work/zeron ; mode codex ; wait 1 ; send Ask Claude whether the build is green ; waitidle 20 ; wait 1 ; last|last: Claude says: The build is green. (tools: agents_list, ask_agent, tell_agent, room_read)|$room"
   "settings-quit|2640,1760|$three ; menu Toggle Sidebar ; keyevent cmd+1 ; menu Close Tab ; desk|desk: active=1 tabs=1,2 sessions=3 collapsed=1|$so|--settings $out/settings.json"
   "settings-reopen|2640,1760|wait 1 ; desk ; window|desk: active=1 tabs=1,2 sessions=3 collapsed=1|$so|--settings $out/settings.json"

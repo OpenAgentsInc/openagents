@@ -129,13 +129,15 @@ rm_error :: (code: int) -> string {
 }
 
 // tell_agent: queued for the agent's next turn; returns at once.
-rm_tell :: (r: [] Room, from: int, to: int, text: string) -> int {
+rm_tell :: (r: [] Room, from: int, to: int, text: string) -> int { return rm_tell_as(r, from, to, text, text); }
+// The same, the room logging text and the agent's next turn reading note.
+rm_tell_as :: (r: [] Room, from: int, to: int, text: string, note: string) -> int {
   if from < 0 || to < 0 || from >= r[0].agents || to >= r[0].agents || to >= 64 { return RM_ERR_AGENT; }
   if from == to { return RM_ERR_SELF; }
   rm_log(r, RM_TELL, from, to, -1, text);
   k := r[0].notes[to].n;
   if k > 0 { k = rm_copy(r[0].notes[to].text[..], k, "\n\n"); }
-  k = rm_copy(r[0].notes[to].text[..], k, text);
+  k = rm_copy(r[0].notes[to].text[..], k, note);
   r[0].notes[to].n = k;
   return 0;
 }

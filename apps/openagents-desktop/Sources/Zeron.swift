@@ -593,6 +593,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "newchat": zr_new_chat(state)
     case "folder": newSession(cwd: (arg as NSString).expandingTildeInPath)   // a new session in that folder, as the folder picker makes it
     case "sidebar": dsk_toggle(desk)
+    case "room": dsk_show_room(desk)
     case "window": print("window: " + (savedFrame().map { "\(Int($0.width))x\(Int($0.height)) at \(Int($0.origin.x)),\(Int($0.origin.y))" } ?? "none"))
     case "answer": if zr_answer(state, arg == "allow" ? 1 : 0) == 0 { print("answer: nothing is asking") }   // the asking notice's Allow or Deny, as a press on it
     case "status", "last":   // the status strip's words; the conversation's last text
@@ -738,6 +739,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   }
   override func keyDown(with e: NSEvent) {
     if !hasMarkedText(), deskKey(code: ZeronView.named[e.keyCode] ?? 0, char: e.charactersIgnoringModifiers, mods: mods(e)) { needsDisplay = true; return }
+    if dsk_room_shown(desk) != 0 { return }   // the ROOM tab takes no typing
     guard zr_wants_text(state) != 0 else {
       // unfocused: Zeron's composer only takes keys when focused; Copy and Select All reach the transcript
       if e.modifierFlags.contains(.command), let c = e.charactersIgnoringModifiers?.lowercased() {

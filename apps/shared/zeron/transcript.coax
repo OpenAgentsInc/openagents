@@ -378,7 +378,15 @@ lay_user :: (t: [] Transcript, a: [] Atlas, th: Theme, r: int, x: f32, y: f32, w
   inner := maxw - 2 * BUBBLE_PAD_X;
   no_runs: [1] MdRun;
   lines: [64] MdLine;
-  n := md_wrap(a, text, no_runs[0..<0], inner, false, lines[..]);
+  // each line the person typed wraps on its own (md_wrap does not break at a newline)
+  n := 0; lq := 0;
+  while lq <= text.count && n < lines.count {
+    e := lq; while e < text.count && text[e] != '\n' { e += 1; }
+    part: [64] MdLine;
+    m := md_wrap(a, cast(string) text[lq..<e], no_runs[0..<0], inner, false, part[..]);
+    for j: 0..<m { if n < lines.count { lines[n] = MdLine.{from = part[j].from + lq, to = part[j].to + lq}; n += 1; } }
+    lq = e + 1;
+  }
   tw := ifx n > 1 then inner else ceil(text_width(a, FONT_INPUT, text));
   bw := tw + 2 * BUBBLE_PAD_X;
   h := cast(f32) n * MD_LINE_HEIGHT + 2 * BUBBLE_PAD_Y;

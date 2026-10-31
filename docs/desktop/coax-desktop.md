@@ -312,7 +312,8 @@ transcript at 1320x880 and at the 900x600 minimum, and typing, Copy and Paste
 in the composer; the app with claude off PATH, and with a logged-out Claude
 Code, the stand-in `zeron/fixtures/signed-out/claude` answering as 2.1.316
 does; three sessions in two folders with the sidebar open at 1320x880 and
-900x600, a quit and reopen with `--settings` (the tabs, the shown session
+900x600, Sonnet picked in the composer streaming its answer (the stand-in
+`zeron/fixtures/stream/claude` names the model it was switched to), a quit and reopen with `--settings` (the tabs, the shown session
 and the collapsed sidebar come back), Claude asking Codex for a review through the room, a Supervised turn that asks to run `ls` (the stand-in
 `zeron/fixtures/asks/claude`) waiting, then allowed and denied, with the
 agent's answer read from the `last` step, and a scripted run of Cmd+1, Shift+Down/Up, Close Tab, Toggle
@@ -459,6 +460,19 @@ app's Unix socket (`$TMPDIR/oa-room-PID.sock`, mode 600,
 and writes back the one-line answer. check.sh's `room-codex-asks` has a
 stand-in Codex run that server from its thread config and ask Claude
 Code; Claude's answer comes back as Codex's tool result.
+
+Built (2026-10-31, the ROOM tab): once agents have said something to each
+other a ROOM tab sits at the right end of the tabs (a dot while it has
+messages you haven't seen). It lists every message, newest at the bottom,
+each its from → to line with the sender's mark and what it was (asks,
+tells, answers, cancels) over its text, wrapped to the chat's column; the
+wheel scrolls it and a session's tab or row goes back. A line you send that
+starts with `@` and another agent's name (`@Codex 1 the tests pass on
+main`, any case, a colon or comma allowed) goes to that agent as a note
+from the session you typed in; the rest of the message goes on as usual,
+and a message that is only notes stays in your transcript without starting
+a turn. The asked agent's transcript shows the ask as its message ("Ask
+from Claude 1 …"), the asker's shows the room tool call.
 
 ### The UI, first version
 

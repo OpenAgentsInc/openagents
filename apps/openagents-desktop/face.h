@@ -118,6 +118,8 @@ int32_t dsk_room_line(void *desk, int32_t conn, const uint8_t *line, int32_t n);
 int32_t dsk_room_out(void *desk, int32_t *conn, uint8_t *out, int32_t cap);
 int32_t room_mcp(const uint8_t *line, int32_t n, int32_t agent, uint8_t *out, int32_t cap, int32_t *len);
 int32_t room_mcp_result(const uint8_t *reply, int32_t n, uint8_t *out, int32_t cap);
+int32_t dsk_room_shown(void *desk);
+void dsk_show_room(void *desk);
 void *ds_new(void);
 int32_t ds_save(void *desk, float x, float y, float w, float h, uint8_t *out, int32_t cap);
 int32_t ds_load(void *g, void *desk, const uint8_t *json, int32_t n);

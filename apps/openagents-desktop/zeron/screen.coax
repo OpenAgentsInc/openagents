@@ -58,6 +58,9 @@ ZeronState :: struct {
   host_action: int;              // HOST_*, until the host takes it
   preface: [4096] u8; preface_n: int;   // notes from other agents (the room's tell_agent), put before the next message sent
   stops: int;                    // STOPs pressed (the desk cancels the room's asks on each)
+  // @mentions (desk.coax dsk_mentions): the other agents' names, one a line; the notes a message carried for them
+  names: [1024] u8; names_n: int;
+  tell_to: [4][64] u8; tell_to_n: [4] int; tell_text: [4][2000] u8; tell_text_n: [4] int; ntells: int;
   own_pool: [3072] u8;           // the conversation's text until the host attaches its pool (3 KiB: the checks run at the compile-time aggregate limit)
   // the mode, and the Psionic engine with its buffers
   mode: int;                     // MODE_*
@@ -179,6 +182,28 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
   while lo < hi && (raw[lo] == ' ' || raw[lo] == '\n') { lo += 1; }
   while hi > lo &&  (raw[hi - 1] == ' ' || raw[hi - 1] == '\n') { hi -= 1; }
   text := cast(string) raw[lo..<hi];
+  // lines that start with @ and another agent's name go to it as notes; the rest goes on
+  kept: [65536] u8;
+  if s[0].names_n > 0 && text.count < kept.count {
+    kn := 0; any := false; q := 0;
+    while q < text.count {
+      e := q; while e < text.count && text[e] != '\n' { e += 1; }
+      line := cast(string) text[q..<e];
+      took := false;
+      if line.count > 1 && line[0] == '@' { took = zr_mention(s, cast(string) line[1..<line.count]); }
+      if took { any = true; }
+      else { if kn > 0 { kn = e_copy(kept[..], kn, "\n"); } kn = e_copy(kept[..], kn, line); }
+      q = e + 1;
+    }
+    if any {
+      if kn == 0 {
+        // only notes: the line stays in this transcript, and no turn starts
+        s_user(s[0].session[..], text); s_turn_end(s[0].session[..], false, "");
+        return true;
+      }
+      text = cast(string) kept[0..<kn];
+    }
+  }
   // notes other agents left go first, so the agent reads them with the message (and both are seen)
   joined: [65536] u8;
   if s[0].preface_n > 0 && s[0].preface_n + 2 + text.count <= joined.count {
@@ -217,6 +242,26 @@ zr_send :: (s: [] ZeronState, raw: string) -> bool {
   if s[0].mode == MODE_CODEX { cxe_send_as(s[0].codex, s[0].session[..], text, at_prompt(t, a, text, s[0].prompt[..])); return true; }
   e_send_as(s[0].engine[..], s[0].session[..], text, at_prompt(t, a, text, s[0].prompt[..]));
   return true;
+}
+// "@Codex 1 check the tests": when the line starts with another agent's name (any case), its note is queued for the desk.
+zr_mention :: (s: [] ZeronState, rest: string) -> bool {
+  names := cast(string) s[0].names[0..<s[0].names_n];
+  q := 0;
+  while q < names.count {
+    e := q; while e < names.count && names[e] != '\n' { e += 1; }
+    name := cast(string) names[q..<e];
+    if name.count > 0 && rest.count >= name.count && zr_same(cast(string) rest[0..<name.count], name) && (rest.count == name.count || rest[name.count] == ' ' || rest[name.count] == ':' || rest[name.count] == ',') {
+      if s[0].ntells >= 4 { return false; }
+      b := name.count; while b < rest.count && (rest[b] == ' ' || rest[b] == ':' || rest[b] == ',') { b += 1; }
+      t := s[0].ntells;
+      s[0].tell_to_n[t] = e_copy(s[0].tell_to[t][..], 0, name);
+      s[0].tell_text_n[t] = e_copy(s[0].tell_text[t][..], 0, cast(string) rest[b..<rest.count]);
+      s[0].ntells += 1;
+      return true;
+    }
+    q = e + 1;
+  }
+  return false;
 }
 // The notice above the composer (an attachment that could not be staged or sent).
 zr_fail :: (s: [] ZeronState, why: string) {
