@@ -1,0 +1,135 @@
+// Record a clip of a Coaxial page in headless Chrome: every frame drawn at a fixed
+// step of game time (host.js clip mode), captured one by one, then encoded with ffmpeg.
+// Nothing opens on screen and no sound plays.
+//   coax/web/tool.sh clip URL OUT.mp4 [--size 1280x720] [--seconds 3] [--fps 30]
+//       [--skip SECONDS] [--eval JS] [--frames DIR]
+// --skip runs that much game time first without capturing (the lead-up to the moment);
+// --eval runs a script once the page has started, before the skip (a staged moment's inputs).
+// --frames keeps the PNG frames (f00000.png, ...) in DIR.
+// A page stages its own moments from its URL (?stage=NAME): see docs/verse/clips.md.
+#import "Basic";
+#load "../lib/net/cdp.coax";
+
+CLIP_PNG :: 25165824;   // the largest frame, 24 MiB
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  url := args_at(a[..], 0); out := args_at(a[..], 1);
+  if !ok || url.count == 0 || out.count == 0 || (url.count >= 2 && url[0] == '-' && url[1] == '-') {
+    tool_errln("usage: coax/web/tool.sh clip URL OUT.mp4 [--size WxH] [--seconds S] [--fps N] [--skip S] [--eval JS] [--frames DIR]");
+    return 2;
+  }
+  wh := args_size(args_value(a[..], "--size", "1280x720"));
+  seconds := args_number(args_value(a[..], "--seconds", "3"));
+  // the rate goes to the page and to ffmpeg as it was written
+  fps_text := ws_trim(args_value(a[..], "--fps", "30"));
+  fps := args_number(fps_text);
+  skip := args_number(args_value(a[..], "--skip", "0"));
+  script := args_value(a[..], "--eval", "");
+  if !wh.ok || !seconds.ok || !fps.ok || !skip.ok || fps.value <= 0.0 {
+    tool_errln("clip: --size is WxH and --seconds, --fps, --skip are numbers");
+    return 2;
+  }
+  keep := args_has(a[..], "--frames");
+  dirbuf: [4096] u8;
+  frames := args_value(a[..], "--frames", "");
+  if frames.count == 0 { frames = fs_temp("coax-clip-frames-", dirbuf[..]); }
+  if frames.count == 0 || !fs_mkdir(frames) { tool_errln("clip: could not make the frames directory"); return 1; }
+
+  c: [1] Cdp;
+  failed := "";
+  if !cdp_launch(c[..], wh.w, wh.h, "coax-clip-") { failed = cdp_error(c[..]); }
+  else { failed = record(c[..], url, wh, seconds.value, fps.value, fps_text, skip.value, script, frames); }
+  // the error text lives in c, which closing keeps
+  if failed.count > 0 { tool_err("clip: "); tool_errln(failed); cdp_close(c[..]); return 1; }
+  cdp_close(c[..]);
+
+  pattern: [4200] u8;
+  argv := [17] string.["ffmpeg", "-v", "error", "-y", "-framerate", fps_text, "-i", fs_join(frames, "f%05d.png", pattern[..]),
+                       "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", "-movflags", "+faststart", out];
+  so: [65536] u8; se: [65536] u8;
+  enc := proc_run(argv[..], -1, so[..], se[..]);
+  if enc.started != 0 || enc.status != 0 {
+    tool_err("clip: ffmpeg failed: "); tool_errln(cast(string) se[0..<enc.err_n]);
+    return 1;
+  }
+  if !keep { gone := fs_remove(frames); }
+  print("%\n", out);
+  return 0;
+}
+
+// Loads the page in clip mode, waits until it draws, runs the script and the
+// skip, and writes each frame as a PNG. "" when it worked, else what failed.
+record :: (c: [] Cdp, url: string, wh: ArgsSize, seconds: f64, fps: f64, fr: string, skip: f64, script: string, frames: string) -> string {
+  params: [8192] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], wh.w); jo_key(o[..], "height"); jo_int(o[..], wh.h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], 1); jo_key(o[..], "mobile"); jo_bool(o[..], wh.w < 600); jo_end(o[..]);
+  if cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) < 0 { return cdp_error(c); }
+  if cdp_call(c, "Emulation.setFocusEmulationEnabled", "{\"enabled\":true}", CDP_CALL_MS) < 0 { return cdp_error(c); }
+  if cdp_call(c, "Runtime.enable", "", CDP_CALL_MS) < 0 { return cdp_error(c); }
+  // Page.enable comes before the scripts: without it they do not run on the next document.
+  if cdp_call(c, "Page.enable", "", CDP_CALL_MS) < 0 { return cdp_error(c); }
+  if cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"globalThis.coaxialClip = true\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
+  // a clip never counts as a visit
+  if cdp_call(c, "Page.addScriptToEvaluateOnNewDocument", "{\"source\":\"Object.defineProperty(Navigator.prototype, 'sendBeacon', { value: () => false })\"}", CDP_CALL_MS) < 0 { return cdp_error(c); }
+  jo_start(o[..], params[..]); jo_obj(o[..]); jo_key(o[..], "url"); jo_str(o[..], url); jo_end(o[..]);
+  if o[0].bad { return "the URL is too long"; }
+  if cdp_call(c, "Page.navigate", jo_text(o[..]), CDP_CALL_MS) < 0 { return cdp_error(c); }
+  // Ready when a step draws and the loading card is gone. Until then each step is a
+  // thousandth of a millisecond of game time, so loading never eats the lead-up.
+  up := false;
+  for i: 0..<600 {
+    proc_sleep(100);
+    v := cdp_evaluate(c, "typeof coaxialClipStep === 'function' ? coaxialClipStep(1, 1e6).then(d => d && !document.getElementById('coaxial-load')) : false");
+    if jv_kind(cdp_doc(c), v) == JV_TRUE { up = true; break; }
+  }
+  if !up { return "the page never finished loading (no WebGPU, or the engine failed)"; }
+  if script.count > 0 { v := cdp_evaluate(c, script); }
+  expr: [128] u8;
+  left := clip_round(skip * fps);
+  while left > 0 {
+    k := ifx left < 30 then left else 30;
+    v := cdp_evaluate(c, clip_step(k, fr, expr[..]));
+    left -= 30;
+  }
+  total := clip_round(seconds * fps);
+  one := clip_step(1, fr, expr[..]);
+  png: [CLIP_PNG] u8; name: [16] u8; path: [4200] u8;
+  for i: 0..<total {
+    v := cdp_evaluate(c, one);
+    n := cdp_screenshot(c, png[..]);
+    if n < 0 { return cdp_error(c); }
+    if !fs_write(fs_join(frames, clip_frame_name(i, name[..]), path[..]), cast(string) png[0..<n]) { return "could not write a frame"; }
+  }
+  return "";
+}
+
+#test "rounding, numbers and frame names as clip.ts made them" {
+  #assert clip_round(1.5 * 30.0) == 45 && clip_round(2.5) == 3 && clip_round(-2.5) == -2 && clip_round(0.49) == 0 && clip_round(0.0) == 0;
+  #assert clip_round(3.0 * 30.0) == 90 && clip_round(6.0 * 30.0) == 180;
+  name: [16] u8;
+  #assert clip_frame_name(0, name[..]) == "f00000.png" && clip_frame_name(1234, name[..]) == "f01234.png" && clip_frame_name(123456, name[..]) == "f123456.png";
+  e: [128] u8;
+  #assert clip_step(30, "30", e[..]) == "coaxialClipStep(30, 30)" && clip_step(1, "24", e[..]) == "coaxialClipStep(1, 24)";
+}
+// Math.round: halves go up.
+clip_round :: (x: f64) -> int { return int(floor(x + 0.5)); }
+clip_frame_name :: (i: int, out: [] u8) -> string {
+  digits: [16] u8;
+  k := ws_digits(digits[..], 0, i);
+  n := ws_put(out, 0, "f");
+  for z: k..<5 { n = ws_put(out, n, "0"); }
+  n = ws_put(out, n, cast(string) digits[0..<k]);
+  n = ws_put(out, n, ".png");
+  return cast(string) out[0..<n];
+}
+clip_step :: (k: int, fps: string, out: [] u8) -> string {
+  n := ws_put(out, 0, "coaxialClipStep(");
+  n = ws_digits(out, n, k);
+  n = ws_put(out, n, ", ");
+  n = ws_put(out, n, fps);
+  n = ws_put(out, n, ")");
+  return cast(string) out[0..<n];
+}

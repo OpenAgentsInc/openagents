@@ -1321,7 +1321,7 @@ const drawn = (deviceWidth) => {
 const scale = () => (canvas.width && canvas.clientWidth ? canvas.width / canvas.clientWidth : devicePixelRatio || 1);
 
 // ---- the frame
-// Clip mode (clip.ts sets coaxialClip before the page loads): the page draws only when
+// Clip mode (clip.coax sets coaxialClip before the page loads): the page draws only when
 // coaxialClipStep says so, each frame one fixed step of game time, so a recording has
 // every frame at its exact moment however slowly the machine draws or captures.
 const clipping = globalThis.coaxialClip === true;

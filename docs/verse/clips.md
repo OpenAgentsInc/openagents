@@ -5,7 +5,7 @@ realm, a feature being shown off, or a moment a player really had.
 
 ## The pieces
 
-1. **The recorder** (`coax/web/clip.ts`). Headless Chrome with WebGPU, no
+1. **The recorder** (`coax/web/clip.coax`, a Coax tool). Headless Chrome with WebGPU, no
    window, no sound. Host.js has a clip mode (`coaxialClip`): the page draws
    only when told, and every frame is one fixed step of game time. The
    recorder steps a frame, captures it, and repeats, then encodes with ffmpeg.
@@ -13,11 +13,13 @@ realm, a feature being shown off, or a moment a player really had.
    inputs give the same clip.
 
    ```shell
-   bun coax/web/clip.ts URL OUT.mp4 --size 1280x720 --seconds 3 --skip 6
+   coax/web/tool.sh clip URL OUT.mp4 --size 1280x720 --seconds 3 --skip 6
    ```
 
    `--skip` runs game time without capturing (the lead-up); `--eval` runs a
    script before it (inputs, camera); `--frames DIR` keeps the PNGs.
+   `tool.sh` builds the recorder on first use (the Coax compiler and a C
+   compiler); it needs Chrome and ffmpeg.
 2. **Staged moments** (`?stage=NAME` in the page's URL). Each game knows its
    own best moments and can set one up from a seed: positions, velocities,
    the camera, the bot's plan. A stage is game code with a test, so it keeps
@@ -41,7 +43,7 @@ realm, a feature being shown off, or a moment a player really had.
 
 ## Next
 
-- Inputs on a timeline in `clip.ts` (key and pointer events at frame
+- Inputs on a timeline in `clip.coax` (key and pointer events at frame
   numbers), so a clip can be "played" without touching game code.
 - A director: simulate N seeds, score each second, cut the top three.
 - Replay logs for the deterministic games, then "clip that" from a session.
