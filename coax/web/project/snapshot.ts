@@ -12,6 +12,7 @@
 // here signs: it reads public events only.
 import { neventEncode, npubEncode } from "nostr-effect/nip19"
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs"
+import { writeChanged } from "../write-changed"
 import { join } from "node:path"
 import { Relay } from "./relay"
 import { firstAsk, linkTable, secondAsk, stillNeeded } from "./links"
@@ -225,7 +226,7 @@ if (finished.length) {
   line()
 }
 if (f.issues.length === 0) line(`No tasks are published yet.\n`)
-writeFileSync(join(dir, "index.md"), md.join("\n"))
+writeChanged(join(dir, "index.md"), md.join("\n"), /^Snapshot of the project's Nostr events taken /)
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 // The hidden text: the name and where the tasks are. Nothing else; the page
@@ -240,5 +241,5 @@ if (!existsSync(page)) { console.log(`snapshot ${chicago(at)}: ${f.issues.length
 const text = readFileSync(page, "utf8")
 const a = text.indexOf("<!-- snapshot -->"), b = text.indexOf("<!-- /snapshot -->")
 if (a < 0 || b < a) { console.error("snapshot: index.html has no <!-- snapshot --> markers"); process.exit(1) }
-writeFileSync(page, text.slice(0, a + "<!-- snapshot -->".length) + "\n" + html + "\n" + text.slice(b))
+writeChanged(page, text.slice(0, a + "<!-- snapshot -->".length) + "\n" + html + "\n" + text.slice(b))
 console.log(`snapshot ${chicago(at)}: ${f.issues.length} items (${working.length} in progress, ${ready.length} ready, ${waiting.length} waiting, ${finished.length} done, ${activity.length} activity), order ${f.order ? "kind " + KIND_ORDER : "none"}`)

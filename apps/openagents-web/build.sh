@@ -140,15 +140,15 @@ wait "$list"
 python3 "$here/../../coax/web/nip-shader.py" "$here/splash.wgsl" "$here/nip01.wgsl"
 "$here/../../coax/web/wasm.sh" "$here/nip01.coax" "$here/nip01-face.c" "$here/build/nip01.wasm" "$here/nip01-verify.coax" &
 nip01=$!
-cp "$here/nip01.wgsl" "$here/nip-guide.wgsl"
+cmp -s "$here/nip01.wgsl" "$here/nip-guide.wgsl" || cp "$here/nip01.wgsl" "$here/nip-guide.wgsl"   # generated, ignored; only on a change
 "$here/../../coax/web/wasm.sh" "$here/nip-guide.coax" "$here/nip-guide-face.c" "$here/build/nip-guide.wasm" "$here/nip-guide-observe.coax" &
 nip_guide=$!
 # /pylon: read-only live Pylon network, shared checked Coax verifier.
-cp "$here/nip01.wgsl" "$here/pylon.wgsl"
+cmp -s "$here/nip01.wgsl" "$here/pylon.wgsl" || cp "$here/nip01.wgsl" "$here/pylon.wgsl"
 "$here/../../coax/web/wasm.sh" "$here/pylon.coax" "$here/pylon-face.c" "$here/build/pylon.wasm" "$here/../../coax/web/project/landing-nostr.coax" &
 pylon=$!
 # Keep the public join command identical to the tested source, never a fork.
-cp "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh"
+cmp -s "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh" || cp "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh"
 # /realms: every listed realm as a list and a grid of towers (realms/list.coax, written by realms.ts).
 "$here/../../coax/web/wasm.sh" "$here/realmlist.coax" "$here/realmlist-face.c" "$here/build/realmlist.wasm" &
 realmlist=$!
