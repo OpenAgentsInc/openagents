@@ -718,11 +718,11 @@ fn coax_p_BELT_GREY_LIGHT() -> vec3f {
 fn coax_p_BELT_ACCENT() -> vec3f {
   return coax_p_v3(0x1.ba5e36p-3f, 0x1.b3b646p-1f, 0x1.b3b646p-1f);
 }
-fn coax_p_clampf(p_x: f32, p_lo: f32, p_hi: f32) -> f32 {
+fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   var l_x: f32 = p_x;
-  var l_lo: f32 = p_lo;
-  var l_hi: f32 = p_hi;
-  return coax_p_fmin(coax_p_fmax(l_x, l_lo), l_hi);
+  var l_low: f32 = p_low;
+  var l_high: f32 = p_high;
+  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
 }
 fn coax_p_fract(p_x: f32) -> f32 {
   var l_x: f32 = p_x;
@@ -766,16 +766,16 @@ fn coax_p_wg_atan2(p_y: f32, p_x: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_ax: f32;
   var l_ay: f32;
-  var l_hi: f32;
+  var l_high: f32;
   var l_r: f32;
   l_ax = abs(l_x);
   l_ay = abs(l_y);
-  l_hi = coax_p_fmax(l_ax, l_ay);
-  if ((l_hi == 0.0f))
+  l_high = coax_p_fmax(l_ax, l_ay);
+  if ((l_high == 0.0f))
   {
     return 0.0f;
   }
-  l_r = coax_p_wg_atan01((coax_p_fmin(l_ax, l_ay) / l_hi));
+  l_r = coax_p_wg_atan01((coax_p_fmin(l_ax, l_ay) / l_high));
   if ((l_ay > l_ax))
   {
     l_r = ((0x1.921fb6p1f * 0x1.000000p-1f) - l_r);

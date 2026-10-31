@@ -1,0 +1,370 @@
+// realm's shaders, the source of apps/openagents-web/realm.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (realm.module,
+// realm.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/light.coax";
+#load "../../../verse/haunt-light.coax";
+#load "../../../verse/look.coax";
+
+// A realm's three passes: the sky, the house and the HUD. Every number they
+// draw from comes from Coax: the view, the eye, the lights and each
+// object's place and colour from verse/haunt.coax and player.coax
+// (through realm-face.c), the HUD's strokes and panels from realm.coax.
+//
+// The house is the iOS stage's (apps/openagents-ios/OpenAgents/Platform/
+// Stages.metal haunt_vertex, haunt_fragment and haunt_sky_fragment), ported
+// by hand; its light, fog and the tone curve are the Verse engine's own functions
+// (haunt-light.coax, light.coax) written as WGSL by coax wgsl at build time
+// into the generated blocks below, as is the HUD bar (verse_bar). The
+// phone adds a bloom pass over the scene; the browser doesn't yet, so the
+// tone curve is applied as each pixel is drawn.
+// RealmU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   time 2
+//   fade 3
+//   still 4
+//   panels 5
+//   k 6
+//   pad0 7
+//   r0 8
+//   r1 12
+//   r2 16
+//   r3 20
+//   eye 24
+//   flash 28
+//   panel 32
+// the view: clip = (r0, r1, r2, r3) · world
+// the eye, and how many lights
+// lightning, then the cutaway's target (your chest; y under -1000: none)
+// per plate (realm.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
+realm_tone :: (c:V3)->V3 {
+  return v3(verse_haunt_night(c.x),verse_haunt_night(c.y),verse_haunt_night(c.z));
+}
+// A plate (realm.coax plate): a dark wood fill with one thin bronze line
+// round it and small rounded corners. Look 1 lights the line; 2 (under
+// the mouse or pressed) adds a step lighter fill and the bright line.
+realm_plate :: (p:V2,under:V3,r:V4,s:V4)->V3 {
+  if (s.y<=0.0f32) {
+    return under;
+  }
+  half:V2=wg_mul_f2f(wg_sub_f2f2(v2(r.z,r.w),v2(r.x,r.y)),0.5f32);
+  corner:f32=4.0f32*s.x;
+  q:V2=wg_add_f2f2(wg_sub_f2f2(wg_abs_f2(wg_sub_f2f2(p,wg_add_f2f2(v2(r.x,r.y),half))),half),v2(corner,corner));
+  d:f32=(wg_length2(wg_max_f2f2(q,v2(0.0f32,0.0f32)))+fmin(fmax(q.x,q.y),0.0f32))-corner;
+  if (d>1.0f32) {
+    return under;
+  }
+  over:bool=s.z>=2.0f32;
+  lit:bool=over||((s.z>=1.0f32)&&(s.z<2.0f32));
+  fill:V3=ifx over then v3(0.235f32,0.168f32,0.115f32) else v3(0.165f32,0.114f32,0.078f32);
+  line:V3=ifx lit then v3(0.86f32,0.70f32,0.42f32) else v3(0.69f32,0.541f32,0.29f32);
+  w:f32=1.25f32*s.x;
+  inside:f32=clampf(0.5f32-d,0.0f32,1.0f32);
+  edge:f32=clampf(((w*0.5f32)+0.5f32)-abs(d+(w*0.5f32)),0.0f32,1.0f32);
+  a:f32=clampf(s.y,0.0f32,1.0f32);
+  return wg_mix_f3f3f(wg_mix_f3f3f(under,fill,a*inside),line,edge*fmin(1.0f32,a+0.1f32));
+}
+realm_panels :: (p:V2,under:V3,u:[]f32)->V3 {
+  c:V3=under;
+  {
+    k:s32=0;
+    while k<28 {
+      if ((cast(f32)(k))>=u[5]) {
+        break;
+      }
+      c=realm_plate(p,c,wg_at4(u,(cast(int)(k*2))*4+32),wg_at4(u,(cast(int)((k*2)+1))*4+32));
+      k+=1;
+    }
+  }
+  return c;
+}
+// ---- the sky: one full-screen triangle (haunt_sky_fragment)
+realm_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+RealmLit :: struct {light:V4; aux:V4; }
+realm_bg_fs :: (pos:V4,u:[]f32)->RealmLit {
+  v:f32=clampf(pos.y/fmax(u[1],1.0f32),0.0f32,1.0f32);
+  sky:V3=wg_mix_f3f3f(v3(0.025f32,0.03f32,0.065f32),v3(0.035f32,0.04f32,0.07f32),v);
+  return RealmLit.{light=v4(sky.x,sky.y,sky.z,0.0f32),aux=v4(0.0f32,0.0f32,0.0f32,0.0f32)};
+}
+// ---- the house: each draw a mesh's indices over the shared vertices, one
+// instance per object (Stages.metal haunt_vertex, haunt_fragment). A vertex
+// is 48 bytes: position, normal, uv, a colour whose alpha is its sheet, its
+// outline cut (verse/look.coax verse_outline_strength; 0 a full outline) and
+// two reserved words.
+RealmInstance :: struct {r0:V4; r1:V4; r2:V4; material:V4; }
+RealmLight :: struct {position:V4; color:V4; }
+RealmS :: struct {pos:V4; world:V3; normal:V3; uv:V2; tint:V3; glow:f32; slice:u32 #flat; cut:f32; material:u32 #flat; }
+realm_word :: (i:u32,vertices:[]u32)->f32 {
+  return f32_from_bits(vertices[cast(int)i]);
+}
+// ---- the moon's shadow map (haunt-light.coax verse_haunt_moon_dir, _shadow_reach): a square
+// round the eye, snapped to whole texels so the shadows hold still as you walk, drawn first by
+// shadow_vs/shadow_fs and read by scene_fs, twelve taps of the comparison sampler for a soft edge.
+realm_moon_dir :: ()->V3 {
+  return v3(verse_haunt_moon_dir(0.0f32),verse_haunt_moon_dir(1.0f32),verse_haunt_moon_dir(2.0f32));
+}
+realm_shadow_place :: (w:V3,u:[]f32)->V3 {
+  l:V3=realm_moon_dir();
+  r:V3=wg_normalize3(wg_cross3(v3(0.0f32,1.0f32,0.0f32),l));
+  up:V3=wg_cross3(l,r);
+  reach:f32=verse_haunt_shadow_reach(0.0f32);
+  deep:f32=verse_haunt_shadow_reach(1.0f32);
+  snap:f32=(reach*2.0f32)/1024.0f32;
+  c:V3=v3(floor(wg_dot3(v3(u[24],u[25],u[26]),r)/snap)*snap,floor(wg_dot3(v3(u[24],u[25],u[26]),up)/snap)*snap,wg_dot3(v3(u[24],u[25],u[26]),l));
+  return v3((wg_dot3(w,r)-c.x)/reach,(wg_dot3(w,up)-c.y)/reach,0.5f32-((wg_dot3(w,l)-c.z)/(2.0f32*deep)));
+}
+RealmShade :: struct {pos:V4; uv:V2; slice:u32 #flat; }
+realm_shadow_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]RealmInstance)->RealmShade {
+  b:u32=mul_wrap(id,cast(u32)12);
+  p:V4=v4(realm_word(b,vertices),realm_word(add_wrap(b,cast(u32)1),vertices),realm_word(add_wrap(b,cast(u32)2),vertices),1.0f32);
+  m:RealmInstance=objects[cast(int)instance];
+  q:V3=realm_shadow_place(v3(wg_dot4(m.r0,p),wg_dot4(m.r1,p),wg_dot4(m.r2,p)),u);
+  o:RealmShade;
+  o.pos=wg_make_f4_f2ff(v2(q.x,q.y),q.z,1.0f32);
+  if (m.material.w>0.5f32) {
+    o.pos=v4(0.0f32,0.0f32,-1.0f32,1.0f32);
+  }
+  o.uv=v2(realm_word(add_wrap(b,cast(u32)6),vertices),realm_word(add_wrap(b,cast(u32)7),vertices));
+  o.slice=vertices[cast(int)add_wrap(b,cast(u32)8)]>>24;
+  return o;
+}
+realm_shadow_fs :: (s:RealmShade,sheets:Tex2DArray,sheet:Sampler) {
+  if (gpu_sample_layer_level(sheets,sheet,s.uv,cast,trunc(s32)(s.slice),0.0f32).w<0.35f32) {
+    gpu_discard();
+  }
+}
+realm_moonlit :: (w:V3,n:V3,u:[]f32,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->f32 {
+  q:V3=realm_shadow_place(wg_add_f3f3(w,wg_mul_f3f(n,0.06f32)),u);
+  uv:V2=v2((q.x*0.5f32)+0.5f32,0.5f32-(q.y*0.5f32));
+  texel_2:f32=1.0f32/(cast(f32)(wg_dims_depth(shadow_map).x));
+  taps:[12]V2=[12]V2.[v2(-0.94f32,-0.40f32),v2(0.95f32,-0.77f32),v2(-0.09f32,-0.93f32),v2(0.34f32,0.29f32),v2(-0.92f32,0.46f32),wg_mul_f2f(v2(-0.82f32,-0.98f32),0.5f32),v2(-0.38f32,0.28f32),v2(0.97f32,0.76f32),v2(0.44f32,-0.37f32),wg_mul_f2f(v2(0.54f32,-0.87f32),0.5f32),v2(-0.26f32,0.97f32),v2(0.79f32,0.19f32)];
+  lit:f32=0.0f32;
+  {
+    k:s32=0;
+    while k<12 {
+      lit=lit+gpu_compare(shadow_map,shadow_cmp,wg_add_f2f2(uv,wg_mul_f2f(wg_mul_f2f(taps[cast(int)k],texel_2),2.2f32)),q.z);
+      k+=1;
+    }
+  }
+  return verse_haunt_shadow_edge(uv.x,uv.y,lit/12.0f32);
+}
+realm_scene_vs :: (id:u32,instance:u32,u:[]f32,vertices:[]u32,objects:[]RealmInstance)->RealmS {
+  b:u32=mul_wrap(id,cast(u32)12);
+  p:V4=v4(realm_word(b,vertices),realm_word(add_wrap(b,cast(u32)1),vertices),realm_word(add_wrap(b,cast(u32)2),vertices),1.0f32);
+  n:V3=v3(realm_word(add_wrap(b,cast(u32)3),vertices),realm_word(add_wrap(b,cast(u32)4),vertices),realm_word(add_wrap(b,cast(u32)5),vertices));
+  colour:V4=wg_unpack4x8unorm(vertices[cast(int)add_wrap(b,cast(u32)8)]);
+  m:RealmInstance=objects[cast(int)instance];
+  w:V3=v3(wg_dot4(m.r0,p),wg_dot4(m.r1,p),wg_dot4(m.r2,p));
+  wp:V4=v4(w.x,w.y,w.z,1.0f32);
+  o:RealmS;
+  o.pos=v4(wg_dot4(wg_at4(u,8),wp),wg_dot4(wg_at4(u,12),wp),wg_dot4(wg_at4(u,16),wp),wg_dot4(wg_at4(u,20),wp));
+  o.world=w;
+  o.normal=wg_normalize3(v3(wg_dot3(v3(m.r0.x,m.r0.y,m.r0.z),n),wg_dot3(v3(m.r1.x,m.r1.y,m.r1.z),n),wg_dot3(v3(m.r2.x,m.r2.y,m.r2.z),n)));
+  o.uv=v2(realm_word(add_wrap(b,cast(u32)6),vertices),realm_word(add_wrap(b,cast(u32)7),vertices));
+  o.tint=wg_mul_f3f3(v3(colour.x,colour.y,colour.z),v3(m.material.x,m.material.y,m.material.z));
+  o.glow=m.material.w;
+  o.slice=vertices[cast(int)add_wrap(b,cast(u32)8)]>>24;
+  o.cut=realm_word(add_wrap(b,cast(u32)9),vertices);
+  tint:U3=wg_cvt_u3f3(wg_mul_f3f(wg_clamp_f3f3f3(v3(m.material.x,m.material.y,m.material.z),v3(0.0f32,0.0f32,0.0f32),v3(1.0f32,1.0f32,1.0f32)),255.0f32));
+  o.material=add_wrap(add_wrap(add_wrap(mul_wrap(o.slice,cast(u32)37),mul_wrap(tint.x,cast(u32)3)),mul_wrap(tint.y,cast(u32)5)),mul_wrap(tint.z,cast(u32)11))&127;
+  return o;
+}
+// The cutaway: a wall, beam or roof between the eye and you isn't drawn,
+// so the one camera never loses you (a round window along the line of
+// sight, wider near the eye; the floor under you stays).
+realm_cut_away :: (w:V3,n:V3,u:[]f32)->bool {
+  chest:V3=v3(u[29],u[30],u[31]);
+  if (chest.y<(-1000.0f32)) {
+    return false;
+  }
+  if ((n.y>0.7f32)&&(w.y<chest.y)) {
+    return false;
+  } // the floor you stand on stays
+  if ((wg_length2(wg_sub_f2f2(v2(w.x,w.z),v2(chest.x,chest.z)))<0.4f32)&&(w.y<(chest.y+1.0f32))) {
+    return false;
+  } // and you
+  line:V3=wg_sub_f3f3(chest,v3(u[24],u[25],u[26]));
+  span:f32=wg_length3(line);
+  if (span<0.3f32) {
+    return false;
+  }
+  along:f32=wg_dot3(wg_sub_f3f3(w,v3(u[24],u[25],u[26])),line)/span;
+  if ((along<=0.0f32)||(along>(span-0.2f32))) {
+    return false;
+  }
+  if (w.y<(chest.y-1.1f32)) {
+    return false;
+  }
+  off:f32=wg_length3(wg_sub_f3f3(w,wg_add_f3f3(v3(u[24],u[25],u[26]),wg_mul_f3f(line,(along/span)))));
+  return off<(1.05f32+(0.35f32*(1.0f32-(along/span))));
+}
+realm_scene_fs :: (s:RealmS,u:[]f32,lights:[]RealmLight,sheets:Tex2DArray,sheet:Sampler,shadow_map:TexDepth,shadow_cmp:SamplerCompare)->RealmLit {
+  tex:V4=gpu_sample_layer(sheets,sheet,s.uv,cast,trunc(s32)(s.slice));
+  if (tex.w<0.35f32) {
+    gpu_discard();
+  }
+  if realm_cut_away(s.world,wg_normalize3(s.normal),u) {
+    gpu_discard();
+  }
+  n:V3=wg_normalize3(s.normal);
+  facing:f32=fmax(0.0f32,wg_dot3(n,realm_moon_dir()));
+  moon:f32=ifx facing>0.0f32 then facing*realm_moonlit(s.world,n,u,shadow_map,shadow_cmp) else 0.0f32;
+  lit:V3=wg_add_f3f3(v3(verse_haunt_ambient(n.y,0.0f32),verse_haunt_ambient(n.y,1.0f32),verse_haunt_ambient(n.y,2.0f32)),wg_mul_ff3(moon,v3(verse_haunt_moonlight(0.0f32),verse_haunt_moonlight(1.0f32),verse_haunt_moonlight(2.0f32))));
+  count:u32=wg_u32_f(u[27]);
+  {
+    i:u32=0;
+    while i<count {
+      l:RealmLight=lights[cast(int)i];
+      delta:V3=wg_sub_f3f3(v3(l.position.x,l.position.y,l.position.z),s.world);
+      d:f32=wg_length3(delta);
+      lambert:f32=fmax(0.08f32,wg_dot3(n,wg_div_f3f(delta,fmax(d,0.001f32))));
+      lit=wg_add_f3f3(lit,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(l.color.x,l.color.y,l.color.z),verse_haunt_attenuate(d,l.position.w)),lambert),2.2f32));
+      i=add_wrap(i,1);
+    }
+  }
+  colour:V3=wg_mul_f3f3(v3(tex.x,tex.y,tex.z),s.tint);
+  d:f32=wg_length3(wg_sub_f3f3(v3(u[24],u[25],u[26]),s.world));
+  f:f32=u[28];
+  c:V3=v3(verse_haunt_shade(colour.x,lit.x,s.glow,d,0.0f32,f),verse_haunt_shade(colour.y,lit.y,s.glow,d,1.0f32,f),verse_haunt_shade(colour.z,lit.z,s.glow,d,2.0f32,f));
+  share:f32=verse_haunt_bloom_share(fmax(c.x,fmax(c.y,c.z)),s.glow);
+  ink:u32=wg_u32_f(wg_round(verse_outline_strength(s.cut,s.glow)*15.0f32));
+  return RealmLit.{light=v4(c.x,c.y,c.z,share),aux=v4(n.x,n.y,n.z,cast(f32)(add_wrap(mul_wrap(s.material,cast(u32)16),ink)))};
+}
+// ---- the post pass (host.js postLayouts): the light's bright share, blurred at a quarter and an
+// eighth of the size (bloom_fs), added back and toned onto the screen under the plates (post_fs).
+// RealmStep, a uniform block, is read from a []f32 at these offsets (floats):
+//   v 0
+realm_bloom_fs :: (pos:V4,bloom_src:Tex2D,bloom_lin:Sampler,bloom_step:[]f32)->V4 {
+  texel_2:V2=wg_div_ff2(1.0f32,wg_cvt_f2u2(wg_dims_2d(bloom_src)));
+  uv:V2=wg_mul_f2f2(wg_mul_f2f(v2(pos.x,pos.y),bloom_step[3]),texel_2);
+  if (bloom_step[2]<0.5f32) {
+    c:V3=v3(0.0f32,0.0f32,0.0f32);
+    {
+      k:s32=0;
+      while k<4 {
+        t:V4=gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f2(wg_sub_f2f(wg_mul_f2f(v2(cast(f32)(k&1),cast(f32)(k>>1)),2.0f32),1.0f32),texel_2)),0.0f32);
+        c=wg_add_f3f3(c,wg_mul_f3f(v3(t.x,t.y,t.z),fmin(t.w,1.0f32)));
+        k+=1;
+      }
+    }
+    return wg_make_f4_f3f(wg_mul_f3f(c,0.25f32),1.0f32);
+  }
+  d:V2=wg_mul_f2f2(v2(bloom_step[0],bloom_step[1]),texel_2);
+  c:V3=wg_mul_f3f(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,uv,0.0f32)),0.227f32);
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,1.385f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,1.385f32)),0.0f32))),0.316f32));
+  c=wg_add_f3f3(c,wg_mul_f3f(wg_add_f3f3(wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_add_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32)),wg_sw_rgb_f4(gpu_sample_level(bloom_src,bloom_lin,wg_sub_f2f2(uv,wg_mul_f2f(d,3.231f32)),0.0f32))),0.070f32));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+// Outlines (verse/look.coax): the depth's second difference, creases between neighbours' normals
+// and changes of material, inked as strongly as the nearer surface's material asks.
+realm_outlined :: (p:I2,light:V3,u:[]f32,post_aux:Tex2D,post_depth:TexDepth)->V3 {
+  a:V4=wg_load_2d(post_aux,p,0);
+  tag:u32=wg_u32_f(wg_round(a.w));
+  strength:f32=(cast(f32)(tag&15))/15.0f32;
+  if (strength<=0.0f32) {
+    return light;
+  }
+  o:s32=wg_i32_f(fmax(1.0f32,floor(u[1]/800.0f32)));
+  top:I2=wg_sub_i2i(wg_cvt_i2u2(wg_dims_depth(post_depth)),1);
+  at:[4]I2=[4]I2.[i2(-o,0),i2(o,0),i2(0,-o),i2(0,o)];
+  dc:f32=wg_load_depth(post_depth,p,0);
+  d:[4]f32;
+  edge:f32=0.0f32;
+  {
+    k:s32=0;
+    while k<4 {
+      q:I2=wg_clamp_i2i2i2(wg_add_i2i2(p,at[cast(int)k]),i2(0,0),top);
+      d[cast(int)k]=wg_load_depth(post_depth,q,0);
+      b:V4=wg_load_2d(post_aux,q,0);
+      if (d[cast(int)k]<1.0f32) {
+        edge=fmax(edge,verse_outline_crease(wg_dot3(v3(a.x,a.y,a.z),v3(b.x,b.y,b.z))));
+        other:u32=(wg_u32_f(wg_round(b.w)))>>4;
+        if (((other!=(tag>>4))&&(dc<=(d[cast(int)k]+0.00001f32)))&&((tag>>4)>other)) {
+          edge=fmax(edge,0.7f32);
+        }
+      }
+      k+=1;
+    }
+  }
+  lap:f32=fmax(abs((d[0]+d[1])-(2.0f32*dc)),abs((d[2]+d[3])-(2.0f32*dc)));
+  edge=fmax(edge,verse_outline_depth(lap,dc));
+  return v3(verse_outline_ink(light.x,edge*strength),verse_outline_ink(light.y,edge*strength),verse_outline_ink(light.z,edge*strength));
+}
+realm_post_fs :: (pos:V4,u:[]f32,post_light:Tex2D,post_quarter:Tex2D,post_eighth:Tex2D,post_aux:Tex2D,post_depth:TexDepth,post_lin:Sampler)->V4 {
+  p:I2=wg_cvt_i2f2(v2(pos.x,pos.y));
+  uv:V2=wg_div_f2f2(v2(pos.x,pos.y),wg_at2(u,0));
+  light:V3=realm_outlined(p,wg_sw_rgb_f4(wg_load_2d(post_light,p,0)),u,post_aux,post_depth);
+  near:V3=wg_sw_rgb_f4(gpu_sample_level(post_quarter,post_lin,uv,0.0f32));
+  far:V3=wg_sw_rgb_f4(gpu_sample_level(post_eighth,post_lin,uv,0.0f32));
+  c:V3=v3(verse_haunt_glow(light.x,near.x,far.x),verse_haunt_glow(light.y,near.y,far.y),verse_haunt_glow(light.z,near.z,far.z));
+  return wg_make_f4_f3f(realm_panels(v2(pos.x,pos.y),realm_tone(c),u),1.0f32);
+}
+// ---- the HUD: one quad per stroke or bar (realm.coax)
+RealmV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+// along, across, pixels
+// length, core, light, glow
+// red, green, blue, mode (realm.coax MODE_*)
+// a HUD bar's press and flash
+realm_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+realm_fx_vs :: (_vid2:u32,_iid3:u32,in_:realm_fx_vs_in,u:[]f32)->RealmV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  d:V4=in_.d;
+  o:RealmV;
+  ndc:V2=v2(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32));
+  o.pos=v4(ndc.x,ndc.y,0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=b;
+  o.tint=c;
+  o.bar=d;
+  return o;
+}
+realm_fx_fs :: (v:RealmV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  if (v.tint.w>3.5f32) {
+    // A HUD bar (ui.coax bar), as splash.wgsl draws one: verse_bar mirrored
+    // in x, so its cuts are on the plain corners.
+    p:V2=wg_div_f2f(v.place,(1.0f32-(0.03f32*v.bar.x)));
+    c:f32=verse_bar(-p.x,p.y,v.shape.x,v.shape.y,v.shape.z,u[2],v.bar.x,v.bar.y);
+    return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),c),v.shape.w),u[3]),1.0f32);
+  }
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_abs_f2 :: (p0:V2)->V2 {return v2(abs(p0.x),abs(p0.y));}
+wg_max_f2f2 :: (p0:V2,p1:V2)->V2 {return v2(fmax(p0.x,p1.x),fmax(p0.y,p1.y));}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_make_f4_f2ff :: (p0:V2,p1:f32,p2:f32)->V4 {return v4(p0.x,p0.y,p1,p2);}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_clamp_f3f3f3 :: (p0:V3,p1:V3,p2:V3)->V3 {return v3(clampf(p0.x,p1.x,p2.x),clampf(p0.y,p1.y,p2.y),clampf(p0.z,p1.z,p2.z));}
+wg_cvt_u3f3 :: (p:V3)->U3 {return u3(wg_u32_f(p.x),wg_u32_f(p.y),wg_u32_f(p.z));}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_cvt_f2u2 :: (p:U2)->V2 {return v2(cast(f32)(p.x),cast(f32)(p.y));}
+wg_div_ff2 :: (a:f32,b:V2)->V2 {return v2(a/b.x,a/b.y);}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}
+wg_sw_rgb_f4 :: (p:V4)->V3 {return v3(p.x,p.y,p.z);}
+wg_cvt_i2u2 :: (p:U2)->I2 {return i2(cast,trunc(s32)(p.x),cast,trunc(s32)(p.y));}
+wg_sub_i2i :: (a:I2,b:s32)->I2 {return i2(a.x-b,a.y-b);}
+wg_add_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x+b.x,a.y+b.y);}
+wg_clamp_i2i2i2 :: (p0:I2,p1:I2,p2:I2)->I2 {return i2(wg_clamp_i(p0.x,p1.x,p2.x),wg_clamp_i(p0.y,p1.y,p2.y));}
+wg_cvt_i2f2 :: (p:V2)->I2 {return i2(wg_i32_f(p.x),wg_i32_f(p.y));}
+wg_div_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x/b.x,a.y/b.y);}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}

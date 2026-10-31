@@ -491,11 +491,11 @@ fn coax_p_fmax(p_a: f32, p_b: f32) -> f32 {
   }
   return l_a;
 }
-fn coax_p_clampf(p_x: f32, p_lo: f32, p_hi: f32) -> f32 {
+fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   var l_x: f32 = p_x;
-  var l_lo: f32 = p_lo;
-  var l_hi: f32 = p_hi;
-  return coax_p_fmin(coax_p_fmax(l_x, l_lo), l_hi);
+  var l_low: f32 = p_low;
+  var l_high: f32 = p_high;
+  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
 }
 fn coax_p_GARDEN_HORIZON() -> vec3f {
   return coax_p_v3(0x1.99999ap-1f, 0x1.b851ecp-1f, 0x1.ccccccp-1f);
@@ -652,11 +652,11 @@ fn coax_p_wg_length2(p_a: vec2f) -> f32 {
   var l_a: vec2f = p_a;
   return sqrt(dot(l_a, l_a));
 }
-fn coax_p_wg_clamp_i(p_x: i32, p_lo: i32, p_hi: i32) -> i32 {
+fn coax_p_wg_clamp_i(p_x: i32, p_low: i32, p_high: i32) -> i32 {
   var l_x: i32 = p_x;
-  var l_lo: i32 = p_lo;
-  var l_hi: i32 = p_hi;
-  return coax_p_wg_min_i(coax_p_wg_max_i(l_x, l_lo), l_hi);
+  var l_low: i32 = p_low;
+  var l_high: i32 = p_high;
+  return coax_p_wg_min_i(coax_p_wg_max_i(l_x, l_low), l_high);
 }
 fn coax_p_normalize3(p_a: vec3f) -> vec3f {
   var l_a: vec3f = p_a;

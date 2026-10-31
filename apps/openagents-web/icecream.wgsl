@@ -346,11 +346,11 @@ fn coax_p_wg_div_f2f(p_a: vec2f, p_b: f32) -> vec2f {
   var l_b: f32 = p_b;
   return coax_p_v2((l_a.x / l_b), (l_a.y / l_b));
 }
-fn coax_p_clampf(p_x: f32, p_lo: f32, p_hi: f32) -> f32 {
+fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   var l_x: f32 = p_x;
-  var l_lo: f32 = p_lo;
-  var l_hi: f32 = p_hi;
-  return coax_p_fmin(coax_p_fmax(l_x, l_lo), l_hi);
+  var l_low: f32 = p_low;
+  var l_high: f32 = p_high;
+  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
 }
 fn coax_p_wg_mul_f2f(p_a: vec2f, p_b: f32) -> vec2f {
   var l_a: vec2f = p_a;

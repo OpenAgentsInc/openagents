@@ -1,0 +1,721 @@
+// waterlab's shaders, the source of apps/openagents-web/waterlab.wgsl (docs/verse/native-gpu.md, G6):
+// build.sh writes that module from this with coax/web/wgsl-module.coax (waterlab.module,
+// waterlab.bindings beside it). It began as coax/web/wgsl-coax.coax's translation of the hand-written WGSL.
+#load "../../../verse/gpu/wgsl.coax";
+#load "../../../verse/style.coax";
+
+// The water lab (waterlab.coax): one traced pass. A sea to the horizon on
+// the spectral tiles waterlab.coax packs into the uniforms each frame
+// (verse/water-spectrum.coax, phase W4 of docs/verse/water.md), breaking on
+// a sloping beach, in the painted water look of docs/verse/art-styles.md 12
+// (Everglade's river preset): depth bands, the painted sky in Schlick's
+// Fresnel on a calmer normal, sparkles near the sun's reflection, white
+// paint for whitecaps, surf and the waterline, and the hazy, cyan-green air
+// of the owner's references.
+//
+// W10 (verse/water-ocean.coax): the sea is a clipmap mesh. surface_vs builds
+// each vertex from its index and the levels' numbers (nested grids round the
+// eye, each twice the last's spacing, the odd vertices near a level's edge
+// sliding onto the next level's grid, the last row out to the horizon), lifts
+// it by the sea's height and moves it by cascade 0's choppy displacement;
+// surface_fs shades it as the trace did. bg_fs then draws only the sky and
+// the beach and writes their depth. The coast's bed depth and surf phase
+// come from 8 m cells streamed into the block (shore_at), or are computed
+// where no cell is resident.
+// WaterlabU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0
+//   mode 4
+//   eye 8
+//   fwd 12
+//   right 16
+//   up 20
+//   sun 24
+//   sea 28
+//   wind 32
+//   beach 36
+//   pack 40
+//   clip 44
+//   levels 48
+//   cells 96
+//   bases 100
+//   words 148
+// width, height, time, fade
+// still, phone, the clipmap draws the sea (1), dpr
+// xyz, tan of half the vertical field
+// toward the sun, strength
+// level, cascade 0's patch, the fine patch, choppiness
+// direction x, z, speed, significant height
+// the still waterline's z, the slope, the peak's deep wavenumber, its omega
+// the packed numbers' scales: height, slope, fine slope, choppy displacement
+// the clipmap: quads a side, levels, morph band (quads), the skirt's reach (m)
+// centre x, z, spacing, hole x + 2 hole z
+// the cell window's first cell x, z, its side (cells), texel spacing (m)
+// each slot's surf phase at its first texel
+// the table, the cells, cascade 0, its displacement, the fine slopes
+WATERLAB_N :: cast(u32)64;
+WATERLAB_G :: 9.81f32;
+WATERLAB_W_TABLE :: cast(u32)0;
+WATERLAB_W_CELLS :: cast(u32)64;
+WATERLAB_W_COARSE :: cast(u32)1264;
+WATERLAB_W_CHOP :: cast(u32)9456;
+WATERLAB_W_FINE :: cast(u32)11504;
+WATERLAB_CELL :: 8.0f32;
+WATERLAB_CELL_TEXELS :: cast(u32)5;
+waterlab_word :: (i:u32,u:[]f32)->u32 {
+  return wg_get_u4(wg_at4u(u,(cast(int)(i>>2))*4+148),cast(int)(i&3));
+}
+// Cascade 0 at a rest point: height (m), foam, slope x, slope z; bilinear, wrapped.
+waterlab_coarse :: (p:V2,u:[]f32)->V4 {
+  q:V2=wg_sub_f2f(wg_mul_f2f(wg_div_f2f(p,u[29]),cast(f32)(WATERLAB_N)),0.5f32);
+  f:V2=wg_fract_f2(q);
+  i:I2=wg_cvt_i2f2(wg_floor_f2(q));
+  acc:V4=v4(0.0f32,0.0f32,0.0f32,0.0f32);
+  {
+    k:s32=0;
+    while k<4 {
+      o:I2=i2(k&1,k>>1);
+      c:U2=wg_cvt_u2i2(wg_band_i2i2(wg_add_i2i2(i,o),wg_make_i2_i((cast,trunc(s32)(WATERLAB_N))-1)));
+      t:u32=add_wrap(mul_wrap(c.y,WATERLAB_N),c.x);
+      a:V2=wg_unpack2x16float(waterlab_word(add_wrap(WATERLAB_W_COARSE,mul_wrap(cast(u32)2,t)),u));
+      b:V2=wg_unpack2x16float(waterlab_word(add_wrap(add_wrap(WATERLAB_W_COARSE,mul_wrap(cast(u32)2,t)),cast(u32)1),u));
+      w:f32=(ifx o.x==1 then f.x else 1.0f32-f.x)*(ifx o.y==1 then f.y else 1.0f32-f.y);
+      acc=wg_add_f4f4(acc,wg_mul_ff4(w,v4(a.x*u[40],a.y,b.x*u[41],b.y*u[41])));
+      k+=1;
+    }
+  }
+  return acc;
+}
+// The fine tile's slopes (the desktop's second cascade, the phone's baked tile).
+waterlab_fine :: (p:V2,u:[]f32)->V2 {
+  q:V2=wg_sub_f2f(wg_mul_f2f(wg_div_f2f(p,u[30]),cast(f32)(WATERLAB_N)),0.5f32);
+  f:V2=wg_fract_f2(q);
+  i:I2=wg_cvt_i2f2(wg_floor_f2(q));
+  acc:V2=v2(0.0f32,0.0f32);
+  {
+    k:s32=0;
+    while k<4 {
+      o:I2=i2(k&1,k>>1);
+      c:U2=wg_cvt_u2i2(wg_band_i2i2(wg_add_i2i2(i,o),wg_make_i2_i((cast,trunc(s32)(WATERLAB_N))-1)));
+      w:f32=(ifx o.x==1 then f.x else 1.0f32-f.x)*(ifx o.y==1 then f.y else 1.0f32-f.y);
+      acc=wg_add_f2f2(acc,wg_mul_f2f(wg_mul_ff2(w,wg_unpack2x16float(waterlab_word(add_wrap(add_wrap(WATERLAB_W_FINE,mul_wrap(c.y,WATERLAB_N)),c.x),u))),u[42]));
+      k+=1;
+    }
+  }
+  return acc;
+}
+// Cascade 0's choppy displacement at a rest point (m), bilinear, wrapped.
+waterlab_chop :: (p:V2,u:[]f32)->V2 {
+  q:V2=wg_sub_f2f(wg_mul_f2f(wg_div_f2f(p,u[29]),cast(f32)(WATERLAB_N)),0.5f32);
+  f:V2=wg_fract_f2(q);
+  i:I2=wg_cvt_i2f2(wg_floor_f2(q));
+  acc:V2=v2(0.0f32,0.0f32);
+  {
+    k:s32=0;
+    while k<4 {
+      o:I2=i2(k&1,k>>1);
+      c:U2=wg_cvt_u2i2(wg_band_i2i2(wg_add_i2i2(i,o),wg_make_i2_i((cast,trunc(s32)(WATERLAB_N))-1)));
+      t:u32=add_wrap(mul_wrap(c.y,WATERLAB_N),c.x);
+      w:f32=(ifx o.x==1 then f.x else 1.0f32-f.x)*(ifx o.y==1 then f.y else 1.0f32-f.y);
+      half:u32=(waterlab_word(add_wrap(WATERLAB_W_CHOP,(t>>1)),u)>>mul_wrap(cast(u32)16,(t&1)))&0xffff;
+      acc=wg_add_f2f2(acc,wg_mul_ff2(w,wg_sw_xy_f4(wg_unpack4x8snorm(half))));
+      k+=1;
+    }
+  }
+  return wg_mul_f2f(acc,u[43]);
+}
+waterlab_hash2 :: (p:V2)->f32 {
+  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);
+}
+waterlab_noise :: (p:V2)->f32 {
+  i:V2=wg_floor_f2(p);
+  f:V2=wg_fract_f2(p);
+  s:V2=wg_mul_f2f2(wg_mul_f2f2(f,f),wg_sub_ff2(3.0f32,wg_mul_ff2(2.0f32,f)));
+  return mix(mix(waterlab_hash2(i),waterlab_hash2(wg_add_f2f2(i,v2(1.0f32,0.0f32))),s.x),mix(waterlab_hash2(wg_add_f2f2(i,v2(0.0f32,1.0f32))),waterlab_hash2(wg_add_f2f2(i,v2(1.0f32,1.0f32))),s.x),s.y);
+}
+// The beach: the ground's height (m), rising toward +z through the still
+// waterline at z = beach.x, gently uneven along x, levelling out at 40 m deep.
+waterlab_ground :: (p:V2,u:[]f32)->f32 {
+  wobble:f32=(0.35f32*sin(p.x*0.045f32))+(0.18f32*sin((p.x*0.11f32)+1.3f32));
+  z:f32=(p.y-u[36])-((wobble/u[37])*0.05f32);
+  // out of the water the beach climbs to a berm, under it the shelf runs out gently
+  land:f32=fmax(z,0.0f32)*0.09f32;
+  return fmax(((z*u[37])+land)+(0.03f32*waterlab_noise(wg_mul_f2f(p,0.3f32))),-40.0f32);
+}
+waterlab_depth_here :: (p:V2,u:[]f32)->f32 {
+  return fmax(u[28]-waterlab_ground(p,u),0.0f32);
+}
+// Shallow water (verse/water-spectrum.coax wsp_surf): the peak wave's
+// wavenumber over depth h (Eckart's form of w^2 = g k tanh(k h)), the
+// shoaling gain sqrt(cg0 / cg), and how far it is past breaking.
+waterlab_shallow_k :: (k0:f32,h:f32)->f32 {
+  return k0/sqrt(fmax(wg_tanh(k0*fmax(h,0.01f32)),1e-4f32));
+}
+waterlab_shoal_gain :: (k0:f32,h:f32)->f32 {
+  k:f32=waterlab_shallow_k(k0,h);
+  kh:f32=k*fmax(h,0.01f32);
+  n:f32=0.5f32*(1.0f32+((2.0f32*kh)/wg_sinh(fmin(2.0f32*kh,20.0f32))));
+  c:f32=sqrt((WATERLAB_G/k)*wg_tanh(kh));
+  cg0:f32=0.5f32*sqrt(WATERLAB_G/k0);
+  return sqrt(cg0/fmax(n*c,1e-3f32));
+}
+// The surf's phase across the beach: the integral of k(h) along the way in.
+waterlab_surf_phase_here :: (p:V2,u:[]f32)->f32 {
+  k0:f32=u[38];
+  h:f32=waterlab_depth_here(p,u);
+  reach:f32=fmin(h,3.0f32/k0);
+  sum:f32=0.0f32;
+  {
+    i:s32=0;
+    while i<8 {
+      hh:f32=(((cast(f32)(i))+0.5f32)/8.0f32)*reach;
+      sum=sum+waterlab_shallow_k(k0,hh);
+      i+=1;
+    }
+  }
+  return (((sum/8.0f32)*reach)+((h-reach)*k0))/u[37];
+}
+// The coast's bed depth and surf phase at p: from its streamed 8 m cell when
+// one is resident (bilinear over the cell's 2 m texels), else computed here.
+waterlab_shore_at :: (p:V2,u:[]f32)->V2 {
+  c:I2=wg_sub_i2i2(wg_cvt_i2f2(wg_floor_f2(wg_div_f2f(p,WATERLAB_CELL))),wg_cvt_i2f2(v2(u[96],u[97])));
+  side:s32=wg_i32_f(u[98]);
+  if (wg_all_ge_i2i2(c,i2(0,0))&&wg_all_lt_i2i2(c,i2(side,side))) {
+    k:u32=cast,trunc(u32)((c.y*side)+c.x);
+    slot:u32=(waterlab_word(add_wrap(WATERLAB_W_TABLE,(k>>2)),u)>>mul_wrap(cast(u32)8,(k&3)))&0xff;
+    if (slot>0) {
+      s:u32=sub_wrap(slot,cast(u32)1);
+      q:V2=wg_div_f2f(wg_sub_f2f2(p,wg_mul_f2f(wg_floor_f2(wg_div_f2f(p,WATERLAB_CELL)),WATERLAB_CELL)),u[99]);
+      i:U2=wg_min_u2u2(wg_cvt_u2f2(q),wg_make_u2_u(sub_wrap(WATERLAB_CELL_TEXELS,cast(u32)2)));
+      f:V2=wg_sub_f2f2(q,wg_cvt_f2u2(i));
+      at:u32=add_wrap(add_wrap(add_wrap(WATERLAB_W_CELLS,mul_wrap(mul_wrap(s,WATERLAB_CELL_TEXELS),WATERLAB_CELL_TEXELS)),mul_wrap(i.y,WATERLAB_CELL_TEXELS)),i.x);
+      a:V2=wg_unpack2x16float(waterlab_word(at,u));
+      b:V2=wg_unpack2x16float(waterlab_word(add_wrap(at,cast(u32)1),u));
+      d:V2=wg_unpack2x16float(waterlab_word(add_wrap(at,WATERLAB_CELL_TEXELS),u));
+      e:V2=wg_unpack2x16float(waterlab_word(add_wrap(add_wrap(at,WATERLAB_CELL_TEXELS),cast(u32)1),u));
+      v:V2=wg_mix_f2f2f(wg_mix_f2f2f(a,b,f.x),wg_mix_f2f2f(d,e,f.x),f.y);
+      return v2(v.x,v.y+wg_get_f4(wg_at4(u,(cast(int)(s>>2))*4+100),cast(int)(s&3)));
+    }
+  }
+  return v2(waterlab_depth_here(p,u),waterlab_surf_phase_here(p,u));
+}
+waterlab_depth_at :: (p:V2,u:[]f32)->f32 {
+  return waterlab_shore_at(p,u).x;
+}
+waterlab_surf_phase :: (p:V2,u:[]f32)->f32 {
+  return waterlab_shore_at(p,u).y;
+}
+WaterlabSurf :: struct {lift:f32; white:f32; gain:f32; depth:f32; }
+waterlab_surf :: (p:V2,t:f32,u:[]f32)->WaterlabSurf {
+  o:WaterlabSurf;
+  sh:V2=waterlab_shore_at(p,u);
+  h:f32=sh.x;
+  o.depth=h;
+  k0:f32=u[38];
+  o.gain=ifx h>(3.0f32/k0) then 1.0f32 else fmin(waterlab_shoal_gain(k0,h),2.2f32);
+  height:f32=(u[35]*0.5f32)*o.gain;
+  breaking:f32=clampf((height/(0.78f32*fmax(h,0.02f32)))-0.6f32,0.0f32,1.0f32);
+  // the waves come in shore-normal, their crests bending with the beach's wobble
+  phase:f32=(sh.y+(u[39]*t))+((0.6f32*waterlab_noise(v2(p.x*0.03f32,0.0f32)))*6.28f32);
+  crest:f32=pow(0.5f32+(0.5f32*cos(phase)),6.0f32);
+  line:f32=pow(0.5f32+(0.5f32*cos(phase-0.25f32)),40.0f32);
+  o.lift=(((crest*height)*0.6f32)*smoothstep(0.0f32,0.4f32,h))*(1.0f32-(0.6f32*breaking));
+  broken:f32=(waterlab_noise(v2(p.x*0.7f32,phase*2.0f32))*0.6f32)+0.4f32;
+  // white paint on the breaking crest, and a thinner trail behind it
+  trail:f32=pow(0.5f32+(0.5f32*cos(phase+0.9f32)),10.0f32)*0.6f32;
+  o.white=(breaking*smoothstep(0.45f32,0.8f32,(fmax(line,trail)*broken)+((0.15f32*breaking)*breaking)))*smoothstep(0.03f32,0.2f32,h);
+  return o;
+}
+// The sea's surface at rest point p: its height over the level.
+waterlab_sea_height :: (p:V2,t:f32,u:[]f32)->f32 {
+  s:WaterlabSurf=waterlab_surf(p,t,u);
+  h:f32=s.depth;
+  taper:f32=smoothstep(0.0f32,0.6f32,h);
+  // a trough never bares the bed: shallow water's waves ride over it
+  wave:f32=fmax((waterlab_coarse(p,u).x*fmin(s.gain,1.6f32))*taper,(-0.5f32)*h);
+  return (u[28]+wave)+s.lift;
+}
+// The painted sky: zenith to a pale haze at the horizon, warm toward the sun.
+waterlab_sky :: (d:V3,u:[]f32)->V3 {
+  up:f32=clampf(d.y,0.0f32,1.0f32);
+  zenith:V3=v3(0.36f32,0.60f32,0.80f32);
+  horizon:V3=v3(0.80f32,0.88f32,0.86f32);
+  c:V3=wg_mix_f3f3f(horizon,zenith,pow(up,0.55f32));
+  s:f32=fmax(wg_dot3(d,v3(u[24],u[25],u[26])),0.0f32);
+  c=wg_add_f3f3(c,wg_mul_f3f(v3(1.0f32,0.86f32,0.62f32),((pow(s,8.0f32)*0.30f32)+(pow(s,900.0f32)*1.2f32))));
+  // soft clouds, broad and pale
+  if (d.y>0.0f32) {
+    q:V2=wg_mul_f2f(wg_div_f2f(v2(d.x,d.z),(d.y+0.15f32)),1.6f32);
+    cl:f32=smoothstep(0.55f32,0.85f32,(waterlab_noise(q)*0.65f32)+(waterlab_noise(wg_add_f2f(wg_mul_f2f(q,2.3f32),4.0f32))*0.35f32));
+    c=wg_mix_f3f3f(c,v3(0.95f32,0.96f32,0.93f32),(cl*0.55f32)*smoothstep(0.0f32,0.25f32,d.y));
+  }
+  return c;
+}
+// The air between the eye and what it sees: BotW's teal-green haze.
+waterlab_haze :: (c:V3,d:V3,dist:f32,u:[]f32)->V3 {
+  a:f32=1.0f32-exp((-dist)/420.0f32);
+  tint:V3=wg_mix_f3f3f(v3(0.74f32,0.86f32,0.84f32),v3(1.0f32,0.90f32,0.74f32),pow(fmax(wg_dot3(d,v3(u[24],u[25],u[26])),0.0f32),6.0f32)*0.5f32);
+  return wg_mix_f3f3f(c,tint,a*0.85f32);
+}
+waterlab_sand :: (p:V2,n:V3,wet:f32,u:[]f32)->V3 {
+  dry:V3=wg_mix_f3f3f(v3(0.84f32,0.77f32,0.60f32),v3(0.78f32,0.71f32,0.55f32),waterlab_noise(wg_mul_f2f(p,1.7f32)));
+  base:V3=wg_mix_f3f3f(dry,v3(0.64f32,0.58f32,0.45f32),wet);
+  light:f32=0.55f32+(0.6f32*fmax(wg_dot3(n,v3(u[24],u[25],u[26])),0.0f32));
+  return wg_mul_f3f3(wg_mul_f3f(base,light),v3(1.0f32,0.97f32,0.92f32));
+}
+// The water in the painted look.
+waterlab_water :: (p:V2,world:V3,d:V3,dist:f32,t:f32,u:[]f32)->V3 {
+  c:V4=waterlab_coarse(p,u);
+  s:WaterlabSurf=waterlab_surf(p,t,u);
+  h:f32=s.depth;
+  // slopes: cascade 0 shoaled, the fine cascade faded with the pixel's footprint
+  footprint:f32=(((dist*2.0f32)*u[11])/u[1])/fmax(abs(d.y),0.08f32);
+  keep:f32=clampf(((u[30]/64.0f32)/fmax(footprint,1e-4f32))-0.5f32,0.0f32,1.0f32);
+  farfade:f32=1.0f32-smoothstep(150.0f32,900.0f32,dist);
+  slope:V2=wg_mul_f2f(wg_add_f2f2(wg_mul_f2f(v2(c.z,c.w),fmin(s.gain,1.6f32)),wg_mul_f2f(waterlab_fine(wg_add_f2f2(wg_mul_f2f(p,1.0f32),wg_mul_f2f(wg_mul_f2f(v2(u[32],u[33]),t),0.3f32)),u),keep)),farfade);
+  n:V3=wg_normalize3(v3(-slope.x,1.0f32,-slope.y));
+  calm:V3=wg_normalize3(v3((-slope.x)/3.0f32,1.0f32,(-slope.y)/3.0f32));
+  // depth bands, each edge soft over 0.15 m, and a deeper band for the open sea
+  shallow:V3=v3(0.30f32,0.72f32,0.74f32);
+  mid:V3=v3(0.10f32,0.45f32,0.55f32);
+  deep:V3=v3(0.05f32,0.22f32,0.36f32);
+  open:V3=v3(0.035f32,0.17f32,0.31f32);
+  col:V3=wg_mix_f3f3f(shallow,mid,smoothstep(0.25f32,0.55f32,h));
+  col=wg_mix_f3f3f(col,deep,smoothstep(1.35f32,1.65f32,h));
+  col=wg_mix_f3f3f(col,open,smoothstep(6.0f32,14.0f32,h));
+  // the land's light on the bands, the waves' faces a little darker
+  col=wg_mul_f3f(col,0.82f32+(0.3f32*fmax(wg_dot3(n,v3(u[24],u[25],u[26])),0.0f32)));
+  // the painted sky in Schlick's Fresnel, at most half of it
+  v:V3=wg_neg_f3(d);
+  r:V3=wg_reflect3(d,calm);
+  fres:f32=0.02f32+(0.98f32*pow(1.0f32-fmax(wg_dot3(calm,v),0.0f32),5.0f32));
+  col=wg_mix_f3f3f(col,waterlab_sky(v3(r.x,abs(r.y),r.z),u),fmin(fres,0.5f32));
+  // sparkles on a grid within a few degrees of the sun's reflection, twinkling
+  rs:V3=wg_reflect3(wg_neg_f3(v3(u[24],u[25],u[26])),n);
+  cell:f32=(ifx u[5]>0.5f32 then 0.25f32 else 0.15f32)*fmax(1.0f32,footprint/0.05f32);
+  g:V2=wg_floor_f2(wg_div_f2f(v2(world.x,world.z),cell));
+  tw:f32=waterlab_hash2(wg_add_f2f(g,floor(t*3.0f32)));
+  near:f32=smoothstep(cos(0.07f32+(footprint*0.02f32)),1.0f32,wg_dot3(rs,v));
+  col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.95f32,0.85f32),stepf(0.82f32,tw)),near),1.4f32),farfade));
+  // whitecaps from the foam field, broken into paint by noise; the surf; the waterline
+  froth:f32=(waterlab_noise(wg_add_f2f2(wg_mul_f2f(p,1.4f32),v2(t*0.2f32,0.0f32)))*0.6f32)+(waterlab_noise(wg_mul_f2f(p,4.1f32))*0.4f32);
+  caps:f32=smoothstep(0.45f32,0.75f32,c.y*(0.6f32+froth));
+  // the waterline: where the water over the sand runs thin
+  thin:f32=world.y-waterlab_ground(p,u);
+  line:f32=(1.0f32-smoothstep(0.006f32,0.02f32,thin+(0.004f32*sin((p.x*3.1f32)+(t*1.5f32)))))*smoothstep(0.3f32,0.6f32,froth+0.25f32);
+  white:f32=fmax(fmax(caps*0.95f32,s.white*smoothstep(0.3f32,0.6f32,froth+0.3f32)),line);
+  col=wg_mix_f3f3f(col,wg_mul_f3f(v3(0.97f32,0.98f32,0.96f32),(0.85f32+(0.15f32*fmax(wg_dot3(n,v3(u[24],u[25],u[26])),0.0f32)))),clampf(white,0.0f32,1.0f32));
+  return col;
+}
+// The traced pass.
+WaterlabHit :: struct {t:f32; water:bool; }
+waterlab_trace :: (o:V3,d:V3,t0:f32,u:[]f32)->WaterlabHit {
+  hit:WaterlabHit=WaterlabHit.{t=1e9f32,water=false};
+  amp:f32=(u[35]*1.3f32)+0.4f32;
+  // the beach: march the ground until it rises over the ray
+  t:f32=0.0f32;
+  prev:f32=o.y-waterlab_ground(v2(o.x,o.z),u);
+  {
+    i:s32=0;
+    while i<64 {
+      step:f32=0.4f32+(t*0.06f32);
+      nt:f32=t+step;
+      q:V3=wg_add_f3f3(o,wg_mul_f3f(d,nt));
+      gap:f32=q.y-waterlab_ground(v2(q.x,q.z),u);
+      if (gap<0.0f32) {
+        hit.t=t+((step*prev)/fmax(prev-gap,1e-4f32));
+        break;
+      }
+      prev=gap;
+      t=nt;
+      if (t>900.0f32) {
+        break;
+      }
+      i+=1;
+    }
+  }
+  // the water: between the planes the waves can reach, then secant refinement
+  // (only when the clipmap isn't drawing the sea)
+  if ((u[6]<0.5f32)&&((d.y<0.0f32)||(o.y<(u[28]+amp)))) {
+    top:f32=(o.y-(u[28]+amp))/fmax(-d.y,1e-4f32);
+    bottom:f32=(o.y-(u[28]-amp))/fmax(-d.y,1e-4f32);
+    a:f32=fmax(top,0.0f32);
+    b:f32=ifx d.y>=0.0f32 then 2000.0f32 else fmin(bottom,2000.0f32);
+    steps:s32=14;
+    fa:f32=wg_add_f3f3(o,wg_mul_f3f(d,a)).y-waterlab_sea_height(wg_sw_xz_f3(wg_add_f3f3(o,wg_mul_f3f(d,a))),t0,u);
+    found:bool=false;
+    {
+      i:s32=1;
+      while i<=steps {
+        tb:f32=a+(((b-a)*(cast(f32)(i)))/(cast(f32)(steps)));
+        q:V3=wg_add_f3f3(o,wg_mul_f3f(d,tb));
+        fb:f32=q.y-waterlab_sea_height(v2(q.x,q.z),t0,u);
+        if (fb<0.0f32) {
+          b=tb;
+          found=true;
+          break;
+        }
+        a=tb;
+        fa=fb;
+        i+=1;
+      }
+    }
+    if found {
+      fb:f32=wg_add_f3f3(o,wg_mul_f3f(d,b)).y-waterlab_sea_height(wg_sw_xz_f3(wg_add_f3f3(o,wg_mul_f3f(d,b))),t0,u);
+      {
+        i:s32=0;
+        while i<4 {
+          tm:f32=a+(((b-a)*fa)/fmax(fa-fb,1e-5f32));
+          fm:f32=wg_add_f3f3(o,wg_mul_f3f(d,tm)).y-waterlab_sea_height(wg_sw_xz_f3(wg_add_f3f3(o,wg_mul_f3f(d,tm))),t0,u);
+          if (fm>0.0f32) {
+            a=tm;
+            fa=fm;
+          } else {
+            b=tm;
+            fb=fm;
+          }
+          i+=1;
+        }
+      }
+      tw:f32=a+(((b-a)*fa)/fmax(fa-fb,1e-5f32));
+      if (tw<hit.t) {
+        hit=WaterlabHit.{t=tw,water=true};
+      }
+    } else if (((d.y<0.0f32)&&(bottom>2000.0f32))&&(2000.0f32<hit.t)) {
+      hit=WaterlabHit.{t=(o.y-u[28])/(-d.y),water=true};
+    }
+  }
+  return hit;
+}
+// ---- under the water (phase W7; verse/water-under.coax holds the CPU half and its checks).
+// Each pixel's near-plane point is tested against the surface over it, so the view splits
+// exactly where the near plane straddles the waves (the split waterline). Under it: per-channel
+// Beer-Lambert fog toward a painted teal, the surface from below through Snell's window (the sky
+// bent through it inside 48.6 degrees of straight up, the water's own colour mirrored past it),
+// caustics on the sand, drifting motes; on a desktop also the view's wavering, 16 samples of sun
+// shafts and the meniscus where the surface crosses the lens.
+WATERLAB_UNDER_ABSORB :: ()->V3 {return v3(0.30f32,0.075f32,0.06f32);}
+WATERLAB_UNDER_SCATTER :: ()->V3 {return v3(0.05f32,0.33f32,0.42f32);}
+waterlab_caustic_pattern :: (p:V2,t:f32)->f32 {
+  a:f32=waterlab_noise(wg_add_f2f2(wg_mul_f2f(p,1.1f32),v2(t*0.25f32,t*0.1f32)));
+  b:f32=waterlab_noise(wg_sub_f2f2(wg_add_f2f2(wg_mul_f2f(p,1.9f32),v2(3.1f32,7.7f32)),v2(t*0.18f32,t*0.3f32)));
+  ra:f32=1.0f32-abs((2.0f32*a)-1.0f32);
+  rb:f32=1.0f32-abs((2.0f32*b)-1.0f32);
+  return (pow(ra,7.0f32)*0.8f32)+(pow(rb,7.0f32)*0.55f32);
+}
+waterlab_surface_normal :: (p:V2,t:f32,u:[]f32)->V3 {
+  c:V4=waterlab_coarse(p,u);
+  sl:V2=wg_add_f2f2(v2(c.z,c.w),waterlab_fine(wg_add_f2f2(p,wg_mul_f2f(wg_mul_f2f(v2(u[32],u[33]),t),0.3f32)),u));
+  return wg_normalize3(v3(-sl.x,1.0f32,-sl.y));
+}
+waterlab_hash3 :: (c:V3)->f32 {
+  return fract(sin(wg_dot3(c,v3(127.1f32,311.7f32,74.7f32)))*43758.5453f32);
+}
+waterlab_motes :: (o:V3,d:V3,reach:f32,t:f32,u:[]f32)->f32 {
+  a:f32=0.0f32;
+  n:s32=ifx u[5]>0.5f32 then 4 else 8;
+  {
+    i:s32=0;
+    while i<n {
+      c:V3=wg_floor_f3(wg_add_f3f3(o,wg_mul_f3f(d,((((cast(f32)(i))+0.5f32)*reach)/(cast(f32)(n))))));
+      if (waterlab_hash3(wg_add_f3f(c,0.31f32))>0.25f32) {
+        {i+=1; continue;}
+      }
+      m:V3=wg_add_f3f3(wg_add_f3f3(c,v3(waterlab_hash3(c),waterlab_hash3(wg_add_f3f(c,7.0f32)),waterlab_hash3(wg_add_f3f(c,13.0f32)))),wg_mul_f3f(v3(sin((t*0.3f32)+(waterlab_hash3(c)*6.0f32)),cos(t*0.21f32),0.0f32),0.08f32));
+      along:f32=fmax(wg_dot3(wg_sub_f3f3(m,o),d),0.05f32);
+      if (along>reach) {
+        {i+=1; continue;}
+      }
+      size:f32=((((0.0025f32*along)*u[1])/900.0f32)*4.0f32)+0.004f32;
+      a=a+(((1.0f32-smoothstep(size*0.4f32,size,wg_length3(wg_sub_f3f3(m,wg_add_f3f3(o,wg_mul_f3f(d,along))))))*0.5f32)*exp((-along)*0.2f32));
+      i+=1;
+    }
+  }
+  return a;
+}
+waterlab_shafts :: (o:V3,d:V3,path:f32,t:f32,u:[]f32)->f32 {
+  if (u[5]>0.5f32) {
+    return 0.0f32;
+  }
+  sum:f32=0.0f32;
+  reach:f32=fmin(path,14.0f32);
+  {
+    i:s32=0;
+    while i<16 {
+      q:V3=wg_add_f3f3(o,wg_mul_f3f(d,((((cast(f32)(i))+0.5f32)/16.0f32)*reach)));
+      below:f32=fmax(u[28]-q.y,0.0f32);
+      sum=sum+(waterlab_caustic_pattern(wg_mul_f2f(wg_add_f2f2(v2(q.x,q.z),wg_mul_f2f(wg_mul_f2f(v2(u[24],u[26]),below),0.75f32)),0.5f32),t)*exp(((-below)*0.12f32)-(wg_length3(wg_sub_f3f3(q,o))*0.08f32)));
+      i+=1;
+    }
+  }
+  return ((sum/16.0f32)*reach)*0.12f32;
+}
+waterlab_under_view :: (o:V3,d:V3,t:f32,u:[]f32)->V3 {
+  // the sand
+  tg:f32=1e9f32;
+  s:f32=0.0f32;
+  prev:f32=o.y-waterlab_ground(v2(o.x,o.z),u);
+  {
+    i:s32=0;
+    while i<48 {
+      step:f32=0.3f32+(s*0.08f32);
+      q:V3=wg_add_f3f3(o,wg_mul_f3f(d,(s+step)));
+      gap:f32=q.y-waterlab_ground(v2(q.x,q.z),u);
+      if (gap<0.0f32) {
+        tg=s+((step*prev)/fmax(prev-gap,1e-4f32));
+        break;
+      }
+      prev=gap;
+      s=s+step;
+      if (s>120.0f32) {
+        break;
+      }
+      i+=1;
+    }
+  }
+  // the surface from below
+  ts:f32=1e9f32;
+  if (d.y>0.0f32) {
+    amp:f32=(u[35]*1.3f32)+0.4f32;
+    top:f32=((u[28]+amp)-o.y)/d.y;
+    a:f32=0.0f32;
+    fa:f32=waterlab_sea_height(v2(o.x,o.z),t,u)-o.y;
+    {
+      i:s32=1;
+      while i<=16 {
+        b:f32=(top*(cast(f32)(i)))/16.0f32;
+        q:V3=wg_add_f3f3(o,wg_mul_f3f(d,b));
+        fb:f32=waterlab_sea_height(v2(q.x,q.z),t,u)-q.y;
+        if (fb<0.0f32) {
+          ts=a+(((b-a)*fa)/fmax(fa-fb,1e-5f32));
+          break;
+        }
+        a=b;
+        fa=fb;
+        i+=1;
+      }
+    }
+  }
+  depth_eye:f32=fmax(u[28]-o.y,0.0f32);
+  light:V3=wg_mul_f3f(wg_mul_f3f(WATERLAB_UNDER_SCATTER(),(0.55f32+(0.45f32*exp((-depth_eye)*0.08f32)))),(0.6f32+(0.4f32*u[27])));
+  col:V3=light;
+  path:f32=160.0f32;
+  if ((ts<tg)&&(ts<1e8f32)) {
+    path=ts;
+    w:V3=wg_add_f3f3(o,wg_mul_f3f(d,ts));
+    n:V3=waterlab_surface_normal(v2(w.x,w.z),t,u);
+    up:f32=wg_dot3(d,n);
+    r:V3=wg_refract3(d,wg_neg_f3(n),1.33f32);
+    mirrored:V3=wg_mul_f3f(light,0.8f32);
+    if (wg_dot3(r,r)<1e-6f32) {
+      col=mirrored; // past the critical angle: the surface mirrors the water
+    } else {
+      f0:f32=0.0200593f32;
+      tr:f32=1.0f32-(f0+((1.0f32-f0)*pow(1.0f32-clampf(up,0.0f32,1.0f32),5.0f32)));
+      col=wg_mix_f3f3f(mirrored,wg_mul_f3f(waterlab_sky(r,u),1.05f32),tr*smoothstep(0.0f32,0.08f32,up));
+      col=wg_add_f3f3(col,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.95f32,0.8f32),pow(fmax(wg_dot3(r,v3(u[24],u[25],u[26])),0.0f32),300.0f32)),2.0f32),tr));
+    }
+    // foam floating over the eye
+    col=wg_mix_f3f3f(col,v3(0.9f32,0.95f32,0.94f32),waterlab_coarse(v2(w.x,w.z),u).y*0.6f32);
+  } else if (tg<1e8f32) {
+    path=tg;
+    w:V3=wg_add_f3f3(o,wg_mul_f3f(d,tg));
+    e:f32=0.05f32;
+    n:V3=wg_normalize3(v3(waterlab_ground(wg_sub_f2f2(v2(w.x,w.z),v2(e,0.0f32)),u)-waterlab_ground(wg_add_f2f2(v2(w.x,w.z),v2(e,0.0f32)),u),2.0f32*e,waterlab_ground(wg_sub_f2f2(v2(w.x,w.z),v2(0.0f32,e)),u)-waterlab_ground(wg_add_f2f2(v2(w.x,w.z),v2(0.0f32,e)),u)));
+    below:f32=fmax(u[28]-w.y,0.0f32);
+    c:V3=wg_mul_f3f3(waterlab_sand(v2(w.x,w.z),n,1.0f32,u),wg_exp_f3(wg_mul_f3f(wg_neg_f3(WATERLAB_UNDER_ABSORB()),below)));
+    c=wg_add_f3f3(c,wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(1.0f32,0.96f32,0.82f32),waterlab_caustic_pattern(wg_mul_f2f(v2(w.x,w.z),0.9f32),t)),exp((-below)*0.15f32)),smoothstep(0.0f32,0.3f32,below)),0.9f32),fmax(n.y,0.0f32)));
+    col=c;
+  }
+  tr:V3=wg_exp_f3(wg_mul_f3f(wg_neg_f3(WATERLAB_UNDER_ABSORB()),path));
+  col=wg_add_f3f3(wg_mul_f3f3(col,tr),wg_mul_f3f3(light,wg_sub_f3f3(v3(1.0f32,1.0f32,1.0f32),tr)));
+  col=wg_add_f3f3(col,wg_mul_f3f(v3(0.95f32,0.97f32,0.85f32),((waterlab_motes(o,d,fmin(path,7.0f32),t,u)*0.7f32)+waterlab_shafts(o,d,path,t,u))));
+  return col;
+}
+waterlab_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+// The depth buffer's value for a point `along` the view ray d (1 - near / view z: the
+// surface's projection), so the clipmap hides behind the traced beach.
+WATERLAB_NEAR :: 0.1f32;
+waterlab_depth_of :: (d:V3,along:f32,u:[]f32)->f32 {
+  return clampf(1.0f32-(WATERLAB_NEAR/fmax(along*wg_dot3(d,v3(u[12],u[13],u[14])),WATERLAB_NEAR)),0.0f32,1.0f32);
+}
+WaterlabOut :: struct {c:V4; depth:f32 #depth; }
+waterlab_bg_fs :: (frag:V4,u:[]f32)->WaterlabOut {
+  ndc:V2=v2(((frag.x/u[0])*2.0f32)-1.0f32,1.0f32-((frag.y/u[1])*2.0f32));
+  aspect:f32=u[0]/u[1];
+  d:V3=wg_normalize3(wg_add_f3f3(wg_add_f3f3(v3(u[12],u[13],u[14]),wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(u[16],u[17],u[18]),ndc.x),u[11]),aspect)),wg_mul_f3f(wg_mul_f3f(v3(u[20],u[21],u[22]),ndc.y),u[11])));
+  o:V3=v3(u[8],u[9],u[10]);
+  t:f32=u[2];
+  // the split waterline: is this pixel's point on the near plane under the waves?
+  near:V3=wg_add_f3f3(o,wg_mul_f3f(d,0.1f32));
+  line:f32=near.y-waterlab_sea_height(v2(near.x,near.z),t,u);
+  if (line<0.0f32) {
+    // on a desktop the view wavers a little under the water
+    waver:V3=ifx u[5]>0.5f32 then v3(0.0f32,0.0f32,0.0f32) else wg_mul_f3f(v3(sin((frag.y*0.02f32)+(t*1.7f32)),cos((frag.x*0.017f32)+(t*1.3f32)),0.0f32),0.004f32);
+    c:V3=waterlab_under_view(o,wg_normalize3(wg_add_f3f3(wg_add_f3f3(d,wg_mul_ff3(waver.x,v3(u[16],u[17],u[18]))),wg_mul_ff3(waver.y,v3(u[20],u[21],u[22])))),t,u);
+    // the meniscus: a bright edge where the surface crosses the lens
+    if (u[5]<0.5f32) {
+      c=wg_mix_f3f3f(c,v3(0.85f32,0.95f32,0.95f32),(1.0f32-smoothstep(0.0f32,0.006f32,-line))*0.7f32);
+    }
+    return WaterlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=0.0f32}; // nothing draws over the view under the water
+  }
+  hit:WaterlabHit=waterlab_trace(o,d,t,u);
+  c:V3;
+  if (hit.t>1e8f32) {
+    c=waterlab_haze(waterlab_sky(d,u),d,3000.0f32*(1.0f32-smoothstep(0.0f32,0.2f32,d.y)),u);
+  } else {
+    w:V3=wg_add_f3f3(o,wg_mul_f3f(d,hit.t));
+    if hit.water {
+      c=waterlab_water(v2(w.x,w.z),w,d,hit.t,t,u);
+    } else {
+      e:f32=0.05f32;
+      n:V3=wg_normalize3(v3(waterlab_ground(wg_sub_f2f2(v2(w.x,w.z),v2(e,0.0f32)),u)-waterlab_ground(wg_add_f2f2(v2(w.x,w.z),v2(e,0.0f32)),u),2.0f32*e,waterlab_ground(wg_sub_f2f2(v2(w.x,w.z),v2(0.0f32,e)),u)-waterlab_ground(wg_add_f2f2(v2(w.x,w.z),v2(0.0f32,e)),u)));
+      // the swash leaves the sand wet a little above the still waterline
+      wet:f32=1.0f32-smoothstep(0.08f32,0.3f32,w.y-u[28]);
+      c=waterlab_sand(v2(w.x,w.z),n,wet,u);
+    }
+    c=waterlab_haze(c,d,hit.t,u);
+  }
+  return WaterlabOut.{c=v4(c.x,c.y,c.z,1.0f32),depth=ifx hit.t>1e8f32 then 1.0f32 else waterlab_depth_of(d,hit.t,u)};
+}
+// ---- The clipmap sea (W10): a vertex from its index, as ocean_vertex does it.
+WaterlabS :: struct {pos:V4; rest:V2; world:V3; }
+waterlab_surface_vs :: (vid:u32,_iid2:u32,u:[]f32)->WaterlabS {
+  n:u32=wg_u32_f(u[44]);
+  count:u32=wg_u32_f(u[45]);
+  half:u32=n/2;
+  q:u32=vid/6;
+  corner:u32=vid%6;
+  full:u32=mul_wrap(n,n);
+  ring:u32=sub_wrap(full,mul_wrap(half,half));
+  l:u32=0;
+  if (q>=full) {
+    q=sub_wrap(q,full);
+    l=wg_min_u(add_wrap(cast(u32)1,q/ring),sub_wrap(count,cast(u32)1));
+    q=sub_wrap(q,mul_wrap(sub_wrap(l,cast(u32)1),ring));
+  }
+  lv:V4=wg_at4(u,(cast(int)l)*4+48);
+  qx:u32=q%n;
+  qz:u32=q/n;
+  if (l>0) {
+    hole:u32=wg_u32_f(lv.w);
+    hx:u32=add_wrap(n/4,(hole&1));
+    hz:u32=add_wrap(n/4,(hole>>1));
+    top:u32=mul_wrap(hz,n);
+    if (q>=top) {
+      band:u32=sub_wrap(q,top);
+      if (band<mul_wrap(half,half)) {
+        col:u32=band%half;
+        qx=ifx col<hx then col else add_wrap(col,half);
+        qz=add_wrap(hz,band/half);
+      } else {
+        rest:u32=sub_wrap(band,mul_wrap(half,half));
+        qx=rest%n;
+        qz=add_wrap(add_wrap(hz,half),rest/n);
+      }
+    }
+  }
+  cx:[6]u32=[6]u32.[0,1,0,0,1,1];
+  cz:[6]u32=[6]u32.[0,0,1,1,0,1];
+  ix:s32=cast,trunc(s32)(add_wrap(qx,cx[cast(int)corner]));
+  iz:s32=cast,trunc(s32)(add_wrap(qz,cz[cast(int)corner]));
+  gx:s32=((wg_i32_f(wg_round(lv.x/lv.z)))-(cast,trunc(s32)(half)))+ix;
+  gz:s32=((wg_i32_f(wg_round(lv.y/lv.z)))-(cast,trunc(s32)(half)))+iz;
+  rx:s32=wg_abs_i(ix-(cast,trunc(s32)(half)));
+  rz:s32=wg_abs_i(iz-(cast,trunc(s32)(half)));
+  edge:s32=wg_max_i(rx,rz);
+  a:f32=0.0f32;
+  if (add_wrap(l,cast(u32)1)<count) {
+    a=clampf((cast(f32)(edge-((cast,trunc(s32)(half))-(wg_i32_f(u[46])))))/u[46],0.0f32,1.0f32);
+  }
+  p:V2=v2(((cast(f32)(gx))-(a*(cast(f32)(gx&1))))*lv.z,((cast(f32)(gz))-(a*(cast(f32)(gz&1))))*lv.z);
+  if ((add_wrap(l,cast(u32)1)==count)&&(edge==(cast,trunc(s32)(half)))) {
+    p=wg_add_f2f2(v2(lv.x,lv.y),wg_mul_f2f(wg_sub_f2f2(p,v2(lv.x,lv.y)),(u[47]/((cast(f32)(half))*lv.z))));
+  }
+  // the waves: the sea's height, and cascade 0's choppy displacement, both faded out where
+  // the quads grow too coarse to carry them (past a few patches)
+  t:f32=u[2];
+  reach:f32=wg_length2(wg_sub_f2f2(p,v2(u[8],u[10])));
+  keep:f32=1.0f32-smoothstep(u[29]*2.5f32,u[29]*8.0f32,reach);
+  taper:f32=smoothstep(0.0f32,0.6f32,waterlab_depth_at(p,u));
+  moved:V2=wg_mul_f2f(waterlab_chop(p,u),(keep*taper));
+  w:V3=v3(p.x+moved.x,u[28]+((waterlab_sea_height(p,t,u)-u[28])*keep),p.y+moved.y);
+  o:WaterlabS;
+  rel:V3=wg_sub_f3f3(w,v3(u[8],u[9],u[10]));
+  vz:f32=wg_dot3(rel,v3(u[12],u[13],u[14]));
+  aspect:f32=u[0]/u[1];
+  o.pos=v4(wg_dot3(rel,v3(u[16],u[17],u[18]))/(u[11]*aspect),wg_dot3(rel,v3(u[20],u[21],u[22]))/u[11],vz-WATERLAB_NEAR,vz);
+  o.rest=p;
+  o.world=w;
+  return o;
+}
+waterlab_surface_fs :: (v:WaterlabS,u:[]f32)->V4 {
+  rel:V3=wg_sub_f3f3(v.world,v3(u[8],u[9],u[10]));
+  dist:f32=wg_length3(rel);
+  d:V3=wg_div_f3f(rel,fmax(dist,1e-4f32));
+  c:V3=waterlab_water(v.rest,v.world,d,dist,u[2],u);
+  return wg_make_f4_f3f(waterlab_haze(c,d,dist,u),1.0f32);
+}
+// The strokes (none yet): host.js draws them over the pass.
+WaterlabV :: struct {pos:V4; tint:V4; }
+waterlab_fx_vs_in :: struct {a:V4; b:V4; c:V4; e:V4; }
+waterlab_fx_vs :: (_vid3:u32,_iid4:u32,in_:waterlab_fx_vs_in,u:[]f32)->WaterlabV {
+  a:V4=in_.a;
+  b:V4=in_.b;
+  c:V4=in_.c;
+  e:V4=in_.e;
+  o:WaterlabV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.tint=c;
+  return o;
+}
+waterlab_fx_fs :: (v:WaterlabV)->V4 {
+  return wg_make_f4_f3f(v3(v.tint.x,v.tint.y,v.tint.z),1.0f32);
+}
+// The painterly style's shading (verse/style.coax), written by build.sh.
+
+// ---- generated by wgsl-coax: the vector helpers this file calls
+wg_get_u4 :: (p:U4,i:int)->u32 {if i==0 {return p.x;} if i==1 {return p.y;} if i==2 {return p.z;} return p.w;}
+wg_div_f2f :: (a:V2,b:f32)->V2 {return v2(a.x/b,a.y/b);}
+wg_mul_f2f :: (a:V2,b:f32)->V2 {return v2(a.x*b,a.y*b);}
+wg_sub_f2f :: (a:V2,b:f32)->V2 {return v2(a.x-b,a.y-b);}
+wg_fract_f2 :: (p0:V2)->V2 {return v2(fract(p0.x),fract(p0.y));}
+wg_floor_f2 :: (p0:V2)->V2 {return v2(floor(p0.x),floor(p0.y));}
+wg_cvt_i2f2 :: (p:V2)->I2 {return i2(wg_i32_f(p.x),wg_i32_f(p.y));}
+wg_add_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x+b.x,a.y+b.y);}
+wg_make_i2_i :: (p0:s32)->I2 {return i2(p0,p0);}
+wg_band_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x&b.x,a.y&b.y);}
+wg_cvt_u2i2 :: (p:I2)->U2 {return u2(cast,trunc(u32)(p.x),cast,trunc(u32)(p.y));}
+wg_mul_ff4 :: (a:f32,b:V4)->V4 {return v4(a*b.x,a*b.y,a*b.z,a*b.w);}
+wg_add_f4f4 :: (a:V4,b:V4)->V4 {return v4(a.x+b.x,a.y+b.y,a.z+b.z,a.w+b.w);}
+wg_mul_ff2 :: (a:f32,b:V2)->V2 {return v2(a*b.x,a*b.y);}
+wg_add_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x+b.x,a.y+b.y);}
+wg_sw_xy_f4 :: (p:V4)->V2 {return v2(p.x,p.y);}
+wg_mul_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x*b.x,a.y*b.y);}
+wg_sub_ff2 :: (a:f32,b:V2)->V2 {return v2(a-b.x,a-b.y);}
+wg_sub_i2i2 :: (a:I2,b:I2)->I2 {return i2(a.x-b.x,a.y-b.y);}
+wg_all_ge_i2i2 :: (a:I2,b:I2)->bool {return a.x>=b.x && a.y>=b.y;}
+wg_all_lt_i2i2 :: (a:I2,b:I2)->bool {return a.x<b.x && a.y<b.y;}
+wg_sub_f2f2 :: (a:V2,b:V2)->V2 {return v2(a.x-b.x,a.y-b.y);}
+wg_cvt_u2f2 :: (p:V2)->U2 {return u2(wg_u32_f(p.x),wg_u32_f(p.y));}
+wg_make_u2_u :: (p0:u32)->U2 {return u2(p0,p0);}
+wg_min_u2u2 :: (p0:U2,p1:U2)->U2 {return u2(wg_min_u(p0.x,p1.x),wg_min_u(p0.y,p1.y));}
+wg_cvt_f2u2 :: (p:U2)->V2 {return v2(cast(f32)(p.x),cast(f32)(p.y));}
+wg_mix_f2f2f :: (p0:V2,p1:V2,p2:f32)->V2 {return v2(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2));}
+wg_get_f4 :: (p:V4,i:int)->f32 {if i==0 {return p.x;} if i==1 {return p.y;} if i==2 {return p.z;} return p.w;}
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_add_f2f :: (a:V2,b:f32)->V2 {return v2(a.x+b,a.y+b);}
+wg_mul_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x*b.x,a.y*b.y,a.z*b.z);}
+wg_neg_f3 :: (a:V3)->V3 {return v3(-a.x,-a.y,-a.z);}
+wg_sw_xz_f3 :: (p:V3)->V2 {return v2(p.x,p.z);}
+wg_floor_f3 :: (p0:V3)->V3 {return v3(floor(p0.x),floor(p0.y),floor(p0.z));}
+wg_add_f3f :: (a:V3,b:f32)->V3 {return v3(a.x+b,a.y+b,a.z+b);}
+wg_sub_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x-b.x,a.y-b.y,a.z-b.z);}
+wg_exp_f3 :: (p0:V3)->V3 {return v3(exp(p0.x),exp(p0.y),exp(p0.z));}
+wg_mul_ff3 :: (a:f32,b:V3)->V3 {return v3(a*b.x,a*b.y,a*b.z);}
+wg_div_f3f :: (a:V3,b:f32)->V3 {return v3(a.x/b,a.y/b,a.z/b);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

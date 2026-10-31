@@ -1,0 +1,3 @@
+--vertices waterlab_bg_vs,waterlab_surface_vs,waterlab_fx_vs
+--fragments waterlab_bg_fs,waterlab_surface_fs,waterlab_fx_fs
+--bindings apps/openagents-web/gpu/waterlab.bindings --strip waterlab_

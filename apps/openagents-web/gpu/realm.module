@@ -1,0 +1,3 @@
+--vertices realm_bg_vs,realm_shadow_vs,realm_scene_vs,realm_fx_vs
+--fragments realm_bg_fs,realm_shadow_fs,realm_scene_fs,realm_bloom_fs,realm_post_fs,realm_fx_fs
+--bindings apps/openagents-web/gpu/realm.bindings --strip realm_

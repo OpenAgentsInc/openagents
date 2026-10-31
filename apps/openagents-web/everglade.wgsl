@@ -2951,11 +2951,11 @@ fn coax_p_wg_mul_f2f2(p_a: vec2f, p_b: vec2f) -> vec2f {
   var l_b: vec2f = p_b;
   return coax_p_v2((l_a.x * l_b.x), (l_a.y * l_b.y));
 }
-fn coax_p_clampf(p_x: f32, p_lo: f32, p_hi: f32) -> f32 {
+fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   var l_x: f32 = p_x;
-  var l_lo: f32 = p_lo;
-  var l_hi: f32 = p_hi;
-  return coax_p_fmin(coax_p_fmax(l_x, l_lo), l_hi);
+  var l_low: f32 = p_low;
+  var l_high: f32 = p_high;
+  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
 }
 fn coax_p_wg_sw_rgb_f4(p_p: vec4f) -> vec3f {
   var l_p: vec4f = p_p;
@@ -3371,16 +3371,16 @@ fn coax_p_wg_atan2(p_y: f32, p_x: f32) -> f32 {
   var l_x: f32 = p_x;
   var l_ax: f32;
   var l_ay: f32;
-  var l_hi: f32;
+  var l_high: f32;
   var l_r: f32;
   l_ax = abs(l_x);
   l_ay = abs(l_y);
-  l_hi = coax_p_fmax(l_ax, l_ay);
-  if ((l_hi == 0.0f))
+  l_high = coax_p_fmax(l_ax, l_ay);
+  if ((l_high == 0.0f))
   {
     return 0.0f;
   }
-  l_r = coax_p_wg_atan01((coax_p_fmin(l_ax, l_ay) / l_hi));
+  l_r = coax_p_wg_atan01((coax_p_fmin(l_ax, l_ay) / l_high));
   if ((l_ay > l_ax))
   {
     l_r = ((0x1.921fb6p1f * 0x1.000000p-1f) - l_r);
@@ -4910,11 +4910,11 @@ fn coax_p_eg_plate(p_p: vec2f, p_under: vec3f, p_r: vec4f, p_s: vec4f) -> vec3f 
   l_a = coax_p_clampf(l_s.x, 0.0f, 0x1.000000p0f);
   return coax_p_wg_mix_f3f3f(coax_p_wg_mix_f3f3f(l_under, l_fill, (l_a * l_inside)), l_line, ((l_edge * coax_p_fmin(0x1.000000p0f, (l_a + 0x1.99999ap-4f))) * 0x1.99999ap-1f));
 }
-fn coax_p_wg_clamp_i(p_x: i32, p_lo: i32, p_hi: i32) -> i32 {
+fn coax_p_wg_clamp_i(p_x: i32, p_low: i32, p_high: i32) -> i32 {
   var l_x: i32 = p_x;
-  var l_lo: i32 = p_lo;
-  var l_hi: i32 = p_hi;
-  return coax_p_wg_min_i(coax_p_wg_max_i(l_x, l_lo), l_hi);
+  var l_low: i32 = p_low;
+  var l_high: i32 = p_high;
+  return coax_p_wg_min_i(coax_p_wg_max_i(l_x, l_low), l_high);
 }
 fn coax_p_wg_byte(p_x: u32, p_at: u32) -> u32 {
   var l_x: u32 = p_x;

@@ -21,10 +21,8 @@ bun "$here/../../coax/web/realms.ts"
 splash=$!
 # The realms: the engine's house, player and thumbs, each its own library as on
 # iOS, under realm.coax's HUD; the house's light from the engine itself.
-(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/light.coax verse_bar verse_tone --into apps/openagents-web/realm.wgsl \
-  && coax/web/tool.sh coax/web/wgsl-block.coax verse/haunt-light.coax verse_haunt_ambient verse_haunt_attenuate verse_haunt_shade verse_haunt_moon_dir verse_haunt_moonlight verse_haunt_shadow_reach verse_haunt_shadow_edge verse_haunt_night verse_haunt_bloom_share verse_haunt_glow --into apps/openagents-web/realm.wgsl \
-  && coax/web/tool.sh coax/web/wgsl-block.coax verse/look.coax verse_outline_depth verse_outline_crease verse_outline_strength verse_outline_ink --into apps/openagents-web/realm.wgsl \
-  && coax/web/tool.sh coax/web/wgsl-block.coax verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl \
+# (realm.wgsl, the house, loads its light in its Coax: gpu/realm.coax.)
+(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/particle-motion.coax verse_particle_offset verse_particle_glow verse_particle_size --into apps/openagents-web/particles.wgsl \
   && coax/web/tool.sh coax/web/wgsl-block.coax verse/haunt-light.coax verse_haunt_bloom_share --into apps/openagents-web/particles.wgsl)
 # The art styles' shading (verse/style.coax, docs/verse/art-styles.md) into the fixture and every
 # painterly realm's WGSL (realms.ts --check refuses a painterly realm without it).
@@ -39,7 +37,7 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
   && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu-fx.coax apps/openagents-web/everglade-fx.wgsl verse/everglade/gpu-fx.module)
 # The pages whose whole module is Coax too: apps/openagents-web/gpu/NAME.coax, with NAME.bindings
 # and NAME.module, writes NAME.wgsl (the rest are still hand-written; docs/verse/native-gpu.md, G6).
-for w in verse newland builder deadgears icecream garden belt droprealm villa fairy orbitleague stair myrealm fixture; do
+for w in verse newland builder deadgears icecream garden belt droprealm villa fairy orbitleague stair myrealm fixture realm waterlab; do
   (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax "apps/openagents-web/gpu/$w.coax" "apps/openagents-web/$w.wgsl" "apps/openagents-web/gpu/$w.module")
 done
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
@@ -52,7 +50,7 @@ flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 ve
 # Fairy Forest draws in the flat style only, faceted: no painterly or grass functions.
 # (Fairy Forest, fairy.wgsl, loads them in its Coax: gpu/fairy.coax.)
 # (Orbit League, orbitleague.wgsl, loads them in its Coax: gpu/orbitleague.coax.)
-(cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-block.coax verse/style.coax $style_fns --into apps/openagents-web/waterlab.wgsl)
+# (waterlab.wgsl loads verse/style.coax in its Coax: gpu/waterlab.coax.)
 m="$here/../../verse"
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
 "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &

@@ -402,8 +402,10 @@ Every phase and native feature is a task in the Verse project
     `@builtin(frag_depth)` as that, knows mat3x3f (M3, m3_apply in
     verse/gpu/wgsl.coax), and writes a store to a vector's element by a
     dynamic index as the vector with it set.
-  - realm stops the translator; waterlab should now follow fixture
-    (it too writes frag_depth).
+  - realm (the haunted house) and waterlab follow, 0 blocks changed. realm
+    loads verse/light.coax, whose bare lo, hi and smooth are procedures, and
+    Coax refuses a local of a procedure's name, so verse/gpu/shader.coax and
+    verse/gpu/wgsl.coax name theirs low, high and blend.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

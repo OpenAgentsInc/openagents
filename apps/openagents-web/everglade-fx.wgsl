@@ -331,11 +331,11 @@ fn coax_p_egfx_soft(p_p: coax_t11) -> f32 {
   l_scene = select(0x1.e84800p19f, (l_b / l_under), (abs(l_under) > 0x1.ad7f2ap-24f));
   return coax_p_clampf(((l_scene - l_p.f4.x) / l_p.f4.y), 0.0f, 0x1.000000p0f);
 }
-fn coax_p_clampf(p_x: f32, p_lo: f32, p_hi: f32) -> f32 {
+fn coax_p_clampf(p_x: f32, p_low: f32, p_high: f32) -> f32 {
   var l_x: f32 = p_x;
-  var l_lo: f32 = p_lo;
-  var l_hi: f32 = p_hi;
-  return coax_p_fmin(coax_p_fmax(l_x, l_lo), l_hi);
+  var l_low: f32 = p_low;
+  var l_high: f32 = p_high;
+  return coax_p_fmin(coax_p_fmax(l_x, l_low), l_high);
 }
 fn coax_p_wg_make_f4_f3f(p_p0: vec3f, p_p1: f32) -> vec4f {
   var l_p0: vec3f = p_p0;
@@ -521,11 +521,11 @@ fn coax_p_u2(p_x: u32, p_y: u32) -> coax_t16 {
   var l_y: u32 = p_y;
   return coax_t16(l_x, l_y);
 }
-fn coax_p_wg_clamp_i(p_x: i32, p_lo: i32, p_hi: i32) -> i32 {
+fn coax_p_wg_clamp_i(p_x: i32, p_low: i32, p_high: i32) -> i32 {
   var l_x: i32 = p_x;
-  var l_lo: i32 = p_lo;
-  var l_hi: i32 = p_hi;
-  return coax_p_wg_min_i(coax_p_wg_max_i(l_x, l_lo), l_hi);
+  var l_low: i32 = p_low;
+  var l_high: i32 = p_high;
+  return coax_p_wg_min_i(coax_p_wg_max_i(l_x, l_low), l_high);
 }
 fn coax_p_length3(p_a: vec3f) -> f32 {
   var l_a: vec3f = p_a;
