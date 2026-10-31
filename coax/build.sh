@@ -24,7 +24,7 @@ else
   COAX_RELEASE_COMPILER=/dev/null "$root/scripts/coax-release.sh" --check
 fi
 expected="$(./provenance.sh fingerprint "$root")"
-artifacts=(lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h)
+artifacts=(check-domains.c check-domains.h lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h)
 cache_root="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
 cache="$cache_root/$expected"
 building=""
@@ -41,7 +41,7 @@ artifacts_from() {
   for name in "${artifacts[@]}"; do
     if [[ -f "$from/$name" && ! -L "$from/$name" ]]; then cp "$from/$name" "$work/$name"; continue; fi
     case "$name" in
-      lexer.*|parser.*|checker.*|sources.*) cp "bootstrap/$name" "$work/$name" ;;
+      check-domains.*|lexer.*|parser.*|checker.*|sources.*) cp "bootstrap/$name" "$work/$name" ;;
       proto_runtime.inc)
         { printf 'static constexpr char PROTO_CORE_SOURCE[] = R"COAX_CORE('; cat lib/proto/wire.coax
           printf ')COAX_CORE";\nstatic constexpr char PROTO_MEMORY_SOURCE[] = R"COAX_MEMORY('; cat lib/proto/memory.coax

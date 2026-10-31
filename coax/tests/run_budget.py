@@ -105,7 +105,7 @@ class RunBudgetTests(unittest.TestCase):
         # stage-zero seeds. ASan/UBSan detect invalid lifetime accounting.
         directory = Path(self.tmp.name)
         objects = []
-        for name in ('budget', 'mutation-schedule', 'profiles', 'lexer', 'parser', 'checker', 'sources'):
+        for name in ('budget', 'check-domains', 'mutation-schedule', 'profiles', 'lexer', 'parser', 'checker', 'sources'):
             obj = directory / (name + '.o')
             subprocess.run(['cc', '-std=c11', '-O1', '-g', '-fsanitize=address,undefined',
                             '-c', str(ROOT / 'bootstrap' / (name + '.c')), '-o', str(obj)],

@@ -1,6 +1,6 @@
 #import "Basic";
 #forall "original parameterized closure" value: -1..<2 { #assert same(value) == value; }
-same :: (value: $T) -> T { return value; }
+same :: (value: $T) -> $T { return value; }
 unrelated_foreign :: () -> int #foreign;
-Unrelated :: struct { value: int = unrelated_foreign(); }
-main :: () { item := Unrelated.{}; print("unrelated product %", item.value); }
+Unrelated :: struct { value: int = 17; }
+main :: () { item := Unrelated.{}; other := unrelated_foreign(); print("unrelated product % %", item.value, other); }
