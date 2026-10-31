@@ -1,0 +1,232 @@
+{
+  "schema": "coax.quantity.derived.focused-verification.v1",
+  "date": "2026-10-31",
+  "focused_passed": true,
+  "source_checkpoint": "3eeca03ece",
+  "scope": "R12 M2: compiler-owned nominal scalar-unit products, quotients and explicit conversion targets, native C/F32/F64 only.",
+  "source_sha256": {
+    "coax/lib/compiler/checker.coax": "6db9fc32c3cf731810bfe5a4d3a083bd8f0914fa35cef937884fdb33eb0f08de",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+    "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+    "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+    "coax/src/errors.cpp": "410cd2944602a9d7a8996d4789dc3d69acc211e87ce1b2a09e4e185b3ff1cbda",
+    "coax/tests/quantity_derived.py": "057644160c3d733deff93ffef7bdbc96342833898d70e11163bd80aa2c40f851",
+    "coax/tests/quantity_derived_scope.py": "aee86fd7998b14f88461ede61385b8c13aff859ec377f97a1482680e0aac8183",
+    "verse/grid.coax": "be2ed061cda5700d20b0afc5c2efa73df850dc0a1c4c29e14debb51f5a34419a"
+  },
+  "compiler_policy": "Unit and quantity decisions are authored Coax. The C++ change adds diagnostic catalog entries only; existing erasure/evaluation/code-generation machinery is reused.",
+  "mutation": {
+    "schema": "coax-changed-procedure-mutation-scope-v1",
+    "original": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/lib/compiler/checker.coax",
+    "source_sha256": "6db9fc32c3cf731810bfe5a4d3a083bd8f0914fa35cef937884fdb33eb0f08de",
+    "root": "/private/tmp/r12-checker-derived-capsule-zero/root.coax",
+    "root_sha256": "19e2b50ae6a7bfe1c898ebf49a830f8aa8db609a2686d8e28f043bed31981a09",
+    "dependency_sha256": "3e2a1c31eb031e6ce51dfca2b51a239866dcf7fc5401e468a5d77337b7c13c11",
+    "procedure_count": 16,
+    "procedures": [
+      {
+        "name": "CK_bind",
+        "first_line": 1699,
+        "sha256": "62784b887eba4d8d3e6cf7f384f8141a70a3d9ab476fd4e05ee1e64ddc6f6a84"
+      },
+      {
+        "name": "CK_unit_constructor",
+        "first_line": 1015,
+        "sha256": "ed2c9b9e1fea33cdc4a2ef16fdf1bafda2b299cef77848b8b1159ee79a84224c"
+      },
+      {
+        "name": "CK_unit_form",
+        "first_line": 1016,
+        "sha256": "1ce036e44ed3fab5b585c6a822b81c955c576c166b209eddf159b3fc7b4cf6cf"
+      },
+      {
+        "name": "CK_unit_intern",
+        "first_line": 1021,
+        "sha256": "c09fdb8ba8e7eebe5d32b6b8fac559b494033cd26b96d09a498baf78d9801d75"
+      },
+      {
+        "name": "CK_unit_admit",
+        "first_line": 1036,
+        "sha256": "8002c6a3dcb3962fac4849fcb6c60e0b73fca8be4fa27375823c21a484c0b860"
+      },
+      {
+        "name": "CK_unit_compose",
+        "first_line": 1040,
+        "sha256": "c50ab081b10df0c1e15eb1d031b43245f94e1ed1a7f691a5d3fdc57af2aa7062"
+      },
+      {
+        "name": "CK_unit_type",
+        "first_line": 1048,
+        "sha256": "23bd1e92311531c689ec8c0abf7a3419e9a010264fe82c09152e9748252c1bf1"
+      },
+      {
+        "name": "CK_unit_target",
+        "first_line": 1055,
+        "sha256": "513f6bd3433b12e5636cfddb5b50eff6bfe13182b908d9c051d94aebfbea9f65"
+      },
+      {
+        "name": "CK_quantity_derived",
+        "first_line": 1066,
+        "sha256": "dc3f029c6e1ba3cd803e38581f2f70b7a6156186518ae4e750fe65daacb29427"
+      },
+      {
+        "name": "CK_quantity_conversion",
+        "first_line": 1134,
+        "sha256": "c98941f69f7423f18a5d5656462e5a4f01c1d11a784fb2c994d516bdd867fa96"
+      },
+      {
+        "name": "CK_quantity_convert",
+        "first_line": 1125,
+        "sha256": "865bc4303bd9bf5dd0cbd0ebaf7d3a9d84c6514bbf0f252c2a0f1849e0fe5f69"
+      },
+      {
+        "name": "CK_binary",
+        "first_line": 1149,
+        "sha256": "e6e219bb34135d57b9e1aa7072a6aa1b6036c42be44a252fb24c713b2147e4f8"
+      },
+      {
+        "name": "CK_resolve",
+        "first_line": 742,
+        "sha256": "b7316c1d5fbb13727329a5e880264ecb20f774d553b67dc19b4b7af7930813cf"
+      },
+      {
+        "name": "CK_call",
+        "first_line": 1557,
+        "sha256": "6d38b23c04591b6d7430f875023fd1fd007862a1d54a5c1a81042f288a1941ca"
+      },
+      {
+        "name": "CK_builtin_name",
+        "first_line": 679,
+        "sha256": "9e80c8fca0849bbf06cb727d2c8cd5929019d2acf4b832441bb5121d918bf5a8"
+      },
+      {
+        "name": "CK_quantity_binary",
+        "first_line": 1100,
+        "sha256": "58c9e10eb4ebd24dff3b302234b52666b67b37674966dca4ca3378b58465dd65"
+      }
+    ],
+    "transformation": "Exact selected procedure bodies are root source. Every other body and every original check remain in dependency source. Only three policy load paths become absolute. No waiver or check filtering.",
+    "baseline_checks_retained": 698,
+    "mutants": 942,
+    "killed": 942,
+    "survived": 0,
+    "equivalent_waivers": 0,
+    "command": "/tmp/coax-quantity-bootstrap-043/coax mutate /tmp/r12-checker-derived-capsule-zero/root.coax --root-only --jobs 8",
+    "driver_sha256": "bf718de35f9d99aa5b4315cb13700add99fece16515aee77566d8775791e2c31",
+    "log_sha256": "bfae9b7a357c1e8e16d1d72286db695f8124d7ad212085acee329d8c03f986d6",
+    "reproduction": "python3 coax/tests/quantity_derived_scope.py NEW_PRIVATE_DIR; then COMPILER mutate NEW_PRIVATE_DIR/root.coax --root-only --jobs N",
+    "proof_limit": "Exact changed procedures only, with every dependency check retained; not a new whole-checker mutation qualification."
+  },
+  "iteration_history": [
+    {
+      "scope": "first fifteen-procedure snapshot",
+      "mutants": 905,
+      "killed": 842,
+      "survived": 63,
+      "log_sha256": "7a8a681fce939d550fca0cf9d33359a581f487965bf4701d1733e7e682ae16b6"
+    },
+    {
+      "scope": "sixteen-procedure snapshot before final lowering/refusal observations and original-loop restoration",
+      "mutants": 946,
+      "killed": 938,
+      "survived": 8,
+      "log_sha256": "574128391bac3840ad6ffbc9401d0aa7c1398389a1c7b6290de5bd88d8811a9b"
+    }
+  ],
+  "important_regressions": [
+    "A separately declared CoaxUnitone nominal tag cannot collide with intrinsic UnitOne: generated NODE and TYPE both use a private module scope.",
+    "Unknown qualified constructor names do not silently ignore their module alias.",
+    "Concrete derived units bind generic representation parameters without weakening whole-unit mismatch checks or 0.43 bound-literal behavior.",
+    "Constructor conversion targets become type facts with no runtime call/effect.",
+    "Empty-form allocation failures publish neither cache entries nor successful type IDs.",
+    "Failed target syntax preserves the primary diagnostic and a type-none sentinel."
+  ],
+  "private_compiler": {
+    "path": "/tmp/r12-m2-final/coax",
+    "sha256": "cd4508f64faab3741513b7f3402f0b789781aabc235e9c1eafc7d1f094bfccef",
+    "version": "0.43.0",
+    "source_checkpoint_with_exact_authored_checker": "5c455c7ae0",
+    "followup_scope": "3eeca03ece adds checks only; all sixteen product procedure bodies are unchanged.",
+    "construction": "Direct authored compiler-graph emission using the already qualified merged0.43 compiler, then host C/C++ compilation. Normal checked-in-seed reconstruction is separately recorded by publication.",
+    "captured_inputs_sha256": "f0cb96b5887497382d627e89db460cec93c5360fc7e886acbb48289170aa6cc5",
+    "graph_c_sha256": "426d79c07d501e565d4a8bdc7e9fc9336eb11ecfd7bfb4ea24f24b4c403e609c",
+    "graph_header_sha256": "41c65157e41b7484a1d486753f92a85bb479d844f8eee043927561ae8229a112"
+  },
+  "focused_cli": {
+    "methods": 12,
+    "passed": 12,
+    "command": "COAX_TEST_COMPILER=/tmp/r12-m2-final/coax python3 coax/tests/quantity_derived.py",
+    "stdout_stderr_sha256": "8e9e40ffd4da627182226dc07416a4cc7f68c10a89b27c79ef56052aaa9a0c38",
+    "coverage": [
+      "products/quotients/formal cancellation",
+      "generic carrier binding and scalar literals",
+      "nominal and quantity-family identity",
+      "explicit named/generated conversions and scale",
+      "dimension/scale/power/capacity refusals",
+      "runtime/type constructor roles",
+      "private namespace collision",
+      "qualified aliases",
+      "resolved effect inventory"
+    ]
+  },
+  "native": {
+    "record": "coax/tests/quantity/derived-native-qualification.json",
+    "final_compiler_sha256": "cd4508f64faab3741513b7f3402f0b789781aabc235e9c1eafc7d1f094bfccef",
+    "observations_per_mode": 17417,
+    "modes": [
+      "debug",
+      "release",
+      "fail-fast ASan/UBSan"
+    ],
+    "all_passed": true,
+    "stderr_bytes": 0,
+    "source_families_initially_passed": 2,
+    "edge_random_pairs_each_width": 1088,
+    "raw_and_typed_function_bodies_exact": 16,
+    "ordered_foreign_effect_traces": 6,
+    "scalar_function_pointer_abi": true,
+    "nested_size_alignment_offsets_roundtrip": true,
+    "final_generated_c_sha256": "cd0d265dbfbd003986bedeac4c4f8a55a9a1bfaaa03315ce505584b04cd978e8",
+    "final_generated_header_sha256": "fd8a9a081495beecf77d9a832dbf3c8595cadeb91a23b91867b4d09f333f884c",
+    "canonical_native_transcript_sha256": "0ff42431c0214056f3b86ceee9fd4879b9dff182844c9b74fca7b238a7fd65e0",
+    "history": "Initial native record remains intact. Final emission renamed only three marker identifiers; numerical bodies/header stayed exact, and only the new changed-C native modes were rerun."
+  },
+  "grid": {
+    "source": "verse/grid.coax",
+    "focused_fog_cases": 130,
+    "passed": true,
+    "comparison": {
+      "coax_p_smooth": {
+        "equal": true,
+        "sha256": "e27415e4cc65f8afe89253835610e2662e1f9b072f57bd9fbfe230891d910744"
+      },
+      "coax_p_fog": {
+        "equal": true,
+        "sha256": "993bd6728111b9a50156763c3095c8cdefbd4ae562c2afc2edecdae3aef6427a"
+      }
+    },
+    "reuse_limit": "The focused source path and exact smooth/fog C functions are unchanged since this passing result; no complete Verse gate rerun."
+  },
+  "reused_unchanged_proofs": {
+    "quantity_policy_mutants": 96,
+    "unit_algebra_mutants": 69,
+    "unit_forms_mutants": 122,
+    "reason": "Frozen producer source bodies and previously recorded independent/native qualifications are unchanged; these gates were not rerun."
+  },
+  "normal_publication_reconstruction": {
+    "included_in_this_record": false,
+    "scope": "A separate merged-source record owns checked-in seed reconstruction, C/header fixed points, source diagnostic metadata refresh, the complete compiler-input fingerprint, and final native-emission byte binding."
+  },
+  "not_claimed": [
+    "complete R12",
+    "Point3/Vector3/frame-chain transforms",
+    "Panda joint/pose migration",
+    "compiler clocks or #bounded",
+    "shader/device quantity ABI",
+    "schema1 physical reflection",
+    "whole-module code-size equality",
+    "universal assembly equality",
+    "whole compiler correctness",
+    "normal release/cache/installed compiler qualification"
+  ]
+}

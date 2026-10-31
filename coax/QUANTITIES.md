@@ -72,7 +72,7 @@ make NaNs totally ordered.
 
 ## Derived scalar units
 
-The next authored-source milestone adds `UnitProduct(A,B)`,
+The derived scalar milestone adds `UnitProduct(A,B)`,
 `UnitQuotient(A,B)` and `UnitOne` as reserved compiler type forms. They accept
 concrete unit tags. Quantity times/divided by quantity requires one carrier
 and returns the left quantity family; scalar scaling keeps the M1 rules.
@@ -112,14 +112,25 @@ Device and schema1 quantity reflection refusals continue.
 
 Grid now computes its fog interpolation quotient before projecting `.value`.
 The two affected C functions match their M1 versions exactly; the changed
-fog path passes130 focused cases. This remains a scalar precursor to the full
+fog path passes 130 focused cases. This remains a scalar precursor to the full
 Verse transform and simulated-Panda joint/pose consumer gate.
 
-The derived-source mutation/bootstrap receipt is pending final closure. The
-new independent native proof already covers17,417 observations per mode in
-debug, release and ASan/UBSan, sixteen raw/quantity C-body comparisons and six
-ordered foreign-call traces. Final compiler C/header identity will bind the
-reused native proof; no full old numerical corpus is rerun.
+The [focused derived-unit record](../docs/verification/coax-quantity-derived-2026-10-31.json)
+retains all 698 checks and kills 942/942 mutants across sixteen exact changed
+procedures, with zero survivors or equivalent waivers. Twelve focused CLI
+cases pass on the refreshed private compiler, including generic carrier
+binding, constructor targets, nominal collisions and resolved effects.
+
+The [independent native record](tests/quantity/derived-native-qualification.json)
+covers 17,417 observations per mode in debug, release and fail-fast ASan/UBSan.
+All sixteen numerical function bodies match their raw versions exactly after
+source-line directives are removed. Scalar function-pointer and nested-record
+ABI checks and six ordered foreign-call traces pass. The final compiler changes
+only three internal marker names in generated C; its header and numerical
+bodies stay exact, and the new changed-C native modes pass again. Old M1 and
+producer proofs are reused by source identity. Merged-source reconstruction,
+seed diagnostic metadata and the final publication byte binding are recorded
+separately; this focused proof does not qualify an installed release cache.
 
 ## Explicit scale conversion
 
