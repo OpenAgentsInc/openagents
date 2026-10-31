@@ -325,7 +325,8 @@ if $stage; then
   unchanged=()
   [[ -n "$full_walk" || "$passed" != *" staged "* ]] || unchanged=(--unchanged-against https://openagents.com --since "${passed%% *}")
   report="$(mktemp -d)/goldens.json"
-  if ! bounded 1800 env GOLDENS_FULL="${full_walk:-${GOLDENS_FULL:-}}" GOLDENS_PENDING="$repo/coax/web/goldens/pending" bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ${unchanged[@]+"${unchanged[@]}"} --report "$report"; then
+  rc=0; browser_check "the golden walk" bounded 1800 env GOLDENS_FULL="${full_walk:-${GOLDENS_FULL:-}}" GOLDENS_PENDING="$repo/coax/web/goldens/pending" bun "$tree/coax/web/goldens.ts" https://staging.openagents.com ${unchanged[@]+"${unchanged[@]}"} --report "$report" || rc=$?
+  if (( rc == 1 )); then
     # Only golden comparisons failed: those pages are held back, the rest ships.
     # Anything else (a page that doesn't start, errors, draws nothing, a missing analytics event) stops the release.
     held_names="$(bun -e 'const r = JSON.parse(await Bun.file(process.argv[1]).text()); if (r.other.length || !r.golden.length) process.exit(1); console.log(r.golden.map((g) => g.name).join(" "))' "$report" 2>/dev/null)" ||
@@ -355,8 +356,8 @@ if $stage; then
   fi
   # Everglade must hold 60 FPS at dpr 1 and 2 (perf.ts: p95 <= 17.5 ms, no frame over 33 ms, walking and casting).
   t=$(now)
-  bounded 900 bun "$tree/coax/web/perf.ts" https://staging.openagents.com ||
-    { echo "release $commit: Everglade misses 60 FPS on staging (perf.ts above); production is untouched" >&2; exit 1; }
+  rc=0; browser_check "perf.ts" bounded 900 bun "$tree/coax/web/perf.ts" https://staging.openagents.com || rc=$?
+  (( rc != 1 )) || { echo "release $commit: Everglade misses 60 FPS on staging (perf.ts above); production is untouched" >&2; exit 1; }
   lap perf "$t"
   fi
 fi

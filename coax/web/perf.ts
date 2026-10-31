@@ -30,7 +30,7 @@
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { launch as launchChrome } from "./chrome"
+import { startChrome } from "./chrome"
 
 const args = process.argv.slice(2)
 const flag = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined }
@@ -87,17 +87,16 @@ const TIMES = (ms: number) => `new Promise((ok) => { const d = []; let last = 0;
 
 class Browser {
   proc!: ReturnType<typeof Bun.spawn>
-  profile = mkdtempSync(join(tmpdir(), "coax-perf-"))
+  profile = ""
   ws!: WebSocket
   id = 0
   pending = new Map<number, (v: any) => void>()
   constructor(public dpr: number) {}
   async start() {
-    this.proc = launchChrome(this.profile, [`--window-size=${W},${H}`])
-    const portFile = join(this.profile, "DevToolsActivePort")
-    const port = () => existsSync(portFile) ? readFileSync(portFile, "utf8").split("\n")[0].trim() : ""
-    for (let i = 0; i < 600 && !/^\d+$/.test(port()); i++) await Bun.sleep(50)
-    if (!/^\d+$/.test(port())) throw new Error("headless Chrome didn't start")
+    // its Chrome waited for and started again, three times; past that perf.ts could not run (exit 75)
+    const c = await startChrome("coax-perf-", [`--window-size=${W},${H}`])
+    this.proc = c.proc; this.profile = c.profile
+    const port = () => c.port
     const target = (await (await fetch(`http://127.0.0.1:${port()}/json/list`)).json()).find((t: any) => t.type === "page")
     this.ws = new WebSocket(target.webSocketDebuggerUrl)
     await new Promise((r) => this.ws.addEventListener("open", r, { once: true }))
