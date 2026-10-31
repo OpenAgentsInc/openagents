@@ -87,7 +87,8 @@ def inventory(directory="coax/book"):
         heading = re.fullmatch(r"## (.+)|\*\*([^*]+)\*\*", line.strip())
         if heading:
             group = heading.group(1) or heading.group(2)
-        match = re.fullmatch(r"[*-] \[([^]]+)\]\(([^)]+\.md)\)", line)
+        # A note may follow the link (`- [Title](file.md) — note`).
+        match = re.fullmatch(r"[*-] \[([^]]+)\]\(([^)]+\.md)\)(?:\s.*)?", line)
         if match:
             title, filename = match.groups()
             result.append((filename, title, group))
