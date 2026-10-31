@@ -105,6 +105,8 @@ wk_axis :: (held: int, plus: int, minus: int) -> f32 {
 
 coaxial_walk_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
+  used := redit_key(s[0].ed[..], key, true);   // typing into the feature list takes every key
+  if used > 0 { return used == 1; }
   if s[0].card != CARD_NONE && key == KEY_ESCAPE { close_card(s); return true; }
   if key == '+' || key == '=' { s[0].wk[0].zoom -= 0.8; return true; }
   if key == '-' || key == '_' { s[0].wk[0].zoom += 0.8; return true; }
@@ -115,6 +117,8 @@ coaxial_walk_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
 }
 coaxial_walk_key_up :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
+  used := redit_key(s[0].ed[..], key, false);
+  if used > 0 { return used == 1; }
   b := wk_hold_bit(key);
   if b == 0 { return false; }
   if s[0].wk[0].held & b != 0 { s[0].wk[0].held = s[0].wk[0].held - b; }
@@ -156,6 +160,7 @@ coaxial_walk_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
   w := s[0].wk[..];
   d := hi(s[0].dpr, 1);
   s[0].px = x; s[0].py = y; s[0].pointed = true;
+  if redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }   // EDIT and its pane first
   if kind != 0 { s[0].touch = true; } else if phase == POINTER_MOVE && !w[0].drag_on { s[0].touch = false; }
   if phase == POINTER_DOWN {
     p := 0;
@@ -193,6 +198,10 @@ coaxial_walk_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
   if phase == POINTER_UP && !w[0].dragged { opened := click(s, x, y); }
   return true;
 }
+wk_plates :: (e: [] RealmEdit) -> int { return ifx e[0].plate_n < EDIT_PANELS then e[0].plate_n else EDIT_PANELS; }
+// The Grid's edit layer, for the face: typing is on; a message is the layer's (it takes it).
+coaxial_walk_wants_text :: (s: [] LandState) -> bool #export_c { return s.count > 0 && redit_typing(s[0].ed[..]); }
+coaxial_walk_edit_message :: (s: [] LandState, kind: int, text: string) -> bool #export_c { return s.count > 0 && redit_message(s[0].ed[..], kind, text); }
 coaxial_walk_cursor :: (s: [] LandState) -> int #export_c {
   if s.count < 1 || s[0].touch || !s[0].pointed || s[0].wk[0].drag_on { return 0; }
   x := s[0].px; y := s[0].py;
@@ -293,9 +302,23 @@ wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width
   glass(u, 1, hb, 7 * d, 0.95 * hud, 1);
   v = button(out, v, gb, "GALAXY", true, hover && inside(gb, s[0].px, s[0].py) || w[0].press == WK_PRESS_GALAXY, false, p, hud);
   glass(u, 2, gb, 7 * d, 0.95 * hud, 1);
-  // the live status: under the title on a phone, the bottom corner on a computer (as the homepage's)
+  // EDIT for the Grid's owner and admins (verse/edit/edit.coax): left of HOME, or under GALAXY on a
+  // phone where the title fills the row; its plates are the glass after the page's own
+  e := s[0].ed[..];
+  ew := redit_width("EDIT", 9 * d) + 32 * d;
+  eb := RBox.{x0 = hb.x0 - 8 * d - ew, y0 = m, x1 = hb.x0 - 8 * d, y1 = m + bh};
+  if eb.x0 < tb.x1 + 8 * d { eb = RBox.{x0 = gb.x1 - ew, y0 = gb.y1 + 8 * d, x1 = gb.x1, y1 = gb.y1 + 8 * d + bh}; }
+  v = redit_hud(e, out, v, eb);
+  for i: 0..<wk_plates(e) {
+    pb := e[0].plate_box[i];
+    glass(u, PANELS + i, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, 7 * d, e[0].plate_alpha[i] * hud, ifx e[0].plate_look[i] > 0.5 then 1.0f32 else 0.0f32);
+  }
+  open := e[0].pane != REDIT_SHUT;
+  if open && s[0].card != CARD_NONE { close_card(s); }   // one pane at a time
+  // the live status: under the title on a phone (under EDIT too when it is there), the bottom corner on a computer (as the homepage's)
   capture: [192] u8; cn := land_status(s, capture[..]);
-  if l.phone { v = put_fit(out, v, cast(string) capture[0..<cn], m, tb.y1 + 16 * d, 7 * d, dimmed(ink(p, INK_PALE), hud), width - 2 * m); }
+  sy := ifx e[0].shown[RB_EDIT] && eb.y0 > m then hi(tb.y1, eb.y1) + 16 * d else tb.y1 + 16 * d;
+  if l.phone && !open { v = put_fit(out, v, cast(string) capture[0..<cn], m, sy, 7 * d, dimmed(ink(p, INK_PALE), hud), width - 2 * m); }
   else { v = put_fit(out, v, cast(string) capture[0..<cn], 16 * d, height - 14 * d, 7 * d, dimmed(ink(p, INK_PALE), hud), 320 * d); }
   // the hint along the bottom, unless a card is up
   if s[0].card == CARD_NONE {
@@ -333,6 +356,11 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   if !finite(fx) || !finite(fy) || !finite(fz) || !finite(ex) || !finite(ey) || !finite(ez) || !finite(ax) || !finite(ay) || !finite(az) { return 0; }
   f := land_begin(s, uniforms, width, height, dpr, dt, still);
   walkers_step(s, f.step);   // everyone else on the Grid, eased toward where the room says
+  // the Grid's edit layer: its board's rows switch what the scene draws this frame
+  e := s[0].ed[..];
+  redit_start(e, WK_ROOM);
+  redit_step(e, s[0].time, width, height, dpr);
+  s[0].grid_names_off = !redit_row_on(e, "names"); s[0].grid_walkers_off = !redit_row_on(e, "walkers");
   w := s[0].wk[..];
   mid := centre(s, -1);
   feet := wk_at(mid, fx, fy, fz);
@@ -374,8 +402,13 @@ coaxial_walk_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     x := (out[o] + out[o + 2 * VERTEX_FLOATS]) * 0.5;
     y := (out[o + 1] + out[o + 2 * VERTEX_FLOATS + 1]) * 0.5;
     if inside(w[0].title_box, x, y) || inside(w[0].home_box, x, y) || inside(w[0].galaxy_box, x, y) { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 0.15; } }
+    // and almost gone behind the edit layer's plates (the feature list's pane): its names don't read through
+    for i: 0..<wk_plates(e) {
+      pb := e[0].plate_box[i];
+      if x >= pb.x0 && x <= pb.x1 && y >= pb.y0 && y <= pb.y1 { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 0.04; } }
+    }
   }
-  uniforms[5] = f32(PANELS);
+  uniforms[5] = f32(PANELS + wk_plates(e));
   return v;
 }
 
@@ -470,4 +503,39 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
   #assert coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.1, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
                              WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0) > 0;
   #assert s[0].view.eye.y < 2;
+}
+#test "the Grid's EDIT: its owner gets it left of HOME (under GALAXY on a phone), its pane's glass, and the board's rows switch the names and the walkers" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  coaxial_land_page(s[..], 1); s[0].time = 9;
+  n := coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false,
+                          WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/playtest/realms/the-grid";
+  redit_requested(s[0].ed[..], 1);
+  #assert coaxial_walk_edit_message(s[..], HTTP_KIND + 1, "200\nrealm the-grid\nrole owner\nowner 1\nrow walkers 1 Other visitors walking the Grid\nrow names 0 Project names in the air\nwaiting 0\n");
+  n = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false,
+                         WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  e := s[0].ed[0].boxes[RB_EDIT];
+  #assert s[0].ed[0].shown[RB_EDIT] && e.x1 < s[0].wk[0].home_box.x0 && e.x0 > s[0].wk[0].title_box.x1 && e.y0 == s[0].wk[0].home_box.y0;
+  // the names row off: no project's name is drawn (nor can be clicked)
+  #assert s[0].grid_names_off && !s[0].grid_walkers_off;
+  for k: 0..<s[0].plots { #assert s[0].plot[k].tag.x1 == s[0].plot[k].tag.x0; }
+  // EDIT opens the feature list: its glass after the page's, nothing of the page over it
+  #assert coaxial_walk_pointer(s[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_DOWN, 0, 1) && coaxial_walk_pointer(s[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_UP, 0, 1);
+  #assert s[0].ed[0].pane == REDIT_BOARD;
+  n = coaxial_walk_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false,
+                         WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  #assert u[5] > f32(PANELS) && u[8 + PANELS * 8 + 5] > 0;
+  // a key typed into its pane is the pane's, not a step
+  // on a phone the title fills the row: EDIT goes under GALAXY, clear of it
+  p: [1] LandState; coaxial_land_page(p[..], 1); p[0].time = 9;
+  m := coaxial_walk_frame(p[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false,
+                          WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  redit_requested(p[0].ed[..], 2);
+  #assert coaxial_walk_edit_message(p[..], HTTP_KIND + 2, "200\nrealm the-grid\nrole admin\nowner 1\nrow walkers 1 Other visitors walking the Grid\nrow names 1 Project names in the air\nwaiting 0\n");
+  m = coaxial_walk_frame(p[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false,
+                         WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
+  pe := p[0].ed[0].boxes[RB_EDIT];
+  tb := p[0].wk[0].title_box; gb := p[0].wk[0].galaxy_box; hb := p[0].wk[0].home_box;
+  #assert p[0].ed[0].shown[RB_EDIT] && pe.y0 >= gb.y1 && pe.x1 <= 390 * 3 && !(pe.x0 < tb.x1 && pe.y0 < tb.y1) && !(pe.x0 < hb.x1 && pe.y0 < hb.y1);
 }

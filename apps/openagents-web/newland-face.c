@@ -11,12 +11,14 @@
 #include "Grid.h"
 #include <stddef.h>
 #include "analytics-face.h"
+#include "edit-face.h"   /* the Grid's EDIT and feature list: its one request, its answers */
 #include "newland-reader-bridge.h"
 
 #define EXPORT(name) __attribute__((export_name(name)))
 
 static coax_t_LandState *state_at(uint32_t state) { return (coax_t_LandState *)(uintptr_t)state; }
 static coax_v_t_LandState view(uint32_t state) { return (coax_v_t_LandState){state_at(state), 1}; }
+static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->ed.e, 1}; }
 static unsigned char inbox[1048576];
 static uint32_t golden_mode;
 static coax_t_Track track_state;
@@ -110,6 +112,7 @@ static uint32_t walk_frame(uint32_t state, coax_v_f32 out, coax_v_f32 u, float w
                                  verse_player_act(player), eye.x, eye.y, eye.z, at.x, at.y, at.z,
                                  sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   room_out();
+  if (!golden_mode) edit_face_drain(ed(state));
   if (!track_state.page_n) track_init(tr(), track_cstr("the-grid"));
   float dx = feet.x - last_feet.x, dz = feet.z - last_feet.z;
   track_walk(tr(), (double)__builtin_sqrtf(dx * dx + dz * dz));
@@ -146,6 +149,9 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state,int32_t kind,int32
       coaxial_land_walkers_answer(view(state),text);
       return;
     }
+    // the Grid's edit layer: its answers, and the page's facts and typed text too
+    if(kind==600)coaxial_walk_edit_message(view(state),kind,text);
+    else if(coaxial_walk_edit_message(view(state),kind,text)){edit_face_drain(ed(state));return;}
   }
   coaxial_land_message(view(state),kind,text);
   if(!track_state.page_n)track_init(tr(),track_cstr(walking(state)?"the-grid":"home"));
@@ -230,6 +236,7 @@ EXPORT("coaxial_tilt") void coaxial_tilt(uint32_t state, float dyaw, float dpitc
   if (dyaw == dyaw && dyaw > -0.5f && dyaw < 0.5f) k->look_yaw += dyaw;
   if (dpitch == dpitch && dpitch > -0.5f && dpitch < 0.5f) k->look_pitch += dpitch;
 }
+EXPORT("coaxial_wants_text") uint32_t coaxial_wants_text(uint32_t state) { return walking(state) && coaxial_walk_wants_text(view(state)) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return walking(state) ? (int32_t)coaxial_walk_cursor(view(state)) : (int32_t)coaxial_land_cursor(view(state)); }
 // A new player key goes first (action 5: host.js keeps the outbox as the browser's player).
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {

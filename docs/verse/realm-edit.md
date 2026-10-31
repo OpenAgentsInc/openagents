@@ -83,12 +83,12 @@ not offered (migration 0052 took the engineer's row back off).
 | Realm | Rows | Visitor tools | Placed |
 |---|---|---|---|
 | Everglade | flock, floats, undergrowth, daycycle | map, build (BUILD: edit mode's things, each a card) | crate, barrel, bench, fence, stall |
-| The Grid | robots, names | | |
+| The Grid (the homepage's module walked, `newland-walk.coax`; 0082) | walkers (everyone else walking it), names (each project's name over its tree); EDIT left of HOME, under GALAXY on a phone | | |
 | Hecate's Cemetery | flight (off: a visit starts at the gate), fireflies, trail, tips, others | | |
 | Fairy Forest | sparkles, grass, ridges | fly (her wing beats in the air) | |
 | Dead Gears | alarms, radar, sparks (EDIT pauses the fight) | | |
 | Ice Cream Man | minions, weapons (at once: minions off melts the enemy ones), backrooms (from the next house); EDIT shows while a card is up | | |
-| Haunted House | others, sounds, scares, chat | map (the big map), voice (VOICE) | |
+| Haunted House | others, sounds, scares, chat; on a phone the open pane has the screen to itself | map (the big map), voice (VOICE) | |
 | a made realm | its features (the builder's catalogue) | build, fly, jump, map, talk, voice | the builder's things |
 
 ## Everglade

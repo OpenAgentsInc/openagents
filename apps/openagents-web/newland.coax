@@ -17,14 +17,16 @@
 #load "newland-network.coax";
 #load "newland-xp.coax";
 #load "analytics.coax";
+#load "../../verse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/verse/realm-edit.md)
 #load "newland-walkers.coax";
 #load "newland-walk.coax";   // the Grid, /realms/the-grid: this scene, walked (data-page 1)
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 400000;
 TEST_VERTICES :: 75000;   // what the checks give a frame: a page draws well under it
-PANELS :: 5;
-UNIFORM_FLOATS :: 8 + PANELS * 8;   // width, height, time, fade, still, panels, vignette, 0, then the panels
+PANELS :: 5;              // the page's own glass: title, HOME, GALAXY, the hint, the card
+EDIT_PANELS :: 8;         // and the Grid's edit layer's plates after them (verse/edit/edit.coax REDIT_PLATES)
+UNIFORM_FLOATS :: 8 + (PANELS + EDIT_PANELS) * 8;   // width, height, time, fade, still, panels, vignette, 0, then the panels
 
 MODE_STROKE :: 0.0;
 MODE_LINK :: 1.0;
@@ -121,6 +123,7 @@ LandState :: struct {
   pylons: int; pyl: [MAX_PYLONS] Pyl;
   walk: [1] Walkers; walk_box: Box; walk_click: bool; dive_fade: f32;   // WALK AROUND and the Grid's walkers (newland-walkers.coax)
   walking: bool; wk: [1] Walk;   // the Grid's page (data-page 1): this scene walked, you in it (newland-walk.coax)
+  ed: [1] RealmEdit; grid_names_off: bool; grid_walkers_off: bool;   // the Grid's EDIT, and the board's rows it switches (zero: on)
   playtest: Box;network_box:Box;network_join:Box;network_guide:Box;network_list:Box;
   network_scroll:f32;network_scroll_max:f32;network_scroll_start:f32;network_down:bool;network_list_down:bool;network_copied:bool;network_rows:[MAX_PYLONS]Box;
   action: int; outbox: [256] u8; out_n: int;
@@ -378,7 +381,7 @@ frame :: (out: [] f32, at: int, b: Box, cut: f32, k: Ink, light: f32, p: Pen) ->
   return rule(out, v, b.x1, b.y1, b.x1 - arm, b.y1, k, light);
 }
 glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {
-  if k >= PANELS { return; }
+  if k >= PANELS + EDIT_PANELS { return; }
   o := 8 + k * 8;
   uniforms[o] = b.x0; uniforms[o + 1] = b.y0; uniforms[o + 2] = b.x1; uniforms[o + 3] = b.y1;
   uniforms[o + 4] = cut; uniforms[o + 5] = alpha; uniforms[o + 6] = tint; uniforms[o + 7] = 0;
@@ -2005,7 +2008,12 @@ coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
   if inside(s[0].playtest, x, y) || inside(s[0].walk_box, x, y) || pick(s, x, y).kind != CARD_NONE { return 1; }
   return 0;
 }
-coaxial_land_action :: (s: [] LandState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_land_action :: (s: [] LandState) -> int #export_c {
+  if s.count < 1 { return 0; }
+  // the Grid's edit layer's request (the doc picker and the like) when the page has none of its own
+  if s[0].walking && s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; s[0].action = e.kind; } }
+  return s[0].action;
+}
 coaxial_land_action_done :: (s: [] LandState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
 
 // ---------------------------------------------------------------- the frame
@@ -2049,9 +2057,12 @@ land_scene :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen, 
   v = pylon_bay(out, v, s, c, p, t);
   v = xp_scene(out, v, s, c, p, t);
   // the people walking the Grid now; the simulated ones only while nobody is
-  if coaxial_land_walkers(s) > 0 { v = walkers_draw(out, v, s, c, p, motion); } else { v = people(out, v, s, c, p, motion); }
+  if coaxial_land_walkers(s) > 0 { if !(s[0].walking && s[0].grid_walkers_off) { v = walkers_draw(out, v, s, c, p, motion); } }
+  else { v = people(out, v, s, c, p, motion); }
   v = agents(out, v, s, c, p, motion);
-  for k: 0..<s[0].plots { v = place_label(out, v, s, c, k, p); }
+  // the Grid's board can switch the projects' names off (its EDIT, the names row)
+  if !(s[0].walking && s[0].grid_names_off) { for k: 0..<s[0].plots { v = place_label(out, v, s, c, k, p); } }
+  else { for k: 0..<s[0].plots { s[0].plot[k].hit = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; s[0].plot[k].tag = s[0].plot[k].hit; } }
   return pylon_labels(out, v, s, c, p);
 }
 

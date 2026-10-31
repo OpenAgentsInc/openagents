@@ -216,3 +216,8 @@ def realm_asks_checks():
 
 
 realm_asks_checks()
+
+# The Grid's board names what its module draws (0082): the walkers and the names, no robots
+grid_rows = sql("select rows::text from verse.realm_rights where slug = 'the-grid'")
+check("the Grid's rows are its walkers and its names, its robots row gone",
+      '"walkers"' in grid_rows and '"names"' in grid_rows and "robots" not in grid_rows, grid_rows)

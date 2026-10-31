@@ -649,7 +649,7 @@ jump_circle :: (r: [] Realm) -> Circle {
 }
 voice_circle :: (r: [] Realm) -> Circle {
   k := r[0].dpr;
-  if phone(r) { b := minimap_box(r); rad := 24 * k; return Circle.{x = b.x1 - rad, y = b.y1 + 12 * k + rad, r = rad}; }   // under the minimap, clear of the hotbar
+  if phone(r) { b := minimap_box(r); rad := 24 * k; return Circle.{x = b.x1 - rad, y = b.y1 + 8 * k + 34 * k + 12 * k + rad, r = rad}; }   // under the minimap and GALAXY, clear of the hotbar
   rad := 28 * k;
   return Circle.{x = r[0].width - gutter(r) - 4 * k - rad, y = r[0].height - gutter(r) - 4 * k - rad, r = rad};
 }
@@ -750,6 +750,9 @@ edit_box :: (r: [] Realm) -> RBox {
   w := measure("EDIT", GAP, SPACE, false) * 9 * k + 32 * k;
   return RBox.{x0 = b.x0 - 10 * k - w, y0 = b.y0, x1 = b.x0 - 10 * k, y1 = b.y0 + 34 * k};
 }
+// On a phone the open edit pane (the feature list) spans the width: the rest of the HUD steps aside,
+// since text draws over every plate.
+edit_aside :: (r: [] Realm) -> bool { return phone(r) && r[0].ed[0].pane != REDIT_SHUT; }
 edit_room :: (r: [] Realm) -> f32 { if !redit_may(r[0].ed[..]) { return 0; } b := edit_box(r); return b.x1 - b.x0 + 10 * r[0].dpr; }
 // The bottom of the HUD's top: the name, and the quest's line under it.
 top_bottom :: (r: [] Realm) -> f32 { return hi(title_box(r).y1 + 24 * r[0].dpr, minimap_box(r).y1); }
@@ -774,6 +777,7 @@ talk_box :: (r: [] Realm) -> Box {
 // The map the face draws the house's into: the minimap, or (M, or a tap on
 // it) a square in the middle.
 realm_map_box :: (r: [] Realm) -> Box #export_c {
+  if edit_aside(r) { return Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }   // the feature list's pane fills a phone: no map over it
   if !r[0].map { return minimap_box(r); }
   k := r[0].dpr;
   top := title_box(r).y1 + 24 * k;
@@ -1371,20 +1375,24 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   redit_step(r[0].ed[..], r[0].time, width, height, dpr);
   if !redit_tool(r[0].ed[..], "map") { r[0].map = false; }
   if !redit_row_on(r[0].ed[..], "chat") && r[0].typing && r[0].typing_for == TYPE_CHAT { r[0].typing = false; }
-  vertices = draw_name(r, v, out, vertices);
-  if redit_row_on(r[0].ed[..], "others") { vertices = draw_others(r, v, out, vertices); }
-  vertices = draw_map(r, v, out, vertices, uniforms);
+  aside := edit_aside(r);
+  if !aside {
+    vertices = draw_name(r, v, out, vertices);
+    if redit_row_on(r[0].ed[..], "others") { vertices = draw_others(r, v, out, vertices); }
+    vertices = draw_map(r, v, out, vertices, uniforms);
+  }
   // GALAXY, under the minimap: back to the galaxy (a way out without the browser's back)
-  if !r[0].map && !(phone(r) && chat_shown(r, v)) {   // a phone's chat spans the width under the minimap
+  if !aside && !r[0].map && !(phone(r) && chat_shown(r, v)) {   // a phone's chat spans the width under the minimap
     mb := minimap_box(r);
     vertices = hud_button(r, out, vertices, BTN_EXIT, Box.{x0 = mb.x0, y0 = mb.y1 + 8 * k, x1 = mb.x1, y1 = mb.y1 + 8 * k + (ifx phone(r) then 34 * k else 30 * k)}, "GALAXY", "", false);
   }
-  if !v.no_voice && redit_tool(r[0].ed[..], "voice") { vertices = draw_voice_button(r, out, vertices); }
+  if !aside && !v.no_voice && redit_tool(r[0].ed[..], "voice") { vertices = draw_voice_button(r, out, vertices); }
   vertices = redit_hud(r[0].ed[..], out, vertices, edit_box(r));
   for i: 0..<r[0].ed[0].plate_n {
     eb := r[0].ed[0].plate_box[i];
     plate(r, Box.{x0 = eb.x0, y0 = eb.y0, x1 = eb.x1, y1 = eb.y1}, r[0].ed[0].plate_alpha[i], r[0].ed[0].plate_look[i]);
   }
+  if edit_aside(r) { return vertices; }   // the pane alone (it opened this frame, or was open)
   if phone(r) { vertices = draw_jump(r, out, vertices); }
   vertices = draw_voice(r, out, vertices, v.talking);
 
@@ -2438,4 +2446,20 @@ plated :: (u: [] f32, b: Box) -> f32 {
   pt(o[..], v, (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_DOWN, 0, 1);
   pt(o[..], v, (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_UP, 0, 1);
   #assert o[0].ed[0].pane == REDIT_BOARD;
+  // on a phone the open pane spans the width: the minimap, GALAXY, VOICE and the hotbar step aside
+  ph: [1] Realm; desk(ph[..]); vi := items(v);
+  a = realm_draw(ph[..], vi, out[..], u[..], 390 * 3, 844 * 3, 3, 0.016);
+  redit_requested(ph[0].ed[..], 5);
+  #assert realm_edit_message(ph[..], HTTP_KIND + 5, "200\nrealm haunted-house\nrole admin\nowner 1\ntool map 1\ntool voice 1\nrow others 1 Other visitors\nwaiting 0\n");
+  a = realm_draw(ph[..], vi, out[..], u[..], 390 * 3, 844 * 3, 3, 0.016);
+  #assert ph[0].shown[BTN_EXIT] && ph[0].shown[BTN_VOICE] && realm_map_box(ph[..]).x1 > 0;
+  ph[0].ed[0].pane = REDIT_BOARD;
+  a = realm_draw(ph[..], vi, out[..], u[..], 390 * 3, 844 * 3, 3, 0.016);
+  #assert !ph[0].shown[BTN_EXIT] && !ph[0].shown[BTN_VOICE] && realm_map_box(ph[..]).x1 == 0 && ph[0].ed[0].shown[RB_EDIT];
+  for i: 0..<BUTTONS { #assert !ph[0].shown[i]; }
+  // and with the pane shut, VOICE sits under GALAXY, not over it
+  ph[0].ed[0].pane = REDIT_SHUT;
+  a = realm_draw(ph[..], vi, out[..], u[..], 390 * 3, 844 * 3, 3, 0.016);
+  c := voice_circle(ph[..]); g := ph[0].boxes[BTN_EXIT];
+  #assert ph[0].shown[BTN_EXIT] && c.y - c.r > g.y1;
 }

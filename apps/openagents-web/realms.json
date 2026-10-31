@@ -65,8 +65,8 @@
         "added": "2026-10-29T02:53", "line": "The homepage's live projects, walked",
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
           "rows": [
-            {"id": "robots", "label": "Robots walking their rounds", "says": "the small robots patrolling the grid"},
-            {"id": "names", "label": "Place names in the air", "says": "the names floating over the stations"} ] },
+            {"id": "walkers", "label": "Other visitors walking the Grid", "says": "everyone else walking the Grid now, where they are"},
+            {"id": "names", "label": "Project names in the air", "says": "each project's name and how much of it is done, over its tree"} ] },
         "style": "lowpoly",
         "clock": "fixed:0.0",
         "title": "The Grid",
