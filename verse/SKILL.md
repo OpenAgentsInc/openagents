@@ -39,29 +39,43 @@ coax/build.sh
 
 ## 3. Write the module (three files in `apps/openagents-web/`)
 
-Start from the smallest realm with no assets that is close to your idea and
-copy its shape, not its game. Good ones to read first:
-
-| Realm | Files | What it shows |
-| --- | --- | --- |
-| Hold the Stair | `stair.coax`, `stair-face.c`, `stair.wgsl` | 2D-ish game, buttons, phone taps, `#test` checks that play the game |
-| Orbit League | `orbitleague.coax`, `orbitleague-face.c`, `orbitleague.wgsl` | arcade game, keyboard and two thumbs, flat style |
-| Water lab | `waterlab.coax`, `waterlab-face.c`, `waterlab.wgsl` | a traced scene in a full-screen shader, camera from the pointer |
+Start from the template: `verse/realm-template/` is a whole small realm
+(Star Catcher, about 460 lines of Coax with four `#test` checks that play
+it, no assets) that a fresh agent made from this skill. Copy its three files
+to `apps/openagents-web/<module>.coax`, `<module>-face.c` and
+`<module>.wgsl`, rename `starcatch`/`Starcatch` to your module throughout,
+then make your own game in it. `verse/realm-template/row.json` is its
+`realms.json` row and `index.md` its page text. For bigger ideas, read Hold
+the Stair (`stair.coax`, a tower defense with buttons and phone taps) or
+Orbit League (`orbitleague.coax`, an arcade game with two thumbs); their
+faces also send analytics (`analytics-face.h`, `track_drain`), which your
+realm can leave out.
 
 - `<module>.coax`: the game, its state type and its drawing. Every
   procedure the face calls is `#export_c`. `<module>_frame(state, vertices,
   uniforms, w, h, dpr, dt, still) -> int` steps and draws a frame, HUD
   included, and returns the vertex count. Read input in `<module>_key`,
   `<module>_key_up`, `<module>_pointer` (phase 0 down, 1 move, 2 up) and
-  `<module>_blur`. Message 600 is the page facts (`realm=<slug>` and more,
+  `<module>_blur`. A key is its code point, or a named key below zero:
+  Escape -1, Enter -2, Backspace -3, ArrowLeft -4, ArrowRight -5, ArrowUp
+  -6, ArrowDown -7 (`KEYS` in `coax/web/host.js`). Message 600 is the page facts (`realm=<slug>` and more,
   one `key=value` a line); action 1 with a URL in the outbox navigates
   (`/verse/galaxy` to leave). Coax is not C or Rust: read
   `coax/README.md` and copy idioms from the module you started from.
+  Loaded files (`#load "font.coax"` for text) share one namespace with
+  your module: a top-level name of yours must not clash with a name in
+  them (errors then point into the loaded file), and `font.coax` uses
+  `lo`/`hi`, which your module defines (the template does).
+- Draw a way back: Escape and a drawn button go to `/verse/galaxy`
+  (action 1); every realm has one.
 - `<module>-face.c`: the browser exports over the module (`coaxial_layout`,
   `coaxial_state_size`, `coaxial_frame`, input, inbox/outbox). Copy the
-  face you started from and rename; it decides nothing.
+  face you started from and rename; it decides nothing. The compiler
+  writes `<module>.h`, where your state struct `Foo` is `coax_t_Foo` and a
+  view of it `coax_v_t_Foo`.
 - `<module>.wgsl`: `bg_vs`/`bg_fs` (a full-screen pass) and `fx_vs`/`fx_fs`
-  (the vertices your frame writes). Copy and trim.
+  (the vertices your frame writes). The fx pass adds light (a stroke's
+  colour times its light), it does not blend over. Copy and trim.
 - Checks: put `#test` blocks in the `.coax` file that play the game (a
   frame draws, input does what it says, the game can be won and lost). They
   run with `coax test`.
@@ -75,7 +89,7 @@ realms (and its `wait`):
 
 ```sh
 "$here/../../coax/web/wasm.sh" "$here/<module>.coax" "$here/<module>-face.c" "$here/build/<module>.wasm" &
-<module>=$!
+<module>=$!      # a shell variable named after the module; then `wait "$<module>"` with the others
 ```
 
 If the realm is `flat` or `painterly`, add its WGSL to the matching
@@ -99,7 +113,8 @@ Keep `"listed": false`: the team lists it at launch (then it needs `added`
 and `line`). `style` is `lowpoly`, `painterly`, `photoreal` or `flat`;
 `clock` is `cycle`, `real` or `fixed:T`.
 
-Write `apps/openagents-web/realms/<slug>/index.md` by hand: the realm as text
+Write `apps/openagents-web/realms/<slug>/index.md` by hand (the generator
+refuses a realm without it): the realm as text
 (what it is, how to play with keys and on a phone, how it is made). Copy
 `realms/hold-the-stair/index.md`'s headings. Then write the page and the
 galaxy's table:
@@ -125,15 +140,19 @@ coax/web/wasm.sh apps/openagents-web/<module>.coax apps/openagents-web/<module>-
 If `realms.test.ts` lists realms by name (styles, rulesets) and yours is
 not lowpoly or has a ruleset, add yours to that test, nothing else.
 
-Play it locally:
+`coax/web/check-visuals.sh apps/openagents-web` must pass too (no DOM UI).
+
+Play it locally. Serve without the whole site's build (`build.sh` builds
+every realm and rewrites tracked project files, and the server would rebuild
+forever); rebuild your wasm with `wasm.sh` after each change:
 
 ```sh
-coax/web/serve.sh apps/openagents-web     # http://127.0.0.1:8800/realms/<slug>
-coax/web/tool.sh shot http://127.0.0.1:8800/realms/<slug> /tmp/<slug>.png 1440x900 4000
-coax/web/tool.sh shot http://127.0.0.1:8800/realms/<slug> /tmp/<slug>-phone.png 390x844 4000
+coax/web/serve.sh apps/openagents-web --build true     # http://127.0.0.1:8800/realms/<slug>
+coax/web/tool.sh shot http://127.0.0.1:8800/realms/<slug> <slug>.png 1440x900 4000
+coax/web/tool.sh shot http://127.0.0.1:8800/realms/<slug> <slug>-phone.png 390x844 4000
 ```
 
-Look at both shots: it draws, it is lit, the HUD fits a 390 px phone.
+The first `tool.sh shot` builds the shot tool (about a minute). Look at both shots: it draws, it is lit, the HUD fits a 390 px phone.
 
 ## 6. Open the pull request
 
@@ -147,8 +166,11 @@ gh repo fork --remote && git push -u origin realm-<slug>
 gh pr create --title "Verse: <Title>" --body "What it is, how to play, the checks you ran and the two shots."
 ```
 
-Stage only your realm's files (and a test line, if you added one). Don't
-commit `apps/openagents-web/build/` or anything else. The team builds it,
+Stage only your realm's files (and a test line, if you added one); `git
+status` should show nothing else. If you ran `build.sh`, put back what it
+rewrote (`git checkout -- apps/openagents-web/projects
+apps/openagents-web/newland-data.coax`). Don't commit
+`apps/openagents-web/build/`. The team builds it,
 makes its golden (the release walk opens every realm and compares a shot)
 and lists it on the galaxy.
 

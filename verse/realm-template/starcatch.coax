@@ -1,0 +1,467 @@
+// The realm template (verse/SKILL.md): copy this file, starcatch-face.c and
+// starcatch.wgsl into apps/openagents-web/ under your module's name. Star
+// Catcher itself is not on the site; a fresh agent made it from the skill.
+//
+// Star Catcher, openagents.com/realms/star-catcher: stars fall from a night
+// sky and you catch them in a basket. Catch fifteen to win; let three reach
+// the ground and you lose.
+//
+// Everything is drawn flat: starcatch.wgsl's bg_fs draws the sky and the
+// hill from the uniforms; the stars, the basket and the HUD text are fx
+// strokes (font.coax).
+//   coax/bin/coax test apps/openagents-web/starcatch.coax --steps 2000000000
+
+#load "font.coax";
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 12000;
+// The uniforms: size, time, fade; the ground's top (device px), the flash, 0, 0.
+U_INFO :: 4;
+UNIFORM_FLOATS :: 8;
+
+STARS :: 24;
+GOAL :: 15;
+MISSES :: 3;
+STEP :: 0.0166666667;
+BASKET_Y :: 0.86;       // the basket's rim, as a share of the height
+BASKET_HALF :: 0.085;   // its half width, as a share of the width
+BASKET_SPEED :: 0.85;   // widths a second
+GROUND_Y :: 0.9;
+
+READY :: 0; PLAY :: 1; WON :: 2; LOST :: 3;
+
+HOST_PAGE :: 600;
+OUTBOX_CAP :: 64;
+ACT_NAVIGATE :: 1;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5;
+HOLD_LEFT :: 1; HOLD_RIGHT :: 2;
+
+Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+Star :: struct { live: bool; x: f32; y: f32; speed: f32; spin: f32; }
+
+Catch :: struct {
+  started: bool;
+  phase: int;
+  stars: [STARS] Star;
+  x: f32;                // the basket's centre, a share of the width
+  caught: int; missed: int;
+  spawn_t: f32;          // seconds to the next star
+  seed: u32;
+  keys: int;             // arrows held, bits
+  finger: int;           // a finger's hold, bits (and which finger)
+  finger_id: int;
+  clock: f32; acc: f32; flash: f32;
+  width: f32; height: f32; dpr: f32;
+  golden: bool;
+  galaxy: Rect;          // the GALAXY button
+  pressing_galaxy: bool;
+  outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+}
+
+// ---- small things
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp01 :: (v: f32) -> f32 { return lo(1, hi(0, v)); }
+GAP :: 0.5; SPACE :: 1.2;
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n >= buf.count { break; } buf[n] = c; n += 1; }
+  return n;
+}
+put_int :: (buf: [] u8, at: int, v: int) -> int {
+  n := at; x := v;
+  digits: [20] u8; d := 0;
+  if x == 0 { digits[0] = 48; d = 1; }
+  while x > 0 && d < 20 { digits[d] = cast(u8) (48 + x % 10); x = x / 10; d += 1; }
+  while d > 0 { d -= 1; if n < buf.count { buf[n] = digits[d]; n += 1; } }
+  return n;
+}
+// A small deterministic random number in [0, 1).
+next_random :: (s: [] Catch) -> f32 {
+  s[0].seed = add_wrap(mul_wrap(s[0].seed, 1664525), 1013904223);
+  return f32(s[0].seed >> 8) / 16777216.0;
+}
+// A line from the page facts (key=value lines), or "".
+fact_of :: (facts: string, key: string) -> string {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > key.count && facts[i + key.count] == '=' && facts[i..<i + key.count] == key { return facts[i + key.count + 1..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+
+// ---- the game
+
+catch_reset :: (s: [] Catch) {
+  seed := s[0].seed;
+  for i: 0..<STARS { s[0].stars[i].live = false; }
+  s[0].phase = READY; s[0].x = 0.5; s[0].caught = 0; s[0].missed = 0;
+  s[0].spawn_t = 0.4; s[0].keys = 0; s[0].finger = 0; s[0].flash = 0;
+  s[0].seed = ifx seed == 0 then 20261030 else seed;
+}
+catch_start :: (s: [] Catch) {
+  if s[0].started { return; }
+  s[0].started = true;
+  s[0].seed = 20261030;
+  catch_reset(s);
+}
+// Space, Enter or a tap: start, or play again after the end.
+go :: (s: [] Catch) {
+  if s[0].phase == WON || s[0].phase == LOST { catch_reset(s); }
+  if s[0].phase == READY { s[0].phase = PLAY; }
+}
+leave_to :: (s: [] Catch, url: string) {
+  if s[0].action != 0 { return; }
+  s[0].out_n = put(s[0].outbox[..], 0, url);
+  s[0].action = ACT_NAVIGATE;
+}
+spawn_star :: (s: [] Catch) -> int {
+  for i: 0..<STARS {
+    if s[0].stars[i].live { continue; }
+    s[0].stars[i] = Star.{live = true, x = 0.06 + 0.88 * next_random(s), y = -0.03,
+                          speed = 0.22 + 0.04 * f32(s[0].caught / 3) + 0.08 * next_random(s), spin = 6.28 * next_random(s)};
+    return i;
+  }
+  return -1;
+}
+live_stars :: (s: [] Catch) -> int {
+  n := 0;
+  for i: 0..<STARS { if s[0].stars[i].live { n += 1; } }
+  return n;
+}
+held :: (s: [] Catch) -> int { return s[0].keys | s[0].finger; }
+
+// One fixed step of the game.
+step :: (s: [] Catch, dt: f32) {
+  s[0].flash = hi(0, s[0].flash - dt * 2);
+  if s[0].phase != PLAY { return; }
+  h := held(s);
+  if h & HOLD_LEFT != 0 { s[0].x -= BASKET_SPEED * dt; }
+  if h & HOLD_RIGHT != 0 { s[0].x += BASKET_SPEED * dt; }
+  s[0].x = lo(1 - BASKET_HALF, hi(BASKET_HALF, s[0].x));
+  s[0].spawn_t -= dt;
+  if s[0].spawn_t <= 0 {
+    i := spawn_star(s);
+    s[0].spawn_t = hi(0.45, 1.25 - 0.05 * f32(s[0].caught)) * (0.7 + 0.6 * next_random(s));
+  }
+  for i: 0..<STARS {
+    if !s[0].stars[i].live { continue; }
+    before := s[0].stars[i].y;
+    s[0].stars[i].y += s[0].stars[i].speed * dt;
+    s[0].stars[i].spin += dt * 2;
+    y := s[0].stars[i].y;
+    // crossing the rim inside the basket: caught
+    if before < BASKET_Y && y >= BASKET_Y && abs(s[0].stars[i].x - s[0].x) <= BASKET_HALF {
+      s[0].stars[i].live = false;
+      s[0].caught += 1;
+      if s[0].caught >= GOAL { s[0].phase = WON; }
+      continue;
+    }
+    if y >= GROUND_Y {
+      s[0].stars[i].live = false;
+      s[0].missed += 1; s[0].flash = 1;
+      if s[0].missed >= MISSES { s[0].phase = LOST; }
+    }
+  }
+}
+
+// ---- drawing
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { return false; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    for e: 12..<16 { out[o + e] = 0; }
+  }
+  return true;
+}
+seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32, r: f32, g: f32, b: f32) -> int {
+  if lit(out, n, ax, ay, bx, by, core, light, glow, r, g, b, 0) { return n + 6; }
+  return n;
+}
+ink :: (k: f32, light: f32, red: f32, green: f32, blue: f32) -> Ink {
+  i: Ink;
+  i.core = 0.6 * k; i.light = light; i.glow = 1.2 * k; i.red = red; i.green = green; i.blue = blue; i.mode = 0; i.scale = k;
+  return i;
+}
+say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, n, t, x, base, cap, GAP, SPACE, k, false, false);
+}
+say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap) / 2, base, cap, k);
+}
+// The cap height for text to fit a width: cap, or smaller.
+fit_cap :: (t: string, cap: f32, width: f32) -> f32 { return lo(cap, cap * width / hi(text_width(t, cap), 1)); }
+HOW_1 :: "CATCH 15 STARS. MISS 3 AND THEY GET AWAY.";
+HOW_2 :: "ARROWS OR A AND D MOVE THE BASKET.";
+HOW_3 :: "ON A PHONE, HOLD LEFT OR RIGHT.";
+
+// A five-pointed star of strokes.
+draw_star :: (out: [] f32, at: int, x: f32, y: f32, rad: f32, spin: f32, k: f32) -> int {
+  n := at;
+  for p: 0..<5 {
+    a0 := spin + f32(p) * 1.2566371;
+    a1 := a0 + 0.6283185;
+    a2 := a0 + 1.2566371;
+    ox := x + cos(a0) * rad; oy := y + sin(a0) * rad;
+    ix := x + cos(a1) * rad * 0.45; iy := y + sin(a1) * rad * 0.45;
+    nx := x + cos(a2) * rad; ny := y + sin(a2) * rad;
+    n = seg(out, n, ox, oy, ix, iy, 1.1 * k, 1.0, 3 * k, 1.0, 0.93, 0.55);
+    n = seg(out, n, ix, iy, nx, ny, 1.1 * k, 1.0, 3 * k, 1.0, 0.93, 0.55);
+  }
+  return n;
+}
+
+draw_basket :: (s: [] Catch, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
+  n := at;
+  half := BASKET_HALF * w;
+  cx := s[0].x * w; top := BASKET_Y * h; deep := 26 * k;
+  r := 0.45f32; g := 0.85f32; b := 1.0f32;
+  n = seg(out, n, cx - half, top, cx - half * 0.75, top + deep, 2 * k, 1, 4 * k, r, g, b);
+  n = seg(out, n, cx - half * 0.75, top + deep, cx + half * 0.75, top + deep, 2 * k, 1, 4 * k, r, g, b);
+  n = seg(out, n, cx + half * 0.75, top + deep, cx + half, top, 2 * k, 1, 4 * k, r, g, b);
+  n = seg(out, n, cx - half * 1.05, top, cx + half * 1.05, top, 1.6 * k, 0.9, 4 * k, r, g, b);
+  // the weave
+  for i: 1..<4 {
+    t := f32(i) / 4;
+    n = seg(out, n, cx - half + t * 2 * half, top, cx - half * 0.75 + t * 1.5 * half, top + deep, 0.8 * k, 0.5, 2 * k, r, g, b);
+  }
+  return n;
+}
+
+draw_hud :: (s: [] Catch, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
+  n := at;
+  cap := 13 * k;
+  white := ink(k, 0.95, 0.9, 0.92, 1.0);
+  gold := ink(k, 1.0, 1.0, 0.85, 0.4);
+  red := ink(k, 1.0, 1.0, 0.35, 0.35);
+  // GALAXY, top left: leaves for the galaxy
+  pad := 12 * k;
+  gw := text_width("GALAXY", cap) + 2 * pad;
+  s[0].galaxy = Rect.{x0 = pad, y0 = pad, x1 = pad + gw, y1 = pad + cap + 2 * pad};
+  g := s[0].galaxy;
+  n = seg(out, n, g.x0, g.y0, g.x1, g.y0, 0.8 * k, 0.6, 1.5 * k, 0.7, 0.75, 0.9);
+  n = seg(out, n, g.x1, g.y0, g.x1, g.y1, 0.8 * k, 0.6, 1.5 * k, 0.7, 0.75, 0.9);
+  n = seg(out, n, g.x1, g.y1, g.x0, g.y1, 0.8 * k, 0.6, 1.5 * k, 0.7, 0.75, 0.9);
+  n = seg(out, n, g.x0, g.y1, g.x0, g.y0, 0.8 * k, 0.6, 1.5 * k, 0.7, 0.75, 0.9);
+  n = say_at(out, n, "GALAXY", g.x0 + pad, g.y1 - pad, cap, white);
+  // the counts, top right
+  line: [32] u8;
+  m := put(line[..], 0, "CAUGHT ");
+  m = put_int(line[..], m, s[0].caught); m = put(line[..], m, "/"); m = put_int(line[..], m, GOAL);
+  t := cast(string) line[0..<m];
+  n = say_at(out, n, t, w - pad - text_width(t, cap), pad + cap, cap, gold);
+  miss: [32] u8;
+  q := put(miss[..], 0, "MISSED ");
+  q = put_int(miss[..], q, s[0].missed); q = put(miss[..], q, "/"); q = put_int(miss[..], q, MISSES);
+  mt := cast(string) miss[0..<q];
+  n = say_at(out, n, mt, w - pad - text_width(mt, cap), pad + cap * 2.6, cap, ifx s[0].missed > 0 then red else white);
+  // the middle: what to do
+  big := fit_cap("YOU CAUGHT THEM ALL", 30 * k, w * 0.9);
+  mid := h * 0.42;
+  small := fit_cap(HOW_1, cap, w * 0.9);
+  if s[0].phase == READY {
+    n = say_mid(out, n, "STAR CATCHER", w / 2, mid, big, gold);
+    n = say_mid(out, n, HOW_1, w / 2, mid + big * 1.6, small, white);
+    n = say_mid(out, n, HOW_2, w / 2, mid + big * 1.6 + small * 2, small, white);
+    n = say_mid(out, n, HOW_3, w / 2, mid + big * 1.6 + small * 4, small, white);
+    n = say_mid(out, n, "SPACE OR TAP TO START", w / 2, mid + big * 1.6 + small * 6.6, small * 1.2, gold);
+  }
+  if s[0].phase == WON || s[0].phase == LOST {
+    n = say_mid(out, n, ifx s[0].phase == WON then "YOU CAUGHT THEM ALL" else "THE STARS GOT AWAY", w / 2, mid, big, ifx s[0].phase == WON then gold else red);
+    n = say_mid(out, n, "SPACE OR TAP TO PLAY AGAIN", w / 2, mid + big * 1.8, small * 1.2, white);
+  }
+  return n;
+}
+
+catch_frame :: (s: [] Catch, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  catch_start(s);
+  if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  s[0].width = width; s[0].height = height; s[0].dpr = dpr;
+  k := hi(dpr, 0.5);
+  step_dt := lo(hi(dt, 0), 0.1);
+  if s[0].golden || still { step_dt = 0; }
+  s[0].clock += step_dt;
+  s[0].acc += step_dt;
+  guard := 0;
+  while s[0].acc >= f32(STEP) && guard < 16 { step(s, f32(STEP)); s[0].acc -= f32(STEP); guard += 1; }
+  if guard >= 16 { s[0].acc = 0; }
+  for i: 0..<u.count { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1;
+  u[U_INFO] = GROUND_Y * height; u[U_INFO + 1] = s[0].flash;
+  n := 0;
+  rad := lo(14 * k, width * 0.03);
+  for i: 0..<STARS {
+    st := s[0].stars[i];
+    if !st.live { continue; }
+    n = draw_star(out, n, st.x * width, st.y * height, rad, st.spin, k);
+  }
+  n = draw_basket(s, out, n, width, height, k);
+  n = draw_hud(s, out, n, width, height, k);
+  return n;
+}
+
+// ---- input
+
+catch_key :: (s: [] Catch, key: int, mods: int) -> bool #export_c {
+  catch_start(s);
+  if key == KEY_LEFT || key == 'a' || key == 'A' { s[0].keys |= HOLD_LEFT; return true; }
+  if key == KEY_RIGHT || key == 'd' || key == 'D' { s[0].keys |= HOLD_RIGHT; return true; }
+  if key == ' ' || key == KEY_ENTER { go(s); return true; }
+  if key == KEY_ESCAPE { leave_to(s, "/verse/galaxy"); return true; }
+  return false;
+}
+catch_key_up :: (s: [] Catch, key: int, mods: int) -> bool #export_c {
+  if key == KEY_LEFT || key == 'a' || key == 'A' { s[0].keys = s[0].keys & HOLD_RIGHT; return true; }
+  if key == KEY_RIGHT || key == 'd' || key == 'D' { s[0].keys = s[0].keys & HOLD_LEFT; return true; }
+  return false;
+}
+catch_blur :: (s: [] Catch) #export_c { s[0].keys = 0; s[0].finger = 0; s[0].pressing_galaxy = false; }
+// A finger or the mouse: GALAXY leaves; otherwise a press starts the game, and
+// holding the left or right half of the screen moves the basket that way.
+catch_pointer :: (s: [] Catch, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  catch_start(s);
+  if phase == 0 {
+    if in_rect(s[0].galaxy, x, y) { s[0].pressing_galaxy = true; return true; }
+    if s[0].phase != PLAY { go(s); return true; }
+    s[0].finger_id = id;
+    s[0].finger = ifx x < s[0].width / 2 then HOLD_LEFT else HOLD_RIGHT;
+    return true;
+  }
+  if phase == 1 {
+    if s[0].finger != 0 && id == s[0].finger_id { s[0].finger = ifx x < s[0].width / 2 then HOLD_LEFT else HOLD_RIGHT; return true; }
+    return false;
+  }
+  if s[0].pressing_galaxy {
+    s[0].pressing_galaxy = false;
+    if phase == 2 && in_rect(s[0].galaxy, x, y) { leave_to(s, "/verse/galaxy"); }
+    return true;
+  }
+  if id == s[0].finger_id { s[0].finger = 0; }
+  return true;
+}
+catch_cursor :: (s: [] Catch) -> int #export_c { return 0; }
+catch_message :: (s: [] Catch, kind: int, t: string) #export_c {
+  catch_start(s);
+  if kind != HOST_PAGE { return; }
+  // a different sky each visit, from the tab's id; golden mode keeps the first
+  tab := fact_of(t, "tab");
+  if !s[0].golden && tab.count > 0 {
+    h: u32 = 2166136261;
+    for c: tab { h = mul_wrap(h ^ cast(u32) c, 16777619); }
+    s[0].seed = ifx h == 0 then 1 else h;
+  }
+}
+catch_golden :: (s: [] Catch, on: bool) #export_c { catch_start(s); s[0].golden = on; }
+catch_action :: (s: [] Catch) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+catch_action_done :: (s: [] Catch) #export_c { s[0].out_n = 0; }
+
+coaxial_catch_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_catch_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_catch_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+frame_at :: (s: [] Catch, w: f32, h: f32, dpr: f32, dt: f32) -> int {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  return catch_frame(s, out[..], u[..], w, h, dpr, dt, false);
+}
+
+#test "a frame draws the HUD on a desktop and on a 390 px phone, inside the screen" {
+  s: [2] Catch;
+  a := frame_at(s[0..<1], 1440, 900, 1, 0.016);
+  #assert a > 100 && a <= MAX_VERTICES;
+  b := frame_at(s[1..<2], 390 * 3, 844 * 3, 3, 0.016);
+  #assert b > 100 && b <= MAX_VERTICES;
+  g := s[1].galaxy;
+  #assert g.x0 >= 0 && g.x1 < 390 * 3 / 2 && g.y1 < 844 * 3 / 4;
+  w: f32 = 390 * 3;
+  c := fit_cap(HOW_1, 13 * 3, w * 0.9);
+  #assert c > 7 * 3 && text_width(HOW_1, c) <= w * 0.9 + 0.01 && text_width(HOW_2, c) < w * 0.9 && text_width(HOW_3, c) < w * 0.9;
+  big := fit_cap("YOU CAUGHT THEM ALL", 30 * 3, w * 0.9);
+  #assert big > 12 * 3 && text_width("YOU CAUGHT THEM ALL", big) <= w * 0.9 + 0.01 && text_width("THE STARS GOT AWAY", big) < w * 0.9;
+}
+
+#test "space starts the game, the arrows move the basket and let go it stops" {
+  s: [1] Catch;
+  catch_start(s[..]);
+  #assert s[0].phase == READY;
+  #assert catch_key(s[..], ' ', 0) && s[0].phase == PLAY;
+  x0 := s[0].x;
+  #assert catch_key(s[..], KEY_LEFT, 0);
+  for i: 0..<30 { step(s[..], f32(STEP)); }
+  #assert s[0].x < x0 - 0.3;
+  #assert catch_key_up(s[..], KEY_LEFT, 0);
+  x1 := s[0].x;
+  for i: 0..<30 { step(s[..], f32(STEP)); }
+  #assert s[0].x == x1;
+  for i: 0..<300 { s[0].keys = HOLD_LEFT; step(s[..], f32(STEP)); }
+  #assert s[0].x == BASKET_HALF;   // never off the edge
+}
+
+#test "on a phone a tap starts it and holding the right half moves the basket right" {
+  s: [1] Catch;
+  n := frame_at(s[..], 390 * 3, 844 * 3, 3, 0.016);
+  #assert catch_pointer(s[..], 600, 1500, 0, 1, 7) && s[0].phase == PLAY;
+  #assert catch_pointer(s[..], 600, 1500, 2, 1, 7);
+  #assert catch_pointer(s[..], 1000, 1500, 0, 1, 8) && s[0].finger == HOLD_RIGHT;
+  x0 := s[0].x;
+  for i: 0..<20 { step(s[..], f32(STEP)); }
+  #assert s[0].x > x0;
+  #assert catch_pointer(s[..], 1000, 1500, 2, 1, 8) && s[0].finger == 0;
+  // GALAXY leaves for the galaxy
+  g := s[0].galaxy;
+  #assert catch_pointer(s[..], (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 0, 1, 9);
+  #assert catch_pointer(s[..], (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 2, 1, 9);
+  #assert catch_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+}
+
+// A simple player: keeps the basket under the lowest star.
+play_through :: (s: [] Catch, chases: bool) -> int {
+  go(s);
+  guard := 0;
+  while s[0].phase == PLAY && guard < 200000 {
+    s[0].keys = 0;
+    if chases {
+      best := -1; by := -1.0f32;
+      for i: 0..<STARS { if s[0].stars[i].live && s[0].stars[i].y < BASKET_Y && s[0].stars[i].y > by { by = s[0].stars[i].y; best = i; } }
+      if best >= 0 {
+        d := s[0].stars[best].x - s[0].x;
+        if d < -0.01 { s[0].keys = HOLD_LEFT; }
+        if d > 0.01 { s[0].keys = HOLD_RIGHT; }
+      }
+    }
+    step(s, f32(STEP));
+    guard += 1;
+  }
+  return s[0].phase;
+}
+
+#test "standing still loses; chasing the lowest star wins; and space plays again" {
+  s: [1] Catch;
+  catch_start(s[..]);
+  s[0].x = BASKET_HALF;   // in the corner, away from most stars
+  #assert play_through(s[..], false) == LOST && s[0].missed == MISSES;
+  #assert catch_key(s[..], ' ', 0) && s[0].phase == PLAY && s[0].caught == 0 && s[0].missed == 0 && live_stars(s[..]) == 0;
+  catch_reset(s[..]);
+  #assert play_through(s[..], true) == WON && s[0].caught == GOAL && s[0].missed < MISSES;
+}
