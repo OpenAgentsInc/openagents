@@ -1614,6 +1614,59 @@ PSIONIC_PANDA_QUERY_OUTPUT=/tmp/NEW-panda-query-prefix \
   psionic/check.sh --only robotics/panda-query-source-sdk
 ```
 
+## An explicit owned-query route in the neural runner
+
+The neural runner now has a build option that selects our fixed Panda model
+for the controller sample. Coax owns its admission and construction; the host
+copies state and performs effects. The default SDK route keeps its existing
+profile and numeric recipe.
+
+An opted-in binary first authenticates the exact qualified scene, reset,
+loaded SDK library file and all 85 referenced assets. Directory labels and
+matching dimensions are insufficient. This is a fixed-model implementation,
+not a model importer, and its raw state records are not provenance proofs.
+Unknown mode/model or an owned refusal stops the route without SDK fallback.
+
+The request stage remains unchanged: cached SDK observations and camera
+captures occur before the next forward. Fresh owned control samples are
+selected after the explicit forward and before the clock commits its sample
+receipt. The existing fault overlay follows selection. This keeps the
+right-hand BODY/grip SITE and observation-age distinctions intact. SDK
+integration/contact and its geometry queries still remain.
+
+```shell
+PANDA_QUERY_SOURCE=owned-shadow-v1 PANDA_BUILD_ONLY=1 \
+  PANDA_SHADER_CACHE="$QUALIFIED_SHADERS" \
+  psionic/tests/robotics/run-panda-loop-metal.sh \
+  "$GROOT_SHARDS" "$COSMOS_PST" "$NOISE_F32" "$PANDA_PAIRS" \
+  /tmp/new-owned-query-build 1 0 000
+```
+
+That command links the new versioned route; it does not run inference or open
+a simulator. The option belongs to the updated wrapper and its new binary,
+not an already built legacy artifact. The owned build uses its declared
+scalar-libm recipe and a distinct combined policy/query identity.
+
+The file-level preflight found a real boundary: our one-shot SHA API accepts
+at most 1 MiB per input. A new Coax file adapter now plans bounded streaming
+updates, with a 16 MiB file cap. Ten independent hash vectors through that cap
+and a positive 88-file preflight pass. The old cryptographic implementation is
+unchanged; no old cryptographic gate was rerun.
+
+The new authority roots kill 329/329 mutants. Original-metadata native checks
+make 3,217 assertions per mode, and the separate mocked effect-order harness
+makes 551 assertions per mode across 15 contexts. Debug, release and fail-fast
+sanitizer profiles pass. Exact generated-code bindings retain the original
+control/current helper behavior, constants, globals and header layouts; one
+private generated spatial-helper name changes while its signature/body do
+not. Old receipts remain historical rather than being rewritten as new runs.
+
+A genuine neural request with the opted-in owned route remains the next
+integration check. This checkpoint contains no new NN/simulator execution,
+episode or task-success result. The [complete contracts and composed proof](../fixtures/robotics/panda-query-runtime/README.md)
+retain each executed artifact and its scope.
+
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

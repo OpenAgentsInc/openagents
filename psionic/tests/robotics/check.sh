@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 coax="${COAX:-$PWD/coax/bin/coax}";jobs=4;mutate=0;list=0;requested=();chosen=();explicit=()
 units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy panda-clock-adapter panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian panda-fingers-profile panda-fingers-chain panda-inertia-profile panda-inertia-math panda-inertia panda-inverse-dynamics-math panda-inverse-dynamics-motion panda-inverse-dynamics-force panda-inverse-dynamics panda-mass-solve-math panda-mass-solve-basis panda-mass-solve panda-forward-dynamics-net panda-forward-dynamics panda-actuation-math panda-actuation panda-owned-sample panda-query-source)
-optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-query-source-sdk panda-loop-metal)
+optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-query-source-sdk panda-query-runtime panda-loop-metal)
 while [[ $# -gt 0 ]];do
   case "$1" in
     --jobs) [[ $# -ge 2 && $2 =~ ^[1-9][0-9]*$ ]] || exit 2;jobs=$2;shift 2;;
@@ -47,6 +47,7 @@ for unit in "${chosen[@]}";do
     else "$coax" mutate "psionic/lib/robotics/$unit.coax" --root-only --jobs "$jobs" "${unit_flags[@]}";fi
   fi
   case "$unit" in
+    panda-query-runtime) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" bash psionic/tests/robotics/panda_query_runtime_check.sh "$work/panda-query-runtime" "$mutate" "$jobs";;
     sim|evaluate) core=1;;learn) core=1;example=1;;
     singlearm) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-singlearm.sh "$work/singlearm";native_groups=$((native_groups+1));;
     groot-metal-plan|groot-metal-kernels) metal=1;;

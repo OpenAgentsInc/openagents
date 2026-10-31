@@ -353,6 +353,23 @@ incomplete. Numeric equality with SDK/scalar forces is separate from byte
 equality among owned modes. No integration, full qacc, contact, bounded-control
 or hardware qualification follows from this force query.
 
+## The owned neural-query route admits its exact model before opening policy
+
+The new wrapper/build profile accepts only its exact owned choice and immutable
+scene/reset/loaded-SDK/85-asset observations. Matching counts or a raw state POD
+are not model provenance. Coax hashes/checks observed bytes; C only reads files
+and locates the loaded implementation. The private file adapter bounds totals
+at 16 MiB and individual streaming updates at 1 MiB without changing old crypto.
+Local snapshot admission is not remote attestation or a lock against later
+file replacement.
+
+Cached request observations/cameras still precede fresh forward. Owned control
+selection follows forward and precedes sample/control receipts; the scenario
+fault follows selection. Failed clock state is adopted, and sample publishes
+only after success, with no SDK fallback. The default wrapper path retains its
+old profile, flags and ABI. The new built binary and mocked/file gates do not
+claim a new neural/simulator episode, timing guarantee or hardware result.
+
 ## The owned controller sample is one fresh query with a separate behavior proof
 
 The fixed-source constructor admits matching arm/finger positions and rates,

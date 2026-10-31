@@ -399,5 +399,10 @@ and `psionic/check.sh --only robotics/panda-query-source`. Two explicit opt-in
 250-step SDK prefixes recompute controls from recorded actions; all 1,000 selected
 and shadow calls succeed within frozen budgets. The unchanged Telemetry ABI and
 additive named q/rate effect preserve cached observations before fresh forward.
-The full neural runner still uses its previous SDK query path; wiring that
-selector is next. SDK geometry, integration and contact remain in this profile.
+The [explicit owned-query neural build](fixtures/robotics/panda-query-runtime/README.md)
+now authenticates its exact scene, reset, loaded SDK and 85 assets before
+opening the model. The updated wrapper links the owned route and preserves
+the default SDK behavior. Source/native/file/mocked-order checks pass; no new
+neural or simulator execution occurred. The explicit local gate is
+`PSIONIC_PANDA_SCENE=/path/to/scene.xml psionic/check.sh --only robotics/panda-query-runtime`.
+SDK geometry, integration and contact remain in this profile.
