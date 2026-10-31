@@ -1,4 +1,4 @@
-# A first project
+# 2. A first project
 
 Let's jump into Coax by writing a real program together. In this chapter
 we'll draw the Mandelbrot set, the famous fractal, as text in the

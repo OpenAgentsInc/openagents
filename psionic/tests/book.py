@@ -40,6 +40,11 @@ def check(name="psionic"):
     spec.loader.exec_module(claims)
     errors = claims.problems(ROOT)
     assert not errors, "reviewed capability claims: " + "; ".join(errors)
+    spec = importlib.util.spec_from_file_location("coax_book_structure", ROOT / "coax/book/check-structure.py")
+    registry = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(registry)
+    errors = registry.registry_problems(name, ROOT)
+    assert not errors, f"chapter registry ({book}/chapters.json): " + "; ".join(errors)
     manifest = json.loads(path(f"{book}/examples.json").read_text())
     assert manifest["schema"] == 1
     examples = manifest["examples"]

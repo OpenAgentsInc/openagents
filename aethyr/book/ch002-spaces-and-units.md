@@ -1,5 +1,8 @@
 # 2. Spaces and units
 
+> **Status: partly implemented.** One check is pending: that every realm
+> draws a figure's feet at their physics height.
+>
 > Engine-core task: `ec-space` (#12609). The module
 > [aethyr/space.coax](../space.coax) and its refusal check
 > [aethyr/refusals.coax](../refusals.coax) landed in `a93d35c2dd`. The task

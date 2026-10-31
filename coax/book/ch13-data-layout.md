@@ -1,5 +1,9 @@
 # 13. Data-oriented layout
 
+> **Status: partly implemented.** `coax layout`, `size_of` and layout assertions run in
+> `coax0`. `SOA` storage, per-target layouts, hot and cold fields and SIMD from
+> layout are design.
+
 At 120 frames a second, a frame lasts 8.3 milliseconds. In most engine
 loops, a large share of that time goes to waiting for memory rather than
 doing arithmetic. The processor can add and multiply far faster than it
@@ -18,7 +22,7 @@ ends with the layout features that are designed but not yet built:
 `SOA` storage, per-target layouts, hot and cold fields, and SIMD loops.
 
 > Note: `coax layout`, `size_of`, `#assert` on layouts and the layout
-> checks in generated headers all run on `coax0` 0.10.0, and every
+> checks in generated headers all run on the current `coax0`, and every
 > runnable listing here is in the book's examples. `SOA`, per-target
 > layouts, `@hot` and `@cold`, `for_simd` and layout fingerprints are
 > design (spec section 4) and are marked where they come up.

@@ -20,6 +20,48 @@ source-linked listings or examples. Sketches in it are illustrative only.
 The physics engine and the spacecraft chapters, first drafted here this way,
 are now Parts IV and V of [the Aethyr book](../../aethyr/book/README.md).
 
+## Chapter status
+
+The [chapter registry](chapters.json) records every chapter's number, title,
+status, profile, dependencies and three separate facts:
+
+- **Implemented source** (`source`): the code the chapter shows or runs.
+- **Qualified targets** (`qualified_targets`): the targets, such as `cpu`,
+  `cuda`, `metal` or `wasm`, with recorded evidence for the chapter's
+  profile. Source that might compile for a target doesn't qualify it.
+- **Adoption** (`adopted_by`): code outside the book that uses the chapter's
+  code today. An empty list means no adoption is recorded.
+
+A chapter's status is one of *implemented*, *partly implemented*, *design
+draft* or *planned*. A design draft starts with the quoted design-draft marker above, and a partly implemented chapter with `**Status: partly implemented.**`. `python3 psionic/tests/book.py` fails when a status marker, a
+contents label, the status column below or the registry disagree.
+
+## Promoting a draft to a teaching chapter
+
+A design draft or planned chapter becomes a teaching chapter only when it has
+all four of the following:
+
+1. **A worked calculation or trace.** A small input whose result the chapter
+   works out by hand, step by step, before the program runs.
+2. **Runnable source.** The code and an example in `psionic/examples/`, listed in [examples.json](examples.json), with an exact
+   transcript that the book's checks compare in debug and release.
+3. **A deliberately broken case and its diagnostic.** An input or an edit
+   that the code refuses, with the exact error or refusal shown and its exit
+   status checked.
+4. **An independent check.** A result computed another way, such as a
+   separate oracle, a reference implementation or a hand-derived value, that
+   the checks compare with the code's result.
+
+When all four exist, update the chapter's status in the same commit in four
+places: the chapter's status marker, its entry in [chapters.json](chapters.json),
+its label in the [contents](SUMMARY.md) and its row in the table below. The registry
+check fails when they disagree. [Coax chapter 29](../../coax/book/ch29-units-and-frames.md)'s
+affine section is an example: a hand calculation, `examples/ch29_frames.coax`,
+a refused program with `E0834`, and a `#test` that compares the result with
+plain arithmetic.
+
+To find a route through the three books (write current Coax, build a playable realm, run an original model or train a small model), see [Paths through the books](../../docs/books/paths.md).
+
 Commands run from the OpenAgents repository root. `psionic/check.sh` checks the
 whole current book and library. Build once with `coax/build.sh` if you want to
 run examples directly without the check command.
@@ -53,19 +95,26 @@ run examples directly without the check command.
 | [25. The API fans out](ch025-the-api-fans-out.md) | Runnable: opt-in loopback HTTP-to-Pylon adapter; throwaway buyer keys | Fresh exact-identity free services, encrypted correlated attempts, checked answers, bounded failover and same-identity local fallback. Not publicly deployed. |
 | [26. Check the mesh](ch026-check-the-mesh.md) | Runnable: opt-in free mesh; configured toy CPU replay | Signed accepted remote receipts, memory-only sampled replay, pinned checker labels and independent public pool recomputation. No payment or execution attestation. |
 | [27. A public mesh](ch027-a-public-mesh.md) | Runnable: authenticated bounded free public edge | Exact provider/model pins, private fleets and real learned-model calls. |
-| [28. A decision arrives while play continues](ch028-a-decision-arrives-while-play-continues.md) and [29. A guard asks a Pylon](ch029-a-guard-asks-a-pylon.md) | Runnable ticket; opt-in guard shadow slice | [Delivery plan](../../docs/verse/pylon-guard-decisions.md): asynchronous admission, authored ambient choices, local fallback and game-specific qualification. |
-| [30. Measure a guard decision](ch030-measure-a-guard-decision.md) | Bounded measurements and real Elephant evaluation; no gain over quiet | Local telemetry, frozen labels and actual cookie-authenticated evidence. |
-| [31. Directions on request](ch031-directions-on-request.md) | Runnable explicit-help candidate; separate live smoke evaluation | Fixed authored routes, strong local reference and current-ticket ownership; page integration remains gated. |
-| [32. A guard gives directions](ch032-a-guard-gives-directions.md) | Instant local help and opt-in remote shadow in the actual game | Current-world projection, same-frame HUD handoff and cancellation under changing gameplay. |
+| [28. A decision arrives while play continues](ch028-a-decision-arrives-while-play-continues.md) | Runnable: local ticket and cancellation effects | Bounded consumer tickets, monotonic deadlines, cancellation, late-response fencing and exactly-once game admission with a deterministic fallback. [Delivery plan](../../docs/verse/pylon-guard-decisions.md). |
+| [29. A guard asks a Pylon](ch029-a-guard-asks-a-pylon.md) | Partly implemented: opt-in guard shadow slice, qualified locally and live | Authored quiet, greeting and weather options, current-state revalidation and end-to-end gates. Usefulness and ambient behavior are pending. |
+| [30. Measure a guard decision](ch030-measure-a-guard-decision.md) | Runnable: bounded measurements and real Elephant evaluation; no gain over quiet | Local telemetry, frozen labels and actual cookie-authenticated evidence. |
+| [31. Directions on request](ch031-directions-on-request.md) | Partly implemented: explicit-help candidate; separate live smoke evaluation | Fixed authored routes, strong local reference and current-ticket ownership; page integration remains gated. |
+| [32. A guard gives directions](ch032-a-guard-gives-directions.md) | Runnable: instant local help and opt-in remote shadow in the actual game | Current-world projection, same-frame HUD handoff and cancellation under changing gameplay. |
 | [33. Measure the work and plan the memory](ch033-measure-the-work-and-plan-the-memory.md) | Unimplemented: design draft | A fixed workload, CPU references, measured host roofline and a per-model residency plan that refuses requests that do not fit. |
 | [34. Benchmark against llama.cpp and cuBLAS](ch034-benchmark-against-llama-cpp-and-cublas.md) | Unimplemented: design draft | Psionic and a packaged llama.cpp build on the same file and prompt shapes, with cuBLAS as an opt-in comparator, reported as mean and standard deviation over at least five warm runs. |
 | [35. Use every core](ch035-use-every-core.md) | Unimplemented: design draft | Fixed partitions and tree-ordered merges so CPU output is byte-identical at 1, 2, 4 and 8 workers. |
+| [36. Many questions at once](ch036-many-questions-at-once.md) | Runnable: batched suffix forks on CUDA (RTX 4080) | A request's five suffixes in one pass over the weights, bit-identical to sequential forks, with prefix state reused across requests by model identity and exact token prefix. |
+| [37. A Coax compute subset](ch037-a-coax-compute-subset.md) | Runnable: `coax cuda` on an RTX 4080 and group kernels on Apple GPUs | Buffers, integer indexes, bounded loops, work items and bindings: generated source compiles, device execution matches the CPU oracle, and negative admission refuses. |
 | [38. A tensor program becomes an execution plan](ch038-a-tensor-program-becomes-an-execution-plan.md) | Runnable: tensor-ir-f32-v1, CPU/CUDA/Metal | Typed straight-line graphs, shape/alias inference, root liveness, reusable workspace, reference/plan/device execution and exact cache invalidation. |
 | [39. Compile a general tensor program](ch039-compile-a-general-tensor-program.md) | Runnable: tensor-template | Bounded symbolic shapes and declared branches/loops, guarded specialization, four-entry LRU plans, aggregate payload admission and one shared backend compilation across batch sizes. |
 | [40. Add your own operator](ch040-add-your-own-operator.md) | Runnable: operator-registry | Public unary f32 schemas, CPU/reference callbacks, generated GPU lowering, input VJPs, batching and leased registry identities integrated into compiled IR models; squared-ReLU trains without new core operator cases. |
 | [41. Attention in tiles](ch041-attention-in-tiles.md) | Unimplemented: design draft | Online-softmax attention over key/value tiles with chunked prefill, under its own named profile, keeping decision masks, sinks and windows. |
 | [42. DeltaNet in chunks](ch042-deltanet-in-chunks.md) | Unimplemented: design draft | Chunked Gated DeltaNet prefill in WY form, equal within a named profile to chapter 11's token-by-token recurrence, with chunk-boundary snapshots. |
 | [43. Fuse and replay](ch043-fuse-and-replay.md) | Unimplemented: design draft | Fused device operations admitted only for non-overlapping buffers, and decode or prefill steps recorded once and replayed as device graphs. |
+| [44. Elephant on CUDA](ch044-elephant-on-cuda.md) | Runnable: Elephant on CUDA (RTX 4080); Mammoth in chapter 46 | Coax-generated kernels, device buffers and launches, whole-prompt prefill, streamed layers and the complete decision checked against the CPU reference, about 201 ms per decision. |
+| [45. Share the card](ch045-share-the-card.md) | Runnable: every Elephant matrix can stream | Elephant beside a resident gpt-oss-20b on one 16 GB card, with a plan checker that shows a streamed plan launches what the resident plan launches. |
+| [46. Mammoth on CUDA](ch046-mammoth-on-cuda.md) | Runnable: Mammoth on CUDA (RTX 4080), streamed | Mammoth's decision in about 1.6 s with 12.5 GiB resident and 37.8 GB streamed, within 0.0005 of chapter 15's CPU result. |
+| [47. Elephant on Metal](ch047-elephant-on-metal.md) | Runnable: Elephant on Metal (Apple M5 Max) | The chapter 44 kernels through `coax metal-compute`, the decision within 4.6e-6 of the CPU and about 0.4 s warm. Mammoth on Metal is planned. |
 | [48. Integer matrix products](ch048-integer-matrix-products.md) | Unimplemented: design draft | 8-bit activation blocks with exact 32-bit integer accumulation, as a row kernel for decode and a tiled int8 kernel for prompts. |
 | [49. Read a GGUF file](ch049-read-a-gguf-file.md) | Runnable: gguf-v3-le-v1, CPU | Bounded metadata, quantized tensor descriptors, alignment and atomic publication; original upstream headers and malformed fixtures. |
 | [50. Quantized weights and caches](ch050-quantized-weights-and-caches.md) | Unimplemented: design draft | Q8_0, K-quants and an optional quantized KV cache, each a separate profile measured against the original weights with a declared quality loss. |
@@ -98,6 +147,7 @@ run examples directly without the check command.
 | [77. Call a tool](ch077-call-a-tool.md) | Runnable: finite JSON-schema enum and granted tools | Mask before sampling, typed commentary handoffs, tool-role results and final-only display. |
 | [78. Device generation calls a tool](ch078-device-generation-calls-a-tool.md) | Unimplemented: design draft | Schema-constrained tool calls, grant checks and cancellation on the resident device engine with no hidden CPU fallback. |
 | [79. Serve Responses](ch079-serve-responses.md) | Runnable: resident original 20b CUDA, bounded Responses profile | Coax HTTP/JSON, typed reasoning/function replay, incremental SSE, cancellation and SDK checks. |
+| [80. Two models, one card](ch080-two-models-one-card.md) | Runnable: gpt-oss-20b and Elephant on one RTX 4080 | Start order and memory budget for both servers on one 16 GB card, verified starts, and a client that chains them. Concurrent use is unmeasured. |
 | [81. Execute Ministral 4](ch081-execute-ministral-4.md) | Unimplemented: design draft | Ministral-3-3B with the Tekken tokenizer, Mistral's chat format and a dense grouped-query decoder, checked against token and logit references. |
 | [82. Original FP8 weights](ch082-original-fp8-weights.md) | Unimplemented: design draft | Exact decode of FP8 E4M3 block-scaled originals, including UE8M0 scales, kept separate from derived profiles. |
 | [83. A coding agent](ch083-a-coding-agent.md) | Unimplemented: design draft | Devstral-Small-2-24B with schema-constrained function calls, measured on a fixed coding-task set. |
@@ -124,11 +174,11 @@ run examples directly without the check command.
 | [104. Gradients as a program](ch104-gradients-as-a-program.md) | Runnable: cpu-f64-tape-v1 | A model as a list of operations, a forward pass that saves every value and a reverse pass that accumulates adjoints; checked against 60-digit central differences and by retraining chapter 103's models. |
 | [105. Make a model fail, then find out why](ch105-make-a-model-fail-then-find-out-why.md) | Unimplemented: design draft | Break a working classifier six ways on purpose and show a diagnostic that points at each fault. |
 | [106. Differentiate any tensor program](ch106-differentiate-any-tensor-program.md) | Runnable: autodiff-f32-v1, bounded CPU | Reverse mode over chapter 38's tensor IR: per-operator VJPs through views, shared values, unused inputs, detached nodes, forward-only tapes and custom derivatives, with saved values kept only as long as a backward rule reads them; a network built on chapter 40's registered squared ReLU trains with gradients checked against central differences. |
-| [107. Transform functions, not just tensors](ch107-transform-functions-not-just-tensors.md) | Runnable bounded CPU graph-function transforms | Compose first/second partials, directional/reverse products and shared/mapped batching with explicit scratch and atomic outputs. |
+| [107. Transform functions, not just tensors](ch107-transform-functions-not-just-tensors.md) | Runnable: bounded CPU graph-function transforms | Compose first/second partials, directional/reverse products and shared/mapped batching with explicit scratch and atomic outputs. |
 | [108. Choose the next example to learn from](ch108-choose-the-next-example-to-learn-from.md) | Unimplemented: design draft | Compare uncertainty, diversity and mixed acquisition with random selection at equal label budgets, reporting a negative result if there is one. |
 | [109. Learn a physical system](ch109-learn-a-physical-system.md) | Runnable: owned F64 RK4 and learned oscillator surrogate | Train on whole parameter/initial-state/forcing groups, compare one-step errors and independent 128-step rollouts, and retain the affine model’s better one-step result. |
 | [110. A grid world that learns, plans and recovers](ch110-a-grid-world-that-learns-plans-and-recovers.md) | Unimplemented: design draft | A headless grid world where a DAgger policy and a learned-model planner are compared on held-out maps, including model exploitation. |
-| [111. Recover the physics from the motion](ch111-recover-the-physics-from-the-motion.md) | Runnable exact RK4 inverse physics | Recover stiffness/damping through the solver, measure noise and sparse observations, and retain the equilibrium ambiguity. |
+| [111. Recover the physics from the motion](ch111-recover-the-physics-from-the-motion.md) | Runnable: exact RK4 inverse physics | Recover stiffness/damping through the solver, measure noise and sparse observations, and retain the equilibrium ambiguity. |
 | [112. Bytes and a small language model](ch112-bytes-and-a-small-language-model.md) | Runnable: bounded CPU | Train a complete 256-byte bigram model on fixed CC0 synthetic documents, evaluate disjoint held-out splits and sample with a named counter RNG. |
 | [113. Differentiate a decoder](ch113-differentiate-a-decoder.md) | Runnable: cpu-f64-causal-decoder-v1 | A tiny complete causal decoder (GQA, RoPE, squared-ReLU FFN, RMSNorm): full-sequence and KV-cache decode agree bit for bit, an independent Python definition matches its logits, every hand-derived gradient matches a central difference, and a trained model continues held-out alternating-copy prompts that the head alone cannot. |
 | [114. Compile the backward pass](ch114-compile-the-backward-pass.md) | Unimplemented: design draft | Differentiate the tensor IR itself, plan saved activations and recomputation, fuse backward operations and compile the optimizer update. |

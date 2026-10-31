@@ -1,5 +1,9 @@
 # 8. Generics and constraints
 
+> **Status: partly implemented.** Generic procedures, fixed-storage struct templates and the
+> built-in constraints run in `coax0`. User-defined constraints, operators for
+> your own types and computed types are design.
+
 Sooner or later you write the same procedure twice. Once for `int`, then
 again for `f64`, then a third time for `u8`, each copy identical except
 for the type names. *Generics* let us write that procedure once, with

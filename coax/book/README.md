@@ -50,9 +50,11 @@ of shared libraries (caller-owned buffers, protocol fixtures and a tiny
 Psionic CPU operation). Part VI opens up the compiler and ends with the road
 ahead.
 
-Parts VII–IX describe planned work, one chapter per roadmap phase. None of
-it runs in `coax0` yet; each chapter is an outline that says what the phase
-adds, which program uses it first and what "done" means. Part VII covers the
+Parts VII–IX describe roadmap work, one chapter per roadmap phase. Most of
+it doesn't run in `coax0` yet: each planned chapter is an outline that says
+what the phase adds, which program uses it first and what "done" means.
+Chapter 29 is partly implemented: its affine points and vectors in declared
+frames run today, in a checked tutorial section. Part VII covers the
 physical world: units and frames, clocks, bounded control, strict math and
 integrators, replay, robot models, sensors and actuators, fault scenarios and
 parameter provenance, then a simulated robot and a freighter scenario built
@@ -73,8 +75,10 @@ subset of the language: procedures, integers and floats, strings,
 structs, enums, fixed arrays and views, `defer`, compile-time `#run` and
 `#assert`, checks with `#test` and `#forall`, logical modules and explicit
 exports, generic procedures and fixed-storage struct templates over type
-and length parameters, and a C boundary. Constraints, owning containers and
-other later features remain planned. The generated
+and length parameters with built-in constraints, nominal scalar quantities,
+affine points and vectors in declared frames, and a C boundary.
+User-defined constraints, owning containers and other later features remain
+planned. The generated
 [current status](appendix-a-keywords.md) records the bounded implemented
 subset separately from the full design.
 
@@ -94,6 +98,46 @@ When the book and the compiler disagree, reproduce the case and check the
 implemented subset and its conformance tests. Either the book or the compiler
 can have a bug. The specification, `coax/spec.md`, is the design of record;
 planned features are not claims about the current compiler.
+
+## Chapter status
+
+The [chapter registry](chapters.json) records every chapter's number, title,
+status, profile, dependencies and three separate facts:
+
+- **Implemented source** (`source`): the code the chapter shows or runs.
+- **Qualified targets** (`qualified_targets`): the targets, such as `cpu`,
+  `cuda`, `metal` or `wasm`, with recorded evidence for the chapter's
+  profile. Source that might compile for a target doesn't qualify it.
+- **Adoption** (`adopted_by`): code outside the book that uses the chapter's
+  code today. An empty list means no adoption is recorded.
+
+A chapter's status is one of *implemented*, *partly implemented*, *design
+draft* or *planned*. A planned chapter starts with the planned note shown above, and a partly implemented chapter with `**Status: partly implemented.**`; the contents and the list below label both. `python3 coax/book/check-structure.py` fails when a status marker, a
+contents label, the list below or the registry disagree.
+
+## Promoting a draft to a teaching chapter
+
+A design draft or planned chapter becomes a teaching chapter only when it has
+all four of the following:
+
+1. **A worked calculation or trace.** A small input whose result the chapter
+   works out by hand, step by step, before the program runs.
+2. **Runnable source.** The code and an example in [`examples/`](https://github.com/OpenAgentsInc/openagents/tree/main/coax/book/examples/), with an exact
+   transcript that the book's checks compare in debug and release.
+3. **A deliberately broken case and its diagnostic.** An input or an edit
+   that the code refuses, with the exact error or refusal shown and its exit
+   status checked.
+4. **An independent check.** A result computed another way, such as a
+   separate oracle, a reference implementation or a hand-derived value, that
+   the checks compare with the code's result.
+
+When all four exist, update the chapter's status in the same commit in four
+places: the chapter's status marker, its entry in [chapters.json](chapters.json),
+its label in the [contents](SUMMARY.md) and its label in the list below. The registry
+check fails when they disagree. [Chapter 29](ch29-units-and-frames.md)'s
+affine section is an example: a hand calculation, `examples/ch29_frames.coax`,
+a refused program with `E0834`, and a `#test` that compares the result with
+plain arithmetic.
 
 ## Where the examples live
 
@@ -115,6 +159,9 @@ on your path.
 
 ## Contents at a glance
 
+To find a route through the three books (write current Coax, build a playable realm, run an original model or train a small model), see [Paths through the books](https://github.com/OpenAgentsInc/openagents/blob/main/docs/books/paths.md).
+
+
 - [Foreword](foreword.md) and [Introduction](introduction.md)
 - Part I. Getting started:
   [1. Getting started](ch01-getting-started.md),
@@ -123,22 +170,22 @@ on your path.
   [4. Reading errors](ch04-reading-errors.md)
 - Part II. The language:
   [5. Structs, enums and unions](ch05-structs-enums-unions.md),
-  [6. Arrays, strings, memory and the context](ch06-memory.md),
+  [6. Arrays, strings, memory and the context](ch06-memory.md) (partly implemented),
   [7. Errors and cleanup](ch07-errors.md),
-  [8. Generics and constraints](ch08-generics.md),
+  [8. Generics and constraints](ch08-generics.md) (partly implemented),
   [9. Compile time](ch09-compile-time.md),
   [10. Organizing a larger program](ch10-organizing-programs.md),
   [11. Writing checks](ch11-writing-checks.md),
   [12. Debugging and measuring cost](ch12-debugging-and-cost.md)
 - Part III. Data and speed:
-  [13. Data-oriented layout](ch13-data-layout.md),
-  [14. Jobs: captures as effects](ch14-jobs.md),
+  [13. Data-oriented layout](ch13-data-layout.md) (partly implemented),
+  [14. Jobs: captures as effects](ch14-jobs.md) (partly implemented),
   [15. Asynchronous work and lifetimes](ch15-asynchronous-work.md),
-  [16. Determinism](ch16-determinism.md),
-  [17. GPU programs](ch17-gpu.md)
+  [16. Determinism](ch16-determinism.md) (partly implemented),
+  [17. GPU programs](ch17-gpu.md) (partly implemented)
 - Part IV. Coax in OpenAgents:
   [18. The protocol boundary](ch18-protocol.md),
-  [19. Builds and hot reload](ch19-builds-hot-reload.md),
+  [19. Builds and hot reload](ch19-builds-hot-reload.md) (partly implemented),
   [20. Living beside C, C++ and Swift](ch20-interop.md),
   [21. Targets: Apple first, then the browser](ch21-targets.md),
   [22. Built for agents](ch22-agents.md),
@@ -150,28 +197,28 @@ on your path.
 - Part VI. Building Coax:
   [27. Inside coax0](ch27-inside-coax0.md),
   [28. The road ahead](ch28-road-ahead.md)
-- Part VII. The physical world (planned):
-  [29. Units and coordinate frames](ch29-units-and-frames.md),
-  [30. Typed clocks and multirate ticks](ch30-clocks-and-ticks.md),
-  [31. Bounded control](ch31-bounded-control.md),
-  [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md),
-  [33. Replay and snapshots](ch33-replay-and-snapshots.md),
-  [34. Importing robot models](ch34-robot-models.md),
-  [35. Stamped sensors and supervised actuators](ch35-sensors-and-actuators.md),
-  [36. Fault scenarios you can replay](ch36-fault-scenarios.md),
-  [37. Provenance, fidelity profiles and rule modules](ch37-provenance-and-rule-modules.md),
-  [38. A simulated robot, end to end](ch38-a-simulated-robot.md),
-  [39. A freighter scenario, end to end](ch39-a-freighter-scenario.md)
-- Part VIII. Simulation compute (planned):
-  [40. Logical tensors over chosen layouts](ch40-logical-tensors.md),
-  [41. Compile and startup budgets](ch41-compile-budgets.md),
-  [42. Device graphs and zero-copy buffers](ch42-device-graphs.md),
-  [43. Differentiating kernels](ch43-differentiating-kernels.md)
-- Part IX. Finishing the toolchain (planned):
-  [44. A self-hosted compiler](ch44-self-hosting.md),
-  [45. Replacing a procedure body while it runs](ch45-body-replacement.md),
-  [46. Resident compilation and state migration](ch46-resident-compilation.md),
-  [47. Backends chosen by profiling](ch47-backends.md)
+- Part VII. The physical world:
+  [29. Units and coordinate frames](ch29-units-and-frames.md) (partly implemented),
+  [30. Typed clocks and multirate ticks](ch30-clocks-and-ticks.md) (planned),
+  [31. Bounded control](ch31-bounded-control.md) (planned),
+  [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md) (planned),
+  [33. Replay and snapshots](ch33-replay-and-snapshots.md) (planned),
+  [34. Importing robot models](ch34-robot-models.md) (planned),
+  [35. Stamped sensors and supervised actuators](ch35-sensors-and-actuators.md) (planned),
+  [36. Fault scenarios you can replay](ch36-fault-scenarios.md) (planned),
+  [37. Provenance, fidelity profiles and rule modules](ch37-provenance-and-rule-modules.md) (planned),
+  [38. A simulated robot, end to end](ch38-a-simulated-robot.md) (planned),
+  [39. A freighter scenario, end to end](ch39-a-freighter-scenario.md) (planned)
+- Part VIII. Simulation compute:
+  [40. Logical tensors over chosen layouts](ch40-logical-tensors.md) (planned),
+  [41. Compile and startup budgets](ch41-compile-budgets.md) (planned),
+  [42. Device graphs and zero-copy buffers](ch42-device-graphs.md) (planned),
+  [43. Differentiating kernels](ch43-differentiating-kernels.md) (planned)
+- Part IX. Finishing the toolchain:
+  [44. A self-hosted compiler](ch44-self-hosting.md) (planned),
+  [45. Replacing a procedure body while it runs](ch45-body-replacement.md) (planned),
+  [46. Resident compilation and state migration](ch46-resident-compilation.md) (planned),
+  [47. Backends chosen by profiling](ch47-backends.md) (planned)
 - Appendices: [A. Keywords, directives and types](appendix-a-keywords.md),
   [B. Error codes](appendix-b-error-codes.md),
   [C. Coax for Jai programmers](appendix-c-jai.md),

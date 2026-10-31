@@ -1,4 +1,8 @@
-# Determinism
+# 16. Determinism
+
+> **Status: partly implemented.** Ordered evaluation, rounding rules and the replay program
+> run in `coax0`. The `strict` and `deterministic` annotations, fixed-point
+> types and replay tests are design.
 
 A deterministic replay requires the same input to produce the same output
 under its specified execution contract. For a game world, record the
@@ -15,7 +19,8 @@ we can check, at run time and at compile time, against a golden
 fingerprint. We'll finish with the parts of the design that aren't
 built yet.
 
-> Note: these example transcripts were captured with `coax0` 0.10.0.
+> Note: the book's checks compare these example transcripts with the
+> current `coax0` in debug and release.
 > Current execution-profile selection is described in Chapter 12. The
 > `strict` and `deterministic` annotations, fixed-point types and
 > `#test replay` near the end remain planned (spec §13). The retained

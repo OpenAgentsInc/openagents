@@ -1,4 +1,8 @@
-# GPU programs
+# 17. GPU programs
+
+> **Status: partly implemented.** `coax metal`, the bounded WGSL graphics command and the
+> `coax cuda` compute profile run in `coax0`. `@gpu` declarations, shader
+> procedures, device graphs and kernel derivatives are design.
 
 The OpenAgents iOS app draws its home screen and the Grid with Metal.
 Every glowing node, every line, the hotbar and the tone curve that maps
@@ -17,7 +21,7 @@ and then look at how the real app does the same thing with
 `verse/light.coax`. We'll end with the broader GPU layout and
 shader-declaration designs that remain separate work.
 
-> Note: `coax metal` and its scalar profile work in `coax0` 0.10.0, and
+> Note: `coax metal` and its scalar profile work in the current `coax0`, and
 > the iOS app ships with it. The `@gpu` struct and `shader` procedure
 > syntax under "Planned" remains design work (spec §15). The bounded
 > WGSL graphics command below is implemented through ordinary checked

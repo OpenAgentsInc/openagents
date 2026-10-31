@@ -1,4 +1,4 @@
-# Chapter 79: Serve Responses
+# 79. Serve Responses
 
 A useful model service must retain more than its final string. GPT-OSS emits
 analysis, assistant text and function handoffs through Harmony. A Responses

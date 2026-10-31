@@ -32,9 +32,9 @@
 - [26. Check the mesh](ch026-check-the-mesh.md)
 - [27. A public mesh](ch027-a-public-mesh.md)
 - [28. A decision arrives while play continues](ch028-a-decision-arrives-while-play-continues.md)
-- [29. A guard asks a Pylon](ch029-a-guard-asks-a-pylon.md)
+- [29. A guard asks a Pylon](ch029-a-guard-asks-a-pylon.md) — partly implemented
 - [30. Measure a guard decision](ch030-measure-a-guard-decision.md)
-- [31. Directions on request](ch031-directions-on-request.md)
+- [31. Directions on request](ch031-directions-on-request.md) — partly implemented
 - [32. A guard gives directions](ch032-a-guard-gives-directions.md)
 
 - [33. Measure the work and plan the memory](ch033-measure-the-work-and-plan-the-memory.md) — design draft

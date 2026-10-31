@@ -30,6 +30,27 @@ An excerpt marked `<!-- checked-source: examples/file.coax -->` must occur
 exactly in that source. This is opt-in: illustrative fragments, expected
 errors and elided listings are not all standalone compilable programs.
 
+## Keep chapter status in the registry
+
+Each book keeps `chapters.json` beside its `SUMMARY.md`: one record per
+chapter with its number, title, file, status (`implemented`, `partly
+implemented`, `design draft` or `planned`), profile, dependencies, implemented
+source, qualified targets and adoption. The registry check in
+`coax/book/check-structure.py` compares it with each chapter's heading and
+status marker, the contents labels, the README's list or status table and, for
+Psionic, the plan.
+`check-structure.py` and `psionic/tests/book.py` run that comparison, so a
+status change must update all of them in one commit. To check all three
+registries and print their status counts:
+
+```sh
+python3 coax/book/check-structure.py --registry
+```
+
+Each book's README states the four things a draft needs before it becomes a
+teaching chapter: a worked calculation or trace, runnable source, a broken
+case with its diagnostic, and an independent check.
+
 ## Review capability claims
 
 Both books use `coax/book/capability-claims.json` for selected current-scope
@@ -87,13 +108,24 @@ Existing page IDs and URLs remain; new sections (`## X` or `**X**` lines)
 become overview pages because the authoring API does not create Git Sync's
 navigation-only groups. Missing pages are inserted first, so every relative
 book link becomes a stable page reference; pages then move into SUMMARY
-order. For Psionic and Aethyr, the publisher deletes a page that SUMMARY no
-longer lists, so a renamed chapter gets a new URL. A link to another book's
-README goes to that book's public URL. Any other repository link goes to the
-file at the published commit on GitHub. The publisher never deletes a Coax
-book page. The script
-verifies the draft inventory and merged revision. It does not change
-visibility, create a site or export content back into Git.
+order. A section renamed only by dropping ` (planned)` keeps its page and
+URL. For every book, the publisher then deletes each page that SUMMARY no
+longer lists, including stale pages inside a current section, so a renamed
+chapter gets a new URL. After the merge it adds a permanent site redirect from
+each deleted page's URL to the current page with the same file name without
+its number (`ch20-inside-coax0` reaches `ch27-inside-coax0`), or to the
+book's first page when there is none. A link to another book's README goes to
+that book's public URL. Any other repository link goes to the file at the
+published commit on GitHub. The script verifies the draft inventory and the
+merged revision, then reads the live page tree and fails if it has an extra,
+missing, duplicate, retitled or out-of-order page compared with SUMMARY. It
+does not change visibility, create a site or export content back into Git.
+
+To run only the post-publication comparison, which changes nothing:
+
+```sh
+python3 scripts/publish-coax-book.py --book coax --check-live --token-file /absolute/path/to/gitbook.env
+```
 
 An API error or timeout is not success. Inspect the printed draft before
 retrying; `--change-request ID` resumes that draft for the same source commit.

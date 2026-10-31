@@ -39,7 +39,41 @@ drops the marker and shows its code the way the Psionic book does: listings
 copied from source between `// book:begin` and `// book:end` markers, and
 runnable programs in `aethyr/examples/` with exact transcripts.
 
-Chapters 1–4, 6, 7 and 65–67 are written; every other chapter, through chapter 86, is a design draft.
+The [chapter registry](chapters.json) records each chapter's status (one of
+*implemented*, *partly implemented*, *design draft* or *planned*), its
+profile, its dependencies and three separate facts: its implemented source
+(`source`), the targets with recorded evidence for its profile
+(`qualified_targets`), and the code outside the book that uses it today
+(`adopted_by`). The status table below, the contents and each chapter's status
+marker must agree with it; `python3 psionic/tests/book.py --book aethyr` fails
+when they don't. When an engine-core task lands its chapter, update the
+chapter's registry entry, contents label and table row in the same commit.
+
+## Promoting a draft to a teaching chapter
+
+A design draft or planned chapter becomes a teaching chapter only when it has
+all four of the following:
+
+1. **A worked calculation or trace.** A small input whose result the chapter
+   works out by hand, step by step, before the program runs.
+2. **Runnable source.** The code and an example in `aethyr/examples/`, listed in [examples.json](examples.json), with an exact
+   transcript that the book's checks compare in debug and release.
+3. **A deliberately broken case and its diagnostic.** An input or an edit
+   that the code refuses, with the exact error or refusal shown and its exit
+   status checked.
+4. **An independent check.** A result computed another way, such as a
+   separate oracle, a reference implementation or a hand-derived value, that
+   the checks compare with the code's result.
+
+When all four exist, update the chapter's status in the same commit in four
+places: the chapter's status marker, its entry in [chapters.json](chapters.json),
+its label in the [contents](SUMMARY.md) and its row in the table below. The registry
+check fails when they disagree. [Coax chapter 29](../../coax/book/ch29-units-and-frames.md)'s
+affine section is an example: a hand calculation, `examples/ch29_frames.coax`,
+a refused program with `E0834`, and a `#test` that compares the result with
+plain arithmetic.
+
+To find a route through the three books (write current Coax, build a playable realm, run an original model or train a small model), see [Paths through the books](../../docs/books/paths.md).
 
 ## Writing style
 
@@ -100,10 +134,10 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [1. A frame has a fixed step](ch001-a-frame-has-a-fixed-step.md) | Written (`ec-loop`) | One owner of time: a fixed 1/64 s step counted in whole nanoseconds, a frame clamp, at most eight steps a frame with the backlog dropped, and drawing interpolated between the last two steps, so physics is identical at 30, 60, 120 and 144 FPS and a jump at 60 FPS moves smoothly (7.0 mm against 76.2 mm). |
-| [2. Spaces and units](ch002-spaces-and-units.md) | Written (`ec-space`; the per-realm feet check lands with `ec-migrate`) | Typed world, local, view, screen and grid points, crossing spaces only through named functions, with metres and grid units as `quantity` units; mixing them is a compile error, checked by six fixtures. |
-| [3. State starts from its defaults](ch003-state-starts-from-its-defaults.md) | Written (`ec-state`) | Every realm's state built from the compiler's own initializers on native and browser hosts, checked byte for byte against native for 16 realm states, with the check proven sharp and a clock that can't freeze from zeroed memory. |
-| [4. Input becomes typed actions](ch004-input-becomes-typed-actions.md) | Written (`ec-input`) | Keys, touch and pads become one typed `Intent` a frame with one run rule and dead zone; each press is taken by exactly one fixed step, checked against a separate model, and the keyboard and the touch stick drive the same session to the same states. |
+| [1. A frame has a fixed step](ch001-a-frame-has-a-fixed-step.md) | Runnable: native C (`ec-loop`) | One owner of time: a fixed 1/64 s step counted in whole nanoseconds, a frame clamp, at most eight steps a frame with the backlog dropped, and drawing interpolated between the last two steps, so physics is identical at 30, 60, 120 and 144 FPS and a jump at 60 FPS moves smoothly (7.0 mm against 76.2 mm). |
+| [2. Spaces and units](ch002-spaces-and-units.md) | Partly implemented: native C (`ec-space`; the per-realm feet check lands with `ec-migrate`) | Typed world, local, view, screen and grid points, crossing spaces only through named functions, with metres and grid units as `quantity` units; mixing them is a compile error, checked by six fixtures. |
+| [3. State starts from its defaults](ch003-state-starts-from-its-defaults.md) | Runnable: native C (`ec-state`) | Every realm's state built from the compiler's own initializers on native and browser hosts, checked byte for byte against native for 16 realm states, with the check proven sharp and a clock that can't freeze from zeroed memory. |
+| [4. Input becomes typed actions](ch004-input-becomes-typed-actions.md) | Runnable: native C (`ec-input`) | Keys, touch and pads become one typed `Intent` a frame with one run rule and dead zone; each press is taken by exactly one fixed step, checked against a separate model, and the keyboard and the touch stick drive the same session to the same states. |
 | [5. Replay a session exactly](ch005-replay-a-session-exactly.md) | Unimplemented: design draft (`ec-replay`) | A session record (identities, seed, initial digest, one action sample per step, periodic digests) that replays bit-identically natively and in the browser, with counter-based random streams and bisection to the first divergent step. |
 
 ### II. A world
@@ -199,9 +233,9 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [65. Sound from numbers: oscillators and envelopes](ch065-sound-from-numbers.md) | Written | Integer oscillators (saw, square, a fitted sine), seeded xorshift noise, ADSR envelopes, decays as a repeated multiply, a one-pole filter, constant-power pan and Padé saturation, with no `libm` and no clock. |
-| [66. A sequencer on the beat grid](ch066-a-sequencer-on-the-beat-grid.md) | Written | A tempo grid in ticks whose every step is computed from its own tick, so it never drifts; sections snapped to steps; keys and triads from one voicing rule; patterns stepped to exact samples. |
-| [67. Scores, mixing and a soundtrack](ch067-scores-mixing-and-a-soundtrack.md) | Written | Stereo buses with a Schroeder reverb send, gain automation, a master that normalizes, automates and saturates without clipping, WAV files, a sample hash, and the `promo-epic` score rendered by `aethyr/tools/score.coax`. |
+| [65. Sound from numbers: oscillators and envelopes](ch065-sound-from-numbers.md) | Runnable: native C | Integer oscillators (saw, square, a fitted sine), seeded xorshift noise, ADSR envelopes, decays as a repeated multiply, a one-pole filter, constant-power pan and Padé saturation, with no `libm` and no clock. |
+| [66. A sequencer on the beat grid](ch066-a-sequencer-on-the-beat-grid.md) | Runnable: native C | A tempo grid in ticks whose every step is computed from its own tick, so it never drifts; sections snapped to steps; keys and triads from one voicing rule; patterns stepped to exact samples. |
+| [67. Scores, mixing and a soundtrack](ch067-scores-mixing-and-a-soundtrack.md) | Runnable: native C | Stereo buses with a Schroeder reverb send, gain automation, a master that normalizes, automates and saturates without clipping, WAV files, a sample hash, and the `promo-epic` score rendered by `aethyr/tools/score.coax`. |
 | [68. Sound in the world: playback, space and reaction](ch068-sound-in-the-world.md) | Unimplemented: design draft | Block rendering on the audio clock through a Web Audio worklet and native hosts, sources placed in the world by distance, pan and delay, and music that changes section on the bar line with the game's state, all replaying exactly. |
 | [69. Voices in a realm](ch069-voices-in-a-realm.md) | Unimplemented: design draft | Players, NPCs and agents heard from where they stand: one `Speaker`, `Utterance` and `Route` model, a forwarder that picks who hears whom from positions, zones, consent and floors without decoding audio, and voices placed by chapter 68's gain, pan and delay. |
 

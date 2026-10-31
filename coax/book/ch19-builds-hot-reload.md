@@ -1,4 +1,7 @@
-# Builds and hot reload
+# 19. Builds and hot reload
+
+> **Status: partly implemented.** The build commands and the iOS app's build run in
+> `coax0`. `build.coax`, compile and startup budgets and hot reload are design.
 
 So far we've mostly run single files with `coax run`. Real Coax code
 doesn't live alone. In the OpenAgents iOS app, Coax sources
@@ -11,7 +14,7 @@ what's planned, a build written in Coax and hot reload, and why hot
 reload is mostly an engine problem rather than a compiler one.
 
 > Note: Everything up to "Planned: the build as a program" works today
-> with `coax0` 0.10.0. `build.coax`, a resident compiler and hot reload
+> with the current `coax0`. `build.coax`, a resident compiler and hot reload
 > don't exist yet; they are stages 4 and 8 of the plan in
 > [Chapter 28](ch28-road-ahead.md).
 

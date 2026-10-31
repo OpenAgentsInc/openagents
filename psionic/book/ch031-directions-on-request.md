@@ -1,5 +1,8 @@
 # 31. Directions on request
 
+> **Status: partly implemented.** The explicit-help candidate runs and has a
+> separate live smoke evaluation. Integration into the page is pending.
+
 [Chapter 30](ch030-measure-a-guard-decision.md) separated a valid answer from
 a useful one. Its quiet/greeting/weather cohort gave the model no pressing
 reason to speak. Here we start with a concrete, low-pressure need: a traveller

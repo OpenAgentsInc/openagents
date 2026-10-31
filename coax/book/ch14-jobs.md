@@ -1,5 +1,8 @@
 # 14. Jobs: captures as effects
 
+> **Status: partly implemented.** The two single-threaded programs run in `coax0`. Jobs,
+> `for_parallel`, the scheduler and race checking are design.
+
 A game frame is a list of systems: move everything, animate the
 characters, update the camera, build the draw list. Most engines start
 out running them one after another on one thread. Phones and laptops

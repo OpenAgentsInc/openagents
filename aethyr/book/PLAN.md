@@ -1,7 +1,7 @@
 # Plan and prerequisites
 
-Proposal, 2026-10-31. Chapters 1–3 and 65–67 are written; the rest are design
-drafts. The order puts each primitive before anything that uses it, so the
+Proposal, 2026-10-31. The [chapter registry](chapters.json) records which
+chapters are written and which are design drafts. The order puts each primitive before anything that uses it, so the
 book can be built front to back, but independent branches can start earlier
 than their position. The [contents](SUMMARY.md) give the reading order and the
 [introduction](README.md) the result of each chapter.

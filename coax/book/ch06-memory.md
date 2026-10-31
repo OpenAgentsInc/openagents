@@ -1,5 +1,8 @@
 # 6. Arrays, strings, memory and the context
 
+> **Status: partly implemented.** Fixed arrays, views, strings, bytes and bounds checks run in
+> `coax0`. Heap memory, the context and temporary storage are design.
+
 <!-- coax-release:current:start -->
 Current compiler: **coax0 0.45.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->

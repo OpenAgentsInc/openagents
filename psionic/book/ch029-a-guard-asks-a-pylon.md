@@ -1,5 +1,9 @@
 # 29. A guard asks a Pylon
 
+> **Status: partly implemented.** The opt-in shadow path runs and is qualified
+> locally and live. Whether the answers are useful, and the ambient behavior
+> that would act on them, are pending.
+
 [Chapter 28](ch028-a-decision-arrives-while-play-continues.md) built a local
 request ticket. This chapter gives it a real game consumer: Bram, Everglade's
 first gate guard. The first implementation is **shadow only**. It can ask a
