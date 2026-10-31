@@ -40,10 +40,7 @@
 #include "realm.h"
 #include "Player.h"
 #include "Grid.h"
-// As Bridge.h does: Haunt's 12-float packet alias is its own C type.
-#define coax_a12_f32 coax_haunt_a12_f32
 #include "Haunt.h"
-#undef coax_a12_f32
 #include "Haunt-buffer.h"
 #include "Particles.h"
 #include "Setpiece.h"

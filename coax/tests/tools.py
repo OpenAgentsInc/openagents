@@ -12,7 +12,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-COMPILER = ROOT / "bin/coax"
+COMPILER = Path(os.environ.get("COAX_BIN", ROOT / "bin/coax"))
 CC = os.environ.get("COAX_CC", "cc")
 
 
@@ -114,6 +114,201 @@ int main(void) {
         self.assertEqual(coax("check", ok).returncode, 0, coax("check", ok).stderr)
         bad = self.write("bad.coax", "N :: 300;\nmain :: () { a: u8 = N; }\n")
         self.assertIn("error[E0350]", coax("check", bad).stderr)
+
+
+class HeaderComposition(unittest.TestCase):
+    """Two real libraries must share compatible C types without host renaming.
+
+    Incompatible public spellings must be diagnosed, including when their
+    storage size happens to match. Include guards must not hide a second
+    entry file merely because both entries have the same basename.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="coax-header-composition-")
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def source(self, name, text):
+        path = self.dir / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+        return path
+
+    def library(self, source, name, flags=()):
+        header = self.dir / (name + ".h")
+        emitted = coax("c", str(source), "--library", "--header", str(header), *flags)
+        self.assertEqual(emitted.returncode, 0, emitted.stderr)
+        c = self.source(name + ".c", emitted.stdout)
+        obj = self.dir / (name + ".o")
+        result = subprocess.run([CC, "-std=c11", "-O2", "-c", str(c), "-o", str(obj)],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return header, obj
+
+    def host(self, headers, body, objects=(), succeeds=True, diagnostic=None):
+        includes = "".join('#include "' + header.name + '"\n' for header in headers)
+        for compiler, language in ((CC, "c11"), ("c++", "c++17")):
+            with self.subTest(language=language, order=[header.name for header in headers]):
+                source = self.source("host." + ("c" if language == "c11" else "cpp"), includes + body)
+                output = self.dir / ("host-" + language)
+                command = [compiler, "-std=" + language, "-Werror", "-pedantic-errors", "-I", str(self.dir)]
+                if succeeds:
+                    command += [str(source), *map(str, objects), "-lm", "-o", str(output)]
+                else:
+                    command += ["-fsyntax-only", str(source)]
+                result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+                if succeeds:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    run = subprocess.run([str(output)], capture_output=True, text=True, timeout=30)
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0, "incompatible headers were accepted")
+                    self.assertIn(diagnostic, result.stderr)
+
+    def test_independent_libraries_share_fixed_arrays_and_array_views(self):
+        for flags in ((), ("--release",)):
+            with self.subTest(flags=flags):
+                libraries = []
+                for suffix, index, amount in (("a", 1, 1), ("b", 2, 2)):
+                    source = self.source(suffix + ".coax", f"""
+array_{suffix} :: (value:[3]u16)->[3]u16 #export_c {{
+  result:=value;result[{index}]+={amount};return result;
+}}
+sum_{suffix} :: (rows:[] [3]u16)->int #export_c {{
+  total:=0;for row:rows {{for value:row {{total+=cast(int)value;}}}}return total;
+}}
+""")
+                    libraries.append(self.library(source, suffix, flags))
+                headers, objects = zip(*libraries)
+                body = """
+int main(void) {
+  coax_a3_u16 value = {{2, 3, 5}};
+  coax_a3_u16 first = array_a(value), second = array_b(first);
+  coax_a3_u16 rows[] = {first, second};
+  coax_v_a3_u16 view = {rows, 2};
+  return first.e[1] == 4 && second.e[2] == 7 && sum_a(view) == 24 && sum_b(view) == 24 ? 0 : 1;
+}
+"""
+                self.host(headers, body, objects)
+                self.host(tuple(reversed(headers)), body, objects)
+
+    def test_shared_loaded_structs_enums_and_borrowed_rows_compose(self):
+        self.source("common.coax", """
+Mode :: enum u8 { idle; ready = 3; }
+Cell :: struct { tag:u8; samples:[3]u16; mode:Mode; }
+Batch :: struct { rows:[]Cell; mode:Mode; }
+Node :: struct { value:int; children:[]Node; }
+""")
+        a = self.source("shared-a.coax", """
+#load "common.coax";
+cell_a :: (cell:Cell)->Cell #export_c {result:=cell;result.tag+=1;return result;}
+batch_a :: (batch:Batch)->int #export_c {return batch.rows.count+cast(int)batch.mode;}
+node_a :: (node:Node)->int #export_c {return node.value+node.children.count;}
+""")
+        b = self.source("shared-b.coax", """
+#load "common.coax";
+cell_b :: (cell:Cell)->Cell #export_c {result:=cell;result.samples[2]+=2;return result;}
+batch_b :: (batch:Batch)->int #export_c {return batch.rows.count+cast(int)batch.mode;}
+node_b :: (node:Node)->int #export_c {return node.value+node.children.count;}
+""")
+        for flags in ((), ("--release",)):
+            with self.subTest(flags=flags):
+                libraries = [self.library(a, "shared-a", flags), self.library(b, "shared-b", flags)]
+                headers, objects = zip(*libraries)
+                body = """
+int main(void) {
+  coax_t_Cell cell = {2, {{3, 5, 7}}, COAX_Mode_ready};
+  coax_t_Cell next = cell_b(cell_a(cell));
+  coax_t_Batch batch = {{&next, 1}, COAX_Mode_ready};
+  coax_t_Node node = {7, {0, 0}};
+  return next.tag == 3 && next.samples.e[2] == 9 && batch_a(batch) == 4 && batch_b(batch) == 4 && node_a(node) == 7 && node_b(node) == 7 ? 0 : 1;
+}
+"""
+                self.host(headers, body, objects)
+                self.host(tuple(reversed(headers)), body, objects)
+
+    def test_equal_size_incompatible_public_types_are_explicitly_rejected(self):
+        variants = (
+            ("value:u32;", "value:f32;"),
+            ("left:u16;right:u16;", "right:u16;left:u16;"),
+            ("value:u32;#if BUILD_DEBUG {stamp:u32;}", "value:u32;stamp:u32;"),
+        )
+        for index, (left, right) in enumerate(variants):
+            with self.subTest(variant=index):
+                a = self.source("conflict-a.coax", "Collision :: struct {" + left + "}\nread_a :: (v:Collision)->int #export_c {return 1;}")
+                b = self.source("conflict-b.coax", "Collision :: struct {" + right + "}\nread_b :: (v:Collision)->int #export_c {return 2;}")
+                # The last pair differs only after the left producer selects
+                # release; mixed-profile includes must not silently coalesce.
+                left_flags = ("--release",) if index == 2 else ()
+                headers = [self.library(a, "conflict-a", left_flags)[0], self.library(b, "conflict-b")[0]]
+                self.host(headers, "int main(void) { return 0; }\n", succeeds=False,
+                          diagnostic="incompatible Coax C type")
+                self.host(tuple(reversed(headers)), "int main(void) { return 0; }\n", succeeds=False,
+                          diagnostic="incompatible Coax C type")
+
+    def test_conflicting_enum_member_values_are_explicitly_rejected(self):
+        a = self.source("enum-a.coax", "Mode :: enum u8 { idle; ready = 3; }\nmode_a :: (mode:Mode)->int #export_c {return cast(int)mode;}")
+        b = self.source("enum-b.coax", "Mode :: enum u8 { idle; ready = 4; }\nmode_b :: (mode:Mode)->int #export_c {return cast(int)mode;}")
+        headers = [self.library(a, "enum-a")[0], self.library(b, "enum-b")[0]]
+        self.host(headers, "int main(void) { return 0; }\n", succeeds=False,
+                  diagnostic="incompatible Coax C type")
+        self.host(tuple(reversed(headers)), "int main(void) { return 0; }\n", succeeds=False,
+                  diagnostic="incompatible Coax C type")
+
+    def test_same_basename_entries_do_not_hide_each_others_exports(self):
+        a = self.source("left/kernel.coax", "from_left :: (value:int)->int #export_c {return value+1;}")
+        b = self.source("right/kernel.coax", "from_right :: (value:int)->int #export_c {return value+2;}")
+        libraries = [self.library(a, "left"), self.library(b, "right")]
+        headers, objects = zip(*libraries)
+        body = "int main(void) { return from_left(3) == 4 && from_right(3) == 5 ? 0 : 1; }\n"
+        self.host(headers, body, objects)
+        self.host(tuple(reversed(headers)), body, objects)
+
+    def test_repeated_header_includes_remain_valid(self):
+        source = self.source("repeated.coax", """
+Entry :: struct { values:[2]u8; }
+read_entry :: (entries:[]Entry)->int #export_c {return cast(int)entries[0].values[1];}
+""")
+        header, obj = self.library(source, "repeated")
+        body = """
+int main(void) {
+  coax_t_Entry entry = {{{2, 7}}};
+  coax_v_t_Entry entries = {&entry, 1};
+  return read_entry(entries) == 7 ? 0 : 1;
+}
+"""
+        self.host((header, header), body, (obj,))
+
+    def test_defaults_empty_records_and_source_paths_do_not_change_c_compatibility(self):
+        libraries = []
+        for side, default in (("left", 3), ("right", 5)):
+            source = self.source(side + "/defaults.coax", f"""
+Empty :: struct {{}}
+Box :: struct {{value:int={default}; marker:Empty;}}
+make_{side} :: ()->Box #export_c {{box:Box;return box;}}
+""")
+            libraries.append(self.library(source, "defaults-" + side))
+        headers, objects = zip(*libraries)
+        body = "int main(void) { return make_left().value == 3 && make_right().value == 5 ? 0 : 1; }\n"
+        self.host(headers, body, objects)
+        self.host(tuple(reversed(headers)), body, objects)
+
+    def test_long_record_schemas_compose_without_truncated_macro_identity(self):
+        # Full direct-schema encoding must work for real records whose schema
+        # identifier exceeds the C standard's minimum significant-name limit.
+        names = ["field_" + str(i) + "_with_a_descriptive_public_interface_name" for i in range(48)]
+        fields = "".join(name + ":u32;" for name in names)
+        libraries = []
+        for side in ("left", "right"):
+            source = self.source("long-" + side + ".coax", "Long :: struct {" + fields + "}\nread_" + side + " :: (value:Long)->int #export_c {return cast(int)value." + names[0] + "+cast(int)value." + names[-1] + ";}")
+            libraries.append(self.library(source, "long-" + side))
+        headers, objects = zip(*libraries)
+        body = "int main(void) { coax_t_Long value = {0}; value." + names[0] + " = 5; value." + names[-1] + " = 7; return read_left(value) == 12 && read_right(value) == 12 ? 0 : 1; }\n"
+        self.host(headers, body, objects)
+        self.host(tuple(reversed(headers)), body, objects)
 
 
 if __name__ == "__main__":

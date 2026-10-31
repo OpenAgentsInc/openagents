@@ -24,15 +24,7 @@
 // server's copies, moved to open ground if it no longer is. It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "everglade.h"
-// Independently emitted libraries own C type names; these aliases preserve the
-// shared data-only schema without declaring the page's structs a second time.
-#define coax_t_GaInput guard_t_GaInput
-#define coax_t_GaObservation guard_t_GaObservation
-#define coax_a1024_u8 guard_a1024_u8
 #include "Guard-decision.h"
-#undef coax_t_GaInput
-#undef coax_t_GaObservation
-#undef coax_a1024_u8
 #include "Player.h"
 #include "Grid.h"
 #include "River.h"
@@ -592,7 +584,7 @@ EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_
 static void guard_out(uint32_t state) {
   int64_t monotonic_ms = guard_now_ms();
   coax_t_GaInput page_input = everglade_guard_take(at(state));
-  guard_t_GaInput policy_input;
+  coax_t_GaInput policy_input;
   _Static_assert(sizeof policy_input == sizeof page_input, "shared guard input ABI");
   memcpy(&policy_input, &page_input, sizeof policy_input);
   ga_page(gs(), policy_input, monotonic_ms);

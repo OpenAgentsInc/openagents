@@ -212,6 +212,13 @@ See [Chapter 22](book/ch22-organizing-programs.md) for exact scope and limits.
 
 ## Native libraries and Metal
 
+Generated headers compose across separately compiled libraries: compatible
+arrays, views, records and enums share their C declarations. Conflicting
+definitions of the same C type report `incompatible Coax C type`, including
+equal-sized fields of different types. These checks describe the emitted C
+ABI, not logical module identity. Regenerate related headers together; source
+namespaces and visibility remain planned.
+
 The [native iOS home](../apps/openagents-ios/README.md) runs its scene, HUD and
 resource admission in Coax and its shader math through the Metal emitter:
 

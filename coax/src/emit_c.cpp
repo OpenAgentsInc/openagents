@@ -1322,6 +1322,61 @@ struct Emitter {
 
 // ---- types: declarations in dependency order ----
 
+// Header composition checks direct C ABI definitions, not logical Coax
+// declaration identity. Referenced named types are checked independently by
+// TypeWriter::need, so recursive borrowed records require no recursive schema
+// expansion. Defaults and checkout paths do not change this C interface.
+static std::string header_type_schema(Type t) {
+  std::string schema;
+  auto part = [&](const std::string &value) {
+    schema += std::to_string(value.size()) + ":" + value;
+  };
+  part("coax-c-type-v1");
+  switch (t->kind) {
+    case TypeKind::struct_: part("struct"); break;
+    case TypeKind::enum_: part("enum"); break;
+    case TypeKind::array: part("array"); break;
+    case TypeKind::view: part("view"); break;
+    default: part("other"); break;
+  }
+  part(c_type(t));
+  part(std::to_string(t->size));
+  part(std::to_string(t->align));
+  if (t->kind == TypeKind::struct_) {
+    part(std::to_string(t->struct_decl->fields.count));
+    for (const Field &field : t->struct_decl->fields) {
+      part(to_std(field.name));
+      part(c_type(field.type));
+      part(std::to_string(field.offset));
+    }
+  } else if (t->kind == TypeKind::enum_) {
+    part(c_type(t->elem));
+    part(std::to_string(t->enum_decl->members.count));
+    for (const EnumMember &member : t->enum_decl->members) {
+      part(to_std(member.name));
+      part(std::to_string(member.bits));
+    }
+  } else if (t->kind == TypeKind::array || t->kind == TypeKind::view) {
+    part(c_type(t->elem));
+    if (t->kind == TypeKind::array) part(std::to_string(t->length));
+  }
+  return schema;
+}
+
+static std::string header_type_definition(Type t, const std::string &definition) {
+  static const char hex[] = "0123456789abcdef";
+  std::string encoded;
+  for (unsigned char byte : header_type_schema(t)) {
+    encoded += hex[byte >> 4];
+    encoded += hex[byte & 15];
+  }
+  std::string guard = "COAX_" + c_type(t) + "_DEFINED";
+  std::string schema = "COAX_SCHEMA_" + c_type(t) + "_" + encoded;
+  return "#ifdef " + guard + "\n#ifndef " + schema +
+         "\n#error \"incompatible Coax C type " + c_type(t) + "\"\n#endif\n#else\n#define " +
+         guard + "\n#define " + schema + "\n" + definition + "#endif\n";
+}
+
 struct TypeWriter {
   std::string out;
   std::vector<Type> done;
@@ -1340,17 +1395,20 @@ struct TypeWriter {
         const StructDecl *d = t->struct_decl;
         for (const Field &f : d->fields) if (f.type->kind != TypeKind::view) need(f.type);
         for (const Field &f : d->fields) if (f.type->kind == TypeKind::view) need(f.type);
-        out += "struct coax_" + tag(t) + " {";
-        for (const Field &f : d->fields) out += " " + c_type(f.type) + " " + to_std(f.name) + ";";
-        if (!d->fields.count) out += " char coax_empty;";
-        out += " };\n";
+        std::string definition = "struct coax_" + tag(t) + " {";
+        for (const Field &f : d->fields) definition += " " + c_type(f.type) + " " + to_std(f.name) + ";";
+        if (!d->fields.count) definition += " char coax_empty;";
+        definition += " };\n";
+        out += header ? header_type_definition(t, definition) : definition;
         break;
       }
-      case TypeKind::array:
+      case TypeKind::array: {
         need(t->elem);
         done.push_back(t);
-        out += "typedef struct { " + c_type(t->elem) + " e[" + std::to_string(t->length) + "]; } " + c_type(t) + ";\n";
+        std::string definition = "typedef struct { " + c_type(t->elem) + " e[" + std::to_string(t->length) + "]; } " + c_type(t) + ";\n";
+        out += header ? header_type_definition(t, definition) : definition;
         break;
+      }
       case TypeKind::view:
         done.push_back(t);
         // C needs only the element's name for a pointer; a header still
@@ -1362,19 +1420,22 @@ struct TypeWriter {
           std::string def = "typedef struct { " + c_type(t->elem) + " *data; int64_t count; } " + c_type(t) + ";\n";
           TypeKind k = t->elem->kind;
           bool shared = k == TypeKind::integer || k == TypeKind::floating || k == TypeKind::bool_;
-          if (shared) {
+          if (header) def = header_type_definition(t, def);
+          else if (shared) {
             std::string guard = "COAX_" + c_type(t) + "_DEFINED";
             def = "#ifndef " + guard + "\n#define " + guard + "\n" + def + "#endif\n";
           }
           out += def;
         }
         break;
-      case TypeKind::enum_:
+      case TypeKind::enum_: {
         done.push_back(t);
-        out += "typedef " + c_type(t->elem) + " " + c_type(t) + ";\n";
+        std::string definition = "typedef " + c_type(t->elem) + " " + c_type(t) + ";\n";
         for (const EnumMember &m : t->enum_decl->members)
-          out += "#define COAX_" + to_std(t->enum_decl->name) + "_" + to_std(m.name) + " " + int_text(t, m.bits) + "\n";
+          definition += "#define COAX_" + to_std(t->enum_decl->name) + "_" + to_std(m.name) + " " + int_text(t, m.bits) + "\n";
+        out += header ? header_type_definition(t, definition) : definition;
         break;
+      }
       default: break;
     }
   }
@@ -2180,15 +2241,6 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
 }
 
 std::string emit_header(const File *file) {
-  std::string base = file->src->path;
-  size_t slash = base.find_last_of('/');
-  if (slash != std::string::npos) base = base.substr(slash + 1);
-  size_t dot = base.find_last_of('.');
-  if (dot != std::string::npos) base = base.substr(0, dot);
-  std::string guard = "COAX_";
-  for (char c : base) guard += (char)(isalnum((unsigned char)c) ? toupper((unsigned char)c) : '_');
-  guard += "_H";
-
   // The types the exported procedures use, and everything they contain.
   TypeWriter types;
   types.header = true;
@@ -2233,7 +2285,10 @@ std::string emit_header(const File *file) {
   std::string s = "/* Generated by coax0 from " + file->src->path + ". Do not edit: change the .coax file.\n"
                   "   Coax int is int64_t; a Coax string or view is a pointer and a count, not\n"
                   "   NUL-terminated; a failed check inside a call aborts the process. */\n";
-  s += "#ifndef " + guard + "\n#define " + guard + "\n\n#include <stddef.h>\n#include <stdint.h>\n\n";
+  // Per-type guards permit repeated inclusion without hiding another entry
+  // unit that happens to have the same basename. Compatible C prototypes and
+  // forward typedefs may be repeated in C11 and C++.
+  s += "#include <stddef.h>\n#include <stdint.h>\n\n";
   s += "#ifdef __cplusplus\n#define _Bool bool\n#define COAX_LAYOUT(c, m) static_assert(c, m)\n#define COAX_ALIGNOF alignof\nextern \"C\" {\n#else\n"
        "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n#define COAX_ALIGNOF _Alignof\n#endif\n\n";
   s += "#ifndef COAX_STRING_DEFINED\n#define COAX_STRING_DEFINED\ntypedef struct { const char *data; int64_t count; } coax_string;\n#endif\n\n";
@@ -2247,7 +2302,7 @@ std::string emit_header(const File *file) {
     for (const ProcDecl *p : file->procs)
       if (p->foreign) s += em.prototype(p, true) + ";\n";
   }
-  s += "\n#ifdef __cplusplus\n}\n#undef _Bool\n#endif\n#undef COAX_LAYOUT\n#undef COAX_ALIGNOF\n#endif\n";
+  s += "\n#ifdef __cplusplus\n}\n#undef _Bool\n#endif\n#undef COAX_LAYOUT\n#undef COAX_ALIGNOF\n";
   return s;
 }
 

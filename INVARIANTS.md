@@ -1834,6 +1834,31 @@ metadata, managed regions, stale binaries, real acceptance probes and
 publication rejection before credentials/network). Workflow and limits:
 `coax/RELEASE.md`.
 
+## Generated C headers check compatible declarations across libraries
+
+Headers share compatible fixed arrays, views, records and enums through
+losslessly encoded direct ABI schemas. A schema includes the C spelling,
+kind, size/alignment and ordered field names/types/offsets, array extent or
+enum representation/members/bits as applicable. Referenced declarations are
+checked independently, including recursive borrowed records. Defaults and
+checkout paths do not participate. A conflicting public spelling fails with
+`incompatible Coax C type`; equal size alone cannot make it compatible.
+
+Each type has its own guard, so repeated includes work without a basename
+guard hiding another library's exports. C names, layouts, procedure bodies
+and plain C emission remain unchanged. Related headers must be regenerated
+together; this does not establish logical module identity, ownership, public
+protocol identity or semantic interchangeability. Encoded identifiers are
+qualified with the tested Clang C11/C++17 toolchains, not a guarantee for C
+implementations with short significant-identifier limits.
+
+Check: `coax/tests/tools.py HeaderComposition` compiles and links independent
+libraries in both include orders, tests recursive/shared and empty records,
+rejects equal-size and enum conflicts, and exercises repeated/same-basename
+headers. Bootstrap regenerates the explicit header seeds while retaining
+byte-identical C seeds. The real iOS Haunt/Cast/HUD headers compose without
+the old fixed-array macro rename.
+
 ## CPU reflection lowers to bounded ordinary values
 
 `type_info`, `field_info` and `enum_info` are implemented in the Coax parser

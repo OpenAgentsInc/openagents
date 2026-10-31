@@ -7,10 +7,7 @@
 // (docs/verse/realm-host.md). Action 4 keeps the save in the realm's slot,
 // message 4 brings it back; action 30 hands the page a round's trace.
 #include "icecream.h"
-// The edit layer's RealmEdit (in icecream.h) and the scene both have an [8] bool: the scene's keeps its own name here.
-#define coax_a8_bool coax_a8_bool_scene
 #include "Scene.h"
-#undef coax_a8_bool
 #include "analytics-face.h"
 #include "edit-face.h"
 #include <stdbool.h>

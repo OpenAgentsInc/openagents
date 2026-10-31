@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30",
+  "timezone": "America/Chicago",
+  "issue": "r1a-header-composition",
+  "alias": "9bdc",
+  "baseline_commit": "e754c34ece62a229b522519386d924713d3ca90e",
+  "scope": "Generated native header composition only. C function names, layouts and ordinary C emission are preserved; no namespace or lifetime guarantee is introduced.",
+  "compiler": {
+    "baseline_sha256": "a571bae225011e8639919536254e7d8cacb313429ea948b63a24b43cdabb9d77",
+    "candidate_sha256": "343027798151e5b1fb8de6ff8f2d5c0fa20a55e304b0372fc972549af3f71765",
+    "candidate_kind": "Local verification build linked against the baseline generated Coax compiler graph; full bootstrap qualification recorded separately.",
+    "source_sha256": {
+      "coax/src/emit_c.cpp": "abbd79cbd1e9421fd42f162ac3183a79e0a8b078adf4ee4cb94fd9fc26e6944a",
+      "coax/tests/tools.py": "b518974c638edb12782590f52dcd0d6d09e9b5c9a6a3c36b915e8c9908c0bd22"
+    }
+  },
+  "toolchain": {
+    "cc": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "cxx": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+  },
+  "checks": [
+    {
+      "command": "COAX_BIN=BASELINE python3 -m unittest coax.tests.tools -k HeaderComposition",
+      "outcome": "counterexample",
+      "tests": 5,
+      "failing_subcases": 36,
+      "detail": "Check-first failures reproduced array/view/record redefinitions, missing explicit conflict diagnostics and hidden same-basename APIs."
+    },
+    {
+      "command": "COAX_BIN=CANDIDATE python3 -m unittest coax.tests.tools",
+      "outcome": "passed",
+      "tests": 15,
+      "seconds": 16.145,
+      "detail": "Eight composition tests plus seven existing tooling tests, C11/C++17 in both include orders; checked/release cases, recursive/empty records, differing enum values, same-size conflicts, repeated includes, relocation/default independence and long schemas."
+    },
+    {
+      "command": "CANDIDATE header verse/NAME.coax -o TMP/Name.h; compile and run forward/reverse/actual Bridge includes with cc -std=c11 and c++ -std=c++17 -Werror",
+      "outcome": "passed",
+      "executables": 6,
+      "headers": [
+        "Home",
+        "Player",
+        "Grid",
+        "Cast",
+        "Benchmarks",
+        "Wallet",
+        "Camera",
+        "Haunt",
+        "HauntBuffer",
+        "Hud",
+        "PhoneSignin"
+      ],
+      "detail": "Actual platform host.h, voice.h and NostrSign.h included; verified 12-f32 identity and independent sizes/offsets for Joint, HauntInstance, HauntGPUlight and HudRect."
+    }
+  ],
+  "plain_c_parity": [
+    {
+      "source": "coax/examples/life.coax",
+      "source_sha256": "c9d863f87bf03aca39543c9314495ddc376a811320b6cb021f6c1292034c616c",
+      "equal_bytes": true,
+      "bytes": 19804,
+      "baseline_output_sha256": "643926aa242895a5a8cd4a537b6daae741cdef26d19f60c5be7246ac794bd303",
+      "candidate_output_sha256": "643926aa242895a5a8cd4a537b6daae741cdef26d19f60c5be7246ac794bd303"
+    },
+    {
+      "source": "coax/examples/pulse/pulse.coax",
+      "source_sha256": "bc371d0aeebf737c9f949bd4f122ec2560163bc09f7721219d7480f1499e3ce2",
+      "equal_bytes": true,
+      "bytes": 13674,
+      "baseline_output_sha256": "341ce3df7fe7dba25dea940e8c0aac3228bf79bb6dc6c9f597dd1de0e9949d52",
+      "candidate_output_sha256": "341ce3df7fe7dba25dea940e8c0aac3228bf79bb6dc6c9f597dd1de0e9949d52"
+    },
+    {
+      "source": "verse/camera.coax",
+      "source_sha256": "e616a3a88713d21d41341740175e9907e887eaf86180820dcf31fc19422294fc",
+      "equal_bytes": true,
+      "bytes": 41308,
+      "baseline_output_sha256": "78cfbb1f2829b3e5932218b883fdb9b0a12049622790fc50e847a627dc50bc2f",
+      "candidate_output_sha256": "78cfbb1f2829b3e5932218b883fdb9b0a12049622790fc50e847a627dc50bc2f"
+    },
+    {
+      "source": "psionic/lib/device/tile.coax",
+      "source_sha256": "c619fe1a32afc068473b085ab6832439bd589720067a68527ad705ce3fd02d8e",
+      "equal_bytes": true,
+      "bytes": 25224,
+      "baseline_output_sha256": "c686a418fe1df0423aa537faabd9384bcb183bd9b9447f02588aa5560ed34e64",
+      "candidate_output_sha256": "c686a418fe1df0423aa537faabd9384bcb183bd9b9447f02588aa5560ed34e64"
+    }
+  ],
+  "parity_path_scope": "Each baseline/candidate pair used the same absolute source argument. Generated source-path comments make these artifact hashes checkout-dependent; the comparison does not claim path-independent emitted comments.",
+  "seed_refresh": {
+    "candidate_sha256": "343027798151e5b1fb8de6ff8f2d5c0fa20a55e304b0372fc972549af3f71765",
+    "headers": [
+      {
+        "module": "budget",
+        "old_header_sha256": "7dd3fd21f2798cc47a092af567c6b94de799958fd4920260c1913758ca05c7b9",
+        "new_header_sha256": "9de9bac7ee3e71aa5def52af3fa7c379b7b33fa4be193aff3fd8d44c9b14f2b0",
+        "bytes": 1023
+      },
+      {
+        "module": "mutation-schedule",
+        "old_header_sha256": "24bd20d2dc6008ca6133a3b6d1b315be7a71e51388155fbd4ca2b7d35b8cfa89",
+        "new_header_sha256": "f9cbeefba2e226f4c8c7731d46b49729094caec1d02d3aaf12dc9ee0c40cd404",
+        "bytes": 1303
+      },
+      {
+        "module": "lexer",
+        "old_header_sha256": "0f6d3e3699222c7deed8cf682efaf4131d5253a2f6e90230a4698eb448746827",
+        "new_header_sha256": "bb4e01a82235b11441b78ac576f5b692f9a8ed4446adf649e54c67f7c9e1865c",
+        "bytes": 18342
+      },
+      {
+        "module": "parser",
+        "old_header_sha256": "172c414e87e3e29a2a84c745b461c003aca3ed629ca970657db291fd0b3fe2f9",
+        "new_header_sha256": "245356fa51582332cd97e38f1f1b279bdebf3b89cadd11b0f3ab00fb7fb29195",
+        "bytes": 24128
+      },
+      {
+        "module": "checker",
+        "old_header_sha256": "ed1752ecc408d432b28e151a69496db35c214436d8e4e22fe112a7893ab79907",
+        "new_header_sha256": "ad9dc27e038dba7adc9763bd60695812e90beb3c455b2ee605c8d9adb124aa3f",
+        "bytes": 34545
+      },
+      {
+        "module": "sources",
+        "old_header_sha256": "99646b0f0e48a226dd55eb58c2be6c5a02dbc5c6d54ce70586e3355cbd20636c",
+        "new_header_sha256": "6ff59405bcac257ef62420090fc528fc32888ffd157704144ea6a27163491195",
+        "bytes": 7976
+      }
+    ],
+    "source_path_convention": "lib/compiler/NAME.coax, invoked from coax/ (matches bootstrap)"
+  },
+  "bootstrap": {
+    "command": "coax/build.sh",
+    "outcome": "passed",
+    "exit_status": 0,
+    "record_schema": "coax-provenance-v1",
+    "source_fingerprint": "cb7f881ce216d8b8336a193a63275dcb693b497a354758bcbd30343202d88291",
+    "compiler_sha256": "085a4724fe6821af574860427695b5b8e4aba594cacc8e70b1f619f749362134",
+    "helper_sha256": "741f07d9a3117032d4e54ab3a3d3dde962ebf62e74bfc488f59e0280851939c4",
+    "detail": "Mandatory authority/check/mutation gates, exact C/header seed comparisons, combined compiler regeneration, final frontend regeneration and source/artifact provenance checks passed."
+  },
+  "limits": [
+    "No app launch, physical-device, Wasm or GPU test was run for this header-only change.",
+    "Structural C declaration compatibility is separate from logical Coax declaration identity, ownership, public protocol identity and semantic interchangeability.",
+    "Related headers must be regenerated together.",
+    "Losslessly encoded schema identifiers were exercised with Apple Clang C11/C++17; short-significant-identifier C toolchains are not qualified.",
+    "The initial bootstrap attempt refused seeds refreshed with the wrong source-comment path convention; headers were regenerated using lib/compiler/NAME.coax from coax/ before the final bootstrap."
+  ]
+}
