@@ -182,6 +182,7 @@ OrbitLeague :: struct {
   blast: D3; blast_t: f64; blast_team: int;
   sy: f32;
   pad_wait: [PADS] f64;
+  wheel_spin: [2] f64;        // each car's wheels' turn, radians
   pads_taken: int;
   track: [1] Track;
 }
@@ -577,6 +578,11 @@ effects_step :: (s: [] OrbitLeague, dt: f64) {
   }
   if s[0].blast_t >= 0.0 { s[0].blast_t += dt; if s[0].blast_t > BLAST_LIFE { s[0].blast_t = -1.0; } }
   s[0].shake *= exp(-dt * 6.0);
+  // the wheels roll with the car (kept within a turn)
+  for c: 0..<2 {
+    w := s[0].wheel_spin[c] + vehicle_forward_speed(s[0].bodies[c + 1]) / s[0].spec.wheel_r * dt;
+    s[0].wheel_spin[c] = w - floor(w / TAU_D) * TAU_D;
+  }
   if s[0].phase == PHASE_KICKOFF { clear_trails(s); }
   s[0].trail_t += dt;
   if s[0].trail_t < TRAIL_DT { return; }
@@ -950,11 +956,11 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
 
 // ---- the frame
 
-put_car :: (u: [] f32, at: int, b: RigidBody, boost: bool, team: int, steer: f64) {
+put_car :: (u: [] f32, at: int, b: RigidBody, boost: bool, team: int, steer: f64, spin: f64) {
   x := rigid_axis(b, D3_X); y := rigid_axis(b, D3_Y); z := rigid_axis(b, D3_Z);
   u[at] = cast(f32) b.pos.x; u[at + 1] = cast(f32) b.pos.y; u[at + 2] = cast(f32) b.pos.z; u[at + 3] = ifx boost then 1.0f32 else 0.0f32;
   u[at + 4] = cast(f32) x.x; u[at + 5] = cast(f32) x.y; u[at + 6] = cast(f32) x.z; u[at + 7] = cast(f32) team;
-  u[at + 8] = cast(f32) y.x; u[at + 9] = cast(f32) y.y; u[at + 10] = cast(f32) y.z; u[at + 11] = 0;
+  u[at + 8] = cast(f32) y.x; u[at + 9] = cast(f32) y.y; u[at + 10] = cast(f32) y.z; u[at + 11] = cast(f32) spin;
   u[at + 12] = cast(f32) z.x; u[at + 13] = cast(f32) z.y; u[at + 14] = cast(f32) z.z; u[at + 15] = cast(f32) steer;
 }
 
@@ -984,8 +990,8 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   q := bl.orientation;
   u[MISC_AT] = cast(f32) d3_len(bl.vel);
   u[BALLQ_AT] = cast(f32) q.x; u[BALLQ_AT + 1] = cast(f32) q.y; u[BALLQ_AT + 2] = cast(f32) q.z; u[BALLQ_AT + 3] = cast(f32) q.w;
-  put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE, s[0].cars[0].steer_now);
-  put_car(u, CAR_AT + CAR_FLOATS, s[0].bodies[BOT], s[0].boosting[1], MAGENTA, s[0].cars[1].steer_now);
+  put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE, s[0].cars[0].steer_now, s[0].wheel_spin[0]);
+  put_car(u, CAR_AT + CAR_FLOATS, s[0].bodies[BOT], s[0].boosting[1], MAGENTA, s[0].cars[1].steer_now, s[0].wheel_spin[1]);
   u[ARENA_AT] = cast(f32) ARENA_HX; u[ARENA_AT + 1] = cast(f32) ARENA_HZ; u[ARENA_AT + 2] = cast(f32) ARENA_H; u[ARENA_AT + 3] = cast(f32) GOAL_HW;
   u[GOAL_AT] = cast(f32) GOAL_H; u[GOAL_AT + 1] = cast(f32) GOAL_D;
   put_trail(u, TRAIL_AT, bl.pos, ball_glow(s), s[0].ball_trail[..], s[0].ball_k[..], 0);

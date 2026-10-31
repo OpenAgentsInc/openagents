@@ -10,7 +10,7 @@
 // four fender pods, a raked windscreen, two speedster humps), a driver's
 // helmet, a rear wing and four wheels, with headlights and a tail bar that
 // glow. The floor and the glass reflect the ball and the cars.
-struct Car { p: vec4f, x: vec4f, y: vec4f, z: vec4f }   // place (w boost), right (w team), up, forward (w steer)
+struct Car { p: vec4f, x: vec4f, y: vec4f, z: vec4f }   // place (w boost), right (w team), up (w the wheels' turn), forward (w steer)
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, panels: f32, k: f32, zerog: f32,
   r0: vec4f, r1: vec4f, r2: vec4f, r3: vec4f,
@@ -271,7 +271,7 @@ fn hull_cast(o: vec3f, d: vec3f, first: i32, count: i32) -> HullHit {
 }
 
 // A wheel: a cylinder along x (centre c, radius r, half width w): a dark tyre and a bright rim.
-fn wheel_hit(o: vec3f, d: vec3f, c: vec3f, r: f32, w: f32) -> Hit {
+fn wheel_hit(o: vec3f, d: vec3f, c: vec3f, r: f32, w: f32, spin: f32) -> Hit {
   let q = o - c;
   let a = d.y * d.y + d.z * d.z;
   let b = q.y * d.y + q.z * d.z;
@@ -290,7 +290,7 @@ fn wheel_hit(o: vec3f, d: vec3f, c: vec3f, r: f32, w: f32) -> Hit {
       let p = q + d * t;
       let rr = length(p.yz);
       if (t > 0.0 && t < best.t && rr <= r) {
-        let ang = atan2(p.y, p.z) * 5.0 / 6.2831853;
+        let ang = (atan2(p.y, p.z) + spin) * 5.0 / 6.2831853;
         let spoke = 1.0 - smoothstep(0.12, 0.2, abs(fract(ang) - 0.5));
         let rim = rr < r * 0.66 && (spoke > 0.5 || rr < r * 0.16);
         let col = select(vec3f(0.05, 0.05, 0.06), vec3f(0.78, 0.82, 0.88), rim);
@@ -367,7 +367,7 @@ fn car_hit(ro: vec3f, rd: vec3f, c: Car) -> Hit {
       wo = vec3f(cs * wo.x - sn * wo.z, wo.y, sn * wo.x + cs * wo.z);
       wd = vec3f(cs * wd.x - sn * wd.z, wd.y, sn * wd.x + cs * wd.z);
     }
-    var wh = wheel_hit(wo, wd, vec3f(0.0), 0.4, 0.15);
+    var wh = wheel_hit(wo, wd, vec3f(0.0), 0.4, 0.15, c.y.w);
     if (wh.t < h.t && i < 2) {
       let cs = cos(steer); let sn = sin(steer);
       wh.n = vec3f(cs * wh.n.x - sn * wh.n.z, wh.n.y, sn * wh.n.x + cs * wh.n.z);
