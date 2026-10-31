@@ -41,7 +41,7 @@ by a hash of the compiler's sources. When you build an unchanged compiler
 again, in this checkout or another one, it installs the kept copy in a
 few seconds and prints `installed the checked build`. When you change one
 of the compiler's Coax files, it reruns only the checks that read that
-file. [`coax/RELEASE.md`](../RELEASE.md#build-caches) describes both
+file. [`coax/RELEASE.md`](https://github.com/OpenAgentsInc/openagents/blob/main/coax/RELEASE.md#build-caches) describes both
 caches.
 
 Let's make sure it worked:

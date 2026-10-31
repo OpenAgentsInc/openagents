@@ -73,7 +73,7 @@ coax/build.sh
 python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax
 ```
 
-It ends with `book execution: 16 runs match output and exit status`.
+It ends with `book execution: 20 runs match output and exit status`.
 
 To play a realm in the browser:
 
@@ -94,9 +94,11 @@ Chapters, in order:
    implemented), state from defaults, and typed input.
 3. Aethyr chapters 65–67: synthesized sound, the beat grid and a mixed
    soundtrack.
-4. Aethyr chapters 5–16 (design drafts): replay, entities, queries, ground,
-   the character, the camera, rendering, UI and budgets.
-5. Aethyr chapters 56 and 64 (design drafts): the Grid rebuilt from those
+4. Aethyr chapters 6 and 7: entities that are born and die, and queries
+   for where things are.
+5. Aethyr chapters 5 and 8–16 (design drafts): replay, ground, the
+   character, the camera, rendering, UI and budgets.
+6. Aethyr chapters 56 and 64 (design drafts): the Grid rebuilt from those
    pieces, and every realm on Aethyr.
 
 ## Run an original model

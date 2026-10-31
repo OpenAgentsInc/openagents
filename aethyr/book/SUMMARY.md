@@ -13,8 +13,8 @@
 
 **II. A world**
 
-- [6. Entities are born and die](ch006-entities-are-born-and-die.md) — design draft
-- [7. Ask the world where things are](ch007-ask-the-world-where-things-are.md) — design draft
+- [6. Entities are born and die](ch006-entities-are-born-and-die.md)
+- [7. Ask the world where things are](ch007-ask-the-world-where-things-are.md)
 - [8. Ground and collision](ch008-ground-and-collision.md) — design draft
 - [9. A character moves](ch009-a-character-moves.md) — design draft
 - [10. The camera follows](ch010-the-camera-follows.md) — design draft
