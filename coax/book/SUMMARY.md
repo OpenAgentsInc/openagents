@@ -50,6 +50,34 @@
 * [27. Inside coax0](ch27-inside-coax0.md)
 * [28. The road ahead](ch28-road-ahead.md)
 
+## Part VII. The physical world (planned)
+
+* [29. Units and coordinate frames](ch29-units-and-frames.md)
+* [30. Typed clocks and multirate ticks](ch30-clocks-and-ticks.md)
+* [31. Bounded control](ch31-bounded-control.md)
+* [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md)
+* [33. Replay and snapshots](ch33-replay-and-snapshots.md)
+* [34. Importing robot models](ch34-robot-models.md)
+* [35. Stamped sensors and supervised actuators](ch35-sensors-and-actuators.md)
+* [36. Fault scenarios you can replay](ch36-fault-scenarios.md)
+* [37. Provenance, fidelity profiles and rule modules](ch37-provenance-and-rule-modules.md)
+* [38. A simulated robot, end to end](ch38-a-simulated-robot.md)
+* [39. A freighter scenario, end to end](ch39-a-freighter-scenario.md)
+
+## Part VIII. Simulation compute (planned)
+
+* [40. Logical tensors over chosen layouts](ch40-logical-tensors.md)
+* [41. Compile and startup budgets](ch41-compile-budgets.md)
+* [42. Device graphs and zero-copy buffers](ch42-device-graphs.md)
+* [43. Differentiating kernels](ch43-differentiating-kernels.md)
+
+## Part IX. Finishing the toolchain (planned)
+
+* [44. A self-hosted compiler](ch44-self-hosting.md)
+* [45. Replacing a procedure body while it runs](ch45-body-replacement.md)
+* [46. Resident compilation and state migration](ch46-resident-compilation.md)
+* [47. Backends chosen by profiling](ch47-backends.md)
+
 ## Appendices
 
 * [A. Keywords, directives, types and status](appendix-a-keywords.md)

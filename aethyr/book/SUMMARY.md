@@ -94,3 +94,30 @@
 - [66. A sequencer on the beat grid](ch066-a-sequencer-on-the-beat-grid.md)
 - [67. Scores, mixing and a soundtrack](ch067-scores-mixing-and-a-soundtrack.md)
 - [68. Sound in the world: playback, space and reaction](ch068-sound-in-the-world.md)
+- [69. Voices in a realm](ch069-voices-in-a-realm.md)
+
+**IX. A living world**
+
+- [70. Rivers, ponds and the sea](ch070-rivers-ponds-and-the-sea.md)
+- [71. Sky, weather and the time of day](ch071-sky-weather-and-the-time-of-day.md)
+- [72. Effects made of particles](ch072-effects-made-of-particles.md)
+- [73. Things that break](ch073-things-that-break.md)
+- [74. Wheels on the ground](ch074-wheels-on-the-ground.md)
+- [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md)
+- [76. Find a way through](ch076-find-a-way-through.md)
+- [77. People who talk back](ch077-people-who-talk-back.md)
+- [78. Cinematics and close-ups](ch078-cinematics-and-close-ups.md)
+
+**X. Aethyrforge: generating worlds**
+
+- [79. A piece from a sentence](ch079-a-piece-from-a-sentence.md)
+- [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md)
+- [81. Reply with a realm](ch081-reply-with-a-realm.md)
+
+**XI. Shipping realms**
+
+- [82. Save and come back](ch082-save-and-come-back.md)
+- [83. Change code while it runs](ch083-change-code-while-it-runs.md)
+- [84. Inspect and profile a running realm](ch084-inspect-and-profile-a-running-realm.md)
+- [85. One realm on every host](ch085-one-realm-on-every-host.md)
+- [86. Everyone can play](ch086-everyone-can-play.md)

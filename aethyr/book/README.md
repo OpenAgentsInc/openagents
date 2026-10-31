@@ -12,7 +12,9 @@ This book builds the engine from scratch, starting with the smallest
 primitive, one clock and one fixed step. Each chapter adds one working piece
 with its own checks and builds only on earlier chapters, until Part VII
 rebuilds every realm from them. Part VIII adds sound; it needs only Part I
-and can be read at any point after it. You need the Coax language (its book's
+and can be read at any point after it. Parts IX–XI plan the rest of a game engine:
+water, weather, effects, creatures and other world systems; Aethyrforge's
+generation tools; and what a realm needs to ship. You need the Coax language (its book's
 Parts I–III) and, for Part IV onward, Psionic's tensor programs
 ([Psionic chapters 3–6 and 37–38](../../psionic/book/ch037-a-coax-compute-subset.md)).
 
@@ -37,7 +39,7 @@ drops the marker and shows its code the way the Psionic book does: listings
 copied from source between `// book:begin` and `// book:end` markers, and
 runnable programs in `aethyr/examples/` with exact transcripts.
 
-Chapters 1–3 and 65–67 are written; every other chapter is a design draft.
+Chapters 1–3 and 65–67 are written; every other chapter, through chapter 86, is a design draft.
 
 ## Writing style
 
@@ -201,3 +203,36 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [66. A sequencer on the beat grid](ch066-a-sequencer-on-the-beat-grid.md) | Written | A tempo grid in ticks whose every step is computed from its own tick, so it never drifts; sections snapped to steps; keys and triads from one voicing rule; patterns stepped to exact samples. |
 | [67. Scores, mixing and a soundtrack](ch067-scores-mixing-and-a-soundtrack.md) | Written | Stereo buses with a Schroeder reverb send, gain automation, a master that normalizes, automates and saturates without clipping, WAV files, a sample hash, and the `promo-epic` score rendered by `aethyr/tools/score.coax`. |
 | [68. Sound in the world: playback, space and reaction](ch068-sound-in-the-world.md) | Unimplemented: design draft | Block rendering on the audio clock through a Web Audio worklet and native hosts, sources placed in the world by distance, pan and delay, and music that changes section on the bar line with the game's state, all replaying exactly. |
+| [69. Voices in a realm](ch069-voices-in-a-realm.md) | Unimplemented: design draft | Players, NPCs and agents heard from where they stand: one `Speaker`, `Utterance` and `Route` model, a forwarder that picks who hears whom from positions, zones, consent and floors without decoding audio, and voices placed by chapter 68's gain, pan and delay. |
+
+### IX. A living world
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| [70. Rivers, ponds and the sea](ch070-rivers-ponds-and-the-sea.md) | Unimplemented: design draft | Water from `verse/water*.coax` (W1–W11) as one module: typed water bodies, a wave surface fixed to the tick, buoyancy and drag, the spectral sea and the underwater view, with the same gameplay surface on every client and the water lab held to 1 ms of GPU on a phone and 3 ms on a desktop. |
+| [71. Sky, weather and the time of day](ch071-sky-weather-and-the-time-of-day.md) | Unimplemented: design draft | One day clock (`real`, `cycle` or `fixed:T`) drives the sun, the moon's real phase, palettes, the starfield, a seeded weather schedule and ground wetness, so every visitor and replay sees the same sky. |
+| [72. Effects made of particles](ch072-effects-made-of-particles.md) | Unimplemented: design draft | Stateless visual particles (embers, dust, fireflies) computed from emitter, index and clock, plus fire and smoke, under declared budgets of 24 emitters with 64 particles each, kept separate from chapter 23's simulated particles. |
+| [73. Things that break](ch073-things-that-break.md) | Unimplemented: design draft | `verse/demolish.coax` on Part IV's bodies and contact: Voronoi fracture into 2–24 chunks, a support graph that topples pieces, budgets for chunks and loose pieces, regrowth, and the destructible-wall integration test. |
+| [74. Wheels on the ground](ch074-wheels-on-the-ground.md) | Unimplemented: design draft | Orbit League's raycast vehicle on Aethyr's queries and rigid bodies: spring-damper suspension, tyres inside the friction circle, steering that fades with speed, game rules declared as rules, and a recorded match that replays to the same digests. |
+| [75. Creatures that follow and watch](ch075-creatures-that-follow-and-watch.md) | Unimplemented: design draft | Creatures sense, decide and act at a fixed step from typed sight and hearing stimuli kept apart from truth; the flock becomes a general follow, the watch's state machines and seeded dice replay, and a remote decision model picks only from a fixed enum. |
+| [76. Find a way through](ch076-find-a-way-through.md) | Unimplemented: design draft | One navigation module for the three path systems: path graphs with an off-path cost, Dijkstra with fixed tie-breaks, shared flow fields on a 0.5 m grid, avoidance, replanning only where an edit touches, and a typed result for an unreachable target. |
+| [77. People who talk back](ch077-people-who-talk-back.md) | Unimplemented: design draft | One conversation path for every realm's characters: bounded requests, per-player memory, scripted fallback lines when the model fails, answers that never change game state, and replays that don't call the model. |
+| [78. Cinematics and close-ups](ch078-cinematics-and-close-ups.md) | Unimplemented: design draft | Authored flights, close-ups for pointing at an object, and clips recorded from replays, all as chapter 10 `Shot` producers sharing one blend with a per-frame bound. |
+
+### X. Aethyrforge: generating worlds
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| [79. A piece from a sentence](ch079-a-piece-from-a-sentence.md) | Unimplemented: design draft | One catalogue and one typed selector for the Sandbox's set pieces and Aethyrforge's board: the answer is checked against the catalogue on the server and in the game, laid out from a seed as one undo step, and every asked thing is kept. |
+| [80. Terrain and scatter from a seed](ch080-terrain-and-scatter-from-a-seed.md) | Unimplemented: design draft | Heightfields equal to the drawn surface, levelled paths and flats, jittered scatter with exclusion zones, and one counter-based random stream per feature, so content is the same in any streaming load order. |
+| [81. Reply with a realm](ch081-reply-with-a-realm.md) | Unimplemented: design draft | Everglade's reply as a typed Aethyrforge record (realm, place, kind, words up to 280 characters, seed) that any realm can offer, that replays from its seed for every viewer, and whose link is never fetched. |
+
+### XI. Shipping realms
+
+| Chapter | Status | Result |
+| --- | --- | --- |
+| [82. Save and come back](ch082-save-and-come-back.md) | Unimplemented: design draft | One save layer over today's `AESV` container with a CRC-32 and two slots: only declared fields are saved, older schemas migrate forward, a newer schema is refused, and the newer of the browser and server copies wins. |
+| [83. Change code while it runs](ch083-change-code-while-it-runs.md) | Unimplemented: design draft | Live iteration in four tiers (data, shaders, logic, layout changes) with a save-to-frame target for each; layout fingerprints decide whether to swap, migrate or reset, a broken edit keeps the old module running, and production never loads code. |
+| [84. Inspect and profile a running realm](ch084-inspect-and-profile-a-running-realm.md) | Unimplemented: design draft | The same frame report, overlay, probes and goldens for every realm, the 60 FPS rule (95th percentile under 17.5 ms, no frame over 33 ms) extended to every listed realm, separate from chapter 37's physics measurements. |
+| [85. One realm on every host](ch085-one-realm-on-every-host.md) | Unimplemented: design draft | One versioned host contract and lifecycle events (resize, blur, hidden, shown, leave) on every host, byte-for-byte parity checks for every realm, and the native-GPU phases G0–G6. |
+| [86. Everyone can play](ch086-everyone-can-play.md) | Unimplemented: design draft | Action remapping, a time-scale setting, reduced motion, text scale up to 1.5, captions on sounds that carry information, and stable text IDs checked by pseudolocalization. |

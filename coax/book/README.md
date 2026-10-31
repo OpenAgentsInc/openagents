@@ -50,6 +50,17 @@ of shared libraries (caller-owned buffers, protocol fixtures and a tiny
 Psionic CPU operation). Part VI opens up the compiler and ends with the road
 ahead.
 
+Parts VII–IX describe planned work, one chapter per roadmap phase. None of
+it runs in `coax0` yet; each chapter is an outline that says what the phase
+adds, which program uses it first and what "done" means. Part VII covers the
+physical world: units and frames, clocks, bounded control, strict math and
+integrators, replay, robot models, sensors and actuators, fault scenarios and
+parameter provenance, then a simulated robot and a freighter scenario built
+from them. Part VIII covers simulation compute: logical tensors, compile and
+startup budgets, device graphs and kernel derivatives. Part IX covers the
+rest of the toolchain: self-hosting, procedure-body replacement, resident
+compilation and new backends.
+
 The [selected library index](https://github.com/OpenAgentsInc/openagents/blob/main/coax/LIBRARIES.md) names reusable entry points, native link inputs and their lifetime/error limits. Chapter 26 supplies small offline consumers.
 
 The best way to learn is to type the examples in and run them. Change
@@ -139,6 +150,28 @@ on your path.
 - Part VI. Building Coax:
   [27. Inside coax0](ch27-inside-coax0.md),
   [28. The road ahead](ch28-road-ahead.md)
+- Part VII. The physical world (planned):
+  [29. Units and coordinate frames](ch29-units-and-frames.md),
+  [30. Typed clocks and multirate ticks](ch30-clocks-and-ticks.md),
+  [31. Bounded control](ch31-bounded-control.md),
+  [32. Strict math, integrators and deterministic jobs](ch32-strict-math-and-integrators.md),
+  [33. Replay and snapshots](ch33-replay-and-snapshots.md),
+  [34. Importing robot models](ch34-robot-models.md),
+  [35. Stamped sensors and supervised actuators](ch35-sensors-and-actuators.md),
+  [36. Fault scenarios you can replay](ch36-fault-scenarios.md),
+  [37. Provenance, fidelity profiles and rule modules](ch37-provenance-and-rule-modules.md),
+  [38. A simulated robot, end to end](ch38-a-simulated-robot.md),
+  [39. A freighter scenario, end to end](ch39-a-freighter-scenario.md)
+- Part VIII. Simulation compute (planned):
+  [40. Logical tensors over chosen layouts](ch40-logical-tensors.md),
+  [41. Compile and startup budgets](ch41-compile-budgets.md),
+  [42. Device graphs and zero-copy buffers](ch42-device-graphs.md),
+  [43. Differentiating kernels](ch43-differentiating-kernels.md)
+- Part IX. Finishing the toolchain (planned):
+  [44. A self-hosted compiler](ch44-self-hosting.md),
+  [45. Replacing a procedure body while it runs](ch45-body-replacement.md),
+  [46. Resident compilation and state migration](ch46-resident-compilation.md),
+  [47. Backends chosen by profiling](ch47-backends.md)
 - Appendices: [A. Keywords, directives and types](appendix-a-keywords.md),
   [B. Error codes](appendix-b-error-codes.md),
   [C. Coax for Jai programmers](appendix-c-jai.md),
