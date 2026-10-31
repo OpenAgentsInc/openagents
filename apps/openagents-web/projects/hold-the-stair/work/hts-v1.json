@@ -484,13 +484,13 @@
       "title": "Subclasses at level 3",
       "size": "M",
       "labels": [],
-      "body": "At level 3 each class picks one SRD subclass from a short list: an evoker sculpts its spells around the party, a life cleric heals the tower a life a wave, a champion fighter crits on 19-20 (today's level 3), a thief rogue, a hunter ranger, a lore bard, a devotion paladin. Levels 4 and 5 shipped in hts-upgrades.",
+      "body": "At level 3 each class takes its SRD 5.2.1 subclass (the SRD has one a class): Champion, Evoker, Life, Thief, Hunter, Lore, Devotion, each with a feature that matters on the stair. Levels 4 and 5 shipped in hts-upgrades.",
       "files": [
         "apps/openagents-web/stair.coax",
         "apps/openagents-web/stair-tables.coax"
       ],
       "acceptance": [
-        "Picking evocation at level 3 keeps Shatter off the party in a test"
+        "A test: an Evoker's missed Fire Bolt still deals half, a Life cleric restores two lives when a wave is held (once however many), a Thief's turns are faster, a Hunter adds 1d8 on a hurt beast, a Lore bard inspires three, Devotion adds +3 to hit"
       ],
       "blocked_by": [],
       "blocks": []

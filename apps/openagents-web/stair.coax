@@ -100,6 +100,14 @@ up_cost :: (s: [] Stair, cls: int, level: int) -> int { return ifx level >= MAX_
 // Its save DC, with level 4's improvement.
 dc_of :: (s: [] Stair, k: int, base: int) -> int { return ifx s[0].party[k].level >= 4 then base + 1 else base; }
 
+// Level 3: each class's SRD 5.2.1 subclass (the SRD's one each), on top of what level 3 already gave.
+// Champion: Improved Critical (19-20). Evoker: Potent Cantrip, a Fire Bolt that misses still deals half.
+// Life: Preserve Life, the tower gets LIFE_RESTORE lives back when a wave is held. Thief: Fast Hands,
+// its turns come faster still. Hunter: Colossus Slayer, 1d8 more on a beast already hurt. Lore: Cutting
+// Words... in the tower, a third inspired a turn. Devotion: Sacred Weapon, +3 (Charisma) to hit.
+SUBCLASS_NAME :: [7] string.["CHAMPION", "EVOKER", "LIFE", "THIEF", "HUNTER", "LORE", "DEVOTION"];
+SUBCLASS_FEAT :: [7] string.["CHAMPION: CRITS ON 19-20 · ACTION SURGE", "EVOKER: A MISSED FIRE BOLT BURNS FOR HALF · SHATTER", "LIFE: +2 LIVES A WAVE HELD · BLESS · SPIRITUAL WEAPON", "THIEF: FAST HANDS, TURNS FASTER STILL · SNEAK 2D6", "HUNTER: +1D8 ON A HURT BEAST · TWO ARROWS", "LORE: INSPIRES 3 IN REACH · MOCKERY 2D6", "DEVOTION: SACRED WEAPON +3 TO HIT · AURA 3 TILES"];
+LIFE_RESTORE :: 2; SACRED_WEAPON :: 3; THIEF_TURN :: 0.6;
 LEVEL4_FEAT :: [7] string.["+1 TO HIT · NEXT: EXTRA ATTACK", "+1 TO HIT AND DC · NEXT: FIRE BOLT 2D10", "+1 TO HIT AND DC · NEXT: SACRED FLAME 2D8", "+1 TO HIT · NEXT: SNEAK ATTACK 3D6", "+1 TO HIT · NEXT: A THIRD ARROW", "+1 TO HIT AND DC · NEXT: INSPIRATION 1D8", "+1 TO HIT · NEXT: EXTRA ATTACK"];
 LEVEL5_FEAT :: [7] string.["EXTRA ATTACK: 2 A TURN · SURGE · CRITS 19-20", "FIRE BOLT 2D10 · SHATTER · +1 TO HIT AND DC", "SACRED FLAME 2D8 · BLESS · SPIRITUAL WEAPON", "SNEAK ATTACK 3D6 · CUNNING ACTION", "THREE ARROWS A TURN · MARKS ALL", "INSPIRES 2 WITH 1D8 · MOCKERY 2D6", "EXTRA ATTACK · AURA 3 TILES · SMITE"];
 
@@ -273,6 +281,7 @@ Defender :: struct {
   aura: int;       // the +1 a paladin's aura added to its last roll (0 none)
   insp: int;       // the inspiration die it added to its last roll (0 none)
   swings: int;     // fighter attacks made, all told
+  slayer: int;     // a Hunter's Colossus Slayer hits, all told
   daylight: bool;  // a cleric's Daylight, lit this wave
   hits: int; misses: int; pops: int;
   roll: int; total: int; vs: int; hit: bool; crit: bool; dealt: int; how: int;   // the last turn (how: 0 attack, 1 save, 2 auto)
@@ -688,6 +697,7 @@ stair_attack :: (s: [] Stair, k: int, c: SrdCreature, ac: int, crit_on: int) -> 
   aura := ifx in_aura(s, k) then 1 else 0;
   s[0].party[k].aura = aura; s[0].party[k].insp = insp;
   asi := ifx s[0].party[k].level >= 4 then 1 else 0;
+  if s[0].party[k].cls == PALADIN && s[0].party[k].level >= 3 { asi += SACRED_WEAPON; }   // Devotion's Sacred Weapon
   a.total = a.roll + c.attack + bless + insp + aura + asi;
   a.crit = a.roll >= crit_on;
   a.hit = a.roll != 1 && (a.crit || a.total >= ac);
@@ -701,6 +711,7 @@ stair_attack :: (s: [] Stair, k: int, c: SrdCreature, ac: int, crit_on: int) -> 
 turn_of :: (s: [] Stair, k: int) -> f32 {
   d := s[0].party[k];
   t := s[0].ct[0].turn[d.cls];
+  if d.cls == ROGUE && d.level >= 3 { return t * f32(THIEF_TURN); }
   return ifx d.cls == ROGUE && d.level >= 2 then t * 0.75 else t;
 }
 // Within a paladin's aura (its own included).
@@ -769,7 +780,10 @@ ranger_shot :: (s: [] Stair, k: int) -> bool {
   t := first_of(s, d.cell, range, d.fav);
   if t < 0 { return false; }
   marked := d.level >= 2 || s[0].beasts[t].kind == d.fav;
+  // Colossus Slayer: a beast already hurt takes 1d8 more on a hit
+  hurt := s[0].beasts[t].hp < s[0].ct[0].hp[s[0].beasts[t].kind];
   a := weapon_hit(s, k, STAIR_RANGER, t, ifx marked then 1 else 0, FX_DART);
+  if d.level >= 3 && hurt && a.hit && s[0].beasts[t].live { hurt_beast(s, t, srd_roll(s[0].dice[..], 8), DMG_PIERCING, false, k); s[0].party[k].slayer += 1; }
   return true;
 }
 
@@ -940,7 +954,14 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     record(s, k, a.roll, a.total, s[0].ct[0].ac[b.kind], a.hit, a.crit, 0, p);
     add_fx(s, FX_BOLT, c.x, c.y, p.x, p.y, 0.4, 0, 1.0, 0.3, 0.15, a.crit);
     if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, a.roll, 1, 0.86, 0.4, true); }
-    if a.hit { hurt_beast(s, t, a.damage, DMG_FIRE, a.crit, k); } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
+    if a.hit { hurt_beast(s, t, a.damage, DMG_FIRE, a.crit, k); }
+    else if d.level >= 3 {
+      // Potent Cantrip: a miss still burns, for half
+      half := srd_sum(dice, bolt.dice, 10) / 2;
+      s[0].party[k].dealt = half;
+      add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false);
+      if half > 0 { hurt_beast(s, t, half, DMG_FIRE, false, k); }
+    } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
     return true;
   }
   if d.cls == ROGUE {
@@ -985,7 +1006,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     record(s, k, sv.roll, sv.total, dc_of(s, k, MOCKERY_DC), !sv.success, false, 1, p);
     add_fx(s, FX_SPIRIT, p.x, p.y, c.x, c.y, 0.45, 0, CLASS_R[BARD], CLASS_G[BARD], CLASS_B[BARD], false);
     if !sv.success { hurt_beast(s, t, srd_sum(dice, ifx d.level >= 3 then 2 else 1, 6), DMG_PSYCHIC, false, k); } else { add_fx(s, FX_SAVED, p.x, p.y, 0, 0, 0.7, sv.roll, 0.8, 0.8, 0.85, false); }
-    inspire(s, k, ifx d.level >= 2 then 2 else 1);
+    inspire(s, k, ifx d.level >= 3 then 3 else ifx d.level >= 2 then 2 else 1);
     return true;
   }
   // Cleric: Daylight first, once a wave, when a shadow it can't see is in its reach
@@ -1134,6 +1155,10 @@ step :: (s: [] Stair, dt: f32) {
   }
   if wave_groups_done(s) && live_beasts(s) == 0 {
     bonus := 30 + lo_i(s[0].wave, BONUS_TOP) * 8;   // the wave bonus stops growing at wave BONUS_TOP
+    // Preserve Life: a Life cleric gives the tower lives back (one channel a wave, however many clerics)
+    life := false;
+    for q: 0..<DEFENDERS { if s[0].party[q].live && s[0].party[q].cls == CLERIC && s[0].party[q].level >= 3 { life = true; } }
+    if life { s[0].lives = lo_i(s[0].lives + LIFE_RESTORE, s[0].ct[0].start_lives); }
     s[0].gold += bonus;
     if s[0].wave >= waves_of(s) { s[0].phase = WON; s[0].selected = -1; s[0].card = -1; return; }
     s[0].phase = BUILD;
@@ -2123,6 +2148,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     lines: [6] [72] u8; lens: [6] int; tones: [6] int;   // tone 0 ink, 1 gold, 2 the class's colour
     nl := 0;
     lens[nl] = put(lines[nl][..], 0, CLASS_NAME[d.cls]); lens[nl] = put(lines[nl][..], lens[nl], " · LEVEL "); lens[nl] = put_int(lines[nl][..], lens[nl], d.level);
+    if d.level >= 3 { lens[nl] = put(lines[nl][..], lens[nl], " · "); lens[nl] = put(lines[nl][..], lens[nl], SUBCLASS_NAME[d.cls]); }
     if !s[0].portrait {
       lens[nl] = put(lines[nl][..], lens[nl], " · HITS "); lens[nl] = put_int(lines[nl][..], lens[nl], d.hits);
       lens[nl] = put(lines[nl][..], lens[nl], " · MISSES "); lens[nl] = put_int(lines[nl][..], lens[nl], d.misses);
@@ -2138,9 +2164,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     }
     // what its levels give
     feat := "";
-    if d.level >= 4 {
-      feat = ifx d.level >= 5 then LEVEL5_FEAT[d.cls] else LEVEL4_FEAT[d.cls];
-    } else if d.cls == FIGHTER { feat = ifx d.level >= 3 then "ACTION SURGE · CRITS ON 19-20" else ifx d.level == 2 then "ACTION SURGE: 2 ATTACKS ONCE A WAVE" else "NEXT: ACTION SURGE, 2 ATTACKS ONCE A WAVE"; }
+    if d.cls == FIGHTER { feat = ifx d.level >= 3 then "ACTION SURGE · CRITS ON 19-20" else ifx d.level == 2 then "ACTION SURGE: 2 ATTACKS ONCE A WAVE" else "NEXT: ACTION SURGE, 2 ATTACKS ONCE A WAVE"; }
     if d.cls == WIZARD { feat = ifx d.level >= 3 then "SHATTER: 3D8 THUNDER WHERE 3 CROWD" else ifx d.level == 2 then "NEXT: SHATTER, 3D8 THUNDER ON A CROWD" else "NEXT: A THIRD MAGIC MISSILE"; }
     if d.cls == CLERIC { feat = ifx d.level >= 3 then "BLESS +1D4 IN REACH · SPIRITUAL WEAPON" else ifx d.level == 2 then "BLESS: +1D4 TO HIT IN REACH · NEXT: SPIRITUAL WEAPON" else "NEXT: BLESS, +1D4 TO HIT IN REACH"; }
     if d.cls == ROGUE { feat = ifx d.level >= 3 then "SNEAK ATTACK 2D6 BESIDE AN ALLY · CUNNING ACTION" else ifx d.level == 2 then "SNEAK ATTACK 1D6 · CUNNING ACTION: FASTER TURNS" else "SNEAK ATTACK +1D6 WHEN AN ALLY IS BESIDE ITS TARGET"; }
@@ -2152,6 +2176,8 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     }
     if d.cls == BARD { feat = ifx d.level >= 3 then "INSPIRES 2 IN REACH +1D6 · MOCKERY 2D6" else ifx d.level == 2 then "INSPIRES 2 IN REACH: +1D6 TO HIT" else "BARDIC INSPIRATION: AN ALLY ADDS 1D6 TO ITS NEXT ROLL"; }
     if d.cls == PALADIN { feat = ifx d.level >= 3 then "AURA +1 TO HIT, 3 TILES · DIVINE SMITE 2D8" else ifx d.level == 2 then "AURA +1 TO HIT, 2 TILES · DIVINE SMITE 2D8 A WAVE" else "AURA: THE PARTY WITHIN 2 TILES +1 TO HIT"; }
+    // from level 3, its subclass and the levels after it
+    if d.level == 3 { feat = SUBCLASS_FEAT[d.cls]; } else if d.level >= 4 { feat = ifx d.level >= 5 then LEVEL5_FEAT[d.cls] else LEVEL4_FEAT[d.cls]; }
     lens[nl] = put(lines[nl][..], 0, feat); tones[nl] = 2; nl += 1;
     m = 0;
     if d.roll < 0 && d.how != 3 && d.how != 6 { m = put(buf[..], 0, "NO TURN YET"); }
@@ -2733,6 +2759,73 @@ play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   #assert attacks_of(s[0].party[f]) == 2 && take_turn(s[..], f) && s[0].party[f].swings == 2;
   // the costs: levels four and five from the table
   #assert up_cost(s[..], FIGHTER, 3) == 110 && up_cost(s[..], FIGHTER, 4) == 160;
+}
+
+// A free tile beside the stair within r tiles of p, not the one to skip (-1: none).
+free_near :: (s: [] Stair, p: P2, r: f32, skip: int) -> int {
+  for y: 0..<ROWS { for x: 0..<COLS {
+    c := cell_of(x, y); q := cell_xy(c);
+    if c != skip && free_cell(s, c) && (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y) <= r * r { return c; }
+  } }
+  return -1;
+}
+// A defender of class cls placed at c and levelled to lv (gold and the round's allowance given).
+placed_at :: (s: [] Stair, c: int, cls: int, lv: int) -> int {
+  s[0].gold = 99999; s[0].placed_round = 0;
+  if c < 0 || !place(s, c, cls) { return -1; }
+  k := defender_at(s, c);
+  while s[0].party[k].level < lv { ok := upgrade(s, k); }
+  return k;
+}
+
+#test "subclasses at level 3, the SRD's own: an Evoker's missed Fire Bolt still burns for half, a Life cleric gives the tower two lives a wave held (once, however many), a Thief's turns come faster, a Hunter adds 1d8 on a hurt beast, a Lore bard inspires three, Devotion adds +3 to hit" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  t := spawn(s[..], HULK, 12.0);
+  p := beast_xy(s[..], t);
+  // Evoker: with no slots, Fire Bolt; against a hulk's AC 17 it misses often, and every miss still burns
+  w := placed_at(s[..], free_near(s[..], p, 3.0, -1), WIZARD, 3);
+  #assert w >= 0;
+  s[0].party[w].slots = 0; s[0].party[w].slots2 = 0;
+  misses := 0;
+  for i: 0..<60 {
+    s[0].beasts[t].hp = 60;
+    if take_turn(s[..], w) && !s[0].party[w].hit && s[0].party[w].roll != 1 { misses += 1; #assert s[0].beasts[t].hp < 60 || s[0].party[w].dealt == 0; }
+  }
+  #assert misses > 5;
+  // Thief: its turns at 0.6 of a rogue's
+  r := placed_at(s[..], free_near(s[..], p, 1.5, -1), ROGUE, 3);
+  #assert r >= 0 && abs(turn_of(s[..], r) - s[0].ct[0].turn[ROGUE] * f32(THIEF_TURN)) < 0.0001;
+  // Hunter: Colossus Slayer on the hurt hulk
+  h := placed_at(s[..], free_near(s[..], p, 3.5, -1), RANGER, 3);
+  #assert h >= 0;
+  for i: 0..<40 { s[0].beasts[t].hp = 30; ok := ranger_shot(s[..], h); }
+  #assert s[0].party[h].slayer > 0;
+  // Devotion: +3 to hit, with its own aura's +1
+  pd := placed_at(s[..], free_near(s[..], p, 1.5, -1), PALADIN, 3);
+  #assert pd >= 0;
+  a := stair_attack(s[..], pd, STAIR_PALADIN, 30, 20);
+  #assert a.total == a.roll + STAIR_PALADIN.attack + SACRED_WEAPON + s[0].party[pd].aura + s[0].party[pd].bless + s[0].party[pd].insp;
+  // Lore: three of the party in reach inspired in one turn
+  b := placed_at(s[..], free_near(s[..], p, 2.5, -1), BARD, 3);
+  #assert b >= 0;
+  for q: 0..<DEFENDERS { s[0].party[q].inspired = 0; }
+  #assert take_turn(s[..], b);
+  got := 0;
+  for q: 0..<DEFENDERS { if s[0].party[q].live && s[0].party[q].inspired > 0 { got += 1; } }
+  #assert got == 3;
+  // Life: a wave held gives the tower two lives back (no more than it started with)
+  for i: 0..<BEASTS { s[0].beasts[i].live = false; }
+  c := placed_at(s[..], free_near(s[..], p, 6.0, -1), CLERIC, 3);
+  #assert c >= 0;
+  s[0].lives = 50;
+  quiet_fight(s[..]);
+  step(s[..], 0.05);
+  #assert s[0].phase == BUILD && s[0].lives == 52;
+  s[0].lives = s[0].ct[0].start_lives;
+  quiet_fight(s[..]);
+  step(s[..], 0.05);
+  #assert s[0].lives == s[0].ct[0].start_lives;
 }
 
 #test "the new classes: Sneak Attack beside an ally, Cunning Action, the ranger's favoured layer, Bardic Inspiration, the paladin's aura and Smite" {

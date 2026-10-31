@@ -123,9 +123,9 @@ STAIR_TABLES :: [67] string.[
 MAPS :: 3;
 STAIR_MAP_NAME :: [MAPS] string.["THE WINDING STAIR", "THE SPIRAL", "THE FORK"];
 STAIR_MAPS :: [MAPS] string.[
-  "stair 0 7 3 7 3 2 7 2 7 6 10 6 10 1 13 1; late 1.3",
-  "stair 0 1 11 1 11 7 3 7 3 4 8 4; late 1.25",
-  "stair 0 4 2 4 2 0 5 0 5 2 8 2 8 0 11 0 11 4 13 4; late 1.1; stair2 0 4 2 4 2 8 5 8 5 6 8 6 8 8 11 8 11 4 13 4"];
+  "stair 0 7 3 7 3 2 7 2 7 6 10 6 10 1 13 1; late 1.4",
+  "stair 0 1 11 1 11 7 3 7 3 4 8 4; late 1.35",
+  "stair 0 4 2 4 2 0 5 0 5 2 8 2 8 0 11 0 11 4 13 4; late 1.2; stair2 0 4 2 4 2 8 5 8 5 6 8 6 8 8 11 8 11 4 13 4"];
 
 TableWord :: struct { at: int; end: int; }
 table_blank :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\r'; }
