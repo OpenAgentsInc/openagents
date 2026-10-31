@@ -30,6 +30,7 @@ Walkers :: struct {
   drawn: [ROOM_OTHERS * 3] f32;   // x, z, yaw on the homepage, eased
   seen: [ROOM_OTHERS] bool;
   diving: bool; dive: f32; // WALK AROUND was pressed, and s into its dive
+  went: bool;              // the page was sent on to the Grid: once, not every frame until it leaves
 }
 
 // The face: whether to ask now (then it sends the GET and answers with land_walkers_answer).
@@ -140,7 +141,7 @@ walk_dive :: (s: [] LandState, step: f32) {
   s[0].look = fv_mix(s[0].look, mid, clamp(step * 6, 0, 1));
   s[0].zoom = s[0].zoom + (ZOOM_IN * 0.5 - s[0].zoom) * clamp(step * 5, 0, 1); s[0].zoom_to = s[0].zoom;
   s[0].vel_x = 0; s[0].vel_z = 0;
-  if f >= 1 && s[0].action == 0 { go(s, WALK_URL); }
+  if f >= 1 && s[0].action == 0 && !w[0].went { go(s, WALK_URL); w[0].went = true; }
   s[0].dive_fade = e;
 }
 
@@ -161,6 +162,10 @@ walk_dive :: (s: [] LandState, step: f32) {
   #assert s[0].walk_click;
   walk_dive(s[..], 0.4); walk_dive(s[..], 0.4);
   #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == WALK_URL;
+  // the host takes it; the frames until the page leaves don't ask again (it logged once a frame)
+  s[0].action = 0; s[0].out_n = 0;
+  for i: 0..<20 { walk_dive(s[..], 1.0 / 60.0); }
+  #assert s[0].action == 0;
   coaxial_land_walkers_answer(s[..], "200\n{\"others\":[],\"count\":0}");
   #assert coaxial_land_walkers(s[..]) == 0;
 }

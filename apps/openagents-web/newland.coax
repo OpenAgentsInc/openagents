@@ -49,6 +49,8 @@ RUN :: 2.6;
 POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
 ACT_NAVIGATE :: 1; ACT_COPY :: 2;
 HOME_PYLON_JOIN :: "curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test";
+// On a phone the command is no use (a Pylon runs on a computer): the button copies the guide's link to send yourself.
+HOME_PYLON_GUIDE_LINK :: "https://openagents.com/docs/connect-a-pylon";
 
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
@@ -125,7 +127,7 @@ LandState :: struct {
   walking: bool; wk: [1] Walk;   // the Grid's page (data-page 1): this scene walked, you in it (newland-walk.coax)
   ed: [1] RealmEdit; grid_names_off: bool; grid_walkers_off: bool;   // the Grid's EDIT, and the board's rows it switches (zero: on)
   playtest: Box;network_box:Box;network_join:Box;network_guide:Box;network_list:Box;
-  network_scroll:f32;network_scroll_max:f32;network_scroll_start:f32;network_down:bool;network_list_down:bool;network_copied:bool;network_rows:[MAX_PYLONS]Box;
+  network_scroll:f32;network_scroll_max:f32;network_scroll_start:f32;network_down:bool;network_list_down:bool;network_copied:bool;network_phone:bool;network_rows:[MAX_PYLONS]Box;
   action: int; outbox: [256] u8; out_n: int;
   // the view: drifting on its own until the visitor moves it, then theirs
   user: bool; look: Fv; zoom: f32; zoom_to: f32; yaw: f32;
@@ -1763,9 +1765,10 @@ network_counts :: (s:[]LandState)->NetworkCounts #export_c {
   return result;
 }
 network_copy :: (s:[]LandState) {
-  if HOME_PYLON_JOIN.count>s[0].outbox.count {return;}
-  for i:0..<HOME_PYLON_JOIN.count {s[0].outbox[i]=HOME_PYLON_JOIN[i];}
-  s[0].out_n=HOME_PYLON_JOIN.count;s[0].action=ACT_COPY;s[0].network_copied=true;
+  text:=ifx s[0].network_phone then HOME_PYLON_GUIDE_LINK else HOME_PYLON_JOIN;
+  if text.count>s[0].outbox.count {return;}
+  for i:0..<text.count {s[0].outbox[i]=text[i];}
+  s[0].out_n=text.count;s[0].action=ACT_COPY;s[0].network_copied=true;
 }
 network_line_end :: (text:string,start:int,width:f32,cap:f32,k:Ink)->int {
   at:=start;while at<text.count {if at>start && text_width(text[start..<at+1],cap,k)>width {break;}at+=1;}return at;
@@ -1790,11 +1793,14 @@ network_panel :: (out:[]f32,at:int,s:[]LandState,l:Layout,p:Pen,width:f32,height
   if counts.draining>0 {n=app(line[..],n," / ");n=app_int(line[..],n,counts.draining);n=app(line[..],n," DRAINING");}
   v=put_fit(out,v,cast(string)line[0..<n],left,top+56*d,7*d,white,room);
   mid:=(left+inner_right)*0.5;s[0].network_join=Box.{x0=left,y0=top+72*d,x1=mid-5*d,y1=top+112*d};s[0].network_guide=Box.{x0=mid+5*d,y0=top+72*d,x1=inner_right,y1=top+112*d};
-  v=button(out,v,s[0].network_join,ifx s[0].network_copied then "COPIED" else "COPY COMMAND",true,hover && inside(s[0].network_join,s[0].px,s[0].py),false,p,1);
+  s[0].network_phone=l.phone || s[0].touch;
+  join_label:=ifx s[0].network_phone then (ifx s[0].network_copied then "LINK COPIED" else "COPY LINK") else (ifx s[0].network_copied then "COPIED" else "COPY COMMAND");
+  v=button(out,v,s[0].network_join,join_label,true,hover && inside(s[0].network_join,s[0].px,s[0].py),false,p,1);
   v=button(out,v,s[0].network_guide,"GUIDE",false,hover && inside(s[0].network_guide,s[0].px,s[0].py),false,p,1);
   state:=ifx s[0].golden then "SNAPSHOT" else ifx s[0].net[0].watch_state==2 then (ifx s[0].net[0].beacon_ended then "LIVE" else "SYNCING") else "CONNECTING";
   v=put(out,v,state,left,top+135*d,6.5*d,dim);
-  v=put_fit(out,v,"GPU / 18.8 GB",inner_right-100*d,top+135*d,6.5*d,dim,100*d);
+  if s[0].network_phone {v=put_fit(out,v,"RUN IT ON A COMPUTER",inner_right-150*d,top+135*d,6.5*d,dim,150*d);}
+  else {v=put_fit(out,v,"GPU / 18.8 GB",inner_right-100*d,top+135*d,6.5*d,dim,100*d);}
   list:=Box.{x0=left,y0=top+146*d,x1=inner_right,y1=bottom-38*d};s[0].network_list=list;
   for i:0..<MAX_PYLONS {s[0].network_rows[i]=Box.{};}
   y:=list.y0-s[0].network_scroll*d;first:=v;
@@ -2411,6 +2417,15 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   #assert s[0].out_n==HOME_PYLON_JOIN.count && s[0].network_copied;
   coaxial_land_action_done(s[..]);s[0].network_guide=Box.{x0=190,y0=80,x1=300,y1=120};
   #assert click(s[..],200,90) && s[0].action==ACT_NAVIGATE && cast(string)s[0].outbox[0..<s[0].out_n]=="/docs/connect-a-pylon";
+}
+#test "on a phone, Pylons says it runs on a computer and copies the guide's link, not the command" {
+  s:[1]LandState;u:[UNIFORM_FLOATS]f32;out:[TEST_VERTICES*VERTEX_FLOATS]f32;
+  s[0].card=CARD_NETWORK;s[0].touch=true;
+  n:=coaxial_land_frame(s[..],out[..],u[..],402*3,874*3,3,0.016,false);
+  #assert n>0 && s[0].network_phone;
+  j:=s[0].network_join;
+  press(s[..],(j.x0+j.x1)*0.5,(j.y0+j.y1)*0.5,POINTER_DOWN,1,2);press(s[..],(j.x0+j.x1)*0.5,(j.y0+j.y1)*0.5,POINTER_UP,1,2);
+  #assert s[0].action==ACT_COPY && cast(string)s[0].outbox[0..<s[0].out_n]==HOME_PYLON_GUIDE_LINK && s[0].network_copied;
 }
 #test "Pylon controls fit desktop phone and high density viewports" {
   widths:=[3]f32.[1440,390,780];heights:=[3]f32.[900,844,1688];ds:=[3]f32.[1,1,2];
