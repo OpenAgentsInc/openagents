@@ -331,6 +331,26 @@
         "gw-plan",
         "gw-rates"
       ]
+    },
+    {
+      "slug": "gw-pylon-live",
+      "title": "Pylon gateway: live acceptance on a GPT-OSS-20B text Pylon",
+      "parent": "gw-v2",
+      "size": "S",
+      "labels": [
+        "pylon",
+        "gateway"
+      ],
+      "body": "Part (b) of gw-pylon. Run the offline Coax Pylon gateway adapter (coax/lib/gateway/pylon.coax) against a real text Pylon host serving GPT-OSS-20B: a gateway request is bought from that Pylon and its reply streams back. Waits on a GPT-OSS-20B text Pylon host. Never load gpt-oss on coderos-4080 (decision models only there).",
+      "files": [
+        "coax/lib/gateway/pylon.coax"
+      ],
+      "acceptance": [
+        "A gateway request served by a live GPT-OSS-20B text Pylon provider streams back, with the job's receipt matching what the adapter priced."
+      ],
+      "blocked_by": [
+        "gw-pylon"
+      ]
     }
   ]
 }

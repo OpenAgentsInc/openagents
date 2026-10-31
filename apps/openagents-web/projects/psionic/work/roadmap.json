@@ -1175,6 +1175,46 @@
         "Desktop and phone screenshots reviewed."
       ],
       "blocked_by": []
+    },
+    {
+      "slug": "psionic-backward-mutants",
+      "title": "Kill every surviving mutant in the tensor operator VJPs",
+      "parent": "psionic-foundations",
+      "size": "M",
+      "labels": [
+        "mutation",
+        "autodiff"
+      ],
+      "body": "psionic/lib/tensor-ops-backward.coax is #authority but 295 of its 412 root mutants survive its own checks. Add real checks (finite-difference oracles against the forward operators, exact small hand cases for every differentiable family, every refusal and its precedence) until no mutant survives. Restructure code only where a mutant truly cannot change behaviour; never mark mutants equivalent.",
+      "files": [
+        "psionic/lib/tensor-ops-backward.coax"
+      ],
+      "acceptance": [
+        "coax mutate psionic/lib/tensor-ops-backward.coax --root-only reports 0 survivors.",
+        "psionic/check.sh --only tensor-ops passes (debug/release, native plain and ASan/UBSan, book output)."
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "psionic-serve-run-mutants",
+      "title": "Put serve-run.coax under zero-survivor mutation",
+      "parent": "psionic-integration",
+      "size": "M",
+      "labels": [
+        "mutation",
+        "serving"
+      ],
+      "body": "psionic/lib/serve-run.coax sequences chapter 20's served decisions, and 306 of its 693 mutants survive. Add it to psionic/check.sh's mutation set and add checks (refusal order, buffer bounds, per-question slicing, code mapping) until no mutant survives.",
+      "files": [
+        "psionic/lib/serve-run.coax",
+        "psionic/check.sh"
+      ],
+      "acceptance": [
+        "psionic/check.sh mutates serve-run.coax and requires 0 survivors.",
+        "coax mutate psionic/lib/serve-run.coax --root-only reports 0 survivors.",
+        "The serve checks still pass."
+      ],
+      "blocked_by": []
     }
   ]
 }
