@@ -12,7 +12,7 @@
     "apps/openagents-web/project-capacity.coax": "5d195d81b31f045607d77a566ed786713a33fa9846ae6dcdbe0d16f9f6e8f9d8",
     "apps/openagents-web/build.sh": "fb307087e5edddccc36bbb2b196c68a5936a399f13e114f3d12f7bd2ed5cb560",
     "coax/tests/nostr/project_capacity_adapter.coax": "f9fbbcd7f925452492b243ef7c5e57ad0981e832ab92e45235d5745cf1556684",
-    "coax/web/project/live-catchup.test.ts": "0c17733a232ac4b7a33c2860837dc50cd44ddaa9f1869f5af3f600b1ecfe0947",
+    "coax/web/project/live-catchup.test.ts": "32f6b5720206c56147f0e1f62045e2bc4a7029adcdf7f03d30583596421482ca",
     "coax/web/project/nip19.test.ts": "fe66493295d186a8fb6c3be5409f7ebdbd88ade0edd2c794aaeca0fe5524d8b4",
     "coax/web/project/publish.test.ts": "c47eaa0c70e02b278a616178d34e50f33960f442b0eb59bf79602df7139aaa31",
     "apps/openagents-web/projects/coax/work/coax.json": "6167e794d7313e86b05a03d6fbc738832b57f149d30651358adbee183e36009b",
@@ -318,13 +318,98 @@
     "The private fold API remains void and retains its existing bounded caller preconditions; all public live/landing paths refuse excess scoped roots before invoking it.",
     "No new namespace/identity compiler capability is claimed. R1a and R3 remain open/blocked until original acceptance is fulfilled.",
     "Event/byte/table/query budgets and relay tag limits were not enlarged.",
-    "The stale native page layout oracle114 was corrected to the current public project_layout contract; independent canvas/vertex/name checks were retained."
+    "The stale native page layout oracle114 was corrected to the current public project_layout contract; independent canvas/vertex/name checks were retained.",
+    "Already loaded older clients keep their old finite capacity and fail closed on oversized new candidates; normal reload receives new code. New page loads must receive the320 reader before extra roots are published."
   ],
   "golden_gate": {
-    "outcome": "pending"
+    "command": "coax/web/golden-check.sh --commit b82666c924",
+    "outcome": "failed",
+    "exit_status": 1,
+    "seconds": 178.95,
+    "failed_checks": 8,
+    "flagged_pages": [
+      "the-grid",
+      "haunted-house",
+      "galaxy",
+      "sandbox",
+      "hecates-cemetery",
+      "home",
+      "home-phone"
+    ],
+    "failed_lines": [
+      "FAIL  the-grid: matches its golden (265 blocks changed, 6 allowed, 0 moving, x 1104-1280, y 0-456; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-MjprLO/the-grid.png)",
+      "FAIL  sandbox: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-ihlkUV/sandbox.png)",
+      "FAIL  haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-FNzmDt/haunted-house.png)",
+      "FAIL  galaxy: matches its golden (227 blocks changed, 8 allowed, 0 moving, x 488-776, y 448-576; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-H0F1Qc/galaxy.png)",
+      "FAIL  haunted-house: matches its golden (80 blocks changed, 6 allowed, 0 moving, x 1104-1264, y 184-216; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-sgEdAx/haunted-house.png)",
+      "FAIL  hecates-cemetery: matches its golden (149 blocks changed, 6 allowed, 262 moving, x 16-1240, y 32-704; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-i3W4LC/hecates-cemetery.png)",
+      "FAIL  home: matches its golden (13 blocks changed, 4 allowed, 236 moving, x 120-1216, y 40-712; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-cXUeGY/home.png)",
+      "FAIL  home-phone: matches its golden (11 blocks changed, 4 allowed, 102 moving, x 272-352, y 168-664; this shot: /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-golden-8PUlGV/home-phone.png)"
+    ],
+    "log": "/tmp/coax-capacity-golden.log",
+    "log_sha256": "3eb2310f0515cedee4ab947584be798f344b6546f9f4c8cbcd9cc06c18231cbf",
+    "retained_shots": "/tmp/coax-capacity-golden-shots",
+    "owner_decision": {
+      "status": "approved_baseline_exception",
+      "date": "2026-10-30",
+      "source": "Explicit user reply in this chat",
+      "reply": "Record baseline failures and continue (Recommended)",
+      "scope": "Push this header fix and continue the ordered work while retaining the nine demonstrated baseline-only golden failures separately; no golden snapshots were approved or changed."
+    },
+    "goldens_modified": false,
+    "new_pages_outside_approved_baseline": [],
+    "scope": "build.sh is a shared registered input, so the walk renders registered realm/NIP pages. Project routes use the dedicated263-row native/WebGPU qualification. Five prior app-family parity input sets are unchanged. Homepage verifier intentionally changes with the shared Fold capacity and has separate real-Wasm320/321 qualification; its draw source is unchanged. Keep all8 baseline failures failed."
   },
   "rollout": {
     "outcome": "pending",
     "rule": "Ship updated reader before publishing roots257..263; then capture public verified parity and refresh Markdown twins."
-  }
+  },
+  "prior_parity_input_scope": {
+    "verse": {
+      "changed_inputs": [],
+      "prior_unchanged_input_proof_reused": true
+    },
+    "thegrid": {
+      "changed_inputs": [],
+      "prior_unchanged_input_proof_reused": true
+    },
+    "realm": {
+      "changed_inputs": [],
+      "prior_unchanged_input_proof_reused": true
+    },
+    "villa": {
+      "changed_inputs": [],
+      "prior_unchanged_input_proof_reused": true
+    },
+    "fairy": {
+      "changed_inputs": [],
+      "prior_unchanged_input_proof_reused": true
+    },
+    "newland": {
+      "changed_inputs": [
+        "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project-fold.coax"
+      ],
+      "prior_unchanged_input_proof_reused": false
+    }
+  },
+  "homepage_shared_verifier": {
+    "accepted": 320,
+    "rejected": 321,
+    "known": 320,
+    "recovered": 320,
+    "metadataParity": true,
+    "partialOutputBytes": 0,
+    "normalArtifactCache": true,
+    "cacheSourceChanged": true,
+    "artifactSource": "8c4cd8cdb7bcb0a111131ab1536302947c2359779e22170f9f0a052b5831f53c",
+    "wasm": "1427b49c6ec8c497c2ea514e701dc2f00969c8969cc75e38cc2739aa3df580f3",
+    "sources": {
+      "projectFold": "1feba52ce71190f5bf090c69053a1e1aa36a497a1191b2999879c59610304ca5",
+      "landingFold": "1bc2d6c8b543657c4b35b49acfd8ce0db23c08dc4434b21f6fb25b29de9d033f",
+      "landingReader": "4711a6c59e2702121985143f7fd26d18a74546470ce67bea0d8d08e34922a291",
+      "compiler": "2e8c790beb17a2bb851a1ff80f4572e86dda0e044d5b38e8f5cee179afcfff9d"
+    },
+    "test_log": "/tmp/coax-capacity-prep/landing-reader-320.log"
+  },
+  "pipeline_note": "A conservative all-input equality assertion correctly caught project-fold.coax in the homepage verifier. The evidence writer stopped; the outer shell lacked errexit and pushed the already-tested code at fa0a8b10a1 with rollout still pending. No deployment or extra root publication occurred. Added real LandingReader Wasm320 acceptance/321 refusal/recovery qualification before rollout; subsequent dependent commands use errexit."
 }

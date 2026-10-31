@@ -321,3 +321,36 @@ test('inventory capacity accepts exactly 320 roots and refuses 321 without repla
     expect(ui.text(2)).not.toContain(overflow.roots[320].id)
   } finally {ui.close()}
 })
+
+test('homepage LandingReader Wasm accepts 320 known roots, refuses 321 and recovers without partial JSON',async()=>{
+  const cachePath=join(app,'build/landing-reader.wasm.json'),artifactPath=join(app,'build/landing-reader.wasm')
+  let previousCache:any
+  try {previousCache=JSON.parse(readFileSync(cachePath,'utf8'))} catch {}
+  // Import through the real producer so its ordinary source/artifact cache
+  // validation rebuilds the reader when the shared Fold source changed.
+  const {reader:landing,LandingReader}=await import('./landing-reader')
+  expect(landing).toBeInstanceOf(LandingReader)
+  const accepted=capacityInventory(320),overflow=capacityInventory(321),known=accepted.roots.map(e=>e.id)
+  const authoritative=fold(pk,config,accepted.rows)
+  const expectedIssues=authoritative.issues.map(i=>({id:i.id,kind:i.kind,status:i.status,title:i.title,parent:i.parent,
+    rank:i.rank||'~',claimed_by:i.claimed_by,claimed_at:i.claimed_at,commit:i.commit,status_at:i.status_at})).sort((a,b)=>a.id.localeCompare(b.id))
+  const selected=(result:{issues:any[]})=>[...result.issues].sort((a,b)=>a.id.localeCompare(b.id))
+  const first=landing.fold(accepted.rows,pk,'coax',known)
+  expect(first.issues.length).toBe(320)
+  expect(selected(first)).toEqual(expectedIssues)
+  expect(expected(overflow.rows).by.size).toBe(321)
+  expect(()=>landing.fold(overflow.rows,pk,'coax',known)).toThrow('Coax refused complete project fold')
+  expect(landing.x.nl_output_len()).toBe(0)
+  expect(landing.output()).toBe('')
+  const recovered=landing.fold(accepted.rows,pk,'coax',known)
+  expect(recovered.issues.length).toBe(320)
+  expect(selected(recovered)).toEqual(expectedIssues)
+  const hash=(path:string)=>new Bun.CryptoHasher('sha256').update(readFileSync(path)).digest('hex')
+  const cache=JSON.parse(readFileSync(cachePath,'utf8')),wasm=hash(artifactPath)
+  expect(cache.wasm).toBe(wasm)
+  writeFileSync('/tmp/coax-capacity-prep/landing-reader-320.json',JSON.stringify({accepted:320,rejected:321,known:known.length,
+    recovered:recovered.issues.length,metadataParity:true,partialOutputBytes:0,normalArtifactCache:true,
+    cacheSourceChanged:previousCache?.source!==cache.source,artifactSource:cache.source,wasm,
+    sources:{projectFold:hash(join(app,'project-fold.coax')),landingFold:hash(join(import.meta.dir,'landing-fold.coax')),
+      landingReader:hash(join(import.meta.dir,'landing-reader.ts')),compiler:hash(join(root,'coax/bin/coax'))}},null,2)+'\n')
+},120000)
