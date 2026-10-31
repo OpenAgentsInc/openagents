@@ -5,7 +5,7 @@ import { expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { listCoax, listMarkdown, listPage, listed, page, worlds, STYLE_BLOCK } from "./realms"
+import { hasMaker, listCoax, listMarkdown, listPage, listed, page, worlds, STYLE_BLOCK } from "./realms"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const table = () => JSON.parse(readFileSync(join(SITE, "realms.json"), "utf8"))
@@ -121,4 +121,9 @@ test("/realms lists the galaxy's listed realms: its rows, its text and its links
     expect(listPage(list)).toContain(`<a href="/realms/${r.slug}">`)
   }
   expect(listPage(list)).toContain('data-app="realmlist" data-lines="44:/api/analytics/realms"')
+})
+test("only a realm with a tip page asks who made it (data-maker): the rest log no 404", () => {
+  const by = Object.fromEntries(worlds().filter((w) => w.realm).map((w) => [w.realm!.slug, w.realm!]))
+  for (const slug of ["orbit-league", "belt-2200", "hold-the-stair"]) { expect(hasMaker(slug)).toBe(true); expect(page(by[slug])).toContain('data-maker="1"') }
+  for (const slug of ["everglade", "haunted-house", "the-grid", "dead-gears"]) { expect(hasMaker(slug)).toBe(false); expect(page(by[slug])).not.toContain("data-maker") }
 })

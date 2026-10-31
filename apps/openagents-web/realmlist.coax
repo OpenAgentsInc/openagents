@@ -10,6 +10,7 @@
 // counted without our team or automation (coax/web/api/analytics.c). Until
 // they come, POPULAR and PLAYED keep the table's order and show "-".
 // The sort is the location's hash: #popular, #recent, #played or #az.
+// MAKE A REALM, at the header's top right, opens /realms/new.
 
 #load "font.coax";
 #load "textkeys.coax";
@@ -44,7 +45,7 @@ ACT_NAVIGATE :: 1;
 ACT_HASH :: 3;
 
 // what the pointer is on: a realm's place in the sorted order (row or tower), or one of these
-HIT_NONE :: -1; HIT_HOME :: -2; HIT_SORT :: -10;   // HIT_SORT - k: the k-th sort's chip
+HIT_NONE :: -1; HIT_HOME :: -2; HIT_MAKE :: -3; HIT_SORT :: -10;   // HIT_SORT - k: the k-th sort's chip
 
 RealmsState :: struct {
   time: f32;
@@ -345,7 +346,9 @@ put_count :: (buf: [] u8, at: int, n: int, counted: bool) -> int {
 
 // ---------------------------------------------------------------- layout
 
-Layout :: struct { wide: bool; header: Box; scene: Box; list: Box; home: Box; chips: [4] Box; row_h: f32; rows_top: f32; }
+Layout :: struct { wide: bool; header: Box; scene: Box; list: Box; home: Box; make: Box; chips: [4] Box; row_h: f32; rows_top: f32; }
+MAKE_LABEL :: "MAKE A REALM";
+MAKE_URL :: "/realms/new";
 
 WIDE :: 900.0;   // CSS pixels: the scene and the list side by side from here
 CHIP_CAP :: 8.0;
@@ -377,6 +380,7 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
     l.chips[k] = chip_box(SORT_NAMES[k], x, y, cap, p);
     x += chip_width(SORT_NAMES[k], cap, p) + 8 * d;
   }
+  l.make = chip_box(MAKE_LABEL, l.header.x1 - 18 * d - chip_width(MAKE_LABEL, cap, p), l.header.y0 + 27 * d, cap, p);
   l.home = Box.{x0 = l.header.x0 + 18 * d, y0 = l.header.y0 + 10 * d, x1 = l.header.x0 + 18 * d + text_width("OPENAGENTS", 7 * d), y1 = l.header.y0 + 26 * d};
   l.row_h = (ifx l.wide then 52.0f32 else 62.0f32) * d;
   l.rows_top = l.list.y0 + title_room(p) + (ifx l.wide then 16.0f32 else 2.0f32) * d;
@@ -580,6 +584,7 @@ header :: (out: [] f32, at: int, l: Layout, p: Pen, sort: int, hot: int) -> int 
     ck := ifx sort == k then accent else (ifx hot == HIT_SORT - k then white else dim);
     v = chip(out, v, SORT_NAMES[k], l.chips[k].x0, l.chips[k].y1 - 5 * d, cap, ck, p);
   }
+  v = chip(out, v, MAKE_LABEL, l.make.x0, l.make.y1 - 5 * d, cap, ifx hot == HIT_MAKE then white else accent, p);
   return frame(out, v, b, 10 * d, p);
 }
 
@@ -702,6 +707,7 @@ hit :: (s: [] RealmsState, x: f32, y: f32) -> int {
   l := layout(s[0].width, s[0].height, d);
   for k: 0..<SORTS { if inside(l.chips[k], x, y) { return HIT_SORT - k; } }
   if inside(l.home, x, y) { return HIT_HOME; }
+  if inside(l.make, x, y) { return HIT_MAKE; }
   order: [MAX_REALMS] int;
   n := sorted(s, s[0].sort, order[..]);
   for k: 0..<n {
@@ -746,6 +752,7 @@ choose :: (s: [] RealmsState, sort: int) {
 act :: (s: [] RealmsState, target: int) {
   if target <= HIT_SORT && target > HIT_SORT - SORTS { choose(s, HIT_SORT - target); }
   else if target == HIT_HOME { navigate(s, "/"); }
+  else if target == HIT_MAKE { navigate(s, MAKE_URL); }
   else if target >= 0 { s[0].sel = target; open_rank(s, target); }
 }
 
@@ -985,6 +992,8 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
       }
       l := layout(w, h, dprs[z]);
       #assert apart(l.header, l.scene) && apart(l.scene, l.list) && apart(l.header, l.list);
+      #assert within(l.make, l.header) && apart(l.make, l.home);
+      for k: 0..<SORTS { #assert apart(l.make, l.chips[k]); }
       #assert l.list.y1 - l.rows_top > l.row_h;
     }
   }
@@ -1007,4 +1016,21 @@ rank_of :: (s: [] RealmsState, slug: string) -> int {
   if cell_x(k, rank) != 0.5 { #assert s[0].gx[0] != x0 && s[0].gx[0] != cell_x(k, rank); }
   #assert realms_frame(s[..], out[..], uniforms[..], 2880, 1800, 2, 0, true) > 0;
   #assert s[0].gx[0] == cell_x(k, rank) && s[0].gy[0] == cell_y(k, rank);
+}
+
+#test "MAKE A REALM is in the header on a desktop and a phone, and opens /realms/new" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  uniforms: [UNIFORM_FLOATS] f32;
+  sizes := [4] f32.[1440, 900, 390, 844];
+  for z: 0..<2 {
+    s: [1] RealmsState;
+    w := sizes[z * 2] * 2; h := sizes[z * 2 + 1] * 2;
+    #assert realms_frame(s[..], out[..], uniforms[..], w, h, 2, 0, true) > 0;
+    l := layout(w, h, 2);
+    #assert within(l.make, l.header);
+    x := (l.make.x0 + l.make.x1) * 0.5; y := (l.make.y0 + l.make.y1) * 0.5;
+    #assert hit(s[..], x, y) == HIT_MAKE;
+    #assert realms_pointer(s[..], x, y, P_DOWN, 0) && realms_pointer(s[..], x, y, P_UP, 0);
+    #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], MAKE_URL);
+  }
 }

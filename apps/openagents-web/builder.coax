@@ -717,7 +717,7 @@ builder_action_done :: (s: [] Builder) #export_c { s[0].out_n = 0; }
 GAP :: 0.5; SPACE :: 1.2;
 PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
 GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
-EMBER_R :: 0.91; EMBER_G :: 0.47; EMBER_B :: 0.17;
+EMBER_R :: 1.0; EMBER_G :: 0.9; EMBER_B :: 0.62;   // lit gold: orange is only for Bitcoin
 LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
 white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
 bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }
@@ -1008,7 +1008,6 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   else if s[0].phase == PH_MAKING { status = "MAKING YOUR REALM"; }
   else if s[0].phase == PH_GOING { status = "TAKING YOU THERE"; }
   else if s[0].note_n > 0 { status = note_text(s); }
-  else if !s[0].voice && !s[0].typing && s[0].phase == PH_ASK { status = "TYPE THE WORLD YOU WANT"; }
   if status.count > 0 {
     m := put(buf[..], 0, status); upper(buf[..], m);
     line := cast(string) buf[0..<m];
@@ -1028,10 +1027,9 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
     s[0].list = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
     // what to do: one line each, and what was said last
     mid := lo(top + (bottom - top) * 0.42, bottom - 140 * k);
-    ask := "SAY THE WORLD YOU WANT";
+    ask := ask_line(s[0].voice, s[0].typing);
     n = centred(d, out, n, ask, cx, mid, fit_cap(ask, 15 * k, col), white(k, 0.98));
-    hint := ifx ph then "TAP TALK, SAY IT, TAP AGAIN" else "TAP TALK OR SPACE, SAY IT, TAP AGAIN";
-    if !s[0].voice { hint = "TYPE IT BELOW"; }
+    hint := hint_line(s[0].voice, s[0].typing, ph);
     n = centred(d, out, n, hint, cx, mid + 30 * k, fit_cap(hint, 8 * k, col), bronze(k, 0.85));
     ex := "A FOGGY MOOR WITH A LIGHTHOUSE KEEPER AND BATS";
     n = centred(d, out, n, ex, cx, mid + 58 * k, fit_cap(ex, 7 * k, col), white(k, 0.45));
@@ -1054,6 +1052,17 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
     }
   }
   return n;
+}
+
+// The empty board's two lines: what to do, for how the words come (talking or
+// typing, a phone or a pointer). Typing never says SAY or TALK.
+ask_line :: (voice: bool, typing: bool) -> string {
+  return ifx voice && !typing then "SAY THE WORLD YOU WANT" else "TYPE THE WORLD YOU WANT";
+}
+hint_line :: (voice: bool, typing: bool, small: bool) -> string {
+  if typing { return ifx small then "TAP SEND WHEN IT'S WRITTEN" else "PRESS ENTER OR CLICK SEND"; }
+  if !voice { return "TYPE IT BELOW"; }
+  return ifx small then "TAP TALK, SAY IT, TAP AGAIN" else "CLICK TALK OR PRESS SPACE, SAY IT, THEN AGAIN";
 }
 
 // ---- the frame
@@ -1489,4 +1498,13 @@ answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requeste
     tap(s[..], t[..], s[0].boxes[BTN_CHOICE]);
   }
   #assert s[0].phase == PH_ASK;
+}
+
+#test "the empty board's lines follow how the words come: TYPE IT never says SAY or TAP on a desktop" {
+  #assert ask_line(true, false) == "SAY THE WORLD YOU WANT";
+  #assert ask_line(true, true) == "TYPE THE WORLD YOU WANT" && ask_line(false, false) == "TYPE THE WORLD YOU WANT";
+  #assert hint_line(true, true, false) == "PRESS ENTER OR CLICK SEND" && hint_line(true, true, true) == "TAP SEND WHEN IT'S WRITTEN";
+  #assert hint_line(false, false, false) == "TYPE IT BELOW";
+  #assert hint_line(true, false, true) == "TAP TALK, SAY IT, TAP AGAIN";
+  #assert hint_line(true, false, false) == "CLICK TALK OR PRESS SPACE, SAY IT, THEN AGAIN";
 }

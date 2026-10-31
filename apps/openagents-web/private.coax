@@ -911,6 +911,9 @@ pv_account :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: 
   }
   return r;
 }
+// Whether /login draws the phone app's QR: not on a phone-width page, which is
+// most likely the phone that would have to scan it.
+pv_qr_here :: (css_width: f32) -> bool { return css_width >= 520; }
 // /login: the words account and, beside it (below on a phone), the phone app's QR.
 pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width;
@@ -934,9 +937,15 @@ pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
     return v;
   }
   side := lo(colw, 300 * d);
-  v = pv_code_panel(s, out, v, cx, py + 30 * d, side, "SCAN THIS WITH THE OPENAGENTS APP ON YOUR PHONE", "LOGGED IN", p);
-  // no app yet: its TestFlight link
   by := py + 30 * d + side + 100 * d;
+  if pv_qr_here(w / d) {
+    v = pv_code_panel(s, out, v, cx, py + 30 * d, side, "SCAN THIS WITH THE OPENAGENTS APP ON YOUR PHONE", "LOGGED IN", p);
+  } else {
+    // a phone can't scan its own screen: the code is for a computer's browser
+    q := pv_text(s, out, PvFlow.{y = py + 12 * d, v = v}, "ON A COMPUTER, OPEN OPENAGENTS.COM/LOGIN AND SCAN ITS CODE WITH THE APP ON THIS PHONE.", px, colw, 6.5, pv_chrome(p, INK_DIM), 3, true, 0);
+    v = q.v; by = q.y + 30 * d;
+  }
+  // no app yet: its TestFlight link
   bw := chip_width("GET THE IPHONE APP", 7 * d, p);
   v = pv_chip(s, out, v, "GET THE IPHONE APP", cx - bw * 0.5, by, H_IPHONE, true, p, true, 0);
   s[0].content = by + 30 * d + s[0].scroll;
@@ -1030,6 +1039,9 @@ pv_claim :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   if s[0].claim_code_n != 32 {
     f.y -= 12 * d;
     f = pv_text(s, out, f, "THIS LINK HAS NO CLAIM CODE. OPEN THE WHOLE LINK YOU WERE SENT.", x0, colw, 6.5, dim, 3, true, 0);
+    f.y += 20 * d;
+    f.v = pv_open_realm(s, out, f.v, x0, f.y, p);
+    f.y += 30 * d;
     s[0].content = f.y + 40 * d + s[0].scroll;
     return f.v;
   }
@@ -1108,6 +1120,15 @@ pv_tip_due :: (s: [] PrivateState) {
   s[0].body_n = pv_put(s[0].body[..], 0, "{}");
   s[0].post_kind = POST_TIP_CHECK; s[0].post_id = -1;
 }
+// OPEN <REALM>: back to the realm a tip or claim page is for.
+pv_open_realm :: (s: [] PrivateState, out: [] f32, at: int, x: f32, y: f32, p: Pen) -> int {
+  realm: [80] u8;
+  rn := pv_realm_name(realm[..], pv_slug(s));
+  open: [96] u8;
+  on := pv_put(open[..], 0, "OPEN ");
+  on = pv_put(open[..], on, cast(string) realm[0..<rn]);
+  return pv_chip(s, out, at, cast(string) open[0..<on], x, y, H_COPEN, true, p, true, 0);
+}
 pv_tip :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   d := p.d; w := s[0].width;
   white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE);
@@ -1124,6 +1145,8 @@ pv_tip :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
     f.v = put_fit(out, f.v, cast(string) realm[0..<rn], x0, f.y, big, white, colw);
     f.y += 30 * d;
     f.v = put(out, f.v, word, x0, f.y, 7 * d, dim);
+    // not a dead end: the realm itself is a click away
+    if s[0].maker_status == 404 { f.y += 30 * d; f.v = pv_open_realm(s, out, f.v, x0, f.y, p); f.y += 30 * d; }
     s[0].content = f.y + 40 * d + s[0].scroll;
     return f.v;
   }
@@ -2746,6 +2769,10 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   #assert s[0].maker_status == 404 && !pv_has_hit(s[..], H_TIP0) && n > 0;
   pv_tip_ask(s[..], 100);
   #assert s[0].post_n == 0;
+  // but it is no dead end: OPEN BELT 2200 goes back to the realm
+  #assert pv_has_hit(s[..], H_COPEN);
+  pv_act(s[..], H_COPEN);
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/belt-2200";
 }
 #test "/login: a browser that logged out stays logged out; LOG IN WITH MY WORDS logs straight in" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
@@ -2846,4 +2873,8 @@ pv_tap :: (s: [] PrivateState, id: int) -> bool {
   coaxial_private_page(s[..], 2);
   n = pv_fresh(s[..], out[..], u[..], 2880, 1800);
   #assert pv_tap(s[..], H_IPHONE) && s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == PV_IPHONE_APP;
+}
+
+#test "/login draws its QR for a computer, and on a phone says where to scan instead" {
+  #assert pv_qr_here(1440) && pv_qr_here(768) && !pv_qr_here(390) && !pv_qr_here(320);
 }

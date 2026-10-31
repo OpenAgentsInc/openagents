@@ -214,9 +214,10 @@ const loading = startLoading({ realm: realmId, assets: firstAssets.length + firs
   scene: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "index"), golden });
 // A claimed realm's maker (ev-claim-realm, docs/verse/makers.md): their name, from oa-api, as message
 // MAKER_KIND for the realm to draw ("Made by <name>" and TIP, in Coax); nothing when unclaimed, offline or in a golden shot.
+// Only a realm with a tip page asks (data-maker, coax/web/realms.ts): the rest have no maker to find.
 const MAKER_KIND = 608;
 let makerName = "";
-if (realmId && !golden && /^[a-z0-9-]{1,64}$/.test(realmId)) {
+if (realmId && !golden && script?.dataset.maker === "1" && /^[a-z0-9-]{1,64}$/.test(realmId)) {
   fetch(`/api/playtest/makers/${realmId}`, { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((m) => {
     if (!m || typeof m.name !== "string" || !m.name) return;
     makerName = m.name.slice(0, 40);

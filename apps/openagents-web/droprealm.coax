@@ -469,7 +469,7 @@ seen :: (s: [] DropRealm, x: f32, y: f32, z: f32) -> Seen {
 GAP :: 0.5; SPACE :: 1.2;
 PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;
 GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;
-EMBER_R :: 0.91; EMBER_G :: 0.47; EMBER_B :: 0.17;
+EMBER_R :: 1.0; EMBER_G :: 0.9; EMBER_B :: 0.62;   // lit gold: orange is only for Bitcoin
 LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
 white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
 bronze :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, GOLD_R, GOLD_G, GOLD_B); }

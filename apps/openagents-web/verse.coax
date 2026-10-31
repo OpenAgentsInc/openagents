@@ -780,7 +780,7 @@ SPACE :: 1.2;     // a space, in cap heights
 WIDE :: 1.1;      // the eyebrows' wide spacing
 PARCH_R :: 0.91; PARCH_G :: 0.863; PARCH_B :: 0.753;   // #e8dcc0, words
 GOLD_R :: 0.80; GOLD_G :: 0.64; GOLD_B :: 0.36;        // bronze
-EMBER_R :: 0.91; EMBER_G :: 0.47; EMBER_B :: 0.17;     // the Haunted House's orange, the focus
+EMBER_R :: 1.0; EMBER_G :: 0.9; EMBER_B :: 0.62;      // the focus: lit gold (orange is only for Bitcoin)
 LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
 
 white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
@@ -1270,7 +1270,7 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   if !s[0].setup {
     hint := ifx s[0].spun then 0.45f32 else 0.7f32;
     line1 := "DRAG TO TURN THE GALAXY";
-    line2 := ifx phone then "TAP THE ORANGE PLANET TO ENTER" else "CLICK THE ORANGE PLANET, THE HAUNTED HOUSE, TO ENTER";
+    line2 := enter_hint(phone);
     hc := lo(fit_cap(line1, 7.5 * k, GAP, w - 32 * k), fit_cap(line2, 7.5 * k, GAP, w - 32 * k));
     vertices = centred(d, out, vertices, line1, cx, h - 74 * k, hc, GAP, white(k, hint));
     vertices = centred(d, out, vertices, line2, cx, h - 56 * k, hc, GAP, white(k, hint));
@@ -1291,6 +1291,9 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   }
   return vertices;
 }
+
+// The galaxy's last line. Every lit planet opens, so it names none of them.
+enter_hint :: (small: bool) -> string { return ifx small then "TAP A LIT PLANET TO ENTER" else "CLICK A LIT PLANET TO ENTER"; }
 
 // The setup: a name, then a row per choice (a press cycles it), CREATE and CANCEL.
 setup_box :: (s: [] VerseState) -> Box {
@@ -1706,4 +1709,11 @@ batch_has :: (t: [] Track, text: string) -> bool { return text_has(cast(string) 
   #assert !s[0].setup;
   redraw(s[..], t[..], 0.016);
   #assert s[0].action == 0;
+}
+
+#test "the galaxy's hint names no one planet: every lit planet opens" {
+  #assert enter_hint(true) == "TAP A LIT PLANET TO ENTER" && enter_hint(false) == "CLICK A LIT PLANET TO ENTER";
+  open := 0;
+  for p: 0..<PLANETS { if PLANET_KIND[p] == KIND_OPEN { open += 1; } }
+  #assert open > 1;
 }

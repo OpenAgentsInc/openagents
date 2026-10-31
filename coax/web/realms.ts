@@ -203,6 +203,9 @@ ${links}
 `
 }
 
+// A realm a maker can claim has a tip page (realms/<slug>/tip); only its page asks oa-api who made it,
+// so the others don't log a 404 for every visitor (host.js, data-maker).
+export const hasMaker = (slug: string, site = SITE) => existsSync(join(site, "realms", slug, "tip", "index.html"))
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
 export function page(r: Realm): string {
   const url = `https://openagents.com/realms/${r.slug}`, t = esc(r.title), d = esc(r.description), share = esc(r.share ?? brief(r.description))
@@ -213,6 +216,7 @@ export function page(r: Realm): string {
     + (r.page ? ` data-page="${r.page}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
     + (r.ruleset ? ` data-ruleset="${r.ruleset}"` : "")
+    + (hasMaker(r.slug) ? ` data-maker="1"` : "")
     + (r.uploads ? ` data-uploads="${esc(r.uploads)}"` : "")
     + ` data-style="${r.style}" data-clock="${r.clock}"`
     + (r.zones?.length ? ` data-zones="${r.zones.map((z) => `${z.id}:${z.style ?? r.style}`).join(" ")}"` : "")
