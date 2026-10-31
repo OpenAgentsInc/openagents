@@ -233,7 +233,7 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/fixture/assets/fixture.pack"]
       } },
-    { "id": "sandbox", "name": "SANDBOX", "kind": "open", "orbit": { "r": 0.36, "a": 4.6, "size": 0.03 },
+    { "id": "sandbox", "name": "SANDBOX", "kind": "open", "listed": false, "orbit": { "r": 0.36, "a": 4.6, "size": 0.03 },
       "realm": {
         "slug": "sandbox",
         "added": "2026-10-29T02:35", "line": "Open ground everyone builds on together",
