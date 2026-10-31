@@ -32,6 +32,21 @@ analytic sensitivities, optimizer/forecast calculations, exact transcript
 coverage and all 5,040 serialized state words are qualified separately in
 `psionic/fixtures/physics/inverse/qualification.json`.
 
+## Simulation steps and supplied wall clocks keep their domains
+
+The step-clock precursor uses integer simulation steps and distinct nominal
+simulation, steady and civil records. Its fixed 500Hz servo/20Hz goal schedule
+keeps chunk-exhaustion request demand separate from a periodic timer. Paused
+inference advances no simulation step. Capture precedes fresh sample; explicit
+forward-generation labels do not imply a generic external cache timestamp.
+
+Ordinary admission preserves state. A bad integration receipt instead returns
+a halted cursor on non-ok status; the consumer adopts that returned state and
+does not publish a plant step. Epoch reset invalidates old tickets. Clock labels
+and host observations are caller-supplied facts, not authentication. This
+runtime profile proves no hidden clock effect, wall watchdog, compiler R13/R14,
+complete replay, generic sensor-age policy or robot embodiment.
+
 ## Planning derivatives keep physical execution and fixed context explicit
 
 The oscillator-function bridge augments q/v with held force and builds a

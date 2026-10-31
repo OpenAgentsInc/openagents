@@ -1,0 +1,773 @@
+{
+  "authored_checks": {
+    "psionic/lib/physics/oscillator-clock.coax": 2,
+    "psionic/lib/physics/step-clock-domain.coax": 4,
+    "psionic/lib/physics/step-clock-schedule.coax": 7
+  },
+  "base_revision": "c32c68d4ce",
+  "compile_fail": {
+    "civil-is-not-steady.coax": {
+      "diagnostic": {
+        "bytes": 305,
+        "sha256": "ced14b8a7b04a6bc3f755965093ac0bba1b0e79438067c5391700380f840407b"
+      },
+      "diagnostic_code": "E0317",
+      "scope": "argument requires different nominal clock record",
+      "source": {
+        "bytes": 145,
+        "sha256": "845db328ae14bf11e23c7066ce69f90416739b5c2b36d1c5f59d89a6505d9305"
+      }
+    },
+    "instants-are-not-durations.coax": {
+      "diagnostic": {
+        "bytes": 301,
+        "sha256": "0f6a1c62d112d2ab4f9da83a7566744f5a86f620fb08a493cfba22c8e3b8906e"
+      },
+      "diagnostic_code": "E0317",
+      "scope": "argument requires different nominal clock record",
+      "source": {
+        "bytes": 131,
+        "sha256": "48d0240a8abfd60dbbe3905514c480bcdfc18a252ddeeae17be8a1f51714dfb6"
+      }
+    },
+    "simulation-duration-is-not-steady.coax": {
+      "diagnostic": {
+        "bytes": 341,
+        "sha256": "10aaa519c361348eea66cd424e0fb394a395075b54522646c6a472716fd15b8f"
+      },
+      "diagnostic_code": "E0317",
+      "scope": "argument requires different nominal clock record",
+      "source": {
+        "bytes": 142,
+        "sha256": "0e52de17810133ff2f0fc4b3922b81f6911d0b6fea2f838ad2adf3be62012b10"
+      }
+    },
+    "steady-duration-is-not-simulation.coax": {
+      "diagnostic": {
+        "bytes": 307,
+        "sha256": "db2d87652e80d4920cbdb82db7b0009b52e38dba8a0973824d2b1564a46f28de"
+      },
+      "diagnostic_code": "E0317",
+      "scope": "argument requires different nominal clock record",
+      "source": {
+        "bytes": 129,
+        "sha256": "ef64e4184c73a956405f113f0cbd184d28dfe72d85285e81b66384a36da39df7"
+      }
+    },
+    "steady-is-not-simulation.coax": {
+      "diagnostic": {
+        "bytes": 284,
+        "sha256": "6a221c3f13bb841590b6be0176e4a2fdad3f3624aa00ad4b77da1c1533bef043"
+      },
+      "diagnostic_code": "E0317",
+      "scope": "argument requires different nominal clock record",
+      "source": {
+        "bytes": 135,
+        "sha256": "bfb2f9b839846ec66554d46e84d77f4c99c9a20f9c791683668e9472c93b4953"
+      }
+    }
+  },
+  "compile_fail_reuse": "Five original E0317 diagnostics reused after exact nominal-header comparison and same qualified compiler identity. No compiler change is claimed.",
+  "compiler": {
+    "admitted_integer_operations_do_not_overflow": true,
+    "binary": {
+      "bytes": 2769080,
+      "sha256": "bf718de35f9d99aa5b4315cb13700add99fece16515aee77566d8775791e2c31"
+    },
+    "debug_codegen": "checked arithmetic; debug native O0",
+    "host_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+    "installation_or_cache_modified": false,
+    "native_flags": [
+      "-std=c11",
+      "-ffp-contract=off",
+      "-fno-fast-math"
+    ],
+    "release_codegen": "legacy release wrapping arithmetic; native O2",
+    "sanitizers": [
+      "address",
+      "undefined"
+    ],
+    "version": "coax0 0.43.0"
+  },
+  "date": "2026-10-31",
+  "example": {
+    "both_outputs_exact": true,
+    "golden": {
+      "bytes": 496,
+      "sha256": "6ab97debedc7089d4e7aee22ff6313af041125ed1b2ebe7b8362aa9d5a48fb02"
+    },
+    "golden_authored_before_first_run": true,
+    "modes": [
+      "debug",
+      "release"
+    ]
+  },
+  "failure_contract": "Ordinary refusal preserves state. On a valid cursor, unexpected/wrong-phase/duplicate/skipped/foreign/failed integration receipts return halted state on non-ok status; caller must adopt returned state. Oscillator advance propagates halt and preserves uncommitted plant/time. Public cursor/effect provenance is caller responsibility.",
+  "independent_reference": {
+    "event_records": 72000,
+    "events_sha256": "df9e82e2d1e50f6bbc764ab4c1dd103667befb9f6977131043b18b79e656ca40",
+    "exact_integer_words": 1368000,
+    "fraction_period_checks": 72000,
+    "fraction_row_checks": 2880,
+    "frozen_profile_sha256": "834be913beba5fa7d3e67c468bb6b47153ba44911ff3f30512c37ba01813bc98",
+    "native_summary": [
+      {
+        "holds": 0,
+        "mode": 0,
+        "origins": [
+          0,
+          200,
+          400,
+          600,
+          800,
+          1000,
+          1200,
+          1400,
+          1600,
+          1800,
+          2000,
+          2200,
+          2400,
+          2600,
+          2800,
+          3000,
+          3200,
+          3400,
+          3600,
+          3800,
+          4000,
+          4200,
+          4400,
+          4600,
+          4800,
+          5000,
+          5200,
+          5400,
+          5600,
+          5800,
+          6000,
+          6200,
+          6400,
+          6600,
+          6800,
+          7000,
+          7200,
+          7400,
+          7600,
+          7800,
+          8000,
+          8200,
+          8400,
+          8600,
+          8800,
+          9000,
+          9200,
+          9400,
+          9600,
+          9800,
+          10000,
+          10200,
+          10400,
+          10600,
+          10800,
+          11000,
+          11200,
+          11400,
+          11600,
+          11800,
+          12000,
+          12200,
+          12400,
+          12600,
+          12800,
+          13000,
+          13200,
+          13400,
+          13600,
+          13800,
+          14000,
+          14200,
+          14400,
+          14600,
+          14800,
+          15000,
+          15200,
+          15400,
+          15600,
+          15800,
+          16000,
+          16200,
+          16400,
+          16600,
+          16800,
+          17000,
+          17200,
+          17400,
+          17600,
+          17800
+        ],
+        "plant_finite": true,
+        "refusals": 0,
+        "remaining": 0,
+        "requests": 90,
+        "rows": 720,
+        "steady_ns": 90000000000000,
+        "steps": 18000
+      },
+      {
+        "holds": 1,
+        "mode": 1,
+        "origins": [
+          0,
+          25,
+          225,
+          425,
+          625,
+          825,
+          1025,
+          1225,
+          1425,
+          1625,
+          1825,
+          2025,
+          2225,
+          2425,
+          2625,
+          2825,
+          3025,
+          3225,
+          3425,
+          3625,
+          3825,
+          4025,
+          4225,
+          4425,
+          4625,
+          4825,
+          5025,
+          5225,
+          5425,
+          5625,
+          5825,
+          6025,
+          6225,
+          6425,
+          6625,
+          6825,
+          7025,
+          7225,
+          7425,
+          7625,
+          7825,
+          8025,
+          8225,
+          8425,
+          8625,
+          8825,
+          9025,
+          9225,
+          9425,
+          9625,
+          9825,
+          10025,
+          10225,
+          10425,
+          10625,
+          10825,
+          11025,
+          11225,
+          11425,
+          11625,
+          11825,
+          12025,
+          12225,
+          12425,
+          12625,
+          12825,
+          13025,
+          13225,
+          13425,
+          13625,
+          13825,
+          14025,
+          14225,
+          14425,
+          14625,
+          14825,
+          15025,
+          15225,
+          15425,
+          15625,
+          15825,
+          16025,
+          16225,
+          16425,
+          16625,
+          16825,
+          17025,
+          17225,
+          17425,
+          17625,
+          17825
+        ],
+        "plant_finite": true,
+        "refusals": 1,
+        "remaining": 1,
+        "requests": 91,
+        "rows": 720,
+        "steady_ns": 91000000000000,
+        "steps": 18000
+      },
+      {
+        "holds": 1,
+        "mode": 2,
+        "origins": [
+          0,
+          25,
+          225,
+          425,
+          625,
+          825,
+          1025,
+          1225,
+          1425,
+          1625,
+          1825,
+          2025,
+          2225,
+          2425,
+          2625,
+          2825,
+          3025,
+          3225,
+          3425,
+          3625,
+          3825,
+          4025,
+          4225,
+          4425,
+          4625,
+          4825,
+          5025,
+          5225,
+          5425,
+          5625,
+          5825,
+          6025,
+          6225,
+          6425,
+          6625,
+          6825,
+          7025,
+          7225,
+          7425,
+          7625,
+          7825,
+          8025,
+          8225,
+          8425,
+          8625,
+          8825,
+          9025,
+          9225,
+          9425,
+          9625,
+          9825,
+          10025,
+          10225,
+          10425,
+          10625,
+          10825,
+          11025,
+          11225,
+          11425,
+          11625,
+          11825,
+          12025,
+          12225,
+          12425,
+          12625,
+          12825,
+          13025,
+          13225,
+          13425,
+          13625,
+          13825,
+          14025,
+          14225,
+          14425,
+          14625,
+          14825,
+          15025,
+          15225,
+          15425,
+          15625,
+          15825,
+          16025,
+          16225,
+          16425,
+          16625,
+          16825,
+          17025,
+          17225,
+          17425,
+          17625,
+          17825
+        ],
+        "plant_finite": true,
+        "refusals": 1,
+        "remaining": 1,
+        "requests": 91,
+        "rows": 720,
+        "steady_ns": 91000000000000,
+        "steps": 18000
+      },
+      {
+        "holds": 1,
+        "mode": 3,
+        "origins": [
+          25,
+          225,
+          425,
+          625,
+          825,
+          1025,
+          1225,
+          1425,
+          1625,
+          1825,
+          2025,
+          2225,
+          2425,
+          2625,
+          2825,
+          3025,
+          3225,
+          3425,
+          3625,
+          3825,
+          4025,
+          4225,
+          4425,
+          4625,
+          4825,
+          5025,
+          5225,
+          5425,
+          5625,
+          5825,
+          6025,
+          6225,
+          6425,
+          6625,
+          6825,
+          7025,
+          7225,
+          7425,
+          7625,
+          7825,
+          8025,
+          8225,
+          8425,
+          8625,
+          8825,
+          9025,
+          9225,
+          9425,
+          9625,
+          9825,
+          10025,
+          10225,
+          10425,
+          10625,
+          10825,
+          11025,
+          11225,
+          11425,
+          11625,
+          11825,
+          12025,
+          12225,
+          12425,
+          12625,
+          12825,
+          13025,
+          13225,
+          13425,
+          13625,
+          13825,
+          14025,
+          14225,
+          14425,
+          14625,
+          14825,
+          15025,
+          15225,
+          15425,
+          15625,
+          15825,
+          16025,
+          16225,
+          16425,
+          16625,
+          16825,
+          17025,
+          17225,
+          17425,
+          17625,
+          17825
+        ],
+        "plant_finite": true,
+        "refusals": 0,
+        "remaining": 1,
+        "requests": 90,
+        "rows": 720,
+        "steady_ns": 90000000000000,
+        "steps": 18000
+      }
+    ],
+    "oracle_sha256": "3345ff19eecb1d8943944dc7b0482190365c4b8903d550f92ece7139b974f11e",
+    "passed": true,
+    "schema": "psionic-step-clock-reference-v1",
+    "scope": "Independent closed-form event fields and exact Fraction periods. New oscillator consumption/finite-publication checks reuse unchanged oscillator numerical proof; no new physics accuracy, SDK cache age or real-time claim.",
+    "summary_sha256": "926c9f92120b72bea863ed3b0c9e418b61c9a961b7d8bfb798066ca9a8f3bbd2"
+  },
+  "independent_reference_record": {
+    "bytes": 6981,
+    "sha256": "4b6afc72048c54a1e9e92cc2adbb7b8c78a0b391461485357921cc18580e021c"
+  },
+  "independent_reference_reuse": "After tightening wrong-phase integration receipt fail-stop, changed native code was rebuilt in all modes. All event/summary bytes match the original qualified payload; independent Fraction/numerical oracle not rerun. Original nominal headers and oracle/profile identities also match.",
+  "mutation": {
+    "equivalent_mutants_marked": 0,
+    "killed": 329,
+    "roots": {
+      "psionic/lib/physics/oscillator-clock.coax": {
+        "count": 27,
+        "entry_source": {
+          "bytes": 4518,
+          "sha256": "8d6eb4fc4c980c2c4408c343bceb06c61908ac408cf52d93efc9c990a5c83df3"
+        },
+        "killed": 27,
+        "record": {
+          "bytes": 114,
+          "sha256": "c39cf61030898777c453585c7d8e5b2928b35117da31550fa7990e8bae298adc"
+        },
+        "root_only": true,
+        "survived": 0
+      },
+      "psionic/lib/physics/step-clock-domain.coax": {
+        "count": 81,
+        "entry_source": {
+          "bytes": 8150,
+          "sha256": "b442a75ebb290c852fa5f894e651896abdf583af497ccfaf26d4b24567c459c5"
+        },
+        "killed": 81,
+        "record": {
+          "bytes": 114,
+          "sha256": "75740819e7741d6949b9b46f37cef5fd05eee27149e51732a66e4e965514bea1"
+        },
+        "root_only": true,
+        "survived": 0
+      },
+      "psionic/lib/physics/step-clock-schedule.coax": {
+        "count": 221,
+        "entry_source": {
+          "bytes": 14342,
+          "sha256": "96d73ee216b4c12d292cbff4607b2729a4d9a761fab8f2799cb1f2beb2e10cf1"
+        },
+        "killed": 221,
+        "record": {
+          "bytes": 116,
+          "sha256": "7a559a64fd6cd782ec077ddb1bedecfe8a9e4880b3fdffbf00484485eaccf4e3"
+        },
+        "root_only": true,
+        "survived": 0
+      }
+    },
+    "scope": "root-only; inherited checks retained",
+    "survived": 0,
+    "total": 329
+  },
+  "native": {
+    "debug": {
+      "binary": {
+        "bytes": 74152,
+        "sha256": "97f3d7ca4d65728cfaa387813527640f71963eb133977cebfe5bb0b02887d6d4"
+      },
+      "checks": 1808302,
+      "events": {
+        "bytes": 10944000,
+        "sha256": "df9e82e2d1e50f6bbc764ab4c1dd103667befb9f6977131043b18b79e656ca40"
+      },
+      "generated_C": {
+        "bytes": 63471,
+        "sha256": "ad75babfca6588434cdf8fbe96a2605219a3cbff12114bae26615eff46a977e9"
+      },
+      "summary": {
+        "bytes": 2584,
+        "sha256": "926c9f92120b72bea863ed3b0c9e418b61c9a961b7d8bfb798066ca9a8f3bbd2"
+      }
+    },
+    "release": {
+      "binary": {
+        "bytes": 54248,
+        "sha256": "344baa93f0b4a50fba560b54098dfa0edbd02cc01669cd8aac6094b21461225a"
+      },
+      "checks": 1808302,
+      "events": {
+        "bytes": 10944000,
+        "sha256": "df9e82e2d1e50f6bbc764ab4c1dd103667befb9f6977131043b18b79e656ca40"
+      },
+      "generated_C": {
+        "bytes": 63391,
+        "sha256": "1f7ba2bb408270d0005bf283c48268867278472886a3a441fdc0efc865f4e631"
+      },
+      "summary": {
+        "bytes": 2584,
+        "sha256": "926c9f92120b72bea863ed3b0c9e418b61c9a961b7d8bfb798066ca9a8f3bbd2"
+      }
+    },
+    "sanitized": {
+      "binary": {
+        "bytes": 122376,
+        "sha256": "9123596492d3c6c36c725ca2f7cf25b75a4a526b0f3d855ab0d0b9eefba29def"
+      },
+      "checks": 1808302,
+      "events": {
+        "bytes": 10944000,
+        "sha256": "df9e82e2d1e50f6bbc764ab4c1dd103667befb9f6977131043b18b79e656ca40"
+      },
+      "generated_C": {
+        "bytes": 63471,
+        "sha256": "ad75babfca6588434cdf8fbe96a2605219a3cbff12114bae26615eff46a977e9"
+      },
+      "summary": {
+        "bytes": 2584,
+        "sha256": "926c9f92120b72bea863ed3b0c9e418b61c9a961b7d8bfb798066ca9a8f3bbd2"
+      }
+    }
+  },
+  "native_modes_event_and_summary_bytes_identical": true,
+  "passed": true,
+  "pending": [
+    "general rates and phases",
+    "civil mappings",
+    "actual steady effects/watchdog/cancellation",
+    "generic maximum sensor age and R18 supervision",
+    "full runtime state snapshot",
+    "Verse migration",
+    "compiler R13 clock syntax",
+    "compiler R14 bounded-control proof",
+    "robot integration"
+  ],
+  "profile": "step-clock-500-20-v1",
+  "reuse_metadata_negative_cases": 8,
+  "runtime_dependency_closure": {
+    "psionic/lib/physics/oscillator-clock.coax": {
+      "bytes": 4518,
+      "sha256": "8d6eb4fc4c980c2c4408c343bceb06c61908ac408cf52d93efc9c990a5c83df3"
+    },
+    "psionic/lib/physics/oscillator-types.coax": {
+      "bytes": 320,
+      "sha256": "814878e4263e24b8f05ac9a0c8258f511bbb308b36128e46022846bbc7550fc8"
+    },
+    "psionic/lib/physics/oscillator.coax": {
+      "bytes": 6912,
+      "sha256": "9d61fab2666d8ec7dc5517c6d4b66ef24e194e579170b57b6e3a6c0acecb90f0"
+    },
+    "psionic/lib/physics/step-clock-domain.coax": {
+      "bytes": 8150,
+      "sha256": "b442a75ebb290c852fa5f894e651896abdf583af497ccfaf26d4b24567c459c5"
+    },
+    "psionic/lib/physics/step-clock-schedule.coax": {
+      "bytes": 14342,
+      "sha256": "96d73ee216b4c12d292cbff4607b2729a4d9a761fab8f2799cb1f2beb2e10cf1"
+    },
+    "psionic/lib/physics/step-clock-types.coax": {
+      "bytes": 1389,
+      "sha256": "64e095bd2b781b9bca33f8905d79294e6bdbf9628cc376c2b384f0396ed8cd94"
+    }
+  },
+  "schema": "psionic-step-clock-qualification-v1",
+  "scope": "Bounded nominal runtime clock and fixed 500/20 sample-and-hold precursor consumed by owned oscillator; no compiler R13 syntax, generic maximum sensor age/R18 policy, hidden host clock, watchdog, SDK/cache timestamp qualification, genuine robot integration or real-time guarantee.",
+  "source_identity": {
+    "psionic/docs/physics/step-clock.md": {
+      "bytes": 6841,
+      "sha256": "a64044b1d712219caa6a52ea2d5f5fedc3f937f0c64542f8974f5bff0b4bc445"
+    },
+    "psionic/examples/step-clock.coax": {
+      "bytes": 2586,
+      "sha256": "2777b0c3ed25d5e967369faafc7a4b4fe344beed1b78a5a3381eaed409414b09"
+    },
+    "psionic/fixtures/physics/clock-compile-fail/civil-is-not-steady.coax": {
+      "bytes": 145,
+      "sha256": "845db328ae14bf11e23c7066ce69f90416739b5c2b36d1c5f59d89a6505d9305"
+    },
+    "psionic/fixtures/physics/clock-compile-fail/instants-are-not-durations.coax": {
+      "bytes": 131,
+      "sha256": "48d0240a8abfd60dbbe3905514c480bcdfc18a252ddeeae17be8a1f51714dfb6"
+    },
+    "psionic/fixtures/physics/clock-compile-fail/simulation-duration-is-not-steady.coax": {
+      "bytes": 142,
+      "sha256": "0e52de17810133ff2f0fc4b3922b81f6911d0b6fea2f838ad2adf3be62012b10"
+    },
+    "psionic/fixtures/physics/clock-compile-fail/steady-duration-is-not-simulation.coax": {
+      "bytes": 129,
+      "sha256": "ef64e4184c73a956405f113f0cbd184d28dfe72d85285e81b66384a36da39df7"
+    },
+    "psionic/fixtures/physics/clock-compile-fail/steady-is-not-simulation.coax": {
+      "bytes": 135,
+      "sha256": "bfb2f9b839846ec66554d46e84d77f4c99c9a20f9c791683668e9472c93b4953"
+    },
+    "psionic/fixtures/physics/step-clock-profile.json": {
+      "bytes": 1889,
+      "sha256": "834be913beba5fa7d3e67c468bb6b47153ba44911ff3f30512c37ba01813bc98"
+    },
+    "psionic/fixtures/step-clock.out": {
+      "bytes": 496,
+      "sha256": "6ab97debedc7089d4e7aee22ff6313af041125ed1b2ebe7b8362aa9d5a48fb02"
+    },
+    "psionic/lib/physics/oscillator-clock.coax": {
+      "bytes": 4518,
+      "sha256": "8d6eb4fc4c980c2c4408c343bceb06c61908ac408cf52d93efc9c990a5c83df3"
+    },
+    "psionic/lib/physics/step-clock-domain.coax": {
+      "bytes": 8150,
+      "sha256": "b442a75ebb290c852fa5f894e651896abdf583af497ccfaf26d4b24567c459c5"
+    },
+    "psionic/lib/physics/step-clock-schedule.coax": {
+      "bytes": 14342,
+      "sha256": "96d73ee216b4c12d292cbff4607b2729a4d9a761fab8f2799cb1f2beb2e10cf1"
+    },
+    "psionic/lib/physics/step-clock-types.coax": {
+      "bytes": 1389,
+      "sha256": "64e095bd2b781b9bca33f8905d79294e6bdbf9628cc376c2b384f0396ed8cd94"
+    },
+    "psionic/tests/physics/check-step-clock.sh": {
+      "bytes": 1880,
+      "sha256": "0bc0ddd8543b8ffe55c84ee2236df4d2611abe2024b32de12dc8c6070af627a2"
+    },
+    "psionic/tests/physics/step-clock-native.c": {
+      "bytes": 9450,
+      "sha256": "15dbbf0a3945971c1f628a679a652fdfa38bf75438ae9c6130da901c2e0ebdc9"
+    },
+    "psionic/tests/physics/step_clock_reference.py": {
+      "bytes": 3681,
+      "sha256": "3345ff19eecb1d8943944dc7b0482190365c4b8903d550f92ece7139b974f11e"
+    },
+    "psionic/tests/physics/step_clock_reuse.py": {
+      "bytes": 2429,
+      "sha256": "324a81ab331eec54864befd2eec47ccacb1e621946c75142fd668a9c06a8c10e"
+    }
+  },
+  "unchanged_oscillator_proof": {
+    "SDK_or_model_runs": 0,
+    "all_recorded_source_fingerprints_still_match": true,
+    "arithmetic_gates_rerun": false,
+    "path": "psionic/fixtures/physics/oscillator/qualification.json",
+    "record": {
+      "bytes": 10609,
+      "sha256": "20af45faf3b687021053eb52bab548d5dff032a9625c533fb5800a2d0b4f7841"
+    }
+  }
+}

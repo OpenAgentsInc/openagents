@@ -1,0 +1,57 @@
+{
+  "schema": "psionic-step-clock-profile-v1",
+  "profile": "step-clock-500-20-v1",
+  "scope": "Owned oscillator runtime clock/scheduler precursor; not compiler R13, an SDK cache timestamp proof, a real-time guarantee or robot qualification.",
+  "period_seconds": {
+    "numerator": 1,
+    "denominator": 500
+  },
+  "physics_steps": 18000,
+  "action_rows": 720,
+  "physics_steps_per_action_row": 25,
+  "consumed_action_rows_per_request": 8,
+  "scenarios": [
+    "normal",
+    "deferred-first-reply",
+    "refused-first-reply",
+    "missing-first-observation"
+  ],
+  "force_per_selected_slot": "((slot % 3) - 1) / 4 newtons; initial hold force zero",
+  "request_origins_prefix": {
+    "normal": [
+      0,
+      200,
+      400
+    ],
+    "deferred-first-reply": [
+      0,
+      25,
+      225
+    ],
+    "refused-first-reply": [
+      0,
+      25,
+      225
+    ],
+    "missing-first-observation": [
+      25,
+      225,
+      425
+    ]
+  },
+  "fake_inference_elapsed_ns": 1000000000000,
+  "fake_steady_timeout_ns": 100,
+  "observation_generation_labels": "qpos=k; last explicit forward=max(0,k-1), reset both zero. No physical timestamp claim for an external integrator internal cache.",
+  "event_order": [
+    "capture old cached observation generation and current qpos before fresh forward",
+    "request and accept unchanged simulation origin, or select one hold row",
+    "select action row",
+    "fresh forward/sample generation k",
+    "goal update only at row substep zero; control and gripper intent every step",
+    "owned RK4 integration at F64 .002 seconds",
+    "admit exactly next epoch/step receipt and plant atomically",
+    "trace admitted transition"
+  ],
+  "SDK_adapter": "Separate initial + F64(step)*.002 with inclusive 2^-26 second tolerance, initial in [0,100].",
+  "reuse": "Existing unchanged oscillator numerical qualification; new event/integration glue only."
+}

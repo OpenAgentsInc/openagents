@@ -467,6 +467,43 @@ the qualified Darwin-arm64 native profile. This component owns one smooth
 plant only. It does not snapshot the robot, policy, external producer or Verse,
 and supplies no typed-clock, compiler-bounded or cross-architecture guarantee.
 
+## Give the owned plant a clock and a schedule
+
+The [step-clock example](../examples/step-clock.coax) now runs the owned
+oscillator under a nominally typed runtime profile. Simulation instants,
+step durations, steady instants/durations and civil labels are distinct
+Coax types. Integer simulation steps drive event order: physics/control
+intent at 500Hz and goal updates every 25 steps at 20Hz. Explicit adapters
+supply rounded F64 seconds and the existing SDK time check.
+
+Model demand follows eight consumed rows. Normal request origins are
+0,200,400; one deferred reply followed by a hold row reanchors them to
+0,25,225. Paused inference can outlast a supplied steady deadline while its
+simulation origin stays unchanged. The example preserves capture before
+fresh sample and requires control/gripper intent on every physical step.
+The scalar plant supplies no actual gripper or pretrained robot semantics.
+
+The [API and scope](../docs/physics/step-clock.md) specify the phases and
+clock domains. Ordinary admission refuses atomically; a bad integration
+receipt returns a halted cursor even with a non-ok status. Callers must
+adopt that returned state. Five compile-fail fixtures reject domain mixing.
+Across four 18,000-step scenarios, 72,000 event records match an independent
+integer/Fraction oracle. Each debug, release and sanitizer build passes
+1,808,302 native assertions; all 329 root mutants die. The
+[receipt](../fixtures/physics/step-clock-qualification.json) binds the source,
+proof and retained original oscillator evidence.
+
+```shell
+coax/bin/coax run psionic/examples/step-clock.coax
+psionic/check.sh --only physics/step-clock
+psionic/check.sh --only physics/step-clock-native
+```
+
+The first physics gate is portable Coax checks plus the example; the second
+explicitly adds the qualified native profile. This foundation does not
+implement compiler clock syntax, R14 bounds, a wall watchdog, generic sensor
+maximum ages, complete snapshots or the Panda/Verse migration.
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

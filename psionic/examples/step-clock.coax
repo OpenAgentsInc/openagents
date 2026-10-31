@@ -1,0 +1,46 @@
+#import "Basic";
+#load "../lib/physics/oscillator-clock.coax";
+
+main :: () {
+  print("step-clock-500-20-v1: owned oscillator runtime precursor\n");
+  // A separate pure probe: wall latency does not advance simulation.
+  probe:=sc_request(sc_begin(),sc_observation(ScSimInstant.{epoch=1}));
+  wall:=ScSteadyInstant.{session=1};later:=ScSteadyInstant.{session=1,ns=1000000000000};
+  #assert sc_steady_elapsed(wall,later).delta.ns==1000000000000;
+  deadline:=sc_steady_deadline(wall,ScSteadyDelta.{ns=100}).instant;
+  #assert sc_steady_expiry(deadline,later).expired;
+  #assert sc_accept(probe.state,probe.ticket).status==ScStatus.ok;
+  print("paused probe: steady deadline expired; unchanged simulation origin still admits\n");
+
+  begin:=sco_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.5});
+  #assert begin.status==ScStatus.ok;s:=begin.state;
+  first:=sc_request(s.clock,sc_observation(s.clock.now));s.clock=first.state;
+  print("request: step %, last explicit forward %, qpos %\n",first.ticket.base_step,0,0);
+  goals:=0;
+  for row:0..<10 {
+    if row==1 {
+      #assert sc_accept(s.clock,first.ticket).status==ScStatus.stale;
+      s.clock=sc_refuse(s.clock).state;
+    }
+    if row>0 && s.clock.remaining==0 {
+      obs:=sc_observation(s.clock.now);request:=sc_request(s.clock,obs);
+      #assert request.status==ScStatus.ok;
+      print("request: step %, last explicit forward %, qpos %\n",request.ticket.base_step,obs.last_forward.step,obs.qpos.step);
+      admitted:=sc_accept(request.state,request.ticket);#assert admitted.status==ScStatus.ok;s.clock=admitted.state;
+    }
+    selected:=sc_select(s.clock,row==0);#assert selected.status==ScStatus.ok;s.clock=selected.state;
+    force:=ifx row==0 then 0.0 else f64((selected.slot%3)-1)*0.25;
+    for sub:0..<25 {
+      sample:=sc_sample(s.clock,s.clock.now);#assert sample.status==ScStatus.ok;
+      if sample.goal_update {goals+=1;}s.clock=sample.state;
+      control:=sco_control(s,force);#assert control.status==ScStatus.ok;s=control.state;
+      advance:=sco_advance(s,ScSimInstant.{epoch=s.clock.now.epoch,step=s.clock.now.step+1},0);
+      #assert advance.status==ScStatus.ok;s=advance.state;
+    }
+  }
+  #assert s.clock.now.step==250 && goals==10 && s.clock.remaining==7;
+  #assert sc_seconds(ScSimDelta.{steps=s.clock.now.step}).seconds==0.5;
+  print("steps: %; rows: 10; goal updates: %; control intents: 250; hold rows: 1\n",s.clock.now.step,goals);
+  print("simulation period: 1/500 second; elapsed: 1/2 second\n");
+  print("no compiler clock proof, wall watchdog, SDK cache timestamp or robot claim\n");
+}

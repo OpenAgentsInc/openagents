@@ -1,0 +1,8 @@
+step-clock-500-20-v1: owned oscillator runtime precursor
+paused probe: steady deadline expired; unchanged simulation origin still admits
+request: step 0, last explicit forward 0, qpos 0
+request: step 25, last explicit forward 24, qpos 25
+request: step 225, last explicit forward 224, qpos 225
+steps: 250; rows: 10; goal updates: 10; control intents: 250; hold rows: 1
+simulation period: 1/500 second; elapsed: 1/2 second
+no compiler clock proof, wall watchdog, SDK cache timestamp or robot claim

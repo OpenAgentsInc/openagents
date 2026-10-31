@@ -1,0 +1,2 @@
+#load "../../../lib/physics/step-clock-domain.coax";
+main :: () {age:=sc_steady_elapsed(ScCivilInstant.{source=1},ScSteadyInstant.{session=1});}

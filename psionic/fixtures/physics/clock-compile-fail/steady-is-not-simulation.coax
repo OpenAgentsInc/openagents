@@ -1,0 +1,2 @@
+#load "../../../lib/physics/step-clock-domain.coax";
+main :: () {age:=sc_sim_age(ScSteadyInstant.{session=1},ScSimInstant.{epoch=1});}

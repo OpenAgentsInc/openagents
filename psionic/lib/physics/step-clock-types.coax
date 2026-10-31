@@ -1,0 +1,23 @@
+// Runtime precursor only: nominal records, not compiler R13 clock syntax.
+ScStatus :: enum u8 {ok;range;domain;order;stale;exhausted;effect;sample;}
+ScSimInstant :: struct {epoch:int;step:int;}
+ScSimDelta :: struct {steps:int;}
+ScSteadyInstant :: struct {session:int;ns:int;}
+ScSteadyDelta :: struct {ns:int;}
+ScCivilInstant :: struct {source:int;seconds:f64;}
+ScSimResult :: struct {status:ScStatus;instant:ScSimInstant;}
+ScAge :: struct {status:ScStatus;delta:ScSimDelta;}
+ScElapsed :: struct {status:ScStatus;delta:ScSteadyDelta;}
+ScSteadyResult :: struct {status:ScStatus;instant:ScSteadyInstant;}
+ScExpiry :: struct {status:ScStatus;expired:bool;remaining:ScSteadyDelta;}
+ScSeconds :: struct {status:ScStatus;seconds:f64;}
+// Generation labels: last explicit forward, and current integrated qpos.
+// These are not physical timestamps of an external solver's internal caches.
+ScObservation :: struct {last_forward:ScSimInstant;qpos:ScSimInstant;}
+ScPhase :: enum u8 {row;waiting;sample;control;receipt;halted;finished;}
+ScTicket :: struct {epoch:int;serial:int;profile:int;base_step:int;}
+ScSchedule :: struct {now:ScSimInstant;origin:int;serial:int;remaining:int;phase:ScPhase;holding:bool;pending:bool;}
+ScResult :: struct {status:ScStatus;state:ScSchedule;ticket:ScTicket;slot:int=-1;goal_update:bool;}
+SC_STEP_MAX :: 18000;
+SC_ID_MAX :: 1000000;
+SC_NS_MAX :: 9000000000000000000;

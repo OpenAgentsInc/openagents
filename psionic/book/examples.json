@@ -1060,6 +1060,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/step-clock.coax",
+      "chapter": "psionic/book/ch169-close-the-simulated-control-loop.md",
+      "stdout": "psionic/fixtures/step-clock.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

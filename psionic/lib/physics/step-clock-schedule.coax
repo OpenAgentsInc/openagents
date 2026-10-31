@@ -1,0 +1,133 @@
+#load "step-clock-domain.coax";
+#authority;
+
+#test "eight consumed rows determine requests while sampling and control run at every step" {
+  s:=sc_begin();#assert sc_schedule_valid(s) && s.now.epoch==1 && s.now.step==0 && s.phase==ScPhase.row && s.remaining==0;
+  #assert sc_observation(s.now).last_forward.step==0 && sc_observation(s.now).qpos.step==0;
+  r:=sc_request(s,sc_observation(s.now));#assert r.status==ScStatus.ok && r.state.phase==ScPhase.waiting && r.state.serial==1 && r.ticket.epoch==1 && r.ticket.serial==1 && r.ticket.profile==1 && r.ticket.base_step==0;
+  r=sc_accept(r.state,r.ticket);#assert r.status==ScStatus.ok && r.state.phase==ScPhase.row && r.state.remaining==8 && !r.state.pending;s=r.state;
+  for row:0..<8 {r=sc_select(s,false);#assert r.status==ScStatus.ok && r.slot==row && r.state.phase==ScPhase.sample && !r.state.holding;s=r.state;
+    for sub:0..<25 {r=sc_sample(s,s.now);#assert r.status==ScStatus.ok && r.state.phase==ScPhase.control && r.goal_update==(sub==0);s=r.state;
+      r=sc_control(s,sub==0,true);#assert r.status==ScStatus.ok && r.state.phase==ScPhase.receipt;s=r.state;
+      next:=ScSimInstant.{epoch=1,step=s.now.step+1};r=sc_receipt(s,next,0);#assert r.status==ScStatus.ok && r.state.now.step==next.step && r.state.now.epoch==1;s=r.state;}
+    #assert s.remaining==7-row && s.phase==ScPhase.row && !s.holding && !s.pending;
+  }
+  r=sc_request(s,sc_observation(s.now));#assert r.status==ScStatus.ok && r.ticket.base_step==200 && r.ticket.serial==2;
+}
+#test "one hold row reanchors request origins rather than a global modulo two hundred" {
+  a:=sc_request(sc_begin(),sc_observation(ScSimInstant.{epoch=1}));s:=sc_select(a.state,true).state;
+  #assert s.holding && s.pending && s.remaining==0;
+  for sub:0..<25 {s=sc_sample(s,s.now).state;s=sc_control(s,sub==0,true).state;s=sc_receipt(s,ScSimInstant.{epoch=1,step=sub+1},0).state;}
+  #assert s.phase==ScPhase.waiting && s.now.step==25 && !s.holding;
+  #assert sc_accept(s,a.ticket).status==ScStatus.stale;
+  s=sc_refuse(s).state;#assert s.origin==25;r:=sc_request(s,sc_observation(s.now));#assert r.status==ScStatus.ok && r.ticket.base_step==25 && r.ticket.serial==2;
+  s=sc_accept(r.state,r.ticket).state;
+  for row:0..<8 {s=sc_select(s,false).state;for sub:0..<25 {s=sc_sample(s,s.now).state;s=sc_control(s,sub==0,true).state;s=sc_receipt(s,ScSimInstant.{epoch=1,step=s.now.step+1},0).state;}}
+  r=sc_request(s,sc_observation(s.now));#assert r.ticket.base_step==225 && r.ticket.serial==3;
+  s=sc_begin();s=sc_select(s,true).state;for sub:0..<25 {s=sc_sample(s,s.now).state;s=sc_control(s,sub==0,true).state;s=sc_receipt(s,ScSimInstant.{epoch=1,step=sub+1},0).state;}#assert s.phase==ScPhase.row && s.remaining==0;
+}
+#test "tickets bind epoch serial profile and unchanged simulation origin not wall latency" {
+  req:=sc_request(sc_begin(),sc_observation(ScSimInstant.{epoch=1}));
+  for mode:0..<4 {t:=req.ticket;if mode==0 {t.epoch+=1;}if mode==1 {t.serial+=1;}if mode==2 {t.profile+=1;}if mode==3 {t.base_step+=25;}r:=sc_accept(req.state,t);#assert r.status==ScStatus.stale && r.state.phase==ScPhase.waiting && r.state.serial==1 && r.state.remaining==0;}
+  start:=ScSteadyInstant.{session=1};end:=ScSteadyInstant.{session=1,ns=1000000000000};#assert sc_steady_elapsed(start,end).delta.ns==1000000000000;
+  #assert sc_accept(req.state,req.ticket).status==ScStatus.ok;
+  fresh:=sc_reset(req.state);#assert fresh.status==ScStatus.ok && fresh.state.now.epoch==2 && fresh.state.now.step==0 && fresh.state.serial==0 && fresh.state.origin==0 && fresh.state.remaining==0 && !fresh.state.pending;
+  #assert sc_accept(fresh.state,req.ticket).status==ScStatus.order;
+}
+#test "capture labels precede fresh sample and reject each mixed generation independently" {
+  s:=sc_begin();s.now.step=25;obs:=sc_observation(s.now);#assert obs.last_forward.epoch==1 && obs.last_forward.step==24 && obs.qpos.epoch==1 && obs.qpos.step==25;
+  for mode:0..<4 {bad:=obs;if mode==0 {bad.last_forward.epoch=2;}if mode==1 {bad.last_forward.step=25;}if mode==2 {bad.qpos.epoch=2;}if mode==3 {bad.qpos.step=24;}r:=sc_request(s,bad);#assert r.status==ScStatus.sample && r.state.phase==ScPhase.row && r.state.serial==0;}
+  r:=sc_request(s,obs);#assert r.state.origin==25;r=sc_accept(r.state,r.ticket);s=sc_select(r.state,false).state;
+  #assert sc_request(s,obs).status==ScStatus.order && sc_control(s,true,true).status==ScStatus.order;
+  #assert sc_sample(s,ScSimInstant.{epoch=2,step=25}).status==ScStatus.sample && sc_sample(s,ScSimInstant.{epoch=1,step=24}).status==ScStatus.sample;
+  r=sc_sample(s,s.now);#assert r.goal_update && r.state.phase==ScPhase.control;
+  #assert sc_control(r.state,false,true).status==ScStatus.order && sc_control(r.state,true,false).status==ScStatus.order;
+  r=sc_control(r.state,true,true);r=sc_receipt(r.state,ScSimInstant.{epoch=1,step=26},0);s=r.state;
+  r=sc_sample(s,s.now);#assert !r.goal_update && sc_control(r.state,true,true).status==ScStatus.order && sc_control(r.state,false,true).status==ScStatus.ok;
+}
+#test "structural phase validation distinguishes inactive hold and pending fields" {
+  for phase:0..<7 {s:=sc_begin();s.phase=cast(ScPhase)cast(u8)phase;
+    if phase==0 {#assert sc_schedule_valid(s);s.holding=true;#assert !sc_schedule_valid(s);s.holding=false;s.pending=true;#assert !sc_schedule_valid(s);s.pending=false;s.now.step=1;#assert !sc_schedule_valid(s);}
+    if phase==1 {#assert !sc_schedule_valid(s);s.pending=true;#assert sc_schedule_valid(s);s.remaining=1;#assert !sc_schedule_valid(s);s.remaining=0;s.holding=true;#assert !sc_schedule_valid(s);s.holding=false;s.now.step=1;#assert !sc_schedule_valid(s);}
+    if phase>=2 && phase<=4 {#assert !sc_schedule_valid(s);s.holding=true;#assert sc_schedule_valid(s);s.remaining=1;#assert !sc_schedule_valid(s);s.holding=false;#assert sc_schedule_valid(s);s.pending=true;#assert !sc_schedule_valid(s);}
+    if phase>=5 {#assert sc_schedule_valid(s);}
+  }
+  #assert sc_phase_valid(0) && sc_phase_valid(6) && !sc_phase_valid(7);
+  s:=sc_begin();s.now.step=25;s.origin=1;#assert !sc_schedule_valid(s);
+  s=sc_begin();s.remaining=1;#assert sc_refuse(s).status==ScStatus.ok;
+  #assert sc_observation(ScSimInstant.{epoch=1,step=1}).last_forward.step==0 && sc_observation(ScSimInstant.{}).qpos.epoch==0;
+  s=sc_begin();s.now.step=18000;s.origin=18000;s.phase=ScPhase.receipt;s.holding=true;r:=sc_receipt(s,ScSimInstant.{epoch=1,step=18001},0);#assert r.status==ScStatus.exhausted && r.state.phase==ScPhase.halted;
+}
+#test "duplicate skipped foreign and failed step receipts halt without publishing time" {
+  s:=sc_select(sc_begin(),true).state;s=sc_sample(s,s.now).state;s=sc_control(s,true,true).state;
+  for mode:0..<4 {after:=ScSimInstant.{epoch=1,step=1};effect:=0;if mode==0 {after.step=0;}if mode==1 {after.step=2;}if mode==2 {after.epoch=2;}if mode==3 {effect=1;}r:=sc_receipt(s,after,effect);#assert r.status==ScStatus.effect && r.state.phase==ScPhase.halted && r.state.now.step==0 && r.state.holding;#assert sc_select(r.state,true).status==ScStatus.order;}
+  early:=sc_receipt(sc_begin(),ScSimInstant.{epoch=1,step=1},0);#assert early.status==ScStatus.order && early.state.phase==ScPhase.halted && early.state.now.step==0;
+  done:=sc_receipt(s,ScSimInstant.{epoch=1,step=1},0);duplicate:=sc_receipt(done.state,ScSimInstant.{epoch=1,step=1},0);#assert duplicate.status==ScStatus.order && duplicate.state.phase==ScPhase.halted && duplicate.state.now.step==1;
+}
+#test "phase and horizon refusals preserve each cursor and reset checks epoch room" {
+  s:=sc_begin();#assert sc_select(s,false).status==ScStatus.order && sc_accept(s,ScTicket.{}).status==ScStatus.order && sc_refuse(s).status==ScStatus.order && sc_sample(s,s.now).status==ScStatus.order && sc_control(s,true,true).status==ScStatus.order;
+  req:=sc_request(s,sc_observation(s.now));#assert sc_request(req.state,sc_observation(s.now)).status==ScStatus.order;
+  ready:=sc_accept(req.state,req.ticket).state;#assert sc_request(ready,sc_observation(ready.now)).status==ScStatus.order && sc_select(ready,true).status==ScStatus.order;
+  ready=sc_refuse(ready).state;#assert ready.remaining==0 && ready.origin==0 && ready.phase==ScPhase.row;
+  s.serial=1000000;#assert sc_request(s,sc_observation(s.now)).status==ScStatus.exhausted;s.serial=0;s.now.epoch=1000000;#assert sc_reset(s).status==ScStatus.exhausted;
+  s=sc_begin();s.now.step=18000;s.origin=18000;#assert sc_request(s,sc_observation(s.now)).status==ScStatus.exhausted && sc_select(s,true).status==ScStatus.exhausted;
+  s=sc_begin();s.now.step=17975;s.origin=17975;s=sc_select(s,true).state;for sub:0..<25 {s=sc_sample(s,s.now).state;s=sc_control(s,sub==0,true).state;s=sc_receipt(s,ScSimInstant.{epoch=1,step=s.now.step+1},0).state;}#assert s.now.step==18000 && s.phase==ScPhase.finished;
+  for mode:0..<8 {bad:=sc_begin();if mode==0 {bad.now.epoch=0;}if mode==1 {bad.origin=-25;}if mode==2 {bad.origin=25;}if mode==3 {bad.serial=-1;}if mode==4 {bad.serial=1000001;}if mode==5 {bad.remaining=-1;}if mode==6 {bad.remaining=9;}if mode==7 {bad.origin=1;}#assert !sc_schedule_valid(bad) && sc_request(bad,ScObservation.{}).status==ScStatus.range;}
+}
+
+sc_phase_valid :: (phase:u8)->bool #export_c {return phase<=6;}
+sc_schedule_valid :: (s:ScSchedule)->bool #export_c {
+  if !sc_sim_valid(s.now) || s.origin<0 || s.origin>s.now.step || s.origin%25!=0 || s.serial<0 || s.serial>SC_ID_MAX || s.remaining<0 || s.remaining>8 || !sc_phase_valid(cast(u8)s.phase) {return false;}
+  if s.phase==ScPhase.row || s.phase==ScPhase.waiting {if s.now.step%25!=0 || s.holding {return false;}if s.phase==ScPhase.row {return !s.pending;}return s.pending && s.remaining==0;}
+  if s.phase==ScPhase.sample || s.phase==ScPhase.control || s.phase==ScPhase.receipt {return ifx s.holding then s.remaining==0 else s.remaining>0 && !s.pending;}
+  return true;
+}
+sc_begin :: ()->ScSchedule #export_c {return ScSchedule.{now=ScSimInstant.{epoch=1}};}
+sc_result :: (status:ScStatus,s:ScSchedule)->ScResult {return ScResult.{status=status,state=s};}
+sc_reset :: (s:ScSchedule)->ScResult #export_c {
+  if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.now.epoch==SC_ID_MAX {return sc_result(ScStatus.exhausted,s);}
+  return sc_result(ScStatus.ok,ScSchedule.{now=ScSimInstant.{epoch=s.now.epoch+1}});
+}
+sc_observation :: (at:ScSimInstant)->ScObservation #export_c {
+  if !sc_sim_valid(at) {return ScObservation.{};}last:=at;if at.step>0 {last.step-=1;}return ScObservation.{last_forward=last,qpos=at};
+}
+sc_request :: (s:ScSchedule,observation:ScObservation)->ScResult #export_c {
+  if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.row || s.remaining!=0 {return sc_result(ScStatus.order,s);}
+  if s.now.step==SC_STEP_MAX || s.serial==SC_ID_MAX {return sc_result(ScStatus.exhausted,s);}
+  expected:=sc_observation(s.now);
+  if observation.last_forward.epoch!=expected.last_forward.epoch || observation.last_forward.step!=expected.last_forward.step || observation.qpos.epoch!=expected.qpos.epoch || observation.qpos.step!=expected.qpos.step {return sc_result(ScStatus.sample,s);}
+  next:=s;next.serial+=1;next.origin=s.now.step;next.pending=true;next.phase=ScPhase.waiting;r:=sc_result(ScStatus.ok,next);r.ticket=ScTicket.{epoch=s.now.epoch,serial=next.serial,profile=1,base_step=s.now.step};return r;
+}
+sc_accept :: (s:ScSchedule,ticket:ScTicket)->ScResult #export_c {
+  if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.waiting {return sc_result(ScStatus.order,s);}
+  if ticket.epoch!=s.now.epoch || ticket.serial!=s.serial || ticket.profile!=1 || ticket.base_step!=s.origin || s.now.step!=s.origin {return sc_result(ScStatus.stale,s);}
+  next:=s;next.remaining=8;next.pending=false;next.phase=ScPhase.row;return sc_result(ScStatus.ok,next);
+}
+sc_refuse :: (s:ScSchedule)->ScResult #export_c {
+  if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.waiting && !(s.phase==ScPhase.row && s.remaining>0) {return sc_result(ScStatus.order,s);}
+  next:=s;next.remaining=0;next.origin=s.now.step;next.pending=false;next.phase=ScPhase.row;return sc_result(ScStatus.ok,next);
+}
+sc_select :: (s:ScSchedule,hold:bool)->ScResult #export_c {
+  if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}
+  if hold {if (s.phase!=ScPhase.row && s.phase!=ScPhase.waiting) || s.remaining!=0 {return sc_result(ScStatus.order,s);}}
+  else {if s.phase!=ScPhase.row || s.remaining==0 {return sc_result(ScStatus.order,s);}if s.now.step!=s.origin+(8-s.remaining)*25 {return sc_result(ScStatus.stale,s);}}
+  if s.now.step==SC_STEP_MAX {return sc_result(ScStatus.exhausted,s);}next:=s;next.phase=ScPhase.sample;next.holding=hold;r:=sc_result(ScStatus.ok,next);if !hold {r.slot=8-s.remaining;}return r;
+}
+sc_sample :: (s:ScSchedule,fresh:ScSimInstant)->ScResult #export_c {
+  if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.sample {return sc_result(ScStatus.order,s);}
+  if fresh.epoch!=s.now.epoch || fresh.step!=s.now.step {return sc_result(ScStatus.sample,s);}
+  next:=s;next.phase=ScPhase.control;r:=sc_result(ScStatus.ok,next);r.goal_update=s.now.step%25==0;return r;
+}
+// Goal changes at 20Hz; torque/gripper intent is admitted on every 500Hz step.
+sc_control :: (s:ScSchedule,goal_update:bool,gripper_update:bool)->ScResult #export_c {
+  if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}if s.phase!=ScPhase.control || goal_update!=(s.now.step%25==0) || !gripper_update {return sc_result(ScStatus.order,s);}
+  next:=s;next.phase=ScPhase.receipt;return sc_result(ScStatus.ok,next);
+}
+sc_receipt :: (s:ScSchedule,after:ScSimInstant,effect:int)->ScResult #export_c {
+  if !sc_schedule_valid(s) {return sc_result(ScStatus.range,s);}next:=s;if s.phase!=ScPhase.receipt {next.phase=ScPhase.halted;return sc_result(ScStatus.order,next);}
+  if s.now.step==SC_STEP_MAX {next.phase=ScPhase.halted;return sc_result(ScStatus.exhausted,next);}
+  if effect!=0 || after.epoch!=s.now.epoch || after.step!=s.now.step+1 {next.phase=ScPhase.halted;return sc_result(ScStatus.effect,next);}
+  next.now=after;next.phase=ScPhase.sample;
+  if after.step%25==0 {if !s.holding {next.remaining-=1;}next.holding=false;next.phase=ifx s.pending then ScPhase.waiting else ScPhase.row;}
+  if after.step==SC_STEP_MAX {next.phase=ScPhase.finished;}return sc_result(ScStatus.ok,next);
+}

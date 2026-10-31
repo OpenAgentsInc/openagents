@@ -300,3 +300,10 @@ batched derivatives against independent polynomial and physical F64 references.
 Actual state publication retains the physical solver’s admission. The
 [own-backend sequence](docs/physics/owned-control-loop.md) records what still
 separates these scalar foundations from matching robot/GR00T qualification.
+
+The [step-clock runtime precursor](docs/physics/step-clock.md) gives the owned
+oscillator distinct clock-domain records, a 500Hz servo/20Hz goal schedule and
+demand-driven chunk requests. Its phase/epoch/refusal rules and native event
+traces are qualified; compiler clock syntax and actual robot integration remain
+pending. Run `psionic/check.sh --only physics/step-clock`, or explicitly select
+`physics/step-clock-native` for its native proof profile.

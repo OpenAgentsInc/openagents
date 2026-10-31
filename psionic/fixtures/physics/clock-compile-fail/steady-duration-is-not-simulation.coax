@@ -1,0 +1,2 @@
+#load "../../../lib/physics/step-clock-domain.coax";
+main :: () {next:=sc_sim_add(ScSimInstant.{epoch=1},ScSteadyDelta.{ns=1});}

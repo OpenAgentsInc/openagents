@@ -1,0 +1,86 @@
+#load "step-clock-types.coax";
+#authority;
+
+#test "clock domains have inclusive bounded records and independent identities" {
+  #assert sc_profile()=="step-clock-500-20-v1";
+  #assert sc_sim_valid(ScSimInstant.{epoch=1}) && sc_sim_valid(ScSimInstant.{epoch=1000000,step=18000});
+  for i:0..<4 {x:=ScSimInstant.{epoch=1};if i==0 {x.epoch=0;}if i==1 {x.epoch=1000001;}if i==2 {x.step=-1;}if i==3 {x.step=18001;}#assert !sc_sim_valid(x);}
+  #assert sc_steady_valid(ScSteadyInstant.{session=1}) && sc_steady_valid(ScSteadyInstant.{session=1000000,ns=9000000000000000000});
+  for i:0..<4 {x:=ScSteadyInstant.{session=1};if i==0 {x.session=0;}if i==1 {x.session=1000001;}if i==2 {x.ns=-1;}if i==3 {x.ns=9000000000000000001;}#assert !sc_steady_valid(x);}
+  #assert sc_civil_valid(ScCivilInstant.{source=1,seconds=-1}) && sc_civil_valid(ScCivilInstant.{source=1000000,seconds=1});
+  #assert !sc_civil_valid(ScCivilInstant.{}) && !sc_civil_valid(ScCivilInstant.{source=1000001});
+  huge:f64=1e308;inf:=huge*huge;nan:=inf-inf;
+  #assert !sc_civil_valid(ScCivilInstant.{source=1,seconds=nan}) && !sc_civil_valid(ScCivilInstant.{source=1,seconds=inf}) && !sc_civil_valid(ScCivilInstant.{source=1,seconds=-inf});
+  #assert sc_finite_bits(0) && sc_finite_bits(0x7fefffffffffffff) && !sc_finite_bits(0x7ff0000000000000) && !sc_finite_bits(0xfff0000000000000) && !sc_finite_bits(0x7ff8000000000001);
+}
+#test "simulation arithmetic checks epoch direction and room before addition" {
+  x:=ScSimInstant.{epoch=3,step=25};r:=sc_sim_add(x,ScSimDelta.{steps=17975});#assert r.status==ScStatus.ok && r.instant.epoch==3 && r.instant.step==18000;
+  #assert sc_sim_add(x,ScSimDelta.{}).status==ScStatus.ok && sc_sim_add(x,ScSimDelta.{}).instant.step==25;
+  for n:[3]int.[-1,17976,18001] {r=sc_sim_add(x,ScSimDelta.{steps=n});#assert r.status==ScStatus.range && r.instant.epoch==3 && r.instant.step==25;}
+  #assert sc_sim_add(ScSimInstant.{},ScSimDelta.{}).status==ScStatus.range;
+  a:=sc_sim_age(x,ScSimInstant.{epoch=3,step=30});#assert a.status==ScStatus.ok && a.delta.steps==5;
+  #assert sc_sim_age(x,x).status==ScStatus.ok && sc_sim_age(x,x).delta.steps==0 && sc_sim_age(x,ScSimInstant.{epoch=4,step=30}).status==ScStatus.domain;
+  #assert sc_sim_age(x,ScSimInstant.{epoch=3,step=24}).status==ScStatus.order && sc_sim_age(ScSimInstant.{},x).status==ScStatus.range && sc_sim_age(x,ScSimInstant.{epoch=3,step=18001}).status==ScStatus.range;
+}
+#test "steady elapsed and deadlines never read host time or simulation counters" {
+  x:=ScSteadyInstant.{session=2,ns=20};e:=sc_steady_elapsed(x,ScSteadyInstant.{session=2,ns=25});#assert e.status==ScStatus.ok && e.delta.ns==5;
+  #assert sc_steady_elapsed(x,x).status==ScStatus.ok && sc_steady_elapsed(x,x).delta.ns==0 && sc_steady_elapsed(x,ScSteadyInstant.{session=3,ns=25}).status==ScStatus.domain && sc_steady_elapsed(x,ScSteadyInstant.{session=2,ns=19}).status==ScStatus.order;
+  #assert sc_steady_elapsed(ScSteadyInstant.{},x).status==ScStatus.range && sc_steady_elapsed(x,ScSteadyInstant.{}).status==ScStatus.range;
+  r:=sc_steady_deadline(x,ScSteadyDelta.{ns=8999999999999999980});#assert r.status==ScStatus.ok && r.instant.session==2 && r.instant.ns==9000000000000000000;
+  #assert sc_steady_deadline(x,ScSteadyDelta.{}).status==ScStatus.ok && sc_steady_deadline(x,ScSteadyDelta.{}).instant.ns==20;
+  for n:[3]int.[-1,8999999999999999981,9000000000000000001] {r=sc_steady_deadline(x,ScSteadyDelta.{ns=n});#assert r.status==ScStatus.range && r.instant.ns==20 && r.instant.session==2;}
+  #assert sc_steady_deadline(ScSteadyInstant.{},ScSteadyDelta.{}).status==ScStatus.range;
+  d:=ScSteadyInstant.{session=2,ns=25};v:=sc_steady_expiry(d,x);#assert v.status==ScStatus.ok && !v.expired && v.remaining.ns==5;
+  v=sc_steady_expiry(d,d);#assert v.status==ScStatus.ok && v.expired && v.remaining.ns==0;
+  v=sc_steady_expiry(d,ScSteadyInstant.{session=2,ns=26});#assert v.expired && v.remaining.ns==0;
+  #assert sc_steady_expiry(d,ScSteadyInstant.{session=3,ns=20}).status==ScStatus.domain && sc_steady_expiry(ScSteadyInstant.{},x).status==ScStatus.range && sc_steady_expiry(d,ScSteadyInstant.{}).status==ScStatus.range;
+}
+#test "seconds are explicit adapters and SDK rounding has its own frozen tolerance" {
+  #assert sc_seconds(ScSimDelta.{}).status==ScStatus.ok && sc_seconds(ScSimDelta.{}).seconds==0 && sc_seconds(ScSimDelta.{steps=1}).seconds==0.002 && sc_seconds(ScSimDelta.{steps=18000}).seconds==36;
+  #assert sc_seconds(ScSimDelta.{steps=-1}).status==ScStatus.range && sc_seconds(ScSimDelta.{steps=18001}).status==ScStatus.range;
+  at:=ScSimInstant.{epoch=1,step=1};eps:=0.00000001490116119384765625;
+  #assert sc_sdk_time(0,0.002,at) && sc_sdk_time(0,0.002+eps,at) && sc_sdk_time(0,0.002-eps,at) && !sc_sdk_time(0,0.002+2*eps,at) && !sc_sdk_time(0,0.002-2*eps,at);
+  #assert sc_sdk_time(100,136,ScSimInstant.{epoch=1,step=18000}) && sc_sdk_time(0,0,ScSimInstant.{epoch=1});
+  #assert !sc_sdk_time(-1,0.002,at) && !sc_sdk_time(100.001,100.003,at) && !sc_sdk_time(0,0.002,ScSimInstant.{});
+  huge:f64=1e308;inf:=huge*huge;#assert !sc_sdk_time(inf-inf,0.002,at) && !sc_sdk_time(0,inf,at);
+}
+
+sc_profile :: ()->string #export_c {return "step-clock-500-20-v1";}
+sc_id :: (n:int)->bool {return n>=1 && n<=SC_ID_MAX;}
+sc_sim_valid :: (at:ScSimInstant)->bool #export_c {return sc_id(at.epoch) && at.step>=0 && at.step<=SC_STEP_MAX;}
+sc_steady_valid :: (at:ScSteadyInstant)->bool #export_c {return sc_id(at.session) && at.ns>=0 && at.ns<=SC_NS_MAX;}
+sc_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+sc_finite :: (x:f64)->bool {return sc_finite_bits(f64_bits(x));}
+sc_civil_valid :: (at:ScCivilInstant)->bool #export_c {return sc_id(at.source) && sc_finite(at.seconds);}
+sc_sim_add :: (at:ScSimInstant,delta:ScSimDelta)->ScSimResult #export_c {
+  if !sc_sim_valid(at) || delta.steps<0 || delta.steps>SC_STEP_MAX-at.step {return ScSimResult.{status=ScStatus.range,instant=at};}
+  return ScSimResult.{instant=ScSimInstant.{epoch=at.epoch,step=at.step+delta.steps}};
+}
+sc_sim_age :: (earlier:ScSimInstant,later:ScSimInstant)->ScAge #export_c {
+  if !sc_sim_valid(earlier) || !sc_sim_valid(later) {return ScAge.{status=ScStatus.range};}
+  if earlier.epoch!=later.epoch {return ScAge.{status=ScStatus.domain};}if later.step<earlier.step {return ScAge.{status=ScStatus.order};}
+  return ScAge.{delta=ScSimDelta.{steps=later.step-earlier.step}};
+}
+sc_steady_elapsed :: (earlier:ScSteadyInstant,later:ScSteadyInstant)->ScElapsed #export_c {
+  if !sc_steady_valid(earlier) || !sc_steady_valid(later) {return ScElapsed.{status=ScStatus.range};}
+  if earlier.session!=later.session {return ScElapsed.{status=ScStatus.domain};}if later.ns<earlier.ns {return ScElapsed.{status=ScStatus.order};}
+  return ScElapsed.{delta=ScSteadyDelta.{ns=later.ns-earlier.ns}};
+}
+sc_steady_deadline :: (at:ScSteadyInstant,delta:ScSteadyDelta)->ScSteadyResult #export_c {
+  if !sc_steady_valid(at) || delta.ns<0 || delta.ns>SC_NS_MAX-at.ns {return ScSteadyResult.{status=ScStatus.range,instant=at};}
+  return ScSteadyResult.{instant=ScSteadyInstant.{session=at.session,ns=at.ns+delta.ns}};
+}
+sc_steady_expiry :: (deadline:ScSteadyInstant,now:ScSteadyInstant)->ScExpiry #export_c {
+  if !sc_steady_valid(deadline) || !sc_steady_valid(now) {return ScExpiry.{status=ScStatus.range};}
+  if deadline.session!=now.session {return ScExpiry.{status=ScStatus.domain};}
+  if now.ns>=deadline.ns {return ScExpiry.{expired=true};}return ScExpiry.{remaining=ScSteadyDelta.{ns=deadline.ns-now.ns}};
+}
+// Exact period is one step / 500 seconds; this boundary returns rounded F64.
+sc_seconds :: (delta:ScSimDelta)->ScSeconds #export_c {
+  if delta.steps<0 || delta.steps>SC_STEP_MAX {return ScSeconds.{status=ScStatus.range};}return ScSeconds.{seconds=f64(delta.steps)/500.0};
+}
+// Keep the historical SDK operation order separate from rational tick arithmetic.
+sc_sdk_time :: (initial:f64,current:f64,at:ScSimInstant)->bool #export_c {
+  if !sc_sim_valid(at) || !sc_finite(initial) || !sc_finite(current) || initial<0 || initial>100 {return false;}
+  return abs(current-(initial+f64(at.step)*0.002))<=0.00000001490116119384765625;
+}

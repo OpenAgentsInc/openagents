@@ -1,0 +1,47 @@
+#load "step-clock-schedule.coax";
+#load "oscillator.coax";
+#authority;
+ScOscState :: struct {clock:ScSchedule;params:OsParams;plant:OsState;held_force:f64;}
+ScOscResult :: struct {status:ScStatus;plant_status:OsStatus;state:ScOscState;}
+
+#test "owned oscillator consumes fixed clock periods and holds a goal for twenty five steps" {
+  r:=sco_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.5});#assert r.status==ScStatus.ok && r.state.clock.now.epoch==1 && r.state.clock.now.step==0 && r.state.held_force==0;s:=r.state;
+  req:=sc_request(s.clock,sc_observation(s.clock.now));s.clock=sc_accept(req.state,req.ticket).state;s.clock=sc_select(s.clock,false).state;s.clock=sc_sample(s.clock,s.clock.now).state;
+  r=sco_control(s,0.5);#assert r.status==ScStatus.ok && r.state.held_force==0.5 && r.state.clock.phase==ScPhase.receipt;s=r.state;
+  r=sco_advance(s,ScSimInstant.{epoch=1,step=1},0);#assert r.status==ScStatus.ok && r.state.clock.now.step==1 && r.state.plant.position<0.5;s=r.state;
+  s.clock=sc_sample(s.clock,s.clock.now).state;bad:=sco_control(s,-0.5);#assert bad.status==ScStatus.order && bad.state.held_force==0.5 && bad.state.clock.phase==ScPhase.control;
+  r=sco_control(s,0.5);#assert r.status==ScStatus.ok && r.state.held_force==0.5;s=r.state;
+  r=sco_advance(s,ScSimInstant.{epoch=1,step=2},0);#assert r.status==ScStatus.ok && r.state.clock.now.step==2;
+  s=r.state;for sub:2..<25 {s.clock=sc_sample(s.clock,s.clock.now).state;s=sco_control(s,0.5).state;s=sco_advance(s,ScSimInstant.{epoch=1,step=sub+1},0).state;}
+  #assert s.clock.now.step==25 && s.clock.phase==ScPhase.row && s.clock.remaining==7;
+  s.clock=sc_select(s.clock,false).state;s.clock=sc_sample(s.clock,s.clock.now).state;r=sco_control(s,-0.5);#assert r.status==ScStatus.ok && r.state.held_force== -0.5;
+}
+#test "oscillator adapter preserves plant and time on clock or physical refusal" {
+  #assert sco_begin(OsParams.{mass=2,spring=2,damping=0.5},OsState.{}).status==ScStatus.range;
+  s:=sco_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.5}).state;
+  #assert sco_control(s,0).status==ScStatus.order && sco_advance(s,ScSimInstant.{epoch=1,step=1},0).status==ScStatus.order;
+  s.clock=sc_select(s.clock,true).state;s.clock=sc_sample(s.clock,s.clock.now).state;
+  r:=sco_control(s,2.001);#assert r.status==ScStatus.range && r.plant_status==OsStatus.force && r.state.clock.phase==ScPhase.control && r.state.held_force==0;
+  s=sco_control(s,0).state;
+  r=sco_advance(s,ScSimInstant.{epoch=1,step=2},0);#assert r.status==ScStatus.effect && r.state.clock.phase==ScPhase.halted && r.state.clock.now.step==0 && r.state.plant.position==0.5;
+  r=sco_advance(s,ScSimInstant.{epoch=1,step=1},1);#assert r.status==ScStatus.effect && r.state.plant.position==0.5 && r.state.clock.now.step==0;
+  s.plant=OsState.{position=2,velocity=4};r=sco_advance(s,ScSimInstant.{epoch=1,step=1},0);#assert r.status==ScStatus.effect && r.plant_status==OsStatus.state && r.state.clock.phase==ScPhase.halted && r.state.clock.now.step==0 && r.state.plant.position==2 && r.state.plant.velocity==4;
+}
+
+sco_begin :: (params:OsParams,plant:OsState)->ScOscResult #export_c {
+  state:=ScOscState.{clock=sc_begin(),params=params,plant=plant};status:=os_admit(params,plant,0,0.002);
+  return ScOscResult.{status=ifx status==OsStatus.ok then ScStatus.ok else ScStatus.range,plant_status=status,state=state};
+}
+sco_control :: (s:ScOscState,force:f64)->ScOscResult #export_c {
+  clock:=sc_control(s.clock,s.clock.now.step%25==0,true);if clock.status!=ScStatus.ok {return ScOscResult.{status=clock.status,state=s};}
+  status:=os_admit(s.params,s.plant,force,0.002);if status!=OsStatus.ok {return ScOscResult.{status=ScStatus.range,plant_status=status,state=s};}
+  next:=s;if s.clock.now.step%25==0 {next.held_force=force;}else if force!=s.held_force {return ScOscResult.{status=ScStatus.order,state=s};}
+  next.clock=clock.state;return ScOscResult.{state=next};
+}
+// Both stages are pure values. Publish time and plant only after both admit.
+sco_advance :: (s:ScOscState,after:ScSimInstant,effect:int)->ScOscResult #export_c {
+  clock:=sc_receipt(s.clock,after,effect);next:=s;next.clock=clock.state;if clock.status!=ScStatus.ok {return ScOscResult.{status=clock.status,state=next};}
+  step:=os_step(s.params,s.plant,s.held_force,0.002);
+  if step.status!=OsStatus.ok {next.clock=s.clock;next.clock.phase=ScPhase.halted;return ScOscResult.{status=ScStatus.effect,plant_status=step.status,state=next};}
+  next.plant=step.state;return ScOscResult.{state=next};
+}
