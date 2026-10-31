@@ -551,20 +551,20 @@ ws_frame_read :: (bytes: string, limit: int) -> WsFrame {
 ws_utf8 :: (s: string) -> bool {
   i := 0;
   while i < s.count {
-    c := s[i]; need: int = ---; lo: u8 = 0x80; hi: u8 = 0xbf;
+    c := s[i]; need: int = ---; low: u8 = 0x80; high: u8 = 0xbf;
     if c < 0x80 { i += 1; continue; }
     if c >= 0xc2 && c <= 0xdf { need = 1; }
     else if c >= 0xe0 && c <= 0xef {
       need = 2;
-      if c == 0xe0 { lo = 0xa0; }
-      if c == 0xed { hi = 0x9f; }
+      if c == 0xe0 { low = 0xa0; }
+      if c == 0xed { high = 0x9f; }
     } else if c >= 0xf0 && c <= 0xf4 {
       need = 3;
-      if c == 0xf0 { lo = 0x90; }
-      if c == 0xf4 { hi = 0x8f; }
+      if c == 0xf0 { low = 0x90; }
+      if c == 0xf4 { high = 0x8f; }
     } else { return false; }
     if i + need >= s.count { return false; }
-    if s[i + 1] < lo || s[i + 1] > hi { return false; }
+    if s[i + 1] < low || s[i + 1] > high { return false; }
     for k: 2..<need + 1 { if s[i + k] < 0x80 || s[i + k] > 0xbf { return false; } }
     i += need + 1;
   }

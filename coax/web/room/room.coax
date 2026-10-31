@@ -1,0 +1,181 @@
+// The Orbit League room server's decisions (ol-room): which room a
+// WebSocket's path names, who sits where, the 60 Hz tick and what each
+// player hears. Up to ROOMS rooms of ROOM_PLAYERS. The server owns each
+// room's ball: every tick it steps it twice at 120 Hz (orbitleague.coax's
+// room_step, the physics the game runs) against the arena and the cars the
+// players report, then writes each player the room's state
+// (orbitleague.coax's room_state; the frames are described there).
+//
+// room-host.c moves the bytes: TCP, the RFC 6455 handshake and frames
+// (verse/voice-host/ws.c), and the clock. It calls the exports here and
+// sends what they write. (The Coax WebSocket server, coax/lib/net/ws_server.coax,
+// is #authority, and an authority file runs every loaded check on every
+// build within 20,000,000 steps; orbitleague.coax's physics checks run
+// longer, so the transport stays in the C host.)
+//   coax test --library coax/web/room/room.coax --steps 4000000000
+//   coax/web/room/build.sh && coax/web/room/bin/room --port 8830
+#load "../../../apps/openagents-web/orbitleague.coax";
+
+ROOMS :: 8;
+CONNS :: 32;
+PATH :: "/api/room/orbit-league/";
+
+RmConn :: struct { live: bool; room: int = -1; seat: int = -1; }
+RmRoom :: struct {
+  name: [ROOM_NAME] u8; name_n: int;
+  live: bool; tick: int;
+  s: [1] OrbitLeague;
+  cars: [ROOM_PLAYERS] RigidBody;
+}
+RmServer :: struct {
+  conns: [CONNS] RmConn;
+  rooms: [ROOMS] RmRoom;
+  out: [2048] u8;    // the last frame written for the host to send
+}
+
+// Every field's default (seats -1, the game's own defaults): the host calls
+// this once on zeroed memory.
+rm_init :: (v: [] RmServer) #export_c {
+  for i: 0..<CONNS { v[0].conns[i] = RmConn.{}; }
+  for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
+}
+
+// The room name in "GET /api/room/orbit-league/NAME HTTP/1.1": its bytes into
+// name, the count, or 0 when the path isn't a room's.
+rm_path_room :: (req: string, name: [] u8) -> int {
+  pre := "GET ";
+  if req.count < pre.count + PATH.count || req[0..<pre.count] != pre { return 0; }
+  at := pre.count;
+  if req[at..<at + PATH.count] != PATH { return 0; }
+  i := at + PATH.count; n := 0;
+  while i < req.count && n < name.count {
+    c := req[i];
+    if c >= 'A' && c <= 'Z' { c += 32; }
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { break; }
+    name[n] = c; n += 1; i += 1;
+  }
+  if i >= req.count || (req[i] != ' ' && req[i] != '?') { return 0; }
+  return n;
+}
+// The room with this name, made if there is space: its index, or -1.
+rm_find :: (rooms: [] RmRoom, name: string) -> int {
+  free := -1;
+  for i: 0..<rooms.count {
+    if rooms[i].live && cast(string) rooms[i].name[0..<rooms[i].name_n] == name { return i; }
+    if !rooms[i].live && free < 0 { free = i; }
+  }
+  if free < 0 { return -1; }
+  for i: 0..<name.count { rooms[free].name[i] = name[i]; }
+  rooms[free].name_n = name.count; rooms[free].live = true; rooms[free].tick = 0;
+  room_reset(rooms[free].s[..]);
+  return free;
+}
+// The lowest seat nobody in room r has, or -1 when it is full.
+rm_seat :: (conns: [] RmConn, r: int) -> int {
+  for seat: 0..<ROOM_PLAYERS {
+    taken := false;
+    for i: 0..<conns.count { if conns[i].live && conns[i].room == r && conns[i].seat == seat { taken = true; } }
+    if !taken { return seat; }
+  }
+  return -1;
+}
+
+// A WebSocket asks to open with this request (the host has checked the
+// handshake): its seat, or -1 to refuse (no room's path, or full).
+rm_join :: (v: [] RmServer, conn: int, request: string) -> int #export_c {
+  if conn < 0 || conn >= CONNS { return -1; }
+  name: [ROOM_NAME] u8;
+  n := rm_path_room(request, name[..]);
+  if n == 0 { return -1; }
+  r := rm_find(v[0].rooms[..], cast(string) name[0..<n]);
+  if r < 0 { return -1; }
+  seat := rm_seat(v[0].conns[..], r);
+  if seat < 0 { return -1; }
+  v[0].conns[conn] = RmConn.{live = true, room = r, seat = seat};
+  // it waits at its end's spawn until it reports
+  b := vehicle_body(v[0].rooms[r].s[0].spec, CAR_MASS, d3(cast(f64) (seat / 2) * 6.0, 1.0, -SPAWN_Z), DQ.{});
+  v[0].rooms[r].cars[seat] = room_view(b, seat);
+  return seat;
+}
+// A text frame from a player: its car.
+rm_heard :: (v: [] RmServer, conn: int, text: string) #export_c {
+  if conn < 0 || conn >= CONNS || !v[0].conns[conn].live { return; }
+  c := v[0].conns[conn];
+  v[0].rooms[c.room].cars[c.seat] = room_report(text, v[0].rooms[c.room].cars[c.seat]);
+}
+rm_left :: (v: [] RmServer, conn: int) #export_c {
+  if conn < 0 || conn >= CONNS { return; }
+  v[0].conns[conn] = RmConn.{};
+}
+// One tick: every live room steps twice; a room nobody is in closes.
+rm_tick :: (v: [] RmServer) #export_c {
+  for r: 0..<ROOMS {
+    if !v[0].rooms[r].live { continue; }
+    cars: [ROOM_PLAYERS] RigidBody; n := 0;
+    for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].room == r { cars[n] = v[0].rooms[r].cars[v[0].conns[i].seat]; n += 1; } }
+    if n == 0 { v[0].rooms[r].live = false; continue; }
+    room_step(v[0].rooms[r].s[..], cars[..], n);
+    room_step(v[0].rooms[r].s[..], cars[..], n);
+    v[0].rooms[r].tick += 1;
+  }
+}
+// What conn hears this tick, written to out: its length (0: nothing).
+rm_state :: (v: [] RmServer, conn: int) -> int #export_c {
+  if conn < 0 || conn >= CONNS || !v[0].conns[conn].live { return 0; }
+  r := v[0].conns[conn].room;
+  if !v[0].rooms[r].live { return 0; }
+  cars: [ROOM_PLAYERS] RigidBody; seats: [ROOM_PLAYERS] int; n := 0;
+  for i: 0..<CONNS {
+    if v[0].conns[i].live && v[0].conns[i].room == r { cars[n] = v[0].rooms[r].cars[v[0].conns[i].seat]; seats[n] = v[0].conns[i].seat; n += 1; }
+  }
+  return room_state(v[0].rooms[r].s[..], v[0].rooms[r].tick, v[0].conns[conn].seat, cars[..], seats[..], n, v[0].out[..]);
+}
+rm_players :: (v: [] RmServer) -> int #export_c {
+  n := 0;
+  for i: 0..<CONNS { if v[0].conns[i].live { n += 1; } }
+  return n;
+}
+
+#test "a room's path names it; anything else is no room" {
+  name: [ROOM_NAME] u8;
+  n := rm_path_room("GET /api/room/orbit-league/Topher-1 HTTP/1.1\r\n", name[..]);
+  #assert n == 8 && cast(string) name[0..<n] == "topher-1";
+  #assert rm_path_room("GET /api/room/orbit-league/a?x=1 HTTP/1.1\r\n", name[..]) == 1;
+  #assert rm_path_room("GET /api/room/other/a HTTP/1.1\r\n", name[..]) == 0;
+  #assert rm_path_room("GET /api/room/orbit-league/ HTTP/1.1\r\n", name[..]) == 0;
+  #assert rm_path_room("GET /api/room/orbit-league/a/b HTTP/1.1\r\n", name[..]) == 0;
+  #assert rm_path_room("POST /api/room/orbit-league/a HTTP/1.1\r\n", name[..]) == 0;
+}
+#test "players join by name, four to a room; both hear the same ball, each the other's car" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  req := "GET /api/room/orbit-league/one HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, req) == 0 && rm_join(v[..], 1, req) == 1;
+  #assert rm_join(v[..], 2, "GET /api/room/orbit-league/two HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 3, req) == 2 && rm_join(v[..], 4, req) == 3 && rm_join(v[..], 5, req) == -1;
+  #assert rm_join(v[..], 6, "GET /nope HTTP/1.1\r\n\r\n") == -1;
+  rm_left(v[..], 4); rm_left(v[..], 3);
+  // a kickoff, then seat 0 drives through the ball
+  for t: 0..<cast(int) (KICKOFF * 60.0 + 3.0) { rm_tick(v[..]); }
+  for t: 0..<30 {
+    car := vehicle_body(v[0].rooms[0].s[0].spec, CAR_MASS, d3(0.0, 0.9, -6.0 + cast(f64) t * 20.0 / 60.0), DQ.{});
+    car.vel = d3(0.0, 0.0, 20.0);
+    buf: [256] u8; buf[0] = 'c'; k := room_put_body(buf[..], 1, car);
+    rm_heard(v[..], 0, cast(string) buf[0..<k]);
+    rm_tick(v[..]);
+  }
+  #assert v[0].rooms[0].s[0].bodies[BALL].vel.z > 15.0;
+  // both hear it: seat 0 as it is, seat 1 turned round
+  a: [1] OrbitLeague; b: [1] OrbitLeague;
+  game_reset(a[..]); game_reset(b[..]); a[0].online = true; b[0].online = true;
+  n := rm_state(v[..], 0); room_take(a[..], cast(string) v[0].out[0..<n]);
+  n = rm_state(v[..], 1); room_take(b[..], cast(string) v[0].out[0..<n]);
+  ba := a[0].bodies[BALL]; bb := b[0].bodies[BALL];
+  #assert ba.vel.z > 15.0 && abs(ba.pos.z + bb.pos.z) < 0.002 && abs(ba.pos.x + bb.pos.x) < 0.002 && abs(ba.pos.y - bb.pos.y) < 0.002;
+  #assert a[0].seat == 0 && b[0].seat == 1 && abs(b[0].bodies[BOT].pos.z + v[0].rooms[0].cars[0].pos.z) < 0.002;
+  // the other room is its own
+  #assert rm_state(v[..], 2) > 0 && v[0].rooms[1].s[0].bodies[BALL].vel.z == 0.0;
+  // everyone leaves: the room closes at the next tick
+  rm_left(v[..], 0); rm_left(v[..], 1); rm_tick(v[..]);
+  #assert !v[0].rooms[0].live && rm_players(v[..]) == 1;
+}

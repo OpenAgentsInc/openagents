@@ -107,8 +107,8 @@ WssHello :: struct { status: int; consumed: int; key_from: int; key_to: int; }
   keys := [6] string.["!GhlIHNhbXBsZSBub25jZQ==", "dGhlIHNhbXBsZSBub25jZ!==", "AZaz09+/AAAAAAAAAAAAAA==", "AAAAAAAAAAAAAAAAAAAAAA=a", "@[`{.:,*AAAAAAAAAAAAAA==", "AAAAAAAAAAAAAAAAAAAAA==="];
   ok := [6] bool.[false, false, true, false, false, false];
   for k: 0..<6 { #assert wss_key_ok(keys[k]) == ok[k]; }
-  inside := "AZaz09+/MNmn"; outside := "@[`{/:,*.-_=";
-  for c: inside { #assert wss_key_char(c); }
+  allowed := "AZaz09+/MNmn"; outside := "@[`{/:,*.-_=";
+  for c: allowed { #assert wss_key_char(c); }
   for i: 0..<outside.count { #assert wss_key_char(outside[i]) == (i == 4); }
   #assert wss_media(",application/nostr+json");
 }

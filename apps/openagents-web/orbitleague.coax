@@ -28,6 +28,7 @@
 #load "../../verse/gravity.coax";
 #load "../../verse/thrust.coax";
 #load "../../verse/drum.coax";
+#load "socket.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
@@ -150,6 +151,10 @@ PAD_BIG_R :: 1.6; PAD_SMALL_R :: 1.1;
 ARC :: 36;               // the boost gauge's segments
 STICK :: 60.0;           // CSS pixels of thumb travel for full lock
 CAM_BACK :: 9.5; CAM_UP :: 3.4; FOV :: 1.15;
+ROOM_NAME :: 32;
+ROOM_PLAYERS :: 4;      // the most cars in a room
+ROOM_HZ :: 60.0;        // the server's tick, and how often a player reports its car
+ROOM_OFF :: 0; ROOM_JOINING :: 1; ROOM_IN :: 2; ROOM_LOST :: 3;
 DRUM_R :: 15.0;         // the drum arena's radius, metres; it is as long as the box
 CAM_BALL_OFF :: 0.3;   // radians: the furthest ball cam puts the ball off centre to fit the car in
 
@@ -199,6 +204,10 @@ OrbitLeague :: struct {
   bot_aim: f64;               // its aim's miss on this approach, metres across the goal
   no_bot: bool;               // ?bot=0: practice alone
   drum: bool;                 // ?arena=drum: the drum, not the box
+  // ?room=NAME: online (ol-room): the room server owns the ball, the clock and the score
+  online: bool; room: [ROOM_NAME] u8; room_n: int; origin: [128] u8; origin_n: int;
+  pipe: [1] Pipe; sock: int = -1; sock_open: bool; sock_state: int;   // ROOM_*
+  seat: int; kicks: int; send_t: f64; heard: int;   // heard: server states taken
   cam_up: [3] f32;            // the camera's up, eased (the drum turns it)
   jumped: [2] bool;
   // the look: trails, sparks, the goal's blast, the camera's shake
@@ -503,6 +512,27 @@ stage_hold :: (s: [] OrbitLeague) {
 
 // ---- one physics step
 
+// The ball against the arena: the floor, glass or curve, and the goal ends.
+ball_arena :: (s: [] OrbitLeague) {
+  bp := ball_planes();
+  if s[0].drum {
+    // the curve, inside the drum; in a goal its flat floor
+    bpos := s[0].bodies[BALL].pos;
+    ct := ifx abs(bpos.z) <= ARENA_HZ then drum_sphere(arena_drum(), bpos, BALL_R) else contact_sphere_plane(bpos, BALL_R, bp[0]);
+    if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.65, 0.35); }
+  } else {
+    for p: bp {
+      ct := contact_sphere_plane(s[0].bodies[BALL].pos, BALL_R, p);
+      if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.65, 0.35); }
+    }
+  }
+  for k: 0..<BOXES {
+    b := s[0].boxes[k];
+    ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, b.c, DQ.{}, b.h);
+    if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.5, 0.35); }
+  }
+}
+
 physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   dt := STEP;
   s[0].field.scale = spin_share(s[0].played);
@@ -538,22 +568,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
     dp := drum_planes(dm, s[0].bodies[c + 1].pos);
     s[0].bodies[c + 1] = vehicle_collide(s[0].bodies[c + 1], s[0].spec, ifx s[0].drum then dp[..] else cp[..], 0.1, CAR_WALL_MU);
   }
-  if s[0].drum {
-    // the curve, inside the drum; in a goal its flat floor
-    bpos := s[0].bodies[BALL].pos;
-    ct := ifx abs(bpos.z) <= ARENA_HZ then drum_sphere(dm, bpos, BALL_R) else contact_sphere_plane(bpos, BALL_R, bp[0]);
-    if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.65, 0.35); }
-  } else {
-    for p: bp {
-      ct := contact_sphere_plane(s[0].bodies[BALL].pos, BALL_R, p);
-      if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.65, 0.35); }
-    }
-  }
-  for k: 0..<BOXES {
-    b := s[0].boxes[k];
-    ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, b.c, DQ.{}, b.h);
-    if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.5, 0.35); }
-  }
+  ball_arena(s);
   for c: 0..<2 {
     car := s[0].bodies[c + 1];
     ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, car.pos, car.orientation, s[0].spec.half);
@@ -653,10 +668,10 @@ game_step :: (s: [] OrbitLeague, dt: f64) {
     s[0].carry -= STEP;
     s[0].phase_t += STEP;
     if s[0].phase == PHASE_KICKOFF && s[0].phase_t >= KICKOFF { s[0].phase = PHASE_PLAY; s[0].phase_t = 0.0; }
-    if s[0].phase == PHASE_GOAL && s[0].phase_t >= CELEBRATE {
+    if s[0].phase == PHASE_GOAL && s[0].phase_t >= CELEBRATE && !s[0].online {
       if !s[0].overtime && s[0].clock <= 0.0 { s[0].phase = PHASE_OVER; } else if s[0].overtime { s[0].phase = PHASE_OVER; } else { kickoff(s); }
     }
-    if s[0].phase == PHASE_PLAY {
+    if s[0].phase == PHASE_PLAY && !s[0].online {
       s[0].played += STEP;
       if !s[0].overtime { s[0].clock = fmax(0.0, s[0].clock - STEP); }
       if s[0].clock <= 0.0 && !s[0].overtime {
@@ -670,7 +685,7 @@ game_step :: (s: [] OrbitLeague, dt: f64) {
     drives[1] = bot_drive(s);
     if s[0].phase == PHASE_OVER { drives[0] = Drive.{}; drives[1] = Drive.{}; }
     physics_step(s, drives);
-    if s[0].phase == PHASE_PLAY {
+    if s[0].phase == PHASE_PLAY && !s[0].online {
       z := s[0].bodies[BALL].pos.z;
       if z > ARENA_HZ + BALL_R { goal_scored(s, BLUE); }
       else if z < -ARENA_HZ - BALL_R { goal_scored(s, MAGENTA); }
@@ -808,6 +823,8 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if !s[0].started { game_reset(s); }
   if kind == HOST_FACTS && fact_of(text, "coarse") == "1" { s[0].touch = true; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "arena=drum") { set_arena(s, true); }
+  if kind == HOST_FACTS && !s[0].online && has_text(fact_of(text, "url"), "room=") { room_join(s, fact_of(text, "url")); }
+  if room_socket(s, kind, text) { return; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; kickoff(s); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "stage=highlight") { stage_highlight(s); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "card=1") { s[0].card = true; }
@@ -822,6 +839,237 @@ set_arena :: (s: [] OrbitLeague, drum: bool) {
   s[0].field = ifx drum then drum_field(arena_drum(), FULL_SPIN_G) else gravity_constant(d3(0.0, -FULL_SPIN_G, 0.0));
   build_boxes(s);
   new_match(s);
+}
+
+// ---- the online room (ol-room)
+//
+// The server (coax/web/room/room.coax) owns the ball: it steps it 120 times
+// a second against the arena and the cars its players report, and runs the
+// kickoffs, goals and clock; 60 times a second it sends every player the
+// room's state. Each player drives its own car here and reports it 60 times
+// a second. The text frames are integers (mm, mm/s, 1/10000ths, mrad/s):
+//   to the server:  c PX PY PZ QX QY QZ QW VX VY VZ WX WY WZ
+//   to a player:    s TICK SEAT PHASE PHASE_MS CLOCK_MS BLUE MAGENTA KICKS N  BALL(13)  then N times SEAT CAR(13)
+// Seats 0 and 2 are blue (at -z, attacking +z), 1 and 3 magenta. A
+// magenta player sees the arena turned round (x and z negated), so here
+// every player is blue at -z, attacking +z.
+
+// A body's 13 numbers.
+room_put_body :: (buf: [] u8, at: int, b: RigidBody) -> int {
+  k := at;
+  vals := [13] f64.[b.pos.x * 1000.0, b.pos.y * 1000.0, b.pos.z * 1000.0,
+    b.orientation.x * 10000.0, b.orientation.y * 10000.0, b.orientation.z * 10000.0, b.orientation.w * 10000.0,
+    b.vel.x * 1000.0, b.vel.y * 1000.0, b.vel.z * 1000.0, b.omega.x * 1000.0, b.omega.y * 1000.0, b.omega.z * 1000.0];
+  for v: vals { k = room_put_int(buf, k, cast(int) floor(v + 0.5)); }
+  return k;
+}
+room_put_int :: (buf: [] u8, at: int, v: int) -> int {
+  k := at;
+  if k < buf.count { buf[k] = ' '; k += 1; }
+  if v < 0 { if k < buf.count { buf[k] = '-'; k += 1; } return put_int(buf, k, -v); }
+  return put_int(buf, k, v);
+}
+// Reading: the next integer from at[0] on, skipping spaces; ok[0] false past the end.
+room_int :: (text: string, at: [] int, ok: [] bool) -> int {
+  i := at[0];
+  while i < text.count && text[i] == ' ' { i += 1; }
+  neg := false;
+  if i < text.count && text[i] == '-' { neg = true; i += 1; }
+  if i >= text.count || text[i] < '0' || text[i] > '9' { ok[0] = false; at[0] = i; return 0; }
+  v := 0;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' && v < 100000000000 { v = v * 10 + cast(int) (text[i] - '0'); i += 1; }
+  at[0] = i;
+  return ifx neg then -v else v;
+}
+room_body :: (text: string, at: [] int, ok: [] bool, b: RigidBody) -> RigidBody {
+  v: [13] f64;
+  for i: 0..<13 { v[i] = cast(f64) room_int(text, at, ok); }
+  out := b;
+  out.pos = d3(v[0] / 1000.0, v[1] / 1000.0, v[2] / 1000.0);
+  q := DQ.{x = v[3] / 10000.0, y = v[4] / 10000.0, z = v[5] / 10000.0, w = v[6] / 10000.0};
+  n := sqrt(q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+  out.orientation = ifx n > 0.5 then DQ.{x = q.x / n, y = q.y / n, z = q.z / n, w = q.w / n} else DQ.{};
+  out.vel = d3(v[7] / 1000.0, v[8] / 1000.0, v[9] / 1000.0);
+  out.omega = d3(v[10] / 1000.0, v[11] / 1000.0, v[12] / 1000.0);
+  if !d3_finite(out.pos) || !d3_finite(out.vel) || !d3_finite(out.omega) { return b; }
+  return out;
+}
+// The arena turned round (x and z negated): a magenta seat's view.
+room_turn :: (b: RigidBody) -> RigidBody {
+  out := b;
+  out.pos = d3(-b.pos.x, b.pos.y, -b.pos.z);
+  out.vel = d3(-b.vel.x, b.vel.y, -b.vel.z);
+  out.omega = d3(-b.omega.x, b.omega.y, -b.omega.z);
+  out.orientation = dq_mul(dq_y(PI_D), b.orientation);
+  return out;
+}
+room_view :: (b: RigidBody, seat: int) -> RigidBody { return ifx seat % 2 == 1 then room_turn(b) else b; }
+
+// The server's room: one match, its ball, and the cars its players last reported.
+room_reset :: (s: [] OrbitLeague) {
+  game_reset(s); s[0].no_bot = true;
+  room_kickoff(s);
+}
+room_kickoff :: (s: [] OrbitLeague) {
+  s[0].bodies[BALL] = rigid_body(BALL_MASS, d3_scale(d3(1.0, 1.0, 1.0), 0.4 * BALL_MASS * BALL_R * BALL_R), d3(0.0, BALL_R + 0.02, 0.0), DQ.{});
+  s[0].phase = PHASE_KICKOFF; s[0].phase_t = 0.0;
+  s[0].kicks += 1;
+}
+// One STEP of the room: the clock and phases, then the ball against the
+// arena and the reported cars (they push it; it doesn't push them back).
+room_step :: (s: [] OrbitLeague, cars: [] RigidBody, players: int) {
+  s[0].phase_t += STEP;
+  if s[0].phase == PHASE_KICKOFF && s[0].phase_t >= KICKOFF { s[0].phase = PHASE_PLAY; s[0].phase_t = 0.0; }
+  if s[0].phase == PHASE_GOAL && s[0].phase_t >= CELEBRATE {
+    if s[0].clock <= 0.0 { s[0].score[0] = 0; s[0].score[1] = 0; s[0].clock = MATCH_TIME; s[0].played = 0.0; }
+    room_kickoff(s);
+  }
+  if s[0].phase == PHASE_KICKOFF { return; }
+  if s[0].phase == PHASE_PLAY && players > 0 {
+    s[0].played += STEP; s[0].clock = fmax(0.0, s[0].clock - STEP);
+    // full time: a pause like a goal's, then a new match
+    if s[0].clock <= 0.0 { s[0].phase = PHASE_GOAL; s[0].phase_t = 0.0; s[0].last_goal = -1; }
+  }
+  s[0].field.scale = spin_share(s[0].played);
+  bl := s[0].bodies[BALL];
+  bl.force = d3_add(d3_scale(gravity_at(s[0].field, bl.pos), bl.mass), d3_scale(bl.vel, -bl.mass * BALL_DRAG));
+  one: [1] RigidBody; one[0] = bl;
+  w := rigid_world(STEP, one[..]);
+  w = rigid_step(w, D3_ZERO);
+  s[0].bodies[BALL] = one[0];
+  ball_arena(s);
+  for c: 0..<players {
+    car := cars[c];
+    ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, car.pos, car.orientation, s[0].spec.half);
+    if !ct.hit { continue; }
+    closing := -d3_dot(d3_sub(s[0].bodies[BALL].vel, rigid_point_velocity(car, ct.point)), ct.normal);
+    pair := contact_resolve(s[0].bodies[BALL], car, ct, 0.55, 0.3);
+    if closing > 1.0 { pair.a.vel = d3_add(pair.a.vel, d3_scale(ct.normal, closing * HIT_KICK)); }
+    s[0].bodies[BALL] = pair.a;
+  }
+  sp := d3_len(s[0].bodies[BALL].vel);
+  if sp > BALL_MAX { s[0].bodies[BALL].vel = d3_scale(s[0].bodies[BALL].vel, BALL_MAX / sp); }
+  if s[0].phase == PHASE_PLAY {
+    z := s[0].bodies[BALL].pos.z;
+    team := ifx z > ARENA_HZ + BALL_R then BLUE else ifx z < -ARENA_HZ - BALL_R then MAGENTA else -1;
+    if team >= 0 { s[0].score[team] += 1; s[0].last_goal = team; s[0].phase = PHASE_GOAL; s[0].phase_t = 0.0; }
+  }
+  p := s[0].bodies[BALL].pos;
+  if !d3_finite(p) || abs(p.x) > arena_hx(s) + 4.0 || p.y < -3.0 || p.y > arena_h(s) + 4.0 || abs(p.z) > ARENA_HZ + GOAL_D + 4.0 { room_kickoff(s); }
+}
+// The state frame for the player in `seat`; cars[i] is seat seats[i]'s.
+room_state :: (s: [] OrbitLeague, tick: int, seat: int, cars: [] RigidBody, seats: [] int, players: int, buf: [] u8) -> int {
+  k := 0;
+  buf[k] = 's'; k += 1;
+  k = room_put_int(buf, k, tick); k = room_put_int(buf, k, seat);
+  k = room_put_int(buf, k, s[0].phase); k = room_put_int(buf, k, cast(int) (s[0].phase_t * 1000.0));
+  k = room_put_int(buf, k, cast(int) (s[0].clock * 1000.0));
+  k = room_put_int(buf, k, s[0].score[0]); k = room_put_int(buf, k, s[0].score[1]);
+  k = room_put_int(buf, k, s[0].kicks);
+  k = room_put_int(buf, k, players - 1);
+  k = room_put_body(buf, k, s[0].bodies[BALL]);
+  for i: 0..<players {
+    if seats[i] == seat { continue; }
+    k = room_put_int(buf, k, seats[i]);
+    k = room_put_body(buf, k, cars[i]);
+  }
+  return k;
+}
+// What a player reported: its car, or the old one if the frame is bad.
+room_report :: (text: string, old: RigidBody) -> RigidBody {
+  if text.count < 2 || text[0] != 'c' { return old; }
+  at: [1] int; at[0] = 1; ok: [1] bool; ok[0] = true;
+  b := room_body(text, at[..], ok[..], old);
+  return ifx ok[0] then b else old;
+}
+
+// The player's side. ?room=NAME joins; the socket opens to this site's
+// /api/room/orbit-league/NAME.
+room_join :: (s: [] OrbitLeague, url: string) {
+  // the room's name: [a-z0-9-], at most ROOM_NAME
+  i := 0; key := "room=";
+  found := -1;
+  while i + key.count <= url.count { if url[i..<i + key.count] == key { found = i + key.count; break; } i += 1; }
+  if found < 0 { return; }
+  n := 0; j := found;
+  while j < url.count && n < ROOM_NAME {
+    c := url[j];
+    if c >= 'A' && c <= 'Z' { c += 32; }
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { break; }
+    s[0].room[n] = c; n += 1; j += 1;
+  }
+  if n == 0 { return; }
+  s[0].room_n = n;
+  // the origin: scheme and host
+  sl := 0; k := 0;
+  while k < url.count && sl < 3 { if url[k] == '/' { sl += 1; } if sl < 3 { k += 1; } }
+  secure := url.count > 5 && url[0..<5] == "https";
+  o := 0;
+  pre := ifx secure then "wss://" else "ws://";
+  for b: pre { s[0].origin[o] = b; o += 1; }
+  start := ifx secure then 8 else 7;
+  for q: start..<k { if o < 120 { s[0].origin[o] = url[q]; o += 1; } }
+  s[0].origin_n = o;
+  s[0].online = true; s[0].no_bot = true; s[0].sock_state = ROOM_JOINING;
+  buf: [256] u8; m := 0;
+  for q: 0..<o { buf[m] = s[0].origin[q]; m += 1; }
+  for b: "/api/room/orbit-league/" { buf[m] = b; m += 1; }
+  for q: 0..<n { buf[m] = s[0].room[q]; m += 1; }
+  ok := pipe_open(s[0].pipe[..], cast(string) buf[0..<m]);
+  kickoff(s);
+}
+game_socket_opened :: (s: [] OrbitLeague, id: int) #export_c {
+  s[0].sock = id;
+  if id < 0 { s[0].sock_state = ROOM_LOST; }
+}
+room_socket :: (s: [] OrbitLeague, kind: int, text: string) -> bool {
+  e := socket_event(kind);
+  if e.id < 0 { return false; }
+  if e.id != s[0].sock { return true; }
+  if e.event == SOCKET_OPENED { s[0].sock_open = true; }
+  if e.event == SOCKET_FRAME { room_take(s, text); }
+  if e.event == SOCKET_CLOSED || e.event == SOCKET_ERROR { s[0].sock_open = false; s[0].sock = -1; s[0].sock_state = ROOM_LOST; }
+  return true;
+}
+// A state from the server: the ball, the other car, the score and the phase.
+room_take :: (s: [] OrbitLeague, text: string) {
+  if text.count < 2 || text[0] != 's' { return; }
+  at: [1] int; at[0] = 1; ok: [1] bool; ok[0] = true;
+  tick := room_int(text, at[..], ok[..]); seat := room_int(text, at[..], ok[..]);
+  phase := room_int(text, at[..], ok[..]); phase_ms := room_int(text, at[..], ok[..]); clock_ms := room_int(text, at[..], ok[..]);
+  blue := room_int(text, at[..], ok[..]); magenta := room_int(text, at[..], ok[..]);
+  kicks := room_int(text, at[..], ok[..]); others := room_int(text, at[..], ok[..]);
+  ball := room_body(text, at[..], ok[..], s[0].bodies[BALL]);
+  if !ok[0] || seat < 0 || seat >= ROOM_PLAYERS { return; }
+  s[0].seat = seat; s[0].sock_state = ROOM_IN; s[0].heard += 1;
+  mine := seat % 2;
+  if kicks != s[0].kicks { s[0].kicks = kicks; kickoff(s); }
+  now_mine := ifx mine == 0 then blue else magenta; now_theirs := ifx mine == 0 then magenta else blue;
+  if phase == PHASE_GOAL && s[0].phase != PHASE_GOAL && now_mine + now_theirs > s[0].score[0] + s[0].score[1] {
+    goal_scored(s, ifx now_mine > s[0].score[0] then BLUE else MAGENTA);
+  }
+  s[0].phase = phase; s[0].phase_t = cast(f64) phase_ms / 1000.0; s[0].clock = cast(f64) clock_ms / 1000.0;
+  s[0].score[0] = now_mine; s[0].score[1] = now_theirs;
+  s[0].bodies[BALL] = room_view(ball, seat);
+  // the first other player is drawn as the magenta car; a room alone parks it
+  if others > 0 {
+    other_seat := room_int(text, at[..], ok[..]);
+    car := room_body(text, at[..], ok[..], s[0].bodies[BOT]);
+    if ok[0] { s[0].bodies[BOT] = room_view(car, seat); }
+  } else {
+    s[0].bodies[BOT] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, -40.0, 0.0), DQ.{});
+  }
+}
+// Every frame online: report your car, 60 times a second.
+room_send :: (s: [] OrbitLeague, dt: f64) {
+  if !s[0].online || !s[0].sock_open || s[0].sock < 0 { return; }
+  s[0].send_t += dt;
+  if s[0].send_t < 1.0 / ROOM_HZ - 0.002 { return; }
+  s[0].send_t = 0.0;
+  buf: [256] u8; k := 0;
+  buf[k] = 'c'; k += 1;
+  k = room_put_body(buf[..], k, room_view(s[0].bodies[YOU], s[0].seat));
+  ok := pipe_send(s[0].pipe[..], s[0].sock, cast(string) buf[0..<k]);
 }
 
 // The maker's name, as sent (never read): up to MAKER_BYTES, not cutting a character.
@@ -1103,9 +1351,9 @@ view_rows :: (s: [] OrbitLeague) {
   fx := s[0].cam_at[0] - ex; fy := s[0].cam_at[1] - ey; fz := s[0].cam_at[2] - ez;
   fl := hi(sqrt(fx * fx + fy * fy + fz * fz), 0.001); fx /= fl; fy /= fl; fz /= fl;
   // right = forward x up, up = right x forward (up is +y outside the drum)
-  wx := s[0].cam_up[0]; wy := s[0].cam_up[1]; wz := s[0].cam_up[2];
-  if wx * wx + wy * wy + wz * wz < 0.01 { wx = 0; wy = 1; wz = 0; }
-  rx := fy * wz - fz * wy; ry := fz * wx - fx * wz; rz := fx * wy - fy * wx;
+  upx := s[0].cam_up[0]; upy := s[0].cam_up[1]; upz := s[0].cam_up[2];
+  if upx * upx + upy * upy + upz * upz < 0.01 { upx = 0; upy = 1; upz = 0; }
+  rx := fy * upz - fz * upy; ry := fz * upx - fx * upz; rz := fx * upy - fy * upx;
   rl := hi(sqrt(rx * rx + ry * ry + rz * rz), 0.001); rx /= rl; ry /= rl; rz /= rl;
   ux := ry * fz - rz * fy; uy := rz * fx - rx * fz; uz := rx * fy - ry * fx;
   t: f32 = 1 / tan(cast(f32) FOV * 0.5);
@@ -1234,6 +1482,9 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     v = centred(d, out, v, "GOAL", w * 0.5, h * 0.3, 52 * k, team_ink(s[0].last_goal, k * 2, 1));
     v = centred(d, out, v, ifx s[0].last_goal == BLUE then "YOU SCORED" else "THE BOT SCORED", w * 0.5, h * 0.3 + 34 * k, 11 * k, white(k * 1.4, 1));
   }
+  if s[0].online && s[0].sock_state != ROOM_IN {
+    v = centred(d, out, v, ifx s[0].sock_state == ROOM_LOST then "LOST THE ROOM: PLAYING ON YOUR OWN" else "JOINING THE ROOM", w * 0.5, h * 0.3 + 70 * k, 9 * k, white(k, 0.8));
+  }
   if s[0].phase == PHASE_OVER {
     won := s[0].score[0] > s[0].score[1];
     v = centred(d, out, v, ifx won then "YOU WIN" else "THE BOT WINS", w * 0.5, h * 0.38, 26 * k, team_ink(ifx won then BLUE else MAGENTA, k, 1));
@@ -1341,6 +1592,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   step := clamp(dt, 0, 0.1);
   if !s[0].golden { s[0].time += step; }
   game_step(s, cast(f64) step);
+  room_send(s, cast(f64) step);
   if !s[0].golden { effects_step(s, cast(f64) step); }
   if s[0].jumped[0] { s[0].jumped[0] = false; track_tally(s[0].track[..], "jump", ""); }
   camera(s, step);
@@ -1869,4 +2121,67 @@ drum_game :: (s: [] OrbitLeague) {
     n = game_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
     #assert (u[GOAL_AT + 2] > 0) == s[0].drum;
   }
+}
+
+// ---- the online room's checks (ol-room)
+
+#test "a car's report and the room's state read back as sent, and a magenta seat sees the arena turned round" {
+  s: [1] OrbitLeague;
+  room_reset(s[..]);
+  car := vehicle_body(s[0].spec, CAR_MASS, d3(3.25, 0.9, -12.5), dq_y(0.7));
+  car.vel = d3(-4.0, 0.5, 18.25); car.omega = d3(0.0, 1.5, 0.0);
+  buf: [512] u8; k := 0;
+  buf[0] = 'c'; k = room_put_body(buf[..], 1, car);
+  back := room_report(cast(string) buf[0..<k], RigidBody.{});
+  #assert d3_dist(back.pos, car.pos) < 0.002 && d3_dist(back.vel, car.vel) < 0.002 && abs(back.orientation.y - car.orientation.y) < 0.0002;
+  #assert d3_dist(room_turn(room_turn(car)).pos, car.pos) < 0.000001 && room_turn(car).pos.z == 12.5;
+  // a bad frame keeps the old car
+  #assert room_report("c 1 2 x", car).pos.x == car.pos.x;
+  // the state: seat 1 hears seat 0's car, turned round
+  cars: [2] RigidBody; seats := [2] int.[0, 1];
+  cars[0] = car; cars[1] = room_turn(car);
+  n := room_state(s[..], 7, 1, cars[..], seats[..], 2, buf[..]);
+  p: [1] OrbitLeague;
+  game_reset(p[..]); p[0].online = true; p[0].no_bot = true;
+  room_take(p[..], cast(string) buf[0..<n]);
+  #assert p[0].seat == 1 && p[0].sock_state == ROOM_IN && p[0].heard == 1;
+  #assert d3_dist(p[0].bodies[BOT].pos, room_turn(car).pos) < 0.002;
+}
+#test "the room's ball: a reported car kicks it, it scores, and the room kicks off again" {
+  s: [1] OrbitLeague;
+  room_reset(s[..]);
+  cars: [1] RigidBody;
+  cars[0] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, 0.9, -40.0), DQ.{});
+  for i: 0..<cast(int) ((KICKOFF + 0.1) / STEP) { room_step(s[..], cars[..], 1); }
+  #assert s[0].phase == PHASE_PLAY && d3_len(s[0].bodies[BALL].vel) < 1.0;
+  // a car at 20 m/s into the ball, toward +z
+  for i: 0..<60 {
+    cars[0].pos = d3(0.0, 0.9, -6.0 + cast(f64) i * 20.0 * STEP); cars[0].vel = d3(0.0, 0.0, 20.0);
+    room_step(s[..], cars[..], 1);
+  }
+  #assert s[0].bodies[BALL].vel.z > 15.0;
+  cars[0].pos = d3(20.0, 0.9, -30.0); cars[0].vel = D3_ZERO;
+  for i: 0..<cast(int) (4.0 / STEP) { room_step(s[..], cars[..], 1); }
+  #assert s[0].score[BLUE] == 1 && s[0].phase == PHASE_GOAL;
+  k := s[0].kicks;
+  for i: 0..<cast(int) (CELEBRATE / STEP + 2.0) { room_step(s[..], cars[..], 1); }
+  #assert s[0].kicks == k + 1 && s[0].phase == PHASE_KICKOFF && s[0].bodies[BALL].pos.z == 0.0;
+}
+#test "?room=NAME opens a socket to this site's room, and reports your car 60 times a second once it opens" {
+  s: [1] OrbitLeague;
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?room=Topher-1\n");
+  #assert s[0].online && s[0].no_bot && s[0].pipe[0].n == 1 && s[0].pipe[0].op[0] == PIPE_OPEN;
+  #assert pipe_bytes(s[..][0].pipe[..], 0) == "wss://openagents.com/api/room/orbit-league/topher-1";
+  pipe_drained(s[0].pipe[..]);
+  game_socket_opened(s[..], 2);
+  game_message(s[..], SOCKET_KIND + 4 * 2 + SOCKET_OPENED, "");
+  room_send(s[..], 0.02);
+  #assert s[0].pipe[0].n == 1 && s[0].pipe[0].op[0] == PIPE_SEND && s[0].pipe[0].id[0] == 2;
+  room_send(s[..], 0.005);
+  #assert s[0].pipe[0].n == 1;
+  game_message(s[..], SOCKET_KIND + 4 * 2 + SOCKET_CLOSED, "");
+  #assert s[0].sock_state == ROOM_LOST && !s[0].sock_open;
+  t: [1] OrbitLeague;
+  game_message(t[..], HOST_FACTS, "url=http://127.0.0.1:8894/realms/orbit-league?arena=drum&room=a\n");
+  #assert pipe_bytes(t[0].pipe[..], 0) == "ws://127.0.0.1:8894/api/room/orbit-league/a";
 }
