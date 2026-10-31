@@ -159,6 +159,12 @@ stage (0.8; half for what glows and for her skin and clothes).
   feathers: each wing's outline cut into feather tips, pale at the root and
   its colour toward the tips, white seams and a white rim. A test pins the
   palette muted (no slot far from grey), light, and never orange.
+  Crisp near and middle distance (owner review, October 31): only the far
+  terrain fades (from 140 m over 260 m, at most 0.35) and the tall city round
+  the park sits back as a soft backdrop; the shade is well under the lit
+  (lavender-blue 0.58) so faces read; crowns a clear jade and fresh leaf; and
+  cast shadows slide away from the sun and stretch 1 to 2.2 times as it
+  drops, defined blue-violet shapes rather than blots.
 - **Painterly snow** in a made realm is `PAINT_SNOW`: sky blue (0.5, 0.66, 1.0)
   by day and night, a deeper periwinkle (0.5, 0.52, 1.0) at dawn and dusk (the low warm key turns it
   violet), not the low-poly ground's near white: white snow measured a saturation of

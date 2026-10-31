@@ -52,7 +52,8 @@ fn by_time() -> vec3f {
 fn tp(slot: f32) -> vec3f { return pal(slot) * by_time(); }
 // The flat preset's numbers (verse/style-preset.coax verse_style_flat): the far fade, the hem, a tall
 // shape's dithered darkening toward its foot and its steps.
-const FADE_FROM = 40.0; const FADE_OVER = 80.0; const FADE_CAP = 0.5;
+// Fairy Forest keeps the near and middle park crisp: only the far terrain fades (from 140 m, over 260 m, at most 0.35).
+const FADE_FROM = 140.0; const FADE_OVER = 260.0; const FADE_CAP = 0.35;
 const HEM = 0.06; const DITHER = 0.25; const DITHER_STEPS = 4.0;
 const TAU = 6.2831853;
 
@@ -119,12 +120,16 @@ fn faded(c: vec3f, r: f32) -> vec3f {
   if (r >= 1.0) { return c; }
   let l = dot(c, vec3f(0.3, 0.55, 0.15));
   let grey = vec3f(l) * vec3f(0.98, 0.97, 1.02);
-  return mix(mix(grey, c, 0.55) * 1.06, c, r);
+  return mix(mix(grey, c, 0.7) * 1.03, c, r);
 }
 
 // Far off, a surface goes over to the horizon colour: one soft fade, no fog layers.
+// The city round the park sits back as a soft plain backdrop: what stands tall (8 to 40 m up) and
+// well off (50 to 140 m) goes most of the way to the sky's horizon band, so the park in front stays crisp.
 fn hazed(c: vec3f, world: vec3f) -> vec3f {
-  return mix(c, tp(P_HORIZON), verse_style_flat_fade(max(length(world - u.eye.xyz) - u.overview.x, 0.0), FADE_FROM, FADE_OVER, FADE_CAP));
+  let d = max(length(world - u.eye.xyz) - u.overview.x, 0.0);
+  let backdrop = smoothstep(8.0, 40.0, world.y - u.here.y) * smoothstep(50.0, 140.0, d) * 0.7;
+  return mix(c, tp(P_HORIZON), max(verse_style_flat_fade(d, FADE_FROM, FADE_OVER, FADE_CAP), backdrop));
 }
 
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
@@ -280,10 +285,22 @@ fn clip(w: vec3f) -> vec4f {
 // The cast shadows, flat translucent shapes: the light left (1 none, 0 all), the deepest where they overlap.
 fn blob_shadows(p: vec2f) -> f32 {
   var s = 0.0;
+  let sd = sun_dir();
+  let flat_len = length(sd.xz);
+  let away = select(vec2f(0.0), -sd.xz / max(flat_len, 1e-4), flat_len > 1e-3);
+  let stretch = clamp(flat_len / max(sd.y, 0.05) * 1.1 + 1.0, 1.0, 2.2);
   for (var i = 0; i < 16; i++) {
     let b = u.shadow[i];
     if (b.z <= 0.0) { break; }
-    s = max(s, verse_style_flat_shadow(length(p - b.xy) / b.z) * min(b.w * 1.4, 1.0));
+    // cast away from the sun: the shape slides off its foot and stretches along the ground, longer
+    // the lower the sun (1 to 2.2 times), so the shadows read as long soft shapes, not blots
+    var q = p - b.xy;
+    if (dot(away, away) > 1e-6) {
+      let a = dot(q, away) - b.z * (stretch - 1.0) * 0.8;
+      let c = dot(q, vec2f(-away.y, away.x));
+      q = vec2f(a / stretch, c);
+    }
+    s = max(s, verse_style_flat_shadow(length(q) / b.z) * min(b.w * 1.6, 1.0));
   }
   return 1.0 - s;
 }
@@ -1092,15 +1109,15 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     if ((l_fl_slot < 1.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.866999984, 0.851000011, 0.893999994);
+      return coax_p_st_pick(l_fl_ch, 0.834999979, 0.851000011, 0.921999991);
     }
     if ((l_fl_slot < 2.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.658999979, 0.736999989, 0.537);
+      return coax_p_st_pick(l_fl_ch, 0.626999974, 0.757000029, 0.493999988);
     }
     if ((l_fl_slot < 3.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.592000008, 0.677999973, 0.493999988);
+      return coax_p_st_pick(l_fl_ch, 0.545000017, 0.689999998, 0.458999991);
     }
     if ((l_fl_slot < 4.5))
     {
@@ -1112,11 +1129,11 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     if ((l_fl_slot < 6.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.800000012, 0.796000004, 0.906000018);
+      return coax_p_st_pick(l_fl_ch, 0.579999983, 0.588, 0.800000012);
     }
     if ((l_fl_slot < 7.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.783999979, 0.776000023, 0.910000026);
+      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.600000024, 0.819999993);
     }
     if ((l_fl_slot < 8.5))
     {
@@ -1132,19 +1149,19 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     if ((l_fl_slot < 11.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.545000017, 0.662999988, 0.513999999);
+      return coax_p_st_pick(l_fl_ch, 0.372999996, 0.643000007, 0.505999982);
     }
     if ((l_fl_slot < 12.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.698000014, 0.791999996, 0.579999983);
+      return coax_p_st_pick(l_fl_ch, 0.596000016, 0.811999977, 0.486000001);
     }
     if ((l_fl_slot < 13.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.564999998, 0.768999994, 0.791999996);
+      return coax_p_st_pick(l_fl_ch, 0.501999974, 0.783999979, 0.824000001);
     }
     if ((l_fl_slot < 14.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.626999974, 0.532999992, 0.49000001);
+      return coax_p_st_pick(l_fl_ch, 0.681999981, 0.524999976, 0.455000013);
     }
     if ((l_fl_slot < 15.5))
     {
@@ -1156,13 +1173,13 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     if ((l_fl_slot < 17.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.702000022, 0.694000006, 0.783999979);
+      return coax_p_st_pick(l_fl_ch, 0.698000014, 0.666999996, 0.834999979);
     }
     if ((l_fl_slot < 18.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.757000029, 0.882000029);
+      return coax_p_st_pick(l_fl_ch, 0.824000001, 0.681999981, 0.893999994);
     }
-    return coax_p_st_pick(l_fl_ch, 0.885999978, 0.70599997, 0.768999994);
+    return coax_p_st_pick(l_fl_ch, 0.917999983, 0.638999999, 0.728999972);
   }
   if ((l_fl_slot < 0.5))
   {

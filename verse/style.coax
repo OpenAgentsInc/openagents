@@ -367,25 +367,25 @@ verse_style_flat_srgb :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c {
  }
  if fl_realm>1.5f32 {
   if fl_slot<0.5f32 {return st_pick(fl_ch,0.627f32,0.694f32,0.827f32);}    // sky: a plain soft dusty blue
-  if fl_slot<1.5f32 {return st_pick(fl_ch,0.867f32,0.851f32,0.894f32);}    // horizon: pale lilac-grey
-  if fl_slot<2.5f32 {return st_pick(fl_ch,0.659f32,0.737f32,0.537f32);}    // ground: muted sage
-  if fl_slot<3.5f32 {return st_pick(fl_ch,0.592f32,0.678f32,0.494f32);}    // ground2: a step deeper
+  if fl_slot<1.5f32 {return st_pick(fl_ch,0.835f32,0.851f32,0.922f32);}    // horizon: pale clear blue-lilac
+  if fl_slot<2.5f32 {return st_pick(fl_ch,0.627f32,0.757f32,0.494f32);}    // ground: soft sage
+  if fl_slot<3.5f32 {return st_pick(fl_ch,0.545f32,0.690f32,0.459f32);}    // ground2: a step deeper
   if fl_slot<4.5f32 {return st_pick(fl_ch,0.890f32,0.824f32,0.737f32);}    // path: soft sand
   if fl_slot<5.5f32 {return st_pick(fl_ch,1.000f32,0.984f32,0.953f32);}    // lit: warm white
-  if fl_slot<6.5f32 {return st_pick(fl_ch,0.800f32,0.796f32,0.906f32);}    // shade: soft lavender-blue
-  if fl_slot<7.5f32 {return st_pick(fl_ch,0.784f32,0.776f32,0.910f32);}    // shadow: soft blue-violet
+  if fl_slot<6.5f32 {return st_pick(fl_ch,0.580f32,0.588f32,0.800f32);}    // shade: lavender-blue, well under the lit
+  if fl_slot<7.5f32 {return st_pick(fl_ch,0.600f32,0.600f32,0.820f32);}    // shadow: blue-violet, defined
   if fl_slot<8.5f32 {return st_pick(fl_ch,0.992f32,0.984f32,0.965f32);}    // accent: the crisp white edge
   if fl_slot<9.5f32 {return st_pick(fl_ch,0.165f32,0.165f32,0.247f32);}    // dark: deep indigo, the eyes
   if fl_slot<10.5f32 {return st_pick(fl_ch,0.961f32,0.949f32,0.910f32);}   // light: cream-white
-  if fl_slot<11.5f32 {return st_pick(fl_ch,0.545f32,0.663f32,0.514f32);}   // foliage: sage green
-  if fl_slot<12.5f32 {return st_pick(fl_ch,0.698f32,0.792f32,0.580f32);}   // foliage2: soft leaf
-  if fl_slot<13.5f32 {return st_pick(fl_ch,0.565f32,0.769f32,0.792f32);}   // water: dusty teal
-  if fl_slot<14.5f32 {return st_pick(fl_ch,0.627f32,0.533f32,0.490f32);}   // wood: muted taupe
+  if fl_slot<11.5f32 {return st_pick(fl_ch,0.373f32,0.643f32,0.506f32);}   // foliage: clear jade green
+  if fl_slot<12.5f32 {return st_pick(fl_ch,0.596f32,0.812f32,0.486f32);}   // foliage2: fresh leaf
+  if fl_slot<13.5f32 {return st_pick(fl_ch,0.502f32,0.784f32,0.824f32);}   // water: clear teal
+  if fl_slot<14.5f32 {return st_pick(fl_ch,0.682f32,0.525f32,0.455f32);}   // wood: rosy taupe
   if fl_slot<15.5f32 {return st_pick(fl_ch,0.957f32,0.871f32,0.596f32);}   // warm: butter yellow (never orange)
   if fl_slot<16.5f32 {return st_pick(fl_ch,0.784f32,0.914f32,0.859f32);}   // mint: pale mint
-  if fl_slot<17.5f32 {return st_pick(fl_ch,0.702f32,0.694f32,0.784f32);}   // rock: lavender-grey stone
-  if fl_slot<18.5f32 {return st_pick(fl_ch,0.851f32,0.757f32,0.882f32);}   // lavender: rose-lavender
-  return st_pick(fl_ch,0.886f32,0.706f32,0.769f32);                       // sage slot: dusty rose (the flowers)
+  if fl_slot<17.5f32 {return st_pick(fl_ch,0.698f32,0.667f32,0.835f32);}   // rock: lavender stone
+  if fl_slot<18.5f32 {return st_pick(fl_ch,0.824f32,0.682f32,0.894f32);}   // lavender: rose-lavender
+  return st_pick(fl_ch,0.918f32,0.639f32,0.729f32);                       // sage slot: rose (the flowers)
  }
  if fl_slot<0.5f32 {return st_pick(fl_ch,0.663f32,0.827f32,0.816f32);}     // sky: soft mint-blue
  if fl_slot<1.5f32 {return st_pick(fl_ch,0.910f32,0.937f32,0.816f32);}     // horizon: cream

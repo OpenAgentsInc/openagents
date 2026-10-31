@@ -1061,15 +1061,15 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     if ((l_fl_slot < 1.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.866999984, 0.851000011, 0.893999994);
+      return coax_p_st_pick(l_fl_ch, 0.834999979, 0.851000011, 0.921999991);
     }
     if ((l_fl_slot < 2.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.658999979, 0.736999989, 0.537);
+      return coax_p_st_pick(l_fl_ch, 0.626999974, 0.757000029, 0.493999988);
     }
     if ((l_fl_slot < 3.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.592000008, 0.677999973, 0.493999988);
+      return coax_p_st_pick(l_fl_ch, 0.545000017, 0.689999998, 0.458999991);
     }
     if ((l_fl_slot < 4.5))
     {
@@ -1081,11 +1081,11 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     if ((l_fl_slot < 6.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.800000012, 0.796000004, 0.906000018);
+      return coax_p_st_pick(l_fl_ch, 0.579999983, 0.588, 0.800000012);
     }
     if ((l_fl_slot < 7.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.783999979, 0.776000023, 0.910000026);
+      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.600000024, 0.819999993);
     }
     if ((l_fl_slot < 8.5))
     {
@@ -1101,19 +1101,19 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     if ((l_fl_slot < 11.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.545000017, 0.662999988, 0.513999999);
+      return coax_p_st_pick(l_fl_ch, 0.372999996, 0.643000007, 0.505999982);
     }
     if ((l_fl_slot < 12.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.698000014, 0.791999996, 0.579999983);
+      return coax_p_st_pick(l_fl_ch, 0.596000016, 0.811999977, 0.486000001);
     }
     if ((l_fl_slot < 13.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.564999998, 0.768999994, 0.791999996);
+      return coax_p_st_pick(l_fl_ch, 0.501999974, 0.783999979, 0.824000001);
     }
     if ((l_fl_slot < 14.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.626999974, 0.532999992, 0.49000001);
+      return coax_p_st_pick(l_fl_ch, 0.681999981, 0.524999976, 0.455000013);
     }
     if ((l_fl_slot < 15.5))
     {
@@ -1125,13 +1125,13 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     if ((l_fl_slot < 17.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.702000022, 0.694000006, 0.783999979);
+      return coax_p_st_pick(l_fl_ch, 0.698000014, 0.666999996, 0.834999979);
     }
     if ((l_fl_slot < 18.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.757000029, 0.882000029);
+      return coax_p_st_pick(l_fl_ch, 0.824000001, 0.681999981, 0.893999994);
     }
-    return coax_p_st_pick(l_fl_ch, 0.885999978, 0.70599997, 0.768999994);
+    return coax_p_st_pick(l_fl_ch, 0.917999983, 0.638999999, 0.728999972);
   }
   if ((l_fl_slot < 0.5))
   {
