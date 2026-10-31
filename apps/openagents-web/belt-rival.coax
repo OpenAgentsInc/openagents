@@ -1,4 +1,4 @@
-// Belt 2200's rival economy (b22-ai): the Mars Union mines the Belt from its yard at Vesta, by a
+// Belt 2200's rival economy (b22-ai): the Mars Union mines the Belt from its yard at Ceres, by a
 // fixed script with no model calls, so a seeded game plays the same every time. Its miners fly to
 // an ice rock, mine a hold full, leave a rig there and fly home; the yard turns the metal in the rock
 // into more miners; and when it is behind it goes for the rocks with our rigs on them, taking the ice
@@ -22,7 +22,7 @@ rival_miner_new :: (i: int) -> Ship {
   sh.crew = 8;
   return sh;
 }
-// Where a faction's ships unload: Hearth for ours, Vesta for the Union.
+// Where a faction's ships unload: Hearth for ours, Ceres for the Union.
 home_of :: (faction: int) -> int { return ifx faction == FREE_BELT then P_STATION else RIVAL_HOME; }
 is_rival_miner :: (sh: Ship) -> bool { return sh.faction == MARS_UNION && sh.cargo_cap > 0.0; }
 rival_count :: (s: [] Belt) -> int {
