@@ -1106,6 +1106,14 @@ query_is :: (url: string, key: string, value: string) -> bool {
 // A staged moment for clips (?stage=highlight, docs/verse/clips.md): the last wave against
 // a full party at level 3, the stair crowded and every class firing.
 // The free tile beside the stair nearest a point part of the way up it.
+// Some defender has a level the gold buys.
+can_level :: (s: [] Stair) -> bool {
+  for k: 0..<DEFENDERS {
+    d := s[0].party[k];
+    if d.live && d.level < MAX_LEVEL && up_cost(d.cls, d.level) <= s[0].gold { return true; }
+  }
+  return false;
+}
 spot_near :: (s: [] Stair, along: f32) -> int {
   best := -1; bd := 1000.0f32;
   m := path_at(s[0].path_len * along);
@@ -1142,6 +1150,13 @@ coaxial_stair_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 // ---- drawing
 
+// A heart hr round from its left edge at x, its lobes' middles at y.
+heart :: (out: [] f32, at: int, lx: f32, hy: f32, hr: f32) -> int {
+  n := disc(out, at, lx + hr * 0.75, hy - hr * 0.35, hr, 1, hr * 0.6, 1.0, 0.3, 0.32);
+  n = disc(out, n, lx + hr * 2.25, hy - hr * 0.35, hr, 1, hr * 0.6, 1.0, 0.3, 0.32);
+  n = seg(out, n, lx + hr * 0.3, hy, lx + hr * 1.5, hy + hr * 1.35, hr * 0.62, 1, hr * 0.4, 1.0, 0.3, 0.32);
+  return seg(out, n, lx + hr * 2.7, hy, lx + hr * 1.5, hy + hr * 1.35, hr * 0.62, 1, hr * 0.4, 1.0, 0.3, 0.32);
+}
 plate :: (s: [] Stair, u: [] f32, r: Rect, alpha: f32, style: f32) { plate_icon(s, u, r, alpha, style, -1); }
 // A panel; icon: a class whose portrait stair.wgsl paints at its left (-1 none).
 plate_icon :: (s: [] Stair, u: [] f32, r: Rect, alpha: f32, style: f32, icon: int) {
@@ -1518,10 +1533,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   m := put_int(buf[..], 0, s[0].lives);
   lx := ifx s[0].portrait then 88 * k else 112 * k;
   hy := 32 * k - cap * 0.5; hr := cap * 0.36;
-  n = disc(out, n, lx + hr * 0.75, hy - hr * 0.35, hr, 1, hr * 0.6, 1.0, 0.3, 0.32);
-  n = disc(out, n, lx + hr * 2.25, hy - hr * 0.35, hr, 1, hr * 0.6, 1.0, 0.3, 0.32);
-  n = seg(out, n, lx + hr * 0.3, hy, lx + hr * 1.5, hy + hr * 1.35, hr * 0.62, 1, hr * 0.4, 1.0, 0.3, 0.32);
-  n = seg(out, n, lx + hr * 2.7, hy, lx + hr * 1.5, hy + hr * 1.35, hr * 0.62, 1, hr * 0.4, 1.0, 0.3, 0.32);
+  n = heart(out, n, lx, hy, hr);
   lx += hr * 3 + 6 * k;
   n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, 1.0, 0.42, 0.4));
   lx += text_width(cast(string) buf[0..<m], cap) + sp;
@@ -1602,7 +1614,13 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     hint := "PICK A DEFENDER, THEN A TILE BESIDE THE STAIR";
     cheapest := CLASS_COST[FIGHTER];
     for c: 0..<CLASSES { if CLASS_COST[c] < cheapest { cheapest = CLASS_COST[c]; } }
+    hb: [64] u8;
     if left <= 0 { hint = ifx s[0].phase == BUILD then "START THE WAVE FOR MORE" else "MORE WHEN THE NEXT WAVE STARTS"; }
+    if left <= 0 && s[0].phase == BUILD && s[0].gold >= 150 && can_level(s) {
+      // gold piling up with the round's places used: spend it on levels
+      hm := put_int(hb[..], 0, s[0].gold); hm = put(hb[..], hm, " GOLD UNSPENT · TAP A DEFENDER TO LEVEL IT UP");
+      hint = cast(string) hb[0..<hm];
+    }
     else if s[0].pick < 0 && s[0].gold < cheapest { hint = "NOT ENOUGH GOLD YET · POP BEASTS FOR MORE"; }
     else if s[0].pick >= 0 {
       if s[0].touch { hint = ifx aim_cell(s) >= 0 then "TAP IT AGAIN TO PLACE · TAP OFF THE MAP TO STOP" else "TAP A TILE TO SEE ITS REACH"; }
@@ -1670,6 +1688,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       if kind < 0 { continue; }
       m = put(buf[..], 0, "X"); m = put_int(buf[..], m, WAVE_COUNT[s[0].wave * GROUPS + g]);
       total += br * 2 + 4 * k + text_width(cast(string) buf[0..<m], pc) + 12 * k;
+      if LAYER_LIVES[kind] > 1 { m = put_int(buf[..], 0, LAYER_LIVES[kind]); total += pc * 1.1 + 3 * k + text_width(cast(string) buf[0..<m], pc) + 10 * k; }
     }
     px := s[0].bx + f32(s[0].scols) * s[0].bt * 0.5 - total / 2;
     plate(s, u, Rect.{x0 = px - 10 * k, y0 = wy - pc * 0.5 - 7 * k, x1 = px + total + 4 * k, y1 = wy + pc * 0.5 + 7 * k}, 0.8, 0);
@@ -1683,6 +1702,15 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       m = put(buf[..], 0, "X"); m = put_int(buf[..], m, WAVE_COUNT[s[0].wave * GROUPS + g]);
       n = say_at(out, n, cast(string) buf[0..<m], px, wy + pc * 0.5, pc, ink(k, 1, LAYER_R[kind], LAYER_G[kind], LAYER_B[kind]));
       px += text_width(cast(string) buf[0..<m], pc) + 12 * k;
+      // the lives each takes if it reaches the top
+      if LAYER_LIVES[kind] > 1 {
+        hr2 := pc * 0.36;
+        n = heart(out, n, px, wy - hr2 * 0.2, hr2);
+        px += pc * 1.1 + 3 * k;
+        m = put_int(buf[..], 0, LAYER_LIVES[kind]);
+        n = say_at(out, n, cast(string) buf[0..<m], px, wy + pc * 0.5, pc, ink(k, 1, 1.0, 0.42, 0.4));
+        px += text_width(cast(string) buf[0..<m], pc) + 10 * k;
+      }
     }
   }
   // the wave's name as it starts
@@ -2001,6 +2029,21 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   #assert live_beasts(s[..]) >= SWARM && s[0].phase == FIGHT;
   n := stair_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false);
   #assert n > SWARM * 6 && n < MAX_VERTICES;
+}
+
+#test "the NEXT preview names the lives a beast takes, and gold piling up with the round's places used says to level up" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  s[0].wave = 4;   // wave 5 is next: glimmers, seven lives each
+  n0 := stair_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  s[0].wave = 0;   // wave 1: motes, one life each, no heart
+  n1 := stair_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert n0 > n1;
+  #assert !can_level(s[..]);
+  #assert place(s[..], spot_near(s[..], 0.3), FIGHTER);
+  s[0].gold = 400;
+  #assert can_level(s[..]);
 }
 
 #test "a claimed maker's name draws MADE BY <NAME> · TIP, and TIP goes to the tip page" {
