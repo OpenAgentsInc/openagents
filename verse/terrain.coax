@@ -462,6 +462,66 @@ around_blocks :: (f: Follower, to: Point, blocks: [] f32, radius: f32) -> Follow
   return next;
 }
 
+// ---- Lanes
+
+// A lane is a path walked one way, as a tower defense's stair: points (x, z
+// each, in order) and the distance along it at each point (along, filled by
+// verse_lane_build). A walker on the lane is just its distance along it, so
+// it moves by adding speed * dt, and the targeting rules below are one pass
+// over the walkers' distances with no geometry but the one range check.
+verse_lane_build :: (points: [] f32, along: [] f32) -> f32 #export_c {
+  n := points.count / 2;
+  total: f32 = 0;
+  for i: 0..<n {
+    if i > 0 {
+      dx := points[i * 2] - points[i * 2 - 2]; dz := points[i * 2 + 1] - points[i * 2 - 1];
+      total += sqrt(dx * dx + dz * dz);
+    }
+    if i < along.count { along[i] = total; }
+  }
+  return total;
+}
+// The point d along the lane (clamped to its ends).
+verse_lane_at :: (points: [] f32, along: [] f32, d: f32) -> Point #export_c {
+  n := points.count / 2;
+  if n == 0 { return v3(0, 0, 0); }
+  if d <= 0 || n == 1 { return v3(points[0], 0, points[1]); }
+  for i: 1..<n {
+    if d <= along[i] {
+      seg := along[i] - along[i - 1];
+      t := ifx seg > 0 then (d - along[i - 1]) / seg else 0.0f32;
+      return v3(points[i * 2 - 2] + (points[i * 2] - points[i * 2 - 2]) * t, 0, points[i * 2 - 1] + (points[i * 2 + 1] - points[i * 2 - 1]) * t);
+    }
+  }
+  return v3(points[n * 2 - 2], 0, points[n * 2 - 1]);
+}
+
+// Which walker a tower in range picks.
+LANE_FIRST :: 0;      // furthest along: nearest the end
+LANE_LAST :: 1;       // least far along
+LANE_STRONGEST :: 2;  // the most hit points (ties: the furthest along)
+LANE_CLOSEST :: 3;    // nearest the tower
+// The walker (index into dist and hp, which run together; hp <= 0 is gone)
+// a tower at (x, z) with this range picks by rule, or -1 for none in range.
+verse_lane_target :: (points: [] f32, along: [] f32, dist: [] f32, hp: [] f32, x: f32, z: f32, range: f32, rule: int) -> int #export_c {
+  best := -1;
+  key: f32 = 0;
+  r2 := range * range;
+  for i: 0..<dist.count {
+    if i >= hp.count || hp[i] <= 0 { continue; }
+    p := verse_lane_at(points, along, dist[i]);
+    dx := p.x - x; dz := p.z - z;
+    g := dx * dx + dz * dz;
+    if g > r2 { continue; }
+    k := dist[i];
+    if rule == LANE_LAST { k = -dist[i]; }
+    if rule == LANE_STRONGEST { k = hp[i] * 100000 + dist[i]; }
+    if rule == LANE_CLOSEST { k = -g; }
+    if best < 0 || k > key { best = i; key = k; }
+  }
+  return best;
+}
+
 // ---- Checks
 
 // A small garden: a square of paths with a tail to the south.
@@ -691,4 +751,32 @@ built :: (heights: [] f32) -> bool {
   far_z := g.south + f32(g.rows) * g.cell;
   #assert near(verse_terrain_height(g, heights[..], g.west, far_z), heights[g.rows * (TG + 1)], 0.01);
   #assert near(verse_terrain_height(g, heights[..], g.west + 4, g.south + 4 * 40), heights[40 * (TG + 1) + 1], 0.0001);
+}
+
+// An L: ten metres east, then ten north.
+LANE_PTS :: [6] f32.[0, 0, 10, 0, 10, 10];
+
+#test "a lane carries distance along it, and a walker is placed by that distance" {
+  pts := LANE_PTS; al: [3] f32;
+  #assert verse_lane_build(pts[..], al[..]) == 20 && al[1] == 10;
+  p := verse_lane_at(pts[..], al[..], 15);
+  #assert p.x == 10 && p.z == 5;
+  e := verse_lane_at(pts[..], al[..], 99);
+  #assert e.x == 10 && e.z == 10;
+}
+
+#test "targeting picks first, last, strongest and closest among the walkers in range, and none out of range" {
+  pts := LANE_PTS; al: [3] f32;
+  total := verse_lane_build(pts[..], al[..]);
+  dist := [4] f32.[2, 9, 13, 19];
+  hp := [4] f32.[5, 30, 0, 8];       // the third is popped
+  // a tower at (8, 3), range 8 reaches all three live walkers: (2, 0), (9, 0) and (10, 9)
+  #assert verse_lane_target(pts[..], al[..], dist[..], hp[..], 8, 3, 8, LANE_FIRST) == 3;
+  #assert verse_lane_target(pts[..], al[..], dist[..], hp[..], 8, 3, 8, LANE_LAST) == 0;
+  #assert verse_lane_target(pts[..], al[..], dist[..], hp[..], 8, 3, 8, LANE_STRONGEST) == 1;
+  #assert verse_lane_target(pts[..], al[..], dist[..], hp[..], 8, 3, 8, LANE_CLOSEST) == 1;
+  // range 2 from (10, 9): only the last walker (at 10, 9)
+  #assert verse_lane_target(pts[..], al[..], dist[..], hp[..], 10, 9, 2, LANE_LAST) == 3;
+  #assert verse_lane_target(pts[..], al[..], dist[..], hp[..], -50, -50, 5, LANE_FIRST) == -1;
+  #assert total == 20;
 }
