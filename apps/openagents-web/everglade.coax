@@ -1415,6 +1415,7 @@ board_place :: (s: [] Everglade, q: int) -> int { m := 0; for r: 0..<q { if on_b
 // The board: open it on the first quest that wants something of you.
 open_board :: (s: [] Everglade) {
   s[0].board = true; s[0].held = 0; s[0].thanks = -1; s[0].pick = board_nth(s, 0);
+  eg_first_note(s);
   for q: 0..<EG_QUESTS { if on_board(s, q) && eg_quest_ready(q, s[0].stages[q]) { s[0].pick = q; return; } }
   for q: 0..<EG_QUESTS { if on_board(s, q) && s[0].stages[q] == 0 { s[0].pick = q; return; } }
 }
@@ -1493,6 +1494,7 @@ talk_to :: (s: [] Everglade, i: int) {
   s[0].talk = i; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
   s[0].held = 0; s[0].talk_quest = -1;
   folk_nod(s[0].folk[i..<i + 1]);
+  eg_first_note(s);   // talking to Bram is the first goal's first step (everglade-guide.coax)
   q := eg_quest_talk(s[0].stages[..], i);
   if q >= 0 { quest_moved(s, q); s[0].talk_quest = q; add_line(s, true, EG_QUEST_ARRIVE[q]); return; }
   // the crier takes in what's ready to hand in, as the board does
@@ -3618,7 +3620,10 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
   if s[0].board { return board_panel(s, out, u, n); }
-  if s[0].lift < 0.5 && !s[0].ev.editing { n = tracker(s, out, u, n, gutter + cap + small + 44 * k, you); }
+  if s[0].lift < 0.5 && !s[0].ev.editing {
+    n = tracker(s, out, u, n, gutter + cap + small + 44 * k, you);
+    n = eg_first_hud(s, out, u, n, gutter + cap + small + 44 * k, you);   // until a quest is taken, the first goal (everglade-guide.coax)
+  }
   line := hint(s);
   hs := 7.5 * k;
   room := w - 2 * gutter - 24 * k;

@@ -14,6 +14,7 @@ EgGuide :: struct {
   asked:bool;help_requested:bool;find_work:bool;key_down:bool;asked_epoch:int;
   offered:int;button:Box;finger:int=-1;drawn:int;now_ms:int;
   hud_move:bool;ox:f32;oy:f32;pad_x:f32;pad_y:f32;you:Point;still:bool;
+  first_done:int;first_shown:int;first_mark:[40]u8;   // the first goal (eg_first_*): what is done, the step drawn
 }
 
 everglade_guide_begin :: (s:[]Everglade,golden:bool) #export_c {s[0].guide.defer_hud=true;s[0].guide.golden=golden;}
@@ -38,6 +39,7 @@ everglade_guide_pointer :: (s:[]Everglade,x:f32,y:f32,phase:int,id:int)->bool {
 }
 
 everglade_guide_observe :: (s:[]Everglade,you:Point,still:bool) {
+  eg_first_note(s);
   w:=watch_w(s);a:=w[0].actors[0];q:=follow(s);stage:=0;
   if q>=0 {stage=s[0].stages[q];}
   target:=QuestMark.{ok=true,x=board_middle().x,z=board_middle().z};
@@ -136,4 +138,127 @@ everglade_guide_probe :: (s:[]Everglade,field:int)->int #export_c {
   if field==250 {return ifx s[0].wt[0].dead then 1 else 0;}
   if field==251 {return s[0].guard_ai.input.epoch;}if field==252 {return s[0].guard_ai.generation;}
   if field==246 {return s[0].guide.observation.goal;}if field==247 {return ifx s[0].guide.observation.eligible then 1 else 0;}return -1;
+}
+
+// ---- the first goal (owner QA, October 31: a new visitor arrived with nothing to do on screen and
+// walked about not knowing what to do). Until a quest is taken, the quest tracker's place under the
+// title shows the first thing to do, one at a time: talk to Bram at the South Gate (he stands
+// a few steps up the road), then call down a Meteor Swarm (visitors' first play is breaking and
+// burning the town), then read the quest board, whose quests carry on from there. Each is done
+// when you do it, in any order; a mark with its distance stands over Bram and over the board.
+EG_FIRST_STEPS :: 3;
+EG_FIRST_TALK :: 0; EG_FIRST_CAST :: 1; EG_FIRST_BOARD :: 2;
+EG_FIRST_GUARD :: 0;   // Bram, the gate guard at the South Gate (people.coax EG_PERSON)
+EG_FIRST_TITLE :: [3] string.["TALK TO BRAM AT THE SOUTH GATE", "CALL DOWN A METEOR SWARM", "READ THE QUEST BOARD ON THE COMMONS"];
+EG_FIRST_HOW :: [3] string.["WALK UP TO HIM AND PRESS E", "PRESS 1, THEN CLICK WHERE IT FALLS", "WALK UP TO IT AND PRESS E"];
+EG_FIRST_HOW_PHONE :: [3] string.["WALK UP TO HIM AND TAP TALK", "TAP THE FIRST SPELL, THEN WHERE IT FALLS", "WALK UP TO IT AND TAP READ"];
+EG_FIRST_MARK :: [3] string.["BRAM", "", "QUEST BOARD"];
+
+// What this frame did toward the first goal: talked to Bram, cast a spell, opened the board.
+eg_first_note :: (s:[]Everglade) {
+  d:=s[0].guide.first_done;
+  if s[0].talk==EG_FIRST_GUARD {d|=1<<EG_FIRST_TALK;}
+  if s[0].sp.casting>=0 || !sp_on(s) {d|=1<<EG_FIRST_CAST;}
+  if s[0].board {d|=1<<EG_FIRST_BOARD;}
+  s[0].guide.first_done=d;
+}
+// The step shown: the first not done, -1 once a quest is taken (its own line takes over) or all are.
+eg_first_step :: (s:[]Everglade)->int {
+  for q:0..<EG_QUESTS {if s[0].stages[q]!=0 {return -1;}}
+  for i:0..<EG_FIRST_STEPS {if (s[0].guide.first_done&(1<<i))==0 {return i;}}
+  return -1;
+}
+// Where a step sends you: Bram where he is now (he walks a beat), the board; the cast, nowhere.
+eg_first_mark :: (s:[]Everglade,step:int)->QuestMark {
+  if step==EG_FIRST_BOARD {b:=board_middle();return QuestMark.{ok=true,x=b.x,z=b.z};}
+  if step!=EG_FIRST_TALK {return QuestMark.{};}
+  // read through views, not copied: a copy of the watch's actor every frame ran the camera
+  // check out of compile-time traversal (as eb6742455e)
+  w:=watch_w(s);a:=w[0].actors[EG_FIRST_GUARD..<EG_FIRST_GUARD+1];
+  if a[0].ready {return QuestMark.{ok=true,x=a[0].x,z=a[0].z};}
+  return QuestMark.{ok=true,x=f32(EG_SPOT[EG_FIRST_GUARD*3]),z=f32(EG_SPOT[EG_FIRST_GUARD*3+1])};
+}
+// Drawn as the quest tracker is (everglade.coax tracker), at `top` under the title, while no quest is followed.
+eg_first_hud :: (s:[]Everglade,out:[]f32,u:[]f32,at:int,top:f32,you:Point)->int {
+  s[0].guide.first_shown= -1;
+  step:=eg_first_step(s);
+  if step<0 || follow(s)>=0 || s[0].guide.golden || s[0].paint_only {return at;}
+  k:=hi(s[0].dpr,0.5);w:=s[0].width;gutter:=16*k;n:=at;
+  m:=eg_first_mark(s,step);
+  far:=ifx m.ok then flat_gap(v3(m.x,0,m.z),you) else 0.0f32;
+  mn:=0;named:=0;
+  if m.ok {
+    named=join_into(s[0].guide.first_mark[..],EG_FIRST_MARK[step],"");
+    mn=named+join_into(s[0].guide.first_mark[named..<40]," · ","");
+    mn=put_digits(s[0].guide.first_mark[..],mn,cast(int)(far+0.5));
+    mn+=join_into(s[0].guide.first_mark[mn..<40]," M","");
+  }
+  mark:=cast(string)s[0].guide.first_mark[0..<mn];
+  // the mark over Bram's head, or over the board, once you are a few steps off
+  if m.ok && far>4 {
+    lift:=ifx step==EG_FIRST_TALK then 2.6f32 else 4.5f32;
+    n=tag(s,out,u,n,mark,v3(m.x,ground_at(s,m.x,m.z)+lift,m.z),9*k,1.0,true);
+  }
+  title:=EG_FIRST_TITLE[step];
+  how:=ifx phone(s) then EG_FIRST_HOW_PHONE[step] else EG_FIRST_HOW[step];
+  tc:=8*k;dc:=6.5*k;room:=w-2*gutter-28*k;
+  tw:=text_width(title,tc);dw:=text_width(how,dc)+text_width(" · 000 M",dc);
+  if tw>room {tc=tc*room/tw;tw=room;}
+  if dw>room {dc=dc*room/dw;dw=room;}
+  pw:=hi(tw,dw)+28*k;
+  plate(s,u,Box.{x0=gutter,y0=top,x1=gutter+pw,y1=top+tc+dc+34*k},0.82,0);
+  n=draw_text(out,n,title,gutter+14*k,top+12*k+tc,tc,GAP,SPACE,ink(k,0.95,GOLD_R,GOLD_G,GOLD_B),false,false);
+  y:=top+22*k+tc+dc;
+  n=draw_text(out,n,how,gutter+14*k,y,dc,GAP,SPACE,ink(k,0.85,PARCH_R,PARCH_G,PARCH_B),false,false);
+  if m.ok && far>4 {
+    // " · 23 M" after it: the mark's distance
+    n=draw_text(out,n,mark[named..<mark.count],gutter+14*k+text_width(how,dc),y,dc,GAP,SPACE,ink(k,0.75,GOLD_R,GOLD_G,GOLD_B),false,false);
+  }
+  s[0].guide.first_shown=step;
+  return n;
+}
+
+#test "first goal: a fresh save draws its goal line in the first frame, Bram marked; each step done moves it on, and a quest taken ends it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  sp := everglade_spawn(g[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert eg_first_step(g[..]) == EG_FIRST_TALK && g[0].guide.first_shown == EG_FIRST_TALK;
+  m := eg_first_mark(g[..], EG_FIRST_TALK);
+  mark := cast(string) g[0].guide.first_mark[0..<g[0].guide.first_mark.count];
+  #assert m.ok && flat_gap(v3(m.x, 0, m.z), sp) < 40 && contains(mark, "BRAM · ");
+  // Bram is the gate guard, and he is near the road in
+  #assert EG_PERSON[EG_FIRST_GUARD] == "Bram";
+  // talking to him: the next step, the spell, with no mark
+  talk_to(g[..], EG_FIRST_GUARD); end_talk(g[..]);
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].guide.first_shown == EG_FIRST_CAST && !eg_first_mark(g[..], EG_FIRST_CAST).ok;
+  // on a phone it says how to with a finger
+  g[0].touch = true;
+  #assert EG_FIRST_HOW_PHONE[EG_FIRST_CAST] != EG_FIRST_HOW[EG_FIRST_CAST];
+  g[0].touch = false;
+  // a cast: the board next, marked over it
+  g[0].sp.casting = SP_METEOR;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  g[0].sp.casting = -1;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].guide.first_shown == EG_FIRST_BOARD && eg_first_mark(g[..], EG_FIRST_BOARD).ok;
+  // done things are never asked again: a fresh visitor who reads the board first still has Bram and the spell to do
+  h: [1] Everglade;
+  dh: [1] DemoWorld;
+  sp_ready_city(h[..], dh[..]);
+  h[0].board = true; eg_first_note(h[..]); h[0].board = false;
+  #assert eg_first_step(h[..]) == EG_FIRST_TALK;
+  h[0].guide.first_done |= 1 << EG_FIRST_TALK;
+  #assert eg_first_step(h[..]) == EG_FIRST_CAST;
+  h[0].guide.first_done |= 1 << EG_FIRST_CAST;
+  #assert eg_first_step(h[..]) == -1;
+  // a quest taken: its own line takes over, and the first goal is gone
+  g[0].stages[0] = 1;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert eg_first_step(g[..]) == -1 && g[0].guide.first_shown == -1;
 }
