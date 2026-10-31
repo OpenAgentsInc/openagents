@@ -1,5 +1,19 @@
 # Invariants
 
+## Realm creation is gated by one server-side rule
+
+`access.gate` (`coax/web/api/migrations/0090_realm_invites.sql`) is the only
+rule for who may plan, make or fork a realm. `realms.c` asks it, through
+`access_refused` (`access.c`), before `plan`, `pick`, `plan/doc`, MAKE IT and
+a FORK's POST. With the `realm_invites` flag row absent or off it admits
+everyone, so behaviour is what it was before 0090; on, it admits site admins
+and approved creators (an account, or a grandfathered guest player) and
+answers 403 `invite only` to everyone else. Pages only hide links; they never
+decide. An invite code is kept only as its SHA-256, and a use is spent in the
+same statement that checks it. Checks: `coax/web/api/test_access.py` (each
+gated route refused on, admitted off and for creators and admins; codes
+hashed, spent once, revoked and expired refused).
+
 ## Inverse physics differentiates the owned solver and exposes ambiguity
 
 `psionic/lib/physics/inverse-*.coax` unrolls chapter 109’s exact left-associated

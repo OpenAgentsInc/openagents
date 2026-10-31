@@ -69,3 +69,6 @@ bool email_route(const request *q);       // email.c: POST /api/admin/email, thr
 // Mail through Resend (email.c): 0 sent, 1 sent before under the same key, else an HTTP status with err.
 int email_send(PGconn *db, const char *message, char id[128], char *err, size_t errcap);
 bool replies_route(const request *q);     // replies.c: reply with a realm (ev-reply-realm)
+bool access_route(const request *q);      // access.c: realm invites, the waitlist, auth v2 (flags off by default)
+// realms.c, before a realm is planned or made: true when access.c answered 403 invite only (realm_invites on).
+bool access_refused(const request *q, PGconn *db, const char *key);

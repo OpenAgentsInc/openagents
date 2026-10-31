@@ -43,6 +43,9 @@
 //   POST /api/playtest/realms/<slug>/asks/doc {name, data}   -> text/plain: "doc N applied M waiting", the rows; 400, 403, 413, 415
 //   POST /api/playtest/realms/plan/doc {name, data, setup}   -> the builder's board, as /plan answers it
 //
+// Realm invites (access.c, migrations/0090_realm_invites.sql): with the flag realm_invites on, plan,
+// pick, plan/doc, MAKE IT and a FORK's POST answer 403 "invite only" to anyone not an approved
+// creator or a site admin. Off (the default), they are as before.
 // Who asks: the X-Verse-Player key (a logged-in player's key carries its account). A write from
 // another site's page (Origin) is refused. As a question is, the model call and the page's writes
 // are made by a child with its own database connection.
@@ -671,16 +674,19 @@ bool realms_route(const request *q) {
   }
   if (!*rest) {
     if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a board\"}"); return true; }
+    if (access_refused(q, db, key)) return true;   // realm_invites on: approved creators only
     make(q, db, key);
     return true;
   }
   if (!strcmp(rest, "plan/doc")) {
     if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a document\"}"); return true; }
+    if (access_refused(q, db, key)) return true;
     doc(q, db, NULL, key, "false");
     return true;
   }
   if (!strcmp(rest, "plan") || !strcmp(rest, "pick")) {
     if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a prompt\"}"); return true; }
+    if (access_refused(q, db, key)) return true;
     plan(q, db, key, !strcmp(rest, "pick"));
     return true;
   }
@@ -737,7 +743,11 @@ bool realms_route(const request *q) {
     return true;
   }
   if (!strcmp(what, "card")) { card(q, db, slug, key, admin, post); return true; }
-  if (!strcmp(what, "fork")) { fork_realm(q, db, slug, key, admin, post); return true; }
+  if (!strcmp(what, "fork")) {   // a fork is a new realm: behind the same gate (its GET is not)
+    if (post && access_refused(q, db, key)) return true;
+    fork_realm(q, db, slug, key, admin, post);
+    return true;
+  }
   if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
   if (!strcmp(what, "describe")) {
     char *body = body_of(q);

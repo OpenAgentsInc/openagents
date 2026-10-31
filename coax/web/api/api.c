@@ -29,6 +29,7 @@
 //   scheduled jobs                POST /api/jobs/<job>, Cloud Scheduler or an admin (jobs.c)
 //   email, admins only            POST /api/admin/email, through Resend (email.c)
 //   /chat, admins only             /api/chat/*, and the runner's /api/chat/runner/* (chat.c)
+//   realm invites, auth v2         /api/playtest/access, /api/admin/access, /api/auth/v2 (access.c, flags off)
 #include "api.h"
 
 #include <arpa/inet.h>
@@ -274,6 +275,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (!strcmp(q.path, "/api/playtest/health")) { health(cl->fd); return; }
   if (!strcmp(q.path, "/api/playtest/old-link") && !strcmp(q.method, "GET")) { old_link(&q); return; }
   if (analytics_route(&q)) return;
+  if (access_route(&q)) return;   // before the admin routes and /api/auth (access.c)
   if (upgrades_route(&q)) return;   // listed upgrades (makers.c), before the admin routes too
   if (jobs_route(&q)) return;
   if (email_route(&q)) return;   // before the admin routes: /api/admin/email is its
