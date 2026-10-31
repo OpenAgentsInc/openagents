@@ -36,7 +36,7 @@ Content :: struct {
   red: [TABLE_LAYERS] f32; green: [TABLE_LAYERS] f32; blue: [TABLE_LAYERS] f32;
   inner_a: [TABLE_LAYERS] int; inner_b: [TABLE_LAYERS] int; inner_c: [TABLE_LAYERS] int; inner_d: [TABLE_LAYERS] int;
   cost: [TABLE_CLASSES] int; range: [TABLE_CLASSES] f32; turn: [TABLE_CLASSES] f32;
-  up: [TABLE_CLASSES * 2] int;
+  up: [TABLE_CLASSES * 4] int;   // levels 2 to 5
   kind: [TABLE_WAVES * TABLE_GROUPS] int; count: [TABLE_WAVES * TABLE_GROUPS] int;
   gap: [TABLE_WAVES * TABLE_GROUPS] f32; delay: [TABLE_WAVES * TABLE_GROUPS] f32;
   start_gold: int; start_lives: int; round_base: int; round_every: int;
@@ -67,13 +67,13 @@ STAIR_TABLES :: [36] string.[
   "class ranger  cost 75 range 4.0 turn 1.3",
   "class bard    cost 70 range 3.0 turn 1.4",
   "class paladin cost 80 range 1.6 turn 1.0",
-  "level fighter 30 50",
-  "level wizard  50 80",
-  "level cleric  40 65",
-  "level rogue   35 55",
-  "level ranger  45 70",
-  "level bard    40 60",
-  "level paladin 50 75",
+  "level fighter 30 50 110 160",
+  "level wizard  50 80 170 250",
+  "level cleric  40 65 140 200",
+  "level rogue   35 55 120 170",
+  "level ranger  45 70 150 220",
+  "level bard    40 60 130 190",
+  "level paladin 50 75 160 230",
   "# the waves: light to wave 8, heavy at 9 and 10 (stair.coax's play_as players check the curve)",
   "wave 1 mote 12 gap 0.9 delay 0",
   "wave 2 mote 20 gap 0.55 delay 0",
@@ -208,15 +208,17 @@ table_statement :: (c: [] Content, k: [] TableCursor, line: int) -> bool {
     return true;
   }
   if head == "level" {
-    if n != 4 { return table_refuse(c, line, "level NAME C2 C3", ""); }
+    // levels 2 and 3 alone: 4 and 5 cost twice and three times level 3's
+    if n != 4 && n != 6 { return table_refuse(c, line, "level NAME C2 C3 [C4 C5]", ""); }
     q := table_class(table_word(k, 1));
     if q < 0 { return table_refuse(c, line, "a class is fighter, wizard, cleric, rogue, ranger, bard or paladin, not ", table_word(k, 1)); }
     if c[0].had_level[q] { return table_refuse(c, line, "a second level for ", table_word(k, 1)); }
-    for j: 0..<2 {
+    for j: 0..<n - 2 {
       v := table_number(table_word(k, 2 + j));
       if !v.ok || !v.whole || v.v < 1 || v.v > 999 { return table_refuse(c, line, "a level's cost is a whole number of gold from 1 to 999", ""); }
-      c[0].up[q * 2 + j] = cast(int) v.v;
+      c[0].up[q * 4 + j] = cast(int) v.v;
     }
+    if n == 4 { c[0].up[q * 4 + 2] = c[0].up[q * 4 + 1] * 2; c[0].up[q * 4 + 3] = c[0].up[q * 4 + 1] * 3; }
     c[0].had_level[q] = true;
     return true;
   }

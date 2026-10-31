@@ -88,11 +88,20 @@ AURA_REACH :: 2.0;
 // turn too, 1d8 + 3 force. Rogue 2: Cunning Action, a turn a quarter sooner. Rogue 3: Sneak Attack 2d6.
 // Ranger 2: Hunter's Mark on whatever it hits. Ranger 3: a second arrow each turn. Bard 2: two
 // inspired a turn. Bard 3: Mockery 2d6. Paladin 2: Divine Smite, +2d8 radiant on its first hit of a
-// wave. Paladin 3: the aura reaches three tiles.
-MAX_LEVEL :: 3;
+// wave. Paladin 3: the aura reaches three tiles. Level 4, every class: an Ability Score Improvement,
+// +1 to its attack rolls and its save DCs. Level 5: Extra Attack for the fighter and the paladin, a
+// third arrow for the ranger, Sneak Attack 3d6, the cantrips' second die (Fire Bolt 2d10, Sacred
+// Flame 2d8), and Bardic Inspiration a d8.
+MAX_LEVEL :: 5;
+LEVEL_COSTS :: 4;   // a class's costs for levels 2 to 5
 SHATTER_SLOTS :: 2; SHATTER_RADIUS :: 1.0; SHATTER_DC :: 13; SHATTER_MIN :: 3;
 STAIR_SPIRIT :: SrdCreature.{name = "Spiritual Weapon", ac = 10, hp = 1, dex = 0, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_FORCE};
-up_cost :: (s: [] Stair, cls: int, level: int) -> int { return ifx level >= MAX_LEVEL then 0 else s[0].ct[0].up[cls * 2 + level - 1]; }
+up_cost :: (s: [] Stair, cls: int, level: int) -> int { return ifx level >= MAX_LEVEL then 0 else s[0].ct[0].up[cls * LEVEL_COSTS + level - 1]; }
+// Its save DC, with level 4's improvement.
+dc_of :: (s: [] Stair, k: int, base: int) -> int { return ifx s[0].party[k].level >= 4 then base + 1 else base; }
+
+LEVEL4_FEAT :: [7] string.["+1 TO HIT · NEXT: EXTRA ATTACK", "+1 TO HIT AND DC · NEXT: FIRE BOLT 2D10", "+1 TO HIT AND DC · NEXT: SACRED FLAME 2D8", "+1 TO HIT · NEXT: SNEAK ATTACK 3D6", "+1 TO HIT · NEXT: A THIRD ARROW", "+1 TO HIT AND DC · NEXT: INSPIRATION 1D8", "+1 TO HIT · NEXT: EXTRA ATTACK"];
+LEVEL5_FEAT :: [7] string.["EXTRA ATTACK: 2 A TURN · SURGE · CRITS 19-20", "FIRE BOLT 2D10 · SHATTER · +1 TO HIT AND DC", "SACRED FLAME 2D8 · BLESS · SPIRITUAL WEAPON", "SNEAK ATTACK 3D6 · CUNNING ACTION", "THREE ARROWS A TURN · MARKS ALL", "INSPIRES 2 WITH 1D8 · MOCKERY 2D6", "EXTRA ATTACK · AURA 3 TILES · SMITE"];
 
 // ---- the waves: up to three groups each (layer, count, seconds between, delay)
 WAVES :: 10;
@@ -135,6 +144,7 @@ Defender :: struct {
   smite: bool;     // a paladin's Divine Smite, ready this wave
   aura: int;       // the +1 a paladin's aura added to its last roll (0 none)
   insp: int;       // the inspiration die it added to its last roll (0 none)
+  swings: int;     // fighter attacks made, all told
   daylight: bool;  // a cleric's Daylight, lit this wave   // bless: the d4 Bless added to its last roll (0 none)
   hits: int; misses: int; pops: int;
   roll: int; total: int; vs: int; hit: bool; crit: bool; dealt: int; how: int;   // the last turn (how: 0 attack, 1 save, 2 auto)
@@ -540,7 +550,8 @@ stair_attack :: (s: [] Stair, k: int, c: SrdCreature, ac: int, crit_on: int) -> 
   if s[0].party[k].inspired > 0 { insp = srd_roll(dice, s[0].party[k].inspired); s[0].party[k].inspired = 0; }
   aura := ifx in_aura(s, k) then 1 else 0;
   s[0].party[k].aura = aura; s[0].party[k].insp = insp;
-  a.total = a.roll + c.attack + bless + insp + aura;
+  asi := ifx s[0].party[k].level >= 4 then 1 else 0;
+  a.total = a.roll + c.attack + bless + insp + aura + asi;
   a.crit = a.roll >= crit_on;
   a.hit = a.roll != 1 && (a.crit || a.total >= ac);
   if a.hit {
@@ -637,8 +648,11 @@ fighter_attack :: (s: [] Stair, k: int) -> bool {
   add_fx(s, FX_SLASH, c.x, c.y, p.x, p.y, 0.26, 0, 0.9, 0.92, 1.0, a.crit);
   if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, a.roll, 1, 0.86, 0.4, true); }
   if a.hit { hurt_beast(s, t, a.damage, STAIR_FIGHTER.kind, a.crit, k); } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
+  s[0].party[k].swings += 1;
   return true;
 }
+// Level 5's Extra Attack: a second swing on the same turn.
+attacks_of :: (d: Defender) -> int { return ifx d.level >= 5 && (d.cls == FIGHTER || d.cls == PALADIN) then 2 else 1; }
 // ---- area queries: a spatial grid of the beasts, a tile a bucket, built once a step (and again
 // after anything spawns), so a sphere or a line looks only at the tiles it covers.
 Area :: struct {
@@ -731,6 +745,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
   dice := s[0].dice[..];
   if d.cls == FIGHTER {
     if !fighter_attack(s, k) { return false; }
+    if attacks_of(d) > 1 { ok := fighter_attack(s, k); }
     // Action Surge: once a wave, a second attack
     if s[0].party[k].surge {
       s[0].party[k].surge = false;
@@ -745,7 +760,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     if d.slots2 > 0 && crowd(s, t, f32(SHATTER_RADIUS)) >= SHATTER_MIN {
       s[0].party[k].slots2 -= 1;
       at := beast_xy(s, t);
-      record(s, k, 0, 0, SHATTER_DC, true, false, 3, at);
+      record(s, k, 0, 0, dc_of(s, k, SHATTER_DC), true, false, 3, at);
       add_fx(s, FX_SHATTER, at.x, at.y, c.x, c.y, 0.6, 0, 0.75, 0.8, 1.0, false);
       dmg := srd_sum(dice, 3, 8);
       total := 0;
@@ -753,7 +768,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
       for j: 0..<nh {
         i := s[0].area[0].hits[j];   // hurting a beast queries nothing, so the list holds
         if !s[0].beasts[i].live { continue; }
-        sv := srd_save(dice, s[0].ct[0].con[s[0].beasts[i].kind], SHATTER_DC);
+        sv := srd_save(dice, s[0].ct[0].con[s[0].beasts[i].kind], dc_of(s, k, SHATTER_DC));
         took := ifx sv.success then dmg / 2 else dmg;
         total += took;
         hurt_beast(s, i, took, DMG_THUNDER, false, k);
@@ -782,7 +797,9 @@ take_turn :: (s: [] Stair, k: int) -> bool {
       if other >= 0 { t = other; }
     }
     b := s[0].beasts[t]; p := beast_xy(s, t);
-    a := stair_attack(s, k, STAIR_FIRE_BOLT, s[0].ct[0].ac[b.kind], 20);
+    bolt := STAIR_FIRE_BOLT;
+    if d.level >= 5 { bolt.dice = 2; }
+    a := stair_attack(s, k, bolt, s[0].ct[0].ac[b.kind], 20);
     record(s, k, a.roll, a.total, s[0].ct[0].ac[b.kind], a.hit, a.crit, 0, p);
     add_fx(s, FX_BOLT, c.x, c.y, p.x, p.y, 0.4, 0, 1.0, 0.3, 0.15, a.crit);
     if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, a.roll, 1, 0.86, 0.4, true); }
@@ -792,7 +809,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
   if d.cls == ROGUE {
     t := first_in_range(s, d.cell, s[0].ct[0].range[ROGUE], -1);
     if t < 0 { return false; }
-    sneak := ifx ally_near(s, k, t) then (ifx d.level >= 3 then 2 else 1) else 0;
+    sneak := ifx ally_near(s, k, t) then (ifx d.level >= 5 then 3 else ifx d.level >= 3 then 2 else 1) else 0;
     a := weapon_hit(s, k, STAIR_ROGUE, t, sneak, FX_SLASH);
     s[0].party[k].how = ifx sneak > 0 then 4 else 0;
     return true;
@@ -800,11 +817,14 @@ take_turn :: (s: [] Stair, k: int) -> bool {
   if d.cls == RANGER {
     if !ranger_shot(s, k) { return false; }
     if d.level >= 3 { ok := ranger_shot(s, k); }
+    if d.level >= 5 { ok := ranger_shot(s, k); }
     return true;
   }
   if d.cls == PALADIN {
+    if first_in_range(s, d.cell, s[0].ct[0].range[PALADIN], -1) < 0 { return false; }
+    for sw: 0..<attacks_of(d) {
     t := first_in_range(s, d.cell, s[0].ct[0].range[PALADIN], -1);
-    if t < 0 { return false; }
+    if t < 0 { break; }
     b := s[0].beasts[t]; p := beast_xy(s, t);
     a := stair_attack(s, k, STAIR_PALADIN, s[0].ct[0].ac[b.kind], 20);
     record(s, k, a.roll, a.total, s[0].ct[0].ac[b.kind], a.hit, a.crit, 0, p);
@@ -817,14 +837,15 @@ take_turn :: (s: [] Stair, k: int) -> bool {
       s[0].party[k].dealt = dmg;
       hurt_beast(s, t, dmg, DMG_SLASHING, a.crit, k);
     } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
+    }
     return true;
   }
   if d.cls == BARD {
     t := first_in_range(s, d.cell, s[0].ct[0].range[BARD], -1);
     if t < 0 { return false; }
     b := s[0].beasts[t]; p := beast_xy(s, t);
-    sv := srd_save(dice, 0, MOCKERY_DC);
-    record(s, k, sv.roll, sv.total, MOCKERY_DC, !sv.success, false, 1, p);
+    sv := srd_save(dice, 0, dc_of(s, k, MOCKERY_DC));
+    record(s, k, sv.roll, sv.total, dc_of(s, k, MOCKERY_DC), !sv.success, false, 1, p);
     add_fx(s, FX_SPIRIT, p.x, p.y, c.x, c.y, 0.45, 0, CLASS_R[BARD], CLASS_G[BARD], CLASS_B[BARD], false);
     if !sv.success { hurt_beast(s, t, srd_sum(dice, ifx d.level >= 3 then 2 else 1, 6), DMG_PSYCHIC, false, k); } else { add_fx(s, FX_SAVED, p.x, p.y, 0, 0, 0.7, sv.roll, 0.8, 0.8, 0.85, false); }
     inspire(s, k, ifx d.level >= 2 then 2 else 1);
@@ -846,10 +867,10 @@ take_turn :: (s: [] Stair, k: int) -> bool {
   t := first_in_range(s, d.cell, s[0].ct[0].range[CLERIC], -1);
   if t < 0 { return false; }
   b := s[0].beasts[t]; p := beast_xy(s, t);
-  sv := srd_save(dice, s[0].ct[0].dex[b.kind], SACRED_DC);
-  record(s, k, sv.roll, sv.total, SACRED_DC, !sv.success, false, 1, p);
+  sv := srd_save(dice, s[0].ct[0].dex[b.kind], dc_of(s, k, SACRED_DC));
+  record(s, k, sv.roll, sv.total, dc_of(s, k, SACRED_DC), !sv.success, false, 1, p);
   add_fx(s, FX_FLAME, p.x, p.y, c.x, c.y, 0.55, 0, 1.0, 0.92, 0.55, false);
-  if !sv.success { hurt_beast(s, t, srd_roll(dice, 8), DMG_RADIANT, false, k); } else { add_fx(s, FX_SAVED, p.x, p.y, 0, 0, 0.7, sv.roll, 0.8, 0.8, 0.85, false); }
+  if !sv.success { hurt_beast(s, t, srd_sum(dice, ifx d.level >= 5 then 2 else 1, 8), DMG_RADIANT, false, k); } else { add_fx(s, FX_SAVED, p.x, p.y, 0, 0, 0.7, sv.roll, 0.8, 0.8, 0.85, false); }
   // Spiritual Weapon: a spectral mace strikes too
   if d.level >= 3 {
     w := first_in_range(s, d.cell, s[0].ct[0].range[CLERIC], -1);
@@ -876,7 +897,7 @@ inspire :: (s: [] Stair, k: int, n: int) {
       if dd <= r * r && (best < 0 || dd < bd) { best = i; bd = dd; }
     }
     if best < 0 { return; }
-    s[0].party[best].inspired = 6;
+    s[0].party[best].inspired = ifx s[0].party[k].level >= 5 then 8 else 6;
     e := cell_xy(s[0].party[best].cell);
     add_fx(s, FX_LEVEL, e.x, e.y, 0, 0, 0.6, 0, CLASS_R[BARD], CLASS_G[BARD], CLASS_B[BARD], false);
   }
@@ -1616,7 +1637,7 @@ draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
       c := cell_xy(d.cell);
       q := to_screen(s, c.x, c.y);
       for j: 0..<d.level - 1 {
-        px := q.x + t * 0.28 + f32(j) * t * 0.11; py := q.y + t * 0.18;
+        px := q.x + t * (0.39 - 0.11 * f32(d.level - 1)) + f32(j) * t * 0.11; py := q.y + t * 0.18;
         pr := hi(1, t * 0.035);
         n = seg(out, n, px - pr, py, px, py - pr * 1.4, pr * 0.45, 1, pr, GOLD_R, GOLD_G, GOLD_B);
         n = seg(out, n, px, py - pr * 1.4, px + pr, py, pr * 0.45, 1, pr, GOLD_R, GOLD_G, GOLD_B);
@@ -1859,7 +1880,7 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
   if b == B_SELL { n := put(buf, 0, "SELL +"); return put_int(buf, n, spent(s, s[0].card) * 7 / 10); }
   if b == B_UPGRADE {
     d := s[0].party[s[0].card];
-    if d.level >= MAX_LEVEL { return put(buf, 0, "LEVEL 3"); }
+    if d.level >= MAX_LEVEL { n := put(buf, 0, "LEVEL "); return put_int(buf, n, MAX_LEVEL); }
     n := put(buf, 0, "LEVEL "); n = put_int(buf, n, d.level + 1); n = put(buf, n, " · "); n = put_int(buf, n, up_cost(s, d.cls, d.level));
     return ifx s[0].portrait then n else put(buf, n, " GOLD");
   }
@@ -1956,7 +1977,9 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     }
     // what its levels give
     feat := "";
-    if d.cls == FIGHTER { feat = ifx d.level >= 3 then "ACTION SURGE · CRITS ON 19-20" else ifx d.level == 2 then "ACTION SURGE: 2 ATTACKS ONCE A WAVE" else "NEXT: ACTION SURGE, 2 ATTACKS ONCE A WAVE"; }
+    if d.level >= 4 {
+      feat = ifx d.level >= 5 then LEVEL5_FEAT[d.cls] else LEVEL4_FEAT[d.cls];
+    } else if d.cls == FIGHTER { feat = ifx d.level >= 3 then "ACTION SURGE · CRITS ON 19-20" else ifx d.level == 2 then "ACTION SURGE: 2 ATTACKS ONCE A WAVE" else "NEXT: ACTION SURGE, 2 ATTACKS ONCE A WAVE"; }
     if d.cls == WIZARD { feat = ifx d.level >= 3 then "SHATTER: 3D8 THUNDER WHERE 3 CROWD" else ifx d.level == 2 then "NEXT: SHATTER, 3D8 THUNDER ON A CROWD" else "NEXT: A THIRD MAGIC MISSILE"; }
     if d.cls == CLERIC { feat = ifx d.level >= 3 then "BLESS +1D4 IN REACH · SPIRITUAL WEAPON" else ifx d.level == 2 then "BLESS: +1D4 TO HIT IN REACH · NEXT: SPIRITUAL WEAPON" else "NEXT: BLESS, +1D4 TO HIT IN REACH"; }
     if d.cls == ROGUE { feat = ifx d.level >= 3 then "SNEAK ATTACK 2D6 BESIDE AN ALLY · CUNNING ACTION" else ifx d.level == 2 then "SNEAK ATTACK 1D6 · CUNNING ACTION: FASTER TURNS" else "SNEAK ATTACK +1D6 WHEN AN ALLY IS BESIDE ITS TARGET"; }
@@ -2469,7 +2492,7 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
   left := round_left(s[..]);
   #assert upgrade(s[..], f) && s[0].party[f].level == 2 && s[0].gold == 1000 - 50 - 85 - 65 - 30 && round_left(s[..]) == left;
   #assert s[0].party[f].surge;                                  // Action Surge, at once
-  #assert upgrade(s[..], f) && s[0].party[f].level == 3 && !upgrade(s[..], f);   // 3 is the top
+  #assert upgrade(s[..], f) && s[0].party[f].level == 3;
   #assert upgrade(s[..], w) && s[0].party[w].slots == MM_SLOTS + 1;
   #assert upgrade(s[..], w) && s[0].party[w].slots2 == SHATTER_SLOTS;
   // Bless: a level-2 cleric in reach adds a d4; the fighter is in the cleric's reach
@@ -2486,6 +2509,31 @@ play_as :: (s: [] Stair, who: int, seed: u64) -> Played {
   before := s[0].gold;
   sell(s[..], f);
   #assert s[0].gold == before + (50 + 30 + 50) * 7 / 10;
+}
+
+#test "levels four and five: +1 to hit and DC, then a fighter's Extra Attack, and five is the top" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  s[0].gold = 5000;
+  t := spawn(s[..], HULK, 12.0);
+  p := beast_xy(s[..], t);
+  fc := -1;
+  for y: 0..<ROWS { for x: 0..<COLS { c := cell_of(x, y); q := cell_xy(c); if fc < 0 && free_cell(s[..], c) && (q.x - p.x) * (q.x - p.x) + (q.y - p.y) * (q.y - p.y) <= 1.2 * 1.2 { fc = c; } } }
+  #assert fc >= 0 && place(s[..], fc, FIGHTER);
+  f := defender_at(s[..], fc);
+  #assert attacks_of(s[0].party[f]) == 1 && dc_of(s[..], f, 13) == 13;
+  for i: 0..<3 { #assert upgrade(s[..], f); }
+  #assert s[0].party[f].level == 4 && dc_of(s[..], f, 13) == 14 && attacks_of(s[0].party[f]) == 1;
+  a := stair_attack(s[..], f, STAIR_FIGHTER, 30, 19);
+  #assert a.total == a.roll + 5 + 1 + s[0].party[f].bless;
+  // one swing a turn at level 4 (Action Surge spent)
+  s[0].party[f].surge = false; s[0].party[f].swings = 0;
+  #assert take_turn(s[..], f) && s[0].party[f].swings == 1;
+  #assert upgrade(s[..], f) && s[0].party[f].level == MAX_LEVEL && !upgrade(s[..], f);   // 5 is the top
+  s[0].party[f].surge = false; s[0].party[f].swings = 0;
+  #assert attacks_of(s[0].party[f]) == 2 && take_turn(s[..], f) && s[0].party[f].swings == 2;
+  // the costs: levels four and five from the table
+  #assert up_cost(s[..], FIGHTER, 3) == 110 && up_cost(s[..], FIGHTER, 4) == 160;
 }
 
 #test "the new classes: Sneak Attack beside an ally, Cunning Action, the ranger's favoured layer, Bardic Inspiration, the paladin's aura and Smite" {
@@ -2761,7 +2809,7 @@ LAYER_INTO :: [32] int.[-1, -1, -1, -1,  MOTE, MOTE, -1, -1,  WISP, WISP, -1, -1
   #assert s[0].wave_t > t0;
 }
 
-#test "the staged highlight is the last wave against a full party at level 3, and the stair is busy" {
+#test "the staged highlight is the last wave against a full party at the top level, and the stair is busy" {
   s: [1] Stair;
   stair_start(s[..]);
   stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=highlight");

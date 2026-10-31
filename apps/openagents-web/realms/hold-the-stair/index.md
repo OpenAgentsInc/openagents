@@ -29,6 +29,7 @@ A Verse realm at https://openagents.com/realms/hold-the-stair: a popping tower d
 - Ranger: a longbow, d20 + 5, 1d8 + 3 piercing, at the longest reach. Its favoured layer is the strongest in the coming wave when it is placed: it shoots those first and adds Hunter's Mark (1d6). Level 2 marks whatever it hits; level 3 looses two arrows a turn.
 - Bard: Vicious Mockery, a Wisdom save against DC 13 or 1d6 psychic, and Bardic Inspiration: each turn the nearest of the party in its reach adds a d6 to its next attack roll. Level 2 inspires two; level 3 mocks for 2d6.
 - Paladin: a longsword, d20 + 5, 1d8 + 3 slashing. Its aura adds 1 to the attack rolls of the party within two tiles. Level 2 gives Divine Smite (2d8 radiant on its first hit of a wave); level 3 widens the aura to three tiles.
+- Levels 4 and 5, every class: level 4 is an Ability Score Improvement (+1 to its attack rolls and save DCs). Level 5 gives the fighter and the paladin Extra Attack (two attacks a turn), the ranger a third arrow, the rogue Sneak Attack 3d6, the wizard Fire Bolt 2d10, the cleric Sacred Flame 2d8, and the bard a d8 to inspire with.
 
 The red numbers rise over whatever is hit; MISS, SAVED and IMMUNE say why nothing was.
 
