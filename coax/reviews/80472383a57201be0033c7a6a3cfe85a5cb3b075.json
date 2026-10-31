@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793464048,
+  "content": "All 23 #test blocks removed from project.coax, project-live.coax, project-links.coax and project-fold.coax reappear byte-identical in project-checks.coax or, as native_check bodies with identical asserts, in project-live-checks.coax; the source diffs remove only those blocks and blank lines; both suites pass (82/82, 5/5) at 6e7cc72af6.",
+  "tags": [
+    [
+      "commit",
+      "80472383a57201be0033c7a6a3cfe85a5cb3b075"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "a3f21a7431e3d2b54c5b8c740766fc0e99e77e832a39a3276681a58d08cd3fcd",
+  "id": "dfd7b419a5d962b75cba6f8f2da3f7a28c90253b6b9c6e09b2c5dd4bf1e391f5",
+  "sig": "0f0a4bb3c78320492770c57b803e0ec465e1b7ef983c08a3ac57c3f2ec51474123098370e360ce06481a9abab6f6cdffe20bf97560048ca6ae52d1e0b4ceb499"
+}
