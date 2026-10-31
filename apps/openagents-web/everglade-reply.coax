@@ -433,6 +433,15 @@ rp_board :: (s: [] Everglade) {
   p := rp_sign_at(s);
   shape(s, SHAPE_BOX, LOOK_MATTE, add(p, v3(-0.06, 0, 0)), 0, 0, 0.14, 1.5, f32(RP_SIGN_W), 0.2, 0.13, 0.07);
 }
+// Where the panel rp_hud draws ends on the screen (0: none), so the sign's words never sit under it.
+rp_panel_bottom :: (s: [] Everglade) -> f32 {
+  ph := s[0].rp.phase;
+  if ph == RP_IDLE || ph == RP_TYPING || ph == RP_CASTING || ph == RP_FALLING { return 0; }
+  k := hi(s[0].dpr, 0.5);
+  y := 16 * k + ifx phone(s) then 110 * k else 64 * k;
+  tall := ifx ph == RP_LINKED && !s[0].rp.replay then 136.0f32 else ifx ph == RP_UP || ph == RP_FAILED || (ph == RP_LINKED && s[0].rp.replay) then 104.0f32 else 56.0f32;
+  return y + tall * k;
+}
 rp_sign :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   n := n0;
   if !rp_busy(s) || rp_typing(s) || s[0].rp.words_n == 0 { return n; }
@@ -457,6 +466,8 @@ rp_sign :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   shown := lo_int(count, 3);
   lead := cap * 1.6;
   top := c.y - f32(shown - 1) * lead / 2;
+  below := rp_panel_bottom(s);
+  if below > 0 && top - cap * 0.9 < below + 8 * k { top = below + 8 * k + cap * 0.9; }
   most := 0.0f32;
   for q: 0..<shown { most = hi(most, text_width(words[lines[q * 2]..<lines[q * 2 + 1]], cap)); }
   plate(s, u, Box.{x0 = c.x - most / 2 - cap, y0 = top - cap * 0.9, x1 = c.x + most / 2 + cap, y1 = top + f32(shown - 1) * lead + cap * 1.1}, 0.7, 0);
