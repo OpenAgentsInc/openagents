@@ -34,9 +34,12 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
 # particles' module the same from gpu-fx.coax.
 (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu.coax apps/openagents-web/everglade.wgsl verse/everglade/gpu.module \
   && coax/web/tool.sh coax/web/wgsl-module.coax verse/everglade/gpu-fx.coax apps/openagents-web/everglade-fx.wgsl verse/everglade/gpu-fx.module)
-# The pages whose whole module is Coax too: apps/openagents-web/gpu/NAME.coax, with NAME.bindings
-# and NAME.module, writes NAME.wgsl (the rest are still hand-written; docs/verse/native-gpu.md, G6).
-for w in verse newland builder deadgears icecream garden belt droprealm villa fairy orbitleague stair myrealm fixture realm waterlab admin changelog characters chat memorial og particles private project projects realmlist splash; do
+# Every page's and realm's WGSL is written from its Coax: apps/openagents-web/gpu/NAME.coax, with
+# NAME.bindings and NAME.module, writes NAME.wgsl (docs/verse/native-gpu.md, G6); none is
+# written by hand. gpu/nip.coax is the NIP pages', written to nip01.wgsl below.
+for m in "$here"/gpu/*.module; do
+  w=$(basename "$m" .module)
+  [[ "$w" == nip ]] && continue
   (cd "$here/../.." && coax/web/tool.sh coax/web/wgsl-module.coax "apps/openagents-web/gpu/$w.coax" "apps/openagents-web/$w.wgsl" "apps/openagents-web/gpu/$w.module")
 done
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.

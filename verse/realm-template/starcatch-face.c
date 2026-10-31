@@ -1,6 +1,6 @@
 // Star Catcher's C face for the browser (coax/web/host.js): scalar Wasm
 // exports over starcatch.coax, which holds the game and its drawing. It
-// decides nothing. No assets, no scene: starcatch.wgsl's bg_fs draws the sky
+// decides nothing. No assets, no scene: gpu/starcatch.coax's bg_fs draws the sky
 // and the hill, and fx_fs the strokes catch_frame writes.
 #include "starcatch.h"
 #include <stdbool.h>

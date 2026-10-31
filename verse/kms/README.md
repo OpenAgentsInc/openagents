@@ -18,7 +18,7 @@ of drawing a frame on 28 threads, and the compositor resumed after.
 | `realm.h` | What the host asks of a realm: the browser face's contract plus its light |
 | `starcatch-native.c` | Star Catcher's face over `starcatch-kms.coax` and `starcatch-light.coax` |
 | `starcatch-kms.coax` | The realm, loaded unchanged, plus a demo player for recordings (chase the lowest star), with its check |
-| `starcatch-light.coax` | Star Catcher's sky, hill and strokes, following `starcatch.wgsl` by hand |
+| `starcatch-light.coax` | Star Catcher's sky, hill and strokes, following `verse/realm-template/gpu/starcatch.coax` by hand |
 | `build.sh` | Coax to C, then `cc` (with libdrm on Linux; headless only on macOS) |
 | `run.sh` | As root: switch to a free VT so the compositor lets go, run, switch back |
 

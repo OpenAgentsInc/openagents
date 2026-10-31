@@ -41,9 +41,11 @@ coax/build.sh
 
 Start from the template: `verse/realm-template/` is a whole small realm
 (Star Catcher, about 460 lines of Coax with four `#test` checks that play
-it, no assets) that a fresh agent made from this skill. Copy its three files
-to `apps/openagents-web/<module>.coax`, `<module>-face.c` and
-`<module>.wgsl`, rename `starcatch`/`Starcatch` to your module throughout,
+it, no assets) that a fresh agent made from this skill. Copy its files
+to `apps/openagents-web/<module>.coax` and `<module>-face.c`, and its
+`gpu/starcatch.coax`, `.module` and `.bindings` to
+`apps/openagents-web/gpu/<module>.coax`, `.module` and `.bindings`; rename
+`starcatch`/`Starcatch` to your module throughout (in the `.module` too),
 then make your own game in it. `verse/realm-template/row.json` is its
 `realms.json` row and `index.md` its page text. For bigger ideas, read Hold
 the Stair (`stair.coax`, a tower defense with buttons and phone taps) or
@@ -73,13 +75,15 @@ realm can leave out.
   face you started from and rename; it decides nothing. The compiler
   writes `<module>.h`, where your state struct `Foo` is `coax_t_Foo` and a
   view of it `coax_v_t_Foo`.
-- `<module>.wgsl`: `bg_vs`/`bg_fs` (a full-screen pass) and `fx_vs`/`fx_fs`
-  (the vertices your frame writes). The fx pass adds light (a stroke's
-  colour times its light), it does not blend over. Copy and trim.
+- `gpu/<module>.coax`: the shaders, in Coax: `<module>_bg_vs`/`_bg_fs` (a
+  full-screen pass) and `<module>_fx_vs`/`_fx_fs` (the vertices your frame
+  writes). The fx pass adds light (a stroke's colour times its light), it
+  does not blend over. Copy and trim. `build.sh` writes `<module>.wgsl`
+  from it (`coax wgsl`, every `gpu/*.module`); never write WGSL by hand.
 - Checks: put `#test` blocks in the `.coax` file that play the game (a
   frame draws, input does what it says, the game can be won and lost). They
   run with `coax test`.
-- Every visible thing is drawn in Coax and WGSL: no HTML, CSS or DOM UI
+- Every visible thing is drawn in Coax: no HTML, CSS or DOM UI
   (`coax/web/check-visuals.sh` refuses it). Text from players is drawn as
   glyphs, never interpreted. Orange is for Bitcoin only. Write "Log in",
   never "Sign in".
@@ -92,9 +96,10 @@ realms (and its `wait`):
 <module>=$!      # a shell variable named after the module; then `wait "$<module>"` with the others
 ```
 
-If the realm is `flat` or `painterly`, add its WGSL to the matching
-`coax/web/wgsl-block.coax ... --into` line at the top of `build.sh` (Orbit League is
-flat; Everglade painterly); `lowpoly` needs nothing.
+If the realm is `flat` or `painterly`, `#load "../../../verse/style.coax"` in
+`gpu/<module>.coax` and call its `verse_style_*` light (Orbit League's
+`gpu/orbitleague.coax` is flat; Fairy Forest's `gpu/fairy.coax` too); `lowpoly`
+needs nothing.
 
 ## 4. Add the table row and the page text
 
@@ -159,6 +164,7 @@ The first `tool.sh shot` builds the shot tool (about a minute). Look at both sho
 ```sh
 git checkout -b realm-<slug>
 git add apps/openagents-web/<module>.coax apps/openagents-web/<module>-face.c apps/openagents-web/<module>.wgsl \
+  apps/openagents-web/gpu/<module>.coax apps/openagents-web/gpu/<module>.module apps/openagents-web/gpu/<module>.bindings \
   apps/openagents-web/build.sh apps/openagents-web/realms.json apps/openagents-web/realms.coax \
   apps/openagents-web/realms/<slug>/
 git commit -m "Verse: <Title>, a new realm at /realms/<slug>"

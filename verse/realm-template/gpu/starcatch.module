@@ -1,0 +1,3 @@
+--vertices starcatch_bg_vs,starcatch_fx_vs
+--fragments starcatch_bg_fs,starcatch_fx_fs
+--bindings apps/openagents-web/gpu/starcatch.bindings --strip starcatch_

@@ -416,7 +416,11 @@ Every phase and native feature is a task in the Verse project
     match; the nine without were A/B'd in one stage against shots of their
     hand modules: seven 0 blocks changed; characters and project animate
     (their hand module differs from itself by more than the Coax one does).
-    No page's WGSL is written by hand any more.
+    No page's WGSL is written by hand any more, and none is to be: the realm
+    template (verse/realm-template/gpu/starcatch.coax, A/B'd as a mounted
+    realm in one stage: 0 blocks changed against its hand WGSL, now deleted)
+    gives a new realm its shaders in Coax, verse/SKILL.md says so, and
+    build.sh writes every gpu/*.module.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

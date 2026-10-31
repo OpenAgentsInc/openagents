@@ -1,12 +1,13 @@
-// The realm template (verse/SKILL.md): copy this file, starcatch-face.c and
-// starcatch.wgsl into apps/openagents-web/ under your module's name. Star
+// The realm template (verse/SKILL.md): copy this file and starcatch-face.c into
+// apps/openagents-web/, and gpu/starcatch.coax, .module and .bindings into its gpu/,
+// under your module's name. Star
 // Catcher itself is not on the site; a fresh agent made it from the skill.
 //
 // Star Catcher, openagents.com/realms/star-catcher: stars fall from a night
 // sky and you catch them in a basket. Catch fifteen to win; let three reach
 // the ground and you lose.
 //
-// Everything is drawn flat: starcatch.wgsl's bg_fs draws the sky and the
+// Everything is drawn flat: gpu/starcatch.coax's bg_fs draws the sky and the
 // hill from the uniforms; the stars, the basket and the HUD text are fx
 // strokes (font.coax).
 //   coax/bin/coax test apps/openagents-web/starcatch.coax --steps 2000000000

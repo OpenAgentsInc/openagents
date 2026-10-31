@@ -1,8 +1,7 @@
 // Star Catcher's light for the native host (verse/kms): the same sky, hill
-// and strokes as verse/realm-template/starcatch.wgsl, as scalar Coax the
-// host calls per pixel. kms.c rasterizes and adds; it decides no colour.
-// Until Coax emits WGSL itself, the page keeps its WGSL and this file
-// follows it by hand.
+// and strokes as verse/realm-template/gpu/starcatch.coax (the page's shaders, in Coax),
+// as scalar Coax the host calls per pixel. kms.c rasterizes and adds; it decides no
+// colour. It follows that file by hand.
 //   coax/bin/coax test verse/kms/starcatch-light.coax
 
 sl_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
