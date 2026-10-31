@@ -26,3 +26,8 @@ added; no old model, SDK or native arithmetic corpus reran.
 This is not full compiler R13, R14 bounds, a real watchdog/cancellation,
 maximum-age/R18 supervision, full snapshots or robot/Verse integration. The
 pinned SDK cache convention is separately audited from XML and 3.3.1 source.
+
+The final book gate held publication until the new example inventory was
+reviewed. Its sole added entry is this CPU runtime example, debug/release with
+a frozen stdout. The two execution/GPU capability bindings that include the
+inventory are refreshed; no GPU backend or device-execution claim changes.

@@ -44,8 +44,8 @@ Ordinary admission preserves state. A bad integration receipt instead returns
 a halted cursor on non-ok status; the consumer adopts that returned state and
 does not publish a plant step. Epoch reset invalidates old tickets. Clock labels
 and host observations are caller-supplied facts, not authentication. This
-runtime profile proves no hidden clock effect, wall watchdog, compiler R13/R14,
-complete replay, generic sensor-age policy or robot embodiment.
+library reads no clock internally. A wall watchdog, compiler R13/R14, complete
+replay, generic sensor-age policy and robot embodiment remain outside this profile.
 
 ## Planning derivatives keep physical execution and fixed context explicit
 
