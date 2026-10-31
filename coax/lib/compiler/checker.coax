@@ -2599,7 +2599,7 @@ CK_lower_effects :: (c:CK_Context) #export_c {for node:1..<c.state[0].used+1 {ig
 CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
   if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16,quantity_device=options.quantity_device};
   if used<1 || used>=c.nodes.count || c.types.count<16 || c.errors.count<1 || c.locals.count<1 {CK_resource(c,CK_Loc.{});return false;}
-  for id:2..<used+1 {c.nodes[id].borrow_binding=0;c.nodes[id].borrow_owner=0;c.nodes[id].borrow_writes=0;c.nodes[id].borrow_returns=0;c.nodes[id].borrow_calls=0;c.nodes[id].borrow_next=0;c.nodes[id].borrow_status=0;}
+  for id:2..<used+1 {c.nodes[id].borrow_binding=0;c.nodes[id].borrow_owner=0;c.nodes[id].borrow_writes=0;c.nodes[id].borrow_returns=0;c.nodes[id].borrow_calls=0;c.nodes[id].borrow_status=0;}
   for i:0..<16 {c.types[i]=CK_builtin(i);}
   CK_templates(c);
   id:=c.nodes[1].head;
