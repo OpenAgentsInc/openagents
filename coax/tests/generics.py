@@ -356,5 +356,65 @@ class GenericStructs(unittest.TestCase):
             self.assertEqual(self.coax("explain", code).returncode, 0, code)
 
 
+CONSTRAINED = """
+max :: (a: $T: ordered, b: $T) -> $T { if a < b { return b; } return a; }
+sum :: (v: [] $T: numeric) -> $T { s: $T = 0; for x: v { s += x; } return s; }
+same :: (a: $T: equatable, b: $T) -> bool { return a == b; }
+Range :: struct($T: ordered) { lo: $T; hi: $T; }
+inside :: (r: Range($T: ordered), x: $T) -> bool { return r.lo <= x && x <= r.hi; }
+Mode :: enum u8 { a; b; }
+calc :: () -> int {
+  v := [4] int.[3, 9, 2, 7]; w := [2] f64.[0.5, 2.0]; u := [3] u8.[1, 2, 3];
+  r: Range(int) = Range.{lo = 2, hi = 8};
+  n := max(4, 11) * 100000 + sum(v[..]) * 1000 + cast(int) (sum(w[..]) * 4.0) * 10 + cast(int) sum(u[..]);
+  if same("x", "x") && !same(Mode.a, Mode.b) && inside(r, 5) && !inside(r, 9) && max(2.5, 1.5) == 2.5 { n += 1; }
+  return n;
+}
+"""
+
+
+class Constraints(unittest.TestCase):
+    setUp = TypeParameters.setUp
+    write = TypeParameters.write
+    coax = TypeParameters.coax
+    codes = TypeParameters.codes
+
+    def test_constrained_bodies_agree_with_the_evaluator(self):
+        program = self.write("c.coax", '#import "Basic";\n' + CONSTRAINED + 'main :: () { print("%\\n", calc()); }\n')
+        compile_time = self.write("c_ct.coax", '#import "Basic";\n' + CONSTRAINED + "K :: #run calc();\n"
+                                  'main :: () { print("%\\n", K); }\n#test "constraints" { #assert calc() == 1121107; }\n')
+        for path in (program, compile_time):
+            for opt in ("0", "2"):
+                r = self.coax("run", path, "--opt", opt)
+                self.assertEqual((r.returncode, r.stdout), (0, "1121107\n"), r.stderr)
+        r = self.coax("test", compile_time)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_refused_bodies_and_calls_name_the_constraint(self):
+        cases = [
+            ("lt :: (a: $T, b: $T) -> bool { return a < b; }", ["E0310"]),
+            ("add :: (a: $T: ordered, b: $T) -> $T { return a + b; }", ["E0309"]),
+            ("eq :: (a: $T, b: $T) -> bool { return a == b; }", ["E0311"]),
+            ("f :: (a: $T: sortable) {}", ["E0805"]),
+            ("f :: (v: [$N] int, n: $N: ordered) {}", ["E0805", "E0368"]),
+            ("f :: (a: $T: ordered, b: $T: numeric) {}", ["E0808"]),
+            ("f :: (a: $T) { x: $T: ordered = a; }", ["E0808"]),
+            ("max :: (a: $T: ordered, b: $T) -> $T { return a; } g :: () { m := max(true, false); }", ["E0806"]),
+            ("P :: struct { x: int; } same :: (a: $T: equatable) {} g :: () { same(P.{x = 1}); }", ["E0806"]),
+            ("R :: struct($T: ordered) { lo: $T; } g :: () { r: R(bool); }", ["E0806"]),
+            ("grow :: (x: $T: numeric) -> $T { return x + 300; } g :: () { a: u8 = 1; b := grow(a); }", ["E0350", "E0807"]),
+        ]
+        for i, (source, want) in enumerate(cases):
+            with self.subTest(source=source):
+                code, codes = self.codes(self.write(f"k{i}.coax", source + "\nmain :: () {}\n"))
+                self.assertNotEqual(code, 0)
+                self.assertEqual(codes, want)
+        r = self.coax("check", self.write("trace.coax", cases[7][0] + "\nmain :: () {}\n"))
+        self.assertIn("bool is not ordered, but 'max' needs '$T: ordered' (declared at line 1)", r.stderr)
+        for code in ("E0805", "E0806", "E0807", "E0808"):
+            self.assertEqual(self.coax("explain", code).returncode, 0, code)
+
+
+
 if __name__ == "__main__":
     unittest.main()

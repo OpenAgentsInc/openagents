@@ -1,9 +1,9 @@
 // Canonical reviewed release/status catalogue. Generate with scripts/coax-release.sh --write.
 #import "Basic";
 #load "release-model.coax";
-IMPLEMENTATION_VERSION :: "0.39.0";
+IMPLEMENTATION_VERSION :: "0.40.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [117]ReleaseFeature.[
+CATALOGUE :: [118]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -105,6 +105,7 @@ CATALOGUE :: [117]ReleaseFeature.[
   ReleaseFeature.{id="generics.value-parameters",section="Capabilities",name="`$N` value parameters",meaning="[$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted",status="partial",introduced="0.36.0"},
   ReleaseFeature.{id="generics.structs",section="Capabilities",name="Generic structs",meaning="Pair :: struct($T) and Box :: struct($T, $N) instantiate per binding from Pair(int) types, deducing literals and Pair($T) parameters; fixed-storage bindings only (no views or aggregates containing views); each instance is laid out and emitted (E0800-E0804, E0223)",status="partial",introduced="0.37.0"},
   ReleaseFeature.{id="foreign.views",section="Capabilities",name="Borrowed views across `#foreign`",meaning="A #foreign parameter may be a [] view of integers, floats or bool, passed as the {data, count} struct; the host reads and writes it during the call only (no retention, transfer or asynchronous use), views may overlap; other views, arrays and view results are E0376; compile-time and check execution refuse host calls (E0404)",status="partial",introduced="0.38.0"},
+  ReleaseFeature.{id="generics.constraints",section="Capabilities",name="Generic constraints",meaning="$T: equatable, ordered, numeric or copyable; bodies check against the constraint and calls outside it are refused with an instantiation trace (E0805-E0808)",status="partial",introduced="0.40.0"},
   ReleaseFeature.{id="proto.native",section="Capabilities",name="`#import_proto`",meaning="Selected proto3 descriptor generation in Coax; domain admission remains separate",status="works",introduced="0.10.0"},
   ReleaseFeature.{id="debug.source",section="Capabilities",name="Native source debugging",meaning="Original-file line maps and optional LLDB names; optimized values and generated-code limits remain",status="partial",introduced="0.13.0"},
   ReleaseFeature.{id="borrow.local",section="Capabilities",name="E0383 local-borrow diagnostics",meaning="Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked",status="works",introduced="0.13.0"},

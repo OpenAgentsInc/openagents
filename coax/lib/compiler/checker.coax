@@ -174,7 +174,7 @@ CK_Tag :: enum u32 {invalid=0;type_named=1;type_array=2;type_view=3;type_dynamic
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
   type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;own_effects:u8;effects_known:bool;generic:bool;
   origin:int;pristine:int;chain:int;key:string;}
-CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;}
+CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;need:int;}
 CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
 // Where a type is being resolved, for $T: which procedure owns the type
@@ -312,7 +312,9 @@ CK_new_type :: (c:CK_Context,t:CK_Type)->int {
 }
 CK_integer :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.integer;}
 CK_float :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.floating;}
-CK_numeric :: (c:CK_Context,t:int)->bool {return CK_integer(c,t) || CK_float(c,t);}
+CK_numeric :: (c:CK_Context,t:int)->bool {return CK_integer(c,t) || CK_float(c,t) || c.types[t].need==4;}
+// Ordered: numbers, and placeholders constrained ordered or numeric.
+CK_ordered :: (c:CK_Context,t:int)->bool {return CK_numeric(c,t) || c.types[t].need==3;}
 CK_untyped :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.untyped_int || c.types[t].kind==CK_Kind.untyped_float;}
 CK_aggregate :: (c:CK_Context,t:int)->bool {return c.types[t].kind==CK_Kind.array || c.types[t].kind==CK_Kind.struct_;}
 CK_find :: (c:CK_Context,kind:CK_Tag,name:string)->int {id:=c.nodes[1].head;while id!=CK_NONE {if c.nodes[id].kind==kind && c.nodes[id].name==name {return id;}id=c.nodes[id].next;}return CK_NONE;}
@@ -788,14 +790,16 @@ CK_param :: (c:CK_Context,id:int,value:bool)->int {
   e:=c.nodes[id];name:=CK_join2(c,"$",e.name);owner:=c.state[0].generic;site:=c.state[0].site;bits:=0;if value {bits=1;}
   // A field's owner is its struct: a template, an instance, or a plain struct with no parameters.
   // A struct parameter is a length or a type by its first use in a field (bits 2: not used yet).
+  // an instance's copy repeats its template's constraints, which were checked there
+  if e.name2.count!=0 && site!=CK_Site.param && c.nodes[owner].origin==CK_NONE {CK_error(c,e.loc2,"E0808",CK_join3(c,"a constraint on '",name,"' is written where a parameter binds it"),"constrain it in the parameter list: f :: (x: $T: ordered), or Pair :: struct($T: ordered)");}
   if site==CK_Site.field {found:=CK_param_record(c,owner,name);if found!=CK_NONE {if c.types[found].bits==2 {c.types[found].bits=bits;}return found;}
     CK_error(c,e.loc,"E0395",CK_join3(c,"a struct field cannot have the type parameter '",name,"'"),CK_join3(c,"list it in the struct's parameters: S :: struct(",name,") { ... }"));return CK_NONE;}
   if owner==CK_NONE {CK_error(c,e.loc,"E0393",CK_join3(c,"'",name,"' is not bound here; only a procedure's parameters bind type parameters"),"bind it in a procedure's parameter list: f :: (x: $T)");return CK_NONE;}
-  found:=CK_param_record(c,owner,name);if found!=CK_NONE {return found;}
+  found:=CK_param_record(c,owner,name);if found!=CK_NONE {CK_constrain(c,id,found);return found;}
   proc:=c.nodes[owner].name;
   if site==CK_Site.result {parts:=[5] string.["'",name,"' appears only in the result of '",proc,"'; a parameter must bind it"];CK_error(c,e.loc,"E0392",CK_text(c,parts[..]),CK_join3(c,"add a parameter whose type uses ",name,", or return a concrete type"));return CK_NONE;}
   if site!=CK_Site.param {parts:=[5] string.["'",name,"' is not bound by a parameter of '",proc,"'"];CK_error(c,e.loc,"E0393",CK_text(c,parts[..]),CK_join3(c,"use ",name," in a parameter's type first"));return CK_NONE;}
-  c.nodes[owner].generic=true;return CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=name,decl=owner,scope=c.nodes[owner].scope,bits=bits});
+  c.nodes[owner].generic=true;r:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=name,decl=owner,scope=c.nodes[owner].scope,bits=bits});CK_constrain(c,id,r);return r;
 }
 CK_param_record :: (c:CK_Context,owner:int,name:string)->int {
   for i:16..<c.state[0].type_count {r:=c.types[i];if r.kind==CK_Kind.param && r.decl==owner && r.name==name {return i;}}return CK_NONE;
@@ -881,6 +885,8 @@ CK_set_float :: (c:CK_Context,id:int,bits:u64) {c.nodes[id].kind=CK_Tag.expr_flo
 CK_as_double :: (c:CK_Context,id:int)->u64 {if c.nodes[id].type==5 {return c.nodes[id].floating;}return CM_to_float(CK_untyped_int(c,id));}
 CK_coerce :: (c:CK_Context,id:int,to:int) {
   from:=c.nodes[id].type;if !CK_untyped(c,from) {return;}
+  // an integer literal is a value of every numeric type, so of a numeric $T; each instance checks it again
+  if from==4 && c.types[to].need==4 {c.nodes[id].type=to;return;}
   if from==4 && CK_integer(c,to) {
     v:=CK_untyped_int(c,id);t:=c.types[to];if !CM_fits(v,t.bits,t.is_signed) && c.state[0].unevaluated!=0 {v=CM_Int.{};}
     if !CM_fits(v,t.bits,t.is_signed) {
@@ -1013,7 +1019,7 @@ CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int {
   if e.op>=34 && e.op<=38 {
     if a!=b || !CK_numeric(c,a) || (e.op==38 && !CK_integer(c,a)) {
       need:=" needs two numbers of one type";if e.op==38 {need=" needs two integers of one type";}
-      fix:="";if a==3 {fix="build strings with print's % formatting";}else if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_join3(c,"convert one: cast(",c.types[a].name,") x");}
+      fix:=CK_constrain_fix(c,a,"numeric");if a==3 {fix="build strings with print's % formatting";}else if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_join3(c,"convert one: cast(",c.types[a].name,") x");}
       parts:=[4] string.[CK_op(e.op),need,", found ",pair];CK_error(c,e.loc,"E0309",CK_text(c,parts[..]),fix);return CK_NONE;
     }return a;
   }
@@ -1022,11 +1028,11 @@ CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int {
   }
   if shift {if !CK_integer(c,a) || !CK_integer(c,b) {CK_error(c,e.loc,"E0370",CK_join3(c,CK_op(e.op)," shifts an integer by an integer, found ",pair),"");return CK_NONE;}return a;}
   if e.op>=46 && e.op<=49 {
-    if a!=b || !CK_numeric(c,a) {fix:="";if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_join3(c,"convert one: cast(",c.types[a].name,") x");}CK_error(c,e.loc,"E0310",CK_join3(c,CK_op(e.op)," compares two numbers of one type, found ",pair),fix);return CK_NONE;}return 2;
+    if a!=b || !CK_ordered(c,a) {fix:=CK_constrain_fix(c,a,"ordered");if CK_numeric(c,a) && CK_numeric(c,b) {fix=CK_join3(c,"convert one: cast(",c.types[a].name,") x");}CK_error(c,e.loc,"E0310",CK_join3(c,CK_op(e.op)," compares two numbers of one type, found ",pair),fix);return CK_NONE;}return 2;
   }
   if e.op==44 || e.op==45 {
     if a!=b {parts:=[4] string.["cannot compare ",c.types[a].name," with ",c.types[b].name];CK_error(c,e.loc,"E0311",CK_text(c,parts[..]),"there are no implicit conversions in Coax");return CK_NONE;}
-    if CK_aggregate(c,a) || c.types[a].kind==CK_Kind.view || c.types[a].kind==CK_Kind.param {parts:=[4] string.["cannot compare ",c.types[a].name," values with ",CK_op(e.op)];CK_error(c,e.loc,"E0311",CK_text(c,parts[..]),"compare the fields or elements you mean");return CK_NONE;}return 2;
+    if !CK_meets(c,a,2) {fix:=CK_constrain_fix(c,a,"equatable");if fix=="" {fix="compare the fields or elements you mean";}parts:=[4] string.["cannot compare ",c.types[a].name," values with ",CK_op(e.op)];CK_error(c,e.loc,"E0311",CK_text(c,parts[..]),fix);return CK_NONE;}return 2;
   }
   if e.op==50 || e.op==51 {if a!=2 || b!=2 {CK_error(c,e.loc,"E0312",CK_join3(c,CK_op(e.op)," needs two bools, found ",pair),"");return CK_NONE;}return 2;}
   return CK_NONE;
@@ -1575,7 +1581,7 @@ CK_bind :: (c:CK_Context,inst:int,node:int,t:int,arg:int,i:int) {
   name:=CK_join2(c,"$",n.name);
   if t==1 {parts:=[4] string.[CK_which(c,inst,i)," of '",proc,"' has no value"];CK_error(c,loc,"E0397",CK_join3(c,CK_text(c,parts[..]),", so it cannot bind ",CK_join3(c,"'",name,"'")),"pass a value; this call returns nothing");return;}
   r:=CK_param_record(c,inst,name);
-  if r==CK_NONE {ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=name,decl=inst,elem=t,scope=c.nodes[inst].scope});return;}
+  if r==CK_NONE {CK_satisfies(c,inst,name,t,loc);ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=name,decl=inst,elem=t,scope=c.nodes[inst].scope});return;}
   bound:=c.types[r].elem;
   if bound!=t {parts:=[7] string.["'",name,"' is ",c.types[bound].name,CK_earlier(c,inst),proc,CK_join2(c,"', but ",CK_which(c,inst,i))];
     CK_error(c,loc,"E0348",CK_join3(c,CK_text(c,parts[..])," is ",c.types[t].name),CK_join3(c,"pass the same type, or convert it: cast(",c.types[bound].name,") value"));}
@@ -1608,8 +1614,54 @@ CK_instance :: (c:CK_Context,id:int,proc:int)->int {
     found:=c.state[0].instances;while found!=CK_NONE && !(c.nodes[found].origin==proc && CK_same(c,found,inst)) {found=c.nodes[found].chain;}
     if found!=CK_NONE {c.nodes[inst].kind=CK_Tag.invalid;inst=found;}
     else if !CK_chain(c,inst,e.loc) {return CK_NONE;}
+    else {c.nodes[inst].loc2=e.loc;}  // its first call, for an instantiation trace
   }
   ret:=CK_subst(c,inst,t.type);c.nodes[inst].type=ret;c.nodes[id].proc=inst;return ret;
+}
+// Constraints (r4a-constraints): a placeholder's need is the operations a
+// generic body may use on it, and the types a binding may give it.
+// Each level allows what the one below it does:
+//   copyable 1: assignment and passing, which every coax0 type has;
+//   equatable 2: and == != ; ordered 3: and < <= > >= ; numeric 4: and + - * / and literals.
+CK_need :: (c:CK_Context,id:int)->int {
+  e:=c.nodes[id];w:=e.name2;if w.count==0 {return 0;}
+  names:=[4] string.["equatable","ordered","numeric","copyable"];needs:=[4] int.[2,3,4,1];
+  for i:0..<4 {if w==names[i] {return needs[i];}}
+  CK_error(c,e.loc2,"E0805",CK_join3(c,"unknown constraint '",w,"'"),"constraints are equatable, ordered, numeric and copyable");return 0;
+}
+CK_constrain :: (c:CK_Context,id:int,r:int) {
+  t:=c.types[r];if c.nodes[t.decl].origin!=CK_NONE {return;}need:=CK_need(c,id);if need==0 {return;}e:=c.nodes[id];
+  if t.bits==1 {CK_error(c,e.loc2,"E0805",CK_join3(c,"'",t.name,"' is a length; constraints apply to type parameters"),"write the constraint on a $T");return;}
+  if t.need!=0 && t.need!=need {CK_error(c,e.loc2,"E0808",CK_join3(c,"'",t.name,"' already has a different constraint"),"write one constraint, where the parameter is first bound");return;}
+  c.types[r].need=need;
+}
+// Only equatable, ordered and numeric can be unmet.
+CK_constraint_name :: (need:int)->string {if need==2 {return "equatable";}if need==3 {return "ordered";}return "numeric";}
+// Whether t can stand for a placeholder that needs `need`.
+CK_meets :: (c:CK_Context,t:int,need:int)->bool {
+  r:=c.types[t];if r.kind==CK_Kind.param {return r.need>=need;}
+  if need<=1 {return true;}
+  if need==2 {return !CK_aggregate(c,t) && r.kind!=CK_Kind.view;}
+  return CK_numeric(c,t);
+}
+CK_constrain_fix :: (c:CK_Context,t:int,want:string)->string {
+  if c.types[t].kind!=CK_Kind.param {return "";}parts:=[4] string.["constrain it where it is bound: ",c.types[t].name,": ",want];return CK_text(c,parts[..]);
+}
+// A binding outside its template's constraint is refused at the use, naming
+// the generic declaration and the constraint: a source-level trace.
+CK_satisfies :: (c:CK_Context,inst:int,name:string,t:int,loc:CK_Loc) {
+  o:=c.nodes[inst].origin;need:=c.types[CK_param_record(c,o,name)].need;if CK_meets(c,t,need) {return;}
+  word:=CK_constraint_name(need);parts:=[8] string.[c.types[t].name," is not ",word,", but '",c.nodes[o].name,CK_join3(c,"' needs '",name,": "),word,CK_join3(c,"' (declared at line ",CK_count(c,c.nodes[o].loc.line),")")];
+  fix:="ordered and numeric types are integers, floats and placeholders constrained so";if need==2 {fix="equatable types are scalars, strings and enums, not structs, arrays or views";}
+  CK_error(c,loc,"E0806",CK_text(c,parts[..]),fix);
+}
+// An instance whose body fails is reported at its first call, with its bindings.
+CK_trace :: (c:CK_Context,inst:int) {
+  o:=c.nodes[c.nodes[inst].origin];text:="";
+  for i:16..<c.state[0].type_count {r:=c.types[i];if r.kind==CK_Kind.param && r.decl==inst {
+    v:=c.types[r.elem].name;if r.bits==1 {v=CK_count(c,r.length);}if text.count!=0 {text=CK_join2(c,text,", ");}text=CK_join3(c,text,CK_join2(c,r.name," = "),v);}}
+  parts:=[7] string.["instantiating '",o.name,"' (line ",CK_count(c,o.loc.line),") with ",text," fails; its errors are above"];
+  CK_error(c,c.nodes[inst].loc2,"E0807",CK_text(c,parts[..]),"constrain its parameters so this call is refused at the call, or pass types its body accepts");
 }
 // The instance list holds procedure and struct instances, up to the limit.
 CK_chain :: (c:CK_Context,inst:int,loc:CK_Loc)->bool {
@@ -1644,7 +1696,7 @@ CK_struct_arg :: (c:CK_Context,inst:int,a:int,r:CK_Type) {
     else {CK_kind_clash(c,a,r.name,true);return;}
   }
   else if n.kind==CK_Tag.expr_int {CK_kind_clash(c,a,r.name,false);return;}
-  else {elem=CK_resolve(c,a,CK_Access.value);}
+  else {elem=CK_resolve(c,a,CK_Access.value);CK_satisfies(c,inst,r.name,elem,n.loc);}
   ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=r.name,decl=inst,bits=r.bits,elem=elem,length=length,scope=c.nodes[inst].scope});
 }
 CK_struct_type :: (c:CK_Context,id:int,d:int,by_value:CK_Access)->int {
@@ -1700,7 +1752,9 @@ CK_struct_key :: (c:CK_Context,inst:int)->string {
 }
 CK_template :: (c:CK_Context,id:int) {
   c.nodes[id].generic=true;p:=c.nodes[id].d;
-  while p!=CK_NONE {ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=CK_join2(c,"$",c.nodes[p].name),decl=id,bits=2,scope=c.nodes[id].scope});p=c.nodes[p].next;}
+  // a constrained parameter is a type; an unconstrained one is decided by its first use
+  while p!=CK_NONE {need:=CK_need(c,p);bits:=2;if need!=0 {bits=0;}
+    ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=CK_join2(c,"$",c.nodes[p].name),decl=id,bits=bits,need=need,scope=c.nodes[id].scope});p=c.nodes[p].next;}
 }
 CK_field_index :: (c:CK_Context,d:int,name:string)->int {f:=c.nodes[d].head;i:=0;while f!=CK_NONE {if c.nodes[f].name==name {return i;}i+=1;f=c.nodes[f].next;}return -1;}
 // Pair.{a = 1, b = 2}: typed values bind first, so an untyped literal in a
@@ -1748,7 +1802,8 @@ CK_expand :: (c:CK_Context,inst:int) {
   CK_stmt(c,s.b);c.state[0].generic=CK_NONE;
 }
 CK_instantiate :: (c:CK_Context) {
-  inst:=c.state[0].instances;while inst!=CK_NONE && c.state[0].error_count==0 && !c.state[0].fatal {if c.nodes[inst].kind==CK_Tag.proc {CK_expand(c,inst);}inst=c.nodes[inst].chain;}
+  inst:=c.state[0].instances;
+  while inst!=CK_NONE && c.state[0].error_count==0 && !c.state[0].fatal {if c.nodes[inst].kind==CK_Tag.proc {CK_expand(c,inst);if c.state[0].error_count!=0 {CK_trace(c,inst);}}inst=c.nodes[inst].chain;}
 }
 #test "placeholder lengths name and size their arrays, and only negative lengths are bound" {
  nodes:[8]CK_Node;types:[24]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=18}];
@@ -1761,6 +1816,17 @@ CK_instantiate :: (c:CK_Context) {
  #assert CK_generic(c,p) && !CK_generic(c,z) && !CK_generic(c,v);
  // a length of 0 is not a placeholder, even where record 0 would say otherwise
  types[0].length=5;#assert CK_subst(c,6,p)==CK_intern(c,CK_Kind.array,11,3) && CK_subst(c,6,z)==z && CK_key(c,6)=="2i3";
+}
+#test "an instantiation trace lists every binding of its instance" {
+ nodes:[8]CK_Node;types:[20]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{type_count=20}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[1]=CK_Node.{kind=CK_Tag.proc,name="grow",loc=CK_Loc.{line=3,column=1}};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="grow",origin=1,loc2=CK_Loc.{line=7,column=9,offset=40}};
+ types[16]=CK_Type.{kind=CK_Kind.param,name="$T",decl=2,elem=11};types[17]=CK_Type.{kind=CK_Kind.param,name="$T",decl=1};
+ types[18]=CK_Type.{kind=CK_Kind.param,name="$N",decl=2,bits=1,length=4,elem=2};types[19]=CK_Type.{kind=CK_Kind.param,name="$U",decl=2,elem=2};
+ CK_trace(c,2);
+ #assert state[0].error_count==1 && errors[0].code=="E0807" && errors[0].loc.line==7 && errors[0].loc.column==9 && errors[0].loc.offset==40;
+ #assert errors[0].message=="instantiating 'grow' (line 3) with $T = int, $N = 4, $U = bool fails; its errors are above";
 }
 #test "a struct instance starts as its template's name, scope and origin" {
  nodes:[8]CK_Node;types:[17]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[64]u8;state:=[1]CK_State.[CK_State.{used=3,type_count=16}];
@@ -1916,7 +1982,7 @@ CK_stmt :: (c:CK_Context,id:int) {
     CK_mutable(c,s.c,s.loc);t:=CK_value(c,s.a,CK_Hint.{type=target});if t==CK_NONE {return;}
     if s.op!=23 {
       op:=CK_compound(s.op);int_only:=op>=38;shift:=op==42 || op==43;bad:=!CK_numeric(c,target);if int_only {bad=!CK_integer(c,target);}
-      if bad {need:="a number";if int_only {need="an integer";}parts:=[5] string.[CK_op(s.op)," needs ",need," target, this is ",c.types[target].name];CK_error(c,s.loc,"E0326",CK_text(c,parts[..]),"");}
+      if bad {need:="a number";if int_only {need="an integer";}parts:=[5] string.[CK_op(s.op)," needs ",need," target, this is ",c.types[target].name];CK_error(c,s.loc,"E0326",CK_text(c,parts[..]),CK_constrain_fix(c,target,"numeric"));}
       else {mismatch:=t!=target;if shift {mismatch=!CK_integer(c,t);}if mismatch {parts:=[4] string.["the target is ",c.types[target].name,", given ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),"");}}
     }else if t!=target {fix:="";if CK_numeric(c,target) && CK_numeric(c,t) {fix=CK_join3(c,"convert it: cast(",c.types[target].name,") x");}parts:=[4] string.["the target is ",c.types[target].name,", assigned ",c.types[t].name];CK_error(c,c.nodes[s.a].loc,"E0327",CK_text(c,parts[..]),fix);}
     if target_expr.kind==CK_Tag.expr_ident {CK_taint_borrow(c,target_expr.name,s.a);}return;
@@ -72603,10 +72669,10 @@ b:[48]u8;n:=CM_g(4907240613329099648,b[..]);#assert cast(string)b[0..<n]=="1.2e+
   context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
   ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
   #assert ok==false && state[0].error_count==7 && state[0].type_count==19 && state[0].depth==0 && state[0].generic==0 && state[0].site==CK_Site.none;
-  #assert errors[0].code=="E0311" && errors[0].loc.line==1 && errors[0].loc.column==40 && errors[0].message=="cannot compare $T values with '=='" && errors[0].fix=="compare the fields or elements you mean";
-  #assert errors[1].code=="E0311" && errors[1].loc.line==1 && errors[1].loc.column==50 && errors[1].message=="cannot compare $T values with '!='" && errors[1].fix=="compare the fields or elements you mean";
-  #assert errors[2].code=="E0310" && errors[2].loc.line==2 && errors[2].loc.column==40 && errors[2].message=="'<' compares two numbers of one type, found $T and $T" && errors[2].fix=="";
-  #assert errors[3].code=="E0309" && errors[3].loc.line==3 && errors[3].loc.column==23 && errors[3].message=="'+' needs two numbers of one type, found $T and $T" && errors[3].fix=="";
+  #assert errors[0].code=="E0311" && errors[0].loc.line==1 && errors[0].loc.column==40 && errors[0].message=="cannot compare $T values with '=='" && errors[0].fix=="constrain it where it is bound: $T: equatable";
+  #assert errors[1].code=="E0311" && errors[1].loc.line==1 && errors[1].loc.column==50 && errors[1].message=="cannot compare $T values with '!='" && errors[1].fix=="constrain it where it is bound: $T: equatable";
+  #assert errors[2].code=="E0310" && errors[2].loc.line==2 && errors[2].loc.column==40 && errors[2].message=="'<' compares two numbers of one type, found $T and $T" && errors[2].fix=="constrain it where it is bound: $T: ordered";
+  #assert errors[3].code=="E0309" && errors[3].loc.line==3 && errors[3].loc.column==23 && errors[3].message=="'+' needs two numbers of one type, found $T and $T" && errors[3].fix=="constrain it where it is bound: $T: numeric";
   #assert errors[4].code=="E0362" && errors[4].loc.line==3 && errors[4].loc.column==33 && errors[4].message=="cannot cast $T to int" && errors[4].fix=="cast converts numbers, enums to and from integers, and a [] u8 view to a string";
   #assert errors[5].code=="E0307" && errors[5].loc.line==3 && errors[5].loc.column==51 && errors[5].message=="'-' needs a signed integer or a float, found $T" && errors[5].fix=="";
   #assert errors[6].code=="E0308" && errors[6].loc.line==3 && errors[6].loc.column==60 && errors[6].message=="'!' needs a bool, found $T" && errors[6].fix=="";
@@ -78187,4 +78253,1059 @@ b:[48]u8;n:=CM_g(4907240613329099648,b[..]);#assert cast(string)b[0..<n]=="1.2e+
   #assert types[785].kind==CK_Kind.struct_ && types[785].name=="S(256)" && types[785].elem==0 && types[785].decl==2056 && types[785].size==256 && types[785].alignment==1 && types[785].bits==0 && types[785].length==0;
   #assert types[786].kind==CK_Kind.array && types[786].name=="[256] u8" && types[786].elem==12 && types[786].decl==0 && types[786].size==256 && types[786].alignment==1 && types[786].bits==0 && types[786].length==256;
   #assert types[787].kind==CK_Kind.param && types[787].name=="$N" && types[787].elem==0 && types[787].decl==2061 && types[787].size==0 && types[787].alignment==1 && types[787].bits==1 && types[787].length==257;
+}
+// Source: "max :: (a: $T: ordered, b: $T) -> $T { if a < b { return b; } return a; }\nsum :: (v: [] $T: numeric) -> $T { s: $T = 0; for x: v { s += x; } return s; }\nsame :: (a: $T: equatable, b: $T) -> bool { return a == b; }\ntwice :: (x: $T: numeric) -> $T { return x + x * 1; }\nkeep :: (x: $T: copyable) -> $T { y := x; return y; }\nOrd :: struct($T: ordered) { lo: $T; hi: $T; }\ninside :: (r: Ord($T: ordered), x: $T) -> bool { return r.lo <= x && x <= r.hi; }\nP :: struct { x: int; }\nmain :: () { m := max(3, 5); f := max(2.5, 1.0); v := [3] int.[1, 2, 3]; s := sum(v[..]); w := [2] f64.[0.5, 1.5]; t := sum(w[..]); b := same(true, false); q := same(\"a\", \"b\"); u: u8 = 7; d := twice(u); k := keep(P.{x = 1}); r: Ord(int) = Ord.{lo = 1, hi = 9}; i := inside(r, 4); }"
+#test "constraints: bodies use what their constraint allows, and calls bind within it" {
+  initial:=[161] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=93},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=1,column=1,offset=0},name="max",a=7,b=8,head=3,tail=5,next=18},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=9,offset=8},name="a",a=4,next=5},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=12,offset=11},name="T",name2="ordered",loc2=CK_Loc.{line=1,column=16,offset=15}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=25,offset=24},name="b",a=6},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=28,offset=27},name="T"},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=35,offset=34},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=1,column=38,offset=37},head=9,tail=16},
+    CK_Node.{kind=CK_Tag.stmt_if,loc=CK_Loc.{line=1,column=40,offset=39},a=12,c=13,next=16},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=43,offset=42},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=47,offset=46},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=1,column=45,offset=44},a=10,b=11,op=46},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=1,column=49,offset=48},head=14,tail=14},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=1,column=51,offset=50},a=15},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=58,offset=57},name="b"},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=1,column=63,offset=62},a=17},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=70,offset=69},name="a"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=2,column=1,offset=74},name="sum",a=22,b=23,head=19,tail=19,next=35},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=2,column=9,offset=82},name="v",a=20},
+    CK_Node.{kind=CK_Tag.type_view,loc=CK_Loc.{line=2,column=12,offset=85},b=21},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=15,offset=88},name="T",name2="numeric",loc2=CK_Loc.{line=2,column=19,offset=92}},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=31,offset=104},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=2,column=34,offset=107},head=24,tail=33},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=2,column=36,offset=109},name="s",a=26,d=25,next=27},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=39,offset=112},name="T"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=2,column=44,offset=117}},
+    CK_Node.{kind=CK_Tag.stmt_each,loc=CK_Loc.{line=2,column=47,offset=120},name="x",a=28,c=29,next=33},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=54,offset=127},name="v"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=2,column=56,offset=129},head=31,tail=31},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=58,offset=131},name="s"},
+    CK_Node.{kind=CK_Tag.stmt_assign,loc=CK_Loc.{line=2,column=60,offset=133},a=32,c=30,op=24},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=63,offset=136},name="x"},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=2,column=68,offset=141},a=34},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=75,offset=148},name="s"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=3,column=1,offset=153},name="same",a=40,b=41,head=36,tail=38,next=46},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=3,column=10,offset=162},name="a",a=37,next=38},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=3,column=13,offset=165},name="T",name2="equatable",loc2=CK_Loc.{line=3,column=17,offset=169}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=3,column=28,offset=180},name="b",a=39},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=3,column=31,offset=183},name="T"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=3,column=38,offset=190},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=3,column=43,offset=195},head=42,tail=42},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=3,column=45,offset=197},a=45},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=3,column=52,offset=204},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=3,column=57,offset=209},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=3,column=54,offset=206},a=43,b=44,op=44},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=4,column=1,offset=214},name="twice",a=49,b=50,head=47,tail=47,next=57},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=4,column=11,offset=224},name="x",a=48},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=4,column=14,offset=227},name="T",name2="numeric",loc2=CK_Loc.{line=4,column=18,offset=231}},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=4,column=30,offset=243},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=4,column=33,offset=246},head=51,tail=51},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=4,column=35,offset=248},a=56},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=4,column=42,offset=255},name="x"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=4,column=46,offset=259},name="x"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=4,column=50,offset=263},value=1},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=4,column=48,offset=261},a=53,b=54,op=36},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=4,column=44,offset=257},a=52,b=55,op=34},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=5,column=1,offset=268},name="keep",a=60,b=61,head=58,tail=58,next=66},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=5,column=10,offset=277},name="x",a=59},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=5,column=13,offset=280},name="T",name2="copyable",loc2=CK_Loc.{line=5,column=17,offset=284}},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=5,column=30,offset=297},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=5,column=33,offset=300},head=62,tail=64},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=5,column=35,offset=302},name="y",a=63,next=64},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=5,column=40,offset=307},name="x"},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=5,column=43,offset=310},a=65},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=5,column=50,offset=317},name="y"},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=6,column=1,offset=322},name="Ord",d=67,head=68,tail=70,next=72},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=6,column=15,offset=336},name="T",name2="ordered",loc2=CK_Loc.{line=6,column=19,offset=340}},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=6,column=30,offset=351},name="lo",a=69,next=70,field_index=0},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=6,column=34,offset=355},name="T"},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=6,column=38,offset=359},name="hi",a=71,field_index=0},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=6,column=42,offset=363},name="T"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=7,column=1,offset=369},name="inside",a=78,b=79,head=73,tail=76,next=90},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=7,column=12,offset=380},name="r",a=74,next=76},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=7,column=15,offset=383},name="Ord",head=75,tail=75},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=7,column=19,offset=387},name="T",name2="ordered",loc2=CK_Loc.{line=7,column=23,offset=391}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=7,column=33,offset=401},name="x",a=77},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=7,column=36,offset=404},name="T"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=7,column=43,offset=411},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=7,column=48,offset=416},head=80,tail=80},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=7,column=50,offset=418},a=89},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=7,column=57,offset=425},name="r"},
+    CK_Node.{kind=CK_Tag.expr_field,loc=CK_Loc.{line=7,column=58,offset=426},name="lo",a=81},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=7,column=65,offset=433},name="x"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=7,column=62,offset=430},a=82,b=83,op=47},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=7,column=70,offset=438},name="x"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=7,column=75,offset=443},name="r"},
+    CK_Node.{kind=CK_Tag.expr_field,loc=CK_Loc.{line=7,column=76,offset=444},name="hi",a=86},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=7,column=72,offset=440},a=85,b=87,op=47},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=7,column=67,offset=435},a=84,b=88,op=50},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=8,column=1,offset=451},name="P",head=91,tail=91,next=93},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=8,column=15,offset=465},name="x",a=92,field_index=0},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=8,column=18,offset=468},name="int"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=9,column=1,offset=475},name="main",b=94},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=9,column=12,offset=486},head=95,tail=157},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=14,offset=488},name="m",a=96,next=99},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=19,offset=493},name="max",head=97,tail=98},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=23,offset=497},next=98,value=3},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=26,offset=500},value=5},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=30,offset=504},name="f",a=100,next=103},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=35,offset=509},name="max",head=101,tail=102},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=9,column=39,offset=513},next=102,floating=4612811918334230528},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=9,column=44,offset=518},floating=4607182418800017408},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=50,offset=524},name="v",a=104,next=111},
+    CK_Node.{kind=CK_Tag.expr_array,loc=CK_Loc.{line=9,column=55,offset=529},d=105,head=108,tail=110},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=9,column=55,offset=529},a=106,b=107},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=56,offset=530},value=3},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=59,offset=533},name="int"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=64,offset=538},next=109,value=1},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=67,offset=541},next=110,value=2},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=70,offset=544},value=3},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=74,offset=548},name="s",a=112,next=115},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=79,offset=553},name="sum",head=114,tail=114},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=83,offset=557},name="v"},
+    CK_Node.{kind=CK_Tag.expr_slice,loc=CK_Loc.{line=9,column=84,offset=558},a=113},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=91,offset=565},name="w",a=116,next=122},
+    CK_Node.{kind=CK_Tag.expr_array,loc=CK_Loc.{line=9,column=96,offset=570},d=117,head=120,tail=121},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=9,column=96,offset=570},a=118,b=119},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=97,offset=571},value=2},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=100,offset=574},name="f64"},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=9,column=105,offset=579},next=121,floating=4602678819172646912},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=9,column=110,offset=584},floating=4609434218613702656},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=116,offset=590},name="t",a=123,next=126},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=121,offset=595},name="sum",head=125,tail=125},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=125,offset=599},name="w"},
+    CK_Node.{kind=CK_Tag.expr_slice,loc=CK_Loc.{line=9,column=126,offset=600},a=124},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=133,offset=607},name="b",a=127,next=130},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=138,offset=612},name="same",head=128,tail=129},
+    CK_Node.{kind=CK_Tag.expr_bool,loc=CK_Loc.{line=9,column=143,offset=617},next=129,value=1},
+    CK_Node.{kind=CK_Tag.expr_bool,loc=CK_Loc.{line=9,column=149,offset=623}},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=157,offset=631},name="q",a=131,next=134},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=162,offset=636},name="same",head=132,tail=133},
+    CK_Node.{kind=CK_Tag.expr_string,loc=CK_Loc.{line=9,column=167,offset=641},name="a",next=133},
+    CK_Node.{kind=CK_Tag.expr_string,loc=CK_Loc.{line=9,column=172,offset=646},name="b"},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=178,offset=652},name="u",a=136,d=135,next=137},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=181,offset=655},name="u8"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=186,offset=660},value=7},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=189,offset=663},name="d",a=138,next=140},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=194,offset=668},name="twice",head=139,tail=139},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=200,offset=674},name="u"},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=204,offset=678},name="k",a=141,next=147},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=209,offset=683},name="keep",head=143,tail=143},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=214,offset=688},name="P"},
+    CK_Node.{kind=CK_Tag.expr_struct,loc=CK_Loc.{line=9,column=214,offset=688},d=144,head=145,tail=145},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=214,offset=688},name="P"},
+    CK_Node.{kind=CK_Tag.field_init,loc=CK_Loc.{line=9,column=217,offset=691},name="x",a=146},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=221,offset=695},value=1},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=226,offset=700},name="r",a=151,d=148,next=157},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=229,offset=703},name="Ord",head=149,tail=149},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=233,offset=707},name="int"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=240,offset=714},name="Ord"},
+    CK_Node.{kind=CK_Tag.expr_struct,loc=CK_Loc.{line=9,column=240,offset=714},d=152,head=153,tail=155},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=240,offset=714},name="Ord"},
+    CK_Node.{kind=CK_Tag.field_init,loc=CK_Loc.{line=9,column=245,offset=719},name="lo",a=154,next=155},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=250,offset=724},value=1},
+    CK_Node.{kind=CK_Tag.field_init,loc=CK_Loc.{line=9,column=253,offset=727},name="hi",a=156},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=258,offset=732},value=9},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=9,column=262,offset=736},name="i",a=158},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=9,column=267,offset=741},name="inside",head=159,tail=160},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=274,offset=748},name="r",next=160},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=9,column=277,offset=751},value=4}];
+  nodes:[499] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[499] CK_Type;locals:[177] CK_Local;errors:[1304] CK_Error;bytes:[92576] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
+  #assert ok==true && state[0].error_count==0 && state[0].type_count==45 && state[0].depth==0 && state[0].generic==0 && state[0].site==CK_Site.none;
+  #assert state[0].used==389 && state[0].instances==243 && state[0].instance_tail==261 && state[0].instance_count==11;
+  #assert nodes[2].origin==0 && nodes[2].pristine==161 && nodes[2].chain==0 && nodes[2].key=="" && nodes[2].head==3 && nodes[2].b==8 && nodes[2].reached==false;
+  #assert nodes[2].type==19 && nodes[2].generic==true;
+  #assert nodes[3].type==19;
+  #assert nodes[5].type==19;
+  #assert nodes[10].type==19;
+  #assert nodes[11].type==19;
+  #assert nodes[12].type==2;
+  #assert nodes[14].type==0;
+  #assert nodes[15].type==19;
+  #assert nodes[16].type==0;
+  #assert nodes[17].type==19;
+  #assert nodes[18].origin==0 && nodes[18].pristine==177 && nodes[18].chain==0 && nodes[18].key=="" && nodes[18].head==19 && nodes[18].b==23 && nodes[18].reached==false;
+  #assert nodes[18].type==20 && nodes[18].generic==true;
+  #assert nodes[19].type==21;
+  #assert nodes[24].type==20;
+  #assert nodes[26].type==20;
+  #assert nodes[27].type==20;
+  #assert nodes[28].type==21;
+  #assert nodes[30].type==20;
+  #assert nodes[32].type==20;
+  #assert nodes[33].type==0;
+  #assert nodes[34].type==20;
+  #assert nodes[35].origin==0 && nodes[35].pristine==194 && nodes[35].chain==0 && nodes[35].key=="" && nodes[35].head==36 && nodes[35].b==41 && nodes[35].reached==false;
+  #assert nodes[35].type==2 && nodes[35].generic==true;
+  #assert nodes[36].type==22;
+  #assert nodes[38].type==22;
+  #assert nodes[42].type==0;
+  #assert nodes[43].type==22;
+  #assert nodes[44].type==22;
+  #assert nodes[45].type==2;
+  #assert nodes[46].origin==0 && nodes[46].pristine==205 && nodes[46].chain==0 && nodes[46].key=="" && nodes[46].head==47 && nodes[46].b==50 && nodes[46].reached==false;
+  #assert nodes[46].type==23 && nodes[46].generic==true;
+  #assert nodes[47].type==23;
+  #assert nodes[51].type==0;
+  #assert nodes[52].type==23;
+  #assert nodes[53].type==23;
+  #assert nodes[54].type==23;
+  #assert nodes[55].type==23;
+  #assert nodes[56].type==23;
+  #assert nodes[57].origin==0 && nodes[57].pristine==216 && nodes[57].chain==0 && nodes[57].key=="" && nodes[57].head==58 && nodes[57].b==61 && nodes[57].reached==false;
+  #assert nodes[57].type==24 && nodes[57].generic==true;
+  #assert nodes[58].type==24;
+  #assert nodes[62].type==24;
+  #assert nodes[63].type==24;
+  #assert nodes[64].type==0;
+  #assert nodes[65].type==24;
+  #assert nodes[66].generic==true && nodes[66].flag2==false;
+  #assert nodes[68].type==17;
+  #assert nodes[70].type==17;
+  #assert nodes[72].origin==0 && nodes[72].pristine==225 && nodes[72].chain==0 && nodes[72].key=="" && nodes[72].head==73 && nodes[72].b==79 && nodes[72].reached==false;
+  #assert nodes[72].type==2 && nodes[72].generic==true;
+  #assert nodes[73].type==27;
+  #assert nodes[76].type==25;
+  #assert nodes[80].type==0;
+  #assert nodes[81].type==27;
+  #assert nodes[82].type==25;
+  #assert nodes[83].type==25;
+  #assert nodes[84].type==2;
+  #assert nodes[85].type==25;
+  #assert nodes[86].type==27;
+  #assert nodes[87].type==25;
+  #assert nodes[88].type==2;
+  #assert nodes[89].type==2;
+  #assert nodes[91].type==11;
+  #assert nodes[93].type==1 && nodes[93].generic==false;
+  #assert nodes[95].type==11;
+  #assert nodes[96].type==11 && nodes[96].proc==248;
+  #assert nodes[97].type==11;
+  #assert nodes[98].type==11;
+  #assert nodes[99].type==7;
+  #assert nodes[100].type==7 && nodes[100].proc==249;
+  #assert nodes[101].type==7;
+  #assert nodes[102].type==7;
+  #assert nodes[103].type==30;
+  #assert nodes[104].type==30;
+  #assert nodes[106].type==11;
+  #assert nodes[108].type==11;
+  #assert nodes[109].type==11;
+  #assert nodes[110].type==11;
+  #assert nodes[111].type==11;
+  #assert nodes[112].type==11 && nodes[112].proc==250;
+  #assert nodes[113].type==30;
+  #assert nodes[114].type==31;
+  #assert nodes[115].type==33;
+  #assert nodes[116].type==33;
+  #assert nodes[118].type==11;
+  #assert nodes[120].type==7;
+  #assert nodes[121].type==7;
+  #assert nodes[122].type==7;
+  #assert nodes[123].type==7 && nodes[123].proc==251;
+  #assert nodes[124].type==33;
+  #assert nodes[125].type==34;
+  #assert nodes[126].type==2;
+  #assert nodes[127].type==2 && nodes[127].proc==252;
+  #assert nodes[128].type==2;
+  #assert nodes[129].type==2;
+  #assert nodes[130].type==2;
+  #assert nodes[131].type==2 && nodes[131].proc==253;
+  #assert nodes[132].type==3;
+  #assert nodes[133].type==3;
+  #assert nodes[134].type==12;
+  #assert nodes[136].type==12;
+  #assert nodes[137].type==12;
+  #assert nodes[138].type==12 && nodes[138].proc==254;
+  #assert nodes[139].type==12;
+  #assert nodes[140].type==18;
+  #assert nodes[141].type==18 && nodes[141].proc==255;
+  #assert nodes[142].type==0;
+  #assert nodes[143].type==18;
+  #assert nodes[146].type==11;
+  #assert nodes[147].type==41;
+  #assert nodes[150].type==0;
+  #assert nodes[151].type==41;
+  #assert nodes[154].type==11;
+  #assert nodes[156].type==11;
+  #assert nodes[157].type==2;
+  #assert nodes[158].type==2 && nodes[158].proc==261;
+  #assert nodes[159].type==41;
+  #assert nodes[160].type==11;
+  #assert nodes[161].type==0 && nodes[161].generic==false;
+  #assert nodes[165].type==0;
+  #assert nodes[166].type==0;
+  #assert nodes[167].type==0;
+  #assert nodes[169].type==0;
+  #assert nodes[170].type==0;
+  #assert nodes[171].type==0;
+  #assert nodes[172].type==0;
+  #assert nodes[173].type==0;
+  #assert nodes[175].type==0;
+  #assert nodes[177].type==0 && nodes[177].generic==false;
+  #assert nodes[180].type==0;
+  #assert nodes[181].type==0;
+  #assert nodes[183].type==0;
+  #assert nodes[184].type==0;
+  #assert nodes[187].type==0;
+  #assert nodes[188].type==0;
+  #assert nodes[189].type==0;
+  #assert nodes[190].type==0;
+  #assert nodes[191].type==0;
+  #assert nodes[194].type==0 && nodes[194].generic==false;
+  #assert nodes[197].type==0;
+  #assert nodes[198].type==0;
+  #assert nodes[199].type==0;
+  #assert nodes[200].type==0;
+  #assert nodes[201].type==0;
+  #assert nodes[203].type==0;
+  #assert nodes[205].type==0 && nodes[205].generic==false;
+  #assert nodes[208].type==0;
+  #assert nodes[209].type==0;
+  #assert nodes[210].type==0;
+  #assert nodes[211].type==0;
+  #assert nodes[212].type==0;
+  #assert nodes[213].type==0;
+  #assert nodes[214].type==0;
+  #assert nodes[216].type==0 && nodes[216].generic==false;
+  #assert nodes[219].type==0;
+  #assert nodes[220].type==0;
+  #assert nodes[221].type==0;
+  #assert nodes[222].type==0;
+  #assert nodes[223].type==0;
+  #assert nodes[225].type==0 && nodes[225].generic==false;
+  #assert nodes[228].type==0;
+  #assert nodes[229].type==0;
+  #assert nodes[230].type==0;
+  #assert nodes[231].type==0;
+  #assert nodes[232].type==0;
+  #assert nodes[233].type==0;
+  #assert nodes[234].type==0;
+  #assert nodes[235].type==0;
+  #assert nodes[236].type==0;
+  #assert nodes[237].type==0;
+  #assert nodes[238].type==0;
+  #assert nodes[241].type==0;
+  #assert nodes[243].origin==66 && nodes[243].key=="5$T@72" && nodes[243].generic==true && nodes[243].type==27 && nodes[243].head==244 && nodes[243].scope==0 && nodes[243].mark==2;
+  #assert nodes[244].type==25;
+  #assert nodes[246].type==25;
+  #assert nodes[248].origin==2 && nodes[248].pristine==0 && nodes[248].chain==249 && nodes[248].key=="3int" && nodes[248].head==275 && nodes[248].b==265 && nodes[248].reached==false;
+  #assert nodes[248].type==11 && nodes[248].generic==false;
+  #assert nodes[249].origin==2 && nodes[249].pristine==0 && nodes[249].chain==250 && nodes[249].key=="3f64" && nodes[249].head==291 && nodes[249].b==281 && nodes[249].reached==false;
+  #assert nodes[249].type==7 && nodes[249].generic==false;
+  #assert nodes[250].origin==18 && nodes[250].pristine==0 && nodes[250].chain==251 && nodes[250].key=="3int" && nodes[250].head==309 && nodes[250].b==297 && nodes[250].reached==false;
+  #assert nodes[250].type==11 && nodes[250].generic==false;
+  #assert nodes[251].origin==18 && nodes[251].pristine==0 && nodes[251].chain==252 && nodes[251].key=="3f64" && nodes[251].head==326 && nodes[251].b==314 && nodes[251].reached==false;
+  #assert nodes[251].type==7 && nodes[251].generic==false;
+  #assert nodes[252].origin==35 && nodes[252].pristine==0 && nodes[252].chain==253 && nodes[252].key=="4bool" && nodes[252].head==336 && nodes[252].b==331 && nodes[252].reached==false;
+  #assert nodes[252].type==2 && nodes[252].generic==false;
+  #assert nodes[253].origin==35 && nodes[253].pristine==0 && nodes[253].chain==254 && nodes[253].key=="6string" && nodes[253].head==347 && nodes[253].b==342 && nodes[253].reached==false;
+  #assert nodes[253].type==2 && nodes[253].generic==false;
+  #assert nodes[254].origin==46 && nodes[254].pristine==0 && nodes[254].chain==255 && nodes[254].key=="2u8" && nodes[254].head==360 && nodes[254].b==353 && nodes[254].reached==false;
+  #assert nodes[254].type==12 && nodes[254].generic==false;
+  #assert nodes[255].origin==57 && nodes[255].pristine==0 && nodes[255].chain==256 && nodes[255].key=="4n0_P" && nodes[255].head==369 && nodes[255].b==364 && nodes[255].reached==false;
+  #assert nodes[255].type==18 && nodes[255].generic==false;
+  #assert nodes[256].origin==66 && nodes[256].key=="3int" && nodes[256].generic==false && nodes[256].type==41 && nodes[256].head==257 && nodes[256].scope==0 && nodes[256].mark==2;
+  #assert nodes[257].type==11;
+  #assert nodes[259].type==11;
+  #assert nodes[261].origin==72 && nodes[261].pristine==0 && nodes[261].chain==0 && nodes[261].key=="3int" && nodes[261].head==384 && nodes[261].b==373 && nodes[261].reached==false;
+  #assert nodes[261].type==2 && nodes[261].generic==false;
+  #assert nodes[262].kind==CK_Tag.invalid;
+  #assert nodes[263].type==0 && nodes[263].generic==false;
+  #assert nodes[267].type==2;
+  #assert nodes[268].type==11;
+  #assert nodes[269].type==11;
+  #assert nodes[271].type==0;
+  #assert nodes[272].type==11;
+  #assert nodes[273].type==0;
+  #assert nodes[274].type==11;
+  #assert nodes[275].type==11;
+  #assert nodes[277].type==11;
+  #assert nodes[279].type==0 && nodes[279].generic==false;
+  #assert nodes[283].type==2;
+  #assert nodes[284].type==7;
+  #assert nodes[285].type==7;
+  #assert nodes[287].type==0;
+  #assert nodes[288].type==7;
+  #assert nodes[289].type==0;
+  #assert nodes[290].type==7;
+  #assert nodes[291].type==7;
+  #assert nodes[293].type==7;
+  #assert nodes[295].type==0 && nodes[295].generic==false;
+  #assert nodes[298].type==11;
+  #assert nodes[299].type==11;
+  #assert nodes[301].type==11;
+  #assert nodes[302].type==31;
+  #assert nodes[305].type==11;
+  #assert nodes[306].type==11;
+  #assert nodes[307].type==0;
+  #assert nodes[308].type==11;
+  #assert nodes[309].type==31;
+  #assert nodes[312].type==0 && nodes[312].generic==false;
+  #assert nodes[315].type==7;
+  #assert nodes[316].type==7;
+  #assert nodes[318].type==7;
+  #assert nodes[319].type==34;
+  #assert nodes[322].type==7;
+  #assert nodes[323].type==7;
+  #assert nodes[324].type==0;
+  #assert nodes[325].type==7;
+  #assert nodes[326].type==34;
+  #assert nodes[329].type==0 && nodes[329].generic==false;
+  #assert nodes[332].type==0;
+  #assert nodes[333].type==2;
+  #assert nodes[334].type==2;
+  #assert nodes[335].type==2;
+  #assert nodes[336].type==2;
+  #assert nodes[338].type==2;
+  #assert nodes[340].type==0 && nodes[340].generic==false;
+  #assert nodes[343].type==0;
+  #assert nodes[344].type==2;
+  #assert nodes[345].type==3;
+  #assert nodes[346].type==3;
+  #assert nodes[347].type==3;
+  #assert nodes[349].type==3;
+  #assert nodes[351].type==0 && nodes[351].generic==false;
+  #assert nodes[354].type==0;
+  #assert nodes[355].type==12;
+  #assert nodes[356].type==12;
+  #assert nodes[357].type==12;
+  #assert nodes[358].type==12;
+  #assert nodes[359].type==12;
+  #assert nodes[360].type==12;
+  #assert nodes[362].type==0 && nodes[362].generic==false;
+  #assert nodes[365].type==18;
+  #assert nodes[366].type==18;
+  #assert nodes[367].type==0;
+  #assert nodes[368].type==18;
+  #assert nodes[369].type==18;
+  #assert nodes[371].type==0 && nodes[371].generic==false;
+  #assert nodes[374].type==0;
+  #assert nodes[375].type==2;
+  #assert nodes[376].type==2;
+  #assert nodes[377].type==11;
+  #assert nodes[378].type==41;
+  #assert nodes[379].type==11;
+  #assert nodes[380].type==2;
+  #assert nodes[381].type==11;
+  #assert nodes[382].type==11;
+  #assert nodes[383].type==41;
+  #assert nodes[384].type==41;
+  #assert nodes[387].type==11;
+  #assert nodes[389].kind==CK_Tag.invalid;
+  #assert types[16].kind==CK_Kind.struct_ && types[16].name=="Ord" && types[16].elem==0 && types[16].decl==66 && types[16].size==1 && types[16].alignment==1 && types[16].bits==0 && types[16].length==0;
+  #assert types[17].kind==CK_Kind.param && types[17].name=="$T" && types[17].elem==0 && types[17].decl==66 && types[17].size==0 && types[17].alignment==1 && types[17].bits==0 && types[17].length==0;
+  #assert types[18].kind==CK_Kind.struct_ && types[18].name=="P" && types[18].elem==0 && types[18].decl==90 && types[18].size==8 && types[18].alignment==8 && types[18].bits==0 && types[18].length==0;
+  #assert types[19].kind==CK_Kind.param && types[19].name=="$T" && types[19].elem==0 && types[19].decl==2 && types[19].size==0 && types[19].alignment==1 && types[19].bits==0 && types[19].length==0;
+  #assert types[20].kind==CK_Kind.param && types[20].name=="$T" && types[20].elem==0 && types[20].decl==18 && types[20].size==0 && types[20].alignment==1 && types[20].bits==0 && types[20].length==0;
+  #assert types[21].kind==CK_Kind.view && types[21].name=="[] $T" && types[21].elem==20 && types[21].decl==0 && types[21].size==16 && types[21].alignment==8 && types[21].bits==0 && types[21].length==0;
+  #assert types[22].kind==CK_Kind.param && types[22].name=="$T" && types[22].elem==0 && types[22].decl==35 && types[22].size==0 && types[22].alignment==1 && types[22].bits==0 && types[22].length==0;
+  #assert types[23].kind==CK_Kind.param && types[23].name=="$T" && types[23].elem==0 && types[23].decl==46 && types[23].size==0 && types[23].alignment==1 && types[23].bits==0 && types[23].length==0;
+  #assert types[24].kind==CK_Kind.param && types[24].name=="$T" && types[24].elem==0 && types[24].decl==57 && types[24].size==0 && types[24].alignment==1 && types[24].bits==0 && types[24].length==0;
+  #assert types[25].kind==CK_Kind.param && types[25].name=="$T" && types[25].elem==0 && types[25].decl==72 && types[25].size==0 && types[25].alignment==1 && types[25].bits==0 && types[25].length==0;
+  #assert types[26].kind==CK_Kind.param && types[26].name=="$T" && types[26].elem==25 && types[26].decl==243 && types[26].size==0 && types[26].alignment==1 && types[26].bits==0 && types[26].length==0;
+  #assert types[27].kind==CK_Kind.struct_ && types[27].name=="Ord($T)" && types[27].elem==0 && types[27].decl==243 && types[27].size==1 && types[27].alignment==1 && types[27].bits==0 && types[27].length==0;
+  #assert types[28].kind==CK_Kind.param && types[28].name=="$T" && types[28].elem==11 && types[28].decl==248 && types[28].size==0 && types[28].alignment==1 && types[28].bits==0 && types[28].length==0;
+  #assert types[29].kind==CK_Kind.param && types[29].name=="$T" && types[29].elem==7 && types[29].decl==249 && types[29].size==0 && types[29].alignment==1 && types[29].bits==0 && types[29].length==0;
+  #assert types[30].kind==CK_Kind.array && types[30].name=="[3] int" && types[30].elem==11 && types[30].decl==0 && types[30].size==24 && types[30].alignment==8 && types[30].bits==0 && types[30].length==3;
+  #assert types[31].kind==CK_Kind.view && types[31].name=="[] int" && types[31].elem==11 && types[31].decl==0 && types[31].size==16 && types[31].alignment==8 && types[31].bits==0 && types[31].length==0;
+  #assert types[32].kind==CK_Kind.param && types[32].name=="$T" && types[32].elem==11 && types[32].decl==250 && types[32].size==0 && types[32].alignment==1 && types[32].bits==0 && types[32].length==0;
+  #assert types[33].kind==CK_Kind.array && types[33].name=="[2] f64" && types[33].elem==7 && types[33].decl==0 && types[33].size==16 && types[33].alignment==8 && types[33].bits==0 && types[33].length==2;
+  #assert types[34].kind==CK_Kind.view && types[34].name=="[] f64" && types[34].elem==7 && types[34].decl==0 && types[34].size==16 && types[34].alignment==8 && types[34].bits==0 && types[34].length==0;
+  #assert types[35].kind==CK_Kind.param && types[35].name=="$T" && types[35].elem==7 && types[35].decl==251 && types[35].size==0 && types[35].alignment==1 && types[35].bits==0 && types[35].length==0;
+  #assert types[36].kind==CK_Kind.param && types[36].name=="$T" && types[36].elem==2 && types[36].decl==252 && types[36].size==0 && types[36].alignment==1 && types[36].bits==0 && types[36].length==0;
+  #assert types[37].kind==CK_Kind.param && types[37].name=="$T" && types[37].elem==3 && types[37].decl==253 && types[37].size==0 && types[37].alignment==1 && types[37].bits==0 && types[37].length==0;
+  #assert types[38].kind==CK_Kind.param && types[38].name=="$T" && types[38].elem==12 && types[38].decl==254 && types[38].size==0 && types[38].alignment==1 && types[38].bits==0 && types[38].length==0;
+  #assert types[39].kind==CK_Kind.param && types[39].name=="$T" && types[39].elem==18 && types[39].decl==255 && types[39].size==0 && types[39].alignment==1 && types[39].bits==0 && types[39].length==0;
+  #assert types[40].kind==CK_Kind.param && types[40].name=="$T" && types[40].elem==11 && types[40].decl==256 && types[40].size==0 && types[40].alignment==1 && types[40].bits==0 && types[40].length==0;
+  #assert types[41].kind==CK_Kind.struct_ && types[41].name=="Ord(int)" && types[41].elem==0 && types[41].decl==256 && types[41].size==16 && types[41].alignment==8 && types[41].bits==0 && types[41].length==0;
+  #assert types[42].kind==CK_Kind.param && types[42].name=="$T" && types[42].elem==11 && types[42].decl==261 && types[42].size==0 && types[42].alignment==1 && types[42].bits==0 && types[42].length==0;
+  #assert types[43].kind==CK_Kind.param && types[43].name=="$T" && types[43].elem==11 && types[43].decl==262 && types[43].size==0 && types[43].alignment==1 && types[43].bits==0 && types[43].length==0;
+  #assert types[44].kind==CK_Kind.param && types[44].name=="$T" && types[44].elem==11 && types[44].decl==389 && types[44].size==0 && types[44].alignment==1 && types[44].bits==0 && types[44].length==0;
+}
+// Source: "lt :: (a: $T, b: $T) -> bool { return a < b; }\nadd :: (a: $T: ordered, b: $T) -> $T { return a + b; }\neq :: (a: $T, b: $T) -> bool { return a == b; }\ninc :: (a: $T) { a2 := a; a2 += a; }\nbad :: (a: $T: sortable) {}\ntwo :: (a: $T: ordered, b: $T: numeric) {}\nbody :: (a: $T) { x: $T: ordered = a; }\nS :: struct { a: $T: ordered; }\nmax :: (a: $T: ordered, b: $T) -> $T { return a; }\npair :: (a: $T: equatable) {}\nOrd :: struct($T: ordered) { lo: $T; }\nloose :: (r: Ord($T)) {}\nP :: struct { x: int; }\nmain :: () { m := max(true, false); pair(P.{x = 1}); o: Ord(bool); v := [2] int.[1, 2]; pair(v[..]); }"
+#test "constraints: refused bodies and bindings name the constraint" {
+  initial:=[116] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=89},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=1,column=1,offset=0},name="lt",a=7,b=8,head=3,tail=5,next=13},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=8,offset=7},name="a",a=4,next=5},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=11,offset=10},name="T"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=15,offset=14},name="b",a=6},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=18,offset=17},name="T"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=25,offset=24},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=1,column=30,offset=29},head=9,tail=9},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=1,column=32,offset=31},a=12},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=39,offset=38},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=43,offset=42},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=1,column=41,offset=40},a=10,b=11,op=46},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=2,column=1,offset=47},name="add",a=18,b=19,head=14,tail=16,next=24},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=2,column=9,offset=55},name="a",a=15,next=16},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=12,offset=58},name="T",name2="ordered",loc2=CK_Loc.{line=2,column=16,offset=62}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=2,column=25,offset=71},name="b",a=17},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=28,offset=74},name="T"},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=35,offset=81},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=2,column=38,offset=84},head=20,tail=20},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=2,column=40,offset=86},a=23},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=47,offset=93},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=51,offset=97},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=2,column=49,offset=95},a=21,b=22,op=34},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=3,column=1,offset=102},name="eq",a=29,b=30,head=25,tail=27,next=35},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=3,column=8,offset=109},name="a",a=26,next=27},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=3,column=11,offset=112},name="T"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=3,column=15,offset=116},name="b",a=28},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=3,column=18,offset=119},name="T"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=3,column=25,offset=126},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=3,column=30,offset=131},head=31,tail=31},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=3,column=32,offset=133},a=34},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=3,column=39,offset=140},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=3,column=44,offset=145},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=3,column=41,offset=142},a=32,b=33,op=44},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=4,column=1,offset=150},name="inc",b=38,head=36,tail=36,next=44},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=4,column=9,offset=158},name="a",a=37},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=4,column=12,offset=161},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=4,column=16,offset=165},head=39,tail=42},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=4,column=18,offset=167},name="a2",a=40,next=42},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=4,column=24,offset=173},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=4,column=27,offset=176},name="a2"},
+    CK_Node.{kind=CK_Tag.stmt_assign,loc=CK_Loc.{line=4,column=30,offset=179},a=43,c=41,op=24},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=4,column=33,offset=182},name="a"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=5,column=1,offset=187},name="bad",b=47,head=45,tail=45,next=48},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=5,column=9,offset=195},name="a",a=46},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=5,column=12,offset=198},name="T",name2="sortable",loc2=CK_Loc.{line=5,column=16,offset=202}},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=5,column=26,offset=212}},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=6,column=1,offset=215},name="two",b=53,head=49,tail=51,next=54},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=6,column=9,offset=223},name="a",a=50,next=51},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=6,column=12,offset=226},name="T",name2="ordered",loc2=CK_Loc.{line=6,column=16,offset=230}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=6,column=25,offset=239},name="b",a=52},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=6,column=28,offset=242},name="T",name2="numeric",loc2=CK_Loc.{line=6,column=32,offset=246}},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=6,column=41,offset=255}},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=7,column=1,offset=258},name="body",b=57,head=55,tail=55,next=61},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=7,column=10,offset=267},name="a",a=56},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=7,column=13,offset=270},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=7,column=17,offset=274},head=58,tail=58},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=7,column=19,offset=276},name="x",a=60,d=59},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=7,column=22,offset=279},name="T",name2="ordered",loc2=CK_Loc.{line=7,column=26,offset=283}},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=7,column=36,offset=293},name="a"},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=8,column=1,offset=298},name="S",head=62,tail=62,next=64},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=8,column=15,offset=312},name="a",a=63,field_index=0},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=8,column=18,offset=315},name="T",name2="ordered",loc2=CK_Loc.{line=8,column=22,offset=319}},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=9,column=1,offset=330},name="max",a=69,b=70,head=65,tail=67,next=73},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=9,column=9,offset=338},name="a",a=66,next=67},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=9,column=12,offset=341},name="T",name2="ordered",loc2=CK_Loc.{line=9,column=16,offset=345}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=9,column=25,offset=354},name="b",a=68},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=9,column=28,offset=357},name="T"},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=9,column=35,offset=364},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=9,column=38,offset=367},head=71,tail=71},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=9,column=40,offset=369},a=72},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=47,offset=376},name="a"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=10,column=1,offset=381},name="pair",b=76,head=74,tail=74,next=77},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=10,column=10,offset=390},name="a",a=75},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=10,column=13,offset=393},name="T",name2="equatable",loc2=CK_Loc.{line=10,column=17,offset=397}},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=10,column=28,offset=408}},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=11,column=1,offset=411},name="Ord",d=78,head=79,tail=79,next=81},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=11,column=15,offset=425},name="T",name2="ordered",loc2=CK_Loc.{line=11,column=19,offset=429}},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=11,column=30,offset=440},name="lo",a=80,field_index=0},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=11,column=34,offset=444},name="T"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=12,column=1,offset=450},name="loose",b=85,head=82,tail=82,next=86},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=12,column=11,offset=460},name="r",a=83},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=12,column=14,offset=463},name="Ord",head=84,tail=84},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=12,column=18,offset=467},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=12,column=23,offset=472}},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=13,column=1,offset=475},name="P",head=87,tail=87,next=89},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=13,column=15,offset=489},name="x",a=88,field_index=0},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=13,column=18,offset=492},name="int"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=14,column=1,offset=499},name="main",b=90},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=14,column=12,offset=510},head=91,tail=115},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=14,column=14,offset=512},name="m",a=92,next=101},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=14,column=19,offset=517},name="max",head=93,tail=94},
+    CK_Node.{kind=CK_Tag.expr_bool,loc=CK_Loc.{line=14,column=23,offset=521},next=94,value=1},
+    CK_Node.{kind=CK_Tag.expr_bool,loc=CK_Loc.{line=14,column=29,offset=527}},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=14,column=37,offset=535},name="pair",head=97,tail=97},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=14,column=42,offset=540},name="P"},
+    CK_Node.{kind=CK_Tag.expr_struct,loc=CK_Loc.{line=14,column=42,offset=540},d=98,head=99,tail=99},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=14,column=42,offset=540},name="P"},
+    CK_Node.{kind=CK_Tag.field_init,loc=CK_Loc.{line=14,column=45,offset=543},name="x",a=100},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=14,column=49,offset=547},value=1},
+    CK_Node.{kind=CK_Tag.stmt_expr,loc=CK_Loc.{line=14,column=37,offset=535},a=95,next=102},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=14,column=54,offset=552},name="o",d=103,next=105},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=14,column=57,offset=555},name="Ord",head=104,tail=104},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=14,column=61,offset=559},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=14,column=68,offset=566},name="v",a=106,next=115},
+    CK_Node.{kind=CK_Tag.expr_array,loc=CK_Loc.{line=14,column=73,offset=571},d=107,head=110,tail=111},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=14,column=73,offset=571},a=108,b=109},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=14,column=74,offset=572},value=2},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=14,column=77,offset=575},name="int"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=14,column=82,offset=580},next=111,value=1},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=14,column=85,offset=583},value=2},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=14,column=89,offset=587},name="pair",head=114,tail=114},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=14,column=94,offset=592},name="v"},
+    CK_Node.{kind=CK_Tag.expr_slice,loc=CK_Loc.{line=14,column=95,offset=593},a=113},
+    CK_Node.{kind=CK_Tag.stmt_expr,loc=CK_Loc.{line=14,column=89,offset=587},a=112}];
+  nodes:[364] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[364] CK_Type;locals:[132] CK_Local;errors:[944] CK_Error;bytes:[68296] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
+  #assert ok==false && state[0].error_count==14 && state[0].type_count==37 && state[0].depth==0 && state[0].generic==0 && state[0].site==CK_Site.none;
+  #assert errors[0].code=="E0808" && errors[0].loc.line==8 && errors[0].loc.column==22 && errors[0].message=="a constraint on '$T' is written where a parameter binds it" && errors[0].fix=="constrain it in the parameter list: f :: (x: $T: ordered), or Pair :: struct($T: ordered)";
+  #assert errors[1].code=="E0395" && errors[1].loc.line==8 && errors[1].loc.column==18 && errors[1].message=="a struct field cannot have the type parameter '$T'" && errors[1].fix=="list it in the struct's parameters: S :: struct($T) { ... }";
+  #assert errors[2].code=="E0805" && errors[2].loc.line==5 && errors[2].loc.column==16 && errors[2].message=="unknown constraint 'sortable'" && errors[2].fix=="constraints are equatable, ordered, numeric and copyable";
+  #assert errors[3].code=="E0808" && errors[3].loc.line==6 && errors[3].loc.column==32 && errors[3].message=="'$T' already has a different constraint" && errors[3].fix=="write one constraint, where the parameter is first bound";
+  #assert errors[4].code=="E0806" && errors[4].loc.line==12 && errors[4].loc.column==18 && errors[4].message=="$T is not ordered, but 'Ord' needs '$T: ordered' (declared at line 11)" && errors[4].fix=="ordered and numeric types are integers, floats and placeholders constrained so";
+  #assert errors[5].code=="E0310" && errors[5].loc.line==1 && errors[5].loc.column==41 && errors[5].message=="'<' compares two numbers of one type, found $T and $T" && errors[5].fix=="constrain it where it is bound: $T: ordered";
+  #assert errors[6].code=="E0309" && errors[6].loc.line==2 && errors[6].loc.column==49 && errors[6].message=="'+' needs two numbers of one type, found $T and $T" && errors[6].fix=="constrain it where it is bound: $T: numeric";
+  #assert errors[7].code=="E0311" && errors[7].loc.line==3 && errors[7].loc.column==41 && errors[7].message=="cannot compare $T values with '=='" && errors[7].fix=="constrain it where it is bound: $T: equatable";
+  #assert errors[8].code=="E0326" && errors[8].loc.line==4 && errors[8].loc.column==30 && errors[8].message=="'+=' needs a number target, this is $T" && errors[8].fix=="constrain it where it is bound: $T: numeric";
+  #assert errors[9].code=="E0808" && errors[9].loc.line==7 && errors[9].loc.column==26 && errors[9].message=="a constraint on '$T' is written where a parameter binds it" && errors[9].fix=="constrain it in the parameter list: f :: (x: $T: ordered), or Pair :: struct($T: ordered)";
+  #assert errors[10].code=="E0806" && errors[10].loc.line==14 && errors[10].loc.column==23 && errors[10].message=="bool is not ordered, but 'max' needs '$T: ordered' (declared at line 9)" && errors[10].fix=="ordered and numeric types are integers, floats and placeholders constrained so";
+  #assert errors[11].code=="E0806" && errors[11].loc.line==14 && errors[11].loc.column==42 && errors[11].message=="P is not equatable, but 'pair' needs '$T: equatable' (declared at line 10)" && errors[11].fix=="equatable types are scalars, strings and enums, not structs, arrays or views";
+  #assert errors[12].code=="E0806" && errors[12].loc.line==14 && errors[12].loc.column==61 && errors[12].message=="bool is not ordered, but 'Ord' needs '$T: ordered' (declared at line 11)" && errors[12].fix=="ordered and numeric types are integers, floats and placeholders constrained so";
+  #assert errors[13].code=="E0806" && errors[13].loc.line==14 && errors[13].loc.column==95 && errors[13].message=="[] int is not equatable, but 'pair' needs '$T: equatable' (declared at line 10)" && errors[13].fix=="equatable types are scalars, strings and enums, not structs, arrays or views";
+  #assert state[0].used==197 && state[0].instances==0 && state[0].instance_tail==0 && state[0].instance_count==0;
+  #assert nodes[2].origin==0 && nodes[2].pristine==116 && nodes[2].chain==0 && nodes[2].key=="" && nodes[2].head==3 && nodes[2].b==8 && nodes[2].reached==false;
+  #assert nodes[2].type==2 && nodes[2].generic==true;
+  #assert nodes[3].type==20;
+  #assert nodes[5].type==20;
+  #assert nodes[9].type==0;
+  #assert nodes[10].type==20;
+  #assert nodes[11].type==20;
+  #assert nodes[12].type==0;
+  #assert nodes[13].origin==0 && nodes[13].pristine==127 && nodes[13].chain==0 && nodes[13].key=="" && nodes[13].head==14 && nodes[13].b==19 && nodes[13].reached==false;
+  #assert nodes[13].type==21 && nodes[13].generic==true;
+  #assert nodes[14].type==21;
+  #assert nodes[16].type==21;
+  #assert nodes[20].type==0;
+  #assert nodes[21].type==21;
+  #assert nodes[22].type==21;
+  #assert nodes[23].type==0;
+  #assert nodes[24].origin==0 && nodes[24].pristine==138 && nodes[24].chain==0 && nodes[24].key=="" && nodes[24].head==25 && nodes[24].b==30 && nodes[24].reached==false;
+  #assert nodes[24].type==2 && nodes[24].generic==true;
+  #assert nodes[25].type==22;
+  #assert nodes[27].type==22;
+  #assert nodes[31].type==0;
+  #assert nodes[32].type==22;
+  #assert nodes[33].type==22;
+  #assert nodes[34].type==0;
+  #assert nodes[35].origin==0 && nodes[35].pristine==149 && nodes[35].chain==0 && nodes[35].key=="" && nodes[35].head==36 && nodes[35].b==38 && nodes[35].reached==false;
+  #assert nodes[35].type==1 && nodes[35].generic==true;
+  #assert nodes[36].type==23;
+  #assert nodes[39].type==23;
+  #assert nodes[40].type==23;
+  #assert nodes[41].type==23;
+  #assert nodes[43].type==23;
+  #assert nodes[44].origin==0 && nodes[44].pristine==158 && nodes[44].chain==0 && nodes[44].key=="" && nodes[44].head==45 && nodes[44].b==47 && nodes[44].reached==false;
+  #assert nodes[44].type==1 && nodes[44].generic==true;
+  #assert nodes[45].type==24;
+  #assert nodes[48].origin==0 && nodes[48].pristine==162 && nodes[48].chain==0 && nodes[48].key=="" && nodes[48].head==49 && nodes[48].b==53 && nodes[48].reached==false;
+  #assert nodes[48].type==1 && nodes[48].generic==true;
+  #assert nodes[49].type==25;
+  #assert nodes[51].type==25;
+  #assert nodes[54].origin==0 && nodes[54].pristine==168 && nodes[54].chain==0 && nodes[54].key=="" && nodes[54].head==55 && nodes[54].b==57 && nodes[54].reached==false;
+  #assert nodes[54].type==1 && nodes[54].generic==true;
+  #assert nodes[55].type==26;
+  #assert nodes[58].type==26;
+  #assert nodes[60].type==26;
+  #assert nodes[62].type==0;
+  #assert nodes[64].origin==0 && nodes[64].pristine==175 && nodes[64].chain==0 && nodes[64].key=="" && nodes[64].head==65 && nodes[64].b==70 && nodes[64].reached==false;
+  #assert nodes[64].type==27 && nodes[64].generic==true;
+  #assert nodes[65].type==27;
+  #assert nodes[67].type==27;
+  #assert nodes[71].type==0;
+  #assert nodes[72].type==27;
+  #assert nodes[73].origin==0 && nodes[73].pristine==184 && nodes[73].chain==0 && nodes[73].key=="" && nodes[73].head==74 && nodes[73].b==76 && nodes[73].reached==false;
+  #assert nodes[73].type==1 && nodes[73].generic==true;
+  #assert nodes[74].type==28;
+  #assert nodes[77].generic==true && nodes[77].flag2==false;
+  #assert nodes[79].type==18;
+  #assert nodes[81].origin==0 && nodes[81].pristine==188 && nodes[81].chain==0 && nodes[81].key=="" && nodes[81].head==82 && nodes[81].b==85 && nodes[81].reached==false;
+  #assert nodes[81].type==1 && nodes[81].generic==true;
+  #assert nodes[82].type==0;
+  #assert nodes[87].type==11;
+  #assert nodes[89].type==1 && nodes[89].generic==false;
+  #assert nodes[91].type==0;
+  #assert nodes[92].type==0;
+  #assert nodes[93].type==2;
+  #assert nodes[94].type==2;
+  #assert nodes[95].type==0;
+  #assert nodes[96].type==0;
+  #assert nodes[97].type==19;
+  #assert nodes[100].type==11;
+  #assert nodes[102].type==0;
+  #assert nodes[105].type==34;
+  #assert nodes[106].type==34;
+  #assert nodes[108].type==11;
+  #assert nodes[110].type==11;
+  #assert nodes[111].type==11;
+  #assert nodes[112].type==0;
+  #assert nodes[113].type==34;
+  #assert nodes[114].type==35;
+  #assert nodes[116].type==0 && nodes[116].generic==false;
+  #assert nodes[119].type==0;
+  #assert nodes[120].type==0;
+  #assert nodes[121].type==0;
+  #assert nodes[122].type==0;
+  #assert nodes[123].type==0;
+  #assert nodes[125].type==0;
+  #assert nodes[127].type==0 && nodes[127].generic==false;
+  #assert nodes[130].type==0;
+  #assert nodes[131].type==0;
+  #assert nodes[132].type==0;
+  #assert nodes[133].type==0;
+  #assert nodes[134].type==0;
+  #assert nodes[136].type==0;
+  #assert nodes[138].type==0 && nodes[138].generic==false;
+  #assert nodes[141].type==0;
+  #assert nodes[142].type==0;
+  #assert nodes[143].type==0;
+  #assert nodes[144].type==0;
+  #assert nodes[145].type==0;
+  #assert nodes[147].type==0;
+  #assert nodes[149].type==0 && nodes[149].generic==false;
+  #assert nodes[151].type==0;
+  #assert nodes[152].type==0;
+  #assert nodes[154].type==0;
+  #assert nodes[155].type==0;
+  #assert nodes[156].type==0;
+  #assert nodes[158].type==0 && nodes[158].generic==false;
+  #assert nodes[160].type==0;
+  #assert nodes[162].type==0 && nodes[162].generic==false;
+  #assert nodes[164].type==0;
+  #assert nodes[166].type==0;
+  #assert nodes[168].type==0 && nodes[168].generic==false;
+  #assert nodes[170].type==0;
+  #assert nodes[171].type==0;
+  #assert nodes[173].type==0;
+  #assert nodes[175].type==0 && nodes[175].generic==false;
+  #assert nodes[178].type==0;
+  #assert nodes[179].type==0;
+  #assert nodes[180].type==0;
+  #assert nodes[182].type==0;
+  #assert nodes[184].type==0 && nodes[184].generic==false;
+  #assert nodes[186].type==0;
+  #assert nodes[188].type==0 && nodes[188].generic==false;
+  #assert nodes[190].type==0;
+  #assert nodes[193].kind==CK_Tag.invalid;
+  #assert nodes[194].kind==CK_Tag.invalid;
+  #assert nodes[195].kind==CK_Tag.invalid;
+  #assert nodes[196].kind==CK_Tag.invalid;
+  #assert nodes[197].kind==CK_Tag.invalid;
+  #assert types[16].kind==CK_Kind.struct_ && types[16].name=="S" && types[16].elem==0 && types[16].decl==61 && types[16].size==1 && types[16].alignment==1 && types[16].bits==0 && types[16].length==0;
+  #assert types[17].kind==CK_Kind.struct_ && types[17].name=="Ord" && types[17].elem==0 && types[17].decl==77 && types[17].size==1 && types[17].alignment==1 && types[17].bits==0 && types[17].length==0;
+  #assert types[18].kind==CK_Kind.param && types[18].name=="$T" && types[18].elem==0 && types[18].decl==77 && types[18].size==0 && types[18].alignment==1 && types[18].bits==0 && types[18].length==0;
+  #assert types[19].kind==CK_Kind.struct_ && types[19].name=="P" && types[19].elem==0 && types[19].decl==86 && types[19].size==8 && types[19].alignment==8 && types[19].bits==0 && types[19].length==0;
+  #assert types[20].kind==CK_Kind.param && types[20].name=="$T" && types[20].elem==0 && types[20].decl==2 && types[20].size==0 && types[20].alignment==1 && types[20].bits==0 && types[20].length==0;
+  #assert types[21].kind==CK_Kind.param && types[21].name=="$T" && types[21].elem==0 && types[21].decl==13 && types[21].size==0 && types[21].alignment==1 && types[21].bits==0 && types[21].length==0;
+  #assert types[22].kind==CK_Kind.param && types[22].name=="$T" && types[22].elem==0 && types[22].decl==24 && types[22].size==0 && types[22].alignment==1 && types[22].bits==0 && types[22].length==0;
+  #assert types[23].kind==CK_Kind.param && types[23].name=="$T" && types[23].elem==0 && types[23].decl==35 && types[23].size==0 && types[23].alignment==1 && types[23].bits==0 && types[23].length==0;
+  #assert types[24].kind==CK_Kind.param && types[24].name=="$T" && types[24].elem==0 && types[24].decl==44 && types[24].size==0 && types[24].alignment==1 && types[24].bits==0 && types[24].length==0;
+  #assert types[25].kind==CK_Kind.param && types[25].name=="$T" && types[25].elem==0 && types[25].decl==48 && types[25].size==0 && types[25].alignment==1 && types[25].bits==0 && types[25].length==0;
+  #assert types[26].kind==CK_Kind.param && types[26].name=="$T" && types[26].elem==0 && types[26].decl==54 && types[26].size==0 && types[26].alignment==1 && types[26].bits==0 && types[26].length==0;
+  #assert types[27].kind==CK_Kind.param && types[27].name=="$T" && types[27].elem==0 && types[27].decl==64 && types[27].size==0 && types[27].alignment==1 && types[27].bits==0 && types[27].length==0;
+  #assert types[28].kind==CK_Kind.param && types[28].name=="$T" && types[28].elem==0 && types[28].decl==73 && types[28].size==0 && types[28].alignment==1 && types[28].bits==0 && types[28].length==0;
+  #assert types[29].kind==CK_Kind.param && types[29].name=="$T" && types[29].elem==0 && types[29].decl==81 && types[29].size==0 && types[29].alignment==1 && types[29].bits==0 && types[29].length==0;
+  #assert types[30].kind==CK_Kind.param && types[30].name=="$T" && types[30].elem==29 && types[30].decl==193 && types[30].size==0 && types[30].alignment==1 && types[30].bits==0 && types[30].length==0;
+  #assert types[31].kind==CK_Kind.param && types[31].name=="$T" && types[31].elem==2 && types[31].decl==194 && types[31].size==0 && types[31].alignment==1 && types[31].bits==0 && types[31].length==0;
+  #assert types[32].kind==CK_Kind.param && types[32].name=="$T" && types[32].elem==19 && types[32].decl==195 && types[32].size==0 && types[32].alignment==1 && types[32].bits==0 && types[32].length==0;
+  #assert types[33].kind==CK_Kind.param && types[33].name=="$T" && types[33].elem==2 && types[33].decl==196 && types[33].size==0 && types[33].alignment==1 && types[33].bits==0 && types[33].length==0;
+  #assert types[34].kind==CK_Kind.array && types[34].name=="[2] int" && types[34].elem==11 && types[34].decl==0 && types[34].size==16 && types[34].alignment==8 && types[34].bits==0 && types[34].length==2;
+  #assert types[35].kind==CK_Kind.view && types[35].name=="[] int" && types[35].elem==11 && types[35].decl==0 && types[35].size==16 && types[35].alignment==8 && types[35].bits==0 && types[35].length==0;
+  #assert types[36].kind==CK_Kind.param && types[36].name=="$T" && types[36].elem==35 && types[36].decl==197 && types[36].size==0 && types[36].alignment==1 && types[36].bits==0 && types[36].length==0;
+}
+// Source: "grow :: (x: $T: numeric) -> $T { return x + 300; }\nmain :: () { a: u8 = 1; b := grow(a); c := grow(a); }"
+#test "constraints: a failing instance is traced to its first call" {
+  initial:=[22] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=11},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=1,column=1,offset=0},name="grow",a=5,b=6,head=3,tail=3,next=11},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=10,offset=9},name="x",a=4},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=13,offset=12},name="T",name2="numeric",loc2=CK_Loc.{line=1,column=17,offset=16}},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=29,offset=28},name="T"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=1,column=32,offset=31},head=7,tail=7},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=1,column=34,offset=33},a=10},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=41,offset=40},name="x"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=1,column=45,offset=44},value=300},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=1,column=43,offset=42},a=8,b=9,op=34},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=2,column=1,offset=51},name="main",b=12},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=2,column=12,offset=62},head=13,tail=19},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=2,column=14,offset=64},name="a",a=15,d=14,next=16},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=2,column=17,offset=67},name="u8"},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=2,column=22,offset=72},value=1},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=2,column=25,offset=75},name="b",a=17,next=19},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=2,column=30,offset=80},name="grow",head=18,tail=18},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=35,offset=85},name="a"},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=2,column=39,offset=89},name="c",a=20},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=2,column=44,offset=94},name="grow",head=21,tail=21},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=49,offset=99},name="a"}];
+  nodes:[82] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[82] CK_Type;locals:[38] CK_Local;errors:[192] CK_Error;bytes:[16192] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
+  #assert ok==false && state[0].error_count==2 && state[0].type_count==19 && state[0].depth==0 && state[0].generic==0 && state[0].site==CK_Site.none;
+  #assert errors[0].code=="E0350" && errors[0].loc.line==1 && errors[0].loc.column==45 && errors[0].message=="300 does not fit in u8" && errors[0].fix=="use a wider type, or cast,trunc(u8) to keep the low bits";
+  #assert errors[1].code=="E0807" && errors[1].loc.line==2 && errors[1].loc.column==30 && errors[1].message=="instantiating 'grow' (line 1) with $T = u8 fails; its errors are above" && errors[1].fix=="constrain its parameters so this call is refused at the call, or pass types its body accepts";
+  #assert state[0].used==41 && state[0].instances==31 && state[0].instance_tail==31 && state[0].instance_count==1;
+  #assert nodes[2].origin==0 && nodes[2].pristine==22 && nodes[2].chain==0 && nodes[2].key=="" && nodes[2].head==3 && nodes[2].b==6 && nodes[2].reached==false;
+  #assert nodes[2].type==16 && nodes[2].generic==true;
+  #assert nodes[3].type==16;
+  #assert nodes[7].type==0;
+  #assert nodes[8].type==16;
+  #assert nodes[9].type==16;
+  #assert nodes[10].type==16;
+  #assert nodes[11].type==1 && nodes[11].generic==false;
+  #assert nodes[13].type==12;
+  #assert nodes[15].type==12;
+  #assert nodes[16].type==12;
+  #assert nodes[17].type==12 && nodes[17].proc==31;
+  #assert nodes[18].type==12;
+  #assert nodes[19].type==12;
+  #assert nodes[20].type==12 && nodes[20].proc==31;
+  #assert nodes[21].type==12;
+  #assert nodes[22].type==0 && nodes[22].generic==false;
+  #assert nodes[25].type==0;
+  #assert nodes[26].type==0;
+  #assert nodes[27].type==0;
+  #assert nodes[28].type==0;
+  #assert nodes[29].type==0;
+  #assert nodes[31].origin==2 && nodes[31].pristine==0 && nodes[31].chain==0 && nodes[31].key=="2u8" && nodes[31].head==40 && nodes[31].b==35 && nodes[31].reached==false;
+  #assert nodes[31].type==12 && nodes[31].generic==false;
+  #assert nodes[32].kind==CK_Tag.invalid;
+  #assert nodes[33].type==0 && nodes[33].generic==false;
+  #assert nodes[36].type==0;
+  #assert nodes[37].type==0;
+  #assert nodes[38].type==12;
+  #assert nodes[39].type==0;
+  #assert nodes[40].type==12;
+  #assert types[16].kind==CK_Kind.param && types[16].name=="$T" && types[16].elem==0 && types[16].decl==2 && types[16].size==0 && types[16].alignment==1 && types[16].bits==0 && types[16].length==0;
+  #assert types[17].kind==CK_Kind.param && types[17].name=="$T" && types[17].elem==12 && types[17].decl==31 && types[17].size==0 && types[17].alignment==1 && types[17].bits==0 && types[17].length==0;
+  #assert types[18].kind==CK_Kind.param && types[18].name=="$T" && types[18].elem==12 && types[18].decl==32 && types[18].size==0 && types[18].alignment==1 && types[18].bits==0 && types[18].length==0;
+}
+// Source: "eqlt :: (a: $T: equatable, b: $T) -> bool { return a < b; }\ncmp :: (a: $T: copyable, b: $T) -> bool { return a == b; }\nlenp :: (v: [$N] int, n: $N: ordered) {}\ntwo :: (a: $T: sortable, b: $T: numeric) {}\nR :: struct($N: numeric) { a: [$N] int; }\ntw :: (x: $T: numeric) {}\nup :: (x: $T: ordered) -> bool { return x == x; }\ninner :: (x: $U: numeric) -> bool { return big(x, x); }\nbig :: (a: $T: ordered, b: $T) -> bool { return a < b; }\nmain :: () { tw(true); b := inner(2); }"
+#test "constraints: levels, lengths and unknown names" {
+  initial:=[85] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=77},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=1,column=1,offset=0},name="eqlt",a=7,b=8,head=3,tail=5,next=13},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=10,offset=9},name="a",a=4,next=5},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=13,offset=12},name="T",name2="equatable",loc2=CK_Loc.{line=1,column=17,offset=16}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=1,column=28,offset=27},name="b",a=6},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=1,column=31,offset=30},name="T"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=1,column=38,offset=37},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=1,column=43,offset=42},head=9,tail=9},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=1,column=45,offset=44},a=12},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=52,offset=51},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=1,column=56,offset=55},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=1,column=54,offset=53},a=10,b=11,op=46},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=2,column=1,offset=60},name="cmp",a=18,b=19,head=14,tail=16,next=24},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=2,column=9,offset=68},name="a",a=15,next=16},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=12,offset=71},name="T",name2="copyable",loc2=CK_Loc.{line=2,column=16,offset=75}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=2,column=26,offset=85},name="b",a=17},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=2,column=29,offset=88},name="T"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=2,column=36,offset=95},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=2,column=41,offset=100},head=20,tail=20},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=2,column=43,offset=102},a=23},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=50,offset=109},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=2,column=55,offset=114},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=2,column=52,offset=111},a=21,b=22,op=44},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=3,column=1,offset=119},name="lenp",b=31,head=25,tail=29,next=32},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=3,column=10,offset=128},name="v",a=26,next=29},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=3,column=13,offset=131},a=27,b=28},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=3,column=14,offset=132},name="N"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=3,column=18,offset=136},name="int"},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=3,column=23,offset=141},name="n",a=30},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=3,column=26,offset=144},name="N",name2="ordered",loc2=CK_Loc.{line=3,column=30,offset=148}},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=3,column=39,offset=157}},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=4,column=1,offset=160},name="two",b=37,head=33,tail=35,next=38},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=4,column=9,offset=168},name="a",a=34,next=35},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=4,column=12,offset=171},name="T",name2="sortable",loc2=CK_Loc.{line=4,column=16,offset=175}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=4,column=26,offset=185},name="b",a=36},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=4,column=29,offset=188},name="T",name2="numeric",loc2=CK_Loc.{line=4,column=33,offset=192}},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=4,column=42,offset=201}},
+    CK_Node.{kind=CK_Tag.struct_,loc=CK_Loc.{line=5,column=1,offset=204},name="R",d=39,head=40,tail=40,next=44},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=5,column=13,offset=216},name="N",name2="numeric",loc2=CK_Loc.{line=5,column=17,offset=220}},
+    CK_Node.{kind=CK_Tag.field,loc=CK_Loc.{line=5,column=28,offset=231},name="a",a=41,field_index=0},
+    CK_Node.{kind=CK_Tag.type_array,loc=CK_Loc.{line=5,column=31,offset=234},a=42,b=43},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=5,column=32,offset=235},name="N"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=5,column=36,offset=239},name="int"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=6,column=1,offset=246},name="tw",b=47,head=45,tail=45,next=48},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=6,column=8,offset=253},name="x",a=46},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=6,column=11,offset=256},name="T",name2="numeric",loc2=CK_Loc.{line=6,column=15,offset=260}},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=6,column=24,offset=269}},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=7,column=1,offset=272},name="up",a=51,b=52,head=49,tail=49,next=57},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=7,column=8,offset=279},name="x",a=50},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=7,column=11,offset=282},name="T",name2="ordered",loc2=CK_Loc.{line=7,column=15,offset=286}},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=7,column=27,offset=298},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=7,column=32,offset=303},head=53,tail=53},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=7,column=34,offset=305},a=56},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=7,column=41,offset=312},name="x"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=7,column=46,offset=317},name="x"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=7,column=43,offset=314},a=54,b=55,op=44},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=8,column=1,offset=322},name="inner",a=60,b=61,head=58,tail=58,next=66},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=8,column=11,offset=332},name="x",a=59},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=8,column=14,offset=335},name="U",name2="numeric",loc2=CK_Loc.{line=8,column=18,offset=339}},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=8,column=30,offset=351},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=8,column=35,offset=356},head=62,tail=62},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=8,column=37,offset=358},a=63},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=8,column=44,offset=365},name="big",head=64,tail=65},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=8,column=48,offset=369},name="x",next=65},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=8,column=51,offset=372},name="x"},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=9,column=1,offset=378},name="big",a=71,b=72,head=67,tail=69,next=77},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=9,column=9,offset=386},name="a",a=68,next=69},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=9,column=12,offset=389},name="T",name2="ordered",loc2=CK_Loc.{line=9,column=16,offset=393}},
+    CK_Node.{kind=CK_Tag.param,loc=CK_Loc.{line=9,column=25,offset=402},name="b",a=70},
+    CK_Node.{kind=CK_Tag.type_param,loc=CK_Loc.{line=9,column=28,offset=405},name="T"},
+    CK_Node.{kind=CK_Tag.type_named,loc=CK_Loc.{line=9,column=35,offset=412},name="bool"},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=9,column=40,offset=417},head=73,tail=73},
+    CK_Node.{kind=CK_Tag.stmt_return,loc=CK_Loc.{line=9,column=42,offset=419},a=76},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=49,offset=426},name="a"},
+    CK_Node.{kind=CK_Tag.expr_ident,loc=CK_Loc.{line=9,column=53,offset=430},name="b"},
+    CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=9,column=51,offset=428},a=74,b=75,op=46},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=10,column=1,offset=435},name="main",b=78},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=10,column=12,offset=446},head=81,tail=82},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=10,column=14,offset=448},name="tw",head=80,tail=80},
+    CK_Node.{kind=CK_Tag.expr_bool,loc=CK_Loc.{line=10,column=17,offset=451},value=1},
+    CK_Node.{kind=CK_Tag.stmt_expr,loc=CK_Loc.{line=10,column=14,offset=448},a=79,next=82},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=10,column=24,offset=458},name="b",a=83},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=10,column=29,offset=463},name="inner",head=84,tail=84},
+    CK_Node.{kind=CK_Tag.expr_int,loc=CK_Loc.{line=10,column=35,offset=469},value=2}];
+  nodes:[271] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[271] CK_Type;locals:[101] CK_Local;errors:[696] CK_Error;bytes:[51408] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
+  #assert ok==false && state[0].error_count==7 && state[0].type_count==30 && state[0].depth==0 && state[0].generic==0 && state[0].site==CK_Site.none;
+  #assert errors[0].code=="E0368" && errors[0].loc.line==5 && errors[0].loc.column==32 && errors[0].message=="'$N' is a type parameter, not an array length" && errors[0].fix=="write the length as $N in a fixed array type: [$N] T";
+  #assert errors[1].code=="E0805" && errors[1].loc.line==3 && errors[1].loc.column==30 && errors[1].message=="'$N' is a length; constraints apply to type parameters" && errors[1].fix=="write the constraint on a $T";
+  #assert errors[2].code=="E0368" && errors[2].loc.line==3 && errors[2].loc.column==26 && errors[2].message=="'$N' is a value parameter, not a type" && errors[2].fix=="write a type parameter as $T, and use $N only as an array length";
+  #assert errors[3].code=="E0805" && errors[3].loc.line==4 && errors[3].loc.column==16 && errors[3].message=="unknown constraint 'sortable'" && errors[3].fix=="constraints are equatable, ordered, numeric and copyable";
+  #assert errors[4].code=="E0310" && errors[4].loc.line==1 && errors[4].loc.column==54 && errors[4].message=="'<' compares two numbers of one type, found $T and $T" && errors[4].fix=="constrain it where it is bound: $T: ordered";
+  #assert errors[5].code=="E0311" && errors[5].loc.line==2 && errors[5].loc.column==52 && errors[5].message=="cannot compare $T values with '=='" && errors[5].fix=="constrain it where it is bound: $T: equatable";
+  #assert errors[6].code=="E0806" && errors[6].loc.line==10 && errors[6].loc.column==17 && errors[6].message=="bool is not numeric, but 'tw' needs '$T: numeric' (declared at line 6)" && errors[6].fix=="ordered and numeric types are integers, floats and placeholders constrained so";
+  #assert state[0].used==156 && state[0].instances==156 && state[0].instance_tail==156 && state[0].instance_count==1;
+  #assert nodes[2].origin==0 && nodes[2].pristine==85 && nodes[2].chain==0 && nodes[2].key=="" && nodes[2].head==3 && nodes[2].b==8 && nodes[2].reached==false;
+  #assert nodes[2].type==2 && nodes[2].generic==true;
+  #assert nodes[3].type==18;
+  #assert nodes[5].type==18;
+  #assert nodes[9].type==0;
+  #assert nodes[10].type==18;
+  #assert nodes[11].type==18;
+  #assert nodes[12].type==0;
+  #assert nodes[13].origin==0 && nodes[13].pristine==96 && nodes[13].chain==0 && nodes[13].key=="" && nodes[13].head==14 && nodes[13].b==19 && nodes[13].reached==false;
+  #assert nodes[13].type==2 && nodes[13].generic==true;
+  #assert nodes[14].type==19;
+  #assert nodes[16].type==19;
+  #assert nodes[20].type==0;
+  #assert nodes[21].type==19;
+  #assert nodes[22].type==19;
+  #assert nodes[23].type==0;
+  #assert nodes[24].origin==0 && nodes[24].pristine==107 && nodes[24].chain==0 && nodes[24].key=="" && nodes[24].head==25 && nodes[24].b==31 && nodes[24].reached==false;
+  #assert nodes[24].type==1 && nodes[24].generic==true;
+  #assert nodes[25].type==21;
+  #assert nodes[29].type==0;
+  #assert nodes[32].origin==0 && nodes[32].pristine==115 && nodes[32].chain==0 && nodes[32].key=="" && nodes[32].head==33 && nodes[32].b==37 && nodes[32].reached==false;
+  #assert nodes[32].type==1 && nodes[32].generic==true;
+  #assert nodes[33].type==22;
+  #assert nodes[35].type==22;
+  #assert nodes[38].generic==true && nodes[38].flag2==true;
+  #assert nodes[40].type==0;
+  #assert nodes[44].origin==0 && nodes[44].pristine==121 && nodes[44].chain==0 && nodes[44].key=="" && nodes[44].head==45 && nodes[44].b==47 && nodes[44].reached==false;
+  #assert nodes[44].type==1 && nodes[44].generic==true;
+  #assert nodes[45].type==23;
+  #assert nodes[48].origin==0 && nodes[48].pristine==125 && nodes[48].chain==0 && nodes[48].key=="" && nodes[48].head==49 && nodes[48].b==52 && nodes[48].reached==false;
+  #assert nodes[48].type==2 && nodes[48].generic==true;
+  #assert nodes[49].type==24;
+  #assert nodes[53].type==0;
+  #assert nodes[54].type==24;
+  #assert nodes[55].type==24;
+  #assert nodes[56].type==2;
+  #assert nodes[57].origin==0 && nodes[57].pristine==134 && nodes[57].chain==0 && nodes[57].key=="" && nodes[57].head==58 && nodes[57].b==61 && nodes[57].reached==false;
+  #assert nodes[57].type==2 && nodes[57].generic==true;
+  #assert nodes[58].type==25;
+  #assert nodes[62].type==0;
+  #assert nodes[63].type==2 && nodes[63].proc==154;
+  #assert nodes[64].type==25;
+  #assert nodes[65].type==25;
+  #assert nodes[66].origin==0 && nodes[66].pristine==143 && nodes[66].chain==0 && nodes[66].key=="" && nodes[66].head==67 && nodes[66].b==72 && nodes[66].reached==false;
+  #assert nodes[66].type==2 && nodes[66].generic==true;
+  #assert nodes[67].type==26;
+  #assert nodes[69].type==26;
+  #assert nodes[73].type==0;
+  #assert nodes[74].type==26;
+  #assert nodes[75].type==26;
+  #assert nodes[76].type==2;
+  #assert nodes[77].type==1 && nodes[77].generic==false;
+  #assert nodes[79].type==0;
+  #assert nodes[80].type==2;
+  #assert nodes[82].type==2;
+  #assert nodes[83].type==2 && nodes[83].proc==156;
+  #assert nodes[84].type==11;
+  #assert nodes[85].type==0 && nodes[85].generic==false;
+  #assert nodes[88].type==0;
+  #assert nodes[89].type==0;
+  #assert nodes[90].type==0;
+  #assert nodes[91].type==0;
+  #assert nodes[92].type==0;
+  #assert nodes[94].type==0;
+  #assert nodes[96].type==0 && nodes[96].generic==false;
+  #assert nodes[99].type==0;
+  #assert nodes[100].type==0;
+  #assert nodes[101].type==0;
+  #assert nodes[102].type==0;
+  #assert nodes[103].type==0;
+  #assert nodes[105].type==0;
+  #assert nodes[107].type==0 && nodes[107].generic==false;
+  #assert nodes[109].type==0;
+  #assert nodes[113].type==0;
+  #assert nodes[115].type==0 && nodes[115].generic==false;
+  #assert nodes[117].type==0;
+  #assert nodes[119].type==0;
+  #assert nodes[121].type==0 && nodes[121].generic==false;
+  #assert nodes[123].type==0;
+  #assert nodes[125].type==0 && nodes[125].generic==false;
+  #assert nodes[128].type==0;
+  #assert nodes[129].type==0;
+  #assert nodes[130].type==0;
+  #assert nodes[131].type==0;
+  #assert nodes[132].type==0;
+  #assert nodes[134].type==0 && nodes[134].generic==false;
+  #assert nodes[137].type==0;
+  #assert nodes[138].type==0;
+  #assert nodes[139].type==0;
+  #assert nodes[140].type==0;
+  #assert nodes[141].type==0;
+  #assert nodes[143].type==0 && nodes[143].generic==false;
+  #assert nodes[146].type==0;
+  #assert nodes[147].type==0;
+  #assert nodes[148].type==0;
+  #assert nodes[149].type==0;
+  #assert nodes[150].type==0;
+  #assert nodes[152].type==0;
+  #assert nodes[154].origin==66 && nodes[154].pristine==0 && nodes[154].chain==0 && nodes[154].key=="" && nodes[154].head==0 && nodes[154].b==0 && nodes[154].reached==false;
+  #assert nodes[154].type==2 && nodes[154].generic==true;
+  #assert nodes[155].kind==CK_Tag.invalid;
+  #assert nodes[156].origin==57 && nodes[156].pristine==0 && nodes[156].chain==0 && nodes[156].key=="" && nodes[156].head==0 && nodes[156].b==0 && nodes[156].reached==false;
+  #assert nodes[156].type==2 && nodes[156].generic==false;
+  #assert types[16].kind==CK_Kind.struct_ && types[16].name=="R" && types[16].elem==0 && types[16].decl==38 && types[16].size==1 && types[16].alignment==1 && types[16].bits==0 && types[16].length==0;
+  #assert types[17].kind==CK_Kind.param && types[17].name=="$N" && types[17].elem==0 && types[17].decl==38 && types[17].size==0 && types[17].alignment==1 && types[17].bits==0 && types[17].length==0;
+  #assert types[18].kind==CK_Kind.param && types[18].name=="$T" && types[18].elem==0 && types[18].decl==2 && types[18].size==0 && types[18].alignment==1 && types[18].bits==0 && types[18].length==0;
+  #assert types[19].kind==CK_Kind.param && types[19].name=="$T" && types[19].elem==0 && types[19].decl==13 && types[19].size==0 && types[19].alignment==1 && types[19].bits==0 && types[19].length==0;
+  #assert types[20].kind==CK_Kind.param && types[20].name=="$N" && types[20].elem==0 && types[20].decl==24 && types[20].size==0 && types[20].alignment==1 && types[20].bits==1 && types[20].length==0;
+  #assert types[21].kind==CK_Kind.array && types[21].name=="[$N] int" && types[21].elem==11 && types[21].decl==0 && types[21].size==0 && types[21].alignment==8 && types[21].bits==0 && types[21].length==-20;
+  #assert types[22].kind==CK_Kind.param && types[22].name=="$T" && types[22].elem==0 && types[22].decl==32 && types[22].size==0 && types[22].alignment==1 && types[22].bits==0 && types[22].length==0;
+  #assert types[23].kind==CK_Kind.param && types[23].name=="$T" && types[23].elem==0 && types[23].decl==44 && types[23].size==0 && types[23].alignment==1 && types[23].bits==0 && types[23].length==0;
+  #assert types[24].kind==CK_Kind.param && types[24].name=="$T" && types[24].elem==0 && types[24].decl==48 && types[24].size==0 && types[24].alignment==1 && types[24].bits==0 && types[24].length==0;
+  #assert types[25].kind==CK_Kind.param && types[25].name=="$U" && types[25].elem==0 && types[25].decl==57 && types[25].size==0 && types[25].alignment==1 && types[25].bits==0 && types[25].length==0;
+  #assert types[26].kind==CK_Kind.param && types[26].name=="$T" && types[26].elem==0 && types[26].decl==66 && types[26].size==0 && types[26].alignment==1 && types[26].bits==0 && types[26].length==0;
+  #assert types[27].kind==CK_Kind.param && types[27].name=="$T" && types[27].elem==25 && types[27].decl==154 && types[27].size==0 && types[27].alignment==1 && types[27].bits==0 && types[27].length==0;
+  #assert types[28].kind==CK_Kind.param && types[28].name=="$T" && types[28].elem==2 && types[28].decl==155 && types[28].size==0 && types[28].alignment==1 && types[28].bits==0 && types[28].length==0;
+  #assert types[29].kind==CK_Kind.param && types[29].name=="$U" && types[29].elem==11 && types[29].decl==156 && types[29].size==0 && types[29].alignment==1 && types[29].bits==0 && types[29].length==0;
 }

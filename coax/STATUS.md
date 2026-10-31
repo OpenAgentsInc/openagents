@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.39.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.40.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -146,6 +146,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `$N` value parameters | [$N] T binds a fixed array argument's length (E0348 two lengths, E0349 not a fixed array or wrong length, E0368 a name used as type and length); [4] $T and [$N] $T are accepted | partial | 0.36.0 |
 | Generic structs | Pair :: struct($T) and Box :: struct($T, $N) instantiate per binding from Pair(int) types, deducing literals and Pair($T) parameters; fixed-storage bindings only (no views or aggregates containing views); each instance is laid out and emitted (E0800-E0804, E0223) | partial | 0.37.0 |
 | Borrowed views across `#foreign` | A #foreign parameter may be a [] view of integers, floats or bool, passed as the {data, count} struct; the host reads and writes it during the call only (no retention, transfer or asynchronous use), views may overlap; other views, arrays and view results are E0376; compile-time and check execution refuse host calls (E0404) | partial | 0.38.0 |
+| Generic constraints | $T: equatable, ordered, numeric or copyable; bodies check against the constraint and calls outside it are refused with an instantiation trace (E0805-E0808) | partial | 0.40.0 |
 | `#import_proto` | Selected proto3 descriptor generation in Coax; domain admission remains separate | works | 0.10.0 |
 | Native source debugging | Original-file line maps and optional LLDB names; optimized values and generated-code limits remain | partial | 0.13.0 |
 | E0383 local-borrow diagnostics | Simple local-array returns only; interprocedural and aggregate-contained lifetimes remain unchecked | works | 0.13.0 |

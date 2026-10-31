@@ -202,6 +202,10 @@ const ErrorInfo ERRORS[] = {
     {"E0802", "generic struct over a borrow", "A generic struct holds fixed storage only. Binding a parameter to a view, or to a struct or array that holds one, would carry a borrow past the rule that a view does not outlive its array. Store the array itself, or an index into it."},
     {"E0803", "arguments on a type that takes none", "Only a generic struct takes arguments. A builtin type, an enum or a struct without parameters is written by its name alone."},
     {"E0804", "struct parameter not deduced", "A literal of a generic struct deduces each parameter from a field given in it. Give a field that uses the parameter, or declare the variable's type: x: Pair(int) = Pair.{...}."},
+    {"E0805", "unknown constraint", "A type parameter's constraint is one of equatable (== and !=), ordered (also < <= > >=), numeric (also + - * / and integer literals) or copyable (assignment, which every coax0 type allows). A length parameter $N takes no constraint."},
+    {"E0806", "binding outside a constraint", "A call or instance gives a constrained parameter a type that does not meet its constraint. The error is at the use and names the generic declaration and the constraint. Ordered and numeric types are integers and floats; equatable types are scalars, strings and enums."},
+    {"E0807", "instantiation failed", "A generic body checked against its constraints can still fail for one instance, for example a literal too large for u8. The instance's errors come first; this one is at the call that made the instance and lists its bindings."},
+    {"E0808", "misplaced constraint", "A constraint is written once, where the parameter is bound: on its first $T in a procedure's parameters, or in a struct's parameter list. Elsewhere, and a second different constraint on one parameter, are refused."},
 };
 
 const int32_t ERROR_COUNT = (int32_t)(sizeof ERRORS / sizeof ERRORS[0]);

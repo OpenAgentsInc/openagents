@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.39.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.40.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -489,6 +489,31 @@ template. Instances hold fixed storage only: binding a view, or a struct or
 array holding one, is E0802, so no instance carries a borrow past a view's
 lifetime rule. Struct and procedure instances share the 256-instance budget
 (E0339). Arithmetic on `$T` values still needs constraints (r4a-constraints).
+
+**Constraints (0.40.0).** A type parameter may state what its body needs,
+where it is bound: `max :: (a: $T: ordered, b: $T) -> $T` or
+`Range :: struct($T: numeric)`. The body is checked against the constraint,
+not against each instance; an unconstrained `$T` allows only assignment,
+passing and returning. The names are built in, and there is no operator
+overloading:
+
+| constraint | allows | met by |
+|---|---|---|
+| `equatable` | `==`, `!=` | scalars, strings, enums |
+| `ordered` | equatable, and `<` `<=` `>` `>=` | integers, floats |
+| `numeric` | ordered, and `+ - * /`, compound assignment, integer literals | integers, floats |
+| `copyable` | assignment and passing | every coax0 type |
+
+A body that uses an operator its parameter's constraint does not allow is
+refused at the declaration, with a fix naming the constraint to add. A call
+or instance that binds a type outside the constraint is refused at the use
+(E0806), naming the generic declaration and its constraint. A procedure that takes
+`Range($T)` binds `$T` itself, so it repeats the struct's constraint:
+`inside :: (r: Range($T: ordered), x: $T)`. An instance whose
+body still fails, such as `x + 300` with `$T = u8`, reports its errors and then
+an instantiation trace at its first call with its bindings (E0807). Unknown
+names are E0805; a constraint written anywhere but where the parameter is bound
+is E0808.
 
 The remainder of this section is the plan.
 

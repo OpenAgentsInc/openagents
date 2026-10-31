@@ -134,7 +134,7 @@ PS_type :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
     n[id].b=PS_type(t,n,s,out);return PS_valid(s,id);
   }
   // $T: a type parameter, bound and checked by the checker (r4a-type-parameters).
-  if v.kind==53 {n[id].kind=PS_Tag.type_param;n[id].name=PS_take(t,s).text;return PS_valid(s,id);}
+  if v.kind==53 {n[id].kind=PS_Tag.type_param;n[id].name=PS_take(t,s).text;PS_constraint(t,n,s,id);return PS_valid(s,id);}
   if v.kind!=1 && v.kind!=2 {parts:=[2] string.["expected a type, found ",PS_label(v.kind)];PS_error(s,out,v.loc,"E0202","",parts[..]);return 0;}
   n[id].name=PS_take(t,s).text;
   // alias.Name: a module-qualified type (name2 is the alias), exactly one alias deep.
@@ -145,6 +145,11 @@ PS_type :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8)->int {
     while s[0].code=="" {if PS_at(t,s,3) {PS_link(n,id,PS_expression(t,n,s,out));}else {PS_link(n,id,PS_type(t,n,s,out));}if !PS_at(t,s,14) {break;}PS_skip(t,s);}
     PS_expect(t,s,out,9,"to close the type arguments");}
   return PS_valid(s,id);
+}
+// $T: ordered: a constraint name in name2, at loc2 (r4a-constraints). The
+// checker knows the names; ':' after a type is otherwise never valid.
+PS_constraint :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,id:int) {
+  if PS_at(t,s,16) && PS_peek(t,s,1).kind==1 {PS_skip(t,s);w:=PS_take(t,s);n[id].name2=w.text;n[id].loc2=w.loc;}
 }
 PS_origin :: (n:[] PS_Node,e:int)->PS_Loc {q:=e;while n[q].kind==PS_Tag.expr_field {q=n[q].a;}return n[q].loc;}
 PS_reexport :: (s:[] PS_State,out:[] u8,loc:PS_Loc) {PS_fail(s,out,loc,"E0222","a qualified name takes one module alias; aliases are not reexported","load that module here with its own alias");}
@@ -466,7 +471,7 @@ PS_struct_params :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,id:int) 
   while s[0].code=="" {
     v:=PS_peek(t,s,0);
     if v.kind!=53 {PS_fail(s,out,v.loc,"E0223","a struct parameter is written $NAME","Pair :: struct($T) { a: $T; b: $T; }");return;}
-    p:=PS_new(n,s,out,PS_Tag.type_param,v.loc);n[p].name=PS_take(t,s).text;
+    p:=PS_new(n,s,out,PS_Tag.type_param,v.loc);n[p].name=PS_take(t,s).text;PS_constraint(t,n,s,p);
     q:=n[id].d;while q!=0 {if n[q].name==n[p].name {parts:=[3] string.["struct parameter '$",v.text,"' is listed twice"];PS_error(s,out,v.loc,"E0223","give each parameter its own name",parts[..]);return;}q=n[q].next;}
     if last==0 {n[id].d=p;}else {n[last].next=p;}last=p;
     if !PS_at(t,s,14) {break;}PS_skip(t,s);
@@ -3971,6 +3976,23 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   if variant==2 {#assert nodes[id].kind==PS_Tag.type_array && state[0].pos==4;at=nodes[id].b;}
   #assert nodes[at].kind==PS_Tag.type_param && nodes[at].name=="T" && nodes[at].name2=="" && nodes[at].loc.line==2 && nodes[at].loc.column==7 && nodes[at].loc.offset==12;
   if variant==0 || variant==3 {#assert id==1 && state[0].pos==1 && state[0].used==1;}
+}
+#forall "a $ name may carry one constraint name" variant:0..<4 {
+  // $T: ordered ; $T ; $T: 3 ; $T: ordered: numeric
+  tokens:=[6] PS_Token.[PS_Token.{kind=53,text="T"},PS_Token.{kind=16},PS_Token.{kind=1,text="ordered",loc=PS_Loc.{line=2,column=9,offset=12}},PS_Token.{},PS_Token.{},PS_Token.{}];
+  if variant==1 {tokens[1]=PS_Token.{kind=14};}
+  if variant==2 {tokens[2]=PS_Token.{kind=3,value=3};}
+  if variant==3 {tokens[3]=PS_Token.{kind=16};tokens[4]=PS_Token.{kind=1,text="numeric"};}
+  nodes:[8] PS_Node;state:[1] PS_State;message:[128] u8;
+  id:=PS_type(tokens[..],nodes[..],state[..],message[..]);
+  #assert state[0].code=="" && id==1 && nodes[1].kind==PS_Tag.type_param && nodes[1].name=="T";
+  if variant==0 || variant==3 {#assert nodes[1].name2=="ordered" && nodes[1].loc2.line==2 && nodes[1].loc2.column==9 && nodes[1].loc2.offset==12 && state[0].pos==3;}
+  else {#assert nodes[1].name2=="" && nodes[1].loc2.line==0 && state[0].pos==1;}
+  // a struct's parameter list takes the same constraint
+  list:=[8] PS_Token.[PS_Token.{kind=2,text="struct"},PS_Token.{kind=8},PS_Token.{kind=53,text="T"},PS_Token.{kind=16},PS_Token.{kind=1,text="numeric"},PS_Token.{kind=9},PS_Token.{kind=10},PS_Token.{kind=11}];
+  more:[8] PS_Node;again:[1] PS_State;
+  d:=PS_struct(list[..],more[..],again[..],message[..],PS_Token.{kind=1,text="P"});
+  #assert again[0].code=="" && d==1 && more[more[1].d].name2=="numeric";
 }
 #forall "a generic struct lists its $ parameters, each once" variant:0..<4 {
   // struct($T, $N) { a: $T; } ; struct() ; struct($T, $T) ; struct($T {

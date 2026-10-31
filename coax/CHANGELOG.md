@@ -13,6 +13,26 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.40.0 — 2026-10-31
+
+Commit: [`2e857e5e73b1531bf7873c27992919a56ce82c06`](https://github.com/OpenAgentsInc/openagents/commit/2e857e5e73b1531bf7873c27992919a56ce82c06)
+
+- A type parameter may state the built-in constraint its body needs, where it
+  is bound: `max :: (a: $T: ordered, b: $T) -> $T` or
+  `Range :: struct($T: numeric)`. `equatable` allows `==` and `!=`; `ordered`
+  adds `<` `<=` `>` `>=`; `numeric` adds `+ - * /`, compound assignment and
+  integer literals; `copyable` is assignment and passing, which every coax0
+  type allows. There is no operator overloading.
+- Generic bodies are checked against their constraints, not against each
+  instance; an unconstrained `$T` allows only assignment, passing and
+  returning. A call or instance that binds a type outside the constraint is
+  E0806 at the use, naming the declaration and the constraint; an instance
+  whose body still fails reports its errors and an instantiation trace with
+  its bindings (E0807). Unknown names are E0805 and a constraint written
+  anywhere but where the parameter is bound is E0808.
+- The parser and checker gates kill every mutant (parser 1260/1260, checker
+  5042/5042 with the constraint mutants).
+
 ## 0.39.0 — 2026-10-31
 
 Commit: [`26a9355c10e1471454f8c18b3da5cf788f70daef`](https://github.com/OpenAgentsInc/openagents/commit/26a9355c10e1471454f8c18b3da5cf788f70daef)

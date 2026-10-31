@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "timezone": "America/Chicago",
+  "issue": "r4a-constraints (#bd1d)",
+  "parent": "r4a-generic-values (#76ba), kept open",
+  "baseline_commit": "34ff9876ef (origin/main, coax0 0.39.0)",
+  "compiler_version": "0.40.0",
+  "scope": "$T: equatable | ordered | numeric | copyable on procedure parameters, struct parameter lists and Pair($T: c) bindings; generic bodies are checked against the constraint; bindings outside it are refused at the use naming the declaration and constraint; a failing instance is traced to its first call with its bindings. Built-in names only, no operator overloading.",
+  "kernels": {
+    "parser": {
+      "file": "coax/lib/compiler/parser.coax",
+      "new_rules": [
+        "PS_constraint: '$T: name' records the name in name2/loc2 on type_param nodes, in type positions and struct parameter lists"
+      ],
+      "checks": "187 checks, 187 passed",
+      "mutation": "1260 mutants, 1260 killed, 0 survived (2 shards, merged)"
+    },
+    "checker": {
+      "file": "coax/lib/compiler/checker.coax",
+      "new_rules": [
+        "CK_Type.need: 0 none, 1 copyable, 2 equatable, 3 ordered, 4 numeric; each level allows the ones below",
+        "CK_need / CK_constrain: names (E0805 unknown or on a length), one constraint per parameter where it binds (E0808)",
+        "CK_numeric / CK_ordered / CK_meets: operators on placeholders follow the constraint; fixes name the constraint to add (E0309, E0310, E0311, E0326)",
+        "CK_coerce: an integer literal takes a numeric placeholder's type",
+        "CK_satisfies: a binding outside the template's constraint (E0806) at the call or instance type",
+        "CK_trace: an instance whose body fails reports E0807 at its first call with every binding"
+      ],
+      "checks": "611 checks, 611 passed",
+      "mutation": "5047 mutants, 5047 killed, 0 survived (6 shards, merged)"
+    }
+  },
+  "native_transport": [
+    "src/errors.cpp: E0805-E0808 explanations; book appendix B regenerated",
+    "tests/checker.py: CK_Type mirror gains need"
+  ],
+  "fixtures": {
+    "file": "coax/tests/generics.py",
+    "class": "Constraints",
+    "tests": 2,
+    "covers": [
+      "max/sum/same/Range($T: ordered)/inside over int, f64, u8, string and an enum print 1121107 natively at -O0/-O2, under #run and coax test",
+      "refused at the declaration: < on unconstrained $T (E0310), + on ordered (E0309), == unconstrained (E0311)",
+      "refused at the call: max(true, false), same(P), R(bool) (E0806 naming the declaration and its line)",
+      "grow(u8) with x + 300: E0350 then the E0807 trace at the call",
+      "E0805 unknown names and lengths, E0808 a second constraint or one in a body"
+    ]
+  },
+  "limits": [
+    "constraint names are built in; no user-defined constraints or operator overloading",
+    "a procedure binding Range($T) repeats the struct's constraint",
+    "an instance's body is still checked per instance (E0807 when a literal does not fit)"
+  ],
+  "seeds": "bootstrap/parser.c, checker.c, checker.h regenerated; COAX_BUILD_FRESH=1 coax/build.sh bootstraps to a fixpoint",
+  "legacy_codegen": {
+    "compared_with": "coax0 0.39.0 (9f27926b cached build of origin/main 34ff9876ef)",
+    "corpus": "1092 compilable repo sources outside coax/tests emit byte-identical C (compiler stamp aside); 182 do not compile standalone under the old compiler; 0 differ, 0 newly fail"
+  }
+}
