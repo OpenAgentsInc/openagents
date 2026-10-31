@@ -1,0 +1,2483 @@
+{
+  "schema": "coax.verification.borrow-origin-foundation.v1",
+  "outcome": "passed-standalone-foundation",
+  "recorded_at": "2026-10-31T20:57:39.095571+00:00",
+  "task": "r3a-borrow-origin-policy",
+  "scope": "Bounded supplied-fact origin validation, canonical set union and one-level exact projection substitution; actual LP64 ABI and guarded native behavior. The module remains unloaded by the compiler. Checker diagnostics, source-level completeness and request lifetimes are subsequent children.",
+  "source_sha256": {
+    "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+    "coax/tests/borrow_summary_native.py": "c7cd5a79991f6f653bd1ca38e0aa0eb04f5cbe5748017de7a7e4b94786017e0a",
+    "coax/tests/borrow-summary-native.c": "02166e1f759be221200580c0906267977b024b85aa3e14dba355a553419dc5b6",
+    "coax/tests/run.sh": "21ad8e777da56ff062dc9c09f16ab7c9bacbe129f5738a3d8d1af49a5a615d5c",
+    "coax/verification-borrow-origins.md": "81d881ab9d32da8948dc8f7026773f7017c9ffd8fd0f1cd0967c1177b9cb06c5",
+    "coax/verification-local-borrows.md": "97dcead791271a619c40a0d15982a42feef27b598a3c57aa11fffae817c73518",
+    "apps/openagents-web/projects/coax/work/borrow-summary-subtasks.json": "11a0b244dce4b5c819c163432d49035605dad73a789d623b029ca33eb6514b5f"
+  },
+  "actual_native_producer_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+  "actual_native_producer_source_fingerprint": "fa0698a8d7a154bed364ad860d0259b742dc0cec821e5a066deb4a38b2c3f65f",
+  "subsequent_source_consistency_fingerprint": "8cc1addd7253904b334ddd6cde2f9e4ae8f48bbc25cfce9ab89f6662c306644b",
+  "authored_checks": 25,
+  "authored_cases": 287,
+  "root_mutants_killed": 297,
+  "root_mutants_survived": 0,
+  "equivalence_waivers": 0,
+  "native_cases_per_profile": 94,
+  "native_profiles": [
+    "checked O0",
+    "checked O2",
+    "ASan/UBSan O1"
+  ],
+  "frozen_supplied_fact_contract": {
+    "path": "/tmp/coax-borrow-origin-A0/proposed-api.md",
+    "sha256": "5ecb52c5a7d5b28cfbf8b26f2edafbd378bcf08f086954d791331f847bcaae5f",
+    "text": "# A0 borrow-origin policy proposal (standalone, unloaded)\n\nThis kernel consumes explicit checked projection/type facts. It does not resolve declarations, infer types, compute a checker fixed point, issue source diagnostics, authorize a return, or model request retention/completion/cancel. Those remain later children. A successful set operation is not a lifetime-safety verdict.\n\n## Vocabulary and bounded representation\n\nStatuses (u8): ok=0, invalid=1, unknown=2, capacity=3, work=4.\nOrigin kinds (u8): static=1, local=2, parameter=3. Zero is invalid.\nParameter query roles (u8): inline_storage=1, contained_descriptor=2.\nProjection step kinds (u8): field=1, element=2, dereference=3.\n\nBS_Step {kind:u8; index:int}\nBS_Path {count:int; steps:[8]BS_Step}\nBS_Origin {kind:u8; root:int; role:u8; type:int; path:BS_Path}\nBS_Binding {formal:BS_Origin; actual_type:int; complete:bool; callee_root:int; start:int; count:int}\nBS_Result {status:BS_Status; count:int}\n\nA field index is its checked declaration ordinal, an element index is a checked nonnegative constant index, and dereference has index0. These are logical projections, never byte offsets. The producer remains responsible for their actual type correctness; the kernel checks vocabulary, extents, exact identity and supplied projected type agreement. Dynamic element selection requires a producer-supplied conservative fact/union or remains unknown; there is no wildcard/path-prefix guessing here.\n\nPath count0..8; active field/element indices0..2147483647; inactive steps must be zero. Dereference is allowed only on relative parameter/contained_descriptor paths. Concrete local/static terms denote backing storage, use role0, root1..2147483647, and positive supplied checked projected referent/storage type keys. These keys describe the borrowed region, not necessarily the containing array/record type; they are not an independent type resolver or cast authorization. Parameter roots are formal indices0..63, role1/2, projected type IDs1..2147483647. Inline parameter paths cannot cross dereference. Empty paths are valid.\n\nCaps: input summary/set64 terms; bindings64; shared origin pool256; each binding span<=64; output view0..64 terms; max128 candidate insertions per union/substitution. Candidate work counts duplicates, while duplicate terms consume no output capacity. All loops are bounded by those caps; no1M pool/quadratic unbounded traversal.\n\n## Exact substitution and ownership distinction\n\nA binding formal must be a parameter term. Match parameter index + role + exact path; require equal projected formal type and actual_type. Duplicate formal slots, including conflicting type IDs, are invalid. No prefix matching or recursive resolver exists.\n\nFor inline_storage, the callee by-value storage is always local: require complete=true canonically, callee_root1..2147483647 and pool start/count0. Substitution creates a local backing term with that root, the same projected type/path, and role0. It never substitutes the actual argument's static/local inline storage. This covers array/inline-array record parameters and copied descriptor objects' own inline storage.\n\nFor contained_descriptor, require callee_root0. A complete binding uses the exact pool span and preserves its pointee terms verbatim. Every referenced pool term.type must equal formal.type and actual_type, including in an unused binding; mismatches are structural invalidity. Unreferenced pool entries still require individually valid origin metadata. This preserves a copied record view pointing into an existing local array; copying an owned inline array does not rebase that view. Empty complete span is intentionally empty. An incomplete binding requires start/count0 and is unknown when used. Unused incomplete/local-backed arguments do not enter the returned set.\n\nA missing binding or incomplete used binding returns unknown, never a safe empty set. An incomplete whole summary/input set also returns unknown. An empty runtime slice is not represented automatically as a complete empty origin set: its backing origin remains a fact; slice lengths are not inputs to this policy.\n\nSubstitution is exactly one level. Relative terms in actual binding spans are caller-relative and remain relative; they are not looked up again in the callee binding table. Repeated/self-relative terms therefore do not recurse. There is no origin graph/cycle traversal in A0; checker fixed points are explicitly later work.\n\n## Exports\n\nBS_path_valid(path:BS_Path)->bool #export_c\nBS_origin_valid(origin:BS_Origin)->bool #export_c\nBS_union(left:[]BS_Origin,left_complete:bool,right:[]BS_Origin,right_complete:bool,out:[]BS_Origin)->BS_Result #export_c\nBS_substitute(summary:[]BS_Origin,summary_complete:bool,bindings:[]BS_Binding,pool:[]BS_Origin,out:[]BS_Origin)->BS_Result #export_c\n\nCanonical successful output is unique and sorted lexicographically by kind, root, role, type, path.count, then each step kind/index. Concrete and relative origins remain distinct. Union never implicitly adds a container's inline origin to a descriptor set; callers maintain those two fact channels and relative query roles distinguish them.\n\nInactive padding means inactive logical BS_Step fields, never unspecified C struct padding. Successful prefix comparisons use fields; refusal/tail preservation uses bytes.\n\nAll source arrays and pointers must be valid, immutable for the call, and disjoint from public output (explicit caller obligation, no fabricated overlap observation). Validate all counts/spans/metadata before access. Result status/count is returned by value. Every failure leaves the entire out view byte-unchanged and returns count0; successful publication writes only the sorted count prefix, leaving its tail unchanged. Complete empty success writes nothing. A local staging array plus final commit ensures a late missing binding/capacity/work failure cannot leak partial terms.\n\nNegative or over-cap view counts (input65, bindings65, pool257, output65) are invalid1, not capacity. Capacity3 means admitted input produced more than64 unique terms or more than the admitted out span can hold. Structural validation covers all origins, all bindings, all used pool spans, and any matching summary/formal type conflict before returning unknown. Complete=false on an inline binding is invalid even if unused; incomplete descriptor binding is canonical only with start/count0. A late required missing/incomplete descriptor binding or incomplete whole summary returns unknown2 before work/capacity, even if another reference would expand past128. After the complete unknown preflight, 129 duplicate candidates returns work4; 127/128 duplicate candidates with <=64 unique terms can succeed. No additional result/type/unknown state is published on refusal. No semantic fallback, truncation or silent unknown-to-empty conversion.\n\n## Independent check-first cases\n\n- Local aggregate inline storage and a contained descriptor to static storage stay separate; an unused local/unknown actual does not taint a static return.\n- Exact formal0.inner.s descriptor match excludes formal0.other.s and formal1.\n- By-value array and inline-array record parameters become callee-local even when actual storage is static; inline facts cannot accept a pool substitution.\n- Copied record descriptor keeps local pointee identity instead of rebasing into a copied inline array.\n- Complete empty vs incomplete/missing, role/type/path mismatch and duplicate/conflicting bindings.\n- Canonical unique unions; duplicate terms do not consume output capacity.\n- Max depth/caps, malformed padding/index/span, late missing binding, late output capacity and candidate-work exhaustion preserve poisoned output and tail bytes.\n- One-step caller-relative substitution terminates without a host graph walk.\n\n## Frozen Coax constant spellings\n\nBS_STATIC=1, BS_LOCAL=2, BS_PARAMETER=3; BS_INLINE=1, BS_DESCRIPTOR=2; BS_FIELD=1, BS_ELEMENT=2, BS_DEREFERENCE=3 (all u8). BS_MAX_SET=64, BS_MAX_BINDINGS=64, BS_MAX_POOL=256, BS_MAX_PATH=8, BS_MAX_WORK=128 (int). BS_Status :: enum u8 {ok;invalid;unknown;capacity;work;}\n"
+  },
+  "model_qualification": {
+    "path": "/tmp/coax-borrow-origin-A0/model-qualification.json",
+    "sha256": "1380954e2eb0adfcee456cee60f4d395f99aba3b2bc98e715aa060a4a111e0f6",
+    "result": {
+      "schema": "coax.borrow-origin-policy.qualification.v1",
+      "scope": "A0 standalone supplied-fact borrow-origin policy only; unloaded by checker/compiler; no lifetime diagnostics or retained-request acceptance claim",
+      "source": {
+        "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+        "sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429"
+      },
+      "compiler": {
+        "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+        "sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+        "qualified_provenance_fingerprint_before_unloaded_addition": "fa0698a8d7a154bed364ad860d0259b742dc0cec821e5a066deb4a38b2c3f65f"
+      },
+      "api": {
+        "path": "/tmp/coax-borrow-origin-A0/proposed-api.md",
+        "sha256": "5ecb52c5a7d5b28cfbf8b26f2edafbd378bcf08f086954d791331f847bcaae5f"
+      },
+      "check_first": {
+        "semantic_stub": "/tmp/coax-borrow-origin-A0/semantic-stub.coax",
+        "receipt": "/tmp/coax-borrow-origin-A0/stub-red.json",
+        "scope": "Actual semantic assertion failure before implementation, not parser/import failure"
+      },
+      "preserved_prior_runs": [
+        "/tmp/coax-borrow-origin-A0/parse-followup.json",
+        "/tmp/coax-borrow-origin-A0/mutation-first.json"
+      ],
+      "transparent_cleanup": "/tmp/coax-borrow-origin-A0/production-cleanup-review.json",
+      "current_model": {
+        "receipt": "/tmp/coax-borrow-origin-A0/mutation-second.json",
+        "evidence": "/tmp/coax-borrow-origin-A0/mutation-second.evidence.json",
+        "evidence_sha256": "afec93146e17929760ffdc50c9e701a0b0565534516371f273fc263df352066e",
+        "authored_claims": 25,
+        "cases": 287,
+        "authority": {
+          "kind": "#authority",
+          "name": "execution coverage",
+          "outcome": "passed",
+          "at": null,
+          "cases": 0,
+          "steps": 0
+        },
+        "mutation": {
+          "outcome": "passed",
+          "mutants": 297,
+          "evaluated": 297,
+          "killed": 297,
+          "survived": [],
+          "marked_equivalent": 0,
+          "unreached": "",
+          "scope": "root-only",
+          "shard": null,
+          "merged_records": 0,
+          "scheduling": "selective",
+          "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+        },
+        "all_baseline_claims_passed": true
+      },
+      "independent_native": "Owned by PS agent; separate receipt pending; do not infer from evaluator or mutation observations",
+      "parent_scope": "Helper/aggregate/compiler traversal/fixedpoint/retained request stores/completion/cancel remain future ordered children; no checker import or host semantic fallback"
+    }
+  },
+  "actual_final_coax_evidence": {
+    "path": "/tmp/coax-borrow-origin-A0/mutation-second.evidence.json",
+    "sha256": "afec93146e17929760ffdc50c9e701a0b0565534516371f273fc263df352066e",
+    "result": {
+      "schema": "coax.evidence.v1",
+      "command": "mutate",
+      "input": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+      "compiler": {
+        "version": "coax0 0.44.0",
+        "sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05"
+      },
+      "target": {
+        "name": "coax-evaluator",
+        "note": "checks run in the compile-time evaluator, not generated code"
+      },
+      "profile": {
+        "arithmetic": "checked",
+        "selected_runtime_arithmetic": "checked",
+        "library": false
+      },
+      "selection": {
+        "only": null,
+        "list": false,
+        "root_only": true
+      },
+      "budgets": {
+        "check_steps": 20000000,
+        "check_slots": 33554432,
+        "check_containers": 2097152,
+        "run_steps": 100000
+      },
+      "sources": [
+        {
+          "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+          "sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429"
+        }
+      ],
+      "front_end": "ok",
+      "claims": [
+        {
+          "kind": "#test",
+          "name": "known duplicate origins publish a canonical nonempty union",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 16,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 1847
+        },
+        {
+          "kind": "#forall",
+          "name": "logical path vocabulary and depth are bounded",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 25,
+            "col": 1
+          },
+          "cases": 150,
+          "steps": 35141
+        },
+        {
+          "kind": "#forall",
+          "name": "inactive logical path fields must be zero",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 30,
+            "col": 1
+          },
+          "cases": 16,
+          "steps": 2218
+        },
+        {
+          "kind": "#test",
+          "name": "path extrema and malformed counts refuse",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 34,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 365
+        },
+        {
+          "kind": "#forall",
+          "name": "concrete backing and relative query roles are distinct",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 38,
+            "col": 1
+          },
+          "cases": 60,
+          "steps": 16526
+        },
+        {
+          "kind": "#test",
+          "name": "origin IDs types and dereference roles are exact",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 43,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 2213
+        },
+        {
+          "kind": "#forall",
+          "name": "canonical union order observes every origin component",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 50,
+            "col": 1
+          },
+          "cases": 16,
+          "steps": 32254
+        },
+        {
+          "kind": "#forall",
+          "name": "complete empty sets differ from unresolved facts",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 61,
+            "col": 1
+          },
+          "cases": 4,
+          "steps": 575
+        },
+        {
+          "kind": "#test",
+          "name": "union deduplicates at the full set boundary and refuses excess output atomically",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 65,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 206610
+        },
+        {
+          "kind": "#test",
+          "name": "exact nested descriptor projection excludes local and unknown unused actuals",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 75,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 3212
+        },
+        {
+          "kind": "#test",
+          "name": "by-value inline storage is callee local and copied descriptors retain their local pointee",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 81,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 4470
+        },
+        {
+          "kind": "#test",
+          "name": "substitution enters the caller namespace once even when ordinals collide",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 87,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 2083
+        },
+        {
+          "kind": "#test",
+          "name": "required unknown missing and intentionally empty descriptor facts publish distinctly",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 92,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 3789
+        },
+        {
+          "kind": "#forall",
+          "name": "malformed supplied binding facts dominate unknown",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 99,
+            "col": 1
+          },
+          "cases": 16,
+          "steps": 16255
+        },
+        {
+          "kind": "#test",
+          "name": "unused malformed facts and duplicate formal slots refuse before unknown",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 106,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 3334
+        },
+        {
+          "kind": "#forall",
+          "name": "duplicate expansion work has exact 127 128 129 boundaries",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 114,
+            "col": 1
+          },
+          "cases": 3,
+          "steps": 366499
+        },
+        {
+          "kind": "#test",
+          "name": "late missing input precedes expansion work and capacity without partial publication",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 122,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 82551
+        },
+        {
+          "kind": "#test",
+          "name": "substitution capacity is unique and late refusal preserves the complete destination",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 130,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 188752
+        },
+        {
+          "kind": "#test",
+          "name": "all admitted view bounds are exact and unknown never hides overcapacity metadata",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 137,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 273604
+        },
+        {
+          "kind": "#test",
+          "name": "valid excess inputs refuse even when every origin is duplicated",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 149,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 2223
+        },
+        {
+          "kind": "#test",
+          "name": "a shorter formal prefix does not bind a nested descriptor projection",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 155,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 1195
+        },
+        {
+          "kind": "#forall",
+          "name": "inline storage accepts both exact local identity extrema",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 160,
+            "col": 1
+          },
+          "cases": 2,
+          "steps": 2282
+        },
+        {
+          "kind": "#test",
+          "name": "well formed nonparameter formals and overlong descriptor spans are invalid",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 164,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 34402
+        },
+        {
+          "kind": "#test",
+          "name": "empty output is valid and complete excessive metadata remains invalid",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 170,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 9368
+        },
+        {
+          "kind": "#forall",
+          "name": "concrete and inline leaves each consume one candidate unit",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 179,
+            "col": 1
+          },
+          "cases": 4,
+          "steps": 106593
+        },
+        {
+          "kind": "#authority",
+          "name": "execution coverage",
+          "outcome": "passed",
+          "at": null,
+          "cases": 0,
+          "steps": 0
+        }
+      ],
+      "mutation": {
+        "outcome": "passed",
+        "mutants": 297,
+        "evaluated": 297,
+        "killed": 297,
+        "survived": [],
+        "marked_equivalent": 0,
+        "unreached": "",
+        "scope": "root-only",
+        "shard": null,
+        "merged_records": 0,
+        "scheduling": "selective",
+        "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+      },
+      "exit_status": 0,
+      "verdict": "passed"
+    }
+  },
+  "actual_final_mutation_launch": {
+    "path": "/tmp/coax-borrow-origin-A0/mutation-second.json",
+    "sha256": "08889b7fc61038165f45dbc970cbe5f3d68aa3bc97d76aa571876776f5e585f1",
+    "result": {
+      "argv": [
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+        "mutate",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+        "--root-only",
+        "--evidence",
+        "/tmp/coax-borrow-origin-A0/mutation-second.evidence.json"
+      ],
+      "compiler_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+      "source_before": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+      "source_after": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+      "observation": {
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "mutate",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+          "--root-only",
+          "--evidence",
+          "/tmp/coax-borrow-origin-A0/mutation-second.evidence.json"
+        ],
+        "launched_argv": [
+          "/opt/homebrew/opt/python@3.15/bin/python3.15",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+          "--",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "mutate",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+          "--root-only",
+          "--evidence",
+          "/tmp/coax-borrow-origin-A0/mutation-second.evidence.json"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+        "started": true,
+        "pid": 61201,
+        "returncode": 0,
+        "launch_errno": null,
+        "launch_error": null,
+        "elapsed_s": 0.8358277499792166,
+        "timeout": false,
+        "deadline_exhausted": false,
+        "stdout_limit": false,
+        "stderr_limit": false,
+        "output_limit": false,
+        "observed_stdout_bytes": 116,
+        "observed_stderr_bytes": 0,
+        "group_killed": false,
+        "kill_errno": null,
+        "read_errno": null,
+        "stdout_eof": true,
+        "stderr_eof": true,
+        "limits": {
+          "stdout": 16777216,
+          "stderr": 16777216,
+          "total": 16777216
+        },
+        "timeout_s": 840,
+        "deadline": 419509.638829166,
+        "stdout": {
+          "path": "/tmp/coax-borrow-origin-A0/mutation-second.stdout.log",
+          "bytes": 116,
+          "sha256": "af9eed1456c8999eda18ff878af4175445bee64e6c223102c5edb2cc867bdcdb"
+        },
+        "stderr": {
+          "path": "/tmp/coax-borrow-origin-A0/mutation-second.stderr.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    }
+  },
+  "actual_native_qualification": {
+    "path": "/tmp/coax-borrow-origin-A0/native-qualification/qualification.json",
+    "sha256": "b186cfe1d02b91b7a9e9a8f232b74aa42d04034178e2024a9b2b8668a465d436",
+    "result": {
+      "schema": "coax.borrow-origin.native.v1",
+      "scope": "Standalone supplied-fact set operations and actual native LP64 ABI only; no checker diagnostics, lifetime-safety verdict, request retention or SystemOne qualification.",
+      "compiler": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+      "compiler_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+      "source_before": {
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow-summary-native.c": "02166e1f759be221200580c0906267977b024b85aa3e14dba355a553419dc5b6",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow_summary_native.py": "c7cd5a79991f6f653bd1ca38e0aa0eb04f5cbe5748017de7a7e4b94786017e0a"
+      },
+      "commands": [
+        {
+          "label": "emit",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "--library",
+            "--arithmetic",
+            "checked",
+            "--header",
+            "/tmp/coax-borrow-origin-A0/native-qualification/borrow-summary.h",
+            "--profile-report",
+            "/tmp/coax-borrow-origin-A0/native-qualification/emission-profile.json"
+          ],
+          "resolved_program": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "resolved_program_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+          "returncode": 0,
+          "elapsed_s": 0.24350429198239,
+          "stdout_sha256": "138e1aff9c6ebc3994832f26e82d190f83161f6ef0a0d81b777574f4f5b7edec",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "O0-compile",
+          "argv": [
+            "cc",
+            "-std=c11",
+            "-O0",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-Wno-unused-function",
+            "-Wno-unused-variable",
+            "-Wno-unused-parameter",
+            "-Wno-misleading-indentation",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-I",
+            "/tmp/coax-borrow-origin-A0/native-qualification",
+            "/tmp/coax-borrow-origin-A0/native-qualification/borrow-summary.c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow-summary-native.c",
+            "-lm",
+            "-o",
+            "/tmp/coax-borrow-origin-A0/native-qualification/O0"
+          ],
+          "resolved_program": "/usr/bin/cc",
+          "resolved_program_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+          "returncode": 0,
+          "elapsed_s": 0.3454822499770671,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "O0-run",
+          "argv": [
+            "/tmp/coax-borrow-origin-A0/native-qualification/O0"
+          ],
+          "resolved_program": "/tmp/coax-borrow-origin-A0/native-qualification/O0",
+          "resolved_program_sha256": "9b05547746ffacf293a776d5e217668499e1bd0d08ea52a845e229c16c1ad8ad",
+          "returncode": 0,
+          "elapsed_s": 0.28787325002485886,
+          "stdout_sha256": "2b2be74418be2b7ed8af0ec11d0a89b9b991f5fbd4b68b11b86b420dfa7aff16",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "O2-compile",
+          "argv": [
+            "cc",
+            "-std=c11",
+            "-O2",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-Wno-unused-function",
+            "-Wno-unused-variable",
+            "-Wno-unused-parameter",
+            "-Wno-misleading-indentation",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-I",
+            "/tmp/coax-borrow-origin-A0/native-qualification",
+            "/tmp/coax-borrow-origin-A0/native-qualification/borrow-summary.c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow-summary-native.c",
+            "-lm",
+            "-o",
+            "/tmp/coax-borrow-origin-A0/native-qualification/O2"
+          ],
+          "resolved_program": "/usr/bin/cc",
+          "resolved_program_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+          "returncode": 0,
+          "elapsed_s": 0.6580896250088699,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "O2-run",
+          "argv": [
+            "/tmp/coax-borrow-origin-A0/native-qualification/O2"
+          ],
+          "resolved_program": "/tmp/coax-borrow-origin-A0/native-qualification/O2",
+          "resolved_program_sha256": "1dbb1686fc6fc601ddbf36f97b03aefb942db0ae5f6f44bc05a1f8d1d0598454",
+          "returncode": 0,
+          "elapsed_s": 0.2794183339574374,
+          "stdout_sha256": "2b2be74418be2b7ed8af0ec11d0a89b9b991f5fbd4b68b11b86b420dfa7aff16",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "sanitized-compile",
+          "argv": [
+            "cc",
+            "-std=c11",
+            "-O1",
+            "-g",
+            "-fsanitize=address,undefined",
+            "-fno-omit-frame-pointer",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            "-Wno-unused-function",
+            "-Wno-unused-variable",
+            "-Wno-unused-parameter",
+            "-Wno-misleading-indentation",
+            "-ffp-contract=off",
+            "-fno-fast-math",
+            "-I",
+            "/tmp/coax-borrow-origin-A0/native-qualification",
+            "/tmp/coax-borrow-origin-A0/native-qualification/borrow-summary.c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow-summary-native.c",
+            "-lm",
+            "-o",
+            "/tmp/coax-borrow-origin-A0/native-qualification/sanitized"
+          ],
+          "resolved_program": "/usr/bin/cc",
+          "resolved_program_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+          "returncode": 0,
+          "elapsed_s": 0.8599095410318114,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "label": "sanitized-run",
+          "argv": [
+            "/tmp/coax-borrow-origin-A0/native-qualification/sanitized"
+          ],
+          "resolved_program": "/tmp/coax-borrow-origin-A0/native-qualification/sanitized",
+          "resolved_program_sha256": "d228ab6ceb6a43eda5ddb69f96eb368bc8091090e84590e1079edb98b35c19f3",
+          "returncode": 0,
+          "elapsed_s": 0.3743699589977041,
+          "stdout_sha256": "2b2be74418be2b7ed8af0ec11d0a89b9b991f5fbd4b68b11b86b420dfa7aff16",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ],
+      "profiles": {
+        "O0": {
+          "outcome": "passed",
+          "binary": "/tmp/coax-borrow-origin-A0/native-qualification/O0",
+          "binary_sha256": "9b05547746ffacf293a776d5e217668499e1bd0d08ea52a845e229c16c1ad8ad",
+          "observed": {
+            "scope": "standalone set operations, not lifetime safety",
+            "cases": 94,
+            "calls": 94,
+            "refusals": 42,
+            "origin_size": 168,
+            "binding_size": 208
+          }
+        },
+        "O2": {
+          "outcome": "passed",
+          "binary": "/tmp/coax-borrow-origin-A0/native-qualification/O2",
+          "binary_sha256": "1dbb1686fc6fc601ddbf36f97b03aefb942db0ae5f6f44bc05a1f8d1d0598454",
+          "observed": {
+            "scope": "standalone set operations, not lifetime safety",
+            "cases": 94,
+            "calls": 94,
+            "refusals": 42,
+            "origin_size": 168,
+            "binding_size": 208
+          }
+        },
+        "sanitized": {
+          "outcome": "passed",
+          "binary": "/tmp/coax-borrow-origin-A0/native-qualification/sanitized",
+          "binary_sha256": "d228ab6ceb6a43eda5ddb69f96eb368bc8091090e84590e1079edb98b35c19f3",
+          "observed": {
+            "scope": "standalone set operations, not lifetime safety",
+            "cases": 94,
+            "calls": 94,
+            "refusals": 42,
+            "origin_size": 168,
+            "binding_size": 208
+          }
+        }
+      },
+      "outcome": "passed",
+      "source_after": {
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow-summary-native.c": "02166e1f759be221200580c0906267977b024b85aa3e14dba355a553419dc5b6",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow_summary_native.py": "c7cd5a79991f6f653bd1ca38e0aa0eb04f5cbe5748017de7a7e4b94786017e0a"
+      },
+      "compiler_sha256_after": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+      "inputs_unchanged": true,
+      "artifacts_unchanged": true,
+      "c_sha256": "138e1aff9c6ebc3994832f26e82d190f83161f6ef0a0d81b777574f4f5b7edec",
+      "header_sha256": "47c421a656dff962d15673f7102bfe91384effef25f7ff6666c3c02beff51882",
+      "c_sha256_after": "138e1aff9c6ebc3994832f26e82d190f83161f6ef0a0d81b777574f4f5b7edec",
+      "header_sha256_after": "47c421a656dff962d15673f7102bfe91384effef25f7ff6666c3c02beff51882"
+    }
+  },
+  "native_launch": {
+    "path": "/tmp/coax-borrow-origin-A0/native-launch.json",
+    "sha256": "a4082e53ac4aeb49ffee337cc252b641f1f6423a9b2ca3f4bf59bd72943a6e84",
+    "result": {
+      "schema": "coax.borrow-origin.native-launch.v1",
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+        "--",
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow_summary_native.py",
+        "-v",
+        "-f"
+      ],
+      "timeout_s": 840,
+      "source_sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+      "compiler_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+      "harness_sha256": {
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow_summary_native.py": "c7cd5a79991f6f653bd1ca38e0aa0eb04f5cbe5748017de7a7e4b94786017e0a",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/borrow-summary-native.c": "02166e1f759be221200580c0906267977b024b85aa3e14dba355a553419dc5b6"
+      },
+      "timeout": false,
+      "pid": 66715,
+      "returncode": 0,
+      "elapsed_s": 3.324367917026393,
+      "source_sha256_after": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+      "compiler_sha256_after": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05"
+    }
+  },
+  "unchanged_compiled_input_baseline": {
+    "path": "/tmp/coax-borrow-origin-A0/before-policy.json",
+    "sha256": "bca0328a7cd4550c0ca7ed8ff0780abffb281b48c3633febe673a42a0593447f",
+    "result": {
+      "schema": "coax.borrow-origin.pre-foundation-compiled-inputs.v1",
+      "scope": "Actual compiled closure remains exactly the qualified C3 compiler before adding the standalone unloaded borrow policy.",
+      "compiler_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+      "fingerprint": "fa0698a8d7a154bed364ad860d0259b742dc0cec821e5a066deb4a38b2c3f65f",
+      "compiled_input_count": 68,
+      "compiled_input_sha256": {
+        "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+        "coax/lib/compiler/budget.coax": "d012cffd599203030e37f68672ac5626dc7fcac0c8fac7a0beebf3712987a80b",
+        "coax/lib/compiler/check-domains.coax": "cb4a86f77970c736e45616824a9e55efa2fe87ca1547b70e32f1b041a31964db",
+        "coax/lib/compiler/profiles.coax": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba",
+        "coax/lib/compiler/mutation-schedule.coax": "eabc3f4ff894c108785d918391b724ca08624bedd512d7820bef6730f7d2e7f1",
+        "coax/lib/compiler/lexer.coax": "081bb890698d380dffba3d0595ff7b0021ce280a1e2c96095489606d19346f94",
+        "coax/lib/compiler/parser.coax": "b13b1e7cba7ba90f5a7030745052a72bfb9caa4b097bbbc9e862634ff73b1003",
+        "coax/lib/compiler/checker.coax": "167774bf45a7e337ef412eafb409d107a00a4757d13d646e610d6138dd99e111",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/sources.coax": "699825c85fc6f436e004d862d2e75d829b370042f43184d85c1891004ff239f1",
+        "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+        "coax/lib/proto/importer.coax": "49f0f70af48e9037aa0929c36748294a1d25a1e68d8ba74a90adb9d678fc16da",
+        "coax/lib/compiler/compute.coax": "dbefb1aed80a91231cc6982d4dad90c2d1b122f9e63bc5d649083f15df6da8b3",
+        "coax/lib/compiler/native-checks.coax": "45913fc236eaf2dbe8354cf8dcb53339aad32f01901ecbce464d40ef9d497ba1",
+        "coax/lib/compiler/effects.coax": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+        "coax/lib/compiler/native-execution.coax": "d1f61ac080270b172407477b38787652d273f042907a2f758bd5fb38ac9429df",
+        "coax/lib/compiler/quantified-execution.coax": "3ed83abe03f893ab99e0aaa68eaf0df23bf91f576e37b33a5b044acda4849436",
+        "coax/lib/compiler/native-semantics.coax": "899575c96835c539e974a6d27404d4472bff1366743e4f314c276ca7d61fcbe6",
+        "coax/lib/compiler/spirv.coax": "9b51822bbd4af5d54210c7f4b670ecd675f0d6fe5af2162d8011010c0d50f970",
+        "coax/lib/compiler/shader.coax": "27be5f4a525cc6e161a41e52f7f3155cc2e9113085a0516e1bd86bed8de69d98",
+        "coax/lib/compiler/wgsl.coax": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5",
+        "coax/src/check.cpp": "a3b63f0c3b3d3c26f4a9bcc3d36207e85f784e16d47f1356bcab358dbb7a726d",
+        "coax/src/coax.h": "c497a701a2effe047ae76fbd1466df04bd2e861228904596683892810c997d9e",
+        "coax/src/compute.cpp": "68ac126895f1cd29389632fd3a1ac8290eee6f3600c16c348f2625eec04ebb14",
+        "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+        "coax/src/emit_c.cpp": "c9f2d86574ca1260f404659693b16b6dfe6b6176d1843c40c339acf927a42f48",
+        "coax/src/errors.cpp": "1919c7fbcd8e9018c7670642ebc660afedef8f6984c913b3a57caebebc65a7e6",
+        "coax/src/eval.cpp": "62cfe942cc8fecb9b9e4e61902c2dc788236f9425f7b632117644a34ecebd4b8",
+        "coax/src/lex.cpp": "8b96d730631a7121c0f452e6315fdfa5eaba69f8c621927d0cf44f5a23cf27f0",
+        "coax/src/main.cpp": "3eae50b60983ca6e0834fece6467338b2a228cafb884dfd804733009be44efcb",
+        "coax/src/native_checks.cpp": "e734bc75c57f56c347c5d67b0e26ab9b08a111d6640bfe06f1222fa9be139578",
+        "coax/src/parse.cpp": "8be58f361c5a63cf0c6f2692fc26299af056b504c38d5ee2335abced5e6d9ffa",
+        "coax/src/proto.cpp": "7fe87ed1d59813557c0b69d40c874553ee62dc37bab478037c6d66f7d5818b90",
+        "coax/src/release.h": "3e3caefb9ff81edd8214ddb047a59c0b92d768f8d8f5ad37285175c743729a1b",
+        "coax/src/shader.cpp": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190",
+        "coax/src/sources.cpp": "4e886a42c462ef29f39df8b06ddb6fc9db66e50bb12c1cf77332e89fce028d00",
+        "coax/src/spirv.cpp": "204e426cff3728ef43d0a8236d579a8bb7522987354d334221a770a57f1fd541",
+        "coax/src/verify.cpp": "fdd07006ed2a59291e58915a9473777271a8d64942f02eef1c8776ca339cc264",
+        "coax/bootstrap/README.md": "76187d9c755f128ddb5ff32955f3409cfe4a6b9b2e5fdaff656d6006c5bafbaf",
+        "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+        "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+        "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+        "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+        "coax/bootstrap/checker.c": "ea8def1a43088a783052499cab912711bc0c0f51e291286d434f1dbd0d887fa7",
+        "coax/bootstrap/checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+        "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+        "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+        "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+        "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+        "coax/bootstrap/parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+        "coax/bootstrap/parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+        "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+        "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+        "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+        "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8",
+        "coax/lib/proto/memory.coax": "33824860ebf8c95173332b908f9221918c51264cac2e07d659b1d3308ca61326",
+        "coax/lib/proto/wire.coax": "bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a",
+        "coax/build.sh": "698436984e2287cf93f5ac9c2c9138f8d149f80cff57994c491eda3c535fc995",
+        "coax/bootstrap-build.sh": "ab2b2c0db30292dc570100ba9ce3a8db4317f127ad4fce12cacd3f982ca09480",
+        "coax/check-proto-cap.sh": "465f082009c64f3735347687b9ceebbc57fd91469e7b4d37d80d56f5cf08b705",
+        "coax/provenance.sh": "d688d80440275deb27ffaa6e13fc59df49039154620bcfaa61b17a228348358f",
+        "coax/provenance-bridge.c": "a5ba56de19ccec3d350491831fa4e367d509d5c8d718c237f78627ae45092c3c",
+        "coax/release.coax": "a494e3c86bc0caa9edbda47c0bd0063c98e468116c032fcf29f09d9ab7156d77",
+        "coax/release-model.coax": "c9521dba6c5377ea5c699f78d802b90e59ebf7ce8c0686db5dceb6ef554d8434",
+        "scripts/coax-release.sh": "bcd5c4d50472ebab69d403300ad51e559ea0dc42bf9dbaffefcdb7120ad777e7",
+        "coax/bin/proto_importer.c": "63008726697b6e744f4d9c07bed5b18744d00cec55b0f4318427409b5dbef811",
+        "coax/bin/proto_importer.h": "99a63eef627a5bd9f9940bfe7e9286b7f6d3609e4384e39b5582e250dce86542",
+        "coax/bin/proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096"
+      },
+      "inherited_inventory": "/tmp/coax-native-semantics-C3/normal044-compiled-inputs-before-metadata-merge.json",
+      "inherited_inventory_sha256": "d16a9ae77c52aefe6dafdfb787153b999603cbcc3bb5f4d69d13abc5915c6c4d",
+      "qualified_reseal_receipt": "/tmp/coax-native-semantics-C3/normal044-post-main-reseal/qualification.json",
+      "trusted_provenance_sha256": "8d5a10518430bbb03bc3de23640ff2de464a40560fd9f8ce9b505a585a4783af"
+    }
+  },
+  "unloaded_policy_source_reseal": {
+    "path": "/tmp/coax-borrow-origin-A0/reseal/qualification.json",
+    "sha256": "ffb112b11c31f8bb4de1f05b4ff5c9a602d4fb307c6f1580f1eea7f561fb564e",
+    "result": {
+      "schema": "coax.unloaded-policy.provenance-reseal.v1",
+      "outcome": "passed",
+      "before_policy": {
+        "path": "/tmp/coax-borrow-origin-A0/before-policy.json",
+        "sha256": "bca0328a7cd4550c0ca7ed8ff0780abffb281b48c3633febe673a42a0593447f"
+      },
+      "prior_qualified_reseal": {
+        "path": "/tmp/coax-native-semantics-C3/normal044-post-main-reseal/qualification.json",
+        "sha256": "66fafa9b758167ef10a2c75f6ff06d98e8dc56cb5bd3ea8c4aeea9d2e7b8f622"
+      },
+      "native_qualification": {
+        "path": "/tmp/coax-borrow-origin-A0/native-qualification/qualification.json",
+        "sha256": "b186cfe1d02b91b7a9e9a8f232b74aa42d04034178e2024a9b2b8668a465d436"
+      },
+      "old_fingerprint": "fa0698a8d7a154bed364ad860d0259b742dc0cec821e5a066deb4a38b2c3f65f",
+      "compiler_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+      "new_policy_sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+      "commands": [
+        {
+          "label": "old-input-toolchain-fingerprint",
+          "argv": [
+            "bash",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+            "fingerprint",
+            "/tmp/coax-borrow-origin-A0/reseal/old-fingerprint-inputs.lzlumu1r"
+          ],
+          "observation": {
+            "argv": [
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "fingerprint",
+              "/tmp/coax-borrow-origin-A0/reseal/old-fingerprint-inputs.lzlumu1r"
+            ],
+            "launched_argv": [
+              "/opt/homebrew/opt/python@3.15/bin/python3.15",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+              "--",
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "fingerprint",
+              "/tmp/coax-borrow-origin-A0/reseal/old-fingerprint-inputs.lzlumu1r"
+            ],
+            "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax",
+            "started": true,
+            "pid": 67777,
+            "returncode": 0,
+            "launch_errno": null,
+            "launch_error": null,
+            "elapsed_s": 3.121152375009842,
+            "timeout": false,
+            "deadline_exhausted": false,
+            "stdout_limit": false,
+            "stderr_limit": false,
+            "output_limit": false,
+            "observed_stdout_bytes": 65,
+            "observed_stderr_bytes": 0,
+            "group_killed": false,
+            "kill_errno": null,
+            "read_errno": null,
+            "stdout_eof": true,
+            "stderr_eof": true,
+            "limits": {
+              "stdout": 16777216,
+              "stderr": 16777216,
+              "total": 16777216
+            },
+            "timeout_s": 120,
+            "deadline": 419649.267881875,
+            "stdout": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/old-input-toolchain-fingerprint.stdout",
+              "sha256": "b89edab6c8c5edab9f3d3b6389255d406748423b68ca1eb1c014491ec043adc2",
+              "bytes": 65
+            },
+            "stderr": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/old-input-toolchain-fingerprint.stderr",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          }
+        },
+        {
+          "label": "new-policy-fingerprint",
+          "argv": [
+            "bash",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+            "fingerprint",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents"
+          ],
+          "observation": {
+            "argv": [
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "fingerprint",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents"
+            ],
+            "launched_argv": [
+              "/opt/homebrew/opt/python@3.15/bin/python3.15",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+              "--",
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "fingerprint",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents"
+            ],
+            "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax",
+            "started": true,
+            "pid": 68099,
+            "returncode": 0,
+            "launch_errno": null,
+            "launch_error": null,
+            "elapsed_s": 2.4357991670258343,
+            "timeout": false,
+            "deadline_exhausted": false,
+            "stdout_limit": false,
+            "stderr_limit": false,
+            "output_limit": false,
+            "observed_stdout_bytes": 65,
+            "observed_stderr_bytes": 0,
+            "group_killed": false,
+            "kill_errno": null,
+            "read_errno": null,
+            "stdout_eof": true,
+            "stderr_eof": true,
+            "limits": {
+              "stdout": 16777216,
+              "stderr": 16777216,
+              "total": 16777216
+            },
+            "timeout_s": 120,
+            "deadline": 419649.267881875,
+            "stdout": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/new-policy-fingerprint.stdout",
+              "sha256": "9d88ae56e31a41a8ffa77b3b39ffba361ff398e7e80e51d458af885e398e9914",
+              "bytes": 65
+            },
+            "stderr": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/new-policy-fingerprint.stderr",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          }
+        },
+        {
+          "label": "explicit-provenance-reseal",
+          "argv": [
+            "bash",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+            "write",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance-check",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance.record",
+            "8cc1addd7253904b334ddd6cde2f9e4ae8f48bbc25cfce9ab89f6662c306644b"
+          ],
+          "observation": {
+            "argv": [
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "write",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance-check",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance.record",
+              "8cc1addd7253904b334ddd6cde2f9e4ae8f48bbc25cfce9ab89f6662c306644b"
+            ],
+            "launched_argv": [
+              "/opt/homebrew/opt/python@3.15/bin/python3.15",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+              "--",
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "write",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance-check",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance.record",
+              "8cc1addd7253904b334ddd6cde2f9e4ae8f48bbc25cfce9ab89f6662c306644b"
+            ],
+            "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax",
+            "started": true,
+            "pid": 68442,
+            "returncode": 0,
+            "launch_errno": null,
+            "launch_error": null,
+            "elapsed_s": 2.098498666950036,
+            "timeout": false,
+            "deadline_exhausted": false,
+            "stdout_limit": false,
+            "stderr_limit": false,
+            "output_limit": false,
+            "observed_stdout_bytes": 0,
+            "observed_stderr_bytes": 0,
+            "group_killed": false,
+            "kill_errno": null,
+            "read_errno": null,
+            "stdout_eof": true,
+            "stderr_eof": true,
+            "limits": {
+              "stdout": 16777216,
+              "stderr": 16777216,
+              "total": 16777216
+            },
+            "timeout_s": 120,
+            "deadline": 419649.267881875,
+            "stdout": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/explicit-provenance-reseal.stdout",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/explicit-provenance-reseal.stderr",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          }
+        },
+        {
+          "label": "verify-resealed-provenance",
+          "argv": [
+            "bash",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+            "verify",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance-check",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance.record"
+          ],
+          "observation": {
+            "argv": [
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "verify",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance-check",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance.record"
+            ],
+            "launched_argv": [
+              "/opt/homebrew/opt/python@3.15/bin/python3.15",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+              "--",
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "verify",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance-check",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/provenance.record"
+            ],
+            "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax",
+            "started": true,
+            "pid": 68760,
+            "returncode": 0,
+            "launch_errno": null,
+            "launch_error": null,
+            "elapsed_s": 2.546878708002623,
+            "timeout": false,
+            "deadline_exhausted": false,
+            "stdout_limit": false,
+            "stderr_limit": false,
+            "output_limit": false,
+            "observed_stdout_bytes": 0,
+            "observed_stderr_bytes": 0,
+            "group_killed": false,
+            "kill_errno": null,
+            "read_errno": null,
+            "stdout_eof": true,
+            "stderr_eof": true,
+            "limits": {
+              "stdout": 16777216,
+              "stderr": 16777216,
+              "total": 16777216
+            },
+            "timeout_s": 120,
+            "deadline": 419649.267881875,
+            "stdout": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/verify-resealed-provenance.stdout",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/verify-resealed-provenance.stderr",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          }
+        },
+        {
+          "label": "verify-matching-cache",
+          "argv": [
+            "bash",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+            "verify",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+            "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/coax",
+            "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/provenance-check",
+            "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/provenance.record"
+          ],
+          "observation": {
+            "argv": [
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "verify",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+              "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/coax",
+              "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/provenance-check",
+              "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/provenance.record"
+            ],
+            "launched_argv": [
+              "/opt/homebrew/opt/python@3.15/bin/python3.15",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+              "--",
+              "bash",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/provenance.sh",
+              "verify",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+              "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/coax",
+              "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/provenance-check",
+              "/Users/christopherdavid/.cache/coax-release/.unloaded-policy-reseal.keep.woa72xb3/provenance.record"
+            ],
+            "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax",
+            "started": true,
+            "pid": 69067,
+            "returncode": 0,
+            "launch_errno": null,
+            "launch_error": null,
+            "elapsed_s": 2.633746333012823,
+            "timeout": false,
+            "deadline_exhausted": false,
+            "stdout_limit": false,
+            "stderr_limit": false,
+            "output_limit": false,
+            "observed_stdout_bytes": 0,
+            "observed_stderr_bytes": 0,
+            "group_killed": false,
+            "kill_errno": null,
+            "read_errno": null,
+            "stdout_eof": true,
+            "stderr_eof": true,
+            "limits": {
+              "stdout": 16777216,
+              "stderr": 16777216,
+              "total": 16777216
+            },
+            "timeout_s": 120,
+            "deadline": 419649.267881875,
+            "stdout": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/verify-matching-cache.stdout",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            },
+            "stderr": {
+              "path": "/tmp/coax-borrow-origin-A0/reseal/verify-matching-cache.stderr",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "bytes": 0
+            }
+          }
+        }
+      ],
+      "compiled_inputs_before": {
+        "inputs": {
+          "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+          "coax/lib/compiler/budget.coax": "d012cffd599203030e37f68672ac5626dc7fcac0c8fac7a0beebf3712987a80b",
+          "coax/lib/compiler/check-domains.coax": "cb4a86f77970c736e45616824a9e55efa2fe87ca1547b70e32f1b041a31964db",
+          "coax/lib/compiler/profiles.coax": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba",
+          "coax/lib/compiler/mutation-schedule.coax": "eabc3f4ff894c108785d918391b724ca08624bedd512d7820bef6730f7d2e7f1",
+          "coax/lib/compiler/lexer.coax": "081bb890698d380dffba3d0595ff7b0021ce280a1e2c96095489606d19346f94",
+          "coax/lib/compiler/parser.coax": "b13b1e7cba7ba90f5a7030745052a72bfb9caa4b097bbbc9e862634ff73b1003",
+          "coax/lib/compiler/checker.coax": "167774bf45a7e337ef412eafb409d107a00a4757d13d646e610d6138dd99e111",
+          "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+          "coax/lib/compiler/sources.coax": "699825c85fc6f436e004d862d2e75d829b370042f43184d85c1891004ff239f1",
+          "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+          "coax/lib/proto/importer.coax": "49f0f70af48e9037aa0929c36748294a1d25a1e68d8ba74a90adb9d678fc16da",
+          "coax/lib/compiler/compute.coax": "dbefb1aed80a91231cc6982d4dad90c2d1b122f9e63bc5d649083f15df6da8b3",
+          "coax/lib/compiler/native-checks.coax": "45913fc236eaf2dbe8354cf8dcb53339aad32f01901ecbce464d40ef9d497ba1",
+          "coax/lib/compiler/effects.coax": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+          "coax/lib/compiler/native-execution.coax": "d1f61ac080270b172407477b38787652d273f042907a2f758bd5fb38ac9429df",
+          "coax/lib/compiler/quantified-execution.coax": "3ed83abe03f893ab99e0aaa68eaf0df23bf91f576e37b33a5b044acda4849436",
+          "coax/lib/compiler/native-semantics.coax": "899575c96835c539e974a6d27404d4472bff1366743e4f314c276ca7d61fcbe6",
+          "coax/lib/compiler/spirv.coax": "9b51822bbd4af5d54210c7f4b670ecd675f0d6fe5af2162d8011010c0d50f970",
+          "coax/lib/compiler/shader.coax": "27be5f4a525cc6e161a41e52f7f3155cc2e9113085a0516e1bd86bed8de69d98",
+          "coax/lib/compiler/wgsl.coax": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5",
+          "coax/src/check.cpp": "a3b63f0c3b3d3c26f4a9bcc3d36207e85f784e16d47f1356bcab358dbb7a726d",
+          "coax/src/coax.h": "c497a701a2effe047ae76fbd1466df04bd2e861228904596683892810c997d9e",
+          "coax/src/compute.cpp": "68ac126895f1cd29389632fd3a1ac8290eee6f3600c16c348f2625eec04ebb14",
+          "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+          "coax/src/emit_c.cpp": "c9f2d86574ca1260f404659693b16b6dfe6b6176d1843c40c339acf927a42f48",
+          "coax/src/errors.cpp": "1919c7fbcd8e9018c7670642ebc660afedef8f6984c913b3a57caebebc65a7e6",
+          "coax/src/eval.cpp": "62cfe942cc8fecb9b9e4e61902c2dc788236f9425f7b632117644a34ecebd4b8",
+          "coax/src/lex.cpp": "8b96d730631a7121c0f452e6315fdfa5eaba69f8c621927d0cf44f5a23cf27f0",
+          "coax/src/main.cpp": "3eae50b60983ca6e0834fece6467338b2a228cafb884dfd804733009be44efcb",
+          "coax/src/native_checks.cpp": "e734bc75c57f56c347c5d67b0e26ab9b08a111d6640bfe06f1222fa9be139578",
+          "coax/src/parse.cpp": "8be58f361c5a63cf0c6f2692fc26299af056b504c38d5ee2335abced5e6d9ffa",
+          "coax/src/proto.cpp": "7fe87ed1d59813557c0b69d40c874553ee62dc37bab478037c6d66f7d5818b90",
+          "coax/src/release.h": "3e3caefb9ff81edd8214ddb047a59c0b92d768f8d8f5ad37285175c743729a1b",
+          "coax/src/shader.cpp": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190",
+          "coax/src/sources.cpp": "4e886a42c462ef29f39df8b06ddb6fc9db66e50bb12c1cf77332e89fce028d00",
+          "coax/src/spirv.cpp": "204e426cff3728ef43d0a8236d579a8bb7522987354d334221a770a57f1fd541",
+          "coax/src/verify.cpp": "fdd07006ed2a59291e58915a9473777271a8d64942f02eef1c8776ca339cc264",
+          "coax/bootstrap/README.md": "76187d9c755f128ddb5ff32955f3409cfe4a6b9b2e5fdaff656d6006c5bafbaf",
+          "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+          "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+          "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+          "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+          "coax/bootstrap/checker.c": "ea8def1a43088a783052499cab912711bc0c0f51e291286d434f1dbd0d887fa7",
+          "coax/bootstrap/checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+          "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+          "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+          "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+          "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+          "coax/bootstrap/parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+          "coax/bootstrap/parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+          "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+          "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+          "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+          "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8",
+          "coax/lib/proto/memory.coax": "33824860ebf8c95173332b908f9221918c51264cac2e07d659b1d3308ca61326",
+          "coax/lib/proto/wire.coax": "bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a",
+          "coax/build.sh": "698436984e2287cf93f5ac9c2c9138f8d149f80cff57994c491eda3c535fc995",
+          "coax/bootstrap-build.sh": "ab2b2c0db30292dc570100ba9ce3a8db4317f127ad4fce12cacd3f982ca09480",
+          "coax/check-proto-cap.sh": "465f082009c64f3735347687b9ceebbc57fd91469e7b4d37d80d56f5cf08b705",
+          "coax/provenance.sh": "d688d80440275deb27ffaa6e13fc59df49039154620bcfaa61b17a228348358f",
+          "coax/provenance-bridge.c": "a5ba56de19ccec3d350491831fa4e367d509d5c8d718c237f78627ae45092c3c",
+          "coax/release.coax": "a494e3c86bc0caa9edbda47c0bd0063c98e468116c032fcf29f09d9ab7156d77",
+          "coax/release-model.coax": "c9521dba6c5377ea5c699f78d802b90e59ebf7ce8c0686db5dceb6ef554d8434",
+          "scripts/coax-release.sh": "bcd5c4d50472ebab69d403300ad51e559ea0dc42bf9dbaffefcdb7120ad777e7",
+          "coax/bin/proto_importer.c": "63008726697b6e744f4d9c07bed5b18744d00cec55b0f4318427409b5dbef811",
+          "coax/bin/proto_importer.h": "99a63eef627a5bd9f9940bfe7e9286b7f6d3609e4384e39b5582e250dce86542",
+          "coax/bin/proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096"
+        },
+        "source_units": [
+          "coax/lib/compiler/compiler.coax",
+          "coax/lib/compiler/budget.coax",
+          "coax/lib/compiler/check-domains.coax",
+          "coax/lib/compiler/profiles.coax",
+          "coax/lib/compiler/mutation-schedule.coax",
+          "coax/lib/compiler/lexer.coax",
+          "coax/lib/compiler/parser.coax",
+          "coax/lib/compiler/checker.coax",
+          "coax/lib/compiler/quantity.coax",
+          "coax/lib/compiler/sources.coax",
+          "coax/lib/proto/fingerprint.coax",
+          "coax/lib/proto/importer.coax",
+          "coax/lib/compiler/compute.coax",
+          "coax/lib/compiler/native-checks.coax",
+          "coax/lib/compiler/effects.coax",
+          "coax/lib/compiler/native-execution.coax",
+          "coax/lib/compiler/quantified-execution.coax",
+          "coax/lib/compiler/native-semantics.coax",
+          "coax/lib/compiler/spirv.coax",
+          "coax/lib/compiler/shader.coax",
+          "coax/lib/compiler/wgsl.coax"
+        ]
+      },
+      "fingerprint_input_delta": {
+        "coax/lib/compiler/borrow-summary.coax": {
+          "before": null,
+          "after": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429"
+        }
+      },
+      "all_current_fingerprint_files": {
+        "coax/bootstrap-build.sh": "ab2b2c0db30292dc570100ba9ce3a8db4317f127ad4fce12cacd3f982ca09480",
+        "coax/bootstrap/README.md": "76187d9c755f128ddb5ff32955f3409cfe4a6b9b2e5fdaff656d6006c5bafbaf",
+        "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+        "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+        "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+        "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+        "coax/bootstrap/checker.c": "ea8def1a43088a783052499cab912711bc0c0f51e291286d434f1dbd0d887fa7",
+        "coax/bootstrap/checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+        "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+        "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+        "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+        "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+        "coax/bootstrap/parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+        "coax/bootstrap/parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+        "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+        "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+        "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+        "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8",
+        "coax/build.sh": "698436984e2287cf93f5ac9c2c9138f8d149f80cff57994c491eda3c535fc995",
+        "coax/changelog-bridge.c": "954a971ca3f3da8154942d58b057beeed3bfa1c7dbc3b499484eef8783e90bb1",
+        "coax/changelog-model.coax": "6591b31d63f086f9a7ad1494dea067cfabef1010c76ae524a3ccb92b68ce3c4c",
+        "coax/changelog.coax": "41c0030e66cc60e34424442aef732506b620bc2899bcaf1c35c63e8886dc1fa8",
+        "coax/check-proto-cap.sh": "465f082009c64f3735347687b9ceebbc57fd91469e7b4d37d80d56f5cf08b705",
+        "coax/lib/compiler/borrow-summary.coax": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "coax/lib/compiler/budget.coax": "d012cffd599203030e37f68672ac5626dc7fcac0c8fac7a0beebf3712987a80b",
+        "coax/lib/compiler/check-domains.coax": "cb4a86f77970c736e45616824a9e55efa2fe87ca1547b70e32f1b041a31964db",
+        "coax/lib/compiler/checker.coax": "167774bf45a7e337ef412eafb409d107a00a4757d13d646e610d6138dd99e111",
+        "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+        "coax/lib/compiler/compute.coax": "dbefb1aed80a91231cc6982d4dad90c2d1b122f9e63bc5d649083f15df6da8b3",
+        "coax/lib/compiler/effects.coax": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+        "coax/lib/compiler/lexer.coax": "081bb890698d380dffba3d0595ff7b0021ce280a1e2c96095489606d19346f94",
+        "coax/lib/compiler/mutation-schedule.coax": "eabc3f4ff894c108785d918391b724ca08624bedd512d7820bef6730f7d2e7f1",
+        "coax/lib/compiler/native-checks.coax": "45913fc236eaf2dbe8354cf8dcb53339aad32f01901ecbce464d40ef9d497ba1",
+        "coax/lib/compiler/native-execution.coax": "d1f61ac080270b172407477b38787652d273f042907a2f758bd5fb38ac9429df",
+        "coax/lib/compiler/native-semantics.coax": "899575c96835c539e974a6d27404d4472bff1366743e4f314c276ca7d61fcbe6",
+        "coax/lib/compiler/parser.coax": "b13b1e7cba7ba90f5a7030745052a72bfb9caa4b097bbbc9e862634ff73b1003",
+        "coax/lib/compiler/profiles.coax": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba",
+        "coax/lib/compiler/provenance.coax": "1f021275b37151ff515174e1f42d7f081f03608638c03379c6dd4f952ee78456",
+        "coax/lib/compiler/quantified-execution.coax": "3ed83abe03f893ab99e0aaa68eaf0df23bf91f576e37b33a5b044acda4849436",
+        "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+        "coax/lib/compiler/shader.coax": "27be5f4a525cc6e161a41e52f7f3155cc2e9113085a0516e1bd86bed8de69d98",
+        "coax/lib/compiler/sources.coax": "699825c85fc6f436e004d862d2e75d829b370042f43184d85c1891004ff239f1",
+        "coax/lib/compiler/spatial-policy.coax": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536",
+        "coax/lib/compiler/spirv.coax": "9b51822bbd4af5d54210c7f4b670ecd675f0d6fe5af2162d8011010c0d50f970",
+        "coax/lib/compiler/unit-algebra.coax": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780",
+        "coax/lib/compiler/unit-forms.coax": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33",
+        "coax/lib/compiler/wgsl.coax": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5",
+        "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+        "coax/lib/proto/importer.coax": "49f0f70af48e9037aa0929c36748294a1d25a1e68d8ba74a90adb9d678fc16da",
+        "coax/lib/proto/memory.coax": "33824860ebf8c95173332b908f9221918c51264cac2e07d659b1d3308ca61326",
+        "coax/lib/proto/wire.coax": "bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a",
+        "coax/provenance-bridge.c": "a5ba56de19ccec3d350491831fa4e367d509d5c8d718c237f78627ae45092c3c",
+        "coax/provenance.sh": "d688d80440275deb27ffaa6e13fc59df49039154620bcfaa61b17a228348358f",
+        "coax/release-model.coax": "c9521dba6c5377ea5c699f78d802b90e59ebf7ce8c0686db5dceb6ef554d8434",
+        "coax/release.coax": "a494e3c86bc0caa9edbda47c0bd0063c98e468116c032fcf29f09d9ab7156d77",
+        "coax/src/check.cpp": "a3b63f0c3b3d3c26f4a9bcc3d36207e85f784e16d47f1356bcab358dbb7a726d",
+        "coax/src/coax.h": "c497a701a2effe047ae76fbd1466df04bd2e861228904596683892810c997d9e",
+        "coax/src/compute.cpp": "68ac126895f1cd29389632fd3a1ac8290eee6f3600c16c348f2625eec04ebb14",
+        "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+        "coax/src/emit_c.cpp": "c9f2d86574ca1260f404659693b16b6dfe6b6176d1843c40c339acf927a42f48",
+        "coax/src/errors.cpp": "1919c7fbcd8e9018c7670642ebc660afedef8f6984c913b3a57caebebc65a7e6",
+        "coax/src/eval.cpp": "62cfe942cc8fecb9b9e4e61902c2dc788236f9425f7b632117644a34ecebd4b8",
+        "coax/src/lex.cpp": "8b96d730631a7121c0f452e6315fdfa5eaba69f8c621927d0cf44f5a23cf27f0",
+        "coax/src/main.cpp": "3eae50b60983ca6e0834fece6467338b2a228cafb884dfd804733009be44efcb",
+        "coax/src/native_checks.cpp": "e734bc75c57f56c347c5d67b0e26ab9b08a111d6640bfe06f1222fa9be139578",
+        "coax/src/parse.cpp": "8be58f361c5a63cf0c6f2692fc26299af056b504c38d5ee2335abced5e6d9ffa",
+        "coax/src/proto.cpp": "7fe87ed1d59813557c0b69d40c874553ee62dc37bab478037c6d66f7d5818b90",
+        "coax/src/release.h": "3e3caefb9ff81edd8214ddb047a59c0b92d768f8d8f5ad37285175c743729a1b",
+        "coax/src/shader.cpp": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190",
+        "coax/src/sources.cpp": "4e886a42c462ef29f39df8b06ddb6fc9db66e50bb12c1cf77332e89fce028d00",
+        "coax/src/spirv.cpp": "204e426cff3728ef43d0a8236d579a8bb7522987354d334221a770a57f1fd541",
+        "coax/src/verify.cpp": "fdd07006ed2a59291e58915a9473777271a8d64942f02eef1c8776ca339cc264",
+        "scripts/coax-release.sh": "bcd5c4d50472ebab69d403300ad51e559ea0dc42bf9dbaffefcdb7120ad777e7"
+      },
+      "unchanged_helper_sha256": "fc1d9050b8d9afab4cec9588ba505206a3cc876e18667e6a24e4b3104f4e80c3",
+      "old_input_mirror": "/tmp/coax-borrow-origin-A0/reseal/old-fingerprint-inputs.lzlumu1r",
+      "reproduced_old_fingerprint": "fa0698a8d7a154bed364ad860d0259b742dc0cec821e5a066deb4a38b2c3f65f",
+      "new_fingerprint": "8cc1addd7253904b334ddd6cde2f9e4ae8f48bbc25cfce9ab89f6662c306644b",
+      "compiled_inputs_before_write": {
+        "inputs": {
+          "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+          "coax/lib/compiler/budget.coax": "d012cffd599203030e37f68672ac5626dc7fcac0c8fac7a0beebf3712987a80b",
+          "coax/lib/compiler/check-domains.coax": "cb4a86f77970c736e45616824a9e55efa2fe87ca1547b70e32f1b041a31964db",
+          "coax/lib/compiler/profiles.coax": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba",
+          "coax/lib/compiler/mutation-schedule.coax": "eabc3f4ff894c108785d918391b724ca08624bedd512d7820bef6730f7d2e7f1",
+          "coax/lib/compiler/lexer.coax": "081bb890698d380dffba3d0595ff7b0021ce280a1e2c96095489606d19346f94",
+          "coax/lib/compiler/parser.coax": "b13b1e7cba7ba90f5a7030745052a72bfb9caa4b097bbbc9e862634ff73b1003",
+          "coax/lib/compiler/checker.coax": "167774bf45a7e337ef412eafb409d107a00a4757d13d646e610d6138dd99e111",
+          "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+          "coax/lib/compiler/sources.coax": "699825c85fc6f436e004d862d2e75d829b370042f43184d85c1891004ff239f1",
+          "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+          "coax/lib/proto/importer.coax": "49f0f70af48e9037aa0929c36748294a1d25a1e68d8ba74a90adb9d678fc16da",
+          "coax/lib/compiler/compute.coax": "dbefb1aed80a91231cc6982d4dad90c2d1b122f9e63bc5d649083f15df6da8b3",
+          "coax/lib/compiler/native-checks.coax": "45913fc236eaf2dbe8354cf8dcb53339aad32f01901ecbce464d40ef9d497ba1",
+          "coax/lib/compiler/effects.coax": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+          "coax/lib/compiler/native-execution.coax": "d1f61ac080270b172407477b38787652d273f042907a2f758bd5fb38ac9429df",
+          "coax/lib/compiler/quantified-execution.coax": "3ed83abe03f893ab99e0aaa68eaf0df23bf91f576e37b33a5b044acda4849436",
+          "coax/lib/compiler/native-semantics.coax": "899575c96835c539e974a6d27404d4472bff1366743e4f314c276ca7d61fcbe6",
+          "coax/lib/compiler/spirv.coax": "9b51822bbd4af5d54210c7f4b670ecd675f0d6fe5af2162d8011010c0d50f970",
+          "coax/lib/compiler/shader.coax": "27be5f4a525cc6e161a41e52f7f3155cc2e9113085a0516e1bd86bed8de69d98",
+          "coax/lib/compiler/wgsl.coax": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5",
+          "coax/src/check.cpp": "a3b63f0c3b3d3c26f4a9bcc3d36207e85f784e16d47f1356bcab358dbb7a726d",
+          "coax/src/coax.h": "c497a701a2effe047ae76fbd1466df04bd2e861228904596683892810c997d9e",
+          "coax/src/compute.cpp": "68ac126895f1cd29389632fd3a1ac8290eee6f3600c16c348f2625eec04ebb14",
+          "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+          "coax/src/emit_c.cpp": "c9f2d86574ca1260f404659693b16b6dfe6b6176d1843c40c339acf927a42f48",
+          "coax/src/errors.cpp": "1919c7fbcd8e9018c7670642ebc660afedef8f6984c913b3a57caebebc65a7e6",
+          "coax/src/eval.cpp": "62cfe942cc8fecb9b9e4e61902c2dc788236f9425f7b632117644a34ecebd4b8",
+          "coax/src/lex.cpp": "8b96d730631a7121c0f452e6315fdfa5eaba69f8c621927d0cf44f5a23cf27f0",
+          "coax/src/main.cpp": "3eae50b60983ca6e0834fece6467338b2a228cafb884dfd804733009be44efcb",
+          "coax/src/native_checks.cpp": "e734bc75c57f56c347c5d67b0e26ab9b08a111d6640bfe06f1222fa9be139578",
+          "coax/src/parse.cpp": "8be58f361c5a63cf0c6f2692fc26299af056b504c38d5ee2335abced5e6d9ffa",
+          "coax/src/proto.cpp": "7fe87ed1d59813557c0b69d40c874553ee62dc37bab478037c6d66f7d5818b90",
+          "coax/src/release.h": "3e3caefb9ff81edd8214ddb047a59c0b92d768f8d8f5ad37285175c743729a1b",
+          "coax/src/shader.cpp": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190",
+          "coax/src/sources.cpp": "4e886a42c462ef29f39df8b06ddb6fc9db66e50bb12c1cf77332e89fce028d00",
+          "coax/src/spirv.cpp": "204e426cff3728ef43d0a8236d579a8bb7522987354d334221a770a57f1fd541",
+          "coax/src/verify.cpp": "fdd07006ed2a59291e58915a9473777271a8d64942f02eef1c8776ca339cc264",
+          "coax/bootstrap/README.md": "76187d9c755f128ddb5ff32955f3409cfe4a6b9b2e5fdaff656d6006c5bafbaf",
+          "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+          "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+          "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+          "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+          "coax/bootstrap/checker.c": "ea8def1a43088a783052499cab912711bc0c0f51e291286d434f1dbd0d887fa7",
+          "coax/bootstrap/checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+          "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+          "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+          "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+          "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+          "coax/bootstrap/parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+          "coax/bootstrap/parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+          "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+          "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+          "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+          "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8",
+          "coax/lib/proto/memory.coax": "33824860ebf8c95173332b908f9221918c51264cac2e07d659b1d3308ca61326",
+          "coax/lib/proto/wire.coax": "bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a",
+          "coax/build.sh": "698436984e2287cf93f5ac9c2c9138f8d149f80cff57994c491eda3c535fc995",
+          "coax/bootstrap-build.sh": "ab2b2c0db30292dc570100ba9ce3a8db4317f127ad4fce12cacd3f982ca09480",
+          "coax/check-proto-cap.sh": "465f082009c64f3735347687b9ceebbc57fd91469e7b4d37d80d56f5cf08b705",
+          "coax/provenance.sh": "d688d80440275deb27ffaa6e13fc59df49039154620bcfaa61b17a228348358f",
+          "coax/provenance-bridge.c": "a5ba56de19ccec3d350491831fa4e367d509d5c8d718c237f78627ae45092c3c",
+          "coax/release.coax": "a494e3c86bc0caa9edbda47c0bd0063c98e468116c032fcf29f09d9ab7156d77",
+          "coax/release-model.coax": "c9521dba6c5377ea5c699f78d802b90e59ebf7ce8c0686db5dceb6ef554d8434",
+          "scripts/coax-release.sh": "bcd5c4d50472ebab69d403300ad51e559ea0dc42bf9dbaffefcdb7120ad777e7",
+          "coax/bin/proto_importer.c": "63008726697b6e744f4d9c07bed5b18744d00cec55b0f4318427409b5dbef811",
+          "coax/bin/proto_importer.h": "99a63eef627a5bd9f9940bfe7e9286b7f6d3609e4384e39b5582e250dce86542",
+          "coax/bin/proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096"
+        },
+        "source_units": [
+          "coax/lib/compiler/compiler.coax",
+          "coax/lib/compiler/budget.coax",
+          "coax/lib/compiler/check-domains.coax",
+          "coax/lib/compiler/profiles.coax",
+          "coax/lib/compiler/mutation-schedule.coax",
+          "coax/lib/compiler/lexer.coax",
+          "coax/lib/compiler/parser.coax",
+          "coax/lib/compiler/checker.coax",
+          "coax/lib/compiler/quantity.coax",
+          "coax/lib/compiler/sources.coax",
+          "coax/lib/proto/fingerprint.coax",
+          "coax/lib/proto/importer.coax",
+          "coax/lib/compiler/compute.coax",
+          "coax/lib/compiler/native-checks.coax",
+          "coax/lib/compiler/effects.coax",
+          "coax/lib/compiler/native-execution.coax",
+          "coax/lib/compiler/quantified-execution.coax",
+          "coax/lib/compiler/native-semantics.coax",
+          "coax/lib/compiler/spirv.coax",
+          "coax/lib/compiler/shader.coax",
+          "coax/lib/compiler/wgsl.coax"
+        ]
+      },
+      "compiled_inputs_after": {
+        "inputs": {
+          "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+          "coax/lib/compiler/budget.coax": "d012cffd599203030e37f68672ac5626dc7fcac0c8fac7a0beebf3712987a80b",
+          "coax/lib/compiler/check-domains.coax": "cb4a86f77970c736e45616824a9e55efa2fe87ca1547b70e32f1b041a31964db",
+          "coax/lib/compiler/profiles.coax": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba",
+          "coax/lib/compiler/mutation-schedule.coax": "eabc3f4ff894c108785d918391b724ca08624bedd512d7820bef6730f7d2e7f1",
+          "coax/lib/compiler/lexer.coax": "081bb890698d380dffba3d0595ff7b0021ce280a1e2c96095489606d19346f94",
+          "coax/lib/compiler/parser.coax": "b13b1e7cba7ba90f5a7030745052a72bfb9caa4b097bbbc9e862634ff73b1003",
+          "coax/lib/compiler/checker.coax": "167774bf45a7e337ef412eafb409d107a00a4757d13d646e610d6138dd99e111",
+          "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441",
+          "coax/lib/compiler/sources.coax": "699825c85fc6f436e004d862d2e75d829b370042f43184d85c1891004ff239f1",
+          "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+          "coax/lib/proto/importer.coax": "49f0f70af48e9037aa0929c36748294a1d25a1e68d8ba74a90adb9d678fc16da",
+          "coax/lib/compiler/compute.coax": "dbefb1aed80a91231cc6982d4dad90c2d1b122f9e63bc5d649083f15df6da8b3",
+          "coax/lib/compiler/native-checks.coax": "45913fc236eaf2dbe8354cf8dcb53339aad32f01901ecbce464d40ef9d497ba1",
+          "coax/lib/compiler/effects.coax": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86",
+          "coax/lib/compiler/native-execution.coax": "d1f61ac080270b172407477b38787652d273f042907a2f758bd5fb38ac9429df",
+          "coax/lib/compiler/quantified-execution.coax": "3ed83abe03f893ab99e0aaa68eaf0df23bf91f576e37b33a5b044acda4849436",
+          "coax/lib/compiler/native-semantics.coax": "899575c96835c539e974a6d27404d4472bff1366743e4f314c276ca7d61fcbe6",
+          "coax/lib/compiler/spirv.coax": "9b51822bbd4af5d54210c7f4b670ecd675f0d6fe5af2162d8011010c0d50f970",
+          "coax/lib/compiler/shader.coax": "27be5f4a525cc6e161a41e52f7f3155cc2e9113085a0516e1bd86bed8de69d98",
+          "coax/lib/compiler/wgsl.coax": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5",
+          "coax/src/check.cpp": "a3b63f0c3b3d3c26f4a9bcc3d36207e85f784e16d47f1356bcab358dbb7a726d",
+          "coax/src/coax.h": "c497a701a2effe047ae76fbd1466df04bd2e861228904596683892810c997d9e",
+          "coax/src/compute.cpp": "68ac126895f1cd29389632fd3a1ac8290eee6f3600c16c348f2625eec04ebb14",
+          "coax/src/effects.cpp": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0",
+          "coax/src/emit_c.cpp": "c9f2d86574ca1260f404659693b16b6dfe6b6176d1843c40c339acf927a42f48",
+          "coax/src/errors.cpp": "1919c7fbcd8e9018c7670642ebc660afedef8f6984c913b3a57caebebc65a7e6",
+          "coax/src/eval.cpp": "62cfe942cc8fecb9b9e4e61902c2dc788236f9425f7b632117644a34ecebd4b8",
+          "coax/src/lex.cpp": "8b96d730631a7121c0f452e6315fdfa5eaba69f8c621927d0cf44f5a23cf27f0",
+          "coax/src/main.cpp": "3eae50b60983ca6e0834fece6467338b2a228cafb884dfd804733009be44efcb",
+          "coax/src/native_checks.cpp": "e734bc75c57f56c347c5d67b0e26ab9b08a111d6640bfe06f1222fa9be139578",
+          "coax/src/parse.cpp": "8be58f361c5a63cf0c6f2692fc26299af056b504c38d5ee2335abced5e6d9ffa",
+          "coax/src/proto.cpp": "7fe87ed1d59813557c0b69d40c874553ee62dc37bab478037c6d66f7d5818b90",
+          "coax/src/release.h": "3e3caefb9ff81edd8214ddb047a59c0b92d768f8d8f5ad37285175c743729a1b",
+          "coax/src/shader.cpp": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190",
+          "coax/src/sources.cpp": "4e886a42c462ef29f39df8b06ddb6fc9db66e50bb12c1cf77332e89fce028d00",
+          "coax/src/spirv.cpp": "204e426cff3728ef43d0a8236d579a8bb7522987354d334221a770a57f1fd541",
+          "coax/src/verify.cpp": "fdd07006ed2a59291e58915a9473777271a8d64942f02eef1c8776ca339cc264",
+          "coax/bootstrap/README.md": "76187d9c755f128ddb5ff32955f3409cfe4a6b9b2e5fdaff656d6006c5bafbaf",
+          "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+          "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+          "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+          "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+          "coax/bootstrap/checker.c": "ea8def1a43088a783052499cab912711bc0c0f51e291286d434f1dbd0d887fa7",
+          "coax/bootstrap/checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+          "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+          "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+          "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+          "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+          "coax/bootstrap/parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+          "coax/bootstrap/parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+          "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+          "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+          "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+          "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8",
+          "coax/lib/proto/memory.coax": "33824860ebf8c95173332b908f9221918c51264cac2e07d659b1d3308ca61326",
+          "coax/lib/proto/wire.coax": "bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a",
+          "coax/build.sh": "698436984e2287cf93f5ac9c2c9138f8d149f80cff57994c491eda3c535fc995",
+          "coax/bootstrap-build.sh": "ab2b2c0db30292dc570100ba9ce3a8db4317f127ad4fce12cacd3f982ca09480",
+          "coax/check-proto-cap.sh": "465f082009c64f3735347687b9ceebbc57fd91469e7b4d37d80d56f5cf08b705",
+          "coax/provenance.sh": "d688d80440275deb27ffaa6e13fc59df49039154620bcfaa61b17a228348358f",
+          "coax/provenance-bridge.c": "a5ba56de19ccec3d350491831fa4e367d509d5c8d718c237f78627ae45092c3c",
+          "coax/release.coax": "a494e3c86bc0caa9edbda47c0bd0063c98e468116c032fcf29f09d9ab7156d77",
+          "coax/release-model.coax": "c9521dba6c5377ea5c699f78d802b90e59ebf7ce8c0686db5dceb6ef554d8434",
+          "scripts/coax-release.sh": "bcd5c4d50472ebab69d403300ad51e559ea0dc42bf9dbaffefcdb7120ad777e7",
+          "coax/bin/proto_importer.c": "63008726697b6e744f4d9c07bed5b18744d00cec55b0f4318427409b5dbef811",
+          "coax/bin/proto_importer.h": "99a63eef627a5bd9f9940bfe7e9286b7f6d3609e4384e39b5582e250dce86542",
+          "coax/bin/proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096"
+        },
+        "source_units": [
+          "coax/lib/compiler/compiler.coax",
+          "coax/lib/compiler/budget.coax",
+          "coax/lib/compiler/check-domains.coax",
+          "coax/lib/compiler/profiles.coax",
+          "coax/lib/compiler/mutation-schedule.coax",
+          "coax/lib/compiler/lexer.coax",
+          "coax/lib/compiler/parser.coax",
+          "coax/lib/compiler/checker.coax",
+          "coax/lib/compiler/quantity.coax",
+          "coax/lib/compiler/sources.coax",
+          "coax/lib/proto/fingerprint.coax",
+          "coax/lib/proto/importer.coax",
+          "coax/lib/compiler/compute.coax",
+          "coax/lib/compiler/native-checks.coax",
+          "coax/lib/compiler/effects.coax",
+          "coax/lib/compiler/native-execution.coax",
+          "coax/lib/compiler/quantified-execution.coax",
+          "coax/lib/compiler/native-semantics.coax",
+          "coax/lib/compiler/spirv.coax",
+          "coax/lib/compiler/shader.coax",
+          "coax/lib/compiler/wgsl.coax"
+        ]
+      },
+      "seconds": 13.014274750021286,
+      "new_cache": "/Users/christopherdavid/.cache/coax-release/8cc1addd7253904b334ddd6cde2f9e4ae8f48bbc25cfce9ab89f6662c306644b",
+      "provenance_record_sha256": "926afb34b6f55952d11c7361ad0d1f951e4c27812963865551903453faffd67c",
+      "cache_artifact_sha256": {
+        "coax": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+        "provenance-check": "fc1d9050b8d9afab4cec9588ba505206a3cc876e18667e6a24e4b3104f4e80c3",
+        "provenance.record": "926afb34b6f55952d11c7361ad0d1f951e4c27812963865551903453faffd67c",
+        "check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+        "check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+        "lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+        "lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+        "parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+        "parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+        "checker.c": "ea8def1a43088a783052499cab912711bc0c0f51e291286d434f1dbd0d887fa7",
+        "checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+        "sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+        "sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8",
+        "proto_runtime.inc": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+        "proto_importer.c": "63008726697b6e744f4d9c07bed5b18744d00cec55b0f4318427409b5dbef811",
+        "proto_importer.h": "99a63eef627a5bd9f9940bfe7e9286b7f6d3609e4384e39b5582e250dce86542"
+      },
+      "scope": "Only a new standalone unloaded policy changed the broad source fingerprint. Exact actual 21-unit compiler closure, 68 compiled inputs/file sets, binary/helper bytes and prior fingerprint inputs remain unchanged. Exact old-input mirror reproduces prior fingerprint under current toolchain/environment. Standalone policy has its own authored/authority/root mutation and independent native qualifications; retained C3 bootstrap/release gates keep their actual earlier scopes and are not rerun or relabeled. No checker integration or borrow lifetime acceptance is claimed."
+    }
+  },
+  "independent_api_review": {
+    "path": "/tmp/coax-borrow-origin-A0/independent-api-review.json",
+    "sha256": "85370d7ec61af3db6073da5abb91559bf6cddb61939c2836093725886cf79028",
+    "result": {
+      "schema": "coax.borrow-origin.independent-api-review.v1",
+      "recorded_utc": "2026-10-31T20:49:18.623286+00:00",
+      "scope": "Independent read-only contract review of standalone/unloaded A0 supplied-fact policy; no policy/harness/docs/repository/Git edits and no tests/builds/gates.",
+      "api": {
+        "path": "/tmp/coax-borrow-origin-A0/proposed-api.md",
+        "sha256": "5ecb52c5a7d5b28cfbf8b26f2edafbd378bcf08f086954d791331f847bcaae5f"
+      },
+      "live_issue": {
+        "short": "8df4",
+        "id": "r3a-borrow-origin-policy",
+        "parent": "r3a-borrow-summary-consumer #1a6a remains open"
+      },
+      "actual_source_watchpoints": {
+        "CK_text": "checker.coax291; return depends on c.bytes, not locally copied parts input descriptors. CK_join2/3/CK_number at297-299 must not acquire unused-argument taint in later integration.",
+        "SoCall": "systemone/transport.coax141 so_post returns local call[0].r with caller out/err pointee descriptors. Requires later field-sensitive callee write transfer and separate retention/cancel work. A0 does not infer or certify this.",
+        "value_parameters": "checker CK_declare2040 currently makes parameters nonlocal_backed even when inline fixed-array copies; A0 inline-role substitution correctly synthesizes callee-local facts, while copied descriptor terms retain pointee identity."
+      },
+      "resolved_review_findings": [
+        {
+          "finding": "Pool type agreement",
+          "counterexample": "formal.type=12 and actual_type=12 with referenced pool origin.type=13 could otherwise be admitted as a typed projected substitution.",
+          "resolution": "Every referenced pool term.type must equal formal.type and actual_type, including unused bindings; malformed shape invalidates before unknown."
+        },
+        {
+          "finding": "Inline complete flag ambiguity",
+          "resolution": "Canonical inline binding requires complete=true and start/count0; malformed unused inline metadata still invalid."
+        },
+        {
+          "finding": "One-level namespace",
+          "counterexample": "callee formal0 maps to caller formal1; callee formal1 maps local.",
+          "resolution": "Output remains caller formal1; no recursive reinterpretation through callee map."
+        },
+        {
+          "finding": "Work/capacity masking",
+          "resolution": "Exact127/128/129 duplicate-candidate cases required; duplicates consume work, not unique output capacity; unknown preflight precedes work/capacity."
+        }
+      ],
+      "contract_review": [
+        "Inline storage and descriptor pointee fact channels are separate; copying an owning aggregate does not rebase a contained view.",
+        "Exact formal index/role/path/type lookup excludes other projections and unused valid unknown/local-backed actuals. Dynamic indices/prefixes are not guessed.",
+        "Truly complete empty and incomplete/missing remain distinct; local empty runtime slices still need backing-origin facts.",
+        "Fixed8-step inline paths have no pointer graph or cycle traversal; future checker fixed points are explicitly outside A0.",
+        "Counts64/64/256/8, spans<=64, output<=64 and128work cap make loops bounded. Valid typed immutable inputs disjoint from output are explicit caller obligations.",
+        "Full metadata validity precedes required unknown; staging and final prefix publication preserve all output bytes on failure and the unused output tail on success. Logical inactive fields are validated; C padding is not canonicalized or compared for successful records.",
+        "Successful policy status is set-operation validity, not a source diagnostic or lifetime-safety verdict."
+      ],
+      "review_outcome": "No blocking contract issue remains after frozen API amendments; implementation/native evidence still pending."
+    }
+  },
+  "independent_implementation_review": {
+    "path": "/tmp/coax-borrow-origin-A0/independent-implementation-review.json",
+    "sha256": "dca1e238ab510a5533bf5853d36e7501f95598acf1b95ac8d82f93fa64dc6ce9",
+    "result": {
+      "schema": "coax.borrow-origin.independent-implementation-review.v1",
+      "recorded_utc": "2026-10-31T20:54:34.528211+00:00",
+      "scope": "Read-only source/contract and retained evidence review; no tests/builds/duplicate gates or repository/Git edits. Native owner qualification and root compiled-closure review are separate.",
+      "source": {
+        "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+        "sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429"
+      },
+      "api": {
+        "path": "/tmp/coax-borrow-origin-A0/proposed-api.md",
+        "sha256": "5ecb52c5a7d5b28cfbf8b26f2edafbd378bcf08f086954d791331f847bcaae5f"
+      },
+      "evidence": {
+        "/tmp/coax-borrow-origin-A0/mutation-second.json": "08889b7fc61038165f45dbc970cbe5f3d68aa3bc97d76aa571876776f5e585f1",
+        "/tmp/coax-borrow-origin-A0/mutation-second.evidence.json": "afec93146e17929760ffdc50c9e701a0b0565534516371f273fc263df352066e",
+        "/tmp/coax-borrow-origin-A0/mutation-second.stdout.log": "af9eed1456c8999eda18ff878af4175445bee64e6c223102c5edb2cc867bdcdb",
+        "/tmp/coax-borrow-origin-A0/independent-api-review.json": "85370d7ec61af3db6073da5abb91559bf6cddb61939c2836093725886cf79028"
+      },
+      "retained_gate_review": {
+        "source_before": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "source_after": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+        "current_source_matches": true,
+        "compiler_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+        "exit_status": 0,
+        "elapsed_s": 0.8358277499792166,
+        "default_check_steps": 20000000,
+        "claims": 26,
+        "cases": 287,
+        "claim_outcomes": [
+          "passed"
+        ],
+        "mutation": {
+          "outcome": "passed",
+          "mutants": 297,
+          "evaluated": 297,
+          "killed": 297,
+          "survived": [],
+          "marked_equivalent": 0,
+          "unreached": "",
+          "scope": "root-only",
+          "shard": null,
+          "merged_records": 0,
+          "scheduling": "selective",
+          "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+        }
+      },
+      "findings": [
+        "Four public exports implement frozen vocabulary/path/type/role rules; inline storage synthesizes callee-local origin, while descriptor pool terms preserve caller pointee identities and one-level namespace.",
+        "All counts and spans are admitted before access, including subtraction-based span bounds; integer comparator differences are bounded by admitted 31-bit IDs/8-step paths, so simplifying to differences preserves lexicographic order without overflow.",
+        "Complete structural metadata and matching type conflicts validate globally before unknown; all required missing/incomplete facts precede work/capacity refusal.",
+        "Candidate preflight is bounded by 64*64=4096, then limits actual insertion work to 128. Sorting/deduplication uses at most 64 staging origins and 8-step comparisons. No recursion or source/type resolver exists.",
+        "Duplicates can return success even at full 64 unique capacity. A 65th unique candidate refuses without writing index 64; short caller output refuses before public commit. Failure returns count0 and never writes public output.",
+        "Prefix output compares logical fields, not unspecified native C padding; disjoint valid immutable input spans are a caller contract, not an observed overlap proof.",
+        "Public-output source checks cover exact nested projections, unrelated unknown/local actuals, copied descriptor identity, caller/callee ordinal collisions, inline root extrema, over-cap valid inputs and exact 127/128/129 work. No private comparator-sign-magnitude oracle was introduced.",
+        "Initial 311/270/41 failed mutation remains historical; transparent bounded comparator/insertion simplification and additional public behavior cases explain the new 297/297 scope. No equivalent waivers appear in current evidence."
+      ],
+      "review_outcome": "No material implementation/contract defect found. Independent native results and final documentation review remain separately owned/pending.",
+      "historical_evidence": {
+        "/tmp/coax-borrow-origin-A0/mutation-first.evidence.json": "a74768838d60ad6a0e038801a7e4fb8e9b1a60478d98c56bde9496beabb22be0",
+        "/tmp/coax-borrow-origin-A0/mutation-first.source.coax": "e8a5617ce7e0bd1450ebc74e9e6963cf3c5dc0763b44f38b57015f3e6420b7d9",
+        "/tmp/coax-borrow-origin-A0/stub-red.json": "ab2129bf5309af38487b8d3818271931b22374ee341839870ddd14a89167236e",
+        "/tmp/coax-borrow-origin-A0/stub-red.evidence.json": "7a7344b5a5b35490360b34694db20b110fc43764f88794b6f049e75d3ba72be4"
+      }
+    }
+  },
+  "production_cleanup_rationale": {
+    "path": "/tmp/coax-borrow-origin-A0/production-cleanup-review.json",
+    "sha256": "872e102ec521bf9a9776995fa5cd1682d87d82a76255836068b6590f12b80126",
+    "result": {
+      "first_source_sha256": "e8a5617ce7e0bd1450ebc74e9e6963cf3c5dc0763b44f38b57015f3e6420b7d9",
+      "final_source_sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429",
+      "first_source_reconstruction": "Exact SHA equality from preserved initial checks/implementation fragments and original prefix; no lost source attribution.",
+      "first_production_sha256": "aaf5a2a6ad3ee79eb50f0955ff0ce9fd4dea8fed3810acee3dd43d346d13b3a6",
+      "final_production_sha256": "a7f6735d934b5091046ca496a4e2b7cd68d20107b64496ca8766cf04fcb02c1b",
+      "production_diff_sha256": "e7619694e70676f41b270f365abf2a5e083bb8be6213cfa4c2c52ec3c467900c",
+      "changes": [
+        {
+          "helper": "bs_compare",
+          "reason": "For the first unequal component, return bounded signed subtraction instead of guarded less-than returning -1/+1. Comparator is private and its frozen contract is sign/zero lexicographic order, not normalized magnitude. Components are u8 or validated nonnegative int<=2147483647, so int64 difference is safe. This removes <= under a known != guard and changing +1 to +2 without changing sign; no requirement is waived."
+        },
+        {
+          "helper": "bs_insert",
+          "reason": "Continue for negative comparison, then return on zero, otherwise insert. Replaces >0 following an unconditional zero return; >=0 could never differ there. Same sorted insertion and duplicate behavior, with no extra semantic predicate."
+        }
+      ],
+      "scope": "All other production text is byte-identical. Added public contract checks cover real cap/path/binding/work gaps; no private comparator magnitude assertions."
+    }
+  },
+  "production_cleanup_diff": {
+    "path": "/tmp/coax-borrow-origin-A0/production-cleanup.diff",
+    "sha256": "e7619694e70676f41b270f365abf2a5e083bb8be6213cfa4c2c52ec3c467900c",
+    "text": "--- first-production\n+++ final-production\n@@ -29,21 +29,21 @@\n }\n bs_slot_equal :: (a:BS_Origin,b:BS_Origin)->bool {return a.root==b.root && a.role==b.role && bs_path_equal(a.path,b.path);}\n bs_compare :: (a:BS_Origin,b:BS_Origin)->int {\n- if a.kind!=b.kind {return ifx a.kind<b.kind then -1 else 1;}\n- if a.root!=b.root {return ifx a.root<b.root then -1 else 1;}\n- if a.role!=b.role {return ifx a.role<b.role then -1 else 1;}\n- if a.type!=b.type {return ifx a.type<b.type then -1 else 1;}\n- if a.path.count!=b.path.count {return ifx a.path.count<b.path.count then -1 else 1;}\n+ if a.kind!=b.kind {return cast(int)a.kind-cast(int)b.kind;}\n+ if a.root!=b.root {return cast(int)a.root-cast(int)b.root;}\n+ if a.role!=b.role {return cast(int)a.role-cast(int)b.role;}\n+ if a.type!=b.type {return cast(int)a.type-cast(int)b.type;}\n+ if a.path.count!=b.path.count {return cast(int)a.path.count-cast(int)b.path.count;}\n  for i:0..<a.path.count {\n-  if a.path.steps[i].kind!=b.path.steps[i].kind {return ifx a.path.steps[i].kind<b.path.steps[i].kind then -1 else 1;}\n-  if a.path.steps[i].index!=b.path.steps[i].index {return ifx a.path.steps[i].index<b.path.steps[i].index then -1 else 1;}\n+  if a.path.steps[i].kind!=b.path.steps[i].kind {return cast(int)a.path.steps[i].kind-cast(int)b.path.steps[i].kind;}\n+  if a.path.steps[i].index!=b.path.steps[i].index {return cast(int)a.path.steps[i].index-cast(int)b.path.steps[i].index;}\n  }\n  return 0;\n }\n // This writes private staging only. No public output is touched until commit.\n bs_insert :: (staging:[]BS_Origin,used:int,value:BS_Origin)->BS_Result {\n  at:=used;\n- for i:0..<used {comparison:=bs_compare(staging[i],value);if comparison==0 {return BS_Result.{count=used};}if comparison>0 {at=i;break;}}\n+ for i:0..<used {comparison:=bs_compare(staging[i],value);if comparison<0 {continue;}if comparison==0 {return BS_Result.{count=used};}at=i;break;}\n  if used>=BS_MAX_SET {return BS_Result.{status=BS_Status.capacity};}\n  i:=used;while i>at {staging[i]=staging[i-1];i-=1;}\n  staging[at]=value;return BS_Result.{count=used+1};\n"
+  },
+  "first_mutation_failure": {
+    "path": "/tmp/coax-borrow-origin-A0/mutation-first.evidence.json",
+    "sha256": "a74768838d60ad6a0e038801a7e4fb8e9b1a60478d98c56bde9496beabb22be0",
+    "result": {
+      "schema": "coax.evidence.v1",
+      "command": "mutate",
+      "input": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+      "compiler": {
+        "version": "coax0 0.44.0",
+        "sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05"
+      },
+      "target": {
+        "name": "coax-evaluator",
+        "note": "checks run in the compile-time evaluator, not generated code"
+      },
+      "profile": {
+        "arithmetic": "checked",
+        "selected_runtime_arithmetic": "checked",
+        "library": false
+      },
+      "selection": {
+        "only": null,
+        "list": false,
+        "root_only": true
+      },
+      "budgets": {
+        "check_steps": 20000000,
+        "check_slots": 33554432,
+        "check_containers": 2097152,
+        "run_steps": 100000
+      },
+      "sources": [
+        {
+          "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+          "sha256": "e8a5617ce7e0bd1450ebc74e9e6963cf3c5dc0763b44f38b57015f3e6420b7d9"
+        }
+      ],
+      "front_end": "ok",
+      "claims": [
+        {
+          "kind": "#test",
+          "name": "known duplicate origins publish a canonical nonempty union",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 16,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 1839
+        },
+        {
+          "kind": "#forall",
+          "name": "logical path vocabulary and depth are bounded",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 25,
+            "col": 1
+          },
+          "cases": 150,
+          "steps": 35141
+        },
+        {
+          "kind": "#forall",
+          "name": "inactive logical path fields must be zero",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 30,
+            "col": 1
+          },
+          "cases": 16,
+          "steps": 2218
+        },
+        {
+          "kind": "#test",
+          "name": "path extrema and malformed counts refuse",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 34,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 365
+        },
+        {
+          "kind": "#forall",
+          "name": "concrete backing and relative query roles are distinct",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 38,
+            "col": 1
+          },
+          "cases": 60,
+          "steps": 16526
+        },
+        {
+          "kind": "#test",
+          "name": "origin IDs types and dereference roles are exact",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 43,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 2213
+        },
+        {
+          "kind": "#forall",
+          "name": "canonical union order observes every origin component",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 50,
+            "col": 1
+          },
+          "cases": 8,
+          "steps": 16160
+        },
+        {
+          "kind": "#forall",
+          "name": "complete empty sets differ from unresolved facts",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 61,
+            "col": 1
+          },
+          "cases": 4,
+          "steps": 575
+        },
+        {
+          "kind": "#test",
+          "name": "union deduplicates at the full set boundary and refuses excess output atomically",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 65,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 210640
+        },
+        {
+          "kind": "#test",
+          "name": "exact nested descriptor projection excludes local and unknown unused actuals",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 75,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 3214
+        },
+        {
+          "kind": "#test",
+          "name": "by-value inline storage is callee local and copied descriptors retain their local pointee",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 81,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 4472
+        },
+        {
+          "kind": "#test",
+          "name": "substitution enters the caller namespace once even when ordinals collide",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 87,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 2083
+        },
+        {
+          "kind": "#test",
+          "name": "required unknown missing and intentionally empty descriptor facts publish distinctly",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 92,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 3789
+        },
+        {
+          "kind": "#forall",
+          "name": "malformed supplied binding facts dominate unknown",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 99,
+            "col": 1
+          },
+          "cases": 16,
+          "steps": 16255
+        },
+        {
+          "kind": "#test",
+          "name": "unused malformed facts and duplicate formal slots refuse before unknown",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 106,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 3334
+        },
+        {
+          "kind": "#forall",
+          "name": "duplicate expansion work has exact 127 128 129 boundaries",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 114,
+            "col": 1
+          },
+          "cases": 3,
+          "steps": 381867
+        },
+        {
+          "kind": "#test",
+          "name": "late missing input precedes expansion work and capacity without partial publication",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 122,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 82551
+        },
+        {
+          "kind": "#test",
+          "name": "substitution capacity is unique and late refusal preserves the complete destination",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 130,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 196944
+        },
+        {
+          "kind": "#test",
+          "name": "all admitted view bounds are exact and unknown never hides overcapacity metadata",
+          "outcome": "passed",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 137,
+            "col": 1
+          },
+          "cases": 1,
+          "steps": 277636
+        },
+        {
+          "kind": "#authority",
+          "name": "execution coverage",
+          "outcome": "passed",
+          "at": null,
+          "cases": 0,
+          "steps": 0
+        }
+      ],
+      "mutation": {
+        "outcome": "counterexample",
+        "mutants": 311,
+        "evaluated": 311,
+        "killed": 270,
+        "survived": [
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 169,
+            "col": 19,
+            "mutant": "'||' became '&&'"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 174,
+            "col": 30,
+            "mutant": "false became true"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 180,
+            "col": 38,
+            "mutant": "'<' became '<='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 180,
+            "col": 51,
+            "mutant": "-1 became 0"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 180,
+            "col": 59,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 181,
+            "col": 38,
+            "mutant": "'<' became '<='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 181,
+            "col": 59,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 182,
+            "col": 38,
+            "mutant": "'<' became '<='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 182,
+            "col": 51,
+            "mutant": "-1 became 0"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 182,
+            "col": 59,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 183,
+            "col": 38,
+            "mutant": "'<' became '<='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 183,
+            "col": 51,
+            "mutant": "-1 became 0"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 183,
+            "col": 59,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 184,
+            "col": 56,
+            "mutant": "'<' became '<='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 184,
+            "col": 75,
+            "mutant": "-1 became 0"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 184,
+            "col": 83,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 186,
+            "col": 81,
+            "mutant": "'<' became '<='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 186,
+            "col": 108,
+            "mutant": "-1 became 0"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 186,
+            "col": 116,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 187,
+            "col": 84,
+            "mutant": "'<' became '<='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 187,
+            "col": 112,
+            "mutant": "-1 became 0"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 187,
+            "col": 120,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 194,
+            "col": 121,
+            "mutant": "'>' became '>='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 205,
+            "col": 64,
+            "mutant": "64 became 65"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 205,
+            "col": 100,
+            "mutant": "64 became 65"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 209,
+            "col": 95,
+            "mutant": "the assignment was removed"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 214,
+            "col": 30,
+            "mutant": "'||' became '&&'"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 215,
+            "col": 75,
+            "mutant": "'>=' became '>'"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 215,
+            "col": 77,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 215,
+            "col": 101,
+            "mutant": "'<=' became '<'"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 218,
+            "col": 85,
+            "mutant": "64 became 65"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 218,
+            "col": 123,
+            "mutant": "'-' became '+'"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 227,
+            "col": 14,
+            "mutant": "'<' became '<='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 227,
+            "col": 15,
+            "mutant": "0 became 1"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 227,
+            "col": 79,
+            "mutant": "64 became 65"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 227,
+            "col": 121,
+            "mutant": "64 became 65"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 227,
+            "col": 156,
+            "mutant": "256 became 257"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 242,
+            "col": 147,
+            "mutant": "1 became 2"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 243,
+            "col": 20,
+            "mutant": "the assignment was removed"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 243,
+            "col": 20,
+            "mutant": "'+=' became '-='"
+          },
+          {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 243,
+            "col": 22,
+            "mutant": "1 became 2"
+          }
+        ],
+        "marked_equivalent": 0,
+        "unreached": "",
+        "scope": "root-only",
+        "shard": null,
+        "merged_records": 0,
+        "scheduling": "selective",
+        "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+      },
+      "exit_status": 1,
+      "verdict": "counterexample"
+    }
+  },
+  "first_failed_source": {
+    "path": "/tmp/coax-borrow-origin-A0/mutation-first.source.coax",
+    "sha256": "e8a5617ce7e0bd1450ebc74e9e6963cf3c5dc0763b44f38b57015f3e6420b7d9",
+    "text": "// A0 supplied-fact borrow origins. No declaration/type resolver, escape verdict,\n// checker fixed point or retained-request lifetime policy lives in this module.\n// Input spans are valid/immutable and disjoint from writable public output.\n#authority;\nBS_STATIC :: cast(u8)1; BS_LOCAL :: cast(u8)2; BS_PARAMETER :: cast(u8)3;\nBS_INLINE :: cast(u8)1; BS_DESCRIPTOR :: cast(u8)2;\nBS_FIELD :: cast(u8)1; BS_ELEMENT :: cast(u8)2; BS_DEREFERENCE :: cast(u8)3;\nBS_MAX_SET :: 64; BS_MAX_BINDINGS :: 64; BS_MAX_POOL :: 256; BS_MAX_PATH :: 8; BS_MAX_WORK :: 128;\nBS_Status :: enum u8 {ok;invalid;unknown;capacity;work;}\nBS_Step :: struct {kind:u8;index:int;}\nBS_Path :: struct {count:int;steps:[8]BS_Step;}\nBS_Origin :: struct {kind:u8;root:int;role:u8;type:int;path:BS_Path;}\nBS_Binding :: struct {formal:BS_Origin;actual_type:int;complete:bool;callee_root:int;start:int;count:int;}\nBS_Result :: struct {status:BS_Status;count:int;}\n\n#test \"known duplicate origins publish a canonical nonempty union\" {\n a:=[2]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=7,type=9},BS_Origin.{kind=BS_STATIC,root=7,type=9}];out:[4]BS_Origin;bindings:[1]BS_Binding;\n path_ok:=BS_path_valid(a[0].path);origin_ok:=BS_origin_valid(a[0]);\n joined:=BS_union(a[..],true,a[0..<1],true,out[..]);\n empty:=BS_substitute(a[0..<0],true,bindings[0..<0],a[0..<0],out[..]);\n #assert joined.status==BS_Status.ok && joined.count==1 && out[0].kind==BS_STATIC && out[0].root==7 && out[0].type==9;\n #assert path_ok && origin_ok && empty.status==BS_Status.ok && empty.count==0;\n}\n\n#forall \"logical path vocabulary and depth are bounded\" depth:0..<10,kind:0..<5,index:-1..<2 {\n p:BS_Path;p.count=depth;for i:0..<8 {if i<depth {p.steps[i]=BS_Step.{kind=cast(u8)kind,index=index};}}\n want:=depth<=8 && (depth==0 || ((kind==1 || kind==2) && index>=0) || (kind==3 && index==0));\n #assert BS_path_valid(p)==want;\n}\n#forall \"inactive logical path fields must be zero\" position:0..<8,field:bool {\n p:BS_Path;if field {p.steps[position].kind=BS_FIELD;}else {p.steps[position].index=1;}\n #assert !BS_path_valid(p);\n}\n#test \"path extrema and malformed counts refuse\" {\n p:BS_Path;p.count=-1;#assert !BS_path_valid(p);p.count=1;p.steps[0]=BS_Step.{kind=BS_FIELD,index=2147483647};#assert BS_path_valid(p);\n p.steps[0].index=2147483648;#assert !BS_path_valid(p);p.steps[0].index=0;p.steps[0].kind=255;#assert !BS_path_valid(p);\n}\n#forall \"concrete backing and relative query roles are distinct\" kind:0..<5,role:0..<4,root:0..<3 {\n o:=BS_Origin.{kind=cast(u8)kind,root=root,role=cast(u8)role,type=1};\n want:=((kind==1 || kind==2) && root>=1 && role==0) || (kind==3 && (role==1 || role==2));\n #assert BS_origin_valid(o)==want;\n}\n#test \"origin IDs types and dereference roles are exact\" {\n o:=BS_Origin.{kind=BS_STATIC,root=2147483647,type=2147483647};#assert BS_origin_valid(o);\n o.root=2147483648;#assert !BS_origin_valid(o);o.root=-1;#assert !BS_origin_valid(o);o.root=1;o.type=0;#assert !BS_origin_valid(o);o.type=2147483648;#assert !BS_origin_valid(o);\n o=BS_Origin.{kind=BS_PARAMETER,root=63,role=BS_DESCRIPTOR,type=1,path=BS_Path.{count=1}};o.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};#assert BS_origin_valid(o);\n o.root=64;#assert !BS_origin_valid(o);o.root=-1;#assert !BS_origin_valid(o);o.root=0;o.role=BS_INLINE;#assert !BS_origin_valid(o);\n o.kind=BS_LOCAL;o.role=0;o.root=1;#assert !BS_origin_valid(o);\n}\n#forall \"canonical union order observes every origin component\" component:0..<8 {\n a:=BS_Origin.{kind=BS_STATIC,root=1,type=1};b:=a;\n if component==0 {b.kind=BS_LOCAL;}else if component==1 {b.root=2;}else if component==2 {a.kind=BS_PARAMETER;a.root=0;a.role=BS_INLINE;b=a;b.role=BS_DESCRIPTOR;}\n else if component==3 {b.type=2;}else if component==4 {b.path.count=1;b.path.steps[0]=BS_Step.{kind=BS_FIELD};}\n else {a.path.count=ifx component==7 then 8 else 1;for i:0..<a.path.count {a.path.steps[i]=BS_Step.{kind=BS_FIELD};}b=a;if component==5 {b.path.steps[0].kind=BS_ELEMENT;}else if component==6 {b.path.steps[0].index=1;}else {b.path.steps[7].index=1;}}\n values:=[3]BS_Origin.[b,a,a];out:[3]BS_Origin;out[2]=BS_Origin.{kind=BS_LOCAL,root=999,type=99};r:=BS_union(values[..],true,values[0..<0],true,out[..]);\n #assert r.status==BS_Status.ok && r.count==2 && out[2].root==999;\n #assert out[0].kind==a.kind && out[0].root==a.root && out[0].role==a.role && out[0].type==a.type && out[0].path.count==a.path.count;\n #assert out[1].kind==b.kind && out[1].root==b.root && out[1].role==b.role && out[1].type==b.type && out[1].path.count==b.path.count;\n for i:0..<8 {#assert out[0].path.steps[i].kind==a.path.steps[i].kind && out[0].path.steps[i].index==a.path.steps[i].index && out[1].path.steps[i].kind==b.path.steps[i].kind && out[1].path.steps[i].index==b.path.steps[i].index;}\n}\n#forall \"complete empty sets differ from unresolved facts\" left_known:bool,right_known:bool {\n a:[1]BS_Origin;out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=91,type=7}];r:=BS_union(a[0..<0],left_known,a[0..<0],right_known,out[..]);\n #assert r.status==(ifx left_known && right_known then BS_Status.ok else BS_Status.unknown) && r.count==0 && out[0].root==91;\n}\n#test \"union deduplicates at the full set boundary and refuses excess output atomically\" {\n left:[64]BS_Origin;right:[64]BS_Origin;out:[64]BS_Origin;\n for i:0..<64 {left[i]=BS_Origin.{kind=BS_STATIC,root=64-i,type=1};right[i]=left[i];out[i]=BS_Origin.{kind=BS_LOCAL,root=900,type=1};}\n r:=BS_union(left[..],true,right[..],true,out[..]);#assert r.status==BS_Status.ok && r.count==64;for i:0..<64 {#assert out[i].root==i+1 && out[i].kind==BS_STATIC;}\n right[0].root=65;for i:0..<64 {out[i].root=900;}\n r=BS_union(left[..],true,right[0..<1],true,out[..]);#assert r.status==BS_Status.capacity && r.count==0;for i:0..<64 {#assert out[i].root==900;}\n r=BS_union(left[0..<1],true,right[0..<0],true,out[0..<0]);#assert r.status==BS_Status.capacity && r.count==0;\n too_many:[65]BS_Origin;r=BS_union(too_many[..],false,right[0..<0],false,out[..]);#assert r.status==BS_Status.invalid && r.count==0;\n r=BS_union(left[0..<0],false,right[0..<0],false,too_many[..]);#assert r.status==BS_Status.invalid;\n}\n#test \"exact nested descriptor projection excludes local and unknown unused actuals\" {\n p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=7,path=BS_Path.{count=2}};p.path.steps[0]=BS_Step.{kind=BS_FIELD,index=0};p.path.steps[1]=BS_Step.{kind=BS_FIELD,index=1};other:=p;other.path.steps[0].index=2;unused:=p;unused.root=1;\n summary:=[2]BS_Origin.[p,BS_Origin.{kind=BS_STATIC,root=5,type=7}];pool:=[2]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=2,type=7},BS_Origin.{kind=BS_LOCAL,root=44,type=7}];\n bindings:=[3]BS_Binding.[BS_Binding.{formal=p,actual_type=7,complete=true,count=1},BS_Binding.{formal=other,actual_type=7,complete=true,start=1,count=1},BS_Binding.{formal=unused,actual_type=7}];out:[3]BS_Origin;out[2].root=999;\n r:=BS_substitute(summary[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.ok && r.count==2 && out[0].kind==BS_STATIC && out[0].root==2 && out[1].root==5 && out[2].root==999;\n}\n#test \"by-value inline storage is callee local and copied descriptors retain their local pointee\" {\n owned:=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_INLINE,type=7,path=BS_Path.{count=1}};owned.path.steps[0]=BS_Step.{kind=BS_FIELD,index=3};desc:=owned;desc.role=BS_DESCRIPTOR;desc.path.steps[0].index=4;\n refs:=[2]BS_Origin.[owned,desc];pool:=[2]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=201,type=7},BS_Origin.{kind=BS_STATIC,root=500,type=7}];bindings:=[2]BS_Binding.[BS_Binding.{formal=owned,actual_type=7,complete=true,callee_root=100},BS_Binding.{formal=desc,actual_type=7,complete=true,count=1}];out:[2]BS_Origin;\n r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.ok && r.count==2 && out[0].kind==BS_LOCAL && out[0].root==100 && out[0].role==0 && out[0].type==7 && out[0].path.steps[0].index==3 && out[1].root==201;\n bindings[0].start=1;bindings[0].count=1;out[0].root=901;r=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid && r.count==0 && out[0].root==901;\n}\n#test \"substitution enters the caller namespace once even when ordinals collide\" {\n p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};caller:=p;caller.root=1;refs:=[1]BS_Origin.[p];pool:=[2]BS_Origin.[caller,BS_Origin.{kind=BS_LOCAL,root=88,type=1}];\n bindings:=[2]BS_Binding.[BS_Binding.{formal=p,actual_type=1,complete=true,count=1},BS_Binding.{formal=caller,actual_type=1,complete=true,start=1,count=1}];out:[1]BS_Origin;\n r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.ok && r.count==1 && out[0].kind==BS_PARAMETER && out[0].root==1 && out[0].role==BS_DESCRIPTOR;\n}\n#test \"required unknown missing and intentionally empty descriptor facts publish distinctly\" {\n p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};refs:=[2]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=1,type=1},p];pool:[1]BS_Origin;bindings:=[1]BS_Binding.[BS_Binding.{formal=p,actual_type=1}];out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=777,type=1}];\n r:=BS_substitute(refs[..],true,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.unknown && r.count==0 && out[0].root==777;\n r=BS_substitute(refs[..],true,bindings[0..<0],pool[0..<0],out[..]);#assert r.status==BS_Status.unknown && out[0].root==777;\n bindings[0].complete=true;r=BS_substitute(refs[1..<2],true,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.ok && r.count==0 && out[0].root==777;\n r=BS_substitute(refs[1..<2],false,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.unknown && out[0].root==777;\n}\n#forall \"malformed supplied binding facts dominate unknown\" choice:0..<16 {\n p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};refs:=[1]BS_Origin.[p];pool:=[1]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=1,type=1}];bindings:=[1]BS_Binding.[BS_Binding.{formal=p,actual_type=1,complete=true,count=1}];\n if choice==0 {bindings[0].formal.kind=0;}else if choice==1 {bindings[0].actual_type=2;}else if choice==2 {bindings[0].callee_root=1;}else if choice==3 {bindings[0].start=-1;}else if choice==4 {bindings[0].count=-1;}else if choice==5 {bindings[0].start=2;}else if choice==6 {bindings[0].count=65;}else if choice==7 {bindings[0].complete=false;}\n else if choice==8 {pool[0].type=2;}else if choice==9 {pool[0].kind=0;}else if choice==10 {bindings[0].formal.type=2;bindings[0].actual_type=2;pool[0].type=2;}\n else {bindings[0].formal.role=BS_INLINE;bindings[0].count=0;bindings[0].callee_root=1;if choice==11 {bindings[0].complete=false;}else if choice==12 {bindings[0].callee_root=0;}else if choice==13 {bindings[0].callee_root=2147483648;}else if choice==14 {bindings[0].start=1;}else {bindings[0].count=1;}}\n out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=777,type=1}];r:=BS_substitute(refs[..],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid && r.count==0 && out[0].root==777;\n}\n#test \"unused malformed facts and duplicate formal slots refuse before unknown\" {\n p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};refs:[1]BS_Origin;pool:=[1]BS_Origin.[BS_Origin.{}];bindings:[2]BS_Binding;out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=777,type=1}];\n r:=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[..],out[..]);#assert r.status==BS_Status.invalid && out[0].root==777;\n pool[0]=BS_Origin.{kind=BS_STATIC,root=1,type=1};bindings[0]=BS_Binding.{formal=p,actual_type=1,complete=true};bindings[1]=bindings[0];\n r=BS_substitute(refs[0..<0],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid;\n bindings[1].formal.type=2;bindings[1].actual_type=2;r=BS_substitute(refs[0..<0],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid;\n bindings[1].formal.root=1;bindings[1].actual_type=3;r=BS_substitute(refs[0..<0],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid;\n}\n#forall \"duplicate expansion work has exact 127 128 129 boundaries\" extra:0..<3 {\n pool:[64]BS_Origin;for i:0..<64 {pool[i]=BS_Origin.{kind=BS_STATIC,root=i+1,type=1};}\n refs:[3]BS_Origin;bindings:[3]BS_Binding;for i:0..<3 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true,count=ifx i==0 then 64 else ifx i==1 then 63 else extra};}\n out:[64]BS_Origin;for i:0..<64 {out[i]=BS_Origin.{kind=BS_LOCAL,root=900,type=1};}\n r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);\n if extra<2 {#assert r.status==BS_Status.ok && r.count==64;for i:0..<64 {#assert out[i].kind==BS_STATIC && out[i].root==i+1;}}\n else {#assert r.status==BS_Status.work && r.count==0;for i:0..<64 {#assert out[i].root==900;}}\n}\n#test \"late missing input precedes expansion work and capacity without partial publication\" {\n pool:=[1]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=1,type=1}];large:[64]BS_Origin;for i:0..<64 {large[i]=pool[0];}\n refs:[4]BS_Origin;bindings:[4]BS_Binding;for i:0..<4 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true,count=ifx i<2 then 64 else ifx i==2 then 1 else 0};}\n out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=900,type=1}];r:=BS_substitute(refs[..],true,bindings[0..<3],large[..],out[..]);#assert r.status==BS_Status.unknown && r.count==0 && out[0].root==900;\n bindings[3].complete=false;r=BS_substitute(refs[..],true,bindings[..],large[..],out[..]);#assert r.status==BS_Status.unknown && out[0].root==900;\n bindings[3].complete=true;r=BS_substitute(refs[..],false,bindings[..],large[..],out[..]);#assert r.status==BS_Status.unknown;\n r=BS_substitute(refs[..],true,bindings[..],large[..],out[..]);#assert r.status==BS_Status.work && out[0].root==900;\n}\n#test \"substitution capacity is unique and late refusal preserves the complete destination\" {\n pool:[65]BS_Origin;for i:0..<65 {pool[i]=BS_Origin.{kind=BS_STATIC,root=i+1,type=1};}\n refs:[2]BS_Origin;bindings:[2]BS_Binding;for i:0..<2 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true,start=ifx i==0 then 0 else 64,count=ifx i==0 then 64 else 1};}\n out:[64]BS_Origin;for i:0..<64 {out[i]=BS_Origin.{kind=BS_LOCAL,root=900,type=1};}\n r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.capacity && r.count==0;for i:0..<64 {#assert out[i].root==900;}\n r=BS_substitute(refs[0..<1],true,bindings[0..<1],pool[..],out[0..<63]);#assert r.status==BS_Status.capacity && r.count==0 && out[0].root==900;\n}\n#test \"all admitted view bounds are exact and unknown never hides overcapacity metadata\" {\n refs:[65]BS_Origin;bindings:[65]BS_Binding;pool:[257]BS_Origin;out:[65]BS_Origin;out[0].root=900;\n r:=BS_substitute(refs[..],false,bindings[0..<0],pool[0..<0],out[0..<1]);#assert r.status==BS_Status.invalid && out[0].root==900;\n r=BS_substitute(refs[0..<0],false,bindings[..],pool[0..<0],out[0..<1]);#assert r.status==BS_Status.invalid;\n r=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[..],out[0..<1]);#assert r.status==BS_Status.invalid;\n r=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[0..<0],out[..]);#assert r.status==BS_Status.invalid;\n for i:0..<256 {pool[i]=BS_Origin.{kind=BS_STATIC,root=i+1,type=1};}\n for i:0..<64 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true};}\n bindings[63].start=192;bindings[63].count=64;r=BS_substitute(refs[63..<64],true,bindings[0..<64],pool[0..<256],out[0..<64]);#assert r.status==BS_Status.ok && r.count==64 && out[0].root==193 && out[63].root==256;\n pool[255].kind=0;r=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[0..<256],out[0..<1]);#assert r.status==BS_Status.invalid;\n}\n\n// Logical inactive step fields are canonical zeros; C padding is unspecified.\nBS_path_valid :: (path:BS_Path)->bool #export_c {\n if path.count<0 || path.count>BS_MAX_PATH {return false;}\n for i:0..<BS_MAX_PATH {\n  step:=path.steps[i];\n  if i>=path.count {if step.kind!=0 || step.index!=0 {return false;}}\n  else if step.kind==BS_FIELD || step.kind==BS_ELEMENT {if step.index<0 || step.index>2147483647 {return false;}}\n  else if step.kind!=BS_DEREFERENCE || step.index!=0 {return false;}\n }\n return true;\n}\nBS_origin_valid :: (origin:BS_Origin)->bool #export_c {\n if origin.type<1 || origin.type>2147483647 || !BS_path_valid(origin.path) {return false;}\n if origin.kind==BS_STATIC || origin.kind==BS_LOCAL {if origin.root<1 || origin.root>2147483647 || origin.role!=0 {return false;}}\n else if origin.kind==BS_PARAMETER {if origin.root<0 || origin.root>=BS_MAX_BINDINGS || (origin.role!=BS_INLINE && origin.role!=BS_DESCRIPTOR) {return false;}}\n else {return false;}\n for i:0..<origin.path.count {if origin.path.steps[i].kind==BS_DEREFERENCE && (origin.kind!=BS_PARAMETER || origin.role!=BS_DESCRIPTOR) {return false;}}\n return true;\n}\nbs_list_valid :: (items:[]BS_Origin,limit:int)->bool {\n if items.count<0 || items.count>limit {return false;}\n for item:items {if !BS_origin_valid(item) {return false;}}\n return true;\n}\nbs_path_equal :: (a:BS_Path,b:BS_Path)->bool {\n if a.count!=b.count {return false;}\n for i:0..<a.count {if a.steps[i].kind!=b.steps[i].kind || a.steps[i].index!=b.steps[i].index {return false;}}\n return true;\n}\nbs_slot_equal :: (a:BS_Origin,b:BS_Origin)->bool {return a.root==b.root && a.role==b.role && bs_path_equal(a.path,b.path);}\nbs_compare :: (a:BS_Origin,b:BS_Origin)->int {\n if a.kind!=b.kind {return ifx a.kind<b.kind then -1 else 1;}\n if a.root!=b.root {return ifx a.root<b.root then -1 else 1;}\n if a.role!=b.role {return ifx a.role<b.role then -1 else 1;}\n if a.type!=b.type {return ifx a.type<b.type then -1 else 1;}\n if a.path.count!=b.path.count {return ifx a.path.count<b.path.count then -1 else 1;}\n for i:0..<a.path.count {\n  if a.path.steps[i].kind!=b.path.steps[i].kind {return ifx a.path.steps[i].kind<b.path.steps[i].kind then -1 else 1;}\n  if a.path.steps[i].index!=b.path.steps[i].index {return ifx a.path.steps[i].index<b.path.steps[i].index then -1 else 1;}\n }\n return 0;\n}\n// This writes private staging only. No public output is touched until commit.\nbs_insert :: (staging:[]BS_Origin,used:int,value:BS_Origin)->BS_Result {\n at:=used;\n for i:0..<used {comparison:=bs_compare(staging[i],value);if comparison==0 {return BS_Result.{count=used};}if comparison>0 {at=i;break;}}\n if used>=BS_MAX_SET {return BS_Result.{status=BS_Status.capacity};}\n i:=used;while i>at {staging[i]=staging[i-1];i-=1;}\n staging[at]=value;return BS_Result.{count=used+1};\n}\nbs_commit :: (staging:[]BS_Origin,used:int,out:[]BS_Origin)->BS_Result {\n if used>out.count {return BS_Result.{status=BS_Status.capacity};}\n for i:0..<used {out[i]=staging[i];}\n return BS_Result.{count=used};\n}\nBS_union :: (left:[]BS_Origin,left_complete:bool,right:[]BS_Origin,right_complete:bool,out:[]BS_Origin)->BS_Result #export_c {\n if out.count<0 || out.count>BS_MAX_SET || !bs_list_valid(left,BS_MAX_SET) || !bs_list_valid(right,BS_MAX_SET) {return BS_Result.{status=BS_Status.invalid};}\n if !left_complete || !right_complete {return BS_Result.{status=BS_Status.unknown};}\n staging:[64]BS_Origin;used:=0;\n for item:left {r:=bs_insert(staging[..],used,item);if r.status!=BS_Status.ok {return r;}used=r.count;}\n for item:right {r:=bs_insert(staging[..],used,item);if r.status!=BS_Status.ok {return r;}used=r.count;}\n return bs_commit(staging[..],used,out);\n}\nbs_binding_valid :: (binding:BS_Binding,pool:[]BS_Origin)->bool {\n formal:=binding.formal;\n if !BS_origin_valid(formal) || formal.kind!=BS_PARAMETER || binding.actual_type!=formal.type {return false;}\n if formal.role==BS_INLINE {return binding.complete && binding.callee_root>=1 && binding.callee_root<=2147483647 && binding.start==0 && binding.count==0;}\n if binding.callee_root!=0 {return false;}\n if !binding.complete {return binding.start==0 && binding.count==0;}\n if binding.start<0 || binding.start>pool.count || binding.count<0 || binding.count>BS_MAX_SET || binding.count>pool.count-binding.start {return false;}\n for i:0..<binding.count {if pool[binding.start+i].type!=formal.type {return false;}}\n return true;\n}\nbs_find :: (origin:BS_Origin,bindings:[]BS_Binding)->int {\n for i:0..<bindings.count {if bs_slot_equal(origin,bindings[i].formal) {return i;}}\n return -1;\n}\nbs_substitution_valid :: (summary:[]BS_Origin,bindings:[]BS_Binding,pool:[]BS_Origin,out_count:int)->bool {\n if out_count<0 || out_count>BS_MAX_SET || bindings.count<0 || bindings.count>BS_MAX_BINDINGS || !bs_list_valid(summary,BS_MAX_SET) || !bs_list_valid(pool,BS_MAX_POOL) {return false;}\n for i:0..<bindings.count {\n  if !bs_binding_valid(bindings[i],pool) {return false;}\n  for j:0..<i {if bs_slot_equal(bindings[i].formal,bindings[j].formal) {return false;}}\n }\n for origin:summary {if origin.kind==BS_PARAMETER {index:=bs_find(origin,bindings);if index>=0 && origin.type!=bindings[index].formal.type {return false;}}}\n return true;\n}\nBS_substitute :: (summary:[]BS_Origin,summary_complete:bool,bindings:[]BS_Binding,pool:[]BS_Origin,out:[]BS_Origin)->BS_Result #export_c {\n if !bs_substitution_valid(summary,bindings,pool,out.count) {return BS_Result.{status=BS_Status.invalid};}\n // Inspect every required key before work/capacity refusal. Unknown is not empty.\n missing:=!summary_complete;candidates:=0;\n for origin:summary {\n  if origin.kind==BS_PARAMETER {\n   index:=bs_find(origin,bindings);\n   if index<0 {missing=true;}else {binding:=bindings[index];if !binding.complete {missing=true;}else {candidates+=ifx origin.role==BS_INLINE then 1 else binding.count;}}\n  }else {candidates+=1;}\n }\n if missing {return BS_Result.{status=BS_Status.unknown};}\n if candidates>BS_MAX_WORK {return BS_Result.{status=BS_Status.work};}\n staging:[64]BS_Origin;used:=0;\n for origin:summary {\n  if origin.kind!=BS_PARAMETER {r:=bs_insert(staging[..],used,origin);if r.status!=BS_Status.ok {return r;}used=r.count;}\n  else {\n   binding:=bindings[bs_find(origin,bindings)];\n   if origin.role==BS_INLINE {\n    local:=BS_Origin.{kind=BS_LOCAL,root=binding.callee_root,type=origin.type,path=origin.path};r:=bs_insert(staging[..],used,local);if r.status!=BS_Status.ok {return r;}used=r.count;\n   }else {\n    for i:0..<binding.count {r:=bs_insert(staging[..],used,pool[binding.start+i]);if r.status!=BS_Status.ok {return r;}used=r.count;}\n   }\n  }\n }\n return bs_commit(staging[..],used,out);\n}\n"
+  },
+  "genuine_semantic_stub_red": {
+    "path": "/tmp/coax-borrow-origin-A0/stub-red.json",
+    "sha256": "ab2129bf5309af38487b8d3818271931b22374ee341839870ddd14a89167236e",
+    "result": {
+      "argv": [
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+        "test",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+        "--evidence",
+        "/tmp/coax-borrow-origin-A0/stub-red.evidence.json"
+      ],
+      "compiler_sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05",
+      "source_before": "352325a0e3facba5c9402ed43f758860cf8059c30f700dc68bc48dcb535918a1",
+      "source_after": "352325a0e3facba5c9402ed43f758860cf8059c30f700dc68bc48dcb535918a1",
+      "observation": {
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "test",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+          "--evidence",
+          "/tmp/coax-borrow-origin-A0/stub-red.evidence.json"
+        ],
+        "launched_argv": [
+          "/opt/homebrew/opt/python@3.15/bin/python3.15",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+          "--",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "test",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+          "--evidence",
+          "/tmp/coax-borrow-origin-A0/stub-red.evidence.json"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+        "started": true,
+        "pid": 33359,
+        "returncode": 1,
+        "launch_errno": null,
+        "launch_error": null,
+        "elapsed_s": 0.04574062500614673,
+        "timeout": false,
+        "deadline_exhausted": false,
+        "stdout_limit": false,
+        "stderr_limit": false,
+        "output_limit": false,
+        "observed_stdout_bytes": 105,
+        "observed_stderr_bytes": 347,
+        "group_killed": false,
+        "kill_errno": null,
+        "read_errno": null,
+        "stdout_eof": true,
+        "stderr_eof": true,
+        "limits": {
+          "stdout": 1048576,
+          "stderr": 1048576,
+          "total": 1048576
+        },
+        "timeout_s": 120,
+        "deadline": 418537.529230125,
+        "stdout": {
+          "path": "/tmp/coax-borrow-origin-A0/stub-red.stdout.log",
+          "bytes": 105,
+          "sha256": "0ca789000b5cefbfc7a17591a9afd37bac15249994bcc37825c252b0ef69a8c2"
+        },
+        "stderr": {
+          "path": "/tmp/coax-borrow-origin-A0/stub-red.stderr.log",
+          "bytes": 347,
+          "sha256": "f8022b44eab2e423b62cc024452d3838c7fa03e61bd8f1718d694f94d14b9735"
+        }
+      }
+    }
+  },
+  "actual_semantic_stub_red_evidence": {
+    "path": "/tmp/coax-borrow-origin-A0/stub-red.evidence.json",
+    "sha256": "7a7344b5a5b35490360b34694db20b110fc43764f88794b6f049e75d3ba72be4",
+    "result": {
+      "schema": "coax.evidence.v1",
+      "command": "test",
+      "input": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+      "compiler": {
+        "version": "coax0 0.44.0",
+        "sha256": "37732cf6a3fbafec44b4cdc2caae1fbd9a24705b5524db3ef7fca34a13b5ee05"
+      },
+      "target": {
+        "name": "coax-evaluator",
+        "note": "checks run in the compile-time evaluator, not generated code"
+      },
+      "profile": {
+        "arithmetic": "checked",
+        "selected_runtime_arithmetic": "checked",
+        "library": false
+      },
+      "selection": {
+        "only": null,
+        "list": false,
+        "root_only": false
+      },
+      "budgets": {
+        "check_steps": 20000000,
+        "check_slots": 33554432,
+        "check_containers": 2097152,
+        "run_steps": 100000
+      },
+      "sources": [
+        {
+          "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+          "sha256": "352325a0e3facba5c9402ed43f758860cf8059c30f700dc68bc48dcb535918a1"
+        }
+      ],
+      "front_end": "ok",
+      "claims": [
+        {
+          "kind": "#test",
+          "name": "known duplicate origins publish a canonical nonempty union",
+          "outcome": "counterexample",
+          "at": {
+            "file": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/borrow-summary.coax",
+            "line": 21,
+            "col": 2
+          },
+          "cases": 1,
+          "steps": 115,
+          "code": "E0406",
+          "message": "assertion failed"
+        },
+        {
+          "kind": "#authority",
+          "name": "execution coverage",
+          "outcome": "not-checked",
+          "at": null,
+          "cases": 0,
+          "steps": 0,
+          "message": "a check failed first"
+        }
+      ],
+      "mutation": null,
+      "exit_status": 1,
+      "verdict": "counterexample"
+    }
+  },
+  "semantic_stub_source": {
+    "path": "/tmp/coax-borrow-origin-A0/semantic-stub.coax",
+    "sha256": "352325a0e3facba5c9402ed43f758860cf8059c30f700dc68bc48dcb535918a1",
+    "text": "// A0 supplied-fact borrow origins. No declaration/type resolver, escape verdict,\n// checker fixed point or retained-request lifetime policy lives in this module.\n// Input spans are valid/immutable and disjoint from writable public output.\n#authority;\nBS_STATIC :: cast(u8)1; BS_LOCAL :: cast(u8)2; BS_PARAMETER :: cast(u8)3;\nBS_INLINE :: cast(u8)1; BS_DESCRIPTOR :: cast(u8)2;\nBS_FIELD :: cast(u8)1; BS_ELEMENT :: cast(u8)2; BS_DEREFERENCE :: cast(u8)3;\nBS_MAX_SET :: 64; BS_MAX_BINDINGS :: 64; BS_MAX_POOL :: 256; BS_MAX_PATH :: 8; BS_MAX_WORK :: 128;\nBS_Status :: enum u8 {ok;invalid;unknown;capacity;work;}\nBS_Step :: struct {kind:u8;index:int;}\nBS_Path :: struct {count:int;steps:[8]BS_Step;}\nBS_Origin :: struct {kind:u8;root:int;role:u8;type:int;path:BS_Path;}\nBS_Binding :: struct {formal:BS_Origin;actual_type:int;complete:bool;callee_root:int;start:int;count:int;}\nBS_Result :: struct {status:BS_Status;count:int;}\n\n#test \"known duplicate origins publish a canonical nonempty union\" {\n a:=[2]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=7,type=9},BS_Origin.{kind=BS_STATIC,root=7,type=9}];out:[4]BS_Origin;bindings:[1]BS_Binding;\n path_ok:=BS_path_valid(a[0].path);origin_ok:=BS_origin_valid(a[0]);\n joined:=BS_union(a[..],true,a[0..<1],true,out[..]);\n empty:=BS_substitute(a[0..<0],true,bindings[0..<0],a[0..<0],out[..]);\n #assert joined.status==BS_Status.ok && joined.count==1 && out[0].kind==BS_STATIC && out[0].root==7 && out[0].type==9;\n #assert path_ok && origin_ok && empty.status==BS_Status.ok && empty.count==0;\n}\n\n// Genuine semantic RED scaffold; implementations follow the authored checks.\nBS_path_valid :: (path:BS_Path)->bool #export_c {return true;}\nBS_origin_valid :: (origin:BS_Origin)->bool #export_c {return true;}\nBS_union :: (left:[]BS_Origin,left_complete:bool,right:[]BS_Origin,right_complete:bool,out:[]BS_Origin)->BS_Result #export_c {return BS_Result.{status=BS_Status.unknown};}\nBS_substitute :: (summary:[]BS_Origin,summary_complete:bool,bindings:[]BS_Binding,pool:[]BS_Origin,out:[]BS_Origin)->BS_Result #export_c {return BS_Result.{status=BS_Status.unknown};}\n"
+  },
+  "earlier_core_qualification": {
+    "path": "docs/verification/coax-native-semantics-2026-10-31.json",
+    "sha256": "ec78f6bf9036e2590c912b8123066a8034f65166af7a2421ccf07af32c111c15",
+    "scope": "Existing checked compiler and all unchanged core gates are inherited, not rerun. The new module is absent from the actual compiled21-unit closure."
+  },
+  "limits": [
+    "The complete flags and checked type/projection facts are supplied by the integrating producer. Successful set operations do not prove source-level completeness or lifetime safety.",
+    "Inline storage and descriptor pointees remain distinct. One-level substitution preserves caller-relative parameter names and unused incomplete bindings do not enter the result.",
+    "Valid immutable disjoint input/output borrowed storage is a caller obligation; forged pointers, producer authenticity and arbitrary external aliasing are outside this policy.",
+    "Logical inactive fields are canonical; native C padding inside a successful output prefix is unspecified. Refusals and untouched tails are byte-guarded.",
+    "The first mutation run found 41 survivors among 311 sites. Concrete missing oracles were sharpened and two private ordering routines were simplified while preserving their sign/zero contract. The retained final run kills 297 sites; no equivalence waiver is used.",
+    "The provenance rebind reproduces the old fingerprint under the current observed CC/SDK/environment and proves 68 compiled inputs/21 loaded units unchanged. Only the standalone unloaded policy changes compiler fingerprint inputs; the actual compiler bytes remain unchanged. This is a consistency rebind, not a new native execution or full bootstrap.",
+    "No helper/aggregate source diagnostic, checker seed/fixed-point extension, retained request storage, SystemOne lifetime or all-target qualification is claimed. The two following children and original umbrella acceptance remain open."
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "v": "openagents.project-work.v1",
+  "items": [
+    {
+      "slug": "r3a-borrow-origin-policy",
+      "kind": "task",
+      "parent": "r3a-borrow-summary-consumer",
+      "title": "Qualify bounded borrow origins and substitution policy",
+      "size": "S",
+      "labels": [
+        "r3",
+        "usage-audit",
+        "borrows",
+        "compiler"
+      ],
+      "blocked_by": [
+        "r0-native-check-consumers"
+      ],
+      "body": "## Scope\n\nFirst acceptance-complete foundation for the existing borrow-summary umbrella. Implement a small Coax #authority policy for distinct inline-storage and contained-descriptor origins, bounded typed projection paths, sparse origin sets, exact formal-to-actual substitution and explicit unknown/capacity status. The checker remains the sole graph/name/type resolver. This child is a standalone policy foundation; it does not claim new source diagnostics or request-path safety before the following integration children.\n\n## Acceptance\n\n- Check-first independent tables distinguish local storage, static data, caller descriptors, parameter position/path and unused arguments; container storage never becomes its descriptor pointee by accident.\n- Exact projection/depth/pool limits are specified. Invalid IDs, missing substitutions, cycles where relevant and n-1/n/n+1 capacity boundaries cannot silently become a safe empty result. Refusal does not partially publish an admitted result.\n- All new policy authority checks and root mutation pass with zero survivors and no equivalence waivers. A bounded native generated-header harness observes actual record layout, guarded output and sanitizer behavior.\n- Keep runtime effects and semantic policy separate. No native fallback, source rewriting, product ownership annotation or broad feature claim is added.\n- Push code and retained source/producer evidence within two hours; every command stays below fifteen minutes. Preserve the umbrella's helper/aggregate/retained-state/completion/cancellation acceptance for the next children."
+    },
+    {
+      "slug": "r3a-return-borrow-summaries",
+      "kind": "task",
+      "parent": "r3a-borrow-summary-consumer",
+      "title": "Check returned helper and aggregate borrows on the resolved graph",
+      "size": "M",
+      "labels": [
+        "r3",
+        "usage-audit",
+        "borrows",
+        "compiler"
+      ],
+      "blocked_by": [
+        "r3a-borrow-origin-policy"
+      ],
+      "body": "## Scope\n\nIntegrate the qualified origin policy into the existing Coax checker after concrete generic instantiation. Reuse resolved calls, actual/formal ordering, field ordinals and durable declaration identity. Distinguish inline storage from descriptor contents. Track returned views/strings through helpers and nested aggregate construction/copy/assignment, including by-value array parameters. Keep longer-lived caller-state retention and request completion/cancellation in the following child; do not close the umbrella here.\n\n## Acceptance\n\n- Original-source negative fixtures reject identity(local[..]), nested/loaded/generic helper variants and returned records/arrays containing local borrows. A view into a by-value inline-array parameter is not a caller-owned buffer.\n- Positive fixtures preserve explicit caller views/strings and aggregate subviews, copied fixed-array values, and helpers that ignore local scratch and return only caller output. Never union every actual argument merely because a helper reads it.\n- Unknown flow and supported limits are documented honestly. Do not infer ownership from a record's stack storage or invent a safe annotation. Any still-unqualified helper-store path remains explicit for the next child.\n- A real System One caller-owned return API executes native O0/O2 plus ASan/UBSan with independent content/extent/guard expectations.\n- Affected checker authority checks, zero-survivor mutation, deterministic generated seed updates and both bootstrap fixed points pass. Host bridge layout guards pass before native access.\n- Finish and push within two hours, or split a bounded completed part with its missing acceptance still open. Commands stay below fifteen minutes."
+    },
+    {
+      "slug": "r3a-retained-request-borrows",
+      "kind": "task",
+      "parent": "r3a-borrow-summary-consumer",
+      "title": "Enforce retained request borrows through completion and cancellation",
+      "size": "M",
+      "labels": [
+        "r3",
+        "usage-audit",
+        "borrows",
+        "systemone",
+        "lifetimes"
+      ],
+      "blocked_by": [
+        "r3a-return-borrow-summaries"
+      ],
+      "body": "## Scope\n\nComplete the original borrow-summary acceptance with field-sensitive helper write transfers and retained parameter storage in a real System One request path. Preserve legitimate so_post result descriptors that borrow caller out/err through the local SoCall record. Document the actual buffer owner and lifetime through terminal completion, cancellation and all borrowed-result uses.\n\n## Acceptance\n\n- Direct and helper-mediated stores of a short-lived local borrow into longer-lived caller/request state are rejected at the original source; caller-owned retained buffers and their nested descriptors remain valid.\n- so_start/so_step/so_post descriptor transfers are source-bound and precise; the local container's inline storage is not confused with caller-owned result bytes.\n- An offline real transport/host fixture covers success, error, timeout, cancellation, late/invalid completion where supported and idempotent release, with guard bytes and ASan/UBSan. Cancellation does not falsely imply that retained descriptors or borrowed-result uses have ended.\n- Checker/policy authority checks, zero-survivor mutation, generated seed/fixed-point and affected native bridge gates pass without waivers or resource-budget inflation.\n- Unsupported ownership transfer, foreign retention, loop/block regions and broader scratch/epoch storage remain explicit unless implemented and tested. Close the umbrella only after all original negative/positive/request lifetime acceptance passes.\n- Finish and push each bounded implementation within two hours; commands remain below fifteen minutes. Split further if necessary without dropping acceptance."
+    }
+  ]
+}

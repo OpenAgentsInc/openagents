@@ -1,0 +1,299 @@
+// A0 supplied-fact borrow origins. No declaration/type resolver, escape verdict,
+// checker fixed point or retained-request lifetime policy lives in this module.
+// Input spans are valid/immutable and disjoint from writable public output.
+#authority;
+BS_STATIC :: cast(u8)1; BS_LOCAL :: cast(u8)2; BS_PARAMETER :: cast(u8)3;
+BS_INLINE :: cast(u8)1; BS_DESCRIPTOR :: cast(u8)2;
+BS_FIELD :: cast(u8)1; BS_ELEMENT :: cast(u8)2; BS_DEREFERENCE :: cast(u8)3;
+BS_MAX_SET :: 64; BS_MAX_BINDINGS :: 64; BS_MAX_POOL :: 256; BS_MAX_PATH :: 8; BS_MAX_WORK :: 128;
+BS_Status :: enum u8 {ok;invalid;unknown;capacity;work;}
+BS_Step :: struct {kind:u8;index:int;}
+BS_Path :: struct {count:int;steps:[8]BS_Step;}
+BS_Origin :: struct {kind:u8;root:int;role:u8;type:int;path:BS_Path;}
+BS_Binding :: struct {formal:BS_Origin;actual_type:int;complete:bool;callee_root:int;start:int;count:int;}
+BS_Result :: struct {status:BS_Status;count:int;}
+
+#test "known duplicate origins publish a canonical nonempty union" {
+ a:=[2]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=7,type=9},BS_Origin.{kind=BS_STATIC,root=7,type=9}];out:[4]BS_Origin;bindings:[1]BS_Binding;
+ path_ok:=BS_path_valid(a[0].path);origin_ok:=BS_origin_valid(a[0]);
+ joined:=BS_union(a[..],true,a[0..<1],true,out[..]);
+ empty:=BS_substitute(a[0..<0],true,bindings[0..<0],a[0..<0],out[..]);
+ #assert joined.status==BS_Status.ok && joined.count==1 && out[0].kind==BS_STATIC && out[0].root==7 && out[0].type==9;
+ #assert path_ok && origin_ok && empty.status==BS_Status.ok && empty.count==0;
+}
+
+#forall "logical path vocabulary and depth are bounded" depth:0..<10,kind:0..<5,index:-1..<2 {
+ p:BS_Path;p.count=depth;for i:0..<8 {if i<depth {p.steps[i]=BS_Step.{kind=cast(u8)kind,index=index};}}
+ want:=depth<=8 && (depth==0 || ((kind==1 || kind==2) && index>=0) || (kind==3 && index==0));
+ #assert BS_path_valid(p)==want;
+}
+#forall "inactive logical path fields must be zero" position:0..<8,field:bool {
+ p:BS_Path;if field {p.steps[position].kind=BS_FIELD;}else {p.steps[position].index=1;}
+ #assert !BS_path_valid(p);
+}
+#test "path extrema and malformed counts refuse" {
+ p:BS_Path;p.count=-1;#assert !BS_path_valid(p);p.count=1;p.steps[0]=BS_Step.{kind=BS_FIELD,index=2147483647};#assert BS_path_valid(p);
+ p.steps[0].index=2147483648;#assert !BS_path_valid(p);p.steps[0].index=0;p.steps[0].kind=255;#assert !BS_path_valid(p);
+}
+#forall "concrete backing and relative query roles are distinct" kind:0..<5,role:0..<4,root:0..<3 {
+ o:=BS_Origin.{kind=cast(u8)kind,root=root,role=cast(u8)role,type=1};
+ want:=((kind==1 || kind==2) && root>=1 && role==0) || (kind==3 && (role==1 || role==2));
+ #assert BS_origin_valid(o)==want;
+}
+#test "origin IDs types and dereference roles are exact" {
+ o:=BS_Origin.{kind=BS_STATIC,root=2147483647,type=2147483647};#assert BS_origin_valid(o);
+ o.root=2147483648;#assert !BS_origin_valid(o);o.root=-1;#assert !BS_origin_valid(o);o.root=1;o.type=0;#assert !BS_origin_valid(o);o.type=2147483648;#assert !BS_origin_valid(o);
+ o=BS_Origin.{kind=BS_PARAMETER,root=63,role=BS_DESCRIPTOR,type=1,path=BS_Path.{count=1}};o.path.steps[0]=BS_Step.{kind=BS_DEREFERENCE};#assert BS_origin_valid(o);
+ o.root=64;#assert !BS_origin_valid(o);o.root=-1;#assert !BS_origin_valid(o);o.root=0;o.role=BS_INLINE;#assert !BS_origin_valid(o);
+ o.kind=BS_LOCAL;o.role=0;o.root=1;#assert !BS_origin_valid(o);
+}
+#forall "canonical union order observes every origin component" component:0..<8,reverse:bool {
+ a:=BS_Origin.{kind=BS_STATIC,root=1,type=1};b:=a;
+ if component==0 {b.kind=BS_LOCAL;}else if component==1 {b.root=2;}else if component==2 {a.kind=BS_PARAMETER;a.root=0;a.role=BS_INLINE;b=a;b.role=BS_DESCRIPTOR;}
+ else if component==3 {b.type=2;}else if component==4 {b.path.count=1;b.path.steps[0]=BS_Step.{kind=BS_FIELD};}
+ else {a.path.count=ifx component==7 then 8 else 1;for i:0..<a.path.count {a.path.steps[i]=BS_Step.{kind=BS_FIELD};}b=a;if component==5 {b.path.steps[0].kind=BS_ELEMENT;}else if component==6 {b.path.steps[0].index=1;}else {b.path.steps[7].index=1;}}
+ values:=[3]BS_Origin.[ifx reverse then b else a,ifx reverse then a else b,a];out:[3]BS_Origin;out[2]=BS_Origin.{kind=BS_LOCAL,root=999,type=99};r:=BS_union(values[..],true,values[0..<0],true,out[..]);
+ #assert r.status==BS_Status.ok && r.count==2 && out[2].root==999;
+ #assert out[0].kind==a.kind && out[0].root==a.root && out[0].role==a.role && out[0].type==a.type && out[0].path.count==a.path.count;
+ #assert out[1].kind==b.kind && out[1].root==b.root && out[1].role==b.role && out[1].type==b.type && out[1].path.count==b.path.count;
+ for i:0..<8 {#assert out[0].path.steps[i].kind==a.path.steps[i].kind && out[0].path.steps[i].index==a.path.steps[i].index && out[1].path.steps[i].kind==b.path.steps[i].kind && out[1].path.steps[i].index==b.path.steps[i].index;}
+}
+#forall "complete empty sets differ from unresolved facts" left_known:bool,right_known:bool {
+ a:[1]BS_Origin;out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=91,type=7}];r:=BS_union(a[0..<0],left_known,a[0..<0],right_known,out[..]);
+ #assert r.status==(ifx left_known && right_known then BS_Status.ok else BS_Status.unknown) && r.count==0 && out[0].root==91;
+}
+#test "union deduplicates at the full set boundary and refuses excess output atomically" {
+ left:[64]BS_Origin;right:[64]BS_Origin;out:[64]BS_Origin;
+ for i:0..<64 {left[i]=BS_Origin.{kind=BS_STATIC,root=64-i,type=1};right[i]=left[i];out[i]=BS_Origin.{kind=BS_LOCAL,root=900,type=1};}
+ r:=BS_union(left[..],true,right[..],true,out[..]);#assert r.status==BS_Status.ok && r.count==64;for i:0..<64 {#assert out[i].root==i+1 && out[i].kind==BS_STATIC;}
+ right[0].root=65;for i:0..<64 {out[i].root=900;}
+ r=BS_union(left[..],true,right[0..<1],true,out[..]);#assert r.status==BS_Status.capacity && r.count==0;for i:0..<64 {#assert out[i].root==900;}
+ r=BS_union(left[0..<1],true,right[0..<0],true,out[0..<0]);#assert r.status==BS_Status.capacity && r.count==0;
+ too_many:[65]BS_Origin;r=BS_union(too_many[..],false,right[0..<0],false,out[..]);#assert r.status==BS_Status.invalid && r.count==0;
+ r=BS_union(left[0..<0],false,right[0..<0],false,too_many[..]);#assert r.status==BS_Status.invalid;
+}
+#test "exact nested descriptor projection excludes local and unknown unused actuals" {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=7,path=BS_Path.{count=2}};p.path.steps[0]=BS_Step.{kind=BS_FIELD,index=0};p.path.steps[1]=BS_Step.{kind=BS_FIELD,index=1};other:=p;other.path.steps[0].index=2;unused:=p;unused.root=1;
+ summary:=[2]BS_Origin.[p,BS_Origin.{kind=BS_STATIC,root=5,type=7}];pool:=[2]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=2,type=7},BS_Origin.{kind=BS_LOCAL,root=44,type=7}];
+ bindings:=[3]BS_Binding.[BS_Binding.{formal=p,actual_type=7,complete=true,count=1},BS_Binding.{formal=other,actual_type=7,complete=true,start=1,count=1},BS_Binding.{formal=unused,actual_type=7}];out:[3]BS_Origin;out[2].root=999;
+ r:=BS_substitute(summary[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.ok && r.count==2 && out[0].kind==BS_STATIC && out[0].root==2 && out[1].root==5 && out[2].root==999;
+}
+#test "by-value inline storage is callee local and copied descriptors retain their local pointee" {
+ owned:=BS_Origin.{kind=BS_PARAMETER,root=0,role=BS_INLINE,type=7,path=BS_Path.{count=1}};owned.path.steps[0]=BS_Step.{kind=BS_FIELD,index=3};desc:=owned;desc.role=BS_DESCRIPTOR;desc.path.steps[0].index=4;
+ refs:=[2]BS_Origin.[owned,desc];pool:=[2]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=201,type=7},BS_Origin.{kind=BS_STATIC,root=500,type=7}];bindings:=[2]BS_Binding.[BS_Binding.{formal=owned,actual_type=7,complete=true,callee_root=100},BS_Binding.{formal=desc,actual_type=7,complete=true,count=1}];out:[2]BS_Origin;
+ r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.ok && r.count==2 && out[0].kind==BS_LOCAL && out[0].root==100 && out[0].role==0 && out[0].type==7 && out[0].path.steps[0].index==3 && out[1].root==201;
+ bindings[0].start=1;bindings[0].count=1;out[0].root=901;r=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid && r.count==0 && out[0].root==901;
+}
+#test "substitution enters the caller namespace once even when ordinals collide" {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};caller:=p;caller.root=1;refs:=[1]BS_Origin.[p];pool:=[2]BS_Origin.[caller,BS_Origin.{kind=BS_LOCAL,root=88,type=1}];
+ bindings:=[2]BS_Binding.[BS_Binding.{formal=p,actual_type=1,complete=true,count=1},BS_Binding.{formal=caller,actual_type=1,complete=true,start=1,count=1}];out:[1]BS_Origin;
+ r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.ok && r.count==1 && out[0].kind==BS_PARAMETER && out[0].root==1 && out[0].role==BS_DESCRIPTOR;
+}
+#test "required unknown missing and intentionally empty descriptor facts publish distinctly" {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};refs:=[2]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=1,type=1},p];pool:[1]BS_Origin;bindings:=[1]BS_Binding.[BS_Binding.{formal=p,actual_type=1}];out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=777,type=1}];
+ r:=BS_substitute(refs[..],true,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.unknown && r.count==0 && out[0].root==777;
+ r=BS_substitute(refs[..],true,bindings[0..<0],pool[0..<0],out[..]);#assert r.status==BS_Status.unknown && out[0].root==777;
+ bindings[0].complete=true;r=BS_substitute(refs[1..<2],true,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.ok && r.count==0 && out[0].root==777;
+ r=BS_substitute(refs[1..<2],false,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.unknown && out[0].root==777;
+}
+#forall "malformed supplied binding facts dominate unknown" choice:0..<16 {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};refs:=[1]BS_Origin.[p];pool:=[1]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=1,type=1}];bindings:=[1]BS_Binding.[BS_Binding.{formal=p,actual_type=1,complete=true,count=1}];
+ if choice==0 {bindings[0].formal.kind=0;}else if choice==1 {bindings[0].actual_type=2;}else if choice==2 {bindings[0].callee_root=1;}else if choice==3 {bindings[0].start=-1;}else if choice==4 {bindings[0].count=-1;}else if choice==5 {bindings[0].start=2;}else if choice==6 {bindings[0].count=65;}else if choice==7 {bindings[0].complete=false;}
+ else if choice==8 {pool[0].type=2;}else if choice==9 {pool[0].kind=0;}else if choice==10 {bindings[0].formal.type=2;bindings[0].actual_type=2;pool[0].type=2;}
+ else {bindings[0].formal.role=BS_INLINE;bindings[0].count=0;bindings[0].callee_root=1;if choice==11 {bindings[0].complete=false;}else if choice==12 {bindings[0].callee_root=0;}else if choice==13 {bindings[0].callee_root=2147483648;}else if choice==14 {bindings[0].start=1;}else {bindings[0].count=1;}}
+ out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=777,type=1}];r:=BS_substitute(refs[..],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid && r.count==0 && out[0].root==777;
+}
+#test "unused malformed facts and duplicate formal slots refuse before unknown" {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};refs:[1]BS_Origin;pool:=[1]BS_Origin.[BS_Origin.{}];bindings:[2]BS_Binding;out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=777,type=1}];
+ r:=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[..],out[..]);#assert r.status==BS_Status.invalid && out[0].root==777;
+ pool[0]=BS_Origin.{kind=BS_STATIC,root=1,type=1};bindings[0]=BS_Binding.{formal=p,actual_type=1,complete=true};bindings[1]=bindings[0];
+ r=BS_substitute(refs[0..<0],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid;
+ bindings[1].formal.type=2;bindings[1].actual_type=2;r=BS_substitute(refs[0..<0],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid;
+ bindings[1].formal.root=1;bindings[1].actual_type=3;r=BS_substitute(refs[0..<0],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid;
+}
+#forall "duplicate expansion work has exact 127 128 129 boundaries" extra:0..<3 {
+ pool:[64]BS_Origin;for i:0..<64 {pool[i]=BS_Origin.{kind=BS_STATIC,root=i+1,type=1};}
+ refs:[3]BS_Origin;bindings:[3]BS_Binding;for i:0..<3 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true,count=ifx i==0 then 64 else ifx i==1 then 63 else extra};}
+ out:[64]BS_Origin;for i:0..<64 {out[i]=BS_Origin.{kind=BS_LOCAL,root=900,type=1};}
+ r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);
+ if extra<2 {#assert r.status==BS_Status.ok && r.count==64;for i:0..<64 {#assert out[i].kind==BS_STATIC && out[i].root==i+1;}}
+ else {#assert r.status==BS_Status.work && r.count==0;for i:0..<64 {#assert out[i].root==900;}}
+}
+#test "late missing input precedes expansion work and capacity without partial publication" {
+ pool:=[1]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=1,type=1}];large:[64]BS_Origin;for i:0..<64 {large[i]=pool[0];}
+ refs:[4]BS_Origin;bindings:[4]BS_Binding;for i:0..<4 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true,count=ifx i<2 then 64 else ifx i==2 then 1 else 0};}
+ out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=900,type=1}];r:=BS_substitute(refs[..],true,bindings[0..<3],large[..],out[..]);#assert r.status==BS_Status.unknown && r.count==0 && out[0].root==900;
+ bindings[3].complete=false;r=BS_substitute(refs[..],true,bindings[..],large[..],out[..]);#assert r.status==BS_Status.unknown && out[0].root==900;
+ bindings[3].complete=true;r=BS_substitute(refs[..],false,bindings[..],large[..],out[..]);#assert r.status==BS_Status.unknown;
+ r=BS_substitute(refs[..],true,bindings[..],large[..],out[..]);#assert r.status==BS_Status.work && out[0].root==900;
+}
+#test "substitution capacity is unique and late refusal preserves the complete destination" {
+ pool:[65]BS_Origin;for i:0..<65 {pool[i]=BS_Origin.{kind=BS_STATIC,root=i+1,type=1};}
+ refs:[2]BS_Origin;bindings:[2]BS_Binding;for i:0..<2 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true,start=ifx i==0 then 0 else 64,count=ifx i==0 then 64 else 1};}
+ out:[64]BS_Origin;for i:0..<64 {out[i]=BS_Origin.{kind=BS_LOCAL,root=900,type=1};}
+ r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.capacity && r.count==0;for i:0..<64 {#assert out[i].root==900;}
+ r=BS_substitute(refs[0..<1],true,bindings[0..<1],pool[..],out[0..<63]);#assert r.status==BS_Status.capacity && r.count==0 && out[0].root==900;
+}
+#test "all admitted view bounds are exact and unknown never hides overcapacity metadata" {
+ refs:[65]BS_Origin;bindings:[65]BS_Binding;pool:[257]BS_Origin;out:[65]BS_Origin;out[0].root=900;
+ r:=BS_substitute(refs[..],false,bindings[0..<0],pool[0..<0],out[0..<1]);#assert r.status==BS_Status.invalid && out[0].root==900;
+ r=BS_substitute(refs[0..<0],false,bindings[..],pool[0..<0],out[0..<1]);#assert r.status==BS_Status.invalid;
+ r=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[..],out[0..<1]);#assert r.status==BS_Status.invalid;
+ r=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[0..<0],out[..]);#assert r.status==BS_Status.invalid;
+ for i:0..<256 {pool[i]=BS_Origin.{kind=BS_STATIC,root=i+1,type=1};}
+ for i:0..<64 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true};}
+ bindings[63].start=192;bindings[63].count=64;r=BS_substitute(refs[63..<64],true,bindings[0..<64],pool[0..<256],out[0..<64]);#assert r.status==BS_Status.ok && r.count==64 && out[0].root==193 && out[63].root==256;
+ pool[255].kind=0;r=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[0..<256],out[0..<1]);#assert r.status==BS_Status.invalid;
+}
+
+#test "valid excess inputs refuse even when every origin is duplicated" {
+ many:[65]BS_Origin;out:[2]BS_Origin;for i:0..<65 {many[i]=BS_Origin.{kind=BS_STATIC,root=1,type=1};}out[0].root=900;
+ r:=BS_union(many[..],false,many[0..<0],false,out[..]);#assert r.status==BS_Status.invalid && out[0].root==900;
+ r=BS_union(many[0..<0],false,many[..],false,out[..]);#assert r.status==BS_Status.invalid && out[0].root==900;
+ many[1].root=2;r=BS_union(many[0..<0],true,many[0..<2],true,out[..]);#assert r.status==BS_Status.ok && r.count==2 && out[0].root==1 && out[1].root==2;
+}
+#test "a shorter formal prefix does not bind a nested descriptor projection" {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};short:=p;p.path.count=1;p.path.steps[0]=BS_Step.{kind=BS_FIELD};
+ refs:=[1]BS_Origin.[p];pool:=[1]BS_Origin.[BS_Origin.{kind=BS_STATIC,root=1,type=1}];bindings:=[1]BS_Binding.[BS_Binding.{formal=short,actual_type=1,complete=true,count=1}];out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=900,type=1}];
+ r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.unknown && r.count==0 && out[0].root==900;
+}
+#forall "inline storage accepts both exact local identity extrema" high:bool {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_INLINE,type=1};refs:=[1]BS_Origin.[p];bindings:=[1]BS_Binding.[BS_Binding.{formal=p,actual_type=1,complete=true,callee_root=ifx high then 2147483647 else 1}];pool:[1]BS_Origin;out:[1]BS_Origin;
+ r:=BS_substitute(refs[..],true,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.ok && r.count==1 && out[0].kind==BS_LOCAL && out[0].root==bindings[0].callee_root;
+}
+#test "well formed nonparameter formals and overlong descriptor spans are invalid" {
+ p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1};refs:[1]BS_Origin;pool:[65]BS_Origin;for i:0..<65 {pool[i]=BS_Origin.{kind=BS_STATIC,root=1,type=1};}out:=[1]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=900,type=1}];
+ bindings:=[1]BS_Binding.[BS_Binding.{formal=pool[0],actual_type=1,complete=true}];r:=BS_substitute(refs[0..<0],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid && out[0].root==900;
+ bindings[0]=BS_Binding.{formal=p,actual_type=1,complete=true,count=65};r=BS_substitute(refs[0..<0],false,bindings[..],pool[..],out[..]);#assert r.status==BS_Status.invalid && out[0].root==900;
+ bindings[0].start=1;bindings[0].count=1;r=BS_substitute(refs[0..<0],false,bindings[..],pool[0..<1],out[..]);#assert r.status==BS_Status.invalid && out[0].root==900;
+}
+#test "empty output is valid and complete excessive metadata remains invalid" {
+ refs:[65]BS_Origin;bindings:[65]BS_Binding;pool:[257]BS_Origin;out:[1]BS_Origin;out[0].root=900;
+ for i:0..<257 {pool[i]=BS_Origin.{kind=BS_STATIC,root=1,type=1};}
+ for i:0..<65 {refs[i]=pool[0];p:=BS_Origin.{kind=BS_PARAMETER,role=BS_DESCRIPTOR,type=1,path=BS_Path.{count=1}};p.path.steps[0]=BS_Step.{kind=BS_FIELD,index=i};bindings[i]=BS_Binding.{formal=p,actual_type=1,complete=true};}
+ r:=BS_substitute(refs[0..<0],true,bindings[0..<0],pool[0..<0],out[0..<0]);#assert r.status==BS_Status.ok && r.count==0 && out[0].root==900;
+ r=BS_substitute(refs[..],false,bindings[0..<0],pool[0..<0],out[..]);#assert r.status==BS_Status.invalid && out[0].root==900;
+ r=BS_substitute(refs[0..<0],false,bindings[..],pool[0..<0],out[..]);#assert r.status==BS_Status.invalid && out[0].root==900;
+ r=BS_substitute(refs[0..<0],false,bindings[0..<0],pool[..],out[..]);#assert r.status==BS_Status.invalid && out[0].root==900;
+}
+#forall "concrete and inline leaves each consume one candidate unit" concrete:bool,last:63..<65 {
+ pool:[64]BS_Origin;for i:0..<64 {pool[i]=BS_Origin.{kind=BS_STATIC,root=1,type=1};}
+ refs:[3]BS_Origin;bindings:[3]BS_Binding;for i:0..<3 {refs[i]=BS_Origin.{kind=BS_PARAMETER,root=i,role=BS_DESCRIPTOR,type=1};bindings[i]=BS_Binding.{formal=refs[i],actual_type=1,complete=true,count=ifx i==1 then 64 else last};}
+ refs[0].role=BS_INLINE;bindings[0]=BS_Binding.{formal=refs[0],actual_type=1,complete=true,callee_root=1};if concrete {refs[0]=pool[0];}
+ out:=[2]BS_Origin.[BS_Origin.{kind=BS_LOCAL,root=900,type=1},BS_Origin.{kind=BS_LOCAL,root=901,type=1}];r:=BS_substitute(refs[..],true,bindings[..],pool[..],out[..]);
+ if last==63 {#assert r.status==BS_Status.ok && r.count==(ifx concrete then 1 else 2) && out[0].kind==BS_STATIC && out[0].root==1;if !concrete {#assert out[1].kind==BS_LOCAL && out[1].root==1;}}
+ else {#assert r.status==BS_Status.work && r.count==0 && out[0].root==900 && out[1].root==901;}
+}
+
+// Logical inactive step fields are canonical zeros; C padding is unspecified.
+BS_path_valid :: (path:BS_Path)->bool #export_c {
+ if path.count<0 || path.count>BS_MAX_PATH {return false;}
+ for i:0..<BS_MAX_PATH {
+  step:=path.steps[i];
+  if i>=path.count {if step.kind!=0 || step.index!=0 {return false;}}
+  else if step.kind==BS_FIELD || step.kind==BS_ELEMENT {if step.index<0 || step.index>2147483647 {return false;}}
+  else if step.kind!=BS_DEREFERENCE || step.index!=0 {return false;}
+ }
+ return true;
+}
+BS_origin_valid :: (origin:BS_Origin)->bool #export_c {
+ if origin.type<1 || origin.type>2147483647 || !BS_path_valid(origin.path) {return false;}
+ if origin.kind==BS_STATIC || origin.kind==BS_LOCAL {if origin.root<1 || origin.root>2147483647 || origin.role!=0 {return false;}}
+ else if origin.kind==BS_PARAMETER {if origin.root<0 || origin.root>=BS_MAX_BINDINGS || (origin.role!=BS_INLINE && origin.role!=BS_DESCRIPTOR) {return false;}}
+ else {return false;}
+ for i:0..<origin.path.count {if origin.path.steps[i].kind==BS_DEREFERENCE && (origin.kind!=BS_PARAMETER || origin.role!=BS_DESCRIPTOR) {return false;}}
+ return true;
+}
+bs_list_valid :: (items:[]BS_Origin,limit:int)->bool {
+ if items.count<0 || items.count>limit {return false;}
+ for item:items {if !BS_origin_valid(item) {return false;}}
+ return true;
+}
+bs_path_equal :: (a:BS_Path,b:BS_Path)->bool {
+ if a.count!=b.count {return false;}
+ for i:0..<a.count {if a.steps[i].kind!=b.steps[i].kind || a.steps[i].index!=b.steps[i].index {return false;}}
+ return true;
+}
+bs_slot_equal :: (a:BS_Origin,b:BS_Origin)->bool {return a.root==b.root && a.role==b.role && bs_path_equal(a.path,b.path);}
+bs_compare :: (a:BS_Origin,b:BS_Origin)->int {
+ if a.kind!=b.kind {return cast(int)a.kind-cast(int)b.kind;}
+ if a.root!=b.root {return cast(int)a.root-cast(int)b.root;}
+ if a.role!=b.role {return cast(int)a.role-cast(int)b.role;}
+ if a.type!=b.type {return cast(int)a.type-cast(int)b.type;}
+ if a.path.count!=b.path.count {return cast(int)a.path.count-cast(int)b.path.count;}
+ for i:0..<a.path.count {
+  if a.path.steps[i].kind!=b.path.steps[i].kind {return cast(int)a.path.steps[i].kind-cast(int)b.path.steps[i].kind;}
+  if a.path.steps[i].index!=b.path.steps[i].index {return cast(int)a.path.steps[i].index-cast(int)b.path.steps[i].index;}
+ }
+ return 0;
+}
+// This writes private staging only. No public output is touched until commit.
+bs_insert :: (staging:[]BS_Origin,used:int,value:BS_Origin)->BS_Result {
+ at:=used;
+ for i:0..<used {comparison:=bs_compare(staging[i],value);if comparison<0 {continue;}if comparison==0 {return BS_Result.{count=used};}at=i;break;}
+ if used>=BS_MAX_SET {return BS_Result.{status=BS_Status.capacity};}
+ i:=used;while i>at {staging[i]=staging[i-1];i-=1;}
+ staging[at]=value;return BS_Result.{count=used+1};
+}
+bs_commit :: (staging:[]BS_Origin,used:int,out:[]BS_Origin)->BS_Result {
+ if used>out.count {return BS_Result.{status=BS_Status.capacity};}
+ for i:0..<used {out[i]=staging[i];}
+ return BS_Result.{count=used};
+}
+BS_union :: (left:[]BS_Origin,left_complete:bool,right:[]BS_Origin,right_complete:bool,out:[]BS_Origin)->BS_Result #export_c {
+ if out.count<0 || out.count>BS_MAX_SET || !bs_list_valid(left,BS_MAX_SET) || !bs_list_valid(right,BS_MAX_SET) {return BS_Result.{status=BS_Status.invalid};}
+ if !left_complete || !right_complete {return BS_Result.{status=BS_Status.unknown};}
+ staging:[64]BS_Origin;used:=0;
+ for item:left {r:=bs_insert(staging[..],used,item);if r.status!=BS_Status.ok {return r;}used=r.count;}
+ for item:right {r:=bs_insert(staging[..],used,item);if r.status!=BS_Status.ok {return r;}used=r.count;}
+ return bs_commit(staging[..],used,out);
+}
+bs_binding_valid :: (binding:BS_Binding,pool:[]BS_Origin)->bool {
+ formal:=binding.formal;
+ if !BS_origin_valid(formal) || formal.kind!=BS_PARAMETER || binding.actual_type!=formal.type {return false;}
+ if formal.role==BS_INLINE {return binding.complete && binding.callee_root>=1 && binding.callee_root<=2147483647 && binding.start==0 && binding.count==0;}
+ if binding.callee_root!=0 {return false;}
+ if !binding.complete {return binding.start==0 && binding.count==0;}
+ if binding.start<0 || binding.start>pool.count || binding.count<0 || binding.count>BS_MAX_SET || binding.count>pool.count-binding.start {return false;}
+ for i:0..<binding.count {if pool[binding.start+i].type!=formal.type {return false;}}
+ return true;
+}
+bs_find :: (origin:BS_Origin,bindings:[]BS_Binding)->int {
+ for i:0..<bindings.count {if bs_slot_equal(origin,bindings[i].formal) {return i;}}
+ return -1;
+}
+bs_substitution_valid :: (summary:[]BS_Origin,bindings:[]BS_Binding,pool:[]BS_Origin,out_count:int)->bool {
+ if out_count<0 || out_count>BS_MAX_SET || bindings.count<0 || bindings.count>BS_MAX_BINDINGS || !bs_list_valid(summary,BS_MAX_SET) || !bs_list_valid(pool,BS_MAX_POOL) {return false;}
+ for i:0..<bindings.count {
+  if !bs_binding_valid(bindings[i],pool) {return false;}
+  for j:0..<i {if bs_slot_equal(bindings[i].formal,bindings[j].formal) {return false;}}
+ }
+ for origin:summary {if origin.kind==BS_PARAMETER {index:=bs_find(origin,bindings);if index>=0 && origin.type!=bindings[index].formal.type {return false;}}}
+ return true;
+}
+BS_substitute :: (summary:[]BS_Origin,summary_complete:bool,bindings:[]BS_Binding,pool:[]BS_Origin,out:[]BS_Origin)->BS_Result #export_c {
+ if !bs_substitution_valid(summary,bindings,pool,out.count) {return BS_Result.{status=BS_Status.invalid};}
+ // Inspect every required key before work/capacity refusal. Unknown is not empty.
+ missing:=!summary_complete;candidates:=0;
+ for origin:summary {
+  if origin.kind==BS_PARAMETER {
+   index:=bs_find(origin,bindings);
+   if index<0 {missing=true;}else {binding:=bindings[index];if !binding.complete {missing=true;}else {candidates+=ifx origin.role==BS_INLINE then 1 else binding.count;}}
+  }else {candidates+=1;}
+ }
+ if missing {return BS_Result.{status=BS_Status.unknown};}
+ if candidates>BS_MAX_WORK {return BS_Result.{status=BS_Status.work};}
+ staging:[64]BS_Origin;used:=0;
+ for origin:summary {
+  if origin.kind!=BS_PARAMETER {r:=bs_insert(staging[..],used,origin);if r.status!=BS_Status.ok {return r;}used=r.count;}
+  else {
+   binding:=bindings[bs_find(origin,bindings)];
+   if origin.role==BS_INLINE {
+    local:=BS_Origin.{kind=BS_LOCAL,root=binding.callee_root,type=origin.type,path=origin.path};r:=bs_insert(staging[..],used,local);if r.status!=BS_Status.ok {return r;}used=r.count;
+   }else {
+    for i:0..<binding.count {r:=bs_insert(staging[..],used,pool[binding.start+i]);if r.status!=BS_Status.ok {return r;}used=r.count;}
+   }
+  }
+ }
+ return bs_commit(staging[..],used,out);
+}

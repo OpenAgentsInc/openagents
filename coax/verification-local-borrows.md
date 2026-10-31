@@ -56,3 +56,10 @@ Book navigation/link checks passed. No unrelated product suite was rerun.
 The valid `tests/pass/borrow_returns.coax` fixture emits byte-identical checked
 C with the trusted and final compilers: 11,288 bytes, SHA-256
 `63d6a58f99986b344c98f03c0dc7db7ba5dc40db1529641410d6b14d0246bc01`.
+
+## Origin policy foundation
+
+The standalone [borrow-origin policy](verification-borrow-origins.md) provides
+bounded supplied-fact set and substitution operations for the next checker
+slice. Helper/aggregate return integration and retained request lifetimes
+remain open; the current diagnostic limits above still apply.
