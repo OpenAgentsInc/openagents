@@ -753,7 +753,16 @@ initialization.
 ### 10.1.1 Implemented checks
 
 Checks are written before the code they check, and run in the same evaluator
-as `#run`. They are never part of the generated program.
+as `#run`. They are never part of the ordinary generated product.
+
+Since 0.39.0, `coax checks-c FILE [--only SUBSTR] [-o checks.c]` can separately
+emit admitted checked zero-argument `#test` bodies and their resolved callees
+as verification-only C11. It preserves original check identities through a
+versioned C table and emits no product `main`. Normal unfiltered authority
+validation remains mandatory. Selected `#forall`, wrapping arithmetic and
+unsupported effects or borrow forms refuse. Emission does not execute checks
+or change the evaluator-only `coax.evidence.v1` contract; the bounded scope and
+ABI are specified in [the native-check emission contract](verification-differential.md#checked-ast-native-check-c-emission).
 
 ```jai
 #authority;

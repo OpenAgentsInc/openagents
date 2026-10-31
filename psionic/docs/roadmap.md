@@ -27,11 +27,16 @@ own qualification gates.
 [Chapter 167](../book/ch167-imitation-before-robotics-scale.md) opens the robotics
 branch with an owned simulated imitation learner and a bounded original NVIDIA
 SingleArm data excerpt. Its six held-out successes qualify the declared gantry
-task. Panda control semantics, GR00T inference and richer simulated control
-remain later work. Chapters 168–169 build on Coax's planned units and frames,
-typed clocks, bounded control, replay, robot-model import, supervision and
-fault scenarios (roadmap R12–R19) and on chapters 107, 109 and 111; real
-hardware stays a separately authorized later integration.
+task. [Chapter 168](../book/ch168-execute-a-groot-policy.md) now delivers the
+original `GR00T-N1.7-LIBERO/libero_10` Metal policy profile for one prepared
+140-token observation and all four flow steps. Its
+[retained record](../../docs/verification/psionic-ch113-2026-10-31.md) qualifies
+the action endpoints while preserving the failed global hidden-trace diagnostic.
+Broader GR00T inference profiles, GR00T training, Panda control semantics and
+closed-loop simulation remain work. Chapter 169's integration builds on Coax's
+planned units and frames, typed clocks, bounded control, replay, robot-model
+import, supervision and fault scenarios (roadmap R12–R19) and on chapters 107,
+109 and 111; real hardware stays a separately authorized later integration.
 
 The [device delivery sequence](../book/PLAN.md#gpt-oss-device-delivery-order)
 keeps the remaining target, scheduling and throughput work separate from those

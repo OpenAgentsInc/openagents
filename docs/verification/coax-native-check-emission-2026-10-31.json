@@ -1,0 +1,3586 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-31",
+  "issue": "r0-native-check-emission",
+  "issue_alias": "2b93",
+  "started_utc": "2026-10-31 15:24 UTC",
+  "deadline_utc": "2026-10-31 17:24 UTC",
+  "outcome": "passed",
+  "scope": "Compiler-owned verification-only C11 emission from original checked zero-argument authored #test procedures and their admitted resolved call closure. Actual C-table executions below qualify this emitter; the CLI does not itself execute checks or issue native execution evidence.",
+  "implementation_commit": "26a9355c10e1471454f8c18b3da5cf788f70daef",
+  "compiler_provenance": [
+    "coax-provenance-v1",
+    "9f27926b00838a244d47ada6e9198e66ae3ced299b33bc036277517b34a9b982",
+    "08776e5c5d6f00fa2289531f7c566ebc06d76d7a0c9c704b7e01e4dff2723df8",
+    "cab73cc13da92063023d96274b063f455f71edf7ab0141950a29d87e30dad623"
+  ],
+  "source_sha256": {
+    "coax/src/main.cpp": "7e79dc0a449971c9986be3ea7f012746d61ef119b2e5de5b2b49228244320157",
+    "coax/src/native_checks.cpp": "2379e2ee2c3a7c57ee91d3706d2bc059c34b001f8133633c5e235b01cd70c39c",
+    "coax/src/emit_c.cpp": "5f58717314a3eb36f387bd120fc7a9a6ff4570b1ca9d8a04dc96f014241a8a41",
+    "coax/src/coax.h": "1dc5f318356f04f218f4cf3f703767402f27e1fb084fba82b81eee78cc5fc6b0",
+    "coax/src/errors.cpp": "7e1177d053a4f40dc3a63e83871f8e0be5b398a1a94e2e3394ac7ec1931a0c6b",
+    "coax/lib/compiler/native-checks.coax": "861ce19d07d4d1488fff85dfbdef4ff9527f881fc4a84af35d4c74e16705cf2d",
+    "coax/lib/compiler/profiles.coax": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba",
+    "coax/lib/compiler/compiler.coax": "9821c010c093be9bc4a96f4b44add27a8718bbd5cf06f2cdcf85c16fc74f4fe2",
+    "coax/bootstrap-build.sh": "30b9b1dedd9fa27a1bc0757af798acd0761d2e342e2f3d527f4da996bffa26a9",
+    "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+    "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+    "coax/release.coax": "b4d427145dd9eceee6f0c7d000604c0cc5c578476e39998a5394691cc0704439",
+    "coax/src/release.h": "14fc933d708c87e23b0e8d06ece684becbdb2d0c0346fe2ba2fce468a6bb0aed",
+    "scripts/coax-release.sh": "5eeb66fccbe844251005f6a629c7fc17e3371d3595c2869b9bec72c4f2f280c0",
+    "coax/tests/native_check_emission.py": "a11102f4cdfb23e8f04c89416222adeea53492a2316ab43cf75d98ced5b5c7b4",
+    "coax/tests/run.sh": "603a2008e562f0aa8ada07b48b430a3518d20a63b5a9c8b6d6bf0f2749a8f62e",
+    "coax/tests/native-check-emission/assertion-fails.coax": "d5e81322e6236f2e4f3450e223712c23dc478513c3808368dc8b9a6319209525",
+    "coax/tests/native-check-emission/authority.coax": "5604e3eda748e10266b7c6bf762cab8bf1a47f30c086c8f6ebe2521388685766",
+    "coax/tests/native-check-emission/borrow-return.coax": "ed57c0f4bc3e5c37d563b25acf3be4d1b2402b77a1dcd6be9dc86b9883343ba8",
+    "coax/tests/native-check-emission/closure.coax": "412236dc617a54fbb50efc7d674ba129dc9e14e41d8ca51b1fbd602db2fce119",
+    "coax/tests/native-check-emission/duplicate-failure.coax": "b082a3ecc8cf41fb20ae57e0335a478fca557a3dc96e3746077ea70eabee88bd",
+    "coax/tests/native-check-emission/foreign.coax": "275f24928227282330a6d7d5de238040e982fb3cdf52bb49c9feb0c6befb8865",
+    "coax/tests/native-check-emission/generic-frozen.coax": "d492f3e1b4a4ac088e8529983255d4f45258541d7f51ded2b220375daa1faa2a",
+    "coax/tests/native-check-emission/identity.coax": "ad7bc0ae8e8cf23e59a4d31e6a899953bb91c186f60d47eb473196014ccb95b3",
+    "coax/tests/native-check-emission/imported-failure.coax": "8054e9fc5c682d295772d6729b1c33ec5900dfb372bd69a8dc4431210f48218c",
+    "coax/tests/native-check-emission/imported.coax": "7c48760c9c7ec1a9760a86476f620eb399c19c47c4ab8f214de73bfdd2fc3317",
+    "coax/tests/native-check-emission/mixed-forall.coax": "4ce1dedcfdb5fb92e86afd37ee1ca01e0f50afc8e2320f02df274119e56415fe",
+    "coax/tests/native-check-emission/no-checks.coax": "4eacdff8225c192b8890cc9942a7ad2777ea2ac0c522998869ba370867cc6f8b",
+    "coax/tests/native-check-emission/overflow.coax": "27191dc1241b12f67737c722d6ea39f630956d8d6105c8fe7477762e9d3ffb52",
+    "coax/tests/native-check-emission/print.coax": "21a5dece8b6f39bff80529aab77a2283e3a81b763ef285485ea73a02835eb972",
+    "coax/tests/native-check-emission/table-driver.c": "1d28412b57c860eab1d393a379236a2392fa0ca89716c26a6abe50aa12421e2a",
+    "coax/lib/compiler/shader.coax": "ef379a3e650eba1837a82d505f0df82cd118c10745811816a5aabc31cc3ba836",
+    "coax/lib/compiler/wgsl.coax": "1626574a1856cc09d0d2cb8a0c8a9c2b0002568e0553f6227e6688d1f520614f",
+    "coax/src/shader.cpp": "9743023e3e2e999ae469ee461a9eb7bc63392770def666f74f95b91dffc4378c"
+  },
+  "contracts": {
+    "command": "coax checks-c FILE [--only SUBSTR] [-o checks.c]",
+    "body_abi": "Coax_VerificationCheck_v1 / coax_verification_checks_v1",
+    "selection": "Coax owns byte-substring root selection, graph closure and refusal over resolved checked-tree/native address facts. Empty substring selects all; no-match/no-check/selected-forall refuse.",
+    "identity": "Original check inventory index, length-delimited arbitrary name bytes, physical file/line/column and distinct body pointer. Private C names never rename authored AST declarations.",
+    "authority": "Normal unfiltered frontend authority admission remains mandatory before emission; --only filters emission only.",
+    "product": "No generated product main or compiler evaluator in this artifact. Ordinary product C remains separate.",
+    "profiles": "Checked arithmetic required; standalone source maps and build-only stage0 refuse. Native #line debug information and checked release BUILD_DEBUG choices remain independent.",
+    "unchanged_records": [
+      "coax.evidence.v1 remains evaluator-only",
+      "coax.native-checks.v1 retains legacy eligible-subset agreement",
+      "coax.native-checks.baseline.v1 retains the original-source strict companion contract"
+    ]
+  },
+  "check_first": {
+    "policy": {
+      "path": "/tmp/coax-checks-c-C0/native-policy-red.json",
+      "sha256": "d17f22df065d71e4be66186721ed052e114b6272819d0a9ae897898624fa1c37",
+      "record": {
+        "schema": "coax.evidence.v1",
+        "command": "test",
+        "input": "coax/lib/compiler/native-checks.coax",
+        "compiler": {
+          "version": "coax0 0.38.0",
+          "sha256": "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6"
+        },
+        "target": {
+          "name": "coax-evaluator",
+          "note": "checks run in the compile-time evaluator, not generated code"
+        },
+        "profile": {
+          "arithmetic": "checked",
+          "selected_runtime_arithmetic": "checked",
+          "library": true
+        },
+        "selection": {
+          "only": null,
+          "list": false,
+          "root_only": false
+        },
+        "budgets": {
+          "check_steps": 20000000,
+          "check_slots": 33554432,
+          "check_containers": 2097152,
+          "run_steps": 100000
+        },
+        "sources": [
+          {
+            "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/native-checks.coax",
+            "sha256": "11de39d4fe25163e90e80249d1c02fcd5225ebdc572d01a2930cc7b9454bcf90"
+          }
+        ],
+        "front_end": "ok",
+        "claims": [
+          {
+            "kind": "#test",
+            "name": "reason text identifies every refusal and the unknown fallback",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 28,
+              "col": 25
+            },
+            "cases": 1,
+            "steps": 47,
+            "code": "E0406",
+            "message": "assertion failed"
+          },
+          {
+            "kind": "#forall",
+            "name": "capacity uses exact output extents and independent graph limits",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 37,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 50,
+            "code": "E0406",
+            "message": "assertion failed",
+            "counterexample": "a = 0, b = 0, c = 0"
+          },
+          {
+            "kind": "#forall",
+            "name": "text extent admission includes empty and the exact upper boundary",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 44,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 24,
+            "code": "E0406",
+            "message": "assertion failed",
+            "counterexample": "i = 0"
+          },
+          {
+            "kind": "#test",
+            "name": "substring selection is byte-exact and includes the final position",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 52,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 66,
+            "code": "E0406",
+            "message": "assertion failed"
+          },
+          {
+            "kind": "#test",
+            "name": "selection computes a transitive closure with cycles and ignores unrelated host nodes",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 68,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 107,
+            "code": "E0406",
+            "message": "assertion failed"
+          },
+          {
+            "kind": "#test",
+            "name": "all matching ordinary roots get their own check mask positions",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 85,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 66,
+            "code": "E0406",
+            "message": "assertion failed"
+          },
+          {
+            "kind": "#forall",
+            "name": "nonzero profile facts never obtain an emitted plan",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 94,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 65,
+            "code": "E0406",
+            "message": "assertion failed",
+            "counterexample": "profile = 0"
+          },
+          {
+            "kind": "#forall",
+            "name": "selected roots have ordinary kind and a zero-argument void body",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 103,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 59,
+            "code": "E0406",
+            "message": "assertion failed",
+            "counterexample": "kind = 0, parameters = -1, void = false, body = false"
+          },
+          {
+            "kind": "#forall",
+            "name": "only reached procedures can refuse a closure",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 120,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 84,
+            "code": "E0406",
+            "message": "assertion failed",
+            "counterexample": "reached = false, main = false, foreign = false, body = false, hazards = 0"
+          },
+          {
+            "kind": "#test",
+            "name": "invalid facts, query and output shapes refuse without escaping output guards",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/native-checks.coax",
+              "line": 129,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 62,
+            "code": "E0406",
+            "message": "assertion failed"
+          },
+          {
+            "kind": "#authority",
+            "name": "execution coverage",
+            "outcome": "not-checked",
+            "at": null,
+            "cases": 0,
+            "steps": 0,
+            "message": "a check failed first"
+          }
+        ],
+        "mutation": null,
+        "exit_status": 1,
+        "verdict": "counterexample"
+      }
+    },
+    "profiles": {
+      "path": "/tmp/coax-checks-c-C0/profiles-red.json",
+      "sha256": "4ba4ac2ac574e0fc61af52645d6324d830b6b32003e1c0a0ac380d231684ebc1",
+      "record": {
+        "schema": "coax.evidence.v1",
+        "command": "test",
+        "input": "coax/lib/compiler/profiles.coax",
+        "compiler": {
+          "version": "coax0 0.38.0",
+          "sha256": "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6"
+        },
+        "target": {
+          "name": "coax-evaluator",
+          "note": "checks run in the compile-time evaluator, not generated code"
+        },
+        "profile": {
+          "arithmetic": "checked",
+          "selected_runtime_arithmetic": "checked",
+          "library": true
+        },
+        "selection": {
+          "only": "checks-c",
+          "list": false,
+          "root_only": false
+        },
+        "budgets": {
+          "check_steps": 20000000,
+          "check_slots": 33554432,
+          "check_containers": 2097152,
+          "run_steps": 100000
+        },
+        "sources": [
+          {
+            "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/profiles.coax",
+            "sha256": "ab23066cd53546af961249621d1a2599645f4cc5b574dcf43b237f4193723aec"
+          }
+        ],
+        "front_end": "ok",
+        "claims": [
+          {
+            "kind": "#test",
+            "name": "checks-c obtains its own checked non-native C profile",
+            "outcome": "counterexample",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 39,
+              "col": 2
+            },
+            "cases": 1,
+            "steps": 86,
+            "code": "E0406",
+            "message": "assertion failed"
+          },
+          {
+            "kind": "#forall",
+            "name": "default and legacy choices retain every source command's old bundle",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 47,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "every native explicit axis wins over either legacy bundle",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 59,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#test",
+            "name": "one selected axis leaves the others in their independently chosen bundle",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 73,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "occurrence counts admit only absent or one complete selection",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 93,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "empty values cannot conceal duplicate or malformed occurrence counts",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 108,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#test",
+            "name": "unrecorded values are refused rather than acquiring an implicit occurrence",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 123,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "missing malformed and differently spelled choices are rejected",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 132,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "native optimization and native debug have separate command admission",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 144,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "arithmetic and development profiles apply to every source command",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 164,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "debug selectors reject values outside unset off and on",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 171,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "debug choices retain their own occurrence count and reject duplicates",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 178,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "source maps imply debug without changing other independently selected axes",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 187,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "non-source and unknown commands cannot obtain a profile",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 197,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "schema one identity preserves all six bits without collisions",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 203,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#forall",
+            "name": "each error carries its own stable explanatory message",
+            "outcome": "not-checked",
+            "at": {
+              "file": "coax/lib/compiler/profiles.coax",
+              "line": 210,
+              "col": 1
+            },
+            "cases": 0,
+            "steps": 0,
+            "message": "excluded by --only"
+          },
+          {
+            "kind": "#authority",
+            "name": "execution coverage",
+            "outcome": "not-checked",
+            "at": null,
+            "cases": 0,
+            "steps": 0,
+            "message": "needs every check (--only)"
+          }
+        ],
+        "mutation": null,
+        "exit_status": 1,
+        "verdict": "counterexample"
+      }
+    },
+    "native_command_log": {
+      "path": "/tmp/coax-native-emission-check-first/semantic-red.log",
+      "sha256": "567bf1c7308467b821d4094ddfec747d49edb2efd5f6c767e4c95687fc3934d3",
+      "meaning": "The real native-emission expectation failed against qualified b301 because checks-c did not exist."
+    }
+  },
+  "policy_and_profile_qualification": {
+    "task": "r0-native-check-emission policy/profile/bootstrap portion",
+    "trusted_compiler": {
+      "compiler": "/tmp/coax-checks-c-C0/trusted-coax",
+      "sha256": "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6",
+      "note": "Pinned before changing compiler source inputs; parent identifies this fully checked cache as trusted."
+    },
+    "owned_source_sha256": {
+      "coax/lib/compiler/native-checks.coax": "861ce19d07d4d1488fff85dfbdef4ff9527f881fc4a84af35d4c74e16705cf2d",
+      "coax/lib/compiler/profiles.coax": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba",
+      "coax/lib/compiler/compiler.coax": "9821c010c093be9bc4a96f4b44add27a8718bbd5cf06f2cdcf85c16fc74f4fe2",
+      "coax/bootstrap-build.sh": "30b9b1dedd9fa27a1bc0757af798acd0761d2e342e2f3d527f4da996bffa26a9",
+      "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+      "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036"
+    },
+    "check_first": {
+      "kernel": "/tmp/coax-checks-c-C0/native-policy-red.json",
+      "kernel_sha256": "d17f22df065d71e4be66186721ed052e114b6272819d0a9ae897898624fa1c37",
+      "profile": "/tmp/coax-checks-c-C0/profiles-red.json",
+      "profile_sha256": "4ba4ac2ac574e0fc61af52645d6324d830b6b32003e1c0a0ac380d231684ebc1"
+    },
+    "kernel": {
+      "checks": 11,
+      "finite_cases": 1195,
+      "mutants": 177,
+      "killed": 177,
+      "survived": 0,
+      "record": "/tmp/coax-checks-c-C0/native-policy-mutation-final.json",
+      "record_sha256": "df322e37e279f014268892ccc7187168371014a00a15292e370919f0399bcb36",
+      "first_survivors": "/tmp/coax-checks-c-C0/native-checks-first-survivors.json",
+      "first_survivors_sha256": "d4fe2b4b2ffc840f3e32b3400e7775073c1c807b12bf9b7445e3919c7c848068",
+      "followup": "Added first-byte substring, edge-to-zero and selected-root hazard checks; removed shadowed bitmask constructions by arithmetic flag extraction. No equivalent waivers."
+    },
+    "profiles": {
+      "checks": 18,
+      "mutants": 178,
+      "killed": 178,
+      "survived": 0,
+      "record": "/tmp/coax-checks-c-C0/profiles-mutation.json",
+      "record_sha256": "d58088a714810a4b8bdad6e4254da0e60f7ba7bcf9e3aebd1fe7f01b161d529d",
+      "new_errors": {
+        "check_arithmetic": 13,
+        "check_source_map": 14
+      }
+    },
+    "trusted_seed_refresh": "/tmp/coax-checks-c-C0/profiles-seed-refresh.json",
+    "trusted_seed_refresh_sha256": "58678aa76698d5615ad4fb3f1000f9fe5533b447cbaf029c98b4a81e3fc4ce84",
+    "generated_kernel": {
+      "native-policy.c": "3ab8309da7ec369c5176ec6364163abb3e2927e942dc03408e9c8527fe5f1378",
+      "native-policy.h": "a15cd20f74a6f5601a228f67444b908b6f8f9c65208c283375ed7562bb84973d"
+    },
+    "bootstrap": "New kernel is loaded by compiler.coax; stage0 tests/mutation and final tests are mandatory. No NC seed; stage0 command refusal is owned by C++ bridge. Normal checked bootstrap is root-owned and has not been rerun here.",
+    "limits": [
+      "Policy operates on supplied checked facts and an observed overlap/profile fact. It does not independently inspect native pointers.",
+      "Caller owns valid fact/name/selection storage; native fact/ABI tests and final build are separate root/peer gates.",
+      "First slice emits C only. No native execution, finite-forall execution or result protocol is claimed."
+    ]
+  },
+  "policy_mutation": {
+    "schema": "coax.evidence.v1",
+    "command": "mutate",
+    "input": "lib/compiler/native-checks.coax",
+    "compiler": {
+      "version": "coax0 0.38.0",
+      "sha256": "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6"
+    },
+    "target": {
+      "name": "coax-evaluator",
+      "note": "checks run in the compile-time evaluator, not generated code"
+    },
+    "profile": {
+      "arithmetic": "checked",
+      "selected_runtime_arithmetic": "checked",
+      "library": true
+    },
+    "selection": {
+      "only": null,
+      "list": false,
+      "root_only": false
+    },
+    "budgets": {
+      "check_steps": 20000000,
+      "check_slots": 33554432,
+      "check_containers": 2097152,
+      "run_steps": 100000
+    },
+    "sources": [
+      {
+        "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/native-checks.coax",
+        "sha256": "861ce19d07d4d1488fff85dfbdef4ff9527f881fc4a84af35d4c74e16705cf2d"
+      }
+    ],
+    "front_end": "ok",
+    "claims": [
+      {
+        "kind": "#test",
+        "name": "reason text identifies every refusal and the unknown fallback",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 21,
+          "col": 1
+        },
+        "cases": 1,
+        "steps": 733
+      },
+      {
+        "kind": "#forall",
+        "name": "capacity uses exact output extents and independent graph limits",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 35,
+          "col": 1
+        },
+        "cases": 512,
+        "steps": 65126
+      },
+      {
+        "kind": "#forall",
+        "name": "text extent admission includes empty and the exact upper boundary",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 44,
+          "col": 1
+        },
+        "cases": 6,
+        "steps": 182
+      },
+      {
+        "kind": "#test",
+        "name": "substring selection is byte-exact and includes the final position",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 49,
+          "col": 1
+        },
+        "cases": 1,
+        "steps": 1101
+      },
+      {
+        "kind": "#test",
+        "name": "selection computes a transitive closure with cycles and ignores unrelated host nodes",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 59,
+          "col": 1
+        },
+        "cases": 1,
+        "steps": 2735
+      },
+      {
+        "kind": "#test",
+        "name": "all matching ordinary roots get their own check mask positions",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 83,
+          "col": 1
+        },
+        "cases": 1,
+        "steps": 834
+      },
+      {
+        "kind": "#forall",
+        "name": "selected root bodies receive the same effect and borrow refusals",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 91,
+          "col": 1
+        },
+        "cases": 32,
+        "steps": 12998
+      },
+      {
+        "kind": "#forall",
+        "name": "nonzero profiles and observed overlap never obtain an emitted plan",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 101,
+          "col": 1
+        },
+        "cases": 64,
+        "steps": 5597
+      },
+      {
+        "kind": "#forall",
+        "name": "selected roots have ordinary kind and a zero-argument void body",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 110,
+          "col": 1
+        },
+        "cases": 64,
+        "steps": 17821
+      },
+      {
+        "kind": "#forall",
+        "name": "only reached procedures can refuse a closure",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 121,
+          "col": 1
+        },
+        "cases": 512,
+        "steps": 254803
+      },
+      {
+        "kind": "#test",
+        "name": "invalid facts, query and output shapes refuse without escaping output guards",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/native-checks.coax",
+          "line": 137,
+          "col": 1
+        },
+        "cases": 1,
+        "steps": 2021
+      },
+      {
+        "kind": "#authority",
+        "name": "execution coverage",
+        "outcome": "passed",
+        "at": null,
+        "cases": 0,
+        "steps": 0
+      }
+    ],
+    "mutation": {
+      "outcome": "passed",
+      "mutants": 177,
+      "evaluated": 177,
+      "killed": 177,
+      "survived": [],
+      "marked_equivalent": 0,
+      "unreached": "",
+      "scope": "all",
+      "shard": null,
+      "merged_records": 0,
+      "scheduling": "selective",
+      "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+    },
+    "exit_status": 0,
+    "verdict": "passed"
+  },
+  "profiles_mutation": {
+    "schema": "coax.evidence.v1",
+    "command": "mutate",
+    "input": "lib/compiler/profiles.coax",
+    "compiler": {
+      "version": "coax0 0.38.0",
+      "sha256": "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6"
+    },
+    "target": {
+      "name": "coax-evaluator",
+      "note": "checks run in the compile-time evaluator, not generated code"
+    },
+    "profile": {
+      "arithmetic": "checked",
+      "selected_runtime_arithmetic": "checked",
+      "library": true
+    },
+    "selection": {
+      "only": null,
+      "list": false,
+      "root_only": false
+    },
+    "budgets": {
+      "check_steps": 20000000,
+      "check_slots": 33554432,
+      "check_containers": 2097152,
+      "run_steps": 100000
+    },
+    "sources": [
+      {
+        "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/lib/compiler/profiles.coax",
+        "sha256": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba"
+      }
+    ],
+    "front_end": "ok",
+    "claims": [
+      {
+        "kind": "#test",
+        "name": "checks-c obtains its own checked non-native C profile",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 37,
+          "col": 1
+        },
+        "cases": 1,
+        "steps": 691
+      },
+      {
+        "kind": "#forall",
+        "name": "checks-c axes preserve C defaults while requiring checked arithmetic",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 48,
+          "col": 1
+        },
+        "cases": 36,
+        "steps": 15010
+      },
+      {
+        "kind": "#forall",
+        "name": "checks-c refuses native optimization and incomplete standalone debug maps",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 65,
+          "col": 1
+        },
+        "cases": 6,
+        "steps": 3114
+      },
+      {
+        "kind": "#forall",
+        "name": "default and legacy choices retain every source command's old bundle",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 74,
+          "col": 1
+        },
+        "cases": 28,
+        "steps": 10476
+      },
+      {
+        "kind": "#forall",
+        "name": "every native explicit axis wins over either legacy bundle",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 86,
+          "col": 1
+        },
+        "cases": 64,
+        "steps": 28034
+      },
+      {
+        "kind": "#test",
+        "name": "one selected axis leaves the others in their independently chosen bundle",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 100,
+          "col": 1
+        },
+        "cases": 1,
+        "steps": 1702
+      },
+      {
+        "kind": "#forall",
+        "name": "occurrence counts admit only absent or one complete selection",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 120,
+          "col": 1
+        },
+        "cases": 6,
+        "steps": 3558
+      },
+      {
+        "kind": "#forall",
+        "name": "empty values cannot conceal duplicate or malformed occurrence counts",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 135,
+          "col": 1
+        },
+        "cases": 6,
+        "steps": 2871
+      },
+      {
+        "kind": "#test",
+        "name": "unrecorded values are refused rather than acquiring an implicit occurrence",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 150,
+          "col": 1
+        },
+        "cases": 1,
+        "steps": 343
+      },
+      {
+        "kind": "#forall",
+        "name": "missing malformed and differently spelled choices are rejected",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 159,
+          "col": 1
+        },
+        "cases": 8,
+        "steps": 4520
+      },
+      {
+        "kind": "#forall",
+        "name": "native optimization and native debug have separate command admission",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 171,
+          "col": 1
+        },
+        "cases": 14,
+        "steps": 19262
+      },
+      {
+        "kind": "#forall",
+        "name": "arithmetic and development profiles apply to every source command",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 191,
+          "col": 1
+        },
+        "cases": 28,
+        "steps": 10548
+      },
+      {
+        "kind": "#forall",
+        "name": "debug selectors reject values outside unset off and on",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 198,
+          "col": 1
+        },
+        "cases": 7,
+        "steps": 1790
+      },
+      {
+        "kind": "#forall",
+        "name": "debug choices retain their own occurrence count and reject duplicates",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 205,
+          "col": 1
+        },
+        "cases": 18,
+        "steps": 3588
+      },
+      {
+        "kind": "#forall",
+        "name": "source maps imply debug without changing other independently selected axes",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 214,
+          "col": 1
+        },
+        "cases": 6,
+        "steps": 2056
+      },
+      {
+        "kind": "#forall",
+        "name": "non-source and unknown commands cannot obtain a profile",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 224,
+          "col": 1
+        },
+        "cases": 8,
+        "steps": 850
+      },
+      {
+        "kind": "#forall",
+        "name": "schema one identity preserves all six bits without collisions",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 230,
+          "col": 1
+        },
+        "cases": 64,
+        "steps": 5188
+      },
+      {
+        "kind": "#forall",
+        "name": "each error carries its own stable explanatory message",
+        "outcome": "passed",
+        "at": {
+          "file": "lib/compiler/profiles.coax",
+          "line": 237,
+          "col": 1
+        },
+        "cases": 15,
+        "steps": 925
+      },
+      {
+        "kind": "#authority",
+        "name": "execution coverage",
+        "outcome": "passed",
+        "at": null,
+        "cases": 0,
+        "steps": 0
+      }
+    ],
+    "mutation": {
+      "outcome": "passed",
+      "mutants": 178,
+      "evaluated": 178,
+      "killed": 178,
+      "survived": [],
+      "marked_equivalent": 0,
+      "unreached": "",
+      "scope": "all",
+      "shard": null,
+      "merged_records": 0,
+      "scheduling": "selective",
+      "per_check_budget": "max(10000, 10 x the unmutated check's steps)"
+    },
+    "exit_status": 0,
+    "verdict": "passed"
+  },
+  "initial_build_failure": {
+    "path": "/tmp/coax-checks-c-C0/checked-build-first.json",
+    "sha256": "e224b4772e157b3eec043a8b099ab3fef8397f31c146c4143b2a1f81fc2b7972",
+    "record": {
+      "argv": [
+        "coax/build.sh"
+      ],
+      "exit_code": 1,
+      "timed_out": false,
+      "elapsed_seconds": 3.207,
+      "log": "/tmp/coax-checks-c-C0/checked-build-first.log",
+      "original_log_path": "/tmp/coax-checks-c-C0/checked-build.log",
+      "log_sha256": "14f4ad2d43e8e81063c61305e34c214c5e0689930415996f4b8ae26a0d3c7571"
+    }
+  },
+  "checked_bootstrap_before_renumber": {
+    "path": "/tmp/coax-checks-c-C0/checked-build.json",
+    "sha256": "4b77474b8e75dfbad74b5410867f2e65f6ecef59cbcd1643c5552e38eacf5ab3",
+    "record": {
+      "argv": [
+        "coax/build.sh"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 275.204,
+      "log": "/tmp/coax-checks-c-C0/checked-build.log"
+    }
+  },
+  "checked_bootstrap_after_renumber": {
+    "path": "/tmp/coax-checks-c-C0/checked-build-post-renumber.json",
+    "sha256": "6ab3b350a659531029e1806c07663f416b8d5f09e1c648c128cb8a6e824869f9",
+    "record": {
+      "argv": [
+        "coax/build.sh"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 252.507,
+      "log": "/tmp/coax-checks-c-C0/checked-build-post-renumber.log",
+      "reason": "Incoming integer book renumber changed the release adapter managed-path input and thus the compiler-input fingerprint."
+    }
+  },
+  "native_fixture_qualification": {
+    "outcome": "passed",
+    "returncode": 0,
+    "command": [
+      "/opt/homebrew/opt/python@3.15/bin/python3.15",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native_check_emission.py",
+      "-v"
+    ],
+    "seconds": 5.1698251670459285,
+    "compiler": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+    "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+    "compiler_sha256_after": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+    "compiler_version": "coax0 0.39.0",
+    "harness_sha256": "a11102f4cdfb23e8f04c89416222adeea53492a2316ab43cf75d98ced5b5c7b4",
+    "driver_sha256": "1d28412b57c860eab1d393a379236a2392fa0ca89716c26a6abe50aa12421e2a",
+    "toolchain": {
+      "cc": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+      "python": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+      "platform": "macOS-26.4-arm64-arm-64bit-Mach-O"
+    },
+    "normal_product_reference": "/tmp/coax-native-emission-check-first/normal-product.c",
+    "normal_product_reference_sha256": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9",
+    "log": "/tmp/coax-native-emission-C0/full-suite.log",
+    "method_receipts": [
+      {
+        "path": "/tmp/coax-native-emission-C0/test_authority_failing_original_baseline_cannot_be_hidden_by_only-0wkbf_xl/receipt.json",
+        "method": "test_authority_failing_original_baseline_cannot_be_hidden_by_only",
+        "seconds": 0.2509187500108965,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/receipt.json",
+        "method": "test_duplicate_imported_names_invoke_their_distinct_original_bodies",
+        "seconds": 0.7619772499892861,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/receipt.json",
+        "method": "test_exact_names_duplicate_imported_physical_identity_and_selection",
+        "seconds": 0.8580684589687735,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/receipt.json",
+        "method": "test_generic_callees_and_frozen_owned_fixed_aggregate",
+        "seconds": 0.5918977090041153,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_no_match_and_no_checks_never_emit_successful_empty_suite-9bly6l38/receipt.json",
+        "method": "test_no_match_and_no_checks_never_emit_successful_empty_suite",
+        "seconds": 0.009227832953911275,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/receipt.json",
+        "method": "test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap",
+        "seconds": 1.3535958330030553,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_normal_product_c_retains_original_main_and_verification_stays_separate-c1yd76m9/receipt.json",
+        "method": "test_normal_product_c_retains_original_main_and_verification_stays_separate",
+        "seconds": 0.005650291044730693,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {
+          "prechange_product_byte_parity": {
+            "outcome": "passed",
+            "reference": "/tmp/coax-native-emission-check-first/normal-product.c",
+            "reference_compiler_sha256": "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6",
+            "c_sha256": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9"
+          }
+        }
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_output_aliases_preserve_original_source_graph_bytes-uhqf2r7c/receipt.json",
+        "method": "test_output_aliases_preserve_original_source_graph_bytes",
+        "seconds": 0.016159625025466084,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/receipt.json",
+        "method": "test_scalar_buffers_defer_and_unrelated_effect_closure",
+        "seconds": 0.6450158749939874,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_source_map_sidecar_is_refused_until_check_debug_walker_is_supported-r21ash8n/receipt.json",
+        "method": "test_source_map_sidecar_is_refused_until_check_debug_walker_is_supported",
+        "seconds": 0.005027666979003698,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/receipt.json",
+        "method": "test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted",
+        "seconds": 0.31102999998256564,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_unsupported_selected_forms_are_source_located_and_output_untouched-h41r_vt_/receipt.json",
+        "method": "test_unsupported_selected_forms_are_source_located_and_output_untouched",
+        "seconds": 0.015195375017356128,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      },
+      {
+        "path": "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/receipt.json",
+        "method": "test_verification_arithmetic_is_checked_in_debug_and_release_profiles",
+        "seconds": 0.2642986670252867,
+        "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "observations": {}
+      }
+    ],
+    "raw_summary": "main_and_verification_stays_separate) ... ok\ntest_output_aliases_preserve_original_source_graph_bytes (__main__.NativeEmissionTests.test_output_aliases_preserve_original_source_graph_bytes) ... ok\ntest_scalar_buffers_defer_and_unrelated_effect_closure (__main__.NativeEmissionTests.test_scalar_buffers_defer_and_unrelated_effect_closure) ... ok\ntest_source_map_sidecar_is_refused_until_check_debug_walker_is_supported (__main__.NativeEmissionTests.test_source_map_sidecar_is_refused_until_check_debug_walker_is_supported) ... ok\ntest_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted (__main__.NativeEmissionTests.test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted) ... ok\ntest_unsupported_selected_forms_are_source_located_and_output_untouched (__main__.NativeEmissionTests.test_unsupported_selected_forms_are_source_located_and_output_untouched) ... ok\ntest_verification_arithmetic_is_checked_in_debug_and_release_profiles (__main__.NativeEmissionTests.test_verification_arithmetic_is_checked_in_debug_and_release_profiles) ... ok\n\n----------------------------------------------------------------------\nRan 13 tests in 5.096s\n\nOK\n",
+    "compiler_provenance_record_sha256": "e7004fd4cfb5c05fcef74fb8916333532306116b0284305f2d12a20e8fa71a5a",
+    "focused_observation_counts": {
+      "native_C_optimization_builds": {
+        "-O0": 8,
+        "-O2": 7
+      },
+      "expected_real_SIGABRT_observations": 6,
+      "quiet_launch_for_each_trap": true,
+      "prechange_product_parity": [
+        {
+          "prechange_product_byte_parity": {
+            "outcome": "passed",
+            "reference": "/tmp/coax-native-emission-check-first/normal-product.c",
+            "reference_compiler_sha256": "b30102d76de2476bef4bca46388023487560e8a3e52f7609ec9afee93b7541e6",
+            "c_sha256": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9"
+          }
+        }
+      ],
+      "toolchain": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+      "harness_sha256": "a11102f4cdfb23e8f04c89416222adeea53492a2316ab43cf75d98ced5b5c7b4",
+      "driver_sha256": "1d28412b57c860eab1d393a379236a2392fa0ca89716c26a6abe50aa12421e2a"
+    }
+  },
+  "post_renumber_exact_artifact_retention": {
+    "schema": "coax.native-checks.reemission-retention.v1",
+    "outcome": "passed",
+    "script_sha256": "09f83a9d35948478740e2c97506748b88b6660660abd224c1b3b054b27f78888",
+    "original_qualification": "/tmp/coax-native-check-emission-C0-qualification.json",
+    "original_qualification_sha256": "1640a47f0fa4a6ca05129905e7d0120b86f6a82e09101eba4aba94ed64a5739d",
+    "new_compiler": {
+      "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+      "sha256": "0af7aa86d480f4cf044188ae8eb1a314426aab98a2f432c07bf3dc8fa164ab0c"
+    },
+    "driver_sha256": "1d28412b57c860eab1d393a379236a2392fa0ca89716c26a6abe50aa12421e2a",
+    "harness_sha256": "a11102f4cdfb23e8f04c89416222adeea53492a2316ab43cf75d98ced5b5c7b4",
+    "sources": {
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/authority.coax": "5604e3eda748e10266b7c6bf762cab8bf1a47f30c086c8f6ebe2521388685766",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/duplicate-failure.coax": "b082a3ecc8cf41fb20ae57e0335a478fca557a3dc96e3746077ea70eabee88bd",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/imported-failure.coax": "8054e9fc5c682d295772d6729b1c33ec5900dfb372bd69a8dc4431210f48218c",
+      "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/original sources with space/identity.coax": "ad7bc0ae8e8cf23e59a4d31e6a899953bb91c186f60d47eb473196014ccb95b3",
+      "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/original sources with space/imported.coax": "7c48760c9c7ec1a9760a86476f620eb399c19c47c4ab8f214de73bfdd2fc3317",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/generic-frozen.coax": "d492f3e1b4a4ac088e8529983255d4f45258541d7f51ded2b220375daa1faa2a",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/closure.coax": "412236dc617a54fbb50efc7d674ba129dc9e14e41d8ca51b1fbd602db2fce119",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/no-checks.coax": "4eacdff8225c192b8890cc9942a7ad2777ea2ac0c522998869ba370867cc6f8b",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/assertion-fails.coax": "d5e81322e6236f2e4f3450e223712c23dc478513c3808368dc8b9a6319209525",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/overflow.coax": "27191dc1241b12f67737c722d6ea39f630956d8d6105c8fe7477762e9d3ffb52",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/mixed-forall.coax": "4ce1dedcfdb5fb92e86afd37ee1ca01e0f50afc8e2320f02df274119e56415fe",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/foreign.coax": "275f24928227282330a6d7d5de238040e982fb3cdf52bb49c9feb0c6befb8865",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/print.coax": "21a5dece8b6f39bff80529aab77a2283e3a81b763ef285485ea73a02835eb972",
+      "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/borrow-return.coax": "ed57c0f4bc3e5c37d563b25acf3be4d1b2402b77a1dcd6be9dc86b9883343ba8"
+    },
+    "retained_artifact_sha256": {
+      "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+      "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0": "45987e2cd4e9b8e8ef4007d7ff8474faa4b80928ebef3ead7496731abc26b134",
+      "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2": "5157e2e507d1c7e8f376c57285b96a0c17f4f4837c6d5db2d0996c11b5745b74",
+      "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+      "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0": "3ae0b5ab612dc857a11846936341686360eb9d562ba217966187073b08ec9d59",
+      "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2": "877633b8765ccdf777ccf3dec8a4bba62a74cafdbfe9a79b7d21bb962603b79d",
+      "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-7.c": "a6c227c2a93391be1fa800f9a4447267f86caf4e740430b370d65b90fb01fff8",
+      "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0": "f256b960661d0499bd1450ed689bebb13cb5741ac079b849021ba53527af8f1b",
+      "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+      "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0": "287471b3008336e6b21df3f6b1435f4dbd9e2448e57e0439b959c00ce7fb58e1",
+      "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2": "e3d5ae71db06c782211d1b1f540904ade43bbacc62b1acfcb75198964a847f9f",
+      "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+      "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0": "939ec8744a68bd7881adb6b5b5be49249bde1be5756cc72b32fa6b91d9ba1cc5",
+      "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2": "5c3758a8c9bd4eb3067daec197283feaf0b64e72a86f12adf7e712c280f75f6c",
+      "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+      "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0": "90ece55d261cfd86880b6cd90bf650a6d6d57b1abfc2cc3e2dd04c23aed42304",
+      "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2": "43968abc53943612285f3785d0cfbb3155feceb1f5efd077adbe5df09fbf9388",
+      "/tmp/coax-native-emission-C0/test_normal_product_c_retains_original_main_and_verification_stays_separate-c1yd76m9/normal-product.c": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9",
+      "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+      "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0": "7c7dea502dd89d78029b5c5aa81db47ba573fee2f81f0d97e83aa8c44ae580e2",
+      "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2": "43150ec69b9a9d648f48d9b33fc714ad43d6c4b413f047083cff584d120207bc",
+      "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/emission-0.c": "d7d966d293c5cd8cad414fad77655d7f62d681a803010c503ed88a1b04acbe8c",
+      "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0": "77d819dd24dada0fce6b422a190c4d26c7e12f4aca7dfec634c0eb5b23e6bdaa",
+      "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/emission-2.c": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+      "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/native-3-O2": "f3b2299b1750fec4dca79793845961fe1fd886f0e9c269daec3d129e4ca2e943"
+    },
+    "toolchain_identity": {
+      "recorded_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+      "current_version_matches": true,
+      "platform_matches": true,
+      "current_launcher": "/usr/bin/cc",
+      "current_launcher_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "limit": "Original receipt records the full clang version, not a historical clang executable digest. Retention also requires exact previously executed native binary bytes."
+    },
+    "reemissions": [
+      {
+        "method": "test_duplicate_imported_names_invoke_their_distinct_original_bodies",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/duplicate-failure.coax",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/00-emission-0.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.003714166989084333,
+        "original_c": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+        "original_c_sha256": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/00-emission-0.c",
+        "new_c_sha256": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+        "byte_identical": true
+      },
+      {
+        "method": "test_exact_names_duplicate_imported_physical_identity_and_selection",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/original sources with space/identity.coax",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/01-emission-0.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.0032217089901678264,
+        "original_c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+        "original_c_sha256": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/01-emission-0.c",
+        "new_c_sha256": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+        "byte_identical": true
+      },
+      {
+        "method": "test_exact_names_duplicate_imported_physical_identity_and_selection",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/original sources with space/identity.coax",
+          "--only",
+          "lambda λ",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/02-emission-7.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.003016082977410406,
+        "original_c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-7.c",
+        "original_c_sha256": "a6c227c2a93391be1fa800f9a4447267f86caf4e740430b370d65b90fb01fff8",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/02-emission-7.c",
+        "new_c_sha256": "a6c227c2a93391be1fa800f9a4447267f86caf4e740430b370d65b90fb01fff8",
+        "byte_identical": true
+      },
+      {
+        "method": "test_generic_callees_and_frozen_owned_fixed_aggregate",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/generic-frozen.coax",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/03-emission-0.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.0033634169958531857,
+        "original_c": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+        "original_c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/03-emission-0.c",
+        "new_c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+        "byte_identical": true
+      },
+      {
+        "method": "test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/assertion-fails.coax",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/04-emission-0.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.0029481250094249845,
+        "original_c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+        "original_c_sha256": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/04-emission-0.c",
+        "new_c_sha256": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+        "byte_identical": true
+      },
+      {
+        "method": "test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/overflow.coax",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/05-emission-7.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.002961166959721595,
+        "original_c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+        "original_c_sha256": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/05-emission-7.c",
+        "new_c_sha256": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+        "byte_identical": true
+      },
+      {
+        "method": "test_normal_product_c_retains_original_main_and_verification_stays_separate",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "c",
+          "coax/tests/native-check-emission/closure.coax",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/06-normal-product.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.0033948339987546206,
+        "original_c": "/tmp/coax-native-emission-C0/test_normal_product_c_retains_original_main_and_verification_stays_separate-c1yd76m9/normal-product.c",
+        "original_c_sha256": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/06-normal-product.c",
+        "new_c_sha256": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9",
+        "byte_identical": true
+      },
+      {
+        "method": "test_scalar_buffers_defer_and_unrelated_effect_closure",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/closure.coax",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/07-emission-0.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.0029415409662760794,
+        "original_c": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+        "original_c_sha256": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/07-emission-0.c",
+        "new_c_sha256": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+        "byte_identical": true
+      },
+      {
+        "method": "test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/mixed-forall.coax",
+          "--only",
+          "selected ordinary",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/08-emission-0.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.0031565839890390635,
+        "original_c": "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/emission-0.c",
+        "original_c_sha256": "d7d966d293c5cd8cad414fad77655d7f62d681a803010c503ed88a1b04acbe8c",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/08-emission-0.c",
+        "new_c_sha256": "d7d966d293c5cd8cad414fad77655d7f62d681a803010c503ed88a1b04acbe8c",
+        "byte_identical": true
+      },
+      {
+        "method": "test_verification_arithmetic_is_checked_in_debug_and_release_profiles",
+        "argv": [
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/generic-frozen.coax",
+          "--release",
+          "--arithmetic",
+          "checked",
+          "-o",
+          "/tmp/coax-native-emission-C0-post-renumber/09-emission-2.c"
+        ],
+        "returncode": 0,
+        "stdout": "",
+        "stderr": "",
+        "seconds": 0.002931834023911506,
+        "original_c": "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/emission-2.c",
+        "original_c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+        "new_c": "/tmp/coax-native-emission-C0-post-renumber/09-emission-2.c",
+        "new_c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+        "byte_identical": true
+      }
+    ],
+    "retained_prior_scope": {
+      "coax_compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+      "original_suite_methods": 13,
+      "native_builds": [
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0",
+          "binary_sha256": "45987e2cd4e9b8e8ef4007d7ff8474faa4b80928ebef3ead7496731abc26b134",
+          "c": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+          "c_sha256": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O0",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.08087579201674089
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t2\t1\t6475706c696361746520706879736963616c20626f6479\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6475706c69636174652d6661696c7572652e636f6178\n1\t2\t1\t6475706c696361746520706879736963616c20626f6479\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f696d706f727465642d6661696c7572652e636f6178\n",
+              "stderr": "",
+              "seconds": 0.254989042005036
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0",
+                "one",
+                "0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 1 native checks\n",
+              "stderr": "",
+              "seconds": 0.02758904203074053
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0",
+                "one",
+                "1"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": -6,
+              "stdout": "",
+              "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/imported-failure.coax:2: assertion failed\n",
+              "seconds": 0.02695679198950529
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2",
+          "binary_sha256": "5157e2e507d1c7e8f376c57285b96a0c17f4f4837c6d5db2d0996c11b5745b74",
+          "c": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+          "c_sha256": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O2",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.08388499997090548
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t2\t1\t6475706c696361746520706879736963616c20626f6479\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6475706c69636174652d6661696c7572652e636f6178\n1\t2\t1\t6475706c696361746520706879736963616c20626f6479\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f696d706f727465642d6661696c7572652e636f6178\n",
+              "stderr": "",
+              "seconds": 0.2288299580104649
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2",
+                "one",
+                "0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 1 native checks\n",
+              "stderr": "",
+              "seconds": 0.025374374992679805
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2",
+                "one",
+                "1"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": -6,
+              "stdout": "",
+              "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/imported-failure.coax:2: assertion failed\n",
+              "seconds": 0.025587917014490813
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0",
+          "binary_sha256": "3ae0b5ab612dc857a11846936341686360eb9d562ba217966187073b08ec9d59",
+          "c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+          "c_sha256": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O0",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.0763527499511838
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t2\t1\t6475706c6963617465206e616d65\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n1\t3\t3\t70756e6374756174696f6e205b785d3b2071756f74652220736c6173685c206e756c00206c616d62646120cebb\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n2\t2\t1\t6475706c6963617465206e616d65\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f696d706f727465642e636f6178\n",
+              "stderr": "",
+              "seconds": 0.1795023750164546
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 3 native checks\n",
+              "stderr": "",
+              "seconds": 0.02742916700663045
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2",
+          "binary_sha256": "877633b8765ccdf777ccf3dec8a4bba62a74cafdbfe9a79b7d21bb962603b79d",
+          "c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+          "c_sha256": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O2",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.08427812496665865
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t2\t1\t6475706c6963617465206e616d65\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n1\t3\t3\t70756e6374756174696f6e205b785d3b2071756f74652220736c6173685c206e756c00206c616d62646120cebb\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n2\t2\t1\t6475706c6963617465206e616d65\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f696d706f727465642e636f6178\n",
+              "stderr": "",
+              "seconds": 0.17755508300615475
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 3 native checks\n",
+              "stderr": "",
+              "seconds": 0.026052834000438452
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0",
+          "binary_sha256": "f256b960661d0499bd1450ed689bebb13cb5741ac079b849021ba53527af8f1b",
+          "c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-7.c",
+          "c_sha256": "a6c227c2a93391be1fa800f9a4447267f86caf4e740430b370d65b90fb01fff8",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O0",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-7.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.07462170801591128
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "1\t3\t3\t70756e6374756174696f6e205b785d3b2071756f74652220736c6173685c206e756c00206c616d62646120cebb\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n",
+              "stderr": "",
+              "seconds": 0.17313479096628726
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 1 native checks\n",
+              "stderr": "",
+              "seconds": 0.02782129100523889
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0",
+          "binary_sha256": "287471b3008336e6b21df3f6b1435f4dbd9e2448e57e0439b959c00ce7fb58e1",
+          "c": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+          "c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O0",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.07839179201982915
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t1\t1\t67656e657269632063616c6c65652072657461696e732066726f7a656e206f776e656420616767726567617465\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f67656e657269632d66726f7a656e2e636f6178\n",
+              "stderr": "",
+              "seconds": 0.2129376659868285
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 1 native checks\n",
+              "stderr": "",
+              "seconds": 0.026179541018791497
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2",
+          "binary_sha256": "e3d5ae71db06c782211d1b1f540904ade43bbacc62b1acfcb75198964a847f9f",
+          "c": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+          "c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O2",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.07915708399377763
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t1\t1\t67656e657269632063616c6c65652072657461696e732066726f7a656e206f776e656420616767726567617465\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f67656e657269632d66726f7a656e2e636f6178\n",
+              "stderr": "",
+              "seconds": 0.1622533749905415
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 1 native checks\n",
+              "stderr": "",
+              "seconds": 0.026128292025532573
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0",
+          "binary_sha256": "939ec8744a68bd7881adb6b5b5be49249bde1be5756cc72b32fa6b91d9ba1cc5",
+          "c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+          "c_sha256": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O0",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.07408083300106227
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t1\t1\t61637475616c206e617469766520617373657274696f6e206d757374206661696c\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f617373657274696f6e2d6661696c732e636f6178\n",
+              "stderr": "",
+              "seconds": 0.31985295796766877
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": -6,
+              "stdout": "",
+              "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/assertion-fails.coax:1: assertion failed\n",
+              "seconds": 0.032254124991595745
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2",
+          "binary_sha256": "5c3758a8c9bd4eb3067daec197283feaf0b64e72a86f12adf7e712c280f75f6c",
+          "c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+          "c_sha256": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O2",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.08759870898211375
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t1\t1\t61637475616c206e617469766520617373657274696f6e206d757374206661696c\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f617373657274696f6e2d6661696c732e636f6178\n",
+              "stderr": "",
+              "seconds": 0.22494266700232401
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": -6,
+              "stdout": "",
+              "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/assertion-fails.coax:1: assertion failed\n",
+              "seconds": 0.02891741704661399
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0",
+          "binary_sha256": "90ece55d261cfd86880b6cd90bf650a6d6d57b1abfc2cc3e2dd04c23aed42304",
+          "c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+          "c_sha256": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O0",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.07880100002512336
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t1\t1\t636865636b6564206e6174697665206164646974696f6e206d7573742074726170\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6f766572666c6f772e636f6178\n",
+              "stderr": "",
+              "seconds": 0.16495508298976347
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": -6,
+              "stdout": "",
+              "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/overflow.coax:3: integer overflow in '+'\n",
+              "seconds": 0.02772337500937283
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2",
+          "binary_sha256": "43968abc53943612285f3785d0cfbb3155feceb1f5efd077adbe5df09fbf9388",
+          "c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+          "c_sha256": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O2",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.08860224997624755
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t1\t1\t636865636b6564206e6174697665206164646974696f6e206d7573742074726170\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6f766572666c6f772e636f6178\n",
+              "stderr": "",
+              "seconds": 0.18826066702604294
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": -6,
+              "stdout": "",
+              "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/overflow.coax:3: integer overflow in '+'\n",
+              "seconds": 0.02630433300510049
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0",
+          "binary_sha256": "7c7dea502dd89d78029b5c5aa81db47ba573fee2f81f0d97e83aa8c44ae580e2",
+          "c": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+          "c_sha256": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O0",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.07557491702027619
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t3\t1\t6578616374207363616c61722076616c75657320616e642063616c6c65722d6f776e656420627566666572\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f636c6f737572652e636f6178\n1\t13\t1\t646566657220636c65616e7570206f7264657220616e64206c6f6f70206578697473\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f636c6f737572652e636f6178\n",
+              "stderr": "",
+              "seconds": 0.16173845902085304
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 2 native checks\n",
+              "stderr": "",
+              "seconds": 0.029502624995075166
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2",
+          "binary_sha256": "43150ec69b9a9d648f48d9b33fc714ad43d6c4b413f047083cff584d120207bc",
+          "c": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+          "c_sha256": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O2",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.09058383299270645
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "0\t3\t1\t6578616374207363616c61722076616c75657320616e642063616c6c65722d6f776e656420627566666572\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f636c6f737572652e636f6178\n1\t13\t1\t646566657220636c65616e7570206f7264657220616e64206c6f6f70206578697473\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f636c6f737572652e636f6178\n",
+              "stderr": "",
+              "seconds": 0.2520108329481445
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 2 native checks\n",
+              "stderr": "",
+              "seconds": 0.028695749992039055
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0",
+          "binary_sha256": "77d819dd24dada0fce6b422a190c4d26c7e12f4aca7dfec634c0eb5b23e6bdaa",
+          "c": "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/emission-0.c",
+          "c_sha256": "d7d966d293c5cd8cad414fad77655d7f62d681a803010c503ed88a1b04acbe8c",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O0",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/emission-0.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.07048916700296104
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0",
+                "metadata"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "1\t2\t1\t73656c6563746564206f7264696e61727920636865636b\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6d697865642d666f72616c6c2e636f6178\n",
+              "stderr": "",
+              "seconds": 0.20980687497649342
+            },
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 1 native checks\n",
+              "stderr": "",
+              "seconds": 0.025369708018843085
+            }
+          ]
+        },
+        {
+          "binary": "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/native-3-O2",
+          "binary_sha256": "f3b2299b1750fec4dca79793845961fe1fd886f0e9c269daec3d129e4ca2e943",
+          "c": "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/emission-2.c",
+          "c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+          "original_build": {
+            "argv": [
+              "cc",
+              "-std=c11",
+              "-O2",
+              "-ffp-contract=off",
+              "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/emission-2.c",
+              "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+              "-lm",
+              "-o",
+              "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/native-3-O2"
+            ],
+            "quiet_crash_launcher": false,
+            "returncode": 0,
+            "stdout": "",
+            "stderr": "",
+            "seconds": 0.0872097079991363
+          },
+          "original_executions": [
+            {
+              "argv": [
+                "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/native-3-O2"
+              ],
+              "quiet_crash_launcher": true,
+              "returncode": 0,
+              "stdout": "ran 1 native checks\n",
+              "stderr": "",
+              "seconds": 0.16531462501734495
+            }
+          ]
+        }
+      ],
+      "native_execution_observations": 31,
+      "actual_sigabrt_observations": 6,
+      "scope": "Original 13-method suite and all negative CLI assertions remain observations of the prior qualified compiler. No native compilation or execution was repeated."
+    },
+    "scope": "Ten fresh successful C emissions are byte-identical; prior native artifact/execution evidence is retained by exact C/driver/binary hashes and recorded toolchain-version identity.",
+    "seconds": 0.07926525000948459
+  },
+  "regressions_before_renumber": [
+    {
+      "argv": [
+        "python3",
+        "coax/tests/native.py"
+      ],
+      "exit_status": 0,
+      "timed_out": false,
+      "elapsed_seconds": 14.838,
+      "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+      "log": "/tmp/coax-checks-c-C0/native-regression.log"
+    },
+    {
+      "argv": [
+        "python3",
+        "coax/tests/build_profiles.py"
+      ],
+      "exit_status": 0,
+      "timed_out": false,
+      "elapsed_seconds": 8.139,
+      "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+      "log": "/tmp/coax-checks-c-C0/build_profiles-regression.log"
+    },
+    {
+      "argv": [
+        "python3",
+        "coax/tests/semantic_profiles.py"
+      ],
+      "exit_status": 0,
+      "timed_out": false,
+      "elapsed_seconds": 48.283,
+      "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+      "log": "/tmp/coax-checks-c-C0/semantic_profiles-regression.log"
+    },
+    {
+      "argv": [
+        "python3",
+        "coax/tests/release.py"
+      ],
+      "exit_status": 0,
+      "timed_out": false,
+      "elapsed_seconds": 91.93,
+      "compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+      "log": "/tmp/coax-checks-c-C0/release-regression.log"
+    }
+  ],
+  "release_regressions_after_changed_paths": {
+    "argv": [
+      "python3",
+      "coax/tests/release.py"
+    ],
+    "exit_status": 0,
+    "timed_out": false,
+    "elapsed_seconds": 41.784,
+    "compiler_sha256": "0af7aa86d480f4cf044188ae8eb1a314426aab98a2f432c07bf3dc8fa164ab0c",
+    "compiler_sha256_after": "0af7aa86d480f4cf044188ae8eb1a314426aab98a2f432c07bf3dc8fa164ab0c",
+    "log": "/tmp/coax-checks-c-C0/release-post-renumber.log",
+    "reason": "Release adapter and release regression MANAGED paths changed with main book renumbering."
+  },
+  "regression_counts": {
+    "native": 8,
+    "build_profiles": 5,
+    "semantic_profiles": 21,
+    "release": 17,
+    "scope": "The first51 ran on qualified8ce. After release-path inputs changed,17 release tests ran on qualified0af; the unchanged native/profile results retain their original compiler identity."
+  },
+  "book_structure": {
+    "coax": "106 checked units,37 navigation pages; navigation, local links, excerpts and reviewed selected capability bindings passed after shader/main merge.",
+    "psionic": "99 programs,395 source-linked listings and local links passed after shader/main merge.",
+    "capability_binding_review": {
+      "path": "/tmp/coax-checks-c-C0/capability-bindings-review.json",
+      "sha256": "afbfaedee3dadc847f69177958489a8571f29fd76ef2e52b9e639543ef87927c",
+      "record": {
+        "review": "Incoming e3f8518430/8730a51074 append a scoped Verse native HTTPS, keyboard and online frame observation. Existing marked prose still distinguishes bounded direct WGSL graphics from general layouts/Psionic compute and keeps device/numerical claims consumer-specific. No feature or prose hash was changed.",
+        "changes": [
+          {
+            "claim": "psionic.language.current",
+            "path": "docs/verse/native-gpu.md",
+            "previous_sha256": "460f9f58ab2317cc352a7b60cba78f93885b081632aa82480af4c1abeb66e9ff",
+            "reviewed_sha256": "8ab566b128515e3fc5bcfd835644f7617755448b8f8b55d30fb502cbc48afd44",
+            "marked_prose_changed": false
+          },
+          {
+            "claim": "coax.wgsl.current",
+            "path": "docs/verse/native-gpu.md",
+            "previous_sha256": "460f9f58ab2317cc352a7b60cba78f93885b081632aa82480af4c1abeb66e9ff",
+            "reviewed_sha256": "8ab566b128515e3fc5bcfd835644f7617755448b8f8b55d30fb502cbc48afd44",
+            "marked_prose_changed": false
+          }
+        ]
+      }
+    },
+    "upstream_overlap": "ccb3c05e57 independently incorporates the same native-gpu evidence bindings; the final C0 diff does not overwrite that ledger.",
+    "shader_binding_review": {
+      "path": "/tmp/coax-checks-c-C0/capability-shader-review.json",
+      "sha256": "959d9bcea4904031fc092e5a1cbb471200ad3f9b986ca78214ae34ff4e6df3d0",
+      "record": {
+        "review_head": "b1e6d53806b15c0db1b5a7038fc9911af5265efd",
+        "incoming_shader_commit": "ccd79ecd6c",
+        "preserved_peer_commit": "ccb3c05e57",
+        "owned_path": "coax/book/capability-claims.json",
+        "before_sha256": "a8eb9c9aa67ab4b1483fded77e634365b6d0a5a82afa4d97bbdde57bdd8b92f6",
+        "after_sha256": "46218c2c7fea0f7c25bf46bead16fbb74b4df0b2433699a0b6bc4c3cee12c580",
+        "before_problems": [
+          "psionic.language.current: evidence changed; review coax/lib/compiler/wgsl.coax",
+          "psionic.language.current: evidence changed; review docs/verse/native-gpu.md",
+          "coax.wgsl.current: evidence changed; review coax/lib/compiler/wgsl.coax",
+          "coax.wgsl.current: evidence changed; review coax/src/shader.cpp",
+          "coax.wgsl.current: evidence changed; review docs/verse/native-gpu.md"
+        ],
+        "updates": [
+          {
+            "id": "psionic.language.current",
+            "path": "coax/lib/compiler/wgsl.coax",
+            "before": "aa007e09e351d8541babf3887622b1a8a6d1a5bb2dc574caef5d8d20efdfd5a5",
+            "after": "1626574a1856cc09d0d2cb8a0c8a9c2b0002568e0553f6227e6688d1f520614f"
+          },
+          {
+            "id": "psionic.language.current",
+            "path": "docs/verse/native-gpu.md",
+            "before": "8ab566b128515e3fc5bcfd835644f7617755448b8f8b55d30fb502cbc48afd44",
+            "after": "6b15d50c1b3d38f7e42e6f609e0b0517360eba0cd8875dc11d5d2a964265a3e6"
+          },
+          {
+            "id": "coax.wgsl.current",
+            "path": "coax/lib/compiler/wgsl.coax",
+            "before": "aa007e09e351d8541babf3887622b1a8a6d1a5bb2dc574caef5d8d20efdfd5a5",
+            "after": "1626574a1856cc09d0d2cb8a0c8a9c2b0002568e0553f6227e6688d1f520614f"
+          },
+          {
+            "id": "coax.wgsl.current",
+            "path": "coax/src/shader.cpp",
+            "before": "43113873f6fd13f1ac27a8e8a0b37acf4601bd718a67819f1dc3f73a7b68a962",
+            "after": "9743023e3e2e999ae469ee461a9eb7bc63392770def666f74f95b91dffc4378c"
+          },
+          {
+            "id": "coax.wgsl.current",
+            "path": "docs/verse/native-gpu.md",
+            "before": "8ab566b128515e3fc5bcfd835644f7617755448b8f8b55d30fb502cbc48afd44",
+            "after": "6b15d50c1b3d38f7e42e6f609e0b0517360eba0cd8875dc11d5d2a964265a3e6"
+          }
+        ],
+        "review": {
+          "coax.wgsl.current": "Reviewed fragment-only f32 dpdx/dpdy/fwidth additions in shader.coax, wgsl.coax and shader.cpp plus derivative/realm notes. Existing vectors/records/entry/binding subset remains bounded, and unsupported stages/types still refuse. Everglade main and gpu-fx source consumers remain present. Additional droprealm/villa graphics do not imply the planned shader syntax, a general CPU/GPU layout model, or Psionic WebGPU compute. Existing marked prose remains accurate.",
+          "psionic.language.current": "The marked claim states bounded WGSL graphics is shipped and qualified Psionic WebGPU compute remains work. Incoming derivatives are graphics-only and the new notes retain per-consumer/device scope, so that distinction stays true. No Coax type/ownership/job/training claim changed."
+        },
+        "preserved": "All nine claim identities, document paths, scopes, prose hashes, feature bindings and other evidence hashes are byte-for-byte values from the merged ledger. Peer ccb3c05e57 gpu-fx evidence and no-main library selection changes remain present.",
+        "limits": "This is reviewed-claim invalidation repair and book structure only. No compiler build, shader/native/device execution, model run or broad claim refresh was performed.",
+        "structure": {
+          "coax": {
+            "argv": [
+              "python3",
+              "coax/book/check-structure.py"
+            ],
+            "exit_status": 0,
+            "log": "/tmp/coax-checks-c-C0/coax-book-shader-review.log",
+            "sha256": "9045eb0985af662073ad620e006da04ce76f5b2c257e8a2fe951bc2488f36346",
+            "result": "book navigation, local links and checked excerpts pass"
+          },
+          "psionic": {
+            "argv": [
+              "python3",
+              "psionic/tests/book.py"
+            ],
+            "exit_status": 0,
+            "log": "/tmp/coax-checks-c-C0/psionic-book-shader-review.log",
+            "sha256": "8ab66d6a93664c89027fe6e8d94492e0b84b26c2451111f8607be5f011de9ebc",
+            "result": "book structure: 99 programs, 395 source-linked listings, local links pass"
+          }
+        },
+        "book_counts": {
+          "coax_units": 106,
+          "coax_navigation_pages": 37,
+          "psionic_programs": 99,
+          "psionic_source_linked_listings": 395
+        },
+        "outside_scope_observation": "Unmarked psionic/docs/roadmap.md:30 still lists GR00T inference as later work, while the newly delivered ch168/PLAN entry describes a bounded original learned-VLA Metal profile. This is outside the reviewed claim blocks and was not edited or blessed by this binding repair."
+      }
+    },
+    "groot_prose_correction": {
+      "path": "/tmp/coax-checks-c-C0/groot-roadmap-prose-receipt.json",
+      "sha256": "104796360337325357c159159443d048935d6639bb395cb4a081b8c8513afce3",
+      "record": {
+        "owned_path": "psionic/docs/roadmap.md",
+        "before_sha256": "4104bdf1134c0925da2511f3d586e71d1365084771e48eb2c25b05850d6f31c4",
+        "after_sha256": "20187e432e46a2ec5a7790cf9ab668cb03aa0d5595130f230f8b5c4c82bb926a",
+        "change": "Replace the stale blanket GR00T-inference future-work statement with the delivered fixed prepared-observation original Metal profile, retain hidden-trace failure and explicitly separate broader inference, GR00T training, Panda/control, simulator and physical-hardware scopes.",
+        "evidence": {
+          "psionic/book/ch168-execute-a-groot-policy.md": "66a1716438afa0ec96e355065e8b35ce882929c8ace59d0f489e17d65f899c6a",
+          "docs/verification/psionic-ch113-2026-10-31.md": "7478ba183cbe3e7cd5e4a09d232967c33d5c382afb436d55bf85467831ea7b11"
+        },
+        "capability_claim_blocks_unchanged": true,
+        "book_gates": "No rerun. Psionic structural docs/listings inventory does not include psionic/docs/roadmap.md; the shared claim scanner's verified block and marker structure are unchanged. The previous Coax/Psionic shader-review structure receipts remain applicable. New prose links were resolved locally.",
+        "inherited_shader_followup": "/tmp/coax-checks-c-C0/inherited-shader-marker-followup.json"
+      }
+    },
+    "counts_receipt": {
+      "path": "/tmp/coax-checks-c-C0/book-counts-shader-review.json",
+      "sha256": "1d97c0fc06f52ceea31238a34aae1f29ab84ba24a5d58333dc3927922f873ac7",
+      "record": {
+        "coax_units": 106,
+        "coax_navigation_pages": 37,
+        "psionic_programs": 99
+      }
+    },
+    "final_leaf_review": {
+      "path": "/tmp/coax-checks-c-C0/capability-final-leaf-review.json",
+      "sha256": "c3d236df4f7d510ae7d366b1e7d80b81aab738d1de8f9bb370b88e6ca9461c86",
+      "record": {
+        "review": "f815b20b94 removes fairy from the translator-refusal list and records its scoped golden pass. Existing marked prose still describes bounded direct WGSL graphics, preserves the named Everglade consumer, and keeps general layout/Psionic compute qualification separate. The tensor-ops VJP change is new self-check coverage and preserves the marked bounded CPU autodiff scope. Only two native-gpu evidence hashes changed.",
+        "changes": [
+          {
+            "claim": "psionic.language.current",
+            "path": "docs/verse/native-gpu.md",
+            "before": "6b15d50c1b3d38f7e42e6f609e0b0517360eba0cd8875dc11d5d2a964265a3e6",
+            "after": "09d9a3e24771d5f83a338daa14500dfc13906b852c36125293d47c8a11d9b8ed"
+          },
+          {
+            "claim": "coax.wgsl.current",
+            "path": "docs/verse/native-gpu.md",
+            "before": "6b15d50c1b3d38f7e42e6f609e0b0517360eba0cd8875dc11d5d2a964265a3e6",
+            "after": "09d9a3e24771d5f83a338daa14500dfc13906b852c36125293d47c8a11d9b8ed"
+          }
+        ]
+      }
+    },
+    "last_main_leaf_review": {
+      "commit": "6e39b837ed",
+      "scope": "Orbit League source module replaces its graphics translator entry; marked prose remains bounded graphics with separate general layouts/Psionic compute qualification. Only two native-gpu evidence bindings changed.",
+      "changes": [
+        {
+          "claim": "psionic.language.current",
+          "before": "09d9a3e24771d5f83a338daa14500dfc13906b852c36125293d47c8a11d9b8ed",
+          "after": "c05be94d0088e364f9693e2d712bcc9c3233b79c709fc4d4b50d4de786eef31a"
+        },
+        {
+          "claim": "coax.wgsl.current",
+          "before": "09d9a3e24771d5f83a338daa14500dfc13906b852c36125293d47c8a11d9b8ed",
+          "after": "c05be94d0088e364f9693e2d712bcc9c3233b79c709fc4d4b50d4de786eef31a"
+        }
+      ]
+    }
+  },
+  "main_integration": {
+    "preserved": "Incoming compound assignment ordering575b776fca, online Verse and AdamW invariants, integer chapter renumber3c20ff66d5, physical-world roadmapdf75b1638b and book fixesccb3c05e57. Also preserved incoming shader derivatives/droprealm/villa ccd79ecd6c, typed project readers/check separation and bounded original GR00T policy delivery; corrected only its stale unmarked roadmap paragraph. Final leaf-only rebase preserves Fairy Forest f815b20b94 and tensor-ops VJP checks43a9e92f05. Compiler-input fingerprint remains9f27926b00838a244d47ada6e9198e66ae3ced299b33bc036277517b34a9b982; no compiler/native gates repeated for those leaf changes. Also preserves Orbit League6e39b837ed; no compiler inputs changed.",
+    "compound_review": {
+      "path": "/tmp/coax-C0-incoming-575-review.json",
+      "sha256": "5a3127bc879e7b1f43096b082fe144e275d6a8587362429228fba081b2542ab7",
+      "record": {
+        "incoming": "575b776fca4f7340732bfbf951a2c7cbb64e166d",
+        "reviewed_file": "coax/src/emit_c.cpp",
+        "working_source_sha256": "4bc15c9c8d1504b0f9060ce47c70fd269a58478978b28704ca92b31bbb7112fe",
+        "merge_exit_status": 0,
+        "conflict_markers": false,
+        "virtual_merged_sha256": "4bc15c9c8d1504b0f9060ce47c70fd269a58478978b28704ca92b31bbb7112fe",
+        "upstream_lowering_preserved": true,
+        "C0_emission_preserved": true,
+        "actual_product_fixture": "coax/tests/native-check-emission/closure.coax",
+        "reference_assessment": "No measured byte identity claim. The incoming change affects compound places with sequenced nested operands. closure.coax compound targets are only scalar total or out[0] with a literal index; those contain no nested operand sequencing, so static review predicts its b301 reference remains unchanged. Keep the existing witness and let the candidate parity test compare it; do not refresh it blindly.",
+        "scope": "Read-only source review and a three-way merge of temporary copies. No shared source edit, build, test or reference refresh.",
+        "upstream_checked_cache": {
+          "checkout": "/private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/tmp.rO2LtJjvYc/t",
+          "cache": "/Users/christopherdavid/.cache/coax-release/55c9e0c0c0832350cd09eb68a555065599e6d81bab9315e404df5e34c533302e",
+          "record": [
+            "coax-provenance-v1",
+            "55c9e0c0c0832350cd09eb68a555065599e6d81bab9315e404df5e34c533302e",
+            "af523327521e004a2202e65ee85bbd7eabb1b56911ad6385a3d15f0d2797a3de",
+            "5a69a60f14c49fb97a6606172120d76761e2f8c1057b0fc01d36af3032bb1949"
+          ],
+          "binary_sha256": "af523327521e004a2202e65ee85bbd7eabb1b56911ad6385a3d15f0d2797a3de",
+          "helper_sha256": "5a69a60f14c49fb97a6606172120d76761e2f8c1057b0fc01d36af3032bb1949",
+          "checkout_observation": {
+            "head": "575b776fca4f7340732bfbf951a2c7cbb64e166d",
+            "compiler_input_changes": "",
+            "status": "Observed exact commit and clean input paths; the owning process removed the temporary checkout before an additional provenance verification could run. Cached binary and helper hashes were measured and match their record."
+          }
+        },
+        "followup_native_metadata_count_fix": {
+          "source_sha256": "5f58717314a3eb36f387bd120fc7a9a6ff4570b1ca9d8a04dc96f014241a8a41",
+          "change": "Use int32_t when constructing internal Str from the admitted physical path. The generated metadata count remains int64_t. This touches only native metadata emission, not compound lowering or ordinary product emission."
+        }
+      }
+    },
+    "normal_product_c_sha256": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9",
+    "normal_product_parity": "Exactly equal to qualified prechangeb301, initial0.39 compiler8ce, post-renumber0.39 compiler0af and post-shader0.39 compiler0877.",
+    "why_rebuild": "Book renumber changes the release adapter managed-path input; incoming ccd79ecd6c then changes shader/wgsl compiler policy and shader.cpp. All three combined checked builds passed. Each later compiler re-emitted10 byte-identical C artifacts. The15 retained native builds/31 observations were not repeated or relabeled."
+  },
+  "limits": [
+    "Selected #forall execution, bounded compiler-owned native execution/evidence, recognized-trap semantics and broad Verse/Psionic native adoption remain the subsequent ordered children.",
+    "Graphs admit at most4096 procedures/checks and65536 edges; names/query at most4096 bytes. Reachable foreign/product main/host effects, dynamic view-to-string and unsupported borrow/type forms refuse.",
+    "The Coax policy validates supplied facts; native bridge and ordinary frontend/emitter/toolchain remain trust inputs. Pure overlap-policy checks do not pretend to observe native addresses.",
+    "Native evidence is scoped to recorded arm64 macOS/Apple clang and exact artifacts. No full-model, GPU, app golden or alternate-target qualification is claimed for C0.",
+    "Retained clang identity is its full version/platform observation; no historic full compiler-binary or complete SDK-content lock is claimed.",
+    "Zero-survivor/no-equivalent C0 claims are specifically the new NC177 and updated profiles178 sites. An inherited shader helper annotation is recorded for the subsequent semantics/consumer work; it was not introduced, waived or qualified as a C0 mutation claim."
+  ],
+  "related_open_tooling_finding": {
+    "issue": "r7a-format-evidence",
+    "scope": "Existing --timings report destinations can overwrite original/imported sources; measured with disposable files and recorded as ordered workstream8 work. C0 guards its C output and refuses source-map sidecars; this report-destination bug is not claimed fixed.",
+    "receipt": "/tmp/coax-checks-c-C0/timing-alias-observation.json",
+    "sha256": "0dc965d2c4066f9edb2348b4ee637f2b982fdc29f80da69129ad9c4eadfb4b46",
+    "project_note_exit_status": 0
+  },
+  "checked_bootstrap_after_shader_merge": {
+    "path": "/tmp/coax-checks-c-C0/checked-build-post-shader.json",
+    "sha256": "008db24f6ec732be29afbc6ec6006fc1d5b2d719b1c094d14f227f543842e1f1",
+    "record": {
+      "argv": [
+        "coax/build.sh"
+      ],
+      "exit_code": 0,
+      "timed_out": false,
+      "elapsed_seconds": 347.393,
+      "log": "/tmp/coax-checks-c-C0/checked-build-post-shader.log",
+      "reason": "Incoming ccd79ecd6c changes shader/wgsl compiler policy and shader.cpp; rebase preserves those changes and requires qualification of the combined source fingerprint."
+    }
+  },
+  "post_shader_exact_artifact_retention": {
+    "path": "/tmp/coax-native-emission-C0-post-shader/retention.json",
+    "sha256": "9af82bd9418debd1fffca773136c5e205ccab859c7433e7a6df9ffb5aecbbcdc",
+    "record": {
+      "schema": "coax.native-checks.reemission-retention.v1",
+      "outcome": "passed",
+      "script_sha256": "09f83a9d35948478740e2c97506748b88b6660660abd224c1b3b054b27f78888",
+      "original_qualification": "/tmp/coax-native-check-emission-C0-qualification.json",
+      "original_qualification_sha256": "1640a47f0fa4a6ca05129905e7d0120b86f6a82e09101eba4aba94ed64a5739d",
+      "new_compiler": {
+        "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+        "sha256": "08776e5c5d6f00fa2289531f7c566ebc06d76d7a0c9c704b7e01e4dff2723df8"
+      },
+      "driver_sha256": "1d28412b57c860eab1d393a379236a2392fa0ca89716c26a6abe50aa12421e2a",
+      "harness_sha256": "a11102f4cdfb23e8f04c89416222adeea53492a2316ab43cf75d98ced5b5c7b4",
+      "sources": {
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/authority.coax": "5604e3eda748e10266b7c6bf762cab8bf1a47f30c086c8f6ebe2521388685766",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/duplicate-failure.coax": "b082a3ecc8cf41fb20ae57e0335a478fca557a3dc96e3746077ea70eabee88bd",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/imported-failure.coax": "8054e9fc5c682d295772d6729b1c33ec5900dfb372bd69a8dc4431210f48218c",
+        "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/original sources with space/identity.coax": "ad7bc0ae8e8cf23e59a4d31e6a899953bb91c186f60d47eb473196014ccb95b3",
+        "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/original sources with space/imported.coax": "7c48760c9c7ec1a9760a86476f620eb399c19c47c4ab8f214de73bfdd2fc3317",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/generic-frozen.coax": "d492f3e1b4a4ac088e8529983255d4f45258541d7f51ded2b220375daa1faa2a",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/closure.coax": "412236dc617a54fbb50efc7d674ba129dc9e14e41d8ca51b1fbd602db2fce119",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/no-checks.coax": "4eacdff8225c192b8890cc9942a7ad2777ea2ac0c522998869ba370867cc6f8b",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/assertion-fails.coax": "d5e81322e6236f2e4f3450e223712c23dc478513c3808368dc8b9a6319209525",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/overflow.coax": "27191dc1241b12f67737c722d6ea39f630956d8d6105c8fe7477762e9d3ffb52",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/mixed-forall.coax": "4ce1dedcfdb5fb92e86afd37ee1ca01e0f50afc8e2320f02df274119e56415fe",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/foreign.coax": "275f24928227282330a6d7d5de238040e982fb3cdf52bb49c9feb0c6befb8865",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/print.coax": "21a5dece8b6f39bff80529aab77a2283e3a81b763ef285485ea73a02835eb972",
+        "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/borrow-return.coax": "ed57c0f4bc3e5c37d563b25acf3be4d1b2402b77a1dcd6be9dc86b9883343ba8"
+      },
+      "retained_artifact_sha256": {
+        "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+        "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0": "45987e2cd4e9b8e8ef4007d7ff8474faa4b80928ebef3ead7496731abc26b134",
+        "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2": "5157e2e507d1c7e8f376c57285b96a0c17f4f4837c6d5db2d0996c11b5745b74",
+        "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+        "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0": "3ae0b5ab612dc857a11846936341686360eb9d562ba217966187073b08ec9d59",
+        "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2": "877633b8765ccdf777ccf3dec8a4bba62a74cafdbfe9a79b7d21bb962603b79d",
+        "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-7.c": "a6c227c2a93391be1fa800f9a4447267f86caf4e740430b370d65b90fb01fff8",
+        "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0": "f256b960661d0499bd1450ed689bebb13cb5741ac079b849021ba53527af8f1b",
+        "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+        "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0": "287471b3008336e6b21df3f6b1435f4dbd9e2448e57e0439b959c00ce7fb58e1",
+        "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2": "e3d5ae71db06c782211d1b1f540904ade43bbacc62b1acfcb75198964a847f9f",
+        "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+        "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0": "939ec8744a68bd7881adb6b5b5be49249bde1be5756cc72b32fa6b91d9ba1cc5",
+        "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2": "5c3758a8c9bd4eb3067daec197283feaf0b64e72a86f12adf7e712c280f75f6c",
+        "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+        "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0": "90ece55d261cfd86880b6cd90bf650a6d6d57b1abfc2cc3e2dd04c23aed42304",
+        "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2": "43968abc53943612285f3785d0cfbb3155feceb1f5efd077adbe5df09fbf9388",
+        "/tmp/coax-native-emission-C0/test_normal_product_c_retains_original_main_and_verification_stays_separate-c1yd76m9/normal-product.c": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9",
+        "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+        "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0": "7c7dea502dd89d78029b5c5aa81db47ba573fee2f81f0d97e83aa8c44ae580e2",
+        "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2": "43150ec69b9a9d648f48d9b33fc714ad43d6c4b413f047083cff584d120207bc",
+        "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/emission-0.c": "d7d966d293c5cd8cad414fad77655d7f62d681a803010c503ed88a1b04acbe8c",
+        "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0": "77d819dd24dada0fce6b422a190c4d26c7e12f4aca7dfec634c0eb5b23e6bdaa",
+        "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/emission-2.c": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+        "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/native-3-O2": "f3b2299b1750fec4dca79793845961fe1fd886f0e9c269daec3d129e4ca2e943"
+      },
+      "toolchain_identity": {
+        "recorded_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin",
+        "current_version_matches": true,
+        "platform_matches": true,
+        "current_launcher": "/usr/bin/cc",
+        "current_launcher_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+        "limit": "Original receipt records the full clang version, not a historical clang executable digest. Retention also requires exact previously executed native binary bytes."
+      },
+      "reemissions": [
+        {
+          "method": "test_duplicate_imported_names_invoke_their_distinct_original_bodies",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/duplicate-failure.coax",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/00-emission-0.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.19365195801947266,
+          "original_c": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+          "original_c_sha256": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/00-emission-0.c",
+          "new_c_sha256": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+          "byte_identical": true
+        },
+        {
+          "method": "test_exact_names_duplicate_imported_physical_identity_and_selection",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/original sources with space/identity.coax",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/01-emission-0.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.005529750022105873,
+          "original_c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+          "original_c_sha256": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/01-emission-0.c",
+          "new_c_sha256": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+          "byte_identical": true
+        },
+        {
+          "method": "test_exact_names_duplicate_imported_physical_identity_and_selection",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/original sources with space/identity.coax",
+            "--only",
+            "lambda λ",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/02-emission-7.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.00868724996689707,
+          "original_c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-7.c",
+          "original_c_sha256": "a6c227c2a93391be1fa800f9a4447267f86caf4e740430b370d65b90fb01fff8",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/02-emission-7.c",
+          "new_c_sha256": "a6c227c2a93391be1fa800f9a4447267f86caf4e740430b370d65b90fb01fff8",
+          "byte_identical": true
+        },
+        {
+          "method": "test_generic_callees_and_frozen_owned_fixed_aggregate",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/generic-frozen.coax",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/03-emission-0.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.005702042020857334,
+          "original_c": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+          "original_c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/03-emission-0.c",
+          "new_c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+          "byte_identical": true
+        },
+        {
+          "method": "test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/assertion-fails.coax",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/04-emission-0.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.005587165942415595,
+          "original_c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+          "original_c_sha256": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/04-emission-0.c",
+          "new_c_sha256": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+          "byte_identical": true
+        },
+        {
+          "method": "test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/overflow.coax",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/05-emission-7.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.007314707967452705,
+          "original_c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+          "original_c_sha256": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/05-emission-7.c",
+          "new_c_sha256": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+          "byte_identical": true
+        },
+        {
+          "method": "test_normal_product_c_retains_original_main_and_verification_stays_separate",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "c",
+            "coax/tests/native-check-emission/closure.coax",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/06-normal-product.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.007457625004462898,
+          "original_c": "/tmp/coax-native-emission-C0/test_normal_product_c_retains_original_main_and_verification_stays_separate-c1yd76m9/normal-product.c",
+          "original_c_sha256": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/06-normal-product.c",
+          "new_c_sha256": "52b1e02fb7b9b7425bf324825e81509d2f10bfb955299d9da9c7a686952b6ec9",
+          "byte_identical": true
+        },
+        {
+          "method": "test_scalar_buffers_defer_and_unrelated_effect_closure",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/closure.coax",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/07-emission-0.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.007878957956563681,
+          "original_c": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+          "original_c_sha256": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/07-emission-0.c",
+          "new_c_sha256": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+          "byte_identical": true
+        },
+        {
+          "method": "test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/mixed-forall.coax",
+            "--only",
+            "selected ordinary",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/08-emission-0.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.005583666963502765,
+          "original_c": "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/emission-0.c",
+          "original_c_sha256": "d7d966d293c5cd8cad414fad77655d7f62d681a803010c503ed88a1b04acbe8c",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/08-emission-0.c",
+          "new_c_sha256": "d7d966d293c5cd8cad414fad77655d7f62d681a803010c503ed88a1b04acbe8c",
+          "byte_identical": true
+        },
+        {
+          "method": "test_verification_arithmetic_is_checked_in_debug_and_release_profiles",
+          "argv": [
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+            "checks-c",
+            "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/generic-frozen.coax",
+            "--release",
+            "--arithmetic",
+            "checked",
+            "-o",
+            "/tmp/coax-native-emission-C0-post-shader/09-emission-2.c"
+          ],
+          "returncode": 0,
+          "stdout": "",
+          "stderr": "",
+          "seconds": 0.006624917034059763,
+          "original_c": "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/emission-2.c",
+          "original_c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+          "new_c": "/tmp/coax-native-emission-C0-post-shader/09-emission-2.c",
+          "new_c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+          "byte_identical": true
+        }
+      ],
+      "retained_prior_scope": {
+        "coax_compiler_sha256": "8ce79bdd3b675403c8875e17ee26e79da9e2a1dcc0d0a4d3af043bd550a1e913",
+        "original_suite_methods": 13,
+        "native_builds": [
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0",
+            "binary_sha256": "45987e2cd4e9b8e8ef4007d7ff8474faa4b80928ebef3ead7496731abc26b134",
+            "c": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+            "c_sha256": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O0",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.08087579201674089
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t2\t1\t6475706c696361746520706879736963616c20626f6479\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6475706c69636174652d6661696c7572652e636f6178\n1\t2\t1\t6475706c696361746520706879736963616c20626f6479\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f696d706f727465642d6661696c7572652e636f6178\n",
+                "stderr": "",
+                "seconds": 0.254989042005036
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0",
+                  "one",
+                  "0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 1 native checks\n",
+                "stderr": "",
+                "seconds": 0.02758904203074053
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-1-O0",
+                  "one",
+                  "1"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": -6,
+                "stdout": "",
+                "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/imported-failure.coax:2: assertion failed\n",
+                "seconds": 0.02695679198950529
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2",
+            "binary_sha256": "5157e2e507d1c7e8f376c57285b96a0c17f4f4837c6d5db2d0996c11b5745b74",
+            "c": "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+            "c_sha256": "44616c3cb4aec250a895cf799b49115e18a5161d247bbacd5daf9a048607eebc",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O2",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.08388499997090548
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t2\t1\t6475706c696361746520706879736963616c20626f6479\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6475706c69636174652d6661696c7572652e636f6178\n1\t2\t1\t6475706c696361746520706879736963616c20626f6479\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f696d706f727465642d6661696c7572652e636f6178\n",
+                "stderr": "",
+                "seconds": 0.2288299580104649
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2",
+                  "one",
+                  "0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 1 native checks\n",
+                "stderr": "",
+                "seconds": 0.025374374992679805
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_duplicate_imported_names_invoke_their_distinct_original_bodies-pugjx8ue/native-5-O2",
+                  "one",
+                  "1"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": -6,
+                "stdout": "",
+                "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/imported-failure.coax:2: assertion failed\n",
+                "seconds": 0.025587917014490813
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0",
+            "binary_sha256": "3ae0b5ab612dc857a11846936341686360eb9d562ba217966187073b08ec9d59",
+            "c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+            "c_sha256": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O0",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.0763527499511838
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t2\t1\t6475706c6963617465206e616d65\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n1\t3\t3\t70756e6374756174696f6e205b785d3b2071756f74652220736c6173685c206e756c00206c616d62646120cebb\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n2\t2\t1\t6475706c6963617465206e616d65\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f696d706f727465642e636f6178\n",
+                "stderr": "",
+                "seconds": 0.1795023750164546
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-1-O0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 3 native checks\n",
+                "stderr": "",
+                "seconds": 0.02742916700663045
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2",
+            "binary_sha256": "877633b8765ccdf777ccf3dec8a4bba62a74cafdbfe9a79b7d21bb962603b79d",
+            "c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+            "c_sha256": "045cc1698040c2db7c198b6ff255bd86e799b324dcc49abe74a2b5a1f1c9507f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O2",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.08427812496665865
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t2\t1\t6475706c6963617465206e616d65\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n1\t3\t3\t70756e6374756174696f6e205b785d3b2071756f74652220736c6173685c206e756c00206c616d62646120cebb\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n2\t2\t1\t6475706c6963617465206e616d65\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f696d706f727465642e636f6178\n",
+                "stderr": "",
+                "seconds": 0.17755508300615475
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-4-O2"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 3 native checks\n",
+                "stderr": "",
+                "seconds": 0.026052834000438452
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0",
+            "binary_sha256": "f256b960661d0499bd1450ed689bebb13cb5741ac079b849021ba53527af8f1b",
+            "c": "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-7.c",
+            "c_sha256": "a6c227c2a93391be1fa800f9a4447267f86caf4e740430b370d65b90fb01fff8",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O0",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/emission-7.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.07462170801591128
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "1\t3\t3\t70756e6374756174696f6e205b785d3b2071756f74652220736c6173685c206e756c00206c616d62646120cebb\t2f746d702f636f61782d6e61746976652d656d697373696f6e2d43302f746573745f65786163745f6e616d65735f6475706c69636174655f696d706f727465645f706879736963616c5f6964656e746974795f616e645f73656c656374696f6e2d6c333374746a79672f6f726967696e616c20736f757263657320776974682073706163652f6964656e746974792e636f6178\n",
+                "stderr": "",
+                "seconds": 0.17313479096628726
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_exact_names_duplicate_imported_physical_identity_and_selection-l33ttjyg/native-8-O0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 1 native checks\n",
+                "stderr": "",
+                "seconds": 0.02782129100523889
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0",
+            "binary_sha256": "287471b3008336e6b21df3f6b1435f4dbd9e2448e57e0439b959c00ce7fb58e1",
+            "c": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+            "c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O0",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.07839179201982915
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t1\t1\t67656e657269632063616c6c65652072657461696e732066726f7a656e206f776e656420616767726567617465\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f67656e657269632d66726f7a656e2e636f6178\n",
+                "stderr": "",
+                "seconds": 0.2129376659868285
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-1-O0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 1 native checks\n",
+                "stderr": "",
+                "seconds": 0.026179541018791497
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2",
+            "binary_sha256": "e3d5ae71db06c782211d1b1f540904ade43bbacc62b1acfcb75198964a847f9f",
+            "c": "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+            "c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O2",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.07915708399377763
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t1\t1\t67656e657269632063616c6c65652072657461696e732066726f7a656e206f776e656420616767726567617465\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f67656e657269632d66726f7a656e2e636f6178\n",
+                "stderr": "",
+                "seconds": 0.1622533749905415
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_generic_callees_and_frozen_owned_fixed_aggregate-84669c48/native-4-O2"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 1 native checks\n",
+                "stderr": "",
+                "seconds": 0.026128292025532573
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0",
+            "binary_sha256": "939ec8744a68bd7881adb6b5b5be49249bde1be5756cc72b32fa6b91d9ba1cc5",
+            "c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+            "c_sha256": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O0",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.07408083300106227
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t1\t1\t61637475616c206e617469766520617373657274696f6e206d757374206661696c\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f617373657274696f6e2d6661696c732e636f6178\n",
+                "stderr": "",
+                "seconds": 0.31985295796766877
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-1-O0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": -6,
+                "stdout": "",
+                "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/assertion-fails.coax:1: assertion failed\n",
+                "seconds": 0.032254124991595745
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2",
+            "binary_sha256": "5c3758a8c9bd4eb3067daec197283feaf0b64e72a86f12adf7e712c280f75f6c",
+            "c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+            "c_sha256": "052eaa10be60ffb6d6780835a277bf358a9428b29d57f6de4924c70ac8b7218f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O2",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.08759870898211375
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t1\t1\t61637475616c206e617469766520617373657274696f6e206d757374206661696c\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f617373657274696f6e2d6661696c732e636f6178\n",
+                "stderr": "",
+                "seconds": 0.22494266700232401
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-4-O2"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": -6,
+                "stdout": "",
+                "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/assertion-fails.coax:1: assertion failed\n",
+                "seconds": 0.02891741704661399
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0",
+            "binary_sha256": "90ece55d261cfd86880b6cd90bf650a6d6d57b1abfc2cc3e2dd04c23aed42304",
+            "c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+            "c_sha256": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O0",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.07880100002512336
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t1\t1\t636865636b6564206e6174697665206164646974696f6e206d7573742074726170\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6f766572666c6f772e636f6178\n",
+                "stderr": "",
+                "seconds": 0.16495508298976347
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-8-O0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": -6,
+                "stdout": "",
+                "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/overflow.coax:3: integer overflow in '+'\n",
+                "seconds": 0.02772337500937283
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2",
+            "binary_sha256": "43968abc53943612285f3785d0cfbb3155feceb1f5efd077adbe5df09fbf9388",
+            "c": "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+            "c_sha256": "6c0147682d2c66e85af1afc11e44da35c6506e9b91ede60a4521fd37f8ee9d0f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O2",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/emission-7.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.08860224997624755
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t1\t1\t636865636b6564206e6174697665206164646974696f6e206d7573742074726170\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6f766572666c6f772e636f6178\n",
+                "stderr": "",
+                "seconds": 0.18826066702604294
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_non_authority_checks_emit_then_actual_native_assertion_and_overflow_trap-iojyc4jw/native-11-O2"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": -6,
+                "stdout": "",
+                "stderr": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/overflow.coax:3: integer overflow in '+'\n",
+                "seconds": 0.02630433300510049
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0",
+            "binary_sha256": "7c7dea502dd89d78029b5c5aa81db47ba573fee2f81f0d97e83aa8c44ae580e2",
+            "c": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+            "c_sha256": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O0",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.07557491702027619
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t3\t1\t6578616374207363616c61722076616c75657320616e642063616c6c65722d6f776e656420627566666572\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f636c6f737572652e636f6178\n1\t13\t1\t646566657220636c65616e7570206f7264657220616e64206c6f6f70206578697473\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f636c6f737572652e636f6178\n",
+                "stderr": "",
+                "seconds": 0.16173845902085304
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-1-O0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 2 native checks\n",
+                "stderr": "",
+                "seconds": 0.029502624995075166
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2",
+            "binary_sha256": "43150ec69b9a9d648f48d9b33fc714ad43d6c4b413f047083cff584d120207bc",
+            "c": "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+            "c_sha256": "e584756284877f40de256aca931f67611b8555df3bb95a30afa2e5c6c027e80f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O2",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.09058383299270645
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "0\t3\t1\t6578616374207363616c61722076616c75657320616e642063616c6c65722d6f776e656420627566666572\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f636c6f737572652e636f6178\n1\t13\t1\t646566657220636c65616e7570206f7264657220616e64206c6f6f70206578697473\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f636c6f737572652e636f6178\n",
+                "stderr": "",
+                "seconds": 0.2520108329481445
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_scalar_buffers_defer_and_unrelated_effect_closure-cw_bb6he/native-4-O2"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 2 native checks\n",
+                "stderr": "",
+                "seconds": 0.028695749992039055
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0",
+            "binary_sha256": "77d819dd24dada0fce6b422a190c4d26c7e12f4aca7dfec634c0eb5b23e6bdaa",
+            "c": "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/emission-0.c",
+            "c_sha256": "d7d966d293c5cd8cad414fad77655d7f62d681a803010c503ed88a1b04acbe8c",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O0",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/emission-0.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.07048916700296104
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0",
+                  "metadata"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "1\t2\t1\t73656c6563746564206f7264696e61727920636865636b\t2f55736572732f6368726973746f7068657264617669642f2e636f6465782f776f726b74726565732f636f61782d61756469742d6973737565732f6f70656e6167656e74732f636f61782f74657374732f6e61746976652d636865636b2d656d697373696f6e2f6d697865642d666f72616c6c2e636f6178\n",
+                "stderr": "",
+                "seconds": 0.20980687497649342
+              },
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_supported_selection_keeps_original_ordinal_while_unselected_forall_is_not_emitted-rd_w_13j/native-1-O0"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 1 native checks\n",
+                "stderr": "",
+                "seconds": 0.025369708018843085
+              }
+            ]
+          },
+          {
+            "binary": "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/native-3-O2",
+            "binary_sha256": "f3b2299b1750fec4dca79793845961fe1fd886f0e9c269daec3d129e4ca2e943",
+            "c": "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/emission-2.c",
+            "c_sha256": "0ca91251474affe192b565d2cd5b27c51bf62a56e2de88f586639ccba8dfc48f",
+            "original_build": {
+              "argv": [
+                "cc",
+                "-std=c11",
+                "-O2",
+                "-ffp-contract=off",
+                "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/emission-2.c",
+                "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/native-check-emission/table-driver.c",
+                "-lm",
+                "-o",
+                "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/native-3-O2"
+              ],
+              "quiet_crash_launcher": false,
+              "returncode": 0,
+              "stdout": "",
+              "stderr": "",
+              "seconds": 0.0872097079991363
+            },
+            "original_executions": [
+              {
+                "argv": [
+                  "/tmp/coax-native-emission-C0/test_verification_arithmetic_is_checked_in_debug_and_release_profiles-33p0jv0u/native-3-O2"
+                ],
+                "quiet_crash_launcher": true,
+                "returncode": 0,
+                "stdout": "ran 1 native checks\n",
+                "stderr": "",
+                "seconds": 0.16531462501734495
+              }
+            ]
+          }
+        ],
+        "native_execution_observations": 31,
+        "actual_sigabrt_observations": 6,
+        "scope": "Original 13-method suite and all negative CLI assertions remain observations of the prior qualified compiler. No native compilation or execution was repeated."
+      },
+      "scope": "Ten fresh successful C emissions are byte-identical; prior native artifact/execution evidence is retained by exact C/driver/binary hashes and recorded toolchain-version identity.",
+      "seconds": 0.33459845796460286
+    }
+  },
+  "inherited_shader_marker_followup": {
+    "path": "/tmp/coax-checks-c-C0/inherited-shader-marker-followup.json",
+    "sha256": "a3f9bbf9108abbb073e727f0955462d92dfec6898717ded003de8c99736cadc4",
+    "record": {
+      "path": "coax/lib/compiler/shader.coax",
+      "inherited_from": "ccd79ecd6c",
+      "source_sha256": "ef379a3e650eba1837a82d505f0df82cd118c10745811816a5aabc31cc3ba836",
+      "annotation": {
+        "line": 1819,
+        "text": "  for i:0..<n {if out[i]==op {return true;}} // mutant: equivalent (word 0 is the magic number, never an instruction)"
+      },
+      "follow_up": [
+        "r0-native-check-consumers",
+        "r0-native-check-semantics"
+      ],
+      "scope": "Inherited graphics helper annotation, untouched during C0 running build. Inspect/refactor its scan and sharpen the opcode oracle in the later appropriate gate; do not treat the annotation as a new C0 equivalent-mutant waiver. C0 new-policy zero-survivor claims are specifically NC177/profiles178 with no equivalents.",
+      "modified": false
+    }
+  }
+}
