@@ -162,6 +162,14 @@ Part XX.
 | [19. A Pylon answers decisions](ch019-a-pylon-answers-decisions.md) — prerequisites [below](#before-chapter-19-the-nostr-prerequisites) | A Coax Pylon with its own key: a beacon (kind `30200`) advertising a decision service and the served model identity, free slots and a declared deadline; decision jobs received encrypted over relays (NIP-44) and answered by the resident model of Part III, with the answer naming the same identity. Built on the Nostr event code in `coax/lib/nostr`. |
 | [20. The API fans out](ch020-the-api-fans-out.md) — runnable: opt-in loopback adapter, throwaway buyer keys | `/v1/systemone` reads fresh beacons, chooses a Pylon with a free slot that serves the exact model identity, sends the job, checks that the answer's identity matches the beacon, and falls back to the local model or refuses when none answers in time. Beacon expiry, generation counters and draining keep stale machines out of the route. |
 | [21. Check the mesh](ch021-check-the-mesh.md) — runnable: free remote receipts, memory-only toy CPU replay, explicit trust and bounded public totals | Buyers' signed receipts (kind `3201`) for completed jobs, a checker that re-runs a sampled fraction of decisions on a trusted node and publishes its verdict, and pool totals any reader can recompute. Decision work starts free; paying Pylons in Bitcoin is a later owner decision. |
+| [21a. A public mesh](ch021a-a-public-mesh.md) — runnable: authenticated bounded free public edge | Existing sessions/NIP-98, private fleet invocation, exact checkpoint/provider pins and real Elephant/Mammoth production calls; current limits and trust scope are recorded in the chapter. |
+| 21b. A decision arrives while play continues — planned | Bounded Coax consumer tickets, monotonic deadlines, cancellation and late-response fencing; exactly-once game admission with deterministic fallback. First consumer: low-pressure Everglade guards. |
+| 21c. A guard asks a Pylon — planned | Authored quiet/greeting/weather options, opt-in shadow then ambient behavior, current-state revalidation and actual end-to-end/quality gates. Patrol and combat stay under local rules. |
+
+The [Everglade guard delivery plan](../../docs/verse/pylon-guard-decisions.md)
+sequences warm routing, the shared client, game integration and reliability
+qualification. It brings narrow client/failure-handling and evaluation work
+forward from 117/120/124 and 156–158/164 without requiring those whole chapters.
 
 Nothing here makes a peer's answer private: a Pylon that serves a request
 reads it. Part XX adds trust levels, attested machines and model splits.
