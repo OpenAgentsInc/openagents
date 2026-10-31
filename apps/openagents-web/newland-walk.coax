@@ -305,10 +305,14 @@ wk_way_arrow :: (out: [] f32, at: int, s: [] LandState, c: Cam, way: WkWay, p: P
   ux := way.dx / l; uz := way.dz / l;
   f := s[0].wk[0].feet;
   y: f32 = 0.02;
-  tail := spot(c, fv(f.x + ux * 0.9, y, f.z + uz * 0.9));
-  tip := spot(c, fv(f.x + ux * 2.3, y, f.z + uz * 2.3));
-  wing_l := spot(c, fv(f.x + ux * 1.8 - uz * 0.4, y, f.z + uz * 1.8 + ux * 0.4));
-  wing_r := spot(c, fv(f.x + ux * 1.8 + uz * 0.4, y, f.z + uz * 1.8 - ux * 0.4));
+  // straight on it lies past your head on the screen, clear of you; to a side or behind, close by your feet
+  a: f32 = ifx way.side == WK_WAY_AHEAD then 2.6 else 1.2;
+  b: f32 = ifx way.side == WK_WAY_AHEAD then 4.6 else 2.6;
+  wing := b - 0.6; half: f32 = 0.45;
+  tail := spot(c, fv(f.x + ux * a, y, f.z + uz * a));
+  tip := spot(c, fv(f.x + ux * b, y, f.z + uz * b));
+  wing_l := spot(c, fv(f.x + ux * wing - uz * half, y, f.z + uz * wing + ux * half));
+  wing_r := spot(c, fv(f.x + ux * wing + uz * half, y, f.z + uz * wing - ux * half));
   k := ink(p, INK_BRIGHT);
   v := at;
   if tail.ok && tip.ok { v = rule(out, v, tail.x, tail.y, tip.x, tip.y, k, light); }
