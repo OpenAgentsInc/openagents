@@ -136,6 +136,7 @@ Belt :: struct {
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
   dirty: bool; save_t: f32; restored: bool; new_armed: f32;
   track: [1] Track;
+  stage: int; stage_t: f64; stage_ship: int;   // a staged moment (?stage=NAME), its real seconds, its ship
 }
 
 // ---- small things
@@ -622,7 +623,7 @@ load_game :: (s: [] Belt, text: string) -> bool {
 }
 // Keep the game now and then while it runs (and at once after an order or an arrival).
 autosave :: (s: [] Belt, real: f32) {
-  if s[0].golden || s[0].action != 0 { return; }
+  if s[0].golden || s[0].stage != STAGE_NONE || s[0].action != 0 { return; }
   s[0].save_t -= real;
   // every few seconds, or a second after something changed
   if !(s[0].save_t <= 0 || (s[0].dirty && s[0].save_t <= SAVE_EVERY - 1.0)) { return; }
@@ -711,9 +712,10 @@ belt_message :: (s: [] Belt, kind: int, text: string) #export_c {
   if kind == HOST_PAGE {
     s[0].facts = true;
     if fact_of(text, "coarse") == "1" { s[0].touch = true; }
+    if stage_of(fact_of(text, "url")) == STAGE_HIGHLIGHT { stage_highlight(s); }
   }
   if kind == HOST_HIDDEN { s[0].held = 0; }
-  if kind == HOST_KEPT && !s[0].golden && !s[0].restored { s[0].restored = load_game(s, text); }
+  if kind == HOST_KEPT && !s[0].golden && !s[0].restored && s[0].stage == STAGE_NONE { s[0].restored = load_game(s, text); }
   t := track_message(s[0].track[..], kind, text);
   if kind == HOST_PAGE { track_world(s[0].track[..], "belt-2200"); }
 }
@@ -1330,6 +1332,8 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
   }
   ch := cos(heading); shd := sin(heading);
   hull := pix(spacecam_pixels(s[0].cam, ifx sh.dry > 400.0 then 180.0 else 120.0));
+  // a staged moment keeps its ship's hull readable however far the view pulls back
+  if s[0].stage != STAGE_NONE && k == s[0].stage_ship { hull = hi(hull, 64 * u); }
   if hull > 22 * u {
     // the hull, in metres
     hl := hull / 2;
@@ -1723,6 +1727,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   real := f64(clamp(dt, 0, 0.1));
   // Time: game days a real second, stepped in pieces of at most two days so arrivals and mining are seen in order.
   game := ifx s[0].golden then 0.0 else SPEEDS[s[0].speed] * DAY * real;
+  if s[0].stage != STAGE_NONE { game = stage_game(s, real); }
   while game > 0.0 {
     piece := fmin(game, 2.0 * DAY);
     s[0].t += piece;
@@ -1755,6 +1760,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   s[0].cam = ifx s[0].golden then spacecam_settle(s[0].cam) else spacecam_ease(s[0].cam, real);
   // Locked on: the floating origin is the ship itself, exactly.
   if (s[0].follow >= 0 || s[0].follow_place >= 0) && s[0].cam.following && d3_dist(s[0].cam.center, s[0].cam.goal_center) * s[0].cam.scale < 0.5 { s[0].cam.center = s[0].cam.goal_center; }
+  if s[0].stage != STAGE_NONE { stage_camera(s); }
 }
 
 belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
@@ -1783,7 +1789,7 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
     stroke(out, d[..], x1, y1, x0, y1, 0.6 * kk, 0.7, BELT_R, BELT_G, BELT_B);
     stroke(out, d[..], x0, y1, x0, y0, 0.6 * kk, 0.7, BELT_R, BELT_G, BELT_B);
   }
-  hud(s, out, u, d[..]);
+  if s[0].stage == STAGE_NONE { hud(s, out, u, d[..]); } else { stage_hud(s, out, u, d[..]); }
   place_tags(s, out, u, d[..]);
   // The uniforms.
   sun := screen_of(s, D3_ZERO);
@@ -1808,6 +1814,100 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   track_frame(s[0].track[..], dt, width, height, dpr);
   if d[0].n > 0 { track_loaded(s[0].track[..], "load-engine"); }
   return d[0].n;
+}
+
+// ---- staged moments (?stage=NAME, docs/verse/clips.md): a fixed scene to record a clip of.
+// A staged page never reads or writes the player's save (autosave and HOST_KEPT skip it), and
+// without the parameter nothing here runs.
+//   highlight: LANTERN braking into Saturn, its drive burning against its fall, the view on its
+// hull and then pulling back, twelve decades out, until Saturn and its rings fill the sky beside it.
+STAGE_NONE :: 0; STAGE_HIGHLIGHT :: 1;
+STAGE_SECONDS :: 3.0;            // the dolly's length in real seconds; after it the view holds
+STAGE_RATE :: 3000.0;            // game seconds a real second (50 minutes), so the swing is seen
+STAGE_LEAD :: 2.5 * 3600.0 + 900.0;   // game seconds before periapsis the moment starts
+STAGE_STOP :: 120.0;             // and the clock stops this long before it, so the ship never parks
+STAGE_SHIP :: 1;                 // LANTERN, the big hull
+
+query_word :: (url: string, pair: string) -> bool {
+  i := 0;
+  while i < url.count && url[i] != '?' { i += 1; }
+  while i < url.count && url[i] != '#' {
+    i += 1;
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if url[i..<e] == pair { return true; }
+    i = e;
+  }
+  return false;
+}
+stage_of :: (url: string) -> int {
+  if query_word(url, "stage=highlight") { return STAGE_HIGHLIGHT; }
+  return STAGE_NONE;
+}
+
+stage_highlight :: (s: [] Belt) {
+  belt_reset(s);
+  s[0].stage = STAGE_HIGHLIGHT; s[0].stage_t = 0.0; s[0].stage_ship = STAGE_SHIP;
+  s[0].restored = true; s[0].dirty = false; s[0].action = 0; s[0].out_n = 0;
+  s[0].framed = true; s[0].speed = 1;
+  k := STAGE_SHIP;
+  // planned with tanks to spare (the stage is about the arrival, not the bill), then left a third full
+  s[0].ships[k].fuel = 1000000.0;
+  p := plan_with(s, k, BODY_SATURN, false, 0.85);
+  p.enough = true;
+  if !launch(s, k, BODY_SATURN, p) { return; }
+  s[0].ships[k].fuel = 0.35 * s[0].ships[k].fuel_cap;
+  sh := s[0].ships[k];
+  s[0].t = sh.t0 + sh.tof - STAGE_LEAD;
+  // the rivals' standing routes start from here, not years before
+  for j: 0..<s[0].ship_n { if s[0].ships[j].faction != FREE_BELT { s[0].ships[j].idle_until = s[0].t + 30.0 * DAY; } }
+  s[0].follow = -1; s[0].follow_place = -1; s[0].cam.following = false; s[0].cam.tilt = 0.0;
+  stage_camera(s);
+}
+
+// The staged clock: STAGE_RATE, stopping short of the arrival.
+stage_game :: (s: [] Belt, real: f64) -> f64 {
+  s[0].stage_t += real;
+  sh := s[0].ships[s[0].stage_ship];
+  if sh.mode != FLYING { return 0.0; }
+  return fclamp(fmin(STAGE_RATE * real, sh.t0 + sh.tof - STAGE_STOP - s[0].t), 0.0, STAGE_RATE * real);
+}
+
+stage_ease :: (x: f64) -> f64 { y := fclamp(x, 0.0, 1.0); return y * y * (3.0 - 2.0 * y); }
+// The dolly: on the hull a moment, then out in log scale to Saturn, the ship sliding off
+// centre only once the planet is near enough to share the frame.
+stage_camera :: (s: [] Belt) {
+  if s[0].w <= 0 || s[0].h <= 0 { return; }
+  k := s[0].stage_ship;
+  f := fclamp(s[0].stage_t / STAGE_SECONDS, 0.0, 1.0);
+  // a slow push on the hull, a fast pull through the empty decades, then a slow settle on Saturn
+  out := fclamp((f - 0.4) / 0.6, 0.0, 1.0);
+  z := 0.05 * stage_ease(f / 0.25) + 0.88 * stage_ease((f - 0.18) / 0.27) + 0.07 * (1.0 - (1.0 - out) * (1.0 - out) * (1.0 - out));
+  u := f64(hi(s[0].dpr, 0.5));
+  ship := ship_state(s, k, s[0].t).r;
+  sat := orbit_body_position(BODY_SATURN, s[0].t);
+  short := f64(lo(s[0].w, s[0].h));
+  s0 := short * 0.42 / 180.0;                 // the hull across two fifths of the frame
+  s1 := fmin(short * 0.2, f64(s[0].w) * 0.13) / BODY_RADIUS[BODY_SATURN];   // the rings and the ship both fit across
+  scale := exp(log(s0) + (log(s1) - log(s0)) * z);
+  // the share of the way to Saturn the centre moves: the ship's offset on screen grows as z^3
+  w := 0.5 * z * z * z * s1 / scale;
+  c := d3_add(ship, d3_scale(d3_sub(sat, ship), fclamp(w, 0.0, 0.5)));
+  s[0].cam.center = c; s[0].cam.goal_center = c;
+  s[0].cam.scale = scale; s[0].cam.goal_scale = scale;
+  s[0].cam.following = false;
+}
+
+// A staged moment's only HUD: the title and the date.
+stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
+  k := d[0].k;
+  m := 12 * k;
+  s[0].btn_n = 0;
+  buf: [96] u8;
+  panel(s, u, m, m, m + 170 * k, m + 50 * k, 0.85, false);
+  words(out, d, "BELT 2200", m + 12 * k, m + 20 * k, 10 * k, 0.95, INK_R, INK_G, INK_B);
+  dt := date_of(s[0].t);
+  n := put_int(buf[..], 0, dt.day); n = put(buf[..], n, " "); n = put(buf[..], n, MONTHS[(dt.month - 1) % 12]); n = put(buf[..], n, " "); n = put_int(buf[..], n, dt.year);
+  words(out, d, cast(string) buf[0..<n], m + 12 * k, m + 38 * k, 7.5 * k, 0.75, BELT_R, BELT_G, BELT_B);
 }
 
 // ---- checks
@@ -1905,4 +2005,42 @@ belt_frame :: (s: [] Belt, out: [] f32, u: [] f32, width: f32, height: f32, dpr:
   #assert !load_game(c[..], cast(string) buf[0..<n / 2]);
   #assert !load_game(c[..], "BELT2200 1|nonsense");
   #assert c[0].t == t0;
+}
+
+#test "the highlight stage: LANTERN braking into Saturn on its hull, the view pulling back to the rings, and the save untouched" {
+  // without the parameter nothing is staged
+  #assert stage_of("https://openagents.com/realms/belt-2200") == STAGE_NONE;
+  #assert stage_of("https://openagents.com/realms/belt-2200?stage=other") == STAGE_NONE;
+  #assert stage_of("https://openagents.com/realms/belt-2200?x=1&stage=highlight#a") == STAGE_HIGHLIGHT;
+  s: [1] Belt;
+  belt_start(s[..]);
+  s[0].w = 1280; s[0].h = 720; s[0].dpr = 1;
+  belt_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/belt-2200?stage=highlight");
+  #assert s[0].stage == STAGE_HIGHLIGHT;
+  k := s[0].stage_ship;
+  sh := s[0].ships[k];
+  #assert sh.mode == FLYING && sh.at == BODY_SATURN && sh.arr_body == BODY_SATURN;
+  #assert ship_burn(s[..], k) == -1;
+  // a save the browser gives back after staging is not read
+  t0 := s[0].t;
+  belt_message(s[..], HOST_KEPT, "BELT2200 1|6311433600000|2|1200000000|0|7");
+  #assert s[0].t == t0;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  first := true;
+  for i: 0..<150 {
+    n := belt_frame(s[..], out[..], u[..], 1280, 720, 1, 1.0 / 30.0, false);
+    #assert n > 0;
+    c := ship_screen(s[..], k);
+    // the ship is in frame the whole way and burning
+    #assert c.x > 0.0 && c.x < 1280.0 && c.y > 0.0 && c.y < 720.0;
+    #assert ship_burn(s[..], k) == -1;
+    if first { first = false; #assert spacecam_pixels(s[0].cam, 180.0) > 250.0; }
+  }
+  // at the end Saturn shares the frame
+  sat := screen_of(s[..], orbit_body_position(BODY_SATURN, s[0].t));
+  #assert sat.x > 0.0 && sat.x < 1280.0 && sat.y > 0.0 && sat.y < 720.0;
+  #assert s[0].ships[k].mode == FLYING && s[0].t > t0 + 2.5 * STAGE_RATE;
+  // and nothing was kept in the browser
+  #assert s[0].action == 0 && s[0].out_n == 0;
 }
