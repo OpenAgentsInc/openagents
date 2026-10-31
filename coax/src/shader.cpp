@@ -214,6 +214,15 @@ struct ShaderTree {
       }
       case StmtKind::expr: words.push_back(2); expr(s->expr); return;
       case StmtKind::var: {
+        // A view declared to the whole of a local fixed array (`v := a[..]`): the array is in
+        // Private storage and the view writes it.
+        uint32_t array;
+        if (s->expr && !s->uninit && s->expr->kind == ExprKind::slice && !s->expr->rhs && !s->expr->third &&
+            s->expr->lhs->kind == ExprKind::ident && s->expr->lhs->type->kind == TypeKind::array && find(s->expr->lhs->text, &array)) {
+          words.push_back(11);
+          words.push_back(declare(s->name, s->type, s->loc)); words.push_back(array);
+          return;
+        }
         // A declaration stores its value, or zero as C does; `= ---` stores zero too.
         words.push_back(3);
         size_t at = words.size();
