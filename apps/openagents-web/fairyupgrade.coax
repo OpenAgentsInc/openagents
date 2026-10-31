@@ -1,0 +1,632 @@
+// Listed upgrades (ev-asset-upgrades, docs/verse/makers.md "Fairy upgrades"): someone makes a
+// better fairy and lists it; an admin approves it; UPGRADE, beside your fairy, opens the top three
+// (GET /api/playtest/upgrades/fairy, coax/web/api/makers.c). TRY puts one on you while the pane is
+// open; BUY pays its price in sats (our Spark wallet's invoice, as a QR and a wallet link, polled until
+// it is paid) and CREDIT from your inference credit; the maker is paid like a tip. What you bought
+// you wear, and the room carries it, so everyone in the forest sees you as it (room.coax "look").
+// An admin sees the listings waiting, with APPROVE and REJECT. Names are the server's, at most 40
+// characters, drawn as glyphs and cut to fit; orange is for Bitcoin only.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 2000000000
+
+FFU_TOP :: 3;
+FFU_NAME :: 40;
+FFU_LOOK :: 52;
+FFU_CODE :: 1100;           // "lightning:" and our wallet's invoice
+FFU_QR :: 5929;             // every QR version's grid (coax/lib/qr)
+FFU_BUTTONS :: 24;
+FFU_POLL :: 3.0;            // seconds between asks while an invoice is shown
+FFU_NOTE_TIME :: 5.0;
+// What the face sends (ffu_next).
+FFU_GET :: 1; FFU_BUY :: 2; FFU_CHECK :: 3; FFU_WEAR :: 4; FFU_DECIDE :: 5;
+// A purchase in sats.
+BUY_NONE :: 0; BUY_ASKING :: 1; BUY_SHOWN :: 2; BUY_PAID :: 3; BUY_EXPIRED :: 4;
+// What a button does.
+UB_CHIP :: 1; UB_CLOSE :: 2; UB_TRY :: 3; UB_BUY :: 4; UB_CREDIT :: 5; UB_WEAR :: 6; UB_OWN :: 7;
+UB_WALLET :: 8; UB_BACK :: 9; UB_APPROVE :: 10; UB_REJECT :: 11;
+// Bitcoin orange.
+BTC_R :: 0.97; BTC_G :: 0.58; BTC_B :: 0.1;
+
+Listing :: struct {
+  id: int; sats: int; owned: bool;
+  name: [FFU_NAME] u8; name_n: int;
+  by: [FFU_NAME] u8; by_n: int;
+  look: [FFU_LOOK] u8; look_n: int;
+}
+
+Upgrade :: struct {
+  heard: bool; admin: bool; open: bool;
+  top: [FFU_TOP] Listing; n: int;
+  pend: [FFU_TOP] Listing; pend_n: int;
+  wearing: int;                   // the listing you wear, 0 the fairy you made
+  worn: [1] Worn;                 // its look
+  trying: int;                    // a row tried on while the pane is open (1 + it), 0 none
+  tried: [1] Worn;
+  // what to send
+  ask_get: bool; ask_buy: int; ask_credit: bool; ask_check: bool; ask_wear: int; ask_decide: int; decide_yes: bool;
+  // a purchase in sats
+  buying: int; buy_state: int; buy_sats: int; buy_row: int;
+  hash: [64] u8;
+  code: [FFU_CODE] u8; code_n: int;
+  qr: [FFU_QR] u8; qr_size: int; qr_want: bool;
+  polled: f64;
+  wallet: bool;                   // the host's action 1: open the wallet link
+  note: [64] u8; note_n: int; note_at: f64;
+  // the boxes drawn this frame, for the pointer
+  chip: Box; pane: Box;
+  btn: [FFU_BUTTONS] Box; btn_kind: [FFU_BUTTONS] int; btn_arg: [FFU_BUTTONS] int; btn_n: int;
+  press_kind: int; press_arg: int; press_finger: int;
+  scratch: [32] u8;
+}
+
+// A listing's name (0), maker (1) or look code (2).
+ffu_text :: (l: [] Listing, which: int) -> string {
+  if which == 0 { return cast(string) l[0].name[0..<l[0].name_n]; }
+  if which == 1 { return cast(string) l[0].by[0..<l[0].by_n]; }
+  return cast(string) l[0].look[0..<l[0].look_n];
+}
+ffu_say :: (s: [] Fairy, t: string) {
+  g := s[0].upgrade[..];
+  g[0].note_n = ffs_copy(g[0].note[..], t);
+  g[0].note_at = s[0].time;
+}
+// The look your fairy is drawn in: a row tried on, else what you bought and wear, else none (the maker's).
+ffu_worn :: (s: [] Fairy) -> [] Worn {
+  g := s[0].upgrade[..];
+  if g[0].open && g[0].trying > 0 && g[0].tried[0].on { return g[0].tried[..]; }
+  return g[0].worn[..];
+}
+ffu_wear_look :: (g: [] Upgrade, id: int, look: string) {
+  g[0].wearing = id;
+  if id == 0 || !ffl_code_read(look, g[0].worn[..]) { g[0].worn[0].on = false; g[0].wearing = ifx id == 0 then 0 else id; }
+}
+ffu_open :: (s: [] Fairy) {
+  g := s[0].upgrade[..];
+  g[0].open = true; g[0].trying = 0; g[0].ask_get = true;
+}
+ffu_close :: (s: [] Fairy) {
+  g := s[0].upgrade[..];
+  g[0].open = false; g[0].trying = 0; g[0].press_kind = 0;
+  if g[0].buy_state != BUY_PAID { g[0].buy_state = BUY_NONE; }
+}
+// Whether UPGRADE shows: something is listed, and nothing else has the screen.
+ffu_can :: (s: [] Fairy) -> bool {
+  g := s[0].upgrade[..];
+  return !s[0].golden && g[0].heard && (g[0].n > 0 || g[0].pend_n > 0) && s[0].talk == 0 && !s[0].maker[0].open && !s[0].build[0].open && !s[0].race[0].making;
+}
+
+// ---- what the face sends: one at a time
+
+ffu_next :: (s: [] Fairy) -> int #export_c {
+  g := s[0].upgrade[..];
+  if s[0].golden { return 0; }
+  if g[0].ask_buy > 0 { return FFU_BUY; }
+  if g[0].ask_check && g[0].buy_state == BUY_SHOWN { g[0].ask_check = false; return FFU_CHECK; }
+  if g[0].ask_wear >= 0 { return FFU_WEAR; }
+  if g[0].ask_decide > 0 { return FFU_DECIDE; }
+  if g[0].ask_get { g[0].ask_get = false; return FFU_GET; }
+  return 0;
+}
+// It couldn't go yet (no player key): asked again later.
+ffu_later :: (s: [] Fairy, kind: int) #export_c {
+  if kind == FFU_GET { s[0].upgrade[0].ask_get = true; }
+  if kind == FFU_CHECK { s[0].upgrade[0].ask_check = true; }
+}
+ffu_post :: (kind: int) -> bool #export_c { return kind != FFU_GET; }
+ffu_url :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+  g := s[0].upgrade[..];
+  o := 0;
+  if kind == FFU_GET { o = ffs_put(out, 0, "/api/playtest/upgrades/fairy"); }
+  else if kind == FFU_BUY {
+    o = ffs_put(out, 0, "/api/playtest/upgrades/"); o = room_put_int(out, o, g[0].ask_buy); o = ffs_put(out, o, "/buy");
+  } else if kind == FFU_CHECK {
+    o = ffs_put(out, 0, "/api/playtest/upgrades/"); o = room_put_int(out, o, g[0].buying); o = ffs_put(out, o, "/buy/");
+    o = ffs_put(out, o, cast(string) g[0].hash[0..<64]);
+  } else if kind == FFU_WEAR {
+    o = ffs_put(out, 0, "/api/playtest/upgrades/"); o = room_put_int(out, o, g[0].ask_wear); o = ffs_put(out, o, "/wear");
+  } else if kind == FFU_DECIDE {
+    o = ffs_put(out, 0, "/api/admin/upgrades/"); o = room_put_int(out, o, g[0].ask_decide);
+    o = ffs_put(out, o, ifx g[0].decide_yes then "/approve" else "/reject");
+  }
+  return ifx o > 0 then o else 0;
+}
+// The body of a write (and for the answer, what it was about kept until it comes).
+ffu_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+  g := s[0].upgrade[..];
+  o := 0;
+  if kind == FFU_BUY {
+    o = ffs_put(out, 0, ifx g[0].ask_credit then "{\"pay\":\"credit\"}" else "{\"pay\":\"sats\"}");
+    g[0].buying = g[0].ask_buy; g[0].ask_buy = 0;
+    if !g[0].ask_credit { g[0].buy_state = BUY_ASKING; }
+  } else if kind == FFU_WEAR { o = ffs_put(out, 0, "{}"); g[0].scratch[0] = 0; }
+  else if kind == FFU_CHECK || kind == FFU_DECIDE { o = ffs_put(out, 0, "{}"); }
+  if kind == FFU_WEAR { g[0].buy_row = g[0].ask_wear; g[0].ask_wear = -1; }
+  if kind == FFU_DECIDE { g[0].ask_decide = 0; }
+  return ifx o > 0 then o else 0;
+}
+
+// A listing from the server's JSON object at i.
+ffu_listing :: (t: string, i: int, l: [] Listing) {
+  l[0].id = cast(int) room_field_num(t, i, "id");
+  l[0].sats = cast(int) room_field_num(t, i, "sats");
+  l[0].name_n = room_text(t, i, "name", l[0].name[..], 0, FFU_NAME);
+  l[0].by_n = room_text(t, i, "by", l[0].by[..], 0, FFU_NAME);
+  l[0].look_n = room_text(t, i, "look", l[0].look[..], 0, FFU_LOOK);
+  where: [1] int;
+  on := world_field(t, i, "owned", where[..]);
+  l[0].owned = where[0] >= 0 && t[where[0]..<where[0] + on] == "true";
+}
+ffu_list :: (t: string, obj: int, key: string, out: [] Listing) -> int {
+  n := 0;
+  a := room_array(t, obj, key);
+  if a < 0 { return 0; }
+  i := world_space(t, a + 1);
+  while i < t.count && t[i] == 123 && n < out.count {
+    e := world_value_end(t, i);
+    if e < 0 { break; }
+    ffu_listing(t, i, out[n..<n + 1]);
+    if out[n].id > 0 { n += 1; }
+    i = world_space(t, e);
+    if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+  }
+  return n;
+}
+ffu_value :: (t: string, obj: int, key: string) -> string {
+  where: [1] int;
+  n := world_field(t, obj, key, where[..]);
+  if where[0] < 1 || n < 1 || t[where[0] - 1] != 34 { return ""; }   // a string's, its quotes off (no escapes in these)
+  return t[where[0]..<where[0] + n];
+}
+
+// What came back ("STATUS\n" and the JSON).
+ffu_answer :: (s: [] Fairy, kind: int, answer: string) #export_c {
+  g := s[0].upgrade[..];
+  nl := 0;
+  while nl < answer.count && answer[nl] != 10 { nl += 1; }
+  status := room_int(answer[0..<nl]);
+  t := ifx nl < answer.count then answer[nl + 1..<answer.count] else "";
+  obj := world_space(t, 0);
+  ok := obj < t.count && t[obj] == 123;
+  if kind == FFU_GET {
+    if status != 200 || !ok { return; }
+    g[0].heard = true;
+    g[0].n = ffu_list(t, obj, "top", g[0].top[..]);
+    g[0].pend_n = ffu_list(t, obj, "pending", g[0].pend[..]);
+    where: [1] int;
+    an := world_field(t, obj, "admin", where[..]);
+    g[0].admin = where[0] >= 0 && t[where[0]..<where[0] + an] == "true";
+    _ := world_field(t, obj, "wearing", where[..]);
+    if where[0] >= 0 && where[0] < t.count && t[where[0]] == 123 {
+      w: [1] Listing;
+      ffu_listing(t, where[0], w[..]);
+      ffu_wear_look(g, w[0].id, ffu_text(w[..], 2));
+    } else { ffu_wear_look(g, 0, ""); }
+    if g[0].trying > g[0].n { g[0].trying = 0; }
+    return;
+  }
+  if kind == FFU_BUY {
+    if status == 200 && ok {
+      inv := ffu_value(t, obj, "invoice"); hash := ffu_value(t, obj, "payment_hash");
+      if inv.count > 20 && inv.count + 10 < FFU_CODE && hash.count == 64 {
+        for k: 0..<64 { g[0].hash[k] = hash[k]; }
+        o := ffs_put(g[0].code[..], 0, "lightning:");
+        g[0].code_n = ffs_put(g[0].code[..], o, inv);
+        g[0].qr_want = true; g[0].qr_size = 0;
+        g[0].buy_state = BUY_SHOWN; g[0].polled = s[0].time;
+        g[0].buy_sats = cast(int) room_field_num(t, obj, "sats");
+        return;
+      }
+      if ffu_value(t, obj, "state") == "paid" {   // with credit: yours now
+        ffu_wear_look(g, g[0].buying, ffu_value(t, obj, "look"));
+        g[0].trying = 0; g[0].ask_get = true;
+        ffu_say(s, "IT'S YOURS: EVERYONE SEES YOU IN IT");
+        return;
+      }
+    }
+    g[0].buy_state = BUY_NONE;
+    ffu_say(s, ifx status == 401 then "LOG IN TO PAY WITH CREDIT" else ifx status == 402 then "NOT ENOUGH CREDIT"
+              else ifx status == 409 then "IT'S YOURS ALREADY" else ifx status == 404 then "IT ISN'T LISTED NOW"
+              else ifx status == 429 then "TOO MANY AT ONCE: TRY AGAIN IN A MINUTE" else "OUR WALLET DIDN'T ANSWER: TRY AGAIN");
+    if status == 409 || status == 404 { g[0].ask_get = true; }
+    return;
+  }
+  if kind == FFU_CHECK {
+    g[0].polled = s[0].time;
+    if status != 200 || !ok { return; }
+    st := ffu_value(t, obj, "state");
+    if st == "paid" && g[0].buy_state == BUY_SHOWN {
+      g[0].buy_state = BUY_PAID;
+      ffu_wear_look(g, g[0].buying, ffu_value(t, obj, "look"));
+      g[0].trying = 0; g[0].ask_get = true;
+      ffu_say(s, "PAID: IT'S YOURS, AND ITS MAKER IS PAID");
+    } else if st == "expired" && g[0].buy_state == BUY_SHOWN { g[0].buy_state = BUY_EXPIRED; }
+    return;
+  }
+  if kind == FFU_WEAR {
+    if status == 200 && ok { ffu_wear_look(g, g[0].buy_row, ffu_value(t, obj, "look")); g[0].trying = 0; }
+    else { ffu_say(s, "NOT CHANGED: TRY AGAIN"); }
+    return;
+  }
+  if kind == FFU_DECIDE {
+    if status == 200 { g[0].ask_get = true; ffu_say(s, ifx ffu_value(t, obj, "state") == "approved" then "APPROVED: IT IS LISTED" else "REJECTED"); }
+    else { ffu_say(s, "ADMINS ONLY"); }
+  }
+}
+// Once a frame: an invoice on show is asked about every FFU_POLL seconds.
+ffu_tick :: (s: [] Fairy) {
+  g := s[0].upgrade[..];
+  if g[0].buy_state == BUY_SHOWN && s[0].time - g[0].polled > f64(FFU_POLL) { g[0].ask_check = true; g[0].polled = s[0].time; }
+}
+// The face encoded code into qr: status 0 and the grid's side, else nothing to show.
+ffu_qr_wanted :: (s: [] Fairy) -> bool #export_c { return s[0].upgrade[0].qr_want; }
+ffu_qr_done :: (s: [] Fairy, status: int, size: int) #export_c {
+  g := s[0].upgrade[..];
+  g[0].qr_want = false;
+  g[0].qr_size = ifx status != 0 || size < 21 || size * size > FFU_QR then 0 else size;
+}
+// The host's action: 1 (go to) the wallet link, inside the tap. 0 none.
+ffu_action :: (s: [] Fairy) -> int #export_c { return ifx s[0].upgrade[0].wallet && s[0].upgrade[0].code_n > 0 then 1 else 0; }
+ffu_action_done :: (s: [] Fairy) #export_c { s[0].upgrade[0].wallet = false; }
+
+// ---- keys and pointers
+
+ffu_act :: (s: [] Fairy, kind: int, arg: int) {
+  g := s[0].upgrade[..];
+  if kind == UB_CHIP { if g[0].open { ffu_close(s); } else { ffu_open(s); } return; }
+  if kind == UB_CLOSE { ffu_close(s); return; }
+  if kind == UB_BACK { g[0].buy_state = BUY_NONE; return; }
+  if kind == UB_WALLET { g[0].wallet = true; return; }
+  if kind == UB_OWN { g[0].ask_wear = 0; return; }
+  if kind == UB_APPROVE || kind == UB_REJECT {
+    if arg >= 0 && arg < g[0].pend_n { g[0].ask_decide = g[0].pend[arg].id; g[0].decide_yes = kind == UB_APPROVE; }
+    return;
+  }
+  if arg < 0 || arg >= g[0].n { return; }
+  l := g[0].top[arg..<arg + 1];
+  if kind == UB_TRY {
+    if g[0].trying == arg + 1 { g[0].trying = 0; return; }
+    if ffl_code_read(ffu_text(l, 2), g[0].tried[..]) { g[0].trying = arg + 1; }
+    return;
+  }
+  if kind == UB_WEAR { g[0].ask_wear = l[0].id; return; }
+  if kind == UB_BUY || kind == UB_CREDIT {
+    if g[0].ask_buy > 0 || g[0].buy_state == BUY_ASKING { return; }
+    g[0].ask_buy = l[0].id; g[0].ask_credit = kind == UB_CREDIT; g[0].buy_sats = l[0].sats;
+    if kind == UB_BUY { g[0].buy_state = BUY_ASKING; }
+  }
+}
+
+ffu_key :: (s: [] Fairy, key: int) -> bool {
+  g := s[0].upgrade[..];
+  if g[0].open && key == KEY_ESCAPE { if g[0].buy_state == BUY_SHOWN || g[0].buy_state == BUY_EXPIRED { g[0].buy_state = BUY_NONE; } else { ffu_close(s); } return true; }
+  if (key == 'u' || key == 'U') && (g[0].open || ffu_can(s)) { ffu_act(s, UB_CHIP, 0); return true; }
+  return false;
+}
+
+ffu_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
+  g := s[0].upgrade[..];
+  if phase == 0 {
+    g[0].press_kind = 0;
+    for i: 0..<g[0].btn_n {
+      if in_box(g[0].btn[i], x, y) { g[0].press_kind = g[0].btn_kind[i]; g[0].press_arg = g[0].btn_arg[i]; g[0].press_finger = id; return true; }
+    }
+    return g[0].open && in_box(g[0].pane, x, y);
+  }
+  if g[0].press_kind == 0 || id != g[0].press_finger { return false; }
+  if phase == 1 { return true; }
+  kind := g[0].press_kind; arg := g[0].press_arg; g[0].press_kind = 0;
+  if phase == 2 {
+    for i: 0..<g[0].btn_n {
+      if g[0].btn_kind[i] == kind && g[0].btn_arg[i] == arg && in_box(g[0].btn[i], x, y) { ffu_act(s, kind, arg); break; }
+    }
+  }
+  return true;
+}
+
+// ---- drawing
+
+ffu_button :: (s: [] Fairy, out: [] f32, at: int, b: Box, word: string, kind: int, arg: int, cap: f32, orange: bool) -> int {
+  g := s[0].upgrade[..];
+  k := hi(s[0].dpr, 0.5);
+  if g[0].btn_n >= FFU_BUTTONS { return at; }
+  pressed := g[0].press_kind == kind && g[0].press_arg == arg;
+  r := ifx orange then f32(BTC_R) else ifx pressed then f32(GOLD_R) else f32(CREAM_R);
+  gg := ifx orange then f32(BTC_G) else ifx pressed then f32(GOLD_G) else f32(CREAM_G);
+  bl := ifx orange then f32(BTC_B) else ifx pressed then f32(GOLD_B) else f32(CREAM_B);
+  light := ifx pressed then 1.0f32 else 0.6f32;
+  n := at;
+  if lit(out, n, b.x0, b.y0, b.x1, b.y0, 0.5 * k, light, 1 * k, r, gg, bl, 0) { n += 6; }
+  if lit(out, n, b.x1, b.y0, b.x1, b.y1, 0.5 * k, light, 1 * k, r, gg, bl, 0) { n += 6; }
+  if lit(out, n, b.x1, b.y1, b.x0, b.y1, 0.5 * k, light, 1 * k, r, gg, bl, 0) { n += 6; }
+  if lit(out, n, b.x0, b.y1, b.x0, b.y0, 0.5 * k, light, 1 * k, r, gg, bl, 0) { n += 6; }
+  n = draw_text(out, n, word, (b.x0 + b.x1 - text_width(word, cap)) / 2, (b.y0 + b.y1 + cap) / 2, cap, GAP, SPACE,
+                ink(k, 0.95, ifx orange then f32(BTC_R) else f32(GOLD_R), ifx orange then f32(BTC_G) else f32(GOLD_G), ifx orange then f32(BTC_B) else f32(GOLD_B)), false, false);
+  i := g[0].btn_n;
+  g[0].btn[i] = b; g[0].btn_kind[i] = kind; g[0].btn_arg[i] = arg; g[0].btn_n = i + 1;
+  return n;
+}
+ffu_sats :: (g: [] Upgrade, sats: int) -> string {
+  o := room_put_int(g[0].scratch[..], 0, sats);
+  o = ffs_put(g[0].scratch[..], o, " SATS");
+  return cast(string) g[0].scratch[0..<(ifx o < 0 then 0 else o)];
+}
+// The QR: its light modules (and a 4-module quiet zone) as flat square-ended strokes (fairy.wgsl's mode -1).
+ffu_qr_draw :: (g: [] Upgrade, out: [] f32, at: int, cx: f32, top: f32, side: f32) -> int {
+  n := g[0].qr_size;
+  if n <= 0 { return at; }
+  all := n + 8;
+  m := floor(side / f32(all));
+  if m < 1 { m = 1; }
+  x0 := floor(cx - m * f32(all) * 0.5); y0 := floor(top);
+  v := at;
+  for row: 0..<all {
+    y := y0 + f32(row) * m + m * 0.5;
+    col := 0;
+    while col < all {
+      if ffu_dark(g, row - 4, col - 4) { col += 1; continue; }
+      run := col;
+      while run < all && !ffu_dark(g, row - 4, run - 4) { run += 1; }
+      ax := x0 + f32(col) * m + m * 0.5; bx := x0 + f32(run) * m - m * 0.5;
+      if bx <= ax { bx = ax + 0.01; }
+      if lit(out, v, ax, y, bx, y, m * 0.5, 1.0, 0, 0.97, 0.97, 0.97, -1.0) { v += 6; }
+      col = run;
+    }
+  }
+  return v;
+}
+ffu_dark :: (g: [] Upgrade, y: int, x: int) -> bool {
+  n := g[0].qr_size;
+  if x < 0 || y < 0 || x >= n || y >= n { return false; }
+  return g[0].qr[y * n + x] == 1;
+}
+
+// UPGRADE beside your fairy (you: her feet), and the pane while it is open.
+ffu_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, you: Point) -> int {
+  g := s[0].upgrade[..];
+  g[0].btn_n = 0;
+  g[0].chip = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; g[0].pane = g[0].chip;
+  ffu_tick(s);
+  if g[0].open && (s[0].talk > 0 || s[0].maker[0].open || s[0].golden) { ffu_close(s); }
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height;
+  n := at;
+  if !g[0].open {
+    if !ffu_can(s) { return n; }
+    cap := 7.5 * k;
+    keyw := ifx phone(s) then 0.0f32 else text_width("U", cap) + 10 * k;
+    bw := keyw + text_width("UPGRADE", cap) + 26 * k; bh := ifx phone(s) then 40 * k else 30 * k;
+    p := project(u, v3(you.x, you.y + 1.0, you.z), w, h);
+    cx := ifx p.x < -1000 then w * 0.5 else p.x;
+    cy := ifx p.x < -1000 then h * 0.5 else p.y;
+    x0 := clamp(cx + 46 * k, 16 * k, w - 16 * k - bw);
+    y0 := clamp(cy - bh * 0.5, 90 * k, h - 140 * k - bh);
+    b := Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y0 + bh};
+    g[0].chip = b;
+    plate(s, u, b, 0.82, 0);
+    tx := (b.x0 + b.x1 - keyw - text_width("UPGRADE", cap)) / 2; ty := (b.y0 + b.y1 + cap) / 2;
+    if keyw > 0 { n = draw_text(out, n, "U", tx, ty, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false); }
+    on := g[0].press_kind == UB_CHIP;
+    n = draw_text(out, n, "UPGRADE", tx + keyw, ty, cap, GAP, SPACE,
+                  ink(k, 0.95, ifx on then GOLD_R else CREAM_R, ifx on then GOLD_G else CREAM_G, ifx on then GOLD_B else CREAM_B), false, false);
+    i := g[0].btn_n;
+    g[0].btn[i] = b; g[0].btn_kind[i] = UB_CHIP; g[0].btn_arg[i] = 0; g[0].btn_n = i + 1;
+    return ffu_note(s, out, u, n, b.y1 + 8 * k, b.x0);
+  }
+  return ffu_pane(s, out, u, n);
+}
+
+// A word on what happened, under (x0, y).
+ffu_note :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, y: f32, x0: f32) -> int {
+  g := s[0].upgrade[..];
+  if g[0].note_n == 0 || s[0].time - g[0].note_at > f64(FFU_NOTE_TIME) { return at; }
+  k := hi(s[0].dpr, 0.5); cap := 7.5 * k;
+  t := cast(string) g[0].note[0..<g[0].note_n];
+  tw := lo(text_width(t, cap), s[0].width - 56 * k);
+  x := clamp(x0, 16 * k, s[0].width - 16 * k - tw - 24 * k);
+  plate(s, u, Box.{x0 = x, y0 = y, x1 = x + tw + 24 * k, y1 = y + cap + 20 * k}, 0.82, 0);
+  return ffs_text(s, out, at, t, x + 12 * k, y + 10 * k + cap, cap, tw, 0.95, false);
+}
+
+// The pane: on a computer at the right, on a phone along the bottom; your fairy stays in view.
+ffu_pane :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
+  g := s[0].upgrade[..];
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height;
+  ph := phone(s);
+  cap := 7.5 * k; big := 9.5 * k; pad := 14 * k;
+  bh := ifx ph then 36 * k else 26 * k;
+  pw := ifx ph then w - 24 * k else lo(360 * k, w - 32 * k);
+  x0 := ifx ph then 12 * k else w - 16 * k - pw;
+  x1 := x0 + pw;
+  inner := pw - 2 * pad;
+  row := big + cap + 18 * k + bh;
+  showing := g[0].buy_state == BUY_SHOWN || g[0].buy_state == BUY_EXPIRED || g[0].buy_state == BUY_ASKING;
+  side := lo(220 * k, inner);
+  body := ifx showing then side + big + cap + bh + 44 * k
+          else f32(g[0].n) * (row + 10 * k) + (ifx g[0].wearing > 0 then bh + 12 * k else 0.0f32)
+               + (ifx g[0].admin && g[0].pend_n > 0 then cap + 14 * k + f32(g[0].pend_n) * (big + cap + bh + 22 * k) else 0.0f32)
+               + (ifx g[0].n == 0 then cap + 10 * k else 0.0f32);
+  tall := pad + big + 12 * k + body + pad;
+  y0 := ifx ph then h - 12 * k - tall else 90 * k;
+  if y0 < 12 * k { y0 = 12 * k; }
+  b := Box.{x0 = x0, y0 = y0, x1 = x1, y1 = y0 + tall};
+  g[0].pane = b;
+  plate(s, u, b, 0.9, 0);
+  n := at;
+  // the title, and X
+  y := y0 + pad + big;
+  n = draw_text(out, n, "UPGRADES", x0 + pad, y, big, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  xw := text_width("CLOSE", cap) + 20 * k;
+  n = ffu_button(s, out, n, Box.{x0 = x1 - pad - xw, y0 = y - big - 4 * k, x1 = x1 - pad, y1 = y + 6 * k}, "CLOSE", UB_CLOSE, 0, cap, false);
+  y += 12 * k;
+  if showing {
+    at_i := 0;
+    for i: 0..<g[0].n { if g[0].top[i].id == g[0].buying { at_i = i; } }
+    l := g[0].top[at_i..<at_i + 1];
+    cx := (x0 + x1) * 0.5;
+    qb := Box.{x0 = cx - side * 0.5, y0 = y, x1 = cx + side * 0.5, y1 = y + side};
+    plate(s, u, qb, 1.0, 0);
+    if g[0].buy_state == BUY_SHOWN { n = ffu_qr_draw(g, out, n, cx, y, side); }
+    else {
+      word := ifx g[0].buy_state == BUY_EXPIRED then "THE INVOICE EXPIRED" else "OUR WALLET IS MAKING AN INVOICE";
+      n = ffs_text(s, out, n, word, cx - lo(text_width(word, cap), side) * 0.5, y + side * 0.5, cap, side, 0.8, false);
+    }
+    y += side + 10 * k + big;
+    pay := ffu_sats(g, ifx g[0].buy_sats > 0 then g[0].buy_sats else l[0].sats);
+    n = draw_text(out, n, "PAY", x0 + pad, y, big, GAP, SPACE, ink(k, 0.95, CREAM_R, CREAM_G, CREAM_B), false, false);
+    n = draw_text(out, n, pay, x0 + pad + text_width("PAY ", big), y, big, GAP, SPACE, ink(k, 0.95, BTC_R, BTC_G, BTC_B), false, false);
+    y += 8 * k + cap;
+    n = ffs_text(s, out, n, ffu_text(l, 0), x0 + pad, y, cap, inner, 0.85, false);
+    y += 12 * k;
+    bw := (inner - 8 * k) * 0.5;
+    if g[0].buy_state == BUY_SHOWN {
+      n = ffu_button(s, out, n, Box.{x0 = x0 + pad, y0 = y, x1 = x0 + pad + bw, y1 = y + bh}, "OPEN WALLET", UB_WALLET, 0, cap, true);
+    }
+    n = ffu_button(s, out, n, Box.{x0 = x1 - pad - bw, y0 = y, x1 = x1 - pad, y1 = y + bh}, "BACK", UB_BACK, 0, cap, false);
+    return ffu_note(s, out, u, n, b.y1 + 8 * k, b.x0);
+  }
+  if g[0].n == 0 {
+    y += cap;
+    n = ffs_text(s, out, n, "NOTHING LISTED YET", x0 + pad, y, cap, inner, 0.75, false);
+    y += 10 * k;
+  }
+  for i: 0..<g[0].n {
+    l := g[0].top[i..<i + 1];
+    y += big;
+    price := ffu_sats(g, l[0].sats);
+    pw2 := text_width(price, cap);
+    n = ffs_text(s, out, n, ffu_text(l, 0), x0 + pad, y, big, inner - pw2 - 12 * k, 0.95, g[0].trying == i + 1);
+    n = draw_text(out, n, price, x1 - pad - pw2, y, cap, GAP, SPACE, ink(k, 0.95, BTC_R, BTC_G, BTC_B), false, false);
+    y += 8 * k + cap;
+    by := ffu_text(l, 1);
+    n = draw_text(out, n, "BY", x0 + pad, y, cap, GAP, SPACE, ink(k, 0.6, CREAM_R, CREAM_G, CREAM_B), false, false);
+    n = ffs_text(s, out, n, by, x0 + pad + text_width("BY ", cap), y, cap, inner - text_width("BY ", cap), 0.75, false);
+    y += 10 * k;
+    bw := (inner - 16 * k) / 3;
+    bx := x0 + pad;
+    n = ffu_button(s, out, n, Box.{x0 = bx, y0 = y, x1 = bx + bw, y1 = y + bh}, ifx g[0].trying == i + 1 then "TRYING" else "TRY", UB_TRY, i, cap, false);
+    bx += bw + 8 * k;
+    if l[0].owned {
+      wearing := g[0].wearing == l[0].id;
+      n = ffu_button(s, out, n, Box.{x0 = bx, y0 = y, x1 = bx + 2 * bw + 8 * k, y1 = y + bh}, ifx wearing then "WEARING" else "WEAR", UB_WEAR, i, cap, false);
+    } else {
+      n = ffu_button(s, out, n, Box.{x0 = bx, y0 = y, x1 = bx + bw, y1 = y + bh}, "BUY", UB_BUY, i, cap, true);
+      bx += bw + 8 * k;
+      n = ffu_button(s, out, n, Box.{x0 = bx, y0 = y, x1 = bx + bw, y1 = y + bh}, "CREDIT", UB_CREDIT, i, cap, false);
+    }
+    y += bh + 10 * k;
+  }
+  if g[0].wearing > 0 {
+    n = ffu_button(s, out, n, Box.{x0 = x0 + pad, y0 = y, x1 = x1 - pad, y1 = y + bh}, "THE FAIRY YOU MADE", UB_OWN, 0, cap, false);
+    y += bh + 12 * k;
+  }
+  if g[0].admin && g[0].pend_n > 0 {
+    y += cap;
+    n = draw_text(out, n, "WAITING FOR AN ADMIN", x0 + pad, y, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    y += 14 * k;
+    for i: 0..<g[0].pend_n {
+      l := g[0].pend[i..<i + 1];
+      y += big;
+      price := ffu_sats(g, l[0].sats);
+      pw2 := text_width(price, cap);
+      n = ffs_text(s, out, n, ffu_text(l, 0), x0 + pad, y, big, inner - pw2 - 12 * k, 0.9, false);
+      n = draw_text(out, n, price, x1 - pad - pw2, y, cap, GAP, SPACE, ink(k, 0.95, BTC_R, BTC_G, BTC_B), false, false);
+      y += 8 * k + cap;
+      n = ffs_text(s, out, n, ffu_text(l, 1), x0 + pad, y, cap, inner, 0.7, false);
+      y += 6 * k;
+      bw := (inner - 8 * k) * 0.5;
+      n = ffu_button(s, out, n, Box.{x0 = x0 + pad, y0 = y, x1 = x0 + pad + bw, y1 = y + bh}, "APPROVE", UB_APPROVE, i, cap, false);
+      n = ffu_button(s, out, n, Box.{x0 = x1 - pad - bw, y0 = y, x1 = x1 - pad, y1 = y + bh}, "REJECT", UB_REJECT, i, cap, false);
+      y += bh + 8 * k;
+    }
+  }
+  return ffu_note(s, out, u, n, b.y1 + 8 * k, b.x0);
+}
+
+#test "a look code: nine parts, or nine parts and seven colours; anything else draws the fairy you made" {
+  w: [1] Worn;
+  #assert ffl_code_read("120140210", w[..]) && w[0].on && !w[0].tinted && w[0].part[0] == 1 && w[0].part[2] == 0 && w[0].part[7] == 1;
+  #assert ffl_code_read("120140210ff3399000000ffffff6633cc00ffaaff66ccffffff", w[..]) && w[0].tinted;
+  #assert w[0].tint[0] == 1.0 && w[0].tint[1] == 0.2 && w[0].tint[3] == 0 && w[0].tint[6] == 1.0;
+  #assert !ffl_code_read("999999999", w[..]) && !w[0].on;          // a part past its choices
+  #assert !ffl_code_read("12014031", w[..]);                       // too short
+  #assert !ffl_code_read("120140210ff33990", w[..]);               // half a colour
+  #assert !ffl_code_read("120140210zz3399000000ffffff6633cc00ffaaff66ccffffff", w[..]);
+  #assert !ffl_code_read("", w[..]) && !w[0].on;
+}
+
+#test "UPGRADE: the top three from the server, TRY, BUY's invoice polled until paid, then you wear it and others draw it" {
+  s: [1] Fairy;
+  s[0].width = 1280; s[0].height = 800; s[0].dpr = 1; s[0].time = 10;
+  g := s[0].upgrade[..];
+  g[0].ask_wear = -1;
+  #assert !ffu_can(s[..]);                                          // nothing heard: no button
+  look := "120140210ff3399000000ffffff6633cc00ffaaff66ccffffff";
+  ffu_answer(s[..], FFU_GET, "200\n{\"top\":[{\"id\":7,\"name\":\"Moonmoth \\\"Queen\\\"\",\"by\":\"Ted\",\"sats\":500,\"look\":\"120140210ff3399000000ffffff6633cc00ffaaff66ccffffff\",\"owned\":false},{\"id\":3,\"name\":\"Plain\",\"by\":\"Jo\",\"sats\":50,\"look\":\"000000000\",\"owned\":false}],\"wearing\":null,\"pending\":[],\"admin\":false}");
+  #assert g[0].heard && g[0].n == 2 && g[0].top[0].id == 7 && g[0].top[0].sats == 500 && ffu_text(g[0].top[0..<1], 1) == "Ted";
+  #assert ffu_text(g[0].top[0..<1], 0) == "Moonmoth \"Queen\"";             // the server's text, unescaped, drawn as glyphs
+  #assert ffu_can(s[..]) && g[0].wearing == 0 && !ffu_worn(s[..])[0].on;
+  ffu_act(s[..], UB_CHIP, 0);
+  #assert g[0].open && ffu_next(s[..]) == FFU_GET;                   // opening asks again
+  ffu_act(s[..], UB_TRY, 0);
+  #assert g[0].trying == 1 && ffu_worn(s[..])[0].on && ffu_worn(s[..])[0].tinted;   // tried on while the pane is open
+  ffu_act(s[..], UB_BUY, 0);
+  #assert ffu_next(s[..]) == FFU_BUY;
+  u: [96] u8;
+  #assert cast(string) u[0..<ffu_url(s[..], FFU_BUY, u[..])] == "/api/playtest/upgrades/7/buy" && ffu_post(FFU_BUY);
+  #assert cast(string) u[0..<ffu_body(s[..], FFU_BUY, u[..])] == "{\"pay\":\"sats\"}" && g[0].buy_state == BUY_ASKING;
+  hash := "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12";
+  ffu_answer(s[..], FFU_BUY, "200\n{\"invoice\":\"lnbc5u1pexampleinvoice0001\",\"payment_hash\":\"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\"sats\":500,\"expires\":1}");
+  #assert g[0].buy_state == BUY_SHOWN && g[0].qr_want && cast(string) g[0].code[0..<g[0].code_n] == "lightning:lnbc5u1pexampleinvoice0001";
+  ffu_act(s[..], UB_WALLET, 0);
+  #assert ffu_action(s[..]) == 1;
+  ffu_action_done(s[..]);
+  #assert ffu_action(s[..]) == 0 && ffu_next(s[..]) == 0;
+  s[0].time = 14; ffu_tick(s[..]);
+  #assert ffu_next(s[..]) == FFU_CHECK;
+  big: [200] u8;
+  url := cast(string) big[0..<ffu_url(s[..], FFU_CHECK, big[..])];
+  #assert url[0..<29] == "/api/playtest/upgrades/7/buy/" && url[29..<url.count] == hash;
+  ffu_answer(s[..], FFU_CHECK, "200\n{\"state\":\"open\",\"sats\":500}");
+  #assert g[0].buy_state == BUY_SHOWN;
+  ffu_answer(s[..], FFU_CHECK, "200\n{\"state\":\"paid\",\"sats\":500,\"look\":\"120140210ff3399000000ffffff6633cc00ffaaff66ccffffff\",\"payout\":\"queued\"}");
+  #assert g[0].buy_state == BUY_PAID && g[0].wearing == 7 && g[0].trying == 0;
+  ffu_close(s[..]);
+  #assert ffu_worn(s[..])[0].on && ffu_worn(s[..])[0].tinted && ffu_worn(s[..])[0].tint[0] == 1.0;   // you, in it
+  // credit, and its refusals
+  ffu_act(s[..], UB_CREDIT, 1);
+  #assert ffu_next(s[..]) == FFU_BUY && cast(string) u[0..<ffu_body(s[..], FFU_BUY, u[..])] == "{\"pay\":\"credit\"}";
+  ffu_answer(s[..], FFU_BUY, "401\n{\"error\":\"log in to pay with credit\"}");
+  #assert cast(string) g[0].note[0..<g[0].note_n] == "LOG IN TO PAY WITH CREDIT" && g[0].wearing == 7;
+  // others: the room's look
+  r := s[0].room[..];
+  #assert room_take(r, "200\n{\"others\":[{\"id\":\"p-1\",\"name\":\"A\",\"x\":1,\"y\":0,\"z\":2,\"yaw\":0,\"look\":\"120140210ff3399000000ffffff6633cc00ffaaff66ccffffff\"},{\"id\":\"p-2\",\"name\":\"B\",\"x\":3,\"y\":0,\"z\":4,\"yaw\":0}],\"messages\":[],\"last\":0}") == 200;
+  ow: [1] Worn;
+  #assert r[0].others == 2 && ffl_code_read(room_other_look(r, 0), ow[..]) && ow[0].tinted && room_other_look(r, 1) == "" && !ffl_code_read(room_other_look(r, 1), ow[..]);
+  // wearing your own again
+  ffu_act(s[..], UB_OWN, 0);
+  #assert ffu_next(s[..]) == FFU_WEAR && cast(string) u[0..<ffu_url(s[..], FFU_WEAR, u[..])] == "/api/playtest/upgrades/0/wear";
+  _ := ffu_body(s[..], FFU_WEAR, u[..]);
+  ffu_answer(s[..], FFU_WEAR, "200\n{\"look\":\"\"}");
+  #assert g[0].wearing == 0 && !ffu_worn(s[..])[0].on;
+}
+
+#test "an admin approves a waiting listing in the pane; the pane is drawn with its buttons" {
+  s: [1] Fairy;
+  s[0].width = 1280; s[0].height = 800; s[0].dpr = 1; s[0].time = 10;
+  g := s[0].upgrade[..];
+  g[0].ask_wear = -1;
+  ffu_answer(s[..], FFU_GET, "200\n{\"top\":[],\"wearing\":null,\"pending\":[{\"id\":9,\"name\":\"Nightglass\",\"by\":\"Marc\",\"sats\":800,\"look\":\"000000000\",\"owned\":false}],\"admin\":true}");
+  #assert g[0].admin && g[0].pend_n == 1 && ffu_can(s[..]);
+  ffu_open(s[..]);
+  out: [60000] f32; u: [UNIFORM_FLOATS] f32;
+  n := ffu_pane(s[..], out[..], u[..], 0);
+  #assert n > 0 && g[0].btn_n == 3;                                  // CLOSE, APPROVE, REJECT
+  #assert g[0].btn_kind[1] == UB_APPROVE && g[0].btn_kind[2] == UB_REJECT;
+  b := g[0].btn[1];
+  #assert ffu_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && ffu_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
+  #assert ffu_next(s[..]) == FFU_DECIDE;
+  u2: [96] u8;
+  #assert cast(string) u2[0..<ffu_url(s[..], FFU_DECIDE, u2[..])] == "/api/admin/upgrades/9/approve";
+  _ := ffu_body(s[..], FFU_DECIDE, u2[..]);
+  ffu_answer(s[..], FFU_DECIDE, "200\n{\"id\":9,\"state\":\"approved\"}");
+  #assert cast(string) g[0].note[0..<g[0].note_n] == "APPROVED: IT IS LISTED";
+  #assert ffu_next(s[..]) == FFU_GET;
+}

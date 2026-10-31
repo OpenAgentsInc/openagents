@@ -64,3 +64,60 @@ usage numbers. Bitcoin only.
 | Tips and payouts | `coax/web/api/migrations/0073_maker_tips.sql`, `makers.c`, `coax/web/api/spark/wallet.cjs` (`/quote`, `/sent`, `/send`) |
 | Checks | `coax/web/api/test_makers_tips.py`, the tip `#test`s in `private.coax`, the maker `#test` in each realm module |
 | Pages | `apps/openagents-web/realms/<realm>/claim/index.html` (page 4), `.../tip/index.html` (page 5 of `private.coax`) |
+
+## Fairy upgrades
+
+Status: built October 31 (ev-asset-upgrades, Episode 290: "an upgrade button
+next to my fairy ... the top three"). Someone makes a better fairy, lists it,
+an admin approves it, and in Fairy Forest **UPGRADE** beside your fairy (U on
+a computer) shows the top three. One tap buys one, with sats or with credit,
+and its maker is paid like a tip. Fairies only for now.
+
+- **A fairy** is a look code Fairy Forest draws: the nine parts of LOOK (body,
+  skin, hair, style, eyes, outfit, wings, wing colour, glow), a digit each, and
+  then, optionally, seven colours of six hex digits that LOOK's choices don't
+  give (the hair, the bodice, the skirt, the gloves and under-skirt, the three
+  wing pairs): 51 characters, e.g. `120140210f2c94c3a1f6b7b4fd6e8d8ff9be4ffc76fe0fff6c8`.
+  `makers.look_of` and `ffl_code_read` (verse/fairy-forest/life.coax) check
+  the same rules.
+- **Listing**: a logged-in maker posts
+  `POST /api/playtest/upgrades/fairy {name, by, look, sats, lightning}` (the
+  site session or NIP-98): a name and their display name (1 to 40 characters,
+  no control characters, `|`, `<` or `>`), the price (10 to 100,000 sats,
+  `OA_UPGRADE_MIN_SATS`, `OA_UPGRADE_MAX_SATS`) and the Lightning address
+  their share goes to. At most five wait at once. `makers.sh list-fairy
+  ADDRESS [SATS] [NAME]` lists one made by OpenAgents with the admin's key.
+- **Approval**: an admin opening UPGRADE sees WAITING FOR AN ADMIN with
+  **APPROVE** and **REJECT** (`POST /api/admin/upgrades/<id>/approve|reject`;
+  `GET /api/admin/upgrades` lists every listing as lines; `makers.sh upgrades`,
+  `makers.sh approve ID`). A rejected listing leaves UPGRADE and the room at
+  once; what was bought stays bought.
+- **UPGRADE** (`GET /api/playtest/upgrades/fairy`, with the player key): the
+  three approved fairies players bought most (our team's purchases don't count),
+  then the newest; what you wear. **TRY** puts one on you while the pane is
+  open. **BUY** (Bitcoin orange) asks our Spark wallet for an invoice for the
+  price (`POST .../<id>/buy {"pay":"sats"}`) and shows it as a QR and
+  **OPEN WALLET**; the pane asks `POST .../<id>/buy/<payment hash>` every
+  3 seconds until our wallet's record shows it paid with a preimage that hashes
+  to it. **CREDIT** takes the price from the logged-in key's inference credit
+  (`inference.credit`, msat) in one transaction (`{"pay":"credit"}`; 401 not
+  logged in, 402 not enough). Bought, you wear it; **WEAR** and **THE FAIRY YOU
+  MADE** switch (`POST .../<id>/wear`, id 0 your own).
+- **What others see**: the buyer is the playtest player (X-Verse-Player). The
+  room's presence (`verse.room_seen`) carries `look` for each player wearing an
+  approved fairy, and Fairy Forest draws every other fairy in their own bought
+  look (`fairyroom.coax`); someone who bought nothing is drawn as before.
+- **Paying the maker**: a purchase is a row of `makers.tips` with its `listing`,
+  `buyer` and `paid_with` (`sats` or `credit`); paid, it queues a payout in
+  the same transaction (`makers.payouts`, `source` 'upgrade') to the listing's
+  Lightning address, sent by the same runner as tips (quote, keep the maker's
+  invoice, send once, ask before any resend). A sats purchase goes through the
+  replay ledger once. No first-tip bonus. The maker gets the price less the
+  routing fee; OpenAgents keeps nothing.
+
+| Piece | Where |
+| --- | --- |
+| Rules and storage | `coax/web/api/migrations/0077_fairy_upgrades.sql` (`makers.listings`, `makers.wearing`, the new columns) |
+| Routes | `coax/web/api/makers.c` (`upgrades_route`) |
+| Checks | `coax/web/api/test_upgrades.py` (the fake wallet), the UPGRADE `#test`s in `apps/openagents-web/fairyupgrade.coax` |
+| Page | `apps/openagents-web/fairyupgrade.coax` (the button and pane), `fairy.coax` (`fairy_figure` draws a worn look), `fairy-face.c` (requests, the QR) |

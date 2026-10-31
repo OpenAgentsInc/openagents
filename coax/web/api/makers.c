@@ -359,3 +359,172 @@ bool makers_route(const request *q) {
   free(body);
   return true;
 }
+
+
+// ---- listed upgrades (ev-asset-upgrades, migrations/0077_fairy_upgrades.sql, docs/verse/makers.md)
+//   GET  /api/playtest/upgrades/fairy             -> 200 {top: the three approved fairies, wearing, pending (an admin's), admin}
+//   POST /api/playtest/upgrades/fairy {name, by, look, sats, lightning}   a logged-in maker lists one; it waits for an admin
+//   POST /api/playtest/upgrades/<id>/buy {pay: "sats"}     -> 200 {invoice, payment_hash, sats, expires}: our wallet's invoice
+//   POST /api/playtest/upgrades/<id>/buy {pay: "credit"}   -> 200 {state: paid, look, credit_msat}: from the logged-in key's
+//                                                            inference credit; 401 not logged in, 402 not enough
+//   POST /api/playtest/upgrades/<id>/buy/<hash>   -> 200 {state: open|paid|expired, look, payout}: settled once when paid
+//   POST /api/playtest/upgrades/<id>/wear          wear what you bought (id 0: the fairy you made)
+//   GET  /api/admin/upgrades, POST /api/admin/upgrades/<id>/approve|reject   an admin's
+// The buyer is the playtest player (X-Verse-Player): what they wear goes out with the room's presence
+// (verse.room_seen), so everyone in the forest draws it. A paid purchase is a tip for the listing's
+// maker: its payout is queued in the same transaction and sent by run_payouts.
+#define UP_PREFIX "/api/playtest/upgrades/"
+#define UP_ADMIN "/api/admin/upgrades"
+
+// A new purchase in sats: the terms, our wallet's invoice, kept. id: the listing; key: the player key; team "true"/"false".
+static void buy_new(int fd, PGconn *db, const char *id, const char *key, const char *team) {
+  const char *v[2] = {id, key};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text, x->>'sats', x->>'memo', "
+                                 "(SELECT count(*) FROM makers.tips WHERE created > now() - interval '1 minute') "
+                                 "FROM makers.buy_terms($1::bigint, makers.player_of($2)) x", 2, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("upgrades: buy: %s", PQerrorMessage(db)); api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
+  int status = atoi(PQgetvalue(r, 0, 0));
+  if (status != 200) { api_json(fd, status, PQgetvalue(r, 0, 1)); PQclear(r); return; }
+  if (atoi(PQgetvalue(r, 0, 4)) >= 60) { api_json(fd, 429, "{\"error\":\"too many at once; try again in a minute\"}"); PQclear(r); return; }
+  char sats[24], ask[400], *w = NULL;
+  snprintf(sats, sizeof sats, "%s", PQgetvalue(r, 0, 2));
+  const char *jv[2] = {PQgetvalue(r, 0, 3), sats};
+  PGresult *j = PQexecParams(db, "SELECT json_build_object('sats', $2::bigint, 'memo', $1::text, 'expiry', 900)::text", 2, NULL, jv, NULL, NULL, 0);
+  snprintf(ask, sizeof ask, "%s", PQresultStatus(j) == PGRES_TUPLES_OK ? PQgetvalue(j, 0, 0) : "{}");
+  PQclear(j); PQclear(r);
+  long st = api_spark("/invoice", ask, 30, &w);
+  if (st != 200 || !w) { free(w); api_json(fd, 502, "{\"error\":\"our wallet did not make an invoice; try again soon\"}"); return; }
+  char inv[2100], hash[80], msat[24], exp[24];
+  jget(db, w, "invoice", inv, sizeof inv); jget(db, w, "payment_hash", hash, sizeof hash); jget(db, w, "amount_msat", msat, sizeof msat); jget(db, w, "expiry", exp, sizeof exp);
+  free(w);
+  const char *iv[7] = {id, key, inv, hash, *msat ? msat : "0", *exp ? exp : "0", team};
+  sql_answer(fd, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.buy_issue($1::bigint, makers.player_of($2), $3, $4, $5::bigint, $6::bigint, $7::boolean) x", 7, iv);
+  if (*hash) api_log("upgrades: an invoice for listing %s", id);
+}
+// Is a purchase paid? Our wallet's record of its invoice, settled once. idhash: "<id>/<hash>"; key: the player key.
+static void buy_check(int fd, PGconn *db, const char *id, const char *hash, const char *key) {
+  const char *v[3] = {id, hash, key};
+  const char *q = "SELECT (x->>'status')::int, x->>'state', x->>'invoice', (x - 'status' - 'invoice')::text FROM makers.buy_state($1::bigint, $2, makers.player_of($3)) x";
+  PGresult *r = PQexecParams(db, q, 3, NULL, v, NULL, NULL, 0);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_json(fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return; }
+  if (atoi(PQgetvalue(r, 0, 0)) != 200 || strcmp(PQgetvalue(r, 0, 1), "open")) { api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 3)); PQclear(r); return; }
+  char body[2400], *w = NULL;
+  snprintf(body, sizeof body, "{\"invoice\":\"%s\"}", PQgetvalue(r, 0, 2));
+  PQclear(r);
+  long st = api_spark("/paid", body, 30, &w);
+  if (st == 200 && w) {
+    char state[32], amount[24], pre[80];
+    jget(db, w, "state", state, sizeof state); jget(db, w, "amount_msat", amount, sizeof amount); jget(db, w, "preimage", pre, sizeof pre);
+    const char *sv[4] = {hash, state, *amount ? amount : NULL, pre};
+    PGresult *k = PQexecParams(db, "SELECT x->>'status' FROM makers.buy_settle($1, $2, $3::bigint, $4) x", 4, NULL, sv, NULL, NULL, 0);
+    if (PQresultStatus(k) != PGRES_TUPLES_OK) api_log("upgrades: settle: %s", PQerrorMessage(db));
+    else if (!strcmp(PQgetvalue(k, 0, 0), "200")) api_log("upgrades: listing %s bought", id);
+    PQclear(k);
+  }
+  free(w);
+  sql_answer(fd, db, "SELECT (x->>'status')::int, (x - 'status' - 'invoice')::text FROM makers.buy_state($1::bigint, $2, makers.player_of($3)) x", 3, v);
+}
+static bool digits_ok(const char *s, size_t n) {
+  if (!n || n > 12) return false;
+  for (size_t i = 0; i < n; i++) if (s[i] < '0' || s[i] > '9') return false;
+  return true;
+}
+
+bool upgrades_route(const request *q) {
+  bool admin = !strncmp(q->path, UP_ADMIN, sizeof UP_ADMIN - 1) && (q->path[sizeof UP_ADMIN - 1] == 0 || q->path[sizeof UP_ADMIN - 1] == '/');
+  if (!admin && strncmp(q->path, UP_PREFIX, sizeof UP_PREFIX - 1)) return false;
+  bool post = !strcmp(q->method, "POST");
+  char from[256];
+  if (post && api_header(q, "Origin", from, sizeof from) && strcmp(from, origin())) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+  PGconn *db = api_db();
+  if (!db) { api_json(q->fd, 503, "{\"error\":\"no database\"}"); return true; }
+  char who[65] = "";
+  if (admin) {
+    int st = admin_who(q, db, who);
+    if (st) { api_json(q->fd, st, st == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+    const char *rest = q->path + sizeof UP_ADMIN - 1;
+    if (!*rest || !strcmp(rest, "/")) {
+      if (post) { api_json(q->fd, 405, "{\"error\":\"GET\"}"); return true; }
+      PGresult *r = PQexec(db, "SELECT makers.listing_lines()");
+      const char *t = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? PQgetvalue(r, 0, 0) : "";
+      api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, t, strlen(t));
+      PQclear(r);
+      return true;
+    }
+    const char *id = rest + 1, *slash = strchr(id, '/');
+    if (!post || !slash || !digits_ok(id, (size_t)(slash - id)) || (strcmp(slash, "/approve") && strcmp(slash, "/reject"))) {
+      api_json(q->fd, post ? 404 : 405, post ? "{\"error\":\"no such route\"}" : "{\"error\":\"POST\"}"); return true;
+    }
+    char ids[16]; snprintf(ids, sizeof ids, "%.*s", (int)(slash - id), id);
+    const char *v[3] = {ids, who, !strcmp(slash, "/approve") ? "approved" : "rejected"};
+    answer(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.listing_decide($1::bigint, $2, $3) x", 3, v);
+    api_log("upgrades: listing %s %s", ids, v[2]);
+    return true;
+  }
+  const char *rest = q->path + sizeof UP_PREFIX - 1;
+  char key[160] = "";
+  api_header(q, "X-Verse-Player", key, sizeof key);
+  if (!strcmp(rest, "fairy")) {
+    if (!post) {
+      bool is_admin = admin_who(q, db, who) == 0;
+      const char *v[2] = {key, is_admin ? "true" : "false"};
+      answer(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.upgrades(makers.player_of($1), $2::boolean) x", 2, v);
+      return true;
+    }
+    if (q->body_len > 1024) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+    if (!who_asks(q, db, who, true)) return true;
+    char *body = body_of(q);
+    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    const char *v[4] = {who, body, env_or("OA_UPGRADE_MIN_SATS", "10"), env_or("OA_UPGRADE_MAX_SATS", "100000")};
+    answer(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.listing_new($1, $2, $3::bigint, $4::bigint) x", 4, v);
+    free(body);
+    api_log("upgrades: a fairy listed");
+    return true;
+  }
+  const char *slash = strchr(rest, '/');
+  if (!slash || !digits_ok(rest, (size_t)(slash - rest))) { api_json(q->fd, 404, "{\"error\":\"no such listing\"}"); return true; }
+  if (!post) { api_json(q->fd, 405, "{\"error\":\"POST\"}"); return true; }
+  char id[16]; snprintf(id, sizeof id, "%.*s", (int)(slash - rest), rest);
+  const char *what = slash + 1;
+  if (!strcmp(what, "wear")) {
+    const char *v[2] = {key, id};
+    answer(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.wear(makers.player_of($1), $2::bigint) x", 2, v);
+    return true;
+  }
+  if (!strncmp(what, "buy/", 4)) {
+    if (!hex64(what + 4)) { api_json(q->fd, 404, "{\"error\":\"no such purchase\"}"); return true; }
+    char hash[65]; snprintf(hash, sizeof hash, "%s", what + 4);
+    char keyc[160]; snprintf(keyc, sizeof keyc, "%s", key);
+    // in_child hands answer_with (fd, db, slug, a, b): the listing, the hash, the player key
+    in_child(q->fd, id, hash, keyc, buy_check);
+    return true;
+  }
+  if (strcmp(what, "buy")) { api_json(q->fd, 404, "{\"error\":\"no such route\"}"); return true; }
+  if (q->body_len > 512) { api_json(q->fd, 413, "{\"error\":\"too big\"}"); return true; }
+  char *body = body_of(q);
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+  char pay[16];
+  jget(db, body, "pay", pay, sizeof pay);
+  free(body);
+  // who asks, once (a NIP-98 signature is spent when it is read): the team's cookie or an admin is the team
+  bool signed_req = false, payload = false, unseen = false;
+  bool in = site_identity(q, db, who, &signed_req, &payload, &unseen) && (!signed_req || (payload && unseen));
+  char cookies[4096];
+  bool team = in && admin_is(who);
+  if (!team && api_header(q, "Cookie", cookies, sizeof cookies))
+    for (const char *c = strstr(cookies, "oa_team=1"); c && !team; c = strstr(c + 1, "oa_team=1")) team = c == cookies || c[-1] == ' ' || c[-1] == ';';
+  if (!strcmp(pay, "credit")) {
+    const char *v[4] = {id, key, in ? who : NULL, team ? "true" : "false"};
+    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM makers.buy_credit($1::bigint, makers.player_of($2), $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("upgrades: credit: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not kept\"}"); PQclear(r); return true; }
+    int status = atoi(PQgetvalue(r, 0, 0));
+    api_json(q->fd, status, PQgetvalue(r, 0, 1));
+    PQclear(r);
+    if (status == 200) { api_log("upgrades: listing %s bought with credit", id); in_child(-1, id, NULL, NULL, NULL); }
+    return true;
+  }
+  if (*pay && strcmp(pay, "sats")) { api_json(q->fd, 400, "{\"error\":\"pay with sats or credit\"}"); return true; }
+  char keyc[160]; snprintf(keyc, sizeof keyc, "%s", key);
+  in_child(q->fd, id, keyc, team ? "true" : "false", buy_new);
+  return true;
+}

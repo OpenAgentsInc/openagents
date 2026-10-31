@@ -855,6 +855,10 @@ struct V {
   return o;
 }
 @fragment fn fx_fs(v: V) -> @location(0) vec4f {
+  if (v.tint.w < -0.5) {
+    // An invoice's QR (fairyupgrade.coax ffu_qr_draw): its light modules, flat and square-ended, no glow.
+    return vec4f(v.tint.rgb * v.shape.z, 1.0);
+  }
   let along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
   let d = length(vec2f(along, v.place.y));
   let core = 1.0 - smoothstep(v.shape.y - 0.5, v.shape.y + 0.6, d);

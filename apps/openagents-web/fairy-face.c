@@ -44,6 +44,7 @@
 #include "Player.h"
 #include "Grid.h"
 #include "Stream.h"
+#include "Qr-memory.h"
 #include "analytics-face.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -385,6 +386,39 @@ static bool course_message(uint32_t state, int32_t kind, uint32_t length) {
   ffc_answer(at(state), course_kind, (coax_string){(const char *)inbox, length});
   return true;
 }
+// ---- upgrades (fairyupgrade.coax, ev-asset-upgrades): the list, a purchase, its polls, what you
+// wear and an admin's approval, one at a time with the player key; an invoice's QR made here.
+static int32_t upgrade_ask = -1;
+static int64_t upgrade_kind;
+static double upgrade_asked_at;
+static char upgrade_url_buf[200];
+static uint8_t upgrade_body[64];
+static void upgrade_frame(uint32_t state) {
+  if (golden || !facts_seen) return;
+  coax_t_Upgrade *g = &fairy(state)->upgrade.e[0];
+  if (g->qr_want) {
+    coax_t_QrResult r = qr_encode((coax_v_u8){g->code.e, g->code_n}, (coax_v_u8){g->qr.e, (int64_t)sizeof g->qr.e});
+    ffu_qr_done(at(state), r.status, r.size);
+  }
+  if (upgrade_ask >= 0 && now - upgrade_asked_at < ROOM_WAIT) return;
+  if (!need_player() || mint_id >= 0) return;
+  int64_t kind = ffu_next(at(state));
+  if (!kind) return;
+  bool post = ffu_post(kind);
+  int64_t un = ffu_url(at(state), kind, (coax_v_u8){(uint8_t *)upgrade_url_buf, sizeof upgrade_url_buf});
+  int64_t bn = post ? ffu_body(at(state), kind, (coax_v_u8){upgrade_body, sizeof upgrade_body}) : 0;
+  if (un <= 0 || (post && bn <= 0)) return;
+  int32_t id = coaxial_http((uint32_t)(uintptr_t)upgrade_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)upgrade_body, (uint32_t)bn, (post ? 1 : 0) | 4 | 8);
+  if (id >= 0) { upgrade_ask = id; upgrade_kind = kind; upgrade_asked_at = now; }
+  else if (post) ffu_answer(at(state), kind, (coax_string){"0\n", 2});
+  else ffu_later(at(state), kind);
+}
+static bool upgrade_message(uint32_t state, int32_t kind, uint32_t length) {
+  if (upgrade_ask < 0 || kind != 512 + upgrade_ask) return false;
+  upgrade_ask = -1;
+  ffu_answer(at(state), upgrade_kind, (coax_string){(const char *)inbox, length});
+  return true;
+}
 EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
@@ -394,6 +428,7 @@ EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
 static void social_frame(uint32_t state, float dt) {
   room_ease(rooms(state), dt);
   course_frame(state);
+  upgrade_frame(state);
   if (golden || !facts_seen || !need_player() || mint_id >= 0) return;
   coax_t_Fairy *f = fairy(state);
   // what the page asks to send, one at a time
@@ -536,6 +571,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (talk_message(state, kind, length)) return;
   if (social_message(state, kind, length)) return;
   if (course_message(state, kind, length)) return;
+  if (upgrade_message(state, kind, length)) return;
   if (progress_message(state, kind, length)) return;
   if (place_message(state, kind, inbox, length)) return;
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
@@ -543,11 +579,13 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
 // The host takes one action at a time: the save's (4) first, then a minted player (5), then the edit
 // layer's push to talk, else the place's.
 static int32_t action_now;
-static bool action_edit, action_course;
+static bool action_edit, action_course, action_upgrade;
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
-  place_out_now = false; action_edit = false; action_course = false;
+  place_out_now = false; action_edit = false; action_course = false; action_upgrade = false;
   int32_t course = golden ? 0 : (int32_t)ffc_action(at(state));
+  int32_t wallet = golden ? 0 : (int32_t)ffu_action(at(state));
   if (course) { action_course = true; action_now = course; }   /* SHARE's copy first: it must happen inside the press */
+  else if (wallet) { action_upgrade = true; action_now = wallet; }   /* OPEN WALLET's link, inside the tap too */
   else if (keep_n) action_now = 4;
   else if (player_n) action_now = 5;
   else if (edit_kind) { action_edit = true; action_now = edit_kind; }
@@ -556,23 +594,26 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
 }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) {
   if (action_course) return (uint32_t)(uintptr_t)fairy(state)->race.e[0].out.e;
+  if (action_upgrade) return (uint32_t)(uintptr_t)fairy(state)->upgrade.e[0].code.e;
   if (action_edit) return (uint32_t)(uintptr_t)fairy(state)->ed_out.e;
   if (action_now == 5) return (uint32_t)(uintptr_t)player_out;
   return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)kept;
 }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) {
   if (action_course) return (uint32_t)ffc_outbox(at(state), action_now);
+  if (action_upgrade) return (uint32_t)fairy(state)->upgrade.e[0].code_n;
   if (action_edit) return (uint32_t)fairy(state)->ed_out_n;
   if (action_now == 5) return player_n;
   return place_out_now ? place_outbox_len() : keep_n;
 }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) {
   if (action_course) ffc_action_done(at(state), action_now);
+  else if (action_upgrade) ffu_action_done(at(state));
   else if (action_edit) edit_kind = 0;
   else if (action_now == 5) { player_n = 0; }
   else if (place_out_now) place_done();
   else keep_n = 0;
-  action_now = 0; action_edit = false; action_course = false;
+  action_now = 0; action_edit = false; action_course = false; action_upgrade = false;
 }
 // While you talk, type a line or a message, or type to the board, the phone's keyboard comes up over the typed line (the host's field, put where the page draws it).
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return fairy_wants_text(at(state)) ? 1 : 0; }

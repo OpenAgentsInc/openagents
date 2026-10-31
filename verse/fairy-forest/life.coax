@@ -57,6 +57,53 @@ FairyLook :: struct {
   made: bool;        // made in the maker (else the first visit opens it)
 }
 
+// ---- a fairy bought from a maker (ev-asset-upgrades, docs/verse/makers.md "Fairy upgrades"): its
+// look code is the nine parts as digits and, optionally, seven colours of six hex digits that no
+// choice in the maker gives: the hair, the bodice, the skirt, the gloves and under-skirt, and the
+// three wing pairs. migrations/0077_fairy_upgrades.sql (makers.look_of) checks the same.
+FFL_CODE :: 51;
+FFL_TINTS :: 7;
+FFT_HAIR :: 0; FFT_BODICE :: 1; FFT_SKIRT :: 2; FFT_UNDER :: 3; FFT_WING :: 4;   // the wings: 4, 5 and 6
+Worn :: struct {
+  on: bool;                       // a look code was read: draw it, not the maker's look
+  part: [FFL_PARTS] int;
+  tinted: bool;
+  tint: [21] f32;                 // FFL_TINTS colours, linear 0 to 1
+}
+ffl_hex :: (c: u8) -> int {
+  if c >= 48 && c <= 57 { return cast(int) c - 48; }
+  if c >= 97 && c <= 102 { return cast(int) c - 87; }
+  if c >= 65 && c <= 70 { return cast(int) c - 55; }
+  return -1;
+}
+// Reads a look code into w; false (and w off) when it isn't one.
+ffl_code_read :: (code: string, w: [] Worn) -> bool {
+  w[0].on = false; w[0].tinted = false;
+  if code.count != FFL_PARTS && code.count != FFL_CODE { return false; }
+  for p: 0..<FFL_PARTS {
+    d := cast(int) code[p] - 48;
+    if d < 0 || d >= FFL_CHOICES[p] { return false; }
+    w[0].part[p] = d;
+  }
+  if code.count == FFL_CODE {
+    for k: 0..<FFL_TINTS * 3 {
+      a := ffl_hex(code[FFL_PARTS + k * 2]); b := ffl_hex(code[FFL_PARTS + k * 2 + 1]);
+      if a < 0 || b < 0 { return false; }
+      w[0].tint[k] = f32(a * 16 + b) / 255.0;
+    }
+    w[0].tinted = true;
+  }
+  w[0].on = true;
+  return true;
+}
+// A part as drawn: the worn look's when one is worn, else the one you made.
+ffl_part_worn :: (l: [] Life, w: [] Worn, p: int) -> int {
+  if p < 0 || p >= FFL_PARTS { return 0; }
+  if w.count > 0 && w[0].on { return w[0].part[p]; }
+  return ffl_part(l, p);
+}
+ffl_tint :: (w: [] Worn, t: int) -> Point { return v3(w[0].tint[t * 3], w[0].tint[t * 3 + 1], w[0].tint[t * 3 + 2]); }
+
 // ---- your home (ff-home): a hollow under a great root in Mossbank's west,
 // its rooms opening one by one as the heart tree's roots wake, and the
 // pieces you place in them.

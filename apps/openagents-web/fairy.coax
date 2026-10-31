@@ -54,6 +54,7 @@
 #load "fairytools.coax";   // tools made with CRAFT
 #load "fairypark.coax";    // the park drawn: lakes, trees, landmarks, signs
 #load "fairymap.coax";     // the map: the park from above with its names
+#load "fairyupgrade.coax"; // UPGRADE: fairies made by players, bought with sats or credit (ev-asset-upgrades)
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -185,6 +186,7 @@ Fairy :: struct {
   build: [1] Build;     // building in your home (fairyhome.coax)
   race: [1] Race;       // a course of hoops, made or opened by link (fairycourse.coax)
   map: [1] FfMap;       // the park from above (fairymap.coax)
+  upgrade: [1] Upgrade; // fairies made by players, bought and worn (fairyupgrade.coax)
   k_news: int; k_news_at: f64;   // a skill just learned (1 + it) or a find (100 + its kind) (fairyskills.coax)
   bird_flew: f64;                // when the hurt bird was mended (it flies off)
   now_min: f64;         // the wall clock, minutes since 1970 (the face's; 0 not yet)
@@ -256,6 +258,7 @@ fairy_start :: (s: [] Fairy) {
   s[0].face = f32(FF_SPAWN_FACE);
   s[0].orbit = verse_orbit_start(s[0].feet, f32(FF_SPAWN_FACE));
   s[0].button_finger = -1; s[0].flap_finger = -1;
+  s[0].upgrade[0].ask_wear = -1; s[0].upgrade[0].ask_get = true;   // UPGRADE asks once the face can
   s[0].near_creature = -1;
   s[0].forest[0].news = -1;
   ffpk_plant(s);
@@ -599,6 +602,7 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   if s[0].talk > 0 { return talk_key(s, key, mods); }
   if ffmap_key(s, key) { return true; }
   if (key == 'l' || key == 'L') && ffm_can(s) { ffm_open(s, false); return true; }   // LOOK: your fairy
+  if ffu_key(s, key) { return true; }   // U: UPGRADE
   if ffc_key(s, key) { return true; }
   if key == KEY_ENTER { ffs_start_chat(s); return true; }
   if key == 'e' || key == 'E' { s[0].use = true; return true; }
@@ -632,6 +636,7 @@ fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -
     return true;
   }
   if ffm_pointer(s, x, y, phase, id) { return true; }
+  if !s[0].maker[0].open && ffu_pointer(s, x, y, phase, id) { return true; }
   if ffb_pointer(s, x, y, phase, id) { return true; }
   if !s[0].maker[0].open && ffmap_pointer(s, x, y, phase, id) { return true; }
   if !s[0].maker[0].open && ffc_pointer(s, x, y, phase, id) { return true; }
@@ -1493,7 +1498,8 @@ ellipsoid :: (s: [] Fairy, look: int, centre: Point, a1: Point, a2: Point, w: f3
 // mouth. Three pairs of jewel-like wings, cyan going rose at the edges, wider
 // than her shoulders. Standing, her weight is on one hip; flying, her arms
 // open out and her legs trail together, one knee bent.
-fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, act: int, air: f32, flap: f32) {
+// wl: a look bought from a maker (fairyupgrade.coax), drawn instead of the one made in the maker when it is on.
+fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, act: int, air: f32, flap: f32, wl: [] Worn) {
   t := effect_time(s);
   walking := act == 1 || act == 2;
   flying := air > 0.2;
@@ -1506,15 +1512,17 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
   // her palette, as you made her (the maker, verse/fairy-forest/life.coax): bright, a little shimmer in the cloth (LOOK_CLOTH)
   l := s[0].life[..];
   skin_t := FFL_SKIN_RGB; hair_t := FFL_HAIR_RGB; eyes_t := FFL_EYES_RGB; outfit_t := FFL_OUTFIT_RGB;
-  outfit := ffl_part(l, FFL_OUTFIT);
-  skin := ffl_rgb(skin_t[..], ffl_part(l, FFL_SKIN));
+  outfit := ffl_part_worn(l, wl, FFL_OUTFIT);
+  skin := ffl_rgb(skin_t[..], ffl_part_worn(l, wl, FFL_SKIN));
   top := ffl_rgb(outfit_t[..], outfit * 3);          // the bodice
   gold := v3(1.0, 0.8, 0.3);                         // trim
   skirt := ffl_rgb(outfit_t[..], outfit * 3 + 1);    // the skirt, layered over the under-skirt
   violet := ffl_rgb(outfit_t[..], outfit * 3 + 2);   // gloves, boots, the under-skirt
-  hair := ffl_rgb(hair_t[..], ffl_part(l, FFL_HAIR));
-  iris := ffl_rgb(eyes_t[..], ffl_part(l, FFL_EYES));
-  style := ffl_part(l, FFL_STYLE);
+  hair := ffl_rgb(hair_t[..], ffl_part_worn(l, wl, FFL_HAIR));
+  iris := ffl_rgb(eyes_t[..], ffl_part_worn(l, wl, FFL_EYES));
+  style := ffl_part_worn(l, wl, FFL_STYLE);
+  tinted := wl.count > 0 && wl[0].on && wl[0].tinted;   // a maker's colours, past the maker's choices
+  if tinted { hair = ffl_tint(wl, FFT_HAIR); top = ffl_tint(wl, FFT_BODICE); skirt = ffl_tint(wl, FFT_SKIRT); violet = ffl_tint(wl, FFT_UNDER); }
   long_hair := style == 0;
   // the hip: idle, she stands with her weight on her left hip
   shift := ifx idle then 0.045f32 else 0.0f32;
@@ -1667,21 +1675,22 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
   }
   // wings: three pairs, each a jewel-like oval of light whose root sits at the spine
   beat := sin(flap);
-  kind := ffl_part(l, FFL_WINGS);
+  kind := ffl_part_worn(l, wl, FFL_WINGS);
   wing_t := FFL_WING_RGB; glow_t := FFL_GLOW_GAIN;
-  hue := ffl_part(l, FFL_WING_HUE); gain := glow_t[ffl_part(l, FFL_GLOW)];
+  hue := ffl_part_worn(l, wl, FFL_WING_HUE); gain := glow_t[ffl_part_worn(l, wl, FFL_GLOW)];
   for side: 0..<2 {
     sign := ifx side == 0 then 1.0f32 else -1.0f32;
     for pair: 0..<3 {
       w := fairy_wing_shaped(base, face, pair, sign, beat, kind);
       c := add(w.root, times(w.along, w.reach * 0.5));
-      tint := times(ffl_rgb(wing_t[..], hue * 3 + pair), gain);
+      tint := times(ifx tinted then ffl_tint(wl, FFT_WING + pair) else ffl_rgb(wing_t[..], hue * 3 + pair), gain);
       oriented(s, SHAPE_SPHERE, LOOK_WING, c, times(w.across, w.wide), times(w.along, w.reach), times(w.flat, 0.02), tint.x, tint.y, tint.z);
       // a smaller inner panel laid over it, a jewel colour of its own
       if pair < 2 {
         inner := add(w.root, add(times(w.along, w.reach * 0.42), times(w.flat, -0.012)));
         jewel := ifx pair == 0 then v3(0.75, 0.5, 1.0) else v3(1.0, 0.75, 0.45);
         if hue != 0 { jewel = mix(ffl_rgb(wing_t[..], hue * 3 + 1 - pair), v3(1, 1, 1), 0.3); }
+        if tinted { jewel = mix(ffl_tint(wl, FFT_WING + 1 - pair), v3(1, 1, 1), 0.3); }
         jewel = times(jewel, gain);
         oriented(s, SHAPE_SPHERE, LOOK_WING, inner, times(w.across, w.wide * 0.55), times(w.along, w.reach * 0.62), times(w.flat, 0.02), jewel.x, jewel.y, jewel.z);
       }
@@ -2084,6 +2093,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   }
   if redit_typing(s[0].ed[..]) { tb := redit_type_box(s[0].ed[..]); s[0].field[0] = tb.x0; s[0].field[1] = tb.y0; s[0].field[2] = tb.x1; s[0].field[3] = tb.y1; }
   n = ffq_hud(s, out, u, n);
+  n = ffu_hud(s, out, u, n, you);   // UPGRADE beside your fairy, and its pane
   if move_on {
     r := 46 * k;
     for i: 0..<32 {
@@ -2236,11 +2246,12 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].shadow_n = 0; s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   s[0].mine = true;
-  body := ffl_part(s[0].life[..], FFL_BODY);
+  worn := ffu_worn(s);   // a fairy bought, worn or tried on (fairyupgrade.coax)
+  body := ffl_part_worn(s[0].life[..], worn, FFL_BODY);
   ups := FFL_BODY_UP; acrosses := FFL_BODY_ACROSS;
   s[0].fig_on = true; s[0].fig_at = shown; s[0].fig_up = ups[body]; s[0].fig_across = acrosses[body];
   // zoomed into your head (first person, verse/camera.coax) you aren't drawn, unless the map lifts the eye out
-  if !verse_orbit_inside(s[0].orbit) || s[0].map[0].lift > 0.5 { fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap); }
+  if !verse_orbit_inside(s[0].orbit) || s[0].map[0].lift > 0.5 { fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap, worn); }
   s[0].fig_on = false;
   ffk_carried(s, shown, face);
   s[0].mine = false;

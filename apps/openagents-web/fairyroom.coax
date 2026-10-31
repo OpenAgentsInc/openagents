@@ -546,7 +546,9 @@ ffs_others :: (s: [] Fairy, u: [] f32, you: Point) {
     x := r[0].at[i * 4]; y := hi(r[0].at[i * 4 + 1], 0); z := r[0].at[i * 4 + 2]; face := r[0].at[i * 4 + 3];
     moving := abs(r[0].to[i * 4] - x) + abs(r[0].to[i * 4 + 2] - z) > 0.03;
     flap := t * (ifx y > 0.2 then 11.0f32 else 3.0f32) + f32(i) * 1.7;
-    fairy_figure(s, u, v3(x, walk_at(s, x, z) + y, z), face, t * 2.4, ifx moving then 1 else 0, y, flap);
+    worn: [1] Worn;   // the fairy they bought, as the room says (ev-asset-upgrades); none: drawn as before
+    _ := ffl_code_read(room_other_look(r, i), worn[..]);
+    fairy_figure(s, u, v3(x, walk_at(s, x, z) + y, z), face, t * 2.4, ifx moving then 1 else 0, y, flap, worn[..]);
   }
 }
 

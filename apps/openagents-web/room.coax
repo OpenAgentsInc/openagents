@@ -12,6 +12,7 @@
 ROOM_OTHERS :: 15;   // a room holds 16
 ROOM_ID :: 24;
 ROOM_NAME :: 40;
+ROOM_LOOK :: 64;    // a look the room carries: a fairy bought from a maker (Fairy Forest, ev-asset-upgrades)
 ROOM_LINES :: 6;     // the chat lines kept for the panel
 ROOM_TEXT :: 500;
 ROOM_EVERY :: 1.0;   // seconds between posts: others show within two
@@ -23,6 +24,7 @@ RoomState :: struct {
   others: int;
   id: [ROOM_OTHERS * ROOM_ID] u8; id_n: [ROOM_OTHERS] int;
   name: [ROOM_OTHERS * ROOM_NAME] u8; name_n: [ROOM_OTHERS] int;
+  look: [ROOM_OTHERS * ROOM_LOOK] u8; look_n: [ROOM_OTHERS] int;   // "": none
   to: [ROOM_OTHERS * 4] f32;      // found_at each is: x, y, z, yaw
   at: [ROOM_OTHERS * 4] f32;      // found_at each is drawn, easing towards it
   lines: int;                     // in the ring, up to ROOM_LINES
@@ -172,6 +174,7 @@ room_take :: (s: [] RoomState, answer: string) -> int #export_c {
       if e < 0 { break; }
       s[0].id_n[n] = room_text(t, i, "id", s[0].id[..], n * ROOM_ID, ROOM_ID);
       s[0].name_n[n] = room_text(t, i, "name", s[0].name[..], n * ROOM_NAME, ROOM_NAME);
+      s[0].look_n[n] = room_text(t, i, "look", s[0].look[..], n * ROOM_LOOK, ROOM_LOOK);
       s[0].to[n * 4] = room_field_num(t, i, "x"); s[0].to[n * 4 + 1] = room_field_num(t, i, "y");
       s[0].to[n * 4 + 2] = room_field_num(t, i, "z"); s[0].to[n * 4 + 3] = room_field_num(t, i, "yaw");
       found := -1;
@@ -273,6 +276,7 @@ room_line_from :: (s: [] RoomState, k: int) -> string #export_c {
   return cast(string) s[0].line_from[slot * ROOM_ID..<slot * ROOM_ID + s[0].line_from_n[slot]];
 }
 room_other_name :: (s: [] RoomState, i: int) -> string #export_c { return cast(string) s[0].name[i * ROOM_NAME..<i * ROOM_NAME + s[0].name_n[i]]; }
+room_other_look :: (s: [] RoomState, i: int) -> string { return cast(string) s[0].look[i * ROOM_LOOK..<i * ROOM_LOOK + s[0].look_n[i]]; }
 // The k-th line kept, oldest first.
 room_line_name :: (s: [] RoomState, k: int) -> string #export_c {
   slot := (s[0].head + k) % ROOM_LINES;
