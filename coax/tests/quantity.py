@@ -76,4 +76,12 @@ FamilyAnswer :: #run family_value();#assert FamilyAnswer==36;
   for signature in ['double family_ab(double a, double b);','double family_ba(double b, double a);','double family_scale(double s, double b);','double family_convert_a(double a);','double family_convert_b(double b);']:self.assertIn(signature,h)
   p.write_text(source+'bad_family_assignment :: (a:A(u.Metre,f64))->B(u.Metre,f64) {return a;}\n')
   r=subprocess.run([str(COMPILER),'c',str(p),'--library'],cwd=ROOT,capture_output=True,text=True,timeout=90);self.assertNotEqual(r.returncode,0);self.assertEqual(r.stdout,'');self.assertIn('A(',r.stderr);self.assertIn('B(',r.stderr)
+ def test_bound_generic_literals_preserve_quantity_boundary(self):
+  common='scale :: (s:$R:numeric,q:Quantity(Metre,$R))->Quantity(Metre,$R) {return q*s;} clamp :: (x:$T:ordered,lo:$T,hi:$T)->$T {if x<lo {return lo;}if x>hi {return hi;}return x;} '
+  r=self.compile(common+'calc :: ()->f32 {q:Quantity(Metre,f32)=Quantity.{value=3};lo:Quantity(Metre,f32)=Quantity.{value=1};hi:Quantity(Metre,f32)=Quantity.{value=5};s:=scale(2,q);v:=clamp(s,lo,hi);return s.value+v.value;} Answer :: #run calc();#assert Answer==11;')
+  self.assertEqual(r.returncode,0,r.stderr)
+  for call in ['clamp(q,0,1)','clamp(0,q,1)']:
+   with self.subTest(call=call):
+    r=self.compile(common+'bad :: () {q:Quantity(Metre,f32)=Quantity.{value=3};v:='+call+';}')
+    self.assertNotEqual(r.returncode,0);self.assertEqual(r.stdout,'');self.assertIn('E',r.stderr)
 if __name__=='__main__':unittest.main()
