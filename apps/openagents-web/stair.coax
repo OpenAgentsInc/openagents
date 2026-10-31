@@ -136,10 +136,12 @@ LIFE_RESTORE :: 2; SACRED_WEAPON :: 3; THIEF_TURN :: 0.6;
 LEVEL4_FEAT :: [7] string.["+1 TO HIT · NEXT: EXTRA ATTACK", "+1 TO HIT AND DC · NEXT: FIRE BOLT 2D10", "+1 TO HIT AND DC · NEXT: SACRED FLAME 2D8", "+1 TO HIT · NEXT: SNEAK ATTACK 3D6", "+1 TO HIT · NEXT: A THIRD ARROW", "+1 TO HIT AND DC · NEXT: INSPIRATION 1D8", "+1 TO HIT · NEXT: EXTRA ATTACK"];
 LEVEL5_FEAT :: [7] string.["EXTRA ATTACK: 2 A TURN · SURGE · CRITS 19-20", "FIRE BOLT 2D10 · SHATTER · +1 TO HIT AND DC", "SACRED FLAME 2D8 · BLESS · SPIRITUAL WEAPON", "SNEAK ATTACK 3D6 · CUNNING ACTION", "THREE ARROWS A TURN · MARKS ALL", "INSPIRES 2 WITH 1D8 · MOCKERY 2D6", "EXTRA ATTACK · AURA 3 TILES · SMITE"];
 
-CLASS_PAD :: 16;
+CLASS_PAD :: 14;
 LABEL_PAD :: 26;   // a plain button's label stays this far (both sides) inside its bevelled card
 // The room a class button's portrait takes: most of its height, but no more than 30% of a narrow button.
 class_icon :: (r: Rect) -> f32 { return lo((r.y1 - r.y0) * 0.8, (r.x1 - r.x0) * 0.26); }   // a class button's text keeps this far (in CSS px) from its right edge
+// Where a class card's name starts: over the portrait's empty right edge (the figure stands left of it).
+class_text :: (r: Rect) -> f32 { return class_icon(r) * 0.82; }
 
 // ---- your spells: the tower's wizard (you) has a few a map. Wall of Stone across the stair: the
 // beasts stop at it and break it (SRD panels, AC 15; WALL_HP between them), then climb on. Wall of
@@ -2310,7 +2312,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
       // the class's portrait (stair.wgsl), its name, its cost
       light := ifx s[0].enabled[b] then 1.0f32 else 0.4f32;
       bh := r.y1 - r.y0;
-      tx := r.x0 + class_icon(r);
+      tx := r.x0 + class_text(r);
       nc := cnc;
       n = say_at(out, n, CLASS_NAME[cls], tx, (r.y0 + r.y1) / 2 - 2 * k, nc, ink(k, light, CLASS_R[cls], CLASS_G[cls], CLASS_B[cls]));
       m = put_int(buf[..], 0, s[0].ct[0].cost[cls]); m = put(buf[..], m, " GOLD");
@@ -2422,7 +2424,7 @@ class_cap :: (s: [] Stair, k: f32, names: bool) -> f32 {
   for b: B_FIGHTER..<B_LAST_CLASS + 1 {
     if !s[0].shown[b] { continue; }
     r := s[0].boxes[b];
-    room := r.x1 - r.x0 - class_icon(r) - CLASS_PAD * k;   // clear of the bevelled corner
+    room := r.x1 - r.x0 - class_text(r) - CLASS_PAD * k;   // clear of the bevelled corner
     while text_width(CLASS_NAME[b - B_FIGHTER], cnc) > room && cnc > 4 * k { cnc -= 0.5 * k; }
     m := put_int(buf[..], 0, s[0].ct[0].cost[b - B_FIGHTER]); m = put(buf[..], m, " GOLD");
     while text_width(cast(string) buf[0..<m], ccc) > room && ccc > 4 * k { ccc -= 0.5 * k; }
@@ -3309,7 +3311,7 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
       if !s[0].shown[b] { continue; }
       r := s[0].boxes[b];
       if b >= B_FIGHTER && b <= B_LAST_CLASS {
-        room := r.x1 - r.x0 - class_icon(r) - CLASS_PAD * k;
+        room := r.x1 - r.x0 - class_text(r) - CLASS_PAD * k;
         m := put_int(buf[..], 0, s[0].ct[0].cost[b - B_FIGHTER]); m = put(buf[..], m, " GOLD");
         #assert text_width(CLASS_NAME[b - B_FIGHTER], class_cap(s[..], k, true)) <= room && text_width(cast(string) buf[0..<m], class_cap(s[..], k, false)) <= room;
         continue;
