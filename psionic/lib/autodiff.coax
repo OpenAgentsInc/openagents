@@ -82,6 +82,8 @@
     p.nodes[0]=ti_input(v,0);p.nodes[1]=TiNode.{op=TiOp.relu,a=0};p.nodes[2]=TiNode.{op=TiOp.relu,a=0};p.nodes[3]=TiNode.{op=TiOp.relu,a=0};
     p.nodes[4]=TiNode.{op=TiOp.add,a=1,b=2};p.nodes[5]=TiNode.{op=TiOp.sum,a=4,axis=0};
     mode:AdMode;mode.grad[0]=true;t:=ad_tape(p,mode,OrRegistry.{});
+    // The tape places every value itself, so its plan must not reuse storage.
+    #assert t.status==AdStatus.ok && !t.plan.reuse;
     // Node 3 is never read: it lives only at its own step, and needs no backward step.
     #assert t.forward==5 && t.count==9 && !t.stepped[3] && !t.reaches[3] && t.grad_born[3]==-1;
     // ReLU reads its input, not its output, so neither ReLU nor add saves anything.
@@ -348,7 +350,7 @@ ad_place :: (arena:AdArena,size:int,first:int,last:int)->AdArena {
         }
     }
     a.at[a.count]=best;a.first[a.count]=first;a.last[a.count]=last;a.size[a.count]=size;a.count+=1;
-    if best+size>a.top {a.top=best+size;}
+    end:=best+size;a.top=(a.top+end+cast(int)abs(f64(a.top-end)))/2; // the larger, exactly (offsets are far below 2^53), with no branch to tie
     return a;
 }
 // book:end place
