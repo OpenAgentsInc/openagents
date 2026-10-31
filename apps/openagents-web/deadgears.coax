@@ -3,14 +3,17 @@
 // (ecs.coax, arena.coax, rules.coax: every system and check of the demo);
 // this file is the page over them: the ship's hull as the demo built it, the
 // cover, the reactor, the cargo, the bolts and the cutter's beams, the
-// engineers and the creatures as procedural box figures, the camera at your
+// engineers as verse/figure.coax figures and the creatures as bone-box
+// figures, the camera at your
 // shoulder, the controls (keyboard and two thumbs), the HUD, the deck's hour
 // (each wave later in the day), its lamps and alarms, and the save kept in
 // the realm's slot at each wave and repair.
 //
-// Every visible thing is a box: an object in store 0 (three rows of its
-// transform, its colour and how much it glows), drawn by deadgears.wgsl's
-// scene pass with the sun, the lamps and their shadows from the uniforms.
+// Every visible thing is an object in store 0 (three rows of its transform,
+// its colour and how much it glows), drawn by deadgears.wgsl's scene pass
+// with the sun, the lamps and their shadows from the uniforms: the first
+// ROUNDS are the engineers' bones, each a round cone (#4d39, as Hecate's
+// Cemetery draws its figures), the rest boxes.
 // deadgears-face.c binds it for the browser.
 //   coax/bin/coax test apps/openagents-web/deadgears.coax --steps 4000000000
 
@@ -44,6 +47,8 @@ UNIFORM_FLOATS :: U_PLATE + PLATES * 8;
 OBJECTS :: 6000;
 OBJECT_FLOATS :: 16;
 BOX_VERTICES :: 36;
+ROUNDS :: 96;            // the first objects: round cones (deadgears.wgsl ROUNDS), the boxes after
+ROUND_VERTICES :: 240;   // eight round, two rings to each half ball (deadgears.wgsl round_vertex)
 
 FX :: 64;
 FX_SPARK :: 1; FX_PUFF :: 2; FX_BURST :: 3; FX_DOWN :: 4; FX_FIXED :: 5; FX_PULSE :: 6; FX_LIFT :: 7; FX_HURT :: 8; FX_MARK :: 9; FX_FLUID :: 10; FX_SHOT :: 11; FX_CHIP :: 12; FX_LIMB :: 13;
@@ -112,6 +117,8 @@ DeadGears :: struct {
   jump_tap: bool;           // JUMP tapped on a phone: one jump on the next step
   dodge: f32; dodge_wait: f32; dodge_x: f32; dodge_y: f32;   // a dodge's time left, the wait, its way
   skel: [TYPES] fig.Skeleton;   // each kind's rig, built once at the start (#ea44)
+  suit_rig: fig.Skeleton;       // the engineers' (#4d39)
+  you_step: f32; ally_step: f32;   // how far through its stride each engineer is: the metres walked over a stride's
   // What the controller walks among this frame: the hull, the cover, the
   // reactor and the crates at rest (pc.WALL numbers each), and the creatures
   // and the support engineer (pc.BODY numbers each).
@@ -136,8 +143,8 @@ DeadGears :: struct {
   alarm: f32;
   deck_hour: f32; pinned_hour: f32; spawn_n: int; spawned: bool;
   fx: [FX] Fx; fx_next: int;
-  objects: [OBJECTS * OBJECT_FLOATS] f32; obj_n: int; hull_n: int; dropped: int;
-  draws: [4] u32;
+  objects: [OBJECTS * OBJECT_FLOATS] f32; obj_n: int; hull_n: int; dropped: int; round_n: int;
+  draws: [8] u32;
   light_n: int; shadow_n: int; plate_n: int;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
   restored: bool; saves: int;
@@ -226,6 +233,7 @@ me_slot :: (g: Game) -> int { return slot_of(dg_player(g)); }
 dg_page_start :: (s: [] DeadGears) {
   s[0].started = true;
   for q: 0..<TYPES { s[0].skel[q] = fig.verse_figure_skeleton(kind_shape(q)); }   // built once (#ea44)
+  s[0].suit_rig = fig.verse_figure_skeleton(suit_shape());
   g := game(s);
   dg_setup(g);
   s[0].pitch = f32(PITCH_REST);
@@ -916,7 +924,7 @@ hull_box :: (s: [] DeadGears, pos: Point, size: Point, c: Point, glow: f32) {
 // The ship around the fight, as the demo built it: floor, walls, ribs,
 // lamps, the end bulkheads. Built once; the frame's things go after it.
 build_hull :: (s: [] DeadGears) {
-  s[0].obj_n = 0;
+  s[0].obj_n = ROUNDS;
   hull_box(s, v3(0, -0.2, -5), v3(32, 0.4, 38), v3(0.11, 0.13, 0.16), 0);
   z := -22;
   while z < 14 {
@@ -949,40 +957,217 @@ build_hull :: (s: [] DeadGears) {
   s[0].hull_n = s[0].obj_n;
 }
 
+// ---- the engineers (#4d39): each a verse/figure.coax person in a hard
+// suit, drawn bone by bone as round cones (as Hecate's Cemetery draws you).
+// The legs walk and run by the metres walked, a stride for a stride's
+// length, so the feet don't slide; over them the arms carry the cutter: at
+// the crosshair while it is up, kicked by each shot, lowered to change the
+// cell on a reload. At cover or in a dodge you drop onto bent knees, and in
+// the air you tuck. The support engineer kneels at the reactor to work on it
+// with both hands, and ducks at cover when creatures are about.
+
 // Your suit and visor; the support engineer's grey suit and white visor.
 SUIT :: [3] f32.[0.65, 0.68, 0.7];
 ALLY_SUIT :: [3] f32.[0.37, 0.39, 0.43];
-engineer :: (s: [] DeadGears, at: Point, yaw: f32, duck: bool, walking: f32, ally: bool, health: f32) {
+SUIT_BULK :: 1.2;    // the suit over the figure's bones
+HELMET :: 0.17;      // metres: the helmet's radius
+RELOAD_SECONDS :: 1.35;   // rules.coax dg_begin_reload's
+
+suit_shape :: () -> fig.Shape {
+  f: fig.Shape;
+  f.size = 1.02; f.legs = 1.0; f.body = 1.05; f.girth = 1.45; f.head = 1.1;
+  return f;
+}
+
+// Of a walk and a run, how much a pace is the run.
+run_share :: (speed: f32) -> f32 { return clamp((speed - f32(pc.WALK)) / f32(pc.RUN - pc.WALK), 0, 1); }
+
+// The metres one stride (both feet) covers at this pace: the walk's, the
+// run's, or between; a slow step is short, its legs swinging less.
+stride_length :: (speed: f32) -> f32 {
+  shape := suit_shape();
+  walked := fig.verse_figure_speed(shape, fig.Gait.walk) / fig.verse_figure_stride_rate(shape, fig.Gait.walk);
+  ran := fig.verse_figure_speed(shape, fig.Gait.run) / fig.verse_figure_stride_rate(shape, fig.Gait.run);
+  return lerp(walked, ran, run_share(speed)) * clamp(speed / 1.5, 0.3, 1);
+}
+wrap01 :: (x: f32) -> f32 { return x - floor(x); }
+
+turn :: (p: fig.Pose, j: int, x: f32, y: f32, z: f32) -> fig.Pose { r := p; r.turn[j] = fig.Fv.{x = x, y = y, z = z}; return r; }
+pitch_by :: (p: fig.Pose, j: int, x: f32) -> fig.Pose { r := p; r.turn[j].x += x; return r; }
+
+// Low on bent knees: at cover, in a dodge, kneeling to the reactor.
+crouch :: (p: fig.Pose, deep: f32) -> fig.Pose {
+  r := p;
+  r = pitch_by(r, fig.P_L_HIP, -1.35 * deep); r = pitch_by(r, fig.P_R_HIP, -1.35 * deep);
+  r = pitch_by(r, fig.P_L_KNEE, 2.1 * deep); r = pitch_by(r, fig.P_R_KNEE, 2.1 * deep);
+  r = pitch_by(r, fig.P_L_FOOT, -0.75 * deep); r = pitch_by(r, fig.P_R_FOOT, -0.75 * deep);
+  r = pitch_by(r, fig.P_SPINE, 0.35 * deep); r = pitch_by(r, fig.P_NECK, -0.25 * deep);
+  return r;
+}
+
+// Down on the right knee at the reactor, both hands at work on it (#9acf).
+repair_pose :: (stood: fig.Pose, t: f32) -> fig.Pose {
+  p := crouch(stood, 0.8);
+  p = pitch_by(p, fig.P_R_HIP, 0.85); p = pitch_by(p, fig.P_R_KNEE, 0.25);
+  p = pitch_by(p, fig.P_L_HIP, -0.3); p = pitch_by(p, fig.P_L_KNEE, 0.3);
+  work := sin(t * 7);
+  p = turn(p, fig.P_L_SHOULDER, -1.2 + 0.18 * work, 0, -0.2); p = turn(p, fig.P_R_SHOULDER, -1.2 - 0.18 * work, 0, 0.2);
+  p = turn(p, fig.P_L_ELBOW, -0.7 - 0.2 * work, 0, 0); p = turn(p, fig.P_R_ELBOW, -0.7 + 0.2 * work, 0, 0);
+  p = pitch_by(p, fig.P_HEAD, 0.3);
+  return p;
+}
+
+// An engineer's pose now. ally: the support engineer; duck: low (at cover,
+// dodging); speed: metres a second over the deck.
+suit_pose :: (s: [] DeadGears, ally: bool, duck: bool, speed: f32) -> fig.Pose {
+  t := s[0].clock;
+  g := game(s);
+  stride := ifx ally then s[0].ally_step else s[0].you_step;
+  rig := fig.Rig.person;
+  legs := fig.verse_figure_blend(fig.verse_figure_gait(rig, fig.Gait.walk, stride, t), fig.verse_figure_gait(rig, fig.Gait.run, stride, t), run_share(speed));
+  p := fig.verse_figure_blend(fig.verse_figure_gait(rig, fig.Gait.stand, stride, t), legs, clamp(speed / 1.5, 0, 1));
+  // The swinging foot clears the deck: the leg folds the whole swing, not
+  // only at its middle, so the foot on the deck is the one that carries you.
+  lifted := cos(stride * f32(PI) * 2) * clamp(speed / 1.5, 0, 1);
+  p = pitch_by(p, fig.P_L_KNEE, 1.0 * hi(0, lifted)); p = pitch_by(p, fig.P_R_KNEE, 1.0 * hi(0, -lifted));
+  p = pitch_by(p, fig.P_L_HIP, -0.2 * hi(0, lifted)); p = pitch_by(p, fig.P_R_HIP, -0.2 * hi(0, -lifted));
+  // The foot on the deck goes back under you exactly as fast as you go
+  // forward: its thigh's angle from where the foot is along the stride.
+  if speed > 0.05 {
+    k := s[0].suit_rig;
+    leg := fig.fv_length(k.offset[fig.P_L_KNEE]) + fig.fv_length(k.offset[fig.P_L_FOOT]);
+    reach := stride_length(speed) * 0.5;
+    for side: 0..<2 {
+      u := wrap01(stride - (ifx side == 0 then 0.25f32 else 0.75f32)) * 2;   // through this foot's time on the deck, 0 to 1
+      if u < 1 {
+        hip := ifx side == 0 then fig.P_L_HIP else fig.P_R_HIP;
+        ahead := clamp((0.5 - u) * reach / leg, -0.95, 0.95);
+        p.turn[hip].x = -atan2(ahead, sqrt(1 - ahead * ahead));
+      }
+    }
+  }
+  repairing := ally && dg_support_repairing(g);
+  if repairing { return repair_pose(p, t); }
+  if duck { p = crouch(p, ifx !ally && s[0].dodge > 0 then 1.0f32 else 0.85f32); }
+  if !ally && s[0].dodge > 0 { p = pitch_by(p, fig.P_SPINE, 0.35); }
+  if !ally && !s[0].pl.on_ground {
+    // In the air: knees up, arms out a little.
+    p = turn(p, fig.P_L_HIP, -0.75, 0, 0.04); p = turn(p, fig.P_R_HIP, -0.35, 0, -0.04);
+    p = turn(p, fig.P_L_KNEE, 1.25, 0, 0); p = turn(p, fig.P_R_KNEE, 0.9, 0, 0);
+    p.lift = fig.Fv.{};
+  }
+  // The arms: the cutter at the crosshair, a reload, or carried low.
+  reload := ifx ally then 0.0f32 else g.st[0].reload;
+  if !ally && reload > 0 {
+    f := 1 - reload / f32(RELOAD_SECONDS);   // through the reload, 0 to 1
+    swap := sin(clamp(f * 1.25, 0, 1) * f32(PI) * 2);   // the spent cell out, the new one in
+    p = turn(p, fig.P_R_SHOULDER, -0.55, 0, 0.25); p = turn(p, fig.P_R_ELBOW, -1.25, 0, 0);
+    p = turn(p, fig.P_L_SHOULDER, -0.55 + 0.45 * swap, 0, -0.35); p = turn(p, fig.P_L_ELBOW, -1.35 - 0.3 * swap, 0, 0);
+    p = pitch_by(p, fig.P_HEAD, 0.35);
+    p.turn[fig.P_CHEST].y *= 0.3;
+  } else if !ally && raised(s) {
+    up := clamp(s[0].pitch, -0.62, 0.45);
+    kick := clamp(s[0].fire_flash / 0.1, 0, 1);
+    p = turn(p, fig.P_R_SHOULDER, -1.45 - up - 0.3 * kick, 0.1, 0.3); p = turn(p, fig.P_R_ELBOW, -0.25 + 0.15 * kick, 0, 0);
+    p = turn(p, fig.P_L_SHOULDER, -1.35 - up - 0.3 * kick, -0.25, -0.75); p = turn(p, fig.P_L_ELBOW, -0.55, 0, 0);
+    p.turn[fig.P_CHEST] = fig.Fv.{x = -0.12 * kick, y = 0, z = 0};
+    p.turn[fig.P_SPINE].y *= 0.3;
+    p = pitch_by(p, fig.P_HEAD, -0.5 * up);
+  } else {
+    p = pitch_by(p, fig.P_R_SHOULDER, -0.45); p = turn(p, fig.P_R_ELBOW, -1.0, 0, 0);
+    p.turn[fig.P_R_SHOULDER].z = 0.15;
+  }
+  return p;
+}
+
+// An engineer at their feet, facing yaw, in pose p: the suit, the helmet and
+// its visor, the pack with your health lights on it, and the cutter in the
+// right hand. On the deck the lowest foot (or knee) stands on it.
+suit_joints :: (s: [] DeadGears, at: Point, yaw: f32, p: fig.Pose, ally: bool, joints: [] fig.Fv) -> bool {
+  k := s[0].suit_rig;
+  if !fig.verse_figure_joints_at(k, p, fig.Place.{x = at.x, y = at.y, z = at.z, yaw = yaw}, joints) { return false; }
+  if ally || s[0].pl.on_ground {
+    low := 1000.0f32;
+    for q: 0..<2 {
+      hip := ifx q == 0 then fig.P_L_HIP else fig.P_R_HIP;
+      low = lo(low, lo(joints[hip + 1].y - 0.07, lo(joints[hip + 2].y - 0.06, joints[hip + 3].y - 0.04)));
+    }
+    rise := at.y - low;
+    for j: 0..<k.joints { joints[j].y += rise; }
+  }
+  return true;
+}
+engineer :: (s: [] DeadGears, at: Point, yaw: f32, p: fig.Pose, ally: bool, health: f32) {
+  k := s[0].suit_rig;
+  joints: [fig.MAX_JOINTS] fig.Fv;
+  if !suit_joints(s, at, yaw, p, ally, joints[..]) { return; }
   suit := ifx ally then v3(ALLY_SUIT[0], ALLY_SUIT[1], ALLY_SUIT[2]) else v3(SUIT[0], SUIT[1], SUIT[2]);
+  armour := times(suit, 0.72);
   black := v3(0.045, 0.055, 0.065); white := v3(0.8, 0.84, 0.9);
   visor := ifx ally then white else v3(CYAN_R, CYAN_G, CYAN_B);
-  t := s[0].clock;
-  h: f32 = ifx duck then 0.73f32 else 1.0f32;
-  pos := at;
-  pos.y += sin(t * 8) * lo(0.04, walking * 0.012);
-  limb(s, pos, yaw, v3(0, 1.1 * h, 0), v3(0.58, 0.62 * h, 0.34), suit, 0, 0, 0);
-  limb(s, pos, yaw, v3(0, 1.65 * h, 0), v3(0.41, 0.4, 0.4), suit, 0, 0, 0);
-  limb(s, pos, yaw, v3(0, 1.68 * h, 0.21), v3(0.31, 0.12, 0.025), black, 0, 0, 0);
-  limb(s, pos, yaw, v3(0, 1.67 * h, 0.23), v3(0.25, 0.035, 0.02), visor, 1, 0, 0);
-  limb(s, pos, yaw, v3(0, 1.15 * h, -0.24), v3(0.34, 0.51, 0.18), black, 0, 0, 0);
+  for q: 0..<k.parts {
+    part := k.part[q];
+    if part.region == fig.REGION_HEAD { continue; }
+    a := joints[part.a]; b := joints[part.b];
+    hand := part.a == part.b;
+    boot := part.a == fig.P_L_FOOT || part.a == fig.P_R_FOOT;
+    c := ifx hand || boot then black else ifx part.region == fig.REGION_LOWER then armour else suit;
+    bone_cone(s, v3(a.x, a.y, a.z), v3(b.x, b.y, b.z), part.ra * f32(SUIT_BULK), part.rb * f32(SUIT_BULK), c, 0);
+  }
+  fwd := v3(sin(yaw), 0, cos(yaw));
+  right := v3(-cos(yaw), 0, sin(yaw));
+  hd := joints[fig.P_HEAD]; cr := joints[fig.P_CROWN];
+  head := v3((hd.x + cr.x) / 2, (hd.y + cr.y) / 2, (hd.z + cr.z) / 2);
+  look := unit_or(v3(cr.x - hd.x, cr.y - hd.y, cr.z - hd.z), v3(0, 1, 0));
+  face := unit_or(sub(fwd, times(look, dot(fwd, look))), fwd);
+  bone_cone(s, sub(head, times(look, 0.03)), add(head, times(look, 0.04)), HELMET, HELMET * 0.92, suit, 0);
+  eyes := add(add(head, times(face, HELMET * 0.82)), times(look, 0.005));
+  bone_cone(s, add(eyes, times(right, 0.075)), sub(eyes, times(right, 0.075)), 0.045, 0.045, visor, 1);
+  // The pack on your back, and your health on it in four lights.
+  sp := joints[fig.P_SPINE]; nk := joints[fig.P_NECK];
+  back := times(face, -0.19);
+  lowp := add(v3(sp.x, sp.y + 0.04, sp.z), back); highp := add(v3(nk.x, nk.y - 0.06, nk.z), back);
+  spine := sub(highp, lowp);
+  lean := atan2(dot(spine, fwd), hi(spine.y, 0.05));
+  box(s, lerp3(lowp, highp, 0.5), v3(0.3, length(spine), 0.16), black, 0, lean, yaw, 0);
   for i: 0..<4 {
     on := health > f32(3 - i) * 25;
-    limb(s, pos, yaw, v3(0, 1.33 * h - f32(i) * 0.12, -0.34), v3(0.12, 0.06, 0.04), ifx on then white else v3(0.12, 0.12, 0.12), ifx on then 0.8f32 else 0.0f32, 0, 0);
+    at_light := add(lerp3(highp, lowp, 0.2 + f32(i) * 0.2), times(face, -0.085));
+    box(s, at_light, v3(0.1, 0.035, 0.025), ifx on then white else v3(0.12, 0.12, 0.12), ifx on then 0.8f32 else 0.0f32, lean, yaw, 0);
   }
-  for k: 0..<2 {
-    side := ifx k == 0 then -1.0f32 else 1.0f32;
-    stride := sin(t * 8 + side * f32(PI) * 0.5) * lo(0.18, walking * 0.04);
-    limb(s, pos, yaw, v3(side * 0.19, 0.43 * h, stride), v3(0.22, 0.78 * h, 0.25), suit, 0, 0, 0);
-    limb(s, pos, yaw, v3(side * 0.19, 0.09, 0.09 + stride), v3(0.25, 0.17, 0.39), black, 0, 0, 0);
-    limb(s, pos, yaw, v3(side * 0.38, 1.1 * h, 0.1), v3(0.17, 0.5, 0.2), suit, 0, side * -0.15, -0.35);
-  }
+  // The cutter in the right hand, along the forearm when it is up.
+  rh := joints[fig.P_R_HAND]; re := joints[fig.P_R_ELBOW];
+  grip := v3(rh.x, rh.y, rh.z);
+  dir := unit_or(v3(rh.x - re.x, rh.y - re.y, rh.z - re.z), fwd);
+  if ally || !raised(s) || game(s).st[0].reload > 0 { dir = unit_or(add(fwd, v3(0, -0.45, 0)), fwd); }
+  tip := add(grip, times(dir, 0.36));
+  beam_box(s, sub(grip, times(dir, 0.08)), tip, 0.1, black, 0);
   flash := s[0].fire_flash > 0 && !ally;
+  beam_box(s, tip, add(tip, times(dir, 0.05)), 0.15, white, ifx flash then 6.6f32 else 0.9f32);
   if flash {
-    limb(s, pos, yaw, v3(0.28, 1.12 * h, 0.86), v3(0.36, 0.12, 0.14), white, 4, 0, 0);
-    limb(s, pos, yaw, v3(0.28, 1.12 * h, 0.9), v3(0.08, 0.4, 0.1), white, 4, 0, 0);
+    beam_box(s, add(tip, times(dir, 0.06)), add(tip, times(dir, 0.4)), 0.12, white, 8.8);
+    beam_box(s, sub(tip, v3(0, 0.2, 0)), add(tip, v3(0, 0.2, 0)), 0.08, white, 8.8);
   }
-  limb(s, pos, yaw, v3(0.28, 1.12 * h, 0.4), v3(0.18, 0.18, 0.65), black, 0, 0, 0);
-  limb(s, pos, yaw, v3(0.28, 1.12 * h, 0.74), v3(0.26, 0.04, 0.05), white, ifx flash then 3.0f32 else 0.4f32, 0, 0);
+  if !ally && game(s).st[0].reload > 0 {
+    // the cell, in the left hand while it is out
+    f := 1 - game(s).st[0].reload / f32(RELOAD_SECONDS);
+    lh := joints[fig.P_L_HAND];
+    if f > 0.15 && f < 0.75 { box(s, v3(lh.x, lh.y, lh.z), v3(0.08, 0.14, 0.08), v3(CYAN_R, CYAN_G, CYAN_B), 1.2, 0, yaw, 0); }
+  }
+}
+lerp3 :: (a: Point, b: Point, t: f32) -> Point { return v3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); }
+
+// A round cone from a (radius ra) to b (radius rb): one of the first ROUNDS
+// objects (deadgears.wgsl round_vertex). Colours as box's.
+bone_cone :: (s: [] DeadGears, a: Point, b: Point, ra: f32, rb: f32, c: Point, glow: f32) {
+  n := s[0].round_n;
+  if n >= ROUNDS { s[0].dropped += 1; return; }
+  s[0].round_n = n + 1;
+  o := n * OBJECT_FLOATS;
+  s[0].objects[o] = a.x; s[0].objects[o + 1] = a.y; s[0].objects[o + 2] = a.z; s[0].objects[o + 3] = ra;
+  s[0].objects[o + 4] = b.x; s[0].objects[o + 5] = b.y; s[0].objects[o + 6] = b.z; s[0].objects[o + 7] = rb;
+  for q: 8..<12 { s[0].objects[o + q] = 0; }
+  s[0].objects[o + 12] = c.x; s[0].objects[o + 13] = c.y; s[0].objects[o + 14] = c.z; s[0].objects[o + 15] = glow * 2.2;
 }
 
 // A creature: the crawler, reaver, brute, skitter (a severed head or claw
@@ -1143,6 +1328,7 @@ draw_world :: (s: [] DeadGears) {
   st := g.st[0];
   t := s[0].clock;
   s[0].obj_n = s[0].hull_n;
+  s[0].round_n = 0;
   for i: 0..<ecs_high(g.e) {
     if !ecs_match(g.e, i, C_COVER | C_POS, 0) { continue; }
     c := g.cover[i]; x := g.pos[i].x; z := g.pos[i].z;
@@ -1175,9 +1361,9 @@ draw_world :: (s: [] DeadGears) {
   if ally != ECS_NONE {
     a := slot_of(ally);
     duck := s[0].ally_speed < 0.3 && ((dg_near_cover(g, g.pos[a]) && dg_alive_mutants(g) > 0) || dg_support_repairing(g));
-    engineer(s, g.pos[a], g.yaw[a], duck, s[0].ally_speed, true, 100);
+    engineer(s, g.pos[a], g.yaw[a], suit_pose(s, true, duck, s[0].ally_speed), true, 100);
   }
-  engineer(s, s[0].feet, s[0].face, st.cover || s[0].dodge > 0, s[0].walking, false, dg_health(g));
+  engineer(s, s[0].feet, s[0].face, suit_pose(s, false, st.cover || s[0].dodge > 0, s[0].walking), false, dg_health(g));
   for i: 0..<ecs_high(g.e) {
     if !ecs_match(g.e, i, C_MUTANT | C_POS | C_HEALTH, 0) { continue; }
     m := g.mutant[i];
@@ -1769,6 +1955,8 @@ step_fight :: (s: [] DeadGears, t: f32) {
       now := g.pos[slot_of(ally)];
       s[0].ally_speed += (flat(now, before) / t - s[0].ally_speed) * lo(1, t * 10);
     }
+    s[0].you_step = wrap01(s[0].you_step + s[0].walking * t / stride_length(s[0].walking));
+    s[0].ally_step = wrap01(s[0].ally_step + s[0].ally_speed * t / stride_length(s[0].ally_speed));
     phases(s);
     s[0].clock += t;
     s[0].fire_flash = hi(0, s[0].fire_flash - t);
@@ -1813,7 +2001,8 @@ deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height:
   view(s, width, height, u);
   draw_world(s);
   lights(s, u);
-  s[0].draws[0] = 0; s[0].draws[1] = cast(u32) BOX_VERTICES; s[0].draws[2] = 0; s[0].draws[3] = cast(u32) s[0].obj_n;
+  s[0].draws[0] = 0; s[0].draws[1] = cast(u32) BOX_VERTICES; s[0].draws[2] = cast(u32) ROUNDS; s[0].draws[3] = cast(u32) (s[0].obj_n - ROUNDS);
+  s[0].draws[4] = 0; s[0].draws[5] = cast(u32) ROUND_VERTICES; s[0].draws[6] = 0; s[0].draws[7] = cast(u32) s[0].round_n;
   u[0] = width; u[1] = height; u[2] = s[0].clock; u[3] = 1; u[4] = ifx still || s[0].golden then 1.0f32 else 0.0f32;
   u[6] = s[0].dpr;
   u[U_EYE] = s[0].eye.x; u[U_EYE + 1] = s[0].eye.y; u[U_EYE + 2] = s[0].eye.z; u[U_EYE + 3] = 0.02;
@@ -1847,13 +2036,84 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   #assert U_SHADOW == 380 && U_OCC == 476 && U_PLATE == 556 && UNIFORM_FLOATS == 684;
 }
 
+#test "you walk without sliding: the foot on the deck stays put while you go (#4d39)" {
+  s: [1] DeadGears;
+  started(s[..]);
+  for pace: 0..<2 {
+    speed: f32 = ifx pace == 0 then f32(pc.WALK) else f32(pc.RUN);
+    dt: f32 = 1.0 / 240.0;
+    at := v3(0, 0, 0);
+    s[0].you_step = 0;
+    joints: [fig.MAX_JOINTS] fig.Fv;
+    last := -1; was := v3(0, 0, 0); slid: f32 = 0; went: f32 = 0; dragged := 0;
+    for i: 0..<480 {
+      s[0].you_step = wrap01(s[0].you_step + speed * dt / stride_length(speed));
+      at.z += speed * dt;
+      s[0].clock += dt;
+      #assert suit_joints(s[..], at, 0, suit_pose(s[..], false, false, speed), false, joints[..]);
+      // the foot on the deck now (suit_pose's), well inside its time there
+      u := wrap01(s[0].you_step - 0.25) * 2;
+      foot := ifx u < 1 then fig.P_L_FOOT else fig.P_R_FOOT;
+      other := ifx u < 1 then fig.P_R_FOOT else fig.P_L_FOOT;
+      inside := wrap01(u) > 0.15 && wrap01(u) < 0.85;
+      now := v3(joints[foot].x, 0, joints[foot].z);
+      if foot == last && inside { slid += flat(now, was); went += speed * dt; }
+      if inside && joints[other].y < joints[foot].y + 0.01 { dragged += 1; }
+      last = foot; was = now;
+    }
+    r := slid / went;
+    #assert went > 1 && r < 0.12;   // the foot on the deck slips under an eighth of the way you go
+    #assert dragged * 20 < 480;   // and the other foot is off the deck all but a moment as it lands
+  }
+}
+
+#test "the cutter goes up at the crosshair, down for a reload, and you crouch at cover (#4d39)" {
+  s: [1] DeadGears;
+  started(s[..]);
+  g := game(s[..]);
+  joints: [fig.MAX_JOINTS] fig.Fv;
+  at := v3(0, 0, 0);
+  #assert suit_joints(s[..], at, 0, suit_pose(s[..], false, false, 0), false, joints[..]);
+  low_hand := joints[fig.P_R_HAND]; tall := joints[fig.P_CROWN].y;
+  #assert tall > 1.6 && tall < 1.95 && abs(lo(joints[fig.P_L_TOE].y, joints[fig.P_R_TOE].y) - 0.04) < 0.02;
+  s[0].raised = 1;
+  #assert suit_joints(s[..], at, 0, suit_pose(s[..], false, false, 0), false, joints[..]);
+  up := joints[fig.P_R_HAND];
+  #assert up.z > low_hand.z + 0.08 && up.y > low_hand.y + 0.15 && up.z > joints[fig.P_CHEST].z + 0.4;
+  g.st[0].reload = 0.7;
+  #assert suit_joints(s[..], at, 0, suit_pose(s[..], false, false, 0), false, joints[..]);
+  #assert joints[fig.P_R_HAND].y < up.y - 0.12;
+  g.st[0].reload = 0; s[0].raised = 0;
+  #assert suit_joints(s[..], at, 0, suit_pose(s[..], false, true, 0), false, joints[..]);
+  #assert joints[fig.P_CROWN].y < tall - 0.3 && lo(joints[fig.P_L_TOE].y, joints[fig.P_R_TOE].y) > 0.0;
+}
+
+#test "the support engineer kneels to repair and works with both hands (#9acf)" {
+  s: [1] DeadGears;
+  started(s[..]);
+  joints: [fig.MAX_JOINTS] fig.Fv;
+  stood: fig.Pose;
+  #assert suit_joints(s[..], v3(0, 0, 0), 0, stood, true, joints[..]);
+  tall := joints[fig.P_CROWN].y;
+  #assert suit_joints(s[..], v3(0, 0, 0), 0, repair_pose(stood, 0.1), true, joints[..]);
+  a := joints[fig.P_L_HAND]; knee := joints[fig.P_R_KNEE].y;
+  #assert joints[fig.P_CROWN].y < tall - 0.25;
+  #assert knee < 0.2;
+  #assert a.z > 0.3;
+  #assert suit_joints(s[..], v3(0, 0, 0), 0, repair_pose(stood, 0.1 + 3.14159 / 7), true, joints[..]);
+  #assert abs(joints[fig.P_L_HAND].y - a.y) + abs(joints[fig.P_L_HAND].z - a.z) > 0.05;
+}
+
 #test "the ship: the demo's hull, built once, then the fight's things over it" {
   s: [1] DeadGears;
   started(s[..]);
   // floor; per rib row a stripe, two walls, two posts, two lamps, two deck lights, a rib; the bulkheads, the door posts, the far doors, the vents
-  #assert s[0].hull_n == 1 + 9 * 10 + 2 + 4 + 4 * 4;
+  #assert s[0].hull_n == ROUNDS + 1 + 9 * 10 + 2 + 4 + 4 * 4;
   n := frame_at(s[..], 1280, 800, 1, 1.0 / 60.0);
-  #assert n > 0 && s[0].obj_n > s[0].hull_n + 7 * 5 + 8 + 2 * 20 && s[0].dropped == 0;
+  #assert n > 0 && s[0].obj_n > s[0].hull_n + 7 * 5 + 8 + 2 * 7 && s[0].dropped == 0;
+  // the two engineers as figures (#4d39): every bone but the head's, the helmet and the visor
+  #assert s[0].round_n == 2 * (s[0].suit_rig.parts - 1 + 2);
+  #assert s[0].draws[2] == cast(u32) ROUNDS && s[0].draws[3] == cast(u32) (s[0].obj_n - ROUNDS) && s[0].draws[7] == cast(u32) s[0].round_n;
   // You stand at (0, 9) looking down the hold at the reactor, in front of the camera.
   #assert flat(s[0].feet, v3(0, 0, 9)) < 0.01 && s[0].eye.z > 9;
   u: [UNIFORM_FLOATS] f32;

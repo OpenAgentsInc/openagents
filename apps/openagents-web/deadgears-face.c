@@ -40,7 +40,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 }
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)game_at(state)->draws.e; }
-EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return game_at(state)->started ? 1u : 0u; }
+EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return game_at(state)->started ? 2u : 0u; }
 EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1u; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)deadgears_store_cap(); }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)k; return (uint32_t)(uintptr_t)game_at(state)->objects.e; }

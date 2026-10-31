@@ -90,9 +90,44 @@ fn quad(v: u32) -> vec2f {
   return q[v];
 }
 
+// The figures (deadgears.coax ROUNDS, the first objects): each a bone of a
+// verse/figure.coax rig, a round cone from end a (r0: its place, its radius)
+// to end b (r1), as Hecate's Cemetery draws its figures' bones: two half
+// balls and the side between, eight round, two rings to a half
+// (ROUND_VERTICES, 240).
+struct Vert { p: vec3f, n: vec3f }
+const ROUNDS: u32 = 96u;
+const AROUND: u32 = 8u;
+const RINGS: u32 = 2u;
+fn round_vertex(m: Obj, id: u32) -> Vert {
+  let q = id / 6u;
+  let c = quad(id % 6u);
+  let row = q / AROUND + u32(c.y);
+  let k = f32(q % AROUND + u32(c.x)) / f32(AROUND) * 6.2831853;
+  let a = m.r0.xyz; let b = m.r1.xyz;
+  let axis = normalize(b - a + vec3f(0.0, 0.00001, 0.0));
+  let side = normalize(cross(axis, select(vec3f(1.0, 0.0, 0.0), vec3f(0.0, 1.0, 0.0), abs(axis.y) < 0.9)));
+  let other = cross(axis, side);
+  let out = side * cos(k) + other * sin(k);
+  let top = row > RINGS;
+  let step = f32(select(row, row - RINGS - 1u, top)) / f32(RINGS) * 1.5707963;
+  let phi = select(step - 1.5707963, step, top);
+  let n = out * cos(phi) + axis * sin(phi);
+  let r = select(m.r0.w, m.r1.w, top);
+  return Vert(select(a, b, top) + n * r, n);
+}
 @vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
   var o: S;
   let m = objects[instance];
+  if (instance < ROUNDS) {
+    let v = round_vertex(m, id);
+    o.pos = vec4f(dot(u.r0, vec4f(v.p, 1.0)), dot(u.r1, vec4f(v.p, 1.0)), dot(u.r2, vec4f(v.p, 1.0)), dot(u.r3, vec4f(v.p, 1.0)));
+    o.world = v.p;
+    o.normal = v.n;
+    o.tint = pow(max(m.colour.rgb, vec3f(0.0)), vec3f(2.2));
+    o.glow = m.colour.w;
+    return o;
+  }
   let f = id / 6u;
   let c = quad(id % 6u) - vec2f(0.5);
   var n = vec3f(0.0); var a = vec3f(0.0); var b = vec3f(0.0);
