@@ -19,6 +19,19 @@ four declared fault prefixes. Three timeouts remain task failures. The
 [separate current-main sanitizer prefix](../../fixtures/robotics/libero-panda/integration-qualification.json)
 checks regenerated C/Metal without relabeling the six full trials.
 
+The [separate source-framework comparison](../../fixtures/robotics/libero-panda/framework-baseline-qualification.json)
+now runs demos 20, 30 and 40 with an actual MPS reference network and the same
+Coax preparation, controller and reset profile. All three reach the 720-row
+limit; exact controls-only replay is retained. The first reference frame
+matches all 5,280 frozen normalized outputs. Matching timeouts do not establish
+numerical trajectory identity or locate a failure cause. This is an F32
+development reference, with no NVIDIA BF16 benchmark claim.
+
+The [own-backend sequence](../physics/owned-control-loop.md) now links the
+qualified 107/109/111 numerical foundations, state/action sensitivity bridge and
+same-build checkpoint precursor. Their one-axis scope stays separate from
+original-Panda embodiment, articulated/contact physics and full robot replay.
+
 ## Selected artifact and reference
 
 Use the separately released
