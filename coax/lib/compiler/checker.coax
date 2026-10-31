@@ -171,7 +171,7 @@ CK_Tag :: enum u32 {invalid=0;type_named=1;type_array=2;type_view=3;type_dynamic
   proc=64;constant=65;struct_=66;enum_=67;param=68;field=69;member=70;field_init=71;import_=72;check=73;file=74;assert_=75;
 }
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
-  type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;effects_known:bool;}
+  type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;own_effects:u8;effects_known:bool;}
 CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;}
 CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
@@ -418,8 +418,19 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
  if variant==3 {nodes[3].byte_intrinsic=1;}if variant==4 {nodes[3].intrinsic=2;}if variant==6 {nodes[3].flag=true;}
  if variant==2 || variant==3 || variant==4 {nodes[3].a=CK_NONE;nodes[3].b=CK_NONE;nodes[3].head=4;nodes[4].next=5;}
  want:=[20] u8.[2,2,1,2,0,2,0,0,2,2,2,2,4,4,4,0,4,0,0,0];
- #assert CK_effects(c,3)==want[variant] && nodes[3].effects_known && nodes[3].effects==want[variant];
+ #assert CK_effects(c,3)==want[variant] && nodes[3].effects_known && nodes[3].effects==want[variant] && nodes[3].own_effects==want[variant];
  #assert CK_effects(c,4)==0 && CK_effects(c,0)==0 && CK_effects(c,16)==0 && CK_effects(c, -1)==0;
+}
+#forall "a compound assignment's update has the binary operation's effects" op:22..<35 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ for i:0..<16 {types[i]=CK_builtin(i);}
+ nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,type=11};nodes[3]=CK_Node.{kind=CK_Tag.expr_ident,type=7};
+ nodes[1]=CK_Node.{kind=CK_Tag.stmt_assign,op=cast(u32)op,c=2,a=2};nodes[4]=CK_Node.{kind=CK_Tag.stmt_assign,op=cast(u32)op,c=3,a=3};
+ ignored:=CK_effects(c,1);ignored=CK_effects(c,4);
+ want:=[13] u8.[0,0,4,4,4,2,2,0,0,0,2,2,0];
+ #assert nodes[1].own_effects==want[op-22] && nodes[1].effects==0 && nodes[4].own_effects==0;
+ nodes[5]=CK_Node.{kind=CK_Tag.stmt_return,op=cast(u32)op+10,c=2};ignored=CK_effects(c,5);#assert nodes[5].own_effects==0;
 }
 #test "the effects pass covers exactly the used nodes" {
  nodes:[8]CK_Node;types:[16]CK_Type;locals:[2]CK_Local;errors:[2]CK_Error;bytes:[256]u8;state:=[1]CK_State.[CK_State.{type_count=16,used=3}];
@@ -443,6 +454,8 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
  nodes[9]=CK_Node.{kind=CK_Tag.expr_binary,op=37,type=11,folded=true,a=3};nodes[10]=CK_Node.{kind=CK_Tag.expr_index,type=11};
  nodes[11]=CK_Node.{kind=CK_Tag.stmt_return,a=3};nodes[12]=CK_Node.{kind=CK_Tag.expr_ct,a=3};nodes[13]=CK_Node.{kind=CK_Tag.expr_int,a=3};
  #assert CK_effects(c,6)==4 && CK_effects(c,7)==4 && CK_effects(c,9)==0 && CK_effects(c,2)==2;
+ // own effects are the operation's alone: f64 + over a trapping index has none
+ #assert nodes[2].own_effects==0 && nodes[3].own_effects==2 && nodes[8].own_effects==4 && nodes[6].own_effects==0 && nodes[7].own_effects==0;
  #assert CK_effects(c,1)==7 && CK_effects(c,11)==0 && CK_effects(c,12)==2 && CK_effects(c,13)==2;
  nodes[3].effects=0;#assert CK_effects(c,1)==7 && CK_effects(c,2)==2;
  nodes[14]=CK_Node.{kind=CK_Tag.expr_binary,op=34,type=11,effects=4};#assert CK_effects(c,14)==4 && nodes[14].effects_known;
@@ -1691,8 +1704,12 @@ CK_effects :: (c:CK_Context,id:int)->u8 {
   n:=c.nodes[id];if n.effects_known {return n.effects;}
   e:u8=0;tag:=cast(u32)n.kind;expression:=tag>=16 && tag<40;
   if n.kind==CK_Tag.field_init {e=CK_effects(c,n.a);}
+  // A compound assignment's own operation is its update, `place op value`
+  // ('+=' is token 24, '+' is 34); a plain '=' maps to no arithmetic.
+  if n.kind==CK_Tag.stmt_assign {c.nodes[id].own_effects=CK_own_effects(c,CK_Node.{kind=CK_Tag.expr_binary,op=n.op+10,type=c.nodes[n.c].type});}
   else if expression && !n.folded {
-    e=CK_own_effects(c,n)|CK_effects(c,n.a)|CK_effects(c,n.b)|CK_effects(c,n.c);
+    own:=CK_own_effects(c,n);c.nodes[id].own_effects=own;
+    e=own|CK_effects(c,n.a)|CK_effects(c,n.b)|CK_effects(c,n.c);
     arg:=n.head;while arg!=CK_NONE {e=e|CK_effects(c,arg);arg=c.nodes[arg].next;}
   }
   c.nodes[id].effects=e;c.nodes[id].effects_known=true;return e;

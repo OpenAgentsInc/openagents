@@ -1,7 +1,7 @@
 # Coax implementation roadmap
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.31.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.32.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated 2026-10-28. Baseline: the current compiler above, including source composition,
 CPU layout reflection and the first R0 benchmark/source-debugging slice. This
@@ -257,6 +257,15 @@ R7a can consume these records and existing diagnostics immediately.
 basic namespaces/content identities and the procedure lowering contract below.
 **R1b later:** general generated-work scheduling and richer module configuration.
 Do not make basic symbol tools wait for the entire scheduler.
+
+**R1a delivered (0.26.0–0.32.0).** Logical `#module` owners and nominal
+declaration IDs, separate content revisions, qualified `alias.Name` lookup
+through one checked graph, `#export` visibility with the `verse.hud` module
+migrated, the native-lp64 target record with refusal of other targets, exact
+authored spans, and ordered native C lowering from the checked graph's effects
+with its `coax deps --lowering` inspection record. Each is pinned by
+`tests/modules.py` or `tests/lowering.py` against C or fixture oracles. Other
+targets, reexports, packages and R1b scheduling remain separate.
 
 Replace repeated whole-program assumptions with explicit declaration work:
 names/signatures, constant/type dependencies, layouts, bodies, generated work

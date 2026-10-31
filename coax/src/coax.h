@@ -304,6 +304,7 @@ struct FieldInit {
 struct Expr {
   ExprKind kind;
   uint8_t effects = 0;  // CK_effects: 1 call, 2 trap, 4 overflow trap under checked arithmetic
+  uint8_t own_effects = 0;  // the same bits for this operation alone, without its operands
   Loc loc;
   Type type = &T_INVALID;     // set by the checker
   uint64_t int_value = 0;     // int_lit (bit pattern), bool_lit, enum_value
@@ -346,6 +347,7 @@ struct Stmt {
   Type type = &T_INVALID;      // var/for: resolved type of `name`
   bool uninit = false;         // var: `= ---`
   Tok op = Tok::equal;         // assign: = += -= ...
+  uint8_t own_effects = 0;     // assign: the compound update's CK_effects bits
   Stmt *then_ = nullptr, *else_ = nullptr;  // if (then_ is a block), loops and defer (then_)
 };
 

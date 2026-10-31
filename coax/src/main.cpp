@@ -280,7 +280,7 @@ static bool import_protos(Source *src, const EmitOptions &opts, std::vector<Toke
   return true;
 }
 
-enum class Output : uint8_t { none, c, header, layout, deps, declarations, modules };
+enum class Output : uint8_t { none, c, header, layout, deps, declarations, modules, lowering };
 
 // `coax deps --declarations` (schema coax.declarations.v1): each unit's
 // logical owner, every top-level declaration's nominal ID and every resolved
@@ -495,6 +495,138 @@ static std::string modules_report(const Source *src, const File *file, const Emi
          ",\"legacy_units\":[" + legacy_units + "],\"legacy_declarations\":[" + legacy + "],\"generated_declarations\":[" + generated + "]}}\n";
 }
 
+// `coax deps FILE --lowering` (schema coax.lowering.v1): the ordered lowering
+// of each procedure in the eligible subset, read from the same decisions the
+// C emitter makes (lowering_sequenced, lowering_place_first,
+// lowering_compound_staged over the checked graph's CK_effects). Operations
+// are listed in execution order: operands, then the operation and its trap.
+static std::string g_lower_proc;
+static std::string tok_text(Tok t) {
+  auto v = LX_name((uint32_t)t);
+  std::string n(v.data, (size_t)v.count);
+  return n.size() >= 2 && n.front() == '\'' && n.back() == '\'' ? n.substr(1, n.size() - 2) : n;
+}
+struct LoweringReport {
+  const Source *src;
+  LoweringPolicy policy;
+  std::string ops, unsupported;
+  bool first = true;
+  std::vector<std::pair<int, int>> defers;  // (block depth, line)
+  int depth = 0;
+  std::string at(Loc loc) {
+    auto p = source_point(src, loc);
+    const SourceUnit *u = source_unit_at(src, loc);
+    return "\"unit\":" + (u ? json_string(u->canonical) : std::string("null")) + ",\"line\":" + std::to_string(p.loc.line) +
+           ",\"col\":" + std::to_string(p.loc.col);
+  }
+  static std::string effects(uint8_t e, LoweringPolicy p) {
+    std::string out = "[";
+    if (e & 1) out += "\"call\"";
+    if (e & 2) out += std::string(out.size() > 1 ? "," : "") + "\"trap\"";
+    if ((e & 4) && !p.wrapping) out += std::string(out.size() > 1 ? "," : "") + "\"overflow\"";
+    return out + "]";
+  }
+  void op(const std::string &what, Loc loc, const std::string &extra = "") {
+    ops += std::string(first ? "" : ",") + "{\"op\":" + json_string(what) + "," + at(loc) + extra + "}";
+    first = false;
+  }
+  void cleanup(Loc loc, int down_to) {
+    std::string lines;
+    for (size_t i = defers.size(); i-- > 0;)
+      if (defers[i].first >= down_to) lines += std::string(lines.empty() ? "" : ",") + std::to_string(defers[i].second);
+    if (!lines.empty()) op("cleanup", loc, ",\"defers\":[" + lines + "]");
+  }
+  void expr(const Expr *e) {
+    if (!e || unsupported.size()) return;
+    if (e->kind == ExprKind::run) { unsupported = "#run expressions are not in the lowering subset"; return; }
+    std::vector<const Expr *> operands;
+    for (const Expr *x : {e->lhs, e->rhs, e->third}) if (x) operands.push_back(x);
+    for (const Expr *a : e->args) operands.push_back(a);
+    for (const FieldInit &f : e->fields) if (f.value) operands.push_back(f.value);
+    for (const Expr *x : operands) expr(x);
+    const uint8_t own = e->own_effects;
+    std::string name;
+    switch (e->kind) {
+      case ExprKind::index: name = "index"; break;
+      case ExprKind::slice: name = "slice"; break;
+      case ExprKind::call: name = e->proc ? "call" : "intrinsic"; break;
+      case ExprKind::binary: name = std::string("binary ") + tok_text(e->op); break;
+      case ExprKind::unary: name = std::string("unary ") + tok_text(e->op); break;
+      case ExprKind::cast: name = "cast"; break;
+      case ExprKind::struct_lit: name = "struct literal"; break;
+      case ExprKind::array_lit: name = "array literal"; break;
+      default: return;
+    }
+    if (!own && operands.size() < 2) return;
+    std::string extra = ",\"effects\":" + effects(own, policy);
+    if (operands.size() >= 2) extra += std::string(",\"sequenced\":") + (lowering_sequenced(operands, policy) ? "true" : "false");
+    if (e->kind == ExprKind::call && e->proc) {
+      std::string id = declaration_id(src, 0, e->proc->name, e->proc->loc);
+      extra += ",\"calls\":" + (id.empty() ? json_string(to_std(e->proc->name)) : json_string(id));
+    }
+    op(name, e->loc, extra);
+  }
+  void stmt(const Stmt *s) {
+    if (!s || unsupported.size()) return;
+    switch (s->kind) {
+      case StmtKind::block: {
+        depth++;
+        for (const Stmt *x : s->body) stmt(x);
+        // A block that ends in return already ran its cleanup there.
+        if (s->body.count == 0 || s->body[s->body.count - 1]->kind != StmtKind::ret) cleanup(s->loc, depth);
+        while (!defers.empty() && defers.back().first >= depth) defers.pop_back();
+        depth--;
+        break;
+      }
+      case StmtKind::expr: expr(s->expr); break;
+      case StmtKind::var: expr(s->expr); op("define", s->loc, ",\"name\":" + json_string(to_std(s->name))); break;
+      case StmtKind::assign:
+        if (s->op == Tok::equal) {
+          bool first_place = lowering_place_first(s->target, s->expr, policy);
+          expr(s->target); expr(s->expr);
+          op("assign", s->loc, std::string(",\"place_first\":") + (first_place ? "true" : "false"));
+        } else {
+          bool staged = lowering_compound_staged(s->target, s->expr, policy);
+          expr(s->target); expr(s->expr);
+          op(std::string("compound ") + tok_text(s->op), s->loc,
+             std::string(",\"place_once\":true,\"staged\":") + (staged ? "true" : "false") + ",\"effects\":" +
+             effects(s->own_effects, policy));
+        }
+        break;
+      case StmtKind::ret: expr(s->expr); cleanup(s->loc, 1); op("return", s->loc); break;
+      case StmtKind::if_: expr(s->expr); op("branch", s->loc); stmt(s->then_); stmt(s->else_); break;
+      case StmtKind::while_: expr(s->expr); op("loop", s->loc); stmt(s->then_); break;
+      case StmtKind::defer: defers.push_back({depth, source_point(src, s->loc).loc.line}); op("defer", s->loc); break;
+      case StmtKind::break_: op("break", s->loc); break;
+      case StmtKind::continue_: op("continue", s->loc); break;
+      case StmtKind::for_range: case StmtKind::for_each: unsupported = "for loops are not in the lowering subset"; break;
+      case StmtKind::assert_: unsupported = "#assert statements are not in the lowering subset"; break;
+    }
+  }
+};
+static std::string lowering_report(const Source *src, const File *file, const EmitOptions &opts) {
+  const LoweringPolicy policy{opts.wrapping, true};
+  std::string out = "{\"schema\":\"coax.lowering.v1\"," + target_json() + ",\"arithmetic\":" +
+                    json_string(opts.wrapping ? "wrapping" : "checked") + ",\"procedures\":[";
+  bool first = true;
+  for (const ProcDecl *p : file->procs) {
+    if (!g_lower_proc.empty() && to_std(p->name) != g_lower_proc) continue;
+    std::string id = declaration_id(src, 0, p->name, p->loc);
+    std::string row = "{\"name\":" + json_string(to_std(p->name)) + ",\"id\":" + (id.empty() ? "null" : json_string(id)) + "," +
+                      span_json(src, p->loc, p->end);
+    if (p->foreign || !p->body) row += ",\"eligible\":false,\"reason\":\"no Coax body\"}";
+    else {
+      LoweringReport r{src, policy};
+      r.stmt(p->body);
+      if (r.unsupported.size()) row += ",\"eligible\":false,\"reason\":" + json_string(r.unsupported) + "}";
+      else row += ",\"eligible\":true,\"operations\":[" + r.ops + "]}";
+    }
+    out += std::string(first ? "" : ",") + row;
+    first = false;
+  }
+  return out + "]}\n";
+}
+
 static std::string declarations_report(const Source *src, const File *file) {
   std::string out = "{\"schema\":\"coax.declarations.v1\",\"units\":[";
   bool first = true;
@@ -591,6 +723,7 @@ static bool compile(const char *path, const EmitOptions &opts, Output what, std:
   else if (what == Output::layout) *text = layout_report(&file);
   else if (what == Output::declarations) *text = declarations_report(&src, &file);
   else if (what == Output::modules) *text = modules_report(&src, &file, opts);
+  else if (what == Output::lowering) *text = lowering_report(&src, &file, opts);
   else if (what == Output::deps) {
     *text="{\"schema_version\":1,\"run_steps\":" + std::to_string(opts.run_steps) + ",\"aggregate_slot_limit\":" + std::to_string(CtMemory::max_slots()) + ",\"aggregate_container_limit\":" + std::to_string(CtMemory::max_containers()) + ",\"aggregate_traversal_limit\":" + std::to_string(CB_traversal_limit()) + ",\"string_live_byte_limit\":" + std::to_string(CB_string_live_limit()) + ",\"string_materialization_work_limit\":" + std::to_string(CB_string_work_limit()) + ",\"sources\":[";
     bool first=true;
@@ -670,6 +803,7 @@ static int usage() {
           "       coax layout  file.coax\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax deps    file.coax --declarations            JSON logical owners, declaration IDs, references\n"
+          "       coax deps    file.coax --lowering [--proc NAME]  JSON ordered lowering: operations, traps, sequencing\n"
           "       coax deps    file.coax --modules                 JSON module content and dependency revisions\n"
           "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...]\n"
@@ -752,7 +886,7 @@ static int main_impl(int argc, char **argv) {
   std::string arithmetic,optimization,build_profile;
   MutationOptions mutation;
   bool keep_c = false;
-  bool declarations = false, modules = false;
+  bool declarations = false, modules = false, lowering = false;
   bool run_steps_seen = false;
   uint64_t steps = TEST_STEPS;
   const char *only = nullptr;
@@ -841,7 +975,9 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--merge" && cmd == "mutate" && i + 1 < argc) mutation.merge.push_back(argv[++i]);
     else if (a == "--keep-c") keep_c = true;
     else if (a == "--declarations" && cmd == "deps" && !declarations && !modules) declarations = true;
-    else if (a == "--modules" && cmd == "deps" && !declarations && !modules) modules = true;
+    else if (a == "--modules" && cmd == "deps" && !declarations && !modules && !lowering) modules = true;
+    else if (a == "--lowering" && cmd == "deps" && !declarations && !modules && !lowering) lowering = true;
+    else if (a == "--proc" && lowering && i + 1 < argc) g_lower_proc = argv[++i];
     else if (a == "--target" && (cmd == "deps" || cmd == "layout") && i + 1 < argc) g_target = argv[++i];
     else if (a == "--json") g_json_errors = true;
     else if (a == "--lib" || a == "--library") opts.library = true;
@@ -941,7 +1077,7 @@ static int main_impl(int argc, char **argv) {
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;
   if (cmd == "layout" || cmd == "deps") {
-    if (!compile(input, opts, cmd == "deps" ? (declarations ? Output::declarations : modules ? Output::modules : Output::deps) : Output::layout, &text, 2)) return 1;
+    if (!compile(input, opts, cmd == "deps" ? (declarations ? Output::declarations : modules ? Output::modules : lowering ? Output::lowering : Output::deps) : Output::layout, &text, 2)) return 1;
     fwrite(text.data(), 1, text.size(), stdout);
     return 0;
   }

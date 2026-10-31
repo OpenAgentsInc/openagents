@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.31.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.32.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -443,8 +443,25 @@ source order is the one reported natively at every optimization level, as
 the evaluator reports it. `tests/lowering.py` checks the evaluator and
 native -O0/-O2 against written expectations for traps, caller writes,
 destination order, exactly-once compound places and reverse `defer`
-cleanup, and catches a seeded reversed-operand defect. GPU and shader
-emission keep their existing order rules.
+cleanup, and catches a seeded reversed-operand defect, which the existing
+differential reducer (`tools/differential.py` `minimize`) shrinks to the one
+trapping read. GPU and shader emission keep their existing order rules.
+
+Since 0.32.0, `coax deps FILE --lowering [--proc NAME]` prints the
+`coax.lowering.v1` inspection record: the native-lp64 target record, the
+arithmetic profile, and for each procedure its declaration ID and span and
+either `"eligible": false` with a reason (for loops, `#assert` statements,
+`#run`, procedures without a Coax body) or its operations in execution
+order. Operands come before their operation; each call, index, slice,
+arithmetic, cast or literal lists its own effects (`call`, `trap`,
+`overflow`), whether its operands are `sequenced`, and the declaration ID it
+calls; assignments say `place_first`, compound assignments `place_once` and
+`staged`; `defer` records and the `cleanup` that runs them in reverse at a
+return or block end. The record is computed by the same functions the C
+emitter uses (`lowering_sequenced`, `lowering_place_first`,
+`lowering_compound_staged` in `src/emit_c.cpp`) over the same effects, so
+what it shows is what runs. It is an inspection contract for this subset,
+not an optimizer, scheduler or cross-backend conformance claim.
 
 ## 8. Control flow
 

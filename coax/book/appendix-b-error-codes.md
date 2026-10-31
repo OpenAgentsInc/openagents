@@ -1,7 +1,7 @@
 # Appendix B. Error codes
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.31.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.32.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 This appendix lists every error code the current compiler can report. The tables
 below are the output of `coax explain --all --markdown`, which prints the
@@ -34,6 +34,7 @@ Chapter 4 explains how to read a diagnostic, and Chapter 20 shows which
 part of the compiler produces each stage's errors. With `--json`, each
 diagnostic is one JSON object per line on stderr, with the fields `file`,
 `line`, `col`, `code`, `message` and `fix`.
+
 
 
 
@@ -221,3 +222,4 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0702` | outside the Metal compute subset | coax metal-compute accepts what coax cuda accepts (E0700). Apple GPUs have no binary64, so f64 is a float-float pair: f64_bits, f64_from_bits, sin, cos, tan and pow of an f64 and conversion of an f64 to an integer are refused. A view points into device memory, so a slice of a kernel's fixed array is refused except as a whole argument to a device primitive. The Apple matrix primitives (am_sg_mma_64x32x32, am_sg_spill_64x32, am_matmul_bf16) belong to group kernels of 128 threads (64, 128 or 256 for am_matmul_bf16), called between thread loops. |
 | `E0703` | Metal compute module has no kernel | coax metal-compute compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |
 | `E0704` | outside the SPIR-V lowering | coax spirv lowers what coax metal accepts (f32 and bool, if/else and acyclic calls) to SPIR-V 1.3 for Vulkan. --kernel NAME wraps one procedure of f32 parameters, returning f32 or bool, in a GLCompute entry point; without it the module is a library. A module has at most 256 procedures, 1024 locals in one procedure, 1024 constants and 32 arguments in one call. |
+| `E0705` | shader entry point not found | coax spirv --vertex NAME and --fragment NAME make entry points of procedures declared in the file or the units it loads. Name one of them, spelled as declared. |

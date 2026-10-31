@@ -6,7 +6,7 @@
   "alias": "#4e5c",
   "parent": "r1a-identities (#963b), kept open",
   "compiler_version": "0.31.0",
-  "status": "partial: effect classification, native sequencing and fixtures shipped; coax lower inspection of the HUD slot routine and differential-tool minimization remain",
+  "status": "complete",
   "kernel": {
     "file": "coax/lib/compiler/checker.coax",
     "change": "CK_effects / CK_lower_effects: per checked expression, call (1), trap under every profile (2: index, slice, integer / % << >>, checked integer cast, byte intrinsic) and checked-overflow trap (4: integer + - *, unary -), combined through operands, argument lists and field values",
@@ -33,5 +33,15 @@
   "remaining": [
     "coax lower inspection record for the HUD slot routine referencing declaration IDs and spans",
     "seeded defect minimized through tools/differential.py (trap-aware generator and oracle)"
-  ]
+  ],
+  "inspection": {
+    "version": "0.32.0",
+    "command": "coax deps verse/hud.coax --lowering --proc verse_hud_slot",
+    "schema": "coax.lowering.v1",
+    "declaration": "coax.decl.v1:verse.hud:proc:verse_hud_slot",
+    "span_sha256": "1237b32f5b6d52a007b1c4c2779aea3b6477de239ee9434e339beb93fef37cb8",
+    "operations": 42,
+    "record_sha256": "948627f81cd22f06e37c2052bbf6139191e14fccb3763a17905f5979e513a24c"
+  },
+  "reducer": "tools/differential.py minimize reduces the seeded reversed-temporaries defect to the one two-trap read and one input row (tests/lowering.py)"
 }

@@ -469,6 +469,35 @@ bool trivial(const Expr *e) {
   }
 }
 
+// Ordered lowering decisions (r1a-ordered-lowering), shared by the C emitter
+// and `coax lower`: both read the checked graph's effects (CK_effects), so the
+// inspected order is the executed one. `traps` is false where trap order is
+// not observable (GPU and shader emission).
+struct LoweringPolicy { bool wrapping = false, traps = true; };
+bool lowering_may_trap(const Expr *e, LoweringPolicy p) {
+  return p.traps && !trivial(e) && (e->effects & (2 | (p.wrapping ? 0 : 4)));
+}
+// Operands are evaluated through temporaries in source order when one calls
+// and another is not trivial, or when two may trap.
+bool lowering_sequenced(const std::vector<const Expr *> &ops, LoweringPolicy p) {
+  int calls = 0, nontrivial = 0, traps = 0;
+  for (const Expr *e : ops) {
+    if (has_call(e)) calls++;
+    if (!trivial(e)) nontrivial++;
+    if (lowering_may_trap(e, p)) traps++;
+  }
+  return (calls > 0 && nontrivial >= 2) || traps >= 2;
+}
+// `place = value`: the place's address is taken before the value runs.
+bool lowering_place_first(const Expr *target, const Expr *value, LoweringPolicy p) {
+  return (has_call(target) && !trivial(value)) || (has_call(value) && !trivial(target)) ||
+         (lowering_may_trap(target, p) && lowering_may_trap(value, p));
+}
+// `place op= value`: false when the place may be spelled twice in C.
+bool lowering_compound_staged(const Expr *target, const Expr *value, LoweringPolicy p) {
+  return has_call(target) || has_call(value) || (lowering_may_trap(target, p) && lowering_may_trap(value, p));
+}
+
 // An lvalue in the generated C.
 bool is_place(const Expr *e) {
   switch (e->kind) {
@@ -589,18 +618,12 @@ struct Emitter {
   // The checked graph's effects (CK_effects) decide it: an operand that calls,
   // or two that may trap, are evaluated in Coax order through temporaries,
   // never left to C's unspecified operand order.
-  bool may_trap(const Expr *e) const {
-    return !device() && !opts.metal && !trivial(e) && (e->effects & (2 | (opts.wrapping ? 0 : 4)));
-  }
+  LoweringPolicy policy() const { return {opts.wrapping, !device() && !opts.metal}; }
   template <class F> std::string ordered(const std::vector<Operand> &ops, F build, bool place = false) {
-    int calls = 0, nontrivial = 0, traps = 0;
-    for (const Operand &o : ops) {
-      if (has_call(o.e)) calls++;
-      if (!trivial(o.e)) nontrivial++;
-      if (may_trap(o.e)) traps++;
-    }
+    std::vector<const Expr *> exprs;
+    for (const Operand &o : ops) exprs.push_back(o.e);
     std::vector<std::string> texts;
-    if ((calls == 0 || nontrivial < 2) && traps < 2) {
+    if (!lowering_sequenced(exprs, policy())) {
       for (const Operand &o : ops) texts.push_back(ex(o.e));
       return build(texts);
     }
@@ -1091,8 +1114,7 @@ struct Emitter {
   void assign(const Stmt *s) {
     const Expr *target = s->target;
     if (s->op == Tok::equal) {
-      bool order = (has_call(target) && !trivial(s->expr)) || (has_call(s->expr) && !trivial(target)) ||
-                   (may_trap(target) && may_trap(s->expr));
+      bool order = lowering_place_first(target, s->expr, policy());
       if (!order) {
         line(ex(target) + " = " + ex(s->expr) + ";");
       } else {
@@ -1105,7 +1127,7 @@ struct Emitter {
     }
     // x op= v: the place is evaluated once, then v, then the update.
     Expr place{}, value{}, bin{};
-    bool direct = !has_call(target) && !has_call(s->expr) && !(may_trap(target) && may_trap(s->expr));
+    bool direct = !lowering_compound_staged(target, s->expr, policy());
     std::string p, v;
     if (!direct) {
       p = new_temp(pointer_type(target));

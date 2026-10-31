@@ -6,8 +6,15 @@
    escaped byte strings; whitespace, line comments and nested block comments.
    A unary minus is a separate token. *)
 
-file = { load | import | proto-import | procedure | constant | struct | enum | assertion | check | authority } ;
-load = "#load", string, ";" ;
+file = { module | export | load | import | proto-import | procedure | constant | struct | enum | assertion | check | authority } ;
+module = "#module", string, ";" ;
+(* At most one claim per unit: a lowercase dotted logical module ID. *)
+export = "#export", identifier, { ",", identifier }, ";" ;
+(* Names the module's own declarations; a module with any list keeps the
+   rest private. Valid only in a unit that belongs to a logical module. *)
+load = "#load", string, [ "as", identifier ], ";" ;
+(* The aliased form names a .coax path whose unit claims a #module; types,
+   procedures, constants and enums are then written alias.Name. *)
 (* Source loads form a bounded acyclic graph; each canonical source loads once.
    Paths and descriptor imports resolve relative to their declaring source. *)
 import = "#import", string, ";" ;

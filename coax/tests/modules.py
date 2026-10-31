@@ -546,6 +546,25 @@ class Visibility(unittest.TestCase):
         hit = self.error(lone / "main.coax", "E0615")
         self.assertEqual((hit["line"], hit["col"]), (1, 9))
 
+    def test_module_dependencies_stay_acyclic(self):
+        # A load cycle through aliased module loads is refused at the closing load.
+        files = {"a.coax": '#module "demo.a";\n#load "b.coax" as b;\nA :: cast(int) 1;\n',
+                 "b.coax": '#module "demo.b";\n#load "a.coax" as a;\nB :: cast(int) 2;\n',
+                 "main.coax": '#load "a.coax" as a;\nmain :: () {}\n'}
+        hit = self.error(self.tree(files, "c") / "main.coax", "E0602")
+        self.assertEqual(Path(hit["file"]).name, "b.coax")
+        # A diamond is one dependency, revised once.
+        files = {"base.coax": '#module "demo.base";\n#export K;\nK :: cast(int) 3;\n',
+                 "l.coax": '#module "demo.l";\n#load "base.coax" as base;\nL :: () -> int { return base.K; }\n',
+                 "r.coax": '#module "demo.r";\n#load "base.coax" as base;\nR :: () -> int { return base.K + 1; }\n',
+                 "main.coax": '#import "Basic";\n#load "l.coax" as l;\n#load "r.coax" as r;\nmain :: () { print("%\\n", l.L() + r.R()); }\n'}
+        root = self.tree(files, "d")
+        self.assertEqual(self.ok("run", root / "main.coax"), "7\n")
+        m = {x["id"]: x for x in json.loads(self.ok("deps", root / "main.coax", "--modules"))["modules"]}
+        base = m["demo.base"]["revision"]
+        for side in ("demo.l", "demo.r"):
+            self.assertEqual([d for d in m[side]["dependencies"] if "module" in d], [{"module": "demo.base", "revision": base}])
+
     def test_unannotated_graphs_keep_every_name_visible(self):
         files = dict(SEALED)
         files["geo/geo.coax"] = SEALED["geo/geo.coax"].replace("#export Rect, area, UNIT;\n", "")
