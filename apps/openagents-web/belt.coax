@@ -75,7 +75,8 @@ PLACES :: 19;
 ICE_NAMES :: [8] string.["KESTREL", "MOROZ", "ANVIL", "TALLOW", "BRINE", "HOLLOW", "SABLE", "WICK"];
 ICE_RADII :: [8] f64.[2400.0, 1700.0, 3100.0, 1300.0, 2200.0, 2800.0, 1500.0, 1900.0];   // m
 STATION_ORBIT :: 1200000.0;   // m from Ceres's centre
-ROCKS :: 900;                 // the Belt's field, drawn
+ROCKS :: 5000;                // the Belt's field, drawn
+ROCKS_FIRST :: 900;           // the first field's rocks, from the stream the ice rocks follow
 SHIPS :: 8;
 PATH :: 48;
 
@@ -102,6 +103,10 @@ Ship :: struct {
   route: [3] int; route_n: int; route_k: int; idle_until: f64;   // a rival's standing route
 }
 
+// A field rock, kept for drawing five thousand a frame: its orbit's axes scaled (a·P, b·Q, the
+// perifocal frame in the ecliptic's), so where it is takes one Kepler step and two products.
+Rock :: struct { p: D3; q: D3; e: f64; n: f64; m0: f64; }
+
 Plan :: struct { ok: bool; tr: Transfer; fuel: f64; burn2: f64; enough: bool; }
 
 Btn :: struct { x0: f32; y0: f32; x1: f32; y1: f32; id: int; arg: int; }
@@ -121,7 +126,7 @@ Belt :: struct {
   ice: f64;              // tonnes at Hearth Station
   delivered: f64;
   ships: [SHIPS] Ship; ship_n: int;
-  rocks: [ROCKS] Orbit;
+  rocks: [ROCKS] Rock;
   ices: [ICE_ROCKS] Orbit;
   selected: [SHIPS] bool;
   dest: int = -1;        // the destination being planned, -1 none
@@ -370,17 +375,14 @@ belt_reset :: (s: [] Belt) {
   s[0].dest = -1; s[0].follow = -1; s[0].follow_place = -1; s[0].press = -1; s[0].hover = -1;
   for i: 0..<2 { s[0].fingers[i].id = -1; }
   r: [1] Rand;
-  // The Belt's field.
+  // The Belt's field: the first rocks from the stream the ice rocks follow (so they stay where
+  // they were), the rest from their own.
+  more: [1] Rand; more[0].x = 777;
   for k: 0..<ROCKS {
     o: Orbit;
     o.mu = GM_SUN;
-    o.a = (2.15 + 1.1 * rand_next(r[..])) * AU;
-    o.e = 0.2 * rand_next(r[..]) * rand_next(r[..]);
-    o.i = 0.25 * rand_next(r[..]) * rand_next(r[..]);
-    o.node = TAU_D * rand_next(r[..]);
-    o.peri = TAU_D * rand_next(r[..]);
-    o.m0 = TAU_D * rand_next(r[..]);
-    s[0].rocks[k] = o;
+    if k < ROCKS_FIRST { o = field_orbit(r[..]); } else { o = field_orbit(more[..]); }
+    s[0].rocks[k] = rock_of(o);
   }
   // The ice rocks, near Ceres along its orbit, so the first trips are short: Ceres's own state
   // turned about its orbit's axis, a hair out of its plane and a hair faster or slower. A rock on
@@ -417,6 +419,33 @@ belt_reset :: (s: [] Belt) {
   s[0].cam.tilt = 0.0;
 }
 started :: (s: [] Belt) { if !s[0].started { belt_start(s); } }
+field_orbit :: (r: [] Rand) -> Orbit {
+  o: Orbit;
+  o.mu = GM_SUN;
+  o.a = (2.15 + 1.1 * rand_next(r)) * AU;
+  o.e = 0.2 * rand_next(r) * rand_next(r);
+  o.i = 0.25 * rand_next(r) * rand_next(r);
+  o.node = TAU_D * rand_next(r);
+  o.peri = TAU_D * rand_next(r);
+  o.m0 = TAU_D * rand_next(r);
+  return o;
+}
+rock_of :: (o: Orbit) -> Rock {
+  k: Rock;
+  k.p = perifocal(o, d3(o.a, 0.0, 0.0));
+  k.q = perifocal(o, d3(0.0, o.a * sqrt(1.0 - o.e * o.e), 0.0));
+  k.e = o.e; k.n = orbit_mean_motion(o); k.m0 = o.m0;
+  return k;
+}
+// Where a field rock is at t: Kepler's equation by two Newton steps from E = M + e sin M, which
+// at the field's e (0.2 at most) is within a few metres per AU of the exact solution.
+rock_at :: (k: Rock, t: f64) -> D3 {
+  m := k.m0 + k.n * t;
+  ea := m + k.e * sin(m);
+  for i: 0..<2 { ea -= (ea - k.e * sin(ea) - m) / (1.0 - k.e * cos(ea)); }
+  c := cos(ea) - k.e; sn := sin(ea);
+  return d3(k.p.x * c + k.q.x * sn, k.p.y * c + k.q.y * sn, k.p.z * c + k.q.z * sn);
+}
 // v turned by a radians about the unit axis k (Rodrigues).
 turn_about :: (v: D3, k: D3, a: f64) -> D3 {
   c := cos(a); sn := sin(a);
@@ -1470,10 +1499,14 @@ draw_map :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     draw_orbit(s, out, d, s[0].ices[j], D3_ZERO, ifx hot then 0.35f32 else 0.08f32, ICE_R, ICE_G, ICE_B);
   }
   // The field: rocks of every brightness, the faint ones many (the dust between is belt.wgsl's).
+  // Five thousand: each is culled off screen before it costs a quad, and the many are fainter.
+  w := d[0].w; hh := d[0].h; m := 4 * k;
   for j: 0..<ROCKS {
-    c := screen_of(s, orbit_position(s[0].rocks[j], t));
+    c := screen_of(s, rock_at(s[0].rocks[j], t));
+    x := pix(c.x); y := pix(c.y);
+    if x < -m || y < -m || x > w + m || y > hh + m { continue; }
     h := f32((j * 7919 + 13) % 1000) / 1000.0;
-    dot(out, d, pix(c.x), pix(c.y), (0.45 + 0.6 * h * h) * k, 0.3 + 0.55 * h * h, 0.8, 0.8, 0.82);
+    dot(out, d, x, y, (0.4 + 0.6 * h * h) * k, 0.2 + 0.5 * h * h, 0.8, 0.8, 0.82);
   }
   // The worlds: shaded discs (bigger than life when far, so they read), a ring on the one you aim at.
   spin_k := s[0].clock * 0.04;
@@ -2092,6 +2125,21 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     p := plan_for(s[..], 0, P_ICE + j, false);
     #assert p.ok && p.enough && p.tr.dv < 4000.0 && p.fuel < 0.5 * s[0].ships[0].fuel;
   }
+}
+
+#test "the field: five thousand rocks where their orbits put them, each a quad, all within the vertex budget" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  r: [1] Rand;
+  t := s[0].t + 400.0 * DAY;
+  for j: 0..<ROCKS_FIRST {
+    o := field_orbit(r[..]);
+    #assert d3_dist(rock_at(s[0].rocks[j], t), orbit_position(o, t)) < 1000.0;
+  }
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := belt_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
+  #assert n > ROCKS_FIRST * 6 && n < MAX_VERTICES;
 }
 
 #test "the system view keeps Hearth on the screen as Ceres goes round; a view zoomed in rides with what it was on" {
