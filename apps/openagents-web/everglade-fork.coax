@@ -392,23 +392,26 @@ fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
   return ifx w > room && w > 0 then cap * room / w else cap;
 }
 
-#test "a fork's facts: its slug and its rules, only the four this code plays; Everglade itself has none" {
+#test "Everglade itself is no fork: no rules, its own world" {
   g: [1] Everglade; gk: [1] EgFork; everglade_attach_fork(g[..], gk[..]);
   everglade_message(g[..], MSG_FACTS, "realm=everglade\nclock=cycle\nnow=1000");
   #assert !fk_is_fork(g[..]) && !fork_rule(g[..], FK_NIGHT) && everglade_gravity_lift(g[..]) == 0;
   buf: [80] u8;
   #assert cast(string) buf[0..<everglade_world_path(g[..], buf[..], 0)] == "/api/playtest/world/everglade";
+}
+
+#test "a fork's facts: its slug and its rules, only the four this code plays; its own world" {
   f: [1] Everglade; fk: [1] EgFork; everglade_attach_fork(f[..], fk[..]);
   everglade_message(f[..], MSG_FACTS, "realm=everglade\nfork=doomglade\nrules=night,dragons,lowgrav\nclock=cycle\nnow=1000");
   #assert fk_is_fork(f[..]) && fork_rule(f[..], FK_NIGHT) && fork_rule(f[..], FK_LOWGRAV) && !fork_rule(f[..], FK_WAVES);
   #assert abs(everglade_gravity_lift(f[..]) - 16.0) < 0.01;
+  buf: [80] u8;
   #assert cast(string) buf[0..<everglade_world_path(f[..], buf[..], 0)] == "/api/playtest/world/made-doomglade";
   #assert cast(string) buf[0..<everglade_world_path(f[..], buf[..], 1)] == "/api/playtest/world/made-doomglade/reset";
   #assert cast(string) buf[0..<everglade_world_path(f[..], buf[..], 2)] == "/api/playtest/realm/doomglade/edit";
   // a slug that isn't one is no fork
-  b: [1] Everglade; bk: [1] EgFork; everglade_attach_fork(b[..], bk[..]);
-  everglade_message(b[..], MSG_FACTS, "realm=everglade\nfork=../x\nrules=night\nnow=1000");
-  #assert !fk_is_fork(b[..]) && !fork_rule(b[..], FK_NIGHT);
+  everglade_message(f[..], MSG_FACTS, "realm=everglade\nfork=../x\nrules=night\nnow=1000");
+  #assert !fk_is_fork(f[..]) && !fork_rule(f[..], FK_NIGHT);
 }
 
 #test "the board decides once the layer has the fork's spec: a rule switched off there is off" {
