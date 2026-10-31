@@ -299,7 +299,18 @@ Rebuild and look: `apps/openagents-desktop/build.sh --open`; an offscreen PNG:
 where STEPS drive the keyboard, mouse, menus and IME (`Sources/Zeron.swift`
 `shot`), e.g. `--do "key shift+alt+left ; menu Copy ; click 900,792,2 ; menu Paste"`;
 `--do "click 20,20 ; fixture open ; scroll 500"` opens the transcript as the
-Zeron capture does.
+Zeron capture does. A shot has a pasteboard of its own (`clip TEXT` puts text
+on it), so scripted Copy and Paste never touch yours.
+
+Checks (from a clean checkout: `coax/build.sh`, then):
+`apps/openagents-desktop/check.sh` builds the app and draws each case
+offscreen against its golden in `apps/openagents-desktop/goldens/` (the demo
+transcript at 1320x880 and at the 900x600 minimum, and typing, Copy and Paste
+in the composer), with `OpenAgents --compare SHOT GOLDEN`: at most 0.1% of
+pixels off by more than 48 of 255. `--update` rewrites the goldens; look at
+them before committing. `OpenAgents --fps SECS` opens the window and prints
+its presented frames per second (60.2 on this Mac's Retina display,
+2026-10-31).
 
 ## What came before
 

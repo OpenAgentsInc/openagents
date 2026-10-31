@@ -222,6 +222,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   var last = CACurrentMediaTime()
   var cursorKind: Int32 = 0
   var copyBuffer = [UInt8](repeating: 0, count: 65536)
+  // The system pasteboard; a --shot uses one of its own, so a scripted Copy never replaces what you copied.
+  var pasteboard = CommandLine.arguments.contains("--shot") ? NSPasteboard(name: NSPasteboard.Name("com.openagents.desktop.shot")) : NSPasteboard.general
 
   init(frame: CGRect) {
     let device = MTLCreateSystemDefaultDevice()!
@@ -256,9 +258,16 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
+  // frames presented and the longest frame's CPU time, for --fps
+  var presented = 0, slowest = 0.0
   func draw(in view: MTKView) {
     guard let pass = currentRenderPassDescriptor, let drawable = currentDrawable else { return }
-    render(pass, size: drawableSize, dpr: window?.backingScaleFactor ?? 2) { $0.present(drawable) }
+    let start = CACurrentMediaTime()
+    render(pass, size: drawableSize, dpr: window?.backingScaleFactor ?? 2) { cmd in
+      drawable.addPresentedHandler { [weak self] _ in DispatchQueue.main.async { self?.presented += 1 } }
+      cmd.present(drawable)
+    }
+    slowest = max(slowest, CACurrentMediaTime() - start)
   }
 
   func render(_ pass: MTLRenderPassDescriptor, size: CGSize, dpr: CGFloat, done: ((MTLCommandBuffer) -> Void)? = nil) {
@@ -284,8 +293,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     }
     let copied = Int(zr_take_copy(state, &copyBuffer, Int32(copyBuffer.count)))
     if copied > 0 {
-      NSPasteboard.general.clearContents()
-      NSPasteboard.general.setString(String(decoding: copyBuffer[0..<copied], as: UTF8.self), forType: .string)
+      pasteboard.clearContents()
+      pasteboard.setString(String(decoding: copyBuffer[0..<copied], as: UTF8.self), forType: .string)
     }
     pass.colorAttachments[0].loadAction = .clear
     pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
@@ -417,6 +426,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   //   fixture open|closed   the transcript as the Zeron capture opens it (transcript-fixture.rs)
   //   fixture table   a reply with GFM tables (transcript.coax TABLE_DEMO_REPLY)
   //   scroll PX       the transcript scrolled PX from its top    pasteboard  print the pasteboard
+  //   clip TEXT       put TEXT on the pasteboard (a shot's own, never the system's)
   //   send TEXT       type TEXT into the composer and press Enter    stop  press Escape (stops a running turn)
   //   model NAME      a chip's choice (also effort NAME, access NAME, as the flags take them; plan on|off)
   //   open model|access   a chip's menu, as a press on it opens it
@@ -497,7 +507,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "wait" where nums.count == 1: return (CACurrentMediaTime() + Double(nums[0]), false)
     case "waitidle": return (CACurrentMediaTime() + Double(nums.first ?? 300), true)
     case "scroll" where nums.count == 1: zr_scroll_to(state, nums[0])
-    case "pasteboard": print("pasteboard: \(NSPasteboard.general.string(forType: .string) ?? "")")
+    case "clip": pasteboard.clearContents(); pasteboard.setString(arg, forType: .string)
+    case "pasteboard": print("pasteboard: \(pasteboard.string(forType: .string) ?? "")")
     case "key":
       let (code, mods, char) = chord(arg)
       _ = binding(code: code, char: char, mods: mods)
@@ -637,15 +648,15 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     guard n > 0 else { return }
     var bytes = [UInt8](repeating: 0, count: n)
     _ = zr_selected(state, &bytes, Int32(n))
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(String(decoding: bytes, as: UTF8.self), forType: .string)
+    pasteboard.clearContents()
+    pasteboard.setString(String(decoding: bytes, as: UTF8.self), forType: .string)
   }
   @objc func cut(_ sender: Any?) {
     guard zr_can_cut(state) != 0 else { return }
     copy(sender); zr_cut(state)
   }
   @objc func paste(_ sender: Any?) {
-    let pb = NSPasteboard.general
+    let pb = pasteboard
     // files and images are attachments in Zeron (staged, not typed)
     if zr_wants_text(state) != 0, attach(from: pb) { return }
     guard let s = pb.string(forType: .string), !s.isEmpty else { return }

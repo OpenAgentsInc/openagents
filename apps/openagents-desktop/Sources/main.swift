@@ -236,6 +236,19 @@ final class App: NSObject, NSApplicationDelegate {
       return
     }
     NSApp.activate(ignoringOtherApps: true)
+    // --fps SECS: the window as you see it, its presented frames per second after a second's warm-up, printed; then quit.
+    if let i = args.firstIndex(of: "--fps"), i + 1 < args.count, let secs = Double(args[i + 1]) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+        zeron.presented = 0; zeron.slowest = 0
+        let start = CACurrentMediaTime()
+        DispatchQueue.main.asyncAfter(deadline: .now() + secs) {
+          let rate = Double(zeron.presented) / (CACurrentMediaTime() - start)
+          print(String(format: "%.1f fps over %.0f s at %.0fx%.0f (scale %.0f), slowest frame %.1f ms on the CPU", rate, secs,
+                       zeron.drawableSize.width, zeron.drawableSize.height, self.window.backingScaleFactor, zeron.slowest * 1000))
+          NSApp.terminate(nil)
+        }
+      }
+    }
   }
   func applicationShouldTerminateAfterLastWindowClosed(_ s: NSApplication) -> Bool { true }
   // Claude Code's process group goes with the app.
@@ -283,6 +296,34 @@ final class App: NSObject, NSApplicationDelegate {
     NSApp.windowsMenu = bar.items.last?.submenu
     return bar
   }
+}
+
+// --compare SHOT GOLDEN [PERCENT]: how many pixels of SHOT differ from GOLDEN by more than 48 of 255 in a
+// channel, printed; exit 1 when the sizes differ or more than PERCENT (default 0.1) do (check.sh's goldens).
+if let i = CommandLine.arguments.firstIndex(of: "--compare"), i + 2 < CommandLine.arguments.count {
+  let args = CommandLine.arguments
+  func pixels(_ path: String) -> (Int, Int, [UInt8])? {
+    guard let image = NSImage(contentsOfFile: path)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
+    let w = image.width, h = image.height
+    var px = [UInt8](repeating: 0, count: w * h * 4)
+    let g = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+    g.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+    return (w, h, px)
+  }
+  guard let a = pixels(args[i + 1]), let b = pixels(args[i + 2]) else { print("compare: cannot read \(args[i + 1]) or \(args[i + 2])"); exit(1) }
+  guard a.0 == b.0, a.1 == b.1 else { print("compare: \(a.0)x\(a.1) against \(b.0)x\(b.1)"); exit(1) }
+  var over = 0, most = 0
+  for p in 0..<(a.0 * a.1) {
+    var worst = 0
+    for c in 0..<3 { worst = max(worst, abs(Int(a.2[p * 4 + c]) - Int(b.2[p * 4 + c]))) }
+    most = max(most, worst)
+    if worst > 48 { over += 1 }
+  }
+  let percent = 100 * Double(over) / Double(a.0 * a.1)
+  let limit = i + 3 < args.count ? Double(args[i + 3]) ?? 0.1 : 0.1
+  print(String(format: "%d of %d pixels differ by more than 48 (%.4f%%, at most %d)", over, a.0 * a.1, percent, most))
+  exit(percent > limit ? 1 : 0)
 }
 
 // --route TEXT: Mammoth's decision for TEXT on this Mac, printed; no window (a live check of the Lab's router).
