@@ -9,6 +9,9 @@ parts of 2 and 3). The roadster is drawn as low-poly hulls (wedge body,
 fender pods, windscreen, speedster humps, the driver's helmet, a rear wing,
 glowing head and tail lights); the floor and glass reflect the ball and the
 cars; a ringed ice giant, a moon and the station's ribs sit outside the glass.
+A goal blasts a shell of light and sparks in the scorer's colour; hard hits
+throw sparks and shake the camera; the ball and the boost leave trails. Six
+big and ten small boost pads; the dodge is in `verse/vehicle.coax`.
 
 ## The game in one line
 

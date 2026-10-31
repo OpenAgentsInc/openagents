@@ -41,7 +41,8 @@ PANEL_AT :: 92;
 TRAIL_N :: 8;
 TRAIL_AT :: PANEL_AT + PLATES * 8;
 BLAST_AT :: TRAIL_AT + 3 * (TRAIL_N + 1) * 4;
-UNIFORM_FLOATS :: BLAST_AT + 8;
+PADS_AT :: BLAST_AT + 8;     // each boost pad: x, z, big (1) or small (0), how ready (1 ready)
+UNIFORM_FLOATS :: PADS_AT + PADS * 4;
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -124,6 +125,12 @@ BOXES :: 12;
 TRAIL_DT :: 0.04;        // seconds between a trail's points
 SPARKS :: 128;
 BLAST_LIFE :: 1.6;
+// Boost pads on the floor: six big ones (a full tank) and ten small, each
+// waiting a while after a car takes it.
+PADS :: 16;
+PAD_BIG :: 100.0; PAD_SMALL :: 12.0;
+PAD_BIG_WAIT :: 10.0; PAD_SMALL_WAIT :: 4.0;
+PAD_BIG_R :: 1.6; PAD_SMALL_R :: 1.1;
 ARC :: 36;               // the boost gauge's segments
 STICK :: 60.0;           // CSS pixels of thumb travel for full lock
 CAM_BACK :: 9.5; CAM_UP :: 3.4; FOV :: 1.15;
@@ -174,6 +181,8 @@ OrbitLeague :: struct {
   shake: f64;
   blast: D3; blast_t: f64; blast_team: int;
   sy: f32;
+  pad_wait: [PADS] f64;
+  pads_taken: int;
   track: [1] Track;
 }
 
@@ -216,6 +225,37 @@ build_boxes :: (s: [] OrbitLeague) {
 
 // ---- the match
 
+// Pad i: x and z, and y 1 for a big one.
+pad_at :: (i: int) -> D3 {
+  if i < 4 { return d3(ifx i % 2 == 0 then -(ARENA_HX - 4.0) else ARENA_HX - 4.0, 1.0, ifx i < 2 then -(ARENA_HZ - 6.0) else ARENA_HZ - 6.0); }
+  if i < 6 { return d3(ifx i == 4 then -(ARENA_HX - 3.0) else ARENA_HX - 3.0, 1.0, 0.0); }
+  if i < 8 { return d3(0.0, 0.0, ifx i == 6 then -22.0 else 22.0); }
+  k := i - 8;
+  x := ifx k % 2 == 0 then -1.0 else 1.0;
+  z := ifx (k / 2) % 2 == 0 then -1.0 else 1.0;
+  if k < 4 { return d3(x * 12.0, 0.0, z * 12.0); }
+  return d3(x * 8.0, 0.0, z * 30.0);
+}
+pad_wait_of :: (i: int) -> f64 { return ifx pad_at(i).y > 0.5 then PAD_BIG_WAIT else PAD_SMALL_WAIT; }
+
+// A car on the floor over a ready pad takes it, unless its tank is full.
+take_pads :: (s: [] OrbitLeague, dt: f64) {
+  for i: 0..<PADS { s[0].pad_wait[i] = fmax(0.0, s[0].pad_wait[i] - dt); }
+  for c: 0..<2 {
+    b := s[0].bodies[c + 1];
+    if b.pos.y > 2.0 || s[0].tanks[c].fuel >= 100.0 { continue; }
+    for i: 0..<PADS {
+      if s[0].pad_wait[i] > 0.0 { continue; }
+      p := pad_at(i);
+      big := p.y > 0.5;
+      if d3_len(d3(b.pos.x - p.x, 0.0, b.pos.z - p.z)) > ifx big then PAD_BIG_R + 0.6 else PAD_SMALL_R + 0.6 { continue; }
+      s[0].tanks[c].fuel = fmin(100.0, s[0].tanks[c].fuel + ifx big then PAD_BIG else PAD_SMALL);
+      s[0].pad_wait[i] = pad_wait_of(i);
+      if c == 0 { s[0].pads_taken += 1; }
+    }
+  }
+}
+
 kickoff :: (s: [] OrbitLeague) {
   s[0].bodies[BALL] = rigid_body(BALL_MASS, d3_scale(d3(1.0, 1.0, 1.0), 0.4 * BALL_MASS * BALL_R * BALL_R), d3(0.0, BALL_R + 0.02, 0.0), DQ.{});
   s[0].bodies[YOU] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, 1.0, -SPAWN_Z), DQ.{});
@@ -234,6 +274,7 @@ new_match :: (s: [] OrbitLeague) {
   s[0].score[0] = 0; s[0].score[1] = 0;
   s[0].clock = MATCH_TIME; s[0].played = 0.0; s[0].overtime = false; s[0].touches = 0;
   for c: 0..<2 { s[0].tanks[c] = tank(BOOST_START, 100.0, false); }
+  for i: 0..<PADS { s[0].pad_wait[i] = 0.0; }
   kickoff(s);
 }
 
@@ -362,6 +403,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
       s[0].tanks[c].fuel = fmin(100.0, s[0].tanks[c].fuel + BOOST_REGEN * dt);
     }
   }
+  take_pads(s, dt);
   bl := s[0].bodies[BALL];
   bl.force = d3_add(bl.force, d3_scale(gravity_at(s[0].field, bl.pos), bl.mass));
   bl.force = d3_sub(bl.force, d3_scale(bl.vel, bl.mass * BALL_DRAG));
@@ -891,7 +933,7 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     cb := Box.{x0 = w - g - 112 * k, y0 = g, x1 = w - g, y1 = g + 34 * k};
     v = hud_button(s, out, v, BTN_CAM, cb, ifx s[0].ball_cam then "CAR CAM  C" else "BALL CAM  C", 7.5 * k);
     if s[0].played < 25 && s[0].phase != PHASE_OVER {
-      hint := "W S DRIVE   A D STEER   SPACE JUMP   SHIFT BOOST";
+      hint := "W S DRIVE   A D STEER   SPACE JUMP, AGAIN WITH W A S D TO FLIP   SHIFT BOOST";
       v = centred(d, out, v, hint, w * 0.5, h - 30 * k, lo(8 * k, (w - 2 * g) / hi(measure(hint, GAP, SPACE, false), 1)), white(k, 0.65));
     }
   }
@@ -953,6 +995,10 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   }
   u[BLAST_AT] = cast(f32) s[0].blast.x; u[BLAST_AT + 1] = cast(f32) s[0].blast.y; u[BLAST_AT + 2] = cast(f32) s[0].blast.z;
   u[BLAST_AT + 3] = cast(f32) s[0].blast_t; u[BLAST_AT + 4] = cast(f32) s[0].blast_team;
+  for i: 0..<PADS {
+    p := pad_at(i); o := PADS_AT + i * 4;
+    u[o] = cast(f32) p.x; u[o + 1] = cast(f32) p.z; u[o + 2] = cast(f32) p.y; u[o + 3] = cast(f32) (1.0 - s[0].pad_wait[i] / pad_wait_of(i));
+  }
   n := draw_hud(s, out);
   u[5] = cast(f32) s[0].plate_n;
   for i: 0..<s[0].plate_n {
@@ -987,7 +1033,7 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert s[0].phase == PHASE_PLAY;
   s[0].held = HOLD_UP | HOLD_BOOST;
   run_for(s[..], 1.0);
-  #assert s[0].bodies[YOU].pos.z > z0 + 8.0 && s[0].tanks[0].fuel < BOOST_START;
+  #assert s[0].bodies[YOU].pos.z > z0 + 8.0 && s[0].tanks[0].fuel < BOOST_START + PAD_SMALL - 10.0;
 }
 
 #test "driving into the ball moves it; a ball past the line scores and kicks off again" {
@@ -1045,6 +1091,32 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   alive = 0;
   for i: 0..<SPARKS { if s[0].sparks[i].life > 0.0 { alive += 1; } }
   #assert alive > 0;
+}
+
+#test "a car over a ready pad takes its boost; the pad waits, then is ready again" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  run_for(s[..], KICKOFF + 0.1);
+  s[0].no_bot = true;
+  p := pad_at(0);
+  s[0].tanks[0].fuel = 10.0;
+  s[0].bodies[YOU].pos = d3(p.x, 0.9, p.z);
+  run_for(s[..], 0.1);
+  #assert s[0].tanks[0].fuel > 99.0 && s[0].pad_wait[0] > PAD_BIG_WAIT - 0.5 && s[0].pads_taken == 1;
+  q := pad_at(8);
+  s[0].tanks[0].fuel = 10.0;
+  s[0].bodies[YOU].pos = d3(q.x, 0.9, q.z); s[0].bodies[YOU].vel = D3_ZERO;
+  run_for(s[..], 0.1);
+  #assert s[0].tanks[0].fuel > 21.0 && s[0].tanks[0].fuel < 30.0;
+  s[0].tanks[0].fuel = 100.0;
+  run_for(s[..], PAD_BIG_WAIT);
+  #assert s[0].pad_wait[0] == 0.0 && s[0].pad_wait[8] == 0.0;
+  // all sixteen in the arena, apart
+  for i: 0..<PADS {
+    a := pad_at(i);
+    #assert abs(a.x) < ARENA_HX - 2.0 && abs(a.z) < ARENA_HZ - 2.0;
+    for j: i + 1..<PADS { #assert d3_len(d3(a.x - pad_at(j).x, 0.0, a.z - pad_at(j).z)) > 5.0; }
+  }
 }
 
 #test "the station spins down every 90 s for 30 s" {

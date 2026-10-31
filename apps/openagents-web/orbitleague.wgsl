@@ -26,6 +26,7 @@ struct U {
   trail: array<vec4f, 27>,      // the ball's trail, then each car's boost: a bound (centre, radius) and 8 points (place, strength)
   blast: vec4f,                 // the goal's blast: centre, age (< 0 none)
   blast2: vec4f,                // its team
+  pads: array<vec4f, 16>,       // the boost pads: x, z, big (1), how ready (1 ready)
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -546,6 +547,39 @@ fn shadow(p: vec3f) -> f32 {
   }
   return k;
 }
+// The boost pads: a ring that fills as it gets ready, and a lit disc when it is.
+const PAD_COL = vec3f(0.75, 0.9, 1.0);
+fn pads(p: vec3f) -> vec3f {
+  var o = vec3f(0.0);
+  for (var i = 0; i < 16; i++) {
+    let pd = u.pads[i];
+    let d = length(p.xz - pd.xy);
+    let r = select(0.9, 1.5, pd.z > 0.5);
+    if (d > r + 0.6) { continue; }
+    let ready = pd.w >= 0.999;
+    // the ring fills round as it recharges
+    let a = atan2(p.x - pd.x, p.z - pd.y) / 6.2831853 + 0.5;
+    let lit = select(0.18, 0.9, ready || a < pd.w);
+    o += PAD_COL * exp(-pow((d - r) / 0.09, 2.0)) * lit;
+    if (ready) {
+      let pulse = 0.8 + 0.2 * moving() * sin(u.time * 4.0 + f32(i));
+      o += PAD_COL * (1.0 - smoothstep(r * 0.55, r * 0.8, d)) * 0.45 * pulse;
+    }
+  }
+  return o;
+}
+// A big pad's floating orb, when it is ready.
+fn pad_orbs(ro: vec3f, rd: vec3f, tmax: f32) -> vec3f {
+  var o = vec3f(0.0);
+  for (var i = 0; i < 6; i++) {
+    let pd = u.pads[i];
+    if (pd.w < 0.999) { continue; }
+    let bob = 1.3 + 0.15 * moving() * sin(u.time * 2.0 + f32(i));
+    o += PAD_COL * (halo(ro, rd, vec3f(pd.x, bob, pd.y), tmax, 0.35) * 1.4 + halo(ro, rd, vec3f(pd.x, bob, pd.y), tmax, 1.0) * 0.25);
+  }
+  return o;
+}
+
 // Each car's glow on the floor under it, in its team's colour.
 fn underglow(p: vec3f) -> vec3f {
   var o = vec3f(0.0);
@@ -697,7 +731,7 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   if (h.t < 1e8) {
     let p = ro + rd * h.t;
     if (h.mat == 5) {
-      c = h.col * 0.85 * shadow(p) + underglow(p);
+      c = h.col * 0.85 * shadow(p) + underglow(p) + pads(p);
       // the blast's ring running out over the floor
       if (u.blast.w >= 0.0) {
         let ring = (length(p.xz - u.blast.xz) - blast_r(u.blast.w) * 1.1) / 1.2;
@@ -727,6 +761,7 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   c += trail(ro, rd, 0, h.t, u.ball.w * 0.75, vec3f(0.6, 0.85, 1.0));
   c += trail(ro, rd, 1, h.t, 0.32, vec3f(0.45, 0.7, 1.0)) + trail(ro, rd, 2, h.t, 0.32, vec3f(0.45, 0.7, 1.0));
   c += blast(ro, rd, h.t);
+  c += pad_orbs(ro, rd, h.t);
   c += lights(ro, rd, u.cars[0], h.t) + lights(ro, rd, u.cars[1], h.t);
   if (rd.y > 0.0 || h.t > 1e8) { c += rib_lights(ro, rd, h.t); }
   // zero-g: a cold tint; a goal: its team's flash

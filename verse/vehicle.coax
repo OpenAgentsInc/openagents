@@ -14,7 +14,10 @@
 // `stick` pull holds the car to the surface it drives on (car-ball games'
 // sticky wheels). In the air, `air` turns the chassis (pitch from throttle,
 // yaw from steer, roll with the handbrake held), and a jump pushes it off the
-// surface, a second within DOUBLE_JUMP_WINDOW seconds once.
+// surface, a second within DOUBLE_JUMP_WINDOW seconds once. That second jump
+// with the stick pushed (throttle or steer past DODGE_FLICK) is a dodge
+// instead: a punch of DODGE_SPEED along the flick and a flip toward it at
+// DODGE_SPIN, with air control held off for DODGE_TIME so the flip completes.
 //
 // The world is a list of planes (a box arena is six); a curved arena gives
 // its tangent planes under each wheel. Gravity comes in as an acceleration
@@ -26,6 +29,11 @@
 
 WHEELS :: 4;
 DOUBLE_JUMP_WINDOW :: 1.25;
+JUMP_CLEAR :: 0.2;       // s after a jump before touching wheels count as landed
+DODGE_FLICK :: 0.5;      // the stick's share that makes a second jump a dodge
+DODGE_SPEED :: 5.5;      // m/s along the flick
+DODGE_SPIN :: 9.7;       // rad/s: one turn in about 0.65 s
+DODGE_TIME :: 0.6;       // s without air control while it flips
 
 VehicleSpec :: struct {
   half: D3;               // the chassis box's half extents, metres
@@ -59,6 +67,8 @@ VehicleState :: struct {
   air_time: f64;
   jumps: int;                // since leaving the ground
   jump_held: bool;
+  dodge_t: f64;              // seconds of a dodge's flip left
+  since_jump: f64;           // seconds since the last jump
 }
 
 VehicleStep :: struct { body: RigidBody; state: VehicleState; }
@@ -151,10 +161,14 @@ vehicle_step :: (b0: RigidBody, spec: VehicleSpec, st0: VehicleState, input: Veh
     b = rigid_force_at(b, d3_add(d3_scale(f, along), d3_scale(side, lateral)), mount);
   }
   st.ground_n = d3_unit_or(n_sum, up);
-  if st.wheels > 0 {
-    st.air_time = 0.0; st.jumps = 0;
+  st.dodge_t = fmax(0.0, st.dodge_t - dt);
+  st.since_jump += dt;
+  // just after a jump the wheels may still reach the ground: that isn't a landing
+  landed := st.wheels > 0 && (st.jumps == 0 || st.since_jump > JUMP_CLEAR);
+  if landed {
+    st.air_time = 0.0; st.jumps = 0; st.dodge_t = 0.0;
     b.force = d3_sub(b.force, d3_scale(st.ground_n, spec.stick * b.mass));
-  } else {
+  } else if st.wheels == 0 && st.dodge_t <= 0.0 {
     st.air_time += dt;
     // air control: a rate the chassis turns toward, about its own axes
     wl := dq_rotate(dq_conj(b.orientation), rigid_omega_world(b));
@@ -166,12 +180,21 @@ vehicle_step :: (b0: RigidBody, spec: VehicleSpec, st0: VehicleState, input: Veh
   b.force = d3_add(b.force, d3_scale(gravity, b.mass));
   // a jump on the press, from the ground (two wheels), or once more soon after
   if input.jump && !st.jump_held {
-    if st.wheels >= 2 {
+    if landed && st.wheels >= 2 {
       b = rigid_impulse_at(b, d3_scale(up, spec.jump * b.mass), b.pos);
-      st.jumps = 1; st.wheels = 0; st.air_time = 0.0;
+      st.jumps = 1; st.wheels = 0; st.air_time = 0.0; st.since_jump = 0.0;
     } else if st.jumps == 1 && st.air_time < DOUBLE_JUMP_WINDOW {
-      b = rigid_impulse_at(b, d3_scale(up, spec.jump * 0.8 * b.mass), b.pos);
-      st.jumps = 2;
+      // the stick's direction in the chassis's plane (its right is -x)
+      flick := d3_add(d3_scale(fwd, throttle), d3_scale(rigid_axis(b, D3_X), -fclamp(input.steer, -1.0, 1.0)));
+      if d3_len(flick) > DODGE_FLICK {
+        dir := d3_unit(flick);
+        b.vel = d3_add(b.vel, d3_scale(dir, DODGE_SPEED));
+        b.omega = dq_rotate(dq_conj(b.orientation), d3_scale(d3_cross(up, dir), DODGE_SPIN));
+        st.dodge_t = DODGE_TIME;
+      } else {
+        b = rigid_impulse_at(b, d3_scale(up, spec.jump * 0.8 * b.mass), b.pos);
+      }
+      st.jumps = 2; st.since_jump = 0.0;
     }
   }
   st.jump_held = input.jump;
@@ -258,4 +281,46 @@ test_drive :: (store: [] RigidBody, spec: VehicleSpec, st: VehicleState, input: 
   store[0].vel = d3(0.0, 0.0, 15.0);
   st = test_drive(store[..], spec, VehicleState.{}, VehicleInput.{throttle = 1.0}, wall[..], gravity, 120);
   #assert st.wheels >= 2 && store[0].pos.x < 1.3;
+}
+
+#test "a second jump with the stick pushed is a dodge: a punch along it and a flip toward it" {
+  spec := vehicle_roadster();
+  store: [1] RigidBody;
+  store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
+  g := test_flat();
+  gravity := d3(0.0, -9.81, 0.0);
+  st := test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 240);
+  st = test_drive(store[..], spec, st, VehicleInput.{jump = true}, g[..], gravity, 6);
+  st = test_drive(store[..], spec, st, VehicleInput.{}, g[..], gravity, 12);
+  #assert st.jumps == 1 && st.wheels == 0;
+  vz := store[0].vel.z;
+  st = test_drive(store[..], spec, st, VehicleInput.{jump = true, throttle = 1.0}, g[..], gravity, 1);
+  #assert st.jumps == 2 && st.dodge_t > 0.0;
+  #assert store[0].vel.z > vz + DODGE_SPEED * 0.9;
+  // nose down: it pitches forward about its own x
+  #assert rigid_omega_world(store[0]).x > DODGE_SPIN * 0.9;
+  // a quarter of the way round it is nose down
+  st = test_drive(store[..], spec, st, VehicleInput.{jump = true, throttle = 1.0}, g[..], gravity, 20);
+  #assert rigid_axis(store[0], D3_Z).y < -0.6;
+  // to the side: the push is along its right (-x), a roll toward it
+  store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
+  st = test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 240);
+  st = test_drive(store[..], spec, st, VehicleInput.{jump = true}, g[..], gravity, 6);
+  st = test_drive(store[..], spec, st, VehicleInput.{}, g[..], gravity, 12);
+  st = test_drive(store[..], spec, st, VehicleInput.{jump = true, steer = 1.0}, g[..], gravity, 1);
+  #assert store[0].vel.x < -DODGE_SPEED * 0.9 && abs(store[0].vel.z) < 0.5;
+}
+
+#test "a second jump with the stick at rest is a double jump" {
+  spec := vehicle_roadster();
+  store: [1] RigidBody;
+  store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
+  g := test_flat();
+  gravity := d3(0.0, -9.81, 0.0);
+  st := test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 240);
+  st = test_drive(store[..], spec, st, VehicleInput.{jump = true}, g[..], gravity, 6);
+  st = test_drive(store[..], spec, st, VehicleInput.{}, g[..], gravity, 12);
+  vy := store[0].vel.y;
+  st = test_drive(store[..], spec, st, VehicleInput.{jump = true}, g[..], gravity, 1);
+  #assert st.jumps == 2 && st.dodge_t == 0.0 && store[0].vel.y > vy + spec.jump * 0.7;
 }
