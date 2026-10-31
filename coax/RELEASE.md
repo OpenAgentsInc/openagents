@@ -124,6 +124,34 @@ does not replace version numbers in historical prose or generate the error-code
 catalogue, grammar or every explanatory paragraph. Keep those accurate through
 review. Add a managed region explicitly if another document needs current status.
 
+## Build caches
+
+`coax/build.sh` uses two caches outside any worktree. Both are shared by every
+worktree and agent on the machine.
+
+- **Checked builds** live in `~/.cache/coax-release/<fingerprint>/`
+  (`$COAX_RELEASE_CACHE`). The fingerprint hashes every compiler input
+  (`provenance.sh fingerprint`). When the cache holds this tree's fingerprint,
+  `build.sh` installs that build with `provenance.sh install`, which verifies
+  the record against this tree first, and then validates the release documents
+  with the installed compiler. A warm build compiles nothing and takes a few
+  seconds. One builder runs per fingerprint: the others wait on
+  `<fingerprint>.building` and install its result. Installs copy into a
+  temporary directory and rename, so a reader never sees half a compiler.
+- **Gate results** live in `~/.cache/coax-gates/<key>` (`$COAX_GATE_CACHE`).
+  The bootstrap keeps each passing stage0 `test` and `mutate` gate under a key
+  that hashes stage0's inputs (`src/`, `bootstrap/`, the embedded proto
+  runtime, compilers, flags, SDK and build environment), the gate's command,
+  and the bytes of every source the gate reads (`stage0 deps`). A later
+  bootstrap reuses a gate only when its key matches exactly. A change to one
+  compiler file reruns the gates that read it and reuses the others. Gates run
+  by the final compiler and the seed comparisons always run.
+
+The build log prints each gate's time, or `reused` with its command.
+`COAX_BUILD_FRESH=1` ignores both caches. A cached gate result is a record
+that the same gate passed on this machine; it is as trusted as the machine's
+cache directories, like the checked builds beside it.
+
 ## Bootstrap, application and publication gates
 
 The snapshots are committed so a clean checkout can start from its reviewed
@@ -132,8 +160,9 @@ stage0 generator frontend using those seeds and the checked-in metadata header.
 It does not publish that temporary compiler. `COAX_RELEASE_COMPILER` can select
 an already trusted compiler, including for recovery of stale generated files.
 
-`coax/build.sh` validates the model and compares generated files before the
-expensive compiler gates. Before publishing the final compiler, it compares
+The bootstrap validates the model and compares generated files with its stage0
+before the expensive compiler gates, and `coax/build.sh` checks them again with
+the installed compiler. Before publishing the final compiler, it compares
 that binary's version, Markdown and JSON with fresh generator output. A matching
 version string alone cannot hide stale feature data. The native frontend,
 generator, shell adapter and toolchain remain trust inputs.

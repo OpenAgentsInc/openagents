@@ -31,6 +31,12 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   forest's blooms (`verse/fairy-forest/forest.coax`) use it, with their
   fixtures' outputs unchanged.
 - Programs that compiled before emit identical C.
+- Follow-up (build, `ax-build-cache`): a warm `coax/build.sh` installs the
+  cached checked build before it validates the release documents, so it no
+  longer compiles a temporary stage0 first. The bootstrap keeps each passing
+  stage0 test and mutation gate in `~/.cache/coax-gates/`, keyed by stage0's
+  inputs, the command and the gate's source closure, and reuses it on an exact
+  match. The build log prints each gate's time or `reused`.
 
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 

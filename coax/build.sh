@@ -15,14 +15,6 @@ set -euo pipefail
 export LC_ALL=C
 cd "$(dirname "$0")"
 root="$(cd .. && pwd -P)"
-# Documentation is not a compiler input: validate it even on cache reuse.
-# An explicit generator override is trusted by its caller. Otherwise reuse
-# only a provenance-verified local compiler, or build a temporary seed tool.
-if [[ -n ${COAX_RELEASE_COMPILER:-} ]] || ./provenance.sh verify "$root" "$root/coax/bin/coax" "$root/coax/bin/provenance-check" "$root/coax/bin/provenance.record" > /dev/null 2>&1; then
-  "$root/scripts/coax-release.sh" --check
-else
-  COAX_RELEASE_COMPILER=/dev/null "$root/scripts/coax-release.sh" --check
-fi
 expected="$(./provenance.sh fingerprint "$root")"
 artifacts=(check-domains.c check-domains.h lexer.c lexer.h parser.c parser.h checker.c checker.h sources.c sources.h proto_runtime.inc proto_importer.c proto_importer.h)
 cache_root="${COAX_RELEASE_CACHE:-$HOME/.cache/coax-release}"
@@ -73,7 +65,20 @@ keep() {
   else rm -rf "$into"; fi
 }
 
-if ! from_cache; then
+# Documentation is not a compiler input: it is validated on every build. A
+# cached build is installed first and then checks it, so a warm build compiles
+# nothing; a bootstrap checks it with its stage0 before the expensive gates.
+# An explicit generator override (COAX_RELEASE_COMPILER) is trusted by its caller.
+check_documents() {
+  if [[ -n ${COAX_RELEASE_COMPILER:-} ]] || ./provenance.sh verify "$root" "$root/coax/bin/coax" "$root/coax/bin/provenance-check" "$root/coax/bin/provenance.record" > /dev/null 2>&1; then
+    "$root/scripts/coax-release.sh" --check
+  else
+    COAX_RELEASE_COMPILER=/dev/null "$root/scripts/coax-release.sh" --check
+  fi
+}
+if from_cache; then
+  check_documents
+else
   # One builder per fingerprint on this machine (release.sh builds through
   # here too); a lock left by a dead builder is taken over.
   if mkdir -p "$cache_root" 2> /dev/null; then
@@ -83,11 +88,13 @@ if ! from_cache; then
       if [[ -n "$holder" ]] && ! kill -0 "$holder" 2> /dev/null; then rm -rf "$lock"; continue; fi
       # A lock whose taker died before writing its pid: stale after a minute.
       if [[ -z "$holder" && -n "$(find "$lock" -maxdepth 0 -mmin +1 2> /dev/null)" ]]; then rmdir "$lock" 2> /dev/null || true; continue; fi
-      echo "coax/build.sh: waiting for the build of ${expected:0:12} (pid ${holder:-?})" >&2; sleep 10
+      echo "coax/build.sh: waiting for the build of ${expected:0:12} (pid ${holder:-?})" >&2; sleep 3
     done
     building="$lock"; echo $$ > "$lock/pid"
   fi
-  if ! from_cache; then
+  if from_cache; then
+    check_documents
+  else
     snapshot="$(mktemp -d "${TMPDIR:-/tmp}/coax-build-snapshot.XXXXXXXX")"
     trap 'rm -rf "$snapshot"; [[ -z "$building" ]] || rm -rf "$building"' EXIT
     # Only what the bootstrap reads: its scripts and models (coax/*, files
@@ -113,6 +120,7 @@ if ! from_cache; then
     done
     ./provenance.sh install "$root" "$snapshot/coax/bin"
     keep
+    check_documents
   fi
 fi
 if [[ "${1:-}" == "test" ]]; then

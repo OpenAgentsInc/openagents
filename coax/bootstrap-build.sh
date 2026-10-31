@@ -40,11 +40,72 @@ trap 'rm -rf "$work"' EXIT
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/checker.c -o "$work/seed-checker.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/sources.c -o "$work/seed-sources.o"
 "${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-check-domains.o" "$work/seed-mutation-schedule.o" "$work/seed-budget.o" "$work/seed-profiles.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
+# Gate results. A passing stage0 gate is kept in $COAX_GATE_CACHE (default
+# ~/.cache/coax-gates/) under a key that hashes stage0's inputs, the gate's
+# command and the bytes of every source the gate reads (`stage0 deps`). A gate
+# with the same key passed before on this machine is reused, and the log names
+# it; any other gate runs. Only passes are kept. COAX_BUILD_FRESH=1 runs every
+# gate. Every gate's time is printed, so the log shows where the build goes.
+sha() { if command -v shasum > /dev/null 2>&1; then shasum -a 256 | awk '{print $1}'; else sha256sum | awk '{print $1}'; fi; }
+gate_cache="${COAX_GATE_CACHE:-$HOME/.cache/coax-gates}"
+[[ -z "${COAX_BUILD_FRESH:-}" ]] || gate_cache=""
+stage0_identity() {
+  local path
+  {
+    printf 'coax-stage0-v1\0'
+    while IFS= read -r -d '' path; do printf '%s\0%s\0' "$path" "$(sha < "$path")"; done < <(find src bootstrap -type f -print0 | sort -z)
+    printf 'proto_runtime\0%s\0' "$(sha < "$work/proto_runtime.inc")"
+    printf 'flags\0%s\0%s\0' "${host_flags[*]}" "${c_flags[*]}"
+    printf 'cc\0%s\0%s\0' "$(command -v "${CC:-cc}")" "$("${CC:-cc}" --version)"
+    printf 'cxx\0%s\0%s\0' "$(command -v "${CXX:-c++}")" "$("${CXX:-c++}" --version)"
+    printf 'host\0%s\0%s\0' "$(uname -s)" "$(uname -m)"
+    if [[ "$(uname -s)" == Darwin ]]; then printf 'sdk\0%s\0%s\0' "$(xcrun --show-sdk-path)" "$(xcrun --show-sdk-version)"; fi
+    for path in COAX_CC COAX_HOST_TARGET SDKROOT MACOSX_DEPLOYMENT_TARGET IPHONEOS_DEPLOYMENT_TARGET DEVELOPER_DIR CPATH C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH; do
+      printf '%s\0%s\0' "$path" "${!path-}"
+    done
+  } | sha
+}
+# The key of a stage0 gate in $key, left empty when its sources can't be
+# listed. Gates run in the main shell, so one file's closure is hashed once.
+closure_file="" closure=""
+gate_key() {
+  local deps path list
+  key=""
+  if [[ "$closure_file" != "$3" ]]; then
+    closure_file="$3" closure=""
+    deps="$("$work/stage0" deps "$3" 2> /dev/null)" || return 0
+    list="$(printf '%s' "$deps" | tr -d '\n' | sed -n 's/.*"sources":\[\(.*\)\],"descriptors":\[\(.*\)\]}$/\1,\2/p' | tr ',' '\n' | sed -e 's/^"//' -e 's/"$//')"
+    [[ -n "$list" ]] || return 0
+    while IFS= read -r path; do
+      [[ -z "$path" || ( -f "$path" && ! -L "$path" ) ]] || return 0
+    done <<< "$list"
+    closure="$({
+      printf '%s\0' "${deps//"$root"\//}"
+      while IFS= read -r path; do
+        [[ -n "$path" ]] && printf '%s\0%s\0' "${path#"$root"/}" "$(sha < "$path")"
+      done <<< "$list"
+    } | sha)"
+  fi
+  [[ -n "$closure" ]] || return 0
+  key="$({ printf 'coax-gate-v1\0%s\0%s\0' "$stage0_id" "$closure"; printf '%s\0' "${@:2}"; } | sha)"
+}
 gate() {
-  if "$@" > "$work/gate.log" 2>&1; then return 0; fi
+  local start=$SECONDS label="${*//"$work"\//}" key=""
+  if [[ -n "$gate_cache" && "$1" == "$work/stage0" && ( "$2" == test || "$2" == mutate ) ]]; then
+    gate_key "$@"
+    if [[ -n "$key" && -f "$gate_cache/$key" ]]; then echo "coax bootstrap: reused   $label"; return 0; fi
+  fi
+  if "$@" > "$work/gate.log" 2>&1; then
+    echo "coax bootstrap: $(printf '%5d' $((SECONDS - start))) s  $label"
+    if [[ -n "$key" ]] && mkdir -p "$gate_cache" 2> /dev/null; then
+      printf '%s\n' "$label" > "$gate_cache/.$key.$$" && mv "$gate_cache/.$key.$$" "$gate_cache/$key"
+    fi
+    return 0
+  fi
   cat "$work/gate.log" >&2
   return 1
 }
+stage0_id="$(stage0_identity)"
 # Validate release metadata before expensive compiler gates. Stage0 uses the
 # checked-in header seed; final publication must match the canonical Coax data.
 gate "$work/stage0" test release-model.coax

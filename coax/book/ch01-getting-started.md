@@ -27,14 +27,22 @@ From the root of the repository, run:
 $ coax/build.sh
 ```
 
-The script prints nothing when it succeeds. It's doing more than you
-might expect, though. Parts of the compiler, including its lexer, parser, type checker
+The first build takes several minutes, and the script prints how long each
+of its checks took. It's doing more than you might expect. Parts of the compiler, including its lexer, parser, type checker
 and protocol importer, are themselves written in Coax. So the script
 first builds a small "stage 0" compiler, uses it to check and compile
 those Coax parts to C, makes sure the result matches the checked-in
 copies, and only then links the final compiler and puts it at
 `coax/bin/coax`. If any of those checks fail, you don't get a new
 compiler. [Chapter 27](ch27-inside-coax0.md) walks through all of this.
+
+The script keeps each checked compiler in `~/.cache/coax-release/`, named
+by a hash of the compiler's sources. When you build an unchanged compiler
+again, in this checkout or another one, it installs the kept copy in a
+few seconds and prints `installed the checked build`. When you change one
+of the compiler's Coax files, it reruns only the checks that read that
+file. [`coax/RELEASE.md`](../RELEASE.md#build-caches) describes both
+caches.
 
 Let's make sure it worked:
 
