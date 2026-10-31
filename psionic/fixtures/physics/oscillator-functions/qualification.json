@@ -1,0 +1,128 @@
+{
+  "schema": "psionic-oscillator-functions-reference-v1",
+  "profile": "oscillator-rk4-augmented-f32-formal-f64-v1",
+  "experiment_sha256": "f287ab9ed9801f6e7bb29421e02923c6c98bc6e10afb699bb23b325f9e054aa8",
+  "oracle_sha256": "d619ca3f4916638e7f6a9d87ce06bec504755f54b99e7a1e380d98eec447b365",
+  "transcript_sha256": "cbad70fbd8b2ee2f012974e91fb409c870d82cb163f8ae38bd65544ad98e8d99",
+  "points": 45,
+  "batches": 18,
+  "counts": {
+    "formal": 1485,
+    "f32_primal_words": 180,
+    "batch_exact": 540,
+    "force_fd": 180
+  },
+  "max_absolute": {
+    "formal": 4.440892098500626e-16,
+    "physical_primal": 5.566416105828864e-08,
+    "physical_jacobian": 1.0798320987381871e-08,
+    "physical_cost": 1.9042145771308583e-07,
+    "physical_solver": 2.220446049250313e-16,
+    "physical_force_fd": 1.0397281316075133e-12
+  },
+  "budgets": {
+    "independent_f32_primal": "exact IEEE words",
+    "formal_partials_and_products": {
+      "atol": 2e-11,
+      "rtol": 2e-11
+    },
+    "physical_f64_primal": {
+      "atol": 3e-06,
+      "rtol": 2e-07
+    },
+    "physical_f64_state_action_jacobian": {
+      "atol": 1e-07,
+      "rtol": 3e-06
+    },
+    "physical_f64_cost_gradient_hessian": {
+      "atol": 3e-06,
+      "rtol": 2e-06
+    },
+    "physical_f64_solver_vs_matrix_polynomial": {
+      "atol": 2e-13,
+      "rtol": 2e-13
+    }
+  },
+  "passed": true,
+  "scope": [
+    "one fixed-mass smooth axis, not articulated/contact dynamics",
+    "F32 algebraic realization differs in staging/association from physical F64 os_step",
+    "formal derivatives ignore float rounding and apply only to q,v,u subspace",
+    "matrix/time/target/weight packed inputs are fixed context, not qualified parameter derivatives",
+    "derivatives do not cover refusals, saturation or contact discontinuities",
+    "no original GR00T embodiment or own robot-backend qualification"
+  ],
+  "date": "2026-10-31",
+  "source_sha256": {
+    "coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "psionic/examples/own-plant-sensitivities.coax": "f90faee18c19136b175141157315a2f03f7d848666d9862461b6630bc1b2b526",
+    "psionic/fixtures/own-plant-sensitivities.out": "fbf737d2fafa601953a72a1f41d5c01b6e3a8a776a242a90f43818d3841ee519",
+    "psionic/lib/autodiff.coax": "0564f2a49ab92f4ce7abba47e51e8c062df204312657710c9b82a5da79e9b06e",
+    "psionic/lib/function-batch.coax": "80ac34d52166fd74fca80e91c77cf30345069c23eb6d5fc0345d6f6bd9710de0",
+    "psionic/lib/function-budget.coax": "fe3607299826b79618030c648e79f9fdb9f07c8fd02cc26f0858bfd17297901f",
+    "psionic/lib/function-layout.coax": "ad6865671228dbc2f1be82edef91df37a81f0f65a7402ee46bea1fdc77b5c947",
+    "psionic/lib/function-linearize.coax": "950dba6b5997ebe6e04b075d7fb15e2d9c71df94377b364ae5cbc9fd2540aa38",
+    "psionic/lib/function-products.coax": "7197cdd0df1583652dc221646d24d35e807f6d7625f7922c94735d735fc59de5",
+    "psionic/lib/function-transforms.coax": "769bb2ac80c5ce732529ad273833603f7e9c7d5a55310e1509dd2e1fd19fda1e",
+    "psionic/lib/function-types.coax": "e7ecefaf5ec06563ed629a5d8fd9fa7004026877f6eb33c94dafa782f5fbadbc",
+    "psionic/lib/operator-registry.coax": "ee2559b8c089351f956e1a0a271cb2a101c1bb137b557e196f2c2c6331aa8733",
+    "psionic/lib/physics/oscillator-function-types.coax": "87b3e931c335064b3f90d6ba0a785f5606607341ffc4d5ee0616ca9efcf92691",
+    "psionic/lib/physics/oscillator-functions.coax": "cfcc95c8b5dd6db2cee34f177f91a0edd1fc1e0b2b5d975f5da20a292b4b6462",
+    "psionic/lib/physics/oscillator-types.coax": "814878e4263e24b8f05ac9a0c8258f511bbb308b36128e46022846bbc7550fc8",
+    "psionic/lib/physics/oscillator.coax": "9d61fab2666d8ec7dc5517c6d4b66ef24e194e579170b57b6e3a6c0acecb90f0",
+    "psionic/lib/tensor-ir-host.coax": "7a8cd7c2b7cd67ebea7d6c1201f04f7d215dde0bd3bc159f9e8faf3275f3d89a",
+    "psionic/lib/tensor-ir-kernels.coax": "1aa231bf621098c30b2c346e40d7aca151264421c5aeff8b9d1b17336a3b19de",
+    "psionic/lib/tensor-ir.coax": "f21f170b75af3de4afb6c7b1d39506c0ff660219c5a02d3d4637a129bd0c7359",
+    "psionic/lib/tensor-ops-backward.coax": "7aa245b3e0e119dfff092dcc685b05ca1d4af03c1d5e8e270fc8fc956f0133f2",
+    "psionic/lib/tensor-ops-contract.coax": "f5bd347aee63b4bb46bc7dbde7d6994788c4ad62726726e91c7e839ec0f7e591",
+    "psionic/lib/tensor-ops.coax": "b9741332b8aa7ab199d9679cf5292dfe10eb0462b1dd15132ab05fd7d385a772",
+    "psionic/lib/tensor-placement.coax": "01262bd8b060337caeb4fc5d99790e5d766b78b018754a2df1c33ba97618e1e0",
+    "psionic/lib/tensor-view.coax": "e85ddc52cbc75a18e7bd655a5da374558291229ba08ce9bacf0fb86fb3304529",
+    "psionic/tests/physics/check-oscillator-functions.sh": "f3acdb82f27bbe8093040fbae95e432b3b7b83e435ac3b386ad78aaeb9a19ee3",
+    "psionic/tests/physics/oscillator_functions_native.c": "08102f6106f1fa8859afd686b100802314e17b054cece958e6176594668c012d",
+    "psionic/tests/physics/oscillator_functions_reference.py": "d619ca3f4916638e7f6a9d87ce06bec504755f54b99e7a1e380d98eec447b365"
+  },
+  "root_mutation": {
+    "file": "psionic/lib/physics/oscillator-functions.coax",
+    "mutants": 202,
+    "killed": 202,
+    "survived": 0,
+    "equivalent_waivers": 0
+  },
+  "native": {
+    "checks_each_mode": 2592,
+    "modes": [
+      "host-C-debug-O0",
+      "host-C-release-O2",
+      "host-C-ASan-UBSan-O1"
+    ],
+    "coax_emission": "release C from installed coax0 0.39.0",
+    "generated_C_sha256": "4670a6b3b1f43a0dbfdae1dec122c83cc9a90036c0b07d7981219fe059fb19b5",
+    "header_sha256": "105b55fada94c8d06725f0359a65407b3053e78848383c1884fef4127930cf1f",
+    "contract": "-ffp-contract=off -fno-fast-math; current Darwin arm64; no cross-target claim",
+    "target": "Darwin-arm64",
+    "results_byte_identical": true,
+    "mathematical_oracle_rerun_for_later_modes": false,
+    "builds": {
+      "debug": {
+        "executable_sha256": "d82901433ba03e7f707945b3210997ee44217452b1c1bca4702b1056a70e717b",
+        "transcript_sha256": "cbad70fbd8b2ee2f012974e91fb409c870d82cb163f8ae38bd65544ad98e8d99"
+      },
+      "release": {
+        "executable_sha256": "637a56feeb5f057b03dfc2bf3be9474b3cd87ca31bb18fbe7143bc43937bb5da",
+        "transcript_sha256": "cbad70fbd8b2ee2f012974e91fb409c870d82cb163f8ae38bd65544ad98e8d99"
+      },
+      "sanitized": {
+        "executable_sha256": "17a1952975cffa4c58518bdab032f71ea43e09a88b2b89b72730a1535d66d87e",
+        "transcript_sha256": "cbad70fbd8b2ee2f012974e91fb409c870d82cb163f8ae38bd65544ad98e8d99"
+      }
+    }
+  },
+  "example": {
+    "debug_golden": true,
+    "release_golden": true
+  },
+  "read_only_independent_review": "No material defect; retain os_step next-state admission for actual execution."
+}

@@ -18,6 +18,17 @@ analytic sensitivities, optimizer/forecast calculations, exact transcript
 coverage and all 5,040 serialized state words are qualified separately in
 `psionic/fixtures/physics/inverse/qualification.json`.
 
+## Planning derivatives keep physical execution and fixed context explicit
+
+The oscillator-function bridge augments q/v with held force and builds a
+permanent F32 RK4 graph. Its published partial selectors vary q/v/u only;
+packed matrix/time/target/weight inputs remain fixed context. Formal F64
+partials at stored F32 primals are separately compared with the actual F64
+physical transition. They do not differentiate float rounding, bounds refusal,
+clipping or contact. `of_pack` admits the starting inputs; actual state commits
+retain `os_step`’s next-state admission. Qualified scalar planning derivatives
+are not matching pretrained-robot embodiment or whole-backend qualification.
+
 ## Solver checkpoints preserve accepted input order and exact identity scope
 
 The oscillator replay precursor snapshots a completed original RK4 step, its

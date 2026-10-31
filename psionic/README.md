@@ -293,3 +293,10 @@ a completed physical step plus accepted future forces under explicit same-build
 identities. Portable Coax checks are in the physics gate; the qualified native
 profile is an explicit `--only physics/replay-native` selection. Robot/policy/
 Verse snapshots and cross-target deterministic jobs remain separate work.
+
+The [owned-plant sensitivity bridge](docs/physics/oscillator-functions.md)
+checks a fixed-context RK4 state/action Jacobian, control-cost curvature and
+batched derivatives against independent polynomial and physical F64 references.
+Actual state publication retains the physical solver’s admission. The
+[own-backend sequence](docs/physics/owned-control-loop.md) records what still
+separates these scalar foundations from matching robot/GR00T qualification.

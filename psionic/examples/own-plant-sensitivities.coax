@@ -1,0 +1,13 @@
+#import "Basic";
+#load "../lib/physics/oscillator-functions.coax";
+main :: () {
+  weights:=[3]f32.[1,0.25,0.05];input:=of_pack(OsParams.{spring=2,damping=0.5},OsState.{position=0.8,velocity=-0.4},0.2,0.03125,OsState.{position=0.2},weights[..]);#assert input.status==OsStatus.ok;
+  values:[256]f32;flags:[256]u8;dots:[256]f64;g:[256]f64;gd:[256]f64;seed:[32]f64;dir:[32]f64;stage:[256]f64;point:[32]f32;out:[9]f64;
+  work:=FxWork.{values=values[..],flags=flags[..],dots=dots[..],grads=g[..],grad_dots=gd[..],seed=seed[..],direction=dir[..],stage=stage[..],point=point[..]};
+  f:=of_function(OF_STEP);#assert fx_eval(f.function,input.values[0..<OF_STEP_INPUTS],out[..],work,false).status==FxStatus.ok && out[2]==f64(input.values[2]);print("owned RK4: position, velocity, held force\n");
+  f=of_function(OF_JACOBIAN);#assert fx_eval(f.function,input.values[0..<OF_STEP_INPUTS],out[..],work,false).status==FxStatus.ok && out[2]>0 && out[5]>0 && out[8]==1;print("state/action Jacobian: %\n",f.function.count);
+  f=of_function(OF_GRADIENT);#assert fx_eval(f.function,input.values[..],out[..],work,false).status==FxStatus.ok && abs(out[2]-0.013800224416582237)<0.00000000002;print("cost gradient: %\n",f.function.count);
+  f=of_function(OF_HESSIAN);#assert fx_eval(f.function,input.values[..],out[..],work,false).status==FxStatus.ok && abs(out[8]-0.10048088129165536)<0.00000000002;print("cost Hessian: %\n",f.function.count);
+  axes:[22]int;for j:0..<22 {axes[j]=ifx j<3 then 0 else -1;}rows:[66]f32;rows[0]=0.8;rows[1]=-0.4;rows[2]=0.2;rows[22]=-0.8;rows[23]=0.4;rows[24]=-0.2;rows[44]=0;rows[45]=0;rows[46]=0.25;
+  map:=fx_vmap(of_function(OF_GRADIENT).function,axes[..],3);#assert map.status==FxStatus.ok && fx_vmap_apply(map.map,input.values[..],rows[..],out[..],work,false).status==FxStatus.ok && out[0]>0 && out[3]<0 && out[6]<0;print("shared-context batch: %\n",map.map.batch);
+}

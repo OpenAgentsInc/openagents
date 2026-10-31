@@ -1,0 +1,5 @@
+owned RK4: position, velocity, held force
+state/action Jacobian: 9
+cost gradient: 3
+cost Hessian: 9
+shared-context batch: 3

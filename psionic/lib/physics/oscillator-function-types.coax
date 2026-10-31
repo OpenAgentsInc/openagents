@@ -1,0 +1,11 @@
+#load "oscillator.coax";
+#load "../function-batch.coax";
+// The third augmented coordinate is the held force, not another plant state.
+OF_STEP :: 0;
+OF_COST :: 1;
+OF_JACOBIAN :: 2;
+OF_GRADIENT :: 3;
+OF_HESSIAN :: 4;
+OF_STEP_INPUTS :: 16;
+OF_COST_INPUTS :: 22;
+OfInput :: struct {status:OsStatus;values:[22]f32;}

@@ -1,0 +1,37 @@
+{
+  "schema": "psionic-oscillator-functions-experiment-v1",
+  "frozen_before_native_evaluation": true,
+  "profile": "oscillator-rk4-augmented-f32-formal-f64-v1",
+  "equation": "z=[q,v,u]; z'=A*z; A=[[0,1,0],[-k,-c,1],[0,0,0]]; u held within one RK4 step",
+  "mass": 1,
+  "spring_damping_pairs": [[0.5,0.1],[2.4,0.55],[4,1]],
+  "dt": [0.002,0.01,0.05],
+  "position_velocity_force": [[-1.25,-0.75,-1.5],[-0.8,1.5,0.25],[0,0.2,1.75],[0.8,-0.4,0.2],[1.25,0.75,-0.75]],
+  "target_position_velocity": [0.2,0],
+  "cost_weights": [1,0.25,0.05],
+  "cost_coordinate_scales": {"position_m":1,"velocity_m_per_s":1,"force_N":1},
+  "direction_position_velocity_force": [0.4,-0.3,0.7],
+  "step_cotangent": [0.4,-0.2,0.1],
+  "physical_force_finite_difference_steps": [0.001,0.0001],
+  "point_count": 45,
+  "batch_groups": 9,
+  "batch_rows": 5,
+  "batch_mapped_inputs": [0,1,2],
+  "batch_shared_inputs": "all remaining packed coordinates",
+  "budgets": {
+    "independent_f32_primal": "exact IEEE words",
+    "formal_partials_and_products": {"atol":2e-11,"rtol":2e-11},
+    "physical_f64_primal": {"atol":3e-6,"rtol":2e-7},
+    "physical_f64_state_action_jacobian": {"atol":1e-7,"rtol":3e-6},
+    "physical_f64_cost_gradient_hessian": {"atol":3e-6,"rtol":2e-6},
+    "physical_f64_solver_vs_matrix_polynomial": {"atol":2e-13,"rtol":2e-13}
+  },
+  "limits": [
+    "one fixed-mass smooth axis, not articulated/contact dynamics",
+    "F32 algebraic realization differs in staging/association from physical F64 os_step",
+    "formal derivatives ignore float rounding and apply only to q,v,u subspace",
+    "matrix/time/target/weight packed inputs are fixed context, not qualified parameter derivatives",
+    "derivatives do not cover refusals, saturation or contact discontinuities",
+    "no original GR00T embodiment or own robot-backend qualification"
+  ]
+}

@@ -388,6 +388,43 @@ backend and its compiler/control guarantees remain [roadmap work](PLAN.md). A re
 also needs a measured asynchronous deadline profile, hardware-specific state
 and safety contracts, and qualified recovery beyond this simulator experiment.
 
+## Measure state and force sensitivities on the owned plant
+
+The [new runnable example](../examples/own-plant-sensitivities.coax) connects
+chapter 107’s generic function calculus to chapter 109’s RK4 field. It augments
+position/velocity with a force coordinate whose derivative is zero, so the
+action stays held through all four stages. A 29-node permanent graph can then
+supply the step, its 3×3 state/action Jacobian and a scalar control cost’s three
+gradient and nine Hessian components. JVP/VJP/HVP and shared-context `vmap`
+use the same generic execution machinery.
+
+This is an explicitly qualified F32 algebraic realization. Formal partials
+are F64 at stored F32 primals; matrix/time/target/weights stay fixed while q/v/u
+vary. Coordinate scales 1m, 1m/s and 1N make the weighted error dimensionless.
+[The API/scope](../docs/physics/oscillator-functions.md) specifies exact packed
+input spans and the independent polynomial comparison. Chapter 111’s recovered
+`OsParams` are compatible input context; parameter recovery remains a separate
+qualified F64 path.
+
+```shell
+coax/bin/coax run psionic/examples/own-plant-sensitivities.coax
+coax/bin/coax run psionic/examples/own-plant-sensitivities.coax --release
+psionic/check.sh --only physics/oscillator-functions
+```
+
+Across 45 frozen points and 18 batches, 180 F32 primal values match the independent
+forward calculation exactly; 1,485 formal values agree within 4.45e-16. The F32
+step differs from the physical F64 state by at most 5.57e-8 and its Jacobian by
+1.08e-8. All 202 root mutants die and each native host build mode passes 2,592
+assertions with identical result bytes. The [receipt](../fixtures/physics/oscillator-functions/qualification.json)
+retains the frozen budgets, force finite differences and mode distinctions.
+
+Actual physical execution retains `os_step`’s next-state admission. This graph
+models the smooth planning interior; bounds refusal, clipping and contacts
+are outside its derivative contract. These scalar sensitivities do not qualify
+a GR00T embodiment or the matching own robot backend. The [remaining sequence](../docs/physics/owned-control-loop.md)
+keeps that integration separate from these completed numerical building blocks.
+
 ## Checkpoint the owned smooth plant
 
 The [owned-oscillator replay component](../docs/physics/oscillator-replay.md)
