@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/thegrid.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm and build/nip01.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/og.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/thegrid.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm, build/realmlist.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -155,6 +155,9 @@ realmlist=$!
 # /admin/analytics: the projects list's HUD over the admins' numbers.
 "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm" &
 admin=$!
+# /og: the link-preview workbench (docs/web/og-tags.md), og.coax over og/pages.txt.
+"$here/../../coax/web/wasm.sh" "$here/og.coax" "$here/og-face.c" "$here/build/og.wasm" &
+og=$!
 # /chat: a direct chat with the OpenAgents agent (docs/chat.md), admins only,
 # drawn with the Zeron components (apps/shared/zeron/): Geist, its OFL and
 # Zeron's icons (as one JSON, name to SVG) beside it for coax/web/gpui.js.
@@ -169,6 +172,7 @@ COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/private.coax" 
   "$here/../../coax/lib/qr/qr-memory.coax" "$here/../../coax/lib/nostr/weblogin.coax" "$here/../../coax/lib/crypto/entropy.coax"
 wait "$admin"
 wait "$realmlist"
+wait "$og"
 wait "$chat"
 wait "$nip01"
 wait "$nip_guide"

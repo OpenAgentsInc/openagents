@@ -101,7 +101,7 @@ for f in sorted(os.listdir(os.path.join(app, "well-known"))) if os.path.isdir(os
 def unlisted(f):
     j = os.path.join(app, os.path.dirname(f), "project.json")
     return f.startswith("projects" + os.sep) and os.path.exists(j) and json.load(open(j, encoding="utf-8")).get("visibility") in ("unlisted", "private")
-public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "projects" + os.sep + "private")) and not unlisted(f))
+public = sorted(f for f in pages if f.endswith("index.md") and not f.startswith(("admin", "chat", "login", "og" + os.sep, "projects" + os.sep + "private")) and not unlisted(f))
 def url(f): return "https://openagents.com/" + os.path.dirname(f).replace(os.sep, "/")
 with open(os.path.join(site, "llms-full.txt"), "w", encoding="utf-8") as out:
     out.write(open(os.path.join(app, "llms.txt"), encoding="utf-8").read())
@@ -110,6 +110,11 @@ with open(os.path.join(site, "sitemap.xml"), "w", encoding="utf-8") as out:
     out.write('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n')
     out.write("".join(f"<url><loc>{url(f)}</loc></url>\n" for f in public) + "</urlset>\n")
 PY
+
+# Link previews (docs/web/og-tags.md): every page gets the Open Graph and Twitter tags it lacks, and
+# og/pages.txt lists them for /og. A page without a title or description, a broken or wrong-size
+# image, or a realm or project without its own card refuses the release (COAXIAL_OG_DRAFT=1 stages anyway).
+bun "$here/og.ts" "$stage/site" "$app"
 
 # Hidden presentations (unlock/), when COAXIAL_UNLOCKS names any: from the
 # environment, or this machine's secrets file. The phrases stay here.

@@ -1,0 +1,577 @@
+// /og, drawn by Coax: the link-preview workbench (docs/web/og-tags.md). Every page
+// openagents.com serves, as the card a chat app or a feed shows when someone
+// shares its link: the image, title, description and address, with what is
+// missing, too long or the wrong size under it. The rows are og/pages.txt,
+// which coax/web/og.ts writes when a release is staged, fetched once:
+//   path|kind|noindex|title|description|url|image|alt|source|width|height|kb|errors|warnings|progress
+// ALL shows every page, PROBLEMS only the ones with an error or a warning. A
+// card opens its page.
+//
+// The same app draws one page's own card (#card=PATH, at 1200x630): what
+// coax/web/og-render.ts captures for a page with no hand-made card. A realm's
+// card is a still of it (og/stills/SLUG.jpg) over its name; a project's, its
+// name, line and tasks done; any other page's, its title and line.
+
+#load "projects.coax";
+
+OG_MAX_VERTICES :: 200000;
+OG_DATA :: 131072;
+OG_INBOX :: 131072;
+OG_MEDIA :: 16384;
+OG_ROWS :: 512;
+OG_HTTP :: 512;           // + id: an HTTP answer (coax/web/host.js)
+OG_NAVIGATE :: 1;
+OG_ALL :: 0; OG_PROBLEMS :: 1;
+OG_HIT_ALL :: -2; OG_HIT_PROBLEMS :: -3; OG_HIT_HOME :: -4;
+OG_CARD_W :: 340.0;       // CSS pixels: the narrowest a card in the grid gets
+
+// the rows' columns
+O_PATH :: 0; O_KIND :: 1; O_NOINDEX :: 2; O_TITLE :: 3; O_DESC :: 4; O_URL :: 5; O_IMAGE :: 6; O_ALT :: 7;
+O_SOURCE :: 8; O_W :: 9; O_H :: 10; O_KB :: 11; O_ERRORS :: 12; O_WARNINGS :: 13; O_PROGRESS :: 14;
+
+OgState :: struct {
+  time: f32; ready: bool;
+  status: int;                 // -1 nothing asked yet, 0 waiting, else the answer's HTTP status
+  width: f32; height: f32; d: f32;
+  scroll: f32; hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
+  filter: int;
+  card: [512] u8; card_n: int; // #card=PATH: that page's card alone
+  ask: [64] u8; ask_n: int;
+  outbox: [512] u8; out_n: int; action: int;
+  media: [OG_MEDIA] u8; media_n: int;
+  row_at: [OG_ROWS] int; row_end: [OG_ROWS] int; row_n: int;
+  data: [] u8; data_n: int;    // OgHost's
+  inbox: [] u8;                // OgHost's
+}
+// What the host keeps (og-face.c): the state and the buffers it sees, outside
+// OgState so a #test's state stays small (E0400).
+OgHost :: struct {
+  s: [1] OgState;
+  data: [OG_DATA] u8;
+  inbox: [OG_INBOX] u8;
+}
+coaxial_og_bind :: (h: [] OgHost) #export_c {
+  if h.count < 1 { return; }
+  h[0].s[0].data = h[0].data[..];
+  h[0].s[0].inbox = h[0].inbox[..];
+}
+
+// ---- the rows
+
+og_cell :: (s: [] OgState, r: int, col: int) -> string {
+  if r < 0 || r >= s[0].row_n { return ""; }
+  i := s[0].row_at[r]; to := s[0].row_end[r]; c := 0;
+  while c < col && i < to { if s[0].data[i] == '|' { c += 1; } i += 1; }
+  if c < col { return ""; }
+  j := i;
+  while j < to && s[0].data[j] != '|' { j += 1; }
+  return cast(string) s[0].data[i..<j];
+}
+og_index :: (s: [] OgState) {
+  s[0].row_n = 0; at := 0; n := s[0].data_n;
+  while at < n {
+    stop := at;
+    while stop < n && s[0].data[stop] != '\n' { stop += 1; }
+    if stop > at && s[0].data[at] != '#' && s[0].row_n < OG_ROWS {
+      s[0].row_at[s[0].row_n] = at; s[0].row_end[s[0].row_n] = stop; s[0].row_n += 1;
+    }
+    at = stop + 1;
+  }
+}
+og_problems :: (s: [] OgState, r: int) -> bool { return og_cell(s, r, O_ERRORS).count > 0 || og_cell(s, r, O_WARNINGS).count > 0; }
+og_count :: (s: [] OgState, col: int) -> int {
+  n := 0;
+  for r: 0..<s[0].row_n { if og_cell(s, r, col).count > 0 { n += 1; } }
+  return n;
+}
+// The rows the filter shows, in order.
+og_shown :: (s: [] OgState, out: [] int) -> int {
+  n := 0;
+  for r: 0..<s[0].row_n {
+    if s[0].filter == OG_PROBLEMS && !og_problems(s, r) { continue; }
+    if n < out.count { out[n] = r; n += 1; }
+  }
+  return n;
+}
+og_find :: (s: [] OgState, path: string) -> int {
+  for r: 0..<s[0].row_n { if same(og_cell(s, r, O_PATH), path) { return r; } }
+  return -1;
+}
+// The n-th part of a "; "-separated list.
+og_part :: (list: string, n: int) -> string {
+  i := 0; k := 0;
+  while k < n && i < list.count {
+    if list[i] == ';' { k += 1; i += 1; while i < list.count && list[i] == ' ' { i += 1; } continue; }
+    i += 1;
+  }
+  if k < n { return ""; }
+  j := i;
+  while j < list.count && list[j] != ';' { j += 1; }
+  return list[i..<j];
+}
+og_parts :: (list: string) -> int {
+  if list.count == 0 { return 0; }
+  n := 1;
+  for i: 0..<list.count { if list[i] == ';' { n += 1; } }
+  return n;
+}
+og_int :: (text: string) -> int {
+  v := 0; i := 0;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' { v = v * 10 + cast(int) (text[i] - '0'); i += 1; }
+  return v;
+}
+// The k-th space-separated number of text.
+og_word_int :: (text: string, k: int) -> int {
+  i := 0; w := 0;
+  while i < text.count && w < k { if text[i] == ' ' { w += 1; } i += 1; }
+  return og_int(text[i..<text.count]);
+}
+
+// ---- asking for the rows, and the answer
+
+og_ask :: (s: [] OgState) {
+  url := "/og/pages.txt";
+  s[0].ask_n = put_text(s[0].ask[..], 0, url);
+  s[0].status = 0;
+}
+coaxial_og_asked :: (s: [] OgState) #export_c { s[0].ask_n = 0; }
+og_answer :: (s: [] OgState, bytes: string) {
+  i := 0; code := 0;
+  while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
+  if i < bytes.count && bytes[i] == '\n' { i += 1; }
+  s[0].status = ifx code == 0 then 503 else code;
+  s[0].data_n = 0; s[0].row_n = 0;
+  if code != 200 { return; }
+  n := bytes.count - i;
+  if n > s[0].data.count { n = s[0].data.count; }
+  for k: 0..<n { s[0].data[k] = bytes[i + k]; }
+  s[0].data_n = n;
+  og_index(s);
+}
+
+// ---- the pictures (host.js coaxial_media)
+
+og_media_add :: (s: [] OgState, url: string, b: Box) {
+  if url.count == 0 || url[0] != '/' { return; }
+  buf: [160] u8;
+  n := put_text(buf[..], 0, "image ");
+  n += put_text(buf[..], n, url);
+  for v: 0..<4 {
+    x := ifx v == 0 then b.x0 else ifx v == 1 then b.y0 else ifx v == 2 then b.x1 else b.y1;
+    n += put_text(buf[..], n, " ");
+    n += put_int(buf[..], n, cast(int) x);
+  }
+  n += put_text(buf[..], n, "\n");
+  if s[0].media_n + n > OG_MEDIA { return; }
+  for k: 0..<n { s[0].media[s[0].media_n + k] = buf[k]; }
+  s[0].media_n += n;
+}
+
+// ---- inks: no orange here (it is Bitcoin's); errors red, warnings pale yellow
+
+og_ink :: (p: Pen, red: f32, green: f32, blue: f32, light: f32) -> Ink {
+  k := ink(p, INK_WHITE);
+  k.red = red; k.green = green; k.blue = blue; k.light = light * p.fade;
+  return k;
+}
+og_error_ink :: (p: Pen) -> Ink { return og_ink(p, 1.0, 0.42, 0.42, 0.95); }
+og_warn_ink :: (p: Pen) -> Ink { return og_ink(p, 0.95, 0.9, 0.55, 0.85); }
+// A box's outline, its corners cut, in white.
+og_frame :: (out: [] f32, at: int, b: Box, cut: f32, k: Ink, light: f32) -> int {
+  v := at;
+  xs := [7] f32.[b.x0, b.x1 - cut, b.x1, b.x1, b.x0 + cut, b.x0, b.x0];
+  ys := [7] f32.[b.y0, b.y0, b.y0 + cut, b.y1, b.y1, b.y1 - cut, b.y0];
+  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, light); }
+  return v;
+}
+// Bright brackets at the top left and bottom right, as the HUD's panels have.
+og_brackets :: (out: [] f32, at: int, b: Box, arm: f32, k: Ink) -> int {
+  v := rule(out, at, b.x0, b.y0 + arm * 0.6, b.x0, b.y0, k, k.light);
+  v = rule(out, v, b.x0, b.y0, b.x0 + arm, b.y0, k, k.light);
+  v = rule(out, v, b.x1, b.y1 - arm * 0.6, b.x1, b.y1, k, k.light);
+  return rule(out, v, b.x1, b.y1, b.x1 - arm, b.y1, k, k.light);
+}
+
+// ---- the grid
+
+OgLayout :: struct { m: f32; head: Box; all: Box; problems: Box; home: Box; top: f32; cols: int; cw: f32; gap: f32; }
+og_layout :: (s: [] OgState) -> OgLayout {
+  d := s[0].d; w := s[0].width / d;
+  l: OgLayout;
+  l.m = (ifx w < 700 then 12.0f32 else 24.0f32) * d;
+  l.gap = (ifx w < 700 then 12.0f32 else 18.0f32) * d;
+  narrow := w < 700;
+  l.head = Box.{x0 = l.m, y0 = l.m, x1 = s[0].width - l.m, y1 = l.m + (ifx narrow then 118.0f32 else 96.0f32) * d};
+  p := Pen.{d = d, fade = 1, time = 0};
+  cap := FILTER_CAP * d;
+  y := l.head.y1 - 16 * d;
+  x := ifx narrow then l.head.x0 + 18 * d else l.head.x1 - 18 * d - chip_width("ALL", cap, p) - chip_width("PROBLEMS", cap, p) - 8 * d;
+  l.all = chip_box("ALL", x, y, cap, p);
+  l.problems = chip_box("PROBLEMS", x + chip_width("ALL", cap, p) + 8 * d, y, cap, p);
+  l.home = Box.{x0 = l.head.x0 + 18 * d, y0 = l.head.y0 + 10 * d, x1 = l.head.x0 + 18 * d + text_width("OPENAGENTS", 7 * d), y1 = l.head.y0 + 26 * d};
+  l.top = l.head.y1 + l.gap;
+  inner := s[0].width - 2 * l.m;
+  l.cols = cast(int) floor((inner + l.gap) / (OG_CARD_W * d + l.gap));
+  if l.cols < 1 { l.cols = 1; }
+  if l.cols > 4 { l.cols = 4; }
+  l.cw = (inner - l.gap * cast(f32) (l.cols - 1)) / cast(f32) l.cols;
+  return l;
+}
+// A card's height: the image at 1200:630, then its words and problems.
+og_lines :: (s: [] OgState, r: int) -> int {
+  n := og_parts(og_cell(s, r, O_ERRORS)) + og_parts(og_cell(s, r, O_WARNINGS));
+  return ifx n > 6 then 6 else n;
+}
+og_card_h :: (s: [] OgState, l: OgLayout, r: int) -> f32 {
+  d := s[0].d;
+  return l.cw * 630.0 / 1200.0 + (126.0 + 15.0 * cast(f32) og_lines(s, r)) * d;
+}
+// Where the k-th shown card sits (before scrolling), from the rows above it.
+og_place :: (s: [] OgState, l: OgLayout, order: [] int, n: int, boxes: [] Box) -> f32 {
+  y := l.top; k := 0;
+  while k < n {
+    h := 0.0f32;
+    for c: 0..<l.cols { if k + c < n { h = hi(h, og_card_h(s, l, order[k + c])); } }
+    for c: 0..<l.cols {
+      if k + c >= n { break; }
+      x := l.m + cast(f32) c * (l.cw + l.gap);
+      boxes[k + c] = Box.{x0 = x, y0 = y, x1 = x + l.cw, y1 = y + h};
+    }
+    y += h + l.gap; k += l.cols;
+  }
+  return y;
+}
+
+og_header :: (out: [] f32, at: int, s: [] OgState, l: OgLayout, p: Pen) -> int {
+  d := p.d; v := at; b := l.head;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
+  white.sans = false; dim.sans = false;
+  x := b.x0 + 18 * d;
+  v = put(out, v, "OPENAGENTS", x, b.y0 + 22 * d, 7 * d, ifx s[0].hot == OG_HIT_HOME then white else dim);
+  crumb := x + text_width("OPENAGENTS", 7 * d) + SPACE * 7 * d;
+  v = put(out, v, "/", crumb, b.y0 + 22 * d, 7 * d, dim);
+  v = put(out, v, "LINK PREVIEWS", crumb + text_width("/", 7 * d) + SPACE * 7 * d, b.y0 + 22 * d, 7 * d, white);
+  narrow := s[0].width / d < 700;
+  v = put(out, v, "LINK PREVIEWS", x, b.y0 + (ifx narrow then 56.0f32 else 60.0f32) * d, (ifx narrow then 18.0f32 else 24.0f32) * d, white);
+  // the counts
+  buf: [96] u8;
+  n := put_int(buf[..], 0, s[0].row_n);
+  n += put_text(buf[..], n, " PAGES   ");
+  n += put_int(buf[..], n, og_count(s, O_ERRORS));
+  n += put_text(buf[..], n, " REFUSED   ");
+  n += put_int(buf[..], n, og_count(s, O_WARNINGS));
+  n += put_text(buf[..], n, " WITH WARNINGS");
+  counts := cast(string) buf[0..<n];
+  cy := ifx narrow then b.y0 + 78.0f32 * d else b.y0 + 84.0f32 * d;
+  cx := ifx narrow then x else x + text_width("LINK PREVIEWS", 24 * d) + 24 * d;
+  if !narrow { cy = b.y0 + 60 * d; }
+  if narrow { v = put_fit(out, v, counts, cx, cy, 7 * d, dim, b.x1 - 18 * d - cx); }
+  else { v = put_fit(out, v, counts, cx, cy, 8 * d, dim, l.all.x0 - 24 * d - cx); }
+  cap := FILTER_CAP * d;
+  base := l.all.y1 - 5 * d;
+  ak := ifx s[0].filter == OG_ALL || s[0].hot == OG_HIT_ALL then white else dim;
+  pk := ifx s[0].filter == OG_PROBLEMS || s[0].hot == OG_HIT_PROBLEMS then white else dim;
+  v = chip(out, v, "ALL", l.all.x0, base, cap, ak, p);
+  v = chip(out, v, "PROBLEMS", l.problems.x0, base, cap, pk, p);
+  return og_brackets(out, og_frame(out, v, b, 10 * d, dim, 0.3 * p.fade), b, 36 * d, white);
+}
+
+// One page's preview, as a feed shows it: the picture, the title, the line, the address; then what's wrong.
+og_preview :: (out: [] f32, at: int, s: [] OgState, r: int, b: Box, p: Pen, lit_up: bool) -> int {
+  d := p.d; v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); faint := ink(p, INK_FAINT);
+  pic := Box.{x0 = b.x0, y0 = b.y0, x1 = b.x1, y1 = b.y0 + box_w(b) * 630.0 / 1200.0};
+  image := og_cell(s, r, O_IMAGE);
+  if image.count > 0 && image[0] == '/' { og_media_add(s, image, pic); }
+  else { v = put(out, v, "NO IMAGE", pic.x0 + 14 * d, pic.y0 + 24 * d, 7 * d, og_error_ink(p)); }
+  v = og_frame(out, v, pic, 0, dim, 0.22 * p.fade);
+  x := b.x0 + 12 * d; w := box_w(b) - 24 * d;
+  y := pic.y1 + 22 * d;
+  t := white; t.sans = true;
+  v = put_fit(out, v, og_cell(s, r, O_TITLE), x, y, 8.5 * d, t, w);
+  v = put_wrapped(out, v, og_cell(s, r, O_DESC), x, y + 19 * d, 7 * d, dim, w, 14 * d, 3);
+  // the address, then the picture's facts
+  url := og_cell(s, r, O_URL);
+  v = put_fit(out, v, url, x, y + 66 * d, 6.5 * d, faint, w);
+  buf: [128] u8;
+  n := put_text(buf[..], 0, og_cell(s, r, O_W));
+  n += put_text(buf[..], n, "x");
+  n += put_text(buf[..], n, og_cell(s, r, O_H));
+  n += put_text(buf[..], n, "  ");
+  n += put_text(buf[..], n, og_cell(s, r, O_KB));
+  n += put_text(buf[..], n, " KB  ");
+  n += put_text(buf[..], n, og_cell(s, r, O_SOURCE));
+  n += put_text(buf[..], n, "  ");
+  n += put_text(buf[..], n, og_cell(s, r, O_KIND));
+  if og_cell(s, r, O_NOINDEX).count > 0 { n += put_text(buf[..], n, "  noindex"); }
+  facts := faint; facts.sans = true;
+  v = put_fit(out, v, cast(string) buf[0..<n], x, y + 84 * d, 6.5 * d, facts, w);
+  // the problems, errors first
+  errors := og_cell(s, r, O_ERRORS); warnings := og_cell(s, r, O_WARNINGS);
+  line := 0; ly := y + 104 * d;
+  for k: 0..<og_parts(errors) {
+    if line >= 6 { break; }
+    v = put_fit(out, v, og_part(errors, k), x, ly + 15 * d * cast(f32) line, 6.5 * d, og_error_ink(p), w); line += 1;
+  }
+  for k: 0..<og_parts(warnings) {
+    if line >= 6 { break; }
+    v = put_fit(out, v, og_part(warnings, k), x, ly + 15 * d * cast(f32) line, 6.5 * d, og_warn_ink(p), w); line += 1;
+  }
+  edge := ifx og_cell(s, r, O_ERRORS).count > 0 then og_error_ink(p) else dim;
+  return og_frame(out, v, b, 8 * d, edge, (ifx lit_up then 0.7f32 else 0.3f32) * p.fade);
+}
+
+// ---- one page's own card (#card=PATH), 1200x630, for og-render.ts
+
+// card=default: the branded card a page shares before it has its own (og/default.jpg): the
+// name and the homepage's line.
+og_card :: (out: [] f32, at: int, s: [] OgState, r: int, p: Pen, uniforms: [] f32, brand: bool) -> int {
+  W := s[0].width; H := s[0].height; u := W / 1200.0;
+  v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); faint := ink(p, INK_FAINT);
+  white.sans = false; dim.sans = false;
+  kind := og_cell(s, r, O_KIND); path := og_cell(s, r, O_PATH);
+  title := ifx brand then "OPENAGENTS" else og_cell(s, r, O_TITLE); desc := og_cell(s, r, O_DESC);
+  if brand { kind = "page"; path = ""; }
+  x := 64 * u; right := W - 64 * u; w := right - x;
+  line := ink(p, INK_DIM); line.sans = true; line.light = 0.75 * p.fade;
+  host := faint; host.sans = false;
+  if same(kind, "realm") {
+    // a still of the realm across the top, its name and line in the band under it
+    slug := path[8..<path.count];   // "/realms/"
+    buf: [96] u8;
+    n := put_text(buf[..], 0, "/og/stills/");
+    n += put_text(buf[..], n, slug);
+    n += put_text(buf[..], n, ".jpg");
+    pic := Box.{x0 = 0, y0 = 0, x1 = W, y1 = 456 * u};
+    og_media_add(s, cast(string) buf[0..<n], pic);
+    v = rule(out, v, 0, pic.y1, W, pic.y1, white, 0.35 * p.fade);
+    v = put(out, v, "OPENAGENTS  /  VERSE", x, pic.y1 + 34 * u, 9 * u, dim);
+    v = put_right(out, v, "OPENAGENTS.COM", right, pic.y1 + 34 * u, 9 * u, host);
+    v = put_fit(out, v, title, x, pic.y1 + 88 * u, 36 * u, white, w);
+    v = put_fit(out, v, desc, x, pic.y1 + 132 * u, 12 * u, line, w);
+    return og_brackets(out, v, Box.{x0 = 20 * u, y0 = pic.y1 + 12 * u, x1 = W - 20 * u, y1 = H - 14 * u}, 44 * u, white);
+  }
+  glass(uniforms, 0, Box.{x0 = 32 * u, y0 = 32 * u, x1 = W - 32 * u, y1 = H - 32 * u}, 18 * u, 0.7);
+  crumb := ifx same(kind, "project") then "OPENAGENTS  /  PROJECTS" else "OPENAGENTS";
+  if !brand { v = put(out, v, crumb, x, 108 * u, 12 * u, dim); }
+  cap := ifx brand then 64 * u else 46 * u;
+  if text_width(title, cap) > w { cap = hi(26 * u, cap * w / text_width(title, cap)); }
+  v = put_fit(out, v, title, x, 236 * u, cap, white, w);
+  v = put_wrapped(out, v, desc, x, 318 * u, 16 * u, line, w, 40 * u, 3);
+  if same(kind, "project") && og_cell(s, r, O_PROGRESS).count > 0 {
+    pr := og_cell(s, r, O_PROGRESS);
+    done := og_word_int(pr, 0); open := og_word_int(pr, 1); readyn := og_word_int(pr, 2);
+    total := done + open;
+    f := ifx total > 0 then cast(f32) done / cast(f32) total else 0.0f32;
+    y := 490 * u;
+    v = rule(out, v, x, y, right, y, white, 0.18 * p.fade);
+    if f > 0 { v = rule(out, v, x, y, x + w * f, y, white, p.fade); v = rule(out, v, x, y - 1.5 * u, x + w * f, y - 1.5 * u, white, p.fade); }
+    buf: [96] u8;
+    n := put_int(buf[..], 0, done);
+    n += put_text(buf[..], n, " OF ");
+    n += put_int(buf[..], n, total);
+    n += put_text(buf[..], n, " TASKS DONE");
+    if readyn > 0 { n += put_text(buf[..], n, "   "); n += put_int(buf[..], n, readyn); n += put_text(buf[..], n, " READY TO PICK UP"); }
+    v = put(out, v, cast(string) buf[0..<n], x, y - 22 * u, 11 * u, dim);
+  }
+  v = put(out, v, "OPENAGENTS.COM", x, H - 76 * u, 10 * u, host);
+  if path.count > 1 { v = put_right(out, v, path, right, H - 76 * u, 10 * u, host); }
+  return og_brackets(out, v, Box.{x0 = 32 * u, y0 = 32 * u, x1 = W - 32 * u, y1 = H - 32 * u}, 54 * u, white);
+}
+
+// ---- the frame
+
+coaxial_og_frame :: (s: [] OgState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].ready { s[0].ready = true; s[0].hot = HIT_NONE; s[0].press = HIT_NONE; s[0].status = -1; }
+  if s[0].status == -1 { og_ask(s); }
+  s[0].time += clamp(dt, 0, 0.1);
+  time := ifx still || s[0].card_n > 0 then 20.0f32 else s[0].time;
+  d := hi(dpr, 1);
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  s[0].media_n = 0;
+  p := Pen.{d = d, fade = ifx still || s[0].card_n > 0 then 1.0f32 else ease(time / 0.6), time = time};
+  uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = p.fade;
+  uniforms[4] = ifx still || s[0].card_n > 0 then 1.0f32 else 0.0f32; uniforms[5] = 2; uniforms[6] = 0; uniforms[7] = 0;
+  for k: 0..<PANELS { glass(uniforms, k, Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}, 0, 0); }
+  if s[0].status != 200 {
+    word := ifx s[0].status == 0 then "LOADING" else "NO PREVIEWS: /og/pages.txt IS WRITTEN WHEN A RELEASE IS STAGED";
+    cap := 9 * d;
+    return put(out, 0, word, hi(16 * d, (width - text_width(word, cap)) * 0.5), height * 0.5, cap, ink(p, INK_DIM));
+  }
+  if s[0].card_n > 0 {
+    want := cast(string) s[0].card[0..<s[0].card_n];
+    brand := same(want, "default");
+    r := og_find(s, ifx brand then "/" else want);
+    if r < 0 { return put(out, 0, "NO SUCH PAGE", 40, height * 0.5, 12 * d, ink(p, INK_DIM)); }
+    return og_card(out, 0, s, r, Pen.{d = 2 * width / 1200.0, fade = 1, time = 20}, uniforms, brand);   // strokes twice as heavy: a card is seen small
+  }
+  l := og_layout(s);
+  order: [OG_ROWS] int;
+  n := og_shown(s, order[..]);
+  boxes: [OG_ROWS] Box;
+  bottom := og_place(s, l, order[..], n, boxes[..]);
+  s[0].scroll = clamp(s[0].scroll, 0, hi(0, bottom - height + l.m));
+  glass(uniforms, 0, l.head, 10 * d, 0.92);
+  v := og_header(out, 0, s, l, p);
+  for k: 0..<n {
+    b := boxes[k];
+    b.y0 -= s[0].scroll; b.y1 -= s[0].scroll;
+    // a card is drawn while it is whole below the header (pictures have no clip)
+    if b.y0 < l.top - 1 || b.y0 > height { continue; }
+    v = og_preview(out, v, s, order[k], b, p, s[0].hot == k);
+  }
+  return v;
+}
+
+// ---- input
+
+og_hit :: (s: [] OgState, x: f32, y: f32) -> int {
+  if s[0].d <= 0 || s[0].status != 200 || s[0].card_n > 0 { return HIT_NONE; }
+  l := og_layout(s);
+  if inside(l.all, x, y) { return OG_HIT_ALL; }
+  if inside(l.problems, x, y) { return OG_HIT_PROBLEMS; }
+  if inside(l.home, x, y) { return OG_HIT_HOME; }
+  if y < l.top { return HIT_NONE; }
+  order: [OG_ROWS] int;
+  n := og_shown(s, order[..]);
+  boxes: [OG_ROWS] Box;
+  bottom := og_place(s, l, order[..], n, boxes[..]);
+  for k: 0..<n {
+    b := boxes[k];
+    b.y0 -= s[0].scroll; b.y1 -= s[0].scroll;
+    if b.y0 >= l.top - 1 && inside(b, x, y) { return k; }
+  }
+  return HIT_NONE;
+}
+og_go :: (s: [] OgState, url: string) {
+  if url.count == 0 || url.count > 512 { return; }
+  s[0].out_n = put_text(s[0].outbox[..], 0, url);
+  s[0].action = OG_NAVIGATE;
+}
+og_act :: (s: [] OgState, target: int) {
+  if target == OG_HIT_ALL { s[0].filter = OG_ALL; s[0].scroll = 0; return; }
+  if target == OG_HIT_PROBLEMS { s[0].filter = OG_PROBLEMS; s[0].scroll = 0; return; }
+  if target == OG_HIT_HOME { og_go(s, "/"); return; }
+  if target < 0 { return; }
+  order: [OG_ROWS] int;
+  n := og_shown(s, order[..]);
+  if target < n { og_go(s, og_cell(s, order[target], O_PATH)); }
+}
+coaxial_og_pointer :: (s: [] OgState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if phase == P_DOWN {
+    s[0].press = og_hit(s, x, y); s[0].press_x = x; s[0].press_y = y; s[0].drag_y = y; s[0].dragged = false;
+    s[0].hot = ifx kind == 0 then s[0].press else HIT_NONE;
+    return true;
+  }
+  if phase == P_MOVE {
+    if kind == 0 { s[0].hot = og_hit(s, x, y); }
+    if kind != 0 || s[0].press != HIT_NONE {
+      if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
+      if s[0].dragged && kind != 0 { s[0].scroll -= y - s[0].drag_y; }
+      s[0].drag_y = y;
+    }
+    return true;
+  }
+  if phase == P_UP {
+    target := og_hit(s, x, y);
+    if !s[0].dragged && target == s[0].press && target != HIT_NONE { og_act(s, target); }
+    s[0].press = HIT_NONE;
+    if kind != 0 { s[0].hot = HIT_NONE; }
+    return true;
+  }
+  s[0].press = HIT_NONE;
+  return true;
+}
+coaxial_og_key :: (s: [] OgState, key: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := hi(s[0].d, 1);
+  if key == K_DOWN { s[0].scroll += 40 * d; return true; }
+  if key == K_UP { s[0].scroll -= 40 * d; return true; }
+  if key == -11 || key == ' ' { s[0].scroll += s[0].height * 0.8; return true; }   // Page Down, space
+  if key == -10 { s[0].scroll -= s[0].height * 0.8; return true; }   // Page Up
+  if key == K_HOME { s[0].scroll = 0; return true; }
+  if key == K_END { s[0].scroll = 1000000000; return true; }
+  return false;
+}
+coaxial_og_wheel :: (s: [] OgState, dy: f32) #export_c { if s.count > 0 { s[0].scroll += dy * hi(s[0].d, 1); } }
+coaxial_og_message :: (s: [] OgState, kind: int, length: int) #export_c {
+  if s.count < 1 || kind < OG_HTTP || kind >= OG_HTTP + 8 || length < 0 || length > s[0].inbox.count { return; }
+  og_answer(s, cast(string) s[0].inbox[0..<length]);
+}
+// The location's hash: "card=PATH" draws that page's card alone.
+coaxial_og_hash :: (s: [] OgState, length: int) #export_c {
+  if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
+  h := cast(string) s[0].inbox[0..<length];
+  s[0].card_n = 0;
+  if h.count > 5 && same(h[0..<5], "card=") { s[0].card_n = put_text(s[0].card[..], 0, h[5..<h.count]); }
+}
+coaxial_og_cursor :: (s: [] OgState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != HIT_NONE then 1 else 0; }
+coaxial_og_action :: (s: [] OgState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_og_action_done :: (s: [] OgState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_og_inbox_cap :: () -> int #export_c { return OG_INBOX; }
+coaxial_og_max_vertices :: () -> int #export_c { return OG_MAX_VERTICES; }
+
+// ---- checks
+
+OG_TEST_DATA :: 4096;
+OG_TEST_VERTICES :: 40000;
+OG_FIXTURE :: "200\n# path|kind|noindex|title|description|url|image|alt|source|width|height|kb|errors|warnings|progress\n/|page||OpenAgents|Explore real projects.|https://openagents.com|/og/home.jpg|OpenAgents|rendered|1200|630|80|||\n/projects/coax|project||Coax|A systems language.|https://openagents.com/projects/coax|/og/default.jpg|OpenAgents|default|1200|630|40|a project without its own card|title is long; description is short|101 100 21\n/realms/dead-gears|realm||Dead Gears|Hold the ship.|https://openagents.com/realms/dead-gears|/og/realms/dead-gears.jpg|x|rendered|1200|630|90|||\n";
+
+#test "the rows come from og/pages.txt; PROBLEMS shows only the pages with one" {
+  s: [1] OgState; data: [OG_TEST_DATA] u8; s[0].data = data[..];
+  out: [OG_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n0 := coaxial_og_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
+  #assert s[0].status == 0 && cast(string) s[0].ask[0..<s[0].ask_n] == "/og/pages.txt" && n0 > 0;
+  og_answer(s[..], OG_FIXTURE);
+  #assert s[0].status == 200 && s[0].row_n == 3 && og_cell(s[..], 1, O_TITLE) == "Coax" && og_cell(s[..], 1, O_PROGRESS) == "101 100 21";
+  #assert og_parts(og_cell(s[..], 1, O_WARNINGS)) == 2 && og_part(og_cell(s[..], 1, O_WARNINGS), 1) == "description is short";
+  n := coaxial_og_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
+  #assert n > n0 && s[0].media_n > 0;
+  order: [8] int;
+  #assert og_shown(s[..], order[..]) == 3;
+  og_act(s[..], OG_HIT_PROBLEMS);
+  #assert og_shown(s[..], order[..]) == 1 && order[0] == 1;
+}
+
+#test "a card opens its page; the phone gets one column, the wide screen several" {
+  s: [1] OgState; data: [OG_TEST_DATA] u8; s[0].data = data[..];
+  out: [OG_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n0 := coaxial_og_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
+  og_answer(s[..], OG_FIXTURE);
+  n1 := coaxial_og_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
+  l := og_layout(s[..]);
+  #assert l.cols == 3;
+  order: [8] int; boxes: [8] Box;
+  n := og_shown(s[..], order[..]);
+  h := og_place(s[..], l, order[..], n, boxes[..]);
+  x := (boxes[2].x0 + boxes[2].x1) * 0.5; y := (boxes[2].y0 + boxes[2].y1) * 0.5;
+  #assert og_hit(s[..], x, y) == 2;
+  p1 := coaxial_og_pointer(s[..], x, y, P_DOWN, 0);
+  p2 := coaxial_og_pointer(s[..], x, y, P_UP, 0);
+  #assert s[0].action == OG_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/dead-gears";
+  n2 := coaxial_og_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, true);
+  #assert og_layout(s[..]).cols == 1 && n2 > 0;
+}
+
+#test "#card=PATH draws that page's card alone, a realm's over its still" {
+  s: [1] OgState; data: [OG_TEST_DATA] u8; s[0].data = data[..];
+  inbox: [256] u8; s[0].inbox = inbox[..];
+  out: [OG_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  h := "card=/realms/dead-gears";
+  for i: 0..<h.count { inbox[i] = h[i]; }
+  coaxial_og_hash(s[..], h.count);
+  n0 := coaxial_og_frame(s[..], out[..], u[..], 1200, 630, 1, 0.016, true);
+  og_answer(s[..], OG_FIXTURE);
+  n := coaxial_og_frame(s[..], out[..], u[..], 1200, 630, 1, 0.016, true);
+  #assert n > 0 && cast(string) s[0].media[0..<s[0].media_n] == "image /og/stills/dead-gears.jpg 0 0 1200 456\n";
+  #assert og_hit(s[..], 600, 300) == HIT_NONE;
+  h2 := "card=/projects/coax";
+  for i: 0..<h2.count { inbox[i] = h2[i]; }
+  coaxial_og_hash(s[..], h2.count);
+  n2 := coaxial_og_frame(s[..], out[..], u[..], 1200, 630, 1, 0.016, true);
+  #assert n2 > 0 && s[0].media_n == 0;
+}

@@ -17,6 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { LOADER_CSS, loaderMarkup } from "./loader.js"
+import { brief, renderedCard } from "./og"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const KINDS = { locked: 0, open: 1, soon: 2 } as const
@@ -30,7 +31,8 @@ export type Style = (typeof STYLES)[number]
 // ruleset: the rules a realm plays by (verse/rules/srd5.coax), read by its page as ruleset=; none casts nothing.
 export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style }
-export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; added?: string; line?: string; style: Style; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+// share: the line a link preview shows (at most 200 characters; else the description, shortened).
+export type Realm = { slug: string; title: string; description: string; share?: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; added?: string; line?: string; style: Style; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
@@ -86,6 +88,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
         throw new Error(`realms.json: ${r.slug} is drawn ${drawn.join(" and ")} but its pack ${pack} is ${ps} (verse/packs/${pack}.json "style")`)
     }
     // its ruleset (verse/rules/<ruleset>.coax): a realm without one casts nothing
+    if (r.share !== undefined && !(typeof r.share === "string" && r.share.length >= 20 && r.share.length <= 200)) throw new Error(`realms.json: ${r.slug}: share is a line of 20 to 200 characters`)
     if (r.ruleset !== undefined && !RULESETS.includes(r.ruleset)) throw new Error(`realms.json: ${r.slug}: ruleset is one of ${RULESETS.join(", ")}, not ${JSON.stringify(r.ruleset)}`)
     if (w.kind === "open" && w.listed !== false && (typeof r.added !== "string" || !ADDED.test(r.added)))
       throw new Error(`realms.json: ${r.slug}: a listed realm needs added, when it opened (YYYY-MM-DDTHH:MM, Chicago)`)
@@ -202,8 +205,10 @@ ${links}
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")
 export function page(r: Realm): string {
-  const url = `https://openagents.com/realms/${r.slug}`, t = esc(r.title), d = esc(r.description)
-  const card = `https://openagents.com${r.card ?? "/verse/og-verse.jpg"}`
+  const url = `https://openagents.com/realms/${r.slug}`, t = esc(r.title), d = esc(r.description), share = esc(r.share ?? brief(r.description))
+  // its link preview (docs/web/og-tags.md): its hand-made card, else the one og-render.ts renders from a still of it
+  const card = `https://openagents.com${r.card ?? renderedCard(`realms/${r.slug}`)}`
+  const alt = esc(r.card ? r.alt : `${r.title}: a still of the realm, with its name`)
   const slot = ` data-realm="${r.slug}" data-slot="${r.slot}"` + (r.slot_was ? ` data-slot-was="${r.slot_was}"` : "")
     + (r.voice ? ` data-voice="${r.voice}"` : "")
     + (r.ruleset ? ` data-ruleset="${r.ruleset}"` : "")
@@ -221,15 +226,15 @@ export function page(r: Realm): string {
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="OpenAgents">
 <meta property="og:title" content="${t}">
-<meta property="og:description" content="${d}">
+<meta property="og:description" content="${share}">
 <meta property="og:url" content="${url}">
 <meta property="og:image" content="${card}">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="${esc(r.alt)}">
+<meta property="og:image:alt" content="${alt}">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="${t}">
-<meta name="twitter:description" content="${d}">
+<meta name="twitter:description" content="${share}">
 <meta name="twitter:image" content="${card}">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">

@@ -139,6 +139,20 @@ for path, (s, h, body) in zip(verse, s_verse):
 # The link-preview card those tags name: a JPEG, served without a script.
 cs, ch, cb = get("/verse/og-verse.jpg")
 check(cs == 200 and ch.get("content-type", "").startswith("image/jpeg") and cb[:3] == b"\xff\xd8\xff", f"/verse/og-verse.jpg is the card ({cs}, {ch.get('content-type')})")
+# Link previews (docs/web/og-tags.md, coax/web/og.ts): a page of each kind names a whole preview,
+# and its card is a JPEG on the site.
+if not coder:
+    for path in ["/", "/projects/coax", "/realms/dead-gears", "/pylon"]:
+        ps, _, pb = get(path)
+        head = pb.split(b"</head>", 1)[0]
+        named = {k: v for k, v in re.findall(rb'<meta (?:property|name)="((?:og|twitter):[a-z:]+)" content="([^"]*)">', head)}
+        whole = all(named.get(k) for k in (b"og:title", b"og:description", b"og:url", b"og:image", b"og:image:alt", b"twitter:card", b"twitter:image"))
+        card = named.get(b"og:image", b"").decode()
+        ok = ps == 200 and whole and named.get(b"twitter:card") == b"summary_large_image" and card.startswith("https://openagents.com/")
+        if ok:
+            cs, ch, cb = get(card[len("https://openagents.com"):])
+            ok = cs == 200 and cb[:3] == b"\xff\xd8\xff" and len(cb) < 300 * 1024
+        check(ok, f"{path} has a whole link preview with a JPEG card ({card or 'none'})")
 # Private projects (docs/private-projects.md): the generic locked page, and
 # a slug nobody made answers like one nobody may see: 404, no name, no data.
 if not coder:
