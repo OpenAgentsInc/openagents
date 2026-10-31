@@ -1,0 +1,11 @@
+#load "../../lib/robotics/panda-inertia-types.coax";
+PmCheckJoule :: struct @unit(mass=1,length=2,time=-2,angle=0,numerator=1,denominator=1) {}
+#test "Panda inertia typed blocks cancel coordinate dimensions in physical energy and work" {
+ rate:pfku.Quantity(UnitQuotient(pfku.Radian,pfku.Second),f64);rate.value=2;
+ speed:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Second),f64);speed.value=3;
+ hh:pfku.Quantity(PmHingeInertia,f64);hh.value=5;hs:pfku.Quantity(PmCrossInertia,f64);hs.value=7;ss:pfku.Quantity(pfku.Kilogram,f64);ss.value=11;
+ eh:=convert_unit(PmCheckJoule,hh*rate*rate)*0.5;ec:=convert_unit(PmCheckJoule,hs*rate*speed);es:=convert_unit(PmCheckJoule,ss*speed*speed)*0.5;
+ #assert eh.value==10 && ec.value==42 && es.value==49.5;
+ hg:pfku.Quantity(PmHingeGravity,f64);hg.value=13;sg:pfku.Quantity(PmSlideGravity,f64);sg.value=17;angle:pfku.Quantity(pfku.Radian,f64);angle.value=0.5;distance:pfku.Quantity(pfku.Metre,f64);distance.value=2;
+ wh:=convert_unit(PmCheckJoule,hg*angle);ws:=convert_unit(PmCheckJoule,sg*distance);#assert wh.value==6.5 && ws.value==34;
+}

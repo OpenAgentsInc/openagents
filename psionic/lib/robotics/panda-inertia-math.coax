@@ -1,0 +1,61 @@
+// Raw matrix coefficients have explicit BODY/inertial/world conventions.
+#load "panda-inertia-check-fixtures.coax";
+#authority;
+#test "Panda inertia COM and anisotropic inertial frame differ from BODY attitude" {
+ p:PfkPose;p.position.x=1;p.position.y=2;p.position.z=3;p.quaternion=[4]f64.[sqrt(0.5),0,0,sqrt(0.5)];p.rotation=pfk_matrix(p.quaternion);
+ c:=pm_com(p,[3]f64.[4,5,6]);#assert abs(c[0]+4)<1e-14 && abs(c[1]-6)<1e-14 && c[2]==9;
+ p.rotation=[9]f64.[1,0,0,0,1,0,0,0,1];r:=pm_inertia(p,[4]f64.[sqrt(0.5),sqrt(0.5),0,0],[3]f64.[2,3,5]);want:=[9]f64.[2,0,0,0,5,0,0,0,3];for i:0..<9 {#assert abs(r[i]-want[i])<2e-14;}
+ p.rotation=[9]f64.[-10.0/15,2.0/15,11.0/15,10.0/15,-5.0/15,10.0/15,5.0/15,14.0/15,2.0/15];r=pm_inertia(p,[4]f64.[1,0,0,0],[3]f64.[2,3,5]);dense:=[9]f64.[817.0/225,320.0/225,94.0/225,320.0/225,775.0/225,-10.0/225,94.0/225,-10.0/225,658.0/225];for i:0..<9 {#assert abs(r[i]-dense[i])<2e-14;}
+ c=pm_com(p,[3]f64.[4,-5,6]);#assert abs(c[0]-31.0/15)<1e-14 && abs(c[1]-31.0/3)<1e-14 && abs(c[2]-7.0/15)<1e-14;
+ r=pm_inertia(p,[4]f64.[0.25,0.5,0.75,1],[3]f64.[2,3,5]);mixed:=[9]f64.[130498.0/50625,1324.0/10125,-44564.0/50625,1324.0/10125,6187.0/2025,8368.0/10125,-44564.0/50625,8368.0/10125,221077.0/50625];for i:0..<9 {#assert abs(r[i]-mixed[i])<2e-14;}
+}
+#forall "Panda inertia all ancestor masks preserve hinge cross and branch slide columns" mask:0..<512 {
+ p:=pm_cardinal();cols:=pm_columns([3]f64.[10,20,30],mask,p);
+ for j:0..<9 {active:=(mask&(1<<j))!=0;for row:0..<3 {v:f64=0;w:f64=0;if active {if j<7 {if row==0 {v=2*f64(j)-20;}if row==1 {v=10-f64(j);}if row==2 {w=1;}}else {if row==1 {v=1;}}}#assert cols.linear[row*9+j]==v && cols.angular[row*9+j]==w;}}
+}
+#test "Panda inertia dense world axes and linear-angular metric use independent literals" {
+ p:=pm_cardinal();p.arm.links[2].rotation=[9]f64.[-10.0/15,2.0/15,11.0/15,10.0/15,-5.0/15,10.0/15,5.0/15,14.0/15,2.0/15];p.fingers[0].rotation=p.arm.links[2].rotation;p.fingers[2].rotation=[9]f64.[1,0,0,0,0,-1,0,1,0];c:=pm_columns([3]f64.[10,20,30],385,p);
+ #assert abs(c.linear[0]-260.0/15)<1e-13 && abs(c.linear[9]+310.0/15)<1e-13 && abs(c.linear[18]-120.0/15)<1e-13;
+ #assert c.angular[0]==11.0/15 && c.angular[9]==10.0/15 && c.angular[18]==2.0/15;
+ #assert c.linear[7]==2.0/15 && c.linear[16]== -5.0/15 && c.linear[25]==14.0/15;
+ #assert c.linear[8]==0 && c.linear[17]==0 && c.linear[26]==1;
+ p.fingers[2].rotation=[9]f64.[-10.0/15,10.0/15,5.0/15,2.0/15,-5.0/15,14.0/15,11.0/15,10.0/15,2.0/15];c=pm_columns([3]f64.[10,20,30],256,p);#assert c.linear[8]==10.0/15 && c.linear[17]== -5.0/15 && c.linear[26]==10.0/15;
+ p.arm.links[4].rotation=p.arm.links[2].rotation;c=pm_columns([3]f64.[10,20,30],4,p);#assert abs(c.linear[2]-208.0/15)<1e-13 && abs(c.linear[11]+248.0/15)<1e-13 && abs(c.linear[20]-96.0/15)<1e-13;#assert c.angular[11]==10.0/15;
+ a:PmColumns;a.linear[0]=1;a.linear[9]=2;a.linear[18]=3;a.angular[0]=2;a.angular[9]= -1;a.angular[18]=4;a.linear[1]= -2;a.linear[10]=3;a.linear[19]=1;a.angular[1]=3;a.angular[10]=2;a.angular[19]= -1;
+ metric:=pm_metric(2,a,[9]f64.[2,1,0,1,4,2,0,2,6],0,1);#assert metric==13;
+ #assert pm_gravity(2,a,[3]f64.[1,-2,3],0)== -12;
+ for i:0..<27 {a.linear[i]=f64(i)+1;a.angular[i]=f64(i)-13;}#assert pm_metric(3,a,[9]f64.[2,1,0,1,4,2,0,2,6],1,4)==2385;#assert pm_gravity(3,a,[3]f64.[2,-3,5],1)== -213;
+}
+
+pm_com :: (pose:PfkPose,offset:[3]f64)->[3]f64 {
+ return [3]f64.[pose.position.x+pose.rotation[0]*offset[0]+pose.rotation[1]*offset[1]+pose.rotation[2]*offset[2],pose.position.y+pose.rotation[3]*offset[0]+pose.rotation[4]*offset[1]+pose.rotation[5]*offset[2],pose.position.z+pose.rotation[6]*offset[0]+pose.rotation[7]*offset[1]+pose.rotation[8]*offset[2]];
+}
+pm_inertia :: (pose:PfkPose,inertial:[4]f64,principal:[3]f64)->[9]f64 {
+ local:=pfk_matrix(pfk_normalize(inertial).value);world:[9]f64;result:[9]f64;
+ for i:0..<3 {for j:0..<3 {world[i*3+j]=pose.rotation[i*3]*local[j]+pose.rotation[i*3+1]*local[3+j]+pose.rotation[i*3+2]*local[6+j];}}
+ for i:0..<3 {for j:0..<3 {for k:0..<3 {result[i*3+j]+=world[i*3+k]*principal[k]*world[j*3+k];}}}return result;
+}
+pm_columns :: (com:[3]f64,ancestors:int,poses:PffOutput)->PmColumns {
+ c:PmColumns;for joint:0..<7 {if (ancestors&(1<<joint))==0 {continue;}
+  pose:=poses.arm.links[joint+2];ax:=pose.rotation[2];ay:=pose.rotation[5];az:=pose.rotation[8];dx:=com[0]-pose.position.x;dy:=com[1]-pose.position.y;dz:=com[2]-pose.position.z;
+   c.linear[joint]=ay*dz-az*dy;c.linear[9+joint]=az*dx-ax*dz;c.linear[18+joint]=ax*dy-ay*dx;
+   c.angular[joint]=ax;c.angular[9+joint]=ay;c.angular[18+joint]=az;
+ }
+ if (ancestors&128)!=0 {for row:0..<3 {c.linear[row*9+7]=poses.fingers[0].rotation[row*3+1];}}
+ if (ancestors&256)!=0 {for row:0..<3 {c.linear[row*9+8]=poses.fingers[2].rotation[row*3+1];}}return c;
+}
+pm_metric :: (mass:f64,c:PmColumns,inertia:[9]f64,i:int,j:int)->f64 {
+ value:f64=0;for row:0..<3 {value+=mass*c.linear[row*9+i]*c.linear[row*9+j];for col:0..<3 {value+=c.angular[row*9+i]*inertia[row*3+col]*c.angular[col*9+j];}}return value;
+}
+pm_gravity :: (mass:f64,c:PmColumns,gravity:[3]f64,j:int)->f64 {
+ value:f64=0;for row:0..<3 {value-=mass*c.linear[row*9+j]*gravity[row];}return value;
+}
+pm_pack :: (m:[81]f64,g:[9]f64)->PmOutput {
+ out:PmOutput;for i:0..<7 {for j:0..<7 {out.hinge_hinge[i*7+j].value=m[i*9+j];}for j:0..<2 {out.hinge_slide[i*2+j].value=m[i*9+7+j];out.slide_hinge[j*7+i].value=m[(j+7)*9+i];}out.hinge_gravity[i].value=g[i];}
+ for i:0..<2 {for j:0..<2 {out.slide_slide[i*2+j].value=m[(i+7)*9+j+7];}out.slide_gravity[i].value=g[i+7];}return out;
+}
+#test "Panda inertia every flattened block index and generalized gravity lane is preserved" {
+ m:[81]f64;g:[9]f64;for i:0..<81 {m[i]=f64(i)+0.25;}for i:0..<9 {g[i]=f64(i)-0.5;}p:=pm_pack(m,g);
+ for i:0..<7 {for j:0..<7 {#assert p.hinge_hinge[i*7+j].value==f64(i*9+j)+0.25;}for j:0..<2 {#assert p.hinge_slide[i*2+j].value==f64(i*9+7+j)+0.25;#assert p.slide_hinge[j*7+i].value==f64((j+7)*9+i)+0.25;}#assert p.hinge_gravity[i].value==f64(i)-0.5;}
+ for i:0..<2 {for j:0..<2 {#assert p.slide_slide[i*2+j].value==f64((i+7)*9+j+7)+0.25;}#assert p.slide_gravity[i].value==f64(i+7)-0.5;}
+}

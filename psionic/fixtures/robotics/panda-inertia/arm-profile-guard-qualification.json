@@ -1,0 +1,30 @@
+{
+  "schema": "psionic.panda-inertia.guard-followup.v1",
+  "passed": true,
+  "executed_native_record_sha256": "24321469dbb1618ec14c22271f1312d0144cdd54252e9baecba90f3e8e179890",
+  "historical_executed_driver_sha256": "07e01179064f940158c6de4f10b2c087d93c60057750a79f1518025e32850bc5",
+  "current_driver_sha256": "807cf08cda037e83be697cd3c15591d809c8e21f3ea25d62479abb0ed21d596b",
+  "mechanical_reverse_patch_reconstructs_executed_driver_bytes": true,
+  "independent_numeric_recipes_AST_unchanged": true,
+  "newly_explicit_matrix_arm_input": {
+    "path": "psionic/fixtures/robotics/panda-fk/source-profile.json",
+    "sha256": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "expected_from_already_bound_finger_profile": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3"
+  },
+  "checks": [
+    {
+      "name": "actual unchanged exact source profile",
+      "passed": true
+    },
+    {
+      "name": "wrong path",
+      "refused": true
+    },
+    {
+      "name": "wrong hash",
+      "refused": true
+    }
+  ],
+  "no_numerical_FD_native_SDK_or_old_gate_rerun": true,
+  "scope": "Guard/inventory followup only; executed native/source identities in the earlier record are preserved."
+}

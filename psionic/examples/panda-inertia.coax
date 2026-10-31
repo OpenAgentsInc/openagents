@@ -1,0 +1,25 @@
+#import "Basic";
+#load "../lib/robotics/panda-inertia.coax";
+PmJoule :: struct @unit(mass=1,length=2,time=-2,angle=0,numerator=1,denominator=1) {}
+#test "Panda inertia example energy carries kilogram metre second dimensions" {
+ m:pfku.Quantity(pfku.Kilogram,f64);m.value=1.11;v:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Second),f64);v.value=0.02;
+ energy:=convert_unit(PmJoule,m*v*v)*0.5;#assert panda_inertia_micro(energy.value)==222;
+ #assert panda_inertia_micro(1.11)==1110000 && panda_inertia_micro(0)==0 && panda_inertia_micro(-0.000222)== -222;
+}
+panda_inertia_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("fixed robot9: mass metric and zero-rate gravity\n");
+// book:begin kinetic
+ q:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);metric:[1]PmOutput;
+ #assert pm_forward(q[..],slides[..],metric[..])==PfkStatus.ok;
+ // Only the left slide moves: .1kg finger +.01kg tip +1kg armature.
+ speed:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Second),f64);speed.value=0.02;
+ energy:=convert_unit(PmJoule,metric[0].slide_slide[0]*speed*speed)*0.5;
+ #assert panda_inertia_micro(metric[0].slide_slide[0].value)==1110000 && panda_inertia_micro(energy.value)==222;
+ print("left slide effective mass (microkg): %\n",panda_inertia_micro(metric[0].slide_slide[0].value));
+ print("left slide kinetic energy at 20mm/s (microjoules): %\n",panda_inertia_micro(energy.value));
+ print("right-to-left slide coupling (microkg): %\n",panda_inertia_micro(metric[0].slide_slide[2].value));
+// book:end kinetic
+ // Joint4=0 is outside the source arm soft range. This is a metric query.
+ print("zero joint angles are geometry only; no motor command\n");
+}

@@ -196,6 +196,24 @@ inputs. Moving finger inertias affect even the arm mass subblock. These are
 simplified source simulation parameters, not manufacturer measurements or an
 owned articulated/contact/dynamics qualification.
 
+## Panda mass and gravity preserve coordinate dimensions and source scope
+
+The fixed sixteen-body query sums COM translation, principal-frame rotation
+and nine source armatures into the full robot9 metric, including moving fingers.
+Seven radian and two metre coordinates give separate HH/HS/SH/SS typed blocks:
+kg*m^2/rad^2, kg*m/rad, kg*m/rad and kg. Generalized gravity is energy/radian
+for hinges and force for slides. Raw source coefficients use an explicit
+one-radian generator convention; angles are not silently erased.
+
+The public fixed-source forward entry evaluates owned FK and publishes one
+complete result after admission. Source-visible profile/pose arithmetic helpers
+have trusted preconditions; their PODs are forgeable and carry no provenance
+certificate. Independent COM/rotation kinetic and potential differences keep
+their frozen primary step and diagnostic sweep. Five retained zero-rate SDK
+biases qualify gravity only, not velocity-dependent bias, passive/actuator forces,
+contacts, integration, a simulator replacement or hardware. The earlier failed
+sanitizer harness record remains separate from its repaired qualification.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T

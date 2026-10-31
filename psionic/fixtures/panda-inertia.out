@@ -1,0 +1,5 @@
+fixed robot9: mass metric and zero-rate gravity
+left slide effective mass (microkg): 1110000
+left slide kinetic energy at 20mm/s (microjoules): 222
+right-to-left slide coupling (microkg): 0
+zero joint angles are geometry only; no motor command

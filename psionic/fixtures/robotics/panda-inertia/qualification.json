@@ -1,0 +1,776 @@
+{
+  "schema": "psionic.panda-inertia.qualification.v1",
+  "passed": true,
+  "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+    "psionic/tests/robotics/panda_inertia_reference.py": "07e01179064f940158c6de4f10b2c087d93c60057750a79f1518025e32850bc5",
+    "psionic/tests/robotics/panda_inertia_native.c": "96f625c647adfee10099eb6c738fd215122ccb773bbb747ad58e53c566f12617",
+    "psionic/fixtures/robotics/panda-inertia/experiment.json": "2fb53296d3916943007f53c38e66a67c3400b9c3d6ca116ecfe35f1b798b4de6",
+    "psionic/tests/robotics/panda_fingers_reference.py": "1fc68b7ab30b32b4ed3631d62f88ba39e65809011e0ea8d56880b90c8397bfd1",
+    "psionic/tests/robotics/panda_fk_reference.py": "55fdd78689b696d4eb1b0cda1e7ac9c06302c3882441c347e03b7f4c53c6a0ca",
+    "psionic/tests/robotics/panda_inertia_bad_angle.coax": "f6f12842e992a34ac99bb55a2ccbfbd3e9e5db39f9a4fcc69d7b88cef298b4b5",
+    "psionic/tests/robotics/panda_inertia_bad_slide.coax": "3585b2b0441a8756dc4effe7469e86379057acb85721bb7059c425b300323bbc",
+    "psionic/tests/robotics/panda_inertia_bad_mass.coax": "e6e33b87bac9eb22cddd1c7117a9c8089184cbaca687846767b42f6ae671a1d1",
+    "psionic/tests/robotics/panda_inertia_bad_gravity.coax": "847d054d65f28d766bc1729ff800af9917bd7bfed0ba3cd739d2e3cfd0570858"
+  },
+  "experiment_sha256": "2fb53296d3916943007f53c38e66a67c3400b9c3d6ca116ecfe35f1b798b4de6",
+  "case_count": 57,
+  "FD_case_count": 38,
+  "case_sha256": "d517fef912556d8e680411bcd7f59efe30f28c13c8d3396b49dffc94fb8f5147",
+  "source_table_sha256": "efbd953dbe9dda53bb2651b17fec81186ceabff0f8195fe09a9dae1f47cf1050",
+  "source_table_bytes": 1632,
+  "numeric_profile": "Darwin-arm64 F64 separate scalar sin/cos; -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off. Native mode exact-byte identity is target-specific, not R15.",
+  "scope": "Fixed16-body robot9DOF generalized mass metric + zero-velocity gravity only. No velocity bias/forward dynamics/contact/controller/importer/CRBA/RNEA/solver/hardware/#bounded claim.",
+  "SDK_work": "None:405M+45zero-rate bias words reused from the same five frozen original forwards. No SDK/link/import/load/forward/step/render/NN.",
+  "compiled_model_source_metadata": {
+    "body_count": 16,
+    "joint_count": 9,
+    "mass_COM_principal_exact": true,
+    "inertial_quaternions_independently_normalized_exact": true,
+    "ancestor_masks_independent_compiled_tree_exact": true,
+    "addresses_references_axes_armature_gravity_exact": true
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic-panda-inertia-native-v1",
+        "passed": true,
+        "cases": 57,
+        "assertions": 11374,
+        "words_per_case": 90
+      },
+      "C_sha256": "b238299afdbcc7895dd8b8f168d27e977f2cf87883e697c047850a35b5235f99",
+      "header_sha256": "62b6dee21dfc5937d091365dcf8291cf84dd03523829ee52118ec8a19f5d4973",
+      "binary_sha256": "d8929dd694df1d42ff09139e0d387f76324f4f2a8bd9b0a2a5d002d8c0c01cde",
+      "output_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+      "source_table_exact": true,
+      "retained_SDK_M": {
+        "values": 405,
+        "max_abs_error": 4.440892098500626e-15,
+        "atol": 2e-11,
+        "rtol": 0,
+        "max_budget_fraction": 0.0002220446049250313,
+        "passed": true
+      },
+      "retained_SDK_g0": {
+        "values": 45,
+        "max_abs_error": 7.105427357601002e-15,
+        "atol": 2e-10,
+        "rtol": 0,
+        "max_budget_fraction": 3.552713678800501e-05,
+        "passed": true
+      },
+      "independent_FD_sweep": {
+        "0.001": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.0283986622283692e-06,
+          "g_max_abs_error": 8.00077971518931e-06,
+          "within_primary_M_budget": false,
+          "within_primary_g_budget": false
+        },
+        "0.0001": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.0293762287005848e-08,
+          "g_max_abs_error": 8.006141172245407e-08,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-05": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 2.3087487477368995e-10,
+          "g_max_abs_error": 2.929500197978996e-09,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-06": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 2.0361543562330553e-09,
+          "g_max_abs_error": 3.84584808443833e-08,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-07": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.9734077483235524e-08,
+          "g_max_abs_error": 2.9345367025257474e-07,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": false
+        }
+      },
+      "primary_h": 1e-05
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic-panda-inertia-native-v1",
+        "passed": true,
+        "cases": 57,
+        "assertions": 11374,
+        "words_per_case": 90
+      },
+      "C_sha256": "f99c34e1122d730c27faf974975a04f99a9112fe8b6180235709561097f64e50",
+      "header_sha256": "62b6dee21dfc5937d091365dcf8291cf84dd03523829ee52118ec8a19f5d4973",
+      "binary_sha256": "cb1821fd2083571c4694e47c5932765802c03b238dcc53fcc93424f9f8068a33",
+      "output_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+      "source_table_exact": true,
+      "retained_SDK_M": {
+        "values": 405,
+        "max_abs_error": 4.440892098500626e-15,
+        "atol": 2e-11,
+        "rtol": 0,
+        "max_budget_fraction": 0.0002220446049250313,
+        "passed": true
+      },
+      "retained_SDK_g0": {
+        "values": 45,
+        "max_abs_error": 7.105427357601002e-15,
+        "atol": 2e-10,
+        "rtol": 0,
+        "max_budget_fraction": 3.552713678800501e-05,
+        "passed": true
+      },
+      "independent_FD_sweep": {
+        "0.001": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.0283986622283692e-06,
+          "g_max_abs_error": 8.00077971518931e-06,
+          "within_primary_M_budget": false,
+          "within_primary_g_budget": false
+        },
+        "0.0001": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.0293762287005848e-08,
+          "g_max_abs_error": 8.006141172245407e-08,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-05": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 2.3087487477368995e-10,
+          "g_max_abs_error": 2.929500197978996e-09,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-06": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 2.0361543562330553e-09,
+          "g_max_abs_error": 3.84584808443833e-08,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-07": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.9734077483235524e-08,
+          "g_max_abs_error": 2.9345367025257474e-07,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": false
+        }
+      },
+      "primary_h": 1e-05
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic-panda-inertia-native-v1",
+        "passed": true,
+        "cases": 57,
+        "assertions": 11374,
+        "words_per_case": 90
+      },
+      "C_sha256": "b238299afdbcc7895dd8b8f168d27e977f2cf87883e697c047850a35b5235f99",
+      "header_sha256": "62b6dee21dfc5937d091365dcf8291cf84dd03523829ee52118ec8a19f5d4973",
+      "binary_sha256": "ca8a7b64e1ed7c4e33434164182ce517382df48f0634ba16b238534d2d83069c",
+      "output_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+      "source_table_exact": true,
+      "retained_SDK_M": {
+        "values": 405,
+        "max_abs_error": 4.440892098500626e-15,
+        "atol": 2e-11,
+        "rtol": 0,
+        "max_budget_fraction": 0.0002220446049250313,
+        "passed": true
+      },
+      "retained_SDK_g0": {
+        "values": 45,
+        "max_abs_error": 7.105427357601002e-15,
+        "atol": 2e-10,
+        "rtol": 0,
+        "max_budget_fraction": 3.552713678800501e-05,
+        "passed": true
+      },
+      "independent_FD_sweep": {
+        "0.001": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.0283986622283692e-06,
+          "g_max_abs_error": 8.00077971518931e-06,
+          "within_primary_M_budget": false,
+          "within_primary_g_budget": false
+        },
+        "0.0001": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.0293762287005848e-08,
+          "g_max_abs_error": 8.006141172245407e-08,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-05": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 2.3087487477368995e-10,
+          "g_max_abs_error": 2.929500197978996e-09,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-06": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 2.0361543562330553e-09,
+          "g_max_abs_error": 3.84584808443833e-08,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": true
+        },
+        "1e-07": {
+          "cases": 38,
+          "M_values": 3078,
+          "g_values": 342,
+          "M_max_abs_error": 1.9734077483235524e-08,
+          "g_max_abs_error": 2.9345367025257474e-07,
+          "within_primary_M_budget": true,
+          "within_primary_g_budget": false
+        }
+      },
+      "primary_h": 1e-05
+    }
+  ],
+  "commands": [
+    {
+      "name": "compile-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/panda-inertia-native-qualified/debug",
+        "/private/tmp/panda-inertia-native-qualified/debug/panda-inertia.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/tests/robotics/panda_inertia_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-inertia-native-qualified/debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.34220995800569654,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/panda-inertia-native-qualified/debug/native",
+        "/private/tmp/panda-inertia-native-qualified/cases.bin",
+        "/private/tmp/panda-inertia-native-qualified/debug/mass-gravity.f64",
+        "/private/tmp/panda-inertia-native-qualified/debug/profile.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.3329661670140922,
+      "stderr_bytes": 0,
+      "stdout_sha256": "89fa83e318d62e3dbd26cfc2eecd34d7b888f98b6655abfc87d0d97bbdd6db96",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/panda-inertia-native-qualified/release",
+        "/private/tmp/panda-inertia-native-qualified/release/panda-inertia.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/tests/robotics/panda_inertia_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-inertia-native-qualified/release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.5682981670252047,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-inertia-native-qualified/release/native",
+        "/private/tmp/panda-inertia-native-qualified/cases.bin",
+        "/private/tmp/panda-inertia-native-qualified/release/mass-gravity.f64",
+        "/private/tmp/panda-inertia-native-qualified/release/profile.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.3301228749915026,
+      "stderr_bytes": 0,
+      "stdout_sha256": "89fa83e318d62e3dbd26cfc2eecd34d7b888f98b6655abfc87d0d97bbdd6db96",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/panda-inertia-native-qualified/sanitized",
+        "/private/tmp/panda-inertia-native-qualified/sanitized/panda-inertia.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/tests/robotics/panda_inertia_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-inertia-native-qualified/sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 1.0036685829982162,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/panda-inertia-native-qualified/sanitized/native",
+        "/private/tmp/panda-inertia-native-qualified/cases.bin",
+        "/private/tmp/panda-inertia-native-qualified/sanitized/mass-gravity.f64",
+        "/private/tmp/panda-inertia-native-qualified/sanitized/profile.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.4669793749926612,
+      "stderr_bytes": 0,
+      "stdout_sha256": "89fa83e318d62e3dbd26cfc2eecd34d7b888f98b6655abfc87d0d97bbdd6db96",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "source_refusals": [
+    {
+      "name": "angle",
+      "source_sha256": "f6f12842e992a34ac99bb55a2ccbfbd3e9e5db39f9a4fcc69d7b88cef298b4b5",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "stderr_sha256": "a1d2102e513d5083db0d82c36c07aeddfb659aa5fed1a62d8d77185f09efe108",
+      "reused_not_repeated": true
+    },
+    {
+      "name": "slide",
+      "source_sha256": "3585b2b0441a8756dc4effe7469e86379057acb85721bb7059c425b300323bbc",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "stderr_sha256": "a86db923f1edb7bf84e492fef4361e525e5ea3e4d9afd3d8830559678fa18f76",
+      "reused_not_repeated": true
+    },
+    {
+      "name": "mass",
+      "source_sha256": "e6e33b87bac9eb22cddd1c7117a9c8089184cbaca687846767b42f6ae671a1d1",
+      "exit": 1,
+      "diagnostic": "E0330",
+      "stderr_sha256": "422ad89a06f59691ae0681266dc18a9b0a2370b25254abc6dd40b5712108eb1e",
+      "reused_not_repeated": true
+    },
+    {
+      "name": "gravity",
+      "source_sha256": "847d054d65f28d766bc1729ff800af9917bd7bfed0ba3cd739d2e3cfd0570858",
+      "exit": 1,
+      "diagnostic": "E0330",
+      "stderr_sha256": "8ba626091eeea91d312c0d6840ca570f5d50185f6d324beeaf0adb999d87784f",
+      "reused_not_repeated": true
+    }
+  ],
+  "prepared_reuse": {
+    "record_sha256": "1e0a645fddd8be09dd4f771f0a8ef19d5119bac68688fa6c6d52efc9c054a165",
+    "prior_passed": false,
+    "numeric_recipe_AST_exact": true,
+    "experiment_cases_dependencies_exact": true,
+    "repair": "Native refusal helper s+j-7 formed an out-of-bounds intermediate C pointer; changed only to s+(j-7). Failed sanitized receipt preserved. All changed-harness modes are newly qualified; earlier FD/refusal/emission facts reused without repeating them."
+  },
+  "FD_table_sha256": "2d363b217490dbc7dd21aaf1bb28efb17539747dc8a5a51805f247efa8b9b4bc",
+  "reused_emissions": [
+    {
+      "mode": "debug",
+      "C_sha256": "b238299afdbcc7895dd8b8f168d27e977f2cf87883e697c047850a35b5235f99",
+      "header_sha256": "62b6dee21dfc5937d091365dcf8291cf84dd03523829ee52118ec8a19f5d4973",
+      "executed_command": {
+        "name": "emit-debug",
+        "argv": [
+          "/private/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/lib/robotics/panda-inertia.coax",
+          "--library",
+          "--header",
+          "/private/tmp/panda-inertia-native-first/debug/panda-inertia.h"
+        ],
+        "exit": 0,
+        "seconds": 0.3127262920024805,
+        "stderr_bytes": 0,
+        "stdout_sha256": "b238299afdbcc7895dd8b8f168d27e977f2cf87883e697c047850a35b5235f99",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "mode": "release",
+      "C_sha256": "f99c34e1122d730c27faf974975a04f99a9112fe8b6180235709561097f64e50",
+      "header_sha256": "62b6dee21dfc5937d091365dcf8291cf84dd03523829ee52118ec8a19f5d4973",
+      "executed_command": {
+        "name": "emit-release",
+        "argv": [
+          "/private/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/lib/robotics/panda-inertia.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/private/tmp/panda-inertia-native-first/release/panda-inertia.h"
+        ],
+        "exit": 0,
+        "seconds": 0.23599383304826915,
+        "stderr_bytes": 0,
+        "stdout_sha256": "f99c34e1122d730c27faf974975a04f99a9112fe8b6180235709561097f64e50",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "mode": "sanitized",
+      "C_sha256": "b238299afdbcc7895dd8b8f168d27e977f2cf87883e697c047850a35b5235f99",
+      "header_sha256": "62b6dee21dfc5937d091365dcf8291cf84dd03523829ee52118ec8a19f5d4973",
+      "executed_command": {
+        "name": "emit-sanitized",
+        "argv": [
+          "/private/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/lib/robotics/panda-inertia.coax",
+          "--library",
+          "--header",
+          "/private/tmp/panda-inertia-native-first/sanitized/panda-inertia.h"
+        ],
+        "exit": 0,
+        "seconds": 0.27418391697574407,
+        "stderr_bytes": 0,
+        "stdout_sha256": "b238299afdbcc7895dd8b8f168d27e977f2cf87883e697c047850a35b5235f99",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "native_modes_byte_identical": true,
+  "seconds": 3.089339583995752,
+  "focused_source_proofs": {
+    "new_root_mutation": [
+      {
+        "unit": "profile",
+        "source_sha256": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+        "mutants": 38,
+        "killed": 38,
+        "survivors": 0,
+        "log_sha256": "710d5126c3bb21a222c57c4a9df03fb2a230cc2ecf47f380fa6dcf00c9e6e001",
+        "executed_log": "/tmp/panda-inertia-profile-mutation-first.log",
+        "command": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "mutate",
+          "psionic/lib/robotics/panda-inertia-profile.coax",
+          "--library",
+          "--root-only",
+          "--jobs",
+          "2"
+        ]
+      },
+      {
+        "unit": "math",
+        "source_sha256": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+        "mutants": 244,
+        "killed": 244,
+        "survivors": 0,
+        "log_sha256": "be93ab23ce924c6e265749bebff3579beb421e613462f353dc46ff4b46a72e28",
+        "executed_log": "/tmp/panda-inertia-math-mutation-qualified.log",
+        "command": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "mutate",
+          "psionic/lib/robotics/panda-inertia-math.coax",
+          "--library",
+          "--root-only",
+          "--jobs",
+          "2"
+        ]
+      },
+      {
+        "unit": "wrapper",
+        "source_sha256": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+        "mutants": 56,
+        "killed": 56,
+        "survivors": 0,
+        "log_sha256": "99dbf66c7475e37212970072fd7b0b44083214c9e2027b00fd73a5fd4d1fd5f5",
+        "executed_log": "/tmp/panda-inertia-wrapper-mutation-final.log",
+        "command": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "mutate",
+          "psionic/lib/robotics/panda-inertia.coax",
+          "--library",
+          "--root-only",
+          "--jobs",
+          "2"
+        ]
+      }
+    ],
+    "total_mutants": 338,
+    "survivors": 0,
+    "new_check_groups": 9,
+    "new_check_cases": 523,
+    "baseline_checks_passed_in_mutation": true,
+    "source_projection": "Only the three new entry-source procedure units; frozen FK/finger source and old numeric gates are reused, not mutated. No equivalent waivers.",
+    "wrapper_dependency_followup": "Last math edits after wrapper proof added check assertions only; all production procedure bodies remained unchanged; math244/244 subsequently passed.",
+    "unit_energy_work_check": {
+      "source": "psionic/tests/robotics/panda_inertia_unit_checks.coax",
+      "source_sha256": "d80a88b30c2945e1d7036d9e555e815a180ac8c421e96ff82300166eb8ab41b1",
+      "log_sha256": "d49316661c25f7eb98f362e4f73958ac5911bce471c0d70b20d4d38809f4a52b",
+      "checks": 1,
+      "passed": true
+    }
+  },
+  "example": {
+    "passed": true,
+    "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "source_sha256": "e6cd88c33217635397f2b4fddc0a82672f8d28160d0fabe87ae3a8da5d0a9c3a",
+    "prewritten_golden_sha256": "45c71ae9926a37e2c33732bb2b39d7e51552f83304e1b5997105302a549b16bd",
+    "commands": [
+      {
+        "name": "checks",
+        "argv": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "test",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/examples/panda-inertia.coax",
+          "--only",
+          "Panda inertia example"
+        ],
+        "exit": 0,
+        "stderr_bytes": 0
+      },
+      {
+        "name": "debug",
+        "argv": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "run",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/examples/panda-inertia.coax"
+        ],
+        "exit": 0,
+        "stderr_bytes": 0
+      },
+      {
+        "name": "release",
+        "argv": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "run",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/examples/panda-inertia.coax",
+          "--release"
+        ],
+        "exit": 0,
+        "stderr_bytes": 0
+      }
+    ]
+  },
+  "executed_native_record_sha256": "24321469dbb1618ec14c22271f1312d0144cdd54252e9baecba90f3e8e179890",
+  "source_table_origin": "Explicit original XML masses/COMs/principal triples/raw inertial quaternions; compiled SDK placeholders for zero-mass bodies, including eef COM, have no metric contribution. All1632 table bytes independently bound and all normalized inertial orientations matched compiled metadata.",
+  "interpretation": "M9 is the robot subblock in a21DOF source scene, computed by geometric COM kinetic sum with each9DOF armature once. g0 equals source zero-velocity qfrc_bias in the pinned model; no nonzero-velocity bias, passive, actuator, contact or complete forward dynamics claim.",
+  "tooling_guard_followup": {
+    "schema": "psionic.panda-inertia.guard-followup.v1",
+    "passed": true,
+    "executed_native_record_sha256": "24321469dbb1618ec14c22271f1312d0144cdd54252e9baecba90f3e8e179890",
+    "historical_executed_driver_sha256": "07e01179064f940158c6de4f10b2c087d93c60057750a79f1518025e32850bc5",
+    "current_driver_sha256": "807cf08cda037e83be697cd3c15591d809c8e21f3ea25d62479abb0ed21d596b",
+    "mechanical_reverse_patch_reconstructs_executed_driver_bytes": true,
+    "independent_numeric_recipes_AST_unchanged": true,
+    "newly_explicit_matrix_arm_input": {
+      "path": "psionic/fixtures/robotics/panda-fk/source-profile.json",
+      "sha256": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+      "expected_from_already_bound_finger_profile": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3"
+    },
+    "checks": [
+      {
+        "name": "actual unchanged exact source profile",
+        "passed": true
+      },
+      {
+        "name": "wrong path",
+        "refused": true
+      },
+      {
+        "name": "wrong hash",
+        "refused": true
+      }
+    ],
+    "no_numerical_FD_native_SDK_or_old_gate_rerun": true,
+    "scope": "Guard/inventory followup only; executed native/source identities in the earlier record are preserved."
+  },
+  "book_section": {
+    "passed": true,
+    "source_linked_listings": 1,
+    "book_section_sha256": "6de1a31d363a4e073b9ac26f365a89f42c1f0844191e329b998ae1b3ee7cd7ab",
+    "new_wrapper_shell_syntax_passed": true,
+    "full_book_inventory_gate_not_run_parent_owns_shared_manifest": true,
+    "current_prose_listing_and_fences_checked": true
+  },
+  "read_only_independent_reviews": {
+    "robotics_flow": "No mathematical/native/oracle blocker. Correct16-body map skips duplicate grip; parent/mask/body-axis conventions, world-left FD/principal kinetic route, finite references and full coverage checked. No executions.",
+    "robotics_core": "No physics/unit/atomicity blocker. Identified and repaired missing explicit independent arm-profile hash/inventory guard, qualified separately without repeating numeric proof. Helpers remain source-visible trusted-input arithmetic, not sealed provenance."
+  },
+  "finished_scope_inventory": {
+    "product_files": [
+      "psionic/lib/robotics/panda-inertia-check-fixtures.coax",
+      "psionic/lib/robotics/panda-inertia-math.coax",
+      "psionic/lib/robotics/panda-inertia-profile.coax",
+      "psionic/lib/robotics/panda-inertia-types.coax",
+      "psionic/lib/robotics/panda-inertia.coax"
+    ],
+    "test_files": [
+      "psionic/tests/robotics/panda_inertia_bad_angle.coax",
+      "psionic/tests/robotics/panda_inertia_bad_gravity.coax",
+      "psionic/tests/robotics/panda_inertia_bad_mass.coax",
+      "psionic/tests/robotics/panda_inertia_bad_slide.coax",
+      "psionic/tests/robotics/panda_inertia_check.sh",
+      "psionic/tests/robotics/panda_inertia_native.c",
+      "psionic/tests/robotics/panda_inertia_reference.py",
+      "psionic/tests/robotics/panda_inertia_unit_checks.coax"
+    ],
+    "example": "psionic/examples/panda-inertia.coax",
+    "golden": "psionic/fixtures/panda-inertia.out",
+    "parent_owned_book_section": "/tmp/panda-inertia-book-section.md"
+  },
+  "tooling_followups": [
+    {
+      "schema": "psionic.panda-inertia.guard-followup.v1",
+      "passed": true,
+      "executed_native_record_sha256": "24321469dbb1618ec14c22271f1312d0144cdd54252e9baecba90f3e8e179890",
+      "historical_executed_driver_sha256": "07e01179064f940158c6de4f10b2c087d93c60057750a79f1518025e32850bc5",
+      "current_driver_sha256": "807cf08cda037e83be697cd3c15591d809c8e21f3ea25d62479abb0ed21d596b",
+      "mechanical_reverse_patch_reconstructs_executed_driver_bytes": true,
+      "independent_numeric_recipes_AST_unchanged": true,
+      "newly_explicit_matrix_arm_input": {
+        "path": "psionic/fixtures/robotics/panda-fk/source-profile.json",
+        "sha256": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+        "expected_from_already_bound_finger_profile": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3"
+      },
+      "checks": [
+        {
+          "name": "actual unchanged exact source profile",
+          "passed": true
+        },
+        {
+          "name": "wrong path",
+          "refused": true
+        },
+        {
+          "name": "wrong hash",
+          "refused": true
+        }
+      ],
+      "no_numerical_FD_native_SDK_or_old_gate_rerun": true,
+      "scope": "Guard/inventory followup only; executed native/source identities in the earlier record are preserved."
+    },
+    {
+      "schema": "psionic.panda-inertia.finite-guard-followup.v1",
+      "passed": true,
+      "previous_guard_driver_sha256": "807cf08cda037e83be697cd3c15591d809c8e21f3ea25d62479abb0ed21d596b",
+      "current_driver_sha256": "bd8881392adad685176cdf51df647dd8b0901a8c0e7775dd4f71ebf7e902760c",
+      "mechanical_reverse_patch_reconstructs_previous_guard_driver_bytes": true,
+      "independent_numeric_and_arm_profile_guard_recipes_AST_unchanged": true,
+      "checks": [
+        {
+          "name": "debug cached all finite",
+          "words": 5130,
+          "artifact_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+          "passed": true
+        },
+        {
+          "name": "release cached all finite",
+          "words": 5130,
+          "artifact_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+          "passed": true
+        },
+        {
+          "name": "sanitized cached all finite",
+          "words": 5130,
+          "artifact_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+          "passed": true
+        },
+        {
+          "name": "late FD actual nonfinite nan",
+          "refused": true
+        },
+        {
+          "name": "late FD actual nonfinite inf",
+          "refused": true
+        },
+        {
+          "name": "late FD actual nonfinite -inf",
+          "refused": true
+        },
+        {
+          "name": "wrong complete output extent",
+          "refused": true
+        },
+        {
+          "name": "wrong complete output extent",
+          "refused": true
+        }
+      ],
+      "explicit_finite_reference_words": {
+        "FD_expected": 17100,
+        "retained_SDK": 450,
+        "decoded_native_actual_per_mode": 5130,
+        "modes": 3
+      },
+      "executed_native_record_sha256": "24321469dbb1618ec14c22271f1312d0144cdd54252e9baecba90f3e8e179890",
+      "no_native_FD_SDK_numeric_or_mutation_rerun": true
+    }
+  ],
+  "current_tooling_driver_sha256": "bd8881392adad685176cdf51df647dd8b0901a8c0e7775dd4f71ebf7e902760c",
+  "trusted_helper_boundary": "PmProfile/pm_sum_owned remain unsealed Coax-source-visible trusted valid-pose/fixed-profile arithmetic helpers. Only the exported fixed-source pm_forward constructs/adopts the internal profile and performs its admitted-forward contract; output POD fields are forgeable and not provenance certificates."
+}

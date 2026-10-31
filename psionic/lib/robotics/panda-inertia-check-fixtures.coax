@@ -1,0 +1,11 @@
+#load "panda-inertia-types.coax";
+pm_poison :: ()->PmOutput {
+ p:PmOutput;for i:0..<49 {p.hinge_hinge[i].value= -100-f64(i);}for i:0..<14 {p.hinge_slide[i].value= -200-f64(i);p.slide_hinge[i].value= -300-f64(i);}for i:0..<4 {p.slide_slide[i].value= -400-f64(i);}for i:0..<7 {p.hinge_gravity[i].value= -500-f64(i);}for i:0..<2 {p.slide_gravity[i].value= -600-f64(i);}return p;
+}
+pm_same :: (a:PmOutput,b:PmOutput) {
+ for i:0..<49 {#assert f64_bits(a.hinge_hinge[i].value)==f64_bits(b.hinge_hinge[i].value);}for i:0..<14 {#assert f64_bits(a.hinge_slide[i].value)==f64_bits(b.hinge_slide[i].value);#assert f64_bits(a.slide_hinge[i].value)==f64_bits(b.slide_hinge[i].value);}for i:0..<4 {#assert f64_bits(a.slide_slide[i].value)==f64_bits(b.slide_slide[i].value);}for i:0..<7 {#assert f64_bits(a.hinge_gravity[i].value)==f64_bits(b.hinge_gravity[i].value);}for i:0..<2 {#assert f64_bits(a.slide_gravity[i].value)==f64_bits(b.slide_gravity[i].value);}
+}
+pm_cardinal :: ()->PffOutput {
+ p:PffOutput;for i:0..<12 {p.arm.links[i].quaternion[0]=1;p.arm.links[i].rotation=[9]f64.[1,0,0,0,1,0,0,0,1];}for i:0..<4 {p.fingers[i].quaternion[0]=1;p.fingers[i].rotation=[9]f64.[1,0,0,0,1,0,0,0,1];}
+ for i:0..<7 {p.arm.links[2+i].position.x=f64(i);p.arm.links[2+i].position.y=2*f64(i);p.arm.links[2+i].position.z=3*f64(i);}return p;
+}

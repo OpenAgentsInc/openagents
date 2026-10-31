@@ -903,6 +903,111 @@ These source-file parameters are not manufacturer measurements. The pure FK
 query also supplies no sensor generation or clock stamp; reference poses and
 coordinates must describe the same fresh state.
 
+## What mass means for nine different coordinates
+
+We can now ask how much kinetic energy the owned Panda geometry assigns to
+joint motion. Seven coordinates are radians and two are metres. That makes
+the answer a generalized mass matrix rather than one weight in kilograms.
+The implementation is a direct sum over the sixteen source robot bodies:
+their COM translation, rotation about their own inertial frames, and the nine
+source armature coefficients. It computes a matrix and gravitational
+potential gradient; it does not advance physics.
+
+The exact original simulation inertials matter. The fixed gripper has an
+anisotropic inertia whose principal axes have a different orientation from
+its BODY frame. Each finger and fixed tip moves mass with its slide. Omitting
+those descendants would change even the seven-by-seven arm block. The source
+numbers are deliberately simple simulation-file parameters, not measurements
+of a physical Franka.
+
+For body b, let its world COM be c_b, its COM linear Jacobian Jv_b and its
+angular Jacobian Jw_b. Rotate the principal inertia from its declared inertial
+frame into the world. The coefficient calculation is:
+
+```jai
+M[i,j] = sum_b(mass_b * dot(Jv_b[i], Jv_b[j])
+             + dot(Jw_b[i], I_world_b * Jw_b[j]));
+M[i,i] += armature[i];
+gravity[i] = -sum_b(mass_b * dot(Jv_b[i], world_gravity));
+```
+
+These equations use an explicit one-radian generator convention. Actual
+Coax quantities keep radians as an angle dimension: the hinge/hinge block is
+kg·m²/rad², hinge/slide and slide/hinge are kg·m/rad, and slide/slide is kg.
+Hinge gravity is energy per radian; slide gravity is force. The four typed
+blocks materialize all 81 entries. Their names do not silently turn angles
+into dimensionless numbers or claim that raw attitude arrays implement a
+generic frame system.
+
+The pure public query takes seven radian coordinates, two metre coordinates
+and one output. It calls owned finger FK internally, constructs the entire
+metric privately and publishes once. Bad shapes or numbers preserve the
+caller's output. It inherits the numerical ±100rad/±1m domain; that is a
+mathematical query domain, not permission to send such coordinates to motors.
+The zero pose used below has joint4 outside its physical source soft range.
+`PmProfile` and `pm_sum_owned` remain source-visible low-level Coax helpers
+with trusted valid-pose/profile preconditions. They do not admit or authenticate
+arbitrary caller PODs. The exported fixed-source `pm_forward` constructs its
+own profile; omitting a helper from the C header does not seal the Coax module.
+
+For a simple independent calculation, move only the left slide at 20mm/s.
+Its effective diagonal is .1kg finger +.01kg tip +1kg source armature:
+1.11kg. Half that times the squared speed is .000222 joules. The right slide
+belongs to another branch, so its direct cross-slide metric entry is zero.
+
+<!-- source: psionic/examples/panda-inertia.coax kinetic -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);metric:[1]PmOutput;
+ #assert pm_forward(q[..],slides[..],metric[..])==PfkStatus.ok;
+ // Only the left slide moves: .1kg finger +.01kg tip +1kg armature.
+ speed:pfku.Quantity(UnitQuotient(pfku.Metre,pfku.Second),f64);speed.value=0.02;
+ energy:=convert_unit(PmJoule,metric[0].slide_slide[0]*speed*speed)*0.5;
+ #assert panda_inertia_micro(metric[0].slide_slide[0].value)==1110000 && panda_inertia_micro(energy.value)==222;
+ print("left slide effective mass (microkg): %\n",panda_inertia_micro(metric[0].slide_slide[0].value));
+ print("left slide kinetic energy at 20mm/s (microjoules): %\n",panda_inertia_micro(energy.value));
+ print("right-to-left slide coupling (microkg): %\n",panda_inertia_micro(metric[0].slide_slide[2].value));
+```
+
+Run the checked example and the new focused native query with a qualified
+compiler:
+
+```shell
+coax/bin/coax run psionic/examples/panda-inertia.coax
+coax/bin/coax test psionic/tests/robotics/panda_inertia_unit_checks.coax --only "Panda inertia typed blocks"
+COAX=coax/bin/coax bash psionic/tests/robotics/panda_inertia_check.sh /tmp/new-panda-inertia-proof
+```
+
+The same five original SDK forward captures already supplied a nine-by-nine
+mass block and nine bias words each. Their velocities were all zero, making
+their bias the gravity target for this pinned model. We reuse all 405 mass
+and 45 gravity coefficients: maximum errors are 4.44e-15 and 7.11e-15 under
+the bounds fixed before comparison. No new SDK, renderer or neural inference
+runs here.
+
+A separate homogeneous-matrix reference differentiates COM positions and
+world-left rotations, then evaluates kinetic energy in principal coordinates
+and gravitational potential differences. It does not copy the product's
+cross-product Jacobian or world-inertia implementation. Its preselected
+h=1e-5 passes the frozen mass/gravity difference budgets. The complete step
+sweep stays in the record, including larger/smaller steps that miss those
+primary budgets. These derivatives describe the smooth geometric model;
+they do not differentiate a rounded floating-point program or admission.
+
+Nine new check groups, 338 focused mutants with zero survivors, four source
+unit refusals and three native modes qualify this query. The native 57-case
+outputs match byte for byte under the stated Darwin-arm64 scalar-libm profile.
+The first sanitizer attempt found a pointer bug in the new C test harness;
+its failed record is retained, and the repaired harness passes. Numeric
+references were reused by exact identity rather than recomputed.
+
+This mass-and-gravity slice still lacks velocity-dependent bias, passive and
+actuator force, contact, constraints and integration. The controller's existing
+nonzero-velocity bias snapshots are not gravity-only targets. Combining these
+pieces into a replacement simulator requires those later checks, synchronized
+finger state and a new whole-loop qualification. See the
+[qualification receipt](../fixtures/robotics/panda-inertia/qualification.json) for exact source,
+reference, compiler, numerical-profile and failure-history records.
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

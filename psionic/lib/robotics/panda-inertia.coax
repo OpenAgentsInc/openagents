@@ -1,0 +1,47 @@
+// Fixed16-body geometric COM kinetic sum, not CRBA/RNEA or forward dynamics.
+#load "panda-inertia-profile.coax";
+#load "panda-inertia-math.coax";
+#authority;
+#test "Panda inertia shapes and delegated arm then slide refusal are atomic" {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);out:=[2]PmOutput.[pm_poison(),pm_poison()];old:=out[0];
+ #assert pm_forward(q[0..<6],s[..],out[0..<1])==PfkStatus.shape;pm_same(out[0],old);
+ #assert pm_forward(q[..],s[0..<1],out[0..<1])==PfkStatus.shape;pm_same(out[0],old);
+ #assert pm_forward(q[..],s[..],out[0..<0])==PfkStatus.shape;pm_same(out[0],old);
+ #assert pm_forward(q[..],s[..],out[..])==PfkStatus.shape;pm_same(out[0],old);pm_same(out[1],old);
+ q[0].value=101;s[0].value=2;#assert pm_forward(q[..],s[..],out[0..<1])==PfkStatus.range;pm_same(out[0],old);
+ q[0].value=0;#assert pm_forward(q[..],s[..],out[0..<1])==PfkStatus.range;pm_same(out[0],old);
+ rawq:[7]f64;raws:[2]f64;#assert pm_forward_raw(rawq[0..<6],raws[..],out[0..<1])==PfkStatus.shape;pm_same(out[0],old);
+ #assert pm_forward_raw(rawq[..],raws[0..<1],out[0..<1])==PfkStatus.shape;pm_same(out[0],old);
+ #assert pm_forward_raw(rawq[..],raws[..],out[..])==PfkStatus.shape;pm_same(out[0],old);
+}
+#test "Panda inertia single anisotropic body metric armature gravity and every output index have literal values" {
+ poses:=pm_cardinal();p:PmProfile;for i:0..<16 {p.bodies[i].inertial[0]=1;}p.bodies[0].mass=2;p.bodies[0].com=[3]f64.[10,20,30];p.bodies[0].principal=[3]f64.[2,3,5];p.bodies[0].ancestors=511;p.gravity=[3]f64.[1,-2,3];for i:0..<9 {p.armature[i]=f64(i)+1;}
+ out:=pm_sum_owned(poses,p);
+ for i:0..<7 {for j:0..<7 {want:=2*((2*f64(i)-20)*(2*f64(j)-20)+(10-f64(i))*(10-f64(j)))+5;if i==j {want+=f64(i)+1;}#assert out.hinge_hinge[i*7+j].value==want;}for j:0..<2 {#assert out.hinge_slide[i*2+j].value==2*(10-f64(i));#assert out.slide_hinge[j*7+i].value==2*(10-f64(i));}#assert out.hinge_gravity[i].value==80-8*f64(i);}
+ for i:0..<2 {for j:0..<2 {want:f64=2;if i==j {want+=f64(i)+8;}#assert out.slide_slide[i*2+j].value==want;}#assert out.slide_gravity[i].value==4;}
+}
+#test "Panda inertia actual model has armature positive metric and independent finger branches" {
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);out:[1]PmOutput;
+ q[0].value=0.2;q[3].value= -2.1;s[0].value=0.013;s[1].value= -0.027;#assert pm_forward(q[..],s[..],out[..])==PfkStatus.ok;p:=pm_profile();
+ for i:0..<7 {#assert out[0].hinge_hinge[i*7+i].value>=p.armature[i];for j:0..<7 {#assert out[0].hinge_hinge[i*7+j].value==out[0].hinge_hinge[j*7+i].value;}for j:0..<2 {#assert out[0].hinge_slide[i*2+j].value==out[0].slide_hinge[j*7+i].value;}}
+ #assert abs(out[0].slide_slide[0].value-1.11)<1e-14 && abs(out[0].slide_slide[3].value-1.11)<1e-14 && out[0].slide_slide[1].value==0 && out[0].slide_slide[2].value==0;
+ rawq:=[7]f64.[0.2,0,0,-2.1,0,0,0];raws:=[2]f64.[0.013,-0.027];b:[1]PmOutput;#assert pm_forward_raw(rawq[..],raws[..],b[..])==PfkStatus.ok;pm_same(out[0],b[0]);
+}
+#forall "Panda inertia each selected finger body supplies its own COM position" finger:0..<4 {
+ poses:=pm_cardinal();poses.fingers[finger].position.x=4+f64(finger);poses.fingers[finger].position.y=5+2*f64(finger);poses.fingers[finger].position.z=6+3*f64(finger);
+ p:PmProfile;for i:0..<16 {p.bodies[i].inertial[0]=1;}p.bodies[12+finger].mass=1;p.bodies[12+finger].ancestors=1;p.gravity=[3]f64.[1,2,3];out:=pm_sum_owned(poses,p);x:=4+f64(finger);y:=5+2*f64(finger);#assert out.hinge_hinge[0].value==x*x+y*y && out.hinge_gravity[0].value== -3;
+}
+
+pm_sum_owned :: (poses:PffOutput,profile:PmProfile)->PmOutput {
+ m:[81]f64;g:[9]f64;for body:0..<16 {pose:PfkPose;if body<12 {pose=poses.arm.links[body];}else {pose=poses.fingers[body-12];}b:=profile.bodies[body];com:=pm_com(pose,b.com);inertia:=pm_inertia(pose,b.inertial,b.principal);columns:=pm_columns(com,b.ancestors,poses);
+  for i:0..<9 {g[i]+=pm_gravity(b.mass,columns,profile.gravity,i);for j:i..<9 {m[i*9+j]+=pm_metric(b.mass,columns,inertia,i,j);}}
+ }
+ for i:0..<9 {m[i*9+i]+=profile.armature[i];for j:i+1..<9 {m[j*9+i]=m[i*9+j];}}return pm_pack(m,g);
+}
+pm_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),slides:[]pfku.Quantity(pfku.Metre,f64),output:[]PmOutput)->PfkStatus #export_c {
+ if output.count!=1 {return PfkStatus.shape;}poses:[1]PffOutput;status:=pff_forward(angles,slides,poses[..]);if status!=PfkStatus.ok {return status;}
+ fresh:=pm_sum_owned(poses[0],pm_profile());output[0]=fresh;return PfkStatus.ok;
+}
+pm_forward_raw :: (radians:[]f64,metres:[]f64,output:[]PmOutput)->PfkStatus #export_c {
+ if radians.count!=7 || metres.count!=2 {return PfkStatus.shape;}q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);for i:0..<7 {q[i].value=radians[i];}for i:0..<2 {s[i].value=metres[i];}return pm_forward(q[..],s[..],output);
+}

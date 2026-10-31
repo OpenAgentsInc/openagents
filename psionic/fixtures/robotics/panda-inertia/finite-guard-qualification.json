@@ -1,0 +1,56 @@
+{
+  "schema": "psionic.panda-inertia.finite-guard-followup.v1",
+  "passed": true,
+  "previous_guard_driver_sha256": "807cf08cda037e83be697cd3c15591d809c8e21f3ea25d62479abb0ed21d596b",
+  "current_driver_sha256": "bd8881392adad685176cdf51df647dd8b0901a8c0e7775dd4f71ebf7e902760c",
+  "mechanical_reverse_patch_reconstructs_previous_guard_driver_bytes": true,
+  "independent_numeric_and_arm_profile_guard_recipes_AST_unchanged": true,
+  "checks": [
+    {
+      "name": "debug cached all finite",
+      "words": 5130,
+      "artifact_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+      "passed": true
+    },
+    {
+      "name": "release cached all finite",
+      "words": 5130,
+      "artifact_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+      "passed": true
+    },
+    {
+      "name": "sanitized cached all finite",
+      "words": 5130,
+      "artifact_sha256": "74fdc34dae5342c6d0e7a09e975a171fbe6fd9ffd64adf1e42cc19fa6c3a4062",
+      "passed": true
+    },
+    {
+      "name": "late FD actual nonfinite nan",
+      "refused": true
+    },
+    {
+      "name": "late FD actual nonfinite inf",
+      "refused": true
+    },
+    {
+      "name": "late FD actual nonfinite -inf",
+      "refused": true
+    },
+    {
+      "name": "wrong complete output extent",
+      "refused": true
+    },
+    {
+      "name": "wrong complete output extent",
+      "refused": true
+    }
+  ],
+  "explicit_finite_reference_words": {
+    "FD_expected": 17100,
+    "retained_SDK": 450,
+    "decoded_native_actual_per_mode": 5130,
+    "modes": 3
+  },
+  "executed_native_record_sha256": "24321469dbb1618ec14c22271f1312d0144cdd54252e9baecba90f3e8e179890",
+  "no_native_FD_SDK_numeric_or_mutation_rerun": true
+}

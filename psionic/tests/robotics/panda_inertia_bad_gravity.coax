@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-inertia-types.coax";
+wrong :: (p:PmOutput)->pfku.Quantity(PmSlideGravity,f64) {return p.hinge_gravity[0];}

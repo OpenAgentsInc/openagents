@@ -1,0 +1,17 @@
+// Fixed source-coefficient metric. Angles remain a physical dimension.
+#load "panda-fingers-chain.coax";
+PmHingeInertia :: struct @unit(mass=1,length=2,time=0,angle=-2,numerator=1,denominator=1) {}
+PmCrossInertia :: struct @unit(mass=1,length=1,time=0,angle=-1,numerator=1,denominator=1) {}
+PmHingeGravity :: struct @unit(mass=1,length=2,time=-2,angle=-1,numerator=1,denominator=1) {}
+PmSlideGravity :: struct @unit(mass=1,length=1,time=-2,angle=0,numerator=1,denominator=1) {}
+PmBody :: struct {mass:f64;com:[3]f64;inertial:[4]f64;principal:[3]f64;ancestors:int;}
+PmProfile :: struct {bodies:[16]PmBody;armature:[9]f64;gravity:[3]f64;}
+PmColumns :: struct {linear:[27]f64;angular:[27]f64;}
+PmOutput :: struct {
+ hinge_hinge:[49]pfku.Quantity(PmHingeInertia,f64);
+ hinge_slide:[14]pfku.Quantity(PmCrossInertia,f64);
+ slide_hinge:[14]pfku.Quantity(PmCrossInertia,f64);
+ slide_slide:[4]pfku.Quantity(pfku.Kilogram,f64);
+ hinge_gravity:[7]pfku.Quantity(PmHingeGravity,f64);
+ slide_gravity:[2]pfku.Quantity(PmSlideGravity,f64);
+}

@@ -1100,6 +1100,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/panda-inertia.coax",
+      "chapter": "psionic/book/ch170-close-the-simulated-control-loop.md",
+      "stdout": "psionic/fixtures/panda-inertia.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

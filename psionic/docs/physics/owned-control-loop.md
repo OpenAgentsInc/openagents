@@ -52,9 +52,16 @@ import/admitted inertias, forward dynamics, contacts and rendered observations.
 The [four-body finger extension](../../fixtures/robotics/panda-fingers/README.md)
 now adds both metre-valued slides with an unchanged arm API. The same five
 new SDK forwards retain compiled inertias and a separately versioned nine-joint
-mass/bias reference; owned mass/gravity arithmetic remains the next component
-qualification. Moving finger inertias cannot be omitted from the arm mass block.
- The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)
+mass/bias reference. The [owned nine-coordinate metric and zero-rate gravity](../../fixtures/robotics/panda-inertia/README.md)
+now qualify the same fixed sixteen-body model, including finger inertias and
+source armatures. Mixed-unit blocks preserve radians/metres; independent
+kinetic/potential differences and retained SDK values qualify the arithmetic.
+The next component is velocity-dependent bias and applied-force/forward-dynamics
+assembly, followed by contact and integration; a gravity-only query cannot
+replace the controller's nonzero-velocity bias sample. The source-visible low-level
+profile/pose helpers remain trusted inputs rather than an arbitrary-POD admission
+API. Moving finger inertias cannot be omitted from the arm mass block.
+The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)
 now reuses the fixed FK profile, with separate metre/radian and angular-ratio
 blocks. Its numerical derivative qualification does not admit control commands. Compare small components with the SDK before
 running expensive whole episodes. A field layout alone is not embodiment parity.

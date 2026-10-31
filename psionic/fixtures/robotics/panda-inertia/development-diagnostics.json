@@ -1,0 +1,39 @@
+{
+  "schema": "psionic.panda-inertia.development-diagnostics.v1",
+  "historical_logs": [
+    {
+      "path": "/tmp/panda-inertia-math-mutation-first.log",
+      "sha256": "691f5aefa4c40a8c5d011073420c92a497b25783f923375aaeff92f385681a3f",
+      "result": "218 mutants, 196 killed, 22 survived",
+      "meaning": "Initial sparse authored fixtures or redundant code, followed by qualified new source/checks; no waiver. The checks log includes a corrected independent literal2385 (earlier2439 was arithmetic in its expected value)."
+    },
+    {
+      "path": "/tmp/panda-inertia-math-mutation-final.log",
+      "sha256": "beecafd4e006f4ada96a566b4f61e413e6c3efae36bd6ec2d4ced3eb120f8f9a",
+      "result": "244 mutants, 240 killed, 4 survived",
+      "meaning": "Initial sparse authored fixtures or redundant code, followed by qualified new source/checks; no waiver. The checks log includes a corrected independent literal2385 (earlier2439 was arithmetic in its expected value)."
+    },
+    {
+      "path": "/tmp/panda-inertia-wrapper-mutation-first.log",
+      "sha256": "8d63e5d79a7cf9cc7337138b7f44ed6dd62bc217dcb7d470e84d5741da176e72",
+      "result": "62 mutants, 60 killed, 2 survived",
+      "meaning": "Initial sparse authored fixtures or redundant code, followed by qualified new source/checks; no waiver. The checks log includes a corrected independent literal2385 (earlier2439 was arithmetic in its expected value)."
+    },
+    {
+      "path": "/tmp/panda-inertia-checks-final.log",
+      "sha256": "776b3314c6315ef91dd9ef419c680f581b1a881e5385db89be00b02288637069",
+      "result": null,
+      "meaning": "Initial sparse authored fixtures or redundant code, followed by qualified new source/checks; no waiver. The checks log includes a corrected independent literal2385 (earlier2439 was arithmetic in its expected value)."
+    }
+  ],
+  "native_failure": "initial-harness-diagnostic.json preserves the first false record. UBSan found s+j-7 intermediate-pointer bounds in test tooling; fixed to s+(j-7). Product/FD/retained SDK calculations unchanged. Final changed harness qualifies all three native modes.",
+  "prepared_FD_refusal_and_emission_reuse": {
+    "record_sha256": "1e0a645fddd8be09dd4f771f0a8ef19d5119bac68688fa6c6d52efc9c054a165",
+    "prior_passed": false,
+    "numeric_recipe_AST_exact": true,
+    "experiment_cases_dependencies_exact": true,
+    "repair": "Native refusal helper s+j-7 formed an out-of-bounds intermediate C pointer; changed only to s+(j-7). Failed sanitized receipt preserved. All changed-harness modes are newly qualified; earlier FD/refusal/emission facts reused without repeating them."
+  },
+  "budgets_changed": false,
+  "equivalent_waivers": 0
+}
