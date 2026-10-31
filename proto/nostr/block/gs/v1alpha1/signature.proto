@@ -1,0 +1,22 @@
+syntax = "proto3";
+package nostr.block.gs.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/block/oa/v1alpha1/owner.proto";
+
+// NIP-GS v1: an unverified projection of a detached git-object signature.
+// The armored bytes git stores in the commit or tag are authoritative and are
+// retained exactly; decoding does not lift the key, verify `sig` or the owner
+// attestation, read the payload, or decide trust.
+message GitSignature {
+  // BEGIN line, one unwrapped base64 line of at most 4096 bytes, END line, one
+  // LF each, and the single extra LF a verifier must accept: 30+1+4096+1+28+1+1.
+  optional bytes armor = 1 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=4158];
+  optional uint32 version = 2 [(openagents.options.v1alpha1.required_value)=true]; // `v`; only 1 is defined
+  optional bytes pubkey = 3 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.exact_bytes)=32]; // `pk`
+  optional bytes signature = 4 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.exact_bytes)=64]; // `sig`
+  optional uint32 created_at = 5 [(openagents.options.v1alpha1.required_value)=true]; // `t`, signer-claimed
+  // `oa`, absent when the envelope has none. Its exact conditions string is
+  // part of both the NIP-GS and the NIP-OA preimages.
+  nostr.block.oa.v1alpha1.OwnerAttestation owner = 6;
+}

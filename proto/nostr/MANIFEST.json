@@ -156,6 +156,18 @@
       ]
     },
     {
+      "package": "nostr.block.gs.v1alpha1",
+      "proto": "nostr/block/gs/v1alpha1/signature.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-GS.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "d1cc73bbfc7fc8ef54afd509c868500938a43857726deafcb48e181e8abbc894"
+        }
+      ]
+    },
+    {
       "package": "nostr.block.mp.v1alpha1",
       "proto": "nostr/block/mp/v1alpha1/project.proto",
       "status": "alpha",

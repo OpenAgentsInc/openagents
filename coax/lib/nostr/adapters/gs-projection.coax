@@ -1,0 +1,151 @@
+// An untrusted, source-preserving NIP-GS git-signature projection. A matching
+// DTO means the armored bytes are the one canonical encoding of these values
+// (NIP-GS verification steps 1-4: armor, unwrapped base64, compact JSON in
+// v, pk, sig, t, oa order, no unknown or duplicate keys, 2048 decoded bytes).
+// It is not lift_x, a BIP-340 check of sig or of the owner attestation, a
+// NIP-OA conditions evaluation, a payload hash or a trust decision. The
+// protobuf wire is borrowed and must remain stable while the result is used.
+//
+// Rebuilding the envelope from the projection and comparing bytes, instead of
+// parsing the armor, leaves no malleable input: base64 padding bits, number
+// spellings, escapes, key order and whitespace all fail the comparison.
+// Conditions needing a JSON escape (a quote, a backslash, a control or DEL
+// byte) or non-ASCII are refused; NIP-OA conditions are ASCII clauses.
+//
+// Checks: coax test coax/lib/nostr/adapters/gs-projection.coax
+#load "gs-proto-import.coax";
+#load "../../../tests/nostr/gs_signature_fixtures.coax";
+#load "../../../tests/nostr/gs_signature_checks.coax";
+#authority;
+
+GSA_BEGIN :: "-----BEGIN SIGNED MESSAGE-----\n";
+GSA_END :: "\n-----END SIGNED MESSAGE-----\n";
+GSA_JSON_MAX :: 2048;   // decoded envelope bytes
+GSA_ARMOR_MAX :: 4158;  // the profile's armor bound
+
+GsaSignature :: struct {armor:[]u8;consistent:bool;owner:bool;}
+
+// Each writer returns the next offset, or -1 once anything fails to fit.
+gsa_put :: (out:[]u8,at:int,s:string)->int {
+ if at<0 || at+s.count>out.count {return -1;}
+ for i:0..<s.count {out[at+i]=s[i];}
+ return at+s.count;
+}
+gsa_hex :: (out:[]u8,at:int,b:[]u8)->int {
+ digits:="0123456789abcdef";
+ if at<0 || at+2*b.count>out.count {return -1;}
+ for i:0..<b.count {out[at+2*i]=digits[cast(int)(b[i]>>4)];out[at+2*i+1]=digits[cast(int)(b[i]&15)];}
+ return at+2*b.count;
+}
+gsa_decimal :: (out:[]u8,at:int,v:u32)->int {
+ digits:[10]u8;n:=0;x:=v;
+ while true {digits[n]=cast(u8)(48+cast(int)(x%10));n+=1;x/=10;if x==0 {break;}}
+ if at<0 || at+n>out.count {return -1;}
+ for i:0..<n {out[at+i]=digits[n-1-i];}
+ return at+n;
+}
+gsa_base64 :: (out:[]u8,at:int,data:[]u8)->int {
+ alphabet:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+ if at<0 || at+(data.count+2)/3*4>out.count {return -1;}
+ i:=0;o:=at;
+ while i<data.count {
+  // A missing byte reads as zero bits only where its bits are used.
+  a:=cast(int)data[i];
+  high:=ifx i+1<data.count then cast(int)data[i+1]>>4 else 0;
+  out[o]=alphabet[a>>2];out[o+1]=alphabet[((a&3)<<4)|high];
+  if i+1<data.count {
+   low:=ifx i+2<data.count then cast(int)data[i+2]>>6 else 0;
+   out[o+2]=alphabet[((cast(int)data[i+1]&15)<<2)|low];
+  } else {out[o+2]='=';}
+  out[o+3]=ifx i+2<data.count then alphabet[cast(int)data[i+2]&63] else '=';
+  i+=3;o+=4;
+ }
+ return o;
+}
+// Printable ASCII that JSON writes without an escape.
+gsa_plain :: (s:string)->bool {
+ for i:0..<s.count {c:=s[i];if c<32 || c>126 || c=='"' || c=='\\' {return false;}}
+ return true;
+}
+gsa_same :: (a:[]u8,b:[]u8)->bool {
+ if a.count!=b.count {return false;}
+ for i:0..<a.count {if a[i]!=b[i] {return false;}}
+ return true;
+}
+
+gsa_read :: (wire:[]u8)->GsaSignature #export_c {
+ s:=GS_GitSignature_decode(wire);if s.error!=0 {return GsaSignature.{};}
+ // Required presence of armor, v, pk, sig, t and each oa element is the decoder's.
+ armor:=GS_GitSignature_get_armor(s).value;pk:=GS_GitSignature_get_pubkey(s).value;
+ if GS_GitSignature_get_version(s).value!=1 {return GsaSignature.{};}
+ json:[GSA_JSON_MAX]u8;
+ at:=gsa_put(json[..],0,"{\"v\":1,\"pk\":\"");at=gsa_hex(json[..],at,pk);
+ at=gsa_put(json[..],at,"\",\"sig\":\"");at=gsa_hex(json[..],at,GS_GitSignature_get_signature(s).value);
+ at=gsa_put(json[..],at,"\",\"t\":");at=gsa_decimal(json[..],at,GS_GitSignature_get_created_at(s).value);
+ owner:=GS_GitSignature_get_owner(s);
+ if owner.present {
+  key:=GS_OwnerAttestation_get_owner_pubkey(owner.value).value;conditions:=GS_OwnerAttestation_get_conditions(owner.value).value;
+  if gsa_same(key,pk) || !gsa_plain(conditions) {return GsaSignature.{};} // self-attestation is ERRSIG
+  at=gsa_put(json[..],at,",\"oa\":[\"");at=gsa_hex(json[..],at,key);
+  at=gsa_put(json[..],at,"\",\"");at=gsa_put(json[..],at,conditions);
+  at=gsa_put(json[..],at,"\",\"");at=gsa_hex(json[..],at,GS_OwnerAttestation_get_signature(owner.value).value);
+  at=gsa_put(json[..],at,"\"]");
+ }
+ at=gsa_put(json[..],at,"}");if at==-1 {return GsaSignature.{};} // the writers' only failure
+ expect:[GSA_ARMOR_MAX]u8;
+ e:=gsa_put(expect[..],0,GSA_BEGIN);e=gsa_base64(expect[..],e,json[0..<at]);e=gsa_put(expect[..],e,GSA_END);
+ // One extra LF after the end marker is the only other accepted spelling.
+ exact:=armor.count==e && gsa_same(armor,expect[0..<e]);
+ extra:=armor.count==e+1 && gsa_same(armor[0..<e],expect[0..<e]) && armor[e]==10;
+ if !exact && !extra {return GsaSignature.{};}
+ return GsaSignature.{armor=armor,consistent=true,owner=owner.present};
+}
+
+#test "GS accepts the NIP's vectors, with and without an owner attestation" {
+ ok:=GS_FIX_OK;a:=gsa_read(ok[..]);#assert a.consistent && !a.owner && a.armor.count==369 && a.armor[0]==45 && a.armor[368]==10;
+ owned:=GS_FIX_OWNER;b:=gsa_read(owned[..]);#assert b.consistent && b.owner;
+ trailing:=GS_FIX_TRAILING_LF;#assert gsa_read(trailing[..]).consistent;
+ zero:=GS_FIX_ZERO_T;#assert gsa_read(zero[..]).consistent;
+ top:=GS_FIX_MAX_T;#assert gsa_read(top[..]).consistent;
+ conditions:=GS_FIX_CONDITIONS;#assert gsa_read(conditions[..]).consistent;
+ full:=GS_FIX_FULL;#assert gsa_read(full[..]).consistent;
+}
+#test "GS armor has exactly one spelling, plus one trailing LF" {
+ a:=GS_FIX_NO_FINAL_LF;#assert !gsa_read(a[..]).consistent;
+ b:=GS_FIX_TWO_EXTRA_LF;#assert !gsa_read(b[..]).consistent;
+ c:=GS_FIX_CRLF;#assert !gsa_read(c[..]).consistent;
+ d:=GS_FIX_EXTRA_BYTE;#assert !gsa_read(d[..]).consistent;
+ e:=GS_FIX_WRAPPED;#assert !gsa_read(e[..]).consistent;
+ f:=GS_FIX_BAD_BEGIN;#assert !gsa_read(f[..]).consistent;
+ g:=GS_FIX_BAD_END;#assert !gsa_read(g[..]).consistent;
+ h:=GS_FIX_PAD_BITS;#assert !gsa_read(h[..]).consistent;
+}
+#test "GS JSON is compact, ordered, closed and within 2048 bytes" {
+ a:=GS_FIX_SPACE;#assert !gsa_read(a[..]).consistent;
+ b:=GS_FIX_ORDER;#assert !gsa_read(b[..]).consistent;
+ c:=GS_FIX_UPPER_HEX;#assert !gsa_read(c[..]).consistent;
+ d:=GS_FIX_FLOAT_T;#assert !gsa_read(d[..]).consistent;
+ e:=GS_FIX_EXTRA_KEY;#assert !gsa_read(e[..]).consistent;
+ f:=GS_FIX_DUP_KEY;#assert !gsa_read(f[..]).consistent;
+ g:=GS_FIX_OVERSIZE;#assert !gsa_read(g[..]).consistent;
+}
+#test "GS projection cannot diverge from the armored envelope" {
+ a:=GS_FIX_BAD_PK;#assert !gsa_read(a[..]).consistent;
+ b:=GS_FIX_BAD_SIG;#assert !gsa_read(b[..]).consistent;
+ c:=GS_FIX_BAD_T;#assert !gsa_read(c[..]).consistent;
+ d:=GS_FIX_BAD_VERSION;#assert !gsa_read(d[..]).consistent;
+ e:=GS_FIX_VERSION_ONLY;#assert !gsa_read(e[..]).consistent;
+ f:=GS_FIX_OWNER_MISSING;#assert !gsa_read(f[..]).consistent;
+ g:=GS_FIX_OWNER_EXTRA;#assert !gsa_read(g[..]).consistent;
+ h:=GS_FIX_BAD_OWNER_KEY;#assert !gsa_read(h[..]).consistent;
+ i:=GS_FIX_BAD_OWNER_SIG;#assert !gsa_read(i[..]).consistent;
+ j:=GS_FIX_BAD_CONDITIONS;#assert !gsa_read(j[..]).consistent;
+}
+#test "GS refuses self-attestation and conditions JSON would escape" {
+ a:=GS_FIX_SELF_OWNER;#assert !gsa_read(a[..]).consistent;
+ b:=GS_FIX_QUOTE_CONDITIONS;#assert !gsa_read(b[..]).consistent;
+ c:=GS_FIX_ESCAPED_CONDITIONS;#assert !gsa_read(c[..]).consistent;
+ d:=GS_FIX_CONTROL_CONDITIONS;#assert !gsa_read(d[..]).consistent;
+ e:=GS_FIX_DEL_CONDITIONS;#assert !gsa_read(e[..]).consistent;
+ empty:[1]u8;#assert !gsa_read(empty[0..<0]).consistent;
+}

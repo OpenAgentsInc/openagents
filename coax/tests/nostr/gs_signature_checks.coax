@@ -1,0 +1,33 @@
+// Unit checks of the NIP-GS adapter's writers (gs-projection.coax loads this).
+#test "GS writers place bytes and refuse what does not fit" {
+ out:[8]u8;
+ #assert gsa_put(out[..],0,"abc")==3 && out[0]==97 && out[2]==99;
+ #assert gsa_put(out[..],5,"abc")==8 && out[7]==99;
+ #assert gsa_put(out[..],6,"abc")==-1 && gsa_put(out[..],-1,"")==-1 && gsa_put(out[..],8,"")==8;
+ b:=[3]u8.[0,171,255];
+ #assert gsa_hex(out[..],1,b[..])==7 && cast(string)out[1..<7]=="00abff";
+ #assert gsa_hex(out[..],0,b[0..<1])==2 && out[0]==48 && out[1]==48;
+ #assert gsa_hex(out[..],3,b[..])==-1 && gsa_hex(out[..],-1,b[0..<0])==-1 && gsa_hex(out[..],2,b[..])==8;
+ #assert gsa_decimal(out[..],0,0)==1 && out[0]==48;
+ #assert gsa_decimal(out[..],0,1700)==4 && cast(string)out[0..<4]=="1700";
+ wide:[10]u8;#assert gsa_decimal(wide[..],0,4294967295)==10 && cast(string)wide[..]=="4294967295";
+ #assert gsa_decimal(out[..],0,123456789)==-1 && gsa_decimal(out[..],-1,1)==-1 && gsa_decimal(out[..],7,9)==8;
+}
+#test "GS base64 is the standard padded alphabet at every length" {
+ out:[12]u8;foobar:=[6]u8.[102,111,111,98,97,114];
+ #assert gsa_base64(out[..],0,foobar[0..<0])==0;
+ #assert gsa_base64(out[..],0,foobar[0..<1])==4 && cast(string)out[0..<4]=="Zg==";
+ #assert gsa_base64(out[..],0,foobar[0..<2])==4 && cast(string)out[0..<4]=="Zm8=";
+ #assert gsa_base64(out[..],0,foobar[0..<3])==4 && cast(string)out[0..<4]=="Zm9v";
+ #assert gsa_base64(out[..],2,foobar[..])==10 && cast(string)out[2..<10]=="Zm9vYmFy";
+ hi:=[3]u8.[251,255,191];#assert gsa_base64(out[..],0,hi[..])==4 && cast(string)out[0..<4]=="+/+/";
+ #assert gsa_base64(out[..],9,foobar[0..<1])==-1 && gsa_base64(out[..],-1,foobar[0..<0])==-1 && gsa_base64(out[..],8,foobar[0..<3])==12;
+}
+#test "GS conditions are JSON-plain printable ASCII" {
+ #assert gsa_plain("") && gsa_plain(" ~kind=1&created_at<9");
+ #assert !gsa_plain("a\"") && !gsa_plain("\\") && !gsa_plain("\t");
+ us:=[1]u8.[31];#assert !gsa_plain(cast(string)us[..]);
+ del:=[1]u8.[127];#assert !gsa_plain(cast(string)del[..]);
+ high:=[2]u8.[195,169];#assert !gsa_plain(cast(string)high[..]);
+ a:=[2]u8.[1,2];b:=[2]u8.[1,3];c:=[2]u8.[3,2];#assert gsa_same(a[..],a[..]) && !gsa_same(a[..],b[..]) && !gsa_same(a[..],c[..]) && !gsa_same(a[..],a[0..<1]);
+}

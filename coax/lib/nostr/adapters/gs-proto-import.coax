@@ -1,0 +1,1 @@
+#import_proto "../../../../proto/descriptors/block-git-signature.pb" as GS;

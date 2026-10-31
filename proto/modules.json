@@ -64,7 +64,8 @@
       "namespace": "nostr.",
       "exclude": [
         "nostr/block/mp/v1alpha1/project.proto",
-        "nostr/event/v1alpha2/event.proto"
+        "nostr/event/v1alpha2/event.proto",
+        "nostr/block/gs/v1alpha1/signature.proto"
       ]
     }
   },
@@ -141,6 +142,9 @@
     ],
     "mesh-observation": [
       "openagents/psionic/mesh/v1alpha1/observations.proto"
+    ],
+    "block-git-signature": [
+      "nostr/block/gs/v1alpha1/signature.proto"
     ]
   },
   "profile_namespaces": {
@@ -236,6 +240,11 @@
     "mesh-observation": [
       "openagents.psionic.mesh.v1alpha1",
       "openagents.options.v1alpha1"
+    ],
+    "block-git-signature": [
+      "nostr.block.gs.",
+      "nostr.block.oa.",
+      "openagents.options."
     ]
   }
 }

@@ -24,6 +24,7 @@ allocates new Nostr kinds or wire protocols.
 | DV | VisibilitySnapshot | 30622 viewer d=p and hidden-channel h set; original duplicates/order retained in the envelope. This is owner-private relay projection, not membership removal. |
 | WP | WorkspaceProfileCommand | 9033 icon value; absent/empty clears, validated http(s)/image data URL sets. Live relay admin/owner authorization is required; NIP-11 presentation remains public. |
 | MP | Project, RepositoryMember | Kind 30621 source event retained byte-for-byte; project `d` and optional metadata retain presence; ordered `a` coordinates and optional relay hints preserve their original strings. Shape/bounds alone do not verify the signer, compare projections with original tags, validate repository coordinates, determine listing visibility, or grant repository/channel authority. |
+| GS | GitSignature (with OA OwnerAttestation) | The exact armored signature git stores, retained byte-for-byte, plus `v`, `pk`, `sig`, `t` and optional `oa` with its exact conditions string. Decoding does not lift `pk`, verify `sig` or the attestation, hash the payload, evaluate conditions or set trust; `gs-projection.coax` checks only that the armor is the one canonical encoding of the projected values. |
 
 ## Boundaries and limits
 

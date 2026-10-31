@@ -17,6 +17,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertIn('nostr/event/v1alpha1/event.proto', nostr)
         self.assertNotIn('nostr/block/mp/v1alpha1/project.proto', nostr)
         self.assertIn('nostr/block/mp/v1alpha1/project.proto', CONFIG['profiles']['block-project'])
+        self.assertNotIn('nostr/block/gs/v1alpha1/signature.proto', nostr)
+        self.assertIn('nostr/block/gs/v1alpha1/signature.proto', CONFIG['profiles']['block-git-signature'])
         with self.assertRaises(ValueError):
             module_paths('broken', {'roots': ['nostr'], 'exclude': ['missing.proto']})
 
