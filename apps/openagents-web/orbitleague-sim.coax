@@ -1,10 +1,10 @@
 // Orbit League's bot against scripted novices, natively (a match is too long
-// for a compile-time #test): six drivers who hold W and steer at the ball
+// for a compile-time #test): twelve drivers who hold W and steer at the ball
 // (or at a spot behind it, boosting a third of the time), deciding every
-// 0 to 1 s, play five
-// minutes each. The bot should keep a first match close (ol-fp-bot-easy) and
-// still score against a player who sits still. No car stands on the glass
-// for long (ol-fp-wall-stand).
+// 0 to 1 s, play five minutes each, in the box and in the drum. In both the
+// bot should keep a first match close (ol-fp-bot-easy, ol-drum-bot), not
+// score in the first 15 s, and still score against a player who sits still.
+// No car stands on the box's glass for long (ol-fp-wall-stand).
 //   coax/bin/coax run apps/openagents-web/orbitleague-sim.coax   (its last line: holds or FAILS)
 #import "Basic";
 #load "orbitleague.coax";
@@ -19,7 +19,7 @@ novice :: (s: [] OrbitLeague, seconds: f64, lag: f64, behind: bool, glass: [] f6
       t = 0.0;
       b := s[0].bodies[BALL].pos;
       if behind { aim := d3_unit_or(d3_sub(d3(0.0, 0.0, ARENA_HZ + 2.0), b), D3_Z); b = d3_sub(b, d3_scale(aim, 2.5)); }
-      a := steer_to(s[0].bodies[YOU], b);
+      a := ifx s[0].drum then steer_local(s[0].bodies[YOU], b) else steer_to(s[0].bodies[YOU], b);
       h = HOLD_UP;
       if a > 0.3 { h |= HOLD_RIGHT; }
       if a < -0.3 { h |= HOLD_LEFT; }
@@ -29,30 +29,40 @@ novice :: (s: [] OrbitLeague, seconds: f64, lag: f64, behind: bool, glass: [] f6
     s[0].held = h; game_step(s, STEP);
     for c: 0..<2 {
       b := s[0].bodies[c + 1];
-      if rigid_axis(b, D3_Y).y < 0.5 && b.pos.y > 1.2 && s[0].field.scale > 0.5 { glass[c] += STEP; } else { glass[c] = 0.0; }
+      if !s[0].drum && rigid_axis(b, D3_Y).y < 0.5 && b.pos.y > 1.2 && s[0].field.scale > 0.5 { glass[c] += STEP; } else { glass[c] = 0.0; }
       glass[2] = fmax(glass[2], glass[c]);
     }
   }
 }
 
-main :: () {
+// One arena's twelve novices and its still player: true when it holds.
+arena :: (drum: bool, glass: [] f64) -> bool {
   lags := [6] f64.[0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
-  you := 0; bot := 0; worst := 0; first := 0;
-  glass: [3] f64;
+  you := 0; bot := 0; worst := 0; first := 0; early := 0;
+  name := ifx drum then "drum" else "box";
   for beh: 0..<2 { for l: lags {
     s: [1] OrbitLeague;
-    game_reset(s[..]);
-    novice(s[..], 60.0, l, beh == 1, glass[..]);
+    game_reset(s[..]); set_arena(s[..], drum);
+    novice(s[..], 15.0, l, beh == 1, glass);
+    early = most(early, s[0].score[1]);
+    novice(s[..], 45.0, l, beh == 1, glass);
     first = most(first, s[0].score[1]);
-    novice(s[..], 240.0, l, beh == 1, glass[..]);
-    print("novice (behind %, every % s): you % bot %\n", beh, l, s[0].score[0], s[0].score[1]);
+    novice(s[..], 240.0, l, beh == 1, glass);
+    print("% novice (behind %, every % s): you % bot %\n", name, beh, l, s[0].score[0], s[0].score[1]);
     you += s[0].score[0]; bot += s[0].score[1]; worst = most(worst, s[0].score[1]);
   } }
   t: [1] OrbitLeague;
-  game_reset(t[..]);
+  game_reset(t[..]); set_arena(t[..], drum);
   for i: 0..<cast(int) (120.0 / STEP) { game_step(t[..], STEP); }
-  print("twelve novices: you % bot %, the bot's most in a match %, in a first minute %; against a still player in 2 min: %\n", you, bot, worst, first, t[0].score[1]);
-  print("the longest a car stood on the glass: % s\n", glass[2]);
-  ok := worst <= 5 && first <= 2 && bot <= you * 2 + 4 && t[0].score[1] >= 2 && glass[2] < 2.5;
+  print("%: twelve novices: you % bot %, the bot's most in a match %, in a first minute %, in the first 15 s %; against a still player in 2 min: %\n", name, you, bot, worst, first, early, t[0].score[1]);
+  return worst <= 5 && first <= 2 && early == 0 && bot <= you * 2 + 4 && t[0].score[1] >= 2;
+}
+
+main :: () {
+  glass: [3] f64;
+  box := arena(false, glass[..]);
+  drum := arena(true, glass[..]);
+  print("the longest a car stood on the box's glass: % s\n", glass[2]);
+  ok := box && drum && glass[2] < 2.5;
   print("%\n", ifx ok then "holds" else "FAILS");
 }

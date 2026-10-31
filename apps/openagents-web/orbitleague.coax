@@ -115,6 +115,12 @@ BOT_THROTTLE :: 0.6;     // its share of the drive: slower than you without boos
 BOT_BOOST_FAR :: 26.0;   // it boosts only from further than this
 BOT_MISS :: 11.0;        // metres its aim misses by at kickoff, shrinking to BOT_MISS_LATE by full time
 BOT_MISS_LATE :: 3.0;
+// In the drum a miss wide still rolls down the curve toward the middle, and
+// a beginner spends longer finding the ball on the curve: the bot drives
+// slower there and waits longer after a hit (ol-drum-bot).
+BOT_DRUM_THROTTLE :: 0.5;
+BOT_DRUM_RECOVER :: 2.5;
+bot_recover :: (s: [] OrbitLeague) -> f64 { return ifx s[0].drum then BOT_DRUM_RECOVER else BOT_RECOVER; }
 STUCK_TIME :: 0.7;       // seconds a car lies tipped or leans on the glass, slow, before it is set back on its wheels
 CAR_MASS :: 1000.0;
 CAR_WALL_MU :: 0.05;     // the glass is slick: a car pressed into it slides along
@@ -420,7 +426,7 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   if s[0].no_bot { return out; }
   if s[0].phase == PHASE_PLAY && s[0].phase_t < BOT_REACT { return out; }
   // just after a hit it coasts: you get a chance at the ball
-  if s[0].played - s[0].bot_touch_t < BOT_RECOVER { out.input.throttle = 0.2; return out; }
+  if s[0].played - s[0].bot_touch_t < bot_recover(s) { out.input.throttle = 0.2; return out; }
   // it aims at a point across your goal mouth that misses by bot_aim
   goal.x = fclamp(s[0].bot_aim, -GOAL_HW - 6.0, GOAL_HW + 6.0);
   aim := d3_unit_or(d3_sub(goal, bl.pos), d3(0.0, 0.0, -1.0));
@@ -434,7 +440,7 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   a := ifx s[0].drum then steer_local(me, target) else steer_to(me, target);
   dist := ifx s[0].drum then d3_dist(target, me.pos) else d3_len(d3(target.x - me.pos.x, 0.0, target.z - me.pos.z));
   out.input.steer = fclamp(a * 2.2, -1.0, 1.0);
-  out.input.throttle = ifx abs(a) > 2.2 && dist < 10.0 then -0.6 else BOT_THROTTLE;
+  out.input.throttle = ifx abs(a) > 2.2 && dist < 10.0 then -0.6 else ifx s[0].drum then BOT_DRUM_THROTTLE else BOT_THROTTLE;
   out.input.handbrake = abs(a) > 1.4 && d3_len(me.vel) > 8.0;
   out.boost = abs(a) < 0.25 && dist > BOT_BOOST_FAR && s[0].tanks[1].fuel > 30.0;
   // the kickoff is a fair race: the bot drives in without boost, so you get there first if you go
@@ -579,7 +585,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
         // a car's hit is a kick: the ball takes a share more of the closing speed
         pair.a.vel = d3_add(pair.a.vel, d3_scale(ct.normal, closing * HIT_KICK));
         if c == 0 { s[0].touches += 1; track_tally(s[0].track[..], "touch", ""); }
-        if c == 1 && s[0].played - s[0].bot_touch_t > BOT_RECOVER { bot_hit(s); }
+        if c == 1 && s[0].played - s[0].bot_touch_t > bot_recover(s) { bot_hit(s); }
       }
       if closing > 6.0 {
         k := fmin(closing / 25.0, 1.0);
@@ -2184,4 +2190,21 @@ drum_game :: (s: [] OrbitLeague) {
   t: [1] OrbitLeague;
   game_message(t[..], HOST_FACTS, "url=http://127.0.0.1:8894/realms/orbit-league?arena=drum&room=a\n");
   #assert pipe_bytes(t[0].pipe[..], 0) == "ws://127.0.0.1:8894/api/room/orbit-league/a";
+}
+
+#test "in the drum the bot drives slower and waits longer after a hit (ol-drum-bot; orbitleague-sim.coax plays the matches)" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]); set_arena(s[..], true);
+  s[0].phase = PHASE_PLAY; s[0].phase_t = BOT_KICKOFF_CALM + 1.0; s[0].played = 30.0;
+  s[0].bodies[BALL].pos = d3(0.0, BALL_R, 20.0);
+  d := bot_drive(s[..]);
+  #assert d.input.throttle == BOT_DRUM_THROTTLE || d.input.throttle == -0.6;
+  bot_hit(s[..]);
+  s[0].played += BOT_RECOVER + 0.1;
+  #assert bot_drive(s[..]).input.throttle == 0.2;
+  s[0].played += BOT_DRUM_RECOVER;
+  #assert bot_drive(s[..]).input.throttle != 0.2;
+  b: [1] OrbitLeague;
+  game_reset(b[..]);
+  #assert bot_recover(b[..]) == BOT_RECOVER && bot_recover(s[..]) == BOT_DRUM_RECOVER && BOT_DRUM_THROTTLE < BOT_THROTTLE;
 }
