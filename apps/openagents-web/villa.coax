@@ -1820,3 +1820,27 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
   }
   #assert drawn[0] == drawn[1] + 1 && drawn[1] == drawn[2] + 1;
 }
+
+#test "the new-emote example fits beside MAKE IT on a phone, and black swatches are outlined" {
+  s: [1] Villa;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  s[0].still = true;
+  villa_step(s[..], 1.0 / 60.0, f32(SPAWN_X), 0, f32(SPAWN_Z), 0, 0, 0, 0);
+  p := s[0].pet[..];
+  p[0].has = true; p[0].view = PV_PET;
+  for w: 0..<2 {
+    width := ifx w == 0 then 390 else 1280; height := ifx w == 0 then 844 else 800;
+    p[0].tab = 1;
+    #assert villa_draw(s[..], out[..], u[..], f32(width), f32(height), 1, false, 0, 0, 0, 0) > 0;
+    field := -1; make := -1;
+    for b: 0..<p[0].buttons { if p[0].button_kind[b] == B_EMOTE_FIELD { field = b; } if p[0].button_kind[b] == B_MAKE_EMOTE { make = b; } }
+    #assert field >= 0 && make >= 0 && p[0].button[field].x1 <= p[0].button[make].x0;
+    // the example drawn is one that fits the field
+    room := p[0].button[field].x1 - p[0].button[field].x0 - 16;
+    #assert text_width("SPUN TWICE", 7) <= room;
+  }
+  // a black swatch draws more (its outline) than a light one
+  b := Box.{x0 = 0, y0 = 0, x1 = 40, y1 = 22};
+  #assert dark_swatch(out[..], 0, b, 1, 0.02, 0.02, 0.02) > 0 && dark_swatch(out[..], 0, b, 1, 0.9, 0.9, 0.9) == 0;
+}

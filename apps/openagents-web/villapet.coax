@@ -1119,6 +1119,13 @@ pet_draw_about :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32)
   return m;
 }
 
+// A dark colour's bar gets a light outline, so black reads on the dark panel.
+dark_swatch :: (out: [] f32, n: int, b: Box, k: f32, r: f32, g: f32, bl: f32) -> int {
+  if 0.3 * r + 0.55 * g + 0.15 * bl >= 0.15 { return n; }
+  cy := (b.y0 + b.y1) / 2;
+  return outline(out, n, Box.{x0 = b.x0 + 3 * k, y0 = cy - 5 * k, x1 = b.x1 - 3 * k, y1 = cy + 5 * k}, k, 0.75);
+}
+
 // A row of coat colours to choose from (B_COAT or B_MARKS).
 pet_swatches :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, y: f32, kind: int) -> int {
   k := hi(s[0].dpr, 0.5); p := s[0].pet[..]; m := n;
@@ -1130,6 +1137,7 @@ pet_swatches :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, y: f32, kin
     on := abs(cur[0] - SWATCH[i * 3]) + abs(cur[1] - SWATCH[i * 3 + 1]) + abs(cur[2] - SWATCH[i * 3 + 2]) < 0.02;
     cy := (b.y0 + b.y1) / 2;
     if lit(out, m, b.x0 + 5 * k, cy, b.x1 - 5 * k, cy, 6 * k, 0.95, 1 * k, SWATCH[i * 3], SWATCH[i * 3 + 1], SWATCH[i * 3 + 2], 0) { m += 6; }
+    m = dark_swatch(out, m, b, k, SWATCH[i * 3], SWATCH[i * 3 + 1], SWATCH[i * 3 + 2]);
     m = outline(out, m, b, k, ifx on then 0.95f32 else 0.3f32);
     pet_button(p, b, kind, i);
   }
@@ -1182,7 +1190,10 @@ pet_draw_details :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f3
     cy := (cb.y0 + cb.y1) / 2;
     if i == 0 { m = pt_dim(out, m, "NONE", cb.x0 + 3 * k, cy + 3 * k, 6 * k, k); }
     // black is shown as a dark grey so it reads on the dark panel
-    else if lit(out, m, cb.x0 + 5 * k, cy, cb.x1 - 5 * k, cy, 6 * k, 0.95, 1 * k, hi(COLLAR_RGB[i * 3], 0.1), hi(COLLAR_RGB[i * 3 + 1], 0.1), hi(COLLAR_RGB[i * 3 + 2], 0.11), 0) { m += 6; }
+    else {
+      if lit(out, m, cb.x0 + 5 * k, cy, cb.x1 - 5 * k, cy, 6 * k, 0.95, 1 * k, COLLAR_RGB[i * 3], COLLAR_RGB[i * 3 + 1], COLLAR_RGB[i * 3 + 2], 0) { m += 6; }
+      m = dark_swatch(out, m, cb, k, COLLAR_RGB[i * 3], COLLAR_RGB[i * 3 + 1], COLLAR_RGB[i * 3 + 2]);
+    }
     m = outline(out, m, cb, k, ifx p[0].collar == i then 0.95f32 else 0.3f32);
     pet_button(p, cb, B_COLLAR, i);
   }
@@ -1238,7 +1249,14 @@ pet_draw_look :: (s: [] Villa, out: [] f32, n: int, x0: f32, x1: f32, top: f32) 
   pet_button(p, eb, B_EMOTE_FIELD, 0);
   said := pet_s(p[0].em_said[..], p[0].em_said_n);
   while said.count > 0 && text_width(said, 8 * k) > eb.x1 - eb.x0 - 16 * k { said = said[1..<said.count]; }
-  if said.count == 0 && !focused { m = pt_dim(out, m, "SHE ALWAYS SPUN TWICE BEFORE LYING DOWN", eb.x0 + 8 * k, (eb.y0 + eb.y1 + 8 * k) / 2, 7 * k, k); }
+  if said.count == 0 && !focused {
+    // the longest example that fits the field, never running under MAKE IT
+    example := "SHE ALWAYS SPUN TWICE BEFORE LYING DOWN";
+    if text_width(example, 7 * k) > eb.x1 - eb.x0 - 16 * k { example = "SPUN TWICE BEFORE LYING DOWN"; }
+    if text_width(example, 7 * k) > eb.x1 - eb.x0 - 16 * k { example = "SPUN TWICE, THEN LAY DOWN"; }
+    if text_width(example, 7 * k) > eb.x1 - eb.x0 - 16 * k { example = "SPUN TWICE"; }
+    m = pt_dim(out, m, example, eb.x0 + 8 * k, (eb.y0 + eb.y1 + 8 * k) / 2, 7 * k, k);
+  }
   else { m = pt(out, m, said, eb.x0 + 8 * k, (eb.y0 + eb.y1 + 8 * k) / 2, 8 * k, k, 0.95); }
   if focused { p[0].field_box = eb; }
   busy := p[0].em == EM_MAKING || p[0].em == EM_CHECK;
