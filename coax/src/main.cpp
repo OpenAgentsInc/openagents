@@ -69,6 +69,7 @@ static const char *VERSION = COAX_RELEASE_VERSION;
 
 int32_t g_error_count = 0;
 bool g_json_errors = false;
+bool g_diagnostics_json = false;
 
 void *arena_alloc(Arena *a, size_t size) {
   size = (size + 15) & ~(size_t)15;
@@ -104,12 +105,90 @@ Loc diagnostic_loc(const Source *src, Loc loc) {
   return loc;
 }
 
+// --diagnostics json (schema coax.diagnostic.v1). A span is a file, its
+// 1-based line and column, a byte offset into that file and a length: the
+// token that starts there (a name, a number or a string), one byte, or zero at
+// a line's end. A fix whose text is "add 'X'" or "add 'X' before the end of the
+// line" also carries the insertion as an edit; other fixes carry text only.
+struct PendingNote { const Source *src; Loc loc; bool has_loc; std::string message; };
+static std::vector<PendingNote> g_pending_notes;
+
+void diagnostic_note(const Source *src, Loc loc, bool has_loc, const std::string &message) {
+  if (g_diagnostics_json) g_pending_notes.push_back({src, loc, has_loc, message});
+}
+
+struct FileSpan { std::string path; int32_t line = 0, col = 0, offset = 0, length = 0; const std::string *text = nullptr; };
+
+static FileSpan file_span(const Source *src, Loc loc) {
+  Loc joined = diagnostic_loc(src, loc);
+  auto point = source_point(src, joined);
+  FileSpan span;
+  span.path = point.path;
+  span.line = point.loc.line;
+  span.col = point.loc.col;
+  const std::string *text = &(src->original_text.empty() ? src->text : src->original_text);
+  int32_t offset = joined.offset;
+  for (const auto &unit : src->units)
+    if (offset >= unit->begin && offset < unit->end) { text = &unit->text; offset -= unit->begin; break; }
+  if (offset < 0) offset = 0;
+  if ((size_t)offset > text->size()) offset = (int32_t)text->size();
+  span.offset = offset;
+  span.text = text;
+  const std::string &t = *text;
+  size_t at = (size_t)offset, end = at;
+  auto word = [](unsigned char c) { return c == '_' || isalnum(c); };
+  if (at >= t.size() || t[at] == '\n') end = at;
+  else if (word((unsigned char)t[at])) { while (end < t.size() && word((unsigned char)t[end])) end++; }
+  else if (t[at] == '"') { end = at + 1; while (end < t.size() && t[end] != '"' && t[end] != '\n') end += t[end] == '\\' && end + 1 < t.size() ? 2 : 1; if (end < t.size() && t[end] == '"') end++; }
+  else end = at + 1;
+  span.length = (int32_t)(end - at);
+  return span;
+}
+
+static std::string span_json(const FileSpan &span) {
+  return "{\"file\":" + json_string(span.path) + ",\"line\":" + std::to_string(span.line) + ",\"column\":" + std::to_string(span.col) +
+         ",\"offset\":" + std::to_string(span.offset) + ",\"length\":" + std::to_string(span.length) + "}";
+}
+
+static std::string fix_edits(const FileSpan &at, const std::string &fix) {
+  if (fix.size() < 7 || fix.compare(0, 5, "add '") != 0) return "[]";
+  size_t close = fix.find('\'', 6);
+  if (close == std::string::npos) return "[]";
+  std::string insert = fix.substr(5, close - 5), rest = fix.substr(close + 1);
+  FileSpan edit = at;
+  edit.length = 0;
+  if (rest == " before the end of the line") {
+    size_t end = (size_t)at.offset;
+    while (end < at.text->size() && (*at.text)[end] != '\n') end++;
+    edit.col += (int32_t)(end - (size_t)at.offset);
+    edit.offset = (int32_t)end;
+  } else if (!rest.empty()) return "[]";
+  return "[{\"span\":" + span_json(edit) + ",\"replacement\":" + json_string(insert) + "}]";
+}
+
+static void diagnostic_json(const char *severity, const char *code, const std::string &message, const std::string &span,
+                            const std::string &notes, const std::string &fixes) {
+  fprintf(stderr, "{\"schema\":\"coax.diagnostic.v1\",\"severity\":\"%s\",\"code\":%s,\"message\":%s,\"span\":%s,\"notes\":[%s],\"fixes\":%s}\n",
+          severity, json_string(code).c_str(), json_string(message).c_str(), span.c_str(), notes.c_str(), fixes.c_str());
+}
+
 void error_at(const Source *src, Loc loc, const char *code, const std::string &message, const std::string &fix) {
   g_error_count++;
   std::string reported = message;
   for (const GeneratedRegion &region : src->generated)
     if (loc.offset >= region.start && loc.offset < region.end)
       reported += " (generated proto import " + region.prefix + ")";
+  if (g_diagnostics_json) {
+    FileSpan span = file_span(src, loc);
+    std::string notes;
+    for (const PendingNote &note : g_pending_notes)
+      notes += (notes.empty() ? "" : ",") + std::string("{\"message\":") + json_string(note.message) + ",\"span\":" +
+               (note.has_loc ? span_json(file_span(note.src, note.loc)) : "null") + "}";
+    g_pending_notes.clear();
+    std::string fixes = fix.empty() ? "[]" : "[{\"message\":" + json_string(fix) + ",\"edits\":" + fix_edits(span, fix) + "}]";
+    diagnostic_json("error", code, reported, span_json(span), notes, fixes);
+    return;
+  }
   Loc joined = diagnostic_loc(src, loc);
   auto point = source_point(src, joined);
   loc = point.loc;
@@ -902,7 +981,7 @@ static int usage() {
           "       coax version\n"
           "       coax source-digest ROOT          (the hash of ROOT/coax's compiler sources)\n"
           "       coax status [--json]\n"
-          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count\n");
+          "options: --arithmetic checked|wrapping selects runtime integer arithmetic\n       --target native-lp64 names the layout target for layout/deps (others: E0612)\n       --opt 0|1|2|3 selects native optimization for run/build/lib\n       --build-profile development|release selects BUILD_DEBUG source/layout\n       --release retains the legacy wrapping/O2/release/no-debug bundle\n       --profile-report FILE records the resolved profile and source/artifact hashes\n       --run-steps N sets the bounded aggregate compile-time work limit\n       --json prints diagnostics as JSON lines\n       --diagnostics json prints coax.diagnostic.v1 lines: spans, notes and fixes\n       --debug-info maps native code to original Coax source\n       --no-debug-info omits native source debugging independently\n       --source-map FILE writes debugger names/locations (implies --debug-info)\n       --timings FILE writes phase wall times and generated byte count\n");
   return 2;
 }
 
@@ -1008,6 +1087,11 @@ static void report_stale_compiler() {
   const fs::path root = exe.parent_path().parent_path().parent_path();
   const std::string now = compiler_source_digest(root.string());
   if (recorded.empty() || now.empty() || now == recorded) return;
+  if (g_diagnostics_json) {
+    diagnostic_json("note", "", "this compiler is out of date: " + root.string() + "/coax has different compiler sources than the ones it was built from, so the errors above may come from the old compiler",
+                    "null", "", "[{\"message\":" + json_string("rebuild it with " + root.string() + "/coax/build.sh, then run the command again") + ",\"edits\":[]}]");
+    return;
+  }
   fprintf(stderr,
           "coax: this compiler is out of date: %s/coax has different compiler sources than the ones it was built from,\n"
           "  so the errors above may come from the old compiler. Rebuild it, then run the command again:\n"
@@ -1162,6 +1246,10 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--proc" && (lowering || effects) && i + 1 < argc) g_lower_proc = argv[++i];
     else if (a == "--target" && (cmd == "deps" || cmd == "layout") && i + 1 < argc) g_target = argv[++i];
     else if (a == "--json") g_json_errors = true;
+    else if (a == "--diagnostics" && i + 1 < argc && (std::string(argv[i + 1]) == "json" || std::string(argv[i + 1]) == "text")) {
+      g_diagnostics_json = std::string(argv[++i]) == "json";
+      g_json_errors = g_diagnostics_json;   // no text trailers or notes between the JSON lines
+    }
     else if (a == "--lib" || a == "--library") opts.library = true;
     else if (a == "--header" && i + 1 < argc) header = argv[++i];
     else if (a == "-o" && i + 1 < argc) out = argv[++i];

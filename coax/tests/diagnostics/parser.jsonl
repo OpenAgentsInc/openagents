@@ -1,0 +1,1 @@
+{"schema":"coax.diagnostic.v1","severity":"error","code":"E0201","message":"expected ';' after the declaration, found 'y'","span":{"file":"tests/diagnostics/parser.coax","line":2,"column":9,"offset":21,"length":0},"notes":[],"fixes":[{"message":"add ';'","edits":[{"span":{"file":"tests/diagnostics/parser.coax","line":2,"column":9,"offset":21,"length":0},"replacement":";"}]}]}

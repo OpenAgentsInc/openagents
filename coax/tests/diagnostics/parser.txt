@@ -1,0 +1,5 @@
+tests/diagnostics/parser.coax:2:9: error[E0201]: expected ';' after the declaration, found 'y'
+    x := 1
+          ^
+  fix: add ';'
+1 error

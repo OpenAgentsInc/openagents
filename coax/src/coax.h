@@ -120,6 +120,11 @@ void error_at(const Source *src, Loc loc, const char *code, const std::string &m
               const std::string &fix = "");
 extern int32_t g_error_count;
 extern bool g_json_errors;
+// --diagnostics json: one coax.diagnostic.v1 object per line on stderr, with
+// spans, notes and fixes (spec 19.4). The text format is unchanged without it.
+extern bool g_diagnostics_json;
+// A note for the next error_at's JSON diagnostic: where (when has_loc) and what.
+void diagnostic_note(const Source *src, Loc loc, bool has_loc, const std::string &message);
 
 // Explanations for every error code, shared by `coax explain` and the book.
 struct ErrorInfo {

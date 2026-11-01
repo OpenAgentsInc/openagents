@@ -1,0 +1,5 @@
+double :: (x: int) -> int { return x + x; }
+#test "doubling adds" {
+  #assert double(2) == 5;
+}
+main :: () {}

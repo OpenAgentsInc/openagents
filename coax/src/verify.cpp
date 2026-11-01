@@ -113,7 +113,9 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
       fflush(stdout);
     }
     std::string message = r.message;
-    if (g_json_errors) {
+    diagnostic_note(file->src, c->loc, true, "in " + std::string(kind) + " " + name);
+    if (!r.counterexample.empty()) diagnostic_note(file->src, c->loc, false, "counterexample: " + r.counterexample);
+    if (g_json_errors && !g_diagnostics_json) {
       message += " [" + std::string(kind) + " " + name + "]";
       if (!r.counterexample.empty()) message += "; counterexample: " + r.counterexample;
     }

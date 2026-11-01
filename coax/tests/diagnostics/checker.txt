@@ -1,0 +1,5 @@
+tests/diagnostics/checker.coax:3:11: error[E0350]: 300 does not fit in u8
+    x: u8 = 300;
+            ^
+  fix: use a wider type, or cast,trunc(u8) to keep the low bits
+1 error

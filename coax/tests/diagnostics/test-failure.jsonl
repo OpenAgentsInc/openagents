@@ -1,0 +1,1 @@
+{"schema":"coax.diagnostic.v1","severity":"error","code":"E0406","message":"assertion failed","span":{"file":"tests/diagnostics/test-failure.coax","line":3,"column":3,"offset":70,"length":1},"notes":[{"message":"in #test doubling adds","span":{"file":"tests/diagnostics/test-failure.coax","line":2,"column":1,"offset":44,"length":1}}],"fixes":[]}

@@ -1,0 +1,6 @@
+FAIL #test doubling adds (0 ms)
+1 check, 0 passed, 1 failed
+tests/diagnostics/test-failure.coax:3:3: error[E0406]: assertion failed
+    #assert double(2) == 5;
+    ^
+  note: in #test doubling adds

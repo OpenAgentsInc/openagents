@@ -1,0 +1,5 @@
+#import "Basic";
+main :: () {
+  x: u8 = 300;
+  print("%\n", x);
+}

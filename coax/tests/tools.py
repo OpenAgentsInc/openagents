@@ -41,6 +41,7 @@ class Tools(unittest.TestCase):
             used |= set(re.findall(r'"(E0\d{3})"', source.read_text()))
         for source in (ROOT / "lib").rglob("*.coax"):
             used |= set(re.findall(r'"(E0\d{3})"', source.read_text()))
+        used.discard("E0000")  # a check's stand-in for "not this code", never reported
         listed = set(re.findall(r"^(E0\d{3}):", coax("explain", "--all").stdout, re.M))
         self.assertFalse(used - listed, f"codes without an explanation: {sorted(used - listed)}")
         result = coax("explain", "E0350")

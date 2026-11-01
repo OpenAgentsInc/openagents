@@ -1,0 +1,1 @@
+{"schema":"coax.diagnostic.v1","severity":"error","code":"E0350","message":"300 does not fit in u8","span":{"file":"tests/diagnostics/checker.coax","line":3,"column":11,"offset":40,"length":3},"notes":[],"fixes":[{"message":"use a wider type, or cast,trunc(u8) to keep the low bits","edits":[]}]}
