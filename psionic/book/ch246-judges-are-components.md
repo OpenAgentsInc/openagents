@@ -20,7 +20,7 @@ measured against real outcomes, and it never grades its own work.
 
 - [Chapter 14](ch014-execute-elephant.md), [Chapter 15](ch015-execute-mammoth.md) and [Chapter 16](ch016-are-the-probabilities-any-good.md): Elephant, Mammoth and decision metrics.
 - [Chapter 217](ch217-record-readings-join-outcomes-watch-drift.md): outcome joins.
-- [Chapter 244](ch244-search-a-policy-cheapest-first.md) and [Chapter 245](ch245-reflective-prompt-evolution.md): searches that use judges.
+- [Chapter 244](ch244-search-a-policy-cheapest-first.md): a search that uses judges. [Chapter 245](ch245-reflective-prompt-evolution.md) uses this chapter's judges in turn.
 - [Chapter 247](ch247-outcomes-become-training-rows.md): the row admission rule that keeps opinions out of labels.
 
 ## Done means

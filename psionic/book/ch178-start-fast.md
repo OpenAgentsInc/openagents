@@ -25,7 +25,9 @@ The weights and the generated kernels both get content-addressed delivery, so a 
 - [Chapter 18](ch018-time-a-decision.md): monotonic phase timing and cold/warm page counts.
 - [Chapter 19](ch019-keep-the-model-resident.md): the resident session and its verified files.
 - [Chapter 22](ch022-run-it-live.md): golden warm-up before readiness.
-- [Chapter 177](ch177-route-queue-and-scale-replicas.md): the autoscaler that uses the measured cold-start cost.
+
+[Chapter 177](ch177-route-queue-and-scale-replicas.md)'s autoscaler uses the
+cold-start cost this chapter measures.
 
 ## Done means
 

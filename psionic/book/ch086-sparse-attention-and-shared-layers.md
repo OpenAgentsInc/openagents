@@ -25,8 +25,8 @@ chapter qualifies each feature on tiny fixtures and on selected real layers.
   scales.
 - [Chapter 62](ch062-attention-with-sinks-and-a-window.md): the YaRN rotary
   pattern.
-- Whole-model execution waits for
-  [chapter 199](ch199-le-chonk-across-a-mesh.md).
+- Whole-model execution comes later, in
+  [chapter 199](ch199-le-chonk-across-a-mesh.md), which builds on this chapter.
 
 ## Done means
 

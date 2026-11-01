@@ -29,8 +29,8 @@ steps need a tolerance.
 
 - [Chapter 4](ch004-numbers-and-matrices.md): the floating-point reference.
 - [Chapter 37](ch037-a-coax-compute-subset.md): the device compute subset.
-- [Chapter 50](ch050-quantized-weights-and-caches.md): the weight formats the
-  kernels consume.
+- [Chapter 50](ch050-quantized-weights-and-caches.md) uses these kernels for
+  its weight formats; it builds on this chapter, not the other way round.
 
 ## Done means
 
