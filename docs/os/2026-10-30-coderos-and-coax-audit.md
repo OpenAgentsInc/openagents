@@ -284,8 +284,10 @@ compiler and the examples have not been run on Linux yet.
   unplaced shortfall, the clock note and each piece's delay.
   `os/record-place.coax` reads the same ledger and clock files and prints
   what the shell's awk printed. On 3,000 random ledgers and clock logs it
-  matches the shell's own functions byte for byte. The capture supervisor
-  and the mux are next. Checking them means recording on the 4080, which
+  matches the shell's own functions byte for byte. `record-place mux`
+  builds the mux's ffmpeg command, and on 1,000 random takes it matches
+  `mux_recording`'s argument for argument. The capture supervisor is
+  next. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of

@@ -49,6 +49,15 @@ tool_main :: () -> int #export_c {
   if verb == "shortfall" { s := rec_shortfall(ps, vdur, proven); if s >= 0.0 { print("%", rec_fixed(s, 3, b[..])); } return 0; }
   if verb == "end" { print("%", rec_fixed(rec_end(ps), 6, b[..])); return 0; }
   if verb == "note" { print("%", rec_clock_note(ps, out[..])); return 0; }
+  if verb == "mux" {
+    // mux PLACE VDUR OUTPUT NOTE [SHIFT]: mux_recording's ffmpeg arguments, one a line
+    if args_count(a[..]) < 5 { tool_errln("usage: record-place mux PLACE VDUR OUTPUT NOTE [SHIFT]"); return 2; }
+    argv: [256] string; ab: [65536] u8;
+    k := rp_mux(ps, args_at(a[..], 2), args_at(a[..], 3), args_at(a[..], 4), ifx args_count(a[..]) > 5 then args_at(a[..], 5) else "", t, argv[..], ab[..]);
+    if k < 0 { return 1; }
+    for i: 0..<k { print("%\n", argv[i]); }
+    return 0;
+  }
   tool_errln("record-place: no such step"); return 2;
 }
 
@@ -80,4 +89,97 @@ rp_place :: (t: string, out: [] Piece) -> int {
   #assert p[0].off == 0.0 && p[0].tempo == 0.0 && p[1].off == 95.005 && p[1].tempo == 0.996;
   f: [4] string;
   #assert rp_fields("a\tb\t\t", f[..]) == 4 && f[2] == "" && rp_fields("", f[..]) == 0;
+}
+
+// mux_recording's ffmpeg command: the picture copied, the sound padded and trimmed to it (never
+// -shortest), each piece stretched by its tempo and delayed to its offset, mixed when there are
+// several. Into argv (its strings in buf): how many, or -1 for no pieces. vdur is the text the
+// shell was given (the picture's length); place is the placement's text, for each piece's path.
+rp_mux :: (ps: [] Piece, vdur: string, output: string, note: string, shift: string, place: string, argv: [] string, buf: [] u8) -> int {
+  if ps.count == 0 { return -1; }
+  bb: [1] RpBuf; bb[0] = RpBuf.{buf = buf}; b := bb[..];
+  n := 0;
+  fixed := [7] string.["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", output];
+  for w: fixed { argv[n] = w; n += 1; }
+  // the filter's tail: both or neither, since apad alone pads forever
+  af := rp_mark(b);
+  rp_put(b, "aresample=async=1:first_pts=0");
+  if rec_num(vdur) > 0.0 { rp_put(b, ",apad,atrim=end="); rp_put(b, vdur); }
+  afilter := rp_since(b, af);
+  pieces := 0; first := ""; inputs: [4096] u8; ni := 0;
+  i := 0;
+  // walk the placement again for the paths and tempo text, in the same order as ps
+  graph_text: [65536] u8; ng := 0;
+  while i < place.count {
+    j := i; while j < place.count && place[j] != '\n' { j += 1; }
+    f: [4] string; k := rp_fields(place[i..<j], f[..]);
+    i = j + 1;
+    if k < 3 || f[2].count == 0 { continue; }
+    if shift.count > 0 { argv[n] = "-itsoffset"; argv[n + 1] = shift; n += 2; }
+    argv[n] = "-i"; argv[n + 1] = f[2]; n += 2;
+    st := rp_mark(b);
+    if k >= 4 && f[3].count > 0 { rp_put(b, "atempo="); rp_put(b, f[3]); rp_put(b, ","); }
+    stretch := rp_since(b, st);
+    if pieces == 0 { first = stretch; }
+    db: [32] u8;
+    ng = rp_cat(graph_text[..], ng, "["); ng = rp_cat(graph_text[..], ng, rp_int(pieces + 1, db[..])); ng = rp_cat(graph_text[..], ng, ":a]");
+    ng = rp_cat(graph_text[..], ng, stretch); ng = rp_cat(graph_text[..], ng, "adelay=delays=");
+    ng = rp_cat(graph_text[..], ng, rp_int(rec_delay(rec_num(f[0])), db[..])); ng = rp_cat(graph_text[..], ng, "S:all=1[s");
+    ng = rp_cat(graph_text[..], ng, rp_int(pieces, db[..])); ng = rp_cat(graph_text[..], ng, "];");
+    ni = rp_cat(inputs[..], ni, "[s"); ni = rp_cat(inputs[..], ni, rp_int(pieces, db[..])); ni = rp_cat(inputs[..], ni, "]");
+    pieces += 1;
+  }
+  if pieces == 0 { return -1; }
+  if pieces == 1 {
+    m := [6] string.["-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy"];
+    for w: m { argv[n] = w; n += 1; }
+    argv[n] = "-af"; n += 1;
+    x := rp_mark(b); rp_put(b, first); rp_put(b, afilter); argv[n] = rp_since(b, x); n += 1;
+  } else {
+    db: [32] u8;
+    x := rp_mark(b);
+    rp_put(b, cast(string) graph_text[0..<ng]); rp_put(b, cast(string) inputs[0..<ni]);
+    rp_put(b, "amix=inputs="); rp_put(b, rp_int(pieces, db[..])); rp_put(b, ":normalize=0:duration=longest,");
+    rp_put(b, afilter); rp_put(b, "[aout]");
+    argv[n] = "-filter_complex"; argv[n + 1] = rp_since(b, x); n += 2;
+    m := [5] string.["-map", "0:v:0", "-map", "[aout]", "-c:v"];
+    for w: m { argv[n] = w; n += 1; }
+    argv[n] = "copy"; n += 1;
+  }
+  tail := [6] string.["-c:a", "aac", "-b:a", "128k", "-metadata", ""];
+  for w: tail { argv[n] = w; n += 1; }
+  x := rp_mark(b); rp_put(b, "comment="); rp_put(b, note); argv[n - 1] = rp_since(b, x);
+  // the muxed file beside the output: NAME.muxed.EXT
+  dot := output.count; while dot > 0 && output[dot - 1] != '.' { dot -= 1; }
+  y := rp_mark(b);
+  if dot == 0 { rp_put(b, output); rp_put(b, ".muxed."); rp_put(b, output); }
+  else { rp_put(b, output[0..<dot - 1]); rp_put(b, ".muxed."); rp_put(b, output[dot..<output.count]); }
+  argv[n] = rp_since(b, y); n += 1;
+  return n;
+}
+RpBuf :: struct { buf: [] u8; n: int; }
+rp_mark :: (b: [] RpBuf) -> int { return b[0].n; }
+rp_put :: (b: [] RpBuf, s: string) { for c: s { if b[0].n < b[0].buf.count { b[0].buf[b[0].n] = c; b[0].n += 1; } } }
+rp_since :: (b: [] RpBuf, at: int) -> string { return cast(string) b[0].buf[at..<b[0].n]; }
+rp_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+rp_int :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  d: [24] u8; k := 0; x := v;
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  for i: 0..<k { out[i] = d[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+#test "the mux of one piece and of several" {
+  argv: [64] string; buf: [8192] u8; p: [4] Piece;
+  one := "0.000\t10.000000\t/a.wav\t\n";
+  n1 := rp_place(one, p[..]);
+  k := rp_mux(p[0..<n1], "10.5", "/v/take.mp4", "ok", "", one, argv[..], buf[..]);
+  #assert k == 24 && argv[8] == "/a.wav" && argv[16] == "aresample=async=1:first_pts=0,apad,atrim=end=10.5" && argv[22] == "comment=ok" && argv[23] == "/v/take.muxed.mp4";
+  two := "0.000\t5.0\t/a.wav\t0.996000\n6.500\t3.0\t/b.wav\t\n";
+  n2 := rp_place(two, p[..]);
+  k = rp_mux(p[0..<n2], "0", "take", "n", "0.2", two, argv[..], buf[..]);
+  #assert argv[7] == "-itsoffset" && argv[8] == "0.2" && argv[15] == "-filter_complex";
+  #assert argv[16] == "[1:a]atempo=0.996000,adelay=delays=0S:all=1[s0];[2:a]adelay=delays=312000S:all=1[s1];[s0][s1]amix=inputs=2:normalize=0:duration=longest,aresample=async=1:first_pts=0[aout]";
+  #assert argv[k - 1] == "take.muxed.take" && rp_mux(p[0..<0], "1", "x", "", "", "", argv[..], buf[..]) == -1;
+  #assert rp_int(0, buf[..]) == "0" && rp_int(4560240, buf[..]) == "4560240";
 }
