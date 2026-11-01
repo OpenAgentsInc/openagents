@@ -1,0 +1,36 @@
+npub: ok, 32 bytes
+  key: 7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e
+  re-encodes to the same text: true
+nsec: ok, 32 bytes
+  key: 67dea2ed018072d675f5415ecfaed7d2597555e202d85b3d65ea4e58d2d92ffa
+  re-encodes to the same text: true
+nprofile: 116 words, first 8: 0 0 16 3 23 28 6 6
+  72 bytes, 2 relays, key at byte 2
+  first 5 bytes: 00203bf0c6
+  at 0: type 0, length 32, hex: 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d
+  at 34: type 1, length 13, text "wss://r.x.com"
+  at 49: type 1, length 21, text "wss://djbas.sadkb.com"
+  re-encodes to the same text: true
+nostr:npub1sn0wd...: npub, 32 bytes, 0 relays
+  key: 84dee6e676e5bb67b4ad4e042cf70cbd8681155db535942fcc6a0533858a7240
+nostr:nevent1qqs...: nevent, 95 bytes, 2 relays
+  at 0: type 0, length 32, hex: b9f5441e45ca39179320e0031cfb18e34078673dcc3d3e3a3b3a981760aa5696
+  at 34: type 1, length 28, text "wss://nostr-relay.untethr.me"
+  at 64: type 1, length 29, text "wss://nostr-pub.wellorder.net"
+nostr:naddr1qqyr...: naddr, 69 bytes, 1 relays
+  at 0: type 0, length 8, text "18ff5416"
+  at 10: type 1, length 17, text "wss://fiatjaf.com"
+  at 29: type 2, length 32, hex: 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d
+  at 63: type 3, length 4, kind 30023
+nostr:nsec1...: invalid, output untouched: true
+bare npub as a URI: invalid
+nprofile cut to 71 bytes: invalid
+nprofile without its key: invalid
+relay byte 0x80: invalid
+two keys: invalid
+unknown type 99, skipped: ok, nprofile, 2 relays
+special of 31 bytes: invalid
+npub of 33 bytes: invalid
+npub of 32 bytes: ok, npub, 0 relays
+deprecated nrelay: invalid
+naddr without its kind: invalid

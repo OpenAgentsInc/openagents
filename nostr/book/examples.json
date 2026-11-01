@@ -135,6 +135,16 @@
       ]
     },
     {
+      "source": "nostr/examples/nip19.coax",
+      "chapter": "nostr/book/ch016-nip-19-entities-and-nostr-uris.md",
+      "stdout": "nostr/fixtures/nip19.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "nostr/examples/signable-json.coax",
       "chapter": "nostr/book/ch017-json-you-can-sign.md",
       "stdout": "nostr/fixtures/signable-json.out",

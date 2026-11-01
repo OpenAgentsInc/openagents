@@ -329,13 +329,15 @@
    "number": 16,
    "title": "NIP-19 entities and nostr: URIs",
    "file": "ch016-nip-19-entities-and-nostr-uris.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     15
    ],
    "source": [
-    "coax/lib/nostr/nip19-core.coax"
+    "coax/lib/nostr/nip19-core.coax",
+    "nostr/examples/nip19.coax",
+    "nostr/examples/checks/nip19.coax"
    ],
    "qualified_targets": [
     "cpu"

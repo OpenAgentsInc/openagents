@@ -1,0 +1,135 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [80] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// The name of a codec error code.
+error_name :: (e: u32) -> string {
+  if e == NC_OK { return "ok"; }
+  if e == NC_INVALID { return "invalid"; }
+  if e == NC_CAPACITY { return "capacity"; }
+  if e == NC_LIMIT { return "limit"; }
+  return "alias";
+}
+// Print every TLV record of a decoded nprofile, nevent or naddr: type,
+// length and value. Relays and an naddr identifier are text; keys are hex.
+walk :: (bytes: [] u8, r: N19_Result) {
+  source := N19_Source.{input = cast(string) bytes, count = bytes.count};
+  at := 0;
+  while at < bytes.count {
+    f := n19_field(source, at);
+    value := bytes[f.value..<f.next];
+    print("  at %: type %, length %, ", at, f.tag, f.length);
+    if f.tag == 1 || (f.tag == 0 && r.type == N19_ADDR) {
+      print("text \"%\"\n", cast(string) value);
+    } else if f.tag == 3 {
+      print("kind %\n", r.kind);
+    } else {
+      show("hex", value);
+    }
+    at = f.next;
+  }
+}
+// Decode a nostr: URI and print its form and records.
+try_uri :: (uri: string) {
+  out: [128] u8;
+  r := nip21_decode_checked(uri, out[..], false);
+  if r.error != NC_OK { print("%...: %\n", uri[0..<16], error_name(r.error)); return; }
+  print("%...: %, % bytes, % relays\n", uri[0..<16], n19_prefix(r.type), r.written, r.relays);
+  if r.type <= N19_NOTE { show("  key", out[0..<32]); return; }
+  walk(out[0..<r.written], r);
+}
+// Bech32-encode raw bytes under an HRP, with no NIP-19 rules applied, then
+// decode the result as NIP-19 and print the outcome.
+try_payload :: (label: string, hrp: string, payload: [] u8) {
+  text: [400] u8; out: [128] u8;
+  e := bech32_encode_checked(hrp, cast(string) payload, true, text[..], true, false);
+  r := nip19_decode_checked(cast(string) text[0..<e.written], out[..], false);
+  if r.error != NC_OK { print("%: %\n", label, error_name(r.error)); return; }
+  print("%: ok, %, % relays\n", label, n19_prefix(r.type), r.relays);
+}
+
+// NIP-19's published examples. The nsec is the specification's example
+// key, published there; it guards nothing.
+NPUB :: "npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg";
+NSEC :: "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+NPROFILE :: "nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p";
+// NIP-21's examples.
+URI_NPUB :: "nostr:npub1sn0wdenkukak0d9dfczzeacvhkrgz92ak56egt7vdgzn8pv2wfqqhrjdv9";
+URI_NEVENT :: "nostr:nevent1qqstna2yrezu5wghjvswqqculvvwxsrcvu7uc0f78gan4xqhvz49d9spr3mhxue69uhkummnw3ez6un9d3shjtn4de6x2argwghx6egpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5nxnepm";
+URI_NADDR :: "nostr:naddr1qqyrzwrxvc6ngvfkqyghwumn8ghj7enfv96x5ctx9e3k7mgzyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6qcyqqq823cph95ag";
+
+main :: () {
+  // The bare forms: exactly 32 bytes each, and back to the same text.
+  out: [128] u8; text: [400] u8;
+  r := nip19_decode_checked(NPUB, out[..], false);
+  print("npub: %, % bytes\n", error_name(r.error), r.written);
+  show("  key", out[0..<32]);
+  e := nip19_encode_checked(N19_NPUB, cast(string) out[0..<32], text[..], false);
+  print("  re-encodes to the same text: %\n", cast(string) text[0..<e.written] == NPUB);
+  r = nip19_decode_checked(NSEC, out[..], false);
+  print("nsec: %, % bytes\n", error_name(r.error), r.written);
+  show("  key", out[0..<32]);
+  e = nip19_encode_checked(N19_NSEC, cast(string) out[0..<32], text[..], false);
+  print("  re-encodes to the same text: %\n", cast(string) text[0..<e.written] == NSEC);
+
+  // The nprofile, word by word and byte by byte.
+  hrp: [83] u8; words: [400] u8;
+  d := bech32_decode_checked(NPROFILE, hrp[..], words[..], true, false);
+  print("nprofile: % words, first 8:", d.written);
+  for i: 0..<8 { print(" %", words[i]); }
+  print("\n");
+  profile: [128] u8;
+  p := nip19_decode_checked(NPROFILE, profile[..], false);
+  print("  % bytes, % relays, key at byte %\n", p.written, p.relays, p.special_at);
+  show("  first 5 bytes", profile[0..<5]);
+  walk(profile[0..<p.written], p);
+  e = nip19_encode_checked(N19_PROFILE, cast(string) profile[0..<p.written], text[..], false);
+  print("  re-encodes to the same text: %\n", cast(string) text[0..<e.written] == NPROFILE);
+
+  // NIP-21 URIs: "nostr:" and a NIP-19 string.
+  try_uri(URI_NPUB);
+  try_uri(URI_NEVENT);
+  try_uri(URI_NADDR);
+
+  // A URI must not carry nsec. The HRP is checked before any byte is
+  // decoded, so the output buffer keeps its old contents.
+  for i: 0..<128 { out[i] = 0; }
+  uri: [128] u8;
+  scheme := "nostr:";
+  for i: 0..<6 { uri[i] = scheme[i]; }
+  for i: 0..<NSEC.count { uri[6 + i] = NSEC[i]; }
+  s := nip21_decode_checked(cast(string) uri[0..<6 + NSEC.count], out[..], false);
+  untouched := true;
+  for i: 0..<128 { if out[i] != 0 { untouched = false; } }
+  print("nostr:nsec1...: %, output untouched: %\n", error_name(s.error), untouched);
+  print("bare npub as a URI: %\n", error_name(nip21_decode_checked(NPUB, out[..], false).error));
+
+  // TLV refusals, built from the nprofile's 72 bytes.
+  buf: [128] u8;
+  for i: 0..<72 { buf[i] = profile[i]; }
+  try_payload("nprofile cut to 71 bytes", "nprofile", buf[0..<71]);
+  try_payload("nprofile without its key", "nprofile", buf[34..<72]);
+  buf[36] = 0x80;
+  try_payload("relay byte 0x80", "nprofile", buf[0..<72]);
+  buf[36] = profile[36];
+  for i: 0..<34 { buf[72 + i] = profile[i]; }
+  try_payload("two keys", "nprofile", buf[0..<106]);
+  buf[72] = 99; buf[73] = 2; buf[74] = 0xff; buf[75] = 0xff;
+  try_payload("unknown type 99, skipped", "nprofile", buf[0..<76]);
+  buf[1] = 31;
+  try_payload("special of 31 bytes", "nevent", buf[0..<72]);
+  try_payload("npub of 33 bytes", "npub", profile[1..<34]);
+  try_payload("npub of 32 bytes", "npub", profile[2..<34]);
+  try_payload("deprecated nrelay", "nrelay", profile[34..<49]);
+  naddr: [128] u8;
+  a := nip21_decode_checked(URI_NADDR, naddr[..], false);
+  try_payload("naddr without its kind", "naddr", naddr[0..<a.written - 6]);
+}
+// book:end example

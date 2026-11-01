@@ -81,6 +81,28 @@ N19_Result :: struct {
   for s: bad { #assert n19_validate(N19_Source.{input = s, count = s.count}, N19_PROFILE).error == NC_INVALID; }
 }
 
+#test "a nostr: URI carries every NIP-19 form but nsec, and an nsec URI writes nothing" {
+  out: [128] u8;
+  nsec_text := "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+  p := nip21_decode_checked("nostr:npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg", out[..], false);
+  #assert p.error == NC_OK && p.type == N19_NPUB && p.written == 32 && out[0] == 126 && out[31] == 78;
+  p = nip21_decode_checked("NOSTR:NPUB10ELFCS4FR0L0R8AF98JLMGDH9C8TCXJVZ9QKW038JS35MP4DMA8QZVJPTG", out[..], false);
+  #assert p.error == NC_OK && p.type == N19_NPUB && out[0] == 126;
+  q := nip21_decode_checked("nostr:nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p", out[..], false);
+  #assert q.error == NC_OK && q.type == N19_PROFILE && q.relays == 2 && q.written == 72;
+  for i: 0..<128 { out[i] = 77; }
+  #assert nip19_decode_checked(nsec_text, out[..], false).error == NC_OK && out[0] == 103;
+  for i: 0..<128 { out[i] = 77; }
+  #assert nip21_decode_checked("nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5", out[..], false).error == NC_INVALID;
+  #assert nip21_decode_checked("NOSTR:NSEC1VL029MGPSPEDVA04G90VLTKH6FVH240ZQTV9K0T9AF8935KE9LAQSNLFE5", out[..], false).error == NC_INVALID;
+  bad := [7] string.["", "nostr", "nostr:", "xostr:npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg", "nostr;npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg",
+                     "npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg",
+                     "nostr:nostr:npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg"];
+  for s: bad { #assert nip21_decode_checked(s, out[..], false).error == NC_INVALID; }
+  #assert nip21_decode_checked("nostr:npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg", out[0..<31], false).error == NC_CAPACITY;
+  for b: out { #assert b == 77; }
+}
+
 n19_count :: (count: int) -> bool #export_c { return count >= 0 && count <= N19_MAX_BYTES; }
 n19_prefix :: (type: u32) -> string {
   if type == N19_NPUB { return "npub"; }
@@ -123,6 +145,7 @@ n19_byte :: (source: N19_Source, at: int) -> u8 {
   c := b32_digit(b32_lower(source.input[source.start + group + 2]));
   return cast(u8)((((value << 5) | c) >> (7 - offset)) & 255);
 }
+// book:begin validate
 n19_field :: (source: N19_Source, at: int) -> N19_Field {
   if at < 0 || at > source.count { return N19_Field.{error = NC_INVALID}; }
   if at == source.count { return N19_Field.{done = true}; }
@@ -165,16 +188,20 @@ n19_validate :: (source: N19_Source, type: u32) -> N19_Result {
   if type == N19_ADDR && (!r.has_author || !r.has_kind) { return N19_Result.{error = NC_INVALID}; }
   return r;
 }
+// book:end validate
 nip19_encode_checked :: (type: u32, payload: string, out: [] u8, overlap: bool) -> NC_Result {
   r := n19_validate(N19_Source.{input = payload, count = payload.count}, type);
   if r.error != NC_OK { return NC_Result.{error = r.error}; }
   return bech32_encode_checked(n19_prefix(type), payload, true, out, true, overlap);
 }
-nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result {
+// book:begin decode
+// Decodes one NIP-19 string. `secret` false refuses nsec from its HRP alone,
+// before any byte is decoded or written.
+n19_decode :: (input: string, out: [] u8, overlap: bool, secret: bool) -> N19_Result {
   h := b32_inspect(input, true);
   if h.error != NC_OK { return N19_Result.{error = h.error}; }
   type := n19_type(input[0..<h.hrp]);
-  if type == 0 { return N19_Result.{error = NC_INVALID}; }
+  if type == 0 || (type == N19_NSEC && !secret) { return N19_Result.{error = NC_INVALID}; }
   last := b32_digit(b32_lower(input[h.hrp + h.words]));
   bytes := n19_byte_count(h.words, last);
   source := N19_Source.{input = input, start = h.hrp + 1, count = bytes, encoded = true};
@@ -185,6 +212,21 @@ nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result
   for i: 0..<r.written { out[i] = n19_byte(source, i); }
   return r;
 }
+nip19_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result {
+  return n19_decode(input, out, overlap, true);
+}
+// book:end decode
+// book:begin uri
+// NIP-21: the scheme "nostr:" (in any case) and one NIP-19 string other than
+// nsec, which a URI must never carry.
+nip21_decode_checked :: (input: string, out: [] u8, overlap: bool) -> N19_Result {
+  scheme := "nostr:";
+  for i: 0..<scheme.count {
+    if i >= input.count || b32_lower(input[i]) != scheme[i] { return N19_Result.{error = NC_INVALID}; }
+  }
+  return n19_decode(input[scheme.count..<input.count], out, overlap, false);
+}
+// book:end uri
 
 #test "all format discriminants, count boundaries, TLV end conditions and key presence" {
   prefixes := [6] string.["npub","nsec","note","nprofile","nevent","naddr"];

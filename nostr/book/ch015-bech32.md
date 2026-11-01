@@ -542,7 +542,7 @@ coax/bin/coax test nostr/examples/checks/bech32.coax
 coax/bin/coax mutate nostr/examples/checks/bech32.coax --root-only
 ```
 
-`coax test` runs 18 checks, including the loaded files' own checks, in
+`coax test` runs 19 checks, including the loaded files' own checks, in
 under a second. On 2026-11-01, root-only mutation killed 12 of 12 mutants
 in the checks file.
 
