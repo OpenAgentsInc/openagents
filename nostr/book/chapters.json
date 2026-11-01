@@ -1503,14 +1503,22 @@
    "number": 71,
    "title": "Lightning zaps and goals",
    "file": "ch071-lightning-zaps-and-goals.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "partly implemented",
+   "profile": "native C",
    "depends_on": [
     21,
     45
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip57.coax",
+    "coax/lib/nostr/nip75.coax",
+    "coax/tests/nostr/nip57_fixtures.coax",
+    "nostr/examples/lightning-zaps.coax",
+    "nostr/examples/checks/lightning-zaps.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

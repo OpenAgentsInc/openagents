@@ -1,0 +1,39 @@
+Bob's lightning address
+bob@zaps.example.com -> https://zaps.example.com/.well-known/lnurlp/bob
+lnurl: lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy
+Bob@zaps.example.com -> -1 (upper case is not LUD-16's)
+the LNURL-pay response
+read: ok, callback https://zaps.example.com/lnurlp/bob/callback, 1000 to 100000000 msat
+nostrPubkey: 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798 (Dave)
+without allowsNostr: allowsNostr is not true
+Bob's goal
+kind 9041 0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72: target 50000 msat, closes at 1761690000
+Alice zaps the goal 21000 msat
+zap request bb0f28e7cb5d7a648b1944ae80602e8961a7d675f1113f46bb4d01b992653b15: 678 bytes, not published
+GET https://zaps.example.com/lnurlp/bob/callback?amount=21000&nostr=%7B%22id... (1019 bytes)
+invoice: lnbc210n1p5szvaapp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztyshp5dkd9rwjk905634vuevxp9lrc57m9yqz97uyg0lgf626zyf2kjzzqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqucmd5p
+the receipt, checked by hand
+invoice amount: 21000 msat (210n is 210 * 100 msat)
+request amount tag: 21000
+h field:            6d9a51ba562be9a8d59ccb0c12fc78a7b6520045f70887fd09d2b42225569084
+sha256(description): 6d9a51ba562be9a8d59ccb0c12fc78a7b6520045f70887fd09d2b42225569084
+Alice's receipt: valid, 21000 msat from Alice
+more zaps
+Carol's receipt: valid, 30000 msat from Carol
+Alice's again: valid, 21000 msat from Alice
+Erin's receipt: valid, 5000 msat from Erin
+the goal's progress at closed_at + 1 hour
+51000 of 50000 msat: counted 2, duplicates 1, late 1, refused 1
+reached: true, closed: true
+at T0 + 185 s: 21000 msat, 2 receipts dated later not counted yet
+refused receipts
+signed by Mallory: refused, not signed by the server's nostrPubkey
+invoice for 20000 msat: refused, the invoice's amount is not the request's amount
+description edited: refused, the description hash is not SHA-256 of the description
+preimage of another payment: refused, the preimage does not hash to the invoice's payment hash
+NIP-57's example receipt
+invoice amount: 1000000 msat (10u)
+h field:            132c3de7685de2be270c4ff629092c92dea8cfa2fdff212a65bf56b95527900e
+sha256(description): 92968c435ae8cc21825307b119c5ac0231023795e520f9aec7108ad733da91c5
+preimage hashes to p: true
+NIP-57's receipt: refused, the description hash is not SHA-256 of the description

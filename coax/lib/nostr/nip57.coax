@@ -1,0 +1,659 @@
+// NIP-57 Lightning zaps: the lightning address to its LNURL-pay URL
+// (LUD-16), the LNURL-pay response a zap needs (allowsNostr, nostrPubkey),
+// the zap request (kind 9734) written for the callback URL and read the way
+// the recipient's server must read it (Appendix D), and the zap receipt
+// (kind 9735) validated the way a client must (Appendix F), with the bolt11
+// invoice decoded to its description hash.
+//
+// A receipt is a claim by the recipient's LNURL server, not proof of
+// payment: NIP-57 says so, and nothing here changes it. n57_receipt checks
+// that the claim is consistent: signed by the server's nostrPubkey, an
+// invoice whose description hash is SHA-256 of the description, that
+// description a signed zap request, and the invoice's amount the request's.
+// It does not verify the receipt's own signature (the caller verifies the
+// events it passes in, chapter 21), nor the invoice's signature (the server
+// that signs the receipt also made the invoice), nor that anything was paid.
+//
+// The invoice amount and the preimage rule are chapter 86's
+// (coax/lib/x402/settle.coax), reused. Bitcoin only: an invoice that is not
+// a mainnet lnbc invoice with an amount refuses.
+#load "nip32.coax";
+#load "bech32.coax";
+#load "../x402/settle.coax";
+#authority;
+
+N57_KIND_REQUEST :: 9734; N57_KIND_RECEIPT :: 9735;
+N57_MAX_URL :: 256; N57_MAX_INVOICE :: 2048; N57_MAX_DESCRIPTION :: 8192;
+
+// The receipt's refusals, in the order n57_receipt checks them.
+N57_OK :: 0; N57_EVENT :: 1; N57_KIND :: 2; N57_SIGNER :: 3; N57_BOLT11 :: 4;
+N57_DESCRIPTION :: 5; N57_INVOICE :: 6; N57_NO_HASH :: 7; N57_HASH :: 8;
+N57_REQUEST :: 9; N57_REQUEST_TAGS :: 10; N57_AMOUNT :: 11; N57_RECIPIENT :: 12;
+N57_TARGET :: 13; N57_SENDER :: 14; N57_LNURL :: 15; N57_PREIMAGE :: 16;
+N57_WHY :: [17] string.["ok", "not a readable event", "not kind 9735",
+  "not signed by the server's nostrPubkey", "no single bolt11 tag", "no single description tag",
+  "not a mainnet bolt11 invoice with an amount", "the invoice has no description hash",
+  "the description hash is not SHA-256 of the description", "the description is not a signed event",
+  "the zap request breaks Appendix D", "the invoice's amount is not the request's amount",
+  "the receipt's p is not the request's p", "the receipt's e is not the request's e",
+  "the receipt's P is not the request's signer", "the request's lnurl is not the recipient's",
+  "the preimage does not hash to the invoice's payment hash"];
+
+// The zap request's refusals (Appendix D).
+N57R_OK :: 0; N57R_EVENT :: 1; N57R_KIND :: 2; N57R_P :: 3; N57R_E :: 4;
+N57R_RELAYS :: 5; N57R_AMOUNT :: 6; N57R_ADDRESS :: 7; N57R_SENDER :: 8; N57R_LNURL :: 9;
+N57R_WHY :: [10] string.["ok", "not a readable event", "not kind 9734", "not exactly one p tag",
+  "more than one e tag", "no single relays tag with a relay", "amount is not a positive msat number",
+  "an a tag that is not an address", "more than one P tag, or not a key", "an lnurl tag that does not read"];
+
+// The LNURL-pay response's refusals.
+N57P_OK :: 0; N57P_JSON :: 1; N57P_TAG :: 2; N57P_NOSTR :: 3; N57P_KEY :: 4;
+N57P_CALLBACK :: 5; N57P_RANGE :: 6;
+N57P_WHY :: [7] string.["ok", "not one JSON object, each key once", "tag is not payRequest",
+  "allowsNostr is not true", "nostrPubkey is not 64 lowercase hex digits", "callback is not an https URL",
+  "minSendable and maxSendable are not 1 <= min <= max msat"];
+
+// The invoice reader's refusals.
+N57I_OK :: 0; N57I_BECH32 :: 1; N57I_AMOUNT :: 2; N57I_SHAPE :: 3;
+
+// n57_long's answers when it finds no single value.
+N57_NONE :: -1; N57_TWICE :: -2; N57_UNREAD :: -3;
+
+// book:begin record
+N57Pay :: struct {
+  status:int=N57P_JSON;
+  callback:[N57_MAX_URL]u8; nc:int;   // where the zap request goes
+  min:int=-1; max:int=-1;             // msat
+  nostr_pubkey:[32]u8;                // who signs the receipts
+}
+N57Request :: struct {
+  status:int=N57R_EVENT; at:int=-1;   // the refusing tag
+  msat:int=-1;                        // the amount tag, or -1
+  recipient:[32]u8;                   // the p tag
+  has_event:bool; event:[32]u8;       // the e tag
+  has_address:bool;                   // an a tag
+  relays:int;                         // relays in the relays tag
+  has_sender:bool; sender:[32]u8;     // a P tag
+  lnurl:[N57_MAX_URL]u8; nl:int;      // the lnurl tag, or nl 0
+}
+N57Invoice :: struct {
+  status:int=N57I_BECH32;
+  msat:int=-1; timestamp:int;
+  has_payment_hash:bool; payment_hash:[32]u8;           // field p
+  has_description_hash:bool; description_hash:[32]u8;   // field h
+}
+N57Zap :: struct {
+  status:int=N57_EVENT;
+  request:N57Request;                 // the zap request in the description
+  sender:[32]u8;                      // its signer
+  msat:int;                           // the invoice's amount
+  payment_hash:[32]u8;
+  created_at:int;                     // the receipt's
+}
+// book:end record
+
+#load "../../tests/nostr/nip57_fixtures.coax";
+
+#test "lightning addresses: https, http for .onion, the LUD-16 alphabet" {
+  out:[N57_MAX_URL]u8;
+  n:=n57_lnurlp("bob@zaps.example.com",out[..]);#assert cast(string)out[0..<n]=="https://zaps.example.com/.well-known/lnurlp/bob";
+  n=n57_lnurlp("odell@stacker.news",out[..]);#assert cast(string)out[0..<n]=="https://stacker.news/.well-known/lnurlp/odell";
+  n=n57_lnurlp("a.b-c_9@x-1.y2",out[..]);#assert cast(string)out[0..<n]=="https://x-1.y2/.well-known/lnurlp/a.b-c_9";
+  n=n57_lnurlp("z0@z0.az",out[..]);#assert cast(string)out[0..<n]=="https://z0.az/.well-known/lnurlp/z0";
+  #assert n57_lnurlp("bob@x.com@y.com",out[..])== -1 && n57_lnurlp("@a@x.com",out[..])== -1;
+  n=n57_lnurlp("me@abcdefgh.onion",out[..]);#assert cast(string)out[0..<n]=="http://abcdefgh.onion/.well-known/lnurlp/me";
+  n=n57_lnurlp("me@xonion.com",out[..]);#assert cast(string)out[0..<n]=="https://xonion.com/.well-known/lnurlp/me";
+  n=n57_lnurlp("me@a.onion",out[..]);#assert cast(string)out[0..<n]=="http://a.onion/.well-known/lnurlp/me";
+  #assert n57_lnurlp("me@.onion",out[..])== -1;
+  #assert n57_lnurlp("Bob@zaps.example.com",out[..])== -1 && n57_lnurlp("bob@Zaps.example.com",out[..])== -1;
+  #assert n57_lnurlp("bob@localhost",out[..])== -1 && n57_lnurlp("@x.com",out[..])== -1 && n57_lnurlp("bob@",out[..])== -1;
+  #assert n57_lnurlp("bob",out[..])== -1 && n57_lnurlp("a@b@c.com",out[..])== -1 && n57_lnurlp("b+x@c.com",out[..])== -1;
+  #assert n57_lnurlp("bob@x..com",out[..])== -1 && n57_lnurlp("bob@x.com.",out[..])== -1 && n57_lnurlp("bob@.x.com",out[..])== -1;
+  #assert n57_lnurlp("bob@x_y.com",out[..])== -1 && n57_lnurlp("bob@x/y.com",out[..])== -1 && n57_lnurlp("b/b@x.com",out[..])== -1;
+  #assert n57_lnurlp("bo{@x.com",out[..])== -1 && n57_lnurlp("bob@x.co{",out[..])== -1 && n57_lnurlp("bo`@x.com",out[..])== -1;
+  #assert n57_lnurlp("bob@x.co`",out[..])== -1 && n57_lnurlp("bo:@x.com",out[..])== -1 && n57_lnurlp("bob@x.co:",out[..])== -1;
+  small:[20]u8;#assert n57_lnurlp("bob@zaps.example.com",small[..])== -1;
+}
+#test "lnurl: the URL in bech32 with prefix lnurl; NIP-57's example decodes to odell's" {
+  out:[400]u8;
+  n:=n57_lnurl("https://stacker.news/.well-known/lnurlp/odell",out[..]);
+  #assert cast(string)out[0..<n]=="lnurl1dp68gurn8ghj7um5v93kketj9ehx2amn9uh8wetvdskkkmn0wahz7mrww4excup0dajx2mrv92x9xp";
+  n=n57_lnurl("https://zaps.example.com/.well-known/lnurlp/bob",out[..]);#assert cast(string)out[0..<n]==N57_T_LNURL;
+  small:[10]u8;#assert n57_lnurl("https://x",small[..])== -1;
+}
+#test "the LNURL-pay response: payRequest, allowsNostr, nostrPubkey, callback, range" {
+  good:="{\"tag\":\"payRequest\",\"callback\":\"https://zaps.example.com/lnurlp/bob/callback\",\"minSendable\":1000,\"maxSendable\":100000000,\"metadata\":\"[[\\\"text/plain\\\",\\\"Bob\\\"]]\",\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}";
+  p:=n57_pay(good);
+  #assert p.status==N57P_OK && cast(string)p.callback[0..<p.nc]=="https://zaps.example.com/lnurlp/bob/callback";
+  #assert p.min==1000 && p.max==100000000 && p.nostr_pubkey[0]==0x79 && p.nostr_pubkey[31]==0x98;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":5,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"} ").status==N57P_OK;
+  p=n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x\",\"minSendable\":1,\"maxSendable\":1,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}");
+  #assert p.status==N57P_OK && p.nc==9 && p.min==1 && p.max==1;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":1111111111111111111111111111111111111111111111111111111111111111}").status==N57P_KEY;
+  #assert n57_pay("{\"tag\":\"withdrawRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_TAG;
+  #assert n57_pay("{\"tag\":1,\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_TAG;
+  #assert n57_pay("{\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_TAG;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_NOSTR;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":\"true\",\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_NOSTR;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":false,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_NOSTR;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true}").status==N57P_KEY;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798\"}").status==N57P_KEY;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":7}").status==N57P_KEY;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"http://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_CALLBACK;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_CALLBACK;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":[],\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_CALLBACK;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_CALLBACK;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_CALLBACK;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":6,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_RANGE;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":0,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_RANGE;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1.5,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_RANGE;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":\"5\",\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_RANGE;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_RANGE;
+  // one JSON object, each key once
+  #assert n57_pay("{\"tag\":\"payRequest\",\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status==N57P_JSON;
+  #assert n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://x.com/c\",\"minSendable\":1,\"maxSendable\":5,\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}{}").status==N57P_JSON;
+  #assert n57_pay("[]").status==N57P_JSON && n57_pay("{\"tag\":").status==N57P_JSON && n57_pay("{\"x\":[1,}").status==N57P_JSON;
+  long:[400]u8;n:=json_raw(long[..],0,"{\"callback\":\"https://");for i:0..<300 {long[n+i]='x';}n+=300;n=json_raw(long[..],n,"\"}");
+  #assert n57_pay(cast(string)long[0..<n]).status==N57P_JSON;
+}
+#test "positive msat numbers" {
+  #assert n57_msat("21000")==21000 && n57_msat("1")==1 && n57_msat("2100000000000000000")==X402_MAX_MSAT;
+  #assert n57_msat("2100000000000000001")== -1 && n57_msat("99999999999999999999")== -1;
+  #assert n57_msat("0")== -1 && n57_msat("021")== -1 && n57_msat("")== -1 && n57_msat("-5")== -1 && n57_msat("2.5")== -1 && n57_msat("1e3")== -1;
+  #assert n57_msat("9/")== -1 && n57_msat("9:")== -1 && n57_msat("9")==9 && n57_msat("90")==90;
+}
+#test "the zap request writer: NIP-57's tag order, and the callback URL" {
+  tags:[1000]u8;relays:=[2]string.["wss://relay.example.com","wss://r2.example.com"];
+  n:=n57_request_tags(relays[..],21000,N57_T_LNURL,N57_T_BOB,N57_T_GOAL,9041,tags[..]);
+  want:="[[\"relays\",\"wss://relay.example.com\",\"wss://r2.example.com\"],[\"amount\",\"21000\"],[\"lnurl\",\"lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"e\",\"0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72\"],[\"k\",\"9041\"]]";
+  #assert cast(string)tags[0..<n]==want;
+  n=n57_request_tags(relays[0..<1],5000,"",N57_T_BOB,"",0,tags[..]);
+  #assert cast(string)tags[0..<n]=="[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"5000\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+  bad:=[1]string.["https://relay.example.com"];
+  #assert n57_request_tags(bad[..],5000,"",N57_T_BOB,"",0,tags[..])== -1;
+  #assert n57_request_tags(relays[0..<0],5000,"",N57_T_BOB,"",0,tags[..])== -1;
+  #assert n57_request_tags(relays[..],0,"",N57_T_BOB,"",0,tags[..])== -1;
+  #assert n57_request_tags(relays[..],X402_MAX_MSAT+1,"",N57_T_BOB,"",0,tags[..])== -1;
+  #assert n57_request_tags(relays[..],X402_MAX_MSAT,"",N57_T_BOB,"",0,tags[..])>0;
+  #assert n57_request_tags(relays[..],5000,"",N57_T_BOB[0..<62],"",0,tags[..])== -1;
+  #assert n57_request_tags(relays[..],1,"",N57_T_BOB,"",0,tags[..])>0;
+  ln:[400]u8;k:=n57_lnurl("https://zaps.example.com/.well-known/lnurlp/a-rather-long-name-for-a-lightning-address",ln[..]);
+  #assert k>90 && n57_request_tags(relays[..],1,cast(string)ln[0..<k],N57_T_BOB,"",0,tags[..])>0;
+  #assert n57_request_tags(relays[..],5000,"",N57_T_BOB,"0d13",9041,tags[..])== -1;
+  #assert n57_request_tags(relays[..],5000,"https://x",N57_T_BOB,"",0,tags[..])== -1;
+  #assert n57_request_tags(relays[..],5000,"lnurl1x",N57_T_BOB,"",0,tags[..])== -1;
+  #assert n57_request_tags(relays[..],5000,N57_T_INVOICE,N57_T_BOB,"",0,tags[..])== -1;
+  small:[30]u8;#assert n57_request_tags(relays[..],5000,"",N57_T_BOB,"",0,small[..])== -1;
+  url:[600]u8;
+  m:=n57_callback("https://zaps.example.com/cb",21000,"{\"a\":[\"b c\"],\"d\":\"~-_.!\"}",N57_T_LNURL,url[..]);
+  #assert cast(string)url[0..<m]=="https://zaps.example.com/cb?amount=21000&nostr=%7B%22a%22%3A%5B%22b%20c%22%5D%2C%22d%22%3A%22~-_.%21%22%7D&lnurl=lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy";
+  m=n57_callback("https://x.com/cb?user=bob",7,"Az09",N57_T_LNURL,url[..]);
+  #assert cast(string)url[0..<m]=="https://x.com/cb?user=bob&amount=7&nostr=Az09&lnurl=lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy";
+  odd:[9]u8;odd[0]='@';odd[1]='[';odd[2]='`';odd[3]='{';odd[4]=0x7f;odd[5]=0xff;odd[6]='/';odd[7]=':';odd[8]='\n';
+  m=n57_callback("https://x.com/cb",7,cast(string)odd[..],N57_T_LNURL,url[..]);
+  #assert cast(string)url[0..<m]=="https://x.com/cb?amount=7&nostr=%40%5B%60%7B%7F%FF%2F%3A%0A&lnurl=lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy";
+  m=n57_callback("https://x.com/cb",7,"{}","l",url[..]);#assert cast(string)url[0..<m]=="https://x.com/cb?amount=7&nostr=%7B%7D&lnurl=l";
+  m=n57_callback("https://x.com/cb",7,"{}","",url[..]);#assert m==38 && cast(string)url[0..<m]=="https://x.com/cb?amount=7&nostr=%7B%7D";
+  short:[60]u8;
+  #assert n57_callback("https://x.com/cb",7,"{}","",short[0..<37])== -1 && n57_callback("https://x.com/cb",7,"{}","",short[0..<38])==38;
+  #assert n57_callback("https://x.com/cb",7,"Z9","",short[0..<33])== -1 && n57_callback("https://x.com/cb",7,"Z9","",short[0..<34])==34;
+  #assert n57_query(short[..],0,"a")==1 && n57_query(short[..],-1,"a")== -1 && n57_query(short[0..<2],0,"%")== -1;
+  #assert n57_callback("https://x.com/cb",7,"Az","",short[0..<10])== -1;
+}
+#test "Appendix D: the zap request's tags" #steps 200000000 {
+  buf:[1200]u8;check:[1200]u8;
+  q:=nostr_event_verify_vartime(N57_T_REQUEST,check[..],false);#assert q.error==NE_OK && q.verified;
+  r:=n57_request(q);
+  #assert r.status==N57R_OK && r.msat==21000 && r.recipient[0]==0xdf && r.has_event && r.event[0]==0x0d && r.relays==1;
+  #assert !r.has_sender && !r.has_address && cast(string)r.lnurl[0..<r.nl]==N57_T_LNURL && r.at== -1;
+  bob:="[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]";
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\",\"wss://b.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"P\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"a\",\"30023:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:post\"]]",buf[..]));
+  #assert r.status==N57R_OK && r.msat== -1 && r.relays==2 && r.has_sender && r.sender[0]==0xf9 && r.has_address && !r.has_event && r.nl==0;
+  r=n57_request(n32_event_in(9735,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_KIND && r.at== -1;
+  none:NostrEvent;#assert n57_request(none).status==N57R_EVENT;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"]]",buf[..]));#assert r.status==N57R_P && r.at== -1;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]",buf[..]));#assert r.status==N57R_P && r.at==2;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"DFF1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_P && r.at==1;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"e\",\"0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72\"],[\"e\",\"0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72\"]]",buf[..]));#assert r.status==N57R_E && r.at==3;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"e\",\"0d13\"]]",buf[..]));#assert r.status==N57R_E && r.at==2;
+  r=n57_request(n32_event_in(9734,"[[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_RELAYS && r.at== -1;
+  r=n57_request(n32_event_in(9734,"[[\"relays\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_RELAYS && r.at==0;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"https://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_RELAYS && r.at==0;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"relays\",\"wss://b.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_RELAYS && r.at==1;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"21.5\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_AMOUNT && r.at==1;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"5\"],[\"amount\",\"5\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_AMOUNT && r.at==2;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"amount\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_AMOUNT && r.at==1;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"a\",\"1:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:x\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",buf[..]));#assert r.status==N57R_ADDRESS && r.at==1;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"P\",\"f9308a01\"]]",buf[..]));#assert r.status==N57R_SENDER && r.at==2;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"P\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"P\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]",buf[..]));#assert r.status==N57R_SENDER && r.at==3;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"lnurl\"]]",buf[..]));#assert r.status==N57R_LNURL && r.at== -1;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"lnurl\",\"lnurl1x\"]]",buf[..]));#assert r.status==N57R_LNURL;
+  r=n57_request(n32_event_in(9734,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"lnurl\",\"lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy\"],[\"lnurl\",\"lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy\"]]",buf[..]));#assert r.status==N57R_LNURL;
+  e:=n32_event(9734,"[]");e.original="[[\"p\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  r=n57_request(e);#assert r.status==N57R_EVENT && r.at==0;
+  long:[600]u8;n:=json_raw(long[..],0,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"lnurl\",\"lnurl1");for i:0..<300 {long[n+i]='x';}n+=300;n=json_raw(long[..],n,"\"]]");
+  r=n57_request(n32_event_in(9734,cast(string)long[0..<n],buf[..]));#assert r.status==N57R_LNURL && r.at== -1;
+  // a long tag of another name is passed over
+  n=json_raw(long[..],0,"[[\"relays\",\"wss://a.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"r\",\"");for i:0..<300 {long[n+i]='x';}n+=300;n=json_raw(long[..],n,"\"]]");
+  #assert n57_request(n32_event_in(9734,cast(string)long[0..<n],buf[..])).status==N57R_OK;
+}
+#test "BOLT #11: the description hash and payment hash fields, with the checksum" {
+  v:=n57_invoice(N57_T_BOLT11);
+  hex:[64]u8;
+  #assert v.status==N57I_OK && v.msat==2_000_000_000 && v.timestamp==1496314658;
+  #assert v.has_description_hash && n57_hex(v.description_hash,hex[..])=="3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1";
+  #assert v.has_payment_hash && n57_hex(v.payment_hash,hex[..])=="0001020304050607080900010203040506070809000102030405060708090102";
+  v=n57_invoice(N57_T_INVOICE);
+  #assert v.status==N57I_OK && v.msat==21000 && v.timestamp==1761686461 && n57_hex(v.description_hash,hex[..])==N57_T_REQUEST_SHA;
+  #assert n57_hex(v.payment_hash,hex[..])=="ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
+  // one character changed: the checksum refuses
+  bad:[400]u8;for i:0..<N57_T_INVOICE.count {bad[i]=N57_T_INVOICE[i];}bad[60]='q';
+  #assert n57_invoice(cast(string)bad[0..<N57_T_INVOICE.count]).status==N57I_BECH32;
+  #assert n57_invoice("lnbc1qqqqqqqqqqqqqq").status==N57I_BECH32 && n57_invoice("").status==N57I_BECH32;
+}
+#test "invoice shapes: amount, fields that overrun, fields not 52 words, testnet" {
+  words:[400]u8;out:[600]u8;hex:[64]u8;
+  ph:=n57_key("ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9");dh:=n57_key(N57_T_REQUEST_SHA);
+  // timestamp 1, then h with 51 words (skipped), p, then h
+  n:=n57_words(words[..],0,1,ph,dh,true);
+  v:=n57_invoice(n57_bech(out[..],"lnbc210n",words[0..<n]));
+  #assert v.status==N57I_OK && v.timestamp==1 && v.has_description_hash && n57_hex(v.description_hash,hex[..])==N57_T_REQUEST_SHA;
+  #assert n57_hex(v.payment_hash,hex[..])=="ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
+  // two p and two h fields: the first of each counts
+  n=n57_words(words[..],0,1,ph,dh,false);m:=n57_field(words[..],n-104,23,ph);m=n57_field(words[..],m,1,dh);for i:0..<104 {words[m+i]=0;}
+  v=n57_invoice(n57_bech(out[..],"lnbc210n",words[0..<m+104]));#assert v.status==N57I_OK && n57_hex(v.description_hash,hex[..])==N57_T_REQUEST_SHA;
+  #assert n57_hex(v.payment_hash,hex[..])=="ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9";
+  // no h
+  n=0;for i:0..<7 {words[n]=0;n+=1;}n=n57_field(words[..],n,1,ph);for i:0..<104 {words[n+i]=0;}
+  v=n57_invoice(n57_bech(out[..],"lnbc210n",words[0..<n+104]));#assert v.status==N57I_OK && !v.has_description_hash && v.has_payment_hash;
+  // no amount, testnet, uppercase
+  n=n57_words(words[..],0,1,ph,dh,false);
+  #assert n57_invoice(n57_bech(out[..],"lnbc",words[0..<n])).status==N57I_AMOUNT;
+  #assert n57_invoice(n57_bech(out[..],"lntb210n",words[0..<n])).status==N57I_AMOUNT;
+  // a field that runs into the signature
+  words[7+1]=31;#assert n57_invoice(n57_bech(out[..],"lnbc210n",words[0..<n])).status==N57I_SHAPE;
+  // too short for a timestamp and signature; a field header cut short
+  #assert n57_invoice(n57_bech(out[..],"lnbc210n",words[0..<110])).status==N57I_SHAPE;
+  for i:0..<113 {words[i]=0;}
+  #assert n57_invoice(n57_bech(out[..],"lnbc210n",words[0..<111])).status==N57I_OK;
+  words[7]=23;#assert n57_invoice(n57_bech(out[..],"lnbc210n",words[0..<113])).status==N57I_SHAPE;
+  words[7]=23;words[8]=0;words[9]=0;for i:0..<104 {words[10+i]=0;}
+  v=n57_invoice(n57_bech(out[..],"lnbc210n",words[0..<114]));#assert v.status==N57I_OK && !v.has_description_hash;
+  big:[3000]u8;for i:0..<2100 {big[i]=0;}bigout:[2200]u8;
+  inv:=n57_bech(bigout[..],"lnbc210n",big[0..<2100]);#assert inv.count==2115 && n57_invoice(inv).status==N57I_BECH32;
+  #assert n57_invoice(n57_bech(bigout[..],"lnbc210n",big[0..<2040])).status==N57I_OK;
+}
+#test "a receipt that holds: signer, hash, amount, p, e, P, lnurl, preimage" #steps 400000000 {
+  buf:[3000]u8;tags:[3000]u8;
+  z:=n57_receipt(n57_event_in(9735,n57_good_tags(tags[..]),N57_T_SERVER,buf[..]),n57_key(N57_T_SERVER),N57_T_LNURL);
+  #assert z.status==N57_OK && z.msat==21000 && z.sender[0]==0xf9 && z.request.recipient[0]==0xdf && z.request.event[0]==0x0d;
+  #assert z.payment_hash[0]==0xae && z.created_at==1761686470;
+  // P and preimage are optional; an empty lnurl skips that check
+  z=n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",N57_T_INVOICE,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),n57_key(N57_T_SERVER),"");
+  #assert z.status==N57_OK;
+}
+#test "receipt refusals, one rule each" #steps 3000000000 {
+  buf:[3000]u8;tags:[3000]u8;server:=n57_key(N57_T_SERVER);
+  t:=n57_good_tags(tags[..]);
+  #assert n57_receipt(n57_event_in(9734,t,N57_T_SERVER,buf[..]),server,N57_T_LNURL).status==N57_KIND;
+  #assert n57_receipt(n57_event_in(9735,t,N57_T_ALICE,buf[..]),server,N57_T_LNURL).status==N57_SIGNER;
+  none:NostrEvent;#assert n57_receipt(none,server,"").status==N57_EVENT;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"","",N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_BOLT11;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",N57_T_INVOICE,"","",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_DESCRIPTION;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"","lnbc210n1qqqq",N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_INVOICE;
+  // BOLT #11's invoice commits to a picnic, not to this request
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",N57_T_BOLT11,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_HASH;
+  // a request with one byte changed no longer hashes to h
+  d:[1000]u8;for i:0..<N57_T_REQUEST.count {d[i]=N57_T_REQUEST[i];}d[N57_T_REQUEST.count-200]='0';
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",N57_T_INVOICE,cast(string)d[0..<N57_T_REQUEST.count],"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_HASH;
+  // an invoice without h
+  words:[400]u8;out:[600]u8;ph:=n57_key("ae216c2ef5247a3782c135efa279a3e4cdc61094270f5d2be58c6204b7a612c9");
+  n:=0;for i:0..<7 {words[n]=0;n+=1;}n=n57_field(words[..],n,1,ph);for i:0..<104 {words[n+i]=0;}
+  noh:=n57_bech(out[..],"lnbc210n",words[0..<n+104]);
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",noh,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_NO_HASH;
+  // the rest need an invoice committing to another description: n57_bad builds one
+  w:[2000]u8;inv:[600]u8;
+  #assert n57_bad("{}",21000,w[..],inv[..],tags[..],buf[..])==N57_REQUEST;
+  #assert n57_bad(N57_T_TWO_P,21000,w[..],inv[..],tags[..],buf[..])==N57_REQUEST_TAGS;
+  // the request names 21000 msat; an invoice for 20000
+  #assert n57_bad(N57_T_REQUEST,20000,w[..],inv[..],tags[..],buf[..])==N57_AMOUNT;
+  #assert n57_bad(N57_T_REQUEST,21000,w[..],inv[..],tags[..],buf[..])==N57_OK;
+  // a request without an amount takes the invoice's; without e, so the receipt has none
+  h:=n57_invoice_for(N57_T_NOAMT,77700,w[..],inv[..]);
+  z:=n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,"","",h,N57_T_NOAMT,"",tags[..]),N57_T_SERVER,buf[..]),server,N57_T_LNURL);
+  #assert z.status==N57_OK && z.msat==77700 && !z.request.has_event && z.sender[0]==0xdd;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",h,N57_T_NOAMT,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_TARGET;
+  zeros:="0000000000000000000000000000000000000000000000000000000000000000";
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,zeros,"",h,N57_T_NOAMT,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_TARGET;
+  // p, e, P that disagree with the request
+  h=n57_invoice_for(N57_T_REQUEST,21000,w[..],inv[..]);
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_ALICE,N57_T_GOAL,"",h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_RECIPIENT;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags("",N57_T_GOAL,"",h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_RECIPIENT;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_ALICE,"",h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_TARGET;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,"","",h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_TARGET;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,"0d13","",h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_TARGET;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags("dff1","",N57_T_GOAL,h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_RECIPIENT;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,N57_T_BOB,h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_SENDER;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"f930",h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_SENDER;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",h,N57_T_REQUEST,"",tags[..]),N57_T_SERVER,buf[..]),server,"lnurl1other").status==N57_LNURL;
+  #assert n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",h,N57_T_REQUEST,zeros,tags[..]),N57_T_SERVER,buf[..]),server,"").status==N57_PREIMAGE;
+  // the same tag twice: p or e that differ, or P, preimage, bolt11, description even when equal
+  more:[3000]u8;
+  #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_RECIPIENT;
+  #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"e\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_TARGET;
+  #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_OK;
+  #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"P\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_SENDER;
+  #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"preimage\",\"0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_PREIMAGE;
+  #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"bolt11\",\"x\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_BOLT11;
+  #assert n57_receipt(n57_event_in(9735,n57_plus(t,"[\"description\",\"x\"]",more[..]),N57_T_SERVER,buf[..]),server,"").status==N57_DESCRIPTION;
+}
+#test "the tag value reader: how many, and the first value" {
+  buf:[600]u8;out:[8]u8;
+  v:=n57_long(n32_event_in(1,"[[\"a\",\"xyz\",\"q\"],[\"b\",\"w\"]]",buf[..]),"a",out[..]);#assert v.tags==1 && v.n==3 && cast(string)out[0..<3]=="xyz";
+  v=n57_long(n32_event_in(1,"[[\"a\",\"xyz\"],[\"b\",\"w\"]]",buf[..]),"b",out[..]);#assert v.tags==1 && v.n==1 && out[0]=='w';
+  v=n57_long(n32_event_in(1,"[[\"a\",\"xyz\"]]",buf[..]),"c",out[..]);#assert v.tags==0 && v.n==0;
+  v=n57_long(n32_event_in(1,"[[\"a\",\"x\"],[\"a\",\"yz\"]]",buf[..]),"a",out[..]);#assert v.tags==2 && v.n==1 && out[0]=='x';
+  v=n57_long(n32_event_in(1,"[[\"a\",\"123456789\"]]",buf[..]),"a",out[..]);#assert v.tags==1 && v.n==0;
+  v=n57_long(n32_event_in(1,"[[\"a\"]]",buf[..]),"a",out[..]);#assert v.tags==1 && v.n==0;
+  v=n57_long(n32_event_in(1,"[[\"a\",\"\"]]",buf[..]),"a",out[..]);#assert v.tags==1 && v.n==0;
+  e:=n32_event(1,"[]");e.original="[[\"a\",1]]";e.tags_from=0;e.tags_to=e.original.count;v=n57_long(e,"a",out[..]);#assert v.tags==0;
+  e.original="[[\"b\",1]]";e.tags_to=e.original.count;v=n57_long(e,"a",out[..]);#assert v.tags==0;
+  e.original="[[\"a\",\"x\",1]]";e.tags_to=e.original.count;v=n57_long(e,"a",out[..]);#assert v.tags==0 && v.n==0;
+  e.original="[[\"a\",\"x\"],1]";e.tags_to=e.original.count;v=n57_long(e,"a",out[..]);#assert v.tags==0 && v.n==0;
+  none:NostrEvent;v=n57_long(none,"a",out[..]);#assert v.tags==0;
+}
+
+// ---- the code
+
+n57_name_ok :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='0' && c<='9') || c=='-' || c=='_' || c=='.';}
+n57_label_ok :: (c:u8)->bool {return (c>='a' && c<='z') || (c>='0' && c<='9') || c=='-';}
+
+// book:begin address
+// The LNURL-pay URL of a lightning address (LUD-16): name@domain becomes
+// https://domain/.well-known/lnurlp/name, or http:// for an .onion domain.
+// The name is a-z 0-9 - _ . and the domain two or more dot-separated
+// labels of a-z 0-9 -, all lower case. Its length in out, or -1.
+n57_lnurlp :: (address:string,out:[]u8)->int {
+  at:=0;
+  while at<address.count && n57_name_ok(address[at]) {at+=1;}
+  if at==0 || at>=address.count || address[at]!='@' {return -1;}
+  domain:=address[at+1..<address.count];dotted:=false;empty:=true;
+  for c:domain {
+    if c=='.' {if empty {return -1;}dotted=true;empty=true;continue;}
+    if !n57_label_ok(c) {return -1;}
+    empty=false;
+  }
+  if empty || !dotted {return -1;}
+  onion:=domain.count>=7 && domain[domain.count-6..<domain.count]==".onion";
+  n:=json_raw(out,0,ifx onion then "http://" else "https://");
+  n=json_raw(out,n,domain);n=json_raw(out,n,"/.well-known/lnurlp/");
+  return json_raw(out,n,address[0..<at]);
+}
+// The URL as NIP-57's lnurl tag carries it: bech32, prefix lnurl, the URL's
+// bytes as 5-bit words. Its length in out, or -1.
+n57_lnurl :: (url:string,out:[]u8)->int {
+  r:=bech32_encode_checked("lnurl",url,true,out,true,false);
+  if r.error!=NC_OK {return -1;}
+  return r.written;
+}
+// Whether s is an lnurl: bech32 with prefix lnurl.
+n57_is_lnurl :: (s:string)->bool {
+  hrp:[90]u8;w:[N57_MAX_URL*2]u8;
+  r:=bech32_decode_checked(s,hrp[..],w[..],true,false);
+  return r.error==NC_OK && cast(string)hrp[0..<r.hrp_written]=="lnurl";
+}
+// book:end address
+
+// book:begin pay
+N57_PAY_KEYS :: [6] string.["tag", "callback", "minSendable", "maxSendable", "allowsNostr", "nostrPubkey"];
+// The LNURL-pay response, read for a zap: tag payRequest, allowsNostr true,
+// nostrPubkey a key, an https callback, and 1 <= minSendable <= maxSendable.
+// Other keys are skipped; a key given twice refuses.
+n57_pay :: (text:string)->N57Pay {
+  p:N57Pay;j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_OBJECT {return p;}
+  seen:=0;is_pay:=false;allows:=false;has_key:=false;
+  while json_next(j[..])!=JSON_OBJECT_END {
+    f:= -1;key:=json_text(j[..]);
+    for k:0..<6 {if json_is(key,N57_PAY_KEYS[k]) {f=k;}}
+    v:=json_next(j[..]);raw:=json_text(j[..]);
+    if !json_skip(j[..]) {return p;}
+    if f<0 {continue;}
+    if ((seen>>f)&1)==1 {return p;}
+    seen|=1<<f;
+    if f==0 {is_pay=json_is(raw,"payRequest");}
+    if f==1 {p.nc=json_unescape(raw,p.callback[..]);if p.nc<0 {return p;}}
+    if f==2 && v==JSON_NUMBER {p.min=json_int(raw).value;}
+    if f==3 && v==JSON_NUMBER {p.max=json_int(raw).value;}
+    if f==4 {allows=v==JSON_TRUE;}
+    if f==5 {has_key=v==JSON_STRING && ne_lower_hex(raw,p.nostr_pubkey[..]);}
+  }
+  if json_next(j[..])!=JSON_END {return p;}
+  p.status=N57P_TAG;if !is_pay {return p;}
+  p.status=N57P_NOSTR;if !allows {return p;}
+  p.status=N57P_KEY;if !has_key {return p;}
+  p.status=N57P_CALLBACK;
+  if p.nc<9 || cast(string)p.callback[0..<8]!="https://" {return p;}
+  p.status=N57P_RANGE;if p.min<1 || p.max<p.min {return p;}
+  p.status=N57P_OK;return p;
+}
+// book:end pay
+
+// A positive whole number of msat, at most 21 million BTC, written in
+// decimal without a leading zero; -1 for anything else.
+n57_msat :: (s:string)->int {
+  if s.count==0 || s[0]=='0' {return -1;}
+  v:=0;
+  for c:s {
+    if c<'0' || c>'9' {return -1;}
+    d:=cast(int)(c-'0');
+    if v>(X402_MAX_MSAT-d)/10 {return -1;}
+    v=v*10+d;
+  }
+  return v;
+}
+
+// book:begin write
+// A zap request's tags in NIP-57's order: relays, amount, lnurl (when not
+// ""), p, then e and k when event is not "". Its length in out, or -1 for a
+// relay that is not ws:// or wss://, no relays, an amount out of range, a
+// key or id that is not 64 lowercase hex digits, or an lnurl that is not one.
+n57_request_tags :: (relays:[]string,msat:int,lnurl:string,recipient:string,event:string,kind:int,out:[]u8)->int {
+  k:[32]u8;
+  if relays.count==0 || msat<1 || msat>X402_MAX_MSAT || !ne_lower_hex(recipient,k[..]) {return -1;}
+  if event!="" && !ne_lower_hex(event,k[..]) {return -1;}
+  if lnurl!="" && !n57_is_lnurl(lnurl) {return -1;}
+  n:=json_raw(out,0,"[[\"relays\"");
+  for s:relays {if !nt_relay_ok(s) {return -1;}n=json_raw(out,n,",");n=json_write_string(out,n,s);}
+  n=json_raw(out,n,"],[\"amount\",\"");n=json_write_int(out,n,msat);n=json_raw(out,n,"\"]");
+  if lnurl!="" {n=json_raw(out,n,",[\"lnurl\",");n=json_write_string(out,n,lnurl);n=json_raw(out,n,"]");}
+  n=json_raw(out,n,",[\"p\",");n=json_write_string(out,n,recipient);n=json_raw(out,n,"]");
+  if event!="" {
+    n=json_raw(out,n,",[\"e\",");n=json_write_string(out,n,event);
+    n=json_raw(out,n,"],[\"k\",\"");n=json_write_int(out,n,kind);n=json_raw(out,n,"\"]");
+  }
+  return json_raw(out,n,"]");
+}
+// s percent-encoded for a URL query: A-Z a-z 0-9 - _ . ~ as they are,
+// every other byte as %XX.
+n57_query :: (out:[]u8,at:int,s:string)->int {
+  digits:="0123456789ABCDEF";n:=at;
+  for c:s {
+    plain:=(c>='A' && c<='Z') || (c>='a' && c<='z') || (c>='0' && c<='9') || c=='-' || c=='_' || c=='.' || c=='~';
+    need:=ifx plain then 1 else 3;
+    if n<0 || n+need>out.count {return -1;}
+    if plain {out[n]=c;n+=1;continue;}
+    out[n]='%';out[n+1]=digits[c>>4];out[n+2]=digits[c&15];n+=3;
+  }
+  return n;
+}
+// The GET URL that sends the signed zap request to the server's callback
+// (Appendix B): amount, nostr (the request JSON, percent-encoded), lnurl.
+n57_callback :: (callback:string,msat:int,request:string,lnurl:string,out:[]u8)->int {
+  q:=false;for c:callback {if c=='?' {q=true;}}
+  n:=json_raw(out,0,callback);n=json_raw(out,n,ifx q then "&amount=" else "?amount=");
+  n=json_write_int(out,n,msat);n=json_raw(out,n,"&nostr=");n=n57_query(out,n,request);
+  if lnurl!="" {n=json_raw(out,n,"&lnurl=");n=json_raw(out,n,lnurl);}
+  return n;
+}
+// book:end write
+
+// book:begin long
+// How many tags are named name, and the first one's value unescaped into
+// out: n is its length, or 0 when it has none or it does not fit. Unlike
+// n32_tag it reads values longer than 256 bytes: an invoice, a zap request.
+// Tags that do not read as arrays of strings read as no tags.
+N57Value :: struct {tags:int; n:int;}
+n57_long :: (e:NostrEvent,name:string,out:[]u8)->N57Value {
+  r:N57Value;nothing:N57Value;j:[1]Json;
+  if !nt_start(j[..],e) {return r;}
+  tok:=json_next(j[..]);
+  while tok==JSON_ARRAY {
+    v:=json_next(j[..]);
+    if v==JSON_STRING && json_is(json_text(j[..]),name) {
+      r.tags+=1;v=json_next(j[..]);
+      if r.tags==1 && v==JSON_STRING {k:=json_unescape(json_text(j[..]),out);if k!= -1 {r.n=k;}}
+    }
+    while v==JSON_STRING {v=json_next(j[..]);}
+    if v!=JSON_ARRAY_END {return nothing;}
+    tok=json_next(j[..]);
+  }
+  if tok!=JSON_ARRAY_END {return nothing;}
+  return r;
+}
+// book:end long
+
+n57_rrefuse :: (r:N57Request,status:int,at:int)->N57Request {o:=r;o.status=status;o.at=at;return o;}
+
+// book:begin request
+// A zap request read as Appendix D says the server must: kind 9734, exactly
+// one p, at most one e, one relays tag with a ws:// or wss:// relay first,
+// an amount that is a positive msat number, a tags that are addresses, at
+// most one P, at most one lnurl, and it an lnurl. The signature is the
+// caller's to verify (n57_receipt does).
+n57_request :: (e:NostrEvent)->N57Request {
+  r:N57Request;if e.error!=NE_OK {return r;}
+  if e.kind!=N57_KIND_REQUEST {return n57_rrefuse(r,N57R_KIND,-1);}
+  ps:=0;es:=0;i:=0;
+  while true {
+    t:=nostr_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_EVENT {return n57_rrefuse(r,N57R_EVENT,i);}
+    n:=n32_tag(e,i);
+    name:=ifx n.error==NT_OK then cast(string)n.v[0].b[0..<n.v[0].n] else "";
+    value:=cast(string)n.v[1].b[0..<n.v[1].n];
+    if t.type==NT_P {
+      ps+=1;if ps>1 || t.error!=NT_OK {return n57_rrefuse(r,N57R_P,i);}
+      r.recipient=t.pubkey;
+    } else if t.type==NT_E {
+      es+=1;if es>1 || t.error!=NT_OK {return n57_rrefuse(r,N57R_E,i);}
+      r.has_event=true;r.event=t.id;
+    } else if t.type==NT_A {
+      if t.error!=NT_OK {return n57_rrefuse(r,N57R_ADDRESS,i);}
+      r.has_address=true;
+    } else if name=="relays" {
+      if r.relays>0 || !nt_relay_ok(value) {return n57_rrefuse(r,N57R_RELAYS,i);}
+      r.relays=n.values-1;
+    } else if name=="amount" {
+      if r.msat!= -1 {return n57_rrefuse(r,N57R_AMOUNT,i);}
+      r.msat=n57_msat(value);
+      if r.msat== -1 {return n57_rrefuse(r,N57R_AMOUNT,i);}
+    } else if name=="P" {
+      if r.has_sender || !ne_lower_hex(value,r.sender[..]) {return n57_rrefuse(r,N57R_SENDER,i);}
+      r.has_sender=true;
+    }
+    i+=1;
+  }
+  if ps!=1 {return n57_rrefuse(r,N57R_P,-1);}
+  if r.relays==0 {return n57_rrefuse(r,N57R_RELAYS,-1);}
+  l:=n57_long(e,"lnurl",r.lnurl[..]);
+  if l.tags>1 || (l.tags==1 && !n57_is_lnurl(cast(string)r.lnurl[0..<l.n])) {return n57_rrefuse(r,N57R_LNURL,-1);}
+  r.nl=l.n;r.status=N57R_OK;return r;
+}
+// book:end request
+
+n57_zrefuse :: (z:N57Zap,status:int)->N57Zap {o:=z;o.status=status;return o;}
+
+// book:begin invoice
+// 52 five-bit words from at as 32 bytes; the last 4 bits are padding.
+n57_bytes32 :: (w:[]u8,at:int)->[32]u8 {
+  k:[32]u8;
+  for b:0..<256 {k[b/8]|=cast(u8)(((cast(int)w[at+b/5]>>(4-b%5))&1)<<(7-b%8));}
+  return k;
+}
+// A bolt11 invoice: the bech32 checksum, the amount (chapter 86's
+// x402_bolt11_msat: mainnet lnbc with an amount), the 35-bit timestamp, then
+// the tagged fields, each a type word, a 10-bit length and that many words,
+// up to the 104-word signature. The first p and the first h of 52 words are
+// kept; other fields are skipped, as BOLT #11 says a reader must. The
+// signature is not verified.
+n57_invoice :: (text:string)->N57Invoice {
+  v:N57Invoice;hrp:[90]u8;w:[N57_MAX_INVOICE]u8;
+  r:=bech32_decode_checked(text,hrp[..],w[..],true,false);
+  if r.error!=NC_OK {return v;}
+  v.status=N57I_AMOUNT;v.msat=x402_bolt11_msat(text);
+  if v.msat<0 {return v;}
+  v.status=N57I_SHAPE;
+  end:=r.written-104;
+  if end<7 {return v;}
+  for i:0..<7 {v.timestamp=v.timestamp*32+cast(int)w[i];}
+  i:=7;
+  while i<end {
+    if i+3>end {return v;}
+    type:=w[i];size:=cast(int)w[i+1]*32+cast(int)w[i+2];i+=3;
+    if i+size>end {return v;}
+    if size==52 && type==1 && !v.has_payment_hash {v.has_payment_hash=true;v.payment_hash=n57_bytes32(w[..],i);}
+    if size==52 && type==23 && !v.has_description_hash {v.has_description_hash=true;v.description_hash=n57_bytes32(w[..],i);}
+    i+=size;
+  }
+  v.status=N57I_OK;return v;
+}
+// book:end invoice
+
+// book:begin receipt
+// A zap receipt checked as Appendix F says a client must, against the
+// nostrPubkey of the recipient's LNURL server and, when not "", the
+// recipient's lnurl. In order: kind 9735; signed by nostrPubkey; one bolt11
+// and one description tag; the invoice reads; its description hash is
+// SHA-256 of the description; the description is a signed zap request that
+// keeps Appendix D; the invoice's amount is the request's amount when it
+// names one; every p and e of the receipt is the request's, and its P the
+// request's signer; the lnurl matches; a preimage hashes to the payment hash.
+n57_receipt :: (e:NostrEvent,nostr_pubkey:[32]u8,lnurl:string)->N57Zap {
+  z:N57Zap;if e.error!=NE_OK {return z;}
+  if e.kind!=N57_KIND_RECEIPT {return n57_zrefuse(z,N57_KIND);}
+  if !ns_equal32(e.public_key,nostr_pubkey) {return n57_zrefuse(z,N57_SIGNER);}
+  bolt:[N57_MAX_INVOICE]u8;b:=n57_long(e,"bolt11",bolt[..]);
+  if b.tags!=1 {return n57_zrefuse(z,N57_BOLT11);}
+  desc:[N57_MAX_DESCRIPTION]u8;d:=n57_long(e,"description",desc[..]);
+  if d.tags!=1 {return n57_zrefuse(z,N57_DESCRIPTION);}
+  inv:=n57_invoice(cast(string)bolt[0..<b.n]);
+  if inv.status!=N57I_OK {return n57_zrefuse(z,N57_INVOICE);}
+  if !inv.has_description_hash {return n57_zrefuse(z,N57_NO_HASH);}
+  h:[32]u8;hashed:=sha256_hash_checked(desc[0..<d.n],h[..],false);
+  if !ns_equal32(h,inv.description_hash) {return n57_zrefuse(z,N57_HASH);}
+  check:[N57_MAX_DESCRIPTION]u8;
+  q:=nostr_event_verify_vartime(cast(string)desc[0..<d.n],check[..],false);
+  if q.error!=NE_OK {return n57_zrefuse(z,N57_REQUEST);}
+  z.request=n57_request(q);
+  if z.request.status!=N57R_OK {return n57_zrefuse(z,N57_REQUEST_TAGS);}
+  z.sender=q.public_key;z.msat=inv.msat;z.payment_hash=inv.payment_hash;z.created_at=e.created_at;
+  if z.request.msat!= -1 && z.request.msat!=inv.msat {return n57_zrefuse(z,N57_AMOUNT);}
+  has_p:=false;has_e:=false;i:=0;
+  while true {
+    t:=nostr_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.type==NT_P {has_p=true;if t.error!=NT_OK || !ns_equal32(t.pubkey,z.request.recipient) {return n57_zrefuse(z,N57_RECIPIENT);}}
+    if t.type==NT_E {has_e=true;if t.error!=NT_OK || !ns_equal32(t.id,z.request.event) {return n57_zrefuse(z,N57_TARGET);}}
+    i+=1;
+  }
+  if !has_p {return n57_zrefuse(z,N57_RECIPIENT);}
+  if has_e!=z.request.has_event {return n57_zrefuse(z,N57_TARGET);}
+  sender:[64]u8;s:=n57_long(e,"P",sender[..]);k:[32]u8;
+  if s.tags>0 && (s.tags>1 || !ne_lower_hex(cast(string)sender[0..<s.n],k[..]) || !ns_equal32(k,z.sender)) {return n57_zrefuse(z,N57_SENDER);}
+  if lnurl!="" && z.request.nl!=0 && cast(string)z.request.lnurl[0..<z.request.nl]!=lnurl {return n57_zrefuse(z,N57_LNURL);}
+  pre:[64]u8;p:=n57_long(e,"preimage",pre[..]);hex:[64]u8;
+  if p.tags>0 && (p.tags>1 || !x402_preimage_matches(cast(string)pre[0..<p.n],n57_hex(inv.payment_hash,hex[..]))) {return n57_zrefuse(z,N57_PREIMAGE);}
+  z.status=N57_OK;return z;
+}
+// book:end receipt

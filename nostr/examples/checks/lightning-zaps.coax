@@ -1,0 +1,95 @@
+// The checks of lightning-zaps.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/lightning-zaps.coax --run-steps 250000000
+#load "../lightning-zaps.coax";
+
+// book:begin check
+// Values from a Python script written from BIP-340, NIP-01, bech32 and
+// BOLT #11 with hashlib only, sharing no code with Coax: Bob's goal id,
+// Alice's zap request (its id and the SHA-256 of its JSON), the invoice Bob's
+// server makes for it, and the lnurl of Bob's address.
+PY_GOAL_ID :: "0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72";
+PY_REQUEST_ID :: "bb0f28e7cb5d7a648b1944ae80602e8961a7d675f1113f46bb4d01b992653b15";
+PY_REQUEST_SHA :: "6d9a51ba562be9a8d59ccb0c12fc78a7b6520045f70887fd09d2b42225569084";
+PY_INVOICE :: "lnbc210n1p5szvaapp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztyshp5dkd9rwjk905634vuevxp9lrc57m9yqz97uyg0lgf626zyf2kjzzqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqucmd5p";
+PY_LNURL :: "lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy";
+// NIP-57's example receipt, recomputed in Python: SHA-256 of its
+// description, and the NIP-01 id of that description (the zap request),
+// which is not the id the request states.
+PY_NIP57_DESCRIPTION_SHA :: "92968c435ae8cc21825307b119c5ac0231023795e520f9aec7108ad733da91c5";
+PY_NIP57_REQUEST_ID :: "034e151dc827fd9feee508bdda46d21f601b0be443f4d80a03080f88152b8d11";
+// BOLT #11's "Now send $24 for an entire list of things (hashed)": h is the
+// SHA-256 of this description.
+BOLT11_PICNIC :: "One piece of chocolate cake, one icecream cone, one pickle, one slice of swiss cheese, one slice of salami, one lollypop, one piece of cherry pie, one sausage, one cupcake, and one slice of watermelon";
+
+#test "Alice's request and Bob's invoice are Python's, byte for byte" #steps 2000000000 {
+  hx: [64] u8; gb: [1000] u8; rb: [1500] u8; ib: [600] u8; url: [256] u8; ln: [400] u8;
+  nu := n57_lnurlp("bob@zaps.example.com", url[..]);
+  nl := n57_lnurl(cast(string) url[0..<nu], ln[..]);
+  #assert cast(string) ln[0..<nl] == PY_LNURL;
+  goal := sign(BOB, T0, 9041, "[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"50000\"],[\"closed_at\",\"1761690000\"]]", "A new microphone", gb[..]);
+  #assert hex32(goal.id, hx[..]) == PY_GOAL_ID;
+  alice := zap_request(ALICE, T0 + 60, 21000, PY_GOAL_ID, PY_LNURL, "For the microphone", rb[..]);
+  #assert hex32(alice.id, hx[..]) == PY_REQUEST_ID && text_of(alice) == N57_T_REQUEST;
+  #assert hex32(sha_of(text_of(alice)), hx[..]) == PY_REQUEST_SHA;
+  #assert make_invoice(21000, T0 + 61, PREIMAGE, text_of(alice), ib[..]) == PY_INVOICE;
+}
+
+#test "BOLT #11's description-hash vector" {
+  v := n57_invoice(N57_T_BOLT11);
+  hx: [64] u8;
+  #assert v.status == N57I_OK && hex32(v.description_hash, hx[..]) == hex32(sha_of(BOLT11_PICNIC), hx[0..<64]);
+  #assert hex32(sha_of(BOLT11_PICNIC), hx[..]) == "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1";
+}
+
+#test "NIP-57's example: its lnurl, amount and preimage hold; its description hash does not" #steps 400000000 {
+  ln: [400] u8; hx: [64] u8;
+  n := n57_lnurl("https://stacker.news/.well-known/lnurlp/odell", ln[..]);
+  #assert cast(string) ln[0..<n] == "lnurl1dp68gurn8ghj7um5v93kketj9ehx2amn9uh8wetvdskkkmn0wahz7mrww4excup0dajx2mrv92x9xp";
+  v := n57_invoice(NIP57_BOLT11);
+  #assert v.status == N57I_OK && v.msat == 1_000_000 && v.timestamp == 1674164540;
+  #assert hex32(v.description_hash, hx[..]) == "132c3de7685de2be270c4ff629092c92dea8cfa2fdff212a65bf56b95527900e";
+  #assert x402_preimage_matches(NIP57_PREIMAGE, hex32(v.payment_hash, hx[..]));
+  #assert hex32(sha_of(NIP57_DESCRIPTION), hx[..]) == PY_NIP57_DESCRIPTION_SHA;
+  // The description's own id does not recompute: it reads as NE_ID.
+  out: [4000] u8; e := nostr_event_read(NIP57_DESCRIPTION, out[..], false);
+  #assert e.error == NE_ID && hex32(e.computed_id, hx[..]) == PY_NIP57_REQUEST_ID;
+  nb: [3000] u8; tags: [3000] u8;
+  ex := n57_event_in(9735, n57_receipt_tags(NIP57_P, NIP57_E, NIP57_SENDER, NIP57_BOLT11, NIP57_DESCRIPTION, NIP57_PREIMAGE, tags[..]), NIP57_SIGNER, nb[..]);
+  #assert n57_receipt(ex, n57_key(NIP57_SIGNER), "").status == N57_HASH;
+}
+
+// The hand values of the chapter's worked example.
+#test "the worked example's numbers" {
+  #assert x402_bolt11_msat(PY_INVOICE) == 210 * 100;          // 210n: 210 * 10^-9 BTC * 10^11 msat/BTC
+  // "hp5" after the p field: h is word 23, then the length 1 * 32 + 20.
+  at := x402_bolt11_sep(PY_INVOICE) + 1 + 7 + 55;
+  #assert cast(string) PY_INVOICE[at..<at + 3] == "hp5";
+  #assert b32_digit('h') == 23 && b32_digit('p') * 32 + b32_digit('5') == 52;
+  // its first four words, d k d 9, are 13 22 13 5: 01101 10110 01101 00101,
+  // so the hash starts 0110 1101 1001 1010 0101 = 6 d 9 a 5.
+  #assert cast(string) PY_INVOICE[at + 3..<at + 7] == "dkd9";
+  #assert b32_digit('d') == 13 && b32_digit('k') == 22 && b32_digit('9') == 5;
+  w := (13 << 15) | (22 << 10) | (13 << 5) | 5;
+  #assert w == 0x6d9a5 && PY_REQUEST_SHA[0..<5] == "6d9a5";
+}
+
+// Done means: a receipt whose description hash does not match refuses, and
+// goal progress sums only valid receipts.
+#test "Done means" #steps 4000000000 {
+  hx: [64] u8; gb: [1000] u8; rb: [3][1500] u8; ib: [2][600] u8; eb: [4][3000] u8;
+  goal := sign(BOB, T0, 9041, "[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"50000\"],[\"closed_at\",\"1761690000\"]]", "A new microphone", gb[..]);
+  alice := zap_request(ALICE, T0 + 60, 21000, PY_GOAL_ID, PY_LNURL, "For the microphone", rb[0][..]);
+  edited := zap_request(ALICE, T0 + 60, 21000, PY_GOAL_ID, PY_LNURL, "For the microphone!", rb[1][..]);
+  server := key_of(DAVE);
+  set: [3] NostrEvent;
+  set[0] = zap_receipt(DAVE, T0 + 70, alice, PY_GOAL_ID, PY_INVOICE, PREIMAGE, eb[0][..]);
+  set[1] = zap_receipt(DAVE, T0 + 80, edited, PY_GOAL_ID, PY_INVOICE, PREIMAGE, eb[1][..]);
+  set[2] = zap_receipt(MALLORY, T0 + 90, alice, PY_GOAL_ID, PY_INVOICE, PREIMAGE, eb[2][..]);
+  #assert n57_receipt(set[0], server, PY_LNURL).status == N57_OK;
+  #assert n57_receipt(set[1], server, PY_LNURL).status == N57_HASH;
+  #assert n57_receipt(set[2], server, PY_LNURL).status == N57_SIGNER;
+  t := n75_tally(goal, set[..], server, PY_LNURL, T0 + 7200);
+  #assert t.msat == 21000 && t.counted == 1 && t.refused == 2 && !t.reached;
+}
+// book:end check

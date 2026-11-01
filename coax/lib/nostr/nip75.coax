@@ -1,0 +1,204 @@
+// NIP-75 zap goals: a kind 9041 event names a target in msat, the relays
+// its zaps go to and, optionally, closed_at, after which zaps no longer
+// count. The goal's progress is the sum of the valid zap receipts (NIP-57,
+// n57_receipt) whose zap request names the goal in its e tag and its author
+// in its p tag, each receipt counted once.
+//
+// The tally is a reading of receipts, which are the recipient's server's
+// claims (NIP-57), not proof that anything was paid. The caller verifies
+// the events it passes in (chapter 21), names the nostrPubkey of the goal
+// author's LNURL server and the time now, so the same events give the same
+// progress on every run. A receipt is late when its created_at (the
+// invoice's paid_at) is after closed_at, and from the future when it is
+// after now; neither counts. Receipts with a payment hash already counted
+// are duplicates: the same payment published twice counts once.
+//
+// Not built: goals with several beneficiaries (zap tags), whose receipts
+// come from several servers, and the goal tag on other events.
+#load "nip57.coax";
+#authority;
+
+N75_KIND_GOAL :: 9041;
+N75_MAX_COUNTED :: 64;
+N75_OK :: 0; N75_EVENT :: 1; N75_KIND :: 2; N75_AMOUNT :: 3; N75_RELAYS :: 4; N75_CLOSED :: 5;
+N75_WHY :: [6] string.["ok", "not a readable event", "not kind 9041", "no single amount tag with a positive msat number",
+  "no single relays tag with a relay", "closed_at is not one positive number"];
+
+// book:begin record
+N75Goal :: struct {
+  status:int=N75_EVENT; at:int=-1;   // the refusing tag
+  msat:int=-1;                       // the target
+  relays:int;                        // relays in the relays tag
+  closed_at:int=-1;                  // or -1: never closes
+  id:[32]u8; author:[32]u8;          // the goal event's
+}
+N75Progress :: struct {
+  status:int=N75_EVENT;              // the goal's
+  msat:int;                          // the sum of the counted receipts
+  counted:int;                       // receipts counted
+  refused:int;                       // receipts n57_receipt refuses
+  other:int;                         // valid receipts for another event or person
+  late:int;                          // valid receipts after closed_at
+  future:int;                        // valid receipts after now
+  duplicates:int;                    // a payment hash already counted
+  full:int;                          // not counted: N75_MAX_COUNTED already are
+  reached:bool;                      // msat >= the target
+  closed:bool;                       // now is after closed_at
+  hashes:[N75_MAX_COUNTED][32]u8;    // the counted payment hashes
+}
+// book:end record
+
+// Bob's goal from the Python script: 50000 msat, closed_at 1761690000.
+N75_T_GOAL :: "{\"id\":\"0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686400,\"kind\":9041,\"tags\":[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"50000\"],[\"closed_at\",\"1761690000\"]],\"content\":\"A new microphone\",\"sig\":\"4372668982d252d141008f32010cd83159610b215904907dd8666cc9193504175f1331700681346d2905dd279c959f66a3912428429d361c9b42182a4087e01a\"}";
+N75_T_CLOSE :: 1761690000;
+
+// A receipt by the server for this request and invoice, with p and e, dated at.
+n75_receipt_in :: (request:string,invoice:string,e:string,at:int,out:[]u8)->NostrEvent {
+  tags:[3000]u8;
+  r:=n57_event_in(9735,n57_receipt_tags(N57_T_BOB,e,"",invoice,request,"",tags[..]),N57_T_SERVER,out);
+  r.created_at=at;return r;
+}
+
+#test "Bob's goal reads: target, relays, closed_at, id" #steps 200000000 {
+  check:[2000]u8;g:=n75_goal(nostr_event_verify_vartime(N75_T_GOAL,check[..],false));
+  hex:[64]u8;
+  #assert g.status==N75_OK && g.msat==50000 && g.relays==1 && g.closed_at==N75_T_CLOSE && g.at== -1;
+  #assert n57_hex(g.id,hex[..])==N57_T_GOAL && n57_hex(g.author,hex[..])==N57_T_BOB;
+  buf:[600]u8;
+  g=n75_goal(n32_event_in(9041,"[[\"relays\",\"wss://a.com\",\"ws://b.com\"],[\"amount\",\"1\"],[\"image\",\"https://x/y.png\"]]",buf[..]));
+  #assert g.status==N75_OK && g.msat==1 && g.relays==2 && g.closed_at== -1;
+}
+#test "goal refusals: kind, amount, relays, closed_at" {
+  buf:[600]u8;
+  none:NostrEvent;#assert n75_goal(none).status==N75_EVENT;
+  #assert n75_goal(n32_event_in(1,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"5\"]]",buf[..])).status==N75_KIND;
+  g:=n75_goal(n32_event_in(9041,"[[\"relays\",\"wss://a.com\"]]",buf[..]));#assert g.status==N75_AMOUNT && g.at== -1;
+  g=n75_goal(n32_event_in(9041,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"0\"]]",buf[..]));#assert g.status==N75_AMOUNT && g.at==1;
+  g=n75_goal(n32_event_in(9041,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"5\"],[\"amount\",\"5\"]]",buf[..]));#assert g.status==N75_AMOUNT && g.at==2;
+  g=n75_goal(n32_event_in(9041,"[[\"amount\",\"5\"]]",buf[..]));#assert g.status==N75_RELAYS && g.at== -1;
+  g=n75_goal(n32_event_in(9041,"[[\"amount\",\"5\"],[\"relays\",\"https://a.com\"]]",buf[..]));#assert g.status==N75_RELAYS && g.at==1;
+  g=n75_goal(n32_event_in(9041,"[[\"amount\",\"5\"],[\"relays\",\"wss://a.com\"],[\"relays\",\"wss://a.com\"]]",buf[..]));#assert g.status==N75_RELAYS && g.at==2;
+  g=n75_goal(n32_event_in(9041,"[[\"amount\",\"5\"],[\"relays\",\"wss://a.com\"],[\"closed_at\",\"soon\"]]",buf[..]));#assert g.status==N75_CLOSED && g.at==2;
+  g=n75_goal(n32_event_in(9041,"[[\"amount\",\"5\"],[\"relays\",\"wss://a.com\"],[\"closed_at\",\"9\"],[\"closed_at\",\"9\"]]",buf[..]));#assert g.status==N75_CLOSED && g.at==3;
+  e:=n32_event(9041,"[]");e.original="[[\"amount\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  g=n75_goal(e);#assert g.status==N75_EVENT && g.at==0;
+}
+#test "progress: valid receipts to the goal, once each, until closed_at" #steps 4000000000 {
+  check:[2000]u8;goal:=nostr_event_verify_vartime(N75_T_GOAL,check[..],false);
+  server:=n57_key(N57_T_SERVER);
+  w:[2000]u8;inv:[3][600]u8;buf:[9][3000]u8;set:[9]NostrEvent;
+  carol:=n57_invoice_for(N57_T_CAROL,30000,w[..],inv[0][..]);
+  other:=n57_invoice_for(N57_T_NOAMT,5000,w[..],inv[1][..]);
+  set[0]=n75_receipt_in(N57_T_REQUEST,N57_T_INVOICE,N57_T_GOAL,N75_T_CLOSE-3000,buf[0][..]);  // Alice, 21000
+  set[1]=n75_receipt_in(N57_T_CAROL,carol,N57_T_GOAL,N75_T_CLOSE,buf[1][..]);                // Carol, 30000, at closed_at
+  set[2]=n75_receipt_in(N57_T_NOAMT,other,"",N75_T_CLOSE-100,buf[2][..]);                    // a zap to Bob's profile
+  set[3]=n75_receipt_in(N57_T_REQUEST,N57_T_INVOICE,N57_T_GOAL,N75_T_CLOSE-10,buf[3][..]);   // Alice's again
+  set[4]=n75_receipt_in(N57_T_CAROL,N57_T_INVOICE,N57_T_GOAL,N75_T_CLOSE-10,buf[4][..]);     // hash of another request
+  set[5]=n75_receipt_in(N57_T_CAROL,carol,N57_T_GOAL,N75_T_CLOSE-10,buf[5][..]);set[5].public_key=n57_key(N57_T_ALICE);  // not the server
+  set[6]=set[0];set[6].kind=1;                                                                 // not a receipt
+  t:=n75_tally(goal,set[0..<7],server,N57_T_LNURL,N75_T_CLOSE+60);
+  #assert t.status==N75_OK && t.msat==51000 && t.counted==2 && t.refused==2 && t.other==1 && t.duplicates==1;
+  #assert t.late==0 && t.future==0 && t.reached && t.closed && t.full==0;
+  // one second earlier, closed_at has not passed; Carol's receipt is from the future at now = closed_at - 1
+  t=n75_tally(goal,set[0..<7],server,N57_T_LNURL,N75_T_CLOSE);#assert t.msat==51000 && !t.closed && t.reached;
+  t=n75_tally(goal,set[0..<7],server,N57_T_LNURL,N75_T_CLOSE-1);#assert t.msat==21000 && t.future==1 && !t.reached && !t.closed;
+  // Carol's receipt one second after closed_at is late, even when counted later
+  set[1].created_at=N75_T_CLOSE+1;
+  t=n75_tally(goal,set[0..<2],server,N57_T_LNURL,N75_T_CLOSE+60);#assert t.msat==21000 && t.late==1 && t.counted==1 && !t.reached;
+  // the order of the receipts does not change the sum
+  set[1].created_at=N75_T_CLOSE;rev:[4]NostrEvent;for k:0..<4 {rev[k]=set[3-k];}
+  t=n75_tally(goal,rev[..],server,N57_T_LNURL,N75_T_CLOSE+60);#assert t.msat==51000 && t.counted==2 && t.duplicates==1 && t.other==1;
+  // the wrong server's key: every receipt refused
+  t=n75_tally(goal,set[0..<4],n57_key(N57_T_ALICE),N57_T_LNURL,N75_T_CLOSE+60);#assert t.msat==0 && t.refused==4;
+  // a goal that does not read counts nothing
+  bad:=goal;bad.kind=1;t=n75_tally(bad,set[0..<4],server,"",N75_T_CLOSE);#assert t.status==N75_KIND && t.msat==0 && t.counted==0 && t.refused==0;
+  // a goal without closed_at never closes
+  open:=n32_event_in(9041,"[[\"relays\",\"wss://a.com\"],[\"amount\",\"51000\"]]",check[..]);open.id=goal.id;open.public_key=goal.public_key;
+  set[1].created_at=N75_T_CLOSE+999;
+  t=n75_tally(open,set[0..<2],server,"",N75_T_CLOSE+1000);#assert t.msat==51000 && !t.closed && t.reached && t.late==0;
+}
+#test "the counted list is bounded: past N75_MAX_COUNTED receipts are not counted" #steps 400000000 {
+  check:[2000]u8;goal:=nostr_event_verify_vartime(N75_T_GOAL,check[..],false);
+  g:=n75_goal(goal);p:N75Progress;p.status=N75_OK;
+  z:N57Zap;z.status=N57_OK;z.msat=10;z.request.has_event=true;z.request.event=g.id;z.request.recipient=g.author;z.created_at=1;
+  for k:0..<N75_MAX_COUNTED+2 {z.payment_hash[0]=cast(u8)k;p=n75_add(p,g,z,5);}
+  #assert p.counted==N75_MAX_COUNTED && p.full==2 && p.msat==10*N75_MAX_COUNTED;
+  z.payment_hash[0]=3;p=n75_add(p,g,z,5);#assert p.duplicates==1 && p.full==2;
+}
+#test "one receipt added: to the goal and its author, by closed_at and now" {
+  g:N75Goal;g.status=N75_OK;g.msat=100;g.closed_at=50;for i:0..<32 {g.id[i]=0x0d;g.author[i]=0xdf;}
+  z:N57Zap;z.status=N57_OK;z.msat=7;z.request.has_event=true;z.request.event=g.id;z.request.recipient=g.author;z.created_at=50;
+  p:N75Progress;p=n75_add(p,g,z,50);#assert p.counted==1 && p.msat==7;
+  q:=z;q.request.recipient[5]=0;p=n75_add(p,g,q,50);#assert p.other==1 && p.counted==1;
+  q=z;q.request.event[31]=0;p=n75_add(p,g,q,50);#assert p.other==2;
+  q=z;q.request.has_event=false;p=n75_add(p,g,q,50);#assert p.other==3;
+  q=z;q.created_at=51;q.payment_hash[0]=1;p=n75_add(p,g,q,60);#assert p.late==1 && p.counted==1;
+  q=z;q.created_at=40;q.payment_hash[0]=2;p=n75_add(p,g,q,39);#assert p.future==1 && p.counted==1;
+  p=n75_add(p,g,q,40);#assert p.counted==2 && p.msat==14;
+  g.closed_at= -1;q.created_at=1000;q.payment_hash[0]=3;p=n75_add(p,g,q,1000);#assert p.counted==3 && p.late==1;
+}
+
+// book:begin goal
+n75_refuse :: (g:N75Goal,status:int,at:int)->N75Goal {o:=g;o.status=status;o.at=at;return o;}
+// A goal: kind 9041, one amount tag with a positive msat number, one relays
+// tag whose first relay is ws:// or wss://, at most one closed_at, a
+// positive number of seconds.
+n75_goal :: (e:NostrEvent)->N75Goal {
+  g:N75Goal;if e.error!=NE_OK {return g;}
+  if e.kind!=N75_KIND_GOAL {return n75_refuse(g,N75_KIND,-1);}
+  g.id=e.id;g.author=e.public_key;
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_EVENT {return n75_refuse(g,N75_EVENT,i);}
+    name:=cast(string)t.v[0].b[0..<t.v[0].n];value:=cast(string)t.v[1].b[0..<t.v[1].n];
+    if name=="amount" {
+      if g.msat!= -1 {return n75_refuse(g,N75_AMOUNT,i);}
+      g.msat=n57_msat(value);
+      if g.msat== -1 {return n75_refuse(g,N75_AMOUNT,i);}
+    } else if name=="relays" {
+      if g.relays>0 || !nt_relay_ok(value) {return n75_refuse(g,N75_RELAYS,i);}
+      g.relays=t.values-1;
+    } else if name=="closed_at" {
+      if g.closed_at!= -1 {return n75_refuse(g,N75_CLOSED,i);}
+      g.closed_at=n57_msat(value);
+      if g.closed_at== -1 {return n75_refuse(g,N75_CLOSED,i);}
+    }
+    i+=1;
+  }
+  if g.msat== -1 {return n75_refuse(g,N75_AMOUNT,-1);}
+  if g.relays==0 {return n75_refuse(g,N75_RELAYS,-1);}
+  g.status=N75_OK;return g;
+}
+// book:end goal
+
+// book:begin tally
+// One valid receipt z added to the progress p of goal g at time now.
+n75_add :: (p:N75Progress,g:N75Goal,z:N57Zap,now:int)->N75Progress {
+  r:=p;
+  if !z.request.has_event || !ns_equal32(z.request.event,g.id) || !ns_equal32(z.request.recipient,g.author) {r.other+=1;return r;}
+  if g.closed_at!= -1 && z.created_at>g.closed_at {r.late+=1;return r;}
+  if z.created_at>now {r.future+=1;return r;}
+  for k:0..<r.counted {if ns_equal32(r.hashes[k],z.payment_hash) {r.duplicates+=1;return r;}}
+  if r.counted==N75_MAX_COUNTED {r.full+=1;return r;}
+  r.hashes[r.counted]=z.payment_hash;r.counted+=1;r.msat+=z.msat;
+  return r;
+}
+// The goal's progress at time now from the receipts in set, checked
+// against the nostrPubkey of the goal author's LNURL server and, when not
+// "", the author's lnurl. Events of other kinds are passed over.
+n75_tally :: (goal:NostrEvent,set:[]NostrEvent,server:[32]u8,lnurl:string,now:int)->N75Progress {
+  p:N75Progress;g:=n75_goal(goal);p.status=g.status;
+  if g.status!=N75_OK {return p;}
+  for e:set {
+    if e.kind!=N57_KIND_RECEIPT {continue;}
+    z:=n57_receipt(e,server,lnurl);
+    if z.status!=N57_OK {p.refused+=1;continue;}
+    p=n75_add(p,g,z,now);
+  }
+  p.reached=p.msat>=g.msat;
+  p.closed=g.closed_at!= -1 && now>g.closed_at;
+  return p;
+}
+// book:end tally

@@ -925,6 +925,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/lightning-zaps.coax",
+      "chapter": "nostr/book/ch071-lightning-zaps-and-goals.md",
+      "stdout": "nostr/fixtures/lightning-zaps.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 480
     }
   ]
 }

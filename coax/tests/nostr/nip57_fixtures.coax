@@ -1,0 +1,93 @@
+// Fixtures and helpers for the checks of coax/lib/nostr/nip57.coax and
+// nip75.coax, kept out of those #authority files so that mutation testing
+// mutates the rules, not the fixtures. The example of chapter 71 uses
+// n57_receipt_tags and n57_field too.
+// ---- fixtures: values from a Python script written from BIP-340, NIP-01
+// and BOLT #11 (hashlib only). Bob's goal; Alice's zap request for 21000
+// msat on it, signed with BIP-340's test key 3 and zero aux; the invoice
+// Bob's server made for it: 210n, the payment hash of preimage 01..20, the
+// description hash of the request, and 104 zero words for a signature.
+N57_T_BOB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+N57_T_ALICE :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+N57_T_SERVER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+N57_T_GOAL :: "0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72";
+N57_T_LNURL :: "lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy";
+N57_T_REQUEST :: "{\"id\":\"bb0f28e7cb5d7a648b1944ae80602e8961a7d675f1113f46bb4d01b992653b15\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686460,\"kind\":9734,\"tags\":[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"21000\"],[\"lnurl\",\"lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"e\",\"0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72\"],[\"k\",\"9041\"]],\"content\":\"For the microphone\",\"sig\":\"d2360101d68376dbe642990fb0a023b54f6492fcce0a64f0deb2ff60828359a8fd733be22ccc813bf8533a780816db1c7915064893e62c5e28a2009d94f47c8e\"}";
+N57_T_REQUEST_SHA :: "6d9a51ba562be9a8d59ccb0c12fc78a7b6520045f70887fd09d2b42225569084";
+N57_T_INVOICE :: "lnbc210n1p5szvaapp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztyshp5dkd9rwjk905634vuevxp9lrc57m9yqz97uyg0lgf626zyf2kjzzqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqucmd5p";
+N57_T_PREIMAGE :: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+// BOLT #11's "Now send $24 for an entire list of things (hashed)": h is
+// SHA-256 of its description of a picnic.
+N57_T_BOLT11 :: "lnbc20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4zwqd5d7xmw5fk98klysy043l2ahrqs9qrsgq7ea976txfraylvgzuxs8kgcw23ezlrszfnh8r6qtfpr6cxga50aj6txm9rxrydzd06dfeawfk6swupvz4erwnyutnjq7x39ymw6j38gp7ynn44";
+
+// The hex as 32 bytes; it must be valid.
+n57_key :: (hex:string)->[32]u8 {k:[32]u8;ok:=ne_lower_hex(hex,k[..]);return k;}
+n57_hex :: (k:[32]u8,out:[]u8)->string {
+  own:=k;r:=hex_encode_checked(cast(string)own[..],out,false);return cast(string)out[0..<64];
+}
+// A receipt with these tags, by this author, parsed but not signed.
+n57_event_in :: (kind:int,tags:string,author:string,out:[]u8)->NostrEvent {
+  e:=n32_event_in(kind,tags,out);e.public_key=n57_key(author);e.created_at=1761686470;return e;
+}
+// The receipt's tags: p, e, P, bolt11, description, preimage, each left out when "".
+n57_receipt_tags :: (p:string,ev:string,sender:string,bolt:string,desc:string,pre:string,out:[]u8)->string {
+  n:=json_raw(out,0,"[");first:=true;
+  names:=[6]string.["p","e","P","bolt11","description","preimage"];vals:=[6]string.[p,ev,sender,bolt,desc,pre];
+  for k:0..<6 {
+    if vals[k].count==0 {continue;}
+    if !first {n=json_raw(out,n,",");}first=false;
+    n=json_raw(out,n,"[\"");n=json_raw(out,n,names[k]);n=json_raw(out,n,"\",");n=json_write_string(out,n,vals[k]);n=json_raw(out,n,"]");
+  }
+  n=json_raw(out,n,"]");return cast(string)out[0..<n];
+}
+n57_good_tags :: (out:[]u8)->string {
+  return n57_receipt_tags(N57_T_BOB,N57_T_GOAL,N57_T_ALICE,N57_T_INVOICE,N57_T_REQUEST,N57_T_PREIMAGE,out);
+}
+
+// ---- test helpers: invoices built word by word.
+
+// A 52-word field of this type holding k.
+n57_field :: (w:[]u8,at:int,type:u8,k:[32]u8)->int {
+  w[at]=type;w[at+1]=1;w[at+2]=20;
+  own:=k;
+  for i:0..<52 {w[at+3+i]=b32_word(cast(string)own[..],true,i);}
+  return at+55;
+}
+// Timestamp ts, optionally an h field of 51 words first, then p and h, then a zero signature.
+n57_words :: (w:[]u8,at:int,ts:int,ph:[32]u8,dh:[32]u8,short:bool)->int {
+  n:=at;for i:0..<7 {w[n]=cast(u8)((ts>>(5*(6-i)))&31);n+=1;}
+  if short {
+    w[n]=23;w[n+1]=1;w[n+2]=19;for i:0..<51 {w[n+3+i]=7;}n+=54;
+    w[n]=1;w[n+1]=1;w[n+2]=21;for i:0..<53 {w[n+3+i]=9;}n+=56;
+  }
+  n=n57_field(w,n,1,ph);n=n57_field(w,n,23,dh);
+  for i:0..<104 {w[n+i]=0;}
+  return n+104;
+}
+n57_bech :: (out:[]u8,hrp:string,words:[]u8)->string {
+  r:=bech32_encode_checked(hrp,cast(string)words,false,out,true,false);
+  if r.error!=NC_OK {return "";}
+  return cast(string)out[0..<r.written];
+}
+n57_invoice_for :: (desc:string,msat:int,w:[]u8,out:[]u8)->string {
+  b:[2000]u8;for i:0..<desc.count {b[i]=desc[i];}
+  dh:[32]u8;s:=sha256_hash_checked(b[0..<desc.count],dh[..],false);
+  n:=n57_words(w,0,1,dh,dh,false);   // the payment hash: the description hash too, one per request
+  hrp:[20]u8;k:=json_raw(hrp[..],0,"lnbc");k=json_write_int(hrp[..],k,msat/100);k=json_raw(hrp[..],k,"n");
+  return n57_bech(out,cast(string)hrp[0..<k],w[0..<n]);
+}
+n57_bad :: (desc:string,msat:int,w:[]u8,inv:[]u8,tags:[]u8,buf:[]u8)->int {
+  h:=n57_invoice_for(desc,msat,w,inv);
+  return n57_receipt(n57_event_in(9735,n57_receipt_tags(N57_T_BOB,N57_T_GOAL,"",h,desc,"",tags),N57_T_SERVER,buf),n57_key(N57_T_SERVER),"").status;
+}
+// A signed request with two p tags: BIP-340 key 3, zero aux (Python).
+N57_T_TWO_P :: "{\"id\":\"de4213f996352c152082b2a814bc3940173d47d5c96eaa84f570e27c0c37dddd\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686460,\"kind\":9734,\"tags\":[[\"relays\",\"wss://relay.example.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]],\"content\":\"\",\"sig\":\"b0cec713074efa388279d2b61e4103ed22a0133e2201a25ced832d032c8b46b05c6554863575a7ba3631ab42d3fce2aef2224a09ac1dec9fa0712d8872641832\"}";
+// Carol zaps Bob's profile: no amount, no e. Then Carol zaps the goal 30000 msat.
+N57_T_NOAMT :: "{\"id\":\"61e36b86ab996118288edc243e7d6442ececda822502d3a416cb6fc776f20bfb\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686520,\"kind\":9734,\"tags\":[[\"relays\",\"wss://relay.example.com\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]],\"content\":\"\",\"sig\":\"2fa31e413278a5b3569fb0659143cecaadfbcfc63c569fe1705d497feaabe10cbf0b5219b0a14ef32845830576515bd0fe23075b509a31f95fef81e77dd62818\"}";
+N57_T_CAROL :: "{\"id\":\"32f13958f0b8e6118316165a7760a6727019afd303d02830b5c8e7ddc5cc5492\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686580,\"kind\":9734,\"tags\":[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"30000\"],[\"lnurl\",\"lnurl1dp68gurn8ghj77npwpejuetcv9khqmr99e3k7mf09emk2mrv944kummhdchkcmn4wfk8qtmzda3qcm6szy\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"e\",\"0d139a55394917832d2a910655312ec8362a01ef3a194c0243ecf679b96beb72\"],[\"k\",\"9041\"]],\"content\":\"\",\"sig\":\"4ddae85e1ad38af7ad590f6e44f45e937631b095f33e592661049c75a682e4772c3bcd530402e82aacb393ffc829886a935ec5729fead817b00003c12fcd72f4\"}";
+// The tags t with one more tag at the end.
+n57_plus :: (t:string,tag:string,out:[]u8)->string {
+  n:=json_raw(out,0,t[0..<t.count-1]);n=json_raw(out,n,",");n=json_raw(out,n,tag);n=json_raw(out,n,"]");
+  return cast(string)out[0..<n];
+}
+

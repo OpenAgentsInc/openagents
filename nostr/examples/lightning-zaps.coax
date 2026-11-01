@@ -1,0 +1,204 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip75.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// BIP-340 test vectors 0 to 3's public keys, then the public keys of the
+// secret keys 1 and 2. Dave runs Bob's LNURL server: his key signs the
+// receipts, and the server says so in nostrPubkey.
+PEOPLE :: [6] string.["Alice", "Bob", "Carol", "Mallory", "Dave", "Erin"];
+PUB :: [6] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517",
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"];
+// Their secret keys: published test values. Never sign with a real key in
+// an example.
+SECRET :: [6] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710",
+  "0000000000000000000000000000000000000000000000000000000000000001",
+  "0000000000000000000000000000000000000000000000000000000000000002"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; MALLORY :: 3; DAVE :: 4; ERIN :: 5;
+RELAY :: "wss://relay.example.com";
+T0 :: 1761686400;
+// Fixture values only: each payment's preimage (Alice's is the bytes 01 02
+// ... 20), and every invoice here carries a zero signature, so no wallet
+// would pay it.
+PREIMAGE :: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+PREIMAGE_CAROL :: "2222222222222222222222222222222222222222222222222222222222222222";
+PREIMAGE_ERIN :: "3333333333333333333333333333333333333333333333333333333333333333";
+// The LNURL-pay response Bob's server sends for his lightning address.
+PAY :: "{\"tag\":\"payRequest\",\"callback\":\"https://zaps.example.com/lnurlp/bob/callback\",\"minSendable\":1000,\"maxSendable\":100000000,\"metadata\":\"[[\\\"text/plain\\\",\\\"Bob\\\"]]\",\"allowsNostr\":true,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}";
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+hex32 :: (k: [32] u8, out: [] u8) -> string { return n57_hex(k, out); }
+sha_of :: (text: string) -> [32] u8 {
+  b: [8192] u8; h: [32] u8;
+  for i: 0..<text.count { b[i] = text[i]; }
+  s := sha256_hash_checked(b[0..<text.count], h[..], false);
+  #assert s == SHA_OK;
+  return h;
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(SECRET[who], key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+text_of :: (e: NostrEvent) -> string { return e.original; }
+
+// What Bob's server does with a zap request: a bolt11 invoice for msat
+// (in units of n, 100 msat), dated at, whose p field is the payment hash,
+// SHA-256 of the preimage, and whose h field is SHA-256 of the request's
+// JSON, the description.
+make_invoice :: (msat: int, at: int, preimage: string, description: string, out: [] u8) -> string {
+  w: [400] u8; n := 0;
+  for i: 0..<7 { w[n] = cast(u8) ((at >> (5 * (6 - i))) & 31); n += 1; }
+  n = n57_field(w[..], n, 1, sha_of_hex(preimage));      // p
+  n = n57_field(w[..], n, 23, sha_of(description));     // h
+  for i: 0..<104 { w[n] = 0; n += 1; }                    // a zero signature
+  hrp: [20] u8; k := json_raw(hrp[..], 0, "lnbc"); k = json_write_int(hrp[..], k, msat / 100); k = json_raw(hrp[..], k, "n");
+  r := bech32_encode_checked(cast(string) hrp[0..<k], cast(string) w[0..<n], false, out, true, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+// A zap request: who zaps the goal (or Bob when goal is "") for msat.
+zap_request :: (who: int, at: int, msat: int, goal: string, lnurl: string, content: string, out: [] u8) -> NostrEvent {
+  tags: [1000] u8; relays := [1] string.[RELAY];
+  n := n57_request_tags(relays[..], msat, lnurl, PUB[BOB], goal, ifx goal.count > 0 then 9041 else 0, tags[..]);
+  #assert n > 0;
+  return sign(who, at, 9734, cast(string) tags[0..<n], content, out);
+}
+// The receipt the server publishes when the invoice is paid: p, e, P, the
+// invoice, the request as description, the preimage; signed by signer.
+zap_receipt :: (signer: int, at: int, request: NostrEvent, goal: string, invoice: string, preimage: string, out: [] u8) -> NostrEvent {
+  tags: [3000] u8; pk: [64] u8;
+  t := n57_receipt_tags(PUB[BOB], goal, hex32(request.public_key, pk[..]), invoice, text_of(request), preimage, tags[..]);
+  return sign(signer, at, 9735, t, "", out);
+}
+show_zap :: (label: string, z: N57Zap) {
+  if z.status == N57_OK { print("%: valid, % msat from %\n", label, z.msat, name_of(z.sender)); }
+  else { print("%: refused, %\n", label, N57_WHY[z.status]); }
+}
+name_of :: (k: [32] u8) -> string {
+  for i: 0..<PEOPLE.count { if ns_equal32(key_of(i), k) { return PEOPLE[i]; } }
+  return "someone";
+}
+
+main :: () {
+  print("Bob's lightning address\n");
+  url: [256] u8; ln: [400] u8;
+  nu := n57_lnurlp("bob@zaps.example.com", url[..]);
+  print("bob@zaps.example.com -> %\n", cast(string) url[0..<nu]);
+  nl := n57_lnurl(cast(string) url[0..<nu], ln[..]);
+  lnurl := cast(string) ln[0..<nl];
+  print("lnurl: %\n", lnurl);
+  print("Bob@zaps.example.com -> % (upper case is not LUD-16's)\n", n57_lnurlp("Bob@zaps.example.com", url[..]));
+
+  print("the LNURL-pay response\n");
+  pay := n57_pay(PAY);
+  hx: [64] u8;
+  print("read: %, callback %, % to % msat\n", N57P_WHY[pay.status], cast(string) pay.callback[0..<pay.nc], pay.min, pay.max);
+  print("nostrPubkey: % (%)\n", hex32(pay.nostr_pubkey, hx[..]), name_of(pay.nostr_pubkey));
+  print("without allowsNostr: %\n", N57P_WHY[n57_pay("{\"tag\":\"payRequest\",\"callback\":\"https://zaps.example.com/cb\",\"minSendable\":1000,\"maxSendable\":5000,\"nostrPubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"}").status]);
+
+  print("Bob's goal\n");
+  gb: [1000] u8; closes := T0 + 3600;
+  goal := sign(BOB, T0, 9041, "[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"50000\"],[\"closed_at\",\"1761690000\"]]", "A new microphone", gb[..]);
+  g := n75_goal(goal);
+  gid := hex32(goal.id, hx[..]); gidb: [64] u8; for i: 0..<64 { gidb[i] = gid[i]; } goal_id := cast(string) gidb[..];
+  print("kind 9041 %: target % msat, closes at %\n", goal_id, g.msat, g.closed_at);
+
+  print("Alice zaps the goal 21000 msat\n");
+  rb: [6][1500] u8;
+  alice := zap_request(ALICE, T0 + 60, 21000, goal_id, lnurl, "For the microphone", rb[0][..]);
+  print("zap request %: % bytes, not published\n", hex32(alice.id, hx[..]), alice.original.count);
+  cb: [4000] u8;
+  nc := n57_callback(cast(string) pay.callback[0..<pay.nc], 21000, text_of(alice), lnurl, cb[..]);
+  print("GET %... (% bytes)\n", cast(string) cb[0..<72], nc);
+  ib: [6][600] u8;
+  inv := make_invoice(21000, T0 + 61, PREIMAGE, text_of(alice), ib[0][..]);
+  print("invoice: %\n", inv);
+
+  print("the receipt, checked by hand\n");
+  eb: [8][3000] u8;
+  receipt := zap_receipt(DAVE, T0 + 70, alice, goal_id, inv, PREIMAGE, eb[0][..]);
+  v := n57_invoice(inv);
+  print("invoice amount: % msat (210n is 210 * 100 msat)\n", v.msat);
+  print("request amount tag: %\n", n57_request(alice).msat);
+  print("h field:            %\n", hex32(v.description_hash, hx[..]));
+  print("sha256(description): %\n", hex32(sha_of(text_of(alice)), hx[..]));
+  show_zap("Alice's receipt", n57_receipt(receipt, pay.nostr_pubkey, lnurl));
+
+  print("more zaps\n");
+  carol := zap_request(CAROL, T0 + 180, 30000, goal_id, lnurl, "", rb[1][..]);
+  inv2 := make_invoice(30000, T0 + 181, PREIMAGE_CAROL, text_of(carol), ib[1][..]);
+  erin := zap_request(ERIN, T0 + 3700, 5000, goal_id, lnurl, "Too late?", rb[2][..]);
+  inv3 := make_invoice(5000, T0 + 3701, PREIMAGE_ERIN, text_of(erin), ib[2][..]);
+  set: [6] NostrEvent;
+  set[0] = receipt;
+  set[1] = zap_receipt(DAVE, T0 + 190, carol, goal_id, inv2, PREIMAGE_CAROL, eb[1][..]);
+  set[2] = zap_receipt(DAVE, T0 + 200, alice, goal_id, inv, PREIMAGE, eb[2][..]);      // Alice's payment, published again
+  set[3] = zap_receipt(DAVE, T0 + 3710, erin, goal_id, inv3, PREIMAGE_ERIN, eb[3][..]);  // after closed_at
+  set[4] = zap_receipt(MALLORY, T0 + 300, alice, goal_id, inv, PREIMAGE, eb[4][..]);   // not Bob's server
+  show_zap("Carol's receipt", n57_receipt(set[1], pay.nostr_pubkey, lnurl));
+  show_zap("Alice's again", n57_receipt(set[2], pay.nostr_pubkey, lnurl));
+  show_zap("Erin's receipt", n57_receipt(set[3], pay.nostr_pubkey, lnurl));
+
+  print("the goal's progress at closed_at + 1 hour\n");
+  t := n75_tally(goal, set[0..<5], pay.nostr_pubkey, lnurl, closes + 3600);
+  print("% of % msat: counted %, duplicates %, late %, refused %\n", t.msat, g.msat, t.counted, t.duplicates, t.late, t.refused);
+  print("reached: %, closed: %\n", t.reached, t.closed);
+  t = n75_tally(goal, set[0..<5], pay.nostr_pubkey, lnurl, T0 + 185);
+  print("at T0 + 185 s: % msat, % receipts dated later not counted yet\n", t.msat, t.future);
+
+  print("refused receipts\n");
+  show_zap("signed by Mallory", n57_receipt(set[4], pay.nostr_pubkey, lnurl));
+  short := make_invoice(20000, T0 + 61, PREIMAGE, text_of(alice), ib[3][..]);
+  show_zap("invoice for 20000 msat", n57_receipt(zap_receipt(DAVE, T0 + 70, alice, goal_id, short, PREIMAGE, eb[5][..]), pay.nostr_pubkey, lnurl));
+  // The description edited after the invoice was made: Alice's request
+  // with its content changed and signed again.
+  edited := zap_request(ALICE, T0 + 60, 21000, goal_id, lnurl, "For the microphone!", rb[3][..]);
+  show_zap("description edited", n57_receipt(zap_receipt(DAVE, T0 + 70, edited, goal_id, inv, PREIMAGE, eb[6][..]), pay.nostr_pubkey, lnurl));
+  show_zap("preimage of another payment", n57_receipt(zap_receipt(DAVE, T0 + 70, alice, goal_id, inv, PREIMAGE_CAROL, eb[7][..]), pay.nostr_pubkey, lnurl));
+
+  print("NIP-57's example receipt\n");
+  nb: [3000] u8; tags: [3000] u8;
+  ex := n57_event_in(9735, n57_receipt_tags(NIP57_P, NIP57_E, NIP57_SENDER, NIP57_BOLT11, NIP57_DESCRIPTION, NIP57_PREIMAGE, tags[..]), NIP57_SIGNER, nb[..]);
+  ev := n57_invoice(NIP57_BOLT11);
+  print("invoice amount: % msat (10u)\n", ev.msat);
+  print("h field:            %\n", hex32(ev.description_hash, hx[..]));
+  print("sha256(description): %\n", hex32(sha_of(NIP57_DESCRIPTION), hx[..]));
+  print("preimage hashes to p: %\n", x402_preimage_matches(NIP57_PREIMAGE, hex32(ev.payment_hash, hx[..])));
+  show_zap("NIP-57's receipt", n57_receipt(ex, n57_key(NIP57_SIGNER), ""));
+}
+
+sha_of_hex :: (hex: string) -> [32] u8 { b: [32] u8; decode_hex(hex, b[..]); return sha_of(cast(string) b[..]); }
+
+// NIP-57's example zap receipt (Appendix E), its tags as the pinned text
+// gives them. It has no sig, so it is read here unsigned.
+NIP57_SIGNER :: "9630f464cca6a5147aa8a35f0bcdd3ce485324e732fd39e09233b1d848238f31";
+NIP57_P :: "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245";
+NIP57_SENDER :: "97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322";
+NIP57_E :: "3624762a1274dd9636e0c552b53086d70bc88c165bc4dc0f9e836a1eaf86c3b8";
+NIP57_BOLT11 :: "lnbc10u1p3unwfusp5t9r3yymhpfqculx78u027lxspgxcr2n2987mx2j55nnfs95nxnzqpp5jmrh92pfld78spqs78v9euf2385t83uvpwk9ldrlvf6ch7tpascqhp5zvkrmemgth3tufcvflmzjzfvjt023nazlhljz2n9hattj4f8jq8qxqyjw5qcqpjrzjqtc4fc44feggv7065fqe5m4ytjarg3repr5j9el35xhmtfexc42yczarjuqqfzqqqqqqqqlgqqqqqqgq9q9qxpqysgq079nkq507a5tw7xgttmj4u990j7wfggtrasah5gd4ywfr2pjcn29383tphp4t48gquelz9z78p4cq7ml3nrrphw5w6eckhjwmhezhnqpy6gyf0";
+NIP57_DESCRIPTION :: "{\"pubkey\":\"97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322\",\"content\":\"\",\"id\":\"d9cc14d50fcb8c27539aacf776882942c1a11ea4472f8cdec1dea82fab66279d\",\"created_at\":1674164539,\"sig\":\"77127f636577e9029276be060332ea565deaf89ff215a494ccff16ae3f757065e2bc59b2e8c113dd407917a010b3abd36c8d7ad84c0e3ab7dab3a0b0caa9835d\",\"kind\":9734,\"tags\":[[\"e\",\"3624762a1274dd9636e0c552b53086d70bc88c165bc4dc0f9e836a1eaf86c3b8\"],[\"p\",\"32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245\"],[\"relays\",\"wss://relay.damus.io\",\"wss://nostr-relay.wlvs.space\",\"wss://nostr.fmt.wiz.biz\",\"wss://relay.nostr.bg\",\"wss://nostr.oxtr.dev\",\"wss://nostr.v0l.io\",\"wss://brb.io\",\"wss://nostr.bitcoiner.social\",\"ws://monad.jb55.com:8080\",\"wss://relay.snort.social\"]]}";
+NIP57_PREIMAGE :: "5d006d2cf1e73c7148e7519a4c68adc81642ce0e25a432b2434c99f97344c15f";
+// book:end example
