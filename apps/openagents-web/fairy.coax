@@ -2647,7 +2647,7 @@ FAIRY_BUDGET :: FrameBudget.{steps = 8, vertices = 11000, draws = DRAWS, bytes =
 
 // A walk from the spawn: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
-#test "Fairy Forest's frames fit its declared budget" {
+#test "Fairy Forest's frames fit its declared budget" #steps 500000000 {
   #assert budget_declared(FAIRY_BUDGET, MAX_VERTICES) == BUDGET_NONE;
   frames := 3;
   m := [1] BudgetMeter.[budget_meter(FAIRY_BUDGET)];
