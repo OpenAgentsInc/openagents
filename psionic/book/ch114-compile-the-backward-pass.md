@@ -208,10 +208,10 @@ cb_compile :: (p:TiProgram,mode:AdMode,registry:OrRegistry,choice:CbChoice)->CbP
     if t.status==AdStatus.program {return cb_fail(c,CbStatus.program);}
     if t.status==AdStatus.operation {return cb_fail(c,CbStatus.operation);}
     if t.status!=AdStatus.ok {return cb_fail(c,CbStatus.mode);}
-    // Chapter 106 admitted it; a compiled program also runs every kernel itself.
-    for i:0..<p.count {if p.nodes[i].op==TiOp.registered || mode.custom[i] {return cb_fail(c,CbStatus.external);}}
     c.input_elements=t.plan.input_elements;
     for i:0..<p.count {
+        // Chapter 106 admitted it; a compiled program also runs every kernel itself.
+        if p.nodes[i].op==TiOp.registered || mode.custom[i] {return cb_fail(c,CbStatus.external);}
         r:=t.root[i];c.facts.root[i]=r;c.facts.input[i]=p.nodes[r].op==TiOp.input;c.facts.input_base[i]=p.nodes[i].input_base;
         c.facts.views[i]=t.plan.values[i].view;c.facts.storage[i]=t.plan.values[i].storage;
         c.facts.wants[i]=t.wants[i];c.facts.reaches[i]=t.reaches[i];
@@ -235,10 +235,11 @@ same goes for a custom derivative.
 // recomputed value made just before its first backward reader; then the
 // updates.
 cb_schedule :: (program:CbProgram)->CbProgram {
-    c:=program;p:=c.program;f:=c.facts;made:[32]bool;born:[32]bool;
+    c:=program;p:=c.program;f:=c.facts;made:[32]bool;cleared:[32]bool;
     for i:1..<p.count {if cb_material(p.nodes[i].op) {c.instrs[c.count]=cb_instr(CbKind.forward,i);c.count+=1;}}
     if c.rules>0 {
-        out:=f.root[p.output];born[out]=true;
+        // No rule reads the output's root, so it is cleared only here.
+        out:=f.root[p.output];
         c.instrs[c.count]=cb_instr(CbKind.clear,out);c.instrs[c.count+1]=cb_instr(CbKind.seed,p.output);c.count+=2;
         for s:0..<c.rules {
             i:=c.order[s];n:=p.nodes[i];binary:=ti_binary(n.op);
@@ -253,7 +254,7 @@ cb_schedule :: (program:CbProgram)->CbProgram {
             for o:0..<2 {
                 if o==1 && !binary {continue;}
                 x:=ifx o==0 then n.a else n.b;r:=f.root[x];
-                if f.wants[x] && !born[r] {c.instrs[c.count]=cb_instr(CbKind.clear,r);c.count+=1;born[r]=true;}
+                if f.wants[x] && !cleared[r] {c.instrs[c.count]=cb_instr(CbKind.clear,r);c.count+=1;cleared[r]=true;}
             }
             c.instrs[c.count]=cb_instr(CbKind.backward,i);c.count+=1;
         }
@@ -273,14 +274,14 @@ cb_schedule :: (program:CbProgram)->CbProgram {
 // forward command to its last reader. A recomputed value's forward copy
 // stops at its last forward reader, and the copy covers the readers after
 // the forward pass. A value read after the forward pass from its original
-// is saved.
+// is saved. A copy is made only for a reader, so its readers end it.
 cb_lifetimes :: (program:CbProgram)->CbProgram {
     c:=program;p:=c.program;f:=c.facts;
     for i:0..<32 {c.born[i]=-1;c.copy_born[i]=-1;c.grad_born[i]=-1;}
     for k:0..<c.count {
         ins:=c.instrs[k];i:=ins.node;n:=p.nodes[i];binary:=ti_binary(n.op);reads:=[2]bool.[true,binary];
         if ins.kind==CbKind.forward {c.born[i]=k;c.dies[i]=k;}
-        else if ins.kind==CbKind.recompute {c.copy_born[i]=k;c.copy_dies[i]=k;}
+        else if ins.kind==CbKind.recompute {c.copy_born[i]=k;}
         else if ins.kind==CbKind.backward {reads=ad_reads(n,false,f.wants[n.a],binary && f.wants[n.b]);}
         if ins.kind==CbKind.forward || ins.kind==CbKind.recompute || ins.kind==CbKind.backward {
             for o:0..<2 {
@@ -292,18 +293,13 @@ cb_lifetimes :: (program:CbProgram)->CbProgram {
                 else {c.dies[r]=k;if late {c.saved[r]=true;}}
             }
         }
-        // A gradient is born at its clear and lives through every write and read.
-        if ins.kind==CbKind.clear {c.grad_born[i]=k;}
-        if ins.kind==CbKind.backward {
-            c.grad_dies[i]=k;
-            for o:0..<2 {
-                if o==1 && !binary {continue;}
-                x:=ifx o==0 then n.a else n.b;if f.wants[x] {c.grad_dies[f.root[x]]=k;}
-            }
-        }
+        // A gradient is born at its clear. Every contribution comes before
+        // its own rule, which reads it last; an input has no rule, and its
+        // gradient lives to the end for the update and for publishing.
+        if ins.kind==CbKind.clear {c.grad_born[i]=k;c.grad_dies[i]=c.count;}
+        if ins.kind==CbKind.backward {c.grad_dies[i]=k;}
     }
     c.dies[f.root[p.output]]=c.count;
-    for i:0..<p.count {if p.nodes[i].op==TiOp.input && c.grad_born[i]>=0 {c.grad_dies[i]=c.count;}}
     return c;
 }
 ```
@@ -321,10 +317,11 @@ it and you may publish it.
 cb_resolve :: (program:CbProgram)->CbProgram {
     c:=program;p:=c.program;f:=c.facts;
     // Where the backward phase reads each value: the copy when it is recomputed.
-    late:=c.value_at;for i:0..<32 {if c.choice.recompute[i] {late[i]=c.copy_at[i];}}
+    // Node 0 can only be an input.
+    late:=c.value_at;for i:1..<32 {if c.choice.recompute[i] {late[i]=c.copy_at[i];}}
     for k:0..<c.count {
         ins:=c.instrs[k];i:=ins.node;n:=p.nodes[i];binary:=ti_binary(n.op);
-        ins.items=f.storage[i];ins.epsilon=n.epsilon;
+        ins.items=ad_count(f.views[i].shape);ins.epsilon=n.epsilon;
         if ins.kind==CbKind.forward || ins.kind==CbKind.recompute {
             s:=f.views[i].shape;a:=f.views[n.a].shape;m:=ins.meta;
             m[0]=int(cast(u8)n.op);m[1]=ifx ins.kind==CbKind.forward then c.value_at[i] else c.copy_at[i];m[3]=s.rank;
@@ -333,15 +330,15 @@ cb_resolve :: (program:CbProgram)->CbProgram {
             cb_describe(cb_value_ref(f,from,n.a),8,m[..]);if binary {cb_describe(cb_value_ref(f,from,n.b),19,m[..]);}
             if n.op==TiOp.matmul {m[30]=a.dims[1];} else if n.op==TiOp.sum {m[30]=a.dims[n.axis];} else if n.op==TiOp.layernorm {m[30]=a.dims[a.rank-1];}
             m[31]=n.axis;m[48]=n.index_count;for j:0..<16 {m[32+j]=n.indices[j];}
-            ins.meta=m;if ins.items>c.flag_items {c.flag_items=ins.items;}
+            ins.meta=m;c.flag_items=cb_larger(c.flag_items,ins.items);
         } else if ins.kind==CbKind.clear {ins.ga=cb_grad_ref(f,c.grad_at,i);}
-        else if ins.kind==CbKind.seed {ins.ga=cb_grad_ref(f,c.grad_at,i);ins.items=ad_count(f.views[i].shape);}
+        else if ins.kind==CbKind.seed {ins.ga=cb_grad_ref(f,c.grad_at,i);}
         else if ins.kind==CbKind.backward {
-            ins.op=n.op;ins.axis=n.axis;ins.indices=n.indices;ins.shape=f.views[i].shape;ins.items=ad_count(ins.shape);
+            ins.op=n.op;ins.axis=n.axis;ins.indices=n.indices;ins.shape=f.views[i].shape;
             ins.dy=c.grad_at[i];ins.need_a=f.wants[n.a];ins.need_b=binary && f.wants[n.b];
             ins.a=cb_value_ref(f,late,n.a);ins.ga=cb_grad_ref(f,c.grad_at,n.a);
             if binary {ins.b=cb_value_ref(f,late,n.b);ins.gb=cb_grad_ref(f,c.grad_at,n.b);}
-        } else {ins.a=cb_value_ref(f,c.value_at,i);ins.ga=cb_grad_ref(f,c.grad_at,i);ins.items=ad_count(f.views[i].shape);}
+        } else {ins.a=cb_value_ref(f,c.value_at,i);ins.ga=cb_grad_ref(f,c.grad_at,i);}
         c.instrs[k]=ins;
         if ins.kind==CbKind.forward || ins.kind==CbKind.recompute || ins.kind==CbKind.backward {c.launches+=1;}
     }
@@ -380,7 +377,7 @@ saved values and inputs.
 // saved values and inputs.
 cb_chain :: (c:CbProgram,i:int)->CbChoice {
     next:=c.choice;next.recompute[i]=true;
-    for k:0..<i+1 {
+    for k:0..<i {
         j:=i-k;n:=c.program.nodes[j];
         if !next.recompute[j] || c.choice.recompute[j] {continue;}
         for o:0..<2 {
@@ -397,7 +394,7 @@ cb_choose :: (p:TiProgram,mode:AdMode,registry:OrRegistry,goal:int,update:bool)-
     c:=cb_compile(p,mode,registry,CbChoice.{update=update});
     while c.status==CbStatus.ok && c.values.top>goal {
         best:=c;
-        for i:0..<p.count {
+        for i:1..<p.count {
             if c.choice.recompute[i] || !cb_recomputable(p.nodes[i],i,c.facts.root[p.output]) {continue;}
             d:=cb_compile(p,mode,registry,cb_chain(c,i));
             if d.status==CbStatus.ok && d.values.top<best.values.top {best=d;}
@@ -595,6 +592,18 @@ main :: () {
   the saved values, every lifetime, every value and gradient offset, the
   29-float arena (equal to the tape's), and the 28-float arena with `h`
   recomputed.
+- **Two more hand plans.** A chain `q = relu(x)`, `a = relu(q)` read by
+  two products, with a dead `relu` beside them: every instruction,
+  lifetime and offset, plain (16 floats) and with `q` and `a` recomputed
+  (12 floats, both copies made once, in node order, before the first
+  reader). Recomputing `a` alone saves `q` instead and stays at 16;
+  recomputing a value no rule reads makes nothing. The chooser takes the
+  chain `q`, `a`. In a pair of equal branches it breaks the tie on the
+  lower node. Each forward command's metadata equals the tape's own
+  `ad_meta`, here and for chapter 106's program with views and a gather.
+- **The smallest programs.** One rule (`sum(x)` with its update), no rule
+  (one forward command), and an input as the output (no instruction, which
+  `cb_run` refuses with `state`).
 - **Against the tape, bit for bit.** The hand-planned network with two
   gradient modes and with recomputation; chapter 106's program with a
   strided view, a reshape, a sum, a layer norm, a gather and a product,
