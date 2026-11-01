@@ -1,0 +1,58 @@
+// The checks of schnorr-sign.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/schnorr-sign.coax --run-steps 250000000
+#load "../schnorr-sign.coax";
+
+// book:begin check
+// The small-number equations against values worked by hand: 5 + 2·3 = 11,
+// 5 + 2·(n - 6) = n - 7, (n - 6) + 4·3 = 6, and (17 - 11) / (4 - 2) = 3.
+#test "small-number signatures match the hand values" #steps 400000000 {
+  #assert sc_equal(sign_small(3, 5, 2), sc_small(11)) && verify_small(sign_small(3, 5, 2), 2, 3, 5);
+  #assert sc_equal(sign_small(6, 5, 2), sc_negate(sc_small(7))) && verify_small(sign_small(6, 5, 2), 2, 6, 5);
+  #assert sc_equal(sign_small(3, 6, 4), sc_small(6)) && verify_small(sign_small(3, 6, 4), 4, 3, 6);
+  #assert !verify_small(sc_small(17), 2, 6, 5);
+  s1 := sign_small(3, 5, 2); s2 := sign_small(3, 5, 4);
+  #assert sc_equal(sc_mul(sc_sub(s2, s1), sc_inverse(sc_small(2)).value), sc_small(3));
+}
+// Each vector's intermediate values, from a Python transcription of BIP-340's
+// signing algorithm (hashlib and integers; it shares no code with the Coax
+// SHA-256, scalar or point arithmetic, and reproduces all four signatures):
+// hash_aux(a), t, rand, then y(d·G) odd and y(k0·G) odd as "0"/"1", e and s.
+STAGE_HEX :: [28] string.[
+    "54f169cfc9e2e5727480441f90ba25c488f461c70b5ea5dcaaf7af69270aa514", "54f169cfc9e2e5727480441f90ba25c488f461c70b5ea5dcaaf7af69270aa517", "1d2dc1652fee3ad08434469f9ad30536a5787feccfa308e8fb396c8030dd1c69", "0", "1", "6bb6b93a91f2ecc0cd924f4f9baabb5e6eb21745bb00f2cebdaac908bb5d86ce", "25f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0",
+    "ee8790e3e65f5408c3f41b56a88c4e096126a71abb3a9ccce6efd19dafc7ec32", "5966c1816cb27e627c8543d63478bdce03c1b115838e469a416b0899fe5723dd", "f7becdac22c3d61a97ff4e84a004e1c4919c0e0c51f50dd5bee15c9cbd27318e", "0", "0", "cfb58e748d9648b71fdc909fb7432fc0c954da5bd75cdc9d4804d32648f9839a", "8906d11ac976abccb20b091292bff4ea897efcb639ea871cfa95f6de339e4b0a",
+    "73db95cc3e3821f6695b492ef656ca7aadde058711eef8302141229fd3e8bd28", "bad44f6e1f50e3c2ad9d2ba5768ad6ab84dc4b8f9b893444234a9c39e8fc58e1", "f5878384ed63c5ec428e7ab31bdb446b6884dfad76b7e0599af3f5e838409aab", "0", "0", "9bc1ba4a0abbc0792066b2ca0ef771d88af676b322a83dd7517f7c1fd149215a", "ab745879a5ad954a72c45a91c3a51d3c7adea98d82f8481e0e1e03674a6f3fb7",
+    "fdb71327ced66d323510223cfa24d25565b63f462b9693fee13c3f16a1993194", "090bc7fe46bae14c641f86732fbdc17bcd8193c5cb9e6e19c0b157eb5c6f1ba5", "d5352655a99381aff7bd274a99310825f0977329210d5f735766d4a7ae39c073", "1", "0", "a5352f4ded269e6716184547944a209417f759df44e61ea1d48008997c9003c0", "97582b9cb13db3933705b32ba982af5af25fd78881ebb32771fc5922efc66ea3"];
+matches_hex :: (bytes: [] u8, text: string) -> bool {
+  want: [32] u8;
+  #assert decode_hex(text, want[..]) == 32;
+  return bytes_equal(bytes, want[..]);
+}
+#test "matches_hex notices a change in the first or last byte" {
+  b: [32] u8; text := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert matches_hex(b[..], text);
+  b[0] = 1; #assert !matches_hex(b[..], text);
+  b[0] = 0; b[31] = 1; #assert !matches_hex(b[..], text);
+}
+#forall "the first three stages give each vector's Python intermediates" i: 0..<ROWS #steps 400000000 {
+  t := sign_row(i); pk := ROW_PUBLIC[i]; work: [1] SignWork; out: [64] u8;
+  for call: 0..<3 { #assert schnorr_sign_step(t.key[..], t.aux[..], t.message[..], work[..], out[..], false) == SIGN_MORE; }
+  #assert bytes_equal(work[0].prep[0].public_key[..], pk[..]);
+  #assert matches_hex(work[0].nonce[0].hash_work[0].digest[..], STAGE_HEX[7 * i]);
+  #assert matches_hex(work[0].nonce[0].hash_work[0].t[..], STAGE_HEX[7 * i + 1]);
+  #assert matches_hex(work[0].nonce[0].hash[..], STAGE_HEX[7 * i + 2]);
+  #assert work[0].prep[0].point[0].odd == ifx STAGE_HEX[7 * i + 3] == "1" then cast(u64) 1 else 0;
+  #assert work[0].nonce[0].point[0].odd == ifx STAGE_HEX[7 * i + 4] == "1" then cast(u64) 1 else 0;
+  #assert bytes_equal(work[0].nonce[0].r[..], t.signature[0..<32]);
+  #assert matches_hex(work[0].challenge[..], STAGE_HEX[7 * i + 5]);
+  #assert matches_hex(work[0].sig[32..<64], STAGE_HEX[7 * i + 6]) && all_zero(out[..]);
+}
+// One whole signature in the interpreter: vector 3, whose key point has odd
+// y, through all six stages to the published bytes.
+#test "vector 3 signs byte for byte through all six stages" #steps 400000000 {
+  t := sign_row(3); work: [1] SignWork; out: [64] u8;
+  r := sign_to_end(t.key[..], t.aux[..], t.message[..], work[..], out[..]);
+  #assert r.status == SIGN_DONE && r.calls == 6 && bytes_equal(out[..], t.signature[..]);
+  #assert work[0].stage == 0 && all_zero(work[0].sig[..]);
+}
+// book:end check

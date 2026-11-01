@@ -265,7 +265,7 @@
    "number": 13,
    "title": "Sign with Schnorr",
    "file": "ch013-sign-with-schnorr.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     11,
@@ -274,7 +274,9 @@
    ],
    "source": [
     "coax/lib/crypto/schnorr_self_verify.coax",
-    "coax/lib/crypto/schnorr_sign.coax"
+    "coax/lib/crypto/schnorr_sign.coax",
+    "nostr/examples/schnorr-sign.coax",
+    "nostr/examples/checks/schnorr-sign.coax"
    ],
    "qualified_targets": [
     "cpu",

@@ -1,0 +1,44 @@
+small numbers
+y odd: 3G 0, 5G 0, 6G 1
+d = 3, k = 5, e = 2: s: 000000000000000000000000000000000000000000000000000000000000000b
+verifies: true
+d = 6 (odd y, use n - 6), k = 5, e = 2: s: fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036413a
+verifies: true
+without the negation, s = 17 verifies: false
+d = 3, k = 6 (odd y, use n - 6), e = 4: s: 0000000000000000000000000000000000000000000000000000000000000006
+verifies: true
+same k twice: (s2 - s1) / (e2 - e1): 0000000000000000000000000000000000000000000000000000000000000003
+vector 0, stage by stage
+call 1, key: more
+  P = x(d*G): f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+  y(d*G) odd: 0
+call 2, nonce: more
+  hash_aux(a): 54f169cfc9e2e5727480441f90ba25c488f461c70b5ea5dcaaf7af69270aa514
+  t = d xor hash_aux(a): 54f169cfc9e2e5727480441f90ba25c488f461c70b5ea5dcaaf7af69270aa517
+  rand = hash_nonce(t || P || m): 1d2dc1652fee3ad08434469f9ad30536a5787feccfa308e8fb396c8030dd1c69
+  r = x(k0*G): e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca8215
+  y(k0*G) odd: 1
+call 3, equation: more
+  e: 6bb6b93a91f2ecc0cd924f4f9baabb5e6eb21745bb00f2cebdaac908bb5d86ce
+  s = k + e*d mod n: 25f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0
+  out still zero: true
+call 4, self-check: more
+call 5, self-check: more
+call 6, self-check: done
+signature: e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca821525f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0
+matches vector 0: true, workspace cleared: true
+BIP-340 signing vectors 0 to 3
+0: done after 6 calls, matches true, verifies true
+1: done after 6 calls, matches true, verifies true
+2: done after 6 calls, matches true, verifies true
+3: done after 6 calls, matches true, verifies true
+vector 0 with aux 00..01: done, differs true, verifies true
+refusals
+secret key 0: refused after 1 call
+secret key n: refused after 1 call
+secret key 2^256 - 1: refused after 1 call
+aux of 31 bytes: refused, workspace untouched true
+aux of 33 bytes: refused, workspace untouched true
+Nostr event ID of 31 bytes: refused
+message changed after the nonce stage: refused at call 3, workspace cleared true
+s corrupted before release: refused at call 6, out still zero true

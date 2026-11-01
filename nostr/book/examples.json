@@ -115,6 +115,18 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/schnorr-sign.coax",
+      "chapter": "nostr/book/ch013-sign-with-schnorr.md",
+      "stdout": "nostr/fixtures/schnorr-sign.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
+    },
+    {
       "source": "nostr/examples/chacha20.coax",
       "chapter": "nostr/book/ch018-chacha20.md",
       "stdout": "nostr/fixtures/chacha20.out",

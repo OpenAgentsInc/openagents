@@ -1,0 +1,205 @@
+// book:begin example
+#load "../../coax/lib/crypto/schnorr_sign.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+print_scalar :: (label: string, s: ScScalar) {
+  b: [32] u8;
+  if sc_store(s, b[..]) { print_hex(label, b[..]); }
+}
+// Decode hex into out and return the number of bytes written. Every literal
+// here is valid hex, so a decoding error stops the program.
+decode_hex :: (text: string, out: [] u8) -> int {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return r.written;
+}
+// Signing row i of the table at the end of this file: BIP-340 vectors 0 to 3.
+// Their secret keys are published test keys, never real ones.
+SignRow :: struct { key: [32] u8; aux: [32] u8; message: [32] u8; signature: [64] u8; }
+sign_row :: (i: int) -> SignRow {
+  v: SignRow;
+  #assert decode_hex(ROW_HEX[4 * i], v.key[..]) == 32;
+  #assert decode_hex(ROW_HEX[4 * i + 1], v.aux[..]) == 32;
+  #assert decode_hex(ROW_HEX[4 * i + 2], v.message[..]) == 32;
+  #assert decode_hex(ROW_HEX[4 * i + 3], v.signature[..]) == 64;
+  return v;
+}
+bytes_equal :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+all_zero :: (a: [] u8) -> bool {
+  for i: 0..<a.count { if a[i] != 0 { return false; } }
+  return true;
+}
+named :: (status: int) -> string {
+  if status == SIGN_MORE { return "more"; }
+  if status == SIGN_DONE { return "done"; }
+  return "refused";
+}
+// Call the signer until it stops asking for more. Returns the last status and
+// counts the calls.
+Signed :: struct { status: int; calls: int; }
+sign_to_end :: (key: [] u8, aux: [] u8, message: [] u8, work: [] SignWork, out: [] u8) -> Signed {
+  r: Signed; r.status = SIGN_MORE;
+  while r.status == SIGN_MORE {
+    r.status = schnorr_sign_step(key, aux, message, work, out, false);
+    r.calls += 1;
+  }
+  return r;
+}
+
+// Small numbers. k·G by repeated addition, with chapter 9's group law.
+times_g :: (k: int) -> SgPoint {
+  r := sg_infinity();
+  for i: 0..<k { r = sg_add(r, sg_generator()).value; }
+  return r;
+}
+y_odd :: (p: SgPoint) -> u64 { return sg_to_affine(p).value.y.limb[0] & 1; }
+// Chapter 11's final equation with a stand-in challenge e: lift x(dG) to the
+// even-y point P, as a verifier does, and test s·G - e·P against x(kG).
+verify_small :: (s: ScScalar, e: u32, d: int, k: int) -> bool {
+  x: [32] u8;
+  if !sf_store(sg_to_affine(times_g(d)).value.x, x[..]) { return false; }
+  prepared: SvPrepared;
+  prepared.s = s; prepared.negative_e = sc_negate(sc_small(e));
+  prepared.point = sg_lift_x_public(x[..]).value;
+  prepared.r = sg_to_affine(times_g(k)).value.x; prepared.ready = true;
+  return sv_prepared_matches_vartime(prepared);
+}
+// The signer's equation with small numbers: negate d and k when their points
+// have odd y (ss_even, the procedure the signer uses), then s = k + e·d.
+sign_small :: (d: int, k: int, e: u32) -> ScScalar {
+  dd := ss_even(sc_small(cast(u32) d), y_odd(times_g(d)));
+  kk := ss_even(sc_small(cast(u32) k), y_odd(times_g(k)));
+  return sc_add(kk, sc_mul(sc_small(e), dd));
+}
+
+main :: () {
+  print("small numbers\n");
+  print("y odd: 3G %, 5G %, 6G %\n", y_odd(times_g(3)), y_odd(times_g(5)), y_odd(times_g(6)));
+  s := sign_small(3, 5, 2);
+  print_scalar("d = 3, k = 5, e = 2: s", s);
+  print("verifies: %\n", verify_small(s, 2, 3, 5));
+  s = sign_small(6, 5, 2);
+  print_scalar("d = 6 (odd y, use n - 6), k = 5, e = 2: s", s);
+  print("verifies: %\n", verify_small(s, 2, 6, 5));
+  unnegated := sc_add(sc_small(5), sc_mul(sc_small(2), sc_small(6)));
+  print("without the negation, s = 17 verifies: %\n", verify_small(unnegated, 2, 6, 5));
+  s = sign_small(3, 6, 4);
+  print_scalar("d = 3, k = 6 (odd y, use n - 6), e = 4: s", s);
+  print("verifies: %\n", verify_small(s, 4, 3, 6));
+  // One nonce for two messages: s1 - s2 = (e1 - e2)·d, so anyone can solve for d.
+  s1 := sign_small(3, 5, 2); s2 := sign_small(3, 5, 4);
+  inverse := sc_inverse(sc_sub(sc_small(4), sc_small(2)));
+  print_scalar("same k twice: (s2 - s1) / (e2 - e1)", sc_mul(sc_sub(s2, s1), inverse.value));
+
+  // Vector 0, one stage per call. The workspace holds the intermediate values
+  // between calls; they are printed here only because the key is a test key.
+  print("vector 0, stage by stage\n");
+  v := sign_row(0);
+  work: [1] SignWork; out: [64] u8;
+  status := schnorr_sign_step(v.key[..], v.aux[..], v.message[..], work[..], out[..], false);
+  print("call 1, key: %\n", named(status));
+  print_hex("  P = x(d*G)", work[0].prep[0].public_key[..]);
+  print("  y(d*G) odd: %\n", work[0].prep[0].point[0].odd);
+  status = schnorr_sign_step(v.key[..], v.aux[..], v.message[..], work[..], out[..], false);
+  print("call 2, nonce: %\n", named(status));
+  print_hex("  hash_aux(a)", work[0].nonce[0].hash_work[0].digest[..]);
+  print_hex("  t = d xor hash_aux(a)", work[0].nonce[0].hash_work[0].t[..]);
+  print_hex("  rand = hash_nonce(t || P || m)", work[0].nonce[0].hash[..]);
+  print_hex("  r = x(k0*G)", work[0].nonce[0].r[..]);
+  print("  y(k0*G) odd: %\n", work[0].nonce[0].point[0].odd);
+  status = schnorr_sign_step(v.key[..], v.aux[..], v.message[..], work[..], out[..], false);
+  print("call 3, equation: %\n", named(status));
+  print_hex("  e", work[0].challenge[..]);
+  print_hex("  s = k + e*d mod n", work[0].sig[32..<64]);
+  print("  out still zero: %\n", all_zero(out[..]));
+  for call: 4..<7 {
+    status = schnorr_sign_step(v.key[..], v.aux[..], v.message[..], work[..], out[..], false);
+    print("call %, self-check: %\n", call, named(status));
+  }
+  print_hex("signature", out[..]);
+  print("matches vector 0: %, workspace cleared: %\n", bytes_equal(out[..], v.signature[..]), work[0].stage == 0 && all_zero(work[0].sig[..]));
+
+  // Vectors 0 to 3, byte for byte, then checked by the variable-time verifier
+  // of chapter 11, which shares no code with the self-check's equation.
+  print("BIP-340 signing vectors 0 to 3\n");
+  for i: 0..<ROWS {
+    t := sign_row(i); pk := ROW_PUBLIC[i]; w: [1] SignWork; sig: [64] u8;
+    r := sign_to_end(t.key[..], t.aux[..], t.message[..], w[..], sig[..]);
+    print("%: % after % calls, matches %, verifies %\n", i, named(r.status), r.calls,
+      bytes_equal(sig[..], t.signature[..]), schnorr_fast_verify_vartime(t.message[..], pk[..], sig[..]));
+  }
+  // The same key and message with other auxiliary bytes give another valid
+  // signature: the nonce depends on a, not only on d and m.
+  other := v.aux; other[31] = 1; pk := ROW_PUBLIC[0];
+  w: [1] SignWork; sig: [64] u8;
+  r := sign_to_end(v.key[..], other[..], v.message[..], w[..], sig[..]);
+  print("vector 0 with aux 00..01: %, differs %, verifies %\n", named(r.status),
+    !bytes_equal(sig[..], v.signature[..]), schnorr_fast_verify_vartime(v.message[..], pk[..], sig[..]));
+
+  print("refusals\n");
+  bad: [32] u8;
+  r = sign_to_end(bad[..], v.aux[..], v.message[..], w[..], sig[..]);
+  print("secret key 0: % after % call\n", named(r.status), r.calls);
+  #assert ss_write(SC_N, bad[..]);
+  r = sign_to_end(bad[..], v.aux[..], v.message[..], w[..], sig[..]);
+  print("secret key n: % after % call\n", named(r.status), r.calls);
+  for i: 0..<32 { bad[i] = 255; }
+  r = sign_to_end(bad[..], v.aux[..], v.message[..], w[..], sig[..]);
+  print("secret key 2^256 - 1: % after % call\n", named(r.status), r.calls);
+  long: [33] u8;
+  status = schnorr_sign_step(v.key[..], long[0..<31], v.message[..], w[..], sig[..], false);
+  print("aux of 31 bytes: %, workspace untouched %\n", named(status), w[0].stage == 0);
+  status = schnorr_sign_step(v.key[..], long[..], v.message[..], w[..], sig[..], false);
+  print("aux of 33 bytes: %, workspace untouched %\n", named(status), w[0].stage == 0);
+  status = nostr_sign_step(v.key[..], v.aux[..], long[0..<31], w[..], sig[..], false);
+  print("Nostr event ID of 31 bytes: %\n", named(status));
+
+  // The message changes after the nonce was derived from it: signing it
+  // would use one nonce for two messages, so the equation stage refuses.
+  for i: 0..<64 { sig[i] = 0; }
+  status = schnorr_sign_step(v.key[..], v.aux[..], v.message[..], w[..], sig[..], false);
+  status = schnorr_sign_step(v.key[..], v.aux[..], v.message[..], w[..], sig[..], false);
+  changed := v.message; changed[31] ^= 1;
+  status = schnorr_sign_step(v.key[..], v.aux[..], changed[..], w[..], sig[..], false);
+  print("message changed after the nonce stage: % at call 3, workspace cleared %\n", named(status), w[0].stage == 0 && all_zero(w[0].nonce[0].r[..]));
+
+  // A fault flips one bit of s after the equation, before release. The
+  // self-check runs all of its stages on the bad candidate and refuses at
+  // the end; nothing reaches out.
+  for call: 1..<4 { status = schnorr_sign_step(v.key[..], v.aux[..], v.message[..], w[..], sig[..], false); }
+  w[0].sig[63] ^= 1;
+  calls := 3;
+  while status == SIGN_MORE {
+    status = schnorr_sign_step(v.key[..], v.aux[..], v.message[..], w[..], sig[..], false);
+    calls += 1;
+  }
+  print("s corrupted before release: % at call %, out still zero %\n", named(status), calls, all_zero(sig[..]));
+}
+// book:end example
+
+// Rows 0 to 3 of coax/tests/vectors/upstream/bip340/test-vectors.csv, the
+// rows with a secret key and a 32-byte message: secret key, aux_rand,
+// message and signature, in lowercase hex. The keys are published test keys.
+ROWS :: 4;
+ROW_HEX :: [16] string.[
+    "0000000000000000000000000000000000000000000000000000000000000003", "0000000000000000000000000000000000000000000000000000000000000000", "0000000000000000000000000000000000000000000000000000000000000000", "e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca821525f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0",
+    "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef", "0000000000000000000000000000000000000000000000000000000000000001", "243f6a8885a308d313198a2e03707344a4093822299f31d0082efa98ec4e6c89", "6896bd60eeae296db48a229ff71dfe071bde413e6d43f917dc8dcf8c78de33418906d11ac976abccb20b091292bff4ea897efcb639ea871cfa95f6de339e4b0a",
+    "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9", "c87aa53824b4d7ae2eb035a2b5bbbccc080e76cdc6d1692c4b0b62d798e6d906", "7e2d58d8b3bcdf1abadec7829054f90dda9805aab56c77333024b9d0a508b75c", "5831aaeed7b44bb74e5eab94ba9d4294c49bcf2a60728d8b4c200f50dd313c1bab745879a5ad954a72c45a91c3a51d3c7adea98d82f8481e0e1e03674a6f3fb7",
+    "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "7eb0509757e246f19449885651611cb965ecc1a187dd51b64fda1edc9637d5ec97582b9cb13db3933705b32ba982af5af25fd78881ebb32771fc5922efc66ea3"];
+// The published public keys of the same rows, for the verifier.
+ROW_PUBLIC :: [4] [32] u8.[
+    [32] u8.[0xf9,0x30,0x8a,0x01,0x92,0x58,0xc3,0x10,0x49,0x34,0x4f,0x85,0xf8,0x9d,0x52,0x29,0xb5,0x31,0xc8,0x45,0x83,0x6f,0x99,0xb0,0x86,0x01,0xf1,0x13,0xbc,0xe0,0x36,0xf9],
+    [32] u8.[0xdf,0xf1,0xd7,0x7f,0x2a,0x67,0x1c,0x5f,0x36,0x18,0x37,0x26,0xdb,0x23,0x41,0xbe,0x58,0xfe,0xae,0x1d,0xa2,0xde,0xce,0xd8,0x43,0x24,0x0f,0x7b,0x50,0x2b,0xa6,0x59],
+    [32] u8.[0xdd,0x30,0x8a,0xfe,0xc5,0x77,0x7e,0x13,0x12,0x1f,0xa7,0x2b,0x9c,0xc1,0xb7,0xcc,0x01,0x39,0x71,0x53,0x09,0xb0,0x86,0xc9,0x60,0xe1,0x8f,0xd9,0x69,0x77,0x4e,0xb8],
+    [32] u8.[0x25,0xd1,0xdf,0xf9,0x51,0x05,0xf5,0x25,0x3c,0x40,0x22,0xf6,0x28,0xa9,0x96,0xad,0x3a,0x0d,0x95,0xfb,0xf2,0x1d,0x46,0x8a,0x1b,0x33,0xf8,0xc1,0x60,0xd8,0xf5,0x17]];
