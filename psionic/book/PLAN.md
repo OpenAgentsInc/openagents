@@ -544,7 +544,7 @@ Neither chapter changes the voice engine's consent or floor rules.
 
 | Chapter | What we build and check |
 | --- | --- |
-| [156. A spectral neural operator](ch156-a-spectral-neural-operator.md) — design draft | Tiny DFT/FFT references, complex arithmetic, truncation and spectral layers on a small field; reuse the spectral core from 151. |
+| [156. A spectral neural operator](ch156-a-spectral-neural-operator.md) — runnable 2-D FFT, mode truncation and one Fourier layer with hand-written gradients on the CPU | Tiny DFT/FFT references, complex arithmetic, truncation and spectral layers on a small field; reuse the spectral core from 151. |
 | [157. Learn Darcy flow](ch157-learn-darcy-flow.md) — design draft | Reimplement the PhysicsNeMo FNO architecture/recipe on bounded reproducibly generated data; compare against a solver on held-out fields. |
 | [158. A field around a shape](ch158-a-field-around-a-shape.md) — runnable signed distances, mesh admission, samples, grid neighbourhoods and point convolution on the CPU | Signed distances, point clouds, spatial neighborhood queries, point convolutions and local aggregation with tiny geometric oracles. |
 | [159. Learn a scene from its views](ch159-learn-a-scene-from-its-views.md) — design draft | A coordinate network fitting an image, then a signed-distance field, then differentiable ray compositing on tiny fixtures, then a small radiance field trained on rendered views of a synthetic Verse scene and rendered from held-out cameras. Compositing derivatives, held-out image quality, depth where ground truth exists, memory and render time; good novel views are not evidence of an accurate collision surface or a usable game asset. |

@@ -1,0 +1,58 @@
+// Chapter 156: one Fourier layer, by hand and against its oracles: the 2-D
+// FFT against a direct 2-D DFT, the layer against a direct spectral
+// convolution, its gradients against central differences, the same weights
+// at two resolutions, and the inputs it refuses.
+#import "Basic";
+#load "../lib/fourier.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+show :: (label:string,v:[]f64) {print("%:",label);for x:v {print(" %",r4(x));}print("\n");}
+
+// book:begin example
+main :: () {
+    // 1. The worked example: one channel on a 1 x 4 grid, k1 = 1, k2 = 2.
+    wr:=[3]f64.[0.5,1,0];wi:=[3]f64.[0,0,1];lin:=[1]f64.[0.5];bias:=[1]f64.[-1];
+    l:=FoLayer.{cin=1,cout=1,k1=1,k2=2,act=FoAct.none,wr=wr[..],wi=wi[..],lin=lin[..],bias=bias[..]};
+    x:=[4]f64.[1,2,3,4];re:=x;im:[4]f64;
+    #assert fo_fft2(re[..],im[..],1,4,false)==FoStatus.ok;
+    show("x",x[..]);show("FFT real",re[..]);show("FFT imaginary",im[..]);
+    pre:[4]f64;y:[4]f64;
+    #assert fo_forward(l,1,4,x[..],pre[..],y[..])==FoStatus.ok;show("y",y[..]);
+    dy:=[4]f64.[1,0,0,0];dx:[4]f64;gr:[3]f64;gi:[3]f64;gl:[1]f64;gb:[1]f64;
+    g:=FoGrad.{wr=gr[..],wi=gi[..],lin=gl[..],bias=gb[..]};
+    #assert fo_backward(l,1,4,x[..],pre[..],dy[..],dx[..],g)==FoStatus.ok;
+    show("dL/dx for L = y[0]",dx[..]);show("dL/dwr",gr[..]);show("dL/dwi",gi[..]);
+
+    // 2. The 2-D FFT against the direct 2-D DFT on a 6 x 10 grid.
+    a:[60]f64;b:[60]f64;ar:[60]f64;ai:[60]f64;fo_fill(1,a[..]);fo_fill(2,b[..]);
+    fo_dft2_oracle(a[..],b[..],6,10,false,ar[..],ai[..]);
+    #assert fo_fft2(a[..],b[..],6,10,false)==FoStatus.ok;
+    print("6 x 10 FFT within 1e-12 of the direct DFT: %\n",fo_worst(a[..],ar[..])<=1e-12 && fo_worst(b[..],ai[..])<=1e-12);
+
+    // 3. A 2-to-2-channel GELU layer, k1 = k2 = 3, against the direct convolution.
+    w1:[1024]f64;w2:[1024]f64;w3:[16]f64;w4:[4]f64;
+    m:=fo_random(20,2,2,3,3,FoAct.gelu,w1[..],w2[..],w3[..],w4[..]);
+    f:[120]f64;p:[120]f64;out:[120]f64;want:[120]f64;fo_fill(3,f[..]);
+    #assert fo_forward(m,6,10,f[..],p[..],out[..])==FoStatus.ok;fo_direct_oracle(m,6,10,f[..],want[..]);
+    print("layer: % weights; 6 x 10 output within 1e-12 of the direct convolution: %\n",2*m.wr.count+m.lin.count+m.bias.count,fo_worst(out[..],want[..])<=1e-12);
+
+    // 4. The same weights on a band-limited field at 8 x 8 and 16 x 16.
+    c:[128]f64;d:[512]f64;pc:[128]f64;pd:[512]f64;yc:[128]f64;yd:[512]f64;
+    for i:0..<2 {fo_sample(8,8,i,c[i*64..<(i+1)*64]);fo_sample(16,16,i,d[i*256..<(i+1)*256]);}
+    #assert fo_forward(m,8,8,c[..],pc[..],yc[..])==FoStatus.ok && fo_forward(m,16,16,d[..],pd[..],yd[..])==FoStatus.ok;
+    worst:=0.0;
+    for o:0..<2 {for r:0..<8 {for k:0..<8 {e:=abs(yc[o*64+r*8+k]-yd[o*256+2*r*16+2*k]);if e>worst {worst=e;}}}}
+    print("8 x 8 and 16 x 16 agree on shared points within 1e-12: %\n",worst<=1e-12);
+    show("  channel 0, row 0, 8 x 8",yc[0..<4]);fine:=[4]f64.[yd[0],yd[2],yd[4],yd[6]];show("  channel 0, row 0, 16 x 16",fine[..]);
+
+    // 5. Refusals.
+    print("a 4 x 10 field with k1 = 3: %\n",fo_forward(m,4,10,f[0..<80],p[..],out[..]));
+    big:=m;big.k1=9;print("k1 = 9: %\n",fo_forward(big,64,64,f[..],p[..],out[..]));
+    print("a 65 x 1 grid: %\n",fo_forward(m,65,1,f[..],p[..],out[..]));
+    f[7]=0.0/0.0;print("a NaN input: %\n",fo_forward(m,6,10,f[..],p[..],out[..]));
+    f[7]=2000000;print("an input of 2,000,000: %\n",fo_forward(m,6,10,f[..],p[..],out[..]));f[7]=0;
+    print("119 input values for 2 x 6 x 10: %\n",fo_forward(m,6,10,f[0..<119],p[..],out[..]));
+    print("room for 119 outputs: %\n",fo_forward(m,6,10,f[..],p[..],out[0..<119]));
+    wide:=m;wide.cout=5;print("5 output channels: %\n",fo_forward(wide,6,10,f[..],p[..],out[..]));
+}
+// book:end example

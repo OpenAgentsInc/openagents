@@ -1462,6 +1462,16 @@
       ]
     },
     {
+      "source": "psionic/examples/fourier-layer.coax",
+      "chapter": "psionic/book/ch156-a-spectral-neural-operator.md",
+      "stdout": "psionic/fixtures/fourier-layer.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/field.coax",
       "chapter": "psionic/book/ch158-a-field-around-a-shape.md",
       "stdout": "psionic/fixtures/field.out",

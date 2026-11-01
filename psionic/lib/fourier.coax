@@ -1,0 +1,369 @@
+// Chapter 156: a spectral neural operator. A two-dimensional FFT built from
+// chapter 151's one-dimensional transform, rows then columns; and one Fourier
+// layer: transform each input channel, keep the low modes, multiply them by
+// complex weights, transform back, add a pointwise linear path and a bias,
+// and apply an activation. Its gradients are written by hand.
+// Profile psionic-fourier-v1: binary64, one CPU core, sums in a fixed order;
+// a periodic grid of 1 to 64 points a side, 1 to 4 channels in and out, at
+// most 8 modes a direction, values within 1e6 in magnitude.
+#load "spectral.coax";
+#load "../tests/fourier-checks.coax";   // the checks' oracles and fixtures
+
+// book:begin types
+FoStatus :: enum u8 {ok;shape;size;modes;channels;number;capacity;}
+FoAct :: enum u8 {none;gelu;}
+// One Fourier layer from cin to cout channels. It keeps the signed
+// frequencies p in (-k1, k1) down the rows and q in (-k2, k2) across:
+// (2 k1 - 1)(2 k2 - 1) modes. Mode (p, q) from input i to output o has the
+// weight wr + i wi at ((o cin + i)(2 k1 - 1) + p + k1 - 1)(2 k2 - 1) + q + k2 - 1.
+// lin is cout x cin, bias has cout entries.
+FoLayer :: struct {cin:int;cout:int;k1:int;k2:int;act:FoAct;wr:[]f64;wi:[]f64;lin:[]f64;bias:[]f64;}
+// The gradient of a scalar loss for each parameter, laid out like the layer.
+FoGrad :: struct {wr:[]f64;wi:[]f64;lin:[]f64;bias:[]f64;}
+// book:end types
+
+// book:begin bounds
+FO_SIDE_MAX :: 64;
+FO_CELLS_MAX :: 4096;            // 64 x 64
+FO_CHANNELS_MAX :: 4;
+FO_MODES_MAX :: 8;               // k1, k2 at most 8
+FO_KEPT_MAX :: 225;              // (2 x 8 - 1)^2 kept modes
+FO_VALUE_MAX :: 1000000.0;       // larger inputs and parameters are refused
+// book:end bounds
+
+// Checks precede the implementation. Expected values are worked by hand in
+// chapter 156, or come from the oracles in psionic/tests/fourier-checks.coax.
+#test "the check helpers are pinned" {
+    v:[3]f64;fo_fill(1,v[..]);#assert v[0]==0.961 && v[1]== -0.69 && v[2]== -0.4;
+    a:=[2]f64.[1,-2];b:=[2]f64.[1.5,-2];#assert fo_worst(a[..],b[..])==0.5 && fo_worst(b[..],a[..])==0.5 && fo_near(1,1.25,0.25) && !fo_near(1,1.5,0.25);
+    #assert fo_wave(0,0)==1.25+0.5;
+}
+#test "a 2 x 2 transform by hand" {
+    re:=[4]f64.[1,2,3,4];im:[4]f64;
+    #assert fo_fft2(re[..],im[..],2,2,false)==FoStatus.ok;
+    #assert re[0]==10 && re[1]== -2 && re[2]== -4 && re[3]==0 && im[0]==0 && im[1]==0 && im[2]==0 && im[3]==0;
+    #assert fo_fft2(re[..],im[..],2,2,true)==FoStatus.ok && re[0]==1 && re[1]==2 && re[2]==3 && re[3]==4;
+}
+#test "a 1 x 4 transform: rows only" {
+    re:=[4]f64.[1,2,3,4];im:[4]f64;
+    #assert fo_fft2(re[..],im[..],1,4,false)==FoStatus.ok;
+    #assert re[0]==10 && re[1]== -2 && im[1]==2 && re[2]== -2 && im[2]==0 && re[3]== -2 && im[3]== -2;
+    re=[4]f64.[1,2,3,4];im=[4]f64.[0,0,0,0];
+    #assert fo_fft2(re[..],im[..],4,1,false)==FoStatus.ok && re[1]== -2 && im[1]==2 && im[3]== -2;
+}
+#forall "the 2-D FFT matches the direct 2-D DFT and inverts" n:0..<24 #steps 400000000 {
+    shapes:=[24]int.[1,1, 1,7, 5,1, 2,3, 3,2, 4,4, 5,6, 6,5, 8,3, 7,7, 9,12, 16,10];
+    ny:=shapes[2*(n%12)];nx:=shapes[2*(n%12)+1];cells:=ny*nx;inverse:=n>=12;
+    re:[192]f64;im:[192]f64;keep_re:[192]f64;keep_im:[192]f64;ore:[192]f64;oim:[192]f64;
+    fo_fill(n,re[0..<cells]);fo_fill(n+100,im[0..<cells]);
+    for i:0..<cells {keep_re[i]=re[i];keep_im[i]=im[i];}
+    fo_dft2_oracle(re[0..<cells],im[0..<cells],ny,nx,inverse,ore[0..<cells],oim[0..<cells]);
+    #assert fo_fft2(re[0..<cells],im[0..<cells],ny,nx,inverse)==FoStatus.ok;
+    #assert fo_worst(re[0..<cells],ore[0..<cells])<=1e-12 && fo_worst(im[0..<cells],oim[0..<cells])<=1e-12;
+    #assert fo_fft2(re[0..<cells],im[0..<cells],ny,nx,!inverse)==FoStatus.ok;
+    #assert fo_worst(re[0..<cells],keep_re[0..<cells])<=1e-14 && fo_worst(im[0..<cells],keep_im[0..<cells])<=1e-14;
+}
+#test "2-D transform refusals" {
+    re:=[6]f64.[1,2,3,4,5,6];im:[6]f64;
+    #assert fo_fft2(re[..],im[..],0,6,false)==FoStatus.size && fo_fft2(re[..],im[..],6,0,false)==FoStatus.size;
+    #assert fo_fft2(re[..],im[0..<5],2,3,false)==FoStatus.shape && fo_fft2(re[0..<5],im[0..<5],2,3,false)==FoStatus.shape;
+    big:[4160]f64;bim:[4160]f64;
+    #assert fo_fft2(big[0..<4160],bim[0..<4160],65,64,false)==FoStatus.size && fo_fft2(big[0..<4160],bim[0..<4160],64,65,false)==FoStatus.size;
+    #assert fo_fft2(big[0..<4096],bim[0..<4096],64,64,false)==FoStatus.ok;
+    im[4]=sf_nan();#assert fo_fft2(re[..],im[..],2,3,false)==FoStatus.number && re[0]==1;
+    im[4]=0;re[0]=sf_nan();#assert fo_fft2(re[..],im[..],2,3,false)==FoStatus.number && re[1]==2;
+    re[0]=1;re[5]=sf_inf();#assert fo_fft2(re[..],im[..],2,3,false)==FoStatus.number && re[0]==1;
+}
+#test "activation by hand" {
+    #assert fo_act(FoAct.none,-2.5)== -2.5 && fo_slope(FoAct.none,-2.5)==1;
+    #assert fo_act(FoAct.gelu,0)==0 && fo_slope(FoAct.gelu,0)==0.5;
+    // Python's math.tanh form of GELU: 0.8411919906082768 at 1, -0.15880800939172324 at -1.
+    #assert fo_near(fo_act(FoAct.gelu,1),0.8411919906082768,2e-16) && fo_near(fo_act(FoAct.gelu,-1),-0.15880800939172324,1e-16);
+    #assert fo_near(fo_act(FoAct.gelu,2),1.954597694087775,4e-16) && fo_near(fo_act(FoAct.gelu,0.5),0.34571400982514394,1e-16);
+    #assert fo_act(FoAct.gelu,40)==40 && fo_act(FoAct.gelu,-40)==0 && fo_tanh(-400)== -1 && f64_bits(fo_tanh(0))==0;
+    for k:0..<9 {z:=f64(k)/2-2;h:=1e-6;
+        fd:=(fo_act(FoAct.gelu,z+h)-fo_act(FoAct.gelu,z-h))/(2*h);#assert fo_near(fo_slope(FoAct.gelu,z),fd,1e-9);}
+}
+
+#test "the 1 x 4 layer by hand" {
+    wr:[3]f64;wi:[3]f64;lin:[1]f64;bias:[1]f64;l:=fo_hand(wr[..],wi[..],lin[..],bias[..]);
+    x:=[4]f64.[1,2,3,4];pre:[4]f64;y:[4]f64;
+    #assert fo_kept(l)==3 && fo_forward(l,1,4,x[..],pre[..],y[..])==FoStatus.ok;
+    #assert y[0]==1.25 && y[1]==2.75 && y[2]==3.75 && y[3]==3.25 && pre[2]==3.75;
+    // The spectral path alone is 1.75 2.75 3.25 2.25.
+    lin[0]=0;bias[0]=0;#assert fo_forward(l,1,4,x[..],pre[..],y[..])==FoStatus.ok;
+    #assert y[0]==1.75 && y[1]==2.75 && y[2]==3.25 && y[3]==2.25;
+    // The mode q = 2 lies outside k2 = 2: a pure x[c] = (-1)^c is dropped.
+    x=[4]f64.[1,-1,1,-1];#assert fo_forward(l,1,4,x[..],pre[..],y[..])==FoStatus.ok;
+    #assert y[0]==0 && y[1]==0 && y[2]==0 && y[3]==0;
+    // dL/dy = 1 0 0 0 by hand: the bias gets 1, lin gets x[0], and weight (0, q) gets Re(X[q] / 4).
+    x=[4]f64.[1,2,3,4];lin[0]=0.5;bias[0]= -1;dy:=[4]f64.[1,0,0,0];dx:[4]f64;
+    gr:[3]f64;gi:[3]f64;gl:[1]f64;gb:[1]f64;g:=FoGrad.{wr=gr[..],wi=gi[..],lin=gl[..],bias=gb[..]};
+    #assert fo_forward(l,1,4,x[..],pre[..],y[..])==FoStatus.ok && fo_backward(l,1,4,x[..],pre[..],dy[..],dx[..],g)==FoStatus.ok;
+    #assert gb[0]==1 && gl[0]==1 && gr[0]== -0.5 && gr[1]==2.5 && gr[2]== -0.5 && gi[0]==0.5 && gi[1]==0 && gi[2]== -0.5;
+    // y[0] = sum over m of k[-m] x[m] + 0.5 x[0] - 1, and k[-m] is 0.375 0.5 0.125 0.
+    #assert dx[0]==0.375+0.5 && dx[1]==0.5 && dx[2]==0.125 && dx[3]==0;
+}
+
+#forall "the FFT path matches the direct spectral convolution" n:0..<8 #steps 400000000 {
+    shapes:=[40]int.[1,1,1,1,1, 2,1,3,2,1, 1,2,5,3,2, 3,2,4,6,2, 2,3,7,5,4, 4,4,8,8,3, 3,1,6,9,5, 2,2,5,5,3];
+    cin:=shapes[5*n];cout:=shapes[5*n+1];ny:=shapes[5*n+2];nx:=shapes[5*n+3];k:=shapes[5*n+4];
+    k1:=ifx 2*k-1>ny then (ny+1)/2 else k;k2:=ifx 2*k-1>nx then (nx+1)/2 else k;
+    wr:[1024]f64;wi:[1024]f64;lin:[16]f64;bias:[4]f64;
+    l:=fo_random(n,cin,cout,k1,k2,cast(FoAct)(n%2),wr[..],wi[..],lin[..],bias[..]);
+    cells:=ny*nx;x:[400]f64;pre:[400]f64;y:[400]f64;want:[400]f64;fo_fill(n+50,x[0..<cin*cells]);
+    #assert fo_forward(l,ny,nx,x[0..<cin*cells],pre[0..<cout*cells],y[0..<cout*cells])==FoStatus.ok;
+    fo_direct_oracle(l,ny,nx,x[0..<cin*cells],want[0..<cout*cells]);
+    #assert fo_worst(y[0..<cout*cells],want[0..<cout*cells])<=1e-12;
+}
+
+// Every gradient against a central difference, fo_gradients in the checks file.
+#test "gradients match central differences: 1 to 1 channel, 1 x 4" #steps 400000000 {fo_gradients(0);}
+#test "gradients match central differences: 1 to 1 channel, 3 x 3" #steps 800000000 {fo_gradients(1);}
+#test "gradients match central differences: 2 to 1 channels, 4 x 4" #steps 800000000 {fo_gradients(2);}
+#test "gradients match central differences: 1 to 3 channels, 8 x 4" #steps 800000000 {fo_gradients(3);}
+#test "gradients match central differences: 2 to 2 channels, 4 x 8" #steps 800000000 {fo_gradients(4);}
+
+// The same weights at two resolutions: on a band-limited field the outputs
+// agree where the grids share points, and equal the formula's value there.
+#forall "resolution invariance on a band-limited field" n:0..<4 #steps 400000000 {
+    sizes:=[8]int.[8,8, 6,10, 5,5, 7,9];ny:=sizes[2*n];nx:=sizes[2*n+1];
+    wr:[1024]f64;wi:[1024]f64;lin:[16]f64;bias:[4]f64;
+    l:=fo_random(n+20,2,2,3,3,cast(FoAct)(n%2),wr[..],wi[..],lin[..],bias[..]);
+    a:[200]f64;b:[800]f64;pa:[200]f64;pb:[800]f64;ya:[200]f64;yb:[800]f64;
+    ca:=ny*nx;cb:=4*ca;
+    for i:0..<2 {fo_sample(ny,nx,i,a[i*ca..<(i+1)*ca]);fo_sample(2*ny,2*nx,i,b[i*cb..<(i+1)*cb]);}
+    #assert fo_forward(l,ny,nx,a[0..<2*ca],pa[0..<2*ca],ya[0..<2*ca])==FoStatus.ok;
+    #assert fo_forward(l,2*ny,2*nx,b[0..<2*cb],pb[0..<2*cb],yb[0..<2*cb])==FoStatus.ok;
+    for o:0..<2 {for r:0..<ny {for c:0..<nx {
+        #assert fo_near(ya[o*ca+r*nx+c],yb[o*cb+(2*r)*(2*nx)+2*c],1e-12);
+    }}}
+    // Not band-limited: a wave at p = ny - 1 looks like p = -1 on the coarse
+    // grid, which keeps it, while the fine grid drops it.
+    for i:0..<2 {
+        for r:0..<ny {for c:0..<nx {a[i*ca+r*nx+c]+=cos(FO_TAU*f64((ny-1)*r)/f64(ny));}}
+        for r:0..<2*ny {for c:0..<2*nx {b[i*cb+r*2*nx+c]+=cos(FO_TAU*f64((ny-1)*r)/f64(2*ny));}}
+    }
+    #assert fo_forward(l,ny,nx,a[0..<2*ca],pa[0..<2*ca],ya[0..<2*ca])==FoStatus.ok;
+    #assert fo_forward(l,2*ny,2*nx,b[0..<2*cb],pb[0..<2*cb],yb[0..<2*cb])==FoStatus.ok;
+    worst:=0.0;for o:0..<2 {for r:0..<ny {for c:0..<nx {d:=abs(ya[o*ca+r*nx+c]-yb[o*cb+(2*r)*(2*nx)+2*c]);if d>worst {worst=d;}}}}
+    #assert worst>1e-3;
+}
+
+#test "layer refusals name the first problem and write nothing" {
+    wr:[1024]f64;wi:[1024]f64;lin:[16]f64;bias:[4]f64;
+    l:=fo_random(3,2,1,2,2,FoAct.gelu,wr[..],wi[..],lin[..],bias[..]);
+    x:[60]f64;fo_fill(4,x[..]);pre:[30]f64;y:[30]f64;dy:[30]f64;dx:[60]f64;
+    for i:0..<30 {y[i]= -7;pre[i]= -7;}
+    gr:[1024]f64;gi:[1024]f64;gl:[16]f64;gb:[4]f64;m:=l.wr.count;
+    g:=FoGrad.{wr=gr[0..<m],wi=gi[0..<m],lin=gl[0..<2],bias=gb[0..<1]};
+    #assert m==18 && fo_forward(l,5,6,x[..],pre[..],y[..])==FoStatus.ok;
+    for i:0..<30 {y[i]= -7;pre[i]= -7;}
+    bad:=l;bad.cin=0;#assert fo_forward(bad,5,6,x[..],pre[..],y[..])==FoStatus.channels;
+    bad=l;bad.cout=0;#assert fo_forward(bad,5,6,x[..],pre[..],y[..])==FoStatus.channels;
+    bad=l;bad.cin=5;#assert fo_check(bad,5,6,x[..])==FoStatus.channels;
+    bad=l;bad.cout=5;#assert fo_check(bad,5,6,x[..])==FoStatus.channels;
+    #assert fo_forward(l,0,6,x[..],pre[..],y[..])==FoStatus.size && fo_forward(l,5,0,x[..],pre[..],y[..])==FoStatus.size;
+    #assert fo_check(l,65,6,x[..])==FoStatus.size && fo_check(l,5,65,x[..])==FoStatus.size;
+    bad=l;bad.k1=0;#assert fo_forward(bad,5,6,x[..],pre[..],y[..])==FoStatus.modes;
+    bad=l;bad.k2=0;#assert fo_forward(bad,5,6,x[..],pre[..],y[..])==FoStatus.modes;
+    bad=l;bad.k1=9;#assert fo_check(bad,64,64,x[..])==FoStatus.modes;
+    bad=l;bad.k2=9;#assert fo_check(bad,64,64,x[..])==FoStatus.modes;
+    big:[4096]f64;bad=fo_random(3,1,1,8,8,FoAct.none,wr[..],wi[..],lin[..],bias[..]);#assert fo_check(bad,64,64,big[..])==FoStatus.ok;
+    l=fo_random(3,2,1,2,2,FoAct.gelu,wr[..],wi[..],lin[..],bias[..]);
+    // k = 2 needs at least 3 points a side: a 2 x 6 or 5 x 2 field is smaller than the kept modes.
+    #assert fo_forward(l,2,6,x[0..<24],pre[..],y[..])==FoStatus.modes && fo_forward(l,5,2,x[0..<20],pre[..],y[..])==FoStatus.modes;
+    #assert fo_forward(l,3,6,x[0..<36],pre[..],y[..])==FoStatus.ok && fo_forward(l,5,3,x[0..<30],pre[..],y[..])==FoStatus.ok;
+    for i:0..<30 {y[i]= -7;pre[i]= -7;}
+    #assert fo_forward(l,5,6,x[0..<59],pre[..],y[..])==FoStatus.shape;
+    bad=l;bad.wr=wr[0..<17];#assert fo_forward(bad,5,6,x[..],pre[..],y[..])==FoStatus.shape;
+    bad=l;bad.wi=wi[0..<19];#assert fo_forward(bad,5,6,x[..],pre[..],y[..])==FoStatus.shape;
+    bad=l;bad.lin=lin[0..<1];#assert fo_forward(bad,5,6,x[..],pre[..],y[..])==FoStatus.shape;
+    bad=l;bad.bias=bias[0..<2];#assert fo_forward(bad,5,6,x[..],pre[..],y[..])==FoStatus.shape;
+    keep:=x[7];x[7]=sf_nan();#assert fo_forward(l,5,6,x[..],pre[..],y[..])==FoStatus.number;
+    x[7]=sf_inf();#assert fo_forward(l,5,6,x[..],pre[..],y[..])==FoStatus.number;
+    x[7]=FO_VALUE_MAX;#assert fo_check(l,5,6,x[..])==FoStatus.ok;
+    x[7]= -FO_VALUE_MAX;#assert fo_check(l,5,6,x[..])==FoStatus.ok;
+    x[7]=1000000.0000000002;#assert fo_check(l,5,6,x[..])==FoStatus.number;
+    x[7]= -1000000.0000000002;#assert fo_check(l,5,6,x[..])==FoStatus.number;
+    x[7]=keep;
+    k:=wr[17];wr[17]=sf_nan();#assert fo_check(l,5,6,x[..])==FoStatus.number;wr[17]=k;
+    k=wi[0];wi[0]=sf_inf();#assert fo_check(l,5,6,x[..])==FoStatus.number;wi[0]=k;
+    k=lin[1];lin[1]=sf_nan();#assert fo_check(l,5,6,x[..])==FoStatus.number;lin[1]=k;
+    k=bias[0];bias[0]=sf_nan();#assert fo_check(l,5,6,x[..])==FoStatus.number;bias[0]=k;
+    #assert fo_forward(l,5,6,x[..],pre[0..<29],y[..])==FoStatus.capacity && fo_forward(l,5,6,x[..],pre[..],y[0..<29])==FoStatus.capacity;
+    for i:0..<30 {#assert y[i]== -7 && pre[i]== -7;}
+    // Backward checks the layer, then its own inputs.
+    #assert fo_forward(l,5,6,x[..],pre[..],y[..])==FoStatus.ok;fo_fill(5,dy[..]);
+    for i:0..<60 {dx[i]= -7;}
+    bad=l;bad.k1=4;#assert fo_backward(bad,5,6,x[..],pre[..],dy[..],dx[..],g)==FoStatus.modes;
+    #assert fo_backward(l,5,6,x[..],pre[0..<29],dy[..],dx[..],g)==FoStatus.shape && fo_backward(l,5,6,x[..],pre[..],dy[0..<29],dx[..],g)==FoStatus.shape;
+    k=dy[3];dy[3]=sf_nan();#assert fo_backward(l,5,6,x[..],pre[..],dy[..],dx[..],g)==FoStatus.number;dy[3]=k;
+    k=pre[3];pre[3]=sf_inf();#assert fo_backward(l,5,6,x[..],pre[..],dy[..],dx[..],g)==FoStatus.number;pre[3]=k;
+    #assert fo_backward(l,5,6,x[..],pre[..],dy[..],dx[0..<59],g)==FoStatus.capacity;
+    h:=g;h.wr=gr[0..<17];#assert fo_backward(l,5,6,x[..],pre[..],dy[..],dx[..],h)==FoStatus.capacity;
+    h=g;h.wi=gi[0..<17];#assert fo_backward(l,5,6,x[..],pre[..],dy[..],dx[..],h)==FoStatus.capacity;
+    h=g;h.lin=gl[0..<1];#assert fo_backward(l,5,6,x[..],pre[..],dy[..],dx[..],h)==FoStatus.capacity;
+    h=g;h.bias=gb[0..<0];#assert fo_backward(l,5,6,x[..],pre[..],dy[..],dx[..],h)==FoStatus.capacity;
+    for i:0..<60 {#assert dx[i]== -7;}
+    #assert fo_backward(l,5,6,x[..],pre[..],dy[..],dx[..],g)==FoStatus.ok && dx[0]!= -7;
+}
+
+// book:begin admit
+fo_kept :: (l:FoLayer)->int {return (2*l.k1-1)*(2*l.k2-1);}
+fo_values_ok :: (v:[]f64)->bool {
+    for i:0..<v.count {if !sf_finite(v[i]) || abs(v[i])>FO_VALUE_MAX {return false;}}
+    return true;
+}
+// A layer and its input: channels, grid, modes, lengths, then every value.
+// A side shorter than 2k - 1 points cannot hold the kept modes apart.
+fo_check :: (l:FoLayer,ny:int,nx:int,x:[]f64)->FoStatus {
+    if l.cin<1 || l.cout<1 || l.cin>FO_CHANNELS_MAX || l.cout>FO_CHANNELS_MAX {return FoStatus.channels;}
+    if ny<1 || nx<1 || ny>FO_SIDE_MAX || nx>FO_SIDE_MAX {return FoStatus.size;}
+    if l.k1<1 || l.k2<1 || l.k1>FO_MODES_MAX || l.k2>FO_MODES_MAX {return FoStatus.modes;}
+    if 2*l.k1-1>ny || 2*l.k2-1>nx {return FoStatus.modes;}
+    m:=fo_kept(l)*l.cout*l.cin;
+    if l.wr.count!=m || l.wi.count!=m || l.lin.count!=l.cout*l.cin || l.bias.count!=l.cout || x.count!=l.cin*ny*nx {return FoStatus.shape;}
+    if !fo_values_ok(l.wr) || !fo_values_ok(l.wi) || !fo_values_ok(l.lin) || !fo_values_ok(l.bias) || !fo_values_ok(x) {return FoStatus.number;}
+    return FoStatus.ok;
+}
+// book:end admit
+
+// book:begin fft2
+// The 2-D FFT in place, row r of an ny x nx grid at r nx: chapter 151's
+// one-dimensional transform on every row, then on every column. The inverse
+// conjugates, transforms forward, conjugates back and divides by ny nx.
+fo_fft2 :: (re:[]f64,im:[]f64,ny:int,nx:int,inverse:bool)->FoStatus {
+    if ny<1 || nx<1 || ny>FO_SIDE_MAX || nx>FO_SIDE_MAX {return FoStatus.size;}
+    if re.count!=ny*nx || im.count!=ny*nx {return FoStatus.shape;}
+    for i:0..<ny*nx {if !sf_finite(re[i]) || !sf_finite(im[i]) {return FoStatus.number;}}
+    fo_transform(re,im,ny,nx,inverse);
+    return FoStatus.ok;
+}
+fo_transform :: (re:[]f64,im:[]f64,ny:int,nx:int,inverse:bool) {
+    cells:=ny*nx;
+    if inverse {for t:0..<cells {im[t]= -im[t];}}
+    for r:0..<ny {sf_forward(re[r*nx..<(r+1)*nx],im[r*nx..<(r+1)*nx]);}
+    cr:[FO_SIDE_MAX]f64;ci:[FO_SIDE_MAX]f64;
+    for c:0..<nx {
+        for r:0..<ny {cr[r]=re[r*nx+c];ci[r]=im[r*nx+c];}
+        sf_forward(cr[0..<ny],ci[0..<ny]);
+        for r:0..<ny {re[r*nx+c]=cr[r];im[r*nx+c]=ci[r];}
+    }
+    if inverse {for t:0..<cells {re[t]/=f64(cells);im[t]= -im[t]/f64(cells);}}
+}
+// book:end fft2
+
+// book:begin modes
+// Kept mode (a, b), a in 0 ..< 2 k1 - 1, is the signed frequency
+// p = a - (k1 - 1); it lives in bin p mod ny of the transform.
+fo_bin :: (p:int,n:int)->int {return (p+n)%n;}
+fo_cell :: (l:FoLayer,a:int,b:int,ny:int,nx:int)->int {return fo_bin(a-l.k1+1,ny)*nx+fo_bin(b-l.k2+1,nx);}
+// The kept modes of each input channel's transform, kept[i][a][b].
+fo_spectra :: (l:FoLayer,ny:int,nx:int,x:[]f64,kr:[]f64,ki:[]f64) {
+    cells:=ny*nx;kept:=fo_kept(l);m2:=2*l.k2-1;re:[FO_CELLS_MAX]f64;im:[FO_CELLS_MAX]f64;
+    for i:0..<l.cin {
+        for t:0..<cells {re[t]=x[i*cells+t];im[t]=0;}
+        fo_transform(re[0..<cells],im[0..<cells],ny,nx,false);
+        for s:0..<kept {t:=fo_cell(l,s/m2,s%m2,ny,nx);kr[i*kept+s]=re[t];ki[i*kept+s]=im[t];}
+    }
+}
+// book:end modes
+
+// book:begin act
+fo_tanh :: (a:f64)->f64 {
+    t:=exp(-2*abs(a));v:=(1-t)/(1+t);
+    if a<0 {return -v;}
+    return v;
+}
+FO_GELU_C :: 0.7978845608028654;   // sqrt(2 / pi)
+FO_GELU_A :: 0.044715;
+// GELU in its tanh form: z/2 (1 + tanh(c (z + a z^3))).
+fo_act :: (act:FoAct,z:f64)->f64 {
+    if act==FoAct.none {return z;}
+    return 0.5*z*(1+fo_tanh(FO_GELU_C*(z+FO_GELU_A*z*z*z)));
+}
+fo_slope :: (act:FoAct,z:f64)->f64 {
+    if act==FoAct.none {return 1;}
+    t:=fo_tanh(FO_GELU_C*(z+FO_GELU_A*z*z*z));
+    return 0.5*(1+t)+0.5*z*(1-t*t)*FO_GELU_C*(1+3*FO_GELU_A*z*z);
+}
+// book:end act
+
+// book:begin forward
+// y_o = act(Re IFFT2(sum over i of W_oi . keep(FFT2 x_i)) + sum over i of
+// lin_oi x_i + bias_o). pre holds the value before the activation, for the
+// backward pass. Fields are channel-major: x[i][r][c] at (i ny + r) nx + c.
+fo_forward :: (l:FoLayer,ny:int,nx:int,x:[]f64,pre:[]f64,y:[]f64)->FoStatus {
+    status:=fo_check(l,ny,nx,x);if status!=FoStatus.ok {return status;}
+    cells:=ny*nx;kept:=fo_kept(l);
+    if pre.count<l.cout*cells || y.count<l.cout*cells {return FoStatus.capacity;}
+    kr:[FO_CHANNELS_MAX*FO_KEPT_MAX]f64;ki:[FO_CHANNELS_MAX*FO_KEPT_MAX]f64;
+    fo_spectra(l,ny,nx,x,kr[..],ki[..]);
+    for o:0..<l.cout {
+        re:[FO_CELLS_MAX]f64;im:[FO_CELLS_MAX]f64;   // zero outside the kept modes
+        for s:0..<kept {
+            zr:=0.0;zi:=0.0;
+            for i:0..<l.cin {
+                w:=(o*l.cin+i)*kept+s;k:=i*kept+s;
+                zr+=l.wr[w]*kr[k]-l.wi[w]*ki[k];zi+=l.wr[w]*ki[k]+l.wi[w]*kr[k];
+            }
+            t:=fo_cell(l,s/(2*l.k2-1),s%(2*l.k2-1),ny,nx);re[t]=zr;im[t]=zi;
+        }
+        fo_transform(re[0..<cells],im[0..<cells],ny,nx,true);
+        for t:0..<cells {
+            v:=re[t]+l.bias[o];
+            for i:0..<l.cin {v+=l.lin[o*l.cin+i]*x[i*cells+t];}
+            pre[o*cells+t]=v;y[o*cells+t]=fo_act(l.act,v);
+        }
+    }
+    return FoStatus.ok;
+}
+// book:end forward
+
+// book:begin backward
+// Given dL/dy, write dL/dx and every parameter's gradient (overwritten, not
+// added to). With g = dL/dy act'(pre) and H_o = conj(FFT2 g_o)/(ny nx) on
+// the kept modes, L's spectral part is Re(sum over k of W X H), so
+// dL/dwr = Re(X H), dL/dwi = -Im(X H), and dL/dx_i = Re FFT2(sum over o of
+// W_oi H_o) plus the pointwise path.
+fo_backward :: (l:FoLayer,ny:int,nx:int,x:[]f64,pre:[]f64,dy:[]f64,dx:[]f64,g:FoGrad)->FoStatus {
+    status:=fo_check(l,ny,nx,x);if status!=FoStatus.ok {return status;}
+    cells:=ny*nx;kept:=fo_kept(l);m:=kept*l.cout*l.cin;n:=l.cout*cells;
+    if pre.count!=n || dy.count!=n {return FoStatus.shape;}
+    if !fo_values_ok(pre) || !fo_values_ok(dy) {return FoStatus.number;}
+    if dx.count<l.cin*cells || g.wr.count<m || g.wi.count<m || g.lin.count<l.cout*l.cin || g.bias.count<l.cout {return FoStatus.capacity;}
+    kr:[FO_CHANNELS_MAX*FO_KEPT_MAX]f64;ki:[FO_CHANNELS_MAX*FO_KEPT_MAX]f64;
+    fo_spectra(l,ny,nx,x,kr[..],ki[..]);
+    gz:[FO_CHANNELS_MAX*FO_CELLS_MAX]f64;
+    hr:[FO_CHANNELS_MAX*FO_KEPT_MAX]f64;hi:[FO_CHANNELS_MAX*FO_KEPT_MAX]f64;
+    m2:=2*l.k2-1;
+    for o:0..<l.cout {
+        sum:=0.0;re:[FO_CELLS_MAX]f64;im:[FO_CELLS_MAX]f64;
+        for t:0..<cells {v:=dy[o*cells+t]*fo_slope(l.act,pre[o*cells+t]);gz[o*cells+t]=v;sum+=v;re[t]=v;}
+        g.bias[o]=sum;
+        for i:0..<l.cin {s:=0.0;for t:0..<cells {s+=gz[o*cells+t]*x[i*cells+t];}g.lin[o*l.cin+i]=s;}
+        fo_transform(re[0..<cells],im[0..<cells],ny,nx,false);
+        for s:0..<kept {t:=fo_cell(l,s/m2,s%m2,ny,nx);hr[o*kept+s]=re[t]/f64(cells);hi[o*kept+s]= -im[t]/f64(cells);}
+    }
+    for i:0..<l.cin {
+        re:[FO_CELLS_MAX]f64;im:[FO_CELLS_MAX]f64;   // zero outside the kept modes
+        for s:0..<kept {
+            ar:=0.0;ai:=0.0;
+            for o:0..<l.cout {
+                w:=(o*l.cin+i)*kept+s;h:=o*kept+s;k:=i*kept+s;
+                g.wr[w]=kr[k]*hr[h]-ki[k]*hi[h];g.wi[w]= -(kr[k]*hi[h]+ki[k]*hr[h]);
+                ar+=l.wr[w]*hr[h]-l.wi[w]*hi[h];ai+=l.wr[w]*hi[h]+l.wi[w]*hr[h];
+            }
+            t:=fo_cell(l,s/m2,s%m2,ny,nx);re[t]=ar;im[t]=ai;
+        }
+        fo_transform(re[0..<cells],im[0..<cells],ny,nx,false);
+        for t:0..<cells {
+            v:=re[t];
+            for o:0..<l.cout {v+=l.lin[o*l.cin+i]*gz[o*cells+t];}
+            dx[i*cells+t]=v;
+        }
+    }
+    return FoStatus.ok;
+}
+// book:end backward

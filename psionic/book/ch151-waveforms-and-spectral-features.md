@@ -152,10 +152,12 @@ then merge half transforms of length 1, 2, 4 and so on.
 // Radix-2 Cooley-Tukey in place for a power of two: reverse the index bits,
 // then merge pairs of half transforms with one butterfly each.
 sf_radix2 :: (re:[]f64,im:[]f64) {
-    n:=re.count;sr:[SF_CHIRP_MAX]f64;si:[SF_CHIRP_MAX]f64;
-    for i:0..<n {r:=sf_reverse(i,n);sr[r]=re[i];si[r]=im[i];}
-    sf_butterflies(sr[0..<n],si[0..<n]);
-    for i:0..<n {re[i]=sr[i];im[i]=si[i];}
+    n:=re.count;
+    for i:0..<n {
+        r:=sf_reverse(i,n);
+        if r>i {t:=re[i];re[i]=re[r];re[r]=t;t=im[i];im[i]=im[r];im[r]=t;}
+    }
+    sf_butterflies(re,im);
 }
 // i with its log2(n) bits in reverse order.
 sf_reverse :: (i:int,n:int)->int {

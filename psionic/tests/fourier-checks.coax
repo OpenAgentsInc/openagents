@@ -1,0 +1,119 @@
+// Oracles and fixtures for psionic/lib/fourier.coax (chapter 156). Nothing
+// here calls the FFT or the layer's own code: the 2-D DFT and the spectral
+// kernel are written out with cos and sin, and the convolution is a direct
+// sum over every pair of grid points.
+FO_TAU :: 6.283185307179586;
+
+fo_near :: (a:f64,b:f64,tolerance:f64)->bool {return abs(a-b)<=tolerance;}
+fo_worst :: (a:[]f64,b:[]f64)->f64 {w:=0.0;for i:0..<a.count {d:=abs(a[i]-b[i]);if d>w {w=d;}}return w;}
+// A fixed sequence in [-1, 1].
+fo_fill :: (seed:int,v:[]f64) {
+    s:=seed*7919+12345;
+    for i:0..<v.count {s=(s*1103515245+12345)%2147483648;v[i]=f64(s%2001-1000)/1000;}
+}
+
+// The direct 2-D DFT: X[u][w] = sum over (r, c) of x[r][c] e^(-+2 pi i (u r/ny + w c/nx)),
+// divided by ny nx when inverse.
+fo_dft2_oracle :: (re:[]f64,im:[]f64,ny:int,nx:int,inverse:bool,out_re:[]f64,out_im:[]f64) {
+    sign:=-1.0;if inverse {sign=1;}
+    for u:0..<ny {for w:0..<nx {
+        sr:=0.0;si:=0.0;
+        for r:0..<ny {for c:0..<nx {
+            a:=sign*FO_TAU*(f64((u*r)%ny)/f64(ny)+f64((w*c)%nx)/f64(nx));
+            x:=re[r*nx+c];y:=im[r*nx+c];
+            sr+=x*cos(a)-y*sin(a);si+=x*sin(a)+y*cos(a);
+        }}
+        if inverse {sr/=f64(ny*nx);si/=f64(ny*nx);}
+        out_re[u*nx+w]=sr;out_im[u*nx+w]=si;
+    }}
+}
+
+// The layer written as a direct circular convolution. Channel pair (o, i)
+// has the real kernel k[d] = (1/N) sum over kept (p, q) of
+// Re(W[p][q] e^(2 pi i (p dr/ny + q dc/nx))), and the spectral path is
+// s_o[n] = sum over i and m of k[n - m] x_i[m].
+fo_direct_oracle :: (l:FoLayer,ny:int,nx:int,x:[]f64,y:[]f64) {
+    cells:=ny*nx;m1:=2*l.k1-1;m2:=2*l.k2-1;kernel:[4096]f64;
+    for o:0..<l.cout {
+        for n:0..<cells {y[o*cells+n]=l.bias[o];}
+        for i:0..<l.cin {
+            for dr:0..<ny {for dc:0..<nx {
+                s:=0.0;
+                for a:0..<m1 {for b:0..<m2 {
+                    w:=((o*l.cin+i)*m1+a)*m2+b;
+                    t:=FO_TAU*(f64(a-l.k1+1)*f64(dr)/f64(ny)+f64(b-l.k2+1)*f64(dc)/f64(nx));
+                    s+=l.wr[w]*cos(t)-l.wi[w]*sin(t);
+                }}
+                kernel[dr*nx+dc]=s/f64(cells);
+            }}
+            for r:0..<ny {for c:0..<nx {
+                v:=l.lin[o*l.cin+i]*x[i*cells+r*nx+c];
+                for r2:0..<ny {for c2:0..<nx {
+                    v+=kernel[((r-r2+ny)%ny)*nx+(c-c2+nx)%nx]*x[i*cells+r2*nx+c2];
+                }}
+                y[o*cells+r*nx+c]+=v;
+            }}
+        }
+        for n:0..<cells {y[o*cells+n]=fo_act_oracle(l.act,y[o*cells+n]);}
+    }
+}
+// GELU in its tanh form, with Python's math.tanh values checked in the tests.
+fo_act_oracle :: (act:FoAct,z:f64)->f64 {
+    if act==FoAct.none {return z;}
+    u:=0.7978845608028654*(z+0.044715*z*z*z);e:=exp(2*u);
+    return 0.5*z*(1+(e-1)/(e+1));
+}
+
+// A band-limited field: a sum of a few real waves with |p| < 2 and |q| < 3,
+// sampled at (r/ny, c/nx) on the unit torus.
+fo_wave :: (s:f64,t:f64)->f64 {
+    return 0.5+0.75*cos(FO_TAU*s)-0.25*sin(FO_TAU*(s+2*t))+0.5*cos(FO_TAU*(t-s))+0.125*sin(FO_TAU*2*t);
+}
+fo_sample :: (ny:int,nx:int,channel:int,x:[]f64) {
+    for r:0..<ny {for c:0..<nx {
+        s:=f64(r)/f64(ny);t:=f64(c)/f64(nx);
+        x[r*nx+c]=ifx channel==0 then fo_wave(s,t) else fo_wave(t,s)-0.25;
+    }}
+}
+
+// The worked example: one channel on a 1 x 4 grid, k1 = 1, k2 = 2.
+fo_hand :: (wr:[]f64,wi:[]f64,lin:[]f64,bias:[]f64)->FoLayer {
+    wr[0]=0.5;wi[0]=0;wr[1]=1;wi[1]=0;wr[2]=0;wi[2]=1;lin[0]=0.5;bias[0]= -1;
+    return FoLayer.{cin=1,cout=1,k1=1,k2=2,act=FoAct.none,wr=wr,wi=wi,lin=lin,bias=bias};
+}
+// A random layer: every parameter in [-1, 1].
+fo_random :: (seed:int,cin:int,cout:int,k1:int,k2:int,act:FoAct,wr:[]f64,wi:[]f64,lin:[]f64,bias:[]f64)->FoLayer {
+    m:=cout*cin*(2*k1-1)*(2*k2-1);
+    fo_fill(seed,wr[0..<m]);fo_fill(seed+1,wi[0..<m]);fo_fill(seed+2,lin[0..<cout*cin]);fo_fill(seed+3,bias[0..<cout]);
+    return FoLayer.{cin=cin,cout=cout,k1=k1,k2=k2,act=act,wr=wr[0..<m],wi=wi[0..<m],lin=lin[0..<cout*cin],bias=bias[0..<cout]};
+}
+// L = sum of dy * y; every gradient against a central difference.
+fo_loss :: (l:FoLayer,ny:int,nx:int,x:[]f64,dy:[]f64)->f64 {
+    pre:[400]f64;y:[400]f64;n:=dy.count;
+    #assert fo_forward(l,ny,nx,x,pre[0..<n],y[0..<n])==FoStatus.ok;
+    s:=0.0;for i:0..<n {s+=dy[i]*y[i];}return s;
+}
+fo_central :: (l:FoLayer,ny:int,nx:int,x:[]f64,dy:[]f64,v:[]f64,i:int)->f64 {
+    h:=1e-6;keep:=v[i];
+    v[i]=keep+h;up:=fo_loss(l,ny,nx,x,dy);v[i]=keep-h;down:=fo_loss(l,ny,nx,x,dy);v[i]=keep;
+    return (up-down)/(2*h);
+}
+fo_gradients :: (n:int) {
+    shapes:=[25]int.[1,1,1,4,2, 1,1,3,3,2, 2,1,4,4,2, 1,3,8,4,2, 2,2,4,8,3];
+    cin:=shapes[5*n];cout:=shapes[5*n+1];ny:=shapes[5*n+2];nx:=shapes[5*n+3];k2:=shapes[5*n+4];k1:=(ny+1)/2;
+    wr:[1024]f64;wi:[1024]f64;lin:[16]f64;bias:[4]f64;
+    for act:0..<2 {
+        l:=fo_random(n+10,cin,cout,k1,k2,cast(FoAct)act,wr[..],wi[..],lin[..],bias[..]);
+        cells:=ny*nx;x:[400]f64;pre:[400]f64;y:[400]f64;dy:[400]f64;dx:[400]f64;
+        fo_fill(n+60,x[0..<cin*cells]);fo_fill(n+70,dy[0..<cout*cells]);
+        gr:[1024]f64;gi:[1024]f64;gl:[16]f64;gb:[4]f64;m:=l.wr.count;
+        g:=FoGrad.{wr=gr[0..<m],wi=gi[0..<m],lin=gl[0..<cout*cin],bias=gb[0..<cout]};
+        X:=x[0..<cin*cells];D:=dy[0..<cout*cells];
+        #assert fo_forward(l,ny,nx,X,pre[0..<cout*cells],y[0..<cout*cells])==FoStatus.ok;
+        #assert fo_backward(l,ny,nx,X,pre[0..<cout*cells],D,dx[0..<cin*cells],g)==FoStatus.ok;
+        for i:0..<m {#assert fo_near(gr[i],fo_central(l,ny,nx,X,D,wr[..],i),1e-7) && fo_near(gi[i],fo_central(l,ny,nx,X,D,wi[..],i),1e-7);}
+        for i:0..<cout*cin {#assert fo_near(gl[i],fo_central(l,ny,nx,X,D,lin[..],i),1e-7);}
+        for i:0..<cout {#assert fo_near(gb[i],fo_central(l,ny,nx,X,D,bias[..],i),1e-7);}
+        for i:0..<cin*cells {#assert fo_near(dx[i],fo_central(l,ny,nx,X,D,x[..],i),1e-7);}
+    }
+}

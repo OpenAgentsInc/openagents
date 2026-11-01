@@ -1,0 +1,20 @@
+x: 1.0 2.0 3.0 4.0
+FFT real: 10.0 -2.0 -2.0 -2.0
+FFT imaginary: 0.0 2.0 0.0 -2.0
+y: 1.25 2.75 3.75 3.25
+dL/dx for L = y[0]: 0.875 0.5 0.125 0.0
+dL/dwr: -0.5 2.5 -0.5
+dL/dwi: 0.5 0.0 -0.5
+6 x 10 FFT within 1e-12 of the direct DFT: true
+layer: 206 weights; 6 x 10 output within 1e-12 of the direct convolution: true
+8 x 8 and 16 x 16 agree on shared points within 1e-12: true
+  channel 0, row 0, 8 x 8: -0.149 -0.166 -0.1631 0.042
+  channel 0, row 0, 16 x 16: -0.149 -0.166 -0.1631 0.042
+a 4 x 10 field with k1 = 3: modes
+k1 = 9: modes
+a 65 x 1 grid: size
+a NaN input: number
+an input of 2,000,000: number
+119 input values for 2 x 6 x 10: shape
+room for 119 outputs: capacity
+5 output channels: channels
