@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 coax="${COAX:-$PWD/coax/bin/coax}";jobs=4;mutate=0;list=0;requested=();chosen=();explicit=()
 units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy panda-clock-adapter panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian panda-ik-math panda-ik panda-joint-pd-math panda-joint-pd panda-fingers-profile panda-fingers-chain panda-inertia-profile panda-inertia-math panda-inertia panda-inverse-dynamics-math panda-inverse-dynamics-motion panda-inverse-dynamics-force panda-inverse-dynamics panda-mass-solve-math panda-mass-solve-basis panda-mass-solve panda-forward-dynamics-net panda-forward-dynamics panda-actuation-math panda-actuation panda-fluid-math panda-fluid-body panda-fluid panda-smooth panda-euler-math panda-euler panda-owned-sample panda-query-source)
-optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-query-source-sdk panda-query-runtime panda-loop-metal)
+optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-query-source-sdk panda-query-runtime panda-joint-pd-prefix panda-loop-metal)
 while [[ $# -gt 0 ]];do
   case "$1" in
     --jobs) [[ $# -ge 2 && $2 =~ ^[1-9][0-9]*$ ]] || exit 2;jobs=$2;shift 2;;
@@ -51,7 +51,6 @@ for unit in "${chosen[@]}";do
     else "$coax" mutate "psionic/lib/robotics/$unit.coax" --root-only --jobs "$jobs" "${unit_flags[@]}";fi
   fi
   case "$unit" in
-    panda-query-runtime) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" bash psionic/tests/robotics/panda_query_runtime_check.sh "$work/panda-query-runtime" "$mutate" "$jobs";;
     sim|evaluate) core=1;;learn) core=1;example=1;;
     singlearm) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-singlearm.sh "$work/singlearm";native_groups=$((native_groups+1));;
     groot-metal-plan|groot-metal-kernels) metal=1;;
@@ -101,9 +100,12 @@ if [[ $example == 1 ]];then
   cmp psionic/fixtures/imitation-before-robotics-scale.out "$work/example-release.out"
 fi
 for unit in "${explicit[@]}";do
+  if [[ $unit == panda-joint-pd-prefix && ( $(uname -s) != Darwin || $(uname -m) != arm64 ) ]];then echo "$unit requires its qualified Darwin-arm64 native profile; it is not skipped" >&2;exit 2;fi
   if [[ $unit == panda-query-source-sdk && ( $(uname -s) != Darwin || $(uname -m) != arm64 ) ]];then echo "$unit requires its qualified Darwin-arm64 SDK profile; it is not skipped" >&2;exit 2;fi
-  if [[ $unit != groot-linear-original && $unit != panda-control-original && $(uname -s) != Darwin ]];then echo "$unit requires a compatible Apple Metal GPU; it is not skipped" >&2;exit 2;fi
+  if [[ $unit != groot-linear-original && $unit != panda-control-original && $unit != panda-joint-pd-prefix && $(uname -s) != Darwin ]];then echo "$unit requires a compatible Apple Metal GPU; it is not skipped" >&2;exit 2;fi
   case "$unit" in
+    panda-query-runtime) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" bash psionic/tests/robotics/panda_query_runtime_check.sh "$work/panda-query-runtime" "$mutate" "$jobs";;
+    panda-joint-pd-prefix) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/panda_joint_pd_prefix_check.sh "$work/panda-joint-pd-prefix";;
     panda-control-original) COAX="$coax" COAX_CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-control.sh "${PSIONIC_PANDA_CONTROLLER_FIXTURES:?set PSIONIC_PANDA_CONTROLLER_FIXTURES to source PcSample captures}" "$work/panda-control-original";;
     panda-query-source-sdk)
       query_args=(--compiler "$coax" --xml "${PSIONIC_PANDA_SCENE:?set PSIONIC_PANDA_SCENE to the authenticated scene XML}" --initial "${PSIONIC_PANDA_INITIAL_STATE:?set PSIONIC_PANDA_INITIAL_STATE to the matching45F64 reset}" --trace "${PSIONIC_PANDA_QUERY_TRACE:?set PSIONIC_PANDA_QUERY_TRACE to the authenticated original action trace}" --output "${PSIONIC_PANDA_QUERY_OUTPUT:?set PSIONIC_PANDA_QUERY_OUTPUT to a NEW persistent output directory}")

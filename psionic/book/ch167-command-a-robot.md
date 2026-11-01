@@ -1,10 +1,11 @@
 # 167. Command a robot
 
-This chapter has two runnable fixed-source Panda profiles: position-only
-inverse kinematics and seven-joint PD with gravity compensation. The first
-returns source-limited coordinates near a typed world target; the second
-returns explicit force terms and reported saturation. Neither query advances
-a plant or qualifies a closed-loop stability result.
+This chapter builds position-only inverse kinematics, seven-joint PD with
+gravity compensation, and a short coupled run on our owned Panda dynamics.
+The queries return source-limited coordinates or explicit force terms. The
+250-step experiment then recomputes the PD command on every owned state and
+compares that trajectory with one MuJoCo reference. General stability and
+the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
 runs operational-space control against MuJoCo. Holding/tracking experiments,
@@ -258,11 +259,84 @@ complete input/output/spare snapshots. The initial metadata-only case-label
 preflight failure is retained; it occurred before any numerical reference or
 native execution. No budget, gain or corpus was tuned after comparison.
 
-This query does not yet establish measured holding/tracking performance,
-closed-loop stability, collision behavior, nullspace/orientation control,
-planning, compiler `#bounded`, timed command permission or hardware operation.
-An isolated no-contact behavior experiment requires its own frozen plant,
-timestep, initial state, target, gains and comparison contract.
+The pure query supplies force terms. A response experiment additionally needs
+a fixed plant, timestep, initial state, target, gains and comparison contract.
+
+## Couple PD to the owned plant
+
+The next [runnable example](../examples/panda-joint-pd-rollout.coax) couples
+that controller to [chapter 170's own Euler map](ch170-close-the-simulated-control-loop.md).
+At each step it computes a fresh PD force from its current state, then advances
+all seven hinges and both fingers by 2 ms. Its target is a small fixed offset
+from the source home pose, target rates are zero, gains remain at the stated
+defaults, and signed finger targets stay fixed. External force is zero.
+
+<!-- source: psionic/examples/panda-joint-pd-rollout.coax pjp-rollout -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ target:[7]pfku.Quantity(pfku.Radian,f64);target_v:[7]pfku.Quantity(PidAngularRate,f64);
+ home:=[7]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483];offset:=[7]f64.[0.02,-0.015,0.01,-0.02,0.015,0.01,-0.005];
+ for i:0..<7 {q[i].value=home[i];target[i].value=home[i]+offset[i];}
+ s[0].value=0.013;s[1].value=-0.027;finger_target:=s;
+ kp:=pjp_default_kp();kd:=pjp_default_kd();external_h:[7]pfku.Quantity(PmHingeGravity,f64);external_s:[2]pfku.Quantity(PmSlideGravity,f64);clipped:int=0;
+ for step:0..<250 {
+  force:[1]PjpOutput;#assert pjp_forward(q[..],s[..],v[..],target[..],target_v[..],kp[..],kd[..],force[..])==PjpStatus.ok;clipped+=force[0].clipped;
+  next:[1]PeuOutput;#assert peu_step(q[..],s[..],v[..],sv[..],force[0].command[..],finger_target[..],external_h[..],external_s[..],next[..])==PmsStatus.ok;
+  q=next[0].angles;s=next[0].slides;v=next[0].hinge_rates;sv=next[0].slide_rates;
+ }
+ print("own no-contact joint-PD steps: 250\n");
+ for i:0..<7 {print("hinge % q/v (micro-rad, micro-rad/s): % %\n",i+1,pjr_micro(q[i].value),pjr_micro(v[i].value));}
+ for i:0..<2 {print("slide % q/v (micro-m, micro-m/s): % %\n",i+1,pjr_micro(s[i].value),pjr_micro(sv[i].value));}
+ print("PD clips: %\n",clipped);
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-joint-pd-rollout.coax
+COAX=coax/bin/coax psionic/tests/robotics/panda_joint_pd_prefix_check.sh /tmp/new-panda-pd-prefix
+```
+
+The [frozen experiment](../fixtures/robotics/panda-joint-pd-prefix/experiment.json)
+was set before the first comparison. One MuJoCo 3.3.1 acquisition uses the
+same initial state, controller and held targets: one explicit forward and
+250 steps, with source constraints/contact disabled (flags 17) and implicit
+Euler joint damping enabled. There are no post-step forwards, neural calls
+or renders. All 502 before/after effect events are retained. This is a
+half-second simulated prefix; it supplies no wall-clock deadline evidence.
+
+The SDK records **13,500 finite floating observations**. A separately authored
+matrix/potential oracle checks all **8,750 controller fields** against the
+initial state and then each preceding post-step state. P/D match exactly;
+gravity, requested force and command differ by at most **3.20e-14 J/rad**
+under the frozen **5e-10** absolute budget. All 250 PJP clipping counts match
+exactly and are zero. Statuses are checked before publication, rather than
+serialized as additional trace fields.
+
+Next, three SDK-free native profiles each run two owned branches: fresh PD on
+their own state, and a shadow plant driven by the recorded SDK commands.
+Debug, release and fail-fast ASan/UBSan each pass **56,058 assertions**;
+complete owned traces are byte-identical across those modes. Maximum fresh
+arm-position error is **8.33e-17 rad** (budget 1e-8), finger-position error
+**1.74e-18 m** (1e-9), arm-rate error **4.83e-16 rad/s** (1e-7), finger-rate
+error **1.02e-17 m/s** (1e-8), and force-field/command error **2.49e-14 J/rad**
+(1e-6). Relative tolerance is zero. The recorded-command branch separates
+plant agreement from feedback agreement; its maximum arm-rate error is
+8.63e-16 rad/s. Owned actuator-force clip counts use the independent scalar
+source law, not an SDK-observed counter.
+
+The target-error norm falls from **0.0384057 to 0.00993709 rad**. This is a
+reported result for these gains and this short prefix, without a convergence,
+steady-state or stability threshold. Contact response, large disturbances,
+gain analysis, timed trajectories and whole-policy success are still open.
+
+The [complete evidence](../fixtures/robotics/panda-joint-pd-prefix/README.md)
+retains the first generated-C printer-warning build failure, before any SDK
+load, and its narrow build-only followup. Passed emissions and decoder guards
+were reused; the SDK prefix and three numerical profiles ran once. The example's
+[transcript](../examples/panda-joint-pd-rollout.out) was written from the SDK
+endpoint before its first debug/release execution. Historical PD and Euler
+mutation scopes are carried separately on unchanged product files; this
+composition adds no new admission rule or compiler boundedness claim.
 
 ## The remaining control and planning layers
 
