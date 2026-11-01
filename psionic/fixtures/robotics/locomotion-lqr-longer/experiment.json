@@ -1,0 +1,1114 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.experiment.v1",
+  "frozen_before_import_learning": true,
+  "contract": {
+    "bytes": 6223,
+    "sha256": "7d5acb6089b4f2017dfba36b1509e4f7fad178fcdb6f0841832ec88ca3185057"
+  },
+  "original_experiment": {
+    "bytes": 8660,
+    "sha256": "8f002e3f4192a29f249e3a0e3ec68ef50d29542eb91197b96eaaec5bf117194c"
+  },
+  "original_learning_record": {
+    "bytes": 139098,
+    "sha256": "ff76cad74d27c1f37a549a669c191e9b9d0a97af143fe222d76d3e132288f606"
+  },
+  "original_descriptor": {
+    "bytes": 9275,
+    "sha256": "58c8cc42d16b78fdcb1452bf1ccb40a2cddc551d9a682f3f50f11012aa514788"
+  },
+  "original_auditor": {
+    "bytes": 27773,
+    "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+  },
+  "original_math_producer": {
+    "bytes": 29435,
+    "sha256": "c105189fbe2f539d52fca631c722d532798fb10789e7237218edbaac142e8ec9"
+  },
+  "original_independent_reference": {
+    "bytes": 4454,
+    "sha256": "d5bfebc50e90daa9f0edc565009ceef1a679d5fa5b8efa4a5666778efc87fb07"
+  },
+  "original_quality_misses_preserved": true,
+  "metadata_inputs": {
+    "psionic/fixtures/robotics/locomotion-lqr/experiment.json": {
+      "bytes": 8660,
+      "sha256": "8f002e3f4192a29f249e3a0e3ec68ef50d29542eb91197b96eaaec5bf117194c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/contract.md": {
+      "bytes": 17905,
+      "sha256": "e6e490fad8d3db4eb26c42c92fecd2fac3cb08c142b26013793abeb34e5099ae"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/input-freeze.json": {
+      "bytes": 378,
+      "sha256": "933f3460c7953e0c7a8ceadf1d09790260e4d827dc19bbe16c831ce947133c19"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/reference.json": {
+      "bytes": 4454,
+      "sha256": "d5bfebc50e90daa9f0edc565009ceef1a679d5fa5b8efa4a5666778efc87fb07"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/native-qualification.json": {
+      "bytes": 35485,
+      "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/source-qualification.json": {
+      "bytes": 10261,
+      "sha256": "17a416fbc0ed976a00a483f71fb4788f8dadbe3d83934754039ca0cd52ebd4d4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/unit-refusals.json": {
+      "bytes": 1856,
+      "sha256": "0b435017ecd8bd88375ba388f9ec7a11ee46f6bcd0fee248006b409b65edd7de"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/data-final-publication.json": {
+      "bytes": 15116,
+      "sha256": "d085f95d25c1dc19c639cdc1a14c0f8a2fb690d014ec53090481394101f98a6e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-execution/descriptor.json": {
+      "bytes": 9275,
+      "sha256": "58c8cc42d16b78fdcb1452bf1ccb40a2cddc551d9a682f3f50f11012aa514788"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-execution/record.json": {
+      "bytes": 139098,
+      "sha256": "ff76cad74d27c1f37a549a669c191e9b9d0a97af143fe222d76d3e132288f606"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/independent-learning/publication.json": {
+      "bytes": 5837,
+      "sha256": "c4bdee9d133c0af8cbc4ab366201c75400404d65b546bbf9d405d832900e1ff1"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/independent-learning/summary.json": {
+      "bytes": 27313,
+      "sha256": "e214292d3d749c19d9960d00d906a68aca25270612158114875809908655ae14"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/independent-learning/curves.json": {
+      "bytes": 177852,
+      "sha256": "5860312d33415fcf0753fa5b36497eef1e33721018a151c3f46604302213a189"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/independent-learning/curves.csv": {
+      "bytes": 53006,
+      "sha256": "8c66bc6147c71b35d3281522c979227dc139d9387acf288e82e8b55221b44c00"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-execution/evaluation/baseline-evaluations.bin": {
+      "bytes": 480,
+      "sha256": "e836270777ced0a3bd1ea934803cdffd0959c76ceba2ffd4d865086933bd840d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-execution/evaluation/baseline-quality.bin": {
+      "bytes": 248,
+      "sha256": "4e4bf8fa16598163ea6158a8c8819a2dc151b54ac9dd7f4b49ad826526142eeb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/independent-learning/audits/evaluation-baseline.json": {
+      "bytes": 3535,
+      "sha256": "ecbcc0a8946046ca7cdb4efaa5b0da6d61fd94e6c916f8626f98ebfdbadd6205"
+    },
+    "psionic/tests/robotics/locomotion_lqr_learning_audit.py": {
+      "bytes": 27773,
+      "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+    },
+    "psionic/tests/robotics/locomotion_lqr_reference.py": {
+      "bytes": 29435,
+      "sha256": "c105189fbe2f539d52fca631c722d532798fb10789e7237218edbaac142e8ec9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-execution/checkpoints/final-0.bin": {
+      "bytes": 488,
+      "sha256": "8465caab7312d479559ea1a70e8243c432a4d59fdfccfd7dda8d41457ce5e3d6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/independent-learning/audits/canonical-seed-0-batch-112.json": {
+      "bytes": 2442,
+      "sha256": "4ed7c7399e996ca5b5333680a8ceae3102442be0ffa2912ab4a70af1038c8913"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-execution/checkpoints/final-1.bin": {
+      "bytes": 488,
+      "sha256": "c7b9eeff704da11624ff51037276db559acf3e4f25118893ada6d360b714c9f3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/independent-learning/audits/canonical-seed-1-batch-112.json": {
+      "bytes": 2441,
+      "sha256": "fc9c7eff87384549841d3007a1b8c482ec973a6e18501263317482e1f8fa839a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/learning-execution/checkpoints/final-7.bin": {
+      "bytes": 488,
+      "sha256": "2077045152db2be23b17121b02d2b2810665c2cfe99c9530fe2de2af7cf5e389"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr/independent-learning/audits/canonical-seed-7-batch-112.json": {
+      "bytes": 2443,
+      "sha256": "ff2ee804b95a3fcdca542b2aa99bcdeeb3c642686b8ff7cfe576d9dd4fffb07f"
+    }
+  },
+  "resume_sources": {
+    "0": {
+      "snapshot_path": "psionic/fixtures/robotics/locomotion-lqr/learning-execution/checkpoints/final-0.bin",
+      "snapshot": {
+        "bytes": 488,
+        "sha256": "8465caab7312d479559ea1a70e8243c432a4d59fdfccfd7dda8d41457ce5e3d6"
+      },
+      "audit_path": "psionic/fixtures/robotics/locomotion-lqr/independent-learning/audits/canonical-seed-0-batch-112.json",
+      "audit": {
+        "bytes": 2442,
+        "sha256": "4ed7c7399e996ca5b5333680a8ceae3102442be0ffa2912ab4a70af1038c8913"
+      },
+      "remapped_raw": {
+        "bytes": 440,
+        "sha256": "852c8383a7958b77656d136018ad37f8e3b8db984364045aa22b06bf255afb86"
+      },
+      "old_batch": 128,
+      "old_Adam_step": 512,
+      "counter_word_offsets": [
+        56,
+        80,
+        104,
+        128,
+        152,
+        176,
+        200,
+        224,
+        248,
+        272,
+        296,
+        320,
+        344,
+        368,
+        392,
+        416
+      ],
+      "new_counter_starts": [
+        131072,
+        155648,
+        180224,
+        204800,
+        229376,
+        253952,
+        278528,
+        303104,
+        327680,
+        352256,
+        376832,
+        401408,
+        425984,
+        450560,
+        475136,
+        499712
+      ]
+    },
+    "1": {
+      "snapshot_path": "psionic/fixtures/robotics/locomotion-lqr/learning-execution/checkpoints/final-1.bin",
+      "snapshot": {
+        "bytes": 488,
+        "sha256": "c7b9eeff704da11624ff51037276db559acf3e4f25118893ada6d360b714c9f3"
+      },
+      "audit_path": "psionic/fixtures/robotics/locomotion-lqr/independent-learning/audits/canonical-seed-1-batch-112.json",
+      "audit": {
+        "bytes": 2441,
+        "sha256": "fc9c7eff87384549841d3007a1b8c482ec973a6e18501263317482e1f8fa839a"
+      },
+      "remapped_raw": {
+        "bytes": 440,
+        "sha256": "64b1d6af378fe4d7c0da18aa4f3444ac1ad79bac12125f6c337f92f40c5e5c0d"
+      },
+      "old_batch": 128,
+      "old_Adam_step": 512,
+      "counter_word_offsets": [
+        56,
+        80,
+        104,
+        128,
+        152,
+        176,
+        200,
+        224,
+        248,
+        272,
+        296,
+        320,
+        344,
+        368,
+        392,
+        416
+      ],
+      "new_counter_starts": [
+        131072,
+        155648,
+        180224,
+        204800,
+        229376,
+        253952,
+        278528,
+        303104,
+        327680,
+        352256,
+        376832,
+        401408,
+        425984,
+        450560,
+        475136,
+        499712
+      ]
+    },
+    "7": {
+      "snapshot_path": "psionic/fixtures/robotics/locomotion-lqr/learning-execution/checkpoints/final-7.bin",
+      "snapshot": {
+        "bytes": 488,
+        "sha256": "2077045152db2be23b17121b02d2b2810665c2cfe99c9530fe2de2af7cf5e389"
+      },
+      "audit_path": "psionic/fixtures/robotics/locomotion-lqr/independent-learning/audits/canonical-seed-7-batch-112.json",
+      "audit": {
+        "bytes": 2443,
+        "sha256": "ff2ee804b95a3fcdca542b2aa99bcdeeb3c642686b8ff7cfe576d9dd4fffb07f"
+      },
+      "remapped_raw": {
+        "bytes": 440,
+        "sha256": "d94ba6b4704cd23778e708d226cd3debf3c47e6d3de9dfec6eae587dad5516a1"
+      },
+      "old_batch": 128,
+      "old_Adam_step": 512,
+      "counter_word_offsets": [
+        56,
+        80,
+        104,
+        128,
+        152,
+        176,
+        200,
+        224,
+        248,
+        272,
+        296,
+        320,
+        344,
+        368,
+        392,
+        416
+      ],
+      "new_counter_starts": [
+        131072,
+        155648,
+        180224,
+        204800,
+        229376,
+        253952,
+        278528,
+        303104,
+        327680,
+        352256,
+        376832,
+        401408,
+        425984,
+        450560,
+        475136,
+        499712
+      ]
+    }
+  },
+  "training": {
+    "seeds": [
+      0,
+      1,
+      7
+    ],
+    "initial": [
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -0.25,
+      -0.25,
+      -0.25,
+      -0.25,
+      0.25,
+      0.25,
+      0.25,
+      0.25,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "worlds": 16,
+    "horizon": 32,
+    "batches": 512,
+    "epochs": 4,
+    "block": 64,
+    "sigma": 0.25,
+    "log_std": -1.3862943611198906,
+    "gamma": 0.95,
+    "lambda": 0.95,
+    "epsilon": 0.2,
+    "initial_K": 0.25,
+    "initial_m_v_step_skipped": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "lr": 0.001,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "adam_eps": 1e-08,
+    "decay": 0.0,
+    "trust": 0.00390625,
+    "projection": "rounded rollout-start K_old endpoints, retain Adam moments/step",
+    "counter": "131072+world*24576+(batch-128)*64",
+    "collector": "carry states, term/trunc0, local tail tracecut only",
+    "chunks": 16,
+    "command_timeout": 180,
+    "canonical_steps": 589824,
+    "canonical_updates": 4608,
+    "replay_steps": 1536,
+    "replay_updates": 12,
+    "deterministic_eval_steps": 2304,
+    "replay_after_completed_batches": 256,
+    "replay_zero_based_batch": 256,
+    "heldout_initials": [
+      -4.0,
+      -2.0,
+      -0.75,
+      0.75,
+      2.0,
+      4.0
+    ],
+    "all_seed_goals": {
+      "gain_error_max": 0.05,
+      "nominal_relative_cost_gap_max": 0.01,
+      "complete_batches": 512,
+      "skips_refusals": 0
+    },
+    "no_best_seed_checkpoint_or_tuning": true,
+    "first_batch": 128,
+    "additional_batches": 384
+  },
+  "original_training_verbatim": {
+    "seeds": [
+      0,
+      1,
+      7
+    ],
+    "initial": [
+      -1.0,
+      -1.0,
+      -1.0,
+      -1.0,
+      -0.25,
+      -0.25,
+      -0.25,
+      -0.25,
+      0.25,
+      0.25,
+      0.25,
+      0.25,
+      1.0,
+      1.0,
+      1.0,
+      1.0
+    ],
+    "worlds": 16,
+    "horizon": 32,
+    "batches": 128,
+    "epochs": 4,
+    "block": 64,
+    "sigma": 0.25,
+    "log_std": -1.3862943611198906,
+    "gamma": 0.95,
+    "lambda": 0.95,
+    "epsilon": 0.2,
+    "initial_K": 0.25,
+    "initial_m_v_step_skipped": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "lr": 0.001,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "adam_eps": 1e-08,
+    "decay": 0.0,
+    "trust": 0.00390625,
+    "projection": "rounded rollout-start K_old endpoints, retain Adam moments/step",
+    "counter": "world*8192+batch*64",
+    "collector": "carry states, term/trunc0, local tail tracecut only",
+    "chunks": 16,
+    "command_timeout": 180,
+    "canonical_steps": 196608,
+    "canonical_updates": 1536,
+    "replay_steps": 1536,
+    "replay_updates": 12,
+    "deterministic_eval_steps": 3072,
+    "replay_after_completed_batches": 64,
+    "replay_zero_based_batch": 64,
+    "heldout_initials": [
+      -4.0,
+      -2.0,
+      -0.75,
+      0.75,
+      2.0,
+      4.0
+    ],
+    "all_seed_goals": {
+      "gain_error_max": 0.05,
+      "nominal_relative_cost_gap_max": 0.01,
+      "complete_batches": 128,
+      "skips_refusals": 0
+    },
+    "no_best_seed_checkpoint_or_tuning": true
+  },
+  "unchanged_domains": {
+    "K": [
+      0.25,
+      1.0
+    ],
+    "x": [
+      -16.0,
+      16.0
+    ],
+    "action": [
+      -18.25,
+      18.25
+    ],
+    "z": [
+      -9.0,
+      9.0
+    ],
+    "old_logp": [
+      -1000000.0,
+      1000000.0
+    ],
+    "advantage": [
+      -1000000000.0,
+      1000000000.0
+    ],
+    "actor_rows": [
+      1,
+      64
+    ],
+    "epoch_rows": [
+      1,
+      512
+    ]
+  },
+  "unchanged_budgets": {
+    "ordinary": {
+      "absolute": 2e-12,
+      "relative": 2e-12
+    },
+    "block": {
+      "absolute": 8e-12,
+      "sum_absolute_contribution_factor": 4e-13
+    },
+    "rollout_target": {
+      "absolute": 2e-11,
+      "relative": 2e-12
+    },
+    "density": {
+      "absolute": 4e-12,
+      "relative": 8e-15
+    },
+    "rho_inverse": {
+      "absolute": 0.0,
+      "relative": 4e-15
+    },
+    "FD_primary_absolute": 3e-08
+  },
+  "actions": [
+    {
+      "kind": "import",
+      "seed": 0
+    },
+    {
+      "kind": "import",
+      "seed": 1
+    },
+    {
+      "kind": "import",
+      "seed": 7
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 128,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 144,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 160,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 176,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 192,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 208,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 224,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 240,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 256,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 272,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 288,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 304,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 320,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 336,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 352,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 368,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 384,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 400,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 416,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 432,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 448,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 464,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 480,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 0,
+      "first_batch": 496,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 128,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 144,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 160,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 176,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 192,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 208,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 224,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 240,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 256,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 272,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 288,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 304,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 320,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 336,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 352,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 368,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 384,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 400,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 416,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 432,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 448,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 464,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 480,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 1,
+      "first_batch": 496,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 128,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 144,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 160,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 176,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 192,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 208,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 224,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 240,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 256,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 272,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 288,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 304,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 320,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 336,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 352,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 368,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 384,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 400,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 416,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 432,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 448,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 464,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 480,
+      "batches": 16
+    },
+    {
+      "kind": "canonical",
+      "seed": 7,
+      "first_batch": 496,
+      "batches": 16
+    },
+    {
+      "kind": "replay",
+      "seed": 0,
+      "first_batch": 256,
+      "batches": 1
+    },
+    {
+      "kind": "replay",
+      "seed": 1,
+      "first_batch": 256,
+      "batches": 1
+    },
+    {
+      "kind": "replay",
+      "seed": 7,
+      "first_batch": 256,
+      "batches": 1
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-0",
+      "seed": 0
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-1",
+      "seed": 1
+    },
+    {
+      "kind": "evaluation",
+      "label": "seed-7",
+      "seed": 7
+    }
+  ],
+  "new_workload": {
+    "imports": 3,
+    "canonical_chunks": 72,
+    "canonical_plant_steps": 589824,
+    "canonical_AdamW_updates": 4608,
+    "canonical_tape_pairs": 36864,
+    "canonical_coefficients": 2359296,
+    "replay_plant_steps": 1536,
+    "replay_AdamW_updates": 12,
+    "replay_tape_pairs": 96,
+    "replay_coefficients": 6144,
+    "final_deterministic_eval_steps": 2304,
+    "old_prefix_plant_steps_repeated": 0,
+    "baseline_eval_steps_repeated": 0,
+    "old_expected_or_reader_tests_repeated": 0
+  },
+  "counter_reservations": {
+    "original_consumed_half_open": [
+      0,
+      131072
+    ],
+    "new_world_consumed_half_open": [
+      [
+        131072,
+        155648
+      ],
+      [
+        155648,
+        180224
+      ],
+      [
+        180224,
+        204800
+      ],
+      [
+        204800,
+        229376
+      ],
+      [
+        229376,
+        253952
+      ],
+      [
+        253952,
+        278528
+      ],
+      [
+        278528,
+        303104
+      ],
+      [
+        303104,
+        327680
+      ],
+      [
+        327680,
+        352256
+      ],
+      [
+        352256,
+        376832
+      ],
+      [
+        376832,
+        401408
+      ],
+      [
+        401408,
+        425984
+      ],
+      [
+        425984,
+        450560
+      ],
+      [
+        450560,
+        475136
+      ],
+      [
+        475136,
+        499712
+      ],
+      [
+        499712,
+        524288
+      ]
+    ],
+    "batch512_endpoints_never_consumed": true,
+    "same_seed_keys": true
+  },
+  "wire": {
+    "header": "<4I +32B descriptorSHA",
+    "snapshot": [
+      827545676,
+      1,
+      440,
+      0
+    ],
+    "iteration": [
+      826890316,
+      1,
+      62696,
+      16
+    ],
+    "coefficient": [
+      826497100,
+      1,
+      88,
+      32768
+    ],
+    "evaluation": [
+      826628172,
+      1,
+      72,
+      6
+    ],
+    "quality": [
+      826759244,
+      1,
+      200,
+      1
+    ],
+    "coefficient_scope": "source-bound RECOMPUTED observations, not internal instrumentation"
+  },
+  "failure_policy": "Stop and preserve first failure/partial output; no retry, tuning, early stop or best checkpoint/seed selection.",
+  "quality_scope": "Same fixed all-seed goals, nominal continuous-Gaussian analytic critic and finite-top53 sampler; no guarantee that added budget meets goals.",
+  "scope": "Additive continuation only; original 128-batch outcomes, all old sources and curves stay byte-exact. No next chapter or model/SDK/hardware effects."
+}

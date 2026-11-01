@@ -1,0 +1,7 @@
+ok   #test LQR longer resume changes only counters and excludes diagnostic seed (1 case, 19842 steps, 0 ms)
+ok   #test LQR longer resume requires exact original endpoint and is shape first atomic (1 case, 8075 steps, 0 ms)
+ok   #test LQR longer state binds both ends seeds counters and optimizer step (1 case, 39542 steps, 0 ms)
+ok   #test LQR longer batch refusal precedes effects and preserves complete poison (1 case, 4915 steps, 1 ms)
+ok   #test LQR longer one synthetic full batch preserves dispatch and all four epochs (1 case, 12934707 steps, 271 ms)
+5 of 133 checks (--only 'LQR longer'), 5 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

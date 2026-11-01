@@ -1,0 +1,27 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.input-freeze.v1",
+  "passed": true,
+  "producer": {
+    "bytes": 10762,
+    "sha256": "6da9791e8950560f639227f1936b0573e4ff57fad5bf778ee4e7b6c69208e51c"
+  },
+  "auditor": {
+    "bytes": 29128,
+    "sha256": "cea6103fc71e806e4c184493d8a0404d15785526b5f79771bbfc9e46732b2946"
+  },
+  "experiment": {
+    "bytes": 24337,
+    "sha256": "9dc911e27fe377e4fa5f219f9ac577ca6c01a183c380ba40d200844d65e3ff87"
+  },
+  "contract": {
+    "bytes": 6223,
+    "sha256": "7d5acb6089b4f2017dfba36b1509e4f7fad178fcdb6f0841832ec88ca3185057"
+  },
+  "numeric_carry": {
+    "bytes": 1107,
+    "sha256": "a7017608697b390261cf82b622b41dedb638c217e65d73594f516c7a89d79643"
+  },
+  "new_resume_rows": 3,
+  "original_expected_or_reader_generation_calls": 0,
+  "product_learner_optimizer_RNG_SDK_calls": 0
+}

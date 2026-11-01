@@ -1,0 +1,52 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.preparation.v1",
+  "passed": true,
+  "descriptor": {
+    "bytes": 18103,
+    "sha256": "05d729d67213ee9b0e63618b44ff3e18c23c9b97c4ba0a2c8512c649bb39338c"
+  },
+  "context": {
+    "bytes": 32,
+    "sha256": "3944691825d4fb02af5af5af9b258cfdde23318714ec21f8f9fc509dd5b1419d"
+  },
+  "original_context": {
+    "bytes": 32,
+    "sha256": "a4ddad5ea1696c79256d9682f9f0ce7e153babb8c7236ea3ea9fedb4dbf3f5d7"
+  },
+  "source": {
+    "psionic/tests/robotics/locomotion_lqr_longer_learn.py": {
+      "bytes": 33592,
+      "sha256": "19cba85034adb746f5d17b94bc1ec350f5ca1065597b9f95717650f26fccb331"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_audit.py": {
+      "bytes": 29128,
+      "sha256": "cea6103fc71e806e4c184493d8a0404d15785526b5f79771bbfc9e46732b2946"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/audit-freeze.json": {
+      "bytes": 983,
+      "sha256": "44318bcec0b14da176f04c0c5269b1428498c532e08490c264e164ed57bc346e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/audit-guard-qualification.json": {
+      "bytes": 429,
+      "sha256": "33fd5d972cf6188d2ff16b569a5440a83ad6a9924ad502a7d79ccd0d37a21dc3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/numeric-carry.json": {
+      "bytes": 1107,
+      "sha256": "a7017608697b390261cf82b622b41dedb638c217e65d73594f516c7a89d79643"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/input-freeze.json": {
+      "bytes": 821,
+      "sha256": "c4ba4c9a3c80d0102fbe678eab7feda0341603dba4733e6609feaa920601c524"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/lifecycle-guard-qualification.json": {
+      "bytes": 703,
+      "sha256": "d586b540643734a82cea8bdb1724218dd161c07eaaf1c18ff192fe81b841edba"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/lifecycle-selection-carry.json": {
+      "bytes": 769,
+      "sha256": "3dcdf005263b757fe6174fee4f8ce94fcc2ebcd50fea26a984c415c8d223747f"
+    }
+  },
+  "effect_calls": 0,
+  "commands": []
+}

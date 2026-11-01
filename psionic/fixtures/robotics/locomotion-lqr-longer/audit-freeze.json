@@ -1,0 +1,31 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.audit-freeze.v1",
+  "passed": true,
+  "auditor": {
+    "bytes": 29128,
+    "sha256": "cea6103fc71e806e4c184493d8a0404d15785526b5f79771bbfc9e46732b2946"
+  },
+  "metadata_producer": {
+    "bytes": 10762,
+    "sha256": "6da9791e8950560f639227f1936b0573e4ff57fad5bf778ee4e7b6c69208e51c"
+  },
+  "experiment": {
+    "bytes": 24337,
+    "sha256": "9dc911e27fe377e4fa5f219f9ac577ca6c01a183c380ba40d200844d65e3ff87"
+  },
+  "input_freeze": {
+    "bytes": 821,
+    "sha256": "c4ba4c9a3c80d0102fbe678eab7feda0341603dba4733e6609feaa920601c524"
+  },
+  "numeric_carry": {
+    "bytes": 1107,
+    "sha256": "a7017608697b390261cf82b622b41dedb638c217e65d73594f516c7a89d79643"
+  },
+  "new_guard_qualification": {
+    "bytes": 429,
+    "sha256": "33fd5d972cf6188d2ff16b569a5440a83ad6a9924ad502a7d79ccd0d37a21dc3"
+  },
+  "old_source_and_expected_data_unchanged": true,
+  "old_reader_or_math_tests_repeated": 0,
+  "learning_native_optimizer_RNG_SDK_calls": 0
+}

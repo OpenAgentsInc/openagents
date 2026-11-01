@@ -1,0 +1,20 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.lifecycle-selection-carry.v1",
+  "passed": true,
+  "old_driver": {
+    "bytes": 19645,
+    "sha256": "8c77dc6d7ee19a08bc009eff40437eae939e4e76905eb3805ea3568831957ef5"
+  },
+  "old_learning_descriptor": {
+    "bytes": 9275,
+    "sha256": "58c8cc42d16b78fdcb1452bf1ccb40a2cddc551d9a682f3f50f11012aa514788"
+  },
+  "new_driver": {
+    "bytes": 33592,
+    "sha256": "19cba85034adb746f5d17b94bc1ec350f5ca1065597b9f95717650f26fccb331"
+  },
+  "select_action_byte_exact": true,
+  "declaration_sha256": "247980257938bb5826af55493dc8b329e6282135222778a4f92c2a599448e5f6",
+  "old_selection_guard_cases_repeated": 0,
+  "scope": "The old fixed-prefix READY selector is byte-exact; new81-action profile guards are separately qualified."
+}

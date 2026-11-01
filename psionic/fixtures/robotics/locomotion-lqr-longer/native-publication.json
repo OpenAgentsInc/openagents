@@ -1,0 +1,101 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.native-publication.v1",
+  "passed": true,
+  "original_qualification": {
+    "bytes": 38429,
+    "sha256": "a880df8f712de3386956dc3765883d545aa12c2b15fa472bcd5e7e0f87467d92"
+  },
+  "old_C_closure_manifest": {
+    "bytes": 603505,
+    "sha256": "50e921d88801f3c66e20d3656e7f390a4bebd5f7fb2f5eee612b803d865b957b"
+  },
+  "original_execution_directory": "/tmp/locomotion-lqr-longer-native-first",
+  "files": {
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-qualification.json": {
+      "bytes": 38429,
+      "sha256": "a880df8f712de3386956dc3765883d545aa12c2b15fa472bcd5e7e0f87467d92"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/old-native-closure-tokens.json": {
+      "bytes": 603505,
+      "sha256": "50e921d88801f3c66e20d3656e7f390a4bebd5f7fb2f5eee612b803d865b957b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/first-attempt.driver.py": {
+      "bytes": 13683,
+      "sha256": "08b962a2befe90a93e6ee2c5f717edfb15687541c406cac0651ba5f19d77ff10"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fourth-attempt.driver.py": {
+      "bytes": 16595,
+      "sha256": "70dc9f737a5af475def4df14be6b9a7c0b8dc4bc8b96628b1ee6e462144cfd49"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/second-attempt.driver.py": {
+      "bytes": 14781,
+      "sha256": "210c3a817a994fb3ffa457ddfd0e083bdf58c9b9c949e2bb16611ce011dbf4a0"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/third-attempt.driver.py": {
+      "bytes": 15369,
+      "sha256": "d25a946855675925a1babd68e996dc53cc5b8714a4f9ba31111041aba3252914"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fifth-attempt.driver.py": {
+      "bytes": 16935,
+      "sha256": "52f4bec733ce27f53f0bdf67c020801a7615dd5c312859ac0a853c702231ec2f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/third-attempt.record.json": {
+      "bytes": 24930,
+      "sha256": "48bece92edf2bb09ce34636028399c4786dbc7b59c4b1c278e865a7ba3babf5d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fifth-attempt.record.json": {
+      "bytes": 29887,
+      "sha256": "d525b3d4c34996e1961aae7bcfffee7c24c86e8eadfd53f51aecfa84250d4e36"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/first-attempt.record.json": {
+      "bytes": 24113,
+      "sha256": "a14d81d1bf34b5cde21e53d6aabdd0e7e5f3745612b825e3e579e2b72dc1add7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fourth-attempt.record.json": {
+      "bytes": 25254,
+      "sha256": "70fcf5888d074bbb3a94d2eaca9fae6ad3216f0cd84d2fcf104e3c02b80e297e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/second-attempt.record.json": {
+      "bytes": 24448,
+      "sha256": "9a2a828289993a29728fd43e962010960cc41bec12078b8f7e70a63989201e60"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fifth-attempt.native.c": {
+      "bytes": 9457,
+      "sha256": "cf53a30b2f54141dd86d198e51a840c41e398e6e16671dd57af056d1012c55f4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/debug-carry.json": {
+      "bytes": 23758,
+      "sha256": "619084eab59529a4edeaec06acfc68accf1730b040693baebce13d1e27b8db34"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/resume-build.py": {
+      "bytes": 5170,
+      "sha256": "b2e97f4e3d6b21e4aec9ba97e6223bd1da1dc359803dea85f7eb5d9901240888"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/compile-effects-debug.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/compile-effects-debug.stderr": {
+      "bytes": 5395,
+      "sha256": "98cf6904d45967bc8410eeda32c41cd21fbed74b477db3a8d8050be47a2663f4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-canonical/debug-synthetic-resume.bin": {
+      "bytes": 440,
+      "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-canonical/release-synthetic-resume.bin": {
+      "bytes": 440,
+      "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-canonical/sanitized-synthetic-resume.bin": {
+      "bytes": 440,
+      "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+    }
+  },
+  "numerical_work_repeated_for_publication": 0,
+  "full_batches_plant_rng_optimizer_tape_calls": 0,
+  "scope": "Three new guard/resume-only native profiles. Old math carried by unchanged source and generated C reachable-function/runtime/type bindings. Exact declaration tokens with independent header guard-block order; local generated variable alpha names and physical source diagnostics only. This is metadata binding, not a formal compiler equivalence proof.",
+  "history": "Four preserved metadata-only binding failures, then preserved first effects compile failure. Both successful emissions and generated debug object reused; only four aligned typed view pointer casts changed the effects harness. No passed stage repeated.",
+  "private_generated_artifacts": "Original C/H, object and binaries remain in the recorded acquisition directory; public token manifest is sufficient for fresh guard-only compilation without those private artifacts.",
+  "gate": "check-locomotion-lqr-longer.sh: fresh source/native guard qualification only; no canonical training or old math fixture."
+}

@@ -1,0 +1,9 @@
+{
+  "phase": "checks-authored-before-product",
+  "time_utc": "2026-11-01T06:16:06.889501+00:00",
+  "source": "psionic/lib/robotics/locomotion/lqr-longer-update.coax",
+  "checks_sha256": "73d48b637c215232b4a6dc92818a5099b11c2007bca685d2f9379438664e83e8",
+  "fixtures_sha256": "86bd5c100d66c201dc92fb1fcc6d864d097ebd13559d16f5a831f686cb725c79",
+  "old_update_sha256": "7ca92b04616d92b4960aa2f76ca28b59c4d78264ee6002e0de969afa8d29aa5d",
+  "contract_sha256": "7d5acb6089b4f2017dfba36b1509e4f7fad178fcdb6f0841832ec88ca3185057"
+}

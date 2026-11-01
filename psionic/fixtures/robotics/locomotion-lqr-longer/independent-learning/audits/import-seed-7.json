@@ -1,0 +1,49 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.learning-audit.v1",
+  "passed": true,
+  "auditor": {
+    "bytes": 29128,
+    "sha256": "cea6103fc71e806e4c184493d8a0404d15785526b5f79771bbfc9e46732b2946"
+  },
+  "product_learner_model_SDK_calls": 0,
+  "inputs": {
+    "descriptor": {
+      "bytes": 18103,
+      "sha256": "05d729d67213ee9b0e63618b44ff3e18c23c9b97c4ba0a2c8512c649bb39338c"
+    },
+    "math_record": {
+      "bytes": 35485,
+      "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+    },
+    "extension_record": {
+      "bytes": 38429,
+      "sha256": "a880df8f712de3386956dc3765883d545aa12c2b15fa472bcd5e7e0f87467d92"
+    },
+    "before": {
+      "bytes": 488,
+      "sha256": "2077045152db2be23b17121b02d2b2810665c2cfe99c9530fe2de2af7cf5e389"
+    },
+    "after": {
+      "bytes": 488,
+      "sha256": "29465a55193716254a458c850724c19618fefb38e3660f38e03b12f242cad673"
+    }
+  },
+  "result": {
+    "passed": true,
+    "seed": 7,
+    "first_batch": 128,
+    "batches": 0,
+    "import_only": true,
+    "plant_steps": 0,
+    "AdamW_updates": 0,
+    "coefficient_observations": 0,
+    "changed_counter_words": 16,
+    "noncounter_bytes_exact": true,
+    "original_endpoint_audit": {
+      "bytes": 2443,
+      "sha256": "ff2ee804b95a3fcdca542b2aa99bcdeeb3c642686b8ff7cfe576d9dd4fffb07f"
+    },
+    "scope": "New context import only; no original prefix, optimizer, plant or RNG execution."
+  },
+  "seconds": 0.004761042015161365
+}

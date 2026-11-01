@@ -1,0 +1,97 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.source-qualification.v1",
+  "passed": true,
+  "compiler": {
+    "path": "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "contract": {
+    "bytes": 6223,
+    "sha256": "7d5acb6089b4f2017dfba36b1509e4f7fad178fcdb6f0841832ec88ca3185057"
+  },
+  "source": {
+    "psionic/lib/robotics/locomotion/lqr-longer-update.coax": {
+      "bytes": 6020,
+      "sha256": "7d3bd79164ee7a96b28d2d12fe8dfe957a5b26e12e1ef4762bf5c8dc981cf97a"
+    },
+    "psionic/lib/robotics/locomotion/lqr-longer-fixtures.coax": {
+      "bytes": 1243,
+      "sha256": "86bd5c100d66c201dc92fb1fcc6d864d097ebd13559d16f5a831f686cb725c79"
+    },
+    "psionic/lib/robotics/locomotion-lqr-longer.coax": {
+      "bytes": 43,
+      "sha256": "f5db2fe63abfc441005dd54a29d220565b80836b0e965bb9048352e62f80e0b8"
+    },
+    "psionic/tests/robotics/locomotion-lqr-longer-native.coax": {
+      "bytes": 91,
+      "sha256": "d10a02b11d5d44b600071adc743616f5b5fc859e540bf55e9e1c921c45b2249c"
+    }
+  },
+  "checks_first": {
+    "bytes": 524,
+    "sha256": "0e74bc8d9ddb13411adf867b843299cac70eaa966ddbd879d97cacaf710c94c8"
+  },
+  "first_source_context": {
+    "log": {
+      "bytes": 710,
+      "sha256": "44eb5c66401a2ade93fc7b63e453c34f1699dbadcb4f4ee0b89cf8fb5fcc334a"
+    },
+    "new_groups": 5,
+    "passed": true,
+    "synthetic_full_batch": {
+      "plant_steps": 512,
+      "epochs": 4,
+      "VM_steps": 12934707,
+      "milliseconds": 271,
+      "seed": 7,
+      "authentic_learned_checkpoint": false,
+      "canonical_training": false
+    },
+    "scope": "--only LQR longer runs only the five new authored groups."
+  },
+  "first_mutation_context": {
+    "log": {
+      "bytes": 751,
+      "sha256": "423941d7700d174669b025fdea4bf5b0c21c564ab6e2cfa5dc8565dabc46716e"
+    },
+    "root_only": true,
+    "actual_sites": 86,
+    "killed": 85,
+    "survived": 1,
+    "survivor": "world absolute-state range boundary >16 changed to >=16"
+  },
+  "boundary_followup": {
+    "source_log": {
+      "bytes": 270,
+      "sha256": "3b80eea72ca59b1d961022918d92896db843bfd5eb5522c03b45b3577ec4f74f"
+    },
+    "mutation_log": {
+      "bytes": 114,
+      "sha256": "4bde28c85953079d7c17c6ec9fc3355e852deb1235a3228d5f999084578bc1f2"
+    },
+    "changed": "Only the state-admission group gained exact +/-16 successful endpoints. All production procedure bodies stayed byte-identical.",
+    "source_groups_executed": 1,
+    "actual_root_sites": 86,
+    "killed": 86,
+    "survived": 0
+  },
+  "aggregate": {
+    "body_sites": 0,
+    "mutation_run": false
+  },
+  "unit_refusals": {
+    "bytes": 1113,
+    "sha256": "67757f4da34bda7d32ed124a385e97b3710e67ce9d49fa0b721f1b8edf58423b"
+  },
+  "old_call_closure": {
+    "bytes": 5579,
+    "sha256": "8ec59594ef79df2a349ea2884fd5c5a37660ed769dc150dbd816e9e79f870359"
+  },
+  "scope": [
+    "Only new root sites were mutated. The root-only tool retains imported baseline checks; no old standalone source/math gate was invoked.",
+    "The one new authored synthetic batch witness is structural wiring, not an original learned batch or a canonical continuation experiment. Mutation baseline/mutant executions are source qualification work, separate from native experiment counters.",
+    "RAW440 checkpoint observations and helpers are unsealed; external native/audit lifecycle authenticates historical checkpoint identity.",
+    "No new example or learner program was added."
+  ]
+}

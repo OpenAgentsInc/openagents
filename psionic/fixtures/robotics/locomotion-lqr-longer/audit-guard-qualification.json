@@ -1,0 +1,15 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.audit-guards.v1",
+  "passed": true,
+  "producer": {
+    "bytes": 29128,
+    "sha256": "cea6103fc71e806e4c184493d8a0404d15785526b5f79771bbfc9e46732b2946"
+  },
+  "experiment": {
+    "bytes": 24337,
+    "sha256": "9dc911e27fe377e4fa5f219f9ac577ca6c01a183c380ba40d200844d65e3ff87"
+  },
+  "new_positive_cases": 25,
+  "new_poisons_refused": 97,
+  "old_reader_numeric_or_product_calls": 0
+}

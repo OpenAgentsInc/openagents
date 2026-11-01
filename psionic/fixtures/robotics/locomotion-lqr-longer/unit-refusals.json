@@ -1,0 +1,28 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.type-refusals.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "scope": "Existing state and iteration record roles at the new normalized numerical boundary; no new physical-unit wrapper claim.",
+  "checks": [
+    {
+      "name": "state",
+      "source": "psionic/tests/robotics/locomotion_lqr_longer_bad_state.coax",
+      "source_sha256": "4174465f5625d270b172133af11063715ea96ac441b14960b8cb75d8edf8e163",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-state.log",
+      "log_sha256": "6c3eac61fff8f7c342efbaafa84d2333c7d62b38e451412453fc0840fff5bd6b"
+    },
+    {
+      "name": "output",
+      "source": "psionic/tests/robotics/locomotion_lqr_longer_bad_output.coax",
+      "source_sha256": "29361c36c7573f0eeffe2bc0075088f7b3a03e83ba3a09007e708138a8ec5938",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-output.log",
+      "log_sha256": "7bf4a4dbf662ce0af8250f5e8605281c9b2edad60547e56407395ebbfe84a683"
+    }
+  ]
+}

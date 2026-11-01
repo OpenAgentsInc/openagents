@@ -1,0 +1,48 @@
+#authority;
+#load "lqr-longer-fixtures.coax";
+
+#test "LQR longer resume changes only counters and excludes diagnostic seed" {
+ for seed:[3]u64.[0,1,7] {old:=rlx_fixture_old(seed,128);#assert rlt_state_ok(old);out:[1]RltState;#assert rlx_resume(old,out[..])==RlpStatus.ok;#assert rlx_fixture_same_non_counter(old,out[0]) && rlx_state_ok(out[0]);for w:0..<16 {#assert out[0].worlds[w].rng.counter==cast(u64)(131072+w*24576);}#assert f64_bits(out[0].worlds[3].x)==0x8000000000000000;}
+ #assert rlx_seed(0) && rlx_seed(1) && rlx_seed(7) && !rlx_seed(2) && !rlx_seed(13);
+ old:=rlx_fixture_old(13,128);#assert rlt_state_ok(old);out:=[1]RltState.[rlx_fixture_old(7,0)];#assert rlx_resume(old,out[..])==RlpStatus.state && out[0].batch==0 && out[0].runseed==7;
+}
+#test "LQR longer resume requires exact original endpoint and is shape first atomic" {
+ out:=[2]RltState.[rlx_fixture_old(7,0),rlx_fixture_old(1,1)];old:=rlx_fixture_old(0,128);#assert rlx_resume(old,out[0..<0])==RlpStatus.shape && rlx_resume(old,out[..])==RlpStatus.shape;#assert out[0].batch==0 && out[1].batch==1;
+ for b:[3]int.[0,127,129] {bad:=rlx_fixture_old(0,b);#assert rlx_resume(bad,out[0..<1])==RlpStatus.state && out[0].batch==0;}
+ bad:=old;bad.worlds[15].rng.counter+=1;#assert rlx_resume(bad,out[0..<1])==RlpStatus.state && out[0].batch==0;bad=old;bad.optimizer.adam.skipped=1;#assert rlx_resume(bad,out[0..<1])==RlpStatus.state;
+}
+#test "LQR longer state binds both ends seeds counters and optimizer step" {
+ for b:[5]int.[128,129,256,511,512] {s:=rlx_fixture_new(1,b);#assert rlx_state_ok(s);s.optimizer.adam.step+=1;#assert !rlx_state_ok(s);s=rlx_fixture_new(1,b);s.worlds[15].rng.counter+=1;#assert !rlx_state_ok(s);}
+ for b:[2]int.[127,513] {#assert !rlx_state_ok(rlx_fixture_new(0,b));}
+ for x:[2]f64.[-16,16] {s:=rlx_fixture_new(0,128);s.worlds[15].x=x;#assert rlx_state_ok(s);}
+ s:=rlx_fixture_new(7,128);s.runseed=13;for w:0..<16 {s.worlds[w].rng.seed=13;}#assert !rlx_state_ok(s);s=rlx_fixture_new(7,128);s.worlds[15].rng.seed=1;#assert !rlx_state_ok(s);s=rlx_fixture_new(7,128);s.worlds[15].x=16.0001;#assert !rlx_state_ok(s);s=rlx_fixture_new(7,128);s.optimizer.adam.skipped=1;#assert !rlx_state_ok(s);s=rlx_fixture_new(7,128);s.optimizer.K=0.249;#assert !rlx_state_ok(s);
+ #assert rlx_counter(0,128)==131072 && rlx_counter(15,128)==499712 && rlx_counter(0,256)==139264 && rlx_counter(15,512)==524288;
+}
+#test "LQR longer batch refusal precedes effects and preserves complete poison" {
+ out:[1]RltIteration;out[0].batch.count=73;out[0].epochs[3].blocks=71;out[0].next.batch=69;#assert rlx_batch(rlx_fixture_new(0,512),out[..])==RlpStatus.state;#assert out[0].batch.count==73 && out[0].epochs[3].blocks==71 && out[0].next.batch==69;
+ bad:=rlx_fixture_new(0,128);bad.worlds[0].rng.counter=0;#assert rlx_batch(bad,out[..])==RlpStatus.state;#assert rlx_batch(bad,out[0..<0])==RlpStatus.shape;#assert out[0].batch.count==73 && out[0].epochs[3].blocks==71 && out[0].next.batch==69;
+}
+#test "LQR longer one synthetic full batch preserves dispatch and all four epochs" {
+ s:=rlx_fixture_new(7,128);out:[1]RltIteration;#assert rlx_batch(s,out[..])==RlpStatus.ok;f:=out[0];#assert f.batch.worlds==16 && f.batch.horizon==32 && f.batch.count==512 && f.batch.K_old==s.optimizer.K;#assert f.next.batch==129 && f.next.runseed==7;
+ for e:0..<4 {#assert f.epochs[e].rows==512 && f.epochs[e].blocks==8 && f.epochs[e].next.adam.step==513+e && f.epochs[e].next.adam.skipped==0;#assert f.epochs[e].actual_loss_mean!=0 && f.epochs[e].gradient_mean!=0;}
+ #assert f64_bits(f.next.optimizer.K)==f64_bits(f.epochs[3].next.K) && f64_bits(f.next.optimizer.m)==f64_bits(f.epochs[3].next.m) && f64_bits(f.next.optimizer.v)==f64_bits(f.epochs[3].next.v) && f.next.optimizer.adam.step==516;
+ for w:0..<16 {#assert f.batch.rows[w*32].x==s.worlds[w].x && f.batch.rows[w*32+31].next_x==f.next.worlds[w].x;#assert f.next.worlds[w].rng.counter==cast(u64)(131072+w*24576+64) && f.next.worlds[w].rng.seed==7;#assert f64_bits(f.next.worlds[w].x)==f64_bits(f.batch.next_worlds[w].x);}
+ #assert rlx_state_ok(f.next);
+}
+
+// Numeric PODs/helpers are unsealed. Checkpoint identity is authenticated by the host/auditor.
+rlx_seed :: (seed:u64)->bool {return seed==0 || seed==1 || seed==7;}
+rlx_index :: (batch:int)->bool {return batch>=128 && batch<=512;}
+// Trusted helper: world in 0..<16 and batch in 128..512. The endpoint is never consumed.
+rlx_counter :: (world:int,batch:int)->u64 {return cast(u64)(131072+world*24576+(batch-128)*64);}
+rlx_resume :: (input:RltState,output:[]RltState)->RlpStatus #export_c {
+ if output.count!=1 {return RlpStatus.shape;}if !rlx_seed(input.runseed) || input.batch!=128 || !rlt_state_ok(input) {return RlpStatus.state;}fresh:=input;for w:0..<16 {fresh.worlds[w].rng.counter=rlx_counter(w,128);}output[0]=fresh;return RlpStatus.ok;
+}
+rlx_state_ok :: (s:RltState)->bool #export_c {
+ if !rlx_index(s.batch) || !rlx_seed(s.runseed) || !rlt_optimizer_ok(s.optimizer) || s.optimizer.adam.step!=4*s.batch {return false;}for w:0..<16 {if !rgp_finite(f64_bits(s.worlds[w].x)) || abs(s.worlds[w].x)>16 || s.worlds[w].rng.seed!=s.runseed || s.worlds[w].rng.counter!=rlx_counter(w,s.batch) {return false;}}return true;
+}
+rlx_batch :: (input:RltState,output:[]RltIteration)->RlpStatus #export_c {
+ if output.count!=1 {return RlpStatus.shape;}if !rlx_state_ok(input) || input.batch==512 {return RlpStatus.state;}fresh:RltIteration;worlds:=input.worlds;collected:[1]RleBatch;#assert rle_rollout(16,32,input.optimizer.K,worlds[..],collected[..])==RlpStatus.ok;fresh.batch=collected[0];rows:[512]RlpRow;source_rows:=fresh.batch.rows;rlt_detach(source_rows[..],rows[..]);
+ current:=input.optimizer;for epoch:0..<4 {next:[1]RltEpoch;status:=rlt_epoch(input.optimizer.K,current,rows[..],next[..]);if status!=RlpStatus.ok {return status;}fresh.epochs[epoch]=next[0];current=next[0].next;}
+ fresh.next=input;fresh.next.optimizer=current;fresh.next.batch=input.batch+1;for w:0..<16 {fresh.next.worlds[w]=fresh.batch.next_worlds[w];}output[0]=fresh;return RlpStatus.ok;
+}

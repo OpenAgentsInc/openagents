@@ -1,0 +1,42 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.learn-shell-routing.v1",
+  "passed": true,
+  "script": {
+    "bytes": 756,
+    "sha256": "7e147f900715c1aa55dd0cac7037ffda57235fc845c73b2c6196c8f82ed081bc"
+  },
+  "driver": {
+    "bytes": 33592,
+    "sha256": "19cba85034adb746f5d17b94bc1ec350f5ca1065597b9f95717650f26fccb331"
+  },
+  "syntax_passed": true,
+  "fresh_prepares_then_one_advance": true,
+  "existing_one_advance_only": true,
+  "missing_arguments_refused": true,
+  "stub_argv": [
+    [
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_longer_learn.py",
+      "--prepare",
+      "--qualified",
+      "/tmp/locomotion-lqr-longer-shell-routing-first/qualified-placeholder",
+      "--output",
+      "/tmp/locomotion-lqr-longer-shell-routing-first/fresh"
+    ],
+    [
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_longer_learn.py",
+      "--run-prepared",
+      "/tmp/locomotion-lqr-longer-shell-routing-first/fresh",
+      "--qualified",
+      "/tmp/locomotion-lqr-longer-shell-routing-first/qualified-placeholder"
+    ],
+    [
+      "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_longer_learn.py",
+      "--run-prepared",
+      "/tmp/locomotion-lqr-longer-shell-routing-first/existing",
+      "--qualified",
+      "/tmp/locomotion-lqr-longer-shell-routing-first/qualified-placeholder"
+    ]
+  ],
+  "product_calls": 0,
+  "numeric_wrapper_path_executed": false
+}

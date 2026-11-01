@@ -1,0 +1,2537 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.publication.v1",
+  "passed": true,
+  "qualification_passed": true,
+  "all_three_original_quality_goals_met": true,
+  "original128_all_three_misses_preserved": true,
+  "source_base_commit": "e3fe48cf883b4f82d71f31bc63c68ac618f7e127",
+  "scope": "Chapter171 only: continue exact original three learned checkpoints from128 to512 total batches with identical optimizer/learner settings, preserving original results. No next chapter.",
+  "original_receipts": {
+    "psionic/fixtures/robotics/locomotion-lqr-longer/contract.md": {
+      "bytes": 6223,
+      "sha256": "7d5acb6089b4f2017dfba36b1509e4f7fad178fcdb6f0841832ec88ca3185057"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/experiment.json": {
+      "bytes": 24337,
+      "sha256": "9dc911e27fe377e4fa5f219f9ac577ca6c01a183c380ba40d200844d65e3ff87"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/input-freeze.json": {
+      "bytes": 821,
+      "sha256": "c4ba4c9a3c80d0102fbe678eab7feda0341603dba4733e6609feaa920601c524"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/source-qualification.json": {
+      "bytes": 3521,
+      "sha256": "f909aeff88b7d565646ec62d3a7f46b571644a6528f396a7a751f606e26db051"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/unit-refusals.json": {
+      "bytes": 1113,
+      "sha256": "67757f4da34bda7d32ed124a385e97b3710e67ce9d49fa0b721f1b8edf58423b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/old-call-closure-binding.json": {
+      "bytes": 5579,
+      "sha256": "8ec59594ef79df2a349ea2884fd5c5a37660ed769dc150dbd816e9e79f870359"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-qualification.json": {
+      "bytes": 38429,
+      "sha256": "a880df8f712de3386956dc3765883d545aa12c2b15fa472bcd5e7e0f87467d92"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-publication.json": {
+      "bytes": 5695,
+      "sha256": "be79e4037cf9ecae7b64b2e4e1138b951be72ce58a5f41934e1a60d100974297"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-compiler-context.json": {
+      "bytes": 3675,
+      "sha256": "db3c0483238b20c538cdd1a2ea70cc0166749cebdfe9b42af0f1be93eefedcd2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/audit-freeze.json": {
+      "bytes": 983,
+      "sha256": "44318bcec0b14da176f04c0c5269b1428498c532e08490c264e164ed57bc346e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/audit-guard-qualification.json": {
+      "bytes": 429,
+      "sha256": "33fd5d972cf6188d2ff16b569a5440a83ad6a9924ad502a7d79ccd0d37a21dc3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/numeric-carry.json": {
+      "bytes": 1107,
+      "sha256": "a7017608697b390261cf82b622b41dedb638c217e65d73594f516c7a89d79643"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/lifecycle-guard-qualification.json": {
+      "bytes": 703,
+      "sha256": "d586b540643734a82cea8bdb1724218dd161c07eaaf1c18ff192fe81b841edba"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/lifecycle-selection-carry.json": {
+      "bytes": 769,
+      "sha256": "3dcdf005263b757fe6174fee4f8ce94fcc2ebcd50fea26a984c415c8d223747f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/registration-qualification.json": {
+      "bytes": 10447,
+      "sha256": "f5e508e82f36ff280e400daa2f680c0bcfce494fc8ef3c765ca0210ff14d3e11"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/book-qualification.json": {
+      "bytes": 1458,
+      "sha256": "ed19f8f8dab4366ff0049873f171535e7034a6fa4a44bcbcd70a0d083e8978b5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/original-preservation.json": {
+      "bytes": 49987,
+      "sha256": "6a8d70dfb5824756ffea82461d71fb08aaf42643df1a4bac9d1b386f38d8a55a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/core-publication.json": {
+      "bytes": 82045,
+      "sha256": "ad9bc879d7d44f8f0508502b3a6a730b8f6ccf9d44895917d2dd307dd08688e7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/data-final-publication.json": {
+      "bytes": 22487,
+      "sha256": "5b050cc26476694f56b4ce925757fa4ab51c0000ba0a0c9bc1feef034b99bea5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/publication.json": {
+      "bytes": 154746,
+      "sha256": "c69c32e4b1365460f0343711214e0253ab0a598a3446b854d9b3e452ecdda165"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/record.json": {
+      "bytes": 389081,
+      "sha256": "6890299496be8725d91ee9db83310310042ae1c29caf004e66a0b6aee8ceca8e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/descriptor.json": {
+      "bytes": 18103,
+      "sha256": "05d729d67213ee9b0e63618b44ff3e18c23c9b97c4ba0a2c8512c649bb39338c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/prepared.json": {
+      "bytes": 2012,
+      "sha256": "adef095ad36c84fcbf55062b0287cb8d657b231a8291c428d610525ace3c079d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/summary.json": {
+      "bytes": 69043,
+      "sha256": "bf11ba49eb348d56ac43a255d457cfc5e73fa6bbea9ad7df3da2f7d38401327d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/publication.json": {
+      "bytes": 14248,
+      "sha256": "14252db074c932d9381af5fa46acf88b616b66545318aa8c6069a41333281eb7"
+    }
+  },
+  "same_settings": {
+    "seeds": [
+      0,
+      1,
+      7
+    ],
+    "worlds": 16,
+    "horizon": 32,
+    "epochs": 4,
+    "block": 64,
+    "sigma": 0.25,
+    "log_std": -1.3862943611198906,
+    "gamma": 0.95,
+    "lambda": 0.95,
+    "epsilon": 0.2,
+    "lr": 0.001,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "adam_eps": 1e-08,
+    "decay": 0.0,
+    "trust": 0.00390625,
+    "projection": "rounded rollout-start K_old endpoints, retain Adam moments/step"
+  },
+  "continuation": {
+    "old_prefix_batches": 128,
+    "total_batches": 512,
+    "additional_batches_per_seed": 384,
+    "total_AdamW_steps_per_seed": 2048,
+    "same_seed_keys": [
+      0,
+      1,
+      7
+    ],
+    "noncounter_import_bytes_exact": true,
+    "counter_reservation_extended_explicitly": {
+      "original_consumed_half_open": [
+        0,
+        131072
+      ],
+      "new_world_consumed_half_open": [
+        [
+          131072,
+          155648
+        ],
+        [
+          155648,
+          180224
+        ],
+        [
+          180224,
+          204800
+        ],
+        [
+          204800,
+          229376
+        ],
+        [
+          229376,
+          253952
+        ],
+        [
+          253952,
+          278528
+        ],
+        [
+          278528,
+          303104
+        ],
+        [
+          303104,
+          327680
+        ],
+        [
+          327680,
+          352256
+        ],
+        [
+          352256,
+          376832
+        ],
+        [
+          376832,
+          401408
+        ],
+        [
+          401408,
+          425984
+        ],
+        [
+          425984,
+          450560
+        ],
+        [
+          450560,
+          475136
+        ],
+        [
+          475136,
+          499712
+        ],
+        [
+          499712,
+          524288
+        ]
+      ],
+      "batch512_endpoints_never_consumed": true,
+      "same_seed_keys": true
+    },
+    "new_wire": {
+      "header": "<4I +32B descriptorSHA",
+      "snapshot": [
+        827545676,
+        1,
+        440,
+        0
+      ],
+      "iteration": [
+        826890316,
+        1,
+        62696,
+        16
+      ],
+      "coefficient": [
+        826497100,
+        1,
+        88,
+        32768
+      ],
+      "evaluation": [
+        826628172,
+        1,
+        72,
+        6
+      ],
+      "quality": [
+        826759244,
+        1,
+        200,
+        1
+      ],
+      "coefficient_scope": "source-bound RECOMPUTED observations, not internal instrumentation"
+    },
+    "actions": 81,
+    "new_workload": {
+      "import_actions": 3,
+      "canonical_plant_steps": 589824,
+      "canonical_AdamW_updates": 4608,
+      "canonical_coefficient_observations": 2359296,
+      "replay_plant_steps": 1536,
+      "replay_AdamW_updates": 12,
+      "replay_coefficient_observations": 6144,
+      "final_deterministic_eval_steps": 2304,
+      "projected_updates": 0,
+      "ppo_clipped_samples": 0,
+      "old_prefix_plant_steps_repeated": 0,
+      "baseline_eval_steps_repeated": 0
+    },
+    "carried_workload": {
+      "canonical_plant_steps": 196608,
+      "canonical_AdamW_updates": 1536,
+      "canonical_coefficient_observations": 786432,
+      "replay_plant_steps": 1536,
+      "replay_AdamW_updates": 12,
+      "replay_coefficient_observations": 6144,
+      "deterministic_eval_steps": 3072,
+      "projected_updates": 16,
+      "ppo_clipped_samples": 0
+    },
+    "combined_canonical_steps": 786432,
+    "combined_canonical_AdamW_updates": 6144,
+    "no_early_stop_tuning_best_seed_or_extra_training": true
+  },
+  "all_seed_results": {
+    "0": {
+      "K": 0.6045622740966335,
+      "nominal_optimal_K": 0.603732134399152,
+      "gain_error": 0.0008301396974815336,
+      "maximum_nominal_relative_cost_gap": 1.218323340610159e-06,
+      "source_gain_goal": true,
+      "source_cost_goal": true,
+      "real_goals_supported": true,
+      "all_frozen_quality_goals_met": true,
+      "real_gain_margin": "0.04916986030251846644458515954111963557624651201127603802819159166740216542319057",
+      "real_cost_margin": "0.0099987816766593898410901462915806324909673285021011208264434815099044298254628008",
+      "nominal_costs": [
+        "28.814181164932106938294995270994240252111643477950160725162544533174758113790850",
+        "9.5693710425067793485787746915234104957245669859845283910555831274471989296010561",
+        "4.0565348095203573827746490046958290550928523658902066286811931414314918716300211",
+        "4.0565348095203573827746490046958290550928523658902066286811931414314918716300211",
+        "9.5693710425067793485787746915234104957245669859845283910555831274471989296010561",
+        "28.814181164932106938294995270994240252111643477950160725162544533174758113790850"
+      ],
+      "deterministic_evaluation_max_absolute_errors": [
+        0.0,
+        3.552713678800501e-15,
+        3.872591914849318e-120,
+        3.552713678800501e-15,
+        3.552713678800501e-15,
+        7.418412301374843e-67,
+        4.336808689942018e-19
+      ]
+    },
+    "1": {
+      "K": 0.6219745780673913,
+      "nominal_optimal_K": 0.603732134399152,
+      "gain_error": 0.018242443668239305,
+      "maximum_nominal_relative_cost_gap": 0.0005796272453146374,
+      "source_gain_goal": true,
+      "source_cost_goal": true,
+      "real_goals_supported": true,
+      "all_frozen_quality_goals_met": true,
+      "real_gain_margin": "0.03175755633176069663361210047524683224582506425736978802819159166740216542319057",
+      "real_cost_margin": "0.0094203727546853626435938669168112045394394753502298332713793373617912024315564987",
+      "nominal_costs": [
+        "28.830847524092265269622839302859922645436126193903318809330253988658111158210594",
+        "9.5744012527260271351006347900331834066050772401391291637612179217954422106832939",
+        "4.0582317479075735028156282889630237288149330085920956715409211318087401684228696",
+        "4.0582317479075735028156282889630237288149330085920956715409211318087401684228696",
+        "9.5744012527260271351006347900331834066050772401391291637612179217954422106832939",
+        "28.830847524092265269622839302859922645436126193903318809330253988658111158210594"
+      ],
+      "deterministic_evaluation_max_absolute_errors": [
+        0.0,
+        1.1102230246251565e-16,
+        6.204561631152014e-125,
+        1.1102230246251565e-16,
+        1.1102230246251565e-16,
+        3.4773807662694575e-69,
+        4.336808689942018e-19
+      ]
+    },
+    "7": {
+      "K": 0.5997993113545199,
+      "nominal_optimal_K": 0.603732134399152,
+      "gain_error": 0.003932823044632097,
+      "maximum_nominal_relative_cost_gap": 2.7460548132313343e-05,
+      "source_gain_goal": true,
+      "source_cost_goal": true,
+      "real_goals_supported": true,
+      "all_frozen_quality_goals_met": true,
+      "real_gain_margin": "0.04606717695536790353403597321802489412403272382856771197180840833259783457680943",
+      "real_cost_margin": "0.0099725394518676866557455042874975980774940385867127692128848554792206970056883410",
+      "nominal_costs": [
+        "28.814937312230194044402607563902459309137890547631676954686260200416364416154965",
+        "9.5695992615094747296607889821745454967233405444914501231462592505638585042916692",
+        "4.0566117990634353426253722009504035192087559081752393120280298118040260816224960",
+        "4.0566117990634353426253722009504035192087559081752393120280298118040260816224960",
+        "9.5695992615094747296607889821745454967233405444914501231462592505638585042916692",
+        "28.814937312230194044402607563902459309137890547631676954686260200416364416154965"
+      ],
+      "deterministic_evaluation_max_absolute_errors": [
+        0.0,
+        3.552713678800501e-15,
+        1.5490367659397273e-118,
+        3.552713678800501e-15,
+        3.552713678800501e-15,
+        5.934729841099874e-66,
+        4.336808689942018e-19
+      ]
+    }
+  },
+  "captured_new_numeric_error_maxima": {
+    "sampler_action": 2.220446049250313e-16,
+    "sampler_z": 8.881784197001252e-16,
+    "GAE_advantage": 8.881784197001252e-16,
+    "GAE_return": 8.881784197001252e-16,
+    "loss": 1.1102230246251565e-16,
+    "gradient": 1.1102230246251565e-16,
+    "candidate": 0.0
+  },
+  "source_proofs": {
+    "root_sites": 86,
+    "survived": 0,
+    "new_VM_groups": 5,
+    "unit_refusals": 2,
+    "load_only_aggregate_sites": 0,
+    "first_survivor_history_preserved": true,
+    "body_changes_to_close_survivor": 0,
+    "new_check_added": "Exact inclusive state x=+/-16 admission.",
+    "original_batch_arithmetic_segment_byte_exact": true
+  },
+  "native_guards": {
+    "modes": {
+      "debug": {
+        "native": {
+          "passed": true,
+          "assertions": 1409,
+          "refusals": 249,
+          "by_value_overlap_observations": 3,
+          "new_api_calls": 250,
+          "full_batches": 0,
+          "source_profile_plant_rng_optimizer_tape_calls": 0
+        },
+        "binary": {
+          "bytes": 196344,
+          "sha256": "46568455ce11e5a037790e83d2fe48e403636e51df14d253f6c20685cb496a16"
+        },
+        "C": {
+          "bytes": 266643,
+          "sha256": "0012cfa6f7660a79481da2e7d983b5fa959212f2221b87665f7dea9cd277f549"
+        },
+        "header": {
+          "bytes": 99664,
+          "sha256": "f54bb598fd835dba93a9e17e87c9e1195852be4e20f16d72b074d56b51e2147f"
+        },
+        "synthetic_resume": {
+          "bytes": 440,
+          "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+        }
+      },
+      "release": {
+        "native": {
+          "passed": true,
+          "assertions": 1409,
+          "refusals": 249,
+          "by_value_overlap_observations": 3,
+          "new_api_calls": 250,
+          "full_batches": 0,
+          "source_profile_plant_rng_optimizer_tape_calls": 0
+        },
+        "binary": {
+          "bytes": 134120,
+          "sha256": "9945c9fcf12b86f897d7f9be7facb731f199d8a6cbbf49c2e29d47b07aa2bddb"
+        },
+        "C": {
+          "bytes": 263677,
+          "sha256": "e8c00cd765ce8bdc1d9c05ceb4e37e55961a6342e3c6a506bb76b9e2de14e4d2"
+        },
+        "header": {
+          "bytes": 99664,
+          "sha256": "f54bb598fd835dba93a9e17e87c9e1195852be4e20f16d72b074d56b51e2147f"
+        },
+        "synthetic_resume": {
+          "bytes": 440,
+          "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+        }
+      },
+      "sanitized": {
+        "native": {
+          "passed": true,
+          "assertions": 1409,
+          "refusals": 249,
+          "by_value_overlap_observations": 3,
+          "new_api_calls": 250,
+          "full_batches": 0,
+          "source_profile_plant_rng_optimizer_tape_calls": 0
+        },
+        "binary": {
+          "bytes": 292424,
+          "sha256": "eab5119ff65b0bde10c7a12e231959577d45d0daf35796fe87b81f1780570dbb"
+        },
+        "C": {
+          "bytes": 266643,
+          "sha256": "0012cfa6f7660a79481da2e7d983b5fa959212f2221b87665f7dea9cd277f549"
+        },
+        "header": {
+          "bytes": 99664,
+          "sha256": "f54bb598fd835dba93a9e17e87c9e1195852be4e20f16d72b074d56b51e2147f"
+        },
+        "synthetic_resume": {
+          "bytes": 440,
+          "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+        }
+      }
+    },
+    "successful_full_batches": 0,
+    "old_math_source_and_C_closure_bound": true,
+    "source_location_metadata_and_declared_local_identifier_alpha_only": true,
+    "initial_tooling_and_compile_failures_preserved": true,
+    "four_transport_pointer_cast_fix_before_first_guard_execution": true
+  },
+  "execution_timing": {
+    "summed_actions_including_audits": 506.23528458276996,
+    "native_child_seconds": 2.8003284180304036,
+    "independent_audit_child_seconds": 501.47492904396495,
+    "scope": "Tiny scalar CPU F64 and file effects, not GPU or general model throughput."
+  },
+  "preservation": {
+    "original_source_and_fixture_paths_byte_exact": 244,
+    "original_baseline_and_prefix_repeated": 0,
+    "original_expected_generation_or_passing_gates_repeated": 0,
+    "old_dated_verification_records_or_assessment_edited": false,
+    "curve_prefix_object_and_byte_copy_evidence": {
+      "bytes": 22487,
+      "sha256": "5b050cc26476694f56b4ce925757fa4ab51c0000ba0a0c9bc1feef034b99bea5"
+    }
+  },
+  "registration": {
+    "new_cases": 8,
+    "Coax_C_numeric_model_calls": 0
+  },
+  "book": {
+    "structure_passed": true,
+    "programs": 137,
+    "source_linked_listings": 484,
+    "new_programs_or_other_chapters": 0,
+    "only171_rows_changed": true,
+    "example_or_training_reruns_for_book": 0
+  },
+  "compiler": {
+    "qualified_original_for_new_run_context": {
+      "bytes": 3675,
+      "sha256": "db3c0483238b20c538cdd1a2ea70cc0166749cebdfe9b42af0f1be93eefedcd2"
+    },
+    "new_builds": 0,
+    "post_rebase_current_emission_binding_pending": true
+  },
+  "limits": [
+    "Named normalized scalar one-gain policy, fixed variance and analytic nominal continuous-Gaussian critic; no learned critic/neural actor/quadruped/gait/hardware/GPU training.",
+    "Three measured continuations meet thresholds; no general convergence theorem or iid finite-grid PRNG proof.",
+    "One next-batch checkpoint replay per seed, not full learning-curve or cross-target reproducibility.",
+    "Source bounds and fixed arrays do not complete compiler R14 or broader quantity/frame guarantees.",
+    "File fsync/checkpoint rename does not include directory fsync or crash-durability qualification."
+  ],
+  "large_private_stream_bytes_not_committed": 280579800,
+  "experiment_notes": "psionic/docs/robotics/lqr-longer-experiment.md",
+  "stop_after_push": true,
+  "published_inventory": {
+    "coax/book/capability-claims.json": {
+      "bytes": 16143,
+      "sha256": "ad7e44c71cfabb131ec670f68e04e5d8a3d6a4d0cf40a8d64cd65663a4e94a45"
+    },
+    "psionic/book/PLAN.md": {
+      "bytes": 172123,
+      "sha256": "586c817e741c560a36b1addd9bcbe4a7edf342b695f88a35f7810f05e9f0a31f"
+    },
+    "psionic/book/README.md": {
+      "bytes": 75486,
+      "sha256": "616b9b5092caf9d528965b13e96f8989733aa1d7c455eac016dcf41ab15bbab1"
+    },
+    "psionic/book/SUMMARY.md": {
+      "bytes": 22190,
+      "sha256": "650b809bb0bbf6ca5d259f52a8fadf661aaf14e6bbf07a150826b2e05f7c4218"
+    },
+    "psionic/book/ch171-learn-a-gait-in-many-worlds.md": {
+      "bytes": 38459,
+      "sha256": "7c57011548223967fc91b38755096b4a868fd04268afc070208af47699963c39"
+    },
+    "psionic/book/chapters.json": {
+      "bytes": 76850,
+      "sha256": "f5623266363516511cee0b68e83d645c09d3eb967fca60e3b02e9d9414d21b5c"
+    },
+    "psionic/check.sh": {
+      "bytes": 45587,
+      "sha256": "66d2b457346beccd18d621038e0260392fb1b0f10d55cc6e8e7404cdfe2a15d6"
+    },
+    "psionic/docs/robotics/lqr-longer-experiment.md": {
+      "bytes": 7630,
+      "sha256": "4fe99176c97218f29537313b2ca832df2c92d57bb9812cd5fa3b70fcf66f4ee7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/README.md": {
+      "bytes": 3399,
+      "sha256": "f20fc029a9b6aed38b82741f4de5abba08e5527011a94a4cbebf7b779f48bab9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/audit-freeze.json": {
+      "bytes": 983,
+      "sha256": "44318bcec0b14da176f04c0c5269b1428498c532e08490c264e164ed57bc346e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/audit-guard-qualification.json": {
+      "bytes": 429,
+      "sha256": "33fd5d972cf6188d2ff16b569a5440a83ad6a9924ad502a7d79ccd0d37a21dc3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/book-qualification.json": {
+      "bytes": 1458,
+      "sha256": "ed19f8f8dab4366ff0049873f171535e7034a6fa4a44bcbcd70a0d083e8978b5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/checks-first.json": {
+      "bytes": 524,
+      "sha256": "0e74bc8d9ddb13411adf867b843299cac70eaa966ddbd879d97cacaf710c94c8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/contract.md": {
+      "bytes": 6223,
+      "sha256": "7d5acb6089b4f2017dfba36b1509e4f7fad178fcdb6f0841832ec88ca3185057"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/core-publication.json": {
+      "bytes": 82045,
+      "sha256": "ad9bc879d7d44f8f0508502b3a6a730b8f6ccf9d44895917d2dd307dd08688e7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/data-final-publication.json": {
+      "bytes": 22487,
+      "sha256": "5b050cc26476694f56b4ce925757fa4ab51c0000ba0a0c9bc1feef034b99bea5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/experiment.json": {
+      "bytes": 24337,
+      "sha256": "9dc911e27fe377e4fa5f219f9ac577ca6c01a183c380ba40d200844d65e3ff87"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/fixture-gate-plan.json": {
+      "bytes": 23740,
+      "sha256": "148a1311c3a952b0e80b7ecc7f361e68c4e6cae84b2dcf03f4afb87ddca0bfab"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/fixture-gate-qualification.json": {
+      "bytes": 929,
+      "sha256": "2a3a5cade1aed5c2546949c2402c7a87cbff9884954da05ceac9bfeb681851f9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-128.json": {
+      "bytes": 2589,
+      "sha256": "630a66c8bbe4f2c5316fc23aa151f76628803dad0fc856d4a898dc367712c04d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-144.json": {
+      "bytes": 2588,
+      "sha256": "012bf9e130729a30832b6ce601f9356a48053450cad72a63a313311b25cfa34d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-160.json": {
+      "bytes": 2589,
+      "sha256": "ed263891f6ffb189481424ca5c6d44d27b1c289ce51711860106805960185152"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-176.json": {
+      "bytes": 2590,
+      "sha256": "6091acc29a7d6c95874d9440f2f3c669ee9ba35aa5a925ecc5db71e319024a58"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-192.json": {
+      "bytes": 2587,
+      "sha256": "167ebe09a75dc1f870b1b010dbb891d61c3da2784648e5c02dcfa0a345caa177"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-208.json": {
+      "bytes": 2588,
+      "sha256": "ed75f48d81890ff3d0bd508d2c5b71e3a4c2fbfddc85c71cdba79225c1141496"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-224.json": {
+      "bytes": 2585,
+      "sha256": "d31d091487a4d7c6ae43edb55fb7493ebb347fd8e7c39d4999809127cf73b600"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-240.json": {
+      "bytes": 2591,
+      "sha256": "8aea11b283c2e80822be7914e7365e162e1b47db7a20a2bd385e6f5956ba31e1"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-256.json": {
+      "bytes": 2589,
+      "sha256": "81d8598906fe8d7cdc4edfa158f89921fa7f914a23e3f397d8695d888ddef59e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-272.json": {
+      "bytes": 2588,
+      "sha256": "435c32e18b493e60bf8f2ca6d2be1dc65ebe55e89ae5c1c36cf7a57cc1d56375"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-288.json": {
+      "bytes": 2587,
+      "sha256": "0070497f64d70aa14f4a7dc5abfccafd027769ab1414a763a7348f82b7033ce6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-304.json": {
+      "bytes": 2588,
+      "sha256": "661a467f3444077ea78d590c5ad05dec83863aa3201f36619cc8869861ae2d63"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-320.json": {
+      "bytes": 2589,
+      "sha256": "dc114f46e9da339a76521abb530052ff3c739e04294d53500097666930f1d6ec"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-336.json": {
+      "bytes": 2587,
+      "sha256": "f51bd7821b61596276f2de9c8e1ee4df9f03d4aea222727a4db859cee6c84944"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-352.json": {
+      "bytes": 2588,
+      "sha256": "9d7bae592687e174cecc98279db0290457b484bfc134031398b940a8261ac9ad"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-368.json": {
+      "bytes": 2587,
+      "sha256": "b6c7db22e037d5542654fb9b4262bf6aeea0d4064eb9ac73d650b0641f079245"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-384.json": {
+      "bytes": 2588,
+      "sha256": "1672699a3fb007128bd91d94311a19e1ec379557eef9b3dbc9e3fe30e4a53024"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-400.json": {
+      "bytes": 2588,
+      "sha256": "fa608c29f1eefd70ec6bd5b7fa499d628668ec02c0820f96e482058ee356f173"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-416.json": {
+      "bytes": 2588,
+      "sha256": "0586dc081988ed01bfbdbb6cbf3c930fa74d81d52f22b6878eedd5cd2ccca1c4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-432.json": {
+      "bytes": 2586,
+      "sha256": "9527677db5cad8e0f18ffdb4cd9c373e4ac240b63db0b428107f3fb91d175879"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-448.json": {
+      "bytes": 2587,
+      "sha256": "769d67d7ba3ed324d8f04c2565c4bc8083de367e4cc390547453a16fe2b5eb5a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-464.json": {
+      "bytes": 2587,
+      "sha256": "ee522ef08510da5b1b7e42facea7da199c16c0b8e5937bd901243e0c30fc145d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-480.json": {
+      "bytes": 2586,
+      "sha256": "a171c1ae4c43d1d1ebb3baee96a9c23af8037339b1bbfd936faaad495b10e774"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-0-batch-496.json": {
+      "bytes": 2586,
+      "sha256": "0c1d69b421e19e22ce67d34cba2064824607ea6034ff26aae806e3b1aef4f5ff"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-128.json": {
+      "bytes": 2588,
+      "sha256": "90327d28d748f94714e9f0887955f23703abfcbe474c325732ea6f6b3c0ecced"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-144.json": {
+      "bytes": 2588,
+      "sha256": "79f2a53603f0507fbf94e0f333f5554eb9da26140a84b1b356f0aff88d3d5980"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-160.json": {
+      "bytes": 2587,
+      "sha256": "2c18e770325d32a7915a7419574f84ed9f38dea678048006ccaaac56c7c187d9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-176.json": {
+      "bytes": 2587,
+      "sha256": "4f54867ec645bf0e1c5c3cb98253bfdf5aace033e02e6374b6023baf65623a73"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-192.json": {
+      "bytes": 2586,
+      "sha256": "0a96269e9292003641ebc83dd9d05f825a979f15057741f490afe433df7aac79"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-208.json": {
+      "bytes": 2589,
+      "sha256": "9eb0103689bb17232f60a2dd29611eba4fdb99b03419cc085bb32181f80c98e6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-224.json": {
+      "bytes": 2587,
+      "sha256": "c8ed0a64f8b99fb4e3d3b27ad563158c5021dc7de86564d9059cf7e4a65255c5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-240.json": {
+      "bytes": 2588,
+      "sha256": "4aafb8d37229fac4e937ea8fe96e9693a4f0b357a4cc0f728a1636a5668c05c5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-256.json": {
+      "bytes": 2585,
+      "sha256": "ab82774511651f59632eb089d01f0647b94ea6719a3db7e4a9cbb1de6c88e2fd"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-272.json": {
+      "bytes": 2586,
+      "sha256": "aeb8ad4168146308c6874cdadcdec7a44a64173ef83b12e6291be1654e3b224f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-288.json": {
+      "bytes": 2588,
+      "sha256": "1464fc398c1ea273c15ffbadc93ee1a4d6750559e21c717b743c11f0e2f2f367"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-304.json": {
+      "bytes": 2588,
+      "sha256": "f96a3d23f0218bb1c58f0e3a5b29748d4075289bdbde3ea1b0d4aa876ae06f42"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-320.json": {
+      "bytes": 2586,
+      "sha256": "f50de9044a4886840ee646d860e3ebe7b4937a6ba530675619e18a1bdfe97aed"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-336.json": {
+      "bytes": 2589,
+      "sha256": "62d4a443dca91c81d0a15a35e47569d569ec6203a58804216d166f5e77b2ee96"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-352.json": {
+      "bytes": 2588,
+      "sha256": "6fe29cb4ece941ecd99d82e18a6c8d3071a5402a649df0a8f9b1bece262e4fee"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-368.json": {
+      "bytes": 2590,
+      "sha256": "74311fd5d04f461948f30651f74e3e6cc20ebd033f019d99716d85955f2449c5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-384.json": {
+      "bytes": 2589,
+      "sha256": "c2cce62589bbf3cf9b566fa230024191158d81110acb52f6bce926d70ac2d21e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-400.json": {
+      "bytes": 2587,
+      "sha256": "4eef2ade12b990768b9a2540f40f694c472a458331780c654d59d1e99350667f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-416.json": {
+      "bytes": 2586,
+      "sha256": "d937b88b4b2787592c5c63e9f6e394da7e374306bc9eee3e6dbc373a09dbcfc5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-432.json": {
+      "bytes": 2589,
+      "sha256": "2fea4e6148b8cb58203583aaceee811a5ffcc19a9a1951315077df03d714c8a2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-448.json": {
+      "bytes": 2588,
+      "sha256": "55fdd25113b9ea390d9d4c8842c32eec305cda4b5e302ef28caeb69366f826a0"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-464.json": {
+      "bytes": 2589,
+      "sha256": "a9f91b2ab5c9c0fd7864e7960df15c282a1b69a774bf82481c4413b8b9e5b812"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-480.json": {
+      "bytes": 2589,
+      "sha256": "d87485b0fe7bb27754b63d1fa5e42ae70686c43cc47e2bfa6102b68e242fea9e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-1-batch-496.json": {
+      "bytes": 2587,
+      "sha256": "8026f76d83877feb3c648d3a733bdba569c7218cc7f23f59c8d9c102c947f2fc"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-128.json": {
+      "bytes": 2591,
+      "sha256": "084a1ade7b77277d8ee6f40fc53dd6308ff1486649af07c268a4736aa472980e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-144.json": {
+      "bytes": 2589,
+      "sha256": "4b66a8f73fd49e9246835b7984cae177255f792c4602c7694d73623d928ceb4c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-160.json": {
+      "bytes": 2589,
+      "sha256": "32f902fe96e0067cedc222e8306b44399ec5898183fb8a215b57b01d29252873"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-176.json": {
+      "bytes": 2590,
+      "sha256": "22ff84bd7a4975d7b4288a67844a0dab99c3de80b8b46b33c37ef10f83e24694"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-192.json": {
+      "bytes": 2584,
+      "sha256": "ad33667d1578803c6a1c3de1cc82e75e05bb22609662402b62eec82b47f161cd"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-208.json": {
+      "bytes": 2586,
+      "sha256": "f37a6f57b2966add86f0d85dde9f11dd9b5a5631fab73b7e6db0959fa4b51ac3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-224.json": {
+      "bytes": 2586,
+      "sha256": "3011c1fb901000066e093d7ba522736cb11a41eb9b9c9dbb4d6aa66e4b2462af"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-240.json": {
+      "bytes": 2589,
+      "sha256": "c9be0c6537426781f0ebeff94d3ac6cfd163ffdfcbd246e5e7c5635635a16f07"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-256.json": {
+      "bytes": 2587,
+      "sha256": "8944c2d3bbb06fbb4052a44c20f544c5879738b0fb528813b38915dc3bb77832"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-272.json": {
+      "bytes": 2589,
+      "sha256": "54d24c13bc22e4fa5bb78f102bed43b5aa6afa034e168501d046f6d08a6efdef"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-288.json": {
+      "bytes": 2587,
+      "sha256": "af1c1853b1d9f391694ff61c8479e69d76898809fbd3cf8713b06b1f2dd40415"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-304.json": {
+      "bytes": 2589,
+      "sha256": "f81030161e1749c21f7a359af33267b242470e823bf72f8a9cb11d8604daeab7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-320.json": {
+      "bytes": 2586,
+      "sha256": "0dc7d1f3efa1e97f972562289d8a65697f400cbe6d3d0a2addb7ceafdb38e695"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-336.json": {
+      "bytes": 2589,
+      "sha256": "ed369fa42a07bd4f60ca2131669a06f324a03fd33211a66eac918ec5613bea15"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-352.json": {
+      "bytes": 2589,
+      "sha256": "c912d194f906c7289d730abd992cb0d42e3676de1bea7ade9bbbe88c9a07dca3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-368.json": {
+      "bytes": 2588,
+      "sha256": "3871f8e11365f1dc315992c5bdcab9a2e1f998dd88fc29002988ead7cecf8535"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-384.json": {
+      "bytes": 2587,
+      "sha256": "92613fc26eb156b45057a48d033802a549c475bf781ca5a7a35d5690cfe514a8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-400.json": {
+      "bytes": 2587,
+      "sha256": "088f385b95792c2ef3a393705eb00751ffcf73a93ce000686157aa86cb7915f2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-416.json": {
+      "bytes": 2589,
+      "sha256": "57e80c3701e6fd6eac326783c5c680dd2087c19edf58114544faa8fd64eaadca"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-432.json": {
+      "bytes": 2586,
+      "sha256": "33cf9e65e85311a49efe6df16ab0641154e8da3bb2dc0aab1dc7ec7cd3f7a9a6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-448.json": {
+      "bytes": 2585,
+      "sha256": "6c059b5b7602011ce1c7c76ba45d9b3e4068f43418d13d1774a9bef8d211bb9e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-464.json": {
+      "bytes": 2588,
+      "sha256": "d92f9283c8ff0040d9429b0d32391a7200f014ea25c178865622fcf208858862"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-480.json": {
+      "bytes": 2590,
+      "sha256": "a655a3253de9d4923a37f4b29f135487c4b0b3708e6e4d38c8481a999152e33e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/canonical-seed-7-batch-496.json": {
+      "bytes": 2584,
+      "sha256": "a9fdea40883eda6af5160553efa24f7bcb8c2c6950d20001636900eef8ac83c8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/evaluation-seed-0.json": {
+      "bytes": 3873,
+      "sha256": "dfd7025226e5ba2129b803c1c77cbdc8c7fe4d1da775cbc94b75485373e52444"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/evaluation-seed-1.json": {
+      "bytes": 3871,
+      "sha256": "4da0621b5fe0b959f3d7e66a72bd546cc73f4d0b922cecd5410a494a7a963372"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/evaluation-seed-7.json": {
+      "bytes": 3874,
+      "sha256": "ee20738a7d946c1cde0d4b88afbb76b4ca89b69fe85b2bdd3001f437133ff9b6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/import-seed-0.json": {
+      "bytes": 1462,
+      "sha256": "9261f0d52cb7a8e33cefe5348ab90b55160283ee3e2e89ac728a6becba0efcf1"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/import-seed-1.json": {
+      "bytes": 1462,
+      "sha256": "af78bc4c7c23d9173a94a428333c44ea9a2b7c3ec6c7255953bf38216968e568"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/import-seed-7.json": {
+      "bytes": 1462,
+      "sha256": "b7e6049f4033553aefeb03401353068367a1ab6b5381fb5715ebe34709e3f955"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/replay-seed-0.json": {
+      "bytes": 2240,
+      "sha256": "08475eebefb7043a98070953777c965bfdc45f087c3e773277e3a338f684fb11"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/replay-seed-1.json": {
+      "bytes": 2240,
+      "sha256": "2920600f9185ee19c5532ce76873ce848acf31563142d80e4888eb7451ec8e4b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/audits/replay-seed-7.json": {
+      "bytes": 2240,
+      "sha256": "f61a6431ec132ac589d4ead703d1f4534ff028bf3023321c7135c79c48fb8309"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/curves.csv": {
+      "bytes": 214379,
+      "sha256": "a67f8ffc62907cb5240ed5b2afb6309912aca5846098e64011a465f70f1fd018"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/curves.json": {
+      "bytes": 713641,
+      "sha256": "8f2b2995e1420404da812ecc3c9a611c774427e33c515c993785bef1538de064"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/original-curves.csv": {
+      "bytes": 53006,
+      "sha256": "8c66bc6147c71b35d3281522c979227dc139d9387acf288e82e8b55221b44c00"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/original-curves.json": {
+      "bytes": 177852,
+      "sha256": "5860312d33415fcf0753fa5b36497eef1e33721018a151c3f46604302213a189"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/original-summary.json": {
+      "bytes": 27313,
+      "sha256": "e214292d3d749c19d9960d00d906a68aca25270612158114875809908655ae14"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/publication.json": {
+      "bytes": 14248,
+      "sha256": "14252db074c932d9381af5fa46acf88b616b66545318aa8c6069a41333281eb7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/summary.json": {
+      "bytes": 69043,
+      "sha256": "bf11ba49eb348d56ac43a255d457cfc5e73fa6bbea9ad7df3da2f7d38401327d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/input-freeze.json": {
+      "bytes": 821,
+      "sha256": "c4ba4c9a3c80d0102fbe678eab7feda0341603dba4733e6609feaa920601c524"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-128/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "400e2b5f750fc25cecbf6a3d7bff343a7f7659140314f1d01b3610aa59c131fd"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-128/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "b5493619bd77333f15b9e86e31a8a057ea6c2d5df10b2accc06fe49623460ac7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-128/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-128/stdout": {
+      "bytes": 152,
+      "sha256": "a8a89f2954b4a0f4ac0165f3c909e9f1a5f293f18f9142b673da8f78e2b6e13e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-144/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "e7c1f94ea20d39fef1b6397fb2f9f7e8bdb87d79ff1c855fbddb19725b56b6f0"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-144/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "6d919461464965fae9a0e8d70001ced340754e43fb5a4fde094df64eed2575c8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-144/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-144/stdout": {
+      "bytes": 152,
+      "sha256": "a815734d44d27d73ca556f575553efc70dbfb0adc09ba3feced8645b89c8b862"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-160/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "295422d47e86950868da3aedbf4bacb3ab90c0cf7dfeb3cd4b32e794791d3a71"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-160/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "3f0c965ab3508ded65419d6391685eca4deca530e36a70af68f3d0a2f3c6f4cf"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-160/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-160/stdout": {
+      "bytes": 152,
+      "sha256": "adb44b901709295b623213f506d51adbcc1040421134cdf301cebae616562ee8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-176/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "162aeb7b99f5db59c080428fb858104965b434ff801775fd0f331a5487688010"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-176/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "79b69962376c81fb12bb2e0dc6e47400d06b1c6ad41fdc9c3c3c76ce3307869e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-176/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-176/stdout": {
+      "bytes": 152,
+      "sha256": "6ec458b2a335e2bf35cfa9cc783aff876058fe59a315350748701d5b160bea75"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-192/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "b5f46bb53d3d5c365acdcf63b8bd7729b3d714c3a8b7fb34edfc5cbceae370b9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-192/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "92eee7cc3178128915b53963e47eda57d5427b8a8fc757e6c0986ffb3a169a11"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-192/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-192/stdout": {
+      "bytes": 152,
+      "sha256": "d2343b3fa90fed39bf08cd422363892c249bfac7d08b09a63626b5f894faee91"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-208/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "ff0d7ca13366c8908286bc25e6213c6a6e80804b65a8ee97523299965af08c5f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-208/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1f66e84ebd9a92250d73bd2b992b6967a156c63183ff2e1fbe2b19336f9d543e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-208/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-208/stdout": {
+      "bytes": 152,
+      "sha256": "4bcedeacd1422784223f04d0fe35beed29db31a68c1344322dd0f51b2f50f80c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-224/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "85c3d23e70d778cfe7c5031ef5ce1e4320e78cf49e222a7357828b44c4f365d9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-224/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1c71585096886a14806fe264b6a68e3bab85e3ca7d76b6c5fafcec04e9bc9ab5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-224/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-224/stdout": {
+      "bytes": 152,
+      "sha256": "d5878705a9070fa656774a69ce5b59090729a8e96c7df88b0f1f8657e223c060"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-240/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "95aec2e885bee943f50869053ab7b04ec3700448e67db4d7763d5e256a472c7e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-240/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "5056e8a8bd7a73a7f6b5b3e002c199ca8471e8ebfce3bbbd5eeeddeefa1f671a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-240/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-240/stdout": {
+      "bytes": 152,
+      "sha256": "f03a22aacfe10aeb1ea2b547d79cdacf1dffb34cdf54e4198ff10d1759b7788f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-256/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "0e71ed6ff25bb479dc6c41a7231c7c12b91d2f22580944066b2ba77267f6f52a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-256/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "d3d42f77dbf6ee8b241624fe8086d1a2f09f52e9847461d23796cc9b0681a97b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-256/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-256/stdout": {
+      "bytes": 152,
+      "sha256": "5892d81b91381e0260659d436435c6dbefdeb4422b3bc1fccdebc343ff2334b4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-272/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "9a8779545d9936cdec037231b03f08f7bb06ea93ceb8674e95ba51ffe94e73d6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-272/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "163b68c949fedd1ac8c35f762d16165103ce57523d750c94dfb0a6d3fdb70dbb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-272/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-272/stdout": {
+      "bytes": 152,
+      "sha256": "7f2a8407820664acafe71893dcb64ca6ae177e26591dea28090c6a1a93788fad"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-288/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "c1f0f156b875cc96c5156d99614aa57bb6c12644630408560b92f8aa523d036b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-288/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "6e6b30a4f203228f683e68fbf7baa66b9182b835de2b4ecdbc7820f173138537"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-288/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-288/stdout": {
+      "bytes": 152,
+      "sha256": "31131a6b13a3d976f5e8ca85792385b19b5aa70b50a113c4fa223c5c8c32d69f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-304/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "7a61481639d21633eb76dd0bcade178b4d1c642133dd4fca162c33265331c361"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-304/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "ab3d9af24778516d63ee21b0529ccbe7d221c9e4f659ccfd8d0147250f00ba3a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-304/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-304/stdout": {
+      "bytes": 152,
+      "sha256": "cb774baf06749d85b73072b15880ce7eedda015198069766178f04c9efabf4ae"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-320/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "df2c92258b75478f8bc651af3b78d82b75dbec150893fba8abc3540e15e8bdc3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-320/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "997ff2fd311b123e2c1d0e401e08da031b94d1b2c69b68e34bbb8ea6559b77d0"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-320/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-320/stdout": {
+      "bytes": 152,
+      "sha256": "db48e51eccde364c17e949d2c15882be9afe5cc4f6ee6eb82034d4fbc77124f8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-336/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "a81085a2cc7136fbf5d80d2c0060e718da9bbfe55b18f3296e094ae4b644bd73"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-336/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "b66e01530be66cbb410ae3776668b46d5431a61c8e4bbdd85b7fbb032030e0a2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-336/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-336/stdout": {
+      "bytes": 152,
+      "sha256": "d009148361e5ce5d6253a25dcc0b13f88b356a53f41f46da8c1779a19598d678"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-352/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "5e819dac448f7f03eb0081120d06e961cb81a2603b3b65d90efdfbd90123b7fc"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-352/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "057a9fb806ddb6ef1ed566cff485c57bc045c6447e211e3e012986cc1c25a713"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-352/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-352/stdout": {
+      "bytes": 152,
+      "sha256": "516090b0ff9d5454ce9b27165979b83bf1134ed94d2788e3bdc5e1a2f3fe5e74"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-368/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "ccadfb583d38546c7f4065a829ce5b3498a8377a371bbbd6ccc9593131f0335c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-368/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "5d3ee75f4d237022f5b5fea953fdef442f2a79adde1e4e5baf5114cd6120a034"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-368/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-368/stdout": {
+      "bytes": 152,
+      "sha256": "cd4048c649bc382ae0c89d40b1e6efdd4e5deac72e3ea8f867c2e68572f881e4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-384/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "8d58222366d31e88e872176038446305541ec010b567e3fbcef3a61f17bc43e4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-384/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1d771a65086fb605d84d1fab3b1a8e9e2254dc4888bbfcef87194c3640a92c2b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-384/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-384/stdout": {
+      "bytes": 152,
+      "sha256": "65ac5e1ecfe1c6cce743f554736ec36a11f8b1085f224a72652f9396bd357bcf"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-400/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "076f768d781e545ae8dd1bcb4041daa249475cfd6fbde23297fc531c907bb30f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-400/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "26ef5ca33011fb674d984c3c8134c62af06b81b913d78a0ce6ab660e010ac445"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-400/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-400/stdout": {
+      "bytes": 152,
+      "sha256": "f1046399c4bdebb732bac25b2457b71b203360557bded111952e45209a1598fd"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-416/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "e837ebd399cf75d861f4f75de62cdbbc98fcd2e5c48845ccbbac8d6dc2c33b8b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-416/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "074f39aef85b684d39d81a413e4ebd38a4b1fbbef38328d78203246fe160ca65"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-416/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-416/stdout": {
+      "bytes": 152,
+      "sha256": "9180d98ae51daf93d6c72d1edf727132d33844246bb44df205e86d19584da794"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-432/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "97172c04923dcaf4f8776a7972e7ddd5d400fcfea19b2cbd86d1fa107d746225"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-432/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "d7d1e9364bfb662fca3e8a0376ad9e98eac8c556149b9fd34813b6e643853204"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-432/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-432/stdout": {
+      "bytes": 152,
+      "sha256": "61ba813602b5d7a78b744a02fef08ab17cca392ea30981e872e9f25afa2dadf7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-448/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "8636dc1c24012fc47b834d401a9500c52db13e8dd3c55c0003593019eae360b6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-448/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "fcd0a9f67ac5c4da01121235819e3b366c9f3f54b4756ef61d82bcabd2a16494"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-448/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-448/stdout": {
+      "bytes": 152,
+      "sha256": "095421f36fa72ea4838ff5a7f35aae8d79b01b023c3a7815630b2d80daf6689c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-464/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "937b0c0804cfc2b301c8bfa6881bad89e45599701a700c1eeb92723caea20bb0"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-464/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "71acbfd8aa62eed0c19f0a9b5241c24ceb92661adfae4c1d3ea1151d07435793"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-464/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-464/stdout": {
+      "bytes": 152,
+      "sha256": "e6c55bf99fb83b52a4475b229cf844983b4323be79d9d2087682d519075efab6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-480/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "de9d340c327ad2dd4a4308e45ae49e3cb7185f76204025d0e071a4976d5409a1"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-480/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "412c0551afc85c20f7b0e288aff6f5b17481d52648fa35046fb659da62bab6e3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-480/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-480/stdout": {
+      "bytes": 152,
+      "sha256": "c30daf12e07ba58ef1309f31e5efe7f5fd3fd8c55b7caa1da41bb495e0cae980"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-496/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "76390237e4b3d127a6b3b6e0abd8a22e49ae76b670ff191b8973bad8ce29bde7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-496/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "3b58c3985d4cdaa77935253c1810ac42a95fc01d2eb585e9b3693ed03769db25"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-496/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-0/batch-496/stdout": {
+      "bytes": 152,
+      "sha256": "148328f6079bbbcadc4c75b17be24fdc1624331bc9b2a3d61c493356a6f57ccc"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-128/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "229c7fb17fff08359c131436b57bfbc6ef34268669b01f90e2493e106ccbf652"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-128/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "b5493619bd77333f15b9e86e31a8a057ea6c2d5df10b2accc06fe49623460ac7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-128/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-128/stdout": {
+      "bytes": 152,
+      "sha256": "a8a89f2954b4a0f4ac0165f3c909e9f1a5f293f18f9142b673da8f78e2b6e13e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-144/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "d7c70a4346a46629e831afec2814c493ccf4547738de2627bc96af628536586b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-144/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "6d919461464965fae9a0e8d70001ced340754e43fb5a4fde094df64eed2575c8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-144/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-144/stdout": {
+      "bytes": 152,
+      "sha256": "a815734d44d27d73ca556f575553efc70dbfb0adc09ba3feced8645b89c8b862"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-160/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "2f418b6a7289c3ea82ca041124e728d18f4402fba53f981b467a11e72430f773"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-160/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "3f0c965ab3508ded65419d6391685eca4deca530e36a70af68f3d0a2f3c6f4cf"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-160/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-160/stdout": {
+      "bytes": 152,
+      "sha256": "adb44b901709295b623213f506d51adbcc1040421134cdf301cebae616562ee8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-176/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "10cf15af447c4e20805d87f1322d93961205dcfb69dc282b52c5ae82a2004901"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-176/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "79b69962376c81fb12bb2e0dc6e47400d06b1c6ad41fdc9c3c3c76ce3307869e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-176/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-176/stdout": {
+      "bytes": 152,
+      "sha256": "6ec458b2a335e2bf35cfa9cc783aff876058fe59a315350748701d5b160bea75"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-192/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "bbe4e8bf18f810c35849f9b85a9db7d7b9a05aed09fbd75d584ee73d4ddc1f9d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-192/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "92eee7cc3178128915b53963e47eda57d5427b8a8fc757e6c0986ffb3a169a11"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-192/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-192/stdout": {
+      "bytes": 152,
+      "sha256": "d2343b3fa90fed39bf08cd422363892c249bfac7d08b09a63626b5f894faee91"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-208/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "933e44b8569453be04ef3b5cf5b19c671795012aad26eca5de9ab3bfb8654cce"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-208/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1f66e84ebd9a92250d73bd2b992b6967a156c63183ff2e1fbe2b19336f9d543e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-208/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-208/stdout": {
+      "bytes": 152,
+      "sha256": "4bcedeacd1422784223f04d0fe35beed29db31a68c1344322dd0f51b2f50f80c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-224/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "95400e34d3c2eb6687ce48df9129fb8fc6784cac38df77eecf1a38a4703f5038"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-224/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1c71585096886a14806fe264b6a68e3bab85e3ca7d76b6c5fafcec04e9bc9ab5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-224/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-224/stdout": {
+      "bytes": 152,
+      "sha256": "d5878705a9070fa656774a69ce5b59090729a8e96c7df88b0f1f8657e223c060"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-240/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "cafffedd2f23e5a6acb96db0024a0d141c7238118b3ff3b25c9c617a9d3ad84c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-240/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "5056e8a8bd7a73a7f6b5b3e002c199ca8471e8ebfce3bbbd5eeeddeefa1f671a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-240/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-240/stdout": {
+      "bytes": 152,
+      "sha256": "f03a22aacfe10aeb1ea2b547d79cdacf1dffb34cdf54e4198ff10d1759b7788f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-256/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "ab8380278a92e8ad95b29c96b0199679ff4584e2a85db1ec3b6c23145b3ce1c3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-256/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "d3d42f77dbf6ee8b241624fe8086d1a2f09f52e9847461d23796cc9b0681a97b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-256/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-256/stdout": {
+      "bytes": 152,
+      "sha256": "5892d81b91381e0260659d436435c6dbefdeb4422b3bc1fccdebc343ff2334b4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-272/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "3770135db7ad0458c170880df1c844768390d0a8c61d338a4ca4807728e52d0d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-272/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "163b68c949fedd1ac8c35f762d16165103ce57523d750c94dfb0a6d3fdb70dbb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-272/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-272/stdout": {
+      "bytes": 152,
+      "sha256": "7f2a8407820664acafe71893dcb64ca6ae177e26591dea28090c6a1a93788fad"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-288/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "7f34963a4e331687b46f01edc5b4ae384565fd7957af96e3611979e68629b61d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-288/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "6e6b30a4f203228f683e68fbf7baa66b9182b835de2b4ecdbc7820f173138537"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-288/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-288/stdout": {
+      "bytes": 152,
+      "sha256": "31131a6b13a3d976f5e8ca85792385b19b5aa70b50a113c4fa223c5c8c32d69f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-304/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "9c07b81e858da1558de03282733bbd543a1330e320d8d0cbe021034f5676e491"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-304/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "ab3d9af24778516d63ee21b0529ccbe7d221c9e4f659ccfd8d0147250f00ba3a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-304/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-304/stdout": {
+      "bytes": 152,
+      "sha256": "cb774baf06749d85b73072b15880ce7eedda015198069766178f04c9efabf4ae"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-320/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "9c80aac18ee700425100e1b26c583d4f94ef6dc479267ad491dfe78d0839823f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-320/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "997ff2fd311b123e2c1d0e401e08da031b94d1b2c69b68e34bbb8ea6559b77d0"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-320/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-320/stdout": {
+      "bytes": 152,
+      "sha256": "db48e51eccde364c17e949d2c15882be9afe5cc4f6ee6eb82034d4fbc77124f8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-336/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "2d47efa25dd3f1e83a50a01e7966254d318e7bb7bb75fd551b2a8bf8a566c09b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-336/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "b66e01530be66cbb410ae3776668b46d5431a61c8e4bbdd85b7fbb032030e0a2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-336/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-336/stdout": {
+      "bytes": 152,
+      "sha256": "d009148361e5ce5d6253a25dcc0b13f88b356a53f41f46da8c1779a19598d678"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-352/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "c497c690768f67347108a2d8ec326f61b54508e6922330dc9435c236a558cf8d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-352/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "057a9fb806ddb6ef1ed566cff485c57bc045c6447e211e3e012986cc1c25a713"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-352/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-352/stdout": {
+      "bytes": 152,
+      "sha256": "516090b0ff9d5454ce9b27165979b83bf1134ed94d2788e3bdc5e1a2f3fe5e74"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-368/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "772fa65abc49b18b1ff32aaca72892a18280131ef91045402d3c541998216159"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-368/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "5d3ee75f4d237022f5b5fea953fdef442f2a79adde1e4e5baf5114cd6120a034"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-368/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-368/stdout": {
+      "bytes": 152,
+      "sha256": "cd4048c649bc382ae0c89d40b1e6efdd4e5deac72e3ea8f867c2e68572f881e4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-384/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "33b881642c61c5f1ae3170ba4aed8efe77970ccf38ea1aa4687596a37cd0fb1c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-384/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1d771a65086fb605d84d1fab3b1a8e9e2254dc4888bbfcef87194c3640a92c2b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-384/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-384/stdout": {
+      "bytes": 152,
+      "sha256": "65ac5e1ecfe1c6cce743f554736ec36a11f8b1085f224a72652f9396bd357bcf"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-400/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "889436c76cc24ff2d2c752829b156b2223347aabd656af0f971cf30e32f87534"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-400/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "26ef5ca33011fb674d984c3c8134c62af06b81b913d78a0ce6ab660e010ac445"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-400/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-400/stdout": {
+      "bytes": 152,
+      "sha256": "f1046399c4bdebb732bac25b2457b71b203360557bded111952e45209a1598fd"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-416/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "5a40b26aa4d4696026d3bb7e5c3ddeea5ecc137cb01323a473de3ca56be921a6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-416/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "074f39aef85b684d39d81a413e4ebd38a4b1fbbef38328d78203246fe160ca65"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-416/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-416/stdout": {
+      "bytes": 152,
+      "sha256": "9180d98ae51daf93d6c72d1edf727132d33844246bb44df205e86d19584da794"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-432/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "ccefd34baf7d95a43de83c6d843643a5aa49f378ea662f27f0152d30b1e6da7f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-432/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "d7d1e9364bfb662fca3e8a0376ad9e98eac8c556149b9fd34813b6e643853204"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-432/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-432/stdout": {
+      "bytes": 152,
+      "sha256": "61ba813602b5d7a78b744a02fef08ab17cca392ea30981e872e9f25afa2dadf7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-448/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "1f4505c1dc96780bfe6b1a53a84908542a90ca91d612786abf1f7a9435b65f0a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-448/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "fcd0a9f67ac5c4da01121235819e3b366c9f3f54b4756ef61d82bcabd2a16494"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-448/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-448/stdout": {
+      "bytes": 152,
+      "sha256": "095421f36fa72ea4838ff5a7f35aae8d79b01b023c3a7815630b2d80daf6689c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-464/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "805204981db509dbfbeb8889d7d71db3b4837cdc3f89f55377f5a0c9bbfc3640"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-464/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "71acbfd8aa62eed0c19f0a9b5241c24ceb92661adfae4c1d3ea1151d07435793"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-464/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-464/stdout": {
+      "bytes": 152,
+      "sha256": "e6c55bf99fb83b52a4475b229cf844983b4323be79d9d2087682d519075efab6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-480/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "c039c2301d075b76bebd8a8042d3c18017259d768ecda966217f3990cfc83f54"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-480/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "412c0551afc85c20f7b0e288aff6f5b17481d52648fa35046fb659da62bab6e3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-480/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-480/stdout": {
+      "bytes": 152,
+      "sha256": "c30daf12e07ba58ef1309f31e5efe7f5fd3fd8c55b7caa1da41bb495e0cae980"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-496/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "8cef1b5978c8d40f30dd1ffe9a1e789c26276bd9dcb554fb985353423f8f2f14"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-496/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "3b58c3985d4cdaa77935253c1810ac42a95fc01d2eb585e9b3693ed03769db25"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-496/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-1/batch-496/stdout": {
+      "bytes": 152,
+      "sha256": "148328f6079bbbcadc4c75b17be24fdc1624331bc9b2a3d61c493356a6f57ccc"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-128/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "caed6c367c22553fe6047b4e37b4067060496cc70f00539129ede4d1adacafd7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-128/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "b5493619bd77333f15b9e86e31a8a057ea6c2d5df10b2accc06fe49623460ac7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-128/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-128/stdout": {
+      "bytes": 152,
+      "sha256": "a8a89f2954b4a0f4ac0165f3c909e9f1a5f293f18f9142b673da8f78e2b6e13e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-144/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "72ffa63c0a31ce7206633334de655efa9ff6c58b57be31ed82bb5f33a1b3b025"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-144/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "6d919461464965fae9a0e8d70001ced340754e43fb5a4fde094df64eed2575c8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-144/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-144/stdout": {
+      "bytes": 152,
+      "sha256": "a815734d44d27d73ca556f575553efc70dbfb0adc09ba3feced8645b89c8b862"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-160/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "5b9407b0c37474026d25b6f56da97059d2d013088a7c05c05eed4a640427c30a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-160/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "3f0c965ab3508ded65419d6391685eca4deca530e36a70af68f3d0a2f3c6f4cf"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-160/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-160/stdout": {
+      "bytes": 152,
+      "sha256": "adb44b901709295b623213f506d51adbcc1040421134cdf301cebae616562ee8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-176/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "db87e997ae7612079510e1d788d6f1184cfab668d06005b218d6fd7b6dc29bbb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-176/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "79b69962376c81fb12bb2e0dc6e47400d06b1c6ad41fdc9c3c3c76ce3307869e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-176/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-176/stdout": {
+      "bytes": 152,
+      "sha256": "6ec458b2a335e2bf35cfa9cc783aff876058fe59a315350748701d5b160bea75"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-192/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "fb7f77133e4271797c8d583c1695178a9a45398fb8dcc1c17592778060cec2fe"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-192/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "92eee7cc3178128915b53963e47eda57d5427b8a8fc757e6c0986ffb3a169a11"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-192/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-192/stdout": {
+      "bytes": 152,
+      "sha256": "d2343b3fa90fed39bf08cd422363892c249bfac7d08b09a63626b5f894faee91"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-208/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "2f62a8a30390fdcd8e7cc8136bf4314282c779b78019a10df7a81da428aeb2df"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-208/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1f66e84ebd9a92250d73bd2b992b6967a156c63183ff2e1fbe2b19336f9d543e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-208/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-208/stdout": {
+      "bytes": 152,
+      "sha256": "4bcedeacd1422784223f04d0fe35beed29db31a68c1344322dd0f51b2f50f80c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-224/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "d38df4619b1fb6d417184d31edad290c33bd7495ffecd6e277546c89324bacf1"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-224/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1c71585096886a14806fe264b6a68e3bab85e3ca7d76b6c5fafcec04e9bc9ab5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-224/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-224/stdout": {
+      "bytes": 152,
+      "sha256": "d5878705a9070fa656774a69ce5b59090729a8e96c7df88b0f1f8657e223c060"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-240/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "6f32234c3e7c2745ed6db771aeeb37d98fd3329b779ff27cbebe2219f35e4007"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-240/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "5056e8a8bd7a73a7f6b5b3e002c199ca8471e8ebfce3bbbd5eeeddeefa1f671a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-240/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-240/stdout": {
+      "bytes": 152,
+      "sha256": "f03a22aacfe10aeb1ea2b547d79cdacf1dffb34cdf54e4198ff10d1759b7788f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-256/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "5a0444613b7d92387c17acd29c63289e6ece012f437cd34b6c84f4f9751cad1d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-256/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "d3d42f77dbf6ee8b241624fe8086d1a2f09f52e9847461d23796cc9b0681a97b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-256/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-256/stdout": {
+      "bytes": 152,
+      "sha256": "5892d81b91381e0260659d436435c6dbefdeb4422b3bc1fccdebc343ff2334b4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-272/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "8efe0c3b95ce408a6d8ca29656250bcf5b211d393f65e5851b90c2d92bd5a428"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-272/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "163b68c949fedd1ac8c35f762d16165103ce57523d750c94dfb0a6d3fdb70dbb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-272/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-272/stdout": {
+      "bytes": 152,
+      "sha256": "7f2a8407820664acafe71893dcb64ca6ae177e26591dea28090c6a1a93788fad"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-288/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "90ae7abed7d138f9a62f384bc9927c05e4331a976fe4e9ef96e968b98fca1844"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-288/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "6e6b30a4f203228f683e68fbf7baa66b9182b835de2b4ecdbc7820f173138537"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-288/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-288/stdout": {
+      "bytes": 152,
+      "sha256": "31131a6b13a3d976f5e8ca85792385b19b5aa70b50a113c4fa223c5c8c32d69f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-304/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "3c8aee2d14d00c5b84797d2c7a16dd6ba1ec8290f5f1afd76258da69a0cbfdb1"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-304/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "ab3d9af24778516d63ee21b0529ccbe7d221c9e4f659ccfd8d0147250f00ba3a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-304/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-304/stdout": {
+      "bytes": 152,
+      "sha256": "cb774baf06749d85b73072b15880ce7eedda015198069766178f04c9efabf4ae"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-320/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "710aa95c534a8ffd78d1c283a195e649d0da6ce301027b65ef63dcac6a1f4020"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-320/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "997ff2fd311b123e2c1d0e401e08da031b94d1b2c69b68e34bbb8ea6559b77d0"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-320/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-320/stdout": {
+      "bytes": 152,
+      "sha256": "db48e51eccde364c17e949d2c15882be9afe5cc4f6ee6eb82034d4fbc77124f8"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-336/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "f37ca02dd36037803e1633ad936407c46a2514a7902bbefae7d8d034f7663c36"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-336/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "b66e01530be66cbb410ae3776668b46d5431a61c8e4bbdd85b7fbb032030e0a2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-336/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-336/stdout": {
+      "bytes": 152,
+      "sha256": "d009148361e5ce5d6253a25dcc0b13f88b356a53f41f46da8c1779a19598d678"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-352/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "5acddf0056bb7cb69beb24a4e7fb49110982021ed63e173354002aa17e242d8c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-352/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "057a9fb806ddb6ef1ed566cff485c57bc045c6447e211e3e012986cc1c25a713"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-352/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-352/stdout": {
+      "bytes": 152,
+      "sha256": "516090b0ff9d5454ce9b27165979b83bf1134ed94d2788e3bdc5e1a2f3fe5e74"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-368/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "9851fd0607d685445c494f9358a769ccb76127dac5f61d725fc6b6882b0b3e35"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-368/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "5d3ee75f4d237022f5b5fea953fdef442f2a79adde1e4e5baf5114cd6120a034"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-368/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-368/stdout": {
+      "bytes": 152,
+      "sha256": "cd4048c649bc382ae0c89d40b1e6efdd4e5deac72e3ea8f867c2e68572f881e4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-384/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "8f44da5be4c284df10dff60802410394028d1bbd35babb518c6a2c6c134d0e76"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-384/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "1d771a65086fb605d84d1fab3b1a8e9e2254dc4888bbfcef87194c3640a92c2b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-384/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-384/stdout": {
+      "bytes": 152,
+      "sha256": "65ac5e1ecfe1c6cce743f554736ec36a11f8b1085f224a72652f9396bd357bcf"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-400/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "2162bb83368ded9527766a78da525ded8bf3550e191621d1f9a99479230f5946"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-400/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "26ef5ca33011fb674d984c3c8134c62af06b81b913d78a0ce6ab660e010ac445"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-400/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-400/stdout": {
+      "bytes": 152,
+      "sha256": "f1046399c4bdebb732bac25b2457b71b203360557bded111952e45209a1598fd"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-416/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "e6d527d9c373cff4fe32d3227b4f295af478df6607ea674b33cdf6bec74c5a81"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-416/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "074f39aef85b684d39d81a413e4ebd38a4b1fbbef38328d78203246fe160ca65"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-416/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-416/stdout": {
+      "bytes": 152,
+      "sha256": "9180d98ae51daf93d6c72d1edf727132d33844246bb44df205e86d19584da794"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-432/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "6e7611920da4e43e80e890ee7789078db04f7ce404f8fa6a2792c40e92301260"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-432/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "d7d1e9364bfb662fca3e8a0376ad9e98eac8c556149b9fd34813b6e643853204"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-432/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-432/stdout": {
+      "bytes": 152,
+      "sha256": "61ba813602b5d7a78b744a02fef08ab17cca392ea30981e872e9f25afa2dadf7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-448/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "b576fe870049e9b79894a1373c0e55b3e5d85f2e5a9d6ed832e376e33173c776"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-448/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "fcd0a9f67ac5c4da01121235819e3b366c9f3f54b4756ef61d82bcabd2a16494"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-448/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-448/stdout": {
+      "bytes": 152,
+      "sha256": "095421f36fa72ea4838ff5a7f35aae8d79b01b023c3a7815630b2d80daf6689c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-464/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "639c4af32c4a0686860ab1c143499fc5fc2dff8133048a80d01b421a43729f02"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-464/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "71acbfd8aa62eed0c19f0a9b5241c24ceb92661adfae4c1d3ea1151d07435793"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-464/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-464/stdout": {
+      "bytes": 152,
+      "sha256": "e6c55bf99fb83b52a4475b229cf844983b4323be79d9d2087682d519075efab6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-480/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "6bf7f115b8eb479117b1276a9b49b9b192e06bba6e34f832af520b3c42936162"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-480/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "412c0551afc85c20f7b0e288aff6f5b17481d52648fa35046fb659da62bab6e3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-480/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-480/stdout": {
+      "bytes": 152,
+      "sha256": "c30daf12e07ba58ef1309f31e5efe7f5fd3fd8c55b7caa1da41bb495e0cae980"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-496/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "48ab85e36cda1961286692a63553f8d33fec1ef0a7af1a256aa89fd3adb058bb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-496/progress.jsonl": {
+      "bytes": 1040,
+      "sha256": "3b58c3985d4cdaa77935253c1810ac42a95fc01d2eb585e9b3693ed03769db25"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-496/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/canonical/seed-7/batch-496/stdout": {
+      "bytes": 152,
+      "sha256": "148328f6079bbbcadc4c75b17be24fdc1624331bc9b2a3d61c493356a6f57ccc"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/checkpoints/after256-0.bin": {
+      "bytes": 488,
+      "sha256": "95aec2e885bee943f50869053ab7b04ec3700448e67db4d7763d5e256a472c7e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/checkpoints/after256-1.bin": {
+      "bytes": 488,
+      "sha256": "cafffedd2f23e5a6acb96db0024a0d141c7238118b3ff3b25c9c617a9d3ad84c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/checkpoints/after256-7.bin": {
+      "bytes": 488,
+      "sha256": "6f32234c3e7c2745ed6db771aeeb37d98fd3329b779ff27cbebe2219f35e4007"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/checkpoints/final-0.bin": {
+      "bytes": 488,
+      "sha256": "76390237e4b3d127a6b3b6e0abd8a22e49ae76b670ff191b8973bad8ce29bde7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/checkpoints/final-1.bin": {
+      "bytes": 488,
+      "sha256": "8cef1b5978c8d40f30dd1ffe9a1e789c26276bd9dcb554fb985353423f8f2f14"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/checkpoints/final-7.bin": {
+      "bytes": 488,
+      "sha256": "48ab85e36cda1961286692a63553f8d33fec1ef0a7af1a256aa89fd3adb058bb"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/context.bin": {
+      "bytes": 32,
+      "sha256": "3944691825d4fb02af5af5af9b258cfdde23318714ec21f8f9fc509dd5b1419d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/descriptor.json": {
+      "bytes": 18103,
+      "sha256": "05d729d67213ee9b0e63618b44ff3e18c23c9b97c4ba0a2c8512c649bb39338c"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-0/evaluations.bin": {
+      "bytes": 480,
+      "sha256": "7363ea31c9e8a16018c29bd2175669391638f423d1c8074dd90add2db10d8626"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-0/quality.bin": {
+      "bytes": 248,
+      "sha256": "1135b4ec9f4d040c6b4d5f9467ebebcf27433759d8b0f613fba10533125d1f26"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-0/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-0/stdout": {
+      "bytes": 61,
+      "sha256": "74e0ef75a4070e0db56517ceaae5bc29e24d448059fe84ea7c7226afa882c170"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-1/evaluations.bin": {
+      "bytes": 480,
+      "sha256": "0ba9748afa5287390671eb57ffa5f11701c90f4812c22f78b1ec1d0827c6e5d2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-1/quality.bin": {
+      "bytes": 248,
+      "sha256": "9c53ec645957077102b43dbc3f79397a874bd3dac284f65062bb1a7d9e039c11"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-1/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-1/stdout": {
+      "bytes": 61,
+      "sha256": "74e0ef75a4070e0db56517ceaae5bc29e24d448059fe84ea7c7226afa882c170"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-7/evaluations.bin": {
+      "bytes": 480,
+      "sha256": "d38d98fd3ab0e1bed68be1ee7ee6000d61ec90eac5324651526027a7914adff1"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-7/quality.bin": {
+      "bytes": 248,
+      "sha256": "777636c52288d264705e2044dc9a2cfeac75614703cd718171cbe0ea4f1eb582"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-7/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/evaluation/seed-7/stdout": {
+      "bytes": 61,
+      "sha256": "74e0ef75a4070e0db56517ceaae5bc29e24d448059fe84ea7c7226afa882c170"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-0/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "1745b6deab3fdec5756b8b3ce12e63901af9ef61a298a9d4e194fac6651e25d6"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-0/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-0/stdout": {
+      "bytes": 109,
+      "sha256": "5979aaecc49e7ed7118ae0fbc769be2272d3c56a8236a3a828835ab6c5912bb5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-1/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "61cbf9d46bb928abb998ea34ca349957b7f5e163b1906aa822a0994ae059ea2d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-1/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-1/stdout": {
+      "bytes": 109,
+      "sha256": "f87ba2af58ba980f299b447bbffbd037670c181b8ecad3237c4dd7f22bbe8d26"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-7/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "29465a55193716254a458c850724c19618fefb38e3660f38e03b12f242cad673"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-7/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/import/seed-7/stdout": {
+      "bytes": 109,
+      "sha256": "0c94ca4585167b183aca2a803cee5d042f0c27b46a3eeb80594b523ec7e4c5cd"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/original-context.bin": {
+      "bytes": 32,
+      "sha256": "a4ddad5ea1696c79256d9682f9f0ce7e153babb8c7236ea3ea9fedb4dbf3f5d7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/prepared.json": {
+      "bytes": 2012,
+      "sha256": "adef095ad36c84fcbf55062b0287cb8d657b231a8291c428d610525ace3c079d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/publication-tool.py": {
+      "bytes": 11891,
+      "sha256": "8721245daf9b5683b74686458c3e029ec3f2a699719b9852297d8366f693776b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/publication.json": {
+      "bytes": 154746,
+      "sha256": "c69c32e4b1365460f0343711214e0253ab0a598a3446b854d9b3e452ecdda165"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/record.json": {
+      "bytes": 389081,
+      "sha256": "6890299496be8725d91ee9db83310310042ae1c29caf004e66a0b6aee8ceca8e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-0/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "24bcd777f68b49c875f58bd2ad3e17bcf56cfafe93083044a831b28c5d5be13a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-0/progress.jsonl": {
+      "bytes": 65,
+      "sha256": "e3ba226fcb03a4618c17b57963afbefa6da54b24bf4f91f9cfa8eaebe9f41380"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-0/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-0/stdout": {
+      "bytes": 149,
+      "sha256": "6e7daf05e3e171cbe4272505f066ada1d0b62d03be2d5110e16b1a49a10173f9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-1/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "7e65f1b150b002a1e59550ce23dc260b335e815896fd8c92bc912e92c00fc516"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-1/progress.jsonl": {
+      "bytes": 65,
+      "sha256": "e3ba226fcb03a4618c17b57963afbefa6da54b24bf4f91f9cfa8eaebe9f41380"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-1/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-1/stdout": {
+      "bytes": 149,
+      "sha256": "6e7daf05e3e171cbe4272505f066ada1d0b62d03be2d5110e16b1a49a10173f9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-7/checkpoint.bin": {
+      "bytes": 488,
+      "sha256": "eafdeea095e30da2cac154b0f85dadc0f048569d43aaaa709b5b11f0a24b9e66"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-7/progress.jsonl": {
+      "bytes": 65,
+      "sha256": "e3ba226fcb03a4618c17b57963afbefa6da54b24bf4f91f9cfa8eaebe9f41380"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-7/stderr": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/learning-execution/replay/seed-7/stdout": {
+      "bytes": 149,
+      "sha256": "6e7daf05e3e171cbe4272505f066ada1d0b62d03be2d5110e16b1a49a10173f9"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/lifecycle-first-syntax-failure.json": {
+      "bytes": 499,
+      "sha256": "3462c6899eaf63903ef971aa9d375708421f87e46919dcaf0b8f52eca5313a91"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/lifecycle-guard-qualification.json": {
+      "bytes": 703,
+      "sha256": "d586b540643734a82cea8bdb1724218dd161c07eaaf1c18ff192fe81b841edba"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/lifecycle-selection-carry.json": {
+      "bytes": 769,
+      "sha256": "3dcdf005263b757fe6174fee4f8ce94fcc2ebcd50fea26a984c415c8d223747f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/lifecycle-shell-qualification.json": {
+      "bytes": 1590,
+      "sha256": "7eef377cfed625c369ed60c74e5ef24f05046b61da698415a07f551b84a388a3"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/mutation-boundary-followup.log": {
+      "bytes": 114,
+      "sha256": "4bde28c85953079d7c17c6ec9fc3355e852deb1235a3228d5f999084578bc1f2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/mutation-first.log": {
+      "bytes": 751,
+      "sha256": "423941d7700d174669b025fdea4bf5b0c21c564ab6e2cfa5dc8565dabc46716e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-canonical/debug-synthetic-resume.bin": {
+      "bytes": 440,
+      "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-canonical/release-synthetic-resume.bin": {
+      "bytes": 440,
+      "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-canonical/sanitized-synthetic-resume.bin": {
+      "bytes": 440,
+      "sha256": "dd411d6ddc048c7f6ae05cf80bf86da60c7c17419d73b9b6042e876091b326d4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-compiler-context.json": {
+      "bytes": 3675,
+      "sha256": "db3c0483238b20c538cdd1a2ea70cc0166749cebdfe9b42af0f1be93eefedcd2"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/aw_step.tokens.diff": {
+      "bytes": 1946,
+      "sha256": "8ef291f48c8d634844e7b19363acae911c978ca06732693037ff1b6375c76553"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/coax_p_rlt_detach.tokens.diff": {
+      "bytes": 391,
+      "sha256": "feb6d75edd5846c5397df19e84fa4bf1c47e65d99802822328b35bd2e486248a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/coax_p_rlt_state_ok.tokens.diff": {
+      "bytes": 271,
+      "sha256": "685ea2349b4f2476a0791f4537afffb354775e4f188208c88c54f5a9bd321ec5"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/compile-effects-debug.stderr": {
+      "bytes": 5395,
+      "sha256": "98cf6904d45967bc8410eeda32c41cd21fbed74b477db3a8d8050be47a2663f4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/compile-effects-debug.stdout": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/debug-carry.json": {
+      "bytes": 23758,
+      "sha256": "619084eab59529a4edeaec06acfc68accf1730b040693baebce13d1e27b8db34"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fifth-attempt.driver.py": {
+      "bytes": 16935,
+      "sha256": "52f4bec733ce27f53f0bdf67c020801a7615dd5c312859ac0a853c702231ec2f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fifth-attempt.native.c": {
+      "bytes": 9457,
+      "sha256": "cf53a30b2f54141dd86d198e51a840c41e398e6e16671dd57af056d1012c55f4"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fifth-attempt.record.json": {
+      "bytes": 29887,
+      "sha256": "d525b3d4c34996e1961aae7bcfffee7c24c86e8eadfd53f51aecfa84250d4e36"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/first-attempt.driver.py": {
+      "bytes": 13683,
+      "sha256": "08b962a2befe90a93e6ee2c5f717edfb15687541c406cac0651ba5f19d77ff10"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/first-attempt.record.json": {
+      "bytes": 24113,
+      "sha256": "a14d81d1bf34b5cde21e53d6aabdd0e7e5f3745612b825e3e579e2b72dc1add7"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fourth-attempt.driver.py": {
+      "bytes": 16595,
+      "sha256": "70dc9f737a5af475def4df14be6b9a7c0b8dc4bc8b96628b1ee6e462144cfd49"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fourth-attempt.record.json": {
+      "bytes": 25254,
+      "sha256": "70fcf5888d074bbb3a94d2eaca9fae6ad3216f0cd84d2fcf104e3c02b80e297e"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/resume-build.py": {
+      "bytes": 5170,
+      "sha256": "b2e97f4e3d6b21e4aec9ba97e6223bd1da1dc359803dea85f7eb5d9901240888"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/rlp_block.tokens.diff": {
+      "bytes": 1029,
+      "sha256": "b9f8eb1e34435b1281f39482c67f2e85ffaf9e3759a26add6bf1918dff1d1592"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/second-attempt.driver.py": {
+      "bytes": 14781,
+      "sha256": "210c3a817a994fb3ffa457ddfd0e083bdf58c9b9c949e2bb16611ce011dbf4a0"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/second-attempt.record.json": {
+      "bytes": 24448,
+      "sha256": "9a2a828289993a29728fd43e962010960cc41bec12078b8f7e70a63989201e60"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/third-attempt.driver.py": {
+      "bytes": 15369,
+      "sha256": "d25a946855675925a1babd68e996dc53cc5b8714a4f9ba31111041aba3252914"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/third-attempt.record.json": {
+      "bytes": 24930,
+      "sha256": "48bece92edf2bb09ce34636028399c4786dbc7b59c4b1c278e865a7ba3babf5d"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-publication.json": {
+      "bytes": 5695,
+      "sha256": "be79e4037cf9ecae7b64b2e4e1138b951be72ce58a5f41934e1a60d100974297"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/native-qualification.json": {
+      "bytes": 38429,
+      "sha256": "a880df8f712de3386956dc3765883d545aa12c2b15fa472bcd5e7e0f87467d92"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/numeric-carry.json": {
+      "bytes": 1107,
+      "sha256": "a7017608697b390261cf82b622b41dedb638c217e65d73594f516c7a89d79643"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/old-call-closure-binding.json": {
+      "bytes": 5579,
+      "sha256": "8ec59594ef79df2a349ea2884fd5c5a37660ed769dc150dbd816e9e79f870359"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/old-native-closure-tokens.json": {
+      "bytes": 603505,
+      "sha256": "50e921d88801f3c66e20d3656e7f390a4bebd5f7fb2f5eee612b803d865b957b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/original-preservation.json": {
+      "bytes": 49987,
+      "sha256": "6a8d70dfb5824756ffea82461d71fb08aaf42643df1a4bac9d1b386f38d8a55a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/registration-qualification.json": {
+      "bytes": 10447,
+      "sha256": "f5e508e82f36ff280e400daa2f680c0bcfce494fc8ef3c765ca0210ff14d3e11"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/source-boundary-followup.log": {
+      "bytes": 270,
+      "sha256": "3b80eea72ca59b1d961022918d92896db843bfd5eb5522c03b45b3577ec4f74f"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/source-first.log": {
+      "bytes": 710,
+      "sha256": "44eb5c66401a2ade93fc7b63e453c34f1699dbadcb4f4ee0b89cf8fb5fcc334a"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/source-qualification.json": {
+      "bytes": 3521,
+      "sha256": "f909aeff88b7d565646ec62d3a7f46b571644a6528f396a7a751f606e26db051"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/unit-output.log": {
+      "bytes": 289,
+      "sha256": "7bf4a4dbf662ce0af8250f5e8605281c9b2edad60547e56407395ebbfe84a683"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/unit-refusals.json": {
+      "bytes": 1113,
+      "sha256": "67757f4da34bda7d32ed124a385e97b3710e67ce9d49fa0b721f1b8edf58423b"
+    },
+    "psionic/fixtures/robotics/locomotion-lqr-longer/unit-state.log": {
+      "bytes": 279,
+      "sha256": "6c3eac61fff8f7c342efbaafa84d2333c7d62b38e451412453fc0840fff5bd6b"
+    },
+    "psionic/lib/robotics/locomotion-lqr-longer.coax": {
+      "bytes": 43,
+      "sha256": "f5db2fe63abfc441005dd54a29d220565b80836b0e965bb9048352e62f80e0b8"
+    },
+    "psionic/lib/robotics/locomotion/lqr-longer-fixtures.coax": {
+      "bytes": 1243,
+      "sha256": "86bd5c100d66c201dc92fb1fcc6d864d097ebd13559d16f5a831f686cb725c79"
+    },
+    "psionic/lib/robotics/locomotion/lqr-longer-update.coax": {
+      "bytes": 6020,
+      "sha256": "7d3bd79164ee7a96b28d2d12fe8dfe957a5b26e12e1ef4762bf5c8dc981cf97a"
+    },
+    "psionic/tests/robotics/check-locomotion-lqr-longer-learn.sh": {
+      "bytes": 756,
+      "sha256": "7e147f900715c1aa55dd0cac7037ffda57235fc845c73b2c6196c8f82ed081bc"
+    },
+    "psionic/tests/robotics/check-locomotion-lqr-longer.sh": {
+      "bytes": 301,
+      "sha256": "d8027a34625db251e5900f0082ebe1e1c7cb55b5485787a959a2559d521dfa5f"
+    },
+    "psionic/tests/robotics/check.sh": {
+      "bytes": 24755,
+      "sha256": "62a16f5526409ab488a4fc6d5ad043b9061edb355e1e384a6eee961bad2b469d"
+    },
+    "psionic/tests/robotics/locomotion-lqr-longer-native.coax": {
+      "bytes": 91,
+      "sha256": "d10a02b11d5d44b600071adc743616f5b5fc859e540bf55e9e1c921c45b2249c"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_audit.py": {
+      "bytes": 29128,
+      "sha256": "cea6103fc71e806e4c184493d8a0404d15785526b5f79771bbfc9e46732b2946"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_bad_output.coax": {
+      "bytes": 124,
+      "sha256": "29361c36c7573f0eeffe2bc0075088f7b3a03e83ba3a09007e708138a8ec5938"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_bad_state.coax": {
+      "bytes": 134,
+      "sha256": "4174465f5625d270b172133af11063715ea96ac441b14960b8cb75d8edf8e163"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_learn.py": {
+      "bytes": 33592,
+      "sha256": "19cba85034adb746f5d17b94bc1ec350f5ca1065597b9f95717650f26fccb331"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_metadata.py": {
+      "bytes": 10762,
+      "sha256": "6da9791e8950560f639227f1936b0573e4ff57fad5bf778ee4e7b6c69208e51c"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_native.c": {
+      "bytes": 9517,
+      "sha256": "d96ca4484faffed38a149074d0f10dd61e14fbb98ba637e934b5a866f3f15f20"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_native_reference.py": {
+      "bytes": 16935,
+      "sha256": "52f4bec733ce27f53f0bdf67c020801a7615dd5c312859ac0a853c702231ec2f"
+    },
+    "psionic/tests/robotics/locomotion_lqr_longer_publish.py": {
+      "bytes": 9921,
+      "sha256": "cb3314739dbe26e9969d8ee806032cb2907962e4ab3836ec04051a00b68bc952"
+    }
+  },
+  "publication_hygiene": {
+    "preserved_frozen_whitespace_only_lines": {
+      "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fifth-attempt.driver.py": 172,
+      "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/fourth-attempt.driver.py": 168,
+      "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/second-attempt.driver.py": 150,
+      "psionic/fixtures/robotics/locomotion-lqr-longer/native-history/third-attempt.driver.py": 151,
+      "psionic/tests/robotics/locomotion_lqr_longer_native_reference.py": 172
+    },
+    "reason": "Keep executed qualifier source and historical attempts byte-exact; no numerical/source receipt rewritten for blank-line styling.",
+    "all_remaining_CRLF_aware_whitespace_check_passed": true
+  }
+}

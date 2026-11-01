@@ -1,0 +1,10 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.lifecycle-first-syntax.v1",
+  "passed": false,
+  "phase": "Python syntax authoring, before any metadata guard/preparation/effects",
+  "source_sha256": "8f509fbe736f616747843848e7a5069ec65895bc20b5738026dd96aa236761fd",
+  "error": "SyntaxError: unterminated triple-quoted string literal, accidental heredoc delimiter at line277",
+  "product_calls": 0,
+  "preparation_calls": 0,
+  "private_source": "/tmp/locomotion-lqr-longer-lifecycle-syntax-first.py"
+}

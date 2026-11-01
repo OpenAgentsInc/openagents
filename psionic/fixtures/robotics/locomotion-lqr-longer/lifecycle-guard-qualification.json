@@ -1,0 +1,17 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.lifecycle-guards.v1",
+  "passed": true,
+  "producer": {
+    "bytes": 33592,
+    "sha256": "19cba85034adb746f5d17b94bc1ec350f5ca1065597b9f95717650f26fccb331"
+  },
+  "experiment": {
+    "bytes": 24337,
+    "sha256": "9dc911e27fe377e4fa5f219f9ac577ca6c01a183c380ba40d200844d65e3ff87"
+  },
+  "positive_cases": 38,
+  "poisons_refused": 135,
+  "product_calls": 0,
+  "old_math_or_reader_tests_repeated": 0,
+  "scope": "New81-action selection, canonical import,128..512 state lineage, same-context/source previous endpoints, direct256 replay and filesystem checkpoint authentication only. Synthetic metadata faults; no training or old numerical oracle execution."
+}

@@ -1,0 +1,44 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.book-structure.v1",
+  "passed": true,
+  "argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "psionic/tests/book.py"
+  ],
+  "exit": 0,
+  "seconds": 0.5266192909912206,
+  "stdout": "psionic book structure: 137 programs, 484 source-linked listings, local links pass\n",
+  "stderr": "",
+  "sources": {
+    "coax/book/capability-claims.json": {
+      "bytes": 16143,
+      "sha256": "ad7e44c71cfabb131ec670f68e04e5d8a3d6a4d0cf40a8d64cd65663a4e94a45"
+    },
+    "psionic/book/README.md": {
+      "bytes": 75486,
+      "sha256": "616b9b5092caf9d528965b13e96f8989733aa1d7c455eac016dcf41ab15bbab1"
+    },
+    "psionic/book/SUMMARY.md": {
+      "bytes": 22190,
+      "sha256": "650b809bb0bbf6ca5d259f52a8fadf661aaf14e6bbf07a150826b2e05f7c4218"
+    },
+    "psionic/book/PLAN.md": {
+      "bytes": 172123,
+      "sha256": "586c817e741c560a36b1addd9bcbe4a7edf342b695f88a35f7810f05e9f0a31f"
+    },
+    "psionic/book/chapters.json": {
+      "bytes": 76850,
+      "sha256": "f5623266363516511cee0b68e83d645c09d3eb967fca60e3b02e9d9414d21b5c"
+    },
+    "psionic/book/ch171-learn-a-gait-in-many-worlds.md": {
+      "bytes": 38459,
+      "sha256": "7c57011548223967fc91b38755096b4a868fd04268afc070208af47699963c39"
+    }
+  },
+  "programs_expected": 137,
+  "listings_expected": 484,
+  "new_examples": 0,
+  "Coax_or_native_or_training_execution": 0,
+  "claim_evidence_checked": 4,
+  "changed_claim_evidence_hashes": 2
+}

@@ -1,0 +1,3 @@
+ok   #test LQR longer state binds both ends seeds counters and optimizer step (1 case, 44716 steps, 1 ms)
+1 of 133 checks (--only 'LQR longer state binds'), 1 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

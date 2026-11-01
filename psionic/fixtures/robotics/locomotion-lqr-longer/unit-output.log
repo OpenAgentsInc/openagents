@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_lqr_longer_bad_output.coax:2:62: error[E0317]: argument 2 of 'rlx_batch' is [] RltIteration, given [] RltState
+  main :: () {out:[1]RltState;status:=rlx_batch(RltState.{},out[..]);}
+                                                               ^
+1 error

@@ -1,0 +1,42 @@
+--- old
+
++++ new
+
+@@ -102,17 +102,17 @@
+
+ ;
+ }
+ {
+ int64_t
+-coax_lo483
++coax_lo66
+ =
+ INT64_C
+ (
+ 0
+ )
+ ;
+ int64_t
+-coax_hi483
++coax_hi66
+ =
+ INT64_C
+ (
+ 16
+@@ -122,13 +122,13 @@
+
+ (
+ int64_t
+ l_w
+ =
+-coax_lo483
++coax_lo66
+ ;
+ l_w
+ <
+-coax_hi483
++coax_hi66
+ ;
+ l_w
+ +
+ +

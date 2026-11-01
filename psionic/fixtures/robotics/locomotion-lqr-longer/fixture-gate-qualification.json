@@ -1,0 +1,24 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.fixture-gate.v1",
+  "passed": true,
+  "syntax": "Carried first bash -n result from authored gate before this new dispatch spy.",
+  "argv": [
+    "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/locomotion_lqr_longer_native_reference.py",
+    "--coax",
+    "/not/executed/coax",
+    "--output",
+    "/not/created/output"
+  ],
+  "dispatch_spies": 1,
+  "real_product_math_compiler_learning_calls": 0,
+  "source": {
+    "path": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/robotics/check-locomotion-lqr-longer.sh",
+    "bytes": 301,
+    "sha256": "d8027a34625db251e5900f0082ebe1e1c7cb55b5485787a959a2559d521dfa5f"
+  },
+  "metadata_plan": {
+    "bytes": 23740,
+    "sha256": "148a1311c3a952b0e80b7ecc7f361e68c4e6cae84b2dcf03f4afb87ddca0bfab"
+  },
+  "metadata_plan_numeric_calls": 0
+}

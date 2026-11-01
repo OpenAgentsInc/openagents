@@ -1,6 +1,6 @@
 # 171. Learn a gait in many worlds
 
-The runnable CPU F64 profiles provide return targets, a clipped scalar objective, Gaussian primitives and a projected scalar-LQR actor/update pipeline. Its mathematical qualification and prescribed three-seed execution are complete; all three runs miss both frozen convergence goals. These scalar profiles do not simulate a quadruped or satisfy the full gait acceptance criteria.
+The runnable CPU F64 profiles provide return targets, a clipped scalar objective, Gaussian primitives and a projected scalar-LQR actor/update pipeline. The original 128-batch study missed both frozen convergence goals; a separately frozen 512-batch continuation meets both goals in all three seeds. These scalar profiles do not simulate a quadruped or satisfy the full gait acceptance criteria.
 
 The eventual workload is a quadruped practising across many randomized simulated worlds, followed by held-out terrain and teacher/student evaluation. The scalar LQR environment and actor updates are implemented below. General neural actors, learned critics, physical worlds, device batching and transfer remain design work. A return array shaped like several worlds is not evidence that those physical worlds exist.
 
@@ -92,7 +92,7 @@ The [foundation fixtures](../fixtures/robotics/locomotion/README.md) retain inpu
 
 ### Next steps remain explicit
 
-Scalar distribution/log-density and ratio adapters are qualified below. The scalar actor/update and frozen LQR experiment appear below; its three-seed outcome remains pending. General neural actor/learned-critic training remains later work. Keep score-function policy gradients distinct from differentiating through the environment. A serial CPU return batch does not supply Aethyr's quadruped contacts, sensors, reset/RNG independence or device batching. Those foundations, the full four chapter acceptance criteria and compiler R14/R20/R21/R23 remain later work.
+Scalar distribution/log-density and ratio adapters are qualified below. The scalar actor/update and frozen LQR experiment appear below; its original misses and passing longer continuation are reported below. General neural actor/learned-critic training remains later work. Keep score-function policy gradients distinct from differentiating through the environment. A serial CPU return batch does not supply Aethyr's quadruped contacts, sensors, reset/RNG independence or device batching. Those foundations, the remaining gait/replay/transfer acceptance criteria and compiler R14/R20/R21/R23 remain later work.
 
 ## A normalized scalar Gaussian policy primitive
 
@@ -191,7 +191,7 @@ The independent reference uses high-precision Decimal exp/log/sqrt and independe
 
 The first native target is Darwin arm64 scalar libm, round-to-nearest with gradual underflow, no contraction/fast math and explicit scalar exp/log/sqrt/cos calls. This is neither an owned-libm accuracy proof nor cross-target determinism. Density and sample smooth fields use frozen numerical budgets; entropy, density-at-mean, explicit radial-zero copies, counters and declared branch/zero cases are exact. No old RNG, GAE/PPO, tape, model or robot gate is repeated.
 
-The [Gaussian fixture](../fixtures/robotics/locomotion-gaussian/README.md) retains contract, input/reference, native, typing and example identities. The additive scalar-LQR actor/update component follows below, with its three-seed outcome pending. General neural actors, learned critics, walking, device batching, terrain, teacher/student and physical hardware remain later work.
+The [Gaussian fixture](../fixtures/robotics/locomotion-gaussian/README.md) retains contract, input/reference, native, typing and example identities. The additive scalar-LQR actor/update component follows below, with its original misses and longer continuation reported below. General neural actors, learned critics, walking, device batching, terrain, teacher/student and physical hardware remain later work.
 
 ## A projected scalar-LQR PPO actor
 
@@ -236,6 +236,8 @@ The first debug, release and fail-fast ASan+UBSan mathematical profiles each pas
 
 Each mathematical host run executes 597 corpus rollout steps plus 13 guard rollout steps, 798 short deterministic evaluation steps and other declared scalar/epoch guard queries. It executes ZERO successful full training batches. Those fixtures are separate from canonical learning, checkpoint replay and the later 3,072-step named evaluation. Ordinary critic/transition/projection comparison error is zero; short evaluation error is at most 3.553e−15 and rollout error 1.777e−15. This is the qualified Darwin arm64 binary64 scalar-libm/no-FMA profile, not cross-target determinism or an owned-libm proof.
 
+### Original 128-batch study
+
 The fixed experiment completed all 128 batches and 512 AdamW updates per seed. All 31 execution/audit actions passed, including byte-exact next-batch checkpoint replay. **All three seeds miss both prospective convergence goals.** No seed is promoted and no setting is retuned.
 
 | Seed | Final K | Absolute gain error | Worst nominal held-out cost gap | Result |
@@ -248,9 +250,35 @@ The nominal optimum is K*=0.6037321344. The frozen limits are gain error at most
 
 Canonical learning executes 196,608 plant steps, 1,536 AdamW updates, 12,288 tape forward/backward pairs and 786,432 sample-gradient evaluations. Declared checkpoint replay adds 1,536 steps/12 updates/96 tape pairs; four mean-policy evaluations add 3,072 deterministic steps. The summed action time is about 208 seconds on this named host, not a GPU throughput or end-to-end engineering-time measurement. The [LQR fixture](../fixtures/robotics/locomotion-lqr/README.md) retains the full outcomes and compact curves.
 
-This closes the mathematical and experiment-integrity slice. The LQR convergence criterion remains **open**. A future separately frozen experiment may study optimizer/update budget; extending this profile would also require revisiting its state/counter bounds. The current result is retained without extra training or in-place tuning.
+This closed the mathematical and experiment-integrity slice. After this 128-batch study, the LQR convergence criterion remained **open**. The separately frozen continuation below extends the budget with explicit state/counter bounds; the original result is retained without in-place tuning.
 
 This measured scalar experiment supplies no learned critic, terrain, sensors, contact-rich locomotion, teacher/student transfer, device throughput or hardware evidence. Full gait acceptance remains separate.
+
+## Continue the same three seeds with a longer budget
+
+The original 128-batch result above is retained. Its gains were still moving toward the optimum at the fixed cutoff; recent gradients remained negative, while Adam's retained squared-gradient history made later steps smaller. That motivated a separately frozen continuation, rather than a change to the optimizer or a claim that numerical parity established convergence.
+
+The continuation imports the three exact original final checkpoints and extends each to **512 total batches and 2,048 AdamW updates**. Learning rate, betas, epsilon, decay, variance, critic, GAE, PPO objective, projection and four-epoch schedule are unchanged. The gain, moments, optimizer step and world states persist. Original batches are carried from their receipts and never trained again.
+
+The original counter reservation was exhausted. The new [continuation authority](../lib/robotics/locomotion/lqr-longer-update.coax) changes only sixteen counter words on import, allocating each world a fresh 24,576-draw range under the same seed key. The new descriptor/wire profile binds that declared transition. The four-epoch arithmetic is byte-identical to the old batch body and calls the same rollout and epoch procedures. Its new root closes 86 actual mutation sites with zero survivors; the load-only aggregate has zero body sites.
+
+There are 384 additional batches per seed, processed in fixed 16-batch chunks and audited before advancing. New canonical work is 589,824 plant steps and 4,608 AdamW updates. One complete next-batch replay after total batch 256 adds 1,536 steps/12 updates across the seeds. Three final mean-policy evaluations add 2,304 steps; the original baseline is carried. Each original and new workload keeps its own count.
+
+All 81 prescribed actions completed and passed independent audits. Each seed reached 512 total batches and 2,048 AdamW updates. **All three meet both unchanged quality goals**, including the independently evaluated real-arithmetic margins. The original 128-batch misses remain recorded above.
+
+| Seed | Original gain at 128 batches | Final gain at 512 batches | Final absolute gain error | Worst final nominal cost gap |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 0.5184256094 | 0.6045622741 | 0.0008301397 | 0.0001218323% |
+| 1 | 0.5227558679 | 0.6219745781 | 0.0182424437 | 0.0579627245% |
+| 7 | 0.5214162090 | 0.5997993114 | 0.0039328230 | 0.0027460548% |
+
+The limits remain gain error at most .05 and nominal cost gap at most 1%; the optimum is K*=.6037321344. No optimizer setting, learned state, quality threshold or seed was changed. All three imports preserve every non-counter byte. All three declared next-batch checkpoint replays are byte-exact. The new continuation has zero projected updates and zero PPO-clipped samples; clipping branch coverage comes from the mathematical fixtures.
+
+The fixed longer budget is sufficient for these three measured continuations. This supports the diagnosis that the original schedule ended before sufficient optimization progress, without establishing a general convergence theorem. Finite-grid RNG statistics and broader training recipes retain their stated scope.
+
+New native guard checks pass in debug, release and ASan/UBSan: 1,409 assertions, 249 refusals and three by-value storage-overlap observations per mode, with identical synthetic import bytes. They execute zero full training batches. The unchanged old arithmetic is carried through source and generated-C closure binding; new captures are independently audited. Summed new action time is about 506 seconds, including about 501 seconds of independent audits and 2.8 seconds in native children/file effects. This tiny scalar workload is not a GPU training throughput benchmark.
+
+The [continuation fixture](../fixtures/robotics/locomotion-lqr-longer/README.md) retains the frozen contract, checks, import lineage, all outcomes and combined curves; the [experiment notes](../docs/robotics/lqr-longer-experiment.md) explain the counter allocation and comparison. No setting changes, early stopping, extra training or best-seed/checkpoint selection are allowed within this experiment. Full gait, learned critic, neural actor, GPU training and physical hardware remain separate.
 
 ## What the full chapter will teach
 
@@ -297,9 +325,8 @@ Real hardware remains a separate, authorized integration.
 
 ## Remaining acceptance checks and oracles
 
-- The frozen scalar-LQR PPO actor completes all three prescribed seeds and
-  meets its declared optimum gaps: mathematical fixtures pass; learning
-  outcomes remain pending.
+- The scalar-LQR criterion is met by the frozen 512-batch continuation in all
+  three seeds. The original 128-batch misses remain part of the record.
 - The quadruped walks at a commanded speed with stated tracking error on
   held-out terrain and randomized parameters.
 - The same seed and configuration reproduce the same learning curve on the

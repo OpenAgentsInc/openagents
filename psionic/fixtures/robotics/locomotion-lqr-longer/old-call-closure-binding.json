@@ -1,0 +1,139 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.old-call-closure-binding.v1",
+  "passed": true,
+  "old_native_qualification": {
+    "bytes": 35485,
+    "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+  },
+  "unchanged_old_qualified_inputs": {
+    "psionic/tests/robotics/locomotion-lqr-native.coax": {
+      "bytes": 2678,
+      "sha256": "548b9bc542449dd445c8e929653e5fcb9d0c350011518b6ad4c4c37cf017ff25"
+    },
+    "psionic/lib/robotics/locomotion-lqr.coax": {
+      "bytes": 238,
+      "sha256": "050c14611847dc60690b30188d0f1feb46f8b16f49afb4f67e692d8b539ce86d"
+    },
+    "psionic/lib/robotics/locomotion/lqr-policy.coax": {
+      "bytes": 6521,
+      "sha256": "11b74a1e943b534e7869fecaa6e5aa8b8af191daeac9c18bf4790db9ed88abf8"
+    },
+    "psionic/lib/robotics/locomotion/lqr-fixtures.coax": {
+      "bytes": 1329,
+      "sha256": "c3e65b405f9d856d812cf2481b7a1433b6cb8a0c12f1a4719c9f577ebf96b2f3"
+    },
+    "psionic/lib/robotics/locomotion/lqr-types.coax": {
+      "bytes": 1242,
+      "sha256": "8542c1c0068cf03545084732fc3837829b7e1e465dfb94f8c83839dfbd73b25a"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-types.coax": {
+      "bytes": 689,
+      "sha256": "bb4d00afba9f37887455a44491febaa2d582381436c295dfc0d37ac802bb720c"
+    },
+    "psionic/lib/robotics/locomotion/types.coax": {
+      "bytes": 610,
+      "sha256": "b94591e9210b25abb74a3354d4630cfdf40127d780746c40a45c5d0c5d228d15"
+    },
+    "coax/lib/quantity.coax": {
+      "bytes": 585,
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "psionic/lib/counter-rng.coax": {
+      "bytes": 1303,
+      "sha256": "35b8f70febd1ab82b346b861ab01247e0a52b55a168dea1f3ced05c2aa493e49"
+    },
+    "psionic/lib/optim/adamw.coax": {
+      "bytes": 22069,
+      "sha256": "30e17db86f4b207b79d03b63fdb261722a515b20c3eebf6b5950be119cc57a64"
+    },
+    "psionic/fixtures/adamw/reference.coax": {
+      "bytes": 6613,
+      "sha256": "0f9e0c7d46ba27fca4ccdac955a4127ae547bb86e14997fe94d0ea8c9b59a608"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-ratio.coax": {
+      "bytes": 6780,
+      "sha256": "a50570d463033b569ebfc866d96236203faaf4429c2f3d7dc9dd388f15c65bd6"
+    },
+    "psionic/lib/robotics/locomotion/ppo-surrogate.coax": {
+      "bytes": 7175,
+      "sha256": "db03f7df27e0bcfbf6c319d2fd9b2021539539d60b388820da7310cc018870d6"
+    },
+    "psionic/lib/robotics/locomotion/fixtures.coax": {
+      "bytes": 928,
+      "sha256": "b7eb84112d283c05d8cb71ee1f10aa555c12537504378f250295baf108a72713"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-density.coax": {
+      "bytes": 4500,
+      "sha256": "68d012f2f3e38c75e2905ba0ad3300722e24dc7e5cec87b545e384a091a08f18"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-fixtures.coax": {
+      "bytes": 1342,
+      "sha256": "5df76b04fbeab70f88ffe72fe78b2faf50f52265e9d177d8839467db3653ea6f"
+    },
+    "psionic/lib/tape.coax": {
+      "bytes": 24490,
+      "sha256": "4c7ab5eb73a556cdb56139b3da2eceb9c0b91f9ef94b24cb1036641e55672230"
+    },
+    "psionic/lib/tabular.coax": {
+      "bytes": 39384,
+      "sha256": "9d6a99e9f1b28a9152147a456fff34846e57ed73a227023c6cd6671ee6e19eb6"
+    },
+    "psionic/lib/ops.coax": {
+      "bytes": 16608,
+      "sha256": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1"
+    },
+    "psionic/lib/ops-contract.coax": {
+      "bytes": 8946,
+      "sha256": "40610524dfded7d4c7b9746ea7b2a837ebf2c0e1697414477741ead38301c52d"
+    },
+    "psionic/lib/tensor.coax": {
+      "bytes": 13806,
+      "sha256": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6"
+    },
+    "psionic/lib/robotics/locomotion/lqr-rollout.coax": {
+      "bytes": 7084,
+      "sha256": "316f3f674201d08d49761bd7f4cd690cbd7cc9ca1b0cd3bdbc3ec5dcf39e0ab1"
+    },
+    "psionic/lib/robotics/locomotion/gaussian-sampling.coax": {
+      "bytes": 6944,
+      "sha256": "abcd98010519a83c02a38ba60c2b287ce4ff6f35d360013655d38ab7ec746483"
+    },
+    "psionic/lib/robotics/locomotion/gae.coax": {
+      "bytes": 8544,
+      "sha256": "7fd60401ad6b602587b5298fc166f29995fcd8152ed87d3308f5b576c8ffdcae"
+    },
+    "psionic/lib/robotics/locomotion/lqr-update.coax": {
+      "bytes": 11430,
+      "sha256": "7ca92b04616d92b4960aa2f76ca28b59c4d78264ee6002e0de969afa8d29aa5d"
+    },
+    "psionic/lib/robotics/locomotion/lqr-score.coax": {
+      "bytes": 4697,
+      "sha256": "6f6360ec73f6a522f4de3e2bd3caa4c16f623d5e22dd22f6d215e5691e58b7d7"
+    },
+    "psionic/tests/robotics/locomotion_lqr_native.c": {
+      "bytes": 21814,
+      "sha256": "5d1bd3efeb285b0e88c5c6cf80b8426b9388e5a28c82ec9a67d6ac6349354b89"
+    },
+    "psionic/tests/robotics/locomotion_lqr_native_reference.py": {
+      "bytes": 16255,
+      "sha256": "34922715b85e2982fe649a88a4cd1c5d2005748c43817ed0596e77684102d264"
+    }
+  },
+  "old_update": {
+    "bytes": 11430,
+    "sha256": "7ca92b04616d92b4960aa2f76ca28b59c4d78264ee6002e0de969afa8d29aa5d"
+  },
+  "new_update": {
+    "bytes": 6020,
+    "sha256": "7d3bd79164ee7a96b28d2d12fe8dfe957a5b26e12e1ef4762bf5c8dc981cf97a"
+  },
+  "numeric_batch_glue": {
+    "old_procedure": "rlt_batch",
+    "new_procedure": "rlx_batch",
+    "segment": "fresh:RltIteration through final return, excluding new admission guard",
+    "bytes": 648,
+    "sha256": "e8a9dd79539147cbbf2b88d7ec9dea8f266ba3d445619d4cf458865cb63f7137",
+    "byte_exact": true
+  },
+  "scope": "New state/counter guards and import mapping only. All optimizer/rollout/actor math is carried unchanged. Current generated C/header context binding belongs to the new native guard qualification."
+}

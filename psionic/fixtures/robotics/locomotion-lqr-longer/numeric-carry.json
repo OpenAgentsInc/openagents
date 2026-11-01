@@ -1,0 +1,40 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.numeric-carry.v1",
+  "passed": true,
+  "old_auditor": {
+    "bytes": 27773,
+    "sha256": "da8f9503c88df82dfe3dcc16e931070c209ef47a83353e8e3d5e57c874d31aea"
+  },
+  "new_auditor": {
+    "bytes": 29128,
+    "sha256": "cea6103fc71e806e4c184493d8a0404d15785526b5f79771bbfc9e46732b2946"
+  },
+  "whole_carried_math_producer": {
+    "bytes": 29435,
+    "sha256": "c105189fbe2f539d52fca631c722d532798fb10789e7237218edbaac142e8ec9"
+  },
+  "exact_declarations": [
+    "need",
+    "identity",
+    "load",
+    "write",
+    "bits",
+    "finite",
+    "math_kernel",
+    "header",
+    "decode_state",
+    "close"
+  ],
+  "wire_magic_and_labels_only": [
+    "snapshot",
+    "decode_iterations",
+    "decode_coefficients"
+  ],
+  "numeric_chunk_suffix_byte_exact": true,
+  "numeric_evaluation_suffix_byte_exact": true,
+  "replay_only_batch256_labels_and_added_context_guard": true,
+  "prior_audit_only_new_namespace": true,
+  "original_29_reader_and_19_lineage_tests_repeated": 0,
+  "original_math_or_expected_generation_calls": 0,
+  "product_learner_optimizer_RNG_SDK_calls": 0
+}

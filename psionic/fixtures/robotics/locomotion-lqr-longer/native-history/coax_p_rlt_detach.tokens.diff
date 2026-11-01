@@ -1,0 +1,58 @@
+--- old
+
++++ new
+
+@@ -10,44 +10,44 @@
+
+ )
+ {
+ {
+ coax_v_t_RleRow
+-coax_c498
++coax_c81
+ =
+ l_input
+ ;
+ for
+ (
+ int64_t
+-coax_i498
++coax_i81
+ =
+ 0
+ ;
+-coax_i498
++coax_i81
+ <
+-coax_c498
++coax_c81
+ .
+ count
+ ;
+-coax_i498
++coax_i81
+ +
+ +
+ )
+ {
+ coax_t_RleRow
+ l_r
+ =
+-coax_c498
++coax_c81
+ .
+ data
+ [
+-coax_i498
++coax_i81
+ ]
+ ;
+ int64_t
+ l_i
+ =
+-coax_i498
++coax_i81
+ ;
+ (
+ *
+ coax_elem_v_t_RlpRow

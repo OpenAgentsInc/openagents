@@ -1,0 +1,94 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.compiler-context.v1",
+  "passed": true,
+  "source_fingerprint": "03bc47ea02498ddc669ad8102a41dc825562eb50ba7342a9201f18403f9ca858",
+  "compiler": {
+    "bytes": 3175560,
+    "sha256": "27763f39ab2a1cf75eac90ad7a111b5b6b30bec34c0bef14dd96c80e442e45e1"
+  },
+  "provenance_helper": {
+    "bytes": 34288,
+    "sha256": "3a4f56a8e284e80e87ee612bed0f1e5aaad27767fbe54c875faf6bad964639e6"
+  },
+  "provenance_record": {
+    "bytes": 214,
+    "sha256": "bdff7c1a7f290f5468360cf6dcfb1c7a6f23397d4bac93f793cac5946e802459"
+  },
+  "provenance_record_text": "coax-provenance-v1\n03bc47ea02498ddc669ad8102a41dc825562eb50ba7342a9201f18403f9ca858\n27763f39ab2a1cf75eac90ad7a111b5b6b30bec34c0bef14dd96c80e442e45e1\n3a4f56a8e284e80e87ee612bed0f1e5aaad27767fbe54c875faf6bad964639e6\n",
+  "native_qualification": {
+    "bytes": 38429,
+    "sha256": "a880df8f712de3386956dc3765883d545aa12c2b15fa472bcd5e7e0f87467d92"
+  },
+  "cache_artifacts": {
+    "mutation-survivors": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "provenance.record": {
+      "bytes": 214,
+      "sha256": "bdff7c1a7f290f5468360cf6dcfb1c7a6f23397d4bac93f793cac5946e802459"
+    },
+    "proto_importer.h": {
+      "bytes": 264896,
+      "sha256": "816275241dcb2eb050b30cf81a30fee1ed7688a586ece52d83b9de60fac858e8"
+    },
+    "checker.c": {
+      "bytes": 678841,
+      "sha256": "deb08166fa9c80734c70af60a2d750b342449dddd44770f70a1c3f474e1e38c4"
+    },
+    "provenance-check": {
+      "bytes": 34288,
+      "sha256": "3a4f56a8e284e80e87ee612bed0f1e5aaad27767fbe54c875faf6bad964639e6"
+    },
+    "sources.c": {
+      "bytes": 42133,
+      "sha256": "688091ddb65adff6f83934ead05ef02e4ec73b180eaac726b1eccdad7a89002a"
+    },
+    "check-domains.h": {
+      "bytes": 7256,
+      "sha256": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8"
+    },
+    "parser.h": {
+      "bytes": 26166,
+      "sha256": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef"
+    },
+    "lexer.c": {
+      "bytes": 72239,
+      "sha256": "23d7217e02bfcd56b6870958b72324f73c8620ca40fca2d354ac1265ca5c9086"
+    },
+    "proto_runtime.inc": {
+      "bytes": 352841,
+      "sha256": "19ba5ddbd2936d00ee94e38c45a2020ba2c33d0cff0654b056641bec08278922"
+    },
+    "checker.h": {
+      "bytes": 95026,
+      "sha256": "446918cf9cfff085d17a149d42669cc7ea244a2f9b71480eb89f19caede3ef33"
+    },
+    "proto_importer.c": {
+      "bytes": 1695095,
+      "sha256": "dc88840c8c2b73732f7708b9821853fe1fd3dfb5a2c1d21e9c0f7bde078d3241"
+    },
+    "check-domains.c": {
+      "bytes": 21937,
+      "sha256": "02bbf189cdca9a3411d56adce7aacdfd7c364c926e820f3e3b9494a498cef014"
+    },
+    "sources.h": {
+      "bytes": 14804,
+      "sha256": "0495835277054e2fc5518680c43810ef089f5a69c7dc93fe9e3b5cfb73a63c3f"
+    },
+    "lexer.h": {
+      "bytes": 18459,
+      "sha256": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a"
+    },
+    "parser.c": {
+      "bytes": 129524,
+      "sha256": "52b62d2b0ec4a3a447efe96fde16623323256aa424d2a640d876b7b1667be081"
+    },
+    "coax": {
+      "bytes": 3175560,
+      "sha256": "27763f39ab2a1cf75eac90ad7a111b5b6b30bec34c0bef14dd96c80e442e45e1"
+    }
+  },
+  "scope": "Carry of the existing checked 03bc cache image selected before first emission. Provenance record image/helper digests match the actual measured image. This metadata copy does not rerun bootstrap, release qualification, compiler checks, old numeric gates, or source mutation. New reachable C runtime/function/type binding is in the native receipt and public token manifest.",
+  "fresh_compiler_builds_or_checks": 0
+}

@@ -188,7 +188,7 @@
 - [168. Imitation before robotics scale](ch168-imitation-before-robotics-scale.md) — first robotics chapter: owned simulation and original NVIDIA data
 - [169. Execute a GR00T policy](ch169-execute-a-groot-policy.md) — original learned VLA on Metal, bounded prepared-observation profile
 - [170. Close the simulated control loop](ch170-close-the-simulated-control-loop.md) — genuine GR00T/Panda SDK evaluation plus a first 9-action neural prefix with owned controller samples and exact physics replay
-- [171. Learn a gait in many worlds](ch171-learn-a-gait-in-many-worlds.md) — runnable GAE/Gaussian and scalar-LQR PPO; three-seed convergence goals missed, gait planned
+- [171. Learn a gait in many worlds](ch171-learn-a-gait-in-many-worlds.md) — runnable GAE/Gaussian and scalar-LQR PPO; all three 512-batch continuations meet fixed goals, gait planned
 
 - [172. Benchmark a service, not a kernel](ch172-benchmark-a-service-not-a-kernel.md) — first production-hosting chapter
 - [173. Serve a model with an honest capability](ch173-serve-a-model-with-an-honest-capability.md) — design draft

@@ -1,0 +1,5 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/robotics/locomotion/lqr-longer-update.coax:41:209: mutant survived: '>' became '>='
+   if !rlx_index(s.batch) || !rlx_seed(s.runseed) || !rlt_optimizer_ok(s.optimizer) || s.optimizer.adam.step!=4*s.batch {return false;}for w:0..<16 {if !rgp_finite(f64_bits(s.worlds[w].x)) || abs(s.worlds[w].x)>16 || s.worlds[w].rng.seed!=s.runseed || s.worlds[w].rng.counter!=rlx_counter(w,s.batch) {return false;}}return true;
+                                                                                                                                                                                                                  ^
+86 mutants, 85 killed, 1 survived

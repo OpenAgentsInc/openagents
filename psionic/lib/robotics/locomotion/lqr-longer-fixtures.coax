@@ -1,0 +1,13 @@
+// Synthetic source-check observations, not authentic learned checkpoints.
+#load "lqr-update.coax";
+rlx_fixture_old :: (seed:u64,batch:int)->RltState {
+ s:[1]RltState;#assert rlt_begin(seed,s[..])==RlpStatus.ok;s[0].optimizer.K=0.5;s[0].optimizer.m= -0.03125;s[0].optimizer.v=0.125;s[0].batch=batch;s[0].optimizer.adam.step=4*batch;
+ for w:0..<16 {s[0].worlds[w].x=f64(w-8)/16;s[0].worlds[w].rng.counter=cast(u64)(w*8192+batch*64);}s[0].worlds[3].x=f64_from_bits(0x8000000000000000);return s[0];
+}
+rlx_fixture_new :: (seed:u64,batch:int)->RltState {
+ s:=rlx_fixture_old(seed,128);s.batch=batch;s.optimizer.adam.step=4*batch;for w:0..<16 {s.worlds[w].rng.counter=cast(u64)(131072+w*24576+(batch-128)*64);}return s;
+}
+rlx_fixture_same_non_counter :: (a:RltState,b:RltState)->bool {
+ if f64_bits(a.optimizer.K)!=f64_bits(b.optimizer.K) || f64_bits(a.optimizer.m)!=f64_bits(b.optimizer.m) || f64_bits(a.optimizer.v)!=f64_bits(b.optimizer.v) || a.optimizer.adam.step!=b.optimizer.adam.step || a.optimizer.adam.skipped!=b.optimizer.adam.skipped || a.batch!=b.batch || a.runseed!=b.runseed {return false;}
+ for w:0..<16 {if f64_bits(a.worlds[w].x)!=f64_bits(b.worlds[w].x) || a.worlds[w].rng.seed!=b.worlds[w].rng.seed {return false;}}return true;
+}

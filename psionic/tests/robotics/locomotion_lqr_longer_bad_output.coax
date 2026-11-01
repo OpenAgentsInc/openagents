@@ -1,0 +1,2 @@
+#load "../../lib/robotics/locomotion-lqr-longer.coax";
+main :: () {out:[1]RltState;status:=rlx_batch(RltState.{},out[..]);}

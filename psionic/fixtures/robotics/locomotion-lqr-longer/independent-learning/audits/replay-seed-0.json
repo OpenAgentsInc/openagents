@@ -1,0 +1,69 @@
+{
+  "schema": "psionic.locomotion-lqr-longer.learning-audit.v1",
+  "passed": true,
+  "auditor": {
+    "bytes": 29128,
+    "sha256": "cea6103fc71e806e4c184493d8a0404d15785526b5f79771bbfc9e46732b2946"
+  },
+  "product_learner_model_SDK_calls": 0,
+  "inputs": {
+    "descriptor": {
+      "bytes": 18103,
+      "sha256": "05d729d67213ee9b0e63618b44ff3e18c23c9b97c4ba0a2c8512c649bb39338c"
+    },
+    "math_record": {
+      "bytes": 35485,
+      "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+    },
+    "extension_record": {
+      "bytes": 38429,
+      "sha256": "a880df8f712de3386956dc3765883d545aa12c2b15fa472bcd5e7e0f87467d92"
+    },
+    "before": {
+      "bytes": 488,
+      "sha256": "95aec2e885bee943f50869053ab7b04ec3700448e67db4d7763d5e256a472c7e"
+    },
+    "after": {
+      "bytes": 488,
+      "sha256": "24bcd777f68b49c875f58bd2ad3e17bcf56cfafe93083044a831b28c5d5be13a"
+    },
+    "iterations": {
+      "bytes": 62744,
+      "sha256": "07faa65de44f2c5e276491de78b6872e67b573062f812c74a8305ec4a56f820c"
+    },
+    "coefficients": {
+      "bytes": 180272,
+      "sha256": "2bf409aa99b013e3619fe8e5fc3dc6e3d94916cfeb129d13682a41d79cb09bcd"
+    },
+    "progress": {
+      "bytes": 65,
+      "sha256": "e3ba226fcb03a4618c17b57963afbefa6da54b24bf4f91f9cfa8eaebe9f41380"
+    },
+    "canonical_audit": {
+      "bytes": 2589,
+      "sha256": "81d8598906fe8d7cdc4edfa158f89921fa7f914a23e3f397d8695d888ddef59e"
+    },
+    "canonical_iterations": {
+      "bytes": 1003184,
+      "sha256": "c48aba5862bbfd09e1f29dd2c8aac410bfac288a76a1d6594826160a7240ae25"
+    },
+    "canonical_coefficients": {
+      "bytes": 2883632,
+      "sha256": "0f2fa4c46ac68b14398be30ba0b94e2c3087c10646acc45583602b7320e01cc2"
+    }
+  },
+  "result": {
+    "passed": true,
+    "seed": 0,
+    "plant_steps": 512,
+    "AdamW_updates": 4,
+    "coefficient_observations": 2048,
+    "iteration_and_coefficients_byte_exact": true,
+    "prior_numeric_proof_carried": {
+      "bytes": 2589,
+      "sha256": "81d8598906fe8d7cdc4edfa158f89921fa7f914a23e3f397d8695d888ddef59e"
+    },
+    "scope": "NEW declared resume replay versus already audited canonical batch257; no repeated independent numeric generation."
+  },
+  "seconds": 0.013201499998103827
+}

@@ -1,0 +1,294 @@
+--- old
+
++++ new
+
+@@ -264,38 +264,38 @@
+
+ ;
+ }
+ {
+ coax_v_t_AwGroup
+-coax_c68
++coax_c142
+ =
+ l_groups
+ ;
+ for
+ (
+ int64_t
+-coax_i68
++coax_i142
+ =
+ 0
+ ;
+-coax_i68
++coax_i142
+ <
+-coax_c68
++coax_c142
+ .
+ count
+ ;
+-coax_i68
++coax_i142
+ +
+ +
+ )
+ {
+ coax_t_AwGroup
+ l_g
+ =
+-coax_c68
++coax_c142
+ .
+ data
+ [
+-coax_i68
++coax_i142
+ ]
+ ;
+ if
+ (
+@@ -400,30 +400,30 @@
+
+ ;
+ }
+ {
+ int64_t
+-coax_lo69
++coax_lo143
+ =
+ INT64_C
+ (
+ 0
+ )
+ ;
+ int64_t
+-coax_hi69
++coax_hi143
+ =
+ l_n
+ ;
+ for
+ (
+ int64_t
+ l_i
+ =
+-coax_lo69
++coax_lo143
+ ;
+ l_i
+ <
+-coax_hi69
++coax_hi143
+ ;
+ l_i
+ +
+ +
+@@ -539,38 +539,38 @@
+
+ }
+ }
+ {
+ coax_v_f64
+-coax_c70
++coax_c144
+ =
+ l_grads
+ ;
+ for
+ (
+ int64_t
+-coax_i70
++coax_i144
+ =
+ 0
+ ;
+-coax_i70
++coax_i144
+ <
+-coax_c70
++coax_c144
+ .
+ count
+ ;
+-coax_i70
++coax_i144
+ +
+ +
+ )
+ {
+ double
+ l_x
+ =
+-coax_c70
++coax_c144
+ .
+ data
+ [
+-coax_i70
++coax_i144
+ ]
+ ;
+ if
+ (
+@@ -657,52 +657,52 @@
+
+ )
+ ;
+ {
+ coax_v_t_AwGroup
+-coax_c71
++coax_c145
+ =
+ l_groups
+ ;
+ for
+ (
+ int64_t
+-coax_i71
++coax_i145
+ =
+ 0
+ ;
+-coax_i71
++coax_i145
+ <
+-coax_c71
++coax_c145
+ .
+ count
+ ;
+-coax_i71
++coax_i145
+ +
+ +
+ )
+ {
+ coax_t_AwGroup
+ l_g
+ =
+-coax_c71
++coax_c145
+ .
+ data
+ [
+-coax_i71
++coax_i145
+ ]
+ ;
+ {
+ int64_t
+-coax_lo72
++coax_lo146
+ =
+ (
+ l_g
+ )
+ .
+ first
+ ;
+ int64_t
+-coax_hi72
++coax_hi146
+ =
+ coax_add_s64
+ (
+ (
+@@ -724,13 +724,13 @@
+
+ (
+ int64_t
+ l_i
+ =
+-coax_lo72
++coax_lo146
+ ;
+ l_i
+ <
+-coax_hi72
++coax_hi146
+ ;
+ l_i
+ +
+ +
+@@ -1046,52 +1046,52 @@
+
+ ;
+ }
+ {
+ coax_v_t_AwGroup
+-coax_c77
++coax_c151
+ =
+ l_groups
+ ;
+ for
+ (
+ int64_t
+-coax_i77
++coax_i151
+ =
+ 0
+ ;
+-coax_i77
++coax_i151
+ <
+-coax_c77
++coax_c151
+ .
+ count
+ ;
+-coax_i77
++coax_i151
+ +
+ +
+ )
+ {
+ coax_t_AwGroup
+ l_g
+ =
+-coax_c77
++coax_c151
+ .
+ data
+ [
+-coax_i77
++coax_i151
+ ]
+ ;
+ {
+ int64_t
+-coax_lo78
++coax_lo152
+ =
+ (
+ l_g
+ )
+ .
+ first
+ ;
+ int64_t
+-coax_hi78
++coax_hi152
+ =
+ coax_add_s64
+ (
+ (
+@@ -1113,13 +1113,13 @@
+
+ (
+ int64_t
+ l_i
+ =
+-coax_lo78
++coax_lo152
+ ;
+ l_i
+ <
+-coax_hi78
++coax_hi152
+ ;
+ l_i
+ +
+ +
