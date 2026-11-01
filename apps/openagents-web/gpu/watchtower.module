@@ -1,0 +1,3 @@
+--vertices watchtower_bg_vs,watchtower_fx_vs
+--fragments watchtower_bg_fs,watchtower_fx_fs
+--bindings apps/openagents-web/gpu/watchtower.bindings --strip watchtower_

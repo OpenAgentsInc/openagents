@@ -1,0 +1,1607 @@
+// Watchtower, openagents.com/realms/watchtower: a cyber defense range in the
+// Grid's look. A small company network stands on the isometric grid; an
+// intruder works its way from a phished workstation toward the vault, and
+// you read the log, scan, isolate and clean hosts to evict it before the
+// vault is emptied or the business goes dark. Three advisor routines (the
+// triad) vote on every host and can defend on their own. Everything is
+// simulated: no real systems, no real traffic. Log lines are modelled on
+// real log formats so what you learn reading them carries over.
+// docs/research/cybersecurity/README.md is the thinking behind it.
+//
+// Drawn flat: gpu/watchtower.coax's bg_fs draws the grid, the panels' glass
+// and the alarm light from the uniforms; the network, the HUD and the text
+// are fx strokes (font.coax).
+//   coax/bin/coax test apps/openagents-web/watchtower.coax --steps 2000000000
+
+#load "font.coax";
+#load "analytics.coax";
+#load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+
+VERTEX_FLOATS :: 16;
+MAX_VERTICES :: 60000;
+U_MAP :: 4;
+U_INFO :: 8;
+U_PANELS :: 12;
+PANELS :: 12;   // the HUD's four, then the edit layer's plates
+UNIFORM_FLOATS :: 60;
+
+STEP :: 0.0166666667;
+READY :: 0; PLAY :: 1; WON :: 2; LOST :: 3;
+
+OUTBOX_CAP :: 64;
+ACT_NAVIGATE :: 1;
+KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6; KEY_DOWN :: -7;
+
+// ---- the network
+
+HOSTS :: 10;
+NET :: 0; EDGE :: 1; MAIL :: 2; WEB :: 3; WS1 :: 4; WS2 :: 5; WS3 :: 6; FILES :: 7; DC :: 8; VAULT :: 9;
+HOST_NAME :: [10] string.["INTERNET", "EDGE", "MAIL", "WEB", "WS-01", "WS-02", "WS-03", "FILES", "DC", "VAULT"];
+HOST_ROLE :: [10] string.["OUTSIDE", "FIREWALL", "MAIL SERVER", "WEB SERVER", "WORKSTATION", "WORKSTATION", "WORKSTATION", "FILE SERVER", "DIRECTORY", "CROWN JEWELS"];
+// Where each host stands: u across the screen, v down it, in grid units.
+HOST_U :: [10] f32.[-7.6, -5.0, -2.4, -2.4, 0.6, 0.6, 0.6, 3.6, 3.8, 7.0];
+HOST_V :: [10] f32.[0.0, 0.0, -7.4, 7.4, -12.6, -5.6, 1.4, 9.6, -6.4, 2.6];
+HOST_TALL :: [10] f32.[0.0, 1.1, 0.9, 0.9, 0.55, 0.55, 0.55, 1.0, 1.4, 1.8];
+// Uptime lost each second the host is offline (isolated or being cleaned).
+HOST_COST :: [10] f32.[0, 1.6, 0.35, 0.35, 0.12, 0.12, 0.12, 0.35, 0.6, 0.8];
+LINKS :: 15;
+LINK_A :: [15] int.[NET, EDGE, EDGE, MAIL, MAIL, MAIL, WS1, WS2, WS1, WS2, WS3, WS3, WEB, DC, FILES];
+LINK_B :: [15] int.[EDGE, MAIL, WEB, WS1, WS2, WS3, WS2, WS3, DC, DC, DC, FILES, FILES, VAULT, VAULT];
+
+// ---- the intruder's operations
+
+OP_NONE :: 0; OP_WAIT :: 1; OP_PHISH :: 2; OP_WEBX :: 3; OP_DISCOVER :: 4; OP_MOVE :: 5;
+OP_ESCALATE :: 6; OP_REDUMP :: 7; OP_DUMP :: 8; OP_EXFIL :: 9;
+// The kill chain, as far as the intruder got.
+STAGES :: 5;
+STAGE_NAME :: [5] string.["ACCESS", "DISCOVER", "MOVE", "ESCALATE", "EXFIL"];
+EXFIL_TICK :: 2.0;
+EXFIL_STEP :: 0.06;
+
+// ---- your responders
+
+JOB_NONE :: 0; JOB_SCAN :: 1; JOB_CLEAN :: 2;
+SCAN_TIME :: 2.5; CLEAN_TIME :: 5.0;
+RESPONDERS :: 2;
+RESET_COOLDOWN :: 25.0;
+RESET_COST :: 6.0;
+
+// The triad's verbs.
+V_HOLD :: 0; V_SCAN :: 1; V_CLEAN :: 2; V_ISOLATE :: 3; V_RESTORE :: 4; V_RESET :: 5;
+VERB :: [6] string.["HOLD", "SCAN", "CLEAN", "ISOLATE", "RESTORE", "RESET CREDS"];
+ADVISOR :: [3] string.["HUNTER", "WARDEN", "AUDITOR"];
+
+// The buttons, in order.
+BUTTONS :: 6;
+B_SCAN :: 0; B_ISOLATE :: 1; B_CLEAN :: 2; B_RESET :: 3; B_TRIAD :: 4; B_AUTO :: 5;
+
+LINES :: 14;
+LINE_CAP :: 60;
+SEV_NOISE :: 0; SEV_RAW :: 1; SEV_ALERT :: 2; SEV_GOOD :: 3; SEV_YOU :: 4;
+
+Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
+
+Host :: struct {
+  owned: bool;        // the intruder has an implant here
+  known: bool;        // you confirmed the implant (a scan, or an alert on its arrival)
+  isolated: bool;
+  checked: bool;      // a scan found it clean, since the last alert
+  suspect: f32;       // alert heat, 1 fresh, fading
+  ping: f32;          // an alert's ring, 1 fresh
+  task: int; task_t: f32;
+  sx: f32; sy: f32;   // where its box stands on the screen, device px
+}
+
+Line :: struct { text: [LINE_CAP] u8; n: int; sev: int; age: f32; }
+
+Watch :: struct {
+  started: bool;
+  phase: int;
+  hosts: [HOSTS] Host;
+  sel: int;
+  // the intruder
+  op: int; op_from: int; op_to: int; op_t: f32; op_total: f32; op_seen: bool;
+  admin: bool; entered: bool; discovered: bool; dumped: bool;
+  stage: int; exfil: f32; exfil_t: f32; beacon_t: f32;
+  creds_seen: bool;
+  // the shift's record
+  steps: int; alerts: int; raw: int; first_alert: f32; end_t: f32; why: int;
+  uptime: f32; reset_cd: f32; noise_t: f32;
+  autoplay: bool; autoplay_t: f32;
+  lines: [LINES] Line; line_n: int;
+  banner: [32] u8; banner_n: int; sub: [LINE_CAP] u8; sub_n: int; banner_t: f32;
+  hit: f32;
+  clock: f32; acc: f32; play_t: f32;
+  seed: u32;
+  width: f32; height: f32; dpr: f32;
+  golden: bool;
+  // the layout this frame
+  portrait: bool;
+  cx: f32; cy: f32; sc: f32;
+  panels: [PANELS] Rect;
+  buttons: [BUTTONS] Rect;
+  galaxy: Rect;
+  pressing: int;     // a button held: 1 + its index, 100 GALAXY
+  outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
+  ed: [1] RealmEdit;
+  track: [1] Track; loaded: bool;
+  demo: int; ended_at: f32;   // ?demo=1 (the triad defends) or 2 (nobody does): shifts run on their own
+}
+
+// ---- small things
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp01 :: (v: f32) -> f32 { return lo(1, hi(0, v)); }
+GAP :: 0.5; SPACE :: 1.2;
+text_width :: (text: string, cap: f32) -> f32 { return measure(text, GAP, SPACE, false) * cap; }
+in_rect :: (b: Rect, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n >= buf.count { break; } buf[n] = c; n += 1; }
+  return n;
+}
+put_int :: (buf: [] u8, at: int, v: int) -> int {
+  n := at; x := v;
+  digits: [20] u8; d := 0;
+  if x == 0 { digits[0] = 48; d = 1; }
+  while x > 0 && d < 20 { digits[d] = cast(u8) (48 + x % 10); x = x / 10; d += 1; }
+  while d > 0 { d -= 1; if n < buf.count { buf[n] = digits[d]; n += 1; } }
+  return n;
+}
+put_2 :: (buf: [] u8, at: int, v: int) -> int {
+  n := at;
+  if v < 10 { n = put(buf, n, "0"); }
+  return put_int(buf, n, v);
+}
+// m:ss
+put_time :: (buf: [] u8, at: int, t: f32) -> int {
+  secs := int(hi(t, 0));
+  n := put_int(buf, at, secs / 60);
+  n = put(buf, n, ":");
+  return put_2(buf, n, secs % 60);
+}
+rnd :: (s: [] Watch) -> f32 {
+  s[0].seed = add_wrap(mul_wrap(s[0].seed, 1664525), 1013904223);
+  return f32(s[0].seed >> 8) / 16777216.0;
+}
+pick :: (s: [] Watch, n: int) -> int {
+  i := int(rnd(s) * f32(n));
+  if i >= n { i = n - 1; }
+  return i;
+}
+
+// ---- the network's shape
+
+linked_raw :: (a: int, b: int) -> bool {
+  for l: 0..<LINKS {
+    if (LINK_A[l] == a && LINK_B[l] == b) || (LINK_A[l] == b && LINK_B[l] == a) { return true; }
+  }
+  return false;
+}
+online :: (s: [] Watch, i: int) -> bool {
+  if i == NET { return true; }
+  return !s[0].hosts[i].isolated && s[0].hosts[i].task != JOB_CLEAN;
+}
+linked :: (s: [] Watch, a: int, b: int) -> bool { return linked_raw(a, b) && online(s, a) && online(s, b); }
+// Hosts the outside can reach, through online hosts from the internet.
+reach :: (s: [] Watch, out: [] bool) {
+  for i: 0..<HOSTS { out[i] = false; }
+  queue: [HOSTS] int; head := 0; tail := 0;
+  out[NET] = true; queue[0] = NET; tail = 1;
+  while head < tail {
+    a := queue[head]; head += 1;
+    for b: 0..<HOSTS {
+      if !out[b] && linked(s, a, b) { out[b] = true; queue[tail] = b; tail += 1; }
+    }
+  }
+}
+reachable :: (s: [] Watch, i: int) -> bool {
+  r: [HOSTS] bool;
+  reach(s, r[..]);
+  return r[i];
+}
+// Hops from every host to target through online hosts; -1 where it can't.
+hops_to :: (s: [] Watch, target: int, out: [] int) {
+  for i: 0..<HOSTS { out[i] = -1; }
+  if !online(s, target) { return; }
+  queue: [HOSTS] int; head := 0; tail := 1;
+  out[target] = 0; queue[0] = target;
+  while head < tail {
+    a := queue[head]; head += 1;
+    for b: 0..<HOSTS {
+      if out[b] < 0 && b != NET && linked(s, a, b) { out[b] = out[a] + 1; queue[tail] = b; tail += 1; }
+    }
+  }
+}
+owned_count :: (s: [] Watch) -> int {
+  n := 0;
+  for i: 0..<HOSTS { if s[0].hosts[i].owned { n += 1; } }
+  return n;
+}
+busy_count :: (s: [] Watch) -> int {
+  n := 0;
+  for i: 0..<HOSTS { if s[0].hosts[i].task != JOB_NONE { n += 1; } }
+  return n;
+}
+
+// ---- the log
+
+add_line :: (s: [] Watch, text: string, sev: int) {
+  if s[0].line_n >= LINES {
+    for i: 1..<LINES { s[0].lines[i - 1] = s[0].lines[i]; }
+    s[0].line_n = LINES - 1;
+  }
+  i := s[0].line_n;
+  s[0].lines[i].n = put(s[0].lines[i].text[..], 0, text);
+  s[0].lines[i].sev = sev;
+  s[0].lines[i].age = 0;
+  s[0].line_n += 1;
+}
+// a line of up to four parts
+say4 :: (s: [] Watch, a: string, b: string, c: string, d: string, sev: int) {
+  buf: [LINE_CAP] u8;
+  n := put(buf[..], 0, a); n = put(buf[..], n, b); n = put(buf[..], n, c); n = put(buf[..], n, d);
+  add_line(s, cast(string) buf[0..<n], sev);
+}
+set_banner :: (s: [] Watch, title: string, a: string, b: string, c: string) {
+  s[0].banner_n = put(s[0].banner[..], 0, title);
+  n := put(s[0].sub[..], 0, a); n = put(s[0].sub[..], n, b); n = put(s[0].sub[..], n, c);
+  s[0].sub_n = n;
+  s[0].banner_t = 3.2;
+}
+// An intruder's trace: an alert if the sensors catch it (and the host heats
+// up), otherwise a raw line that looks like everything else.
+trace :: (s: [] Watch, host: int, chance: f32, a: string, b: string, c: string) -> bool {
+  boost: f32 = ifx s[0].hosts[host].suspect > 0.5 then 0.15 else 0;
+  if rnd(s) < chance + boost {
+    say4(s, "ALERT ", a, b, c, SEV_ALERT);
+    s[0].alerts += 1;
+    if s[0].first_alert <= 0 { s[0].first_alert = hi(s[0].play_t, 0.01); }
+    s[0].hosts[host].suspect = 1;
+    s[0].hosts[host].ping = 1;
+    s[0].hosts[host].checked = false;
+    s[0].hit = 1;
+    return true;
+  }
+  say4(s, a, b, c, "", SEV_RAW);
+  s[0].raw += 1;
+  return false;
+}
+
+// Ordinary traffic: what the intruder hides among.
+USERS :: [6] string.["MPATEL", "JLEE", "AOKAFOR", "SCHEN", "DRUIZ", "KWEBER"];
+noise :: (s: [] Watch) {
+  ws := HOST_NAME[WS1 + pick(s, 3)];
+  user := USERS[pick(s, 6)];
+  k := pick(s, 9);
+  if k == 0 { say4(s, "AUTH 4624 LOGON OK ", ws, " USER=", user, SEV_NOISE); }
+  if k == 1 { say4(s, "DNS ", ws, " -> UPDATES.VENDOR.EXAMPLE A", "", SEV_NOISE); }
+  if k == 2 { say4(s, "HTTP WEB 200 GET /PRICING", "", "", "", SEV_NOISE); }
+  if k == 3 { say4(s, "SMB ", ws, " -> FILES READ \\SHARE\\Q3.XLSX", "", SEV_NOISE); }
+  if k == 4 { say4(s, "MAIL INBOUND NEWSLETTER -> ", ws, "", "", SEV_NOISE); }
+  if k == 5 { say4(s, "AUTH 4625 BAD PASSWORD ", ws, " USER=", user, SEV_NOISE); }
+  if k == 6 { say4(s, "KRB ", ws, " -> DC TGS AES256 X1", "", SEV_NOISE); }
+  if k == 7 { say4(s, "HTTP WEB 200 POST /LOGIN USER=", user, "", "", SEV_NOISE); }
+  if k == 8 { say4(s, "NET VAULT BACKUP -> FILES 40 MB", "", "", "", SEV_NOISE); }
+}
+
+// ---- the game
+
+watch_reset :: (s: [] Watch) {
+  seed := s[0].seed;
+  golden := s[0].golden;
+  for i: 0..<HOSTS { s[0].hosts[i] = Host.{}; }
+  s[0].phase = READY; s[0].sel = DC;
+  s[0].op = OP_NONE; s[0].op_from = 0; s[0].op_to = 0; s[0].op_t = 0; s[0].op_total = 0; s[0].op_seen = false;
+  s[0].admin = false; s[0].entered = false; s[0].discovered = false; s[0].dumped = false;
+  s[0].stage = 0; s[0].exfil = 0; s[0].exfil_t = 0; s[0].beacon_t = 6; s[0].creds_seen = false;
+  s[0].steps = 0; s[0].alerts = 0; s[0].raw = 0; s[0].first_alert = 0; s[0].end_t = 0; s[0].why = 0;
+  s[0].uptime = 100; s[0].reset_cd = 0; s[0].noise_t = 0.5;
+  s[0].autoplay = false; s[0].autoplay_t = 0;
+  s[0].line_n = 0; s[0].banner_n = 0; s[0].sub_n = 0; s[0].banner_t = 0; s[0].hit = 0;
+  s[0].play_t = 0;
+  s[0].seed = ifx seed == 0 then 20261031 else seed;
+  s[0].golden = golden;
+  add_line(s, "WATCHTOWER RANGE ONLINE. SENSORS ARMED.", SEV_GOOD);
+  add_line(s, "AUTH 4624 LOGON OK WS-01 USER=MPATEL", SEV_NOISE);
+  add_line(s, "DNS WS-02 -> UPDATES.VENDOR.EXAMPLE A", SEV_NOISE);
+  add_line(s, "HTTP WEB 200 GET /PRICING", SEV_NOISE);
+}
+watch_start :: (s: [] Watch) {
+  if s[0].started { return; }
+  s[0].started = true;
+  s[0].seed = 20261031;
+  track_init(s[0].track[..], "watchtower");
+  s[0].clock = 0; s[0].acc = 0;
+  watch_reset(s);
+}
+go :: (s: [] Watch) {
+  if s[0].phase == WON || s[0].phase == LOST { watch_reset(s); }
+  if s[0].phase == READY {
+    s[0].phase = PLAY;
+    track_tally(s[0].track[..], "shift", "");
+    add_line(s, "SHIFT STARTED. SOMEONE WANTS THE VAULT.", SEV_YOU);
+    begin_op(s, OP_WAIT, NET, NET, 4);
+  }
+}
+leave_to :: (s: [] Watch, url: string) {
+  if s[0].action != 0 { return; }
+  s[0].out_n = put(s[0].outbox[..], 0, url);
+  s[0].action = ACT_NAVIGATE;
+}
+reach_stage :: (s: [] Watch, stage: int) { if stage > s[0].stage { s[0].stage = stage; } }
+
+begin_op :: (s: [] Watch, op: int, from: int, to: int, secs: f32) {
+  s[0].op = op; s[0].op_from = from; s[0].op_to = to;
+  s[0].op_t = 0; s[0].op_total = secs; s[0].op_seen = false;
+  if op == OP_WAIT { return; }
+  s[0].steps += 1;
+  a := HOST_NAME[from]; b := HOST_NAME[to];
+  if op == OP_PHISH { s[0].op_seen = trace(s, MAIL, 0.3, "MAIL INBOUND INVOICE_0412.HTML.ZIP -> ", b, ""); }
+  if op == OP_WEBX { s[0].op_seen = trace(s, WEB, 0.25, "HTTP WEB 200 POST /UPLOAD.PHP 41 KB", "", ""); }
+  if op == OP_DISCOVER { s[0].op_seen = trace(s, from, 0.3, "LDAP ", a, " QUERY ALL USERS 1204 RESULTS"); }
+  if op == OP_MOVE { s[0].op_seen = trace(s, from, 0.4, "SMB ", a, " -> ADMIN$ WRITE SVC_UPD.EXE"); }
+  if op == OP_ESCALATE { s[0].op_seen = trace(s, from, 0.45, "KRB ", a, " -> DC TGS RC4 X40"); }
+  if op == OP_REDUMP { s[0].op_seen = trace(s, DC, 0.5, "PROC DC LSASS READ BY SVC_UPD", "", ""); }
+  if op == OP_DUMP { s[0].op_seen = trace(s, FILES, 0.4, "FILE FILES READ \\IT\\BACKUP_PW.XLSX", "", ""); }
+  if s[0].op_seen {
+    if op == OP_MOVE { set_banner(s, "WARNING", "LATERAL MOVEMENT  ", a, " → ?"); }
+    if op == OP_ESCALATE || op == OP_REDUMP { set_banner(s, "WARNING", "CREDENTIAL THEFT AT DC", "", ""); s[0].creds_seen = true; }
+    if op == OP_DUMP { set_banner(s, "CAUTION", "CREDENTIAL HUNT ON FILES", "", ""); s[0].creds_seen = true; }
+  }
+}
+
+// The intruder's next move: the shortest way to its goal through what's
+// online, around the hosts you're watching hardest.
+plan :: (s: [] Watch) {
+  r: [HOSTS] bool;
+  reach(s, r[..]);
+  // nothing held: get in
+  if owned_count(s) == 0 {
+    if s[0].entered { begin_op(s, OP_WAIT, NET, NET, 5); return; }
+    ws := WS1 + pick(s, 3);
+    if rnd(s) < 0.72 && r[MAIL] && r[ws] { begin_op(s, OP_PHISH, MAIL, ws, 7); return; }
+    if r[WEB] { begin_op(s, OP_WEBX, NET, WEB, 7); return; }
+    for i: 0..<3 {
+      if r[MAIL] && r[WS1 + i] { begin_op(s, OP_PHISH, MAIL, WS1 + i, 7); return; }
+    }
+    begin_op(s, OP_WAIT, NET, NET, 4);
+    return;
+  }
+  // a host it holds that still answers it
+  live := -1;
+  for i: 0..<HOSTS { if s[0].hosts[i].owned && r[i] && (live < 0 || s[0].hosts[i].suspect < s[0].hosts[live].suspect) { live = i; } }
+  if live < 0 { begin_op(s, OP_WAIT, NET, NET, 4); return; }
+  if !s[0].discovered { begin_op(s, OP_DISCOVER, live, live, 5); return; }
+  if s[0].admin {
+    if s[0].hosts[VAULT].owned && r[VAULT] { begin_op(s, OP_EXFIL, VAULT, NET, EXFIL_TICK); return; }
+    if step_toward(s, VAULT, r[..], true) { return; }
+    begin_op(s, OP_WAIT, NET, NET, 4);
+    return;
+  }
+  if s[0].hosts[DC].owned && r[DC] { begin_op(s, OP_REDUMP, DC, DC, 5); return; }
+  // next to the directory: steal its keys
+  for i: 0..<HOSTS {
+    if s[0].hosts[i].owned && r[i] && linked(s, i, DC) { begin_op(s, OP_ESCALATE, i, DC, 9); return; }
+  }
+  if s[0].hosts[FILES].owned && r[FILES] && !s[0].dumped { begin_op(s, OP_DUMP, FILES, FILES, 6); return; }
+  if step_toward(s, DC, r[..], false) { return; }
+  if !s[0].dumped && step_toward(s, FILES, r[..], true) { return; }
+  begin_op(s, OP_WAIT, NET, NET, 4);
+}
+// One hop toward target from the nearest host it holds; into target itself only when into is true.
+step_toward :: (s: [] Watch, target: int, r: [] bool, into: bool) -> bool {
+  d: [HOSTS] int;
+  hops_to(s, target, d[..]);
+  from := -1;
+  for i: 0..<HOSTS {
+    if !s[0].hosts[i].owned || !r[i] || d[i] <= 0 { continue; }
+    if from < 0 || d[i] < d[from] || (d[i] == d[from] && s[0].hosts[i].suspect < s[0].hosts[from].suspect) { from = i; }
+  }
+  if from < 0 { return false; }
+  to := -1;
+  for b: 0..<HOSTS {
+    if b == NET || d[b] != d[from] - 1 || !linked(s, from, b) || s[0].hosts[b].owned { continue; }
+    if b == target && !into { continue; }
+    if b == DC && target != DC { continue; }
+    if b == VAULT && !s[0].admin { continue; }
+    if to < 0 || s[0].hosts[b].suspect + f32(ifx s[0].hosts[b].known then 1 else 0) < s[0].hosts[to].suspect { to = b; }
+  }
+  if to < 0 { return false; }
+  begin_op(s, OP_MOVE, from, to, 6 + 2 * rnd(s));
+  return true;
+}
+// Gaining a host: an alert on its arrival tells you it's there.
+take :: (s: [] Watch, host: int, chance: f32, a: string, b: string, c: string) {
+  s[0].hosts[host].owned = true;
+  s[0].entered = true;
+  if trace(s, host, chance, a, b, c) { s[0].hosts[host].known = true; }
+}
+finish_op :: (s: [] Watch) {
+  op := s[0].op; from := s[0].op_from; to := s[0].op_to;
+  s[0].op = OP_NONE;
+  if op == OP_WAIT || op == OP_NONE { return; }
+  r: [HOSTS] bool;
+  reach(s, r[..]);
+  b := HOST_NAME[to];
+  if op == OP_PHISH {
+    if !r[MAIL] || !r[to] { return; }
+    reach_stage(s, 1);
+    take(s, to, 0.45, "PROC ", b, " WINWORD -> POWERSHELL -ENC");
+    if s[0].hosts[to].known { set_banner(s, "EMERGENCY", "INTRUSION ON ", b, ""); }
+    return;
+  }
+  if op == OP_WEBX {
+    if !r[WEB] { return; }
+    reach_stage(s, 1);
+    take(s, WEB, 0.45, "PROC WEB PHP-FPM -> /BIN/SH", "", "");
+    if s[0].hosts[WEB].known { set_banner(s, "EMERGENCY", "INTRUSION ON WEB", "", ""); }
+    return;
+  }
+  // the rest need their source still held and answering
+  if !s[0].hosts[from].owned || !r[from] { return; }
+  if op == OP_DISCOVER { s[0].discovered = true; reach_stage(s, 2); return; }
+  if op == OP_MOVE {
+    if !linked(s, from, to) { return; }
+    reach_stage(s, 3);
+    take(s, to, ifx to == VAULT then 0.7 else 0.35, "SVC ", b, " NEW SERVICE SVC_UPD");
+    if s[0].hosts[to].known { set_banner(s, "WARNING", HOST_NAME[from], " → ", b); }
+    return;
+  }
+  if op == OP_ESCALATE {
+    if !linked(s, from, DC) { return; }
+    reach_stage(s, 4);
+    s[0].admin = true;
+    take(s, DC, 0.5, "DC NTDS.DIT COPIED BY SVC_UPD", "", "");
+    if s[0].hosts[DC].known { set_banner(s, "EMERGENCY", "THE DIRECTORY IS TAKEN", "", ""); s[0].creds_seen = true; }
+    return;
+  }
+  if op == OP_REDUMP { s[0].admin = true; reach_stage(s, 4); return; }
+  if op == OP_DUMP {
+    s[0].dumped = true;
+    if rnd(s) < 0.5 { s[0].admin = true; reach_stage(s, 4); }
+    return;
+  }
+  if op == OP_EXFIL {
+    if !s[0].hosts[VAULT].owned || !r[VAULT] { return; }
+    reach_stage(s, 5);
+    s[0].exfil = lo(1, s[0].exfil + EXFIL_STEP);
+    if trace(s, VAULT, 0.6, "NET VAULT -> 203.0.113.7:443 220 MB", "", "") {
+      s[0].hosts[VAULT].known = true;
+      set_banner(s, "EMERGENCY", "DATA LEAVING THE VAULT", "", "");
+    }
+  }
+}
+
+// ---- what you do
+
+start_job :: (s: [] Watch, host: int, kind: int) -> bool {
+  if s[0].phase != PLAY || host == NET || s[0].hosts[host].task != JOB_NONE { return false; }
+  if busy_count(s) >= RESPONDERS { add_line(s, "BOTH RESPONDERS ARE BUSY.", SEV_YOU); return false; }
+  s[0].hosts[host].task = kind;
+  s[0].hosts[host].task_t = ifx kind == JOB_SCAN then SCAN_TIME else CLEAN_TIME;
+  say4(s, ifx kind == JOB_SCAN then "YOU: SCAN " else "YOU: REIMAGE ", HOST_NAME[host], "", "", SEV_YOU);
+  return true;
+}
+finish_job :: (s: [] Watch, host: int) {
+  h := s[0].hosts[host];
+  s[0].hosts[host].task = JOB_NONE;
+  name := HOST_NAME[host];
+  if h.task == JOB_SCAN {
+    if h.owned {
+      s[0].hosts[host].known = true; s[0].hosts[host].suspect = 1; s[0].hosts[host].ping = 1;
+      say4(s, "SCAN ", name, ": IMPLANT SVC_UPD FOUND", "", SEV_ALERT);
+      set_banner(s, "CONFIRMED", "IMPLANT ON ", name, "");
+    } else {
+      s[0].hosts[host].checked = true; s[0].hosts[host].suspect = 0;
+      say4(s, "SCAN ", name, ": CLEAN", "", SEV_GOOD);
+    }
+    return;
+  }
+  if h.task == JOB_CLEAN {
+    s[0].hosts[host].owned = false; s[0].hosts[host].known = false;
+    s[0].hosts[host].suspect = 0; s[0].hosts[host].checked = true;
+    say4(s, "REIMAGE ", name, " DONE. BACK ONLINE.", "", SEV_GOOD);
+  }
+}
+toggle_isolate :: (s: [] Watch, host: int) {
+  if s[0].phase != PLAY || host == NET { return; }
+  on := !s[0].hosts[host].isolated;
+  s[0].hosts[host].isolated = on;
+  say4(s, ifx on then "YOU: ISOLATE " else "YOU: RESTORE ", HOST_NAME[host], "", "", SEV_YOU);
+}
+reset_creds :: (s: [] Watch) {
+  if s[0].phase != PLAY { return; }
+  if s[0].reset_cd > 0 { add_line(s, "CREDENTIALS WERE JUST RESET. WAIT.", SEV_YOU); return; }
+  s[0].reset_cd = RESET_COOLDOWN;
+  s[0].uptime = hi(0, s[0].uptime - RESET_COST);
+  s[0].admin = false;
+  add_line(s, "YOU: RESET ALL ADMIN CREDENTIALS", SEV_YOU);
+  if s[0].hosts[DC].owned { add_line(s, "DC STILL HOLDS AN IMPLANT.", SEV_RAW); }
+}
+act :: (s: [] Watch, verb: int, host: int) {
+  if verb == V_SCAN { ok := start_job(s, host, JOB_SCAN); }
+  if verb == V_CLEAN { ok := start_job(s, host, JOB_CLEAN); }
+  if verb == V_ISOLATE && !s[0].hosts[host].isolated { toggle_isolate(s, host); }
+  if verb == V_RESTORE && s[0].hosts[host].isolated { toggle_isolate(s, host); }
+  if verb == V_RESET { reset_creds(s); }
+}
+
+// ---- the triad: three advisor routines that each read the board their way
+
+// Its owner can switch the triad off (the board's "triad" row): then you defend alone.
+triad_on :: (s: [] Watch) -> bool { return redit_row_on(s[0].ed[..], "triad"); }
+
+near_jewels :: (h: int) -> bool { return h == DC || h == VAULT || h == EDGE || linked_raw(h, DC) || linked_raw(h, VAULT); }
+advise :: (s: [] Watch, who: int, host: int) -> int {
+  h := s[0].hosts[host];
+  if host == NET { return V_HOLD; }
+  hot := h.known || h.suspect > 0.45;
+  if who == 0 {   // HUNTER: find it and dig it out
+    if h.known { return V_CLEAN; }
+    if h.suspect > 0.25 && !h.checked { return V_SCAN; }
+    return V_HOLD;
+  }
+  if who == 1 {   // WARDEN: contain first
+    if h.isolated { return ifx h.known then V_CLEAN else V_RESTORE; }
+    if host == VAULT && s[0].exfil > 0 { return V_ISOLATE; }
+    if hot && near_jewels(host) { return V_ISOLATE; }
+    if h.known { return V_CLEAN; }
+    return V_HOLD;
+  }
+  // AUDITOR: keep the business running; reset what was stolen
+  if s[0].creds_seen && s[0].reset_cd <= 0 && !s[0].hosts[DC].owned && host == DC { return V_RESET; }
+  if h.isolated && !h.known { return V_RESTORE; }
+  if h.known { return V_CLEAN; }
+  if h.suspect > 0.5 && !h.checked { return V_SCAN; }
+  return V_HOLD;
+}
+consensus :: (s: [] Watch, host: int, votes: [] int) -> int {
+  v: [3] int;
+  for i: 0..<3 { v[i] = advise(s, i, host); }
+  best := v[0]; most := 0;
+  for i: 0..<3 {
+    n := 0;
+    for j: 0..<3 { if v[j] == v[i] { n += 1; } }
+    if n > most { most = n; best = v[i]; }
+  }
+  if votes.count > 0 { votes[0] = most; }
+  return best;
+}
+// The triad on its own: the hottest host first, one call a second.
+autopilot :: (s: [] Watch) {
+  best := -1; score := 0.0f32;
+  for i: 1..<HOSTS {
+    h := s[0].hosts[i];
+    if h.task != JOB_NONE { continue; }
+    if advise(s, 0, i) == V_HOLD && advise(s, 1, i) == V_HOLD && advise(s, 2, i) == V_HOLD { continue; }
+    sc := h.suspect + f32(ifx h.known then 2 else 0) + f32(ifx h.isolated then 0.5 else 0) + f32(ifx i == VAULT && s[0].exfil > 0 then 3 else 0);
+    if best < 0 || sc > score { best = i; score = sc; }
+  }
+  if best < 0 { return; }
+  votes: [1] int;
+  verb := consensus(s, best, votes[..]);
+  if verb == V_HOLD { return; }
+  s[0].sel = best;
+  act(s, verb, best);
+}
+
+// One fixed step of the game.
+step :: (s: [] Watch, dt: f32) {
+  s[0].hit = hi(0, s[0].hit - dt * 1.6);
+  s[0].banner_t = hi(0, s[0].banner_t - dt);
+  for i: 0..<HOSTS {
+    s[0].hosts[i].ping = hi(0, s[0].hosts[i].ping - dt * 0.8);
+  }
+  for i: 0..<s[0].line_n { s[0].lines[i].age += dt; }
+  if s[0].phase != PLAY { return; }
+  s[0].play_t += dt;
+  s[0].reset_cd = hi(0, s[0].reset_cd - dt);
+  // your responders
+  for i: 0..<HOSTS {
+    if s[0].hosts[i].task == JOB_NONE { continue; }
+    s[0].hosts[i].task_t -= dt;
+    if s[0].hosts[i].task_t <= 0 { finish_job(s, i); }
+  }
+  // heat fades slowly, not for a host you've confirmed
+  for i: 0..<HOSTS {
+    if !s[0].hosts[i].known { s[0].hosts[i].suspect = hi(0, s[0].hosts[i].suspect - dt * 0.012); }
+  }
+  // the business pays for every host offline
+  for i: 0..<HOSTS { if !online(s, i) { s[0].uptime -= HOST_COST[i] * dt; } }
+  // ordinary traffic
+  s[0].noise_t -= dt;
+  if s[0].noise_t <= 0 {
+    if redit_row_on(s[0].ed[..], "traffic") { noise(s); }
+    s[0].noise_t = 1.1 + 1.2 * rnd(s);
+  }
+  // the intruder
+  s[0].op_t += dt;
+  if s[0].op != OP_NONE && s[0].op_t >= s[0].op_total { finish_op(s); }
+  if s[0].op == OP_NONE { plan(s); }
+  // implants call home
+  s[0].beacon_t -= dt;
+  if s[0].beacon_t <= 0 {
+    s[0].beacon_t = 6 + 3 * rnd(s);
+    r: [HOSTS] bool;
+    reach(s, r[..]);
+    for i: 0..<HOSTS {
+      if s[0].hosts[i].owned && r[i] && rnd(s) < 0.5 { seen := trace(s, i, 0.2, "DNS ", HOST_NAME[i], " TXT Q7X.CDN-SYNC.EXAMPLE"); }
+    }
+  }
+  if s[0].autoplay && triad_on(s) {
+    s[0].autoplay_t -= dt;
+    if s[0].autoplay_t <= 0 { s[0].autoplay_t = 1; autopilot(s); }
+  }
+  // the end
+  if s[0].exfil >= 1 { finish_shift(s, LOST, 1); return; }
+  if s[0].uptime <= 0 { s[0].uptime = 0; finish_shift(s, LOST, 2); return; }
+  if s[0].entered && owned_count(s) == 0 && s[0].op != OP_PHISH && s[0].op != OP_WEBX { finish_shift(s, WON, 0); }
+}
+finish_shift :: (s: [] Watch, phase: int, why: int) {
+  s[0].phase = phase; s[0].why = why; s[0].end_t = s[0].play_t;
+  if track_begin(s[0].track[..], "end") {
+    track_bool(s[0].track[..], "won", phase == WON); track_int(s[0].track[..], "why", why);
+    track_int(s[0].track[..], "stage", s[0].stage); track_int(s[0].track[..], "seconds", int(s[0].play_t));
+    track_end(s[0].track[..]);
+  }
+  if phase == WON { set_banner(s, "ALL CLEAR", "INTRUDER EVICTED", "", ""); add_line(s, "NO IMPLANTS LEFT. THE VAULT IS SAFE.", SEV_GOOD); }
+  if why == 1 { set_banner(s, "BREACH", "THE VAULT WAS EMPTIED", "", ""); }
+  if why == 2 { set_banner(s, "BLACKOUT", "THE BUSINESS WENT DARK", "", ""); }
+  s[0].banner_t = 1000;
+}
+
+// ---- drawing
+
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  size := sqrt(dx * dx + dy * dy);
+  if size <= 0 { size = 0.01; dx = 0.01; dy = 0; }
+  ux := dx / size; uy := dy / size;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, size + r, size + r, -r, size + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    for e: 12..<16 { out[o + e] = 0; }
+  }
+  return true;
+}
+Col :: struct { r: f32; g: f32; b: f32; }
+WHITE :: Col.{r = 0.9, g = 0.92, b = 0.96};
+DIM :: Col.{r = 0.5, g = 0.52, b = 0.58};
+FAINT :: Col.{r = 0.28, g = 0.3, b = 0.34};
+RED :: Col.{r = 1.0, g = 0.12, b = 0.18};
+CYAN :: Col.{r = 0.3, g = 0.95, b = 1.0};
+GREEN :: Col.{r = 0.35, g = 1.0, b = 0.45};
+VIOLET :: Col.{r = 0.68, g = 0.42, b = 1.0};
+MAGENTA :: Col.{r = 1.0, g = 0.3, b = 0.75};
+
+seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: f32, c: Col) -> int {
+  if lit(out, n, ax, ay, bx, by, w * 0.55, light, w * 1.8, c.r, c.g, c.b, 0) { return n + 6; }
+  return n;
+}
+// A dashed line: dash and gap in px, scrolled by shift.
+dashed :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, w: f32, light: f32, c: Col, dash: f32, shift: f32) -> int {
+  n := at;
+  dx := bx - ax; dy := by - ay;
+  span := sqrt(dx * dx + dy * dy);
+  if span < 1 { return n; }
+  t := -fract_of(shift / (dash * 2)) * dash * 2;
+  while t < span {
+    t0 := hi(t, 0); t1 := lo(t + dash, span);
+    if t1 > t0 { n = seg(out, n, ax + dx * t0 / span, ay + dy * t0 / span, ax + dx * t1 / span, ay + dy * t1 / span, w, light, c); }
+    t += dash * 2;
+  }
+  return n;
+}
+fract_of :: (x: f32) -> f32 { return x - floor(x); }
+box_lines :: (out: [] f32, at: int, r: Rect, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  n = seg(out, n, r.x0, r.y0, r.x1, r.y0, w, light, c);
+  n = seg(out, n, r.x1, r.y0, r.x1, r.y1, w, light, c);
+  n = seg(out, n, r.x1, r.y1, r.x0, r.y1, w, light, c);
+  n = seg(out, n, r.x0, r.y1, r.x0, r.y0, w, light, c);
+  return n;
+}
+// The homepage's panel frame: a hairline box and heavier corner brackets.
+frame :: (out: [] f32, at: int, r: Rect, k: f32, c: Col) -> int {
+  n := box_lines(out, at, r, 0.6 * k, 0.32, c);
+  b := lo(14 * k, (r.x1 - r.x0) * 0.2);
+  n = seg(out, n, r.x0, r.y0, r.x0 + b, r.y0, 1.3 * k, 0.9, c); n = seg(out, n, r.x0, r.y0, r.x0, r.y0 + b, 1.3 * k, 0.9, c);
+  n = seg(out, n, r.x1, r.y0, r.x1 - b, r.y0, 1.3 * k, 0.9, c); n = seg(out, n, r.x1, r.y0, r.x1, r.y0 + b, 1.3 * k, 0.9, c);
+  n = seg(out, n, r.x0, r.y1, r.x0 + b, r.y1, 1.3 * k, 0.9, c); n = seg(out, n, r.x0, r.y1, r.x0, r.y1 - b, 1.3 * k, 0.9, c);
+  n = seg(out, n, r.x1, r.y1, r.x1 - b, r.y1, 1.3 * k, 0.9, c); n = seg(out, n, r.x1, r.y1, r.x1, r.y1 - b, 1.3 * k, 0.9, c);
+  return n;
+}
+ink :: (k: f32, light: f32, c: Col) -> Ink {
+  i: Ink;
+  i.core = 0.6 * k; i.light = light; i.glow = 1.2 * k; i.red = c.r; i.green = c.g; i.blue = c.b; i.mode = 0; i.scale = k;
+  return i;
+}
+say_at :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return draw_text(out, n, t, x, base, cap, GAP, SPACE, k, false, false);
+}
+say_mid :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap) / 2, base, cap, k);
+}
+say_right :: (out: [] f32, n: int, t: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  return say_at(out, n, t, x - text_width(t, cap), base, cap, k);
+}
+fit_cap :: (t: string, cap: f32, width: f32) -> f32 { return lo(cap, cap * width / hi(text_width(t, cap), 1)); }
+// A bar: frame, and a fill of short ticks up to share.
+bar :: (out: [] f32, at: int, x0: f32, y: f32, x1: f32, tall: f32, share: f32, k: f32, c: Col) -> int {
+  n := box_lines(out, at, Rect.{x0 = x0, y0 = y, x1 = x1, y1 = y + tall}, 0.5 * k, 0.4, c);
+  ticks := int((x1 - x0) / (5 * k));
+  lit_to := int(f32(ticks) * clamp01(share) + 0.5);
+  for i: 0..<lit_to {
+    x := x0 + 2.5 * k + f32(i) * 5 * k;
+    n = seg(out, n, x, y + 2.5 * k, x, y + tall - 2.5 * k, 1.1 * k, 0.9, c);
+  }
+  return n;
+}
+
+// The map's projection: u across, v down, y up (grid units) to device px.
+mapx :: (s: [] Watch, u: f32, v: f32, y: f32) -> f32 { return s[0].cx + u * s[0].sc * 0.8660254; }
+mapy :: (s: [] Watch, u: f32, v: f32, y: f32) -> f32 { return s[0].cy + v * s[0].sc * 0.5 - y * s[0].sc; }
+// A diamond on the floor around (u, v) with half size h (grid units), raised y.
+diamond :: (s: [] Watch, out: [] f32, at: int, u: f32, v: f32, h: f32, y: f32, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  ax := mapx(s, u - 2 * h, v, y); ay := mapy(s, u - 2 * h, v, y);
+  bx := mapx(s, u, v - 2 * h, y); by := mapy(s, u, v - 2 * h, y);
+  cx := mapx(s, u + 2 * h, v, y); cy := mapy(s, u + 2 * h, v, y);
+  dx := mapx(s, u, v + 2 * h, y); dy := mapy(s, u, v + 2 * h, y);
+  n = seg(out, n, ax, ay, bx, by, w, light, c);
+  n = seg(out, n, bx, by, cx, cy, w, light, c);
+  n = seg(out, n, cx, cy, dx, dy, w, light, c);
+  n = seg(out, n, dx, dy, ax, ay, w, light, c);
+  return n;
+}
+// The homepage's fence: short posts along a diamond's two front edges.
+fence :: (s: [] Watch, out: [] f32, at: int, u: f32, v: f32, h: f32, k: f32, c: Col) -> int {
+  n := at;
+  posts := 9;
+  for side: 0..<2 {
+    su := ifx side == 0 then -2 * h else 2 * h;
+    for p: 0..<posts + 1 {
+      t := f32(p) / f32(posts);
+      pu := u + su * (1 - t); pv := v + 2 * h * t;
+      x := mapx(s, pu, pv, 0); y := mapy(s, pu, pv, 0);
+      n = seg(out, n, x, y, x, y - 0.16 * s[0].sc, 0.6 * k, 0.45, c);
+    }
+  }
+  return n;
+}
+cuboid :: (s: [] Watch, out: [] f32, at: int, u: f32, v: f32, h: f32, tall: f32, w: f32, light: f32, c: Col) -> int {
+  n := diamond(s, out, at, u, v, h, 0, w, light, c);
+  n = diamond(s, out, n, u, v, h, tall, w, light, c);
+  us := [4] f32.[-2 * h, 0, 2 * h, 0];
+  vs := [4] f32.[0, -2 * h, 0, 2 * h];
+  for i: 0..<4 {
+    n = seg(out, n, mapx(s, u + us[i], v + vs[i], 0), mapy(s, u + us[i], v + vs[i], 0),
+            mapx(s, u + us[i], v + vs[i], tall), mapy(s, u + us[i], v + vs[i], tall), w, light * 0.8, c);
+  }
+  return n;
+}
+ring :: (out: [] f32, at: int, x: f32, y: f32, rx: f32, ry: f32, from: f32, upto: f32, w: f32, light: f32, c: Col) -> int {
+  n := at;
+  parts := 28;
+  for i: 0..<parts {
+    t0 := from + (upto - from) * f32(i) / f32(parts);
+    t1 := from + (upto - from) * f32(i + 1) / f32(parts);
+    n = seg(out, n, x + cos(t0) * rx, y + sin(t0) * ry, x + cos(t1) * rx, y + sin(t1) * ry, w, light, c);
+  }
+  return n;
+}
+
+host_colour :: (s: [] Watch, i: int) -> Col {
+  h := s[0].hosts[i];
+  if h.known { return RED; }
+  if h.isolated { return VIOLET; }
+  if h.suspect > 0.3 { return MAGENTA; }
+  if h.checked { return GREEN; }
+  return WHITE;
+}
+host_status :: (s: [] Watch, i: int) -> string {
+  h := s[0].hosts[i];
+  if i == NET { return "UNTRUSTED"; }
+  if h.task == JOB_SCAN { return "SCANNING"; }
+  if h.task == JOB_CLEAN { return "REIMAGING"; }
+  if h.known && h.isolated { return "IMPLANT · ISOLATED"; }
+  if h.known { return "IMPLANT"; }
+  if h.isolated { return "ISOLATED"; }
+  if h.suspect > 0.3 { return "ALERT"; }
+  if h.checked { return "CLEAN"; }
+  return "NOMINAL";
+}
+
+draw_map :: (s: [] Watch, out: [] f32, at: int, k: f32, t: f32) -> int {
+  n := at;
+  sc := s[0].sc;
+  // the links
+  for l: 0..<LINKS {
+    a := LINK_A[l]; b := LINK_B[l];
+    ax := mapx(s, HOST_U[a], HOST_V[a], 0); ay := mapy(s, HOST_U[a], HOST_V[a], 0);
+    bx := mapx(s, HOST_U[b], HOST_V[b], 0); by := mapy(s, HOST_U[b], HOST_V[b], 0);
+    if linked(s, a, b) {
+      n = dashed(out, n, ax, ay, bx, by, 0.8 * k, 0.45, DIM, 6 * k, t * 18 * k);
+      // a packet or two of ordinary traffic
+      ph := fract_of(t * 0.18 + f32(l) * 0.37);
+      n = seg(out, n, ax + (bx - ax) * ph, ay + (by - ay) * ph, ax + (bx - ax) * (ph + 0.02), ay + (by - ay) * (ph + 0.02), 1.6 * k, 0.9, WHITE);
+    } else {
+      n = dashed(out, n, ax, ay, bx, by, 0.6 * k, 0.18, VIOLET, 2 * k, 0);
+    }
+  }
+  // the intruder's move in flight, when an alert saw it start
+  if s[0].phase == PLAY && s[0].op_seen && (s[0].op == OP_MOVE || s[0].op == OP_ESCALATE || s[0].op == OP_PHISH) {
+    a := s[0].op_from; b := s[0].op_to;
+    ax := mapx(s, HOST_U[a], HOST_V[a], 0); ay := mapy(s, HOST_U[a], HOST_V[a], 0);
+    bx := mapx(s, HOST_U[b], HOST_V[b], 0); by := mapy(s, HOST_U[b], HOST_V[b], 0);
+    p := clamp01(s[0].op_t / hi(s[0].op_total, 0.1));
+    n = seg(out, n, ax, ay, ax + (bx - ax) * p, ay + (by - ay) * p, 2.2 * k, 1, RED);
+    hx := ax + (bx - ax) * p; hy := ay + (by - ay) * p;
+    n = ring(out, n, hx, hy, 7 * k, 4 * k, 0, 6.2832, 1.2 * k, 1, RED);
+  }
+  // exfil: a red stream off the vault, out the top of the screen
+  if s[0].phase == PLAY && s[0].op == OP_EXFIL {
+    vx := mapx(s, HOST_U[VAULT], HOST_V[VAULT], HOST_TALL[VAULT]); vy := mapy(s, HOST_U[VAULT], HOST_V[VAULT], HOST_TALL[VAULT]);
+    for i: 0..<6 {
+      ph := fract_of(t * 0.9 + f32(i) / 6);
+      y0 := vy - ph * sc * 3;
+      n = seg(out, n, vx + sin(t * 3 + f32(i)) * 3 * k, y0, vx + sin(t * 3 + f32(i)) * 3 * k, y0 - sc * 0.25, 1.8 * k, 1, RED);
+    }
+  }
+  // the hosts, back to front
+  order := [10] int.[WS1, MAIL, DC, WS2, NET, EDGE, WS3, VAULT, WEB, FILES];
+  for o: 0..<HOSTS {
+    i := order[o];
+    u := HOST_U[i]; v := HOST_V[i];
+    h := s[0].hosts[i];
+    c := host_colour(s, i);
+    beat := 0.75 + 0.25 * sin(t * 6);
+    light: f32 = ifx h.known then beat else 0.85;
+    if i == NET {
+      // the internet: rings in the dark
+      x := mapx(s, u, v, 0.6); y := mapy(s, u, v, 0.6);
+      for r: 0..<3 { n = ring(out, n, x, y, sc * (0.4 + 0.25 * f32(r)), sc * (0.4 + 0.25 * f32(r)), t * (0.3 + 0.2 * f32(r)), t * (0.3 + 0.2 * f32(r)) + 4.5, 0.7 * k, 0.4, DIM); }
+      s[0].hosts[i].sx = x; s[0].hosts[i].sy = y;
+    } else {
+      n = diamond(s, out, n, u, v, 0.62, 0, 0.8 * k, 0.55, ifx i == s[0].sel then CYAN else DIM);
+      n = fence(s, out, n, u, v, 0.62, k, ifx i == s[0].sel then CYAN else FAINT);
+      tall := HOST_TALL[i];
+      n = cuboid(s, out, n, u, v, 0.3, tall, 1.0 * k, light, c);
+      if i == VAULT { n = cuboid(s, out, n, u, v, 0.18, tall + 0.35, 0.9 * k, light, c); }
+      if i == DC { n = seg(out, n, mapx(s, u, v, tall), mapy(s, u, v, tall), mapx(s, u, v, tall + 0.7), mapy(s, u, v, tall + 0.7), 0.8 * k, 0.8, c); }
+      s[0].hosts[i].sx = mapx(s, u, v, tall * 0.5); s[0].hosts[i].sy = mapy(s, u, v, tall * 0.5);
+      // a kind's progress ring on the floor
+      if h.task != JOB_NONE {
+        total: f32 = ifx h.task == JOB_SCAN then SCAN_TIME else CLEAN_TIME;
+        p := 1 - h.task_t / total;
+        n = ring(out, n, mapx(s, u, v, 0), mapy(s, u, v, 0), sc * 0.95, sc * 0.55, -1.5708, -1.5708 + 6.2832 * p, 1.6 * k, 1, ifx h.task == JOB_SCAN then CYAN else GREEN);
+      }
+      if h.isolated {
+        n = diamond(s, out, n, u, v, 0.8, 0, 1.0 * k, 0.8, VIOLET);
+      }
+      // an alert's ring, spreading
+      if h.ping > 0 {
+        g := 1 - h.ping;
+        n = ring(out, n, mapx(s, u, v, 0), mapy(s, u, v, 0), sc * (0.6 + 1.6 * g), sc * (0.35 + 0.9 * g), 0, 6.2832, 1.4 * k, h.ping, RED);
+      }
+    }
+    // its name and its state, over it, underlined like the homepage's
+    tall := HOST_TALL[i];
+    lx := mapx(s, u, v, tall + 0.55); ly := mapy(s, u, v, tall + 0.55);
+    cap := lo(12 * k, sc * 0.42);
+    name := HOST_NAME[i];
+    nw := text_width(name, cap);
+    n = say_mid(out, n, name, lx, ly, cap, ink(k, ifx i == s[0].sel then 1 else 0.85, ifx i == s[0].sel then CYAN else WHITE));
+    n = seg(out, n, lx - nw / 2 - 2 * k, ly + 3 * k, lx + nw / 2 + 2 * k, ly + 3 * k, 0.6 * k, 0.6, ifx i == s[0].sel then CYAN else WHITE);
+    st := host_status(s, i);
+    n = say_mid(out, n, st, lx, ly + cap * 1.5, cap * 0.72, ink(k, 0.75, c));
+  }
+  return n;
+}
+
+// The EVA-style alarm: hazard stripes, a hexagon and a big word.
+draw_banner :: (s: [] Watch, out: [] f32, at: int, w: f32, top: f32, k: f32, t: f32) -> int {
+  n := at;
+  if s[0].banner_t <= 0 || s[0].banner_n == 0 { return n; }
+  title := cast(string) s[0].banner[0..<s[0].banner_n];
+  sub := cast(string) s[0].sub[0..<s[0].sub_n];
+  good := s[0].phase == WON;
+  c := ifx good then GREEN else RED;
+  // it blinks while fresh
+  if !good && s[0].banner_t < 900 && s[0].banner_t > 1.2 && fract_of(t * 3) < 0.25 { return n; }
+  bw := lo(w * 0.92, 620 * k);
+  x0 := w / 2 - bw / 2; x1 := w / 2 + bw / 2;
+  big := fit_cap(title, 34 * k, bw * 0.62);
+  small := fit_cap(sub, 13 * k, bw * 0.8);
+  band := 9 * k;
+  y0 := top; y1 := top + band * 2 + big + small * 2.6 + 18 * k;
+  // the stripes, top and bottom
+  for row: 0..<2 {
+    yb := ifx row == 0 then y0 else y1 - band;
+    x := x0;
+    while x + band < x1 {
+      n = seg(out, n, x, yb + band, x + band, yb, 2.2 * k, 0.95, c);
+      x += band * 1.6;
+    }
+    n = seg(out, n, x0, yb, x1, yb, 0.7 * k, 0.8, c);
+    n = seg(out, n, x0, yb + band, x1, yb + band, 0.7 * k, 0.8, c);
+  }
+  n = seg(out, n, x0, y0, x0, y1, 1.2 * k, 0.9, c);
+  n = seg(out, n, x1, y0, x1, y1, 1.2 * k, 0.9, c);
+  // the hexagon with its mark
+  hx := x0 + 34 * k; hy := (y0 + y1) / 2; hr := lo(22 * k, (y1 - y0) * 0.32);
+  for i: 0..<6 {
+    a0 := f32(i) * 1.0471976; a1 := a0 + 1.0471976;
+    n = seg(out, n, hx + cos(a0) * hr, hy + sin(a0) * hr, hx + cos(a1) * hr, hy + sin(a1) * hr, 1.6 * k, 1, c);
+  }
+  if good {
+    n = seg(out, n, hx - hr * 0.4, hy, hx - hr * 0.1, hy + hr * 0.35, 2 * k, 1, c);
+    n = seg(out, n, hx - hr * 0.1, hy + hr * 0.35, hx + hr * 0.45, hy - hr * 0.35, 2 * k, 1, c);
+  } else {
+    n = seg(out, n, hx, hy - hr * 0.5, hx, hy + hr * 0.15, 2.2 * k, 1, c);
+    n = seg(out, n, hx, hy + hr * 0.38, hx, hy + hr * 0.42, 2.2 * k, 1, c);
+  }
+  tx := (x0 + 70 * k + x1) / 2;
+  n = say_mid(out, n, title, tx, y0 + band + 8 * k + big, big, ink(k, 1, c));
+  n = say_mid(out, n, sub, tx, y0 + band + 8 * k + big + small * 1.9, small, ink(k, 0.95, WHITE));
+  return n;
+}
+
+draw_button :: (s: [] Watch, out: [] f32, at: int, r: Rect, label: string, k: f32, c: Col, on: bool, held: bool) -> int {
+  n := frame(out, at, r, k, c);
+  if on { n = seg(out, n, r.x0 + 4 * k, r.y1 - 4 * k, r.x1 - 4 * k, r.y1 - 4 * k, 1.4 * k, 1, c); }
+  cap := fit_cap(label, 11 * k, (r.x1 - r.x0) * 0.86);
+  n = say_mid(out, n, label, (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2 + cap / 2, cap, ink(k, ifx held then 1 else 0.9, c));
+  return n;
+}
+
+layout :: (s: [] Watch, w: f32, h: f32, k: f32) {
+  pad := 14 * k;
+  s[0].portrait = w < h * 1.05;
+  for i: 0..<PANELS { s[0].panels[i] = Rect.{}; }
+  gw := text_width("GALAXY", 11 * k) + 28 * k;
+  s[0].galaxy = Rect.{x0 = w - pad - gw, y0 = pad, x1 = w - pad, y1 = pad + 34 * k};
+  mx0: f32; my0: f32; mx1: f32; my1: f32;
+  if !s[0].portrait {
+    side := lo(330 * k, w * 0.27);
+    logw := lo(440 * k, w * 0.33);
+    s[0].panels[0] = Rect.{x0 = pad, y0 = 70 * k, x1 = pad + side, y1 = 70 * k + 330 * k};                       // status
+    s[0].panels[1] = Rect.{x0 = w - pad - logw, y0 = 70 * k, x1 = w - pad, y1 = lo(h * 0.62, 70 * k + 400 * k)}; // log
+    aw := lo(w - 2 * pad, 820 * k);
+    s[0].panels[2] = Rect.{x0 = w / 2 - aw / 2, y0 = h - pad - 150 * k, x1 = w / 2 + aw / 2, y1 = h - pad};       // actions
+    mx0 = s[0].panels[0].x1 + pad; mx1 = s[0].panels[1].x0 - pad;
+    my0 = 70 * k; my1 = s[0].panels[2].y0 - pad;
+    a := s[0].panels[2];
+    bw := (a.x1 - a.x0 - 24 * k - 5 * 8 * k) / 6;
+    for i: 0..<BUTTONS {
+      x := a.x0 + 12 * k + f32(i) * (bw + 8 * k);
+      s[0].buttons[i] = Rect.{x0 = x, y0 = a.y1 - 12 * k - 40 * k, x1 = x + bw, y1 = a.y1 - 12 * k};
+    }
+  } else {
+    s[0].panels[0] = Rect.{x0 = pad, y0 = 60 * k, x1 = w - pad, y1 = 60 * k + 74 * k};                    // status strip
+    ah := 196 * k;
+    s[0].panels[2] = Rect.{x0 = pad, y0 = h - pad - ah, x1 = w - pad, y1 = h - pad};                     // actions
+    lh := 132 * k;
+    s[0].panels[1] = Rect.{x0 = pad, y0 = s[0].panels[2].y0 - 8 * k - lh, x1 = w - pad, y1 = s[0].panels[2].y0 - 8 * k}; // log
+    mx0 = pad; mx1 = w - pad; my0 = s[0].panels[0].y1 + 8 * k; my1 = s[0].panels[1].y0 - 4 * k;
+    a := s[0].panels[2];
+    bw := (a.x1 - a.x0 - 24 * k - 2 * 8 * k) / 3;
+    for i: 0..<BUTTONS {
+      col := i % 3; row := i / 3;
+      x := a.x0 + 12 * k + f32(col) * (bw + 8 * k);
+      y := a.y1 - 12 * k - f32(2 - row) * 46 * k;
+      s[0].buttons[i] = Rect.{x0 = x, y0 = y, x1 = x + bw, y1 = y + 40 * k};
+    }
+  }
+  // fit the network into the map's room: u from -9.7 to 9.1 (the labels' room), v from -14.2
+  // to 11.2, and the tallest box and its label above the top row
+  uw := 18.8f32 * 0.8660254; vh := 25.4f32 * 0.5 + 2.6;
+  sc := lo((mx1 - mx0) / uw, (my1 - my0) / vh);
+  s[0].sc = hi(sc, 4);
+  s[0].cx = (mx0 + mx1) / 2 - (-0.3) * s[0].sc * 0.8660254;
+  s[0].cy = (my0 + my1) / 2 + 1.5 * s[0].sc * 0.5 + 1.3 * s[0].sc;
+}
+
+draw_hud :: (s: [] Watch, out: [] f32, at: int, w: f32, h: f32, k: f32, t: f32) -> int {
+  n := at;
+  pad := 14 * k;
+  cap := 11 * k;
+  // the title, top left, as the Grid's
+  title := fit_cap("WATCHTOWER", 20 * k, w * 0.5);
+  n = say_at(out, n, "WATCHTOWER", pad + 4 * k, pad + title + 4 * k, title, ink(k, 1, WHITE));
+  n = say_at(out, n, "DEFENSE RANGE · SIMULATED", pad + 4 * k, pad + title + 4 * k + cap * 1.6, cap * 0.8, ink(k, 0.6, DIM));
+  // GALAXY
+  n = draw_button(s, out, n, s[0].galaxy, "GALAXY", k, WHITE, false, s[0].pressing == 100);
+  // EDIT, left of GALAXY, for its owner and admins (verse/edit/edit.coax); open, the shift waits
+  g := s[0].galaxy;
+  ew := text_width("EDIT", 9 * k) + 32 * k;
+  n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = g.x0 - 8 * k - ew, y0 = g.y0, x1 = g.x0 - 8 * k, y1 = g.y1});
+  for i: 0..<s[0].ed[0].plate_n {
+    if 4 + i >= PANELS { break; }
+    eb := s[0].ed[0].plate_box[i];
+    s[0].panels[4 + i] = Rect.{x0 = eb.x0, y0 = eb.y0, x1 = eb.x1, y1 = eb.y1};
+  }
+  // panels
+  for i: 0..<3 { if s[0].panels[i].x1 > s[0].panels[i].x0 { n = frame(out, n, s[0].panels[i], k, DIM); } }
+  n = draw_status(s, out, n, s[0].panels[0], k, t);
+  n = draw_log(s, out, n, s[0].panels[1], k);
+  n = draw_actions(s, out, n, s[0].panels[2], k, t);
+  return n;
+}
+
+draw_status :: (s: [] Watch, out: [] f32, at: int, r: Rect, k: f32, t: f32) -> int {
+  n := at;
+  cap := 10 * k;
+  in := 12 * k;
+  buf: [48] u8;
+  m := 0;
+  if s[0].portrait {
+    // one strip: uptime, exfil, time, the chain
+    wide := r.x1 - r.x0 - 2 * in;
+    n = say_at(out, n, "UPTIME", r.x0 + in, r.y0 + in + cap, cap, ink(k, 0.7, DIM));
+    n = bar(out, n, r.x0 + in + text_width("UPTIME", cap) + 8 * k, r.y0 + in, r.x0 + in + wide * 0.5, cap + 2 * k, s[0].uptime / 100, k, ifx s[0].uptime < 35 then RED else GREEN);
+    m = put_time(buf[..], 0, s[0].play_t);
+    n = say_right(out, n, cast(string) buf[0..<m], r.x1 - in, r.y0 + in + cap, cap * 1.2, ink(k, 0.9, WHITE));
+    n = draw_chain(s, out, n, r.x0 + in, r.y0 + in + cap * 2.4, r.x1 - in, cap, k, t);
+    if s[0].exfil > 0 { n = say_right(out, n, "VAULT LEAKING", r.x1 - in - text_width("00:00", cap * 1.2) - 12 * k, r.y0 + in + cap, cap, ink(k, 1, RED)); }
+    return n;
+  }
+  y := r.y0 + in + cap;
+  n = say_at(out, n, "— STATUS", r.x0 + in, y, cap, ink(k, 0.8, WHITE));
+  m = put_time(buf[..], 0, s[0].play_t);
+  n = say_right(out, n, cast(string) buf[0..<m], r.x1 - in, y, cap, ink(k, 0.8, DIM));
+  y += cap * 3.2;
+  big := 30 * k;
+  m = put_int(buf[..], 0, int(s[0].uptime + 0.5));
+  n = say_at(out, n, cast(string) buf[0..<m], r.x0 + in, y + big * 0.4, big, ink(k, 1, ifx s[0].uptime < 35 then RED else WHITE));
+  n = say_at(out, n, "% UPTIME", r.x0 + in + text_width(cast(string) buf[0..<m], big) + 6 * k, y + big * 0.4, cap, ink(k, 0.8, ifx s[0].uptime < 35 then RED else GREEN));
+  y += big * 0.4 + 10 * k;
+  n = bar(out, n, r.x0 + in, y, r.x1 - in, 10 * k, s[0].uptime / 100, k, ifx s[0].uptime < 35 then RED else GREEN);
+  y += 30 * k;
+  // the vault
+  n = say_at(out, n, "VAULT", r.x0 + in, y, cap, ink(k, 0.8, WHITE));
+  m = put_int(buf[..], 0, int(s[0].exfil * 100 + 0.5)); m = put(buf[..], m, "% TAKEN");
+  n = say_right(out, n, cast(string) buf[0..<m], r.x1 - in, y, cap, ink(k, 0.9, ifx s[0].exfil > 0 then RED else DIM));
+  y += 8 * k;
+  n = bar(out, n, r.x0 + in, y, r.x1 - in, 10 * k, s[0].exfil, k, RED);
+  y += 34 * k;
+  // the kill chain: how far it has got
+  n = say_at(out, n, "KILL CHAIN", r.x0 + in, y, cap, ink(k, 0.8, WHITE));
+  y += 10 * k;
+  n = draw_chain(s, out, n, r.x0 + in, y, r.x1 - in, cap, k, t);
+  y += cap * 4.2;
+  // responders and creds
+  m = put(buf[..], 0, "RESPONDERS ");
+  m = put_int(buf[..], m, RESPONDERS - busy_count(s)); m = put(buf[..], m, "/"); m = put_int(buf[..], m, RESPONDERS); m = put(buf[..], m, " FREE");
+  n = say_at(out, n, cast(string) buf[0..<m], r.x0 + in, y, cap, ink(k, 0.8, DIM));
+  y += cap * 2;
+  m = put(buf[..], 0, "ALERTS "); m = put_int(buf[..], m, s[0].alerts);
+  m = put(buf[..], m, "  RAW CLUES "); m = put_int(buf[..], m, s[0].raw);
+  n = say_at(out, n, cast(string) buf[0..<m], r.x0 + in, y, cap, ink(k, 0.8, DIM));
+  y += cap * 2;
+  if s[0].reset_cd > 0 {
+    m = put(buf[..], 0, "CREDS RESET AGAIN IN "); m = put_int(buf[..], m, int(s[0].reset_cd + 0.99)); m = put(buf[..], m, "S");
+    n = say_at(out, n, cast(string) buf[0..<m], r.x0 + in, y, cap, ink(k, 0.8, VIOLET));
+  } else {
+    n = say_at(out, n, "CREDS RESET READY", r.x0 + in, y, cap, ink(k, 0.6, DIM));
+  }
+  return n;
+}
+// Five chevrons, lit red as far as the intruder got.
+draw_chain :: (s: [] Watch, out: [] f32, at: int, x0: f32, y: f32, x1: f32, cap: f32, k: f32, t: f32) -> int {
+  n := at;
+  cw := (x1 - x0) / f32(STAGES);
+  tall := cap * 1.6;
+  for i: 0..<STAGES {
+    x := x0 + f32(i) * cw;
+    on := s[0].stage > i;
+    now := s[0].stage == i + 1 && s[0].phase == PLAY;
+    c := ifx on then RED else FAINT;
+    light: f32 = ifx now then 0.65 + 0.35 * sin(t * 8) else ifx on then 0.9 else 0.5;
+    n = seg(out, n, x, y, x + cw - 6 * k, y, 0.9 * k, light, c);
+    n = seg(out, n, x + cw - 6 * k, y, x + cw, y + tall / 2, 0.9 * k, light, c);
+    n = seg(out, n, x + cw, y + tall / 2, x + cw - 6 * k, y + tall, 0.9 * k, light, c);
+    n = seg(out, n, x + cw - 6 * k, y + tall, x, y + tall, 0.9 * k, light, c);
+    name := STAGE_NAME[i];
+    lc := fit_cap(name, cap * 0.75, cw - 10 * k);
+    n = say_mid(out, n, name, x + cw / 2 - 2 * k, y + tall / 2 + lc / 2, lc, ink(k, light, ifx on then RED else DIM));
+  }
+  return n;
+}
+
+draw_log :: (s: [] Watch, out: [] f32, at: int, r: Rect, k: f32) -> int {
+  n := at;
+  in := 12 * k;
+  cap := 10 * k;
+  n = say_at(out, n, "— SENSOR LOG", r.x0 + in, r.y0 + in + cap, cap, ink(k, 0.8, WHITE));
+  n = say_right(out, n, "RED = ALERT", r.x1 - in, r.y0 + in + cap, cap * 0.8, ink(k, 0.8, RED));
+  wide := r.x1 - r.x0 - 2 * in;
+  lc := lo(cap, fit_cap("SMB WS-02 -> ADMIN$ WRITE SVC_UPD.EXE ALERT XX", cap, wide));
+  pitch := lc * 2.0;
+  room := int((r.y1 - r.y0 - in * 2 - cap * 2.4) / pitch);
+  if room < 1 { return n; }
+  first := s[0].line_n - room;
+  if first < 0 { first = 0; }
+  y := r.y1 - in - f32(s[0].line_n - 1 - first) * pitch;
+  for i: first..<s[0].line_n {
+    l := s[0].lines[i];
+    text := cast(string) l.text[0..<l.n];
+    c := DIM;
+    light: f32 = 0.7;
+    if l.sev == SEV_NOISE || l.sev == SEV_RAW { c = DIM; light = 0.75; }
+    if l.sev == SEV_ALERT { c = RED; light = 1; }
+    if l.sev == SEV_GOOD { c = GREEN; light = 0.95; }
+    if l.sev == SEV_YOU { c = CYAN; light = 0.9; }
+    if l.age < 0.6 { light = 1; }
+    tc := fit_cap(text, lc, wide);
+    n = say_at(out, n, text, r.x0 + in, y, tc, ink(k, light, c));
+    y += pitch;
+  }
+  return n;
+}
+
+draw_actions :: (s: [] Watch, out: [] f32, at: int, r: Rect, k: f32, t: f32) -> int {
+  n := at;
+  in := 12 * k;
+  cap := 10 * k;
+  sel := s[0].sel;
+  h := s[0].hosts[sel];
+  buf: [64] u8;
+  m := 0;
+  // the selected host
+  y := r.y0 + in + cap * 1.3;
+  name_cap := cap * 1.3;
+  n = say_at(out, n, HOST_NAME[sel], r.x0 + in, y, name_cap, ink(k, 1, CYAN));
+  x := r.x0 + in + text_width(HOST_NAME[sel], name_cap) + 10 * k;
+  n = say_at(out, n, HOST_ROLE[sel], x, y, cap * 0.8, ink(k, 0.6, DIM));
+  x += text_width(HOST_ROLE[sel], cap * 0.8) + 10 * k;
+  n = say_at(out, n, host_status(s, sel), x, y, cap * 0.8, ink(k, 0.95, host_colour(s, sel)));
+  // the triad's votes
+  y += cap * 2.4;
+  votes: [1] int;
+  verb := consensus(s, sel, votes[..]);
+  wide := r.x1 - r.x0 - 2 * in;
+  if !triad_on(s) {
+    n = say_at(out, n, "THE TRIAD IS OFF IN THIS REALM. YOU DEFEND ALONE.", r.x0 + in, y, fit_cap("THE TRIAD IS OFF IN THIS REALM. YOU DEFEND ALONE.", cap, wide), ink(k, 0.7, DIM));
+  } else if !s[0].portrait {
+    cell := wide * 0.2;
+    for i: 0..<3 {
+      v := advise(s, i, sel);
+      cx := r.x0 + in + f32(i) * cell + 12 * k;
+      hr := 8 * k;
+      c := ifx v == verb && votes[0] >= 2 then CYAN else DIM;
+      for e: 0..<6 {
+        a0 := f32(e) * 1.0471976 + 0.5236; a1 := a0 + 1.0471976;
+        n = seg(out, n, cx + cos(a0) * hr, y - cap * 0.4 + sin(a0) * hr, cx + cos(a1) * hr, y - cap * 0.4 + sin(a1) * hr, 0.9 * k, 0.9, c);
+      }
+      n = say_at(out, n, ADVISOR[i], cx + 14 * k, y - cap * 0.2 - 2 * k, cap * 0.7, ink(k, 0.6, DIM));
+      n = say_at(out, n, VERB[v], cx + 14 * k, y + cap * 0.9, cap * 0.8, ink(k, 0.95, c));
+    }
+    m = put(buf[..], 0, "TRIAD: ");
+    m = put(buf[..], m, VERB[verb]); m = put(buf[..], m, " "); m = put_int(buf[..], m, votes[0]); m = put(buf[..], m, "/3");
+    n = say_right(out, n, cast(string) buf[0..<m], r.x1 - in, y + cap * 0.3, cap * 1.1, ink(k, 1, ifx verb == V_HOLD then DIM else CYAN));
+  } else {
+    m = put(buf[..], 0, "TRIAD ");
+    for i: 0..<3 { m = put(buf[..], m, VERB[advise(s, i, sel)]); if i < 2 { m = put(buf[..], m, " · "); } }
+    m = put(buf[..], m, "  → "); m = put(buf[..], m, VERB[verb]);
+    tc := fit_cap(cast(string) buf[0..<m], cap, wide);
+    n = say_at(out, n, cast(string) buf[0..<m], r.x0 + in, y, tc, ink(k, 0.95, ifx verb == V_HOLD then DIM else CYAN));
+  }
+  // the buttons
+  for i: 0..<BUTTONS {
+    label := "";
+    c := WHITE; on := false;
+    if i == B_SCAN { label = "S  SCAN"; }
+    if i == B_ISOLATE { label = ifx h.isolated then "I  RESTORE" else "I  ISOLATE"; c = VIOLET; on = h.isolated; }
+    if i == B_CLEAN { label = "C  REIMAGE"; c = GREEN; }
+    if i == B_RESET { label = "R  RESET CREDS"; c = ifx s[0].reset_cd > 0 then FAINT else MAGENTA; }
+    if i == B_TRIAD { label = "T  FOLLOW TRIAD"; c = CYAN; }
+    if i == B_AUTO { label = ifx s[0].autoplay then "P  TRIAD DEFENDS" else "P  TRIAD OFF"; c = CYAN; on = s[0].autoplay; }
+    if s[0].phase != PLAY || ((i == B_TRIAD || i == B_AUTO) && !triad_on(s)) { c = FAINT; }
+    n = draw_button(s, out, n, s[0].buttons[i], label, k, c, on, s[0].pressing == i + 1);
+  }
+  return n;
+}
+
+// While the vault is being emptied: the time left, big and red, over the actions.
+draw_countdown :: (s: [] Watch, out: [] f32, at: int, w: f32, k: f32, t: f32) -> int {
+  n := at;
+  if s[0].phase != PLAY || s[0].exfil <= 0 { return n; }
+  left := (1 - s[0].exfil) / EXFIL_STEP * EXFIL_TICK - (ifx s[0].op == OP_EXFIL then s[0].op_t else 0);
+  buf: [32] u8;
+  m := put(buf[..], 0, "VAULT EMPTY IN ");
+  m = put_2(buf[..], m, int(hi(left, 0)));
+  m = put(buf[..], m, ".");
+  m = put_2(buf[..], m, int(fract_of(hi(left, 0)) * 100));
+  text := cast(string) buf[0..<m];
+  base := ifx s[0].portrait then s[0].panels[1].y0 - 10 * k else s[0].panels[2].y0 - 14 * k;
+  cap := fit_cap(text, 26 * k, w * 0.9);
+  if !s[0].portrait { cap = fit_cap(text, 26 * k, s[0].panels[1].x0 - s[0].panels[0].x1 - 30 * k); }
+  n = say_mid(out, n, text, w / 2, base, cap, ink(k, 0.75 + 0.25 * sin(t * 10), RED));
+  return n;
+}
+
+// The start and the end, over the map.
+draw_card :: (s: [] Watch, out: [] f32, at: int, w: f32, h: f32, k: f32, t: f32) -> int {
+  n := at;
+  if s[0].phase == PLAY { return n; }
+  cw := lo(w * 0.92, 560 * k);
+  if !s[0].portrait { cw = lo(cw, (s[0].panels[1].x0 - s[0].panels[0].x1) - 20 * k); }
+  ch: f32 = ifx s[0].phase == READY then 300 * k else 270 * k;
+  cy := ifx s[0].portrait then s[0].panels[0].y1 + 10 * k else h * 0.5 - ch * 0.62;
+  r := Rect.{x0 = w / 2 - cw / 2, y0 = cy, x1 = w / 2 + cw / 2, y1 = cy + ch};
+  s[0].panels[3] = r;
+  n = frame(out, n, r, k, ifx s[0].phase == LOST then RED else ifx s[0].phase == WON then GREEN else WHITE);
+  in := 18 * k;
+  wide := cw - 2 * in;
+  cap := 11 * k;
+  y := r.y0 + in;
+  if s[0].phase == READY {
+    big := fit_cap("WATCHTOWER", 30 * k, wide);
+    y += big;
+    n = say_mid(out, n, "WATCHTOWER", w / 2, y, big, ink(k, 1, WHITE));
+    y += cap * 2;
+    n = say_mid(out, n, "A CYBER DEFENSE RANGE", w / 2, y, cap, ink(k, 0.8, CYAN));
+    lines := [6] string.[
+      "AN INTRUDER IS COMING FOR THE VAULT. FIND IT. EVICT IT.",
+      "READ THE SENSOR LOG. NOT EVERY CLUE RAISES AN ALERT.",
+      "SELECT A HOST: CLICK IT, OR PRESS 1-9.",
+      "SCAN TO CHECK · ISOLATE TO CUT IT OFF · REIMAGE TO CLEAN",
+      "OFFLINE HOSTS COST UPTIME. RESET CREDS AFTER THE DC.",
+      "THE TRIAD ADVISES. PRESS P TO LET IT DEFEND."];
+    lc := cap;
+    for i: 0..<6 { lc = lo(lc, fit_cap(lines[i], cap, wide)); }
+    y += cap * 1.4;
+    for i: 0..<6 { y += lc * 2.1; n = say_mid(out, n, lines[i], w / 2, y, lc, ink(k, 0.85, WHITE)); }
+    y += lc * 3.2;
+    blink: f32 = ifx s[0].golden then 1 else 0.6 + 0.4 * sin(t * 4);
+    n = say_mid(out, n, "SPACE OR TAP TO BEGIN THE SHIFT", w / 2, y, fit_cap("SPACE OR TAP TO BEGIN THE SHIFT", cap * 1.2, wide), ink(k, blink, CYAN));
+    return n;
+  }
+  // the after-action report
+  big := fit_cap("AFTER-ACTION REPORT", 20 * k, wide);
+  y += big;
+  n = say_mid(out, n, "AFTER-ACTION REPORT", w / 2, y, big, ink(k, 1, ifx s[0].phase == WON then GREEN else RED));
+  y += cap * 2.2;
+  verdict := "INTRUDER EVICTED. THE VAULT HELD.";
+  if s[0].why == 1 { verdict = "THE INTRUDER EMPTIED THE VAULT."; }
+  if s[0].why == 2 { verdict = "TOO MUCH WENT OFFLINE. THE BUSINESS WENT DARK."; }
+  n = say_mid(out, n, verdict, w / 2, y, fit_cap(verdict, cap, wide), ink(k, 0.95, WHITE));
+  y += cap * 1.4;
+  buf: [64] u8;
+  for row: 0..<5 {
+    m := 0;
+    if row == 0 { m = put(buf[..], 0, "SHIFT LENGTH "); m = put_time(buf[..], m, s[0].end_t); }
+    if row == 1 { m = put(buf[..], 0, "INTRUDER STEPS "); m = put_int(buf[..], m, s[0].steps); m = put(buf[..], m, " · ALERTS RAISED "); m = put_int(buf[..], m, s[0].alerts); }
+    if row == 2 {
+      m = put(buf[..], 0, "FIRST ALERT ");
+      if s[0].first_alert > 0 { m = put_time(buf[..], m, s[0].first_alert); } else { m = put(buf[..], m, "NEVER"); }
+      m = put(buf[..], m, " · RAW CLUES IN THE LOG "); m = put_int(buf[..], m, s[0].raw);
+    }
+    if row == 3 { m = put(buf[..], 0, "FURTHEST STAGE "); m = put(buf[..], m, ifx s[0].stage > 0 then STAGE_NAME[s[0].stage - 1] else "NONE"); m = put(buf[..], m, " · UPTIME "); m = put_int(buf[..], m, int(s[0].uptime + 0.5)); m = put(buf[..], m, "%"); }
+    if row == 4 { m = put(buf[..], 0, ifx s[0].admin then "IT HELD ADMIN CREDENTIALS AT THE END" else "IT NEVER KEPT ADMIN CREDENTIALS"); }
+    y += cap * 2.1;
+    line := cast(string) buf[0..<m];
+    n = say_mid(out, n, line, w / 2, y, fit_cap(line, cap * 0.9, wide), ink(k, 0.8, DIM));
+  }
+  y += cap * 3;
+  n = say_mid(out, n, "SPACE OR TAP FOR ANOTHER SHIFT", w / 2, y, fit_cap("SPACE OR TAP FOR ANOTHER SHIFT", cap * 1.1, wide), ink(k, 0.6 + 0.4 * sin(t * 4), CYAN));
+  return n;
+}
+
+watch_frame :: (s: [] Watch, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  watch_start(s);
+  if u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  s[0].width = width; s[0].height = height; s[0].dpr = dpr;
+  k := hi(dpr, 0.5);
+  step_dt := lo(hi(dt, 0), 0.1);
+  if s[0].golden || still { step_dt = 0; }
+  redit_start(s[0].ed[..], "watchtower");
+  redit_step(s[0].ed[..], s[0].clock, width, height, dpr);
+  track_frame(s[0].track[..], dt, width, height, dpr);
+  if redit_open(s[0].ed[..]) && s[0].phase == PLAY { step_dt = 0; }
+  s[0].clock += step_dt;
+  s[0].acc += step_dt;
+  guard := 0;
+  while s[0].acc >= f32(STEP) && guard < 16 { step(s, f32(STEP)); s[0].acc -= f32(STEP); guard += 1; }
+  if guard >= 16 { s[0].acc = 0; }
+  t := s[0].clock;
+  if s[0].phase == PLAY { s[0].ended_at = t; }
+  if s[0].demo > 0 && s[0].phase != PLAY && s[0].phase != READY && t - s[0].ended_at > 9 { demo_shift(s); }
+  layout(s, width, height, k);
+  n := 0;
+  n = draw_map(s, out, n, k, t);
+  // under the start card and the report, the map is a dim backdrop
+  if s[0].phase != PLAY { for v: 0..<n { out[v * VERTEX_FLOATS + 6] *= 0.16; } }
+  n = draw_hud(s, out, n, width, height, k, t);
+  n = draw_card(s, out, n, width, height, k, t);
+  top := ifx s[0].portrait then s[0].panels[0].y1 + 10 * k else 70 * k;
+  if s[0].phase != PLAY && s[0].phase != READY { top = s[0].panels[2].y0 - 130 * k; }
+  if !(s[0].portrait && s[0].phase != PLAY) { n = draw_banner(s, out, n, width, top, k, t); }
+  n = draw_countdown(s, out, n, width, k, t);
+  for i: 0..<u.count { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = t; u[3] = 1;
+  u[U_MAP] = s[0].cx; u[U_MAP + 1] = s[0].cy; u[U_MAP + 2] = s[0].sc;
+  alarm: f32 = 0;
+  for i: 0..<HOSTS { if s[0].hosts[i].known { alarm = 0.6; } }
+  if s[0].exfil > 0 { alarm = 1; }
+  if s[0].phase != PLAY { alarm = ifx s[0].phase == LOST then 0.8 else 0; }
+  u[U_MAP + 3] = alarm;
+  u[U_INFO] = s[0].hit; u[U_INFO + 1] = ifx s[0].phase == PLAY && s[0].op == OP_EXFIL then 1 else 0;
+  for i: 0..<PANELS {
+    p := s[0].panels[i];
+    u[U_PANELS + i * 4] = p.x0; u[U_PANELS + i * 4 + 1] = p.y0; u[U_PANELS + i * 4 + 2] = p.x1; u[U_PANELS + i * 4 + 3] = p.y1;
+  }
+  if n > 0 && !s[0].loaded { s[0].loaded = true; track_loaded(s[0].track[..], "load-engine"); }
+  return n;
+}
+
+// ---- input
+
+demo_shift :: (s: [] Watch) {
+  go(s);
+  s[0].autoplay = s[0].demo == 1; s[0].autoplay_t = 1;
+  add_line(s, ifx s[0].demo == 1 then "DEMO: THE TRIAD IS DEFENDING. P TAKES OVER." else "DEMO: NOBODY IS DEFENDING. WATCH IT WORK.", SEV_YOU);
+}
+// Anything you do ends the demo: from then on the shifts are yours.
+take_over :: (s: [] Watch) { s[0].demo = 0; }
+
+press :: (s: [] Watch, b: int) {
+  if s[0].phase != PLAY { go(s); return; }
+  sel := s[0].sel;
+  if b == B_SCAN { ok := start_job(s, sel, JOB_SCAN); }
+  if b == B_ISOLATE { toggle_isolate(s, sel); }
+  if b == B_CLEAN { ok := start_job(s, sel, JOB_CLEAN); }
+  if b == B_RESET { reset_creds(s); }
+  if (b == B_TRIAD || b == B_AUTO) && !triad_on(s) { add_line(s, "THE TRIAD IS OFF IN THIS REALM.", SEV_YOU); return; }
+  if b == B_TRIAD {
+    votes: [1] int;
+    v := consensus(s, sel, votes[..]);
+    if v == V_HOLD { add_line(s, "TRIAD: HOLD. NOTHING TO DO HERE YET.", SEV_YOU); } else { act(s, v, sel); }
+  }
+  if b == B_AUTO {
+    s[0].autoplay = !s[0].autoplay; s[0].autoplay_t = 0.3;
+    add_line(s, ifx s[0].autoplay then "THE TRIAD IS DEFENDING." else "YOU HAVE THE CONTROLS.", SEV_YOU);
+  }
+}
+cycle :: (s: [] Watch, by: int) {
+  i := s[0].sel + by;
+  if i < 1 { i = HOSTS - 1; }
+  if i >= HOSTS { i = 1; }
+  s[0].sel = i;
+}
+watch_key :: (s: [] Watch, key: int, mods: int) -> bool #export_c {
+  watch_start(s);
+  track_key(s[0].track[..], key, redit_typing(s[0].ed[..]));
+  used := redit_key(s[0].ed[..], key, true);
+  if used > 0 { return used == 1; }
+  if key != KEY_ESCAPE { take_over(s); }
+  if key == KEY_ESCAPE { leave_to(s, "/verse/galaxy"); return true; }
+  if key == ' ' || key == KEY_ENTER { if s[0].phase != PLAY { go(s); } return true; }
+  if key >= '1' && key <= '9' { s[0].sel = key - '0'; return true; }
+  if key == KEY_LEFT || key == KEY_UP || key == '[' { cycle(s, -1); return true; }
+  if key == KEY_RIGHT || key == KEY_DOWN || key == ']' || key == 9 { cycle(s, 1); return true; }
+  if key == 's' || key == 'S' { press(s, B_SCAN); return true; }
+  if key == 'i' || key == 'I' { press(s, B_ISOLATE); return true; }
+  if key == 'c' || key == 'C' { press(s, B_CLEAN); return true; }
+  if key == 'r' || key == 'R' { press(s, B_RESET); return true; }
+  if key == 't' || key == 'T' { press(s, B_TRIAD); return true; }
+  if key == 'p' || key == 'P' { press(s, B_AUTO); return true; }
+  return false;
+}
+watch_key_up :: (s: [] Watch, key: int, mods: int) -> bool #export_c {
+  track_key_up(s[0].track[..], key);
+  return redit_key(s[0].ed[..], key, false) == 1;
+}
+watch_blur :: (s: [] Watch) #export_c { s[0].pressing = 0; track_blur(s[0].track[..]); }
+watch_pointer :: (s: [] Watch, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  watch_start(s);
+  if redit_pointer(s[0].ed[..], x, y, phase, id) { return true; }
+  if phase == 0 {
+    take_over(s);
+    track_pointer(s[0].track[..], x, y, phase, kind, "");
+    if in_rect(s[0].galaxy, x, y) { s[0].pressing = 100; return true; }
+    for i: 0..<BUTTONS { if in_rect(s[0].buttons[i], x, y) { s[0].pressing = i + 1; return true; } }
+    if s[0].phase != PLAY { go(s); return true; }
+    // a host under the finger
+    best := -1; bd := s[0].sc * 1.5;
+    for i: 1..<HOSTS {
+      dx := x - s[0].hosts[i].sx; dy := y - s[0].hosts[i].sy;
+      d := sqrt(dx * dx + dy * dy);
+      if d < bd { bd = d; best = i; }
+    }
+    if best >= 0 { s[0].sel = best; return true; }
+    return false;
+  }
+  if phase == 1 { return false; }
+  held := s[0].pressing;
+  s[0].pressing = 0;
+  if held == 100 { if phase == 2 && in_rect(s[0].galaxy, x, y) { leave_to(s, "/verse/galaxy"); } return true; }
+  if held > 0 {
+    if phase == 2 && in_rect(s[0].buttons[held - 1], x, y) { press(s, held - 1); }
+    return true;
+  }
+  return false;
+}
+watch_cursor :: (s: [] Watch) -> int #export_c { return 0; }
+watch_message :: (s: [] Watch, kind: int, t: string) #export_c {
+  watch_start(s);
+  if redit_message(s[0].ed[..], kind, t) { return; }
+  tr := track_message(s[0].track[..], kind, t);
+  if kind != HOST_PAGE { return; }
+  track_world(s[0].track[..], "watchtower");
+  tab := fact_of(t, "tab");
+  if !s[0].golden && tab.count > 0 && s[0].phase == READY {
+    h: u32 = 2166136261;
+    for c: tab { h = mul_wrap(h ^ cast(u32) c, 16777619); }
+    s[0].seed = ifx h == 0 then 1 else h;
+  }
+  // ?demo=1: shifts start on their own with the triad defending; ?demo=2: nobody defends, to show
+  // the whole attack. Either way, any key or tap takes over.
+  if !s[0].golden && s[0].phase == READY {
+    url := fact_of(t, "url");
+    if text_has(url, "demo=1") { s[0].demo = 1; }
+    if text_has(url, "demo=2") { s[0].demo = 2; }
+    if s[0].demo > 0 { demo_shift(s); }
+  }
+}
+watch_golden :: (s: [] Watch, on: bool) #export_c { watch_start(s); s[0].golden = on; }
+watch_action :: (s: [] Watch) -> int #export_c {
+  if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
+  a := s[0].action; s[0].action = 0; return a;
+}
+watch_wants_text :: (s: [] Watch) -> bool #export_c { return redit_typing(s[0].ed[..]); }
+watch_action_done :: (s: [] Watch) #export_c { s[0].out_n = 0; }
+
+coaxial_watch_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_watch_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_watch_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+frame_at :: (s: [] Watch, w: f32, h: f32, dpr: f32, dt: f32) -> int {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  return watch_frame(s, out[..], u[..], w, h, dpr, dt, false);
+}
+run :: (s: [] Watch, secs: f32) {
+  steps := int(secs / f32(STEP));
+  for i: 0..<steps { if s[0].phase != PLAY { return; } step(s, f32(STEP)); }
+}
+
+#test "a frame draws the map and the HUD on a desktop and on a 390 px phone, inside the vertex budget" {
+  s: [2] Watch;
+  a := frame_at(s[0..<1], 1440, 900, 1, 0.016);
+  #assert a > 1000 && a < MAX_VERTICES - 600;
+  b := frame_at(s[1..<2], 390 * 3, 844 * 3, 3, 0.016);
+  #assert b > 1000 && b < MAX_VERTICES - 600;
+  #assert s[1].portrait && !s[0].portrait;
+  // every host and every button stands on the phone's screen
+  for i: 0..<HOSTS { #assert s[1].hosts[i].sx > 0 && s[1].hosts[i].sx < 390 * 3 && s[1].hosts[i].sy > 0 && s[1].hosts[i].sy < 844 * 3; }
+  for i: 0..<BUTTONS { #assert s[1].buttons[i].x0 >= 0 && s[1].buttons[i].x1 <= 390 * 3 && s[1].buttons[i].y1 <= 844 * 3; }
+  // a busy shift still fits
+  go(s[0..<1]);
+  for i: 0..<HOSTS { s[0].hosts[i].known = true; s[0].hosts[i].ping = 1; s[0].hosts[i].task = JOB_SCAN; s[0].hosts[i].task_t = 1; }
+  set_banner(s[0..<1], "EMERGENCY", "DATA LEAVING THE VAULT", "", "");
+  c := frame_at(s[0..<1], 1440, 900, 1, 0);
+  #assert c > 1000;
+  #assert c < MAX_VERTICES - 600;
+}
+
+#test "space starts the shift; keys select hosts and act on them" {
+  s: [1] Watch;
+  watch_start(s[..]);
+  #assert s[0].phase == READY;
+  #assert watch_key(s[..], ' ', 0) && s[0].phase == PLAY;
+  #assert watch_key(s[..], '5', 0) && s[0].sel == WS2;
+  #assert watch_key(s[..], 'i', 0) && s[0].hosts[WS2].isolated && !online(s[..], WS2);
+  #assert watch_key(s[..], 'i', 0) && !s[0].hosts[WS2].isolated;
+  #assert watch_key(s[..], 's', 0) && s[0].hosts[WS2].task == JOB_SCAN;
+  #assert watch_key(s[..], '6', 0) && watch_key(s[..], 'c', 0) && s[0].hosts[WS3].task == JOB_CLEAN;
+  // two responders: a third kind waits
+  #assert watch_key(s[..], '7', 0) && watch_key(s[..], 's', 0) && s[0].hosts[FILES].task == JOB_NONE;
+  run(s[..], 6);
+  #assert s[0].hosts[WS2].task == JOB_NONE && s[0].hosts[WS3].task == JOB_NONE;
+}
+
+#test "isolating a host cuts what lies behind it off from the internet" {
+  s: [1] Watch;
+  watch_start(s[..]);
+  #assert reachable(s[..], VAULT);
+  s[0].hosts[EDGE].isolated = true;
+  #assert !reachable(s[..], MAIL) && !reachable(s[..], VAULT);
+  s[0].hosts[EDGE].isolated = false;
+  s[0].hosts[DC].isolated = true; s[0].hosts[FILES].isolated = true;
+  #assert reachable(s[..], WS1) && !reachable(s[..], VAULT);
+}
+
+#test "left alone, the intruder walks the kill chain and empties the vault" {
+  s: [1] Watch;
+  watch_start(s[..]);
+  go(s[..]);
+  run(s[..], 600);
+  #assert s[0].phase == LOST && s[0].why == 1 && s[0].stage == STAGES && s[0].admin;
+  #assert s[0].steps >= 4 && s[0].alerts + s[0].raw > 4;
+}
+
+#test "the triad defending on its own holds the vault, across many shifts" {
+  wins := 0;
+  for seed: 1..<13 {
+    s: [1] Watch;
+    watch_start(s[..]);
+    s[0].seed = cast(u32) (seed * 7919);
+    go(s[..]);
+    s[0].autoplay = true;
+    run(s[..], 900);
+    if s[0].phase == WON { wins += 1; }
+  }
+  #assert wins >= 6;
+}
+
+#test "a defender who scans the workstations and reimages what they find wins" {
+  s: [1] Watch;
+  watch_start(s[..]);
+  go(s[..]);
+  guard := 0;
+  while s[0].phase == PLAY && guard < 60000 {
+    // clean anything confirmed; otherwise scan the hottest unchecked host
+    for i: 1..<HOSTS { if s[0].hosts[i].known && s[0].hosts[i].task == JOB_NONE { ok := start_job(s[..], i, JOB_CLEAN); } }
+    best := -1;
+    for i: 1..<HOSTS {
+      h := s[0].hosts[i];
+      if h.task != JOB_NONE || h.known || h.checked { continue; }
+      if best < 0 || h.suspect > s[0].hosts[best].suspect { best = i; }
+    }
+    if best >= 0 && busy_count(s[..]) < RESPONDERS { ok := start_job(s[..], best, JOB_SCAN); }
+    // a scan found everything clean: look again
+    if best < 0 { for i: 1..<HOSTS { s[0].hosts[i].checked = false; } }
+    step(s[..], f32(STEP));
+    guard += 1;
+  }
+  #assert s[0].phase == WON;
+}
+
+#test "the business goes dark if you isolate everything" {
+  s: [1] Watch;
+  watch_start(s[..]);
+  go(s[..]);
+  for i: 1..<HOSTS { s[0].hosts[i].isolated = true; }
+  run(s[..], 200);
+  #assert s[0].phase == LOST && s[0].why == 2;
+}
+
+#test "GALAXY and Escape go back to the galaxy" {
+  s: [1] Watch;
+  n := frame_at(s[..], 1440, 900, 1, 0.016);
+  g := s[0].galaxy;
+  #assert watch_pointer(s[..], (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 0, 1, 1);
+  #assert watch_pointer(s[..], (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 2, 1, 1);
+  #assert watch_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  watch_action_done(s[..]);
+  #assert watch_key(s[..], KEY_ESCAPE, 0) && watch_action(s[..]) == ACT_NAVIGATE;
+}
+
+#test "a tap on a host selects it; a tap on a button acts on it" {
+  s: [1] Watch;
+  n := frame_at(s[..], 390 * 3, 844 * 3, 3, 0.016);
+  #assert watch_pointer(s[..], 600, 600, 0, 1, 1) && s[0].phase == PLAY;
+  ok := watch_pointer(s[..], 600, 600, 2, 1, 1);
+  n = frame_at(s[..], 390 * 3, 844 * 3, 3, 0.016);
+  h := s[0].hosts[FILES];
+  #assert watch_pointer(s[..], h.sx, h.sy, 0, 1, 2) && s[0].sel == FILES;
+  ok2 := watch_pointer(s[..], h.sx, h.sy, 2, 1, 2);
+  b := s[0].buttons[B_ISOLATE];
+  #assert watch_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 3);
+  #assert watch_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 3) && s[0].hosts[FILES].isolated;
+}

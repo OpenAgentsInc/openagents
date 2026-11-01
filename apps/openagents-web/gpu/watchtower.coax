@@ -1,0 +1,103 @@
+// Watchtower's shaders (watchtower.coax): build.sh writes apps/openagents-web/watchtower.wgsl
+// from this with coax/web/wgsl-module.coax (watchtower.module and watchtower.bindings beside it).
+#load "../../../verse/gpu/wgsl.coax";
+
+// bg_fs draws the floor the network stands on: the homepage's black field and
+// its isometric grid, darkened behind the HUD's panels, a red vignette while
+// an alarm sounds, a red flush when an alert lands, a red sweep while the
+// vault is being emptied, and faint scanlines. fx_vs/fx_fs draw the strokes
+// watch_frame writes (capsules), as the template does.
+// WatchtowerU, a uniform block, is read from a []f32 at these offsets (floats):
+//   size 0, time 2, fade 3
+//   map 4: the map's centre x, y (device px), px per grid unit, the alarm (0..1)
+//   info 8: the hit flash, the exfil (0..1), 0, 0
+//   panels 12: twelve rects (x0, y0, x1, y1), device px; zero width is none
+watchtower_bg_vs :: (i:u32,_iid1:u32)->V4 {
+  p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
+  return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
+}
+// How close p is to a grid line, 1 on it; every fourth line brighter.
+watchtower_grid :: (p:V2,u:[]f32)->f32 {
+  s:f32=fmax(u[6],1.0f32);
+  gu:f32=(p.x-u[4])/(s*0.8660254f32);
+  gv:f32=(p.y-u[5])/(s*0.5f32);
+  x:f32=(gu+gv)*0.5f32;
+  z:f32=(gv-gu)*0.5f32;
+  dx:f32=abs(fract(x+0.5f32)-0.5f32);
+  dz:f32=abs(fract(z+0.5f32)-0.5f32);
+  d:f32=fmin(dx,dz)*s*0.62f32;
+  line:f32=1.0f32-smoothstep(0.35f32,1.25f32,d);
+  mx:f32=abs(fract((x*0.25f32)+0.5f32)-0.5f32);
+  mz:f32=abs(fract((z*0.25f32)+0.5f32)-0.5f32);
+  dm:f32=fmin(mx,mz)*s*2.48f32;
+  major:f32=1.0f32-smoothstep(0.4f32,1.4f32,dm);
+  return (line*0.55f32)+(major*0.45f32);
+}
+watchtower_bg_fs :: (pos:V4,u:[]f32)->V4 {
+  p:V2=v2(pos.x,pos.y);
+  q:V2=v2((p.x/u[0])-0.5f32,(p.y/u[1])-0.5f32);
+  r:f32=wg_length2(q);
+  c:V3=wg_mul_f3f(v3(0.03f32,0.032f32,0.04f32),1.0f32-fmin(r,1.0f32));
+  // the grid, fading away from the map's middle
+  mid:V2=v2(p.x-u[4],p.y-u[5]);
+  f:f32=exp(-(wg_length2(mid)/fmax(fmax(u[0],u[1]),1.0f32))*1.6f32);
+  c=wg_add_f3f3(c,wg_mul_f3f(v3(0.2f32,0.21f32,0.24f32),watchtower_grid(p,u)*(0.25f32+(0.75f32*f))));
+  // the panels: dark glass over the grid
+  {
+    i:s32=0;
+    while i<12 {
+      b:V4=wg_at4(u,12+(cast(int)i)*4);
+      if (b.z>b.x) {
+        if ((((p.x>=b.x)&&(p.x<=b.z))&&(p.y>=b.y))&&(p.y<=b.w)) {
+          c=wg_add_f3f3(wg_mul_f3f(c,0.16f32),v3(0.012f32,0.014f32,0.022f32));
+        }
+      }
+      i+=1;
+    }
+  }
+  // the alarm: a red vignette that breathes
+  if (u[7]>0.0f32) {
+    beat:f32=0.6f32+(0.4f32*sin(u[2]*7.0f32));
+    vig:f32=smoothstep(0.35f32,0.85f32,r);
+    c=wg_mix_f3f3f(c,v3(0.5f32,0.0f32,0.04f32),(vig*u[7])*(0.55f32*beat));
+  }
+  // an alert landed
+  if (u[8]>0.0f32) {
+    c=wg_add_f3f3(c,wg_mul_f3f(v3(0.3f32,0.0f32,0.04f32),u[8]*smoothstep(0.2f32,0.9f32,r)));
+  }
+  // the vault is being emptied: a red sweep down the screen
+  if (u[9]>0.0f32) {
+    band:f32=fract(u[2]*0.35f32)*u[1];
+    c=wg_add_f3f3(c,wg_mul_f3f(v3(0.35f32,0.0f32,0.05f32),exp(-abs(p.y-band)/(u[1]*0.02f32))*0.6f32));
+  }
+  // scanlines
+  c=wg_mul_f3f(c,0.93f32+(0.07f32*sin(p.y*1.7f32)));
+  return v4(c.x,c.y,c.z,1.0f32);
+}
+WatchtowerV :: struct {pos:V4; place:V2; shape:V4; tint:V4; bar:V4; }
+watchtower_fx_vs_in :: struct {a:V4; b:V4; c:V4; d:V4; }
+watchtower_fx_vs :: (_vid2:u32,_iid3:u32,in_:watchtower_fx_vs_in,u:[]f32)->WatchtowerV {
+  a:V4=in_.a;
+  o:WatchtowerV;
+  o.pos=v4(((a.x/u[0])*2.0f32)-1.0f32,1.0f32-((a.y/u[1])*2.0f32),0.0f32,1.0f32);
+  o.place=v2(a.z,a.w);
+  o.shape=in_.b;
+  o.tint=in_.c;
+  o.bar=in_.d;
+  return o;
+}
+// A capsule: shape.x its length, y its core's half width, z its light, w its glow's reach.
+watchtower_fx_fs :: (v:WatchtowerV,u:[]f32)->V4 {
+  along:f32=fmax(fmax(-v.place.x,v.place.x-v.shape.x),0.0f32);
+  d:f32=wg_length2(v2(along,v.place.y));
+  core:f32=1.0f32-smoothstep(v.shape.y-0.5f32,v.shape.y+0.6f32,d);
+  g:f32=d/fmax(v.shape.w,1.0f32);
+  halo:f32=exp(((-5.0f32)*g)*g)*0.28f32;
+  return wg_make_f4_f3f(wg_mul_f3f(wg_mul_f3f(wg_mul_f3f(v3(v.tint.x,v.tint.y,v.tint.z),(core+halo)),v.shape.z),u[3]),1.0f32);
+}
+
+// ---- the vector helpers this file calls
+wg_mix_f3f3f :: (p0:V3,p1:V3,p2:f32)->V3 {return v3(mix(p0.x,p1.x,p2),mix(p0.y,p1.y,p2),mix(p0.z,p1.z,p2));}
+wg_mul_f3f :: (a:V3,b:f32)->V3 {return v3(a.x*b,a.y*b,a.z*b);}
+wg_add_f3f3 :: (a:V3,b:V3)->V3 {return v3(a.x+b.x,a.y+b.y,a.z+b.z);}
+wg_make_f4_f3f :: (p0:V3,p1:f32)->V4 {return v4(p0.x,p0.y,p0.z,p1);}

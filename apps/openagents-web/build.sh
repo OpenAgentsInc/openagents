@@ -102,6 +102,9 @@ deadgears=$!
 # /realms/hold-the-stair: the popping tower defense on the SRD 5e rules (verse/rules/srd5-combat.coax).
 "$here/../../coax/web/wasm.sh" "$here/stair.coax" "$here/stair-face.c" "$here/build/stair.wasm" &
 stair=$!
+# /realms/watchtower: a cyber defense range: find the intruder, isolate and reimage hosts (docs/research/cybersecurity).
+"$here/../../coax/web/wasm.sh" "$here/watchtower.coax" "$here/watchtower-face.c" "$here/build/watchtower.wasm" &
+watchtower=$!
 # /realms/belt-2200: the solar-system strategy game over the engine's orbits (verse/orbit.coax, verse/spacecam.coax; verse/stars.coax in gpu/belt.coax).
 "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
@@ -204,6 +207,7 @@ wait "$myrealm"
 wait "$icecream"
 wait "$deadgears"
 wait "$stair"
+wait "$watchtower"
 wait "$belt"
 wait "$orbitleague"
 wait "$everglade"

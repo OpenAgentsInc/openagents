@@ -316,6 +316,24 @@
         "slot": "hold-the-stair",
         "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
         "assets": []
+      } },
+    { "id": "watch", "name": "WATCHTOWER", "kind": "open", "listed": false, "orbit": { "r": 0.4, "a": 1.3, "size": 0.024 },
+      "realm": {
+        "slug": "watchtower",
+        "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": [], "things": [],
+          "rows": [
+            {"id": "triad", "label": "The triad's advice and autopilot", "says": "the three advisors' votes on each host, FOLLOW TRIAD, and the triad defending on its own"},
+            {"id": "traffic", "label": "Ordinary traffic in the log", "says": "everyday log lines the intruder hides among; off, the log shows only the intruder and you"} ] },
+        "style": "lowpoly",
+        "clock": "fixed:0.0",
+        "title": "Watchtower",
+        "description": "Watchtower, a cyber defense range in the browser: an intruder works through a small company network toward the vault. Read the sensor log, scan, isolate and reimage hosts, and evict it before the vault is emptied or the business goes dark.",
+        "share": "A cyber defense range: read the log, find the intruder, isolate and clean hosts before it empties the vault.",
+        "alt": "Watchtower: a company network on a glowing isometric grid, with red alerts on an infected host",
+        "module": "watchtower",
+        "slot": "watchtower",
+        "golden": { "lit": 0.02, "settle": 3000, "blocks": 6 },
+        "assets": []
       } }
   ]
 }
