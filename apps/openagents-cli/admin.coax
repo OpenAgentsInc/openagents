@@ -1,0 +1,215 @@
+// The admin domain: realm invites, the waitlist, approved creators, every
+// realm's visibility and the admin keys (coax/web/api/access.c). Each request
+// is signed with NIP-98 by the profile's key; it works only when that key is a
+// site admin (admins.conf, or a database admin a root added). The server
+// decides; this file sends the words and prints the rows.
+// (`access`, for everyone, is account.coax's.)
+
+admin_usage :: () {
+  print("%\n", "Admin (a site admin's key):");
+  print("%\n", "  admin access                     flags and counts: invites, requests, creators");
+  print("%\n", "  admin flag realm_invites|auth_v2 on|off");
+  print("%\n", "  admin invite new [--uses N] [--days N] [--note T]   prints the code and its link once");
+  print("%\n", "  admin invite list | admin invite revoke ID");
+  print("%\n", "  admin requests | admin approve ID | admin decline ID");
+  print("%\n", "  admin creators | admin creator add WHO | admin creator remove WHO | admin grandfather");
+  print("%\n", "  admin realms [--visibility V]    every made realm and who sees it");
+  print("%\n", "  admin realm visibility SLUG private|unlisted|public");
+  print("%\n", "  admin keys                       the admin keys; a root admin: admin key add NPUB [--note T], admin key remove NPUB");
+  print("%\n", "  (WHO is an npub, a 64-hex pubkey or an account id such as n-HEX)");
+  print("%\n", "");
+}
+
+// WHO as the server takes it: an npub as its 64 hex, anything else as typed; "" when it's no shape.
+admin_who :: (s: string, out: [] u8) -> string {
+  if s.count > 5 && s[0..<5] == "npub1" {
+    b: [64] u8;
+    d := nip19_decode_checked(s, b[..], false);
+    if d.error != NC_OK || d.type != N19_NPUB || d.written != 32 || !cli_hex(b[0..<32], out) { return ""; }
+    return cast(string) out[0..<64];
+  }
+  if !cli_who_ok(s) { return ""; }
+  n := copy(s, out);
+  for i: 0..<n { if out[i] >= 'A' && out[i] <= 'F' { out[i] += 32; } }
+  return cast(string) out[0..<n];
+}
+
+// GET the access rows (F, I, R, C) into out.
+admin_rows :: (a: [] Args, r: [] Rep, profile: string, out: [] u8, res: [] ApiAnswer) -> bool {
+  res[0] = api_call(a, profile, "GET", "/api/admin/access", "", out);
+  return api_ok(res[0]);
+}
+
+// Prints the rows of one kind (I, R or C) as "WORD FIELD FIELD ...", or a JSON array of them.
+admin_print_rows :: (r: [] Rep, rows: string, kind: string, word: string) -> int {
+  if r[0].json { rep_key(r, word); rep_byte(r, '['); }
+  count := 0; at := 0;
+  for end: 0..<rows.count + 1 {
+    if end < rows.count && rows[end] != '\n' { continue; }
+    line := rows[at..<end];
+    at = end + 1;
+    if cli_field(line, 0) != kind { continue; }
+    rest := ifx line.count > 2 then line[2..<line.count] else "";
+    if r[0].json { if count > 0 { rep_byte(r, ','); } rep_quoted(r, rest); }
+    else { rep_put(r, word); rep_byte(r, ' '); for c: rest { rep_byte(r, ifx c == '|' then ' ' else c); } rep_byte(r, '\n'); }
+    count += 1;
+  }
+  if r[0].json { rep_byte(r, ']'); }
+  return count;
+}
+
+admin_access :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  out: [API_OUT] u8; res: [1] ApiAnswer;
+  ok := admin_rows(a, r, profile, out[..], res[..]);
+  rows := cast(string) out[0..<res[0].n];
+  if !ok { return api_fail(r, res[0], rows); }
+  s := cli_access_sum(rows);
+  rep_str(r, "realm_invites", ifx s.invites_flag == 1 then "on" else "off");
+  rep_str(r, "auth_v2", ifx s.auth_flag == 1 then "on" else "off");
+  rep_int(r, "invites", s.invites); rep_int(r, "invites_live", s.live);
+  rep_int(r, "requests", s.requests); rep_int(r, "requests_waiting", s.waiting);
+  rep_int(r, "creators", s.creators);
+  return rep_done(r, EXIT_OK);
+}
+
+admin_list :: (a: [] Args, r: [] Rep, profile: string, kind: string, word: string) -> int {
+  out: [API_OUT] u8; res: [1] ApiAnswer;
+  ok := admin_rows(a, r, profile, out[..], res[..]);
+  rows := cast(string) out[0..<res[0].n];
+  if !ok { return api_fail(r, res[0], rows); }
+  n := admin_print_rows(r, rows, kind, word);
+  if !r[0].json { print("%", cast(string) r[0].buf[0..<r[0].n]); return EXIT_OK; }
+  return rep_done(r, EXIT_OK);
+}
+
+// One POST whose answer is a JSON object, printed member by member.
+admin_post :: (a: [] Args, r: [] Rep, profile: string, path: string, body: string) -> int {
+  out: [API_OUT] u8;
+  res := api_call(a, profile, "POST", path, body, out[..]);
+  text := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, text); }
+  if !rep_object(r, text) { if r[0].json { rep_str(r, "answer", text); } else { rep_put(r, text); } }
+  return rep_done(r, EXIT_OK);
+}
+
+// /api/admin/access/KIND/ID/TAIL
+admin_id_path :: (kind: string, id: string, tail: string, out: [] u8) -> string {
+  n := copy("/api/admin/access/", out);
+  n += copy(kind, out[n..<out.count]); n += copy("/", out[n..<out.count]);
+  n += copy(id, out[n..<out.count]); n += copy(tail, out[n..<out.count]);
+  return cast(string) out[0..<n];
+}
+
+admin_invite :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  what := positional(a, 2);
+  if what == "list" { return admin_list(a, r, profile, "I", "invite"); }
+  if what == "revoke" {
+    id := positional(a, 3); p: [160] u8;
+    if cli_count(id, 1, 999999999) < 0 { return fail(r, EXIT_USAGE, "admin invite revoke ID"); }
+    return admin_post(a, r, profile, admin_id_path("invites", id, "/revoke", p[..]), "{}");
+  }
+  if what != "new" { return fail(r, EXIT_USAGE, "admin invite new|list|revoke"); }
+  buf: [1024] u8; o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]);
+  if args_has(a, "--uses") {
+    u := cli_count(args_value(a, "--uses", ""), 1, 1000);
+    if u < 0 { return fail(r, EXIT_USAGE, "--uses is 1 to 1000"); }
+    jo_key(o[..], "uses"); jo_int(o[..], u);
+  }
+  if args_has(a, "--days") {
+    d := cli_count(args_value(a, "--days", ""), 1, 90);
+    if d < 0 { return fail(r, EXIT_USAGE, "--days is 1 to 90"); }
+    jo_key(o[..], "days"); jo_int(o[..], d);
+  }
+  if args_has(a, "--note") { jo_key(o[..], "note"); jo_str(o[..], args_value(a, "--note", "")); }
+  jo_end(o[..]);
+  if o[0].bad { return fail(r, EXIT_USAGE, "--note is too long"); }
+  if !r[0].json { tool_errln("openagents: the code and its link are shown once; only its hash is kept. Send the link, don't post it."); }
+  return admin_post(a, r, profile, "/api/admin/access/invites", jo_text(o[..]));
+}
+
+admin_flag :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  name := positional(a, 2);
+  on := cli_onoff(positional(a, 3));
+  if !cli_flag_ok(name) || on < 0 { return fail(r, EXIT_USAGE, "admin flag realm_invites|auth_v2 on|off"); }
+  buf: [128] u8; o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]); jo_key(o[..], "name"); jo_str(o[..], name); jo_key(o[..], "on"); jo_bool(o[..], on == 1); jo_end(o[..]);
+  return admin_post(a, r, profile, "/api/admin/access/flag", jo_text(o[..]));
+}
+
+admin_decide :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  id := positional(a, 2); p: [160] u8;
+  if cli_count(id, 1, 999999999) < 0 { return fail(r, EXIT_USAGE, "admin approve|decline ID (admin requests lists them)"); }
+  return admin_post(a, r, profile, admin_id_path("requests", id, ifx verb == "approve" then "/approve" else "/decline", p[..]), "{}");
+}
+
+admin_creator :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  what := positional(a, 2);
+  w: [80] u8; acct: [80] u8; buf: [256] u8; p: [200] u8;
+  who := admin_who(positional(a, 3), w[..]);
+  if (what != "add" && what != "remove") || who == "" { return fail(r, EXIT_USAGE, "admin creator add|remove WHO (an npub, a 64-hex pubkey or an account id)"); }
+  if what == "add" { return admin_post(a, r, profile, "/api/admin/access/creators", api_body1("who", who, buf[..])); }
+  // a creator is kept by its account id: a bare key is its own account, n-KEY
+  n := 0;
+  if who.count == 64 { n = copy("n-", acct[..]); }
+  n += copy(who, acct[n..<acct.count]);
+  return admin_post(a, r, profile, admin_id_path("creators", cast(string) acct[0..<n], "/remove", p[..]), "{}");
+}
+
+admin_realms :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  vis := args_value(a, "--visibility", "");
+  if vis != "" && !cli_visibility_ok(vis) { return fail(r, EXIT_USAGE, "--visibility is private, unlisted or public"); }
+  path: [200] u8;
+  n := copy(ifx r[0].json then "/api/admin/access/realms" else "/api/admin/access/realms?as=lines", path[..]);
+  if vis != "" { n += copy(ifx r[0].json then "?visibility=" else "&visibility=", path[n..<path.count]); n += copy(vis, path[n..<path.count]); }
+  out: [API_OUT] u8;
+  res := api_call(a, profile, "GET", cast(string) path[0..<n], "", out[..]);
+  body := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, body); }
+  if !r[0].json { print("%", body); return EXIT_OK; }
+  if !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't JSON"); }
+  return rep_done(r, EXIT_OK);
+}
+
+admin_keys :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  out: [API_OUT] u8;
+  res := api_call(a, profile, "GET", "/api/admin/access/admins", "", out[..]);
+  rows := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, rows); }
+  n := admin_print_rows(r, rows, "A", "admin");
+  if !r[0].json { print("%", cast(string) r[0].buf[0..<r[0].n]); return EXIT_OK; }
+  return rep_done(r, EXIT_OK);
+}
+
+admin_key :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  what := positional(a, 2);
+  w: [80] u8; buf: [512] u8; p: [200] u8;
+  who := admin_who(positional(a, 3), w[..]);
+  if (what != "add" && what != "remove") || who.count != 64 { return fail(r, EXIT_USAGE, "admin key add|remove NPUB (or 64-hex pubkey)"); }
+  if what == "remove" { return admin_post(a, r, profile, admin_id_path("admins", who, "/remove", p[..]), "{}"); }
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]); jo_key(o[..], "pubkey"); jo_str(o[..], who);
+  if args_has(a, "--note") { jo_key(o[..], "note"); jo_str(o[..], args_value(a, "--note", "")); }
+  jo_end(o[..]);
+  if o[0].bad { return fail(r, EXIT_USAGE, "--note is too long"); }
+  return admin_post(a, r, profile, "/api/admin/access/admins", jo_text(o[..]));
+}
+
+admin_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "access" { return admin_access(a, r, profile); }
+  if verb == "flag" { return admin_flag(a, r, profile); }
+  if verb == "invite" { return admin_invite(a, r, profile); }
+  if verb == "requests" { return admin_list(a, r, profile, "R", "request"); }
+  if verb == "approve" || verb == "decline" { return admin_decide(a, r, profile, verb); }
+  if verb == "creators" { return admin_list(a, r, profile, "C", "creator"); }
+  if verb == "creator" { return admin_creator(a, r, profile); }
+  if verb == "grandfather" { return admin_post(a, r, profile, "/api/admin/access/grandfather", "{}"); }
+  if verb == "realms" { return admin_realms(a, r, profile); }
+  if verb == "realm" {
+    if positional(a, 2) != "visibility" { return fail(r, EXIT_USAGE, "admin realm visibility SLUG private|unlisted|public"); }
+    return realm_visibility(a, r, profile, 3);
+  }
+  if verb == "keys" { return admin_keys(a, r, profile); }
+  if verb == "key" { return admin_key(a, r, profile); }
+  return fail(r, EXIT_USAGE, "admin: access, flag, invite, requests, approve, decline, creators, creator, grandfather, realms, realm, keys or key");
+}

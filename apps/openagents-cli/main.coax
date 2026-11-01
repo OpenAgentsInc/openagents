@@ -27,6 +27,9 @@
 #load "pylon.coax";
 #load "account.coax";
 #load "project.coax";
+#load "api.coax";
+#load "realm.coax";
+#load "admin.coax";
 
 CLI_VERSION :: "1.0.0-dev";
 
@@ -53,13 +56,15 @@ usage :: () {
   pylon_usage();
   project_usage();
   account_usage();
+  realm_usage();
+  admin_usage();
   print("%\n", "Other:");
   print("%\n", "  version, help");
   print("%\n", "");
   print("%\n", "Every command takes --json. Keys are kept in ~/.openagents/cli/keys/PROFILE, mode 0600.");
   print("%\n", "OPENAGENTS_KEYCHAIN=1 uses the macOS Keychain instead (it asks for your password after each rebuild).");
   print("%\n", "OPENAGENTS_NSEC=nsec1... uses that key for one run and stores nothing.");
-  print("%\n", "Exit codes: 0 done, 1 failed, 2 usage, 3 no identity or key, 5 conflict, 6 not found.");
+  print("%\n", "Exit codes: 0 done, 1 failed, 2 usage, 3 no identity or key, 4 forbidden, 5 conflict (changed since), 6 not found, 7 slow down.");
 }
 
 
@@ -89,5 +94,7 @@ tool_main :: () -> int #export_c {
   if domain == "pylon" { return pylon_main(a[..], r[..], profile, verb); }
   if domain == "http" { return cli_http(a[..], r[..]); }   // hidden: one request through coax/lib/net/http.coax
   if domain == "project" { return project_main(a[..], r[..], verb); }
+  if domain == "realm" { return realm_main(a[..], r[..], profile, verb); }
+  if domain == "admin" { return admin_main(a[..], r[..], profile, verb); }
   return fail(r[..], EXIT_USAGE, "unknown command (openagents help)");
 }

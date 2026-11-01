@@ -52,6 +52,17 @@ def b_call(method, path, body=None, key=None, origin=None):
     if origin:
         h["Origin"] = origin
     status, raw, headers = call(method, path, None if body is None else json.dumps(body).encode(), h)
+    # A made realm or a fork starts private (0099). These checks were written when every made realm
+    # was public and check what visitors see, so each one they make is made public by its owner.
+    made = path.split("?")[0]
+    if method == "POST" and status == 200 and key and (made == "/api/playtest/realms" or made.endswith("/fork")):
+        try:
+            slug = json.loads(raw)["slug"]
+        except Exception:
+            slug = next((l[5:] for l in raw.decode().splitlines() if l.startswith("slug ")), None)
+        if slug:   # a fork of a built-in realm was unlisted until published (0075): it stays so
+            vis = b'{"visibility":"unlisted"}' if made.endswith("/fork") and made.split("/")[-2] in ("everglade", "doomglade") else b'{"visibility":"public"}'
+            call("POST", "/api/playtest/realms/%s/visibility" % slug, vis, {"Content-Type": "application/json", "X-Verse-Player": key})
     try:
         return status, json.loads(raw)
     except Exception:
@@ -124,8 +135,8 @@ def realm_builder_checks():
     board["features"].append({"feature": "dragon", "on": True})
     check("making needs a player", b_call("POST", "/api/playtest/realms", {"board": board})[0] == 401)
     st, made = b_call("POST", "/api/playtest/realms", {"plan": plan["plan"], "board": board}, owner)
-    check("MAKE IT makes the realm at /realms/<slug> and writes its page", st == 200 and made["slug"] == "moonlit-marsh" and made["path"] == "/realms/moonlit-marsh"
-          and made["page"] is True, made)
+    check("MAKE IT makes the realm at /realms/<slug>, private, so with no page until it is shown (0099)", st == 200 and made["slug"] == "moonlit-marsh" and made["path"] == "/realms/moonlit-marsh"
+          and made["page"] is False, made)
     site = bucket["site"]
     check("its page, its bare path, its text and the list of made realms are in the bucket",
           all(n in site for n in ("realms/moonlit-marsh", "realms/moonlit-marsh/index.html", "realms/moonlit-marsh/index.md", "realms/made-slugs.txt"))
@@ -252,7 +263,8 @@ def realm_builder_checks():
           and "f character 1 Ilse, the guide\n" in text and "f tool 1 Visitors can fly\n" in text, text)
     st, raw, _ = call("POST", "/api/playtest/realms?as=lines", json.dumps({"plan": plan_id, "on": [True, False, True]}).encode(), h)
     made = raw.decode()
-    check("MAKE IT with only the on switches: the plan's board, as the page switched it", st == 200 and made.startswith("slug pine-hollow\npath /realms/pine-hollow\npage 1"), made)
+    check("MAKE IT with only the on switches: the plan's board, as the page switched it", st == 200 and made.startswith("slug pine-hollow\npath /realms/pine-hollow\npage 0"), made)
+    call("POST", "/api/playtest/realms/pine-hollow/visibility", b'{"visibility":"public"}', h)
     st, spec = b_call("GET", "/api/playtest/realms/pine-hollow")
     check("a character switched off is not there", "feature trees pine 12" in spec and "character" not in spec and "tool fly 1" in spec, spec)
     st, raw, _ = call("POST", "/api/playtest/realms?as=lines", json.dumps({"plan": plan_id, "on": [True]}).encode(), {"Content-Type": "application/json", "X-Verse-Player": b_player()})
@@ -279,6 +291,7 @@ def realm_builder_checks():
     setup_plan = int(text.split("\n")[0].split(" ")[1]) if text.startswith("plan ") else 0
     st, raw, _ = call("POST", "/api/playtest/realms?as=lines", json.dumps({"plan": setup_plan, "on": [True], "setup": {"camera": "top", "time": "dusk"}}).encode(), h)
     check("an answer changed on the board goes with MAKE IT", st == 200 and raw.decode().startswith("slug dune-watch\n"), raw)
+    call("POST", "/api/playtest/realms/dune-watch/visibility", b'{"visibility":"public"}', h)
     st, spec = b_call("GET", "/api/playtest/realms/dune-watch")
     check("the made realm keeps its camera, and the setup as the board showed it",
           "camera top" in spec and "time dusk" in spec and "ground desert" in spec and "feature rocks 5" in spec, spec)

@@ -211,6 +211,76 @@ cap, one plan every 2 seconds, 12 realms a day, 200 placed things, 64 moves
 and 64 undo steps a realm. The invite gate applies to CLI requests exactly
 as to the page (exit 4 with `need invite`).
 
+## Who sees a realm (built, 2026-11-01)
+
+A made realm has a visibility, `private`, `unlisted` or `public`
+(`coax/web/api/migrations/0099_realm_visibility.sql`):
+
+| Visibility | Who sees it | `/realms/SLUG` page | On `/realms` and `/og` |
+| --- | --- | --- | --- |
+| `private` | its owner and site admins; 404 to everyone else | none; the owner opens `/realms/built#SLUG` | no |
+| `unlisted` | anyone with the link | yes, `noindex` | no |
+| `public` | everyone | yes | yes |
+
+- A new realm and a new fork start private. At the migration, realms that
+  were listed became public, unlisted realms stayed unlisted, and the
+  built-in realms stayed public.
+- Private applies to every route under the realm's slug: the spec, `/doc`,
+  the panes, the card, a fork by anyone else, and every edit. The rule is
+  `verse.realm_hidden`; `realms.c` asks it once, before any slug route.
+- `POST /api/playtest/realms/<slug>/visibility {visibility}` changes it.
+  Its owner may when the owner is an approved creator (or realm making isn't
+  invite only), and a site admin may for any realm. The rule is
+  `verse.realm_visibility_may`. Making a realm unlisted or public writes its
+  page; making it private removes the page, its text, its card and its line
+  in `realms/made-slugs.txt`.
+- `publish`'s `listed` (and a built-in fork's `published`) still works and
+  maps onto visibility: listed is public, unlisted is unlisted. It needs the
+  same right.
+- `GET /api/playtest/realms/mine` adds the visibility as the last field of
+  each line and in JSON.
+- There is no delete route. Making a realm private takes it off the site.
+
+CLI: `realm visibility SLUG V`, and `admin realm visibility SLUG V` for any
+realm. `admin realms [--visibility V]` lists every made realm
+(`GET /api/admin/access/realms`, lines `realm SLUG|VISIBILITY|REV|PUBLISHED|OWNER|NAME`).
+
+## The admin domain (built, 2026-11-01)
+
+Every `admin` verb is one route in `coax/web/api/access.c`, signed with
+NIP-98 by a site admin's key:
+
+| Command | Route |
+| --- | --- |
+| `admin access` | `GET /api/admin/access` (the `F`, `I`, `R`, `C` rows, summed) |
+| `admin flag NAME on\|off` | `POST /api/admin/access/flag {name, on}` |
+| `admin invite new [--uses N] [--days N] [--note T]` | `POST /api/admin/access/invites` |
+| `admin invite list` / `revoke ID` | the `I` rows / `POST .../invites/ID/revoke` |
+| `admin requests` / `approve ID` / `decline ID` | the `R` rows / `POST .../requests/ID/approve\|decline` |
+| `admin creators` / `creator add WHO` / `creator remove WHO` | the `C` rows / `POST .../creators {who}` / `POST .../creators/ACCOUNT/remove` |
+| `admin grandfather` | `POST /api/admin/access/grandfather` |
+| `admin realms [--visibility V]` | `GET /api/admin/access/realms` |
+| `admin keys` | `GET /api/admin/access/admins` |
+| `admin key add NPUB [--note T]` / `key remove NPUB` | `POST .../admins {pubkey, note}` / `POST .../admins/HEX/remove` |
+
+For everyone: `access` (`GET /api/playtest/access`), `access redeem CODE`
+and `access request TEXT [--contact EMAIL]`.
+
+### Admin keys
+
+There are two kinds of site admin
+(`coax/web/api/migrations/0100_admin_keys.sql`):
+
+- A **root admin** is a public key in `coax/web/api/admins.conf`
+  (`OA_ADMIN_PUBKEYS`). Only a deploy adds or removes one.
+- A **database admin** is a row in `access.admin_keys`, added by a root
+  admin.
+
+Both pass every admin check (`admin.c`, `is_admin`). Only a root admin adds
+or removes a database admin (`access.admin_may`). A database admin cannot
+change the list, no request can remove a root admin (409), and every add and
+remove is a row in `access.admin_audit`.
+
 ## The realm domain (Aethyrforge)
 
 Every verb maps to one route under `/api/playtest/realms`. What each route

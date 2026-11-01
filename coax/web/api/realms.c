@@ -18,7 +18,10 @@
 //   POST /api/playtest/realms/<slug>/card  (image/jpeg) -> 200 {image}; 400 not a 1200x630 JPEG, 413, 403, 404
 //   GET  /api/playtest/realms/made                     -> text/plain, the newest made realms as /og's rows
 //   GET  /api/playtest/realms/mine                     -> the caller's made realms: {realms: [{slug, name, rev, published,
-//        listed}]}, or ?as=lines "realm SLUG|REV|PUBLISHED|LISTED|NAME" (published 0: never); none is {realms: []} or ""
+//        listed, visibility}]}, or ?as=lines "realm SLUG|REV|PUBLISHED|LISTED|NAME|VISIBILITY" (published 0: never); none is {realms: []} or ""
+//   POST /api/playtest/realms/<slug>/visibility {visibility}   -> 200 {slug, visibility, was, page}; 400, 403, 404 (0099:
+//        private|unlisted|public; its owner when access.gate admits them, or a site admin. A private realm is 404 on every
+//        route under its slug to all but its owner and site admins, and has no page in the site bucket.)
 // FORK (migrations/0075_realm_forks.sql, docs/verse/realm-fork.md): any built-in realm with rule sets, or a fork.
 //   GET  /api/playtest/realms/<slug>/fork              -> text/plain: base, title, fork, from, maker, name, owner, published, rule ID 0|1 LABEL
 //   POST /api/playtest/realms/<slug>/fork {rules, name?}   -> 200 {slug, path, name, base, from, rules, page}; 400, 401, 404, 429
@@ -215,10 +218,36 @@ static char *sql_one(PGconn *c, const char *sql, int n, const char *const *v) {
 // The page at /realms/<slug> (an object of that name, as upload.py writes a site's pages), at
 // .../index.html, its index.md, and the list of made realms. Without a bucket (a dev server) it is
 // skipped and the page says so: /realms/built#<slug> opens it there.
-static bool write_page(PGconn *c, const char *slug) {
+// A private realm (0099) has no page there: write_page writes nothing for it, and making a realm
+// private (POST .../visibility) removes its objects and its picture and takes it off the list. It
+// opens at /realms/built#<slug> for its owner and site admins only.
+static bool remove_page(PGconn *c, const char *slug) {
+  static const char *const parts[4] = {"realms/%s", "realms/%s/index.html", "realms/%s/index.md", "realms/%s/card.jpg"};
+  char name[200];
+  bool ok = true;
+  for (int i = 0; i < 4; i++) { snprintf(name, sizeof name, parts[i], slug); ok = drops_site_delete(name) && ok; }
+  char *list = sql_one(c, "SELECT verse.builder_slugs()", 0, NULL);
+  ok = list && drops_site_write("realms/made-slugs.txt", "text/plain; charset=utf-8", list) && ok;
+  free(list);
+  const char *v[1] = {slug};
+  PGresult *r = PQexecParams(c, "SELECT verse.realm_card_gone($1)", 1, NULL, v, NULL, NULL, 0); PQclear(r);
+  if (ok) { r = PQexecParams(c, "SELECT verse.builder_page_written($1)", 1, NULL, v, NULL, NULL, 0); PQclear(r); }
+  return false;   // no page written
+}
+
+// unhide: the realm was just made private, so a page it had is removed.
+static bool write_page_or_remove(PGconn *c, const char *slug, bool unhide) {
   if (!getenv("OA_SITE_BUCKET") || !*getenv("OA_SITE_BUCKET")) return false;
   const char *origin = env_or("OA_API_ORIGIN", "https://openagents.com");
   const char *v[2] = {slug, origin};
+  char *action = sql_one(c, "SELECT verse.realm_page_action($1)", 1, v);
+  bool remove = !action || strcmp(action, "write");
+  free(action);
+  if (remove && unhide) return remove_page(c, slug);
+  if (remove) {   // private: nothing to write, and nothing stale (realms_refresh_pages moves on)
+    PGresult *r = PQexecParams(c, "SELECT verse.builder_page_written($1)", 1, NULL, v, NULL, NULL, 0); PQclear(r);
+    return false;
+  }
   char *page = sql_one(c, "SELECT verse.builder_page($1, $2)", 2, v), *md = sql_one(c, "SELECT verse.builder_md($1)", 1, v);
   char *list = sql_one(c, "SELECT verse.builder_slugs()", 0, NULL);
   char name[200];
@@ -234,6 +263,7 @@ static bool write_page(PGconn *c, const char *slug) {
   if (ok) { PGresult *r = PQexecParams(c, "SELECT verse.builder_page_written($1)", 1, NULL, v, NULL, NULL, 0); PQclear(r); }
   return ok;
 }
+static bool write_page(PGconn *c, const char *slug) { return write_page_or_remove(c, slug, false); }
 
 // On start: every made realm's page written with an older template is written again, in a child
 // (any instance may; each page is claimed by one, verse.builder_page_stale).
@@ -688,6 +718,41 @@ static bool slug_ok(const char *s, size_t n) {
   return true;
 }
 
+// After a visibility change: its page written (unlisted, public) or removed (private) by a child,
+// which then answers {..., page: true|false}, so the answer comes when the bucket says so.
+// A visibility change's answer, after its page is written (unlisted, public) or removed (private).
+static void answer_paged(int fd, const char *slug, const char *json) {
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid < 0) { api_json(fd, 503, "{\"error\":\"busy\"}"); return; }
+  if (pid > 0) return;
+  PGconn *c = api_db_new();
+  bool paged = c && write_page_or_remove(c, slug, true);
+  if (c) PQfinish(c);
+  size_t n = strlen(json);
+  char *out = malloc(n + 32);
+  if (!out) { api_json(fd, 503, "{\"error\":\"memory\"}"); _exit(0); }
+  memcpy(out, json, n - 1);   // an object: its closing brace last
+  snprintf(out + n - 1, 32, ", \"page\": %s}", paged ? "true" : "false");
+  api_json(fd, 200, out);
+  free(out);
+  _exit(0);
+}
+
+// A private realm, to anyone but its owner and site admins, is not there (verse.realm_hidden,
+// 0099): true when it answered 404 (or 500 when it couldn't ask).
+static bool realm_hidden(const request *q, PGconn *db, const char *slug, const char *key, const char *admin) {
+  const char *v[3] = {slug, key, admin};
+  PGresult *r = PQexecParams(db, "SELECT verse.realm_hidden($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1;
+  bool hidden = ok && !strcmp(PQgetvalue(r, 0, 0), "t");
+  if (!ok) api_log("realms: hidden: %s", PQerrorMessage(db));
+  PQclear(r);
+  if (!ok) { api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
+  if (hidden) api_json(q->fd, 404, "{\"error\":\"no such realm\"}");
+  return hidden;
+}
+
 bool realms_route(const request *q) {
   if (strncmp(q->path, PREFIX, sizeof PREFIX - 1) || (q->path[sizeof PREFIX - 1] && q->path[sizeof PREFIX - 1] != '/')) return false;
   const char *rest = q->path + sizeof PREFIX - 1;
@@ -754,6 +819,27 @@ bool realms_route(const request *q) {
   // A site admin (admins.conf, by site login or NIP-98) is an admin of every realm; SQL decides the rest.
   char who[65];
   const char *admin = (by ? admin_is(by) : admin_who(q, db, who) == 0) ? "true" : "false";
+  if (realm_hidden(q, db, slug, key, admin)) return true;   // private (0099): 404 to all but its owner and site admins
+  if (!strcmp(what, "visibility")) {   // who sees it (0099): its owner when an approved creator, or a site admin
+    if (!post) { api_json(q->fd, 405, "{\"error\":\"POST {visibility}\"}"); return true; }
+    char *body = body_of(q);
+    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    const char *v[4] = {slug, body, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_visibility($1, $2::jsonb, $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
+    free(body);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+      int status = atoi(PQgetvalue(r, 0, 0));
+      if (status == 200) answer_paged(q->fd, slug, PQgetvalue(r, 0, 1));   // written for unlisted and public, removed for private
+      else api_json(q->fd, status, PQgetvalue(r, 0, 1));
+    } else {
+      const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+      bool theirs = state && !strncmp(state, "22", 2);
+      if (!theirs) api_log("realms: visibility: %s", PQerrorMessage(db));
+      api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    }
+    PQclear(r);
+    return true;
+  }
   if (!*what) {
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the realm\"}"); return true; }
     const char *v[3] = {slug, key, admin};

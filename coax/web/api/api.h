@@ -32,7 +32,9 @@ void analytics_team_init(PGconn *db);     // the team (OA_TEAM, OA_ADMIN_PUBKEYS
 #define TEAM_COOKIE "Set-Cookie: oa_team=1; Path=/; Max-Age=63072000; HttpOnly; Secure; SameSite=Lax\r\n"   // this browser is the team's
 void admin_init(void);                    // admin.c
 bool admin_route(const request *q);
-bool admin_is(const char *pubkey);        // a pubkey in OA_ADMIN_PUBKEYS
+bool admin_is(const char *pubkey);        // a site admin: a root (OA_ADMIN_PUBKEYS) or a database admin (0100)
+bool admin_is_root(const char *pubkey);   // a pubkey in OA_ADMIN_PUBKEYS (admins.conf)
+void admin_roots(char *out, size_t cap);  // the roots as a Postgres text array literal
 int admin_who(const request *q, PGconn *db, char who[65]);   // 0 an admin (cookie or NIP-98), else 401/403
 bool chat_route(const request *q);        // chat.c
 void chat_key(const request *q, const char *pubkey, bool member);   // KEY for a signed-in admin, or a project member (private.c)
@@ -61,6 +63,7 @@ long npc_ask_model(const char *url_env, const char *model, const char *request, 
 long npc_ask_model_twice(const char *url_env, const char *model, const char *request, long timeout_ms, char **body);
 // A page, list or file written into the site's bucket (drops.c, OA_SITE_BUCKET), no-cache.
 bool drops_site_write(const char *name, const char *type, const char *data);
+bool drops_site_delete(const char *name);   // gone already counts as done
 char *drops_site_read(const char *name);   // a text object from the site's bucket, malloc'd, or NULL
 bool drops_site_write_bytes(const char *name, const char *type, const unsigned char *data, size_t n);
 void realms_refresh_pages(void);   // realms.c: on start, made realms' pages written with an older template

@@ -42,6 +42,33 @@ answer. A key that is another account's, or owns realms, players or creator
 rows of its own, is refused. Checks: the `device` part of `cli_auth.coax`;
 `apps/openagents-web/private.coax` (page 7 approves only on the press).
 
+## A private realm is seen only by its owner and site admins
+
+A made realm's `visibility` (`coax/web/api/migrations/0099_realm_visibility.sql`)
+is `private`, `unlisted` or `public`; a new realm and a new fork start private.
+For a private realm every route under its slug answers 404 to anyone but its
+owner (`verse.builder_owns`, which a NIP-98 caller meets through its account)
+and site admins: `verse.realm_hidden` decides, and `realms.c` asks it before
+any slug route. It has no page in the site bucket (writing one removes it), is
+not in `verse.builder_og_rows` or `verse.builder_slugs`, and no one else can
+fork it. Only its owner, when `access.gate` admits them, and site admins change
+it (`verse.realm_visibility_may`); a publish's `listed` is the same change with
+the same right. Checks: `coax/web/api/tests/cli_auth.coax` (`visibility`:
+private 404 to another key and to nobody, its document and fork too, off /og;
+unlisted by slug; public on /og; another key 403; invite only refuses an owner
+not approved and admits one approved; a site admin sees and changes it).
+
+## Only a root admin changes who is an admin
+
+A root admin is a key in `coax/web/api/admins.conf`, changed only by a deploy.
+A database admin (`access.admin_keys`, `migrations/0100_admin_keys.sql`) is a
+site admin for every check, but only a root admin adds or removes one
+(`access.admin_may`), no request removes a root admin, and every change is a
+row in `access.admin_audit`. Checks: `coax/web/api/tests/cli_auth.coax`
+(`admin keys`: a non-admin and a database admin can't add; a database admin
+can't remove a root, nor can a root; a root adds and removes; the removed key
+is no admin).
+
 ## A made realm's document changes only from the revision it was read at
 
 A made realm is a versioned document (`verse.realm_doc`,

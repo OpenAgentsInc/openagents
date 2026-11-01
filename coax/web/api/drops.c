@@ -1177,6 +1177,17 @@ bool drops_site_write_bytes(const char *name, const char *type, const unsigned c
   char tok[4096];
   return token(tok, sizeof tok) && site_put_bytes(tok, name, type, data, n);
 }
+// Removes name from the site's bucket (realms.c: a realm made private); gone already is done.
+bool drops_site_delete(const char *name) {
+  const char *bucket = getenv("OA_SITE_BUCKET");
+  char tok[4096], obj[1024], url[2048];
+  if (!bucket || !*bucket || !token(tok, sizeof tok)) return false;
+  enc(obj, sizeof obj, name);
+  snprintf(url, sizeof url, "%s/storage/v1/b/%s/o/%s", env_or("OA_DROPS_GCS", "https://storage.googleapis.com"), bucket, obj);
+  long status = gcs("DELETE", url, tok, NULL, NULL, NULL);
+  if (status != 204 && status != 200 && status != 404) { api_log("drops: site delete %ld", status); return false; }
+  return true;
+}
 // A text object's bytes from the site's bucket (malloc'd, NUL-terminated), or NULL (access.c).
 char *drops_site_read(const char *name) {
   const char *bucket = getenv("OA_SITE_BUCKET");

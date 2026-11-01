@@ -167,10 +167,61 @@ the events are [docs/protocol/2026-10-28-projects.md](../../docs/protocol/2026-1
   never load a key. They write a file only when its bytes change, ignoring
   the snapshot time.
 
+## Realms
+
+```sh
+openagents realm list                              # your realms: slug|rev|published|listed|name|visibility
+openagents realm show SLUG                         # its spec lines and its page
+openagents realm new "a koi garden at dusk"        # plan it from words and make it, private
+openagents realm new --from PLAN                   # make a plan you have
+openagents realm visibility SLUG private|unlisted|public
+openagents realm publish SLUG [--rev N]            # visitors see this revision
+openagents realm fork SLUG [--name NAME]           # a copy you own, private
+```
+
+- Each request is signed with NIP-98 by the profile's key, so the key's
+  account is the caller (`--profile NAME`, or `OPENAGENTS_NSEC`). A key no
+  account linked is its own account, `n-<pubkey>`.
+- A realm is `private`, `unlisted` or `public`. A new realm and a new fork
+  start private: only its owner and site admins see it, and everyone else
+  gets 404. Unlisted opens by its link. Public is also on `/realms` and
+  `/og`. While realm making is invite only, only approved creators and site
+  admins change it.
+- A private realm opens at `/realms/built#SLUG`; unlisted and public realms
+  have a page at `/realms/SLUG`.
+- There is no delete. To take a realm down, make it private.
+- The server is the one the profile logged in to, or `--origin URL`, such as
+  `https://staging.openagents.com` or `http://127.0.0.1:PORT`.
+
+## Admin
+
+```sh
+openagents admin access                            # flags and counts
+openagents admin flag realm_invites on|off
+openagents admin invite new [--uses N] [--days N] [--note T]   # the code and link, shown once
+openagents admin invite list | revoke ID
+openagents admin requests | approve ID | decline ID
+openagents admin creators | creator add WHO | creator remove WHO | grandfather
+openagents admin realms [--visibility V]           # every made realm and who sees it
+openagents admin realm visibility SLUG V           # any realm's
+openagents admin keys                              # the admin keys, as npubs
+openagents admin key add NPUB [--note T] | key remove NPUB   # a root admin only
+```
+
+- `admin` works only with a site admin's key. A root admin is a key in
+  `coax/web/api/admins.conf`; only a deploy changes that list. A root admin
+  can add and remove database admins, and every change is audited. A
+  database admin can do everything else an admin does, but cannot change the
+  admin list, and no request can remove a root admin.
+- `WHO` is an npub, a 64-hex public key or an account ID such as `n-HEX`.
+- An invite code is printed once, and only its hash is kept. Send the link
+  to the person; don't post it.
+
 ## Output and exit codes
 
 Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
-0 done, 1 failed, 2 usage, 3 no identity or key, 5 conflict, 6 not found.
+0 done, 1 failed, 2 usage, 3 no identity or key, 4 forbidden, 5 conflict
+(changed since), 6 not found, 7 slow down.
 
 ## Files
 
@@ -188,6 +239,10 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `project-publish.coax` | `check` and `publish`: the work files as announcements, issues, revisions, statuses and the order |
 | `project-review.coax` | `review`: an independent review file signed with the reviewer's key |
 | `project-page.coax` | `snapshot`, `index` and `bake`: the page's tables, Markdown and lists from the relay |
+| `api.coax` | one signed call to the API: the origin, the NIP-98 header, the status as an exit code |
+| `realm.coax` | the `realm` domain: list, show, new, visibility, publish, fork |
+| `admin.coax` | the `admin` domain: invites, requests, creators, flags, realms, admin keys |
+| `realm_rules.coax` | `#authority`: slugs, visibilities, flags, counts, keys and account IDs, origins, spec lines, access rows, a plan's board |
 | `project-rules.coax` | `#authority`: hashes, slugs, standing, claims, plans, ranks, the order, relay paging |
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, the host name, process liveness, the executable's path |

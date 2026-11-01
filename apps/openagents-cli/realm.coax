@@ -1,0 +1,177 @@
+// The realm domain: your realms on openagents.com, over the same routes the
+// page uses (coax/web/api/realms.c), each request signed with NIP-98 by the
+// profile's key, so the key's account is the caller. The server decides every
+// right; this file sends the words and reads the answers (realm_rules.coax).
+
+realm_usage :: () {
+  print("%\n", "Realms (openagents.com/realms):");
+  print("%\n", "  realm list                       your realms: slug, revision, published revision, listed, name");
+  print("%\n", "  realm show SLUG                  its spec lines, who sees it, and its page");
+  print("%\n", "  realm new WORDS [--from PLAN]    plan a realm from words and make it (private); --from makes a plan you have");
+  print("%\n", "  realm visibility SLUG private|unlisted|public   who sees it (approved creators and admins)");
+  print("%\n", "  realm publish SLUG [--rev N]     visitors see this revision (without --rev: the one there now)");
+  print("%\n", "  realm fork SLUG [--name NAME]    a copy of it that you own (private)");
+  print("%\n", "");
+}
+
+// Its page: /realms/SLUG, or /realms/built#SLUG while it is private (no page is written for it).
+realm_page :: (a: [] Args, profile: string, slug: string, visibility: string, out: [] u8) -> string {
+  env: [300] u8;
+  n := copy(acct_origin(a, profile, env[..]), out);
+  n += copy(ifx visibility == "private" then "/realms/built#" else "/realms/", out[n..<out.count]);
+  n += copy(slug, out[n..<out.count]);
+  return cast(string) out[0..<n];
+}
+
+realm_path :: (slug: string, tail: string, out: [] u8) -> string {
+  n := copy("/api/playtest/realms/", out);
+  n += copy(slug, out[n..<out.count]);
+  n += copy(tail, out[n..<out.count]);
+  return cast(string) out[0..<n];
+}
+
+realm_list :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  out: [API_OUT] u8;
+  res := api_call(a, profile, "GET", ifx r[0].json then "/api/playtest/realms/mine" else "/api/playtest/realms/mine?as=lines", "", out[..]);
+  body := cast(string) out[0..<res.n];
+  if res.error == HTTP_OK && res.status == 404 { return fail(r, EXIT_FAIL, "this server has no list of your realms yet (GET /api/playtest/realms/mine)"); }
+  if !api_ok(res) { return api_fail(r, res, body); }
+  if !r[0].json { print("%", body); return EXIT_OK; }
+  if !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't JSON"); }
+  return rep_done(r, EXIT_OK);
+}
+
+realm_show :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  slug := positional(a, 2);
+  if !cli_slug_ok(slug) { return fail(r, EXIT_USAGE, "realm show SLUG: a slug is 1 to 48 of a-z, 0-9 and -"); }
+  out: [API_OUT] u8; p: [128] u8; pg: [400] u8;
+  res := api_call(a, profile, "GET", realm_path(slug, "", p[..]), "", out[..]);
+  spec := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, spec); }
+  vis := cli_spec_value(spec, "visibility");
+  page := realm_page(a, profile, slug, vis, pg[..]);
+  if !r[0].json { print("%", spec); print("page %\n", page); return EXIT_OK; }
+  rep_str(r, "slug", slug);
+  rep_str(r, "name", cli_spec_value(spec, "name"));
+  rep_str(r, "visibility", ifx vis == "" then "public" else vis);
+  rep_str(r, "role", cli_spec_value(spec, "role"));
+  rev := cli_spec_value(spec, "rev");
+  if rev != "" { rep_raw(r, "rev", rev); rep_raw(r, "published", cli_spec_value(spec, "published")); }
+  rep_str(r, "page", page);
+  rep_str(r, "spec", spec);
+  return rep_done(r, EXIT_OK);
+}
+
+// new: POST /plan {prompt} (the model's board), then MAKE IT with exactly the rows it checked.
+realm_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  words := positional(a, 2);
+  from := args_value(a, "--from", "");
+  if words == "" && from == "" { return fail(r, EXIT_USAGE, "realm new WORDS [--from PLAN]"); }
+  if words.count > 2000 { return fail(r, EXIT_USAGE, "say it in at most 2000 characters"); }
+  out: [API_OUT] u8; buf: [API_BODY_MAX] u8;
+  on: [64] bool;
+  plan := -1; rows := 0;
+  if from != "" {
+    plan = cli_count(from, 1, 999999999);
+    if plan < 0 { return fail(r, EXIT_USAGE, "--from is a plan's number"); }
+  } else {
+    body := api_body1("prompt", words, buf[..]);
+    if body == "" { return fail(r, EXIT_USAGE, "those words are too long"); }
+    res := api_call(a, profile, "POST", "/api/playtest/realms/plan?as=lines", body, out[..]);
+    text := cast(string) out[0..<res.n];
+    if !api_ok(res) { return api_fail(r, res, text); }
+    b := cli_plan_board(text, on[..]);
+    if b.plan < 0 || b.rows < 0 { return fail(r, EXIT_FAIL, "the plan's board didn't read"); }
+    plan = b.plan; rows = b.rows;
+  }
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]); jo_key(o[..], "plan"); jo_int(o[..], plan);
+  jo_key(o[..], "on"); jo_arr(o[..]);
+  for i: 0..<rows { jo_bool(o[..], on[i]); }
+  jo_end(o[..]); jo_end(o[..]);
+  res := api_call(a, profile, "POST", "/api/playtest/realms?as=lines", jo_text(o[..]), out[..]);
+  made := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, made); }
+  slug := cli_spec_value(made, "slug");
+  if !cli_slug_ok(slug) { return fail(r, EXIT_FAIL, "the server made no realm"); }
+  pg: [400] u8;
+  rep_int(r, "plan", plan);
+  rep_str(r, "slug", slug);
+  rep_str(r, "visibility", "private");
+  rep_str(r, "page", realm_page(a, profile, slug, "private", pg[..]));
+  return rep_done(r, EXIT_OK);
+}
+
+// visibility (also `admin realm visibility`): POST /<slug>/visibility {visibility}.
+realm_visibility :: (a: [] Args, r: [] Rep, profile: string, at: int) -> int {
+  slug := positional(a, at);
+  vis := positional(a, at + 1);
+  if !cli_slug_ok(slug) || !cli_visibility_ok(vis) { return fail(r, EXIT_USAGE, "visibility SLUG private|unlisted|public"); }
+  out: [API_OUT] u8; p: [128] u8; buf: [256] u8; pg: [400] u8;
+  res := api_call(a, profile, "POST", realm_path(slug, "/visibility", p[..]), api_body1("visibility", vis, buf[..]), out[..]);
+  body := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, body); }
+  if !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't JSON"); }
+  rep_str(r, "url", realm_page(a, profile, slug, vis, pg[..]));
+  return rep_done(r, EXIT_OK);
+}
+
+// publish: the revision named, or the one there now (read first). 409: it moved; `rev N` says where.
+realm_publish :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  slug := positional(a, 2);
+  if !cli_slug_ok(slug) { return fail(r, EXIT_USAGE, "realm publish SLUG [--rev N]"); }
+  out: [API_OUT] u8; p: [128] u8; buf: [256] u8;
+  rev := -1;
+  if args_has(a, "--rev") {
+    rev = cli_count(args_value(a, "--rev", ""), 1, 999999999);
+    if rev < 0 { return fail(r, EXIT_USAGE, "--rev is a revision number"); }
+  } else {
+    res := api_call(a, profile, "GET", realm_path(slug, "", p[..]), "", out[..]);
+    spec := cast(string) out[0..<res.n];
+    if !api_ok(res) { return api_fail(r, res, spec); }
+    rev = cli_count(cli_spec_value(spec, "rev"), 1, 999999999);
+    if rev < 0 { return fail(r, EXIT_USAGE, "that realm has no revisions to publish (a built-in realm?)"); }
+  }
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]); jo_key(o[..], "rev"); jo_int(o[..], rev); jo_end(o[..]);
+  res := api_call(a, profile, "POST", realm_path(slug, "/publish", p[..]), jo_text(o[..]), out[..]);
+  body := cast(string) out[0..<res.n];
+  if res.error == HTTP_OK && res.status == 409 {
+    nodes: [32] JvNode; d: [1] Jv;
+    if jv_parse(d[..], body, nodes[..]) { rep_raw(r, "rev", jv_raw(d[0], jv_get(d[0], 0, "rev"))); }
+  }
+  if !api_ok(res) { return api_fail(r, res, body); }
+  if !rep_object(r, body) { return fail(r, EXIT_FAIL, "the server's answer isn't JSON"); }
+  return rep_done(r, EXIT_OK);
+}
+
+realm_fork :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  slug := positional(a, 2);
+  if !cli_slug_ok(slug) { return fail(r, EXIT_USAGE, "realm fork SLUG [--name NAME]"); }
+  out: [API_OUT] u8; p: [128] u8; buf: [512] u8; pg: [400] u8;
+  o: [1] Jo; jo_start(o[..], buf[..]);
+  jo_obj(o[..]); jo_key(o[..], "rules"); jo_arr(o[..]); jo_end(o[..]);
+  if args_has(a, "--name") { jo_key(o[..], "name"); jo_str(o[..], args_value(a, "--name", "")); }
+  jo_end(o[..]);
+  if o[0].bad { return fail(r, EXIT_USAGE, "--name is too long"); }
+  res := api_call(a, profile, "POST", realm_path(slug, "/fork?as=lines", p[..]), jo_text(o[..]), out[..]);
+  made := cast(string) out[0..<res.n];
+  if !api_ok(res) { return api_fail(r, res, made); }
+  fork := cli_spec_value(made, "slug");
+  if !cli_slug_ok(fork) { return fail(r, EXIT_FAIL, "the server made no fork"); }
+  rep_str(r, "slug", fork);
+  rep_str(r, "from", slug);
+  rep_str(r, "visibility", "private");
+  rep_str(r, "page", realm_page(a, profile, fork, "private", pg[..]));
+  return rep_done(r, EXIT_OK);
+}
+
+realm_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "list" { return realm_list(a, r, profile); }
+  if verb == "show" { return realm_show(a, r, profile); }
+  if verb == "new" { return realm_new(a, r, profile); }
+  if verb == "visibility" { return realm_visibility(a, r, profile, 2); }
+  if verb == "publish" { return realm_publish(a, r, profile); }
+  if verb == "fork" { return realm_fork(a, r, profile); }
+  return fail(r, EXIT_USAGE, "realm: list, show, new, visibility, publish or fork (openagents help)");
+}

@@ -16,6 +16,9 @@
 //   POST /api/admin/access/requests/<id>/approve | decline
 //   POST /api/admin/access/creators {who}     a pubkey (hex) or an account id; .../creators/<who>/remove
 //   POST /api/admin/access/grandfather        everyone who owns a made realm becomes a creator
+//   GET  /api/admin/access/realms[?visibility=V][&as=lines]   every made realm: realm SLUG|VISIBILITY|REV|PUBLISHED|OWNER|NAME (0099)
+//   GET  /api/admin/access/admins             A|npub|hex|root and A|npub|hex|db|added by|at|note (0100)
+//   POST /api/admin/access/admins {pubkey, note?}   a root admin adds a database admin; .../admins/<hex>/remove
 //   GET  /api/auth/v2/me                      account ID, then id|nostr|npub..., id|workos|email (with the flags
 //                                             off too; a NIP-98 signature is good once, caller-policy.coax)
 //   Device login (0098), with the flags off too; codes 128 bits, SHA-256 only, ten minutes, once:
@@ -51,6 +54,7 @@ static const char *env_or(const char *name, const char *fallback) { const char *
 static const char *origin(void) { return env_or("OA_API_ORIGIN", "https://openagents.com"); }
 
 static bool as_lines(const request *q) { char v[16]; return api_query(q, "as", v, sizeof v) && !strcmp(v, "lines"); }
+#define ADMIN_ROOTS_TEXT (32 * 65 + 8)   // admin_roots: admins.conf's keys, at most 32
 
 static char *body_of(const request *q) {
   char *b = malloc(q->body_len + 3);
@@ -293,16 +297,39 @@ static bool admin(const request *q, PGconn *db, const char *rest) {
     PQclear(r);
     return true;
   }
+  char roots[ADMIN_ROOTS_TEXT];
+  admin_roots(roots, sizeof roots);
+  if (!post && !strcmp(rest, "realms")) {   // every made realm and who sees it (0099), ?visibility= one of them
+    char vis[16] = "";
+    api_query(q, "visibility", vis, sizeof vis);
+    const char *v[1] = {vis};
+    PGresult *r = PQexecParams(db, "SELECT x->>'lines', (x->'body')::text FROM verse.realm_admin_rows(nullif($1, '')) x", 1, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("access: realms: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else if (as_lines(q)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
+    else api_json(q->fd, 200, PQgetvalue(r, 0, 1));
+    PQclear(r);
+    return true;
+  }
+  if (!post && !strcmp(rest, "admins")) {   // the roots (admins.conf) and the database's admins (0100)
+    const char *v[1] = {roots};
+    PGresult *r = PQexecParams(db, "SELECT access.admin_list($1::text[])", 1, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
+    else { api_log("access: admins: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    PQclear(r);
+    return true;
+  }
   if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
   if (!same_site(q)) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
   if (q->body_len > 4096) { api_json(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
   char *body = body_of(q);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   const char *v[3] = {body, who, origin()};
+  const char *rv[3] = {body, who, roots};   // a change to the admins: only a root may (0100)
   if (!strcmp(rest, "flag")) { answer(q, db, RESULT "access.set_flag($1::jsonb, $2) x", 2, v, "flag"); realms_twin(db); }
   else if (!strcmp(rest, "invites")) answer(q, db, RESULT "access.mint($1::jsonb, $2, $3) x", 3, v, "mint");
   else if (!strcmp(rest, "creators")) answer(q, db, RESULT "access.add($1::jsonb, $2) x", 2, v, "add");
   else if (!strcmp(rest, "grandfather")) answer(q, db, RESULT "access.grandfather($2) x WHERE $1::text IS NOT NULL", 2, v, "grandfather");
+  else if (!strcmp(rest, "admins")) answer(q, db, RESULT "access.admin_add($1::jsonb, $2, $3::text[]) x", 3, rv, "admin add");
   else {
     // invites/<id>/revoke, requests/<id>/approve|decline, creators/<who>/remove
     const char *slash = strchr(rest, '/'), *end = slash ? strchr(slash + 1, '/') : NULL;
@@ -317,6 +344,10 @@ static bool admin(const request *q, PGconn *db, const char *rest) {
       answer(q, db, RESULT "access.decide($1::bigint, $3::boolean, $2) x", 3, w, "decide");
     } else if (end && !strncmp(rest, "creators/", 9) && !strcmp(end, "/remove") && k > 0)
       answer(q, db, RESULT "access.remove($1) x", 1, w, "remove");
+    else if (end && !strncmp(rest, "admins/", 7) && !strcmp(end, "/remove") && k == 64) {
+      const char *x[3] = {id, who, roots};
+      answer(q, db, RESULT "access.admin_remove($1, $2, $3::text[]) x", 3, x, "admin remove");
+    }
     else api_json(q->fd, 404, "{\"error\":\"not found\"}");
   }
   api_log("access admin %.24s by %.8s", rest, who);

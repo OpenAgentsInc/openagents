@@ -52,9 +52,32 @@ void admin_init(void) {
   }
   api_log("admins: %d", admin_count);
 }
-static bool is_admin(const char *pubkey) {
+// A root admin: a key in admins.conf (OA_ADMIN_PUBKEYS), changed only by a deploy.
+bool admin_is_root(const char *pubkey) {
   for (int i = 0; i < admin_count; i++) if (!strcmp(admins[i], pubkey)) return true;
   return false;
+}
+// The roots as a Postgres text array literal ({hex,hex}), for the SQL that decides who may change
+// the admin list (migrations/0100_admin_keys.sql).
+void admin_roots(char *out, size_t cap) {
+  size_t n = (size_t)snprintf(out, cap, "{");
+  for (int i = 0; i < admin_count && n + 67 < cap; i++) n += (size_t)snprintf(out + n, cap - n, "%s%s", i ? "," : "", admins[i]);
+  snprintf(out + n, cap - n, "}");
+}
+// A site admin: a root, or a key a root added to access.admin_keys (0100). Without the table (the
+// migration not applied) only the roots.
+static bool is_admin(const char *pubkey) {
+  if (admin_is_root(pubkey)) return true;
+  size_t n = 0;
+  while (n < 65 && isxdigit((unsigned char)pubkey[n])) n++;
+  if (n != 64 || pubkey[64]) return false;
+  PGconn *db = api_db();
+  if (!db) return false;
+  const char *v[1] = {pubkey};
+  PGresult *r = PQexecParams(db, "SELECT access.is_db_admin($1)", 1, NULL, v, NULL, NULL, 0);
+  bool yes = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !strcmp(PQgetvalue(r, 0, 0), "t");
+  PQclear(r);
+  return yes;
 }
 bool admin_is(const char *pubkey) { return is_admin(pubkey); }
 static const char *origin(void) { const char *o = getenv("OA_API_ORIGIN"); return o && *o ? o : "https://openagents.com"; }

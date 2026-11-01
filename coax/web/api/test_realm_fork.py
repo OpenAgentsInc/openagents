@@ -59,7 +59,7 @@ def realm_fork_checks():
     st, f = b_call("POST", R + "everglade/fork", {"rules": ["waves", "night", "night"], "name": "Doomglade"}, owner)
     check("FORK makes a realm of its own at /realms/<slug>, with the rules chosen (once each, in Everglade's order), and writes its page",
           st == 200 and f["slug"] == "doomglade" and f["path"] == "/realms/doomglade" and f["base"] == "everglade" and f["from"] == "everglade"
-          and f["rules"] == ["night", "waves"] and f["page"] is True, (st, f))
+          and f["rules"] == ["night", "waves"] and f["page"] is False, (st, f))
     page = site.get("realms/doomglade", {}).get("data", b"").decode()
     check("its page loads Everglade's module with this fork's slug, slot and rules",
           'data-fork="doomglade"' in page and 'data-base="everglade"' in page and 'data-rules="night,waves"' in page
@@ -139,7 +139,7 @@ def realm_fork_checks():
     check("a visitor can't publish it", b_call("POST", R + "doomglade/publish", {}, other)[0] == 403)
     check("only a made realm's owner publishes it (0093)", b_call("POST", R + "moonlit-marsh/publish", {"rev": 1}, owner)[0] == 403)
     st, pub = b_call("POST", R + "doomglade/publish", {"description": "Always night in Everglade, and the watch comes in waves. <b>Run.</b>"}, owner)
-    check("its owner publishes it with its own line, markup taken out", st == 200 and pub == {"published": True, "description": "Always night in Everglade, and the watch comes in waves. bRun./b"}, (st, pub))
+    check("its owner publishes it with its own line, markup taken out", st == 200 and pub == {"published": True, "description": "Always night in Everglade, and the watch comes in waves. bRun./b", "visibility": "public", "listed": True}, (st, pub))
     page = ""
     for _ in range(40):
         page = site.get("realms/doomglade", {}).get("data", b"").decode()
@@ -152,7 +152,7 @@ def realm_fork_checks():
     rows = b_call("GET", R + "made")[1]
     check("and it is on /og's rows with its line, an unpublished fork still not", "/realms/doomglade|made||Doomglade|Always night in Everglade" in rows
           and "/realms/everglade-fork|" not in rows and "/realms/moonlit-marsh|" in rows, rows[:400])
-    check("unpublishing takes it off again", b_call("POST", R + "doomglade/publish", {"published": False}, owner) == (200, {"published": False, "description": pub["description"]})
+    check("unpublishing takes it off again", b_call("POST", R + "doomglade/publish", {"published": False}, owner) == (200, {"published": False, "description": pub["description"], "visibility": "unlisted", "listed": False})
           and "/realms/doomglade|" not in b_call("GET", R + "made")[1])
     b_call("POST", R + "doomglade/publish", {}, owner)
 
@@ -174,6 +174,7 @@ def realm_fork_checks():
     sql("""insert into verse.made_realms (slug, world, name, style, ground, time, features, tools, made_ms)
            values ('forge-court', 'made-forge-court', 'Forge Court', 'lowpoly', 'stone', 'day',
                    '[{"feature": "trees", "variant": "round", "count": 6, "label": "Six round trees"}]', '{"build": false}', 1)""")
+    sql("update verse.made_realms set visibility = 'public' where slug = 'forge-court'")   # made before 0099: as visitors had it
     st, d0 = b_call("GET", R + "forge-court/doc")
     check("a made realm's document: revision 1, its setup and features, and a hash", st == 200 and d0["doc"]["rev"] == 1 and d0["doc"]["doc"] == "aethyr.realm"
           and d0["doc"]["setup"]["ground"] == "stone" and d0["doc"]["moved"] == [] and len(d0["sha256"]) == 64, (st, d0))
@@ -231,16 +232,13 @@ def realm_fork_checks():
           and 'data-made="forge-court-copy"' in page3, page3[:1600])
     st, auto, _ = call("POST", R + "forge-court/fork", json.dumps({"name": "Forge Court Probe"}).encode(),
                     {"Content-Type": "application/json", "X-Verse-Player": rival, "X-Verse-Automation": "forge-journey"})
-    check("a realm a tool makes is unlisted: noindex, off /og's rows", st == 200
+    check("a realm a tool makes is private, like every new realm (0099): off /og's rows", st == 200
+          and sql("select visibility from verse.made_realms where slug = 'forge-court-probe'") == "private"
           and sql("select unlisted from verse.made_realms where slug = 'forge-court-probe'") == "t"
           and "/realms/forge-court-probe|" not in b_call("GET", R + "made")[1], (st, auto))
-    page4 = ""
-    for _ in range(50):
-        page4 = site.get("realms/forge-court-probe", {}).get("data", b"").decode()
-        if page4:
-            break
-        time.sleep(0.1)
-    check("and its page says noindex", '<meta name="robots" content="noindex">' in page4, page4[:400])
+    call("POST", R + "forge-court-probe/visibility", b'{"visibility":"unlisted"}', {"Content-Type": "application/json", "X-Verse-Player": rival})
+    page4 = site.get("realms/forge-court-probe", {}).get("data", b"").decode()
+    check("unlisted, its page says noindex", '<meta name="robots" content="noindex">' in page4, page4[:400])
 
     # visitors see the revision published; every edit is one undo step (0094)
     mv5 = [{"entity": "trees:2", "x": 1, "z": 1}, {"entity": "rocks:0", "x": -2, "z": 3}]

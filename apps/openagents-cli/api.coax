@@ -1,0 +1,120 @@
+// Calls to the OpenAgents API for the realm and admin domains: the server
+// (--origin, else the one the profile logged in to, else https://openagents.com:
+// account.coax's acct_origin), each
+// request signed with NIP-98 by the profile's key (kind 27235: the URL, the
+// method and the body's SHA-256), and the answer read back. Every request gets
+// a fresh event with a nonce, so two requests in the same second are still two
+// events (the server takes each event once).
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/nostr/nip98_sign.coax";
+#load "realm_rules.coax";
+
+API_OUT :: 262144;       // the most of an answer a command keeps
+API_BODY_MAX :: 16384;   // the most a command sends
+
+
+// A NIP-98 Authorization header line for one request, signed with secret, into out (the shared
+// signer, coax/lib/nostr/nip98_sign.coax: the body bound for every method but GET, and a nonce):
+// its length, or -1.
+api_auth :: (secret: [] u8, url: string, method: string, body: string, out: [] u8) -> int {
+  if body.count > API_BODY_MAX { return -1; }
+  bb: [API_BODY_MAX] u8; aux: [32] u8; nonce: [16] u8;
+  for i: 0..<body.count { bb[i] = body[i]; }
+  if cxrand_draw(aux[..], 32) != 0 || cxrand_draw(nonce[..], 16) != 0 { return -1; }
+  h := copy("Authorization: ", out);
+  n := n98s_header(secret, aux[..], nonce[..], cxcli_now_s(), url, method, bb[0..<body.count], method != "GET", out[h..<out.count]);
+  return ifx n < 0 then -1 else h + n;
+}
+
+// One answer: error is HTTP_OK and status the HTTP status, or error is the client's (http.coax),
+// or API_E_ORIGIN / API_E_SIGN before any request. body is out[0..<n].
+API_E_ORIGIN :: 100; API_E_SIGN :: 101;
+ApiAnswer :: struct { error: int; status: int; n: int; keyed: bool; }
+
+// method origin+path, signed by the profile's key when it has one (needs_key: refuse without one).
+api_call :: (a: [] Args, profile: string, method: string, path: string, body: string, out: [] u8) -> ApiAnswer {
+  res: ApiAnswer;
+  env: [300] u8; url: [2400] u8;
+  origin := acct_origin(a, profile, env[..]);
+  if origin == "" { res.error = API_E_ORIGIN; return res; }
+  un := copy(origin, url[..]);
+  pn := copy(path, url[un..<url.count]);
+  if pn < 0 { res.error = HTTP_E_URL; return res; }
+  u := cast(string) url[0..<un + pn];
+  hs: [3] string; hn := 0;
+  auth: [12000] u8;
+  k: [1] Key;
+  if load_key(profile, k[..]) {
+    an := api_auth(k[0].secret[..], u, method, body, auth[..]);
+    wipe(k[0].secret[..]);
+    if an < 0 { res.error = API_E_SIGN; return res; }
+    hs[hn] = cast(string) auth[0..<an]; hn += 1;
+    res.keyed = true;
+  }
+  if body.count > 0 { hs[hn] = "Content-Type: application/json"; hn += 1; }
+  w: [1] HttpWork; got: [HTTP_BODY_MAX] u8;
+  r := http_do(w[..], method, u, hs[0..<hn], body, CLI_HTTP_MS, 0, got[..]);
+  wipe(auth[..]);
+  res.error = r.error; res.status = r.code;
+  m := ifx r.n < out.count then r.n else out.count;
+  for i: 0..<m { out[i] = got[i]; }
+  res.n = m;
+  return res;
+}
+
+api_error_text :: (e: int) -> string {
+  if e == API_E_ORIGIN { return "--origin is https://HOST[:PORT], or http://127.0.0.1:PORT"; }
+  if e == API_E_SIGN { return "could not sign the request"; }
+  return http_error_text(e);
+}
+
+// The answer's error words: a JSON {"error": ...}'s, else the text itself (one line), else the status.
+api_why :: (body: string, out: [] u8) -> string {
+  nodes: [64] JvNode; d: [1] Jv;
+  if jv_parse(d[..], body, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT {
+    e := jv_get(d[0], 0, "error");
+    if jv_kind(d[0], e) == JV_STRING { n := jv_str(d[0], e, out); if n > 0 { return cast(string) out[0..<n]; } }
+  }
+  n := 0;
+  while n < body.count && n < out.count && body[n] != '\n' { out[n] = body[n]; n += 1; }
+  return cast(string) out[0..<n];
+}
+
+// Ends a command whose answer was not 2xx (or never came): the exit code its status says, and why.
+api_fail :: (r: [] Rep, res: ApiAnswer, body: string) -> int {
+  if res.error != HTTP_OK {
+    return fail(r, ifx res.error == API_E_ORIGIN || res.error == HTTP_E_URL then EXIT_USAGE else EXIT_FAIL, api_error_text(res.error));
+  }
+  why: [512] u8; t: [24] u8;
+  w := api_why(body, why[..]);
+  if w.count == 0 { w = int_text(res.status, t[..]); }
+  if r[0].json { rep_int(r, "status", res.status); }
+  if res.status == 401 && !res.keyed { w = "no Nostr key for this profile: run `openagents nostr new` or `openagents nostr import`"; }
+  return fail(r, cli_exit_of(res.status), w);
+}
+
+// The answer's body, and whether it was 2xx.
+api_ok :: (res: ApiAnswer) -> bool { return res.error == HTTP_OK && res.status >= 200 && res.status < 300; }
+
+// Each member of a JSON object answer into the report: strings as strings, the rest as JSON.
+rep_object :: (r: [] Rep, body: string) -> bool {
+  nodes: [512] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], body, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return false; }
+  c := d[0].nodes[0].first;
+  s: [8192] u8; kb: [256] u8;
+  while c >= 0 {
+    kn := jv_unescape(jv_key(d[0], c), kb[..]);
+    key := ifx kn > 0 then cast(string) kb[0..<kn] else jv_key(d[0], c);
+    if jv_kind(d[0], c) == JV_STRING { n := jv_str(d[0], c, s[..]); rep_str(r, key, ifx n >= 0 then cast(string) s[0..<n] else ""); }
+    else { rep_raw(r, key, jv_raw(d[0], c)); }
+    c = d[0].nodes[c].next;
+  }
+  return true;
+}
+
+// A JSON body: {KEY: VALUE} with one string member, into out.
+api_body1 :: (key: string, value: string, out: [] u8) -> string {
+  o: [1] Jo; jo_start(o[..], out);
+  jo_obj(o[..]); jo_key(o[..], key); jo_str(o[..], value); jo_end(o[..]);
+  return ifx o[0].bad then "" else jo_text(o[..]);
+}

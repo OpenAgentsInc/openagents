@@ -11,6 +11,11 @@
 //           look, approve with a site session (once; refused for a key with
 //           realms of its own), the key then is the account (me, a realm save,
 //           mine), unlink, and expiry where codes last seconds
+//   visibility  a realm's visibility (0099): private is 404 to all but its owner and
+//           site admins, unlisted is reached by its slug, public is on /og's rows; only
+//           an approved creator (when invite only) or a site admin changes it; and admin
+//           keys (0100): only a root admin adds or removes one, no one removes a root.
+//           Its admin part needs ADMIN_SECRET_HEX (test.sh's throwaway root).
 // Every key is made for the run and never printed.
 //   coax/web/api/cli-auth-test.sh http://127.0.0.1:PORT        (test.sh runs it on its API)
 //   coax/web/api/cli-auth-test.sh https://staging.openagents.com
@@ -110,8 +115,20 @@ ca_line_value :: (t: [] CaT, key: string, out: [] u8) -> string {
   }
   return "";
 }
-// A realm made with a board of its own name: its slug into out, or "".
+// A realm made with a board of its own name, then made public so other keys see it (a new realm
+// is private, 0099): its slug into out, or "".
 ca_make :: (t: [] CaT, k: [] CaKey, player: string, name: string, out: [] u8) -> string {
+  slug := ca_make_private(t, k, player, name, out);
+  if slug.count == 0 { return ""; }
+  p: [200] u8;
+  pn := ca_put(p[..], 0, "/api/playtest/realms/"); pn = ca_put(p[..], pn, slug); pn = ca_put(p[..], pn, "/visibility");
+  vis := "{\"visibility\":\"public\"}";
+  code := ifx player.count > 0 then ca_call(t, "POST", cast(string) p[0..<pn], vis, false, player, "")
+          else ca_signed(t, k, "POST", cast(string) p[0..<pn], vis);
+  return ifx code == 200 then slug else "";
+}
+// A realm made with a board of its own name, private as made: its slug into out, or "".
+ca_make_private :: (t: [] CaT, k: [] CaKey, player: string, name: string, out: [] u8) -> string {
   b: [256] u8;
   n := ca_put(b[..], 0, "{\"board\":{\"name\":\""); n = ca_put(b[..], n, name); n = ca_put(b[..], n, "\",\"features\":[]}}");
   code := ifx player.count > 0 then ca_call(t, "POST", "/api/playtest/realms?as=lines", cast(string) b[0..<n], false, player, "")
@@ -137,9 +154,10 @@ ca_nip98_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, kept: [] u8) -> int {
   ca_check(t, "me: a signature for another URL is refused", ca_sign(t, a, "GET", "/api/auth/v2/me?x=1", "", false) && ca_call(t, "GET", me, "", true, "", "") == 401);
 
   na: [80] u8; sa: [64] u8; p: [200] u8;
-  slug := ca_make(t, a, "", ca_name_of(t, "a", na[..]), sa[..]);
+  slug := ca_make_private(t, a, "", ca_name_of(t, "a", na[..]), sa[..]);
   ca_check(t, "realms: a signed MAKE IT makes a realm", slug.count > 0);
   ca_check(t, "realms: a replayed MAKE IT is refused", ca_call(t, "POST", "/api/playtest/realms?as=lines", "{\"board\":{\"name\":\"Again\",\"features\":[]}}", true, "", "") == 401);
+  ca_check(t, "realms: its owner makes it public", ca_signed(t, a, "POST", ca_path_of(slug, "/visibility", p[..]), "{\"visibility\":\"public\"}") == 200);
   ca_check(t, "realms: the signer owns it", ca_signed(t, a, "GET", ca_path_of(slug, "", p[..]), "") == 200 && ca_has(ca_body(t), "\nrole owner\n"));
   ca_check(t, "realms: the owner's signed save works", ca_signed(t, a, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 200 && ca_has(ca_body(t), "\"rev\""));
   ca_check(t, "realms: another key's signed save is 403", ca_signed(t, b, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 403);
@@ -189,6 +207,100 @@ ca_nip98_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, kept: [] u8) -> int {
   ca_check(t, "mine: is a GET", ca_signed(t, a, "POST", "/api/playtest/realms/mine", "{}") == 405);
   return ca_put(kept, 0, slug);
 }
+// ---- Realm visibility (0099) and admin keys (0100) ---------------------------------
+// a owns a realm, b is someone else, adm is a root admin (ADMIN_SECRET_HEX, from test.sh's
+// throwaway admins.conf; skipped where it is not set).
+ca_key_of_hex :: (hex: string, k: [] CaKey) -> bool {
+  if hex.count < 64 { return false; }
+  for i: 0..<32 {
+    v := 0;
+    for j: 0..<2 {
+      c := hex[2 * i + j];
+      d := -1;
+      if c >= '0' && c <= '9' { d = cast(int) (c - '0'); }
+      if c >= 'a' && c <= 'f' { d = cast(int) (c - 'a') + 10; }
+      if d < 0 { return false; }
+      v = v * 16 + d;
+    }
+    k[0].secret[i] = cast(u8) v;
+  }
+  pub: [33] u8;
+  if !bip32_public(k[0].secret[..], pub[..]) { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<32 { k[0].pub[2 * i] = digits[cast(int) (pub[1 + i] >> 4)]; k[0].pub[2 * i + 1] = digits[cast(int) (pub[1 + i] & 15)]; }
+  return true;
+}
+ca_vis :: (t: [] CaT, k: [] CaKey, slug: string, v: string) -> int {
+  p: [200] u8; b: [64] u8;
+  n := ca_put(b[..], 0, "{\"visibility\":\""); n = ca_put(b[..], n, v); n = ca_put(b[..], n, "\"}");
+  return ca_signed(t, k, "POST", ca_path_of(slug, "/visibility", p[..]), cast(string) b[0..<n]);
+}
+ca_flag :: (t: [] CaT, adm: [] CaKey, on: bool) -> bool {
+  return ca_signed(t, adm, "POST", "/api/admin/access/flag", ifx on then "{\"name\":\"realm_invites\",\"on\":true}" else "{\"name\":\"realm_invites\",\"on\":false}") == 200;
+}
+
+ca_visibility_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, adm: [] CaKey, has_admin: bool) {
+  na: [80] u8; sa: [64] u8; p: [200] u8; row: [80] u8;
+  slug := ca_make_private(t, a, "", ca_name_of(t, "vis", na[..]), sa[..]);
+  ca_check(t, "visibility: a made realm", slug.count > 0);
+  rn := ca_put(row[..], 0, "/realms/"); rn = ca_put(row[..], rn, slug); rn = ca_put(row[..], rn, "|");
+  listed := cast(string) row[0..<rn];
+  ca_check(t, "visibility: a new realm is private: its owner sees it", ca_signed(t, a, "GET", ca_path_of(slug, "", p[..]), "") == 200 && ca_has(ca_body(t), "\nvisibility private\n"));
+  ca_check(t, "visibility: private: another key gets 404", ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 404);
+  ca_check(t, "visibility: private: nobody gets 404", ca_call(t, "GET", ca_path_of(slug, "", p[..]), "", false, "", "") == 404);
+  ca_check(t, "visibility: private: its document is 404 too", ca_call(t, "GET", ca_path_of(slug, "/doc", p[..]), "", false, "", "") == 404);
+  ca_check(t, "visibility: private: another key can't fork it", ca_signed(t, b, "POST", ca_path_of(slug, "/fork", p[..]), "{\"rules\":[]}") == 404);
+  ca_check(t, "visibility: private: not on /og's rows", ca_call(t, "GET", "/api/playtest/realms/made", "", false, "", "") == 200 && !ca_has(ca_body(t), listed));
+  ca_check(t, "visibility: mine says private", ca_signed(t, a, "GET", "/api/playtest/realms/mine?as=lines", "") == 200 && ca_has(ca_body(t), "|private\n"));
+  ca_check(t, "visibility: another key can't change it (it is not there for them)", ca_vis(t, b, slug, "public") == 404);
+  ca_check(t, "visibility: a word not a visibility is 400", ca_vis(t, a, slug, "secret") == 400);
+  ca_check(t, "visibility: its owner makes it unlisted", ca_vis(t, a, slug, "unlisted") == 200 && ca_has(ca_body(t), "unlisted"));
+  ca_check(t, "visibility: unlisted: another key reaches it by its slug", ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 200);
+  ca_check(t, "visibility: unlisted: still not on /og's rows", ca_call(t, "GET", "/api/playtest/realms/made", "", false, "", "") == 200 && !ca_has(ca_body(t), listed));
+  ca_check(t, "visibility: another key still can't change it", ca_vis(t, b, slug, "private") == 403);
+  ca_check(t, "visibility: public: on /og's rows", ca_vis(t, a, slug, "public") == 200 && ca_call(t, "GET", "/api/playtest/realms/made", "", false, "", "") == 200 && ca_has(ca_body(t), listed));
+  ca_check(t, "visibility: back to private: 404 to others again", ca_vis(t, a, slug, "private") == 200 && ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 404);
+  if !has_admin { return; }
+
+  ca_check(t, "visibility: a site admin sees a private realm", ca_signed(t, adm, "GET", ca_path_of(slug, "", p[..]), "") == 200);
+  ca_check(t, "visibility: a site admin changes any realm's", ca_vis(t, adm, slug, "unlisted") == 200 && ca_vis(t, adm, slug, "private") == 200);
+  srow: [80] u8;
+  sn := ca_put(srow[..], 0, "realm "); sn = ca_put(srow[..], sn, slug); sn = ca_put(srow[..], sn, "|private|");
+  ca_check(t, "admin realms: every realm with who sees it", ca_signed(t, adm, "GET", "/api/admin/access/realms?as=lines&visibility=private", "") == 200 && ca_has(ca_body(t), cast(string) srow[0..<sn]));
+  ca_check(t, "admin realms: a filter leaves the others out", ca_signed(t, adm, "GET", "/api/admin/access/realms?as=lines&visibility=public", "") == 200 && !ca_has(ca_body(t), cast(string) srow[0..<sn]));
+  ca_check(t, "admin realms: not for others", ca_signed(t, a, "GET", "/api/admin/access/realms", "") == 403);
+
+  // Invite only: an owner who is not an approved creator can't change who sees it.
+  ca_check(t, "invites on", ca_flag(t, adm, true));
+  ca_check(t, "visibility: invite only: an owner not approved is 403", ca_vis(t, a, slug, "public") == 403);
+  ca_check(t, "visibility: invite only: and a publish can't list it", ca_signed(t, a, "POST", ca_path_of(slug, "/publish", p[..]), "{\"listed\":true}") == 403);
+  wb: [200] u8;
+  wn := ca_put(wb[..], 0, "{\"who\":\""); wn = ca_put(wb[..], wn, ca_pub_of(a)); wn = ca_put(wb[..], wn, "\"}");
+  ca_check(t, "admin: approve the owner as a creator", ca_signed(t, adm, "POST", "/api/admin/access/creators", cast(string) wb[0..<wn]) == 200);
+  ca_check(t, "visibility: invite only: an approved creator changes it", ca_vis(t, a, slug, "unlisted") == 200 && ca_vis(t, a, slug, "private") == 200);
+  ca_check(t, "invites off", ca_flag(t, adm, false));
+
+  // Admin keys: only a root adds or removes a database admin; no one removes a root.
+  ak: [200] u8; rb: [200] u8; rr: [200] u8; ra: [200] u8;
+  an := ca_put(ak[..], 0, "{\"pubkey\":\""); an = ca_put(ak[..], an, ca_pub_of(b)); an = ca_put(ak[..], an, "\",\"note\":\"test\"}");
+  rbn := ca_put(rb[..], 0, "/api/admin/access/admins/"); rbn = ca_put(rb[..], rbn, ca_pub_of(b)); rbn = ca_put(rb[..], rbn, "/remove");
+  rrn := ca_put(rr[..], 0, "/api/admin/access/admins/"); rrn = ca_put(rr[..], rrn, ca_pub_of(adm)); rrn = ca_put(rr[..], rrn, "/remove");
+  ran := ca_put(ra[..], 0, "{\"pubkey\":\""); ran = ca_put(ra[..], ran, ca_pub_of(a)); ran = ca_put(ra[..], ran, "\"}");
+  ca_check(t, "admin keys: not an admin yet", ca_signed(t, b, "GET", "/api/admin/access", "") == 403);
+  ca_check(t, "admin keys: a non-admin can't add one", ca_signed(t, a, "POST", "/api/admin/access/admins", cast(string) ra[0..<ran]) == 403);
+  ca_check(t, "admin keys: a root adds a database admin", ca_signed(t, adm, "POST", "/api/admin/access/admins", cast(string) ak[0..<an]) == 200);
+  ca_check(t, "admin keys: who is then an admin", ca_signed(t, b, "GET", "/api/admin/access", "") == 200);
+  ca_check(t, "admin keys: listed as db, the root as root", ca_signed(t, adm, "GET", "/api/admin/access/admins", "") == 200 && ca_has(ca_body(t), ca_pub_of(b)) &&
+        ca_has(ca_body(t), "|db|") && ca_has(ca_body(t), "|root\n"));
+  ca_check(t, "admin keys: a database admin sees a private realm", ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 200);
+  ca_check(t, "admin keys: a database admin can't add another", ca_signed(t, b, "POST", "/api/admin/access/admins", cast(string) ra[0..<ran]) == 403);
+  ca_check(t, "admin keys: a database admin can't remove a root", ca_signed(t, b, "POST", cast(string) rr[0..<rrn], "{}") == 403);
+  ca_check(t, "admin keys: nor can a root remove a root", ca_signed(t, adm, "POST", cast(string) rr[0..<rrn], "{}") == 409);
+  ca_check(t, "admin keys: a root removes the database admin", ca_signed(t, adm, "POST", cast(string) rb[0..<rbn], "{}") == 200);
+  ca_check(t, "admin keys: who is no longer an admin", ca_signed(t, b, "GET", "/api/admin/access", "") == 403 && ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 404);
+  ca_check(t, "admin keys: removing it again is 404", ca_signed(t, adm, "POST", cast(string) rb[0..<rbn], "{}") == 404);
+}
+
 text_int_of :: (s: string) -> int {
   n := 0;
   for c: s { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
@@ -327,6 +439,10 @@ tool_main :: () -> int #export_c {
   kept: [64] u8;
   kn := ca_nip98_checks(t[..], a[..], b[..], kept[..]);
   if (only == "" || only == "device") && kn > 0 { ca_device_checks(t[..], a[..], b[..], cast(string) kept[0..<kn]); }
+  adm: [1] CaKey; ah: [80] u8;
+  has_admin := ca_key_of_hex(proc_getenv("ADMIN_SECRET_HEX", ah[..]), adm[..]);
+  for i: 0..<ah.count { ah[i] = 0; }
+  if only == "" || only == "visibility" { ca_visibility_checks(t[..], a[..], b[..], adm[..], has_admin); }
   print("% checks, % passed, % failed\n", t[0].pass + t[0].fail, t[0].pass, t[0].fail);
   return ifx t[0].fail == 0 then 0 else 1;
 }

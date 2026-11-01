@@ -90,7 +90,7 @@ OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAI
   OA_API_ORIGIN="http://127.0.0.1:$api_port" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 for _ in $(seq 50); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
 API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }
-# The CLI as a caller (NIP-98 callers, realms/mine, device login), in Coax: tests/cli_auth.coax.
+# The CLI as a caller (NIP-98 callers, realms/mine, visibility, admin keys, device login), in Coax: tests/cli_auth.coax.
 # The CLI-caller checks are a Coax program: they need a compiler. A deploy's
 # fresh worktree has none of its own, so take the main checkout's.
 cli_coax="${COAX:-$repo_root/coax/bin/coax}"
@@ -99,7 +99,7 @@ if [[ ! -x "$cli_coax" ]]; then
   [[ -n "$common" ]] && cli_coax="$(dirname "$common")/coax/bin/coax"
 fi
 if [[ -x "$cli_coax" ]]; then
-  COAX="$cli_coax" "$here/cli-auth-test.sh" "http://127.0.0.1:$api_port" || { cat "$work/api.log"; exit 1; }
+  ADMIN_SECRET_HEX="$(tr -d '\n' < "$ADMIN_KEY")" COAX="$cli_coax" "$here/cli-auth-test.sh" "http://127.0.0.1:$api_port" || { cat "$work/api.log"; exit 1; }
 else
   echo 'cli-auth: skipped, no Coax compiler (build coax/bin/coax, or set COAX)' >&2
 fi

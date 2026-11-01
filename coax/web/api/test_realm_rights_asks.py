@@ -208,7 +208,7 @@ def realm_asks_checks():
           and base64.b64decode(parts[1]["inlineData"]["data"]) == b"%PDF-1.4 a pdf", (st, text))
     check("anything else is refused, and a visitor can't drop one",
           drop("/api/playtest/realms/" + slug + "/asks/doc", "gdd.exe", b"MZ", herder)[0] == 415
-          and drop("/api/playtest/realms/" + slug + "/asks/doc", "gdd.md", b"x", visitor)[0] == 403)
+          and drop("/api/playtest/realms/" + slug + "/asks/doc", "gdd.md", b"x", visitor)[0] in (403, 404))   # 404 while it is private (0099)
     # the builder plans a board from one, what it can't draw kept as wanted
     builder_mode["text"] = json.dumps({"asked": [{"thing": "horses", "feature": "herd"}, {"thing": "a dragon", "feature": "none"}], "name": "Doc Realm",
         "camera": "third", "style": "lowpoly", "ground": "meadow", "time": "day", "palette": "natural", "features": [{"feature": "herd", "on": True, "variant": "horse", "count": 4}]})
