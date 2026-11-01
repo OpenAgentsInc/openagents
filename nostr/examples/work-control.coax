@@ -1,0 +1,142 @@
+// book:begin example
+// Chapter 76: one task's lease from claim to release, and a client's
+// control from pairing to revocation, at a fixed clock.
+// The coordinator (owner key 2) grants claims and fences writes; workers 3
+// and 7 race for one document. The controller (key 1) pairs client 3 and
+// admits its commands; client 7 was never paired. Keys are the x-only
+// public keys of the scalars 1, 2, 3 and 7: TEST ONLY.
+#load "../../coax/lib/nostr/coord/claim.coax";
+#load "../../coax/lib/nostr/ctrl/command.coax";
+#load "../../coax/lib/nostr/ctrl/fingerprint.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+CONTROLLER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+OWNER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+KEY_3 :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+KEY_7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+INVITATION :: "1111111111111111111111111111111111111111111111111111111111111111";
+CHALLENGE :: "2222222222222222222222222222222222222222222222222222222222222222";
+GRANT :: "3333333333333333333333333333333333333333333333333333333333333333";
+TASK :: "4444444444444444444444444444444444444444444444444444444444444444";
+COMMAND :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+COMMAND_2 :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+SNAPSHOT :: "sha256:5555555555555555555555555555555555555555555555555555555555555555";
+PAIRING_PRINT :: "sha256:6666666666666666666666666666666666666666666666666666666666666666";
+
+// The cancel command three ways: as sent (CF_WIRE), in JCS form, and with
+// one changed value under the same command ID.
+CANONICAL :: "{\"action\":\"cancel\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":0,\"expected_revision\":4,\"expires_at\":1790000400,\"grant\":{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"media_type\":\"application/json\",\"schema\":\"openagents.control-grant.v1\",\"size\":512},\"issued_at\":1790000100,\"payload\":{\"reason\":\"stop the run\"},\"requires\":[],\"scope\":{\"controller\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"generation\":3,\"task\":\"4444444444444444444444444444444444444444444444444444444444444444\"},\"v\":\"openagents.task-command.v1\"}";
+CHANGED :: "{\"action\":\"cancel\",\"command\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"epoch\":0,\"expected_revision\":4,\"expires_at\":1790000400,\"grant\":{\"digest\":\"sha256:3333333333333333333333333333333333333333333333333333333333333333\",\"media_type\":\"application/json\",\"schema\":\"openagents.control-grant.v1\",\"size\":512},\"issued_at\":1790000100,\"payload\":{\"reason\":\"stop the run now\"},\"requires\":[],\"scope\":{\"controller\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"generation\":3,\"task\":\"4444444444444444444444444444444444444444444444444444444444444444\"},\"v\":\"openagents.task-command.v1\"}";
+
+CO_WORDS :: [8]string.["accepted","malformed","limit_exceeded","stale","conflict","not_admitted","expired","closed"];
+CT_WORDS :: [10]string.["accepted","duplicate: the retained result, no new effect","not_admitted","revoked","expired",
+  "stale","malformed","conflict","idempotency_conflict","closed: declined, no grant"];
+
+worker_name :: (key:string)->string {return ifx key==KEY_3 then "worker 3" else "worker 7";}
+claim :: (s:[]CoordState,c:[]CoordClaim,h:[]CoordHold,worker:string,expected:int,until:int,want:[]CoordWant,now:int) {
+  q:CoordRequest;q.proposal="task-1";q.worker=worker;q.expected_revision=expected;q.requested_until=until;
+  r:=coord_claim(s,c,h,q,want,now);
+  print("T0 + %: % claims at revision %, until T0 + %: %",now-T0,worker_name(worker),expected,until-T0,CO_WORDS[r]);
+  if r==CO_OK {print(", token %, revision %",s[0].token,s[0].revision);}
+  print("\n");
+}
+control :: (s:[]CoordState,c:[]CoordClaim,h:[]CoordHold,token:int,action:int,actor:string,expected:int,until:int,now:int) {
+  names:=[3]string.["renews","releases","cancels"];who:=ifx actor==OWNER then "the owner" else worker_name(actor);
+  r:=coord_control(s,c,h,token,action,actor,expected,until,now);
+  print("T0 + %: % % token %: %",now-T0,who,names[action],token,CO_WORDS[r]);
+  if r==CO_OK {print(", revision %",s[0].revision);}
+  print("\n");
+}
+dispatch :: (s:[]CoordState,c:[]CoordClaim,h:[]CoordHold,worker:string,token:int,now:int) {
+  print("T0 + %: % writes doc under epoch 2, token %: %\n",now-T0,worker_name(worker),token,CO_WORDS[coord_fence(s,c,h,worker,"doc",2,token,now)]);
+}
+make_command :: (id:string,signer:string,print_:string,revision:int,action:int,at:int)->CtrlCommand {
+  c:CtrlCommand;c.command=id;c.fingerprint=print_;c.signer=signer;c.grant=GRANT;
+  c.scope=CtrlScope.{task=TASK,controller=CONTROLLER,generation=3};
+  c.expected_revision=revision;c.issued_at=at;c.expires_at=at+300;c.action=action;return c;
+}
+// book:end example
+
+// book:begin main
+main :: () {
+  print("COORD: one document, two workers; the coordinator's epoch is 2, revision 10, longest lease 600 s\n");
+  s:=[1]CoordState.[CoordState.{owner=OWNER,epoch=2,revision=10,max_lease=600}];c:[4]CoordClaim;h:[8]CoordHold;
+  first:=[2]CoordWant.[CoordWant.{resource="doc",write=true},CoordWant.{resource="spec",snapshot=SNAPSHOT}];
+  doc:=[1]CoordWant.[CoordWant.{resource="doc",write=true}];
+  claim(s[..],c[..],h[..],KEY_3,10,T0+300,first[..],T0);
+  claim(s[..],c[..],h[..],KEY_7,10,T0+300,doc[..],T0);
+  claim(s[..],c[..],h[..],KEY_7,11,T0+300,doc[..],T0);
+  dispatch(s[..],c[..],h[..],KEY_3,1,T0+100);
+  dispatch(s[..],c[..],h[..],KEY_7,1,T0+100);
+  control(s[..],c[..],h[..],1,CO_RENEW,KEY_3,11,T0+700,T0+250);
+  control(s[..],c[..],h[..],1,CO_RENEW,KEY_3,12,T0+1000,T0+250);
+  print("worker 3 stops answering; its lease ends at T0 + 700\n");
+  dispatch(s[..],c[..],h[..],KEY_3,1,T0+700);
+  claim(s[..],c[..],h[..],KEY_7,12,T0+1010,doc[..],T0+710);
+  control(s[..],c[..],h[..],1,CO_RENEW,KEY_3,12,T0+1000,T0+710);
+  control(s[..],c[..],h[..],1,CO_CANCEL,KEY_7,12,0,T0+715);
+  print("the owner fences worker 3's dispatcher, then releases its claim\n");
+  control(s[..],c[..],h[..],1,CO_RELEASE,OWNER,12,0,T0+720);
+  claim(s[..],c[..],h[..],KEY_7,13,T0+1020,doc[..],T0+720);
+  dispatch(s[..],c[..],h[..],KEY_3,1,T0+730);
+  dispatch(s[..],c[..],h[..],KEY_7,2,T0+730);
+  control(s[..],c[..],h[..],2,CO_RELEASE,KEY_7,14,0,T0+900);
+  print("record: % claims, % holds, last token %, revision %\n",s[0].claims,s[0].holds,s[0].token,s[0].revision);
+
+  print("CTRL: task 4444..., controller key 1, generation 3, frame revision 4\n");
+  scope:=CtrlScope.{task=TASK,controller=CONTROLLER,generation=3};
+  inv:=[1]CtrlInvitation.[CtrlInvitation.{invitation=INVITATION,challenge=CHALLENGE,client=KEY_3,scope=scope,rights=(1<<CT_OBSERVE)|(1<<CT_CANCEL),expires_at=T0+600}];
+  grants:[2]CtrlGrant;n:[1]int;kept:[1]CtrlRetained;none:=kept[0..<0];
+  canon:[1024]u8;digest:[CF_DIGEST]u8;first_digest:[CF_DIGEST]u8;changed_digest:[CF_DIGEST]u8;
+  p:=ctrl_fingerprint(CF_WIRE,canon[..],first_digest[..]);
+  wire_print:=cast(string)first_digest[..];
+  print("fingerprint of the cancel command as sent (% bytes, % in JCS form):\n  %\n",CF_WIRE.count,p.canonical,wire_print);
+  p=ctrl_fingerprint(CANONICAL,canon[..],digest[..]);
+  print("the same command in JCS form: %\n",ifx cast(string)digest[..]==wire_print then "the same fingerprint" else "a different fingerprint");
+  p=ctrl_fingerprint(CHANGED,canon[..],changed_digest[..]);
+  changed_print:=cast(string)changed_digest[..];
+  print("reason \"stop the run now\" instead: %\n",changed_print);
+  p=ctrl_fingerprint("{\"command\":1,\"command\":2}",canon[..],digest[..]);
+  print("a command with a duplicate key: %\n",ifx p.error==CF_JSON then "refused, no fingerprint" else "fingerprinted");
+  cancel:=make_command(COMMAND,KEY_3,wire_print,4,CT_CANCEL,T0+100);
+
+  print("before pairing\n");
+  stray:=cancel;stray.signer=KEY_7;
+  print("client 7 sends the cancel command: %\n",CT_WORDS[ctrl_command_admit(grants[0..<n[0]],none,stray,scope,4,T0+100)]);
+  print("client 3 sends it: %\n",CT_WORDS[ctrl_command_admit(grants[0..<n[0]],none,cancel,scope,4,T0+100)]);
+  print("pairing: client 3 accepts cancel only\n");
+  reply:=CtrlPairing.{invitation=INVITATION,signer=KEY_3,client=KEY_3,challenge=CHALLENGE,rights=1<<CT_CANCEL,accepted=true,fingerprint=PAIRING_PRINT};
+  relayed:=reply;relayed.signer=KEY_7;
+  print("client 7 relays client 3's response: %\n",CT_WORDS[ctrl_pair(inv[..],grants[..],n[..],relayed,scope,true,GRANT,T0+86400,T0+60)]);
+  guessed:=reply;guessed.challenge=INVITATION;
+  print("the wrong challenge: %\n",CT_WORDS[ctrl_pair(inv[..],grants[..],n[..],guessed,scope,true,GRANT,T0+86400,T0+60)]);
+  wider:=reply;wider.rights=(1<<CT_CANCEL)|(1<<CT_STEER);
+  print("asking for steer too: %\n",CT_WORDS[ctrl_pair(inv[..],grants[..],n[..],wider,scope,true,GRANT,T0+86400,T0+60)]);
+  print("the owner has not admitted it: %\n",CT_WORDS[ctrl_pair(inv[..],grants[..],n[..],reply,scope,false,GRANT,T0+86400,T0+60)]);
+  print("the owner admits it: %",CT_WORDS[ctrl_pair(inv[..],grants[..],n[..],reply,scope,true,GRANT,T0+86400,T0+60)]);
+  print(", grant 3333..., rights %, epoch %, T0 + % to T0 + %\n",grants[0].rights,grants[0].epoch,grants[0].issued_at-T0,grants[0].expires_at-T0);
+  print("the same response again: %\n",CT_WORDS[ctrl_pair(inv[..],grants[..],n[..],reply,scope,true,GRANT,T0+86400,T0+70)]);
+
+  print("commands, now = T0 + 120\n");
+  g:=grants[0..<n[0]];
+  print("client 7 sends the cancel command: %\n",CT_WORDS[ctrl_command_admit(g,none,stray,scope,4,T0+120)]);
+  print("client 3 sends it: %\n",CT_WORDS[ctrl_command_admit(g,none,cancel,scope,4,T0+120)]);
+  kept[0]=CtrlRetained.{grant=GRANT,command=COMMAND,fingerprint=wire_print};
+  print("the authority records cancel_requested; the frame is now revision 5\n");
+  print("the same command again: %\n",CT_WORDS[ctrl_command_admit(g,kept[..],cancel,scope,5,T0+130)]);
+  edited:=cancel;edited.fingerprint=changed_print;
+  print("the changed reason under the same command ID: %\n",CT_WORDS[ctrl_command_admit(g,kept[..],edited,scope,5,T0+130)]);
+  steer:=make_command(COMMAND_2,KEY_3,PAIRING_PRINT,5,CT_STEER,T0+130);
+  print("a steer command: %\n",CT_WORDS[ctrl_command_admit(g,kept[..],steer,scope,5,T0+130)]);
+  old:=make_command(COMMAND_2,KEY_3,PAIRING_PRINT,4,CT_CANCEL,T0+130);
+  print("a new cancel expecting revision 4: %\n",CT_WORDS[ctrl_command_admit(g,kept[..],old,scope,5,T0+130)]);
+  late:=make_command(COMMAND_2,KEY_3,PAIRING_PRINT,5,CT_CANCEL,T0+130);
+  print("the same, dated T0 + 130, at T0 + 431: %\n",CT_WORDS[ctrl_command_admit(g,kept[..],late,scope,5,T0+431)]);
+  moved:=scope;moved.generation=4;
+  print("after a handoff to generation 4: %\n",CT_WORDS[ctrl_command_admit(g,kept[..],late,moved,5,T0+140)]);
+  print("client 3 tries to revoke its own grant: %\n",CT_WORDS[ctrl_revoke(g,GRANT,KEY_3,OWNER)]);
+  print("the owner revokes it: %, epoch %\n",CT_WORDS[ctrl_revoke(g,GRANT,OWNER,OWNER)],g[0].epoch);
+  print("the first command again: %\n",CT_WORDS[ctrl_command_admit(g,kept[..],cancel,scope,5,T0+150)]);
+}
+// book:end main

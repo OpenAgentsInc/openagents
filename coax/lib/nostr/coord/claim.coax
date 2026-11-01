@@ -1,0 +1,324 @@
+// COORD claims: the coordinator's atomic claim, its lease controls, and the
+// dispatcher's fence. NIP-COORD "Claims, fencing, and shared state".
+//
+// One admitted coordinator owns a scope. Its record is a durable revision,
+// an epoch, a claim-token counter that only grows, the claims it granted and
+// the resources each one holds. A claim compares the expected revision,
+// checks the requested lease against the coordinator's own clock and its
+// maximum lease, and grants every resource or none. Two writes to one
+// resource conflict; a live read (no snapshot) conflicts with a write; reads
+// share, and a read of an immutable snapshot shares even with a write.
+//
+// A lease's expiry stops new dispatch. It frees nothing: the holds of an
+// expired claim still conflict until the worker or the owner releases it,
+// because expiry does not prove old code stopped. A dispatcher accepts a
+// write only from the named worker, under the current epoch and the latest
+// token granted on that resource, before the lease ends. An older token is
+// fenced even when its lease looks current.
+//
+// It trusts the strings it is given: the verified signer, opaque resource IDs
+// the host namespace has already resolved (aliases and overlap are the
+// host's), and snapshot digests ("" for a live read). Times are Unix seconds
+// on the coordinator's clock; event timestamps never extend a lease.
+//
+// Not here: proposals, dependencies and reuse keys, reservations and budget,
+// findings and integration, background plans, a separately admitted
+// controller for cancel, status reads, and RUN records.
+//   coax/bin/coax test coax/lib/nostr/coord/claim.coax --library
+#authority;
+
+// book:begin codes
+CO_OK :: cast(u32)0;           // accepted
+CO_MALFORMED :: cast(u32)1;    // no resources, a resource named twice, or a lease that ends by now
+CO_LIMIT :: cast(u32)2;        // a lease past the maximum, or no room left in the record
+CO_STALE :: cast(u32)3;        // expected revision is not current; or an old epoch or token at the fence
+CO_CONFLICT :: cast(u32)4;     // a resource is held by a claim that has not been released
+CO_NOT_ADMITTED :: cast(u32)5; // no such claim, not its worker (or the owner), no write hold
+CO_EXPIRED :: cast(u32)6;      // the lease has ended by the coordinator's clock
+CO_CLOSED :: cast(u32)7;       // the claim was released or cancelled
+
+CO_ACTIVE :: 0; CO_CANCELLED :: 1; CO_RELEASED :: 2;  // a claim's state
+CO_RENEW :: 0; CO_RELEASE :: 1; CO_CANCEL :: 2;       // control actions
+CO_MAX_RESOURCES :: 64;                               // the schema's array bound
+// book:end codes
+
+// book:begin record
+CoordState :: struct {owner:string;epoch:int;token:int;revision:int;max_lease:int;claims:int;holds:int;}
+CoordClaim :: struct {token:int;proposal:string;worker:string;expires_at:int;state:int;}
+CoordHold :: struct {token:int;resource:string;write:bool;snapshot:string;released:bool;}
+CoordWant :: struct {resource:string;write:bool;snapshot:string;}
+CoordRequest :: struct {proposal:string;worker:string;expected_revision:int;requested_until:int;}
+// book:end record
+
+CO_OWNER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+CO_W3 :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+CO_W7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+CO_P :: "proposal-1";
+CO_SNAP :: "sha256:5555555555555555555555555555555555555555555555555555555555555555";
+CO_T0 :: 1790000000;
+
+co_state :: ()->CoordState {
+  s:CoordState;s.owner=CO_OWNER;s.epoch=2;s.revision=10;s.max_lease=600;return s;
+}
+co_request :: (worker:string,revision:int,until:int)->CoordRequest {
+  q:CoordRequest;q.proposal=CO_P;q.worker=worker;q.expected_revision=revision;q.requested_until=until;return q;
+}
+co_want :: (resource:string,write:bool,snapshot:string)->CoordWant {
+  w:CoordWant;w.resource=resource;w.write=write;w.snapshot=snapshot;return w;
+}
+
+#test "the codes and states are distinct" {
+  #assert CO_OK==0 && CO_MALFORMED==1 && CO_LIMIT==2 && CO_STALE==3 && CO_CONFLICT==4 && CO_NOT_ADMITTED==5 && CO_EXPIRED==6 && CO_CLOSED==7;
+  #assert CO_ACTIVE==0 && CO_CANCELLED==1 && CO_RELEASED==2 && CO_RENEW==0 && CO_RELEASE==1 && CO_CANCEL==2 && CO_MAX_RESOURCES==64;
+}
+#test "two workers race for one write: exactly one wins, and the counters move once" {
+  s:=[1]CoordState.[co_state()];c:[4]CoordClaim;h:[4]CoordHold;
+  w:=[1]CoordWant.[co_want("doc",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+300),w[..],CO_T0)==CO_OK;
+  #assert s[0].token==1 && s[0].revision==11 && s[0].claims==1 && s[0].holds==1;
+  #assert c[0].token==1 && c[0].worker==CO_W3 && c[0].proposal==CO_P && c[0].expires_at==CO_T0+300 && c[0].state==CO_ACTIVE;
+  #assert h[0].token==1 && h[0].resource=="doc" && h[0].write;
+  // The loser sent the same expected revision: stale, and nothing moves.
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,10,CO_T0+300),w[..],CO_T0)==CO_STALE;
+  // At the current revision it still loses: the resource is held.
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+300),w[..],CO_T0)==CO_CONFLICT;
+  #assert s[0].token==1 && s[0].revision==11 && s[0].claims==1 && s[0].holds==1;
+}
+#test "the lease is checked against the coordinator's clock and maximum" {
+  s:=[1]CoordState.[co_state()];c:[4]CoordClaim;h:[4]CoordHold;w:=[1]CoordWant.[co_want("doc",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0),w[..],CO_T0)==CO_MALFORMED;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+601),w[..],CO_T0)==CO_LIMIT;
+  #assert s[0].token==0 && s[0].revision==10 && s[0].claims==0;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+600),w[..],CO_T0)==CO_OK;
+  t:=[1]CoordState.[co_state()];
+  #assert coord_claim(t[..],c[..],h[..],co_request(CO_W3,10,CO_T0+1),w[..],CO_T0)==CO_OK && c[0].expires_at==CO_T0+1;
+}
+#test "an empty request, a resource named twice and too many resources are refused" {
+  s:=[1]CoordState.[co_state()];c:[4]CoordClaim;h:[80]CoordHold;w1:[1]CoordWant;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),w1[0..<0],CO_T0)==CO_MALFORMED;
+  two:=[3]CoordWant.[co_want("a",false,""),co_want("b",true,""),co_want("a",false,CO_SNAP)];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),two[..],CO_T0)==CO_MALFORMED;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),two[1..<3],CO_T0)==CO_OK && s[0].claims==1;
+  s[0]=co_state();s[0].claims=0;
+  adj:=[2]CoordWant.[co_want("a",true,""),co_want("a",false,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),adj[..],CO_T0)==CO_MALFORMED;
+  // 65 distinct one-character names.
+  many:[65]CoordWant;
+  names:="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&";
+  for i:0..<65 {many[i]=co_want(names[i..<i+1],false,"");}
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),many[..],CO_T0)==CO_LIMIT;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),many[0..<64],CO_T0)==CO_OK && s[0].holds==64;
+  #assert s[0].claims==1 && s[0].token==1;
+}
+#test "all or nothing: one held resource refuses the whole claim" {
+  s:=[1]CoordState.[co_state()];c:[4]CoordClaim;h:[8]CoordHold;
+  a:=[1]CoordWant.[co_want("b",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),a[..],CO_T0)==CO_OK;
+  both:=[2]CoordWant.[co_want("a",true,""),co_want("b",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+60),both[..],CO_T0)==CO_CONFLICT;
+  #assert s[0].holds==1 && s[0].claims==1;
+  only:=[1]CoordWant.[co_want("a",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+60),only[..],CO_T0)==CO_OK;
+  #assert s[0].holds==2 && h[1].resource=="a" && h[1].token==2 && c[1].worker==CO_W7;
+}
+#test "which modes share: reads, snapshot reads beside a write; live reads and writes do not" {
+  // Each case: hold one, then ask for one, on the same resource.
+  modes:=[4]CoordWant.[co_want("r",false,""),co_want("r",false,CO_SNAP),co_want("r",true,""),co_want("r",true,CO_SNAP)];
+  // Rows: held; columns: asked. 1 means it shares.
+  share:=[16]int.[1,1,0,0, 1,1,1,1, 0,1,0,0, 0,1,0,0];
+  for i:0..<4 {for j:0..<4 {
+    s:=[1]CoordState.[co_state()];c:[2]CoordClaim;h:[2]CoordHold;
+    x:=[1]CoordWant.[modes[i]];y:=[1]CoordWant.[modes[j]];
+    #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),x[..],CO_T0)==CO_OK;
+    r:=coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+60),y[..],CO_T0);
+    #assert r==(ifx share[i*4+j]==1 then CO_OK else CO_CONFLICT);
+  }}
+  // Different resources never conflict.
+  s:=[1]CoordState.[co_state()];c:[2]CoordClaim;h:[2]CoordHold;
+  x:=[1]CoordWant.[co_want("r",true,"")];y:=[1]CoordWant.[co_want("q",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),x[..],CO_T0)==CO_OK;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+60),y[..],CO_T0)==CO_OK;
+}
+#test "no room in the record refuses without a partial write" {
+  s:=[1]CoordState.[co_state()];c:[1]CoordClaim;h:[2]CoordHold;
+  two:=[2]CoordWant.[co_want("a",true,""),co_want("b",true,"")];
+  three:=[3]CoordWant.[co_want("a",true,""),co_want("b",true,""),co_want("c",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),three[..],CO_T0)==CO_LIMIT && s[0].holds==0;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),two[..],CO_T0)==CO_OK;
+  one:=[1]CoordWant.[co_want("z",true,"")];w2:=[1]CoordWant.[co_want("y",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+60),one[..],CO_T0)==CO_LIMIT;
+  #assert s[0].claims==1 && s[0].holds==2 && s[0].token==1 && s[0].revision==11;
+  // Room for the holds but not for the claim.
+  u:=[1]CoordState.[co_state()];e:[1]CoordClaim;f:[4]CoordHold;
+  #assert coord_claim(u[..],e[..],f[..],co_request(CO_W3,10,CO_T0+60),one[..],CO_T0)==CO_OK;
+  #assert coord_claim(u[..],e[..],f[..],co_request(CO_W7,11,CO_T0+60),w2[..],CO_T0)==CO_LIMIT && u[0].holds==1 && u[0].claims==1;
+  // Room for the claim but not for its holds.
+  t:=[1]CoordState.[co_state()];d:[2]CoordClaim;g:[1]CoordHold;
+  #assert coord_claim(t[..],d[..],g[..],co_request(CO_W3,10,CO_T0+60),two[..],CO_T0)==CO_LIMIT && t[0].claims==0;
+}
+#test "expiry frees nothing: an expired claim still holds until it is released" {
+  s:=[1]CoordState.[co_state()];c:[2]CoordClaim;h:[2]CoordHold;w:=[1]CoordWant.[co_want("doc",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),w[..],CO_T0)==CO_OK;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,11,CO_T0+400),w[..],CO_T0+300)==CO_CONFLICT;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RELEASE,CO_OWNER,11,0,CO_T0+300)==CO_OK && c[0].state==CO_RELEASED && h[0].released;
+  #assert s[0].revision==12;
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,12,CO_T0+400),w[..],CO_T0+300)==CO_OK && s[0].token==2;
+}
+#test "renew: the worker or the owner, before the lease ends, within the maximum" {
+  s:=[1]CoordState.[co_state()];c:[2]CoordClaim;h:[2]CoordHold;w:=[1]CoordWant.[co_want("doc",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),w[..],CO_T0)==CO_OK;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RENEW,CO_W7,11,CO_T0+120,CO_T0+30)==CO_NOT_ADMITTED;
+  #assert coord_control(s[..],c[..],h[..],2,CO_RENEW,CO_W3,11,CO_T0+120,CO_T0+30)==CO_NOT_ADMITTED;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RENEW,CO_W3,10,CO_T0+120,CO_T0+30)==CO_STALE;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RENEW,CO_W3,11,CO_T0+30,CO_T0+30)==CO_MALFORMED;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RENEW,CO_W3,11,CO_T0+631,CO_T0+30)==CO_LIMIT;
+  #assert s[0].revision==11 && c[0].expires_at==CO_T0+60;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RENEW,CO_W3,11,CO_T0+630,CO_T0+30)==CO_OK;
+  #assert c[0].expires_at==CO_T0+630 && s[0].revision==12 && s[0].token==1;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RENEW,CO_OWNER,12,CO_T0+640,CO_T0+629)==CO_OK && s[0].revision==13;
+  // At the lease's end it is too late: a lost renewal does not come back.
+  #assert coord_control(s[..],c[..],h[..],1,CO_RENEW,CO_W3,13,CO_T0+900,CO_T0+640)==CO_EXPIRED;
+  #assert c[0].expires_at==CO_T0+640 && s[0].revision==13;
+}
+#test "release and cancel: who may, and what is closed afterwards" {
+  s:=[1]CoordState.[co_state()];c:[2]CoordClaim;h:[2]CoordHold;w:=[1]CoordWant.[co_want("doc",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),w[..],CO_T0)==CO_OK;
+  // The worker may release but not cancel; another worker may do neither.
+  #assert coord_control(s[..],c[..],h[..],1,CO_CANCEL,CO_W3,11,0,CO_T0)==CO_NOT_ADMITTED;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RELEASE,CO_W7,11,0,CO_T0)==CO_NOT_ADMITTED;
+  #assert coord_control(s[..],c[..],h[..],1,CO_CANCEL,CO_OWNER,11,0,CO_T0)==CO_OK && c[0].state==CO_CANCELLED;
+  #assert s[0].revision==12;
+  // Cancel stops dispatch and keeps the holds; a second cancel or a renewal is closed.
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,12,CO_T0+60),w[..],CO_T0)==CO_CONFLICT;
+  #assert coord_control(s[..],c[..],h[..],1,CO_CANCEL,CO_OWNER,12,0,CO_T0)==CO_CLOSED;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RENEW,CO_W3,12,CO_T0+30,CO_T0)==CO_CLOSED;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RELEASE,CO_W3,12,0,CO_T0+70)==CO_OK && c[0].state==CO_RELEASED;
+  #assert coord_control(s[..],c[..],h[..],1,CO_RELEASE,CO_W3,13,0,CO_T0+70)==CO_CLOSED;
+  #assert coord_control(s[..],c[..],h[..],1,9,CO_OWNER,13,0,CO_T0+70)==CO_MALFORMED;
+  #assert s[0].revision==13;
+}
+#test "the fence: named worker, write hold, epoch, latest token, open claim, live lease" {
+  s:=[1]CoordState.[co_state()];c:[2]CoordClaim;h:[4]CoordHold;
+  w:=[2]CoordWant.[co_want("doc",true,""),co_want("ref",false,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10,CO_T0+60),w[..],CO_T0)==CO_OK;
+  #assert coord_fence(s[..],c[..],h[..],CO_W3,"doc",2,1,CO_T0+59)==CO_OK;
+  #assert coord_fence(s[..],c[..],h[..],CO_W7,"doc",2,1,CO_T0+10)==CO_NOT_ADMITTED;
+  #assert coord_fence(s[..],c[..],h[..],CO_W3,"ref",2,1,CO_T0+10)==CO_NOT_ADMITTED;
+  #assert coord_fence(s[..],c[..],h[..],CO_W3,"doc",2,2,CO_T0+10)==CO_NOT_ADMITTED;
+  #assert coord_fence(s[..],c[..],h[..],CO_W3,"doc",1,1,CO_T0+10)==CO_STALE;
+  #assert coord_fence(s[..],c[..],h[..],CO_W3,"doc",2,1,CO_T0+60)==CO_EXPIRED;
+  // Released, nobody newer: closed. Then worker 7 claims; token 1 is fenced as stale.
+  #assert coord_control(s[..],c[..],h[..],1,CO_RELEASE,CO_W3,11,0,CO_T0+61)==CO_OK;
+  #assert coord_fence(s[..],c[..],h[..],CO_W3,"doc",2,1,CO_T0+30)==CO_CLOSED;
+  one:=[1]CoordWant.[co_want("doc",true,"")];
+  #assert coord_claim(s[..],c[..],h[..],co_request(CO_W7,12,CO_T0+200),one[..],CO_T0+61)==CO_OK;
+  #assert coord_fence(s[..],c[..],h[..],CO_W3,"doc",2,1,CO_T0+30)==CO_STALE;
+  #assert coord_fence(s[..],c[..],h[..],CO_W7,"doc",2,2,CO_T0+100)==CO_OK;
+  // Cancelled: closed at the fence too.
+  #assert coord_control(s[..],c[..],h[..],2,CO_CANCEL,CO_OWNER,13,0,CO_T0+100)==CO_OK;
+  #assert coord_fence(s[..],c[..],h[..],CO_W7,"doc",2,2,CO_T0+100)==CO_CLOSED;
+}
+#forall "tokens only grow: each grant is one more than the last" n:1..<6 {
+  s:=[1]CoordState.[co_state()];c:[8]CoordClaim;h:[8]CoordHold;
+  names:="abcdef";
+  for i:0..<n {
+    w:=[1]CoordWant.[co_want(names[i..<i+1],true,"")];
+    #assert coord_claim(s[..],c[..],h[..],co_request(CO_W3,10+i,CO_T0+60),w[..],CO_T0)==CO_OK;
+    #assert c[i].token==i+1 && h[i].token==i+1;
+  }
+  #assert s[0].token==n && s[0].revision==10+n && s[0].claims==n;
+}
+
+// book:begin conflict
+// Two entries on one resource conflict unless both read, or the reader holds
+// an immutable snapshot.
+coord_overlap :: (resource:string,write:bool,snapshot:string,h:CoordHold)->bool {
+  if h.resource!=resource {return false;}
+  if write && h.write {return true;}
+  if write {return h.snapshot=="";}
+  return h.write && snapshot=="";
+}
+// book:end conflict
+
+// book:begin claim
+coord_claim :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,q:CoordRequest,want:[]CoordWant,now:int)->u32 {
+  st:=s[0];
+  // 1. The request: some resources, each once, and a lease that ends after now.
+  if want.count==0 {return CO_MALFORMED;}
+  if want.count>CO_MAX_RESOURCES {return CO_LIMIT;}
+  for i:0..<want.count {for j:i+1..<want.count {if want[i].resource==want[j].resource {return CO_MALFORMED;}}}
+  if q.requested_until<=now {return CO_MALFORMED;}
+  if q.requested_until>now+st.max_lease {return CO_LIMIT;}
+  // 2. The compare: the revision the worker saw is still current.
+  if q.expected_revision!=st.revision {return CO_STALE;}
+  // 3. Every resource free of a claim not yet released, expired or not.
+  for w:want {
+    for k:0..<st.holds {
+      if !holds[k].released && coord_overlap(w.resource,w.write,w.snapshot,holds[k]) {return CO_CONFLICT;}
+    }
+  }
+  if st.claims>=claims.count || st.holds+want.count>holds.count {return CO_LIMIT;}
+  // 4. Grant all of it at once: the next token, the next revision.
+  t:=st.token+1;
+  claims[st.claims]=CoordClaim.{token=t,proposal=q.proposal,worker=q.worker,expires_at=q.requested_until,state=CO_ACTIVE};
+  for i:0..<want.count {
+    holds[st.holds+i]=CoordHold.{token=t,resource=want[i].resource,write=want[i].write,snapshot=want[i].snapshot};
+  }
+  s[0].token=t;s[0].revision=st.revision+1;s[0].claims=st.claims+1;s[0].holds=st.holds+want.count;
+  return CO_OK;
+}
+// book:end claim
+coord_find :: (claims:[]CoordClaim,count:int,token:int)->int {
+  for i:0..<count {if claims[i].token==token {return i;}}
+  return -1;
+}
+
+// book:begin control
+// Renew moves the lease end to requested_until; release frees the holds
+// (the caller has fenced the old dispatchers); cancel, by the owner only,
+// stops dispatch and keeps the holds until a release.
+coord_control :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,token:int,action:int,actor:string,expected_revision:int,requested_until:int,now:int)->u32 {
+  st:=s[0];
+  k:=coord_find(claims,st.claims,token);
+  if k<0 {return CO_NOT_ADMITTED;}
+  c:=claims[k];
+  if action==CO_CANCEL {if actor!=st.owner {return CO_NOT_ADMITTED;}}
+  else if action==CO_RENEW || action==CO_RELEASE {if actor!=c.worker && actor!=st.owner {return CO_NOT_ADMITTED;}}
+  else {return CO_MALFORMED;}
+  if expected_revision!=st.revision {return CO_STALE;}
+  if c.state==CO_RELEASED || (action!=CO_RELEASE && c.state==CO_CANCELLED) {return CO_CLOSED;}
+  if action==CO_RENEW {
+    if now>=c.expires_at {return CO_EXPIRED;}
+    if requested_until<=now {return CO_MALFORMED;}
+    if requested_until>now+st.max_lease {return CO_LIMIT;}
+    claims[k].expires_at=requested_until;
+  } else if action==CO_RELEASE {
+    claims[k].state=CO_RELEASED;
+    for i:0..<st.holds {if holds[i].token==token {holds[i].released=true;}}
+  }
+  else {claims[k].state=CO_CANCELLED;}
+  s[0].revision=st.revision+1;
+  return CO_OK;
+}
+// book:end control
+
+// book:begin fence
+// The dispatcher's check before one write on resource under (epoch, token).
+coord_fence :: (s:[]CoordState,claims:[]CoordClaim,holds:[]CoordHold,worker:string,resource:string,epoch:int,token:int,now:int)->u32 {
+  st:=s[0];
+  k:=coord_find(claims,st.claims,token);
+  if k<0 || claims[k].worker!=worker {return CO_NOT_ADMITTED;}
+  held:=false;newer:=false;
+  for i:0..<st.holds {
+    if holds[i].resource==resource && holds[i].write {
+      if holds[i].token==token {held=true;}
+      if holds[i].token>token {newer=true;}
+    }
+  }
+  if !held {return CO_NOT_ADMITTED;}
+  if epoch!=st.epoch || newer {return CO_STALE;}
+  if claims[k].state!=CO_ACTIVE {return CO_CLOSED;}
+  if now>=claims[k].expires_at {return CO_EXPIRED;}
+  return CO_OK;
+}
+// book:end fence

@@ -1,0 +1,270 @@
+// CTRL task control: pairing a client, revoking it, and admitting its task
+// commands. NIP-CTRL "Pairing and explicit admission", "Revocation and
+// current authority" and "Commands, ordering, and honest receipts".
+//
+// The authority (the task's current controller) keeps the invitations it
+// issued, the grants pairing created and the command fingerprints it
+// retained. A client has no control until a pairing response from that exact
+// key, with the invitation's challenge, consumes an unused, unexpired
+// invitation and the owner has admitted it. A grant names one task, one
+// controller and one generation, and a duplicate-free set of rights:
+// observe, steer, cancel; none implies another. Revocation moves the grant's
+// epoch from 0 to 1, and 1 is terminal.
+//
+// A command is admitted in this order: the grant and its client (an unpaired
+// key stops here), revocation, the grant's expiry, the scope against the
+// grant and the controller's current generation, the right, the command's
+// own window, then idempotency by (grant, command ID) with the SHA-256 of
+// the JCS command as fingerprint, and last the expected frame revision. An
+// identical retransmission is a duplicate even after its own steer moved the
+// frame; different bytes under the same ID refuse. Accepting records a
+// command, not that the task changed or stopped.
+//
+// It trusts the strings it is given: the verified signer of each artifact,
+// IDs and keys compared exactly, and fingerprints the caller computed (see
+// ctrl/fingerprint.coax). Times are Unix seconds on the authority's clock.
+//
+// Not here: reads and views, the receipt and frame records themselves,
+// task-wide handoff, and broader-than-one-task scopes.
+//   coax/bin/coax test coax/lib/nostr/ctrl/command.coax --library
+#authority;
+
+// book:begin codes
+CT_ACCEPTED :: cast(u32)0;
+CT_DUPLICATE :: cast(u32)1;     // an identical repeat: the retained result, no new effect
+CT_NOT_ADMITTED :: cast(u32)2;  // no grant for this key (unpaired), a right it lacks, no owner admission
+CT_REVOKED :: cast(u32)3;
+CT_EXPIRED :: cast(u32)4;       // the grant, invitation or command has expired by the authority's clock
+CT_STALE :: cast(u32)5;         // a scope or epoch that is not the grant's or the current one
+CT_MALFORMED :: cast(u32)6;     // a bad window or rights set
+CT_CONFLICT :: cast(u32)7;      // the expected frame revision is not current; or a second pairing
+CT_IDEMPOTENCY :: cast(u32)8;   // different bytes under a retained command ID
+CT_CLOSED :: cast(u32)9;        // the client declined: the invitation is consumed, no grant
+
+CT_OBSERVE :: 0; CT_STEER :: 1; CT_CANCEL :: 2;  // rights as bits
+CT_ALL_RIGHTS :: 7;
+CT_WINDOW :: 300;  // this host's longest command window, seconds
+CT_SKEW :: 60;     // how far ahead of the authority's clock a command may be dated
+// book:end codes
+
+// book:begin record
+CtrlScope :: struct {task:string;controller:string;generation:int;}
+CtrlInvitation :: struct {invitation:string;challenge:string;client:string;scope:CtrlScope;rights:int;expires_at:int;pairing:string;}
+CtrlPairing :: struct {invitation:string;signer:string;client:string;challenge:string;rights:int;accepted:bool;fingerprint:string;}
+CtrlGrant :: struct {grant:string;client:string;scope:CtrlScope;rights:int;epoch:int;issued_at:int;expires_at:int;}
+CtrlCommand :: struct {command:string;fingerprint:string;signer:string;grant:string;epoch:int;scope:CtrlScope;expected_revision:int;issued_at:int;expires_at:int;action:int;}
+CtrlRetained :: struct {grant:string;command:string;fingerprint:string;}
+// book:end record
+
+CT_OWNER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+CT_HOST :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+CT_C3 :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+CT_C7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+CT_I1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+CT_K1 :: "2222222222222222222222222222222222222222222222222222222222222222";
+CT_G1 :: "3333333333333333333333333333333333333333333333333333333333333333";
+CT_TASK :: "4444444444444444444444444444444444444444444444444444444444444444";
+CT_CMD :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+CT_FA :: "sha256:aa";
+CT_FB :: "sha256:bb";
+CT_T0 :: 1790000000;
+
+ct_scope :: ()->CtrlScope {return CtrlScope.{task=CT_TASK,controller=CT_HOST,generation=3};}
+ct_invitation :: ()->CtrlInvitation {
+  i:CtrlInvitation;i.invitation=CT_I1;i.challenge=CT_K1;i.client=CT_C3;i.scope=ct_scope();
+  i.rights=(1<<CT_OBSERVE)|(1<<CT_CANCEL);i.expires_at=CT_T0+600;return i;
+}
+ct_pairing :: ()->CtrlPairing {
+  p:CtrlPairing;p.invitation=CT_I1;p.signer=CT_C3;p.client=CT_C3;p.challenge=CT_K1;
+  p.rights=1<<CT_CANCEL;p.accepted=true;p.fingerprint=CT_FA;return p;
+}
+ct_grant :: ()->CtrlGrant {
+  g:CtrlGrant;g.grant=CT_G1;g.client=CT_C3;g.scope=ct_scope();g.rights=1<<CT_CANCEL;g.issued_at=CT_T0;g.expires_at=CT_T0+86400;return g;
+}
+ct_command :: (at:int)->CtrlCommand {
+  c:CtrlCommand;c.command=CT_CMD;c.fingerprint=CT_FA;c.signer=CT_C3;c.grant=CT_G1;c.scope=ct_scope();
+  c.expected_revision=4;c.issued_at=at;c.expires_at=at+300;c.action=CT_CANCEL;return c;
+}
+
+#test "the codes are distinct and the rights are three bits" {
+  #assert CT_ACCEPTED==0 && CT_DUPLICATE==1 && CT_NOT_ADMITTED==2 && CT_REVOKED==3 && CT_EXPIRED==4;
+  #assert CT_STALE==5 && CT_MALFORMED==6 && CT_CONFLICT==7 && CT_IDEMPOTENCY==8 && CT_CLOSED==9;
+  #assert CT_OBSERVE==0 && CT_STEER==1 && CT_CANCEL==2 && CT_ALL_RIGHTS==7 && CT_WINDOW==300 && CT_SKEW==60;
+}
+#test "pairing: the invited key with the challenge, owner-admitted, makes one grant" {
+  inv:=[1]CtrlInvitation.[ct_invitation()];g:[2]CtrlGrant;n:[1]int;
+  r:=ctrl_pair(inv[..],g[..],n[..],ct_pairing(),ct_scope(),true,CT_G1,CT_T0+86400,CT_T0+100);
+  #assert r==CT_ACCEPTED && n[0]==1 && inv[0].pairing==CT_FA;
+  #assert g[0].grant==CT_G1 && g[0].client==CT_C3 && g[0].rights==1<<CT_CANCEL && g[0].epoch==0;
+  #assert g[0].issued_at==CT_T0+100 && g[0].expires_at==CT_T0+86400 && g[0].scope.task==CT_TASK && g[0].scope.generation==3;
+  // The same response again: the same result, no second grant. A different one: conflict.
+  #assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),ct_scope(),true,CT_G1,CT_T0+86400,CT_T0+110)==CT_DUPLICATE && n[0]==1;
+  p:=ct_pairing();p.fingerprint=CT_FB;p.rights=1<<CT_OBSERVE;
+  #assert ctrl_pair(inv[..],g[..],n[..],p,ct_scope(),true,CT_G1,CT_T0+86400,CT_T0+110)==CT_CONFLICT && n[0]==1;
+}
+#test "pairing refusals leave the invitation unused" {
+  inv:=[1]CtrlInvitation.[ct_invitation()];g:[2]CtrlGrant;n:[1]int;s:=ct_scope();
+  p:=ct_pairing();p.invitation=CT_K1;#assert ctrl_pair(inv[..],g[..],n[..],p,s,true,CT_G1,CT_T0+999,CT_T0)==CT_NOT_ADMITTED;
+  // A relayed response: client 7 signs a response naming client 3, or names itself.
+  p=ct_pairing();p.signer=CT_C7;#assert ctrl_pair(inv[..],g[..],n[..],p,s,true,CT_G1,CT_T0+999,CT_T0)==CT_NOT_ADMITTED;
+  p=ct_pairing();p.signer=CT_C7;p.client=CT_C7;#assert ctrl_pair(inv[..],g[..],n[..],p,s,true,CT_G1,CT_T0+999,CT_T0)==CT_NOT_ADMITTED;
+  p=ct_pairing();p.challenge=CT_I1;#assert ctrl_pair(inv[..],g[..],n[..],p,s,true,CT_G1,CT_T0+999,CT_T0)==CT_NOT_ADMITTED;
+  // Expired by the authority's clock, at the exact second.
+  #assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),s,true,CT_G1,CT_T0+999,CT_T0+600)==CT_EXPIRED;
+  // Rights: none, wider than the invitation, or an unknown bit.
+  p=ct_pairing();p.rights=0;#assert ctrl_pair(inv[..],g[..],n[..],p,s,true,CT_G1,CT_T0+999,CT_T0)==CT_MALFORMED;
+  p.rights=1<<CT_STEER;#assert ctrl_pair(inv[..],g[..],n[..],p,s,true,CT_G1,CT_T0+999,CT_T0)==CT_MALFORMED;
+  p.rights=8|(1<<CT_CANCEL);#assert ctrl_pair(inv[..],g[..],n[..],p,s,true,CT_G1,CT_T0+999,CT_T0)==CT_MALFORMED;
+  // The controller moved on: generation 4.
+  s4:=s;s4.generation=4;#assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),s4,true,CT_G1,CT_T0+999,CT_T0)==CT_STALE;
+  s4=s;s4.controller=CT_OWNER;#assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),s4,true,CT_G1,CT_T0+999,CT_T0)==CT_STALE;
+  s4=s;s4.task=CT_I1;#assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),s4,true,CT_G1,CT_T0+999,CT_T0)==CT_STALE;
+  // Proof of the key is not admission: the owner has not admitted it.
+  #assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),s,false,CT_G1,CT_T0+999,CT_T0)==CT_NOT_ADMITTED;
+  // A grant that would end by now, and a full grant table.
+  #assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),s,true,CT_G1,CT_T0,CT_T0)==CT_MALFORMED;
+  #assert ctrl_pair(inv[..],g[0..<0],n[..],ct_pairing(),s,true,CT_G1,CT_T0+999,CT_T0)==CT_MALFORMED;
+  #assert n[0]==0 && inv[0].pairing=="";
+  #assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),s,true,CT_G1,CT_T0+1,CT_T0)==CT_ACCEPTED && n[0]==1;
+}
+#test "a declined invitation is consumed and grants nothing" {
+  inv:=[1]CtrlInvitation.[ct_invitation()];g:[2]CtrlGrant;n:[1]int;p:=ct_pairing();p.accepted=false;
+  #assert ctrl_pair(inv[..],g[..],n[..],p,ct_scope(),true,CT_G1,CT_T0+999,CT_T0)==CT_CLOSED && n[0]==0 && inv[0].pairing==CT_FA;
+  #assert ctrl_pair(inv[..],g[..],n[..],p,ct_scope(),true,CT_G1,CT_T0+999,CT_T0)==CT_DUPLICATE && n[0]==0;
+  #assert ctrl_pair(inv[..],g[..],n[..],ct_pairing(),ct_scope(),true,CT_G1,CT_T0+999,CT_T0)==CT_DUPLICATE && n[0]==0;
+}
+#test "a command from a key with no grant refuses: unpaired" {
+  g:=[1]CtrlGrant.[ct_grant()];r1:[1]CtrlRetained;none:=r1[0..<0];
+  #assert ctrl_command_admit(g[..],none,ct_command(CT_T0+100),ct_scope(),4,CT_T0+100)==CT_ACCEPTED;
+  c:=ct_command(CT_T0+100);c.signer=CT_C7;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_NOT_ADMITTED;
+  c=ct_command(CT_T0+100);c.grant=CT_I1;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_NOT_ADMITTED;
+  #assert ctrl_command_admit(g[0..<0],none,ct_command(CT_T0+100),ct_scope(),4,CT_T0+100)==CT_NOT_ADMITTED;
+}
+#test "revoked, expired and stale grants refuse, in that order" {
+  g:=[1]CtrlGrant.[ct_grant()];r1:[1]CtrlRetained;none:=r1[0..<0];c:=ct_command(CT_T0+86100);
+  #assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+86399)==CT_ACCEPTED;
+  #assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+86400)==CT_EXPIRED;
+  g[0].epoch=1;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+86400)==CT_REVOKED;
+  g[0].epoch=0;c.epoch=1;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+86100)==CT_STALE;
+  // The scope: the command's against the grant's, and the grant's against the current controller.
+  s:=ct_scope();s.generation=4;c=ct_command(CT_T0+100);
+  #assert ctrl_command_admit(g[..],none,c,s,4,CT_T0+100)==CT_STALE;
+  c.scope=s;#assert ctrl_command_admit(g[..],none,c,s,4,CT_T0+100)==CT_STALE;
+  c=ct_command(CT_T0+100);c.scope.task=CT_I1;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_STALE;
+  c=ct_command(CT_T0+100);c.scope.controller=CT_OWNER;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_STALE;
+  s=ct_scope();s.task=CT_I1;#assert ctrl_command_admit(g[..],none,ct_command(CT_T0+100),s,4,CT_T0+100)==CT_STALE;
+  s=ct_scope();s.controller=CT_OWNER;#assert ctrl_command_admit(g[..],none,ct_command(CT_T0+100),s,4,CT_T0+100)==CT_STALE;
+}
+#test "each action needs its own right; rights do not imply one another" {
+  g:=[1]CtrlGrant.[ct_grant()];r1:[1]CtrlRetained;none:=r1[0..<0];c:=ct_command(CT_T0+100);
+  #assert g[0].rights==4;  // the fixture grant holds cancel and nothing else
+  c.action=CT_STEER;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_NOT_ADMITTED;
+  g[0].rights=(1<<CT_OBSERVE)|(1<<CT_STEER);#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_ACCEPTED;
+  c.action=CT_CANCEL;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_NOT_ADMITTED;
+  // Observe is a read right, never a command; an unknown action is malformed.
+  g[0].rights=CT_ALL_RIGHTS;c.action=CT_OBSERVE;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_MALFORMED;
+  c.action=3;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_MALFORMED;
+  c.action=-1;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_MALFORMED;
+}
+#test "the command's own window" {
+  g:=[1]CtrlGrant.[ct_grant()];r1:[1]CtrlRetained;none:=r1[0..<0];
+  c:=ct_command(CT_T0+100);c.expires_at=c.issued_at;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_MALFORMED;
+  c.expires_at=c.issued_at+301;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_MALFORMED;
+  c.expires_at=c.issued_at+1;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+100)==CT_ACCEPTED;
+  // Past its end, at the first second after; from the future, past the skew.
+  c=ct_command(CT_T0+100);
+  #assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+400)==CT_ACCEPTED && ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+401)==CT_EXPIRED;
+  #assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+40)==CT_ACCEPTED && ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+39)==CT_MALFORMED;
+  // It must fit inside the grant.
+  c=ct_command(CT_T0+86100);c.expires_at=CT_T0+86401;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+86200)==CT_MALFORMED;
+  c.expires_at=CT_T0+86400;#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0+86200)==CT_ACCEPTED;
+  c=ct_command(CT_T0-1);#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0)==CT_MALFORMED;
+  c=ct_command(CT_T0);#assert ctrl_command_admit(g[..],none,c,ct_scope(),4,CT_T0)==CT_ACCEPTED;
+}
+#test "idempotency comes before the revision; the revision comes last" {
+  g:=[1]CtrlGrant.[ct_grant()];
+  r:=[2]CtrlRetained.[CtrlRetained.{grant=CT_I1,command=CT_CMD,fingerprint=CT_FB},CtrlRetained.{grant=CT_G1,command=CT_CMD,fingerprint=CT_FA}];
+  c:=ct_command(CT_T0+100);
+  #assert ctrl_command_admit(g[..],r[..],c,ct_scope(),5,CT_T0+100)==CT_DUPLICATE;
+  c.fingerprint=CT_FB;#assert ctrl_command_admit(g[..],r[..],c,ct_scope(),5,CT_T0+100)==CT_IDEMPOTENCY;
+  c=ct_command(CT_T0+100);c.command=CT_K1;
+  #assert ctrl_command_admit(g[..],r[..],c,ct_scope(),5,CT_T0+100)==CT_CONFLICT;
+  #assert ctrl_command_admit(g[..],r[..],c,ct_scope(),4,CT_T0+100)==CT_ACCEPTED;
+  // A retained duplicate after revocation refuses; it never reads the retained result.
+  g[0].epoch=1;#assert ctrl_command_admit(g[..],r[..],ct_command(CT_T0+100),ct_scope(),4,CT_T0+100)==CT_REVOKED;
+}
+#test "revocation: the owner only, epoch 0 to 1, once" {
+  g:=[2]CtrlGrant.[ct_grant(),ct_grant()];g[1].grant=CT_I1;
+  #assert ctrl_revoke(g[..],CT_G1,CT_C3,CT_OWNER)==CT_NOT_ADMITTED && g[0].epoch==0;
+  #assert ctrl_revoke(g[..],CT_K1,CT_OWNER,CT_OWNER)==CT_NOT_ADMITTED;
+  #assert ctrl_revoke(g[..],CT_G1,CT_OWNER,CT_OWNER)==CT_ACCEPTED && g[0].epoch==1 && g[1].epoch==0;
+  #assert ctrl_revoke(g[..],CT_G1,CT_OWNER,CT_OWNER)==CT_DUPLICATE && g[0].epoch==1;
+  #assert ctrl_revoke(g[..],CT_I1,CT_OWNER,CT_OWNER)==CT_ACCEPTED && g[1].epoch==1;
+}
+
+// book:begin pair
+// Consumes the invitation a pairing response answers. On acceptance the new
+// grant goes to grants[count] and count grows by one.
+ctrl_pair :: (invitations:[]CtrlInvitation,grants:[]CtrlGrant,count:[]int,p:CtrlPairing,current:CtrlScope,owner_admitted:bool,grant:string,until:int,now:int)->u32 {
+  k:=-1;
+  for i:0..<invitations.count {if invitations[i].invitation==p.invitation {k=i;}}
+  if k<0 {return CT_NOT_ADMITTED;}
+  v:=invitations[k];
+  // Used: the same response gets the same answer; another one gets nothing.
+  if v.pairing!="" {return ifx v.pairing==p.fingerprint then CT_DUPLICATE else CT_CONFLICT;}
+  if p.signer!=p.client || p.client!=v.client || p.challenge!=v.challenge {return CT_NOT_ADMITTED;}
+  if now>=v.expires_at {return CT_EXPIRED;}
+  if !ctrl_same(v.scope,current) {return CT_STALE;}
+  if !p.accepted {invitations[k].pairing=p.fingerprint;return CT_CLOSED;}
+  if p.rights==0 || (p.rights|v.rights)!=v.rights {return CT_MALFORMED;}
+  if !owner_admitted {return CT_NOT_ADMITTED;}
+  if until<=now || count[0]>=grants.count {return CT_MALFORMED;}
+  grants[count[0]]=CtrlGrant.{grant=grant,client=p.client,scope=v.scope,rights=p.rights,epoch=0,issued_at=now,expires_at=until};
+  count[0]+=1;
+  invitations[k].pairing=p.fingerprint;
+  return CT_ACCEPTED;
+}
+// book:end pair
+ctrl_same :: (a:CtrlScope,b:CtrlScope)->bool {
+  return a.task==b.task && a.controller==b.controller && a.generation==b.generation;
+}
+
+// book:begin revoke
+ctrl_revoke :: (grants:[]CtrlGrant,grant:string,actor:string,owner:string)->u32 {
+  if actor!=owner {return CT_NOT_ADMITTED;}
+  for i:0..<grants.count {
+    if grants[i].grant==grant {
+      if grants[i].epoch==1 {return CT_DUPLICATE;}
+      grants[i].epoch=1;return CT_ACCEPTED;
+    }
+  }
+  return CT_NOT_ADMITTED;
+}
+// book:end revoke
+
+// book:begin admit
+ctrl_command_admit :: (grants:[]CtrlGrant,retained:[]CtrlRetained,c:CtrlCommand,current:CtrlScope,revision:int,now:int)->u32 {
+  // 1. The grant, and the key it was paired with.
+  k:=-1;
+  for i:0..<grants.count {if grants[i].grant==c.grant {k=i;}}
+  if k<0 || grants[k].client!=c.signer {return CT_NOT_ADMITTED;}
+  g:=grants[k];
+  // 2. Revocation, expiry, then the epoch and scope of grant, command and controller.
+  if g.epoch==1 {return CT_REVOKED;}
+  if now>=g.expires_at {return CT_EXPIRED;}
+  if c.epoch!=g.epoch || !ctrl_same(c.scope,g.scope) || !ctrl_same(g.scope,current) {return CT_STALE;}
+  // 3. The right for this action: steer or cancel.
+  if c.action!=CT_STEER && c.action!=CT_CANCEL {return CT_MALFORMED;}
+  if (g.rights>>c.action)&1==0 {return CT_NOT_ADMITTED;}
+  // 4. The command's window, inside the grant.
+  if c.expires_at<=c.issued_at || c.expires_at-c.issued_at>CT_WINDOW {return CT_MALFORMED;}
+  if c.issued_at<g.issued_at || c.expires_at>g.expires_at || c.issued_at>now+CT_SKEW {return CT_MALFORMED;}
+  if now>c.expires_at {return CT_EXPIRED;}
+  // 5. Idempotency by (grant, command ID), then the frame revision.
+  for r:retained {
+    if r.grant==c.grant && r.command==c.command {return ifx r.fingerprint==c.fingerprint then CT_DUPLICATE else CT_IDEMPOTENCY;}
+  }
+  if c.expected_revision!=revision {return CT_CONFLICT;}
+  return CT_ACCEPTED;
+}
+// book:end admit

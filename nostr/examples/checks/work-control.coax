@@ -1,0 +1,68 @@
+// The checks of work-control.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/work-control.coax
+#load "../work-control.coax";
+
+// book:begin check
+// The fingerprints, from Python's json.dumps(sort_keys=True,
+// separators=(",", ":"), ensure_ascii=False) and hashlib.sha256 over the
+// same command objects. They share no code with jcs.coax or sha256.coax.
+// Python's compact sorted output is also byte for byte the CANONICAL string.
+PY_PRINT :: "sha256:71fbe0a66f7f7fc085b5d2d08c8fa76cc7e5fe711941e7e80d76aad9f52c4636";
+PY_CHANGED :: "sha256:be4032700c6f319d5d5b632e88a612386e4dc245eb882a02c164a46f43876a9a";
+PY_JCS_BYTES :: 612;
+
+#test "the fingerprints match the Python reference, and JCS gives Python's bytes" {
+  canon:[1024]u8;d:[CF_DIGEST]u8;
+  p:=ctrl_fingerprint(CF_WIRE,canon[..],d[..]);
+  #assert p.error==CF_OK && p.canonical==PY_JCS_BYTES && cast(string)d[..]==PY_PRINT;
+  #assert cast(string)canon[0..<p.canonical]==CANONICAL && CANONICAL.count==PY_JCS_BYTES;
+  p=ctrl_fingerprint(CHANGED,canon[..],d[..]);
+  #assert p.error==CF_OK && p.canonical==PY_JCS_BYTES+4 && cast(string)d[..]==PY_CHANGED;
+}
+
+// PLAN.md's Done means, worked by hand from NIP-COORD's rules: epoch 2,
+// revision 10, a 600 s longest lease; both workers saw revision 10.
+#test "Done means: two workers claim one task, exactly one wins, the other's writes are fenced" {
+  for order:0..<2 {
+    s:=[1]CoordState.[CoordState.{owner=OWNER,epoch=2,revision=10,max_lease=600}];c:[4]CoordClaim;h:[4]CoordHold;
+    doc:=[1]CoordWant.[CoordWant.{resource="doc",write=true}];
+    a:=ifx order==0 then KEY_3 else KEY_7;b:=ifx order==0 then KEY_7 else KEY_3;
+    qa:=CoordRequest.{proposal="task-1",worker=a,expected_revision=10,requested_until=T0+300};
+    qb:=qa;qb.worker=b;
+    ra:=coord_claim(s[..],c[..],h[..],qa,doc[..],T0);rb:=coord_claim(s[..],c[..],h[..],qb,doc[..],T0);
+    #assert ra==CO_OK && rb==CO_STALE && s[0].token==1 && s[0].claims==1;
+    qb.expected_revision=11;#assert coord_claim(s[..],c[..],h[..],qb,doc[..],T0)==CO_CONFLICT;
+    // The loser's writes: under the winner's token, and under any token it might guess.
+    #assert coord_fence(s[..],c[..],h[..],a,"doc",2,1,T0+1)==CO_OK;
+    for t:0..<4 {#assert coord_fence(s[..],c[..],h[..],b,"doc",2,t,T0+1)==CO_NOT_ADMITTED;}
+    // After a release and the loser's own claim, the first winner is the one fenced.
+    #assert coord_control(s[..],c[..],h[..],1,CO_RELEASE,OWNER,11,0,T0+2)==CO_OK;
+    qb.expected_revision=12;#assert coord_claim(s[..],c[..],h[..],qb,doc[..],T0+2)==CO_OK && s[0].token==2;
+    #assert coord_fence(s[..],c[..],h[..],a,"doc",2,1,T0+3)==CO_STALE && coord_fence(s[..],c[..],h[..],b,"doc",2,2,T0+3)==CO_OK;
+  }
+}
+#test "Done means: a command from an unpaired client refuses" {
+  scope:=CtrlScope.{task=TASK,controller=CONTROLLER,generation=3};kept:[1]CtrlRetained;none:=kept[0..<0];
+  cancel:=make_command(COMMAND,KEY_3,PY_PRINT,4,CT_CANCEL,T0+100);
+  // No grants at all, and a grant table that names only client 3.
+  empty:[1]CtrlGrant;
+  #assert ctrl_command_admit(empty[0..<0],none,cancel,scope,4,T0+100)==CT_NOT_ADMITTED;
+  g:=[1]CtrlGrant.[CtrlGrant.{grant=GRANT,client=KEY_3,scope=scope,rights=1<<CT_CANCEL,issued_at=T0,expires_at=T0+86400}];
+  #assert ctrl_command_admit(g[..],none,cancel,scope,4,T0+100)==CT_ACCEPTED;
+  for key:[3]string.[KEY_7,OWNER,CONTROLLER] {
+    stray:=cancel;stray.signer=key;#assert ctrl_command_admit(g[..],none,stray,scope,4,T0+100)==CT_NOT_ADMITTED;
+  }
+}
+// The lifecycle values in the transcript, by hand.
+#test "the transcript's numbers" {
+  // Renewal at T0 + 250: the longest lease ends at 250 + 600 = 850, so 700 fits and 1000 does not.
+  #assert 250+600==850 && 700<=850 && 1000>850;
+  // Revisions: claim 11, renew 12, release 13, claim 14, release 15.
+  #assert 10+5==15;
+  // The command window: issued T0 + 130, 300 s, so T0 + 430 is the last second.
+  #assert 130+300==430;
+  // The wire form has 34 more bytes than the JCS form: a space after each of 19 colons and 15 commas.
+  #assert CF_WIRE.count-CANONICAL.count==34;
+}
+// book:end check

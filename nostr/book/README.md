@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 86 are implemented and 18 are design drafts.
+Of the 104 chapters, 87 are implemented and 17 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -266,7 +266,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [73. Payment targets](ch073-payment-targets.md) | Runnable: native C | NIP-A3 kind 10133 `payto` tags, with only the Bitcoin and Lightning target types acted on under the repository rule. |
 | [74. Cashu and Fedimint are excluded](ch074-cashu-and-fedimint-are-excluded.md) | Runnable: native C | NIP-60 Cashu wallets, NIP-61 nutzaps and NIP-87 mint discovery, recognized and never built: a classifier marks their nine kinds, references to them and ecash payment values as excluded, and the book check fails if another file names them. |
 | [75. Hosts and reachability](ch075-hosts-and-reachability.md) | Runnable: native C | NIP-HOST grants bound to the original host-signed 3188 envelope and admitted against the host's record (request window, revocation, expiry, epochs, rights, retained replies), and NIP-REACH presence freshness and route generations. Invitations, enrollment, the directory, hint selection and direct channels are not built. |
-| [76. Work, coordination and control](ch076-work-coordination-and-control.md) | Unimplemented: design draft | NIP-WORK tracked items and revisions, NIP-COORD claims with fencing tokens and leases, NIP-CTRL client pairing and commands, and NIP-CTX task frames and context receipts. |
+| [76. Work, coordination and control](ch076-work-coordination-and-control.md) | Runnable: native C | NIP-COORD atomic claims with fencing tokens and leases (renew, release, cancel, the dispatcher fence) and NIP-CTRL pairing, revocation and command admission with the JCS command fingerprint. NIP-WORK items and NIP-CTX frames, COORD proposals, reservations and findings, and CTRL reads are not built. |
 | [77. Capabilities, policy and extensions](ch077-capabilities-policy-and-extensions.md) | Unimplemented: design draft | NIP-CAP execution descriptions and bindings, NIP-POL inspectable host policy and approvals, NIP-EXT signed component packages, and NIP-REG curated plugin registries. |
 | [78. Runs, sessions, terminals and trajectories](ch078-runs-sessions-terminals-and-trajectories.md) | Unimplemented: design draft | NIP-RUN durable run journals with controller handoff, NIP-SESS engine sessions, NIP-TERM terminal sessions, and NIP-ATIF agent trajectories as manifests and chunks. |
 | [79. Agents, skills and automation](ch079-agents-skills-and-automation.md) | Unimplemented: design draft | NIP-AGENT saved agents (30187), NIP-SKILL published `SKILL.md` listings (30188), NIP-SOV sovereign agents with local custody, and NIP-AUTO scheduled and triggered work. |

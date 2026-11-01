@@ -1633,13 +1633,21 @@
    "number": 76,
    "title": "Work, coordination and control",
    "file": "ch076-work-coordination-and-control.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     75
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/coord/claim.coax",
+    "coax/lib/nostr/ctrl/command.coax",
+    "coax/lib/nostr/ctrl/fingerprint.coax",
+    "nostr/examples/checks/work-control.coax",
+    "nostr/examples/work-control.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

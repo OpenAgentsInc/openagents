@@ -1,0 +1,51 @@
+// CTRL command fingerprint: SHA-256 of the JCS form of the entire command,
+// written as a Digest, "sha256:" and 64 lowercase hex digits. NIP-CTRL
+// "Commands, ordering, and honest receipts"; the same rule gives NIP-WORK's
+// command fingerprint. Key order and whitespace on the wire do not change
+// it; any changed value does.
+//
+// It canonicalizes with jcs.coax (safe integers only, duplicate keys
+// refused) and writes the Digest with envelope.coax's ae_digest, the same
+// procedure that names an artifact's bytes. It does not check the
+// command's schema; ctrl/command.coax decides admission.
+//   coax/bin/coax test coax/lib/nostr/ctrl/fingerprint.coax --library
+#load "../envelope.coax";
+
+// book:begin print
+CF_OK :: cast(u32)0;
+CF_JSON :: cast(u32)1;  // not canonical JSON: jcs.coax refused it
+CF_ROOM :: cast(u32)2;  // out is not exactly 71 bytes
+CF_DIGEST :: 71;        // "sha256:" + 64 hex digits
+
+CtrlPrint :: struct {error:u32;canonical:int;}
+
+// Writes the Digest of text's JCS form to out, 71 bytes; canon is the work area.
+ctrl_fingerprint :: (text:string,canon:[]u8,out:[]u8)->CtrlPrint {
+  j:=jcs_canonicalize_checked(text,canon,false);
+  if j.error!=JCS_OK {return CtrlPrint.{error=CF_JSON};}
+  if ae_digest(canon[0..<j.written],out)!=AE_OK {return CtrlPrint.{error=CF_ROOM};}
+  return CtrlPrint.{error=CF_OK,canonical=j.written};
+}
+// book:end print
+
+// The example command, keys in wire order with spaces; its JCS form is 612
+// bytes. The digests were computed by Python's json (sort_keys, compact
+// separators) and hashlib, not by this file.
+CF_WIRE :: "{\"v\": \"openagents.task-command.v1\", \"requires\": [], \"command\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"grant\": {\"digest\": \"sha256:3333333333333333333333333333333333333333333333333333333333333333\", \"size\": 512, \"media_type\": \"application/json\", \"schema\": \"openagents.control-grant.v1\"}, \"epoch\": 0, \"scope\": {\"task\": \"4444444444444444444444444444444444444444444444444444444444444444\", \"controller\": \"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\", \"generation\": 3}, \"expected_revision\": 4, \"issued_at\": 1790000100, \"expires_at\": 1790000400, \"action\": \"cancel\", \"payload\": {\"reason\": \"stop the run\"}}";
+CF_PY :: "sha256:71fbe0a66f7f7fc085b5d2d08c8fa76cc7e5fe711941e7e80d76aad9f52c4636";
+
+#test "the example command's fingerprint, and its JCS length" {
+  canon:[1024]u8;out:[CF_DIGEST]u8;
+  p:=ctrl_fingerprint(CF_WIRE,canon[..],out[..]);
+  #assert p.error==CF_OK && p.canonical==612 && cast(string)out[..]==CF_PY;
+  #assert cast(string)canon[0..<10]=="{\"action\":";
+}
+#test "refusals: no room for the digest, and text that is not JSON" {
+  canon:[1024]u8;out:[80]u8;
+  #assert ctrl_fingerprint(CF_WIRE,canon[..],out[0..<70]).error==CF_ROOM;
+  #assert ctrl_fingerprint(CF_WIRE,canon[..],out[0..<72]).error==CF_ROOM;
+  #assert ctrl_fingerprint(CF_WIRE,canon[..],out[0..<71]).error==CF_OK;
+  #assert ctrl_fingerprint("{\"a\":1,\"a\":2}",canon[..],out[0..<71]).error==CF_JSON;
+  #assert ctrl_fingerprint("{\"a\":",canon[..],out[0..<71]).error==CF_JSON;
+  #assert CF_OK==0 && CF_JSON==1 && CF_ROOM==2 && CF_DIGEST==71;
+}

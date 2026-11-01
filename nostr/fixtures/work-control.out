@@ -1,0 +1,49 @@
+COORD: one document, two workers; the coordinator's epoch is 2, revision 10, longest lease 600 s
+T0 + 0: worker 3 claims at revision 10, until T0 + 300: accepted, token 1, revision 11
+T0 + 0: worker 7 claims at revision 10, until T0 + 300: stale
+T0 + 0: worker 7 claims at revision 11, until T0 + 300: conflict
+T0 + 100: worker 3 writes doc under epoch 2, token 1: accepted
+T0 + 100: worker 7 writes doc under epoch 2, token 1: not_admitted
+T0 + 250: worker 3 renews token 1: accepted, revision 12
+T0 + 250: worker 3 renews token 1: limit_exceeded
+worker 3 stops answering; its lease ends at T0 + 700
+T0 + 700: worker 3 writes doc under epoch 2, token 1: expired
+T0 + 710: worker 7 claims at revision 12, until T0 + 1010: conflict
+T0 + 710: worker 3 renews token 1: expired
+T0 + 715: worker 7 cancels token 1: not_admitted
+the owner fences worker 3's dispatcher, then releases its claim
+T0 + 720: the owner releases token 1: accepted, revision 13
+T0 + 720: worker 7 claims at revision 13, until T0 + 1020: accepted, token 2, revision 14
+T0 + 730: worker 3 writes doc under epoch 2, token 1: stale
+T0 + 730: worker 7 writes doc under epoch 2, token 2: accepted
+T0 + 900: worker 7 releases token 2: accepted, revision 15
+record: 2 claims, 3 holds, last token 2, revision 15
+CTRL: task 4444..., controller key 1, generation 3, frame revision 4
+fingerprint of the cancel command as sent (646 bytes, 612 in JCS form):
+  sha256:71fbe0a66f7f7fc085b5d2d08c8fa76cc7e5fe711941e7e80d76aad9f52c4636
+the same command in JCS form: the same fingerprint
+reason "stop the run now" instead: sha256:be4032700c6f319d5d5b632e88a612386e4dc245eb882a02c164a46f43876a9a
+a command with a duplicate key: refused, no fingerprint
+before pairing
+client 7 sends the cancel command: not_admitted
+client 3 sends it: not_admitted
+pairing: client 3 accepts cancel only
+client 7 relays client 3's response: not_admitted
+the wrong challenge: not_admitted
+asking for steer too: malformed
+the owner has not admitted it: not_admitted
+the owner admits it: accepted, grant 3333..., rights 4, epoch 0, T0 + 60 to T0 + 86400
+the same response again: duplicate: the retained result, no new effect
+commands, now = T0 + 120
+client 7 sends the cancel command: not_admitted
+client 3 sends it: accepted
+the authority records cancel_requested; the frame is now revision 5
+the same command again: duplicate: the retained result, no new effect
+the changed reason under the same command ID: idempotency_conflict
+a steer command: not_admitted
+a new cancel expecting revision 4: conflict
+the same, dated T0 + 130, at T0 + 431: expired
+after a handoff to generation 4: stale
+client 3 tries to revoke its own grant: not_admitted
+the owner revokes it: accepted, epoch 1
+the first command again: revoked
