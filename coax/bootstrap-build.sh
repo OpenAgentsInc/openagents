@@ -3,7 +3,13 @@
 # compiled to C11. Host C/C++ compilers and shell tools only.
 # Internal second-stage bootstrap, run on an isolated source snapshot.
 set -euo pipefail
-[[ $# == 1 && "$1" == --private-snapshot ]] || { echo 'internal private-snapshot bootstrap: use coax/build.sh' >&2; exit 2; }
+replay_input=""
+if [[ $# == 3 && "$1" == --private-replay-checker-cache ]]; then
+  replay_input="$2"
+  export COAX_CHECKER_MUTATION_SHARDS="$3"
+elif [[ $# != 1 || "$1" != --private-snapshot ]]; then
+  echo 'internal private-snapshot bootstrap: use coax/build.sh' >&2; exit 2
+fi
 export LC_ALL=C
 cd "$(dirname "$0")"
 root="$(cd .. && pwd -P)"
@@ -24,6 +30,16 @@ if grep -nE '\bex\([^;]*\bex\(' src/emit_c.cpp >&2; then
   echo 'src/emit_c.cpp: emit each operand into its own variable first, in source order (above)' >&2
   exit 1
 fi
+if [[ -n "$replay_input" ]]; then
+  replay_input="$(cd "$replay_input" && pwd -P)"
+  for artifact in stage0 proto_runtime.inc stage0.record; do
+    [[ -f "$replay_input/$artifact" && ! -L "$replay_input/$artifact" ]] || { echo "coax bootstrap: missing retained $artifact" >&2;exit 1; }
+  done
+  work="$(mktemp -d bin/.replay-XXXXXXXX)"
+  trap 'rm -rf "$work"' EXIT
+  cp "$replay_input/stage0" "$work/stage0"
+  cp "$replay_input/proto_runtime.inc" "$work/proto_runtime.inc"
+else
 work="bin/.bootstrap-$$"
 mkdir -p "$work"
 trap 'rm -rf "$work"' EXIT
@@ -47,6 +63,7 @@ trap 'rm -rf "$work"' EXIT
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/checker.c -o "$work/seed-checker.o"
 "${CC:-cc}" "${c_flags[@]}" -c bootstrap/sources.c -o "$work/seed-sources.o"
 "${CXX:-c++}" "${host_flags[@]}" -DCOAX_BOOTSTRAP_IMPORTER -I bootstrap -I "$work" -o "$work/stage0" src/main.cpp "$work/seed-check-domains.o" "$work/seed-mutation-schedule.o" "$work/seed-budget.o" "$work/seed-profiles.o" "$work/seed-lexer.o" "$work/seed-parser.o" "$work/seed-checker.o" "$work/seed-sources.o"
+fi
 # Gate results. A passing stage0 gate is kept in $COAX_GATE_CACHE (default
 # ~/.cache/coax-gates/) under a key that hashes stage0's inputs, the gate's
 # command and the bytes of every source the gate reads (`stage0 deps`). A gate
@@ -119,6 +136,18 @@ judge() {   # judge LABEL SURVIVORS: 0 when none of them gates
   printf '%s\n' "$gating" | sed 's/^/  /' >&2
   return 1
 }
+invoke_gate() {
+  # A manifest is only an input to the real supported merge. The original
+  # full mutation command remains the gate/cache identity, and gate() alone
+  # records a successful verdict. No partial record or caller pass bit waives it.
+  if [[ $# == 3 && "$1" == "$work/stage0" && "$2" == mutate && "$3" == lib/compiler/checker.coax && -n "${COAX_CHECKER_MUTATION_SHARDS:-}" ]]; then
+    gate_key "$@"
+    [[ -n "$closure" ]] || { echo 'coax bootstrap: cannot bind checker shard source closure' >&2;return 1; }
+    ./bootstrap-mutation-shards.sh "$COAX_CHECKER_MUTATION_SHARDS" "$1" "$closure" "$3"
+  else
+    "$@"
+  fi
+}
 gate() {
   local start=$SECONDS label="${*//"$work"\//}" key=""
   if [[ -n "$gate_cache" && "$1" == "$work/stage0" && ( "$2" == test || "$2" == mutate ) ]]; then
@@ -130,7 +159,7 @@ gate() {
       judge "$label" "$work/survivors"; return
     fi
   fi
-  if "$@" > "$work/gate.log" 2>&1; then
+  if invoke_gate "$@" > "$work/gate.log" 2>&1; then
     echo "coax bootstrap: $(printf '%5d' $((SECONDS - start))) s  $label"
     if [[ -n "$key" ]] && mkdir -p "$gate_cache" 2> /dev/null; then
       printf '%s\n' "$label" > "$gate_cache/.$key.$$" && mv "$gate_cache/.$key.$$" "$gate_cache/$key"
@@ -148,6 +177,19 @@ gate() {
   return 1
 }
 stage0_id="$(stage0_identity)"
+if [[ -n "$replay_input" ]]; then
+  {
+    IFS= read -r saved_schema; IFS= read -r saved_stage0; IFS= read -r saved_binary; IFS= read -r saved_input
+    if IFS= read -r extra || [[ -n "${extra:-}" ]]; then echo 'coax bootstrap: malformed retained stage0 record' >&2;exit 1;fi
+  } < "$replay_input/stage0.record"
+  [[ "$saved_schema" == coax-stage0-artifact-v1 && "$saved_stage0" == "$stage0_id" && "$saved_binary" == "$(sha < "$work/stage0")" && "$saved_input" == "$input_identity" ]] || { echo 'coax bootstrap: retained stage0 binary or input identity differs' >&2;exit 1; }
+  gate "$work/stage0" mutate lib/compiler/checker.coax
+  exit 0
+fi
+# Construction identity is not a pass: replay still requires the real complete
+# merge. Retaining it lets a bounded command finish that gate later through the
+# same gate/cache machinery without rebuilding a different debug-path binary.
+printf 'coax-stage0-artifact-v1\n%s\n%s\n%s\n' "$stage0_id" "$(sha < "$work/stage0")" "$input_identity" > "$work/stage0.record"
 # Validate release metadata before expensive compiler gates. Stage0 uses the
 # checked-in header seed; final publication must match the canonical Coax data.
 gate "$work/stage0" test release-model.coax

@@ -77,7 +77,7 @@ web/tool.sh tests/library-checks.coax "$(cd "$(dirname "$COAX")" && pwd -P)/$(ba
 library_checks_rc=$?
 python3 tests/release.py
 release_rc=$?
-python3 tests/mutation_schedule.py && python3 tests/mutation_parallel.py && python3 tests/mutation_scope.py && python3 tests/evidence.py && tests/mutation-gate.sh
+python3 tests/mutation_schedule.py && python3 tests/mutation_parallel.py && python3 tests/mutation_scope.py && python3 tests/evidence.py && python3 tests/bootstrap_mutation_shards.py && tests/mutation-gate.sh
 mutation_schedule_rc=$?
 python3 tests/build_profiles.py
 build_profiles_rc=$?

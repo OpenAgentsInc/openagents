@@ -35,7 +35,7 @@ class ProvenanceTests(unittest.TestCase):
   for name in ('src','bootstrap','lib/compiler','lib/proto'):
    shutil.copytree(ROOT/name,self.tree/'coax'/name)
   (self.tree/'coax/lib/crypto').mkdir();shutil.copy2(ROOT/'lib/crypto/sha256-kernel.coax',self.tree/'coax/lib/crypto/sha256-kernel.coax')
-  for name in ('build.sh','bootstrap-build.sh','mutation-gate.sh','check-proto-cap.sh','provenance.sh','provenance-bridge.c','release.coax','release-model.coax'):
+  for name in ('build.sh','bootstrap-build.sh','bootstrap-mutation-shards.sh','mutation-gate.sh','check-proto-cap.sh','provenance.sh','provenance-bridge.c','release.coax','release-model.coax'):
    shutil.copy2(ROOT/name,self.tree/'coax'/name)
   for name in RELEASE_DOCUMENTS+('changelog.coax','changelog-model.coax','changelog-bridge.c'):
    target=self.tree/'coax'/name;target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(ROOT/name,target)
@@ -55,7 +55,7 @@ class ProvenanceTests(unittest.TestCase):
   duplicate=Path(self.tmp.name)/'other';shutil.copytree(self.tree,duplicate)
   self.run_script('verify',duplicate,self.binary,self.helper_copy,self.record,success=True)
  def test_source_seed_and_added_input_are_rejected(self):
-  for relative in ('coax/src/eval.cpp','coax/bootstrap/budget.c','coax/lib/compiler/budget.coax','coax/build.sh'):
+  for relative in ('coax/src/eval.cpp','coax/bootstrap/budget.c','coax/lib/compiler/budget.coax','coax/build.sh','coax/bootstrap-mutation-shards.sh'):
    path=self.tree/relative;old=path.read_bytes();path.write_bytes(old+b'\n');self.verify(False);path.write_bytes(old)
   extra=self.tree/'coax/src/new.cpp';extra.write_text('// new compiler source\n');self.verify(False);extra.unlink();self.verify()
  def test_binary_helper_record_substitution_and_malformed_records_refuse(self):
