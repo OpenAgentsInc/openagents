@@ -1,0 +1,92 @@
+// Chapter 134: the caller's loops for the checks in psionic/lib/data-parallel.coax
+// and for psionic/examples/data-parallel.coax. Each rank runs here one after
+// another on this CPU, last rank first; the bits do not depend on that order.
+
+// A fault in one step (revision `step`) at one rank: its report is lost (the
+// rank was killed), says it failed, comes one micro-batch early, or comes twice.
+DpFault :: struct {step:int=-1;rank:int=-1;lost:bool;failed:bool;early:bool;again:bool;}
+// Why a loop stopped: the trainer's status (order when the ranks' sum was
+// refused, with the refusal and the rank named), the run, steps made, and
+// the revision of the last checkpoint written (-1: none).
+DpDrive :: struct {status:TrStatus;refused:DpStatus;rank:int=-1;run:TrRun;steps:int;saved:int=-1;}
+// Delivers rank's report into reports[count..], with the fault applied; returns the new count.
+dp_send :: (f:DpFault,revision:int,report:DpReport,reports:[]DpReport,count:int)->int {
+    x:=report;n:=count;
+    if f.step==revision && f.rank==report.rank {
+        if f.lost {return n;}
+        x.failed=f.failed;if f.early {x.done-=1;}
+        if f.again {reports[n]=x;n+=1;}
+    }
+    reports[n]=x;return n+1;
+}
+
+// book:begin drive
+// Chapter 118's loop for chapter 103's models, data parallel. Rank r runs
+// the model on its own micro-batches, each gradient in its own slot, and
+// reports at its accumulation boundary; dp_sum makes the step's sum and
+// chapter 118's tr_apply makes the step. A step with fewer micro-batches
+// than ranks (the end of an epoch) runs on as many ranks as it has.
+dp_tabular_drive :: (m:TbModel,c:TrConfig,x:[]f64,y:[]f64,rows:[]int,run:TrRun,p:[]f64,mo:[]f64,vo:[]f64,order:[]int,stop:int,ranks:int,bucket:int,fault:DpFault,losses:[]f64)->DpDrive {
+    out:=DpDrive.{run=run};n:=p.count;grads:[1288]f64;ml:[8]f64;msgs:[1288]f64;total:[161]f64;stage:[483]f64;none:[1]PkDoc;nothing:[1]u8;
+    while out.run.revision<stop {
+        b:=tr_next(c,out.run,none[..],nothing[..],nothing[..]);if b.status!=TrStatus.ok {out.status=b.status;return out;}
+        k:=tr_min(ranks,b.micro);plan:=dp_plan(k,b.micro,n,tr_min(bucket,n));reports:[16]DpReport;sent:=0;
+        for j:0..<k {r:=k-1-j;report:=DpReport.{rank=r,revision=b.revision};
+            for mb:dp_first(plan,r)..<dp_first(plan,r+1) {s:=tr_rows(c,b,mb);
+                ml[mb]=tm_tabular_step(m,p,x,y,rows,order[s.first..<s.first+s.count],grads[mb*n..<(mb+1)*n]);report.done+=1;}
+            sent=dp_send(fault,b.revision,report,reports[..],sent);}
+        s:=dp_sum(plan,b,reports[0..<sent],grads[0..<b.micro*n],ml[0..<b.micro],msgs[0..<k*n],total[0..<n]);
+        if s.status!=DpStatus.ok {out.status=TrStatus.order;out.refused=s.status;out.rank=s.rank;return out;}
+        a:=tr_apply(c,out.run,b,s.sum,p,mo,vo,total[0..<n],stage[0..<3*n],order);if a.status!=TrStatus.ok {out.status=a.status;return out;}
+        losses[out.steps]=a.loss;out.run=a.run;out.steps+=1;
+    }
+    return out;
+}
+// book:end drive
+
+DpTabularRun :: struct {drive:DpDrive;p:[161]f64;losses:[64]f64;}
+// A whole tabular run from chapter 103's initialization at seed init.
+dp_tabular_run :: (m:TbModel,init:u64,c:TrConfig,x:[]f64,y:[]f64,rows:[]int,ranks:int,bucket:int,fault:DpFault)->DpTabularRun {
+    out:DpTabularRun;n:=tb_param_count(m);order:[4096]int;mo:[161]f64;vo:[161]f64;none:[1]PkDoc;nothing:[1]u8;
+    tb_initialize(m,init,out.p[0..<n]);st:=tr_begin(c,n,none[0..<0],nothing[0..<0],order[..]);
+    out.drive=dp_tabular_drive(m,c,x,y,rows,st.run,out.p[0..<n],mo[0..<n],vo[0..<n],order[..],1048576,ranks,bucket,fault,out.losses[..]);
+    return out;
+}
+
+// Chapter 115's decoder at the checks' small shape (220 parameters, rows of
+// 8 tokens), data parallel. After every `every` committed steps the loop
+// writes a checkpoint (0: never).
+DpDecoderRun :: struct {drive:DpDrive;p:[220]f64;m:[220]f64;v:[220]f64;losses:[8]f64;bytes:[5620]u8;pointer:[80]u8;}
+dp_decoder_drive :: (f:TtFix,c:TrConfig,x:DpDecoderRun,stop:int,ranks:int,bucket:int,fault:DpFault,every:int)->DpDecoderRun {
+    s:=TT_SMALL;y:=x;g:=f;n:=220;w:[600]f64;dw:[600]f64;grads:[880]f64;ml:[4]f64;msgs:[880]f64;total:[220]f64;stage:[660]f64;rows:[32]u8;none:[1]int;
+    ids:=tr_ids(c,tt_model(s),ck_fill(2),ck_fill(3));y.drive.steps=0;
+    while y.drive.run.revision<stop {
+        b:=tr_next(c,y.drive.run,g.docs[..],g.tokens[0..<g.n],rows[..]);if b.status!=TrStatus.ok {y.drive.status=b.status;return y;}
+        plan:=dp_plan(ranks,b.micro,n,bucket);reports:[8]DpReport;sent:=0;
+        for j:0..<ranks {r:=ranks-1-j;report:=DpReport.{rank=r,revision=b.revision};
+            for mb:dp_first(plan,r)..<dp_first(plan,r+1) {sp:=tr_rows(c,b,mb);
+                d:=tm_decoder_step(s,y.p[..],rows[sp.first*c.length..<(sp.first+sp.count)*c.length],w[..],dw[..],grads[mb*n..<(mb+1)*n]);
+                ml[mb]=d.loss;report.done+=1;report.failed=report.failed || d.status!=TdStatus.ok;}
+            sent=dp_send(fault,b.revision,report,reports[..],sent);}
+        sum:=dp_sum(plan,b,reports[0..<sent],grads[0..<b.micro*n],ml[0..<b.micro],msgs[0..<ranks*n],total[..]);
+        if sum.status!=DpStatus.ok {y.drive.status=TrStatus.order;y.drive.refused=sum.status;y.drive.rank=sum.rank;return y;}
+        a:=tr_apply(c,y.drive.run,b,sum.sum,y.p[..],y.m[..],y.v[..],total[..],stage[..],none[0..<0]);if a.status!=TrStatus.ok {y.drive.status=a.status;return y;}
+        y.losses[y.drive.steps]=a.loss;y.drive.run=a.run;y.drive.steps+=1;
+        if every>0 && a.run.revision%every==0 {#assert tr_save(ids,a.run,y.p[..],y.m[..],y.v[..],y.bytes[..],y.pointer[..])==CkStatus.ok;y.drive.saved=a.run.revision;}
+    }
+    return y;
+}
+dp_decoder_run :: (f:TtFix,c:TrConfig,ranks:int,bucket:int,stop:int,fault:DpFault,every:int)->DpDecoderRun {
+    x:DpDecoderRun;g:=f;none:[1]int;seed:=td_init(TT_SMALL,CrSeed.{seed=TT_INIT},x.p[..]);
+    st:=tr_begin(c,220,g.docs[..],g.tokens[0..<g.n],none[0..<0]);x.drive.run=st.run;
+    return dp_decoder_drive(f,c,x,stop,ranks,bucket,fault,every);
+}
+// A fresh process: only the checkpoint of `from` survives. Resumes it into
+// new buffers and runs to `stop` on `ranks` ranks.
+dp_decoder_resume :: (f:TtFix,c:TrConfig,from:DpDecoderRun,ranks:int,bucket:int,stop:int)->DpDecoderRun {
+    x:DpDecoderRun;g:=f;old:=from;none:[1]int;ids:=tr_ids(c,tt_model(TT_SMALL),ck_fill(2),ck_fill(3));
+    back:=tr_resume(c,ids,old.pointer[..],old.bytes[..],g.docs[..],g.tokens[0..<g.n],x.p[..],x.m[..],x.v[..],none[0..<0]);
+    if back.status!=CkStatus.ok {x.drive.status=TrStatus.data;return x;}
+    x.drive.run=back.run;x.bytes=from.bytes;x.pointer=from.pointer;x.drive.saved=back.run.revision;
+    return dp_decoder_drive(f,c,x,stop,ranks,bucket,DpFault.{},0);
+}

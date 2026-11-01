@@ -1,0 +1,35 @@
+4 micro-batches over 3 ranks, 10 values in buckets of 4: admitted
+  rank 0 owns micro-batches 0 to 0
+  rank 1 owns micro-batches 1 to 1
+  rank 2 owns micro-batches 2 to 3
+  bucket 0 holds values 0 to 3
+  bucket 1 holds values 4 to 7
+  bucket 2 holds values 8 to 9
+hand example, 2 ranks: rank 0 sends 0.375 -0.5 2.25; the sum is 0.875 4.0 1.75, loss 5.0; equal to tr_add bit for bit: true
+overlap model, 3152 values on 4 ranks, 20 ns of backward a value, 25000 bytes a microsecond:
+  500 ns a hop, buckets of 3152: 1 buckets, backward 63040 ns, all-reduce after backward 72091 ns, overlapped 72091 ns
+  500 ns a hop, buckets of 1576: 2 buckets, backward 63040 ns, all-reduce after backward 75090 ns, overlapped 69065 ns
+  500 ns a hop, buckets of 1024: 4 buckets, backward 63040 ns, all-reduce after backward 81091 ns, overlapped 68006 ns
+  500 ns a hop, buckets of 512: 7 buckets, backward 63040 ns, all-reduce after backward 90091 ns, overlapped 67023 ns
+  500 ns a hop, buckets of 256: 13 buckets, backward 63040 ns, all-reduce after backward 108085 ns, overlapped 66531 ns
+  5000 ns a hop, buckets of 3152: 1 buckets, backward 63040 ns, all-reduce after backward 99091 ns, overlapped 99091 ns
+  5000 ns a hop, buckets of 1576: 2 buckets, backward 63040 ns, all-reduce after backward 129090 ns, overlapped 97570 ns
+  5000 ns a hop, buckets of 1024: 4 buckets, backward 63040 ns, all-reduce after backward 189091 ns, overlapped 127651 ns
+  5000 ns a hop, buckets of 512: 7 buckets, backward 63040 ns, all-reduce after backward 279091 ns, overlapped 217651 ns
+  5000 ns a hop, buckets of 256: 13 buckets, backward 63040 ns, all-reduce after backward 459085 ns, overlapped 397645 ns
+  the timeline at 500 ns a hop, buckets of 1024:
+    bucket 3 (80 values): backward done at 1600 ns, all-reduce from 1600 to 4753 ns
+    bucket 2 (1024 values): backward done at 22080 ns, all-reduce from 22080 to 27046 ns
+    bucket 1 (1024 values): backward done at 42560 ns, all-reduce from 42560 to 47526 ns
+    bucket 0 (1024 values): backward done at 63040 ns, all-reduce from 63040 to 68006 ns
+chapter 103's model, 120 rows: chapter 118's loop takes 10 steps, last loss 0.60276473860105
+  1 ranks, buckets of 1, 5 and 19: parameters and losses equal chapter 118's bit for bit: true
+  2 ranks, buckets of 1, 5 and 19: parameters and losses equal chapter 118's bit for bit: true
+  3 ranks, buckets of 1, 5 and 19: parameters and losses equal chapter 118's bit for bit: true
+  4 ranks, buckets of 1, 5 and 19: parameters and losses equal chapter 118's bit for bit: true
+chapter 115's decoder, 220 parameters, 4 steps: losses 2.9360807937186078 2.761001189796394 2.7895427091516334 2.733675497919888
+  2 ranks, buckets of 64: parameters, moments and losses equal 1 rank's bit for bit: true
+  3 ranks, buckets of 64: parameters, moments and losses equal 1 rank's bit for bit: true
+  4 ranks, buckets of 64: parameters, moments and losses equal 1 rank's bit for bit: true
+4 ranks, rank 1 killed in step 4: refused: a rank did not report, rank 1; the run stopped at revision 3, last checkpoint at 2
+  restarted from the checkpoint on 3 ranks: 2 steps, losses 2.7895427091516334 2.733675497919888; equal to the uninterrupted run: true

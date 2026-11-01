@@ -1,0 +1,308 @@
+// Chapter 134: data-parallel training for every model (data-parallel-v1).
+// Every rank holds the same parameters and moments. A step's micro-batches
+// (chapter 118's accumulation) are split over the ranks: rank r computes
+// the losses and gradients of a contiguous run of them with the model's
+// own code, and reports when it reaches its accumulation boundary. Only
+// then do the ranks all-reduce, bucket by bucket, in a fixed order that
+// makes chapter 118's tr_add sum exactly. The step itself is chapter
+// 118's tr_apply, unchanged, so any model the trainer drives can train
+// data parallel.
+//
+// This file decides who owns which micro-batches (dp_plan, dp_first), how
+// the gradient is cut into buckets (dp_span), whether every rank's report
+// is admitted (dp_gather), the order of every addition (dp_chain, dp_sum)
+// and, as a model, when each bucket's all-reduce can run while backward is
+// still producing the others (dp_schedule).
+#load "trainer-models.coax";
+#load "../tests/data-parallel-checks.coax";  // the checks' loops for chapter 103's and 115's models
+#authority;
+
+DpStatus :: enum u8 {ok;ranks;micro;bucket;batch;shape;missing;twice;stale;boundary;failed;}
+DP_RANKS :: 64;
+
+dp_status :: (s:DpStatus)->string {
+    if s==DpStatus.ok {return "admitted";}
+    if s==DpStatus.ranks {return "refused: from 1 to 64 ranks";}
+    if s==DpStatus.micro {return "refused: from 1 to 64 micro-batches a step, at least one a rank";}
+    if s==DpStatus.bucket {return "refused: a bucket holds from 1 value to the whole gradient";}
+    if s==DpStatus.batch {return "refused: the trainer gave no batch";}
+    if s==DpStatus.shape {return "refused: a buffer or timing input does not fit the plan";}
+    if s==DpStatus.missing {return "refused: a rank did not report";}
+    if s==DpStatus.twice {return "refused: a rank reported twice";}
+    if s==DpStatus.stale {return "refused: a rank reported for another step";}
+    if s==DpStatus.boundary {return "refused: a rank reported before its accumulation boundary";}
+    return "refused: a rank reported a failure";
+}
+
+// ---- Checks first. The caller's loops are in psionic/tests/data-parallel-checks.coax.
+#test "plans by hand, and every refusal" {
+    p:=dp_plan(3,4,10,4);#assert p.status==DpStatus.ok && p.ranks==3 && p.micro==4 && p.n==10 && p.bucket==4;
+    // 4 micro-batches over 3 ranks: 0 | 1 | 2, 3. Buckets of 4 values: 0-3, 4-7, 8-9.
+    #assert dp_first(p,0)==0 && dp_first(p,1)==1 && dp_first(p,2)==2 && dp_first(p,3)==4 && dp_buckets(p)==3;
+    #assert dp_span(p,0).first==0 && dp_span(p,0).count==4 && dp_span(p,1).first==4 && dp_span(p,1).count==4 && dp_span(p,2).first==8 && dp_span(p,2).count==2;
+    #assert dp_plan(1,1,1,1).status==DpStatus.ok && dp_plan(DP_RANKS,TR_ACCUMULATE,CK_VALUES,CK_VALUES).status==DpStatus.ok;
+    #assert dp_plan(0,4,10,4).status==DpStatus.ranks && dp_plan(DP_RANKS+1,TR_ACCUMULATE,10,4).status==DpStatus.ranks;
+    #assert dp_plan(5,4,10,4).status==DpStatus.micro && dp_plan(1,0,10,4).status==DpStatus.micro && dp_plan(1,TR_ACCUMULATE+1,10,4).status==DpStatus.micro;
+    #assert dp_plan(1,1,0,1).status==DpStatus.bucket && dp_plan(1,1,CK_VALUES+1,1).status==DpStatus.bucket && dp_plan(1,1,10,0).status==DpStatus.bucket && dp_plan(1,1,10,11).status==DpStatus.bucket;
+    #assert dp_plan(1,1,10,10).status==DpStatus.ok && dp_buckets(dp_plan(1,1,10,10))==1 && dp_buckets(dp_plan(1,1,10,1))==10 && dp_buckets(dp_plan(1,1,9,3))==3;
+    names:=[11]string.["admitted","refused: from 1 to 64 ranks","refused: from 1 to 64 micro-batches a step, at least one a rank","refused: a bucket holds from 1 value to the whole gradient",
+        "refused: the trainer gave no batch","refused: a buffer or timing input does not fit the plan","refused: a rank did not report","refused: a rank reported twice",
+        "refused: a rank reported for another step","refused: a rank reported before its accumulation boundary","refused: a rank reported a failure"];
+    for k:0..<11 {#assert dp_status(cast(DpStatus)k)==names[k];}
+}
+#forall "every micro-batch has one rank, every rank at least one, in order" ranks:1..<13,micro:1..<17 {
+    p:=dp_plan(ranks,micro,7,3);
+    if ranks>micro {#assert p.status==DpStatus.micro;}
+    else {
+        #assert p.status==DpStatus.ok && dp_first(p,0)==0 && dp_first(p,ranks)==micro;
+        for r:0..<ranks {#assert dp_first(p,r+1)>dp_first(p,r);}
+    }
+}
+#test "the chain by hand: each rank continues the running sum, bucket by bucket" {
+    // One step of 4 micro-batches over 2 ranks, 3 values, buckets of 2.
+    // Micro-batch gradients: rows of grads. The mean is each column / 4, row 0 first.
+    grads:=[12]f64.[1,2,3, 0.5,-4,6, -1,8,0, 3,10,-2];losses:=[4]f64.[4,8,2,6];
+    p:=dp_plan(2,4,3,2);msgs:[6]f64;total:[3]f64;
+    reports:=[2]DpReport.[DpReport.{rank=1,done=2},DpReport.{rank=0,done=2}];b:=TrBatch.{micro=4};
+    s:=dp_sum(p,b,reports[..],grads[..],losses[..],msgs[..],total[..]);
+    #assert s.status==DpStatus.ok && s.rank==-1 && s.sum.status==TrStatus.ok && s.sum.micro==4 && s.sum.loss==5;
+    // Rank 0 sends 1/4 + 0.5/4 = 0.375; rank 1 continues: 0.375 - 0.25 + 0.75 = 0.875.
+    #assert msgs[0]==0.375 && msgs[3]==0.875 && total[0]==0.875;
+    #assert msgs[1]==-0.5 && msgs[4]==4 && total[1]==4 && msgs[2]==2.25 && msgs[5]==1.75 && total[2]==1.75;
+    // The same sums as chapter 118's tr_add over the four micro-batches.
+    want:[3]f64;t:TrSum;for k:0..<4 {t=tr_add(b,t,losses[k],grads[3*k..<3*k+3],want[..]);}
+    #assert tr_same(total[..],want[..]) && f64_bits(t.loss)==f64_bits(s.sum.loss);
+    // A rounding trace: 1e16, 1, -1e16 and 1 over two ranks. Chapter 118's order
+    // gives 0.25 (2.5e15 + 0.25 rounds to 2.5e15); so does every rank count.
+    big:=[4]f64.[1e16,1,-1e16,1];one:[1]f64;m:[4]f64;
+    for ranks:1..<5 {q:=dp_plan(ranks,4,1,1);rs:[4]DpReport;for r:0..<ranks {rs[r]=DpReport.{rank=r,done=dp_first(q,r+1)-dp_first(q,r)};}
+        #assert dp_sum(q,b,rs[0..<ranks],big[..],losses[..],m[0..<ranks],one[..]).status==DpStatus.ok && one[0]==0.25;}
+}
+#forall "any rank count and bucket size give tr_add's bits" ranks:1..<7,bucket:1..<10 {
+    grads:[72]f64;losses:[8]f64;want:[9]f64;b:=TrBatch.{micro=8};t:TrSum;
+    for k:0..<72 {grads[k]=f64((k*37)%23-11)/f64(k%7+3)*1e-3*f64(1+(k%5)*1000000);}
+    for k:0..<8 {losses[k]=f64(k*k+1)/7;t=tr_add(b,t,losses[k],grads[9*k..<9*k+9],want[..]);}
+    p:=dp_plan(ranks,8,9,bucket);rs:[8]DpReport;for r:0..<ranks {rs[r]=DpReport.{rank=ranks-1-r,done=dp_first(p,ranks-r)-dp_first(p,ranks-1-r)};}
+    msgs:[54]f64;total:[9]f64;s:=dp_sum(p,b,rs[0..<ranks],grads[..],losses[..],msgs[0..<9*ranks],total[..]);
+    #assert s.status==DpStatus.ok && tr_same(total[..],want[..]) && f64_bits(s.sum.loss)==f64_bits(t.loss);
+}
+#test "reports are admitted only when every rank reached its boundary once, for this step" {
+    p:=dp_plan(3,4,2,1);b:=TrBatch.{revision=5,micro=4};grads:[8]f64;losses:[4]f64;msgs:[6]f64;total:[2]f64;
+    for k:0..<8 {grads[k]=f64(k);}
+    good:=[3]DpReport.[DpReport.{rank=2,revision=5,done=2},DpReport.{rank=0,revision=5,done=1},DpReport.{rank=1,revision=5,done=1}];
+    #assert dp_gather(p,b,good[..]).status==DpStatus.ok && dp_gather(p,b,good[..]).rank==-1;
+    r:[4]DpReport;
+    for k:0..<3 {r[k]=good[k];}r[1].failed=true;#assert dp_gather(p,b,r[0..<3]).status==DpStatus.failed && dp_gather(p,b,r[0..<3]).rank==0;
+    for k:0..<3 {r[k]=good[k];}r[2].revision=4;#assert dp_gather(p,b,r[0..<3]).status==DpStatus.stale && dp_gather(p,b,r[0..<3]).rank==1;
+    for k:0..<3 {r[k]=good[k];}r[0].done=1;#assert dp_gather(p,b,r[0..<3]).status==DpStatus.boundary && dp_gather(p,b,r[0..<3]).rank==2;
+    for k:0..<3 {r[k]=good[k];}r[1].done=2;#assert dp_gather(p,b,r[0..<3]).status==DpStatus.boundary && dp_gather(p,b,r[0..<3]).rank==0;
+    #assert dp_gather(p,b,good[0..<2]).status==DpStatus.missing && dp_gather(p,b,good[0..<2]).rank==1;
+    #assert dp_gather(p,b,good[1..<3]).status==DpStatus.missing && dp_gather(p,b,good[1..<3]).rank==2;
+    for k:0..<3 {r[k]=good[k];}r[3]=good[2];#assert dp_gather(p,b,r[0..<4]).status==DpStatus.twice && dp_gather(p,b,r[0..<4]).rank==1;
+    for k:0..<3 {r[k]=good[k];}r[0].rank=3;#assert dp_gather(p,b,r[0..<3]).status==DpStatus.stale && dp_gather(p,b,r[0..<3]).rank==3;
+    for k:0..<3 {r[k]=good[k];}r[0].rank=-1;#assert dp_gather(p,b,r[0..<3]).status==DpStatus.stale && dp_gather(p,b,r[0..<3]).rank==-1;
+    // Several faults: the lowest rank at fault is named, in any arrival order.
+    for k:0..<3 {r[k]=good[k];}r[0].failed=true;r[2].revision=9;#assert dp_gather(p,b,r[0..<3]).status==DpStatus.stale && dp_gather(p,b,r[0..<3]).rank==1;
+    // The plan and the batch are checked first.
+    #assert dp_gather(dp_plan(0,4,2,1),b,good[..]).status==DpStatus.ranks;
+    #assert dp_gather(p,TrBatch.{revision=5,micro=3},good[..]).status==DpStatus.micro;
+    #assert dp_gather(p,TrBatch.{status=TrStatus.done,revision=5,micro=4},good[..]).status==DpStatus.batch;
+    // A refused sum writes nothing and hands tr_apply a sum it refuses.
+    for k:0..<6 {msgs[k]=-7;}total[0]=-7;total[1]=-7;
+    s:=dp_sum(p,b,good[0..<2],grads[..],losses[..],msgs[..],total[..]);
+    #assert s.status==DpStatus.missing && s.rank==1 && s.sum.status==TrStatus.order && s.sum.micro==0;
+    for k:0..<6 {#assert msgs[k]==-7;}#assert total[0]==-7 && total[1]==-7;
+    // Buffers that do not fit the plan.
+    #assert dp_sum(p,b,good[..],grads[0..<6],losses[..],msgs[..],total[..]).status==DpStatus.shape;
+    #assert dp_sum(p,b,good[..],grads[..],losses[0..<3],msgs[..],total[..]).status==DpStatus.shape;
+    #assert dp_sum(p,b,good[..],grads[..],losses[..],msgs[0..<4],total[..]).status==DpStatus.shape;
+    #assert dp_sum(p,b,good[..],grads[..],losses[..],msgs[..],total[0..<1]).status==DpStatus.shape;
+    #assert dp_sum(p,b,good[..],grads[..],losses[..],msgs[..],total[..]).status==DpStatus.ok && total[1]==4;
+}
+#test "the overlap timeline by hand: 3152 values, 4 ranks, buckets of 1024" {
+    // 20 ns of backward a value; 500 ns a hop; 25000 bytes a microsecond.
+    p:=dp_plan(4,4,3152,1024);start:[4]int;end:[4]int;
+    // A full bucket: 6 hops, each 500 ns plus 8192 bytes: 3000 + 49152000/25000 = 3000 + 1966.
+    #assert dp_comm(p,0,500,25000)==4966 && dp_comm(p,3,500,25000)==3153 && dp_comm(dp_plan(1,4,3152,1024),0,500,25000)==0;
+    t:=dp_schedule(p,20,500,25000,start[..],end[..]);
+    #assert t.status==DpStatus.ok && t.backward==63040 && t.serial==81091 && t.overlap==68006;
+    // Backward finishes the last bucket first: 80 values at 1600 ns, then 1024 more each.
+    #assert start[3]==1600 && end[3]==4753 && start[2]==22080 && end[2]==27046 && start[1]==42560 && end[1]==47526 && start[0]==63040 && end[0]==68006;
+    // One bucket cannot overlap: 6 hops of 25216 bytes, 3000 + 6051.
+    one:[1]int;two:[1]int;u:=dp_schedule(dp_plan(4,4,3152,3152),20,500,25000,one[..],two[..]);
+    #assert u.backward==63040 && u.serial==72091 && u.overlap==72091 && one[0]==63040 && two[0]==72091;
+    // At 5000 ns a hop the hops dominate: four buckets lose to one.
+    #assert dp_schedule(p,20,5000,25000,start[..],end[..]).overlap==127651 && dp_schedule(p,20,5000,25000,start[..],end[..]).serial==189091;
+    #assert start[2]==31753 && end[0]==127651;
+    // A link slower than backward: each bucket waits for the one before it.
+    s:=dp_schedule(dp_plan(2,2,4,2),1,0,8,start[0..<2],end[0..<2]);
+    #assert s.backward==4 && start[1]==2 && end[1]==4002 && start[0]==4002 && end[0]==8002 && s.overlap==8002 && s.serial==8004;
+    // Inputs that do not fit, and a refused plan.
+    #assert dp_schedule(dp_plan(5,4,3152,1024),20,500,25000,start[..],end[..]).status==DpStatus.micro;
+    #assert dp_schedule(p,-1,500,25000,start[..],end[..]).status==DpStatus.shape && dp_schedule(p,20,-1,25000,start[..],end[..]).status==DpStatus.shape;
+    #assert dp_schedule(p,20,500,0,start[..],end[..]).status==DpStatus.shape && dp_schedule(p,20,500,25000,start[0..<3],end[..]).status==DpStatus.shape && dp_schedule(p,20,500,25000,start[..],end[0..<3]).status==DpStatus.shape;
+    #assert dp_schedule(p,0,0,1,start[..],end[..]).status==DpStatus.ok;
+    // One rank sends nothing; with no backward time every bucket is done at 0.
+    z:=dp_schedule(dp_plan(1,1,4,2),0,0,1,start[0..<2],end[0..<2]);#assert z.status==DpStatus.ok && start[1]==0 && end[1]==0 && start[0]==0 && z.overlap==0 && z.serial==0;
+    #assert dp_max(3,5)==5 && dp_max(5,3)==5 && dp_max(-2,-2)==-2;
+}
+#test "chapter 103's models train data parallel to chapter 118's bits at every rank count and bucket size" #steps 4000000000 {
+    t:=tm_table();x:=t.xs[0..<4*t.all];y:=t.y[0..<t.all];rows:=t.rows[0..<t.n];
+    m:=TbModel.{features=4,hidden=3,logistic=true};c:=TbConfig.{epochs=2,batch=7,rate=0.5,decay=0.01,init_seed=3,shuffle_seed=4};
+    tc:=tm_tabular(m,c,t.n);tc.accumulate=4;n:=tb_param_count(m);#assert n==19;
+    want:=dp_tabular_run(m,c.init_seed,tc,x,y,rows,1,19,DpFault.{});#assert want.drive.status==TrStatus.done && want.drive.steps==tr_steps(tc);
+    // Chapter 118's own loop gives the same bits.
+    ref:[19]f64;mo:[19]f64;vo:[19]f64;order:[192]int;losses:[64]f64;none:[1]PkDoc;nothing:[1]u8;
+    tb_initialize(m,c.init_seed,ref[..]);st:=tr_begin(tc,n,none[0..<0],nothing[0..<0],order[..]);
+    o:=tm_tabular_drive(m,tc,x,y,rows,rows,st.run,ref[..],mo[..],vo[..],order[..],1048576,losses[..]);
+    #assert o.status==TrStatus.done && tr_same(ref[..],want.p[0..<n]) && tr_same(losses[0..<o.steps],want.losses[0..<o.steps]);
+    for ranks:[4]int.[1,2,3,4] {for bucket:[3]int.[1,5,19] {
+        got:=dp_tabular_run(m,c.init_seed,tc,x,y,rows,ranks,bucket,DpFault.{});
+        #assert got.drive.status==TrStatus.done && tr_same(got.p[0..<n],want.p[0..<n]) && tr_same(got.losses[0..<o.steps],want.losses[0..<o.steps]);}}
+    // The last step of each epoch has fewer micro-batches than 4 ranks; the drive runs it on fewer.
+    #assert tr_ceil(t.n,7)%4==2;
+}
+#test "the mean of equal micro-batches' gradients is the combined batch's gradient, within 1e-12" #steps 4000000000 {
+    t:=tm_table();x:=t.xs[0..<4*t.all];y:=t.y[0..<t.all];rows:=t.rows[0..<t.n];
+    m:=TbModel.{features=4,hidden=3,logistic=true};p:[19]f64;tb_initialize(m,3,p[..]);
+    // Four micro-batches of 5 rows over 2 ranks, against one gradient over all 20 rows.
+    grads:[76]f64;losses:[4]f64;idx:[20]int;for k:0..<20 {idx[k]=rows[k];}
+    for k:0..<4 {tb_gradient(m,p[..],x,y,idx[5*k..<5*k+5],grads[19*k..<19*k+19]);losses[k]=tb_loss(m,p[..],x,y,idx[5*k..<5*k+5]);}
+    q:=dp_plan(2,4,19,8);rs:=[2]DpReport.[DpReport.{rank=0,done=2},DpReport.{rank=1,done=2}];msgs:[38]f64;total:[19]f64;
+    s:=dp_sum(q,TrBatch.{micro=4},rs[..],grads[..],losses[..],msgs[..],total[..]);#assert s.status==DpStatus.ok;
+    whole:[19]f64;tb_gradient(m,p[..],x,y,idx[..],whole[..]);far:=0;differ:=0;
+    for i:0..<19 {if f64_bits(whole[i])!=f64_bits(total[i]) {differ+=1;}if !(abs(whole[i]-total[i])<=1e-12*(1+abs(whole[i]))) {far+=1;}}
+    #assert far==0 && differ>0;
+    #assert abs(s.sum.loss-tb_loss(m,p[..],x,y,idx[..]))<=1e-12;
+}
+#test "chapter 115's decoder trains data parallel to chapter 118's bits, and a failed rank restarts from the checkpoint" #steps 4000000000 {
+    f:=tt_fix();s:=TT_SMALL;c:=tm_decoder(s,4);
+    ref:=dp_decoder_run(f,c,1,220,4,DpFault.{},0);#assert ref.drive.status==TrStatus.ok && ref.drive.steps==4 && ref.drive.saved==-1;
+    // Chapter 118's own loop.
+    q:[220]f64;qm:[220]f64;qv:[220]f64;got:[4]f64;none:[1]int;held:[1]int;seed:=td_init(s,CrSeed.{seed=TT_INIT},q[..]);
+    st:=tr_begin(c,220,f.docs[..],f.tokens[0..<f.n],none[0..<0]);#assert st.status==TrStatus.ok;
+    o:=tm_decoder_drive(s,c,f.docs[..],f.tokens[0..<f.n],held[0..<0],st.run,q[..],qm[..],qv[..],4,got[..]);
+    #assert o.status==TrStatus.ok && tr_same(q[..],ref.p[..]) && tr_same(qm[..],ref.m[..]) && tr_same(qv[..],ref.v[..]) && tr_same(got[..],ref.losses[0..<4]);
+    for ranks:1..<5 {for bucket:[3]int.[7,64,220] {r:=dp_decoder_run(f,c,ranks,bucket,4,DpFault.{},0);
+        #assert r.drive.status==TrStatus.ok && tr_same(r.p[..],ref.p[..]) && tr_same(r.m[..],ref.m[..]) && tr_same(r.v[..],ref.v[..]) && tr_same(r.losses[0..<4],ref.losses[0..<4]);}}
+    // Checkpoints every 2 steps. Rank 1 is killed during step 4 (revision 3):
+    // its report never comes, the step is refused and writes nothing, and the
+    // run restarts from the checkpoint after step 2, on 3 ranks.
+    k:=dp_decoder_run(f,c,4,64,4,DpFault.{step=3,rank=1,lost=true},2);
+    #assert k.drive.status==TrStatus.order && k.drive.refused==DpStatus.missing && k.drive.rank==1 && k.drive.run.revision==3 && k.drive.steps==3 && k.drive.saved==2;
+    three:=dp_decoder_run(f,c,4,64,3,DpFault.{},0);#assert tr_same(k.p[..],three.p[..]) && tr_same(k.m[..],three.m[..]) && tr_same(k.v[..],three.v[..]);
+    back:=dp_decoder_resume(f,c,k,3,64,4);
+    #assert back.drive.status==TrStatus.ok && back.drive.steps==2 && tr_same(back.p[..],ref.p[..]) && tr_same(back.m[..],ref.m[..]) && tr_same(back.v[..],ref.v[..]);
+    #assert f64_bits(back.losses[1])==f64_bits(ref.losses[3]);
+    // A record that was never written does not resume.
+    #assert dp_decoder_resume(f,c,dp_decoder_run(f,c,4,64,4,DpFault.{step=1,rank=1,lost=true},2),3,64,4).drive.status==TrStatus.data;
+    faults:=[3]DpFault.[DpFault.{step=0,rank=3,failed=true},DpFault.{step=1,rank=0,early=true},DpFault.{step=2,rank=2,again=true}];
+    statuses:=[3]DpStatus.[DpStatus.failed,DpStatus.boundary,DpStatus.twice];
+    for j:0..<3 {e:=dp_decoder_run(f,c,4,64,4,faults[j],0);
+        #assert e.drive.status==TrStatus.order && e.drive.refused==statuses[j] && e.drive.rank==faults[j].rank && e.drive.run.revision==faults[j].step;}
+}
+
+// book:begin plan
+// Micro-batches of a step over ranks: rank r owns micro-batches dp_first(r)
+// up to dp_first(r+1), a contiguous run, and every rank owns at least one.
+// The gradient's n values are cut into buckets of `bucket` values, the last
+// one shorter when bucket does not divide n.
+DpPlan :: struct {status:DpStatus;ranks:int;micro:int;n:int;bucket:int;}
+dp_plan :: (ranks:int,micro:int,n:int,bucket:int)->DpPlan {
+    p:=DpPlan.{ranks=ranks,micro=micro,n=n,bucket=bucket};
+    if ranks<1 || ranks>DP_RANKS {p.status=DpStatus.ranks;return p;}
+    if micro<ranks || micro>TR_ACCUMULATE {p.status=DpStatus.micro;return p;}
+    if n<1 || n>CK_VALUES || bucket<1 || bucket>n {p.status=DpStatus.bucket;}
+    return p;
+}
+dp_first :: (p:DpPlan,r:int)->int {return r*p.micro/p.ranks;}
+dp_buckets :: (p:DpPlan)->int {return tr_ceil(p.n,p.bucket);}
+dp_span :: (p:DpPlan,k:int)->TrSpan {first:=k*p.bucket;return TrSpan.{first=first,count=tr_min(p.bucket,p.n-first)};}
+// book:end plan
+
+// book:begin gather
+// What a rank says at its accumulation boundary: who it is, the step it
+// computed, how many micro-batches it finished, and whether it failed.
+DpReport :: struct {rank:int;revision:int;done:int;failed:bool;}
+DpGather :: struct {status:DpStatus;rank:int=-1;}
+// Admits a step's reports, in any arrival order. Every rank must report
+// exactly once, for this step, with all its micro-batches done and no
+// failure. A refusal names the lowest rank at fault.
+dp_gather :: (p:DpPlan,b:TrBatch,reports:[]DpReport)->DpGather {
+    if p.status!=DpStatus.ok {return DpGather.{status=p.status};}
+    if b.status!=TrStatus.ok {return DpGather.{status=DpStatus.batch};}
+    if b.micro!=p.micro {return DpGather.{status=DpStatus.micro};}
+    seen:[64]int;
+    for x:reports {if x.rank<0 || x.rank>=p.ranks {return DpGather.{status=DpStatus.stale,rank=x.rank};}seen[x.rank]+=1;}
+    for r:0..<p.ranks {
+        g:=DpGather.{rank=r};
+        if seen[r]==0 {g.status=DpStatus.missing;return g;}
+        if seen[r]>1 {g.status=DpStatus.twice;return g;}
+        for x:reports {if x.rank==r {
+            if x.failed {g.status=DpStatus.failed;return g;}
+            if x.revision!=b.revision {g.status=DpStatus.stale;return g;}
+            if x.done!=dp_first(p,r+1)-dp_first(p,r) {g.status=DpStatus.boundary;return g;}}}
+    }
+    return DpGather.{};
+}
+// book:end gather
+
+// book:begin reduce
+// Rank r's part of bucket k: take the running sum from rank r-1 (rank 0
+// starts at zero), add this rank's micro-batch gradients divided by the
+// step's micro-batch count, in order, and pass the sum on in rank r's slot
+// of msgs. grads holds micro-batch m's gradient at m*n.
+dp_chain :: (p:DpPlan,r:int,k:int,grads:[]f64,msgs:[]f64) {
+    s:=dp_span(p,k);count:=f64(p.micro);
+    for i:s.first..<s.first+s.count {
+        acc:=0.0;if r>0 {acc=msgs[(r-1)*p.n+i];}
+        for m:dp_first(p,r)..<dp_first(p,r+1) {acc+=grads[m*p.n+i]/count;}
+        msgs[r*p.n+i]=acc;
+    }
+}
+DpSum :: struct {status:DpStatus;rank:int=-1;sum:TrSum;}
+// The step's sum, once every report is in: each bucket's chain, last bucket
+// first (the order backward finishes them), and the loss in micro-batch
+// order. The result is chapter 118's tr_add sum, bit for bit, for any rank
+// count and bucket size, and goes to tr_apply unchanged. A refusal writes
+// nothing and returns a sum tr_apply refuses.
+dp_sum :: (p:DpPlan,b:TrBatch,reports:[]DpReport,grads:[]f64,losses:[]f64,msgs:[]f64,total:[]f64)->DpSum {
+    g:=dp_gather(p,b,reports);if g.status!=DpStatus.ok {return DpSum.{status=g.status,rank=g.rank,sum=TrSum.{status=TrStatus.order}};}
+    if grads.count!=p.micro*p.n || losses.count!=p.micro || msgs.count!=p.ranks*p.n || total.count!=p.n {return DpSum.{status=DpStatus.shape,sum=TrSum.{status=TrStatus.order}};}
+    nb:=dp_buckets(p);
+    for j:0..<nb {k:=nb-1-j;
+        for r:0..<p.ranks {dp_chain(p,r,k,grads,msgs);}
+        s:=dp_span(p,k);for i:s.first..<s.first+s.count {total[i]=msgs[(p.ranks-1)*p.n+i];}
+    }
+    count:=f64(p.micro);loss:=0.0;for m:0..<p.micro {loss+=losses[m]/count;}
+    return DpSum.{sum=TrSum.{micro=p.micro,loss=loss}};
+}
+// book:end reduce
+
+// book:begin schedule
+// The overlap model, in nanoseconds from the start of the step's last
+// backward pass (earlier micro-batches send nothing: their gradients stay
+// on the rank until its accumulation boundary). Backward takes `per` ns a
+// value and finishes the last bucket first. Bucket k's chain all-reduce is
+// 2(ranks-1) hops in a row, each `latency` ns plus the bucket's bytes at
+// `bandwidth` bytes a microsecond. One link: a bucket starts when backward
+// has produced it and the bucket before it has finished.
+DpTime :: struct {status:DpStatus;backward:int;serial:int;overlap:int;}
+dp_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+dp_comm :: (p:DpPlan,k:int,latency:int,bandwidth:int)->int {
+    hops:=2*(p.ranks-1);return hops*latency+hops*dp_span(p,k).count*8*1000/bandwidth;
+}
+// start and end receive each bucket's all-reduce times. serial is the step
+// when every all-reduce waits for the whole backward; overlap when each
+// starts as soon as it can.
+dp_schedule :: (p:DpPlan,per:int,latency:int,bandwidth:int,start:[]int,end:[]int)->DpTime {
+    t:=DpTime.{status=p.status};if p.status!=DpStatus.ok {return t;}
+    nb:=dp_buckets(p);
+    if per<0 || latency<0 || bandwidth<1 || start.count!=nb || end.count!=nb {t.status=DpStatus.shape;return t;}
+    ready:=0;free:=0;comm:=0;
+    for j:0..<nb {k:=nb-1-j;c:=dp_comm(p,k,latency,bandwidth);
+        ready+=dp_span(p,k).count*per;start[k]=dp_max(ready,free);end[k]=start[k]+c;free=end[k];comm+=c;}
+    t.backward=ready;t.serial=ready+comm;t.overlap=free;
+    return t;
+}
+// book:end schedule

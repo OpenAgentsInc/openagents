@@ -2091,6 +2091,28 @@
       "timeout": 300
     },
     {
+      "source": "psionic/examples/data-parallel.coax",
+      "chapter": "psionic/book/ch134-data-parallel-training.md",
+      "stdout": "psionic/fixtures/data-parallel.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
+      "source": "psionic/examples/data-parallel-refuse.coax",
+      "chapter": "psionic/book/ch134-data-parallel-training.md",
+      "stdout": "psionic/fixtures/data-parallel-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 300
+    },
+    {
       "source": "psionic/examples/pretrain.coax",
       "chapter": "psionic/book/ch128-a-complete-pretraining-run.md",
       "stdout": "psionic/fixtures/pretrain.out",

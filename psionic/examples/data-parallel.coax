@@ -1,0 +1,51 @@
+#import "Basic";
+#load "../lib/data-parallel.coax";
+
+// book:begin example
+// Chapter 134: chapter 118's trainer, data parallel. The ranks run one after
+// another on this CPU, last rank first; the bits do not depend on that.
+main :: () {
+    p:=dp_plan(3,4,10,4);print("4 micro-batches over 3 ranks, 10 values in buckets of 4: %\n",dp_status(p.status));
+    for r:0..<3 {print("  rank % owns micro-batches % to %\n",r,dp_first(p,r),dp_first(p,r+1)-1);}
+    for k:0..<dp_buckets(p) {s:=dp_span(p,k);print("  bucket % holds values % to %\n",k,s.first,s.first+s.count-1);}
+
+    // The hand example: 4 micro-batches of 3 values over 2 ranks, buckets of 2.
+    grads:=[12]f64.[1,2,3, 0.5,-4,6, -1,8,0, 3,10,-2];losses:=[4]f64.[4,8,2,6];msgs:[6]f64;total:[3]f64;b:=TrBatch.{micro=4};
+    reports:=[2]DpReport.[DpReport.{rank=1,done=2},DpReport.{rank=0,done=2}];
+    s:=dp_sum(dp_plan(2,4,3,2),b,reports[..],grads[..],losses[..],msgs[..],total[..]);
+    want:[3]f64;t:TrSum;for k:0..<4 {t=tr_add(b,t,losses[k],grads[3*k..<3*k+3],want[..]);}
+    print("hand example, 2 ranks: rank 0 sends % % %; the sum is % % %, loss %; equal to tr_add bit for bit: %\n",
+        msgs[0],msgs[1],msgs[2],total[0],total[1],total[2],s.sum.loss,tr_same(total[..],want[..]) && f64_bits(t.loss)==f64_bits(s.sum.loss));
+
+    print("overlap model, 3152 values on 4 ranks, 20 ns of backward a value, 25000 bytes a microsecond:\n");
+    for latency:[2]int.[500,5000] {
+        for bucket:[5]int.[3152,1576,1024,512,256] {q:=dp_plan(4,4,3152,bucket);start:[13]int;end:[13]int;nb:=dp_buckets(q);
+            x:=dp_schedule(q,20,latency,25000,start[0..<nb],end[0..<nb]);
+            print("  % ns a hop, buckets of %: % buckets, backward % ns, all-reduce after backward % ns, overlapped % ns\n",latency,bucket,nb,x.backward,x.serial,x.overlap);}}
+    q:=dp_plan(4,4,3152,1024);start:[4]int;end:[4]int;x:=dp_schedule(q,20,500,25000,start[..],end[..]);
+    print("  the timeline at 500 ns a hop, buckets of 1024:\n");
+    ready:=0;for j:0..<4 {k:=3-j;ready+=dp_span(q,k).count*20;print("    bucket % (% values): backward done at % ns, all-reduce from % to % ns\n",k,dp_span(q,k).count,ready,start[k],end[k]);}
+
+    // Chapter 103's two-layer model, 4 micro-batches of 7 rows a step, 2 epochs.
+    tt:=tm_table();xs:=tt.xs[0..<4*tt.all];y:=tt.y[0..<tt.all];rows:=tt.rows[0..<tt.n];
+    m:=TbModel.{features=4,hidden=3,logistic=true};tc:=tm_tabular(m,TbConfig.{epochs=2,batch=7,rate=0.5,decay=0.01,init_seed=3,shuffle_seed=4},tt.n);tc.accumulate=4;
+    ref:[19]f64;mo:[19]f64;vo:[19]f64;order:[192]int;rl:[64]f64;none:[1]PkDoc;nothing:[1]u8;tb_initialize(m,3,ref[..]);
+    o:=tm_tabular_drive(m,tc,xs,y,rows,rows,tr_begin(tc,19,none[0..<0],nothing[0..<0],order[..]).run,ref[..],mo[..],vo[..],order[..],1048576,rl[..]);
+    print("chapter 103's model, % rows: chapter 118's loop takes % steps, last loss %\n",tt.n,o.steps,rl[o.steps-1]);
+    for ranks:1..<5 {same:=true;for bucket:[3]int.[1,5,19] {r:=dp_tabular_run(m,3,tc,xs,y,rows,ranks,bucket,DpFault.{});same=same && r.drive.status==TrStatus.done && tr_same(r.p[0..<19],ref[..]) && tr_same(r.losses[0..<o.steps],rl[0..<o.steps]);}
+        print("  % ranks, buckets of 1, 5 and 19: parameters and losses equal chapter 118's bit for bit: %\n",ranks,same);}
+
+    // Chapter 115's decoder at the checks' small shape, 4 rows a step.
+    f:=tt_fix();c:=tm_decoder(TT_SMALL,4);one:=dp_decoder_run(f,c,1,220,4,DpFault.{},0);
+    print("chapter 115's decoder, 220 parameters, 4 steps: losses % % % %\n",one.losses[0],one.losses[1],one.losses[2],one.losses[3]);
+    for ranks:2..<5 {r:=dp_decoder_run(f,c,ranks,64,4,DpFault.{},0);
+        print("  % ranks, buckets of 64: parameters, moments and losses equal 1 rank's bit for bit: %\n",ranks,tr_same(r.p[..],one.p[..]) && tr_same(r.m[..],one.m[..]) && tr_same(r.v[..],one.v[..]) && tr_same(r.losses[0..<4],one.losses[0..<4]));}
+
+    // A checkpoint every 2 steps; rank 1 is killed during step 4.
+    k:=dp_decoder_run(f,c,4,64,4,DpFault.{step=3,rank=1,lost=true},2);
+    print("4 ranks, rank 1 killed in step 4: %, rank %; the run stopped at revision %, last checkpoint at %\n",dp_status(k.drive.refused),k.drive.rank,k.drive.run.revision,k.drive.saved);
+    back:=dp_decoder_resume(f,c,k,3,64,4);
+    print("  restarted from the checkpoint on 3 ranks: % steps, losses % %; equal to the uninterrupted run: %\n",back.drive.steps,back.losses[0],back.losses[1],
+        tr_same(back.p[..],one.p[..]) && tr_same(back.m[..],one.m[..]) && tr_same(back.v[..],one.v[..]));
+}
+// book:end example

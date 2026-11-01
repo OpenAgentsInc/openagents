@@ -1,0 +1,10 @@
+0 ranks: refused: from 1 to 64 ranks
+5 ranks for 4 micro-batches: refused: from 1 to 64 micro-batches a step, at least one a rank
+buckets of 11 values for a gradient of 10: refused: a bucket holds from 1 value to the whole gradient
+an overlap model with no bandwidth: refused: a buffer or timing input does not fit the plan
+rank 1's report is lost: refused: a rank did not report, rank 1; anything written: false
+rank 0 reports a failure: refused: a rank reported a failure, rank 0; anything written: false
+rank 2 reports after 1 of its 2 micro-batches: refused: a rank reported before its accumulation boundary, rank 2; anything written: false
+rank 1 reports twice: refused: a rank reported twice, rank 1; anything written: false
+rank 1 reports for revision 4: refused: a rank reported for another step, rank 1; anything written: false
+tr_apply given the refused sum: status order, revision 5, weights 1.0 2.0

@@ -1,0 +1,37 @@
+#import "Basic";
+#load "../lib/data-parallel.coax";
+
+// book:begin refuse
+// Chapter 134: plans and steps that are refused. A refused sum writes
+// nothing, and the sum it returns is one chapter 118's tr_apply refuses too.
+main :: () {
+    print("0 ranks: %\n",dp_status(dp_plan(0,4,10,4).status));
+    print("5 ranks for 4 micro-batches: %\n",dp_status(dp_plan(5,4,10,4).status));
+    print("buckets of 11 values for a gradient of 10: %\n",dp_status(dp_plan(2,4,10,11).status));
+    start:[3]int;end:[3]int;
+    print("an overlap model with no bandwidth: %\n",dp_status(dp_schedule(dp_plan(2,4,10,4),20,500,0,start[..],end[..]).status));
+
+    // One step of 4 micro-batches over 3 ranks, revision 5.
+    p:=dp_plan(3,4,2,1);b:=TrBatch.{revision=5,micro=4};grads:[8]f64;losses:[4]f64;msgs:[6]f64;total:[2]f64;
+    for k:0..<8 {grads[k]=f64(k);}
+    good:=[3]DpReport.[DpReport.{rank=2,revision=5,done=2},DpReport.{rank=0,revision=5,done=1},DpReport.{rank=1,revision=5,done=1}];
+    what:=[5]string.["rank 1's report is lost","rank 0 reports a failure","rank 2 reports after 1 of its 2 micro-batches","rank 1 reports twice","rank 1 reports for revision 4"];
+    for k:0..<5 {
+        r:[4]DpReport;for j:0..<3 {r[j]=good[j];}n:=3;
+        if k==0 {n=2;}
+        if k==1 {r[1].failed=true;}
+        if k==2 {r[0].done=1;}
+        if k==3 {r[3]=good[2];n=4;}
+        if k==4 {r[2].revision=4;}
+        for j:0..<6 {msgs[j]=-7;}total[0]=-7;total[1]=-7;
+        s:=dp_sum(p,b,r[0..<n],grads[..],losses[..],msgs[..],total[..]);
+        written:=false;for j:0..<6 {written=written || msgs[j]!=-7;}written=written || total[0]!=-7 || total[1]!=-7;
+        print("%: %, rank %; anything written: %\n",what[k],dp_status(s.status),s.rank,written);
+    }
+    // tr_apply refuses the refused sum, so a loop that ignores the refusal still changes nothing.
+    c:=TrConfig.{rate=0.1,bound=10,examples=4,epochs=1};w:=[2]f64.[1,2];m:[2]f64;v:[2]f64;stage:[6]f64;order:[4]int;
+    s:=dp_sum(p,b,good[0..<2],grads[..],losses[..],msgs[..],total[..]);
+    a:=tr_apply(c,TrRun.{revision=5},b,s.sum,w[..],m[..],v[..],total[..],stage[..],order[..]);
+    print("tr_apply given the refused sum: status %, revision %, weights % %\n",a.status,a.run.revision,w[0],w[1]);
+}
+// book:end refuse
