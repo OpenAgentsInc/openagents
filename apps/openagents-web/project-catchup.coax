@@ -1,0 +1,578 @@
+// The project page's catch-up over capped relay transcripts, run
+// natively: the real page (coaxial_project_frame and its messages) talks to a
+// relay simulated here that caps, omits, reorders and refuses, and each
+// complete view must equal the page's own fold over every event at once.
+// Choosing a project admits its rows through the capacity kernel
+// (project-capacity.coax), compiled separately and linked, so these run
+// natively: coax/web/tool.sh suites builds this file and the unit, links them
+// with coax/web/native-check.c and runs each check in its own process.
+// This replaces coax/web/project/live-catchup.test.ts; its oracle was the
+// TypeScript model.ts fold, which equals this fold byte for byte on the
+// captured transcript (project-checks.coax). The page trusts the relay's
+// signature check (project-fold.coax), so these events carry made-up ids and
+// an all-zero signature: the app's names collide with the signing library's.
+//   coax test apps/openagents-web/project-catchup.coax --native-link project-capacity.coax
+#import "Basic";
+#load "project.coax";
+#load "../../coax/tests/nostr/project_capacity_adapter.coax";
+#load "../../coax/lib/json/json.coax";
+
+native_check :: (i: int, run: bool) -> int #export_c {
+  if i == 0 { if run { lc_0(); } else { print("capped history and exact ID repair load all 155 rows plus older current workers, plans and statuses"); } }
+  if i == 1 { if run { lc_1(); } else { print("a missing known ID, an auth CLOSED, a timestamp tie and the page budget keep the last complete view"); } }
+  if i == 2 { if run { lc_2(); } else { print("table output exhaustion and a catch-up timeout keep the previous complete view"); } }
+  if i == 3 { if run { lc_3(); } else { print("an old subscription generation can't inject events after a reused socket reconnects"); } }
+  if i == 4 { if run { lc_4(); } else { print("changing caps and out-of-order pages keep full parity; an unprovable cap of 1 stays offline"); } }
+  if i == 5 { if run { lc_5(); } else { print("inventory capacity: the row count policy, and refused candidates replace no state"); } }
+  if i == 6 { if run { lc_6(); } else { print("inventory capacity keeps 262 and 263 signed roots with hierarchy and resolved history"); } }
+  if i == 7 { if run { lc_7(); } else { print("inventory capacity takes exactly MAX_ITEMS roots and refuses one more without replacing a table"); } }
+  if i == 8 { if run { lc_8(); } else { print("plan projection capacity keeps a 45 KiB table with resolved tasks' plans"); } }
+  if i == 9 { if run { lc_9(); } else { print("plan projection capacity takes 65536 bytes and refuses 65537 whole"); } }
+  return 10;
+}
+
+LC_PLAN :: "openagents.task-plan.v1";
+LC_EVENTS :: 1024; LC_BYTES :: 4194304;
+// Signed events: each one's JSON, kind, time and id.
+LcSet :: struct {
+  n: int; at: [LC_EVENTS] int; kind: [LC_EVENTS] int; from: [LC_EVENTS] int; len: [LC_EVENTS] int; id: [LC_EVENTS] int;
+  bytes: [LC_BYTES] u8; used: int; pk: [64] u8; coord: [160] u8; coord_n: int;
+}
+lc_json :: (s: [] LcSet, i: int) -> string { return cast(string) s[0].bytes[s[0].from[i]..<s[0].from[i] + s[0].len[i]]; }
+lc_id :: (s: [] LcSet, i: int) -> string { return cast(string) s[0].bytes[s[0].id[i]..<s[0].id[i] + 64]; }
+lc_pk :: (s: [] LcSet) -> string { return cast(string) s[0].pk[..]; }
+lc_coord :: (s: [] LcSet) -> string { return cast(string) s[0].coord[0..<s[0].coord_n]; }
+lc_find :: (hay: string, needle: string) -> int {
+  i := 0;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return i; } i += 1; }
+  return -1;
+}
+// The decimal digits of v (v >= 0... and negatives) into out.
+lc_int :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  neg := v < 0; x := ifx neg then -v else v; n := 0; t: [24] u8;
+  while x > 0 { t[n] = cast(u8) (48 + x % 10); x = x / 10; n += 1; }
+  o := 0; if neg { out[0] = '-'; o = 1; }
+  for i: 0..<n { out[o + i] = t[n - 1 - i]; }
+  return cast(string) out[0..<o + n];
+}
+LC_PK :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";   // the public key of test scalar 3
+LC_SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+// An event's JSON, as a relay sends it: a made-up id unique to (kind, at,
+// order), the test key, and an all-zero signature. The index of the new event.
+lc_sign :: (s: [] LcSet, kind: int, at: int, tags: string, content: string) -> int {
+  #assert s[0].n < LC_EVENTS;
+  k := s[0].n; s[0].n += 1;
+  for i: 0..<64 { s[0].pk[i] = LC_PK[i]; }
+  b := s[0].bytes[..]; n := s[0].used;
+  s[0].from[k] = n;
+  n = lc_raw(b, n, "{\"id\":\"");
+  s[0].id[k] = n;
+  x := (k * 7919 + at * 104729 + kind * 1299709) % 2147483647; hex := "0123456789abcdef";
+  for i: 0..<64 { if i % 7 == 0 { x = (x * 48271) % 2147483647; } b[n] = hex[(x >> ((i % 7) * 4)) & 15]; n += 1; }
+  ib: [24] u8;
+  n = lc_raw(b, n, "\",\"pubkey\":\""); n = lc_raw(b, n, LC_PK); n = lc_raw(b, n, "\",\"created_at\":"); n = lc_raw(b, n, lc_int(at, ib[..]));
+  n = lc_raw(b, n, ",\"kind\":"); n = lc_raw(b, n, lc_int(kind, ib[..])); n = lc_raw(b, n, ",\"tags\":"); n = lc_raw(b, n, tags);
+  n = lc_raw(b, n, ",\"content\":\"");
+  for c: content {
+    if c == '"' { n = lc_raw(b, n, "\\\""); } else if c == '\\' { n = lc_raw(b, n, "\\\\"); } else if c == 10 { n = lc_raw(b, n, "\\n"); }
+    else { #assert n < LC_BYTES; b[n] = c; n += 1; }
+  }
+  n = lc_raw(b, n, "\",\"sig\":\""); n = lc_raw(b, n, LC_SIG); n = lc_raw(b, n, "\"}");
+  s[0].len[k] = n - s[0].from[k]; s[0].at[k] = at; s[0].kind[k] = kind; s[0].used = n;
+  return k;
+}
+lc_raw :: (b: [] u8, at: int, text: string) -> int {
+  #assert at + text.count <= b.count;
+  for i: 0..<text.count { b[at + i] = text[i]; }
+  return at + text.count;
+}
+// a before b, byte by byte
+lc_less :: (a: string, b: string) -> bool {
+  i := 0;
+  while i < a.count && i < b.count { if a[i] != b[i] { return a[i] < b[i]; } i += 1; }
+  return a.count < b.count;
+}
+
+// Tags as JSON, built a tag at a time.
+LcTags :: struct { b: [65536] u8; n: int; }
+lc_put :: (t: [] LcTags, s: string) { for c: s { #assert t[0].n < 65536; t[0].b[t[0].n] = c; t[0].n += 1; } }
+lc_tag :: (t: [] LcTags, v: [] string) {
+  lc_put(t, ifx t[0].n == 0 then "[[" else ",[");
+  for i: 0..<v.count {
+    if i > 0 { lc_put(t, ","); }
+    lc_put(t, "\"");
+    for c: v[i] { if c == '"' || c == '\\' { lc_put(t, "\\"); } one := [1] u8.[c]; lc_put(t, cast(string) one[..]); }
+    lc_put(t, "\"");
+  }
+  lc_put(t, "]");
+}
+lc_t2 :: (t: [] LcTags, a: string, b: string) { v := [2] string.[a, b]; lc_tag(t, v[..]); }
+lc_t3 :: (t: [] LcTags, a: string, b: string, c: string) { v := [3] string.[a, b, c]; lc_tag(t, v[..]); }
+lc_t4 :: (t: [] LcTags, a: string, b: string, c: string, d: string) { v := [4] string.[a, b, c, d]; lc_tag(t, v[..]); }
+lc_tags :: (t: [] LcTags) -> string { if t[0].n == 0 { return "[]"; } lc_put(t, "]"); return cast(string) t[0].b[0..<t[0].n]; }
+
+// The repository and project events (model.ts repoTags and projectTags for the test config).
+lc_head :: (s: [] LcSet) {
+  s[0].n = 0; s[0].used = 0;
+  t: [1] LcTags;
+  lc_t2(t[..], "d", "test"); lc_t2(t[..], "name", "Test repository"); lc_t2(t[..], "description", "Fixture");
+  lc_t2(t[..], "web", "https://example.com"); lc_t2(t[..], "clone", "https://example.com/test.git"); lc_t2(t[..], "relays", "ws://127.0.0.1");
+  lc_t3(t[..], "r", "0000000000000000000000000000000000000000", "euc");
+  r := lc_sign(s, 30617, 1, lc_tags(t[..]), "");
+  repo: [160] u8; rn := 0;
+  for c: "30617:" { repo[rn] = c; rn += 1; } for c: lc_pk(s) { repo[rn] = c; rn += 1; } for c: ":test" { repo[rn] = c; rn += 1; }
+  s[0].coord_n = 0;
+  for c: "30621:" { s[0].coord[s[0].coord_n] = c; s[0].coord_n += 1; } for c: lc_pk(s) { s[0].coord[s[0].coord_n] = c; s[0].coord_n += 1; } for c: ":coax" { s[0].coord[s[0].coord_n] = c; s[0].coord_n += 1; }
+  p: [1] LcTags;
+  lc_t2(p[..], "d", "coax"); lc_t2(p[..], "name", "Capped fixture"); lc_t2(p[..], "description", "Signed catch-up fixture");
+  lc_t3(p[..], "a", cast(string) repo[0..<rn], "ws://127.0.0.1"); lc_t3(p[..], "path", cast(string) repo[0..<rn], "coax/");
+  lc_t2(p[..], "contributions", "open"); lc_t2(p[..], "license", "Apache-2.0"); lc_t2(p[..], "buzz-visibility", "listed");
+  q := lc_sign(s, 30621, 2, lc_tags(p[..]), "");
+}
+lc_pad3 :: (v: int, out: [] u8) -> string {
+  t: [24] u8; d := lc_int(v, t[..]); n := 0;
+  for i: d.count..<3 { out[n] = '0'; n += 1; }
+  for c: d { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+lc_cat :: (out: [] u8, parts: [] string) -> string {
+  n := 0; for p: parts { for c: p { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+// A comment on issue root: NIP-22 root and parent tags, then the extra tags.
+lc_comment :: (s: [] LcSet, at: int, root: int, extra: [] LcTags, body: string) -> int {
+  t: [1] LcTags;
+  id := lc_id(s, root); pk := lc_pk(s);
+  lc_t2(t[..], "E", id); lc_t2(t[..], "K", "1621"); lc_t2(t[..], "P", pk); lc_t2(t[..], "e", id); lc_t2(t[..], "k", "1621"); lc_t2(t[..], "p", pk);
+  if extra[0].n > 0 { lc_put(t[..], ","); lc_put(t[..], cast(string) extra[0].b[1..<extra[0].n]); }
+  return lc_sign(s, 1111, at, lc_tags(t[..]), body);
+}
+lc_status :: (s: [] LcSet, kind: int, at: int, root: int) -> int {
+  t: [1] LcTags; lc_t4(t[..], "e", lc_id(s, root), "", "root");
+  return lc_sign(s, kind, at, lc_tags(t[..]), "");
+}
+
+// live-catchup.test.ts's events: 155 issues under an initiative and a
+// milestone, an old claim and plan, 180 notes, 120 statuses and the order.
+LcFix :: struct { set: [1] LcSet; issue: [256] int; }
+lc_events :: (x: [] LcFix) {
+  s := x[0].set[..];
+  lc_head(s);
+  for i: 0..<155 {
+    t: [1] LcTags; sb: [64] u8; nb: [8] u8; tb: [64] u8;
+    sp := [2] string.["task-", lc_int(i, nb[..])];
+    tp := [2] string.["Task ", lc_pad3(i, tb[32..<64])];
+    lc_t2(t[..], "a", lc_coord(s)); lc_t2(t[..], "slug", lc_cat(sb[..], sp[..])); lc_t2(t[..], "subject", lc_cat(tb[0..<32], tp[..])); lc_t2(t[..], "size", "S");
+    if i == 0 { lc_t2(t[..], "t", "initiative"); }
+    else if i == 1 { lc_t2(t[..], "t", "milestone"); lc_t2(t[..], "parent", lc_id(s, x[0].issue[0])); }
+    else { lc_t2(t[..], "parent", lc_id(s, x[0].issue[1])); }
+    bb: [128] u8; ib: [8] u8; d := lc_int(i, ib[..]);
+    bp := [5] string.["Body ", d, ".\n\n## Acceptance\n- Check ", d, ""];
+    x[0].issue[i] = lc_sign(s, 1621, 1000 + i, lc_tags(t[..]), lc_cat(bb[..], bp[0..<4 + 1]));
+  }
+  e1: [1] LcTags; lc_t2(e1[..], "claim", "old-worker"); lc_t2(e1[..], "by", "old-worker");
+  c := lc_comment(s, 2000, x[0].issue[2], e1[..], "Taking it");
+  e2: [1] LcTags; lc_t2(e2[..], "plan", LC_PLAN); lc_t2(e2[..], "by", "old-worker");
+  c = lc_comment(s, 2001, x[0].issue[2], e2[..], "- [x] read\n- [>] implement");
+  c = lc_status(s, 1631, 2002, x[0].issue[3]);
+  for i: 0..<180 {
+    e: [1] LcTags; lc_t2(e[..], "by", "notes-worker");
+    nb: [32] u8; ib: [8] u8; np := [2] string.["Note ", lc_int(i, ib[..])];
+    c = lc_comment(s, 10000 + i, x[0].issue[4 + i % 151], e[..], lc_cat(nb[..], np[..]));
+  }
+  for i: 0..<120 { c = lc_status(s, 1630, 11000 + i, x[0].issue[4 + i % 151]); }
+  o: [1] LcTags; lc_t2(o[..], "d", "coax"); lc_t2(o[..], "a", lc_coord(s));
+  for i: 0..<155 {
+    rb: [16] u8; nb: [8] u8; d := lc_int(i, nb[..]); n := 0;
+    for c2: "rank-" { rb[n] = c2; n += 1; } for k: d.count..<4 { rb[n] = '0'; n += 1; } for c2: d { rb[n] = c2; n += 1; }
+    lc_t3(o[..], "item", lc_id(s, x[0].issue[i]), cast(string) rb[0..<n]);
+  }
+  c = lc_sign(s, 30623, 30000, lc_tags(o[..]), "");
+}
+
+// ---- the relay -------------------------------------------------------------------------
+
+LcRelay :: struct { cap: int; omit: string; repair: bool; caps: [4] int; caps_n: int; calls: int; reverse: bool; }
+lc_relay :: (cap: int) -> LcRelay { r: LcRelay; r.cap = cap; r.omit = ""; r.repair = false; r.caps_n = 0; r.calls = 0; r.reverse = false; return r; }
+// Whether event i matches filter f of d (kinds, authors, ids, until and #x tags).
+lc_match :: (s: [] LcSet, i: int, d: Jv, f: int) -> bool {
+  ks := jv_get(d, f, "kinds");
+  if ks != -1 { hit := false; for k: 0..<jv_len(d, ks) { if jv_int(d, jv_at(d, ks, k), -1) == s[0].kind[i] { hit = true; } } if !hit { return false; } }
+  au := jv_get(d, f, "authors");
+  if au != -1 { hit := false; for k: 0..<jv_len(d, au) { if jv_raw(d, jv_at(d, au, k)) == lc_pk(s) { hit = true; } } if !hit { return false; } }
+  ids := jv_get(d, f, "ids");
+  if ids != -1 { hit := false; for k: 0..<jv_len(d, ids) { if jv_raw(d, jv_at(d, ids, k)) == lc_id(s, i) { hit = true; } } if !hit { return false; } }
+  un := jv_get(d, f, "until");
+  if un != -1 && s[0].at[i] > jv_int(d, un, 0) { return false; }
+  m := d.nodes[f].first;
+  while m != -1 {
+    key := jv_key(d, m);
+    if key.count == 2 && key[0] == '#' {
+      nodes: [2048] JvNode; e_: [1] Jv;
+      #assert jv_parse(e_[..], lc_json(s, i), nodes[..]);
+      e := e_[0]; tags := jv_get(e, 0, "tags"); hit := false;
+      for t: 0..<jv_len(e, tags) {
+        tag := jv_at(e, tags, t);
+        if jv_raw(e, jv_at(e, tag, 0)) != key[1..<2] { continue; }
+        v := jv_raw(e, jv_at(e, tag, 1));
+        for k: 0..<jv_len(d, m) { if jv_raw(d, jv_at(d, m, k)) == v { hit = true; } }
+      }
+      if !hit { return false; }
+    }
+    m = d.nodes[m].next;
+  }
+  return true;
+}
+// The page's request answered: matching events newest first (ties by id),
+// capped, then EOSE with a finish hint.
+lc_answer :: (s: [] LcSet, req: string, b: [] LcRelay, lv: [] Live) {
+  nodes: [4096] JvNode; d_: [1] Jv;
+  if !jv_parse(d_[..], req, nodes[..]) { return; }
+  d := d_[0];
+  if jv_raw(d, jv_at(d, 0, 0)) != "REQ" { return; }
+  sid := jv_raw(d, jv_at(d, 0, 1)); f := jv_at(d, 0, 2);
+  sel: [LC_EVENTS] int; n := 0;
+  for i: 0..<s[0].n {
+    if !lc_match(s, i, d, f) { continue; }
+    if b[0].omit.count > 0 && lc_id(s, i) == b[0].omit && !(b[0].repair && jv_get(d, f, "ids") != -1) { continue; }
+    sel[n] = i; n += 1;
+  }
+  for i: 1..<n {
+    j := i;
+    while j > 0 && (s[0].at[sel[j]] > s[0].at[sel[j - 1]] || (s[0].at[sel[j]] == s[0].at[sel[j - 1]] && lc_less(lc_id(s, sel[j]), lc_id(s, sel[j - 1])))) {
+      x := sel[j]; sel[j] = sel[j - 1]; sel[j - 1] = x; j -= 1;
+    }
+  }
+  cap := ifx b[0].caps_n > 0 then b[0].caps[b[0].calls % b[0].caps_n] else b[0].cap;
+  b[0].calls += 1;
+  limit := jv_int(d, jv_get(d, f, "limit"), cap);
+  take := n; if cap < take { take = cap; } if limit < take { take = limit; }
+  for k: 0..<take {
+    i := ifx b[0].reverse then sel[take - 1 - k] else sel[k];
+    line: [1] LcTags;
+    lc_put(line[..], "[\"EVENT\",\""); lc_put(line[..], sid); lc_put(line[..], "\","); lc_put(line[..], lc_json(s, i)); lc_put(line[..], "]");
+    fake_message(lv, 0, SOCKET_FRAME, cast(string) line[0].b[0..<line[0].n]);
+  }
+  e: [1] LcTags; lc_put(e[..], "[\"EOSE\",\""); lc_put(e[..], sid); lc_put(e[..], "\",[\"finish\"]]");
+  fake_message(lv, 0, SOCKET_FRAME, cast(string) e[0].b[0..<e[0].n]);
+}
+
+// ---- the page --------------------------------------------------------------------------
+
+LcUi :: struct {
+  s: [1] ProjectState; t: [1] Tree; w: [1] Work; lv: [1] Live;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; uni: [UNIFORM_FLOATS] f32;
+  cmd: [PIPE_CAP] u8; op: [PIPE_COMMANDS] int; from: [PIPE_COMMANDS] int; len: [PIPE_COMMANDS] int; cmds: int;
+}
+lc_frame :: (u: [] LcUi) { n := coaxial_project_frame(u[0].s[..], u[0].t[..], u[0].w[..], u[0].lv[..], u[0].out[..], u[0].uni[..], 1440, 900, 1, 0.016, true); }
+lc_new :: (u: [] LcUi, pk: string) {
+  tb: [128] u8; n := 0; for c: pk { tb[n] = c; n += 1; } for c: " coax" { tb[n] = c; n += 1; }
+  page_says(u[0].lv[..], cast(string) tb[0..<n]);
+  lc_frame(u);
+}
+// The page's pending commands, copied out and drained.
+lc_commands :: (u: [] LcUi) -> int {
+  p := u[0].lv[0].pipe[..]; used := 0; u[0].cmds = p[0].n;
+  for k: 0..<p[0].n {
+    b := pipe_bytes(p, k); u[0].op[k] = p[0].op[k]; u[0].from[k] = used; u[0].len[k] = b.count;
+    for i: 0..<b.count { u[0].cmd[used + i] = b[i]; } used += b.count;
+  }
+  pipe_drained(p);
+  return u[0].cmds;
+}
+lc_connect :: (u: [] LcUi) { c := lc_commands(u); coaxial_project_opened(u[0].lv[..], 0); fake_message(u[0].lv[..], 0, SOCKET_OPENED, ""); }
+lc_pump :: (u: [] LcUi, s: [] LcSet, b: [] LcRelay) {
+  for turn: 0..<2000 {
+    if lc_commands(u) == 0 { lc_frame(u); return; }
+    n := u[0].cmds; ops: [PIPE_COMMANDS] int; fr: [PIPE_COMMANDS] int; ln: [PIPE_COMMANDS] int; text: [PIPE_CAP] u8;
+    for k: 0..<n { ops[k] = u[0].op[k]; fr[k] = u[0].from[k]; ln[k] = u[0].len[k]; }
+    for i: 0..<PIPE_CAP { text[i] = u[0].cmd[i]; }
+    for k: 0..<n { if ops[k] == PIPE_SEND { lc_answer(s, cast(string) text[fr[k]..<fr[k] + ln[k]], b, u[0].lv[..]); } }
+  }
+  #assert false;   // the transcript ran past its own command budget
+}
+lc_say :: (u: [] LcUi, text: string) { fake_message(u[0].lv[..], 0, SOCKET_FRAME, text); }
+lc_event :: (u: [] LcUi, sid: string, s: [] LcSet, i: int) {
+  line: [1] LcTags; lc_put(line[..], "[\"EVENT\",\""); lc_put(line[..], sid); lc_put(line[..], "\","); lc_put(line[..], lc_json(s, i)); lc_put(line[..], "]");
+  lc_say(u, cast(string) line[0].b[0..<line[0].n]);
+}
+lc_reconnect :: (u: [] LcUi) { fake_message(u[0].lv[..], 0, SOCKET_CLOSED, ""); u[0].s[0].time += 2; lc_frame(u); lc_connect(u); }
+
+// The page's fold over every event of s at once.
+LcWant :: struct { st: [1] Store; f: [1] Fold; t: [1] Tables; }
+lc_want :: (s: [] LcSet, x: [] LcWant) {
+  for i: 0..<s[0].n {
+    line: [1] LcTags; lc_put(line[..], "[\"EVENT\",\"x\","); lc_put(line[..], lc_json(s, i)); lc_put(line[..], "]");
+    fr := read_frame(x[0].st[..], cast(string) line[0].b[0..<line[0].n], lc_pk(s));
+  }
+  fold(x[0].st[..], x[0].f[..], "coax"); write_tables(x[0].st[..], x[0].f[..], x[0].t[..]);
+}
+lc_tables_are :: (u: [] LcUi, s: [] LcSet) -> bool {
+  x: [1] LcWant; lc_want(s, x[..]); t := x[0].t[..]; w := u[0].w[..];
+  return same(w[0].text, cast(string) t[0].items[0..<t[0].items_n]) && same(w[0].plans, cast(string) t[0].plans[0..<t[0].plans_n])
+    && same(w[0].details, cast(string) t[0].details[0..<t[0].details_n]) && same(w[0].log, cast(string) t[0].log[0..<t[0].log_n])
+    && same(w[0].plan_info, cast(string) t[0].info[0..<t[0].info_n]);
+}
+LcBefore :: struct { b: [1310720] u8; at: [6] int; }
+lc_keep :: (u: [] LcUi, k: [] LcBefore) {
+  w := u[0].w[..]; parts := [5] string.[w[0].text, w[0].plans, w[0].details, w[0].log, w[0].plan_info]; n := 0;
+  for p: 0..<5 { k[0].at[p] = n; for c: parts[p] { k[0].b[n] = c; n += 1; } }
+  k[0].at[5] = n;
+}
+lc_kept :: (u: [] LcUi, k: [] LcBefore) -> bool {
+  w := u[0].w[..]; parts := [5] string.[w[0].text, w[0].plans, w[0].details, w[0].log, w[0].plan_info];
+  for p: 0..<5 { if !same(parts[p], cast(string) k[0].b[k[0].at[p]..<k[0].at[p + 1]]) { return false; } }
+  return true;
+}
+
+// ---- the checks ----------------------------------------------------------------------------
+
+lc_0 :: () {
+  x: [1] LcFix; lc_events(x[..]); s := x[0].set[..];
+  u: [1] LcUi; lc_new(u[..], lc_pk(s)); lc_connect(u[..]);
+  b := [1] LcRelay.[lc_relay(37)]; b[0].omit = lc_id(s, x[0].issue[0]); b[0].repair = true;
+  lc_pump(u[..], s, b[..]);
+  lv := u[0].lv[..];
+  #assert lv[0].state == LIVE_LIVE && u[0].w[0].n == 155 && u[0].w[0].working_n == 1 && lv[0].pages > 10;
+  #assert lc_tables_are(u[..], s);
+  e: [1] LcTags; lc_t2(e[..], "claim", "new-worker"); lc_t2(e[..], "by", "new-worker");
+  up := lc_comment(s, 40000, x[0].issue[4], e[..], "Taking it live");
+  lc_event(u[..], "comments", s, up); lc_frame(u[..]);
+  #assert u[0].w[0].working_n == 2 && lc_tables_are(u[..], s);
+}
+lc_1 :: () {
+  x: [1] LcFix; lc_events(x[..]); s := x[0].set[..];
+  for mode: 0..<4 {   // missing, closed, ties, budget
+    u: [1] LcUi; lc_new(u[..], lc_pk(s)); lc_connect(u[..]);
+    b := [1] LcRelay.[lc_relay(37)];
+    lc_pump(u[..], s, b[..]);
+    k: [1] LcBefore; lc_keep(u[..], k[..]);
+    lc_reconnect(u[..]);
+    if mode == 1 { lc_say(u[..], "[\"CLOSED\",\"g2-issues\",\"auth-required: approval\"]"); lc_frame(u[..]); }
+    else {
+      y: [1] LcFix; y[0] = x[0]; r := y[0].set[..];
+      if mode == 3 { u[0].lv[0].pages = 256; }
+      if mode == 2 {
+        none: [1] LcTags;
+        a := lc_comment(r, 25000, y[0].issue[2], none[..], "tie one");
+        a = lc_comment(r, 25000, y[0].issue[3], none[..], "tie two");
+        a = lc_comment(r, 25000, y[0].issue[4], none[..], "hidden tie");
+      }
+      c := [1] LcRelay.[lc_relay(ifx mode == 3 then 1 else ifx mode == 2 then 2 else 37)];
+      if mode == 0 { c[0].omit = lc_id(s, x[0].issue[0]); }
+      lc_pump(u[..], r, c[..]);
+    }
+    want := ifx mode == 3 then 3 else ifx mode == 2 then 2 else ifx mode == 0 then 4 else 1;
+    #assert u[0].lv[0].state == LIVE_OFFLINE && u[0].w[0].n == 155 && lc_kept(u[..], k[..]) && u[0].lv[0].incomplete == want;
+  }
+}
+lc_2 :: () {
+  x: [1] LcFix; lc_events(x[..]); s := x[0].set[..];
+  for mode: 0..<2 {   // output, timeout
+    u: [1] LcUi; lc_new(u[..], lc_pk(s)); lc_connect(u[..]);
+    b := [1] LcRelay.[lc_relay(37)]; lc_pump(u[..], s, b[..]);
+    k: [1] LcBefore; lc_keep(u[..], k[..]);
+    if mode == 0 {
+      y: [1] LcFix; y[0] = x[0]; r := y[0].set[..];
+      big: [20000] u8; for i: 0..<20000 { big[i] = 'x'; }
+      e: [1] LcTags; lc_t2(e[..], "by", "large-note");
+      up := lc_comment(r, 50000, y[0].issue[4], e[..], cast(string) big[..]);
+      lc_event(u[..], "comments", r, up); lc_frame(u[..]);
+      #assert u[0].lv[0].incomplete == 5;
+    } else {
+      lc_reconnect(u[..]); u[0].s[0].time += 30; lc_frame(u[..]);
+      #assert u[0].lv[0].incomplete == 3;
+    }
+    #assert u[0].lv[0].state == LIVE_OFFLINE && lc_kept(u[..], k[..]);
+  }
+}
+lc_3 :: () {
+  x: [1] LcFix; lc_events(x[..]); s := x[0].set[..];
+  u: [1] LcUi; lc_new(u[..], lc_pk(s)); lc_connect(u[..]);
+  b := [1] LcRelay.[lc_relay(37)]; lc_pump(u[..], s, b[..]);
+  k: [1] LcBefore; lc_keep(u[..], k[..]);
+  lc_reconnect(u[..]);
+  y: [1] LcFix; y[0] = x[0]; r := y[0].set[..];
+  e: [1] LcTags; lc_t2(e[..], "claim", "stale-worker");
+  st := lc_comment(r, 50000, y[0].issue[4], e[..], "wrong generation");
+  lc_event(u[..], "comments", r, st); lc_say(u[..], "[\"EOSE\",\"issues\"]");
+  #assert u[0].lv[0].store[0].n == 0;
+  c := [1] LcRelay.[lc_relay(37)]; lc_pump(u[..], s, c[..]);
+  #assert u[0].lv[0].state == LIVE_LIVE && lc_kept(u[..], k[..]) && u[0].w[0].working_n == 1;
+}
+lc_4 :: () {
+  x: [1] LcFix; lc_events(x[..]); s := x[0].set[..];
+  u: [1] LcUi; lc_new(u[..], lc_pk(s)); lc_connect(u[..]);
+  b := [1] LcRelay.[lc_relay(37)]; b[0].caps[0] = 37; b[0].caps[1] = 13; b[0].caps[2] = 5; b[0].caps_n = 3; b[0].reverse = true;
+  lc_pump(u[..], s, b[..]);
+  #assert u[0].lv[0].state == LIVE_LIVE && lc_tables_are(u[..], s);
+  k: [1] LcBefore; lc_keep(u[..], k[..]);
+  lc_reconnect(u[..]);
+  c := [1] LcRelay.[lc_relay(1)]; lc_pump(u[..], s, c[..]);
+  #assert u[0].lv[0].state == LIVE_OFFLINE && u[0].lv[0].incomplete == 2 && lc_kept(u[..], k[..]);
+}
+lc_5 :: () {
+  #assert FOLD_ISSUES == MAX_ITEMS && MAX_ITEMS >= 155;   // the seed census is openagents project plan-rules'
+  counts := [6] int.[-1, 0, 1, 319, 320, 321];
+  for c: counts { for m: counts { #assert project_row_count_fits(c, m) == (c >= 0 && c <= m); } }
+  // project_rows_fit, the string policy, is checked by project-capacity.coax's own tests.
+  u: [1] LcUi;
+  items: [MAX_ITEMS + 1] u8; for i: 0..<MAX_ITEMS + 1 { items[i] = 10; }
+  #assert project_capacity_choose_refused(u[0].t[..], u[0].w[..], u[0].lv[..], cast(string) items[..]);
+  v: [1] LcUi; #assert project_capacity_live_refused(v[0].lv[..], v[0].w[..], false);
+  z: [1] LcUi; #assert project_capacity_live_refused(z[0].lv[..], z[0].w[..], true);
+}
+
+// capacityInventory: count roots (an initiative, a milestone, 110 open tasks
+// in a blocked-by chain, the rest finished), a claim, a plan and a note on the
+// first task, and the order of the 110 open tasks.
+LcInv :: struct { set: [1] LcSet; root: [600] int; count: int; }
+lc_inventory :: (x: [] LcInv, count: int) {
+  #assert count >= 112 && count <= 600;
+  s := x[0].set[..]; lc_head(s); x[0].count = count;
+  note := "Source ownership, declaration identity and original diagnostics remain independently inspectable. ";
+  for i: 0..<count {
+    t: [1] LcTags; sb: [64] u8; nb: [8] u8; tb: [160] u8; pb: [8] u8;
+    sp := [2] string.["inventory-", lc_int(i, nb[..])];
+    tp := [3] string.["Inventory ", lc_pad3(i, pb[..]), ": preserve project history and source ownership"];
+    lc_t2(t[..], "a", lc_coord(s)); lc_t2(t[..], "slug", lc_cat(sb[..], sp[..])); lc_t2(t[..], "subject", lc_cat(tb[..], tp[..])); lc_t2(t[..], "size", "S");
+    if i == 0 { lc_t2(t[..], "t", "initiative"); }
+    else if i == 1 { lc_t2(t[..], "t", "milestone"); lc_t2(t[..], "parent", lc_id(s, x[0].root[0])); }
+    else { lc_t2(t[..], "parent", lc_id(s, x[0].root[1])); if i > 2 && i < 112 { lc_t2(t[..], "blocked-by", lc_id(s, x[0].root[i - 1])); } }
+    bb: [2048] u8; ib: [8] u8;
+    bp := [11] string.["Root ", lc_int(i, ib[..]), ".\n\n", note, note, note, note, note, note, note, note];
+    n := 0; for p: bp { for c: p { bb[n] = c; n += 1; } }
+    for c: "\n\n## Acceptance\n- Preserve this root, status and parent.\n- Match all five native and TypeScript tables." { bb[n] = c; n += 1; }
+    x[0].root[i] = lc_sign(s, 1621, 1000 + i, lc_tags(t[..]), cast(string) bb[0..<n]);
+    if i >= 112 { a := lc_status(s, ifx i % 2 == 0 then 1631 else 1632, 10000 + i, x[0].root[i]); }
+  }
+  e1: [1] LcTags; lc_t2(e1[..], "claim", "capacity-worker"); lc_t2(e1[..], "by", "capacity-worker");
+  c := lc_comment(s, 20000, x[0].root[2], e1[..], "Taking the inventory task");
+  e2: [1] LcTags; lc_t2(e2[..], "plan", LC_PLAN); lc_t2(e2[..], "by", "capacity-worker");
+  c = lc_comment(s, 20001, x[0].root[2], e2[..], "- [x] read\n- [>] implement\n- [ ] verify");
+  e3: [1] LcTags; lc_t2(e3[..], "by", "capacity-worker");
+  c = lc_comment(s, 20002, x[0].root[2], e3[..], "The completed history remains present.");
+  o: [1] LcTags; lc_t2(o[..], "d", "coax"); lc_t2(o[..], "a", lc_coord(s)); lc_t2(o[..], "alt", "Order 110 open tasks");
+  for i: 0..<110 { rb: [8] u8; r := lc_pad3(i, rb[..]); rb[r.count] = 'V'; lc_t3(o[..], "item", lc_id(s, x[0].root[i + 2]), cast(string) rb[0..<r.count + 1]); }
+  c = lc_sign(s, 30623, 30000, lc_tags(o[..]), "");
+}
+// The field k of a table row split by '|'.
+lc_cell :: (row: string, k: int) -> string {
+  i := 0; at := 0;
+  while at <= row.count { e := at; while e < row.count && row[e] != '|' { e += 1; } if i == k { return row[at..<e]; } i += 1; at = e + 1; }
+  return "";
+}
+lc_capacity_view :: (u: [] LcUi, x: [] LcInv) {
+  s := x[0].set[..]; count := x[0].count; w := u[0].w[..];
+  #assert u[0].lv[0].state == LIVE_LIVE && u[0].lv[0].incomplete == 0 && w[0].n == count;
+  #assert lc_tables_are(u, s);
+  nrows := 0; init := 0; mile := 0; open := 0; done := 0; text := w[0].text; i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    row := text[i..<e]; i = e + 1;
+    if row.count == 0 { continue; }
+    nrows += 1; k := lc_cell(row, 1); st := lc_cell(row, 2);
+    if k == "initiative" { init += 1; } if k == "milestone" { mile += 1; }
+    if k == "task" && st == "open" { open += 1; } if st == "resolved" || st == "closed" { done += 1; }
+  }
+  #assert nrows == count && init == 1 && mile == 1 && open == 110 && done == count - 112;
+  for r: 0..<count { #assert lc_find(w[0].details, lc_id(s, x[0].root[r])) >= 0; }
+  #assert w[0].text.count <= 131072 && w[0].plans.count <= 16384 && w[0].details.count <= 1048576 && w[0].log.count <= 16384 && w[0].plan_info.count <= 16384;
+}
+lc_6 :: () {
+  for count: 262..<264 {
+    x: [1] LcInv; lc_inventory(x[..], count);
+    u: [1] LcUi; lc_new(u[..], lc_pk(x[0].set[..])); lc_connect(u[..]);
+    b := [1] LcRelay.[lc_relay(37)]; b[0].caps[0] = 37; b[0].caps[1] = 13; b[0].caps[2] = 5; b[0].caps_n = 3; b[0].reverse = true;
+    lc_pump(u[..], x[0].set[..], b[..]);
+    lc_capacity_view(u[..], x[..]);
+  }
+}
+lc_7 :: () {
+  a: [1] LcInv; lc_inventory(a[..], MAX_ITEMS);
+  o: [1] LcInv; lc_inventory(o[..], MAX_ITEMS + 1);
+  for r: 0..<MAX_ITEMS { #assert lc_id(a[0].set[..], a[0].root[r]) == lc_id(o[0].set[..], o[0].root[r]); }
+  u: [1] LcUi; lc_new(u[..], lc_pk(a[0].set[..])); lc_connect(u[..]);
+  b := [1] LcRelay.[lc_relay(37)]; lc_pump(u[..], a[0].set[..], b[..]);
+  lc_capacity_view(u[..], a[..]);
+  k: [1] LcBefore; lc_keep(u[..], k[..]);
+  lc_reconnect(u[..]);
+  c := [1] LcRelay.[lc_relay(37)]; lc_pump(u[..], o[0].set[..], c[..]);
+  #assert u[0].lv[0].state == LIVE_OFFLINE && u[0].lv[0].incomplete == 5 && u[0].w[0].n == MAX_ITEMS && lc_kept(u[..], k[..]);
+  #assert lc_find(u[0].w[0].details, lc_id(o[0].set[..], o[0].root[MAX_ITEMS])) < 0;
+}
+
+// planProjectionInventory: capacityInventory(263) and a four-step finished plan
+// on each of 120 finished tasks, the step text padded so the plans table is
+// exactly target bytes. The table grows a byte per byte of step text, so the
+// padding is measured on the page's own fold: built with one 'x' a step, then
+// the rest spread over the 480 steps.
+lc_plans :: (x: [] LcInv, target: int) -> int {
+  base: [1] LcInv; lc_inventory(base[..], 263);
+  probe: [1] LcInv; probe[0] = base[0]; pl := lc_plan_events(probe[..], 1, 0);
+  w: [1] LcWant; lc_want(probe[0].set[..], w[..]);
+  have := w[0].t[0].plans_n;
+  #assert have < PLANS_CAP && target >= have + 480;
+  extra := target - have;
+  x[0] = base[0];
+  return lc_plan_events(x, 1 + extra / 480, extra % 480);
+}
+// The plans on roots 112 to 231, each step "history-I-S " and each+1 x's for
+// the first more steps, each x's after; the longest step's bytes.
+lc_plan_events :: (x: [] LcInv, each: int, more: int) -> int {
+  s := x[0].set[..]; longest := 0; fi := 0;
+  for i: 0..<120 {
+    body: [2048] u8; n := 0;
+    for step: 0..<4 {
+      if step > 0 { body[n] = 10; n += 1; }
+      ib: [8] u8; sb: [8] u8;
+      parts := [6] string.["- [x] ", "history-", lc_int(i, ib[..]), "-", lc_int(step, sb[..]), " "];
+      start := n;
+      for p: parts { for c: p { body[n] = c; n += 1; } }
+      xs := ifx fi < more then each + 1 else each; fi += 1;
+      for k: 0..<xs { body[n] = 'x'; n += 1; }
+      if n - start - 6 > longest { longest = n - start - 6; }
+    }
+    e: [1] LcTags; lc_t2(e[..], "plan", LC_PLAN); lc_t2(e[..], "by", "history-worker");
+    c := lc_comment(s, 50000 + i, x[0].root[112 + i], e[..], cast(string) body[0..<n]);
+    #assert s[0].len[c] < 2048;
+  }
+  return longest;
+}
+lc_plan_view :: (u: [] LcUi, x: [] LcInv) {
+  #assert u[0].lv[0].state == LIVE_LIVE && u[0].lv[0].incomplete == 0 && u[0].w[0].n == 263;
+  #assert lc_tables_are(u, x[0].set[..]);
+  for i: 0..<120 {
+    ib: [8] u8; nb: [32] u8; parts := [3] string.["|x|history-", lc_int(i, ib[..]), "-0 "];
+    #assert lc_find(u[0].w[0].plans, lc_cat(nb[..], parts[..])) >= 0;
+  }
+}
+lc_8 :: () {
+  x: [1] LcInv; longest := lc_plans(x[..], 45 * 1024);
+  #assert longest < 256;
+  w: [1] LcWant; lc_want(x[0].set[..], w[..]); #assert w[0].t[0].plans_n == 45 * 1024;
+  u: [1] LcUi; lc_new(u[..], lc_pk(x[0].set[..])); lc_connect(u[..]);
+  b := [1] LcRelay.[lc_relay(37)]; lc_pump(u[..], x[0].set[..], b[..]);
+  lc_plan_view(u[..], x[..]);
+}
+lc_9 :: () {
+  a: [1] LcInv; longest := lc_plans(a[..], 65536);
+  #assert longest < 256;
+  wa: [1] LcWant; lc_want(a[0].set[..], wa[..]); #assert wa[0].t[0].plans_n == 65536;
+  // one more byte of step text: the same roots, a table one byte over
+  o: [1] LcInv; base: [1] LcInv; lc_inventory(base[..], 263); o[0] = base[0];
+  probe: [1] LcInv; probe[0] = base[0]; pl := lc_plan_events(probe[..], 1, 0);
+  pw: [1] LcWant; lc_want(probe[0].set[..], pw[..]);
+  extra := 65537 - pw[0].t[0].plans_n;
+  l2 := lc_plan_events(o[..], 1 + extra / 480, extra % 480);
+  for r: 0..<263 { #assert lc_id(a[0].set[..], a[0].root[r]) == lc_id(o[0].set[..], o[0].root[r]); }
+  u: [1] LcUi; lc_new(u[..], lc_pk(a[0].set[..])); lc_connect(u[..]);
+  b := [1] LcRelay.[lc_relay(37)]; lc_pump(u[..], a[0].set[..], b[..]);
+  lc_plan_view(u[..], a[..]);
+  k: [1] LcBefore; lc_keep(u[..], k[..]);
+  lc_reconnect(u[..]);
+  c := [1] LcRelay.[lc_relay(37)]; lc_pump(u[..], o[0].set[..], c[..]);
+  #assert u[0].lv[0].state == LIVE_OFFLINE && u[0].lv[0].incomplete == 5 && u[0].w[0].n == 263;
+  #assert lc_kept(u[..], k[..]) && u[0].w[0].plans.count == 65536;
+}
