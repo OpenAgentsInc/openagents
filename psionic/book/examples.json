@@ -1350,6 +1350,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/locomotion-gaussian.coax",
+      "chapter": "psionic/book/ch171-learn-a-gait-in-many-worlds.md",
+      "stdout": "psionic/examples/locomotion-gaussian.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

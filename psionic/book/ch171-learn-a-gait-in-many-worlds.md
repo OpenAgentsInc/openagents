@@ -1,8 +1,8 @@
 # 171. Learn a gait in many worlds
 
-The first runnable profile is CPU F64 return-target and clipped-objective math. It does not train a policy, simulate a quadruped or satisfy the full gait acceptance criteria. This chapter builds those foundations before attempting the full learner.
+The runnable CPU F64 profiles provide return targets, a clipped scalar objective and normalized Gaussian policy primitives. They do not train a policy, simulate a quadruped or satisfy the full gait acceptance criteria. This chapter builds those foundations before attempting the full learner.
 
-The eventual workload is a quadruped practising across many randomized simulated worlds, followed by held-out terrain and teacher/student evaluation. Environments, Gaussian policies, optimizer updates, device batching and transfer remain design work below. A return array shaped like several worlds is not evidence that those physical worlds exist.
+The eventual workload is a quadruped practising across many randomized simulated worlds, followed by held-out terrain and teacher/student evaluation. Environments, policy/critic networks, optimizer updates, device batching and transfer remain design work below. A return array shaped like several worlds is not evidence that those physical worlds exist.
 
 ## First runnable slice: targets before a learner
 
@@ -88,11 +88,110 @@ Every one of the 5,023 delta words and all 10,046 bootstrap/trace integers match
 
 The independent GAE oracle uses explicit future-residual sums/products, exact Fraction rounding or Decimal80, not the product's reverse recurrence. Every delta and mask is exact; the frozen per-row advancement budget scales with the effective local segment length and weighted absolute residual sum, including cancellation. All three fields are exact for a one-row segment. The PPO oracle uses exact rational products, the rounded clipping endpoints and the declared formal branch; all output words and active flags are exact. Every actual and expected word must be finite before error maxima are formed.
 
-The [foundation fixtures](../fixtures/robotics/locomotion/README.md) retain input, source, reference, native, typing and transcript identities. No old optimizer, tape, model, SDK or robot gate is rerun. This CPU foundation supplies no environment, Gaussian sampler, optimizer update, training result, batched physics, gait, domain randomization, device throughput, teacher/student transfer or hardware evidence. Low-level helpers and PODs retain numeric/provenance preconditions.
+The [foundation fixtures](../fixtures/robotics/locomotion/README.md) retain input, source, reference, native, typing and transcript identities. No old optimizer, tape, model, SDK or robot gate is rerun. This return-target/objective profile itself supplies no environment, distribution sampler, optimizer update, training result, batched physics, gait, domain randomization, device throughput, teacher/student transfer or hardware evidence. The separate scalar distribution query below covers only Gaussian arithmetic. Low-level helpers and PODs retain numeric/provenance preconditions.
 
 ### Next steps remain explicit
 
-First qualify distribution/log-density and ratio adapters, then policy/critic update gradients and a frozen small LQR learning experiment against its known optimum. Keep score-function policy gradients distinct from differentiating through the environment. A serial CPU return batch does not supply Aethyr's quadruped contacts, sensors, reset/RNG independence or device batching. Those foundations, the full four chapter acceptance criteria and compiler R14/R20/R21/R23 remain later work.
+Scalar distribution/log-density and ratio adapters are qualified below. Next come policy/critic update gradients and a frozen small LQR learning experiment against its known optimum. Keep score-function policy gradients distinct from differentiating through the environment. A serial CPU return batch does not supply Aethyr's quadruped contacts, sensors, reset/RNG independence or device batching. Those foundations, the full four chapter acceptance criteria and compiler R14/R20/R21/R23 remain later work.
+
+## A normalized scalar Gaussian policy primitive
+
+The next runnable slice provides Gaussian log-density and analytic scores, an explicit seeded scalar transform, and an admitted log-ratio adapter to the existing clipped objective. It adds no policy/critic graph, optimizer, environment or training result. The earlier return-target/PPO profile and counter RNG remain unchanged.
+
+`RgpAction` is a nominal **normalized scalar** action/mean. Log standard deviation and diagnostic fields use dimensionless quantities. This is not a distribution over physical metres, radians or actuator force. A physical action map needs its own coordinate and density Jacobian; changing a unit label alone does not supply it.
+
+### Log-density and detached-action scores
+
+With `sigma = exp(log_std)`, the implementation freezes this binary64 recipe:
+
+```jai
+inv_sigma = exp(-log_std);
+d = action == mean ? +0 : RN(action - mean);
+z = RN(d * inv_sigma);
+z2 = RN(z * z);
+logp = RN(RN(RN(-0.5 * z2) - log_std) - C);
+score_mean = RN(z * inv_sigma);
+score_logstd = RN(z2 - 1);
+entropy = RN(log_std + RN(0.5 + C));
+// C = 0.9189385332046728, the rounded real ln(2*pi)/2.
+```
+
+The four output fields are log-density, its formal mean/log-standard-deviation scores and differential entropy. At equal action/mean, the mean score is exactly +0 and the log-standard-deviation score is −1. These are smooth-formula derivatives with the sampled action detached, not derivatives of the rounded program or a path through the plant. Log-density may be positive and differential entropy may be negative; they are not probability mass at a point.
+
+All inputs must be finite before bounds: mean lies in [−16,16], density action in [−128,128], and log standard deviation in [−4,2]. Views have exactly one output slot and refused calls preserve it completely. These are normalized numerical domains, not limits for a physical robot.
+
+### Two counter draws, one finite-grid scalar
+
+The pure uniform transform admits binary64 uniforms in [0,1). It computes the rounded angle and radial transform, then a scalar Box–Muller value:
+
+```jai
+w = RN(1 - U_radial);
+theta = RN(6.283185307179586 * U_angle);
+radius = sqrt(RN(-2 * log(w)));
+z = RN(radius * cos(theta));
+action = RN(mean + RN(exp(log_std) * z));
+```
+
+Only an input radial uniform numerically equal to ±0 selects the explicit zero branch: action copies the mean's bytes, including negative zero, and z is +0. All inputs are still admitted first. Tiny **nonzero** uniforms for which `RN(1-U)==1` follow the nonzero sqrt(−0)/cos recipe; they are not silently canonicalized. Cosine is evaluated at the actual rounded angle. A quarter-turn input does not imply that the backend's `cos(rounded_pi/2)` is exactly zero.
+
+The seeded API accepts `CrSeed` by value, checks mean/log-standard-deviation admission and then reserves room for exactly two existing counter draws. It refuses counters above UINT64_MAX−2. First draw supplies the radial uniform, second supplies the angle; value, standardized value and second.next publish together. The final counter may equal UINT64_MAX. No spare variate, retry, global state or partial RNG advance is hidden in the API.
+
+The **seeded** transform uses the existing top53 grid; the direct uniform API accepts the broader binary64 interval. The grid gives `w >= 2^-53` and a finite tail. Parameter bounds keep every generated action inside the density action box, so no sample clamp is necessary. This is a seeded numerical approximation, not an exact continuous Gaussian law or an independence-quality proof. It is also separate from physical saturation.
+
+### Admit a log-ratio without hiding its rounding
+
+`rlr_surrogate` accepts finite new/old log-density values, a detached nominal Reward advantage and dimensionless epsilon. It does not cap either individual log-density; equal very large finite values may still give a useful zero difference. After advantage/epsilon admission it subtracts once in F64. Overflow or a difference outside the fixed inward log interval refuses before exp.
+
+The interval is the smallest binary64 at or above exact ln(2^-20), through the largest binary64 at or below exact ln(16):
+
+```jai
+lower_log_ratio_bits = 0xc02bb9d3beb8c86b;
+upper_log_ratio_bits = 0x40062e42fefa39ef;
+```
+
+This is an inward **log-domain** profile, not every rounded preimage accepted by the direct-ratio API. The adapter computes backend exp, admits the actual finite rho in [2^-20,16], and never clamps it. Only then does it call the unchanged clipped objective with that rho. Exact ratio knots and its formal derivative convention refer to the realized binary64 ratio.
+
+The very small real inward margin at the lower endpoint does not promise a correctly rounded backend exp. An independently bounded libm result just below the direct-ratio floor must produce range refusal. The numerical budget is not permission to enlarge the public domain.
+
+### A pure example
+
+This example queries a density at its mean, a deterministic uniform fixture, an actual two-draw zero-radius seed and a scalar log-ratio. Its transcript was prewritten before either example execution; it does not collect rewards or train a network.
+
+<!-- source: psionic/examples/locomotion-gaussian.coax locomotion-gaussian -->
+```jai
+ density:[1]RgpDensity;
+ #assert rgp_density_raw(2,0,2,density[..])==RgpStatus.ok;
+ print("density at mean: logp %, mean score %, logstd score %, entropy % micro-units\n",locomotion_gaussian_micro(density[0].logp.value),locomotion_gaussian_micro(density[0].score_mean.value),locomotion_gaussian_micro(density[0].score_logstd.value),locomotion_gaussian_micro(density[0].entropy.value));
+ value:[1]RgpValue;#assert rgp_from_uniforms_raw(2,0,0.5,0,value[..])==RgpStatus.ok;
+ print("uniform fixture: action %, standardized % micro-units\n",locomotion_gaussian_micro(value[0].action.value),locomotion_gaussian_micro(value[0].z.value));
+ draw:[1]RgpDraw;negative_zero:=f64_from_bits(0x8000000000000000);
+ // This seed's first qualified counter draw has radial uniform exactly zero.
+ #assert rgp_sample_raw(CrSeed.{seed=0x61c8864680b583eb},negative_zero,2,draw[..])==RgpStatus.ok;
+ print("seeded zero radius: mean sign preserved %, z bits %, next counter %\n",(ifx f64_bits(draw[0].action.value)==f64_bits(negative_zero) then 1 else 0),f64_bits(draw[0].z.value),draw[0].next.counter);
+ objective:[1]RlrOutput;#assert rlr_surrogate_raw(1,0,2,0.25,objective[..])==RlrStatus.ok;
+ print("log-ratio fixture: logratio %, ratio %, clipped ratio %, active %\n",locomotion_gaussian_micro(objective[0].log_ratio.value),locomotion_gaussian_micro(objective[0].ratio.value),locomotion_gaussian_micro(objective[0].objective.clipped_ratio.value),objective[0].objective.clipped_active);
+ print("loss %, formal logp gradient % micro-reward\n",locomotion_gaussian_micro(objective[0].objective.loss.value),locomotion_gaussian_micro(objective[0].objective.dloss_dlogp.value));
+```
+
+```shell
+coax/bin/coax run psionic/examples/locomotion-gaussian.coax
+```
+
+### Evidence and remaining work
+
+The three new public math roots close 130 actual emitted sites: density 42, sampling 48 and ratio 40, with 15 source groups and zero survivors. A separate checked test-only exp transport closes seven admission sites in one group. It is not a fourth Gaussian policy proof or an exp oracle. The new load-only aggregate has zero body sites and no invented mutation run. Four compiler witnesses reject incorrect physical units or normalized action/reward roles. General Quantity-operator provenance and compiler R14 remain separate.
+
+The first debug, release and fail-fast ASan+UBSan host profiles each pass 32,579 assertions, including 250 dedicated refusals, 56 scalar-by-value overlap observations and 65 IEEE patterns. The 960 density, 1,344 pure-uniform, 160 seeded and 640 ratio records form complete byte-identical streams across all three modes. Fifty-nine new reader poisons are rejected. Seeded rows comprise 112 admitted samples and 48 exhausted counters; ratio rows comprise 536 admitted and 104 range refusals.
+
+The maximum density error is 7.451e−9 on large-magnitude fields and consumes at most 5.322% of the applicable frozen mixed budget; entropy is exact. Sample action/z errors are at most 1.777e−15 and 2.221e−16, using at most 1.839% of their budgets. The declared exact comparisons cover 1,344 density fields, 1,280 pure-uniform fields and six seeded fields; all seed/counter transitions and 192 density zero-sign checks are exact. Every actual/expected comparison field is checked finite before a maximum is formed.
+
+All 536 eligible observed exp values match the independently Decimal-rounded reference in this corpus. Their exact conditional ratio/objective composition then passes. This corpus result is not a general correctly-rounded-libm proof and does not remove the public actual-rho admission at the inward endpoints.
+
+The independent reference uses high-precision Decimal exp/log/sqrt and independently reduced cosine, with exact Fraction/RN local operations. The native test transport observes exp only for frozen eligible log differences. Its rho is first compared to the independent high-precision exp bound. Exact ratio-domain predicates and all clipped-objective words are then derived conditionally from that **observed, independently bounded** rho. Successful public rho must match probe bytes. This separates exp validation from exact objective composition; it does not validate exp by comparing it with itself.
+
+The first native target is Darwin arm64 scalar libm, round-to-nearest with gradual underflow, no contraction/fast math and explicit scalar exp/log/sqrt/cos calls. This is neither an owned-libm accuracy proof nor cross-target determinism. Density and sample smooth fields use frozen numerical budgets; entropy, density-at-mean, explicit radial-zero copies, counters and declared branch/zero cases are exact. No old RNG, GAE/PPO, tape, model or robot gate is repeated.
+
+The [Gaussian fixture](../fixtures/robotics/locomotion-gaussian/README.md) retains contract, input/reference, native, typing and example identities. Policy/critic update assembly and a frozen known-optimum LQR experiment still come next; walking, device batching, terrain, teacher/student and physical hardware remain later work.
 
 ## What the full chapter will teach
 
