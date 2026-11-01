@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793492564,
+  "content": "Sound with fixes in 5bb1ec3921/c0c540aa9f: only survivors a change causes gate; full check (COAX_MUTATION_FULL=1) still gates all; non-survivor failures still stop; cached builds re-judged; stale-changelog guarantee holds (provenance.py 13/13). Found and fixed: a removed/edited check leaving a survivor on an unchanged line passed (now gates via PATH:checks); diff.noprefix emptied the changed list; untracked .coax files were not counted; release.sh used the pre-lock commit's changed lines. Boundary: indirect survivors from code changes elsewhere are reported, caught by the full check.",
+  "tags": [
+    [
+      "commit",
+      "ba440625d7dc70eb3ae3dc87d3c9ee0b04365385"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "034a9995bdbe75544ae11693d0003a71e965c7fe40ce509b48f3ad561f3799e3",
+  "sig": "092517a48c0ac5e62e8cdd9cf819e967c9a17efaa77b99bd0ba5e9d50cab5cef67a7eca1df8c0fd040cfaa85855eca27d0a2f5ae6e4fa330921fb99d0a31c3f3"
+}
