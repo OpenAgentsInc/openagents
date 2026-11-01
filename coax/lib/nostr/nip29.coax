@@ -1,0 +1,532 @@
+// NIP-29 relay-based groups, the relay's side: the state one group holds
+// and the decision whether an event sent to it is admitted. An event joins
+// a group through its h tag. The relay keeps who is a member, which roles
+// each member holds, the group's metadata flags, its invite codes and the
+// ids of recent events, and changes them only through events it admits:
+//
+// - 9007 create-group: anyone may create a group that does not exist yet;
+//   the creator becomes its first member, with the role "admin".
+// - 9000 put-user, 9001 remove-user, 9002 edit-metadata, 9005 delete-event,
+//   9008 delete-group and 9009 create-invite: the signer must hold a role
+//   that grants the action, or be the relay itself. 9010 (pins) and the
+//   other kinds up to 9020 are not built and refuse.
+// - 9021 join request: an invite code must match one the group holds; a
+//   closed group refuses a request without a code; a member's request
+//   refuses as a duplicate. 9022 leave request removes the signer.
+// - Any other kind is a post. A restricted group admits posts from members
+//   only.
+//
+// Every previous tag reference (the first 4 bytes of an event id, as 8
+// lowercase hex digits) must name an event the group admitted among its last
+// G29_SEEN events and did not delete. That is the relay's half of NIP-29's
+// timeline check; this file does not require a minimum number of references.
+//
+// Roles are this relay's policy, as NIP-29 leaves them: "admin" grants every
+// action and "moderator" only delete-event. Other role names are kept and
+// grant nothing. Group metadata (39000 to 39005) is only ever signed by the
+// relay's own key, so such an event signed by anyone else refuses. The relay
+// publishes its state as 39000 metadata, 39001 admins, 39002 members and
+// 39003 roles; the g29_write_* functions write those events' tags.
+//
+// The caller verifies each event (e.verified, from event.coax), looks the
+// group up by its h tag and passes that group's state. Sockets, storage,
+// late publication and signing the 39000 to 39003 events are the relay's.
+#load "nip32.coax";
+#load "../../tests/nostr/nip29_fixtures.coax";
+#authority;
+
+G29_OK :: 0; G29_EVENT :: 1; G29_SHAPE :: 2; G29_LIMIT :: 3; G29_PASS :: 4;
+G29_NO_GROUP :: 5; G29_EXISTS :: 6; G29_PREVIOUS :: 7; G29_NOT_MEMBER :: 8;
+G29_NOT_ALLOWED :: 9; G29_INVITE :: 10; G29_CLOSED :: 11; G29_DUPLICATE :: 12;
+G29_KIND :: 13; G29_SIGNER :: 14;
+
+G29_PUT_USER :: 9000; G29_REMOVE_USER :: 9001; G29_EDIT_METADATA :: 9002;
+G29_DELETE_EVENT :: 9005; G29_CREATE_GROUP :: 9007; G29_DELETE_GROUP :: 9008;
+G29_CREATE_INVITE :: 9009; G29_JOIN :: 9021; G29_LEAVE :: 9022;
+G29_METADATA :: 39000; G29_ADMINS :: 39001; G29_MEMBERS :: 39002; G29_ROLES :: 39003;
+
+G29_MAX_NAME :: 64;          // bytes in a group id, role name, code or group name
+G29_MAX_MEMBERS :: 8; G29_MAX_ROLES :: 2; G29_MAX_INVITES :: 4;
+G29_MAX_PREVIOUS :: 8; G29_SEEN :: 50; G29_VALUES :: 8;
+
+// book:begin policy
+// What each action needs, as bits, and the roles this relay grants them to.
+G29_CAN_PUT :: 1; G29_CAN_REMOVE :: 2; G29_CAN_EDIT :: 4; G29_CAN_DELETE :: 8;
+G29_CAN_DROP :: 16; G29_CAN_INVITE :: 32; G29_CAN_ALL :: 63;
+G29_ROLE_NAMES :: [2] string.["admin", "moderator"];
+G29_ROLE_CAN :: [2] int.[G29_CAN_ALL, G29_CAN_DELETE];
+G29_ROLE_ABOUT :: [2] string.["every moderation action", "delete events"];
+// The bit a moderation kind needs; 0 for a kind this relay does not build.
+g29_needs :: (kind:int)->int {
+  if kind==G29_PUT_USER {return G29_CAN_PUT;}
+  if kind==G29_REMOVE_USER {return G29_CAN_REMOVE;}
+  if kind==G29_EDIT_METADATA {return G29_CAN_EDIT;}
+  if kind==G29_DELETE_EVENT {return G29_CAN_DELETE;}
+  if kind==G29_DELETE_GROUP {return G29_CAN_DROP;}
+  if kind==G29_CREATE_INVITE {return G29_CAN_INVITE;}
+  return 0;
+}
+// book:end policy
+
+// book:begin state
+G29Name :: struct {b:[G29_MAX_NAME]u8; n:int;}
+G29Member :: struct {key:[32]u8; roles:[G29_MAX_ROLES]G29Name; roles_n:int;}
+G29Group :: struct {
+  exists:bool; id:G29Name; name:G29Name;
+  is_private:bool; restricted:bool; hidden:bool; closed:bool;
+  members:[G29_MAX_MEMBERS]G29Member; n:int;
+  invites:[G29_MAX_INVITES]G29Name; invites_n:int;
+  seen:[G29_SEEN][4]u8; live:[G29_SEEN]bool; seen_n:int; seen_next:int;
+}
+// book:end state
+
+// book:begin read
+// One event's NIP-29 tags, read once. A second h or p tag refuses: an event
+// is about one group and one user.
+G29Read :: struct {
+  status:int=G29_OK;
+  has_h:bool; h:G29Name;
+  has_p:bool; p:[32]u8; roles:[G29_MAX_ROLES]G29Name; roles_n:int;
+  has_e:bool; e:[32]u8;
+  has_code:bool; code:G29Name;
+  previous:[G29_MAX_PREVIOUS][4]u8; previous_n:int;
+  name:G29Name; is_private:bool; restricted:bool; hidden:bool; closed:bool;
+}
+// book:end read
+// A tag's name and up to G29_VALUES values, decoded; values counts them all.
+G29Tag :: struct {error:int=NT_EVENT; values:int; v:[G29_VALUES]N32Text;}
+
+g29_text :: (s:string)->G29Name {t:G29Name;for i:0..<s.count {t.b[i]=s[i];}t.n=s.count;return t;}
+g29_is :: (t:G29Name,s:string)->bool {c:=t;return cast(string)c.b[0..<c.n]==s;}
+g29_same :: (a:G29Name,b:G29Name)->bool {c:=b;return g29_is(a,cast(string)c.b[0..<c.n]);}
+g29_tfail :: (t:G29Tag,error:int)->G29Tag {r:=t;r.error=error;return r;}
+g29_rfail :: (r:G29Read,status:int)->G29Read {o:=r;o.status=status;return o;}
+
+// The index'th tag: its name and values, decoded.
+g29_tag :: (e:NostrEvent,index:int)->G29Tag {
+  t:G29Tag;j:[1]Json;if !nt_start(j[..],e) {return t;}
+  k:=0;tok:=json_next(j[..]);
+  while tok==JSON_ARRAY && k<index {skipped:=json_skip(j[..]);k+=1;tok=json_next(j[..]);}
+  if index<0 || tok==JSON_ARRAY_END {return g29_tfail(t,NT_INDEX);}
+  if tok!=JSON_ARRAY {return t;}
+  v:=json_next(j[..]);
+  while v!=JSON_ARRAY_END {
+    if v!=JSON_STRING {return g29_tfail(t,NT_EVENT);}
+    if t.values<G29_VALUES {
+      n:=json_unescape(json_text(j[..]),t.v[t.values].b[..]);
+      if n<0 {return g29_tfail(t,NT_LIMIT);}
+      t.v[t.values].n=n;
+    }
+    t.values+=1;v=json_next(j[..]);
+  }
+  if t.values==0 {return g29_tfail(t,NT_SHAPE);}
+  return g29_tfail(t,NT_OK);
+}
+g29_tag_is :: (t:G29Tag,i:int,s:string)->bool {return n32_is(t.v[i],s);}
+// A decoded value as a name: G29_LIMIT past G29_MAX_NAME bytes.
+g29_name :: (v:N32Text,out:[]G29Name)->int {
+  c:=v;if c.n>G29_MAX_NAME {return G29_LIMIT;}
+  out[0]=g29_text(cast(string)c.b[0..<c.n]);return G29_OK;
+}
+g29_key :: (v:N32Text,out:[]u8)->bool {c:=v;return ne_lower_hex(cast(string)c.b[0..<c.n],out);}
+
+// book:begin parse
+g29_read :: (e:NostrEvent)->G29Read {
+  r:G29Read;k:=0;
+  while true {
+    t:=g29_tag(e,k);
+    if t.error==NT_INDEX {return r;}
+    if t.error!=NT_OK {return g29_rfail(r,ifx t.error==NT_LIMIT then G29_LIMIT else G29_SHAPE);}
+    if t.values>G29_VALUES {return g29_rfail(r,G29_LIMIT);}
+    one:[1]G29Name;
+    if g29_tag_is(t,0,"h") {
+      if r.has_h || t.values<2 || t.v[1].n==0 {return g29_rfail(r,G29_SHAPE);}
+      s:=g29_name(t.v[1],one[..]);if s!=G29_OK {return g29_rfail(r,s);}
+      r.h=one[0];r.has_h=true;
+    } else if g29_tag_is(t,0,"p") {
+      if r.has_p || t.values<2 || !g29_key(t.v[1],r.p[..]) {return g29_rfail(r,G29_SHAPE);}
+      if t.values>2+G29_MAX_ROLES {return g29_rfail(r,G29_LIMIT);}
+      for i:2..<t.values {
+        s:=g29_name(t.v[i],one[..]);if s!=G29_OK {return g29_rfail(r,s);}
+        r.roles[i-2]=one[0];
+      }
+      r.roles_n=t.values-2;r.has_p=true;
+    } else if g29_tag_is(t,0,"e") {
+      if t.values<2 || !g29_key(t.v[1],r.e[..]) {return g29_rfail(r,G29_SHAPE);}
+      r.has_e=true;
+    } else if g29_tag_is(t,0,"code") {
+      if t.values<2 || t.v[1].n==0 {return g29_rfail(r,G29_SHAPE);}
+      s:=g29_name(t.v[1],one[..]);if s!=G29_OK {return g29_rfail(r,s);}
+      r.code=one[0];r.has_code=true;
+    } else if g29_tag_is(t,0,"previous") {
+      if r.previous_n+t.values-1>G29_MAX_PREVIOUS {return g29_rfail(r,G29_LIMIT);}
+      for i:1..<t.values {
+        b:[4]u8;if !g29_key(t.v[i],b[..]) {return g29_rfail(r,G29_SHAPE);}
+        r.previous[r.previous_n]=b;r.previous_n+=1;
+      }
+    } else if g29_tag_is(t,0,"name") && t.values>=2 {
+      s:=g29_name(t.v[1],one[..]);if s!=G29_OK {return g29_rfail(r,s);}
+      r.name=one[0];
+    }
+    else if g29_tag_is(t,0,"private") {r.is_private=true;}
+    else if g29_tag_is(t,0,"restricted") {r.restricted=true;}
+    else if g29_tag_is(t,0,"hidden") {r.hidden=true;}
+    else if g29_tag_is(t,0,"closed") {r.closed=true;}
+    k+=1;
+  }
+  return r;
+}
+// book:end parse
+
+// The member's index, or -1.
+g29_member :: (g:G29Group,key:[32]u8)->int {
+  for i:0..<g.n {if ns_equal32(g.members[i].key,key) {return i;}}
+  return -1;
+}
+// book:begin can
+// What the signer may do: everything for the relay's own key, else the
+// union of what the member's roles grant.
+g29_can :: (g:G29Group,key:[32]u8,relay:[32]u8)->int {
+  if ns_equal32(key,relay) {return G29_CAN_ALL;}
+  m:=g29_member(g,key);if m<0 {return 0;}
+  can:=0;
+  for r:0..<g.members[m].roles_n {
+    for k:0..<G29_ROLE_NAMES.count {if g29_is(g.members[m].roles[r],G29_ROLE_NAMES[k]) {can|=G29_ROLE_CAN[k];}}
+  }
+  return can;
+}
+// book:end can
+g29_prefix_is :: (a:[4]u8,b:[4]u8)->bool {for i:0..<4 {if a[i]!=b[i] {return false;}}return true;}
+g29_known :: (g:G29Group,ref:[4]u8)->bool {
+  for i:0..<g.seen_n {if g.live[i] && g29_prefix_is(g.seen[i],ref) {return true;}}
+  return false;
+}
+g29_remember :: (g:[]G29Group,id:[32]u8) {
+  at:=g[0].seen_next;
+  for i:0..<4 {g[0].seen[at][i]=id[i];}
+  g[0].live[at]=true;
+  g[0].seen_next=(at+1)%G29_SEEN;
+  if g[0].seen_n<G29_SEEN {g[0].seen_n+=1;}
+}
+g29_forget :: (g:[]G29Group,id:[32]u8) {
+  ref:[4]u8;for i:0..<4 {ref[i]=id[i];}
+  for i:0..<g[0].seen_n {
+    if g29_prefix_is(g[0].seen[i],ref) {g[0].live[i]=false;}
+  }
+}
+// Add key with these roles, or replace an existing member's roles.
+g29_put :: (g:[]G29Group,key:[32]u8,r:G29Read)->int {
+  m:=g29_member(g[0],key);
+  if m<0 {
+    if g[0].n==G29_MAX_MEMBERS {return G29_LIMIT;}
+    m=g[0].n;g[0].n+=1;g[0].members[m].key=key;
+  }
+  g[0].members[m].roles=r.roles;g[0].members[m].roles_n=r.roles_n;
+  return G29_OK;
+}
+g29_remove :: (g:[]G29Group,key:[32]u8)->int {
+  m:=g29_member(g[0],key);if m<0 {return G29_NOT_MEMBER;}
+  for i:m+1..<g[0].n {g[0].members[i-1]=g[0].members[i];}
+  g[0].n-=1;return G29_OK;
+}
+g29_has_invite :: (g:G29Group,code:G29Name)->bool {
+  for i:0..<g.invites_n {if g29_same(g.invites[i],code) {return true;}}
+  return false;
+}
+
+// book:begin moderate
+// A moderation event the signer is allowed to send: its change to the state.
+g29_moderate :: (g:[]G29Group,kind:int,r:G29Read)->int {
+  if kind==G29_PUT_USER || kind==G29_REMOVE_USER {
+    if !r.has_p {return G29_SHAPE;}
+    if kind==G29_PUT_USER {return g29_put(g,r.p,r);}
+    return g29_remove(g,r.p);
+  }
+  if kind==G29_EDIT_METADATA {
+    g[0].name=r.name;g[0].is_private=r.is_private;g[0].restricted=r.restricted;
+    g[0].hidden=r.hidden;g[0].closed=r.closed;return G29_OK;
+  }
+  if kind==G29_DELETE_EVENT {
+    if !r.has_e {return G29_SHAPE;}
+    g29_forget(g,r.e);return G29_OK;
+  }
+  if kind==G29_DELETE_GROUP {fresh:G29Group;g[0]=fresh;return G29_OK;}
+  // G29_CREATE_INVITE, the only other kind g29_needs grants.
+  if !r.has_code {return G29_SHAPE;}
+  if g29_has_invite(g[0],r.code) {return G29_OK;}
+  if g[0].invites_n==G29_MAX_INVITES {return G29_LIMIT;}
+  g[0].invites[g[0].invites_n]=r.code;g[0].invites_n+=1;return G29_OK;
+}
+// book:end moderate
+
+// book:begin admit
+// Admit one verified event to the group g[0] holds, changing the state when
+// it is admitted. G29_PASS: the event names no group, so this file has no
+// say in it.
+g29_admit :: (g:[]G29Group,e:NostrEvent,relay:[32]u8)->int {
+  if e.error!=NE_OK || !e.verified {return G29_EVENT;}
+  if e.kind>=G29_METADATA && e.kind<=39005 {
+    return ifx ns_equal32(e.public_key,relay) then G29_OK else G29_SIGNER;
+  }
+  r:=g29_read(e);if r.status!=G29_OK {return r.status;}
+  if !r.has_h {return G29_PASS;}
+  if e.kind==G29_CREATE_GROUP {
+    if g[0].exists {return G29_EXISTS;}
+    if r.previous_n>0 {return G29_PREVIOUS;}
+    g[0].exists=true;g[0].id=r.h;              // a slot without a group is all zero
+    admin:G29Read;admin.roles[0]=g29_text("admin");admin.roles_n=1;
+    s:=g29_put(g,e.public_key,admin);
+    g29_remember(g,e.id);return s;
+  }
+  if !g[0].exists || !g29_same(g[0].id,r.h) {return G29_NO_GROUP;}
+  for i:0..<r.previous_n {if !g29_known(g[0],r.previous[i]) {return G29_PREVIOUS;}}
+  member:=g29_member(g[0],e.public_key)>=0;
+  s:=G29_OK;
+  if e.kind>=G29_PUT_USER && e.kind<=9020 {
+    need:=g29_needs(e.kind);if need==0 {return G29_KIND;}
+    if (g29_can(g[0],e.public_key,relay)&need)==0 {return G29_NOT_ALLOWED;}
+    s=g29_moderate(g,e.kind,r);
+    if e.kind==G29_DELETE_GROUP {return s;}
+  } else if e.kind==G29_JOIN {
+    if member {return G29_DUPLICATE;}
+    if r.has_code && !g29_has_invite(g[0],r.code) {return G29_INVITE;}
+    if !r.has_code && g[0].closed {return G29_CLOSED;}
+    none:G29Read;s=g29_put(g,e.public_key,none);
+  } else if e.kind==G29_LEAVE {
+    s=g29_remove(g,e.public_key);
+  } else if g[0].restricted && !member {
+    return G29_NOT_MEMBER;
+  }
+  if s==G29_OK {g29_remember(g,e.id);}
+  return s;
+}
+// book:end admit
+
+// ---- the state the relay publishes, as tags for 39000 to 39003
+g29_put_name :: (out:[]u8,at:int,t:G29Name)->int {c:=t;return json_write_string(out,at,cast(string)c.b[0..<c.n]);}
+g29_open :: (out:[]u8,g:G29Group)->int {n:=json_raw(out,0,"[[\"d\",");n=g29_put_name(out,n,g.id);return json_raw(out,n,"]");}
+g29_put_key :: (out:[]u8,at:int,key:[32]u8)->int {
+  hex:[64]u8;d:="0123456789abcdef";
+  for i:0..<32 {hex[2*i]=d[key[i]>>4];hex[2*i+1]=d[key[i]&15];}
+  return json_write_string(out,at,cast(string)hex[..]);
+}
+// book:begin publish
+// 39000: the id, name and flags.
+g29_write_metadata :: (g:G29Group,out:[]u8)->int {
+  n:=g29_open(out,g);
+  if g.name.n>0 {n=json_raw(out,n,",[\"name\",");n=g29_put_name(out,n,g.name);n=json_raw(out,n,"]");}
+  if g.is_private {n=json_raw(out,n,",[\"private\"]");}
+  if g.restricted {n=json_raw(out,n,",[\"restricted\"]");}
+  if g.hidden {n=json_raw(out,n,",[\"hidden\"]");}
+  if g.closed {n=json_raw(out,n,",[\"closed\"]");}
+  return json_raw(out,n,"]");
+}
+// 39001: members whose roles grant something, with all their roles.
+g29_write_admins :: (g:G29Group,relay:[32]u8,out:[]u8)->int {
+  n:=g29_open(out,g);
+  for i:0..<g.n {
+    if g29_can(g,g.members[i].key,relay)==0 {continue;}
+    n=json_raw(out,n,",[\"p\",");n=g29_put_key(out,n,g.members[i].key);
+    for r:0..<g.members[i].roles_n {n=json_raw(out,n,",");n=g29_put_name(out,n,g.members[i].roles[r]);}
+    n=json_raw(out,n,"]");
+  }
+  return json_raw(out,n,"]");
+}
+// 39002: every member.
+g29_write_members :: (g:G29Group,out:[]u8)->int {
+  n:=g29_open(out,g);
+  for i:0..<g.n {n=json_raw(out,n,",[\"p\",");n=g29_put_key(out,n,g.members[i].key);n=json_raw(out,n,"]");}
+  return json_raw(out,n,"]");
+}
+// 39003: the roles this relay grants something to.
+g29_write_roles :: (g:G29Group,out:[]u8)->int {
+  n:=g29_open(out,g);
+  for k:0..<G29_ROLE_NAMES.count {
+    n=json_raw(out,n,",[\"role\",");n=json_write_string(out,n,G29_ROLE_NAMES[k]);
+    n=json_raw(out,n,",");n=json_write_string(out,n,G29_ROLE_ABOUT[k]);n=json_raw(out,n,"]");
+  }
+  return json_raw(out,n,"]");
+}
+// book:end publish
+
+// ---- checks (helpers in coax/tests/nostr/nip29_fixtures.coax)
+#test "create, edit, add, add a moderator, remove, then three posts" {
+  g:[1]G29Group;g29_pizza(g[..]);
+  #assert g[0].exists && g29_is(g[0].id,"pizza") && g29_is(g[0].name,"Pizza") && g[0].restricted && g[0].closed && !g[0].is_private && !g[0].hidden;
+  #assert g[0].n==2 && g[0].members[0].roles_n==1 && g29_is(g[0].members[0].roles[0],"admin") && g[0].members[1].roles_n==0;
+  #assert g29_do(g[..],9000,0xaa,0x04,"[[\"h\",\"pizza\"],[\"p\",\"^c\",\"moderator\"]]")==G29_OK;
+  #assert g[0].n==3 && g29_is(g[0].members[2].roles[0],"moderator");
+  #assert g29_do(g[..],9001,0xaa,0x05,"[[\"h\",\"pizza\"],[\"p\",\"^c\"]]")==G29_OK && g[0].n==2;
+  #assert g29_do(g[..],9,0xbb,0x06,"[[\"h\",\"pizza\"],[\"previous\",\"01010101\"]]")==G29_OK;
+  #assert g29_do(g[..],9,0xcc,0x07,"[[\"h\",\"pizza\"]]")==G29_NOT_MEMBER;
+  #assert g29_do(g[..],9,0xaa,0x08,"[[\"h\",\"pizza\"],[\"previous\",\"06060606\",\"deadbeef\"]]")==G29_PREVIOUS;
+  #assert g[0].seen_n==6 && g29_seen_has(g[0],6) && !g29_seen_has(g[0],7) && !g29_seen_has(g[0],8);
+  // An open group admits anyone's post.
+  #assert g29_do(g[..],9002,0xaa,0x09,"[[\"h\",\"pizza\"]]")==G29_OK && !g[0].restricted && !g[0].closed && g[0].name.n==0;
+  #assert g29_do(g[..],9,0xcc,0x0a,"[[\"h\",\"pizza\"]]")==G29_OK;
+  #assert g29_do(g[..],9002,0xaa,0x0b,"[[\"h\",\"pizza\"],[\"private\"],[\"hidden\"]]")==G29_OK && g[0].is_private && g[0].hidden;
+}
+#test "who may moderate: roles, the relay's key, and no one else" {
+  g:[1]G29Group;g29_pizza(g[..]);relay:=g29_k(G29_T_RELAY);
+  #assert g29_do(g[..],9001,0xbb,0x10,"[[\"h\",\"pizza\"],[\"p\",\"^a\"]]")==G29_NOT_ALLOWED;
+  #assert g29_do(g[..],9001,0xdd,0x11,"[[\"h\",\"pizza\"],[\"p\",\"^b\"]]")==G29_NOT_ALLOWED;
+  // A moderator deletes events but neither removes users nor edits.
+  #assert g29_do(g[..],9000,0xaa,0x12,"[[\"h\",\"pizza\"],[\"p\",\"^c\",\"moderator\",\"gardener\"]]")==G29_OK;
+  #assert g29_can(g[0],g29_k(0xcc),relay)==G29_CAN_DELETE && g29_can(g[0],g29_k(0xbb),relay)==0 && g29_can(g[0],g29_k(0xaa),relay)==G29_CAN_ALL;
+  #assert g29_can(g[0],g29_k(0xdd),relay)==0 && g29_can(g[0],relay,relay)==G29_CAN_ALL;
+  #assert g29_do(g[..],9001,0xcc,0x13,"[[\"h\",\"pizza\"],[\"p\",\"^b\"]]")==G29_NOT_ALLOWED;
+  #assert g29_do(g[..],9002,0xcc,0x14,"[[\"h\",\"pizza\"]]")==G29_NOT_ALLOWED;
+  #assert g29_do(g[..],9005,0xcc,0x15,"[[\"h\",\"pizza\"],[\"e\",\"0303030303030303030303030303030303030303030303030303030303030303\"]]")==G29_OK;
+  #assert g29_do(g[..],9,0xbb,0x16,"[[\"h\",\"pizza\"],[\"previous\",\"03030303\"]]")==G29_PREVIOUS;
+  #assert g29_do(g[..],9,0xbb,0x17,"[[\"h\",\"pizza\"],[\"previous\",\"12121212\"]]")==G29_OK;
+  // Both roles of a member with two; unknown roles grant nothing.
+  #assert g29_do(g[..],9000,0xaa,0x18,"[[\"h\",\"pizza\"],[\"p\",\"^b\",\"gardener\",\"admin\"]]")==G29_OK;
+  #assert g29_can(g[0],g29_k(0xbb),relay)==G29_CAN_ALL && g[0].n==3;
+  #assert g29_do(g[..],9000,0xaa,0x19,"[[\"h\",\"pizza\"],[\"p\",\"^b\",\"gardener\"]]")==G29_OK && g29_can(g[0],g29_k(0xbb),relay)==0;
+  // The relay's key moderates without being a member.
+  #assert g29_do(g[..],9001,0xee,0x1a,"[[\"h\",\"pizza\"],[\"p\",\"^a\"]]")==G29_OK && g29_member(g[0],g29_k(0xaa))== -1;
+  // Kinds 9010 to 9020 and the unassigned ones are not built.
+  #assert g29_do(g[..],9010,0xee,0x1b,"[[\"h\",\"pizza\"]]")==G29_KIND && g29_do(g[..],9020,0xee,0x1c,"[[\"h\",\"pizza\"]]")==G29_KIND;
+  #assert g29_do(g[..],9006,0xee,0x1d,"[[\"h\",\"pizza\"]]")==G29_KIND && g29_do(g[..],9021,0xbb,0x1e,"[[\"h\",\"pizza\"]]")==G29_DUPLICATE;
+  #assert g29_needs(9003)==0 && g29_needs(9004)==0 && g29_needs(9007)==0;
+  // Kinds just outside the moderation range are posts.
+  #assert g29_do(g[..],8999,0xbb,0x1f,"[[\"h\",\"pizza\"]]")==G29_OK && g29_do(g[..],9023,0xbb,0x20,"[[\"h\",\"pizza\"]]")==G29_OK;
+}
+#test "join and leave: invite codes, closed groups, duplicates" {
+  g:[1]G29Group;g29_pizza(g[..]);
+  #assert g29_do(g[..],9009,0xbb,0x20,"[[\"h\",\"pizza\"],[\"code\",\"x\"]]")==G29_NOT_ALLOWED;
+  #assert g29_do(g[..],9009,0xaa,0x21,"[[\"h\",\"pizza\"],[\"code\",\"slice-42\"]]")==G29_OK && g[0].invites_n==1;
+  #assert g29_do(g[..],9021,0xdd,0x22,"[[\"h\",\"pizza\"],[\"code\",\"slice-41\"]]")==G29_INVITE;
+  #assert g29_do(g[..],9021,0xdd,0x23,"[[\"h\",\"pizza\"]]")==G29_CLOSED;
+  #assert g29_do(g[..],9021,0xdd,0x24,"[[\"h\",\"pizza\"],[\"code\",\"slice-42\"]]")==G29_OK && g[0].n==3 && g[0].members[2].roles_n==0;
+  #assert g29_do(g[..],9021,0xdd,0x25,"[[\"h\",\"pizza\"],[\"code\",\"slice-42\"]]")==G29_DUPLICATE;
+  #assert g29_do(g[..],9022,0xdd,0x26,"[[\"h\",\"pizza\"]]")==G29_OK && g[0].n==2;
+  #assert g29_do(g[..],9022,0xdd,0x27,"[[\"h\",\"pizza\"]]")==G29_NOT_MEMBER;
+  // A bad code refuses even in an open group; no code joins there.
+  #assert g29_do(g[..],9002,0xaa,0x28,"[[\"h\",\"pizza\"]]")==G29_OK;
+  #assert g29_do(g[..],9021,0xdd,0x29,"[[\"h\",\"pizza\"],[\"code\",\"nope\"]]")==G29_INVITE;
+  #assert g29_do(g[..],9021,0xdd,0x2a,"[[\"h\",\"pizza\"]]")==G29_OK && g[0].n==3;
+  // The same code twice is kept once; four codes fill the list.
+  #assert g29_do(g[..],9009,0xaa,0x2b,"[[\"h\",\"pizza\"],[\"code\",\"slice-42\"]]")==G29_OK && g[0].invites_n==1;
+  #assert g29_do(g[..],9009,0xaa,0x2c,"[[\"h\",\"pizza\"],[\"code\",\"b\"]]")==G29_OK;
+  #assert g29_do(g[..],9009,0xaa,0x2d,"[[\"h\",\"pizza\"],[\"code\",\"c\"]]")==G29_OK;
+  #assert g29_do(g[..],9009,0xaa,0x2e,"[[\"h\",\"pizza\"],[\"code\",\"d\"]]")==G29_OK && g[0].invites_n==4;
+  #assert g29_do(g[..],9009,0xaa,0x2f,"[[\"h\",\"pizza\"],[\"code\",\"e\"]]")==G29_LIMIT && g[0].invites_n==4;
+  #assert g29_do(g[..],9009,0xaa,0x30,"[[\"h\",\"pizza\"],[\"code\",\"d\"]]")==G29_OK && g29_has_invite(g[0],g29_text("d")) && !g29_has_invite(g[0],g29_text("e"));
+  #assert !g29_seen_has(g[0],0x2f) && g29_seen_has(g[0],0x30);
+}
+#test "which group: create, exists, none, another, delete" {
+  g:[1]G29Group;
+  #assert g29_do(g[..],9,0xaa,0x40,"[[\"h\",\"pizza\"]]")==G29_NO_GROUP;
+  #assert g29_do(g[..],9007,0xaa,0x41,"[[\"h\",\"pizza\"],[\"previous\",\"01020304\"]]")==G29_PREVIOUS && !g[0].exists;
+  g29_pizza(g[..]);
+  #assert g29_do(g[..],9007,0xbb,0x42,"[[\"h\",\"pizza\"]]")==G29_EXISTS;
+  #assert g29_do(g[..],9,0xbb,0x43,"[[\"h\",\"pasta\"]]")==G29_NO_GROUP;
+  #assert g29_do(g[..],1,0xdd,0x44,"[[\"t\",\"pizza\"]]")==G29_PASS;
+  #assert g29_do(g[..],9008,0xbb,0x45,"[[\"h\",\"pizza\"]]")==G29_NOT_ALLOWED;
+  #assert g29_do(g[..],9008,0xaa,0x46,"[[\"h\",\"pizza\"]]")==G29_OK && !g[0].exists && g[0].n==0 && g[0].seen_n==0;
+  #assert g29_do(g[..],9007,0xbb,0x47,"[[\"h\",\"pasta\"]]")==G29_OK && g29_is(g[0].id,"pasta") && g29_is(g[0].members[0].roles[0],"admin") && g[0].seen_n==1;
+}
+#test "group metadata only from the relay's key; only verified events" {
+  g:[1]G29Group;buf:[256]u8;relay:=g29_k(G29_T_RELAY);
+  #assert g29_do(g[..],39000,0xee,0x50,"[[\"d\",\"pizza\"]]")==G29_OK && g29_do(g[..],39005,0xee,0x51,"[[\"d\",\"pizza\"]]")==G29_OK;
+  for kind:39000..<39006 {#assert g29_do(g[..],kind,0xdd,0x52,"[[\"d\",\"pizza\"]]")==G29_SIGNER;}
+  #assert g29_do(g[..],38999,0xdd,0x53,"[[\"d\",\"pizza\"]]")==G29_PASS && g29_do(g[..],39006,0xdd,0x54,"[[\"d\",\"pizza\"]]")==G29_PASS;
+  e:=g29_ev(9007,0xaa,0x55,"[[\"h\",\"pizza\"]]",buf[..]);e.verified=false;#assert g29_admit(g[..],e,relay)==G29_EVENT;
+  e=g29_ev(39000,0xee,0x56,"[[\"d\",\"pizza\"]]",buf[..]);e.verified=false;#assert g29_admit(g[..],e,relay)==G29_EVENT;
+  e=g29_ev(9007,0xaa,0x57,"[[\"h\",\"pizza\"]]",buf[..]);e.error=NE_ID;#assert g29_admit(g[..],e,relay)==G29_EVENT && !g[0].exists;
+}
+#test "tags that refuse" {
+  g:[1]G29Group;g29_pizza(g[..]);relay:=g29_k(G29_T_RELAY);
+  #assert g29_do(g[..],9,0xbb,0x60,"[[\"h\",\"pizza\"],[\"h\",\"pizza\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9,0xbb,0x61,"[[\"h\"]]")==G29_SHAPE && g29_do(g[..],9,0xbb,0x62,"[[\"h\",\"\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9,0xbb,0x63,"[[\"h\",\"pizza\"],[\"x\",1]]")==G29_SHAPE && g29_do(g[..],9,0xbb,0x64,"[[\"h\",\"pizza\"],[]]")==G29_SHAPE;
+  #assert g29_do(g[..],9,0xbb,0x65,"[[\"h\",\"pizza\"],[\"x\",\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\"]]")==G29_LIMIT;
+  #assert g29_do(g[..],9,0xbb,0x66,"[[\"h\",\"pizza\"],[\"x\",\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\"]]")==G29_OK;
+  #assert g29_do(g[..],9000,0xaa,0x67,"[[\"h\",\"pizza\"],[\"p\",\"^C\"]]")==G29_SHAPE && g29_do(g[..],9000,0xaa,0x68,"[[\"h\",\"pizza\"],[\"p\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9000,0xaa,0x69,"[[\"h\",\"pizza\"],[\"p\",\"^c\"],[\"p\",\"^d\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9000,0xaa,0x6a,"[[\"h\",\"pizza\"],[\"p\",\"^c\",\"a\",\"b\",\"c\"]]")==G29_LIMIT;
+  #assert g29_do(g[..],9000,0xaa,0x6b,"[[\"h\",\"pizza\"]]")==G29_SHAPE && g29_do(g[..],9001,0xaa,0x6c,"[[\"h\",\"pizza\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9001,0xaa,0x6d,"[[\"h\",\"pizza\"],[\"p\",\"^d\"]]")==G29_NOT_MEMBER;
+  #assert g29_do(g[..],9005,0xaa,0x6e,"[[\"h\",\"pizza\"]]")==G29_SHAPE && g29_do(g[..],9005,0xaa,0x6f,"[[\"h\",\"pizza\"],[\"e\",\"^Z\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9005,0xaa,0x70,"[[\"h\",\"pizza\"],[\"e\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9009,0xaa,0x71,"[[\"h\",\"pizza\"]]")==G29_SHAPE && g29_do(g[..],9009,0xaa,0x72,"[[\"h\",\"pizza\"],[\"code\",\"\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9009,0xaa,0x73,"[[\"h\",\"pizza\"],[\"code\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9,0xbb,0x74,"[[\"h\",\"pizza\"],[\"previous\",\"0101010\"]]")==G29_SHAPE;
+  #assert g29_do(g[..],9,0xbb,0x75,"[[\"h\",\"pizza\"],[\"previous\",\"01010101\",\"01010101\",\"01010101\",\"01010101\"],[\"previous\",\"01010101\",\"01010101\",\"01010101\",\"01010101\"]]")==G29_OK;
+  #assert g29_do(g[..],9,0xbb,0x76,"[[\"h\",\"pizza\"],[\"previous\",\"01010101\",\"01010101\",\"01010101\",\"01010101\"],[\"previous\",\"01010101\",\"01010101\",\"01010101\",\"01010101\",\"01010101\"]]")==G29_LIMIT;
+  #assert g29_do(g[..],9,0xbb,0x77,"[[\"h\",\"pizza\"],[\"previous\"]]")==G29_OK;
+  // 64 bytes is the longest name, code, role and group id.
+  #assert g29_do(g[..],9002,0xaa,0x78,"[[\"h\",\"pizza\"],[\"name\",\"^n\"]]")==G29_OK && g[0].name.n==64;
+  #assert g29_do(g[..],9002,0xaa,0x79,"[[\"h\",\"pizza\"],[\"name\",\"^nx\"]]")==G29_LIMIT;
+  #assert g29_do(g[..],9002,0xaa,0x7a,"[[\"h\",\"pizza\"],[\"name\"]]")==G29_OK && g[0].name.n==0;
+  #assert g29_do(g[..],9,0xbb,0x7b,"[[\"h\",\"^hx\"]]")==G29_LIMIT && g29_do(g[..],9,0xbb,0x7c,"[[\"h\",\"^h\"]]")==G29_NO_GROUP;
+  #assert g29_do(g[..],9021,0xdd,0x7d,"[[\"h\",\"pizza\"],[\"code\",\"^cx\"]]")==G29_LIMIT;
+  #assert g29_do(g[..],9000,0xaa,0x7e,"[[\"h\",\"pizza\"],[\"p\",\"^c\",\"^rx\"]]")==G29_LIMIT;
+  long:[600]u8;n:=json_raw(long[..],0,"[[\"h\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  e:=n32_at(n32_event(9,cast(string)long[0..<n]),0xbb,0x7f);#assert g29_admit(g[..],e,relay)==G29_EVENT;
+  e.verified=true;#assert g29_admit(g[..],e,relay)==G29_LIMIT;
+  none:NostrEvent;none.verified=true;none.error=NE_OK;#assert g29_admit(g[..],none,relay)==G29_SHAPE;
+  #assert g29_tag(none,0).error==NT_EVENT && g29_tag(nt_event("[[\"t\"]]"),-1).error==NT_INDEX && g29_tag(nt_event("[1]"),0).error==NT_EVENT;
+}
+#test "limits: members and the window of recent events" {
+  g:[1]G29Group;g29_pizza(g[..]);relay:=g29_k(G29_T_RELAY);
+  tags:=[6]string.["[[\"h\",\"pizza\"],[\"p\",\"^1\"]]","[[\"h\",\"pizza\"],[\"p\",\"^2\"]]","[[\"h\",\"pizza\"],[\"p\",\"^3\"]]",
+    "[[\"h\",\"pizza\"],[\"p\",\"^4\"]]","[[\"h\",\"pizza\"],[\"p\",\"^5\"]]","[[\"h\",\"pizza\"],[\"p\",\"^6\"]]"];
+  for i:0..<6 {#assert g29_do(g[..],9000,0xaa,cast(u8)(0x80+i),tags[i])==G29_OK;}
+  #assert g[0].n==8 && g29_do(g[..],9000,0xaa,0x86,"[[\"h\",\"pizza\"],[\"p\",\"^7\"]]")==G29_LIMIT;
+  #assert g29_do(g[..],9000,0xaa,0x87,"[[\"h\",\"pizza\"],[\"p\",\"^6\",\"moderator\"]]")==G29_OK && g[0].n==8;
+  // Removing from the middle keeps the order of the rest.
+  #assert g29_do(g[..],9001,0xaa,0x88,"[[\"h\",\"pizza\"],[\"p\",\"^3\"]]")==G29_OK && g[0].n==7;
+  #assert g29_member(g[0],g29_k(0x44))==4 && g29_member(g[0],g29_k(0x66))==6 && g29_member(g[0],g29_k(0x22))==3 && g29_member(g[0],g29_k(0x33))== -1;
+  #assert g29_can(g[0],g29_k(0x66),relay)==G29_CAN_DELETE;
+  // 50 events later the first is out of the window.
+  one:[1]G29Group;one[0].exists=true;one[0].id=g29_text("pizza");
+  for i:0..<51 {k:[32]u8;k[0]=cast(u8)i;k[1]=1;g29_remember(one[..],k);}
+  #assert one[0].seen_n==50 && one[0].seen_next==1 && !g29_known(one[0],g29_r4(0,1,0,0)) && g29_known(one[0],g29_r4(1,1,0,0)) && g29_known(one[0],g29_r4(50,1,0,0));
+  #assert !g29_known(one[0],g29_r4(1,1,0,1)) && !g29_known(one[0],g29_r4(1,1,1,0)) && !g29_known(one[0],g29_r4(1,2,0,0)) && !g29_known(one[0],g29_r4(51,1,0,0));
+  k:[32]u8;k[0]=7;k[1]=1;g29_forget(one[..],k);
+  #assert !g29_known(one[0],g29_r4(7,1,0,0)) && g29_known(one[0],g29_r4(8,1,0,0)) && g29_known(one[0],g29_r4(6,1,0,0));
+  k[2]=1;g29_forget(one[..],k);k[2]=0;k[0]=9;k[1]=2;g29_forget(one[..],k);k[0]=10;k[1]=1;k[3]=1;g29_forget(one[..],k);
+  k[3]=0;k[0]=2;k[1]=9;g29_forget(one[..],k);k[0]=11;k[1]=1;k[2]=0;k[3]=0;
+  #assert g29_known(one[0],g29_r4(9,1,0,0)) && g29_known(one[0],g29_r4(10,1,0,0)) && g29_known(one[0],g29_r4(2,1,0,0)) && g29_known(one[0],g29_r4(1,1,0,0));
+}
+#test "the state the relay publishes" {
+  g:[1]G29Group;g29_pizza(g[..]);out:[1024]u8;relay:=g29_k(G29_T_RELAY);
+  #assert g29_do(g[..],9000,0xaa,0x90,"[[\"h\",\"pizza\"],[\"p\",\"^c\",\"moderator\",\"gardener\"]]")==G29_OK;
+  #assert g29_do(g[..],9000,0xaa,0x91,"[[\"h\",\"pizza\"],[\"p\",\"^d\",\"gardener\"]]")==G29_OK;
+  #assert g29_out_is(g29_write_metadata(g[0],out[..]),out[..],"[[\"d\",\"pizza\"],[\"name\",\"Pizza\"],[\"restricted\"],[\"closed\"]]");
+  #assert g29_out_is(g29_write_admins(g[0],relay,out[..]),out[..],"[[\"d\",\"pizza\"],[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"admin\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"moderator\",\"gardener\"]]");
+  #assert g29_out_is(g29_write_members(g[0],out[..]),out[..],"[[\"d\",\"pizza\"],[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"],[\"p\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"]]");
+  #assert g29_out_is(g29_write_roles(g[0],out[..]),out[..],"[[\"d\",\"pizza\"],[\"role\",\"admin\",\"every moderation action\"],[\"role\",\"moderator\",\"delete events\"]]");
+  #assert g29_do(g[..],9002,0xaa,0x92,"[[\"h\",\"pizza\"],[\"private\"],[\"hidden\"]]")==G29_OK;
+  #assert g29_out_is(g29_write_metadata(g[0],out[..]),out[..],"[[\"d\",\"pizza\"],[\"private\"],[\"hidden\"]]");
+  k:[32]u8;for i:0..<32 {k[i]=cast(u8)(i*8);}
+  #assert g29_out_is(g29_put_key(out[..],0,k),out[..],"\"0008101820283038404850586068707880889098a0a8b0b8c0c8d0d8e0e8f0f8\"");
+  small:[40]u8;#assert g29_write_members(g[0],small[..])== -1 && g29_write_admins(g[0],relay,small[..])== -1;
+}
+#test "the policy's bits are distinct and cover every action; each kind needs its own" {
+  kinds:=[6]int.[9000,9001,9002,9005,9008,9009];
+  sum:=0;all:=0;for k:kinds {sum+=g29_needs(k);all|=g29_needs(k);}
+  #assert sum==G29_CAN_ALL && all==G29_CAN_ALL && G29_CAN_ALL==63;
+  #assert g29_needs(9000)==1 && g29_needs(9001)==2 && g29_needs(9002)==4 && g29_needs(9005)==8 && g29_needs(9008)==16 && g29_needs(9009)==32;
+}
+#test "edges the flow does not reach" {
+  g:[1]G29Group;g29_pizza(g[..]);relay:=g29_k(G29_T_RELAY);out:[256]u8;
+  // Other metadata tags do not change the name; a one-letter name is written.
+  #assert g29_do(g[..],9002,0xaa,0xa0,"[[\"h\",\"pizza\"],[\"name\",\"P\"],[\"picture\",\"https://pizza.example/p.png\"]]")==G29_OK && g29_is(g[0].name,"P");
+  #assert g29_out_is(g29_write_metadata(g[0],out[..]),out[..],"[[\"d\",\"pizza\"],[\"name\",\"P\"]]");
+  // put-user on the first member changes roles, not the member count.
+  #assert g29_do(g[..],9000,0xee,0xa1,"[[\"h\",\"pizza\"],[\"p\",\"^a\",\"moderator\"]]")==G29_OK && g[0].n==2 && g29_can(g[0],g29_k(0xaa),relay)==G29_CAN_DELETE;
+  #assert g29_tag(nt_event("[[]]"),0).error==NT_SHAPE;
+  t:=g29_tag(nt_event("[[\"previous\",\"a\",\"b\"]]"),0);#assert t.error==NT_OK && t.values==3 && g29_tag_is(t,2,"b");
+  // Prefixes differ in each byte; forgetting reaches the first slot.
+  one:[1]G29Group;one[0].exists=true;
+  k:[32]u8;k[0]=1;k[1]=2;k[2]=3;k[3]=4;g29_remember(one[..],k);
+  k[0]=5;g29_remember(one[..],k);
+  #assert g29_known(one[0],g29_r4(1,2,3,4)) && g29_known(one[0],g29_r4(5,2,3,4));
+  #assert !g29_known(one[0],g29_r4(1,2,3,3)) && !g29_known(one[0],g29_r4(1,2,4,4)) && !g29_known(one[0],g29_r4(1,3,3,4)) && !g29_known(one[0],g29_r4(2,2,3,4));
+  #assert g29_prefix_is(g29_r4(1,2,3,4),g29_r4(1,2,3,4)) && !g29_prefix_is(g29_r4(1,2,3,4),g29_r4(1,2,3,5));
+  k[0]=1;k[3]=5;g29_forget(one[..],k);#assert g29_known(one[0],g29_r4(1,2,3,4));
+  k[3]=4;g29_forget(one[..],k);#assert !g29_known(one[0],g29_r4(1,2,3,4)) && g29_known(one[0],g29_r4(5,2,3,4));
+}

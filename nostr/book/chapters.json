@@ -1270,15 +1270,22 @@
    "number": 59,
    "title": "Groups and communities",
    "file": "ch059-groups-and-communities.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     38,
     34,
     22
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip29.coax",
+    "coax/lib/nostr/nip72.coax",
+    "nostr/examples/groups-communities.coax",
+    "nostr/examples/checks/groups-communities.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

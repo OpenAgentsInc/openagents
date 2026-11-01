@@ -1,0 +1,56 @@
+each event's id
+  E1: 1faedc7d07730a6d560ea3af069d93f2ded8beb565e8fcc9653d301c214fcdb6
+  E2: f98f23a05a149673d140661f847c3ff8fc5c2e1050af59b64e271b3ffd8626d6
+  E3: 62a812ccc6e11b9e82139ce1dc69a439b806ab3df0f062024e9ae6ebe92eda39
+  E4: 4bff9f37ff627845b7cc7d0087cafbbdd8180ccefe63b8e4a4090ad84a2d8102
+  E5: a501a8c65a30d55e443053486237fadd99a32b1751123464a0b325c46426e556
+  P1: f9e7b4a040395cdcd2b4aeb20c5ec195b3642913dc54aafa0c36cc94907cfd5e
+  P2: 805b8c31397dcaa0bc3a5e60584301e91ce9ca80a29472119a427d6e0b02cf1c
+  P3: a081498c3b97ffa6ee5a7845bd69f75781a17aa37d17eed1ada2bd8ecc5a0c53
+  M1: 63882d8a2035fee60ff605a59ed63bb44ac8eb31ae249761edaec53b5dcbcc8c
+  I1: 9c13a9ebcbf5f3beb95055f36b43d77237ddac086469a9e73dd066f57d78c53f
+  J1: 6d531217a74343419f0b23326d27a477a3754366f3ccaa219e6e004537374c65
+  J2: e75fb06b540835d52b6d6c3c643086e8fc3a879b2c26d5b3b2ee0d5a59eb8cf1
+  J3: c4ecb4fa625fbad31cb35a8bd44b64a47c6993be057e20382f0852d0299e19b3
+  J4: 0377621b32a6ffa8a0f6738bfd8f5c67eb44f8aab0bd4124693ff19961d5fb1e
+group pizza on the relay c6047f94...
+  E1 Alice kind 9007 create-group: admitted
+    members: Alice (admin)
+  E2 Alice kind 9002 edit-metadata: admitted
+    members: Alice (admin)
+  E3 Alice kind 9000 put-user Bob: admitted
+    members: Alice (admin) Bob
+  E4 Alice kind 9000 put-user Carol as moderator: admitted
+    members: Alice (admin) Bob Carol (moderator)
+  E5 Alice kind 9001 remove-user Carol: admitted
+    members: Alice (admin) Bob
+  P1 Bob kind 9 post "who wants pizza?", previous 1faedc7d 62a812cc: admitted
+  P2 Carol kind 9 post "me!", previous f9e7b4a0: refused: not a member
+  P3 Alice kind 9 post "Friday?", previous f9e7b4a0 deadbeef: refused: unknown previous event
+  M1 Bob kind 9001 remove-user Alice: refused: not allowed
+    members: Alice (admin) Bob
+  I1 Alice kind 9009 create-invite: admitted
+    members: Alice (admin) Bob
+  J1 Mallory kind 9021 join with code slice-41: refused: bad invite code
+    members: Alice (admin) Bob
+  J2 Mallory kind 9021 join without a code: refused: group is closed
+    members: Alice (admin) Bob
+  J3 Mallory kind 9021 join with code slice-42: admitted
+    members: Alice (admin) Bob Mallory
+  J4 Mallory kind 9021 join again: refused: duplicate
+    members: Alice (admin) Bob Mallory
+  P1 with one signature digit changed: refused: event does not verify
+relay state
+  39000 by Relay: admitted
+    tags [["d","pizza"],["name","Pizza Lovers"],["restricted"],["closed"]]
+  39000 by Mallory, the same tags: refused: not signed by the relay
+  39001 by Relay: admitted
+    tags [["d","pizza"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","admin"]]
+  39002 by Relay: admitted
+    tags [["d","pizza"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"],["p","25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517"]]
+  39003 by Relay: admitted
+    tags [["d","pizza"],["role","admin","every moderation action"],["role","moderator","delete events"]]
+community pizza-fans (NIP-72)
+  Bob approves Carol's post: counts
+  Mallory approves Carol's post: approver is not a moderator
+  Bob's approval names P1 instead: approval names another post

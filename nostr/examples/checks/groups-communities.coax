@@ -1,0 +1,131 @@
+// The checks of groups-communities.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test nostr/examples/checks/groups-communities.coax --run-steps 250000000
+#load "../groups-communities.coax";
+
+// book:begin check
+// The ids from a Python script written from NIP-01 (it shares no code with
+// Coax): hashlib.sha256 of json.dumps([0, pubkey, created_at, kind, tags,
+// content], separators=(",", ":"), ensure_ascii=False), over the same
+// events, with the previous references in P1, P2 and P3 cut by the script
+// itself from the ids it computed. The last two are the community and
+// Carol's post.
+PY_ID :: [EVENTS + 2] string.[
+  "1faedc7d07730a6d560ea3af069d93f2ded8beb565e8fcc9653d301c214fcdb6",
+  "f98f23a05a149673d140661f847c3ff8fc5c2e1050af59b64e271b3ffd8626d6",
+  "62a812ccc6e11b9e82139ce1dc69a439b806ab3df0f062024e9ae6ebe92eda39",
+  "4bff9f37ff627845b7cc7d0087cafbbdd8180ccefe63b8e4a4090ad84a2d8102",
+  "a501a8c65a30d55e443053486237fadd99a32b1751123464a0b325c46426e556",
+  "f9e7b4a040395cdcd2b4aeb20c5ec195b3642913dc54aafa0c36cc94907cfd5e",
+  "805b8c31397dcaa0bc3a5e60584301e91ce9ca80a29472119a427d6e0b02cf1c",
+  "a081498c3b97ffa6ee5a7845bd69f75781a17aa37d17eed1ada2bd8ecc5a0c53",
+  "63882d8a2035fee60ff605a59ed63bb44ac8eb31ae249761edaec53b5dcbcc8c",
+  "9c13a9ebcbf5f3beb95055f36b43d77237ddac086469a9e73dd066f57d78c53f",
+  "6d531217a74343419f0b23326d27a477a3754366f3ccaa219e6e004537374c65",
+  "e75fb06b540835d52b6d6c3c643086e8fc3a879b2c26d5b3b2ee0d5a59eb8cf1",
+  "c4ecb4fa625fbad31cb35a8bd44b64a47c6993be057e20382f0852d0299e19b3",
+  "0377621b32a6ffa8a0f6738bfd8f5c67eb44f8aab0bd4124693ff19961d5fb1e",
+  "d11bc0cadd3f5c7b1f6b520af004d3c4e7d19566464a46decdab13fc48614c36",
+  "f77d76cda3295ff34e404f71332742f5538c34224b285371e30ebf7f9a41f7d9"];
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+COMMUNITY_TAGS :: "[[\"d\",\"pizza-fans\"],[\"name\",\"Pizza fans\"],[\"p\",\"^1\",\"\",\"moderator\"]]";
+POST_TAGS :: "[[\"A\",\"34550:^0:pizza-fans\"],[\"a\",\"34550:^0:pizza-fans\"],[\"P\",\"^0\"],[\"p\",\"^0\"],[\"K\",\"34550\"],[\"k\",\"34550\"]]";
+
+// An event with this id and a zero signature, read with its id recomputed
+// when check_id is set. The signature is not checked here (the example
+// checks every one), so the event is marked verified by hand.
+py :: (id: string, who: int, at: int, kind: int, tags: string, content: string, check_id: bool, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, id);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[who]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, at);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, kind);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  e := ifx check_id then nostr_event_read(cast(string) out[0..<n], scratch, false) else ne_parse(cast(string) out[0..<n]);
+  e.verified = e.error == NE_OK;
+  return e;
+}
+Events :: struct { ids: [EVENTS + 2] [32] u8; buf: [EVENTS + 2] [2048] u8; e: [EVENTS + 2] NostrEvent; }
+read_all :: (all: [] Events) {
+  scratch: [4096] u8; tags: [2048] u8;
+  for k: 0..<EVENTS + 2 {
+    t := ifx k == EVENTS then COMMUNITY_TAGS else ifx k == EVENTS + 1 then POST_TAGS else TAGS[k];
+    who := ifx k == EVENTS then ALICE else ifx k == EVENTS + 1 then CAROL else WHO[k];
+    at := ifx k == EVENTS then T0 + 1000 else ifx k == EVENTS + 1 then T0 + 1060 else T0 + 60 * k;
+    kind := ifx k == EVENTS then 34550 else ifx k == EVENTS + 1 then 1111 else KIND[k];
+    content := ifx k == EVENTS then "" else ifx k == EVENTS + 1 then "first slice" else CONTENT[k];
+    all[0].e[k] = py(PY_ID[k], who, at, kind, with_refs(t, all[0].ids[..], tags[..]), content, true, all[0].buf[k][..], scratch[..]);
+    all[0].ids[k] = all[0].e[k].id;
+  }
+}
+
+#test "the ids are Python's" {
+  all: [1] Events; read_all(all[..]);
+  for k: 0..<EVENTS + 2 { #assert all[0].e[k].error == NE_OK && ns_equal32(all[0].e[k].computed_id, all[0].e[k].id); }
+}
+
+// The worked example by hand. E1 makes Alice the admin; E2 makes the group
+// restricted and closed; E3 adds Bob; E4 adds Carol as a moderator; E5
+// removes her. P1: Bob is a member and E1 and E3 are known: admitted. P2:
+// Carol was removed and the group is restricted: not a member. P3: deadbeef
+// names no event the group admitted: unknown previous. M1: Bob holds no
+// role: not allowed. I1 adds slice-42. J1 has the wrong code, J2 none in a
+// closed group, J3 the right one, J4 is Mallory again: duplicate.
+HAND :: [EVENTS] int.[G29_OK, G29_OK, G29_OK, G29_OK, G29_OK, G29_OK, G29_NOT_MEMBER, G29_PREVIOUS,
+  G29_NOT_ALLOWED, G29_OK, G29_INVITE, G29_CLOSED, G29_OK, G29_DUPLICATE];
+#test "every verdict matches the hand values" {
+  all: [1] Events; read_all(all[..]); g: [1] G29Group; relay := key_of(RELAY);
+  for k: 0..<EVENTS {
+    #assert g29_admit(g[..], all[0].e[k], relay) == HAND[k];
+    if k == 4 { #assert g[0].n == 2 && g29_member(g[0], key_of(CAROL)) == -1; }
+  }
+  #assert g[0].n == 3 && g29_member(g[0], key_of(MALLORY)) == 2 && g29_can(g[0], key_of(ALICE), relay) == G29_CAN_ALL;
+  #assert g29_can(g[0], key_of(BOB), relay) == 0 && g[0].restricted && g[0].closed && g29_is(g[0].name, "Pizza Lovers");
+}
+
+// NIP-29's own examples, verbatim. Their ids and keys are placeholders such
+// as "<group-id>" and "<pubkey1-as-hex>", so they read only where the text
+// is a value, not a key: the previous example reads as three references,
+// the 39000 metadata example is admitted only from the relay's key, and a
+// put-user whose p tag is "<pubkey1-as-hex>" refuses as a bad tag.
+NIP29_PREVIOUS :: "[[\"h\",\"pizza\"],[\"previous\", \"eb96c864\", \"2db75638\", \"b5d1065f\"]]";
+NIP29_METADATA :: "[[\"d\", \"<group-id>\"],[\"name\", \"Pizza Lovers\"],[\"picture\", \"https://pizza.com/pizza.png\"],[\"banner\", \"https://pizza.com/banner.png\"],[\"about\", \"a group for people who love pizza\"],[\"private\"],[\"closed\"],[\"supported_kinds\", \"9\", \"11\"]]";
+NIP29_JOIN :: "[[\"h\", \"<group-id>\"],[\"code\", \"<optional-invite-code>\"]]";
+NIP29_ADMIN :: "[[\"h\", \"<group-id>\"],[\"p\", \"<pubkey1-as-hex>\", \"ceo\"]]";
+#test "NIP-29's examples" {
+  all: [1] Events; read_all(all[..]); g: [1] G29Group; relay := key_of(RELAY);
+  for k: 0..<10 { #assert g29_admit(g[..], all[0].e[k], relay) == HAND[k]; }
+  scratch: [4096] u8; out: [2048] u8; zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  e := py(zero, BOB, T0 + 2000, 9, NIP29_PREVIOUS, "", false, out[..], scratch[..]);
+  r := g29_read(e);
+  #assert r.status == G29_OK && r.previous_n == 3 && r.previous[0][0] == 0xeb && r.previous[1][0] == 0x2d && r.previous[2][3] == 0x5f;
+  #assert g29_admit(g[..], e, relay) == G29_PREVIOUS;
+  #assert g29_admit(g[..], py(zero, RELAY, T0, 39000, NIP29_METADATA, "", false, out[..], scratch[..]), relay) == G29_OK;
+  #assert g29_admit(g[..], py(zero, MALLORY, T0, 39000, NIP29_METADATA, "", false, out[..], scratch[..]), relay) == G29_SIGNER;
+  j := g29_read(py(zero, MALLORY, T0, 9021, NIP29_JOIN, "", false, out[..], scratch[..]));
+  #assert j.status == G29_OK && g29_is(j.h, "<group-id>") && g29_is(j.code, "<optional-invite-code>");
+  #assert g29_admit(g[..], py(zero, MALLORY, T0, 9021, NIP29_JOIN, "", false, out[..], scratch[..]), relay) == G29_NO_GROUP;
+  #assert g29_read(py(zero, ALICE, T0, 9000, NIP29_ADMIN, "", false, out[..], scratch[..])).status == G29_SHAPE;
+}
+
+// NIP-72 by hand: Bob is the only p tag marked moderator. His approval
+// names the community, Carol's post and Carol: counts. Mallory's names the
+// same, but she is not listed. Bob's third names P1's id: another post.
+approve :: (who: int, post: int, all: [] Events, out: [] u8) -> NostrEvent {
+  template: [512] u8; tags: [2048] u8; scratch: [4096] u8;
+  n := json_raw(template[..], 0, "[[\"a\",\"34550:^0:pizza-fans\"],[\"e\",\"*");
+  n = json_write_int(template[..], n, post); n = json_raw(template[..], n, "\"],[\"p\",\"^2\"],[\"k\",\"1111\"]]");
+  zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  return py(zero, who, T0 + 1120, 4550, with_refs(cast(string) template[0..<n], all[0].ids[..], tags[..]), "", false, out, scratch[..]);
+}
+#test "NIP-72 approvals match the hand values" {
+  all: [1] Events; read_all(all[..]); out: [2048] u8;
+  c := all[0].e[EVENTS]; q := all[0].e[EVENTS + 1];
+  #assert n72_counts(c, q, approve(BOB, EVENTS + 1, all[..], out[..])) == N72_OK;
+  #assert n72_counts(c, q, approve(MALLORY, EVENTS + 1, all[..], out[..])) == N72_NOT_MODERATOR;
+  #assert n72_counts(c, q, approve(BOB, 5, all[..], out[..])) == N72_POST;
+  #assert n72_counts(c, q, approve(CAROL, EVENTS + 1, all[..], out[..])) == N72_NOT_MODERATOR;
+}
+// book:end check

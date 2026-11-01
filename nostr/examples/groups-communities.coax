@@ -1,0 +1,182 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip72.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+STATUS :: [15] string.["admitted", "refused: event does not verify", "refused: bad tags", "refused: over a limit",
+  "not a group event", "refused: no such group", "refused: group exists", "refused: unknown previous event",
+  "refused: not a member", "refused: not allowed", "refused: bad invite code", "refused: group is closed",
+  "refused: duplicate", "refused: kind not built", "refused: not signed by the relay"];
+COUNTS :: [9] string.["counts", "event does not verify", "wrong kind", "approver is not a moderator",
+  "approval names another community", "approval names another post", "approval names another author",
+  "post does not tag the community", "bad tags"];
+// BIP-340 test vectors 0 to 3's keys, and the key 2 for the relay. Never
+// sign with a real key in an example.
+PEOPLE :: [5] string.["Alice", "Bob", "Carol", "Mallory", "Relay"];
+PUB :: [5] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"];
+SECRET :: [5] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710",
+  "0000000000000000000000000000000000000000000000000000000000000002"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; MALLORY :: 3; RELAY :: 4;
+T0 :: 1793491200;                         // 2026-11-01T00:00:00Z
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string { own := id; return n72_hex(own[..], out); }
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+who_is :: (key: [32] u8) -> string {
+  for k: 0..<PEOPLE.count { if ns_equal32(key_of(k), key) { return PEOPLE[k]; } }
+  return "someone";
+}
+
+// Sign an event into out and read it back with its id and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(SECRET[who], key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified && ns_equal32(e.public_key, key_of(who));
+  return e;
+}
+// The tags with ^k replaced by person k's key, &k by the first 8 hex digits
+// of event k's id (a previous reference) and *k by its whole id.
+with_refs :: (template: string, ids: [] [32] u8, out: [] u8) -> string {
+  n := 0; i := 0; hex: [64] u8;
+  while i < template.count {
+    c := template[i];
+    if c == '^' || c == '&' || c == '*' {
+      k := cast(int) (template[i + 1] - '0'); i += 2;
+      if i < template.count && template[i] >= '0' && template[i] <= '9' { k = k * 10 + cast(int) (template[i] - '0'); i += 1; }
+      s := ifx c == '^' then PUB[k] else hex32(ids[k], hex[..]);
+      if c == '&' { s = s[0..<8]; }
+      n = json_raw(out, n, s);
+    } else { out[n] = c; n += 1; i += 1; }
+  }
+  return cast(string) out[0..<n];
+}
+
+// book:begin show
+show_members :: (g: G29Group) {
+  print("    members:");
+  if g.n == 0 { print(" none"); }
+  for i: 0..<g.n {
+    print(" %", who_is(g.members[i].key));
+    for r: 0..<g.members[i].roles_n { own := g.members[i].roles[r]; print("%", ifx r == 0 then " (" else ", "); print("%", cast(string) own.b[0..<own.n]); }
+    if g.members[i].roles_n > 0 { print(")"); }
+  }
+  print("\n");
+}
+// book:end show
+
+// The group's events: a name, who signs, the kind, tags and content.
+EVENTS :: 14;
+NAME :: [EVENTS] string.["E1", "E2", "E3", "E4", "E5", "P1", "P2", "P3", "M1", "I1", "J1", "J2", "J3", "J4"];
+WHAT :: [EVENTS] string.["create-group", "edit-metadata", "put-user Bob", "put-user Carol as moderator",
+  "remove-user Carol", "post", "post", "post", "remove-user Alice", "create-invite",
+  "join with code slice-41", "join without a code", "join with code slice-42", "join again"];
+WHO :: [EVENTS] int.[ALICE, ALICE, ALICE, ALICE, ALICE, BOB, CAROL, ALICE, BOB, ALICE, MALLORY, MALLORY, MALLORY, MALLORY];
+KIND :: [EVENTS] int.[9007, 9002, 9000, 9000, 9001, 9, 9, 9, 9001, 9009, 9021, 9021, 9021, 9021];
+TAGS :: [EVENTS] string.[
+  "[[\"h\",\"pizza\"]]",
+  "[[\"h\",\"pizza\"],[\"name\",\"Pizza Lovers\"],[\"restricted\"],[\"closed\"]]",
+  "[[\"h\",\"pizza\"],[\"p\",\"^1\"]]",
+  "[[\"h\",\"pizza\"],[\"p\",\"^2\",\"moderator\"]]",
+  "[[\"h\",\"pizza\"],[\"p\",\"^2\"]]",
+  "[[\"h\",\"pizza\"],[\"previous\",\"&0\",\"&2\"]]",
+  "[[\"h\",\"pizza\"],[\"previous\",\"&5\"]]",
+  "[[\"h\",\"pizza\"],[\"previous\",\"&5\",\"deadbeef\"]]",
+  "[[\"h\",\"pizza\"],[\"p\",\"^0\"]]",
+  "[[\"h\",\"pizza\"],[\"code\",\"slice-42\"]]",
+  "[[\"h\",\"pizza\"],[\"code\",\"slice-41\"]]",
+  "[[\"h\",\"pizza\"]]",
+  "[[\"h\",\"pizza\"],[\"code\",\"slice-42\"]]",
+  "[[\"h\",\"pizza\"],[\"code\",\"slice-42\"]]"];
+CONTENT :: [EVENTS] string.["", "", "", "", "", "who wants pizza?", "me!", "Friday?", "", "", "", "", "", ""];
+
+// book:begin publish
+// The relay signs its state as 39000 to 39003 and admits its own events.
+publish :: (g: [] G29Group, relay: [32] u8) {
+  kinds := [4] int.[39000, 39001, 39002, 39003];
+  for kind: kinds {
+    tags: [2048] u8; n := 0;
+    if kind == 39000 { n = g29_write_metadata(g[0], tags[..]); }
+    if kind == 39001 { n = g29_write_admins(g[0], relay, tags[..]); }
+    if kind == 39002 { n = g29_write_members(g[0], tags[..]); }
+    if kind == 39003 { n = g29_write_roles(g[0], tags[..]); }
+    #assert n > 0;
+    text := cast(string) tags[0..<n];
+    out: [4096] u8; e := sign(RELAY, T0 + 900, kind, text, "", out[..]);
+    print("  % by Relay: %\n    tags %\n", kind, STATUS[g29_admit(g, e, relay)], text);
+    if kind == 39000 {
+      forged: [4096] u8; f := sign(MALLORY, T0 + 900, kind, text, "", forged[..]);
+      print("  % by Mallory, the same tags: %\n", kind, STATUS[g29_admit(g, f, relay)]);
+    }
+  }
+}
+// book:end publish
+
+main :: () {
+  relay := key_of(RELAY);
+  ids: [EVENTS + 4] [32] u8; buf: [EVENTS + 5] [2048] u8; all: [EVENTS] NostrEvent;
+  for k: 0..<EVENTS {
+    tags: [2048] u8;
+    all[k] = sign(WHO[k], T0 + 60 * k, KIND[k], with_refs(TAGS[k], ids[..], tags[..]), CONTENT[k], buf[k][..]);
+    ids[k] = all[k].id;
+  }
+  print("each event's id\n");
+  for k: 0..<EVENTS { hex: [64] u8; print("  %: %\n", NAME[k], hex32(ids[k], hex[..])); }
+
+  print("group pizza on the relay %...\n", PUB[RELAY][0..<8]);
+  g: [1] G29Group;
+  for k: 0..<EVENTS {
+    tags: [2048] u8;
+    print("  % % kind % %", NAME[k], PEOPLE[WHO[k]], KIND[k], WHAT[k]);
+    if CONTENT[k].count > 0 { print(" \"%\"", CONTENT[k]); }
+    p := g29_read(all[k]);
+    if p.previous_n > 0 {
+      print(", previous");
+      for i: 0..<p.previous_n { own := p.previous[i]; hex: [8] u8; print(" %", n72_hex(own[..], hex[..])); }
+    }
+    print(": %\n", STATUS[g29_admit(g[..], all[k], relay)]);
+    if KIND[k] >= 9000 && KIND[k] <= 9022 { show_members(g[0]); }
+  }
+  // A copy of P1 with one byte of its signature changed.
+  bad: [2048] u8; text := cast(string) buf[5][0..<all[5].written];
+  for i: 0..<text.count { bad[i] = text[i]; }
+  at := text.count - 3; bad[at] = ifx bad[at] == '0' then '1' else '0';
+  check: [8192] u8; forged := nostr_event_verify_vartime(cast(string) bad[0..<text.count], check[..], false);
+  print("  P1 with one signature digit changed: %\n", STATUS[g29_admit(g[..], forged, relay)]);
+  print("relay state\n");
+  publish(g[..], relay);
+
+  print("community pizza-fans (NIP-72)\n");
+  tags: [2048] u8;
+  c := sign(ALICE, T0 + 1000, 34550, with_refs("[[\"d\",\"pizza-fans\"],[\"name\",\"Pizza fans\"],[\"p\",\"^1\",\"\",\"moderator\"]]", ids[..], tags[..]), "", buf[EVENTS][..]);
+  q := sign(CAROL, T0 + 1060, 1111, with_refs("[[\"A\",\"34550:^0:pizza-fans\"],[\"a\",\"34550:^0:pizza-fans\"],[\"P\",\"^0\"],[\"p\",\"^0\"],[\"K\",\"34550\"],[\"k\",\"34550\"]]", ids[..], tags[..]), "first slice", buf[EVENTS + 1][..]);
+  ids[EVENTS] = q.id; ids[EVENTS + 1] = all[5].id;
+  post := cast(string) buf[EVENTS + 1][0..<q.written];
+  approvals := [3] int.[BOB, MALLORY, BOB];
+  targets := [3] string.["*14", "*14", "*15"];
+  labels := [3] string.["Bob approves Carol's post", "Mallory approves Carol's post", "Bob's approval names P1 instead"];
+  for i: 0..<3 {
+    template: [512] u8; n := json_raw(template[..], 0, "[[\"a\",\"34550:^0:pizza-fans\"],[\"e\",\"");
+    n = json_raw(template[..], n, targets[i]); n = json_raw(template[..], n, "\"],[\"p\",\"^2\"],[\"k\",\"1111\"]]");
+    a := sign(approvals[i], T0 + 1120 + i, 4550, with_refs(cast(string) template[0..<n], ids[..], tags[..]), post, buf[EVENTS + 2 + i][..]);
+    print("  %: %\n", labels[i], COUNTS[n72_counts(c, q, a)]);
+  }
+}
+// book:end example

@@ -1,0 +1,28 @@
+// Helpers for nip29.coax's checks (and nip72.coax's). They live here so
+// that mutation of nip29.coax changes the library, not the checks.
+// An event signed (for the checks) by the key of 32 bytes a and with id
+// bytes all i; ^x in tags stands for 64 copies of x: a key, an id or a name.
+g29_ev :: (kind:int,a:u8,i:u8,tags:string,out:[]u8)->NostrEvent {
+  n:=0;k:=0;
+  while k<tags.count {
+    if tags[k]=='^' {for c:0..<64 {out[n+c]=tags[k+1];}n+=64;k+=2;}
+    else {out[n]=tags[k];n+=1;k+=1;}
+  }
+  e:=n32_at(nt_event(cast(string)out[0..<n]),a,i);e.kind=kind;e.verified=true;return e;
+}
+g29_k :: (b:u8)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=b;}return k;}
+G29_T_RELAY :: 0xee;
+// Admit kind with these tags from a with id i.
+g29_do :: (g:[]G29Group,kind:int,a:u8,i:u8,tags:string)->int {
+  buf:[2048]u8;return g29_admit(g,g29_ev(kind,a,i,tags,buf[..]),g29_k(G29_T_RELAY));
+}
+g29_r4 :: (a:u8,b:u8,c:u8,d:u8)->[4]u8 {r:[4]u8;r[0]=a;r[1]=b;r[2]=c;r[3]=d;return r;}
+g29_seen_has :: (g:G29Group,b:u8)->bool {return g29_known(g,g29_r4(b,b,b,b));}
+// A group "pizza" by 0xaa (admin), restricted and closed, with 0xbb a member.
+g29_pizza :: (g:[]G29Group) {
+  #assert g29_do(g,9007,0xaa,0x01,"[[\"h\",\"pizza\"]]")==G29_OK;
+  #assert g29_do(g,9002,0xaa,0x02,"[[\"h\",\"pizza\"],[\"name\",\"Pizza\"],[\"restricted\"],[\"closed\"]]")==G29_OK;
+  #assert g29_do(g,9000,0xaa,0x03,"[[\"h\",\"pizza\"],[\"p\",\"^b\"]]")==G29_OK;
+}
+g29_out_is :: (n:int,out:[]u8,s:string)->bool {return n==s.count && cast(string)out[0..<n]==s;}
+

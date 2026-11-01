@@ -1,0 +1,118 @@
+// NIP-72 moderated communities, read only (the NIP is marked
+// unrecommended in favour of NIP-29). A kind 34550 event defines a
+// community and lists its moderators as ["p", key, relay, "moderator"]
+// tags. A post counts in the community only when a kind 4550 approval
+// signed by one of those moderators names the community, the post and the
+// post's author, and the post itself tags the community.
+//
+// The approval must carry the community's a tag, "34550:<author>:<d>", an
+// e tag with the post's id and a p tag with the post's author; the post
+// must carry the same address in an a or A tag. Approvals by a tag (an
+// author's replaceable post, approved for every later version) and the
+// approved event copied into the approval's content are not read here.
+//
+// The caller verifies all three events (e.verified, from event.coax) and
+// fetches them; this file only decides whether the approval counts.
+#load "nip29.coax";
+#load "../../tests/nostr/nip72_fixtures.coax";
+#authority;
+
+N72_OK :: 0; N72_EVENT :: 1; N72_KIND :: 2; N72_NOT_MODERATOR :: 3;
+N72_COMMUNITY :: 4; N72_POST :: 5; N72_AUTHOR :: 6; N72_UNTAGGED :: 7; N72_LIMIT :: 8;
+N72_COMMUNITY_KIND :: 34550; N72_APPROVAL_KIND :: 4550;
+
+n72_hex :: (b:[]u8,out:[]u8)->string {
+  d:="0123456789abcdef";
+  for i:0..<b.count {out[2*i]=d[b[i]>>4];out[2*i+1]=d[b[i]&15];}
+  return cast(string)out[0..<2*b.count];
+}
+// book:begin address
+// The community's address, "34550:<author hex>:<d>", written to out: its
+// length, or -1 when the d tag does not read or out is too small.
+n72_address :: (c:NostrEvent,out:[]u8)->int {
+  d:=nostr_tag_d(c);if d.error!=NT_OK {return -1;}
+  n:=json_raw(out,0,"34550:");key:=c.public_key;
+  hex:[64]u8;n=json_raw(out,n,n72_hex(key[..],hex[..]));n=json_raw(out,n,":");
+  return json_raw(out,n,cast(string)d.d[0..<d.d_n]);
+}
+// book:end address
+// Does e carry a tag named name (or alt) whose first value is v and, when
+// mark is not empty, whose fourth value is mark?
+n72_has :: (e:NostrEvent,name:string,alt:string,v:string,mark:string)->int {
+  k:=0;t:=g29_tag(e,0);
+  while t.error==NT_OK {
+    if (g29_tag_is(t,0,name) || g29_tag_is(t,0,alt)) && t.values>=2 && g29_tag_is(t,1,v) && (mark.count==0 || (t.values>=4 && g29_tag_is(t,3,mark))) {return N72_OK;}
+    k+=1;t=g29_tag(e,k);
+  }
+  return ifx t.error==NT_INDEX then N72_COMMUNITY else N72_LIMIT;
+}
+// book:begin counts
+// Does the approval make the post count in the community?
+n72_counts :: (community:NostrEvent,post:NostrEvent,approval:NostrEvent)->int {
+  all:=[3]NostrEvent.[community,post,approval];
+  for e:all {if e.error!=NE_OK || !e.verified {return N72_EVENT;}}
+  if community.kind!=N72_COMMUNITY_KIND || approval.kind!=N72_APPROVAL_KIND {return N72_KIND;}
+  buf:[400]u8;n:=n72_address(community,buf[..]);if n== -1 {return N72_LIMIT;}
+  address:=cast(string)buf[0..<n];
+  hex:[64]u8;
+  signer:=approval.public_key;
+  s:=n72_has(community,"p","p",n72_hex(signer[..],hex[..]),"moderator");
+  if s!=N72_OK {return ifx s==N72_LIMIT then s else N72_NOT_MODERATOR;}
+  s=n72_has(approval,"a","a",address,"");if s!=N72_OK {return s;}
+  id:=post.id;s=n72_has(approval,"e","e",n72_hex(id[..],hex[..]),"");
+  if s!=N72_OK {return ifx s==N72_LIMIT then s else N72_POST;}
+  author:=post.public_key;s=n72_has(approval,"p","p",n72_hex(author[..],hex[..]),"");
+  if s!=N72_OK {return ifx s==N72_LIMIT then s else N72_AUTHOR;}
+  s=n72_has(post,"a","A",address,"");
+  if s!=N72_OK {return ifx s==N72_LIMIT then s else N72_UNTAGGED;}
+  return N72_OK;
+}
+// book:end counts
+
+// ---- checks (helpers in coax/tests/nostr/nip72_fixtures.coax)
+#test "an approval by a listed moderator makes the post count" {
+  out:[200]u8;cb:[1024]u8;
+  n:=n72_address(g29_ev(34550,0xaa,0x01,N72_T_TAGS,cb[..]),out[..]);#assert n==N72_T_A.count && cast(string)out[0..<n]==N72_T_A;
+  #assert n72_try(N72_T_POST,0xbb,N72_T_OK)==N72_OK;
+  // Either case of the post's a tag; tags in any order.
+  #assert n72_try("[[\"A\",\"34550:^a:pizza-fans\"]]",0xbb,N72_T_OK)==N72_OK;
+  #assert n72_try("[[\"t\",\"x\"],[\"a\",\"34550:^a:pizza-fans\"]]",0xbb,"[[\"k\",\"1111\"],[\"p\",\"^d\"],[\"p\",\"^c\"],[\"e\",\"^f\"],[\"e\",\"0202020202020202020202020202020202020202020202020202020202020202\"],[\"a\",\"34550:^a:other\"],[\"a\",\"34550:^a:pizza-fans\"]]")==N72_OK;
+}
+#test "approvals that do not count" {
+  #assert n72_try(N72_T_POST,0xcc,N72_T_OK)==N72_NOT_MODERATOR;     // p tag without the mark
+  #assert n72_try(N72_T_POST,0xdd,N72_T_OK)==N72_NOT_MODERATOR;     // marked member
+  #assert n72_try(N72_T_POST,0xee,N72_T_OK)==N72_NOT_MODERATOR;     // not listed
+  #assert n72_try(N72_T_POST,0xaa,N72_T_OK)==N72_NOT_MODERATOR;     // the owner, not listed as a moderator
+  #assert n72_try(N72_T_POST,0xbb,"[[\"a\",\"34550:^a:other\"],[\"e\",\"0202020202020202020202020202020202020202020202020202020202020202\"],[\"p\",\"^c\"]]")==N72_COMMUNITY;
+  #assert n72_try(N72_T_POST,0xbb,"[[\"A\",\"34550:^a:pizza-fans\"],[\"e\",\"0202020202020202020202020202020202020202020202020202020202020202\"],[\"p\",\"^c\"]]")==N72_COMMUNITY;
+  #assert n72_try(N72_T_POST,0xbb,"[[\"a\",\"34550:^a:pizza-fans\"],[\"e\",\"^3\"],[\"p\",\"^c\"]]")==N72_POST;
+  #assert n72_try(N72_T_POST,0xbb,"[[\"a\",\"34550:^a:pizza-fans\"],[\"e\",\"0202020202020202020202020202020202020202020202020202020202020202\"],[\"p\",\"^d\"]]")==N72_AUTHOR;
+  #assert n72_try("[[\"a\",\"34550:^a:other\"]]",0xbb,N72_T_OK)==N72_UNTAGGED;
+  #assert n72_try("[[\"e\",\"34550:^a:pizza-fans\"]]",0xbb,N72_T_OK)==N72_UNTAGGED;
+  #assert n72_try("[[\"a\"]]",0xbb,N72_T_OK)==N72_UNTAGGED;
+  #assert n72_try("[[\"a\",1]]",0xbb,N72_T_OK)==N72_LIMIT;
+  #assert n72_try(N72_T_POST,0xbb,"[[\"a\",\"34550:^a:pizza-fans\"],[\"e\",\"0202020202020202020202020202020202020202020202020202020202020202\"],[]]")==N72_LIMIT;
+  #assert n72_try(N72_T_POST,0xbb,"[[\"a\",\"34550:^a:pizza-fans\"],[]]")==N72_LIMIT;
+  #assert n72_try(N72_T_POST,0xbb,"[[]]")==N72_LIMIT;
+}
+#test "kinds, verification and the community's own tags" {
+  cb:[1024]u8;pb:[1024]u8;ab:[1024]u8;out:[200]u8;
+  c:=g29_ev(34550,0xaa,0x01,N72_T_TAGS,cb[..]);p:=g29_ev(1111,0xcc,0x02,N72_T_POST,pb[..]);a:=g29_ev(4550,0xbb,0x03,N72_T_OK,ab[..]);
+  #assert n72_counts(c,p,a)==N72_OK;
+  x:=c;x.verified=false;#assert n72_counts(x,p,a)==N72_EVENT;
+  x=p;x.verified=false;#assert n72_counts(c,x,a)==N72_EVENT;
+  x=a;x.verified=false;#assert n72_counts(c,p,x)==N72_EVENT;
+  x=a;x.error=NE_ID;#assert n72_counts(c,p,x)==N72_EVENT;
+  x=c;x.kind=34551;#assert n72_counts(x,p,a)==N72_KIND;
+  x=a;x.kind=4551;#assert n72_counts(c,p,x)==N72_KIND;
+  x=p;x.kind=1;#assert n72_counts(c,x,a)==N72_OK;          // the old kind 1 posts still count
+  // A community whose d does not read, or whose tags break after the d.
+  y:=g29_ev(34550,0xaa,0x01,"[[\"d\",1]]",cb[..]);#assert n72_address(y,out[..])== -1 && n72_counts(y,p,a)==N72_LIMIT;
+  y=g29_ev(34550,0xaa,0x01,"[[\"d\",\"pizza-fans\"],[\"p\",1]]",cb[..]);#assert n72_counts(y,p,a)==N72_LIMIT;
+  y=g29_ev(34550,0xaa,0x01,"[[\"d\",\"pizza-fans\"],[\"p\",\"^b\",\"\",\"moderator\"]]",cb[..]);#assert n72_counts(y,p,a)==N72_OK;
+  y=g29_ev(34550,0xaa,0x01,"[[\"d\",\"pizza-fans\"],[\"p\",\"^b\",\"\",\"moderators\"]]",cb[..]);#assert n72_counts(y,p,a)==N72_NOT_MODERATOR;
+  y=g29_ev(34550,0xaa,0x01,"[[\"d\",\"pizza-fans\"],[\"P\",\"^b\",\"\",\"moderator\"]]",cb[..]);#assert n72_counts(y,p,a)==N72_NOT_MODERATOR;
+  y=g29_ev(34550,0xaa,0x01,"[[\"d\",\"pizza-fans\"],[\"p\"]]",cb[..]);#assert n72_counts(y,p,a)==N72_NOT_MODERATOR;
+  small:[70]u8;#assert n72_address(c,small[..])== -1;
+  fits:[81]u8;#assert n72_address(c,fits[..])==81;
+}

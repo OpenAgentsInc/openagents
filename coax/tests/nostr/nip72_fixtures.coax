@@ -1,0 +1,15 @@
+// Helpers for nip72.coax's checks: a community with one moderator (0xbb),
+// a post by 0xcc and approvals. They live here so that mutation of
+// nip72.coax changes the library, not the checks.
+N72_T_TAGS :: "[[\"d\",\"pizza-fans\"],[\"name\",\"Pizza fans\"],[\"p\",\"^b\",\"\",\"moderator\"],[\"p\",\"^c\",\"wss://r.example\"],[\"p\",\"^d\",\"\",\"member\"]]";
+N72_T_A :: "34550:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:pizza-fans";
+n72_try :: (post_tags:string,approver:u8,approval_tags:string)->int {
+  cb:[1024]u8;pb:[1024]u8;ab:[1024]u8;
+  c:=g29_ev(34550,0xaa,0x01,N72_T_TAGS,cb[..]);
+  p:=g29_ev(1111,0xcc,0x02,post_tags,pb[..]);
+  a:=g29_ev(4550,approver,0x03,approval_tags,ab[..]);
+  return n72_counts(c,p,a);
+}
+N72_T_POST :: "[[\"A\",\"34550:^a:pizza-fans\"],[\"a\",\"34550:^a:pizza-fans\"],[\"K\",\"34550\"]]";
+N72_T_OK :: "[[\"a\",\"34550:^a:pizza-fans\"],[\"e\",\"0202020202020202020202020202020202020202020202020202020202020202\"],[\"p\",\"^c\"],[\"k\",\"1111\"]]";
+
