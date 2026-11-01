@@ -1,0 +1,728 @@
+// CoderOS camera daemon: `coderos-camera serve` in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// step 2 row 5), from crates/coderos-camera/src/{serve,capture,frame,fanout,loopback,record,hands,
+// publisher,config,control}.rs (openagents 2ca255550e~1). os/camera.coax loads it.
+// It opens the camera once (V4L2, MJPEG first, else YUYV), decodes each frame to RGB once, and feeds
+// three outputs: the v4l2loopback node (YUYV), a recording (raw RGB over a pipe to ffmpeg), and the
+// hands socket. The control socket answers the verbs os/camera.coax sends.
+// The Rust daemon gave each output a thread behind a one-frame mailbox; this is one poll loop, and
+// the recording keeps the same mailbox: the frame being written, one waiting, and any more dropped
+// and counted. The loopback write and the hands lane finish within the frame, as their threads did.
+// Differences:
+// - the hand tracker is not ported yet: `hands on` turns the lane on and its status says so;
+// - a recording's ending (ffmpeg finishing, the probe and the tag) holds the loop while it runs,
+//   so for that second the outputs get no frames;
+// - an MJPEG frame without Huffman tables gets the standard ones (T.81 K.3) spliced in, as UVC
+//   cameras expect, and the decode is libjpeg-turbo's (coax/lib/image/jpeg.coax), not the
+//   jpeg-decoder crate's, so pixels can differ by a level or two;
+// - a request that does not parse is refused in words of our own, not serde's;
+// - SIGHUP ends it the way SIGTERM does.
+// A camera path that names a regular file is read as concatenated JPEG frames played at the
+// grant's rate, for tests on a host whose camera is in use.
+#load "../coax/lib/image/jpeg.coax";
+
+cxcam_strerror :: (err: int, out: [] u8) -> int #foreign;
+cxcam_open :: (path: [] u8, w: int, h: int, fps: int) -> int #foreign;
+cxcam_width :: () -> int #foreign;
+cxcam_height :: () -> int #foreign;
+cxcam_fourcc :: () -> int #foreign;
+cxcam_parm_error :: () -> int #foreign;
+cxcam_frame :: (out: [] u8) -> int #foreign;
+cxcam_close :: () -> int #foreign;
+cxcam_out_open :: (path: [] u8, w: int, h: int) -> int #foreign;
+cxcam_out_width :: () -> int #foreign;
+cxcam_out_height :: () -> int #foreign;
+cxcam_out_fourcc :: () -> int #foreign;
+cxcam_out_write :: (s: [] u8) -> int #foreign;
+cxcam_out_close :: () -> int #foreign;
+cxcam_listen :: (which: int, path: [] u8) -> int #foreign;
+cxcam_unlisten :: (which: int, path: [] u8) -> int #foreign;
+cxcam_accept :: (which: int) -> int #foreign;
+cxcam_read :: (h: int, out: [] u8) -> int #foreign;
+cxcam_write :: (h: int, s: [] u8) -> int #foreign;
+cxcam_mute :: (h: int) -> int #foreign;
+cxcam_hangup :: (h: int) -> int #foreign;
+cxcam_poll :: (timeout_ms: int) -> int #foreign;
+cxproc_out_null :: (h: int) -> int #foreign;
+cxproc_write_some :: (h: int, s: [] u8) -> int #foreign;
+cxproc_wall_us :: () -> int #foreign;
+cxterm_watch :: () -> int #foreign;
+cxterm_stopped :: () -> int #foreign;
+
+SV_FRAME_MAX :: 8388608;      // one camera frame as it comes (an MJPEG picture, or YUYV)
+SV_PIXELS_MAX :: 2073600;     // 1920x1080
+SV_EBUSY :: 16; SV_ENOENT :: 2; SV_EACCES :: 13;
+SV_MJPG :: 1196444237;        // v4l2_fourcc('M','J','P','G')
+SV_YUYV :: 1448695129;        // v4l2_fourcc('Y','U','Y','V')
+
+// ---- text
+
+Txt :: struct { b: [4096] u8; n: int; }
+tx_set :: (t: [] Txt, s: string) { t[0].n = 0; tx_add(t, s); }
+tx_add :: (t: [] Txt, s: string) { for c: s { if t[0].n < 4096 { t[0].b[t[0].n] = c; t[0].n += 1; } } }
+tx_int :: (t: [] Txt, v: int) { b: [24] u8; tx_add(t, sv_itoa(v, b[..])); }
+tx :: (t: [] Txt) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+sv_itoa :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  n := 0; if v < 0 { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n + i] = d[k - 1 - i]; }
+  return cast(string) out[0..<n + k];
+}
+// An io::Error as Rust's Display writes it: "No such file or directory (os error 2)".
+sv_os_error :: (t: [] Txt, err: int) { b: [256] u8; n := cxcam_strerror(err, b[..]); tx_add(t, cast(string) b[0..<n]); tx_add(t, " (os error "); tx_int(t, err); tx_add(t, ")"); }
+sv_say :: (s: string) { tool_err("coderos-camera: "); tool_errln(s); }
+sv_now_ms :: () -> int { return cxproc_wall_us() / 1000; }
+// x >> k rounded down for any sign, as Rust's >> on an i32.
+sv_shr :: (x: int, k: int) -> int { return ((x + 281474976710656) >> k) - (281474976710656 >> k); }
+sv_clamp :: (v: int) -> u8 { return cast,trunc(u8) (ifx v < 0 then 0 else ifx v > 255 then 255 else v); }
+// A u32 as Rust's str::parse reads it: an optional +, then digits.
+sv_u32 :: (t: string) -> int {
+  i := ifx t.count > 0 && t[0] == '+' then 1 else 0;
+  if i >= t.count || t.count - i > 10 { return -1; }
+  v := 0; for c: t[i..<t.count] { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return ifx v > 4294967295 then -1 else v;
+}
+
+// ---- pixels (frame.rs)
+
+// RGB to packed YUYV, full range; two pixels share the first one's chroma.
+sv_rgb_to_yuyv :: (rgb: [] u8, out: [] u8) -> int {
+  i := 0; o := 0;
+  while i + 5 < rgb.count && o + 3 < out.count {
+    r := cast(int) rgb[i]; g := cast(int) rgb[i + 1]; b := cast(int) rgb[i + 2];
+    out[o] = sv_clamp(sv_shr(77 * r + 150 * g + 29 * b + 128, 8));
+    out[o + 1] = sv_clamp(sv_shr(-43 * r - 85 * g + 128 * b + 128, 8) + 128);
+    r2 := cast(int) rgb[i + 3]; g2 := cast(int) rgb[i + 4]; b2 := cast(int) rgb[i + 5];
+    out[o + 2] = sv_clamp(sv_shr(77 * r2 + 150 * g2 + 29 * b2 + 128, 8));
+    out[o + 3] = sv_clamp(sv_shr(128 * r - 107 * g - 21 * b + 128, 8) + 128);
+    i += 6; o += 4;
+  }
+  return o;
+}
+sv_yuyv_to_rgb :: (buf: [] u8, out: [] u8) {
+  i := 0; o := 0;
+  while i + 3 < buf.count && o + 5 < out.count {
+    u := cast(int) buf[i + 1] - 128; v := cast(int) buf[i + 3] - 128;
+    for k: 0..<2 {
+      y := cast(int) buf[i + 2 * k];
+      out[o] = sv_clamp(y + sv_shr(359 * v, 8)); out[o + 1] = sv_clamp(y - sv_shr(88 * u + 183 * v, 8)); out[o + 2] = sv_clamp(y + sv_shr(454 * u, 8));
+      o += 3;
+    }
+    i += 4;
+  }
+}
+#test "YUYV both ways, as frame.rs did" {
+  w: [6] u8; for i: 0..<6 { w[i] = 255; } y: [4] u8;
+  #assert sv_rgb_to_yuyv(w[..], y[..]) == 4 && y[0] == 255 && y[1] == 128 && y[2] == 255 && y[3] == 128;
+  r := [6] u8.[255, 0, 0, 255, 0, 0]; back: [6] u8;
+  #assert sv_rgb_to_yuyv(r[..], y[..]) == 4; sv_yuyv_to_rgb(y[..], back[..]);
+  #assert back[0] > 240 && back[1] < 15 && back[2] < 15;
+  g: [24] u8; for i: 0..<24 { g[i] = 100; } gy: [16] u8; gb: [24] u8;
+  #assert sv_rgb_to_yuyv(g[..], gy[..]) == 16; sv_yuyv_to_rgb(gy[..], gb[..]);
+  ok := true; for i: 0..<24 { d := cast(int) gb[i] - 100; if d > 1 || d < -1 { ok = false; } } #assert ok;
+}
+
+// The standard Huffman tables (T.81 K.3) as one DHT segment, for an MJPEG picture that leaves them out.
+SV_DHT :: [420] u8.[0xFF,0xC4,0x01,0xA2,
+  0x00,0,1,5,1,1,1,1,1,1,0,0,0,0,0,0,0, 0,1,2,3,4,5,6,7,8,9,10,11,
+  0x01,0,3,1,1,1,1,1,1,1,1,1,0,0,0,0,0, 0,1,2,3,4,5,6,7,8,9,10,11,
+  0x10,0,2,1,3,3,2,4,3,5,5,4,4,0,0,1,0x7d,
+  0x01,0x02,0x03,0x00,0x04,0x11,0x05,0x12,0x21,0x31,0x41,0x06,0x13,0x51,0x61,0x07,0x22,0x71,0x14,0x32,0x81,0x91,0xa1,0x08,0x23,0x42,0xb1,0xc1,0x15,0x52,0xd1,0xf0,
+  0x24,0x33,0x62,0x72,0x82,0x09,0x0a,0x16,0x17,0x18,0x19,0x1a,0x25,0x26,0x27,0x28,0x29,0x2a,0x34,0x35,0x36,0x37,0x38,0x39,0x3a,0x43,0x44,0x45,0x46,0x47,0x48,0x49,
+  0x4a,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5a,0x63,0x64,0x65,0x66,0x67,0x68,0x69,0x6a,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x7a,0x83,0x84,0x85,0x86,0x87,0x88,0x89,
+  0x8a,0x92,0x93,0x94,0x95,0x96,0x97,0x98,0x99,0x9a,0xa2,0xa3,0xa4,0xa5,0xa6,0xa7,0xa8,0xa9,0xaa,0xb2,0xb3,0xb4,0xb5,0xb6,0xb7,0xb8,0xb9,0xba,0xc2,0xc3,0xc4,0xc5,
+  0xc6,0xc7,0xc8,0xc9,0xca,0xd2,0xd3,0xd4,0xd5,0xd6,0xd7,0xd8,0xd9,0xda,0xe1,0xe2,0xe3,0xe4,0xe5,0xe6,0xe7,0xe8,0xe9,0xea,0xf1,0xf2,0xf3,0xf4,0xf5,0xf6,0xf7,0xf8,
+  0xf9,0xfa,
+  0x11,0,2,1,2,4,4,3,4,7,5,4,4,0,1,2,0x77,
+  0x00,0x01,0x02,0x03,0x11,0x04,0x05,0x21,0x31,0x06,0x12,0x41,0x51,0x07,0x61,0x71,0x13,0x22,0x32,0x81,0x08,0x14,0x42,0x91,0xa1,0xb1,0xc1,0x09,0x23,0x33,0x52,0xf0,
+  0x15,0x62,0x72,0xd1,0x0a,0x16,0x24,0x34,0xe1,0x25,0xf1,0x17,0x18,0x19,0x1a,0x26,0x27,0x28,0x29,0x2a,0x35,0x36,0x37,0x38,0x39,0x3a,0x43,0x44,0x45,0x46,0x47,0x48,
+  0x49,0x4a,0x53,0x54,0x55,0x56,0x57,0x58,0x59,0x5a,0x63,0x64,0x65,0x66,0x67,0x68,0x69,0x6a,0x73,0x74,0x75,0x76,0x77,0x78,0x79,0x7a,0x82,0x83,0x84,0x85,0x86,0x87,
+  0x88,0x89,0x8a,0x92,0x93,0x94,0x95,0x96,0x97,0x98,0x99,0x9a,0xa2,0xa3,0xa4,0xa5,0xa6,0xa7,0xa8,0xa9,0xaa,0xb2,0xb3,0xb4,0xb5,0xb6,0xb7,0xb8,0xb9,0xba,0xc2,0xc3,
+  0xc4,0xc5,0xc6,0xc7,0xc8,0xc9,0xca,0xd2,0xd3,0xd4,0xd5,0xd6,0xd7,0xd8,0xd9,0xda,0xe2,0xe3,0xe4,0xe5,0xe6,0xe7,0xe8,0xe9,0xea,0xf2,0xf3,0xf4,0xf5,0xf6,0xf7,0xf8,
+  0xf9,0xfa];
+// The picture with the standard tables before its first scan when it has no DHT of its own: the
+// bytes to decode (src itself when it has one, or when its markers cannot be walked).
+sv_with_tables :: (src: [] u8, out: [] u8) -> [] u8 {
+  if src.count < 4 || src[0] != 0xFF || src[1] != 0xD8 { return src; }
+  at := 2;
+  while at + 4 <= src.count {
+    if src[at] != 0xFF { return src; }
+    m := src[at + 1];
+    if m == 0xFF { at += 1; continue; }
+    if m == 0xC4 { return src; }
+    if m == 0xDA {
+      if src.count + 420 > out.count { return src; }
+      for i: 0..<at { out[i] = src[i]; }
+      dht := SV_DHT;
+      for i: 0..<420 { out[at + i] = dht[i]; }
+      for i: at..<src.count { out[i + 420] = src[i]; }
+      return out[0..<src.count + 420];
+    }
+    if m == 0xD8 || (m >= 0xD0 && m <= 0xD7) || m == 0x01 { at += 2; continue; }
+    at += 2 + ((cast(int) src[at + 2] << 8) | cast(int) src[at + 3]);
+  }
+  return src;
+}
+#test "the standard tables go in only where they are missing" {
+  sumb := 0; dht := SV_DHT; for i: 4..<420 { sumb += 0; }
+  // the four tables' code counts add up to their value lists: 12, 12, 162, 162
+  t1 := 0; for i: 5..<21 { t1 += cast(int) dht[i]; } t2 := 0; for i: 34..<50 { t2 += cast(int) dht[i]; }
+  t3 := 0; for i: 63..<79 { t3 += cast(int) dht[i]; } t4 := 0; for i: 242..<258 { t4 += cast(int) dht[i]; }
+  #assert t1 == 12 && t2 == 12 && t3 == 162 && t4 == 162 && dht[62] == 0x10 && dht[241] == 0x11;
+  plain := [12] u8.[0xFF,0xD8, 0xFF,0xE0,0x00,0x02, 0xFF,0xDA,0x00,0x02, 0x00,0x00];
+  out: [1024] u8; w := sv_with_tables(plain[..], out[..]);
+  #assert w.count == 432 && w[6] == 0xFF && w[7] == 0xC4 && w[426] == 0xFF && w[427] == 0xDA;
+  has := [10] u8.[0xFF,0xD8, 0xFF,0xC4,0x00,0x02, 0xFF,0xDA,0x00,0x02];
+  #assert sv_with_tables(has[..], out[..]).count == 10;
+}
+// One MJPEG picture to RGB: "" when it decoded (w, h set), else what was wrong.
+Pic :: struct { w: int; h: int; }
+sv_mjpeg :: (src: [] u8, spliced: [] u8, work: [] u8, rgba: [] u8, rgb: [] u8, pic: [] Pic, why: [] Txt) -> bool {
+  s := sv_with_tables(src, spliced);
+  info := jpg_info(s);
+  if info.status == JPG_OK && info.w * info.h > SV_PIXELS_MAX { tx_set(why, "mjpeg: the picture is larger than 1920x1080"); return false; }
+  st := ifx info.status == JPG_OK then jpg_decode(s, work, rgba) else info.status;
+  if st != JPG_OK {
+    tx_set(why, "mjpeg: ");
+    tx_add(why, ifx st == JPG_NOT then "not a JPEG" else ifx st == JPG_UNSUPPORTED then "a JPEG this decoder does not take" else ifx st == JPG_SMALL then "the picture is too large" else "malformed");
+    return false;
+  }
+  n := info.w * info.h;
+  for i: 0..<n { rgb[3 * i] = rgba[4 * i]; rgb[3 * i + 1] = rgba[4 * i + 1]; rgb[3 * i + 2] = rgba[4 * i + 2]; }
+  pic[0].w = info.w; pic[0].h = info.h;
+  return true;
+}
+
+// ---- the grant (config.rs)
+
+Grant :: struct { device: [1] Txt; width: int; height: int; framerate: int; has_loopback: bool; loopback: [1] Txt; }
+// The grant: /etc/coderos/camera.json (or $CODEROS_CAMERA_GRANT), the defaults when it is missing,
+// then the session's variables over it. "" or what is wrong.
+sv_grant :: (g: [] Grant, why: [] Txt) -> bool {
+  tx_set(g[0].device[..], "/dev/video0"); g[0].width = 1280; g[0].height = 720; g[0].framerate = 30; g[0].has_loopback = false;
+  pb: [4096] u8; path := proc_getenv("CODEROS_CAMERA_GRANT", pb[..]);
+  if !proc_has_env("CODEROS_CAMERA_GRANT") { path = "/etc/coderos/camera.json"; }
+  if fs_exists(path) {
+    tb: [65536] u8; n := fs_read(path, tb[..]);
+    if n < 0 { tx_set(why, path); tx_add(why, ": "); sv_os_error(why, SV_EACCES); return false; }
+    nodes: [1024] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], cast(string) tb[0..<n], nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { tx_set(why, path); tx_add(why, ": not a JSON object"); return false; }
+    dv := jv_get(d[0], 0, "device"); lb := jv_get(d[0], 0, "loopback");
+    ok := jv_kind(d[0], dv) == JV_STRING && lb < 0 || jv_kind(d[0], lb) == JV_STRING || jv_kind(d[0], lb) == JV_NULL;
+    ok = ok && jv_kind(d[0], dv) == JV_STRING;
+    nums := [3] string.["width", "height", "framerate"]; v: [3] int;
+    for k, i: nums { at := jv_get(d[0], 0, k); v[i] = ifx at >= 0 && jv_kind(d[0], at) == JV_NUMBER then sv_u32(jv_raw(d[0], at)) else -1; if v[i] < 0 || jv_raw(d[0], at)[0] == '+' { ok = false; } }
+    if !ok { tx_set(why, path); tx_add(why, ": a field is missing or of the wrong type"); return false; }
+    sb: [4096] u8; m := jv_str(d[0], dv, sb[..]); tx_set(g[0].device[..], cast(string) sb[0..<m]);
+    g[0].width = v[0]; g[0].height = v[1]; g[0].framerate = v[2];
+    if lb >= 0 && jv_kind(d[0], lb) == JV_STRING { m = jv_str(d[0], lb, sb[..]); tx_set(g[0].loopback[..], cast(string) sb[0..<m]); g[0].has_loopback = true; }
+  }
+  eb: [4096] u8;
+  t := proc_getenv("CODEROS_CAMERA_DEVICE", eb[..]); if t.count > 0 { tx_set(g[0].device[..], t); }
+  t = proc_getenv("CODEROS_CAMERA_CAPTURE", eb[..]);
+  if t.count > 0 {
+    x := 0; while x < t.count && t[x] != 'x' { x += 1; }
+    w := ifx x < t.count then sv_u32(t[0..<x]) else -1; h := ifx x < t.count then sv_u32(t[x + 1..<t.count]) else -1;
+    if w <= 0 || h <= 0 { tx_set(why, "not a WxH size: "); tx_add(why, t); return false; }
+    g[0].width = w; g[0].height = h;
+  }
+  t = proc_getenv("CODEROS_CAMERA_FPS", eb[..]);
+  if t.count > 0 { f := sv_u32(t); if f <= 0 { tx_set(why, "CODEROS_CAMERA_FPS is not a frame rate: "); tx_add(why, t); return false; } g[0].framerate = f; }
+  if proc_has_env("CODEROS_CAMERA_LOOPBACK") {
+    t = proc_getenv("CODEROS_CAMERA_LOOPBACK", eb[..]);
+    g[0].has_loopback = t.count > 0; tx_set(g[0].loopback[..], t);
+  }
+  return true;
+}
+
+// ---- the daemon's state
+
+Rec :: struct {
+  on: bool; h: int; path: [1] Txt; started_ms: int; frames: int; width: int; height: int; fps: int;
+  failed: bool; error: [1] Txt;          // the last recording's ending, when it went wrong
+  cur_len: int; cur_off: int;        // the frame being written (in the cur buffer)
+  queued: bool;                      // one more waiting (in the next buffer)
+}
+Lane :: struct { delivered: int; dropped: int; }
+Conn :: struct { h: int; n: int; opened_ms: int; buf: [8192] u8; }
+Daemon :: struct {
+  grant: [1] Grant;
+  control: [1] Txt; hands_sock: [1] Txt;
+  format: [1] Txt; status: [1] Txt; width: int; height: int; frames: int;
+  recent: [256] int; recent_n: int;   // the moments (ms) of frames read in the last second
+  lb_state: [1] Txt; lb_open: bool; lb_last_try: int; lb: Lane;
+  rec: Rec; rl: Lane;
+  hands_on: bool; hands_status: [1] Txt; hl: Lane; readers: [64] int; nreaders: int;
+  conns: [16] Conn;
+  stopping: bool;
+  file_src: bool; file_n: int; file_at: int; file_next_ms: int; file_start_ms: int; file_k: int;
+}
+
+sv_fps :: (d: [] Daemon) -> int {
+  now := sv_now_ms(); n := 0;
+  for i: 0..<d[0].recent_n { if now - d[0].recent[i] < 1000 { n += 1; } }
+  return n;
+}
+sv_note_frame :: (d: [] Daemon, w: int, h: int) {
+  d[0].width = w; d[0].height = h; d[0].frames += 1;
+  now := sv_now_ms(); k := 0;
+  for i: 0..<d[0].recent_n { if now - d[0].recent[i] < 1000 { d[0].recent[k] = d[0].recent[i]; k += 1; } }
+  if k < 256 { d[0].recent[k] = now; k += 1; }
+  d[0].recent_n = k;
+}
+
+// ---- answers (serve.rs, protocol.rs)
+
+sv_output :: (o: [] Jo, name: string, target: string, has_target: bool, state: string, l: Lane) {
+  jo_obj(o); jo_key(o, "name"); jo_str(o, name); jo_key(o, "target"); if has_target { jo_str(o, target); } else { jo_null(o); }
+  jo_key(o, "state"); jo_str(o, state); jo_key(o, "frames"); jo_int(o, l.delivered); jo_key(o, "dropped"); jo_int(o, l.dropped); jo_end(o);
+}
+sv_outputs :: (d: [] Daemon, o: [] Jo) {
+  jo_arr(o);
+  if d[0].grant[0].has_loopback { sv_output(o, "loopback", tx(d[0].grant[0].loopback[..]), true, tx(d[0].lb_state[..]), d[0].lb); }
+  st: [1] Txt;
+  if d[0].rec.on { tx_set(st[..], "recording, "); tx_int(st[..], d[0].rec.frames); tx_add(st[..], " frames"); sv_output(o, "record", tx(d[0].rec.path[..]), true, tx(st[..]), d[0].rl); }
+  else if d[0].rec.failed { tx_set(st[..], "off; the last recording ended: "); tx_add(st[..], tx(d[0].rec.error[..])); sv_output(o, "record", "", false, tx(st[..]), d[0].rl); }
+  else { sv_output(o, "record", "", false, "off", d[0].rl); }
+  tx_set(st[..], ifx d[0].hands_on then "on, " else "off, "); tx_int(st[..], d[0].nreaders); tx_add(st[..], " reader(s)");
+  sv_output(o, "hands", tx(d[0].hands_sock[..]), true, tx(st[..]), d[0].hl);
+  jo_end(o);
+}
+sv_answer_head :: (o: [] Jo, type: string) { jo_obj(o); jo_key(o, "generation"); jo_int(o, 1); jo_key(o, "type"); jo_str(o, type); }
+sv_refused :: (o: [] Jo, code: string, message: string) { sv_answer_head(o, "refused"); jo_key(o, "code"); jo_str(o, code); jo_key(o, "message"); jo_str(o, message); jo_end(o); }
+sv_done :: (o: [] Jo) { sv_answer_head(o, "done"); jo_end(o); }
+sv_status :: (d: [] Daemon, o: [] Jo) {
+  sv_answer_head(o, "status");
+  jo_key(o, "device"); jo_str(o, tx(d[0].grant[0].device[..]));
+  streaming := d[0].frames > 0;
+  jo_key(o, "format"); jo_str(o, ifx streaming then tx(d[0].format[..]) else tx(d[0].status[..]));
+  jo_key(o, "width"); jo_int(o, ifx streaming then d[0].width else d[0].grant[0].width);
+  jo_key(o, "height"); jo_int(o, ifx streaming then d[0].height else d[0].grant[0].height);
+  jo_key(o, "frames"); jo_int(o, d[0].frames);
+  fb: [32] u8; f := ifx streaming then sv_fps(d) else 0;
+  jo_key(o, "fps"); n := 0; t := sv_itoa(f, fb[..]); jb: [40] u8; for c: t { jb[n] = c; n += 1; } jb[n] = '.'; jb[n + 1] = '0'; jo_raw(o, cast(string) jb[0..<n + 2]);
+  jo_key(o, "hands"); jo_str(o, tx(d[0].hands_status[..]));
+  jo_key(o, "recording"); if d[0].rec.on { jo_str(o, tx(d[0].rec.path[..])); } else { jo_null(o); }
+  jo_key(o, "outputs"); sv_outputs(d, o);
+  jo_end(o);
+}
+// One request line answered into o (control.rs answer_line, then Shared::answer).
+sv_request :: (d: [] Daemon, line: string, o: [] Jo, bufs: Bufs) {
+  nodes: [256] JvNode; jd: [1] Jv;
+  if !jv_parse(jd[..], sv_trim(line), nodes[..]) || jv_kind(jd[0], 0) != JV_OBJECT { sv_refused(o, "unknown_verb", "the request did not parse: not a JSON object"); return; }
+  g := jv_get(jd[0], 0, "generation"); ty := jv_get(jd[0], 0, "type");
+  gv := ifx g >= 0 && jv_kind(jd[0], g) == JV_NUMBER then sv_u32(jv_raw(jd[0], g)) else -1;
+  if gv < 0 || jv_raw(jd[0], g)[0] == '+' || ty < 0 || jv_kind(jd[0], ty) != JV_STRING { sv_refused(o, "unknown_verb", "the request did not parse: it needs a generation and a type"); return; }
+  if gv != 1 { m: [1] Txt; tx_set(m[..], "this daemon speaks generation 1, and the request spoke "); tx_int(m[..], gv); sv_refused(o, "unsupported_generation", tx(m[..])); return; }
+  tb: [64] u8; tn := jv_str(jd[0], ty, tb[..]); t := cast(string) tb[0..<ifx tn > 0 then tn else 0];
+  if t == "status" { sv_status(d, o); return; }
+  if t == "outputs" { sv_answer_head(o, "outputs"); jo_key(o, "outputs"); sv_outputs(d, o); jo_end(o); return; }
+  if t == "record_start" {
+    p := jv_get(jd[0], 0, "path");
+    if p >= 0 && jv_kind(jd[0], p) != JV_STRING && jv_kind(jd[0], p) != JV_NULL { sv_refused(o, "unknown_verb", "the request did not parse: path is not a string"); return; }
+    pb: [4096] u8; pn := ifx p >= 0 && jv_kind(jd[0], p) == JV_STRING then jv_str(jd[0], p, pb[..]) else -1;
+    sv_record_start(d, ifx pn >= 0 then cast(string) pb[0..<pn] else "", pn >= 0, o);
+    return;
+  }
+  if t == "record_stop" { sv_record_stop(d, o, bufs); return; }
+  if t == "hands_on" { d[0].hands_on = true; tx_set(d[0].hands_status[..], "starting"); sv_done(o); return; }
+  if t == "hands_off" { d[0].hands_on = false; tx_set(d[0].hands_status[..], "off"); sv_done(o); return; }
+  if t == "stop" { d[0].stopping = true; sv_done(o); return; }
+  sv_refused(o, "unknown_verb", "this daemon does not know that verb");
+}
+sv_trim :: (s: string) -> string {
+  a := 0; e := s.count;
+  while a < e && (s[a] == ' ' || s[a] == '\t' || s[a] == '\r' || s[a] == '\n') { a += 1; }
+  while e > a && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\r' || s[e - 1] == '\n') { e -= 1; }
+  return s[a..<e];
+}
+
+// ---- the recording (record.rs)
+
+Bufs :: struct { cur: [] u8; next: [] u8; }
+sv_record_start :: (d: [] Daemon, given: string, has: bool, o: [] Jo) {
+  if d[0].rec.on { m: [1] Txt; tx_set(m[..], "a recording is already writing "); tx_add(m[..], tx(d[0].rec.path[..])); sv_refused(o, "already_recording", tx(m[..])); return; }
+  path: [1] Txt;
+  if has { tx_set(path[..], given); }
+  else {
+    hb: [4096] u8; home := proc_getenv("HOME", hb[..]); if home.count == 0 { home = "/tmp"; }
+    tx_set(path[..], home); tx_add(path[..], "/Videos/camera-"); tx_int(path[..], cxproc_wall_us() / 1000000); tx_add(path[..], ".mp4");
+  }
+  w := ifx d[0].frames > 0 then d[0].width else d[0].grant[0].width;
+  h := ifx d[0].frames > 0 then d[0].height else d[0].grant[0].height;
+  why: [1] Txt;
+  if !sv_recorder_start(d, tx(path[..]), w, h, d[0].grant[0].framerate, why[..]) { sv_refused(o, "cannot_record", tx(why[..])); return; }
+  m: [1] Txt; tx_set(m[..], "recording to "); tx_add(m[..], tx(path[..])); sv_say(tx(m[..]));
+  d[0].rec.failed = false;
+  sv_done(o);
+}
+sv_recorder_start :: (d: [] Daemon, path: string, w: int, h: int, fps: int, why: [] Txt) -> bool {
+  parent := fs_dir(path);
+  if parent.count > 0 && parent != path && !fs_exists(parent) && !fs_mkdir(parent) { tx_set(why, parent); tx_add(why, ": "); sv_os_error(why, SV_EACCES); return false; }
+  sb: [64] u8; sn := 0; ib: [24] u8; for c: sv_itoa(w, ib[..]) { sb[sn] = c; sn += 1; } sb[sn] = 'x'; sn += 1; for c: sv_itoa(h, ib[..]) { sb[sn] = c; sn += 1; }
+  rb: [24] u8; rate := sv_itoa(fps, rb[..]);
+  args := [32] string.["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-video_size", cast(string) sb[0..<sn],
+    "-framerate", rate, "-use_wallclock_as_timestamps", "1", "-i", "pipe:0", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+    "-fps_mode", "cfr", "-r", rate, "-movflags", "+faststart", path];
+  hd := proc_new();
+  ok := cxproc_out_null(hd) == 0;
+  for a: args { ok = ok && proc_arg(hd, a); }
+  e := ifx ok then proc_start(hd) else 22;
+  if e != 0 { r := proc_release(hd); tx_set(why, "ffmpeg: "); sv_os_error(why, e); return false; }
+  d[0].rec.on = true; d[0].rec.h = hd; tx_set(d[0].rec.path[..], path); d[0].rec.started_ms = sv_now_ms(); d[0].rec.frames = 0;
+  d[0].rec.width = w; d[0].rec.height = h; d[0].rec.fps = fps; d[0].rec.cur_len = 0; d[0].rec.queued = false;
+  return true;
+}
+// Rust's ExitStatus as Display writes it: "exit status: 1", "signal: 9 (SIGKILL)".
+sv_exit_text :: (t: [] Txt, status: int) {
+  if status > 128 && status < 160 {
+    s := status - 128; tx_add(t, "signal: "); tx_int(t, s);
+    names := [16] string.["", "SIGHUP", "SIGINT", "SIGQUIT", "SIGILL", "SIGTRAP", "SIGABRT", "SIGBUS", "SIGFPE", "SIGKILL", "SIGUSR1", "SIGSEGV", "SIGUSR2", "SIGPIPE", "SIGALRM", "SIGTERM"];
+    if s < 16 { tx_add(t, " ("); tx_add(t, names[s]); tx_add(t, ")"); }
+    return;
+  }
+  tx_add(t, "exit status: "); tx_int(t, status);
+}
+// Writes what the pipe takes of the frame in hand, and starts the waiting one when it is done.
+// false when the pipe broke (why says how).
+sv_record_pump :: (d: [] Daemon, b: Bufs, wait: bool, why: [] Txt) -> bool {
+  while d[0].rec.on && d[0].rec.cur_len > 0 {
+    n := cxproc_write_some(d[0].rec.h, b.cur[d[0].rec.cur_off..<d[0].rec.cur_len]);
+    if n < 0 { tx_set(why, "ffmpeg pipe: "); sv_os_error(why, 32); return false; }
+    d[0].rec.cur_off += n;
+    if d[0].rec.cur_off >= d[0].rec.cur_len {
+      d[0].rec.frames += 1; d[0].rl.delivered += 1; d[0].rec.cur_len = 0;
+      if d[0].rec.queued {
+        d[0].rec.queued = false;
+        for i: 0..<d[0].rec.width * d[0].rec.height * 3 { b.cur[i] = b.next[i]; }
+        d[0].rec.cur_off = 0; d[0].rec.cur_len = d[0].rec.width * d[0].rec.height * 3;
+      }
+      continue;
+    }
+    if !wait { return true; }
+    proc_sleep(1);
+  }
+  return true;
+}
+// The recording's lane offered a frame: written now, held as the waiting one, or dropped.
+sv_record_offer :: (d: [] Daemon, rgb: [] u8, w: int, h: int, b: Bufs) {
+  if !d[0].rec.on { d[0].rl.delivered += 1; return; }
+  if d[0].rec.cur_len > 0 {
+    if d[0].rec.queued { d[0].rl.dropped += 1; return; }
+    if w == d[0].rec.width && h == d[0].rec.height { for i: 0..<w * h * 3 { b.next[i] = rgb[i]; } d[0].rec.queued = true; }
+    else { d[0].rl.delivered += 1; }   // a frame of another size is skipped, as Recorder::write did
+    return;
+  }
+  if w != d[0].rec.width || h != d[0].rec.height { d[0].rl.delivered += 1; return; }
+  for i: 0..<w * h * 3 { b.cur[i] = rgb[i]; }
+  d[0].rec.cur_off = 0; d[0].rec.cur_len = w * h * 3;
+}
+// Recorder::stop: the pipe closed, the file finished, probed and tagged. The receipt into o, or false.
+Receipt :: struct { seconds: f64; seconds_text: [1] Txt; frames: int; }
+sv_recorder_stop :: (d: [] Daemon, r: [] Receipt, why: [] Txt) -> bool {
+  hd := d[0].rec.h; path: [1] Txt; tx_set(path[..], tx(d[0].rec.path[..]));
+  counted := d[0].rec.frames; started := d[0].rec.started_ms;
+  d[0].rec.on = false; d[0].rec.cur_len = 0; d[0].rec.queued = false;
+  c := proc_close_stdin(hd);
+  status := proc_wait(hd, 30000);
+  if status == PROC_RUNNING {
+    k := proc_kill(hd, PROC_SIGKILL); s := proc_wait(hd, 5000); x := proc_release(hd);
+    tx_set(why, "ffmpeg did not finish "); tx_add(why, tx(path[..])); tx_add(why, " in 30 seconds"); return false;
+  }
+  x := proc_release(hd);
+  if status != 0 { tx_set(why, "ffmpeg ended with "); sv_exit_text(why, status); tx_add(why, "; the file at "); tx_add(why, tx(path[..])); tx_add(why, " may be short"); return false; }
+  db: [256] u8; dur := sv_probe(tx(path[..]), "duration", db[..]);
+  fb: [256] u8; nf := sv_probe(tx(path[..]), "nb_frames", fb[..]);
+  secs := cast(f64) (sv_now_ms() - started) / 1000.0;
+  if dur.count > 0 && sv_decimal(dur) { secs = rec_num(dur); tx_set(r[0].seconds_text[..], sv_shortest(dur)); }
+  else { b: [64] u8; tx_set(r[0].seconds_text[..], sv_shortest(rec_fixed(secs, 6, b[..]))); }
+  r[0].seconds = secs;
+  r[0].frames = ifx nf.count > 0 && sv_u64(nf) >= 0 then sv_u64(nf) else counted;
+  // the note screen-record leaves: the length, the frames, the rate
+  note: [1] Txt; f1: [32] u8;
+  tx_set(note[..], "comment=coderos: camera video "); tx_add(note[..], rec_fixed(secs, 1, f1[..])); tx_add(note[..], "s, "); tx_int(note[..], r[0].frames);
+  tx_add(note[..], " frames at "); tx_int(note[..], d[0].rec.fps); tx_add(note[..], " fps constant");
+  tagged: [1] Txt; sv_tagged(tx(path[..]), tagged[..]);
+  ta := [14] string.["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-i", tx(path[..]), "-map", "0", "-c", "copy", "-metadata", tx(note[..]), tx(tagged[..])];
+  th := proc_new(); ok := cxproc_out_null(th) == 0; for a: ta { ok = ok && proc_arg(th, a); }
+  e := ifx ok then proc_start(th) else 22;
+  m: [1] Txt; tx_set(m[..], "could not tag "); tx_add(m[..], tx(path[..])); tx_add(m[..], ": ");
+  if e != 0 { y := proc_release(th); tx_add(m[..], "ffmpeg: "); sv_os_error(m[..], e); sv_say(tx(m[..])); return true; }
+  cs := proc_close_stdin(th); ts := proc_wait(th, -1); y := proc_release(th);
+  if ts != 0 { z := fs_remove(tx(tagged[..])); tx_add(m[..], "ffmpeg ended with "); sv_exit_text(m[..], ts); sv_say(tx(m[..])); return true; }
+  if !fs_rename(tx(tagged[..]), tx(path[..])) { tx_add(m[..], tx(tagged[..])); tx_add(m[..], ": "); sv_os_error(m[..], SV_ENOENT); sv_say(tx(m[..])); }
+  return true;
+}
+// clip.mp4 is tagged through clip.tagged.mp4.
+sv_tagged :: (path: string, out: [] Txt) {
+  slash := -1; for i: 0..<path.count { if path[i] == '/' { slash = i; } }
+  dot := -1; for i: slash + 1..<path.count { if path[i] == '.' && i > slash + 1 { dot = i; } }
+  if dot < 0 { tx_set(out, path); tx_add(out, ".tagged.mp4"); return; }
+  tx_set(out, path[0..<dot]); tx_add(out, ".tagged"); tx_add(out, path[dot..<path.count]);
+}
+sv_probe :: (path: string, field: string, out: [] u8) -> string {
+  fb: [64] u8; n := 0; for c: "stream=" { fb[n] = c; n += 1; } for c: field { fb[n] = c; n += 1; }
+  a := [10] string.["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", cast(string) fb[0..<n], "-of", "csv=p=0", path];
+  o: [4096] u8; e: [4096] u8; r := proc_run(a[..], 60000, o[..], e[..]);
+  if r.started != 0 || r.status != 0 { return ""; }
+  t := sv_trim(cast(string) o[0..<r.out_n]);
+  k := 0; for c: t { if k < out.count { out[k] = c; k += 1; } }
+  return cast(string) out[0..<k];
+}
+sv_u64 :: (t: string) -> int { if t.count == 0 || t.count > 18 { return -1; } v := 0; for c: t { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); } return v; }
+sv_decimal :: (t: string) -> bool {
+  i := 0; digits := 0; if i < t.count && (t[i] == '-' || t[i] == '+') { i += 1; }
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { i += 1; digits += 1; }
+  if i < t.count && t[i] == '.' { i += 1; while i < t.count && t[i] >= '0' && t[i] <= '9' { i += 1; digits += 1; } }
+  return digits > 0 && i == t.count;
+}
+// A decimal's shortest form as serde writes an f64 that was parsed from it: trailing zeros off,
+// and ".0" kept on a whole number ("12.500000" is 12.5, "3.000000" is 3.0).
+sv_shortest :: (t: string) -> string {
+  dot := -1; for i: 0..<t.count { if t[i] == '.' { dot = i; } }
+  if dot < 0 { return t; }
+  e := t.count; while e > dot + 2 && t[e - 1] == '0' { e -= 1; }
+  return t[0..<e];
+}
+#test "receipts' numbers and names" {
+  #assert sv_shortest("12.500000") == "12.5" && sv_shortest("3.000000") == "3.0" && sv_shortest("0.033333") == "0.033333";
+  t: [1] Txt; sv_tagged("/v/clip.mp4", t[..]); #assert tx(t[..]) == "/v/clip.tagged.mp4";
+  sv_tagged("/v/clip", t[..]); #assert tx(t[..]) == "/v/clip.tagged.mp4";
+  sv_tagged("/v.d/.hidden", t[..]); #assert tx(t[..]) == "/v.d/.hidden.tagged.mp4";
+  tx_set(t[..], ""); sv_exit_text(t[..], 1); #assert tx(t[..]) == "exit status: 1";
+  tx_set(t[..], ""); sv_exit_text(t[..], 137); #assert tx(t[..]) == "signal: 9 (SIGKILL)";
+}
+sv_record_stop :: (d: [] Daemon, o: [] Jo, b: Bufs) {
+  if !d[0].rec.on { sv_refused(o, "no_recording", "no recording is running"); return; }
+  // the frame in hand finishes first, as the sink's lock made record_stop wait for it
+  w: [1] Txt; x := sv_record_pump(d, b, true, w[..]);
+  if d[0].rec.queued { d[0].rec.queued = false; d[0].rl.delivered += 1; }
+  r: [1] Receipt; why: [1] Txt;
+  if !sv_recorder_stop(d, r[..], why[..]) { d[0].rec.failed = true; tx_set(d[0].rec.error[..], tx(why[..])); sv_refused(o, "cannot_record", tx(why[..])); return; }
+  tool_err("Recording saved: "); tool_errln(tx(d[0].rec.path[..]));
+  sv_answer_head(o, "recorded"); jo_key(o, "path"); jo_str(o, tx(d[0].rec.path[..])); jo_key(o, "seconds"); jo_raw(o, tx(r[0].seconds_text[..]));
+  jo_key(o, "frames"); jo_int(o, r[0].frames); jo_key(o, "fps"); jo_int(o, d[0].rec.fps); jo_end(o);
+}
+
+// ---- the loopback (loopback.rs)
+
+sv_loopback_offer :: (d: [] Daemon, rgb: [] u8, w: int, h: int, yuyv: [] u8) {
+  d[0].lb.delivered += 1;
+  path := tx(d[0].grant[0].loopback[..]);
+  if !d[0].lb_open && (d[0].lb_last_try < 0 || sv_now_ms() - d[0].lb_last_try > 5000) {
+    d[0].lb_last_try = sv_now_ms();
+    pb: [4096] u8; n := 0; for c: path { pb[n] = c; n += 1; }
+    r := cxcam_out_open(pb[0..<n], d[0].grant[0].width, d[0].grant[0].height);
+    if r == 0 { d[0].lb_open = true; tx_set(d[0].lb_state[..], "up"); m: [1] Txt; tx_set(m[..], "the loopback "); tx_add(m[..], path); tx_add(m[..], " takes frames"); sv_say(tx(m[..])); }
+    else {
+      s: [1] Txt; tx_set(s[..], "absent: ");
+      if r == 1 {
+        tx_add(s[..], path); tx_add(s[..], " took "); sv_fourcc(s[..], cxcam_out_fourcc()); tx_add(s[..], " "); tx_int(s[..], cxcam_out_width()); tx_add(s[..], "x"); tx_int(s[..], cxcam_out_height());
+        tx_add(s[..], " rather than YUYV "); tx_int(s[..], d[0].grant[0].width); tx_add(s[..], "x"); tx_int(s[..], d[0].grant[0].height);
+      } else {
+        e := -r; stage := e % 4; err := e / 4;
+        if stage == 1 { tx_add(s[..], path); tx_add(s[..], " format: "); sv_os_error(s[..], err); }
+        else {
+          tx_add(s[..], path); tx_add(s[..], ": "); sv_os_error(s[..], err);
+          if fs_kind("/sys/module/v4l2loopback") < 0 { tx_add(s[..], "; the v4l2loopback module is not loaded (modprobe -d /run/current-system/kernel-modules v4l2loopback, or a reboot)"); }
+          else if err == SV_EACCES { tx_add(s[..], "; the node is there but this daemon may not open it (the video group, or the seat ACL udev gives it)"); }
+        }
+      }
+      tx_set(d[0].lb_state[..], tx(s[..]));
+    }
+  }
+  if !d[0].lb_open || w != d[0].grant[0].width || h != d[0].grant[0].height { return; }
+  n := sv_rgb_to_yuyv(rgb[0..<w * h * 3], yuyv[0..<w * h * 2]);
+  r := cxcam_out_write(yuyv[0..<w * h * 2]);
+  if r != 0 {
+    s: [1] Txt; sv_os_error(s[..], -r);
+    m: [1] Txt; tx_set(m[..], "the loopback "); tx_add(m[..], path); tx_add(m[..], " stopped taking frames: "); tx_add(m[..], tx(s[..])); sv_say(tx(m[..]));
+    x := cxcam_out_close(); d[0].lb_open = false; tx_set(d[0].lb_state[..], "absent: "); tx_add(d[0].lb_state[..], tx(s[..]));
+  }
+}
+sv_fourcc :: (t: [] Txt, f: int) { b: [4] u8; for i: 0..<4 { b[i] = cast,trunc(u8) ((f >> (8 * i)) & 255); } tx_add(t, cast(string) b[..]); }
+
+// ---- the camera (capture.rs)
+
+// describe: a busy node names who holds it; another error keeps the stage.
+sv_describe :: (t: [] Txt, device: string, stage: string, err: int) {
+  if err == SV_EBUSY { tx_set(t, "another process streams "); tx_add(t, device); tx_add(t, " (the camera circle on the camera itself, or a second daemon); this daemon has to be the one that opens it"); return; }
+  tx_set(t, device); tx_add(t, stage); tx_add(t, ": "); sv_os_error(t, err);
+}
+sv_open_camera :: (d: [] Daemon, why: [] Txt, file: [] u8) -> bool {
+  dev := tx(d[0].grant[0].device[..]);
+  if fs_kind(dev) == 1 {
+    n := fs_read(dev, file);
+    if n <= 0 { sv_describe(why, dev, "", SV_EACCES); return false; }
+    d[0].file_src = true; d[0].file_n = n; d[0].file_at = 0; d[0].file_next_ms = sv_now_ms(); d[0].file_start_ms = d[0].file_next_ms; d[0].file_k = 0;
+    tx_set(d[0].format[..], "MJPG");
+    return true;
+  }
+  d[0].file_src = false;
+  pb: [4096] u8; n := 0; for c: dev { pb[n] = c; n += 1; }
+  r := cxcam_open(pb[0..<n], d[0].grant[0].width, d[0].grant[0].height, d[0].grant[0].framerate);
+  if r != 0 { e := -r; stages := [3] string.["", " format", " stream"]; sv_describe(why, dev, stages[e % 4], e / 4); return false; }
+  pe := cxcam_parm_error();
+  if pe != 0 { m: [1] Txt; tx_set(m[..], dev); tx_add(m[..], " keeps its own frame rate: "); sv_os_error(m[..], pe); sv_say(tx(m[..])); }
+  tx_set(d[0].format[..], ""); sv_fourcc(d[0].format[..], cxcam_fourcc());
+  return true;
+}
+// The next picture from a file source: the bytes of the JPEG at the cursor (SOI to EOI), the
+// cursor moved past it and back to the start at the end; 0 when the next is not due yet.
+sv_file_frame :: (d: [] Daemon, file: [] u8, out: [] u8) -> int {
+  if sv_now_ms() < d[0].file_next_ms { return 0; }
+  // paced from the first frame, so a rate that is not a whole number of milliseconds keeps it
+  d[0].file_k += 1; d[0].file_next_ms = d[0].file_start_ms + d[0].file_k * 1000 / d[0].grant[0].framerate;
+  if sv_now_ms() > d[0].file_next_ms + 1000 { d[0].file_start_ms = sv_now_ms(); d[0].file_k = 0; d[0].file_next_ms = d[0].file_start_ms; }
+  n := d[0].file_n; a := d[0].file_at;
+  if a + 1 >= n { a = 0; }
+  e := a + 2;
+  while e + 1 < n && !(file[e] == 0xFF && file[e + 1] == 0xD9) { e += 1; }
+  e = ifx e + 1 < n then e + 2 else n;
+  k := e - a; if k > out.count { k = out.count; }
+  for i: 0..<k { out[i] = file[a + i]; }
+  d[0].file_at = ifx e >= n then 0 else e;
+  return k;
+}
+
+// ---- the sockets
+
+sv_accept_all :: (d: [] Daemon) {
+  while true {
+    h := cxcam_accept(0); if h == -1 { break; }
+    if h < 0 { continue; }
+    placed := false;
+    for i: 0..<16 { if d[0].conns[i].h < 0 { d[0].conns[i].h = h; d[0].conns[i].n = 0; d[0].conns[i].opened_ms = sv_now_ms(); placed = true; break; } }
+    if !placed { x := cxcam_hangup(h); }
+  }
+  while true {
+    h := cxcam_accept(1); if h == -1 { break; }
+    if h < 0 { continue; }
+    if d[0].nreaders < 64 { x := cxcam_mute(h); d[0].readers[d[0].nreaders] = h; d[0].nreaders += 1; } else { x := cxcam_hangup(h); }
+  }
+}
+// Reads every control connection; a whole line (or what came before its end) is answered and the
+// connection closed; one silent for 5 seconds is closed unanswered.
+sv_serve_conns :: (d: [] Daemon, b: Bufs) {
+  for i: 0..<16 {
+    c := d[0].conns[i].h;
+    if c < 0 { continue; }
+    done := false; ended := false;
+    while !done {
+      rb: [4096] u8; n := cxcam_read(c, rb[..]);
+      if n == 0 { break; }
+      if n < 0 { ended = true; break; }
+      for k: 0..<n {
+        if d[0].conns[i].n < 8192 { d[0].conns[i].buf[d[0].conns[i].n] = rb[k]; d[0].conns[i].n += 1; }
+        if rb[k] == '\n' { done = true; break; }
+      }
+    }
+    line := cast(string) d[0].conns[i].buf[0..<d[0].conns[i].n];
+    if (done || ended) && sv_trim(line).count > 0 {
+      ab: [1048576] u8; o: [1] Jo; jo_start(o[..], ab[..]);
+      sv_request(d, line, o[..], b);
+      t := jo_text(o[..]);
+      wb: [1048580] u8; wn := 0; for ch: t { wb[wn] = ch; wn += 1; } wb[wn] = '\n'; wn += 1;
+      off := 0; deadline := sv_now_ms() + 5000;
+      while off < wn && sv_now_ms() < deadline { k := cxcam_write(c, wb[off..<wn]); if k < 0 { break; } off += k; if k == 0 { proc_sleep(1); } }
+      x := cxcam_hangup(c); d[0].conns[i].h = -1;
+    } else if done || ended || sv_now_ms() - d[0].conns[i].opened_ms > 5000 {
+      x := cxcam_hangup(c); d[0].conns[i].h = -1;
+    }
+  }
+}
+
+// ---- one frame to every lane
+
+sv_fanout :: (d: [] Daemon, rgb: [] u8, w: int, h: int, b: Bufs, yuyv: [] u8) {
+  if d[0].grant[0].has_loopback { sv_loopback_offer(d, rgb, w, h, yuyv); }
+  sv_record_offer(d, rgb, w, h, b);
+  // hands: the lane takes every frame; while on, the tracker would read it (not ported yet)
+  d[0].hl.delivered += 1;
+  if d[0].hands_on { tx_set(d[0].hands_status[..], "the hand tracker is not ported to Coax yet; no landmarks are published"); }
+}
+// RecordSink's failure path: the pipe broke, so the recording ends where it is.
+sv_record_broke :: (d: [] Daemon, why: [] Txt) {
+  m: [1] Txt; tx_set(m[..], "the recording stopped: "); tx_add(m[..], tx(why)); sv_say(tx(m[..]));
+  d[0].rec.failed = true; tx_set(d[0].rec.error[..], tx(why));
+  r: [1] Receipt; e: [1] Txt;
+  if sv_recorder_stop(d, r[..], e[..]) { tool_err("Recording saved: "); tool_errln(tx(d[0].rec.path[..])); } else { sv_say(tx(e[..])); }
+}
+
+cam_serve :: () -> int {
+  dd: [1] Daemon; d := dd[..];
+  why: [1] Txt;
+  if !sv_grant(d[0].grant[..], why[..]) { sv_say(tx(why[..])); return 1; }
+  dir: [4096] u8; dn := cam_dir(dir[..]);
+  tx_set(d[0].control[..], dn); tx_add(d[0].control[..], "/control.sock");
+  tx_set(d[0].hands_sock[..], dn); tx_add(d[0].hands_sock[..], "/hands.sock");
+  tx_set(d[0].status[..], "opening"); tx_set(d[0].lb_state[..], "absent: not opened yet"); d[0].lb_last_try = -1;
+  tx_set(d[0].hands_status[..], "off");
+  for i: 0..<16 { d[0].conns[i].h = -1; }
+  w := cxterm_watch();
+  if !fs_exists(dn) && !fs_mkdir(dn) { tx_set(why[..], dn); tx_add(why[..], ": "); sv_os_error(why[..], SV_EACCES); sv_say(tx(why[..])); return 1; }
+  hp: [4096] u8; hn := 0; for c: tx(d[0].hands_sock[..]) { hp[hn] = c; hn += 1; }
+  r := cxcam_listen(1, hp[0..<hn]);
+  if r != 0 { tx_set(why[..], tx(d[0].hands_sock[..])); tx_add(why[..], ": "); sv_os_error(why[..], -r); sv_say(tx(why[..])); return 1; }
+  cp: [4096] u8; cn := 0; for c: tx(d[0].control[..]) { cp[cn] = c; cn += 1; }
+  r = cxcam_listen(0, cp[0..<cn]);
+  if r != 0 { tx_set(why[..], tx(d[0].control[..])); tx_add(why[..], ": "); sv_os_error(why[..], -r); sv_say(tx(why[..])); x := cxcam_unlisten(1, hp[0..<hn]); return 1; }
+  m: [1] Txt;
+  tx_set(m[..], "reads "); tx_add(m[..], tx(d[0].grant[0].device[..])); tx_add(m[..], " at "); tx_int(m[..], d[0].grant[0].width); tx_add(m[..], "x"); tx_int(m[..], d[0].grant[0].height);
+  tx_add(m[..], " "); tx_int(m[..], d[0].grant[0].framerate); tx_add(m[..], " fps; control socket "); tx_add(m[..], tx(d[0].control[..])); tx_add(m[..], ", hands socket ");
+  tx_add(m[..], tx(d[0].hands_sock[..])); tx_add(m[..], ", loopback "); tx_add(m[..], ifx d[0].grant[0].has_loopback then tx(d[0].grant[0].loopback[..]) else "none"); sv_say(tx(m[..]));
+  raw: [SV_FRAME_MAX] u8; spliced: [SV_FRAME_MAX] u8; file: [67108864] u8;
+  work: [12441600] u8; rgba: [SV_PIXELS_MAX * 4] u8; rgb: [SV_PIXELS_MAX * 3] u8; yuyv: [SV_PIXELS_MAX * 2] u8;
+  cur: [SV_PIXELS_MAX * 3] u8; next: [SV_PIXELS_MAX * 3] u8;
+  b := Bufs.{cur = cur[..], next = next[..]};
+  open := false; retry_at := 0;
+  while !d[0].stopping && cxterm_stopped() == 0 {
+    if !open && sv_now_ms() >= retry_at {
+      e: [1] Txt;
+      if sv_open_camera(d, e[..], file[..]) {
+        open = true; tx_set(d[0].status[..], "streaming");
+        s: [1] Txt; tx_set(s[..], tx(d[0].grant[0].device[..])); tx_add(s[..], " streams "); tx_add(s[..], tx(d[0].format[..])); tx_add(s[..], " at ");
+        tx_int(s[..], ifx d[0].file_src then d[0].grant[0].width else cxcam_width()); tx_add(s[..], "x"); tx_int(s[..], ifx d[0].file_src then d[0].grant[0].height else cxcam_height()); sv_say(tx(s[..]));
+      } else {
+        tx_set(d[0].status[..], tx(e[..])); s: [1] Txt; tx_set(s[..], tx(e[..])); tx_add(s[..], "; trying again in 2 seconds"); sv_say(tx(s[..]));
+        retry_at = sv_now_ms() + 2000;
+      }
+    }
+    busy := d[0].rec.on && d[0].rec.cur_len > 0;
+    p := cxcam_poll(ifx busy then 2 else ifx open && d[0].file_src then 5 else 50);
+    sv_accept_all(d);
+    sv_serve_conns(d, b);
+    if d[0].rec.on { pw: [1] Txt; if !sv_record_pump(d, b, false, pw[..]) { sv_record_broke(d, pw[..]); } }
+    if !open || d[0].stopping { continue; }
+    n := ifx d[0].file_src then sv_file_frame(d, file[..], raw[..]) else cxcam_frame(raw[..]);
+    if n == 0 { continue; }
+    fe: [1] Txt; pic: [1] Pic; ok := n > 0;
+    if n < 0 { tx_set(fe[..], "frame: "); sv_os_error(fe[..], -n); }
+    else if tx(d[0].format[..]) == "YUYV" {
+      pic[0].w = cxcam_width(); pic[0].h = cxcam_height();
+      if pic[0].w * pic[0].h > SV_PIXELS_MAX { ok = false; tx_set(fe[..], "frame: larger than 1920x1080"); }
+      else { sv_yuyv_to_rgb(raw[0..<n], rgb[0..<pic[0].w * pic[0].h * 3]); }
+    } else { ok = sv_mjpeg(raw[0..<n], spliced[..], work[..], rgba[..], rgb[..], pic[..], fe[..]); }
+    if !ok {
+      tx_set(d[0].status[..], tx(fe[..])); s: [1] Txt; tx_set(s[..], tx(fe[..])); tx_add(s[..], "; opening "); tx_add(s[..], tx(d[0].grant[0].device[..])); tx_add(s[..], " again"); sv_say(tx(s[..]));
+      x := cxcam_close(); open = false; retry_at = sv_now_ms() + 500;
+      continue;
+    }
+    sv_note_frame(d, pic[0].w, pic[0].h);
+    sv_fanout(d, rgb[0..<pic[0].w * pic[0].h * 3], pic[0].w, pic[0].h, b, yuyv[..]);
+  }
+  // shutdown: the lanes finish what they hold, a recording gets its ending, the sockets go
+  if d[0].rec.on {
+    o: [1] Jo; ob: [65536] u8; jo_start(o[..], ob[..]); sv_record_stop(d, o[..], b);
+    nodes: [64] JvNode; jd: [1] Jv;
+    if jv_parse(jd[..], jo_text(o[..]), nodes[..]) && cam_str(jd[0], 0, "type", ob[..]) == "refused" {
+      mb: [4096] u8; s: [1] Txt; tx_set(s[..], "the recording did not stop cleanly: "); tx_add(s[..], cam_str(jd[0], 0, "message", mb[..])); sv_say(tx(s[..]));
+    }
+  }
+  x := cxcam_close(); x = cxcam_out_close();
+  for i: 0..<16 { if d[0].conns[i].h >= 0 { x = cxcam_hangup(d[0].conns[i].h); } }
+  for i: 0..<d[0].nreaders { x = cxcam_hangup(d[0].readers[i]); }
+  x = cxcam_unlisten(0, cp[0..<cn]); x = cxcam_unlisten(1, hp[0..<hn]);
+  return 0;
+}

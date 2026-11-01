@@ -5,7 +5,7 @@
 // Each verb is one JSON line on the daemon's control socket, $CODEROS_CAMERA_DIR/control.sock (else
 // $XDG_RUNTIME_DIR/coderos-camera/, else ~/.openagents/camera/), and its answer printed as the Rust
 // command printed it; --json prints the answer as JSON in the Rust command's field order. A refusal
-// or an answer this side does not know exits 1. `serve`, the daemon itself, is not ported yet.
+// or an answer this side does not know exits 1. `serve`, the daemon itself, is os/camera-serve.coax.
 // One difference: an answer that does not parse names what is wrong in words of its own, where
 // the Rust command quoted serde's error with a line and column. The output and exit are the same.
 #import "Basic";
@@ -15,6 +15,7 @@
 #load "../coax/lib/sys/proc.coax";
 #load "../coax/lib/json/json.coax";
 #load "record-policy.coax";
+#load "camera-serve.coax";
 
 cxsock_host_push :: (byte: int) -> int #foreign;
 cxsock_connect_unix :: (timeout_ms: int) -> int #foreign;
@@ -259,7 +260,7 @@ tool_main :: () -> int #export_c {
     else if x == "-h" || x == "--help" { print("%\n", CAM_USAGE); return 0; }
     else if nw < words.count { words[nw] = x; nw += 1; }
   }
-  if nw > 0 && words[0] == "serve" { tool_errln("coderos-camera: serve is not ported to Coax yet; the Rust daemon serves"); return 1; }
+  if nw > 0 && words[0] == "serve" { return cam_serve(); }
   v := cam_verb(words[0..<nw]);
   if !v.ok {
     if nw == 0 { tool_errln(CAM_USAGE); return 2; }

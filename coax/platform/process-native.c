@@ -29,7 +29,7 @@ typedef struct { char *data; size_t count, cap; } Bytes;
 typedef struct { Bytes *items; size_t count, cap; Bytes open; } List;
 
 typedef struct {
-  int used, started, reaped, status, quiet, detach;
+  int used, started, reaped, status, quiet, detach, outnull;
   pid_t pid;
   int in, out, err;
   List args, env, unset;
@@ -264,7 +264,11 @@ int64_t cxproc_spawn(int64_t h) {
 #if defined(__linux__)
       prctl(PR_SET_PDEATHSIG, SIGKILL);
 #endif
-      dup2(in[0], 0); dup2(out[1], 1); dup2(err[1], 2);
+      dup2(in[0], 0);
+      if (p->outnull) { /* stdout to /dev/null, stderr left as this process's */
+        int null = open("/dev/null", O_WRONLY);
+        if (null >= 0) { dup2(null, 1); if (null > 2) close(null); }
+      } else { dup2(out[1], 1); dup2(err[1], 2); }
     }
     signal(SIGPIPE, SIG_DFL);
     /* a detached child is stopped by a signal from a later run, so an ignored SIGINT (a command
@@ -654,4 +658,25 @@ int64_t cxproc_cmdline(int64_t pid, coax_v_u8 out) {
 #else
   (void)pid; (void)out; return -1;
 #endif
+}
+
+/* Before cxproc_spawn: the child's stdout goes to /dev/null and its stderr is this process's,
+   while stdin stays a pipe (an encoder fed frames that reports its errors to our log). */
+int64_t cxproc_out_null(int64_t h) {
+  Proc *p = get(h);
+  if (!p || p->started) return -1;
+  p->outnull = 1;
+  return 0;
+}
+
+/* As much of s as the child's stdin takes now, without blocking: the count (0 when the pipe is
+   full), -1 when it is closed or broken. */
+int64_t cxproc_write_some(int64_t h, coax_v_u8 s) {
+  Proc *p = get(h);
+  if (!p || p->in < 0) return -1;
+  int fl = fcntl(p->in, F_GETFL);
+  if (!(fl & O_NONBLOCK)) fcntl(p->in, F_SETFL, fl | O_NONBLOCK);
+  ssize_t n = write(p->in, s.data, (size_t)s.count);
+  if (n < 0) return (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) ? 0 : -1;
+  return (int64_t)n;
 }

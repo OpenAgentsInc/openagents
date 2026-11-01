@@ -369,10 +369,41 @@ compiler and the examples have not been run on Linux yet.
   against a stand-in daemon (every reply type, refusals, answers serde
   would refuse, a daemon that closes or never answers, bad words) and on
   `status` and `outputs` against the live daemon (read-only verbs only;
-  the camera itself was not opened). Left: `serve` (V4L2 capture through a
-  C face, the loopback, the recording pipe, the hands socket) and the
-  landmark model as a Coax kernel. Checking capture needs the camera,
-  which the running daemon holds, so that check waits for an agreed time.
+  the camera itself was not opened).
+
+  `serve` is `os/camera-serve.coax`, with its effects in
+  `coax/platform/camera-native.c` (V4L2 capture, the v4l2loopback node,
+  Unix sockets). It is one poll loop where the Rust daemon had a thread
+  per output. Each frame is decoded once with `coax/lib/image/jpeg.coax`,
+  and an MJPEG frame that has no Huffman tables gets the standard ones.
+  The recording keeps Rust's one-frame mailbox and its drop count. On
+  coderos-4080, run next to the Rust daemon on a camera path that does not
+  exist, the two matched in every CLI answer: `status`, `outputs`, `record
+  start` twice, `record stop` with and without a recording, `hands off`,
+  `stop`, in text and `--json`. The stderr logs were identical too,
+  including ffmpeg's failure to tag an empty recording. One difference:
+  the recording's length, 1.2 s against 1.3 s, a wall-clock difference. A
+  camera path that names a regular file is read as concatenated JPEG
+  frames, and with ffmpeg test-pattern frames, with and without Huffman
+  tables, the daemon held 15.0 fps. It wrote a 45-frame H.264 recording
+  with the right receipt and tag, and counted a hands reader. At 1280x720
+  and 30 fps it kept up using 79% of one core and 142 MB.
+
+  Differences from Rust:
+  - The hand tracker is not ported: `hands on` turns the lane on and says
+    so in its status, and no landmarks are published.
+  - Stopping a recording holds the loop for the second ffmpeg takes to
+    finish.
+  - A request that does not parse is refused in our own words, not
+    serde's.
+
+  Left:
+  - The landmark model as a Coax kernel.
+  - The real camera and loopback, which wait for an agreed time because
+    the running daemon holds `/dev/video0` and `/dev/video10` is the
+    owner's.
+  - Installing it in place of the Rust daemon (an owner yes).
+
   On 2026-10-31 two `coderos-camera serve` processes were running there,
   and the one that answers reports that another process streams
   `/dev/video0`.

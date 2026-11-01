@@ -77,6 +77,10 @@ int64_t cxproc_exec(int64_t h);
 int64_t cxproc_read_bytes(int64_t h, int64_t timeout_ms, coax_v_u8 out);
 /* /proc/PID/cmdline (arguments, NUL-ended): the byte count, or -1. */
 int64_t cxproc_cmdline(int64_t pid, coax_v_u8 out);
+/* Before spawn: stdout to /dev/null, stderr inherited, stdin a pipe. */
+int64_t cxproc_out_null(int64_t h);
+/* Non-blocking write to the child's stdin: the count taken (0 when full), -1 when broken. */
+int64_t cxproc_write_some(int64_t h, coax_v_u8 s);
 /* Before cxproc_spawn: the child's stdout and stderr go to /dev/null
    instead of pipes (a browser that logs freely must never block on a pipe
    nobody reads). stdin stays a pipe. */
