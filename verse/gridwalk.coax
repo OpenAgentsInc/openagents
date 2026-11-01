@@ -1,0 +1,469 @@
+// The Grid's session (openagents.com/realms/the-grid): you, the phone's thumbs and the record of
+// what you did, stepped on Aethyr's engine core. The page's C face keeps a GridWalk and calls
+// gridwalk_frame once a frame with what the devices said (the keys held, the drag, the wheel)
+// and the frame's time; touches go to gridwalk_touch as they happen. The face only reads where
+// to draw you and the camera.
+//
+// Each frame's controls become one Intent (aethyr/input.coax: the keyboard's and the touch
+// stick's say the same thing the same way) and one event in the session's record
+// (aethyr/replay.coax). The fixed steps (aethyr/loop.coax, the player's clock) take the events
+// from the record, so a live session and its replay step the same way, and every step leaves its
+// state's digest. Look and zoom are amounts: a frame's steps split them, so you turn by the same
+// total at any frame rate. Drawing mixes the last two steps, the camera's turn included.
+//
+// The record holds GW_EVENTS frames and GW_MARKS steps. When either is full, a new one starts
+// from the state the session has then, which it keeps (`start`), so the latest record always
+// replays from where it began. Frames still waiting for a step go into the input buffer first,
+// so the new record's start holds them and no press or turn is lost.
+//   coax/bin/coax test verse/gridwalk.coax --library
+//   coax/bin/coax mutate verse/gridwalk.coax --root-only
+
+#module "verse.gridwalk";
+#load "player.coax" as pc;   // the walking controller every walking realm uses
+#load "sticks.coax";         // the phone's thumbs
+#load "../aethyr/replay.coax";
+#load "tests/gridwalk-checks.coax";   // the checks' sessions
+
+GW_EVENTS :: 1024;     // frames one record holds
+GW_MARKS :: 2048;      // steps one record holds (32 s at 1/64 s)
+GW_SEED :: 12609;      // the session's seed: the Grid draws no random numbers yet
+
+// book:begin gridwalk-state
+GridWalk :: struct {
+  you: pc.Player;
+  input: InputBuffer;        // what the steps read (aethyr/input.coax)
+  thumbs: Sticks;            // the phone's fingers (verse/sticks.coax)
+  prev_theta: f32;           // the camera's turn when the last step began, for drawing
+  prev_phi: f32;
+  // the record (aethyr/replay.coax) and the state it starts from
+  start: pc.Player;
+  start_input: InputBuffer;
+  events: [GW_EVENTS] ReplayEvent;
+  marks: [GW_MARKS] int;
+  channels: [REPLAY_SOURCES] ReplayChannel;
+  n: [REPLAY_COUNTERS] int;
+  records: int;              // records started, the first included
+  // the view the touches are measured in, and the time they are stamped with
+  width: f32; height: f32; dpr: f32 = 1;
+  now: f64;
+}
+// book:end gridwalk-state
+
+gw_session :: (g: [] GridWalk) -> ReplaySession {
+  return ReplaySession.{events = g[0].events[..], marks = g[0].marks[..], channels = g[0].channels[..], n = g[0].n[..]};
+}
+
+// One number for the state a step leaves: you, and what the input buffer holds.
+gw_digest :: (p: pc.Player, b: InputBuffer) -> int {
+  floats := [20] f32.[p.pos.x, p.pos.y, p.pos.z, p.vel.x, p.vel.y, p.vel.z, p.face, p.theta, p.phi, p.dist,
+    p.max_dist, p.target.x, p.target.y, p.target.z, p.spring_vel.x, p.spring_vel.y, p.spring_vel.z,
+    b.look_x, b.look_y, b.zoom];
+  h := 2166136261;
+  for k: 0..<20 { h = replay_mix(h, replay_bits(floats[k])); }
+  h = replay_mix(h, replay_bits(b.move_x)); h = replay_mix(h, replay_bits(b.move_y));
+  h = replay_mix(h, replay_flag(p.on_ground)); h = replay_mix(h, replay_flag(p.sliding)); h = replay_mix(h, replay_flag(b.run));
+  h = replay_mix(h, cast(int) cast(u8) p.act); h = replay_mix(h, p.jumps.waiting); h = replay_mix(h, b.jump.waiting);
+  return replay_mix(h, b.steps_left);
+}
+gridwalk_digest :: (g: [] GridWalk) -> int #export_c { return gw_digest(g[0].you, g[0].input); }
+
+// A new record, from the state the session has now.
+gw_begin :: (g: [] GridWalk) {
+  g[0].start = g[0].you;
+  g[0].start_input = g[0].input;
+  replay_record(gw_session(g), gridwalk_digest(g), GW_SEED);
+  g[0].records += 1;
+}
+
+// You stand at (x, z) facing `face`, the camera `phi` down from straight up and `dist` behind.
+gridwalk_place :: (g: [] GridWalk, x: f32, z: f32, face: f32, phi: f32, dist: f32) #export_c {
+  if g.count < 1 { return; }
+  p := pc.verse_player_place(x, 0, z, face);
+  p.phi = phi;
+  p.max_dist = dist; p.dist = dist; p.prev_dist = dist;
+  g[0].you = p;
+  g[0].input = InputBuffer.{};
+  g[0].thumbs = Sticks.{};
+  g[0].prev_theta = p.theta; g[0].prev_phi = p.phi;
+  g[0].records = 0;
+  gw_begin(g);
+}
+
+// book:begin gridwalk-step
+// The frames the record holds for the next step, into the input buffer.
+gw_take :: (g: [] GridWalk, s: ReplaySession) {
+  while true {
+    t := replay_take(s);
+    if !t.ok { break; }
+    g[0].input = input_frame(input_feed(g[0].input, replay_intent(t.event)), replay_steps(t.event));
+  }
+}
+// One fixed step, live or replayed: the frames the record holds for it, then one sample of the
+// input buffer, then the controller's step.
+gw_step :: (g: [] GridWalk) {
+  s := gw_session(g);
+  gw_take(g, s);
+  sm := input_sample(g[0].input);
+  g[0].input = sm.buffer;
+  a := sm.actions;
+  p := pc.verse_player_input(g[0].you, 0, 0, a.move_x, a.move_y, a.run, false, a.look_x, a.look_y);
+  if a.jump { p.jumps = input_press(p.jumps); }
+  p = pc.verse_player_zoom(p, a.zoom);
+  g[0].prev_theta = g[0].you.theta; g[0].prev_phi = g[0].you.phi;
+  w: pc.World;
+  g[0].you = pc.steps_in(w, p, 1);
+  replay_stepped(s, gridwalk_digest(g));
+}
+// book:end gridwalk-step
+
+// book:begin gridwalk-frame
+// This frame's controls as one Intent: the touch stick when it is pushed past the dead zone,
+// else the keys; a jump from Space or a tap; the drag's, the arrows' and the right thumb's look
+// together; the wheel's and the pinch's zoom (already in metres, `zoom`).
+gw_intent :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: bool, look_x: f32, look_y: f32, zoom: f32) -> Intent {
+  t := g[0].thumbs;
+  acting := false;   // the Grid has no act control yet
+  keys := input_keys(key_x, key_y, shift, space, acting, look_x + t.dyaw, look_y + t.dpitch, zoom);
+  stick := input_stick(t.pad_x, t.pad_y, t.run, t.jump, acting, 0, 0, 0);
+  i := keys;
+  if stick.move_x != 0 || stick.move_y != 0 { i.move_x = stick.move_x; i.move_y = stick.move_y; i.run = stick.run; }
+  i.jump = keys.jump || stick.jump;
+  i.mended += stick.mended;
+  return i;
+}
+
+// Once a frame: the controls into the record, then the steps the frame's time makes due. A
+// frozen frame (the page's golden pictures) runs no step and records nothing.
+gridwalk_frame :: (g: [] GridWalk, key_x: f32, key_y: f32, shift: bool, space: bool, look_x: f32, look_y: f32, zoom: f32,
+                   width: f32, height: f32, dpr: f32, dt: f32, frozen: bool) #export_c {
+  if g.count < 1 { return; }
+  g[0].width = width; g[0].height = height; g[0].dpr = dpr;
+  g[0].now += cast(f64) pc.hi(ifx pc.finite(dt) then dt else 0, 0);
+  if frozen { g[0].thumbs = verse_sticks_used(g[0].thumbs); return; }
+  s := gw_session(g);
+  clock := loop_accept(g[0].you.clock, cast(f64) dt);
+  steps := loop_due(clock);
+  if replay_events(s) >= GW_EVENTS || replay_tick(s) + steps > GW_MARKS {
+    gw_take(g, s);   // frames still waiting for a step go into the new record's start
+    gw_begin(g);
+  }
+  e := replay_frame_event(s, gw_intent(g, key_x, key_y, shift, space, look_x, look_y, zoom), steps);
+  v := replay_offer(s, e);
+  g[0].thumbs = verse_sticks_used(g[0].thumbs);
+  for k: 0..<steps { gw_step(g); }
+  g[0].you.clock = loop_ran(clock);
+}
+// book:end gridwalk-frame
+
+// A finger (its slot), as the page's pointer reports it: 0 began, 1 moved, 2 ended, 3 cancelled.
+// A finger on the walking side is the move stick; on the other side it looks, and a quick tap
+// there jumps (verse/sticks.coax).
+gridwalk_touch :: (g: [] GridWalk, slot: int, phase: int, x: f32, y: f32) #export_c {
+  if g.count < 1 { return; }
+  g[0].thumbs = verse_sticks_world_touch(g[0].thumbs, slot, phase, x, y, g[0].width, g[0].height, g[0].dpr, g[0].now);
+}
+// The page lost focus: no finger is down and nothing is held.
+gridwalk_blur :: (g: [] GridWalk) #export_c {
+  if g.count < 1 { return; }
+  g[0].thumbs = Sticks.{};
+  g[0].input = input_blur(g[0].input);
+}
+// The pinch's zoom since the last frame, in wheel pixels (the page zooms with it as with the wheel).
+gridwalk_pinch :: (g: [] GridWalk) -> f32 #export_c { return ifx g.count < 1 then 0.0f32 else g[0].thumbs.zoom; }
+
+// book:begin gridwalk-drawn
+// Where to draw: between the last two steps, the camera's turn included.
+gw_alpha :: (g: [] GridWalk) -> f32 { return loop_alpha(g[0].you.clock); }
+gridwalk_feet :: (g: [] GridWalk) -> pc.Vec3 #export_c { return pc.verse_player_feet(g[0].you); }
+gridwalk_face :: (g: [] GridWalk) -> f32 #export_c { return pc.verse_player_face(g[0].you); }
+gridwalk_act :: (g: [] GridWalk) -> int #export_c { return pc.verse_player_act(g[0].you); }
+gridwalk_at :: (g: [] GridWalk) -> pc.Vec3 #export_c { return pc.verse_player_at(g[0].you); }
+gridwalk_eye :: (g: [] GridWalk) -> pc.Vec3 #export_c {
+  p := g[0].you;
+  a := gw_alpha(g);
+  p.theta = pc.wrap_angle(g[0].prev_theta + pc.wrap_angle(p.theta - g[0].prev_theta) * a);
+  p.phi = g[0].prev_phi + (p.phi - g[0].prev_phi) * a;
+  return pc.verse_player_eye(p);
+}
+// book:end gridwalk-drawn
+gridwalk_thumbs :: (g: [] GridWalk) -> Sticks #export_c { return g[0].thumbs; }
+
+// book:begin gridwalk-replay
+// Replays the latest record from where it began into `again`, which must not be the session
+// itself: true when every step gave the recorded digest and every frame was taken at its step.
+gridwalk_replay :: (g: [] GridWalk, again: [] GridWalk) -> bool #export_c {
+  if g.count < 1 || again.count < 1 { return false; }
+  again[0] = g[0];
+  again[0].you = g[0].start;
+  again[0].input = g[0].start_input;
+  s := gw_session(again);
+  if !replay_play(s, gridwalk_digest(again)) { return false; }
+  while replay_tick(s) < s.n[REPLAY_MARKS] { gw_step(again); }
+  return replay_matched(s);
+}
+// The record's step digests, for comparing hosts: step k's, or -1 past the last.
+gridwalk_mark :: (g: [] GridWalk, k: int) -> int #export_c {
+  if g.count < 1 || k < 0 || k >= g[0].n[REPLAY_MARKS] { return -1; }
+  return g[0].marks[k];
+}
+gridwalk_steps :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 then 0 else g[0].n[REPLAY_MARKS]; }
+gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 then 0 else replay_digest(gw_session(g)); }
+// book:end gridwalk-replay
+
+// ---- Checks ----
+
+#test "placed: you stand where the page puts you, the camera behind, and the record starts there" {
+  g: [1] GridWalk; gw_new(g[..]);
+  f := gridwalk_feet(g[..]);
+  #assert f.x == 28 && f.y == 0 && f.z == 28 && g[0].you.phi == 1.35 && g[0].you.max_dist == 9 && g[0].you.dist == 9 && g[0].you.prev_dist == 9;
+  #assert g[0].records == 1 && g[0].n[REPLAY_INITIAL] == gw_digest(g[0].start, g[0].start_input) && replay_seed(gw_session(g[..])) == GW_SEED;
+  #assert gridwalk_steps(g[..]) == 0 && gridwalk_mark(g[..], 0) == -1 && replay_events(gw_session(g[..])) == 1;
+  #assert gridwalk_face(g[..]) == g[0].you.face && gridwalk_act(g[..]) == 0 && g[0].prev_theta == g[0].you.theta && g[0].prev_phi == 1.35;
+  // placed again: nothing held, no finger down, a new record
+  gridwalk_touch(g[..], 1, 0, 200, 1500);
+  gw_keys(g[..], 1, true, 0.5, 1.0 / 64.0);
+  #assert g[0].input.move_y == 1 && g[0].input.jump.pressed == 1 && g[0].thumbs.move_on;
+  gridwalk_place(g[..], 1, 2, 0, 1, 3);
+  #assert g[0].records == 1 && replay_events(gw_session(g[..])) == 0 && g[0].input.move_y == 0 && g[0].input.jump.pressed == 0 && !g[0].thumbs.move_on;
+  #assert g[0].thumbs.danced_at == -100;
+}
+
+#test "a frame records its controls once and its steps take them: walking forward moves you forward" {
+  g: [1] GridWalk; gw_new(g[..]);
+  for f: 0..<60 { gw_keys(g[..], 1, false, 0, 1.0 / 60.0); }
+  s := gw_session(g[..]);
+  #assert replay_events(s) == 61 && gridwalk_steps(g[..]) == replay_tick(s) && gridwalk_steps(g[..]) >= 63 && gridwalk_steps(g[..]) <= 64;
+  // facing north-west with the camera behind: forward is toward the places' middle
+  f := gridwalk_feet(g[..]);
+  #assert f.x < 26 && f.z < 26 && gridwalk_act(g[..]) == 2;
+  for k: 0..<gridwalk_steps(g[..]) { #assert gridwalk_mark(g[..], k) == g[0].marks[k]; }
+  #assert gridwalk_mark(g[..], gridwalk_steps(g[..])) == -1 && gridwalk_mark(g[..], -1) == -1;
+  #assert gridwalk_mark(g[..], gridwalk_steps(g[..]) - 1) == gridwalk_digest(g[..]);
+}
+
+#test "the keyboard and the touch stick drive the same session to the same digests" {
+  a: [1] GridWalk; gw_new(a[..]);
+  b: [1] GridWalk; gw_new(b[..]);
+  gridwalk_touch(b[..], 1, 0, 200, 1500);
+  gridwalk_touch(b[..], 1, 1, 200, 1500 - 112);   // a full push forward: a run
+  for f: 0..<90 {
+    gw_keys(a[..], 1, false, 0, 1.0 / 60.0);
+    gw_still(b[..], 1.0 / 60.0);
+  }
+  #assert gridwalk_steps(a[..]) == gridwalk_steps(b[..]) && gridwalk_digest(a[..]) == gridwalk_digest(b[..]);
+  for k: 0..<gridwalk_steps(a[..]) { #assert gridwalk_mark(a[..], k) == gridwalk_mark(b[..], k); }
+  // lifted, the stick lets go and you slow
+  gridwalk_touch(b[..], 1, 2, 200, 1388);
+  for f: 0..<30 { gw_still(b[..], 1.0 / 60.0); }
+  #assert gridwalk_act(b[..]) == 0 && gridwalk_thumbs(b[..]).move_on == false;
+}
+
+#test "the stick decides only past its dead zone; a jump comes from Space or a tap" {
+  g: [1] GridWalk; gw_new(g[..]);
+  gridwalk_touch(g[..], 1, 0, 200, 1500);
+  gridwalk_touch(g[..], 1, 1, 200, 1500 - 11);    // a tenth of the way: inside the dead zone
+  i := gw_intent(g[..], 1, 0, true, false, 0.5, 0.25, 2);
+  #assert !i.act && i.mended == 0;
+  #assert i.move_x == 1 && i.move_y == 0 && i.run == false && !i.jump && i.look_x == 0.5 && i.look_y == 0.25 && i.zoom == 2;
+  gridwalk_touch(g[..], 1, 1, 200 + 56, 1500);    // half way right: past it, walking
+  i = gw_intent(g[..], 0, 1, false, true, 0, 0, 0);
+  #assert i.move_x == 0.5 && i.move_y == 0 && !i.run && i.jump;
+  gridwalk_touch(g[..], 1, 1, 200, 1500 - 112);
+  i = gw_intent(g[..], 0, 0, true, false, 0, 0, 0);
+  #assert i.move_y == 1 && i.move_x == 0 && i.run && i.mended == 0;
+  i = gw_intent(g[..], 0, 0, false, false, 0.0 / 0.0, 0, 0);
+  #assert i.mended == 1 && i.look_x == 0 && !i.act;
+  bad := g[0].thumbs; g[0].thumbs.pad_x = 0.0 / 0.0;   // a stick that sent no number: no push, counted
+  i = gw_intent(g[..], 0, 0, false, false, 0, 0, 0);
+  #assert i.mended == 1 && i.move_x == 0 && i.move_y == 0;
+  g[0].thumbs = bad;
+  // a quick tap on the look side, and its turn
+  gridwalk_touch(g[..], 2, 0, 800, 1000);
+  gridwalk_touch(g[..], 2, 2, 800, 1000);
+  i = gw_intent(g[..], 0, 0, false, false, 0.1, 0, 0);
+  #assert i.jump;
+  gridwalk_touch(g[..], 3, 0, 800, 1000);
+  gridwalk_touch(g[..], 3, 1, 700, 900);
+  i = gw_intent(g[..], 0, 0, false, false, 0.1, 0, 0);
+  #assert gw_near(i.look_x, 0.1 + 50 * 0.006, 0.00001) && gw_near(i.look_y, 50 * 0.006, 0.00001);
+}
+
+#test "one step of the session is one step of the controller, with that step's actions" {
+  g: [1] GridWalk; gw_new(g[..]);
+  p := g[0].you;
+  gw_keys(g[..], 1, true, 0.25, 1.0 / 64.0);
+  w: pc.World;
+  q := pc.verse_player_input(p, 0, 0, 0, 1, true, false, 0.25, 0);
+  q.jumps = input_press(q.jumps);
+  q = pc.steps_in(w, q, 1);
+  #assert gridwalk_steps(g[..]) == 1 && g[0].you.pos.x == q.pos.x && g[0].you.pos.y == q.pos.y && g[0].you.pos.z == q.pos.z;
+  #assert g[0].you.vel.y == q.vel.y && g[0].you.theta == q.theta && g[0].you.dist == q.dist;
+  // the placed state's digest, the same on every host
+  h: [1] GridWalk; gw_new(h[..]);
+  #assert gridwalk_digest(h[..]) == 3864885271;
+}
+
+#test "a tap in a frame with no step jumps on the next step, once" {
+  g: [1] GridWalk; gw_new(g[..]);
+  for f: 0..<8 { gw_still(g[..], 1.0 / 60.0); }
+  gridwalk_touch(g[..], 2, 0, 800, 1000);
+  gridwalk_touch(g[..], 2, 2, 800, 1000);
+  gw_still(g[..], 0);                     // no step: the tap waits in the record
+  #assert g[0].you.on_ground && !gridwalk_thumbs(g[..]).jump;
+  gw_still(g[..], 1.0 / 60.0);
+  #assert !g[0].you.on_ground && g[0].you.vel.y > 0 && g[0].you.jumps.taken == 1;
+  for f: 0..<80 { gw_still(g[..], 1.0 / 60.0); }
+  #assert g[0].you.on_ground && g[0].you.jumps.taken == 1 && g[0].input.jump.waiting == 0;
+  // Space held across many frames is one jump
+  for f: 0..<80 { gw_keys(g[..], 0, true, 0, 1.0 / 60.0); }
+  #assert g[0].you.jumps.taken == 2;
+}
+
+#test "look and zoom turn by the same total at 30, 60 and 144 FPS, on the steps" {
+  rates := [3] int.[30, 60, 144];
+  theta: [3] f32; dist: [3] f32; steps: [3] int;
+  for r: 0..<3 {
+    g: [1] GridWalk; gw_new(g[..]);
+    n := rates[r];
+    for f: 0..<n {   // one second: a half turn left and 3 m of zoom out, spread over its frames
+      gridwalk_frame(g[..], 0, 0, false, false, 1.5 / cast(f32) n, -0.3 / cast(f32) n, 3 / cast(f32) n, 1000, 2000, 2, 1 / cast(f32) n, false);
+    }
+    for f: 0..<4 { gw_still(g[..], 1.0 / 60.0); }
+    theta[r] = g[0].you.theta; dist[r] = g[0].you.max_dist; steps[r] = gridwalk_steps(g[..]);
+    #assert g[0].input.look_x == 0 && g[0].input.zoom == 0;
+  }
+  for r: 1..<3 { #assert gw_near(theta[r], theta[0], 0.00002) && gw_near(dist[r], dist[0], 0.00002); }
+  g: [1] GridWalk; gw_new(g[..]);
+  #assert gw_near(dist[0], 12, 0.0001) && gw_near(pc.wrap_angle(theta[0] - g[0].you.theta), 1.5, 0.0001);
+}
+
+#test "the camera is drawn turning between the last two steps" {
+  g: [1] GridWalk; gw_new(g[..]);
+  t0 := g[0].you.theta;
+  gw_keys(g[..], 0, false, 0.1, 1.0 / 64.0);           // one step turns 0.1, the next 0.2
+  gw_keys(g[..], 0, false, 0.2, 1.0 / 64.0);
+  t1 := g[0].you.theta;
+  #assert gw_near(pc.wrap_angle(t1 - g[0].prev_theta), 0.2, 0.00001) && gw_near(pc.wrap_angle(g[0].prev_theta - t0), 0.1, 0.00001);
+  gw_still(g[..], 1.0 / 128.0);                          // half a step on: still drawn between them
+  e := gridwalk_eye(g[..]);
+  p := g[0].you; p.theta = pc.wrap_angle(g[0].prev_theta + 0.1); p.phi = g[0].prev_phi;
+  m := pc.verse_player_eye(p);
+  #assert gw_near(gw_alpha(g[..]), 0.5, 0.0001) && gw_near(e.x, m.x, 0.0005) && gw_near(e.z, m.z, 0.0005) && gw_near(e.y, m.y, 0.0005);
+  q := g[0].you; q.phi = g[0].prev_phi + (q.phi - g[0].prev_phi) * 0.5; q.theta = p.theta;
+  #assert gw_near(e.y, pc.verse_player_eye(q).y, 0.0005);
+  a := gridwalk_at(g[..]); b := pc.verse_player_at(g[0].you);
+  #assert a.x == b.x && a.y == b.y && a.z == b.z;
+}
+
+#test "the camera's tilt is drawn between steps too" {
+  g: [1] GridWalk; gw_new(g[..]);
+  gridwalk_frame(g[..], 0, 0, false, false, 0, -0.1, 0, 1000, 2000, 2, 1.0 / 64.0, false);
+  gridwalk_frame(g[..], 0, 0, false, false, 0, -0.4, 0, 1000, 2000, 2, 1.0 / 64.0, false);
+  #assert gw_near(g[0].prev_phi - g[0].you.phi, 0.4, 0.00001) && gw_near(g[0].prev_phi, 1.25, 0.00001);
+  gw_still(g[..], 1.0 / 128.0);
+  e := gridwalk_eye(g[..]);
+  p := g[0].you; p.phi = g[0].prev_phi - 0.2; p.theta = g[0].prev_theta;
+  m := pc.verse_player_eye(p);
+  #assert gw_near(e.y, m.y, 0.0005) && gw_near(e.x, m.x, 0.0005);
+}
+
+#test "a recorded session replays to the same digest at every step; a changed frame is found where it starts" {
+  g: [1] GridWalk; gw_new(g[..]);
+  gw_play(g[..], 260);
+  again: [1] GridWalk;
+  #assert gridwalk_replay(g[..], again[..]);
+  #assert gridwalk_digest(again[..]) == gridwalk_digest(g[..]) && gridwalk_session(again[..]) == gridwalk_session(g[..]) && gridwalk_session(g[..]) != 0;
+  // the face's own state is untouched
+  #assert !replay_playing(gw_session(g[..]));
+  // one frame's forward push changed in the record: the replay parts at that frame's step
+  k := 100;
+  g[0].events[k].words[1] = replay_bits(-1);
+  #assert !gridwalk_replay(g[..], again[..]);
+  #assert replay_diverged(gw_session(again[..])) == g[0].events[k].tick;
+  // a record that starts from another state is refused
+  g[0].events[k].words[1] = replay_bits(0);
+  g[0].start.pos.x += 1;
+  #assert !gridwalk_replay(g[..], again[..]);
+  e: [1] GridWalk;
+  #assert !gridwalk_replay(e[0..<0], again[..]) && !gridwalk_replay(g[..], e[0..<0]);
+}
+
+#test "a record full of frames starts a new one from where you are, and that one replays" {
+  g: [1] GridWalk; gw_new(g[..]);
+  for f: 0..<20 { gw_keys(g[..], 1, f == 3, 0.01, 1.0 / 60.0); }
+  for f: 0..<GW_EVENTS - 21 { gw_keys(g[..], 1, f == 500, 0.001, 0); }   // frames with no step: the record fills
+  #assert g[0].records == 1 && replay_events(gw_session(g[..])) == GW_EVENTS;
+  gw_keys(g[..], 1, false, 0.01, 1.0 / 60.0);
+  #assert g[0].records == 2 && replay_events(gw_session(g[..])) == 1 && g[0].start.pos.x != 28;
+  #assert g[0].n[REPLAY_INITIAL] == gw_digest(g[0].start, g[0].start_input) && g[0].start_input.look_x != 0;
+  #assert g[0].you.jumps.taken == 2;   // the press made while the record filled was kept
+  for f: 0..<20 { gw_keys(g[..], 1, f == 5, 0.01, 1.0 / 60.0); }
+  again: [1] GridWalk;
+  #assert gridwalk_replay(g[..], again[..]) && gridwalk_digest(again[..]) == gridwalk_digest(g[..]);
+}
+
+#test "a record full of steps starts a new one; a frame's steps never split across two" {
+  k: [1] GridWalk; gw_new(k[..]);
+  for f: 0..<255 { gw_still(k[..], 0.125); }
+  #assert k[0].records == 1 && gridwalk_steps(k[..]) == 2040;
+  gw_still(k[..], 0.125);                  // eight more: exactly full
+  #assert k[0].records == 1 && gridwalk_steps(k[..]) == GW_MARKS;
+  gw_still(k[..], 1.0 / 64.0);
+  #assert k[0].records == 2 && gridwalk_steps(k[..]) == 1 && replay_events(gw_session(k[..])) == 1;
+}
+
+#test "frozen frames run no step and record nothing, but spend the thumbs" {
+  g: [1] GridWalk; gw_new(g[..]);
+  gridwalk_touch(g[..], 2, 0, 800, 1000); gridwalk_touch(g[..], 2, 2, 800, 1000);
+  for f: 0..<30 { gridwalk_frame(g[..], 0, 1, false, true, 0.1, 0, 1, 1000, 2000, 2, 1.0 / 60.0, true); }
+  #assert gridwalk_steps(g[..]) == 0 && replay_events(gw_session(g[..])) == 1 && !gridwalk_thumbs(g[..]).jump;
+  f := gridwalk_feet(g[..]);
+  #assert f.x == 28 && f.z == 28 && g[0].you.max_dist == 9;
+  #assert gw_near(cast(f32) g[0].now, 0.5, 0.0001);
+  gridwalk_frame(g[..], 0, 0, false, false, 0, 0, 0, 640, 480, 1.5, -1, true);
+  #assert g[0].width == 640 && g[0].height == 480 && g[0].dpr == 1.5 && gw_near(cast(f32) g[0].now, 0.5, 0.0001);
+}
+
+#test "a blur lets go of the keys and the thumbs; a pinch is read for the wheel" {
+  g: [1] GridWalk; gw_new(g[..]);
+  gridwalk_touch(g[..], 1, 0, 200, 1500); gridwalk_touch(g[..], 1, 1, 200, 1388);
+  gw_keys(g[..], 1, false, 0, 1.0 / 60.0);
+  #assert g[0].input.move_y == 1;
+  gridwalk_blur(g[..]);
+  #assert g[0].input.move_y == 0 && !g[0].input.run && !gridwalk_thumbs(g[..]).move_on;
+  gridwalk_touch(g[..], 4, 0, 700, 1000); gridwalk_touch(g[..], 5, 0, 800, 1000); gridwalk_touch(g[..], 5, 1, 900, 1000);
+  #assert gw_near(gridwalk_pinch(g[..]), -50 * f32(STICKS_PINCH_WHEEL), 0.001);
+  gw_still(g[..], 1.0 / 60.0);
+  #assert gridwalk_pinch(g[..]) == 0;
+  n: [1] GridWalk; e := n[0..<0];
+  #assert gridwalk_pinch(e) == 0 && gridwalk_steps(e) == 0 && gridwalk_session(e) == 0 && gridwalk_mark(e, 0) == -1;
+  gridwalk_place(e, 0, 0, 0, 1, 1); gridwalk_frame(e, 0, 0, false, false, 0, 0, 0, 1, 1, 1, 0.1, false);
+  gridwalk_touch(e, 1, 0, 0, 0); gridwalk_blur(e);
+  #assert n[0].records == 0 && n[0].width == 0 && !n[0].thumbs.move_on;
+}
+
+#test "every part of the state is in the digest" {
+  g: [1] GridWalk; gw_new(g[..]);
+  gw_play(g[..], 60);
+  p := g[0].you; b := g[0].input; d := gw_digest(p, b);
+  for k: 0..<20 {
+    q := p; c := b;
+    if k == 0 { q.pos.x += 0.5; } if k == 1 { q.pos.y += 0.5; } if k == 2 { q.pos.z += 0.5; }
+    if k == 3 { q.vel.x += 0.5; } if k == 4 { q.vel.y += 0.5; } if k == 5 { q.vel.z += 0.5; }
+    if k == 6 { q.face += 0.5; } if k == 7 { q.theta += 0.5; } if k == 8 { q.phi += 0.5; } if k == 9 { q.dist += 0.5; }
+    if k == 10 { q.max_dist += 0.5; } if k == 11 { q.target.x += 0.5; } if k == 12 { q.target.y += 0.5; } if k == 13 { q.target.z += 0.5; }
+    if k == 14 { q.spring_vel.x += 0.5; } if k == 15 { q.spring_vel.y += 0.5; } if k == 16 { q.spring_vel.z += 0.5; }
+    if k == 17 { c.look_x += 0.5; } if k == 18 { c.look_y += 0.5; } if k == 19 { c.zoom += 0.5; }
+    #assert gw_digest(q, c) != d;
+  }
+  q := p; c := b;
+  c.move_x += 0.5; #assert gw_digest(q, c) != d; c = b;
+  c.move_y += 0.5; #assert gw_digest(q, c) != d; c = b;
+  q.on_ground = !p.on_ground; #assert gw_digest(q, c) != d; q = p;
+  q.sliding = !p.sliding; #assert gw_digest(q, c) != d; q = p;
+  c.run = !b.run; #assert gw_digest(q, c) != d; c = b;
+  q.act = ifx p.act == pc.Act.idle then pc.Act.running else pc.Act.idle; #assert gw_digest(q, c) != d; q = p;
+  q.jumps.waiting += 1; #assert gw_digest(q, c) != d; q = p;
+  c.jump.waiting += 1; #assert gw_digest(q, c) != d; c = b;
+  c.steps_left += 1; #assert gw_digest(q, c) != d; c = b;
+}

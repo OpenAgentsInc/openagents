@@ -157,3 +157,34 @@ sent; a planted fault is found at its step; `coax/web/replay-hosts.test.ts`
 gives the same session digests for a recorded walk natively and in wasm.
 Mutation: 321 of 321 (`replay.coax`), 50 of 50 (`rand.coax`), 154 of 154
 (`math.coax`).
+
+## The Grid on the engine core (`verse/gridwalk.coax`)
+
+The Grid (`/realms/the-grid`) is the first realm whose simulation is one Coax
+session on the engine core. `GridWalk` holds you (`verse/player.coax`), the
+phone's thumbs (`verse/sticks.coax`, moved out of `verse/grid.coax`), the
+input buffer and the session's record. The page's C face calls
+`gridwalk_frame` once a frame with the keys held, the drag, arrow, tilt and
+wheel amounts and the frame's time, passes touches to `gridwalk_touch`, and
+reads back where to draw you and the camera. It no longer clamps the frame
+time or steps the player itself.
+
+- Each frame's controls are one `Intent` (the stick past its dead zone, else
+  the keys) and one `REPLAY_ACTIONS` event. Each fixed step takes its events
+  from the record, feeds the input buffer and samples it, so a live session
+  and its replay step the same way, and each step leaves a digest.
+- Look and zoom are applied on the steps and split among a frame's steps;
+  the camera's turn and tilt are drawn between the last two steps.
+- A record holds 1,024 frames and 2,048 steps. When either is full, a new
+  record starts from the state the session has then, with the frames still
+  waiting for a step in its input buffer.
+
+Checks: `verse/gridwalk.coax` (the keyboard and the touch stick give the
+same digests; a tap in a frame with no step jumps on the next; look and zoom
+total the same at 30, 60 and 144 FPS; a recorded session replays to the same
+digest at every step and a changed frame is found at its step; full records
+start new ones that replay), and `coax/web/replay-hosts.test.ts`: a 1,000-frame
+Grid session (keys, Shift, Space, arrows, a drag, the wheel, the stick, a
+full push, a look finger, a pinch and taps, at 60, 120 and 144 FPS with a
+stall) gives the same digest at every one of its 673 steps natively and in
+wasm.

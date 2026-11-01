@@ -66,6 +66,12 @@ feet (chapter 2's authoritative position) are what everything draws.
   for ice in Everglade.
 - Realms that keep their own feet: Everglade's `s[0].feet` with `ground_at`,
   Dead Gears' `pl.on_ground` in `apps/openagents-web/deadgears.coax`.
+- [verse/gridwalk.coax](../../verse/gridwalk.coax): the Grid's session.
+  Its fixed steps take each frame's `Intent` from the session's record
+  (chapter 5), sample the input buffer once a step (chapter 4) and hand the
+  controller that step's `Actions`: the move axes, run, a jump press, and
+  that step's share of look and zoom. Its record replays to the same digest
+  at every step, natively and in wasm.
 - [verse/terrain.coax](../../verse/terrain.coax) followers
   (`FOLLOW_WALK`, `FOLLOW_ACCEL`, `FOLLOW_TURN`): non-player walkers with
   their own constants.

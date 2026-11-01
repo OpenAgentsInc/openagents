@@ -34,7 +34,7 @@ case "$realm" in
     steps=(--frames 900 --every 60 --keys 10:32:1,11:32:0,20:49:1,21:49:0,30:102:1,31:102:0) ;;
   newland)
     # the Grid: the homepage's module walked (data-page 1)
-    pack=""; libraries=("$m/player.coax" "$m/grid.coax"); given=(--page 1); there="--page 1"
+    pack=""; libraries=("$m/gridwalk.coax"); given=(--page 1); there="--page 1"
     steps=(--frames 600 --every 60 --keys 20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
   verse)
     # the galaxy (page 1): a world chosen with the arrows and opened with Enter

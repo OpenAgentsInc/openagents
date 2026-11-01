@@ -1,14 +1,13 @@
 // The live homepage C face: scalar Wasm exports over the Coax procedures.
 // The state the host keeps is the page's clock, its tables and its input.
 // The same module is the Grid (/realms/the-grid, data-page 1, newland-walk.coax): the same
-// scene walked. There verse/player.coax walks you (its own library, as every realm links it) and
-// verse/grid.coax reads a phone's thumbs; once a frame this face hands values between them in
-// order: the page's controls, the player's step, then the page's frame with where you are. Where
+// scene walked. There verse/gridwalk.coax (its own library) is the session: you, the phone's
+// thumbs and the record of what you did, stepped on Aethyr's engine core. Once a frame this face
+// hands it the page's controls and the frame's time, then hands the page where you are. Where
 // you are goes to the playtest room the-grid about five times a second (a browser with no player
 // key gets one first), and the room's answer is everyone else, for the page. It decides nothing.
 #include "newland.h"
-#include "Player.h"
-#include "Grid.h"
+#include "Gridwalk.h"
 #include <stddef.h>
 #include "analytics-face.h"
 #include "edit-face.h"   /* the Grid's EDIT and feature list: its one request, its answers */
@@ -48,11 +47,10 @@ static void drain(uint32_t state) {
   }p->n=0;p->used=0;
 }
 // The Grid's half (newland-walk.coax): you, the thumbs, and the room.
-static coax_t_Player player;
-static coax_t_Sticks sticks;
+static coax_t_GridWalk walk;   /* the Grid's session (verse/gridwalk.coax) */
+static coax_v_t_GridWalk gw(void) { return (coax_v_t_GridWalk){&walk, 1}; }
 static _Bool placed, entered, facts_seen, has_player, mint_tried, keeping;
 static double now, room_at = -10, room_asked_at;
-static float view_w, view_h, view_dpr;
 static coax_t_Vec3 last_feet;
 #define PLAYER_URL "/api/playtest/player"
 #define ROOM_WAIT_S 5.0
@@ -63,11 +61,8 @@ static uint32_t player_key_n;
 static _Bool walking(uint32_t state) {return state_at(state)->walking;}
 static void walk_start(uint32_t state) {
   if (placed) return;
-  player = verse_player_place(coaxial_walk_spawn_x(), 0, coaxial_walk_spawn_z(), coaxial_walk_spawn_face());
-  player.phi = coaxial_walk_phi();
-  player.max_dist = player.dist = player.prev_dist = coaxial_walk_dist();
-  sticks = verse_sticks_reset();
-  last_feet = verse_player_feet(player);
+  gridwalk_place(gw(), coaxial_walk_spawn_x(), coaxial_walk_spawn_z(), coaxial_walk_spawn_face(), coaxial_walk_phi(), coaxial_walk_dist());
+  last_feet = gridwalk_feet(gw());
   placed = 1;
 }
 // Where you are, to the room about five times a second, once the browser has a player key (minting
@@ -85,8 +80,8 @@ static void room_out(void) {
   if (now - room_at < coaxial_walk_post_every()) return;
   room_at = now;
   int64_t un = room_url(coaxial_walk_room(), 0, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
-  coax_t_Vec3 feet = verse_player_feet(player);
-  int64_t bn = room_presence_body(feet.x, feet.y > 0 ? feet.y : 0, feet.z, verse_player_face(player), 0, (coax_v_u8){room_body, sizeof room_body});
+  coax_t_Vec3 feet = gridwalk_feet(gw());
+  int64_t bn = room_presence_body(feet.x, feet.y > 0 ? feet.y : 0, feet.z, gridwalk_face(gw()), 0, (coax_v_u8){room_body, sizeof room_body});
   if (un <= 0 || bn <= 0) return;
   room_id = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
   if (room_id < 0) room_id = -1;
@@ -95,22 +90,18 @@ static void room_out(void) {
 static uint32_t walk_frame(uint32_t state, coax_v_f32 out, coax_v_f32 u, float w, float h, float dpr, float dt, uint32_t still) {
   walk_start(state);
   coax_t_LandState *s = state_at(state);
-  view_w = w; view_h = h; view_dpr = dpr;
-  dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
-  now += dt;
+  if (dt == dt && dt > 0) now += dt;   /* the room's timing; the session keeps its own clock */
   coaxial_walk_controls(view(state), dt);
   coax_t_Walk *k = &s->wk.e[0];
-  if (sticks.zoom != 0) coaxial_walk_wheel(view(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
-  player = verse_player_input(player, k->key_x, k->key_y, sticks.pad_x, sticks.pad_y, verse_runs(k->run, sticks.run, sticks.pad_x, sticks.pad_y),
-                              k->jump || sticks.jump, k->look_yaw + sticks.dyaw, k->look_pitch + sticks.dpitch);
-  if (k->zoom != 0) player = verse_player_zoom(player, k->zoom);
+  float pinch = gridwalk_pinch(gw());
+  if (pinch != 0) coaxial_walk_wheel(view(state), pinch);   /* a pinch zooms as the wheel does, or scrolls a card */
+  gridwalk_frame(gw(), k->key_x, k->key_y, k->run, k->jump, k->look_yaw, k->look_pitch, k->zoom, w, h, dpr, dt, golden_mode != 0);
   coaxial_walk_used(view(state));
-  sticks = verse_sticks_used(sticks);
-  if (!golden_mode) player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){0, 0});
-  coax_t_Vec3 feet = verse_player_feet(player), eye = verse_player_view_eye(player, 1), at = verse_player_view_at(player, 1);
-  int64_t n = coaxial_walk_frame(view(state), out, u, w, h, dpr, dt, still != 0 || golden_mode != 0, feet.x, feet.y, feet.z, verse_player_face(player),
-                                 verse_player_act(player), eye.x, eye.y, eye.z, at.x, at.y, at.z,
-                                 sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
+  coax_t_Vec3 feet = gridwalk_feet(gw()), eye = gridwalk_eye(gw()), at = gridwalk_at(gw());
+  coax_t_Sticks t = gridwalk_thumbs(gw());
+  int64_t n = coaxial_walk_frame(view(state), out, u, w, h, dpr, dt, still != 0 || golden_mode != 0, feet.x, feet.y, feet.z, gridwalk_face(gw()),
+                                 gridwalk_act(gw()), eye.x, eye.y, eye.z, at.x, at.y, at.z,
+                                 t.move_on, t.ox, t.oy, t.pad_x, t.pad_y);
   room_out();
   if (!golden_mode) edit_face_drain(ed(state));
   if (!track_state.page_n) track_init(tr(), track_cstr("the-grid"));
@@ -211,7 +202,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   if (walking(state)) {
     walk_start(state);
     if (coaxial_walk_pointer(view(state), x, y, phase, kind, id)) return 1u;
-    if (kind != 0) sticks = verse_sticks_world_touch(sticks, id, phase, x, y, view_w, view_h, view_dpr, now);
+    if (kind != 0) gridwalk_touch(gw(), id, phase, x, y);
     return kind != 0 ? 1u : 0u;
   }
   return coaxial_land_pointer(view(state), x, y, phase, kind, id) ? 1u : 0u;
@@ -228,7 +219,7 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
   track_key_up(tr(),key);
   return coaxial_walk_key_up(view(state), key, mods) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { if (walking(state)) { coaxial_walk_blur(view(state)); sticks = verse_sticks_reset(); track_blur(tr()); } }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { if (walking(state)) { coaxial_walk_blur(view(state)); gridwalk_blur(gw()); track_blur(tr()); } }
 // The OpenAgents app's gyro turns the Grid's camera (coaxial.tilt).
 EXPORT("coaxial_tilt") void coaxial_tilt(uint32_t state, float dyaw, float dpitch) {
   if (!walking(state)) return;

@@ -1,0 +1,80 @@
+// A recorded Grid session for the host check (coax/web/replay-hosts.test.ts): the Grid's own
+// session code (verse/gridwalk.coax) driven the way the page drives it, through 1,000 frames
+// at 60, 120 and 144 FPS with a stall: you walk with the keys, turn with the arrows and a drag,
+// walk instead of run with Shift, jump with Space, zoom with the wheel, then on a phone push
+// the stick, run on a full push, look and pinch with the right thumb, and tap to jump. Natively
+// (`coax run verse/tests/grid-session.coax`) it prints every step's digest; the browser build
+// (grid-session-face.c) exports the same numbers, and the check compares them step by step.
+
+#load "../gridwalk.coax";
+#import "Basic";
+
+GS_FRAMES :: 1000;   // inside one record (GW_EVENTS)
+GS_W :: 1000.0;   // a phone's view in pixels, at GS_DPR pixels a point
+GS_H :: 2000.0;
+GS_DPR :: 2.0;
+
+// The frame time: 60 FPS, then 120, then 144, with one 0.4 s stall and two frames of none.
+gs_dt :: (f: int) -> f32 {
+  if f == 333 { return 0.4; }
+  if f == 334 || f == 335 { return 0; }
+  if f < 300 { return 1.0 / 60.0; }
+  if f < 700 { return 1.0 / 120.0; }
+  return 1.0 / 144.0;
+}
+
+// The fingers this frame (before its controls), as the page's pointer reports them.
+gs_touch :: (g: [] GridWalk, f: int) {
+  if f == 620 { gridwalk_touch(g, 1, 0, 220, 1500); }                       // the move stick
+  if f > 620 && f < 760 {
+    push := ifx f < 690 then 60.0f32 else 112.0f32;                         // a walk, then a full push
+    gridwalk_touch(g, 1, 1, 220 + cast(f32) (f % 9) * 6 - 24, 1500 - push);
+  }
+  if f == 760 { gridwalk_touch(g, 1, 2, 220, 1388); }
+  if f == 780 { gridwalk_touch(g, 2, 0, 760, 1000); }                       // the look finger
+  if f > 780 && f < 840 { gridwalk_touch(g, 2, 1, 760 - cast(f32) (f - 780) * 5, 1000 + cast(f32) (f % 4) * 3); }
+  if f == 820 { gridwalk_touch(g, 3, 0, 900, 1100); }                       // a second finger: a pinch
+  if f > 820 && f < 835 { gridwalk_touch(g, 3, 1, 900 + cast(f32) (f - 820) * 6, 1100); }
+  if f == 835 { gridwalk_touch(g, 3, 2, 990, 1100); }
+  if f == 840 { gridwalk_touch(g, 2, 2, 460, 1000); }
+  if f == 870 || f == 960 { gridwalk_touch(g, 4, 0, 800, 900); gridwalk_touch(g, 4, 2, 801, 900); }   // taps: jumps
+  if f == 900 { gridwalk_touch(g, 5, 0, 300, 1600); }
+  if f > 900 && f < 950 { gridwalk_touch(g, 5, 1, 300 + cast(f32) (f % 13) * 9 - 50, 1600 - 112); }
+  if f == 950 { gridwalk_touch(g, 5, 2, 300, 1500); }
+}
+
+// One frame, as the face plays it: the fingers, then the keys held and the drag, arrows and
+// wheel gathered since the last frame (the arrows turn 1.8 rad/s; the pinch zooms as the wheel).
+gs_frame :: (g: [] GridWalk, f: int) {
+  gs_touch(g, f);
+  dt := gs_dt(f);
+  forward := ifx (f > 10 && f < 260) || (f > 400 && f < 600) then 1.0f32 else ifx f > 970 then -1.0f32 else 0;
+  side := ifx f % 120 < 30 && f < 600 then 1.0f32 else ifx f > 500 && f < 540 then -1.0f32 else 0;
+  shift := f > 180 && f < 240;
+  space := (f >= 90 && f < 96) || (f >= 450 && f < 452) || f == 985;
+  arrows := ifx f > 300 && f < 380 then 1.8f32 * dt else 0;
+  drag := ifx f > 120 && f < 150 then -0.0055f32 * 7 else 0;
+  tilt := ifx f > 520 && f < 560 then 0.0055f32 * 3 else 0;
+  wheel := ifx f == 200 then 0.006f32 * 120 else ifx f == 560 then -0.006f32 * 300 else 0;
+  zoom := wheel + gridwalk_pinch(g) * 0.006;
+  gridwalk_frame(g, side, forward, shift, space, arrows + drag, tilt, zoom, GS_W, GS_H, GS_DPR, dt, false);
+}
+
+// The whole session, from the Grid's spawn.
+grid_session_play :: (g: [] GridWalk) #export_c {
+  g[0] = GridWalk.{};
+  gridwalk_place(g, 28, 28, -2.35619449, 1.35, 9);
+  for f: 0..<GS_FRAMES { gs_frame(g, f); }
+}
+
+main :: () {
+  g: [1] GridWalk; again: [1] GridWalk;
+  grid_session_play(g[..]);
+  n := gridwalk_steps(g[..]);
+  print("records %, steps %\n", g[0].records, n);
+  for k: 0..<n { print("%\n", gridwalk_mark(g[..], k)); }
+  print("session %\n", gridwalk_session(g[..]));
+  print("replayed %\n", gridwalk_replay(g[..], again[..]));
+  f := gridwalk_feet(g[..]);
+  print("feet % % %, jumps %\n", f.x, f.y, f.z, g[0].you.jumps.taken);
+}

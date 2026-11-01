@@ -35,9 +35,10 @@ case "$realm" in
     libraries=("$root/verse/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/verse/everglade/guard-guide-policy.coax") ;;
   stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
   # a flat realm (belt, waterlab, orbitleague): its module and face, its libraries #loaded
-  # the Grid (/realms/the-grid, the homepage's module): the player and grid as Everglade has them
-  # and the homepage's own units (coax/web/project/build-home.sh's: the reader, the fold, the cache)
-  newland) app="$web/newland.coax"; face="$web/newland-face.c"; libraries=("$root/verse/player.coax" "$root/verse/grid.coax")
+  # the Grid (/realms/the-grid, the homepage's module): its session (verse/gridwalk.coax, which
+  # loads the player and the thumbs) and the homepage's own units (coax/web/project/build-home.sh's:
+  # the reader, the fold, the cache)
+  newland) app="$web/newland.coax"; face="$web/newland-face.c"; libraries=("$root/verse/gridwalk.coax")
     units_too=("$root/coax/web/project/landing-browser.coax" "$root/coax/web/project/landing-fold.coax")
     faces_too=("$root/coax/web/project/landing-reader-face.c" "$root/coax/web/project/landing-fold-face.c" "$root/coax/web/project/landing-cache-face.c") ;;
   # the galaxy (/verse/galaxy, the verse app's page 1), where travel starts

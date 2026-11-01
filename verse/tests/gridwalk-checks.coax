@@ -1,0 +1,31 @@
+// The checks' side of verse/gridwalk.coax: a new session on a phone's view, frames of keys,
+// and a session with every kind of input. Only the checks call it.
+
+// A 1000 x 2000 pixel phone at 2 pixels a point, as verse/sticks.coax's checks.
+gw_new :: (g: [] GridWalk) {
+  g[0] = GridWalk.{};
+  gridwalk_place(g, 28, 28, -2.35619449, 1.35, 9);
+  gridwalk_frame(g, 0, 0, false, false, 0, 0, 0, 1000, 2000, 2, 0, false);
+}
+gw_keys :: (g: [] GridWalk, key_y: f32, space: bool, look_x: f32, dt: f32) {
+  gridwalk_frame(g, 0, key_y, false, space, look_x, 0, 0, 1000, 2000, 2, dt, false);
+}
+gw_still :: (g: [] GridWalk, dt: f32) { gw_keys(g, 0, false, 0, dt); }
+gw_near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
+
+// A session with every kind of input: walking, a run, jumps, a turn, the stick, a tap and a pinch.
+gw_play :: (g: [] GridWalk, frames: int) {
+  frame_times := [5] f32.[0.0166667, 0.0333333, 0.0069444, 0.0, 0.1];
+  for f: 0..<frames {
+    if f == 40 { gridwalk_touch(g, 1, 0, 200, 1500); }
+    if f > 40 && f < 120 { gridwalk_touch(g, 1, 1, 200 + cast(f32) (f % 7) * 9, 1500 - 60 - cast(f32) (f % 5) * 12); }
+    if f == 120 { gridwalk_touch(g, 1, 2, 200, 1500); }
+    if f == 130 { gridwalk_touch(g, 2, 0, 800, 1000); gridwalk_touch(g, 2, 2, 800, 1000); }
+    if f == 150 { gridwalk_touch(g, 3, 0, 800, 1000); }
+    if f > 150 && f < 170 { gridwalk_touch(g, 3, 1, 800 - cast(f32) (f - 150) * 4, 1000 + cast(f32) (f % 3)); }
+    if f == 170 { gridwalk_touch(g, 3, 2, 720, 1000); }
+    y := ifx f < 30 || (f > 180 && f < 240) then 1.0f32 else 0;
+    gridwalk_frame(g, ifx f % 50 < 10 then 1.0f32 else 0, y, f % 90 > 70, f % 37 == 12, ifx f % 60 < 20 then 0.01f32 else 0, 0, ifx f == 200 then 0.8f32 else 0,
+      1000, 2000, 2, frame_times[f % 5], false);
+  }
+}

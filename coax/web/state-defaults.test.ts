@@ -26,7 +26,7 @@ function engines(): Engine[] {
     list.push({ name: basename(out, ".wasm"), coax: coaxFile, face, wasm: out, libraries, steps })
   }
   list.push({ name: "newland", coax: join(web, "newland.coax"), face: join(web, "newland-face.c"), wasm: join(web, "build/newland.wasm"),
-    libraries: ["coax/web/project/landing-browser.coax", "coax/web/project/landing-fold.coax", "verse/player.coax", "verse/grid.coax"].map(p => join(root, p)) })
+    libraries: ["coax/web/project/landing-browser.coax", "coax/web/project/landing-fold.coax", "verse/gridwalk.coax"].map(p => join(root, p)) })
   return list
 }
 
