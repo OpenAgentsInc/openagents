@@ -1,0 +1,110 @@
+// POL approvals: the host's decision on whether one approval request has
+// an approval it may consume now. NIP-POL "Action review and approvals".
+//
+// An approval request names one action by its exact digest, a requester,
+// one approver and an expiry. A decision (`approve` or `deny`) counts only
+// when it is for that request and that action, by that approver, expires
+// no later than the request, and has not expired. The host must already
+// recognize the approver: neither artifact can nominate a stranger. Any
+// counted deny refuses, so conflicting decisions deny pending use. An
+// approval is single-use: once consumed, the same request and action is a
+// replay that retrieves the same admission receipt and never dispatches
+// again.
+//
+// It trusts the strings it is given: action digests the host computed,
+// approvers from verified signed envelopes or durable local records, and
+// its own consumption record. Times are Unix seconds on the host's clock.
+// Approval never bypasses a hard limit, a revocation or dispatch admission
+// (cap/dispatch.coax): the host still runs that immediately before.
+//
+// Not here: threshold or multi-party approvals (NIP-SOV guardians),
+// reviews and auto-approval policy, and the private envelopes themselves.
+//   coax/bin/coax test coax/lib/nostr/pol/approve.coax --library
+#authority;
+
+// book:begin codes
+POL_OK :: cast(u32)0;           // approved: consume it now, atomically, then dispatch
+POL_REPLAY :: cast(u32)1;       // already consumed: the same receipt, no new dispatch
+POL_PENDING :: cast(u32)2;      // no counted decision yet
+POL_DENIED :: cast(u32)3;       // a counted deny, alone or against an approve
+POL_EXPIRED :: cast(u32)4;      // the request has expired
+POL_NOT_ADMITTED :: cast(u32)5; // the host does not recognize the approver for this request
+// book:end codes
+
+// book:begin record
+PolRequest :: struct {request:string;action:string;requester:string;approver:string;expires_at:int;}
+PolDecision :: struct {request:string;action:string;approver:string;approve:bool;expires_at:int;}
+PolConsumed :: struct {request:string;action:string;}
+// book:end record
+
+// book:begin approve
+pol_admit :: (q:PolRequest,recognized:[]string,decisions:[]PolDecision,consumed:[]PolConsumed,now:int)->u32 {
+  known:=false;for a:recognized {if a==q.approver {known=true;}}
+  if !known {return POL_NOT_ADMITTED;}
+  for c:consumed {if c.request==q.request && c.action==q.action {return POL_REPLAY;}}
+  if now>=q.expires_at {return POL_EXPIRED;}
+  approved:=false;denied:=false;
+  for d:decisions {
+    if d.request==q.request && d.action==q.action && d.approver==q.approver && d.expires_at<=q.expires_at && now<d.expires_at {
+      if d.approve {approved=true;} else {denied=true;}
+    }
+  }
+  if denied {return POL_DENIED;}
+  if approved {return POL_OK;}
+  return POL_PENDING;
+}
+// book:end approve
+
+PT_ALICE :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+PT_MALLORY :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+pt_request :: ()->PolRequest {
+  q:PolRequest;q.request="q1";q.action="sha256:a1";q.approver=PT_ALICE;q.expires_at=600;return q;
+}
+pt_decision :: (approve:bool)->PolDecision {
+  d:PolDecision;d.request="q1";d.action="sha256:a1";d.approver=PT_ALICE;d.approve=approve;d.expires_at=500;return d;
+}
+// spent is 1 when the request was already consumed.
+pt_one :: (d:PolDecision,now:int,spent:int)->u32 {
+  who:=[1]string.[PT_ALICE];ds:[1]PolDecision;ds[0]=d;none:[1]PolConsumed;none[0].request="q1";none[0].action="sha256:a1";
+  return pol_admit(pt_request(),who[..],ds[..],none[0..<spent],now);
+}
+
+#test "an approval by the recognized approver admits once" {
+  who:=[1]string.[PT_ALICE];ds:[1]PolDecision;ds[0]=pt_decision(true);cs:[1]PolConsumed;
+  #assert pol_admit(pt_request(),who[..],ds[..],cs[0..<0],100)==POL_OK;
+  cs[0].request="q1";cs[0].action="sha256:a1";
+  #assert pol_admit(pt_request(),who[..],ds[..],cs[..],100)==POL_REPLAY;
+  // Replay holds after expiry too: the receipt, never a second dispatch.
+  #assert pol_admit(pt_request(),who[..],ds[..],cs[..],700)==POL_REPLAY;
+  // Consumption of another request or another action is not this one.
+  cs[0].request="q2";#assert pol_admit(pt_request(),who[..],ds[..],cs[..],100)==POL_OK;
+  cs[0].request="q1";cs[0].action="sha256:a2";#assert pol_admit(pt_request(),who[..],ds[..],cs[..],100)==POL_OK;
+}
+#test "the host must already recognize the approver" {
+  who:=[2]string.[PT_MALLORY,PT_ALICE];ds:[1]PolDecision;ds[0]=pt_decision(true);none:[1]PolConsumed;
+  #assert pol_admit(pt_request(),who[..],ds[..],none[0..<0],100)==POL_OK;
+  #assert pol_admit(pt_request(),who[0..<1],ds[..],none[0..<0],100)==POL_NOT_ADMITTED;
+  // A decision by someone else for the right request counts for nothing.
+  ds[0].approver=PT_MALLORY;#assert pol_admit(pt_request(),who[..],ds[..],none[0..<0],100)==POL_PENDING;
+}
+#test "a decision counts only for this request, this action, in time" {
+  #assert pt_one(pt_decision(true),499,0)==POL_OK && pt_one(pt_decision(true),500,0)==POL_PENDING;
+  d:=pt_decision(true);d.request="q2";#assert pt_one(d,100,0)==POL_PENDING;
+  d=pt_decision(true);d.action="sha256:a2";#assert pt_one(d,100,0)==POL_PENDING;
+  d=pt_decision(true);d.expires_at=600;#assert pt_one(d,100,0)==POL_OK;
+  d.expires_at=601;#assert pt_one(d,100,0)==POL_PENDING;
+  #assert pt_one(pt_decision(true),599,0)==POL_PENDING;
+  q:=pt_request();#assert q.expires_at==600;
+  who:=[1]string.[PT_ALICE];ds:[1]PolDecision;ds[0]=pt_decision(true);none:[1]PolConsumed;
+  #assert pol_admit(q,who[..],ds[..],none[0..<0],599)==POL_PENDING && pol_admit(q,who[..],ds[..],none[0..<0],600)==POL_EXPIRED;
+}
+#test "a deny refuses, and conflicting decisions deny" {
+  #assert pt_one(pt_decision(false),100,1)==POL_REPLAY && pt_one(pt_decision(true),100,1)==POL_REPLAY;
+  #assert pt_one(pt_decision(false),100,0)==POL_DENIED;
+  who:=[1]string.[PT_ALICE];ds:[2]PolDecision;ds[0]=pt_decision(true);ds[1]=pt_decision(false);none:[1]PolConsumed;
+  #assert pol_admit(pt_request(),who[..],ds[..],none[0..<0],100)==POL_DENIED;
+  ds[0]=pt_decision(false);ds[1]=pt_decision(true);#assert pol_admit(pt_request(),who[..],ds[..],none[0..<0],100)==POL_DENIED;
+  // An expired deny no longer counts; the approve still stands.
+  ds[0].expires_at=50;#assert pol_admit(pt_request(),who[..],ds[..],none[0..<0],100)==POL_OK;
+  ds[0].expires_at=101;#assert pol_admit(pt_request(),who[..],ds[..],none[0..<0],100)==POL_DENIED;
+}

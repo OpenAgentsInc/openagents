@@ -1,0 +1,245 @@
+// CAP dispatch: the host's decision, at dispatch, on one request to use a
+// capability. NIP-CAP "Description, binding, and grant", "Binding and
+// enforcement", "Discovery and probes" and "Operator policy", with the
+// shared contracts' effects, bounds and attenuation.
+//
+// A definition describes operations and grants nothing. A host binding is
+// the host's own configuration that satisfies one exact definition digest
+// and profile; a grant lets one principal use one binding within effects
+// and a ceiling; presence is the binding's observed usability. All four
+// must hold, checked again at dispatch, in this order: the request's shape,
+// the operator's deny list, the definition, its binding (an invocation
+// contract, `present`), the grant (issuer, revocation, host-clock expiry,
+// effects within grant and definition, an evaluation grant only inside its
+// run), the effective ceiling against the definition's minimum, and an
+// enforcement plan for every required bound.
+//
+// It trusts the strings it is given: the host's own definitions, bindings,
+// grants and policy, and the verified principal. Effects and bounds are
+// bit sets; times are Unix seconds on the host's clock.
+//
+// Not here: effect scopes (reads, writes and network are scope lists in the
+// NIP; here a class is granted or not), bounds other than wall_ms as a
+// number, probes, preference ordering, remote lanes and decision services.
+//   coax/bin/coax test coax/lib/nostr/cap/dispatch.coax --library
+#authority;
+
+// book:begin codes
+CAP_OK :: cast(u32)0;             // dispatch to the binding
+CAP_MALFORMED :: cast(u32)1;      // an effect or bound outside the vocabulary
+CAP_DENIED :: cast(u32)2;         // the operator's deny list names the definition
+CAP_NO_DEFINITION :: cast(u32)3;  // the host holds no definition with that id
+CAP_NO_BINDING :: cast(u32)4;     // no host binding for the definition's digest and profile
+CAP_NO_INVOKE :: cast(u32)5;      // the binding has no invocation contract (for writing)
+CAP_UNAVAILABLE :: cast(u32)6;    // the binding's presence is not `present`
+CAP_NOT_ADMITTED :: cast(u32)7;   // no operator grant for this principal and binding,
+                                  // an effect outside grant ∩ definition, or an
+                                  // evaluation grant used outside its run
+CAP_REVOKED :: cast(u32)8;        // the grant is revoked
+CAP_EXPIRED :: cast(u32)9;        // the grant has expired by the host's clock
+CAP_LIMIT :: cast(u32)10;         // the definition's minimum is above the effective ceiling
+CAP_CANNOT_ENFORCE :: cast(u32)11; // a required bound has no mechanism at the policy's assurance
+// book:end codes
+
+// Effects as bits, in the shared contracts' order.
+CAP_READS :: 1; CAP_WRITES :: 2; CAP_NETWORK :: 4; CAP_PROCESS :: 8; CAP_DELEGATES :: 16; CAP_SPEND :: 32;
+CAP_EFFECTS :: 63;
+// Bounds as bits, in the shared contracts' order.
+CAP_WALL_MS :: 1; CAP_MEMORY_BYTES :: 2; CAP_INPUT_BYTES :: 4; CAP_OUTPUT_BYTES :: 8;
+CAP_READ_BYTES :: 16; CAP_STORAGE_BYTES :: 32; CAP_CALLS :: 64; CAP_ATTEMPTS :: 128;
+CAP_CONCURRENCY :: 256; CAP_DEPTH :: 512; CAP_FUEL :: 1024; CAP_SPEND_MICROUNITS :: 2048;
+CAP_BOUNDS :: 4095;
+// Profiles.
+CAP_NATIVE :: 0; CAP_EXECUTOR :: 1; CAP_PLUGIN :: 2; CAP_ADAPTER :: 3; CAP_SERVICE :: 4;
+// Presence. A binding nobody has observed is unprobed: zero.
+CAP_UNPROBED :: 0; CAP_PRESENT :: 1; CAP_ABSENT :: 2; CAP_UNAVAILABLE_HERE :: 3; CAP_UNKNOWN :: 4;
+// Operator assurance: only host mechanisms, or also the binding's enforced contract.
+CAP_HOST_ENFORCED :: 0; CAP_TRUSTED_CONTRACT :: 1;
+// Grant purpose, and what a request uses it for.
+CAP_OPERATIONAL :: 0; CAP_EVALUATION :: 1;
+CAP_RUN :: 0; CAP_TRAIN :: 1; CAP_EXPORT :: 2; CAP_DEPLOY :: 3;
+// Which ceiling decided wall_ms: the first of the smallest.
+CAP_BY_REQUEST :: 0; CAP_BY_GRANT :: 1; CAP_BY_OPERATOR :: 2;
+
+// book:begin record
+CapDefinition :: struct {id:string;digest:string;profile:int;effects:int;minimum_wall_ms:int;}
+CapBinding :: struct {binding:string;definition:string;profile:int;invoke:bool;invoke_writing:bool;presence:int;enforced:int;host:int;}
+CapGrant :: struct {grant:string;issuer:string;principal:string;binding:string;effects:int;wall_ms:int;purpose:int;run:string;expires_at:int;revoked:bool;}
+CapPolicy :: struct {owner:string;deny:[]string;assurance:int;wall_ms:int;}
+CapRequest :: struct {principal:string;definition:string;effects:int;required:int;wall_ms:int;use:int;run:string;}
+// The decision and what the host records before dispatch.
+CapDispatch :: struct {error:u32;definition:int=-1;binding:int=-1;grant:int=-1;wall_ms:int;limit:int;}
+// book:end record
+
+cap_fail :: (r:CapDispatch,error:u32)->CapDispatch {o:=r;o.error=error;return o;}
+
+// book:begin dispatch
+cap_dispatch :: (defs:[]CapDefinition,bindings:[]CapBinding,grants:[]CapGrant,policy:CapPolicy,q:CapRequest,now:int)->CapDispatch {
+  r:CapDispatch;
+  // 1. The request names only known effects and bounds.
+  if q.effects&CAP_EFFECTS!=q.effects || q.required&CAP_BOUNDS!=q.required {return cap_fail(r,CAP_MALFORMED);}
+  // 2. The operator's deny list refuses by definition id; preferences grant nothing.
+  for id:policy.deny {if id==q.definition {return cap_fail(r,CAP_DENIED);}}
+  // 3. The definition, then a host binding to its exact digest and profile.
+  for i:0..<defs.count {if r.definition<0 && defs[i].id==q.definition {r.definition=i;}}
+  if r.definition<0 {return cap_fail(r,CAP_NO_DEFINITION);}
+  d:=defs[r.definition];
+  for i:0..<bindings.count {
+    if r.binding<0 && bindings[i].definition==d.digest && bindings[i].profile==d.profile {r.binding=i;}
+  }
+  if r.binding<0 {return cap_fail(r,CAP_NO_BINDING);}
+  b:=bindings[r.binding];
+  if !b.invoke || (q.effects&CAP_WRITES!=0 && b.profile==CAP_EXECUTOR && !b.invoke_writing) {return cap_fail(r,CAP_NO_INVOKE);}
+  if b.presence!=CAP_PRESENT {return cap_fail(r,CAP_UNAVAILABLE);}
+  // 4. The grant: from the operator, to this principal, for this binding.
+  for i:0..<grants.count {
+    g:=grants[i];
+    if r.grant<0 && g.issuer==policy.owner && g.principal==q.principal && g.binding==b.binding {r.grant=i;}
+  }
+  if r.grant<0 {return cap_fail(r,CAP_NOT_ADMITTED);}
+  g:=grants[r.grant];
+  if g.revoked {return cap_fail(r,CAP_REVOKED);}
+  if now>=g.expires_at {return cap_fail(r,CAP_EXPIRED);}
+  if q.effects&g.effects&d.effects!=q.effects {return cap_fail(r,CAP_NOT_ADMITTED);}
+  if g.purpose==CAP_EVALUATION && (q.use!=CAP_RUN || q.run!=g.run) {return cap_fail(r,CAP_NOT_ADMITTED);}
+  // 5. The effective ceiling is the smallest; the definition's minimum must fit.
+  r.wall_ms=q.wall_ms;
+  if g.wall_ms<r.wall_ms {r.wall_ms=g.wall_ms;r.limit=CAP_BY_GRANT;}
+  if policy.wall_ms<r.wall_ms {r.wall_ms=policy.wall_ms;r.limit=CAP_BY_OPERATOR;}
+  if r.wall_ms<=0 || d.minimum_wall_ms>r.wall_ms {return cap_fail(r,CAP_LIMIT);}
+  // 6. Every required bound has a mechanism: the host's, or the binding's
+  // enforced contract when the operator accepts that assurance.
+  covered:=b.host;
+  if policy.assurance==CAP_TRUSTED_CONTRACT {covered|=b.enforced;}
+  if q.required&covered!=q.required {return cap_fail(r,CAP_CANNOT_ENFORCE);}
+  return cap_fail(r,CAP_OK);
+}
+// book:end dispatch
+
+// The test world: one definition, its binding, one operator grant.
+CT_OPERATOR :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+CT_AGENT :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+CT_OTHER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+ct_def :: ()->CapDefinition {
+  d:CapDefinition;d.id="op:docs.search";d.digest="sha256:aa";d.profile=CAP_EXECUTOR;
+  d.effects=CAP_READS|CAP_WRITES|CAP_NETWORK;d.minimum_wall_ms=1000;return d;
+}
+ct_binding :: ()->CapBinding {
+  b:CapBinding;b.binding="sha256:b1";b.definition="sha256:aa";b.profile=CAP_EXECUTOR;b.invoke=true;b.invoke_writing=true;
+  b.presence=CAP_PRESENT;b.enforced=CAP_MEMORY_BYTES;b.host=CAP_WALL_MS;return b;
+}
+ct_grant :: ()->CapGrant {
+  g:CapGrant;g.issuer=CT_OPERATOR;g.principal=CT_AGENT;g.binding="sha256:b1";
+  g.effects=CAP_READS|CAP_NETWORK|CAP_SPEND;g.wall_ms=60000;g.expires_at=2000;return g;
+}
+ct_request :: ()->CapRequest {
+  q:CapRequest;q.principal=CT_AGENT;q.definition="op:docs.search";q.effects=CAP_READS;q.required=CAP_WALL_MS;q.wall_ms=30000;return q;
+}
+ct_policy :: (deny:[]string)->CapPolicy {p:CapPolicy;p.owner=CT_OPERATOR;p.deny=deny;p.wall_ms=120000;return p;}
+ct_run :: (d:CapDefinition,b:CapBinding,g:CapGrant,p:CapPolicy,q:CapRequest,now:int)->u32 {
+  ds:[1]CapDefinition;ds[0]=d;bs:[1]CapBinding;bs[0]=b;gs:[1]CapGrant;gs[0]=g;
+  return cap_dispatch(ds[..],bs[..],gs[..],p,q,now).error;
+}
+
+#test "a request inside every rule dispatches and records the effective ceiling" {
+  none:[1]string;p:=ct_policy(none[0..<0]);
+  ds:[1]CapDefinition;ds[0]=ct_def();bs:[2]CapBinding;bs[0]=ct_binding();bs[0].definition="sha256:old";bs[1]=ct_binding();
+  gs:[2]CapGrant;gs[0]=ct_grant();gs[0].principal=CT_OTHER;gs[1]=ct_grant();
+  r:=cap_dispatch(ds[..],bs[..],gs[..],p,ct_request(),1999);
+  #assert r.error==CAP_OK && r.definition==0 && r.binding==1 && r.grant==1 && r.wall_ms==30000;
+  // The first match wins when two would do.
+  bs[0]=ct_binding();gs[0]=ct_grant();r=cap_dispatch(ds[..],bs[..],gs[..],p,ct_request(),0);
+  #assert r.error==CAP_OK && r.binding==0 && r.grant==0;
+  ds2:[2]CapDefinition;ds2[0]=ct_def();ds2[1]=ct_def();ds2[1].digest="sha256:zz";
+  #assert cap_dispatch(ds2[..],bs[..],gs[..],p,ct_request(),0).definition==0;
+  // Each ceiling can be the smallest.
+  g:=ct_grant();g.wall_ms=20000;#assert cap_dispatch(ds[..],bs[..],gs[..],p,ct_request(),0).wall_ms==30000;
+  gs[0]=g;#assert cap_dispatch(ds[..],bs[..],gs[..],p,ct_request(),0).wall_ms==20000;
+  p.wall_ms=5000;#assert cap_dispatch(ds[..],bs[..],gs[..],p,ct_request(),0).wall_ms==5000;
+}
+#test "the ceiling that decided is recorded, the first of equals" {
+  none:[1]string;p:=ct_policy(none[0..<0]);ds:[1]CapDefinition;ds[0]=ct_def();bs:[1]CapBinding;bs[0]=ct_binding();
+  gs:[1]CapGrant;gs[0]=ct_grant();q:=ct_request();
+  r:=cap_dispatch(ds[..],bs[..],gs[..],p,q,0);#assert r.wall_ms==30000 && r.limit==CAP_BY_REQUEST;
+  q.wall_ms=60000;r=cap_dispatch(ds[..],bs[..],gs[..],p,q,0);#assert r.wall_ms==60000 && r.limit==CAP_BY_REQUEST;
+  q.wall_ms=60001;r=cap_dispatch(ds[..],bs[..],gs[..],p,q,0);#assert r.wall_ms==60000 && r.limit==CAP_BY_GRANT;
+  q.wall_ms=500000;gs[0].wall_ms=120000;r=cap_dispatch(ds[..],bs[..],gs[..],p,q,0);#assert r.wall_ms==120000 && r.limit==CAP_BY_GRANT;
+  gs[0].wall_ms=120001;r=cap_dispatch(ds[..],bs[..],gs[..],p,q,0);#assert r.wall_ms==120000 && r.limit==CAP_BY_OPERATOR;
+}
+#test "only the six effects and twelve bounds are known" {
+  none:[1]string;p:=ct_policy(none[0..<0]);q:=ct_request();
+  q.effects=64;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_MALFORMED;
+  q=ct_request();q.required=4096;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_MALFORMED;
+  q=ct_request();q.required=CAP_BOUNDS;b:=ct_binding();b.host=CAP_BOUNDS;
+  #assert ct_run(ct_def(),b,ct_grant(),p,q,0)==CAP_OK;
+}
+#test "the deny list refuses before anything else is looked up" {
+  deny:=[2]string.["op:other","op:docs.search"];p:=ct_policy(deny[..]);
+  #assert ct_run(ct_def(),ct_binding(),ct_grant(),p,ct_request(),0)==CAP_DENIED;
+  #assert ct_run(ct_def(),ct_binding(),ct_grant(),ct_policy(deny[0..<1]),ct_request(),0)==CAP_OK;
+}
+#test "Done means: a capability without a matching binding is refused at dispatch" {
+  none:[1]string;p:=ct_policy(none[0..<0]);
+  q:=ct_request();q.definition="op:unknown";#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_NO_DEFINITION;
+  // A binding to an older digest of the same definition: replacement never moves a binding.
+  b:=ct_binding();b.definition="sha256:old";#assert ct_run(ct_def(),b,ct_grant(),p,ct_request(),0)==CAP_NO_BINDING;
+  // The right digest under another profile: a plugin cannot take an executor's place.
+  b=ct_binding();b.profile=CAP_PLUGIN;#assert ct_run(ct_def(),b,ct_grant(),p,ct_request(),0)==CAP_NO_BINDING;
+  ds:[1]CapDefinition;ds[0]=ct_def();bs:[1]CapBinding;gs:[1]CapGrant;gs[0]=ct_grant();
+  #assert cap_dispatch(ds[..],bs[0..<0],gs[..],p,ct_request(),0).error==CAP_NO_BINDING;
+}
+#test "a binding without an invocation contract, or not present, takes no work" {
+  none:[1]string;p:=ct_policy(none[0..<0]);
+  b:=ct_binding();b.invoke=false;#assert ct_run(ct_def(),b,ct_grant(),p,ct_request(),0)==CAP_NO_INVOKE;
+  // A writing request needs invoke_writing on an executor, and only there.
+  g:=ct_grant();g.effects=CAP_WRITES;q:=ct_request();q.effects=CAP_WRITES;
+  b=ct_binding();b.invoke_writing=false;#assert ct_run(ct_def(),b,g,p,q,0)==CAP_NO_INVOKE;
+  #assert ct_run(ct_def(),b,g,p,ct_request(),0)==CAP_NOT_ADMITTED;
+  d:=ct_def();d.profile=CAP_ADAPTER;b.profile=CAP_ADAPTER;#assert ct_run(d,b,g,p,q,0)==CAP_OK;
+  for presence:[4]int.[CAP_UNPROBED,CAP_ABSENT,CAP_UNAVAILABLE_HERE,CAP_UNKNOWN] {b=ct_binding();b.presence=presence;#assert ct_run(ct_def(),b,ct_grant(),p,ct_request(),0)==CAP_UNAVAILABLE;}
+}
+#test "the grant: issuer, principal, binding, revocation, expiry" {
+  none:[1]string;p:=ct_policy(none[0..<0]);
+  g:=ct_grant();g.issuer=CT_AGENT;#assert ct_run(ct_def(),ct_binding(),g,p,ct_request(),0)==CAP_NOT_ADMITTED;
+  g=ct_grant();g.principal=CT_OTHER;#assert ct_run(ct_def(),ct_binding(),g,p,ct_request(),0)==CAP_NOT_ADMITTED;
+  g=ct_grant();g.binding="sha256:b2";#assert ct_run(ct_def(),ct_binding(),g,p,ct_request(),0)==CAP_NOT_ADMITTED;
+  g=ct_grant();g.revoked=true;#assert ct_run(ct_def(),ct_binding(),g,p,ct_request(),5000)==CAP_REVOKED;
+  #assert ct_run(ct_def(),ct_binding(),ct_grant(),p,ct_request(),1999)==CAP_OK;
+  #assert ct_run(ct_def(),ct_binding(),ct_grant(),p,ct_request(),2000)==CAP_EXPIRED;
+}
+#test "effects: each one granted separately, and only within the definition" {
+  none:[1]string;p:=ct_policy(none[0..<0]);q:=ct_request();
+  q.effects=CAP_READS|CAP_NETWORK;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_OK;
+  q.effects=CAP_WRITES;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_NOT_ADMITTED;
+  // spend is granted but the definition never declared it: the intersection decides.
+  q.effects=CAP_SPEND;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_NOT_ADMITTED;
+  q.effects=0;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_OK;
+}
+#test "an evaluation grant authorizes only its own run" {
+  none:[1]string;p:=ct_policy(none[0..<0]);g:=ct_grant();g.purpose=CAP_EVALUATION;g.run="run-7";
+  q:=ct_request();q.run="run-7";#assert ct_run(ct_def(),ct_binding(),g,p,q,0)==CAP_OK;
+  q.run="run-8";#assert ct_run(ct_def(),ct_binding(),g,p,q,0)==CAP_NOT_ADMITTED;
+  for use:1..<4 {q.run="run-7";q.use=use;#assert ct_run(ct_def(),ct_binding(),g,p,q,0)==CAP_NOT_ADMITTED;}
+  // An operational grant names no run and serves any use.
+  q.use=CAP_DEPLOY;q.run="";#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_OK;
+}
+#test "the definition's minimum must fit the smallest ceiling" {
+  none:[1]string;p:=ct_policy(none[0..<0]);d:=ct_def();
+  q:=ct_request();q.wall_ms=1000;#assert ct_run(d,ct_binding(),ct_grant(),p,q,0)==CAP_OK;
+  q.wall_ms=999;#assert ct_run(d,ct_binding(),ct_grant(),p,q,0)==CAP_LIMIT;
+  g:=ct_grant();g.wall_ms=999;#assert ct_run(d,ct_binding(),g,p,ct_request(),0)==CAP_LIMIT;
+  p.wall_ms=999;#assert ct_run(d,ct_binding(),ct_grant(),p,ct_request(),0)==CAP_LIMIT;
+  p.wall_ms=120000;d.minimum_wall_ms=0;q.wall_ms=0;#assert ct_run(d,ct_binding(),ct_grant(),p,q,0)==CAP_LIMIT;
+  q.wall_ms=1;#assert ct_run(d,ct_binding(),ct_grant(),p,q,0)==CAP_OK;
+}
+#test "every required bound needs a mechanism at the operator's assurance" {
+  none:[1]string;p:=ct_policy(none[0..<0]);q:=ct_request();
+  // memory_bytes is only the executor's own claim: not enough for host_enforced.
+  q.required=CAP_WALL_MS|CAP_MEMORY_BYTES;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_CANNOT_ENFORCE;
+  p.assurance=CAP_TRUSTED_CONTRACT;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_OK;
+  q.required=CAP_WALL_MS|CAP_SPEND_MICROUNITS;#assert ct_run(ct_def(),ct_binding(),ct_grant(),p,q,0)==CAP_CANNOT_ENFORCE;
+  // The binding's own claim covers only what it claims.
+  b:=ct_binding();b.host=0;#assert ct_run(ct_def(),b,ct_grant(),p,ct_request(),0)==CAP_CANNOT_ENFORCE;
+  #assert ct_run(ct_def(),b,ct_grant(),ct_policy(none[0..<0]),ct_request(),0)==CAP_CANNOT_ENFORCE;
+  q.required=0;b=ct_binding();b.host=0;b.enforced=0;#assert ct_run(ct_def(),b,ct_grant(),ct_policy(none[0..<0]),q,0)==CAP_OK;
+}

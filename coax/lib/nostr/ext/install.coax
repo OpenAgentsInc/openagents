@@ -1,0 +1,243 @@
+// EXT installation: whether a client may install one extension release,
+// and whether it keeps a newer revocation checkpoint. NIP-EXT "Release and
+// package manifest", "Component types", "Revocation and freshness", with
+// the shared contracts' rule that an unknown required feature refuses.
+//
+// A release (3184) is identified by its event id and manifest digest, and
+// signed by its package's root key: the package id is `<root>:<slug>`. The
+// order is: the namespace (signer is the root), the manifest agrees with
+// the release, every required feature and component kind is supported,
+// no equivocation (another release of the same package and version naming
+// another manifest), no verified revocation (3185) of the release or of a
+// dependency, and, under strict policy, a current checkpoint (30185) that
+// lists every revocation the client knows and nothing it cannot resolve.
+//
+// A revocation is verified here when it names this release, is signed by
+// the root, belongs to the package, and its effective_at does not exceed
+// its created_at. Others are ignored: they are not the publisher's.
+// Revocation is monotone: a held revocation refuses whatever a later
+// checkpoint, listing or relay says.
+//
+// It trusts the strings it is given: event ids and signers from events
+// whose ids and signatures the caller verified, and body fields it read.
+// Times are Unix seconds on the client's trusted clock.
+//
+// Not here: reading the bodies, manifest files and paths, the dependency
+// closure past one level, listings, namespace migration, the lock commit.
+//   coax/bin/coax test coax/lib/nostr/ext/install.coax --library
+#authority;
+
+// book:begin codes
+EXT_OK :: cast(u32)0;          // install: stage the closure and commit the lock
+EXT_MALFORMED :: cast(u32)1;   // not a 3184, a package id that is not root:slug, or a manifest that disagrees
+EXT_NAMESPACE :: cast(u32)2;   // the signer is not the package's root key
+EXT_UNSUPPORTED :: cast(u32)3; // a required feature or a component kind this client does not know
+EXT_CONFLICT :: cast(u32)4;    // equivocation, or a checkpoint that omits a known revocation
+EXT_REVOKED :: cast(u32)5;     // a verified revocation of the release or a dependency
+EXT_UNRESOLVED :: cast(u32)6;  // a dependency or a listed revocation the client does not hold
+EXT_STALE :: cast(u32)7;       // strict policy: no current checkpoint, or a rolled-back one
+// book:end codes
+
+EXT_RELEASE_KIND :: 3184;
+EXT_KINDS :: [13]string.["program","plugin","capability","decision-function","skill","source","checker",
+  "operation","ai-signature","ai-implementation","guidance","schema","eval-suite"];
+
+// book:begin record
+ExtRelease :: struct {event:string;signer:string;kind:int;package:string;version:string;manifest:string;
+  manifest_package:string;manifest_version:string;features:[]string;kinds:[]string;dependencies:[]string;}
+ExtRevocation :: struct {event:string;signer:string;package:string;release:string;effective_at:int;created_at:int;}
+ExtCheckpoint :: struct {signer:string;package:string;revision:int;as_of:int;valid_until:int;revocations:[]string;}
+ExtPolicy :: struct {strict_freshness:bool;max_age:int;skew:int;features:[]string;}
+// book:end record
+
+ext_root :: (package:string)->string {
+  if package.count<66 || package[64]!=':' {return "";}
+  return package[0..<64];
+}
+ext_has :: (list:[]string,s:string)->bool {for x:list {if x==s {return true;}}return false;}
+
+// book:begin revoked
+// A verified revocation of release by its root.
+ext_revokes :: (v:ExtRevocation,release:string,root:string,package:string)->bool {
+  return v.release==release && v.signer==root && v.package==package && v.effective_at<=v.created_at;
+}
+ext_revoked :: (revocations:[]ExtRevocation,r:ExtRelease)->bool {
+  for v:revocations {if ext_revokes(v,r.event,r.signer,r.package) {return true;}}
+  return false;
+}
+// book:end revoked
+
+// book:begin install
+ext_install :: (r:ExtRelease,releases:[]ExtRelease,revocations:[]ExtRevocation,c:ExtCheckpoint,have:bool,p:ExtPolicy,now:int)->u32 {
+  // 1. A release, its namespace, and a manifest that agrees with it.
+  root:=ext_root(r.package);
+  if r.kind!=EXT_RELEASE_KIND || root=="" {return EXT_MALFORMED;}
+  if r.signer!=root {return EXT_NAMESPACE;}
+  if r.manifest_package!=r.package || r.manifest_version!=r.version {return EXT_MALFORMED;}
+  // 2. Unknown required features and component kinds refuse; nothing is skipped.
+  for f:r.features {if !ext_has(p.features,f) {return EXT_UNSUPPORTED;}}
+  known:=EXT_KINDS;
+  for k:r.kinds {if !ext_has(known[..],k) {return EXT_UNSUPPORTED;}}
+  // 3. Equivocation: never choose between two manifests by timestamp.
+  for o:releases {
+    if o.signer==root && o.package==r.package && o.version==r.version && o.manifest!=r.manifest {return EXT_CONFLICT;}
+  }
+  // 4. Revocation of the release, then of each dependency.
+  if ext_revoked(revocations,r) {return EXT_REVOKED;}
+  for dep:r.dependencies {
+    k:=-1;
+    for i:0..<releases.count {if releases[i].event==dep {k=i;}}
+    if k<0 {return EXT_UNRESOLVED;}
+    if ext_revoked(revocations,releases[k]) {return EXT_REVOKED;}
+  }
+  // 5. The checkpoint: the root's, for this package, complete and resolvable.
+  ok:=have && c.signer==root && c.package==r.package;
+  if ok {
+    for id:c.revocations {
+      found:=false;for v:revocations {if v.event==id {found=true;}}
+      if !found {return EXT_UNRESOLVED;}
+    }
+    for v:revocations {
+      if v.signer==root && v.package==r.package && v.effective_at<=v.created_at && !ext_has(c.revocations,v.event) {return EXT_CONFLICT;}
+    }
+  }
+  // 6. Strict freshness: an answer with no revocations proves nothing.
+  if p.strict_freshness {
+    if !ok || c.as_of>now+p.skew || c.valid_until<=c.as_of || now-c.as_of>p.max_age || now>=c.valid_until {return EXT_STALE;}
+  }
+  return EXT_OK;
+}
+// book:end install
+
+// book:begin checkpoint
+// Whether to keep checkpoint c over the one held (have says whether there
+// is one) for the same package. Revisions never go back; one revision has
+// one content; a later list keeps every revocation an earlier one had.
+ext_checkpoint_accept :: (held:ExtCheckpoint,have:bool,c:ExtCheckpoint)->u32 {
+  if !have {return EXT_OK;}
+  if c.revision<held.revision {return EXT_STALE;}
+  for id:held.revocations {if !ext_has(c.revocations,id) {return EXT_CONFLICT;}}
+  if c.revision==held.revision && (c.as_of!=held.as_of || c.valid_until!=held.valid_until || c.revocations.count!=held.revocations.count) {return EXT_CONFLICT;}
+  return EXT_OK;
+}
+// book:end checkpoint
+
+// The test world: package <root>:hello, releases 1.0.0 (event r1) and 1.0.1 (r2).
+XT_ROOT :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+XT_OTHER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+XT_PACKAGE :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:hello";
+xt_release :: (event:string,version:string,manifest:string)->ExtRelease {
+  r:ExtRelease;r.event=event;r.signer=XT_ROOT;r.kind=3184;r.package=XT_PACKAGE;r.version=version;r.manifest=manifest;
+  r.manifest_package=XT_PACKAGE;r.manifest_version=version;return r;
+}
+xt_revocation :: (event:string,release:string)->ExtRevocation {
+  v:ExtRevocation;v.event=event;v.signer=XT_ROOT;v.package=XT_PACKAGE;v.release=release;v.effective_at=1000;v.created_at=1000;return v;
+}
+xt_checkpoint :: (revision:int,list:[]string)->ExtCheckpoint {
+  c:ExtCheckpoint;c.signer=XT_ROOT;c.package=XT_PACKAGE;c.revision=revision;c.as_of=1000;c.valid_until=1000+86400;c.revocations=list;return c;
+}
+xt_strict :: ()->ExtPolicy {p:ExtPolicy;p.strict_freshness=true;p.max_age=3600;p.skew=60;return p;}
+
+#test "a release under its root, fresh and unrevoked, installs" {
+  rs:[2]ExtRelease;rs[0]=xt_release("r1","1.0.0","m1");rs[1]=xt_release("r2","1.0.1","m2");
+  vs:[1]ExtRevocation;vs[0]=xt_revocation("v1","r1");list:=[1]string.["v1"];c:=xt_checkpoint(1,list[..]);
+  #assert ext_install(rs[1],rs[..],vs[..],c,true,xt_strict(),1000)==EXT_OK;
+  // Offline, pinned use: without strict policy no checkpoint is needed.
+  p:ExtPolicy;#assert ext_install(rs[1],rs[..],vs[0..<0],c,false,p,0)==EXT_OK;
+}
+#test "the package id is root:slug and the root signs" {
+  p:ExtPolicy;none:[1]ExtRelease;nv:[1]ExtRevocation;c:ExtCheckpoint;
+  r:=xt_release("r1","1.0.0","m1");
+  r.kind=30184;#assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_MALFORMED;
+  r=xt_release("r1","1.0.0","m1");r.package=XT_ROOT;r.manifest_package=XT_ROOT;#assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_MALFORMED;
+  r.package="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798/hello";r.manifest_package=r.package;
+  #assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_MALFORMED;
+  r.package="79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:h";r.manifest_package=r.package;
+  #assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_OK;
+  r=xt_release("r1","1.0.0","m1");r.signer=XT_OTHER;#assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_NAMESPACE;
+  r=xt_release("r1","1.0.0","m1");r.manifest_package="x";#assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_MALFORMED;
+  r=xt_release("r1","1.0.0","m1");r.manifest_version="1.0.1";#assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_MALFORMED;
+}
+#test "an unknown required feature or component kind refuses" {
+  p:ExtPolicy;none:[1]ExtRelease;nv:[1]ExtRevocation;c:ExtCheckpoint;
+  r:=xt_release("r1","1.0.0","m1");req:=[1]string.["oa-x402-v1"];r.features=req[..];
+  #assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_UNSUPPORTED;
+  p.features=req[..];#assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_OK;
+  r=xt_release("r1","1.0.0","m1");k:=[2]string.["skill","daemon"];r.kinds=k[..];
+  #assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_UNSUPPORTED;
+  all:=EXT_KINDS;r.kinds=all[..];#assert ext_install(r,none[0..<0],nv[0..<0],c,false,p,0)==EXT_OK;
+}
+#test "two manifests under one package and version are a conflict" {
+  p:ExtPolicy;nv:[1]ExtRevocation;c:ExtCheckpoint;
+  rs:[2]ExtRelease;rs[0]=xt_release("r1","1.0.0","m1");rs[1]=xt_release("x1","1.0.0","m2");
+  #assert ext_install(rs[0],rs[..],nv[0..<0],c,false,p,0)==EXT_CONFLICT && ext_install(rs[1],rs[..],nv[0..<0],c,false,p,0)==EXT_CONFLICT;
+  // Not equivocation: another version, another package, or the same manifest again.
+  rs[1].version="1.0.1";rs[1].manifest_version="1.0.1";#assert ext_install(rs[0],rs[..],nv[0..<0],c,false,p,0)==EXT_OK;
+  rs[1]=xt_release("x1","1.0.0","m2");rs[1].package="other";#assert ext_install(rs[0],rs[..],nv[0..<0],c,false,p,0)==EXT_OK;
+  rs[1]=xt_release("x1","1.0.0","m1");#assert ext_install(rs[0],rs[..],nv[0..<0],c,false,p,0)==EXT_OK;
+  // A copy signed by another key does not make the root equivocate.
+  rs[1]=xt_release("x1","1.0.0","m2");rs[1].signer=XT_OTHER;#assert ext_install(rs[0],rs[..],nv[0..<0],c,false,p,0)==EXT_OK;
+}
+#test "Done means: a revoked extension release does not install" {
+  p:ExtPolicy;rs:[1]ExtRelease;rs[0]=xt_release("r1","1.0.0","m1");c:ExtCheckpoint;
+  vs:[1]ExtRevocation;vs[0]=xt_revocation("v1","r1");
+  #assert ext_install(rs[0],rs[..],vs[..],c,false,p,0)==EXT_REVOKED;
+  // Strict or not, fresh checkpoint or none: a held revocation is final.
+  list:=[1]string.["v1"];#assert ext_install(rs[0],rs[..],vs[..],xt_checkpoint(1,list[..]),true,xt_strict(),1000)==EXT_REVOKED;
+  // Only the root's revocation of this exact release, for this package, dated sanely.
+  vs[0].release="r2";#assert ext_install(rs[0],rs[..],vs[..],c,false,p,0)==EXT_OK;
+  vs[0]=xt_revocation("v1","r1");vs[0].signer=XT_OTHER;#assert ext_install(rs[0],rs[..],vs[..],c,false,p,0)==EXT_OK;
+  vs[0]=xt_revocation("v1","r1");vs[0].package="other";#assert ext_install(rs[0],rs[..],vs[..],c,false,p,0)==EXT_OK;
+  vs[0]=xt_revocation("v1","r1");vs[0].effective_at=1001;#assert ext_install(rs[0],rs[..],vs[..],c,false,p,0)==EXT_OK;
+  vs[0].effective_at=999;#assert ext_install(rs[0],rs[..],vs[..],c,false,p,0)==EXT_REVOKED;
+  vs[0]=xt_revocation("v1","r1");vs[0].created_at=999;#assert ext_install(rs[0],rs[..],vs[..],c,false,p,0)==EXT_OK;
+}
+#test "a dependency must be held and unrevoked" {
+  p:ExtPolicy;c:ExtCheckpoint;rs:[2]ExtRelease;rs[0]=xt_release("r1","1.0.0","m1");rs[1]=xt_release("r2","1.0.1","m2");
+  deps:=[1]string.["r1"];rs[1].dependencies=deps[..];
+  vs:[1]ExtRevocation;vs[0]=xt_revocation("v1","r1");
+  #assert ext_install(rs[1],rs[..],vs[0..<0],c,false,p,0)==EXT_OK;
+  #assert ext_install(rs[1],rs[..],vs[..],c,false,p,0)==EXT_REVOKED;
+  #assert ext_install(rs[1],rs[1..<2],vs[0..<0],c,false,p,0)==EXT_UNRESOLVED;
+}
+#test "strict policy: the checkpoint is the root's, complete, resolvable and current" {
+  rs:[2]ExtRelease;rs[0]=xt_release("r1","1.0.0","m1");rs[1]=xt_release("r2","1.0.1","m2");
+  vs:[1]ExtRevocation;vs[0]=xt_revocation("v1","r1");list:=[1]string.["v1"];empty:[1]string;
+  c:=xt_checkpoint(1,list[..]);p:=xt_strict();
+  #assert ext_install(rs[1],rs[..],vs[..],c,false,p,1000)==EXT_STALE;
+  c.signer=XT_OTHER;#assert ext_install(rs[1],rs[..],vs[..],c,true,p,1000)==EXT_STALE;
+  c=xt_checkpoint(1,list[..]);c.package="other";#assert ext_install(rs[1],rs[..],vs[..],c,true,p,1000)==EXT_STALE;
+  // It omits the revocation the client holds; it names one the client cannot resolve.
+  #assert ext_install(rs[1],rs[..],vs[..],xt_checkpoint(1,empty[0..<0]),true,p,1000)==EXT_CONFLICT;
+  #assert ext_install(rs[1],rs[..],vs[0..<0],xt_checkpoint(1,list[..]),true,p,1000)==EXT_UNRESOLVED;
+  // Another key's revocation is not one the root must list.
+  vs[0].signer=XT_OTHER;#assert ext_install(rs[1],rs[..],vs[..],xt_checkpoint(1,empty[0..<0]),true,p,1000)==EXT_OK;
+  vs[0]=xt_revocation("v1","r1");vs[0].package="other";#assert ext_install(rs[1],rs[..],vs[..],xt_checkpoint(1,empty[0..<0]),true,p,1000)==EXT_OK;
+  vs[0]=xt_revocation("v1","r1");vs[0].effective_at=1001;#assert ext_install(rs[1],rs[..],vs[..],xt_checkpoint(1,empty[0..<0]),true,p,1000)==EXT_OK;
+  vs[0]=xt_revocation("v1","r1");
+  // as_of 1000: future beyond 60 s of skew, at most 3600 s old, before valid_until.
+  c=xt_checkpoint(1,list[..]);
+  #assert ext_install(rs[1],rs[..],vs[..],c,true,p,940)==EXT_OK && ext_install(rs[1],rs[..],vs[..],c,true,p,939)==EXT_STALE;
+  #assert ext_install(rs[1],rs[..],vs[..],c,true,p,4600)==EXT_OK && ext_install(rs[1],rs[..],vs[..],c,true,p,4601)==EXT_STALE;
+  c.valid_until=2000;#assert ext_install(rs[1],rs[..],vs[..],c,true,p,1999)==EXT_OK && ext_install(rs[1],rs[..],vs[..],c,true,p,2000)==EXT_STALE;
+  c.valid_until=1000;#assert ext_install(rs[1],rs[..],vs[..],c,true,p,1000)==EXT_STALE;
+  c.valid_until=1001;#assert ext_install(rs[1],rs[..],vs[..],c,true,p,1000)==EXT_OK;
+  // valid_until must follow as_of even while the clock is behind it.
+  c.valid_until=1000;#assert ext_install(rs[1],rs[..],vs[..],c,true,p,990)==EXT_STALE;
+  // The day the checkpoint is valid for, with a policy that allows its age.
+  c=xt_checkpoint(1,list[..]);p.max_age=100000;
+  #assert ext_install(rs[1],rs[..],vs[..],c,true,p,87399)==EXT_OK && ext_install(rs[1],rs[..],vs[..],c,true,p,87400)==EXT_STALE;
+}
+#test "checkpoints never roll back, and one revision has one content" {
+  one:=[1]string.["v1"];two:=[2]string.["v1","v2"];other:=[1]string.["v2"];
+  held:=xt_checkpoint(2,one[..]);
+  #assert ext_checkpoint_accept(held,false,xt_checkpoint(1,other[..]))==EXT_OK;
+  #assert ext_checkpoint_accept(held,true,xt_checkpoint(1,one[..]))==EXT_STALE;
+  #assert ext_checkpoint_accept(held,true,xt_checkpoint(2,one[..]))==EXT_OK;
+  #assert ext_checkpoint_accept(held,true,xt_checkpoint(3,two[..]))==EXT_OK;
+  #assert ext_checkpoint_accept(held,true,xt_checkpoint(3,other[..]))==EXT_CONFLICT;
+  #assert ext_checkpoint_accept(held,true,xt_checkpoint(2,two[..]))==EXT_CONFLICT;
+  c:=xt_checkpoint(2,one[..]);c.as_of=1001;#assert ext_checkpoint_accept(held,true,c)==EXT_CONFLICT;
+  c=xt_checkpoint(2,one[..]);c.valid_until=5;#assert ext_checkpoint_accept(held,true,c)==EXT_CONFLICT;
+  c=xt_checkpoint(3,one[..]);c.as_of=1001;#assert ext_checkpoint_accept(held,true,c)==EXT_OK;
+}

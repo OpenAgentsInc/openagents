@@ -108,7 +108,7 @@
 - [74. Cashu and Fedimint are excluded](ch074-cashu-and-fedimint-are-excluded.md) — implemented
 - [75. Hosts and reachability](ch075-hosts-and-reachability.md) — implemented
 - [76. Work, coordination and control](ch076-work-coordination-and-control.md) — implemented
-- [77. Capabilities, policy and extensions](ch077-capabilities-policy-and-extensions.md) — design draft
+- [77. Capabilities, policy and extensions](ch077-capabilities-policy-and-extensions.md) — implemented
 - [78. Runs, sessions, terminals and trajectories](ch078-runs-sessions-terminals-and-trajectories.md) — design draft
 - [79. Agents, skills and automation](ch079-agents-skills-and-automation.md) — design draft
 - [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) — design draft

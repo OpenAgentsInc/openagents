@@ -1,0 +1,238 @@
+// Chapter 77: capability dispatch, an approval, and extension installation.
+// The host dispatches requests against one policy (CAP), consumes one
+// approval (POL), and a client reads signed NIP-EXT events, verifies them,
+// and decides which release installs. The events are
+// coax/tests/nostr/ext_release_vectors.coax, signed by an independent
+// BIP-340 in Python. Keys are the scalars 1 (operator and package root),
+// 2 (another publisher, and the approver) and 3 (the agent): TEST ONLY.
+#load "../../coax/lib/nostr/cap/dispatch.coax";
+#load "../../coax/lib/nostr/pol/approve.coax";
+#load "../../coax/lib/nostr/ext/install.coax";
+#load "../../coax/lib/nostr/tags.coax";
+#load "../../coax/lib/crypto/schnorr_fast.coax";
+#load "../../coax/tests/nostr/ext_release_vectors.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+OPERATOR :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+APPROVER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+AGENT :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+
+CAP_WORDS :: [12]string.["dispatch","malformed","denied","no definition","no binding","no invocation contract",
+  "unavailable","not_admitted","revoked","expired","limit_exceeded","cannot_enforce"];
+BY_WORDS :: [3]string.["the request","the grant","the operator"];
+POL_WORDS :: [6]string.["approved: consume and dispatch","replay: the same receipt, no dispatch","pending","denied","expired","not_admitted"];
+EXT_WORDS :: [8]string.["install","malformed","namespace","unsupported","conflict","revoked","unresolved","stale"];
+EVENT_WORDS :: [9]string.["ok","json","shape","limit","hex","output","alias","id","signature"];
+
+// book:begin world
+// The host's record: two definitions, one binding, one grant, one policy.
+host_definitions :: (d:[]CapDefinition) {
+  d[0].id="op:docs.search";d[0].digest="sha256:5e1f";d[0].profile=CAP_EXECUTOR;
+  d[0].effects=CAP_READS|CAP_WRITES|CAP_NETWORK;d[0].minimum_wall_ms=1000;
+  // repo.patch was republished: its digest is now 9c02, the binding still names 77aa.
+  d[1].id="op:repo.patch";d[1].digest="sha256:9c02";d[1].profile=CAP_EXECUTOR;
+  d[1].effects=CAP_READS|CAP_WRITES;d[1].minimum_wall_ms=5000;
+}
+host_bindings :: (b:[]CapBinding) {
+  b[0].binding="sha256:b5e1";b[0].definition="sha256:5e1f";b[0].profile=CAP_EXECUTOR;b[0].invoke=true;
+  b[0].invoke_writing=true;b[0].presence=CAP_PRESENT;b[0].host=CAP_WALL_MS;b[0].enforced=CAP_MEMORY_BYTES;
+  b[1]=b[0];b[1].binding="sha256:b77a";b[1].definition="sha256:77aa";
+}
+host_grants :: (g:[]CapGrant) {
+  g[0].grant="g-docs";g[0].issuer=OPERATOR;g[0].principal=AGENT;g[0].binding="sha256:b5e1";
+  g[0].effects=CAP_READS|CAP_NETWORK;g[0].wall_ms=60000;g[0].expires_at=T0+3600;
+}
+ask_for :: (definition:string,effects:int,wall_ms:int)->CapRequest {
+  q:CapRequest;q.principal=AGENT;q.definition=definition;q.effects=effects;q.required=CAP_WALL_MS;q.wall_ms=wall_ms;return q;
+}
+// book:end world
+show_cap :: (label:string,d:[]CapDefinition,b:[]CapBinding,g:[]CapGrant,p:CapPolicy,q:CapRequest,now:int) {
+  r:=cap_dispatch(d,b,g,p,q,now);
+  if r.error==CAP_OK {print("%: dispatch to %, wall_ms ceiling % set by %\n",label,b[r.binding].binding,r.wall_ms,BY_WORDS[r.limit]);}
+  else {print("%: %\n",label,CAP_WORDS[r.error]);}
+}
+
+// Strings read from events live in one arena.
+Arena :: struct {buf:[]u8;at:int;}
+keep :: (a:[]Arena,s:string)->string {
+  from:=a[0].at;for i:0..<s.count {a[0].buf[from+i]=s[i];}a[0].at+=s.count;return cast(string)a[0].buf[from..<a[0].at];
+}
+hex_of :: (a:[]Arena,bytes:[]u8)->string {
+  h:[128]u8;r:=hex_encode_checked(cast(string)bytes,h[..],false);return keep(a,cast(string)h[0..<r.written]);
+}
+// book:begin body
+// A value in a body's top-level object, or, with sub, inside the object
+// under key: a string unescaped into the arena, a number as written.
+body_value :: (j:[]Json,v:int,a:[]Arena)->string {
+  if v==JSON_NUMBER {return keep(a,json_text(j));}
+  if v!=JSON_STRING {return "";}
+  n:=json_unescape(json_text(j),a[0].buf[a[0].at..<a[0].buf.count]);if n<0 {return "";}
+  s:=cast(string)a[0].buf[a[0].at..<a[0].at+n];a[0].at+=n;return s;
+}
+body_get :: (text:string,key:string,sub:string,a:[]Arena)->string {
+  j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_OBJECT {return "";}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    k:=json_text(j[..]);v:=json_next(j[..]);
+    if k==key && sub=="" {return body_value(j[..],v,a);}
+    if k==key && v==JSON_OBJECT {
+      t=json_next(j[..]);
+      while t==JSON_STRING {
+        k=json_text(j[..]);v=json_next(j[..]);
+        if k==sub {return body_value(j[..],v,a);}
+        if !json_skip(j[..]) {return "";}
+        t=json_next(j[..]);
+      }
+      return "";
+    }
+    if !json_skip(j[..]) {return "";}
+    t=json_next(j[..]);
+  }
+  return "";
+}
+// The "id" of each object in the body's array under key, into ids.
+body_ids :: (text:string,key:string,ids:[]string,a:[]Arena)->int {
+  j:[1]Json;json_start(j[..],text);n:=0;
+  if json_next(j[..])!=JSON_OBJECT {return 0;}
+  t:=json_next(j[..]);
+  while t==JSON_STRING {
+    k:=json_text(j[..]);v:=json_next(j[..]);
+    if k==key && v==JSON_ARRAY {
+      while json_next(j[..])==JSON_OBJECT {
+        u:=json_next(j[..]);
+        while u==JSON_STRING {
+          kk:=json_text(j[..]);w:=json_next(j[..]);
+          if kk=="id" && n<ids.count {ids[n]=body_value(j[..],w,a);n+=1;} else if !json_skip(j[..]) {return n;}
+          u=json_next(j[..]);
+        }
+      }
+      return n;
+    }
+    if !json_skip(j[..]) {return n;}
+    t=json_next(j[..]);
+  }
+  return n;
+}
+number :: (s:string)->int {r:=json_int(s);return r.value;}
+// book:end body
+
+// book:begin open
+// Reads an event, recomputes its id, verifies its BIP-340 signature, and
+// unescapes its content (the body) into the arena.
+Opened :: struct {error:int;e:NostrEvent;id:string;signer:string;body:string;}
+open_event :: (text:string,pre:[]u8,a:[]Arena)->Opened {
+  o:Opened;o.e=nostr_event_read(text,pre,false);o.error=o.e.error;
+  if o.error!=NE_OK {return o;}
+  if !nostr_fast_verify_vartime(o.e.id[..],o.e.public_key[..],o.e.signature[..]) {o.error=NE_SIGNATURE;return o;}
+  o.id=hex_of(a,o.e.id[..]);o.signer=hex_of(a,o.e.public_key[..]);
+  n:=json_unescape(text[o.e.content_from..<o.e.content_to],a[0].buf[a[0].at..<a[0].buf.count]);
+  o.body=cast(string)a[0].buf[a[0].at..<a[0].at+n];a[0].at+=n;return o;
+}
+// A 3184 release as install.coax takes it: identity from the event, fields
+// from its body and from the manifest bytes it names.
+as_release :: (o:Opened,manifest:string,a:[]Arena)->ExtRelease {
+  r:ExtRelease;r.event=o.id;r.signer=o.signer;r.kind=o.e.kind;
+  r.package=body_get(o.body,"package","",a);r.version=body_get(o.body,"version","",a);
+  r.manifest=body_get(o.body,"manifest","digest",a);
+  r.manifest_package=body_get(manifest,"package","",a);r.manifest_version=body_get(manifest,"version","",a);
+  return r;
+}
+// book:end open
+// book:begin main
+main :: () {
+  print("CAP: one policy, three requests, now = T0 + 100\n");
+  defs:[2]CapDefinition;host_definitions(defs[..]);binds:[2]CapBinding;host_bindings(binds[..]);
+  grants:[1]CapGrant;host_grants(grants[..]);
+  deny:=[1]string.["op:shell.exec"];p:CapPolicy;p.owner=OPERATOR;p.deny=deny[..];p.assurance=CAP_HOST_ENFORCED;p.wall_ms=120000;
+  show_cap("A docs.search, reads, 30 s",defs[..],binds[..],grants[..],p,ask_for("op:docs.search",CAP_READS,30000),T0+100);
+  show_cap("B docs.search, writes",defs[..],binds[..],grants[..],p,ask_for("op:docs.search",CAP_WRITES,30000),T0+100);
+  show_cap("C repo.patch, reads",defs[..],binds[..],grants[..],p,ask_for("op:repo.patch",CAP_READS,30000),T0+100);
+  print("more refusals\n");
+  show_cap("docs.search, reads, 300 s",defs[..],binds[..],grants[..],p,ask_for("op:docs.search",CAP_READS,300000),T0+100);
+  show_cap("docs.search, reads, 0.5 s",defs[..],binds[..],grants[..],p,ask_for("op:docs.search",CAP_READS,500),T0+100);
+  show_cap("shell.exec",defs[..],binds[..],grants[..],p,ask_for("op:shell.exec",CAP_PROCESS,30000),T0+100);
+  show_cap("web.fetch",defs[..],binds[..],grants[..],p,ask_for("op:web.fetch",CAP_NETWORK,30000),T0+100);
+  mem:=ask_for("op:docs.search",CAP_READS,30000);mem.required=CAP_WALL_MS|CAP_MEMORY_BYTES;
+  show_cap("docs.search, memory_bytes required",defs[..],binds[..],grants[..],p,mem,T0+100);
+  q:=p;q.assurance=CAP_TRUSTED_CONTRACT;
+  show_cap("the same, operator trusts the executor's contract",defs[..],binds[..],grants[..],q,mem,T0+100);
+  stranger:=ask_for("op:docs.search",CAP_READS,30000);stranger.principal=APPROVER;
+  show_cap("docs.search from another key",defs[..],binds[..],grants[..],p,stranger,T0+100);
+  show_cap("docs.search at T0 + 3600",defs[..],binds[..],grants[..],p,ask_for("op:docs.search",CAP_READS,30000),T0+3600);
+  unprobed:=binds;unprobed[0].presence=CAP_UNPROBED;
+  show_cap("docs.search, binding unprobed",defs[..],unprobed[..],grants[..],p,ask_for("op:docs.search",CAP_READS,30000),T0+100);
+  eval:=grants;eval[0].purpose=CAP_EVALUATION;eval[0].run="run-7";
+  train:=ask_for("op:docs.search",CAP_READS,30000);train.use=CAP_TRAIN;train.run="run-7";
+  show_cap("docs.search to train, under an evaluation grant",defs[..],binds[..],eval[..],p,train,T0+100);
+  train.use=CAP_RUN;show_cap("the same inside run-7",defs[..],binds[..],eval[..],p,train,T0+100);
+
+  print("POL: approving one action, now = T0 + 100\n");
+  ask:PolRequest;ask.request="q-1";ask.action="sha256:ac71";ask.requester=AGENT;ask.approver=APPROVER;ask.expires_at=T0+600;
+  who:=[1]string.[APPROVER];yes:[2]PolDecision;
+  yes[0].request="q-1";yes[0].action="sha256:ac71";yes[0].approver=APPROVER;yes[0].approve=true;yes[0].expires_at=T0+600;
+  spent:[1]PolConsumed;
+  print("no decision yet: %\n",POL_WORDS[pol_admit(ask,who[..],yes[0..<0],spent[0..<0],T0+100)]);
+  print("approved: %\n",POL_WORDS[pol_admit(ask,who[..],yes[0..<1],spent[0..<0],T0+100)]);
+  spent[0].request="q-1";spent[0].action="sha256:ac71";
+  print("the same approval again: %\n",POL_WORDS[pol_admit(ask,who[..],yes[0..<1],spent[..],T0+110)]);
+  yes[1]=yes[0];yes[1].approve=false;
+  print("an approve and a deny, unconsumed: %\n",POL_WORDS[pol_admit(ask,who[..],yes[..],spent[0..<0],T0+100)]);
+  print("approved, but the host does not recognize the approver: %\n",POL_WORDS[pol_admit(ask,who[0..<0],yes[0..<1],spent[0..<0],T0+100)]);
+
+  print("EXT: the client reads signed events\n");
+  store:[65536]u8;arena:[1]Arena;arena[0].buf=store[..];a:=arena[..];
+  pre:[6][8192]u8;
+  r1:=open_event(EXT_RELEASE_1,pre[0][..],a);r2:=open_event(EXT_RELEASE_2,pre[1][..],a);
+  eq:=open_event(EXT_EQUIVOCATION,pre[2][..],a);fk:=open_event(EXT_FOREIGN,pre[3][..],a);
+  rv:=open_event(EXT_REVOCATION,pre[4][..],a);cp:=open_event(EXT_CHECKPOINT,pre[5][..],a);
+  for o:[6]Opened.[r1,r2,eq,fk,rv,cp] {print("kind %: %, id %…, signer %…\n",o.e.kind,EVENT_WORDS[o.error],o.id[0..<16],o.signer[0..<16]);}
+  rel1:=as_release(r1,EXT_MANIFEST_1,a);rel2:=as_release(r2,EXT_MANIFEST_2,a);
+  rele:=as_release(eq,EXT_MANIFEST_2,a);relf:=as_release(fk,EXT_MANIFEST_1,a);
+  print("release 1: %…%, %, manifest %\n",rel1.package[0..<8],rel1.package[64..<70],rel1.version,rel1.manifest);
+  print("release 2: %…%, %, manifest %\n",rel2.package[0..<8],rel2.package[64..<70],rel2.version,rel2.manifest);
+  print("equivocation: %…%, %, manifest %\n",rele.package[0..<8],rele.package[64..<70],rele.version,rele.manifest);
+  e:=nostr_tag(rv.e,0);
+  v:ExtRevocation;v.event=rv.id;v.signer=rv.signer;v.package=body_get(rv.body,"package","",a);
+  v.release=hex_of(a,e.id[..]);v.effective_at=number(body_get(rv.body,"effective_at","",a));v.created_at=rv.e.created_at;
+  print("revocation: e tag % (release 1: %), body names %, effective_at T0 + %, reason \"%\"\n",
+    v.release[0..<16],v.release==rel1.event,body_get(rv.body,"release","id",a)==v.release,v.effective_at-T0,body_get(rv.body,"reason","",a));
+  ids:[4]string;n:=body_ids(cp.body,"revocations",ids[..],a);
+  c:ExtCheckpoint;c.signer=cp.signer;c.package=body_get(cp.body,"package","",a);c.revision=number(body_get(cp.body,"revision","",a));
+  c.as_of=number(body_get(cp.body,"as_of","",a));c.valid_until=number(body_get(cp.body,"valid_until","",a));c.revocations=ids[0..<n];
+  print("checkpoint: revision %, as_of T0 + %, valid_until T0 + %, % revocation(s), lists the revocation: %\n",
+    c.revision,c.as_of-T0,c.valid_until-T0,n,n==1 && ids[0]==v.event);
+
+  print("EXT: installing, strict freshness (max age 3600 s, skew 60 s), now = T0 + 1200\n");
+  known:=[2]ExtRelease.[rel1,rel2];seen:=[3]ExtRelease.[rel1,rel2,rele];vs:=[1]ExtRevocation.[v];
+  fresh:ExtPolicy;fresh.strict_freshness=true;fresh.max_age=3600;fresh.skew=60;
+  print("1.0.1: %\n",EXT_WORDS[ext_install(rel2,known[..],vs[..],c,true,fresh,T0+1200)]);
+  print("1.0.0: %\n",EXT_WORDS[ext_install(rel1,known[..],vs[..],c,true,fresh,T0+1200)]);
+  offline:ExtPolicy;
+  print("1.0.0, offline policy, no checkpoint: %\n",EXT_WORDS[ext_install(rel1,known[..],vs[..],c,false,offline,T0+1200)]);
+  print("1.0.0 signed by key 2: %\n",EXT_WORDS[ext_install(relf,known[..],vs[..],c,true,fresh,T0+1200)]);
+  print("1.0.1 once the second 1.0.0 is seen: %\n",EXT_WORDS[ext_install(rel2,seen[..],vs[..],c,true,fresh,T0+1200)]);
+  print("1.0.0 once the second 1.0.0 is seen: %\n",EXT_WORDS[ext_install(rel1,seen[..],vs[..],c,true,fresh,T0+1200)]);
+  print("1.0.1, no checkpoint: %\n",EXT_WORDS[ext_install(rel2,known[..],vs[..],c,false,fresh,T0+1200)]);
+  print("1.0.1 at T0 + 4601, the checkpoint 3601 s old: %\n",EXT_WORDS[ext_install(rel2,known[..],vs[..],c,true,fresh,T0+4601)]);
+  bare:=c;bare.revocations=ids[0..<0];
+  print("1.0.1, a checkpoint that omits the revocation: %\n",EXT_WORDS[ext_install(rel2,known[..],vs[..],bare,true,fresh,T0+1200)]);
+  print("1.0.1, the revocation not fetched: %\n",EXT_WORDS[ext_install(rel2,known[..],vs[0..<0],c,true,fresh,T0+1200)]);
+  x402:=rel2;need:=[1]string.["oa-x402-v1"];x402.features=need[..];
+  print("1.0.1 requiring oa-x402-v1: %\n",EXT_WORDS[ext_install(x402,known[..],vs[..],c,true,fresh,T0+1200)]);
+  old:=c;old.revision=0;old.revocations=ids[0..<0];
+  print("checkpoint revision 0 after revision 1: %\n",EXT_WORDS[ext_checkpoint_accept(c,true,old)]);
+  print("revision 1 again without its revocation: %\n",EXT_WORDS[ext_checkpoint_accept(c,true,bare)]);
+
+  print("broken inputs\n");
+  t:[4096]u8;s:=EXT_REVOCATION;for i:0..<s.count {t[i]=s[i];}
+  // The reason's "1.0.0" becomes "2.0.0": the id no longer matches.
+  at:=-1;for i:0..<s.count-5 {if at<0 && s[i..<i+5]=="1.0.0" {at=i;}}
+  t[at]='2';bad:=open_event(cast(string)t[0..<s.count],pre[4][..],a);
+  print("revocation with its reason changed: %\n",EVENT_WORDS[bad.error]);
+  t[at]='1';sig:=0;for i:0..<s.count-6 {if sig==0 && s[i..<i+6]=="\"sig\":" {sig=i+7;}}
+  t[sig]=ifx t[sig]=='0' then '1' else '0';bad=open_event(cast(string)t[0..<s.count],pre[4][..],a);
+  print("revocation with its first signature digit changed: %\n",EVENT_WORDS[bad.error]);
+}
+// book:end main

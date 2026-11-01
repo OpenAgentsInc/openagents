@@ -1654,13 +1654,22 @@
    "number": 77,
    "title": "Capabilities, policy and extensions",
    "file": "ch077-capabilities-policy-and-extensions.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     75
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/cap/dispatch.coax",
+    "coax/lib/nostr/pol/approve.coax",
+    "coax/lib/nostr/ext/install.coax",
+    "coax/tests/nostr/ext_release_vectors.coax",
+    "nostr/examples/capabilities-policy.coax",
+    "nostr/examples/checks/capabilities-policy.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

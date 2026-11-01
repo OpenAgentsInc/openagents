@@ -1,0 +1,51 @@
+CAP: one policy, three requests, now = T0 + 100
+A docs.search, reads, 30 s: dispatch to sha256:b5e1, wall_ms ceiling 30000 set by the request
+B docs.search, writes: not_admitted
+C repo.patch, reads: no binding
+more refusals
+docs.search, reads, 300 s: dispatch to sha256:b5e1, wall_ms ceiling 60000 set by the grant
+docs.search, reads, 0.5 s: limit_exceeded
+shell.exec: denied
+web.fetch: no definition
+docs.search, memory_bytes required: cannot_enforce
+the same, operator trusts the executor's contract: dispatch to sha256:b5e1, wall_ms ceiling 30000 set by the request
+docs.search from another key: not_admitted
+docs.search at T0 + 3600: expired
+docs.search, binding unprobed: unavailable
+docs.search to train, under an evaluation grant: not_admitted
+the same inside run-7: dispatch to sha256:b5e1, wall_ms ceiling 30000 set by the request
+POL: approving one action, now = T0 + 100
+no decision yet: pending
+approved: approved: consume and dispatch
+the same approval again: replay: the same receipt, no dispatch
+an approve and a deny, unconsumed: denied
+approved, but the host does not recognize the approver: not_admitted
+EXT: the client reads signed events
+kind 3184: ok, id 4cae89f1451bea38…, signer 79be667ef9dcbbac…
+kind 3184: ok, id f79cabc261058058…, signer 79be667ef9dcbbac…
+kind 3184: ok, id 88f641f2baaf52df…, signer 79be667ef9dcbbac…
+kind 3184: ok, id 25b7504f8695cdfe…, signer c6047f9441ed7d6d…
+kind 3185: ok, id 3bf81c39678d1ad6…, signer 79be667ef9dcbbac…
+kind 30185: ok, id 49fb97cf337e966a…, signer 79be667ef9dcbbac…
+release 1: 79be667e…:hello, 1.0.0, manifest sha256:fe89c4297f4e3d05c4da9b2b104157a90f0cdf16c9a1d64d5cd577f9a254abb6
+release 2: 79be667e…:hello, 1.0.1, manifest sha256:c10def463db501098f48b564d19c0453676ea981ba97724e41d0a39c1191c865
+equivocation: 79be667e…:hello, 1.0.0, manifest sha256:c10def463db501098f48b564d19c0453676ea981ba97724e41d0a39c1191c865
+revocation: e tag 4cae89f1451bea38 (release 1: true), body names true, effective_at T0 + 1000, reason "1.0.0 writes the API key to its log"
+checkpoint: revision 1, as_of T0 + 1000, valid_until T0 + 87400, 1 revocation(s), lists the revocation: true
+EXT: installing, strict freshness (max age 3600 s, skew 60 s), now = T0 + 1200
+1.0.1: install
+1.0.0: revoked
+1.0.0, offline policy, no checkpoint: revoked
+1.0.0 signed by key 2: namespace
+1.0.1 once the second 1.0.0 is seen: install
+1.0.0 once the second 1.0.0 is seen: conflict
+1.0.1, no checkpoint: stale
+1.0.1 at T0 + 4601, the checkpoint 3601 s old: stale
+1.0.1, a checkpoint that omits the revocation: conflict
+1.0.1, the revocation not fetched: unresolved
+1.0.1 requiring oa-x402-v1: unsupported
+checkpoint revision 0 after revision 1: stale
+revision 1 again without its revocation: conflict
+broken inputs
+revocation with its reason changed: id
+revocation with its first signature digit changed: signature

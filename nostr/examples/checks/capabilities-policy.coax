@@ -1,0 +1,91 @@
+// The checks of capabilities-policy.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test nostr/examples/checks/capabilities-policy.coax --run-steps 250000000
+#load "../capabilities-policy.coax";
+
+// book:begin check
+// From coax/tests/nostr/ext_release_vectors.py, which signs with
+// nip59_reference.py's integer secp256k1 and BIP-340 (no code shared with
+// Coax): each event's id as hashlib.sha256 of json.dumps([0, pubkey,
+// created_at, kind, tags, content], separators=(",", ":")), and each
+// manifest's hashlib.sha256 of its exact bytes.
+PY_ID :: [6]string.[
+  "4cae89f1451bea38a91f5c7cd2561e136118e30a532b072c11f4aae71614e64f",  // release 1.0.0
+  "f79cabc2610580581fb63ec7e6404e2f4d392c6477f5fd688cfc060b6b2580f1",  // release 1.0.1
+  "88f641f2baaf52df62ade963b16f85b534a35caae11f6f6e0778d059857280d6",  // the second 1.0.0
+  "25b7504f8695cdfe6cddb4108b781f5cfc7f0c618b2271eec1706744614e25ee",  // 1.0.0 by key 2
+  "3bf81c39678d1ad60686f1cba6813318aa70e645755f5fc1b515c2b291f56310",  // the revocation
+  "49fb97cf337e966a2a05450e27d63fc3754ff73687763654c23ae99faeb887be"]; // the checkpoint
+PY_MANIFEST_1 :: "sha256:fe89c4297f4e3d05c4da9b2b104157a90f0cdf16c9a1d64d5cd577f9a254abb6";
+PY_MANIFEST_2 :: "sha256:c10def463db501098f48b564d19c0453676ea981ba97724e41d0a39c1191c865";
+
+#test "every event's id is the Python reference's, and every signature verifies" {
+  texts:=[6]string.[EXT_RELEASE_1,EXT_RELEASE_2,EXT_EQUIVOCATION,EXT_FOREIGN,EXT_REVOCATION,EXT_CHECKPOINT];
+  store:[16384]u8;arena:[1]Arena;arena[0].buf=store[..];a:=arena[..];pre:[8192]u8;
+  for k:0..<6 {
+    o:=open_event(texts[k],pre[..],a);
+    #assert o.error==NE_OK && o.id==PY_ID[k] && hex_of(a,o.e.computed_id[..])==PY_ID[k];
+  }
+}
+#test "each release names the digest of its manifest's exact bytes" {
+  store:[16384]u8;arena:[1]Arena;arena[0].buf=store[..];a:=arena[..];pre:[8192]u8;
+  ms:=[2]string.[EXT_MANIFEST_1,EXT_MANIFEST_2];want:=[2]string.[PY_MANIFEST_1,PY_MANIFEST_2];
+  rs:=[2]string.[EXT_RELEASE_1,EXT_RELEASE_2];
+  for k:0..<2 {
+    m:=ms[k];b:[2048]u8;for i:0..<m.count {b[i]=m[i];}
+    d:[32]u8;#assert sha256_hash_checked(b[0..<m.count],d[..],false)==SHA_OK;
+    h:=hex_of(a,d[..]);#assert want[k][7..<71]==h;
+    r:=as_release(open_event(rs[k],pre[..],a),m,a);
+    #assert r.manifest==want[k] && r.manifest_package==r.package && r.manifest_version==r.version;
+  }
+}
+
+// The worked example by hand, from NIP-CAP's rules: grant g-docs gives the
+// agent reads and network on binding b5e1, 60 s, until T0 + 3600; the
+// operator's ceiling is 120 s and it accepts only host mechanisms.
+#test "the three requests of the worked example" {
+  defs:[2]CapDefinition;host_definitions(defs[..]);binds:[2]CapBinding;host_bindings(binds[..]);
+  grants:[1]CapGrant;host_grants(grants[..]);
+  deny:=[1]string.["op:shell.exec"];p:CapPolicy;p.owner=OPERATOR;p.deny=deny[..];p.wall_ms=120000;
+  // A: reads ⊆ {reads, network} ∩ {reads, writes, network}; min(30000, 60000, 120000) = 30000 ≥ 1000;
+  // wall_ms is required and the host's supervisor enforces it.
+  a:=cap_dispatch(defs[..],binds[..],grants[..],p,ask_for("op:docs.search",CAP_READS,30000),T0+100);
+  #assert a.error==CAP_OK && a.binding==0 && a.grant==0 && a.wall_ms==30000 && a.limit==CAP_BY_REQUEST;
+  // B: writes = 2; (reads|network) & (reads|writes|network) = 5; 2 & 5 = 0 ≠ 2.
+  #assert (CAP_READS|CAP_NETWORK)&(CAP_READS|CAP_WRITES|CAP_NETWORK)==5 && CAP_WRITES&5==0;
+  #assert cap_dispatch(defs[..],binds[..],grants[..],p,ask_for("op:docs.search",CAP_WRITES,30000),T0+100).error==CAP_NOT_ADMITTED;
+  // C: repo.patch is digest 9c02; the only other binding names 77aa.
+  #assert cap_dispatch(defs[..],binds[..],grants[..],p,ask_for("op:repo.patch",CAP_READS,30000),T0+100).error==CAP_NO_BINDING;
+}
+#test "Done means: a capability without a matching binding is refused at dispatch" {
+  defs:[2]CapDefinition;host_definitions(defs[..]);binds:[2]CapBinding;host_bindings(binds[..]);
+  grants:[2]CapGrant;host_grants(grants[..]);
+  // Even a grant for the stale binding does not help: the binding never matches.
+  grants[1]=grants[0];grants[1].binding="sha256:b77a";grants[1].effects=CAP_READS|CAP_WRITES;
+  none:[1]string;p:CapPolicy;p.owner=OPERATOR;p.deny=none[0..<0];p.wall_ms=120000;
+  #assert cap_dispatch(defs[..],binds[..],grants[..],p,ask_for("op:repo.patch",CAP_WRITES,30000),T0+100).error==CAP_NO_BINDING;
+  // Rebinding to the current digest makes it dispatchable.
+  binds[1].definition="sha256:9c02";
+  r:=cap_dispatch(defs[..],binds[..],grants[..],p,ask_for("op:repo.patch",CAP_WRITES,30000),T0+100);
+  #assert r.error==CAP_OK && r.binding==1 && r.grant==1;
+}
+#test "Done means: a revoked extension release does not install" {
+  store:[16384]u8;arena:[1]Arena;arena[0].buf=store[..];a:=arena[..];pre:[8192]u8;
+  rel1:=as_release(open_event(EXT_RELEASE_1,pre[..],a),EXT_MANIFEST_1,a);
+  rel2:=as_release(open_event(EXT_RELEASE_2,pre[..],a),EXT_MANIFEST_2,a);
+  rv:=open_event(EXT_REVOCATION,pre[..],a);
+  v:ExtRevocation;v.event=rv.id;v.signer=rv.signer;v.package=body_get(rv.body,"package","",a);
+  tag:=nostr_tag(rv.e,0);v.release=hex_of(a,tag.id[..]);v.effective_at=number(body_get(rv.body,"effective_at","",a));v.created_at=rv.e.created_at;
+  #assert v.release==PY_ID[0] && v.effective_at==T0+1000 && v.created_at==T0+1000;
+  known:=[2]ExtRelease.[rel1,rel2];vs:=[1]ExtRevocation.[v];c:ExtCheckpoint;offline:ExtPolicy;
+  #assert ext_install(rel1,known[..],vs[..],c,false,offline,T0+1200)==EXT_REVOKED;
+  #assert ext_install(rel1,known[..],vs[0..<0],c,false,offline,T0+1200)==EXT_OK;
+  #assert ext_install(rel2,known[..],vs[..],c,false,offline,T0+1200)==EXT_OK;
+  // A checkpoint by hand: as_of T0 + 1000, so at T0 + 1200 its age is 200 ≤ 3600;
+  // at T0 + 4601 it is 3601 > 3600.
+  ids:=[1]string.[PY_ID[4]];c.signer=rv.signer;c.package=v.package;c.revision=1;c.as_of=T0+1000;c.valid_until=T0+87400;c.revocations=ids[..];
+  fresh:ExtPolicy;fresh.strict_freshness=true;fresh.max_age=3600;fresh.skew=60;
+  #assert ext_install(rel1,known[..],vs[..],c,true,fresh,T0+1200)==EXT_REVOKED;
+  #assert ext_install(rel2,known[..],vs[..],c,true,fresh,T0+1200)==EXT_OK && ext_install(rel2,known[..],vs[..],c,true,fresh,T0+4601)==EXT_STALE;
+}
+// book:end check
