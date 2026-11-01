@@ -1,0 +1,25 @@
+// Per-check step budgets: #steps N replaces the file's budget for one check.
+spin :: (n: int) -> int {
+  s := 0;
+  for i: 0..<n { s += i % 7; }
+  return s;
+}
+
+// Needs more than the default 20000000 steps; its own budget lets it pass.
+#test "a long loop under its own larger budget" #steps 100000000 {
+  #assert spin(4000000) == 11999994;
+}
+
+// Fits the default budget easily, but its own budget is smaller.
+#test "a short loop under its own smaller budget" #steps 1000 {
+  #assert spin(10000) == 29994;
+}
+
+// No #steps: the file's budget (coax test --steps N, 20000000 by default).
+#test "a long loop under the file's budget" {
+  #assert spin(4000000) == 11999994;
+}
+
+#forall "a range check with its own budget" n: 0..<4 #steps 500 {
+  #assert spin(n) >= 0;
+}

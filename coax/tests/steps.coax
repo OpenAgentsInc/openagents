@@ -1,0 +1,104 @@
+// Per-check step budgets and the step profile.
+//   coax/web/tool.sh coax/tests/steps.coax COMPILER
+// Run from coax/. tests/steps/budgets.coax has a check that needs more than
+// the file's budget and has its own larger #steps, one that fits the file's
+// budget but has its own smaller #steps, one with no #steps, and a #forall
+// with its own budget. Each run's report must say which pass, and a check
+// out of steps must name its budget and where the budget comes from.
+// tests/steps/mutants.coax shows a check's own budget bounds its mutants.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+// Whether part occurs anywhere in text.
+has :: (text: string, part: string) -> bool {
+  for at: 0..<text.count - part.count + 1 {
+    same := true;
+    for j: 0..<part.count { if text[at + j] != part[j] { same = false; break; } }
+    if same { return true; }
+  }
+  return false;
+}
+#test "has finds a part anywhere and nothing that is not there" {
+  #assert has("abc", "a") && has("abc", "bc") && has("abc", "abc") && has("abc", "");
+  #assert !has("abc", "abcd") && !has("abc", "cb") && !has("", "a") && !has("ab", "bb");
+}
+
+FIXTURE :: "tests/steps/budgets.coax";
+
+// Runs `coax test tests/steps/budgets.coax --lib A B C D`; out gets stdout and stderr.
+run :: (compiler: string, a: string, b: string, c: string, d: string, out: [] u8) -> ProcRun {
+  argv := [10] string.["sh", "-c", "exec \"$1\" test \"$2\" --lib $3 $4 $5 $6 2>&1", "sh", compiler, FIXTURE, a, b, c, d];
+  err: [1024] u8;
+  return proc_run(argv[..], 120000, out, err[..]);
+}
+
+LARGER :: "ok   #test a long loop under its own larger budget (1 case, 24000014 steps";
+SMALLER :: "FAIL #test a short loop under its own smaller budget (out of steps: 1000 used, its budget is 1000,";
+OWN :: "error[E0400]: compile-time evaluation exceeded 1000 steps, the check's budget (its own #steps)";
+FILE_FAIL :: "FAIL #test a long loop under the file's budget (out of steps: 20000000 used, its budget is 20000000,";
+FILE_OWN :: "error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)";
+FILE_OK :: "ok   #test a long loop under the file's budget (1 case, 24000014 steps";
+RANGE :: "ok   #forall a range check with its own budget (4 cases, 94 steps";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: steps.coax COMPILER"); return 2; }
+  compiler := args_at(a[..], 0);
+  bad := 0;
+  out: [65536] u8;
+
+  // The file's budget is the default 20000000 steps.
+  r := run(compiler, "", "", "", "", out[..]);
+  t := cast(string) out[0..<r.out_n];
+  bad += check(r.status == 1 && has(t, "4 checks, 2 passed, 2 failed"), "default budget: 2 of 4 pass");
+  bad += check(has(t, LARGER), "its own larger budget passes where the file's fails");
+  bad += check(has(t, SMALLER) && has(t, OWN), "its own smaller budget fails where the file's passes, and names its budget");
+  bad += check(has(t, FILE_FAIL) && has(t, FILE_OWN), "a check with no #steps runs out of the file's budget and says how to change it");
+  bad += check(has(t, RANGE) && !has(t, "own steps"), "a #forall keeps its own budget; no profile unless asked");
+
+  // A larger file budget lets the plain check pass and leaves the others alone.
+  r = run(compiler, "--steps", "200000000", "", "", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 1 && has(t, "4 checks, 3 passed, 1 failed") && has(t, FILE_OK) && has(t, SMALLER) && has(t, LARGER), "--steps changes only the checks without #steps");
+
+  // A smaller file budget does not shrink a check's own.
+  r = run(compiler, "--steps", "100", "", "", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, LARGER) && has(t, RANGE) && has(t, "4 checks, 2 passed, 2 failed"), "a check's own budget holds under a smaller --steps");
+
+  // The profile: the procedures a check's steps went to.
+  r = run(compiler, "--only", "range", "--profile", "steps", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 0 && has(t, RANGE), "--profile steps runs the check");
+  bad += check(has(t, "   own steps  share   with calls     calls  procedure"), "the profile has its heading");
+  bad += check(has(t, "           68  72.3%           68         4  spin  tests/steps/budgets.coax:2"), "spin: its own steps, share, steps with calls and calls");
+  bad += check(has(t, "           26  27.7%           94         0  (the check's own body)"), "the check's own body, with every step under it");
+
+  r = run(compiler, "--only", "smaller", "--profile", "steps", out[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(r.status == 1 && has(t, SMALLER) && has(t, "spin  tests/steps/budgets.coax:2"), "a check out of steps shows its profile too");
+
+  // Mutants: twice the loop needs more than the check's own 300 steps, so
+  // it's killed; one more turn fits, so it survives.
+  argv := [7] string.["sh", "-c", "exec \"$1\" mutate \"$2\" --lib 2>&1", "sh", compiler, "tests/steps/mutants.coax", ""];
+  merr: [1024] u8;
+  r = proc_run(argv[0..<6], 120000, out[..], merr[..]);
+  t = cast(string) out[0..<r.out_n];
+  bad += check(has(t, "7 mutants, 2 killed, 5 survived") && !has(t, "mutants.coax:7:19:"), "a mutant that needs more than the check's own budget is killed");
+  bad += check(has(t, "mutants.coax:7:16: mutant survived: '*' became '+'"), "a mutant inside the check's own budget is not");
+
+  r = run(compiler, "--profile", "stepz", "", "", out[..]);
+  bad += check(r.status != 0, "--profile takes only steps");
+
+  if bad == 0 { print("steps: ok\n"); return 0; }
+  print("steps: % failed\n", bad);
+  return 1;
+}

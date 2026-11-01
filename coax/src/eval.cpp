@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <map>
 
 namespace coax {
 
@@ -142,6 +143,11 @@ struct Evaluator {
   std::vector<Loc> calls;
   std::vector<const ProcDecl *> executed;
   static constexpr uint32_t MAX_DEPTH = 64;
+  // --profile steps: the procedures being evaluated, innermost last, and each
+  // one's own steps, total steps and calls.
+  bool profile = false;
+  std::vector<const ProcDecl *> frames;
+  std::map<const ProcDecl *, StepProfileRow> profiled;
 
   void err(Loc loc, const char *code, const std::string &message) {
     if (failed) return;
@@ -157,14 +163,22 @@ struct Evaluator {
               file->src->path.c_str(), calls[i].line, calls[i].col);
   }
 
+  // Gives back one step a caller charged twice, and the profile's with it.
+  void refund() {
+    steps--;
+    if (profile) profiled[frames.empty() ? nullptr : frames.back()].own--;
+  }
+  bool steps_exceeded = false;
   bool tick(Loc loc, uint32_t cost = 1) {
     current_loc = loc;
     if (failed) return false;
     if (steps > max_steps || cost > max_steps - steps) {
+      steps_exceeded = true;
       err(loc, "E0400", "compile-time evaluation exceeded " + std::to_string(max_steps) + " steps");
       return false;
     }
     steps += cost;
+    if (profile) profiled[frames.empty() ? nullptr : frames.back()].own += cost;
     return true;
   }
 
@@ -543,7 +557,7 @@ struct Evaluator {
       }
       default: break;
     }
-    steps--;  // expr() charges its own step
+    refund();  // expr() charges its own step
     return h.temp(expr(e, frame, allow_calls));
   }
 
@@ -583,7 +597,7 @@ struct Evaluator {
         }
         Holder h;
         CtLocal *root = nullptr;
-        steps--;
+        refund();
         Value *v = locate(e, frame, h, allow_calls, &root);
         if (!v || failed) return {};
         if (root && !root->initialized) {
@@ -659,7 +673,16 @@ struct Evaluator {
         }
         calls.push_back(e->loc);
         Value result;
+        const uint64_t before = steps;
+        const bool recursive = profile && std::find(frames.begin(), frames.end(), e->proc) != frames.end();
+        if (profile) frames.push_back(e->proc);
         stmt(e->proc->body, callee, &result);
+        if (profile) {
+          frames.pop_back();
+          StepProfileRow &row = profiled[e->proc];
+          row.calls++;
+          if (!recursive) row.total += steps - before;
+        }
         calls.pop_back();
         return result;
       }
@@ -1045,6 +1068,12 @@ struct Evaluator {
     return true;
   }
 
+  void profile_rows(CheckOutcome *out) {
+    if (!profile) return;
+    for (auto &[proc, row] : profiled) { row.proc = proc; if (!proc) row.total = steps; out->profile.push_back(row); }
+    std::stable_sort(out->profile.begin(), out->profile.end(), [](const StepProfileRow &a, const StepProfileRow &b) { return a.own > b.own; });
+  }
+
   CheckOutcome check(CheckDecl *c) {
     CheckOutcome out;
     ProcDecl *p = c->proc;
@@ -1076,6 +1105,9 @@ struct Evaluator {
     out.executed = std::move(executed);
     out.passed = !failed;
     out.steps = steps;
+    out.budget = max_steps;
+    out.over_budget = failed && fail_code == "E0400" && steps_exceeded;
+    profile_rows(&out);
     out.loc = fail_loc;
     out.code = fail_code;
     out.message = fail_message;
@@ -1096,17 +1128,18 @@ static std::string storage_limit_message(const CtLimit &l) {
   return m;
 }
 
-CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps) {
+CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps, bool profile) {
   Evaluator evaluator{file};
   evaluator.quiet = true;
+  evaluator.profile = profile;
   evaluator.max_steps = max_steps;
   try { return evaluator.check(check); }
   catch (const CtTraversalLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time aggregate traversal limit exceeded"); }
   catch (const CtStringLimit &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time string storage or work limit exceeded"); }
   catch (const CtLimit &l) { evaluator.err(evaluator.current_loc, "E0400", storage_limit_message(l)); }
   catch (const std::bad_alloc &) { evaluator.err(evaluator.current_loc, "E0400", "compile-time allocation failed"); }
-  CheckOutcome out; out.passed = false; out.loc = evaluator.fail_loc;
-  out.code = evaluator.fail_code; out.message = evaluator.fail_message; return out;
+  CheckOutcome out; out.passed = false; out.loc = evaluator.fail_loc; out.steps = evaluator.steps; out.budget = evaluator.max_steps;
+  out.code = evaluator.fail_code; out.message = evaluator.fail_message; evaluator.profile_rows(&out); return out;
 }
 
 bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t steps) {

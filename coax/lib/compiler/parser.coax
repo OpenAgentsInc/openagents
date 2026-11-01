@@ -611,7 +611,42 @@ PS_check :: (source:string,t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,d:
   if n[id].flag && n[id].name.count==0 {
     n[id].name=PS_trim_name(source,start,PS_peek(t,s,0).loc.offset);
   }
+  // #steps N: the check's own step budget, which replaces the file's.
+  if PS_peek(t,s,0).kind==6 && PS_peek(t,s,0).text=="steps" {
+    PS_skip(t,s);v:=PS_peek(t,s,0);
+    if v.kind!=3 || v.value==0 {PS_fail(s,out,v.loc,"E0220","#steps needs a positive whole number of steps","#test \"the world builds\" #steps 150000000 { ... }");return 0;}
+    PS_skip(t,s);n[id].value=v.value;
+  }
   n[p].name=n[id].name;n[p].b=PS_block(t,n,s,out);return PS_valid(s,id);
+}
+// Tokens for `#test "a" #steps N {}` with the budget token's kind and value.
+PS_steps_tokens :: (kind:u32,value:u64,steps:string)->[7] PS_Token {
+  return [7] PS_Token.[PS_Token.{kind=5,text="a"},PS_Token.{kind=6,text=steps},PS_Token.{kind=kind,value=value,loc=PS_Loc.{column=12}},
+    PS_Token.{kind=10,text="{"},PS_Token.{kind=11,text="}"},PS_Token.{},PS_Token.{}];
+}
+#test "#steps N gives a check its own budget; anything but a positive number is refused" {
+  nodes:[64] PS_Node;state:[1] PS_State;message:[4096] u8;
+  t:=PS_steps_tokens(3,9,"steps");
+  id:=PS_check("\"a\" #steps 9 {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert state[0].code=="" && id!=0 && nodes[id].value==9 && nodes[id].name=="a" && state[0].pos==5;
+  t=PS_steps_tokens(3,0,"steps");state[0]=PS_State.{};
+  id=PS_check("\"a\" #steps 0 {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert id==0 && state[0].code=="E0220" && state[0].loc.column==12;
+  t=PS_steps_tokens(1,9,"steps");state[0]=PS_State.{};
+  id=PS_check("\"a\" #steps 9 {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert id==0 && state[0].code=="E0220";
+  t=PS_steps_tokens(3,9,"stepz");state[0]=PS_State.{};
+  id=PS_check("\"a\" #stepz 9 {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert id==0 && state[0].code!="" && state[0].code!="E0220";
+  t=PS_steps_tokens(3,9,"steps");t[1].kind=1;state[0]=PS_State.{};
+  id=PS_check("\"a\" steps 9 {}",t[0..<6],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert id==0 && state[0].code!="" && state[0].code!="E0220";
+}
+#test "a check without #steps keeps the file's budget" {
+  nodes:[64] PS_Node;state:[1] PS_State;message:[4096] u8;
+  t:=PS_steps_tokens(3,9,"steps");t[1]=t[3];t[2]=t[4];t[3]=t[5];
+  id:=PS_check("\"a\" {}",t[0..<4],nodes[..],state[..],message[..],PS_Token.{kind=6,text="test",raw_count=4});
+  #assert state[0].code=="" && id!=0 && nodes[id].value==0;
 }
 PS_parse :: (source:string,t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8)->PS_Result #export_c {
  return PS_parse_build(source,t,n,s,out,true);

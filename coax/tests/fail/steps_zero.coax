@@ -1,0 +1,3 @@
+// expect: E0220
+main :: () {}
+#test "a budget of no steps" #steps 0 { #assert true; }

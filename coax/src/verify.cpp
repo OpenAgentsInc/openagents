@@ -73,9 +73,30 @@ static void evidence_claim(EvidenceClaim c) {
 // written as each check ends, with its time. only: just the checks whose
 // name contains it (coax test --only); the #authority coverage check needs
 // every check, so a filtered run skips it.
+// --profile steps: after a check's line, the procedures that used the most
+// of its steps: own steps (charged while innermost), their share of the
+// check's steps, total steps with the calls they make, and calls.
+static constexpr size_t PROFILE_ROWS = 8;
+static void print_step_profile(const File *file, const CheckOutcome &r) {
+  const uint64_t all = r.steps ? r.steps : 1;
+  printf("     %12s %6s %12s %9s  procedure\n", "own steps", "share", "with calls", "calls");
+  for (size_t i = 0; i < r.profile.size() && i < PROFILE_ROWS; i++) {
+    const StepProfileRow &row = r.profile[i];
+    std::string where = "(the check's own body)";
+    if (row.proc) {
+      SourcePoint at = source_point(file->src, row.proc->loc);
+      where = to_std(row.proc->name) + "  " + at.path + ":" + std::to_string(at.loc.line);
+    }
+    printf("     %12llu %5.1f%% %12llu %9llu  %s\n", (unsigned long long)row.own, 100.0 * (double)row.own / (double)all,
+           (unsigned long long)row.total, (unsigned long long)row.calls, where.c_str());
+  }
+  if (r.profile.size() > PROFILE_ROWS) printf("     ... %zu more procedures\n", r.profile.size() - PROFILE_ROWS);
+  fflush(stdout);
+}
+
 static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::vector<uint64_t> *steps = nullptr, int32_t *failures = nullptr,
                            std::vector<std::vector<const ProcDecl *>> *paths = nullptr, bool *unstable = nullptr,
-                           const std::string *only = nullptr, int32_t *ran = nullptr) {
+                           const std::string *only = nullptr, int32_t *ran = nullptr, bool profile = false) {
   bool ok = true;
   std::vector<const ProcDecl *> executed;
   if (failures) *failures = 0;
@@ -88,7 +109,8 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
     if (ran) ++*ran;
     const auto slots = file->ct_memory->slots, containers = file->ct_memory->containers;
     const auto began = std::chrono::steady_clock::now();
-    CheckOutcome r = run_check(file, c, max_steps);
+    // A check's own #steps budget replaces the file's.
+    CheckOutcome r = run_check(file, c, c->steps ? c->steps : max_steps, profile);
     const long long ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - began).count();
     if (paths) paths->push_back(r.executed);
     if (unstable && MS_storage_changed(slots, containers, file->ct_memory->slots, file->ct_memory->containers)) *unstable = true;
@@ -103,16 +125,25 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
         printf("ok   %s %s (%llu case%s, %llu steps, %lld ms)\n", kind, name.c_str(), (unsigned long long)r.cases,
                r.cases == 1 ? "" : "s", (unsigned long long)r.steps, ms);
         fflush(stdout);
+        if (profile) print_step_profile(file, r);
       }
       continue;
     }
     ok = false;
     if (failures) ++*failures;
     if (verbose) {
-      printf("FAIL %s %s (%lld ms)\n", kind, name.c_str(), ms);
+      if (r.over_budget)
+        printf("FAIL %s %s (out of steps: %llu used, its budget is %llu, %lld ms)\n", kind, name.c_str(), (unsigned long long)r.steps,
+               (unsigned long long)r.budget, ms);
+      else printf("FAIL %s %s (%lld ms)\n", kind, name.c_str(), ms);
       fflush(stdout);
+      if (profile) print_step_profile(file, r);
     }
     std::string message = r.message;
+    // An exhausted budget names the check's budget, where it comes from and how to raise it.
+    if (r.over_budget)
+      message = "compile-time evaluation exceeded " + std::to_string(r.budget) + " steps, the check's budget (" +
+                (c->steps ? "its own #steps" : "the file's: coax test --steps N, or #steps N on the check for its own") + ")";
     diagnostic_note(file->src, c->loc, true, "in " + std::string(kind) + " " + name);
     if (!r.counterexample.empty()) diagnostic_note(file->src, c->loc, false, "counterexample: " + r.counterexample);
     if (g_json_errors && !g_diagnostics_json) {
@@ -151,7 +182,7 @@ static bool run_all_checks(File *file, uint64_t max_steps, bool verbose, std::ve
 
 // coax test [--only SUBSTR] [--list]: every check, or those whose name
 // contains SUBSTR; --list names them (kind and name, one a line) and runs none.
-static int test_command(File *file, uint64_t max_steps, const char *only, bool list) {
+static int test_command(File *file, uint64_t max_steps, const char *only, bool list, bool profile = false) {
   if (!file->checks.count) {
     fprintf(stderr, "coax: %s has no #test or #forall to run\n", file->src->path.c_str());
     return 1;
@@ -165,7 +196,7 @@ static int test_command(File *file, uint64_t max_steps, const char *only, bool l
     return 0;
   }
   int32_t failed = 0, ran = 0;
-  bool ok = run_all_checks(file, max_steps, true, nullptr, &failed, nullptr, nullptr, only ? &filter : nullptr, &ran);
+  bool ok = run_all_checks(file, max_steps, true, nullptr, &failed, nullptr, nullptr, only ? &filter : nullptr, &ran, profile);
   int32_t total = file->checks.count;
   if (only) {
     if (!ran) {
@@ -473,6 +504,8 @@ static MutantResult evaluate_mutant(const MutationRun &run, size_t index) {
     bool entered = !mu.owner || std::find(path.begin(), path.end(), mu.owner) != path.end();
     if (!MS_run(run.selective, entered)) { ++r.skipped; continue; }
     uint64_t budget = std::max<uint64_t>(10000, (*run.base)[(size_t)i] * 10);
+    // A mutant that needs more than the check's own budget fails that check.
+    if (file->checks[i]->steps) budget = std::min(budget, file->checks[i]->steps);
     ++r.invocations;
     killed = !run_check(file, file->checks[i], budget).passed;
     if (killed) r.killer = i;

@@ -116,7 +116,7 @@ bool parse(Arena *arena,const Source *src,const std::vector<Token> &tokens,File 
       case COAX_PS_Tag_decl_enum_member:{auto *p=parser_ref<EnumMember>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_field_init:{auto *p=parser_ref<FieldInit>(objects,id);p->loc=loc;p->name=name;p->value=parser_ref<Expr>(objects,v.a);break;}
       case COAX_PS_Tag_decl_import_:{auto *p=parser_ref<Import>(objects,id);p->loc=loc;p->module=name;break;}
-      case COAX_PS_Tag_decl_check:{auto *p=parser_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->proc=parser_ref<ProcDecl>(objects,v.a);
+      case COAX_PS_Tag_decl_check:{auto *p=parser_ref<CheckDecl>(objects,id);p->loc=loc;p->name=name;p->forall=v.flag;p->steps=v.value;p->proc=parser_ref<ProcDecl>(objects,v.a);
         std::vector<Binding> domains;for(auto b=nodes[(size_t)v.a].head;b;b=nodes[(size_t)b].next) domains.push_back({parser_ref<Expr>(objects,nodes[(size_t)b].b),parser_ref<Expr>(objects,nodes[(size_t)b].c)});
         p->domains=to_slice(arena,domains);break;}
     }

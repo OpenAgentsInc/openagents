@@ -454,6 +454,7 @@ struct CheckDecl {
   bool forall = false;
   Slice<Binding> domains;  // one per parameter of proc
   ProcDecl *proc = nullptr;
+  uint64_t steps = 0;      // #steps N: this check's own step budget (0: the file's, coax test --steps)
 };
 
 struct CheckInput;
@@ -546,16 +547,27 @@ std::string layout_report(const File *file);
 
 // ---- Checks: coax test and coax mutate ----
 
+// --profile steps: where a check's steps go. A procedure's own steps are
+// those charged while it is the innermost call; its total adds the calls it
+// makes (counted once when it recurses). A null procedure is the check's body.
+struct StepProfileRow {
+  const ProcDecl *proc = nullptr;
+  uint64_t own = 0, total = 0, calls = 0;
+};
 struct CheckOutcome {
   bool passed = false;
   uint64_t cases = 0, steps = 0;
+  uint64_t budget = 0;         // the step budget the check ran under
+  bool over_budget = false;    // it stopped because it ran out of steps
+  std::vector<StepProfileRow> profile;  // with profiling: every procedure, most own steps first
   Loc loc;                     // the failure
   std::string code, message;   // the failure's error code and message
   std::string counterexample;  // #forall: "a = 3, b = true"
   std::vector<const ProcDecl *> executed; // procedures actually entered by this check
 };
-// Runs one check in the evaluator with its own step budget. Never prints.
-CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps);
+// Runs one check in the evaluator with a budget of max_steps (the caller picks
+// the check's own #steps, the file's budget or a mutant's). Never prints.
+CheckOutcome run_check(File *file, CheckDecl *check, uint64_t max_steps, bool profile = false);
 // The source line and a caret under loc, as diagnostics print them.
 void show_source(FILE *out, const Source *src, Loc loc);
 

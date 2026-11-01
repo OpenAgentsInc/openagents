@@ -975,7 +975,7 @@ static int usage() {
           "       coax deps    file.coax --lowering [--proc NAME]  JSON ordered lowering: operations, traps, sequencing\n"
           "       coax deps    file.coax --effects [--proc NAME]   JSON transitive may-effects and witness paths\n"
           "       coax deps    file.coax --modules                 JSON module content and dependency revisions\n"
-          "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--evidence FILE]\n"
+          "       coax test    file.coax [--steps N] [--slots N] [--only SUBSTR] [--list] [--profile steps] [--evidence FILE]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...] [--evidence FILE]\n"
           "                    [--root-only] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
           "                    --root-only mutates entry-source procedures; all baseline checks still run\n"
@@ -1196,7 +1196,7 @@ static int main_impl(int argc, char **argv) {
   const char *only = nullptr;
   uint32_t verification_abi = 1;
   bool verification_abi_seen = false;
-  bool list = false;
+  bool list = false, profile_steps = false;
   uint64_t test_slots = 0;
   QueryRequest query;
   for (int i = 2; i < argc; i++) {
@@ -1236,6 +1236,7 @@ static int main_impl(int argc, char **argv) {
       verification_abi_seen = true;
     }
     else if (a == "--list" && cmd == "test") list = true;
+    else if (a == "--profile" && cmd == "test" && i + 1 < argc && std::string(argv[i + 1]) == "steps" && !profile_steps) { profile_steps = true; ++i; }
     else if (a == "--slots" && i + 1 < argc && cmd == "test") {
       // A smaller value-slot limit for the checks than the test limit (a shared machine's memory).
       const char *value = argv[++i];
@@ -1484,7 +1485,7 @@ static int main_impl(int argc, char **argv) {
     // Checks get their own, larger storage limits (budget.coax): a test may hold a whole world.
     file.ct_memory->slot_limit = slots;
     file.ct_memory->container_limit = CB_test_container_limit();
-    return record(cmd == "test" ? test_command(&file, steps, only, list) : mutate_command(&arena, &file, mutation), true);
+    return record(cmd == "test" ? test_command(&file, steps, only, list, profile_steps) : mutate_command(&arena, &file, mutation), true);
   }
   if (cmd == "query") {
     query.json = g_json_errors;

@@ -1,0 +1,3 @@
+// expect: E0220
+main :: () {}
+#test "a budget that is a name" #steps LIMIT { #assert true; }
