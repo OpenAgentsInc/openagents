@@ -58,8 +58,41 @@ we_layout :: (tensors: [] WgTensor, count: int, offsets: [] int) -> int {
   for i: 0..<count { offsets[i] = at; at += tensors[i].elements; }
   return at;
 }
-// Every tensor decoded into W: f32 copied, f16 decoded. Quantized types are
-// refused for now (kind); an infinite or NaN weight is refused (number).
+// The half at byte p.
+we_half_at :: (b: [] u8, p: int) -> WeHalf { return we_half(cast(int) b[p] | (cast(int) b[p + 1] << 8)); }
+// One block of 32 quantized values at byte p into out, as ggml's
+// dequantize_row_* does: q8_0 d*q; q4_0 d*(q-8); q4_1 d*q+m; q5_0
+// d*(q-16) and q5_1 d*q+m, with the fifth bits in a 32-bit word. False for
+// a scale that is infinite or NaN.
+we_dequant :: (b: [] u8, kind: int, p: int, out: [] f32) -> bool {
+  hd := we_half_at(b, p); if !hd.ok { return false; }
+  d := hd.value;
+  if kind == WG_Q8_0 {
+    for j: 0..<32 { q := cast(int) b[p + 2 + j]; if q >= 128 { q -= 256; } out[j] = d * cast(f32) q; }
+    return true;
+  }
+  m: f32 = 0; at := p + 2;
+  if kind == WG_Q4_1 || kind == WG_Q5_1 { hm := we_half_at(b, p + 2); if !hm.ok { return false; } m = hm.value; at = p + 4; }
+  if kind == WG_Q4_0 || kind == WG_Q4_1 {
+    off := ifx kind == WG_Q4_0 then 8 else 0;
+    for j: 0..<16 {
+      q := cast(int) b[at + j];
+      out[j] = d * cast(f32) ((q & 15) - off) + m; out[j + 16] = d * cast(f32) ((q >> 4) - off) + m;
+    }
+    return true;
+  }
+  qh := wg_u32(b, at); qs := at + 4;
+  off := ifx kind == WG_Q5_0 then 16 else 0;
+  for j: 0..<16 {
+    q := cast(int) b[qs + j];
+    h0 := ((qh >> j) << 4) & 16; h1 := (qh >> (j + 12)) & 16;
+    out[j] = d * cast(f32) (((q & 15) | h0) - off) + m; out[j + 16] = d * cast(f32) (((q >> 4) | h1) - off) + m;
+  }
+  return true;
+}
+// Every tensor decoded into W: f32 copied, f16 decoded, q8_0, q5_0, q5_1,
+// q4_0 and q4_1 dequantized. An infinite or NaN weight or scale is refused
+// (number).
 we_load :: (b: [] u8, tensors: [] WgTensor, count: int, offsets: [] int, w: [] f32) -> WeStatus {
   for i: 0..<count {
     t := tensors[i]; at := offsets[i];
@@ -68,10 +101,14 @@ we_load :: (b: [] u8, tensors: [] WgTensor, count: int, offsets: [] int, w: [] f
       for j: 0..<t.elements { v := wg_f32_at(b, t.begin + 4 * j); if !(v >= -3.0e38 && v <= 3.0e38) { return WeStatus.number; } w[at + j] = v; }
     } else if t.kind == WG_F16 {
       for j: 0..<t.elements {
-        p := t.begin + 2 * j;
-        h := we_half(cast(int) b[p] | (cast(int) b[p + 1] << 8));
+        h := we_half_at(b, t.begin + 2 * j);
         if !h.ok { return WeStatus.number; }
         w[at + j] = h.value;
+      }
+    } else if t.kind == WG_Q8_0 || t.kind == WG_Q4_0 || t.kind == WG_Q4_1 || t.kind == WG_Q5_0 || t.kind == WG_Q5_1 {
+      bytes := wg_block_bytes(t.kind);
+      for k: 0..<t.elements / 32 {
+        if !we_dequant(b, t.kind, t.begin + k * bytes, w[at + 32 * k..<at + 32 * k + 32]) { return WeStatus.number; }
       }
     } else { return WeStatus.kind; }
   }
@@ -617,6 +654,34 @@ psionic_whisper_resample :: (mono: [] f32, rate: int, out: [] f32) -> int #expor
   return wv_resample(mono, rate, table[..], out);
 }
 
+#test "quantized blocks decode as ggml does" {
+  // d = 0.5 (0x3800), m = -1 (0xbc00)
+  b: [40] u8; out: [32] f32;
+  b[0] = 0x00; b[1] = 0x38;
+  for j: 0..<32 { b[2 + j] = cast(u8) ((j * 9) & 255); }
+  #assert we_dequant(b[..], WG_Q8_0, 0, out[..]);
+  for j: 0..<32 { q := (j * 9) & 255; if q >= 128 { q -= 256; } #assert out[j] == 0.5 * cast(f32) q; }
+  // q4_0: byte j holds value j (low nibble) and value j+16 (high nibble)
+  for j: 0..<16 { b[2 + j] = cast(u8) (j | ((15 - j) << 4)); }
+  #assert we_dequant(b[..], WG_Q4_0, 0, out[..]);
+  for j: 0..<16 { #assert out[j] == 0.5 * cast(f32) (j - 8) && out[j + 16] == 0.5 * cast(f32) (7 - j); }
+  // q4_1 with m = -1
+  b[2] = 0x00; b[3] = 0xbc; for j: 0..<16 { b[4 + j] = cast(u8) (j | ((15 - j) << 4)); }
+  #assert we_dequant(b[..], WG_Q4_1, 0, out[..]);
+  for j: 0..<16 { #assert out[j] == 0.5 * cast(f32) j - 1 && out[j + 16] == 0.5 * cast(f32) (15 - j) - 1; }
+  // q5_0: fifth bits set for values 0 and 16 only (qh bits 0 and 16)
+  b[2] = 0x01; b[3] = 0; b[4] = 0x01; b[5] = 0;
+  for j: 0..<16 { b[6 + j] = cast(u8) (3 | (5 << 4)); }
+  #assert we_dequant(b[..], WG_Q5_0, 0, out[..]);
+  #assert out[0] == 0.5 * cast(f32) (19 - 16) && out[1] == 0.5 * cast(f32) (3 - 16) && out[16] == 0.5 * cast(f32) (21 - 16) && out[17] == 0.5 * cast(f32) (5 - 16);
+  // q5_1: the same bits, m = -1, no offset
+  b[2] = 0x00; b[3] = 0xbc; b[4] = 0x01; b[5] = 0; b[6] = 0x01; b[7] = 0;
+  for j: 0..<16 { b[8 + j] = cast(u8) (3 | (5 << 4)); }
+  #assert we_dequant(b[..], WG_Q5_1, 0, out[..]);
+  #assert out[0] == 0.5 * 19 - 1 && out[1] == 0.5 * 3 - 1 && out[16] == 0.5 * 21 - 1 && out[17] == 0.5 * 5 - 1;
+  // an infinite scale is refused
+  b[0] = 0x00; b[1] = 0x7c; #assert !we_dequant(b[..], WG_Q8_0, 0, out[..]);
+}
 #test "halves decode exactly" #steps 200000000 {
   #assert we_half(0x3c00).value == 1 && we_half(0xc000).value == -2 && we_half(0x0000).value == 0 && we_half(0x7bff).value == 65504;
   #assert we_half(0x0001).value == f32_from_bits(0x33800000) && we_half(0x03ff).value == cast(f32) 1023 * f32_from_bits(0x33800000);
