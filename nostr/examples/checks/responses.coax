@@ -1,0 +1,133 @@
+// The checks of responses.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/responses.coax --run-steps 250000000
+#load "../responses.coax";
+
+// book:begin check
+// The ids and tags from a Python script written from NIP-01, NIP-18,
+// NIP-22 and NIP-25 (it shares no code with Coax): the ids are
+// hashlib.sha256 of json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False). Python can't sign, so S6 and
+// S16, whose content holds a signed event, have tags here and no id.
+PY_ID :: [8] string.[
+  "6b3c564c3417f70992cd4dc0ddd12bb5448ab1bf1e327fb11575b5db0c764321",
+  "fdb6fe34ceb4cf646cb68bf987ca2577d3aaecd1c7dde5eb636d6bb647e532e1",
+  "2efea399f1bbe153269ce4f2d529bfe7b4ffa674b9b059a8bdfa4df63b794684",
+  "3c187a4773d49e218578670712e79420f595b99296d94c20547e4867e7a87b47",
+  "c2fd961356c6b7dc639c6b6ce83b7102ea6cb6a5de791e02f16912ccf9d7a566",
+  "744446136e3d8d34da980aa99804bd7ffb918cafd728a74116b9256515c62339",
+  "78f44c6caec878080ccaca6ce225181b5a7d56d72b18a5e9aed90240a0c835ad",
+  "001b02a79825014c0eeb2964959c9bfef42aeb1bca6a8cb3afbe0b88b9638834"];
+PY_NAME :: [8] string.["N", "R", "X1", "X2", "X3", "X4", "C1", "C2"];
+PY_AUTHOR :: [8] int.[0, 0, 1, 2, 2, 0, 1, 2];
+PY_AT :: [8] int.[0, 60, 240, 300, 360, 420, 480, 540];
+PY_KIND :: [8] int.[1, 30023, 7, 7, 7, 7, 1111, 1111];
+PY_CONTENT :: [8] string.["Oolong keeps for years.", "Keep tea dry, dark and sealed.", "+", "-", "+", ":tea:", "Does this hold for green tea?", "Green tea fades in months."];
+PY_LIKE :: "[[\"e\",\"6b3c564c3417f70992cd4dc0ddd12bb5448ab1bf1e327fb11575b5db0c764321\",\"wss://relay.example.com\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"wss://relay.example.com\"],[\"k\",\"1\"]]";
+PY_TAGS :: [8] string.[
+  "[]",
+  "[[\"d\",\"tea-storage\"],[\"title\",\"Storing tea\"]]",
+  PY_LIKE, PY_LIKE, PY_LIKE,
+  "[[\"e\",\"6b3c564c3417f70992cd4dc0ddd12bb5448ab1bf1e327fb11575b5db0c764321\",\"wss://relay.example.com\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"wss://relay.example.com\"],[\"k\",\"1\"],[\"emoji\",\"tea\",\"https://example.com/tea.png\"]]",
+  "[[\"A\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage\",\"wss://relay.example.com\"],[\"K\",\"30023\"],[\"P\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"wss://relay.example.com\"],[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage\",\"wss://relay.example.com\"],[\"e\",\"fdb6fe34ceb4cf646cb68bf987ca2577d3aaecd1c7dde5eb636d6bb647e532e1\",\"wss://relay.example.com\"],[\"k\",\"30023\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"wss://relay.example.com\"]]",
+  "[[\"A\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage\",\"wss://relay.example.com\"],[\"K\",\"30023\"],[\"P\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"wss://relay.example.com\"],[\"e\",\"78f44c6caec878080ccaca6ce225181b5a7d56d72b18a5e9aed90240a0c835ad\",\"wss://relay.example.com\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"k\",\"1111\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://relay.example.com\"]]"];
+PY_S6 :: "[[\"e\",\"6b3c564c3417f70992cd4dc0ddd12bb5448ab1bf1e327fb11575b5db0c764321\",\"wss://relay.example.com\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+PY_S16 :: "[[\"e\",\"fdb6fe34ceb4cf646cb68bf987ca2577d3aaecd1c7dde5eb636d6bb647e532e1\",\"wss://relay.example.com\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"k\",\"30023\"],[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage\"]]";
+
+// An event with this id, pubkey, time, kind, tags and content and a zero
+// signature, read with its ID recomputed; the signature is not checked.
+py_event :: (id: string, pub: string, at: int, kind: int, tags: string, content: string, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, id);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, pub);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, at);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, kind);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+py :: (i: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  return py_event(PY_ID[i], PUB[PY_AUTHOR[i]], T0 + PY_AT[i], PY_KIND[i], PY_TAGS[i], PY_CONTENT[i], out, scratch);
+}
+
+#test "the ids are Python's, and so are the tags the example writes" {
+  buf: [8][4096] u8; scratch: [4096] u8; ev: [8] NostrEvent;
+  for i: 0..<8 { ev[i] = py(i, buf[i][..], scratch[..]); #assert ev[i].error == NE_OK && ns_equal32(ev[i].computed_id, ev[i].id); }
+  out: [4096] u8;
+  t := n18_repost_tags(ev[0], RELAY, out[..]); #assert t.status == N18_OK && t.kind == 6 && cast(string) out[0..<t.n] == PY_S6;
+  t = n18_repost_tags(ev[1], RELAY, out[..]); #assert t.status == N18_OK && t.kind == 16 && cast(string) out[0..<t.n] == PY_S16;
+  #assert reaction_tags(ev[0], RELAY, "", out[..]) == PY_LIKE;
+  #assert reaction_tags(ev[0], RELAY, ",[\"emoji\",\"tea\",\"https://example.com/tea.png\"]", out[..]) == PY_TAGS[5];
+  #assert comment_on(ev[1], RELAY, out[..]) == PY_TAGS[6];
+  #assert reply_to_comment(ev[6], RELAY, out[..]) == PY_TAGS[7];
+}
+
+// The tally by hand: Bob likes (X1); Carol dislikes (X2) and later likes
+// (X3), so only X3 counts; Alice's :tea: (X4) is a custom emoji. Likes 2,
+// dislikes 0, others 1, one superseded. The notes and comments in the set
+// are other kinds and don't count.
+#test "the tally of N matches the hand count, in any order" {
+  buf: [8][4096] u8; scratch: [4096] u8; ev: [8] NostrEvent;
+  for i: 0..<8 { ev[i] = py(i, buf[i][..], scratch[..]); }
+  t := n25_tally(ev[..], ev[0].id);
+  #assert t.likes == 2 && t.dislikes == 0 && t.others == 1 && t.superseded == 1 && t.refused == 0;
+  rev: [8] NostrEvent; for k: 0..<8 { rev[k] = ev[7 - k]; }
+  t = n25_tally(rev[..], ev[0].id);
+  #assert t.likes == 2 && t.dislikes == 0 && t.others == 1 && t.superseded == 1 && t.refused == 0;
+  // Without X3, Carol's dislike is her latest.
+  less: [7] NostrEvent; k := 0; for i: 0..<8 { if i != 4 { less[k] = ev[i]; k += 1; } }
+  t = n25_tally(less[..], ev[0].id);
+  #assert t.likes == 1 && t.dislikes == 1 && t.others == 1 && t.superseded == 0;
+  // No reactions name R.
+  t = n25_tally(ev[..], ev[1].id); #assert t.likes == 0 && t.dislikes == 0 && t.others == 0;
+}
+
+// NIP-18: a kind 6 holding Python's N reads N back with the id it names.
+#test "a repost of Python's N reads N back" {
+  nb: [4096] u8; scratch: [4096] u8; n := py(0, nb[..], scratch[..]);
+  b: [8192] u8; inner: [4096] u8; s2: [4096] u8;
+  r := n18_repost(unsigned(6, PY_S6, n.original, b[..]), inner[..], s2[..]);
+  #assert r.status == N18_OK && r.embedded && ns_equal32(r.target, n.id) && cast(string) r.inner.original == n.original;
+}
+
+// NIP-22's six examples, tags as the NIP prints them. Each reads, with the
+// root and parent the NIP's comments describe. The blog comment's parent has
+// both a and e; the reader takes e, the first of e, a and i.
+NIP22_BLOG :: "[[\"A\",\"30023:3c9849383bdea883b0bd16fece1ed36d37e37cdde3ce43b17ea4e9192ec11289:f9347ca7\",\"wss://example.relay\"],[\"K\",\"30023\"],[\"P\",\"3c9849383bdea883b0bd16fece1ed36d37e37cdde3ce43b17ea4e9192ec11289\",\"wss://example.relay\"],[\"a\",\"30023:3c9849383bdea883b0bd16fece1ed36d37e37cdde3ce43b17ea4e9192ec11289:f9347ca7\",\"wss://example.relay\"],[\"e\",\"5b4fc7fed15672fefe65d2426f67197b71ccc82aa0cc8a9e94f683eb78e07651\",\"wss://example.relay\"],[\"k\",\"30023\"],[\"p\",\"3c9849383bdea883b0bd16fece1ed36d37e37cdde3ce43b17ea4e9192ec11289\",\"wss://example.relay\"]]";
+NIP22_FILE :: "[[\"E\",\"768ac8720cdeb59227cf95e98b66560ef03d8bc9a90d721779e76e68fb42f5e6\",\"wss://example.relay\",\"3721e07b079525289877c366ccab47112bdff3d1b44758ca333feb2dbbbbe5bb\"],[\"K\",\"1063\"],[\"P\",\"3721e07b079525289877c366ccab47112bdff3d1b44758ca333feb2dbbbbe5bb\"],[\"e\",\"768ac8720cdeb59227cf95e98b66560ef03d8bc9a90d721779e76e68fb42f5e6\",\"wss://example.relay\",\"3721e07b079525289877c366ccab47112bdff3d1b44758ca333feb2dbbbbe5bb\"],[\"k\",\"1063\"],[\"p\",\"3721e07b079525289877c366ccab47112bdff3d1b44758ca333feb2dbbbbe5bb\"]]";
+NIP22_REPLY :: "[[\"E\",\"768ac8720cdeb59227cf95e98b66560ef03d8bc9a90d721779e76e68fb42f5e6\",\"wss://example.relay\",\"fd913cd6fa9edb8405750cd02a8bbe16e158b8676c0e69fdc27436cc4a54cc9a\"],[\"K\",\"1063\"],[\"P\",\"fd913cd6fa9edb8405750cd02a8bbe16e158b8676c0e69fdc27436cc4a54cc9a\"],[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"wss://example.relay\",\"93ef2ebaaf9554661f33e79949007900bbc535d239a4c801c33a4d67d3e7f546\"],[\"k\",\"1111\"],[\"p\",\"93ef2ebaaf9554661f33e79949007900bbc535d239a4c801c33a4d67d3e7f546\"]]";
+NIP22_WEB :: "[[\"I\",\"https://abc.com/articles/1\"],[\"K\",\"web\"],[\"i\",\"https://abc.com/articles/1\"],[\"k\",\"web\"]]";
+NIP22_PODCAST :: "[[\"I\",\"podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f\",\"https://fountain.fm/episode/z1y9TMQRuqXl2awyrQxg\"],[\"K\",\"podcast:item:guid\"],[\"i\",\"podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f\",\"https://fountain.fm/episode/z1y9TMQRuqXl2awyrQxg\"],[\"k\",\"podcast:item:guid\"]]";
+NIP22_PODCAST_REPLY :: "[[\"I\",\"podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f\",\"https://fountain.fm/episode/z1y9TMQRuqXl2awyrQxg\"],[\"K\",\"podcast:item:guid\"],[\"e\",\"80c48d992a38f9c445b943a9c9f1010b396676013443765750431a9004bdac05\",\"wss://example.relay\",\"252f10c83610ebca1a059c0bae8255eba2f95be4d1d7bcfa89d7248a82d9f111\"],[\"k\",\"1111\"],[\"p\",\"252f10c83610ebca1a059c0bae8255eba2f95be4d1d7bcfa89d7248a82d9f111\"]]";
+#test "NIP-22's six examples read with the scopes the NIP describes" {
+  tags := [6] string.[NIP22_BLOG, NIP22_FILE, NIP22_REPLY, NIP22_WEB, NIP22_PODCAST, NIP22_PODCAST_REPLY];
+  root := [6] u8.['A', 'E', 'E', 'I', 'I', 'I'];
+  parent := [6] u8.['e', 'e', 'e', 'i', 'i', 'e'];
+  root_kind := [6] string.["30023", "1063", "1063", "web", "podcast:item:guid", "podcast:item:guid"];
+  parent_kind := [6] string.["30023", "1063", "1111", "web", "podcast:item:guid", "1111"];
+  for i: 0..<6 {
+    e := n34_event(tags[i], 1111); c := n22_comment(e);
+    #assert c.status == N34_OK && c.root.at == root[i] && c.parent.at == parent[i];
+    #assert nt_raw(e, c.root.kind.v[0]) == root_kind[i] && nt_raw(e, c.parent.kind.v[0]) == parent_kind[i];
+  }
+}
+
+// NIP-25's examples: a star for a website, a like for a podcast episode (the
+// first i is the target), and :soapbox: with its emoji tag. The NIP's emoji
+// example prints only the emoji tag; an e tag is added because NIP-25 says
+// there must always be one.
+#test "NIP-25's examples read as the NIP says" {
+  b: [4096] u8;
+  r := n25_reaction(unsigned(17, "[[\"k\",\"web\"],[\"i\",\"https://example.com\"]]", "⭐", b[..]));
+  #assert r.status == N25_OK && r.value == N25_TEXT && cast(string) r.external[0..<r.external_n] == "https://example.com";
+  r = n25_reaction(unsigned(17, "[[\"k\",\"podcast:guid\"],[\"i\",\"podcast:guid:917393e3-1b1e-5cef-ace4-edaa54e1f810\",\"https://fountain.fm/show/QRT0l2EfrKXNGDlRrmjL\"],[\"k\",\"podcast:item:guid\"],[\"i\",\"podcast:item:guid:PC20-229\",\"https://fountain.fm/episode/DQqBg5sD3qFGMCZoSuLF\"]]", "+", b[..]));
+  #assert r.status == N25_OK && r.value == N25_LIKE && cast(string) r.external[0..<r.external_n] == "podcast:guid:917393e3-1b1e-5cef-ace4-edaa54e1f810";
+  r = n25_reaction(unsigned(7, "[[\"e\",\"6b3c564c3417f70992cd4dc0ddd12bb5448ab1bf1e327fb11575b5db0c764321\"],[\"emoji\",\"soapbox\",\"https://gleasonator.com/emoji/Gleasonator/soapbox.png\"]]", ":soapbox:", b[..]));
+  #assert r.status == N25_OK && r.value == N25_CUSTOM;
+  // "+" or empty is a like, "-" a dislike, anything else neither.
+  values := [5] string.["+", "", "-", "❤", ":-)"];
+  want := [5] int.[N25_LIKE, N25_LIKE, N25_DISLIKE, N25_TEXT, N25_TEXT];
+  for i: 0..<5 { #assert n25_reaction(unsigned(7, PY_LIKE, values[i], b[..])).value == want[i]; }
+}
+// book:end check

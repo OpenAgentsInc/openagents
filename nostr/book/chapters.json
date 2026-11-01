@@ -1039,14 +1039,18 @@
    "number": 52,
    "title": "Reposts, reactions and comments",
    "file": "ch052-reposts-reactions-and-comments.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     22,
     50
    ],
    "source": [
-    "coax/lib/nostr/nip22.coax"
+    "coax/lib/nostr/nip22.coax",
+    "coax/lib/nostr/nip18.coax",
+    "coax/lib/nostr/nip25.coax",
+    "nostr/examples/responses.coax",
+    "nostr/examples/checks/responses.coax"
    ],
    "qualified_targets": [
     "cpu"

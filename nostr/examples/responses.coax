@@ -1,0 +1,298 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip25.coax";
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+REPOST :: [10] string.["ok", "event", "kind", "tag", "missing e", "no relay", "content is no event", "embedded kind", "mismatch", "output"];
+REACTION :: [7] string.["ok", "event", "kind", "tag", "missing", "no emoji tag", "limit"];
+VALUE :: [4] string.["like", "dislike", "text", "custom emoji"];
+COMMENT :: [7] string.["ok", "event", "kind", "missing", "malformed", "output", "kinds disagree"];
+TAG_STATUS :: [8] string.["ok", "event", "index", "shape", "hex", "relay", "address", "limit"];
+EVENT_STATUS :: [9] string.["ok", "json", "shape", "limit", "hex", "output", "alias", "id does not match", "signature"];
+// BIP-340 test vectors 0, 1 and 2's published public keys.
+PEOPLE :: [3] string.["Alice", "Bob", "Carol"];
+PUB :: [3] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"];
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+
+// The events, by name, so the output names ids by name.
+Named :: struct { name: string; event: NostrEvent; }
+EVENTS :: 10;
+show_id :: (all: [] Named, id: [32] u8) {
+  for n: all { if n.event.error == NE_OK && ns_equal32(n.event.id, id) { print("%", n.name); return; } }
+  for k: 0..<3 { key: [32] u8; decode_hex(PUB[k], key[..]); if ns_equal32(key, id) { print("%", PEOPLE[k]); return; } }
+  text: [64] u8; print("%...", hex32(id, text[..])[0..<8]);
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// A reaction's tags, as NIP-25's example code writes them: the target with
+// a relay hint and its author, the author with the hint, and its kind.
+reaction_tags :: (target: NostrEvent, relay: string, extra: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[[\"e\",");
+  n = n10_hex(out, n, target.id); n = json_raw(out, n, ",");
+  n = json_write_string(out, n, relay); n = json_raw(out, n, ",");
+  n = n10_hex(out, n, target.public_key); n = json_raw(out, n, "],[\"p\",");
+  n = n10_hex(out, n, target.public_key); n = json_raw(out, n, ",");
+  n = json_write_string(out, n, relay); n = json_raw(out, n, "],[\"k\",\"");
+  n = json_write_int(out, n, target.kind); n = json_raw(out, n, "\"]");
+  n = json_raw(out, n, extra); n = json_raw(out, n, "]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// One scope tag: name, then each value of the tag t as its raw JSON text.
+// A comma goes before every tag but the first, which follows the "[" at 0.
+copy_tag :: (out: [] u8, at: int, name: string, e: NtEvent, t: NtTag) -> int {
+  n := ifx at > 1 then json_raw(out, at, ",") else at;
+  n = json_raw(out, n, "[\""); n = json_raw(out, n, name); n = json_raw(out, n, "\"");
+  for v: 0..<t.values {
+    n = json_raw(out, n, ",\""); n = json_raw(out, n, nt_raw(e, t.v[v])); n = json_raw(out, n, "\"");
+  }
+  return json_raw(out, n, "]");
+}
+// A top-level comment on an addressable event: its address is the root A
+// and the parent a, its id the parent e, its kind K and k, its author P and p.
+comment_on :: (root: NostrEvent, relay: string, out: [] u8) -> string {
+  pub: [64] u8; d := nostr_tag_d(root);
+  address: [512] u8;
+  m := json_write_int(address[..], 0, root.kind); m = json_raw(address[..], m, ":");
+  m = json_raw(address[..], m, hex32(root.public_key, pub[..])); m = json_raw(address[..], m, ":");
+  m = json_raw(address[..], m, cast(string) d.d[0..<d.d_n]);
+  coord := cast(string) address[0..<m];
+  id: [64] u8;
+  n := json_raw(out, 0, "[");
+  names := [2] string.["A", "a"]; kinds := [2] string.["K", "k"]; authors := [2] string.["P", "p"];
+  for s: 0..<2 {
+    if s > 0 { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "[\""); n = json_raw(out, n, names[s]); n = json_raw(out, n, "\",");
+    n = json_write_string(out, n, coord); n = json_raw(out, n, ","); n = json_write_string(out, n, relay); n = json_raw(out, n, "]");
+    if s > 0 {
+      n = json_raw(out, n, ",[\"e\",\""); n = json_raw(out, n, hex32(root.id, id[..]));
+      n = json_raw(out, n, "\","); n = json_write_string(out, n, relay); n = json_raw(out, n, "]");
+    }
+    n = json_raw(out, n, ",[\""); n = json_raw(out, n, kinds[s]); n = json_raw(out, n, "\",\"");
+    n = json_write_int(out, n, root.kind); n = json_raw(out, n, "\"]");
+    n = json_raw(out, n, ",[\""); n = json_raw(out, n, authors[s]); n = json_raw(out, n, "\",\"");
+    n = json_raw(out, n, hex32(root.public_key, pub[..])); n = json_raw(out, n, "\","); n = json_write_string(out, n, relay); n = json_raw(out, n, "]");
+  }
+  n = json_raw(out, n, "]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// A reply to a comment: the parent's root scope, K and P copied as they
+// are, then the parent itself as e (with its author), k 1111 and p.
+reply_to_comment :: (parent: NostrEvent, relay: string, out: [] u8) -> string {
+  e := nt_event_of(parent); c := n22_comment(e);
+  #assert c.status == N34_OK;
+  root_name: [1] u8; root_name[0] = c.root.at;
+  n := json_raw(out, 0, "[");
+  n = copy_tag(out, n, cast(string) root_name[..], e, c.root.ref);
+  n = copy_tag(out, n, "K", e, c.root.kind);
+  if c.root.author.n > 0 { n = copy_tag(out, n, "P", e, c.root.author); }
+  id: [64] u8; pub: [64] u8;
+  n = json_raw(out, n, ",[\"e\",\""); n = json_raw(out, n, hex32(parent.id, id[..]));
+  n = json_raw(out, n, "\","); n = json_write_string(out, n, relay);
+  n = json_raw(out, n, ",\""); n = json_raw(out, n, hex32(parent.public_key, pub[..]));
+  n = json_raw(out, n, "\"],[\"k\",\"1111\"],[\"p\",\""); n = json_raw(out, n, hex32(parent.public_key, pub[..]));
+  n = json_raw(out, n, "\","); n = json_write_string(out, n, relay); n = json_raw(out, n, "]]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// Print what n18_repost reads from a repost.
+show_repost :: (all: [] Named, label: string, e: NostrEvent) {
+  inner: [8192] u8; scratch: [8192] u8;
+  r := n18_repost(e, inner[..], scratch[..]);
+  print("%: %", label, REPOST[r.status]);
+  if r.status == N18_TAG { print(", tag % is %\n", r.at, TAG_STATUS[r.tag_error]); return; }
+  if r.status == N18_RELAY { print(" at tag %\n", r.at); return; }
+  if r.status == N18_INNER { print(", %\n", EVENT_STATUS[r.inner.error]); return; }
+  if r.status != N18_OK { print("\n"); return; }
+  print(", kind %, target ", e.kind); show_id(all, r.target);
+  if r.has_author { print(", author "); show_id(all, r.author); }
+  if r.kind >= 0 { print(", k %", r.kind); }
+  if r.has_address { print(", a %:...:%", r.address.address_kind, cast(string) r.address.d[0..<r.address.d_n]); }
+  if r.embedded {
+    // The reading checks the embedded id; its signature is the caller's to check.
+    check: [8192] u8;
+    v := nostr_event_verify_vartime(r.inner.original, check[..], false);
+    print(", embedded kind % signature %", r.inner.kind, ifx v.error == NE_OK && v.verified then "valid" else "invalid");
+  }
+  print("\n");
+}
+// Print what n25_reaction reads from a reaction.
+show_reaction :: (all: [] Named, label: string, e: NostrEvent) {
+  r := n25_reaction(e);
+  print("%: %", label, REACTION[r.status]);
+  if r.status == N25_TAG { print(", tag % is %\n", r.at, TAG_STATUS[r.tag_error]); return; }
+  if r.status != N25_OK { print("\n"); return; }
+  print(", % \"%\"", VALUE[r.value], cast(string) r.content[0..<r.content_n]);
+  if e.kind == 17 { print(", external %\n", cast(string) r.external[0..<r.external_n]); return; }
+  print(", target "); show_id(all, r.target);
+  if r.kind >= 0 { print(", k %", r.kind); }
+  print("\n");
+}
+// Print what n22_comment reads from a comment.
+show_comment :: (all: [] Named, label: string, ev: NostrEvent) {
+  e := nt_event_of(ev); c := n22_comment(e);
+  print("%: %", label, COMMENT[c.status]);
+  if c.status != N34_OK { print("\n"); return; }
+  scopes := [2] N22Scope.[c.root, c.parent];
+  for s: scopes {
+    ref := nt_raw(e, s.ref.v[0]);
+    letter: [1] u8; letter[0] = s.at;
+    print(", % ", cast(string) letter[..]);
+    if s.at == 'E' || s.at == 'e' {
+      id: [32] u8; decode_hex(ref, id[..]); show_id(all, id);
+    } else { print("%", ref); }
+    print(" kind %", nt_raw(e, s.kind.v[0]));
+    if s.author.n > 0 { key: [32] u8; decode_hex(nt_raw(e, s.author.v[0]), key[..]); print(" by "); show_id(all, key); }
+  }
+  print("\n");
+}
+
+// An unsigned event with these tags and this content (a JSON string's raw
+// text), parsed but not verified: its id and sig are zeros. Used for the
+// refusals, which no signer here would write.
+EVENT_HEAD :: "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686400,\"kind\":";
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+unsigned :: (kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, EVENT_HEAD);
+  n = json_write_int(out, n, kind);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// BIP-340 test vectors 0, 1 and 2's published secret keys. Never sign with
+// a real key in an example.
+ALICE :: "0000000000000000000000000000000000000000000000000000000000000003";
+BOB :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+CAROL :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";
+RELAY :: "wss://relay.example.com";
+T0 :: 1761686400;
+EMOJI :: "[\"emoji\",\"tea\",\"https://example.com/tea.png\"]";
+
+main :: () {
+  alice: [32] u8; bob: [32] u8; carol: [32] u8;
+  decode_hex(ALICE, alice[..]); decode_hex(BOB, bob[..]); decode_hex(CAROL, carol[..]);
+  all: [EVENTS] Named;
+  buf: [EVENTS][8192] u8; tags: [4096] u8;
+
+  print("a note and an article by Alice\n");
+  all[0].name = "N"; all[0].event = sign(alice[..], T0, 1, "[]", "Oolong keeps for years.", buf[0][..]);
+  all[1].name = "R"; all[1].event = sign(alice[..], T0 + 60, 30023, "[[\"d\",\"tea-storage\"],[\"title\",\"Storing tea\"]]", "Keep tea dry, dark and sealed.", buf[1][..]);
+
+  print("reposts\n");
+  t := n18_repost_tags(all[0].event, RELAY, tags[..]); #assert t.status == N18_OK;
+  print("S6 (kind %) tags: %\n", t.kind, cast(string) tags[0..<t.n]);
+  all[2].name = "S6"; all[2].event = sign(bob[..], T0 + 120, t.kind, cast(string) tags[0..<t.n], all[0].event.original, buf[2][..]);
+  t = n18_repost_tags(all[1].event, RELAY, tags[..]); #assert t.status == N18_OK;
+  print("S16 (kind %) tags: %\n", t.kind, cast(string) tags[0..<t.n]);
+  all[3].name = "S16"; all[3].event = sign(carol[..], T0 + 180, t.kind, cast(string) tags[0..<t.n], all[1].event.original, buf[3][..]);
+
+  print("reactions to N\n");
+  print("tags: %\n", reaction_tags(all[0].event, RELAY, "", tags[..]));
+  all[4].name = "X1"; all[4].event = sign(bob[..], T0 + 240, 7, reaction_tags(all[0].event, RELAY, "", tags[..]), "+", buf[4][..]);
+  all[5].name = "X2"; all[5].event = sign(carol[..], T0 + 300, 7, reaction_tags(all[0].event, RELAY, "", tags[..]), "-", buf[5][..]);
+  all[6].name = "X3"; all[6].event = sign(carol[..], T0 + 360, 7, reaction_tags(all[0].event, RELAY, "", tags[..]), "+", buf[6][..]);
+  all[7].name = "X4"; all[7].event = sign(alice[..], T0 + 420, 7, reaction_tags(all[0].event, RELAY, ",[\"emoji\",\"tea\",\"https://example.com/tea.png\"]", tags[..]), ":tea:", buf[7][..]);
+
+  print("comments on R\n");
+  c := comment_on(all[1].event, RELAY, tags[..]);
+  print("C1 tags: %\n", c);
+  all[8].name = "C1"; all[8].event = sign(bob[..], T0 + 480, 1111, c, "Does this hold for green tea?", buf[8][..]);
+  c = reply_to_comment(all[8].event, RELAY, tags[..]);
+  print("C2 tags: %\n", c);
+  all[9].name = "C2"; all[9].event = sign(carol[..], T0 + 540, 1111, c, "Green tea fades in months.", buf[9][..]);
+
+  print("each event's id\n");
+  for e: all { hex: [64] u8; print("%: %, verified %\n", e.name, hex32(e.event.id, hex[..]), e.event.verified); }
+
+  print("read back\n");
+  show_repost(all[..], "S6", all[2].event);
+  show_repost(all[..], "S16", all[3].event);
+  for k: 4..<8 { show_reaction(all[..], all[k].name, all[k].event); }
+  show_comment(all[..], "C1", all[8].event);
+  show_comment(all[..], "C2", all[9].event);
+
+  print("the tally for N, from X1..X4 and the rest\n");
+  set: [EVENTS] NostrEvent;
+  for k: 0..<EVENTS { set[k] = all[EVENTS - 1 - k].event; }
+  tally := n25_tally(set[..], all[0].event.id);
+  print("likes %, dislikes %, others %, superseded %, refused %\n", tally.likes, tally.dislikes, tally.others, tally.superseded, tally.refused);
+
+  print("refusals\n");
+  bad: [8192] u8; more: [4096] u8;
+  // C2's tags without its K tag.
+  e := unsigned(1111, "[[\"A\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",\"1111\"]]", "", bad[..]);
+  show_comment(all[..], "comment without K", e);
+  e = unsigned(1111, "[[\"A\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage\"],[\"K\",\"30023\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",\"1\"]]", "", bad[..]);
+  show_comment(all[..], "comment K 30023, k 1", e);
+  e = unsigned(1111, "[[\"I\",\"https://example.com\"],[\"K\",\"web\"],[\"i\",\"https://example.com\"],[\"k\",\"30023\"]]", "", bad[..]);
+  show_comment(all[..], "comment K web, k 30023", e);
+  // A kind 6 whose e tag names R but whose content is N.
+  e = unsigned(6, n18_tags_named(all[1].event, more[..]), all[0].event.original, bad[..]);
+  show_repost(all[..], "kind 6, e R, content N", e);
+  t = n18_repost_tags(all[0].event, RELAY, tags[..]);
+  e = unsigned(6, n18_tags_named(all[1].event, more[..]), all[1].event.original, bad[..]);
+  show_repost(all[..], "kind 6 holding R", e);
+  e = unsigned(16, cast(string) tags[0..<t.n], all[0].event.original, bad[..]);
+  show_repost(all[..], "kind 16 holding N", e);
+  // N's text with one word changed: its id no longer recomputes.
+  edited: [4096] u8; n := json_raw(edited[..], 0, all[0].event.original);
+  for i: 0..<n - 5 { if cast(string) edited[i..<i + 5] == "years" { edited[i] = 'Y'; } }
+  e = unsigned(6, cast(string) tags[0..<t.n], cast(string) edited[0..<n], bad[..]);
+  show_repost(all[..], "kind 6, N edited", e);
+  e = unsigned(6, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]", "", bad[..]);
+  show_repost(all[..], "kind 6, e without relay", e);
+  e = unsigned(7, "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]", "+", bad[..]);
+  show_reaction(all[..], "reaction without e", e);
+  e = unsigned(7, reaction_tags(all[0].event, RELAY, "", tags[..]), ":tea:", bad[..]);
+  show_reaction(all[..], "reaction :tea: without emoji tag", e);
+  e = unsigned(1, reaction_tags(all[0].event, RELAY, "", tags[..]), "+", bad[..]);
+  show_reaction(all[..], "reaction of kind 1", e);
+  print("accepted\n");
+  e = unsigned(17, "[[\"k\",\"web\"],[\"i\",\"https://example.com\"]]", "⭐", bad[..]);
+  show_reaction(all[..], "kind 17", e);
+  t = n18_repost_tags(all[0].event, RELAY, tags[..]);
+  e = unsigned(6, cast(string) tags[0..<t.n], "", bad[..]);
+  show_repost(all[..], "kind 6, empty content", e);
+}
+
+// The tags n18_repost_tags writes for target, without the k and a tags:
+// an e tag for target and a p tag for its author, as a kind 6 would carry.
+n18_tags_named :: (target: NostrEvent, out: [] u8) -> string {
+  n := json_raw(out, 0, "[[\"e\","); n = n10_hex(out, n, target.id);
+  n = json_raw(out, n, ",\"wss://relay.example.com\"],[\"p\","); n = n10_hex(out, n, target.public_key); n = json_raw(out, n, "]]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// book:end example

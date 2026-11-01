@@ -1,0 +1,267 @@
+// NIP-25 reactions read from a parsed event through tags.coax: kind 7 for a
+// reaction to a Nostr event, kind 17 for one to external content (NIP-73
+// k and i tags), and a tally of the reactions to one event.
+//
+// A reading of the signed tags and content, not authority: it fetches
+// nothing and verifies no signature. The caller verifies the events it
+// passes to n25_tally; the tally trusts each event's pubkey and created_at.
+//
+// The value: content "+" or "" is a like, "-" a dislike, ":shortcode:" a
+// NIP-30 custom emoji (the first emoji tag must name that shortcode), and
+// any other content an emoji or text shown as it is. The target is the
+// last e tag and its author the last p tag, as NIP-25 asks a client to
+// write them when it adds others. One reaction counts per author and
+// target: the latest by created_at, the lower id on a tie (NIP-01's rule
+// for replaceable events; NIP-25 does not say).
+#load "nip18.coax";
+
+N25_OK :: 0; N25_EVENT :: 1; N25_KIND :: 2; N25_TAG :: 3; N25_MISSING :: 4;
+N25_EMOJI :: 5; N25_LIMIT :: 6;
+N25_LIKE :: 0; N25_DISLIKE :: 1; N25_TEXT :: 2; N25_CUSTOM :: 3;
+
+// book:begin record
+N25Reaction :: struct {
+  status:int=N25_EVENT; tag_error:int; at:int=-1;   // the refusing tag
+  value:int;                                        // like, dislike, text, custom
+  content:[NT_MAX_VALUE]u8; content_n:int;          // decoded
+  target:[32]u8;                                    // kind 7: the last e tag
+  has_author:bool; author:[32]u8;                   // kind 7: the last p tag
+  kind:int=-1;                                      // the k tag, or -1
+  has_address:bool; address:NostrTag;               // kind 7: the first a tag
+  external:[NT_MAX_VALUE]u8; external_n:int;        // kind 17: the i value
+}
+N25Tally :: struct {
+  likes:int; dislikes:int; others:int;              // one per author
+  superseded:int;                                   // older ones by a counted author
+  refused:int;                                      // kind 7 or 17 events that don't read
+}
+// book:end record
+
+#test "kind 7: values, target, author, kind and address" {
+  b:[2048]u8;buf:[8][1024]u8;
+  r:=n25_reaction(n25_event(7,N25_T_TAGS,"+",b[..]));
+  #assert r.status==N25_OK && r.value==N25_LIKE && r.target[0]==0xaa && r.has_author && r.author[0]==0x79 && r.kind==1 && !r.has_address;
+  r=n25_reaction(n25_event(7,N25_T_TAGS,"",b[..]));#assert r.status==N25_OK && r.value==N25_LIKE && r.content_n==0;
+  #assert n25_reaction(n25_event(7,N25_T_TAGS,"-",b[..])).value==N25_DISLIKE;
+  r=n25_reaction(n25_event(7,N25_T_TAGS,"\\ud83c\\udf75",b[..]));
+  #assert r.status==N25_OK && r.value==N25_TEXT && r.content_n==4 && r.content[0]==0xf0;
+  #assert n25_reaction(n25_event(7,N25_T_TAGS,"++",b[..])).value==N25_TEXT && n25_reaction(n25_event(7,N25_T_TAGS,"--",b[..])).value==N25_TEXT;
+  // Several e and p tags: the last of each is the target and its author.
+  r=n25_reaction(n25_event(7,"[[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"],[\"a\",\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tea\"],[\"a\",\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:x\"]]","+",b[..]));
+  #assert r.status==N25_OK && r.target[0]==0xaa && r.author[0]==0xdd && r.kind== -1 && r.has_address && r.address.d_n==3;
+  r=n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",\"x\"]]","+",b[..]));
+  #assert r.status==N25_OK && !r.has_author && r.kind== -1;
+}
+#test "custom emoji: the first emoji tag names the shortcode" {
+  b:[2048]u8;buf:[8][1024]u8;
+  r:=n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"emoji\",\"soap_box-1\",\"https://x/s.png\"]]",":soap_box-1:",b[..]));
+  #assert r.status==N25_OK && r.value==N25_CUSTOM;
+  r=n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"emoji\",\"other\",\"https://x/s.png\"]]",":soapbox:",b[..]));
+  #assert r.status==N25_EMOJI;
+  #assert n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",":soapbox:",b[..])).status==N25_EMOJI;
+  // Not a shortcode: plain text, no tag needed.
+  #assert n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",":)",b[..])).value==N25_TEXT;
+  #assert n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]","::",b[..])).value==N25_TEXT;
+  #assert n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",":a b:",b[..])).value==N25_TEXT;
+  #assert n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",":a",b[..])).value==N25_TEXT;
+  #assert n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]","a:",b[..])).value==N25_TEXT;
+  #assert n25_shortcode(":aZ09_-:") && !n25_shortcode(":a.:") && !n25_shortcode(":a/:") && !n25_shortcode(":a@:") && !n25_shortcode(":a[:") && !n25_shortcode(":a`:") && !n25_shortcode(":a{:");
+  #assert !n25_shortcode(":a::") && !n25_shortcode(":") && !n25_shortcode("") && n25_shortcode(":Az:");
+  #assert n25_shortcode(":a:") && !n25_shortcode(":.a:");
+}
+#test "kind 17: k and i name external content" {
+  b:[2048]u8;buf:[8][1024]u8;
+  out:[256]u8;
+  r:=n25_reaction(n25_event(17,"[[\"k\",\"web\"],[\"i\",\"https://example.com\"]]","\\u2b50",b[..]));
+  #assert r.status==N25_OK && r.value==N25_TEXT && cast(string)r.external[0..<r.external_n]=="https://example.com" && r.kind== -1;
+  #assert n25_reaction(n25_event(17,"[[\"i\",\"https://example.com\"]]","+",b[..])).status==N25_MISSING;
+  #assert n25_reaction(n25_event(17,"[[\"k\",\"web\"]]","+",b[..])).status==N25_MISSING;
+  #assert n25_reaction(n25_event(17,"[[\"k\",\"web\"],[\"i\"]]","+",b[..])).status==N25_MISSING;
+  #assert n25_reaction(n25_event(17,"[[\"k\"],[\"i\",\"x\"]]","+",b[..])).status==N25_MISSING;
+  #assert n25_reaction(n25_event(17,"[[\"k\",\"web\"],[\"i\",1]]","+",b[..])).status==N25_EVENT;
+  #assert n25_reaction(n25_event(17,"[[\"k\",1],[\"i\",\"x\"]]","+",b[..])).status==N25_EVENT;
+  #assert n25_reaction(n25_event(17,"[[\"k\",\"web\"],[\"i\",\"x\"],[\"e\",\"aa\"]]","+",b[..])).status==N25_TAG;
+  #assert out.count==256;
+}
+#test "refusals: kind, no e tag, a broken tag, content over the bound" {
+  b:[2048]u8;buf:[8][1024]u8;
+  #assert n25_reaction(n25_event(1,N25_T_TAGS,"+",b[..])).status==N25_KIND && n25_reaction(n25_event(6,N25_T_TAGS,"+",b[..])).status==N25_KIND;
+  none:NostrEvent;#assert n25_reaction(none).status==N25_EVENT;
+  r:=n25_reaction(n25_event(7,"[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]","+",b[..]));#assert r.status==N25_MISSING && r.at== -1;
+  r=n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"79be\"]]","+",b[..]));
+  #assert r.status==N25_TAG && r.tag_error==NT_HEX && r.at==1;
+  long:[400]u8;for i:0..<257 {long[i]='x';}
+  #assert n25_reaction(n25_event(7,N25_T_TAGS,cast(string)long[0..<257],b[..])).status==N25_LIMIT;
+  #assert n25_reaction(n25_event(7,N25_T_TAGS,cast(string)long[0..<256],b[..])).status==N25_OK;
+  // A forged content span.
+  e:=n25_event(7,N25_T_TAGS,"+",b[..]);e.content_from=e.content_to+1;#assert n25_reaction(e).status==N25_EVENT;
+  // Empty spans at either end of the text are in bounds.
+  e=n25_event(7,N25_T_TAGS,"+",b[..]);e.content_from=0;e.content_to=0;#assert n25_reaction(e).status==N25_OK;
+  e=n25_event(7,N25_T_TAGS,"+",b[..]);e.content_from=e.original.count;e.content_to=e.original.count;#assert n25_reaction(e).status==N25_OK;
+  // The refusals past the tags name no tag.
+  #assert n25_reaction(n25_event(1,N25_T_TAGS,"+",b[..])).at== -1;
+  #assert n25_reaction(n25_event(7,N25_T_TAGS,cast(string)long[0..<257],b[..])).at== -1;
+  #assert n25_reaction(n25_event(17,"[[\"k\",\"web\"]]","+",b[..])).at== -1;
+  #assert n25_reaction(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",":x:",b[..])).at== -1;
+  // k, i and emoji values over the bound.
+  kl:[600]u8;n:=json_raw(kl[..],0,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",\"");n=json_raw(kl[..],n,cast(string)long[0..<257]);n=json_raw(kl[..],n,"\"]]");
+  r=n25_reaction(n25_event(7,cast(string)kl[0..<n],"+",b[..]));#assert r.status==N25_LIMIT && r.at== -1;
+  n=json_raw(kl[..],0,"[[\"k\",\"web\"],[\"i\",\"");n=json_raw(kl[..],n,cast(string)long[0..<257]);n=json_raw(kl[..],n,"\"]]");
+  r=n25_reaction(n25_event(17,cast(string)kl[0..<n],"+",b[..]));#assert r.status==N25_LIMIT && r.at== -1;
+  n=json_raw(kl[..],0,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"emoji\",\"");n=json_raw(kl[..],n,cast(string)long[0..<257]);n=json_raw(kl[..],n,"\"]]");
+  r=n25_reaction(n25_event(7,cast(string)kl[0..<n],":x:",b[..]));#assert r.status==N25_LIMIT && r.at== -1;
+  e=n25_event(7,N25_T_TAGS,"+",b[..]);e.content_to=e.original.count+1;#assert n25_reaction(e).status==N25_EVENT;
+  e=n25_event(7,N25_T_TAGS,"+",b[..]);e.content_from= -1;#assert n25_reaction(e).status==N25_EVENT;
+  e=n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"emoji\",1]]",":x:",b[..]);#assert n25_reaction(e).status==N25_EVENT;
+  e=n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"k\",1]]","+",b[..]);#assert n25_reaction(e).status==N25_EVENT;
+}
+#test "tally: one per author, the latest wins, ties to the lower id" {
+  b:[2048]u8;buf:[8][1024]u8;
+  set:[7]NostrEvent;
+  set[0]=n25_at(n25_event(7,N25_T_TAGS,"-",buf[0][..]),0x01,10,0x10);   // author 1 dislikes, then
+  set[1]=n25_at(n25_event(7,N25_T_TAGS,"+",buf[1][..]),0x01,20,0x11);   // likes: counted
+  set[2]=n25_at(n25_event(7,N25_T_TAGS,"+",buf[2][..]),0x02,30,0x22);   // author 2: a tie at 30,
+  set[3]=n25_at(n25_event(7,N25_T_TAGS,"-",buf[3][..]),0x02,30,0x23);   // the lower id counts
+  set[4]=n25_at(n25_event(7,N25_T_TAGS,"\\ud83c\\udf75",buf[4][..]),0x03,5,0x30);
+  set[5]=n25_at(n25_event(7,"[[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]]","+",buf[5][..]),0x04,5,0x40);  // other target
+  set[6]=n25_at(n25_event(7,"[[\"e\",\"aa\"]]","+",buf[6][..]),0x05,5,0x50);   // refused
+  target:[32]u8;for i:0..<32 {target[i]=0xaa;}
+  t:=n25_tally(set[..],target);
+  #assert t.likes==2 && t.dislikes==0 && t.others==1 && t.superseded==2 && t.refused==1;
+  #assert set[0].id[0]==0x10 && set[0].public_key[0]==0x01;
+  // Reversed, the same reactions count.
+  rev:[7]NostrEvent;for k:0..<7 {rev[k]=set[6-k];}
+  t=n25_tally(rev[..],target);#assert t.likes==2 && t.dislikes==0 && t.others==1 && t.superseded==2 && t.refused==1;
+  // A dislike as the newest of author 1 counts as a dislike.
+  last:[2]NostrEvent;last[0]=set[1];last[1]=n25_at(set[0],0x01,40,0x12);
+  t=n25_tally(last[..],target);#assert t.likes==0 && t.dislikes==1 && t.others==0 && t.superseded==1;
+  // The same event twice counts once.
+  two:[2]NostrEvent;two[0]=set[1];two[1]=set[1];
+  t=n25_tally(two[..],target);#assert t.likes==1 && t.superseded==1;
+  // Kind 17 reactions name no event and are left out.
+  ext:[1]NostrEvent;ext[0]=n25_at(n25_event(17,"[[\"k\",\"web\"],[\"i\",\"x\"]]","+",buf[7][..]),0x06,5,0x60);
+  t=n25_tally(ext[..],target);#assert t.likes==0 && t.refused==0 && t.superseded==0;
+  // A later reaction from the same author to another target doesn't supersede.
+  pair:[2]NostrEvent;pair[0]=set[1];pair[1]=n25_at(set[5],0x01,99,0x99);
+  t=n25_tally(pair[..],target);#assert t.likes==1 && t.superseded==0;
+  // A refused event by a counted author doesn't supersede either.
+  pair[1]=n25_at(set[6],0x01,99,0x99);t=n25_tally(pair[..],target);#assert t.likes==1 && t.superseded==0 && t.refused==1;
+  // A newer refused reaction by the same author that names the target first
+  // (its p tag breaks after its e tag) doesn't supersede.
+  pair[1]=n25_at(n25_event(7,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"79be\"]]","-",buf[7][..]),0x01,99,0x99);
+  t=n25_tally(pair[..],target);#assert t.likes==1 && t.superseded==0 && t.refused==1;
+  // Events of other kinds aren't reactions: neither counted nor refused.
+  pair[1]=n25_at(n25_event(1,N25_T_TAGS,"+",b[..]),0x01,99,0x99);t=n25_tally(pair[..],target);#assert t.likes==1 && t.superseded==0 && t.refused==0;
+}
+#test "newer: created_at, then the lower id" {
+  // Plain records: only created_at and id matter.
+  a:NostrEvent;b:NostrEvent;a.created_at=2;b.created_at=1;#assert n25_newer(a,b) && !n25_newer(b,a);
+  b.created_at=2;a.id[31]=1;#assert n25_newer(b,a) && !n25_newer(a,b) && !n25_newer(a,a);
+  a.id[31]=0;a.id[0]=1;b.id[0]=2;#assert n25_newer(a,b) && !n25_newer(b,a);
+  a.id[0]=5;b.id[0]=5;a.id[31]=1;b.id[31]=2;#assert n25_newer(a,b) && !n25_newer(b,a);
+}
+
+// ---- test events: a parsed event of this kind with these tags and this
+// content (a JSON string's raw text), and the same with an author, a time
+// and an id whose bytes are all one value.
+N25_T_TAGS :: "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"wss://r.example\"],[\"k\",\"1\"]]";
+n25_event :: (kind:int,tags:string,content:string,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":2,\"kind\":");
+  n=json_write_int(out,n,kind);n=json_raw(out,n,",\"tags\":");n=json_raw(out,n,tags);
+  n=json_raw(out,n,",\"content\":\"");n=json_raw(out,n,content);
+  n=json_raw(out,n,"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  return ne_parse(cast(string)out[0..<n]);
+}
+n25_at :: (e:NostrEvent,author:u8,created_at:int,id:u8)->NostrEvent {
+  r:=e;for i:0..<32 {r.public_key[i]=author;r.id[i]=id;}r.created_at=created_at;return r;
+}
+
+n25_refuse :: (r:N25Reaction,status:int,at:int)->N25Reaction {o:=r;o.status=status;o.at=at;return o;}
+// ":shortcode:", the shortcode of NIP-30's letters, digits, - and _.
+n25_shortcode :: (s:string)->bool {
+  if s.count<3 || s[0]!=':' || s[s.count-1]!=':' {return false;}
+  for c:s[1..<s.count-1] {
+    if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='-' || c=='_') {return false;}
+  }
+  return true;
+}
+
+// book:begin read
+// A reaction: kind 7 names an event by its last e tag, kind 17 external
+// content by its i and k tags. Every standard tag is read and checked.
+n25_reaction :: (e:NostrEvent)->N25Reaction {
+  r:N25Reaction;
+  if e.error!=NE_OK || e.content_from<0 || e.content_from>e.content_to || e.content_to>e.original.count {return r;}
+  if e.kind!=7 && e.kind!=17 {return n25_refuse(r,N25_KIND,-1);}
+  found:=false;i:=0;
+  while true {
+    t:=nostr_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {r.tag_error=t.error;return n25_refuse(r,N25_TAG,i);}
+    if t.type==NT_E {found=true;r.target=t.id;}
+    if t.type==NT_P {r.has_author=true;r.author=t.pubkey;}
+    if t.type==NT_A && !r.has_address {r.has_address=true;r.address=t;}
+    i+=1;
+  }
+  n:=json_unescape(e.original[e.content_from..<e.content_to],r.content[..]);
+  if n<0 {return n25_refuse(r,N25_LIMIT,-1);}
+  r.content_n=n;text:=cast(string)r.content[0..<n];
+  k:[NT_MAX_VALUE]u8;kt:=n10_text(e,"k",k[..]);
+  if kt.status!=N10_OK {return n25_refuse(r,N25_LIMIT,-1);}
+  if e.kind==17 {
+    x:=n10_text(e,"i",r.external[..]);
+    if x.status!=N10_OK {return n25_refuse(r,N25_LIMIT,-1);}
+    if !x.present || x.n==0 || !kt.present || kt.n==0 {return n25_refuse(r,N25_MISSING,-1);}
+    r.external_n=x.n;
+  } else {
+    if !found {return n25_refuse(r,N25_MISSING,-1);}
+    if kt.present {r.kind=n18_kind(cast(string)k[0..<kt.n]);}
+  }
+  r.value=ifx text=="" || text=="+" then N25_LIKE else ifx text=="-" then N25_DISLIKE else N25_TEXT;
+  if n25_shortcode(text) {
+    name:[NT_MAX_VALUE]u8;m:=n10_text(e,"emoji",name[..]);
+    if m.status!=N10_OK {return n25_refuse(r,N25_LIMIT,-1);}
+    if !m.present || cast(string)name[0..<m.n]!=text[1..<text.count-1] {return n25_refuse(r,N25_EMOJI,-1);}
+    r.value=N25_CUSTOM;
+  }
+  r.status=N25_OK;return r;
+}
+// book:end read
+
+// book:begin tally
+// Whether a is newer than b: a later created_at, or the same one and a
+// lower id.
+n25_newer :: (a:NostrEvent,b:NostrEvent)->bool {
+  if a.created_at>b.created_at {return true;}
+  if a.created_at<b.created_at {return false;}
+  for i:0..<32 {
+    if a.id[i]<b.id[i] {return true;}
+    if a.id[i]>b.id[i] {return false;}
+  }
+  return false;
+}
+// The reactions in set to target, one per author: the newest of each
+// author's readable kind 7 reactions to it. An event that appears twice
+// counts once. Events of other kinds are passed over.
+n25_tally :: (set:[]NostrEvent,target:[32]u8)->N25Tally {
+  t:N25Tally;
+  for i:0..<set.count {
+    r:=n25_reaction(set[i]);
+    if r.status==N25_KIND {continue;}
+    if r.status!=N25_OK {t.refused+=1;continue;}
+    if set[i].kind!=7 || !ns_equal32(r.target,target) {continue;}
+    counted:=true;
+    for j:0..<set.count {
+      if !ns_equal32(set[j].public_key,set[i].public_key) {continue;}
+      o:=n25_reaction(set[j]);
+      if o.status!=N25_OK || set[j].kind!=7 || !ns_equal32(o.target,target) {continue;}
+      // The same event earlier in the set is the one counted.
+      same:=ns_equal32(set[j].id,set[i].id) && set[j].created_at==set[i].created_at;
+      if n25_newer(set[j],set[i]) || (same && j<i) {counted=false;}
+    }
+    if !counted {t.superseded+=1;continue;}
+    if r.value==N25_LIKE {t.likes+=1;} else if r.value==N25_DISLIKE {t.dislikes+=1;} else {t.others+=1;}
+  }
+  return t;
+}
+// book:end tally

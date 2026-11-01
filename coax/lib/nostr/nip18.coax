@@ -1,0 +1,214 @@
+// NIP-18 reposts read from a parsed event through tags.coax: kind 6 for a
+// kind 1 note, kind 16 (a generic repost) for any other kind.
+//
+// A reading of the signed tags and content, not authority: it fetches
+// nothing and verifies no signature, the repost's or the embedded event's.
+// What it does check is that the repost agrees with itself. The e tag (with
+// its relay, which NIP-18 requires) names the target. When the content is
+// not empty it must be the target's JSON: an event that nostr_event_read
+// accepts (its id recomputed), whose id is the e tag's, of kind 1 under
+// kind 6 and of any other kind under kind 16, and whose author, kind and
+// address match the p, k and a tags when they are present.
+#load "nip10.coax";
+
+N18_OK :: 0; N18_EVENT :: 1; N18_KIND :: 2; N18_TAG :: 3; N18_MISSING :: 4;
+N18_RELAY :: 5; N18_INNER :: 6; N18_INNER_KIND :: 7; N18_MISMATCH :: 8; N18_OUTPUT :: 9;
+
+// book:begin record
+N18Repost :: struct {
+  status:int=N18_EVENT; tag_error:int; at:int=-1;   // the refusing tag
+  target:[32]u8;                                    // the e tag's id
+  has_author:bool; author:[32]u8;                   // the first p tag
+  kind:int=-1;                                      // the k tag, or -1
+  has_address:bool; address:NostrTag;               // the first a tag
+  embedded:bool; inner:NostrEvent;                  // the content, read
+}
+// book:end record
+N18Tags :: struct {status:int=N18_EVENT; kind:int; n:int;}
+
+#test "a kind 6 repost: e with relay, p, the note embedded" {
+  inner:[4096]u8;scratch:[4096]u8;ev:[4096]u8;
+  e:=n18_event(6,N18_T_TAGS,N18_T_NOTE_JSON,ev[..]);
+  r:=n18_repost(e,inner[..],scratch[..]);
+  #assert r.status==N18_OK && r.embedded && r.inner.kind==1 && ns_equal32(r.inner.id,r.target) && r.target[0]==0x3c;
+  #assert r.has_author && ns_equal32(r.author,r.inner.public_key) && r.kind== -1 && !r.has_address && r.at== -1;
+  // Empty content: the target is named, nothing is embedded.
+  r=n18_repost(n18_event(6,N18_T_TAGS,"",ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_OK && !r.embedded && r.target[0]==0x3c;
+}
+#test "kind 16: k and a tags must match the embedded event" {
+  inner:[4096]u8;scratch:[4096]u8;ev:[4096]u8;
+  r:=n18_repost(n18_event(16,N18_T_ART_TAGS,N18_T_ART_JSON,ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_OK && r.embedded && r.kind==30023 && r.inner.kind==30023 && r.has_address && r.address.address_kind==30023;
+  bad:=n18_event(16,"[[\"e\",\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\",\"wss://r.example\"],[\"k\",\"30024\"]]",N18_T_ART_JSON,ev[..]);
+  r=n18_repost(bad,inner[..],scratch[..]);#assert r.status==N18_MISMATCH && r.kind==30024;
+  bad=n18_event(16,"[[\"e\",\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\",\"wss://r.example\"],[\"a\",\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:other\"]]",N18_T_ART_JSON,ev[..]);
+  #assert n18_repost(bad,inner[..],scratch[..]).status==N18_MISMATCH;
+  bad=n18_event(16,"[[\"e\",\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\",\"wss://r.example\"],[\"a\",\"30023:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:tea\"]]",N18_T_ART_JSON,ev[..]);
+  #assert n18_repost(bad,inner[..],scratch[..]).status==N18_MISMATCH;
+  bad=n18_event(16,"[[\"e\",\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\",\"wss://r.example\"],[\"a\",\"30024:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tea\"]]",N18_T_ART_JSON,ev[..]);
+  #assert n18_repost(bad,inner[..],scratch[..]).status==N18_MISMATCH;
+  bad=n18_event(16,"[[\"e\",\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\",\"wss://r.example\"],[\"k\",\"x\"]]","",ev[..]);
+  r=n18_repost(bad,inner[..],scratch[..]);#assert r.status==N18_OK && r.kind== -1;
+}
+#test "refusals: kind, missing e, e without relay, broken tag, content not the target" {
+  inner:[4096]u8;scratch:[4096]u8;ev:[4096]u8;
+  #assert n18_repost(n18_event(1,N18_T_TAGS,"",ev[..]),inner[..],scratch[..]).status==N18_KIND;
+  #assert n18_repost(n18_event(7,N18_T_TAGS,"",ev[..]),inner[..],scratch[..]).status==N18_KIND;
+  none:NostrEvent;#assert n18_repost(none,inner[..],scratch[..]).status==N18_EVENT;
+  r:=n18_repost(n18_event(6,"[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]","",ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_MISSING && r.at== -1;
+  r=n18_repost(n18_event(6,"[[\"t\",\"x\"],[\"e\",\"3c478c63ec72c54b24282c844309f40de8679582c6675480b29a6d6aceded473\"]]","",ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_RELAY && r.at==1;
+  r=n18_repost(n18_event(6,"[[\"e\",\"4c7e\",\"wss://r.example\"]]","",ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_TAG && r.tag_error==NT_HEX && r.at==0;
+  // The second e tag is read and checked, but the first names the target.
+  r=n18_repost(n18_event(6,"[[\"e\",\"3c478c63ec72c54b24282c844309f40de8679582c6675480b29a6d6aceded473\",\"wss://r.example\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]","",ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_OK && r.target[0]==0x3c;
+  // The content names another event than the e tag.
+  r=n18_repost(n18_event(6,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\"]]",N18_T_NOTE_JSON,ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_MISMATCH && r.embedded;
+  // The p tag names someone other than the note's author.
+  r=n18_repost(n18_event(6,"[[\"e\",\"3c478c63ec72c54b24282c844309f40de8679582c6675480b29a6d6aceded473\",\"wss://r.example\"],[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",N18_T_NOTE_JSON,ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_MISMATCH;
+  // Kind 6 holds only kind 1; kind 16 anything but kind 1.
+  #assert n18_repost(n18_event(6,"[[\"e\",\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\",\"wss://r.example\"]]",N18_T_ART_JSON,ev[..]),inner[..],scratch[..]).status==N18_INNER_KIND;
+  #assert n18_repost(n18_event(16,N18_T_TAGS,N18_T_NOTE_JSON,ev[..]),inner[..],scratch[..]).status==N18_INNER_KIND;
+  // Content that isn't an event, or whose id doesn't recompute.
+  r=n18_repost(n18_event(6,N18_T_TAGS,"{}",ev[..]),inner[..],scratch[..]);#assert r.status==N18_INNER && r.tag_error==NE_SHAPE;
+  r=n18_repost(n18_event(6,N18_T_TAGS,N18_T_NOTE_EDITED,ev[..]),inner[..],scratch[..]);#assert r.status==N18_INNER && r.tag_error==NE_ID;
+  // Content over the buffer.
+  #assert n18_repost(n18_event(6,N18_T_TAGS,N18_T_NOTE_JSON,ev[..]),inner[0..<100],scratch[..]).status==N18_OUTPUT;
+}
+#test "the first p tag is the author; k 0 is a kind; refusals name no tag" {
+  inner:[4096]u8;scratch:[4096]u8;ev:[4096]u8;
+  two:="[[\"e\",\"3c478c63ec72c54b24282c844309f40de8679582c6675480b29a6d6aceded473\",\"wss://r.example\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]";
+  r:=n18_repost(n18_event(6,two,N18_T_NOTE_JSON,ev[..]),inner[..],scratch[..]);
+  #assert r.status==N18_OK && r.has_author && r.author[0]==0x79;
+  k0:="[[\"e\",\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\",\"wss://r.example\"],[\"k\",\"0\"]]";
+  r=n18_repost(n18_event(16,k0,N18_T_ART_JSON,ev[..]),inner[..],scratch[..]);#assert r.status==N18_MISMATCH && r.kind==0 && r.at== -1;
+  #assert n18_repost(n18_event(1,N18_T_TAGS,"",ev[..]),inner[..],scratch[..]).at== -1;
+  #assert n18_repost(n18_event(6,N18_T_TAGS,N18_T_NOTE_JSON,ev[..]),inner[0..<100],scratch[..]).at== -1;
+  #assert n18_repost(n18_event(6,N18_T_TAGS,"{}",ev[..]),inner[..],scratch[..]).at== -1;
+  #assert n18_repost(n18_event(16,N18_T_TAGS,N18_T_NOTE_JSON,ev[..]),inner[..],scratch[..]).at== -1;
+  #assert n18_kind("0")==0 && n18_kind("1")==1 && n18_kind("65535")==65535 && n18_kind("65536")== -1 && n18_kind("-1")== -1 && n18_kind("01")== -1 && n18_kind("")== -1;
+}
+#test "repost tags: e with relay and p; k and a for other kinds" {
+  out:[1024]u8;inner:[4096]u8;scratch:[4096]u8;ev:[4096]u8;
+  note:=nostr_event_read(n18_unquote(N18_T_NOTE_JSON,inner[..]),scratch[..],false);#assert note.error==NE_OK;
+  t:=n18_repost_tags(note,"wss://r.example",out[..]);
+  #assert t.status==N18_OK && t.kind==6 && cast(string)out[0..<t.n]==N18_T_TAGS;
+  art_text:[4096]u8;art_scratch:[4096]u8;
+  art:=nostr_event_read(n18_unquote(N18_T_ART_JSON,art_text[..]),art_scratch[..],false);#assert art.error==NE_OK;
+  t=n18_repost_tags(art,"wss://r.example",out[..]);
+  #assert t.status==N18_OK && t.kind==16 && cast(string)out[0..<t.n]==N18_T_ART_TAGS;
+  #assert n18_repost_tags(note,"",out[..]).status==N18_RELAY && n18_repost_tags(note,"https://r",out[..]).status==N18_RELAY;
+  #assert n18_repost_tags(note,"wss://r.example",out[0..<100]).status==N18_OUTPUT;
+  none:NostrEvent;#assert n18_repost_tags(none,"wss://r.example",out[..]).status==N18_EVENT;
+  // A replaceable kind gets an a tag with the empty identifier.
+  meta:=note;meta.kind=0;meta.original="[]";meta.tags_from=0;meta.tags_to=2;
+  t=n18_repost_tags(meta,"wss://r.example",out[..]);
+  #assert t.status==N18_OK && t.kind==16 && n10_ends(cast(string)out[0..<t.n],"[\"k\",\"0\"],[\"a\",\"0:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:\"]]");
+}
+
+// ---- test events: an unsigned event of this kind with these tags and this
+// content (a JSON string's raw text, escapes intact), parsed but not
+// verified: its id and sig are zeros. It lives in out.
+n18_event :: (kind:int,tags:string,content:string,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":2,\"kind\":");
+  n=json_write_int(out,n,kind);n=json_raw(out,n,",\"tags\":");n=json_raw(out,n,tags);
+  n=json_raw(out,n,",\"content\":\"");n=json_raw(out,n,content);
+  n=json_raw(out,n,"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  return ne_parse(cast(string)out[0..<n]);
+}
+n18_unquote :: (raw:string,out:[]u8)->string {n:=json_unescape(raw,out);return cast(string)out[0..<n];}
+// A kind 1 note by key 3's pubkey (BIP-340 vector 0) and a kind 30023
+// article by the same key, as JSON string contents (quotes escaped). Their
+// ids are their real ids; the signatures are zeros, which a reading does
+// not check.
+N18_T_NOTE_JSON :: "{\\\"id\\\":\\\"3c478c63ec72c54b24282c844309f40de8679582c6675480b29a6d6aceded473\\\",\\\"pubkey\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"created_at\\\":1,\\\"kind\\\":1,\\\"tags\\\":[],\\\"content\\\":\\\"hi\\\",\\\"sig\\\":\\\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\\\"}";
+N18_T_NOTE_EDITED :: "{\\\"id\\\":\\\"3c478c63ec72c54b24282c844309f40de8679582c6675480b29a6d6aceded473\\\",\\\"pubkey\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"created_at\\\":1,\\\"kind\\\":1,\\\"tags\\\":[],\\\"content\\\":\\\"ho\\\",\\\"sig\\\":\\\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\\\"}";
+N18_T_TAGS :: "[[\"e\",\"3c478c63ec72c54b24282c844309f40de8679582c6675480b29a6d6aceded473\",\"wss://r.example\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]";
+N18_T_ART_JSON :: "{\\\"id\\\":\\\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\\\",\\\"pubkey\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"created_at\\\":1,\\\"kind\\\":30023,\\\"tags\\\":[[\\\"d\\\",\\\"tea\\\"]],\\\"content\\\":\\\"\\\",\\\"sig\\\":\\\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\\\"}";
+N18_T_ART_TAGS :: "[[\"e\",\"e0a156005aeb9c69afe012fa71b81baeb427d093148f7a7e9d3adb406ca267e3\",\"wss://r.example\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"],[\"k\",\"30023\"],[\"a\",\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:tea\"]]";
+
+n18_refuse :: (r:N18Repost,status:int,at:int)->N18Repost {o:=r;o.status=status;o.at=at;return o;}
+// A decimal kind 0..65535 as written in a k tag, or -1.
+n18_kind :: (s:string)->int {
+  v:=json_int(s);
+  if !v.ok || v.value<0 || v.value>65535 {return -1;}
+  return v.value;
+}
+
+// book:begin read
+// A repost: the first e tag (with a relay) is the target; the first p, a
+// and k tags are kept. Non-empty content is unescaped into inner and read
+// as an event with its id recomputed (scratch holds its serialization),
+// and it must agree with the tags.
+n18_repost :: (e:NostrEvent,inner:[]u8,scratch:[]u8)->N18Repost {
+  r:N18Repost;
+  if e.error!=NE_OK {return r;}
+  if e.kind!=6 && e.kind!=16 {return n18_refuse(r,N18_KIND,-1);}
+  found:=false;i:=0;
+  while true {
+    t:=nostr_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {r.tag_error=t.error;return n18_refuse(r,N18_TAG,i);}
+    if t.type==NT_E && !found {
+      if !t.has_relay {return n18_refuse(r,N18_RELAY,i);}
+      found=true;r.target=t.id;
+    }
+    if t.type==NT_P && !r.has_author {r.has_author=true;r.author=t.pubkey;}
+    if t.type==NT_A && !r.has_address {r.has_address=true;r.address=t;}
+    i+=1;
+  }
+  if !found {return n18_refuse(r,N18_MISSING,-1);}
+  k:[NT_MAX_VALUE]u8;kt:=n10_text(e,"k",k[..]);
+  if kt.present {r.kind=n18_kind(cast(string)k[0..<kt.n]);}
+  n:=json_unescape(e.original[e.content_from..<e.content_to],inner);
+  if n<0 {return n18_refuse(r,N18_OUTPUT,-1);}
+  if n==0 {r.status=N18_OK;return r;}
+  r.embedded=true;r.inner=nostr_event_read(cast(string)inner[0..<n],scratch,false);
+  if r.inner.error!=NE_OK {r.tag_error=r.inner.error;return n18_refuse(r,N18_INNER,-1);}
+  if (e.kind==6)!=(r.inner.kind==1) {return n18_refuse(r,N18_INNER_KIND,-1);}
+  agree:=ns_equal32(r.inner.id,r.target);
+  if r.has_author && !ns_equal32(r.author,r.inner.public_key) {agree=false;}
+  if r.kind>=0 && r.kind!=r.inner.kind {agree=false;}
+  if r.has_address {
+    d:=nostr_tag_d(r.inner);a:=r.address;
+    if a.address_kind!=r.inner.kind || !ns_equal32(a.pubkey,r.inner.public_key) {agree=false;}
+    if cast(string)a.d[0..<a.d_n]!=cast(string)d.d[0..<d.d_n] {agree=false;}
+  }
+  if !agree {return n18_refuse(r,N18_MISMATCH,-1);}
+  r.status=N18_OK;return r;
+}
+// book:end read
+
+// book:begin write
+// The tags of a repost of target, seen on relay: kind 6 for a kind 1
+// note, kind 16 otherwise with a k tag, and an a tag for a replaceable or
+// addressable target. The content to sign is target.original.
+n18_repost_tags :: (target:NostrEvent,relay:string,out:[]u8)->N18Tags {
+  r:N18Tags;
+  if target.error!=NE_OK {return r;}
+  if !nt_relay_ok(relay) {r.status=N18_RELAY;return r;}
+  r.kind=ifx target.kind==1 then 6 else 16;
+  n:=json_raw(out,0,"[[\"e\",");n=n10_hex(out,n,target.id);n=json_raw(out,n,",");n=json_write_string(out,n,relay);
+  n=json_raw(out,n,"],[\"p\",");n=n10_hex(out,n,target.public_key);n=json_raw(out,n,"]");
+  if r.kind==16 {n=json_raw(out,n,",[\"k\",\"");n=json_write_int(out,n,target.kind);n=json_raw(out,n,"\"]");}
+  class:=ns_class(target.kind);
+  if class==NS_ADDRESSABLE || class==NS_REPLACEABLE {
+    pub:[66]u8;m:=n10_hex(pub[..],0,target.public_key);
+    d:=nostr_tag_d(target);
+    n=json_raw(out,n,",[\"a\",\"");n=json_write_int(out,n,target.kind);n=json_raw(out,n,":");
+    n=json_raw(out,n,cast(string)pub[1..<65]);n=json_raw(out,n,":");
+    // The identifier, escaped, ends the value: its closing quote is kept
+    // and its opening one dropped.
+    id:[6*NT_MAX_VALUE+2]u8;q:=json_write_string(id[..],0,cast(string)d.d[0..<d.d_n]);
+    n=json_raw(out,n,cast(string)id[1..<q]);n=json_raw(out,n,"]");
+  }
+  n=json_raw(out,n,"]");
+  if n== -1 {r.status=N18_OUTPUT;return r;}
+  r.n=n;r.status=N18_OK;return r;
+}
+// book:end write

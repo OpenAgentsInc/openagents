@@ -14,11 +14,17 @@
 // both and their K and k are required. An E or e scope is an event id, an
 // A or a scope a coordinate, and both of those have a decimal K or k; an I
 // or i scope's k may be any NIP-73 type. P and p, when present, are pubkeys.
+// The parent is either a comment (k 1111) or the root item itself, so any
+// other k must equal K byte for byte; a comment where they differ refuses
+// with N22_KINDS.
 #load "nip34.coax";
 #authority;
 
 N22_ISSUE_REVISION :: "openagents.issue-revision.v1";
 N22_TASK_PLAN :: "openagents.task-plan.v1";
+// The parent is neither a comment (kind 1111) nor the root item: its k
+// differs from the root's K. Past nip34.coax's N34_* statuses.
+N22_KINDS :: 6;
 
 // One scope: which tag letter holds it (E, A or I, or lowercase), its tag,
 // its kind tag and that kind as a number (-1 when it isn't decimal), and its author.
@@ -49,12 +55,22 @@ n22_scope :: (e:NtEvent,names:string)->N22Scope {
  if s.author.n>0 && !nt_hex(nt_raw(e,s.author.v[0]),64) {st=N34_MALFORMED;}
  s.status=st;return s;
 }
+// book:begin kinds
+// A comment's parent is the root item (a top-level comment) or another
+// comment under it (kind 1111). Any other parent kind must be the root's
+// kind, as spelled in K, or the comment refuses.
+n22_kinds :: (e:NtEvent,c:N22Comment)->int {
+ if c.parent.kind_value==N34_KIND_COMMENT {return N34_OK;}
+ if nt_raw(e,c.parent.kind.v[0])!=nt_raw(e,c.root.kind.v[0]) {return N22_KINDS;}
+ return N34_OK;
+}
+// book:end kinds
 n22_comment :: (e:NtEvent)->N22Comment #export_c {
  c:N22Comment;c.status=n34_start(e,N34_KIND_COMMENT);if c.status!=N34_OK {return c;}
  c.root=n22_scope(e,"EAIKP");c.parent=n22_scope(e,"eaikp");
  c.revision=nt_tag(e,"revision",0);c.claim=nt_tag(e,"claim",0);c.by=nt_tag(e,"by",0);
  c.release=nt_tags(e,"release");c.commit=nt_tag(e,"commit",0);c.plan=nt_tag(e,"plan",0);
- s:=nt_and(c.root.status,c.parent.status);s=nt_and(s,nt_shape(c.revision,1,false));s=nt_and(s,nt_shape(c.claim,1,false));
+ s:=nt_and(c.root.status,c.parent.status);s=nt_and(s,n22_kinds(e,c));s=nt_and(s,nt_shape(c.revision,1,false));s=nt_and(s,nt_shape(c.claim,1,false));
  s=nt_and(s,nt_shape(c.by,1,false));s=nt_and(s,nt_shape(c.commit,1,false));s=nt_and(s,nt_shape(c.plan,1,false));
  if s==N34_OK {
   // An absent tag's first span is empty, which says neither mark.
@@ -91,13 +107,30 @@ n22_event :: (out:[]u8,extra:string)->NtEvent {
  #assert c.status==N34_OK && nt_raw(e,c.claim.v[0])=="w" && c.release==1 && nt_raw(e,c.commit.v[0])=="abc" && !c.revised && !c.planned;
 }
 #test "other scopes: A and a coordinates, I and i identifiers" {
- e:=n34_event("[[\"A\",\"30023:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x\"],[\"K\",\"30023\"],[\"i\",\"https://x\"],[\"k\",\"web\"]]",1111);
+ e:=n34_event("[[\"A\",\"30023:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x\"],[\"K\",\"30023\"],[\"a\",\"30023:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x\"],[\"k\",\"30023\"]]",1111);
  c:=n22_comment(e);
- #assert c.status==N34_OK && c.root.at=='A' && c.root.kind_value==30023 && c.parent.at=='i' && c.parent.kind_value==-1 && c.root.author.n==0;
- e=n34_event("[[\"I\",\"#nostr\"],[\"K\",\"#\"],[\"a\",\"0:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:\"],[\"k\",\"0\"]]",1111);c=n22_comment(e);
- #assert c.status==N34_OK && c.root.at=='I' && c.parent.at=='a' && c.parent.kind_value==0;
- e=n34_event("[[\"I\",\"x\"],[\"K\",\"65535\"],[\"i\",\"y\"],[\"k\",\"65536\"]]",1111);c=n22_comment(e);
- #assert c.status==N34_OK && c.root.kind_value==65535 && c.parent.kind_value==-1;
+ #assert c.status==N34_OK && c.root.at=='A' && c.root.kind_value==30023 && c.parent.at=='a' && c.parent.kind_value==30023 && c.root.author.n==0;
+ e=n34_event("[[\"I\",\"https://x\"],[\"K\",\"web\"],[\"i\",\"https://x\"],[\"k\",\"web\"]]",1111);c=n22_comment(e);
+ #assert c.status==N34_OK && c.root.at=='I' && c.parent.at=='i' && c.root.kind_value==-1 && c.parent.kind_value==-1;
+ e=n34_event("[[\"A\",\"0:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:\"],[\"K\",\"0\"],[\"a\",\"0:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:\"],[\"k\",\"0\"]]",1111);c=n22_comment(e);
+ #assert c.status==N34_OK && c.parent.at=='a' && c.parent.kind_value==0;
+ e=n34_event("[[\"I\",\"x\"],[\"K\",\"65535\"],[\"e\",\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af\"],[\"k\",\"1111\"]]",1111);c=n22_comment(e);
+ #assert c.status==N34_OK && c.root.kind_value==65535 && c.parent.kind_value==1111;
+ e=n34_event("[[\"I\",\"x\"],[\"K\",\"65536\"],[\"i\",\"y\"],[\"k\",\"65536\"]]",1111);c=n22_comment(e);
+ #assert c.status==N34_OK && c.root.kind_value==-1 && c.parent.kind_value==-1;
+}
+#test "the parent is the root or a comment: other kinds disagree" {
+ // A parent of kind 1111 is a comment under the root; any other parent is
+ // the root item itself, so its k must be the K, byte for byte.
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"web\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N22_KINDS;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1\"],[\"i\",\"x\"],[\"k\",\"web\"]]",1111)).status==N22_KINDS;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"30023\"],[\"i\",\"x\"],[\"k\",\"3002\"]]",1111)).status==N22_KINDS;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1111\"],[\"i\",\"x\"],[\"k\",\"1111\"]]",1111)).status==N34_OK;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"web\"],[\"i\",\"x\"],[\"k\",\"1111\"]]",1111)).status==N34_OK;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"web\"],[\"i\",\"x\"],[\"k\",\"11110\"]]",1111)).status==N22_KINDS;
+ // A missing or malformed scope refuses as that, before the kinds compare.
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"web\"],[\"i\",\"x\"]]",1111)).status==N34_MISSING;
+ #assert n22_comment(n34_event("[[\"E\",\"09af\"],[\"K\",\"web\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N34_MALFORMED;
 }
 #test "comments refuse missing scopes and kinds, and malformed scope tags" {
  #assert n22_comment(n34_event("[[\"K\",\"1\"],[\"e\",\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af\"],[\"k\",\"1\"]]",1111)).status==N34_MISSING;

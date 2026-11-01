@@ -1,0 +1,46 @@
+a note and an article by Alice
+reposts
+S6 (kind 6) tags: [["e","6b3c564c3417f70992cd4dc0ddd12bb5448ab1bf1e327fb11575b5db0c764321","wss://relay.example.com"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"]]
+S16 (kind 16) tags: [["e","fdb6fe34ceb4cf646cb68bf987ca2577d3aaecd1c7dde5eb636d6bb647e532e1","wss://relay.example.com"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["k","30023"],["a","30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage"]]
+reactions to N
+tags: [["e","6b3c564c3417f70992cd4dc0ddd12bb5448ab1bf1e327fb11575b5db0c764321","wss://relay.example.com","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","wss://relay.example.com"],["k","1"]]
+comments on R
+C1 tags: [["A","30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage","wss://relay.example.com"],["K","30023"],["P","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","wss://relay.example.com"],["a","30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage","wss://relay.example.com"],["e","fdb6fe34ceb4cf646cb68bf987ca2577d3aaecd1c7dde5eb636d6bb647e532e1","wss://relay.example.com"],["k","30023"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","wss://relay.example.com"]]
+C2 tags: [["A","30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage","wss://relay.example.com"],["K","30023"],["P","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","wss://relay.example.com"],["e","78f44c6caec878080ccaca6ce225181b5a7d56d72b18a5e9aed90240a0c835ad","wss://relay.example.com","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"],["k","1111"],["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","wss://relay.example.com"]]
+each event's id
+N: 6b3c564c3417f70992cd4dc0ddd12bb5448ab1bf1e327fb11575b5db0c764321, verified true
+R: fdb6fe34ceb4cf646cb68bf987ca2577d3aaecd1c7dde5eb636d6bb647e532e1, verified true
+S6: 6cf3a79287688ebbf66feae868458bd728a83bd7ef658fa49adf6fb7dcd90654, verified true
+S16: 1ab0caa7f9f11bd8346c3322075fa287488b0feec038dbe290a07195e0fa43ce, verified true
+X1: 2efea399f1bbe153269ce4f2d529bfe7b4ffa674b9b059a8bdfa4df63b794684, verified true
+X2: 3c187a4773d49e218578670712e79420f595b99296d94c20547e4867e7a87b47, verified true
+X3: c2fd961356c6b7dc639c6b6ce83b7102ea6cb6a5de791e02f16912ccf9d7a566, verified true
+X4: 744446136e3d8d34da980aa99804bd7ffb918cafd728a74116b9256515c62339, verified true
+C1: 78f44c6caec878080ccaca6ce225181b5a7d56d72b18a5e9aed90240a0c835ad, verified true
+C2: 001b02a79825014c0eeb2964959c9bfef42aeb1bca6a8cb3afbe0b88b9638834, verified true
+read back
+S6: ok, kind 6, target N, author Alice, embedded kind 1 signature valid
+S16: ok, kind 16, target R, author Alice, k 30023, a 30023:...:tea-storage, embedded kind 30023 signature valid
+X1: ok, like "+", target N, k 1
+X2: ok, dislike "-", target N, k 1
+X3: ok, like "+", target N, k 1
+X4: ok, custom emoji ":tea:", target N, k 1
+C1: ok, A 30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage kind 30023 by Alice, e R kind 30023 by Alice
+C2: ok, A 30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-storage kind 30023 by Alice, e C1 kind 1111 by Bob
+the tally for N, from X1..X4 and the rest
+likes 2, dislikes 0, others 1, superseded 1, refused 0
+refusals
+comment without K: missing
+comment K 30023, k 1: kinds disagree
+comment K web, k 30023: kinds disagree
+kind 6, e R, content N: mismatch
+kind 6 holding R: embedded kind
+kind 16 holding N: embedded kind
+kind 6, N edited: content is no event, id does not match
+kind 6, e without relay: no relay at tag 0
+reaction without e: missing
+reaction :tea: without emoji tag: no emoji tag
+reaction of kind 1: kind
+accepted
+kind 17: ok, text "⭐", external https://example.com
+kind 6, empty content: ok, kind 6, target N, author Alice
