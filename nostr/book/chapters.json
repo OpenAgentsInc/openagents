@@ -2285,16 +2285,23 @@
    "number": 104,
    "title": "Agent treasuries and a network of keys",
    "file": "ch104-agent-treasuries-and-a-network-of-keys.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "partly implemented",
+   "profile": "native C",
    "depends_on": [
     13,
     46,
     79,
     83
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nipkeys.coax",
+    "coax/tests/nostr/keys_fixtures.coax",
+    "nostr/examples/agent-treasury.coax",
+    "nostr/examples/checks/agent-treasury.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   }
  ]

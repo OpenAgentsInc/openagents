@@ -1163,6 +1163,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 600
+    },
+    {
+      "source": "nostr/examples/agent-treasury.coax",
+      "chapter": "nostr/book/ch104-agent-treasuries-and-a-network-of-keys.md",
+      "stdout": "nostr/fixtures/agent-treasury.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
     }
   ]
 }

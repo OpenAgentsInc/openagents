@@ -1,0 +1,47 @@
+enrollments
+alice: read ok, class software, origin [78c16713/48h/1h/0h/2h], operator alice-agent (read ok)
+keyco: read ok, class software, origin [669198ad/48h/1h/0h/2h], operator keyco-llc (read ok)
+enclave: read ok, class attested, origin [66d2046a/48h/1h/0h/2h], operator enclave-co (read ok)
+the wallet
+read ok, network signet, revision 0, 1 path: primary needs 2 of 3 keys, timelock none
+recomputed descriptor (457 bytes) ends PmBUisT1sfsHbJRSwJ8vg/<0;1>/*))#660mkcnk
+equal to the wallet's: true
+admit: ok, possession proven: false
+composition rule 1 and 2, by declaration
+enclave declares keyco-llc: operator
+enclave declares alice-agent, holder a SOV agent: sovereign
+keyco's xpub replaced by enclave's after its digest was checked: descriptor
+scripts from the descriptor alone
+receive 0: 0020187ef2ba1a2f4237094fa0f25106d3af890c8b8e7170d4f78ac27b3e776d2f6f
+  is tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2: true
+change 0:  0020108dd2a02dce6bec96de704f7383e5b9c94e8fa489efa12b939de5777ab2009f
+  is tb1qzzxa9gpdee47e9k7wp8h8ql9h8y5aray38h6z2unnhjhw74jqz0sr0utuy: true
+the signing request
+PSBT 271 bytes: read ok, 2 inputs (60000 + 40000 sat), 2 outputs (70000 + 29000 sat)
+fee = 100000 - 99000 = 1000 sat
+request: read ok, 2 outputs stated, fee_sat 1000, change on output 2: true
+  alice: ok
+  keyco: ok
+  enclave: ok
+a PSBT whose first output pays tb1qz5tpwxqergd3c8g7ruszzg3rysjjvfeg5mag35
+  alice: outputs
+  keyco: outputs
+  enclave: outputs
+broken requests (enclave's ceiling, 1500 sat)
+the payment marked as change: change
+change stated as 29500: amount
+fee stated as 500: fee
+a ceiling of 999: ceiling
+at the deadline: deadline
+idempotency (keyco's ledger)
+first: ok
+exact retry: ok, retained: true
+same nonce, changed bytes: nonce
+recovery, rotation, the co-signer and the hot balance
+older(4320), coin confirmed at 900000, tip 904318: locked
+older(4320), coin confirmed at 900000, tip 904319: ok
+a retired wallet, a request that is not its sweep: retired
+a compromised signer of a 2-of-3 sweep, one compromised: compromised
+1,000,001 sat over a 1,000,000 delay threshold, 3600 s after receipt of 86400: delay
+a 600,000 sat top-up onto 500,000,000 msat under a 1,000,000,000 msat ceiling: hot
+partial signatures: not built

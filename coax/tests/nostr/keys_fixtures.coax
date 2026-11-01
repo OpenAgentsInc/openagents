@@ -1,0 +1,86 @@
+// Chapter 104: fixtures for coax/lib/nostr/nipkeys.coax's checks. The
+// treasury: holder alice (a SOV agent, key 1), keyco (key 2) and an
+// attested enclave (key 3), each with a signet tpub at m/48h/1h/0h/2h from
+// the seed SHA-256("chapter 104 <name>"). Every value below was made by an
+// independent Python reference (coax/tests/nostr/keys_reference.py: pure
+// integers, hashlib), not by Coax:
+// tpubs, enrollment and wallet digests, the descriptor checksums and the
+// PSBT. Test data only. Loaded by nipkeys.coax.
+
+// BIP-32 test vector 1: m/0H's xpub, the same with one character changed,
+// 111 z's, and m/0H's xprv.
+KY_BIP32_M0H :: "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnw";
+KY_BIP32_BAD :: "xpub68Gmy5EdvgibQVfPdqkBBCHxA5htiqg55crXYuXoQRKfDBFA1WEjWgP6LHhwBZeNK1VTsfTFUHCdrfp1bgwQ9xv5ski8PX9rL2dZXvgGDnx";
+KY_ZZZ :: "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+KY_BIP32_XPRV :: "xprv9uHRZZhk6KAJC1avXpDAp4MDc3sQKNxDiPvvkX8Br5ngLNv1TxvUxt4cV1rGL5hj6KCesnDYUhd7oWgT11eZG7XnxHrnYeSvkzY7d2bhkJ7";
+KY_XPUB0 :: "[78c16713/48h/1h/0h/2h]tpubDFBC6mUxRCZ6hsdwU8voZBNetMmzq4fVWA3DWm8Ne1pwMWtCgo4MJvjjub22Qro4JtEoUT2eZcBpTPDFPhbh5ht6qyZzbPkRG6DqemFm3Gd";
+// The P2WSH addresses of the wallet at receive 0 and change 0.
+KY_RECEIVE0 :: "tb1qrpl09ws69aprwz205re9zpkn47ysezuww9cdfau2cfanuamd9ahsyy5tx2";
+KY_CHANGE0 :: "tb1qzzxa9gpdee47e9k7wp8h8ql9h8y5aray38h6z2unnhjhw74jqz0sr0utuy";
+KY_PAY :: "tb1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5r7fxez";
+KY_T0 :: 1793150000;           // admission and signing time
+KY_H0 :: 900000;               // the chain tip at admission
+
+// A copy of text with the first occurrence of from replaced by to.
+ky_case :: (out:[]u8,text:string,from:string,to:string)->string {
+  at:=-1;i:=0;while at<0 && i+from.count<=text.count {if text[i..<i+from.count]==from {at=i;}i+=1;}
+  #assert at>=0;
+  n:=json_raw(out,0,text[0..<at]);n=json_raw(out,n,to);n=json_raw(out,n,text[at+from.count..<text.count]);
+  return cast(string)out[0..<n];
+}
+ky_unhex :: (h:string,out:[]u8)->[]u8 {
+  for i:0..<h.count/2 {out[i]=cast(u8)(ky_nib(h[2*i])*16+ky_nib(h[2*i+1]));}
+  return out[0..<h.count/2];
+}
+ky_nib :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+
+KY_HOLDER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+KY_WALLET_ID :: "7777777777777777777777777777777777777777777777777777777777777777";
+KY_AGENT0 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+KY_IND0 :: "{\"affiliations\":[],\"agent\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"custody\":{\"host\":\"alice-host\",\"region\":\"us\",\"vendor\":\"software\"},\"insurance\":null,\"jurisdiction\":[\"US\"],\"observed_at\":1793000000,\"operator\":\"alice-agent\",\"requires\":[],\"v\":\"openagents.keys-independence.v1\"}";
+KY_ENR0 :: "{\"agent\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"attestation\":null,\"class\":\"software\",\"expires_at\":1795000000,\"independence\":{\"digest\":\"sha256:e5d06c5c8dd94139b2d31145b6a52ce61872c6f38aff59a70b988cd9fb7c7432\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-independence.v1\",\"size\":301},\"possession\":\"AkcwRAIgAAAA\",\"requires\":[],\"signing_policy\":{\"digest\":\"sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"media_type\":\"application/json\",\"schema\":\"openagents.pol-policy.v1\",\"size\":200},\"v\":\"openagents.keys-enrollment.v1\",\"wallet\":\"7777777777777777777777777777777777777777777777777777777777777777\",\"xpub\":\"[78c16713/48h/1h/0h/2h]tpubDFBC6mUxRCZ6hsdwU8voZBNetMmzq4fVWA3DWm8Ne1pwMWtCgo4MJvjjub22Qro4JtEoUT2eZcBpTPDFPhbh5ht6qyZzbPkRG6DqemFm3Gd\"}";
+KY_AGENT1 :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+KY_IND1 :: "{\"affiliations\":[],\"agent\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"custody\":{\"host\":\"keyco-host\",\"region\":\"ch\",\"vendor\":\"software\"},\"insurance\":null,\"jurisdiction\":[\"CH\"],\"observed_at\":1793000000,\"operator\":\"keyco-llc\",\"requires\":[],\"v\":\"openagents.keys-independence.v1\"}";
+KY_ENR1 :: "{\"agent\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"attestation\":null,\"class\":\"software\",\"expires_at\":1795000000,\"independence\":{\"digest\":\"sha256:d016c3c4f1d3446540cc082861f95dd008d901e62944759d191443f21acf17dd\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-independence.v1\",\"size\":299},\"possession\":\"AkcwRAIgAAAA\",\"requires\":[],\"signing_policy\":{\"digest\":\"sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"media_type\":\"application/json\",\"schema\":\"openagents.pol-policy.v1\",\"size\":200},\"v\":\"openagents.keys-enrollment.v1\",\"wallet\":\"7777777777777777777777777777777777777777777777777777777777777777\",\"xpub\":\"[669198ad/48h/1h/0h/2h]tpubDEY9MaVapeFpreoq2nWtYxQZQxpUBLHf2WfeDg2DCy4Xfksv5ytSQZUnFwFestN8ZNMRSQhZM7YNsSTvvfD1onCZqC7XcdnKoRrXyTAbv8X\"}";
+KY_AGENT2 :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+KY_IND2 :: "{\"affiliations\":[],\"agent\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"custody\":{\"host\":\"enclave-host\",\"region\":\"is\",\"vendor\":\"software\"},\"insurance\":null,\"jurisdiction\":[\"IS\"],\"observed_at\":1793000000,\"operator\":\"enclave-co\",\"requires\":[],\"v\":\"openagents.keys-independence.v1\"}";
+KY_ENR2 :: "{\"agent\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"attestation\":{\"digest\":\"sha256:abababababababababababababababababababababababababababababababab\",\"media_type\":\"application/json\",\"schema\":\"openagents.att-endpoint.v1\",\"size\":100},\"class\":\"attested\",\"expires_at\":1795000000,\"independence\":{\"digest\":\"sha256:33dc2fa6282283af7f8620d5335761fa6a79fefaa24012b71c3652fbabd668dd\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-independence.v1\",\"size\":302},\"possession\":\"AkcwRAIgAAAA\",\"requires\":[],\"signing_policy\":{\"digest\":\"sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\",\"media_type\":\"application/json\",\"schema\":\"openagents.pol-policy.v1\",\"size\":200},\"v\":\"openagents.keys-enrollment.v1\",\"wallet\":\"7777777777777777777777777777777777777777777777777777777777777777\",\"xpub\":\"[66d2046a/48h/1h/0h/2h]tpubDFNVBLMomvnbSso4oSMpQRjGyzvBGvfHRkSw2HfDAktZ5HK2YV7zqVDeMUAU5f1U4GHtj2ozr9ccGEg26taNFGPmBUisT1sfsHbJRSwJ8vg\"}";
+KY_WALLET :: "{\"descriptor\":\"wsh(sortedmulti(2,[78c16713/48h/1h/0h/2h]tpubDFBC6mUxRCZ6hsdwU8voZBNetMmzq4fVWA3DWm8Ne1pwMWtCgo4MJvjjub22Qro4JtEoUT2eZcBpTPDFPhbh5ht6qyZzbPkRG6DqemFm3Gd/<0;1>/*,[669198ad/48h/1h/0h/2h]tpubDEY9MaVapeFpreoq2nWtYxQZQxpUBLHf2WfeDg2DCy4Xfksv5ytSQZUnFwFestN8ZNMRSQhZM7YNsSTvvfD1onCZqC7XcdnKoRrXyTAbv8X/<0;1>/*,[66d2046a/48h/1h/0h/2h]tpubDFNVBLMomvnbSso4oSMpQRjGyzvBGvfHRkSw2HfDAktZ5HK2YV7zqVDeMUAU5f1U4GHtj2ozr9ccGEg26taNFGPmBUisT1sfsHbJRSwJ8vg/<0;1>/*))#660mkcnk\",\"enrollments\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},{\"digest\":\"sha256:1e1959c86c68ae20c27fdb36082562b0f754a47e6c4fa8f5f6db1924985283b5\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},{\"digest\":\"sha256:04479e7fac2c45c7f116542d1b1ed8b7fe01098052e0e2303d437261603a782c\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":964}],\"expires_at\":1824636000,\"holder\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"network\":\"signet\",\"paths\":[{\"keys\":[{\"digest\":\"sha256:e3eec4f661f9d78168e754fde3953f71edc101ee4133224a0640e76a67c34856\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},{\"digest\":\"sha256:1e1959c86c68ae20c27fdb36082562b0f754a47e6c4fa8f5f6db1924985283b5\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":803},{\"digest\":\"sha256:04479e7fac2c45c7f116542d1b1ed8b7fe01098052e0e2303d437261603a782c\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-enrollment.v1\",\"size\":964}],\"name\":\"primary\",\"threshold\":2,\"timelock\":null}],\"previous\":null,\"recipients\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],\"requires\":[],\"revision\":0,\"starts_at\":1793100000,\"v\":\"openagents.keys-wallet.v1\",\"wallet\":\"7777777777777777777777777777777777777777777777777777777777777777\"}";
+KY_WALLET_DIGEST :: "2bebe1f646fa7a160964bdb94cb7832807bfebc457c8ace2de61947587186323";
+KY_DESC2 :: "wsh(or_d(multi(2,[669198ad/48h/1h/0h/2h]tpubDEY9MaVapeFpreoq2nWtYxQZQxpUBLHf2WfeDg2DCy4Xfksv5ytSQZUnFwFestN8ZNMRSQhZM7YNsSTvvfD1onCZqC7XcdnKoRrXyTAbv8X/<0;1>/*,[66d2046a/48h/1h/0h/2h]tpubDFNVBLMomvnbSso4oSMpQRjGyzvBGvfHRkSw2HfDAktZ5HK2YV7zqVDeMUAU5f1U4GHtj2ozr9ccGEg26taNFGPmBUisT1sfsHbJRSwJ8vg/<0;1>/*),and_v(v:older(4320),multi(1,[78c16713/48h/1h/0h/2h]tpubDFBC6mUxRCZ6hsdwU8voZBNetMmzq4fVWA3DWm8Ne1pwMWtCgo4MJvjjub22Qro4JtEoUT2eZcBpTPDFPhbh5ht6qyZzbPkRG6DqemFm3Gd/<0;1>/*))))#slnp8lul";
+KY_PSBT :: "70736274ff0100a6020000000211111111111111111111111111111111111111111111111111111111111111110000000000fdffffff22222222222222222222222222222222222222222222222222222222222222220100000000fdffffff0270110100000000001600140102030405060708090a0b0c0d0e0f10111213144871000000000000220020108dd2a02dce6bec96de704f7383e5b9c94e8fa489efa12b939de5777ab2009f000000000001012b60ea000000000000220020187ef2ba1a2f4237094fa0f25106d3af890c8b8e7170d4f78ac27b3e776d2f6f0001012b409c000000000000220020555087554c5b26875af655966e01efc934bb760f4fc951f585f1f39f9f0f7b87000000";
+KY_REQUEST :: "{\"action\":null,\"deadline\":1793200000,\"fee_sat\":1000,\"nonce\":\"9999999999999999999999999999999999999999999999999999999999999999\",\"outputs\":[{\"address\":\"tb1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5r7fxez\",\"amount_sat\":70000,\"change\":false},{\"address\":\"tb1qzzxa9gpdee47e9k7wp8h8ql9h8y5aray38h6z2unnhjhw74jqz0sr0utuy\",\"amount_sat\":29000,\"change\":true}],\"psbt\":{\"digest\":\"sha256:4d98f570ee1e7e274be0736b532e9978fcd92f86743a514ac9a4c480a3ca0812\",\"media_type\":\"application/octet-stream\",\"size\":271},\"purpose\":\"payment\",\"requester\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"requires\":[],\"treasury\":null,\"v\":\"openagents.keys-sign-request.v1\",\"wallet\":{\"digest\":\"sha256:2bebe1f646fa7a160964bdb94cb7832807bfebc457c8ace2de61947587186323\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-wallet.v1\",\"size\":2081}}";
+KY_PSBT_EVIL :: "70736274ff0100a6020000000211111111111111111111111111111111111111111111111111111111111111110000000000fdffffff22222222222222222222222222222222222222222222222222222222222222220100000000fdffffff02701101000000000016001415161718191a1b1c1d1e1f2021222324252627284871000000000000220020108dd2a02dce6bec96de704f7383e5b9c94e8fa489efa12b939de5777ab2009f000000000001012b60ea000000000000220020187ef2ba1a2f4237094fa0f25106d3af890c8b8e7170d4f78ac27b3e776d2f6f0001012b409c000000000000220020555087554c5b26875af655966e01efc934bb760f4fc951f585f1f39f9f0f7b87000000";
+KY_EVIL_ADDRESS :: "tb1qz5tpwxqergd3c8g7ruszzg3rysjjvfeg5mag35";
+KY_REQUEST_EVIL :: "{\"action\":null,\"deadline\":1793200000,\"fee_sat\":1000,\"nonce\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"outputs\":[{\"address\":\"tb1qqypqxpq9qcrsszg2pvxq6rs0zqg3yyc5r7fxez\",\"amount_sat\":70000,\"change\":false},{\"address\":\"tb1qzzxa9gpdee47e9k7wp8h8ql9h8y5aray38h6z2unnhjhw74jqz0sr0utuy\",\"amount_sat\":29000,\"change\":true}],\"psbt\":{\"digest\":\"sha256:8bf849547179e5601af4a5552963595182d8b3e2dee3a2bdcf82f8d48e5ebdcc\",\"media_type\":\"application/octet-stream\",\"size\":271},\"purpose\":\"payment\",\"requester\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"requires\":[],\"treasury\":null,\"v\":\"openagents.keys-sign-request.v1\",\"wallet\":{\"digest\":\"sha256:2bebe1f646fa7a160964bdb94cb7832807bfebc457c8ace2de61947587186323\",\"media_type\":\"application/json\",\"schema\":\"openagents.keys-wallet.v1\",\"size\":2081}}";
+
+// The three enrollments and declarations, read.
+KyParties :: struct {e:[3]KyEnrollment;ind:[3]KyIndependence;}
+ky_parties :: ()->KyParties {
+  r:KyParties;
+  r.e[0]=ky_enrollment_read(KY_AGENT0,KY_ENR0);r.e[1]=ky_enrollment_read(KY_AGENT1,KY_ENR1);r.e[2]=ky_enrollment_read(KY_AGENT2,KY_ENR2);
+  r.ind[0]=ky_independence_read(KY_AGENT0,KY_IND0);r.ind[1]=ky_independence_read(KY_AGENT1,KY_IND1);r.ind[2]=ky_independence_read(KY_AGENT2,KY_IND2);
+  return r;
+}
+ky_hexs :: (d:[]u8,out:[]u8)->string {
+  hx:="0123456789abcdef";
+  for i:0..<d.count {out[2*i]=hx[cast(int)(d[i]>>4)];out[2*i+1]=hx[cast(int)(d[i]&15)];}
+  return cast(string)out[0..<2*d.count];
+}
+ky_contains :: (s:string,part:string)->bool {for i:0..<s.count-part.count+1 {if s[i..<i+part.count]==part {return true;}}return false;}
+// The wallet's scripts at receive 0, 1 and change 0, 1 (Python), and a
+// one-key wallet's (alice alone, 1-of-1).
+KY_SPK :: [4] string.["0020187ef2ba1a2f4237094fa0f25106d3af890c8b8e7170d4f78ac27b3e776d2f6f","0020555087554c5b26875af655966e01efc934bb760f4fc951f585f1f39f9f0f7b87","0020108dd2a02dce6bec96de704f7383e5b9c94e8fa489efa12b939de5777ab2009f","002010709ca9f91bc4f8294ba4e9c08b459d79e4f3a07ea21d104e3b3a8849f857b0"];
+KY_SPK1 :: [4] string.["0020406fde7eb65f7206d29c1e84f56d18e91c3c2dfc0c299cf7a7bfe7242374373c","0020ac4c24597e0355ddd16fede63c37e30b9ec1a93de8505fc40b56503931fe6afc","0020bf67ce1960c8e69079dce77c1ca3d5142b74b49fbaece9ac4cb1954d037aba34","002098578980c93ff939e26c256a92b749a96b9cafe79ae9f9802f3d6ed671a2e9c4"];
+ky_spk :: (h:string)->KyScript {r:KyScript;for i:0..<h.count/2 {r.b[i]=cast(u8)(ky_nib(h[2*i])*16+ky_nib(h[2*i+1]));}r.n=h.count/2;return r;}
+ky_fixture_scripts :: ()->KyScripts {r:KyScripts;for i:0..<4 {r.s[i]=ky_spk(KY_SPK[i]);}return r;}
+// Each agent's change branch key (account/1): chain code, then public key (Python).
+KY_BRANCH1 :: [6] string.["2dc6ab75d1dc53af9902d97cecbc33ec9f2d6dd48c9747b74e1bf0a204f46774","02390e0f6e7e9434464e61770bd5c4ea6980e4d3c430db0e35f6d529b4504d10cb",
+  "ad3318df3e73bc6320fdfbdd64ef483d277bece749ede75634e1b50020922598","036c4d421dfebc2601605be9b860d5b31cece3cebef763bfeec717b411d7da6b9f",
+  "bd9aca27c40496ebb57269ea20194fc45b1839b4323d3e3fc824ad69d3586472","039eccff1c3fd3250d96182edcb3bb3deecbbdf7c4a8609120145008c64b51cbe8"];
+ky_branch1 :: (i:int)->KyExtKey {
+  r:KyExtKey;c:=KY_BRANCH1[2*i];k:=KY_BRANCH1[2*i+1];
+  for j:0..<32 {r.chain[j]=cast(u8)(ky_nib(c[2*j])*16+ky_nib(c[2*j+1]));}
+  for j:0..<33 {r.key[j]=cast(u8)(ky_nib(k[2*j])*16+ky_nib(k[2*j+1]));}
+  r.version=KY_TPUB;r.ok=true;return r;
+}

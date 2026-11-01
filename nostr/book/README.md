@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 102 are implemented and 2 are design drafts.
+Of the 104 chapters, 102 are implemented, 1 is partly implemented and 1 is a design draft.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -310,4 +310,4 @@ stack, and the cutover of relay.openagents.com.
 | [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) | Runnable: native C | Two players' NIP-MV presence through a Coax relay within the latency budget, and one in-world zap from request to counted receipt, paid only when the Spark wallet's rules in `verse/wallet.coax` pass, with Wallet Connect as a second path; what runs in production today and what is only in this book. |
 | [102. Agents on Nostr](ch102-agents-on-nostr.md) | Runnable: native C | One attested agent end to end, offline: NIP-42 and NIP-AA login, a NIP-MKT order, a sealed NIP-CJ job claimed once and journaled with NIP-RUN, the answer, and payment against a Lightning preimage; what runs in production today and what is only in this book. |
 | [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) | Unimplemented: design draft | Exporting the Rust relay's Postgres read-only, importing with re-verification of every event, a shadow period comparing both relays, and DNS cutover only with owner sign-off. |
-| [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) | Unimplemented: design draft | NIP-KEYS multisig wallets across independent key agents: descriptors and composition rules, enrollment with possession proofs, PSBT signing requests and receipts, an attested co-signer enforcing a SOV treasury policy, timelocked recovery, rotation sweeps and a hot/cold treasury split. |
+| [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) | Partly implemented: native C | NIP-KEYS wallets, enrollments, independence declarations and signing requests read under closed schemas; a wallet admitted by recomputing its BIP-380 descriptor and applying composition rules 1 to 4; P2WSH scripts from BIP-32 public derivation; a signer that recomputes every output, the change and the fee from a PSBT v0 and refuses a PSBT whose outputs differ from its request; nonce idempotency, recovery timelocks, retired wallets, the co-signer's delay and the hot ceiling. Signatures, BIP-322, Taproot, PSBT v2, miniscript spends, the 3188 transport and signet are not built. |

@@ -1,0 +1,32 @@
+// The checks of agent-treasury.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/agent-treasury.coax
+#load "../agent-treasury.coax";
+
+// book:begin check
+// BIP-380's published checksum, and two descriptors whose checksums an
+// independent Python implementation of BIP-380's polymod computed.
+#test "descriptor checksums: BIP-380's vector and Python's" {
+  cs:[8]u8;
+  #assert ky_checksum("raw(deadbeef)",cs[..]) && cast(string)cs[..]=="89f8spxm";
+  w:=ky_wallet_read(KY_WALLET);
+  #assert w.descriptor[w.descriptor.count-9..<w.descriptor.count]=="#660mkcnk" && ky_checksum_ok(w.descriptor);
+  #assert KY_DESC2[KY_DESC2.count-9..<KY_DESC2.count]=="#slnp8lul" && ky_checksum_ok(KY_DESC2);
+}
+// BIP-32 test vector 1, chain m/0H/1: the public child of m/0H's xpub.
+#test "BIP-32 vector 1: m/0H/1 from m/0H's xpub" #steps 500000000 {
+  c:=ky_child(ky_ext_key(KY_BIP32_M0H),1);
+  #assert c.ok && a3_hex_is(c.key[..],"03501e454bf00751f24b1b489aa925215d66af2234e3891c3b21a52bedb3cd711c");
+}
+// The wallet's four scripts from Python's pure-integer BIP-32 and
+// hashlib, and the enrollment, wallet and PSBT digests it wrote.
+#test "the wallet's scripts and digests match Python" #steps 2000000000 {
+  w:=ky_wallet_read(KY_WALLET);p:=ky_parties();
+  sc:=ky_scripts(w,p.e[..]);
+  for i:0..<4 {#assert ky_same(sc.s[i],ky_spk(KY_SPK[i]));}
+  for i:0..<3 {#assert ky_eq32(p.e[i].digest,w.enrollments[i]);}
+  d:[32]u8;#assert ky_sha(KY_WALLET,d[..]) && a3_hex_is(d[..],KY_WALLET_DIGEST);
+  b:[512]u8;ps:=ky_unhex(KY_PSBT,b[..]);
+  #assert sha256_hash_checked(ps,d[..],false)==SHA_OK && a3_hex_is(d[..],"4d98f570ee1e7e274be0736b532e9978fcd92f86743a514ac9a4c480a3ca0812");
+}
+// book:end check

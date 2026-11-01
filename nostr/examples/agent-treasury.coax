@@ -1,0 +1,116 @@
+// Chapter 104: an agent treasury held by a network of keys. Three key agents
+// (alice, a SOV agent and the holder; keyco; an attested enclave) enroll
+// signet tpubs into one 2-of-3 wallet. The wallet is admitted (descriptor
+// recomputed, composition rules), its scripts are derived from the
+// descriptor alone, and each signer checks one signing request against the
+// PSBT it names. A second PSBT pays someone the request doesn't name, and
+// every signer refuses it. The records are the fixtures in
+// coax/tests/nostr/keys_fixtures.coax, written by an independent Python
+// reference (keys from SHA-256("chapter 104 <name>"), TEST ONLY); a 3188
+// transport would hand them over decrypted. No signature is produced:
+// signing is not built.
+#load "../../coax/lib/nostr/nipkeys.coax";
+#import "Basic";
+
+// book:begin example
+KY_WORDS :: [43]string.["ok","json","version","field","wallet","holder","revision","network","descriptor","checksum","family","paths",
+  "threshold","timelock","primary","enrollment","key_order","xpub","recipient","times","attestation","operator","sovereign","recovery",
+  "attested_only","weakening","approval","psbt","inputs","outputs","amount","address","change","fee","ceiling","nonce","deadline","locked",
+  "retired","compromised","delay","hot","not_built"];
+NAMES :: [3]string.["alice","keyco","enclave"];
+CEILING :: [3]int.[2000,1000,1500];   // each signer's fee ceiling, satoshis
+kw :: (c:KyCode)->string {return KY_WORDS[cast(int)c];}
+to_hex :: (b:[]u8,out:[]u8)->string {
+  hx:="0123456789abcdef";
+  for i:0..<b.count {out[2*i]=hx[cast(int)(b[i]>>4)];out[2*i+1]=hx[cast(int)(b[i]&15)];}
+  return cast(string)out[0..<2*b.count];
+}
+// The PSBT bytes from hex.
+psbt_bytes :: (h:string,out:[]u8)->[]u8 {return ky_unhex(h,out);}
+// One request checked by all three signers.
+sign_all :: (w:KyWallet,wd:[32]u8,sc:KyScripts,request:string,psbt:[]u8,now:int) {
+  r:=ky_request_read(request);
+  for i:0..<3 {print("  %: %\n",NAMES[i],kw(ky_sign_check(w,wd,sc,r,psbt,CEILING[i],now)));}
+}
+// book:end example
+
+// book:begin main
+main :: () {
+  print("enrollments\n");
+  p:=ky_parties();
+  for i:0..<3 {
+    e:=p.e[i];d:=p.ind[i];
+    print("%: read %, class %, origin %, operator % (read %)\n",NAMES[i],kw(e.code),ifx e.attested then "attested" else "software",
+      e.xpub[0..<23],d.op,kw(d.code));
+  }
+  print("the wallet\n");
+  w:=ky_wallet_read(KY_WALLET);
+  print("read %, network %, revision %, % path: % needs % of % keys, timelock none\n",kw(w.code),w.network,w.revision,w.npaths,
+    w.paths[0].name,w.paths[0].threshold,w.paths[0].count);
+  d:[4096]u8;n:=ky_descriptor(w,p.e[..],d[..]);
+  print("recomputed descriptor (% bytes) ends %\n",n,cast(string)d[n-40..<n]);
+  print("equal to the wallet's: %\n",cast(string)d[0..<n]==w.descriptor);
+  a:=ky_admit(w,p.e[..],p.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0);
+  print("admit: %, possession proven: %\n",kw(a.code),a.proven);
+
+  print("composition rule 1 and 2, by declaration\n");
+  q:=p;q.ind[2].op="keyco-llc";
+  print("enclave declares keyco-llc: %\n",kw(ky_admit(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code));
+  q=p;q.ind[2].op="alice-agent";
+  print("enclave declares alice-agent, holder a SOV agent: %\n",kw(ky_admit(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code));
+  q=p;q.e[1].xpub=p.e[2].xpub;
+  print("keyco's xpub replaced by enclave's after its digest was checked: %\n",kw(ky_admit(w,q.e[..],q.ind[..],true,KY_MIN_LOCK,KY_T0,KY_H0).code));
+
+  print("scripts from the descriptor alone\n");
+  sc:=ky_scripts(w,p.e[..]);h:[68]u8;
+  print("receive 0: %\n",to_hex(sc.s[0].b[0..<34],h[..]));
+  print("  is %: %\n",KY_RECEIVE0,ky_same(sc.s[0],ky_address(w,KY_RECEIVE0)));
+  print("change 0:  %\n",to_hex(sc.s[KY_GAP].b[0..<34],h[..]));
+  print("  is %: %\n",KY_CHANGE0,ky_same(sc.s[KY_GAP],ky_address(w,KY_CHANGE0)));
+
+  print("the signing request\n");
+  pb:[512]u8;ps:=psbt_bytes(KY_PSBT,pb[..]);
+  t:=ky_psbt_read(ps);
+  print("PSBT % bytes: read %, % inputs (% + % sat), % outputs (% + % sat)\n",ps.count,kw(t.code),t.nin,t.in_value[0],t.in_value[1],
+    t.nout,t.out_value[0],t.out_value[1]);
+  print("fee = % - % = % sat\n",t.in_value[0]+t.in_value[1],t.out_value[0]+t.out_value[1],t.in_value[0]+t.in_value[1]-t.out_value[0]-t.out_value[1]);
+  r:=ky_request_read(KY_REQUEST);
+  print("request: read %, % outputs stated, fee_sat %, change on output 2: %\n",kw(r.code),r.nout,r.fee,r.out[1].change);
+  wd:=ky_bytes(KY_WALLET_DIGEST);
+  sign_all(w,wd,sc,KY_REQUEST,ps,KY_T0);
+
+  print("a PSBT whose first output pays %\n",KY_EVIL_ADDRESS);
+  eb:[512]u8;evil:=psbt_bytes(KY_PSBT_EVIL,eb[..]);
+  sign_all(w,wd,sc,KY_REQUEST_EVIL,evil,KY_T0);
+
+  print("broken requests (enclave's ceiling, 1500 sat)\n");
+  c:[2048]u8;
+  x:=ky_request_read(ky_case(c[..],KY_REQUEST,"\"change\":false","\"change\":true"));
+  print("the payment marked as change: %\n",kw(ky_sign_check(w,wd,sc,x,ps,1500,KY_T0)));
+  x=ky_request_read(ky_case(c[..],KY_REQUEST,"\"amount_sat\":29000","\"amount_sat\":29500"));
+  print("change stated as 29500: %\n",kw(ky_sign_check(w,wd,sc,x,ps,1500,KY_T0)));
+  x=ky_request_read(ky_case(c[..],KY_REQUEST,"\"fee_sat\":1000","\"fee_sat\":500"));
+  print("fee stated as 500: %\n",kw(ky_sign_check(w,wd,sc,x,ps,1500,KY_T0)));
+  print("a ceiling of 999: %\n",kw(ky_sign_check(w,wd,sc,r,ps,999,KY_T0)));
+  print("at the deadline: %\n",kw(ky_sign_check(w,wd,sc,r,ps,1500,r.deadline)));
+
+  print("idempotency (keyco's ledger)\n");
+  l:=[1]KyLedger.[KyLedger.{}];
+  print("first: %\n",kw(ky_consume(l[..],KY_AGENT1,r,KyCode.ok).code));
+  y:=ky_consume(l[..],KY_AGENT1,r,KyCode.ok);
+  print("exact retry: %, retained: %\n",kw(y.code),y.retry);
+  x=ky_request_read(ky_case(c[..],KY_REQUEST,"\"amount_sat\":70000","\"amount_sat\":71000"));
+  print("same nonce, changed bytes: %\n",kw(ky_consume(l[..],KY_AGENT1,x,KyCode.ok).code));
+
+  print("recovery, rotation, the co-signer and the hot balance\n");
+  rec:KyPath;rec.older=KY_MIN_LOCK;
+  print("older(4320), coin confirmed at %, tip %: %\n",KY_H0,KY_H0+4318,kw(ky_path_open(rec,KY_H0,KY_H0+4318)));
+  print("older(4320), coin confirmed at %, tip %: %\n",KY_H0,KY_H0+4319,kw(ky_path_open(rec,KY_H0,KY_H0+4319)));
+  none:[1]string;
+  print("a retired wallet, a request that is not its sweep: %\n",kw(ky_retired(true,r.digest,none[0..<0])));
+  print("a compromised signer of a 2-of-3 sweep, one compromised: %\n",kw(ky_sweep_signer(w.paths[0],1,true)));
+  print("1,000,001 sat over a 1,000,000 delay threshold, 3600 s after receipt of 86400: %\n",kw(ky_delay(1000001,1000000,86400,0,3600,false)));
+  print("a 600,000 sat top-up onto 500,000,000 msat under a 1,000,000,000 msat ceiling: %\n",kw(ky_topup(500000000,600000,1000000000)));
+  print("partial signatures: not built\n");
+}
+// book:end main
