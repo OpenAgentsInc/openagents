@@ -1153,7 +1153,7 @@ bool prepare_native_check_domains(File *file, NativeCheckCPlan *plan, uint64_t s
     }
     CheckDecl *check = file->checks[(int32_t)entry.declaration_index];
     Evaluator evaluator{file};
-    evaluator.max_steps = steps;
+    evaluator.max_steps = check->steps ? check->steps : steps;
     std::vector<Evaluator::Domain> domains;
     uint64_t total = 1;
     try {

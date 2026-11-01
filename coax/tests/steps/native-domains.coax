@@ -1,0 +1,4 @@
+// Domain preparation must use the same own budget as the original check.
+#forall "domain budget exhausted" n: 0..<1 #steps 1 { #assert true; }
+#forall "domain own budget admitted" n: 0..<1 #steps 16 { #assert true; }
+#forall "domain fallback admitted" n: 0..<1 { #assert true; }

@@ -98,6 +98,23 @@ tool_main :: () -> int #export_c {
   r = run(compiler, "--profile", "stepz", "", "", out[..]);
   bad += check(r.status != 0, "--profile takes only steps");
 
+  // These are original checked #forall declarations. Emission evaluates
+  // their bounds under the same own/fallback fuel, before publishing any C.
+  domain_error: [4096] u8;
+  for which: 0..<3 {
+    selected := ifx which == 0 then "domain budget exhausted" else ifx which == 1 then "domain own budget admitted" else "domain fallback admitted";
+    domain_argv := [8] string.[compiler, "checks-c", "tests/steps/native-domains.coax", "--library", "--verification-abi", "2", "--only", selected];
+    r = proc_run(domain_argv[..], 120000, out[..], domain_error[..]);
+    complete := r.started == 0 && !r.timed_out && !r.cut;
+    if which == 0 {
+      diagnostic := cast(string) domain_error[0..<r.err_n];
+      bad += check(complete && r.status == 1 && r.out_n == 0 && has(diagnostic, "error[E0400]") && has(diagnostic, "exceeded 1 steps"), "ABI2 refuses bounds beyond the check's own budget without publishing C");
+    } else {
+      answer := cast(string) out[0..<r.out_n];
+      bad += check(complete && r.status == 0 && has(answer, "coax_verification_checks_v2"), ifx which == 1 then "ABI2 admits bounds under an adequate own budget" else "ABI2 preserves the unannotated fallback budget");
+    }
+  }
+
   if bad == 0 { print("steps: ok\n"); return 0; }
   print("steps: % failed\n", bad);
   return 1;
