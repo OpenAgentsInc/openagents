@@ -380,17 +380,20 @@ kept :: (r: [] Run, c: [] Cdp) -> bool {
 thing :: (r: [] Run, c: [] Cdp) -> bool {
   if !tap(r, c, R_MOVE) { return false; }
   e := -1;
-  for turn: 0..<12 {
+  for turn: 0..<41 {   // short turns: a phone's view is narrow; the camera eases after each
     n := probe(c, 63);
     for k: 20..<96 {
       kind := probe(c, 1400 + k);
       if kind > 0 && k != r[0].tree && probe(c, 1200 + 2 * k) > 20 && probe(c, 1201 + 2 * k) > 120 && probe(c, 1200 + 2 * k) < r[0].w - 20 && probe(c, 1201 + 2 * k) < r[0].h - 200 { e = k; break; }
     }
-    if e >= 0 || n <= 0 { break; }
-    if !hold(c, "a", "KeyA", 65, 400) { return why(r, "the keys weren't taken"); }
-    proc_sleep(200);
+    if e >= 0 || n <= 0 || turn == 40 { break; }
+    if !hold(c, "a", "KeyA", 65, 150) { return why(r, "the keys weren't taken"); }
+    proc_sleep(400);
   }
-  if e < 0 { return why(r, "nothing but trees is in view"); }
+  if e < 0 {
+    for k: 20..<96 { if probe(c, 1400 + k) > 0 { print("     thing % kind %: screen % %, at % %, laid %\n", k, probe(c, 1400 + k), probe(c, 1200 + 2 * k), probe(c, 1201 + 2 * k), probe(c, 1000 + 2 * k), probe(c, 1001 + 2 * k), probe(c, 63)); } }
+    return why(r, "nothing but trees is in view");
+  }
   if !tap_at(r, c, probe(c, 1200 + 2 * e), probe(c, 1201 + 2 * e)) { return false; }
   if probe(c, 8) != e { return why_n(r, "a tap on it didn't pick it", probe(c, 8)); }
   x0 := probe(c, 1000 + 2 * e); z0 := probe(c, 1001 + 2 * e);
