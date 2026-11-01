@@ -277,17 +277,11 @@ class ScalarRevalidation(unittest.TestCase):
         for release in [False, True]:self.assertEqual(guard_findings(self.emitted(accepted, release)), [])
         self.record['oracle_controls'] = seen
     def test_actual_byte_helpers_under_the_corrected_policy(self):
-        # cb_mask multiplies a secret by CB_MAX64 with checked multiplication.
-        # The arithmetic correction refuses that conservatively; its emitted
-        # checked C calls the overflow-checking multiply on the secret.
-        c = run(COMPILER, 'c', ROOT / 'coax/lib/crypto/bytes.coax', '--library').stdout
+        # cb_mask multiplies the secret bit by CB_MAX64 with mul_wrap
+        # (7ca28e856e), so neither the source nor the emitted checked or
+        # release C has a guard that depends on the secret.
         out = {}
-        mask = self.tool.audit(ROOT / 'coax/lib/crypto/bytes.coax', 'cb_mask')
-        self.assertFalse(mask['accepted'], mask);self.assertEqual(mask['error_name'], 'unsupported');line = 1 + [i for i, text in enumerate((ROOT / 'coax/lib/crypto/bytes.coax').read_text().splitlines()) if text.startswith('cb_mask ::')][0]
-        self.assertEqual(mask['line'], line)
-        self.assertIn('cb_mask: helper coax_mul_u64', guard_findings(c, 'cb_mask'))
-        out['cb_mask'] = {'accepted': False, 'error': 'unsupported', 'line': line, 'emitted_checked_guard': 'coax_mul_u64 on a secret operand'}
-        for entry in ['cb_ct_select32', 'cb_ct_select64']:
+        for entry in ['cb_mask', 'cb_ct_select32', 'cb_ct_select64']:
             report = self.tool.audit(ROOT / 'coax/lib/crypto/bytes.coax', entry);self.assertTrue(report['accepted'], report)
             for release in [False, True]:
                 emitted = run(COMPILER, 'c', ROOT / 'coax/lib/crypto/bytes.coax', '--library', *(['--release'] if release else [])).stdout

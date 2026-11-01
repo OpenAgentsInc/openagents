@@ -80,10 +80,9 @@ class SecretSource(unittest.TestCase):
         for name,text in cases:self.case(name,text,0)
         for entry in ['cb_ct_select32','cb_ct_select64']:
             report=self.tool.audit(ROOT/'coax/lib/crypto/bytes.coax',entry);self.assertTrue(report['accepted'],report);self.assertFalse(report['object_timing_approved']);self.observations.append({'case':entry,'report':report})
-        # cb_mask uses checked multiplication on a secret; the arithmetic
-        # correction refuses it conservatively (test_revalidate.py shows the
-        # emitted checked multiply). It is no longer an accepted helper.
-        report=self.tool.audit(ROOT/'coax/lib/crypto/bytes.coax','cb_mask');self.assertEqual(report['error'],5,report);self.observations.append({'case':'cb_mask_checked_multiply_refused','report':report})
+        # cb_mask multiplies with mul_wrap (7ca28e856e), so no checked multiply
+        # touches the secret bit and the helper is accepted again.
+        report=self.tool.audit(ROOT/'coax/lib/crypto/bytes.coax','cb_mask');self.assertTrue(report['accepted'],report);self.assertFalse(report['object_timing_approved']);self.observations.append({'case':'cb_mask','report':report})
         # Real scalar/field loops are explicitly outside this first profile.
         report=self.tool.audit(ROOT/'coax/lib/crypto/secp_scalar.coax','sc_mul');self.assertFalse(report['accepted']);self.observations.append({'case':'actual_scalar_not_admitted','report':report})
     def test_loaded_closure_hashes_helper_changes_and_postcompile_drift(self):

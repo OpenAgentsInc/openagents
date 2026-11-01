@@ -49,7 +49,7 @@
    "number": 3,
    "title": "Constant-time rules and secrets",
    "file": "ch003-constant-time-rules.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     1,
@@ -60,7 +60,8 @@
     "coax/lib/crypto/bytes.coax",
     "coax/lib/crypto/secret-flow.coax",
     "coax/lib/crypto/secret-types.coax",
-    "coax/lib/crypto/zeroize.coax"
+    "coax/lib/crypto/zeroize.coax",
+    "nostr/examples/constant-time-rules.coax"
    ],
    "qualified_targets": [
     "cpu",

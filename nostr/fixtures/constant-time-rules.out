@@ -1,0 +1,15 @@
+leaky compare, wrong byte 0: read 1 bytes
+leaky compare, wrong byte 31: read 32 bytes
+cb_ct_equal, right guess: 18446744073709551615
+cb_ct_equal, wrong byte 0: 0
+cb_ct_equal, wrong byte 31: 0
+cb_mask(1) = 18446744073709551615, cb_mask(0) = 0
+select(all ones, 15, 240) = 15
+select(zero, 15, 240) = 240
+masked_pick(1, 15, 240) = 15
+after begin: 32 bytes pending, complete false
+after the wipe: 0 bytes pending, complete true
+erase 4 bytes at offset 30 of 32: range
+register a secret that overlaps another: alias
+a failed wipe: effect
+unequal lengths compare as: 0

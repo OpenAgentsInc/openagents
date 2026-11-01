@@ -1,0 +1,91 @@
+// book:begin example
+#load "../../coax/lib/crypto/bytes.coax";
+#load "../../coax/lib/crypto/zeroize.coax";
+#import "Basic";
+
+// A leaky comparison. It stops at the first byte that differs, so the
+// number of bytes it reads tells an observer where the first difference is.
+// It returns that number so you can see the leak. Never compare secrets
+// this way.
+leaky_bytes_read :: (a: [] u8, b: [] u8) -> int {
+  for i: 0..<a.count { if a[i] != b[i] { return i + 1; } }
+  return a.count;
+}
+
+// Two ways to choose a or b from a secret bit. The first branches on the
+// bit; the second builds a mask and never branches.
+leaky_pick :: (bit: u64, a: u64, b: u64) -> u64 { return ifx bit == 1 then a else b; }
+masked_pick :: (bit: u64, a: u64, b: u64) -> u64 { return cb_ct_select64(cb_mask(bit), a, b); }
+
+ZERO_NAMES :: [10] string.["ok", "capacity", "range", "address", "alias",
+  "state", "effect", "unknown", "reason", "pending"];
+
+main :: () {
+  // A 32-byte secret tag and three guesses: right, wrong in byte 0, and
+  // wrong in byte 31.
+  tag: [32] u8;
+  for i: 0..<32 { tag[i] = cast(u8) (i * 7 + 3); }
+  right := tag; first := tag; last := tag;
+  first[0] ^= 1; last[31] ^= 1;
+
+  print("leaky compare, wrong byte 0: read % bytes\n", leaky_bytes_read(tag[..], first[..]));
+  print("leaky compare, wrong byte 31: read % bytes\n", leaky_bytes_read(tag[..], last[..]));
+
+  // cb_ct_equal reads every byte and returns a mask: all ones or zero.
+  print("cb_ct_equal, right guess: %\n", cb_ct_equal(tag[..], right[..]));
+  print("cb_ct_equal, wrong byte 0: %\n", cb_ct_equal(tag[..], first[..]));
+  print("cb_ct_equal, wrong byte 31: %\n", cb_ct_equal(tag[..], last[..]));
+
+  // A mask from a bit, and a select with no branch.
+  print("cb_mask(1) = %, cb_mask(0) = %\n", cb_mask(1), cb_mask(0));
+  print("select(all ones, 15, 240) = %\n", cb_ct_select64(cb_mask(1), 15, 240));
+  print("select(zero, 15, 240) = %\n", cb_ct_select64(cb_mask(0), 15, 240));
+  print("masked_pick(1, 15, 240) = %\n", masked_pick(1, 15, 240));
+
+  // Erasure bookkeeping. Register the tag as a 32-byte secret, close the
+  // scope, and acknowledge the wipe. The scope is complete only after every
+  // registered secret is acknowledged.
+  s: ZeroScope;
+  c := zero_scope_register(s, 1, 32, 32, true, false);
+  s = c.scope;
+  c = zero_scope_begin(s, 0);
+  s = c.scope;
+  print("after begin: % bytes pending, complete %\n", zero_scope_pending(s, 0), zero_scope_complete(s));
+  for i: 0..<32 { tag[i] = 0; }
+  c = zero_scope_ack(s, 1, ZERO_OK);
+  s = c.scope;
+  print("after the wipe: % bytes pending, complete %\n", zero_scope_pending(s, 0), zero_scope_complete(s));
+
+  // Refusals.
+  print("erase 4 bytes at offset 30 of 32: %\n", ZERO_NAMES[zero_admit(32, 30, 4, true)]);
+  print("register a secret that overlaps another: %\n",
+    ZERO_NAMES[zero_scope_register(ZeroScope.{}, 1, 32, 32, true, true).error]);
+  open: ZeroScope;
+  open = zero_scope_register(open, 1, 32, 32, true, false).scope;
+  open = zero_scope_begin(open, 0).scope;
+  print("a failed wipe: %\n", ZERO_NAMES[zero_scope_ack(open, 1, 77).error]);
+  print("unequal lengths compare as: %\n", cb_ct_equal(right[..], right[0..<31]));
+}
+// book:end example
+
+// book:begin check
+// cb_ct_equal against an independent model: a byte-by-byte comparison of the
+// whole slice. Every single-bit difference at every position is refused.
+#forall "one flipped bit anywhere makes the tags unequal" at: 0..<32, bit: 0..<8 {
+  a: [32] u8; b: [32] u8;
+  for i: 0..<32 { a[i] = cast(u8) (i * 7 + 3); b[i] = a[i]; }
+  #assert cb_ct_equal(a[..], b[..]) == CB_MAX64;
+  b[at] ^= cast(u8) (1 << bit);
+  #assert cb_ct_equal(a[..], b[..]) == 0;
+  #assert leaky_bytes_read(a[..], b[..]) == at + 1;
+}
+// The hand-worked select: b ^ ((a ^ b) & mask).
+#test "select by hand" {
+  #assert (15 ^ 240) == 255;
+  #assert (240 ^ (255 & CB_MAX64)) == 15;
+  #assert cb_ct_select64(CB_MAX64, 15, 240) == 15 && cb_ct_select64(0, 15, 240) == 240;
+  #assert cb_mask(3) == CB_MAX64 && cb_mask(2) == 0;
+  #assert leaky_pick(1, 15, 240) == 15 && leaky_pick(0, 15, 240) == 240;
+  #assert masked_pick(1, 15, 240) == 15 && masked_pick(0, 15, 240) == 240;
+}
+// book:end check

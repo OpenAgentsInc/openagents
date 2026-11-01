@@ -7,7 +7,7 @@
 
 - [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) — implemented
 - [2. Big integers in fixed limbs](ch002-big-integers-in-fixed-limbs.md) — implemented
-- [3. Constant-time rules and secrets](ch003-constant-time-rules.md) — partly implemented
+- [3. Constant-time rules and secrets](ch003-constant-time-rules.md) — implemented
 
 **II. Hashes and MACs**
 

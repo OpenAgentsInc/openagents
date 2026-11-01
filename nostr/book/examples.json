@@ -20,6 +20,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/constant-time-rules.coax",
+      "chapter": "nostr/book/ch003-constant-time-rules.md",
+      "stdout": "nostr/fixtures/constant-time-rules.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
