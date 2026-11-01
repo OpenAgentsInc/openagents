@@ -1,0 +1,19 @@
+#load "prefer-drive.coax";
+// Chapter 138's recorded run (release only; psionic/tests/check_prefer.sh
+// compares its transcript with psionic/fixtures/prefer/long.out): chapter
+// 136's recorded run rebuilt (600 base steps, 1200 tuning steps), then 400
+// reward-model steps and 200 DPO steps of 16 pairs each over 4096 training
+// pairs, scored on 256 held-out pairs of kinds 0 and 1 and 256 of kind 2,
+// and 256 held-out questions asked before and after DPO.
+// book:begin long
+// Chapter 136's recorded plans (psionic/tests/sft-long.coax), unchanged.
+SF_BASE_RUN :: NpPlan.{model=SF_MODEL,batch=8,steps=600,warmup=20,warmdown=120,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1361,budget=1e12};
+SF_TUNE_RUN :: NpPlan.{model=SF_MODEL,batch=16,steps=1200,warmup=0,warmdown=300,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=11,init=0,budget=1e13};
+PF_RM_RUN :: NpPlan.{model=SF_MODEL,batch=16,steps=400,warmup=0,warmdown=100,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=13,init=0,budget=1e13};
+PF_DPO_RUN :: NpPlan.{model=SF_MODEL,batch=16,steps=200,warmup=0,warmdown=50,final=0,
+    embed=0.003,matrix=0.001,head=0.001,scalar=0.001,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=17,init=0,budget=1e13};
+main :: () {pf_drive(SF_BASE_RUN,SF_TUNE_RUN,PF_RM_RUN,PF_DPO_RUN,4096,256,4096,256,100);}
+// book:end long

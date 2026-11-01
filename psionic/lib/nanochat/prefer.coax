@@ -1,0 +1,479 @@
+// Chapter 138: preference pairs, a reward model and DPO on chapter 136's
+// calculator task, on the CPU in binary64 (nanochat-prefer-cpu-f64-v1). A
+// pair is two replies to one question, a chosen one and a rejected one.
+// Pairs are generated with known ground truth: the chosen reply makes the
+// exact calculator call and answers with its output; the rejected reply
+// answers a different number after the right output (kind 0), skips the tool
+// and answers a wrong number (kind 1), or calls the calculator on the wrong
+// operands and answers that (kind 2). Admission renders both replies with
+// chapter 136's sf_admit and refuses a pair whose replies are identical,
+// whose prompts differ, or whose label the ground truth contradicts. The
+// reward model is chapter 136's model read through one token: its reward is
+// the log-probability of PF_VERDICT right after the reply. It is trained
+// with the Bradley-Terry loss. DPO trains a copy of the same model against
+// the frozen original with each reply's summed log-probability over its
+// supervised targets. Both use chapter 127's masked gradient, chapter 128's
+// schedule and AdamW. The acceptance rules are frozen here, before any run.
+#load "sft.coax";
+#load "../../tests/prefer-helpers.coax";
+#authority;
+
+PfStatus :: enum u8 {ok;shape;reply;window;prompt;same;label;kind;data;model;}
+PfMode :: enum u8 {reward;dpo;}
+// A pair as admitted: the shared prompt's length and each reply's tokens.
+PfPair :: struct {status:PfStatus;reply:SfStatus;prompt:int;chosen:int;rejected:int;}
+PfSet :: struct {status:PfStatus;reply:SfStatus;count:int;tokens:int;}
+PfValue :: struct {status:PfStatus;value:f64;}
+PfScore :: struct {status:PfStatus;right:int;count:int;mean:f64;}
+PfInterval :: struct {lo:f64;hi:f64;}
+// Scratch for one sequence: chapter 125's forward and chapter 127's tape,
+// two gradients, and the reward sequence with its one target.
+PfWork :: struct {cache:[]f64;work:[]f64;logits:[]f64;tape:[]f64;g:[]f64;h:[]f64;seq:[]int;target:[]int;}
+// The token whose log-probability after the reply is the reward: `Y`.
+PF_VERDICT :: 89;
+// book:begin accept
+// The acceptance rules, frozen before the first run. The reward model passes
+// when the lower end of the 95% Wilson interval of its held-out pairwise
+// accuracy, on the kinds it was trained on, is at least 0.75. DPO passes
+// when the same holds for its implicit reward on the same pairs, and, on the
+// same held-out questions asked greedily with the tool, its exact calls and
+// its exact answers each fall by at most 1 in 10 from the starting model's.
+PF_RM_LOW :: 0.75;
+PF_DPO_LOW :: 0.75;
+PF_DROP_TENTHS :: 1;
+pf_accept_reward :: (s:PfScore)->bool {return pf_clears(s,PF_RM_LOW);}
+pf_accept_dpo :: (s:PfScore,before:SfRates,after:SfRates)->bool {
+    if before.status!=SfStatus.ok || after.status!=SfStatus.ok || after.asked!=before.asked {return false;}
+    n:=before.asked;
+    return pf_clears(s,PF_DPO_LOW) && 10*(before.called-after.called)<=PF_DROP_TENTHS*n && 10*(before.answered-after.answered)<=PF_DROP_TENTHS*n;
+}
+// The score was measured, and the lower end of its interval reaches low.
+pf_clears :: (s:PfScore,low:f64)->bool {return s.status==PfStatus.ok && pf_wilson(s.right,s.count).lo>=low;}
+// book:end accept
+
+// Checks first.
+#test "hand values: softplus, the two losses, their slopes and the Wilson interval" {
+    // Bradley-Terry with rewards 1 and 0: -log sigma(1) = log(1 + e^-1), slope -sigma(-1) on the chosen reward.
+    #assert abs(pf_softplus(-1)-0.31326168751822286)<1e-16 && abs(nc_sigmoid(-1)-0.2689414213699951)<1e-16;
+    #assert pf_softplus(0)==log(2.0) && abs(pf_softplus(1)-1-0.31326168751822286)<1e-15 && pf_softplus(-40)>=0 && pf_softplus(-40)<=exp(-40.0) && pf_softplus(800)==800;
+    // DPO with beta 0.1: the chosen reply gained 1 nat over the reference, the rejected lost 1: z = 0.2.
+    #assert abs(pf_softplus(-0.1*((-2.0+3.0)-(-4.0+3.0)))-0.5981388693815918)<1e-15;
+    // Wilson 95% intervals, worked in the chapter.
+    w:=pf_wilson(8,10);#assert abs(w.lo-0.49015684672072335)<1e-15 && abs(w.hi-0.9433190520193067)<1e-15;
+    w=pf_wilson(45,50);#assert abs(w.lo-0.7863950966521162)<1e-15 && abs(w.hi-0.956524876008429)<1e-15;
+    w=pf_wilson(15,20);#assert abs(w.lo-0.5312949900419365)<1e-15 && abs(w.hi-0.888139947210597)<1e-15;
+    w=pf_wilson(0,10);#assert abs(w.lo)<1e-16 && abs(w.hi-0.2775401687666166)<1e-15;
+    w=pf_wilson(3,0);#assert w.lo==0 && w.hi==1;w=pf_wilson(1,1);#assert abs(w.lo-0.20654329147389294)<1e-15 && abs(w.hi-1)<1e-15;
+}
+#test "the tiny pair by hand: tokens, prompt and every kind" {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);tok:[128]int;tgt:[128]int;for i:0..<128 {tok[i]=-7;tgt[i]=-7;}
+    p:=SfProblem.{a=2,b=3};
+    // Kind 0: the same call and output, then 6 (54) instead of 5 (53).
+    r:=pf_example(table[..],sp[..],329,64,p,0,tok[..],tgt[..]);
+    #assert r.status==PfStatus.ok && r.prompt==15 && r.chosen==25 && r.rejected==25 && tok[50]==-7 && tgt[50]==-7;
+    want:=[25]int.[320,321,87,104,300,32,105,115,32,50,43,51,63,322,323,325,50,43,51,326,327,53,328,53,324];
+    for i:0..<25 {#assert tok[i]==want[i];x:=want[i];if i==23 {x=54;}#assert tok[25+i]==x;}
+    #assert tgt[22]==53 && tgt[47]==54 && sf_check(tok[0..<25],tgt[0..<25],320) && sf_check(tok[25..<50],tgt[25..<50],320);
+    // Kind 1: no tool, the plain answer 6: the prompt, 6 and <|assistant_end|>.
+    r=pf_example(table[..],sp[..],329,64,p,1,tok[..],tgt[..]);
+    #assert r.status==PfStatus.ok && r.prompt==15 && r.rejected==17 && tok[25+15]==54 && tok[25+16]==324 && tgt[25+14]==54;
+    // Kind 2: the call 2+4, its output 6 and the answer 6.
+    r=pf_example(table[..],sp[..],329,64,p,2,tok[..],tgt[..]);
+    #assert r.status==PfStatus.ok && r.rejected==25 && tok[25+18]==52 && tok[25+21]==54 && tok[25+23]==54;
+    for i:0..<25 {if i!=18 && i!=21 && i!=23 {#assert tok[25+i]==want[i];}}
+    // Subtraction below zero and a two-digit product keep the same shape.
+    r=pf_example(table[..],sp[..],329,64,SfProblem.{a=1,b=9,op=1},2,tok[..],tgt[..]);#assert r.status==PfStatus.ok;
+    r=pf_example(table[..],sp[..],329,64,SfProblem.{a=7,b=9,op=2},0,tok[..],tgt[..]);#assert r.status==PfStatus.ok && r.chosen==27;
+    #assert pf_example(table[..],sp[..],329,64,p,3,tok[..],tgt[..]).status==PfStatus.kind && pf_example(table[..],sp[..],329,64,p,-1,tok[..],tgt[..]).status==PfStatus.kind;
+}
+#test "admission refuses identical replies, mismatched prompts, wrong labels and malformed replies, before writing" {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);tok:[128]int;tgt:[128]int;for i:0..<128 {tok[i]=-7;tgt[i]=-7;}
+    p:=SfProblem.{a=2,b=3};u:=NcMessage.{role=NcRole.user,text="What is 2+3?"};a:=NcMessage.{role=NcRole.assistant,list=true,first=0,parts=3};
+    good:=[3]NcPart.[NcPart.{kind=NcPartKind.python,text="2+3"},NcPart.{kind=NcPartKind.output,text="5"},NcPart.{text="5"}];
+    bad:=good;bad[2].text="6";cm:=[2]NcMessage.[u,a];
+    #assert pf_admit(table[..],sp[..],329,64,p,cm[..],good[..],cm[..],bad[..],tok[..],tgt[..]).status==PfStatus.ok;for i:0..<128 {tok[i]=-7;tgt[i]=-7;}
+    for f:0..<14 {cp:=good;rp:=bad;c2:=cm;r2:=cm;ctx:=64;want:=PfStatus.label;q:=p;tt:=tok[..];gg:=tgt[..];
+        if f==0 {rp=good;want=PfStatus.same;}                                       // the same reply twice
+        if f==1 {r2[0].text="What is 2+4?";want=PfStatus.prompt;}                   // another question
+        if f==2 {r2[0].text="What is 2+3!";want=PfStatus.prompt;}                   // the same length, one token apart
+        if f==3 {cp=bad;rp=good;}                                                   // the label swapped
+        if f==4 {cp=bad;rp[2].text="7";}                                            // both wrong
+        if f==5 {r2[0].text="What is 12+3?";want=PfStatus.prompt;}                  // a longer question
+        if f==6 {q=SfProblem.{a=2,b=4};}                                            // the problem is not the prompt's
+        if f==7 {rp[1].text="6";want=PfStatus.reply;}                               // a reply sf_admit refuses
+        if f==8 {cp[1].text="6";want=PfStatus.reply;}
+        if f==9 {ctx=25;want=PfStatus.window;}                                      // no room for the verdict token
+        if f==10 {tt=tok[0..<49];want=PfStatus.shape;}if f==11 {gg=tgt[0..<49];want=PfStatus.shape;}
+        if f==12 {c2[1].parts=2;cp[1].kind=NcPartKind.text;cp[1].text="5";cp[0]=NcPart.{text="The answer is"};want=PfStatus.label;} // right number, no call
+        if f==13 {c2[0].text="What is 2+3?  ";r2[0].text="What is 2+3?  ";}         // a question that is not the problem's
+        r:=pf_admit(table[..],sp[..],329,ctx,q,c2[..],cp[..],r2[..],rp[..],tt,gg);#assert r.status==want;
+        if f==7 {#assert r.reply==SfStatus.result;}if f==8 {#assert r.reply==SfStatus.result;}
+        #assert r.chosen==0 && r.rejected==0;for i:0..<128 {#assert tok[i]==-7 && tgt[i]==-7;}
+    }
+    // Either reply alone can lack room for the verdict.
+    one:=[2]NcMessage.[u,NcMessage.{role=NcRole.assistant,text="6"}];
+    #assert pf_admit(table[..],sp[..],329,25,p,cm[..],good[..],one[..],good[..],tok[..],tgt[..]).status==PfStatus.window;
+    long:=[4]NcMessage.[u,a,u,NcMessage.{role=NcRole.assistant,text="5"}];
+    #assert pf_admit(table[..],sp[..],329,41,p,cm[..],good[..],long[..],good[..],tok[..],tgt[..]).status==PfStatus.window;
+    #assert pf_admit(table[..],sp[..],329,42,p,cm[..],good[..],long[..],good[..],tok[..],tgt[..]).status==PfStatus.ok;for i:0..<128 {tok[i]=-7;tgt[i]=-7;}
+    // The prompt and the equality the checks above rest on, by hand.
+    t1:=[5]int.[-1,-1,-1,7,-1];t2:=[2]int.[0,-1];t3:=[2]int.[3,-1];#assert pf_prompt(t1[..])==4 && pf_prompt(t2[..])==1 && pf_prompt(t3[..])==1;
+    e1:=[2]int.[1,2];e2:=[2]int.[0,2];#assert pf_equal(e1[..],e1[..]) && !pf_equal(e1[..],e2[..]) && !pf_equal(e1[..],e1[0..<1]) && pf_equal(e1[0..<0],e2[0..<0]);
+    // The edges accepted: exactly the room for both replies, and one token of room for the verdict.
+    #assert pf_admit(table[..],sp[..],329,26,p,cm[..],good[..],cm[..],bad[..],tok[0..<50],tgt[0..<50]).status==PfStatus.ok;
+    // A grader that reads only the message list: extra parts or a plain reply are not the exact form.
+    x:=[4]NcPart.[good[0],good[1],good[2],good[2]];a4:=[2]NcMessage.[u,NcMessage.{role=NcRole.assistant,list=true,first=0,parts=4}];
+    #assert pf_correct(p,cm[..],good[..]) && !pf_correct(p,a4[..],x[..]) && !pf_correct(p,cm[0..<1],good[..]);
+    plain:=[2]NcMessage.[u,NcMessage.{role=NcRole.assistant,text="5"}];#assert !pf_correct(p,plain[..],good[..]);
+    three:=[3]NcMessage.[u,a,a];#assert !pf_correct(p,three[..],good[..]);
+    sh:=good;sh[0].kind=NcPartKind.text;#assert !pf_correct(p,cm[..],sh[..]);sh=good;sh[1].kind=NcPartKind.text;#assert !pf_correct(p,cm[..],sh[..]);
+    sh=good;sh[2].kind=NcPartKind.output;#assert !pf_correct(p,cm[..],sh[..]);sh=good;sh[1].text="6";#assert !pf_correct(p,cm[..],sh[..]);
+    us:=cm;us[0].role=NcRole.system;#assert !pf_correct(p,us[..],good[..]);us=cm;us[1].role=NcRole.user;#assert !pf_correct(p,us[..],good[..]);
+    sh=good;sh[0].text="2+4";#assert !pf_correct(p,cm[..],sh[..]);
+    // A reply that goes on after the right answer is another reply, and wrong.
+    more:=[4]NcMessage.[u,a,u,NcMessage.{role=NcRole.assistant,text="5"}];
+    r:=pf_admit(table[..],sp[..],329,64,p,cm[..],good[..],more[..],good[..],tok[..],tgt[..]);#assert r.status==PfStatus.ok && r.chosen==25 && r.rejected==41;
+    of:=[4]NcPart.[NcPart.{text="x"},good[0],good[1],good[2]];a1:=[2]NcMessage.[u,NcMessage.{role=NcRole.assistant,list=true,first=1,parts=3}];#assert pf_correct(p,a1[..],of[..]);
+}
+#test "sets: pairs back to back, kinds in turn" {
+    table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);ps:=[3]SfProblem.[SfProblem.{a=2,b=3},SfProblem.{a=4,b=1,op=1},SfProblem.{a=5,b=6,op=2}];
+    tok:[400]int;tgt:[400]int;start:=[7]int.[9,9,9,9,9,9,9];ks:=[2]int.[1,0];
+    s:=pf_encode(table[..],sp[..],329,64,ps[..],ks[..],tok[..],tgt[..],start[..]);
+    #assert s.status==PfStatus.ok && s.count==3 && start[0]==0 && start[1]==25 && start[2]==25+17 && start[3]==67 && start[4]==92 && start[5]==92+27 && start[6]==92+27+18 && s.tokens==start[6];
+    one:=[1]int.[2];s=pf_encode(table[..],sp[..],329,64,ps[0..<1],one[..],tok[..],tgt[..],start[..]);#assert s.status==PfStatus.ok && start[2]==50 && tok[25+18]==52;
+    #assert pf_encode(table[..],sp[..],329,64,ps[..],ks[0..<0],tok[..],tgt[..],start[..]).status==PfStatus.data;
+    #assert pf_encode(table[..],sp[..],329,64,ps[..],ks[..],tok[..],tgt[..],start[0..<6]).status==PfStatus.data;
+    // Pair j needs two windows of room from where it starts.
+    #assert pf_encode(table[..],sp[..],329,64,ps[..],ks[..],tok[0..<92+128],tgt[..],start[..]).status==PfStatus.ok;
+    #assert pf_encode(table[..],sp[..],329,64,ps[..],ks[..],tok[0..<92+127],tgt[..],start[..]).status==PfStatus.data;
+    #assert pf_encode(table[..],sp[..],329,64,ps[..],ks[..],tok[..],tgt[0..<92+127],start[..]).status==PfStatus.data;
+    #assert pf_encode(table[..],sp[..],329,64,ps[..],ks[..],tok[..],tgt[0..<92+128],start[..]).status==PfStatus.ok;
+    bad:=[1]int.[5];f:=pf_encode(table[..],sp[..],329,64,ps[..],bad[..],tok[..],tgt[..],start[..]);#assert f.status==PfStatus.kind && f.count==0;
+    w:=pf_encode(table[..],sp[..],329,24,ps[..],ks[..],tok[..],tgt[..],start[..]);#assert w.status==PfStatus.reply && w.reply==SfStatus.window;
+}
+#test "log-probabilities and rewards: the forward path against chapter 127's masked loss" #steps 2000000000 {
+    c:=PF_SMALL;n:=nc_parameter_count(c);w:[10216]f64;np_init(c,3,w[..]);tok:=PF_TOK;tgt:=PF_TGT;
+    cache:[2000]f64;work:[2000]f64;logits:[96]f64;tape:[6000]f64;g:[10216]f64;h:[10216]f64;seq:[8]int;target:[8]int;
+    k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    // The summed log-probability is minus kept times the masked mean loss.
+    for j:0..<4 {a:=PF_START[j];b:=PF_START[j+1];v:=pf_value(c,w[..],PfMode.dpo,11,tok[a..<b],tgt[a..<b],k);#assert v.status==PfStatus.ok;
+        r:=nb_masked(c,w[..],tok[a..<b],tgt[a..<b-1],g[..],tape[..],logits[..],false);#assert r.status==NcStatus.ok;
+        #assert abs(v.value+f64(sf_kept(tgt[a..<b]))*r.loss)<1e-13;
+        // The reward reads one target, the verdict after the last token.
+        x:=pf_value(c,w[..],PfMode.reward,11,tok[a..<b],tgt[a..<b],k);s:=tok[a..<b];e:[8]int;t:[7]int;for i:0..<s.count {e[i]=s[i];}e[s.count]=11;for i:0..<7 {t[i]=-1;}t[s.count-1]=11;
+        q:=nb_masked(c,w[..],e[0..<s.count+1],t[0..<s.count],g[..],tape[..],logits[..],false);#assert x.status==PfStatus.ok && abs(x.value+q.loss)<1e-13 && x.value<0;
+        // The gradient path returns the same values and minus kept times the masked gradient.
+        y:=pf_grad(c,w[..],PfMode.reward,11,tok[a..<b],tgt[a..<b],h[..],k);#assert y.status==PfStatus.ok && y.value==-q.loss;for i:0..<n {#assert h[i]==-g[i];}
+        y=pf_grad(c,w[..],PfMode.dpo,11,tok[a..<b],tgt[a..<b],h[..],k);#assert y.status==PfStatus.ok && y.value==-f64(sf_kept(tgt[a..<b]))*r.loss;
+        #assert nb_masked(c,w[..],tok[a..<b],tgt[a..<b-1],g[..],tape[..],logits[..],false).status==NcStatus.ok;for i:0..<n {#assert h[i]==-f64(sf_kept(tgt[a..<b]))*g[i];}
+    }
+    // A target at position 0, and a target that is token 0, count like any other.
+    t0:=[4]int.[2,0,5,1];g0:=[4]int.[0,5,1,-1];v0:=pf_value(c,w[..],PfMode.dpo,11,t0[..],g0[..],k);
+    r0:=nb_masked(c,w[..],t0[..],g0[0..<3],g[..],tape[..],logits[..],false);#assert r0.status==NcStatus.ok && abs(v0.value+3*r0.loss)<1e-13;
+    v0=pf_value(c,w[..],PfMode.reward,11,t0[..],g0[..],k);#assert abs(v0.value+pf_hand_reward(c,w[..],t0[..],11,g[..],tape[..],logits[..]))<1e-13;
+    // With a zero head every logit is 0: each target costs ln 12.
+    z:=w;for i:nc_head(c)..<nc_smear_gate(c) {z[i]=0;}
+    v:=pf_value(c,z[..],PfMode.dpo,11,tok[0..<6],tgt[0..<6],k);#assert abs(v.value+3*log(12.0))<1e-14;
+    v=pf_value(c,z[..],PfMode.reward,11,tok[0..<6],tgt[0..<6],k);#assert abs(v.value+log(12.0))<1e-14;
+    // Refusals: no room for the verdict, a broken model, a short scratch.
+    full:=[8]int.[1,2,3,4,5,6,7,8];ft:=[8]int.[2,3,4,5,6,7,8,-1];
+    #assert pf_value(c,w[..],PfMode.reward,11,full[..],ft[..],k).status==PfStatus.window && pf_grad(c,w[..],PfMode.reward,11,full[..],ft[..],h[..],k).status==PfStatus.window;
+    #assert pf_value(c,w[..],PfMode.dpo,11,full[..],ft[..],k).status==PfStatus.ok && pf_grad(c,w[..],PfMode.dpo,11,full[..],ft[..],h[..],k).status==PfStatus.ok;
+    #assert pf_value(c,w[..],PfMode.reward,11,full[0..<7],ft[0..<7],k).status==PfStatus.ok && pf_grad(c,w[..],PfMode.reward,11,full[0..<7],ft[0..<7],h[..],k).status==PfStatus.ok;
+    #assert pf_value(c,w[..],PfMode.dpo,11,full[..],ft[0..<7],k).status==PfStatus.shape && pf_grad(c,w[..],PfMode.dpo,11,full[..],ft[0..<7],h[..],k).status==PfStatus.shape;
+    bw:=w;bw[0]=0.0/0.0;#assert pf_value(c,bw[..],PfMode.dpo,11,tok[0..<6],tgt[0..<6],k).status==PfStatus.model && pf_grad(c,bw[..],PfMode.dpo,11,tok[0..<6],tgt[0..<6],h[..],k).status==PfStatus.model;
+    #assert pf_value(c,w[..],PfMode.reward,12,tok[0..<6],tgt[0..<6],k).status==PfStatus.model && pf_grad(c,w[..],PfMode.reward,12,tok[0..<6],tgt[0..<6],h[..],k).status==PfStatus.model;
+    small:=k;small.seq=seq[0..<6];#assert pf_value(c,w[..],PfMode.reward,11,tok[0..<6],tgt[0..<6],small).status==PfStatus.shape && pf_grad(c,w[..],PfMode.reward,11,tok[0..<6],tgt[0..<6],h[..],small).status==PfStatus.shape;
+    small=k;small.target=target[0..<5];#assert pf_value(c,w[..],PfMode.reward,11,tok[0..<6],tgt[0..<6],small).status==PfStatus.shape;
+    #assert pf_value(c,w[..],PfMode.reward,11,tok[0..<5],tgt[0..<5],small).status==PfStatus.ok;
+}
+#test "a step's gradient by hand and by central differences, for both losses" #steps 4000000000 {
+    c:=PF_SMALL;n:=nc_parameter_count(c);tok:=PF_TOK;tgt:=PF_TGT;start:=PF_START;
+    cache:[2000]f64;work:[2000]f64;logits:[96]f64;tape:[6000]f64;g:[10216]f64;h:[10216]f64;seq:[8]int;target:[8]int;
+    k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    p:=NpPlan.{model=c,batch=2,steps=3,warmup=0,warmdown=1,final=0.5,embed=0.05,matrix=0.02,head=0.02,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=0,seed=4,init=9,budget=1e12};
+    w:[10216]f64;m:[10216]f64;v:[10216]f64;total:[10216]f64;order:[3]int;refs:[4]f64;w0:[10216]f64;
+    // A zero head: both rewards are -ln 12, the margin is 0 and the loss ln 2.
+    np_init(c,p.init,w[..]);for i:nc_head(c)..<nc_smear_gate(c) {w[i]=0;}order[2]=-1;
+    r:=pf_step(p,NpRun.{},PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],order[..],w[..],m[..],v[..],total[..],k);
+    #assert r.status==NpStatus.ok && abs(r.loss-log(2.0))<1e-15 && r.run.step==1;
+    // Bradley-Terry by hand: sigma(-d) times the difference of chapter 127's gradients, averaged over the pairs.
+    np_init(c,p.init,w[..]);w0=w;want:[10216]f64;hand:=0.0;
+    for q:0..<2 {a:=pf_hand_reward(c,w[..],tok[start[2*q]..<start[2*q+1]],11,g[..],tape[..],logits[..]);b:=pf_hand_reward(c,w[..],tok[start[2*q+1]..<start[2*q+2]],11,h[..],tape[..],logits[..]);
+        d:=(-a)-(-b);s:=nc_sigmoid(-d);hand+=pf_softplus(-d)/2;for i:0..<n {want[i]+=s*(g[i]-h[i])/2;}}
+    for i:0..<n {m[i]=0;v[i]=0;}order[2]=-1;r=pf_step(p,NpRun.{},PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],order[..],w[..],m[..],v[..],total[..],k);
+    #assert r.status==NpStatus.ok && abs(r.loss-hand)<1e-15;for i:0..<n {#assert abs(total[i]-want[i])<=1e-15*(1+abs(want[i]));}
+    // Central differences of the forward loss agree in four tensors.
+    picks:=[4]int.[0,nc_wte(c)+4*24+3,nc_block(c,0).q+7,nc_head(c)+11*24+5];
+    for at:picks {#assert abs(pf_central(c,w0[..],PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],at,k)-total[at])<=1e-7*(1+abs(total[at]));}
+    // DPO against a frozen reference: at the reference the margin is 0 and the loss ln 2.
+    for q:0..<4 {refs[q]=pf_value(c,w0[..],PfMode.dpo,11,tok[start[q]..<start[q+1]],tgt[start[q]..<start[q+1]],k).value;}
+    w=w0;for i:0..<n {m[i]=0;v[i]=0;}order[2]=-1;r=pf_step(p,NpRun.{},PfMode.dpo,0.1,11,tok[..],tgt[..],start[..],refs[..],order[..],w[..],m[..],v[..],total[..],k);
+    #assert r.status==NpStatus.ok && abs(r.loss-log(2.0))<1e-14;
+    // By hand: sigma(-z) beta (kept_c g_c - kept_r g_r), with sigma(0) = 1/2.
+    for i:0..<n {want[i]=0;}
+    for q:0..<2 {a:=start[2*q];b:=start[2*q+1];e:=start[2*q+2];kc:=f64(sf_kept(tgt[a..<b]));kr:=f64(sf_kept(tgt[b..<e]));
+        #assert nb_masked(c,w0[..],tok[a..<b],tgt[a..<b-1],g[..],tape[..],logits[..],false).status==NcStatus.ok && nb_masked(c,w0[..],tok[b..<e],tgt[b..<e-1],h[..],tape[..],logits[..],false).status==NcStatus.ok;
+        for i:0..<n {want[i]+=0.5*0.1*(kc*g[i]-kr*h[i])/2;}}
+    for i:0..<n {#assert abs(total[i]-want[i])<=1e-12*(1+abs(want[i]));}
+    // Away from the reference: shift the references so z is not 0, and difference the loss.
+    refs[0]-=3;refs[3]+=2;w=w0;for i:0..<n {m[i]=0;v[i]=0;}order[2]=-1;r=pf_step(p,NpRun.{},PfMode.dpo,0.7,11,tok[..],tgt[..],start[..],refs[..],order[..],w[..],m[..],v[..],total[..],k);
+    #assert r.status==NpStatus.ok && r.loss<log(2.0)-0.1;
+    for at:picks {#assert abs(pf_central(c,w0[..],PfMode.dpo,0.7,11,tok[..],tgt[..],start[..],refs[..],at,k)-total[at])<=1e-7*(1+abs(total[at]));}
+    #assert abs(r.loss-pf_loss(c,w0[..],PfMode.dpo,0.7,11,tok[..],tgt[..],start[..],refs[..],k))<1e-12;
+    // A batch of one takes pair order[s] of chapter 128's per-epoch order at step s.
+    q1:=p;q1.batch=1;q1.steps=10;o5:[3]int;o5[2]=-1;ow:[3]int;ow[2]=-1;
+    l0:=pf_softplus(-pf_margin(c,w0[..],PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],0,k));l1:=pf_softplus(-pf_margin(c,w0[..],PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],1,k));#assert abs(l0-l1)>1e-6;
+    for st:0..<6 {w=w0;for i:0..<n {m[i]=0;v[i]=0;}r=pf_step(q1,NpRun.{step=st,state=AwState.{step=st}},PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],o5[..],w[..],m[..],v[..],total[..],k);
+        lw:=ifx np_window(q1,2,st,ow[..])==0 then l0 else l1;#assert r.status==NpStatus.ok && abs(r.loss-lw)<1e-12;}
+    // The step moved the policy and left the references alone.
+    #assert !np_same(w[..],w0[..]) && refs[1]==pf_value(c,w0[..],PfMode.dpo,11,tok[start[1]..<start[2]],tgt[start[1]..<start[2]],k).value;
+}
+#test "a step refuses a finished run, too few pairs, missing references, a bad beta, a broken model and an optimizer refusal; it clips" #steps 4000000000 {
+    c:=PF_SMALL;n:=nc_parameter_count(c);tok:=PF_TOK;tgt:=PF_TGT;start:=PF_START;
+    cache:[2000]f64;work:[2000]f64;logits:[96]f64;tape:[6000]f64;g:[10216]f64;h:[10216]f64;seq:[8]int;target:[8]int;
+    k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    p:=NpPlan.{model=c,batch=2,steps=3,warmup=0,warmdown=1,final=0.5,embed=0.05,matrix=0.02,head=0.02,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=0,seed=4,init=9,budget=1e12};
+    w:[10216]f64;m:[10216]f64;v:[10216]f64;total:[10216]f64;order:[3]int;order[2]=-1;refs:=[4]f64.[-9,-9,-9,-9];np_init(c,p.init,w[..]);keep:=w;
+    #assert pf_step(p,NpRun.{step=3},PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[..],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.config;
+    #assert pf_step(p,NpRun.{},PfMode.dpo,0,11,tok[..],tgt[..],start[..],refs[..],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.config;
+    #assert pf_step(p,NpRun.{},PfMode.dpo,0.0/0.0,11,tok[..],tgt[..],start[..],refs[..],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.config;
+    #assert pf_step(p,NpRun.{},PfMode.dpo,0.1,11,tok[..],tgt[..],start[0..<3],refs[..],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.data;
+    #assert pf_step(p,NpRun.{},PfMode.dpo,0.1,11,tok[..],tgt[..],start[0..<4],refs[..],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.data;
+    #assert pf_step(p,NpRun.{},PfMode.dpo,0.1,11,tok[..],tgt[..],start[..],refs[0..<3],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.data;
+    #assert pf_step(p,NpRun.{},PfMode.dpo,0.1,11,tok[..],tgt[0..<19],start[..],refs[..],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.data;
+    #assert pf_step(p,NpRun.{},PfMode.reward,0.1,12,tok[..],tgt[..],start[..],refs[0..<0],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.data;
+    bt:=tgt;bt[7]=12;#assert pf_step(p,NpRun.{},PfMode.dpo,0.1,11,tok[..],bt[..],start[..],refs[..],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.data;
+    #assert pf_step(p,NpRun.{state=AwState.{step=-1}},PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],order[..],w[..],m[..],v[..],total[..],k).status==NpStatus.optimizer;
+    #assert np_same(keep[..],w[..]);
+    // One pair is enough for a batch of one; the reward needs no references.
+    q:=p;q.batch=1;o1:[2]int;o1[1]=-1;#assert pf_step(q,NpRun.{},PfMode.dpo,0.1,11,tok[0..<11],tgt[0..<11],start[0..<3],refs[0..<2],o1[..],w[..],m[..],v[..],total[..],k).status==NpStatus.ok;
+    w=keep;for i:0..<n {m[i]=0;v[i]=0;}
+    // Clipping leaves the gradient at exactly clip; at the norm itself it scales nothing.
+    q=p;q.clip=0.001;r:=pf_step(q,NpRun.{},PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],order[..],w[..],m[..],v[..],total[..],k);
+    s:=0.0;for z:total {s+=z*z;}#assert r.status==NpStatus.ok && r.norm>0.001 && abs(sqrt(s)-0.001)<1e-15 && r.scale==1;
+    w=keep;q.clip=0;r=pf_step(q,NpRun.{},PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],order[..],w[..],m[..],v[..],total[..],k);t0:=total;
+    w=keep;q.clip=r.norm;r=pf_step(q,NpRun.{},PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],order[..],w[..],m[..],v[..],total[..],k);#assert np_same(total[..],t0[..]);
+}
+#test "scores: right, ties, the mean margin and refusals; acceptance just met and just missed" #steps 2000000000 {
+    c:=PF_SMALL;tok:=PF_TOK;tgt:=PF_TGT;start:=PF_START;
+    cache:[2000]f64;work:[2000]f64;logits:[96]f64;tape:[6000]f64;g:[10216]f64;h:[10216]f64;seq:[8]int;target:[8]int;
+    k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    w:[10216]f64;np_init(c,9,w[..]);refs:[4]f64;
+    s:=pf_score(c,w[..],PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],k);#assert s.status==PfStatus.ok && s.count==2;
+    m0:=pf_margin(c,w[..],PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],0,k);m1:=pf_margin(c,w[..],PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],1,k);
+    #assert abs(s.mean-(m0+m1)/2)<1e-15 && s.right==(ifx m0>0 then 1 else 0)+(ifx m1>0 then 1 else 0) && m0!=m1;
+    // A zero head ties every reward: a tie is not a win.
+    z:=w;for i:nc_head(c)..<nc_smear_gate(c) {z[i]=0;}s=pf_score(c,z[..],PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],k);#assert s.right==0 && s.mean==0;
+    // DPO margins: beta times the gains over the references.
+    for q:0..<4 {refs[q]=pf_value(c,w[..],PfMode.dpo,11,tok[start[q]..<start[q+1]],tgt[start[q]..<start[q+1]],k).value;}
+    s=pf_score(c,w[..],PfMode.dpo,0.1,11,tok[..],tgt[..],start[..],refs[..],k);#assert s.status==PfStatus.ok && s.right==0 && s.mean==0;
+    // The references, all at once, are the same values; a short buffer or a broken model refuses.
+    out:=[5]f64.[7,7,7,7,7];#assert pf_refs(c,w[..],11,tok[..],tgt[..],start[..],out[..],k)==PfStatus.ok && out[4]==7;for q:0..<4 {#assert out[q]==refs[q];}
+    #assert pf_refs(c,w[..],11,tok[..],tgt[..],start[..],out[0..<3],k)==PfStatus.data && pf_refs(c,w[..],11,tok[..],tgt[..],start[..],out[0..<4],k)==PfStatus.ok;
+    refs[1]+=1;refs[2]-=2;s=pf_score(c,w[..],PfMode.dpo,0.5,11,tok[..],tgt[..],start[..],refs[..],k);#assert s.right==2 && abs(s.mean-0.75)<1e-12;
+    refs[2]+=4;s=pf_score(c,w[..],PfMode.dpo,0.5,11,tok[..],tgt[..],start[..],refs[..],k);#assert s.right==1 && abs(s.mean+0.25)<1e-12;
+    #assert pf_score(c,w[..],PfMode.dpo,0.5,11,tok[..],tgt[..],start[..],refs[0..<3],k).status==PfStatus.data;
+    one:=pf_score(c,w[..],PfMode.dpo,0.5,11,tok[0..<11],tgt[0..<11],start[0..<3],refs[0..<2],k);#assert one.status==PfStatus.ok && one.count==1;
+    // A pair whose chosen reply alone has no room for the verdict has no margin.
+    lt:=[11]int.[1,2,3,4,5,6,7,8,1,4,2];lg:=[11]int.[2,3,4,5,6,7,8,-1,4,2,-1];ls:=[3]int.[0,8,11];
+    #assert pf_score(c,w[..],PfMode.reward,0.1,11,lt[..],lg[..],ls[..],refs[0..<0],k).status==PfStatus.model;
+    #assert pf_score(c,w[..],PfMode.dpo,0.5,11,tok[..],tgt[..],start[0..<1],refs[..],k).status==PfStatus.data && pf_score(c,w[..],PfMode.dpo,0.5,11,tok[..],tgt[..],start[0..<4],refs[..],k).status==PfStatus.data;
+    #assert pf_score(c,w[..],PfMode.dpo,0.5,11,tok[..],tgt[0..<19],start[..],refs[..],k).status==PfStatus.data;
+    bw:=w;bw[0]=0.0/0.0;#assert pf_refs(c,bw[..],11,tok[..],tgt[..],start[..],out[..],k)==PfStatus.model;
+    #assert pf_score(c,bw[..],PfMode.reward,0.1,11,tok[..],tgt[..],start[..],refs[0..<0],k).status==PfStatus.model;
+    // Acceptance: the lower end is 0.762 for 44 of 50 and 0.738 for 43 of 50.
+    #assert pf_accept_reward(PfScore.{right=45,count=50}) && !pf_accept_reward(PfScore.{right=43,count=50}) && !pf_accept_reward(PfScore.{status=PfStatus.data,right=45,count=50}) && !pf_accept_reward(PfScore.{});
+    lo:=pf_wilson(44,50).lo;#assert pf_clears(PfScore.{right=44,count=50},lo) && !pf_clears(PfScore.{right=43,count=50},lo) && !pf_clears(PfScore.{status=PfStatus.data,right=44,count=50},lo);
+    #assert pf_wilson(44,50).lo>=0.75 && pf_wilson(44,50).lo<0.77 && pf_accept_reward(PfScore.{right=44,count=50});
+    before:=SfRates.{asked=20,called=20,answered=19};after:=SfRates.{asked=20,called=18,answered=17};ok:=PfScore.{right=45,count=50};
+    #assert pf_accept_dpo(ok,before,after) && !pf_accept_dpo(PfScore.{right=43,count=50},before,after) && !pf_accept_dpo(PfScore.{},before,after) && !pf_accept_dpo(PfScore.{status=PfStatus.model,right=45,count=50},before,after);
+    a:=after;a.called=17;#assert !pf_accept_dpo(ok,before,a);a=after;a.answered=16;#assert !pf_accept_dpo(ok,before,a);
+    a=after;a.asked=19;#assert !pf_accept_dpo(ok,before,a);a=after;a.status=SfStatus.model;#assert !pf_accept_dpo(ok,before,a);
+    b:=before;b.status=SfStatus.data;#assert !pf_accept_dpo(ok,b,after);
+    // 29 questions allow a fall of 2.9: 2 passes, 3 does not.
+    b=SfRates.{asked=29,called=29,answered=29};a=SfRates.{asked=29,called=27,answered=27};#assert pf_accept_dpo(ok,b,a);
+    a.called=26;#assert !pf_accept_dpo(ok,b,a);a.called=27;a.answered=26;#assert !pf_accept_dpo(ok,b,a);
+    // A gain is never a loss: more calls and answers after pass.
+    #assert pf_accept_dpo(ok,after,before) && pf_accept_dpo(ok,SfRates.{asked=10,called=1,answered=1},SfRates.{asked=10});
+}
+
+// book:begin math
+// log(1 + e^x) without overflow, and the 95% Wilson score interval for
+// right successes in n trials.
+pf_softplus :: (x:f64)->f64 {return (x+abs(x))/2+log(1+exp(-abs(x)));}
+pf_wilson :: (right:int,n:int)->PfInterval {
+    if n<1 {return PfInterval.{lo=0,hi=1};}
+    z:=1.96;k:=f64(n);p:=f64(right)/k;d:=1+z*z/k;
+    centre:=(p+z*z/(2*k))/d;half:=z*sqrt(p*(1-p)/k+z*z/(4*k*k))/d;
+    return PfInterval.{lo=centre-half,hi=centre+half};
+}
+// book:end math
+
+// book:begin truth
+// The ground truth for a reply to problem p: the user asked p's question,
+// and the assistant answered in exactly the form chapter 136 trains, the
+// exact call, the calculator's output and that number.
+pf_correct :: (p:SfProblem,messages:[]NcMessage,parts:[]NcPart)->bool {
+    if messages.count!=2 || messages[0].role!=NcRole.user || messages[1].role!=NcRole.assistant || !messages[1].list || messages[1].parts!=3 {return false;}
+    q:[24]u8;e:[12]u8;v:[12]u8;at:=messages[1].first;want:=sf_text(v[..],sf_itoa(sf_value(p),v[..]));
+    return messages[0].text==sf_text(q[..],sf_question(p,q[..])) && parts[at].kind==NcPartKind.python && parts[at].text==sf_text(e[..],sf_expr(p,e[..]))
+        && parts[at+1].kind==NcPartKind.output && parts[at+1].text==want && parts[at+2].kind==NcPartKind.text && parts[at+2].text==want;
+}
+// book:end truth
+// book:begin admit
+// One pair into tokens and targets, the chosen reply first, or a refusal that
+// writes nothing. Each reply passes chapter 136's admission and leaves room
+// for the verdict token; both share one prompt, the tokens up to and including
+// the <|assistant_start|> before the first supervised target; they differ;
+// and the ground truth says the chosen reply is right, which makes the
+// rejected one wrong.
+pf_admit :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,cm:[]NcMessage,cp:[]NcPart,rm:[]NcMessage,rp:[]NcPart,tok:[]int,tgt:[]int)->PfPair {
+    ct:[NC_MAX_TOKENS]int;cg:[NC_MAX_TOKENS]int;rt:[NC_MAX_TOKENS]int;rg:[NC_MAX_TOKENS]int;
+    a:=sf_admit(table,specials,vocab,context,cm,cp,ct[..],cg[..]);if a.status!=SfStatus.ok {return PfPair.{status=PfStatus.reply,reply=a.status};}
+    b:=sf_admit(table,specials,vocab,context,rm,rp,rt[..],rg[..]);if b.status!=SfStatus.ok {return PfPair.{status=PfStatus.reply,reply=b.status};}
+    if a.n>=context || b.n>=context {return PfPair.{status=PfStatus.window};}
+    if tok.count<a.n+b.n || tgt.count<a.n+b.n {return PfPair.{status=PfStatus.shape};}
+    // The chosen prompt holds <|assistant_start|> only at its end, so a
+    // rejected prompt of another length differs from it within its length.
+    f:=pf_prompt(cg[0..<a.n]);if !pf_equal(ct[0..<f],rt[0..<f]) {return PfPair.{status=PfStatus.prompt};}
+    if pf_equal(ct[0..<a.n],rt[0..<b.n]) {return PfPair.{status=PfStatus.same};}
+    // The right reply has one rendering, so a rejected reply that is right
+    // was refused above as the same; only the chosen one needs grading.
+    if !pf_correct(p,cm,cp) {return PfPair.{status=PfStatus.label};}
+    for i:0..<a.n {tok[i]=ct[i];tgt[i]=cg[i];}for i:0..<b.n {tok[a.n+i]=rt[i];tgt[a.n+i]=rg[i];}
+    return PfPair.{prompt=f,chosen=a.n,rejected=b.n};
+}
+// book:end admit
+// The prompt's length: one past the position of the first supervised target.
+pf_prompt :: (targets:[]int)->int {i:=0;while targets[i]<0 {i+=1;}return i+1;}
+pf_equal :: (a:[]int,b:[]int)->bool {if a.count!=b.count {return false;}for i:0..<a.count {if a[i]!=b[i] {return false;}}return true;}
+// book:begin pairs
+// Problem p's pair of the given kind. The chosen reply is chapter 136's
+// conversation. The rejected one answers the next number after the right
+// output (kind 0), answers the next number with no tool (kind 1), or calls
+// the calculator with the second operand one larger and answers its output
+// (kind 2).
+pf_example :: (table:[]u8,specials:[]int,vocab:int,context:int,p:SfProblem,kind:int,tok:[]int,tgt:[]int)->PfPair {
+    if kind<0 || kind>2 {return PfPair.{status=PfStatus.kind};}
+    q:[24]u8;e:[12]u8;v:[12]u8;x:[12]u8;y:[12]u8;z:[12]u8;o:=p;o.b+=1;
+    expr:=sf_text(e[..],sf_expr(p,e[..]));want:=sf_text(v[..],sf_itoa(sf_value(p),v[..]));wrong:=sf_text(x[..],sf_itoa(sf_value(p)+1,x[..]));
+    u:=NcMessage.{role=NcRole.user,text=sf_text(q[..],sf_question(p,q[..]))};
+    cp:=[3]NcPart.[NcPart.{kind=NcPartKind.python,text=expr},NcPart.{kind=NcPartKind.output,text=want},NcPart.{text=want}];
+    cm:=[2]NcMessage.[u,NcMessage.{role=NcRole.assistant,list=true,first=0,parts=3}];rp:=cp;rm:=cm;
+    if kind==0 {rp[2].text=wrong;}
+    if kind==1 {rm[1]=NcMessage.{role=NcRole.assistant,text=wrong};}
+    if kind==2 {other:=sf_text(z[..],sf_itoa(sf_value(o),z[..]));rp[0].text=sf_text(y[..],sf_expr(o,y[..]));rp[1].text=other;rp[2].text=other;}
+    return pf_admit(table,specials,vocab,context,p,cm[..],cp[..],rm[..],rp[..],tok,tgt);
+}
+// Every problem's pair, back to back, kinds taken in turn: pair j's chosen
+// reply holds tok[start[2j]..<start[2j+1]] and its rejected reply
+// tok[start[2j+1]..<start[2j+2]], with targets at the same positions of tgt.
+pf_encode :: (table:[]u8,specials:[]int,vocab:int,context:int,problems:[]SfProblem,kinds:[]int,tok:[]int,tgt:[]int,start:[]int)->PfSet {
+    r:=PfSet.{};if kinds.count==0 || start.count<2*problems.count+1 {r.status=PfStatus.data;return r;}
+    start[0]=0;
+    for j:0..<problems.count {at:=r.tokens;if at+2*context>tok.count || at+2*context>tgt.count {r.status=PfStatus.data;return r;}
+        a:=pf_example(table,specials,vocab,context,problems[j],kinds[j%kinds.count],tok[at..<tok.count],tgt[at..<tgt.count]);
+        if a.status!=PfStatus.ok {return PfSet.{status=a.status,reply=a.reply};}
+        start[2*j+1]=at+a.chosen;r.tokens=at+a.chosen+a.rejected;start[2*j+2]=r.tokens;r.count+=1;}
+    return r;
+}
+// book:end pairs
+
+// book:begin value
+// What a loss reads from one reply. For the reward model: the
+// log-probability of the verdict token after the reply's last token. For
+// DPO: the reply's summed log-probability over its supervised targets. Both
+// come from chapter 125's forward pass; tgt has one target per token, the
+// last always -1.
+pf_value :: (c:NcConfig,w:[]f64,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,k:PfWork)->PfValue {
+    s:=pf_sequence(c,mode,verdict,tok,tgt,k);if s.status!=PfStatus.ok {return s;}
+    n:=cast(int)s.value;seq:=k.seq[0..<n];none:[1]f64;
+    f:=nc_forward(c,w,seq,k.cache,k.work,k.logits,none[0..<0],false);if f.status!=NcStatus.ok {return PfValue.{status=PfStatus.model};}
+    // The softcap keeps every logit within 15, so exp needs no shift.
+    total:=0.0;V:=c.vocab;
+    for i:0..<n-1 {y:=k.target[i];if y>=0 {sum:=0.0;for x:0..<V {sum+=exp(k.logits[i*V+x]);}total+=k.logits[i*V+y]-log(sum);}}
+    return PfValue.{value=total};
+}
+// The same value through chapter 127's masked pass, and its gradient in grad:
+// minus the targets kept times the gradient of their mean loss.
+pf_grad :: (c:NcConfig,w:[]f64,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,grad:[]f64,k:PfWork)->PfValue {
+    s:=pf_sequence(c,mode,verdict,tok,tgt,k);if s.status!=PfStatus.ok {return s;}
+    n:=cast(int)s.value;t:=k.target[0..<n-1];
+    r:=nb_masked(c,w,k.seq[0..<n],t,grad,k.tape,k.logits,false);if r.status!=NcStatus.ok {return PfValue.{status=PfStatus.model};}
+    kept:=f64(sf_kept(t));for i:0..<grad.count {grad[i]=-kept*grad[i];}
+    return PfValue.{value=-kept*r.loss};
+}
+// book:end value
+// The sequence each value reads, staged in k.seq and k.target; its length
+// comes back as the value.
+pf_sequence :: (c:NcConfig,mode:PfMode,verdict:int,tok:[]int,tgt:[]int,k:PfWork)->PfValue {
+    n:=tok.count;if mode==PfMode.reward {n+=1;}
+    if tgt.count!=tok.count {return PfValue.{status=PfStatus.shape};}
+    if n>c.context {return PfValue.{status=PfStatus.window};}
+    if k.seq.count<n || k.target.count<n-1 {return PfValue.{status=PfStatus.shape};}
+    for i:0..<tok.count {k.seq[i]=tok[i];}for i:0..<n-1 {k.target[i]=tgt[i];}
+    if mode==PfMode.reward {k.seq[n-1]=verdict;for i:0..<n-2 {k.target[i]=-1;}k.target[n-2]=verdict;}
+    return PfValue.{value=f64(n)};
+}
+
+// book:begin margin
+// Pair q's margin. Reward model: the chosen reward minus the rejected one.
+// DPO: beta times the chosen reply's gain over the reference minus the
+// rejected reply's, with the reference's values in refs[2q] and refs[2q+1].
+// The loss is softplus(-margin), Bradley-Terry's -log sigma(margin).
+pf_margin :: (c:NcConfig,w:[]f64,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,q:int,k:PfWork)->f64 {
+    a:=start[2*q];b:=start[2*q+1];e:=start[2*q+2];
+    x:=pf_value(c,w,mode,verdict,tok[a..<b],tgt[a..<b],k);y:=pf_value(c,w,mode,verdict,tok[b..<e],tgt[b..<e],k);
+    if x.status!=PfStatus.ok || y.status!=PfStatus.ok {return 0.0/0.0;}
+    return pf_combine(mode,beta,x.value,y.value,refs,q);
+}
+pf_combine :: (mode:PfMode,beta:f64,chosen:f64,rejected:f64,refs:[]f64,q:int)->f64 {
+    if mode==PfMode.reward {return chosen-rejected;}
+    return beta*((chosen-refs[2*q])-(rejected-refs[2*q+1]));
+}
+// book:end margin
+// book:begin step
+// One step over batch pairs drawn in chapter 128's seeded per-epoch order.
+// With m the pair's margin, d(softplus(-m))/dm = -sigma(-m), so the pair adds
+// -sigma(-m) f (grad chosen - grad rejected), f being 1 for the reward model
+// and beta for DPO, averaged over the batch; then clipping, the schedule and
+// AdamW as in chapter 128. The reference never enters: DPO reads its values
+// from refs, computed once before training.
+pf_step :: (p:NpPlan,run:NpRun,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,order:[]int,w:[]f64,m:[]f64,v:[]f64,total:[]f64,k:PfWork)->NpStep {
+    c:=p.model;pairs:=(start.count-1)/2;n:=w.count;fail:=NpStep.{run=run};
+    if run.step>=p.steps || !(beta>0) {fail.status=NpStatus.config;return fail;}
+    if pairs<p.batch || start.count!=2*pairs+1 || tgt.count!=tok.count || (mode==PfMode.dpo && refs.count<2*pairs) {fail.status=NpStatus.data;return fail;}
+    f:=1.0;if mode==PfMode.dpo {f=beta;}
+    for i:0..<n {total[i]=0;}loss:=0.0;B:=f64(p.batch);
+    for j:0..<p.batch {q:=np_window(p,pairs,run.step*p.batch+j,order);a:=start[2*q];b:=start[2*q+1];e:=start[2*q+2];
+        x:=pf_grad(c,w,mode,verdict,tok[a..<b],tgt[a..<b],k.g,k);y:=pf_grad(c,w,mode,verdict,tok[b..<e],tgt[b..<e],k.h,k);
+        if x.status!=PfStatus.ok || y.status!=PfStatus.ok {fail.status=NpStatus.data;return fail;}
+        margin:=pf_combine(mode,beta,x.value,y.value,refs,q);s:=nc_sigmoid(-margin)*f/B;
+        for i:0..<n {total[i]-=s*(k.g[i]-k.h[i]);}loss+=pf_softplus(-margin)/B;
+    }
+    sum:=0.0;for x:total {sum+=x*x;}norm:=sqrt(sum);
+    if p.clip>0 && norm>p.clip {for i:0..<n {total[i]=total[i]*p.clip/norm;}}
+    scale:=np_scale(p,run.step);groups:[5]AwGroup;np_groups(p,scale,groups[..]);none:[1]f32;
+    a:=aw_step(groups[..],AwPolicy.{},run.state,w,total,m,v,none[0..<0],false);
+    if a.status!=AwStatus.ok {fail.status=NpStatus.optimizer;return fail;}
+    return NpStep.{run=NpRun.{step=run.step+1,state=a.state},loss=loss,norm=norm,scale=scale};
+}
+// book:end step
+// book:begin score
+// Held-out pairwise accuracy: a pair counts when its margin is above 0, so a
+// tie counts against; mean is the mean margin.
+pf_score :: (c:NcConfig,w:[]f64,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,k:PfWork)->PfScore {
+    pairs:=(start.count-1)/2;r:=PfScore.{};
+    if pairs<1 || start.count!=2*pairs+1 || tgt.count!=tok.count || (mode==PfMode.dpo && refs.count<2*pairs) {r.status=PfStatus.data;return r;}
+    for q:0..<pairs {x:=pf_margin(c,w,mode,beta,verdict,tok,tgt,start,refs,q,k);if !(x==x) {r.status=PfStatus.model;return r;}
+        r.count+=1;r.mean+=x;if x>0 {r.right+=1;}}
+    r.mean/=f64(r.count);return r;
+}
+// book:end score
+// The reference's values for every reply, once, before DPO starts.
+pf_refs :: (c:NcConfig,w:[]f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,out:[]f64,k:PfWork)->PfStatus {
+    if out.count<start.count-1 {return PfStatus.data;}
+    for j:0..<start.count-1 {v:=pf_value(c,w,PfMode.dpo,verdict,tok[start[j]..<start[j+1]],tgt[start[j]..<start[j+1]],k);if v.status!=PfStatus.ok {return v.status;}out[j]=v.value;}
+    return PfStatus.ok;
+}

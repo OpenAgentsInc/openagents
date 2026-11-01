@@ -1,0 +1,94 @@
+// Chapter 138's driving loop, shared by the short example
+// (psionic/examples/prefer.coax) and the recorded long run
+// (psionic/tests/prefer-long.coax). Every decision is in
+// psionic/lib/nanochat/prefer.coax and chapter 136's sft.coax; this file
+// holds the buffers and prints.
+#import "Basic";
+#load "../lib/nanochat/prefer.coax";
+PF_PARAMETERS :: 53290;
+PF_TRAIN_MAX :: 4096;
+PF_HELD_MAX :: 256;
+// Chapter 136's problem seed: the same split and the same draws.
+PF_SEED :: cast(u64)7;
+PF_BETA :: 0.1;
+PF_HEX :: [16]string.["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+pf_hex :: (d:[32]u8) {for i:0..<8 {print("%",PF_HEX[cast(int)d[i]/16]);print("%",PF_HEX[cast(int)d[i]%16]);}}
+pf_show :: (label:string,x:[]int) {print("%:",label);for t:x {if t<0 {print(" -");} else {print(" %",t);}}print("\n");}
+pf_print :: (label:string,s:PfScore) {i:=pf_wilson(s.right,s.count);print("%: % of % pairs right, 95%% interval % to %, mean margin %\n",label,s.right,s.count,i.lo,i.hi,s.mean);}
+// book:begin drive
+// Chapter 136's base run and tuning, rebuilt; the pairs; the reward model
+// trained from the tuned weights and scored on held-out pairs of the kinds it
+// saw and of a kind it did not; DPO from the same weights against them,
+// frozen; the starting and tuned policies asked the same held-out questions;
+// the frozen rules; then the refusals.
+pf_drive :: (base:NpPlan,tune:NpPlan,rm:NpPlan,dpo:NpPlan,trains:int,helds:int,pairs:int,asks:int,report:int) {
+    c:=tune.model;table:=NC_LEARNED;sp:[9]int;ne_specials(sp[..]);bos:=sp[0];L:=c.sequence_len;n:=nc_parameter_count(c);#assert n==PF_PARAMETERS;
+    train:[PF_TRAIN_MAX]SfProblem;held:[PF_HELD_MAX]SfProblem;seen:[SF_KEYS]u8;
+    #assert sf_problems(PF_SEED,false,train[0..<trains])==trains && sf_problems(PF_SEED,true,held[0..<helds])==helds;
+    tr:=train[0..<trains];he:=held[0..<helds];a:=sf_audit(tr,he,seen[..]);
+    print("problems: % training, % held out, shared: %, audit: %\n",a.train,a.held,a.shared,a.status);
+    // Chapter 136's run, step for step: equations, then conversations.
+    eq:[PF_TRAIN_MAX*12]int;val:[PF_HELD_MAX*12]int;d:=sf_stream(table[..],bos,tr,eq[..]);dv:=sf_stream(table[..],bos,he,val[..]);#assert d.status==SfStatus.ok && dv.status==SfStatus.ok;
+    tok:[PF_TRAIN_MAX*40]int;tgt:[PF_TRAIN_MAX*40]int;start:[2*PF_TRAIN_MAX+1]int;e:=sf_encode(table[..],sp[..],c.vocab,L,tr,tok[..],tgt[..],start[..]);#assert e.status==SfStatus.ok;
+    w:[PF_PARAMETERS]f64;m:[PF_PARAMETERS]f64;v:[PF_PARAMETERS]f64;g:[PF_PARAMETERS]f64;h:[PF_PARAMETERS]f64;total:[PF_PARAMETERS]f64;
+    tape:[110000]f64;logits:[21056]f64;cache:[8192]f64;work:[16384]f64;order:[2*PF_TRAIN_MAX+1]int;seq:[64]int;target:[64]int;
+    last:[329]f32;pr:[329]f64;st:[329]f64;or:[329]int;te:[329]int;ww:=ne_buffers(c,L,cache[..],work[..],logits[..],last[..],pr[..],st[..],or[..],te[..]);
+    k:=PfWork.{cache=cache[..],work=work[..],logits=logits[..],tape=tape[..],g=g[..],h=h[..],seq=seq[..],target=target[..]};
+    np_init(c,base.init,w[..]);order[d.tokens/L]=-1;run:=NpRun.{};
+    while run.step<base.steps {r:=np_step(base,run,eq[0..<d.tokens],order[0..<d.tokens/L+1],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;run=r.run;}
+    bp:=np_plan_id(base);bd:=np_data_id(eq[0..<d.tokens],val[0..<dv.tokens]);rec:[1279092]u8;#assert np_save(bp,bd,run,w[..],m[..],v[..],rec[..])==NpCheck.ok;
+    tp:=sf_plan_id(tune,ck_get(rec[..],rec.count-32));td:=np_data_id(tok[0..<e.tokens],tgt[0..<e.tokens]);
+    s:=sf_start(bp,bd,base.steps,rec[..],w[..],m[..],v[..]);#assert s.status==NpCheck.ok;
+    for i:0..<e.count+1 {order[i]=0;}order[e.count]=-1;run=s.run;
+    while run.step<tune.steps {r:=sf_step(tune,run,tok[0..<e.tokens],tgt[0..<e.tokens],start[0..<e.count+1],order[0..<e.count+1],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;run=r.run;}
+    tuned:[1279092]u8;#assert np_save(tp,td,run,w[..],m[..],v[..],tuned[..])==NpCheck.ok;
+    print("chapter 136's tuned model: % base steps, % tuning steps, record digest ",base.steps,tune.steps);pf_hex(ck_get(tuned[..],tuned.count-32));print("...\n");
+    before:=sf_rates(c,w[..],table[..],sp[..],he[0..<asks],ww);#assert before.status==SfStatus.ok;
+    print("tuned model, % held-out questions: % exact calls, % exact answers\n",before.asked,before.called,before.answered);
+    // The pairs: kinds 0 and 1 in turn for training and for the main held-out
+    // set; kind 2, never trained on, held out apart.
+    x:[128]int;y:[128]int;one:=pf_example(table[..],sp[..],c.vocab,L,SfProblem.{a=2,b=3},0,x[..],y[..]);#assert one.status==PfStatus.ok;
+    pf_show("2+3 rejected (kind 0) tokens",x[one.chosen..<one.chosen+one.rejected]);pf_show("2+3 rejected (kind 0) targets",y[one.chosen..<one.chosen+one.rejected]);
+    ks:=[2]int.[0,1];k2:=[1]int.[2];
+    pt:[PF_TRAIN_MAX*72]int;pg:[PF_TRAIN_MAX*72]int;ps:[2*PF_TRAIN_MAX+1]int;q:=pf_encode(table[..],sp[..],c.vocab,L,tr[0..<pairs],ks[..],pt[..],pg[..],ps[..]);#assert q.status==PfStatus.ok;
+    ht:[PF_HELD_MAX*128]int;hg:[PF_HELD_MAX*128]int;hs:[2*PF_HELD_MAX+1]int;hq:=pf_encode(table[..],sp[..],c.vocab,L,he,ks[..],ht[..],hg[..],hs[..]);#assert hq.status==PfStatus.ok;
+    ut:[PF_HELD_MAX*128]int;ug:[PF_HELD_MAX*128]int;us:[2*PF_HELD_MAX+1]int;uq:=pf_encode(table[..],sp[..],c.vocab,L,he,k2[..],ut[..],ug[..],us[..]);#assert uq.status==PfStatus.ok;
+    T:=pt[0..<q.tokens];G:=pg[0..<q.tokens];S:=ps[0..<2*q.count+1];H:=ht[0..<hq.tokens];HG:=hg[0..<hq.tokens];HS:=hs[0..<2*hq.count+1];U:=ut[0..<uq.tokens];UG:=ug[0..<uq.tokens];US:=us[0..<2*uq.count+1];
+    print("pairs: % training (% tokens), % held out of kinds 0 and 1, % held out of kind 2\n",q.count,q.tokens,hq.count,uq.count);
+    none:[1]f64;
+    // The reward model starts from the tuned weights with fresh moments.
+    rw:=w;rmm:[PF_PARAMETERS]f64;rmv:[PF_PARAMETERS]f64;for i:0..<q.count+1 {order[i]=0;}order[q.count]=-1;run=NpRun.{};
+    pf_print("reward model before training, held out kinds 0 and 1",pf_score(c,rw[..],PfMode.reward,PF_BETA,PF_VERDICT,H,HG,HS,none[0..<0],k));
+    while run.step<rm.steps {r:=pf_step(rm,run,PfMode.reward,PF_BETA,PF_VERDICT,T,G,S,none[0..<0],order[0..<q.count+1],rw[..],rmm[..],rmv[..],total[..],k);#assert r.status==NpStatus.ok;run=r.run;
+        if run.step%report==0 {print("reward step %: loss %, gradient norm %\n",run.step,r.loss,r.norm);}}
+    rs:=pf_score(c,rw[..],PfMode.reward,PF_BETA,PF_VERDICT,H,HG,HS,none[0..<0],k);
+    pf_print("reward model, held out kinds 0 and 1",rs);
+    pf_print("reward model, held out kind 2 (not trained on)",pf_score(c,rw[..],PfMode.reward,PF_BETA,PF_VERDICT,U,UG,US,none[0..<0],k));
+    print("reward model acceptance (frozen before the run): %\n",ifx pf_accept_reward(rs) then "passed" else "failed");
+    // DPO: the policy starts from the tuned weights; the tuned weights
+    // themselves are the reference, read once for every reply.
+    rt:[2*PF_TRAIN_MAX]f64;rh:[2*PF_HELD_MAX]f64;ru:[2*PF_HELD_MAX]f64;
+    #assert pf_refs(c,w[..],PF_VERDICT,T,G,S,rt[..],k)==PfStatus.ok && pf_refs(c,w[..],PF_VERDICT,H,HG,HS,rh[..],k)==PfStatus.ok && pf_refs(c,w[..],PF_VERDICT,U,UG,US,ru[..],k)==PfStatus.ok;
+    pw:=w;for i:0..<n {m[i]=0;v[i]=0;}for i:0..<q.count+1 {order[i]=0;}order[q.count]=-1;run=NpRun.{};
+    while run.step<dpo.steps {r:=pf_step(dpo,run,PfMode.dpo,PF_BETA,PF_VERDICT,T,G,S,rt[..],order[0..<q.count+1],pw[..],m[..],v[..],total[..],k);#assert r.status==NpStatus.ok;run=r.run;
+        if run.step%report==0 {print("DPO step %: loss %, gradient norm %\n",run.step,r.loss,r.norm);}}
+    ds:=pf_score(c,pw[..],PfMode.dpo,PF_BETA,PF_VERDICT,H,HG,HS,rh[..],k);
+    pf_print("DPO implicit reward, held out kinds 0 and 1",ds);
+    pf_print("DPO implicit reward, held out kind 2 (not trained on)",pf_score(c,pw[..],PfMode.dpo,PF_BETA,PF_VERDICT,U,UG,US,ru[..],k));
+    after:=sf_rates(c,pw[..],table[..],sp[..],he[0..<asks],ww);#assert after.status==SfStatus.ok;
+    print("DPO model, % held-out questions: % exact calls, % exact answers\n",after.asked,after.called,after.answered);
+    print("DPO acceptance (frozen before the run): %\n",ifx pf_accept_dpo(ds,before,after) then "passed" else "failed");
+    // The reference is the tuned record, bit for bit, and gives the same values again.
+    z:=pw;zm:=m;zv:=v;rd:=np_read(tp,td,tune.steps,tuned[..],z[..],zm[..],zv[..]);#assert rd.status==NpCheck.ok;again:[2*PF_HELD_MAX]f64;#assert pf_refs(c,w[..],PF_VERDICT,H,HG,HS,again[..],k)==PfStatus.ok;
+    same:=0;for j:0..<2*hq.count {if f64_bits(again[j])==f64_bits(rh[j]) {same+=1;}}
+    print("reference after DPO: identical to the tuned record: %; % of % reference values identical\n",np_same(z[..],w[..]),same,2*hq.count);
+    // Broken pairs, each refused before anything is written.
+    u:=NcMessage.{role=NcRole.user,text="What is 2+3?"};as:=NcMessage.{role=NcRole.assistant,list=true,first=0,parts=3};
+    good:=[3]NcPart.[NcPart.{kind=NcPartKind.python,text="2+3"},NcPart.{kind=NcPartKind.output,text="5"},NcPart.{text="5"}];bad:=good;bad[2].text="6";
+    names:=[5]string.["the same reply twice","a rejected reply to another question","the label swapped","a rejected reply with the wrong tool output","a chosen reply with no room for the verdict token"];
+    for f:0..<5 {cp:=good;rp:=bad;cm:=[2]NcMessage.[u,as];rm2:=cm;ctx:=L;
+        if f==0 {rp=good;}if f==1 {rm2[0].text="What is 2+4?";}if f==2 {cp=bad;rp=good;}if f==3 {rp[1].text="6";}if f==4 {ctx=25;}
+        r:=pf_admit(table[..],sp[..],c.vocab,ctx,SfProblem.{a=2,b=3},cm[..],cp[..],rm2[..],rp[..],x[..],y[..]);
+        print("%: %",names[f],r.status);if r.status==PfStatus.reply {print(" (%)",r.reply);}print("\n");}
+}
+// book:end drive

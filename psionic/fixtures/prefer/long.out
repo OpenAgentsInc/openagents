@@ -1,0 +1,26 @@
+problems: 4096 training, 256 held out, shared: 0, audit: ok
+chapter 136's tuned model: 600 base steps, 1200 tuning steps, record digest c9eead03f742d773...
+tuned model, 256 held-out questions: 256 exact calls, 256 exact answers
+2+3 rejected (kind 0) tokens: 320 321 87 104 300 32 105 115 32 50 43 51 63 322 323 325 50 43 51 326 327 53 328 54 324
+2+3 rejected (kind 0) targets: - - - - - - - - - - - - - - 325 50 43 51 326 - - - 54 324 -
+pairs: 4096 training (237230 tokens), 256 held out of kinds 0 and 1, 256 held out of kind 2
+reward model before training, held out kinds 0 and 1: 110 of 256 pairs right, 95% interval 0.3705266391091252 to 0.4909274159767426, mean margin -0.48931780062807156
+reward step 100: loss 0.3012867571223993, gradient norm 0.011011056523662624
+reward step 200: loss 0.13474295811951076, gradient norm 0.18828734884886095
+reward step 300: loss 0.21931018438748012, gradient norm 0.7429617953872659
+reward step 400: loss 0.08546256487383179, gradient norm 0.5746960772010649
+reward model, held out kinds 0 and 1: 252 of 256 pairs right, 95% interval 0.9605201201790405 to 0.9939075003405375, mean margin 12.915872188092182
+reward model, held out kind 2 (not trained on): 152 of 256 pairs right, 95% interval 0.5326305715645441 to 0.6520973549876323, mean margin 2.045395387713313
+reward model acceptance (frozen before the run): passed
+DPO step 100: loss 0.21281227517614615, gradient norm 0.14043117963693266
+DPO step 200: loss 0.22438003398350184, gradient norm 0.11225466789386762
+DPO implicit reward, held out kinds 0 and 1: 256 of 256 pairs right, 95% interval 0.9852156082782743 to 1.0, mean margin 1.503696692254501
+DPO implicit reward, held out kind 2 (not trained on): 244 of 256 pairs right, 95% interval 0.9198662271464744 to 0.9729854178557116, mean margin 0.6387934099060045
+DPO model, 256 held-out questions: 256 exact calls, 253 exact answers
+DPO acceptance (frozen before the run): passed
+reference after DPO: identical to the tuned record: true; 512 of 512 reference values identical
+the same reply twice: same
+a rejected reply to another question: prompt
+the label swapped: label
+a rejected reply with the wrong tool output: reply (result)
+a chosen reply with no room for the verdict token: window

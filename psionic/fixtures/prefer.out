@@ -1,0 +1,24 @@
+problems: 64 training, 12 held out, shared: 0, audit: ok
+chapter 136's tuned model: 6 base steps, 10 tuning steps, record digest e9821ce3a547cc66...
+tuned model, 2 held-out questions: 0 exact calls, 0 exact answers
+2+3 rejected (kind 0) tokens: 320 321 87 104 300 32 105 115 32 50 43 51 63 322 323 325 50 43 51 326 327 53 328 54 324
+2+3 rejected (kind 0) targets: - - - - - - - - - - - - - - 325 50 43 51 326 - - - 54 324 -
+pairs: 24 training (1400 tokens), 12 held out of kinds 0 and 1, 12 held out of kind 2
+reward model before training, held out kinds 0 and 1: 3 of 12 pairs right, 95% interval 0.08894003962896138 to 0.53231033912066, mean margin -0.014422155585743853
+reward step 3: loss 0.6011031486351626, gradient norm 0.42535707376780574
+reward step 6: loss 0.18130376600492995, gradient norm 0.07260334036012564
+reward model, held out kinds 0 and 1: 10 of 12 pairs right, 95% interval 0.5519636426153274 to 0.9530358523851776, mean margin 2.417072347301766
+reward model, held out kind 2 (not trained on): 6 of 12 pairs right, 95% interval 0.2537781703934222 to 0.7462218296065778, mean margin 0.00011205161476938545
+reward model acceptance (frozen before the run): failed
+DPO step 3: loss 0.6927070326957935, gradient norm 0.2369501212113306
+DPO step 6: loss 0.6783716391394925, gradient norm 0.3685643218699696
+DPO implicit reward, held out kinds 0 and 1: 7 of 12 pairs right, 95% interval 0.3195073356553728 to 0.8067425380947535, mean margin 0.02292210883102731
+DPO implicit reward, held out kind 2 (not trained on): 4 of 12 pairs right, 95% interval 0.13811783989736134 to 0.609382412602386, mean margin -0.005474638551966956
+DPO model, 2 held-out questions: 0 exact calls, 0 exact answers
+DPO acceptance (frozen before the run): failed
+reference after DPO: identical to the tuned record: true; 24 of 24 reference values identical
+the same reply twice: same
+a rejected reply to another question: prompt
+the label swapped: label
+a rejected reply with the wrong tool output: reply (result)
+a chosen reply with no room for the verdict token: window

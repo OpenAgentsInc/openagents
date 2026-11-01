@@ -1,0 +1,21 @@
+// Chapter 138's checks: two tiny pairs over 12 tokens, the forward loss
+// over a set of pairs, its central differences, and the reward sequence built
+// by hand. psionic/lib/nanochat/prefer.coax loads this file.
+// Two pairs over 12 tokens stand in for conversations; the verdict is 11.
+PF_SMALL :: NcConfig.{sequence_len=8,vocab=12,layers=1,heads=2,kv_heads=1,width=24,pattern=0,pattern_len=1,context=8};
+PF_TOK :: [20]int.[1,4,2,7,3,5, 1,4,2,9,6,  0,3,8,8,1, 0,3,10,2];
+PF_TGT :: [20]int.[-1,2,7,-1,5,-1, -1,2,9,6,-1,  -1,8,8,1,-1, -1,10,2,-1];
+PF_START :: [5]int.[0,6,11,16,20];
+// The mean loss over every pair, from the forward path alone: the checks'
+// central differences read it.
+pf_loss :: (c:NcConfig,w:[]f64,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,k:PfWork)->f64 {
+    pairs:=(start.count-1)/2;s:=0.0;for q:0..<pairs {s+=pf_softplus(-pf_margin(c,w,mode,beta,verdict,tok,tgt,start,refs,q,k));}return s/f64(pairs);
+}
+pf_central :: (c:NcConfig,w:[]f64,mode:PfMode,beta:f64,verdict:int,tok:[]int,tgt:[]int,start:[]int,refs:[]f64,at:int,k:PfWork)->f64 {
+    h:=0.00001;x:=w[at];w[at]=x+h;up:=pf_loss(c,w,mode,beta,verdict,tok,tgt,start,refs,k);w[at]=x-h;down:=pf_loss(c,w,mode,beta,verdict,tok,tgt,start,refs,k);w[at]=x;
+    return (up-down)/(2*h);
+}
+pf_hand_reward :: (c:NcConfig,w:[]f64,s:[]int,verdict:int,g:[]f64,tape:[]f64,logits:[]f64)->f64 {
+    e:[8]int;t:[7]int;for i:0..<s.count {e[i]=s[i];}e[s.count]=verdict;for i:0..<7 {t[i]=-1;}t[s.count-1]=verdict;
+    return nb_masked(c,w,e[0..<s.count+1],t[0..<s.count],g,tape,logits,false).loss;
+}

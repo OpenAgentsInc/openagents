@@ -1,0 +1,16 @@
+#load "../tests/prefer-drive.coax";
+// book:begin example
+// The short run: chapter 136's model rebuilt from 6 base steps and 10
+// tuning steps, then 6 reward-model steps and 6 DPO steps of 4 pairs each,
+// scored on 12 held-out pairs of kinds 0 and 1 and 12 of kind 2, and 2
+// held-out questions asked before and after DPO.
+PF_BASE_DEMO :: NpPlan.{model=SF_MODEL,batch=2,steps=6,warmup=2,warmdown=2,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1361,budget=1e11};
+PF_TUNE_DEMO :: NpPlan.{model=SF_MODEL,batch=4,steps=10,warmup=0,warmdown=3,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=11,init=0,budget=1e11};
+PF_RM_DEMO :: NpPlan.{model=SF_MODEL,batch=4,steps=6,warmup=0,warmdown=2,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=13,init=0,budget=1e11};
+PF_DPO_DEMO :: NpPlan.{model=SF_MODEL,batch=4,steps=6,warmup=0,warmdown=2,final=0,
+    embed=0.003,matrix=0.001,head=0.001,scalar=0.001,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=17,init=0,budget=1e11};
+main :: () {pf_drive(PF_BASE_DEMO,PF_TUNE_DEMO,PF_RM_DEMO,PF_DPO_DEMO,64,12,24,2,3);}
+// book:end example

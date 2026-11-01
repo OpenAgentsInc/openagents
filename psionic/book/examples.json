@@ -2169,6 +2169,18 @@
       ],
       "timeout": 180,
       "stack_kib": 65536
+    },
+    {
+      "source": "psionic/examples/prefer.coax",
+      "chapter": "psionic/book/ch138-preferences-and-reward-models.md",
+      "stdout": "psionic/fixtures/prefer.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180,
+      "stack_kib": 65536
     }
   ]
 }
