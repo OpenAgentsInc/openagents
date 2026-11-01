@@ -33,6 +33,8 @@
 #define WL_MAPS 256
 
 static int lis = -1;
+static int xwm_fd = -1, x_pending = -1, x_num = -1, x_lis = -1, x_slot = -1;   /* Xwayland: the window-manager end, its Wayland client before accept, its display */
+static char x_display[16];
 static int cl_fd[WL_CLIENTS];
 static int cl_used[WL_CLIENTS];
 static int got_fds[WL_FDS];
@@ -62,6 +64,7 @@ int64_t cxwl_unlisten(coax_v_u8 path) {
   return 0;
 }
 int64_t cxwl_accept(void) {
+  if (x_pending >= 0) { int64_t h = x_pending; x_pending = -1; return h; }   /* Xwayland's own connection */
   if (lis < 0) return -1;
   int fd = accept(lis, NULL, NULL);
   if (fd < 0) return -1;
@@ -130,9 +133,10 @@ int64_t cxwl_hangup(int64_t h) {
 int64_t cxwl_close_fd(int64_t fd) { return fd >= 0 ? close((int)fd) : -1; }
 /* Waits up to timeout_ms for the listener, a client, or stdin when watch_stdin: the ready count. */
 int64_t cxwl_poll(int64_t timeout_ms, int64_t watch_stdin) {
-  struct pollfd p[WL_CLIENTS + 2]; int n = 0;
+  struct pollfd p[WL_CLIENTS + 3]; int n = 0;
   if (lis >= 0) { p[n].fd = lis; p[n].events = POLLIN; p[n].revents = 0; n++; }
   if (watch_stdin) { p[n].fd = 0; p[n].events = POLLIN; p[n].revents = 0; n++; }
+  if (xwm_fd >= 0) { p[n].fd = xwm_fd; p[n].events = POLLIN; p[n].revents = 0; n++; }
   for (int i = 0; i < WL_CLIENTS; i++) if (cl_used[i]) { p[n].fd = cl_fd[i]; p[n].events = POLLIN; p[n].revents = 0; n++; }
   int r = poll(p, (nfds_t)n, (int)timeout_ms);
   return r < 0 ? 0 : r;
@@ -216,7 +220,7 @@ int64_t cxwl_spawn(coax_v_u8 path, coax_v_u8 display) {
     close(link[0]);
     pid_t g = fork();
     if (g == 0) {
-      close(link[1]); setsid(); setenv("WAYLAND_DISPLAY", d, 1); unsetenv("DISPLAY");
+      close(link[1]); setsid(); setenv("WAYLAND_DISPLAY", d, 1); if (x_display[0]) setenv("DISPLAY", x_display, 1); else unsetenv("DISPLAY");
       int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); }
       execl(p, p, (char *)NULL); _exit(127);
     }
@@ -323,12 +327,92 @@ int64_t cxwl_run(coax_v_u8 args, coax_v_u8 display) {
   if (pid < 0) return -(int64_t)errno;
   if (pid == 0) {
     if (fork() == 0) {
-      setsid(); setenv("WAYLAND_DISPLAY", d, 1); unsetenv("DISPLAY");
+      setsid(); setenv("WAYLAND_DISPLAY", d, 1); if (x_display[0]) setenv("DISPLAY", x_display, 1); else unsetenv("DISPLAY");
       int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); dup2(nul, 2); }
       execvp(argv[0], argv); _exit(127);
     }
     _exit(0);
   }
   waitpid(pid, NULL, 0);
+  return 0;
+}
+
+/* Xwayland, rootless, as a client of this compositor: a free display :N from 50 on (its lock file and
+   /tmp/.X11-unix socket made here), its Wayland connection a socketpair the next cxwl_accept returns,
+   and its window-manager connection the other socketpair, read and written by cxx_recv and cxx_send.
+   Programs started after this get DISPLAY=:N. Returns N, or -errno. */
+int64_t cxwl_xwayland(void) {
+  if (xwm_fd >= 0) return -EBUSY;
+  char lock[64], path[64]; int n = -1, lf = -1;
+  for (int i = 50; i < 100 && n < 0; i++) {
+    snprintf(lock, sizeof lock, "/tmp/.X%d-lock", i);
+    lf = open(lock, O_WRONLY | O_CREAT | O_EXCL, 0444);
+    if (lf >= 0) n = i;
+  }
+  if (n < 0) return -EADDRINUSE;
+  char pidtxt[16]; snprintf(pidtxt, sizeof pidtxt, "%10d\n", (int)getpid()); if (write(lf, pidtxt, 11) < 0) {} close(lf);
+  mkdir("/tmp/.X11-unix", 01777);
+  snprintf(path, sizeof path, "/tmp/.X11-unix/X%d", n); unlink(path);
+  int l = socket(AF_UNIX, SOCK_STREAM, 0);
+  struct sockaddr_un a; memset(&a, 0, sizeof a); a.sun_family = AF_UNIX; strncpy(a.sun_path, path, sizeof a.sun_path - 1);
+  if (l < 0 || bind(l, (struct sockaddr *)&a, sizeof a) < 0 || listen(l, 16) < 0) { int e = errno; if (l >= 0) close(l); unlink(lock); return -(int64_t)e; }
+  int wl[2], wm[2];
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, wl) < 0) { int e = errno; close(l); unlink(path); unlink(lock); return -(int64_t)e; }
+  if (socketpair(AF_UNIX, SOCK_STREAM, 0, wm) < 0) { int e = errno; close(l); close(wl[0]); close(wl[1]); unlink(path); unlink(lock); return -(int64_t)e; }
+  int slot = -1; for (int i = 0; i < WL_CLIENTS; i++) if (!cl_used[i]) { slot = i; break; }
+  if (slot < 0) { close(l); close(wl[0]); close(wl[1]); close(wm[0]); close(wm[1]); unlink(path); unlink(lock); return -EMFILE; }
+  pid_t pid = fork();
+  if (pid < 0) { int e = errno; close(l); close(wl[0]); close(wl[1]); close(wm[0]); close(wm[1]); unlink(path); unlink(lock); return -(int64_t)e; }
+  if (pid == 0) {
+    if (fork() == 0) {
+      setsid(); close(wl[0]); close(wm[0]);
+      fcntl(wl[1], F_SETFD, 0); fcntl(wm[1], F_SETFD, 0); fcntl(l, F_SETFD, 0);
+      char ws[16], wf[16], lf2[16], disp[16];
+      snprintf(ws, sizeof ws, "%d", wl[1]); snprintf(wf, sizeof wf, "%d", wm[1]); snprintf(lf2, sizeof lf2, "%d", l); snprintf(disp, sizeof disp, ":%d", n);
+      setenv("WAYLAND_SOCKET", ws, 1); unsetenv("WAYLAND_DISPLAY"); unsetenv("DISPLAY");
+      int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); }
+      execlp("Xwayland", "Xwayland", disp, "-rootless", "-core", "-shm", "-listenfd", lf2, "-wm", wf, (char *)NULL);
+      _exit(127);
+    }
+    _exit(0);
+  }
+  waitpid(pid, NULL, 0);
+  close(wl[1]); close(wm[1]); x_lis = l;
+  fcntl(wl[0], F_SETFL, fcntl(wl[0], F_GETFL) | O_NONBLOCK); fcntl(wl[0], F_SETFD, FD_CLOEXEC);
+  cl_used[slot] = 1; cl_fd[slot] = wl[0]; x_pending = slot; x_slot = slot;
+  xwm_fd = wm[0]; fcntl(xwm_fd, F_SETFL, fcntl(xwm_fd, F_GETFL) | O_NONBLOCK); fcntl(xwm_fd, F_SETFD, FD_CLOEXEC);
+  x_num = n; snprintf(x_display, sizeof x_display, ":%d", n);
+  return n;
+}
+/* The client handle Xwayland's Wayland connection has, or -1. */
+int64_t cxwl_xwayland_handle(void) { return x_slot; }
+/* Writes all of b to the window-manager connection: 0, or -1 when it is gone. */
+int64_t cxx_send(coax_v_u8 b) {
+  if (xwm_fd < 0) return -1;
+  int64_t at = 0;
+  while (at < b.count) {
+    ssize_t k = write(xwm_fd, b.data + at, (size_t)(b.count - at));
+    if (k < 0 && (errno == EAGAIN || errno == EINTR)) { struct pollfd q = { xwm_fd, POLLOUT, 0 }; poll(&q, 1, 100); continue; }
+    if (k <= 0) return -1;
+    at += k;
+  }
+  return 0;
+}
+/* What the X server sent: the byte count into out, 0 when nothing waits, -1 at the end. */
+int64_t cxx_recv(coax_v_u8 out) {
+  if (xwm_fd < 0) return -1;
+  ssize_t k = read(xwm_fd, out.data, (size_t)out.count);
+  if (k < 0) return (errno == EAGAIN || errno == EINTR) ? 0 : -1;
+  return k == 0 ? -1 : k;
+}
+/* Stops using Xwayland: closes the connection and removes the display's socket and lock. */
+int64_t cxwl_xwayland_stop(void) {
+  if (x_num < 0) return 0;
+  char p[64];
+  if (xwm_fd >= 0) close(xwm_fd);
+  if (x_lis >= 0) close(x_lis);
+  snprintf(p, sizeof p, "/tmp/.X11-unix/X%d", x_num); unlink(p);
+  snprintf(p, sizeof p, "/tmp/.X%d-lock", x_num); unlink(p);
+  xwm_fd = -1; x_lis = -1; x_num = -1; x_slot = -1; x_display[0] = 0;
   return 0;
 }

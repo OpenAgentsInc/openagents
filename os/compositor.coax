@@ -1,4 +1,4 @@
-// `compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screen] [--input FILE]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// `compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,...] [--xwayland] [--screen] [--input FILE]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
 // step 2 row 6). It serves real Wayland clients on SOCKET (WAYLAND_DISPLAY may name it as a full path):
 // wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (the clipboard),
 // zxdg_decoration_manager_v1 (server-side: the compositor draws the borders) and xdg_wm_base, and it places every
@@ -34,6 +34,7 @@
 #load "../coax/lib/sys/fs.coax";
 #load "../coax/lib/sys/args.coax";
 #load "wm.coax";
+#load "xwm.coax";
 
 cxwl_listen :: (path: [] u8) -> int #foreign;
 cxwl_unlisten :: (path: [] u8) -> int #foreign;
@@ -62,6 +63,11 @@ cxwl_ask_start :: (args: [] u8) -> int #foreign;
 cxwl_ask_poll :: (out: [] u8) -> int #foreign;
 cxwl_ask_len :: () -> int #foreign;
 cxwl_run :: (args: [] u8, display: [] u8) -> int #foreign;
+cxwl_xwayland :: () -> int #foreign;
+cxwl_xwayland_handle :: () -> int #foreign;
+cxwl_xwayland_stop :: () -> int #foreign;
+cxx_send :: (b: [] u8) -> int #foreign;
+cxx_recv :: (out: [] u8) -> int #foreign;
 cxscr_open :: () -> int #foreign;
 cxscr_width :: () -> int #foreign;
 cxscr_height :: () -> int #foreign;
@@ -82,7 +88,7 @@ K_NONE :: 0; K_DISPLAY :: 1; K_REGISTRY :: 2; K_CALLBACK :: 3; K_COMPOSITOR :: 4
 K_BUFFER :: 8; K_SURFACE :: 9; K_REGION :: 10; K_SEAT :: 11; K_KEYBOARD :: 12; K_POINTER :: 13; K_OUTPUT :: 14;
 K_WMBASE :: 15; K_XDGSURF :: 16; K_TOPLEVEL :: 17; K_POSITIONER :: 18; K_POPUP :: 19; K_SUBSURF :: 20; K_TOUCH :: 21; K_DDM :: 22; K_DSOURCE :: 23; K_DDEV :: 24; K_DECOMGR :: 25; K_DECO :: 26;
 // A surface's role.
-R_NONE :: 0; R_TOPLEVEL :: 1; R_SUB :: 2; R_POPUP :: 3; R_CURSOR :: 4;
+R_NONE :: 0; R_TOPLEVEL :: 1; R_SUB :: 2; R_POPUP :: 3; R_CURSOR :: 4; R_X11 :: 5;   // R_X11: an Xwayland window's surface
 
 CxObj :: struct { kind: int; ix: int; ver: int; }
 CxClient :: struct {
@@ -100,7 +106,7 @@ CxSurf :: struct {
   used: bool; client: int; id: int;
   cur: int; pend: int; pend_set: bool;
   pfr: [16] int; npfr: int;           // frame callbacks waiting for the commit
-  role: int; xdg: int; top: int; popup: int; win: int; configured: bool; entered: bool; esc: int;   // esc: the screen whose outputs it entered
+  role: int; xdg: int; top: int; popup: int; win: int; configured: bool; entered: bool; esc: int; xwin: int;   // esc: the screen whose outputs it entered
   parent: int; sx: int; sy: int;      // a subsurface's or popup's parent surface and place
   gx: int; gy: int; gw: int; gh: int; // the window geometry inside the surface
   cw: int; ch: int; cstate: int;      // the last size and states sent
@@ -116,6 +122,25 @@ CxDue :: struct { client: int; id: int; }
 // The composited screen, RGB, with room for a PPM header in front.
 CxFrame :: struct { b: [CX_MAXW * CX_MAXH * 3 + 64] u8; }
 CxMsg :: struct { b: [16384] u8; n: int; start: int; op: int; }
+// The X11 window manager's view of Xwayland (os/xwm.coax): each X window it heard of, the wl_surface
+// Xwayland named for it (WL_SURFACE_ID), and the replies it waits for.
+CX_XWINS :: 64;
+CxXWin :: struct {
+  used: bool; id: int; sid: int; s: int; ovr: bool; mapped: bool; win: int;
+  x: int; y: int; w: int; h: int;            // where an override-redirect window put itself
+  sx: int; sy: int; sw: int; sh: int;        // the last place sent to a managed one
+  title: [128] u8; nt: int; net_title: bool; cls: [128] u8; nc: int;
+}
+CxXGet :: struct { seq: int; win: int; atom: int; }
+XW_ATOMS :: 6;   // WL_SURFACE_ID, WM_PROTOCOLS, WM_DELETE_WINDOW, _NET_WM_NAME, UTF8_STRING, WM_S0
+CxXw :: struct {
+  on: bool; up: bool; client: int; root: int; display: int; own: int; comp_seq: int;   // own: the window manager's window; comp_seq: the Composite query
+  inb: [65536] u8; nin: int; o: [1] XOut;
+  atoms: [XW_ATOMS] int; atom_seq: [XW_ATOMS] int;
+  gets: [64] CxXGet;
+  seen: [40] int; err: int; err_op: int;   // events heard by code, and the last error with its request
+  wins: [CX_XWINS] CxXWin;
+}
 Cx :: struct {
   w: int; h: int;
   clients: [CX_CLIENTS] CxClient;
@@ -136,6 +161,7 @@ Cx :: struct {
   drag: int; drag_left: bool; drag_top: bool;   // Super + a held mouse button: 272 moves a float, 273 resizes
   dmg: [4] int; prev: [4] int; clip: [4] int;   // what changed since the last frame, the frame before's, the box being drawn
   rules: [1] CxRules;
+  xw: [1] CxXw;
   quit: bool; dirty: bool; screen: bool; show_pointer: bool;
 }
 
@@ -221,10 +247,14 @@ cx_sync :: (x: [] Cx) {
     if t[i].id == focus { state |= 1 << 4; }
     if wm_is_fullscreen(m, t[i].id) { state |= 1 << 2; }
     if !t[i].floating { state |= (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8); }
+    if x[0].surfs[s].role == R_X11 { if x[0].surfs[s].xwin >= 0 { cx_xw_place(x, x[0].surfs[s].xwin, fr[..]); } continue; }
     if !x[0].surfs[s].configured || x[0].surfs[s].cw != w || x[0].surfs[s].ch != h || x[0].surfs[s].cstate != state { cx_send_configure(x, s, w, h, state); cx_damage_all(x); }
   }
   k := ifx focus != 0 then x[0].win_surf[focus] else -1;
-  if k != x[0].kfocus { cx_damage_all(x); cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); if k >= 0 { cx_offer_selection(x, x[0].surfs[k].client); } }
+  if k != x[0].kfocus {
+    cx_damage_all(x); cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); if k >= 0 { cx_offer_selection(x, x[0].surfs[k].client); }
+    if k >= 0 && x[0].surfs[k].role == R_X11 && x[0].surfs[k].xwin >= 0 { xw_focus(x[0].xw[0].o[..], x[0].xw[0].wins[x[0].surfs[k].xwin].id); cx_xw_flush(x); }
+  }
 }
 // Where window id sits on the screen, in pixels; false when its desk is not shown.
 // A tile's window rectangle in pixels, as the CoderOS Hyprland session draws it (general: gaps_in 3,
@@ -275,7 +305,7 @@ cx_place :: (x: [] Cx, id: int, out: [] int) -> bool {
 // ---- objects
 
 cx_new_surf :: (x: [] Cx, ci: int, id: int) -> int {
-  for i: 0..<CX_SURFS { if !x[0].surfs[i].used { x[0].surfs[i] = CxSurf.{used = true, client = ci, id = id, cur = -1, pend = -1, parent = -1}; return i; } }
+  for i: 0..<CX_SURFS { if !x[0].surfs[i].used { x[0].surfs[i] = CxSurf.{used = true, client = ci, id = id, cur = -1, pend = -1, parent = -1, xwin = -1}; return i; } }
   return -1;
 }
 cx_release :: (x: [] Cx, b: int) {
@@ -301,6 +331,7 @@ cx_unmap :: (x: [] Cx, s: int) {
   cx_damage_all(x); cx_sync(x);
 }
 cx_surf_free :: (x: [] Cx, s: int) {
+  if x[0].surfs[s].xwin >= 0 { i := x[0].surfs[s].xwin; if x[0].xw[0].wins[i].s == s { x[0].xw[0].wins[i].s = -1; x[0].xw[0].wins[i].win = 0; x[0].xw[0].wins[i].sw = 0; } x[0].surfs[s].xwin = -1; }
   if x[0].surfs[s].win != 0 { cx_unmap(x, s); }
   for i: 0..<CX_SURFS { if x[0].surfs[i].used && x[0].surfs[i].parent == s { x[0].surfs[i].parent = -1; } }
   if x[0].kfocus == s { x[0].kfocus = -1; }
@@ -437,7 +468,7 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
         old := x[0].surfs[s].cur; x[0].surfs[s].cur = x[0].surfs[s].pend; x[0].surfs[s].pend_set = false;
         if old >= 0 && old != x[0].surfs[s].cur { cx_release(x, old); }
       }
-      if x[0].surfs[s].role == R_TOPLEVEL && x[0].surfs[s].win != 0 { cx_damage_window(x, x[0].surfs[s].win); }
+      if (x[0].surfs[s].role == R_TOPLEVEL || x[0].surfs[s].role == R_X11) && x[0].surfs[s].win != 0 { cx_damage_window(x, x[0].surfs[s].win); }
       else if x[0].surfs[s].role == R_CURSOR { cx_damage_pointer(x); }
       else { cx_damage_all(x); }   // subsurfaces and popups can reach past their window
       for i: 0..<x[0].surfs[s].npfr { if x[0].ndue < CX_DUE { x[0].due[x[0].ndue] = CxDue.{client = ci, id = x[0].surfs[s].pfr[i]}; x[0].ndue += 1; } }
@@ -710,6 +741,10 @@ cx_composite :: (x: [] Cx, o: [] CxFrame) {
     }
   }
   }
+  for i: 0..<CX_XWINS {   // X menus and tooltips (override-redirect) where they put themselves
+    q := x[0].xw[0].wins[i];
+    if q.used && q.ovr && q.mapped && q.s >= 0 { cx_draw_surf(x, o, q.s, q.x, q.y, 0, 0, x[0].w, x[0].h); }
+  }
   if x[0].show_pointer && x[0].cursor >= 0 && x[0].surfs[x[0].cursor].used {   // the client's pointer image
     cx_draw_surf(x, o, x[0].cursor, x[0].px - x[0].hot_x, x[0].py - x[0].hot_y, 0, 0, x[0].w, x[0].h);
   } else if x[0].show_pointer && x[0].cursor == -1 {   // the pointer: a white arrow with a dark edge, 12 pixels tall
@@ -894,6 +929,10 @@ cx_close_answer :: (x: [] Cx) {
 }
 cx_close_win :: (x: [] Cx, f: int) {
   s := ifx f > 0 && f < WM_WINS then x[0].win_surf[f] else -1;
+  if s >= 0 && x[0].surfs[s].role == R_X11 {   // an X window: WM_DELETE_WINDOW
+    if x[0].surfs[s].xwin >= 0 { id := x[0].xw[0].wins[x[0].surfs[s].xwin].id; o := x[0].xw[0].o[..]; if x[0].xw[0].atoms[2] != 0 { xw_delete(o, id, x[0].xw[0].atoms[1], x[0].xw[0].atoms[2]); } else { xw_kill(o, id); } cx_xw_flush(x); }
+    return;
+  }
   if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
 }
 // Window rules: desktop.nix's own (the camera view and the recording HUD float at the size they drew,
@@ -982,6 +1021,182 @@ cx_rules :: (x: [] Cx, s: int, w: int) {
     if r.nofull { x[0].surfs[s].nofull = true; }
   }
 }
+// ---- Xwayland: the X11 window manager
+
+XW_NAMES :: 5;
+cx_xw_atom_name :: (i: int) -> string {
+  if i == 0 { return "WL_SURFACE_ID"; } if i == 1 { return "WM_PROTOCOLS"; } if i == 2 { return "WM_DELETE_WINDOW"; }
+  if i == 3 { return "_NET_WM_NAME"; } if i == 4 { return "UTF8_STRING"; } return "WM_S0";
+}
+cx_xw_flush :: (x: [] Cx) {
+  o := x[0].xw[0].o[..];
+  if o[0].n > 0 { r := cxx_send(o[0].b[0..<o[0].n]); o[0].n = 0; if r < 0 { cx_xw_off(x); } }
+}
+cx_xw_off :: (x: [] Cx) {
+  if !x[0].xw[0].on { return; }
+  x[0].xw[0].on = false;
+  for i: 0..<CX_XWINS { if x[0].xw[0].wins[i].used { cx_xw_unmanage(x, i); x[0].xw[0].wins[i].used = false; } }
+  r := cxwl_xwayland_stop(); cx_say("xwayland gone");
+}
+cx_xw_find :: (x: [] Cx, id: int) -> int { for i: 0..<CX_XWINS { if x[0].xw[0].wins[i].used && x[0].xw[0].wins[i].id == id { return i; } } return -1; }
+cx_xw_get :: (x: [] Cx, win: int, atom: int) {
+  if atom == 0 { return; }
+  o := x[0].xw[0].o[..]; xw_get_property(o, win, atom);
+  for i: 0..<64 { if x[0].xw[0].gets[i].seq == 0 { x[0].xw[0].gets[i] = CxXGet.{seq = o[0].seq, win = win, atom = atom}; return; } }
+}
+// The window leaves the window policy; its surface goes back to having no role.
+cx_xw_unmanage :: (x: [] Cx, i: int) {
+  s := x[0].xw[0].wins[i].s;
+  if s >= 0 && x[0].surfs[s].used {
+    if x[0].surfs[s].win != 0 { cx_unmap(x, s); } else { x[0].surfs[s].role = R_NONE; cx_damage_all(x); }
+    x[0].surfs[s].xwin = -1;
+  }
+  x[0].xw[0].wins[i].s = -1; x[0].xw[0].wins[i].sid = 0; x[0].xw[0].wins[i].win = 0; x[0].xw[0].wins[i].sw = 0;
+}
+// Copies the X window's title and class to its surface, where `list` and the window rules read them.
+cx_xw_names :: (x: [] Cx, i: int) {
+  s := x[0].xw[0].wins[i].s; if s < 0 { return; }
+  for k: 0..<x[0].xw[0].wins[i].nt { x[0].surfs[s].title[k] = x[0].xw[0].wins[i].title[k]; } x[0].surfs[s].nt = x[0].xw[0].wins[i].nt;
+  for k: 0..<x[0].xw[0].wins[i].nc { x[0].surfs[s].app[k] = x[0].xw[0].wins[i].cls[k]; } x[0].surfs[s].na = x[0].xw[0].wins[i].nc;
+  if x[0].surfs[s].win != 0 && !x[0].surfs[s].ruled { cx_rules(x, s, x[0].surfs[s].win); cx_sync(x); }
+}
+cx_xw_reply :: (x: [] Cx, b: [] u8) {
+  seq := xr_u16(b, 2);
+  for i: 0..<XW_ATOMS {
+    if x[0].xw[0].atom_seq[i] == seq && x[0].xw[0].atoms[i] == 0 {
+      x[0].xw[0].atoms[i] = xr_u32(b, 8); x[0].xw[0].atom_seq[i] = -1;
+      return;
+    }
+  }
+  if seq == x[0].xw[0].comp_seq {   // Composite: redirect the root's children, then own WM_S0, after which X clients may connect
+    x[0].xw[0].comp_seq = -1; o := x[0].xw[0].o[..];
+    if b[8] == 0 { cx_say("xwayland has no Composite extension"); return; }
+    major := cast(int) b[9];
+    xw_composite_version(o, major); xw_composite_redirect(o, major, x[0].xw[0].root);
+    xw_own_selection(o, x[0].xw[0].own, x[0].xw[0].atoms[5]);
+    return;
+  }
+  for g: 0..<64 {
+    q := x[0].xw[0].gets[g];
+    if q.seq != seq { continue; }
+    x[0].xw[0].gets[g].seq = 0;
+    i := cx_xw_find(x, q.win); if i < 0 { return; }
+    format := cast(int) b[1]; count := xr_u32(b, 16) * format / 8; count = cx_min(count, b.count - 32);
+    if q.atom == XA_WM_CLASS {   // "instance\0class\0": the class is the name a rule matches
+      st := 0; for k: 0..<count { if b[32 + k] == 0 { st = k + 1; break; } }
+      n := 0; for k: st..<count { if b[32 + k] == 0 || n >= 128 { break; } x[0].xw[0].wins[i].cls[n] = b[32 + k]; n += 1; }
+      x[0].xw[0].wins[i].nc = n;
+    } else if q.atom == XA_WM_NAME || q.atom == x[0].xw[0].atoms[3] {
+      if q.atom == XA_WM_NAME && x[0].xw[0].wins[i].net_title { return; }
+      if q.atom != XA_WM_NAME && count <= 0 { return; }   // no _NET_WM_NAME: WM_NAME stands
+      n := cx_min(count, 128); for k: 0..<n { x[0].xw[0].wins[i].title[k] = b[32 + k]; } x[0].xw[0].wins[i].nt = n;
+      if q.atom != XA_WM_NAME && n > 0 { x[0].xw[0].wins[i].net_title = true; }
+    }
+    cx_xw_names(x, i);
+    return;
+  }
+}
+cx_xw_event :: (x: [] Cx, b: [] u8) {
+  x[0].xw[0].seen[cast(int) (b[0] & 127) % 40] += 1;
+  if b[0] == 0 { x[0].xw[0].err = cast(int) b[1]; x[0].xw[0].err_op = cast(int) b[10]; return; }   // an error: most often a window that went away first
+  if b[0] == 1 { cx_xw_reply(x, b); return; }
+  t := cast(int) (b[0] & 127); o := x[0].xw[0].o[..];
+  if t == XE_CREATE {
+    if xr_u32(b, 8) == x[0].xw[0].own { return; }
+    for i: 0..<CX_XWINS {
+      if !x[0].xw[0].wins[i].used {
+        x[0].xw[0].wins[i] = CxXWin.{used = true, id = xr_u32(b, 8), s = -1, ovr = b[22] != 0, x = xr_i16(b, 12), y = xr_i16(b, 14), w = xr_u16(b, 16), h = xr_u16(b, 18)};
+        return;
+      }
+    }
+  } else if t == XE_DESTROY || t == XE_UNMAP {
+    i := cx_xw_find(x, xr_u32(b, 8)); if i < 0 { return; }
+    cx_xw_unmanage(x, i); x[0].xw[0].wins[i].mapped = false;
+    if t == XE_DESTROY { x[0].xw[0].wins[i].used = false; }
+  } else if t == XE_MAP_REQUEST {
+    win := xr_u32(b, 8); xw_map(o, win);
+    cx_xw_get(x, win, XA_WM_CLASS); cx_xw_get(x, win, XA_WM_NAME); cx_xw_get(x, win, x[0].xw[0].atoms[3]);
+    i := cx_xw_find(x, win); if i >= 0 { xw_event_mask(o, win, XM_PROPERTY_CHANGE | XM_FOCUS_CHANGE); }
+  } else if t == XE_MAP {
+    i := cx_xw_find(x, xr_u32(b, 8)); if i < 0 { return; }
+    x[0].xw[0].wins[i].mapped = true; x[0].xw[0].wins[i].ovr = b[12] != 0; cx_damage_all(x);
+  } else if t == XE_CONFIGURE {
+    i := cx_xw_find(x, xr_u32(b, 8)); if i < 0 { return; }
+    if x[0].xw[0].wins[i].ovr || x[0].xw[0].wins[i].win == 0 {
+      x[0].xw[0].wins[i].x = xr_i16(b, 16); x[0].xw[0].wins[i].y = xr_i16(b, 18); x[0].xw[0].wins[i].w = xr_u16(b, 20); x[0].xw[0].wins[i].h = xr_u16(b, 22);
+      cx_damage_all(x);
+    }
+  } else if t == XE_CONFIGURE_REQUEST {
+    win := xr_u32(b, 8); i := cx_xw_find(x, win);
+    if i >= 0 && x[0].xw[0].wins[i].win != 0 { x[0].xw[0].wins[i].sw = 0; cx_sync(x); return; }   // a managed window keeps the place the layout gives it
+    v: [7] int; v[0] = xr_i16(b, 16); v[1] = xr_i16(b, 18); v[2] = xr_u16(b, 20); v[3] = xr_u16(b, 22); v[4] = xr_u16(b, 24); v[5] = xr_u32(b, 12); v[6] = cast(int) b[1];
+    xw_configure_some(o, win, xr_u16(b, 26), v[..]);
+  } else if t == XE_PROPERTY {
+    win := xr_u32(b, 4); atom := xr_u32(b, 8);
+    if atom == XA_WM_NAME || atom == XA_WM_CLASS || (atom != 0 && atom == x[0].xw[0].atoms[3]) { cx_xw_get(x, win, atom); }
+  } else if t == XE_CLIENT_MESSAGE {
+    i := cx_xw_find(x, xr_u32(b, 4));
+    if i >= 0 && x[0].xw[0].atoms[0] != 0 && xr_u32(b, 8) == x[0].xw[0].atoms[0] { x[0].xw[0].wins[i].sid = xr_u32(b, 12); }
+  }
+}
+// Reads what the X server sent, ties windows to their surfaces, and puts mapped ones in the layout.
+cx_xw_tick :: (x: [] Cx) {
+  if !x[0].xw[0].on { return; }
+  while x[0].xw[0].nin < 65536 {
+    r := cxx_recv(x[0].xw[0].inb[x[0].xw[0].nin..<65536]);
+    if r < 0 { cx_xw_off(x); return; }
+    if r == 0 { break; }
+    x[0].xw[0].nin += r;
+  }
+  o := x[0].xw[0].o[..];
+  if !x[0].xw[0].up {
+    sz := xr_setup_size(x[0].xw[0].inb[..], x[0].xw[0].nin); if sz == 0 { return; }
+    root := xr_setup_root(x[0].xw[0].inb[..]); x[0].xw[0].own = xr_setup_id_base(x[0].xw[0].inb[..]) | 1;
+    cx_xw_take(x, sz);
+    if root < 0 { cx_say("xwayland refused the window manager"); cx_xw_off(x); return; }
+    x[0].xw[0].up = true; x[0].xw[0].root = root;
+    xw_event_mask(o, root, XM_SUBSTRUCTURE_REDIRECT | XM_SUBSTRUCTURE_NOTIFY | XM_PROPERTY_CHANGE);
+    xw_create_window(o, x[0].xw[0].own, root);
+    for i: 0..<XW_ATOMS { xw_intern_atom(o, cx_xw_atom_name(i)); x[0].xw[0].atom_seq[i] = o[0].seq; }
+    xw_query_extension(o, "Composite"); x[0].xw[0].comp_seq = o[0].seq;
+    cx_say("xwayland ready");
+  }
+  while true {
+    sz := xr_size(x[0].xw[0].inb[..], x[0].xw[0].nin); if sz == 0 { break; }
+    m: [65536] u8; for k: 0..<sz { m[k] = x[0].xw[0].inb[k]; }
+    cx_xw_take(x, sz);
+    cx_xw_event(x, m[0..<sz]);
+  }
+  ci := x[0].xw[0].client;
+  for i: 0..<CX_XWINS {
+    if !x[0].xw[0].wins[i].used { continue; }
+    if x[0].xw[0].wins[i].s < 0 && x[0].xw[0].wins[i].sid != 0 && ci >= 0 {
+      for s: 0..<CX_SURFS {
+        if x[0].surfs[s].used && x[0].surfs[s].client == ci && x[0].surfs[s].id == x[0].xw[0].wins[i].sid && x[0].surfs[s].role == R_NONE {
+          x[0].xw[0].wins[i].s = s; x[0].surfs[s].role = R_X11; x[0].surfs[s].xwin = i; cx_damage_all(x); break;
+        }
+      }
+    }
+    s := x[0].xw[0].wins[i].s;
+    if s >= 0 && x[0].xw[0].wins[i].mapped && !x[0].xw[0].wins[i].ovr && x[0].xw[0].wins[i].win == 0 {
+      w := wm_spawn(x[0].wm[..]); x[0].xw[0].wins[i].win = w; x[0].surfs[s].win = w; x[0].win_surf[w] = s;
+      cx_xw_names(x, i); cx_rules(x, s, w); cx_sync(x);
+    }
+  }
+  cx_xw_flush(x);
+}
+cx_xw_take :: (x: [] Cx, n: int) {
+  rest := x[0].xw[0].nin - n;
+  for k: 0..<rest { x[0].xw[0].inb[k] = x[0].xw[0].inb[n + k]; }
+  x[0].xw[0].nin = rest;
+}
+// A managed X window's place from the layout, sent when it changes.
+cx_xw_place :: (x: [] Cx, i: int, fr: [] int) {
+  q := x[0].xw[0].wins[i];
+  if q.sx == fr[0] && q.sy == fr[1] && q.sw == fr[2] && q.sh == fr[3] { return; }
+  x[0].xw[0].wins[i].sx = fr[0]; x[0].xw[0].wins[i].sy = fr[1]; x[0].xw[0].wins[i].sw = fr[2]; x[0].xw[0].wins[i].sh = fr[3];
+  xw_configure(x[0].xw[0].o[..], q.id, fr[0], fr[1], fr[2], fr[3]); cx_xw_flush(x); cx_damage_all(x);
+}
 cx_close_focused :: (x: [] Cx) {
   f := wm_focus(x[0].wm[..]); s := ifx f != 0 then x[0].win_surf[f] else -1;
   if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
@@ -1023,6 +1238,11 @@ cx_pointer :: (x: [] Cx, px: int, py: int) {
   }
   cx_sync(x);
   s := ifx id != 0 then x[0].win_surf[id] else -1;
+  ox := 0; oy := 0; menu := false;
+  for i: 0..<CX_XWINS {   // an X menu over it takes the pointer
+    q := x[0].xw[0].wins[i];
+    if q.used && q.ovr && q.mapped && q.s >= 0 && px >= q.x && py >= q.y && px < q.x + q.w && py < q.y + q.h { s = q.s; ox = q.x; oy = q.y; menu = true; }
+  }
   g := x[0].g[..];
   if s != x[0].pfocus && x[0].pfocus >= 0 {
     pc := x[0].surfs[x[0].pfocus].client;
@@ -1032,8 +1252,8 @@ cx_pointer :: (x: [] Cx, px: int, py: int) {
   cx_damage_pointer(x); x[0].px = px; x[0].py = py; cx_damage_pointer(x);
   if s != x[0].pfocus { x[0].cursor = -1; }   // a new window sets its own pointer on enter
   if s < 0 { x[0].pfocus = -1; return; }
-  r: [4] int; if !cx_place(x, id, r[..]) { return; }
-  lx := (px - r[0] + x[0].surfs[s].gx) * 256; ly := (py - r[1] + x[0].surfs[s].gy) * 256;
+  if !menu { r: [4] int; if !cx_place(x, id, r[..]) { return; } ox = r[0] - x[0].surfs[s].gx; oy = r[1] - x[0].surfs[s].gy; }
+  lx := (px - ox) * 256; ly := (py - oy) * 256;
   ci := x[0].surfs[s].client;
   for i: 0..<x[0].clients[ci].npt {
     p := x[0].clients[ci].ptrs[i];
@@ -1198,6 +1418,22 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
     b: [64] u8; n := cx_num_into(b[..], 0, (cxwl_ms() - t0) * 1000 / k); for ch: " us a frame" { b[n] = ch; n += 1; }
     cx_say(cast(string) b[0..<n]);
   }
+  else if c == "xlist" {   // the X windows the window manager knows: id, surface id, surface, override, mapped, window
+    for i: 0..<CX_XWINS {
+      q := x[0].xw[0].wins[i]; if !q.used { continue; }
+      b: [256] u8; n := 0;
+      for ch: "x " { b[n] = ch; n += 1; } n = cx_num_into(b[..], n, q.id); b[n] = ' '; n += 1; n = cx_num_into(b[..], n, q.sid); b[n] = ' '; n += 1;
+      n = cx_num_into(b[..], n, q.s); b[n] = ' '; n += 1; n = cx_num_into(b[..], n, ifx q.ovr then 1 else 0); b[n] = ' '; n += 1;
+      n = cx_num_into(b[..], n, ifx q.mapped then 1 else 0); b[n] = ' '; n += 1; n = cx_num_into(b[..], n, q.win);
+      cx_say(cast(string) b[0..<n]);
+    }
+    b2: [512] u8; n2 := 0; for ch: "atoms" { b2[n2] = ch; n2 += 1; }
+    for i: 0..<XW_ATOMS { b2[n2] = ' '; n2 += 1; n2 = cx_num_into(b2[..], n2, x[0].xw[0].atoms[i]); }
+    for ch: " seen" { b2[n2] = ch; n2 += 1; }
+    for i: 0..<40 { if x[0].xw[0].seen[i] > 0 { b2[n2] = ' '; n2 += 1; n2 = cx_num_into(b2[..], n2, i); b2[n2] = ':'; n2 += 1; n2 = cx_num_into(b2[..], n2, x[0].xw[0].seen[i]); } }
+    for ch: " err " { b2[n2] = ch; n2 += 1; } n2 = cx_num_into(b2[..], n2, x[0].xw[0].err); b2[n2] = '/'; n2 += 1; n2 = cx_num_into(b2[..], n2, x[0].xw[0].err_op);
+    cx_say(cast(string) b2[0..<n2]);
+  }
   else if c == "quit" { x[0].quit = true; cx_say("bye"); }
   else { cx_say("unknown command"); }
 }
@@ -1219,16 +1455,17 @@ cx_screens_parse :: (text: string, w: [] int, h: [] int) -> int {
 }
 tool_main :: () -> int #export_c {
   a: [1] Args; ok := args_load(a[..]);
-  pos: [5] string; np := 0; want_screen := false; input := ""; screens := ""; ai := 0;
+  pos: [5] string; np := 0; want_screen := false; input := ""; screens := ""; want_x := false; ai := 0;
   while ok && ai < args_count(a[..]) {
     v := args_at(a[..], ai);
     if v == "--screen" { want_screen = true; }
     else if v == "--input" && ai + 1 < args_count(a[..]) { ai += 1; input = args_at(a[..], ai); }
     else if v == "--screens" && ai + 1 < args_count(a[..]) { ai += 1; screens = args_at(a[..], ai); }
+    else if v == "--xwayland" { want_x = true; }
     else if np < 5 { pos[np] = v; np += 1; } else { ok = false; }
     ai += 1;
   }
-  if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,WxH...] [--screen] [--input FILE]"); return 2; }
+  if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,WxH...] [--xwayland] [--screen] [--input FILE]"); return 2; }
   cc: [1] Cx; x := cc[..]; ff: [1] CxFrame; fr := ff[..];
   x[0].w = 1280; x[0].h = 720;
   if np == 5 { x[0].w = cx_num(pos[3]); x[0].h = cx_num(pos[4]); }
@@ -1268,6 +1505,12 @@ tool_main :: () -> int #export_c {
   for i: 0..<sn { x[0].sock[i] = sp[i]; } x[0].nsock = sn;
   r := cxwl_listen(sp[0..<sn]);
   if r < 0 { tool_errln("compositor: cannot listen on the socket"); return 1; }
+  x[0].xw[0].client = -1;
+  if want_x {   // Xwayland, rootless, before the start list so it sees DISPLAY
+    xn := cxwl_xwayland();
+    if xn < 0 { tool_errln("compositor: cannot start Xwayland"); }
+    else { x[0].xw[0].on = true; x[0].xw[0].display = xn; xw_setup(x[0].xw[0].o[..]); cx_xw_flush(x); }
+  }
   y := cx_rules_parse(x[0].rules[..], CX_BUILTIN_RULES);
   rp: [1024] u8; rn := 0; for i: 0..<x[0].nlaunch { rp[rn] = x[0].launch[i]; rn += 1; } for c: "/rules" { rp[rn] = c; rn += 1; }
   rt: [65536] u8; rl := fs_read(cast(string) rp[0..<rn], rt[..]);
@@ -1290,11 +1533,13 @@ tool_main :: () -> int #export_c {
           for k: 0..<64 { x[0].clients[ci].offers[k] = -1; }
           for o: 0..<CX_OBJS { x[0].clients[ci].objs[o].kind = K_NONE; }
           x[0].clients[ci].objs[1] = CxObj.{kind = K_DISPLAY, ver = 1};
+          if h == cxwl_xwayland_handle() { x[0].xw[0].client = ci; }
           break;
         }
       }
     }
-    for ci: 0..<CX_CLIENTS { if x[0].clients[ci].used && !cx_read_client(x, ci) { if x[0].clients[ci].used { cx_drop_client(x, ci); } } }
+    for ci: 0..<CX_CLIENTS { if x[0].clients[ci].used && !cx_read_client(x, ci) { if x[0].clients[ci].used { if ci == x[0].xw[0].client { cx_xw_off(x); x[0].xw[0].client = -1; } cx_drop_client(x, ci); } } }
+    cx_xw_tick(x);
     if stdin_open {
       got := cxwl_stdin(x[0].line[x[0].nline..<8192]);
       if got < 0 { stdin_open = false; }
@@ -1327,7 +1572,7 @@ tool_main :: () -> int #export_c {
     }
   }
   for ci: 0..<CX_CLIENTS { if x[0].clients[ci].used { cx_drop_client(x, ci); } }
-  r = cxwl_unlisten(sp[0..<sn]);
+  r = cxwl_unlisten(sp[0..<sn]); r = cxwl_xwayland_stop();
   if input_open || want_screen || input.count > 0 { r = cxin_close(); }
   if x[0].screen { r = cxscr_close(); }
   return 0;

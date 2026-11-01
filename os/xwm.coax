@@ -1,0 +1,111 @@
+// The X11 wire protocol for the compositor's window manager over Xwayland's -wm connection
+// (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2, row 6): the requests it sends and the
+// events and replies it reads, little-endian, as the X Window System Protocol (X11R7) lays them out.
+// Each request is appended to an XOut and counted, since a reply names its request by that count.
+
+XW_OUT :: 16384;
+XOut :: struct { b: [XW_OUT] u8; n: int; seq: int; }
+
+// Predefined atoms (X11 protocol, appendix B).
+XA_STRING :: 31; XA_WM_NAME :: 39; XA_WM_CLASS :: 67; XA_WINDOW :: 33; XA_ATOM :: 4;
+// Event masks and codes.
+XM_SUBSTRUCTURE_NOTIFY :: 0x80000; XM_SUBSTRUCTURE_REDIRECT :: 0x100000; XM_PROPERTY_CHANGE :: 0x400000; XM_FOCUS_CHANGE :: 0x200000;
+XE_CREATE :: 16; XE_DESTROY :: 17; XE_UNMAP :: 18; XE_MAP :: 19; XE_MAP_REQUEST :: 20; XE_CONFIGURE :: 22;
+XE_CONFIGURE_REQUEST :: 23; XE_PROPERTY :: 28; XE_CLIENT_MESSAGE :: 33;
+
+xw_u8 :: (o: [] XOut, v: int) { if o[0].n < XW_OUT { o[0].b[o[0].n] = cast,trunc(u8) (v & 255); o[0].n += 1; } }
+xw_u16 :: (o: [] XOut, v: int) { xw_u8(o, v); xw_u8(o, v >> 8); }
+xw_u32 :: (o: [] XOut, v: int) { xw_u16(o, v & 65535); xw_u16(o, (v >> 16) & 65535); }
+xw_pad :: (o: [] XOut) { while o[0].n % 4 != 0 { xw_u8(o, 0); } }
+// The request header: opcode, a data byte, and the length in 4-byte words.
+xw_req :: (o: [] XOut, op: int, data: int, words: int) { xw_u8(o, op); xw_u8(o, data); xw_u16(o, words); o[0].seq = (o[0].seq + 1) & 65535; }
+
+// Connection setup: little-endian, protocol 11.0, no authorization.
+xw_setup :: (o: [] XOut) { xw_u8(o, 0x6c); xw_u8(o, 0); xw_u16(o, 11); xw_u16(o, 0); xw_u16(o, 0); xw_u16(o, 0); xw_u16(o, 0); }
+xw_intern_atom :: (o: [] XOut, name: string) {
+  xw_req(o, 16, 0, 2 + (name.count + 3) / 4); xw_u16(o, name.count); xw_u16(o, 0);
+  for c: name { xw_u8(o, cast(int) c); } xw_pad(o);
+}
+xw_event_mask :: (o: [] XOut, window: int, mask: int) { xw_req(o, 2, 0, 4); xw_u32(o, window); xw_u32(o, 0x800); xw_u32(o, mask); }
+xw_map :: (o: [] XOut, window: int) { xw_req(o, 8, 0, 2); xw_u32(o, window); }
+// ConfigureWindow with x, y, width, height and a zero border.
+xw_configure :: (o: [] XOut, window: int, x: int, y: int, w: int, h: int) {
+  xw_req(o, 12, 0, 8); xw_u32(o, window); xw_u16(o, 1 | 2 | 4 | 8 | 16); xw_u16(o, 0);
+  xw_u32(o, x); xw_u32(o, y); xw_u32(o, w); xw_u32(o, h); xw_u32(o, 0);
+}
+// ConfigureWindow with only the fields a ConfigureRequest asked for (mask bits 1..64, values in order).
+xw_configure_some :: (o: [] XOut, window: int, mask: int, v: [] int) {
+  k := 0; for b: 0..<7 { if (mask >> b) & 1 == 1 { k += 1; } }
+  xw_req(o, 12, 0, 3 + k); xw_u32(o, window); xw_u16(o, mask & 127); xw_u16(o, 0);
+  for b: 0..<7 { if (mask >> b) & 1 == 1 { xw_u32(o, v[b]); } }
+}
+xw_focus :: (o: [] XOut, window: int) { xw_req(o, 42, 1, 3); xw_u32(o, window); xw_u32(o, 0); }   // RevertToPointerRoot, CurrentTime
+// GetProperty of up to 256 words of any type.
+xw_get_property :: (o: [] XOut, window: int, atom: int) { xw_req(o, 20, 0, 6); xw_u32(o, window); xw_u32(o, atom); xw_u32(o, 0); xw_u32(o, 0); xw_u32(o, 256); }
+// WM_DELETE_WINDOW, sent as a WM_PROTOCOLS client message.
+xw_delete :: (o: [] XOut, window: int, wm_protocols: int, wm_delete: int) {
+  xw_req(o, 25, 0, 11); xw_u32(o, window); xw_u32(o, 0);
+  xw_u8(o, XE_CLIENT_MESSAGE); xw_u8(o, 32); xw_u16(o, 0); xw_u32(o, window); xw_u32(o, wm_protocols);
+  xw_u32(o, wm_delete); xw_u32(o, 0); xw_u32(o, 0); xw_u32(o, 0); xw_u32(o, 0);
+}
+xw_kill :: (o: [] XOut, window: int) { xw_req(o, 113, 0, 2); xw_u32(o, window); }
+// An unmapped 1x1 InputOnly child of the root: the window manager's own, to own selections with.
+xw_create_window :: (o: [] XOut, window: int, parent: int) {
+  xw_req(o, 1, 0, 8); xw_u32(o, window); xw_u32(o, parent);
+  xw_u16(o, 0); xw_u16(o, 0); xw_u16(o, 1); xw_u16(o, 1); xw_u16(o, 0); xw_u16(o, 2); xw_u32(o, 0); xw_u32(o, 0);
+}
+xw_query_extension :: (o: [] XOut, name: string) {
+  xw_req(o, 98, 0, 2 + (name.count + 3) / 4); xw_u16(o, name.count); xw_u16(o, 0);
+  for c: name { xw_u8(o, cast(int) c); } xw_pad(o);
+}
+// Composite (major opcode from QueryExtension): QueryVersion 0.4, then RedirectSubwindows of the root,
+// manual. Rootless Xwayland gives a window a wl_surface only when it is redirected so.
+xw_composite_version :: (o: [] XOut, major: int) { xw_req(o, major, 0, 3); xw_u32(o, 0); xw_u32(o, 4); }
+xw_composite_redirect :: (o: [] XOut, major: int, window: int) { xw_req(o, major, 2, 3); xw_u32(o, window); xw_u8(o, 1); xw_u8(o, 0); xw_u16(o, 0); }
+// SetSelectionOwner at CurrentTime. Xwayland listens for clients once WM_S0 has an owner.
+xw_own_selection :: (o: [] XOut, window: int, selection: int) { xw_req(o, 22, 0, 4); xw_u32(o, window); xw_u32(o, selection); xw_u32(o, 0); }
+
+xr_u16 :: (b: [] u8, at: int) -> int { return cast(int) b[at] | (cast(int) b[at + 1] << 8); }
+xr_u32 :: (b: [] u8, at: int) -> int { return xr_u16(b, at) | (xr_u16(b, at + 2) << 16); }
+xr_i16 :: (b: [] u8, at: int) -> int { v := xr_u16(b, at); return ifx v >= 32768 then v - 65536 else v; }
+// How many bytes the next whole message from the server holds (0 while it is not all here): an error
+// or event is 32, a reply 32 plus its length.
+xr_size :: (b: [] u8, n: int) -> int {
+  if n < 32 { return 0; }
+  full := ifx b[0] == 1 then 32 + 4 * xr_u32(b, 4) else 32;
+  return ifx n >= full then full else 0;
+}
+// The setup reply's size (0 while it is not all here) and, once whole, its root window: -1 when refused.
+xr_setup_size :: (b: [] u8, n: int) -> int { if n < 8 { return 0; } full := 8 + 4 * xr_u16(b, 6); return ifx n >= full then full else 0; }
+xr_setup_id_base :: (b: [] u8) -> int { return xr_u32(b, 12); }
+xr_setup_root :: (b: [] u8) -> int {
+  if b[0] != 1 { return -1; }
+  vendor := xr_u16(b, 24); formats := cast(int) b[29];
+  return xr_u32(b, 40 + (vendor + 3) / 4 * 4 + 8 * formats);
+}
+
+#test "X11 requests encode as the protocol lays them out" {
+  oo: [1] XOut; o := oo[..];
+  xw_setup(o); #assert o[0].n == 12 && o[0].b[0] == 0x6c && o[0].b[2] == 11 && o[0].seq == 0;
+  o[0].n = 0; xw_intern_atom(o, "WL_SURFACE_ID");
+  #assert o[0].n == 24 && o[0].b[0] == 16 && xr_u16(o[0].b[..], 2) == 6 && xr_u16(o[0].b[..], 4) == 13 && o[0].b[8] == 'W' && o[0].seq == 1;
+  o[0].n = 0; xw_configure(o, 0x200001, -5, 7, 640, 480);
+  #assert o[0].n == 32 && xr_u16(o[0].b[..], 2) == 8 && xr_u32(o[0].b[..], 4) == 0x200001 && xr_u16(o[0].b[..], 8) == 31 && xr_u32(o[0].b[..], 12) == 4294967291 && xr_u32(o[0].b[..], 20) == 640;
+  o[0].n = 0; v: [7] int; v[2] = 300; v[3] = 200; xw_configure_some(o, 9, 4 | 8, v[..]);
+  #assert o[0].n == 20 && xr_u16(o[0].b[..], 2) == 5 && xr_u32(o[0].b[..], 12) == 300 && xr_u32(o[0].b[..], 16) == 200;
+  o[0].n = 0; xw_delete(o, 9, 100, 101);
+  #assert o[0].n == 44 && o[0].b[0] == 25 && o[0].b[12] == XE_CLIENT_MESSAGE && o[0].b[13] == 32 && xr_u32(o[0].b[..], 20) == 100 && xr_u32(o[0].b[..], 24) == 101;
+  o[0].n = 0; xw_create_window(o, 0x400001, 0x12a); #assert o[0].n == 32 && xr_u16(o[0].b[..], 2) == 8 && xr_u16(o[0].b[..], 22) == 2;
+  o[0].n = 0; xw_own_selection(o, 0x400001, 300); #assert o[0].n == 16 && o[0].b[0] == 22 && xr_u32(o[0].b[..], 8) == 300;
+  o[0].n = 0; xw_query_extension(o, "Composite"); #assert o[0].n == 20 && o[0].b[0] == 98 && xr_u16(o[0].b[..], 4) == 9;
+  o[0].n = 0; xw_composite_redirect(o, 142, 0x12a); #assert o[0].n == 12 && o[0].b[0] == 142 && o[0].b[1] == 2 && o[0].b[8] == 1;
+  #assert o[0].seq == 8;
+}
+#test "X11 replies: sizes, the setup root, signed fields" {
+  b: [64] u8;
+  b[0] = 1; b[4] = 2; #assert xr_size(b[..], 32) == 0 && xr_size(b[..], 40) == 40;
+  b[0] = 19; #assert xr_size(b[..], 31) == 0 && xr_size(b[..], 40) == 32;
+  b[0] = 0xfe; b[1] = 0xff; #assert xr_i16(b[..], 0) == -2;
+  s: [64] u8; s[0] = 1; s[6] = 10; s[24] = 4; s[29] = 1; s[52] = 0x2a; s[53] = 1;   // vendor 4 bytes, one format: the screen, and its root 0x12a, at 52
+  #assert xr_setup_size(s[..], 47) == 0 && xr_setup_size(s[..], 48) == 48 && xr_setup_root(s[..]) == 0x12a;
+}

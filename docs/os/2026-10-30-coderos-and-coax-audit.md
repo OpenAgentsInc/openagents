@@ -562,6 +562,24 @@ compiler and the examples have not been run on Linux yet.
   800,0), and foot's log showed `leave(#8)` then `enter(#13)` when its
   window moved to the right screen.
 
+  XWayland works, for the Android emulator, which draws only through X11.
+  With `--xwayland` the compositor starts Xwayland rootless on a free
+  display from `:50`, gives it a Wayland socketpair, and runs an X11
+  window manager in Coax (`os/xwm.coax`, the wire encoding with its
+  tests) over Xwayland's `-wm` socket. Programs it starts get `DISPLAY`.
+  The window manager redirects the root's children through Composite and
+  takes `WM_S0`: rootless Xwayland gives a window a surface only when it
+  is redirected, and accepts X clients only once `WM_S0` has an owner.
+  It then matches each X window to its `wl_surface` through
+  `WL_SURFACE_ID` and tiles it like any window, sending ConfigureWindow
+  for its place. Its title (`_NET_WM_NAME` or `WM_NAME`) and class
+  (`WM_CLASS`, which class rules match) are read in, `SetInputFocus`
+  follows focus, Super+W sends `WM_DELETE_WINDOW`, and override-redirect
+  menus draw on top where they asked to be. Headless with Xwayland 24.1,
+  an `xterm` tiled beside foot as `app=XTermTest title=xt`, ran a typed
+  command, and closed on Super+W. Removing the display's socket and
+  lock on exit was checked too.
+
   Also left: and the protocols foot still reports missing
   (primary selection, fractional scale, activation, text input).
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
