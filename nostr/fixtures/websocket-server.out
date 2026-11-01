@@ -1,0 +1,84 @@
+RFC request: 189 bytes, status OK, consumed 189, key at 106..<130
+key: dGhlIHNhbXBsZSBub25jZQ==
+101 response: 129 bytes
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=
+
+-- session --
+server: request MORE
+after 100 of 152 bytes: 0 bytes sent
+server: request OK
+after 152 of 152 bytes: 129 bytes sent
+client admits the response: status 0 consumed 129
+client sends: 018337fa213d7f9f4d898137fa213d47808237fa213d5b95
+server: fragment of 3 bytes held
+server: ping "p", pong sent
+server: message op 1 "Hello", echoed
+server sends: 8a0170810548656c6c6f
+client reads op 10 "p"
+client reads op 1 "Hello"
+client sends close: 888237fa213d3412
+server: close received, close 1000 sent
+server sends: 880203e8
+client reads close code 1000
+-- request refusals --
+POST:
+server: request METHOD
+  answer: HTTP/1.1 400 Bad Request
+HTTP/1.0:
+server: request METHOD
+  answer: HTTP/1.1 400 Bad Request
+a header line with no colon:
+server: request HEADER
+  answer: HTTP/1.1 400 Bad Request
+no Upgrade header:
+server: request UPGRADE
+  answer: HTTP/1.1 400 Bad Request
+Connection: close:
+server: request CONNECTION
+  answer: HTTP/1.1 400 Bad Request
+version 8:
+server: request VERSION
+  answer: HTTP/1.1 400 Bad Request
+a 23-byte key:
+server: request KEY
+  answer: HTTP/1.1 400 Bad Request
+two keys:
+server: request KEY
+  answer: HTTP/1.1 400 Bad Request
+8193 bytes and no blank line:
+server: request TOO_BIG
+  answer: HTTP/1.1 400 Bad Request
+a plain GET for application/nostr+json:
+server: request NIP11
+  answer: HTTP/1.1 200 OK
+-- frame refusals --
+unmasked text Hello:
+server: request OK
+server: frame refused, close 1002
+  sent back: 880203ea
+RSV1 set:
+server: request OK
+server: frame refused, close 1002
+  sent back: 880203ea
+17 bytes over a 16-byte limit:
+server: request OK
+server: frame refused, close 1009
+  sent back: 880203f1
+text ff:
+server: request OK
+server: message refused, close 1007
+  sent back: 880203ef
+continuation first:
+server: request OK
+server: message refused, close 1002
+  sent back: 880203ea
+close code 999:
+server: request OK
+server: message refused, close 1002
+  sent back: 880203ea
+ping of 126 bytes, written: -1
+close 1005, written: -1
+fuzz: 20000 requests, 3845 admitted, 0 NIP-11, 6478 refused, 9677 waiting for more, 0 bad keys admitted

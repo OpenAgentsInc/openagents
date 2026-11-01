@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 20 are implemented, 36 are partly implemented and
+Of the 104 chapters, 21 are implemented, 35 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -192,7 +192,7 @@ TLS.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [26. WebSocket frames](ch026-websocket-frames.md) | Runnable: native C | RFC 6455 as a client: the opening handshake with `Sec-WebSocket-Accept` from SHA-1, masked client frames, fragmentation, ping, pong and close with status codes. |
-| [27. A WebSocket server](ch027-a-websocket-server.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | The server side of RFC 6455: accept the upgrade, refuse unmasked client frames, write unmasked frames, enforce frame and message limits and close cleanly. |
+| [27. A WebSocket server](ch027-a-websocket-server.md) | Runnable: native C | The server side of RFC 6455: accept the upgrade, refuse unmasked client frames, write unmasked frames, enforce frame and message limits and close cleanly. |
 | [28. Sockets, TLS and relay URLs](ch028-sockets-tls-and-relay-urls.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | The host boundary: the C host opens sockets and does TLS only; Coax parses `ws://` and `wss://` URLs, decides every frame and owns every protocol decision above the socket. |
 
 ### Part VIII. A client (chapters 29–33)

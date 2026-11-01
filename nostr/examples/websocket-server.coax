@@ -1,0 +1,271 @@
+// book:begin example
+#load "../../coax/lib/net/ws_server.coax";
+#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// The largest frame payload this example's server admits. The Coax relay
+// uses 131072 (RS_MAX_MESSAGE); a small limit makes the refusal easy to show.
+LIMIT :: 16;
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  #assert r.error == 0;
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex into out; the bytes as a string.
+bytes_of :: (text: string, out: [] u8) -> string {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return cast(string) out[0..<r.written];
+}
+// The name of a wss_request status.
+request_name :: (status: int) -> string {
+  names := [10] string.["OK", "MORE", "TOO_BIG", "METHOD", "HEADER", "UPGRADE", "CONNECTION", "VERSION", "KEY", "NIP11"];
+  return names[status];
+}
+// Print an HTTP head with each CRLF shown as one line break.
+show_head :: (head: string) {
+  line := 0;
+  for c, i: head {
+    if c == '\r' { print("%\n", head[line..<i]); line = i + 2; }
+  }
+}
+// The first line of an HTTP response.
+first_line :: (bytes: string) -> string { return bytes[0..<wss_cr(bytes)]; }
+
+// One connection's server state: the bytes not yet used, whether the
+// upgrade happened, the message being assembled, and whether the server has
+// finished with the connection.
+Conn :: struct {
+  ws: bool; done: bool;
+  say: bool;   // print each decision (the checks run quietly)
+  inb: [8400] u8; used: int;
+  rd: [1] WsReader;
+  msg: [LIMIT] u8;
+}
+// Drop the first n bytes of the input.
+consume :: (c: [] Conn, n: int) {
+  for i: n..<c[0].used { c[0].inb[i - n] = c[0].inb[i]; }
+  c[0].used -= n;
+}
+// Append one written frame or response to out at at; the new length.
+emit :: (out: [] u8, at: int, bytes: [] u8, n: int) -> int {
+  #assert n > 0 && at + n <= out.count;
+  for i: 0..<n { out[at + i] = bytes[i]; }
+  return at + n;
+}
+// The server: take the bytes that arrived, decide, and write the bytes to
+// send into out. Returns how many bytes were written. The decisions are the
+// Coax relay's (rr_http, rr_frame_read, rr_frame_event in relay_route.coax).
+feed :: (c: [] Conn, bytes: string, out: [] u8) -> int {
+  #assert !c[0].done && c[0].used + bytes.count <= c[0].inb.count;
+  for i: 0..<bytes.count { c[0].inb[c[0].used + i] = bytes[i]; }
+  c[0].used += bytes.count;
+  w: [256] u8;
+  at := 0;
+  if !c[0].ws {
+    h := wss_request(cast(string) c[0].inb[0..<c[0].used]);
+    a := rr_http(h.status);
+    if c[0].say { print("server: request %\n", request_name(h.status)); }
+    if a == RR_H_WAIT { return 0; }
+    if a == RR_H_UPGRADE {
+      at = emit(out, at, w[..], wss_accept_write(cast(string) c[0].inb[h.key_from..<h.key_to], w[..]));
+      consume(c, h.consumed);
+      c[0].ws = true;
+    } else {
+      // NIP-11 or a refusal: one HTTP response, then the connection ends.
+      n := ifx a == RR_H_NIP11 then wss_http_write("200 OK", "application/nostr+json", "{}", w[..])
+        else wss_http_write("400 Bad Request", "text/plain", "", w[..]);
+      c[0].done = true;
+      return emit(out, at, w[..], n);
+    }
+  }
+  while c[0].used > 0 && !c[0].done {
+    f := wss_frame_read(cast(string) c[0].inb[0..<c[0].used], LIMIT);
+    fr := rr_frame_read(f.status);
+    if fr.action == RR_F_WAIT { break; }
+    if fr.action == RR_F_CLOSE {
+      if c[0].say { print("server: frame refused, close %\n", fr.code); }
+      at = emit(out, at, w[..], wss_close_write(fr.code, w[..]));
+      c[0].done = true; break;
+    }
+    payload: [LIMIT] u8;
+    n := wss_unmask(cast(string) c[0].inb[0..<c[0].used], f, payload[..]);
+    ev := ws_take(c[0].rd[..], f, cast(string) payload[0..<n], c[0].msg[..]);
+    consume(c, f.total);
+    d := rr_frame_event(ev, c[0].rd[0].op);
+    if d.action == RR_F_TEXT || d.action == RR_F_BINARY {
+      if c[0].say { print("server: message op % \"%\", echoed\n", c[0].rd[0].op, cast(string) c[0].msg[0..<c[0].rd[0].used]); }
+      at = emit(out, at, w[..], wss_frame_write(c[0].rd[0].op, cast(string) c[0].msg[0..<c[0].rd[0].used], w[..]));
+    } else if d.action == RR_F_PONG {
+      if c[0].say { print("server: ping \"%\", pong sent\n", cast(string) payload[0..<n]); }
+      at = emit(out, at, w[..], wss_frame_write(WS_OP_PONG, cast(string) payload[0..<n], w[..]));
+    } else if d.action == RR_F_CLOSE {
+      if c[0].say { print("server: close received, close % sent\n", d.code); }
+      at = emit(out, at, w[..], wss_close_write(d.code, w[..]));
+      c[0].done = true;
+    } else if d.action == RR_F_ERROR {
+      if c[0].say { print("server: message refused, close %\n", ws_error_code(ev)); }
+      at = emit(out, at, w[..], wss_close_write(ws_error_code(ev), w[..]));
+      c[0].done = true;
+    } else {
+      if c[0].say { print("server: fragment of % bytes held\n", n); }
+    }
+  }
+  return at;
+}
+
+// The RFC 6455 section 1.2 opening request.
+RFC_REQUEST :: "GET /chat HTTP/1.1\r\nHost: server.example.com\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nOrigin: http://example.com\r\nSec-WebSocket-Version: 13\r\n\r\n";
+
+// A fresh connection that has already been upgraded.
+open_conn :: (c: [] Conn) {
+  c[0] = Conn.{say = true};
+  out: [256] u8;
+  n := feed(c, RFC_REQUEST, out[..]);
+  #assert c[0].ws && n == 129;
+}
+// Send one request head to a fresh connection; print the server's answer.
+refuse_request :: (label: string, request: string) {
+  c: [1] Conn; out: [512] u8;
+  c[0].say = true;
+  print("%:\n", label);
+  n := feed(c[..], request, out[..]);
+  print("  answer: %\n", ifx n > 0 then first_line(cast(string) out[0..<n]) else "(nothing yet)");
+}
+// Send frame bytes (hex) to an upgraded connection; print what comes back.
+refuse_frame :: (label: string, hex: string) {
+  c: [1] Conn; out: [256] u8; b: [64] u8;
+  print("%:\n", label);
+  open_conn(c[..]);
+  n := feed(c[..], bytes_of(hex, b[..]), out[..]);
+  show("  sent back", out[0..<n]);
+}
+
+// The next value of a fixed linear congruential generator.
+next :: (state: u64) -> u64 { return add_wrap(mul_wrap(state, 6364136223846793005), 1442695040888963407); }
+
+// Change the RFC request at random and admit it. Whatever the status, an
+// admitted key must be a 24-byte base64 key inside the head. The generator
+// is fixed, so every run reads the same requests.
+FuzzTally :: struct { ok: int; nip11: int; refused: int; waiting: int; bad_key: int; }
+fuzz :: (requests: int) -> FuzzTally {
+  base := RFC_REQUEST;
+  state: u64 = 0x2545f4914f6cdd1d;
+  buf: [256] u8;
+  t: FuzzTally;
+  for s: 0..<requests {
+    for i: 0..<base.count { buf[i] = base[i]; }
+    // Change zero to three bytes, then cut or extend the request.
+    state = next(state);
+    for k: 0..<cast(int) (state >> 62) {
+      state = next(state);
+      at := cast(int) ((state >> 40) % cast(u64) base.count);
+      state = next(state);
+      // Half the changes pick a byte the head is made of, so more requests pass.
+      if (state >> 63) == 0 { buf[at] = cast,trunc(u8) (state >> 56); }
+      else { set := " :\r\n=/aA1"; buf[at] = set[cast(int) ((state >> 40) % 9)]; }
+    }
+    state = next(state);
+    n := base.count - 8 + cast(int) ((state >> 33) % 17);
+    for i: base.count..<n { state = next(state); buf[i] = cast,trunc(u8) (state >> 56); }
+    h := wss_request(cast(string) buf[0..<n]);
+    if h.status == WSS_OK {
+      t.ok += 1;
+      if h.key_from < 0 || h.key_to > h.consumed || !wss_key_ok(cast(string) buf[h.key_from..<h.key_to]) { t.bad_key += 1; }
+    } else if h.status == WSS_NIP11 { t.nip11 += 1; }
+    else if h.status == WSS_MORE { t.waiting += 1; }
+    else { t.refused += 1; }
+  }
+  return t;
+}
+
+main :: () {
+  // Worked example: admit the RFC request and answer it.
+  h := wss_request(RFC_REQUEST);
+  print("RFC request: % bytes, status %, consumed %, key at %..<%\n", RFC_REQUEST.count, request_name(h.status), h.consumed, h.key_from, h.key_to);
+  print("key: %\n", RFC_REQUEST[h.key_from..<h.key_to]);
+  answer: [256] u8;
+  n := wss_accept_write(RFC_REQUEST[h.key_from..<h.key_to], answer[..]);
+  print("101 response: % bytes\n", n);
+  show_head(cast(string) answer[0..<n]);
+
+  // A session: the Coax client of chapter 26 against this server.
+  print("-- session --\n");
+  text := "the sample nonce"; nonce: [16] u8; key: [24] u8;
+  for i: 0..<16 { nonce[i] = text[i]; }
+  #assert ws_key(nonce[..], key[..]);
+  request: [256] u8; out: [512] u8; got: [512] u8;
+  rn := ws_request("relay.example", 80, "/", cast(string) key[..], request[..]);
+  c: [1] Conn;
+  c[0].say = true;
+  // The request arrives in two reads: the server waits for the blank line.
+  n = feed(c[..], cast(string) request[0..<100], out[..]);
+  print("after 100 of % bytes: % bytes sent\n", rn, n);
+  n = feed(c[..], cast(string) request[100..<rn], out[..]);
+  print("after % of % bytes: % bytes sent\n", rn, rn, n);
+  hello := ws_response(cast(string) out[0..<n], cast(string) key[..]);
+  print("client admits the response: status % consumed %\n", hello.status, hello.consumed);
+
+  // The client sends "Hel", a ping and "lo" in one read, each masked.
+  mask := [4] u8.[0x37, 0xfa, 0x21, 0x3d];
+  m := ws_frame_write(WS_OP_TEXT, false, "Hel", mask[..], got[..]);
+  m += ws_frame_write(WS_OP_PING, true, "p", mask[..], got[m..<got.count]);
+  m += ws_frame_write(WS_OP_CONT, true, "lo", mask[..], got[m..<got.count]);
+  show("client sends", got[0..<m]);
+  n = feed(c[..], cast(string) got[0..<m], out[..]);
+  show("server sends", out[0..<n]);
+  // The client reads the server's frames.
+  r: [1] WsReader; msg: [16] u8;
+  at := 0;
+  while at < n {
+    f := ws_frame_read(cast(string) out[at..<n], 125);
+    #assert f.status == WS_FRAME_OK;
+    ev := ws_take(r[..], f, cast(string) out[at + f.header..<at + f.total], msg[..]);
+    print("client reads op % \"%\"\n", f.op, cast(string) out[at + f.header..<at + f.total]);
+    at += f.total;
+  }
+
+  // The closing handshake, started by the client.
+  m = ws_close_write(WS_CLOSE_NORMAL, mask[..], got[..]);
+  show("client sends close", got[0..<m]);
+  n = feed(c[..], cast(string) got[0..<m], out[..]);
+  show("server sends", out[0..<n]);
+  f := ws_frame_read(cast(string) out[0..<n], 125);
+  print("client reads close code %\n", ws_close_code(cast(string) out[f.header..<f.total]));
+
+  // Refusals: the opening request. The relay answers each with 400.
+  print("-- request refusals --\n");
+  refuse_request("POST", "POST / HTTP/1.1\r\n\r\n");
+  refuse_request("HTTP/1.0", "GET / HTTP/1.0\r\n\r\n");
+  refuse_request("a header line with no colon", "GET / HTTP/1.1\r\nnocolon\r\n\r\n");
+  refuse_request("no Upgrade header", "GET / HTTP/1.1\r\nHost: h\r\n\r\n");
+  refuse_request("Connection: close", "GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: close\r\n\r\n");
+  refuse_request("version 8", "GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 8\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
+  refuse_request("a 23-byte key", "GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=\r\n\r\n");
+  refuse_request("two keys", "GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n");
+  big: [8193] u8;
+  for i: 0..<big.count { big[i] = RFC_REQUEST[i % 20]; }
+  refuse_request("8193 bytes and no blank line", cast(string) big[..]);
+  refuse_request("a plain GET for application/nostr+json", "GET / HTTP/1.1\r\nAccept: application/nostr+json\r\n\r\n");
+
+  // Refusals: frames on an open connection.
+  print("-- frame refusals --\n");
+  refuse_frame("unmasked text Hello", "810548656c6c6f");
+  refuse_frame("RSV1 set", "c18037fa213d");
+  refuse_frame("17 bytes over a 16-byte limit", "819137fa213d");
+  refuse_frame("text ff", "818137fa213dc8");
+  refuse_frame("continuation first", "808137fa213d4f");
+  refuse_frame("close code 999", "888237fa213d341d");
+  p126: [126] u8;
+  print("ping of 126 bytes, written: %\n", wss_frame_write(WS_OP_PING, cast(string) p126[..], out[..]));
+  print("close 1005, written: %\n", wss_close_write(WS_CLOSE_NO_STATUS, out[..]));
+
+  t := fuzz(20000);
+  print("fuzz: 20000 requests, % admitted, % NIP-11, % refused, % waiting for more, % bad keys admitted\n",
+        t.ok, t.nip11, t.refused, t.waiting, t.bad_key);
+}
+// book:end example

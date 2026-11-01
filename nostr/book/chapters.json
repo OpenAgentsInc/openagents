@@ -551,13 +551,15 @@
    "number": 27,
    "title": "A WebSocket server",
    "file": "ch027-a-websocket-server.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     26
    ],
    "source": [
-    "coax/lib/net/ws_server.coax"
+    "coax/lib/net/ws_server.coax",
+    "nostr/examples/websocket-server.coax",
+    "nostr/examples/checks/websocket-server.coax"
    ],
    "qualified_targets": [
     "cpu"
