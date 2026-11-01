@@ -1,0 +1,34 @@
+#import "Basic";
+#load "../lib/transformer/train-profile.coax";
+
+// book:begin example
+// Chapter 130: the exact work of chapter 129's step on chapter 115's decoder
+// with four rows, then a profile of five steps built around the GPU
+// receipt's phase means, placed on the RTX 4080's measured binary64 roof.
+// The times here are fixed numbers so the transcript is exact; the device
+// harness (psionic/tests/check_train_profile.sh) measures real ones.
+// x as a percentage with two decimals.
+percent :: (x:f64) {h:=cast(int)(x*10000+0.5);print("%.",h/100);if h%100<10 {print("0");}print("% percent",h%100);}
+main :: () {
+    sh:=[8]int.[16,16,2,1,8,16,2,32];
+    print("one row of chapter 115's decoder: % FLOPs forward, % backward\n",tp_forward_flops(sh[..]),tp_backward_flops(sh[..]));
+    print("a step of 4 rows, per phase: FLOPs, bytes, kind\n");
+    for p:0..<TP_PHASES {ph:=cast(TpPhase)p;w:=tp_work(sh[..],4,1,0,ph);print("  %: %, %, %\n",tp_phase_name(ph),w.flops,w.bytes,tp_kind_name(tp_kind(ph)));}
+    c:=tp_clip(gk_parameters(sh[..]));print("  clip, when launched: %, %\n",c.flops,c.bytes);
+
+    gpu:=RfHost.{mflops=354433,mbytes=608204};
+    base:=[10]int.[12000,30932000,212000,20000,800,873000,7000,200,7500,10883000];
+    wobble:=[10]int.[2000,127000,2500,1600,250,950,1700,40,1200,223000];
+    ns:[50]int;step:[5]int;tq_profile(base[..],wobble[..],300,ns[..],step[..]);
+    r:=tp_report(sh[..],4,0,gpu,ns[..],step[..]);
+    print("five steps on a roof of % MFLOP/s and % MB/s: %\n",gpu.mflops,gpu.mbytes,tp_status_name(r.status));
+    print("  step: mean % ns, sd % ns\n",cast(int)r.step.mean,cast(int)r.step.sd);
+    for p:0..<TP_PHASES {l:=r.lines[p];ph:=cast(TpPhase)p;
+        print("  %: mean % ns, ",tp_phase_name(ph),cast(int)l.stats.mean);percent(l.share);
+        if l.least>0 {print(", least % ns (%-bound), % times that",cast(int)l.least,rf_bound_name(l.bound),cast(int)(l.gap+0.5));}
+        print("\n");}
+    print("  the phases leave % ns of the mean step unaccounted, at most % ns in one step\n",cast(int)r.unaccounted,r.slack);
+    print("  no kernel runs for % ns a step; % launches a step; backward is rows less forward: % ns\n",cast(int)r.idle,cast(int)r.launches,cast(int)r.backward);
+    print("bottleneck: %, ",tp_phase_name(r.bottleneck));percent(r.share);print(" of the step, % times its least time\n",cast(int)(r.gap+0.5));
+}
+// book:end example

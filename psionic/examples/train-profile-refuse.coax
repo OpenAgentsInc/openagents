@@ -1,0 +1,27 @@
+#import "Basic";
+#load "../lib/transformer/train-profile.coax";
+
+// book:begin refuse
+// Chapter 130: profiles the report refuses instead of naming a bottleneck.
+main :: () {
+    sh:=[8]int.[16,16,2,1,8,16,2,32];gpu:=RfHost.{mflops=354433,mbytes=608204};
+    base:=[10]int.[12000,30932000,212000,20000,800,873000,7000,200,7500,10883000];
+    wobble:=[10]int.[2000,127000,2500,1600,250,950,1700,40,1200,223000];
+    ns:[50]int;step:[5]int;tq_profile(base[..],wobble[..],300,ns[..],step[..]);
+    print("the profile as measured: %\n",tp_status_name(tp_report(sh[..],4,0,gpu,ns[..],step[..]).status));
+
+    // A rows timer that also caught the next phase: in step 2 the phases
+    // add up to more than the step.
+    x:=ns;x[1*5+2]+=212300;r:=tp_report(sh[..],4,0,gpu,x[..],step[..]);
+    print("rows timed past its end in step %: %\n",r.at,tp_status_name(r.status));
+    // A step whose clock started 2 ms early: 6 percent of it is unaccounted.
+    s:=step;s[4]+=2000000;r=tp_report(sh[..],4,0,gpu,ns[..],s[..]);
+    print("step % started 2 ms early: %\n",r.at,tp_status_name(r.status));
+    // Four steps, and a host phase the clock saw as 0 ns.
+    r=tp_report(sh[..],4,0,gpu,ns[0..<40],step[0..<4]);print("four steps: %\n",tp_status_name(r.status));
+    x=ns;x[4*5+3]=0;r=tp_report(sh[..],4,0,gpu,x[..],step[..]);print("% took 0 ns in one step: %\n",tp_phase_name(cast(TpPhase)r.at),tp_status_name(r.status));
+    // A roof that was never measured, and a clip count above the step count.
+    r=tp_report(sh[..],4,0,RfHost.{},ns[..],step[..]);print("no roofline: %\n",tp_status_name(r.status));
+    r=tp_report(sh[..],4,6,gpu,ns[..],step[..]);print("6 clipped of 5 steps: %\n",tp_status_name(r.status));
+}
+// book:end refuse

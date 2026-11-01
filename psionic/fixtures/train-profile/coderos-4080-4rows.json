@@ -1,0 +1,40 @@
+{
+  "schema": "psionic.train-profile.v1",
+  "profile": "tp-step-v1",
+  "host": "coderos-4080", "date": "2026-11-01T17:09:57Z",
+  "cc": "gcc 15.2.0 -O2 -ffp-contract=off -fno-fast-math", "coax": "coax 8925679b5e1925f4aff44295d499e8f21ea29fe486ad505142aec090be2e3028", "cuda": "NVRTC --fmad=false",
+  "rows": 4, "warm": 3, "parameters": 3152, "plan_bytes": 1174648,
+  "loadavg_before": "40.36 37.74 28.02 37/1233 3843653",
+  "cpu": {"status": 0, "runs": 20, "clips": 0, "roof": {"mflops": 3862, "mbytes": 3044, "triad_best_ns": 33068886, "madd_best_ns": 33952620},
+    "step_ns": {"mean": 1666182.4, "sd": 74687.4}, "unaccounted_ns": 334.0, "worst_slack_ns": 620, "kernel_idle_ns": 1976.1, "launches": 6.00,
+    "bottleneck": "rows", "share": 0.9423, "gap": 1.8, "backward_ns": 920941.4, "worst_relative_gap": 0, "past_tolerance": 0,
+    "phases": [
+      {"phase": "upload", "mean_ns": 172.1, "sd_ns": 185.9, "share": 0.00010, "flops": 0.0, "bytes": 128.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "rows", "mean_ns": 1570063.8, "sd_ns": 74516.8, "share": 0.94231, "flops": 3459700.0, "bytes": 1023328.0, "least_ns": 895831.2, "bound": "compute", "gap": 1.8},
+      {"phase": "reduce", "mean_ns": 29800.2, "sd_ns": 709.9, "share": 0.01789, "flops": 31520.0, "bytes": 151304.0, "least_ns": 49705.7, "bound": "memory", "gap": 0.6},
+      {"phase": "losses", "mean_ns": 274.1, "sd_ns": 184.6, "share": 0.00016, "flops": 0.0, "bytes": 40.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "decide", "mean_ns": 917.0, "sd_ns": 400.1, "share": 0.00055, "flops": 0.0, "bytes": 0.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "optimizer", "mean_ns": 50899.2, "sd_ns": 1592.9, "share": 0.03055, "flops": 63040.0, "bytes": 252176.0, "least_ns": 82843.6, "bound": "memory", "gap": 0.6},
+      {"phase": "flags", "mean_ns": 56.6, "sd_ns": 82.0, "share": 0.00003, "flops": 0.0, "bytes": 24.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "admit", "mean_ns": 222.3, "sd_ns": 139.0, "share": 0.00013, "flops": 0.0, "bytes": 0.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "commit", "mean_ns": 13443.1, "sd_ns": 134.5, "share": 0.00807, "flops": 0.0, "bytes": 151296.0, "least_ns": 49703.0, "bound": "memory", "gap": 0.3},
+      {"phase": "forward", "mean_ns": 649122.3, "sd_ns": 45053.6, "share": 0.38959, "flops": 1169408.0, "bytes": 474944.0, "least_ns": 302798.5, "bound": "compute", "gap": 2.1}
+    ]},
+  "device": {"name": "NVIDIA GeForce RTX 4080", "sm": "89", "sms": 76, "driver": 13020, "compile_s": 0.113},
+  "gpu": {"status": 0, "runs": 20, "clips": 0, "roof": {"mflops": 349724, "mbytes": 609377, "triad_best_ns": 660761, "madd_best_ns": 95993420},
+    "step_ns": {"mean": 34534363.4, "sd": 3759848.6}, "unaccounted_ns": 478.9, "worst_slack_ns": 1256, "kernel_idle_ns": 86236.4, "launches": 6.00,
+    "bottleneck": "rows", "share": 0.9358, "gap": 3266.8, "backward_ns": 19665045.1, "worst_relative_gap": 6.01e-14, "past_tolerance": 0,
+    "phases": [
+      {"phase": "upload", "mean_ns": 30038.8, "sd_ns": 5997.6, "share": 0.00087, "flops": 0.0, "bytes": 128.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "rows", "mean_ns": 32316896.5, "sd_ns": 3510871.8, "share": 0.93579, "flops": 3459700.0, "bytes": 1023328.0, "least_ns": 9892.6, "bound": "compute", "gap": 3266.8},
+      {"phase": "reduce", "mean_ns": 659080.0, "sd_ns": 1906611.1, "share": 0.01908, "flops": 31520.0, "bytes": 151304.0, "least_ns": 248.2, "bound": "memory", "gap": 2654.9},
+      {"phase": "losses", "mean_ns": 35845.8, "sd_ns": 4413.0, "share": 0.00104, "flops": 0.0, "bytes": 40.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "decide", "mean_ns": 2728.7, "sd_ns": 543.7, "share": 0.00008, "flops": 0.0, "bytes": 0.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "optimizer", "mean_ns": 1450171.1, "sd_ns": 1167174.0, "share": 0.04199, "flops": 63040.0, "bytes": 252176.0, "least_ns": 413.8, "bound": "memory", "gap": 3504.5},
+      {"phase": "flags", "mean_ns": 16618.4, "sd_ns": 9754.7, "share": 0.00048, "flops": 0.0, "bytes": 24.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "admit", "mean_ns": 526.0, "sd_ns": 188.6, "share": 0.00002, "flops": 0.0, "bytes": 0.0, "least_ns": 0.0, "bound": "none", "gap": 0.0},
+      {"phase": "commit", "mean_ns": 21979.5, "sd_ns": 26273.2, "share": 0.00064, "flops": 0.0, "bytes": 151296.0, "least_ns": 248.2, "bound": "memory", "gap": 88.5},
+      {"phase": "forward", "mean_ns": 12651851.4, "sd_ns": 3767631.4, "share": 0.36636, "flops": 1169408.0, "bytes": 474944.0, "least_ns": 3343.8, "bound": "compute", "gap": 3783.7}
+    ]},
+  "loadavg_after": "40.36 37.74 28.02 36/1225 3843798"
+}

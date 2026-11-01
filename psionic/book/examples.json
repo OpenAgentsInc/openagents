@@ -2046,6 +2046,28 @@
       ],
       "timeout": 180,
       "stack_kib": 65536
+    },
+    {
+      "source": "psionic/examples/train-profile.coax",
+      "chapter": "psionic/book/ch130-profile-a-training-step.md",
+      "stdout": "psionic/fixtures/train-profile.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180
+    },
+    {
+      "source": "psionic/examples/train-profile-refuse.coax",
+      "chapter": "psionic/book/ch130-profile-a-training-step.md",
+      "stdout": "psionic/fixtures/train-profile-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180
     }
   ]
 }

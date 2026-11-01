@@ -1,0 +1,28 @@
+one row of chapter 115's decoder: 292352 FLOPs forward, 572573 backward
+a step of 4 rows, per phase: FLOPs, bytes, kind
+  upload: 0, 128, transfer
+  rows: 3459700, 1023328, kernel
+  reduce: 31520, 151304, kernel
+  losses: 0, 40, transfer
+  decide: 0, 0, host
+  optimizer: 63040, 252176, kernel
+  flags: 0, 24, transfer
+  admit: 0, 0, host
+  commit: 0, 151296, kernel
+  forward: 1169408, 474944, kernel
+  clip, when launched: 6304, 50432
+five steps on a roof of 354433 MFLOP/s and 608204 MB/s: ok
+  step: mean 32064800 ns, sd 216995 ns
+  upload: mean 12000 ns, 0.04 percent
+  rows: mean 30932000 ns, 96.47 percent, least 9761 ns (compute-bound), 3169 times that
+  reduce: mean 212000 ns, 0.66 percent, least 248 ns (memory-bound), 853 times that
+  losses: mean 20000 ns, 0.06 percent
+  decide: mean 800 ns, 0.00 percent
+  optimizer: mean 873000 ns, 2.72 percent, least 414 ns (memory-bound), 2106 times that
+  flags: mean 7000 ns, 0.02 percent
+  admit: mean 200 ns, 0.00 percent
+  commit: mean 7500 ns, 0.02 percent, least 248 ns (memory-bound), 30 times that
+  forward: mean 10883000 ns, 33.94 percent, least 3299 ns (compute-bound), 3299 times that
+  the phases leave 300 ns of the mean step unaccounted, at most 300 ns in one step
+  no kernel runs for 40300 ns a step; 6 launches a step; backward is rows less forward: 20049000 ns
+bottleneck: rows, 96.47 percent of the step, 3169 times its least time

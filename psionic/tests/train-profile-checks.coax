@@ -1,0 +1,66 @@
+// Chapter 130's check helpers, loaded by psionic/lib/transformer/train-profile.coax
+// and owned by its checks.
+//
+// The FLOP oracle walks gk_rows' loops (psionic/lib/transformer/train-kernels.coax)
+// statement by statement and adds each statement's operations as it goes: no
+// closed form, no summed series. The closed forms in train-profile.coax must
+// equal it on every shape the checks try. Counted: binary +, -, *, / on f64
+// (a compound += is one), sqrt, exp and log. Not counted: comparisons, casts,
+// a sign flip, integer index arithmetic.
+tq_norm :: (n:int)->int {c:=0;for i:0..<n {c+=2;}c+=4;for i:0..<n {c+=2;}return c;}
+tq_norm_back :: (n:int)->int {c:=0;for i:0..<n {c+=3;c+=3;}for i:0..<n {c+=9;}return c;}
+tq_matvec :: (rows:int,cols:int)->int {c:=0;for r:0..<rows {for x:0..<cols {c+=2;}}return c;}
+tq_matvec_back :: (rows:int,cols:int)->int {c:=0;for r:0..<rows {for x:0..<cols {c+=2;c+=2;}}return c;}
+tq_rope :: (heads:int,e:int)->int {c:=0;for h:0..<heads {for i:0..<e/2 {c+=3;c+=3;}}return c;}
+// gk_advance at position t.
+tq_advance :: (sh:[]int,t:int)->int {
+    d:=sh[1];heads:=sh[2];kv:=sh[3];e:=sh[4];hidden:=sh[5];q:=heads*e;k:=kv*e;
+    c:=2;  // scale
+    for l:0..<sh[6] {
+        c+=tq_norm(d);c+=tq_matvec(q,d)+tq_matvec(k,d)+tq_matvec(k,d);c+=tq_rope(heads,e)+tq_rope(kv,e);
+        for h:0..<heads {
+            for j:0..<t+1 {for x:0..<e {c+=2;}c+=1;}
+            for j:0..<t+1 {c+=3;}for j:0..<t+1 {c+=1;}
+            for x:0..<e {for j:0..<t+1 {c+=2;}}
+        }
+        c+=tq_matvec(d,q);for i:0..<d {c+=1;}
+        c+=tq_norm(d);c+=tq_matvec(hidden,d);
+        for i:0..<d {for f:0..<hidden {c+=3;}c+=1;}
+    }
+    c+=tq_norm(d)+tq_matvec(sh[0],d);
+    return c;
+}
+tq_forward :: (sh:[]int)->int {c:=0;for t:0..<sh[7] {c+=tq_advance(sh,t);}return c;}
+// gk_rows after its forward loop.
+tq_backward :: (sh:[]int)->int {
+    v:=sh[0];d:=sh[1];heads:=sh[2];kv:=sh[3];e:=sh[4];hidden:=sh[5];n:=sh[7];q:=heads*e;k:=kv*e;
+    c:=2;  // scale
+    for t:0..<n-1 {for x:0..<v {c+=3;}for x:0..<v {c+=4;}c+=2;c+=4;c+=tq_matvec_back(v,d)+tq_norm_back(d);}
+    for l:0..<sh[6] {
+        for t:0..<n {
+            for i:0..<d {c+=1;}
+            for f:0..<hidden {for i:0..<d {c+=5;}c+=2;}
+            c+=tq_matvec_back(hidden,d)+tq_norm_back(d)+tq_matvec_back(d,q);
+            for h:0..<heads {for j:0..<t+1 {for x:0..<e {c+=4;}c+=2;}for j:0..<t+1 {c+=3;for x:0..<e {c+=4;}}}
+        }
+        for t:0..<n {c+=tq_rope(heads,e)+tq_rope(kv,e)+tq_matvec_back(q,d)+tq_matvec_back(k,d)+tq_matvec_back(k,d);for i:0..<d {c+=1;}c+=tq_norm_back(d);}
+    }
+    for t:0..<n {for i:0..<d {c+=1;}}
+    return c+1;
+}
+// Shapes for the closed forms: tiny, odd, chapter 115's, and wider ones.
+TQ_SHAPES :: [40]int.[5,4,2,1,2,3,2,4, 7,16,4,2,4,5,2,5, 16,16,2,1,8,16,2,32, 3,6,3,3,2,9,1,2, 11,8,4,1,2,7,3,6];
+tq_shape :: (s:int)->[8]int {x:[8]int;for i:0..<8 {x[i]=TQ_SHAPES[8*s+i];}return x;}
+
+// A synthetic profile of 5 runs: per phase, a base time and a step-to-step
+// wobble, in the order upload, rows, reduce, losses, decide, optimizer,
+// flags, admit, commit, forward. The step adds slack nanoseconds of
+// unaccounted host work to the phases.
+tq_profile :: (base:[]int,wobble:[]int,slack:int,ns:[]int,step:[]int) {
+    runs:=step.count;
+    for r:0..<runs {
+        total:=slack;
+        for p:0..<10 {at:=p*runs+r;ns[at]=base[p]+wobble[p]*((r*3)%5-2);if p<9 {total+=ns[at];}}
+        step[r]=total;
+    }
+}

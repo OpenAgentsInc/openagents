@@ -1,0 +1,7 @@
+the profile as measured: ok
+rows timed past its end in step 2: refused: the phases do not account for the step
+step 4 started 2 ms early: refused: the phases do not account for the step
+four steps: refused: fewer than 5 measured steps
+decide took 0 ns in one step: refused: a time that is not positive
+no roofline: refused: the roofline has no positive rates
+6 clipped of 5 steps: refused: the shape, micro-batch, clip count or series lengths do not fit

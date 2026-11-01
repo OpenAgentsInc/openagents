@@ -1,0 +1,6 @@
+// Chapter 130: the C library the profiling harness links: chapter 129's
+// plan and decisions, the profile's accounting and report, and the kernels
+// it times, compiled together so each loaded unit appears once.
+#load "../lib/transformer/gpu-train.coax";
+#load "../lib/transformer/train-profile.coax";
+#load "../lib/transformer/profile-kernels.coax";

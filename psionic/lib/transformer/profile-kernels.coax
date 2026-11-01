@@ -1,0 +1,56 @@
+// Chapter 130: the kernels the training-step profiler times beside chapter
+// 129's step. tp_forward runs only the forward half of gk_rows, so the
+// profile can split a row's time into forward and backward. tp_triad and
+// tp_madd measure the roofs of whatever runs them, the GPU or one CPU
+// thread, in binary64, the format chapter 129 trains in. All three are in
+// the coax cuda subset; on the CPU the harness calls them once per item.
+#load "train-kernels.coax";
+
+// book:begin kernels
+// The forward half of gk_rows: chapter 113's td_advance at every position of
+// row `item`, into that row's slice of work. Nothing else is written.
+tp_forward :: (item:int,sh:[]int,p:[]f64,rows:[]u8,rope:[]f64,work:[]f64) #export_c {
+    n:=sh[7];nw:=gk_work(sh);w:=work[item*nw..<item*nw+nw];
+    for t:0..<n {gk_advance(sh,p,w,rope,cast(int)rows[item*n+t],t);}
+}
+// a = b + s * c, one element per item: 2 FLOPs, 16 bytes read, 8 written.
+tp_triad :: (item:int,s:f64,a:[]f64,b:[]f64,c:[]f64) #export_c {
+    a[item]=b[item]+s*c[item];
+}
+// Eight independent chains of v = v * m + k, rounds times, in registers:
+// 16 FLOPs a round, 16 more to start and fold the chains, 8 bytes read and
+// 8 written per item.
+tp_madd :: (item:int,rounds:int,m:f64,k:f64,x:[]f64) #export_c {
+    v:[8]f64;for c:0..<8 {v[c]=x[item]+f64(c);}
+    for r:0..<rounds {for c:0..<8 {v[c]=v[c]*m+k;}}
+    s:=0.0;for c:0..<8 {s+=v[c];}x[item]=s;
+}
+// book:end kernels
+
+#test "the forward kernel writes gk_rows' forward values and nothing else" {
+    sh:=GK_TINY;p:[204]f64;gk_formula(p[..]);rows:=GK_ROWS;rope:[8]f64;gk_rope_table(2,4,rope[..]);
+    w:[768]f64;dw:[768]f64;g:[408]f64;loss:[2]f64;
+    for i:0..<2 {gk_rows(i,sh[..],p[..],rows[..],rope[..],w[..],dw[..],g[..],loss[..]);}
+    f:[768]f64;for i:0..<768 {f[i]=w[i];}
+    // Row 1 only: row 0's slice keeps its marker.
+    for i:0..<384 {f[i]=7;}for i:384..<768 {f[i]=-1;}
+    tp_forward(1,sh[..],p[..],rows[..],rope[..],f[..]);
+    for i:0..<384 {#assert f[i]==7;}
+    // Every value gk_rows' forward pass writes, tp_forward writes with the
+    // same bits; what neither writes (attention scores past position t)
+    // keeps the marker.
+    marked:=0;for i:384..<768 {if f[i]==-1 {marked+=1;}else {#assert f64_bits(f[i])==f64_bits(w[i]);}}
+    #assert marked<40 && marked>0;
+    tp_forward(0,sh[..],p[..],rows[..],rope[..],f[..]);for i:0..<384 {if f[i]!=7 {#assert f64_bits(f[i])==f64_bits(w[i]);}}
+}
+#test "triad and multiply-add by hand" {
+    a:=[3]f64.[9,9,9];b:=[3]f64.[1,2,3];c:=[3]f64.[4,5,6];
+    tp_triad(1,0.5,a[..],b[..],c[..]);#assert a[0]==9 && a[1]==2+0.5*5 && a[2]==9;
+    tp_triad(2,-2,a[..],b[..],c[..]);#assert a[2]==3-12;
+    // One round, m = 2, k = 1, x = 1: chains 1..8 become 3,5,..,17; sum 80.
+    x:=[2]f64.[1,5];tp_madd(0,1,2,1,x[..]);#assert x[0]==80 && x[1]==5;
+    // No rounds: 1+2+..+8 added to 8 copies of x.
+    tp_madd(1,0,2,1,x[..]);#assert x[1]==8*5+28;
+    // Two rounds of v * 0.5 + 0: each chain quartered.
+    y:=[1]f64.[4];tp_madd(0,2,0.5,0,y[..]);#assert y[0]==(4+5+6+7+8+9+10+11)/4.0;
+}

@@ -1,0 +1,307 @@
+// Chapter 130: profile chapter 129's training step (profile tp-step-v1).
+// A step is nine phases in launch order: the rows upload, gk_rows (forward
+// and backward), the reduction (gk_mean, gk_squares), the losses download,
+// gt_decide on the host, the optimizer (gk_clip when launched, gk_adamw,
+// gk_admit), the flags download, gt_commit on the host and gk_commit. A
+// tenth series, the forward half of gk_rows (tp_forward), is timed apart
+// from the step and splits the rows phase into forward and backward.
+//
+// This file holds the exact accounting of every kernel's FLOPs and bytes
+// from the shape, and the report: chapter 34's statistics for each phase,
+// a check that the phases account for the step, each kernel phase's least
+// time on a measured roofline, and the bottleneck with its share of the step
+// and its gap to the roof. The harness (psionic/tests/train_profile_device.c)
+// only allocates, launches and reads the clock.
+//
+// Profile tp-step-v1: times as positive integer nanoseconds from a monotonic
+// clock, 5 to 1,024 measured steps, binary64 statistics (cm-warm-v1), FLOPs
+// as counted below, bytes as compulsory traffic, roofs from chapter 33's
+// rf-host-v1 units (MFLOP/s and MB/s).
+#load "train-kernels.coax";
+#load "../comparator.coax";
+#load "../roofline.coax";
+#load "../../tests/train-profile-checks.coax";  // the checks' FLOP oracle and synthetic profiles
+
+TP_PHASES :: 10;       // nine step phases and the forward series
+TP_STEP_PHASES :: 9;
+TP_SLACK :: 50;        // the most of a step, in thousandths, the phases may leave unaccounted
+TpPhase :: enum u8 {upload;rows;reduce;losses;decide;optimizer;flags;admit;commit;forward;}
+TpKind :: enum u8 {transfer;kernel;host;}
+TpStatus :: enum u8 {ok;shape;host;few;capacity;sample;sum;}
+// Counted work: FLOPs, and bytes moved (to or from device memory for a
+// kernel, across the bus for a transfer).
+TpWork :: struct {flops:int;bytes:int;}
+
+// book:begin flops
+// FLOPs of one training row in gk_rows, split into its forward loop and the
+// rest. Counted: binary +, -, *, / on f64 (a compound += is one), sqrt, exp
+// and log. Not counted: comparisons, casts, a sign flip, index arithmetic.
+// T = n(n+1)/2 is the number of (position, earlier position) pairs one
+// attention head sees over a row.
+tp_forward_flops :: (sh:[]int)->int {
+    v:=sh[0];d:=sh[1];h:=sh[2];e:=sh[4];f:=sh[5];n:=sh[7];q:=h*e;k:=sh[3]*e;t:=n*(n+1)/2;
+    layer:=n*(10*d+8+4*q*d+4*k*d+3*q+3*k+5*f*d)+h*(4*e+5)*t;
+    return n*(4*d+6+2*v*d)+sh[6]*layer;
+}
+tp_backward_flops :: (sh:[]int)->int {
+    v:=sh[0];d:=sh[1];h:=sh[2];e:=sh[4];f:=sh[5];n:=sh[7];q:=h*e;k:=sh[3]*e;t:=n*(n+1)/2;
+    layer:=n*(32*d+9*f*d+2*f+8*q*d+8*k*d+3*q+3*k)+h*(8*e+5)*t;
+    return 3+n*d+(n-1)*(7*v+6+4*v*d+15*d)+sh[6]*layer;
+}
+// book:end flops
+
+// book:begin work
+// Each kernel's work for one launch over micro rows. Bytes are compulsory
+// traffic: every value that exists before the launch is read once and every
+// value it writes is written once (a row's whole work slice counts as
+// written). Parameters, moments and gradients are 8-byte values; tokens are
+// bytes; the shape view is 8 integers.
+tp_rows :: (sh:[]int,micro:int)->TpWork {
+    np:=gk_parameters(sh);nw:=gk_work(sh);n:=sh[7];
+    read:=64+8*np+micro*n+8*n*sh[4];write:=micro*(16*nw+8*np+8);
+    return TpWork.{flops=micro*(tp_forward_flops(sh)+tp_backward_flops(sh)),bytes=read+write};
+}
+tp_forward_work :: (sh:[]int,micro:int)->TpWork {
+    n:=sh[7];return TpWork.{flops=micro*tp_forward_flops(sh),bytes=64+8*gk_parameters(sh)+micro*n+8*n*sh[4]+micro*8*gk_work(sh)};
+}
+// gk_mean then gk_squares.
+tp_reduce :: (np:int,micro:int)->TpWork {return TpWork.{flops=2*micro*np+2*np,bytes=8*micro*np+8*np+8*np+8};}
+tp_clip :: (np:int)->TpWork {return TpWork.{flops=2*np,bytes=16*np};}
+// gk_adamw (20 FLOPs a parameter) then gk_admit (comparisons only).
+tp_optimizer :: (np:int)->TpWork {return TpWork.{flops=20*np,bytes=56*np+24*np+16};}
+tp_commit :: (np:int)->TpWork {return TpWork.{bytes=48*np};}
+// The work of phase p over a whole profile: runs steps, clips of them clipped.
+tp_work :: (sh:[]int,micro:int,runs:int,clips:int,p:TpPhase)->TpWork {
+    np:=gk_parameters(sh);w:=TpWork.{};
+    if p==TpPhase.upload {w.bytes=micro*sh[7];}
+    if p==TpPhase.rows {w=tp_rows(sh,micro);}
+    if p==TpPhase.reduce {w=tp_reduce(np,micro);}
+    if p==TpPhase.losses {w.bytes=8*micro+8;}
+    if p==TpPhase.optimizer {w=tp_optimizer(np);}
+    if p==TpPhase.flags {w.bytes=24;}
+    if p==TpPhase.commit {w=tp_commit(np);}
+    if p==TpPhase.forward {w=tp_forward_work(sh,micro);}
+    w.flops*=runs;w.bytes*=runs;
+    if p==TpPhase.optimizer {c:=tp_clip(np);w.flops+=clips*c.flops;w.bytes+=clips*c.bytes;}
+    return w;
+}
+// book:end work
+tp_kind :: (p:TpPhase)->TpKind {
+    if p==TpPhase.upload || p==TpPhase.losses || p==TpPhase.flags {return TpKind.transfer;}
+    if p==TpPhase.decide || p==TpPhase.admit {return TpKind.host;}
+    return TpKind.kernel;
+}
+
+// book:begin least
+// The least time work can take on a roofline: its FLOPs at the arithmetic
+// roof or its bytes at the bandwidth roof, whichever is longer, in
+// nanoseconds (a rate of 1 MFLOP/s is one FLOP a microsecond).
+TpLeast :: struct {ns:int;bound:RfBound;}
+tp_least :: (h:RfHost,w:TpWork)->TpLeast {
+    if h.mflops<=0 || h.mbytes<=0 {return TpLeast.{};}
+    compute:=w.flops*1000/h.mflops;memory:=w.bytes*1000/h.mbytes;
+    if compute>=memory && w.flops>0 {return TpLeast.{ns=compute,bound=RfBound.compute};}
+    return TpLeast.{ns=memory,bound=RfBound.memory};
+}
+// book:end least
+
+// One phase's line: its statistics over the runs, its work per step, its
+// least time per step on the roof, its share of the mean step, and how many
+// times its least time it took (0 for transfers and host work, which have
+// no roof here).
+TpLine :: struct {stats:CmStats;flops:f64;bytes:f64;least:f64;bound:RfBound;share:f64;gap:f64;}
+TpReport :: struct {
+    status:TpStatus;at:int;   // the refused series (or run, for sum); -1 for the step
+    runs:int;step:CmStats;lines:[10]TpLine;
+    slack:int;worst:int;      // the most nanoseconds one step left unaccounted, and the first run that did
+    unaccounted:f64;          // the mean step less the phases' mean sum
+    idle:f64;                 // the mean step less its kernel phases: the device waits
+    launches:f64;             // kernel launches a step
+    bottleneck:TpPhase;share:f64;gap:f64;
+    backward:f64;             // rows less forward, in nanoseconds
+}
+
+tp_refused :: (s:CmStatus)->TpStatus {
+    if s==CmStatus.few {return TpStatus.few;}
+    if s==CmStatus.capacity {return TpStatus.capacity;}
+    return TpStatus.sample;
+}
+// book:begin report
+// ns holds the ten series one after another, runs values each; step holds
+// each measured step's wall time. clips of the runs launched gk_clip.
+tp_report :: (sh:[]int,micro:int,clips:int,h:RfHost,ns:[]int,step:[]int)->TpReport #export_c {
+    runs:=step.count;r:=TpReport.{status=TpStatus.shape,at=-1,runs=runs};
+    if sh.count!=8 || micro<1 || ns.count!=TP_PHASES*runs || clips<0 || clips>runs {return r;}
+    for x:sh {if x<1 {return r;}}
+    if h.mflops<=0 || h.mbytes<=0 {r.status=TpStatus.host;return r;}
+    r.step=cm_two_pass(step);
+    if r.step.status!=CmStatus.ok {r.status=tp_refused(r.step.status);return r;}
+    for p:0..<TP_PHASES {
+        s:=cm_two_pass(ns[p*runs..<p*runs+runs]);
+        if s.status!=CmStatus.ok {r.status=tp_refused(s.status);r.at=p;return r;}
+        r.lines[p].stats=s;
+    }
+    // Every step: its phases fit inside it, leaving at most TP_SLACK thousandths.
+    for k:0..<runs {
+        left:=step[k];for p:0..<TP_STEP_PHASES {left-=ns[p*runs+k];}
+        if left<0 || left*1000>step[k]*TP_SLACK {r.status=TpStatus.sum;r.at=k;return r;}
+        if left>r.slack {r.slack=left;r.worst=k;}
+    }
+    r.status=TpStatus.ok;r.unaccounted=r.step.mean;r.idle=r.step.mean;
+    for p:0..<TP_PHASES {
+        ph:=cast(TpPhase)p;line:=r.lines[p];w:=tp_work(sh,micro,runs,clips,ph);
+        line.flops=f64(w.flops)/f64(runs);line.bytes=f64(w.bytes)/f64(runs);line.share=line.stats.mean/r.step.mean;
+        if tp_kind(ph)==TpKind.kernel {least:=tp_least(h,w);line.least=f64(least.ns)/f64(runs);line.bound=least.bound;line.gap=line.stats.mean/line.least;}
+        r.lines[p]=line;
+        if p<TP_STEP_PHASES {
+            r.unaccounted-=line.stats.mean;
+            if tp_kind(ph)==TpKind.kernel {r.idle-=line.stats.mean;}
+            if line.stats.mean>r.lines[cast(int)r.bottleneck].stats.mean {r.bottleneck=ph;}
+        }
+    }
+    r.launches=6+f64(clips)/f64(runs);
+    b:=r.lines[cast(int)r.bottleneck];r.share=b.share;r.gap=b.gap;
+    r.backward=r.lines[1].stats.mean-r.lines[9].stats.mean;
+    return r;
+}
+// book:end report
+
+tp_phase_name :: (p:TpPhase)->string {
+    names:=[10]string.["upload","rows","reduce","losses","decide","optimizer","flags","admit","commit","forward"];
+    return names[cast(int)p];
+}
+tp_kind_name :: (k:TpKind)->string {names:=[3]string.["transfer","kernel","host"];return names[cast(int)k];}
+tp_status_name :: (s:TpStatus)->string {
+    names:=[7]string.["ok","refused: the shape, micro-batch, clip count or series lengths do not fit",
+        "refused: the roofline has no positive rates","refused: fewer than 5 measured steps",
+        "refused: more than 1024 measured steps","refused: a time that is not positive",
+        "refused: the phases do not account for the step"];
+    return names[cast(int)s];
+}
+
+// ---- Checks. The FLOP oracle and the synthetic profiles are in psionic/tests/train-profile-checks.coax.
+TQ_GPU :: RfHost.{mflops=500000,mbytes=500000};
+#test "the closed forms equal the statement-by-statement count, by hand on the tiny shape" #steps 400000000 {
+    tiny:=GK_TINY;#assert tp_forward_flops(tiny[..])==2544 && tp_backward_flops(tiny[..])==5018;
+    for s:0..<5 {sh:=tq_shape(s);#assert tp_forward_flops(sh[..])==tq_forward(sh[..]) && tp_backward_flops(sh[..])==tq_backward(sh[..]);}
+    // Chapter 115's decoder: a forward of 292,352 FLOPs and a backward of 572,573.
+    big:=tq_shape(2);#assert tp_forward_flops(big[..])==292352 && tp_backward_flops(big[..])==572573;
+}
+#test "each kernel's work by hand at chapter 115's shape and four rows" {
+    sh:=tq_shape(2);np:=3152;nw:=13984;
+    rows:=tp_rows(sh[..],4);#assert rows.flops==4*(292352+572573) && rows.bytes==64+8*np+128+2048+4*(16*nw+8*np+8);
+    f:=tp_forward_work(sh[..],4);#assert f.flops==4*292352 && f.bytes==64+8*np+128+2048+4*8*nw;
+    #assert tp_reduce(np,4).flops==25216+6304 && tp_reduce(np,4).bytes==100864+25216+25216+8;
+    #assert tp_clip(np).flops==6304 && tp_clip(np).bytes==50432 && tp_optimizer(np).flops==63040 && tp_optimizer(np).bytes==176512+75648+16;
+    #assert tp_commit(np).flops==0 && tp_commit(np).bytes==151296;
+    // Phases over 5 runs, 2 clipped.
+    #assert tp_work(sh[..],4,5,2,TpPhase.upload).bytes==640 && tp_work(sh[..],4,5,2,TpPhase.upload).flops==0;
+    #assert tp_work(sh[..],4,5,2,TpPhase.losses).bytes==200 && tp_work(sh[..],4,5,2,TpPhase.flags).bytes==120;
+    #assert tp_work(sh[..],4,5,2,TpPhase.decide).bytes==0 && tp_work(sh[..],4,5,2,TpPhase.admit).flops==0;
+    #assert tp_work(sh[..],4,5,2,TpPhase.rows).flops==5*rows.flops && tp_work(sh[..],4,5,2,TpPhase.rows).bytes==5*rows.bytes;
+    #assert tp_work(sh[..],4,5,2,TpPhase.reduce).flops==5*31520 && tp_work(sh[..],4,5,2,TpPhase.commit).bytes==5*151296 && tp_work(sh[..],4,5,2,TpPhase.forward).flops==5*f.flops;
+    o:=tp_work(sh[..],4,5,2,TpPhase.optimizer);#assert o.flops==5*63040+2*6304 && o.bytes==5*252176+2*50432;
+    #assert tp_work(sh[..],4,5,0,TpPhase.optimizer).flops==5*63040 && tp_work(sh[..],4,5,0,TpPhase.optimizer).bytes==5*252176;
+    #assert tp_kind(TpPhase.upload)==TpKind.transfer && tp_kind(TpPhase.losses)==TpKind.transfer && tp_kind(TpPhase.flags)==TpKind.transfer;
+    #assert tp_kind(TpPhase.decide)==TpKind.host && tp_kind(TpPhase.admit)==TpKind.host;
+    for p:[5]TpPhase.[TpPhase.rows,TpPhase.reduce,TpPhase.optimizer,TpPhase.commit,TpPhase.forward] {#assert tp_kind(p)==TpKind.kernel;}
+}
+#test "the least time is the longer roof, and agrees with chapter 33's placement" {
+    h:=RfHost.{mflops=20000,mbytes=10000};  // ridge: 2 FLOPs a byte
+    a:=tp_least(h,TpWork.{flops=40000,bytes=10000});#assert a.ns==2000 && a.bound==RfBound.compute;
+    b:=tp_least(h,TpWork.{flops=10000,bytes=10000});#assert b.ns==1000 && b.bound==RfBound.memory;
+    c:=tp_least(h,TpWork.{flops=20000,bytes=10000});#assert c.ns==1000 && c.bound==RfBound.compute;
+    z:=tp_least(h,TpWork.{bytes=5});#assert z.ns==0 && z.bound==RfBound.memory;z=tp_least(h,TpWork.{bytes=50});#assert z.ns==5 && z.bound==RfBound.memory;
+    #assert tp_least(h,TpWork.{}).bound==RfBound.memory && tp_least(RfHost.{mflops=0,mbytes=1},TpWork.{flops=1,bytes=1}).bound==RfBound.invalid;
+    #assert tp_least(RfHost.{mflops=1,mbytes=0},TpWork.{flops=1,bytes=1}).bound==RfBound.invalid && tp_least(RfHost.{mflops=1,mbytes=0},TpWork.{flops=1,bytes=1}).ns==0;
+    // The slowest roofs there are: one FLOP and one byte a microsecond. One FLOP and no bytes is bound by arithmetic.
+    one:=tp_least(RfHost.{mflops=1,mbytes=1},TpWork.{flops=3,bytes=2});#assert one.ns==3000 && one.bound==RfBound.compute;
+    one=tp_least(RfHost.{mflops=1,mbytes=1},TpWork.{flops=1});#assert one.ns==1000 && one.bound==RfBound.compute;
+    // Wherever both roofs give whole nanoseconds, rf_place gives the same time and bound.
+    for w:[4]TpWork.[TpWork.{flops=40000,bytes=10000},TpWork.{flops=10000,bytes=10000},TpWork.{flops=60000,bytes=10000},TpWork.{flops=20000,bytes=40000}] {
+        p:=rf_place(h,w.flops*1000/w.bytes,w.flops);l:=tp_least(h,w);#assert p.ns==l.ns && p.bound==l.bound;
+    }
+}
+// A synthetic step on chapter 115's decoder, four rows: the rows phase is
+// built to be the bottleneck. Wobbles of -2, 1, -1, 2, 0 times the wobble
+// leave every mean equal to its base.
+TQ_BASE :: [10]int.[8000,30000000,60000,15000,300,40000,12000,200,10000,10000000];
+TQ_WOBBLE :: [10]int.[100,200000,1000,500,20,800,300,10,200,90000];
+TQ_STEP :: 30165500;  // the nine step phases' bases and 20,000 of slack
+#test "a synthetic profile names the bottleneck it was built with" {
+    sh:=tq_shape(2);ns:[50]int;step:[5]int;base:=TQ_BASE;wob:=TQ_WOBBLE;tq_profile(base[..],wob[..],20000,ns[..],step[..]);
+    #assert step[0]==TQ_STEP-2*202930 && step[4]==TQ_STEP;
+    r:=tp_report(sh[..],4,1,TQ_GPU,ns[..],step[..]);
+    #assert r.status==TpStatus.ok && r.at==-1 && r.runs==5 && r.step.mean==f64(TQ_STEP) && r.bottleneck==TpPhase.rows;
+    #assert r.share==30000000.0/f64(TQ_STEP) && r.unaccounted==20000 && r.slack==20000 && r.worst==0 && r.launches==6.2 && r.backward==20000000;
+    #assert r.idle==f64(TQ_STEP)-30000000-60000-40000-10000;
+    // Chapter 34's statistics: each line is the two-pass result, and Welford agrees.
+    for p:0..<10 {s:=cm_two_pass(ns[p*5..<p*5+5]);w:=cm_welford(ns[p*5..<p*5+5]);l:=r.lines[p].stats;
+        #assert l.status==CmStatus.ok && l.n==5 && l.mean==s.mean && l.sd==s.sd && l.mean==f64(base[p]) && cm_close(w.mean,l.mean) && cm_close(w.sd,l.sd);
+        #assert r.lines[p].share==l.mean/r.step.mean;}
+    #assert cm_close(r.lines[1].stats.sd,sqrt(f64(200000*200000*10)/4)) && r.step.sd>0;
+    // Rows: 3,459,700 FLOPs a step; five steps at 500,000 MFLOP/s take
+    // 34,597 ns, 6,919.4 a step; bound by arithmetic.
+    rows:=r.lines[1];#assert rows.flops==3459700 && rows.bytes==f64(tp_rows(sh[..],4).bytes) && rows.least==6919.4 && rows.bound==RfBound.compute && rows.gap==30000000/rows.least;
+    #assert r.gap==rows.gap;
+    // The optimizer clipped once in five steps: 63,040 + 6,304/5 FLOPs a step.
+    o:=r.lines[5];#assert o.flops==63040+6304.0/5 && o.bytes==252176+50432.0/5 && o.bound==RfBound.memory && o.least==f64((5*252176+50432)*1000/500000)/5;
+    #assert r.lines[8].bound==RfBound.memory && r.lines[8].least==1512.0/5 && r.lines[8].gap==10000/r.lines[8].least && r.lines[8].flops==0;
+    #assert r.lines[9].least==f64(tp_least(TQ_GPU,tp_work(sh[..],4,5,1,TpPhase.forward)).ns)/5 && r.lines[9].gap==10000000/r.lines[9].least;
+    #assert r.lines[2].least==f64(tp_least(TQ_GPU,tp_work(sh[..],4,5,1,TpPhase.reduce)).ns)/5 && r.lines[2].gap==60000/r.lines[2].least;
+    // Transfers and host work have no roof.
+    for p:[5]int.[0,3,4,6,7] {#assert r.lines[p].least==0 && r.lines[p].gap==0 && r.lines[p].bound==RfBound.invalid;}
+    #assert r.lines[0].bytes==128 && r.lines[3].bytes==40 && r.lines[6].bytes==24 && r.lines[4].flops==0;
+}
+#test "another bottleneck: a transfer, then the optimizer, then a tie" {
+    sh:=tq_shape(2);ns:[50]int;step:[5]int;base:=TQ_BASE;wob:=TQ_WOBBLE;
+    base[0]=40000000;tq_profile(base[..],wob[..],0,ns[..],step[..]);r:=tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]);
+    #assert r.status==TpStatus.ok && r.bottleneck==TpPhase.upload && r.gap==0 && r.share==40000000/r.step.mean && r.slack==0 && r.launches==6;
+    base[0]=8000;base[5]=50000000;tq_profile(base[..],wob[..],0,ns[..],step[..]);r=tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]);
+    #assert r.bottleneck==TpPhase.optimizer && r.gap==r.lines[5].gap && r.gap>1;
+    // The forward series is timed apart: however long, it is never the step's bottleneck.
+    base[9]=90000000;tq_profile(base[..],wob[..],0,ns[..],step[..]);#assert tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]).bottleneck==TpPhase.optimizer;
+    // A tie goes to the earlier phase; the last phase can win.
+    base[1]=50000000;tq_profile(base[..],wob[..],0,ns[..],step[..]);#assert tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]).bottleneck==TpPhase.rows;
+    base[8]=60000000;tq_profile(base[..],wob[..],0,ns[..],step[..]);#assert tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]).bottleneck==TpPhase.commit;
+}
+#test "the phases must account for every step within 5 percent" {
+    sh:=tq_shape(2);ns:[50]int;step:[5]int;base:=TQ_BASE;wob:=TQ_WOBBLE;tq_profile(base[..],wob[..],0,ns[..],step[..]);
+    // The most run 3 may take is 1000/950 of its phases: admitted; one nanosecond more is not.
+    sum:=step[3];step[3]=sum*1000/950;
+    r:=tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]);#assert r.status==TpStatus.ok && r.slack==step[3]-sum && r.slack>1000000 && r.worst==3;
+    step[3]+=1;r=tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]);#assert r.status==TpStatus.sum && r.at==3;
+    // Phases longer than the step by one nanosecond: a timer that overlaps.
+    step[3]=sum;#assert tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]).status==TpStatus.ok;
+    step[0]-=1;r=tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]);#assert r.status==TpStatus.sum && r.at==0;
+    step[0]+=1;ns[4*5+4]+=1;r=tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]);#assert r.status==TpStatus.sum && r.at==4;
+    // The forward series is not part of the step's sum.
+    ns[4*5+4]-=1;ns[9*5+2]+=99999999;#assert tp_report(sh[..],4,0,TQ_GPU,ns[..],step[..]).status==TpStatus.ok;
+    // Exactly 5 percent: nine phases of 19 ns in a step of 180 leave 9, and 9 * 1000 = 180 * 50.
+    even:[50]int;edge:[5]int;for i:0..<50 {even[i]=19;}for k:0..<5 {edge[k]=180;}
+    r=tp_report(sh[..],4,0,TQ_GPU,even[..],edge[..]);#assert r.status==TpStatus.ok && r.slack==9 && r.worst==0;
+    edge[2]=181;r=tp_report(sh[..],4,0,TQ_GPU,even[..],edge[..]);#assert r.status==TpStatus.sum && r.at==2;
+}
+#test "every refusal" #steps 400000000 {
+    sh:=tq_shape(2);ns:[50]int;step:[5]int;base:=TQ_BASE;wob:=TQ_WOBBLE;tq_profile(base[..],wob[..],0,ns[..],step[..]);
+    #assert tp_report(sh[..],4,5,TQ_GPU,ns[..],step[..]).status==TpStatus.ok && tp_report(sh[..],1,0,TQ_GPU,ns[..],step[..]).status==TpStatus.ok;
+    for c:[7]int.[-1,6,0,1,2,3,5] {r:=tp_report(sh[..],4,c,TQ_GPU,ns[..],step[..]);#assert (r.status==TpStatus.shape)==(c<0 || c>5) && r.runs==5;}
+    #assert tp_report(sh[0..<7],4,0,TQ_GPU,ns[..],step[..]).status==TpStatus.shape && tp_report(sh[..],0,0,TQ_GPU,ns[..],step[..]).status==TpStatus.shape;
+    #assert tp_report(sh[..],4,0,TQ_GPU,ns[0..<49],step[..]).status==TpStatus.shape;
+    for i:0..<8 {bad:=sh;bad[i]=0;r:=tp_report(bad[..],4,0,TQ_GPU,ns[..],step[..]);#assert r.status==TpStatus.shape && r.at==-1;}
+    #assert tp_report(sh[..],4,0,RfHost.{mflops=0,mbytes=1},ns[..],step[..]).status==TpStatus.host && tp_report(sh[..],4,0,RfHost.{mflops=1,mbytes=0},ns[..],step[..]).status==TpStatus.host;
+    #assert tp_report(sh[..],4,0,RfHost.{mflops=1,mbytes=1},ns[..],step[..]).status==TpStatus.ok;
+    // Four steps are too few for chapter 34's statistics.
+    r:=tp_report(sh[..],4,0,TQ_GPU,ns[0..<40],step[0..<4]);#assert r.status==TpStatus.few && r.at==-1 && r.runs==4;
+    // A phase that took no time, in each series in turn.
+    for p:0..<10 {x:=ns;x[p*5+1]=0;r=tp_report(sh[..],4,0,TQ_GPU,x[..],step[..]);#assert r.status==TpStatus.sample && r.at==p;}
+    s:=step;s[2]=0;r=tp_report(sh[..],4,0,TQ_GPU,ns[..],s[..]);#assert r.status==TpStatus.sample && r.at==-1;
+    many:[1025]int;lots:[10250]int;for i:0..<1025 {many[i]=10;}for i:0..<10250 {lots[i]=1;}
+    #assert tp_report(sh[..],4,0,TQ_GPU,lots[..],many[..]).status==TpStatus.capacity;
+    #assert tp_report(sh[..],4,0,TQ_GPU,lots[0..<10240],many[0..<1024]).status==TpStatus.sum;
+    #assert tp_refused(CmStatus.few)==TpStatus.few && tp_refused(CmStatus.capacity)==TpStatus.capacity && tp_refused(CmStatus.sample)==TpStatus.sample;
+    for p:0..<10 {#assert byte_at(tp_phase_name(cast(TpPhase)p),0)==byte_at("urrldofacf",p);}
+    #assert tp_phase_name(TpPhase.optimizer)=="optimizer" && tp_kind_name(TpKind.transfer)=="transfer" && tp_kind_name(TpKind.kernel)=="kernel" && tp_kind_name(TpKind.host)=="host";
+    #assert tp_status_name(TpStatus.ok)=="ok" && tp_status_name(TpStatus.sum)=="refused: the phases do not account for the step" && tp_status_name(TpStatus.few)=="refused: fewer than 5 measured steps";
+    for k:0..<7 {#assert byte_at(tp_status_name(cast(TpStatus)k),0)==byte_at("orrrrrr",k);}
+}
