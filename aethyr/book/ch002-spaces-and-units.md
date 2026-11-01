@@ -76,7 +76,7 @@ the conversion is exact. Use `grid_metres` to convert; there is no other way.
 // WALK_SCALE): a power of two, so converting is exact.
 GridUnit :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=2,denominator=1) {}
 GRID_PER_METRE :: 0.5;
-aethyr_grid_per_metre :: () -> f32 #export_c { return GRID_PER_METRE; }   // for a C face
+aethyr_grid_per_metre :: () -> f32 { return GRID_PER_METRE; }   // not #export_c: two libraries a page links both load this file
 ```
 
 ## The conversions
