@@ -483,10 +483,21 @@ compiler and the examples have not been run on Linux yet.
   owner's session is on this machine, so it waits for the owner
   (NEEDS_OWNER.md, "Try the Coax compositor").
 
-  Also left: clipboard data, client cursors, damage tracking (it
-  composites the whole screen on every change), and the protocols foot
-  reports missing (xdg-decoration, fractional scale, activation, text
-  input).
+  The clipboard works. There is one selection, offered to the client
+  with the keyboard, and a paste hands the reader's pipe to the copying
+  client: `wl-paste` read what `wl-copy` offered, with all five of its
+  types, and saw it cleared.
+
+  Windows look the way the Hyprland session drew them. Under
+  xdg-decoration the compositor draws the frames, so clients drop their
+  own title bars. It uses the session's `general` settings: 6 px gaps at
+  the screen edge, 3 px between windows, and a 1 px border, white on the
+  focused window and #4a4a4a on the rest. A fullscreen window has no gap
+  and no border.
+
+  Also left: client cursors, damage tracking (it composites the whole
+  screen on every change), and the protocols foot still reports missing
+  (primary selection, fractional scale, activation, text input).
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of
   integers and floats (a pointer and a length), so a C face can fill a Coax

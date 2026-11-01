@@ -1,6 +1,7 @@
 // `compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screen] [--input FILE]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
 // step 2 row 6). It serves real Wayland clients on SOCKET (WAYLAND_DISPLAY may name it as a full path):
-// wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (the clipboard) and xdg_wm_base, and it places every
+// wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (the clipboard),
+// zxdg_decoration_manager_v1 (server-side: the compositor draws the borders) and xdg_wm_base, and it places every
 // toplevel with os/wm.coax, the CoderOS window policy, on one W x H screen (1280 x 720 when not given).
 // The CoderOS key bindings run first (Super+Return opens Coder, Super+arrows move the focus, and the
 // rest of Omarchy's tiling keys); a binding that starts a program runs LAUNCH-DIR/NAME with NAME one
@@ -66,7 +67,7 @@ CX_MAXW :: 3840; CX_MAXH :: 2160;
 // What an object id names.
 K_NONE :: 0; K_DISPLAY :: 1; K_REGISTRY :: 2; K_CALLBACK :: 3; K_COMPOSITOR :: 4; K_SUBCOMP :: 5; K_SHM :: 6; K_POOL :: 7;
 K_BUFFER :: 8; K_SURFACE :: 9; K_REGION :: 10; K_SEAT :: 11; K_KEYBOARD :: 12; K_POINTER :: 13; K_OUTPUT :: 14;
-K_WMBASE :: 15; K_XDGSURF :: 16; K_TOPLEVEL :: 17; K_POSITIONER :: 18; K_POPUP :: 19; K_SUBSURF :: 20; K_TOUCH :: 21; K_DDM :: 22; K_DSOURCE :: 23; K_DDEV :: 24;
+K_WMBASE :: 15; K_XDGSURF :: 16; K_TOPLEVEL :: 17; K_POSITIONER :: 18; K_POPUP :: 19; K_SUBSURF :: 20; K_TOUCH :: 21; K_DDM :: 22; K_DSOURCE :: 23; K_DDEV :: 24; K_DECOMGR :: 25; K_DECO :: 26;
 // A surface's role.
 R_NONE :: 0; R_TOPLEVEL :: 1; R_SUB :: 2; R_POPUP :: 3;
 
@@ -190,8 +191,7 @@ cx_sync :: (x: [] Cx) {
   focus := wm_focus(m);
   for i: 0..<n {
     s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
-    px0 := cx_px(x, t[i].rect.x, x[0].w); py0 := cx_px(x, t[i].rect.y, x[0].h);
-    w := cx_px(x, t[i].rect.x + t[i].rect.w, x[0].w) - px0; h := cx_px(x, t[i].rect.y + t[i].rect.h, x[0].h) - py0;
+    fr: [4] int; cx_frame(x, t[i], wm_is_fullscreen(m, t[i].id), fr[..]); w := fr[2]; h := fr[3];
     state := 0;
     if t[i].id == focus { state |= 1 << 4; }
     if wm_is_fullscreen(m, t[i].id) { state |= 1 << 2; }
@@ -202,13 +202,28 @@ cx_sync :: (x: [] Cx) {
   if k != x[0].kfocus { cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); if k >= 0 { cx_offer_selection(x, x[0].surfs[k].client); } }
 }
 // Where window id sits on the screen, in pixels; false when its desk is not shown.
+// A tile's window rectangle in pixels, as the CoderOS Hyprland session draws it (general: gaps_in 3,
+// gaps_out 6, border_size 1): 6 from a screen edge, 3 from a neighbour, then a 1-pixel border inside
+// that. A fullscreen or monocle window takes the whole tile; a float keeps only its border.
+CX_GAP_IN :: 3; CX_GAP_OUT :: 6; CX_BORDER :: 1;
+cx_frame :: (x: [] Cx, t: WmTile, full: bool, out: [] int) {
+  x0 := cx_px(x, t.rect.x, x[0].w); y0 := cx_px(x, t.rect.y, x[0].h);
+  x1 := cx_px(x, t.rect.x + t.rect.w, x[0].w); y1 := cx_px(x, t.rect.y + t.rect.h, x[0].h);
+  if !full {
+    if !t.floating {
+      x0 += ifx x0 <= 0 then CX_GAP_OUT else CX_GAP_IN; y0 += ifx y0 <= 0 then CX_GAP_OUT else CX_GAP_IN;
+      x1 -= ifx x1 >= x[0].w then CX_GAP_OUT else CX_GAP_IN; y1 -= ifx y1 >= x[0].h then CX_GAP_OUT else CX_GAP_IN;
+    }
+    x0 += CX_BORDER; y0 += CX_BORDER; x1 -= CX_BORDER; y1 -= CX_BORDER;
+  }
+  out[0] = x0; out[1] = y0; out[2] = cx_max(x1 - x0, 1); out[3] = cx_max(y1 - y0, 1);
+}
 cx_place :: (x: [] Cx, id: int, out: [] int) -> bool {
   m := x[0].wm[..];
   t: [WM_WINS] WmTile; n := wm_tiles_on(m, 0, t[..]);
   for i: 0..<n {
     if t[i].id != id { continue; }
-    out[0] = cx_px(x, t[i].rect.x, x[0].w); out[1] = cx_px(x, t[i].rect.y, x[0].h);
-    out[2] = cx_px(x, t[i].rect.x + t[i].rect.w, x[0].w) - out[0]; out[3] = cx_px(x, t[i].rect.y + t[i].rect.h, x[0].h) - out[1];
+    cx_frame(x, t[i], wm_is_fullscreen(m, id), out);
     return true;
   }
   return false;
@@ -275,11 +290,11 @@ cx_set :: (x: [] Cx, ci: int, id: int, kind: int, ix: int, ver: int) -> bool {
 cx_globals :: (i: int) -> string {
   if i == 1 { return "wl_compositor"; } if i == 2 { return "wl_subcompositor"; } if i == 3 { return "wl_shm"; }
   if i == 4 { return "wl_seat"; } if i == 5 { return "wl_output"; } if i == 6 { return "xdg_wm_base"; }
-  if i == 7 { return "wl_data_device_manager"; }
+  if i == 7 { return "wl_data_device_manager"; } if i == 8 { return "zxdg_decoration_manager_v1"; }
   return "";
 }
 cx_global_ver :: (i: int) -> int { if i == 1 { return 4; } if i == 7 { return 3; } if i == 4 { return 5; } if i == 5 { return 3; } if i == 6 { return 2; } return 1; }
-cx_global_kind :: (i: int) -> int { if i == 1 { return K_COMPOSITOR; } if i == 2 { return K_SUBCOMP; } if i == 3 { return K_SHM; } if i == 4 { return K_SEAT; } if i == 5 { return K_OUTPUT; } if i == 7 { return K_DDM; } return K_WMBASE; }
+cx_global_kind :: (i: int) -> int { if i == 1 { return K_COMPOSITOR; } if i == 2 { return K_SUBCOMP; } if i == 3 { return K_SHM; } if i == 4 { return K_SEAT; } if i == 5 { return K_OUTPUT; } if i == 7 { return K_DDM; } if i == 8 { return K_DECOMGR; } return K_WMBASE; }
 // A popup's place relative to its parent's window geometry (xdg_positioner, without constraints).
 cx_popup_place :: (p: CxPos, out: [] int) {
   a := p.anchor; gr := p.gravity;
@@ -299,13 +314,13 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
     if op == 0 { cb := cx_rd(a, at); mg_begin(g, cb, 0); mg_put(g, cxwl_ms() & 4294967295); mg_end(g); mg_flush(x, ci, -1); cx_delete(x, ci, cb); }
     else if op == 1 {
       reg := cx_rd(a, at); r := cx_set(x, ci, reg, K_REGISTRY, 0, 1);
-      for i: 1..<8 { mg_begin(g, reg, 0); mg_put(g, i); mg_str(g, cx_globals(i)); mg_put(g, cx_global_ver(i)); mg_end(g); }
+      for i: 1..<9 { mg_begin(g, reg, 0); mg_put(g, i); mg_str(g, cx_globals(i)); mg_put(g, cx_global_ver(i)); mg_end(g); }
       mg_flush(x, ci, -1);
     }
   } else if k == K_REGISTRY && op == 0 {
     name := cx_rd(a, at); sl := cx_rd(a, at + 4); at += 8 + sl + (4 - sl % 4) % 4;
     ver := cx_min(cx_rd(a, at), cx_global_ver(name)); id := cx_rd(a, at + 4);
-    if name < 1 || name > 7 { return; }
+    if name < 1 || name > 8 { return; }
     kind := cx_global_kind(name);
     if !cx_set(x, ci, id, kind, 0, ver) { return; }
     if kind == K_SHM { mg_begin(g, id, 0); mg_put(g, 0); mg_end(g); mg_begin(g, id, 0); mg_put(g, 1); mg_end(g); }
@@ -442,6 +457,18 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
     else if op == 3 { x[0].pos[p].anchor = cx_rd(a, at); }
     else if op == 4 { x[0].pos[p].gravity = cx_rd(a, at); }
     else if op == 6 { x[0].pos[p].dx = cx_rdi(a, at); x[0].pos[p].dy = cx_rdi(a, at + 4); }
+  } else if k == K_DECOMGR {   // the compositor draws every window's border, so clients draw no title bar
+    if op == 0 { cx_delete(x, ci, obj); }
+    else if op == 1 {
+      id := cx_rd(a, at); to := x[0].clients[ci].objs[cx_rd(a, at + 4) % CX_OBJS];
+      if to.kind != K_TOPLEVEL { return; }
+      r := cx_set(x, ci, id, K_DECO, to.ix, 1);
+      mg_begin(g, id, 0); mg_put(g, 2); mg_end(g); mg_flush(x, ci, -1);
+      if x[0].surfs[to.ix].configured { x[0].surfs[to.ix].cstate = -1; cx_sync(x); }   // the mode takes effect at the next configure
+    }
+  } else if k == K_DECO {
+    if op == 0 { cx_delete(x, ci, obj); }
+    else if op == 1 || op == 2 { mg_begin(g, obj, 0); mg_put(g, 2); mg_end(g); mg_flush(x, ci, -1); if x[0].surfs[o.ix].configured { x[0].surfs[o.ix].cstate = -1; cx_sync(x); } }
   } else if k == K_DDM {   // the clipboard: one selection, offered to the client with the keyboard
     if op == 0 {
       id := cx_rd(a, at);
@@ -561,6 +588,10 @@ cx_draw_surf :: (x: [] Cx, o: [] CxFrame, s: int, ox: int, oy: int, cx0: int, cy
     cx_draw_surf(x, o, i, ox + x[0].surfs[s].gx + x[0].surfs[i].sx - x[0].surfs[i].gx, oy + x[0].surfs[s].gy + x[0].surfs[i].sy - x[0].surfs[i].gy, 0, 0, x[0].w, x[0].h);
   }
 }
+cx_dot :: (x: [] Cx, o: [] CxFrame, px: int, py: int, v: u8) {
+  if px < 0 || py < 0 || px >= x[0].w || py >= x[0].h { return; }
+  at := 3 * (py * x[0].w + px); o[0].b[at] = v; o[0].b[at + 1] = v; o[0].b[at + 2] = v;
+}
 cx_composite :: (x: [] Cx, o: [] CxFrame) {
   for i: 0..<x[0].w * x[0].h { o[0].b[3 * i] = 24; o[0].b[3 * i + 1] = 26; o[0].b[3 * i + 2] = 32; }
   t: [WM_WINS] WmTile; n := wm_tiles_on(x[0].wm[..], 0, t[..]);
@@ -568,6 +599,14 @@ cx_composite :: (x: [] Cx, o: [] CxFrame) {
     s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
     r: [4] int; if !cx_place(x, t[i].id, r[..]) { continue; }
     cx_draw_surf(x, o, s, r[0] - x[0].surfs[s].gx, r[1] - x[0].surfs[s].gy, r[0], r[1], r[0] + r[2], r[1] + r[3]);
+    if !wm_is_fullscreen(x[0].wm[..], t[i].id) {   // the border: white on the focused window, #4a4a4a on the rest
+      v := cast,trunc(u8) (ifx t[i].id == wm_focus(x[0].wm[..]) then 255 else 74);
+      for b: 0..<CX_BORDER {
+        bx0 := r[0] - 1 - b; by0 := r[1] - 1 - b; bx1 := r[0] + r[2] + b; by1 := r[1] + r[3] + b;
+        for px: bx0..<bx1 + 1 { cx_dot(x, o, px, by0, v); cx_dot(x, o, px, by1, v); }
+        for py: by0..<by1 + 1 { cx_dot(x, o, bx0, py, v); cx_dot(x, o, bx1, py, v); }
+      }
+    }
   }
   if x[0].screen {   // the pointer: a white arrow with a dark edge, 12 pixels tall
     for j: 0..<12 {
@@ -811,9 +850,9 @@ cx_list :: (x: [] Cx) {
     b: [512] u8; k := 0;
     for c: "win " { b[k] = c; k += 1; } k = cx_num_into(b[..], k, t[i].id); b[k] = ' '; k += 1;
     for c: "desk " { b[k] = c; k += 1; } k = cx_num_into(b[..], k, t[i].desk); b[k] = ' '; k += 1;
-    w := cx_px(x, t[i].rect.x + t[i].rect.w, x[0].w) - cx_px(x, t[i].rect.x, x[0].w); h := cx_px(x, t[i].rect.y + t[i].rect.h, x[0].h) - cx_px(x, t[i].rect.y, x[0].h);
-    k = cx_num_into(b[..], k, cx_px(x, t[i].rect.x, x[0].w)); b[k] = ','; k += 1; k = cx_num_into(b[..], k, cx_px(x, t[i].rect.y, x[0].h)); b[k] = ' '; k += 1;
-    k = cx_num_into(b[..], k, w); b[k] = 'x'; k += 1; k = cx_num_into(b[..], k, h);
+    fr: [4] int; cx_frame(x, t[i], wm_is_fullscreen(m, t[i].id), fr[..]);
+    k = cx_num_into(b[..], k, fr[0]); b[k] = ','; k += 1; k = cx_num_into(b[..], k, fr[1]); b[k] = ' '; k += 1;
+    k = cx_num_into(b[..], k, fr[2]); b[k] = 'x'; k += 1; k = cx_num_into(b[..], k, fr[3]);
     if t[i].id == wm_focus(m) { for c: " focused" { b[k] = c; k += 1; } }
     if t[i].floating { for c: " floating" { b[k] = c; k += 1; } }
     if wm_is_fullscreen(m, t[i].id) { for c: " fullscreen" { b[k] = c; k += 1; } }
