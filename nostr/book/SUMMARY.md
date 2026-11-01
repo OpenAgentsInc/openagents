@@ -92,7 +92,7 @@
 - [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) — design draft
 - [59. Groups and communities](ch059-groups-and-communities.md) — design draft
 - [60. Private messages](ch060-private-messages.md) — design draft
-- [61. Live activities](ch061-live-activities.md) — design draft
+- [61. Live activities](ch061-live-activities.md) — implemented
 - [62. Badges and statuses](ch062-badges-and-statuses.md) — design draft
 - [63. Git on Nostr](ch063-git-on-nostr.md) — implemented
 - [64. App data and handlers](ch064-app-data-and-handlers.md) — design draft

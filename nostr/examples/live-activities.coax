@@ -1,0 +1,181 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip53.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+ERROR :: [13] string.["ok", "event", "kind", "no d", "bad status", "bad time", "bad tag", "missing field",
+  "no a tag", "a names the wrong kind", "a names another activity", "limit", "output"];
+// The public keys of the secret keys 1, 2 and 3: published test values.
+// Never sign with a real key in an example.
+PEOPLE :: [3] string.["Alice", "Bob", "Carol"];
+PUB :: [3] string.[
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"];
+ALICE :: 0; BOB :: 1; CAROL :: 2;
+T0 :: 1762000000;
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+person :: (key: [32] u8) -> string {
+  for k: 0..<PEOPLE.count { if ns_equal32(key_of(k), key) { return PEOPLE[k]; } }
+  return "someone else";
+}
+// Seconds after T0: the chapter writes clock times as T0+seconds.
+after :: (t: int) -> int { return t - T0; }
+
+// Sign an event with secret key who+1 and read it back with its ID and
+// signature checked.
+sign :: (signer: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; key[31] = cast(u8) (signer + 1);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+// The tags with each @ replaced by C1's id.
+with_parent :: (template: string, parent: NostrEvent, out: [] u8) -> string {
+  n := 0; i := 0; hex: [64] u8;
+  while i < template.count {
+    if template[i] == '@' { n = json_raw(out, n, hex32(parent.id, hex[..])); i += 1; continue; }
+    n = json_raw(out, n, template[i..<i + 1]); i += 1;
+  }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// An unsigned event by Carol, parsed but not verified. Used for the
+// refusals, which no signer here would write.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[CAROL]); n = json_raw(out, n, "\",\"created_at\":1762000000,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+show_activity :: (name: string, e: NostrEvent) {
+  a := n53_read(e);
+  print("%: %", name, ERROR[a.error]);
+  if a.at >= 0 { print(" at tag %", a.at); }
+  if a.error != N53_OK { print("\n"); return; }
+  print(", kind %, d ", a.kind); say(a.d); print(", \""); say(a.title); print("\", status %", n53_status_name(a.status));
+  if a.has_starts { print(", starts T0+%", after(a.starts)); }
+  if a.has_ends { print(", ends T0+%", after(a.ends)); }
+  print("\n");
+  if a.url.n > 0 { print("  % ", ifx a.kind == N53_SPACE then "service" else "streaming"); say(a.url); print("\n"); }
+  if a.recording.n > 0 { print("  recording "); say(a.recording); print("\n"); }
+  if a.has_space { print("  in space 30312:%:", person(a.space_author)); say(a.space_d); print("\n"); }
+  for k: 0..<a.n { print("  % ", person(a.p[k].pubkey)); say(a.p[k].role); print("%\n", ifx a.p[k].has_proof then ", proof" else ", no proof (invited)"); }
+  if a.n > 0 { print("  hosts %\n", a.hosts); }
+}
+
+// The events: who signs, when (after T0), the kind, the tags (@ for C1's
+// id) and the content.
+EVENTS :: 8;
+NAME :: [EVENTS] string.["V1", "V2", "C1", "C2", "V3", "S", "M", "P"];
+WHO :: [EVENTS] int.[ALICE, ALICE, BOB, CAROL, ALICE, ALICE, ALICE, CAROL];
+AT :: [EVENTS] int.[0, 3600, 3700, 3760, 9000, 0, 60, 120];
+KIND :: [EVENTS] int.[30311, 30311, 1311, 1311, 30311, 30312, 30313, 10312];
+CONTENT :: [EVENTS] string.["", "", "Hello from the stage.", "Hi Bob!", "", "", "", ""];
+// V1, V2 and V3 are written by n53_tags and C1 and C2 by n53_chat_tags;
+// S, M and P are written out here.
+OTHER_TAGS :: [3] string.[
+  "[[\"d\",\"coax-hall\"],[\"room\",\"Coax hall\"],[\"status\",\"open\"],[\"service\",\"https://meet.example.com/coax-hall\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"\",\"Host\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"\",\"Moderator\"]]",
+  "[[\"d\",\"office-hours\"],[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-hall\",\"\"],[\"title\",\"Office hours\"],[\"starts\",\"1762086400\"],[\"status\",\"planned\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"\",\"Speaker\"]]",
+  "[[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-hall\",\"\",\"root\"],[\"hand\",\"1\"]]"];
+
+// The tags of event k.
+tags_of :: (k: int, c1: NostrEvent, out: [] u8) -> string {
+  roles: [2] N53Role; roles[0].pubkey = key_of(ALICE); roles[0].role = "Host"; roles[1].pubkey = key_of(BOB); roles[1].role = "Speaker";
+  m: N53Meta; m.d = "coax-weekly"; m.title = "Coax weekly"; m.starts = T0 + 3600;
+  n := 0;
+  if k == 0 { m.status = N53_PLANNED; n = n53_tags(m, roles[..], out); }
+  if k == 1 { m.status = N53_LIVE; m.streaming = "https://stream.example.com/coax-weekly.m3u8"; n = n53_tags(m, roles[..], out); }
+  if k == 4 { m.status = N53_ENDED; m.ends = T0 + 7000; m.recording = "https://stream.example.com/coax-weekly.mp4"; n = n53_tags(m, roles[..], out); }
+  none: [32] u8;
+  if k == 2 { n = n53_chat_tags(key_of(ALICE), "coax-weekly", "wss://relay.example.com", false, none, out); }
+  if k == 3 { n = n53_chat_tags(key_of(ALICE), "coax-weekly", "wss://relay.example.com", true, c1.id, out); }
+  if k >= 5 { n = json_raw(out, 0, OTHER_TAGS[k - 5]); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// What a client shows at clock time now: of the versions of
+// 30311:Alice:coax-weekly it has seen (created at or before now), the
+// current one, and its state at now.
+show_at :: (versions: [] NostrEvent, names: [] string, now: int) {
+  seen: [3] NostrEvent; seen_names: [3] string; n := 0;
+  for k: 0..<versions.count { if versions[k].created_at <= now { seen[n] = versions[k]; seen_names[n] = names[k]; n += 1; } }
+  cur := nip23_current(seen[0..<n], N53_LIVE_EVENT, key_of(ALICE), "coax-weekly");
+  e := seen[cur]; a := n53_read(e);
+  print("now T0+%: current %, status %, updated T0+%, age % s, shown %\n", after(now), seen_names[cur], n53_status_name(a.status),
+        after(e.created_at), now - e.created_at, n53_status_name(n53_state(a, e.created_at, now)));
+}
+
+main :: () {
+  all: [EVENTS] NostrEvent; buf: [EVENTS][4096] u8; tags: [2048] u8;
+  for k: 0..<EVENTS { all[k] = sign(WHO[k], T0 + AT[k], KIND[k], tags_of(k, all[2], tags[..]), CONTENT[k], buf[k][..]); }
+  print("== 1. Each event's id (T0 = %)\n", T0);
+  for k: 0..<EVENTS { hex: [64] u8; print("%: kind %, by %, at T0+%, id %, verified %\n", NAME[k], KIND[k], PEOPLE[WHO[k]], AT[k], hex32(all[k].id, hex[..]), all[k].verified); }
+  print("V2's tags: %\n", tags_of(1, all[2], tags[..]));
+
+  print("\n== 2. The live stream's versions\n");
+  show_activity("V1", all[0]); show_activity("V2", all[1]); show_activity("V3", all[4]);
+  ab: [160] u8; an := nip23_address(N53_LIVE_EVENT, key_of(ALICE), "coax-weekly", ab[..]);
+  print("a coordinate %\n", cast(string) ab[0..<an]);
+
+  print("\n== 3. Is it live? Three clock times, then V3\n");
+  versions: [2] NostrEvent; versions[0] = all[0]; versions[1] = all[1];
+  names := [3] string.["V1", "V2", "V3"];
+  show_at(versions[..], names[..], T0 + 1800);
+  show_at(versions[..], names[..], T0 + 7200);
+  show_at(versions[..], names[..], T0 + 7201);
+  three: [3] NostrEvent; three[0] = all[0]; three[1] = all[1]; three[2] = all[4];
+  show_at(three[..], names[..], T0 + 9000);
+
+  print("\n== 4. Live chat\n");
+  for k: 2..<4 {
+    c := n53_chat(all[k]);
+    print("%: %, by %, \"%\", activity 30311:%:", NAME[k], ERROR[c.error], PEOPLE[WHO[k]], CONTENT[k], person(c.author)); say(c.d);
+    if c.has_parent { print(", replies to %", ifx ns_equal32(c.parent, all[2].id) then "C1" else "another message"); }
+    print(", in V2: %\n", ERROR[n53_chat_in(all[k], all[1])]);
+  }
+
+  print("\n== 5. A meeting space, a meeting and presence\n");
+  show_activity("S", all[5]); show_activity("M", all[6]);
+  p := n53_presence(all[7]);
+  print("P: %, % in room %:%:", ERROR[p.error], PEOPLE[WHO[7]], p.room_kind, person(p.author)); say(p.d); print(", hand raised %\n", p.hand);
+  print("P fresh at T0+420 within 300 s: %; at T0+421: %\n", n53_fresh(all[7].created_at, T0 + 420, 300), n53_fresh(all[7].created_at, T0 + 421, 300));
+
+  print("\n== 6. Refusals\n");
+  bad: [2048] u8;
+  show_activity("status paused", unsigned(30311, "[[\"d\",\"coax-weekly\"],[\"status\",\"paused\"]]", bad[..]));
+  show_activity("starts soon", unsigned(30311, "[[\"d\",\"coax-weekly\"],[\"starts\",\"soon\"]]", bad[..]));
+  show_activity("ends before starts", unsigned(30311, "[[\"d\",\"coax-weekly\"],[\"starts\",\"1762003600\"],[\"ends\",\"1762003599\"]]", bad[..]));
+  show_activity("no d", unsigned(30311, "[[\"title\",\"Coax weekly\"],[\"status\",\"live\"]]", bad[..]));
+  show_activity("space without service", unsigned(30312, "[[\"d\",\"coax-hall\"],[\"room\",\"Coax hall\"],[\"status\",\"open\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"\",\"Host\"]]", bad[..]));
+  show_activity("meeting in a live stream", unsigned(30313, "[[\"d\",\"office-hours\"],[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-weekly\"]]", bad[..]));
+  print("chat without a: %\n", ERROR[n53_chat_in(unsigned(1311, "[]", bad[..]), all[1])]);
+  print("chat for coax-monthly: %\n", ERROR[n53_chat_in(unsigned(1311, "[[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-monthly\"]]", bad[..]), all[1])]);
+  print("chat for Bob's coax-weekly: %\n", ERROR[n53_chat_in(unsigned(1311, "[[\"a\",\"30311:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:coax-weekly\"]]", bad[..]), all[1])]);
+  c := n53_chat(unsigned(1311, "[[\"a\",\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-weekly\"]]", bad[..]));
+  print("chat whose a names an article: % at tag %\n", ERROR[c.error], c.at);
+  m: N53Meta; m.d = "coax-weekly"; m.status = N53_OPEN; roles: [1] N53Role;
+  print("writing a live stream with status open: %\n", ERROR[-n53_tags(m, roles[0..<0], tags[..])]);
+}
+// book:end example

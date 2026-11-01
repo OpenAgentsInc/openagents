@@ -1,0 +1,109 @@
+// The checks of live-activities.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/live-activities.coax --run-steps 250000000
+#load "../live-activities.coax";
+
+// book:begin check
+// The ids from a Python script written from NIP-01 and NIP-53 (it shares no
+// code with Coax): hashlib.sha256 of json.dumps([0, pubkey, created_at,
+// kind, tags, content], separators=(",", ":"), ensure_ascii=False), over
+// the same events.
+PY_ID :: [EVENTS] string.[
+  "e1af03500154058ed778fd33d004780f59c03eeab94108c2d3a6bee4e67e30aa",
+  "a9f2856553be753efc52035c6088e31c9d3a96cc4f904c765f872cc25e45c153",
+  "496c551b4a6f29ef369ade6fe1daf77bc42b73fe7120355a24dda1042d18cbf0",
+  "06b4bc87fc3e58591987c499b554cb916f0f34905c8a6dcd69802e606c78feb7",
+  "cefe1ee87b27bd857fc3f13839ce717108650d49d24947bbbba8ef5fd5589e83",
+  "1c700d03a524345263f38c1c6d75c667d6d4e7db89d5c1cb74bd5081e0b2af3e",
+  "14d4be7f88ae8f1ccd95e190dcdf324a66a47c7dda4dadde61e9d21a8e135c80",
+  "72f19fb20536b52402c130db00774d839b0628a9a90cdb029189d569c62dc23c"];
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+// NIP-53's two signed examples, copied from nostr/nips/official/53.md.
+NIP_LIVE :: "{\"id\":\"57f28dbc264990e2c61e80a883862f7c114019804208b14da0bff81371e484d2\",\"pubkey\":\"1597246ac22f7d1375041054f2a4986bd971d8d196d7997e48973263ac9879ec\",\"created_at\":1687182672,\"kind\":30311,\"tags\":[[\"d\",\"demo-cf-stream\"],[\"title\",\"Adult Swim Metalocalypse\"],[\"summary\",\"Live stream from IPTV-ORG collection\"],[\"streaming\",\"https://adultswim-vodlive.cdn.turner.com/live/metalocalypse/stream.m3u8\"],[\"starts\",\"1687182672\"],[\"status\",\"live\"],[\"t\",\"animation\"],[\"t\",\"iptv\"],[\"image\",\"https://i.imgur.com/CaKq6Mt.png\"]],\"content\":\"\",\"sig\":\"5bc7a60f5688effa5287244a24768cbe0dcd854436090abc3bef172f7f5db1410af4277508dbafc4f70a754a891c90ce3b966a7bc47e7c1eb71ff57640f3d389\"}";
+NIP_CHAT :: "{\"id\":\"97aa81798ee6c5637f7b21a411f89e10244e195aa91cb341bf49f718e36c8188\",\"pubkey\":\"3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24\",\"created_at\":1687286726,\"kind\":1311,\"tags\":[[\"a\",\"30311:1597246ac22f7d1375041054f2a4986bd971d8d196d7997e48973263ac9879ec:demo-cf-stream\",\"\",\"root\"]],\"content\":\"Zaps to live streams is beautiful.\",\"sig\":\"997f62ddfc0827c121043074d50cfce7a528e978c575722748629a4137c45b75bdbc84170bedc723ef0a5a4c3daebf1fef2e93f5e2ddb98e5d685d022c30b622\"}";
+// The id the same Python script computes from NIP_LIVE's fields. It is not
+// the id the NIP prints: the example's fields were changed after it was
+// signed.
+PY_NIP_LIVE :: "6c1338a7dcf76ed1b289a4ac07b7065a2132881b4dc43e96853b671fd156ca12";
+
+same_id :: (id: [32] u8, text: string) -> bool { want: [32] u8; decode_hex(text, want[..]); return ns_equal32(id, want); }
+
+// Event k with Python's id and a zero signature, read with its id
+// recomputed; the signature is not checked. C2's tags need C1's id, which
+// is Python's too.
+py :: (k: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  c1: NostrEvent; decode_hex(PY_ID[2], c1.id[..]);
+  tags: [1024] u8;
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[WHO[k]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags_of(k, c1, tags[..]));
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, CONTENT[k]);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+read_all :: (ev: [] NostrEvent, buf: [][2048] u8, scratch: [][4096] u8) {
+  for k: 0..<EVENTS { ev[k] = py(k, buf[k][..], scratch[k][..]); }
+}
+
+#test "the ids are Python's" {
+  buf: [EVENTS][2048] u8; s: [EVENTS][4096] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..], s[..]);
+  for k: 0..<EVENTS { #assert ev[k].error == NE_OK && ns_equal32(ev[k].computed_id, ev[k].id); }
+}
+
+// By hand, from the chapter. V1 is created at T0, V2 at T0+3600, V3 at
+// T0+9000; V2 is live. At T0+1800 only V1 exists: planned. At T0+7200 V2
+// is 3600 s old, not more than an hour: live. At T0+7201 it is 3601 s old:
+// ended. At T0+9000 V3 says ended.
+HAND_NOW :: [4] int.[1800, 7200, 7201, 9000];
+HAND_CURRENT :: [4] int.[0, 1, 1, 4];
+HAND_STATE :: [4] int.[N53_PLANNED, N53_LIVE, N53_ENDED, N53_ENDED];
+#test "the state at the chapter's clock times matches the hand values" {
+  buf: [EVENTS][2048] u8; s: [EVENTS][4096] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..], s[..]);
+  versions := [3] int.[0, 1, 4];
+  for t: 0..<4 {
+    now := T0 + HAND_NOW[t]; seen: [3] NostrEvent; index: [3] int; n := 0;
+    for v: versions { if ev[v].created_at <= now { seen[n] = ev[v]; index[n] = v; n += 1; } }
+    cur := nip23_current(seen[0..<n], N53_LIVE_EVENT, key_of(ALICE), "coax-weekly");
+    #assert index[cur] == HAND_CURRENT[t];
+    #assert n53_state(n53_read(seen[cur]), seen[cur].created_at, now) == HAND_STATE[t];
+  }
+  // The boundary on both sides, for each live event.
+  a := n53_read(ev[1]);
+  #assert n53_state(a, T0 + 3600, T0 + 3600 + N53_STALE) == N53_LIVE && n53_state(a, T0 + 3600, T0 + 3601 + N53_STALE) == N53_ENDED;
+}
+#test "chat is bound to the activity's a coordinate" {
+  buf: [EVENTS][2048] u8; s: [EVENTS][4096] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..], s[..]);
+  #assert n53_chat_in(ev[2], ev[1]) == N53_OK && n53_chat_in(ev[3], ev[1]) == N53_OK;
+  #assert n53_chat_in(ev[2], ev[0]) == N53_OK && n53_chat_in(ev[2], ev[4]) == N53_OK;   // every version has the same address
+  c := n53_chat(ev[3]); #assert c.has_parent && ns_equal32(c.parent, ev[2].id);
+  #assert n53_chat_in(ev[2], ev[5]) == N53_KIND;   // a space has no live chat
+  // The a coordinate written out by hand: kind, Alice's key, d.
+  ab: [160] u8; an := nip23_address(N53_LIVE_EVENT, key_of(ALICE), "coax-weekly", ab[..]);
+  #assert cast(string) ab[0..<an] == "30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-weekly";
+}
+#test "NIP-53's signed chat verifies and belongs to its live stream" #steps 1500000000 {
+  b1: [8192] u8; b2: [8192] u8;
+  chat := nostr_event_verify_vartime(NIP_CHAT, b1[..], false);
+  #assert chat.error == NE_OK && chat.verified;
+  // The live stream example's printed id is not the hash of its fields.
+  live := nostr_event_read(NIP_LIVE, b2[..], false);
+  #assert live.error == NE_ID && same_id(live.computed_id, PY_NIP_LIVE);
+  // Its fields still read, and the chat names it.
+  live.error = NE_OK;
+  a := n53_read(live);
+  #assert a.error == N53_OK && a.status == N53_LIVE && a.starts == 1687182672 && n32_is(a.d, "demo-cf-stream");
+  #assert n53_chat_in(chat, live) == N53_OK;
+  // Live at created_at plus an hour, ended a second later.
+  #assert n53_state(a, live.created_at, 1687182672 + 3600) == N53_LIVE && n53_state(a, live.created_at, 1687182672 + 3601) == N53_ENDED;
+}
+#test "the roles in the example's events" {
+  buf: [EVENTS][2048] u8; s: [EVENTS][4096] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..], s[..]);
+  v := n53_read(ev[1]); #assert v.n == 2 && n32_is(v.p[0].role, "Host") && n32_is(v.p[1].role, "Speaker") && v.hosts == 1;
+  sp := n53_read(ev[5]); #assert sp.status == N53_OPEN && n32_is(sp.p[1].role, "Moderator") && sp.hosts == 1;
+  m := n53_read(ev[6]); #assert m.has_space && ns_equal32(m.space_author, key_of(ALICE)) && n32_is(m.space_d, "coax-hall") && m.hosts == 0;
+  p := n53_presence(ev[7]); #assert p.error == N53_OK && p.room_kind == N53_SPACE && p.hand;
+}
+// book:end check

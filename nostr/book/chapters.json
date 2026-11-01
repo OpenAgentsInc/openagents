@@ -1270,13 +1270,19 @@
    "number": 61,
    "title": "Live activities",
    "file": "ch061-live-activities.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip53.coax",
+    "nostr/examples/live-activities.coax",
+    "nostr/examples/checks/live-activities.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

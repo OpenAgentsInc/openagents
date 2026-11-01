@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 67 are implemented and 37 are design drafts.
+Of the 104 chapters, 68 are implemented and 36 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -251,7 +251,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) | Unimplemented: design draft | NIP-52 date (31922) and time (31923) events, calendars (31924) and RSVPs (31925); NIP-88 polls (1068) and responses (1018); NIP-84 highlights (9802). |
 | [59. Groups and communities](ch059-groups-and-communities.md) | Unimplemented: design draft | NIP-29 relay-based groups with `h` tags, moderation kinds 9000–9022 and relay-signed metadata 39000–39005; NIP-7D forum threads (kind 11); NIP-C7 chats (kind 9); and the unrecommended NIP-72 and NIP-28. |
 | [60. Private messages](ch060-private-messages.md) | Unimplemented: design draft | NIP-17 kind 14 chat and kind 15 file messages sent as gift wraps, kind 10050 DM relay lists, NIP-A4 kind 24 public messages, and the unrecommended NIP-EE MLS groups. |
-| [61. Live activities](ch061-live-activities.md) | Unimplemented: design draft | NIP-53 kind 30311 live events with `streaming`, `status` and participant roles, kind 1311 live chat, and kind 30312/30313 meeting spaces and rooms with kind 10312 presence. |
+| [61. Live activities](ch061-live-activities.md) | Runnable: native C | NIP-53 kind 30311 live events with `streaming`, `status` and participant roles, kind 1311 live chat, and kind 30312/30313 meeting spaces and rooms with kind 10312 presence. |
 | [62. Badges and statuses](ch062-badges-and-statuses.md) | Unimplemented: design draft | NIP-58 badge definitions (30009), awards (8) and profile badges (10008, formerly 30008), and NIP-38 kind 30315 user statuses with `expiration`. |
 | [63. Git on Nostr](ch063-git-on-nostr.md) | Runnable: native C | NIP-34 repository announcements (30617), issues (1621), patches (1617) and statuses (1630–1633), with the newest status by the author or a maintainer deciding the state. Repository state (30618), pull requests (1618, 1619) and NIP-C0 snippets (1337) are not built. |
 | [64. App data and handlers](ch064-app-data-and-handlers.md) | Unimplemented: design draft | NIP-78 kind 30078 application data, NIP-89 handler recommendations (31989) and announcements (31990), NIP-5A static websites (35128 and 15128 manifests), and NIP-CD slash commands (31992, 10992). |

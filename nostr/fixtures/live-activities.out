@@ -1,0 +1,63 @@
+== 1. Each event's id (T0 = 1762000000)
+V1: kind 30311, by Alice, at T0+0, id e1af03500154058ed778fd33d004780f59c03eeab94108c2d3a6bee4e67e30aa, verified true
+V2: kind 30311, by Alice, at T0+3600, id a9f2856553be753efc52035c6088e31c9d3a96cc4f904c765f872cc25e45c153, verified true
+C1: kind 1311, by Bob, at T0+3700, id 496c551b4a6f29ef369ade6fe1daf77bc42b73fe7120355a24dda1042d18cbf0, verified true
+C2: kind 1311, by Carol, at T0+3760, id 06b4bc87fc3e58591987c499b554cb916f0f34905c8a6dcd69802e606c78feb7, verified true
+V3: kind 30311, by Alice, at T0+9000, id cefe1ee87b27bd857fc3f13839ce717108650d49d24947bbbba8ef5fd5589e83, verified true
+S: kind 30312, by Alice, at T0+0, id 1c700d03a524345263f38c1c6d75c667d6d4e7db89d5c1cb74bd5081e0b2af3e, verified true
+M: kind 30313, by Alice, at T0+60, id 14d4be7f88ae8f1ccd95e190dcdf324a66a47c7dda4dadde61e9d21a8e135c80, verified true
+P: kind 10312, by Carol, at T0+120, id 72f19fb20536b52402c130db00774d839b0628a9a90cdb029189d569c62dc23c, verified true
+V2's tags: [["d","coax-weekly"],["title","Coax weekly"],["streaming","https://stream.example.com/coax-weekly.m3u8"],["starts","1762003600"],["status","live"],["p","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","","Host"],["p","c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","","Speaker"]]
+
+== 2. The live stream's versions
+V1: ok, kind 30311, d coax-weekly, "Coax weekly", status planned, starts T0+3600
+  Alice Host, no proof (invited)
+  Bob Speaker, no proof (invited)
+  hosts 1
+V2: ok, kind 30311, d coax-weekly, "Coax weekly", status live, starts T0+3600
+  streaming https://stream.example.com/coax-weekly.m3u8
+  Alice Host, no proof (invited)
+  Bob Speaker, no proof (invited)
+  hosts 1
+V3: ok, kind 30311, d coax-weekly, "Coax weekly", status ended, starts T0+3600, ends T0+7000
+  recording https://stream.example.com/coax-weekly.mp4
+  Alice Host, no proof (invited)
+  Bob Speaker, no proof (invited)
+  hosts 1
+a coordinate 30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-weekly
+
+== 3. Is it live? Three clock times, then V3
+now T0+1800: current V1, status planned, updated T0+0, age 1800 s, shown planned
+now T0+7200: current V2, status live, updated T0+3600, age 3600 s, shown live
+now T0+7201: current V2, status live, updated T0+3600, age 3601 s, shown ended
+now T0+9000: current V3, status ended, updated T0+9000, age 0 s, shown ended
+
+== 4. Live chat
+C1: ok, by Bob, "Hello from the stage.", activity 30311:Alice:coax-weekly, in V2: ok
+C2: ok, by Carol, "Hi Bob!", activity 30311:Alice:coax-weekly, replies to C1, in V2: ok
+
+== 5. A meeting space, a meeting and presence
+S: ok, kind 30312, d coax-hall, "Coax hall", status open
+  service https://meet.example.com/coax-hall
+  Alice Host, no proof (invited)
+  Bob Moderator, no proof (invited)
+  hosts 1
+M: ok, kind 30313, d office-hours, "Office hours", status planned, starts T0+86400
+  in space 30312:Alice:coax-hall
+  Bob Speaker, no proof (invited)
+  hosts 0
+P: ok, Carol in room 30312:Alice:coax-hall, hand raised true
+P fresh at T0+420 within 300 s: true; at T0+421: false
+
+== 6. Refusals
+status paused: bad status at tag 1
+starts soon: bad time at tag 1
+ends before starts: bad time
+no d: no d
+space without service: missing field
+meeting in a live stream: a names the wrong kind at tag 1
+chat without a: no a tag
+chat for coax-monthly: a names another activity
+chat for Bob's coax-weekly: a names another activity
+chat whose a names an article: a names the wrong kind at tag 0
+writing a live stream with status open: bad status

@@ -1,0 +1,505 @@
+// NIP-53 live activities read and written from a parsed event: kind 30311
+// live streams, kind 1311 live chat, kind 30312 meeting spaces, kind 30313
+// meetings in a space and kind 10312 room presence.
+//
+// A live stream and a meeting are addressable events whose status tag says
+// planned, live or ended. The host keeps updating the event while it is
+// live; NIP-53 lets a client treat a live event with no update for an hour
+// as ended. n53_state makes that decision against a clock the caller
+// passes, so the same event and clock always give the same answer.
+//
+// The reader takes the first d, title (room for a space), streaming
+// (service for a space), recording, status, starts, ends and, for a
+// meeting, a tag. It refuses a status outside the kind's closed set
+// (planned, live, ended; open, private, closed for a space), starts or ends
+// that are not decimal unix seconds, ends before starts, and an activity
+// with no d tag or an empty one: without one, every activity of a host
+// would replace the others. A space needs room, status, service and a p
+// tag; a meeting needs its space's a, title, starts and status (NIP-53's
+// "Required" fields).
+//
+// Every p tag is a participant: a pubkey, an optional relay, a role (the
+// fourth entry, a displayable name such as Host or Speaker) and an optional
+// proof (the fifth: a signature over the activity's a tag by the
+// participant's key). The proof is checked for shape only; this file does
+// not verify it. NIP-53 says a space MUST have a provider with the Host
+// role, but its own example has an Owner and a Moderator, so the reader
+// counts Host roles in `hosts` and doesn't refuse a space without one.
+//
+// Chat names its activity with an a tag. n53_chat refuses chat with no a
+// tag or whose first a tag names anything but a kind 30311 event, and
+// n53_chat_in refuses chat whose a names another activity.
+//
+// A reading of the signed tags, not authority: nothing here verifies a
+// signature, fetches an event or plays a stream.
+#load "nip23.coax";
+#load "nip32.coax";
+#authority;
+
+N53_OK :: 0; N53_EVENT :: 1; N53_KIND :: 2; N53_NO_D :: 3; N53_STATUS :: 4;
+N53_TIME :: 5; N53_TAG :: 6; N53_MISSING :: 7; N53_NO_A :: 8; N53_ADDRESS :: 9;
+N53_MISMATCH :: 10; N53_LIMIT :: 11; N53_OUTPUT :: 12;
+N53_LIVE_EVENT :: 30311; N53_CHAT :: 1311; N53_SPACE :: 30312; N53_MEETING :: 30313;
+N53_PRESENCE :: 10312;
+// Status values; N53_NONE when an activity has no status tag.
+N53_NONE :: 0; N53_PLANNED :: 1; N53_LIVE :: 2; N53_ENDED :: 3;
+N53_OPEN :: 4; N53_PRIVATE :: 5; N53_CLOSED :: 6;
+N53_STALE :: 3600;       // a live event older than this many seconds is ended
+N53_MAX_P :: 8;
+
+// book:begin record
+N53Participant :: struct {
+  pubkey:[32]u8;
+  role:N32Text;                       // the fourth entry; empty when absent
+  has_proof:bool; proof:[64]u8;       // the fifth entry, checked for shape only
+}
+N53Activity :: struct {
+  error:int=N53_EVENT; at:int=-1;     // the refusing tag
+  kind:int;
+  d:N32Text;
+  title:N32Text;                      // title; a space's room
+  url:N32Text;                        // streaming; a space's service
+  recording:N32Text;                  // a live stream's recording
+  status:int;                         // N53_NONE when absent
+  has_starts:bool; starts:int; has_ends:bool; ends:int;
+  has_space:bool; space_author:[32]u8; space_d:N32Text;   // a meeting's space
+  p:[N53_MAX_P]N53Participant; n:int;
+  hosts:int;                          // participants whose role is Host
+}
+N53Chat :: struct {
+  error:int=N53_EVENT; at:int=-1;
+  author:[32]u8; d:N32Text;           // the activity: 30311:author:d
+  has_parent:bool; parent:[32]u8;     // the e tag: the message replied to
+}
+N53Presence :: struct {
+  error:int=N53_EVENT; at:int=-1;
+  room_kind:int; author:[32]u8; d:N32Text;   // the room: 30312 or 30313
+  hand:bool;                          // ["hand", "1"]
+}
+// What the writer puts in a kind 30311's tags. Empty strings, negative
+// times and N53_NONE are left out; d is required.
+N53Meta :: struct {d:string; title:string; streaming:string; recording:string; status:int; starts:int=-1; ends:int=-1;}
+N53Role :: struct {pubkey:[32]u8; relay:string; role:string;}
+// book:end record
+
+N53_K1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+N53_K2 :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+N53_T_LIVE :: "[[\"d\",\"demo-cf-stream\"],[\"title\",\"Adult Swim Metalocalypse\"],[\"summary\",\"Live stream from IPTV-ORG collection\"],[\"streaming\",\"https://adultswim-vodlive.cdn.turner.com/live/metalocalypse/stream.m3u8\"],[\"starts\",\"1687182672\"],[\"status\",\"live\"],[\"t\",\"animation\"],[\"t\",\"iptv\"],[\"image\",\"https://i.imgur.com/CaKq6Mt.png\"]]";
+N53_T_CHAT :: "[[\"a\",\"30311:1597246ac22f7d1375041054f2a4986bd971d8d196d7997e48973263ac9879ec:demo-cf-stream\",\"\",\"root\"]]";
+N53_T_SPACE :: "[[\"d\",\"main-conference-room\"],[\"room\",\"Main Conference Hall\"],[\"summary\",\"Our primary conference space\"],[\"image\",\"https://example.com/room.jpg\"],[\"status\",\"open\"],[\"service\",\"https://meet.example.com/room\"],[\"endpoint\",\"https://api.example.com/room\"],[\"t\",\"conference\"],[\"p\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\",\"wss://nostr.example.com/\",\"Owner\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"wss://provider2.com/\",\"Moderator\"],[\"relays\",\"wss://relay1.com\",\"wss://relay2.com\"]]";
+N53_T_MEETING :: "[[\"d\",\"annual-meeting-2025\"],[\"a\",\"30312:f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca:main-conference-room\",\"wss://nostr.example.com\"],[\"title\",\"Annual Company Meeting 2025\"],[\"summary\",\"Yearly company-wide meeting\"],[\"image\",\"https://example.com/meeting.jpg\"],[\"starts\",\"1676262123\"],[\"ends\",\"1676269323\"],[\"status\",\"live\"],[\"total_participants\",\"180\"],[\"current_participants\",\"175\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"wss://provider1.com/\",\"Speaker\"]]";
+
+#test "NIP-53's live stream example reads" {
+  a:=n53_read(n32_event(N53_LIVE_EVENT,N53_T_LIVE));
+  #assert a.error==N53_OK && a.at== -1 && a.kind==N53_LIVE_EVENT && n32_is(a.d,"demo-cf-stream") && n32_is(a.title,"Adult Swim Metalocalypse");
+  #assert n32_is(a.url,"https://adultswim-vodlive.cdn.turner.com/live/metalocalypse/stream.m3u8") && a.recording.n==0;
+  #assert a.status==N53_LIVE && a.has_starts && a.starts==1687182672 && !a.has_ends && a.n==0 && a.hosts==0 && !a.has_space;
+}
+#test "NIP-53's space and meeting examples read, placeholders filled" {
+  s:=n53_read(n32_event(N53_SPACE,N53_T_SPACE));
+  #assert s.error==N53_OK && n32_is(s.d,"main-conference-room") && n32_is(s.title,"Main Conference Hall") && n32_is(s.url,"https://meet.example.com/room");
+  #assert s.status==N53_OPEN && s.n==2 && s.hosts==0 && n32_is(s.p[0].role,"Owner") && n32_is(s.p[1].role,"Moderator") && s.p[0].pubkey[0]==0xf7 && s.p[1].pubkey[0]==0xc6;
+  #assert !s.p[0].has_proof && !s.has_starts;
+  m:=n53_read(n32_event(N53_MEETING,N53_T_MEETING));
+  #assert m.error==N53_OK && n32_is(m.d,"annual-meeting-2025") && m.has_space && m.space_author[0]==0xf7 && n32_is(m.space_d,"main-conference-room");
+  #assert m.starts==1676262123 && m.has_ends && m.ends==1676269323 && m.status==N53_LIVE && m.n==1 && n32_is(m.p[0].role,"Speaker");
+}
+#test "the first of each tag counts; names belong to their kinds" {
+  a:=n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"d\",\"y\"],[\"status\",\"planned\"],[\"status\",\"bogus\"],[\"title\",\"A\"],[\"title\",\"B\"],[\"recording\",\"https://r\"],[\"room\",\"R\"],[\"service\",\"https://s\"],[\"a\",\"bad\"]]"));
+  #assert a.error==N53_OK && n32_is(a.d,"x") && a.status==N53_PLANNED && n32_is(a.title,"A") && n32_is(a.recording,"https://r") && a.url.n==0 && !a.has_space;
+  // A space has room and service; its title, streaming, recording, starts and ends are other tags.
+  s:=n53_read(n32_event(N53_SPACE,"[[\"d\",\"r\"],[\"title\",\"T\"],[\"streaming\",\"https://x\"],[\"recording\",\"https://y\"],[\"starts\",\"soon\"],[\"ends\",\"x\"],[\"room\",\"R\"],[\"status\",\"closed\"],[\"service\",\"https://s\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"\",\"Host\"]]"));
+  #assert s.error==N53_OK && n32_is(s.title,"R") && n32_is(s.url,"https://s") && s.recording.n==0 && s.status==N53_CLOSED && s.hosts==1 && !s.has_starts && !s.has_ends;
+  #assert n53_read(n32_event(N53_SPACE,"[[\"d\",\"r\"],[\"room\",\"R\"],[\"status\",\"private\"],[\"service\",\"https://s\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]")).status==N53_PRIVATE;
+  // A meeting has no recording or streaming.
+  m:=n53_read(n32_event(N53_MEETING,"[[\"d\",\"m\"],[\"recording\",\"https://y\"],[\"streaming\",\"https://x\"],[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"],[\"a\",\"x\"],[\"title\",\"T\"],[\"starts\",\"5\"],[\"status\",\"ended\"]]"));
+  #assert m.error==N53_OK && m.recording.n==0 && m.url.n==0 && m.status==N53_ENDED && n32_is(m.space_d,"r");
+  // No status tag reads as N53_NONE on a live stream.
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"]]")).status==N53_NONE;
+}
+#test "participants: role, proof and Host count" {
+  proof:="[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"wss://a\",\"Host\",\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"]";
+  b:[1024]u8;n:=json_raw(b[..],0,"[[\"d\",\"x\"],");n=json_raw(b[..],n,proof);
+  n=json_raw(b[..],n,",[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"\",\"host\",\"\"]]");
+  a:=n53_read(n32_event(N53_LIVE_EVENT,cast(string)b[0..<n]));
+  #assert a.error==N53_OK && a.n==3 && a.hosts==1 && a.p[0].has_proof && a.p[0].proof[0]==0x01 && a.p[0].proof[63]==0xef && n32_is(a.p[0].role,"Host");
+  #assert a.p[1].role.n==0 && !a.p[1].has_proof && a.p[1].pubkey[0]==0xc6 && n32_is(a.p[2].role,"host") && !a.p[2].has_proof;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"\",\"Speaker\",\"abcd\"]]")).error==N53_TAG;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"\",\"Speaker\",\"a\"]]")).error==N53_TAG;
+  r:=n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"p\",\"c6047f94\",\"\",\"Speaker\"]]"));#assert r.error==N53_TAG && r.at==1;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"https://x\"]]")).error==N53_TAG;
+  // Eight participants fit; a ninth refuses at its tag.
+  many:[2048]u8;m:=json_raw(many[..],0,"[[\"d\",\"x\"]");
+  for k:0..<9 {m=json_raw(many[..],m,",[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]");}
+  m=json_raw(many[..],m,"]");
+  r=n53_read(n32_event(N53_LIVE_EVENT,cast(string)many[0..<m]));#assert r.error==N53_LIMIT && r.at==9 && r.n==8;
+  m=json_raw(many[..],0,"[[\"d\",\"x\"]");
+  for k:0..<8 {m=json_raw(many[..],m,",[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]");}
+  m=json_raw(many[..],m,"]");#assert n53_read(n32_event(N53_LIVE_EVENT,cast(string)many[0..<m])).n==8;
+}
+#test "refusals: kind, d, status, times, required fields, space address" {
+  r0:=n53_read(n32_event(1,"[[\"d\",\"x\"]]"));#assert r0.error==N53_KIND && r0.at== -1;
+  #assert n32_is(n53_read(n32_event(N53_LIVE_EVENT,"[[\"t\",\"x\"],[\"d\",\"y\"]]")).d,"y");
+  #assert n53_read(n32_event(N53_CHAT,"[[\"d\",\"x\"]]")).error==N53_KIND;
+  r:=n53_read(n32_event(N53_LIVE_EVENT,"[[\"title\",\"x\"]]"));#assert r.error==N53_NO_D && r.at== -1;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"\"]]")).error==N53_NO_D && n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\"]]")).error==N53_NO_D;
+  r=n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"status\",\"paused\"]]"));#assert r.error==N53_STATUS && r.at==1;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"status\",\"Live\"]]")).error==N53_STATUS;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"status\",\"open\"]]")).error==N53_STATUS;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"status\"]]")).error==N53_STATUS;
+  #assert n53_read(n32_event(N53_SPACE,"[[\"d\",\"x\"],[\"status\",\"live\"]]")).error==N53_STATUS;
+  r=n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"t\",\"y\"],[\"starts\",\"soon\"]]"));#assert r.error==N53_TIME && r.at==2;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"ends\",\"-5\"]]")).error==N53_TIME;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"ends\",\"\"]]")).error==N53_TIME;
+  r=n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"starts\",\"10\"],[\"ends\",\"9\"]]"));#assert r.error==N53_TIME && r.at== -1;
+  #assert n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"starts\",\"10\"],[\"ends\",\"10\"]]")).error==N53_OK;
+  r=n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"ends\",\"0\"]]"));#assert r.error==N53_OK && r.ends==0 && r.has_ends;
+  r=n53_read(n32_event(N53_LIVE_EVENT,"[[\"d\",\"x\"],[\"starts\",\"0\"]]"));#assert r.error==N53_OK && r.starts==0 && r.has_starts;
+  // A space's required fields, one at a time.
+  ok:="[[\"d\",\"r\"],[\"room\",\"R\"],[\"status\",\"open\"],[\"service\",\"https://s\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]";
+  #assert n53_read(n32_event(N53_SPACE,ok)).error==N53_OK;
+  r=n53_read(n32_event(N53_SPACE,"[[\"d\",\"r\"],[\"status\",\"open\"],[\"service\",\"https://s\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]"));#assert r.error==N53_MISSING && r.at== -1;
+  #assert n53_read(n32_event(N53_SPACE,"[[\"d\",\"r\"],[\"room\",\"R\"],[\"service\",\"https://s\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]")).error==N53_MISSING;
+  #assert n53_read(n32_event(N53_SPACE,"[[\"d\",\"r\"],[\"room\",\"R\"],[\"status\",\"open\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]")).error==N53_MISSING;
+  #assert n53_read(n32_event(N53_SPACE,"[[\"d\",\"r\"],[\"room\",\"R\"],[\"status\",\"open\"],[\"service\",\"https://s\"]]")).error==N53_MISSING;
+  // A meeting's.
+  #assert n53_read(n32_event(N53_MEETING,"[[\"d\",\"m\"],[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"],[\"title\",\"T\"],[\"starts\",\"5\"],[\"status\",\"live\"]]")).error==N53_OK;
+  r=n53_read(n32_event(N53_MEETING,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"starts\",\"5\"],[\"status\",\"live\"]]"));#assert r.error==N53_NO_A && r.at== -1;
+  r=n53_read(n32_event(N53_MEETING,"[[\"d\",\"m\"],[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"],[\"starts\",\"5\"],[\"status\",\"live\"]]"));#assert r.error==N53_MISSING && r.at== -1;
+  #assert n53_read(n32_event(N53_MEETING,"[[\"d\",\"m\"],[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"],[\"title\",\"T\"],[\"status\",\"live\"]]")).error==N53_MISSING;
+  #assert n53_read(n32_event(N53_MEETING,"[[\"d\",\"m\"],[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"],[\"title\",\"T\"],[\"starts\",\"5\"]]")).error==N53_MISSING;
+  r=n53_read(n32_event(N53_MEETING,"[[\"d\",\"m\"],[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"]]"));#assert r.error==N53_ADDRESS && r.at==1;
+  r=n53_read(n32_event(N53_MEETING,"[[\"d\",\"m\"],[\"a\",\"30312:79be66:r\"]]"));#assert r.error==N53_TAG && r.at==1;
+}
+#test "forged and oversized tags refuse" {
+  none:NostrEvent;#assert n53_read(none).error==N53_EVENT && n53_chat(none).error==N53_EVENT && n53_presence(none).error==N53_EVENT;
+  e:=n32_event(N53_LIVE_EVENT,"[]");e.original="[[\"d\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  r:=n53_read(e);#assert r.error==N53_EVENT && r.at==0;
+  e.kind=N53_CHAT;c:=n53_chat(e);#assert c.error==N53_EVENT && c.at==0;
+  e.kind=N53_PRESENCE;p:=n53_presence(e);#assert p.error==N53_EVENT && p.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"title\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  r=n53_read(n32_event(N53_LIVE_EVENT,cast(string)long[0..<n]));#assert r.error==N53_LIMIT && r.at==0;
+  c=n53_chat(n32_event(N53_CHAT,cast(string)long[0..<n]));#assert c.error==N53_LIMIT && c.at==0;
+  p=n53_presence(n32_event(N53_PRESENCE,cast(string)long[0..<n]));#assert p.error==N53_LIMIT && p.at==0;
+}
+#test "the state at a clock: live goes stale after an hour" {
+  a:N53Activity;a.status=N53_LIVE;
+  #assert n53_state(a,1000,1000)==N53_LIVE && n53_state(a,1000,4600)==N53_LIVE && n53_state(a,1000,4601)==N53_ENDED;
+  #assert n53_state(a,1000,999)==N53_LIVE;   // an event from a little ahead of the clock
+  a.status=N53_PLANNED;#assert n53_state(a,1000,100000)==N53_PLANNED;
+  a.status=N53_ENDED;#assert n53_state(a,1000,1000)==N53_ENDED;
+  a.status=N53_NONE;#assert n53_state(a,1000,100000)==N53_NONE;
+  a.status=N53_OPEN;#assert n53_state(a,1000,100000)==N53_OPEN;
+  #assert n53_status_name(N53_NONE)=="none" && n53_status_name(N53_PLANNED)=="planned" && n53_status_name(N53_LIVE)=="live" && n53_status_name(N53_ENDED)=="ended";
+  #assert n53_status_name(N53_OPEN)=="open" && n53_status_name(N53_PRIVATE)=="private" && n53_status_name(N53_CLOSED)=="closed" && n53_status_name(7)=="unknown" && n53_status_name(-1)=="unknown";
+  #assert n53_fresh(1000,1300,300) && !n53_fresh(1000,1301,300) && n53_fresh(1000,900,300);
+}
+#test "chat: NIP-53's example and its a coordinate" {
+  c:=n53_chat(n32_event(N53_CHAT,N53_T_CHAT));
+  #assert c.error==N53_OK && c.at== -1 && c.author[0]==0x15 && c.author[31]==0xec && n32_is(c.d,"demo-cf-stream") && !c.has_parent;
+  live:=n32_event(N53_LIVE_EVENT,N53_T_LIVE);#assert hex_decode_checked("1597246ac22f7d1375041054f2a4986bd971d8d196d7997e48973263ac9879ec",live.public_key[..],false).error==NC_OK;
+  #assert n53_chat_in(n32_event(N53_CHAT,N53_T_CHAT),live)==N53_OK;
+  other:=live;other.public_key[0]=0x16;#assert n53_chat_in(n32_event(N53_CHAT,N53_T_CHAT),other)==N53_MISMATCH;
+  #assert n53_chat_in(n32_event(N53_CHAT,N53_T_CHAT),n32_at(n32_event(N53_LIVE_EVENT,"[[\"d\",\"demo-cf-stream-2\"]]"),0x15,1))==N53_MISMATCH;
+  #assert n53_chat_in(n32_event(N53_CHAT,N53_T_CHAT),n32_at(n32_event(N53_LIVE_EVENT,"[[\"d\",\"demo-cf-strea\"]]"),0x15,1))==N53_MISMATCH;
+  // The activity must read; chat must read; and only a live stream has chat.
+  #assert n53_chat_in(n32_event(N53_CHAT,N53_T_CHAT),n32_event(N53_LIVE_EVENT,"[[\"d\",\"demo-cf-stream\"],[\"status\",\"x\"]]"))==N53_STATUS;
+  #assert n53_chat_in(n32_event(N53_CHAT,"[]"),live)==N53_NO_A;
+  sp:=n32_event(N53_SPACE,N53_T_SPACE);#assert n53_chat_in(n32_event(N53_CHAT,N53_T_CHAT),sp)==N53_KIND;
+}
+#test "chat: reply parent, first a and e, refusals" {
+  t:="[[\"q\",\"x\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:s\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],[\"a\",\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:t\"]]";
+  c:=n53_chat(n32_event(N53_CHAT,t));
+  #assert c.error==N53_OK && c.has_parent && c.parent[0]==0xaa && n32_is(c.d,"s") && c.author[0]==0x79;
+  k0:=n53_chat(n32_event(1,t));#assert k0.error==N53_KIND && k0.at== -1;
+  c=n53_chat(n32_event(N53_CHAT,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:s\"]]"));
+  #assert c.error==N53_OK && c.has_parent && c.parent[0]==0xaa;
+  #assert n53_chat(n32_event(N53_CHAT,"[[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:s\"]]")).error==N53_ADDRESS;
+  r:=n53_chat(n32_event(N53_CHAT,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"));#assert r.error==N53_NO_A && r.at== -1;
+  r=n53_chat(n32_event(N53_CHAT,"[[\"t\",\"x\"],[\"a\",\"30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:t\"]]"));#assert r.error==N53_ADDRESS && r.at==1;
+  r=n53_chat(n32_event(N53_CHAT,"[[\"a\",\"30311:79be66:t\"]]"));#assert r.error==N53_TAG && r.at==0;
+  r=n53_chat(n32_event(N53_CHAT,"[[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:s\"],[\"e\",\"aaaa\"]]"));#assert r.error==N53_TAG && r.at==1;
+}
+#test "presence: room a and raised hand" {
+  p:=n53_presence(n32_event(N53_PRESENCE,"[[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\",\"\",\"root\"],[\"hand\",\"1\"]]"));
+  #assert p.error==N53_OK && p.at== -1 && p.room_kind==N53_SPACE && p.author[0]==0x79 && n32_is(p.d,"r") && p.hand;
+  p=n53_presence(n32_event(N53_PRESENCE,"[[\"hand\",\"0\"],[\"a\",\"30313:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:m\"],[\"hand\",\"1\"],[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"]]"));
+  #assert p.error==N53_OK && p.room_kind==N53_MEETING && n32_is(p.d,"m") && !p.hand;
+  #assert !n53_presence(n32_event(N53_PRESENCE,"[[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"]]")).hand;
+  #assert !n53_presence(n32_event(N53_PRESENCE,"[[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"],[\"hand\",\"yes\"]]")).hand;
+  k0:=n53_presence(n32_event(N53_CHAT,"[]"));#assert k0.error==N53_KIND && k0.at== -1;
+  #assert !n53_presence(n32_event(N53_PRESENCE,"[[\"a\",\"30312:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:r\"],[\"hand\",\"10\"]]")).hand;
+  r:=n53_presence(n32_event(N53_PRESENCE,"[[\"hand\",\"1\"]]"));#assert r.error==N53_NO_A && r.at== -1;
+  r=n53_presence(n32_event(N53_PRESENCE,"[[\"hand\",\"1\"],[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:s\"]]"));#assert r.error==N53_ADDRESS && r.at==1;
+  r=n53_presence(n32_event(N53_PRESENCE,"[[\"a\",\"30312:79be66:r\"]]"));#assert r.error==N53_TAG && r.at==0;
+}
+#test "writer: a live stream's tags read back" {
+  m:N53Meta;m.d="coax-weekly";m.title="Coax \"weekly\"";m.streaming="https://s/x.m3u8";m.status=N53_LIVE;m.starts=100;
+  roles:[2]N53Role;
+  #assert hex_decode_checked(N53_K1,roles[0].pubkey[..],false).error==NC_OK && hex_decode_checked(N53_K2,roles[1].pubkey[..],false).error==NC_OK;
+  roles[0].role="Host";roles[1].relay="wss://r";roles[1].role="Speaker";
+  out:[1024]u8;n:=n53_tags(m,roles[..],out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"coax-weekly\"],[\"title\",\"Coax \\\"weekly\\\"\"],[\"streaming\",\"https://s/x.m3u8\"],[\"starts\",\"100\"],[\"status\",\"live\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"\",\"Host\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"wss://r\",\"Speaker\"]]";
+  a:=n53_read(n32_event(N53_LIVE_EVENT,cast(string)out[0..<n]));
+  #assert a.error==N53_OK && n32_is(a.title,"Coax \"weekly\"") && a.status==N53_LIVE && a.starts==100 && a.n==2 && a.hosts==1 && n32_is(a.p[1].role,"Speaker");
+  m.status=N53_ENDED;m.recording="https://r/x.mp4";m.ends=200;m.title="";m.streaming="";
+  n=n53_tags(m,roles[0..<0],out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"coax-weekly\"],[\"recording\",\"https://r/x.mp4\"],[\"starts\",\"100\"],[\"ends\",\"200\"],[\"status\",\"ended\"]]";
+  m.status=N53_PLANNED;m.recording="";m.starts= -1;m.ends= -1;n=n53_tags(m,roles[0..<0],out[..]);
+  #assert cast(string)out[0..<n]=="[[\"d\",\"coax-weekly\"],[\"status\",\"planned\"]]";
+  m.status=N53_NONE;n=n53_tags(m,roles[0..<0],out[..]);#assert cast(string)out[0..<n]=="[[\"d\",\"coax-weekly\"]]";
+  m.ends=0;n=n53_tags(m,roles[0..<0],out[..]);#assert cast(string)out[0..<n]=="[[\"d\",\"coax-weekly\"],[\"ends\",\"0\"]]";
+  m.starts=0;n=n53_tags(m,roles[0..<0],out[..]);#assert cast(string)out[0..<n]=="[[\"d\",\"coax-weekly\"],[\"starts\",\"0\"],[\"ends\",\"0\"]]";
+}
+#test "writer refusals: no d, bad status, ends before starts, short out" {
+  m:N53Meta;roles:[1]N53Role;out:[256]u8;
+  #assert n53_tags(m,roles[0..<0],out[..])== -N53_NO_D;
+  m.d="x";m.status=N53_OPEN;#assert n53_tags(m,roles[0..<0],out[..])== -N53_STATUS;
+  m.status=4+3;#assert n53_tags(m,roles[0..<0],out[..])== -N53_STATUS;
+  m.status= -1;#assert n53_tags(m,roles[0..<0],out[..])== -N53_STATUS;
+  m.status=N53_LIVE;m.starts=10;m.ends=9;#assert n53_tags(m,roles[0..<0],out[..])== -N53_TIME;
+  m.ends=10;#assert n53_tags(m,roles[0..<0],out[..])>0;
+  m.ends=0;#assert n53_tags(m,roles[0..<0],out[..])== -N53_TIME;
+  m.ends= -1;m.starts= -1;m.status=N53_ENDED;m.ends=5;#assert n53_tags(m,roles[0..<0],out[..])>0;
+  #assert n53_tags(m,roles[0..<1],out[0..<40])== -N53_OUTPUT && n53_tags(m,roles[0..<0],out[0..<10])== -N53_OUTPUT;
+  #assert n53_tags(m,roles[0..<0],out[0..<42])== -N53_OUTPUT && n53_tags(m,roles[0..<0],out[0..<43])==43;
+}
+#test "chat writer: a then e, read back" {
+  k:[32]u8;#assert hex_decode_checked(N53_K1,k[..],false).error==NC_OK;
+  id:[32]u8;for i:0..<32 {id[i]=0xab;}
+  out:[512]u8;n:=n53_chat_tags(k,"coax-weekly","wss://relay.example",true,id,out[..]);
+  #assert cast(string)out[0..<n]=="[[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-weekly\",\"wss://relay.example\"],[\"e\",\"abababababababababababababababababababababababababababababababab\"]]";
+  c:=n53_chat(n32_event(N53_CHAT,cast(string)out[0..<n]));#assert c.error==N53_OK && c.has_parent && c.parent[5]==0xab && n32_is(c.d,"coax-weekly");
+  n=n53_chat_tags(k,"coax-weekly","",false,id,out[..]);
+  #assert cast(string)out[0..<n]=="[[\"a\",\"30311:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:coax-weekly\",\"\"]]";
+  #assert n53_chat_tags(k,"coax-weekly","",false,id,out[0..<20])== -1 && n53_chat_tags(k,"coax-weekly","",false,id,out[0..<94])== -1 && n53_chat_tags(k,"coax-weekly","",false,id,out[0..<95])==95;
+  #assert n53_chat_tags(k,"coax-weekly","",true,id,out[0..<120])== -1;
+  #assert n53_chat_tags(k,"","",false,id,out[..])== -1;
+  long:[400]u8;for i:0..<400 {long[i]='x';}
+  #assert n53_chat_tags(k,cast(string)long[0..<256],"",false,id,out[..])>0 && n53_chat_tags(k,cast(string)long[..],"",false,id,out[..])== -1;
+}
+
+// ---- the implementation
+
+n53_refuse :: (a:N53Activity,error:int,at:int)->N53Activity {r:=a;r.error=error;r.at=at;return r;}
+n53_chat_fail :: (c:N53Chat,error:int,at:int)->N53Chat {r:=c;r.error=error;r.at=at;return r;}
+n53_presence_fail :: (p:N53Presence,error:int,at:int)->N53Presence {r:=p;r.error=error;r.at=at;return r;}
+n53_copy :: (b:[NT_MAX_VALUE]u8,n:int)->N32Text {t:N32Text;t.b=b;t.n=n;return t;}
+
+// book:begin status
+N53_STATUS_NAMES :: [7] string.["none", "planned", "live", "ended", "open", "private", "closed"];
+// The status a string names for this kind, or N53_NONE: planned, live and
+// ended for a live stream or a meeting; open, private and closed for a space.
+n53_status :: (kind:int,s:N32Text)->int {
+  first:=ifx kind==N53_SPACE then N53_OPEN else N53_PLANNED;
+  for k:first..<first+3 {if n32_is(s,N53_STATUS_NAMES[k]) {return k;}}
+  return N53_NONE;
+}
+n53_status_name :: (status:int)->string {
+  if status<N53_NONE || status>N53_CLOSED {return "unknown";}
+  return N53_STATUS_NAMES[status];
+}
+// Decimal unix seconds, or -1.
+n53_time :: (s:N32Text)->int {
+  t:=s;v:=json_int(cast(string)t.b[0..<t.n]);
+  if !v.ok || v.value<0 {return -1;}
+  return v.value;
+}
+// book:end status
+
+// Value k of tag index (k 0 is the name), decoded into out: its length, or
+// 0 when the tag has fewer values. nostr_tag has already read the tag, so
+// the value fits.
+n53_value :: (e:NostrEvent,index:int,k:int,out:[]u8)->int {
+  j:[1]Json;started:=nt_start(j[..],e);
+  tok:=json_next(j[..]);
+  for i:0..<index {skipped:=json_skip(j[..]);tok=json_next(j[..]);}
+  at:=0;v:=json_next(j[..]);
+  while v==JSON_STRING {
+    if at==k {return json_unescape(json_text(j[..]),out);}
+    at+=1;v=json_next(j[..]);
+  }
+  return 0;
+}
+
+// Which field a tag name is for this kind: 0 d, 1 title or room, 2
+// streaming or service, 3 recording, 4 status, 5 starts, 6 ends, 7 a; or -1.
+n53_field :: (kind:int,name:N32Text)->int {
+  space:=kind==N53_SPACE;
+  if n32_is(name,"d") {return 0;}
+  if n32_is(name,ifx space then "room" else "title") {return 1;}
+  if n32_is(name,ifx space then "service" else "streaming") && kind!=N53_MEETING {return 2;}
+  if n32_is(name,"recording") && kind==N53_LIVE_EVENT {return 3;}
+  if n32_is(name,"status") {return 4;}
+  if n32_is(name,"starts") && !space {return 5;}
+  if n32_is(name,"ends") && !space {return 6;}
+  if n32_is(name,"a") && kind==N53_MEETING {return 7;}
+  return -1;
+}
+
+// book:begin read
+// A kind 30311, 30312 or 30313 activity: its fields and participants.
+n53_read :: (e:NostrEvent)->N53Activity {
+  a:N53Activity;if e.error!=NE_OK {return a;}
+  if e.kind!=N53_LIVE_EVENT && e.kind!=N53_SPACE && e.kind!=N53_MEETING {return n53_refuse(a,N53_KIND,-1);}
+  a.kind=e.kind;seen:[8]bool;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n53_refuse(a,N53_LIMIT,i);}
+    if t.error!=NT_OK {return n53_refuse(a,N53_EVENT,i);}
+    f:=n53_field(e.kind,t.v[0]);v:=t.v[1];
+    if f>=0 && !seen[f] {
+      seen[f]=true;
+      if f==0 {a.d=v;} else if f==1 {a.title=v;} else if f==2 {a.url=v;} else if f==3 {a.recording=v;}
+      else if f==4 {a.status=n53_status(e.kind,v);if a.status==N53_NONE {return n53_refuse(a,N53_STATUS,i);}}
+      else if f==5 {a.starts=n53_time(v);a.has_starts=true;if a.starts<0 {return n53_refuse(a,N53_TIME,i);}}
+      else if f==6 {a.ends=n53_time(v);a.has_ends=true;if a.ends<0 {return n53_refuse(a,N53_TIME,i);}}
+      else {
+        s:=nostr_tag(e,i);
+        if s.error!=NT_OK {return n53_refuse(a,N53_TAG,i);}
+        if s.address_kind!=N53_SPACE {return n53_refuse(a,N53_ADDRESS,i);}
+        a.has_space=true;a.space_author=s.pubkey;a.space_d=n53_copy(s.d,s.d_n);
+      }
+    }
+    if n32_is(t.v[0],"p") {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {return n53_refuse(a,N53_TAG,i);}
+      if a.n==N53_MAX_P {return n53_refuse(a,N53_LIMIT,i);}
+      p:N53Participant;p.pubkey=s.pubkey;
+      p.role.n=n53_value(e,i,3,p.role.b[..]);
+      proof:N32Text;proof.n=n53_value(e,i,4,proof.b[..]);
+      if proof.n>0 {
+        if !ne_lower_hex(cast(string)proof.b[0..<proof.n],p.proof[..]) {return n53_refuse(a,N53_TAG,i);}
+        p.has_proof=true;
+      }
+      if n32_is(p.role,"Host") {a.hosts+=1;}
+      a.p[a.n]=p;a.n+=1;
+    }
+    i+=1;
+  }
+  if a.d.n==0 {return n53_refuse(a,N53_NO_D,-1);}
+  if a.has_starts && a.has_ends && a.ends<a.starts {return n53_refuse(a,N53_TIME,-1);}
+  if e.kind==N53_SPACE && (a.title.n==0 || a.status==N53_NONE || a.url.n==0 || a.n==0) {return n53_refuse(a,N53_MISSING,-1);}
+  if e.kind==N53_MEETING {
+    if !a.has_space {return n53_refuse(a,N53_NO_A,-1);}
+    if a.title.n==0 || !a.has_starts || a.status==N53_NONE {return n53_refuse(a,N53_MISSING,-1);}
+  }
+  a.error=N53_OK;return a;
+}
+// book:end read
+
+// book:begin state
+// The status to show at time now for an activity last updated at updated:
+// a live one with no update for more than N53_STALE seconds is ended.
+n53_state :: (a:N53Activity,updated:int,now:int)->int {
+  if a.status==N53_LIVE && now-updated>N53_STALE {return N53_ENDED;}
+  return a.status;
+}
+// Whether an event created at created is within window seconds of now, as
+// a client filters kind 10312 presence.
+n53_fresh :: (created:int,now:int,window:int)->bool {return now-created<=window;}
+// book:end state
+
+// book:begin chat
+// The first a tag of an event, which must name one of two kinds (the
+// second may be the first): its kind, author and d, or the refusal and
+// the refusing tag.
+N53Room :: struct {error:int=N53_NO_A; at:int=-1; kind:int; author:[32]u8; d:N32Text;}
+n53_room :: (e:NostrEvent,kind:int,other:int)->N53Room {
+  r:N53Room;i:=0;t:=n32_tag(e,0);
+  while t.error!=NT_INDEX {
+    r.at=i;
+    if t.error==NT_LIMIT {r.error=N53_LIMIT;return r;}
+    if t.error!=NT_OK {r.error=N53_EVENT;return r;}
+    if n32_is(t.v[0],"a") {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {r.error=N53_TAG;return r;}
+      if s.address_kind!=kind && s.address_kind!=other {r.error=N53_ADDRESS;return r;}
+      r.kind=s.address_kind;r.author=s.pubkey;r.d=n53_copy(s.d,s.d_n);r.error=N53_OK;return r;
+    }
+    i+=1;t=n32_tag(e,i);
+  }
+  r.at= -1;return r;
+}
+// A kind 1311 chat message: the activity its a tag names, and the message
+// its first e tag replies to.
+n53_chat :: (e:NostrEvent)->N53Chat {
+  c:N53Chat;if e.error!=NE_OK {return c;}
+  if e.kind!=N53_CHAT {return n53_chat_fail(c,N53_KIND,-1);}
+  r:=n53_room(e,N53_LIVE_EVENT,N53_LIVE_EVENT);
+  if r.error!=N53_OK {return n53_chat_fail(c,r.error,r.at);}
+  c.author=r.author;c.d=r.d;
+  i:=0;
+  while !c.has_parent {
+    t:=n32_tag(e,i);
+    if t.error!=NT_OK {break;}
+    if n32_is(t.v[0],"e") {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {return n53_chat_fail(c,N53_TAG,i);}
+      c.has_parent=true;c.parent=s.id;
+    }
+    i+=1;
+  }
+  return n53_chat_fail(c,N53_OK,-1);
+}
+// Whether chat belongs to activity, a kind 30311 event: N53_OK when the
+// chat's a tag names the activity's author and d, else the refusal.
+n53_chat_in :: (chat:NostrEvent,activity:NostrEvent)->int {
+  a:=n53_read(activity);if a.error!=N53_OK {return a.error;}
+  if a.kind!=N53_LIVE_EVENT {return N53_KIND;}
+  c:=n53_chat(chat);if c.error!=N53_OK {return c.error;}
+  if !ns_equal32(c.author,activity.public_key) || n32_text_order(c.d,a.d)!=0 {return N53_MISMATCH;}
+  return N53_OK;
+}
+// book:end chat
+
+// book:begin presence
+// A kind 10312 presence: the room its first a tag names (a space or a
+// meeting) and whether the first hand tag is "1".
+n53_presence :: (e:NostrEvent)->N53Presence {
+  p:N53Presence;if e.error!=NE_OK {return p;}
+  if e.kind!=N53_PRESENCE {return n53_presence_fail(p,N53_KIND,-1);}
+  r:=n53_room(e,N53_SPACE,N53_MEETING);
+  if r.error!=N53_OK {return n53_presence_fail(p,r.error,r.at);}
+  p.room_kind=r.kind;p.author=r.author;p.d=r.d;
+  b:[NT_MAX_VALUE]u8;h:=n10_text(e,"hand",b[..]);
+  p.hand=h.n==1 && b[0]=='1';      // n is 0 when absent
+  return n53_presence_fail(p,N53_OK,-1);
+}
+// book:end presence
+
+// book:begin write
+// A kind 30311's tags as a JSON array into out: its length, or minus the
+// refusal (N53_NO_D, N53_STATUS, N53_TIME, N53_OUTPUT).
+n53_tags :: (m:N53Meta,roles:[]N53Role,out:[]u8)->int {
+  if m.d.count==0 {return -N53_NO_D;}
+  if m.status<N53_NONE || m.status>N53_ENDED {return -N53_STATUS;}
+  if m.ends>=0 && m.ends<m.starts {return -N53_TIME;}
+  n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,m.d);n=json_raw(out,n,"]");
+  n=n23_pair(out,n,"title",m.title);n=n23_pair(out,n,"streaming",m.streaming);n=n23_pair(out,n,"recording",m.recording);
+  num:[24]u8;
+  if m.starts>=0 {k:=json_write_int(num[..],0,m.starts);n=n23_pair(out,n,"starts",cast(string)num[0..<k]);}
+  if m.ends>=0 {k:=json_write_int(num[..],0,m.ends);n=n23_pair(out,n,"ends",cast(string)num[0..<k]);}
+  if m.status!=N53_NONE {n=n23_pair(out,n,"status",N53_STATUS_NAMES[m.status]);}
+  for r:roles {
+    n=json_raw(out,n,",[\"p\",");n=n10_hex(out,n,r.pubkey);n=json_raw(out,n,",");
+    n=json_write_string(out,n,r.relay);n=json_raw(out,n,",");n=json_write_string(out,n,r.role);n=json_raw(out,n,"]");
+  }
+  n=json_raw(out,n,"]");
+  if n== -1 {return -N53_OUTPUT;}
+  return n;
+}
+// A kind 1311's tags into out: the a tag of the activity 30311:author:d
+// with a relay hint (may be empty), then an e tag for the parent when
+// has_parent. Its length, or -1 for an empty d or a short out.
+n53_chat_tags :: (author:[32]u8,d:string,relay:string,has_parent:bool,parent:[32]u8,out:[]u8)->int {
+  if d.count==0 {return -1;}
+  addr:[NT_MAX_VALUE+80]u8;an:=nip23_address(N53_LIVE_EVENT,author,d,addr[..]);
+  if an== -1 {return -1;}
+  n:=json_raw(out,0,"[[\"a\",");n=json_write_string(out,n,cast(string)addr[0..<an]);
+  n=json_raw(out,n,",");n=json_write_string(out,n,relay);n=json_raw(out,n,"]");
+  if has_parent {n=json_raw(out,n,",[\"e\",");n=n10_hex(out,n,parent);n=json_raw(out,n,"]");}
+  return json_raw(out,n,"]");
+}
+// book:end write

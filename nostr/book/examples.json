@@ -747,6 +747,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 300
+    },
+    {
+      "source": "nostr/examples/live-activities.coax",
+      "chapter": "nostr/book/ch061-live-activities.md",
+      "stdout": "nostr/fixtures/live-activities.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }
