@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-pose-solve.coax";
+main :: () {q:[7]pfku.Quantity(pfku.Metre,f64);target:[1]PpoTarget;out:[1]PpsOutput;status:=pps_solve(q[..],target[..],0,out[..]);}

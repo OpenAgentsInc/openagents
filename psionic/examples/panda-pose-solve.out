@@ -1,0 +1,9 @@
+whole pose query: position AND principal orientation
+updates: 9; projected coordinates: 0
+candidate joints (urad): -379861 22116 511088 -2179626 -393656 1588177 -1086360
+grip xyz (um): -331249 -22362 1194940
+fresh errors: 27 nm position; 142 nrad orientation; 45 nm weighted
+8 updates: not_converged; complete old result unchanged
+settled seed with zero budget: ok; updates 0
+q/-q target: complete result identical
+finite pose query; collision, trajectory and command policy remain separate

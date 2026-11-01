@@ -1,0 +1,25 @@
+{
+  "schema": "psionic.panda-pose-solve.native-publication.v1",
+  "passed": true,
+  "executed_native_receipt": {
+    "bytes": 28434,
+    "sha256": "27df617954734751b19b26ffde225ba22776358d8c59de7dcafd4fe8e19654b8"
+  },
+  "numeric_source_or_reference_changed": false,
+  "native_or_old_gate_repeated": false,
+  "SDK_calls": 0,
+  "contexts": {
+    "kind0": "112 actual full Pps solver queries; endpoint,publicstatus and successful cumulative counts.",
+    "kind1": "279 external Ppo one-step replay transitions on14 NEW paths. These are not instrumented internal Pps states.",
+    "kind2": "14 Pps budget0 queries from each external replay terminal seed, same target;12zero-worksuccesses and2atomicrefusals."
+  },
+  "whole_mode_bytes_exact": true,
+  "successful_payloads_per_mode": 345,
+  "unavailable_marker_payloads_per_mode": 60,
+  "all_serialized_finite_F64_per_mode": 6885,
+  "failure_payload_scope": "Canonicalzero transport markers appear only after observed full caller output/spare/canary/actualinput preservation; no published zero result or public partial solver candidate.",
+  "assertions_each_mode": 23665,
+  "preflight_scope": "All112 actual max-update headers0..96, original76base/ANDprefix,36derived n-1/n rows,56explicit sign groups and exact F64 shell predicates verified before product calls. Guardseed pinned to dense aliasquery52.",
+  "source_mutation_scope": "New root111emittedsites withzero survivors is recorded by its source owner; these native observations do not imply complete authored Quantity-token mutation coverage, hardware permissions or general convergence.",
+  "copied_after_run_artifacts": "Only the thin shell gate and this metadata wrapper were added after the successful native invocation. They were not part of its original source inventory. The gate passed shell syntax only, without repeating numeric work."
+}

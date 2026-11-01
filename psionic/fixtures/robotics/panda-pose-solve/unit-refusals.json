@@ -1,0 +1,43 @@
+{
+  "schema": "psionic.panda-pose-solve.unit-refusals.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "checks": [
+    {
+      "name": "angle",
+      "source_sha256": "1d3707cba5b2855404a96cdc05698e97c82fe6b5dba6de12227bdaec8f230a13",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "6f8d9ed2e0a5433d53abf1ece69fe1d0596c062d813216035f2d545af6f6178f"
+    },
+    {
+      "name": "frame",
+      "source_sha256": "504b033d4a312a1fd93e16b8e3af9f889267ee5c755223c09bd3cf14d0e4bda6",
+      "exit": 1,
+      "diagnostic": "E0327",
+      "expected_diagnostic": "E0327",
+      "refused": true,
+      "stderr_sha256": "5f3dd11d06d22060eca39ffa517c4893cd31487f24825867ff1ef7ea8cdfd8c6"
+    },
+    {
+      "name": "output",
+      "source_sha256": "6875c664e4d4acd5f5f90f9517074a670758a137d51cb291db8273e290f77f4b",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "93dfc79430fb1e0a7bd396c4a437e512788d3ad1073d3f471f4bbbb678ed0149"
+    },
+    {
+      "name": "result",
+      "source_sha256": "ff02862c8e73dc95720e841e7a16e5ddfb25788956c04296740d2a26b4af67d3",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "b464ae65a784c5ea6bea48c0e8686be174d115464e7966ca5642211e6fe42bad"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "schema": "psionic.panda-pose-solve.terminal-binding.v1",
+  "passed": true,
+  "trajectory_regenerated": false,
+  "geometry_calls": 0,
+  "Coax_calls": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "reference": {
+    "bytes": 3478,
+    "sha256": "5f3d3afb6a4c856a394c7b6729d06378f7bdb3234101b8a993273a842601107d"
+  },
+  "source": {
+    "psionic/tests/robotics/panda_pose_solve_terminal_binding.py": {
+      "bytes": 5309,
+      "sha256": "37d8e296b6757ecedee25edcb647494586684b5ec8d6d94353321638f3ccd506"
+    }
+  },
+  "all_original_source_sha256": {
+    "psionic/tests/robotics/panda_pose_solve_reference.py": "fd56df69330eb3f086c8a3eb090cfed8ef57be8c5d99e83b31bf4d1878db8e82",
+    "psionic/tests/robotics/panda_pose_ik_reference.py": "0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027"
+  },
+  "cached_terminal_finite_words": 238,
+  "terminal_records": 14,
+  "terminal_successes": 12,
+  "terminal_refusals": 2,
+  "outputs": {
+    "terminal-expected.bin": {
+      "bytes": 2240,
+      "sha256": "0dde85e9b3704eb0e22d52ae7107f047eb615643c4a7b2d31a14f226412979c4"
+    },
+    "native-plan-v1.json": {
+      "bytes": 10173,
+      "sha256": "3cac8b26c681d6658573c7b37121475b27e975f56934d522ecddfd0360b31c60"
+    }
+  }
+}

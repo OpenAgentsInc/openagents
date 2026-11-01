@@ -1,0 +1,12 @@
+#load "panda-pose-solve-types.coax";
+pps_poison :: ()->PpsOutput {
+ x:PpsOutput;for i:0..<7 {x.angles[i].value=101+f64(i);}x.position.x=211;x.position.y=223;x.position.z=227;for i:0..<4 {x.world_from_grip_wxyz[i]=307+f64(i);}x.position_error_metres=401;x.orientation_error.value=409;x.weighted_error_metres=419;x.updates=503;x.projected_coordinates=509;return x;
+}
+pps_same :: (a:PpsOutput,b:PpsOutput) {
+ for i:0..<7 {#assert f64_bits(a.angles[i].value)==f64_bits(b.angles[i].value);}#assert f64_bits(a.position.x)==f64_bits(b.position.x) && f64_bits(a.position.y)==f64_bits(b.position.y) && f64_bits(a.position.z)==f64_bits(b.position.z);for i:0..<4 {#assert f64_bits(a.world_from_grip_wxyz[i])==f64_bits(b.world_from_grip_wxyz[i]);}
+ #assert f64_bits(a.position_error_metres)==f64_bits(b.position_error_metres) && f64_bits(a.orientation_error.value)==f64_bits(b.orientation_error.value) && f64_bits(a.weighted_error_metres)==f64_bits(b.weighted_error_metres) && a.updates==b.updates && a.projected_coordinates==b.projected_coordinates;
+}
+pps_goal :: (q:[7]pfku.Quantity(pfku.Radian,f64))->PpoTarget {local:=q;fk:[1]PfkOutput;#assert pfk_forward(local[..],fk[..])==PfkStatus.ok;t:PpoTarget;t.position=fk[0].grip.position;t.world_from_grip_wxyz=fk[0].grip.quaternion;return t;}
+
+PpsFixture :: struct {seed:[7]pfku.Quantity(pfku.Radian,f64);target:[1]PpoTarget;}
+pps_fixture :: (words:[14]f64)->PpsFixture {x:PpsFixture;for i:0..<7 {x.seed[i].value=words[i];}x.target[0].position.x=words[7];x.target[0].position.y=words[8];x.target[0].position.z=words[9];for i:0..<4 {x.target[0].world_from_grip_wxyz[i]=words[10+i];}return x;}

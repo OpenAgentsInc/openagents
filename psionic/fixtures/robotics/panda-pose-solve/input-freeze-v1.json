@@ -1,0 +1,22 @@
+{
+  "schema": "psionic.panda-pose-solve.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 31221,
+    "sha256": "45014fef818614becc72cfca4ea4adf6702bd588848fc2141181394b358dd598"
+  },
+  "contexts": {
+    "bytes": 2016,
+    "sha256": "ecde0cf7ea1ff6d02f3a6c8838aeed26873cd6da8cbff1f751545684d6f2993d"
+  },
+  "queries": {
+    "bytes": 9120,
+    "sha256": "db6882b0c2e2c4179f116cd20d7c093b125f0b715eb1b555dca91fa4894553d7"
+  },
+  "queries_before_generation": 76,
+  "expected_generated": false,
+  "product_comparisons": 0,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "NN_calls": 0
+}

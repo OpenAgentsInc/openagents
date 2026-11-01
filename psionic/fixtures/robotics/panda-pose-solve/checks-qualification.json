@@ -1,0 +1,49 @@
+{
+  "schema": "psionic.panda-pose-solve.source-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_inventory": {
+    "psionic/lib/robotics/panda-pose-solve-types.coax": "83a9cb593c9e868011087c3fa15d57a1a97e7172263c6c36b468cc2aa5a3acde",
+    "psionic/lib/robotics/panda-pose-solve-fixtures.coax": "a9adda31b6d1b2b26cd1dd59eb03f3518388130c8130701916ebc6975e311353",
+    "psionic/lib/robotics/panda-pose-solve.coax": "a51c7b8b24ca2173ac9ce4db8f9b7fa4ddd68228376471f2f795d7efc731f97c"
+  },
+  "scope": "Only new whole-solver root and new units. No old position, one-step, kinematic, physics mutation gate or old numerical corpus repeated.",
+  "checks": {
+    "new_groups": 9,
+    "new_cases": 9,
+    "carried_first_five_stdout_sha256": "0e72626a1a23ed2ceb9fd146d780822001c954b26039420d18136178a0466301",
+    "new_trusted_failure_stdout_sha256": "09ee78022f428901eb0e6ad293723991f73625c56405755ebf03186873e1f5b9",
+    "new_dense_and_projection_stdout_sha256": "65c52a9f8d6ee82f5ca71f5a78d337ad1fe0b9409b866fcc744cc509fc00eb76",
+    "new_per_axis_group_qualified_in_changed_root_baseline": true
+  },
+  "mutations": {
+    "root": "psionic/lib/robotics/panda-pose-solve.coax",
+    "root_only": true,
+    "emitted_sites": 111,
+    "killed": 111,
+    "survivors": 0,
+    "stdout_sha256": "3031344206cc4b7a6ba867136d36124ebb3b2d95a6bf1703f67e1beefc475809"
+  },
+  "history": {
+    "first_compile": {
+      "diagnostic": "E0366",
+      "count": 2,
+      "stderr_sha256": "b354798d4c52f0409562ef2411a419888f33ea805366718c8ff444da6859e8c5",
+      "fix": "Copy by-value array parameters into writable local variables before borrowing; no numerical profile change."
+    },
+    "first_mutation": {
+      "emitted_sites": 112,
+      "killed": 106,
+      "survivors": 6,
+      "stdout_sha256": "d5c2d7bc032cf6b44c7b76708fa99fa88bf1c9df7262602b7436d172b33bd69e"
+    },
+    "closure": "Observe all XYZ admission fields; initialize staged status fail-closed; observe the initial projected-count copy. No equivalent waivers, tolerance/corpus changes or passing numerical reruns."
+  },
+  "unit_refusals": {
+    "file": "unit-refusals.json",
+    "sha256": "6a631403a9ece1cce0aa9df4b7b7d94ca43b319f364489fc65ff7343a00a9d2b",
+    "count": 4,
+    "passed": true
+  },
+  "mutation_provenance": "Counts describe actual emitted sites; compiler quantity lowering does not preserve every authored Quantity operator token. No full quantity-token mutation coverage claim."
+}

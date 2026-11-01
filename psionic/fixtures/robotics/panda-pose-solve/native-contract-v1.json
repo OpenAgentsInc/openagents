@@ -1,0 +1,26 @@
+{
+  "schema": "psionic.panda-pose-solve.native-contract.v1",
+  "frozen_before_first_native_product_emission_or_comparison": true,
+  "experiment_sha256": "45014fef818614becc72cfca4ea4adf6702bd588848fc2141181394b358dd598",
+  "profile": "Darwin-arm64 scalar-libm binary64 FPCR0; no fastmath/contraction",
+  "input": "PPS1:4u32 magic0x31535050,112queries,14physicalcontexts,version1;112x(14F64,budgetI64);14x(14F64,externalreplaylengthI64);lower7,upper7,guardseed7F64;aliasqueryindexI64=52. Guardseed is exactly query52 seed.",
+  "events": "405x184B:4I64(case,kind,stage,status),17F64,updatesI64,projectedI64. First112 kind0 queryresults, then14 contexts each kind1 externalone-stepstates and kind2 terminalbudget0query.",
+  "scope": "Kind0 is actual full Pps endpoint/status/successful cumulativecounts. Kind1 is an external replay of the unchanged Ppo one-step API on279 NEW states, not instrumented internal Pps iteration traces. Nonconverged replay projections are not a public Pps failure payload.",
+  "failed_payload": "After C verifies whole caller output/spare/canary/actualinput atomicity, protocol emits canonicalzero unavailable-marker payload. It is not a published zero result or partial solver candidate.",
+  "metadata_preflight": "Verify all112 actual binary querybudget headers0..96, original76prefixbytes, exact derived36 n-1/n metadata from cached NEW successpaths, explicit context/sign/budget groups and opposite quaternion bits. No adjacency or76-only inventory assumptions.",
+  "physical_success": "Both position<=1e-6metre AND principalangle<=1e-6radian; freshzero-work result checked before updates; every non-OK public call preserves caller storage.",
+  "guard_corpus": {
+    "original_source_joint_endpoints": 14,
+    "targetXYZ_endpoints": 6,
+    "nonfinite_lane_patterns": 70,
+    "typed_and_raw_output_alias_cases": 12,
+    "quaternion_shell_contexts": 4,
+    "actual_expected_reader_negative_cases": 14
+  },
+  "exact_binary64_shells": ["0x1.0000000001197p+0","0x1.0000000001198p+0","0x1.fffffffffdcd1p-1","0x1.fffffffffdcd0p-1"],
+  "shell_admitted": [true,false,true,false],
+  "shell_boundary_unchanged": 2e-12,
+  "budgets": "Unchanged independent experiment: six named fieldgroups2e-10absolute,0relative; exact status/update/projection/sign/mode bytes.",
+  "warning_scope": "Only generated C suppresses unused empty-tag printer parameters; authored C effects/ABI witness remains strict.",
+  "omissions": "No old54/4200 gate, SDK, NN, simulation integration/contact, path planning, general convergence, R12transform chain, R14 or hardware permission. Trusted staged-helper results remain unsealed and are not public admission certificates."
+}

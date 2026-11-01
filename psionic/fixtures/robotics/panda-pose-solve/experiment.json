@@ -1,0 +1,1573 @@
+{
+  "schema": "psionic.panda-pose-solve.experiment.v1",
+  "frozen_before_expected_generation_and_product_comparison": true,
+  "profile": "fixed-Panda-geometric-pose-solve-f64-v1",
+  "numeric_profile": "Darwin arm64 binary64 scalar-libm,FPCR0,no fastmath/contraction; no cross-target determinism",
+  "scope": "New local geometric whole-pose solver and atomic exhausted-budget refusal; no command,trajectory,collision,global convergence,nullspace,RRT,clock,#bounded,R14 or hardware claim.",
+  "target_site": "gripper0_grip_site",
+  "target_frame": "PfkWorld",
+  "attitude": "Hamilton wxyz active world-from-grip; raw numerical boundary",
+  "joint_limits_radians": [
+    [
+      -2.8973,
+      2.8973
+    ],
+    [
+      -1.7628,
+      1.7628
+    ],
+    [
+      -2.8973,
+      2.8973
+    ],
+    [
+      -3.0718,
+      -0.0698
+    ],
+    [
+      -2.8973,
+      2.8973
+    ],
+    [
+      -0.0175,
+      3.7525
+    ],
+    [
+      -2.8973,
+      2.8973
+    ]
+  ],
+  "target_position_box_metres": 10,
+  "quaternion_component_bound": 2,
+  "quaternion_norm_squared_atol": 2e-12,
+  "position_tolerance_metres": 1e-06,
+  "angle_tolerance_radians": 1e-06,
+  "convergence": "BOTH inclusive criteria on fresh initial and post-update metrics",
+  "maximum_updates": 96,
+  "angular_weight_metres_per_radian": 0.25,
+  "diagonal_regularizer_metres_squared": 0.0025,
+  "maximum_step_radians": 0.1,
+  "pose_initial_relative_abs_w_floor": 0.0,
+  "carried_kernel": "Unchanged pose_step function; its configurable reference-only initial-|w| guard is0 for the new trajectory context. No arithmetic/profile change.",
+  "principal_cut_abs_w": 2e-14,
+  "minimum_normalized_stopping_decision_margin": 0.001,
+  "budgets": {
+    "joint_radians_atol": 2e-10,
+    "position_metres_atol": 2e-10,
+    "physical_rotation_matrix_max_entry_atol": 2e-10,
+    "position_error_metres_atol": 2e-10,
+    "angle_error_radians_atol": 2e-10,
+    "weighted_error_metres_atol": 2e-10,
+    "rtol": 0,
+    "updates": "exact",
+    "projected_coordinates": "exact",
+    "status": "exact",
+    "mode_bytes": "exact",
+    "target_sign_pairs": "exact"
+  },
+  "physical_contexts": 14,
+  "guard_contexts": 4,
+  "base_queries": 68,
+  "guard_queries": 8,
+  "contexts": [
+    {
+      "index": 0,
+      "name": "known-zero-0",
+      "kind": "known-zero",
+      "seed_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "known_target_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "target_world_metres": [
+        -0.18722690542926754,
+        0.01383411412897564,
+        1.0820656304241159
+      ],
+      "target_world_from_grip_wxyz": [
+        0.06544169839046686,
+        0.6654773082817201,
+        0.7400674602880066,
+        0.07181567027290982
+      ],
+      "budgets": [
+        0,
+        96
+      ],
+      "input_f64": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62,
+        -0.18722690542926754,
+        0.01383411412897564,
+        1.0820656304241159,
+        0.06544169839046686,
+        0.6654773082817201,
+        0.7400674602880066,
+        0.07181567027290982
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 1,
+      "name": "known-zero-1",
+      "kind": "known-zero",
+      "seed_radians": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82
+      ],
+      "known_target_radians": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82
+      ],
+      "target_world_metres": [
+        -0.28399555830867507,
+        -0.06934295183875731,
+        1.4209897650619914
+      ],
+      "target_world_from_grip_wxyz": [
+        0.1304608620842761,
+        0.0509956649990972,
+        -0.9288331758281048,
+        0.3429990336671582
+      ],
+      "budgets": [
+        0,
+        96
+      ],
+      "input_f64": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82,
+        -0.28399555830867507,
+        -0.06934295183875731,
+        1.4209897650619914,
+        0.1304608620842761,
+        0.0509956649990972,
+        -0.9288331758281048,
+        0.3429990336671582
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 2,
+      "name": "known-zero-2",
+      "kind": "known-zero",
+      "seed_radians": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26
+      ],
+      "known_target_radians": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26
+      ],
+      "target_world_metres": [
+        -1.1092370717293751,
+        -0.012232122945165916,
+        2.012984286542106
+      ],
+      "target_world_from_grip_wxyz": [
+        0.1189866656419728,
+        -0.02081257632880723,
+        0.4931353264093229,
+        0.8615257163388297
+      ],
+      "budgets": [
+        0,
+        96
+      ],
+      "input_f64": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26,
+        -1.1092370717293751,
+        -0.012232122945165916,
+        2.012984286542106,
+        0.1189866656419728,
+        -0.02081257632880723,
+        0.4931353264093229,
+        0.8615257163388297
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 3,
+      "name": "near-0-0",
+      "kind": "known-reachable-near",
+      "seed_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "known_target_radians": [
+        0.18200000000000002,
+        0.21200000000000002,
+        -0.131,
+        -2.289,
+        0.094,
+        2.7439999999999998,
+        0.631
+      ],
+      "target_world_metres": [
+        -0.1731989971494921,
+        0.02698235042641129,
+        1.1027295574894846
+      ],
+      "target_world_from_grip_wxyz": [
+        0.0843609024989448,
+        0.6546896047139047,
+        0.7458439766176945,
+        0.08933936507620101
+      ],
+      "budgets": [
+        0,
+        1,
+        96
+      ],
+      "input_f64": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62,
+        -0.1731989971494921,
+        0.02698235042641129,
+        1.1027295574894846,
+        0.0843609024989448,
+        0.6546896047139047,
+        0.7458439766176945,
+        0.08933936507620101
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 4,
+      "name": "near-0-1",
+      "kind": "known-reachable-near",
+      "seed_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "known_target_radians": [
+        0.15300000000000002,
+        0.24300000000000002,
+        -0.162,
+        -2.295,
+        0.129,
+        2.719,
+        0.606
+      ],
+      "target_world_metres": [
+        -0.18431336071994478,
+        -0.008437377170571286,
+        1.080064164681849
+      ],
+      "target_world_from_grip_wxyz": [
+        0.06341621476614362,
+        0.6802434895319552,
+        0.7269841314452917,
+        0.06885674462866978
+      ],
+      "budgets": [
+        0,
+        1,
+        96
+      ],
+      "input_f64": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62,
+        -0.18431336071994478,
+        -0.008437377170571286,
+        1.080064164681849,
+        0.06341621476614362,
+        0.6802434895319552,
+        0.7269841314452917,
+        0.06885674462866978
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 5,
+      "name": "near-1-0",
+      "kind": "known-reachable-near",
+      "seed_radians": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82
+      ],
+      "known_target_radians": [
+        -0.418,
+        -0.188,
+        0.529,
+        -1.8490000000000002,
+        -0.626,
+        1.444,
+        -0.8089999999999999
+      ],
+      "target_world_metres": [
+        -0.2790341093039313,
+        -0.05860174028093518,
+        1.440325165952224
+      ],
+      "target_world_from_grip_wxyz": [
+        0.10069859106126706,
+        0.051957993706222595,
+        -0.9274286557409387,
+        0.3564214487918135
+      ],
+      "budgets": [
+        0,
+        1,
+        96
+      ],
+      "input_f64": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82,
+        -0.2790341093039313,
+        -0.05860174028093518,
+        1.440325165952224,
+        0.10069859106126706,
+        0.051957993706222595,
+        -0.9274286557409387,
+        0.3564214487918135
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 6,
+      "name": "near-1-1",
+      "kind": "known-reachable-near",
+      "seed_radians": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82
+      ],
+      "known_target_radians": [
+        -0.447,
+        -0.157,
+        0.498,
+        -1.8550000000000002,
+        -0.591,
+        1.419,
+        -0.834
+      ],
+      "target_world_metres": [
+        -0.2857826326504699,
+        -0.08561258164605087,
+        1.4191915572070721
+      ],
+      "target_world_from_grip_wxyz": [
+        0.1423285604117083,
+        0.038197449586368344,
+        -0.9337662051996355,
+        0.32613526298654044
+      ],
+      "budgets": [
+        0,
+        1,
+        96
+      ],
+      "input_f64": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82,
+        -0.2857826326504699,
+        -0.08561258164605087,
+        1.4191915572070721,
+        0.1423285604117083,
+        0.038197449586368344,
+        -0.9337662051996355,
+        0.32613526298654044
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 7,
+      "name": "near-2-0",
+      "kind": "known-reachable-near",
+      "seed_radians": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26
+      ],
+      "known_target_radians": [
+        1.142,
+        -0.848,
+        0.719,
+        -0.909,
+        -0.496,
+        2.1839999999999997,
+        1.271
+      ],
+      "target_world_metres": [
+        -1.1201515296617741,
+        -0.0437172119429701,
+        2.0125049260757377
+      ],
+      "target_world_from_grip_wxyz": [
+        0.11021089335801454,
+        -0.029349947650844945,
+        0.46999681613090316,
+        0.8752686058490473
+      ],
+      "budgets": [
+        0,
+        1,
+        96
+      ],
+      "input_f64": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26,
+        -1.1201515296617741,
+        -0.0437172119429701,
+        2.0125049260757377,
+        0.11021089335801454,
+        -0.029349947650844945,
+        0.46999681613090316,
+        0.8752686058490473
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 8,
+      "name": "near-2-1",
+      "kind": "known-reachable-near",
+      "seed_radians": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26
+      ],
+      "known_target_radians": [
+        1.113,
+        -0.817,
+        0.688,
+        -0.915,
+        -0.46099999999999997,
+        2.159,
+        1.246
+      ],
+      "target_world_metres": [
+        -1.0946493668185193,
+        -0.003193606225627324,
+        2.019945767418504
+      ],
+      "target_world_from_grip_wxyz": [
+        0.12382231149361622,
+        -0.008782197506548996,
+        0.49874848861553683,
+        0.8578116653945967
+      ],
+      "budgets": [
+        0,
+        1,
+        96
+      ],
+      "input_f64": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26,
+        -1.0946493668185193,
+        -0.003193606225627324,
+        2.019945767418504,
+        0.12382231149361622,
+        -0.008782197506548996,
+        0.49874848861553683,
+        0.8578116653945967
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 9,
+      "name": "moderate-B",
+      "kind": "known-reachable-moderate",
+      "seed_radians": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82
+      ],
+      "known_target_radians": [
+        -0.14999999999999997,
+        0.01999999999999999,
+        0.28,
+        -2.18,
+        -0.39,
+        1.5899999999999999,
+        -1.0899999999999999
+      ],
+      "target_world_metres": [
+        -0.3312488088297923,
+        -0.02236227277159756,
+        1.1949403501120703
+      ],
+      "target_world_from_grip_wxyz": [
+        0.3087793425683993,
+        0.26307588076182686,
+        -0.9008416321384713,
+        0.15469567663807282
+      ],
+      "budgets": [
+        4,
+        32,
+        96
+      ],
+      "input_f64": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82,
+        -0.3312488088297923,
+        -0.02236227277159756,
+        1.1949403501120703,
+        0.3087793425683993,
+        0.26307588076182686,
+        -0.9008416321384713,
+        0.15469567663807282
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 10,
+      "name": "moderate-C",
+      "kind": "known-reachable-moderate",
+      "seed_radians": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26
+      ],
+      "known_target_radians": [
+        0.7599999999999999,
+        -0.62,
+        1.03,
+        -1.34,
+        -0.74,
+        2.51,
+        1.55
+      ],
+      "target_world_metres": [
+        -1.1196262005130746,
+        0.40129460448664106,
+        1.8633417818722278
+      ],
+      "target_world_from_grip_wxyz": [
+        0.2077069179135299,
+        -0.03984500204701752,
+        0.6036758251309653,
+        0.768664888111317
+      ],
+      "budgets": [
+        4,
+        32,
+        96
+      ],
+      "input_f64": [
+        1.13,
+        -0.83,
+        0.71,
+        -0.93,
+        -0.48,
+        2.17,
+        1.26,
+        -1.1196262005130746,
+        0.40129460448664106,
+        1.8633417818722278,
+        0.2077069179135299,
+        -0.03984500204701752,
+        0.6036758251309653,
+        0.768664888111317
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 11,
+      "name": "finite-far-0",
+      "kind": "finite-far",
+      "seed_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "known_target_radians": null,
+      "target_world_metres": [
+        3.0,
+        2.0,
+        1.0
+      ],
+      "target_world_from_grip_wxyz": [
+        0.06544169839046686,
+        0.6654773082817201,
+        0.7400674602880066,
+        0.07181567027290982
+      ],
+      "budgets": [
+        96
+      ],
+      "input_f64": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62,
+        3.0,
+        2.0,
+        1.0,
+        0.06544169839046686,
+        0.6654773082817201,
+        0.7400674602880066,
+        0.07181567027290982
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 12,
+      "name": "finite-far-1",
+      "kind": "finite-far",
+      "seed_radians": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82
+      ],
+      "known_target_radians": null,
+      "target_world_metres": [
+        -3.0,
+        -2.0,
+        2.0
+      ],
+      "target_world_from_grip_wxyz": [
+        0.1304608620842761,
+        0.0509956649990972,
+        -0.9288331758281048,
+        0.3429990336671582
+      ],
+      "budgets": [
+        96
+      ],
+      "input_f64": [
+        -0.43,
+        -0.17,
+        0.52,
+        -1.87,
+        -0.61,
+        1.43,
+        -0.82,
+        -3.0,
+        -2.0,
+        2.0,
+        0.1304608620842761,
+        0.0509956649990972,
+        -0.9288331758281048,
+        0.3429990336671582
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 13,
+      "name": "active-upper-inward005",
+      "kind": "known-reachable-active-limit",
+      "seed_radians": [
+        2.8923,
+        1.7578,
+        2.8923,
+        -0.0748,
+        2.8923,
+        3.7475,
+        2.8923
+      ],
+      "known_target_radians": [
+        2.8973,
+        1.7628,
+        2.8973,
+        -0.0698,
+        2.8973,
+        3.7525,
+        2.8973
+      ],
+      "target_world_metres": [
+        -1.5801328370801704,
+        0.10695667726501362,
+        1.2874706460974301
+      ],
+      "target_world_from_grip_wxyz": [
+        0.8365317804438452,
+        0.016288267468630914,
+        -0.5466624485649972,
+        0.03330825692290898
+      ],
+      "budgets": [
+        1,
+        96
+      ],
+      "input_f64": [
+        2.8923,
+        1.7578,
+        2.8923,
+        -0.0748,
+        2.8923,
+        3.7475,
+        2.8923,
+        -1.5801328370801704,
+        0.10695667726501362,
+        1.2874706460974301,
+        0.8365317804438452,
+        0.016288267468630914,
+        -0.5466624485649972,
+        0.03330825692290898
+      ],
+      "prescribed_status": null
+    },
+    {
+      "index": 14,
+      "name": "AND-position-only",
+      "kind": "AND-guard",
+      "seed_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "known_target_radians": null,
+      "target_world_metres": [
+        -0.18722490542926754,
+        0.01383411412897564,
+        1.0820656304241159
+      ],
+      "target_world_from_grip_wxyz": [
+        0.06544169839046686,
+        0.6654773082817201,
+        0.7400674602880066,
+        0.07181567027290982
+      ],
+      "budgets": [
+        0
+      ],
+      "input_f64": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62,
+        -0.18722490542926754,
+        0.01383411412897564,
+        1.0820656304241159,
+        0.06544169839046686,
+        0.6654773082817201,
+        0.7400674602880066,
+        0.07181567027290982
+      ],
+      "prescribed_status": 7
+    },
+    {
+      "index": 15,
+      "name": "AND-angle-only",
+      "kind": "AND-guard",
+      "seed_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "known_target_radians": null,
+      "target_world_metres": [
+        -0.18722690542926754,
+        0.01383411412897564,
+        1.0820656304241159
+      ],
+      "target_world_from_grip_wxyz": [
+        0.06544162657476388,
+        0.6654765682139271,
+        0.7400681257649449,
+        0.07181573571457231
+      ],
+      "budgets": [
+        0
+      ],
+      "input_f64": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62,
+        -0.18722690542926754,
+        0.01383411412897564,
+        1.0820656304241159,
+        0.06544162657476388,
+        0.6654765682139271,
+        0.7400681257649449,
+        0.07181573571457231
+      ],
+      "prescribed_status": 7
+    },
+    {
+      "index": 16,
+      "name": "AND-both-below",
+      "kind": "AND-guard",
+      "seed_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "known_target_radians": null,
+      "target_world_metres": [
+        -0.18722640542926755,
+        0.01383411412897564,
+        1.0820656304241159
+      ],
+      "target_world_from_grip_wxyz": [
+        0.06544168043654726,
+        0.6654771232648343,
+        0.7400676266573105,
+        0.07181568663333218
+      ],
+      "budgets": [
+        0
+      ],
+      "input_f64": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62,
+        -0.18722640542926755,
+        0.01383411412897564,
+        1.0820656304241159,
+        0.06544168043654726,
+        0.6654771232648343,
+        0.7400676266573105,
+        0.07181568663333218
+      ],
+      "prescribed_status": 0
+    },
+    {
+      "index": 17,
+      "name": "AND-both-above",
+      "kind": "AND-guard",
+      "seed_radians": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62
+      ],
+      "known_target_radians": null,
+      "target_world_metres": [
+        -0.18722490542926754,
+        0.01383411412897564,
+        1.0820656304241159
+      ],
+      "target_world_from_grip_wxyz": [
+        0.06544162657476388,
+        0.6654765682139271,
+        0.7400681257649449,
+        0.07181573571457231
+      ],
+      "budgets": [
+        0
+      ],
+      "input_f64": [
+        0.17,
+        0.23,
+        -0.14,
+        -2.31,
+        0.11,
+        2.73,
+        0.62,
+        -0.18722490542926754,
+        0.01383411412897564,
+        1.0820656304241159,
+        0.06544162657476388,
+        0.6654765682139271,
+        0.7400681257649449,
+        0.07181573571457231
+      ],
+      "prescribed_status": 7
+    }
+  ],
+  "queries": [
+    {
+      "index": 0,
+      "context": 0,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 1,
+      "context": 0,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 2,
+      "context": 0,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 3,
+      "context": 0,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 4,
+      "context": 1,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 5,
+      "context": 1,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 6,
+      "context": 1,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 7,
+      "context": 1,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 8,
+      "context": 2,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 9,
+      "context": 2,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 10,
+      "context": 2,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 11,
+      "context": 2,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 12,
+      "context": 3,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 13,
+      "context": 3,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 14,
+      "context": 3,
+      "sign": 1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 15,
+      "context": 3,
+      "sign": -1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 16,
+      "context": 3,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 17,
+      "context": 3,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 18,
+      "context": 4,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 19,
+      "context": 4,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 20,
+      "context": 4,
+      "sign": 1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 21,
+      "context": 4,
+      "sign": -1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 22,
+      "context": 4,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 23,
+      "context": 4,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 24,
+      "context": 5,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 25,
+      "context": 5,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 26,
+      "context": 5,
+      "sign": 1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 27,
+      "context": 5,
+      "sign": -1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 28,
+      "context": 5,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 29,
+      "context": 5,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 30,
+      "context": 6,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 31,
+      "context": 6,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 32,
+      "context": 6,
+      "sign": 1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 33,
+      "context": 6,
+      "sign": -1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 34,
+      "context": 6,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 35,
+      "context": 6,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 36,
+      "context": 7,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 37,
+      "context": 7,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 38,
+      "context": 7,
+      "sign": 1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 39,
+      "context": 7,
+      "sign": -1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 40,
+      "context": 7,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 41,
+      "context": 7,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 42,
+      "context": 8,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 43,
+      "context": 8,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "base"
+    },
+    {
+      "index": 44,
+      "context": 8,
+      "sign": 1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 45,
+      "context": 8,
+      "sign": -1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 46,
+      "context": 8,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 47,
+      "context": 8,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 48,
+      "context": 9,
+      "sign": 1,
+      "max_updates": 4,
+      "kind": "base"
+    },
+    {
+      "index": 49,
+      "context": 9,
+      "sign": -1,
+      "max_updates": 4,
+      "kind": "base"
+    },
+    {
+      "index": 50,
+      "context": 9,
+      "sign": 1,
+      "max_updates": 32,
+      "kind": "base"
+    },
+    {
+      "index": 51,
+      "context": 9,
+      "sign": -1,
+      "max_updates": 32,
+      "kind": "base"
+    },
+    {
+      "index": 52,
+      "context": 9,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 53,
+      "context": 9,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 54,
+      "context": 10,
+      "sign": 1,
+      "max_updates": 4,
+      "kind": "base"
+    },
+    {
+      "index": 55,
+      "context": 10,
+      "sign": -1,
+      "max_updates": 4,
+      "kind": "base"
+    },
+    {
+      "index": 56,
+      "context": 10,
+      "sign": 1,
+      "max_updates": 32,
+      "kind": "base"
+    },
+    {
+      "index": 57,
+      "context": 10,
+      "sign": -1,
+      "max_updates": 32,
+      "kind": "base"
+    },
+    {
+      "index": 58,
+      "context": 10,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 59,
+      "context": 10,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 60,
+      "context": 11,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 61,
+      "context": 11,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 62,
+      "context": 12,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 63,
+      "context": 12,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 64,
+      "context": 13,
+      "sign": 1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 65,
+      "context": 13,
+      "sign": -1,
+      "max_updates": 1,
+      "kind": "base"
+    },
+    {
+      "index": 66,
+      "context": 13,
+      "sign": 1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 67,
+      "context": 13,
+      "sign": -1,
+      "max_updates": 96,
+      "kind": "base"
+    },
+    {
+      "index": 68,
+      "context": 14,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "guard"
+    },
+    {
+      "index": 69,
+      "context": 14,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "guard"
+    },
+    {
+      "index": 70,
+      "context": 15,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "guard"
+    },
+    {
+      "index": 71,
+      "context": 15,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "guard"
+    },
+    {
+      "index": 72,
+      "context": 16,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "guard"
+    },
+    {
+      "index": 73,
+      "context": 16,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "guard"
+    },
+    {
+      "index": 74,
+      "context": 17,
+      "sign": 1,
+      "max_updates": 0,
+      "kind": "guard"
+    },
+    {
+      "index": 75,
+      "context": 17,
+      "sign": -1,
+      "max_updates": 0,
+      "kind": "guard"
+    }
+  ],
+  "derived_query_rule": "For every nonzero-success physical trajectory, append both signs at n-1 and n only if(context,sign,budget) not already in base; derive from cached trajectory before ANY product comparison.",
+  "trajectory_rule": "Exactly one independent integration per physical goal until first BOTH-criteria success or96updates; zero-work and AND guards inspect initial metrics only. Per-step payload updates1/projections that step; successful final payload uses cumulative counts.",
+  "contexts_file": {
+    "bytes": 2016,
+    "sha256": "ecde0cf7ea1ff6d02f3a6c8838aeed26873cd6da8cbff1f751545684d6f2993d"
+  },
+  "base_queries_file": {
+    "bytes": 9120,
+    "sha256": "db6882b0c2e2c4179f116cd20d7c093b125f0b715eb1b555dca91fa4894553d7"
+  },
+  "source_sha256": {
+    "psionic/tests/robotics/panda_pose_solve_reference.py": "fd56df69330eb3f086c8a3eb090cfed8ef57be8c5d99e83b31bf4d1878db8e82",
+    "psionic/tests/robotics/panda_pose_ik_reference.py": "0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027"
+  },
+  "old_corpora_repeated": false,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "NN_calls": 0
+}

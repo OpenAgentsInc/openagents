@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-pose-solve.coax";
+consume_one_step :: (value:PpoOutput) {}
+main :: () {out:PpsOutput;consume_one_step(out);}

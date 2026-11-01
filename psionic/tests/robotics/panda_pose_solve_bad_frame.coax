@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-pose-solve.coax";
+PpsOtherWorld :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {}
+main :: () {p:Point3(PpsOtherWorld,pfku.Metre,f64);target:PpoTarget;target.position=p;}

@@ -1,0 +1,6 @@
+// New nominal result/status: Ppo keeps its exactly-one-update identity.
+#load "panda-pose-ik.coax";
+PpsStatus :: enum u8 {ok;shape;number;range;limits;rotation;solve;not_converged;}
+PpsOutput :: struct {angles:[7]pfku.Quantity(pfku.Radian,f64);position:Point3(PfkWorld,pfku.Metre,f64);world_from_grip_wxyz:[4]f64;position_error_metres:f64;orientation_error:pfku.Quantity(pfku.Radian,f64);weighted_error_metres:f64;updates:int;projected_coordinates:int;}
+// Trusted source-visible staging; only checked wrappers publish to caller storage.
+PpsWalk :: struct {status:PpsStatus;candidate:PpsOutput;}

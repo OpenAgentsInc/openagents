@@ -1,0 +1,115 @@
+{
+  "schema": "psionic.panda-pose-solve.independent-reference.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "NN_calls": 0,
+  "old_corpora_repeated": false,
+  "old_reference_regenerated": false,
+  "experiment": {
+    "bytes": 31221,
+    "sha256": "45014fef818614becc72cfca4ea4adf6702bd588848fc2141181394b358dd598"
+  },
+  "input_freeze": {
+    "bytes": 590,
+    "sha256": "35ada605983a5b77a6a4ce9bd71fc4543e3dc4c8ccdc2b328b26c08d039ccb05"
+  },
+  "source_sha256": {
+    "psionic/tests/robotics/panda_pose_solve_reference.py": "fd56df69330eb3f086c8a3eb090cfed8ef57be8c5d99e83b31bf4d1878db8e82",
+    "psionic/tests/robotics/panda_pose_ik_reference.py": "0ac5a7b2d674c699af7c851401322e4b62bf93ac59f834b0a9ee61afd3698f04",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027"
+  },
+  "budgets": {
+    "joint_radians_atol": 2e-10,
+    "position_metres_atol": 2e-10,
+    "physical_rotation_matrix_max_entry_atol": 2e-10,
+    "position_error_metres_atol": 2e-10,
+    "angle_error_radians_atol": 2e-10,
+    "weighted_error_metres_atol": 2e-10,
+    "rtol": 0,
+    "updates": "exact",
+    "projected_coordinates": "exact",
+    "status": "exact",
+    "mode_bytes": "exact",
+    "target_sign_pairs": "exact"
+  },
+  "physical_contexts": 14,
+  "guard_contexts": 4,
+  "base_queries": 68,
+  "guard_queries": 8,
+  "derived_queries": 36,
+  "total_queries": 112,
+  "successful_queries": 54,
+  "not_converged_queries": 58,
+  "independent_trajectory_integrations": 14,
+  "trajectory_steps": 279,
+  "physical_successes": 12,
+  "physical_nonconvergences": 2,
+  "terminal_updates": [
+    0,
+    0,
+    0,
+    8,
+    7,
+    5,
+    6,
+    11,
+    13,
+    9,
+    15,
+    96,
+    96,
+    13
+  ],
+  "terminal_projections": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    40,
+    38
+  ],
+  "minimum_normalized_stopping_decision_margin": 0.00573362570932745,
+  "minimum_relative_abs_w": 0.9075248727767998,
+  "minimum_projection_boundary_margin": 5.841161376807236e-08,
+  "maximum_Gaussian_residual": 1.8607337892717624e-13,
+  "query_record": "input14F64+budgetI64=120B; answer statusI64+17F64+2I64=160B",
+  "trajectory_record": "17F64+updatesI64(1)+per-step-projectedI64=152B; index includes initial and terminal metadata",
+  "outputs": {
+    "queries.bin": {
+      "bytes": 13440,
+      "sha256": "76e6017bd387126cd679ba3bf8accc206678566f0982905a447248c619726fe8"
+    },
+    "query-expected.bin": {
+      "bytes": 17920,
+      "sha256": "7c3fd3d5f316954d85c1bf9a530c664d195541c8d9a7cd0ef6b17b8be6ce40f5"
+    },
+    "queries.json": {
+      "bytes": 38781,
+      "sha256": "8dc8f673476dce89fe8600dc53b4247926488838d6064215e6f7dbc9aa228481"
+    },
+    "trajectory-expected.bin": {
+      "bytes": 42408,
+      "sha256": "e9ca1658890ed92ceedcdf076954da696e588f38a76e3c1e76d28f9941891c42"
+    },
+    "trajectory-index.json": {
+      "bytes": 21316,
+      "sha256": "5921e8986d5d3ed20039903b062075a27a1f75c5bb645f95deeae6b871b8c643"
+    },
+    "trajectory-diagnostics.json": {
+      "bytes": 291362,
+      "sha256": "9e0096c879f8d1a2ce8eeb2cb713d57bd6863f509bdbcfbdefbdc5df1673c329"
+    }
+  },
+  "seconds": 0.8457431250135414
+}

@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_pose_solve_bad_angle.coax:2:104: error[E0317]: argument 1 of 'pps_solve' is [] Quantity(Radian, f64), given [] Quantity(Metre, f64)
+  main :: () {q:[7]pfku.Quantity(pfku.Metre,f64);target:[1]PpoTarget;out:[1]PpsOutput;status:=pps_solve(q[..],target[..],0,out[..]);}
+                                                                                                         ^
+1 error
