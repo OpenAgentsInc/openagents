@@ -56,10 +56,26 @@ int64_t cxproc_stderr_byte(int64_t h, int64_t i);
 int64_t cxproc_release(int64_t h);
 int64_t cxproc_now_ms(void);
 int64_t cxproc_wall_us(void);   /* the wall clock, microseconds since the epoch */
+#ifdef COAX_coax_v_u8_DEFINED
+#ifndef COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74
+#error "incompatible Coax C type coax_v_u8"
+#endif
+#else
+#define COAX_coax_v_u8_DEFINED
+#define COAX_SCHEMA_coax_v_u8_31343a636f61782d632d747970652d7631343a76696577393a636f61785f765f7538323a3136313a38373a75696e74385f74
+typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
+#endif
+/* This program's own executable, as an absolute path: its length, or -1 (or more than out holds). */
+int64_t cxproc_self_path(coax_v_u8 out);
+/* The local time as YYYYmmdd-HHMMSS (date +'%Y%m%d-%H%M%S'): 15, or -1. */
+int64_t cxproc_local_stamp(coax_v_u8 out);
 /* Before cxproc_spawn: the child's stdout and stderr go to /dev/null
    instead of pipes (a browser that logs freely must never block on a pipe
    nobody reads). stdin stays a pipe. */
 int64_t cxproc_quiet(int64_t h);
+/* Before cxproc_spawn: the child outlives this process, in a session of its own (stdin and stdout
+   /dev/null, stderr this process's unless quiet); release neither kills nor waits for it. */
+int64_t cxproc_detach(int64_t h);
 /* Sleeps ms milliseconds (0..86400000): 0, or -1. */
 int64_t cxproc_sleep_ms(int64_t ms);
 /* The host's own environment: cxproc_getenv_push the name's bytes, then

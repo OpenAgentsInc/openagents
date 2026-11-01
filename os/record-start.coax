@@ -1,0 +1,282 @@
+// CoderOS screen recording: start and microphone (screen-record's start_recording, usage,
+// microphone_delivers, microphone_report and epoch_now, openagents 2ca255550e), loaded by
+// os/screen-record.coax. start checks the microphone before the take, starts wf-recorder, and
+// starts the microphone's supervisor (os/record-supervise.coax) as this same program's
+// `supervise-audio` verb; `--duration` is a `stop-after` run of it. Both are detached, so they
+// outlive the start command as the shell's background jobs did, and stop finds them by their pid
+// files. Every line printed is the shell's.
+// Changes from the shell: a flag missing its value ends the flags (the shell looped on it for
+// ever), and a wf-recorder that cannot be started is said and nothing is left running or written
+// (the shell wrote the dead job's pid and said the recording had started).
+
+cxproc_self_path :: (out: [] u8) -> int #foreign;
+cxproc_local_stamp :: (out: [] u8) -> int #foreign;
+
+SR_USAGE :: "Usage: screen-record <start|stop|status> [options]\n\nCommands:\n  start [output.mp4] [flags]   Start recording in background.\n                               Flags:\n                                 -d, --duration <seconds>   Record for N seconds then stop\n                                 -a, --audio                Record the microphone this host names, or the default source\n                                 -A, --system-audio         Record system audio (default sink monitor)\n                                 -g, --geometry \"X,Y WxH\"   Record region (or \"slurp\" to pick interactively)\n                                 -s, --sync <seconds>       Delay the audio to match a camera overlay\n                                 -r, --fps <n>              Hold the picture to n frames per second (default 30)\n                                 -p, --presentation         Enter presentation mode first, and leave it on stop\n  stop                         Stop the currently running recording cleanly.\n  status                       Check if a recording session is active.\n  microphone                   Print the microphone a recording reads, as JSON.\n  repair [output.mp4]          Put a capture a take left beside a recording back into it.\n\nExamples:\n  screen-record start ~/Videos/demo.mp4\n  screen-record start ~/Videos/clip.mp4 --duration 10\n  screen-record start ~/demo.mp4 --audio            # with your voice\n  screen-record start ~/demo.mp4 --presentation     # set the screen up to be watched\n  screen-record stop\n  screen-record status\n  screen-record repair                              # every recording in ~/Videos\n";
+
+// A take's flags, as start_recording read them.
+Flags :: struct {
+  output: string; duration: string; audio: bool; system: bool; geometry: string; sync: string;
+  fps: string; presentation: bool; bad: string; has_fps: bool;
+}
+sr_flags :: (a: [] Args, from: int) -> Flags {
+  f: Flags;
+  i := from; n := args_count(a);
+  while i < n {
+    x := args_at(a, i);
+    value := ifx i + 1 < n then args_at(a, i + 1) else "";
+    if x == "-d" || x == "--duration" { f.duration = value; i += 2; }
+    else if x == "-a" || x == "--audio" { f.audio = true; i += 1; }
+    else if x == "-A" || x == "--system-audio" { f.system = true; i += 1; }
+    else if x == "-g" || x == "--geometry" { f.geometry = value; i += 2; }
+    else if x == "-s" || x == "--sync" { f.sync = value; i += 2; }
+    else if x == "-r" || x == "--fps" { f.fps = value; f.has_fps = true; i += 2; }
+    else if x == "-p" || x == "--presentation" { f.presentation = true; i += 1; }
+    else if x.count > 0 && x[0] == '-' { f.bad = x; return f; }
+    else { if f.output.count == 0 { f.output = x; } i += 1; }
+  }
+  return f;
+}
+
+// How long GNU sleep sleeps for its argument: a number with an optional s, m, h or d; -1 when it
+// would refuse it (and so not sleep at all).
+sr_sleep_seconds :: (t: string) -> f64 {
+  if t.count == 0 { return -1.0; }
+  unit := 1.0; body := t;
+  last := t[t.count - 1];
+  if last == 's' { body = t[0..<t.count - 1]; }
+  else if last == 'm' { unit = 60.0; body = t[0..<t.count - 1]; }
+  else if last == 'h' { unit = 3600.0; body = t[0..<t.count - 1]; }
+  else if last == 'd' { unit = 86400.0; body = t[0..<t.count - 1]; }
+  if body.count == 0 || body[0] == '-' || body[0] == '+' || !sync_number(body) { return -1.0; }
+  for c: body { if c == 'e' || c == 'E' { return -1.0; } }
+  return rec_num(body) * unit;
+}
+#test "sleep's durations" {
+  #assert sr_sleep_seconds("10") == 10.0 && sr_sleep_seconds("1.5") == 1.5 && sr_sleep_seconds("2m") == 120.0 && sr_sleep_seconds("1h") == 3600.0 && sr_sleep_seconds("3s") == 3.0;
+  #assert sr_sleep_seconds("") == -1.0 && sr_sleep_seconds("x") == -1.0 && sr_sleep_seconds("-1") == -1.0 && sr_sleep_seconds("m") == -1.0;
+}
+
+// Seconds since the epoch, as `date +%s.%N` printed them (to the microsecond, then zeros).
+sr_epoch_now :: (out: [] u8) -> string {
+  us := cxproc_wall_us();
+  ib: [24] u8; n := sr_cat(out, 0, rp_int(us / 1000000, ib[..])); n = sr_cat(out, n, ".");
+  f := us % 1000000; d := 100000;
+  while d > 0 { out[n] = cast,trunc(u8) ('0' + (f / d) % 10); n += 1; d = d / 10; }
+  n = sr_cat(out, n, "000");
+  return cast(string) out[0..<n];
+}
+// This program's path, for its detached verbs.
+sr_self :: (out: [] u8) -> string { n := cxproc_self_path(out); return ifx n > 0 then cast(string) out[0..<n] else ""; }
+
+// A detached run of argv (stdout to /dev/null, stderr ours unless quiet): its pid, or 0.
+sr_detached :: (argv: [] string, quiet: bool) -> int {
+  h := proc_new();
+  ok := (!quiet || proc_quiet(h)) && proc_detach(h);
+  for x: argv { ok = ok && proc_arg(h, x); }
+  pid := 0;
+  if ok && proc_start(h) == 0 { pid = proc_pid(h); }
+  r := proc_release(h);
+  return pid;
+}
+// A command run with its output passed on, as the shell ran it in the foreground: false when it
+// is not installed.
+sr_passthrough :: (argv: [] string) -> bool {
+  o: [65536] u8; e: [65536] u8;
+  r := proc_run(argv, -1, o[..], e[..]);
+  if r.started != 0 { return false; }
+  if r.out_n > 0 { print("%\n", cast(string) o[0..<r.out_n]); }
+  tool_err(cast(string) e[0..<r.err_n]);
+  return true;
+}
+
+// Whether a source delivers sound: a second of it, through pw-record, is more than a WAV header.
+sr_delivers :: (target: string, f: Files) -> bool {
+  nb: [4096] u8; name := ra_capture_target(target, nb[..]);
+  tb: [4096] u8; tmp := proc_getenv("TMPDIR", tb[..]); if tmp.count == 0 { tmp = "/tmp"; }
+  pb: [4300] u8; ib: [24] u8; jb: [24] u8;
+  n := sr_cat(pb[..], 0, tmp); n = sr_cat(pb[..], n, "/screen-record-probe."); n = sr_cat(pb[..], n, rp_int(cxproc_wall_us(), ib[..]));
+  n = sr_cat(pb[..], n, "."); n = sr_cat(pb[..], n, rp_int(cxproc_wall_us() % 9973, jb[..])); n = sr_cat(pb[..], n, ".wav");
+  probe := cast(string) pb[0..<n];
+  ab: [4200] u8; an := sr_cat(ab[..], 0, "--target="); an = sr_cat(ab[..], an, name);
+  h := proc_new();
+  ok := proc_quiet(h) && proc_arg(h, "pw-record") && proc_arg(h, cast(string) ab[0..<an]) && proc_arg(h, "--channels") && proc_arg(h, "1") && proc_arg(h, "--rate") && proc_arg(h, "48000") && proc_arg(h, probe);
+  if ok && proc_start(h) == 0 {
+    // timeout 1: SIGTERM after a second, then wait for it
+    if proc_wait(h, 1000) == PROC_RUNNING { k := proc_kill(h, PROC_SIGTERM); w := proc_wait(h, -1); }
+  }
+  r := proc_release(h);
+  size := fs_size(probe); if size < 0 { size = 0; }
+  x := fs_remove(probe);
+  return size > 4096;
+}
+
+// The microphone a take would read now: pick_microphone's JSON into out, and whether the host's
+// pattern was refused.
+sr_pick_now :: (out: [] u8) -> string {
+  text: [4194304] u8; nodes: [262144] JvNode; d: [1] Jv; s: [MIC_MAX] Source;
+  n := ra_sources(text[..], d[..], nodes[..], s[..]);
+  w: [65536] u8; m := mic_run("wpctl", "inspect", w[..]);
+  db: [64] u8; def := mic_default(ifx m > 0 then cast(string) w[0..<m] else "", db[..]);
+  pb: [4096] u8; pattern := proc_getenv("CODEROS_MICROPHONE_NODE", pb[..]);
+  ch := mic_pick(d[0], s[0..<n], "", pattern, def);
+  if ch.refused { tool_errln("microphone: the pattern in CODEROS_MICROPHONE_NODE uses more than coax/lib/text/regex.coax's subset; it matches nothing"); }
+  o: [1] Jo; jo_start(o[..], out); mic_json(d[0], s[0..<n], ch, o[..]);
+  return jo_text(o[..]);
+}
+// jq -r '.KEY // FALLBACK' of the pick (an object this program wrote).
+sr_pick_field :: (pick: string, key: string, fallback: string, out: [] u8) -> string {
+  return sr_jq_raw(pick, key, fallback, out).text;
+}
+
+// ---- microphone
+
+sr_microphone :: (f: Files) -> int {
+  pb: [64] u8; mb: [256] u8;
+  mic := sr_path(f.meta_file, ".mic", mb[..]);
+  pid := ifx fs_exists(f.pid_file) then sr_pid(sr_read(f.pid_file, pb[..])) else -1;
+  if pid > 0 && cxproc_pid_alive(pid) == 1 && fs_exists(mic) {
+    tb: [65536] u8; print("%", sr_read(mic, tb[..])); return 0;
+  }
+  jb: [65536] u8; pick := sr_pick_now(jb[..]);
+  ob: [65600] u8; o: [1] Jo; jo_start(o[..], ob[..]);
+  k := [1] string.["recording"]; v := [1] string.["false"];
+  if ra_merge(pick, k[..], v[..], o[..]) { print("%\n", jo_text(o[..])); }
+  return 0;
+}
+
+// ---- start
+
+sr_start :: (f: Files, a: [] Args) -> int {
+  pb: [64] u8;
+  if fs_exists(f.pid_file) {
+    ptext := sr_chomp(sr_read(f.pid_file, pb[..]));
+    pid := sr_pid(ptext);
+    if pid > 0 && cxproc_pid_alive(pid) == 1 { print("A recording is already running (PID: %).\n", ptext); return 1; }
+    x := fs_remove(f.pid_file); x = fs_remove(f.meta_file);
+  }
+  fl := sr_flags(a, 1);
+  if fl.bad.count > 0 { print("Unknown flag: %\n", fl.bad); print("%", SR_USAGE); return 1; }
+  eb: [64] u8; fps := fl.fps;
+  if !fl.has_fps { fps = proc_getenv("CODEROS_RECORD_FPS", eb[..]); if fps.count == 0 { fps = "30"; } }
+  ob: [4096] u8; output := fl.output;
+  if output.count == 0 {
+    hb: [4096] u8; home := proc_getenv("HOME", hb[..]);
+    vb: [4200] u8; videos := sr_path(home, "/Videos", vb[..]); x := fs_mkdir(videos);
+    sb: [32] u8; sn := cxproc_local_stamp(sb[..]);
+    n := sr_cat(ob[..], 0, videos); n = sr_cat(ob[..], n, "/recording-"); n = sr_cat(ob[..], n, ifx sn == 15 then cast(string) sb[0..<15] else "00000000-000000"); n = sr_cat(ob[..], n, ".mp4");
+    output = cast(string) ob[0..<n];
+  }
+  x := fs_mkdir(fs_dir(output));
+  // what an earlier take left
+  pends := [3] string.[".audio", ".audio.stop", ".audio.supervisor"];
+  for e: pends { b: [256] u8; y := fs_remove(sr_path(f.pid_file, e, b[..])); }
+  mends := [4] string.[".audio.segments", ".audio.outage", ".mic", ".geometry"];
+  for e: mends { b: [256] u8; y := fs_remove(sr_path(f.meta_file, e, b[..])); }
+  sr_remove_captures(output);
+  if fl.presentation {
+    pa := [2] string.["presentation-mode", "on"];
+    if sr_passthrough(pa[..]) { b: [256] u8; y := fs_write(sr_path(f.meta_file, ".presentation", b[..]), "on\n"); }
+    else { tool_errln("No presentation-mode command; recording the screen as it is."); }
+  }
+  // the sound
+  src := ""; name := ""; pick := ""; live := true; warning := "";
+  jb: [65536] u8; sb2: [4096] u8; nmb: [4096] u8; wb: [8192] u8; kb: [4096] u8; xb: [64] u8;
+  if fl.audio {
+    pick = sr_pick_now(jb[..]);
+    src = sr_pick_field(pick, "id", "", sb2[..]);
+    name = sr_pick_field(pick, "name", "", nmb[..]);
+    nick := sr_pick_field(pick, "nick", "the microphone", kb[..]);
+    preferred := sr_pick_field(pick, "preferred", "false", xb[..]);
+    wn := 0;
+    if src.count == 0 { live = false; wn = sr_cat(wb[..], 0, "No microphone is present; recording video only."); }
+    else if !sr_delivers(src, f) {
+      live = false;
+      wn = sr_cat(wb[..], 0, "The "); wn = sr_cat(wb[..], wn, nick); wn = sr_cat(wb[..], wn, " is delivering no audio. Unplug it and plug it back in, then record again.");
+    } else if preferred != "true" {
+      mn: [4096] u8; host := proc_getenv("CODEROS_MICROPHONE_NAME", mn[..]); if host.count == 0 { host = "microphone this host names"; }
+      wn = sr_cat(wb[..], 0, "The microphone is the "); wn = sr_cat(wb[..], wn, nick); wn = sr_cat(wb[..], wn, "; the "); wn = sr_cat(wb[..], wn, host); wn = sr_cat(wb[..], wn, " is absent.");
+    }
+    warning = cast(string) wb[0..<wn];
+    if warning.count > 0 { tool_errln(warning); }
+  } else if fl.system {
+    m := ra_monitor(sb2[..]);
+    src = m.target;
+    if src.count == 0 { tool_errln("No default sink to record; recording without system audio."); }
+  }
+  // the picture
+  gb: [4096] u8; geometry := fl.geometry;
+  if geometry.count > 0 {
+    if geometry == "slurp" { sa := [1] string.["slurp"]; geometry = sr_run(sa[..], gb[..]); }
+    b: [256] u8; lb: [4200] u8; ln := sr_cat(lb[..], 0, geometry); ln = sr_cat(lb[..], ln, "\n");
+    y := fs_write(sr_path(f.meta_file, ".geometry", b[..]), cast(string) lb[0..<ln]);
+  }
+  wf: [9] string; wn := 0;
+  wa := [7] string.["wf-recorder", "-f", output, "--pixel-format", "yuv420p", "-r", fps];
+  for w: wa { wf[wn] = w; wn += 1; }
+  if fl.geometry.count > 0 { wf[wn] = "-g"; wf[wn + 1] = geometry; wn += 2; }
+  rec := sr_detached(wf[0..<wn], true);
+  if rec == 0 { tool_errln("wf-recorder could not be started; nothing is recording."); return 1; }
+  selfb: [4096] u8; self := sr_self(selfb[..]);
+  ib: [24] u8; recs := rp_int(rec, ib[..]);
+  if fl.duration.count > 0 && self.count > 0 {
+    da := [4] string.[self, "stop-after", fl.duration, recs];
+    t := sr_detached(da[..], true);
+  }
+  tk := Take.{pid_file = f.pid_file, meta_file = f.meta_file};
+  if src.count > 0 {
+    if pick.count > 0 { ra_report(tk, pick, live, warning); }
+    tb: [64] u8; t0 := sr_epoch_now(tb[..]);
+    b: [256] u8; l0: [80] u8; n0 := sr_cat(l0[..], 0, t0); n0 = sr_cat(l0[..], n0, "\n");
+    y := fs_write(sr_path(f.meta_file, ".audio.t0", b[..]), cast(string) l0[0..<n0]);
+    if self.count > 0 {
+      sv: [8] string; k := 0;
+      sva := [6] string.[self, "supervise-audio", output, t0, src, pick];
+      for s: sva { sv[k] = s; k += 1; }
+      if fl.system && !fl.audio { sv[k] = "--system"; k += 1; }
+      if name.count > 0 { sv[k] = "--name"; sv[k + 1] = name; k += 2; }
+      spid := sr_detached(sv[0..<k], false);
+      c: [256] u8; lb: [32] u8; ln := sr_cat(lb[..], 0, rp_int(spid, ib[..])); ln = sr_cat(lb[..], ln, "\n");
+      y = fs_write(sr_path(f.pid_file, ".audio.supervisor", c[..]), cast(string) lb[0..<ln]);
+    }
+  } else if pick.count > 0 {
+    ra_report(tk, pick, live, warning);
+  }
+  l: [4200] u8;
+  ln := sr_cat(l[..], 0, recs); ln = sr_cat(l[..], ln, "\n"); y := fs_write(f.pid_file, cast(string) l[0..<ln]);
+  ln = sr_cat(l[..], 0, output); ln = sr_cat(l[..], ln, "\n"); y = fs_write(f.meta_file, cast(string) l[0..<ln]);
+  if fl.sync.count > 0 { b: [256] u8; ln = sr_cat(l[..], 0, fl.sync); ln = sr_cat(l[..], ln, "\n"); y = fs_write(sr_path(f.meta_file, ".sync", b[..]), cast(string) l[0..<ln]); }
+  fb: [256] u8; ln = sr_cat(l[..], 0, fps); ln = sr_cat(l[..], ln, "\n"); y = fs_write(sr_path(f.meta_file, ".fps", fb[..]), cast(string) l[0..<ln]);
+  print("Recording started (PID: %) -> %\n", recs, output);
+  if pick.count > 0 && src.count > 0 { db: [4096] u8; print("Microphone: %\n", sr_pick_field(pick, "description", "null", db[..])); }
+  if fl.duration.count > 0 { print("Will record for % seconds.\n", fl.duration); }
+  return 0;
+}
+// OUTPUT.audio.wav, OUTPUT.audio.NNN.wav and their .clock files.
+sr_remove_captures :: (output: string) {
+  wb: [4200] u8; x := fs_remove(sr_path(output, ".audio.wav", wb[..]));
+  cb: [4200] u8; x = fs_remove(sr_path(output, ".audio.wav.clock", cb[..]));
+  base := fs_base(output); dir := fs_dir(output);
+  l: [1] FsList; n := fs_list(dir, l[..]);
+  for i: 0..<n {
+    e := fs_entry(l[..], i);
+    // BASE.audio.NNN.wav or BASE.audio.NNN.wav.clock
+    m := base.count + 7;
+    if e.count < m + 7 || e[0..<base.count] != base || e[base.count..<m] != ".audio." { continue; }
+    if !sr_digit(e[m]) || !sr_digit(e[m + 1]) || !sr_digit(e[m + 2]) { continue; }
+    rest := e[m + 3..<e.count];
+    if rest != ".wav" && rest != ".wav.clock" { continue; }
+    pb: [4300] u8; pn := sr_cat(pb[..], 0, dir); pn = sr_cat(pb[..], pn, "/"); pn = sr_cat(pb[..], pn, e);
+    x = fs_remove(cast(string) pb[0..<pn]);
+  }
+}
+sr_digit :: (c: u8) -> bool { return c >= '0' && c <= '9'; }
+
+// stop-after SECONDS PID: the --duration timer, a detached run of this program.
+sr_stop_after :: (f: Files, seconds: string, pid: string) -> int {
+  s := sr_sleep_seconds(seconds);
+  if s > 0.0 { proc_sleep(cast(int) (s * 1000.0)); }
+  p := sr_pid(pid);
+  if p > 0 && cxproc_pid_alive(p) == 1 { return st_stop(f); }
+  return 0;
+}

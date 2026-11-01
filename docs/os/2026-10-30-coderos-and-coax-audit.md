@@ -319,7 +319,18 @@ compiler and the examples have not been run on Linux yet.
   crops. Two changes: a sync check with too few windows gives its real
   counts (the shell always said "0 of 0"), and the placement limits are
   policy constants rather than environment overrides.
-  Left in row 4: `start`, then `recording-hud`, `presentation-mode` and
+  `start` (`os/record-start.coax`) completes the command: it checks the
+  microphone, starts `wf-recorder`, and starts the supervisor and the
+  `--duration` timer as detached runs of itself (the process face gained
+  `proc_detach`, `cxproc_self_path` and `cxproc_local_stamp`). On
+  coderos-4080, twelve start-to-stop scenarios matched the shell: usage,
+  bad flags, the microphone report, a plain take, audio with sync and fps,
+  a silent or missing microphone, the fallback microphone, system audio, a
+  region from slurp with presentation mode, `--duration`, and a second
+  start. Every outside program in those runs was a stand-in, never the
+  screen, the microphone or the desk. `os/screen-record.coax` now does
+  everything `ops/screen-record.sh` did, and is not yet installed (owner).
+  Left in row 4: `recording-hud`, `presentation-mode` and
   `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.

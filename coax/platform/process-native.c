@@ -17,6 +17,9 @@
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
 #if defined(__linux__)
 #include <sys/prctl.h>
 #endif
@@ -26,7 +29,7 @@ typedef struct { char *data; size_t count, cap; } Bytes;
 typedef struct { Bytes *items; size_t count, cap; Bytes open; } List;
 
 typedef struct {
-  int used, started, reaped, status, quiet;
+  int used, started, reaped, status, quiet, detach;
   pid_t pid;
   int in, out, err;
   List args, env, unset;
@@ -49,7 +52,7 @@ static Proc procs[CXPROC_MAX];
    killed). Installed only where the program left the default action. */
 static void take_children(int sig) {
   for (int i = 0; i < CXPROC_MAX; i++)
-    if (procs[i].used && procs[i].started && !procs[i].reaped && procs[i].pid > 0) kill(-procs[i].pid, SIGKILL);
+    if (procs[i].used && procs[i].started && !procs[i].reaped && !procs[i].detach && procs[i].pid > 0) kill(-procs[i].pid, SIGKILL);
   signal(sig, SIG_DFL);
   raise(sig);
 }
@@ -116,6 +119,35 @@ int64_t cxproc_wall_us(void) {
   return (int64_t)t.tv_sec * 1000000 + t.tv_nsec / 1000;
 }
 
+int64_t cxproc_self_path(coax_v_u8 out) {
+  char buf[4096];
+#if defined(__linux__)
+  ssize_t n = readlink("/proc/self/exe", buf, sizeof buf - 1);
+  if (n <= 0) return -1;
+#elif defined(__APPLE__)
+  uint32_t size = sizeof buf;
+  if (_NSGetExecutablePath(buf, &size) != 0) return -1;
+  char real[PATH_MAX];
+  if (!realpath(buf, real)) return -1;
+  size_t n = strlen(real); memcpy(buf, real, n + 1);
+#else
+  return -1;
+#endif
+  if ((int64_t)n > out.count) return -1;
+  memcpy(out.data, buf, (size_t)n);
+  return (int64_t)n;
+}
+
+int64_t cxproc_local_stamp(coax_v_u8 out) {
+  time_t now = time(NULL); struct tm t;
+  if (!localtime_r(&now, &t) || out.count < 16) return -1;
+  char buf[32];
+  size_t n = strftime(buf, sizeof buf, "%Y%m%d-%H%M%S", &t);
+  if (n != 15) return -1;
+  memcpy(out.data, buf, n);
+  return 15;
+}
+
 int64_t cxproc_new(void) {
   for (int i = 0; i < CXPROC_MAX; i++) if (!procs[i].used) {
     memset(&procs[i], 0, sizeof procs[i]);
@@ -129,6 +161,17 @@ int64_t cxproc_quiet(int64_t h) {
   Proc *p = get(h);
   if (!p || p->started) return -1;
   p->quiet = 1;
+  return 0;
+}
+
+/* Before cxproc_spawn: the child outlives this process. It runs in a session of its own, reads
+   /dev/null, writes stdout to /dev/null and stderr to this process's stderr (both to /dev/null
+   when quiet), and is never killed or waited for by cxproc_release or by take_children. Only its
+   pid is useful afterwards. For a recorder a command starts and a later run of it stops. */
+int64_t cxproc_detach(int64_t h) {
+  Proc *p = get(h);
+  if (!p || p->started) return -1;
+  p->detach = 1;
   return 0;
 }
 
@@ -206,13 +249,22 @@ int64_t cxproc_spawn(int64_t h) {
     return e;
   }
   if (pid == 0) {
-    setpgid(0, 0);
+    if (p->detach) {
+      setsid();
+      int null = open("/dev/null", O_RDWR);
+      if (null >= 0) { dup2(null, 0); dup2(null, 1); if (p->quiet) dup2(null, 2); if (null > 2) close(null); }
+    } else {
+      setpgid(0, 0);
 #if defined(__linux__)
-    prctl(PR_SET_PDEATHSIG, SIGKILL);
+      prctl(PR_SET_PDEATHSIG, SIGKILL);
 #endif
+      dup2(in[0], 0); dup2(out[1], 1); dup2(err[1], 2);
+    }
     signal(SIGPIPE, SIG_DFL);
-    dup2(in[0], 0); dup2(out[1], 1); dup2(err[1], 2);
-    if (p->quiet) {
+    /* a detached child is stopped by a signal from a later run, so an ignored SIGINT (a command
+       started in the background) must not carry over */
+    if (p->detach) { signal(SIGINT, SIG_DFL); signal(SIGTERM, SIG_DFL); signal(SIGHUP, SIG_DFL); }
+    if (p->quiet && !p->detach) {
       int null = open("/dev/null", O_WRONLY);
       if (null >= 0) { dup2(null, 1); dup2(null, 2); if (null > 2) close(null); }
     }
@@ -230,7 +282,7 @@ int64_t cxproc_spawn(int64_t h) {
     _exit(127);
   }
   free(argv);
-  setpgid(pid, pid); /* also from the parent, so the group exists before any kill */
+  if (!p->detach) setpgid(pid, pid); /* also from the parent, so the group exists before any kill */
   guard_children();
   close(in[0]); close(out[1]); close(err[1]); close(report[1]);
   int e = 0;
@@ -491,7 +543,7 @@ int64_t cxproc_stderr_byte(int64_t h, int64_t i) {
 int64_t cxproc_release(int64_t h) {
   Proc *p = get(h);
   if (!p) return -1;
-  if (p->started) {
+  if (p->started && !p->detach) {
     kill(-p->pid, SIGKILL);
     if (!p->reaped) { waitpid(p->pid, &p->status, 0); p->reaped = 1; }
   }

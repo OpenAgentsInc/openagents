@@ -15,6 +15,7 @@ cxproc_new :: () -> int #foreign;
 cxproc_push :: (h: int, field: int, byte: int) -> int #foreign;
 cxproc_end :: (h: int, field: int) -> int #foreign;
 cxproc_quiet :: (h: int) -> int #foreign;
+cxproc_detach :: (h: int) -> int #foreign;
 cxproc_spawn :: (h: int) -> int #foreign;
 cxproc_read_line :: (h: int, timeout_ms: int) -> int #foreign;
 cxproc_line_byte :: (h: int, i: int) -> int #foreign;
@@ -85,6 +86,9 @@ proc_unset :: (h: int, name: string) -> bool { return proc_field(h, PROC_UNSET, 
 proc_cwd :: (h: int, dir: string) -> bool { return proc_field(h, PROC_CWD, dir); }
 // stdout and stderr to /dev/null (before proc_start).
 proc_quiet :: (h: int) -> bool { return cxproc_quiet(h) == 0; }
+// Before proc_start: the child outlives this program (its own session, stdin and stdout /dev/null,
+// stderr ours unless quiet); proc_release leaves it running. Take proc_pid before releasing.
+proc_detach :: (h: int) -> bool { return cxproc_detach(h) == 0; }
 // Starts the child: 0, PROC_ENOENT when the program is not found, another errno otherwise.
 proc_start :: (h: int) -> int { return cxproc_spawn(h); }
 proc_pid :: (h: int) -> int { return cxproc_pid(h); }
