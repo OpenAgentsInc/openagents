@@ -1,0 +1,26 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+coax/lib/json/json.coax:308:14: mutant survived: '-' became '+'
+    if s.count - i >= 19 { return fallback; }
+               ^
+coax/lib/json/json.coax:355:14: mutant survived: 1 became 2
+        if i + 1 < raw.count && raw[i] == '\\' && raw[i + 1] == 'u' {
+               ^
+coax/lib/json/json.coax:535:14: mutant survived: 1 became 2
+        if e + 1 < raw.count && raw[e] == '\\' && raw[e + 1] == 'u' {
+               ^
+coax/lib/json/json.coax:537:62: mutant survived: '&&' became '||'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                                               ^
+coax/lib/json/json.coax:537:45: mutant survived: '&&' became '||'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                              ^
+coax/lib/json/json.coax:537:27: mutant survived: '&&' became '||'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                            ^
+coax/lib/json/json.coax:537:38: mutant survived: 56319 became 56320
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                       ^
+coax/lib/json/json.coax:537:72: mutant survived: 57343 became 57344
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                                                         ^
+1069 mutants, 1061 killed, 8 survived

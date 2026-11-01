@@ -1,0 +1,74 @@
+#test parse: scalars, nesting, ranges and links
+#test parse refuses what is not JSON
+#test whitespace and token ends
+#test paths: keys and indexes
+#test unescape: every escape, surrogate pairs and UTF-8
+#test writing: objects, arrays, escapes and commas
+#test a node written back compactly, strings escaped as JSON.stringify does
+#test JSON authority publishes complete scalar records and resets reused parse status
+#test JSON authority reaches the actual64container depth bound before node capacity
+#test JSON authority empty key and truncated key colon retain exact failure coordinates
+#forall JSON authority hex and digit token endpoints classify every ASCII byte
+#test JSON authority string scanning exact spans include empty values whitespace and malformed unicode
+#test JSON authority scalar scanners recognize token delimiters signed digits and missing exponent digits
+#test JSON authority public readers refuse exact index ends and preserve absent children
+#test JSON authority paths handle nine zero missing brackets and missing nested keys
+#test JSON authority integer reads preserve signs exact2pow53 endpoints and reject fractional exponent or oversized words
+#test JSON authority escaped equality handles long plain text empty decoded text and capacity refusal
+#test JSON authority writer fits exact output boundaries and refuses larger puts without partial writes
+#test JSON authority writer accepts64nestedcontainers and refuses the next with its flag retained
+#test JSON authority integer writer includes zero decimal digits and the signed64 minimum
+#test JSON authority UTF8 codepoint boundary 0
+#test JSON authority UTF8 codepoint boundary 127
+#test JSON authority UTF8 codepoint boundary 128
+#test JSON authority UTF8 codepoint boundary 2047
+#test JSON authority UTF8 codepoint boundary 2048
+#test JSON authority UTF8 codepoint boundary 65535
+#test JSON authority UTF8 codepoint boundary 65536
+#test JSON authority UTF8 codepoint boundary 1114111
+#test JSON authority Unicode escape boundary u0000
+#test JSON authority Unicode escape boundary ud800udc00
+#test JSON authority Unicode escape boundary udbffudfff
+#test JSON authority Unicode escape boundary udbffudc00
+#test JSON authority Unicode escape boundary ud800udfff
+#test JSON authority Unicode escape boundary ud7ff
+#test JSON authority Unicode escape boundary udfff
+#test JSON authority Unicode escape boundary ue000
+#test JSON authority Unicode escape boundary ud800x
+#test JSON authority Unicode escape boundary ud800u0041
+#test JSON authority malformed raw Unicode and output exhaustion report refusal
+#test JSON authority writer byte boundary 0
+#test JSON authority writer byte boundary 1
+#test JSON authority writer byte boundary 15
+#test JSON authority writer byte boundary 16
+#test JSON authority writer byte boundary 31
+#test JSON authority writer byte boundary 32
+#test JSON authority writer byte boundary 33
+#test JSON authority writer byte boundary 34
+#test JSON authority writer byte boundary 92
+#test JSON authority writer byte boundary 127
+#test JSON authority parser refuses truncated live views at the exact observed endpoint
+#test JSON authority paths preserve multicharacter and chained indexes and reject colon as a digit
+#test JSON authority integer overflow refuses before multiplication and malformed raw digits use fallback
+#test JSON authority escaped capacity failure stops before a following raw byte write
+#test JSON authority UTF8 exactcapacity 0
+#test JSON authority UTF8 exactcapacity 127
+#test JSON authority UTF8 exactcapacity 128
+#test JSON authority UTF8 exactcapacity 2047
+#test JSON authority UTF8 exactcapacity 2048
+#test JSON authority UTF8 exactcapacity 65535
+#test JSON authority UTF8 exactcapacity 65536
+#test JSON authority UTF8 exactcapacity 1114111
+#test JSON authority requote completebytes case 0
+#test JSON authority requote completebytes case 1
+#test JSON authority requote completebytes case 2
+#test JSON authority requote completebytes case 3
+#test JSON authority requote completebytes case 4
+#test JSON authority requote completebytes case 5
+#test JSON authority requote completebytes case 6
+#test JSON authority requote completebytes case 7
+#test JSON authority requote completebytes case 8
+#test JSON authority requote completebytes case 9
+#test JSON authority requote malformed escape reports its writer bad flag
+#test JSON authority unescape refuses unknown simple escapes and requotes a final complete simple escape
+#test JSON authority integer accumulation refuses the next decimal prefix above its exact limit

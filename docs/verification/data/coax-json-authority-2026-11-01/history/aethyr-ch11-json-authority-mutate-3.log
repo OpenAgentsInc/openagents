@@ -1,0 +1,5 @@
+coax/lib/json/json.coax:527:11: error[E0410]: index 1 is out of bounds for a 1-byte string
+      if raw[j + 1] == 'u' {
+            ^
+  note: in #test JSON authority requote malformed escape reports its writer bad flag
+coax: the checks fail before any mutation; make them pass first

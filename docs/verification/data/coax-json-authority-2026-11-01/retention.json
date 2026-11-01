@@ -1,0 +1,20 @@
+{
+  "files": {
+    "aethyr-ch11-json-native.json": "c4943923b93bb69b1607658c27afd51120da23c663f906b36d585a8678528feb",
+    "aethyr-ch11-json-inline-mutate.log": "9a643a938672152a86b33ca5070a60ef087be46aa1d1516b91529dab32450d66",
+    "native-artifacts.tar.gz": "780c17dd4922fcd5c673dbcd05efa51fd699744fd0be4730a21298282a9fe867",
+    "aethyr-ch11-json-authority-list.log": "312fad5a89da3e8861edfc58479d2fe599ae05c1aa3f7a945ba71f4eadcef9ec",
+    "history/aethyr-ch11-json-authority-mutate-7.log": "9a643a938672152a86b33ca5070a60ef087be46aa1d1516b91529dab32450d66",
+    "history/aethyr-ch11-json-authority-mutate-6.log": "9a643a938672152a86b33ca5070a60ef087be46aa1d1516b91529dab32450d66",
+    "history/aethyr-ch11-json-authority-mutate-4.log": "50617364e63313624ff9d4d19d3eac5b18cfd9f2623dfbf0c7dc0d93bfba42d8",
+    "history/aethyr-ch11-json-authority-mutate-5.log": "7e5206429bd47af8d47ac4598deeda665bbdec955ff671e94ee53154914325fa",
+    "history/aethyr-ch11-json-authority-mutate-1.log": "d201f6076a9f6a61d7676f5013776795755416896579028a24bc62f9d8e95354",
+    "history/aethyr-ch11-json-authority-mutate-2.log": "925d83f3f5cd1f64c5f85c1a9a2b851dccef9e5e9cacd653cbb7a1437ba5db1e",
+    "history/aethyr-ch11-json-authority-mutate-3.log": "c61ef875539df885b12e036a735c26348d5cd9c21fc0bfafe75492e47607e486",
+    "history/aethyr-ch11-json-carrier-prefix-mutation.log": "1bae136f3a3f7cd6591e855d6f78c336fb2e888d4a7b557145659b6135ebcf16",
+    "history/json-before-sharpening.coax": "da472f070940dad93eef104e37ef72bfda54fba459a1eb843a87f815fd52fc20",
+    "history/aethyr-ch11-json-authority-checks-3.log": "4cb85e9173028efb25852183b8e8845b6fa855b8bb4b5116c1b9d78767486996",
+    "coax/tests/check_json_native.py": "e1e38cc4a90391fb780737cc776ff9423dc1974047b01eb784f1a48020b8161f",
+    "coax/lib/json/json.coax": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1"
+  }
+}

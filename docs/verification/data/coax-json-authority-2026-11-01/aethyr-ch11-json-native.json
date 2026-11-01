@@ -1,0 +1,58 @@
+{
+  "schema": "coax.json.native.v1",
+  "status": "pass",
+  "compiler_sha256": "30868e8cd36a54cf3b327ba05e74a4cd80d90af1c209d98105f070e6ce8b9980",
+  "compiler_source_digest": "8b6c0e61f0ec3f3e8ed090301b6cb59a5441951c46c9ce02c6a50fff78bfec11",
+  "source_inputs": {
+    "/private/tmp/aethyr-ch11-json-native/json.coax": "dffda14a4f1ae61f8054a27b636086fc07e80576ec472365a3069c255911aec6",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/lib/json/json.coax": "ddbbdc7b8f708ea368d5e47f2bead7aa22d9bf7ce793cc5f07201bde9e1c5bc1",
+    "/Users/christopherdavid/work/openagents-aethyr-book/coax/tests/check_json_native.py": "e1e38cc4a90391fb780737cc776ff9423dc1974047b01eb784f1a48020b8161f",
+    "/private/tmp/aethyr-ch11-json-native/driver.c": "0c258d01344258a3b2474c020aea01f6716d3b2f0141bed163ba03ec38a9efb0"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "cases": 555,
+      "loss_controls": [
+        "integer",
+        "status",
+        "byte",
+        "guard"
+      ],
+      "generated_c_sha256": "9777bd76b926d008a3c355dd0632ded8c374a42f8a6e7b4225ad65567b5766a1",
+      "header_sha256": "2300fef5bc143ae5f6c568dde804d14529e23e2e8b6cbc0b1be9d41d275a0210",
+      "executable_sha256": "39b26e33f5809742d70ef1623f37c49d0e629087e60cbf7bcaed5984487b8c08",
+      "transcript_sha256": "af97d3bd82e0c099dee083dddb7af2e064ba40d7e1b1d3f195ec375c7e95ff62"
+    },
+    {
+      "mode": "release",
+      "cases": 555,
+      "loss_controls": [
+        "integer",
+        "status",
+        "byte",
+        "guard"
+      ],
+      "generated_c_sha256": "c8427bb4273c6eecf15876967e3de1b0bf3ee8fc4826ffac6cfbc93cb7be12bd",
+      "header_sha256": "2300fef5bc143ae5f6c568dde804d14529e23e2e8b6cbc0b1be9d41d275a0210",
+      "executable_sha256": "20c6fc613b0a1ba6c0cfbd119c8d090e15919b3d14e1a0e20dd9eaf978b3659b",
+      "transcript_sha256": "af97d3bd82e0c099dee083dddb7af2e064ba40d7e1b1d3f195ec375c7e95ff62"
+    },
+    {
+      "mode": "sanitized",
+      "cases": 555,
+      "loss_controls": [
+        "integer",
+        "status",
+        "byte",
+        "guard"
+      ],
+      "generated_c_sha256": "9777bd76b926d008a3c355dd0632ded8c374a42f8a6e7b4225ad65567b5766a1",
+      "header_sha256": "2300fef5bc143ae5f6c568dde804d14529e23e2e8b6cbc0b1be9d41d275a0210",
+      "executable_sha256": "bd8ba81cd118462b115d15ac5152dfd828e603596af308c77321c5f7ff944843",
+      "transcript_sha256": "af97d3bd82e0c099dee083dddb7af2e064ba40d7e1b1d3f195ec375c7e95ff62"
+    }
+  ],
+  "elapsed_seconds": 1.445,
+  "scope": "Independent Python integer/JSON/Unicode oracle for native exact-integer and raw escape/requote boundaries in checked, release and sanitizer builds, with guarded output spans. Surrogate replacement follows the library's documented policy. Full parser/package transport qualified separately."
+}

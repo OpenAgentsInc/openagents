@@ -1,0 +1,221 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+coax/lib/json/json.coax:77:50: mutant survived: 0 became 1
+    d[0] = Jv.{text = text, nodes = nodes, count = 0, ok = false, err = 0};
+                                                   ^
+coax/lib/json/json.coax:77:58: mutant survived: false became true
+    d[0] = Jv.{text = text, nodes = nodes, count = 0, ok = false, err = 0};
+                                                           ^
+coax/lib/json/json.coax:86:12: mutant survived: '<' became '<='
+        if e < 0 { return jv_fail(d, i); }
+             ^
+coax/lib/json/json.coax:86:14: mutant survived: 0 became 1
+        if e < 0 { return jv_fail(d, i); }
+               ^
+coax/lib/json/json.coax:97:26: mutant survived: '<' became '<='
+        if last[depth - 1] < 0 { nodes[p].first = me; } else { nodes[last[depth - 1]].next = me; }
+                           ^
+coax/lib/json/json.coax:97:28: mutant survived: 0 became 1
+        if last[depth - 1] < 0 { nodes[p].first = me; } else { nodes[last[depth - 1]].next = me; }
+                             ^
+coax/lib/json/json.coax:111:12: mutant survived: '<' became '<='
+        if e < 0 { return jv_fail(d, i); }
+             ^
+coax/lib/json/json.coax:111:14: mutant survived: 0 became 1
+        if e < 0 { return jv_fail(d, i); }
+               ^
+coax/lib/json/json.coax:115:12: mutant survived: '<' became '<='
+        if e < 0 { return jv_fail(d, i); }
+             ^
+coax/lib/json/json.coax:115:14: mutant survived: 0 became 1
+        if e < 0 { return jv_fail(d, i); }
+               ^
+coax/lib/json/json.coax:131:12: mutant survived: '<' became '<='
+        if i < text.count && text[i] == ',' { i = jv_ws(text, i + 1); break; }
+             ^
+coax/lib/json/json.coax:132:12: mutant survived: '<' became '<='
+        if i < text.count && text[i] == close { nodes[p].to = i + 1; depth -= 1; i += 1; continue; }
+             ^
+coax/lib/json/json.coax:136:10: mutant survived: false became true
+    return false;
+           ^
+coax/lib/json/json.coax:169:14: mutant survived: 1 became 2
+        if k + 1 >= t.count { return -1; }
+               ^
+coax/lib/json/json.coax:172:18: mutant survived: '>' became '>='
+          if k + 6 > t.count { return -1; }
+                   ^
+coax/lib/json/json.coax:172:16: mutant survived: 6 became 7
+          if k + 6 > t.count { return -1; }
+                 ^
+coax/lib/json/json.coax:172:37: mutant survived: -1 became 0
+          if k + 6 > t.count { return -1; }
+                                      ^
+coax/lib/json/json.coax:193:10: mutant survived: '<' became '<='
+      if e < 0 && i + w.count <= t.count && t[i..<i + w.count] == w { e = i + w.count; }
+           ^
+coax/lib/json/json.coax:193:12: mutant survived: 0 became 1
+      if e < 0 && i + w.count <= t.count && t[i..<i + w.count] == w { e = i + w.count; }
+             ^
+coax/lib/json/json.coax:195:8: mutant survived: '<' became '<='
+    if e < 0 {
+         ^
+coax/lib/json/json.coax:195:10: mutant survived: 0 became 1
+    if e < 0 {
+           ^
+coax/lib/json/json.coax:197:10: mutant survived: '<' became '<='
+      if k < t.count && t[k] == '-' { k += 1; }
+           ^
+coax/lib/json/json.coax:198:45: mutant survived: 57 became 58
+      if k >= t.count || t[k] < '0' || t[k] > '9' { return -1; }
+                                              ^
+coax/lib/json/json.coax:232:44: mutant survived: '<' became '<='
+    if !jv_ok(d, at) || d.nodes[at].key_from < 0 { return ""; }
+                                             ^
+coax/lib/json/json.coax:232:46: mutant survived: 0 became 1
+    if !jv_ok(d, at) || d.nodes[at].key_from < 0 { return ""; }
+                                               ^
+coax/lib/json/json.coax:240:23: mutant survived: '<' became '<='
+    for j: 0..<i { if k < 0 { return -1; } k = d.nodes[k].next; }
+                        ^
+coax/lib/json/json.coax:240:25: mutant survived: 0 became 1
+    for j: 0..<i { if k < 0 { return -1; } k = d.nodes[k].next; }
+                          ^
+coax/lib/json/json.coax:247:11: mutant survived: '>=' became '>'
+    while k >= 0 {
+            ^
+coax/lib/json/json.coax:247:14: mutant survived: 0 became 1
+    while k >= 0 {
+               ^
+coax/lib/json/json.coax:260:12: mutant survived: '>=' became '>'
+    return n >= 0 && cast(string) buf[0..<n] == s;
+             ^
+coax/lib/json/json.coax:260:15: mutant survived: 0 became 1
+    return n >= 0 && cast(string) buf[0..<n] == s;
+                ^
+coax/lib/json/json.coax:279:60: mutant survived: 57 became 58
+        while j < path.count && path[j] >= '0' && path[j] <= '9' { v = v * 10 + cast(int) (path[j] - '0'); j += 1; }
+                                                             ^
+coax/lib/json/json.coax:279:74: mutant survived: 10 became 11
+        while j < path.count && path[j] >= '0' && path[j] <= '9' { v = v * 10 + cast(int) (path[j] - '0'); j += 1; }
+                                                                           ^
+coax/lib/json/json.coax:281:35: mutant survived: 1 became 2
+        k = jv_at(d, k, v); i = j + 1;
+                                    ^
+coax/lib/json/json.coax:289:10: mutant survived: '<' became '<='
+      if k < 0 { return -1; }
+           ^
+coax/lib/json/json.coax:289:12: mutant survived: 0 became 1
+      if k < 0 { return -1; }
+             ^
+coax/lib/json/json.coax:303:20: mutant survived: 16 became 17
+    if s.count - i > 16 { return fallback; }
+                     ^
+coax/lib/json/json.coax:306:29: mutant survived: 57 became 58
+      if s[j] < '0' || s[j] > '9' { return fallback; }
+                              ^
+coax/lib/json/json.coax:349:30: mutant survived: 56319 became 56320
+      if cp >= 0xd800 && cp <= 0xdbff {
+                               ^
+coax/lib/json/json.coax:350:24: mutant survived: '<' became '<='
+        low := ifx i + 1 < raw.count && raw[i] == '\\' && raw[i + 1] == 'u' then jv_u4(raw, i + 2) else -1;
+                         ^
+coax/lib/json/json.coax:350:22: mutant survived: 1 became 2
+        low := ifx i + 1 < raw.count && raw[i] == '\\' && raw[i + 1] == 'u' then jv_u4(raw, i + 2) else -1;
+                       ^
+coax/lib/json/json.coax:350:103: mutant survived: -1 became 0
+        low := ifx i + 1 < raw.count && raw[i] == '\\' && raw[i + 1] == 'u' then jv_u4(raw, i + 2) else -1;
+                                                                                                        ^
+coax/lib/json/json.coax:351:34: mutant survived: 57343 became 57344
+        if low >= 0xdc00 && low <= 0xdfff { cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00); i += 6; } else { cp = 0xfffd; }
+                                   ^
+coax/lib/json/json.coax:351:103: mutant survived: 6 became 7
+        if low >= 0xdc00 && low <= 0xdfff { cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00); i += 6; } else { cp = 0xfffd; }
+                                                                                                        ^
+coax/lib/json/json.coax:354:10: mutant survived: '<' became '<='
+      if k < 0 { return -1; }
+           ^
+coax/lib/json/json.coax:354:12: mutant survived: 0 became 1
+      if k < 0 { return -1; }
+             ^
+coax/lib/json/json.coax:372:13: mutant survived: '>' became '>='
+    if at + k > out.count { return -1; }
+              ^
+coax/lib/json/json.coax:450:39: mutant survived: '<' became '<='
+      tmp[k] = cast(u8) ('0' + (ifx dgt < 0 then -dgt else dgt)); k += 1; x /= 10;
+                                        ^
+coax/lib/json/json.coax:450:41: mutant survived: 0 became 1
+      tmp[k] = cast(u8) ('0' + (ifx dgt < 0 then -dgt else dgt)); k += 1; x /= 10;
+                                          ^
+coax/lib/json/json.coax:501:11: mutant survived: '>=' became '>'
+    while c >= 0 {
+            ^
+coax/lib/json/json.coax:501:14: mutant survived: 0 became 1
+    while c >= 0 {
+               ^
+coax/lib/json/json.coax:512:11: mutant survived: '<' became '<='
+    while i < raw.count {
+            ^
+coax/lib/json/json.coax:521:16: mutant survived: '<' became '<='
+        if e + 1 < raw.count && raw[e] == '\\' && raw[e + 1] == 'u' {
+                 ^
+coax/lib/json/json.coax:521:14: mutant survived: 1 became 2
+        if e + 1 < raw.count && raw[e] == '\\' && raw[e + 1] == 'u' {
+               ^
+coax/lib/json/json.coax:523:62: mutant survived: '&&' became '||'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                                               ^
+coax/lib/json/json.coax:523:45: mutant survived: '&&' became '||'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                              ^
+coax/lib/json/json.coax:523:27: mutant survived: '&&' became '||'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                            ^
+coax/lib/json/json.coax:523:17: mutant survived: '>=' became '>'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                  ^
+coax/lib/json/json.coax:523:20: mutant survived: 55296 became 55297
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                     ^
+coax/lib/json/json.coax:523:35: mutant survived: '<=' became '<'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                    ^
+coax/lib/json/json.coax:523:38: mutant survived: 56319 became 56320
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                       ^
+coax/lib/json/json.coax:523:52: mutant survived: '>=' became '>'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                                     ^
+coax/lib/json/json.coax:523:55: mutant survived: 56320 became 56321
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                                        ^
+coax/lib/json/json.coax:523:69: mutant survived: '<=' became '<'
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                                                      ^
+coax/lib/json/json.coax:523:72: mutant survived: 57343 became 57344
+          if high >= 0xd800 && high <= 0xdbff && low >= 0xdc00 && low <= 0xdfff { e += 6; }
+                                                                         ^
+coax/lib/json/json.coax:526:33: mutant survived: the assignment was removed
+      if e > raw.count { o[0].bad = true; return; }
+                                  ^
+coax/lib/json/json.coax:526:35: mutant survived: true became false
+      if e > raw.count { o[0].bad = true; return; }
+                                    ^
+coax/lib/json/json.coax:526:26: mutant survived: 0 became 1
+      if e > raw.count { o[0].bad = true; return; }
+                           ^
+coax/lib/json/json.coax:529:10: mutant survived: '<' became '<='
+      if n < 0 { o[0].bad = true; return; }
+           ^
+coax/lib/json/json.coax:529:12: mutant survived: 0 became 1
+      if n < 0 { o[0].bad = true; return; }
+             ^
+coax/lib/json/json.coax:529:25: mutant survived: the assignment was removed
+      if n < 0 { o[0].bad = true; return; }
+                          ^
+coax/lib/json/json.coax:529:27: mutant survived: true became false
+      if n < 0 { o[0].bad = true; return; }
+                            ^
+coax/lib/json/json.coax:529:18: mutant survived: 0 became 1
+      if n < 0 { o[0].bad = true; return; }
+                   ^
+1065 mutants, 992 killed, 73 survived

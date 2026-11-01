@@ -1,0 +1,5 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+coax/lib/json/json.coax:313:10: mutant survived: 900719925474099 became 900719925474100
+      if v>900719925474099 || (v==900719925474099 && digit>2) {return fallback;}
+           ^
+1055 mutants, 1054 killed, 1 survived
