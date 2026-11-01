@@ -1,0 +1,40 @@
+store A, the export: 6 lines
+  line 1: stored
+  line 2: stored
+  line 3: stored
+  line 4: stored
+  line 5: refused: "invalid: bad signature"
+  line 6: stored
+  5 stored, 1 refused (first at line 5); verdict: refused lines: the owner reviews them
+store B, the shadow relay (it missed line 4): 5 lines
+  line 1: stored
+  line 2: stored
+  line 3: stored
+  line 4: refused: "invalid: bad signature"
+  line 5: stored
+  4 stored, 1 refused (first at line 4); verdict: refused lines: the owner reviews them
+equality: A has 5, B has 4; digests 172667b25fd3... and 80d7a0ae7a10...: different after 1 Negentropy round trip(s)
+  only in A: 0c13c6ed2696572356537f5a6b8340b3431a779cae2f96ae1bbb5df6f6f3f414
+shadow: 5 REQs replayed to both stores
+  project: A sends 1, B sends 1: match
+  issues: A sends 2, B sends 1: explained
+  comments: A sends 0, B sends 0: match
+  status: A sends 1, B sends 1: match
+  repo: A sends 1, B sends 1: match
+cutover: no: a forged line and an event B lacks
+store B, the whole export again: 6 lines
+  line 1: kept: "duplicate: already have this event"
+  line 2: kept: "duplicate: already have this event"
+  line 3: kept: "duplicate: already have this event"
+  line 4: stored
+  line 5: refused: "invalid: bad signature"
+  line 6: kept: "duplicate: already have this event"
+  1 stored, 1 refused (first at line 5); verdict: refused lines: the owner reviews them
+equality: A has 5, B has 5; digests 172667b25fd3... and 172667b25fd3...: equal
+shadow: 5 REQs replayed to both stores
+  project: A sends 1, B sends 1: match
+  issues: A sends 2, B sends 2: match
+  comments: A sends 0, B sends 0: match
+  status: A sends 1, B sends 1: match
+  repo: A sends 1, B sends 1: match
+cutover: the stores agree; the forged line still needs the owner's review

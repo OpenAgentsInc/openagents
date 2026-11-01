@@ -1,0 +1,72 @@
+// Importing a relay export: the reading (Nostr From Scratch, chapter 103).
+// Each line is read and verified as a live EVENT is, then offered to the
+// store; relay_import.coax (#authority) decides what the results count as.
+// The store is the caller's: rsd_admit for an in-memory store. Writing a
+// --store file the relay can start from (rsd_admit_saved) is a wiring this
+// file doesn't do. The checks that verify signatures are in
+// nostr/examples/checks/relay-cutover.coax, run once rather than under every
+// mutant of relay_import.coax.
+#load "relay_import.coax";
+
+// book:begin line
+// Imports one line: every id and signature checked again, then the store.
+// now is the export's time: an event expired by then is refused.
+ri_line :: (s: [] RsdStore, line: string, ended: bool, now: int, scratch: [] u8) -> int {
+  f := ri_frame(line, ended);
+  if f != RS_ACCEPT { return f; }
+  r := rs_admit_read(line, now, false, false, scratch);
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(line, scratch, false)); }
+  c := ri_check(r);
+  if c != RS_ACCEPT { return c; }
+  return rsd_admit(s, r, line);
+}
+// Imports a whole export into s, counting every line's outcome in rep (and
+// writing line k's outcome to outcome[k] while outcome has room).
+ri_import :: (s: [] RsdStore, export: string, now: int, scratch: [] u8, rep: [] RiReport, outcome: [] int) {
+  rep[0] = RiReport.{};
+  at := 0;
+  while at < export.count {
+    to := ri_line_end(export, at);
+    o := ri_line(s, export[at..<to], to < export.count, now, scratch);
+    if rep[0].lines < outcome.count { outcome[rep[0].lines] = o; }
+    ri_tally(rep, o);
+    at = to + 1;
+  }
+}
+// book:end line
+
+// These checks refuse before any signature is verified.
+#test "lines refused before BIP-340: cut, empty, a changed id, a future event" #steps 400000000 {
+  arena: [8192] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  scratch: [8192] u8; rep: [1] RiReport; o: [4] int;
+  ri_import(s[..], RI_T_LINE, 1793220000, scratch[..], rep[..], o[..]);
+  #assert rep[0].lines == 1 && o[0] == RI_CUT && rep[0].first_refused == 1 && s[0].n == 0 && ri_verdict(rep[0]) == RI_INCOMPLETE;
+  ri_import(s[..], "\n", 1793220000, scratch[..], rep[..], o[..]);
+  #assert rep[0].lines == 1 && o[0] == RI_EMPTY && ri_verdict(rep[0]) == RI_REFUSED;
+  ri_import(s[..], "", 1793220000, scratch[..], rep[..], o[..]);
+  #assert rep[0].lines == 0 && ri_verdict(rep[0]) == RI_CLEAN;
+  b: [1024] u8; for i: 0..<RI_T_LINE.count { b[i] = RI_T_LINE[i]; } b[RI_T_LINE.count] = '\n';
+  // 16 minutes before the event: too far in the future, refused before the signature
+  ri_import(s[..], cast(string) b[0..<RI_T_LINE.count + 1], 1793214821 - 901, scratch[..], rep[..], o[..]);
+  #assert o[0] == RS_TIME && s[0].n == 0;
+  // "OpenAgents" -> "openAgents": the id no longer matches
+  at := 0; while !(b[at] == 'O' && b[at + 1] == 'p') { at += 1; } b[at] = 'o';
+  ri_import(s[..], cast(string) b[0..<RI_T_LINE.count + 1], 1793220000, scratch[..], rep[..], o[0..<0]);
+  #assert rep[0].count[RS_BAD_ID] == 1 && rep[0].first_refused == 1 && s[0].n == 0 && o[0] == RS_TIME;
+}
+#load "fixtures/relay_export.coax";
+// Two verified lines: the export's first (stored) and its forgery (line 5).
+#test "a real line is stored, a forged one refused at BIP-340" #steps 2000000000 {
+  arena: [8192] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  scratch: [8192] u8; rep: [1] RiReport; o: [4] int; two: [4096] u8; n := 0;
+  at := 0; line := 1;
+  while at < RX_EXPORT.count {
+    to := ri_line_end(RX_EXPORT, at);
+    if line == 1 || line == 5 { for i: at..<to + 1 { two[n] = RX_EXPORT[i]; n += 1; } }
+    at = to + 1; line += 1;
+  }
+  ri_import(s[..], cast(string) two[0..<n], 1793220000, scratch[..], rep[..], o[..]);
+  #assert rep[0].lines == 2 && o[0] == RS_ACCEPT && o[1] == RS_BAD_SIG && s[0].n == 1 && rsd_text(s[..], 0) == RI_T_LINE;
+}
+// The export's first line (the openagents repository, kind 30617, created 1793214821).
+RI_T_LINE :: "{\"id\":\"813d9fb02bd78ce24200ba986b62ef727f0c032f712cff82241bd465f4bc9d21\",\"pubkey\":\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\",\"created_at\":1793214821,\"kind\":30617,\"tags\":[[\"d\",\"openagents\"],[\"name\",\"OpenAgents\"],[\"description\",\"The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.\"],[\"web\",\"https://github.com/OpenAgentsInc/openagents\"],[\"clone\",\"https://github.com/OpenAgentsInc/openagents.git\"],[\"relays\",\"wss://relay.openagents.com\"],[\"r\",\"0aa2d953dd48f0d402ea7c826bad90b2548524c2\",\"euc\"]],\"content\":\"\",\"sig\":\"56c7a3094a3c56049f98fb26bd33bb5d09face83ba8981b8b78903fd82630dbb317898c211bc2d15ba88f0891900fb5805488b82dfdb76d22ecff49e412d71eb\"}";

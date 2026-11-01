@@ -1174,6 +1174,17 @@
         "release"
       ],
       "timeout": 600
+    },
+    {
+      "source": "nostr/examples/relay-cutover.coax",
+      "chapter": "nostr/book/ch103-replace-relay-openagents-com.md",
+      "stdout": "nostr/fixtures/relay-cutover.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 240
     }
   ]
 }

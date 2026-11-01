@@ -1,0 +1,190 @@
+// The shadow comparer (Nostr From Scratch, chapter 103; coax/nostr.md
+// section 17, phase R3: "readers that compare"). During the shadow period
+// both relays receive the same writes; this replays the same REQ filters
+// to both stores and compares the answers with chapter 94's method: run
+// both, normalize (each answer becomes its ids in order), compare, and
+// classify every difference.
+//
+// Classes, in the order they are tried:
+// - match: the same ids in the same order;
+// - order: the same ids in another order (two implementations may merge
+//   several filters differently; chapter 94's owner question 2);
+// - explained: with the ids of the known set difference (relay_equal.coax's
+//   only_a and only_b) taken out, the answers agree, or one is the start
+//   of the other and that answer was cut at the filter's limit, so a known
+//   missing event pushed an older one out of it;
+// - unexplained: anything else. One unexplained answer stops a cutover.
+#load "relay_equal.coax";
+#authority;
+
+// book:begin classes
+SH_MATCH :: 0; SH_ORDER :: 1; SH_EXPLAINED :: 2; SH_UNEXPLAINED :: 3;
+SH_FILTER :: 4;   // the filter text doesn't read: neither store is asked
+SH_CLASSES :: 5;
+SH_NAME :: [5] string.["match", "order", "explained", "unexplained", "bad filter"];
+// One replay: REQs asked and each class's count.
+ShReport :: struct { reqs: int; count: [SH_CLASSES] int; }
+// One answer, normalized: its ids in the order the store sent them.
+ShAnswer :: struct { n: int; ids: [RS_MAX_LIMIT] NegId; }
+// book:end classes
+
+// book:begin classify
+sh_same :: (a: NegId, b: NegId) -> bool {
+  for k: 0..<32 { if a.b[k] != b.b[k] { return false; } }
+  return true;
+}
+sh_in :: (ids: [] NegId, n: int, id: NegId) -> bool {
+  for i: 0..<n { if sh_same(ids[i], id) { return true; } }
+  return false;
+}
+// Whether id is in the known set difference.
+sh_known :: (d: ReDiff, id: NegId) -> bool {
+  return sh_in(d.only_a, d.only_a_n, id) || sh_in(d.only_b, d.only_b_n, id);
+}
+// The answer without the known difference's ids.
+sh_strip :: (x: ShAnswer, d: ReDiff) -> ShAnswer {
+  y: ShAnswer;
+  for i: 0..<x.n { if !sh_known(d, x.ids[i]) { y.ids[y.n] = x.ids[i]; y.n += 1; } }
+  return y;
+}
+// Whether the first n ids of a and b are the same, in order.
+sh_prefix :: (a: ShAnswer, b: ShAnswer, n: int) -> bool {
+  for i: 0..<n { if !sh_same(a.ids[i], b.ids[i]) { return false; } }
+  return true;
+}
+// Whether the shorter of a and b is the start of the other.
+sh_starts :: (a: ShAnswer, b: ShAnswer) -> bool {
+  for i: 0..<a.n {
+    if i == b.n { return true; }
+    if !sh_same(a.ids[i], b.ids[i]) { return false; }
+  }
+  return true;
+}
+// The class of answers a and b to one filter whose limit is limit.
+sh_classify :: (a: ShAnswer, b: ShAnswer, limit: int, d: ReDiff) -> int {
+  if a.n == b.n && sh_prefix(a, b, a.n) { return SH_MATCH; }
+  if a.n == b.n {
+    all := true;
+    bi := b.ids;
+    for i: 0..<a.n { if !sh_in(bi[..], b.n, a.ids[i]) { all = false; } }
+    if all { return SH_ORDER; }
+  }
+  sa := sh_strip(a, d); sb := sh_strip(b, d);
+  // a stripped answer shorter than the other's must come from a full answer
+  if sh_starts(sa, sb) && (sa.n >= sb.n || a.n == limit) && (sb.n >= sa.n || b.n == limit) { return SH_EXPLAINED; }
+  return SH_UNEXPLAINED;
+}
+// book:end classify
+
+// book:begin replay
+// The memory one REQ filter reads into (relay.coax's sizes).
+ShWork :: struct { strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8; idx: [RS_MAX_LIMIT] int; }
+// A store's answer to f at now, normalized to ids.
+sh_answer :: (s: [] RsdStore, f: NostrFilter, now: int, w: [] ShWork) -> ShAnswer {
+  x: ShAnswer;
+  x.n = rsd_query(s, f, now, w[0].idx[..]);
+  for i: 0..<x.n { x.ids[i].b = s[0].recs[w[0].idx[i]].id; }
+  return x;
+}
+// Asks both stores one filter (its JSON text) at now: the class.
+sh_req :: (a: [] RsdStore, b: [] RsdStore, filter: string, now: int, d: ReDiff, w: [] ShWork) -> int {
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = w[0].strs[..], ints = w[0].ints[..], tags = w[0].tags[..], bytes = w[0].bytes[..]};
+  f: [1] NostrFilter;
+  if filter_read(filter, f[..], sp[..]) != FR_OK { return SH_FILTER; }
+  return sh_classify(sh_answer(a, f[0], now, w), sh_answer(b, f[0], now, w), rs_limit(f[0]), d);
+}
+// Replays every filter to both stores, counting classes in rep and writing
+// filter k's class to classes[k] while classes has room.
+sh_replay :: (a: [] RsdStore, b: [] RsdStore, filters: [] string, now: int, d: ReDiff, w: [] ShWork, rep: [] ShReport, classes: [] int) {
+  rep[0] = ShReport.{};
+  for k: 0..<filters.count {
+    c := sh_req(a, b, filters[k], now, d, w);
+    if k < classes.count { classes[k] = c; }
+    rep[0].reqs += 1; rep[0].count[c] += 1;
+  }
+}
+// Whether a replay allows a cutover: no unexplained answer and no filter
+// that failed to read (the replay asked what it meant to ask).
+sh_passes :: (rep: ShReport) -> bool { return rep.count[SH_UNEXPLAINED] == 0 && rep.count[SH_FILTER] == 0; }
+// book:end replay
+
+// ---- checks ------------------------------------------------------------------
+// An answer of n ids whose first bytes are x, y, z.
+sh_t :: (n: int, x: int, y: int, z: int) -> ShAnswer {
+  a: ShAnswer; a.n = n; a.ids[0].b[0] = cast(u8) x; a.ids[1].b[0] = cast(u8) y; a.ids[2].b[0] = cast(u8) z;
+  return a;
+}
+ShT :: struct { oa: [4] NegId; ob: [4] NegId; d: [1] ReDiff; }
+// A known difference: na ids (id a) only in the first store, nb (id b) only in the second.
+sh_t_diff :: (t: [] ShT, na: int, a: int, nb: int, b: int) -> ReDiff {
+  d: ReDiff; d.only_a = t[0].oa[..]; d.only_b = t[0].ob[..];
+  d.only_a[0].b[0] = cast(u8) a; d.only_b[0].b[0] = cast(u8) b; d.only_a_n = na; d.only_b_n = nb;
+  return d;
+}
+#test "match, order, unexplained" {
+  t: [1] ShT; d := sh_t_diff(t[..], 0, 0, 0, 0);
+  #assert sh_classify(sh_t(3, 3, 2, 1), sh_t(3, 3, 2, 1), 127, d) == SH_MATCH;
+  #assert sh_classify(sh_t(0, 0, 0, 0), sh_t(0, 0, 0, 0), 127, d) == SH_MATCH;
+  #assert sh_classify(sh_t(3, 3, 2, 1), sh_t(3, 2, 3, 1), 127, d) == SH_ORDER;
+  #assert sh_classify(sh_t(3, 4, 2, 1), sh_t(3, 3, 2, 1), 127, d) == SH_UNEXPLAINED;
+  #assert sh_classify(sh_t(3, 3, 2, 1), sh_t(3, 3, 2, 4), 127, d) == SH_UNEXPLAINED;
+  #assert sh_classify(sh_t(3, 3, 2, 1), sh_t(2, 3, 2, 0), 127, d) == SH_UNEXPLAINED;
+  #assert sh_classify(sh_t(2, 3, 2, 0), sh_t(3, 3, 2, 1), 127, d) == SH_UNEXPLAINED;
+  #assert sh_classify(sh_t(2, 3, 1, 0), sh_t(2, 3, 2, 0), 127, d) == SH_UNEXPLAINED;
+}
+#test "a known missing event explains a shorter answer, only that event" {
+  t: [1] ShT;
+  d := sh_t_diff(t[..], 1, 2, 0, 0);
+  #assert sh_classify(sh_t(3, 3, 2, 1), sh_t(2, 3, 1, 0), 127, d) == SH_EXPLAINED;
+  #assert sh_classify(sh_t(2, 3, 1, 0), sh_t(3, 3, 2, 1), 127, d) == SH_EXPLAINED;
+  #assert sh_classify(sh_t(3, 3, 2, 1), sh_t(1, 3, 0, 0), 127, d) == SH_UNEXPLAINED;
+  #assert sh_classify(sh_t(3, 3, 2, 1), sh_t(2, 1, 3, 0), 127, d) == SH_UNEXPLAINED;
+  // known on the other side too
+  d = sh_t_diff(t[..], 0, 0, 1, 5);
+  #assert sh_classify(sh_t(1, 3, 0, 0), sh_t(2, 5, 3, 0), 127, d) == SH_EXPLAINED;
+  #assert sh_known(d, sh_t(1, 5, 0, 0).ids[0]) && !sh_known(d, sh_t(1, 3, 0, 0).ids[0]);
+  // stripping keeps the order of what is left
+  d = sh_t_diff(t[..], 1, 2, 0, 0);
+  x := sh_strip(sh_t(3, 3, 2, 1), d);
+  #assert x.n == 2 && x.ids[0].b[0] == 3 && x.ids[1].b[0] == 1;
+  #assert sh_starts(sh_t(2, 3, 1, 0), sh_t(3, 3, 1, 4)) && sh_starts(sh_t(3, 3, 1, 4), sh_t(2, 3, 1, 0)) && !sh_starts(sh_t(2, 3, 1, 0), sh_t(2, 3, 4, 0));
+  #assert !sh_starts(sh_t(1, 6, 0, 0), sh_t(2, 8, 7, 0)) && sh_starts(sh_t(0, 0, 0, 0), sh_t(1, 5, 0, 0));
+}
+#test "at the limit, a known event pushes an older one out" {
+  t: [1] ShT;
+  d := sh_t_diff(t[..], 1, 9, 0, 0);
+  // a holds 9 (newest), b lacks it; limit 2: a = [9, 8], b = [8, 7]
+  #assert sh_classify(sh_t(2, 9, 8, 0), sh_t(2, 8, 7, 0), 2, d) == SH_EXPLAINED;
+  #assert sh_classify(sh_t(2, 8, 7, 0), sh_t(2, 9, 8, 0), 2, d) == SH_EXPLAINED;
+  // under the limit the older one has no excuse
+  #assert sh_classify(sh_t(2, 9, 8, 0), sh_t(2, 8, 7, 0), 3, d) == SH_UNEXPLAINED;
+  #assert sh_classify(sh_t(2, 8, 7, 0), sh_t(2, 9, 8, 0), 3, d) == SH_UNEXPLAINED;
+  // a cut answer must still start the same way
+  #assert sh_classify(sh_t(2, 9, 6, 0), sh_t(2, 8, 7, 0), 2, d) == SH_UNEXPLAINED;
+  #assert sh_classify(sh_t(2, 8, 7, 0), sh_t(2, 9, 6, 0), 2, d) == SH_UNEXPLAINED;
+}
+#test "replay over two stores" #steps 100000000 {
+  arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  arena2: [4096] u8; recs2: [8] RsdRec; s2: [1] RsdStore; s2[0].arena = arena2[..]; s2[0].recs = recs2[..];
+  for i: 1..<5 { #assert ns_store_admit(s[..], nss_t_rec(cast(u8) i, 1, 100 * i), "x", true) == NSS_ACCEPT; }
+  for i: 1..<5 { if i != 3 { #assert ns_store_admit(s2[..], nss_t_rec(cast(u8) i, 1, 100 * i), "x", true) == NSS_ACCEPT; } }
+  #assert ns_store_admit(s2[..], nss_t_rec(7, 7, 50), "x", true) == NSS_ACCEPT;
+  oa: [4] NegId; ob: [4] NegId; d: [1] ReDiff; d[0].only_a = oa[..]; d[0].only_b = ob[..];
+  w: [1] ShWork; rep: [1] ShReport; cls: [8] int;
+  filters := [6] string.["{\"kinds\":[1]}", "{\"kinds\":[1],\"limit\":1}", "{\"kinds\":[1],\"until\":250}", "{\"kinds\":[7]}", "{\"kinds\":", "{\"kinds\":[1],\"limit\":2}"];
+  // with no known difference: the kind 1 answers and the kind 7 answer differ
+  sh_replay(s[..], s2[..], filters[..], 1000, d[0], w[..], rep[..], cls[..]);
+  #assert rep[0].reqs == 6 && cls[0] == SH_UNEXPLAINED && cls[1] == SH_MATCH && cls[2] == SH_MATCH && cls[3] == SH_UNEXPLAINED;
+  #assert cls[4] == SH_FILTER && cls[5] == SH_UNEXPLAINED && rep[0].count[SH_UNEXPLAINED] == 3 && !sh_passes(rep[0]);
+  // with the set difference known, every answer is explained
+  ia: [8] NegItem; ib: [8] NegItem; q: [8192] u8; r: [8192] u8;
+  #assert re_stores(s[..], s2[..], 1000, ia[..], ib[..], d[..], q[..], r[..]) == RE_DIFFER && d[0].only_a_n == 1 && d[0].only_b_n == 1;
+  sh_replay(s[..], s2[..], filters[0..<4], 1000, d[0], w[..], rep[..], cls[0..<2]);
+  #assert cls[0] == SH_EXPLAINED && cls[1] == SH_MATCH && rep[0].count[SH_EXPLAINED] == 2 && rep[0].count[SH_MATCH] == 2 && sh_passes(rep[0]);
+  sh_replay(s[..], s2[..], filters[5..<6], 1000, d[0], w[..], rep[..], cls[..]);
+  #assert cls[0] == SH_EXPLAINED && sh_passes(rep[0]);
+  rep[0] = ShReport.{}; rep[0].count[SH_FILTER] = 1; #assert !sh_passes(rep[0]);
+  rep[0] = ShReport.{}; rep[0].count[SH_UNEXPLAINED] = 1; #assert !sh_passes(rep[0]);
+  rep[0] = ShReport.{}; rep[0].count[SH_ORDER] = 1; rep[0].count[SH_EXPLAINED] = 1; #assert sh_passes(rep[0]);
+  #assert SH_NAME[SH_FILTER] == "bad filter";
+}

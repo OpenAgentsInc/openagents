@@ -1,0 +1,137 @@
+// Importing a relay export: the decisions (Nostr From Scratch, chapter 103;
+// coax/nostr.md section 17, phase R3). The export is JSON lines: one event
+// object per line, each line ended by "\n", at most RI_LINE_MAX bytes, in
+// the order the old relay stored them (its ingest order), so replaceable and
+// addressable events replace each other here as they did there. Any JSON
+// spacing is allowed: the id is recomputed from the values, not the bytes.
+//
+// relay_import_run.coax reads every line and checks it again exactly as a
+// live EVENT is (relay_server.coax's rs_admit_read and rs_admit_verified:
+// the id recomputed, BIP-340 verified, the relay's policy at the export's
+// time), except that no NIP-42 login is needed. This file decides what each
+// line's result counts as and whether the whole import may serve in the old
+// relay's place (ri_verdict). A refused line is counted; the import never
+// stops on one line. The split follows store.coax and store_core.coax: the
+// decisions here have cheap checks for mutation, and the file that calls
+// the verifier is checked by chapter 103's example checks.
+#load "store.coax";
+#authority;
+
+// book:begin outcomes
+// The Rust relay's import-jsonl line limit (MAX_JSONL_EVENT_BYTES), which is
+// also the relay's message limit.
+RI_LINE_MAX :: 131072;
+// A line's outcome is a relay reason (RS_ACCEPT stored, RS_DUP, RS_BAD_ID,
+// RS_BAD_SIG, RS_EXPIRED, ...) or one of these, which only an export has.
+RI_EMPTY :: RS_REASONS;          // an empty line
+RI_LONG :: RS_REASONS + 1;       // a line over RI_LINE_MAX bytes
+RI_CUT :: RS_REASONS + 2;        // the last line has no "\n": the export was cut
+RI_EPHEMERAL :: RS_REASONS + 3;  // kinds 20000-29999 are never stored, so never exported
+RI_OUTCOMES :: RS_REASONS + 4;
+// What one import did: lines read, each outcome's count, and the first
+// refused line (1-based, 0 when none).
+RiReport :: struct { lines: int; count: [RI_OUTCOMES] int; first_refused: int; }
+// The verdict on a whole import.
+RI_CLEAN :: 0;       // every line is in the store, or was replaced or had expired
+RI_REFUSED :: 1;     // lines were refused (forged, malformed, policy): the owner reviews them
+RI_INCOMPLETE :: 2;  // the store doesn't hold the export (cut, too long, full): never serve it
+// book:end outcomes
+
+#test "outcomes extend the relay's reasons" {
+  #assert RI_EMPTY == 27 && RI_CUT == 29 && RI_OUTCOMES == 31 && RS_ACCEPT == 0;
+}
+
+// book:begin frame
+// The checks on a line before it is read as an event.
+ri_frame :: (line: string, ended: bool) -> int {
+  if !ended { return RI_CUT; }
+  if line.count == 0 { return RI_EMPTY; }
+  if line.count > RI_LINE_MAX { return RI_LONG; }
+  return RS_ACCEPT;
+}
+// The outcome of a read and verified line before the store: RS_ACCEPT means
+// "offer it to the store".
+ri_check :: (r: RsAdmit) -> int {
+  if r.reason != RS_ACCEPT { return r.reason; }
+  if r.kclass == RS_EPHEMERAL { return RI_EPHEMERAL; }
+  return RS_ACCEPT;
+}
+// book:end frame
+
+#test "a line's frame" {
+  #assert ri_frame("{}", true) == RS_ACCEPT && ri_frame("{}", false) == RI_CUT && ri_frame("", false) == RI_CUT;
+  #assert ri_frame("", true) == RI_EMPTY;
+  long: [RI_LINE_MAX + 1] u8;
+  #assert ri_frame(cast(string) long[..], true) == RI_LONG && ri_frame(cast(string) long[0..<RI_LINE_MAX], true) == RS_ACCEPT;
+}
+#test "a read line's check" {
+  r: RsAdmit; r.reason = RS_ACCEPT; r.kclass = RS_REGULAR;
+  #assert ri_check(r) == RS_ACCEPT;
+  r.kclass = RS_EPHEMERAL; #assert ri_check(r) == RI_EPHEMERAL;
+  r.kclass = RS_ADDRESSABLE; #assert ri_check(r) == RS_ACCEPT;
+  r.reason = RS_BAD_SIG; #assert ri_check(r) == RS_BAD_SIG;
+  r.kclass = RS_EPHEMERAL; #assert ri_check(r) == RS_BAD_SIG;
+}
+
+// book:begin tally
+// Where the line starting at at ends: the index of its "\n", or export.count.
+ri_line_end :: (export: string, at: int) -> int {
+  to := at;
+  while to < export.count && export[to] != '\n' { to += 1; }
+  return to;
+}
+// Whether an outcome leaves the line's event where the old relay had it:
+// stored, already stored, or replaced by a newer version.
+ri_kept :: (o: int) -> bool { return o == RS_ACCEPT || o == RS_DUP || o == RS_SUPERSEDED; }
+// Counts one line's outcome o; the first refused line is remembered.
+ri_tally :: (rep: [] RiReport, o: int) {
+  rep[0].lines += 1;
+  rep[0].count[o] += 1;
+  if !ri_kept(o) && o != RS_EXPIRED && rep[0].first_refused == 0 { rep[0].first_refused = rep[0].lines; }
+}
+// book:end tally
+
+#test "lines end at newline or at the end" {
+  #assert ri_line_end("ab\ncd", 0) == 2 && ri_line_end("ab\ncd", 3) == 5 && ri_line_end("\n", 0) == 0 && ri_line_end("", 0) == 0;
+  #assert ri_line_end("abc\nd", 0) == 3 && ri_line_end("a\n", 0) == 1;
+}
+#test "tallies" {
+  rep: [1] RiReport;
+  ri_tally(rep[..], RS_ACCEPT); ri_tally(rep[..], RS_DUP); ri_tally(rep[..], RS_SUPERSEDED); ri_tally(rep[..], RS_EXPIRED);
+  #assert rep[0].lines == 4 && rep[0].first_refused == 0 && rep[0].count[RS_ACCEPT] == 1 && rep[0].count[RS_EXPIRED] == 1;
+  ri_tally(rep[..], RS_BAD_SIG); ri_tally(rep[..], RI_CUT);
+  #assert rep[0].lines == 6 && rep[0].first_refused == 5 && rep[0].count[RS_BAD_SIG] == 1 && rep[0].count[RI_CUT] == 1;
+  #assert ri_verdict(rep[0]) == RI_INCOMPLETE;
+}
+
+// book:begin verdict
+// The verdict: incomplete when the store can't hold what the export holds,
+// refused when any line was refused, clean otherwise. Expired events are
+// dropped on purpose (the old relay no longer serves them either).
+ri_verdict :: (rep: RiReport) -> int {
+  if rep.count[RI_CUT] > 0 || rep.count[RI_LONG] > 0 || rep.count[RS_FULL] > 0 { return RI_INCOMPLETE; }
+  kept := rep.count[RS_ACCEPT] + rep.count[RS_DUP] + rep.count[RS_SUPERSEDED] + rep.count[RS_EXPIRED];
+  if kept != rep.lines { return RI_REFUSED; }
+  return RI_CLEAN;
+}
+// book:end verdict
+
+#test "the verdict" {
+  r: RiReport;
+  #assert ri_verdict(r) == RI_CLEAN;
+  r.lines = 4; r.count[RS_ACCEPT] = 1; r.count[RS_DUP] = 1; r.count[RS_SUPERSEDED] = 1; r.count[RS_EXPIRED] = 1;
+  #assert ri_verdict(r) == RI_CLEAN;
+  // distinct counts, so each term is its own
+  u: RiReport; u.lines = 7; u.count[RS_ACCEPT] = 3; u.count[RS_DUP] = 1; u.count[RS_SUPERSEDED] = 2; u.count[RS_EXPIRED] = 1;
+  #assert ri_verdict(u) == RI_CLEAN;
+  u.count[RS_ACCEPT] = 1; u.count[RS_DUP] = 3; #assert ri_verdict(u) == RI_CLEAN;
+  r.lines = 5; #assert ri_verdict(r) == RI_REFUSED;
+  r.count[RS_BAD_SIG] = 1; #assert ri_verdict(r) == RI_REFUSED;
+  r.lines = 3; r.count[RS_BAD_SIG] = 0; #assert ri_verdict(r) == RI_REFUSED;
+  r.lines = 4; r.count[RI_CUT] = 1; #assert ri_verdict(r) == RI_INCOMPLETE;
+  r.count[RI_CUT] = 0; r.count[RI_LONG] = 1; #assert ri_verdict(r) == RI_INCOMPLETE;
+  r.count[RI_LONG] = 0; r.count[RS_FULL] = 1; #assert ri_verdict(r) == RI_INCOMPLETE;
+  r.count[RS_FULL] = 0; #assert ri_verdict(r) == RI_CLEAN;
+  #assert ri_kept(RS_ACCEPT) && ri_kept(RS_DUP) && ri_kept(RS_SUPERSEDED) && !ri_kept(RS_EXPIRED) && !ri_kept(RS_BAD_SIG) && !ri_kept(RI_CUT);
+}
+

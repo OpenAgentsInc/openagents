@@ -1,0 +1,123 @@
+// book:begin example
+// Chapter 103: a rehearsal of replacing relay.openagents.com, offline. A
+// six-line export (five events from the recorded 2026-10-28 capture and one
+// forgery) is imported into store A with every id and signature checked
+// again; store B, the shadow relay, missed one write. The equality check
+// names the missing event, the shadow comparer explains the one answer it
+// changes, and the cutover gate stays shut until both are clean.
+#load "../../coax/lib/nostr/relay_import_run.coax";
+#load "../../coax/lib/nostr/relay_shadow.coax";
+#load "../../coax/lib/nostr/fixtures/relay_export.coax";
+#import "Basic";
+
+// The export's clock: after its newest event (1793218893).
+NOW :: 1793220000;
+// The Coax project page's five REQ filters (chapter 36's recording).
+SUBS :: [5] string.["project", "issues", "comments", "status", "repo"];
+REQS :: [5] string.[
+  "{\"kinds\":[30621,30623],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],\"#d\":[\"coax\"]}",
+  "{\"kinds\":[1621],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"],\"#a\":[\"30621:9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax\"]}",
+  "{\"kinds\":[1111],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"]}",
+  "{\"kinds\":[1630,1631,1632,1633],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"]}",
+  "{\"kinds\":[30617],\"authors\":[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\"]}"];
+
+// One relay's store.
+Store :: struct { arena: [65536] u8; recs: [32] RsdRec; s: [1] RsdStore; }
+store_init :: (t: [] Store) { t[0].s[0] = RsdStore.{}; t[0].s[0].arena = t[0].arena[..]; t[0].s[0].recs = t[0].recs[..]; }
+// Everything else the run needs.
+Work :: struct {
+  scratch: [65536] u8; rep: [1] RiReport; outcome: [8] int; skip: [8192] u8;
+  ia: [32] NegItem; ib: [32] NegItem; only_a: [32] NegId; only_b: [32] NegId; d: [1] ReDiff; q: [16384] u8; r: [16384] u8;
+  sw: [1] ShWork; srep: [1] ShReport; cls: [8] int;
+}
+// book:end example
+
+// book:begin show
+HEX :: "0123456789abcdef";
+// Prints the first n bytes of an id as hex.
+put_hex :: (id: [32] u8, n: int) {
+  out: [64] u8;
+  for i: 0..<n { out[2 * i] = HEX[id[i] >> 4]; out[2 * i + 1] = HEX[id[i] & 15]; }
+  print("%", cast(string) out[0..<2 * n]);
+}
+put_outcome :: (o: int) {
+  if o == RI_EMPTY { print("refused: empty line"); }
+  else if o == RI_LONG { print("refused: line too long"); }
+  else if o == RI_CUT { print("refused: the export ends inside this line"); }
+  else if o == RI_EPHEMERAL { print("refused: ephemeral events are never stored"); }
+  else if o == RS_ACCEPT { print("stored"); }
+  else if ri_kept(o) { print("kept: \"%: %\"", rs_prefix(o), rs_text(o)); }
+  else { print("refused: \"%: %\"", rs_prefix(o), rs_text(o)); }
+}
+VERDICT :: [3] string.["clean", "refused lines: the owner reviews them", "incomplete: never serve this store"];
+EQUAL :: [4] string.["equal", "different", "different, unnamed", "error"];
+// book:end show
+
+// book:begin import
+// Imports export into t and prints each line's outcome and the verdict.
+import :: (t: [] Store, w: [] Work, export: string, label: string) -> int {
+  ri_import(t[0].s[..], export, NOW, w[0].scratch[..], w[0].rep[..], w[0].outcome[..]);
+  rep := w[0].rep[0];
+  print("%: % lines\n", label, rep.lines);
+  for k: 0..<rep.lines { print("  line %: ", k + 1); put_outcome(w[0].outcome[k]); print("\n"); }
+  v := ri_verdict(rep);
+  print("  % stored, % refused (first at line %); verdict: %\n", rep.count[RS_ACCEPT], rep.lines - rep.count[RS_ACCEPT] - rep.count[RS_DUP] - rep.count[RS_SUPERSEDED] - rep.count[RS_EXPIRED], rep.first_refused, VERDICT[v]);
+  return v;
+}
+// The export without line skip (1-based): what a relay that missed it holds.
+without :: (w: [] Work, export: string, skip: int) -> string {
+  at := 0; line := 1; n := 0;
+  while at < export.count {
+    to := ri_line_end(export, at);
+    if line != skip { for i: at..<to + 1 { w[0].skip[n] = export[i]; n += 1; } }
+    at = to + 1; line += 1;
+  }
+  return cast(string) w[0].skip[0..<n];
+}
+// book:end import
+
+// book:begin compare
+compare :: (a: [] Store, b: [] Store, w: [] Work) -> int {
+  w[0].d[0] = ReDiff.{}; w[0].d[0].only_a = w[0].only_a[..]; w[0].d[0].only_b = w[0].only_b[..];
+  v := re_stores(a[0].s[..], b[0].s[..], NOW, w[0].ia[..], w[0].ib[..], w[0].d[..], w[0].q[..], w[0].r[..]);
+  d := w[0].d[0];
+  print("equality: A has %, B has %; digests ", d.a_n, d.b_n);
+  put_hex(d.a_digest, 6); print("... and "); put_hex(d.b_digest, 6); print("...: %", EQUAL[v]);
+  if v == RE_DIFFER || v == RE_UNNAMED { print(" after % Negentropy round trip(s)", d.rounds); }
+  print("\n");
+  for i: 0..<d.only_a_n { print("  only in A: "); put_hex(d.only_a[i].b, 32); print("\n"); }
+  for i: 0..<d.only_b_n { print("  only in B: "); put_hex(d.only_b[i].b, 32); print("\n"); }
+  return v;
+}
+shadow :: (a: [] Store, b: [] Store, w: [] Work) -> bool {
+  reqs := REQS;
+  sh_replay(a[0].s[..], b[0].s[..], reqs[..], NOW, w[0].d[0], w[0].sw[..], w[0].srep[..], w[0].cls[..]);
+  print("shadow: % REQs replayed to both stores\n", w[0].srep[0].reqs);
+  for k: 0..<REQS.count {
+    f: [1] NostrFilter;
+    sp: [1] FrSpace; sp[0] = FrSpace.{strs = w[0].sw[0].strs[..], ints = w[0].sw[0].ints[..], tags = w[0].sw[0].tags[..], bytes = w[0].sw[0].bytes[..]};
+    if filter_read(REQS[k], f[..], sp[..]) != FR_OK { continue; }
+    na := rsd_query(a[0].s[..], f[0], NOW, w[0].sw[0].idx[..]);
+    nb := rsd_query(b[0].s[..], f[0], NOW, w[0].sw[0].idx[..]);
+    print("  %: A sends %, B sends %: %\n", SUBS[k], na, nb, SH_NAME[w[0].cls[k]]);
+  }
+  return sh_passes(w[0].srep[0]);
+}
+// book:end compare
+
+// book:begin main
+main :: () {
+  a: [1] Store; b: [1] Store; w: [1] Work;
+  store_init(a[..]); store_init(b[..]);
+  va := import(a[..], w[..], RX_EXPORT, "store A, the export");
+  vb := import(b[..], w[..], without(w[..], RX_EXPORT, 4), "store B, the shadow relay (it missed line 4)");
+  e := compare(a[..], b[..], w[..]);
+  s := shadow(a[..], b[..], w[..]);
+  print("cutover: %\n", ifx va == RI_CLEAN && e == RE_EQUAL && s then "yes" else "no: a forged line and an event B lacks");
+  // The missing write is sent to B again; the forgery stays out.
+  vb = import(b[..], w[..], RX_EXPORT, "store B, the whole export again");
+  e = compare(a[..], b[..], w[..]);
+  s = shadow(a[..], b[..], w[..]);
+  print("cutover: %\n", ifx e == RE_EQUAL && s then "the stores agree; the forged line still needs the owner's review" else "no");
+}
+// book:end main

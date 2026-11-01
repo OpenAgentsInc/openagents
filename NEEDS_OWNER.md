@@ -1,5 +1,36 @@
 # Owner actions
 
+## Nostr chapter 103: export, shadow period, cutover and rollback rehearsal for relay.openagents.com (2026-11-01)
+
+The importer (`coax/lib/nostr/relay_import.coax`, `relay_import_run.coax`),
+the event-set equality check (`relay_equal.coax`) and the shadow comparer
+(`relay_shadow.coax`) are built and checked offline; nothing touched
+production. The runbook is in `nostr/book/ch103-replace-relay-openagents-com.md`
+("The runbook"). These steps need your sign-off, in order:
+
+1. **Export snapshot.** Approve restoring the newest `nostr-relay` backup unit
+   into a throwaway Postgres off the production host and exporting
+   `nostr_event` read-only, in `ingest_seq` order, as JSON lines (the query is
+   in the chapter). Production's database is never read directly.
+2. **Store capacity and R2 wiring first.** The Coax store holds at most 2,048
+   events and 4 MiB (`RSD_MAX`, `RSD_ARENA`); a larger export imports as
+   incomplete and the cutover can't start. Decide which of the Rust relay's
+   advertised NIPs must be wired into `coax/relay/relay.coax` before cutover
+   (the chapter lists the eleven built but unwired modules).
+3. **Shadow period.** Approve a proxy that sends every write to both relays
+   (clients get the Rust relay's answers) and the replay of readers' REQs to
+   both, and set its length (the runbook suggests at least a week).
+4. **Rollback rehearsal.** Approve rehearsing on a staging name: point it at
+   the Coax relay, then back at the Rust relay, checking reads and writes each
+   time.
+5. **DNS cutover.** Only after the final equality check is equal, the shadow
+   period has no unexplained answer, and you sign off here: point
+   relay.openagents.com at the Coax relay, keeping the Rust relay read-only as
+   the fallback.
+
+Any refused line in the import (a forged or malformed event in the export)
+also comes to you before the cutover continues.
+
 ## Psionic chapter 34: approve a packaged llama.cpp build (2026-11-01)
 
 Chapter 34 compares Psionic with llama.cpp only through an owner-approved

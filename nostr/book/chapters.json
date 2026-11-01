@@ -2262,8 +2262,8 @@
    "number": 103,
    "title": "Replace relay.openagents.com",
    "file": "ch103-replace-relay-openagents-com.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "partly implemented",
+   "profile": "native C",
    "depends_on": [
     34,
     35,
@@ -2277,8 +2277,19 @@
     44,
     94
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/relay_import.coax",
+    "coax/lib/nostr/relay_import_run.coax",
+    "coax/lib/nostr/relay_equal.coax",
+    "coax/lib/nostr/relay_shadow.coax",
+    "coax/lib/nostr/fixtures/relay_export.coax",
+    "coax/tests/nostr/relay_export_fixture.py",
+    "nostr/examples/relay-cutover.coax",
+    "nostr/examples/checks/relay-cutover.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

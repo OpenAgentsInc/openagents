@@ -1,0 +1,225 @@
+// Event-set equality between two stores (Nostr From Scratch, chapter 103;
+// coax/nostr.md section 17, phase R3: "event-set equality at cutover").
+//
+// A store's set is what it serves at a time now: its live, unexpired
+// records, as (created_at, id) items in NIP-77's order. Two sets are equal
+// when their sorted-id digests are equal: SHA-256 over every item, 8 bytes
+// of created_at (big-endian) then the 32-byte id, in order. Equal digests
+// mean equal lists, short of a SHA-256 collision.
+//
+// When the digests differ, chapter 43's Negentropy (nip77.coax) finds the
+// exact difference: the first store is the client, the second the server,
+// and the client's have and need lists are the ids only in the first and
+// only in the second. Negentropy is chosen over a plain merge because the
+// Rust relay speaks NIP-77, so the same messages can run over a NEG-OPEN to
+// it without downloading every event. Its range fingerprints are sums, not
+// a collision-resistant hash; that is why the verdict rests on the digest,
+// and a digest difference that Negentropy can't name is its own verdict.
+#load "store.coax";
+#load "nip77.coax";
+#authority;
+
+// book:begin types
+RE_EQUAL :: 0;     // the same events
+RE_DIFFER :: 1;    // different, and only_a and only_b name every difference
+RE_UNNAMED :: 2;   // the digests differ but Negentropy found no difference
+RE_ERROR :: 3;     // Negentropy refused (error says why) or ran out of rounds or room
+RE_ROUNDS :: 64;
+// A comparison: each side's count and digest, the ids only in a and only in
+// b (the caller's buffers), the Negentropy round trips it took.
+ReDiff :: struct {
+  verdict: int; a_n: int; b_n: int; a_digest: [32] u8; b_digest: [32] u8;
+  only_a: [] NegId; only_a_n: int; only_b: [] NegId; only_b_n: int;
+  rounds: int; max_rounds: int = RE_ROUNDS; error: int;
+}
+// book:end types
+
+// book:begin items
+// The store's set at now, sorted: the count (at most out.count).
+re_items :: (s: [] RsdStore, now: int, out: [] NegItem) -> int {
+  n := 0;
+  for i: 0..<s[0].n {
+    if !ns_store_visible(s, i, now) || n >= out.count { continue; }
+    out[n] = NegItem.{created = s[0].recs[i].created, id = s[0].recs[i].id};
+    n += 1;
+  }
+  neg_sort(out[0..<n]);
+  return n;
+}
+// SHA-256 over the sorted items: 8 bytes of created_at, big-endian, then the id.
+re_digest :: (items: [] NegItem, out: [] u8) {
+  st: [SHA_STATE_BYTES] u8;
+  #assert sha256_init(st[..]) == SHA_OK;
+  for item: items {
+    b: [40] u8;
+    for k: 0..<8 { b[k] = cast(u8) ((item.created >> (56 - 8 * k)) & 255); }
+    for k: 0..<32 { b[8 + k] = item.id[k]; }
+    #assert sha256_update_checked(st[..], b[..], false) == SHA_OK;
+  }
+  #assert sha256_final_checked(st[..], out[0..<32], false) == SHA_OK;
+}
+// book:end items
+
+// book:begin compare
+// Compares sorted item lists a and b. q and r hold one Negentropy message
+// each way; d.only_a and d.only_b are the caller's, and so is d.max_rounds,
+// the most round trips it may take.
+re_compare :: (a: [] NegItem, b: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int {
+  d[0].a_n = a.count; d[0].b_n = b.count; d[0].only_a_n = 0; d[0].only_b_n = 0; d[0].rounds = 0; d[0].error = NEG_OK;
+  re_digest(a, d[0].a_digest[..]); re_digest(b, d[0].b_digest[..]);
+  if cast(string) d[0].a_digest[..] == cast(string) d[0].b_digest[..] { d[0].verdict = RE_EQUAL; return RE_EQUAL; }
+  client: [1] Neg; server: [1] Neg;
+  if neg_init(client[..], a, true, 0) != NEG_OK { return re_fail(d, client[0].error); }
+  if neg_init(server[..], b, false, 0) != NEG_OK { return re_fail(d, server[0].error); }
+  client[0].have = d[0].only_a; client[0].need = d[0].only_b;
+  n := neg_initiate(client[..], q);
+  while true {
+    if n < 0 { return re_fail(d, client[0].error); }
+    if n == 0 { break; }
+    if d[0].rounds >= d[0].max_rounds { return re_fail(d, NEG_SPACE); }
+    d[0].rounds += 1;
+    m := neg_reconcile(server[..], cast(string) q[0..<n], r);
+    if server[0].error != NEG_OK { return re_fail(d, server[0].error); }
+    n = neg_reconcile(client[..], cast(string) r[0..<m], q);
+  }
+  d[0].only_a_n = client[0].have_n; d[0].only_b_n = client[0].need_n;
+  if d[0].only_a_n + d[0].only_b_n == 0 { d[0].verdict = RE_UNNAMED; return RE_UNNAMED; }
+  d[0].verdict = RE_DIFFER;
+  return RE_DIFFER;
+}
+re_fail :: (d: [] ReDiff, e: int) -> int { d[0].error = e; d[0].verdict = RE_ERROR; return RE_ERROR; }
+// Compares two stores as they serve at now. ia and ib hold their items.
+re_stores :: (a: [] RsdStore, b: [] RsdStore, now: int, ia: [] NegItem, ib: [] NegItem, d: [] ReDiff, q: [] u8, r: [] u8) -> int {
+  na := re_items(a, now, ia); nb := re_items(b, now, ib);
+  return re_compare(ia[0..<na], ib[0..<nb], d, q, r);
+}
+// book:end compare
+
+// ---- checks ------------------------------------------------------------------
+re_t_item :: (created: int, first: int, last: int) -> NegItem {
+  x: NegItem; x.created = created; x.id[0] = cast(u8) first; x.id[31] = cast(u8) last; return x;
+}
+ReT :: struct { a: [640] NegItem; b: [640] NegItem; only_a: [80] NegId; only_b: [80] NegId; d: [1] ReDiff; q: [65536] u8; r: [65536] u8; }
+re_t_run :: (t: [] ReT, na: int, nb: int) -> int {
+  t[0].d[0].only_a = t[0].only_a[..]; t[0].d[0].only_b = t[0].only_b[..]; t[0].d[0].max_rounds = RE_ROUNDS;
+  return re_compare(t[0].a[0..<na], t[0].b[0..<nb], t[0].d[..], t[0].q[..], t[0].r[..]);
+}
+#test "the digest of one item, and of none" {
+  // SHA-256 of 40 bytes: 00 00 00 00 00 00 01 00, then 01, 30 zeros, 02
+  // (Python hashlib, 2026-11-01); SHA-256 of nothing for the empty set.
+  one := [1] NegItem.[re_t_item(256, 1, 2)]; h: [32] u8; re_digest(one[..], h[..]);
+  #assert h[0] == 0x98 && h[1] == 0xc3 && h[31] == 0x73;
+  re_digest(one[0..<0], h[..]);
+  #assert h[0] == 0xe3 && h[1] == 0xb0 && h[31] == 0x55;
+  // every byte of created_at counts, the highest too
+  late := [1] NegItem.[re_t_item(1 << 56, 1, 2)]; g: [32] u8; re_digest(late[..], g[..]);
+  zero := [1] NegItem.[re_t_item(0, 1, 2)]; re_digest(zero[..], h[..]);
+  #assert cast(string) g[..] != cast(string) h[..];
+  re_digest(one[0..<0], h[..]);
+  #assert h[0] == 0xe3 && h[1] == 0xb0 && h[31] == 0x55;
+}
+#test "equal sets are equal without a round trip" {
+  t: [1] ReT;
+  for i: 0..<40 { t[0].a[i] = re_t_item(1000 + i, i, 7); t[0].b[i] = t[0].a[i]; }
+  #assert re_t_run(t[..], 40, 40) == RE_EQUAL && t[0].d[0].rounds == 0 && t[0].d[0].a_n == 40 && t[0].d[0].b_n == 40;
+  #assert t[0].d[0].a_digest[0] == t[0].d[0].b_digest[0] && t[0].d[0].verdict == RE_EQUAL;
+  #assert re_t_run(t[..], 0, 0) == RE_EQUAL;
+}
+#test "one missing, one extra, both named" {
+  t: [1] ReT;
+  for i: 0..<5 { t[0].a[i] = re_t_item(1000 + i, i, 1); t[0].b[i] = t[0].a[i]; }
+  // b lacks a[2]
+  for i: 2..<4 { t[0].b[i] = t[0].a[i + 1]; }
+  #assert re_t_run(t[..], 5, 4) == RE_DIFFER && t[0].d[0].only_a_n == 1 && t[0].d[0].only_b_n == 0 && t[0].d[0].only_a[0].b[0] == 2;
+  #assert t[0].d[0].verdict == RE_DIFFER && t[0].d[0].rounds == 1 && t[0].d[0].a_digest[0] != t[0].d[0].b_digest[0];
+  // and the other way round: a lacks one, b has it
+  for i: 0..<5 { t[0].b[i] = re_t_item(1000 + i, i, 1); }
+  for i: 0..<4 { t[0].a[i] = t[0].b[i]; }
+  #assert re_t_run(t[..], 4, 5) == RE_DIFFER && t[0].d[0].only_a_n == 0 && t[0].d[0].only_b_n == 1 && t[0].d[0].only_b[0].b[0] == 4;
+}
+#test "one id at two times: the digest sees it, Negentropy can't" {
+  // Verified stores can't hold this (the id hashes created_at), a corrupt
+  // one can. Negentropy compares ids within ranges, so it names nothing.
+  t: [1] ReT;
+  t[0].a[0] = re_t_item(1000, 9, 9); t[0].b[0] = re_t_item(1001, 9, 9);
+  #assert re_t_run(t[..], 1, 1) == RE_UNNAMED && t[0].d[0].only_a_n == 0 && t[0].d[0].only_b_n == 0;
+}
+#test "a difference across buckets" {
+  t: [1] ReT;
+  for i: 0..<70 { t[0].a[i] = re_t_item(1000 + i, i, 3); }
+  // b: every item but 10 and 50, and one of its own at the end
+  nb := 0;
+  for i: 0..<70 { if i != 10 && i != 50 { t[0].b[nb] = t[0].a[i]; nb += 1; } }
+  t[0].b[nb] = re_t_item(2000, 200, 3); nb += 1;
+  v := re_t_run(t[..], 70, nb);
+  #assert v == RE_DIFFER && t[0].d[0].only_a_n == 2 && t[0].d[0].only_b_n == 1 && t[0].d[0].rounds == 1;
+  #assert t[0].d[0].only_a[0].b[0] == 10 && t[0].d[0].only_a[1].b[0] == 50 && t[0].d[0].only_b[0].b[0] == 200;
+}
+#test "600 items: fingerprints of fingerprints, two round trips" #steps 400000000 {
+  t: [1] ReT;
+  for i: 0..<600 { t[0].a[i] = re_t_item(1000 + i, i & 255, i >> 8); t[0].b[i] = t[0].a[i]; }
+  t[0].b[300] = re_t_item(1300, 77, 77);
+  #assert re_t_run(t[..], 600, 600) == RE_DIFFER && t[0].d[0].rounds == 2 && t[0].d[0].only_a_n == 1 && t[0].d[0].only_b_n == 1;
+  #assert t[0].d[0].only_a[0].b[0] == 300 & 255 && t[0].d[0].only_b[0].b[0] == 77 && t[0].d[0].max_rounds == RE_ROUNDS;
+  // allowed one round trip, it stops
+  t[0].d[0] = ReDiff.{}; t[0].d[0].only_a = t[0].only_a[..]; t[0].d[0].only_b = t[0].only_b[..]; t[0].d[0].max_rounds = 1;
+  #assert re_compare(t[0].a[0..<600], t[0].b[0..<600], t[0].d[..], t[0].q[..], t[0].r[..]) == RE_ERROR && t[0].d[0].error == NEG_SPACE && t[0].d[0].rounds == 1;
+  t[0].d[0].max_rounds = 2;
+  #assert re_compare(t[0].a[0..<600], t[0].b[0..<600], t[0].d[..], t[0].q[..], t[0].r[..]) == RE_DIFFER;
+  t[0].d[0].max_rounds = 1;
+  #assert re_t_run(t[..], 600, 600) == RE_DIFFER && t[0].d[0].only_a_n == 1;
+  // then equal: the counts and rounds start again from zero
+  t[0].b[300] = t[0].a[300];
+  #assert re_t_run(t[..], 600, 600) == RE_EQUAL && t[0].d[0].only_a_n == 0 && t[0].d[0].only_b_n == 0 && t[0].d[0].rounds == 0;
+}
+#test "refusals: unsorted items, no room, a tiny buffer" {
+  t: [1] ReT;
+  t[0].a[0] = re_t_item(1001, 1, 1); t[0].a[1] = re_t_item(1000, 2, 1); t[0].b[0] = t[0].a[0];
+  #assert re_t_run(t[..], 2, 1) == RE_ERROR && t[0].d[0].error == NEG_ORDER && t[0].d[0].verdict == RE_ERROR;
+  t[0].a[0] = re_t_item(1000, 2, 1); t[0].a[1] = re_t_item(1001, 1, 1);
+  #assert re_t_run(t[..], 1, 2) == RE_ERROR && t[0].d[0].error == NEG_ORDER;
+  t[0].b[0] = re_t_item(5, 5, 5);
+  t[0].d[0] = ReDiff.{}; t[0].d[0].only_a = t[0].only_a[0..<0]; t[0].d[0].only_b = t[0].only_b[..];
+  #assert re_compare(t[0].a[0..<2], t[0].b[0..<1], t[0].d[..], t[0].q[..], t[0].r[..]) == RE_ERROR && t[0].d[0].error == NEG_SPACE;
+  t[0].d[0].only_a = t[0].only_a[..];
+  // the client's first message doesn't fit; then the server's answer doesn't
+  #assert re_compare(t[0].a[0..<2], t[0].b[0..<1], t[0].d[..], t[0].q[0..<40], t[0].r[..]) == RE_ERROR && t[0].d[0].error == NEG_SPACE && t[0].d[0].rounds == 0;
+  #assert re_compare(t[0].a[0..<2], t[0].b[0..<1], t[0].d[..], t[0].q[..], t[0].r[0..<20]) == RE_ERROR && t[0].d[0].error == NEG_SPACE && t[0].d[0].rounds == 1;
+  // a later equal run clears the error, the rounds and the lists
+  t[0].b[1] = t[0].a[1]; t[0].b[0] = t[0].a[0];
+  #assert re_t_run(t[..], 2, 2) == RE_EQUAL && t[0].d[0].error == NEG_OK && t[0].d[0].rounds == 0 && t[0].d[0].verdict == RE_EQUAL;
+}
+#test "a fingerprint collision is unnamed, not equal" {
+  // ids that sum to the same value mod 2^256 with the same count and the
+  // same timestamp share every Negentropy fingerprint, but not the digest:
+  // a = {1, 4}, b = {2, 3} in the first byte, all at one time, as one bucket
+  // of 16 or more: pad both with 32 shared items.
+  t: [1] ReT;
+  for i: 0..<32 { t[0].a[i] = re_t_item(500, 10 + i, 0); t[0].b[i] = t[0].a[i]; }
+  t[0].a[32] = re_t_item(1000, 1, 0); t[0].a[33] = re_t_item(1000, 4, 0);
+  t[0].b[32] = re_t_item(1000, 2, 0); t[0].b[33] = re_t_item(1000, 3, 0);
+  #assert re_t_run(t[..], 34, 34) == RE_UNNAMED && t[0].d[0].verdict == RE_UNNAMED && t[0].d[0].rounds == 1;
+  #assert t[0].d[0].a_digest[0] != t[0].d[0].b_digest[0];
+}
+#test "stores: only live, unexpired records count" {
+  arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  arena2: [4096] u8; recs2: [8] RsdRec; s2: [1] RsdStore; s2[0].arena = arena2[..]; s2[0].recs = recs2[..];
+  #assert ns_store_admit(s[..], nss_t_rec(1, 1, 100), "a", true) == NSS_ACCEPT;
+  #assert ns_store_admit(s[..], nss_t_rec(2, 1, 200), "b", true) == NSS_ACCEPT;
+  e := nss_t_rec(3, 1, 300); e.expiry = 1000;
+  #assert ns_store_admit(s[..], e, "c", true) == NSS_ACCEPT;
+  #assert ns_store_admit(s2[..], nss_t_rec(1, 1, 100), "a", true) == NSS_ACCEPT;
+  #assert ns_store_admit(s2[..], nss_t_rec(2, 1, 200), "b", true) == NSS_ACCEPT;
+  items: [8] NegItem;
+  #assert re_items(s[..], 999, items[..]) == 3 && re_items(s[..], 1000, items[..]) == 2;
+  #assert items[0].created == 100 && items[1].created == 200 && items[0].id[0] == 1;
+  #assert re_items(s[..], 999, items[0..<1]) == 1;
+  ia: [8] NegItem; ib: [8] NegItem; oa: [8] NegId; ob: [8] NegId; q: [8192] u8; r: [8192] u8;
+  d: [1] ReDiff; d[0].only_a = oa[..]; d[0].only_b = ob[..];
+  #assert re_stores(s[..], s2[..], 1000, ia[..], ib[..], d[..], q[..], r[..]) == RE_EQUAL;
+  #assert re_stores(s[..], s2[..], 999, ia[..], ib[..], d[..], q[..], r[..]) == RE_DIFFER && d[0].only_a_n == 1 && d[0].only_a[0].b[0] == 3;
+  // a replaced record no longer counts
+  #assert ns_store_admit(s2[..], nss_t_rec(4, 0, 50), "d", true) == NSS_ACCEPT;
+  #assert ns_store_admit(s2[..], nss_t_rec(5, 0, 60), "e", true) == NSS_ACCEPT;
+  #assert re_items(s2[..], 1000, items[..]) == 3 && items[0].created == 60;
+}

@@ -1,0 +1,96 @@
+// The checks of relay-cutover.coax. They live apart so that running the
+// example doesn't also run them. They verify BIP-340 signatures at compile
+// time, so they take about a minute.
+// Checks: coax test nostr/examples/checks/relay-cutover.coax
+#load "../relay-cutover.coax";
+
+// book:begin check
+// Independent values (coax/tests/nostr/relay_export_fixture.py, Python
+// hashlib, 2026-11-01): relay_equal.coax's digest of the five valid events,
+// and of the four without line 4.
+DIGEST_ALL :: "172667b25fd3e8bbc3515ee8a7fb38f2d0a773f39bd8ed071c5e658aa89bd678";
+DIGEST_B :: "80d7a0ae7a103096a761885ed03f0f92a6615b44aa3df755add77425808ab47c";
+hex_is :: (b: [32] u8, want: string) -> bool {
+  for i: 0..<32 { if HEX[b[i] >> 4] != want[2 * i] || HEX[b[i] & 15] != want[2 * i + 1] { return false; } }
+  return true;
+}
+// The ids by hand, as the chapter's trace orders them: (created_at, id).
+#test "the six-line export, by hand" #steps 2000000000 {
+  a: [1] Store; b: [1] Store; w: [1] Work;
+  store_init(a[..]); store_init(b[..]);
+  ri_import(a[0].s[..], RX_EXPORT, NOW, w[0].scratch[..], w[0].rep[..], w[0].outcome[..]);
+  rep := w[0].rep[0];
+  // line 5 is the forgery: its id is right, so it fails at the signature
+  #assert rep.lines == 6 && rep.count[RS_ACCEPT] == 5 && rep.count[RS_BAD_SIG] == 1 && rep.count[RS_BAD_ID] == 0;
+  #assert w[0].outcome[4] == RS_BAD_SIG && rep.first_refused == 5 && ri_verdict(rep) == RI_REFUSED;
+  // B: the same export without line 4, so the forgery is its line 4
+  ri_import(b[0].s[..], without(w[..], RX_EXPORT, 4), NOW, w[0].scratch[..], w[0].rep[..], w[0].outcome[..]);
+  #assert w[0].rep[0].lines == 5 && w[0].rep[0].count[RS_ACCEPT] == 4 && w[0].rep[0].first_refused == 4;
+  // the items in NIP-77 order, by hand: 813d (..821), 375b (..822), 791f (..786), 0c13 (..787), 2a4b (..893)
+  items: [8] NegItem;
+  #assert re_items(a[0].s[..], NOW, items[..]) == 5;
+  #assert items[0].created == 1793214821 && items[0].id[0] == 0x81 && items[1].id[0] == 0x37 && items[2].id[0] == 0x79;
+  #assert items[3].created == 1793217787 && items[3].id[0] == 0x0c && items[4].created == 1793218893 && items[4].id[0] == 0x2a;
+  // the digests against Python's, and the one difference
+  w[0].d[0] = ReDiff.{}; w[0].d[0].only_a = w[0].only_a[..]; w[0].d[0].only_b = w[0].only_b[..];
+  #assert re_stores(a[0].s[..], b[0].s[..], NOW, w[0].ia[..], w[0].ib[..], w[0].d[..], w[0].q[..], w[0].r[..]) == RE_DIFFER;
+  d := w[0].d[0];
+  #assert hex_is(d.a_digest, DIGEST_ALL) && hex_is(d.b_digest, DIGEST_B);
+  #assert d.only_a_n == 1 && d.only_b_n == 0 && hex_is(d.only_a[0].b, RX_IDS[3]) && d.rounds == 1;
+  // the shadow: only "issues" differs, and the known difference explains it
+  reqs := REQS;
+  sh_replay(a[0].s[..], b[0].s[..], reqs[..], NOW, d, w[0].sw[..], w[0].srep[..], w[0].cls[..]);
+  #assert w[0].cls[0] == SH_MATCH && w[0].cls[1] == SH_EXPLAINED && w[0].cls[2] == SH_MATCH && w[0].cls[3] == SH_MATCH && w[0].cls[4] == SH_MATCH;
+  #assert sh_passes(w[0].srep[0]);
+  // without the known difference, "issues" is unexplained
+  none := d; none.only_a_n = 0;
+  sh_replay(a[0].s[..], b[0].s[..], reqs[..], NOW, none, w[0].sw[..], w[0].srep[..], w[0].cls[..]);
+  #assert w[0].cls[1] == SH_UNEXPLAINED && !sh_passes(w[0].srep[0]);
+  // the missing line sent again: equal, and the digest is Python's
+  ri_import(b[0].s[..], RX_EXPORT, NOW, w[0].scratch[..], w[0].rep[..], w[0].outcome[..]);
+  #assert w[0].rep[0].count[RS_ACCEPT] == 1 && w[0].rep[0].count[RS_DUP] == 4 && w[0].outcome[3] == RS_ACCEPT;
+  #assert re_stores(a[0].s[..], b[0].s[..], NOW, w[0].ia[..], w[0].ib[..], w[0].d[..], w[0].q[..], w[0].r[..]) == RE_EQUAL;
+  #assert hex_is(w[0].d[0].b_digest, DIGEST_ALL);
+}
+// A second way to find the difference: merge the two sorted lists. It must
+// name exactly what Negentropy names, over generated sets of many sizes.
+merge_diff :: (a: [] NegItem, b: [] NegItem, only_a: [] NegId, only_b: [] NegId) -> [2] int {
+  i := 0; j := 0; n: [2] int;
+  while i < a.count || j < b.count {
+    if j == b.count || (i < a.count && neg_less(a[i], b[j])) { only_a[n[0]].b = a[i].id; n[0] += 1; i += 1; }
+    else if i == a.count || neg_less(b[j], a[i]) { only_b[n[1]].b = b[j].id; n[1] += 1; j += 1; }
+    else { i += 1; j += 1; }
+  }
+  return n;
+}
+has_id :: (ids: [] NegId, n: int, id: [32] u8) -> bool {
+  me := id;
+  for k: 0..<n { if cast(string) ids[k].b[..] == cast(string) me[..] { return true; } }
+  return false;
+}
+Gen :: struct { a: [700] NegItem; b: [700] NegItem; oa: [64] NegId; ob: [64] NegId; ma: [64] NegId; mb: [64] NegId; d: [1] ReDiff; q: [65536] u8; r: [65536] u8; }
+#test "Negentropy's difference is the merge's, over 24 generated pairs" #steps 2000000000 {
+  g: [1] Gen; s: u32 = 103;
+  sizes := [4] int.[5, 31, 200, 650];
+  for round: 0..<24 {
+    size := sizes[round % 4];
+    na := 0; nb := 0;
+    for i: 0..<size {
+      s ^= s << 13; s ^= s >> 17; s ^= s << 5;
+      x: NegItem; x.created = 1000 + i; x.id[0] = cast(u8) (s & 255); x.id[1] = cast(u8) ((s >> 8) & 255); x.id[2] = cast(u8) (i & 255); x.id[3] = cast(u8) (i >> 8);
+      roll := cast(int) ((s >> 16) % 50);
+      if roll != 0 { g[0].a[na] = x; na += 1; }   // 1 in 50 only in b
+      if roll != 1 { g[0].b[nb] = x; nb += 1; }   // 1 in 50 only in a
+    }
+    g[0].d[0] = ReDiff.{}; g[0].d[0].only_a = g[0].oa[..]; g[0].d[0].only_b = g[0].ob[..];
+    v := re_compare(g[0].a[0..<na], g[0].b[0..<nb], g[0].d[..], g[0].q[..], g[0].r[..]);
+    m := merge_diff(g[0].a[0..<na], g[0].b[0..<nb], g[0].ma[..], g[0].mb[..]);
+    #assert (v == RE_EQUAL) == (m[0] + m[1] == 0);
+    if v == RE_DIFFER {
+      #assert g[0].d[0].only_a_n == m[0] && g[0].d[0].only_b_n == m[1];
+      for k: 0..<m[0] { #assert has_id(g[0].oa[..], m[0], g[0].ma[k].b); }
+      for k: 0..<m[1] { #assert has_id(g[0].ob[..], m[1], g[0].mb[k].b); }
+    }
+  }
+}
+// book:end check
