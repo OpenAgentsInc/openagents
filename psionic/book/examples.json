@@ -1712,6 +1712,26 @@
       ]
     },
     {
+      "source": "psionic/examples/comparator-protocol.coax",
+      "chapter": "psionic/book/ch034-benchmark-against-llama-cpp-and-cublas.md",
+      "stdout": "psionic/fixtures/comparator/comparator-protocol.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/comparator-refuse.coax",
+      "chapter": "psionic/book/ch034-benchmark-against-llama-cpp-and-cublas.md",
+      "stdout": "psionic/fixtures/comparator/comparator-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/cores-replay.coax",
       "chapter": "psionic/book/ch035-use-every-core.md",
       "stdout": "psionic/fixtures/cores/cores-replay.out",

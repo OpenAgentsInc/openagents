@@ -1,0 +1,95 @@
+{
+  "schema": "psionic.comparator.v1",
+  "host": "coderos-4080",
+  "date": "2026-11-01T14:13:36Z",
+  "commit": "aa41f2dfc140624ba1c989b46e9ad77bc9ccd54c",
+  "psionic_build": "dfaf3aa3fbca23c5a60267dac504396da9767068,19eb04083a6a76bd1856f4e1a42a9432dc0c07ca,ba8813070472179ee6a36ceb75e435e73917739c,2e2b9a2a743aa2044bf8661ced1431b1990aada5,c469974b3f7b406de7d73f3b715f7adaa68c2b93,99e4e5d6f980cf9e4516ab29e302441054ae9a7f",
+  "compiler": "coax0 0.46.0; gcc (GCC) 15.2.0",
+  "cpu": "Intel(R) Core(TM) i7-14700K",
+  "kernel": "Linux 6.18.49",
+  "driver": "595.71.05",
+  "clocks_before": "210 MHz, 405 MHz, 3105 MHz, P8, 37, 0 %",
+  "loadavg_before": "33.36 36.00 30.32 35/1219 3526455",
+  "device": "NVIDIA GeForce RTX 4080",
+  "cublas": "/nix/store/m12aiq3gwd3va37byk0cpb67nv2c98sg-cuda13.2-libcublas-13.3.0.5-lib/lib/libcublas.so.13.3.0.5",
+  "protocol": "cm-warm-v1",
+  "warmup_runs": 1,
+  "runs": 7,
+  "products_per_run": 20,
+  "shapes": [
+    {"rows": 248320, "cols": 4096, "tokens": 1, "weights_fnv": "7c2caff7bbbe1349", "max_rel_diff_vs_gemmex": 2.5e-08,
+        "psionic": {"runs_ns": [3381922, 3422819, 3340032, 3341821, 3341773, 3413145, 3392885], "mean_ns": 3376342.4, "sd_ns": 35413.1, "welford_mean_ns": 3376342.4, "welford_sd_ns": 35413.1},
+        "cublas_gemmex_bf16": {"runs_ns": [3032474, 3032267, 3030394, 3032013, 3095346, 3033139, 3052493], "mean_ns": 3044018.0, "sd_ns": 23895.0, "welford_mean_ns": 3044018.0, "welford_sd_ns": 23895.0},
+        "cublas_sgemm_f32": {"runs_ns": [6122291, 6054137, 6052659, 6148096, 6128170, 6053427, 6158029], "mean_ns": 6102401.3, "sd_ns": 47336.2, "welford_mean_ns": 6102401.3, "welford_sd_ns": 47336.2},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.902, "se_ns": 16146.9},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }},
+    {"rows": 12288, "cols": 4096, "tokens": 1, "weights_fnv": "2905e14f4e1d5ba0", "max_rel_diff_vs_gemmex": 2.1e-08,
+        "psionic": {"runs_ns": [166288, 167475, 181306, 165734, 166398, 166701, 167629], "mean_ns": 168790.1, "sd_ns": 5559.0, "welford_mean_ns": 168790.1, "welford_sd_ns": 5559.0},
+        "cublas_gemmex_bf16": {"runs_ns": [154470, 154472, 153907, 155648, 164493, 154416, 154214], "mean_ns": 155945.7, "sd_ns": 3807.7, "welford_mean_ns": 155945.7, "welford_sd_ns": 3807.7},
+        "cublas_sgemm_f32": {"runs_ns": [304486, 303974, 305192, 304128, 304230, 307251, 303974], "mean_ns": 304747.9, "sd_ns": 1181.9, "welford_mean_ns": 304747.9, "welford_sd_ns": 1181.9},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.924, "se_ns": 2546.7},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }},
+    {"rows": 4096, "cols": 12288, "tokens": 1, "weights_fnv": "b2b6b8966c7314a1", "max_rel_diff_vs_gemmex": 1.5e-08,
+        "psionic": {"runs_ns": [183296, 182989, 184730, 197632, 183194, 182477, 183296], "mean_ns": 185373.4, "sd_ns": 5448.9, "welford_mean_ns": 185373.4, "welford_sd_ns": 5448.9},
+        "cublas_gemmex_bf16": {"runs_ns": [156874, 155904, 156109, 155085, 155597, 156712, 156109], "mean_ns": 156055.7, "sd_ns": 616.7, "welford_mean_ns": 156055.7, "welford_sd_ns": 616.7},
+        "cublas_sgemm_f32": {"runs_ns": [305562, 306590, 305715, 306381, 305254, 305558, 304589], "mean_ns": 305664.1, "sd_ns": 673.2, "welford_mean_ns": 305664.1, "welford_sd_ns": 673.2},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.842, "se_ns": 2072.6},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }},
+    {"rows": 4096, "cols": 4096, "tokens": 1, "weights_fnv": "119649d4b244d974", "max_rel_diff_vs_gemmex": 2.1e-08,
+        "psionic": {"runs_ns": [20582, 20667, 20531, 20582, 20531, 20581, 20429], "mean_ns": 20557.6, "sd_ns": 72.6, "welford_mean_ns": 20557.6, "welford_sd_ns": 72.6},
+        "cublas_gemmex_bf16": {"runs_ns": [15605, 15616, 15565, 15718, 15667, 15565, 15616], "mean_ns": 15621.7, "sd_ns": 54.9, "welford_mean_ns": 15621.7, "welford_sd_ns": 54.9},
+        "cublas_sgemm_f32": {"runs_ns": [21562, 21299, 21504, 21413, 21402, 21402, 21453], "mean_ns": 21433.6, "sd_ns": 84.0, "welford_mean_ns": 21433.6, "welford_sd_ns": 84.0},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.760, "se_ns": 34.4},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }},
+    {"rows": 8192, "cols": 4096, "tokens": 86, "weights_fnv": "987ea3d9eb2563c4", "max_rel_diff_vs_gemmex": 6.4e-07,
+        "psionic": {"runs_ns": [882330, 954525, 885402, 883763, 884579, 884838, 884173], "mean_ns": 894230.0, "sd_ns": 26605.4, "welford_mean_ns": 894230.0, "welford_sd_ns": 26605.4},
+        "cublas_gemmex_bf16": {"runs_ns": [101266, 101664, 101728, 101770, 101786, 102072, 101632], "mean_ns": 101702.6, "sd_ns": 240.0, "welford_mean_ns": 101702.6, "welford_sd_ns": 240.0},
+        "cublas_sgemm_f32": {"runs_ns": [332730, 333312, 332082, 345178, 377600, 376986, 377853], "mean_ns": 353677.3, "sd_ns": 22701.6, "welford_mean_ns": 353677.3, "welford_sd_ns": 22701.6},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.114, "se_ns": 10056.3},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }},
+    {"rows": 12288, "cols": 4096, "tokens": 86, "weights_fnv": "cb3ce2f376853ecc", "max_rel_diff_vs_gemmex": 6.3e-07,
+        "psionic": {"runs_ns": [1279386, 1280512, 1283109, 1284608, 1285274, 1286037, 1320448], "mean_ns": 1288482.0, "sd_ns": 14307.5, "welford_mean_ns": 1288482.0, "welford_sd_ns": 14307.5},
+        "cublas_gemmex_bf16": {"runs_ns": [200664, 200597, 200909, 200806, 200944, 200653, 200957], "mean_ns": 200790.0, "sd_ns": 151.6, "welford_mean_ns": 200790.0, "welford_sd_ns": 151.6},
+        "cublas_sgemm_f32": {"runs_ns": [447539, 448347, 502374, 502784, 502422, 502579, 502835], "mean_ns": 486982.9, "sd_ns": 26670.9, "welford_mean_ns": 486982.9, "welford_sd_ns": 26670.9},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.156, "se_ns": 5408.0},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }},
+    {"rows": 4096, "cols": 12288, "tokens": 86, "weights_fnv": "b35c6556a109ef4d", "max_rel_diff_vs_gemmex": 2.8e-07,
+        "psionic": {"runs_ns": [1260126, 1262182, 1263770, 1272474, 1269914, 1269402, 1267405], "mean_ns": 1266467.6, "sd_ns": 4533.3, "welford_mean_ns": 1266467.6, "welford_sd_ns": 4533.3},
+        "cublas_gemmex_bf16": {"runs_ns": [184976, 185173, 185395, 185235, 185805, 185498, 185293], "mean_ns": 185339.3, "sd_ns": 263.9, "welford_mean_ns": 185339.3, "welford_sd_ns": 263.9},
+        "cublas_sgemm_f32": {"runs_ns": [485018, 499251, 519168, 527349, 536064, 536781, 536619], "mean_ns": 520035.7, "sd_ns": 20513.4, "welford_mean_ns": 520035.7, "welford_sd_ns": 20513.4},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.146, "se_ns": 1716.3},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }},
+    {"rows": 4096, "cols": 4096, "tokens": 86, "weights_fnv": "be5fac5cb38140b2", "max_rel_diff_vs_gemmex": 9.4e-07,
+        "psionic": {"runs_ns": [468787, 469037, 468725, 522491, 468582, 468582, 468890], "mean_ns": 476442.0, "sd_ns": 20306.4, "welford_mean_ns": 476442.0, "welford_sd_ns": 20306.4},
+        "cublas_gemmex_bf16": {"runs_ns": [52992, 52634, 52421, 52429, 52275, 52275, 52563], "mean_ns": 52512.7, "sd_ns": 250.1, "welford_mean_ns": 52512.7, "welford_sd_ns": 250.1},
+        "cublas_sgemm_f32": {"runs_ns": [164710, 164915, 164813, 164966, 164962, 164957, 165427], "mean_ns": 164964.3, "sd_ns": 225.1, "welford_mean_ns": 164964.3, "welford_sd_ns": 225.1},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.110, "se_ns": 7675.7},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }},
+    {"rows": 1024, "cols": 4096, "tokens": 86, "weights_fnv": "dfedb8925e51f677", "max_rel_diff_vs_gemmex": 1.8e-07,
+        "psionic": {"runs_ns": [179405, 179302, 178995, 178842, 178890, 179646, 179712], "mean_ns": 179256.0, "sd_ns": 355.4, "welford_mean_ns": 179256.0, "welford_sd_ns": 355.4},
+        "cublas_gemmex_bf16": {"runs_ns": [17459, 17506, 17562, 17715, 17608, 17458, 17459], "mean_ns": 17538.1, "sd_ns": 97.2, "welford_mean_ns": 17538.1, "welford_sd_ns": 97.2},
+        "cublas_sgemm_f32": {"runs_ns": [44186, 44186, 43762, 43674, 43622, 43622, 43418], "mean_ns": 43781.4, "sd_ns": 295.0, "welford_mean_ns": 43781.4, "welford_sd_ns": 295.0},
+      "verdicts": {
+        "psionic_vs_gemmex_bf16": {"verdict": "slower", "reason": "none", "speed_ratio": 0.098, "se_ns": 139.3},
+        "psionic_vs_sgemm_f32": {"verdict": "refused", "reason": "format", "speed_ratio": 0.000, "se_ns": 0.0}
+      }}
+  ],
+  "clocks_after": "2775 MHz, 11201 MHz, 3105 MHz, P2, 43, 20 %",
+  "loadavg_after": "34.18 36.06 30.43 34/1220 3526898"
+}

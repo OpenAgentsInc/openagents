@@ -1,0 +1,28 @@
+// Chapter 34's check helpers: a tolerance, the exact integer variance oracle,
+// and the sides and statistics the comparison checks start from. Loaded by
+// psionic/lib/comparator.coax and owned by its checks.
+
+// The exact oracle: with S the sum of n values, the variance is
+// sum (n x - S)^2 / (n^2 (n - 1)), every term an integer while values stay small.
+cm_exact_var :: (x:[]int)->f64 {
+    n:=x.count;s:=0;
+    for v:x {s+=v;}
+    q:=0;
+    for v:x {d:=n*v-s;q+=d*d;}
+    return cast(f64)q/cast(f64)(n*n*(n-1));
+}
+// Agreement to twelve decimal digits.
+cm_close :: (a:f64,b:f64)->bool {
+    d:=a-b;if d<0 {d=-d;}
+    m:=b;if m<0 {m=-m;}
+    return d<=m*0.000000000001+0.000000000001;
+}
+cm_check_side :: ()->CmSide {
+    w:=CmWork.{file=11,weights=CmFormat.bf16,activations=CmFormat.bf16,accumulate=CmFormat.f32,rows=4096,cols=4096,tokens=86};
+    return CmSide.{work=w,engine=1,build=2,machine=3,warmup=1};
+}
+cm_check_stats :: (n:int,mean:f64,sd:f64)->CmStats {return CmStats.{status=CmStatus.ok,n=n,mean=mean,sd=sd};}
+cm_check_refuse :: (a:CmSide,b:CmSide,s:CmStats,r:CmReason)->bool {
+    c:=cm_compare(a,s,b,s);
+    return c.verdict==CmVerdict.refused && c.reason==r && c.ratio==0 && c.se==0;
+}

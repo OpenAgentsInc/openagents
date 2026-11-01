@@ -1,0 +1,9 @@
+four warm runs: fewer than 5 warm runs
+a run of 0 ns: a run time that is not positive
+the comparator's build not recorded: refused (an engine, build or machine is not recorded)
+another machine: refused (different machines)
+another weight file: refused (different weight files)
+f32 SGEMM against BF16 weights: refused (different number formats)
+one token against 86: refused (different shapes)
+no warm-up run: refused (no warm-up run)
+four warm runs: refused (the timings were refused)

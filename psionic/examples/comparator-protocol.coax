@@ -1,0 +1,31 @@
+// Chapter 34: the comparison protocol on runs worked by hand. These are not
+// measurements; the measured runs are in psionic/fixtures/comparator/.
+#import "Basic";
+#load "../lib/comparator.coax";
+
+show :: (label:string,x:[]int) {
+    a:=cm_two_pass(x);b:=cm_welford(x);
+    print("%: % runs, mean % ns, sd % ns (two passes); mean % ns, sd % ns (Welford)\n",label,a.n,a.mean,a.sd,b.mean,b.sd);
+}
+judge :: (label:string,a:CmSide,sa:CmStats,b:CmSide,sb:CmStats) {
+    c:=cm_compare(a,sa,b,sb);
+    print("%: %, speed ratio %, standard error % ns\n",label,cm_verdict_name(c.verdict),c.ratio,c.se);
+}
+// book:begin protocol
+main :: () {
+    a:=[5]int.[100,104,96,102,98];
+    b:=[5]int.[110,112,108,114,106];
+    c:=[5]int.[103,105,101,107,99];
+    d:=[5]int.[100,100,100,100,150];
+    show("a",a[..]);
+    show("b",b[..]);
+    show("c",c[..]);
+    show("d",d[..]);
+    w:=CmWork.{file=11,weights=CmFormat.bf16,activations=CmFormat.bf16,accumulate=CmFormat.f32,rows=4096,cols=4096,tokens=86};
+    ours:=CmSide.{work=w,engine=1,build=2,machine=3,warmup=1};
+    theirs:=ours;theirs.engine=4;theirs.build=5;
+    judge("a against b",ours,cm_two_pass(a[..]),theirs,cm_two_pass(b[..]));
+    judge("a against c",ours,cm_two_pass(a[..]),theirs,cm_two_pass(c[..]));
+    judge("a against d",ours,cm_two_pass(a[..]),theirs,cm_two_pass(d[..]));
+}
+// book:end protocol

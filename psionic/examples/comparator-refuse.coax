@@ -1,0 +1,29 @@
+// Chapter 34: comparisons and timings the protocol refuses, each with its
+// typed reason, before any speed ratio is computed.
+#import "Basic";
+#load "../lib/comparator.coax";
+
+judge :: (label:string,a:CmSide,sa:CmStats,b:CmSide,sb:CmStats) {
+    c:=cm_compare(a,sa,b,sb);
+    print("%: % (%)\n",label,cm_verdict_name(c.verdict),cm_reason_name(c.reason));
+}
+// book:begin refuse
+main :: () {
+    runs:=[5]int.[100,104,96,102,98];
+    four:=cm_two_pass(runs[0..<4]);
+    print("four warm runs: %\n",cm_status_name(four.status));
+    zero:=runs;zero[2]=0;
+    print("a run of 0 ns: %\n",cm_status_name(cm_welford(zero[..]).status));
+    s:=cm_two_pass(runs[..]);
+    w:=CmWork.{file=11,weights=CmFormat.bf16,activations=CmFormat.bf16,accumulate=CmFormat.f32,rows=4096,cols=4096,tokens=86};
+    ours:=CmSide.{work=w,engine=1,build=2,machine=3,warmup=1};
+    theirs:=ours;theirs.engine=4;theirs.build=5;
+    x:=theirs;x.build=0;judge("the comparator's build not recorded",ours,s,x,s);
+    x=theirs;x.machine=6;judge("another machine",ours,s,x,s);
+    x=theirs;x.work.file=12;judge("another weight file",ours,s,x,s);
+    x=theirs;x.work.weights=CmFormat.f32;x.work.activations=CmFormat.f32;judge("f32 SGEMM against BF16 weights",ours,s,x,s);
+    x=theirs;x.work.tokens=1;judge("one token against 86",ours,s,x,s);
+    x=theirs;x.warmup=0;judge("no warm-up run",ours,s,x,s);
+    judge("four warm runs",ours,s,theirs,four);
+}
+// book:end refuse

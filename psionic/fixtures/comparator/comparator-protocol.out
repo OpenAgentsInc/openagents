@@ -1,0 +1,7 @@
+a: 5 runs, mean 100.0 ns, sd 3.1622776601683795 ns (two passes); mean 100.0 ns, sd 3.1622776601683795 ns (Welford)
+b: 5 runs, mean 110.0 ns, sd 3.1622776601683795 ns (two passes); mean 110.0 ns, sd 3.1622776601683795 ns (Welford)
+c: 5 runs, mean 103.0 ns, sd 3.1622776601683795 ns (two passes); mean 103.0 ns, sd 3.1622776601683795 ns (Welford)
+d: 5 runs, mean 110.0 ns, sd 22.360679774997898 ns (two passes); mean 110.0 ns, sd 22.360679774997898 ns (Welford)
+a against b: faster, speed ratio 1.1, standard error 2.0 ns
+a against c: the same within two standard errors, speed ratio 1.03, standard error 2.0 ns
+a against d: too noisy to rank, speed ratio 1.1, standard error 10.09950493836208 ns

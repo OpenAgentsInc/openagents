@@ -1,0 +1,245 @@
+// Chapter 34: benchmark against a comparator. Two engines run the same work
+// on the same machine: a warm-up the statistics never see, then at least five
+// timed warm runs per side. Each side becomes a mean and a sample standard
+// deviation, computed two ways (two passes, and Welford's one-pass update) so
+// each checks the other. A comparison names a winner only when both sides ran
+// the same file, the same formats and the same shape on the same machine with
+// both builds recorded, and the difference clears two standard errors.
+// Profile cm-warm-v1: run times as positive integer nanoseconds, 5 to 1,024
+// warm runs per side, binary64 statistics, sample (n - 1) variance.
+#authority;
+#load "../tests/comparator-checks.coax";  // the checks' helpers and exact variance oracle
+
+CmStatus :: enum u8 {ok;few;capacity;sample;}
+// The number formats a run computes in: weights, activations, accumulation.
+CmFormat :: enum u8 {unknown;f32;bf16;f16;q8_0;q4_0;q4_k;mxfp4;}
+// What a run computes: an identity word for the weight file (or for the
+// generated tensors), the three formats, and the shape: an output of rows by
+// tokens from rows x cols weights.
+CmWork :: struct {file:u64;weights:CmFormat;activations:CmFormat;accumulate:CmFormat;rows:int;cols:int;tokens:int;}
+// Who ran it and where: identity words for the engine, its exact build and
+// the machine, and how many untimed warm-up runs came first.
+CmSide :: struct {work:CmWork;engine:u64;build:u64;machine:u64;warmup:int;}
+// n warm runs: their mean and sample standard deviation in nanoseconds.
+CmStats :: struct {status:CmStatus;n:int;mean:f64;sd:f64;}
+CmVerdict :: enum u8 {refused;faster;slower;same;noisy;}
+CmReason :: enum u8 {none;unbound;machine;file;format;shape;warmup;stats;}
+// The verdict for side a against side b, why it was refused, b's mean over
+// a's (above 1 when a is faster), and the standard error of the difference.
+CmCall :: struct {verdict:CmVerdict;reason:CmReason;ratio:f64;se:f64;}
+
+CM_RUNS_MIN :: 5;
+CM_RUNS_MAX :: 1024;
+
+// Checks precede the implementation. Expected values are worked in chapter 34.
+#test "five runs by hand: mean 14, variance 40 / 4, both methods exact" {
+    x:=[5]int.[10,12,14,16,18];
+    a:=cm_two_pass(x[..]);b:=cm_welford(x[..]);
+    #assert a.status==CmStatus.ok && a.n==5 && a.mean==14 && a.sd==sqrt(10.0);
+    #assert b.status==CmStatus.ok && b.n==5 && b.mean==14 && b.sd==sqrt(10.0);
+    // Order changes nothing here: every partial result is an exact binary64 value.
+    y:=[5]int.[18,10,16,12,14];
+    c:=cm_two_pass(y[..]);d:=cm_welford(y[..]);
+    #assert c.mean==14 && c.sd==sqrt(10.0) && d.mean==14 && d.sd==sqrt(10.0);
+    // Equal runs: no spread.
+    e:=[6]int.[7,7,7,7,7,7];
+    #assert cm_two_pass(e[..]).sd==0 && cm_welford(e[..]).sd==0 && cm_welford(e[..]).mean==7 && cm_two_pass(e[..]).mean==7;
+    // Seven runs: 100, 101, 103, 104, 106, 107, 109; sum 730, so the mean
+    // is 104.2857...; squared deviations sum to 76192 - 730^2 / 7 = 444/7, variance 444/42.
+    s:=[7]int.[100,101,103,104,106,107,109];
+    f:=cm_two_pass(s[..]);g:=cm_welford(s[..]);
+    #assert cm_close(f.mean,730.0/7.0) && cm_close(g.mean,730.0/7.0) && cm_close(f.sd,sqrt(444.0/42.0)) && cm_close(g.sd,sqrt(444.0/42.0));
+}
+#test "fewer than five runs, more than 1,024, or a run that is not positive are refused" {
+    x:=[6]int.[10,12,14,16,18,20];
+    #assert cm_two_pass(x[0..<4]).status==CmStatus.few && cm_welford(x[0..<4]).status==CmStatus.few;
+    #assert cm_two_pass(x[0..<0]).status==CmStatus.few && cm_welford(x[0..<1]).status==CmStatus.few;
+    #assert cm_two_pass(x[0..<5]).status==CmStatus.ok && cm_welford(x[0..<5]).status==CmStatus.ok;
+    #assert cm_two_pass(x[0..<4]).n==4 && cm_two_pass(x[0..<4]).mean==0 && cm_welford(x[0..<4]).sd==0;
+    big:[1025]int;for i:0..<1025 {big[i]=1000+i%7;}
+    #assert cm_two_pass(big[..]).status==CmStatus.capacity && cm_welford(big[..]).status==CmStatus.capacity;
+    #assert cm_two_pass(big[0..<1024]).status==CmStatus.ok && cm_welford(big[0..<1024]).status==CmStatus.ok;
+    z:=x;z[5]=0;#assert cm_two_pass(z[..]).status==CmStatus.sample && cm_welford(z[..]).status==CmStatus.sample;
+    z=x;z[0]=-3;#assert cm_two_pass(z[..]).status==CmStatus.sample && cm_welford(z[..]).status==CmStatus.sample;
+    z=x;z[2]=1;#assert cm_two_pass(z[..]).status==CmStatus.ok && cm_welford(z[..]).status==CmStatus.ok;
+    #assert cm_status_name(CmStatus.ok)=="ok" && cm_status_name(CmStatus.few)=="fewer than 5 warm runs";
+    #assert cm_status_name(CmStatus.capacity)=="more than 1024 warm runs" && cm_status_name(CmStatus.sample)=="a run time that is not positive";
+}
+#forall "two passes, Welford and the exact integer formula agree" n:5..<40,seed:0..<12 {
+    x:[40]int;h:=(seed*2654435761+n)%2147483648;
+    for i:0..<n {h=(h*1103515245+12345)%2147483648;x[i]=1+h%100000;}
+    a:=cm_two_pass(x[0..<n]);b:=cm_welford(x[0..<n]);
+    s:=0;for i:0..<n {s+=x[i];}
+    #assert a.status==CmStatus.ok && b.status==CmStatus.ok && a.n==n && b.n==n;
+    #assert cm_close(a.mean,cast(f64)s/cast(f64)n) && cm_close(b.mean,cast(f64)s/cast(f64)n);
+    v:=cm_exact_var(x[0..<n]);
+    #assert cm_close(a.sd*a.sd,v) && cm_close(b.sd*b.sd,v);
+}
+#test "a large offset breaks the one-pass textbook formula, not these two" {
+    // Runs near 10^9 ns with a spread of a few ns: variance 30 (sum of
+    // squared deviations 90 over 3). The sum of squares is near 4 * 10^18,
+    // where one binary64 step is 512, so subtracting (sum x)^2 / n loses it.
+    x:=[4]int.[1000000004,1000000007,1000000013,1000000016];
+    s:=0.0;q:=0.0;for v:x {f:=cast(f64)v;s+=f;q+=f*f;}
+    naive:=(q-s*s/4)/3;
+    #assert !cm_close(naive,30);
+    y:=[5]int.[1000000004,1000000007,1000000010,1000000013,1000000016];
+    // Deviations -6, -3, 0, 3, 6: squares sum to 90, variance 90 / 4.
+    a:=cm_two_pass(y[..]);b:=cm_welford(y[..]);
+    #assert a.mean==1000000010 && b.mean==1000000010 && a.sd==sqrt(22.5) && b.sd==sqrt(22.5);
+}
+
+#test "a comparison is refused unless both sides did the same work on the same machine with both builds named" {
+    a:=cm_check_side();b:=cm_check_side();b.engine=5;b.build=6;
+    s:=cm_check_stats(8,40,4);
+    #assert cm_compare(a,s,b,s).verdict==CmVerdict.same && cm_compare(a,s,b,s).reason==CmReason.none;
+    x:=a;x.engine=0;#assert cm_check_refuse(x,b,s,CmReason.unbound) && cm_check_refuse(b,x,s,CmReason.unbound);
+    x=a;x.build=0;#assert cm_check_refuse(x,b,s,CmReason.unbound) && cm_check_refuse(b,x,s,CmReason.unbound);
+    x=a;x.machine=0;#assert cm_check_refuse(x,b,s,CmReason.unbound);
+    y:=b;y.machine=0;#assert cm_check_refuse(a,y,s,CmReason.unbound);
+    x=a;x.machine=4;#assert cm_check_refuse(x,b,s,CmReason.machine) && cm_check_refuse(b,x,s,CmReason.machine);
+    x=a;x.work.file=12;#assert cm_check_refuse(x,b,s,CmReason.file);
+    x=a;x.work.weights=CmFormat.f32;#assert cm_check_refuse(x,b,s,CmReason.format);
+    x=a;x.work.activations=CmFormat.f32;#assert cm_check_refuse(x,b,s,CmReason.format);
+    x=a;x.work.accumulate=CmFormat.f16;#assert cm_check_refuse(x,b,s,CmReason.format);
+    x=a;x.work.rows=4095;#assert cm_check_refuse(x,b,s,CmReason.shape);
+    x=a;x.work.cols=1;#assert cm_check_refuse(x,b,s,CmReason.shape);
+    x=a;x.work.tokens=1;#assert cm_check_refuse(x,b,s,CmReason.shape);
+    x=a;x.warmup=0;#assert cm_check_refuse(x,b,s,CmReason.warmup) && cm_check_refuse(b,x,s,CmReason.warmup);
+    x=a;x.warmup=-1;#assert cm_check_refuse(x,b,s,CmReason.warmup);
+    // The first difference found is the one reported.
+    x=a;x.machine=4;x.work.file=12;#assert cm_check_refuse(x,b,s,CmReason.machine);
+    x=a;x.work.file=12;x.work.rows=1;#assert cm_check_refuse(x,b,s,CmReason.file);
+    x=a;x.work.weights=CmFormat.q8_0;x.work.rows=1;x.warmup=0;#assert cm_check_refuse(x,b,s,CmReason.format);
+    x=a;x.work.rows=1;x.warmup=0;#assert cm_check_refuse(x,b,s,CmReason.shape);
+    // Unknown formats never match, even each other.
+    x=a;x.work.weights=CmFormat.unknown;y=b;y.work.weights=CmFormat.unknown;#assert cm_check_refuse(x,y,s,CmReason.format);
+    x=a;x.work.activations=CmFormat.unknown;y=b;y.work.activations=CmFormat.unknown;#assert cm_check_refuse(x,y,s,CmReason.format);
+    x=a;x.work.accumulate=CmFormat.unknown;y=b;y.work.accumulate=CmFormat.unknown;#assert cm_check_refuse(x,y,s,CmReason.format);
+    // Statistics that were themselves refused.
+    bad:=s;bad.status=CmStatus.few;
+    c:=cm_compare(a,bad,b,s);#assert c.verdict==CmVerdict.refused && c.reason==CmReason.stats;
+    c=cm_compare(a,s,b,bad);#assert c.verdict==CmVerdict.refused && c.reason==CmReason.stats;
+    #assert cm_reason_name(CmReason.none)=="none" && cm_reason_name(CmReason.unbound)=="an engine, build or machine is not recorded";
+    #assert cm_reason_name(CmReason.machine)=="different machines" && cm_reason_name(CmReason.file)=="different weight files";
+    #assert cm_reason_name(CmReason.format)=="different number formats" && cm_reason_name(CmReason.shape)=="different shapes";
+    #assert cm_reason_name(CmReason.warmup)=="no warm-up run" && cm_reason_name(CmReason.stats)=="the timings were refused";
+}
+#test "a winner must clear two standard errors; a spread over a tenth of the mean ranks nothing" {
+    a:=cm_check_side();b:=cm_check_side();b.engine=5;b.build=6;
+    // n = 8, sd = 4 on both sides: se = sqrt(16/8 + 16/8) = 2, so 2 se = 4.
+    c:=cm_compare(a,cm_check_stats(8,40,4),b,cm_check_stats(8,44,4));
+    #assert c.verdict==CmVerdict.same && c.se==2 && c.ratio==1.1 && c.reason==CmReason.none;
+    c=cm_compare(a,cm_check_stats(8,40,4),b,cm_check_stats(8,44.000001,4));#assert c.verdict==CmVerdict.faster && c.se==2;
+    c=cm_compare(a,cm_check_stats(8,44.000001,4),b,cm_check_stats(8,40,4));#assert c.verdict==CmVerdict.slower && cm_close(c.ratio,40/44.000001);
+    c=cm_compare(a,cm_check_stats(8,44,4),b,cm_check_stats(8,40,4));#assert c.verdict==CmVerdict.same;
+    // Uneven counts: se = sqrt(9/9 + 16/16) = sqrt 2.
+    c=cm_compare(a,cm_check_stats(9,100,3),b,cm_check_stats(16,97,4));#assert c.verdict==CmVerdict.slower && c.se==sqrt(2.0);
+    c=cm_compare(a,cm_check_stats(9,100,3),b,cm_check_stats(16,98,4));#assert c.verdict==CmVerdict.same;
+    // No spread at all: any difference counts, none does not.
+    c=cm_compare(a,cm_check_stats(5,10,0),b,cm_check_stats(5,11,0));#assert c.verdict==CmVerdict.faster && c.se==0;
+    c=cm_compare(a,cm_check_stats(5,10,0),b,cm_check_stats(5,10,0));#assert c.verdict==CmVerdict.same && c.ratio==1;
+    // A spread of exactly a tenth of the mean still ranks; more does not.
+    c=cm_compare(a,cm_check_stats(8,40,4),b,cm_check_stats(8,100,10));#assert c.verdict==CmVerdict.faster;
+    c=cm_compare(a,cm_check_stats(8,40,4.000001),b,cm_check_stats(8,100,10));#assert c.verdict==CmVerdict.noisy && c.ratio==2.5 && c.se>0;
+    c=cm_compare(a,cm_check_stats(8,40,4),b,cm_check_stats(8,100,10.000001));#assert c.verdict==CmVerdict.noisy && c.reason==CmReason.none;
+    #assert cm_verdict_name(CmVerdict.refused)=="refused" && cm_verdict_name(CmVerdict.faster)=="faster" && cm_verdict_name(CmVerdict.slower)=="slower";
+    #assert cm_verdict_name(CmVerdict.same)=="the same within two standard errors" && cm_verdict_name(CmVerdict.noisy)=="too noisy to rank";
+}
+#test "format names" {
+    #assert cm_format_name(CmFormat.unknown)=="unknown" && cm_format_name(CmFormat.f32)=="f32" && cm_format_name(CmFormat.bf16)=="bf16" && cm_format_name(CmFormat.f16)=="f16";
+    #assert cm_format_name(CmFormat.q8_0)=="Q8_0" && cm_format_name(CmFormat.q4_0)=="Q4_0" && cm_format_name(CmFormat.q4_k)=="Q4_K" && cm_format_name(CmFormat.mxfp4)=="MXFP4";
+}
+
+// book:begin admit
+// The checks both methods share: 5 to 1,024 runs, each a positive time.
+cm_admit :: (x:[]int)->CmStats {
+    st:=CmStats.{n=x.count};
+    if x.count<CM_RUNS_MIN {st.status=CmStatus.few;return st;}
+    if x.count>CM_RUNS_MAX {st.status=CmStatus.capacity;return st;}
+    for v:x {if v<=0 {st.status=CmStatus.sample;return st;}}
+    return st;
+}
+// book:end admit
+
+// book:begin two-pass
+// First pass: the mean. Second pass: squared distances from it.
+cm_two_pass :: (x:[]int)->CmStats #export_c {
+    st:=cm_admit(x);
+    if st.status!=CmStatus.ok {return st;}
+    sum:=0.0;
+    for v:x {sum+=cast(f64)v;}
+    st.mean=sum/cast(f64)x.count;
+    sq:=0.0;
+    for v:x {d:=cast(f64)v-st.mean;sq+=d*d;}
+    st.sd=sqrt(sq/cast(f64)(x.count-1));
+    return st;
+}
+// book:end two-pass
+
+// book:begin welford
+// One pass: after k runs, mean is their mean and m2 their summed squared
+// distances from it. Run k+1 moves the mean by d / (k + 1) and adds
+// d * (x - new mean) to m2, where d = x - old mean.
+cm_welford :: (x:[]int)->CmStats #export_c {
+    st:=cm_admit(x);
+    if st.status!=CmStatus.ok {return st;}
+    mean:=0.0;m2:=0.0;k:=0;
+    for v:x {
+        k+=1;f:=cast(f64)v;
+        d:=f-mean;
+        mean+=d/cast(f64)k;
+        m2+=d*(f-mean);
+    }
+    st.mean=mean;
+    st.sd=sqrt(m2/cast(f64)(k-1));
+    return st;
+}
+// book:end welford
+
+// book:begin compare
+cm_same_work :: (a:CmWork,b:CmWork)->CmReason {
+    if a.file!=b.file {return CmReason.file;}
+    known:=a.weights!=CmFormat.unknown && a.activations!=CmFormat.unknown && a.accumulate!=CmFormat.unknown;
+    if !known || a.weights!=b.weights || a.activations!=b.activations || a.accumulate!=b.accumulate {return CmReason.format;}
+    if a.rows!=b.rows || a.cols!=b.cols || a.tokens!=b.tokens {return CmReason.shape;}
+    return CmReason.none;
+}
+// Side a against side b. The mean of each side is in nanoseconds, so lower
+// is faster.
+cm_compare :: (a:CmSide,sa:CmStats,b:CmSide,sb:CmStats)->CmCall #export_c {
+    call:=CmCall.{verdict=CmVerdict.refused};
+    if a.engine==0 || a.build==0 || a.machine==0 || b.engine==0 || b.build==0 || b.machine==0 {call.reason=CmReason.unbound;return call;}
+    if a.machine!=b.machine {call.reason=CmReason.machine;return call;}
+    call.reason=cm_same_work(a.work,b.work);
+    if call.reason!=CmReason.none {return call;}
+    if a.warmup<1 || b.warmup<1 {call.reason=CmReason.warmup;return call;}
+    if sa.status!=CmStatus.ok || sb.status!=CmStatus.ok {call.reason=CmReason.stats;return call;}
+    call.ratio=sb.mean/sa.mean;
+    call.se=sqrt(sa.sd*sa.sd/cast(f64)sa.n+sb.sd*sb.sd/cast(f64)sb.n);
+    if sa.sd*10>sa.mean || sb.sd*10>sb.mean {call.verdict=CmVerdict.noisy;return call;}
+    diff:=sa.mean-sb.mean;
+    call.verdict=CmVerdict.same;
+    if diff< -2*call.se {call.verdict=CmVerdict.faster;}
+    if diff>2*call.se {call.verdict=CmVerdict.slower;}
+    return call;
+}
+// book:end compare
+
+cm_status_name :: (s:CmStatus)->string {
+    names:=[4]string.["ok","fewer than 5 warm runs","more than 1024 warm runs","a run time that is not positive"];
+    return names[cast(int)s];
+}
+cm_format_name :: (f:CmFormat)->string {
+    names:=[8]string.["unknown","f32","bf16","f16","Q8_0","Q4_0","Q4_K","MXFP4"];
+    return names[cast(int)f];
+}
+cm_verdict_name :: (v:CmVerdict)->string {
+    names:=[5]string.["refused","faster","slower","the same within two standard errors","too noisy to rank"];
+    return names[cast(int)v];
+}
+cm_reason_name :: (r:CmReason)->string {
+    names:=[8]string.["none","an engine, build or machine is not recorded","different machines","different weight files",
+        "different number formats","different shapes","no warm-up run","the timings were refused"];
+    return names[cast(int)r];
+}

@@ -1,5 +1,16 @@
 # Owner actions
 
+## Psionic chapter 34: approve a packaged llama.cpp build (2026-11-01)
+
+Chapter 34 compares Psionic with llama.cpp only through an owner-approved
+packaged build, never the clone in `~/code/llama.cpp`. nixpkgs has
+`llama-cpp` version 9190 (CPU build). A CUDA build needs the unfree CUDA
+packages (`cudaSupport = true`) and a source build that runs longer than the
+15-minute command limit. To approve one, add it to `os/hosts/coderos-4080.nix`
+in `~/coder` (or name the exact nixpkgs attribute to use ephemerally) and say
+so here. The Psionic side of a same-file comparison, a GPU engine that runs a
+whole GGUF file, is not built yet either.
+
 ## Coax 0.46 publication: local cloud reauthentication (2026-10-31)
 
 Run `gcloud auth login` locally on this Mac, then confirm it finished. Do not
