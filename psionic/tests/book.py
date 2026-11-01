@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Book tooling: closed example inventory, exact source listings, links and runs.
 
-One checker serves the Psionic and Aethyr books (`--book psionic|aethyr`).
+One checker serves the Psionic, Aethyr and Nostr books (`--book psionic|aethyr|nostr`).
 Each book keeps chapters as chNNN-slug.md, an examples.json inventory of its
 examples/*.coax programs, and a status marker on every design draft.
 """
@@ -20,6 +20,7 @@ BOOKS = {
     # book directory, example programs, project README, least source listings
     "psionic": ("psionic/book", "psionic/examples", "psionic/README.md", 3),
     "aethyr": ("aethyr/book", "aethyr/examples", "aethyr/README.md", 0),
+    "nostr": ("nostr/book", "nostr/examples", "nostr/README.md", 0),
 }
 # Aethyr's engine-core tasks each own one chapter, named in its status block.
 TASKS = {"aethyr": "apps/openagents-web/projects/verse/work/engine-core.json"}

@@ -40,7 +40,7 @@ source, qualified targets and adoption. The registry check in
 status marker, the contents labels, the README's list or status table and, for
 Psionic, the plan.
 `check-structure.py` and `psionic/tests/book.py` run that comparison, so a
-status change must update all of them in one commit. To check all three
+status change must update all of them in one commit. To check all four
 registries and print their status counts:
 
 ```sh
@@ -78,7 +78,7 @@ book's structure/claim gate before reading credentials or contacting GitBook.
 
 ## Publish the books
 
-One publisher serves the three books written in Coax. Each book has its own
+One publisher serves the four books written in Coax. Each book has its own
 GitBook space and site under openagents.gitbook.io:
 
 | `--book` | Source | Space | Public book | Gate |
@@ -86,6 +86,7 @@ GitBook space and site under openagents.gitbook.io:
 | `coax` (default) | `coax/book/` | `sZhQ0yptSOKMneBDWMti` | <https://openagents.gitbook.io/the-coax-programming-language> | `scripts/coax-release.sh --check` and `coax/book/check-structure.py` |
 | `psionic` | `psionic/book/` | `Sha9csfX5lAIHvjiIheN` | <https://openagents.gitbook.io/building-psionic-in-coax> | `psionic/tests/book.py` |
 | `aethyr` | `aethyr/book/` | `QxVdkZGgQYnLsXWZlkTh` | <https://openagents.gitbook.io/building-aethyr-in-coax> | `psionic/tests/book.py --book aethyr` |
+| `nostr` | `nostr/book/` | `FJJZf8YunJx2R1toVsuv` | <https://openagents.gitbook.io/nostr-from-scratch> | `psionic/tests/book.py --book nostr` |
 
 Commit the reviewed changes, rebase on `origin/main`, run any checks affected
 by the rebase and push. The existing GitBook space can import the pushed
@@ -95,6 +96,7 @@ repository without setting up Git Sync or creating a second site:
 python3 scripts/publish-coax-book.py --token-file /absolute/path/to/gitbook.env
 python3 scripts/publish-coax-book.py --book psionic --token-file /absolute/path/to/gitbook.env
 python3 scripts/publish-coax-book.py --book aethyr --token-file /absolute/path/to/gitbook.env
+python3 scripts/publish-coax-book.py --book nostr --token-file /absolute/path/to/gitbook.env
 ```
 
 Alternatively set `GITBOOK_TOKEN` in the process environment. Never commit a

@@ -61,8 +61,8 @@ def problems(root):
 # evidence for the chapter's profile, such as cpu, cuda, metal or wasm; a
 # target with no recorded run is not listed) and `adopted_by` (files outside
 # the book that use the chapter's code today). `psionic/tests/book.py` runs
-# the same checks for Psionic and Aethyr.
-BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "aethyr/book"}
+# the same checks for Psionic, Aethyr and Nostr.
+BOOKS = {"coax": "coax/book", "psionic": "psionic/book", "aethyr": "aethyr/book", "nostr": "nostr/book"}
 STATUSES = ("implemented", "partly implemented", "design draft", "planned")
 TARGETS = ("cpu", "cuda", "metal", "wasm")
 DRAFT = "> **Status: unimplemented — design draft.**"
@@ -73,7 +73,7 @@ SUMMARY_LABEL = {"design draft": " — design draft", "partly implemented": " �
 
 
 def readme_label(status, profile):
-    """The README status cell for a Psionic or Aethyr chapter, before any `(...)` note."""
+    """The README status cell for a Psionic, Aethyr or Nostr chapter, before any `(...)` note."""
     return {"implemented": f"Runnable: {profile}", "partly implemented": f"Partly implemented: {profile}",
             "design draft": "Unimplemented: design draft", "planned": "Planned"}[status]
 
@@ -127,7 +127,7 @@ def registry_problems(book, root=REPO):
             if isinstance(dep, int):
                 if dep == n or dep not in numbers:
                     errors.append(f"{label}: unknown dependency {dep}")
-            elif not (isinstance(dep, str) and re.fullmatch(r"(coax|psionic|aethyr):\d+", dep)
+            elif not (isinstance(dep, str) and re.fullmatch(r"(coax|psionic|aethyr|nostr):\d+", dep)
                       and dep.split(":")[0] != book and int(dep.split(":")[1]) in others[dep.split(":")[0]]):
                 errors.append(f"{label}: unknown dependency {dep!r} (use N or book:N)")
         for field in ("source", "adopted_by"):
@@ -227,7 +227,7 @@ def registry_problems(book, root=REPO):
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--registry"]:
-        # Check all three registries and print their status counts.
+        # Check all four registries and print their status counts.
         failed = False
         for book in sorted(BOOKS):
             errors = registry_problems(book)
