@@ -531,7 +531,18 @@ compiler and the examples have not been run on Linux yet.
   arrow while the pointer is over that client: over a terminal, foot's
   I-beam was drawn at its hotspot.
 
-  Also left: damage tracking (redrawing only what changed), and the protocols foot still reports missing
+  It now redraws only what changed. A window's commit damages its own box,
+  border included, and a pointer move damages a 192 px box around the old
+  and new place. A new layout, a focus change, or a window coming or
+  going redraws everything. Only the changed rows go to the screen, and
+  those include the frame before's, since the back buffer showed that one.
+  A `frame` command draws from damage alone. Over 23 steps (opening
+  terminals, typing, pointer moves, a float dragged, desk switches,
+  fullscreen, closes), the damage-only picture equaled a full redraw byte
+  for byte after every step. Typing in one of two terminals redrew only
+  its 631x708 box.
+
+  Also left: and the protocols foot still reports missing
   (primary selection, fractional scale, activation, text input).
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of

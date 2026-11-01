@@ -15,7 +15,7 @@ typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 #endif
 /* The compositor's screen and input (os/compositor.coax). Effects only.
    cxscr_open: the first connected screen at its preferred mode (0, or a negative failing step);
-   cxscr_width/height/refresh; cxscr_present(rgb, offset): shows w*h*3 bytes at the next vertical
+   cxscr_width/height/refresh; cxscr_present(rgb, y0, y1): shows w*h*3 bytes, copying rows y0..y1, at the next vertical
    blank (-1 while the last is still waiting); cxscr_close puts back what was shown before.
    cxin_open(path): keyboards and mice under /dev/input, grabbed, or with path a file of
    input_event records; cxin_read fills a list read by cxin_type/code/value(i); cxin_close. */
@@ -23,7 +23,7 @@ int64_t cxscr_open(void);
 int64_t cxscr_width(void);
 int64_t cxscr_height(void);
 int64_t cxscr_refresh(void);
-int64_t cxscr_present(coax_v_u8 rgb, int64_t offset);
+int64_t cxscr_present(coax_v_u8 rgb, int64_t y0, int64_t y1);
 int64_t cxscr_close(void);
 int64_t cxin_open(coax_v_u8 path);
 int64_t cxin_read(void);

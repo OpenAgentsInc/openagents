@@ -15,6 +15,7 @@
 // Either way a test channel on stdin, one command a line, answered on stdout:
 //   list                     every window: id, desk, rectangle in pixels, focus, app id, title
 //   shot PATH                composites the screen and writes it to PATH as a PPM image
+//   frame PATH               draws only what changed since the last picture, then writes it (checks damage)
 //   move X Y | click         the pointer: moves (focus follows it, as Hyprland's follow_mouse) or clicks
 //   key CODE | text TEXT     a key by evdev code, or US-layout text, through the bindings
 //   chord CODE...            keys pressed in order and released in reverse (125 is Super)
@@ -64,7 +65,7 @@ cxwl_run :: (args: [] u8, display: [] u8) -> int #foreign;
 cxscr_open :: () -> int #foreign;
 cxscr_width :: () -> int #foreign;
 cxscr_height :: () -> int #foreign;
-cxscr_present :: (rgb: [] u8, offset: int) -> int #foreign;
+cxscr_present :: (rgb: [] u8, y0: int, y1: int) -> int #foreign;
 cxscr_close :: () -> int #foreign;
 cxin_open :: (path: [] u8) -> int #foreign;
 cxin_read :: () -> int #foreign;
@@ -133,6 +134,7 @@ Cx :: struct {
   cursor: int; hot_x: int; hot_y: int;   // the pointer image a client set (a surface), or -1 for the arrow
   asking: int; armed: int; armed_until: int;   // Super+W: the window being asked about, the one a notice armed
   drag: int; drag_left: bool; drag_top: bool;   // Super + a held mouse button: 272 moves a float, 273 resizes
+  dmg: [4] int; prev: [4] int; clip: [4] int;   // what changed since the last frame, the frame before's, the box being drawn
   quit: bool; dirty: bool; screen: bool; show_pointer: bool;
 }
 
@@ -213,10 +215,10 @@ cx_sync :: (x: [] Cx) {
     if t[i].id == focus { state |= 1 << 4; }
     if wm_is_fullscreen(m, t[i].id) { state |= 1 << 2; }
     if !t[i].floating { state |= (1 << 5) | (1 << 6) | (1 << 7) | (1 << 8); }
-    if !x[0].surfs[s].configured || x[0].surfs[s].cw != w || x[0].surfs[s].ch != h || x[0].surfs[s].cstate != state { cx_send_configure(x, s, w, h, state); }
+    if !x[0].surfs[s].configured || x[0].surfs[s].cw != w || x[0].surfs[s].ch != h || x[0].surfs[s].cstate != state { cx_send_configure(x, s, w, h, state); cx_damage_all(x); }
   }
   k := ifx focus != 0 then x[0].win_surf[focus] else -1;
-  if k != x[0].kfocus { cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); if k >= 0 { cx_offer_selection(x, x[0].surfs[k].client); } }
+  if k != x[0].kfocus { cx_damage_all(x); cx_keyboards(x, x[0].kfocus, false); x[0].kfocus = k; cx_keyboards(x, k, true); if k >= 0 { cx_offer_selection(x, x[0].surfs[k].client); } }
 }
 // Where window id sits on the screen, in pixels; false when its desk is not shown.
 // A tile's window rectangle in pixels, as the CoderOS Hyprland session draws it (general: gaps_in 3,
@@ -274,7 +276,7 @@ cx_unmap :: (x: [] Cx, s: int) {
   if x[0].kfocus == s { x[0].kfocus = -1; }
   if x[0].pfocus == s { x[0].pfocus = -1; }
   x[0].surfs[s].role = R_NONE; x[0].surfs[s].configured = false;
-  cx_sync(x);
+  cx_damage_all(x); cx_sync(x);
 }
 cx_surf_free :: (x: [] Cx, s: int) {
   if x[0].surfs[s].win != 0 { cx_unmap(x, s); }
@@ -330,6 +332,8 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
   if obj <= 0 || obj >= CX_OBJS { return; }
   o := x[0].clients[ci].objs[obj]; g := x[0].g[..];
   k := o.kind; at := 8;
+  // what a request can change on screen: a new layout or a window going draws everything again
+  if k == K_SUBSURF || k == K_TOPLEVEL || k == K_POPUP || k == K_BUFFER || k == K_DECO || (k == K_XDGSURF && op != 4) || (k == K_SURFACE && op == 0) { cx_damage_all(x); }
   if k == K_DISPLAY {
     if op == 0 { cb := cx_rd(a, at); mg_begin(g, cb, 0); mg_put(g, cxwl_ms() & 4294967295); mg_end(g); mg_flush(x, ci, -1); cx_delete(x, ci, cb); }
     else if op == 1 {
@@ -406,6 +410,9 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
         old := x[0].surfs[s].cur; x[0].surfs[s].cur = x[0].surfs[s].pend; x[0].surfs[s].pend_set = false;
         if old >= 0 && old != x[0].surfs[s].cur { cx_release(x, old); }
       }
+      if x[0].surfs[s].role == R_TOPLEVEL && x[0].surfs[s].win != 0 { cx_damage_window(x, x[0].surfs[s].win); }
+      else if x[0].surfs[s].role == R_CURSOR { cx_damage_pointer(x); }
+      else { cx_damage_all(x); }   // subsurfaces and popups can reach past their window
       for i: 0..<x[0].surfs[s].npfr { if x[0].ndue < CX_DUE { x[0].due[x[0].ndue] = CxDue.{client = ci, id = x[0].surfs[s].pfr[i]}; x[0].ndue += 1; } }
       x[0].surfs[s].npfr = 0;
       if x[0].surfs[s].role == R_TOPLEVEL && x[0].surfs[s].win == 0 {
@@ -440,7 +447,7 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
         c := x[0].clients[ci].objs[so].ix; x[0].surfs[c].role = R_CURSOR;
         x[0].cursor = c; x[0].hot_x = cx_rdi(a, at + 8); x[0].hot_y = cx_rdi(a, at + 12);
       } else { x[0].cursor = -2; }   // a null surface hides the pointer
-      x[0].dirty = true;
+      cx_damage_pointer(x);
     }
     if op == 1 { cx_unlist(x[0].clients[ci].ptrs[..], x[0].clients[ci].npt, obj); x[0].clients[ci].npt = cx_count_left(x[0].clients[ci].ptrs[..], x[0].clients[ci].npt); cx_delete(x, ci, obj); }
   } else if k == K_OUTPUT {
@@ -570,7 +577,7 @@ cx_read_client :: (x: [] Cx, ci: int) -> bool {
     }
     if got < 0 { return false; }
     if got == 0 { return true; }
-    x[0].clients[ci].nin += got; x[0].dirty = true;
+    x[0].clients[ci].nin += got;
     at := 0;
     while x[0].clients[ci].nin - at >= 8 {
       obj := cx_rd(x[0].clients[ci].inb[..], at); w := cx_rd(x[0].clients[ci].inb[..], at + 4);
@@ -591,7 +598,8 @@ cx_read_client :: (x: [] Cx, ci: int) -> bool {
 
 // ---- drawing
 
-cx_draw_surf :: (x: [] Cx, o: [] CxFrame, s: int, ox: int, oy: int, cx0: int, cy0: int, cx1: int, cy1: int) {
+cx_draw_surf :: (x: [] Cx, o: [] CxFrame, s: int, ox: int, oy: int, ax0: int, ay0: int, ax1: int, ay1: int) {
+  cx0 := cx_max(ax0, x[0].clip[0]); cy0 := cx_max(ay0, x[0].clip[1]); cx1 := cx_min(ax1, x[0].clip[2]); cy1 := cx_min(ay1, x[0].clip[3]);
   b := x[0].surfs[s].cur;
   if b >= 0 && x[0].bufs[b].used {
     bf := x[0].bufs[b]; p := x[0].pools[bf.pool];
@@ -629,12 +637,31 @@ cx_draw_surf :: (x: [] Cx, o: [] CxFrame, s: int, ox: int, oy: int, cx0: int, cy
     cx_draw_surf(x, o, i, ox + x[0].surfs[s].gx + x[0].surfs[i].sx - x[0].surfs[i].gx, oy + x[0].surfs[s].gy + x[0].surfs[i].sy - x[0].surfs[i].gy, 0, 0, x[0].w, x[0].h);
   }
 }
+// Damage: the box of the screen that has to be drawn again (x0, y0, x1, y1; empty when x1 <= x0).
+cx_damage :: (x: [] Cx, x0: int, y0: int, x1: int, y1: int) {
+  a := cx_max(x0, 0); b := cx_max(y0, 0); c := cx_min(x1, x[0].w); d := cx_min(y1, x[0].h);
+  if c <= a || d <= b { return; }
+  if x[0].dmg[2] <= x[0].dmg[0] { x[0].dmg[0] = a; x[0].dmg[1] = b; x[0].dmg[2] = c; x[0].dmg[3] = d; }
+  else { x[0].dmg[0] = cx_min(x[0].dmg[0], a); x[0].dmg[1] = cx_min(x[0].dmg[1], b); x[0].dmg[2] = cx_max(x[0].dmg[2], c); x[0].dmg[3] = cx_max(x[0].dmg[3], d); }
+  x[0].dirty = true;
+}
+cx_damage_all :: (x: [] Cx) { cx_damage(x, 0, 0, x[0].w, x[0].h); }
+CX_POINTER_BOX :: 96;   // room for a client's cursor image around its hotspot
+cx_damage_pointer :: (x: [] Cx) { if x[0].show_pointer { cx_damage(x, x[0].px - CX_POINTER_BOX, x[0].py - CX_POINTER_BOX, x[0].px + CX_POINTER_BOX, x[0].py + CX_POINTER_BOX); } }
+// A window's box on the screen, border included, when its desk is shown.
+cx_damage_window :: (x: [] Cx, w: int) {
+  r: [4] int; if w != 0 && cx_place(x, w, r[..]) { cx_damage(x, r[0] - CX_BORDER, r[1] - CX_BORDER, r[0] + r[2] + CX_BORDER, r[1] + r[3] + CX_BORDER); }
+}
 cx_dot :: (x: [] Cx, o: [] CxFrame, px: int, py: int, v: u8) {
-  if px < 0 || py < 0 || px >= x[0].w || py >= x[0].h { return; }
+  if px < x[0].clip[0] || py < x[0].clip[1] || px >= x[0].clip[2] || py >= x[0].clip[3] { return; }
   at := 3 * (py * x[0].w + px); o[0].b[at] = v; o[0].b[at + 1] = v; o[0].b[at + 2] = v;
 }
+// Draws the damaged box of the screen into o (all of it after cx_damage_all) and clears the damage.
 cx_composite :: (x: [] Cx, o: [] CxFrame) {
-  for i: 0..<x[0].w * x[0].h { o[0].b[3 * i] = 24; o[0].b[3 * i + 1] = 26; o[0].b[3 * i + 2] = 32; }
+  for i: 0..<4 { x[0].clip[i] = x[0].dmg[i]; }
+  x[0].dmg[0] = 0; x[0].dmg[1] = 0; x[0].dmg[2] = 0; x[0].dmg[3] = 0;
+  if x[0].clip[2] <= x[0].clip[0] { return; }
+  for py: x[0].clip[1]..<x[0].clip[3] { for px: x[0].clip[0]..<x[0].clip[2] { at := 3 * (py * x[0].w + px); o[0].b[at] = 24; o[0].b[at + 1] = 26; o[0].b[at + 2] = 32; } }
   t: [WM_WINS] WmTile; n := wm_tiles_on(x[0].wm[..], 0, t[..]);
   for i: 0..<n {
     s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
@@ -655,7 +682,7 @@ cx_composite :: (x: [] Cx, o: [] CxFrame) {
     for j: 0..<12 {
       for i: 0..<j / 2 + 1 {
         px := x[0].px + i; py := x[0].py + j;
-        if px >= x[0].w || py >= x[0].h { continue; }
+        if px < x[0].clip[0] || py < x[0].clip[1] || px >= x[0].clip[2] || py >= x[0].clip[3] { continue; }
         edge := i == 0 || i == j / 2 || j == 11;
         at := 3 * (py * x[0].w + px); v := cast,trunc(u8) (ifx edge then 16 else 240);
         o[0].b[at] = v; o[0].b[at + 1] = v; o[0].b[at + 2] = v;
@@ -663,18 +690,20 @@ cx_composite :: (x: [] Cx, o: [] CxFrame) {
     }
   }
 }
-cx_shot :: (x: [] Cx, o: [] CxFrame, path: string) -> bool {
+// Writes the picture as a PPM: all of it drawn again when full, else only what was damaged since.
+cx_shot :: (x: [] Cx, o: [] CxFrame, path: string, full: bool) -> bool {
+  if full { cx_damage_all(x); }
   cx_composite(x, o);
   head: [64] u8; hn := 0;
-  hs: [3] string; hs[0] = "P6\n";
   for c: "P6\n" { head[hn] = c; hn += 1; }
   hn = cx_num_into(head[..], hn, x[0].w); head[hn] = ' '; hn += 1; hn = cx_num_into(head[..], hn, x[0].h);
   for c: "\n255\n" { head[hn] = c; hn += 1; }
   n := 3 * x[0].w * x[0].h;
-  // the header goes in front of the pixels, which stay where they are: shift them once
+  // the header goes in front of the pixels for the write, and they move back after: the picture is kept
   i := n - 1; while i >= 0 { o[0].b[i + hn] = o[0].b[i]; i -= 1; }
   for j: 0..<hn { o[0].b[j] = head[j]; }
   ok := fs_write(path, cast(string) o[0].b[0..<n + hn]);
+  for j: 0..<n { o[0].b[j] = o[0].b[j + hn]; }
   return ok;
 }
 cx_num_into :: (b: [] u8, at: int, value: int) -> int {
@@ -774,7 +803,7 @@ cx_binding :: (x: [] Cx, code: int, mods: int) -> bool {
   else if v == B_SCREEN { y := wm_focus_screen(m, b.arg); }
   else if v == B_TO_SCREEN { f := wm_focus(m); if f != 0 { y := wm_move_to_screen(m, f, b.arg); } }
   else if v == B_DESK_TO_SCREEN { y := wm_move_desk_to_screen(m, b.arg); }
-  cx_sync(x);
+  cx_damage_all(x); cx_sync(x);
   return true;
 }
 // One key going down or up, from the keyboard (evdev code).
@@ -891,7 +920,7 @@ cx_pointer :: (x: [] Cx, px: int, py: int) {
     for i: 0..<x[0].clients[pc].npt { p := x[0].clients[pc].ptrs[i]; mg_begin(g, p, 1); mg_put(g, cx_serial(x)); mg_put(g, x[0].surfs[x[0].pfocus].id); mg_end(g); if x[0].clients[pc].objs[p].ver >= 5 { mg_begin(g, p, 5); mg_end(g); } }
     mg_flush(x, pc, -1);
   }
-  x[0].px = px; x[0].py = py;
+  cx_damage_pointer(x); x[0].px = px; x[0].py = py; cx_damage_pointer(x);
   if s != x[0].pfocus { x[0].cursor = -1; }   // a new window sets its own pointer on enter
   if s < 0 { x[0].pfocus = -1; return; }
   r: [4] int; if !cx_place(x, id, r[..]) { return; }
@@ -954,7 +983,7 @@ cx_drag :: (x: [] Cx, dx: int, dy: int) {
     }
   }
   x[0].px = cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)); x[0].py = cx_max(0, cx_min(x[0].h - 1, x[0].py + dy));
-  cx_sync(x);
+  cx_damage_all(x); cx_sync(x);
 }
 cx_click :: (x: [] Cx) { cx_button(x, 272, true); cx_button(x, 272, false); }
 // The events the input face has ready: keys through the bindings, the mouse moving the pointer.
@@ -972,7 +1001,6 @@ cx_input :: (x: [] Cx) -> bool {
     }
   }
   if moved { if x[0].drag != 0 { cx_drag(x, dx, dy); } else { cx_pointer(x, cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)), cx_max(0, cx_min(x[0].h - 1, x[0].py + dy))); } }
-  if n > 0 { x[0].dirty = true; }
   return true;
 }
 cx_num :: (s: string) -> int {
@@ -1001,13 +1029,12 @@ cx_list :: (x: [] Cx) {
   cx_say("end");
 }
 cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
-  x[0].dirty = true;
   w: [8] string; nw := 0; st := 0;
   for i: 0..<line.count + 1 { if i == line.count || line[i] == ' ' { if nw < 8 && i > st { w[nw] = line[st..<i]; nw += 1; } st = i + 1; } }
   if nw == 0 { return; }
   c := w[0]; m := x[0].wm[..];
   if c == "list" { cx_list(x); }
-  else if c == "shot" && nw == 2 { cx_say(ifx cx_shot(x, o, w[1]) then "shot" else "shot failed"); }
+  else if c == "shot" && nw == 2 { cx_say(ifx cx_shot(x, o, w[1], true) then "shot" else "shot failed"); }
   else if c == "move" && nw == 3 { cx_pointer(x, cx_num(w[1]), cx_num(w[2])); cx_say("ok"); }
   else if c == "click" { cx_click(x); cx_say("ok"); }
   else if c == "keydown" && nw == 3 { cx_input_key(x, cx_num(w[1]), w[2] == "1"); cx_say("ok"); }   // one key, held (1) or let go (0)
@@ -1035,6 +1062,7 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
   }
   else if c == "close" { cx_close_focused(x); cx_say("ok"); }
   else if c == "wm" && nw >= 2 {
+    cx_damage_all(x);
     v := w[1]; a1 := ifx nw > 2 then cx_num(w[2]) else 0;
     if v == "movefocus" { wm_movefocus(m, a1); } else if v == "movewindow" { wm_movewindow(m, a1); }
     else if v == "resize" && nw > 3 { wm_resize(m, a1, cast(f32) cx_num(w[3]) / 100.0); }
@@ -1044,10 +1072,19 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
     else { cx_say("unknown wm verb"); return; }
     cx_sync(x); cx_say("ok");
   }
+  else if c == "frame" && nw == 2 {   // only what was damaged: says the box it drew
+    d: [4] int; for i: 0..<4 { d[i] = x[0].dmg[i]; }
+    ok := cx_shot(x, o, w[1], false);
+    b: [128] u8; n := 0; for ch: "frame " { b[n] = ch; n += 1; }
+    if d[2] <= d[0] { for ch: "nothing" { b[n] = ch; n += 1; } }
+    else { n = cx_num_into(b[..], n, d[0]); b[n] = ','; n += 1; n = cx_num_into(b[..], n, d[1]); b[n] = ' '; n += 1; n = cx_num_into(b[..], n, d[2]); b[n] = ','; n += 1; n = cx_num_into(b[..], n, d[3]); }
+    if !ok { for ch: " failed" { b[n] = ch; n += 1; } }
+    cx_say(cast(string) b[0..<n]);
+  }
   else if c == "pointer" && nw == 2 { x[0].show_pointer = w[1] == "on"; cx_say("ok"); }   // draw the pointer in shots too
   else if c == "bench" && nw == 2 {   // composites N times: the milliseconds a frame takes
     k := cx_max(cx_num(w[1]), 1); t0 := cxwl_ms();
-    for i: 0..<k { cx_composite(x, o); }
+    for i: 0..<k { cx_damage_all(x); cx_composite(x, o); }
     b: [64] u8; n := cx_num_into(b[..], 0, (cxwl_ms() - t0) * 1000 / k); for ch: " us a frame" { b[n] = ch; n += 1; }
     cx_say(cast(string) b[0..<n]);
   }
@@ -1093,6 +1130,7 @@ tool_main :: () -> int #export_c {
   for i: 0..<sn { x[0].sock[i] = sp[i]; } x[0].nsock = sn;
   r := cxwl_listen(sp[0..<sn]);
   if r < 0 { tool_errln("compositor: cannot listen on the socket"); return 1; }
+  cx_damage_all(x);
   cx_say("ready");
   // the session's start list (Hyprland's exec-once rows), as one program the system writes
   sp2: [1024] u8; stn := 0; for i: 0..<x[0].nlaunch { sp2[stn] = x[0].launch[i]; stn += 1; } for c: "/start" { sp2[stn] = c; stn += 1; }
@@ -1129,7 +1167,14 @@ tool_main :: () -> int #export_c {
     if input_open && !cx_input(x) { input_open = false; cx_say("input ended"); }
     now := cxwl_ms();
     if now - last >= 16 {
-      if x[0].screen && x[0].dirty { cx_composite(x, fr); if cxscr_present(fr[0].b[..], 0) == 0 { x[0].dirty = false; } }   // the frame clock: every waiting frame callback hears it
+      if x[0].screen && x[0].dirty {
+        // the back buffer last showed the frame before, so it takes this damage and that frame's
+        y0 := x[0].dmg[1]; y1 := x[0].dmg[3];
+        if x[0].prev[3] > x[0].prev[1] { y0 = cx_min(y0, x[0].prev[1]); y1 = cx_max(y1, x[0].prev[3]); }
+        for i: 0..<4 { x[0].prev[i] = x[0].dmg[i]; }   // (a frame the screen refuses is drawn again next tick)
+        cx_composite(x, fr);
+        if cxscr_present(fr[0].b[..], y0, y1) == 0 { x[0].dirty = false; } else { for i: 0..<4 { x[0].dmg[i] = x[0].prev[i]; } }
+      }   // the frame clock: every waiting frame callback hears it
       last = now; g := x[0].g[..];
       for i: 0..<x[0].ndue {
         d := x[0].due[i];

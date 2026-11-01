@@ -96,21 +96,23 @@ int64_t cxscr_open(void) {
 int64_t cxscr_width(void) { return scr_w; }
 int64_t cxscr_height(void) { return scr_h; }
 int64_t cxscr_refresh(void) { return scr_mode.vrefresh; }
-/* Shows rgb (w*h*3 bytes from offset) on the screen at the next vertical blank: 0, -1 when the last
-   one has not been shown yet (nothing changes), -2 on an error. */
-int64_t cxscr_present(coax_v_u8 rgb, int64_t offset) {
+/* Shows rgb (w*h*3 bytes) on the screen at the next vertical blank, copying only rows y0..y1 into
+   the back buffer (the rest of it already holds them): 0, -1 when the last one has not been shown
+   yet (nothing changes), -2 on an error. */
+int64_t cxscr_present(coax_v_u8 rgb, int64_t y0, int64_t y1) {
   if (scr_fd < 0) return -2;
   if (scr_flip_pending) {
     struct pollfd p = {scr_fd, POLLIN, 0};
     if (poll(&p, 1, 0) > 0) { drmEventContext ev = {.version = 2, .page_flip_handler = scr_on_flip}; drmHandleEvent(scr_fd, &ev); }
     if (scr_flip_pending) return -1;
   }
-  if (rgb.count < offset + (int64_t)scr_w * scr_h * 3) return -2;
+  if (rgb.count < (int64_t)scr_w * scr_h * 3) return -2;
+  if (y0 < 0) y0 = 0; if (y1 > scr_h) y1 = scr_h;
   ScrBuf *b = &scr_buf[scr_back];
-  const uint8_t *s = rgb.data + offset;
+  const uint8_t *s = rgb.data;
   uint32_t row[8192];
   int w = scr_w < 8192 ? scr_w : 8192;
-  for (int y = 0; y < scr_h; y++) {   // whole rows: the buffer is write-combined
+  for (int y = (int)y0; y < (int)y1; y++) {   // whole rows: the buffer is write-combined
     const uint8_t *p = s + (size_t)y * scr_w * 3;
     for (int x = 0; x < w; x++) row[x] = ((uint32_t)p[3 * x] << 16) | ((uint32_t)p[3 * x + 1] << 8) | p[3 * x + 2];
     memcpy((char *)b->map + (size_t)y * b->pitch, row, (size_t)w * 4);
@@ -200,7 +202,7 @@ int64_t cxscr_open(void) { return -1; }
 int64_t cxscr_width(void) { return 0; }
 int64_t cxscr_height(void) { return 0; }
 int64_t cxscr_refresh(void) { return 0; }
-int64_t cxscr_present(coax_v_u8 rgb, int64_t offset) { (void)rgb; (void)offset; return -2; }
+int64_t cxscr_present(coax_v_u8 rgb, int64_t y0, int64_t y1) { (void)rgb; (void)y0; (void)y1; return -2; }
 int64_t cxscr_close(void) { return 0; }
 int64_t cxin_open(coax_v_u8 path) { (void)path; return -ENOSYS; }
 int64_t cxin_read(void) { return -1; }
