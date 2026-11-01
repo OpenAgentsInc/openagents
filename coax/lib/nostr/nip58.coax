@@ -1,0 +1,370 @@
+// NIP-58 badges read from parsed events: kind 30009 badge definitions, kind
+// 8 badge awards and kind 10008 profile badges (and kind 30008, the
+// deprecated profile badges with d "profile_badges" and the badge sets).
+// Then the check a client makes before it shows a badge on a profile.
+//
+// A profile lists ordered, consecutive pairs of tags: an a tag naming a
+// definition 30009:issuer:d, then an e tag naming the award. A pair is
+// shown only when the award is in the set the caller passes, is a kind 8
+// event signed by the definition's issuer (the author in the a tag), names
+// the same definition, and names the profile's owner in a p tag. An a tag
+// without its e and an e tag without its a are ignored, as NIP-58 says.
+//
+// Nothing here fetches, verifies a signature or decides which issuers are
+// reputable: the caller verifies the award events it passes and may filter
+// the shown badges by issuer afterwards.
+#load "nip32.coax";
+#authority;
+
+N58_OK :: 0; N58_EVENT :: 1; N58_KIND :: 2; N58_TAG :: 3; N58_MISSING :: 4;
+N58_ADDRESS :: 5; N58_EXTRA :: 6; N58_ISSUER :: 7; N58_LIMIT :: 8;
+N58_KIND_AWARD :: 8; N58_KIND_PROFILE :: 10008; N58_KIND_SET :: 30008;
+N58_KIND_DEFINITION :: 30009;
+// What became of one pair of a profile.
+N58_SHOWN :: 0; N58_UNFETCHED :: 1; N58_BAD_AWARD :: 2; N58_OTHER_ISSUER :: 3;
+N58_MISMATCH :: 4; N58_NOT_OWNER :: 5; N58_DUPLICATE :: 6;
+
+// book:begin record
+N58Definition :: struct {
+  status:int=N58_EVENT; at:int=-1;            // the refusing tag
+  d:N32Text; name:N32Text;                    // the identifier and short name
+  image:N32Text; image_size:N32Text;          // the first image and its WxH
+  thumbs:int; thumb:N32Text;                  // thumb tags, and the first
+  has_description:bool;
+}
+N58Award :: struct {
+  status:int=N58_EVENT; at:int=-1;
+  address:NostrTag;    // the single a tag: 30009, the issuer, the badge's d
+  awardees:int;        // p tags
+}
+N58Pair :: struct {
+  verdict:int;         // N58_SHOWN or why not
+  at:int;              // the pair's a tag
+  address:NostrTag;    // the definition the profile names
+  award:[32]u8;        // the award the profile names
+}
+N58Profile :: struct {
+  status:int=N58_EVENT; at:int=-1;
+  set:bool;            // kind 30008 with a d other than profile_badges
+  n:int; shown:int;    // pairs in out, and those shown
+  unpaired:int;        // an a without its e, or an e without its a
+  sets:int;            // a tags naming kind 30008 badge sets
+  bad:int;             // a and e tags that don't read
+}
+// book:end record
+
+// ---- test events: tags written from a template where each capital letter
+// stands for a 64-digit key or id, all of one byte.
+N58_FILL_KEYS :: "ABCMXYZW";
+N58_FILL_HEX :: [8] string.["01", "02", "03", "09", "10", "11", "12", "13"];
+n58_fill :: (template:string,out:[]u8)->string {
+  n:=0;
+  for i:0..<template.count {
+    k:=-1;for c:0..<N58_FILL_KEYS.count {if template[i]==N58_FILL_KEYS[c] {k=c;}}
+    if k<0 {out[n]=template[i];n+=1;continue;}
+    for r:0..<32 {n=json_raw(out,n,N58_FILL_HEX[k]);}
+  }
+  return cast(string)out[0..<n];
+}
+n58_ev :: (kind:int,template:string,author:u8,id:u8,out:[]u8)->NostrEvent {
+  e:=nt_event(n58_fill(template,out));e.kind=kind;return n32_at(e,author,id);
+}
+
+#test "the fill helper writes keys and ids" {
+  buf:[512]u8;s:=n58_fill("[\"A\",\"x\",\"W\"]",buf[..]);
+  #assert s.count==139 && s[2]=='0' && s[3]=='1' && s[65]=='1' && s[66]=='"' && s[69]=='x' && s[73]=='1' && s[74]=='3' && s[136]=='3' && s[137]=='"';
+  e:=n58_ev(8,"[]",0x09,0x10,buf[..]);#assert e.kind==8 && e.public_key[31]==0x09 && e.id[0]==0x10;
+}
+#test "NIP-58's definition example" {
+  buf:[1024]u8;
+  // Its text has capitals, so it is written as is, not through n58_fill.
+  e:=n32_at(n32_event_in(30009,"[[\"d\",\"bravery\"],[\"name\",\"Medal of Bravery\"],[\"description\",\"Awarded to users demonstrating bravery\"],[\"image\",\"https://nostr.academy/awards/bravery.png\",\"1024x1024\"],[\"thumb\",\"https://nostr.academy/awards/bravery_256x256.png\",\"256x256\"]]",buf[..]),0x01,0x20);
+  d:=n58_definition(e);
+  #assert d.status==N58_OK && d.at== -1 && n32_is(d.d,"bravery") && n32_is(d.name,"Medal of Bravery") && d.has_description;
+  #assert n32_is(d.image,"https://nostr.academy/awards/bravery.png") && n32_is(d.image_size,"1024x1024");
+  #assert d.thumbs==1 && n32_is(d.thumb,"https://nostr.academy/awards/bravery_256x256.png");
+}
+#test "definitions: the first of each tag; only d is required" {
+  buf:[1024]u8;
+  d:=n58_definition(n58_ev(30009,"[[\"d\",\"a\"],[\"d\",\"b\"],[\"name\",\"x\"],[\"name\",\"y\"],[\"image\",\"u\"],[\"image\",\"v\",\"1x1\"],[\"thumb\",\"t1\",\"2x2\"],[\"thumb\",\"t2\"],[\"t\",\"z\"]]",1,1,buf[..]));
+  #assert d.status==N58_OK && n32_is(d.d,"a") && n32_is(d.name,"x") && n32_is(d.image,"u") && d.image_size.n==0 && d.thumbs==2 && n32_is(d.thumb,"t1") && !d.has_description;
+  d=n58_definition(n58_ev(30009,"[[\"d\",\"only\"]]",1,1,buf[..]));
+  #assert d.status==N58_OK && d.name.n==0 && d.image.n==0 && d.thumbs==0;
+}
+#test "definition refusals" {
+  buf:[1024]u8;
+  d0:=n58_definition(n58_ev(30008,"[[\"d\",\"a\"]]",1,1,buf[..]));#assert d0.status==N58_KIND && d0.at== -1;
+  d:=n58_definition(n58_ev(30009,"[[\"name\",\"x\"]]",1,1,buf[..]));#assert d.status==N58_MISSING && d.at== -1;
+  d=n58_definition(n58_ev(30009,"[[\"d\",\"\"]]",1,1,buf[..]));#assert d.status==N58_TAG && d.at==0;
+  d=n58_definition(n58_ev(30009,"[[\"d\",\"a\"],[\"image\"]]",1,1,buf[..]));#assert d.status==N58_TAG && d.at==1;
+  #assert n58_definition(n58_ev(30009,"[[\"d\",\"a\"],[\"name\",\"\"]]",1,1,buf[..])).status==N58_TAG;
+  #assert n58_definition(n58_ev(30009,"[[\"d\",\"a\"],[\"thumb\"]]",1,1,buf[..])).status==N58_TAG;
+  #assert n58_definition(n58_ev(30009,"[[\"d\",\"a\"],[\"description\"]]",1,1,buf[..])).status==N58_TAG;
+  #assert n58_definition(n58_ev(30009,"[[\"d\",\"a\"],[\"other\"]]",1,1,buf[..])).status==N58_OK;
+  none:NostrEvent;#assert n58_definition(none).status==N58_EVENT;
+  e:=n58_ev(30009,"[]",1,1,buf[..]);e.original="[[\"d\",1]]";e.tags_to=e.original.count;
+  d=n58_definition(e);#assert d.status==N58_EVENT && d.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  d=n58_definition(n32_event(30009,cast(string)long[0..<n]));#assert d.status==N58_LIMIT && d.at==0;
+}
+#test "NIP-58's award example, with keys for alice, bob and charlie" {
+  buf:[1024]u8;
+  e:=n58_ev(8,"[[\"a\",\"30009:A:bravery\"],[\"p\",\"B\",\"wss://relay\"],[\"p\",\"C\",\"wss://relay\"]]",0x01,0x10,buf[..]);
+  w:=n58_award(e);
+  #assert w.status==N58_OK && w.at== -1 && w.awardees==2 && w.address.address_kind==30009 && w.address.pubkey[0]==0x01 && cast(string)w.address.d[0..<w.address.d_n]=="bravery";
+  bob:[32]u8;carol:[32]u8;alice:[32]u8;for i:0..<32 {bob[i]=0x02;carol[i]=0x03;alice[i]=0x01;}
+  #assert n58_names(e,bob) && n58_names(e,carol) && !n58_names(e,alice);
+}
+#test "award refusals: kind, issuer, address, a second a, missing tags" {
+  buf:[1024]u8;
+  w0:=n58_award(n58_ev(9,"[[\"a\",\"30009:A:x\"],[\"p\",\"B\"]]",0x01,1,buf[..]));#assert w0.status==N58_KIND && w0.at== -1;
+  w:=n58_award(n58_ev(8,"[[\"p\",\"B\"],[\"a\",\"30009:A:x\"]]",0x09,1,buf[..]));#assert w.status==N58_ISSUER && w.at==1;
+  w=n58_award(n58_ev(8,"[[\"a\",\"30008:A:x\"],[\"p\",\"B\"]]",0x01,1,buf[..]));#assert w.status==N58_ADDRESS && w.at==0;
+  w=n58_award(n58_ev(8,"[[\"a\",\"30009:A:x\"],[\"a\",\"30009:A:y\"],[\"p\",\"B\"]]",0x01,1,buf[..]));#assert w.status==N58_EXTRA && w.at==1;
+  w=n58_award(n58_ev(8,"[[\"a\",\"30009:A:x\"]]",0x01,1,buf[..]));#assert w.status==N58_MISSING && w.at== -1;
+  w=n58_award(n58_ev(8,"[[\"p\",\"B\"]]",0x01,1,buf[..]));#assert w.status==N58_MISSING;
+  w=n58_award(n58_ev(8,"[[\"a\",\"30009:a:x\"],[\"p\",\"B\"]]",0x01,1,buf[..]));#assert w.status==N58_TAG && w.at==0;
+  w=n58_award(n58_ev(8,"[[\"a\",\"30009:A:x\"],[\"p\",\"bb\"]]",0x01,1,buf[..]));#assert w.status==N58_TAG && w.at==1;
+  w=n58_award(n58_ev(8,"[[\"a\",\"30009:A:x\"],[\"t\",\"q\"],[\"p\",\"B\"],[\"p\",\"C\"],[\"p\",\"A\"]]",0x01,1,buf[..]));#assert w.status==N58_OK && w.awardees==3;
+  none:NostrEvent;#assert n58_award(none).status==N58_EVENT;
+  e:=n58_ev(8,"[]",1,1,buf[..]);e.original="[[\"p\",1]]";e.tags_to=e.original.count;
+  w=n58_award(e);#assert w.status==N58_EVENT && w.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"p\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  w=n58_award(n32_event(8,cast(string)long[0..<n]));#assert w.status==N58_LIMIT && w.at==0;
+  // n58_names reads only p tags, passes over bad ones, and stops on a broken event.
+  e=n58_ev(8,"[[\"e\",\"B\"],[\"a\",\"30009:B:x\"]]",0x02,1,buf[..]);bob:[32]u8;for i:0..<32 {bob[i]=0x02;}#assert !n58_names(e,bob);
+  e=n58_ev(8,"[[\"p\",\"bb\"],[\"p\",\"B\"]]",0x02,1,buf[..]);#assert n58_names(e,bob);
+  e=n58_ev(8,"[[\"p\",\"B\"]]",0x02,1,buf[..]);#assert n58_names(e,bob);
+  e.error=NE_ID;#assert !n58_names(e,bob);
+}
+#test "addresses match on kind, issuer and d" {
+  buf:[256]u8;
+  x:=nostr_tag(n58_ev(8,"[[\"a\",\"30009:A:x\"]]",1,1,buf[..]),0);
+  y:=x;#assert n58_same_address(x,y);
+  y.address_kind=30008;#assert !n58_same_address(x,y);
+  y=x;y.pubkey[5]=0;#assert !n58_same_address(x,y);
+  y=x;y.d[0]='y';#assert !n58_same_address(x,y);
+  y=x;y.d_n=2;y.d[1]='x';#assert !n58_same_address(x,y);
+  y=x;y.d[1]='q';#assert n58_same_address(x,y);   // past d_n
+}
+
+// Three awards by the byte keys: Alice 01, Bob 02, Carol 03, Mallory 09.
+// X: Alice's bravery to Bob. Y: Mallory's award of "Alice's" honor to Bob.
+// Z: Alice's kindness to Carol. W: Alice's honor to Bob.
+N58_AWARD_TAGS :: [4] string.[
+  "[[\"a\",\"30009:A:bravery\"],[\"p\",\"B\"]]", "[[\"a\",\"30009:A:honor\"],[\"p\",\"B\"]]",
+  "[[\"a\",\"30009:A:kindness\"],[\"p\",\"C\"]]", "[[\"a\",\"30009:A:honor\"],[\"p\",\"B\"]]"];
+N58_AWARD_BY :: [4] u8.[0x01, 0x09, 0x01, 0x01];
+n58_awards :: (out:[]NostrEvent,buf:[][512]u8) {
+  for k:0..<4 {out[k]=n58_ev(8,N58_AWARD_TAGS[k],N58_AWARD_BY[k],cast(u8)(0x10+k),buf[k][..]);}
+}
+#test "profile: one pair shown, one by another issuer, one not to the owner, one unpaired" {
+  b:[4][512]u8;aw:[4]NostrEvent;n58_awards(aw[..],b[..]);
+  buf:[2048]u8;out:[4]N58Pair;
+  p:=n58_ev(10008,"[[\"a\",\"30009:A:bravery\"],[\"e\",\"X\",\"wss://nostr.academy\"],[\"a\",\"30009:A:honor\"],[\"e\",\"Y\"],[\"a\",\"30009:A:kindness\"],[\"e\",\"Z\"],[\"a\",\"30009:A:lone\"]]",0x02,0x30,buf[..]);
+  #assert aw[1].public_key[0]==0x09 && aw[1].id[31]==0x11;
+  r:=n58_profile(p,aw[..],out[..]);
+  #assert r.status==N58_OK && r.at== -1 && !r.set && r.n==3 && r.shown==1 && r.unpaired==1 && r.sets==0 && r.bad==0;
+  #assert out[0].verdict==N58_SHOWN && out[0].at==0 && out[0].award[0]==0x10 && cast(string)out[0].address.d[0..<out[0].address.d_n]=="bravery";
+  #assert out[1].verdict==N58_OTHER_ISSUER && out[1].at==2 && out[2].verdict==N58_NOT_OWNER && out[2].at==4;
+  // The awards in any order give the same verdicts.
+  rev:[4]NostrEvent;for k:0..<4 {rev[k]=aw[3-k];}
+  r=n58_profile(p,rev[..],out[..]);#assert r.shown==1 && out[0].verdict==N58_SHOWN && out[1].verdict==N58_OTHER_ISSUER && out[2].verdict==N58_NOT_OWNER;
+  // Without the awards nothing is shown.
+  r=n58_profile(p,aw[0..<0],out[..]);#assert r.n==3 && r.shown==0 && out[0].verdict==N58_UNFETCHED && out[2].verdict==N58_UNFETCHED;
+  // Carol's own profile shows her kindness badge.
+  p=n58_ev(10008,"[[\"a\",\"30009:A:kindness\"],[\"e\",\"Z\"]]",0x03,0x31,buf[..]);
+  r=n58_profile(p,aw[..],out[..]);#assert r.shown==1 && out[0].verdict==N58_SHOWN;
+}
+#test "profile: mismatched definition, duplicates, bad awards, lone e" {
+  b:[4][512]u8;aw:[4]NostrEvent;n58_awards(aw[..],b[..]);
+  buf:[2048]u8;out:[8]N58Pair;
+  // The pair names honor, the award is for bravery.
+  p:=n58_ev(10008,"[[\"a\",\"30009:A:honor\"],[\"e\",\"X\"],[\"a\",\"30009:A:honor\"],[\"e\",\"W\"],[\"a\",\"30009:A:honor\"],[\"e\",\"W\"]]",0x02,0x30,buf[..]);
+  r:=n58_profile(p,aw[..],out[..]);
+  #assert r.n==3 && r.shown==1 && out[0].verdict==N58_MISMATCH && out[1].verdict==N58_SHOWN && out[2].verdict==N58_DUPLICATE;
+  p=n58_ev(10008,"[[\"a\",\"30009:A:honor\"],[\"e\",\"W\"],[\"a\",\"30009:A:honor\"],[\"e\",\"W\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,aw[..],out[..]);#assert r.shown==1 && out[0].verdict==N58_SHOWN && out[1].verdict==N58_DUPLICATE;
+  // A duplicate of a pair that is not shown is judged again, not a duplicate.
+  p=n58_ev(10008,"[[\"a\",\"30009:A:honor\"],[\"e\",\"Y\"],[\"a\",\"30009:A:honor\"],[\"e\",\"Y\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,aw[..],out[..]);#assert out[0].verdict==N58_OTHER_ISSUER && out[1].verdict==N58_OTHER_ISSUER && r.shown==0;
+  // An award id that is some other kind, or an award that doesn't read.
+  odd:[2]NostrEvent;ob:[2][512]u8;
+  odd[0]=n58_ev(1,"[[\"a\",\"30009:A:honor\"],[\"p\",\"B\"]]",0x01,0x13,ob[0][..]);
+  odd[1]=n58_ev(8,"[[\"a\",\"30009:A:honor\"]]",0x01,0x12,ob[1][..]);
+  p=n58_ev(10008,"[[\"a\",\"30009:A:honor\"],[\"e\",\"W\"],[\"a\",\"30009:A:honor\"],[\"e\",\"Z\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,odd[..],out[..]);#assert r.n==2 && r.shown==0 && out[0].verdict==N58_BAD_AWARD && out[1].verdict==N58_BAD_AWARD;
+  // Two events with one id: the first in the set is the one judged.
+  dup:[2]NostrEvent;dup[0]=aw[0];dup[1]=n58_ev(1,"[]",0x01,0x10,ob[1][..]);
+  p=n58_ev(10008,"[[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,dup[..],out[..]);#assert out[0].verdict==N58_SHOWN;
+  dup[1]=dup[0];dup[0]=n58_ev(1,"[]",0x01,0x10,ob[1][..]);
+  r=n58_profile(p,dup[..],out[..]);#assert out[0].verdict==N58_BAD_AWARD;
+  p=n58_ev(10008,"[[\"a\",\"30009:A:honor\"],[\"e\",\"W\"],[\"a\",\"30009:A:honor\"],[\"e\",\"Z\"]]",0x02,0x30,buf[..]);
+  odd[0]=n58_ev(1,"[[\"a\",\"30009:A:honor\"],[\"p\",\"B\"]]",0x01,0x13,ob[0][..]);
+  // A broken event in the set is never matched.
+  odd[0].error=NE_ID;r=n58_profile(p,odd[0..<1],out[..]);#assert out[0].verdict==N58_UNFETCHED;
+  // A lone e, e before a, a then a then e, other tags in between.
+  p=n58_ev(10008,"[[\"e\",\"X\"],[\"a\",\"30009:A:bravery\"],[\"t\",\"x\"],[\"e\",\"X\"],[\"a\",\"30009:A:honor\"],[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,aw[..],out[..]);#assert r.status==N58_OK && r.n==1 && r.shown==1 && out[0].at==5 && r.unpaired==4;
+}
+#test "profile: badge sets, bad tags, kinds and bounds" {
+  b:[4][512]u8;aw:[4]NostrEvent;n58_awards(aw[..],b[..]);
+  buf:[2048]u8;out:[2]N58Pair;
+  p:=n58_ev(10008,"[[\"a\",\"30008:B:favourites\"],[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"]]",0x02,0x30,buf[..]);
+  r:=n58_profile(p,aw[..],out[..]);#assert r.n==1 && r.shown==1 && r.sets==1 && r.unpaired==0;
+  // A bad a, an a to another kind, a bad e in a pair.
+  // A badge set's or a definition's a with a bad relay is bad, not a set.
+  p=n58_ev(10008,"[[\"a\",\"30009:a:x\"],[\"a\",\"30023:A:x\"],[\"a\",\"30008:B:x\",\"x\"],[\"a\",\"30009:A:bravery\",\"x\"],[\"a\",\"30009:A:bravery\"],[\"e\",\"xx\"],[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,aw[..],out[..]);#assert r.status==N58_OK && r.bad==6 && r.sets==0 && r.n==1 && r.shown==1 && out[0].at==6 && r.unpaired==0;
+  // The deprecated profile badges and a badge set: kind 30008 by its d.
+  p=n58_ev(30008,"[[\"d\",\"profile_badges\"],[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,aw[..],out[..]);#assert r.status==N58_OK && !r.set && r.shown==1;
+  p=n58_ev(30008,"[[\"d\",\"favourites\"],[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,aw[..],out[..]);#assert r.status==N58_OK && r.set && r.shown==1;
+  r=n58_profile(n58_ev(30008,"[[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"]]",0x02,0x30,buf[..]),aw[..],out[..]);#assert r.status==N58_MISSING && r.at== -1;
+  r=n58_profile(n58_ev(30008,"[[\"t\",1]]",0x02,0x30,buf[..]),aw[..],out[..]);#assert r.status==N58_EVENT && r.at== -1;
+  r=n58_profile(n58_ev(30008,"[[\"d\",\"x\"],[\"t\",1]]",0x02,0x30,buf[..]),aw[..],out[..]);#assert r.status==N58_EVENT && r.at==1;
+  r=n58_profile(n58_ev(10009,"[]",0x02,0x30,buf[..]),aw[..],out[..]);#assert r.status==N58_KIND && r.at== -1;
+  none:NostrEvent;#assert n58_profile(none,aw[..],out[..]).status==N58_EVENT;
+  // More pairs than out holds.
+  p=n58_ev(10008,"[[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"],[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"],[\"a\",\"30009:A:bravery\"],[\"e\",\"X\"]]",0x02,0x30,buf[..]);
+  r=n58_profile(p,aw[..],out[..]);#assert r.status==N58_LIMIT && r.at==4 && r.n==2;
+  r=n58_profile(p,aw[..],out[0..<0]);#assert r.status==N58_LIMIT && r.at==0;
+  e:=n58_ev(10008,"[]",2,1,buf[..]);e.original="[[\"t\",\"x\"],[\"e\",1]]";e.tags_to=e.original.count;
+  r=n58_profile(e,aw[..],out[..]);#assert r.status==N58_EVENT && r.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"e\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  r=n58_profile(n32_event(10008,cast(string)long[0..<n]),aw[..],out[..]);#assert r.status==N58_LIMIT && r.at==0;
+  // An a whose next tag is over the bound: the a is unpaired, the next refuses.
+  n=json_raw(long[..],0,"[[\"a\",\"30009:0101010101010101010101010101010101010101010101010101010101010101:x\"],[\"e\",\"");
+  big:[512]u8;for i:0..<n {big[i]=long[i];}for i:0..<257 {big[n+i]='x';}n+=257;n=json_raw(big[..],n,"\"]]");
+  r=n58_profile(n32_event(10008,cast(string)big[0..<n]),aw[..],out[..]);#assert r.status==N58_LIMIT && r.at==1 && r.unpaired==1;
+}
+
+n58_def_refuse :: (r:N58Definition,status:int,at:int)->N58Definition {o:=r;o.status=status;o.at=at;return o;}
+n58_award_refuse :: (r:N58Award,status:int,at:int)->N58Award {o:=r;o.status=status;o.at=at;return o;}
+n58_profile_refuse :: (r:N58Profile,status:int,at:int)->N58Profile {o:=r;o.status=status;o.at=at;return o;}
+
+// book:begin definition
+// A badge definition: d is required and not empty; name, image, thumb and
+// description, when present, need a value. The first of each counts.
+n58_definition :: (e:NostrEvent)->N58Definition {
+  r:N58Definition;if e.error!=NE_OK {return r;}
+  if e.kind!=N58_KIND_DEFINITION {return n58_def_refuse(r,N58_KIND,-1);}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n58_def_refuse(r,N58_LIMIT,i);}
+    if t.error!=NT_OK {return n58_def_refuse(r,N58_EVENT,i);}
+    name:=t.v[0];
+    known:=n32_is(name,"d") || n32_is(name,"name") || n32_is(name,"image") || n32_is(name,"thumb") || n32_is(name,"description");
+    if known && t.v[1].n==0 {return n58_def_refuse(r,N58_TAG,i);}
+    if n32_is(name,"d") && r.d.n==0 {r.d=t.v[1];}
+    if n32_is(name,"name") && r.name.n==0 {r.name=t.v[1];}
+    if n32_is(name,"image") && r.image.n==0 {r.image=t.v[1];r.image_size=t.v[2];}
+    if n32_is(name,"thumb") {if r.thumbs==0 {r.thumb=t.v[1];}r.thumbs+=1;}
+    if n32_is(name,"description") {r.has_description=true;}
+    i+=1;
+  }
+  if r.d.n==0 {return n58_def_refuse(r,N58_MISSING,-1);}
+  r.status=N58_OK;return r;
+}
+// book:end definition
+
+// book:begin award
+// A badge award: one a tag naming a kind 30009 definition, at least one p
+// tag, and signed by the definition's author. Anyone can sign a kind 8
+// event naming anyone's badge; only the issuer's award counts.
+n58_award :: (e:NostrEvent)->N58Award {
+  r:N58Award;if e.error!=NE_OK {return r;}
+  if e.kind!=N58_KIND_AWARD {return n58_award_refuse(r,N58_KIND,-1);}
+  a_at:=-1;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n58_award_refuse(r,N58_LIMIT,i);}
+    if t.error!=NT_OK {return n58_award_refuse(r,N58_EVENT,i);}
+    is_a:=n32_is(t.v[0],"a");is_p:=n32_is(t.v[0],"p");
+    if is_a || is_p {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {return n58_award_refuse(r,N58_TAG,i);}
+      if is_p {r.awardees+=1;}
+      if is_a && s.address_kind!=N58_KIND_DEFINITION {return n58_award_refuse(r,N58_ADDRESS,i);}
+      if is_a && a_at>=0 {return n58_award_refuse(r,N58_EXTRA,i);}
+      if is_a {r.address=s;a_at=i;}
+    }
+    i+=1;
+  }
+  if a_at<0 || r.awardees==0 {return n58_award_refuse(r,N58_MISSING,-1);}
+  if !ns_equal32(r.address.pubkey,e.public_key) {return n58_award_refuse(r,N58_ISSUER,a_at);}
+  r.status=N58_OK;return r;
+}
+// Whether a p tag of the award names key.
+n58_names :: (e:NostrEvent,key:[32]u8)->bool {
+  i:=0;t:=nostr_tag(e,0);
+  while t.error!=NT_INDEX && t.error!=NT_EVENT {
+    if t.error==NT_OK && t.type==NT_P && ns_equal32(t.pubkey,key) {return true;}
+    i+=1;t=nostr_tag(e,i);
+  }
+  return false;
+}
+// book:end award
+
+// book:begin profile
+// Whether two a tags name the same definition: kind, issuer and d.
+n58_same_address :: (x:NostrTag,y:NostrTag)->bool {
+  if x.address_kind!=y.address_kind || !ns_equal32(x.pubkey,y.pubkey) || x.d_n!=y.d_n {return false;}
+  for k:0..<x.d_n {if x.d[k]!=y.d[k] {return false;}}
+  return true;
+}
+// The verdict on one pair of owner's profile: the definition a, the award
+// id, the verified awards the caller fetched, and the pairs before it.
+n58_verdict :: (owner:NostrEvent,a:NostrTag,id:[32]u8,awards:[]NostrEvent,earlier:[]N58Pair)->int {
+  for k:0..<earlier.count {if earlier[k].verdict==N58_SHOWN && ns_equal32(earlier[k].award,id) {return N58_DUPLICATE;}}
+  found:=-1;
+  for k:0..<awards.count {if awards[k].error==NE_OK && ns_equal32(awards[k].id,id) {found=k;break;}}
+  if found<0 {return N58_UNFETCHED;}
+  w:=n58_award(awards[found]);
+  if w.status==N58_ISSUER {return N58_OTHER_ISSUER;}
+  if w.status!=N58_OK {return N58_BAD_AWARD;}
+  if !n58_same_address(w.address,a) {return N58_MISMATCH;}
+  if !n58_names(awards[found],owner.public_key) {return N58_NOT_OWNER;}
+  return N58_SHOWN;
+}
+// The pairs of a profile badges event, in order, each with its verdict.
+// A pair is an a tag naming a kind 30009 definition and the e tag right
+// after it. An a or e tag that is not part of a pair is counted as
+// unpaired; an a tag naming a kind 30008 badge set is counted in sets.
+n58_profile :: (e:NostrEvent,awards:[]NostrEvent,out:[]N58Pair)->N58Profile {
+  r:N58Profile;if e.error!=NE_OK {return r;}
+  if e.kind==N58_KIND_SET {
+    d:=nostr_tag_d(e);
+    if d.error!=NT_OK {return n58_profile_refuse(r,N58_EVENT,-1);}
+    if d.d_n==0 {return n58_profile_refuse(r,N58_MISSING,-1);}
+    r.set=cast(string)d.d[0..<d.d_n]!="profile_badges";
+  } else if e.kind!=N58_KIND_PROFILE {return n58_profile_refuse(r,N58_KIND,-1);}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n58_profile_refuse(r,N58_LIMIT,i);}
+    if t.error!=NT_OK {return n58_profile_refuse(r,N58_EVENT,i);}
+    if n32_is(t.v[0],"e") {r.unpaired+=1;i+=1;continue;}
+    if !n32_is(t.v[0],"a") {i+=1;continue;}
+    a:=nostr_tag(e,i);
+    if a.error==NT_OK && a.address_kind==N58_KIND_SET {r.sets+=1;i+=1;continue;}
+    if a.error!=NT_OK || a.address_kind!=N58_KIND_DEFINITION {r.bad+=1;i+=1;continue;}
+    next:=n32_tag(e,i+1);
+    if next.error!=NT_OK || !n32_is(next.v[0],"e") {r.unpaired+=1;i+=1;continue;}
+    x:=nostr_tag(e,i+1);
+    if x.error!=NT_OK {r.bad+=2;i+=2;continue;}
+    if r.n==out.count {return n58_profile_refuse(r,N58_LIMIT,i);}
+    p:N58Pair;p.at=i;p.address=a;p.award=x.id;
+    p.verdict=n58_verdict(e,a,x.id,awards,out[0..<r.n]);
+    if p.verdict==N58_SHOWN {r.shown+=1;}
+    out[r.n]=p;r.n+=1;i+=2;
+  }
+  r.status=N58_OK;return r;
+}
+// book:end profile

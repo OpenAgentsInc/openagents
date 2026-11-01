@@ -1,0 +1,199 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip58.coax";
+#load "../../coax/lib/nostr/nip38.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+STATUS58 :: [9] string.["ok", "event", "kind", "bad tag", "missing tag", "a is not a definition", "second a", "signer is not the issuer", "limit"];
+VERDICT :: [7] string.["shown", "award not fetched", "award does not read", "award signed by another key", "award names another badge", "award does not name the owner", "duplicate"];
+STATUS38 :: [8] string.["ok", "event", "kind", "bad tag", "missing d", "bad expiration", "expired", "limit"];
+TYPE38 :: [3] string.["general", "music", "other"];
+// BIP-340 test vectors 0 to 3's public keys.
+PEOPLE :: [4] string.["Alice", "Bob", "Carol", "Mallory"];
+PUB :: [4] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517"];
+// Their secret keys: published test values. Never sign with a real key in
+// an example.
+SECRET :: [4] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; MALLORY :: 3;
+T0 :: 1761686400;
+// The clocks the statuses are read at, after T0.
+NOW :: [3] int.[600, 700, 4000];
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+
+Named :: struct { name: string; event: NostrEvent; }
+EVENTS :: 10;
+show_key :: (all: [] Named, key: [32] u8) {
+  for n: all { if n.event.error == NE_OK && ns_equal32(n.event.id, key) { print("%", n.name); return; } }
+  for k: 0..<PEOPLE.count { if ns_equal32(key_of(k), key) { print("%", PEOPLE[k]); return; } }
+  text: [64] u8; print("%...", hex32(key, text[..])[0..<8]);
+}
+show_address :: (all: [] Named, a: NostrTag) {
+  own := a; print("%", cast(string) own.d[0..<own.d_n]); print(" by "); show_key(all, a.pubkey);
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(SECRET[who], key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+// The tags with ^k replaced by person k's key and &k by event k's id.
+with_keys :: (template: string, all: [] Named, out: [] u8) -> string {
+  n := 0; i := 0; hex: [64] u8;
+  while i < template.count {
+    c := template[i];
+    if c == '^' || c == '&' {
+      k := cast(int) (template[i + 1] - '0');
+      if c == '^' { n = json_raw(out, n, PUB[k]); } else { n = json_raw(out, n, hex32(all[k].event.id, hex[..])); }
+      i += 2; continue;
+    }
+    n = json_raw(out, n, template[i..<i + 1]); i += 1;
+  }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+show_definition :: (label: string, e: NostrEvent) {
+  d := n58_definition(e);
+  print("%: %", label, STATUS58[d.status]);
+  if d.at >= 0 { print(" at tag %", d.at); }
+  if d.status != N58_OK { print("\n"); return; }
+  print(", d "); say(d.d);
+  if d.name.n > 0 { print(", name "); say(d.name); }
+  if d.image.n > 0 { print(", image "); say(d.image); print(" "); say(d.image_size); }
+  print(", thumbs %\n", d.thumbs);
+}
+show_award :: (all: [] Named, label: string, e: NostrEvent) {
+  w := n58_award(e);
+  print("%: %", label, STATUS58[w.status]);
+  if w.at >= 0 { print(" at tag %", w.at); }
+  if w.status == N58_OK || w.status == N58_ISSUER { print(", "); show_address(all, w.address); }
+  print(", signed by "); show_key(all, e.public_key);
+  if w.status == N58_OK { print(", awardees %, names Bob %", w.awardees, n58_names(e, key_of(BOB))); }
+  print("\n");
+}
+show_profile :: (all: [] Named, label: string, e: NostrEvent, awards: [] NostrEvent) {
+  out: [8] N58Pair;
+  r := n58_profile(e, awards, out[..]);
+  print("%: %", label, STATUS58[r.status]);
+  if r.at >= 0 { print(" at tag %", r.at); }
+  print(", owner "); show_key(all, e.public_key); print("\n");
+  for k: 0..<r.n {
+    print("  pair at tag %: ", out[k].at); show_address(all, out[k].address);
+    print(", award "); show_key(all, out[k].award); print(": %\n", VERDICT[out[k].verdict]);
+  }
+  print("  shown % of %, unpaired %, sets %, bad %\n", r.shown, r.n, r.unpaired, r.sets, r.bad);
+}
+show_status :: (label: string, e: NostrEvent, now: int) {
+  s := n38_status(e, now);
+  print("%: %", label, STATUS38[s.status]);
+  if s.at >= 0 { print(" at tag %", s.at); }
+  if s.status != N38_OK && s.status != N38_EXPIRED { print("\n"); return; }
+  text: [256] u8; n := json_unescape(e.original[e.content_from..<e.content_to], text[..]);
+  print(", % \"%\"", TYPE38[s.type], cast(string) text[0..<n]);
+  if s.has_url { print(", r "); say(s.url); }
+  if s.expiration >= 0 { print(", expires T0+%", s.expiration - T0); }
+  print("\n");
+}
+show_current :: (all: [] Named, set: [] NostrEvent, d: string, now: int) {
+  c := n38_current(set, key_of(BOB), d, now);
+  print("Bob's % at T0+%: ", d, now - T0);
+  if c.index < 0 { print("none\n"); return; }
+  print("newest %, %, shown %\n", all[c.index].name, STATUS38[c.status.status], n38_shown(c));
+}
+
+// An unsigned event by Mallory with these tags, parsed but not verified:
+// its id and sig are zeros. Used for the refusals, which no signer here
+// would write.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[MALLORY]); n = json_raw(out, n, "\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"x\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// The events: who signs, when (after T0), the kind, the tags with ^k for
+// person k's key and &k for event k's id, and the content.
+NAME :: [EVENTS] string.["D1", "D2", "D3", "W1", "W2", "W3", "P", "S1", "S2", "S3"];
+WHO :: [EVENTS] int.[ALICE, ALICE, ALICE, ALICE, MALLORY, ALICE, BOB, BOB, BOB, BOB];
+AT :: [EVENTS] int.[0, 60, 120, 180, 240, 300, 360, 400, 420, 440];
+KIND :: [EVENTS] int.[30009, 30009, 30009, 8, 8, 8, 10008, 30315, 30315, 30315];
+TAGS :: [EVENTS] string.[
+  "[[\"d\",\"bravery\"],[\"name\",\"Medal of Bravery\"],[\"description\",\"Awarded to users demonstrating bravery\"],[\"image\",\"https://nostr.academy/awards/bravery.png\",\"1024x1024\"],[\"thumb\",\"https://nostr.academy/awards/bravery_256x256.png\",\"256x256\"]]",
+  "[[\"d\",\"honor\"],[\"name\",\"Honor\"]]",
+  "[[\"d\",\"kindness\"],[\"name\",\"Kindness\"]]",
+  "[[\"a\",\"30009:^0:bravery\"],[\"p\",\"^1\",\"wss://relay.example.com\"]]",
+  "[[\"a\",\"30009:^0:honor\"],[\"p\",\"^1\",\"wss://relay.example.com\"]]",
+  "[[\"a\",\"30009:^0:kindness\"],[\"p\",\"^2\",\"wss://relay.example.com\"]]",
+  "[[\"a\",\"30009:^0:bravery\"],[\"e\",\"&3\",\"wss://nostr.academy\"],[\"a\",\"30009:^0:honor\"],[\"e\",\"&4\",\"wss://nostr.academy\"],[\"a\",\"30009:^0:kindness\"],[\"e\",\"&5\",\"wss://nostr.academy\"]]",
+  "[[\"d\",\"general\"]]",
+  "[[\"d\",\"general\"],[\"r\",\"https://nostr.world\"],[\"expiration\",\"1761690400\"]]",
+  "[[\"d\",\"music\"],[\"r\",\"spotify:search:Intergalatic%20-%20Beastie%20Boys\"],[\"expiration\",\"1761687040\"]]"];
+CONTENT :: [EVENTS] string.["", "", "", "", "", "", "", "Working", "Hiking", "Intergalatic - Beastie Boys"];
+
+main :: () {
+  all: [EVENTS] Named; buf: [EVENTS][4096] u8; tags: [4096] u8;
+  for k: 0..<EVENTS {
+    all[k].name = NAME[k];
+    all[k].event = sign(WHO[k], T0 + AT[k], KIND[k], with_keys(TAGS[k], all[..], tags[..]), CONTENT[k], buf[k][..]);
+  }
+  print("each event's id\n");
+  for e: all { hex: [64] u8; print("%: %, verified %\n", e.name, hex32(e.event.id, hex[..]), e.event.verified); }
+
+  print("badge definitions\n");
+  for k: 0..<3 { show_definition(all[k].name, all[k].event); }
+  print("badge awards\n");
+  for k: 3..<6 { show_award(all[..], all[k].name, all[k].event); }
+  awards: [3] NostrEvent; for k: 0..<3 { awards[k] = all[3 + k].event; }
+  print("Bob's profile badges, with W1, W2 and W3 fetched\n");
+  show_profile(all[..], "P", all[6].event, awards[..]);
+  print("the same, with no awards fetched\n");
+  show_profile(all[..], "P", all[6].event, awards[0..<0]);
+
+  print("statuses read at T0+600\n");
+  for k: 7..<10 { show_status(all[k].name, all[k].event, T0 + 600); }
+  set: [EVENTS] NostrEvent; for k: 0..<EVENTS { set[k] = all[k].event; }
+  for t: NOW { show_current(all[..], set[..], "general", T0 + t); show_current(all[..], set[..], "music", T0 + t); }
+
+  print("refusals\n");
+  bad: [4096] u8;
+  show_definition("definition with an empty d", unsigned(30009, "[[\"d\",\"\"],[\"name\",\"x\"]]", bad[..]));
+  show_definition("definition without d", unsigned(30009, "[[\"name\",\"x\"]]", bad[..]));
+  show_award(all[..], "award with two a tags", unsigned(8, with_keys("[[\"a\",\"30009:^3:x\"],[\"a\",\"30009:^3:y\"],[\"p\",\"^1\"]]", all[..], tags[..]), bad[..]));
+  show_award(all[..], "award naming no one", unsigned(8, with_keys("[[\"a\",\"30009:^3:x\"]]", all[..], tags[..]), bad[..]));
+  show_award(all[..], "award of a badge set", unsigned(8, with_keys("[[\"a\",\"30008:^3:x\"],[\"p\",\"^1\"]]", all[..], tags[..]), bad[..]));
+  show_profile(all[..], "profile with a lone e and a lone a", unsigned(10008, with_keys("[[\"e\",\"&3\"],[\"a\",\"30009:^0:bravery\"]]", all[..], tags[..]), bad[..]), awards[..]);
+  show_profile(all[..], "profile pair naming the wrong badge", unsigned(10008, with_keys("[[\"a\",\"30009:^0:honor\"],[\"e\",\"&3\"]]", all[..], tags[..]), bad[..]), awards[..]);
+  show_status("status expiring soon", unsigned(30315, "[[\"d\",\"general\"],[\"expiration\",\"soon\"]]", bad[..]), T0);
+  show_status("status without d", unsigned(30315, "[[\"r\",\"https://nostr.world\"]]", bad[..]), T0);
+}
+// book:end example

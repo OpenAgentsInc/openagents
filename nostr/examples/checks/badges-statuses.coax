@@ -1,0 +1,142 @@
+// The checks of badges-statuses.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/badges-statuses.coax --run-steps 250000000
+#load "../badges-statuses.coax";
+
+// book:begin check
+// The ids from a Python script written from NIP-01, NIP-58 and NIP-38 (it
+// shares no code with Coax): hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False), over the same events, with
+// the award ids in P's e tags computed by the script itself.
+PY_ID :: [EVENTS] string.[
+  "7b0a2d339bac9d628504648a1c385eb0bd8c8500da95764741e6d11d8393585b",
+  "1d6e1d91df88d758611969fc7251fdf1dab457058c0898ebb24b83b5746ea52f",
+  "7c80784bcd0b23e8efb545d27e92d9fab2ac9db2ef3ed16a1b967cf373c17072",
+  "ceb6245675d4a1f62a4b69f21213dc9aad929cebf6adb8c130196826b214cf27",
+  "7631462652cbedca4771b1f5824ec36d53ef627467a505191e65ae02cc9eacaa",
+  "441f90672dc75a13ab29c581e26c624362f48e7c9df40c0e1b66f388cecc3ba6",
+  "384ede1ec51f5a2020159c6dca9d85cb1ccabc5fa5789a3fb041d44f9f53278b",
+  "c2b27cc7dcb93fa09b17be6463e24e10206c0876dd6f1dfb1e3a3d98c9a90134",
+  "d916c00c7d533c634c73c1c6fcb2244faafabff51384207eebb793df703fb206",
+  "19177dd6715669f17fea9458f2d5bfd0ff0bb541ab096a08f287c59f9e4fdb7c"];
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// Event k with Python's id and a zero signature, read with its id
+// recomputed; the signature is not checked. Earlier events give the ids
+// that later tags name.
+py :: (k: int, all: [] Named, out: [] u8, scratch: [] u8) -> NostrEvent {
+  tags: [2048] u8;
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[WHO[k]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, with_keys(TAGS[k], all, tags[..]));
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, CONTENT[k]);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+read_all :: (all: [] Named, buf: [][2048] u8) {
+  scratch: [4096] u8;
+  for k: 0..<EVENTS { all[k].name = NAME[k]; all[k].event = py(k, all, buf[k][..], scratch[..]); }
+}
+
+#test "the ids are Python's" {
+  buf: [EVENTS][2048] u8; all: [EVENTS] Named; read_all(all[..], buf[..]);
+  for k: 0..<EVENTS { #assert all[k].event.error == NE_OK && ns_equal32(all[k].event.computed_id, all[k].event.id); }
+}
+
+// The worked example by hand. Pair 1 (bravery, W1): W1 is signed by Alice,
+// its a tag is Alice's bravery and its p tag is Bob: shown. Pair 2 (honor,
+// W2): W2's a tag names Alice as issuer but Mallory signed it: another key.
+// Pair 3 (kindness, W3): signed by Alice, same badge, but its p tag is
+// Carol, not Bob: not the owner. Shown 1 of 3.
+#test "the profile verdicts match the hand values, in any order of awards" {
+  buf: [EVENTS][2048] u8; all: [EVENTS] Named; read_all(all[..], buf[..]);
+  aw: [3] NostrEvent; for k: 0..<3 { aw[k] = all[3 + k].event; }
+  out: [4] N58Pair;
+  r := n58_profile(all[6].event, aw[..], out[..]);
+  #assert r.status == N58_OK && r.n == 3 && r.shown == 1 && r.unpaired == 0 && r.bad == 0;
+  #assert out[0].verdict == N58_SHOWN && out[1].verdict == N58_OTHER_ISSUER && out[2].verdict == N58_NOT_OWNER;
+  #assert out[0].at == 0 && out[1].at == 2 && out[2].at == 4;
+  #assert ns_equal32(out[0].award, all[3].event.id) && ns_equal32(out[1].award, all[4].event.id);
+  rev: [3] NostrEvent; for k: 0..<3 { rev[k] = aw[2 - k]; }
+  r = n58_profile(all[6].event, rev[..], out[..]);
+  #assert r.shown == 1 && out[0].verdict == N58_SHOWN && out[1].verdict == N58_OTHER_ISSUER && out[2].verdict == N58_NOT_OWNER;
+  // The awards with the definitions mixed in: a definition is no award.
+  mix: [6] NostrEvent; for k: 0..<6 { mix[k] = all[k].event; }
+  r = n58_profile(all[6].event, mix[..], out[..]); #assert r.shown == 1;
+  // Carol's own profile with W3 shows kindness.
+  b: [2048] u8; t: [2048] u8;
+  carol := ne_parse(cast(string) b[0..<carol_profile(all[..], b[..], t[..])]);
+  r = n58_profile(carol, aw[..], out[..]); #assert r.status == N58_OK && r.shown == 1 && out[0].verdict == N58_SHOWN;
+}
+// Carol's kind 10008 listing W3, unsigned: only its tags and author matter.
+carol_profile :: (all: [] Named, out: [] u8, tags: [] u8) -> int {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[CAROL]); n = json_raw(out, n, "\",\"created_at\":1761686400,\"kind\":10008,\"tags\":");
+  n = json_raw(out, n, with_keys("[[\"a\",\"30009:^0:kindness\"],[\"e\",\"&5\"]]", all, tags));
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return n;
+}
+
+// The statuses by hand at each clock. General: S2 (created T0+420) replaces
+// S1 (T0+400); S2 expires at T0+4000. Music: S3 expires at T0+640.
+#test "the current statuses match the hand values" {
+  buf: [EVENTS][2048] u8; all: [EVENTS] Named; read_all(all[..], buf[..]);
+  set: [EVENTS] NostrEvent; for k: 0..<EVENTS { set[k] = all[k].event; }
+  bob := key_of(BOB);
+  c := n38_current(set[..], bob, "general", T0 + 600); #assert c.index == 8 && n38_shown(c);
+  c = n38_current(set[..], bob, "general", T0 + 3999); #assert c.index == 8 && n38_shown(c);
+  c = n38_current(set[..], bob, "general", T0 + 4000); #assert c.index == 8 && !n38_shown(c) && c.status.status == N38_EXPIRED;
+  c = n38_current(set[..], bob, "music", T0 + 639); #assert c.index == 9 && n38_shown(c);
+  c = n38_current(set[..], bob, "music", T0 + 640); #assert c.index == 9 && !n38_shown(c);
+  // Without S2, S1 shows at any time: it has no expiration.
+  set[8].error = NE_ID; c = n38_current(set[..], bob, "general", T0 + 1000000); #assert c.index == 7 && n38_shown(c);
+  // Alice has no statuses.
+  c = n38_current(set[..], key_of(ALICE), "general", T0); #assert c.index == -1;
+}
+
+// NIP-58's three examples with alice, bob and charlie as Alice, Bob and
+// Carol and the award ids filled in. The profile example names an honor
+// award the NIP doesn't show; here it is W1 again. W1 is already shown, so
+// the honor pair is a duplicate (it would otherwise be a mismatch: W1 is for
+// bravery), and only bravery is shown.
+#test "NIP-58's examples read as the NIP says" {
+  buf: [EVENTS][2048] u8; all: [EVENTS] Named; read_all(all[..], buf[..]);
+  d := n58_definition(all[0].event);
+  #assert d.status == N58_OK && n32_is(d.d, "bravery") && n32_is(d.name, "Medal of Bravery") && n32_is(d.image_size, "1024x1024") && d.thumbs == 1 && d.has_description;
+  b: [2048] u8; t: [2048] u8;
+  e := signed_by(ALICE, 8, with_keys("[[\"a\",\"30009:^0:bravery\"],[\"p\",\"^1\",\"wss://relay\"],[\"p\",\"^2\",\"wss://relay\"]]", all[..], t[..]), b[..]);
+  w := n58_award(e); #assert w.status == N58_OK && w.awardees == 2 && n58_names(e, key_of(BOB)) && n58_names(e, key_of(CAROL)) && !n58_names(e, key_of(ALICE));
+  c: [2048] u8; u: [2048] u8;
+  p := signed_by(BOB, 10008, with_keys("[[\"a\",\"30009:^0:bravery\"],[\"e\",\"&3\",\"wss://nostr.academy\"],[\"a\",\"30009:^0:honor\"],[\"e\",\"&3\",\"wss://nostr.academy\"]]", all[..], u[..]), c[..]);
+  aw: [1] NostrEvent; aw[0] = all[3].event; out: [2] N58Pair;
+  r := n58_profile(p, aw[..], out[..]);
+  #assert r.status == N58_OK && r.n == 2 && r.shown == 1 && out[0].verdict == N58_SHOWN && out[1].verdict == N58_DUPLICATE;
+}
+// An unsigned event by who: id and sig zero.
+signed_by :: (who: int, kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[who]); n = json_raw(out, n, "\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// NIP-38's two examples: general with an r link; music with an r link and
+// expiration 1692845589, live one second before and expired at that time.
+#test "NIP-38's examples read as the NIP says" {
+  b: [2048] u8;
+  s := n38_status(signed_by(BOB, 30315, "[[\"d\",\"general\"],[\"r\",\"https://nostr.world\"]]", b[..]), 0);
+  #assert s.status == N38_OK && s.type == N38_GENERAL && n32_is(s.url, "https://nostr.world") && s.expiration == -1;
+  m := signed_by(BOB, 30315, "[[\"d\",\"music\"],[\"r\",\"spotify:search:Intergalatic%20-%20Beastie%20Boys\"],[\"expiration\",\"1692845589\"]]", b[..]);
+  s = n38_status(m, 1692845588); #assert s.status == N38_OK && s.type == N38_MUSIC && s.expiration == 1692845589;
+  s = n38_status(m, 1692845589); #assert s.status == N38_EXPIRED;
+  // An empty content clears the status: it reads but is not shown.
+  s = n38_status(signed_by(BOB, 30315, "[[\"d\",\"general\"]]", b[..]), 0); #assert s.status == N38_OK && s.cleared;
+}
+// book:end check

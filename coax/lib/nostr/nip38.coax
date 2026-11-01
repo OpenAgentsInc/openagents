@@ -1,0 +1,221 @@
+// NIP-38 user statuses read from parsed events: kind 30315, an addressable
+// event whose d tag names the status type ("general", "music" or another),
+// with optional r, p, e and a links and a NIP-40 expiration tag. Then the
+// status a client shows for one user and type at a given time.
+//
+// The clock is the caller's: every check takes now, in Unix seconds, so a
+// test or an example fixes it. A status is expired at and after its
+// expiration time, as NIP-40 and the relay (chapter 39) say. An empty
+// content clears the status. A status is a statement by its signer;
+// nothing here fetches or verifies a signature.
+//
+// This reader is stricter than the relay on one point: a relay treats an
+// expiration that is not a plain decimal as no expiration, while a status
+// with one is refused here, so a client never shows forever a status its
+// author meant to end.
+#load "nip32.coax";
+#authority;
+
+N38_OK :: 0; N38_EVENT :: 1; N38_KIND :: 2; N38_TAG :: 3; N38_MISSING :: 4;
+N38_EXPIRATION :: 5; N38_EXPIRED :: 6; N38_LIMIT :: 7;
+N38_KIND_STATUS :: 30315;
+N38_GENERAL :: 0; N38_MUSIC :: 1; N38_OTHER :: 2;
+N38_MAX_DIGITS :: 16;
+
+// book:begin record
+N38Status :: struct {
+  status:int=N38_EVENT; at:int=-1;   // the refusing tag
+  type:int; d:N32Text;               // general, music or another type
+  expiration:int=-1;                 // -1: none
+  cleared:bool;                      // empty content: clear the status
+  links:int;                         // r, p, e and a tags
+  has_url:bool; url:N32Text;         // the first r tag
+}
+N38Current :: struct {
+  index:int=-1;        // the newest status of that type in the set, or -1
+  status:N38Status;    // its reading at now
+  refused:int;         // the author's kind 30315 events that don't read
+}
+// book:end record
+
+// ---- test events: the tags and the content (already JSON-escaped) in one
+// buffer, with the spans a parsed event has, by author and id byte.
+n38_ev :: (tags:string,content:string,created:int,author:u8,id:u8,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,tags);n=json_raw(out,n,"\"");n=json_raw(out,n,content);n=json_raw(out,n,"\"");
+  e:=nt_event(cast(string)out[0..<n]);e.tags_to=tags.count;e.content_from=tags.count+1;e.content_to=n-1;
+  e.kind=N38_KIND_STATUS;e.created_at=created;return n32_at(e,author,id);
+}
+
+#test "NIP-38's two examples" {
+  buf:[512]u8;
+  e:=n38_ev("[[\"d\",\"general\"],[\"r\",\"https://nostr.world\"]]","Sign up for nostrasia!",0,1,1,buf[..]);
+  s:=n38_status(e,1692845000);
+  #assert s.status==N38_OK && s.at== -1 && s.type==N38_GENERAL && n32_is(s.d,"general") && s.expiration== -1 && !s.cleared;
+  #assert s.links==1 && s.has_url && n32_is(s.url,"https://nostr.world");
+  e=n38_ev("[[\"d\",\"music\"],[\"r\",\"spotify:search:Intergalatic%20-%20Beastie%20Boys\"],[\"expiration\",\"1692845589\"]]","Intergalatic - Beastie Boys",0,1,2,buf[..]);
+  s=n38_status(e,1692845588);
+  #assert s.status==N38_OK && s.type==N38_MUSIC && s.expiration==1692845589 && n32_is(s.url,"spotify:search:Intergalatic%20-%20Beastie%20Boys");
+  // Expired at and after the time.
+  s=n38_status(e,1692845589);#assert s.status==N38_EXPIRED && s.type==N38_MUSIC && s.expiration==1692845589 && s.at== -1;
+  #assert n38_status(e,1692845590).status==N38_EXPIRED;
+}
+#test "types, links, cleared, the first r and expiration" {
+  buf:[1024]u8;
+  e:=n38_ev("[[\"d\",\"gaming\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"a\",\"30311:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:live\"],[\"r\",\"u1\"],[\"r\",\"u2\"],[\"t\",\"x\"]]","",0,1,1,buf[..]);
+  s:=n38_status(e,0);#assert s.status==N38_OK && s.type==N38_OTHER && s.links==5 && n32_is(s.url,"u1") && s.cleared && !(s.expiration>=0);
+  e=n38_ev("[[\"d\",\"general\"],[\"expiration\",\"100\"],[\"expiration\",\"x\"],[\"expiration\",\"50\"]]","busy",0,1,1,buf[..]);
+  s=n38_status(e,99);#assert s.status==N38_OK && s.expiration==100 && !s.has_url && s.links==0;
+  #assert n38_status(e,100).status==N38_EXPIRED;
+  e=n38_ev("[[\"d\",\"general\"],[\"expiration\",\"0\"],[\"expiration\",\"5\"]]","x",0,1,1,buf[..]);#assert n38_status(e,1).status==N38_EXPIRED;
+  e=n38_ev("[[\"d\",\"general\"],[\"expiration\",\"0\"]]","x",0,1,1,buf[..]);#assert n38_status(e,0).status==N38_EXPIRED && n38_status(e,-1).status==N38_OK;
+}
+#test "decimal times: digits only, at most 16" {
+  t:N32Text;
+  #assert n38_time(t)== -1;
+  t.b[0]='7';t.n=1;#assert n38_time(t)==7;
+  for i:0..<16 {t.b[i]='9';}t.n=16;#assert n38_time(t)==9999999999999999;
+  t.n=17;t.b[16]='9';#assert n38_time(t)== -1;
+  t.b[0]='1';t.b[1]='/';t.n=2;#assert n38_time(t)== -1;
+  t.b[1]=':';#assert n38_time(t)== -1;
+  t.b[1]='0';#assert n38_time(t)==10;
+  t.b[0]='-';#assert n38_time(t)== -1;
+}
+#forall "a time byte is a digit or refused" c:0..<256 {
+  t:N32Text;t.b[0]='4';t.b[1]=cast(u8)c;t.n=2;
+  if c>='0' && c<='9' {#assert n38_time(t)==40+(c-'0');} else {#assert n38_time(t)== -1;}
+}
+#test "status refusals" {
+  buf:[512]u8;
+  e:=n38_ev("[[\"d\",\"general\"]]","x",0,1,1,buf[..]);#assert e.tags_to==17 && e.content_from==18 && e.content_to==19;
+  e.kind=30316;k:=n38_status(e,0);#assert k.status==N38_KIND && k.at== -1;
+  k=n38_status(n38_ev("[[\"r\",\"\"],[\"d\",\"x\"]]","x",0,1,1,buf[..]),0);#assert k.status==N38_TAG && k.at==0;
+  s:=n38_status(n38_ev("[[\"r\",\"u\"]]","x",0,1,1,buf[..]),0);#assert s.status==N38_MISSING && s.at== -1;
+  #assert n38_status(n38_ev("[[\"d\",\"\"]]","x",0,1,1,buf[..]),0).status==N38_MISSING;
+  s=n38_status(n38_ev("[[\"d\",\"music\"],[\"expiration\",\"soon\"]]","x",0,1,1,buf[..]),0);#assert s.status==N38_EXPIRATION && s.at==1;
+  s=n38_status(n38_ev("[[\"d\",\"music\"],[\"expiration\"]]","x",0,1,1,buf[..]),0);#assert s.status==N38_EXPIRATION && s.at==1;
+  s=n38_status(n38_ev("[[\"d\",\"music\"],[\"r\"]]","x",0,1,1,buf[..]),0);#assert s.status==N38_TAG && s.at==1;
+  s=n38_status(n38_ev("[[\"d\",\"music\"],[\"r\",\"\"]]","x",0,1,1,buf[..]),0);#assert s.status==N38_TAG && s.at==1;
+  s=n38_status(n38_ev("[[\"d\",\"music\"],[\"t\",\"x\"],[\"p\",\"F9\"]]","x",0,1,1,buf[..]),0);#assert s.status==N38_TAG && s.at==2;
+  #assert n38_status(n38_ev("[[\"d\",\"music\"],[\"e\",\"aa\"]]","x",0,1,1,buf[..]),0).status==N38_TAG;
+  #assert n38_status(n38_ev("[[\"d\",\"music\"],[\"a\",\"1:aa:\"]]","x",0,1,1,buf[..]),0).status==N38_TAG;
+  none:NostrEvent;#assert n38_status(none,0).status==N38_EVENT;
+  e=n38_ev("[[\"d\",\"general\"],[\"t\",1]]","x",0,1,1,buf[..]);
+  s=n38_status(e,0);#assert s.status==N38_EVENT;
+  e=n38_ev("[[\"t\",\"x\"],[\"d\",1]]","x",0,1,1,buf[..]);#assert n38_status(e,0).status==N38_EVENT;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"general\"],[\"r\",\"");for i:0..<240 {long[n+i]='x';}n+=240;
+  for i:0..<20 {long[n+i]='y';}n+=20;n=json_raw(long[..],n,"\"]]");
+  s=n38_status(n38_ev(cast(string)long[0..<n],"x",0,1,1,buf[..]),0);#assert s.status==N38_LIMIT && s.at==1;
+}
+#test "the current status: newest per author and type, expired not shown" {
+  b:[6][512]u8;set:[6]NostrEvent;
+  set[0]=n38_ev("[[\"d\",\"general\"]]","Working",100,0x01,0x20,b[0][..]);
+  set[1]=n38_ev("[[\"d\",\"general\"],[\"expiration\",\"300\"]]","Hiking",200,0x01,0x21,b[1][..]);
+  set[2]=n38_ev("[[\"d\",\"music\"],[\"expiration\",\"250\"]]","A song",210,0x01,0x22,b[2][..]);
+  set[3]=n38_ev("[[\"d\",\"general\"]]","Not Alice",400,0x02,0x23,b[3][..]);
+  set[4]=n38_ev("[[\"d\",\"general\"],[\"expiration\",\"x\"]]","Bad",500,0x01,0x24,b[4][..]);
+  set[5]=n38_ev("[[\"d\",\"general\"]]","Old",50,0x01,0x25,b[5][..]);
+  alice:[32]u8;for i:0..<32 {alice[i]=0x01;}
+  c:=n38_current(set[..],alice,"general",250);
+  #assert c.index==1 && c.status.status==N38_OK && n38_shown(c) && c.refused==1;
+  // At 300 the newest has expired: nothing is shown, not the older one.
+  c=n38_current(set[..],alice,"general",300);#assert c.index==1 && c.status.status==N38_EXPIRED && !n38_shown(c);
+  c=n38_current(set[..],alice,"music",249);#assert c.index==2 && n38_shown(c);
+  c=n38_current(set[..],alice,"music",250);#assert c.index==2 && !n38_shown(c);
+  c=n38_current(set[..],alice,"other",0);#assert c.index== -1 && !n38_shown(c) && c.refused==1;
+  // The first in the set, alone or before an older one.
+  c=n38_current(set[0..<1],alice,"general",250);#assert c.index==0 && n38_shown(c);
+  two:[2]NostrEvent;two[0]=set[1];two[1]=set[0];
+  c=n38_current(two[..],alice,"general",250);#assert c.index==0 && n38_shown(c) && n32_is(c.status.d,"general");
+  rev:[6]NostrEvent;for k:0..<6 {rev[k]=set[5-k];}
+  c=n38_current(rev[..],alice,"general",250);#assert c.index==4 && n38_shown(c);
+  // A tie on created_at goes to the lower id; an empty newest clears it.
+  tie:[3]NostrEvent;tb:[3][512]u8;
+  tie[0]=n38_ev("[[\"d\",\"general\"]]","B",100,0x01,0x31,tb[0][..]);
+  tie[1]=n38_ev("[[\"d\",\"general\"]]","A",100,0x01,0x30,tb[1][..]);
+  tie[2]=n38_ev("[[\"d\",\"general\"]]","C",100,0x01,0x32,tb[2][..]);
+  c=n38_current(tie[..],alice,"general",0);#assert c.index==1;
+  tie[1]=n38_ev("[[\"d\",\"general\"]]","",101,0x01,0x30,tb[1][..]);
+  c=n38_current(tie[..],alice,"general",0);#assert c.index==1 && c.status.status==N38_OK && c.status.cleared && !n38_shown(c);
+  // Other kinds and broken events are passed over.
+  tie[0].kind=1;tie[2].error=NE_ID;tie[1].created_at=0;
+  c=n38_current(tie[..],alice,"general",0);#assert c.index==1 && c.refused==0;
+  tie[1].error=NE_ID;c=n38_current(tie[..],alice,"general",0);#assert c.index== -1;
+}
+
+n38_refuse :: (r:N38Status,status:int,at:int)->N38Status {o:=r;o.status=status;o.at=at;return o;}
+
+// book:begin read
+// A NIP-40 time: one to 16 decimal digits, or -1.
+n38_time :: (t:N32Text)->int {
+  if t.n<1 || t.n>N38_MAX_DIGITS {return -1;}
+  v:=0;
+  for i:0..<t.n {
+    c:=t.b[i];if c<'0' || c>'9' {return -1;}
+    v=v*10+cast(int)(c-'0');
+  }
+  return v;
+}
+// A user status at time now. An expired status reads in full with status
+// N38_EXPIRED, so a caller can tell it from a refused one.
+n38_status :: (e:NostrEvent,now:int)->N38Status {
+  r:N38Status;if e.error!=NE_OK {return r;}
+  if e.kind!=N38_KIND_STATUS {return n38_refuse(r,N38_KIND,-1);}
+  d:=nostr_tag_d(e);if d.error!=NT_OK {return r;}
+  for k:0..<d.d_n {r.d.b[k]=d.d[k];}r.d.n=d.d_n;
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n38_refuse(r,N38_LIMIT,i);}
+    if t.error!=NT_OK {return n38_refuse(r,N38_EVENT,i);}
+    name:=t.v[0];
+    if n32_is(name,"expiration") && r.expiration<0 {
+      r.expiration=n38_time(t.v[1]);
+      if r.expiration<0 {return n38_refuse(r,N38_EXPIRATION,i);}
+    }
+    if n32_is(name,"r") {
+      if t.v[1].n==0 {return n38_refuse(r,N38_TAG,i);}
+      if !r.has_url {r.has_url=true;r.url=t.v[1];}
+      r.links+=1;
+    }
+    if n32_is(name,"p") || n32_is(name,"e") || n32_is(name,"a") {
+      if nostr_tag(e,i).error!=NT_OK {return n38_refuse(r,N38_TAG,i);}
+      r.links+=1;
+    }
+    i+=1;
+  }
+  if r.d.n==0 {return n38_refuse(r,N38_MISSING,-1);}
+  r.type=ifx n32_is(r.d,"general") then N38_GENERAL else ifx n32_is(r.d,"music") then N38_MUSIC else N38_OTHER;
+  r.cleared=e.content_from==e.content_to;
+  if r.expiration>=0 && now>=r.expiration {return n38_refuse(r,N38_EXPIRED,-1);}
+  r.status=N38_OK;return r;
+}
+// book:end read
+
+// book:begin current
+// The status of type d that author shows at now: the newest kind 30315
+// event of that type (later created_at, then the lower id, as NIP-01
+// replaces), read at now. The newest wins even when it has expired or is
+// empty; an older status never comes back.
+n38_current :: (set:[]NostrEvent,author:[32]u8,d:string,now:int)->N38Current {
+  c:N38Current;
+  for k:0..<set.count {
+    e:=set[k];
+    if e.error!=NE_OK || e.kind!=N38_KIND_STATUS || !ns_equal32(e.public_key,author) {continue;}
+    s:=n38_status(e,now);
+    if s.status!=N38_OK && s.status!=N38_EXPIRED {c.refused+=1;continue;}
+    if !n32_is(s.d,d) {continue;}
+    if c.index>=0 {
+      best:=set[c.index];
+      if e.created_at<best.created_at || (e.created_at==best.created_at && !ns_before(e.id,best.id)) {continue;}
+    }
+    c.index=k;c.status=s;
+  }
+  return c;
+}
+// Whether a client shows it: a status that reads, is not expired and is
+// not cleared.
+n38_shown :: (c:N38Current)->bool {
+  return c.index>=0 && c.status.status==N38_OK && !c.status.cleared;
+}
+// book:end current

@@ -1,0 +1,54 @@
+each event's id
+D1: 7b0a2d339bac9d628504648a1c385eb0bd8c8500da95764741e6d11d8393585b, verified true
+D2: 1d6e1d91df88d758611969fc7251fdf1dab457058c0898ebb24b83b5746ea52f, verified true
+D3: 7c80784bcd0b23e8efb545d27e92d9fab2ac9db2ef3ed16a1b967cf373c17072, verified true
+W1: ceb6245675d4a1f62a4b69f21213dc9aad929cebf6adb8c130196826b214cf27, verified true
+W2: 7631462652cbedca4771b1f5824ec36d53ef627467a505191e65ae02cc9eacaa, verified true
+W3: 441f90672dc75a13ab29c581e26c624362f48e7c9df40c0e1b66f388cecc3ba6, verified true
+P: 384ede1ec51f5a2020159c6dca9d85cb1ccabc5fa5789a3fb041d44f9f53278b, verified true
+S1: c2b27cc7dcb93fa09b17be6463e24e10206c0876dd6f1dfb1e3a3d98c9a90134, verified true
+S2: d916c00c7d533c634c73c1c6fcb2244faafabff51384207eebb793df703fb206, verified true
+S3: 19177dd6715669f17fea9458f2d5bfd0ff0bb541ab096a08f287c59f9e4fdb7c, verified true
+badge definitions
+D1: ok, d bravery, name Medal of Bravery, image https://nostr.academy/awards/bravery.png 1024x1024, thumbs 1
+D2: ok, d honor, name Honor, thumbs 0
+D3: ok, d kindness, name Kindness, thumbs 0
+badge awards
+W1: ok, bravery by Alice, signed by Alice, awardees 1, names Bob true
+W2: signer is not the issuer at tag 0, honor by Alice, signed by Mallory
+W3: ok, kindness by Alice, signed by Alice, awardees 1, names Bob false
+Bob's profile badges, with W1, W2 and W3 fetched
+P: ok, owner Bob
+  pair at tag 0: bravery by Alice, award W1: shown
+  pair at tag 2: honor by Alice, award W2: award signed by another key
+  pair at tag 4: kindness by Alice, award W3: award does not name the owner
+  shown 1 of 3, unpaired 0, sets 0, bad 0
+the same, with no awards fetched
+P: ok, owner Bob
+  pair at tag 0: bravery by Alice, award W1: award not fetched
+  pair at tag 2: honor by Alice, award W2: award not fetched
+  pair at tag 4: kindness by Alice, award W3: award not fetched
+  shown 0 of 3, unpaired 0, sets 0, bad 0
+statuses read at T0+600
+S1: ok, general "Working"
+S2: ok, general "Hiking", r https://nostr.world, expires T0+4000
+S3: ok, music "Intergalatic - Beastie Boys", r spotify:search:Intergalatic%20-%20Beastie%20Boys, expires T0+640
+Bob's general at T0+600: newest S2, ok, shown true
+Bob's music at T0+600: newest S3, ok, shown true
+Bob's general at T0+700: newest S2, ok, shown true
+Bob's music at T0+700: newest S3, expired, shown false
+Bob's general at T0+4000: newest S2, expired, shown false
+Bob's music at T0+4000: newest S3, expired, shown false
+refusals
+definition with an empty d: bad tag at tag 0
+definition without d: missing tag
+award with two a tags: second a at tag 1, signed by Mallory
+award naming no one: missing tag, signed by Mallory
+award of a badge set: a is not a definition at tag 0, signed by Mallory
+profile with a lone e and a lone a: ok, owner Mallory
+  shown 0 of 0, unpaired 2, sets 0, bad 0
+profile pair naming the wrong badge: ok, owner Mallory
+  pair at tag 0: honor by Alice, award W1: award names another badge
+  shown 0 of 1, unpaired 0, sets 0, bad 0
+status expiring soon: bad expiration at tag 1
+status without d: missing d

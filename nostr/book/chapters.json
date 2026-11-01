@@ -1289,13 +1289,20 @@
    "number": 62,
    "title": "Badges and statuses",
    "file": "ch062-badges-and-statuses.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip58.coax",
+    "coax/lib/nostr/nip38.coax",
+    "nostr/examples/badges-statuses.coax",
+    "nostr/examples/checks/badges-statuses.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {
