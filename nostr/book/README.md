@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 52 are implemented, 4 are partly implemented and
+Of the 104 chapters, 53 are implemented, 3 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -296,7 +296,7 @@ formal properties and a conformance report.
 | [94. Differential tests](ch094-differential-tests.md) | Runnable: native C | Running the same inputs through Coax and a reference implementation: the Rust relay from history in a network-less sandbox, and independent libraries for signatures, NIP-44 and NIP-59. |
 | [95. Fuzzing](ch095-fuzzing.md) | Runnable: native C | A seeded mutation fuzzer for every parser (JSON, events, filters, frames, NIP-19, NIP-44 payloads) under ASan and UBSan, with coverage guidance and shrinking shown on planted bugs, and minimized inputs kept as tests. |
 | [96. Formal properties](ch096-formal-properties.md) | Unimplemented: design draft | Properties stated and checked with `#forall` and models: signature validity matches BIP-340's definition, filter matching is AND across fields and OR within lists, and indexes never change results. |
-| [97. A conformance report](ch097-a-conformance-report.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | A machine-readable support matrix per profile (`core-read`, `core-write`, `phone-signer`, `openagents-host`, `block-identity`, `block-channel`, `agent-private`, `key-backup`) that refuses to advertise a NIP whose runtime gate is missing. |
+| [97. A conformance report](ch097-a-conformance-report.md) | Runnable: native C | A machine-readable support matrix per profile (`core-read`, `core-write`, `phone-signer`, `openagents-host`, `block-identity`, `block-channel`, `agent-private`, `key-backup`) that refuses to advertise a NIP whose runtime gate is missing. |
 
 ### Part XII. Nostr in OpenAgents (chapters 98–104)
 

@@ -131,7 +131,7 @@
 - [94. Differential tests](ch094-differential-tests.md) — implemented
 - [95. Fuzzing](ch095-fuzzing.md) — implemented
 - [96. Formal properties](ch096-formal-properties.md) — design draft
-- [97. A conformance report](ch097-a-conformance-report.md) — partly implemented
+- [97. A conformance report](ch097-a-conformance-report.md)
 
 **XII. Nostr in OpenAgents**
 

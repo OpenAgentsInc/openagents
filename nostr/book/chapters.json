@@ -1752,7 +1752,7 @@
    "number": 97,
    "title": "A conformance report",
    "file": "ch097-a-conformance-report.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     93,
@@ -1761,7 +1761,10 @@
    "source": [
     "coax/lib/nostr/profiles.coax",
     "coax/lib/nostr/profiles.json",
-    "coax/tests/nostr/profiles.py"
+    "coax/tests/nostr/profiles.py",
+    "coax/tests/nostr/profile_matrix.coax",
+    "nostr/examples/conformance.coax",
+    "nostr/examples/checks/conformance.coax"
    ],
    "qualified_targets": [
     "cpu"

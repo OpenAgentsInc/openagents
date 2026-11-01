@@ -1,0 +1,171 @@
+// The checks of conformance.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/conformance.coax
+#load "../conformance.coax";
+
+// book:begin check
+// A second implementation, a Python scratch script (2026-11-01), read
+// chapters.json, PLAN.md's spec column and examples.json at 73966b6359,
+// picked every chapter citing NIP-01, 19, 42, 44, 46, 49, 59 or 98, checked
+// that each record file exists and that each cpu record is an example run
+// in debug and release, and computed the cells. Its output, pasted:
+WANT_STATE :: [16] int.[PART, PART, DONE, NONE, DONE, NONE, PART, NONE,
+  NONE, NONE, DONE, DONE, DONE, NONE, DONE, DONE];
+WANT_DONE :: [16] int.[12, 2, 1, 0, 1, 0, 1, 0, 0, 0, 1, 1, 1, 0, 2, 2];
+WANT_CITED :: [8] int.[13, 1, 1, 2, 1, 1, 1, 2];
+WANT_CONFORMS :: [8] bool.[false, false, false, false, false, false, true, true];
+#test "the report matches a second implementation over the real files" {
+  r := registry();
+  #assert check_claims(r).why == OK;
+  claims := 0;
+  for i: 0..<r.rows { for t: 0..<TARGETS { if r.targets[i] & (1 << t) != 0 { claims += 1; } } }
+  #assert r.rows == 22 && claims == 25 && r.records == 25;
+  for k: 0..<8 {
+    for t: 0..<TARGETS {
+      c := cell(r, REPORT_NIPS[k], t);
+      #assert c.state == WANT_STATE[2 * k + t] && c.done == WANT_DONE[2 * k + t] && c.cited == WANT_CITED[k];
+    }
+  }
+  for q: 0..<4 {
+    for t: 0..<TARGETS {
+      #assert (conforms(r, profile_nips(REPORT_PROFILES[q]), t).why == OK) == WANT_CONFORMS[2 * q + t];
+    }
+  }
+}
+
+// NIP-98 by hand: chapters 49 and 99 are implemented, claim cpu and wasm,
+// and have a record for each: 2 of 2 on each target. Set chapter 99 back to
+// partly implemented and it no longer counts, though its claims and records
+// stay: 1 of 2. NIP-44 is that case today: chapter 100 is partly implemented.
+#test "NIP-98, NIP-44 and NIP-49 by hand" {
+  r := registry();
+  c := cell(r, "98", 0); #assert c.state == DONE && c.done == 2 && c.cited == 2;
+  c = cell(r, "98", 1); #assert c.state == DONE && c.done == 2 && c.cited == 2;
+  r.status[20] = PARTLY;
+  #assert r.ch[20] == 99 && check_claims(r).why == OK;
+  c = cell(r, "98", 0); #assert c.state == PART && c.done == 1 && c.cited == 2;
+  c = cell(r, "98", 1); #assert c.state == PART && c.done == 1 && c.cited == 2;
+  r = registry();
+  c = cell(r, "44", 0); #assert c.state == PART && c.done == 1 && c.cited == 2;
+  r.status[21] = IMPLEMENTED;
+  #assert r.ch[21] == 100 && cell(r, "44", 0).state == DONE && cell(r, "44", 1).state == NONE;
+  r = registry();
+  c = cell(r, "49", 0); #assert c.state == DONE && c.done == 1 && c.cited == 1;
+  c = cell(r, "49", 1); #assert c.state == DONE && c.done == 1 && c.cited == 1;
+  #assert conforms(r, "49", 0).why == OK && conforms(r, "49", 1).why == OK;
+  // a NIP no row cites is "-"
+  c = cell(r, "04", 0); #assert c.state == NONE && c.cited == 0;
+}
+
+// Done means: the NIPs with any done cell are exactly those an implemented
+// chapter with a record cites, on the real rows and with any one record gone.
+#forall "the report's NIPs equal the NIPs of done chapters" k: -1..<RECORDS {
+  r := registry();
+  if k >= 0 { r = without_record(r, k); }
+  for nip: REPORT_NIPS {
+    shown := cell(r, nip, 0).state != NONE || cell(r, nip, 1).state != NONE;
+    #assert shown == done_nip(r, nip);
+  }
+}
+// Every record is needed: without record k, the report refuses that
+// record's chapter and target.
+#forall "removing any record refuses the report" k: 0..<RECORDS {
+  f := check_claims(without_record(registry(), k));
+  #assert f.why == NO_RECORD && f.ch == REC_CH[k] && f.target == REC_TARGET[k];
+}
+// Every claimed target of every row, set where it wasn't: a design draft
+// refuses as a draft, any other chapter for want of a record.
+#forall "a new claim without a record refuses" i: 0..<ROWS, t: 0..<TARGETS {
+  r := registry();
+  if r.targets[i] & (1 << t) == 0 {
+    r.targets[i] |= 1 << t;
+    f := check_claims(r);
+    want := ifx r.status[i] == DRAFT then DRAFT_CLAIM else NO_RECORD;
+    #assert f.why == want && f.ch == r.ch[i] && f.target == t;
+  }
+}
+// A record for a target nobody claims changes nothing.
+#test "an extra record claims nothing" {
+  r := registry();
+  r.rec_ch[r.records] = 16; r.rec_target[r.records] = 1; r.rec_path[r.records] = "extra.out"; r.records += 1;
+  #assert check_claims(r).why == OK && cell(r, "19", 1).state == NONE;
+}
+
+// A NIP added to a profile without a done chapter: the profile refuses,
+// naming the NIP and the target.
+#test "a NIP added to a profile without evidence refuses" {
+  r := registry();
+  f := conforms(r, "49,46", 0); #assert f.why == NOT_DONE && f.nip == "46" && f.target == 0;
+  f = conforms(r, "49,19", 1); #assert f.why == NOT_DONE && f.nip == "19" && f.target == 1;
+  #assert conforms(r, "49,19", 0).why == OK && conforms(r, "", 0).why == OK;
+  // the first NIP not done is the reason
+  f = conforms(r, "19,01,46", 0); #assert f.nip == "01";
+}
+
+// The profiles' lists come from profiles.coax. The openagents and Block
+// profiles have no official list. Nothing is adopted, so nothing is
+// advertised, in agreement with profiles.coax's own claims.
+#test "profiles from profiles.coax and advertising" {
+  #assert profile_nips(0) == "01,19" && profile_nips(1) == "01,42,44,59";
+  #assert profile_nips(2) == "46,98" && profile_nips(7) == "49";
+  #assert profile_nips(3) == "" && profile_nips(4) == "" && profile_nips(8) == "";
+  r := registry();
+  for p: REPORT_PROFILES {
+    nips := profile_nips(p);
+    #assert adopted(r, nips) == 0;
+    #assert advertised(r, nips, 0) == np_can_advertise(p, 0, np_required(p));
+    #assert advertised(r, nips, 1) == np_can_advertise(p, 2, np_required(p));
+  }
+  // one adopting file makes key-backup advertised, on both targets
+  r.adopted[17] = 1;
+  #assert r.ch[17] == 47 && adopted(r, "49") == 1 && advertised(r, "49", 0) && advertised(r, "49", 1);
+  #assert !advertised(r, "01,19", 0);
+}
+
+// The list helpers on names that share digits, and on empty names.
+#test "comma lists match whole names" {
+  #assert has_nip("01,12", "01") && has_nip("01,12", "12") && !has_nip("01,12", "1") && !has_nip("01,12", "2");
+  #assert has_nip("PYLON,44", "44") && !has_nip("PYLON,44", "PYLO") && !has_nip("", "01") && !has_nip("012", "01");
+  #assert has_nip(",19", "19") && !has_nip(",19", ",19");
+  #assert nip_at("01,42,44", 0) == "01" && nip_at("01,42,44", 2) == "44" && nip_at("01,42,44", 3) == "";
+  #assert nip_at("", 0) == "" && nip_at("49", 0) == "49" && nip_at("49", 1) == "";
+  #assert nip_at(",19", 0) == "" && nip_at(",19", 1) == "19";
+  #assert after_prefix("official:49", "official:") == "49" && after_prefix("Official:49", "official:") == "";
+  #assert after_prefix("official", "official:") == "" && after_prefix("block:OA", "official:") == "";
+  #assert nip_count("") == 0 && nip_count("49") == 1 && nip_count("01,42,44,59") == 4 && nip_count(",19") == 2;
+  #assert digits(0) == 1 && digits(9) == 1 && digits(10) == 2 && digits(13) == 2 && digits(100) == 3;
+}
+// An empty name in a profile is never done: ",49" refuses at the empty name.
+#test "an empty name in a profile refuses" {
+  r := registry();
+  f := conforms(r, ",49", 0); #assert f.why == NOT_DONE && f.nip == "";
+  f = conforms(r, "49,", 1); #assert f.why == NOT_DONE && f.nip == "";
+}
+// The records as copied, and taking one out shifts the rest down.
+#test "records and without_record" {
+  r := registry();
+  #assert r.rec_path[0] == "nostr/fixtures/nip19.out" && r.rec_path[17] == "nostr/fixtures/http-auth.out";
+  #assert r.rec_ch[20] == 47 && r.rec_target[20] == 1 && r.rec_path[20] == "docs/verification/2026-10-29-scrypt-nip49.md";
+  #assert r.rec_path[22] == "nostr/fixtures/web-sign-in.out" && r.rec_path[24] == "psionic/fixtures/pylon-job.out";
+  b := without_record(r, 0);
+  #assert b.records == 24 && b.rec_ch[0] == 17 && b.rec_path[0] == "nostr/fixtures/signable-json.out";
+  #assert b.rec_ch[23] == 100 && b.rec_target[22] == 1 && b.rec_path[23] == "psionic/fixtures/pylon-job.out";
+}
+// done_nip wants a claimed target: chapter 16 with its record but no claim
+// doesn't make NIP-19 done.
+#test "a record without a claim does not make a NIP done" {
+  r := registry();
+  #assert done_nip(r, "19");
+  r.targets[0] = 0;
+  #assert r.ch[0] == 16 && !done_nip(r, "19") && cell(r, "19", 0).state == NONE;
+}
+// adopted counts a chapter's files only when it cites one of the NIPs,
+// once for each chapter.
+#test "adoption by hand" {
+  r := registry();
+  r.adopted[0] = 2;
+  #assert adopted(r, "01,19") == 2 && adopted(r, "19,21") == 2 && adopted(r, "49") == 0 && adopted(r, "") == 0;
+  r.adopted[1] = 1;
+  #assert adopted(r, "01,19") == 3 && adopted(r, "01") == 1;
+}
+// book:end check

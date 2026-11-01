@@ -1,0 +1,27 @@
+22 registry rows, 25 claimed targets, 25 records
+NIP  cpu        wasm       open chapters
+01   part 12/13 part 2/13  33 (design draft)
+19   done 1/1   -          none
+42   done 1/1   -          none
+44   part 1/2   -          100 (partly implemented)
+46   -          -          48 (design draft)
+49   done 1/1   done 1/1   none
+59   done 1/1   -          none
+98   done 2/2   done 2/2   none
+core-read     NIPs 01,19        cpu: no (NIP-01) wasm: no (NIP-01)  adopted by 0, advertised: no
+core-write    NIPs 01,42,44,59  cpu: no (NIP-01) wasm: no (NIP-01)  adopted by 0, advertised: no
+phone-signer  NIPs 46,98        cpu: no (NIP-46) wasm: no (NIP-46)  adopted by 0, advertised: no
+key-backup    NIPs 49           cpu: yes         wasm: yes          adopted by 0, advertised: no
+NIPs that an implemented chapter with a record cites: 01 19 42 44 49 59 98
+
+broken: chapter 16 also claims wasm
+refused: chapter 16 claims wasm, and no record backs it
+no report is built
+broken: chapter 48, a design draft, claims cpu with a record
+refused: chapter 48 is a design draft and claims cpu
+no report is built
+broken: the record for chapter 47 on wasm is removed
+refused: chapter 47 claims wasm, and no record backs it
+no report is built
+broken: NIP-46 added to key-backup, claimed on cpu
+refused: NIP-46 is not done on cpu

@@ -209,7 +209,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | [94. Differential tests](ch094-differential-tests.md) — implemented | 34, 93 | Every difference has a classification and a reason. A seeded fault in the Coax relay produces a new unexplained difference. | — |
 | [95. Fuzzing](ch095-fuzzing.md) — implemented | 17, 23, 26, 93 | Each target runs for a fixed budget without a finding, recorded with its seed. A seeded out-of-bounds read is found by the fuzzer. | — |
 | [96. Formal properties](ch096-formal-properties.md) — design draft | 11, 23, 36 | Each property has a check that a deliberate bug breaks. Counterexamples from any model become regression tests. | — |
-| [97. A conformance report](ch097-a-conformance-report.md) — partly implemented | 93, 94 | The report's NIP list equals the set of done chapters. A NIP added to a profile without evidence fails the check. | — |
+| [97. A conformance report](ch097-a-conformance-report.md) — implemented | 93, 94 | The report's NIP list equals the set of done chapters. A NIP added to a profile without evidence fails the check. | — |
 
 ### Part XII. Nostr in OpenAgents
 
