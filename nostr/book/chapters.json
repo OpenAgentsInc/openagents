@@ -1572,7 +1572,7 @@
    "number": 88,
    "title": "Federated identity",
    "file": "ch088-federated-identity.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     38,
@@ -1583,7 +1583,10 @@
     "coax/lib/nostr/adapters/fi-projection.coax",
     "coax/lib/nostr/block/fi-claims-parse.coax",
     "coax/lib/nostr/block/fi-jwks.coax",
-    "coax/lib/nostr/block/fi-policy.coax"
+    "coax/lib/nostr/block/fi-policy.coax",
+    "coax/lib/nostr/block/fi-local-jws-candidate.coax",
+    "nostr/examples/federated-identity.coax",
+    "nostr/examples/checks/federated-identity.coax"
    ],
    "qualified_targets": [
     "cpu",

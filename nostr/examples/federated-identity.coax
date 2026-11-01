@@ -1,0 +1,198 @@
+// book:begin example
+#load "../../coax/lib/nostr/block/fi-local-jws-candidate.coax";
+#load "../../coax/lib/text/base64.coax";
+#import "Basic";
+
+// A test token signed with a throwaway 2048-bit key whose private half was
+// deleted (coax/tests/nostr/data/fi-jws/claims-token.txt and claims-jwks.json).
+TOKEN :: "eyJhbGciOiJSUzI1NiIsInR5cCI6ImF0K2p3dCIsImtpZCI6InRlc3Qta2V5In0.eyJpc3MiOiJodHRwczovL2lzc3Vlci50ZXN0Iiwic3ViIjoic3ViamVjdCIsImF1ZCI6IndzczovL3JlbGF5LnRlc3QiLCJub3N0cl9wdWJrZXkiOiIwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwIiwiaWF0IjoxMDAsImV4cCI6MjAwLCJjbGllbnRfaWQiOiJtb2JpbGUifQ.XSeCVpjfcpU3ghfQ8PZIMCCZDeke4nk87Fjsag7mGboO2qpbc-j7xHvu1utTsQXaud1jjqpV5v9FQc4yApNLpxa01gkDs8sNR_dGPd67LUjYhpAdJSWbIJbbBNf-uXzzA35fRFThFGcbZ6gCyxq7KRmb5n35g9ExqunVPUmw-4FQB1veh_C1DZC_8-oqQnIolHvqPqKA_6Qvo8EC6J6KYL7QMPOm0UuywCew9F1LQDMFowFOOCMVaxS7UHXcxL_IN0VjNaVAstpn67oLCnaTSVRyeRf6RTQmgbBlUeP3KmjoOzSnYKPG6Zs6e39dgN3k7BfqyPLqM6Ay5cUyvb4_8w";
+KEY_N :: "mSSukJYIEze9DyYlGyp2FJ3o6HTXmrQ1YRceZ_AbJuraYooxZ3qs46aZsRZeuNmb3i4pBZTNJkzhgE2ewEvQ11JQuyMWjlYoCTgvVpaazIEvGnXFRLL7AR7J_PlEZPwxFVcQZP7O-pLIp65V0Y9t6WmSEK1WZ3XG6FLo834haItBHj1deE-_lu_DC0ku6LqU8Uf4s79PBf7K5YOz2eh_7m81DKbuPSuXSqMD0XQcu0npAdW8-wuYNqaQvzFPn7lE7wJKHGkuLCJ4qkVxG3UmkTWCUPdY5Borg7nVNK9owvm3E6TySCL9DYx4439UXfcvhwEtdZaZhxhBxu9ZVm5wWQ";
+ISSUER :: "https://issuer.test";
+
+// Build tokens and JWKS documents in a caller's buffer: each helper writes
+// at position at and returns the new end.
+put :: (out: [] u8, at: int, text: string) -> int {
+  for i: 0..<text.count { out[at + i] = text[i]; }
+  return at + text.count;
+}
+// Unpadded base64url (RFC 7515 §2): standard base64 with - and _, no '='.
+put_b64url :: (out: [] u8, at: int, text: string) -> int {
+  std: [4096] u8; n := b64_encode(text, std[..]);
+  w := at;
+  for i: 0..<n {
+    c := std[i];
+    if c == '=' { break; }
+    if c == '+' { c = '-'; } else if c == '/' { c = '_'; }
+    out[w] = c; w += 1;
+  }
+  return w;
+}
+// A one-key JWKS with the test modulus and the given kid, kty and alg.
+jwks_with :: (out: [] u8, kid: string, kty: string, alg: string) -> string {
+  at := put(out, 0, "{\"keys\":[{\"kid\":\""); at = put(out, at, kid);
+  at = put(out, at, "\",\"kty\":\""); at = put(out, at, kty);
+  at = put(out, at, "\",\"alg\":\""); at = put(out, at, alg);
+  at = put(out, at, "\",\"use\":\"sig\",\"n\":\""); at = put(out, at, KEY_N);
+  at = put(out, at, "\",\"e\":\"AQAB\"}]}");
+  return cast(string) out[0..<at];
+}
+// TOKEN with its header replaced by the base64url of header_json.
+with_header :: (out: [] u8, header_json: string) -> string {
+  parts := fi_compact_parse(TOKEN);
+  at := put_b64url(out, 0, header_json);
+  at = put(out, at, TOKEN[parts.protected_end..<TOKEN.count]);
+  return cast(string) out[0..<at];
+}
+// TOKEN with its payload replaced by the base64url of claims_json.
+with_payload :: (out: [] u8, claims_json: string) -> string {
+  parts := fi_compact_parse(TOKEN);
+  at := put(out, 0, TOKEN[0..<parts.payload_start]);
+  at = put_b64url(out, at, claims_json);
+  at = put(out, at, TOKEN[parts.signing_end..<TOKEN.count]);
+  return cast(string) out[0..<at];
+}
+// Print a label and bytes as lowercase hex.
+show_hex :: (label: string, bytes: [] u8) {
+  digits := "0123456789abcdef";
+  out: [1024] u8;
+  for i: 0..<bytes.count { out[2 * i] = digits[bytes[i] >> 4]; out[2 * i + 1] = digits[bytes[i] & 15]; }
+  print("%: %\n", label, cast(string) out[0..<2 * bytes.count]);
+}
+status_name :: (s: int) -> string {
+  if s == FI_CANDIDATE { return "candidate"; }
+  if s == FI_UNAVAILABLE { return "unavailable"; }
+  return "rejected";
+}
+
+// s^65537 mod n the way rsa_verify_sha256 computes it: move s into
+// Montgomery form by 32·count doublings, square 16 times, multiply by s once,
+// and multiply by 1 to leave Montgomery form. squares[k] keeps s^(2^(k+1))
+// mod n (its low limb), taken out of Montgomery form to print.
+Power :: struct { value: RsaWords; squares: [16] u32; }
+pow65537 :: (s: RsaWords, n: RsaWords, count: int) -> Power {
+  result: Power;
+  inverse := rsa_mont_inverse(n.words[0]);
+  one: RsaWords; one.words[0] = 1;
+  base := s; for i: 0..<count * 32 { base = rsa_add_mod(base, base, n, count); }
+  value := base;
+  for i: 0..<16 {
+    value = rsa_mont_mul(value, value, n, count, inverse);
+    result.squares[i] = rsa_mont_mul(value, one, n, count, inverse).words[0];
+  }
+  value = rsa_mont_mul(value, base, n, count, inverse);
+  result.value = rsa_mont_mul(value, one, n, count, inverse);
+  return result;
+}
+
+// Run every stage of the local verifier on one token and print each result.
+stages :: (label: string, token: string, jwks: string, cs: [] FiCommunity, ps: [] FiIssuer, host: string, now: int) {
+  bytes: [4096] u8; for i: 0..<token.count { bytes[i] = token[i]; }
+  t := bytes[0..<token.count];
+  accepted := fi_local_jws_candidate(t, jwks, cs, ps, host, now);
+  parts := fi_compact_parse(token);
+  if !parts.ok { print("%: framing refused; accepted %\n", label, accepted); return; }
+  hb: [2048] u8; hd := fi_b64url_decode(token[0..<parts.protected_end], hb[..]);
+  h := fi_protected_parse(cast(string) hb[0..<hd.written]);
+  if !h.ok { print("%: header refused; accepted %\n", label, accepted); return; }
+  pb: [4096] u8; pd := fi_b64url_decode(token[parts.payload_start..<parts.signing_end], pb[..]);
+  header := FiHeader.{algorithm = "RS256", typ = fi_local_typ(h.typ), kid = cast(string) h.kid[0..<h.kid_count]};
+  claims := fi_claims_semantic_candidate(cs, ps, host, header, cast(string) pb[0..<pd.written], now);
+  signature := fi_jws_document_signature(t, jwks);
+  print("%: claims %, signature %, accepted %\n", label, status_name(claims), signature, accepted);
+}
+
+main :: () {
+  // 1. RSA by hand: n = 61·53 = 3233, signature s = 65, e = 65537.
+  tiny_n: RsaWords; tiny_n.words[0] = 3233;
+  tiny_s: RsaWords; tiny_s.words[0] = 65;
+  tiny := pow65537(tiny_s, tiny_n, 1);
+  print("65^(2^k) mod 3233, k = 1..16:");
+  for i: 0..<16 { print(" %", tiny.squares[i]); }
+  print("\n65^65537 mod 3233 = %\n", tiny.value.words[0]);
+  tiny_bytes := [2] u8.[12, 161];
+  print("rsa_modulus_ok accepts the 2-byte modulus 3233: %\n", rsa_modulus_ok(tiny_bytes[..], 2));
+
+  // 2. The token's three parts.
+  parts := fi_compact_parse(TOKEN);
+  hb: [2048] u8; hd := fi_b64url_decode(TOKEN[0..<parts.protected_end], hb[..]);
+  pb: [4096] u8; pd := fi_b64url_decode(TOKEN[parts.payload_start..<parts.signing_end], pb[..]);
+  print("header: %\n", cast(string) hb[0..<hd.written]);
+  print("claims: %\n", cast(string) pb[0..<pd.written]);
+  print("signing input: % bytes, signature: % bytes\n", parts.signing_end, parts.signature_size);
+
+  // 3. The key, and the signature raised to e = 65537 with it.
+  jwks_buffer: [1024] u8; good := jwks_with(jwks_buffer[..], "test-key", "RSA", "RS256");
+  keys := fi_jwks_parse(good);
+  key := keys.keys[0];
+  print("JWKS: ok %, % key, kid %, modulus % bits\n", keys.ok, keys.count,
+        cast(string) key.kid[0..<key.kid_count], key.modulus_count * 8);
+  sig: [512] u8; sd := fi_b64url_decode(TOKEN[parts.signature_start..<TOKEN.count], sig[..]);
+  n := rsa_load(key.modulus[0..<key.modulus_count]); s := rsa_load(sig[0..<sd.written]);
+  m := pow65537(s, n, rsa_word_count(key.modulus_count)).value;
+  em: [256] u8;
+  for i: 0..<256 { em[255 - i] = cast(u8) ((m.words[i / 4] >> ((i % 4) * 8)) & 255); }
+  run := 0; while em[2 + run] == 255 { run += 1; }
+  show_hex("s^e mod n starts", em[0..<2]);
+  print("then % bytes of ff and a % byte\n", run, em[2 + run]);
+  show_hex("DigestInfo", em[3 + run..<22 + run]);
+  show_hex("digest in the signature", em[22 + run..<256]);
+  signing: [512] u8; for i: 0..<parts.signing_end { signing[i] = TOKEN[i]; }
+  digest: [32] u8;
+  #assert sha256_hash_checked(signing[0..<parts.signing_end], digest[..], false) == SHA_OK;
+  show_hex("SHA-256 of the signing input", digest[..]);
+  print("rsa_pkcs1_sha256: %\n", rsa_pkcs1_sha256(em[..], digest[..]));
+
+  // 4. The relay's policy: one community and the issuer it trusts.
+  names := [1] string.[ISSUER]; owners := [1] string.[ISSUER]; clients := [1] string.["service"];
+  cs: [1] FiCommunity; cs[0].host = "relay.test"; cs[0].audience = "wss://relay.test"; cs[0].issuers = names[..];
+  ps: [1] FiIssuer; ps[0].issuer = ISSUER; ps[0].jwks_uri = "https://keys.test"; ps[0].transport = 1;
+  ps[0].token_class = FI_ACCESS_TOKEN; ps[0].maximum_age = 10; ps[0].connection_lifetime = 10;
+  ps[0].refresh = 1; ps[0].hard_deadline = 30; ps[0].marker_name = "iss";
+  ps[0].owner_values = owners[..]; ps[0].client_values = clients[..];
+  stages("now 101", TOKEN, good, cs[..], ps[..], "relay.test", 101);
+
+  // 5. Refusals: the clock, the community and the issuer.
+  stages("now 99, issued in the future", TOKEN, good, cs[..], ps[..], "relay.test", 99);
+  stages("now 110, older than maximum_age", TOKEN, good, cs[..], ps[..], "relay.test", 110);
+  stages("now 200, at exp", TOKEN, good, cs[..], ps[..], "relay.test", 200);
+  stages("unknown Host other.test", TOKEN, good, cs[..], ps[..], "other.test", 101);
+  cs[0].audience = "wss://other.test";
+  stages("community audience wss://other.test", TOKEN, good, cs[..], ps[..], "relay.test", 101);
+  cs[0].audience = "wss://relay.test";
+  names[0] = "https://other.test";
+  stages("issuer not on the community's allowlist", TOKEN, good, cs[..], ps[..], "relay.test", 101);
+  names[0] = ISSUER;
+
+  // 6. Refusals: the protected header.
+  forged: [2048] u8;
+  stages("header alg none", with_header(forged[..], "{\"alg\":\"none\",\"typ\":\"at+jwt\",\"kid\":\"test-key\"}"),
+         good, cs[..], ps[..], "relay.test", 101);
+  stages("header alg HS256", with_header(forged[..], "{\"alg\":\"HS256\",\"typ\":\"at+jwt\",\"kid\":\"test-key\"}"),
+         good, cs[..], ps[..], "relay.test", 101);
+  stages("header typ JWT", with_header(forged[..], "{\"alg\":\"RS256\",\"typ\":\"JWT\",\"kid\":\"test-key\"}"),
+         good, cs[..], ps[..], "relay.test", 101);
+  stages("header with jku", with_header(forged[..], "{\"alg\":\"RS256\",\"typ\":\"at+jwt\",\"kid\":\"test-key\",\"jku\":\"https://evil.test\"}"),
+         good, cs[..], ps[..], "relay.test", 101);
+
+  // 7. Refusals: the key set.
+  other: [1024] u8;
+  wrong_kid := fi_jwks_parse(jwks_with(other[..], "old-key", "RSA", "RS256"));
+  print("old-key JWKS: parses %, index of test-key %\n", wrong_kid.ok, fi_jws_find_key(wrong_kid, "test-key"));
+  print("PS256 JWKS parses: %\n", fi_jwks_parse(jwks_with(other[..], "test-key", "RSA", "PS256")).ok);
+  print("oct/HS256 JWKS parses: %\n", fi_jwks_parse(jwks_with(other[..], "test-key", "oct", "HS256")).ok);
+  stages("JWKS without kid test-key", TOKEN, jwks_with(other[..], "old-key", "RSA", "RS256"),
+         cs[..], ps[..], "relay.test", 101);
+  stages("JWKS key with alg PS256", TOKEN, jwks_with(other[..], "test-key", "RSA", "PS256"),
+         cs[..], ps[..], "relay.test", 101);
+  stages("JWKS key with kty oct, alg HS256", TOKEN, jwks_with(other[..], "test-key", "oct", "HS256"),
+         cs[..], ps[..], "relay.test", 101);
+
+  // 8. Refusals: the signed bytes.
+  stages("payload sub changed to attacker",
+         with_payload(forged[..], "{\"iss\":\"https://issuer.test\",\"sub\":\"attacker\",\"aud\":\"wss://relay.test\",\"nostr_pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"iat\":100,\"exp\":200,\"client_id\":\"mobile\"}"),
+         good, cs[..], ps[..], "relay.test", 101);
+  at := put(forged[..], 0, TOKEN);
+  forged[at - 2] = ifx forged[at - 2] == 'A' then 'B' else 'A';
+  stages("one signature character changed", cast(string) forged[0..<at], good, cs[..], ps[..], "relay.test", 101);
+}
+// book:end example

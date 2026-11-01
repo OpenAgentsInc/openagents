@@ -1,0 +1,32 @@
+65^(2^k) mod 3233, k = 1..16: 992 1232 1547 789 1785 1720 205 3229 16 256 876 1155 2029 1232 1547 789
+65^65537 mod 3233 = 2790
+rsa_modulus_ok accepts the 2-byte modulus 3233: false
+header: {"alg":"RS256","typ":"at+jwt","kid":"test-key"}
+claims: {"iss":"https://issuer.test","sub":"subject","aud":"wss://relay.test","nostr_pubkey":"0000000000000000000000000000000000000000000000000000000000000000","iat":100,"exp":200,"client_id":"mobile"}
+signing input: 322 bytes, signature: 256 bytes
+JWKS: ok true, 1 key, kid test-key, modulus 2048 bits
+s^e mod n starts: 0001
+then 202 bytes of ff and a 0 byte
+DigestInfo: 3031300d060960864801650304020105000420
+digest in the signature: 703a10140badeb1399751fdefb2779ee26f52224e07ce257c22b01e14567448e
+SHA-256 of the signing input: 703a10140badeb1399751fdefb2779ee26f52224e07ce257c22b01e14567448e
+rsa_pkcs1_sha256: true
+now 101: claims candidate, signature true, accepted true
+now 99, issued in the future: claims rejected, signature true, accepted false
+now 110, older than maximum_age: claims rejected, signature true, accepted false
+now 200, at exp: claims rejected, signature true, accepted false
+unknown Host other.test: claims unavailable, signature true, accepted false
+community audience wss://other.test: claims rejected, signature true, accepted false
+issuer not on the community's allowlist: claims rejected, signature true, accepted false
+header alg none: header refused; accepted false
+header alg HS256: header refused; accepted false
+header typ JWT: header refused; accepted false
+header with jku: header refused; accepted false
+old-key JWKS: parses true, index of test-key -1
+PS256 JWKS parses: false
+oct/HS256 JWKS parses: false
+JWKS without kid test-key: claims candidate, signature false, accepted false
+JWKS key with alg PS256: claims candidate, signature false, accepted false
+JWKS key with kty oct, alg HS256: claims candidate, signature false, accepted false
+payload sub changed to attacker: claims candidate, signature false, accepted false
+one signature character changed: claims candidate, signature false, accepted false
