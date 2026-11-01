@@ -1,0 +1,124 @@
+#import "Basic";
+#load "../lib/module.coax";
+
+name_of :: (n:MdlName,out:[]u8)->string {for i:0..<n.count {out[i]=n.bytes[i];}return cast(string)out[0..<n.count];}
+MB_KINDS :: [4]string.["parameter","buffer","transient","data"];
+mb_r6 :: (v:f64)->f64 {return floor(v*1e6+0.5)/1e6;}
+
+// book:begin build
+// A pre-norm residual MLP block, the feed-forward half of a transformer
+// decoder block, with a squared-error loss:
+// y = x + scale * fc2(drop(relu(fc1(norm(x))))).
+mb_block :: (width:int,hidden:int,drop:int)->MdlModel {
+    m:=mdl_model();
+    m=mdl_data(m,"x",mdl_shape(2,4,width));x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,4,width));target:=m.node;
+    m=mdl_layernorm(m,MDL_ROOT,"norm",x);
+    m=mdl_linear(m,MDL_ROOT,"fc1",m.node,hidden);
+    m=mdl_relu(m,m.node);
+    m=mdl_dropout(m,MDL_ROOT,"drop",m.node,drop);
+    m=mdl_linear(m,MDL_ROOT,"fc2",m.node,width);h:=m.node;
+    m=mdl_buffer(m,MDL_ROOT,"scale",mdl_shape(1,width,0),MdlInit.constant,0.5);
+    m=mdl_op(m,TiOp.multiply,h,m.node);
+    m=mdl_op(m,TiOp.add,m.node,x);
+    return mdl_squared_error(m,MDL_ROOT,"loss",m.node,target);
+}
+// book:end build
+
+// The loss of one forward-only run in eval mode.
+mb_loss :: (m:MdlModel,inputs:[]f32)->f32 {
+    e:=mdl_train(m,false);#assert mdl_refresh(e,0,inputs)==MdlStatus.ok;
+    off:AdMode;off.enabled=false;t:=ad_tape(e.program,off,OrRegistry.{});
+    values:[1024]f32;grads:[8]f64;flags:[64]u8;out:[1]f32;
+    run:=ad_run(t,AdCursor.{},inputs,values[..],grads[..],flags[..]);
+    #assert ad_value(t,run.cursor,e.program.output,inputs,values[..],out[..])==AdStatus.ok;
+    return out[0];
+}
+
+// book:begin example
+main :: () {
+    m:=mb_block(4,8,128);buf:[64]u8;
+    print("model: status %, % modules, % entries, % program nodes, % input floats, workspace % floats\n",m.status,m.module_count,m.count,m.program.count,m.top,m.workspace);
+    for i:0..<m.count {
+        e:=m.entries[i];
+        print("  %  % [",name_of(e.name,buf[..]),MB_KINDS[cast(int)e.kind]);
+        for d:0..<e.shape.rank {if d>0 {print(",");}print("%",e.shape.dims[d]);}
+        print("] at %",e.base);
+        if e.kind==MdlKind.parameter || e.kind==MdlKind.buffer {print(", % %",ifx e.init==MdlInit.uniform then "uniform +-" else "constant",mb_r6(f64(e.value)));}
+        print("\n");
+    }
+    print("trainable floats %, saved floats %\n",mdl_parameters(m),mdl_state_floats(m));
+
+    // Values: parameters by their rules (seed 7), data by formula.
+    inputs:[256]f32;#assert mdl_init(m,7,inputs[..])==MdlStatus.ok;
+    for j:0..<16 {
+        x:=f64((j*5)%16-8)/8;inputs[j]=f32(x);
+        inputs[16+j]=f32(f64((((j/4)*4+(j+1)%4)*5)%16-8)/16);
+    }
+
+    // The same block wired node by node, in its own layout.
+    w:=mdl_test_wired();wired:[512]f32;
+    for k:0..<10 {e:=m.entries[k];for j:0..<e.size {wired[mdl_test_wired_base[k]+j]=inputs[e.base+j];}}
+    wired[352]=-1;
+    #assert mdl_refresh(m,1,inputs[..])==MdlStatus.ok;
+    for j:0..<32 {wired[280+j]=inputs[80+j];}
+    t:=ad_tape(m.program,mdl_mode(m),OrRegistry.{});
+    wmode:AdMode;for k:2..<9 {if m.entries[k].kind==MdlKind.parameter {wmode.grad[mdl_test_wired_node[k]]=true;}}
+    tw:=ad_tape(w,wmode,OrRegistry.{});
+    values:[1024]f32;grads:[1024]f64;flags:[64]u8;wv:[1024]f32;wg:[1024]f64;
+    run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    rw:=ad_run(tw,AdCursor.{},wired[..],wv[..],wg[..],flags[..]);
+    a:[1]f32;b:[1]f32;
+    #assert ad_value(t,run.cursor,26,inputs[..],values[..],a[..])==AdStatus.ok && ad_value(tw,rw.cursor,26,wired[..],wv[..],b[..])==AdStatus.ok;
+    print("\ncomposed against hand-wired, training mode, mask from step 1:\n");
+    print("  loss % and %, same bits: %\n",mb_r6(f64(a[0])),mb_r6(f64(b[0])),f32_bits(a[0])==f32_bits(b[0]));
+    g:[64]f32;gw:[64]f32;
+    for k:2..<9 {
+        e:=m.entries[k];if e.kind!=MdlKind.parameter {continue;}
+        #assert ad_gradient(t,run.cursor,e.node,grads[..],g[..])==AdStatus.ok && ad_gradient(tw,rw.cursor,mdl_test_wired_node[k],wg[..],gw[..])==AdStatus.ok;
+        same:=true;norm:f64=0;for j:0..<e.size {if f32_bits(g[j])!=f32_bits(gw[j]) {same=false;}norm+=f64(g[j])*f64(g[j]);}
+        print("  gradient of %: norm %, same bits: %\n",name_of(e.name,buf[..]),mb_r6(sqrt(norm)),same);
+    }
+
+    // Train with the norm frozen and dropout on; evaluate in eval mode.
+    f:=mdl_freeze(m,"norm",true);t=ad_tape(f.program,mdl_mode(f),OrRegistry.{});
+    norm_before:[8]f32;g84:[84]f32;for j:0..<8 {norm_before[j]=inputs[32+j];}
+    print("\ntraining with norm frozen, dropout 128/256, learning rate 0.02:\n");
+    for step:0..<401 {
+        if step%100==0 {print("  step %: eval loss %\n",step,mb_r6(f64(mb_loss(f,inputs[..]))));}
+        if step==400 {break;}
+        #assert mdl_refresh(f,cast(u64)step+100,inputs[..])==MdlStatus.ok;
+        run=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+        #assert run.status==AdStatus.ok && mdl_sgd(f,t,run.cursor,grads[..],g84[..],inputs[..],0.02)==MdlStatus.ok;
+    }
+    unchanged:=true;for j:0..<8 {if f32_bits(inputs[32+j])!=f32_bits(norm_before[j]) {unchanged=false;}}
+    print("  norm.weight and norm.bias unchanged: %\n",unchanged);
+
+    // Save by name, load into a fresh buffer, and compare.
+    file:[4096]u8;stage:[4096]u8;s:=mdl_save(f,inputs[..],file[..],stage[..]);
+    print("\nstate dictionary: %, % tensors, % bytes\n",s.status,s.tensors,s.written);
+    fresh:[512]f32;for j:0..<32 {fresh[j]=inputs[j];}
+    l:=mdl_load(mb_block(4,8,128),file[0..<s.written],fresh[..],true);
+    before:=mb_loss(f,inputs[..]);after:=mb_loss(f,fresh[..]);
+    print("loaded: %, % tensors; eval loss % before and % after, same bits: %\n",l.status,l.loaded,mb_r6(f64(before)),mb_r6(f64(after)),f32_bits(before)==f32_bits(after));
+
+    // Refusals. Nothing is written when a load is refused.
+    print("\nrefused loads:\n");
+    extra:=mdl_parameter(mb_block(4,8,128),MDL_ROOT,"gate",mdl_shape(1,4,0),MdlInit.constant,1);
+    l=mdl_load(extra,file[0..<s.written],fresh[..],true);
+    print("  model with an extra gate: %, entry %\n",l.status,name_of(extra.entries[l.entry].name,buf[..]));
+    small:=mdl_model();small=mdl_data(small,"x",mdl_shape(2,4,4));
+    small=mdl_layernorm(small,MDL_ROOT,"norm",0);small=mdl_linear(small,MDL_ROOT,"fc1",small.node,8);
+    small=mdl_relu(small,small.node);small=mdl_linear(small,MDL_ROOT,"fc2",small.node,4);
+    l=mdl_load(small,file[0..<s.written],fresh[..],true);
+    found:[16]IcTensor;#assert ic_inspect(file[0..<s.written],found[..],false).status==IcStatus.ok;
+    print("  model without scale: %, % unexpected, file tensor %\n",l.status,l.unexpected,cast(string)found[l.file].name[0..<found[l.file].name_count]);
+    loose:=mdl_load(small,file[0..<s.written],fresh[..],false);
+    print("  the same, not requiring every key: %, % loaded, % unexpected\n",loose.status,loose.loaded,loose.unexpected);
+    wide:=mb_block(4,16,128);l=mdl_load(wide,file[0..<s.written],fresh[..],false);
+    print("  fc1 16 wide: %, entry %\n",l.status,name_of(wide.entries[l.entry].name,buf[..]));
+    file[s.written-1]^=1;file[20]=0;
+    l=mdl_load(f,file[0..<s.written],fresh[..],true);print("  damaged header: %\n",l.status);
+    print("  bad names: % % %\n",mdl_data(m,"fc1",mdl_shape(1,1,0)).status,mdl_data(m,"a.b",mdl_shape(1,1,0)).status,mdl_freeze(m,"fc",true).status);
+}
+// book:end example

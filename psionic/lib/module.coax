@@ -1,0 +1,714 @@
+// Chapter 117: models are compositions of modules. A model is built by
+// calling module constructors that add named entries and nodes to one of
+// chapter 38's tensor programs; chapter 106's autodiff runs it. Every
+// parameter and buffer has a stable dotted name ("fc1.weight") made from the
+// module path, a shape and a place in the caller's input buffer. The state
+// dictionary is the saved entries in registration order, written and read
+// through chapter 8's named-tensor file.
+// Profile module-f32-v1: f32 values in one caller-owned input buffer, at most
+// 16 modules, 32 program nodes (chapter 38's limit, so at most 32 entries),
+// 16 saved tensors (chapter 8's limit), names of at most 63 bytes.
+#load "autodiff.coax";
+#load "interchange.coax";
+#load "counter-rng.coax";
+
+MDL_MODULES :: 16;
+MDL_NAME :: 64;
+MDL_ROOT :: 0;
+
+// book:begin types
+MdlStatus :: enum u8 {ok;name;capacity;shape;program;missing;unexpected;mismatch;format;state;number;}
+// parameter: trained and saved. buffer: saved, never trained (a fixed
+// scale, running statistics). transient: rebuilt by mdl_refresh before each
+// run and never saved (a dropout mask, a constant). data: the batch.
+MdlKind :: enum u8 {parameter;buffer;transient;data;}
+// constant fills with value; uniform draws from [-value, value) with the
+// counter generator, one counter per element.
+MdlInit :: enum u8 {constant;uniform;}
+MdlName :: struct {count:int;bytes:[64]u8;}
+MdlEntry :: struct {
+    name:MdlName;kind:MdlKind;owner:int;node:int;shape:TvShape;base:int;size:int;
+    init:MdlInit;value:f32;frozen:bool;mask:bool;drop:int;
+}
+MdlModule :: struct {name:MdlName;parent:int;}
+// A model under construction. Each constructor returns the model with the
+// node it made last in node and the module it made in child. A refusal is
+// sticky: the first failing call sets status and later calls change nothing.
+MdlModel :: struct {
+    status:MdlStatus;program:TiProgram;shapes:[32]TvShape;workspace:int;
+    modules:[16]MdlModule;module_count:int=1;
+    entries:[32]MdlEntry;count:int;top:int;
+    training:bool=true;node:int=-1;child:int;
+}
+// book:end types
+MdlSaved :: struct {status:MdlStatus;written:int;tensors:int;}
+// The outcome of loading a state dictionary. entry is the model entry, and
+// file the file tensor, that caused a refusal (-1 when none applies).
+MdlLoad :: struct {status:MdlStatus;entry:int=-1;file:int=-1;loaded:int;missing:int;unexpected:int;}
+
+// Checks first. The fixture is a pre-norm residual MLP block, the
+// feed-forward half of a transformer decoder block, with a squared-error
+// loss: y = x + scale * fc2(drop(relu(fc1(norm(x))))).
+mdl_test_block :: (drop:int)->MdlModel {
+    m:=mdl_model();
+    m=mdl_data(m,"x",mdl_shape(2,4,4));x:=m.node;
+    m=mdl_data(m,"target",mdl_shape(2,4,4));target:=m.node;
+    m=mdl_layernorm(m,MDL_ROOT,"norm",x);h:=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc1",h,8);h=m.node;
+    m=mdl_relu(m,h);h=m.node;
+    m=mdl_dropout(m,MDL_ROOT,"drop",h,drop);h=m.node;
+    m=mdl_linear(m,MDL_ROOT,"fc2",h,4);h=m.node;
+    m=mdl_buffer(m,MDL_ROOT,"scale",mdl_shape(1,4,0),MdlInit.constant,0.5);
+    m=mdl_op(m,TiOp.multiply,h,m.node);
+    m=mdl_op(m,TiOp.add,m.node,x);
+    return mdl_squared_error(m,MDL_ROOT,"loss",m.node,target);
+}
+// The same program written node by node, with its own input layout.
+mdl_test_wired :: ()->TiProgram {
+    p:TiProgram;
+    p.nodes[0]=ti_input(mdl_shape(2,4,4),200);p.nodes[1]=ti_input(mdl_shape(2,4,4),216);
+    p.nodes[2]=TiNode.{op=TiOp.layernorm,a=0};
+    p.nodes[3]=ti_input(mdl_shape(1,4,0),232);p.nodes[4]=TiNode.{op=TiOp.multiply,a=2,b=3};
+    p.nodes[5]=ti_input(mdl_shape(1,4,0),236);p.nodes[6]=TiNode.{op=TiOp.add,a=4,b=5};
+    p.nodes[7]=ti_input(mdl_shape(2,4,8),240);p.nodes[8]=ti_input(mdl_shape(1,8,0),272);
+    p.nodes[9]=TiNode.{op=TiOp.matmul,a=6,b=7};p.nodes[10]=TiNode.{op=TiOp.add,a=9,b=8};
+    p.nodes[11]=TiNode.{op=TiOp.relu,a=10};
+    p.nodes[12]=ti_input(mdl_shape(2,4,8),280);p.nodes[13]=TiNode.{op=TiOp.multiply,a=11,b=12};
+    p.nodes[14]=ti_input(mdl_shape(2,8,4),312);p.nodes[15]=ti_input(mdl_shape(1,4,0),344);
+    p.nodes[16]=TiNode.{op=TiOp.matmul,a=13,b=14};p.nodes[17]=TiNode.{op=TiOp.add,a=16,b=15};
+    p.nodes[18]=ti_input(mdl_shape(1,4,0),348);p.nodes[19]=TiNode.{op=TiOp.multiply,a=17,b=18};
+    p.nodes[20]=TiNode.{op=TiOp.add,a=19,b=0};
+    p.nodes[21]=ti_input(mdl_shape(1,1,0),352);p.nodes[22]=TiNode.{op=TiOp.multiply,a=1,b=21};
+    p.nodes[23]=TiNode.{op=TiOp.add,a=20,b=22};p.nodes[24]=TiNode.{op=TiOp.multiply,a=23,b=23};
+    p.nodes[25]=TiNode.{op=TiOp.sum,a=24,axis=0};p.nodes[26]=TiNode.{op=TiOp.sum,a=25,axis=0};
+    p.count=27;p.output=26;return p;
+}
+// Distinct, exactly representable values: k/64 for k in [-31, 32].
+mdl_test_value :: (seed:int,j:int)->f32 {return f32(f64((seed*37+j*11)%64-31)/64);}
+mdl_test_names :: [10]string.["x","target","norm.weight","norm.bias","fc1.weight","fc1.bias","drop.mask","fc2.weight","fc2.bias","scale"];
+mdl_test_letters :: [17]string.["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q"];
+mdl_test_wired_base :: [10]int.[200,216,232,236,240,272,280,312,344,348];
+mdl_test_wired_node :: [10]int.[0,1,3,5,7,8,12,14,15,18];
+mdl_test_run :: (t:AdTape,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {
+    return ad_run(t,AdCursor.{},inputs,values,grads,flags);
+}
+// A parameter first: loss = sum(x * w), so the gradient of w is x.
+mdl_test_first :: ()->MdlModel {
+    q:=mdl_model();q=mdl_parameter(q,MDL_ROOT,"w",mdl_shape(1,4,0),MdlInit.uniform,0.5);
+    q=mdl_data(q,"x",mdl_shape(2,1,4));q=mdl_op(q,TiOp.multiply,1,0);
+    q=mdl_op(q,TiOp.sum,q.node,0);return mdl_op(q,TiOp.sum,q.node,0);
+}
+
+#test "names, kinds, shapes and layout follow registration order" {
+    #assert mdl_test_value(0,0)==-0.484375 && mdl_test_value(1,2)==0.4375 && mdl_test_value(2,3)==0.1875;
+    m:=mdl_test_block(128);
+    #assert m.status==MdlStatus.ok && m.count==11 && m.module_count==6 && m.top==153 && m.program.count==27 && m.program.output==26;
+    for k:0..<10 {i:=mdl_find(m,mdl_test_names[k]);#assert i==k && mdl_name_is(m.entries[i].name,mdl_test_names[k]);}
+    #assert mdl_find(m,"loss.neg")==10 && mdl_find(m,"fc1")==-1 && mdl_find(m,"fc1.weigh")==-1 && mdl_find(m,"fc1.weightx")==-1 && mdl_find(m,"gc1.weight")==-1;
+    #assert m.entries[0].kind==MdlKind.data && m.entries[2].kind==MdlKind.parameter && m.entries[6].kind==MdlKind.transient && m.entries[9].kind==MdlKind.buffer && m.entries[10].kind==MdlKind.transient;
+    #assert m.entries[6].mask && m.entries[6].drop==128 && !m.entries[10].mask;
+    bases:=[11]int.[0,16,32,36,40,72,80,112,144,148,152];sizes:=[11]int.[16,16,4,4,32,8,32,32,4,4,1];
+    for i:0..<11 {#assert m.entries[i].base==bases[i] && m.entries[i].size==sizes[i] && m.program.nodes[m.entries[i].node].input_base==bases[i];}
+    #assert m.entries[4].shape.rank==2 && m.entries[4].shape.dims[0]==4 && m.entries[4].shape.dims[1]==8 && m.entries[4].owner==2;
+    #assert mdl_name_is(m.modules[2].name,"fc1") && m.modules[2].parent==MDL_ROOT && mdl_name_is(m.modules[5].name,"loss");
+    #assert mdl_parameters(m)==84 && mdl_state_floats(m)==88;
+    #assert m.entries[4].init==MdlInit.uniform && m.entries[4].value==0.5 && m.entries[7].value==f32(1/sqrt(8.0));
+    #assert m.entries[2].init==MdlInit.constant && m.entries[2].value==1 && m.entries[3].value==0 && m.entries[9].value==0.5 && m.entries[10].value==-1;
+    #assert m.shapes[26].rank==0 && m.shapes[25].rank==1 && m.shapes[25].dims[0]==4 && m.shapes[9].dims[0]==4 && m.shapes[9].dims[1]==8 && m.shapes[8].rank==1;
+    // The workspace is chapter 38's, with buffer reuse.
+    reuse:=ti_compile(m.program,TiTarget.{},true).workspace;
+    #assert m.workspace==reuse && reuse<ti_compile(m.program,TiTarget.{},false).workspace;
+    o:=mdl_output(m,9);p:=m.program;p.output=9;
+    #assert o.status==MdlStatus.ok && o.program.output==9 && o.workspace==ti_compile(p,TiTarget.{},true).workspace && o.workspace!=m.workspace;
+}
+#test "the composed block equals the hand-wired program bit for bit, forward and backward" {
+    m:=mdl_test_block(128);w:=mdl_test_wired();
+    #assert m.program.count==w.count && m.program.output==w.output;
+    for i:0..<w.count {
+        a:=m.program.nodes[i];b:=w.nodes[i];
+        #assert a.op==b.op && a.a==b.a && a.b==b.b && a.axis==b.axis && a.shape.rank==b.shape.rank;
+        for d:0..<4 {#assert a.shape.dims[d]==b.shape.dims[d];}
+    }
+    // The same values go into both layouts, by position in the entry list.
+    inputs:[512]f32;for k:0..<10 {for j:0..<m.entries[k].size {v:=mdl_test_value(k,j);inputs[m.entries[k].base+j]=v;inputs[mdl_test_wired_base[k]+j]=v;}}
+    inputs[m.entries[10].base]=-1;inputs[352]=-1;
+    mode:=mdl_mode(m);wmode:AdMode;for k:2..<10 {if m.entries[k].kind==MdlKind.parameter {wmode.grad[mdl_test_wired_node[k]]=true;}}
+    t:=ad_tape(m.program,mode,OrRegistry.{});tw:=ad_tape(w,wmode,OrRegistry.{});
+    #assert t.status==AdStatus.ok && tw.status==AdStatus.ok && t.count==tw.count;
+    values:[1024]f32;grads:[1024]f64;flags:[64]u8;wvalues:[1024]f32;wgrads:[1024]f64;
+    run:=mdl_test_run(t,inputs[..],values[..],grads[..],flags[..]);rw:=mdl_test_run(tw,inputs[..],wvalues[..],wgrads[..],flags[..]);
+    #assert run.status==AdStatus.ok && rw.status==AdStatus.ok;
+    a:[1]f32;b:[1]f32;
+    #assert ad_value(t,run.cursor,26,inputs[..],values[..],a[..])==AdStatus.ok && ad_value(tw,rw.cursor,26,inputs[..],wvalues[..],b[..])==AdStatus.ok;
+    #assert f32_bits(a[0])==f32_bits(b[0]) && a[0]>0;
+    g:[64]f32;gw:[64]f32;checked:=0;
+    for k:2..<10 {
+        if m.entries[k].kind!=MdlKind.parameter {continue;}
+        #assert ad_gradient(t,run.cursor,m.entries[k].node,grads[..],g[..])==AdStatus.ok && ad_gradient(tw,rw.cursor,mdl_test_wired_node[k],wgrads[..],gw[..])==AdStatus.ok;
+        nonzero:=0;for j:0..<m.entries[k].size {#assert f32_bits(g[j])==f32_bits(gw[j]);if g[j]!=0 {nonzero+=1;}}
+        #assert nonzero>0;checked+=1;
+    }
+    #assert checked==6;
+}
+#test "initialization rules, train and eval refresh, and dropout" {
+    m:=mdl_test_block(128);inputs:[512]f32;for j:0..<512 {inputs[j]=7;}
+    #assert mdl_init(m,3,inputs[0..<153])==MdlStatus.ok;
+    // Constants exactly, uniform draws inside their bounds, the rest untouched.
+    for j:0..<4 {#assert inputs[32+j]==1 && inputs[36+j]==0 && inputs[148+j]==0.5;}
+    #assert inputs[0]==7 && inputs[16]==7 && inputs[80]==7 && inputs[152]==7;
+    for j:0..<32 {#assert abs(inputs[40+j])<=0.5 && abs(inputs[112+j])<=f32(1/sqrt(8.0));}
+    #assert f32(f64(0.5)*(2*cr_draw(CrSeed.{seed=3,counter=40}).value-1))==inputs[40];
+    #assert f32(f64(1/sqrt(4.0))*(2*cr_draw(CrSeed.{seed=3,counter=79}).value-1))==inputs[79];
+    again:[512]f32;#assert mdl_init(m,3,again[..])==MdlStatus.ok;for j:32..<152 {if j<80 || j>=112 {#assert f32_bits(again[j])==f32_bits(inputs[j]);}}
+    #assert mdl_init(m,4,again[..])==MdlStatus.ok && again[40]!=inputs[40];
+    // Training keeps an element when its byte is at least 128, scaled by 2.
+    #assert mdl_refresh(m,9,inputs[0..<153])==MdlStatus.ok && inputs[152]==-1;
+    kept:=0;
+    for j:0..<32 {v:=inputs[80+j];#assert v==0 || v==2;if v==2 {kept+=1;}#assert (v==2)==(cast(int)(cr_bits(9,cast(u64)(80+j))>>56)>=128);}
+    #assert kept>0 && kept<32;
+    e:=mdl_train(m,false);#assert !e.training && m.training && mdl_refresh(e,9,inputs[..])==MdlStatus.ok && inputs[152]==-1;
+    for j:0..<32 {#assert inputs[80+j]==1;}
+    q:=mdl_test_block(0);#assert mdl_refresh(q,9,inputs[..])==MdlStatus.ok;for j:0..<32 {#assert inputs[80+j]==1;}
+    #assert mdl_init(m,3,inputs[0..<152])==MdlStatus.capacity && mdl_refresh(m,9,inputs[0..<152])==MdlStatus.capacity;
+    bad:=m;bad.status=MdlStatus.name;#assert mdl_init(bad,3,inputs[..])==MdlStatus.state && mdl_refresh(bad,3,inputs[..])==MdlStatus.state;
+    // An entry first, of each kind.
+    f:=mdl_test_first();#assert mdl_init(f,3,inputs[..])==MdlStatus.ok && inputs[0]==f32(f64(0.5)*(2*cr_draw(CrSeed.{seed=3,counter=0}).value-1));
+}
+#forall "a dropout mask keeps exactly the bytes at or above drop" drop:0..<256 {
+    m:=mdl_model();m=mdl_transient(m,MDL_ROOT,"c",mdl_shape(1,1,0),3);m=mdl_data(m,"x",mdl_shape(2,2,4));
+    m=mdl_dropout(m,MDL_ROOT,"d",1,drop);#assert m.status==MdlStatus.ok && m.top==17;
+    inputs:[17]f32;#assert mdl_refresh(m,5,inputs[..])==MdlStatus.ok && inputs[0]==3;
+    for j:0..<8 {
+        v:=inputs[9+j];byte:=cast(int)(cr_bits(5,cast(u64)(9+j))>>56);
+        #assert (byte>=drop && v==f32(256/f64(256-drop))) || (byte<drop && v==0);
+    }
+}
+#test "eval mode makes dropout the identity, bit for bit" {
+    m:=mdl_train(mdl_test_block(128),false);d:=mdl_test_block(0);
+    inputs:[512]f32;#assert mdl_init(m,5,inputs[..])==MdlStatus.ok && mdl_refresh(m,0,inputs[..])==MdlStatus.ok;
+    for j:0..<32 {inputs[j]=mdl_test_value(1,j);}
+    plain:=inputs;#assert mdl_refresh(d,0,plain[..])==MdlStatus.ok;
+    values:[1024]f32;grads:[1024]f64;flags:[64]u8;off:AdMode;off.enabled=false;
+    t:=ad_tape(m.program,off,OrRegistry.{});run:=mdl_test_run(t,inputs[..],values[..],grads[..],flags[..]);a:[1]f32;
+    #assert ad_value(t,run.cursor,26,inputs[..],values[..],a[..])==AdStatus.ok;
+    td:=ad_tape(d.program,off,OrRegistry.{});rd:=mdl_test_run(td,plain[..],values[..],grads[..],flags[..]);b:[1]f32;
+    #assert ad_value(td,rd.cursor,26,plain[..],values[..],b[..])==AdStatus.ok && f32_bits(a[0])==f32_bits(b[0]);
+    #assert mdl_refresh(mdl_train(m,true),0,inputs[..])==MdlStatus.ok;run=mdl_test_run(t,inputs[..],values[..],grads[..],flags[..]);
+    #assert ad_value(t,run.cursor,26,inputs[..],values[..],a[..])==AdStatus.ok && f32_bits(a[0])!=f32_bits(b[0]);
+}
+#test "frozen parameters get no gradient and do not move" {
+    m:=mdl_test_block(0);inputs:[512]f32;#assert mdl_init(m,2,inputs[..])==MdlStatus.ok && mdl_refresh(m,0,inputs[..])==MdlStatus.ok;
+    for j:0..<32 {inputs[j]=mdl_test_value(4,j);}
+    f:=mdl_freeze(m,"fc1",true);#assert f.status==MdlStatus.ok && f.entries[4].frozen && f.entries[5].frozen && !f.entries[7].frozen;
+    #assert mdl_freeze(m,"fc1.weight",true).entries[4].frozen && !mdl_freeze(m,"fc1.weight",true).entries[5].frozen;
+    #assert mdl_freeze(m,"fc",true).status==MdlStatus.name && mdl_freeze(m,"gc1",true).status==MdlStatus.name;
+    #assert mdl_freeze(m,"x",true).status==MdlStatus.name && mdl_freeze(m,"scale",true).status==MdlStatus.name;
+    #assert !mdl_freeze(f,"fc1",false).entries[4].frozen && mdl_freeze(m,"",true).entries[7].frozen;
+    mode:=mdl_mode(f);#assert !mode.grad[f.entries[4].node] && !mode.grad[f.entries[5].node] && mode.grad[f.entries[7].node] && !mode.grad[f.entries[9].node] && !mode.grad[0];
+    t:=ad_tape(f.program,mode,OrRegistry.{});before:=inputs;values:[1024]f32;grads:[1024]f64;flags:[64]u8;first:f32;last:f32;g:[84]f32;
+    for step:0..<3 {
+        run:=mdl_test_run(t,inputs[..],values[..],grads[..],flags[..]);l:[1]f32;
+        #assert ad_value(t,run.cursor,26,inputs[..],values[..],l[..])==AdStatus.ok;if step==0 {first=l[0];}last=l[0];
+        #assert mdl_sgd(f,t,run.cursor,grads[..],g[..],inputs[0..<153],0.01)==MdlStatus.ok;
+    }
+    #assert last<first;
+    for j:40..<80 {#assert f32_bits(inputs[j])==f32_bits(before[j]);}
+    moved:=0;for j:112..<144 {if inputs[j]!=before[j] {moved+=1;}}#assert moved>0;
+    for j:148..<152 {#assert inputs[j]==before[j];}
+    run:=mdl_test_run(t,inputs[..],values[..],grads[..],flags[..]);
+    #assert mdl_sgd(f,t,run.cursor,grads[..],g[..],inputs[..],0)==MdlStatus.number && mdl_sgd(f,t,AdCursor.{},grads[..],g[..],inputs[..],0.01)==MdlStatus.state;
+    #assert mdl_sgd(f,t,run.cursor,grads[..],g[..],inputs[0..<152],0.01)==MdlStatus.capacity;
+    other:=ad_tape(m.program,mdl_mode(m),OrRegistry.{});#assert mdl_sgd(f,other,run.cursor,grads[..],g[..],inputs[..],0.01)==MdlStatus.state;
+}
+#test "one gradient step on a parameter-first model is w - rate * x exactly" {
+    q:=mdl_test_first();#assert q.status==MdlStatus.ok && q.program.count==5 && q.shapes[3].rank==1 && q.shapes[3].dims[0]==4 && q.shapes[4].rank==0 && mdl_parameters(q)==4 && mdl_state_floats(q)==4 && mdl_mode(q).grad[0];
+    inputs:[8]f32;#assert mdl_init(q,1,inputs[..])==MdlStatus.ok;for j:0..<4 {inputs[4+j]=mdl_test_value(5,j);}
+    before:=inputs;t:=ad_tape(q.program,mdl_mode(q),OrRegistry.{});
+    values:[64]f32;grads:[64]f64;flags:[64]u8;g:[4]f32;
+    run:=mdl_test_run(t,inputs[..],values[..],grads[..],flags[..]);
+    #assert mdl_sgd(q,t,run.cursor,grads[..],g[0..<3],inputs[..],0.25)==MdlStatus.capacity && inputs[0]==before[0];
+    #assert mdl_sgd(q,t,run.cursor,grads[..],g[..],inputs[..],0.25)==MdlStatus.ok;
+    for j:0..<4 {#assert inputs[j]==f32(f64(before[j])-0.25*f64(before[4+j])) && inputs[4+j]==before[4+j];}
+    // A tape for another freezing, or a refused model, is refused.
+    frozen:=mdl_freeze(q,"w",true);#assert frozen.entries[0].frozen && !mdl_mode(frozen).grad[0];
+    #assert mdl_sgd(frozen,t,run.cursor,grads[..],g[..],inputs[..],0.25)==MdlStatus.state;
+    bad:=q;bad.status=MdlStatus.name;none:=ad_tape(q.program,AdMode.{},OrRegistry.{});r0:=mdl_test_run(none,inputs[..],values[..],grads[..],flags[..]);
+    #assert none.status==AdStatus.ok && r0.cursor.next==none.count && mdl_sgd(bad,none,r0.cursor,grads[..],g[..],inputs[..],0.25)==MdlStatus.state;
+    file:[1024]u8;stage:[1024]u8;s:=mdl_save(q,inputs[..],file[..],stage[..]);other:[8]f32;
+    #assert s.status==MdlStatus.ok && s.tensors==1 && mdl_load(q,file[0..<s.written],other[..],true).loaded==1 && f32_bits(other[0])==f32_bits(inputs[0]) && other[4]==0;
+}
+#test "a shared parameter receives the sum of its gradients from every use" {
+    // y = sum((x * g) * g) with g used twice, against two separate copies.
+    // One row, so each use adds one term per element of g.
+    tied:=mdl_model();tied=mdl_data(tied,"x",mdl_shape(2,1,4));x:=tied.node;
+    tied=mdl_parameter(tied,MDL_ROOT,"gate",mdl_shape(1,4,0),MdlInit.constant,1);g:=tied.node;
+    tied=mdl_op(tied,TiOp.multiply,x,g);tied=mdl_op(tied,TiOp.multiply,tied.node,g);
+    tied=mdl_op(tied,TiOp.sum,tied.node,0);tied=mdl_op(tied,TiOp.sum,tied.node,0);
+    two:=mdl_model();two=mdl_data(two,"x",mdl_shape(2,1,4));x=two.node;
+    two=mdl_parameter(two,MDL_ROOT,"a",mdl_shape(1,4,0),MdlInit.constant,1);ga:=two.node;
+    two=mdl_parameter(two,MDL_ROOT,"b",mdl_shape(1,4,0),MdlInit.constant,1);gb:=two.node;
+    two=mdl_op(two,TiOp.multiply,x,ga);two=mdl_op(two,TiOp.multiply,two.node,gb);
+    two=mdl_op(two,TiOp.sum,two.node,0);two=mdl_op(two,TiOp.sum,two.node,0);
+    #assert tied.status==MdlStatus.ok && two.status==MdlStatus.ok && mdl_parameters(tied)==4 && mdl_parameters(two)==8;
+    i1:[16]f32;i2:[16]f32;for j:0..<4 {i1[j]=mdl_test_value(2,j);i2[j]=i1[j];}
+    for j:0..<4 {i1[4+j]=mdl_test_value(3,j);i2[4+j]=i1[4+j];i2[8+j]=i1[4+j];}
+    t1:=ad_tape(tied.program,mdl_mode(tied),OrRegistry.{});t2:=ad_tape(two.program,mdl_mode(two),OrRegistry.{});
+    v:[256]f32;gr1:[256]f64;gr2:[256]f64;fl:[64]u8;
+    r1:=mdl_test_run(t1,i1[..],v[..],gr1[..],fl[..]);r2:=mdl_test_run(t2,i2[..],v[..],gr2[..],fl[..]);
+    s:[4]f32;sa:[4]f32;sb:[4]f32;
+    #assert ad_gradient(t1,r1.cursor,g,gr1[..],s[..])==AdStatus.ok && ad_gradient(t2,r2.cursor,ga,gr2[..],sa[..])==AdStatus.ok && ad_gradient(t2,r2.cursor,gb,gr2[..],sb[..])==AdStatus.ok;
+    for j:0..<4 {#assert gr1[t1.grad_at[g]+j]==gr2[t2.grad_at[ga]+j]+gr2[t2.grad_at[gb]+j] && s[j]!=0 && sa[j]==sb[j];}
+}
+#test "state dictionaries round trip by name, bit for bit" {
+    m:=mdl_test_block(128);inputs:[512]f32;#assert mdl_init(m,11,inputs[..])==MdlStatus.ok;
+    file:[4096]u8;stage:[4096]u8;r:=mdl_save(m,inputs[0..<153],file[..],stage[..]);
+    #assert r.status==MdlStatus.ok && r.tensors==7 && r.written==8+512+352;
+    #assert mdl_save(m,inputs[..],file[0..<r.written],stage[0..<r.written]).written==r.written;
+    #assert mdl_save(m,inputs[..],file[0..<r.written-1],stage[..]).status==MdlStatus.capacity;
+    #assert mdl_save(m,inputs[..],file[..],stage[0..<r.written-1]).status==MdlStatus.capacity;
+    parsed:[16]IcTensor;#assert ic_inspect(file[0..<r.written],parsed[..],false).written==7;
+    other:[512]f32;l:=mdl_load(m,file[0..<r.written],other[0..<153],true);
+    #assert l.status==MdlStatus.ok && l.loaded==7 && l.missing==0 && l.unexpected==0 && l.entry==-1 && l.file==-1;
+    for i:0..<m.count {
+        e:=m.entries[i];
+        for j:0..<e.size {if mdl_saved(e) {#assert f32_bits(other[e.base+j])==f32_bits(inputs[e.base+j]);} else {#assert other[e.base+j]==0;}}
+    }
+    // A model built in a different order loads the same file by name.
+    p:=mdl_model();p=mdl_buffer(p,MDL_ROOT,"scale",mdl_shape(1,4,0),MdlInit.constant,0);
+    p=mdl_parameter(p,MDL_ROOT,"fc2_weight",mdl_shape(2,8,4),MdlInit.constant,0);
+    #assert mdl_parameters(p)==32 && mdl_state_floats(p)==36;
+    lp:=mdl_load(p,file[0..<r.written],other[..],false);#assert lp.status==MdlStatus.ok && lp.loaded==1 && lp.missing==1 && lp.unexpected==6 && other[0]==0.5;
+    #assert mdl_save(m,inputs[0..<152],file[..],stage[..]).status==MdlStatus.capacity;
+    big:f32=3e38;inputs[40]=big*big;#assert mdl_save(m,inputs[..],file[..],stage[..]).status==MdlStatus.number;
+    empty:=mdl_model();#assert mdl_save(empty,inputs[..],file[..],stage[..]).status==MdlStatus.capacity;
+    many:=mdl_model();for k:0..<16 {many=mdl_parameter(many,MDL_ROOT,mdl_test_letters[k],mdl_shape(1,1,0),MdlInit.constant,1);}
+    #assert mdl_save(many,inputs[..],file[..],stage[..]).tensors==16;
+    many=mdl_parameter(many,MDL_ROOT,"q",mdl_shape(1,1,0),MdlInit.constant,1);#assert many.count==17 && mdl_save(many,inputs[..],file[..],stage[..]).status==MdlStatus.capacity;
+    bad:=m;bad.status=MdlStatus.shape;#assert mdl_save(bad,inputs[..],file[..],stage[..]).status==MdlStatus.state && mdl_load(bad,file[..],other[..],true).status==MdlStatus.state;
+}
+#test "loading refuses missing, unexpected and mismatched keys before writing anything" {
+    m:=mdl_test_block(128);inputs:[512]f32;#assert mdl_init(m,11,inputs[..])==MdlStatus.ok;
+    file:[4096]u8;stage:[4096]u8;r:=mdl_save(m,inputs[..],file[..],stage[..]);#assert r.status==MdlStatus.ok;
+    target:[512]f32;for j:0..<512 {target[j]=9;}
+    // Missing: the model has a parameter the file lacks.
+    more:=mdl_parameter(m,MDL_ROOT,"extra",mdl_shape(1,2,0),MdlInit.constant,0);
+    l:=mdl_load(more,file[0..<r.written],target[..],true);
+    #assert l.status==MdlStatus.missing && l.entry==11 && l.file==-1 && l.missing==1 && l.loaded==0;
+    // One letter off is a different name.
+    near:=mdl_model();near=mdl_buffer(near,MDL_ROOT,"acale",mdl_shape(1,4,0),MdlInit.constant,0);
+    l=mdl_load(near,file[0..<r.written],target[..],false);#assert l.status==MdlStatus.ok && l.missing==1 && l.unexpected==7 && l.loaded==0;
+    l=mdl_load(near,file[0..<r.written],target[..],true);#assert l.status==MdlStatus.missing && l.entry==0;
+    only:=mdl_buffer(mdl_model(),MDL_ROOT,"scale",mdl_shape(1,4,0),MdlInit.constant,0);
+    l=mdl_load(only,file[0..<r.written],target[..],true);#assert l.status==MdlStatus.unexpected && l.file==0 && l.unexpected==6 && l.loaded==1;
+    // Unexpected: the file has a key the model lacks. Files list names in order.
+    fewer:=mdl_model();fewer=mdl_data(fewer,"x",mdl_shape(2,4,4));
+    fewer=mdl_layernorm(fewer,MDL_ROOT,"norm",fewer.node);fewer=mdl_linear(fewer,MDL_ROOT,"fc1",fewer.node,8);fewer=mdl_relu(fewer,fewer.node);
+    fewer=mdl_linear(fewer,MDL_ROOT,"fc2",fewer.node,4);
+    l=mdl_load(fewer,file[0..<r.written],target[..],true);
+    #assert l.status==MdlStatus.unexpected && l.entry==-1 && l.file==6 && l.unexpected==1 && l.loaded==6;
+    for j:0..<512 {#assert target[j]==9;}
+    // Mismatched: same name, other shape; refused even without all_keys.
+    wide:=mdl_model();wide=mdl_data(wide,"x",mdl_shape(2,4,4));
+    wide=mdl_layernorm(wide,MDL_ROOT,"norm",wide.node);wide=mdl_linear(wide,MDL_ROOT,"fc1",wide.node,16);
+    l=mdl_load(wide,file[0..<r.written],target[..],false);
+    #assert l.status==MdlStatus.mismatch && l.entry==3 && l.file==1;
+    five:=mdl_buffer(mdl_model(),MDL_ROOT,"scale",mdl_shape(1,5,0),MdlInit.constant,0);
+    l=mdl_load(five,file[0..<r.written],target[..],false);#assert l.status==MdlStatus.mismatch && l.entry==0 && l.file==6;
+    two:=mdl_buffer(mdl_model(),MDL_ROOT,"scale",mdl_shape(2,4,1),MdlInit.constant,0);
+    #assert mdl_load(two,file[0..<r.written],target[..],false).status==MdlStatus.mismatch;
+    // A BF16 tensor of the right shape is still refused.
+    t:IcTensor;t.name[0]=119;t.name_count=1;t.shape=mdl_shape(1,2,0);t.dtype=1;t.bytes=4;
+    half:=[1]IcTensor.[t];data:=[4]u8.[128,63,128,63];hf:[1024]u8;hr:=ic_write(half[..],data[..],hf[..],stage[..],false);#assert hr.status==IcStatus.ok;
+    w:=mdl_parameter(mdl_model(),MDL_ROOT,"w",mdl_shape(1,2,0),MdlInit.constant,0);
+    #assert mdl_load(w,hf[0..<hr.written],target[..],true).status==MdlStatus.mismatch;
+    for j:0..<512 {#assert target[j]==9;}
+    // Damaged bytes and short buffers.
+    #assert mdl_load(m,file[0..<r.written-1],target[..],true).status==MdlStatus.format;
+    #assert mdl_load(m,file[0..<r.written],target[0..<152],true).status==MdlStatus.capacity;
+    for j:0..<512 {#assert target[j]==9;}
+}
+#test "construction refuses bad names, shapes and capacity, and stays refused" {
+    m:=mdl_model();s1:=mdl_shape(1,2,0);
+    #assert mdl_data(m,"",s1).status==MdlStatus.name && mdl_data(m,"a.b",s1).status==MdlStatus.name && mdl_data(m,"Upper",s1).status==MdlStatus.name;
+    #assert mdl_data(m,"z09_",s1).status==MdlStatus.ok && mdl_data(m,"ok_1",s1).status==MdlStatus.ok;
+    #assert mdl_data(m,"{",s1).status==MdlStatus.name && mdl_data(m,":",s1).status==MdlStatus.name && mdl_data(m,"/",s1).status==MdlStatus.name && mdl_data(m,"`",s1).status==MdlStatus.name;
+    #assert mdl_data(m,"x",TvShape.{rank=1,dims=[4]int.[0,0,0,0]}).status==MdlStatus.shape;
+    two:=mdl_data(mdl_data(m,"x",s1),"x",s1);#assert two.status==MdlStatus.name && two.count==1;
+    // Names fit in 63 bytes, dots included.
+    n63:="abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc";n64:="abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd";
+    #assert mdl_data(m,n63,s1).status==MdlStatus.ok && mdl_data(m,n64,s1).status==MdlStatus.name;
+    n60:="abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij";n61:="abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk";
+    c:=mdl_child(m,MDL_ROOT,"fc");#assert c.status==MdlStatus.ok && c.child==1 && c.module_count==2;
+    #assert mdl_find(mdl_parameter(c,1,n60,s1,MdlInit.constant,0),"fc.abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij")==0;
+    #assert mdl_parameter(c,1,n61,s1,MdlInit.constant,0).status==MdlStatus.name && mdl_child(c,1,"").status==MdlStatus.name;
+    #assert mdl_child(c,MDL_ROOT,"fc").status==MdlStatus.name && mdl_child(c,2,"g").status==MdlStatus.state && mdl_child(c,-1,"g").status==MdlStatus.state;
+    #assert mdl_parameter(c,2,"w",s1,MdlInit.constant,0).status==MdlStatus.state && mdl_parameter(c,-1,"w",s1,MdlInit.constant,0).status==MdlStatus.state;
+    // Nested names join with dots; a parameter and a child cannot share a name.
+    d:=mdl_child(c,1,"inner");d=mdl_parameter(d,d.child,"w",s1,MdlInit.constant,0);
+    #assert d.status==MdlStatus.ok && mdl_find(d,"fc.inner.w")==0 && d.entries[0].owner==2;
+    a:=mdl_child(m,MDL_ROOT,"a");a=mdl_parameter(a,a.child,"w",s1,MdlInit.uniform,0);#assert a.status==MdlStatus.ok && mdl_find(a,"a.w")==0;
+    #assert mdl_parameter(c,MDL_ROOT,"fc",s1,MdlInit.constant,0).status==MdlStatus.name;
+    #assert mdl_child(mdl_parameter(m,MDL_ROOT,"fc",s1,MdlInit.constant,0),MDL_ROOT,"fc").status==MdlStatus.name;
+    long:=m;for k:0..<9 {long=mdl_child(long,long.child,"abcdefg");}#assert long.status==MdlStatus.name && long.module_count==9 && long.modules[8].name.count==63;
+    full:=m;for k:0..<16 {full=mdl_child(full,MDL_ROOT,mdl_test_letters[k]);}#assert full.status==MdlStatus.capacity && full.module_count==16;
+    // 32 entries fill the program; the 33rd does not fit.
+    lots:=mdl_child(mdl_child(m,MDL_ROOT,"u"),MDL_ROOT,"v");
+    for k:0..<16 {lots=mdl_data(mdl_parameter(lots,1,mdl_test_letters[k],s1,MdlInit.constant,0),mdl_test_letters[k],s1);}
+    #assert lots.status==MdlStatus.ok && lots.count==32 && mdl_data(lots,"z",s1).status==MdlStatus.capacity;
+    nodes:=mdl_data(m,"x",s1);for k:0..<32 {nodes=mdl_relu(nodes,0);}#assert nodes.status==MdlStatus.capacity && nodes.program.count==32;
+    #assert mdl_relu(m,0).status==MdlStatus.program && mdl_op(mdl_data(m,"x",s1),TiOp.add,0,5).status==MdlStatus.program;
+    sum:=mdl_op(mdl_data(m,"x",mdl_shape(2,2,3)),TiOp.sum,0,1);#assert sum.status==MdlStatus.ok && sum.shapes[1].rank==1 && sum.shapes[1].dims[0]==2;
+    x:=mdl_data(m,"x",s1);
+    #assert mdl_output(x,0).status==MdlStatus.program && mdl_output(mdl_relu(x,0),-1).status==MdlStatus.program && mdl_output(mdl_relu(x,0),2).status==MdlStatus.program;
+    #assert mdl_output(mdl_relu(x,0),1).status==MdlStatus.ok;
+    #assert mdl_linear(x,MDL_ROOT,"fc",0,3).status==MdlStatus.shape && mdl_linear(x,MDL_ROOT,"fc",-1,3).status==MdlStatus.program && mdl_linear(x,MDL_ROOT,"fc",1,3).status==MdlStatus.program;
+    #assert mdl_linear(mdl_data(m,"x",mdl_shape(2,1,2)),MDL_ROOT,"fc",0,0).status==MdlStatus.shape;
+    #assert mdl_linear(mdl_data(m,"x",TvShape.{rank=3,dims=[4]int.[2,3,4,0]}),MDL_ROOT,"fc",0,2).status==MdlStatus.shape;
+    #assert mdl_layernorm(mdl_data(m,"x",TvShape.{rank=0}),MDL_ROOT,"n",0).status==MdlStatus.shape && mdl_layernorm(x,MDL_ROOT,"n",1).status==MdlStatus.program;
+    ln:=mdl_layernorm(x,MDL_ROOT,"n",0);#assert ln.status==MdlStatus.ok && ln.entries[1].shape.dims[0]==2;
+    ln=mdl_layernorm(mdl_data(m,"x",mdl_shape(2,2,3)),MDL_ROOT,"n",0);#assert ln.status==MdlStatus.ok && ln.entries[1].shape.dims[0]==3 && ln.entries[1].shape.rank==1;
+    #assert mdl_dropout(x,MDL_ROOT,"d",0,256).status==MdlStatus.shape && mdl_dropout(x,MDL_ROOT,"d",0,-1).status==MdlStatus.shape && mdl_dropout(x,MDL_ROOT,"d",1,0).status==MdlStatus.program;
+    #assert mdl_dropout(x,MDL_ROOT,"d",0,255).status==MdlStatus.ok && mdl_dropout(x,MDL_ROOT,"d",0,0).status==MdlStatus.ok;
+    big:f32=3e38;
+    #assert mdl_parameter(m,MDL_ROOT,"w",s1,MdlInit.uniform,-1).status==MdlStatus.number && mdl_parameter(m,MDL_ROOT,"w",s1,MdlInit.constant,-1).status==MdlStatus.ok;
+    #assert mdl_parameter(m,MDL_ROOT,"w",s1,MdlInit.constant,big*big).status==MdlStatus.number;
+    stuck:=mdl_data(m,"",s1);stuck=mdl_data(stuck,"x",s1);#assert stuck.status==MdlStatus.name && stuck.count==0;
+    #assert mdl_freeze(stuck,"x",true).status==MdlStatus.name && mdl_train(stuck,false).training && mdl_output(stuck,0).status==MdlStatus.name;
+    #assert mdl_linear(stuck,MDL_ROOT,"fc",0,1).count==0 && mdl_layernorm(stuck,MDL_ROOT,"n",0).count==0 && mdl_dropout(stuck,MDL_ROOT,"d",0,0).count==0;
+    #assert mdl_child(stuck,MDL_ROOT,"c").module_count==1 && mdl_relu(stuck,0).program.count==0;
+    bad:=m;bad.status=MdlStatus.shape;#assert mdl_find(bad,"x")==-1 && mdl_mode(bad).grad[0]==false;
+}
+#forall "a linear layer's names, sizes and bounds follow its widths" width:1..<9,out:1..<9 {
+    m:=mdl_model();m=mdl_data(m,"x",mdl_shape(2,2,width));m=mdl_linear(m,MDL_ROOT,"fc",0,out);
+    #assert m.status==MdlStatus.ok && mdl_find(m,"fc.weight")==1 && mdl_find(m,"fc.bias")==2 && m.child==1;
+    #assert m.entries[1].size==width*out && m.entries[2].size==out && m.entries[2].base==2*width+width*out && m.top==2*width+width*out+out;
+    #assert m.entries[1].value==f32(1/sqrt(f64(width))) && m.entries[2].value==m.entries[1].value && mdl_parameters(m)==width*out+out;
+    #assert m.program.nodes[m.node].op==TiOp.add && m.program.nodes[m.program.nodes[m.node].a].op==TiOp.matmul;
+    #assert m.shapes[m.node].dims[0]==2 && m.shapes[m.node].dims[1]==out;
+}
+
+// book:begin names
+// A name segment is lower-case letters, digits and underscores. Full names
+// join the module path and the segment with a dot; one that would not fit
+// in 63 bytes comes back empty.
+mdl_segment :: (text:string)->bool {
+    if text.count<1 {return false;}
+    for c:text {if !((c>=97 && c<=122) || (c>=48 && c<=57) || c==95) {return false;}}
+    return true;
+}
+mdl_join :: (prefix:MdlName,text:string)->MdlName {
+    dot:=0;if prefix.count>0 {dot=1;}
+    if prefix.count+dot+text.count>=MDL_NAME {return MdlName.{};}
+    n:=prefix;
+    if dot==1 {n.bytes[n.count]=46;n.count+=1;}
+    for c:text {n.bytes[n.count]=c;n.count+=1;}
+    return n;
+}
+mdl_name_is :: (n:MdlName,text:string)->bool {
+    if n.count!=text.count {return false;}
+    for i:0..<n.count {if n.bytes[i]!=text[i] {return false;}}
+    return true;
+}
+mdl_same :: (a:MdlName,b:MdlName)->bool {
+    if a.count!=b.count {return false;}
+    for i:0..<a.count {if a.bytes[i]!=b.bytes[i] {return false;}}
+    return true;
+}
+// A name is taken when an entry or a module already has it.
+mdl_taken :: (m:MdlModel,n:MdlName)->bool {
+    for i:0..<m.count {if mdl_same(m.entries[i].name,n) {return true;}}
+    for i:1..<m.module_count {if mdl_same(m.modules[i].name,n) {return true;}}
+    return false;
+}
+// book:end names
+mdl_fail :: (m:MdlModel,status:MdlStatus)->MdlModel {r:=m;r.status=status;return r;}
+mdl_shape :: (rank:int,d0:int,d1:int)->TvShape {return TvShape.{rank=rank,dims=[4]int.[d0,d1,0,0]};}
+mdl_valid :: (m:MdlModel,x:int)->bool {return x>=0 && x<m.program.count;}
+
+// book:begin build
+mdl_model :: ()->MdlModel {return MdlModel.{};}
+// A child module under parent; its id comes back in child.
+mdl_child :: (m:MdlModel,parent:int,name:string)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if parent<0 || parent>=m.module_count {return mdl_fail(m,MdlStatus.state);}
+    if !mdl_segment(name) {return mdl_fail(m,MdlStatus.name);}
+    if m.module_count>=MDL_MODULES {return mdl_fail(m,MdlStatus.capacity);}
+    full:=mdl_join(m.modules[parent].name,name);
+    if full.count==0 || mdl_taken(m,full) {return mdl_fail(m,MdlStatus.name);}
+    r:=m;r.modules[r.module_count]=MdlModule.{name=full,parent=parent};r.child=r.module_count;r.module_count+=1;
+    return r;
+}
+// A named entry: one input node of the program and its place in the input
+// buffer, right after the previous entry.
+mdl_entry :: (m:MdlModel,owner:int,name:string,shape:TvShape,kind:MdlKind,init:MdlInit,value:f32)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if owner<0 || owner>=m.module_count {return mdl_fail(m,MdlStatus.state);}
+    if !mdl_segment(name) {return mdl_fail(m,MdlStatus.name);}
+    size:=tv_elements(shape);
+    if size.status!=TvStatus.ok || size.elements<1 {return mdl_fail(m,MdlStatus.shape);}
+    if !tv_finite(value) || (init==MdlInit.uniform && value<0) {return mdl_fail(m,MdlStatus.number);}
+    if m.program.count>=TI_NODES {return mdl_fail(m,MdlStatus.capacity);}
+    full:=mdl_join(m.modules[owner].name,name);
+    if full.count==0 || mdl_taken(m,full) {return mdl_fail(m,MdlStatus.name);}
+    r:=m;node:=r.program.count;
+    r.program.nodes[node]=ti_input(shape,r.top);r.program.count+=1;r.shapes[node]=shape;
+    r.entries[r.count]=MdlEntry.{name=full,kind=kind,owner=owner,node=node,shape=shape,base=r.top,size=size.elements,init=init,value=value};
+    r.count+=1;r.top+=size.elements;r.node=node;
+    return r;
+}
+mdl_parameter :: (m:MdlModel,owner:int,name:string,shape:TvShape,init:MdlInit,value:f32)->MdlModel {
+    return mdl_entry(m,owner,name,shape,MdlKind.parameter,init,value);
+}
+mdl_buffer :: (m:MdlModel,owner:int,name:string,shape:TvShape,init:MdlInit,value:f32)->MdlModel {
+    return mdl_entry(m,owner,name,shape,MdlKind.buffer,init,value);
+}
+mdl_transient :: (m:MdlModel,owner:int,name:string,shape:TvShape,value:f32)->MdlModel {
+    return mdl_entry(m,owner,name,shape,MdlKind.transient,MdlInit.constant,value);
+}
+mdl_data :: (m:MdlModel,name:string,shape:TvShape)->MdlModel {
+    return mdl_entry(m,MDL_ROOT,name,shape,MdlKind.data,MdlInit.constant,0);
+}
+// Any chapter 38 node. The program is compiled with it as the output, which
+// it stays until a later node or mdl_output; workspace is that plan's.
+mdl_node :: (m:MdlModel,n:TiNode)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if m.program.count>=TI_NODES {return mdl_fail(m,MdlStatus.capacity);}
+    r:=m;node:=r.program.count;r.program.nodes[node]=n;r.program.count+=1;r.program.output=node;
+    plan:=ti_compile(r.program,TiTarget.{},true);
+    if plan.status!=TiStatus.ok {return mdl_fail(m,MdlStatus.program);}
+    r.shapes[node]=plan.values[node].view.shape;r.workspace=plan.workspace;r.node=node;
+    return r;
+}
+// A built-in node: a binary operator on a and b, or a sum over axis b.
+mdl_op :: (m:MdlModel,op:TiOp,a:int,b:int)->MdlModel {
+    n:=TiNode.{op=op,a=a};if op==TiOp.sum {n.axis=b;} else {n.b=b;}
+    return mdl_node(m,n);
+}
+mdl_relu :: (m:MdlModel,x:int)->MdlModel {return mdl_node(m,TiNode.{op=TiOp.relu,a=x});}
+mdl_output :: (m:MdlModel,x:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) || m.program.nodes[x].op==TiOp.input {return mdl_fail(m,MdlStatus.program);}
+    r:=m;r.program.output=x;r.workspace=ti_compile(r.program,TiTarget.{},true).workspace;
+    return r;
+}
+// book:end build
+
+// book:begin layers
+// Linear: y = x weight + bias for x of shape [rows, in]; weight [in, out]
+// and bias [out] both drawn from [-1/sqrt(in), 1/sqrt(in)).
+mdl_linear :: (m:MdlModel,parent:int,name:string,x:int,out:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];
+    if s.rank!=2 || out<1 {return mdl_fail(m,MdlStatus.shape);}
+    bound:=f32(1/sqrt(f64(s.dims[1])));
+    r:=mdl_child(m,parent,name);me:=r.child;
+    r=mdl_parameter(r,me,"weight",mdl_shape(2,s.dims[1],out),MdlInit.uniform,bound);w:=r.node;
+    r=mdl_parameter(r,me,"bias",mdl_shape(1,out,0),MdlInit.uniform,bound);b:=r.node;
+    r=mdl_op(r,TiOp.matmul,x,w);
+    return mdl_op(r,TiOp.add,r.node,b);
+}
+// Layer norm over the last axis, then a gain (ones) and a bias (zeros).
+mdl_layernorm :: (m:MdlModel,parent:int,name:string,x:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    s:=m.shapes[x];
+    if s.rank<1 {return mdl_fail(m,MdlStatus.shape);}
+    width:=mdl_shape(1,s.dims[s.rank-1],0);
+    r:=mdl_child(m,parent,name);me:=r.child;
+    r=mdl_node(r,TiNode.{op=TiOp.layernorm,a=x});h:=r.node;
+    r=mdl_parameter(r,me,"weight",width,MdlInit.constant,1);r=mdl_op(r,TiOp.multiply,h,r.node);h=r.node;
+    r=mdl_parameter(r,me,"bias",width,MdlInit.constant,0);
+    return mdl_op(r,TiOp.add,h,r.node);
+}
+// Dropout of drop/256 of the elements, 0 <= drop < 256: x times a
+// transient mask that mdl_refresh rebuilds before each run.
+mdl_dropout :: (m:MdlModel,parent:int,name:string,x:int,drop:int)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    if !mdl_valid(m,x) {return mdl_fail(m,MdlStatus.program);}
+    if drop<0 || drop>255 {return mdl_fail(m,MdlStatus.shape);}
+    r:=mdl_child(m,parent,name);
+    r=mdl_transient(r,r.child,"mask",m.shapes[x],1);
+    r.entries[r.count-1].mask=true;r.entries[r.count-1].drop=drop;
+    return mdl_op(r,TiOp.multiply,x,r.node);
+}
+// The sum of squared differences between y and target.
+mdl_squared_error :: (m:MdlModel,parent:int,name:string,y:int,target:int)->MdlModel {
+    r:=mdl_child(m,parent,name);
+    r=mdl_transient(r,r.child,"neg",mdl_shape(1,1,0),-1);
+    r=mdl_op(r,TiOp.multiply,target,r.node);r=mdl_op(r,TiOp.add,y,r.node);
+    r=mdl_op(r,TiOp.multiply,r.node,r.node);
+    while r.status==MdlStatus.ok && r.shapes[r.node].rank>0 {r=mdl_op(r,TiOp.sum,r.node,0);}
+    return r;
+}
+// book:end layers
+
+// book:begin state
+mdl_find :: (m:MdlModel,name:string)->int {
+    if m.status!=MdlStatus.ok {return -1;}
+    for i:0..<m.count {if mdl_name_is(m.entries[i].name,name) {return i;}}
+    return -1;
+}
+mdl_saved :: (e:MdlEntry)->bool {return e.kind==MdlKind.parameter || e.kind==MdlKind.buffer;}
+mdl_parameters :: (m:MdlModel)->int {n:=0;for i:0..<m.count {if m.entries[i].kind==MdlKind.parameter {n+=m.entries[i].size;}}return n;}
+mdl_state_floats :: (m:MdlModel)->int {n:=0;for i:0..<m.count {if mdl_saved(m.entries[i]) {n+=m.entries[i].size;}}return n;}
+// Train or eval mode. Only mdl_refresh reads it.
+mdl_train :: (m:MdlModel,training:bool)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    r:=m;r.training=training;return r;
+}
+// Freeze or unfreeze every parameter whose name is prefix or starts with
+// prefix and a dot; "" names them all. Naming no parameter is refused.
+mdl_freeze :: (m:MdlModel,prefix:string,frozen:bool)->MdlModel {
+    if m.status!=MdlStatus.ok {return m;}
+    r:=m;hit:=false;
+    for i:0..<r.count {
+        e:=r.entries[i];if e.kind!=MdlKind.parameter || e.name.count<prefix.count {continue;}
+        match:=prefix.count==0 || e.name.count==prefix.count || e.name.bytes[prefix.count]==46;
+        for j:0..<prefix.count {if e.name.bytes[j]!=prefix[j] {match=false;}}
+        if match {r.entries[i].frozen=frozen;hit=true;}
+    }
+    if !hit {return mdl_fail(m,MdlStatus.name);}
+    return r;
+}
+// Chapter 106's mode: a gradient for every parameter that is not frozen.
+mdl_mode :: (m:MdlModel)->AdMode {
+    mode:AdMode;if m.status!=MdlStatus.ok {return mode;}
+    for i:0..<m.count {e:=m.entries[i];if e.kind==MdlKind.parameter && !e.frozen {mode.grad[e.node]=true;}}
+    return mode;
+}
+// book:end state
+
+// book:begin fill
+// Fill parameters and buffers by their rules. Element j of an entry at
+// base b draws counter b + j, so the values depend only on the seed and the
+// layout.
+mdl_init :: (m:MdlModel,seed:u64,inputs:[]f32)->MdlStatus {
+    if m.status!=MdlStatus.ok {return MdlStatus.state;}
+    if inputs.count<m.top {return MdlStatus.capacity;}
+    for i:0..<m.count {
+        e:=m.entries[i];if !mdl_saved(e) {continue;}
+        for j:0..<e.size {
+            v:=f64(e.value);
+            if e.init==MdlInit.uniform {v*=2*cr_draw(CrSeed.{seed=seed,counter=cast(u64)(e.base+j)}).value-1;}
+            inputs[e.base+j]=f32(v);
+        }
+    }
+    return MdlStatus.ok;
+}
+// Rebuild transient entries for one run. In train mode a dropout mask keeps
+// element j when the top byte of the counter generator's word for
+// (step, b + j) is at least drop, and scales it by 256 / (256 - drop). In
+// eval mode a mask is ones. Other transients take their value.
+mdl_refresh :: (m:MdlModel,step:u64,inputs:[]f32)->MdlStatus {
+    if m.status!=MdlStatus.ok {return MdlStatus.state;}
+    if inputs.count<m.top {return MdlStatus.capacity;}
+    for i:0..<m.count {
+        e:=m.entries[i];if e.kind!=MdlKind.transient {continue;}
+        keep:=f32(256/f64(256-e.drop));
+        for j:0..<e.size {
+            v:=e.value;
+            if m.training && e.mask {
+                v=0;if cast(int)(cr_bits(step,cast(u64)(e.base+j))>>56)>=e.drop {v=keep;}
+            }
+            inputs[e.base+j]=v;
+        }
+    }
+    return MdlStatus.ok;
+}
+// One plain gradient-descent step on every trainable parameter, after the
+// tape t (built from this model's program and mdl_mode) has run to the end.
+// g is scratch for every trainable float; all gradients are published
+// before any parameter changes.
+mdl_sgd :: (m:MdlModel,t:AdTape,cursor:AdCursor,grads:[]f64,g:[]f32,inputs:[]f32,rate:f32)->MdlStatus {
+    if m.status!=MdlStatus.ok || t.status!=AdStatus.ok || cursor.next<t.count {return MdlStatus.state;}
+    if !(rate>0) || !tv_finite(rate) {return MdlStatus.number;}
+    if inputs.count<m.top || g.count<mdl_parameters(m) {return MdlStatus.capacity;}
+    mode:=mdl_mode(m);for i:0..<TI_NODES {if mode.grad[i]!=t.mode.grad[i] {return MdlStatus.state;}}
+    at:=0;
+    for i:0..<m.count {
+        e:=m.entries[i];if !mode.grad[e.node] {continue;}
+        if ad_gradient(t,cursor,e.node,grads,g[at..<at+e.size])!=AdStatus.ok {return MdlStatus.number;}
+        at+=e.size;
+    }
+    at=0;
+    for i:0..<m.count {
+        e:=m.entries[i];if !mode.grad[e.node] {continue;}
+        for j:0..<e.size {inputs[e.base+j]=f32(f64(inputs[e.base+j])-f64(rate)*f64(g[at+j]));}
+        at+=e.size;
+    }
+    return MdlStatus.ok;
+}
+// book:end fill
+
+// book:begin save
+// The state dictionary: parameters and buffers, by name, as chapter 8's
+// file of little-endian f32 values. out doubles as the staging area for the
+// values, so after a refusal for a non-finite value its contents are
+// unspecified.
+mdl_save :: (m:MdlModel,inputs:[]f32,out:[]u8,stage:[]u8)->MdlSaved {
+    if m.status!=MdlStatus.ok {return MdlSaved.{status=MdlStatus.state};}
+    if inputs.count<m.top {return MdlSaved.{status=MdlStatus.capacity};}
+    tensors:[32]IcTensor;n:=0;
+    for i:0..<m.count {
+        e:=m.entries[i];if !mdl_saved(e) {continue;}
+        t:IcTensor;t.name_count=e.name.count;for j:0..<e.name.count {t.name[j]=e.name.bytes[j];}
+        t.shape=e.shape;t.bytes=4*e.size;tensors[n]=t;n+=1;
+    }
+    p:=ic_plan(tensors[0..<n]);
+    if p.status!=IcStatus.ok || out.count<p.total || stage.count<p.total {return MdlSaved.{status=MdlStatus.capacity};}
+    at:=0;
+    for i:0..<m.count {
+        e:=m.entries[i];if !mdl_saved(e) {continue;}
+        for j:0..<e.size {w:=f32_bits(inputs[e.base+j]);for k:0..<4 {out[at+k]=cast,trunc(u8)(w>>cast(u32)(8*k));}at+=4;}
+    }
+    r:=ic_write(tensors[0..<n],out[0..<p.payload],out,stage,false);
+    if r.status!=IcStatus.ok {return MdlSaved.{status=MdlStatus.number};}
+    return MdlSaved.{written=r.written,tensors=n};
+}
+// book:end save
+
+// book:begin load
+mdl_named :: (f:IcTensor,n:MdlName)->bool {
+    if f.name_count!=n.count {return false;}
+    for j:0..<n.count {if f.name[j]!=n.bytes[j] {return false;}}
+    return true;
+}
+mdl_fits :: (f:IcTensor,e:MdlEntry)->bool {
+    if f.dtype!=0 || f.shape.rank!=e.shape.rank {return false;}
+    for d:0..<e.shape.rank {if f.shape.dims[d]!=e.shape.dims[d] {return false;}}
+    return true;
+}
+// Load a state dictionary by name. Every check runs before any value is
+// written. With all_keys, the first missing entry or else the first
+// unexpected file tensor is refused; without it they are counted and the
+// rest load. A shape or dtype that differs is always refused.
+mdl_load :: (m:MdlModel,file:[]u8,inputs:[]f32,all_keys:bool)->MdlLoad {
+    if m.status!=MdlStatus.ok {return MdlLoad.{status=MdlStatus.state};}
+    if inputs.count<m.top {return MdlLoad.{status=MdlStatus.capacity};}
+    found:[16]IcTensor;r:=ic_inspect(file,found[..],false);
+    if r.status!=IcStatus.ok {return MdlLoad.{status=MdlStatus.format};}
+    l:MdlLoad;match:[32]int;used:[16]bool;
+    for i:0..<m.count {
+        match[i]=-1;e:=m.entries[i];if !mdl_saved(e) {continue;}
+        for k:0..<r.written {if mdl_named(found[k],e.name) {match[i]=k;used[k]=true;}}
+        if match[i]<0 {l.missing+=1;continue;}
+        if !mdl_fits(found[match[i]],e) {return MdlLoad.{status=MdlStatus.mismatch,entry=i,file=match[i]};}
+        l.loaded+=1;
+    }
+    for k:0..<r.written {if !used[k] {l.unexpected+=1;}}
+    if all_keys {
+        for i:0..<m.count {if mdl_saved(m.entries[i]) && match[i]<0 {return MdlLoad.{status=MdlStatus.missing,entry=i,missing=l.missing,unexpected=l.unexpected};}}
+        for k:0..<r.written {if !used[k] {return MdlLoad.{status=MdlStatus.unexpected,file=k,loaded=l.loaded,unexpected=l.unexpected};}}
+    }
+    for i:0..<m.count {
+        k:=match[i];if k<0 {continue;}
+        e:=m.entries[i];
+        for j:0..<e.size {
+            w:u32=0;for b:0..<4 {w|=cast(u32)file[found[k].source+4*j+b]<<cast(u32)(8*b);}
+            inputs[e.base+j]=f32_from_bits(w);
+        }
+    }
+    return l;
+}
+// book:end load

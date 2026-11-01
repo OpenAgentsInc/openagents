@@ -1450,6 +1450,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/module-block.coax",
+      "chapter": "psionic/book/ch117-models-are-compositions-of-modules.md",
+      "stdout": "psionic/fixtures/module-block.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,41 @@
+model: status ok, 6 modules, 11 entries, 27 program nodes, 153 input floats, workspace 96 floats
+  x  data [4,4] at 0
+  target  data [4,4] at 16
+  norm.weight  parameter [4] at 32, constant 1.0
+  norm.bias  parameter [4] at 36, constant 0.0
+  fc1.weight  parameter [4,8] at 40, uniform +- 0.5
+  fc1.bias  parameter [8] at 72, uniform +- 0.5
+  drop.mask  transient [4,8] at 80
+  fc2.weight  parameter [8,4] at 112, uniform +- 0.353553
+  fc2.bias  parameter [4] at 144, uniform +- 0.353553
+  scale  buffer [4] at 148, constant 0.5
+  loss.neg  transient [1] at 152
+trainable floats 84, saved floats 88
+
+composed against hand-wired, training mode, mask from step 1:
+  loss 9.490625 and 9.490625, same bits: true
+  gradient of norm.weight: norm 1.471426, same bits: true
+  gradient of norm.bias: norm 0.892046, same bits: true
+  gradient of fc1.weight: norm 4.88874, same bits: true
+  gradient of fc1.bias: norm 2.323348, same bits: true
+  gradient of fc2.weight: norm 9.221085, same bits: true
+  gradient of fc2.bias: norm 1.961579, same bits: true
+
+training with norm frozen, dropout 128/256, learning rate 0.02:
+  step 0: eval loss 9.122487
+  step 100: eval loss 1.054721
+  step 200: eval loss 1.211376
+  step 300: eval loss 0.850827
+  step 400: eval loss 0.903775
+  norm.weight and norm.bias unchanged: true
+
+state dictionary: ok, 7 tensors, 872 bytes
+loaded: ok, 7 tensors; eval loss 0.903775 before and 0.903775 after, same bits: true
+
+refused loads:
+  model with an extra gate: missing, entry gate
+  model without scale: unexpected, 1 unexpected, file tensor scale
+  the same, not requiring every key: ok, 6 loaded, 1 unexpected
+  fc1 16 wide: mismatch, entry fc1.weight
+  damaged header: format
+  bad names: name name name
