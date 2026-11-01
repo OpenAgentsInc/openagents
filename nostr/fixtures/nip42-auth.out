@@ -1,0 +1,83 @@
+== 1. Relay URLs: does a relay tag name this relay?
+relay's own URL wss://relay.example.com/ -> wss://relay.example.com
+  wss://relay.example.com -> wss://relay.example.com : match
+  WSS://Relay.Example.COM:443 -> wss://relay.example.com : match
+  wss://relay.example.com:0443// -> wss://relay.example.com : match
+  ws://relay.example.com -> ws://relay.example.com : no match
+  wss://relay.example.com:8443 -> wss://relay.example.com:8443 : no match
+  wss://relay.example.com/nostr -> wss://relay.example.com/nostr : no match
+  wss://other.example.com -> wss://other.example.com : no match
+  wss://relay.example.com/?x=1 -> refused (PATH): no match
+  https://relay.example.com -> refused (SCHEME): no match
+
+== 2. The handshake, both sides
+relay sends ["AUTH","challengestringhere"]
+client: connection generation 1, relay URL WSS://Relay.Example.COM:443 read as wss://relay.example.com
+client: nip42_input -> RL_AUTH, challenge challengestringhere, state RA_CHALLENGED
+client: rl_next -> 4 (RL_OUT_AUTH is 4)
+client: template created_at 1793214821 kind 22242 content ""
+  tags [["relay","wss://relay.example.com"],["challenge","challengestringhere"]]
+client: signed with test key A (417  bytes)
+  {"id":"0b3b48de11adfaab6beb7fc410a56df52957ba0dfcb15e18e3473f2fc9067523","pubkey":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","created_at":1793214821,"kind":22242,"tags":[["relay","wss://relay.example.com"],["challenge","challengestringhere"]],"content":"","sig":"f588fffcd1d585576c8e45caef8d61108da7ae02f745ba9e973e19283cefe7e6247e99012199635f50eb2f3c14a2c79a9708fbdb5f64eaa57313b3981bf4c60b"}
+client: nip42_send -> N42_OK, frame 426 bytes, state RA_SENT
+relay answers ["OK","0b3b48de11adfaab6beb7fc410a56df52957ba0dfcb15e18e3473f2fc9067523",true,""]
+  relay: 1 key(s) authenticated on this connection
+client: OK true for its AUTH id -> RL_AUTH, state RA_OK
+
+== 3. The time window, on the relay's clock
+  relay clock created_at - 601: N42_TIME
+  relay clock created_at - 600: N42_OK
+  relay clock created_at + 0: N42_OK
+  relay clock created_at + 600: N42_OK
+  relay clock created_at + 601: N42_TIME
+  at created_at+601 the relay answers ["OK","0b3b48de11adfaab6beb7fc410a56df52957ba0dfcb15e18e3473f2fc9067523",false,"invalid: the authentication event's timestamp is more than 10 minutes from the relay's clock"]
+
+== 4. Refusals at the relay (connection 1, challenge challengestringhere)
+kind 22243:
+  ["OK","0224ba5911a3730152d68dad37d95dce694d85ba971aa4d785e0747c4f498e45",false,"invalid: authentication event must have kind 22242"]
+relay tag wss://other.example.com:
+  ["OK","0f06064812622c23be9d19bafc9b07d316e939de144186350402efb7eea761ec",false,"invalid: authentication relay URL does not match"]
+two challenge tags:
+  ["OK","da02f95157f0585e1e11a14abede7aca218320e9c2cc5d208880606969f2adea",false,"invalid: authentication event must have exactly one relay tag and one challenge tag"]
+first signature digit changed (the id still matches):
+  ["OK","0b3b48de11adfaab6beb7fc410a56df52957ba0dfcb15e18e3473f2fc9067523",false,"invalid: bad signature"]
+created_at changed after signing (the id no longer matches):
+  ["OK","0b3b48de11adfaab6beb7fc410a56df52957ba0dfcb15e18e3473f2fc9067523",false,"invalid: event id does not match its content"]
+["AUTH","x"] from a client (not an event):
+  ["NOTICE","invalid: malformed message"]
+the same AUTH frame again, on the same connection and challenge:
+  ["OK","0b3b48de11adfaab6beb7fc410a56df52957ba0dfcb15e18e3473f2fc9067523",true,""]
+  relay: 1 key(s) authenticated on this connection
+the same challenge answered by test key B:
+  ["OK","0d5d40a7d02788776532c76cebd3a648fc1f94342514814919aed09151891083",true,""]
+  relay: 2 key(s) authenticated on this connection
+the relay sends a new challenge on connection 1: ["AUTH","secondchallenge"]
+key A's first answer now:
+  ["OK","0b3b48de11adfaab6beb7fc410a56df52957ba0dfcb15e18e3473f2fc9067523",false,"invalid: authentication challenge does not match"]
+  (a new challenge leaves the keys already admitted: 2 key(s))
+connection 2 opens: ["AUTH","000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"]
+key A's first answer replayed on connection 2:
+  ["OK","0b3b48de11adfaab6beb7fc410a56df52957ba0dfcb15e18e3473f2fc9067523",false,"invalid: authentication challenge does not match"]
+  relay: 0 key(s) authenticated on this connection
+
+== 5. What an admitted key changes: the EVENT policy
+kind 1 note, connection 2 (no key): authenticate before publishing
+kind 1 note, connection 1 (keys A, B): accepted by the policy
+the AUTH event itself sent as EVENT: authentication events cannot be published
+
+== 6. Refusals at the client
+  nip42_input ["AUTH",""] -> -1 (not a challenge)
+  nip42_input ["AUTH",{"id":"x"}] -> -1 (not a challenge)
+  nip42_input ["AUTH","a","b"] -> -1 (not a challenge)
+  nip42_input ["auth","a"] -> -1 (not a challenge)
+  nip42_input ["AUTH","challengestringhere"] -> RL_AUTH, state RA_CHALLENGED
+  send the kind 22243 event: N42_KIND, state RA_CHALLENGED
+  send the event for another relay: N42_RELAY
+  send the event with a changed created_at: N42_EVENT
+  send it 601 s late: N42_TIME
+  send the good event: N42_OK, state RA_SENT
+  send it again before the OK: N42_MACHINE
+  OK false for it -> RL_AUTH, state RA_NONE
+  reconnect: generation 2, state RA_NONE
+  template for generation 1: N42_OK; for generation 2: N42_STALE
+  send the old answer on generation 2: N42_STALE

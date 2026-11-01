@@ -1,0 +1,253 @@
+// book:begin example
+#load "../../coax/lib/nostr/relay_server.coax";
+#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../coax/lib/nostr/nip42-event.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// Both clocks are fixed: the relay's and the client's read this Unix time
+// (2026-10-28T19:13:41Z), the time of nip42_events.ts's signed fixtures.
+NOW :: 1793214821;
+// The relay's own URL (coax/relay/relay.coax --url) and the one the client
+// dialed: two spellings of one relay.
+RELAY_URL :: "wss://relay.example.com/";
+CLIENT_URL :: "WSS://Relay.Example.COM:443";
+CHALLENGE :: "challengestringhere";
+// BIP-340 test vector 0's secret key (the scalar 3) with zero aux, the key
+// and aux nip42_events.ts signs with, and vector 1's key as a second
+// signer. Published test keys: never sign with a real key in an example.
+KEY_A :: "0000000000000000000000000000000000000000000000000000000000000003";
+KEY_B :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX :: "0000000000000000000000000000000000000000000000000000000000000000";
+
+n42_name :: (e: int) -> string {
+  names := [13] string.["N42_OK", "N42_FRAME", "N42_URL", "N42_STALE", "N42_NO_CHALLENGE", "N42_EVENT",
+    "N42_KIND", "N42_TIME", "N42_TAGS", "N42_RELAY", "N42_CHALLENGE", "N42_OUTPUT", "N42_MACHINE"];
+  return names[e];
+}
+url_name :: (e: int) -> string {
+  names := [7] string.["OK", "OUTPUT", "LIMIT", "SCHEME", "HOST", "PORT", "PATH"];
+  return names[e];
+}
+auth_name :: (a: int) -> string {
+  names := [4] string.["RA_NONE", "RA_CHALLENGED", "RA_SENT", "RA_OK"];
+  return names[a];
+}
+rl_name :: (d: int) -> string {
+  if d == -1 { return "-1 (not a challenge)"; }
+  names := [12] string.["RL_DELIVER", "RL_DUPLICATE", "RL_STALE", "RL_UNKNOWN", "RL_FORGED", "RL_EOSE",
+                        "RL_ACK", "RL_CLOSED", "RL_NOTICE", "RL_AUTH", "RL_NOT_OPEN", "RL_BAD"];
+  return names[d];
+}
+text_of :: (n: int, out: [] u8) -> string {
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// Signs one event with a test key into out; the event's text.
+sign :: (key_hex: string, created_at: int, kind: int, tags: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(key_hex, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(AUX, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [1024] u8; k := EVENT_MORE;
+  while k == EVENT_MORE {
+    k = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, "", work[..], scratch[..], out, false);
+  }
+  return text_of(k, out);
+}
+// ["AUTH",<event>], the frame a client sends.
+auth_frame :: (event: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[\"AUTH\","); n = json_raw(out, n, event);
+  return text_of(json_raw(out, n, "]"), out);
+}
+
+// What the relay holds for one connection.
+RelayConn :: struct {
+  gen: int;
+  n42: [1] Nip42;           // the relay URL and this connection's challenge
+  auth: [1] RrAuth;         // the keys admitted on this connection
+  scratch: [65536] u8;
+  out: [1024] u8;
+}
+// A new connection (generation gen): the relay's URL, then the challenge,
+// sent as ["AUTH", challenge]. The frame it sends.
+relay_open :: (c: [] RelayConn, gen: int, challenge: string) -> string {
+  c[0].gen = gen; rr_auth_reset(c[0].auth[..]);
+  #assert nip42_init(c[0].n42[..], RELAY_URL) == N42_OK;
+  f := nip42_issue(c[0].n42[..], gen, challenge, c[0].out[..]);
+  #assert f.error == N42_OK;
+  return text_of(f.written, c[0].out[..]);
+}
+
+// book:begin relay
+// One AUTH frame from the client, handled as coax/relay/relay.coax's
+// ry_message and ry_auth handle it, with the socket and the clock replaced:
+// the reply the relay sends.
+relay_auth :: (c: [] RelayConn, frame: string, now: int) -> string {
+  out := c[0].out[..];
+  m := ms_read(frame);
+  route := rr_message(m.error, m.type, m.has_sub);
+  if route.action == RR_NOTICE { return text_of(ms_write_notice(rs_prefix(route.reason), rs_text(route.reason), out), out); }
+  #assert route.action == RR_AUTH;
+  obj := frame[m.event_from..<m.event_to];
+  // 1. The id, for the OK. A wrong id is refused before any signature work.
+  e := nostr_event_read(obj, c[0].scratch[..], false);
+  id := e.id;
+  if e.error == NE_ID { return text_of(ms_write_ok(id[..], false, rs_prefix(RS_BAD_ID), rs_text(RS_BAD_ID), out), out); }
+  if e.error != NE_OK { return text_of(ms_write_notice(rs_prefix(RS_BAD_EVENT), rs_text(RS_BAD_EVENT), out), out); }
+  // 2. The signature, then nip42.coax's check against this connection.
+  a := nip42_admit(c[0].n42[..], c[0].gen, now, obj, c[0].scratch[..], false);
+  // 3. Keep the key; name the answer.
+  key := a.public_key;
+  k := rr_auth(c[0].auth[..], a.error, key[..]);
+  return text_of(ms_write_ok(id[..], k == RR_A_OK, rr_auth_prefix(k), rr_auth_text(k), out), out);
+}
+// book:end relay
+
+// The relay's check alone, without the signature: what nip42_admit decides
+// after nostr_event_verify_vartime.
+judged :: (c: [] RelayConn, event: string, now: int) -> string {
+  s: [4096] u8; e := nostr_event_read(event, s[..], false);
+  return n42_name(nip42_judge(c[0].n42[..], c[0].gen, now, e.kind, e.created_at, n42e_tags(e)));
+}
+show_keys :: (c: [] RelayConn) {
+  print("  relay: % key(s) authenticated on this connection\n", c[0].auth[0].n);
+}
+// A copy of s with byte at replaced by b.
+edited :: (s: string, at: int, b: u8, out: [] u8) -> string {
+  for i: 0..<s.count { out[i] = s[i]; }
+  out[at] = b;
+  return cast(string) out[0..<s.count];
+}
+// The index of the first byte of `field` in s, after its opening quote.
+find :: (s: string, field: string) -> int {
+  for i: 0..<s.count - field.count + 1 { if s[i..<i + field.count] == field { return i + field.count; } }
+  return -1;
+}
+
+main :: () {
+  print("== 1. Relay URLs: does a relay tag name this relay?\n");
+  own: [N42_MAX_URL] u8; o := nip42_url(RELAY_URL, own[..]);
+  print("relay's own URL % -> %\n", RELAY_URL, cast(string) own[0..<o.count]);
+  tags := [9] string.["wss://relay.example.com", "WSS://Relay.Example.COM:443", "wss://relay.example.com:0443//",
+    "ws://relay.example.com", "wss://relay.example.com:8443", "wss://relay.example.com/nostr",
+    "wss://other.example.com", "wss://relay.example.com/?x=1", "https://relay.example.com"];
+  for t: tags {
+    canon: [N42_MAX_URL] u8; u := nip42_url(t, canon[..]);
+    if u.error != N42U_OK { print("  % -> refused (%): no match\n", t, url_name(u.error)); continue; }
+    c := cast(string) canon[0..<u.count];
+    print("  % -> % : %\n", t, c, ifx c == cast(string) own[0..<o.count] then "match" else "no match");
+  }
+
+  print("\n== 2. The handshake, both sides\n");
+  conn: [1] RelayConn;
+  // relay_open's frame is a view into conn's reply buffer: keep a copy.
+  cb: [64] u8; frame := copy_of(relay_open(conn[..], 1, CHALLENGE), cb[..]);
+  print("relay sends %\n", frame);
+  r: [1] Relay; n: [1] Nip42;
+  g := rl_start(r[..], 0); opened := rl_opened(r[..], g, 0);
+  #assert nip42_init(n[..], CLIENT_URL) == N42_OK;
+  print("client: connection generation %, relay URL % read as %\n", g, CLIENT_URL, nip42_url_text(n[..]));
+  d := nip42_input(r[..], n[..], g, frame);
+  print("client: nip42_input -> %, challenge %, state %\n", rl_name(d), nip42_challenge_text(n[..]), auth_name(r[0].auth));
+  print("client: rl_next -> % (RL_OUT_AUTH is %)\n", rl_next(r[..], 0).kind, RL_OUT_AUTH);
+  tb: [512] u8; t := nip42_template(n[..], g, NOW, tb[..]);
+  print("client: template created_at % kind % content \"%\"\n  tags %\n", t.created_at, t.kind, t.content, t.tags);
+  eb: [1024] u8; event := sign(KEY_A, t.created_at, t.kind, t.tags, eb[..]);
+  print("client: signed with test key A (%  bytes)\n  %\n", event.count, event);
+  sb: [4096] u8; fb: [1200] u8;
+  f := nip42_send(r[..], n[..], g, NOW, event, sb[..], fb[..], false);
+  sent := text_of(f.written, fb[..]);
+  print("client: nip42_send -> %, frame % bytes, state %\n", n42_name(f.error), f.written, auth_name(r[0].auth));
+  reply := relay_auth(conn[..], sent, NOW);
+  print("relay answers %\n", reply);
+  show_keys(conn[..]);
+  e := nostr_event_read(event, sb[..], false);
+  print("client: OK true for its AUTH id -> %, state %\n",
+        rl_name(rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = e.id, accepted = true})), auth_name(r[0].auth));
+
+  print("\n== 3. The time window, on the relay's clock\n");
+  drift := [5] int.[-601, -600, 0, 600, 601];
+  for dt: drift {
+    print("  relay clock created_at % %: %\n", ifx dt < 0 then "-" else "+", ifx dt < 0 then -dt else dt, judged(conn[..], event, NOW + dt));
+  }
+  print("  at created_at+601 the relay answers %\n", relay_auth(conn[..], sent, NOW + 601));
+
+  print("\n== 4. Refusals at the relay (connection 1, challenge %)\n", CHALLENGE);
+  b1: [1024] u8; f1: [1200] u8;
+  kind := sign(KEY_A, NOW, 22243, t.tags, b1[..]);
+  print("kind 22243:\n  %\n", relay_auth(conn[..], auth_frame(kind, f1[..]), NOW));
+  b2: [1024] u8; f2: [1200] u8;
+  other := sign(KEY_A, NOW, 22242, "[[\"relay\",\"wss://other.example.com\"],[\"challenge\",\"challengestringhere\"]]", b2[..]);
+  print("relay tag wss://other.example.com:\n  %\n", relay_auth(conn[..], auth_frame(other, f2[..]), NOW));
+  b3: [1024] u8; f3: [1200] u8;
+  two := sign(KEY_A, NOW, 22242, "[[\"relay\",\"wss://relay.example.com\"],[\"challenge\",\"challengestringhere\"],[\"challenge\",\"other\"]]", b3[..]);
+  print("two challenge tags:\n  %\n", relay_auth(conn[..], auth_frame(two, f3[..]), NOW));
+  x1: [1024] u8; f4: [1200] u8;
+  sig_at := find(event, "\"sig\":\"");
+  badsig := edited(event, sig_at, ifx event[sig_at] == '0' then cast(u8) '1' else cast(u8) '0', x1[..]);
+  print("first signature digit changed (the id still matches):\n  %\n", relay_auth(conn[..], auth_frame(badsig, f4[..]), NOW));
+  x2: [1024] u8; f5: [1200] u8;
+  ca := find(event, "\"created_at\":");
+  badid := edited(event, ca + 9, ifx event[ca + 9] == '0' then cast(u8) '1' else cast(u8) '0', x2[..]);
+  print("created_at changed after signing (the id no longer matches):\n  %\n", relay_auth(conn[..], auth_frame(badid, f5[..]), NOW));
+  print("[\"AUTH\",\"x\"] from a client (not an event):\n  %\n", relay_auth(conn[..], "[\"AUTH\",\"x\"]", NOW));
+  print("the same AUTH frame again, on the same connection and challenge:\n  %\n", relay_auth(conn[..], sent, NOW));
+  show_keys(conn[..]);
+  b4: [1024] u8; f6: [1200] u8;
+  keyb := sign(KEY_B, NOW, 22242, t.tags, b4[..]);
+  print("the same challenge answered by test key B:\n  %\n", relay_auth(conn[..], auth_frame(keyb, f6[..]), NOW));
+  show_keys(conn[..]);
+  print("the relay sends a new challenge on connection 1: %\n", relay_open_again(conn[..], "secondchallenge"));
+  print("key A's first answer now:\n  %\n", relay_auth(conn[..], sent, NOW));
+  print("  (a new challenge leaves the keys already admitted: % key(s))\n", conn[0].auth[0].n);
+  conn2: [1] RelayConn;
+  bytes: [32] u8; for i: 0..<32 { bytes[i] = cast(u8) i; }
+  hex: [64] u8; #assert rr_challenge(bytes[..], hex[..]) == 64;
+  print("connection 2 opens: %\n", relay_open(conn2[..], 2, cast(string) hex[..]));
+  print("key A's first answer replayed on connection 2:\n  %\n", relay_auth(conn2[..], sent, NOW));
+  show_keys(conn2[..]);
+
+  print("\n== 5. What an admitted key changes: the EVENT policy\n");
+  b5: [1024] u8; note := sign(KEY_A, NOW, 1, "[]", b5[..]);
+  s5: [4096] u8;
+  print("kind 1 note, connection 2 (no key): %\n", rs_text(rs_admit_read(note, NOW, rr_writes_need_auth(true), rr_authed(conn2[0].auth[..]), s5[..]).reason));
+  print("kind 1 note, connection 1 (keys A, B): %\n", ifx rs_admit_read(note, NOW, rr_writes_need_auth(true), rr_authed(conn[0].auth[..]), s5[..]).reason == RS_ACCEPT then "accepted by the policy" else "refused");
+  print("the AUTH event itself sent as EVENT: %\n", rs_text(rs_admit_read(event, NOW, rr_writes_need_auth(true), rr_authed(conn[0].auth[..]), s5[..]).reason));
+
+  print("\n== 6. Refusals at the client\n");
+  r2: [1] Relay; n2: [1] Nip42;
+  g1 := rl_start(r2[..], 0); opened = rl_opened(r2[..], g1, 0);
+  #assert nip42_init(n2[..], CLIENT_URL) == N42_OK;
+  bad_frames := [4] string.["[\"AUTH\",\"\"]", "[\"AUTH\",{\"id\":\"x\"}]", "[\"AUTH\",\"a\",\"b\"]", "[\"auth\",\"a\"]"];
+  for bf: bad_frames { print("  nip42_input % -> %\n", bf, rl_name(nip42_input(r2[..], n2[..], g1, bf))); }
+  print("  nip42_input % -> %, state %\n", frame, rl_name(nip42_input(r2[..], n2[..], g1, frame)), auth_name(r2[0].auth));
+  o2: [1200] u8;
+  print("  send the kind 22243 event: %, state %\n", n42_name(nip42_send(r2[..], n2[..], g1, NOW, kind, sb[..], o2[..], false).error), auth_name(r2[0].auth));
+  print("  send the event for another relay: %\n", n42_name(nip42_send(r2[..], n2[..], g1, NOW, other, sb[..], o2[..], false).error));
+  print("  send the event with a changed created_at: %\n", n42_name(nip42_send(r2[..], n2[..], g1, NOW, badid, sb[..], o2[..], false).error));
+  print("  send it 601 s late: %\n", n42_name(nip42_send(r2[..], n2[..], g1, NOW + 601, event, sb[..], o2[..], false).error));
+  f7 := nip42_send(r2[..], n2[..], g1, NOW, event, sb[..], o2[..], false);
+  print("  send the good event: %, state %\n", n42_name(f7.error), auth_name(r2[0].auth));
+  print("  send it again before the OK: %\n", n42_name(nip42_send(r2[..], n2[..], g1, NOW, event, sb[..], o2[..], false).error));
+  print("  OK false for it -> %, state %\n",
+        rl_name(rl_input(r2[..], g1, RlIn.{kind = RL_IN_OK, id = e.id, accepted = false})), auth_name(r2[0].auth));
+  dropped := rl_dropped(r2[..], g1, 0, 0); g2 := rl_start(r2[..], 1000); opened = rl_opened(r2[..], g2, 1000);
+  print("  reconnect: generation %, state %\n", g2, auth_name(r2[0].auth));
+  // The Nip42 record still holds generation 1's challenge; only relay.coax
+  // knows about the reconnect, and nip42_send asks it.
+  print("  template for generation %: %; for generation %: %\n", g1, n42_name(nip42_template(n2[..], g1, NOW, tb[..]).error),
+        g2, n42_name(nip42_template(n2[..], g2, NOW, tb[..]).error));
+  print("  send the old answer on generation %: %\n", g2, n42_name(nip42_send(r2[..], n2[..], g2, NOW, event, sb[..], o2[..], false).error));
+}
+copy_of :: (s: string, out: [] u8) -> string {
+  for i: 0..<s.count { out[i] = s[i]; }
+  return cast(string) out[0..<s.count];
+}
+// A new challenge on an open connection; the frame sent.
+relay_open_again :: (c: [] RelayConn, challenge: string) -> string {
+  f := nip42_issue(c[0].n42[..], c[0].gen, challenge, c[0].out[..]);
+  #assert f.error == N42_OK;
+  return text_of(f.written, c[0].out[..]);
+}
+// book:end example

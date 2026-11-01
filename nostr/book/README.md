@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 39 are implemented, 17 are partly implemented and
+Of the 104 chapters, 40 are implemented, 16 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -221,7 +221,7 @@ negentropy, and limits.
 | [35. Store events](ch035-store-events.md) | Runnable: native C | Verified originals with one copy per ID, replaceable and addressable replacement with the same-second lowest-ID rule, an fsync before `OK`, and crash recovery that cuts only a partial last write. |
 | [36. Match filters with indexes](ch036-match-filters-with-indexes.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Answering REQ from the store newest first with query cost limits, then indexes by ID, author, kind and tag that never change which events match. |
 | [37. NIP-11 relay information](ch037-nip-11-relay-information.md) | Runnable: native C | The relay information document served on `Accept: application/nostr+json`: name, pubkey, `supported_nips`, software, version and `limitation` fields that match what the relay enforces. |
-| [38. NIP-42 authentication](ch038-nip-42-authentication.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Challenges bound to one connection and one relay URL, kind 22242 events with `relay` and `challenge` tags checked within a time window, and AUTH on both the client and the relay. |
+| [38. NIP-42 authentication](ch038-nip-42-authentication.md) | Runnable: native C | Challenges bound to one connection and one relay URL, kind 22242 events with `relay` and `challenge` tags checked within a time window, and AUTH on both the client and the relay. |
 | [39. Delete, expire and vanish](ch039-delete-expire-and-vanish.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | NIP-40 `expiration` tags enforced at admission and query, NIP-09 kind-5 deletion requests from the same author with durable tombstones, and NIP-62 kind-62 requests to vanish. |
 | [40. Count events](ch040-count-events.md) | Unimplemented: design draft | NIP-45 `COUNT` requests and responses, `approximate` counts, and HyperLogLog with 256 registers whose offset comes from the filter. |
 | [41. Search](ch041-search.md) | Unimplemented: design draft | NIP-50's `search` filter field, results ordered by relevance, and the `key:value` extensions (`include:spam`, `domain:`, `language:`, `sentiment:`, `nsfw:`). |

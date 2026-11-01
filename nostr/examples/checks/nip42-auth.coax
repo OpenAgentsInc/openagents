@@ -1,0 +1,89 @@
+// The checks of nip42-auth.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/nip42-auth.coax --run-steps 250000000
+#load "../nip42-auth.coax";
+
+// book:begin check
+// The chapter's hand trace: the canonical URLs, the tags, the frame lengths.
+HAND_TAGS :: "[[\"relay\",\"wss://relay.example.com\"],[\"challenge\",\"challengestringhere\"]]";
+// The OK frame worked out by hand from an id, a verdict and a message.
+ok_frame :: (id: string, accepted: bool, message: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[\"OK\",\""); n = json_raw(out, n, id); n = json_raw(out, n, "\",");
+  n = json_raw(out, n, ifx accepted then "true" else "false"); n = json_raw(out, n, ",\"");
+  n = json_raw(out, n, message);
+  return text_of(json_raw(out, n, "\"]"), out);
+}
+// The id field of an event's JSON (it is the first field in every fixture).
+id_of :: (event: string) -> string { return event[7..<71]; }
+// A relay connection on generation 1 with the chapter's challenge.
+open_conn :: (c: [] RelayConn) { f := relay_open(c, 1, CHALLENGE); }
+
+#test "relay URLs: the hand canonical forms" {
+  urls := [6] string.[RELAY_URL, CLIENT_URL, "wss://relay.example.com:0443//", "ws://relay.example.com", "wss://relay.example.com:8443", "wss://relay.example.com/nostr"];
+  want := [6] string.["wss://relay.example.com", "wss://relay.example.com", "wss://relay.example.com", "ws://relay.example.com", "wss://relay.example.com:8443", "wss://relay.example.com/nostr"];
+  for i: 0..<urls.count { out: [N42_MAX_URL] u8; u := nip42_url(urls[i], out[..]); #assert u.error == N42U_OK && cast(string) out[0..<u.count] == want[i]; }
+  out: [N42_MAX_URL] u8;
+  #assert nip42_url("wss://relay.example.com/?x=1", out[..]).error == N42U_PATH && nip42_url("https://relay.example.com", out[..]).error == N42U_SCHEME;
+}
+#test "the challenge frame and the template are the hand bytes" {
+  c: [1] RelayConn;
+  #assert relay_open(c[..], 1, CHALLENGE) == "[\"AUTH\",\"challengestringhere\"]";
+  r: [1] Relay; n: [1] Nip42; g := rl_start(r[..], 0); ok := rl_opened(r[..], g, 0);
+  #assert nip42_init(n[..], CLIENT_URL) == N42_OK && nip42_input(r[..], n[..], g, "[\"AUTH\",\"challengestringhere\"]") == RL_AUTH;
+  tb: [512] u8; t := nip42_template(n[..], g, NOW, tb[..]);
+  #assert t.error == N42_OK && t.created_at == 1793214821 && t.kind == 22242 && t.content == "" && t.tags == HAND_TAGS;
+  #assert HAND_TAGS.count == 73 && N42_FX_TEMPLATE.count == 417;
+}
+#test "the client's signed answer is @noble/curves' event, byte for byte" #steps 400000000 {
+  eb: [1024] u8;
+  #assert sign(KEY_A, NOW, 22242, HAND_TAGS, eb[..]) == N42_FX_TEMPLATE;
+}
+#test "the time window: 600 s either way, inclusive, on the relay's clock" {
+  c: [1] RelayConn; open_conn(c[..]);
+  #assert judged(c[..], N42_FX_TEMPLATE, NOW - 600) == "N42_OK" && judged(c[..], N42_FX_TEMPLATE, NOW + 600) == "N42_OK";
+  #assert judged(c[..], N42_FX_TEMPLATE, NOW - 601) == "N42_TIME" && judged(c[..], N42_FX_TEMPLATE, NOW + 601) == "N42_TIME";
+}
+#test "independently signed events get the replies worked out by hand" #steps 2000000000 {
+  c: [1] RelayConn; open_conn(c[..]);
+  // the challenge is recorded with the connection's generation
+  #assert c[0].gen == 1 && c[0].n42[0].gen == 1 && nip42_challenge_text(c[0].n42[..]) == CHALLENGE;
+  f: [1200] u8; w: [512] u8;
+  // the spec's spelling of the relay URL, and another spelling with an extra tag
+  #assert relay_auth(c[..], auth_frame(N42_FX_SPEC, f[..]), NOW) == ok_frame(id_of(N42_FX_SPEC), true, "", w[..]);
+  #assert relay_auth(c[..], auth_frame(N42_FX_SPELLED, f[..]), NOW) == ok_frame(id_of(N42_FX_SPELLED), true, "", w[..]);
+  #assert c[0].auth[0].n == 1;
+  #assert relay_auth(c[..], auth_frame(N42_FX_KIND, f[..]), NOW) == ok_frame(id_of(N42_FX_KIND), false, "invalid: authentication event must have kind 22242", w[..]);
+  #assert relay_auth(c[..], auth_frame(N42_FX_TWO_CHALLENGES, f[..]), NOW) ==
+    ok_frame(id_of(N42_FX_TWO_CHALLENGES), false, "invalid: authentication event must have exactly one relay tag and one challenge tag", w[..]);
+  #assert relay_auth(c[..], auth_frame(N42_FX_TEMPLATE, f[..]), NOW + 601) ==
+    ok_frame(id_of(N42_FX_TEMPLATE), false, "invalid: the authentication event's timestamp is more than 10 minutes from the relay's clock", w[..]);
+  // a new challenge, then another connection: the old answer no longer counts
+  more := relay_open_again(c[..], "secondchallenge");
+  #assert relay_auth(c[..], auth_frame(N42_FX_TEMPLATE, f[..]), NOW) == ok_frame(id_of(N42_FX_TEMPLATE), false, "invalid: authentication challenge does not match", w[..]);
+  #assert c[0].auth[0].n == 1;
+}
+#test "a changed signature or id is refused before nip42.coax's check" #steps 2000000000 {
+  c: [1] RelayConn; open_conn(c[..]);
+  f: [1200] u8; w: [512] u8; x: [1024] u8;
+  sig := edited(N42_FX_TEMPLATE, find(N42_FX_TEMPLATE, "\"sig\":\""), '0', x[..]);
+  #assert relay_auth(c[..], auth_frame(sig, f[..]), NOW) == ok_frame(id_of(N42_FX_TEMPLATE), false, "invalid: bad signature", w[..]);
+  at := find(N42_FX_TEMPLATE, "\"created_at\":") + 9;
+  #assert N42_FX_TEMPLATE[at] == '1';
+  id := edited(N42_FX_TEMPLATE, at, '0', x[..]);
+  #assert relay_auth(c[..], auth_frame(id, f[..]), NOW) == ok_frame(id_of(N42_FX_TEMPLATE), false, "invalid: event id does not match its content", w[..]);
+  #assert relay_auth(c[..], "[\"AUTH\",\"x\"]", NOW) == "[\"NOTICE\",\"invalid: malformed message\"]";
+  #assert c[0].auth[0].n == 0;
+}
+#test "the client sends only an answer the relay would admit, once" {
+  r: [1] Relay; n: [1] Nip42; g := rl_start(r[..], 0); ok := rl_opened(r[..], g, 0);
+  #assert nip42_init(n[..], CLIENT_URL) == N42_OK && nip42_input(r[..], n[..], g, "[\"AUTH\",\"challengestringhere\"]") == RL_AUTH;
+  s: [4096] u8; o: [1200] u8;
+  #assert nip42_send(r[..], n[..], g, NOW, N42_FX_KIND, s[..], o[..], false).error == N42_KIND && r[0].auth == RA_CHALLENGED;
+  #assert nip42_send(r[..], n[..], g, NOW + 601, N42_FX_TEMPLATE, s[..], o[..], false).error == N42_TIME;
+  f := nip42_send(r[..], n[..], g, NOW, N42_FX_TEMPLATE, s[..], o[..], false);
+  #assert f.error == N42_OK && f.written == 426 && r[0].auth == RA_SENT;
+  #assert nip42_send(r[..], n[..], g, NOW, N42_FX_TEMPLATE, s[..], o[..], false).error == N42_MACHINE;
+  dropped := rl_dropped(r[..], g, 0, 0); g2 := rl_start(r[..], 1000); ok = rl_opened(r[..], g2, 1000);
+  #assert nip42_send(r[..], n[..], g2, NOW, N42_FX_TEMPLATE, s[..], o[..], false).error == N42_STALE;
+}
+// book:end check

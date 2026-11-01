@@ -786,7 +786,7 @@
    "number": 38,
    "title": "NIP-42 authentication",
    "file": "ch038-nip-42-authentication.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     21,
@@ -795,7 +795,9 @@
    ],
    "source": [
     "coax/lib/nostr/nip42-event.coax",
-    "coax/lib/nostr/nip42.coax"
+    "coax/lib/nostr/nip42.coax",
+    "nostr/examples/checks/nip42-auth.coax",
+    "nostr/examples/nip42-auth.coax"
    ],
    "qualified_targets": [
     "cpu"
