@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793497005,
+  "content": "Approve with fix 50df43b348. No real diagnostic uses E0000: its only occurrence is the negated SM_diagnostic argument in native-semantics.coax, a \"not this code\" stand-in that is never reported. The blanket discard in tools.py could still hide a future E0000, so the check now skips only that argument; an E0000 in src/ or lib/ fails it (probed both). E0706 is real (shader.cpp, two error_at sites) and its explanation matches. verify.cpp keeps the check name and counterexample in --json text and moves them to notes only under --diagnostics json. diagnostics_json.py 7/7; its .txt records match the pre-flag compiler byte for byte apart from the stale-compiler note. Full tests/run.sh rc 0; tools.py 15/15.",
+  "tags": [
+    [
+      "commit",
+      "6f78368b8970d1cf43c78dbb0cf3fe00575cb98f"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "0a1ea2556a80d5c935b6ea9e8bd191734d37a0e0e2219334ddeca4974020c932",
+  "sig": "96d58e64274fcdf646e3e6fb7cb1b1edb31d1baf9c1606eacc354c9d3b390110b0f050ec0d0726b965aa89570114eae09ebaad6b0c1114078a0dcc906396baae"
+}
