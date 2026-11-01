@@ -5,7 +5,9 @@
 // message_server.coax (NIP-01 frames) -> relay_server.coax (admission,
 // REQ rules, subscriptions, NIP-11, NIP-40, replacement) -> the store.
 //
-// STORE: the verified store (coax/lib/nostr/store_saved.coax, #8eb5). With
+// STORE: the verified store (coax/lib/nostr/store_saved.coax, #8eb5), with
+// chapter 36's indexes beside it (relay_store.coax): REQ reads one index per
+// filter instead of scanning every record. With
 // --store FILE every stored original is appended to FILE and synced before
 // it is stored, and a restart replays FILE, verifying every event again.
 // Without --store the store is in memory only. A crash's partial last write
@@ -26,7 +28,7 @@
 // (relay_route.coax states the policy). Names here are ry_ because
 // nip42.coax loads the client relay.coax, whose names are rl_.
 #import "Basic";
-#load "../lib/nostr/store_saved.coax";
+#load "../lib/nostr/relay_store.coax";
 #load "../lib/nostr/nip42-event.coax";
 #load "../lib/nostr/relay_route.coax";
 // message_server.coax's frames agree with message.coax's (#6015).
@@ -130,7 +132,7 @@ ry_fanout :: (conns: [] RyConn, w: [] RyWork, e: NostrEvent) {
     }
   }
 }
-ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore, text: string, m: MsMsg) {
+ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg) {
   c := conns[at..<at + 1];
   event := text[m.event_from..<m.event_to];
   r := rs_admit_read(event, cxsrv_now_s(), rr_writes_need_auth(true), rr_authed(c[0].auth[..]), w[0].scratch[..]);
@@ -138,13 +140,13 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore, text: 
   if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(event, w[0].scratch[..], false)); }
   reason := r.reason;
   if reason == RS_ACCEPT {
-    if ry_host_store() == 1 { reason = rsd_admit_saved(store, r, event); } else { reason = rsd_admit(store, r, event); }
+    reason = rd_admit(store, r, event);
   }
   id := r.e.id;
   ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), rs_prefix(reason), rs_text(reason), w[0].body[..]));
   if rr_fanout(reason) { ry_fanout(conns, w, r.e); }
 }
-ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RsdStore, text: string, m: MsMsg) {
+ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg) {
   mm := m;
   sub := cast(string) mm.sub[0..<mm.sub_n];
   v := rr_req_filters(m.filters);
@@ -158,13 +160,13 @@ ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RsdStore, text: string, m: MsMs
     sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
     f: [1] NostrFilter; idx: [RS_MAX_LIMIT] int;
     if rs_filter(text, m, k, f[..], sp[..]) != FR_OK { continue; }
-    n := rsd_query(store, f[0], now, idx[..]);
+    n := rd_query(store, f[0], now, idx[..]);
     for q: 0..<n {
       t := rr_take(w[0].sent[..], sent, idx[q]);
       if t == -1 { continue; }
       if t < 0 { break; }
       sent = t;
-      if !ry_text(c, w, ms_write_event(sub, rsd_text(store, idx[q]), w[0].body[..])) { return; }
+      if !ry_text(c, w, ms_write_event(sub, rsd_text(rd_store(store), idx[q]), w[0].body[..])) { return; }
     }
   }
   ok := ry_text(c, w, ms_write_eose(sub, w[0].body[..]));
@@ -182,7 +184,7 @@ ry_auth :: (c: [] RyConn, w: [] RyWork, obj: string) {
   k := rr_auth(c[0].auth[..], a.error, key[..]);
   ok := ry_text(c, w, ms_write_ok(id[..], k == RR_A_OK, rr_auth_prefix(k), rr_auth_text(k), w[0].body[..]));
 }
-ry_message :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore, text: string) {
+ry_message :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: string) {
   c := conns[at..<at + 1];
   m := ms_read(text);
   sub := m.sub;
@@ -231,7 +233,7 @@ ry_http :: (c: [] RyConn, w: [] RyWork) {
   if n > 0 { ok := ry_send_raw(c, cast(string) w[0].out[0..<n]); }
   ry_shut(c);
 }
-ry_frames :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore) {
+ry_frames :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore) {
   c := conns[at..<at + 1];
   while c[0].h >= 0 && c[0].used > 0 {
     f := wss_frame_read(cast(string) c[0].inb[0..<c[0].used], RS_MAX_MESSAGE);
@@ -250,7 +252,7 @@ ry_frames :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore) {
     else if d.action == RR_F_ERROR { ry_close(c, w, ws_error_code(ev)); return; }
   }
 }
-ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RsdStore) {
+ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RdStore) {
   while true {
     r := cxsrv_poll(1000);
     while true {
@@ -323,11 +325,11 @@ main :: () {
   if u < 0 || nip42_init(w[0].n42[..], cast(string) url[0..<u]) != N42_OK {
     print("relay: NIP-42 needs a ws:// (wss:// with TLS) relay URL without brackets: pass --url\n"); return;
   }
-  arena: [RSD_ARENA] u8; recs: [RSD_MAX] RsdRec;
-  store: [1] RsdStore; store[0].arena = arena[..]; store[0].recs = recs[..];
+  space: [1] RdSpace;
+  store: [1] RdStore; rd_init_space(store[..], space[..], ry_host_store() == 1);
   if ry_host_store() == 1 {
     text: [NS_FRAME_MAX_ORIGINAL] u8;
-    rp := rsd_replay(store[..], cxsrv_now_s(), text[..], w[0].scratch[..]);
+    rp := rsd_replay(rd_store(store[..]), cxsrv_now_s(), text[..], w[0].scratch[..]);
     if rp.refused { print("relay: refusing to start: the --store file is damaged at byte % (reason %); it was not changed\n", rp.at, rp.reason); return; }
     if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); return; }
     print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");

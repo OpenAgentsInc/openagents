@@ -359,3 +359,33 @@ rr_auth :: (a: [] RrAuth, n42: int, key: [] u8) -> int {
 // Whether an EVENT on this connection must wait for AUTH: rs_admit_read's
 // auth_required. authed is rr_authed's answer.
 rr_writes_need_auth :: (configured: bool) -> bool { return configured && RR_AUTH_WRITES; }
+
+// ---- the store's index (chapter 36) -----------------------------------------
+//
+// The relay answers REQ through store_index.coax's indexes. An admission
+// either leaves the record numbering alone (nothing appended: a duplicate,
+// a refusal, a retirement), appends one record, or compacts the store
+// first, which renumbers records. Compaction happens only when the record
+// table is full or the arena can't take the event's bytes (store_core.coax's
+// ns_store_room), so the relay can tell beforehand whether it might.
+RR_IX_KEEP :: 0; RR_IX_ADD :: 1; RR_IX_STALE :: 2;
+
+#test "the index: kept, one record added, or rebuilt after anything that may have compacted" {
+  #assert !rr_may_compact(0, 8, 10, 100) && !rr_may_compact(7, 8, 100, 100);
+  #assert rr_may_compact(8, 8, 10, 100) && rr_may_compact(9, 8, 10, 100) && rr_may_compact(7, 8, 101, 100);
+  #assert rr_index_step(false, 5, 5) == RR_IX_KEEP && rr_index_step(false, 5, 6) == RR_IX_ADD;
+  #assert rr_index_step(false, 5, 4) == RR_IX_STALE && rr_index_step(false, 5, 7) == RR_IX_STALE;
+  #assert rr_index_step(true, 5, 5) == RR_IX_STALE && rr_index_step(true, 5, 6) == RR_IX_STALE;
+}
+// Whether storing an event of need bytes may compact a store holding n of
+// cap records with free arena bytes.
+rr_may_compact :: (n: int, cap: int, need: int, free: int) -> bool { return n >= cap || need > free; }
+// What the index needs after one admission: before and after are the
+// store's record counts around it.
+rr_index_step :: (may_compact: bool, before: int, after: int) -> int {
+  if may_compact { return RR_IX_STALE; }
+  if after == before { return RR_IX_KEEP; }
+  if after == before + 1 { return RR_IX_ADD; }
+  return RR_IX_STALE;
+}
+

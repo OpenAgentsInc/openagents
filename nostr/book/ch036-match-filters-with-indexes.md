@@ -35,10 +35,14 @@ events match.
 `store_index.coax` is not `#authority`, for the same reason as `store.coax`:
 loading `store.coax` brings the relay's whole graph into every mutation run.
 
-What is not built: the relay still answers REQ with `rsd_query`'s scan. The
-index is built whole from the store with `nsi_build`, and `nsi_query`
-refuses it once the store has changed. There is no incremental update and
-no index on disk.
+The relay answers REQ through the index: `coax/relay/relay.coax` keeps it
+beside the store in `coax/lib/nostr/relay_store.coax`. After each admission
+`nsi_add` takes the one appended record in place; an admission that may have
+compacted the store (`relay_route.coax`'s `rr_may_compact`) marks it stale,
+and `nsi_build` rebuilds it before the next query.
+
+What is not built: an index on disk (a restart rebuilds it from the replayed
+store), and an incremental update after a compaction.
 
 ## Query order and limits
 

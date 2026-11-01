@@ -1,0 +1,126 @@
+// The Coax relay's store (coax/relay/relay.coax): the verified store
+// (store.coax, store_saved.coax for --store) with chapter 36's indexes kept
+// beside it. Every admission goes through rd_admit and every REQ through
+// rd_query.
+//
+// The index: after each admission relay_route.coax's rr_index_step says
+// whether it still holds (nothing appended), takes the one appended record
+// (nsi_add), or is stale (the admission may have compacted the store); a
+// stale index is rebuilt (nsi_build) before the next query. The tag table
+// has room for every tag of every record (RS_MAX_TAGS each), so a build
+// always fits; if one ever doesn't, the query falls back to rsd_query's scan,
+// which gives the same answer.
+//
+// Not #authority: like store.coax, loading relay_server.coax brings the
+// relay's whole graph under every mutation run. Its decisions are
+// relay_route.coax's (#authority) and the units it calls.
+#load "store_saved.coax";
+#load "store_index.coax";
+#load "relay_route.coax";
+
+RD_TAGS :: RSD_MAX * RS_MAX_TAGS;
+
+RdStore :: struct {
+  s: [1] RsdStore;
+  ix: [1] NsiIndex;
+  saved: bool;      // --store: every write goes to the file first
+  builds: int;      // whole builds, for the checks
+}
+// The relay's storage: the store's arena and records, and the index's
+// arrays (one entry per record, and RD_TAGS tag entries).
+RdSpace :: struct {
+  arena: [RSD_ARENA] u8; recs: [RSD_MAX] RsdRec;
+  by_id: [RSD_MAX] int; by_ak: [RSD_MAX] int; by_time: [RSD_MAX] int;
+  tag_key: [RD_TAGS] int; tag_rec: [RD_TAGS] int;
+}
+
+// The caller owns every array (an RdSpace for the relay); none may move
+// afterwards.
+rd_init :: (d: [] RdStore, arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, saved: bool) {
+  d[0].s[0] = RsdStore.{arena = arena, recs = recs};
+  d[0].ix[0] = NsiIndex.{by_id = by_id, by_ak = by_ak, by_time = by_time, tag_key = tag_key, tag_rec = tag_rec};
+  d[0].saved = saved; d[0].builds = 0;
+}
+rd_init_space :: (d: [] RdStore, sp: [] RdSpace, saved: bool) {
+  rd_init(d, sp[0].arena[..], sp[0].recs[..], sp[0].by_id[..], sp[0].by_ak[..], sp[0].by_time[..], sp[0].tag_key[..], sp[0].tag_rec[..], saved);
+}
+rd_store :: (d: [] RdStore) -> [] RsdStore { return d[0].s[..]; }
+
+// Whether storing text may compact the store.
+rd_may_compact :: (d: [] RdStore, text: string) -> bool {
+  s := d[0].s[0];
+  return rr_may_compact(s.n, s.recs.count, text.count, s.arena.count - s.used);
+}
+// Keeps the index after an admission that found before records.
+rd_index_after :: (d: [] RdStore, may: bool, before: int) {
+  step := rr_index_step(may, before, d[0].s[0].n);
+  if step == RR_IX_ADD { ok := nsi_add(d[0].s[..], d[0].ix[..], before); }
+  else if step == RR_IX_STALE { d[0].ix[0].ok = false; }
+}
+// Stores r, an RS_ACCEPT result of rs_admit_verified over text (saved to the
+// file first with --store): the store's reason.
+rd_admit :: (d: [] RdStore, r: RsAdmit, text: string) -> int {
+  may := rd_may_compact(d, text); before := d[0].s[0].n;
+  reason := ifx d[0].saved then rsd_admit_saved(d[0].s[..], r, text) else rsd_admit(d[0].s[..], r, text);
+  rd_index_after(d, may, before);
+  return reason;
+}
+// A current index, rebuilt when stale: whether there is one.
+rd_index :: (d: [] RdStore) -> bool {
+  x := d[0].ix[0]; s := d[0].s[0];
+  if x.ok && x.n == s.n && x.used == s.used { return true; }
+  d[0].builds += 1;
+  return nsi_build(d[0].s[..], d[0].ix[..]);
+}
+// Up to rs_limit(f) (and out.count) visible records matching f, newest
+// first, then lowest id: through the index, or rsd_query's scan without one.
+rd_query :: (d: [] RdStore, f: NostrFilter, now: int, out: [] int) -> int {
+  if rd_index(d) {
+    q := nsi_query(d[0].s[..], d[0].ix[..], f, now, out);
+    if q.n >= 0 { return q.n; }
+  }
+  return rsd_query(d[0].s[..], f, now, out);
+}
+
+// ---- checks -------------------------------------------------------------------
+
+RdT :: struct { arena: [8192] u8; recs: [4] RsdRec; by_id: [4] int; by_ak: [4] int; by_time: [4] int; tag_key: [32] int; tag_rec: [32] int; d: [1] RdStore; }
+rd_t_init :: (t: [] RdT) { rd_init(t[0].d[..], t[0].arena[..], t[0].recs[..], t[0].by_id[..], t[0].by_ak[..], t[0].by_time[..], t[0].tag_key[..], t[0].tag_rec[..], false); }
+
+#test "the index follows admissions, and a compaction makes it rebuild" {
+  t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
+  scratch: [4096] u8; f: NostrFilter; idx: [8] int;
+  #assert rd_query(d, f, 1000, idx[..]) == 0 && d[0].builds == 1 && d[0].ix[0].ok;
+  texts := [3] string.[RST_PLAIN, RST_EDGE, RST_ADDR];
+  for t3: texts { #assert rd_admit(d, rst_store_read(t3, scratch[..]), t3) == RS_ACCEPT; }
+  // three appends, taken in place
+  #assert d[0].ix[0].ok && d[0].ix[0].n == 3 && d[0].builds == 1;
+  #assert rd_query(d, f, 1000, idx[..]) == 3 && rsd_text(rd_store(d), idx[0]) == RST_EDGE && d[0].builds == 1;
+  // a duplicate keeps it
+  #assert rd_admit(d, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == RS_DUP && d[0].ix[0].ok && d[0].builds == 1;
+  // a newer version retires the old one in place: still current
+  kinds := [1] int.[30617]; f.has_kinds = true; f.kinds = kinds[..];
+  #assert rd_query(d, f, 1000, idx[..]) == 1 && rsd_text(rd_store(d), idx[0]) == RST_ADDR;
+  f = NostrFilter.{};
+  // the fourth record fills the table; the fifth compacts (dropping nothing
+  // here, so it is refused as full) and the index is rebuilt before the query
+  #assert rd_admit(d, rst_store_read(RST_ADDR_NOD, scratch[..]), RST_ADDR_NOD) == RS_ACCEPT && d[0].ix[0].ok && d[0].ix[0].n == 4;
+  #assert rd_admit(d, rst_store_read(RST_LIVE, scratch[..]), RST_LIVE) == RS_FULL && !d[0].ix[0].ok;
+  #assert rd_query(d, f, 1000, idx[..]) == 4 && d[0].builds == 2 && d[0].ix[0].ok;
+  // without room for the index the scan answers the same
+  d[0].ix[0].by_time = t[0].by_time[0..<1]; d[0].ix[0].ok = false;
+  #assert rd_query(d, f, 1000, idx[..]) == 4 && rsd_text(rd_store(d), idx[0]) == RST_EDGE && !d[0].ix[0].ok && d[0].builds == 3;
+}
+#test "a compaction that drops records renumbers them, and the rebuilt index answers" {
+  t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
+  scratch: [4096] u8; f: NostrFilter; idx: [8] int;
+  texts := [4] string.[RST_PLAIN, RST_EDGE, RST_LIVE, RST_ADDR];
+  for t4: texts { #assert rd_admit(d, rst_store_read(t4, scratch[..]), t4) == RS_ACCEPT; }
+  #assert rd_query(d, f, 1000, idx[..]) == 4 && d[0].builds == 1;
+  // RST_LIVE expires at 1001: a query at 1001 lets compaction drop it
+  #assert rd_query(d, f, 1001, idx[..]) == 3;
+  #assert rd_admit(d, rst_store_read(RST_ADDR_NOD, scratch[..]), RST_ADDR_NOD) == RS_ACCEPT && !d[0].ix[0].ok && d[0].s[0].n == 4;
+  #assert rd_query(d, f, 1001, idx[..]) == 4 && d[0].builds == 2 && rsd_text(rd_store(d), idx[3]) == RST_ADDR_NOD;
+  ids := [1] string.["ee726a272c80bc6a20e153b38df5b5e3defa8c78faaeda2fd513fcbc59638b4e"]; f.has_ids = true; f.ids = ids[..];
+  #assert rd_query(d, f, 1001, idx[..]) == 1 && rsd_text(rd_store(d), idx[0]) == RST_ADDR_NOD;
+}

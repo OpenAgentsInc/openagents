@@ -6,10 +6,11 @@
 // narrows which records are read, so it never changes which events match:
 // the generated check below compares 4,000 answers with store.coax's rsd_query scan.
 //
-// What it is not: the relay still answers REQ with rsd_query's scan. The
-// index is built whole from the store (nsi_build) and is refused once the
-// store changes (any admission or compaction); there is no incremental
-// update. Tag keys are a 31-bit hash of the name and decoded value, so a
+// The relay (coax/relay/relay.coax) answers REQ through it. The index is
+// built whole from the store (nsi_build); nsi_add takes one appended record
+// in place (what an admission that didn't compact adds), and the index is
+// refused once the store changes in any other way (a compaction renumbers
+// records, so the relay rebuilds before its next query). Tag keys are a 31-bit hash of the name and decoded value, so a
 // collision only adds candidates, which nf_match then drops.
 //
 // Like store.coax it is not #authority: loading store.coax brings the
@@ -450,6 +451,81 @@ nsi_build :: (s: [] RsdStore, ix: [] NsiIndex) -> bool {
     if tags < 0 { return false; }
   }
   ix[0].tags = tags; ix[0].n = n; ix[0].used = s[0].used; ix[0].ok = true;
+  return true;
+}
+
+#test "nsi_add after each admission gives what nsi_build gives, on 300 generated stores" #steps 200000000 {
+  added := 0;
+  for seed: 0..<300 {
+    t: [1] NsiT; nsi_t_init(t[..]);
+    #assert nsi_build(t[0].s[..], t[0].ix[..]) && t[0].ix[0].n == 0;
+    r := [1] int.[seed * 104729 + 3];
+    kk := [6] int.[1, 1, 7, 0, 30023, 20001];
+    count := 4 + nsi_t_next(r[..]) % 11;
+    buf: [128] u8;
+    for i: 0..<count {
+      before := t[0].s[0].n;
+      kind := kk[nsi_t_next(r[..]) % 6];
+      x := nsi_t_add(t[..], cast(u8) (nsi_t_next(r[..]) % 256), cast(u8) i, cast(u8) (nsi_t_next(r[..]) % 3), kind, 100 + nsi_t_next(r[..]) % 5, -1, nsi_t_tags(r[..], buf[..]));
+      if t[0].s[0].n == before + 1 { #assert nsi_add(t[0].s[..], t[0].ix[..], before); added += 1; }
+      #assert t[0].ix[0].ok && t[0].ix[0].n == t[0].s[0].n && t[0].ix[0].used == t[0].s[0].used;
+    }
+    a: [1] NsiT; a[0].by_id = t[0].by_id; a[0].by_ak = t[0].by_ak; a[0].by_time = t[0].by_time; a[0].tag_key = t[0].tag_key; a[0].tag_rec = t[0].tag_rec;
+    tags := t[0].ix[0].tags;
+    #assert nsi_build(t[0].s[..], t[0].ix[..]) && t[0].ix[0].tags == tags;
+    for i: 0..<t[0].s[0].n { #assert a[0].by_id[i] == t[0].by_id[i] && a[0].by_ak[i] == t[0].by_ak[i] && a[0].by_time[i] == t[0].by_time[i]; }
+    for i: 0..<tags { #assert a[0].tag_key[i] == t[0].tag_key[i] && a[0].tag_rec[i] == t[0].tag_rec[i]; }
+  }
+  #assert added > 2000;
+}
+#test "nsi_add refuses what is not the next appended record, and an index without room" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  #assert !nsi_add(t[0].s[..], t[0].ix[..], 0);
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  #assert nsi_t_add(t[..], 1, 0, 1, 1, 100, -1, "[[\"t\",\"a\"]]") == NSS_ACCEPT;
+  #assert !nsi_add(t[0].s[..], t[0].ix[..], 1) && !t[0].ix[0].ok;
+  #assert nsi_build(t[0].s[..], t[0].ix[..]) && t[0].ix[0].n == 1;
+  #assert nsi_t_add(t[..], 2, 0, 1, 1, 101, -1, "[]") == NSS_ACCEPT && nsi_t_add(t[..], 3, 0, 1, 1, 102, -1, "[]") == NSS_ACCEPT;
+  #assert !nsi_add(t[0].s[..], t[0].ix[..], 1) && !t[0].ix[0].ok;
+  #assert nsi_build(t[0].s[..], t[0].ix[..]) && t[0].ix[0].n == 3;
+  t[0].ix[0].by_time = t[0].by_time[0..<3];
+  #assert nsi_t_add(t[..], 4, 0, 1, 1, 103, -1, "[]") == NSS_ACCEPT && !nsi_add(t[0].s[..], t[0].ix[..], 3) && !t[0].ix[0].ok;
+  t[0].ix[0].by_time = t[0].by_time[..]; #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  t[0].ix[0].tag_key = t[0].tag_key[0..<1];
+  #assert nsi_t_add(t[..], 5, 0, 1, 1, 104, -1, "[[\"t\",\"b\"]]") == NSS_ACCEPT && !nsi_add(t[0].s[..], t[0].ix[..], 4) && !t[0].ix[0].ok;
+  t[0].ix[0].tag_key = t[0].tag_key[..]; #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  t[0].ix[0].by_id = t[0].by_id[0..<5];
+  #assert nsi_t_add(t[..], 6, 0, 1, 1, 105, -1, "[]") == NSS_ACCEPT && !nsi_add(t[0].s[..], t[0].ix[..], 5);
+  t[0].ix[0].by_id = t[0].by_id[..]; #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  t[0].ix[0].by_ak = t[0].by_ak[0..<6];
+  #assert nsi_t_add(t[..], 7, 0, 1, 1, 106, -1, "[]") == NSS_ACCEPT && !nsi_add(t[0].s[..], t[0].ix[..], 6);
+  t[0].ix[0].by_ak = t[0].by_ak[..]; #assert nsi_build(t[0].s[..], t[0].ix[..]) && nsi_t_add(t[..], 8, 0, 1, 1, 107, -1, "[]") == NSS_ACCEPT;
+  #assert nsi_add(t[0].s[..], t[0].ix[..], 7) && t[0].ix[0].n == 8 && t[0].by_time[0] == 7;
+}
+// Inserts record i into v[0..<n] (sorted in order, as nsi_sort leaves it)
+// after every record it doesn't sort before: where nsi_sort puts the
+// highest record number among ties.
+nsi_insert :: (s: [] RsdStore, order: int, v: [] int, n: int, i: int) {
+  lo := 0; hi := n;
+  while lo < hi { mid := (lo + hi) / 2; if nsi_less(s, order, i, v[mid]) { hi = mid; } else { lo = mid + 1; } }
+  k := n;
+  while k > lo { v[k] = v[k - 1]; k -= 1; }
+  v[lo] = i;
+}
+// Takes record i, the one record appended since the index was last right
+// (i is the index's n and the store holds i + 1 records), into every index
+// in place. False, and the index refused, otherwise or when an array is
+// too short; the caller rebuilds with nsi_build.
+nsi_add :: (s: [] RsdStore, ix: [] NsiIndex, i: int) -> bool {
+  x := ix[0];
+  ix[0].ok = false;
+  if !x.ok || x.n != i || s[0].n != i + 1 { return false; }
+  if x.by_id.count < i + 1 || x.by_ak.count < i + 1 || x.by_time.count < i + 1 { return false; }
+  e := rsd_event(s, i);
+  tags := nsi_tag_add(x, e.original[e.tags_from..<e.tags_to], i, x.tags);
+  if tags < 0 { return false; }
+  nsi_insert(s, 0, x.by_time, i, i); nsi_insert(s, 1, x.by_id, i, i); nsi_insert(s, 2, x.by_ak, i, i);
+  ix[0].tags = tags; ix[0].n = i + 1; ix[0].used = s[0].used; ix[0].ok = true;
   return true;
 }
 

@@ -565,24 +565,24 @@ Nothing in this chapter has run any of them.
 
 ## What the relay doesn't use yet
 
-`coax/relay/relay.coax` loads `store_saved.coax`, `nip42-event.coax`,
-`relay_route.coax` and `message_agree.coax`. These modules from Part IX
-and Part X are built and checked but not wired into it. This task doesn't
-wire any of them.
+`coax/relay/relay.coax` loads `relay_store.coax` (the store, `store_saved.coax`,
+with chapter 36's index beside it), `nip42-event.coax`, `relay_route.coax`
+and `message_agree.coax`. The table says which modules from Part IX and
+Part X are wired into it, and what the rest still need.
 
-| Module | Chapter | What wiring it needs |
-| --- | --- | --- |
-| `store_index.coax` | 36 | Keep an `NsiIndex` beside the store, update it on every admission and replacement (`nsi_build` rebuilds it), and answer `ry_req` with `nsi_query` instead of `rsd_query`'s full scan |
-| `store_delete.coax` | 39 | Route kinds 5 and 62 through `nsd_admit` instead of `rsd_admit`, keep the tombstones in the `--store` file, and refuse events a tombstone covers |
-| `relay_rate.coax` | 44 | Per-connection and per-key windows (`rt_event`, `rt_req`) in `RyConn`, checked before admission and REQ, with their refusal text and NIP-11 limits (`rt_nip11`) |
-| `nip45.coax` | 40 | A `COUNT` branch in `ry_message` (`rr_message` already routes it) that answers with `n45_answer` over the store, and `45` in the NIP-11 document |
-| `nip50.coax` via `filter_read_search` | 41 | Read filters with `filter_read_search` in `rs_filter`, build and update the word index (`n50_build`), answer search filters with `n50_query`, and advertise `50` |
-| `nip70.coax` | 42 | Call `nip70_admit` with the connection's authenticated keys (`RrAuth`) before storing, so a `["-"]` event is accepted only from its author |
-| `nip77.coax` | 43 | Per-connection `NEG-OPEN`, `NEG-MSG` and `NEG-CLOSE` sessions over the store's items (`re_items` builds them), with `NEG-ERR` on limits and time outs; also step 9's remote check |
-| `nip13.coax` | 56 | An optional minimum difficulty in admission (`nip13_admit`) and its NIP-11 `min_pow_difficulty` |
-| `nip86.coax` | 67 | An HTTP POST branch in `ry_http` for `application/nostr+json+rpc` that calls `n86_serve` after NIP-98 auth, and `n86_admit` in admission for banned keys and allowed kinds |
-| `nip43.coax` | 67 | A relay key (`n43_self` in NIP-11), membership state from kinds 13534, 8000 and 8001, and the join and leave requests routed to `n43_request` |
-| `nip29.coax` | 59 | Group state per `h` tag, `g29_admit` for events with an `h` tag, and the relay-signed metadata, admins and members events (`g29_write_*`) |
+| Module | Chapter | Status | What wiring it needs, or how it is wired |
+| --- | --- | --- | --- |
+| `store_index.coax` | 36 | Wired | `relay_store.coax` keeps an `NsiIndex` beside the store: `nsi_add` after each admission that appends, a rebuild (`nsi_build`) before the next query after one that may have compacted (`rr_may_compact`, `rr_index_step`), and `ry_req` answers with `nsi_query` (`rd_query`) |
+| `store_delete.coax` | 39 | Not wired | Route kinds 5 and 62 through `nsd_admit` instead of `rsd_admit`, keep the tombstones in the `--store` file, and refuse events a tombstone covers |
+| `relay_rate.coax` | 44 | Not wired | Per-connection and per-key windows (`rt_event`, `rt_req`) in `RyConn`, checked before admission and REQ, with their refusal text and NIP-11 limits (`rt_nip11`) |
+| `nip45.coax` | 40 | Not wired | A `COUNT` branch in `ry_message` (`rr_message` already routes it) that answers with `n45_answer` over the store, and `45` in the NIP-11 document |
+| `nip50.coax` via `filter_read_search` | 41 | Not wired | Read filters with `filter_read_search` in `rs_filter`, build and update the word index (`n50_build`), answer search filters with `n50_query`, and advertise `50` |
+| `nip70.coax` | 42 | Not wired | Call `nip70_admit` with the connection's authenticated keys (`RrAuth`) before storing, so a `["-"]` event is accepted only from its author |
+| `nip77.coax` | 43 | Not wired | Per-connection `NEG-OPEN`, `NEG-MSG` and `NEG-CLOSE` sessions over the store's items (`re_items` builds them), with `NEG-ERR` on limits and time outs; also step 9's remote check |
+| `nip13.coax` | 56 | Not wired | An optional minimum difficulty in admission (`nip13_admit`) and its NIP-11 `min_pow_difficulty` |
+| `nip86.coax` | 67 | Not wired | An HTTP POST branch in `ry_http` for `application/nostr+json+rpc` that calls `n86_serve` after NIP-98 auth, and `n86_admit` in admission for banned keys and allowed kinds |
+| `nip43.coax` | 67 | Not wired | A relay key (`n43_self` in NIP-11), membership state from kinds 13534, 8000 and 8001, and the join and leave requests routed to `n43_request` |
+| `nip29.coax` | 59 | Not wired | Group state per `h` tag, `g29_admit` for events with an `h` tag, and the relay-signed metadata, admins and members events (`g29_write_*`) |
 
 ## How the code is checked
 
