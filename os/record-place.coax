@@ -1,0 +1,83 @@
+// CoderOS screen recording: the placement step (docs/os/2026-10-30-coderos-and-coax-audit.md, step
+// 2 row 4). Reads the files screen-record writes and prints what its awk printed, so the Coax
+// recorder and the shell can be compared take for take. The rules are os/record-policy.coax.
+//   coax/web/tool.sh os/record-place.coax ratio CLOCK            the stretch (audio_clock_ratio)
+//   coax/web/tool.sh os/record-place.coax outages PLACE VDUR [PROVEN]
+//   coax/web/tool.sh os/record-place.coax shortfall PLACE VDUR [PROVEN]
+//   coax/web/tool.sh os/record-place.coax end PLACE
+//   coax/web/tool.sh os/record-place.coax note PLACE
+//   coax/web/tool.sh os/record-place.coax delay OFFSET           adelay's samples
+// CLOCK: `wall-microseconds<TAB>file-bytes` lines. PLACE: `offset<TAB>duration<TAB>path[<TAB>tempo]`
+// lines (audio_segments' output). PROVEN: where the sound stopped for good; empty or left out
+// when nothing saw it stop.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "record-policy.coax";
+
+RP_MAX :: 4096;   // pieces or clock looks read
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: record-place ratio|outages|shortfall|end|note|delay ARGS"); return 2; }
+  verb := args_at(a[..], 0);
+  b: [64] u8;
+  if verb == "delay" { print("%", rec_delay(rec_num(args_at(a[..], 1)))); return 0; }
+  text: [1048576] u8;
+  n := fs_read(args_at(a[..], 1), text[..]);
+  t := ifx n > 0 then cast(string) text[0..<n] else "";
+  if verb == "ratio" {
+    us: [RP_MAX] f64; by: [RP_MAX] f64; k := 0;
+    f: [4] string;
+    i := 0;
+    while i < t.count && k < RP_MAX {
+      j := i; while j < t.count && t[j] != '\n' { j += 1; }
+      if rp_fields(t[i..<j], f[..]) >= 2 { us[k] = rec_num(f[0]); by[k] = rec_num(f[1]); k += 1; }
+      i = j + 1;
+    }
+    r := rec_clock_ratio(us[0..<k], by[0..<k]);
+    if r != 0.0 { print("%", rec_fixed(r, 6, b[..])); }
+    return 0;
+  }
+  pieces: [RP_MAX] Piece; np := rp_place(t, pieces[..]);
+  ps := pieces[0..<np];
+  vdur := ifx args_count(a[..]) > 2 then rec_num(args_at(a[..], 2)) else 0.0;
+  proven := args_count(a[..]) > 3 && args_at(a[..], 3).count > 0;
+  out: [65536] u8;
+  if verb == "outages" { print("%\n", rec_outages(ps, vdur, proven, out[..])); return 0; }
+  if verb == "shortfall" { s := rec_shortfall(ps, vdur, proven); if s >= 0.0 { print("%", rec_fixed(s, 3, b[..])); } return 0; }
+  if verb == "end" { print("%", rec_fixed(rec_end(ps), 6, b[..])); return 0; }
+  if verb == "note" { print("%", rec_clock_note(ps, out[..])); return 0; }
+  tool_errln("record-place: no such step"); return 2;
+}
+
+// The tab-separated fields of a line, into out: how many.
+rp_fields :: (line: string, out: [] string) -> int {
+  n := 0; i := 0;
+  if line.count == 0 { return 0; }
+  while i <= line.count && n < out.count {
+    j := i; while j < line.count && line[j] != '\t' { j += 1; }
+    out[n] = line[i..<j]; n += 1;
+    i = j + 1;
+  }
+  return n;
+}
+// The placement's pieces (lines with three fields or more), in order: how many.
+rp_place :: (t: string, out: [] Piece) -> int {
+  n := 0; i := 0; f: [4] string;
+  while i < t.count && n < out.count {
+    j := i; while j < t.count && t[j] != '\n' { j += 1; }
+    k := rp_fields(t[i..<j], f[..]);
+    if k >= 3 { out[n] = Piece.{off = rec_num(f[0]), dur = rec_num(f[1]), tempo = ifx k >= 4 && f[3].count > 0 then rec_num(f[3]) else 0.0}; n += 1; }
+    i = j + 1;
+  }
+  return n;
+}
+#test "reading the placement" {
+  p: [4] Piece;
+  #assert rp_place("0.000\t82.310000\t/a.wav\t\n95.005\t145.000000\t/b.wav\t0.996000\nbad\n", p[..]) == 2;
+  #assert p[0].off == 0.0 && p[0].tempo == 0.0 && p[1].off == 95.005 && p[1].tempo == 0.996;
+  f: [4] string;
+  #assert rp_fields("a\tb\t\t", f[..]) == 4 && f[2] == "" && rp_fields("", f[..]) == 0;
+}

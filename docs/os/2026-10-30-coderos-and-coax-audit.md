@@ -278,9 +278,21 @@ compiler and the examples have not been run on Linux yet.
   requests for all 21 other verbs, sent to a stand-in socket, match it byte
   for byte. The Hyprland backend is not ported; with no desk socket it says
   so. Installing it in place of the Rust binary is part of step 1.
-- **Step 2 rows 2 and 4 to 6: not started.** Row 2 waits on a Coax `coder`
-  to update. Rows 4 to 6 wait on C header import and pointer FFI in the
-  compiler.
+- **Step 2 row 4, recording: started.** `os/record-policy.coax`
+  (`#authority`, 0 mutants survive) is how `screen-record` places a take's
+  sound against its picture: the microphone-clock fit, the holes, the
+  unplaced shortfall, the clock note and each piece's delay.
+  `os/record-place.coax` reads the same ledger and clock files and prints
+  what the shell's awk printed. On 3,000 random ledgers and clock logs it
+  matches the shell's own functions byte for byte. The capture supervisor
+  and the mux are next. Checking them means recording on the 4080, which
+  needs an agreed time with the owner.
+- **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
+- **Rows 4 to 6 and the compiler.** `#foreign` already passes views of
+  integers and floats (a pointer and a length), so a C face can fill a Coax
+  buffer, and opaque handles are integers. Capture (row 4) and V4L2
+  (row 5) need no header import. The compositor (row 6) still needs
+  callbacks and struct access, and that is the compiler work in §17.2.
 
 ## Decisions for the owner
 

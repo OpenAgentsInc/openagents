@@ -1,0 +1,272 @@
+// CoderOS screen recording, the placement policy (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// step 2 row 4): how a take's captured sound is put against its picture, in place of the awk inside
+// screen-record (openagents 2ca255550e, os/bin/screen-record: audio_clock_ratio, audio_outages,
+// audio_shortfall, audio_end, audio_clock_note and the adelay of mux_recording). Each rule here
+// came from a take that lost sound; the shell's comments tell those stories, and they hold here:
+//   - the picture is the length of the take; sound is padded and trimmed to it, never the reverse;
+//   - a piece is placed at the offset its capture opened at, so sound after a hole stays put;
+//   - a hole between pieces is located by the ledger; a hole at the end is named only when
+//     something saw the sound stop (proven), and otherwise the shortfall is reported unplaced;
+//   - a microphone clock measured off by 0.005 % to 1 % over 20 s or more is stretched to the wall.
+// It decides what the delivered file says about its own sound, so it is #authority.
+#authority;
+
+REC_AUDIO_RATE :: 48000;
+REC_BYTES_PER_SECOND :: 96000;    // 48 kHz, 16-bit mono
+REC_OUTAGE_MIN :: 0.25;           // a gap under this is measurement noise, not a hole
+REC_DRIFT_LIMIT :: 0.5;           // audio and video may end this far apart before the take is suspect
+REC_CLOCK_MIN_SPAN :: 20.0;       // seconds of clock log before a rate is trusted
+REC_CLOCK_MIN_SAMPLES :: 10;
+REC_CLOCK_MAX_ERROR :: 0.01;      // a rate off by more is a broken log, not a slow clock
+REC_CLOCK_MIN_ERROR :: 0.00005;   // a rate off by less is not worth stretching
+
+// One piece of a take's sound: where it opens on the take's clock, how long it plays (after any
+// stretch), and the stretch (0 for none).
+Piece :: struct { off: f64; dur: f64; tempo: f64; }
+
+// v to `places` decimals, as printf's %.Nf writes it (ties to even), into out.
+rec_fixed :: (v: f64, places: int, out: [] u8) -> string {
+  n := 0;
+  neg := v < 0.0;   // mutant: equivalent (at v == 0 the digits are 0 and no sign is written)
+  x := ifx neg then -v else v;
+  scale := 1.0;
+  for i: 0..<places { scale = scale * 10.0; }
+  // x * scale rounded, and the exact error of that product (Veltkamp's two-product), so a value
+  // that rounds to a tie only after multiplying is settled the way the exact value says.
+  s := x * scale;
+  e := rec_product_error(x, scale, s);
+  f := floor(s);
+  d := s - f;
+  q := cast(int) f;
+  if d > 0.5 || (d == 0.5 && (e > 0.0 || (e == 0.0 && (q & 1) == 1))) { q += 1; }
+  if neg && q != 0 { out[n] = '-'; n += 1; }
+  p := 1; for i: 0..<places { p = p * 10; }
+  ip := q / p;
+  digits: [24] u8; k := 0;
+  if ip == 0 { digits[0] = '0'; k = 1; }
+  while ip > 0 { digits[k] = cast,trunc(u8) ('0' + ip % 10); ip = ip / 10; k += 1; }
+  while k > 0 { k -= 1; out[n] = digits[k]; n += 1; }
+  if places > 0 {
+    out[n] = '.'; n += 1;
+    d2 := p / 10;
+    while d2 > 0 { out[n] = cast,trunc(u8) ('0' + (q / d2) % 10); n += 1; d2 = d2 / 10; }
+  }
+  return cast(string) out[0..<n];
+}
+#test "fixed decimals as printf writes them" {
+  b: [48] u8;
+  #assert rec_fixed(121.44, 1, b[..]) == "121.4" && rec_fixed(147.36, 1, b[..]) == "147.4" && rec_fixed(0.0, 1, b[..]) == "0.0";
+  #assert rec_fixed(12.695, 3, b[..]) == "12.695" && rec_fixed(1.0, 6, b[..]) == "1.000000" && rec_fixed(0.995, 0, b[..]) == "1";
+  #assert rec_fixed(0.125, 2, b[..]) == "0.12" && rec_fixed(0.375, 2, b[..]) == "0.38" && rec_fixed(2.5, 0, b[..]) == "2";
+  #assert rec_fixed(-0.25, 3, b[..]) == "-0.250" && rec_fixed(-0.0001, 3, b[..]) == "0.000" && rec_fixed(0.0499, 1, b[..]) == "0.0";
+}
+
+// The exact error of a * b against its rounded product p: a * b == p + error, by Dekker's
+// splitting of each factor into halves whose products are exact.
+rec_product_error :: (a: f64, b: f64, p: f64) -> f64 {
+  ca := 134217729.0 * a; ah := ca - (ca - a); al := a - ah;
+  cb := 134217729.0 * b; bh := cb - (cb - b); bl := b - bh;
+  return ((ah * bh - p) + ah * bl + al * bh) + al * bl;
+}
+#test "the product's exact error" {
+  #assert rec_product_error(3.0, 1000.0, 3000.0) == 0.0;
+  // a * b - fl(a * b), exactly (from rational arithmetic)
+  #assert rec_product_error(0.1, 0.7, 0.1 * 0.7) == 6.661338147750939e-18;
+  #assert rec_product_error(0.3, 0.9, 0.3 * 0.9) == -2.1094237467877975e-17;
+  #assert rec_product_error(0.7, 0.1, 0.7 * 0.1) == 6.661338147750939e-18;
+}
+#test "ties settled by the exact value" {
+  b: [48] u8;
+  // 0.9875 is just over in binary (0.98750000000000004...), so printf writes 0.988; 0.5165 from
+  // 1.005165 is 0.51650000000000862 and writes 0.517
+  #assert rec_fixed(0.9875, 3, b[..]) == "0.988" && rec_fixed((1.005165 - 1.0) * 100.0, 3, b[..]) == "0.517";
+  // 0.0625 is exact, so it is a true tie and goes to even
+  #assert rec_fixed(0.0625, 3, b[..]) == "0.062" && rec_fixed(0.1875, 3, b[..]) == "0.188";
+}
+
+// A decimal from text (an awk number: optional sign, digits, a point, digits); 0 when it is not.
+rec_num :: (t: string) -> f64 {
+  i := 0; neg := false;
+  while i < t.count && t[i] == ' ' { i += 1; }
+  if i < t.count && (t[i] == '-' || t[i] == '+') { neg = t[i] == '-'; i += 1; }
+  // the digits as one integer, divided once by a power of ten: correctly rounded, as strtod is,
+  // for the 15 significant digits a ledger carries
+  // (leading zeros are not counted; integer digits past the 18th scale it; fraction digits past it
+  // are dropped)
+  m := 0; k := 0; digits := 0; up := 0;
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { if digits < 18 { m = m * 10 + cast(int) (t[i] - '0'); if m > 0 { digits += 1; } } else { up += 1; } i += 1; }
+  if i < t.count && t[i] == '.' {
+    i += 1;
+    while i < t.count && t[i] >= '0' && t[i] <= '9' { if digits < 18 { m = m * 10 + cast(int) (t[i] - '0'); if m > 0 { digits += 1; } k += 1; } i += 1; }
+  }
+  p := 1.0; for j: 0..<k { p = p * 10.0; }
+  v := cast(f64) m / p;
+  for j: 0..<up { v = v * 10.0; }
+  return ifx neg then -v else v;
+}
+#test "numbers" {
+  #assert rec_num("121.400") == 121.4 && rec_num("-3") == -3.0 && rec_num("") == 0.0 && rec_num("x") == 0.0 && rec_num("0.5") == 0.5;
+  #assert rec_num("  2.5") == 2.5 && rec_num("+2") == 2.0 && rec_num("99.99") == 99.99 && rec_num("1.005165") == 1.005165;
+  #assert rec_num("123456789012345678") == 123456789012345678.0 && rec_num("1234567890123456789") == 1234567890123456780.0;
+  #assert rec_num("12345678901234567890") == 12345678901234567800.0;
+  #assert rec_num(" 2.5") == 2.5 && rec_num("2:") == 2.0 && rec_num("0.5:") == 0.5;
+  // where an 18-digit limit and a 19-digit one round to different doubles
+  #assert rec_num("8831152705390563963") == 883115270539056396.0 * 10.0;
+  #assert rec_num("0.1049837986427983580") == 104983798642798358.0 / 1000000000000000000.0;
+  #assert rec_num("1150367245457070922") == 115036724545707092.0 * 10.0;
+  #assert rec_num("0.01958483040119803649") == 195848304011980364.0 / 10000000000000000000.0;
+  #assert rec_num("0.12345678901234567890") == 123456789012345678.0 / 1000000000000000000.0;
+}
+
+// The rate a capture really delivered against its nominal one, from its clock log (wall
+// microseconds and file bytes at each look): a least-squares slope over the nominal bytes per
+// second, or 0 when it should not be corrected (too few looks, too short a span, a flat line, or a
+// rate off by less than the floor or more than the ceiling).
+rec_clock_ratio :: (us: [] f64, bytes: [] f64) -> f64 {
+  n := us.count;
+  if n < REC_CLOCK_MIN_SAMPLES { return 0.0; }
+  st := 0.0; sb := 0.0; stt := 0.0; stb := 0.0; last := 0.0;
+  for i: 1..<n {   // the first look is the origin (t 0, b 0) and adds nothing
+    t := (us[i] - us[0]) / 1000000.0; b := bytes[i] - bytes[0];
+    st += t; sb += b; stt += t * t; stb += t * b; last = t;
+  }
+  if last < REC_CLOCK_MIN_SPAN { return 0.0; }
+  fn := cast(f64) n;
+  den := fn * stt - st * st;
+  if den <= 0.0 { return 0.0; }   // mutant: equivalent (den is 0 only when every look is at one time, which the span refused)
+  r := ((fn * stb - st * sb) / den) / cast(f64) REC_BYTES_PER_SECOND;
+  e := ifx r < 1.0 then 1.0 - r else r - 1.0;   // mutant: equivalent (r == 1 gives 0 either way)
+  // Near 1, r - 1 is exact and a multiple of 2^-53, which neither 0.01 nor 0.00005 is, so e never
+  // equals a bound and > against >= cannot differ.
+  if e > REC_CLOCK_MAX_ERROR || e < REC_CLOCK_MIN_ERROR { return 0.0; }   // mutant: equivalent (as above)
+  return r;
+}
+#test "clock ratios" {
+  us: [30] f64; by: [30] f64;
+  // 0.4 % slow over 29 s: stretched
+  for i: 0..<30 { us[i] = cast(f64) i * 1000000.0; by[i] = 44.0 + cast(f64) i * 96000.0 * 0.996; }
+  r := rec_clock_ratio(us[..], by[..]);
+  #assert r > 0.99599 && r < 0.99601;
+  // exact: not worth stretching
+  for i: 0..<30 { by[i] = cast(f64) i * 96000.0; }
+  #assert rec_clock_ratio(us[..], by[..]) == 0.0;
+  // 2 % off: a broken log
+  for i: 0..<30 { by[i] = cast(f64) i * 96000.0 * 1.02; }
+  #assert rec_clock_ratio(us[..], by[..]) == 0.0;
+  // too short a span
+  for i: 0..<30 { us[i] = cast(f64) i * 500000.0; by[i] = cast(f64) i * 48000.0 * 0.996; }
+  #assert rec_clock_ratio(us[..], by[..]) == 0.0;
+  // 10 looks over exactly 20 s from a clock that is not at 0: kept; 9 looks: refused
+  for i: 0..<10 { us[i] = 1700000000000000.0 + cast(f64) i * 20000000.0 / 9.0; by[i] = 5044.0 + cast(f64) i * 96000.0 * 1.004 * 20.0 / 9.0; }
+  us[9] = 1700000020000000.0;
+  r10 := rec_clock_ratio(us[0..<10], by[0..<10]);
+  #assert r10 > 1.0039 && r10 < 1.0041;
+  #assert rec_clock_ratio(us[0..<9], by[0..<9]) == 0.0;
+  // a start-up burst after the first look: the fit has an intercept, so it bends the slope only a
+  // little (0.996 reads 0.998016), where a line through the origin would read 1.0119 and refuse it
+  for i: 0..<30 { us[i] = 1000000.0 + cast(f64) i * 1000000.0; by[i] = ifx i == 0 then 44.0 else 30044.0 + cast(f64) i * 96000.0 * 0.996; }
+  rb := rec_clock_ratio(us[..], by[..]);
+  #assert rb > 0.998016 && rb < 0.998017;
+}
+
+// How long a piece plays once stretched by tempo (0 for none).
+rec_stretched :: (dur: f64, tempo: f64) -> f64 { return ifx tempo != 0.0 then dur / tempo else dur; }
+#test "a stretched piece ends where the wall says" {
+  #assert rec_stretched(99.6, 0.996) > 99.99999 && rec_stretched(99.6, 0.996) < 100.00001 && rec_stretched(5.0, 0.0) == 5.0;
+}
+
+// Where the sound reaches on the take's clock: the last piece's offset plus its length.
+rec_end :: (pieces: [] Piece) -> f64 {
+  return ifx pieces.count == 0 then 0.0 else pieces[pieces.count - 1].off + pieces[pieces.count - 1].dur;
+}
+
+// The windows the sound is missing from, "121.4s-147.3s" joined by ", ": every gap over the
+// outage floor between pieces, and the end only when proven (something saw the sound stop).
+rec_outages :: (pieces: [] Piece, vdur: f64, proven: bool, out: [] u8) -> string {
+  n := 0; end := 0.0;
+  for p: pieces {
+    if p.off - end > REC_OUTAGE_MIN { n = rec_window(out, n, end, p.off); }
+    end = p.off + p.dur;
+  }
+  if proven && vdur - end > REC_DRIFT_LIMIT { n = rec_window(out, n, end, vdur); }
+  return cast(string) out[0..<n];
+}
+rec_window :: (out: [] u8, at: int, a: f64, b: f64) -> int {
+  n := at;
+  if n > 0 { out[n] = ','; out[n + 1] = ' '; n += 2; }   // mutant: equivalent (n is 0 or at least 9, one window's length)
+  fb: [48] u8;
+  for c: rec_fixed(a, 1, fb[..]) { out[n] = c; n += 1; }
+  out[n] = 's'; out[n + 1] = '-'; n += 2;
+  for c: rec_fixed(b, 1, fb[..]) { out[n] = c; n += 1; }
+  out[n] = 's'; n += 1;
+  return n;
+}
+#test "holes: between pieces always, at the end only when proven" {
+  b: [256] u8;
+  one := [1] Piece.[Piece.{off = 0.0, dur = 187.9}];
+  #assert rec_outages(one[..], 187.9, false, b[..]) == "" && rec_outages(one[..], 240.3, true, b[..]) == "187.9s-240.3s";
+  #assert rec_outages(one[..], 240.3, false, b[..]) == "" && rec_outages(one[..], 188.3, true, b[..]) == "";
+  two := [2] Piece.[Piece.{off = 0.0, dur = 82.31}, Piece.{off = 95.005, dur = 145.0}];
+  #assert rec_outages(two[..], 240.0, false, b[..]) == "82.3s-95.0s";
+  // a gap at the floor is noise
+  three := [2] Piece.[Piece.{off = 0.0, dur = 10.0}, Piece.{off = 10.25, dur = 5.0}];
+  #assert rec_outages(three[..], 15.25, false, b[..]) == "";
+  // two holes, one between pieces and one proven at the end, each at the 0.5 s limit or past it
+  holes := [2] Piece.[Piece.{off = 0.0, dur = 10.0}, Piece.{off = 12.0, dur = 3.0}];
+  #assert rec_outages(holes[..], 20.0, true, b[..]) == "10.0s-12.0s, 15.0s-20.0s";
+  #assert rec_outages(holes[..], 15.5, true, b[..]) == "10.0s-12.0s";
+  late := [1] Piece.[Piece.{off = 3.0, dur = 5.0}];
+  #assert rec_outages(late[..], 8.0, false, b[..]) == "0.0s-3.0s";
+  #assert rec_outages(late[0..<0], 8.0, true, b[..]) == "0.0s-8.0s";
+}
+
+// The sound a take is missing that nothing located, in seconds, or -1 when every second is
+// accounted for (or the end is proven, and rec_outages names it instead).
+rec_shortfall :: (pieces: [] Piece, vdur: f64, proven: bool) -> f64 {
+  if proven { return -1.0; }
+  end := rec_end(pieces);
+  return ifx vdur - end > REC_DRIFT_LIMIT then vdur - end else -1.0;
+}
+#test "an unplaced shortfall, said as an amount" {
+  one := [1] Piece.[Piece.{off = 0.0, dur = 227.6}];
+  s := rec_shortfall(one[..], 240.295, false);
+  #assert s > 12.6949 && s < 12.6951;
+  #assert rec_shortfall(one[..], 240.295, true) == -1.0 && rec_shortfall(one[..], 228.0, false) == -1.0;
+  #assert rec_shortfall(one[..], 228.1, false) == -1.0 && rec_shortfall(one[..], 228.125, false) == 0.5250000000000057;
+}
+
+// The clock line for the tag: each stretched piece's rate as a signed percentage, or "".
+rec_clock_note :: (pieces: [] Piece, out: [] u8) -> string {
+  head := "the microphone clock ran ";
+  tail := " against the picture; the sound is stretched to it";
+  n := 0; any := false;
+  for c: head { out[n] = c; n += 1; }
+  for p: pieces {
+    if p.tempo == 0.0 { continue; }
+    if any { out[n] = ','; out[n + 1] = ' '; n += 2; }
+    pct := (p.tempo - 1.0) * 100.0;
+    if pct >= 0.0 { out[n] = '+'; n += 1; }
+    fb: [48] u8;
+    for c: rec_fixed(pct, 3, fb[..]) { out[n] = c; n += 1; }
+    out[n] = '%'; n += 1;
+    any = true;
+  }
+  if !any { return ""; }
+  for c: tail { out[n] = c; n += 1; }
+  return cast(string) out[0..<n];
+}
+#test "the clock note" {
+  b: [256] u8;
+  none := [1] Piece.[Piece.{off = 0.0, dur = 1.0}];
+  #assert rec_clock_note(none[..], b[..]) == "";
+  two := [2] Piece.[Piece.{off = 0.0, dur = 1.0, tempo = 0.996}, Piece.{off = 2.0, dur = 1.0, tempo = 1.0002}];
+  #assert rec_clock_note(two[..], b[..]) == "the microphone clock ran -0.400%, +0.020% against the picture; the sound is stretched to it";
+  even := [1] Piece.[Piece.{off = 0.0, dur = 1.0, tempo = 1.0}];
+  #assert rec_clock_note(even[..], b[..]) == "the microphone clock ran +0.000% against the picture; the sound is stretched to it";
+}
+
+// The samples a piece is delayed by to open at its offset (adelay's NS), rounded.
+rec_delay :: (off: f64) -> int { return cast(int) (off * cast(f64) REC_AUDIO_RATE + 0.5); }
+#test "delays" {
+  #assert rec_delay(0.0) == 0 && rec_delay(95.005) == 4560240 && rec_delay(0.00001) == 0 && rec_delay(0.00002) == 1;
+}
