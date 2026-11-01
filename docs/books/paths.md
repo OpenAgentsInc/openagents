@@ -1,8 +1,9 @@
 # Paths through the books
 
-The three books are [The Coax Programming Language](../../coax/book/README.md),
-[Building Psionic in Coax](../../psionic/book/README.md) and
-[Building Aethyr in Coax](../../aethyr/book/README.md). Each route below
+The four books are [The Coax Programming Language](../../coax/book/README.md),
+[Building Psionic in Coax](../../psionic/book/README.md),
+[Building Aethyr in Coax](../../aethyr/book/README.md) and
+[Nostr From Scratch](../../nostr/book/README.md). Each route below
 lists what you need and the chapters to read, in order, across the books.
 Chapter numbers are each book's own.
 
@@ -13,8 +14,9 @@ it wasn't. Other hosts aren't verified for this page.
 
 A chapter marked *(design draft)* or *(planned)* describes work that doesn't
 run yet. The [chapter registries](../../coax/book/chapters.json) of the
-[three](../../psionic/book/chapters.json)
-[books](../../aethyr/book/chapters.json) record every chapter's status.
+[four](../../psionic/book/chapters.json)
+[books](../../aethyr/book/chapters.json)
+([Nostr](../../nostr/book/chapters.json)) record every chapter's status.
 
 ## Write current Coax
 
@@ -191,3 +193,44 @@ Chapters, in order:
 6. Psionic chapters 114–116 and 128 (design drafts): the compiled backward
    pass, training the whole tiny decoder, memory budgets and a complete
    pretraining run.
+
+## Sign and verify a Nostr event
+
+| What you need | |
+| --- | --- |
+| Revision | `main` with compiler `coax0 0.45.0` or later. |
+| Hardware | Any Mac that builds the compiler. |
+| Downloads | None. The BIP-340 vectors are pinned in `coax/tests/vectors/`. |
+| Time | About 15 seconds after the compiler is built. |
+
+First successful command, which checks BIP-340 verification against the 19
+official vectors:
+
+```shell
+coax/build.sh
+coax/bin/coax test coax/lib/crypto/schnorr.coax
+```
+
+It ends with `127 checks, 127 passed, 0 failed`. Then sign and verify whole
+events, including one signed independently in Python and matched byte for
+byte:
+
+```shell
+coax/bin/coax test coax/lib/nostr/event.coax
+coax/bin/coax test coax/lib/nostr/event_sign.coax --run-steps 250000000
+```
+
+They end with `183 checks, 183 passed, 0 failed` and
+`332 checks, 332 passed, 0 failed`.
+
+Chapters, in order:
+
+1. Coax chapters 1–4, 11 (writing checks) and 18 (the protocol boundary).
+2. Nostr chapters 1–4 (partly implemented): bytes and hex, big integers in
+   limbs, constant-time rules and SHA-256.
+3. Nostr chapters 7–13 (partly implemented): the field, scalars, the group
+   law, scalar multiplication, verification, keys and signing.
+4. Nostr chapters 17 and 21 (partly implemented): the exact JSON an event ID
+   hashes, then events, IDs and signatures.
+5. Nostr chapters 22–24 (partly implemented): kinds and tags, filters and
+   relay messages, before a client (Part VIII) or a relay (Part IX).

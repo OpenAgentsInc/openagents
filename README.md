@@ -32,7 +32,7 @@ release builds on:
 
 ## Books
 
-Read our three books on GitBook:
+Read our four books on GitBook:
 
 - [**The Coax Programming Language**](https://openagents.gitbook.io/the-coax-programming-language):
   the language.
@@ -40,9 +40,12 @@ Read our three books on GitBook:
   the machine-learning and execution engine, built in Coax.
 - [**Aethyr, World Engine**](https://openagents.gitbook.io/building-aethyr-in-coax):
   the game engine that runs the Verse's realms, built in Coax.
+- [**Nostr From Scratch**](https://openagents.gitbook.io/nostr-from-scratch):
+  a complete Nostr implementation in Coax, from SHA-256 and secp256k1 to a
+  client, a relay and every NIP.
 
 To choose a route through them (write current Coax, build a playable realm,
-run an original model or train a small model), see
+run an original model, train a small model or sign and verify a Nostr event), see
 [Paths through the books](docs/books/paths.md).
 
 ## What we're building
