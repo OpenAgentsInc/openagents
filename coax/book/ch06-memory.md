@@ -4,7 +4,7 @@
 > `coax0`. Heap memory, the context and temporary storage are design.
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.46.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Every value in a program lives somewhere in memory, and somebody decides
 when that memory is reused. In a garbage-collected language you rarely have

@@ -1,7 +1,7 @@
 # Coax release and implementation status
 
 <!-- Generated from coax/release.coax; do not edit this snapshot. -->
-Current compiler: **coax0 0.46.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
 
 `works` means the bounded feature is implemented; `partial` records its limits.
 `reserved` is recognized and refused; `designed` is planned syntax. A status claim
@@ -161,6 +161,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | Explicit semantic profile selection | Independent arithmetic, native optimization, build selector and debug information; optional schema-1 profile report; legacy presets retained, no general cross-object or device qualification | partial | 0.25.0 |
 | `coax cuda` compute subset | CUDA C for NVRTC: item, warp and bounded group kernels with numeric views and fixed scalar arrays; group kernels admit owned shared-memory writes and barriers; general atomics remain unsupported | partial | 0.23.0 |
 | CUDA warp kernels | `for lane: 0..<32` loops, per-lane register arrays and the BF16 tensor-core primitive `cu_mma_bf16_16x8x16`; cooperative shared memory and barriers use the separate group-kernel rules | partial | 0.24.0 |
+| Versioned checked shader emission | WGSL/SPIR-V use checked tree2 for the legacy registry and tree3 for explicit fine derivatives/helper conversion; rich reflection2 reports actual entry layouts and capability requirements. Scalar CPU derivative bodies remain zero; quad execution and device qualification are separate | partial | 0.47.0 |
 | Linux x86-64 C11 host | Builds, checks and runs on the tested NixOS x86-64 host with GCC; not a release-qualified target | partial | 0.23.0 |
 | Bounded aggregate traversal | Independent finite work accounting for evaluated aggregate traversal | works | 0.21.0 |
 | Bounded interpreted string snapshots | Owned cast snapshots with finite live bytes and materialization work | works | 0.20.0 |

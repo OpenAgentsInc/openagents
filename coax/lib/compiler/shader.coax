@@ -2,7 +2,7 @@
 // tree (the ordinary rules, not the Metal profile) lowered to a SPIR-V 1.3
 // module with a Vertex entry point `vs` and a Fragment entry point `fs`
 // (docs/verse/native-gpu.md, G4). Native code observes the checked tree
-// and hands it here as words (tree code v2); this file decides every
+// and hands it here as words (tree code v2/v3); this file decides every
 // instruction, refuses what it cannot lower, and native code writes the
 // words it returns.
 //
@@ -30,8 +30,9 @@
 // procedures (gpu_discard, gpu_sample...) of verse/gpu/shader.coax become
 // their instructions.
 //
-// Tree code, version 2:
-//   module: 2 types procs entries
+// Tree code v2 retains GPU ids1..14. Version3 adds ids15..18; it keeps
+// the same record layout. New operations are refused under version2.
+//   module: version types procs entries
 //   types: n type*, the first six always 0 void, 1 bool, 2 f32, 3 s32, 4 u32, 5 int
 //     type: 0 void | 1 bool | 2 f32 | 3 s32 | 4 u32 | 5 s64 | 6 u64
 //         | 7 struct n (type offset)*n size | 8 array elem length stride | 9 view elem
@@ -56,6 +57,8 @@
 //   gpu: 1 discard 2 sample 3 sample_level 4 sample_layer 5 sample_layer_level
 //       6 sample_layer_bias 7 load 8 load_depth 9 compare 10 width 11 height
 //       12 dpdx 13 dpdy 14 fwidth (a fragment's, of an f32)
+//       15 dpdx_fine 16 dpdy_fine 17 fwidth_fine (explicit fine numerical profile)
+//       18 demote_helper (fragment, void; legacy1 remains OpKill)
 #authority;
 
 SH_VOID :: 0; SH_BOOL :: 1; SH_F32 :: 2; SH_S32 :: 3; SH_U32 :: 4; SH_INT :: 5;
@@ -79,7 +82,7 @@ ShState :: struct {
   at:int; next:u32; ok:bool; reason:u32; open:bool; mute:int;
   nd:int; nt:int; nc:int; types:int; procs:int; insts:int; binds:int; consts:int; ftypes:int; loops:int; edges:int;
   locals:int; inst:int; ret:u32; fragment:bool; int64:bool; query:bool; glsl:u32; privs:int; depth:bool;
-  c_true:u32; c_false:u32; u32_0:u32;
+  c_true:u32; c_false:u32; u32_0:u32; fine_derivatives:bool; demote_helper:bool; tree_version:u32;
 }
 ShVal :: struct {id:u32; ty:u32;}
 // A place: a pointer and its type, in Function storage or a storage buffer;
@@ -688,8 +691,9 @@ sh_ivec2 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
 sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
   g:=sh_next(s,tree);ty:=sh_next(s,tree);n:=sh_next(s,tree);
   // How many arguments each takes.
-  counts:=[14] u32.[0,3,4,4,5,5,4,4,4,1,1,1,1,1];
-  if g<1 || g>14 {sh_fail(s,11);return sh_refused();}
+  counts:=[18] u32.[0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0];
+  if g<1 || g>18 {sh_fail(s,11);return sh_refused();}
+  if g>=15 && s[0].tree_version!=3 {sh_fail(s,11);return sh_refused();}
   if n!=counts[cast(int)g-1] {sh_fail(s,11);return sh_refused();}
   if !sh_type_ok(s,ty) {return sh_refused();}
   if g==1 {
@@ -698,12 +702,19 @@ sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
     // Nothing: discard is a statement.
     return sh_refused();
   }
+  if g==18 {
+    if !s[0].fragment || ty!=SH_VOID {sh_fail(s,11);return sh_refused();}
+    s[0].demote_helper=true;
+    sh_op(s,w,SH_C,5380,1); // OpDemoteToHelperInvocationEXT; the block remains open.
+    return sh_refused();
+  }
   f:=sh_tid(s,tree,w,SH_F32);
   if g>=12 {
-    // OpDPdx 207, OpDPdy 208, OpFwidth 209: only a fragment has neighbours to differ from.
+    // Generic207..209 and explicit fine210..212 are distinct operations.
     if !s[0].fragment || ty!=SH_F32 {sh_fail(s,11);return sh_refused();}
     v:=sh_value_arg(s,tree,out,w,SH_F32);
     if !s[0].ok {return sh_refused();}
+    if g>=15 {s[0].fine_derivatives=true;}
     return ShVal.{id=sh_r1(s,w,195+g,f,v),ty=ty};
   }
   if g>=2 && g<=6 {
@@ -1297,7 +1308,8 @@ SH_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
   st:[1] ShState;s:=st[..];w:=work;
   s[0].next=1;s[0].ok=true;
   if w.count<SH_W_C {return -2;} // mutant: equivalent (a view of about SH_W_C words holds no code, which sh_word refuses for the same reason)
-  if sh_next(s,tree)!=2 {return -1;}
+  s[0].tree_version=sh_next(s,tree);
+  if s[0].tree_version!=2 && s[0].tree_version!=3 {return -1;}
   // The types: where each one's code starts, its parts checked to be earlier types.
   types:=cast(int)sh_next(s,tree);
   if types>SH_TYPES {return -3;}
@@ -1372,6 +1384,8 @@ SH_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
   size:=5+2+6+3+s[0].nd+s[0].nt+s[0].nc;
   if s[0].int64 {size+=2;}
   if s[0].query {size+=2;}
+  if s[0].fine_derivatives {size+=2;}
+  if s[0].demote_helper {size+=12;}
   for e:0..<entries {size+=4+nvars[e][0]+(ifx estage[e]!=1 then 0 else ifx s[0].depth then 6 else 3);}
   if size>out.count {return -2;}
   head:=[16] u32.[0x07230203,0x00010300,0,s[0].next,0,(2<<16)|SH_OP_CAPABILITY,1,
@@ -1383,6 +1397,13 @@ SH_lower :: (tree:[]u32,out:[]u32,work:[]u32)->int #export_c {
     // Int64 and ImageQuery after Shader, as they are used.
     if i==6 && s[0].int64 {out[n]=(2<<16)|SH_OP_CAPABILITY;out[n+1]=11;n+=2;}
     if i==6 && s[0].query {out[n]=(2<<16)|SH_OP_CAPABILITY;out[n+1]=50;n+=2;}
+    if i==6 && s[0].fine_derivatives {out[n]=(2<<16)|SH_OP_CAPABILITY;out[n+1]=51;n+=2;}
+    if i==6 && s[0].demote_helper {
+      out[n]=(2<<16)|SH_OP_CAPABILITY;out[n+1]=5379;n+=2;
+      out[n]=(10<<16)|SH_OP_EXTENSION;n+=1;
+      extension:=[9]u32.[0x5f565053,0x5f545845,0x6f6d6564,0x745f6574,0x65685f6f,0x7265706c,0x766e695f,0x7461636f,0x006e6f69];
+      for j:0..<9 {out[n]=extension[j];n+=1;}
+    }
   }
   for e:0..<entries {
     nv:=nvars[e][0];
@@ -1836,13 +1857,20 @@ SH_GPU :: "0 6 6 8 9 10 11 12 6 6 8 9 10 11 12";
 sh_gpu_fs :: (body:string)->int {out:[8192] u32;return sh_gpu_fs_out(body,out[..]);}
 // Whether the fragment of body lowers with an instruction whose first word is op's.
 sh_gpu_fs_op :: (body:string,op:u32)->bool {
-  out:[8192] u32;n:=sh_gpu_fs_out(body,out[..]);
+  return sh_gpu_profile_op(body,2,op);
+}
+sh_gpu_profile_op :: (body:string,version:u32,op:u32)->bool {
+  out:[8192] u32;n:=sh_gpu_profile_out(body,out[..],version);
   for i:0..<n {if out[i]==op {return true;}} // mutant: equivalent (word 0 is the magic number, never an instruction)
   return false;
 }
 sh_gpu_fs_out :: (body:string,out:[]u32)->int {
+  return sh_gpu_profile_out(body,out,2);
+}
+sh_gpu_profile_out :: (body:string,out:[]u32,version:u32)->int {
   t:[4096] u32;work:[SH_CHECK_WORK] u32;c:[1] int;
   n:=sh_parse("2 31 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16",t[..]);
+  t[0]=version;
   n+=sh_parse(SH_MORE,t[n..<t.count]);
   t[n]=2;n+=1;
   n+=sh_procs(SH_VS,t[n..<t.count],c[..]);
@@ -2097,10 +2125,80 @@ sh_fields_lower :: (n:int)->int {
 #test "a fragment's derivatives are OpDPdx, OpDPdy and OpFwidth of an f32" {
   #assert sh_gpu_fs_op("2 33 12 2 1 16 2 0",(4<<16)|207) && sh_gpu_fs_op("2 33 13 2 1 16 2 0",(4<<16)|208);
   #assert sh_gpu_fs_op("2 33 14 2 1 16 2 0",(4<<16)|209) && !sh_gpu_fs_op("2 33 12 2 1 16 2 0",(4<<16)|208);
-  #assert sh_gpu_fs("2 33 15 2 1 16 2 0")==-11 && sh_gpu_fs("2 33 12 2 2 16 2 0 16 2 0")==-11;
+  #assert sh_gpu_fs("2 33 19 2 1 16 2 0")==-11 && sh_gpu_fs("2 33 12 2 2 16 2 0 16 2 0")==-11;
   #assert sh_gpu_fs("2 33 13 2 0")==-11 && sh_gpu_fs("2 33 14 2 2 16 2 0 16 2 0")==-11;
   #assert sh_gpu_fs("2 33 12 3 1 16 2 0")==-11 && sh_gpu_fs("2 33 12 2 1 16 3 0")==-11;
   #assert sh_vs("6 2 4 4 2 4 4 | 1 2 2 33 14 2 1 16 2 0 4 17 6 ;","","2 0 0 0 1 1 1 9")==-11;
+}
+#test "fine derivatives carry their own instructions and DerivativeControl capability" {
+  #assert sh_gpu_profile_op("2 33 15 2 1 16 2 0",3,(4<<16)|210);
+  #assert sh_gpu_profile_op("2 33 16 2 1 16 2 0",3,(4<<16)|211);
+  #assert sh_gpu_profile_op("2 33 17 2 1 16 2 0",3,(4<<16)|212);
+  fd_out:[8192]u32; fd_n:=sh_gpu_profile_out("2 33 15 2 1 16 2 0",fd_out[..],3);
+  fd_cap:=0; fd_shader:=0; fd_at:=5;
+  while fd_at<fd_n {
+    if (fd_out[fd_at]&65535)==17 && (fd_out[fd_at]>>16)==2 && fd_out[fd_at+1]==51 {fd_cap+=1;}
+    if (fd_out[fd_at]&65535)==17 && (fd_out[fd_at]>>16)==2 && fd_out[fd_at+1]==1 {fd_shader+=1;}
+    fd_at+=cast(int)(fd_out[fd_at]>>16);
+  }
+  #assert fd_cap==1 && fd_shader==1 && fd_at==fd_n;
+  #assert sh_gpu_profile_out("2 33 15 2 1 16 2 0",fd_out[0..<fd_n],3)==fd_n;
+  #assert sh_gpu_profile_out("2 33 15 2 1 16 2 0",fd_out[0..<fd_n-1],3)==-2;
+  fd_n=sh_gpu_fs_out("2 33 12 2 1 16 2 0",fd_out[..]); fd_at=5; fd_cap=0;
+  while fd_at<fd_n {
+    if (fd_out[fd_at]&65535)==17 && (fd_out[fd_at]>>16)==2 && fd_out[fd_at+1]==51 {fd_cap+=1;}
+    fd_at+=cast(int)(fd_out[fd_at]>>16);
+  }
+  #assert fd_cap==0;
+  #assert sh_gpu_profile_out("2 33 15 3 1 16 2 0",fd_out[..],3)==-11 && sh_gpu_profile_out("2 33 16 2 0",fd_out[..],3)==-11;
+  #assert sh_vs("6 2 4 4 2 4 4 | 1 2 2 33 17 2 1 16 2 0 4 17 6 ;","","2 0 0 0 1 1 1 9")==-11;
+}
+#test "tree3 helper demotion preserves subsequent instructions and declares its extension" {
+  hd_out:[8192]u32;
+  hd_body:="1 3 2 33 18 0 0 2 33 15 2 1 16 2 0 5";
+  hd_n:=sh_gpu_profile_out(hd_body,hd_out[..],3);
+  #assert hd_n>0;
+  hd_at:=5;hd_cap:=0;hd_ext:=0;hd_demote:=-1;hd_derivative:=-1;hd_kill:=0;
+  hd_shader:=0;hd_fine:=0;hd_function:=false;hd_label:=false;
+  hd_name:=[9]u32.[0x5f565053,0x5f545845,0x6f6d6564,0x745f6574,0x65685f6f,0x7265706c,0x766e695f,0x7461636f,0x006e6f69];
+  while hd_at<hd_n {
+    hd_op:=hd_out[hd_at]&65535;hd_words:=cast(int)(hd_out[hd_at]>>16);
+    if hd_op==17 && hd_words==2 && hd_out[hd_at+1]==5379 {hd_cap+=1;}
+    if hd_op==17 && hd_words==2 && hd_out[hd_at+1]==1 {hd_shader+=1;}
+    if hd_op==17 && hd_words==2 && hd_out[hd_at+1]==51 {hd_fine+=1;}
+    if hd_op==10 {
+      #assert hd_words==10;
+      for hd_i:0..<9 {#assert hd_out[hd_at+1+hd_i]==hd_name[hd_i];}
+      hd_ext+=1;
+    }
+    if hd_op==54 {hd_function=true;hd_label=false;}
+    if hd_op==248 {hd_label=true;}
+    if hd_op==56 {hd_function=false;hd_label=false;}
+    if hd_op==5380 {#assert hd_words==1 && hd_function && hd_label;hd_demote=hd_at;}
+    if hd_op==210 {hd_derivative=hd_at;}
+    if hd_op==252 {hd_kill+=1;}
+    hd_at+=hd_words;
+  }
+  #assert hd_at==hd_n && hd_cap==1 && hd_shader==1 && hd_fine==1 && hd_ext==1 && hd_demote>0 && hd_derivative>hd_demote && hd_kill==0;
+  #assert sh_gpu_profile_out(hd_body,hd_out[0..<hd_n],3)==hd_n;
+  #assert sh_gpu_profile_out(hd_body,hd_out[0..<hd_n-1],3)==-2;
+  #assert sh_gpu_profile_out("2 33 18 2 0",hd_out[..],3)==-11;
+  #assert sh_gpu_profile_out("2 33 18 0 1 16 2 0",hd_out[..],3)==-11;
+  #assert sh_gpu_fs_op("2 33 1 0 0",(1<<16)|252);
+  #assert !sh_gpu_fs_op("2 33 1 0 0",(1<<16)|5380);
+}
+#forall "tree versions retain the old registry and gate all four new operations" hd_gpu:15..<19 {
+  hd_out:[8192]u32;
+  hd_body:=ifx hd_gpu==15 then "2 33 15 2 1 16 2 0" else ifx hd_gpu==16 then "2 33 16 2 1 16 2 0"
+    else ifx hd_gpu==17 then "2 33 17 2 1 16 2 0" else "2 33 18 0 0";
+  #assert sh_gpu_profile_out(hd_body,hd_out[..],2)==-11;
+  #assert sh_gpu_fs(hd_body)==-11;
+  hd_opcode:=[4]u32.[(4<<16)|210,(4<<16)|211,(4<<16)|212,(1<<16)|5380];
+  #assert !sh_gpu_fs_op(hd_body,hd_opcode[hd_gpu-15]);
+  #assert sh_gpu_profile_out(hd_body,hd_out[..],3)>0;
+  #assert sh_gpu_profile_out("5",hd_out[..],1)==-1 && sh_gpu_profile_out("5",hd_out[..],4)==-1;
+  #assert sh_gpu_profile_out("2 33 12 2 1 16 2 0",hd_out[..],3)>0;
+  #assert sh_gpu_profile_out("2 33 19 2 1 16 2 0",hd_out[..],3)==-11;
 }
 #test "GPU procedures' resources are the kinds they take" {
   #assert sh_gpu_fs("2 33 2 6 3 16 3 0 18 4 17 19")==-11 && sh_gpu_fs("2 33 2 6 3 18 0 18 4 17 19")==-11;

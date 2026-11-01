@@ -1,7 +1,7 @@
 # Coax: language specification and implementation plan
 
 <!-- coax-release:current:start -->
-Current compiler: **coax0 0.46.0**. Status inventory schema: **1**.
+Current compiler: **coax0 0.47.0**. Status inventory schema: **1**.
 <!-- coax-release:current:end -->
 Updated: 2026-10-28. Status: **working bootstrap; broader language design**.
 The compiler lives in [`coax/`](README.md) at the root of the openagents repo. Source files
@@ -1398,16 +1398,32 @@ sources, not a competing architecture or already restored services.
 
 ## 15. GPU programs
 
-A future shader subset may share typed declarations with CPU code while
-lowering separately to MSL and WGSL. It has no general pointers, allocator,
-implicit context or recursion. Resource access modes and target capabilities
-are explicit. Native Metal features require target-specific validation and
-fallback decisions.
+The current `coax spirv` and `coax wgsl` commands lower a checked subset of
+ordinary typed procedures, with structs, fixed arrays, read-only resource
+views and explicit GPU intrinsics. This does not implement the reserved
+`shader` keyword. The subset has no general pointers, allocator, implicit
+context or recursion. Resource access and target capabilities are explicit.
 
 A CPU procedure compiled to Wasm is not a GPU shader. Browser WebGPU consumes
 WGSL through browser bindings; native Metal consumes its own compiled pipeline.
-The first shader experiment must compare shared-schema generation against a
-new language backend before choosing either approach.
+The commands use checked shader tree2 for the original GPU operation registry.
+Tree3 keeps the record layout and adds explicit fine derivatives (ids15–17)
+and helper conversion (id18). New operations are refused under tree2; programs
+using only the original registry still emit tree2. See
+[`docs/shader-tree-v3.md`](docs/shader-tree-v3.md) for the versioned contract.
+
+`gpu_dpdx_fine`, `gpu_dpdy_fine` and `gpu_fwidth_fine` request fine derivatives.
+`gpu_demote_helper` clears fragment publication while retaining helper execution;
+the Vulkan device must support and enable the corresponding feature. Legacy
+`gpu_discard` remains terminating SPIR-V `OpKill`. Ordinary scalar CPU calls to
+the derivative library bodies return zero, and helper conversion has no scalar
+publication mask. A quad interpreter is a separate declared execution profile.
+
+Rich reflection2 observes checked entry resource shapes, strides and stages,
+vertex attributes, fragment targets/depth and numerical/control requirements.
+The original three-field binding payload remains available to legacy tooling.
+Reflection observes a program; Aethyr separately admits it against a declared
+pipeline and enabled host capabilities before creating GPU effects.
 
 Validate offsets, strides, alignment and upload lengths for each pipeline.
 GPU resources remain resident host objects with explicit queue/fence ownership.

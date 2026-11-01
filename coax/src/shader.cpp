@@ -1,6 +1,6 @@
 // `coax spirv --vertex V --fragment F`: the shader subset. Native code
 // observes the checked tree (checked by the ordinary rules, not the Metal
-// profile) and hands it to lib/compiler/shader.coax as tree code v2; the SH_
+// profile) and hands it to lib/compiler/shader.coax as tree code v2/v3; the SH_
 // procedures decide every instruction and refuse what they cannot lower, and
 // this file writes the words they return. Build-only stage0 has no lowering.
 #include "coax.h"
@@ -8,7 +8,7 @@
 namespace coax {
 
 #ifndef COAX_BOOTSTRAP_IMPORTER
-// Tree code, version 2 (the comment at the top of shader.coax).
+// Tree code v2, or v3 for the additive fine-derivative/helper operation registry.
 struct ShaderTree {
   const File *file;
   std::vector<uint32_t> words, types;   // types: the type table, encoded
@@ -20,6 +20,9 @@ struct ShaderTree {
   std::vector<std::string> local_names;         // the procedure being encoded's, by local
   std::vector<std::vector<std::string>> names;  // each procedure's name, then its locals' (coax wgsl)
   uint32_t locals = 0;
+  uint32_t derivative_profile = 0;  // observed generic/fine calls, not an instruction policy
+  uint32_t control_profile = 0;     // observed legacy kill/helper demotion
+  uint32_t tree_version() const { return ((derivative_profile | control_profile) & 2u) ? 3u : 2u; }
   bool ok = true;
 
   void refuse(Loc loc, const std::string &what) {
@@ -101,7 +104,8 @@ struct ShaderTree {
   static uint32_t gpu_intrinsic(const std::string &n) {
     static const char *names[] = {"", "gpu_discard", "gpu_sample", "gpu_sample_level", "gpu_sample_layer", "gpu_sample_layer_level",
                                   "gpu_sample_layer_bias", "gpu_load", "gpu_load_depth", "gpu_compare", "gpu_width", "gpu_height",
-                                  "gpu_dpdx", "gpu_dpdy", "gpu_fwidth"};
+                                  "gpu_dpdx", "gpu_dpdy", "gpu_fwidth",
+                                  "gpu_dpdx_fine", "gpu_dpdy_fine", "gpu_fwidth_fine", "gpu_demote_helper"};
     for (uint32_t i = 1; i < sizeof names / sizeof names[0]; i++) if (n == names[i]) return i;
     // A depth texture's size is the same instruction as a 2D texture's.
     if (n == "gpu_depth_width") return 10;
@@ -185,7 +189,13 @@ struct ShaderTree {
           words.push_back(30); words.push_back(type(e->type, e->loc)); expr(e->args[0]); return;
         }
         if (!e->proc || e->builtin_print || e->byte_intrinsic != ByteIntrinsic::none || e->proc->foreign) break;
-        if (uint32_t g = gpu_intrinsic(name(e->proc->name))) { words.push_back(33); words.push_back(g); words.push_back(type(e->type, e->loc)); args(e->args); return; }
+        if (uint32_t g = gpu_intrinsic(name(e->proc->name))) {
+          if (g >= 12 && g <= 14) derivative_profile |= 1;
+          if (g >= 15 && g <= 17) derivative_profile |= 2;
+          if (g == 1) control_profile |= 1;
+          if (g == 18) control_profile |= 2;
+          words.push_back(33); words.push_back(g); words.push_back(type(e->type, e->loc)); args(e->args); return;
+        }
         words.push_back(22); words.push_back(proc_index(e->proc)); args(e->args);
         return;
       case ExprKind::ifx: words.push_back(24); expr(e->lhs); expr(e->rhs); expr(e->third); return;
@@ -322,7 +332,7 @@ bool emit_shader(const File *file, const std::string &vertex, const std::string 
   std::vector<std::vector<uint32_t>> bodies;
   for (size_t i = 0; i < t.procs.size() && t.ok; i++) bodies.push_back(t.procedure(t.procs[i]));
   if (!t.ok) return false;
-  std::vector<uint32_t> tree = {2, (uint32_t)t.type_of.size()};
+  std::vector<uint32_t> tree = {t.tree_version(), (uint32_t)t.type_of.size()};
   tree.insert(tree.end(), t.types.begin(), t.types.end());
   tree.push_back((uint32_t)bodies.size());
   for (const auto &b : bodies) tree.insert(tree.end(), b.begin(), b.end());
@@ -361,6 +371,65 @@ bool emit_shader(const File *file, const std::string &vertex, const std::string 
     uint32_t id = work[1 + 3 * k], binding = work[2 + 3 * k], kind = work[3 + 3 * k];
     *report += "binding " + std::to_string(binding) + " " + (kind < 4 ? kinds[kind] : "?") + " " + (id < names.size() ? names[id] : "?") + "\n";
   }
+  // Versioned observations of the checked declarations. Coax's renderer
+  // admission compares these facts with its declared binding/pass plan.
+  // Keep the legacy binding lines above intact for existing pass tools.
+  *report += "reflection 2\n";
+  *report += "tree-version " + std::to_string(t.tree_version()) + "\n";
+  for (uint32_t k = 0; k < work[0]; k++) {
+    uint32_t id = work[1 + 3 * k], slot = work[2 + 3 * k], kind = work[3 + 3 * k];
+    uint32_t shape = 0, stride = 0, stages = 0;
+    const std::string resource = id < names.size() ? names[id] : "?";
+    for (auto [stage, proc] : entries) for (const Param &prm : t.procs[proc]->params) {
+      if (ShaderTree::name(prm.name) != resource) continue;
+      uint32_t ti = t.type(prm.type, prm.loc), at = t.type_at[ti], code = t.types[at];
+      if (code < 9 || code > 11) continue;  // an index/position parameter can share a spelling
+      stages |= 1u << stage;
+      if (code == 9) stride = (uint32_t)prm.type->elem->size;
+      else shape = t.types[at + 1];
+    }
+    *report += "resource " + std::to_string(slot) + " " + std::to_string(kind) + " " + std::to_string(shape)
+      + " " + std::to_string(stride) + " " + std::to_string(stages) + " " + resource + "\n";
+  }
+  auto scalar_width = [](Type ty) -> std::pair<uint32_t, uint32_t> {
+    auto scalar = [](Type s) -> uint32_t { return s == &T_F32 ? 2 : s == &T_S32 ? 3 : s == &T_U32 ? 4 : 0; };
+    if (uint32_t s = scalar(ty)) return {s, 1};
+    if (ty->kind != TypeKind::struct_ || !ty->struct_decl) return {0, 0};
+    const auto &fields = ty->struct_decl->fields;
+    if (fields.count < 2 || fields.count > 4) return {0, 0};
+    uint32_t s = scalar(fields[0].type);
+    for (const Field &field : fields) if (scalar(field.type) != s) return {0, 0};
+    return {s, s ? (uint32_t)fields.count : 0};
+  };
+  uint32_t targets = 0, writes_depth = 0;
+  for (auto [stage, proc] : entries) {
+    const ProcDecl *entry = t.procs[proc];
+    if (stage == 0 && entry->params.count > 2) {
+      const Param &attributes = entry->params[2];
+      uint32_t ti = t.type(attributes.type, attributes.loc), at = t.type_at[ti];
+      if (t.types[at] == 7 && attributes.type->struct_decl) {
+        *report += "vertex-stride " + std::to_string(attributes.type->size) + "\n";
+        uint32_t location = 0;
+        for (const Field &field : attributes.type->struct_decl->fields) {
+          auto [scalar, width] = scalar_width(field.type);
+          *report += "vertex-input " + std::to_string(location++) + " " + std::to_string(scalar)
+            + " " + std::to_string(width) + " " + std::to_string(field.offset) + "\n";
+        }
+      }
+    }
+    if (stage == 1 && entry->ret != &T_VOID) {
+      if (scalar_width(entry->ret) == std::pair<uint32_t,uint32_t>{2,4}) targets = 1;
+      else if (entry->ret->kind == TypeKind::struct_ && entry->ret->struct_decl) {
+        for (const Field &field : entry->ret->struct_decl->fields) {
+          if (field.depth) writes_depth = 1;
+          else targets++;
+        }
+      }
+    }
+  }
+  *report += "fragment-targets " + std::to_string(targets) + "\nfragment-depth " + std::to_string(writes_depth)
+    + "\nderivatives 1 " + std::to_string(t.derivative_profile)
+    + "\ncontrol 1 " + std::to_string(t.control_profile) + "\n";
   return true;
 #endif
 }
@@ -414,7 +483,7 @@ bool emit_wgsl_module(const File *file, const std::string &vertices, const std::
   std::vector<std::vector<uint32_t>> bodies;
   for (size_t i = 0; i < t.procs.size() && t.ok; i++) bodies.push_back(t.procedure(t.procs[i]));
   if (!t.ok) return false;
-  std::vector<uint32_t> tree = {2, (uint32_t)t.type_of.size()};
+  std::vector<uint32_t> tree = {t.tree_version(), (uint32_t)t.type_of.size()};
   tree.insert(tree.end(), t.types.begin(), t.types.end());
   tree.push_back((uint32_t)bodies.size());
   for (const auto &b : bodies) tree.insert(tree.end(), b.begin(), b.end());
@@ -514,7 +583,7 @@ bool emit_wgsl(const File *file, const std::string &functions, bool tree_text, s
   std::vector<std::vector<uint32_t>> bodies;
   for (size_t i = 0; i < t.procs.size() && t.ok; i++) bodies.push_back(t.procedure(t.procs[i]));
   if (!t.ok) return false;
-  std::vector<uint32_t> tree = {2, (uint32_t)t.type_of.size()};
+  std::vector<uint32_t> tree = {t.tree_version(), (uint32_t)t.type_of.size()};
   tree.insert(tree.end(), t.types.begin(), t.types.end());
   tree.push_back((uint32_t)bodies.size());
   for (const auto &b : bodies) tree.insert(tree.end(), b.begin(), b.end());

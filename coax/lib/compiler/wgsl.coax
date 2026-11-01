@@ -1,5 +1,5 @@
 // WGSL from the shader subset's checked tree (docs/verse/native-gpu.md, G6), for
-// `coax wgsl FILE --functions A,B`: the same tree code v2 that lib/compiler/shader.coax
+// `coax wgsl FILE --functions A,B`: the same tree code v2/v3 that lib/compiler/shader.coax
 // lowers to SPIR-V, written as WGSL functions the web's hand-written modules call
 // (what coax/web/wgsl.py made from `coax metal`'s C). Native code observes the
 // checked tree and hands it here with the names it carries no room for; this file
@@ -40,7 +40,7 @@ WgState :: struct {
   at:int; n:int; ok:bool; reason:u32; mute:int; indent:int;
   types:int; procs:int; proc:int; pow:bool; bits:bool; called:bool;
   // a module's: the variant being written (its place in the pool) and the pool's use
-  whole:bool; var:int; pool:int;
+  whole:bool; var:int; pool:int; tree_version:u32;
 }
 
 WG_reason_text :: (reason:u32)->string #export_c {
@@ -337,14 +337,16 @@ wg_variant :: (s:[]WgState,tree:[]u32,w:[]u32,p:int,ids:[]u32)->int {
 // The GPU procedures (verse/gpu/shader.coax) as WGSL's: discard, the samples, loads, the
 // depth compare (at level 0, as SPIR-V's explicit-level compare), a texture's size and
 // a fragment's derivatives.
-WG_GPU :: [15] string.["","discard","textureSample(","textureSampleLevel(","textureSample(","textureSampleLevel(","textureSampleBias(",
-  "textureLoad(","textureLoad(","textureSampleCompareLevel(","textureDimensions(","textureDimensions(","dpdx(","dpdy(","fwidth("];
-WG_GPU_ARGS :: [15] int.[0,0,3,4,4,5,5,4,4,4,1,1,1,1,1];
+WG_GPU :: [19] string.["","discard","textureSample(","textureSampleLevel(","textureSample(","textureSampleLevel(","textureSampleBias(",
+  "textureLoad(","textureLoad(","textureSampleCompareLevel(","textureDimensions(","textureDimensions(","dpdx(","dpdy(","fwidth(","dpdxFine(","dpdyFine(","fwidthFine(","discard"];
+WG_GPU_ARGS :: [19] int.[0,0,3,4,4,5,5,4,4,4,1,1,1,1,1,1,1,1,0];
 wg_gpu :: (s:[]WgState,tree:[]u32,names:string,w:[]u32,out:[]u8) {
   g:=cast(int)wg_next(s,tree);t:=wg_next(s,tree);n:=cast(int)wg_next(s,tree);
-  if g<1 || g>14 || n!=WG_GPU_ARGS[g] {wg_fail(s,1);return;}
+  if g<1 || g>18 || n!=WG_GPU_ARGS[g] {wg_fail(s,1);return;}
+  if g>=15 && s[0].tree_version!=3 {wg_fail(s,1);return;}
+  if (g>=15 && g<=17 && t!=2) || (g==18 && t!=0) {wg_fail(s,1);return;}
   wg_put(s,out,WG_GPU[g]);
-  if g==1 {s[0].called=true;return;}
+  if g==1 || g==18 {s[0].called=true;return;}
   for i:0..<n {
     if i>0 {wg_put(s,out,ifx (g==7 || g==8) && i==1 then ", vec2i(" else ", ");}
     wg_expr(s,tree,names,w,out);
@@ -617,7 +619,8 @@ wg_type_refs :: (s:[]WgState,tree:[]u32,types:int,n:int) {
 wg_head :: (s:[]WgState,tree:[]u32,w:[]u32)->int {
   s[0].ok=true;
   if w.count<WG_W_POOL {return 2;}
-  if wg_next(s,tree)!=2 {return 1;}
+  s[0].tree_version=wg_next(s,tree);
+  if s[0].tree_version!=2 && s[0].tree_version!=3 {return 1;}
   types:=cast(int)wg_next(s,tree);
   if types>WG_TYPES {return 3;}
   if types<6 {return 1;}
@@ -1222,12 +1225,50 @@ WG_WGSL_VCALL :: "fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_
 }
 // A fragment of fwidth(pos.x)+dpdx(pos.y) and dpdy(pos.x) (GPU procedures 14, 12, 13).
 WG_SAMPLE_DERIV :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 2 46 1 2 3 40 1 19 1 33 14 2 1 27 41 40 0 0 33 12 2 1 27 41 40 0 1 4 31 6 4 18 1 33 13 2 1 27 41 40 0 0 16 2 0 16 2 1065353216 1 1 0 0";
-WG_SAMPLE_DERIV_15 :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 2 46 1 2 3 40 1 19 1 33 15 2 1 27 41 40 0 0 33 12 2 1 27 41 40 0 1 4 31 6 4 18 1 33 13 2 1 27 41 40 0 0 16 2 0 16 2 1065353216 1 1 0 0";
+WG_SAMPLE_DERIV_INVALID :: "2 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 2 46 1 2 3 40 1 19 1 33 19 2 1 27 41 40 0 0 33 12 2 1 27 41 40 0 1 4 31 6 4 18 1 33 13 2 1 27 41 40 0 0 16 2 0 16 2 1065353216 1 1 0 0";
+WG_SAMPLE_DERIV_FINE :: "3 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 2 6 2 46 1 2 3 40 1 19 1 33 17 2 1 27 41 40 0 0 33 15 2 1 27 41 40 0 1 4 31 6 4 18 1 33 16 2 1 27 41 40 0 0 16 2 0 16 2 1065353216 1 1 0 0";
 WG_WGSL_DERIV :: "fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_a: f32;\n  l_a = (fwidth(l_pos.x) + dpdx(l_pos.y));\n  return vec4f(l_a, dpdy(l_pos.x), 0.0f, 0x1.000000p0f);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
 #test "a fragment's derivatives are WGSL's dpdx, dpdy and fwidth, and no GPU procedure is past them" {
   out:[4096] u8;
   #assert wg_mtext(WG_SAMPLE_DERIV,"fs pos a\npos\n",out[..])==WG_WGSL_DERIV;
-  #assert wg_mtry(WG_SAMPLE_DERIV_15,"fs pos a\npos\n",out[..])==-1;
+  #assert wg_mtry(WG_SAMPLE_DERIV_INVALID,"fs pos a\npos\n",out[..])==-1;
+}
+#test "explicit fine derivatives emit fine WGSL names without changing generic derivatives" {
+  fd_out:[4096]u8;
+  fd_expected := "fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  var l_a: f32;\n  l_a = (fwidthFine(l_pos.x) + dpdxFine(l_pos.y));\n  return vec4f(l_a, dpdyFine(l_pos.x), 0.0f, 0x1.000000p0f);\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+  #assert wg_mtext(WG_SAMPLE_DERIV_FINE,"fs pos a\npos\n",fd_out[..])==fd_expected;
+  #assert wg_mtext(WG_SAMPLE_DERIV,"fs pos a\npos\n",fd_out[..])==WG_WGSL_DERIV;
+  fd_tree:[256]u32;fd_n:=wg_parse(WG_SAMPLE_DERIV_FINE,fd_tree[..]);fd_work:[WG_W_WORDS]u32;
+  fd_tree[0]=2;
+  #assert WG_module(fd_tree[0..<fd_n],"fs pos a\npos\n",fd_out[..],fd_work[..])==-1;
+}
+WG_SAMPLE_DEMOTE :: "3 7 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 1 6 1 6 1 6 10 1 2 2 33 18 0 0 4 18 0 1 1 0 0";
+#test "tree3 helper conversion emits discard then continues the helper body" {
+  hd_out:[4096]u8;
+  hd_expected:="fn coax_p_fs(p_pos: vec4f) -> vec4f {\n  var l_pos: vec4f = p_pos;\n  discard;\n  return l_pos;\n}\n@fragment\nfn fs(@builtin(position) coax_pos: vec4f) -> @location(0) vec4f {\n  let coax_r = coax_p_fs(coax_pos);\n  return coax_r;\n}\n";
+  #assert wg_mtext(WG_SAMPLE_DEMOTE,"fs pos\npos\n",hd_out[..])==hd_expected;
+  hd_tree:[128]u32;hd_n:=wg_parse(WG_SAMPLE_DEMOTE,hd_tree[..]);hd_work:[WG_W_WORDS]u32;
+  hd_tree[0]=2;
+  #assert WG_module(hd_tree[0..<hd_n],"fs pos\npos\n",hd_out[..],hd_work[..])==-1;
+  hd_tree[0]=3;hd_tree[31]=2;
+  #assert WG_module(hd_tree[0..<hd_n],"fs pos\npos\n",hd_out[..],hd_work[..])==-1;
+  hd_tree[31]=0;hd_tree[32]=2;
+  #assert WG_module(hd_tree[0..<hd_n],"fs pos\npos\n",hd_out[..],hd_work[..])==-1;
+}
+#forall "tree2 refuses each new fine operation before emitting WGSL" fd_gpu:15..<18 {
+  fd_tree:[256]u32;fd_n:=wg_parse(WG_SAMPLE_DERIV_FINE,fd_tree[..]);fd_out:[4096]u8;fd_work:[WG_W_WORDS]u32;
+  fd_seen:=0;
+  for fd_i:0..<fd_n-2 {
+    if fd_tree[fd_i]==33 {fd_tree[fd_i+1]=ifx fd_seen==0 then cast(u32)fd_gpu else 12;fd_seen+=1;}
+  }
+  #assert fd_seen==3;
+  fd_tree[0]=2;
+  #assert WG_module(fd_tree[0..<fd_n],"fs pos a\npos\n",fd_out[..],fd_work[..])==-1;
+  fd_tree[0]=3;
+  #assert WG_module(fd_tree[0..<fd_n],"fs pos a\npos\n",fd_out[..],fd_work[..])>0;
+  // This fixture's first fine return-type word is36.
+  fd_tree[36]=3;
+  #assert WG_module(fd_tree[0..<fd_n],"fs pos a\npos\n",fd_out[..],fd_work[..])==-1;
 }
 // Out :: struct {c:V4; d:f32 #depth; e:V4;}  fs :: (pos:V4)->Out {return Out.{c=pos,d=0.5,e=pos};}
 WG_SAMPLE_DEPTH :: "2 8 0 1 2 3 4 5 7 4 2 0 2 4 2 8 2 12 16 7 3 6 0 2 1073741840 6 20 36 1 7 1 6 1 6 13 1 1 4 31 7 3 18 0 16 2 1056964608 18 0 1 1 0 0";

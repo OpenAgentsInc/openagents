@@ -125,6 +125,23 @@ gpu_dpdx :: (v:f32)->f32 {return 0.0f32;}
 gpu_dpdy :: (v:f32)->f32 {return 0.0f32;}
 gpu_fwidth :: (v:f32)->f32 {return 0.0f32;}
 
+#test "fine derivative names preserve the scalar CPU compatibility profile" {
+  #assert gpu_dpdx(7)==0 && gpu_dpdy(-3)==0 && gpu_fwidth(2)==0;
+  #assert gpu_dpdx_fine(7)==0 && gpu_dpdy_fine(-3)==0 && gpu_fwidth_fine(2)==0;
+  gpu_demote_helper();
+}
+// Explicit fine derivative operations (tree-v2 additive IDs15..17). A scalar
+// CPU call retains the no-neighbour compatibility value0; it is not the
+// fragment-quad oracle. aethyr.render.quad executes these in a declared
+// four-lane context. The GPU forms use the fine derivative instructions.
+gpu_dpdx_fine :: (v:f32)->f32 {return 0.0f32;}
+gpu_dpdy_fine :: (v:f32)->f32 {return 0.0f32;}
+gpu_fwidth_fine :: (v:f32)->f32 {return 0.0f32;}
+// Explicit helper conversion: unlike legacy gpu_discard/OpKill, a GPU
+// invocation continues to supply derivatives while suppressing publication.
+// A scalar CPU call has no publication mask; the quad profile owns it.
+gpu_demote_helper :: () {}
+
 #test "vectors are their components' arithmetic" {
   a:=v3(1,2,3);b:=v3(4,5,6);
   #assert dot3(a,b)==32 && length3(v3(3,4,0))==5 && cross3(v3(1,0,0),v3(0,1,0)).z==1;

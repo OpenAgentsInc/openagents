@@ -13,6 +13,21 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
+## 0.47.0 — Versioned Shader Operations — 2026-11-01
+
+Commit: pending
+
+- Preserve checked shader tree2 and its GPU operation registry. Emit tree3
+  when a reachable procedure uses explicit fine derivatives or helper
+  conversion; both lowerers refuse those operations under tree2.
+- Add `gpu_dpdx_fine`, `gpu_dpdy_fine`, `gpu_fwidth_fine` and
+  `gpu_demote_helper`. Generic derivatives, legacy discard and scalar CPU
+  compatibility bodies keep their meanings. Native helper conversion declares
+  its SPIR-V extension and requires the matching enabled device feature.
+- Append rich reflection2 for actual checked binding layouts, stage visibility,
+  vertex inputs, fragment outputs and derivative/control requirements. Preserve
+  the original binding report lines for trusted legacy tools.
+
 ## 0.46.0 — Returned Borrow Summaries — 2026-10-31
 
 Commit: [`9e29938427cba24fd4fa6778812c216f2f3ad1f5`](https://github.com/OpenAgentsInc/openagents/commit/9e29938427cba24fd4fa6778812c216f2f3ad1f5)

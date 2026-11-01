@@ -1,0 +1,32 @@
+// A checked resource/entry layout observed by the compiler, not inferred
+// from WGSL text. This fixture has shared and stage-specific bindings.
+#load "../../../verse/gpu/shader.coax";
+
+ReflectionAttributes :: struct {position:V4;uv:V2;}
+ReflectionTargets :: struct {light:V4;aux:V4;}
+reflection_vs :: (vertex:u32,instance:u32,a:ReflectionAttributes,u:[]f32,instances:[]V4)->V4 {
+  return v4(a.position.x+u[0]+instances[cast(int)instance].x,a.position.y,a.uv.x,1);
+}
+reflection_fs :: (position:V4,u:[]f32,layers:Tex2DArray,depth:TexDepth,sample:Sampler,comparison:SamplerCompare)->ReflectionTargets {
+  color:=gpu_sample_layer(layers,sample,v2(0.5,0.5),0);
+  shade:=gpu_compare(depth,comparison,v2(0.5,0.5),0.5);
+  return ReflectionTargets.{light=color,aux=v4(u[0],shade,position.x,1)};
+}
+reflection_fine_fs :: (position:V4)->V4 {
+  return v4(gpu_dpdx_fine(position.x),gpu_dpdy_fine(position.y),gpu_fwidth_fine(position.z),1);
+}
+reflection_helper_fs :: (position:V4)->V4 {
+  if position.x<0 {gpu_demote_helper();}
+  return v4(gpu_dpdx_fine(position.x),gpu_dpdy_fine(position.y),position.z,1);
+}
+#test "reflection fixture keeps shared uniform and both fragment targets" {
+  rf_u:=[1]f32.[2];rf_instances:=[1]V4.[v4(3,0,0,0)];
+  rf_a:=ReflectionAttributes.{position=v4(4,5,0,1),uv=v2(0.25,0.5)};
+  #assert reflection_vs(0,0,rf_a,rf_u[..],rf_instances[..]).x==9;
+  rf_texels:=[1]V4.[v4(0.2,0.4,0.6,1)];rf_depth:=[1]f32.[0.75];
+  rf_r:=reflection_fs(v4(7,8,0,1),rf_u[..],Tex2DArray.{texels=rf_texels[..],width=1,height=1,layers=1},
+    TexDepth.{depth=rf_depth[..],width=1,height=1},Sampler.{},SamplerCompare.{});
+  #assert rf_r.light.y==0.4 && rf_r.aux.x==2 && rf_r.aux.y==1 && rf_r.aux.z==7;
+  #assert reflection_fine_fs(v4(1,2,3,1)).x==0;
+  #assert reflection_helper_fs(v4(-1,2,3,1)).z==3;
+}
