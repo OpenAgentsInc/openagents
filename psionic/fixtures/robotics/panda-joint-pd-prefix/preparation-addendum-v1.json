@@ -1,0 +1,38 @@
+{
+  "schema": "psionic.panda-joint-pd-prefix.prepare-followup.v1",
+  "failed_record": {
+    "bytes": 88249,
+    "sha256": "56323e56d3fc208cd1b5070f8eea8d54e9a5d17b85dd769e58be12e7fa7cbc89"
+  },
+  "executed_old_driver": {
+    "bytes": 28126,
+    "sha256": "4db6f142a1bdcd9718593c5e4c42747b72f475c88786065a60005b7c876ba399"
+  },
+  "new_driver": {
+    "bytes": 31402,
+    "sha256": "d1117359b7f8e511ecde1f661c3aed123eeb18e4b4452858bb97ffcc148a0a2a"
+  },
+  "other_frozen_sources_unchanged": true,
+  "C_and_headers_exact": true,
+  "reused_function_ASTs_exact": [
+    "frozen",
+    "state",
+    "checked_record",
+    "decode_sdk",
+    "decode_own",
+    "guard_checks",
+    "assets",
+    "common_sources",
+    "emit"
+  ],
+  "changes": "Separate generated-C compilation permits unused empty-tag printer parameters; collector/native C stays strict. Resume only failed build then first metadata load.",
+  "SDK_loads_before_followup": 0,
+  "old_decoder_guards_repeated": false,
+  "old_codegen_repeated": false,
+  "frozen_experiment_sha256": "23a533517be639cf4b428683c106b9ce64d26ee75ff88564c50849346beb8d6f",
+  "transport_profile_sha256": "fd4718275163e3cbdb0b41ac4d34e2fa1c9b5e7309e366d51e0a7b58b92c07a6",
+  "numerical_inputs_and_budgets_unchanged": true,
+  "public_failed_driver": "preparation-driver-v1.py.txt",
+  "public_failed_record": "preparation-failure-v1.json",
+  "archived_source_scope": "Historical tooling snapshot only; no gate executes this archived driver."
+}

@@ -1,0 +1,11 @@
+own no-contact joint-PD steps: 250
+hinge 1 q/v (micro-rad, micro-rad/s): 14219 42172
+hinge 2 q/v (micro-rad, micro-rad/s): 180140 -26395
+hinge 3 q/v (micro-rad, micro-rad/s): 8670 15219
+hinge 4 q/v (micro-rad, micro-rad/s): -2643143 -23996
+hinge 5 q/v (micro-rad, micro-rad/s): 20559 15766
+hinge 6 q/v (micro-rad, micro-rad/s): 2952635 9884
+hinge 7 q/v (micro-rad, micro-rad/s): 782293 -1434
+slide 1 q/v (micro-m, micro-m/s): 13010 -7
+slide 2 q/v (micro-m, micro-m/s): -26990 -7
+PD clips: 0

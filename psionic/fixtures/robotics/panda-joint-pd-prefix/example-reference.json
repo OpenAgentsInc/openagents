@@ -1,0 +1,16 @@
+{
+  "schema": "psionic.panda-joint-pd-rollout.example-reference.v1",
+  "passed": true,
+  "source": "one SDK prefix endpoint and sum of recorded PJP clipping counts",
+  "experiment_sha256": "23a533517be639cf4b428683c106b9ce64d26ee75ff88564c50849346beb8d6f",
+  "capture_record_sha256": "804cb044c6f165359aa43095783324ca225515725366d1f72cfc06d5058016a9",
+  "trace_sha256": "c4b989012cd36a3d11a5c6f9f7a960e588800344c604148df1bb344506c069ea",
+  "generator_sha256": "64dfb91e2cdfbb7cc38aa05168d2c18865f869a687e6bab11cd37044ec1fb0cd",
+  "Coax_example_sha256": "916c50e431b362b60add31ea1b8471fdd93069e647be36774bb501f531f2a972",
+  "expected_stdout_sha256": "35e72fc1a992e91056ea7be0b1f4082b293c294d2b3e490652e6a6cd3a59e8ad",
+  "Coax_calls": 0,
+  "SDK_calls": 0,
+  "rounding": "nearest micro-unit, halfway away from zero",
+  "minimum_rounding_margin_micro": 0.000609122718742583,
+  "written_before_first_example_execution": true
+}

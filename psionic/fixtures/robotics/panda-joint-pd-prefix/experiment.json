@@ -1,0 +1,116 @@
+{
+  "schema": "psionic.panda-joint-pd-prefix.experiment.v1",
+  "frozen_before_new_trajectory_or_SDK_calls": true,
+  "frozen_UTC": "2026-11-01T00:04:41.091458+00:00",
+  "deadline_UTC": "2026-11-01T01:45:00Z",
+  "profile": "panda-source331-joint-pd-owned-euler-no-constraints-prefix-v1",
+  "steps": 250,
+  "step_seconds": 0.002,
+  "initial": {
+    "q": [
+      0,
+      0.19634954084936207,
+      0,
+      -2.617993877991494,
+      0,
+      2.941592653589793,
+      0.7853981633974483,
+      0.013,
+      -0.027
+    ],
+    "v": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "target": [
+      0.02,
+      0.18134954084936206,
+      0.01,
+      -2.637993877991494,
+      0.015,
+      2.9515926535897927,
+      0.7803981633974483
+    ],
+    "target_v": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "kp": [
+      60.0,
+      60.0,
+      60.0,
+      60.0,
+      40.0,
+      20.0,
+      10.0
+    ],
+    "kd": [
+      8.0,
+      8.0,
+      8.0,
+      8.0,
+      5.0,
+      3.0,
+      2.0
+    ],
+    "finger_targets": [
+      0.013,
+      -0.027
+    ],
+    "external9": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "initial_sha256": "c9ab405f420a2e56b686ddd8f86370968330fb81893f7196203a3d6207dc2643",
+  "SDK": {
+    "new_prefixes": 1,
+    "new_steps": 250,
+    "explicit_initial_forwards": 1,
+    "other_forwards": 0,
+    "post_step_forwards": 0,
+    "disableflags": 17,
+    "source_disableflags": 0,
+    "EULERDAMP_enabled": true,
+    "source_XML_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+    "library_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+    "NN": 0,
+    "render": 0
+  },
+  "control": "PJP independently recomputed from current state in each plant. Its clippedcommand feeds Pa viaPeu once. PJPclipcount remains distinctfromactuatorclips. Held finger targets never change; no second gravity orjointdamping term.",
+  "reference": "One SDKplant prefix driven byCoaxPJP. Then replay cached states/commands against three new pure-own PD+Peu profiles, without repeatingSDK. Optional own-plant recorded-command shadow isolates dynamics. Independently validate controller arithmetic/gravity on SDKtrajectory using authoredmatrixoracle, not a rerunofold44case gate.",
+  "canonical_record": "each poststep q9,v9 +prestepPJP P/D/g0/requested/command 35 F64 +timeF64 +clippedint64=440bytes; input48F64; full states include counters/status",
+  "budgets": {
+    "arm_q_rad": 1e-08,
+    "slide_q_m": 1e-09,
+    "arm_v_rad_s": 1e-07,
+    "slide_v_m_s": 1e-08,
+    "commands_J_per_rad": 1e-06,
+    "independent_PD_fields_J_per_rad": 5e-10,
+    "SDK_time_s": 1e-12,
+    "rtol": 0,
+    "status_and_clipcounts": "exact"
+  },
+  "admission": "Everycontroller/plantcallmustsucceed and all actual/reference wordsfinite; allSDKwarningszero; bothrobot/offscene masscrossblocks0 atinitialvalidation. Preserve partialfailedprefix with exactstepcount; no gain/target/tolerance tuning.",
+  "performance": "Report initial/final/min/max joint-targeterror only, no convergence/stability criterion orwall-real-time claim.",
+  "scope": "Fixed robot9 no-contact halfsecond numericalbehavior parity, notsourcecontacts/frictionloss/fullsceneobjects/GR00Tepisode/clock/compilerbounds/hardware or generic stability."
+}

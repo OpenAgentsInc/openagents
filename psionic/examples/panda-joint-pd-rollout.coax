@@ -1,0 +1,24 @@
+#import "Basic";
+#load "../lib/robotics/panda-joint-pd.coax";
+#load "../lib/robotics/panda-euler.coax";
+pjr_micro :: (value:f64)->int {if value<0 {return -cast(int)floor(-value*1000000+0.5);}return cast(int)floor(value*1000000+0.5);}
+main :: () {
+// book:begin pjp-rollout
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ target:[7]pfku.Quantity(pfku.Radian,f64);target_v:[7]pfku.Quantity(PidAngularRate,f64);
+ home:=[7]f64.[0,0.19634954084936207,0,-2.617993877991494,0,2.941592653589793,0.7853981633974483];offset:=[7]f64.[0.02,-0.015,0.01,-0.02,0.015,0.01,-0.005];
+ for i:0..<7 {q[i].value=home[i];target[i].value=home[i]+offset[i];}
+ s[0].value=0.013;s[1].value=-0.027;finger_target:=s;
+ kp:=pjp_default_kp();kd:=pjp_default_kd();external_h:[7]pfku.Quantity(PmHingeGravity,f64);external_s:[2]pfku.Quantity(PmSlideGravity,f64);clipped:int=0;
+ for step:0..<250 {
+  force:[1]PjpOutput;#assert pjp_forward(q[..],s[..],v[..],target[..],target_v[..],kp[..],kd[..],force[..])==PjpStatus.ok;clipped+=force[0].clipped;
+  next:[1]PeuOutput;#assert peu_step(q[..],s[..],v[..],sv[..],force[0].command[..],finger_target[..],external_h[..],external_s[..],next[..])==PmsStatus.ok;
+  q=next[0].angles;s=next[0].slides;v=next[0].hinge_rates;sv=next[0].slide_rates;
+ }
+ print("own no-contact joint-PD steps: 250\n");
+ for i:0..<7 {print("hinge % q/v (micro-rad, micro-rad/s): % %\n",i+1,pjr_micro(q[i].value),pjr_micro(v[i].value));}
+ for i:0..<2 {print("slide % q/v (micro-m, micro-m/s): % %\n",i+1,pjr_micro(s[i].value),pjr_micro(sv[i].value));}
+ print("PD clips: %\n",clipped);
+// book:end pjp-rollout
+}

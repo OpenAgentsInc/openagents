@@ -1,0 +1,18 @@
+{
+  "schema": "psionic.panda-joint-pd-prefix.transport.v1",
+  "frozen_before_prefix_metadata_load_or_trajectory": true,
+  "experiment_sha256": "23a533517be639cf4b428683c106b9ce64d26ee75ff88564c50849346beb8d6f",
+  "initial_sha256": "c9ab405f420a2e56b686ddd8f86370968330fb81893f7196203a3d6207dc2643",
+  "numerical_inputs_and_budgets_unchanged": true,
+  "SDK_record_bytes": 440,
+  "SDK_record_fields": "poststep q9/v9; prestep PJP P7/D7/gravity7/requested7/command7; poststep timeF64; PJP clippedInt64",
+  "own_record_bytes": 600,
+  "own_record_fields": "fresh own440-byte record; recorded-command-shadow poststep q9/v9; fresh and shadow PeU finger-force clippedInt64",
+  "serialized_status_fields": 0,
+  "serialized_SDK_counters": ["PJP_clipped"],
+  "status_clarification": "The frozen experiment's full-state wording does not add serialized status fields. Each completed record follows checked successful controller/plant calls. SDK trace records serialize only the explicit PJP clip count, not actuator clipping or a controller status.",
+  "SDK_force_clip_observed": false,
+  "own_force_clip_reference": "Derived independently from each own branch's prestate and controls using the already authored source-ordered scalar actuator law; not an SDK observed counter.",
+  "failure_counts": "SDK progress records distinguish started/completed initial forward and steps from committed440-byte records. Own failure files report committed600-byte records, never an unobserved exact number of executed calls.",
+  "scope": "Private fixed little-endian experiment transport, not a published product protocol; no constraints, source contacts/frictionloss, general stability, R13 clock, R14 bound or hardware qualification."
+}

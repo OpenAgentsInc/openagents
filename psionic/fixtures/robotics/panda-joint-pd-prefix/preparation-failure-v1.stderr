@@ -1,0 +1,59 @@
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1107:65: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1107 | static void coax_show_t_PjpStiffness(const coax_t_PjpStiffness *v) {
+      |                                                                 ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1111:61: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1111 | static void coax_show_t_PjpDamping(const coax_t_PjpDamping *v) {
+      |                                                             ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1136:65: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1136 | static void coax_show_t_PaFingerGain(const coax_t_PaFingerGain *v) {
+      |                                                                 ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1140:69: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1140 | static void coax_show_t_PaHingeDamping(const coax_t_PaHingeDamping *v) {
+      |                                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1144:69: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1144 | static void coax_show_t_PaSlideDamping(const coax_t_PaSlideDamping *v) {
+      |                                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1168:69: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1168 | static void coax_show_t_PidAngularRate(const coax_t_PidAngularRate *v) {
+      |                                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1172:67: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1172 | static void coax_show_t_PidLinearRate(const coax_t_PidLinearRate *v) {
+      |                                                                   ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1176:85: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1176 | static void coax_show_t_PidAngularAcceleration(const coax_t_PidAngularAcceleration *v) {
+      |                                                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1180:83: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1180 | static void coax_show_t_PidLinearAcceleration(const coax_t_PidLinearAcceleration *v) {
+      |                                                                                   ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1198:69: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1198 | static void coax_show_t_PmHingeInertia(const coax_t_PmHingeInertia *v) {
+      |                                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1202:69: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1202 | static void coax_show_t_PmCrossInertia(const coax_t_PmCrossInertia *v) {
+      |                                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1206:69: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1206 | static void coax_show_t_PmHingeGravity(const coax_t_PmHingeGravity *v) {
+      |                                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1210:69: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1210 | static void coax_show_t_PmSlideGravity(const coax_t_PmSlideGravity *v) {
+      |                                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1262:57: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1262 | static void coax_show_t_PfkWorld(const coax_t_PfkWorld *v) {
+      |                                                         ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1299:57: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1299 | static void coax_show_t_Kilogram(const coax_t_Kilogram *v) {
+      |                                                         ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1303:51: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1303 | static void coax_show_t_Metre(const coax_t_Metre *v) {
+      |                                                   ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1307:59: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1307 | static void coax_show_t_HalfMetre(const coax_t_HalfMetre *v) {
+      |                                                           ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1311:53: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1311 | static void coax_show_t_Second(const coax_t_Second *v) {
+      |                                                     ^
+/private/tmp/panda-joint-pd-prefix-first/debug/panda-pd-session.c:1315:53: error: unused parameter 'v' [-Werror,-Wunused-parameter]
+ 1315 | static void coax_show_t_Radian(const coax_t_Radian *v) {
+      |                                                     ^
+fatal error: too many errors emitted, stopping now [-ferror-limit=]
+20 errors generated.

@@ -1,0 +1,36 @@
+{
+  "schema": "psionic.panda-joint-pd-rollout.example.v1",
+  "passed": true,
+  "source": "psionic/examples/panda-joint-pd-rollout.coax",
+  "source_sha256": "916c50e431b362b60add31ea1b8471fdd93069e647be36774bb501f531f2a972",
+  "golden_sha256": "35e72fc1a992e91056ea7be0b1f4082b293c294d2b3e490652e6a6cd3a59e8ad",
+  "prewritten_reference_sha256": "aa7c92a0897cc0396e3e64eaa381b3f900bfeb0252ca5aa3b4ee9aa4425a8a7c",
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "commands": [
+    {
+      "mode": "debug",
+      "argv": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "run",
+        "psionic/examples/panda-joint-pd-rollout.coax"
+      ],
+      "exit": 0,
+      "seconds": 4.278331792040262,
+      "stdout_sha256": "35e72fc1a992e91056ea7be0b1f4082b293c294d2b3e490652e6a6cd3a59e8ad",
+      "stderr_bytes": 0
+    },
+    {
+      "mode": "release",
+      "argv": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "run",
+        "psionic/examples/panda-joint-pd-rollout.coax",
+        "--release"
+      ],
+      "exit": 0,
+      "seconds": 4.749944166978821,
+      "stdout_sha256": "35e72fc1a992e91056ea7be0b1f4082b293c294d2b3e490652e6a6cd3a59e8ad",
+      "stderr_bytes": 0
+    }
+  ]
+}

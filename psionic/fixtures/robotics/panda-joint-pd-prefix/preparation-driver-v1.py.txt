@@ -1,0 +1,376 @@
+#!/usr/bin/env python3
+"""One admitted SDK prefix, followed by SDK-free own/shadow replays.
+
+Default mode is offline. --prepare-sdk loads metadata only; the separate
+--capture-prepared operation is a one-shot acquisition, never a retry. No
+product arithmetic is implemented here. Coax owns both controller and plant.
+"""
+from pathlib import Path
+import argparse, copy, hashlib, json, math, os, platform, struct, subprocess, time
+import xml.etree.ElementTree as ET
+from panda_euler_sdk_reference import validate_step_model
+from panda_actuation_reference import scalar as actuator_scalar
+
+ROOT = Path(__file__).resolve().parents[3]
+FIXTURE = ROOT / 'psionic/fixtures/robotics/panda-joint-pd-prefix'
+TESTS = ROOT / 'psionic/tests/robotics'
+EXPERIMENT_SHA = '23a533517be639cf4b428683c106b9ce64d26ee75ff88564c50849346beb8d6f'
+INITIAL_SHA = 'c9ab405f420a2e56b686ddd8f86370968330fb81893f7196203a3d6207dc2643'
+COMPILER = Path('/tmp/coax-spatial-fixture-fixes-reconstruction/coax')
+COMPILER_SHA = 'a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818'
+AGGREGATE = TESTS / 'panda-joint-pd-prefix.coax'
+COLLECTOR = TESTS / 'panda_joint_pd_prefix_sdk_collect.c'
+NATIVE = TESTS / 'panda_joint_pd_prefix_native.c'
+TRANSPORT = FIXTURE / 'transport-profile-v1.json'
+ROW = struct.Struct('<54dq')
+OWN = struct.Struct('<54dq18d2q')
+HEADER = struct.Struct('<II')
+STEPS = 250
+
+def require(ok, message):
+    if not ok:
+        raise RuntimeError(message)
+
+def sha(path):
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+def identity(path):
+    p = Path(path)
+    return dict(bytes=p.stat().st_size, sha256=sha(p))
+
+def finite(values, count, label):
+    require(len(values) == count and all(math.isfinite(v) for v in values), label + ': all words finite and complete')
+    return list(values)
+
+def frozen():
+    require(sha(FIXTURE / 'experiment.json') == EXPERIMENT_SHA, 'unchanged frozen experiment')
+    e = json.loads((FIXTURE / 'experiment.json').read_text())
+    require(e['steps'] == STEPS and e['step_seconds'] == .002 and e['budgets']['rtol'] == 0, 'unchanged numerical experiment')
+    raw = (FIXTURE / 'initial.f64').read_bytes()
+    require(len(raw) == 384 and sha(FIXTURE / 'initial.f64') == INITIAL_SHA == e['initial_sha256'], 'exact48 frozen initial values')
+    finite(struct.unpack('<48d', raw), 48, 'initial')
+    require(raw == struct.pack('<48d', *[x for key in ['q', 'v', 'target', 'target_v', 'kp', 'kd', 'finger_targets'] for x in e['initial'][key]]), 'JSON/binary initial bits')
+    require(e['initial']['external9'] == [0.] * 9, 'frozen zero generalized external force')
+    t = json.loads(TRANSPORT.read_text())
+    require(t['schema'] == 'psionic.panda-joint-pd-prefix.transport.v1' and t['experiment_sha256'] == EXPERIMENT_SHA and t['initial_sha256'] == INITIAL_SHA, 'transport binds unchanged experiment')
+    require(t['SDK_record_bytes'] == ROW.size == 440 and t['own_record_bytes'] == OWN.size == 600 and t['serialized_status_fields'] == 0 and t['serialized_SDK_counters'] == ['PJP_clipped'], 'honest transport/status scope')
+    require(t['numerical_inputs_and_budgets_unchanged'] is True, 'transport clarification only')
+    return e, raw
+
+def state(q, v, label):
+    finite(list(q) + list(v), 18, label)
+    require(all(abs(x) <= (100 if i < 7 else 1) for i, x in enumerate(q)), label + ': position boxes')
+    require(all(abs(x) <= (20 if i < 7 else 2) for i, x in enumerate(v)), label + ': rate boxes')
+
+def checked_record(row, expected_time, label):
+    finite(row[:54], 54, label)
+    require(0 <= row[54] <= 7, label + ': PJP clipping domain')
+    state(row[:9], row[9:18], label)
+    require(abs(row[53] - expected_time) <= 1e-12, label + ': one-add source step time')
+    requested, command = row[39:46], row[46:53]
+    limits = [80.] * 5 + [12.] * 2
+    require(all(c == min(hi, max(-hi, r)) for c, r, hi in zip(command, requested, limits)), label + ': recorded command clamp')
+    require(row[54] == sum(r < -hi or r > hi for r, hi in zip(requested, limits)), label + ': explicit PJP clipping count')
+
+def decode_sdk(raw):
+    require(len(raw) == 8 + STEPS * ROW.size, 'SDK exact250×440 byte extent')
+    require(HEADER.unpack_from(raw) == (0x31525050, STEPS), 'SDK PPR1 header')
+    rows = [ROW.unpack_from(raw, 8 + i * ROW.size) for i in range(STEPS)]
+    # Decode and check EVERY actual float before any downstream error maxima.
+    finite([x for row in rows for x in row[:54]], 13500, 'all SDK actual observations')
+    current = 0.
+    for i, row in enumerate(rows):
+        current += .002
+        checked_record(row, current, 'SDK row' + str(i))
+    return rows
+
+def decode_own(raw):
+    require(len(raw) == STEPS * OWN.size, 'own exact250×600 byte extent')
+    rows = [OWN.unpack_from(raw, i * OWN.size) for i in range(STEPS)]
+    finite([x for row in rows for x in row[:54] + row[55:73]], 18000, 'all own and shadow observations')
+    current = 0.
+    for i, row in enumerate(rows):
+        current += .002
+        checked_record(row, current, 'own row' + str(i))
+        state(row[55:64], row[64:73], 'shadow row' + str(i))
+        require(0 <= row[73] <= 2 and 0 <= row[74] <= 2, 'derived finger actuator clipping domains')
+    return rows
+
+def guard_checks():
+    rows = []
+    current = 0.
+    for _ in range(STEPS):
+        current += .002
+        rows.append(ROW.pack(*([0.] * 53 + [current]), 0))
+    good = HEADER.pack(0x31525050, STEPS) + b''.join(rows)
+    decoded = decode_sdk(good)
+    own = b''.join(OWN.pack(*r, *([0.] * 18), 0, 0) for r in decoded)
+    decode_own(own)
+    bad = [('SDK', good[:-1]), ('SDK', good + b'\0'), ('own', own[:-1]), ('own', own + b'\0')]
+    for value in [float('nan'), float('inf'), -float('inf')]:
+        for offset in [0, 52 * 8, 53 * 8]:
+            b = bytearray(good); struct.pack_into('<d', b, 8 + 249 * ROW.size + offset, value); bad.append(('SDK', bytes(b)))
+        for offset in [0, 53 * 8, 440, 576]:
+            b = bytearray(own); struct.pack_into('<d', b, 249 * OWN.size + offset, value); bad.append(('own', bytes(b)))
+    for offset, value in [(432, -1), (432, 8), (53 * 8, .1), (46 * 8, 81.), (9 * 8, 21.)]:
+        b = bytearray(good); struct.pack_into('<q' if offset == 432 else '<d', b, 8 + 249 * ROW.size + offset, value); bad.append(('SDK', bytes(b)))
+    for offset, value in [(432, 8), (584, -1), (592, 3)]:
+        b = bytearray(own); struct.pack_into('<q', b, 249 * OWN.size + offset, value); bad.append(('own', bytes(b)))
+    for magic, count in [(0, 250), (0x31525050, 249), (0x31525050, 251)]:
+        b = bytearray(good); HEADER.pack_into(b, 0, magic, count); bad.append(('SDK', bytes(b)))
+    for kind, raw in bad:
+        try:
+            (decode_sdk if kind == 'SDK' else decode_own)(raw)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError('admitted new prefix decoder poison ' + kind)
+    return dict(passed=True, owned_synthetic_protocol_only=True, positive_cases=2, refused_cases=len(bad), SDK_calls=0)
+
+def compare(actual, expected, atol, label):
+    finite(actual, len(expected), label + ' actual')
+    finite(expected, len(actual), label + ' expected')
+    require(len(actual) > 0, label + ': nonempty')
+    error = max(abs(a - b) for a, b in zip(actual, expected))
+    require(math.isfinite(error) and error <= atol, f'{label}: {error:.17g} exceeds frozen {atol:g}')
+    return dict(passed=True, values=len(actual), max_abs_error=error, atol=atol, rtol=0)
+
+def assets(scene):
+    tree = ET.parse(scene)
+    require(not any(n.tag in ['include', 'plugin', 'extension'] for n in tree.iter()), 'no unbound XML imports/plugins')
+    declarations = []
+    for node in tree.getroot().findall('./asset/*'):
+        if node.get('file'):
+            p = Path(node.get('file'))
+            p = (p if p.is_absolute() else scene.parent / p).resolve()
+            declarations.append(dict(tag=node.tag, name=node.get('name'), path=str(p), identity=identity(p)))
+    unique = {a['path']: dict(path=a['path'], identity=a['identity']) for a in declarations}
+    require(len(declarations) == 86 and len(unique) == 85, '86 asset declarations/85 unique resolved paths')
+    return declarations, list(unique.values())
+
+def progress_summary(path, strict=False):
+    events, malformed = [], 0
+    if path.exists():
+        for line in path.read_bytes().splitlines():
+            try:
+                events.append(json.loads(line))
+            except (ValueError, UnicodeError):
+                malformed += 1
+    expected = [{'event': 'before_initial_forward'}, {'event': 'after_initial_forward'}] + [dict(step=i, event=k) for i in range(STEPS) for k in ['before_step', 'after_step']]
+    if strict:
+        require(malformed == 0 and events == expected, 'exact one-forward/250-step phase ledger')
+    return dict(explicit_forwards_started=sum(x.get('event') == 'before_initial_forward' for x in events), explicit_forwards_completed=sum(x.get('event') == 'after_initial_forward' for x in events), steps_started=sum(x.get('event') == 'before_step' for x in events), steps_completed=sum(x.get('event') == 'after_step' for x in events), malformed_progress_lines=malformed)
+
+class Run:
+    def __init__(self, out, record, env=None):
+        self.out, self.record = out, record
+        self.env = os.environ.copy() if env is None else env
+    def save(self):
+        (self.out / 'record.json').write_text(json.dumps(self.record, indent=2) + '\n')
+    def command(self, name, argv, env=None):
+        began = time.monotonic()
+        command = dict(name=name, argv=[str(x) for x in argv])
+        self.record['commands'].append(command); self.save()
+        try:
+            result = subprocess.run(command['argv'], cwd=ROOT, capture_output=True, env=self.env if env is None else env, timeout=180)
+            stdout, stderr = result.stdout, result.stderr
+            command['exit'] = result.returncode
+        except subprocess.TimeoutExpired as error:
+            stdout, stderr = error.stdout or b'', error.stderr or b''
+            command.update(timed_out=True, exit=None)
+            raise
+        finally:
+            (self.out / (name + '.stdout')).write_bytes(locals().get('stdout', b''))
+            (self.out / (name + '.stderr')).write_bytes(locals().get('stderr', b''))
+            command.update(seconds=time.monotonic() - began, stdout=identity(self.out / (name + '.stdout')), stderr=identity(self.out / (name + '.stderr')))
+            self.save()
+        require(result.returncode == 0 and not result.stderr, (name, result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace')))
+        return result.stdout
+
+def common_sources(dependencies):
+    paths = [Path(p).resolve() for p in dependencies]
+    paths += [Path(__file__).resolve(), AGGREGATE, COLLECTOR, NATIVE, TESTS / 'panda_joint_pd_prefix_format.h', TESTS / 'panda_actuation_sdk_collect.c', TESTS / 'panda_actuation_sdk_reference.py', TESTS / 'panda_euler_sdk_reference.py', TESTS / 'panda_actuation_reference.py', ROOT / 'psionic/fixtures/robotics/panda-actuation/experiment.json', TRANSPORT, FIXTURE / 'experiment.json', FIXTURE / 'initial.f64']
+    return {str(p.relative_to(ROOT)): identity(p) for p in sorted(set(paths))}
+
+def verify_sources(source):
+    require(source and all(identity(ROOT / name) == value for name, value in source.items()), 'every frozen authored source unchanged')
+
+def emit(run, compiler):
+    dependencies = json.loads(run.command('dependencies', [compiler, 'deps', AGGREGATE]))['sources']
+    run.record['source'] = common_sources(dependencies); run.save()
+    outputs = {}
+    for mode in ['debug', 'release']:
+        directory = run.out / mode; directory.mkdir()
+        header = directory / 'panda-pd-session.h'
+        raw = run.command('emit-' + mode, [compiler, 'c', AGGREGATE, '--library', *(['--release'] if mode == 'release' else []), '--header', header])
+        source = directory / 'panda-pd-session.c'; source.write_bytes(raw)
+        outputs[mode] = dict(source=identity(source), header=identity(header))
+    verify_sources(run.record['source'])
+    run.record['emissions'] = outputs; run.save()
+    return outputs
+
+def compiler_flags():
+    return ['-std=c11', '-Wall', '-Wextra', '-Werror', '-Wno-unused-function', '-Wno-misleading-indentation', '-fno-fast-math', '-ffp-contract=off', '-fno-builtin-sin', '-fno-builtin-cos']
+
+def prepare(args, e, initial):
+    require(platform.system() == 'Darwin' and platform.machine() == 'arm64' and os.sys.byteorder == 'little', 'qualified acquisition target')
+    compiler = args.coax.resolve(); require(sha(compiler) == COMPILER_SHA, 'qualified FP580 compiler snapshot for old source checkout')
+    scene = args.scene.resolve(); sdk = args.sdk.resolve(); library = sdk / 'libmujoco.3.3.1.dylib'
+    require(sha(scene) == e['SDK']['source_XML_sha256'] and sha(library) == e['SDK']['library_sha256'], 'exact source XML and installed SDK')
+    declarations, unique = assets(scene)
+    headers = {str(p.relative_to(sdk)): identity(p) for p in sorted((sdk / 'include/mujoco').glob('*.h'))}
+    require(headers, 'nonempty SDK C header inventory')
+    out = args.output.resolve(); require(not out.exists(), 'preserve every prior or partial preparation'); out.mkdir(parents=True)
+    record = dict(schema='psionic.panda-joint-pd-prefix.sdk-reference.v1', passed=False, prepared=False, capture_started=False, experiment_sha256=EXPERIMENT_SHA, initial_sha256=INITIAL_SHA, commands=[], compiler=identity(compiler), compiler_input_fingerprint='580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036', SDK_library=identity(library), SDK_headers=headers, source_XML=identity(scene), asset_declarations=declarations, assets=unique, transport=identity(TRANSPORT), SDK_runtime_uninstrumented=True, collector_and_Coax_ASan_UBSan_fail_fast=True, ASAN_leak_detection=False, NN_calls=0, render_calls=0, post_step_forwards=0)
+    env = os.environ.copy(); env.update(DYLD_LIBRARY_PATH=str(sdk), ASAN_OPTIONS='detect_leaks=0:halt_on_error=1', UBSAN_OPTIONS='halt_on_error=1')
+    run = Run(out, record, env); run.save()
+    try:
+        record['new_transport_guard_checks'] = guard_checks(); run.save()
+        emit(run, compiler)
+        (out / 'input.bin').write_bytes(HEADER.pack(0x31495050, 48) + initial)
+        run.command('compile-sdk', [os.environ.get('CC', 'cc'), *compiler_flags(), '-O1', '-g', '-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-omit-frame-pointer', '-I' + str(out / 'debug'), '-I' + str(sdk / 'include'), COLLECTOR, out / 'debug/panda-pd-session.c', library, '-Wl,-rpath,' + str(sdk), '-lm', '-o', out / 'collect'])
+        verify_sources(record['source'])
+        report = json.loads(run.command('metadata', [out / 'collect', 'metadata', scene, out / 'model.json']))
+        require(report == dict(prepared=True, steps=0, explicit_forwards=0), 'metadata-only SDK scope')
+        record['support_admission'] = validate_step_model(json.loads((out / 'model.json').read_text()))
+        verify_sources(record['source'])
+        record.update(prepared=True, binary=identity(out / 'collect'), metadata=identity(out / 'model.json'), input=identity(out / 'input.bin'), explicit_forwards_started=0, explicit_forwards_completed=0, steps_started=0, steps_completed=0)
+    except BaseException as error:
+        record['failure'] = repr(error); raise
+    finally:
+        run.save()
+    print(json.dumps(dict(prepared=True, explicit_forwards=0, steps=0, record=str(out / 'record.json'))))
+
+def capture(args, e, initial):
+    out = args.output.resolve(); record = json.loads((out / 'record.json').read_text())
+    require(record['prepared'] and not record['passed'] and not record['capture_started'], 'one first acquisition; no retry/reset path')
+    verify_sources(record['source'])
+    compiler = args.coax.resolve(); scene = args.scene.resolve(); sdk = args.sdk.resolve(); library = sdk / 'libmujoco.3.3.1.dylib'
+    require(record['compiler'] == identity(compiler) and sha(compiler) == COMPILER_SHA, 'frozen compiler artifact')
+    require(record['binary'] == identity(out / 'collect') and record['metadata'] == identity(out / 'model.json') and record['transport'] == identity(TRANSPORT), 'immutable prepared binary/model/transport')
+    require(record['source_XML'] == identity(scene) and record['SDK_library'] == identity(library) and record['SDK_headers'] == {str(p.relative_to(sdk)): identity(p) for p in sorted((sdk / 'include/mujoco').glob('*.h'))}, 'immutable SDK/header/XML context')
+    for a in record['assets']:
+        require(identity(a['path']) == a['identity'], 'unchanged model asset ' + a['path'])
+    for mode, values in record['emissions'].items():
+        require(values == dict(source=identity(out / mode / 'panda-pd-session.c'), header=identity(out / mode / 'panda-pd-session.h')), 'unchanged emitted composition ' + mode)
+    require((out / 'input.bin').read_bytes() == HEADER.pack(0x31495050, 48) + initial and record['input'] == identity(out / 'input.bin'), 'actual frozen input')
+    validate_step_model(json.loads((out / 'model.json').read_text()))
+    env = os.environ.copy(); env.update(DYLD_LIBRARY_PATH=str(sdk), ASAN_OPTIONS='detect_leaks=0:halt_on_error=1', UBSAN_OPTIONS='halt_on_error=1')
+    run = Run(out, record, env); record['capture_started'] = True; run.save()
+    try:
+        report = json.loads(run.command('capture', [out / 'collect', 'capture', scene, out / 'input.bin', out / 'sdk-trace.bin', out / 'model-capture.json', out / 'progress.jsonl']))
+        require(report['passed'] and report['steps'] == STEPS and report['explicit_forwards'] == 1 and report['post_step_forwards'] == report['NN_calls'] == report['render_calls'] == 0 and report['record_bytes'] == ROW.size, 'exact first-prefix work scope')
+        record.update(progress_summary(out / 'progress.jsonl', True))
+        require(identity(out / 'model-capture.json') == record['metadata'], 'capture instance equals admitted metadata')
+        rows = decode_sdk((out / 'sdk-trace.bin').read_bytes())
+        verify_sources(record['source'])
+        record.update(passed=True, native=report, trace=identity(out / 'sdk-trace.bin'), progress=identity(out / 'progress.jsonl'), all13500_actual_words_finite=True, committed_records=len(rows), serialized_status_fields=0, checked_status_scope='Completed records follow checked successful Coax PJP calls; only PJP clipping count is serialized.', PJP_clip_histogram={str(k): sum(r[54] == k for r in rows) for k in range(8)})
+    except BaseException as error:
+        record['failure'] = repr(error); raise
+    finally:
+        record.update(progress_summary(out / 'progress.jsonl'))
+        if (out / 'sdk-trace.bin').exists():
+            size = (out / 'sdk-trace.bin').stat().st_size
+            record['partial_or_full_trace'] = identity(out / 'sdk-trace.bin')
+            record['committed_records'] = max(0, (size - 8) // ROW.size)
+            record['trailing_partial_record_bytes'] = max(0, size - 8) % ROW.size
+        run.save()
+    print(json.dumps(dict(passed=True, record=str(out / 'record.json'), trace=record['trace'], steps=record['steps_completed'])))
+
+def replay_metrics(own, sdk, e):
+    metrics = {}; b = e['budgets']
+    for name, indices, budget in [('q_rad', range(7), b['arm_q_rad']), ('q_m', range(7, 9), b['slide_q_m']), ('v_rad_s', range(9, 16), b['arm_v_rad_s']), ('v_m_s', range(16, 18), b['slide_v_m_s'])]:
+        metrics[name] = compare([r[i] for r in own for i in indices], [r[i] for r in sdk for i in indices], budget, 'fresh ' + name)
+        offset = 55  # Own q/v views begin55 words after the matching SDK views.
+        metrics['shadow_' + name] = compare([r[i + offset] for r in own for i in indices], [r[i] for r in sdk for i in indices], budget, 'shadow ' + name)
+    metrics['all_PD_fields_on_close_states'] = compare([r[i] for r in own for i in range(18, 53)], [r[i] for r in sdk for i in range(18, 53)], b['commands_J_per_rad'], 'all own prePD fields versus SDK prePD fields')
+    metrics['command_J_per_rad'] = compare([r[i] for r in own for i in range(46, 53)], [r[i] for r in sdk for i in range(46, 53)], b['commands_J_per_rad'], 'commands')
+    require(all(r[54] == s[54] for r, s in zip(own, sdk)), 'all PJP clipping counts exact')
+    pre_q = list(e['initial']['q']); pre_v = list(e['initial']['v']); shadow_q = pre_q[:]; shadow_v = pre_v[:]
+    for r, s in zip(own, sdk):
+        for q, v, commands, actual in [(pre_q, pre_v, r[46:53], r[73]), (shadow_q, shadow_v, s[46:53], r[74])]:
+            _, _, controls, forces = actuator_scalar(dict(q=q, v=v, ctrl=list(commands) + e['initial']['finger_targets']))
+            require(controls == 0 and forces == actual, 'own finger clipping count equals separate scalar source formula')
+        pre_q, pre_v = list(r[:9]), list(r[9:18]); shadow_q, shadow_v = list(r[55:64]), list(r[64:73])
+    target = e['initial']['target']
+    errors = [math.sqrt(sum((q - x) ** 2 for q, x in zip(e['initial']['q'][:7], target)))] + [math.sqrt(sum((q - x) ** 2 for q, x in zip(r[:7], target))) for r in own]
+    finite(errors, 251, 'target-error report')
+    metrics['target_error_rad_reporting_only'] = dict(initial=errors[0], final=errors[-1], minimum=min(errors), maximum=max(errors), convergence_or_stability_threshold=False)
+    metrics['exact_counts'] = dict(PJP=250, own_derived_actuator_force=250, shadow_derived_actuator_force=250, SDK_force_clip_counter_observed=False)
+    return metrics
+
+def replay(args, e, initial):
+    require(platform.system() == 'Darwin' and platform.machine() == 'arm64', 'qualified Darwin-arm64 scalar-libm replay profile')
+    reference = args.reference.resolve(); path = reference / ('record.json' if (reference / 'record.json').exists() else 'sdk-reference.json')
+    capture_record = json.loads(path.read_text()); trace = reference / 'sdk-trace.bin'
+    require(capture_record['schema'] == 'psionic.panda-joint-pd-prefix.sdk-reference.v1' and capture_record['passed'] and capture_record['experiment_sha256'] == EXPERIMENT_SHA, 'completed frozen first SDK prefix')
+    require(identity(trace) == capture_record['trace'], 'exact cached first trajectory')
+    sdk_rows = decode_sdk(trace.read_bytes())
+    oracle_path = args.oracle_record.resolve() if args.oracle_record else FIXTURE / 'independent-controller-qualification.json'
+    oracle = json.loads(oracle_path.read_text())
+    require(oracle['passed'] and oracle['trace_sha256'] == sha(trace) and oracle['experiment_sha256'] == EXPERIMENT_SHA and oracle['clipping_counts_exact'] and oracle['SDK_calls'] == oracle['Coax_calls'] == 0, 'independent controller trace proof, never regenerated here')
+    out = args.output.resolve(); require(not out.exists(), 'preserve earlier or partial native replay'); out.mkdir(parents=True)
+    compiler = args.coax.resolve()
+    record = dict(schema='psionic.panda-joint-pd-prefix.native.v1', passed=False, commands=[], compiler=identity(compiler), experiment_sha256=EXPERIMENT_SHA, capture_record=identity(path), trace=identity(trace), independent_controller_record=identity(oracle_path), SDK_calls=0, NN_calls=0, render_calls=0, branches=2, steps_per_branch=250, serialized_status_fields=0, status_scope='Completed records and successful C report imply checked status OK; statuses are not serialized.', budgets=e['budgets'])
+    run = Run(out, record); run.save(); transcripts = {}
+    try:
+        if args.emissions:
+            emissions = args.emissions.resolve()
+            require(capture_record['compiler'] == identity(compiler), 'reuse exact preparation compiler identity')
+            verify_sources(capture_record['source'])
+            record['source'] = capture_record['source']
+            record['emissions'] = copy.deepcopy(capture_record['emissions'])
+            for mode, values in record['emissions'].items():
+                require(values == dict(source=identity(emissions / mode / 'panda-pd-session.c'), header=identity(emissions / mode / 'panda-pd-session.h')), 'reuse once-emitted C/header bytes')
+            record['emissions_reused_without_repeating_codegen'] = True
+        else:
+            emissions = out
+            emit(run, compiler)
+        (out / 'input.bin').write_bytes(HEADER.pack(0x31495050, 48) + initial)
+        require(identity(out / 'input.bin') == capture_record['input'], 'same captured PPI1 initial bits')
+        for mode in ['debug', 'release', 'sanitized']:
+            c_mode = 'release' if mode == 'release' else 'debug'
+            directory = out / ('native-' + mode); directory.mkdir()
+            flags = ['-O2'] if mode == 'release' else ['-O0', '-g']
+            if mode == 'sanitized':
+                flags += ['-fsanitize=address,undefined', '-fno-sanitize-recover=all', '-fno-omit-frame-pointer']
+            binary = directory / 'native'
+            run.command('compile-' + mode, [os.environ.get('CC', 'cc'), *compiler_flags(), *flags, '-I' + str(emissions / c_mode), NATIVE, emissions / c_mode / 'panda-pd-session.c', '-lm', '-o', binary])
+            env = os.environ.copy(); env.update(ASAN_OPTIONS='detect_leaks=0:halt_on_error=1', UBSAN_OPTIONS='halt_on_error=1')
+            report = json.loads(run.command('run-' + mode, [binary, out / 'input.bin', trace, directory / 'own-trace.bin'], env))
+            require(report['passed'] and report['SDK_calls'] == 0 and report['steps_per_own_branch'] == 250 and report['own_branches'] == 2 and report['record_bytes'] == OWN.size, 'own native work inventory')
+            raw = (directory / 'own-trace.bin').read_bytes(); rows = decode_own(raw)
+            record.setdefault('modes', {})[mode] = dict(native=report, binary=identity(binary), output=identity(directory / 'own-trace.bin'), metrics=replay_metrics(rows, sdk_rows, e), actual_finite_words=18000, reference_finite_words=13500)
+            transcripts[mode] = hashlib.sha256(raw).hexdigest(); run.save()
+        require(len(set(transcripts.values())) == 1, 'all complete own/shadow traces bit-identical across native profiles')
+        verify_sources(record['source'])
+        require(identity(path) == record['capture_record'] and identity(trace) == record['trace'] and identity(oracle_path) == record['independent_controller_record'], 'immutable cached observation and oracle proof')
+        record.update(passed=True, output_sha256=transcripts['debug'], complete_trace_bytes=250 * OWN.size, per_profile_own_steps=500, total_new_own_steps=1500)
+    except BaseException as error:
+        record['failure'] = repr(error); raise
+    finally:
+        record['committed_record_scope'] = {str(p.relative_to(out)): dict(complete_records=p.stat().st_size // OWN.size, trailing_bytes=p.stat().st_size % OWN.size) for p in out.glob('native-*/own-trace.bin')}
+        run.save()
+    print(json.dumps(dict(passed=True, record=str(out / 'record.json'), modes={k: v['native']['assertions'] for k, v in record['modes'].items()}, output_sha256=record['output_sha256'])))
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--output', type=Path, required=True)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--prepare-sdk', action='store_true')
+    modes.add_argument('--capture-prepared', action='store_true')
+    parser.add_argument('--coax', type=Path)
+    parser.add_argument('--scene', type=Path, default=Path.home() / '.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/scene.xml')
+    parser.add_argument('--sdk', type=Path, default=Path.home() / '.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco')
+    parser.add_argument('--reference', type=Path, default=FIXTURE)
+    parser.add_argument('--emissions', type=Path)
+    parser.add_argument('--oracle-record', type=Path)
+    args = parser.parse_args()
+    if args.coax is None:
+        args.coax = Path(os.environ.get('COAX', str(COMPILER if args.prepare_sdk or args.capture_prepared else ROOT / 'coax/bin/coax')))
+    require(os.sys.byteorder == 'little', 'explicit little-endian transport profile')
+    e, initial = frozen()
+    (prepare if args.prepare_sdk else capture if args.capture_prepared else replay)(args, e, initial)
+
+if __name__ == '__main__':
+    main()

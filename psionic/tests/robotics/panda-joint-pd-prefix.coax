@@ -1,0 +1,3 @@
+// Test-only composition. Qualified product rules stay in their own modules.
+#load "../../lib/robotics/panda-joint-pd.coax";
+#load "../../lib/robotics/panda-euler.coax";
