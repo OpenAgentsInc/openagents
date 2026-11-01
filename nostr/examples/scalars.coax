@@ -1,0 +1,115 @@
+// book:begin example
+#load "../../coax/lib/crypto/secp_scalar.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [80] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print a scalar as 32 big-endian bytes.
+show_scalar :: (label: string, a: ScScalar) {
+  b: [32] u8;
+  if sc_store(a, b[..]) { show(label, b[..]); } else { print("%: not canonical\n", label); }
+}
+// Decode 64 hex digits into 32 bytes; false if the hex is bad.
+bytes_of :: (text: string, out: [] u8) -> bool {
+  return hex_decode_checked(text, out, false).error == 0;
+}
+// Name the outcome of admitting 32 bytes as a BIP-340 secret key.
+SECRET :: [3] string.["ok", "zero", "not below n"];
+secret_status :: (bytes: [] u8) -> int {
+  loaded := sc_load(bytes);
+  if !loaded.ok { return 2; }
+  if !sc_secret_valid(loaded.value) { return 1; }
+  return 0;
+}
+
+main :: () {
+  // n in eight 32-bit limbs, lowest first.
+  print("n limbs: %\n", SC_N.limbs);
+
+  // 2^256 - 1 reduces to 2^256 - 1 - n.
+  b: [32] u8;
+  if !bytes_of("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", b[..]) { print("bad hex\n"); }
+  reduced := sc_reduce_bytes(b[..]);
+  print("reduce 2^256 - 1: ok %, overflow %\n", reduced.ok, reduced.overflow);
+  show_scalar("2^256 - 1 mod n", reduced.value);
+
+  // Arithmetic wraps at n.
+  minus_one := sc_negate(sc_small(1));
+  show_scalar("-1", minus_one);
+  show_scalar("(n - 1) + 2", sc_add(minus_one, sc_small(2)));
+  show_scalar("(n - 1) * (n - 1)", sc_mul(minus_one, minus_one));
+  inv := sc_inverse(sc_small(2));
+  print("inverse of 2: ok %\n", inv.ok);
+  show_scalar("1/2", inv.value);
+  show_scalar("2 * (1/2)", sc_mul(sc_small(2), inv.value));
+
+  // Montgomery constants: n0 * n0inv = -1 mod 2^32, and R^2 mod n.
+  print("n0 * n0inv mod 2^32: %\n", (cast(u64) SC_N.limbs[0] * SC_N0_INV) & SC_WORD);
+  show_scalar("R^2 mod n", SC_R2);
+
+  // Secret keys must be in 1..n-1.
+  keys := [4] string.[
+    "0000000000000000000000000000000000000000000000000000000000000000",
+    "0000000000000000000000000000000000000000000000000000000000000001",
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"];
+  labels := [4] string.["0", "1", "n - 1", "n"];
+  for i: 0..<4 {
+    if !bytes_of(keys[i], b[..]) { print("bad hex\n"); }
+    print("secret key %: %\n", labels[i], SECRET[secret_status(b[..])]);
+  }
+
+  // A signature's s must be below n: sc_load refuses n and clears the value.
+  s := sc_load(b[..]);
+  print("s = n: ok %, overflow %, value is zero %\n", s.ok, s.overflow, sc_is_zero(s.value));
+  print("31-byte s: ok %\n", sc_load(b[0..<31]).ok);
+  print("inverse of 0: ok %\n", sc_inverse(sc_small(0)).ok);
+}
+// book:end example
+
+// book:begin check
+// R^2 mod n by doubling only: start from R = 2^256 mod n and add it to
+// itself 256 times, which multiplies by 2^256. The result is the
+// Montgomery constant, computed without any multiplication.
+#test "doubling R 256 times gives SC_R2" #steps 100000000 {
+  b: [32] u8;
+  for i: 0..<32 { b[i] = 255; }
+  r := sc_add(sc_reduce_bytes(b[..]).value, sc_small(1));
+  x := r;
+  for i: 0..<256 { x = sc_add(x, x); }
+  #assert sc_equal(x, SC_R2);
+}
+// Six values near 0, near n and in between.
+EDGES :: [6] string.[
+    "0000000000000000000000000000000000000000000000000000000000000001",
+    "0000000000000000000000000000000000000000000000000000000100000000",
+    "7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a1",
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364140",
+    "fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd036413f",
+    "0123456789abcdeffedcba98765432100123456789abcdeffedcba9876543210"];
+// Multiplication by k equals k additions, and subtraction undoes addition.
+#forall "multiplying by k is adding k times" which: 0..<6, k: 0..<6 {
+  b: [32] u8;
+  #assert bytes_of(EDGES[which], b[..]);
+  loaded := sc_load(b[..]);
+  #assert loaded.ok;
+  a := loaded.value;
+  sum: ScScalar;
+  for i: 0..<k { sum = sc_add(sum, a); }
+  #assert sc_equal(sc_mul(a, sc_small(cast(u32) k)), sum);
+  #assert sc_equal(sc_sub(sc_add(a, sum), sum), a);
+}
+// The inverse multiplies back to 1.
+#forall "a times its inverse is 1" which: 0..<6 #steps 100000000 {
+  b: [32] u8;
+  #assert bytes_of(EDGES[which], b[..]);
+  a := sc_load(b[..]).value;
+  inv := sc_inverse(a);
+  #assert inv.ok && sc_equal(sc_mul(a, inv.value), sc_small(1));
+}
+// book:end check

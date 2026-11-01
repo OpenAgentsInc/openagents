@@ -70,6 +70,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/scalars.coax",
+      "chapter": "nostr/book/ch008-scalars-mod-n.md",
+      "stdout": "nostr/fixtures/scalars.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

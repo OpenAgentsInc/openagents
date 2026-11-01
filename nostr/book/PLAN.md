@@ -80,7 +80,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
 | [7. Field arithmetic mod p](ch007-field-arithmetic-mod-p.md) — implemented | 2, 3 | Every operation matches the big-integer oracle on edge and random values. Inverse and square root use fixed chains, checked by the constant-time harness. Zero mutation survivors in `secp_field.coax`. | — |
-| [8. Scalars mod n](ch008-scalars-mod-n.md) — partly implemented | 2, 3 | Scalar operations match the big-integer oracle. Out-of-range keys and `s` values refuse, each with its own status. | — |
+| [8. Scalars mod n](ch008-scalars-mod-n.md) — implemented | 2, 3 | Scalar operations match the big-integer oracle. Out-of-range keys and `s` values refuse, each with its own status. | — |
 | [9. The secp256k1 group law](ch009-the-secp256k1-group-law.md) — partly implemented | 7 | Group laws hold on random points: associativity, `P + (-P) = O`, `2P = P + P`. `lift_x` refuses every x whose `x^3 + 7` is not a square. | — |
 | [10. Scalar multiplication](ch010-scalar-multiplication.md) — partly implemented | 8, 9, 3 | All three paths give the oracle's point for random and edge scalars (0, 1, `n - 1`). The constant-time paths pass the timing harness with leaky controls detected. | — |
 | [11. Verify a Schnorr signature](ch011-verify-a-schnorr-signature.md) — partly implemented | 4, 8, 10 | All 19 BIP-340 vectors give their expected result. Fast and reference paths agree on every vector and on random signatures. | — |

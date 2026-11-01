@@ -155,14 +155,15 @@
    "number": 8,
    "title": "Scalars mod n",
    "file": "ch008-scalars-mod-n.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     2,
     3
    ],
    "source": [
-    "coax/lib/crypto/secp_scalar.coax"
+    "coax/lib/crypto/secp_scalar.coax",
+    "nostr/examples/scalars.coax"
    ],
    "qualified_targets": [
     "cpu",
