@@ -147,7 +147,11 @@ recorded walk parted after 105 steps). Drawing may use either. Random draws
 in a step come from `aethyr/rand.coax` (seed, stream, counter). Checks:
 `aethyr/math.coax` (within 2 ulps of the C library, f64 kernels against
 Python's `math`; mutation 0 survivors) and `coax/web/replay-hosts.test.ts`
-(the recorded walk's session digests are equal natively and in wasm).
+(the recorded walk's session digests, and the recorded Grid session's digest
+at every step, are equal natively and in wasm). Both sessions must stay
+sharp: each steers while turning through angles where the two C libraries
+round `sinf` and `cosf` differently, so a step that calls `sin` or `cos`
+fails them.
 
 ## Every walking realm asks one ground question
 
