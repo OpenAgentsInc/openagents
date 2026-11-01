@@ -1,0 +1,47 @@
+model 4aa6751881c6f068f48932f6f82503815b312e797cb3c88d2d1b7ac316d56ca0
+request 0, value 0: seq -0.4938019, pair -0.49380195
+alpha #1: 1012 msat, draw 209 against 256 (floor 32): checked, agree exact
+alpha #2: 1013 msat, draw 135 against 256 (floor 32): checked, agree exact
+alpha #3: 1013 msat, draw 243 against 256 (floor 32): checked, agree exact
+alpha #4: 1014 msat, draw 9 against 256 (floor 32): checked, agree exact
+alpha #5: 1014 msat, draw 66 against 204 (floor 32): checked, agree exact
+alpha #6: 1015 msat, draw 234 against 170 (floor 32): not checked
+alpha #7: 1015 msat, draw 5 against 170 (floor 32): checked, agree exact
+alpha #8: 1016 msat, draw 26 against 146 (floor 32): checked, agree exact
+alpha #9: 1016 msat, draw 237 against 128 (floor 32): not checked
+alpha #10: 1017 msat, draw 168 against 128 (floor 32): not checked
+beta #1: 1012 msat, draw 54 against 256 (floor 32): checked, agree within, distance 4.76837158203125e-07 at value 2, tolerance 40000 ppb
+beta #2: 1013 msat, draw 101 against 256 (floor 32): checked, agree within, distance 2.384185791015625e-07 at value 0, tolerance 40000 ppb
+beta #3: 1013 msat, draw 26 against 256 (floor 32): checked, agree within, distance 3.5762786865234375e-07 at value 4, tolerance 40000 ppb
+beta #4: 1014 msat, draw 211 against 256 (floor 32): checked, agree within, distance 4.76837158203125e-07 at value 2, tolerance 40000 ppb
+beta #5: 1014 msat, draw 117 against 204 (floor 32): checked, agree within, distance 2.384185791015625e-07 at value 0, tolerance 40000 ppb
+beta #6: 1015 msat, draw 233 against 170 (floor 32): not checked
+beta #7: 1015 msat, draw 121 against 170 (floor 32): checked, agree within, distance 2.384185791015625e-07 at value 0, tolerance 40000 ppb
+beta #8: 1016 msat, draw 106 against 146 (floor 32): checked, agree within, distance 2.384185791015625e-07 at value 7, tolerance 40000 ppb
+beta #9: 1016 msat, draw 220 against 128 (floor 32): not checked
+beta #10: 1017 msat, draw 37 against 128 (floor 32): checked, agree within, distance 4.172325134277344e-07 at value 2, tolerance 40000 ppb
+gamma #1: 1012 msat, draw 224 against 256 (floor 32): checked, agree exact
+gamma #2: 1013 msat, draw 68 against 256 (floor 32): checked, agree exact
+gamma #3: 1013 msat, draw 176 against 256 (floor 32): checked, agree exact
+gamma #4: 1014 msat, draw 10 against 256 (floor 32): checked, agree exact
+gamma #5: 1014 msat, draw 150 against 204 (floor 32): checked, agree exact
+gamma #6: 1015 msat, draw 111 against 170 (floor 32): checked, agree exact
+gamma #7: 1015 msat, draw 87 against 146 (floor 32): checked, disagree bits at value 0
+gamma #8: refused, suspended
+gamma #9: refused, suspended
+gamma #10: refused, suspended
+tampering:
+an answer changed after its receipt: alpha #11: refused, output
+a receipt naming another model: alpha #11: refused, model
+a receipt altered on the way: alpha #11: refused, forged
+a receipt counted before: alpha #3: refused, replayed
+the untouched receipt: alpha #11: 1017 msat, draw 47 against 128 (floor 32): checked, agree exact
+beta's output under the exact profile: disagree bits at value 0
+a receipt for stage-f32-gpu-v1: unverifiable profile
+alpha ledger: paid 11162 msat, withheld 0, held 0; 8 agreed in a row, 0 disagreed, 0 unverifiable, 3 not checked, suspended false
+beta ledger: paid 10145 msat, withheld 0, held 0; 8 agreed in a row, 0 disagreed, 0 unverifiable, 2 not checked, suspended false
+gamma ledger: paid 6081 msat, withheld 1015, held 0; 0 agreed in a row, 1 disagreed, 0 unverifiable, 0 not checked, suspended true
+recount alpha: 11 records, same ledger true; last record cbed120b23e7ff9791232d622e5c3dee7adde11bbfa28e524d469009776e01ad
+recount beta: 10 records, same ledger true; last record 9af5b6d73c4bf3b55990444398d1e63dfd8383518e666214d819ad80ec68eab3
+recount gamma: 7 records, same ledger true; last record a5ee85c8cff6ee1642ec4f04de36f6da816da646fd0c2a5d303503bd5fec8300
+alpha's records with one counted twice: refused, replayed at record 11

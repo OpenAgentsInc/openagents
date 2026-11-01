@@ -1,0 +1,134 @@
+// Chapter 195: check a peer's work. Three peers run the same pipeline stage
+// for ten requests each and send a receipt for every answer. A checker
+// admits each receipt, draws whether to re-execute it, compares the peer's
+// output with its own run under the profile it pinned, and counts the
+// verdict in the peer's ledger. Then five tampered receipts, and a reader
+// who recounts every ledger from the published records.
+// The keys and the checker's secret are fixed demonstration bytes.
+#import "Basic";
+#load "../lib/peer/audit-run.coax";
+
+EX_PEERS :: 3;
+EX_JOBS :: 10;
+ExPeer :: struct {
+    name:string;key:[32]u8;backend:PjBackend;profile:string;lazy_from:int;
+    standing:PkStanding;seq:int;
+    records:[16]PkRecord;n:int;hex:[16][3][64]u8;
+}
+ExSetup :: struct {policy:PkPolicy;schedule:BlSchedule;secret:[32]u8;model:string;}
+
+ex_profiles :: ()->[2]PkProfile {
+    return [2]PkProfile.[PkProfile.{name="stage-f32-seq-v1",exact=true},PkProfile.{name="stage-f32-pair-v1",tolerance_ppb=40000}];
+}
+// The work a peer does for request k: its own backend, or, for a lazy peer,
+// only the first half of each row's products.
+ex_work :: (p:ExPeer,k:int,x:[]f32,out:[]f32) {
+    pj_input(k,x);
+    if p.lazy_from>0 && k>=p.lazy_from {
+        half:[PJ_IN]f32;for i:0..<PJ_IN/2 {half[i]=x[i];}
+        pj_stage(half[..],out,p.backend);return;
+    }
+    pj_stage(x,out,p.backend);
+}
+ex_request :: (k:int,out:[]u8)->string {t:[16]u8;n:=pj_put(t[..],0,"request");n=pj_put_int(t[..],n,k);return pj_text_digest(t[0..<n],out);}
+
+// One receipt through the checker. An admitted receipt's evidence is kept
+// in the peer's records.
+ex_check :: (ps:[]ExPeer,w:int,setup:ExSetup,r:PkReceipt,mac:[]u8,delivered:string,x:[]f32,out:[]f32) {
+    p:=ps[w];
+    jb:=PkJob.{peer=p.name,request=r.request,stage=1,model=setup.model,profile=p.profile,input=r.input};
+    checked:=r;checked.mac_ok=pj_mac_ok(p.key[..],r,mac);
+    a:=pk_admit(checked,jb,delivered,p.standing);
+    if a!=PkAdmit.ok {print("% #%: refused, %\n",p.name,r.seq,a);return;}
+    price:=bl_price(setup.schedule,r.use).msat;
+    n:=ps[w].n;h:=ps[w].hex[n][0][..];
+    rd:=pj_receipt_digest(r,h);
+    secret:=setup.secret;draw:=pj_draw(secret[..],rd);
+    sampled:=pk_sampled(setup.policy,p.standing,price,draw);
+    print("% #%: % msat, draw % against % (floor %): ",p.name,r.seq,price,draw,pk_threshold(setup.policy,p.standing,price),setup.policy.floor);
+    c:=PkCompare.{};refd:="";
+    if sampled {
+        ref:[PJ_OUT]f32;pj_stage(x,ref[..],PjBackend.seq);
+        refd=pj_values_digest(ref[..],ps[w].hex[n][2][..]);
+        profiles:=ex_profiles();c=pk_compare(profiles[..],r.profile,out,ref[..],true);
+        print("checked, % %",c.verdict,c.reason);
+        if c.reason==PkReason.within || c.reason==PkReason.distance {print(", distance % at value %, tolerance % ppb",c.worst,c.at,c.tolerance);}
+        if c.reason==PkReason.bits {print(" at value %",c.at);}
+        print("\n");
+    } else {print("not checked\n");}
+    t:=pk_settle(p.standing,setup.schedule,r.seq,r.use,sampled,c);
+    #assert t.cause==PkCause.none;
+    od:=ps[w].hex[n][1][..];for i:0..<64 {od[i]=r.output[i];}
+    ps[w].records[n]=PkRecord.{receipt=rd,output=cast(string)od,reference=refd,seq=r.seq,use=r.use,sampled=sampled,compare=c};
+    ps[w].n+=1;ps[w].standing=t.standing;
+}
+// A peer answers request k and sends its receipt, MACed under its key.
+ex_serve :: (ps:[]ExPeer,w:int,setup:ExSetup,k:int) {
+    x:[PJ_IN]f32;out:[PJ_OUT]f32;ex_work(ps[w],k,x[..],out[..]);
+    rq:[64]u8;ih:[64]u8;oh:[64]u8;
+    ps[w].seq+=1;
+    r:=PkReceipt.{peer=ps[w].name,seq=ps[w].seq,request=ex_request(k,rq[..]),stage=1,model=setup.model,profile=ps[w].profile,
+        input=pj_values_digest(x[..],ih[..]),output=pj_values_digest(out[..],oh[..]),
+        use=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=200+10*k}};
+    mac:[32]u8;#assert pj_mac(ps[w].key[..],r,mac[..]);
+    ex_check(ps,w,setup,r,mac[..],r.output,x[..],out[..]);
+}
+ex_ledger :: (p:ExPeer) {
+    s:=p.standing;
+    print("% ledger: paid % msat, withheld %, held %; % agreed in a row, % disagreed, % unverifiable, % not checked, suspended %\n",
+        p.name,s.paid,s.withheld,s.held,s.agreed,s.disagreed,s.unverifiable,s.unsampled,s.suspended);
+}
+
+// book:begin example
+main :: () {
+    mh:[64]u8;
+    setup:=ExSetup.{policy=PkPolicy.{probation=4,floor=32,high_value=50000},schedule=bl_test_schedule(),model=pj_model_digest(mh[..])};
+    for i:0..<32 {setup.secret[i]=cast(u8)(200-i);}
+    ps:[EX_PEERS]ExPeer;
+    names:=[3]string.["alpha","beta","gamma"];
+    for w:0..<EX_PEERS {ps[w].name=names[w];for i:0..<32 {ps[w].key[i]=cast(u8)(w*64+i);}ps[w].profile="stage-f32-seq-v1";}
+    ps[1].backend=PjBackend.pair;ps[1].profile="stage-f32-pair-v1";
+    ps[2].lazy_from=6;
+    print("model %\n",setup.model);
+    x:[PJ_IN]f32;a:[PJ_OUT]f32;b:[PJ_OUT]f32;pj_input(0,x[..]);pj_stage(x[..],a[..],PjBackend.seq);
+    print("request 0, value 0: seq %, pair ",a[0]);pj_stage(x[..],b[..],PjBackend.pair);print("%\n",b[0]);
+
+    // 1. Ten requests to each peer. gamma does half the work from request 6.
+    for w:0..<EX_PEERS {for k:0..<EX_JOBS {ex_serve(ps[..],w,setup,k);}}
+
+    // 2. Tampered receipts, against alpha's standing.
+    print("tampering:\n");
+    xi:[PJ_IN]f32;out:[PJ_OUT]f32;ex_work(ps[0],10,xi[..],out[..]);
+    rq:[64]u8;ih:[64]u8;oh:[64]u8;other:[64]u8;
+    r:=PkReceipt.{peer="alpha",seq=ps[0].seq+1,request=ex_request(10,rq[..]),stage=1,model=setup.model,profile="stage-f32-seq-v1",
+        input=pj_values_digest(xi[..],ih[..]),output=pj_values_digest(out[..],oh[..]),use=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=300}};
+    mac:[32]u8;#assert pj_mac(ps[0].key[..],r,mac[..]);
+    changed:=out;changed[5]+=0.25;
+    print("an answer changed after its receipt: ");ex_check(ps[..],0,setup,r,mac[..],pj_values_digest(changed[..],other[..]),xi[..],changed[..]);
+    swapped:=r;swapped.model=ex_request(99,other[..]);#assert pj_mac(ps[0].key[..],swapped,mac[..]);
+    print("a receipt naming another model: ");ex_check(ps[..],0,setup,swapped,mac[..],r.output,xi[..],out[..]);
+    #assert pj_mac(ps[0].key[..],r,mac[..]);
+    altered:=r;altered.use.device_us=30;
+    print("a receipt altered on the way: ");ex_check(ps[..],0,setup,altered,mac[..],r.output,xi[..],out[..]);
+    old:=r;old.seq=3;#assert pj_mac(ps[0].key[..],old,mac[..]);
+    print("a receipt counted before: ");ex_check(ps[..],0,setup,old,mac[..],r.output,xi[..],out[..]);
+    #assert pj_mac(ps[0].key[..],r,mac[..]);
+    print("the untouched receipt: ");ex_check(ps[..],0,setup,r,mac[..],r.output,xi[..],out[..]);
+    // Two comparisons that change no ledger: beta's pairwise output claimed
+    // as the exact profile, and a profile the checker pinned no tolerance for.
+    pj_stage(xi[..],b[..],PjBackend.pair);pj_stage(xi[..],a[..],PjBackend.seq);profiles:=ex_profiles();
+    c:=pk_compare(profiles[..],"stage-f32-seq-v1",b[..],a[..],true);print("beta's output under the exact profile: % % at value %\n",c.verdict,c.reason,c.at);
+    c=pk_compare(profiles[..],"stage-f32-gpu-v1",b[..],a[..],true);print("a receipt for stage-f32-gpu-v1: % %\n",c.verdict,c.reason);
+
+    // 3. The ledgers, and a reader's recount from the published records.
+    for w:0..<EX_PEERS {ex_ledger(ps[w]);}
+    for w:0..<EX_PEERS {
+        p:=ps[w];rc:=pk_recount(setup.schedule,p.records[0..<p.n]);s:=p.standing;
+        same:=rc.cause==PkCause.none && rc.standing.paid==s.paid && rc.standing.withheld==s.withheld && rc.standing.held==s.held && rc.standing.agreed==s.agreed && rc.standing.disagreed==s.disagreed && rc.standing.unsampled==s.unsampled && rc.standing.suspended==s.suspended && rc.standing.last_seq==s.last_seq;
+        rh:[64]u8;
+        print("recount %: % records, same ledger %; last record %\n",p.name,p.n,same,pj_record_digest(p.records[p.n-1],rh[..]));
+    }
+    dup:[16]PkRecord;for i:0..<ps[0].n {dup[i]=ps[0].records[i];}dup[ps[0].n]=dup[2];
+    rc:=pk_recount(setup.schedule,dup[0..<ps[0].n+1]);print("alpha's records with one counted twice: refused, % at record %\n",rc.cause,rc.at);
+}
+// book:end example

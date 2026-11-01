@@ -1,0 +1,403 @@
+// Chapter 195: the decisions a checker makes about a peer's stage work.
+// Whether a stage receipt is admitted at all, how often a peer's work is
+// re-executed, whether the peer's output agrees with the checker's own run
+// under the profile the checker pinned, and what the verdict does to the
+// peer's standing and its pay, in whole millisatoshis priced by chapter 180.
+// Nothing here does cryptography or runs the stage: the caller says whether
+// the receipt's MAC matched, draws the sample byte and re-executes
+// (audit-run.coax does all three), so these checks never mutate a hash.
+// Paying a peer stays outside Psionic: the ledger says what is owed.
+#load "../serve-price.coax";
+#load "../mesh/selection.coax";
+#authority;
+
+// book:begin admit
+// A stage receipt as the checker reads it: who did the work, the peer's
+// receipt counter, the request and stage it answers, the model and profile
+// it claims, the digests of its input and output, the use it bills, and
+// whether its MAC, under the key this peer shares with the checker, matched.
+PkReceipt :: struct {peer:string;seq:int;request:string;stage:int;model:string;profile:string;input:string;output:string;use:BlUse;mac_ok:bool;}
+// The job the buyer actually sent that peer.
+PkJob :: struct {peer:string;request:string;stage:int;model:string;profile:string;input:string;}
+// A peer's standing with this checker. last_seq is the newest receipt
+// counted; agreed counts checks passed since the last failure; paid,
+// withheld and held are millisatoshis.
+PkStanding :: struct {last_seq:int;agreed:int;disagreed:int;unverifiable:int;unsampled:int;suspended:bool;paid:int;withheld:int;held:int;}
+PkAdmit :: enum u8 {ok;forged;suspended;replayed;peer;request;stage;model;profile;input;output;use;}
+
+// delivered is the digest of the output bytes the buyer actually received.
+pk_admit :: (r:PkReceipt,jb:PkJob,delivered:string,st:PkStanding)->PkAdmit #export_c {
+    if !r.mac_ok {return PkAdmit.forged;}
+    if st.suspended {return PkAdmit.suspended;}
+    if r.seq<=st.last_seq {return PkAdmit.replayed;}
+    if r.peer!=jb.peer {return PkAdmit.peer;}
+    if r.request!=jb.request {return PkAdmit.request;}
+    if r.stage!=jb.stage {return PkAdmit.stage;}
+    if r.model!=jb.model {return PkAdmit.model;}
+    if r.profile!=jb.profile {return PkAdmit.profile;}
+    if r.input!=jb.input {return PkAdmit.input;}
+    if r.output!=delivered {return PkAdmit.output;}
+    if !bl_use_valid(r.use) || r.use.status!=BlStatus.answered {return PkAdmit.use;}
+    return PkAdmit.ok;
+}
+// book:end admit
+
+// book:begin sample
+// probation: checks a peer must pass, in a row, before sampling thins out.
+// floor: draws below it are always checked, so no peer is ever sampled at
+// less than floor/256. high_value: a price in msat at or above which every
+// receipt is checked.
+PkPolicy :: struct {probation:int;floor:int;high_value:int;}
+
+pk_policy_valid :: (p:PkPolicy)->bool {
+    return p.probation>=1 && p.probation<=1024 && p.floor>=1 && p.floor<=256 && bl_in(p.high_value,BL_MSAT_MOST);
+}
+// The sampling threshold out of 256, or -1 for a policy or price out of
+// bounds. A peer on probation and a high-value receipt are always checked;
+// after probation the threshold falls as 256*probation/(agreed+1). A
+// failure sets agreed back to 0, so probation starts again.
+pk_threshold :: (p:PkPolicy,st:PkStanding,price:int)->int #export_c {
+    if !pk_policy_valid(p) || !bl_in(price,BL_MSAT_MOST) || st.agreed<0 {return -1;}
+    if st.agreed<p.probation || price>=p.high_value {return 256;}
+    return 256*p.probation/(st.agreed+1);
+}
+// Chapter 26's rule: a draw byte below the threshold, or below the floor,
+// is checked. The draw comes from a secret only the checker holds and the
+// receipt's digest, so a peer cannot know which answers will be checked
+// when it commits to them.
+pk_sampled :: (p:PkPolicy,st:PkStanding,price:int,draw:int)->bool #export_c {
+    t:=pk_threshold(p,st,price);
+    if t<0 {return false;}
+    return ms_selected(draw,t) || ms_selected(draw,p.floor);
+}
+// book:end sample
+
+// book:begin compare
+// A comparison profile the checker pins. exact: the checker runs the same
+// backend profile, so the outputs must match bit for bit. Otherwise the
+// largest absolute difference may be at most tolerance_ppb billionths.
+PkProfile :: struct {name:string;exact:bool;tolerance_ppb:int;}
+PkVerdict :: enum u8 {none;agree;disagree;unverifiable;}
+PkReason :: enum u8 {none;exact;within;bits;distance;shape;number;profile;reference;}
+// at is the first value that differs (exact) or the largest difference
+// (bounded), -1 when no value was compared.
+PkCompare :: struct {verdict:PkVerdict;reason:PkReason;worst:f64;at:int=-1;tolerance:int;}
+PK_VALUES :: 4096;
+
+pk_finite :: (x:f32)->bool {return (f32_bits(x)&0x7fffffff)<0x7f800000;}
+// claimed is the receipt's profile; reference is the checker's own run of
+// the same input, ref_ok whether that run finished.
+pk_compare :: (profiles:[]PkProfile,claimed:string,peer:[]f32,reference:[]f32,ref_ok:bool)->PkCompare #export_c {
+    k:=-1;
+    for i:0..<profiles.count {if k<0 && profiles[i].name==claimed {k=i;}}
+    if k<0 || !bl_in(profiles[k].tolerance_ppb,1000000000) {return PkCompare.{verdict=PkVerdict.unverifiable,reason=PkReason.profile};}
+    p:=profiles[k];r:=PkCompare.{tolerance=p.tolerance_ppb};
+    if !ref_ok || reference.count<1 || reference.count>PK_VALUES {r.verdict=PkVerdict.unverifiable;r.reason=PkReason.reference;return r;}
+    for i:0..<reference.count {if !pk_finite(reference[i]) {r.verdict=PkVerdict.unverifiable;r.reason=PkReason.reference;return r;}}
+    r.verdict=PkVerdict.disagree;
+    if peer.count!=reference.count {r.reason=PkReason.shape;return r;}
+    if p.exact {
+        for i:0..<peer.count {if f32_bits(peer[i])!=f32_bits(reference[i]) {r.reason=PkReason.bits;r.at=i;return r;}}
+        r.verdict=PkVerdict.agree;r.reason=PkReason.exact;return r;
+    }
+    for i:0..<peer.count {
+        if !pk_finite(peer[i]) {r.reason=PkReason.number;r.at=i;return r;}
+        d:=abs(f64(peer[i])-f64(reference[i]));
+        if r.at<0 || d>r.worst {r.worst=d;r.at=i;}
+    }
+    if r.worst<=f64(p.tolerance_ppb)/1000000000.0 {r.verdict=PkVerdict.agree;r.reason=PkReason.within;}
+    else {r.reason=PkReason.distance;}
+    return r;
+}
+// book:end compare
+
+// book:begin settle
+PkCause :: enum u8 {none;schedule;use;replayed;verdict;total;}
+PkSettle :: struct {cause:PkCause;price:int;standing:PkStanding;}
+
+// Count one admitted receipt. Unsampled work and work that agrees is paid;
+// work that disagrees is withheld and suspends the peer until its owner
+// decides; work that could not be verified is held for the owner. A sampled
+// receipt needs a verdict and an unsampled one must not have one.
+pk_settle :: (st:PkStanding,s:BlSchedule,seq:int,use:BlUse,sampled:bool,c:PkCompare)->PkSettle #export_c {
+    p:=bl_price(s,use);
+    if p.cause==BlCause.schedule {return PkSettle.{cause=PkCause.schedule,standing=st};}
+    if p.cause!=BlCause.none {return PkSettle.{cause=PkCause.use,standing=st};}
+    if seq<=st.last_seq {return PkSettle.{cause=PkCause.replayed,standing=st};}
+    if sampled==(c.verdict==PkVerdict.none) {return PkSettle.{cause=PkCause.verdict,standing=st};}
+    bucket:=0;
+    if c.verdict==PkVerdict.disagree {bucket=1;}
+    if c.verdict==PkVerdict.unverifiable {bucket=2;}
+    so_far:=[3]int.[st.paid,st.withheld,st.held];
+    if !bl_in(p.msat,BL_MSAT_MOST-so_far[bucket]) {return PkSettle.{cause=PkCause.total,standing=st};}
+    n:=st;n.last_seq=seq;
+    if !sampled {n.unsampled+=1;n.paid+=p.msat;}
+    else if bucket==0 {n.agreed+=1;n.paid+=p.msat;}
+    else if bucket==1 {n.disagreed+=1;n.withheld+=p.msat;n.suspended=true;n.agreed=0;}
+    else {n.unverifiable+=1;n.held+=p.msat;}
+    return PkSettle.{price=p.msat,standing=n};
+}
+// book:end settle
+
+// book:begin recount
+// What the checker publishes for each counted receipt: the digests that
+// bind the verdict to its evidence (the receipt, the peer's output and the
+// checker's reference run), the use, and the decision. A reader holding the
+// records recomputes the peer's ledger by counting them again in order.
+PkRecord :: struct {receipt:string;output:string;reference:string;seq:int;use:BlUse;sampled:bool;compare:PkCompare;}
+PkRecount :: struct {cause:PkCause;at:int=-1;standing:PkStanding;}
+
+pk_recount :: (s:BlSchedule,records:[]PkRecord)->PkRecount #export_c {
+    st:=PkStanding.{};
+    for i:0..<records.count {
+        r:=records[i];
+        t:=pk_settle(st,s,r.seq,r.use,r.sampled,r.compare);
+        if t.cause!=PkCause.none {return PkRecount.{cause=t.cause,at=i,standing=st};}
+        st=t.standing;
+    }
+    return PkRecount.{standing=st};
+}
+// book:end recount
+
+// Checks. The values in them are worked by hand in chapter 195.
+pk_test_job :: ()->PkJob {return PkJob.{peer="a",request="r1",stage=1,model="m",profile="seq",input="i1"};}
+pk_test_receipt :: ()->PkReceipt {
+    return PkReceipt.{peer="a",seq=5,request="r1",stage=1,model="m",profile="seq",input="i1",output="o1",
+        use=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=240},mac_ok=true};
+}
+pk_test_policy :: ()->PkPolicy {return PkPolicy.{probation=4,floor=32,high_value=50000};}
+// Non-finite values, made by arithmetic: checks cannot convert their bits.
+pk_test_inf :: ()->f32 {z:f32=0.0;return 1.0/z;}
+pk_test_nan :: ()->f32 {z:f32=0.0;return z/z;}
+
+// book:begin check-admit
+#test "a receipt is refused for the first thing wrong with it" {
+    j:=pk_test_job();st:=PkStanding.{last_seq=4};r:=pk_test_receipt();
+    #assert pk_admit(r,j,"o1",st)==PkAdmit.ok;
+    #assert pk_admit(r,j,"o2",st)==PkAdmit.output;                    // the answer changed after the receipt
+    x:=r;x.model="m2";#assert pk_admit(x,j,"o1",st)==PkAdmit.model;    // another model's digest
+    st.last_seq=5;#assert pk_admit(r,j,"o1",st)==PkAdmit.replayed;    // the same receipt again
+    x=r;x.mac_ok=false;#assert pk_admit(x,j,"o2",st)==PkAdmit.forged; // altered in transit
+    st.last_seq=4;st.suspended=true;#assert pk_admit(r,j,"o1",st)==PkAdmit.suspended;
+}
+// book:end check-admit
+#test "each field of the receipt is bound to the job" {
+    j:=pk_test_job();st:=PkStanding.{last_seq=4};
+    want:=[8]PkAdmit.[PkAdmit.peer,PkAdmit.request,PkAdmit.stage,PkAdmit.model,PkAdmit.profile,PkAdmit.input,PkAdmit.use,PkAdmit.use];
+    for f:0..<8 {
+        r:=pk_test_receipt();
+        if f==0 {r.peer="b";}if f==1 {r.request="r2";}if f==2 {r.stage=2;}if f==3 {r.model="n";}
+        if f==4 {r.profile="pair";}if f==5 {r.input="i2";}if f==6 {r.use.device_us=-1;}if f==7 {r.use.status=BlStatus.cancelled;}
+        #assert pk_admit(r,j,"o1",st)==want[f];
+    }
+    r:=pk_test_receipt();r.seq=4;#assert pk_admit(r,j,"o1",st)==PkAdmit.replayed;
+    r.seq=-1;#assert pk_admit(r,j,"o1",PkStanding.{})==PkAdmit.replayed;
+    r.seq=1;#assert pk_admit(r,j,"o1",PkStanding.{})==PkAdmit.ok;
+    for status:[4]BlStatus.[BlStatus.none,BlStatus.refused,BlStatus.busy,BlStatus.cancelled] {r.use.status=status;#assert pk_admit(r,j,"o1",PkStanding.{})==PkAdmit.use;}
+}
+#forall "admission against its table" mac: bool, held: bool, fresh: bool, peer: bool, req: bool, stage: bool, model: bool, prof: bool, inp: bool, out: bool, use: bool {
+    j:=pk_test_job();r:=pk_test_receipt();st:=PkStanding.{last_seq=ifx fresh then 4 else 5,suspended=held};
+    r.mac_ok=mac;
+    if !peer {r.peer="z";}if !req {r.request="z";}if !stage {r.stage=9;}if !model {r.model="z";}
+    if !prof {r.profile="z";}if !inp {r.input="z";}if !use {r.use.tokens_in=-1;}
+    want:=PkAdmit.ok;
+    if !use {want=PkAdmit.use;}
+    if !out {want=PkAdmit.output;}
+    if !inp {want=PkAdmit.input;}
+    if !prof {want=PkAdmit.profile;}
+    if !model {want=PkAdmit.model;}
+    if !stage {want=PkAdmit.stage;}
+    if !req {want=PkAdmit.request;}
+    if !peer {want=PkAdmit.peer;}
+    if !fresh {want=PkAdmit.replayed;}
+    if held {want=PkAdmit.suspended;}
+    if !mac {want=PkAdmit.forged;}
+    #assert pk_admit(r,j,ifx out then "o1" else "o9",st)==want;
+}
+
+// book:begin check-sample
+#test "sampling thresholds worked by hand" {
+    p:=pk_test_policy();st:=PkStanding.{};
+    for a:0..<4 {st.agreed=a;#assert pk_threshold(p,st,1014)==256;}   // probation: everything
+    st.agreed=4;#assert pk_threshold(p,st,1014)==204;                  // 1024/5 = 204.8
+    st.agreed=7;#assert pk_threshold(p,st,1014)==128;                  // half
+    st.agreed=31;#assert pk_threshold(p,st,1014)==32;
+    st.agreed=32;#assert pk_threshold(p,st,1014)==31;                  // below the floor now
+    #assert pk_sampled(p,st,1014,31) && !pk_sampled(p,st,1014,32);     // the floor still checks 32 in 256
+    st.agreed=1000000;#assert pk_threshold(p,st,1014)==0 && pk_sampled(p,st,1014,0) && pk_sampled(p,st,1014,31) && !pk_sampled(p,st,1014,32);
+    st.agreed=7;#assert pk_threshold(p,st,50000)==256 && pk_threshold(p,st,49999)==128;   // high value
+    #assert pk_sampled(p,st,1014,127) && !pk_sampled(p,st,1014,128) && pk_sampled(p,st,1014,0);
+    #assert !pk_sampled(p,st,1014,-1) && !pk_sampled(p,st,1014,256);
+}
+// book:end check-sample
+#test "a policy or price out of bounds samples nothing" {
+    st:=PkStanding.{agreed=8};
+    for k:0..<6 {
+        p:=pk_test_policy();
+        if k==0 {p.probation=0;}if k==1 {p.probation=1025;}if k==2 {p.floor=0;}if k==3 {p.floor=257;}if k==4 {p.high_value=-1;}if k==5 {p.high_value=BL_MSAT_MOST+1;}
+        #assert pk_threshold(p,st,1014)==-1 && !pk_sampled(p,st,1014,0);
+    }
+    p:=PkPolicy.{probation=1024,floor=256,high_value=BL_MSAT_MOST};#assert pk_policy_valid(p) && pk_threshold(p,st,1014)==256;
+    p=PkPolicy.{probation=1,floor=1,high_value=0};#assert pk_policy_valid(p) && pk_threshold(p,st,0)==256;
+    p=pk_test_policy();
+    #assert pk_threshold(p,st,-1)==-1 && pk_threshold(p,st,BL_MSAT_MOST+1)==-1 && pk_threshold(p,PkStanding.{agreed=-1},1014)==-1;
+    #assert pk_threshold(p,st,0)==113 && pk_threshold(PkPolicy.{probation=4,floor=32,high_value=BL_MSAT_MOST},st,BL_MSAT_MOST)==256;
+}
+// An independent oracle: the largest t with t*(agreed+1) <= 256*probation,
+// by counting down from 256; a draw is checked below it or below the floor.
+#forall "the threshold against a counting oracle" prob: 1..<7, f: 0..<4, agreed: 0..<70, v: 0..<3 {
+    floors:=[4]int.[1,32,200,256];prices:=[3]int.[0,49999,50000];
+    p:=PkPolicy.{probation=prob,floor=floors[f],high_value=50000};st:=PkStanding.{agreed=agreed};
+    want:=256;
+    if agreed>=prob && prices[v]<50000 {
+        while want*(agreed+1)>256*prob {want-=1;}
+    }
+    #assert pk_threshold(p,st,prices[v])==want;
+    for d:[7]int.[0,want-1,want,floors[f]-1,floors[f],255,-1] {#assert pk_sampled(p,st,prices[v],d)==(d>=0 && (d<want || d<floors[f]));}
+}
+
+// book:begin check-compare
+#test "comparisons worked by hand" {
+    prof:=[3]PkProfile.[PkProfile.{name="seq",exact=true},PkProfile.{name="pair",tolerance_ppb=500000000},PkProfile.{name="pair",exact=true}];
+    ref:=[3]f32.[1.0,-2.0,0.25];
+    same:=[3]f32.[1.0,-2.0,0.25];
+    c:=pk_compare(prof[..],"seq",same[..],ref[..],true);
+    #assert c.verdict==PkVerdict.agree && c.reason==PkReason.exact && c.at==-1 && c.tolerance==0;
+    // One unit in the last place of 0.25 is 2^-25: exact refuses it.
+    near:=[3]f32.[1.0,-2.0,f32_from_bits(0x3e800001)];
+    c=pk_compare(prof[..],"seq",near[..],ref[..],true);
+    #assert c.verdict==PkVerdict.disagree && c.reason==PkReason.bits && c.at==2;
+    // Bounded by 0.5: 1.5 against 1.0 is exactly at the limit, so it agrees.
+    off:=[3]f32.[1.5,-2.25,0.25];
+    c=pk_compare(prof[..],"pair",off[..],ref[..],true);
+    #assert c.verdict==PkVerdict.agree && c.reason==PkReason.within && c.worst==0.5 && c.at==0 && c.tolerance==500000000;
+    off[1]=-2.5000002;c=pk_compare(prof[..],"pair",off[..],ref[..],true);
+    #assert c.verdict==PkVerdict.disagree && c.reason==PkReason.distance && c.at==1 && c.worst>0.5;
+    // The checker has no tolerance pinned for a profile it does not know.
+    c=pk_compare(prof[..],"gpu",same[..],ref[..],true);
+    #assert c.verdict==PkVerdict.unverifiable && c.reason==PkReason.profile && c.at==-1;
+    // The first profile of a name is the pinned one.
+    c=pk_compare(prof[..],"pair",near[..],ref[..],true);#assert c.reason==PkReason.within;
+}
+// book:end check-compare
+#test "shape, numbers and the reference" {
+    prof:=[2]PkProfile.[PkProfile.{name="seq",exact=true},PkProfile.{name="pair",tolerance_ppb=1000}];
+    ref:=[2]f32.[1.0,2.0];
+    for name:[2]string.["seq","pair"] {
+        short:=[1]f32.[1.0];c:=pk_compare(prof[..],name,short[..],ref[..],true);
+        #assert c.verdict==PkVerdict.disagree && c.reason==PkReason.shape && c.at==-1;
+        c=pk_compare(prof[..],name,ref[..],ref[..],false);#assert c.verdict==PkVerdict.unverifiable && c.reason==PkReason.reference;
+        #assert pk_compare(prof[..],name,short[..],short[..],true).verdict==PkVerdict.agree;
+        #assert pk_compare(prof[..],name,ref[..],ref[0..<0],true).reason==PkReason.reference;
+        bad:=[2]f32.[1.0,pk_test_inf()];c=pk_compare(prof[..],name,ref[..],bad[..],true);
+        #assert c.verdict==PkVerdict.unverifiable && c.reason==PkReason.reference;
+        bad[1]=pk_test_nan();#assert pk_compare(prof[..],name,ref[..],bad[..],true).reason==PkReason.reference;
+        bad[0]=f32_from_bits(0x7f7fffff);bad[1]=f32_from_bits(0xff7fffff);#assert pk_compare(prof[..],name,bad[..],bad[..],true).verdict==PkVerdict.agree;
+    }
+    for x:[3]f32.[pk_test_inf(),-pk_test_inf(),pk_test_nan()] {
+        p:=[2]f32.[1.0,x];
+        c:=pk_compare(prof[..],"pair",p[..],ref[..],true);#assert c.verdict==PkVerdict.disagree && c.reason==PkReason.number && c.at==1;
+        c=pk_compare(prof[..],"seq",p[..],ref[..],true);#assert c.reason==PkReason.bits && c.at==1;
+    }
+    // Negative zero is a different bit pattern: exact disagrees, bounded agrees.
+    z:=[2]f32.[0.0,2.0];nz:=[2]f32.[f32_from_bits(0x80000000),2.0];
+    #assert pk_compare(prof[..],"seq",nz[..],z[..],true).reason==PkReason.bits && pk_compare(prof[..],"pair",nz[..],z[..],true).reason==PkReason.within;
+    big:[4097]f32;#assert pk_compare(prof[..],"seq",big[..],big[..],true).reason==PkReason.reference;
+    #assert pk_compare(prof[..],"seq",big[0..<4096],big[0..<4096],true).reason==PkReason.exact;
+    #assert pk_compare(prof[0..<0],"seq",ref[..],ref[..],true).reason==PkReason.profile;
+    twice:=[2]PkProfile.[PkProfile.{name="seq",exact=true},PkProfile.{name="seq",tolerance_ppb=1000000000}];
+    #assert pk_compare(twice[..],"seq",z[..],ref[..],true).reason==PkReason.bits;
+    for t:[2]int.[-1,1000000001] {
+        bad:=[1]PkProfile.[PkProfile.{name="pair",tolerance_ppb=t}];#assert pk_compare(bad[..],"pair",ref[..],ref[..],true).reason==PkReason.profile;
+    }
+    edge:=[1]PkProfile.[PkProfile.{name="pair",tolerance_ppb=1000000000}];far:=[2]f32.[2.0,2.0];
+    #assert pk_compare(edge[..],"pair",far[..],ref[..],true).reason==PkReason.within;
+    far[0]=2.0000002;#assert pk_compare(edge[..],"pair",far[..],ref[..],true).reason==PkReason.distance;
+    // Ties keep the first value; a later, larger difference moves it.
+    tie:=[3]f32.[2.0,3.0,1.0];base:=[3]f32.[1.0,2.0,1.0];c:=pk_compare(edge[..],"pair",tie[..],base[..],true);#assert c.at==0 && c.worst==1.0;
+    tie[0]=1.0;c=pk_compare(edge[..],"pair",tie[..],base[..],true);#assert c.at==1 && c.worst==1.0;
+    zero:=[2]f32.[1.0,2.0];c=pk_compare(edge[..],"pair",zero[..],ref[..],true);#assert c.at==0 && c.worst==0;
+}
+// A brute-force rule over pairs drawn from five values, both profile kinds
+// and four tolerances: exact means equal bits; bounded means every value
+// finite and every difference at most the tolerance.
+#forall "the verdict against a brute-force rule" a: 0..<5, b: 0..<5, c: 0..<5, d: 0..<5, kind: 0..<2, t: 0..<4 {
+    vals:=[5]f32.[1.0,1.25,-1.0,f32_from_bits(0x3f800001),pk_test_inf()];
+    tols:=[4]int.[0,1000,250000000,1000000000];
+    prof:=[1]PkProfile.[PkProfile.{name="p",exact=kind==0,tolerance_ppb=tols[t]}];
+    peer:=[2]f32.[vals[a],vals[b]];ref:=[2]f32.[vals[c],vals[d]];
+    r:=pk_compare(prof[..],"p",peer[..],ref[..],true);
+    if c==4 || d==4 {#assert r.verdict==PkVerdict.unverifiable && r.reason==PkReason.reference;}
+    else if kind==0 {
+        first:=-1;if a!=c {first=0;} else if b!=d {first=1;}
+        #assert (r.verdict==PkVerdict.agree)==(first<0) && r.at==first;
+    } else if a==4 || b==4 {#assert r.reason==PkReason.number;}
+    else {
+        worst:=0.0;for i:0..<2 {e:=abs(f64(peer[i])-f64(ref[i]));if e>worst {worst=e;}}
+        #assert r.worst==worst && (r.verdict==PkVerdict.agree)==(worst*1000000000.0<=f64(tols[t]));
+    }
+}
+
+// book:begin check-settle
+#test "settlement worked by hand" {
+    s:=bl_test_schedule();u:=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=240};
+    // 1*2000*1000 + 240*50000 = 14000000 millionths: 14 msat, plus 1000.
+    #assert bl_price(s,u).msat==1014 && bl_price(s,pk_test_receipt().use).msat==1014;
+    st:=PkStanding.{agreed=7};
+    agree:=PkCompare.{verdict=PkVerdict.agree,reason=PkReason.exact};
+    t:=pk_settle(st,s,1,u,false,PkCompare.{});
+    #assert t.cause==PkCause.none && t.price==1014 && t.standing.paid==1014 && t.standing.unsampled==1 && t.standing.agreed==7 && t.standing.last_seq==1;
+    t=pk_settle(t.standing,s,2,u,true,agree);
+    #assert t.standing.paid==2028 && t.standing.agreed==8 && t.standing.last_seq==2;
+    t=pk_settle(t.standing,s,3,u,true,PkCompare.{verdict=PkVerdict.unverifiable,reason=PkReason.reference});
+    #assert t.standing.held==1014 && t.standing.unverifiable==1 && t.standing.agreed==8 && !t.standing.suspended && t.standing.paid==2028;
+    t=pk_settle(t.standing,s,4,u,true,PkCompare.{verdict=PkVerdict.disagree,reason=PkReason.bits,at=3});
+    #assert t.standing.withheld==1014 && t.standing.disagreed==1 && t.standing.suspended && t.standing.agreed==0 && t.standing.paid==2028 && t.standing.held==1014;
+}
+// book:end check-settle
+#test "settlement refusals" {
+    s:=bl_test_schedule();u:=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=240};st:=PkStanding.{last_seq=3};
+    agree:=PkCompare.{verdict=PkVerdict.agree};
+    bad:=s;bad.base=-1;t:=pk_settle(st,bad,4,u,true,agree);#assert t.cause==PkCause.schedule && t.standing.last_seq==3 && t.price==0;
+    x:=u;x.device_us=-1;#assert pk_settle(st,s,4,x,true,agree).cause==PkCause.use;
+    #assert pk_settle(st,s,3,u,true,agree).cause==PkCause.replayed && pk_settle(st,s,4,u,true,agree).cause==PkCause.none;
+    #assert pk_settle(st,s,4,u,true,PkCompare.{}).cause==PkCause.verdict && pk_settle(st,s,4,u,false,agree).cause==PkCause.verdict;
+    for v:0..<4 {
+        c:=PkCompare.{verdict=cast(PkVerdict)v};sampled:=v>0;
+        full:=st;full.paid=BL_MSAT_MOST-1014;full.withheld=full.paid;full.held=full.paid;
+        #assert pk_settle(full,s,4,u,sampled,c).cause==PkCause.none;
+        if v<2 {full.paid+=1;} else if v==2 {full.withheld+=1;} else {full.held+=1;}
+        t=pk_settle(full,s,4,u,sampled,c);#assert t.cause==PkCause.total && t.standing.last_seq==3;
+    }
+    // A cancelled stage pays only its device time: ceil(240*50000/1e6) = 12.
+    x=u;x.status=BlStatus.cancelled;#assert pk_settle(st,s,4,x,false,PkCompare.{}).standing.paid==12;
+}
+#forall "settlement against a ledger oracle" v: 0..<4, sampled: bool, agreed: 0..<3, prior: 0..<2 {
+    s:=bl_test_schedule();u:=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=240};
+    st:=PkStanding.{last_seq=2,agreed=agreed,disagreed=prior,unverifiable=prior,unsampled=prior,paid=prior*5,withheld=prior*7,held=prior*11};
+    c:=PkCompare.{verdict=cast(PkVerdict)v};
+    t:=pk_settle(st,s,3,u,sampled,c);
+    if sampled!=(v>0) {#assert t.cause==PkCause.verdict;}
+    else {
+        w:=st;w.last_seq=3;
+        if v==0 {w.unsampled+=1;w.paid+=1014;}
+        if v==1 {w.agreed+=1;w.paid+=1014;}
+        if v==2 {w.disagreed+=1;w.withheld+=1014;w.suspended=true;w.agreed=0;}
+        if v==3 {w.unverifiable+=1;w.held+=1014;}
+        n:=t.standing;
+        #assert t.cause==PkCause.none && t.price==1014 && n.last_seq==w.last_seq && n.agreed==w.agreed && n.disagreed==w.disagreed && n.unverifiable==w.unverifiable && n.unsampled==w.unsampled && n.suspended==w.suspended && n.paid==w.paid && n.withheld==w.withheld && n.held==w.held;
+    }
+}
+#test "a reader recounts the ledger from the records" {
+    s:=bl_test_schedule();u:=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=240};
+    rec:[4]PkRecord;
+    rec[0]=PkRecord.{receipt="r1",seq=1,use=u,sampled=true,compare=PkCompare.{verdict=PkVerdict.agree}};
+    rec[1]=PkRecord.{receipt="r2",seq=2,use=u};
+    rec[2]=PkRecord.{receipt="r3",seq=4,use=u,sampled=true,compare=PkCompare.{verdict=PkVerdict.disagree}};
+    rec[3]=rec[2];
+    r:=pk_recount(s,rec[0..<3]);
+    #assert r.cause==PkCause.none && r.at==-1 && r.standing.paid==2028 && r.standing.withheld==1014 && r.standing.last_seq==4 && r.standing.suspended && r.standing.unsampled==1;
+    r=pk_recount(s,rec[..]);#assert r.cause==PkCause.replayed && r.at==3 && r.standing.withheld==1014;   // counted twice
+    rec[1].sampled=true;r=pk_recount(s,rec[0..<3]);#assert r.cause==PkCause.verdict && r.at==1 && r.standing.paid==1014;
+    r=pk_recount(s,rec[0..<0]);#assert r.cause==PkCause.none && r.standing.paid==0 && r.standing.last_seq==0;
+}

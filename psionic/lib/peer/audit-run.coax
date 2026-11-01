@@ -1,0 +1,231 @@
+// Chapter 195: the work a checker re-executes and the evidence it keeps.
+// A toy pipeline stage (one 16-to-8 linear layer in binary32) run by two
+// backends that differ only in the order they sum; digests of outputs and
+// receipts; the receipt MAC a peer computes with the key it shares with the
+// checker; the sample draw; and the digest of each published record. The
+// decisions are in audit.coax.
+// Profiles: stage-f32-seq-v1 sums each row left to right; stage-f32-pair-v1
+// sums it as a pairwise tree. Both add the bias last. Receipts and records
+// are this chapter's text layouts, not a published protocol.
+#load "audit.coax";
+#load "../../../coax/lib/crypto/hmac.coax";
+
+// book:begin stage
+PJ_IN :: 16;
+PJ_OUT :: 8;
+PjBackend :: enum u8 {seq;pair;}
+
+// Weights, biases and inputs come from small integer formulas, so anyone can
+// rebuild them: every value is an integer over 37, 7 or 19, in binary32.
+pj_weight :: (j:int,i:int)->f32 {return f32(((i*31+j*17+5)%97)-48)/f32(37);}
+pj_bias :: (j:int)->f32 {return f32((j*13)%11-5)/f32(7);}
+pj_input :: (k:int,x:[]f32) {for i:0..<PJ_IN {x[i]=f32(((k*29+i*11)%53)-26)/f32(19);}}
+
+// The pairwise tree: each half summed the same way, then the two added.
+pj_pair :: (t:[]f32)->f32 {
+    if t.count<2 {return t[0];}
+    h:=t.count/2;
+    return pj_pair(t[0..<h])+pj_pair(t[h..<t.count]);
+}
+// out[j] is the row's products summed in the backend's order, plus the bias.
+pj_stage :: (x:[]f32,out:[]f32,b:PjBackend) {
+    for j:0..<PJ_OUT {
+        t:[16]f32;
+        for i:0..<PJ_IN {t[i]=pj_weight(j,i)*x[i];}
+        s:f32=0;
+        if b==PjBackend.seq {for i:0..<PJ_IN {s+=t[i];}}
+        else {s=pj_pair(t[..]);}
+        out[j]=s+pj_bias(j);
+    }
+}
+// book:end stage
+
+// book:begin digests
+pj_hex :: (d:[]u8,out:[]u8)->string {
+    digits:="0123456789abcdef";
+    for i:0..<d.count {out[2*i]=digits[cast(int)(d[i]>>4)];out[2*i+1]=digits[cast(int)(d[i]&15)];}
+    return cast(string)out[0..<2*d.count];
+}
+// SHA-256 over each value's four little-endian bytes, in hex.
+pj_values_digest :: (v:[]f32,out:[]u8)->string {
+    sha:[112]u8;d:[32]u8;#assert sha256_init(sha[..])==SHA_OK;
+    for x:v {
+        w:=f32_bits(x);b:[4]u8;
+        for i:0..<4 {b[i]=cast(u8)((w>>cast(u32)(8*i))&0xff);}
+        #assert sha256_update_checked(sha[..],b[..],false)==SHA_OK;
+    }
+    #assert sha256_final_checked(sha[..],d[..],false)==SHA_OK;
+    return pj_hex(d[..],out);
+}
+pj_text_digest :: (text:[]u8,out:[]u8)->string {
+    d:[32]u8;#assert sha256_hash_checked(text,d[..],false)==SHA_OK;return pj_hex(d[..],out);
+}
+// The model's digest: its weights row by row, then its biases.
+pj_model_digest :: (out:[]u8)->string {
+    v:[PJ_OUT*PJ_IN+PJ_OUT]f32;
+    for j:0..<PJ_OUT {for i:0..<PJ_IN {v[j*PJ_IN+i]=pj_weight(j,i);}v[PJ_OUT*PJ_IN+j]=pj_bias(j);}
+    return pj_values_digest(v[..],out);
+}
+// book:end digests
+
+// Text layout helpers: append a string or a decimal integer, then a newline.
+pj_put :: (out:[]u8,at:int,s:string)->int {
+    if at<0 || at+s.count+1>out.count {return -1;}
+    for i:0..<s.count {out[at+i]=s[i];}
+    out[at+s.count]='\n';return at+s.count+1;
+}
+pj_put_int :: (out:[]u8,at:int,v:int)->int {
+    digits:[24]u8;n:=0;x:=v;neg:=v<0;
+    if neg {x=-v;}
+    while true {digits[23-n]=cast(u8)(48+x%10);n+=1;x/=10;if x==0 {break;}}
+    if neg {digits[23-n]='-';n+=1;}
+    return pj_put(out,at,cast(string)digits[24-n..<24]);
+}
+
+// book:begin receipt
+// The receipt's bytes: one field a line, in a fixed order.
+pj_receipt_text :: (r:PkReceipt,out:[]u8)->int {
+    n:=pj_put(out,0,"psionic-stage-receipt-v0");
+    n=pj_put(out,n,r.peer);n=pj_put_int(out,n,r.seq);n=pj_put(out,n,r.request);n=pj_put_int(out,n,r.stage);
+    n=pj_put(out,n,r.model);n=pj_put(out,n,r.profile);n=pj_put(out,n,r.input);n=pj_put(out,n,r.output);
+    n=pj_put_int(out,n,cast(int)r.use.status);n=pj_put_int(out,n,r.use.tokens_in);n=pj_put_int(out,n,r.use.tokens_out);n=pj_put_int(out,n,r.use.device_us);
+    return n;
+}
+// HMAC-SHA256 of those bytes under the key the peer shares with the checker.
+pj_mac :: (key:[]u8,r:PkReceipt,mac:[]u8)->bool {
+    text:[1024]u8;n:=pj_receipt_text(r,text[..]);
+    return n!=-1 && mac.count==32 && hmac_sha256_checked(key,text[0..<n],mac,false)==SHA_OK;
+}
+// The checker recomputes the MAC and compares in constant time.
+pj_mac_ok :: (key:[]u8,r:PkReceipt,mac:[]u8)->bool {
+    want:[32]u8;return mac.count==32 && pj_mac(key,r,want[..]) && cb_ct_equal(want[..],mac)!=0;
+}
+pj_receipt_digest :: (r:PkReceipt,out:[]u8)->string {
+    text:[1024]u8;n:=pj_receipt_text(r,text[..]);return pj_text_digest(text[0..<n],out);
+}
+// The draw: the first byte of SHA-256(checker secret, receipt digest).
+pj_draw :: (secret:[]u8,receipt:string)->int {
+    #assert receipt.count==64;
+    hex:[64]u8;for i:0..<64 {hex[i]=receipt[i];}
+    sha:[112]u8;d:[32]u8;#assert sha256_init(sha[..])==SHA_OK;
+    #assert sha256_update_checked(sha[..],secret,false)==SHA_OK && sha256_update_checked(sha[..],hex[..],false)==SHA_OK;
+    #assert sha256_final_checked(sha[..],d[..],false)==SHA_OK;
+    return cast(int)d[0];
+}
+// book:end receipt
+
+// book:begin record
+pj_record_text :: (r:PkRecord,out:[]u8)->int {
+    n:=pj_put(out,0,"psionic-stage-check-v0");
+    n=pj_put(out,n,r.receipt);n=pj_put(out,n,r.output);n=pj_put(out,n,r.reference);n=pj_put_int(out,n,r.seq);
+    n=pj_put_int(out,n,cast(int)r.use.status);n=pj_put_int(out,n,r.use.tokens_in);n=pj_put_int(out,n,r.use.tokens_out);n=pj_put_int(out,n,r.use.device_us);
+    n=pj_put_int(out,n,ifx r.sampled then 1 else 0);n=pj_put_int(out,n,cast(int)r.compare.verdict);n=pj_put_int(out,n,cast(int)r.compare.reason);
+    n=pj_put_int(out,n,r.compare.at);n=pj_put_int(out,n,cast(int)f64_bits(r.compare.worst));n=pj_put_int(out,n,r.compare.tolerance);
+    return n;
+}
+pj_record_digest :: (r:PkRecord,out:[]u8)->string {
+    text:[1024]u8;n:=pj_record_text(r,text[..]);return pj_text_digest(text[0..<n],out);
+}
+// book:end record
+
+
+// Checks. The pinned digests, MAC and draw were computed independently: a
+// short Python script rebuilt the stage with every binary32 operation
+// rounded through struct.pack('<f'), and hashed with hashlib and hmac.
+pj_test_receipt :: (x:[]f32,out:[]f32,rq:[]u8,md:[]u8,ih:[]u8,oh:[]u8)->PkReceipt {
+    pj_input(0,x);pj_stage(x,out,PjBackend.seq);t:="request\n0\n";b:[10]u8;for i:0..<10 {b[i]=t[i];}
+    return PkReceipt.{peer="alpha",seq=1,request=pj_text_digest(b[..],rq),stage=1,model=pj_model_digest(md),profile="stage-f32-seq-v1",
+        input=pj_values_digest(x,ih),output=pj_values_digest(out,oh),use=BlUse.{status=BlStatus.answered,tokens_in=1,device_us=200}};
+}
+// book:begin check-stage
+#test "the stage matches an independent binary32 emulation" {
+    x:[PJ_IN]f32;s:[PJ_OUT]f32;p:[PJ_OUT]f32;h:[64]u8;
+    seq:=[3]string.["a494c276196c552b91227ff6a832eeb13916b7c79aca0eee1dc34b8e434e4675","25cee7aed9e4fb52751ab3a76ae57bccfcf3011c34a152dbbcd4b911bc665921","b5d5793a84f639fd1edea707ae539ef01d567709fab2311128356d8f3436531a"];
+    pair:=[3]string.["a729aa8a11348421d5be4027958921dca1d56f2f919a9f9388e66042f6612738","dfc9ec1d0ac49fb2f9241bfe97c211daff4cd4bbbfa246aa6f70e51800f90cea","366f25b45b3e3a37362cf1118e76d4d69578de741c4fa509b44ecc6c68f0a21f"];
+    inputs:=[3]string.["01aef69987b77c43a34e905203f402d644bc5f65cd9071b821a0ead894df29f3","2f2b9519dacae19a4cb80fa051a16eee3801fc0ef7a6032cd7328db355681627","f6d867d2c1904f01d24a28667b151c024f12c0b84ef255c033831e324788f1df"];
+    for k:0..<3 {
+        pj_input(k,x[..]);#assert pj_values_digest(x[..],h[..])==inputs[k];
+        pj_stage(x[..],s[..],PjBackend.seq);#assert pj_values_digest(s[..],h[..])==seq[k];
+        pj_stage(x[..],p[..],PjBackend.pair);#assert pj_values_digest(p[..],h[..])==pair[k];
+    }
+    pj_input(0,x[..]);pj_stage(x[..],s[..],PjBackend.seq);
+    #assert f32_bits(s[0])==0xbefcd39a && f32_bits(s[1])==0x3ec0cb17;
+    #assert pj_model_digest(h[..])=="4aa6751881c6f068f48932f6f82503815b312e797cb3c88d2d1b7ac316d56ca0";
+    one:=[1]f32.[1.0];
+    #assert pj_values_digest(one[0..<0],h[..])=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    #assert pj_values_digest(one[..],h[..])=="e00e5eb9444182f352323374ef4e08ebcb784725fdd4fd612d7730540b3e0c8c";
+}
+// book:end check-stage
+// book:begin check-bound
+// Summing n terms left to right is off by at most gamma(n-1) times the sum
+// of their magnitudes, gamma(m) = m*u/(1-m*u), u = 2^-24; the pairwise tree
+// of 16 has depth 4. Adding the bias rounds once more. So the two backends
+// differ by at most (gamma(15)+gamma(4)+2u(1+gamma(15))) times the row's
+// magnitude, which over the whole input range stays below 40000 ppb.
+#test "both backends stay inside the a-priori bound, and it inside the tolerance" {
+    u:=1.0/16777216.0;g15:=15.0*u/(1.0-15.0*u);g4:=4.0*u/(1.0-4.0*u);
+    row:=16.0*(48.0/37.0)*(26.0/19.0)*(1.0+u)*(1.0+u)*(1.0+u)+(5.0/7.0)*(1.0+u);
+    domain:=(g15+g4+2.0*u*(1.0+g15))*row;
+    #assert domain<=40000.0/1000000000.0 && domain>36000.0/1000000000.0;
+    x:[PJ_IN]f32;s:[PJ_OUT]f32;p:[PJ_OUT]f32;worst:=0.0;
+    for k:0..<53 {
+        pj_input(k,x[..]);pj_stage(x[..],s[..],PjBackend.seq);pj_stage(x[..],p[..],PjBackend.pair);
+        for j:0..<PJ_OUT {
+            exact:=f64(pj_bias(j));size:=abs(f64(pj_bias(j)));
+            for i:0..<PJ_IN {t:=pj_weight(j,i)*x[i];exact+=f64(t);size+=abs(f64(t));}
+            #assert abs(f64(s[j])-exact)<=(g15+u*(1.0+g15))*size && abs(f64(p[j])-exact)<=(g4+u*(1.0+g4))*size;
+            d:=abs(f64(s[j])-f64(p[j]));#assert d<=(g15+g4+2.0*u*(1.0+g15))*size && size<=row;
+            if d>worst {worst=d;}
+        }
+    }
+    // The orders do differ, by a few units in the last place.
+    #assert worst>0 && worst<0.000001;
+}
+// book:end check-bound
+#test "receipts, MACs and draws match an independent computation" {
+    x:[PJ_IN]f32;out:[PJ_OUT]f32;hex:[4][64]u8;r:=pj_test_receipt(x[..],out[..],hex[0][..],hex[1][..],hex[2][..],hex[3][..]);
+    #assert r.request=="904fefe0dae2b150af677d83b23e22cd8b83a8c77e1397ba09392d2df06585eb";
+    h:[64]u8;rd:=pj_receipt_digest(r,h[..]);#assert rd=="87519f1a334a8be4df9063577cd2d69b392c532f24a8f501d9801b5d386cf88b";
+    key:[32]u8;for i:0..<32 {key[i]=cast(u8)i;}
+    mac:[32]u8;#assert pj_mac(key[..],r,mac[..]);m:[64]u8;
+    #assert pj_hex(mac[..],m[..])=="b38b290d43423a2dbbc52d0eff5f53517d10708e8b5280e27f08f3cdbf1a6bc7";
+    #assert pj_mac_ok(key[..],r,mac[..]) && !pj_mac_ok(key[..],r,mac[0..<31]) && !pj_mac(key[..],r,mac[0..<31]);
+    secret:[32]u8;for i:0..<32 {secret[i]=cast(u8)(200-i);}
+    #assert pj_draw(secret[..],rd)==209;
+    rec:=PkRecord.{receipt=rd,output=r.output,reference=r.output,seq=1,use=r.use,sampled=true,compare=PkCompare.{verdict=PkVerdict.agree,reason=PkReason.exact}};
+    #assert pj_record_digest(rec,h[..])=="5209364e855c74f86ed82848df70073d76a1b8a722f168a01fbcf6af729609f7";
+    // Every field of a record is under its digest.
+    for f:0..<14 {
+        t:=rec;
+        if f==0 {t.receipt=r.input;}if f==1 {t.output=r.input;}if f==2 {t.reference="";}if f==3 {t.seq=2;}
+        if f==4 {t.use.status=BlStatus.cancelled;}if f==5 {t.use.tokens_in=2;}if f==6 {t.use.tokens_out=1;}if f==7 {t.use.device_us=201;}
+        if f==8 {t.sampled=false;}if f==9 {t.compare.verdict=PkVerdict.disagree;}if f==10 {t.compare.reason=PkReason.bits;}
+        if f==11 {t.compare.at=0;}if f==12 {t.compare.worst=0.5;}if f==13 {t.compare.tolerance=1;}
+        o:[64]u8;#assert pj_record_digest(t,o[..])!="5209364e855c74f86ed82848df70073d76a1b8a722f168a01fbcf6af729609f7";
+    }
+}
+#test "every receipt field is under the MAC" {
+    x:[PJ_IN]f32;out:[PJ_OUT]f32;hex:[4][64]u8;r:=pj_test_receipt(x[..],out[..],hex[0][..],hex[1][..],hex[2][..],hex[3][..]);
+    key:[32]u8;mac:[32]u8;#assert pj_mac(key[..],r,mac[..]);
+    for f:0..<12 {
+        t:=r;
+        if f==0 {t.peer="alphb";}if f==1 {t.seq=2;}if f==2 {t.request=t.output;}if f==3 {t.stage=2;}if f==4 {t.model=t.input;}if f==5 {t.profile="stage-f32-pair-v1";}
+        if f==6 {t.input=t.model;}if f==7 {t.output=t.request;}if f==8 {t.use.status=BlStatus.cancelled;}if f==9 {t.use.tokens_in=2;}if f==10 {t.use.tokens_out=1;}if f==11 {t.use.device_us=201;}
+        #assert !pj_mac_ok(key[..],t,mac[..]);
+    }
+    other:=key;other[31]=1;#assert !pj_mac_ok(other[..],r,mac[..]);
+    mac[0]^=1;#assert !pj_mac_ok(key[..],r,mac[..]);
+}
+#test "text fields are bounded and integers are written exactly" {
+    b:[32]u8;
+    n:=pj_put_int(b[..],0,0);n=pj_put_int(b[..],n,-45);n=pj_put_int(b[..],n,9223372036854775807);
+    #assert n==26 && cast(string)b[0..<n]=="0\n-45\n9223372036854775807\n";
+    #assert pj_put(b[..],0,"0123456789012345678901234567890")==32 && pj_put(b[..],0,"01234567890123456789012345678901")==-1;
+    #assert pj_put(b[..],-1,"")==-1 && pj_put(b[..],31,"")==32 && pj_put(b[..],32,"")==-1;
+    x:[PJ_IN]f32;out:[PJ_OUT]f32;hex:[4][64]u8;r:=pj_test_receipt(x[..],out[..],hex[0][..],hex[1][..],hex[2][..],hex[3][..]);
+    small:[64]u8;#assert pj_receipt_text(r,small[..])==-1;
+    big:[1024]u8;#assert pj_receipt_text(r,big[..])>0;
+    // A receipt whose text does not fit is never MACed.
+    wide:[1100]u8;for i:0..<1100 {wide[i]='a';}long:=r;long.peer=cast(string)wide[..];
+    key:[32]u8;mac:[32]u8;#assert !pj_mac(key[..],long,mac[..]) && !pj_mac_ok(key[..],long,mac[..]);
+}

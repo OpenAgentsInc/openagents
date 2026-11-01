@@ -1762,6 +1762,16 @@
       ]
     },
     {
+      "source": "psionic/examples/peer-audit.coax",
+      "chapter": "psionic/book/ch195-check-a-peers-work.md",
+      "stdout": "psionic/fixtures/peer-audit.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-capability.coax",
       "chapter": "psionic/book/ch173-serve-a-model-with-an-honest-capability.md",
       "stdout": "psionic/fixtures/serve-capability/serve-capability.out",
