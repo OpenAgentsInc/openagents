@@ -76,7 +76,14 @@ the pinned source's passive force with COM/principal-frame inertia-box drag.
 The [smooth composition](../../fixtures/robotics/panda-smooth/README.md) now
 adds actuator and generalized external force to full passive before the
 bias/mass query. Its retained smooth targets do not qualify constrained
-acceleration or integration. Friction/contact constraints remain separate. A gravity-only query cannot
+acceleration or integration. The [owned Euler map](../../fixtures/robotics/panda-euler/README.md)
+now qualifies a separate 2 ms unconstrained step with implicit joint damping:
+`(M+h*B)*a_eff=applied-bias`, velocity first, then position. Three cached
+algebraic contexts and three new observed SDK steps qualify this fixed robot9
+map. Effective acceleration comes from the velocity increment, not the
+pre-step SDK `qacc` cache. Contact/frictionloss/limit solving, whole-scene
+integration, typed clock/restore and a genuine owned-backend episode remain
+separate. A gravity-only query cannot
 replace the controller's nonzero-velocity bias sample. The
 [fresh controller-sample integration](panda-owned-sample.md) now has an owned
 144-field constructor and a separate held-state paired-controller proof. The

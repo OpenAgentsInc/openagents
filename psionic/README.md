@@ -406,7 +406,8 @@ fluid, joint viscous damping and complete passive force separately. Its
 basis. `psionic/check.sh --only robotics/panda-fluid` selects three authority
 roots and one offline Darwin-arm64 native gate. All 42 contexts pass cached
 SDK and independent matrix/virtual-work budgets; no SDK or simulation runs.
-Nonzero wind, ellipsoid fluid, constraints and integration remain pending.
+Nonzero wind, ellipsoid fluid and constraints remain pending; the isolated
+Euler map below qualifies its own step.
 
 The [smooth acceleration query](fixtures/robotics/panda-smooth/README.md)
 now assembles actuator plus explicit generalized external force plus complete
@@ -415,7 +416,18 @@ passive force, then subtracts owned bias and solves the metric. Its
 forces. `psionic/check.sh --only robotics/panda-smooth` selects the new root
 and one offline Darwin-arm64 native gate. Eighteen retained SDK smooth targets
 and two explicitly derived same-state force-equivalent targets pass; no new
-SDK calls run. Constrained acceleration and integration remain pending.
+SDK calls run. Constrained acceleration and the genuine episode physics replacement remain
+pending; the isolated Euler map below qualifies its own step.
+
+The [owned Euler map](fixtures/robotics/panda-euler/README.md) now advances
+this fixed robot by 2 ms with source-matched implicit joint damping. It solves
+`(M+h*B)*a_eff = applied-bias`, then updates velocity before position. Its
+[typed example](examples/panda-euler.coax) uses a prewritten retained-operand
+Gaussian golden. `psionic/check.sh --only robotics/panda-euler` selects two
+new authority roots and one offline Darwin-arm64 native gate. Three cached
+algebraic targets and three newly observed SDK steps pass frozen budgets;
+normal checks acquire no SDK data. This isolated unconstrained state map does
+not replace scene constraints, the runtime clock or the genuine episode backend.
 
 The [owned controller sample](fixtures/robotics/panda-owned-sample/README.md)
 assembles the existing 144-word ABI from one admitted state. Its

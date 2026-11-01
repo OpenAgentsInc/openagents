@@ -1,0 +1,122 @@
+{
+  "schema": "psionic.panda-euler.publication-binding.v1",
+  "passed": true,
+  "input_fingerprint": "000c5c990f9731c3917498166995b2945681b9985105fbfdef144d2ad88d7af3",
+  "compiler_sha256": "127ce60127de2ad863e2e9e5fa92253a7e5b59fa9f76e9e599ff2902aac9c77e",
+  "compiler_guard_carried_from_model_binding_sha256": "bb0611c713de239e880d1db97e2cdbe50354ab2ed3da77b707d9159366385e2c",
+  "compiler_cache_verify_repeated": false,
+  "current_source_fingerprint_guard": true,
+  "emissions": [
+    {
+      "mode": "debug",
+      "artifact": "panda-euler.c",
+      "bytes": 297627,
+      "sha256": "3d0dfdd605b976236d5eef2c0e37bc24431a01be193f8eb24f01435f1f57e758",
+      "exact_prior_match": true
+    },
+    {
+      "mode": "debug",
+      "artifact": "panda-euler.h",
+      "bytes": 41193,
+      "sha256": "772f91d2136c0cc408612af0b112b7a9b8afa72084b551ae6ef79e110a3ddca4",
+      "exact_prior_match": true
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-euler.c",
+      "bytes": 295927,
+      "sha256": "77d04621288633dbb9e0dd1b4d7b6a9d246e07851af07d2756c02955b6087133",
+      "exact_prior_match": true
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-euler.h",
+      "bytes": 41193,
+      "sha256": "772f91d2136c0cc408612af0b112b7a9b8afa72084b551ae6ef79e110a3ddca4",
+      "exact_prior_match": true
+    }
+  ],
+  "numerical_reruns": 0,
+  "SDK_calls": 0,
+  "example_reruns": 0,
+  "mutation_reruns": 0,
+  "component_commit": "8b4e39ce6fa3366ace91995b14922631531d1794",
+  "original_component_commit": "c5175d54825527487ba45b5c7b34a5b2d9460d1e",
+  "seconds": 2.4627629999886267,
+  "qualified_native_receipt_sha256": "e83e9c80ffc76496e8794da8f5da652322627f6d092b0bd7d197b2630501679c",
+  "qualified_source_receipt_sha256": "69df2b8ab1bb09a406dd968dfdb0c74a110f992fee6e2f8e42f67e5e1c77b115",
+  "qualified_SDK_receipt_sha256": "5f912685e3fb062eac8b7baa43a7f3aec314d70902bf5598d873b326e2a2e770",
+  "qualified_cached_receipt_sha256": "17a82d2ebc4d263c377c6e218ef29c8858c65ceb774a29f6bbb2e27a4da4f58c",
+  "qualified_cached_guard_sha256": "bd54968e85ff80f67f05148f13ce1c16caa3534c3645ceffca233214d3ee5bfb",
+  "qualified_example_receipt_sha256": "7117ea0504654b337e888667eb2fc49da59d2828e036a368de3e3bf9cf30b801",
+  "proof_scope": {
+    "cached_algebraic_contexts": 3,
+    "observed_original_SDK_steps": 3,
+    "source_groups": 12,
+    "source_cases": 163,
+    "emitted_mutants": 151,
+    "killed": 151,
+    "survivors": 0,
+    "equivalent_waivers": 0,
+    "native_assertions_each_profile": 4380,
+    "native_profiles": [
+      "debug",
+      "release",
+      "ASan+UBSan"
+    ],
+    "new_source_refusals": 4,
+    "all162_actual_and_expected_state_coefficients_finite": true,
+    "numeric_modes_byte_identical": true,
+    "source_Quantity_operator_token_limit_retained": true
+  },
+  "book": {
+    "passed": true,
+    "programs": 123,
+    "source_linked_listings": 470,
+    "log_sha256": "912a6c6d67d5886b79b6e692945bfb10ec639beb00631955d8721bc13dbf1802",
+    "registry_format_followup": "Minimal per-chapter JSON formatting restored; final complete structure check passed after all prose updates.",
+    "old_examples_rerun": false,
+    "source_and_command_fences": "all new source/math/output fences jai, commands shell; exact peu-step listing"
+  },
+  "registration": {
+    "authority_roots": [
+      "panda-euler-math",
+      "panda-euler"
+    ],
+    "native_gate_count": 1,
+    "native_target": "Darwin-arm64",
+    "ordinary_gate": "committed reference fixtures; no SDK acquisition",
+    "listing_sha256": "f3705723f51c2a646a8dd1b544968798da91dccd757651ccdf167026661ad2f5",
+    "dedup_listing_sha256": "f3705723f51c2a646a8dd1b544968798da91dccd757651ccdf167026661ad2f5",
+    "all_listing_sha256": "83cf52e3a8f783f82b1d2158793b3985e47f5ca67fe1d6bfbe560826ffc278ae",
+    "shell_syntax_passed": true,
+    "numeric_gates_rerun": false
+  },
+  "manifest_claim_review": {
+    "passed": true,
+    "change": "only one qualified CPU scalar Euler example added; no new GPU/model/backend claim",
+    "claims": [
+      {
+        "id": "psionic.execution.current",
+        "old_manifest_sha256": "69c9d13878e62df8f3b25cbb3d075c2936cc3cdb05d973c567d6af02ba39bea5",
+        "new_manifest_sha256": "10095b82f315e1059f0e257ec8adde041eee3946fb4bff6df07b9055bd08feb7",
+        "scope": "Dated recorded named model/device profiles; Mammoth Metal, original120b GPU and complete V4.1 remain unqualified.",
+        "prose_and_features_unchanged": true
+      },
+      {
+        "id": "psionic.gpu.current",
+        "old_manifest_sha256": "69c9d13878e62df8f3b25cbb3d075c2936cc3cdb05d973c567d6af02ba39bea5",
+        "new_manifest_sha256": "10095b82f315e1059f0e257ec8adde041eee3946fb4bff6df07b9055bd08feb7",
+        "scope": "Recorded original20b CUDA/Metal and bounded resident CUDA serving profiles; broader model/device/serving work remains open.",
+        "prose_and_features_unchanged": true
+      }
+    ]
+  },
+  "limits": "Fixed-source unconstrained 2ms robot9 map; no constraints/contact/frictionloss/whole-scene episode integration/clock/R13/R14/R15/hardware qualification. Numeric SDK tolerance parity and owned mode byte identity are distinct.",
+  "source_at_publication": {
+    "psionic/lib/robotics/panda-euler-fixtures.coax": "d552e8bf57b85b9b435f1b90a388b9303acc0f18323173ed6f5907e3f77c64f6",
+    "psionic/lib/robotics/panda-euler-math.coax": "67a8ede88255fef0989481c67f2017fef885eb775898dec7873c91a9b40d3f40",
+    "psionic/lib/robotics/panda-euler-types.coax": "84e3caab18d7e9066b258f258defd500176de246038daa3cb4bf5602adf11feb",
+    "psionic/lib/robotics/panda-euler.coax": "47a8df251ef5ff798eea61d087040411150f1f767c1cb502de2031a329be4893"
+  }
+}

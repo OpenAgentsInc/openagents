@@ -7,9 +7,11 @@ pose commands into seven torques and two finger targets. MuJoCo 3.3.1 advances
 the source LIBERO scene. The next observation comes from that changed scene.
 
 We first qualify the actual LIBERO/Panda loop with MuJoCo as an evaluation
-backend. The owned solver
-in chapter 109, function transformations in chapter 107, differentiable simulator
-in chapter 111, and compiler enforcement of `#bounded` remain pending. The
+backend. Chapters 107, 109 and 111 now provide independent function-transform,
+scalar-solver and differentiable-solver foundations. Later sections qualify
+fixed-source robot queries and an unconstrained Euler map. Their integration
+into a matching owned scene/constraint/rendering backend, and compiler
+enforcement of `#bounded`, remain pending. The
 controller uses fixed arrays, checked loop limits and no allocation or effects;
 that is a reviewed implementation property, not an implemented compiler
 annotation or proof. This chapter does not qualify real hardware.
@@ -1873,3 +1875,164 @@ session defines the injected conditions; the C driver transports their effects.
 Private traces stay outside the repository; public receipts retain their hashes
 and outcomes. The dated [verification record](../../docs/verification/psionic-ch169-2026-10-31.md)
 distinguishes every gate and its actual scope.
+
+## Advance the unconstrained robot by one owned step
+
+The smooth query tells us the acceleration at the current state. Moving the
+state forward also requires an integration rule. The source model uses a
+0.002-second Euler step with implicit joint damping. The fingers have strong
+joint damping, so we account for how that damping responds to the velocity
+chosen for the end of the step.
+
+Let `B` be the diagonal matrix of nine joint-damping coefficients and let `h`
+be typed seconds. The mass already includes each rotor armature once. Full
+passive includes joint damping plus fluid, evaluated at the current q/v. In
+the existing one-radian/one-metre coefficient basis, the equation is `(M +
+h*B) * a_eff = ((actuator + external) + full_passive) - bias`. We solve for an
+effective acceleration, update velocity, then use that new velocity to update
+position:
+
+```jai
+net = ((actuator + external) + full_passive) - bias
+effective_mass = mass + h * B
+effective_acceleration = solve(effective_mass, net)
+next_velocity = velocity + h * effective_acceleration
+next_position = position + h * next_velocity
+```
+
+Keep the current `-B*v` contribution inside full passive. The added `h*B`
+accounts for joint damping at the new velocity; adding `B*v` back would change
+this equation. Fluid drag, actuator gains, gravity and velocity bias remain
+current-state forces. No fluid derivative is added to the solve matrix. The
+hinge diagonal receives seconds times kg m²/(s rad²), preserving kg m²/rad².
+The slide diagonal receives seconds times kg/s, preserving kilograms. Cross
+blocks retain their original units. The qualified explicit one-radian/one-
+metre basis handles the numerical factorization without treating radians as an
+unlabelled scalar.
+
+This pure fixed-source map accepts seven arm angles, two finger positions,
+their angular and linear rates, arm torque controls, signed finger-position
+targets and generalized external forces. It returns just the nine robot
+coordinates/rates, effective accelerations and two actuator-clipping counts in
+one 232-byte record. It has no clock or motor effect. Every shape is checked
+before values. External force admission precedes q/v and control admission;
+applied and net force each keep their separate magnitude-10000 numerical cap.
+Publication follows the effective-mass solve and complete next-state
+admission. The candidate state must stay in the same inclusive numerical
+boxes: ±100 rad, ±1 m, ±20 rad/s and ±2 m/s. A refusal preserves the complete
+output. These are numerical bounds, not hardware limits or physical joint soft
+ranges.
+
+The runnable example starts at the geometric zero pose, including joint 4 = 0,
+which lies outside its source physical soft range. It compares all
+q/v/effective acceleration fields to an independent Gaussian solve of retained
+original SDK mass/bias and actuator/passive operands at exactly the same zero
+q/v. Those are new algebraic targets, not observed SDK timestep endpoints. The
+stdout was written from that independent reference before implementing the
+example.
+
+```shell
+coax/bin/coax run psionic/examples/panda-euler.coax
+coax/bin/coax run psionic/examples/panda-euler.coax --release
+COAX=/path/to/current/coax psionic/tests/robotics/panda_euler_check.sh /tmp/panda-euler-new
+```
+
+<!-- source: psionic/examples/panda-euler.coax peu-step -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ arm:[7]pfku.Quantity(PmHingeGravity,f64);target:[2]pfku.Quantity(pfku.Metre,f64);
+ external_h:[7]pfku.Quantity(PmHingeGravity,f64);external_s:[2]pfku.Quantity(PmSlideGravity,f64);
+ target[0].value=0.02;target[1].value= -0.02;
+ out:[1]PeuOutput;
+ #assert peu_step(q[..],s[..],v[..],sv[..],arm[..],target[..],external_h[..],external_s[..],out[..])==PmsStatus.ok;
+ // Independent retained-operand Gaussian oracle, not an observed SDK step.
+ peu_cached_golden(out[0],0);
+ print("owned unconstrained Euler: 2000 microseconds\n");
+ for i:0..<7 {print("hinge %: q % urad, v % urad/s, a % urad/s2\n",i+1,peu_example_micro(out[0].angles[i].value),peu_example_micro(out[0].hinge_rates[i].value),peu_example_micro(out[0].effective.hinge[i].value));}
+ for i:0..<2 {print("slide %: q % um, v % um/s, a % um/s2\n",i+1,peu_example_micro(out[0].slides[i].value),peu_example_micro(out[0].slide_rates[i].value),peu_example_micro(out[0].effective.slide[i].value));}
+ print("actuator clips: % control, % force\n",out[0].control_clipped,out[0].force_clipped);
+```
+
+The 2000 microseconds label names the fixed mathematical step size.
+The displayed micro-units round the F64 state only for reading:
+
+```jai
+owned unconstrained Euler: 2000 microseconds
+hinge 1: q 0 urad, v 0 urad/s, a 16 urad/s2
+hinge 2: q 4 urad, v 2246 urad/s, a 1122766 urad/s2
+hinge 3: q 0 urad, v 0 urad/s, a 53 urad/s2
+hinge 4: q 8 urad, v 4164 urad/s, a 2082240 urad/s2
+hinge 5: q 0 urad, v 0 urad/s, a 116 urad/s2
+hinge 6: q -8 urad, v -4173 urad/s, a -2086395 urad/s2
+hinge 7: q 0 urad, v 0 urad/s, a 40 urad/s2
+slide 1: q 61 um, v 30564 um/s, a 15282008 um/s2
+slide 2: q -61 um, v -30505 um/s, a -15252343 um/s2
+actuator clips: 0 control, 0 force
+```
+
+The frozen six-context experiment keeps two sources of evidence distinct.
+Three contexts reconstruct the step algebraically from retained original PID
+mass/bias row 0 and Pa force rows 12/13/14, using an independent Gaussian
+solve of `M+h*B`. They probe the exact finger-force cap and its adjacent
+floating-point values. The other three are new, directly observed single-step
+SDK contexts: static gravity, moving with external force, and moving with
+saturated controls.
+
+Before any SDK loading, an asset-inventory preflight found 86 XML declarations
+but 85 unique asset paths. Its initial declaration-count assumption failed.
+The failed record and a frozen source addendum preserve that correction, every
+unique file identity, and the original XML binding all declarations. The C
+collector, cases, equations and numerical budgets stayed unchanged.
+
+The separate three-context SDK experiment deliberately disables both
+constraints and contact (flags 17), leaving the other used flags clear and
+source coefficients unchanged. Contact-only disabling would leave
+frictionloss/limits enabled. The original flags 0 remain recorded. The
+`EULERDAMP` disable bit remains clear, so implicit joint damping stays
+enabled. Each new context has one authored pre-forward and one original SDK
+step, with no post-step forward, renderer or neural call. The two off-diagonal
+robot/scene mass blocks (9×12 and 12×9) are exactly zero. Every SDK warning
+counter and constraint-force coefficient remains zero under this profile.
+
+The reference q/v values are read directly from the updated SDK state. Its
+`d->qacc` still describes the pre-step instantaneous calculation; Euler uses a
+scratch acceleration for the update. We derive the effective reference from
+`(v_next-v)/h`. Its finger coefficients differ from the instantaneous values
+by about 2.754, 0.364 and 7.312 m/s² in the three contexts. That difference is
+the reason to qualify the actual step rather than assume the smooth
+acceleration can be integrated unchanged. Frozen absolute budgets are 2e−12
+for q, 2e−10 for v and 1e−8 for that diagnostic, with zero relative tolerance.
+
+The new source checks have 12 groups/163 cases and kill all 151 new-root
+mutants without waivers; four negative source fixtures retain precise type
+refusals. The score covers actual emitted sites; the existing scalar Quantity
+operator-token coverage limitation remains explicit. The new native consumer
+passes 4,380 assertions in each debug, release and fail-fast ASan/UBSan
+profile, with byte-identical owned results. It includes every nonfinite input
+lane, shape/cap/order refusals, overlapping inputs/output and late next-state
+refusals. Twenty new consistency checks first establish that the smooth query
+admits those same inputs, so an earlier model/force refusal cannot masquerade
+as a late Euler-state refusal. All actual and reference fields are finite and
+complete before maxima. Among 72 initial numerical-box endpoint queries, 12
+honestly refuse downstream rather than being described as successful steps.
+
+Against the three new observed SDK steps, maximum absolute differences are
+1.3553e−20 for q, 1.1102e−16 for v and 3.5528e−14 for the effective-
+acceleration diagnostic, under the frozen budgets. The three independent
+cached algebraic targets pass separately: maximum coefficient differences are
+1.356e−20 for q, 6.939e−18 for v and 3.553e−15 for effective acceleration.
+Position/rate/acceleration values retain their hinge and slide units; these
+are elementwise coefficient budgets, not a mixed-unit physical norm. An
+independent Gaussian reconstruction of the three new SDK observations also
+passes: its maximum coefficient differences are 1.695e−21 for q, 6.939e−18 for
+v and 2.843e−14 for the velocity-derived effective acceleration. Those are
+cached-data checks after acquisition, with no extra SDK calls. The qualified
+PFL/PSF force paths and their prerequisites are carried by identity. No old
+component, neural or SDK gate was repeated.
+
+Owned same-recipe bit identity and SDK tolerance parity are separate claims.
+The owned force-sum order can round differently from the SDK's order. Source-
+visible low-level helpers remain trusted and unsealed. This fixed robot block excludes contact, frictionloss/limits, coupled object
+dynamics, model importing, typed clocks, compiler boundedness, and hardware.
+It therefore does not replace the current LIBERO simulation backend.

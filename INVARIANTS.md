@@ -499,6 +499,29 @@ explicitly incomplete. This is unconstrained acceleration, with no contact or
 frictionloss solve, implicit-damping integration, robot episode, R14 or hardware
 claim.
 
+## Owned Panda Euler keeps implicit damping and reference scopes explicit
+
+`panda-euler*.coax` owns one fixed 2 ms unconstrained robot9 state map.
+It solves `(M+hB)*a_eff=((actuator+external)+fullpassive)-bias`, with current
+joint damping retained inside passive and no fluid derivative in the metric.
+The nine source armatures occur once. Velocity advances before position;
+all shapes and external/model/control/applied/net/next-state admission precede
+atomic 232-byte publication. Numerical boxes are separate from joint limits.
+
+Three retained-operand Gaussian targets are algebraic references, not observed
+SDK steps. Three new SDK observations use constraint/contact-off flags 17 and
+a clear EULERDAMP disable bit. Their q/v are direct updated state; effective
+acceleration is derived from delta-v/h, not `d.qacc`. Both robot/other-scene
+mass cross blocks and all warning/constraint-force fields are zero. The
+initial asset-declaration preflight failure and frozen correction remain in
+the receipts. Mode byte equality and SDK tolerance parity are separate.
+
+Only actual emitted mutation sites are claimed; scalar Quantity token
+coverage remains incomplete. Trusted low-level POD helpers are unsealed.
+The normal gate consumes committed fixtures without acquiring SDK data.
+This component adds no clock, constrained scene, episode, R13/R14/R15 or
+hardware qualification. Evidence: `psionic/fixtures/robotics/panda-euler/`.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T
