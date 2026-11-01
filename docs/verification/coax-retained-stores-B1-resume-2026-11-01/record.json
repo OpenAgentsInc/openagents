@@ -1,0 +1,56 @@
+{
+  "schema": "coax.retained-stores.resume-stopping-record.v1",
+  "status": "NOT_QUALIFIED",
+  "issue": "r3a-retain-store-checks",
+  "issue_status": "open",
+  "analysis_cost_fixed": true,
+  "work_steps": 1004102,
+  "work_limit": 1048576,
+  "queries": 14516,
+  "query_limit": 16384,
+  "cost_source_sha256": "9c9468cda0f4bfd0d228bda047d799f42741a16723ce4d1ae08f64031b8398f0",
+  "cost_source_revision": "38223001abc381a82699d348acd96f230a11edc4",
+  "latest_unpublished_checkpoint": "c5568eb3b4ffdabca00b7fbb2cf31f5ee30e0601",
+  "latest_checker_sha256": "a213b0ea462b4248abcb666871840d3f6db6ffaf36859b58823d53e3036e735a",
+  "latest_authored_checks": 959,
+  "original_strict_normal": {
+    "passed_statements": 76,
+    "required_statements": 165,
+    "original_full_mutants": 9284,
+    "first_shard_selected": 1161,
+    "killed": 1132,
+    "survived": 29
+  },
+  "latest_diagnostic": {
+    "producer_qualified": false,
+    "full_mutants": 9273,
+    "first_shard_selected": 1160,
+    "killed": 1149,
+    "survived": 11,
+    "not_same_inventory_as_original": true
+  },
+  "qualified_compiler_pushed": false,
+  "issue_resolved": false,
+  "task_start_utc": "2026-11-01T06:38:49Z",
+  "task_limit_utc": "2026-11-01T08:38:49Z",
+  "owner_extension_received": false,
+  "remaining": [
+    "full authority mutation zero survivors",
+    "latest matching seeds and complete strict normal bootstrap",
+    "both C/header/compiler fixedpoints",
+    "final-image source/native/consumer whole gates",
+    "push implementation and close B1"
+  ],
+  "assessment_sha256": "cd1331ad52053551f8fe046d462371104a2eb74e6e5c8b4e26d4ee156b85c899",
+  "raw_archive_record": "raw/record.json",
+  "archive": {
+    "path": "raw/proof.tar.gz",
+    "sha256": "f68c458fb3839d7c4d5e1a83bac52bdc562d1b2203f8238f91472d61a9687d78",
+    "bytes": 58124550,
+    "members_verified": 2921,
+    "selected_proof_files": 2919,
+    "uncompressed_member_bytes": 514488850,
+    "every_member_readback_verified": true
+  },
+  "archive_integrity_record_sha256": "a6e85cc975750f36a0ecd4d2e26c14766f3bb12044e1d8829a7b68a3d4236f5f"
+}

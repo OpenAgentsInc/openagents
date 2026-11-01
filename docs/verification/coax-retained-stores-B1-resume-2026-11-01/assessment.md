@@ -1,0 +1,21 @@
+# B1 retained-store qualification resume — 2026-11-01
+
+B1 is not qualified and its issue remains open. This record preserves the finished analysis-cost fix and the actual failed full mutation gate. It does not authorize a compiler release or claim that remaining gates passed.
+
+The resumed task pulled main and preserved incoming compiler and book changes. Its committed implementation checkpoint is `38223001abc381a82699d348acd96f230a11edc4`, based on `ed854bf4eb12bc54fa1fca9ee7989ffe571a4ce2`. That implementation remains unpublished while qualification is incomplete.
+
+The actual compiler aggregate completed at 1,004,102 of the unchanged 1,048,576 work steps, using 14,516 of 16,384 query slots and 8,235 of 65,536 origins. The producer was development image `33fef9424e5362ea081f6cc636b4e155fa10516a3852f58171956959390e2276`, checker source `9c9468cda0f4bfd0d228bda047d799f42741a16723ce4d1ae08f64031b8398f0`. The debugger observed the native analysis return and compiler exit zero; it was not a bootstrap qualification.
+
+The fix uses frozen type/field facts, derives owned storage without separate origin-query entries, normalizes completed raw facts for source classification, and computes each canonical effect’s formal storage classification once. It also rejects the new local-array forwarding escape at the preauthored CALL witness. The measured query-hint experiment was rejected and removed.
+
+All 947 authored Coax checks passed on the earlier qualified producer as a program observation. Fresh generated C/header checks independently verified 21 records and 198 offsets, including the additional effect flag; the native observer’s layout guard was updated without changing its 19 semantic cases.
+
+A fresh strict full bootstrap/mutation composition used source fingerprint `3322e5eda90e1abdbadde5b1a522d15755030490ac00560cbfd31244429ca3d9`. Its new stage0 image was `448e978d9448137a31dc38e22491b8f0e34f9cdc5d7466f21296950d2698c4a5`. It passed 76 of 165 planned statements, including all 947 checker checks and the parser’s full mutation gate. The first checker shard then failed: 1,161 of 9,284 mutants were selected, 1,132 were killed and 29 survived. Transport, source and artifact guards were clean. No later normal statement ran.
+
+The 29 survivors map to address projection/manual facts, aggregate and capacity boundaries, source-class activation, caller propagation, traversal/instance scheduling, workspace/report bounds and repeated-invocation state. A later unqualified source (`a213b0ea462b4248abcb666871840d3f6db6ffaf36859b58823d53e3036e735a`) passes all 959 authored checks on the earlier qualified producer; 26 exact seeded semantic defect variants fail its targeted controls. Three redundant state/scheduling spellings received reviewed enum/eager-seeding/bodyless-foreign cleanup. Two hand-built fixture enumeration omissions and one invalid empty-destination fixture were corrected without weakening their semantic assertions; failed setup/follow-up records remain. These observations do not establish a new zero-survivor full mutation result or compiler qualification.
+
+Remaining acceptance requires zero survivors across the original full authority scopes, complete bootstrap and both compiler/C/header fixed points, all package/provenance checks, and the seven final-image source/native/consumer gates. B2 and B3 remain separate and were not started.
+
+The latest isolated source checkpoint is `c5568eb3b4ffdabca00b7fbb2cf31f5ee30e0601`. A subsequent full-scope shard diagnostic used that 959-check source with the earlier unqualified stage0 image: its new inventory was 9,273 mutants; shard 1/8 selected 1,160, killed 1,149 and left 11 survivors. The source, producer and transport guards were clean. Because the inventory changed, this is not an unchanged-inventory reduction from 29 to 11, and it does not qualify the compiler. The other seven shards, latest matching seeds/bootstrap/fixed points and final native/consumer gates remain required.
+
+The AGENTS.md two-hour limit ends at 08:38:49 UTC. No extension response was received before the evidence freeze. Only this finished evidence/stopping record is pushed; compiler implementation checkpoints remain local and B1 is not resolved.

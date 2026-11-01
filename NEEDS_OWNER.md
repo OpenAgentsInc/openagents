@@ -235,3 +235,13 @@ Passing the audit is **not** approval for production keys. The Pylon refuses `--
 2. **After a yes:** new code that reads a key file safely (an owned buffer, wiped after use, never logged). Then the real Pylon key is created in a `0600` file in `~/work/.secrets/` on your Mac, and your `auth` signature is made over it (already decided above).
 
 Until then, demo Pylons use fresh random throwaway keys (`docs/Oct30MVP.md`, §3).
+
+## B1 qualification: task time-limit decision (2026-11-01)
+
+The resumed B1 task began at 06:38:49 UTC; the AGENTS.md two-hour limit ends
+at 08:38:49 UTC. The analysis cost is fixed within unchanged limits, but the
+first full checker mutation shard found 29 survivors. The async question asks
+whether to continue beyond the two-hour limit until B1 is fully qualified,
+pushed and closed, or stop at the limit and record the remaining work.
+No extension is assumed while the owner decision is pending. No credentials
+or local UI action are needed.
