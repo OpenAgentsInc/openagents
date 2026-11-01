@@ -1,0 +1,254 @@
+{
+  "schema": "coax.lqr-longer.current-emitter-binding-publication.v1",
+  "original_record": {
+    "bytes": 8018,
+    "sha256": "e77b4e925e259093353d45fda1be0c71f84f66dcef885d988d6fa94cc0b2c0f7"
+  },
+  "record": {
+    "schema": "coax.locomotion-lqr-longer.current-emitter-binding.v1",
+    "passed": true,
+    "commands": [
+      {
+        "label": "source-head",
+        "argv": [
+          "git",
+          "rev-parse",
+          "HEAD"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.015468791010789573,
+        "stdout": {
+          "bytes": 41,
+          "sha256": "ce59a857b6f39f2c65e26d95f7efc7a958a510f06578bc6b83db5892aefcbcb4"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "current-fingerprint",
+        "argv": [
+          "bash",
+          "coax/provenance.sh",
+          "fingerprint",
+          "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.9383562500006519,
+        "stdout": {
+          "bytes": 65,
+          "sha256": "7564dfcd7025fdf0760fc3f10329e904a74b40f743ea1886b590b9200260aa5b"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "emit-debug",
+        "argv": [
+          "/private/tmp/coax-lqr-longer-current-compiler-first/coax",
+          "c",
+          "psionic/tests/robotics/locomotion-lqr-longer-native.coax",
+          "--library",
+          "--header",
+          "/tmp/locomotion-lqr-longer-current-emitter-private-binding-first/debug/locomotion-lqr-longer.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.6137977920006961,
+        "stdout": {
+          "bytes": 266643,
+          "sha256": "0012cfa6f7660a79481da2e7d983b5fa959212f2221b87665f7dea9cd277f549"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "emit-release",
+        "argv": [
+          "/private/tmp/coax-lqr-longer-current-compiler-first/coax",
+          "c",
+          "psionic/tests/robotics/locomotion-lqr-longer-native.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/locomotion-lqr-longer-current-emitter-private-binding-first/release/locomotion-lqr-longer.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.5915198749862611,
+        "stdout": {
+          "bytes": 263677,
+          "sha256": "e8c00cd765ce8bdc1d9c05ceb4e37e55961a6342e3c6a506bb76b9e2de14e4d2"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "final-fingerprint",
+        "argv": [
+          "bash",
+          "coax/provenance.sh",
+          "fingerprint",
+          "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.8325548330321908,
+        "stdout": {
+          "bytes": 65,
+          "sha256": "7564dfcd7025fdf0760fc3f10329e904a74b40f743ea1886b590b9200260aa5b"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    ],
+    "compiler_builds": 0,
+    "numeric_math_native_guard_learning_model_reruns": 0,
+    "cache_or_install_writes": false,
+    "source_commit": "2ebfbb0ea9d7f1a5dedba9143fbf6150d1c3e8db",
+    "source_fingerprint": "da79e8559f07565ee5e050bfb1dbc4f532f29e5b7c6262fc42e280f901f185d3",
+    "private_build_receipt": {
+      "bytes": 392857,
+      "sha256": "331a00f94a878a40648c4f1ac498018febb8076397ca9a0bfd11c6454b2e7178"
+    },
+    "failed_matching_cache_lookup": {
+      "bytes": 1870,
+      "sha256": "a8080d0ec2793e2750c6f30ab9cef5b5cf23afe291ef710ca7646b5cb08377d1"
+    },
+    "current_compiler": {
+      "path": "/private/tmp/coax-lqr-longer-current-compiler-first/coax",
+      "bytes": 3176600,
+      "sha256": "9a8806a41648dca101bbf0e00205995b8e07477b8578948025b4e60fdc661380"
+    },
+    "current_provenance": {
+      "scope": "Private immutable current-source build receipt; no matching release cache or fresh full bootstrap/release qualification.",
+      "build_receipt": {
+        "bytes": 392857,
+        "sha256": "331a00f94a878a40648c4f1ac498018febb8076397ca9a0bfd11c6454b2e7178"
+      },
+      "qualified_seed_receipt": {
+        "bytes": 3675,
+        "sha256": "db3c0483238b20c538cdd1a2ea70cc0166749cebdfe9b42af0f1be93eefedcd2"
+      },
+      "qualified_seed_image": {
+        "bytes": 3175560,
+        "sha256": "27763f39ab2a1cf75eac90ad7a111b5b6b30bec34c0bef14dd96c80e442e45e1"
+      }
+    },
+    "native_qualification": {
+      "bytes": 38429,
+      "sha256": "a880df8f712de3386956dc3765883d545aa12c2b15fa472bcd5e7e0f87467d92"
+    },
+    "learning_record": {
+      "bytes": 389081,
+      "sha256": "6890299496be8725d91ee9db83310310042ae1c29caf004e66a0b6aee8ceca8e"
+    },
+    "qualified_source": {
+      "files": 33,
+      "changed": []
+    },
+    "qualified_frozen": {
+      "files": 66,
+      "changed": []
+    },
+    "closure_roots": [
+      "rle_rollout",
+      "rlt_epoch",
+      "rlp_coefficients",
+      "rls_evaluate",
+      "rls_score",
+      "coax_p_rlt_state_ok",
+      "coax_p_rlt_detach",
+      "rlx_resume",
+      "rlx_state_ok",
+      "rlx_batch"
+    ],
+    "comparison_tool": {
+      "bytes": 16935,
+      "sha256": "52f4bec733ce27f53f0bdf67c020801a7615dd5c312859ac0a853c702231ec2f"
+    },
+    "comparisons": {
+      "debug": {
+        "C": {
+          "qualified": {
+            "bytes": 266643,
+            "sha256": "0012cfa6f7660a79481da2e7d983b5fa959212f2221b87665f7dea9cd277f549"
+          },
+          "current": {
+            "bytes": 266643,
+            "sha256": "0012cfa6f7660a79481da2e7d983b5fa959212f2221b87665f7dea9cd277f549"
+          },
+          "byte_exact": true
+        },
+        "header": {
+          "qualified": {
+            "bytes": 99664,
+            "sha256": "f54bb598fd835dba93a9e17e87c9e1195852be4e20f16d72b074d56b51e2147f"
+          },
+          "current": {
+            "bytes": 99664,
+            "sha256": "f54bb598fd835dba93a9e17e87c9e1195852be4e20f16d72b074d56b51e2147f"
+          },
+          "byte_exact": true
+        },
+        "binding": "Whole C and header byte-exact, including every old and new rlx helper, runtime, type and declaration."
+      },
+      "release": {
+        "C": {
+          "qualified": {
+            "bytes": 263677,
+            "sha256": "e8c00cd765ce8bdc1d9c05ceb4e37e55961a6342e3c6a506bb76b9e2de14e4d2"
+          },
+          "current": {
+            "bytes": 263677,
+            "sha256": "e8c00cd765ce8bdc1d9c05ceb4e37e55961a6342e3c6a506bb76b9e2de14e4d2"
+          },
+          "byte_exact": true
+        },
+        "header": {
+          "qualified": {
+            "bytes": 99664,
+            "sha256": "f54bb598fd835dba93a9e17e87c9e1195852be4e20f16d72b074d56b51e2147f"
+          },
+          "current": {
+            "bytes": 99664,
+            "sha256": "f54bb598fd835dba93a9e17e87c9e1195852be4e20f16d72b074d56b51e2147f"
+          },
+          "byte_exact": true
+        },
+        "binding": "Whole C and header byte-exact, including every old and new rlx helper, runtime, type and declaration."
+      }
+    },
+    "all_C_H_pairs_byte_exact": true,
+    "scope": "Only private current-source emitter receipt and new longer debug/release library C/H binding. Original source, guards, math, learning, evaluations and old dated proofs carried without rerun. No build/bootstrap/release qualification or numerical execution here. Token fallback, if needed, is a bounded metadata binding, not formal compiler equivalence.",
+    "seconds": 3.0263371669570915,
+    "executed_tool": {
+      "bytes": 6480,
+      "sha256": "4d6e8d48c74c81c420aeaa850d5f5d67cd2e3b8c881503b1aa977345efb8dcfb"
+    }
+  },
+  "executed_tool": {
+    "identity": {
+      "bytes": 6480,
+      "sha256": "4d6e8d48c74c81c420aeaa850d5f5d67cd2e3b8c881503b1aa977345efb8dcfb"
+    },
+    "source": "\"\"\"Current cache metadata and two emitted library contexts; zero numeric reruns.\"\"\"\nfrom pathlib import Path\nimport argparse,importlib.util,json,hashlib,subprocess,time,difflib\nROOT=Path('/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents');OUT=Path(__file__).parent;F=ROOT/'psionic/fixtures/robotics/locomotion-lqr-longer';QUAL=Path('/tmp/locomotion-lqr-longer-native-first');ENTRY='psionic/tests/robotics/locomotion-lqr-longer-native.coax'\ndef h(p):b=Path(p).read_bytes();return {'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}\ndef need(c,t):\n if not c:raise RuntimeError(t)\ndef write(p,x):Path(p).write_text(json.dumps(x,indent=2,allow_nan=False)+'\\n')\ndef verify(mapping,base=ROOT):\n changed=[n for n,v in mapping.items() if h(base/n)!=v];need(not changed,'immutable historical input '+repr(changed));return {'files':len(mapping),'changed':changed}\ndef main():\n ap=argparse.ArgumentParser();ap.add_argument('--fingerprint',required=True);ap.add_argument('--head',required=True);ap.add_argument('--compiler-build',required=True,type=Path);a=ap.parse_args();need(not (OUT/'record.json').exists(),'fresh binding only');cache=Path.home()/'.cache/coax-release'/a.fingerprint;build=json.loads(a.compiler_build.read_text());binary=Path(build['binary']['path']);r={'schema':'coax.locomotion-lqr-longer.current-emitter-binding.v1','passed':False,'commands':[],'compiler_builds':0,'numeric_math_native_guard_learning_model_reruns':0,'cache_or_install_writes':False};began=time.monotonic()\n def save():write(OUT/'record.json',r)\n def cmd(label,args):\n  x={'label':label,'argv':list(map(str,args)),'cwd':str(ROOT),'timeout_seconds':180};r['commands'].append(x);t=time.monotonic()\n  try:\n   z=subprocess.run(x['argv'],cwd=ROOT,capture_output=True,timeout=180);(OUT/(label+'.stdout')).write_bytes(z.stdout);(OUT/(label+'.stderr')).write_bytes(z.stderr);x.update(exit=z.returncode,seconds=time.monotonic()-t,stdout=h(OUT/(label+'.stdout')),stderr=h(OUT/(label+'.stderr')));need(z.returncode==0 and not z.stderr,label+' pass/empty stderr');return z.stdout\n  except subprocess.TimeoutExpired as ex:\n   (OUT/(label+'.stdout')).write_bytes(ex.stdout or b'');(OUT/(label+'.stderr')).write_bytes(ex.stderr or b'');x.update(timed_out=True,seconds=time.monotonic()-t,stdout=h(OUT/(label+'.stdout')),stderr=h(OUT/(label+'.stderr')));raise\n  finally:save()\n try:\n  r['source_commit']=cmd('source-head',['git','rev-parse','HEAD']).decode().strip();need(r['source_commit']==a.head,'reviewed rebased HEAD');r['source_fingerprint']=cmd('current-fingerprint',['bash','coax/provenance.sh','fingerprint',ROOT]).decode().strip();need(r['source_fingerprint']==a.fingerprint,'matching current fingerprint/cache');need(build['passed'] is True and build['source_fingerprint']==a.fingerprint and build['source_commit']==a.head and h(binary)=={k:v for k,v in build['binary'].items() if k!='path'},'exact private current source/image build');r['private_build_receipt']=h(a.compiler_build);r['failed_matching_cache_lookup']=h(Path('/tmp/locomotion-lqr-longer-current-emitter-binding-first/record.json'))\n  r['current_compiler']={'path':str(binary),**h(binary)};r['current_provenance']={'scope':'Private immutable current-source build receipt; no matching release cache or fresh full bootstrap/release qualification.', 'build_receipt':h(a.compiler_build), 'qualified_seed_receipt':build['carried_seed_receipt'],'qualified_seed_image':build['seed_compiler']}\n  q=json.loads((F/'native-qualification.json').read_text());r['native_qualification']=h(F/'native-qualification.json');r['learning_record']=h(Path('/tmp/locomotion-lqr-longer-learning-execution/record.json'));r['qualified_source']=verify(q['source']);r['qualified_frozen']=verify(q['frozen'],Path('/'));tool=ROOT/'psionic/tests/robotics/locomotion_lqr_longer_native_reference.py';sp=importlib.util.spec_from_file_location('qualified_binding',tool);m=importlib.util.module_from_spec(sp);sp.loader.exec_module(m);m.ROOT_FUNCTIONS=[*m.ROOT_FUNCTIONS,'rlx_resume','rlx_state_ok','rlx_batch'];r['closure_roots']=m.ROOT_FUNCTIONS;r['comparison_tool']=h(tool);r['comparisons']={};all_exact=True\n  for mode,extra in [('debug',[]),('release',['--release'])]:\n   d=OUT/mode;d.mkdir();c=d/'locomotion-lqr-longer.c';header=d/'locomotion-lqr-longer.h';c.write_bytes(cmd('emit-'+mode,[binary,'c',ENTRY,'--library',*extra,'--header',header]));oldc=QUAL/mode/c.name;oldh=QUAL/mode/header.name;need(h(oldc)==q['emissions'][mode]['C'] and h(oldh)==q['emissions'][mode]['header'],'exact qualified03bc generated inputs');pair={'C':{'qualified':h(oldc),'current':h(c),'byte_exact':oldc.read_bytes()==c.read_bytes()},'header':{'qualified':h(oldh),'current':h(header),'byte_exact':oldh.read_bytes()==header.read_bytes()}}\n   exact=all(x['byte_exact'] for x in pair.values());all_exact&=exact\n   if not exact:\n    manifest=m.closure_manifest(oldc.read_text(),oldh.read_text());pair['reachable_C_runtime_types_and_new_rlx_binding']=m.compare_closure(c.read_text(),header.read_text(),manifest)\n    for role,old,new in [('C',oldc,c),('header',oldh,header)]:\n     diff=d/(role+'.diff');diff.write_text(''.join(difflib.unified_diff(old.read_text().splitlines(True),new.read_text().splitlines(True),fromfile='qualified03bc',tofile='current')));pair[role]['diff']=h(diff)\n   else:pair['binding']='Whole C and header byte-exact, including every old and new rlx helper, runtime, type and declaration.'\n   r['comparisons'][mode]=pair;save()\n  verify(q['source']);verify(q['frozen'],Path('/'));need(h(binary)=={k:v for k,v in r['current_compiler'].items() if k!='path'},'current image unchanged');need(cmd('final-fingerprint',['bash','coax/provenance.sh','fingerprint',ROOT]).decode().strip()==a.fingerprint,'source fingerprint unchanged');r.update(passed=True,all_C_H_pairs_byte_exact=all_exact,scope='Only private current-source emitter receipt and new longer debug/release library C/H binding. Original source, guards, math, learning, evaluations and old dated proofs carried without rerun. No build/bootstrap/release qualification or numerical execution here. Token fallback, if needed, is a bounded metadata binding, not formal compiler equivalence.')\n except BaseException as ex:r['error']=repr(ex);raise\n finally:r['seconds']=time.monotonic()-began;r['executed_tool']=h(__file__);save()\n print(json.dumps({'passed':r['passed'],'record':h(OUT/'record.json'),'all_C_H_pairs_byte_exact':r.get('all_C_H_pairs_byte_exact')}))\nif __name__=='__main__':main()\n"
+  },
+  "publication_scope": "Exact metadata/source copy only; original failed cache lookup/build/binding records retained. No source/math/guard/learning/model rerun or old dated record overwritten."
+}

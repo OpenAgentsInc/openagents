@@ -106,6 +106,18 @@
     "psionic/fixtures/robotics/locomotion-lqr-longer/independent-learning/publication.json": {
       "bytes": 14248,
       "sha256": "14252db074c932d9381af5fa46acf88b616b66545318aa8c6069a41333281eb7"
+    },
+    "docs/verification/coax-lqr-longer-current-emitter-cache-miss-2026-11-01.json": {
+      "bytes": 8650,
+      "sha256": "cd303fa3a1ff0eac3481e7993cac30362bcbd104ec3f36e21cd885a998274f2d"
+    },
+    "docs/verification/coax-lqr-longer-private-emitter-build-2026-11-01.json": {
+      "bytes": 420288,
+      "sha256": "79635698f57fa1697c696e113bc3e06d80f62f820f391a8d57ca8c3ea51ad6e0"
+    },
+    "docs/verification/coax-lqr-longer-current-emitter-binding-2026-11-01.json": {
+      "bytes": 15600,
+      "sha256": "2b309a23b638e859b5ac000078342d095a2f8591ad17cb422536ccb856de5f28"
     }
   },
   "same_settings": {
@@ -508,12 +520,32 @@
     "example_or_training_reruns_for_book": 0
   },
   "compiler": {
-    "qualified_original_for_new_run_context": {
+    "measured_qualified_context": {
       "bytes": 3675,
       "sha256": "db3c0483238b20c538cdd1a2ea70cc0166749cebdfe9b42af0f1be93eefedcd2"
     },
-    "new_builds": 0,
-    "post_rebase_current_emission_binding_pending": true
+    "fresh_builds_for_training": 0,
+    "private_current_emitter_builds_for_publication": 1,
+    "current_fingerprint": "da79e8559f07565ee5e050bfb1dbc4f532f29e5b7c6262fc42e280f901f185d3",
+    "private_current_image_SHA256": "9a8806a41648dca101bbf0e00205995b8e07477b8578948025b4e60fdc661380",
+    "current_debug_release_C_and_header_whole_byte_exact_to_measured_context": true,
+    "numeric_guard_learning_model_reruns": 0,
+    "full_bootstrap_release_qualification_or_cache_install_claimed": false,
+    "post_rebase_current_emission_binding_pending": false,
+    "closing_evidence": {
+      "docs/verification/coax-lqr-longer-current-emitter-cache-miss-2026-11-01.json": {
+        "bytes": 8650,
+        "sha256": "cd303fa3a1ff0eac3481e7993cac30362bcbd104ec3f36e21cd885a998274f2d"
+      },
+      "docs/verification/coax-lqr-longer-private-emitter-build-2026-11-01.json": {
+        "bytes": 420288,
+        "sha256": "79635698f57fa1697c696e113bc3e06d80f62f820f391a8d57ca8c3ea51ad6e0"
+      },
+      "docs/verification/coax-lqr-longer-current-emitter-binding-2026-11-01.json": {
+        "bytes": 15600,
+        "sha256": "2b309a23b638e859b5ac000078342d095a2f8591ad17cb422536ccb856de5f28"
+      }
+    }
   },
   "limits": [
     "Named normalized scalar one-gain policy, fixed variance and analytic nominal continuous-Gaussian critic; no learned critic/neural actor/quadruped/gait/hardware/GPU training.",
@@ -2521,6 +2553,18 @@
     "psionic/tests/robotics/locomotion_lqr_longer_publish.py": {
       "bytes": 9921,
       "sha256": "cb3314739dbe26e9969d8ee806032cb2907962e4ab3836ec04051a00b68bc952"
+    },
+    "docs/verification/coax-lqr-longer-current-emitter-cache-miss-2026-11-01.json": {
+      "bytes": 8650,
+      "sha256": "cd303fa3a1ff0eac3481e7993cac30362bcbd104ec3f36e21cd885a998274f2d"
+    },
+    "docs/verification/coax-lqr-longer-private-emitter-build-2026-11-01.json": {
+      "bytes": 420288,
+      "sha256": "79635698f57fa1697c696e113bc3e06d80f62f820f391a8d57ca8c3ea51ad6e0"
+    },
+    "docs/verification/coax-lqr-longer-current-emitter-binding-2026-11-01.json": {
+      "bytes": 15600,
+      "sha256": "2b309a23b638e859b5ac000078342d095a2f8591ad17cb422536ccb856de5f28"
     }
   },
   "publication_hygiene": {
@@ -2533,5 +2577,6 @@
     },
     "reason": "Keep executed qualifier source and historical attempts byte-exact; no numerical/source receipt rewritten for blank-line styling.",
     "all_remaining_CRLF_aware_whitespace_check_passed": true
-  }
+  },
+  "rebased_source_commit": "2ebfbb0ea9d7f1a5dedba9143fbf6150d1c3e8db"
 }
