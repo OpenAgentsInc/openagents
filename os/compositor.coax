@@ -5,7 +5,7 @@
 // toplevel with os/wm.coax, the CoderOS window policy, on one W x H screen (1280 x 720 when not given).
 // The CoderOS key bindings run first (Super+Return opens Coder, Super+arrows move the focus, and the
 // rest of Omarchy's tiling keys); a binding that starts a program runs LAUNCH-DIR/NAME with NAME one
-// of coder, pane, dictation, presentation, browser, android.
+// of coder, pane, dictation, presentation, browser, android, camera. Super+Shift+E leaves.
 // KEYMAP is the XKB keymap text clients get (os/compositor-us.xkb is the US layout, compiled once by
 // `xkbcli compile-keymap --layout us`; it is data, not a tool).
 // With --screen it takes the first connected screen through KMS (from a free VT; Ctrl+Alt+Backspace
@@ -17,6 +17,7 @@
 //   move X Y | click         the pointer: moves (focus follows it, as Hyprland's follow_mouse) or clicks
 //   key CODE | text TEXT     a key by evdev code, or US-layout text, through the bindings
 //   chord CODE...            keys pressed in order and released in reverse (125 is Super)
+//   keydown CODE 0|1 | button CODE 0|1 | mouse DX DY    raw input, as the devices send it
 //   close                    asks the focused window to close
 //   wm OP [ARG]              a window-policy verb: movefocus D, movewindow D, resize D F, togglesplit,
 //                            togglefloating, fullscreen, maximize, switch N, moveto N (D 0..3 left
@@ -101,6 +102,7 @@ CxSurf :: struct {
   gx: int; gy: int; gw: int; gh: int; // the window geometry inside the surface
   cw: int; ch: int; cstate: int;      // the last size and states sent
   title: [128] u8; nt: int; app: [128] u8; na: int;
+  noborder: bool;   // a window rule took its border away
 }
 // A clipboard source: the client offering it and the types it offers.
 CxSource :: struct { used: bool; client: int; id: int; mimes: [8] [64] u8; ml: [8] int; nm: int; }
@@ -127,6 +129,7 @@ Cx :: struct {
   sources: [CX_SOURCES] CxSource; sel: int;   // the selection: a source, or -1
   cursor: int; hot_x: int; hot_y: int;   // the pointer image a client set (a surface), or -1 for the arrow
   asking: int; armed: int; armed_until: int;   // Super+W: the window being asked about, the one a notice armed
+  drag: int; drag_left: bool; drag_top: bool;   // Super + a held mouse button: 272 moves a float, 273 resizes
   quit: bool; dirty: bool; screen: bool; show_pointer: bool;
 }
 
@@ -218,6 +221,8 @@ cx_sync :: (x: [] Cx) {
 // that. A fullscreen or monocle window takes the whole tile; a float keeps only its border.
 CX_GAP_IN :: 3; CX_GAP_OUT :: 6; CX_BORDER :: 1;
 cx_frame :: (x: [] Cx, t: WmTile, full: bool, out: [] int) {
+  s := ifx t.id > 0 && t.id < WM_WINS then x[0].win_surf[t.id] else -1;
+  bare := full || (s >= 0 && x[0].surfs[s].noborder);
   x0 := cx_px(x, t.rect.x, x[0].w); y0 := cx_px(x, t.rect.y, x[0].h);
   x1 := cx_px(x, t.rect.x + t.rect.w, x[0].w); y1 := cx_px(x, t.rect.y + t.rect.h, x[0].h);
   if !full {
@@ -225,7 +230,7 @@ cx_frame :: (x: [] Cx, t: WmTile, full: bool, out: [] int) {
       x0 += ifx x0 <= 0 then CX_GAP_OUT else CX_GAP_IN; y0 += ifx y0 <= 0 then CX_GAP_OUT else CX_GAP_IN;
       x1 -= ifx x1 >= x[0].w then CX_GAP_OUT else CX_GAP_IN; y1 -= ifx y1 >= x[0].h then CX_GAP_OUT else CX_GAP_IN;
     }
-    x0 += CX_BORDER; y0 += CX_BORDER; x1 -= CX_BORDER; y1 -= CX_BORDER;
+    if !bare { x0 += CX_BORDER; y0 += CX_BORDER; x1 -= CX_BORDER; y1 -= CX_BORDER; }
   }
   out[0] = x0; out[1] = y0; out[2] = cx_max(x1 - x0, 1); out[3] = cx_max(y1 - y0, 1);
 }
@@ -402,6 +407,7 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
       x[0].surfs[s].npfr = 0;
       if x[0].surfs[s].role == R_TOPLEVEL && x[0].surfs[s].win == 0 {
         w := wm_spawn(x[0].wm[..]); x[0].surfs[s].win = w; x[0].win_surf[w] = s;
+        cx_rules(x, s, w);
         cx_sync(x);
       }
     }
@@ -466,6 +472,7 @@ cx_request :: (x: [] Cx, ci: int, obj: int, op: int, a: [] u8) {
       sl := cx_rd(a, at); n := cx_min(cx_max(sl - 1, 0), 127);
       for i: 0..<n { if op == 2 { x[0].surfs[s].title[i] = a[at + 4 + i]; } else { x[0].surfs[s].app[i] = a[at + 4 + i]; } }
       if op == 2 { x[0].surfs[s].nt = n; } else { x[0].surfs[s].na = n; }
+      if op == 2 && x[0].surfs[s].win != 0 && !x[0].surfs[s].noborder { cx_rules(x, s, x[0].surfs[s].win); cx_sync(x); }   // a title set after mapping
     } else if op == 11 || op == 12 {
       w := x[0].surfs[s].win; m := x[0].wm[..];
       if w != 0 && wm_focus(m) == w && wm_is_fullscreen(m, w) != (op == 11) { wm_fullscreen(m); cx_sync(x); }
@@ -630,7 +637,7 @@ cx_composite :: (x: [] Cx, o: [] CxFrame) {
     s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
     r: [4] int; if !cx_place(x, t[i].id, r[..]) { continue; }
     cx_draw_surf(x, o, s, r[0] - x[0].surfs[s].gx, r[1] - x[0].surfs[s].gy, r[0], r[1], r[0] + r[2], r[1] + r[3]);
-    if !wm_is_fullscreen(x[0].wm[..], t[i].id) {   // the border: white on the focused window, #4a4a4a on the rest
+    if !wm_is_fullscreen(x[0].wm[..], t[i].id) && !x[0].surfs[s].noborder {   // the border: white on the focused window, #4a4a4a on the rest
       v := cast,trunc(u8) (ifx t[i].id == wm_focus(x[0].wm[..]) then 255 else 74);
       for b: 0..<CX_BORDER {
         bx0 := r[0] - 1 - b; by0 := r[1] - 1 - b; bx1 := r[0] + r[2] + b; by1 := r[1] + r[3] + b;
@@ -702,10 +709,10 @@ cx_exec :: (x: [] Cx, name: string) {
 // matches the modifier set exactly). arg is a direction, a desk 0..8, or which program to start.
 B_NONE :: 0; B_EXEC :: 1; B_CLOSE :: 2; B_FOCUS :: 3; B_DESK :: 4; B_TO_DESK :: 5; B_MOVE :: 6; B_RESIZE :: 7;
 B_SPLIT :: 8; B_FLOAT :: 9; B_FULL :: 10; B_MAX :: 11; B_SCREEN :: 12; B_TO_SCREEN :: 13; B_DESK_TO_SCREEN :: 14; B_QUIT :: 15;
-CX_PROGRAMS :: 6;
+CX_PROGRAMS :: 7;
 cx_program :: (i: int) -> string {
   if i == 0 { return "coder"; } if i == 1 { return "pane"; } if i == 2 { return "dictation"; }
-  if i == 3 { return "presentation"; } if i == 4 { return "browser"; } return "android";
+  if i == 3 { return "presentation"; } if i == 4 { return "browser"; } if i == 6 { return "camera"; } return "android";
 }
 CxBind :: struct { verb: int; arg: int; }
 cx_bind :: (code: int, mods: int) -> CxBind {
@@ -724,10 +731,12 @@ cx_bind :: (code: int, mods: int) -> CxBind {
     if code == 25 { return CxBind.{verb = B_EXEC, arg = 3}; }
     if code == 48 { return CxBind.{verb = B_EXEC, arg = 4}; }
     if code == 30 { return CxBind.{verb = B_EXEC, arg = 5}; }
+    if code == 46 { return CxBind.{verb = B_EXEC, arg = 6}; }   // Super+C: the camera view
   }
   if mods == S | CX_SHIFT {
     if digit >= 0 { return CxBind.{verb = B_TO_DESK, arg = digit}; }
     if d >= 0 { return CxBind.{verb = B_MOVE, arg = d}; }
+    if code == 18 { return CxBind.{verb = B_QUIT}; }   // Super+Shift+E: exit
   }
   if mods == S | CX_CTRL {
     if d >= 0 { return CxBind.{verb = B_RESIZE, arg = d}; }
@@ -816,6 +825,21 @@ cx_close_win :: (x: [] Cx, f: int) {
   s := ifx f > 0 && f < WM_WINS then x[0].win_surf[f] else -1;
   if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
 }
+// The CoderOS window rules (desktop.nix, Hyprland 0.55 `windowrule` lines), matched on the title when
+// the window maps and again when it names itself later. The camera view and the recording HUD float at the size they drew, with no border,
+// pinned so they follow across desks.
+cx_rules :: (x: [] Cx, s: int, w: int) {
+  t := cast(string) x[0].surfs[s].title[0..<x[0].surfs[s].nt];
+  if t != "selfie" && t != "recording-hud" { return; }
+  m := x[0].wm[..];
+  y := wm_set_floating(m, w, true);
+  b := x[0].surfs[s].cur; bw := 320; bh := 320;
+  if x[0].surfs[s].gw > 0 { bw = x[0].surfs[s].gw; bh = x[0].surfs[s].gh; } else if b >= 0 { bw = x[0].bufs[b].w; bh = x[0].bufs[b].h; }
+  fw := cast(f32) bw / cast(f32) x[0].w; fh := cast(f32) bh / cast(f32) x[0].h;
+  y = wm_place_float(m, w, WmRect.{x = (1.0 - fw) * 0.5, y = (1.0 - fh) * 0.5, w = fw, h = fh});
+  y = wm_set_pinned(m, w, true);
+  x[0].surfs[s].noborder = true;
+}
 cx_close_focused :: (x: [] Cx) {
   f := wm_focus(x[0].wm[..]); s := ifx f != 0 then x[0].win_surf[f] else -1;
   if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
@@ -893,6 +917,24 @@ cx_wheel :: (x: [] Cx, clicks: int) {
   }
   mg_flush(x, ci, -1);
 }
+// A button: with Super held, 272 drags the window under the pointer and 273 resizes it from the
+// corner nearest the grab (Hyprland bindm movewindow / resizewindow); otherwise the window's.
+cx_mouse_button :: (x: [] Cx, button: int, down: bool) {
+  if down && x[0].drag == 0 && (cx_mask(x) & CX_SUPER) != 0 && (button == 272 || button == 273) && x[0].pfocus >= 0 {
+    r: [4] int; f := wm_focus(x[0].wm[..]);
+    if f != 0 && cx_place(x, f, r[..]) { x[0].drag_left = x[0].px < r[0] + r[2] / 2; x[0].drag_top = x[0].py < r[1] + r[3] / 2; }
+    x[0].drag = button; return;
+  }
+  if !down && x[0].drag == button { x[0].drag = 0; return; }
+  cx_button(x, button, down);
+}
+// The pointer moved by dx, dy pixels during a Super drag.
+cx_drag :: (x: [] Cx, dx: int, dy: int) {
+  m := x[0].wm[..]; fx := cast(f32) dx / cast(f32) x[0].w; fy := cast(f32) dy / cast(f32) x[0].h;
+  if x[0].drag == 272 { wm_drag_float(m, fx, fy); } else { wm_resize_grab(m, fx, fy, x[0].drag_left, x[0].drag_top); }
+  x[0].px = cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)); x[0].py = cx_max(0, cx_min(x[0].h - 1, x[0].py + dy));
+  cx_sync(x);
+}
 cx_click :: (x: [] Cx) { cx_button(x, 272, true); cx_button(x, 272, false); }
 // The events the input face has ready: keys through the bindings, the mouse moving the pointer.
 cx_input :: (x: [] Cx) -> bool {
@@ -901,14 +943,14 @@ cx_input :: (x: [] Cx) -> bool {
   for i: 0..<n {
     t := cxin_type(i); c := cxin_code(i); v := cxin_value(i);
     if t == 1 {
-      if moved { cx_pointer(x, cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)), cx_max(0, cx_min(x[0].h - 1, x[0].py + dy))); dx = 0; dy = 0; moved = false; }
-      if c >= 272 && c <= 279 { if v != 2 { cx_button(x, c, v == 1); } }
+      if moved { if x[0].drag != 0 { cx_drag(x, dx, dy); } else { cx_pointer(x, cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)), cx_max(0, cx_min(x[0].h - 1, x[0].py + dy))); } dx = 0; dy = 0; moved = false; }
+      if c >= 272 && c <= 279 { if v != 2 { cx_mouse_button(x, c, v == 1); } }
       else if v != 2 { cx_input_key(x, c, v == 1); }   // clients repeat held keys themselves
     } else if t == 2 {
       if c == 0 { dx += v; moved = true; } else if c == 1 { dy += v; moved = true; } else if c == 8 { cx_wheel(x, v); }
     }
   }
-  if moved { cx_pointer(x, cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)), cx_max(0, cx_min(x[0].h - 1, x[0].py + dy))); }
+  if moved { if x[0].drag != 0 { cx_drag(x, dx, dy); } else { cx_pointer(x, cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)), cx_max(0, cx_min(x[0].h - 1, x[0].py + dy))); } }
   if n > 0 { x[0].dirty = true; }
   return true;
 }
@@ -947,6 +989,13 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
   else if c == "shot" && nw == 2 { cx_say(ifx cx_shot(x, o, w[1]) then "shot" else "shot failed"); }
   else if c == "move" && nw == 3 { cx_pointer(x, cx_num(w[1]), cx_num(w[2])); cx_say("ok"); }
   else if c == "click" { cx_click(x); cx_say("ok"); }
+  else if c == "keydown" && nw == 3 { cx_input_key(x, cx_num(w[1]), w[2] == "1"); cx_say("ok"); }   // one key, held (1) or let go (0)
+  else if c == "button" && nw == 3 { cx_mouse_button(x, cx_num(w[1]), w[2] == "1"); cx_say("ok"); }
+  else if c == "mouse" && nw == 3 {   // relative motion, as a mouse sends it
+    dx := cx_num(w[1]); dy := cx_num(w[2]);
+    if x[0].drag != 0 { cx_drag(x, dx, dy); } else { cx_pointer(x, cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)), cx_max(0, cx_min(x[0].h - 1, x[0].py + dy))); }
+    cx_say("ok");
+  }
   else if c == "key" && nw == 2 { cx_input_key(x, cx_num(w[1]), true); cx_input_key(x, cx_num(w[1]), false); cx_say("ok"); }
   else if c == "chord" && nw >= 2 {   // keys pressed in order, released in reverse
     for i: 1..<nw { cx_input_key(x, cx_num(w[i]), true); }
@@ -1090,6 +1139,7 @@ tool_main :: () -> int #export_c {
   #assert cx_bind(103, S | CX_ALT).verb == B_SCREEN && cx_bind(103, S | CX_SHIFT | CX_ALT).verb == B_TO_SCREEN && cx_bind(103, S | CX_CTRL | CX_ALT).verb == B_DESK_TO_SCREEN;
   #assert cx_bind(57, S).verb == B_FLOAT && cx_bind(32, S).verb == B_FLOAT && cx_bind(36, S).verb == B_SPLIT && cx_program(cx_bind(20, S).arg) == "pane" && cx_program(cx_bind(30, S).arg) == "android";
   #assert cx_bind(30, 0).verb == B_NONE && cx_bind(30, CX_SHIFT).verb == B_NONE;
+  #assert cx_program(cx_bind(46, S).arg) == "camera" && cx_bind(18, S | CX_SHIFT).verb == B_QUIT && cx_bind(14, CX_CTRL | CX_ALT).verb == B_QUIT;
 }
 #test "US text to evdev keys" {
   sh: [1] bool;

@@ -512,6 +512,16 @@ compiler and the examples have not been run on Linux yet.
   blit worked out each row's visible span once and checked a pool's size
   once per surface. The screenshot came out byte-identical.
 
+  The window rules and mouse bindings are in too. A window titled
+  `selfie` (the camera view) or `recording-hud` floats with no border and
+  is pinned, whether it names itself before or after it maps. Super+C
+  starts the camera program, and Super+Shift+E exits. Super + left drag
+  moves a float, and Super + right drag resizes it from the nearest
+  corner. Headless, a `selfie` window floated borderless, moved by the
+  drag (-300, -150), and followed to desk 2. Left: keep_aspect_ratio on a
+  resize, the floats' first size (320 px when the window hasn't drawn
+  yet), and host rules such as the Android emulator's class.
+
   A client's own pointer image (`wl_pointer.set_cursor`) replaces the
   arrow while the pointer is over that client: over a terminal, foot's
   I-beam was drawn at its hotspot.
