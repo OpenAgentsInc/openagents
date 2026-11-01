@@ -1,0 +1,40 @@
+// Chapter 222: what is refused. An engine that is not built, a request the
+// encoder cannot read, a corrupted q8 model, and latency gates that refuse
+// before any percentile is compared, or compare and miss.
+#import "Basic";
+#load "../lib/fast-encoder.coax";
+
+judge :: (label:string,e:FeEngine,tokens:int,p:FeParity,c:QzCard,ns:[]int) {
+    g:=fe_gate(e,tokens,p,c,ns,FE_P99_LIMIT);
+    print("%: % (%), P99 % ns\n",label,fe_verdict_name(g.verdict),fe_reason_name(g.reason),g.p99);
+}
+// book:begin refuse
+main :: () {
+    for name:[3]string.["fe-q8-cuda-v1","fe-q8-gpu-v1","fe-q8-cpu-v1"] {print("engine %: %\n",name,fe_status_name(fe_select(name).status));}
+    w:[8848]f64;e:[1024]u8;lo:[64]f64;st:[64]f64;c:[7680]s8;s:[480]f32;o:[480]f32;
+    #assert fe_weights(w[..])==FeStatus.ok;
+    q:=FeQ8.{emb=e[..],low=lo[..],step=st[..],codes=c[..],scales=s[..],offsets=o[..]};
+    #assert fe_quantize(w[..],q)==FeStatus.ok;
+    f:[1728]f64;a:[4096]f32;ac:[4096]s8;as:[256]f32;am:[256]s32;d:[8192]s32;
+    k:=FeWork.{f=f[..],a=a[..],codes=ac[..],scales=as[..],sums=am[..],dots=d[..]};
+    ids:=[10]int.[1,2,3,4,5,6,7,8,9,64];z:[9]f64;
+    print("token ID 64: %\n",fe_status_name(fe_forward(FeEngine.q8,w[..],q,k,ids[..],z[..])));
+    ids[9]=10;
+    print("no engine named: %\n",fe_status_name(fe_forward(FeEngine.none,w[..],q,k,ids[..],z[..])));
+    print("work for 9 tokens, 10 given: %\n",fe_status_name(fe_forward(FeEngine.q8,w[..],q,k,ids[..],z[..])));
+    big:[2000]f64;k.f=big[..];c[100]=-128;
+    print("a code of -128 in layer 0: %\n",fe_status_name(fe_forward(FeEngine.q8,w[..],q,k,ids[..],z[..])));
+    for i:0..<16 {w[16*7+i]=0.25;}
+    print("embedding row 7 constant: %\n",fe_status_name(fe_quantize(w[..],q)));
+    // Gates: teaching times in ns, not measurements.
+    ns:[100]int;for i:0..<100 {ns[i]=12000000+i*50000;}
+    ok:=FeParity.{decisions=24,equal=24,worst=0.01,ok=true};card:=QzCard.{promoted=true};
+    judge("the frozen workload",FeEngine.q8,512,ok,card,ns[..]);
+    judge("timed on the reference engine",FeEngine.reference,512,ok,card,ns[..]);
+    judge("256 token IDs",FeEngine.q8,256,ok,card,ns[..]);
+    flip:=ok;flip.equal=23;flip.ok=false;judge("one head decision flipped",FeEngine.q8,512,flip,card,ns[..]);
+    judge("card not promoted",FeEngine.q8,512,ok,QzCard.{},ns[..]);
+    judge("99 warm runs",FeEngine.q8,512,ok,card,ns[0..<99]);
+    ns[98]=21000000;ns[99]=22000000;judge("two runs over 20 ms",FeEngine.q8,512,ok,card,ns[..]);
+}
+// book:end refuse

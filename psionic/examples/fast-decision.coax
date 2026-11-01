@@ -1,0 +1,38 @@
+// Chapter 222: one decision from a small encoder, twice: the binary64
+// reference and the q8 engine. Parity, chapter 50's quality card and the
+// multiply-add count; the latency receipts come from the native harness.
+#import "Basic";
+#load "../lib/fast-encoder.coax";
+
+N :: 8;
+// book:begin example
+main :: () {
+    w:[8848]f64;e:[1024]u8;lo:[64]f64;st:[64]f64;c:[7680]s8;s:[480]f32;o:[480]f32;
+    #assert fe_weights(w[..])==FeStatus.ok;
+    q:=FeQ8.{emb=e[..],low=lo[..],step=st[..],codes=c[..],scales=s[..],offsets=o[..]};
+    #assert fe_quantize(w[..],q)==FeStatus.ok;
+    print("model %: % weights, identity %\n",FE_PROFILE,FE_WEIGHTS,fe_model_id(w[..]));
+    print("q8 copy: % bytes; binary64 original: % bytes\n",fe_q8_bytes(),8*FE_WEIGHTS);
+    names:=[3]string.["fe-f64-reference-v1","fe-q8-cpu-v1","fe-q8-cuda-v1"];
+    for name:names {ch:=fe_select(name);print("engine %: %\n",name,ifx ch.status==FeStatus.ok then "selected" else fe_status_name(ch.status));}
+    f:[98816]f64;a:[4096]f32;ac:[4096]s8;as:[256]f32;am:[256]s32;d:[8192]s32;
+    k:=FeWork.{f=f[..],a=a[..],codes=ac[..],scales=as[..],sums=am[..],dots=d[..]};
+    ref:[72]f64;der:[72]f64;ids:[512]int;
+    for r:0..<N {
+        for i:0..<512 {ids[i]=cast(int)(cr_bits(cast(u64)(2230+r),cast(u64)i)%64);}
+        #assert fe_forward(FeEngine.reference,w[..],q,k,ids[..],ref[9*r..<9*r+9])==FeStatus.ok;
+        #assert fe_forward(FeEngine.q8,w[..],q,k,ids[..],der[9*r..<9*r+9])==FeStatus.ok;
+        worst:=0.0;for i:9*r..<9*r+9 {worst=qz_larger(worst,abs(der[i]-ref[i]));}
+        print("request %, 512 IDs: reference classes % % %, q8 classes % % %, largest logit difference %\n",r,
+            fe_argmax(ref[..],9*r,2)-9*r,fe_argmax(ref[..],9*r+2,3)-9*r-2,fe_argmax(ref[..],9*r+5,4)-9*r-5,
+            fe_argmax(der[..],9*r,2)-9*r,fe_argmax(der[..],9*r+2,3)-9*r-2,fe_argmax(der[..],9*r+5,4)-9*r-5,worst);
+    }
+    p:=fe_parity(ref[..],der[..],N);
+    print("parity: % of % head decisions equal, largest difference % against the frozen %: %\n",p.equal,p.decisions,p.worst,FE_LOGIT_BOUND,ifx p.ok then "pass" else "fail");
+    pr:[72]f64;pd:[72]f64;
+    for r:0..<N {fe_probs(ref[9*r..<9*r+9],pr[9*r..<9*r+9]);fe_probs(der[9*r..<9*r+9],pd[9*r..<9*r+9]);}
+    items:[24]PqItem;card:=fe_card(pr[..],pd[..],N,items[..]);
+    print("card: % items, agreement % (low end %), mean KL % (high end %), promoted: %\n",card.items,card.agreement,card.agreement_low,card.kl,card.kl_high,card.promoted);
+    print("multiply-adds per 512-token decision: %\n",fe_macs(512));
+}
+// book:end example

@@ -1,0 +1,15 @@
+engine fe-q8-cuda-v1: engine not built here
+engine fe-q8-gpu-v1: no such engine
+engine fe-q8-cpu-v1: ok
+token ID 64: a token ID outside 0 to 63
+no engine named: no such engine
+work for 9 tokens, 10 given: work storage too small
+a code of -128 in layer 0: refused by the int8 product
+embedding row 7 constant: a row with no spread
+the frozen workload: met (none), P99 16900000 ns
+timed on the reference engine: refused (the engine is not fe-q8-cpu-v1), P99 0 ns
+256 token IDs: refused (not the frozen 512-token workload), P99 0 ns
+one head decision flipped: refused (q8 decisions differ from the reference), P99 0 ns
+card not promoted: refused (the quality card did not promote), P99 0 ns
+99 warm runs: refused (fewer than 100 or more than 1,024 warm runs, or a time that is not positive), P99 0 ns
+two runs over 20 ms: missed (none), P99 21000000 ns

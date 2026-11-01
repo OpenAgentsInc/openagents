@@ -1,0 +1,16 @@
+model fe-tiny-v1: 8848 weights, identity 872817745440994249
+q8 copy: 14720 bytes; binary64 original: 70784 bytes
+engine fe-f64-reference-v1: selected
+engine fe-q8-cpu-v1: selected
+engine fe-q8-cuda-v1: engine not built here
+request 0, 512 IDs: reference classes 1 1 1, q8 classes 1 1 1, largest logit difference 0.012599590954098572
+request 1, 512 IDs: reference classes 0 0 1, q8 classes 0 0 1, largest logit difference 0.019142544816567852
+request 2, 512 IDs: reference classes 1 0 1, q8 classes 1 0 1, largest logit difference 0.012181087788577488
+request 3, 512 IDs: reference classes 1 0 1, q8 classes 1 0 1, largest logit difference 0.01709745657637496
+request 4, 512 IDs: reference classes 1 1 1, q8 classes 1 1 1, largest logit difference 0.003513975769895983
+request 5, 512 IDs: reference classes 1 0 1, q8 classes 1 0 1, largest logit difference 0.015359540811110323
+request 6, 512 IDs: reference classes 1 0 1, q8 classes 1 0 1, largest logit difference 0.015258047307834532
+request 7, 512 IDs: reference classes 1 0 1, q8 classes 1 0 1, largest logit difference 0.015161013652510102
+parity: 24 of 24 head decisions equal, largest difference 0.019142544816567852 against the frozen 0.125: pass
+card: 24 items, agreement 1.0 (low end 1.0), mean KL 0.000030248108743864254 (high end 0.00004349472788954366), promoted: true
+multiply-adds per 512-token decision: 16281744

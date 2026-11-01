@@ -812,6 +812,26 @@
       ]
     },
     {
+      "source": "psionic/examples/fast-decision.coax",
+      "chapter": "psionic/book/ch222-a-decision-in-milliseconds.md",
+      "stdout": "psionic/fixtures/fast-encoder/fast-decision.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/fast-decision-refuse.coax",
+      "chapter": "psionic/book/ch222-a-decision-in-milliseconds.md",
+      "stdout": "psionic/fixtures/fast-encoder/fast-decision-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/time-decision.coax",
       "chapter": "psionic/book/ch018-time-a-decision.md",
       "stdout": "psionic/fixtures/time-decision.out",
