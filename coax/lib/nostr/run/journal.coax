@@ -1,0 +1,405 @@
+// RUN durable run journals: the record digest, journal replay with
+// controller handoff, and the current-head hint. NIP-RUN "Record identity",
+// "State transitions", "Controller handoff and fencing" and "Heads, replay,
+// and retention".
+//
+// A record is {run, seq, previous, controller, generation, type, subject,
+// time, data}. Its Digest is SHA-256 of "openagents.run-record.v1", one LF
+// byte, then the record's JCS form, written "sha256:" and 64 hex digits.
+// Sequence and chain decide order: seq starts at 0 and grows by one, and
+// previous names the Digest of the record before (null at 0). time is
+// observational and decides nothing.
+//
+// Replay takes the records in any arrival order, with duplicates, and
+// applies them by sequence. It recomputes every Digest and refuses at the
+// first fault: a record whose carried Digest is not its own, a missing
+// sequence below a record that exists (a gap: the result is incomplete, not
+// finished), two different records at one sequence (a fork: conflict), a
+// previous that is not the record before, a signer that is not the record's
+// controller, a controller or generation that is not the current one (an
+// older generation is stale), a transition the state machine forbids, and
+// anything after settled. Handoff names the next controller and the
+// dispatchers' fencing acknowledgment; without the acknowledgment it is
+// refused. The record after it must be signed by the new controller at the
+// next generation, with the handoff's Digest as previous.
+//
+// Per subject (step, iteration, attempt): none -> dispatched -> resolved,
+// none -> resolved (refused before dispatch), dispatched -> unknown ->
+// reconciled. observed needs a dispatched subject; cancel_requested resolves
+// nothing. A run is created at seq 0 only, admitted once, and nothing is
+// dispatched before admission.
+//
+// It trusts the strings it is given: the verified event signer of each
+// record (NIP-01 and NIP-44 checks happen before), and the controller the
+// caller admitted under its own policy for seq 0. A self-published created
+// record cannot appoint its signer.
+//
+// Not here: the record types' full data schemas, NIP-44 sealing and the
+// 3187/30186 events (the caller seals the content), retention horizons,
+// dispatcher-side generation checks, and fencing authorities.
+//   coax/bin/coax test coax/lib/nostr/run/journal.coax --library
+#load "../envelope.coax";
+#authority;
+
+// book:begin codes
+RN_OK :: cast(u32)0;
+RN_GAP :: cast(u32)1;           // a missing sequence below one that exists: incomplete
+RN_CONFLICT :: cast(u32)2;      // two different records at one sequence: a fork
+RN_BROKEN :: cast(u32)3;        // previous is not the Digest of the record before
+RN_DIGEST :: cast(u32)4;        // the carried Digest is not the record's own
+RN_NOT_ADMITTED :: cast(u32)5;  // a signer that is not the controller, or not the current one
+RN_STALE :: cast(u32)6;         // an older generation, after a handoff
+RN_ORDER :: cast(u32)7;         // a transition the state machine forbids
+RN_UNFENCED :: cast(u32)8;      // a handoff without the dispatchers' fencing acknowledgment
+RN_CLOSED :: cast(u32)9;        // a record after settled
+RN_MALFORMED :: cast(u32)10;    // a bad field: seq, attempt, type, run, the next controller
+RN_LIMIT :: cast(u32)11;        // no room for the record's JSON or the subjects
+
+RN_CREATED :: 0; RN_ADMITTED :: 1; RN_DISPATCHED :: 2; RN_OBSERVED :: 3; RN_RESOLVED :: 4;
+RN_CANCEL_REQUESTED :: 5; RN_UNKNOWN :: 6; RN_RECONCILED :: 7; RN_HANDOFF :: 8; RN_SETTLED :: 9;
+RN_TYPES :: 10;
+RN_SCHEMA :: "openagents.run-record.v1";
+// book:end codes
+
+// book:begin record
+// One record. previous "" is null; step "" and iteration -1 are null;
+// attempt 0 is null (run-level). For a handoff, data is written from next
+// and fence; for the others it is the caller's JSON object. signer is the
+// verified event signer and digest the carried Digest; neither is hashed.
+RunRecord :: struct {
+  run:string;seq:int;previous:string;controller:string;generation:int;type:int;
+  step:string;iteration:int;attempt:int;time:int;data:string;next:string;fence:string;
+  signer:string;digest:string;
+}
+RunSubject :: struct {step:string;iteration:int;attempt:int;state:int;}
+RunHead :: struct {error:u32;at:int;seq:int;digest:[71]u8;controller:string;generation:int;settled:bool;unknowns:int;}
+// book:end record
+
+RN_NAMES :: [10]string.["created","admitted","dispatched","observed","resolved","cancel_requested","unknown","reconciled","handoff","settled"];
+
+rn_null_or_string :: (out:[]u8,at:int,s:string)->int {
+  return ifx s.count==0 then json_raw(out,at,"null") else json_write_string(out,at,s);
+}
+rn_null_or_int :: (out:[]u8,at:int,v:int,null_at:int)->int {
+  return ifx v==null_at then json_raw(out,at,"null") else json_write_int(out,at,v);
+}
+
+// book:begin write
+// Writes the record's JSON in NIP-RUN field order; -1 when out is too small.
+run_record_write :: (r:RunRecord,out:[]u8)->int {
+  if r.type<0 || r.type>=RN_TYPES {return -1;}
+  at:=json_raw(out,0,"{\"run\":");at=json_write_string(out,at,r.run);
+  at=json_raw(out,at,",\"seq\":");at=json_write_int(out,at,r.seq);
+  at=json_raw(out,at,",\"previous\":");at=rn_null_or_string(out,at,r.previous);
+  at=json_raw(out,at,",\"controller\":");at=json_write_string(out,at,r.controller);
+  at=json_raw(out,at,",\"generation\":");at=json_write_int(out,at,r.generation);
+  at=json_raw(out,at,",\"type\":");at=json_write_string(out,at,RN_NAMES[r.type]);
+  at=json_raw(out,at,",\"subject\":{\"step\":");at=rn_null_or_string(out,at,r.step);
+  at=json_raw(out,at,",\"iteration\":");at=rn_null_or_int(out,at,r.iteration,-1);
+  at=json_raw(out,at,",\"attempt\":");at=rn_null_or_int(out,at,r.attempt,0);
+  at=json_raw(out,at,"},\"time\":");at=json_write_int(out,at,r.time);
+  at=json_raw(out,at,",\"data\":");
+  if r.type==RN_HANDOFF {
+    at=json_raw(out,at,"{\"controller\":");at=json_write_string(out,at,r.next);
+    at=json_raw(out,at,",\"generation\":");at=json_write_int(out,at,r.generation+1);
+    at=json_raw(out,at,",\"fence\":");at=rn_null_or_string(out,at,r.fence);at=json_raw(out,at,"}");
+  } else {at=json_raw(out,at,r.data);}
+  return json_raw(out,at,"}");
+}
+// book:end write
+
+// book:begin digest
+// The record's Digest into out (71 bytes). work holds the record's JSON,
+// then the schema line and the JCS form: twice the JSON plus 25 bytes.
+run_digest :: (r:RunRecord,work:[]u8,out:[]u8)->u32 {
+  if r.type<0 || r.type>=RN_TYPES {return RN_MALFORMED;}
+  n:=run_record_write(r,work);if n==-1 {return RN_LIMIT;}
+  hashed:=work[n..<work.count];
+  at:=json_raw(hashed,0,RN_SCHEMA);at=json_raw(hashed,at,"\n");if at==-1 {return RN_LIMIT;}
+  j:=jcs_canonicalize_checked(cast(string)work[0..<n],hashed[at..<hashed.count],false);
+  if j.error==JCS_OUTPUT {return RN_LIMIT;}
+  if j.error!=JCS_OK {return RN_MALFORMED;}
+  if ae_digest(hashed[0..<at+j.written],out)!=AE_OK {return RN_LIMIT;}
+  return RN_OK;
+}
+// book:end digest
+
+rn_fail :: (h:RunHead,error:u32,at:int)->RunHead {r:=h;r.error=error;r.at=at;return r;}
+rn_same_subject :: (s:RunSubject,r:RunRecord)->bool {return s.step==r.step && s.iteration==r.iteration && s.attempt==r.attempt;}
+
+// The subject's slot in table, adding it at state 0 when new; -1 when full.
+rn_subject :: (table:[]RunSubject,used:[]int,r:RunRecord)->int {
+  for i:0..<used[0] {if rn_same_subject(table[i],r) {return i;}}
+  if used[0]>=table.count {return -1;}
+  table[used[0]]=RunSubject.{step=r.step,iteration=r.iteration,attempt=r.attempt,state=-1};
+  used[0]+=1;return used[0]-1;
+}
+
+// book:begin transition
+// The state machine for one record, after its chain and signer checked.
+// admitted[0] is whether the run was admitted.
+rn_transition :: (r:RunRecord,admitted:[]bool,table:[]RunSubject,used:[]int,unknowns:[]int)->u32 {
+  if r.seq==0 {return ifx r.type==RN_CREATED then RN_OK else RN_ORDER;}
+  if r.type==RN_CREATED {return RN_ORDER;}
+  if r.type==RN_ADMITTED {if admitted[0] {return RN_ORDER;} admitted[0]=true;return RN_OK;}
+  if r.type==RN_CANCEL_REQUESTED || r.type==RN_SETTLED {return RN_OK;}
+  if r.type==RN_HANDOFF {
+    if r.fence.count==0 {return RN_UNFENCED;}
+    if r.next.count==0 || r.next==r.controller {return RN_MALFORMED;}
+    return RN_OK;
+  }
+  // The rest act on one attempt of one step.
+  if r.step.count==0 || r.attempt<1 {return RN_MALFORMED;}
+  i:=rn_subject(table,used,r);if i<0 {return RN_LIMIT;}
+  from:=table[i].state;t:=r.type;
+  ok:=(t==RN_DISPATCHED && admitted[0] && from==-1) || (t==RN_OBSERVED && from==RN_DISPATCHED)
+    || (t==RN_RESOLVED && (from==-1 || from==RN_DISPATCHED)) || (t==RN_UNKNOWN && from==RN_DISPATCHED)
+    || (t==RN_RECONCILED && from==RN_UNKNOWN);
+  if !ok {return RN_ORDER;}
+  to:=ifx t==RN_OBSERVED then from else t;
+  if r.type==RN_UNKNOWN {unknowns[0]+=1;}
+  if r.type==RN_RECONCILED {unknowns[0]-=1;}
+  table[i].state=to;return RN_OK;
+}
+// book:end transition
+
+// book:begin replay
+// Replays records (any order, duplicates allowed) from seq 0. first is the
+// controller the caller admitted for the created record. subjects is the
+// work table; work is digest scratch. The head is the last applied record;
+// error and at say where replay stopped.
+run_replay :: (records:[]RunRecord,first:string,subjects:[]RunSubject,work:[]u8)->RunHead {
+  h:RunHead;h.seq=-1;h.controller=first;
+  used:=[1]int.[0];admitted:=[1]bool.[false];unknowns:=[1]int.[0];
+  run_id:="";
+  for r:records {if r.seq<0 {return rn_fail(h,RN_MALFORMED,r.seq);}}
+  // seen counts the records at the sequences applied so far, duplicates
+  // included. Replay stops at the first sequence with no record; any record
+  // not yet seen is above it, so that sequence is a gap.
+  seq:=0;seen:=0;
+  while true {
+    pick:=-1;mine:[71]u8;
+    for i:0..<records.count {
+      if records[i].seq!=seq {continue;}
+      seen+=1;
+      d:[71]u8;e:=run_digest(records[i],work,d[..]);if e!=RN_OK {return rn_fail(h,e,seq);}
+      if cast(string)d[..]!=records[i].digest {return rn_fail(h,RN_DIGEST,seq);}
+      if pick==-1 {pick=i;mine=d;}
+      else if cast(string)d[..]!=cast(string)mine[..] {return rn_fail(h,RN_CONFLICT,seq);}
+    }
+    if pick==-1 {
+      if seen!=records.count {return rn_fail(h,RN_GAP,seq);}
+      break;
+    }
+    if h.settled {return rn_fail(h,RN_CLOSED,seq);}
+    r:=records[pick];
+    if seq==0 {
+      if r.previous.count!=0 {return rn_fail(h,RN_BROKEN,seq);}
+      run_id=r.run;
+    } else {
+      if r.previous!=cast(string)h.digest[..] {return rn_fail(h,RN_BROKEN,seq);}
+      if r.run!=run_id {return rn_fail(h,RN_MALFORMED,seq);}
+    }
+    if r.signer!=r.controller {return rn_fail(h,RN_NOT_ADMITTED,seq);}
+    if r.generation<h.generation {return rn_fail(h,RN_STALE,seq);}
+    if r.controller!=h.controller || r.generation!=h.generation {return rn_fail(h,RN_NOT_ADMITTED,seq);}
+    e:=rn_transition(r,admitted[..],subjects,used[..],unknowns[..]);
+    if e!=RN_OK {return rn_fail(h,e,seq);}
+    if r.type==RN_HANDOFF {h.controller=r.next;h.generation+=1;}
+    if r.type==RN_SETTLED {h.settled=true;}
+    h.seq=seq;h.digest=mine;h.unknowns=unknowns[0];
+    seq+=1;
+  }
+  h.at=seq;return h;
+}
+// book:end replay
+
+// book:begin head
+// Checks a 30186 head hint against the replayed journal. A hint is a
+// retrieval hint, never the journal: one behind (lower sequence or older
+// generation) is stale and erases nothing; one ahead means records are
+// missing (incomplete); the same sequence with another Digest is a fork.
+run_head_check :: (h:RunHead,seq:int,digest:string,generation:int)->u32 {
+  if h.error!=RN_OK {return h.error;}
+  mine:=h.digest;
+  if seq>h.seq {return RN_GAP;}
+  if generation<h.generation || seq<h.seq {return RN_STALE;}
+  if digest!=cast(string)mine[..] {return RN_CONFLICT;}
+  if generation!=h.generation {return RN_NOT_ADMITTED;}
+  return RN_OK;
+}
+// book:end head
+
+// ---- checks
+RN_K1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+RN_K2 :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+RN_K7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+RN_RUN :: "9999999999999999999999999999999999999999999999999999999999999999";
+RN_FENCE :: "sha256:8888888888888888888888888888888888888888888888888888888888888888";
+RN_T0 :: 1790000000;
+
+rn_make :: (seq:int,type:int,key:string,generation:int)->RunRecord {
+  r:RunRecord;r.run=RN_RUN;r.seq=seq;r.controller=key;r.signer=key;r.generation=generation;r.type=type;
+  r.iteration=-1;r.time=RN_T0;r.data="{}";return r;
+}
+rn_step :: (r:RunRecord,step:string,attempt:int)->RunRecord {s:=r;s.step=step;s.attempt=attempt;return s;}
+// Seals a chain: previous and digest from the record before.
+// store keeps the digests: 71 bytes per record, owned by the caller.
+rn_chain :: (rs:[]RunRecord,store:[]u8) {
+  work:[4096]u8;prev:="";
+  for i:0..<rs.count {
+    rs[i].previous=prev;d:=store[i*71..<i*71+71];
+    status:=run_digest(rs[i],work[..],d);
+    rs[i].digest=cast(string)d;prev=rs[i].digest;
+  }
+}
+// created, admitted, dispatched build#1, handoff 1 -> 2, unknown, reconciled, settled.
+rn_journal :: (rs:[]RunRecord,store:[]u8) {
+  rs[0]=rn_make(0,RN_CREATED,RN_K1,0);rs[1]=rn_make(1,RN_ADMITTED,RN_K1,0);
+  rs[2]=rn_step(rn_make(2,RN_DISPATCHED,RN_K1,0),"build",1);
+  rs[3]=rn_make(3,RN_HANDOFF,RN_K1,0);rs[3].next=RN_K2;rs[3].fence=RN_FENCE;
+  rs[4]=rn_step(rn_make(4,RN_UNKNOWN,RN_K2,1),"build",1);
+  rs[5]=rn_step(rn_make(5,RN_RECONCILED,RN_K2,1),"build",1);
+  rs[6]=rn_make(6,RN_SETTLED,RN_K2,1);
+  rn_chain(rs,store);
+}
+rn_run :: (rs:[]RunRecord)->RunHead {t:[8]RunSubject;w:[4096]u8;return run_replay(rs,RN_K1,t[..],w[..]);}
+
+#test "the codes and type numbers are fixed" {
+  #assert RN_OK==0 && RN_GAP==1 && RN_CONFLICT==2 && RN_BROKEN==3 && RN_DIGEST==4 && RN_NOT_ADMITTED==5;
+  #assert RN_STALE==6 && RN_ORDER==7 && RN_UNFENCED==8 && RN_CLOSED==9 && RN_MALFORMED==10 && RN_LIMIT==11;
+  #assert RN_CREATED==0 && RN_HANDOFF==8 && RN_SETTLED==9 && RN_TYPES==10 && RN_NAMES[5]=="cancel_requested";
+}
+#test "the record JSON, and its Digest from Python's json and hashlib" {
+  r:=rn_make(0,RN_CREATED,RN_K1,0);out:[1024]u8;
+  n:=run_record_write(r,out[..]);
+  #assert cast(string)out[0..<n]=="{\"run\":\"9999999999999999999999999999999999999999999999999999999999999999\",\"seq\":0,\"previous\":null,\"controller\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"generation\":0,\"type\":\"created\",\"subject\":{\"step\":null,\"iteration\":null,\"attempt\":null},\"time\":1790000000,\"data\":{}}";
+  #assert run_record_write(r,out[0..<n-1])==-1 && run_record_write(r,out[0..<n])==n;
+  bad:=r;bad.type=10;#assert run_record_write(bad,out[..])==-1;bad.type=-1;#assert run_record_write(bad,out[..])==-1;
+  w:[4096]u8;d:[71]u8;
+  #assert run_digest(r,w[..],d[..])==RN_OK && cast(string)d[..]=="sha256:00c3a5bec5430ccea9fa62ab29424fc3f3c0cd61db94cc06bdb3c9ca958e7e86";
+  #assert run_digest(r,w[0..<63],d[..])==RN_LIMIT && run_digest(r,w[..],d[0..<70])==RN_LIMIT;
+  #assert run_digest(r,w[0..<400],d[..])==RN_LIMIT && run_digest(r,w[0..<613],d[..])==RN_OK && run_digest(r,w[0..<612],d[..])==RN_LIMIT;
+  #assert run_digest(r,w[0..<293],d[..])==RN_LIMIT && run_digest(r,w[0..<318],d[..])==RN_LIMIT && run_digest(r,w[0..<319],d[..])==RN_LIMIT;
+  t:=r;t.type=RN_TYPES;#assert run_digest(t,w[..],d[..])==RN_MALFORMED;t.type=-1;#assert run_digest(t,w[..],d[..])==RN_MALFORMED;
+  r.data="{\"a\":1,\"a\":2}";#assert run_digest(r,w[..],d[..])==RN_MALFORMED;
+  h:=rn_step(rn_make(3,RN_HANDOFF,RN_K1,0),"",0);h.next=RN_K2;h.fence=RN_FENCE;
+  n=run_record_write(h,out[..]);
+  #assert cast(string)out[n-186..<n]=="\"data\":{\"controller\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"generation\":1,\"fence\":\"sha256:8888888888888888888888888888888888888888888888888888888888888888\"}}";
+}
+#test "Done means: the journal replays to the same head in any order, after a handoff" {
+  rs:[7]RunRecord;sd:[497]u8;rn_journal(rs[..],sd[..]);xd:[639]u8;
+  a:=rn_run(rs[..]);
+  #assert a.error==RN_OK && a.seq==6 && a.at==7 && a.controller==RN_K2 && a.generation==1 && a.settled && a.unknowns==0;
+  #assert cast(string)a.digest[..]==rs[6].digest;
+  // Reversed, then shuffled with duplicates.
+  rev:[7]RunRecord;for i:0..<7 {rev[i]=rs[6-i];}
+  b:=rn_run(rev[..]);
+  #assert b.error==RN_OK && b.seq==6 && b.controller==RN_K2 && cast(string)b.digest[..]==cast(string)a.digest[..];
+  mix:=[10]RunRecord.[rs[4],rs[0],rs[6],rs[2],rs[2],rs[5],rs[1],rs[3],rs[0],rs[6]];
+  c:=rn_run(mix[..]);
+  #assert c.error==RN_OK && c.seq==6 && c.generation==1 && cast(string)c.digest[..]==cast(string)a.digest[..];
+  // A prefix replays to its own head: the handoff record, still generation 0 until applied.
+  p:=rn_run(rs[0..<3]);#assert p.error==RN_OK && p.seq==2 && p.controller==RN_K1 && p.generation==0;
+  q:=rn_run(rs[0..<4]);#assert q.error==RN_OK && q.seq==3 && q.controller==RN_K2 && q.generation==1;
+  e:=rn_run(rs[0..<0]);#assert e.error==RN_OK && e.seq==-1 && e.at==0;
+}
+#test "gaps, forks, broken chains and forged digests refuse where they are" #steps 400000000 {
+  rs:[7]RunRecord;sd:[497]u8;rn_journal(rs[..],sd[..]);xd:[639]u8;
+  gap:=[6]RunRecord.[rs[0],rs[1],rs[2],rs[3],rs[5],rs[6]];
+  g:=rn_run(gap[..]);#assert g.error==RN_GAP && g.at==4 && g.seq==3 && cast(string)g.digest[..]==rs[3].digest;
+  // A second, different record at seq 4, in either order.
+  other:=rs[4];other.time+=1;w:[4096]u8;d:[71]u8;od:[71]u8;
+  #assert run_digest(other,w[..],od[..])==RN_OK;other.digest=cast(string)od[..];
+  fork:=[8]RunRecord.[rs[0],rs[1],rs[2],rs[3],rs[4],other,rs[5],rs[6]];
+  f:=rn_run(fork[..]);#assert f.error==RN_CONFLICT && f.at==4 && f.seq==3;
+  fork[4]=other;fork[5]=rs[4];f=rn_run(fork[..]);#assert f.error==RN_CONFLICT && f.at==4;
+  // Alone, the other record chains fine at 4 but breaks 5's previous.
+  alone:=[7]RunRecord.[rs[0],rs[1],rs[2],rs[3],other,rs[5],rs[6]];
+  b:=rn_run(alone[..]);#assert b.error==RN_BROKEN && b.at==5 && b.seq==4;
+  // A carried digest that is not the record's own.
+  forged:=rs;forged[2].digest=rs[1].digest;#assert rn_run(forged[..]).error==RN_DIGEST;
+  forged=rs;forged[2].attempt=2;f=rn_run(forged[..]);#assert f.error==RN_DIGEST && f.at==2;
+  // A previous at seq 0, and a negative seq.
+  z:=rs;z[0].previous=rs[1].digest;#assert run_digest(z[0],w[..],d[..])==RN_OK;z[0].digest=cast(string)d[..];
+  #assert rn_run(z[0..<1]).error==RN_BROKEN;
+  n:=rs;n[3].seq=-1;f=rn_run(n[..]);#assert f.error==RN_MALFORMED && f.at==-1;
+  // A record naming another run.
+  o:=rs;o[1].run=RN_FENCE;rn_chain(o[..],xd[..]);f=rn_run(o[..]);#assert f.error==RN_MALFORMED && f.at==1;
+}
+#test "controllers: only the current one, and after a handoff only the new one" #steps 400000000 {
+  rs:[7]RunRecord;sd:[497]u8;rn_journal(rs[..],sd[..]);xd:[639]u8;
+  // Key 7 signs created naming itself: the caller admitted key 1.
+  x:=rs;x[0].controller=RN_K7;x[0].signer=RN_K7;rn_chain(x[..],xd[..]);
+  f:=rn_run(x[0..<1]);#assert f.error==RN_NOT_ADMITTED && f.at==0;
+  // Key 7 signs a record that names key 1.
+  x=rs;x[1].signer=RN_K7;f=rn_run(x[..]);#assert f.error==RN_NOT_ADMITTED && f.at==1;
+  // The old controller appends after its own handoff, at generation 0: stale.
+  x=rs;x[4].controller=RN_K1;x[4].signer=RN_K1;x[4].generation=0;rn_chain(x[..],xd[..]);
+  f=rn_run(x[..]);#assert f.error==RN_STALE && f.at==4;
+  // The new controller without the next generation, or at a skipped one.
+  x=rs;x[4].generation=0;rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_STALE;
+  x=rs;x[4].generation=2;rn_chain(x[..],xd[..]);f=rn_run(x[..]);#assert f.error==RN_NOT_ADMITTED && f.at==4;
+  // The old controller at the new generation.
+  x=rs;x[4].controller=RN_K1;x[4].signer=RN_K1;rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_NOT_ADMITTED;
+  // A new controller before any handoff.
+  x=rs;x[2].controller=RN_K2;x[2].signer=RN_K2;rn_chain(x[..],xd[..]);f=rn_run(x[..]);#assert f.error==RN_NOT_ADMITTED && f.at==2;
+  // Handoff without the fencing acknowledgment, to nobody, or to itself.
+  x=rs;x[3].fence="";rn_chain(x[..],xd[..]);f=rn_run(x[..]);#assert f.error==RN_UNFENCED && f.at==3;
+  x=rs;x[3].next="";rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_MALFORMED;
+  x=rs;x[3].next=RN_K1;rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_MALFORMED;
+}
+#test "transitions: the run's, and each attempt's" #steps 400000000 {
+  rs:[7]RunRecord;sd:[497]u8;rn_journal(rs[..],sd[..]);xd:[639]u8;
+  x:=rs;x[0].type=RN_ADMITTED;rn_chain(x[..],xd[..]);#assert rn_run(x[0..<1]).error==RN_ORDER;
+  x=rs;x[1].type=RN_CREATED;rn_chain(x[..],xd[..]);f:=rn_run(x[..]);#assert f.error==RN_ORDER && f.at==1;
+  // Dispatched before admitted; admitted twice.
+  x=rs;x[1]=rn_step(rn_make(1,RN_DISPATCHED,RN_K1,0),"build",1);rn_chain(x[..],xd[..]);f=rn_run(x[..]);#assert f.error==RN_ORDER && f.at==1;
+  x=rs;x[2]=rn_make(2,RN_ADMITTED,RN_K1,0);rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_ORDER;
+  // Reconciled without unknown; unknown without dispatch; observed after resolved.
+  x=rs;x[4].type=RN_RECONCILED;rn_chain(x[..],xd[..]);f=rn_run(x[..]);#assert f.error==RN_ORDER && f.at==4;
+  x=rs;x[4].attempt=2;rn_chain(x[..],xd[..]);f=rn_run(x[..]);#assert f.error==RN_ORDER && f.at==4;
+  // observed on an attempt never dispatched.
+  x=rs;x[4].type=RN_OBSERVED;x[4].attempt=2;rn_chain(x[..],xd[..]);f=rn_run(x[..]);#assert f.error==RN_ORDER && f.at==4;
+  x=rs;x[4].step="test";rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_ORDER;
+  x=rs;x[4].iteration=0;rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_ORDER;
+  // A step record without a step or an attempt.
+  x=rs;x[4].attempt=0;rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_MALFORMED;
+  x=rs;x[4].step="";rn_chain(x[..],xd[..]);#assert rn_run(x[..]).error==RN_MALFORMED;
+  // Anything after settled.
+  more:[8]RunRecord;for i:0..<7 {more[i]=rs[i];}
+  more[7]=rn_make(7,RN_CANCEL_REQUESTED,RN_K2,1);rn_chain(more[..],xd[..]);
+  f=rn_run(more[..]);#assert f.error==RN_CLOSED && f.at==7 && f.seq==6 && f.settled;
+  // A dispatched attempt resolves; observed first; then a new attempt; cancel resolves nothing.
+  y:[9]RunRecord;y[0]=rs[0];y[1]=rs[1];y[2]=rs[2];
+  y[3]=rn_step(rn_make(3,RN_OBSERVED,RN_K1,0),"build",1);
+  y[4]=rn_step(rn_make(4,RN_RESOLVED,RN_K1,0),"build",1);
+  y[5]=rn_step(rn_make(5,RN_OBSERVED,RN_K1,0),"build",1);
+  rn_chain(y[0..<6],xd[..]);f=rn_run(y[0..<6]);#assert f.error==RN_ORDER && f.at==5 && f.seq==4;
+  y[5]=rn_make(5,RN_CANCEL_REQUESTED,RN_K1,0);
+  y[6]=rn_step(rn_make(6,RN_RESOLVED,RN_K1,0),"build",2);
+  y[7]=rn_step(rn_make(7,RN_DISPATCHED,RN_K1,0),"build",2);
+  rn_chain(y[0..<8],xd[..]);f=rn_run(y[0..<8]);#assert f.error==RN_ORDER && f.at==7;
+  y[7]=rn_step(rn_make(7,RN_UNKNOWN,RN_K1,0),"build",1);
+  rn_chain(y[0..<8],xd[..]);f=rn_run(y[0..<8]);#assert f.error==RN_ORDER && f.at==7;
+  y[7]=rn_step(rn_make(7,RN_DISPATCHED,RN_K1,0),"build",3);
+  y[8]=rn_step(rn_make(8,RN_UNKNOWN,RN_K1,0),"build",3);
+  rn_chain(y[..],xd[..]);f=rn_run(y[..]);#assert f.error==RN_OK && f.seq==8 && f.unknowns==1 && !f.settled;
+}
+#test "the subject table bounds" {
+  rs:[7]RunRecord;sd:[497]u8;rn_journal(rs[..],sd[..]);xd:[639]u8;t:[1]RunSubject;w:[4096]u8;
+  h:=run_replay(rs[..],RN_K1,t[0..<0],w[..]);#assert h.error==RN_LIMIT && h.at==2;
+  one:[1]RunSubject;h=run_replay(rs[..],RN_K1,one[..],w[..]);#assert h.error==RN_OK && h.seq==6;
+  h=run_replay(rs[..],RN_K1,one[..],w[0..<300]);#assert h.error==RN_LIMIT && h.at==0;
+}
+#test "head hints: current, stale, ahead, forked" {
+  rs:[7]RunRecord;sd:[497]u8;rn_journal(rs[..],sd[..]);xd:[639]u8;h:=rn_run(rs[..]);
+  #assert run_head_check(h,6,rs[6].digest,1)==RN_OK;
+  #assert run_head_check(h,3,rs[3].digest,0)==RN_STALE;
+  #assert run_head_check(h,6,rs[6].digest,0)==RN_STALE;
+  #assert run_head_check(h,5,rs[5].digest,1)==RN_STALE;
+  #assert run_head_check(h,7,rs[6].digest,1)==RN_GAP;
+  #assert run_head_check(h,6,rs[5].digest,1)==RN_CONFLICT;
+  #assert run_head_check(h,6,rs[6].digest,2)==RN_NOT_ADMITTED;
+  g:=h;g.error=RN_GAP;#assert run_head_check(g,6,rs[6].digest,1)==RN_GAP;
+}

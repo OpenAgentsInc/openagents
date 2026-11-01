@@ -1,0 +1,218 @@
+// ATIF trajectory chunks: checking the chunks a manifest lists against the
+// manifest and the whole artifact. NIP-ATIF "Chunks" and "Validation",
+// steps 3 and 4.
+//
+// A manifest lists ordered {index, digest, size} entries, one per chunk, and
+// pins the whole bytes by artifact digest and size. A chunk is
+// {trajectory_id, artifact, index, count, digest, text}. The reader checks
+// every chunk it has, stopping at the first failure: the publisher signed
+// it, its trajectory_id and artifact are the manifest's, its index is below
+// count and count is the number of entries, digest is the SHA-256 of text,
+// and digest and size equal the manifest entry's. Then every entry must have
+// a chunk: a missing one makes the trajectory content_unavailable, and the
+// reader reports which indexes are missing and how many leading bytes did
+// verify. It never presents that prefix as the whole. Last, the chunks'
+// text concatenated in index order must hash to the artifact digest and
+// have its size.
+//
+// A trajectory is an observational record, not an authority: the outcome
+// says whether these bytes are the bytes the manifest pinned, never that
+// the recording is complete or honest. Without an ATIF renderer,
+// step_count, state and steps_digest stay unverified, so the best outcome
+// here is "bytes verified, rendered fields unverified".
+//
+// It trusts the strings it is given: each chunk's verified event author.
+// Not here: the manifest's own closed-shape check, the private 3188 and
+// public 3198/3199 events, ATIF rendering and the ATIF digest rule,
+// children and continued segments.
+//   coax/bin/coax test coax/lib/nostr/atif/chunks.coax
+#load "../envelope.coax";
+
+// book:begin codes
+AT_VERIFIED :: cast(u32)0;     // the bytes are the artifact's; rendered fields unverified
+AT_PARTIAL :: cast(u32)1;      // content_unavailable: chunks are missing
+AT_REFUSED :: cast(u32)2;
+
+AT_OK :: cast(u32)0;
+AT_MANIFEST :: cast(u32)1;     // entries not 0..n-1, n outside 1..4096, a size outside 1..32768
+AT_AUTHOR :: cast(u32)2;       // a chunk not signed by the manifest's publisher
+AT_TRAJECTORY :: cast(u32)3;   // a chunk for another trajectory_id or artifact
+AT_INDEX :: cast(u32)4;        // index outside 0..count-1, or count not the number of entries
+AT_DIGEST :: cast(u32)5;       // the chunk's digest is not SHA-256 of its text
+AT_ENTRY :: cast(u32)6;        // the chunk's digest or size is not the manifest entry's
+AT_ARTIFACT :: cast(u32)7;     // the concatenation is not the artifact's digest or size
+
+AT_MAX_CHUNKS :: 4096;
+AT_MAX_TEXT :: 32768;
+// book:end codes
+
+// book:begin record
+AtifEntry :: struct {index:int;digest:string;size:int;}
+AtifManifest :: struct {publisher:string;trajectory_id:string;artifact:string;size:int;}
+AtifChunk :: struct {author:string;trajectory_id:string;artifact:string;index:int;count:int;digest:string;text:string;}
+// outcome and reason; for a refused chunk, chunk is its position in the
+// list given; missing counts the entries with no chunk (the first ones are
+// written to the caller's array); prefix is the verified leading bytes.
+AtifResult :: struct {outcome:u32;reason:u32;chunk:int;missing:int;prefix:int;}
+// book:end record
+
+at_refuse :: (reason:u32,chunk:int)->AtifResult {return AtifResult.{outcome=AT_REFUSED,reason=reason,chunk=chunk};}
+
+// book:begin check
+// Checks chunks (any order, duplicates allowed) against the manifest and its
+// entries. missing receives the indexes of the first missing entries.
+atif_check :: (m:AtifManifest,entries:[]AtifEntry,chunks:[]AtifChunk,missing:[]int)->AtifResult {
+  n:=entries.count;
+  if n<1 || n>AT_MAX_CHUNKS {return at_refuse(AT_MANIFEST,-1);}
+  for e,i:entries {if e.index!=i || e.size<1 || e.size>AT_MAX_TEXT {return at_refuse(AT_MANIFEST,-1);}}
+  text:[AT_MAX_TEXT]u8;
+  for c,i:chunks {
+    if c.author!=m.publisher {return at_refuse(AT_AUTHOR,i);}
+    if c.trajectory_id!=m.trajectory_id || c.artifact!=m.artifact {return at_refuse(AT_TRAJECTORY,i);}
+    if c.count!=n || c.index<0 || c.index>=n {return at_refuse(AT_INDEX,i);}
+    // No entry is outside 1..32768 bytes, so no such text can match one.
+    if c.text.count<1 || c.text.count>AT_MAX_TEXT {return at_refuse(AT_ENTRY,i);}
+    for k:0..<c.text.count {text[k]=c.text[k];}
+    d:[71]u8;
+    if ae_digest(text[0..<c.text.count],d[..])!=AE_OK || cast(string)d[..]!=c.digest {return at_refuse(AT_DIGEST,i);}
+    e:=entries[c.index];
+    if c.digest!=e.digest || c.text.count!=e.size {return at_refuse(AT_ENTRY,i);}
+  }
+  // Every entry needs a chunk; report the missing ones.
+  r:AtifResult;r.chunk=-1;prefix_open:=true;
+  for e:entries {
+    found:=false;
+    for c:chunks {if c.index==e.index {found=true;}}
+    if !found {
+      if r.missing<missing.count {missing[r.missing]=e.index;}
+      r.missing+=1;prefix_open=false;
+    } else if prefix_open {r.prefix+=e.size;}
+  }
+  if r.missing>0 {r.outcome=AT_PARTIAL;return r;}
+  // The concatenation in index order.
+  // The state is ours and each text was bounded and hashed above, so these
+  // primitives cannot refuse; their statuses are not consulted.
+  state:[112]u8;started:=sha256_init(state[..]);total:=0;
+  for e:entries {
+    for c:chunks {
+      if c.index!=e.index {continue;}
+      for k:0..<c.text.count {text[k]=c.text[k];}
+      added:=sha256_update_checked(state[..],text[0..<c.text.count],false);total+=c.text.count;break;
+    }
+  }
+  raw:[32]u8;ended:=sha256_final_checked(state[..],raw[..],false);
+  d:[71]u8;for i:0..<7 {d[i]="sha256:"[i];}
+  hexed:=hex_encode_checked(cast(string)raw[..],d[7..<71],false);
+  if cast(string)d[..]!=m.artifact || total!=m.size {return at_refuse(AT_ARTIFACT,-1);}
+  return r;  // r.outcome is still AT_VERIFIED, zero
+}
+// book:end check
+
+// ---- checks
+AT_PUB :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+AT_OTHER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+AT_ID :: "trajectory-1";
+// Three records of a log, one chunk each, and the digests of each line and
+// of the whole, from Python's hashlib.
+AT_L0 :: "{\"kind\":\"start\"}\n";
+AT_L1 :: "{\"kind\":\"step\",\"step_id\":1}\n";
+AT_L2 :: "{\"kind\":\"end\"}\n";
+AT_D0 :: "sha256:0966c8cb3bc5a0d61ef1157b1fd814cbb5175651dc95b15d05770075dd4f1838";
+AT_D1 :: "sha256:0fffd7c482d2b44c12679d69d16f4c9efb2d2fe6943df00211cf9494bbb99b77";
+AT_D2 :: "sha256:6a542dd250f5dcfccc978fa8adc88c50ee5b926a6d6401fcd53f98fa94c1e72f";
+AT_ALL :: "sha256:a7c87f3aeac875550b978a5f3f179fc87cae373d069d632c3c9cc68f47a2feef";
+
+at_manifest :: ()->AtifManifest {return AtifManifest.{publisher=AT_PUB,trajectory_id=AT_ID,artifact=AT_ALL,size=AT_L0.count+AT_L1.count+AT_L2.count};}
+at_entries :: (e:[]AtifEntry) {
+  e[0]=AtifEntry.{index=0,digest=AT_D0,size=AT_L0.count};
+  e[1]=AtifEntry.{index=1,digest=AT_D1,size=AT_L1.count};
+  e[2]=AtifEntry.{index=2,digest=AT_D2,size=AT_L2.count};
+}
+at_chunk :: (index:int,digest:string,text:string)->AtifChunk {
+  return AtifChunk.{author=AT_PUB,trajectory_id=AT_ID,artifact=AT_ALL,index=index,count=3,digest=digest,text=text};
+}
+
+#test "codes and bounds" {
+  #assert AT_VERIFIED==0 && AT_PARTIAL==1 && AT_REFUSED==2 && AT_OK==0 && AT_MANIFEST==1 && AT_AUTHOR==2;
+  #assert AT_TRAJECTORY==3 && AT_INDEX==4 && AT_DIGEST==5 && AT_ENTRY==6 && AT_ARTIFACT==7;
+  #assert AT_MAX_CHUNKS==4096 && AT_MAX_TEXT==32768;
+}
+#test "three chunks in any order verify the artifact" #steps 200000000 {
+  e:[3]AtifEntry;at_entries(e[..]);miss:[4]int;
+  c:=[3]AtifChunk.[at_chunk(2,AT_D2,AT_L2),at_chunk(0,AT_D0,AT_L0),at_chunk(1,AT_D1,AT_L1)];
+  r:=atif_check(at_manifest(),e[..],c[..],miss[..]);
+  #assert r.outcome==AT_VERIFIED && r.reason==AT_OK && r.missing==0 && r.prefix==AT_L0.count+AT_L1.count+AT_L2.count && r.chunk==-1;
+  // A duplicate changes nothing.
+  d:=[4]AtifChunk.[c[0],c[1],c[2],c[0]];
+  #assert atif_check(at_manifest(),e[..],d[..],miss[..]).outcome==AT_VERIFIED;
+}
+#test "Done means: a chunk missing from its manifest is reported, not ignored" #steps 200000000 {
+  e:[3]AtifEntry;at_entries(e[..]);miss:=[4]int.[-1,-1,-1,-1];
+  c:=[2]AtifChunk.[at_chunk(0,AT_D0,AT_L0),at_chunk(2,AT_D2,AT_L2)];
+  r:=atif_check(at_manifest(),e[..],c[..],miss[..]);
+  #assert r.outcome==AT_PARTIAL && r.missing==1 && miss[0]==1 && miss[1]==-1 && r.prefix==AT_L0.count;
+  // The first missing: no verified prefix. Two missing, room for one index.
+  one:=[1]AtifChunk.[at_chunk(1,AT_D1,AT_L1)];small:[1]int;
+  r=atif_check(at_manifest(),e[..],one[..],small[..]);
+  #assert r.outcome==AT_PARTIAL && r.missing==2 && small[0]==0 && r.prefix==0;
+  none:=[1]AtifChunk.[at_chunk(1,AT_D1,AT_L1)];
+  r=atif_check(at_manifest(),e[..],none[0..<0],miss[..]);
+  #assert r.outcome==AT_PARTIAL && r.missing==3 && miss[0]==0 && miss[1]==1 && miss[2]==2;
+}
+#test "chunk refusals, in the NIP's order" #steps 200000000 {
+  e:[3]AtifEntry;at_entries(e[..]);miss:[4]int;
+  c:=[3]AtifChunk.[at_chunk(0,AT_D0,AT_L0),at_chunk(1,AT_D1,AT_L1),at_chunk(2,AT_D2,AT_L2)];
+  x:=c;x[1].author=AT_OTHER;r:=atif_check(at_manifest(),e[..],x[..],miss[..]);
+  #assert r.outcome==AT_REFUSED && r.reason==AT_AUTHOR && r.chunk==1;
+  x=c;x[2].trajectory_id="trajectory-2";r=atif_check(at_manifest(),e[..],x[..],miss[..]);#assert r.reason==AT_TRAJECTORY && r.chunk==2;
+  x=c;x[0].artifact=AT_D0;#assert atif_check(at_manifest(),e[..],x[..],miss[..]).reason==AT_TRAJECTORY;
+  x=c;x[0].count=4;#assert atif_check(at_manifest(),e[..],x[..],miss[..]).reason==AT_INDEX;
+  x=c;x[0].count=2;#assert atif_check(at_manifest(),e[..],x[..],miss[..]).reason==AT_INDEX;
+  x=c;x[0].index=3;#assert atif_check(at_manifest(),e[..],x[..],miss[..]).reason==AT_INDEX;
+  x=c;x[0].index=-1;#assert atif_check(at_manifest(),e[..],x[..],miss[..]).reason==AT_INDEX;
+  // Changed text under the old digest; a digest that matches its text but not the entry.
+  x=c;x[1].text="{\"kind\":\"step\",\"step_id\":2}\n";r=atif_check(at_manifest(),e[..],x[..],miss[..]);
+  #assert r.reason==AT_DIGEST && r.chunk==1;
+  x=c;x[1]=at_chunk(1,AT_D2,AT_L2);r=atif_check(at_manifest(),e[..],x[..],miss[..]);#assert r.reason==AT_ENTRY && r.chunk==1;
+  f:=e;f[1].size=AT_L1.count+1;#assert atif_check(at_manifest(),f[..],c[..],miss[..]).reason==AT_ENTRY;
+  // Text outside the chunk bounds.
+  x=c;x[0].text="";r=atif_check(at_manifest(),e[..],x[..],miss[..]);#assert r.reason==AT_ENTRY && r.chunk==0;
+  long:[32769]u8;for i:0..<32769 {long[i]='a';}
+  x=c;x[0].text=cast(string)long[..];#assert atif_check(at_manifest(),e[..],x[..],miss[..]).reason==AT_ENTRY;
+  x=c;x[0].text=cast(string)long[0..<32768];#assert atif_check(at_manifest(),e[..],x[..],miss[..]).reason==AT_DIGEST;
+}
+#test "the smallest trajectories: one chunk of one byte, two chunks of one byte" #steps 200000000 {
+  miss:[2]int;
+  m:=AtifManifest.{publisher=AT_PUB,trajectory_id=AT_ID,artifact="sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",size=1};
+  e:=[1]AtifEntry.[AtifEntry.{index=0,digest=m.artifact,size=1}];
+  c:=[1]AtifChunk.[AtifChunk.{author=AT_PUB,trajectory_id=AT_ID,artifact=m.artifact,index=0,count=1,digest=m.artifact,text="x"}];
+  r:=atif_check(m,e[..],c[..],miss[..]);#assert r.outcome==AT_VERIFIED && r.reason==AT_OK && r.prefix==1;
+  // "a" then "b": each chunk's first byte must reach the hash.
+  DA:="sha256:ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb";
+  DB:="sha256:3e23e8160039594a33894f6564e1b1348bbd7a0088d42c4acb73eeaed59c009d";
+  m2:=AtifManifest.{publisher=AT_PUB,trajectory_id=AT_ID,artifact="sha256:fb8e20fc2e4c3f248c60c39bd652f3c1347298bb977b8b4d5903b85055620603",size=2};
+  e2:=[2]AtifEntry.[AtifEntry.{index=0,digest=DA,size=1},AtifEntry.{index=1,digest=DB,size=1}];
+  c2:=[2]AtifChunk.[AtifChunk.{author=AT_PUB,trajectory_id=AT_ID,artifact=m2.artifact,index=0,count=2,digest=DA,text="a"},
+    AtifChunk.{author=AT_PUB,trajectory_id=AT_ID,artifact=m2.artifact,index=1,count=2,digest=DB,text="b"}];
+  r=atif_check(m2,e2[..],c2[..],miss[..]);#assert r.outcome==AT_VERIFIED && r.prefix==2;
+  s2:=[2]AtifChunk.[c2[1],c2[0]];r=atif_check(m2,e2[..],s2[..],miss[..]);#assert r.outcome==AT_VERIFIED;
+}
+#test "manifest and artifact refusals" #steps 200000000 {
+  e:[3]AtifEntry;at_entries(e[..]);miss:[4]int;
+  c:=[3]AtifChunk.[at_chunk(0,AT_D0,AT_L0),at_chunk(1,AT_D1,AT_L1),at_chunk(2,AT_D2,AT_L2)];
+  f:=e;f[1].index=2;q:=atif_check(at_manifest(),f[..],c[..],miss[..]);#assert q.reason==AT_MANIFEST && q.chunk==-1 && q.outcome==AT_REFUSED;
+  q=atif_check(at_manifest(),e[0..<0],c[..],miss[..]);#assert q.reason==AT_MANIFEST && q.chunk==-1;
+  f=e;f[0].size=0;#assert atif_check(at_manifest(),f[..],c[..],miss[..]).reason==AT_MANIFEST;
+  f=e;f[0].size=AT_MAX_TEXT+1;#assert atif_check(at_manifest(),f[..],c[..],miss[..]).reason==AT_MANIFEST;
+  f=e;f[0].size=AT_MAX_TEXT;#assert atif_check(at_manifest(),f[..],c[..],miss[..]).reason==AT_ENTRY;
+  #assert atif_check(at_manifest(),e[0..<0],c[..],miss[..]).reason==AT_MANIFEST;
+  big:[4097]AtifEntry;for i:0..<4097 {big[i]=AtifEntry.{index=i,digest=AT_D0,size=1};}
+  #assert atif_check(at_manifest(),big[..],c[0..<0],miss[0..<0]).reason==AT_MANIFEST;
+  r:=atif_check(at_manifest(),big[0..<4096],c[0..<0],miss[0..<0]);#assert r.outcome==AT_PARTIAL && r.missing==4096;
+  // Every chunk right, the whole wrong: another digest, or another size.
+  m:=at_manifest();m.artifact=AT_D0;
+  y:=c;for i:0..<3 {y[i].artifact=AT_D0;}
+  r=atif_check(m,e[..],y[..],miss[..]);#assert r.outcome==AT_REFUSED && r.reason==AT_ARTIFACT && r.chunk==-1;
+  m=at_manifest();m.size+=1;#assert atif_check(m,e[..],c[..],miss[..]).reason==AT_ARTIFACT;
+  m=at_manifest();m.size-=1;#assert atif_check(m,e[..],c[..],miss[..]).reason==AT_ARTIFACT;
+}

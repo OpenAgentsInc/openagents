@@ -1676,14 +1676,22 @@
    "number": 78,
    "title": "Runs, sessions, terminals and trajectories",
    "file": "ch078-runs-sessions-terminals-and-trajectories.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     76,
     20
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/atif/chunks.coax",
+    "coax/lib/nostr/run/journal.coax",
+    "coax/lib/nostr/term/frames.coax",
+    "nostr/examples/checks/run-journal.coax",
+    "nostr/examples/run-journal.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

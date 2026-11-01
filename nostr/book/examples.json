@@ -577,6 +577,18 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/run-journal.coax",
+      "chapter": "nostr/book/ch078-runs-sessions-terminals-and-trajectories.md",
+      "stdout": "nostr/fixtures/run-journal.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
+    },
+    {
       "source": "nostr/examples/federated-identity.coax",
       "chapter": "nostr/book/ch088-federated-identity.md",
       "stdout": "nostr/fixtures/federated-identity.out",

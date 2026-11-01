@@ -1,0 +1,60 @@
+RUN: run 9999..., created by key 1; key 1 hands off to key 2 at seq 3
+record 0 as written (294 bytes):
+  {"run":"9999999999999999999999999999999999999999999999999999999999999999","seq":0,"previous":null,"controller":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","generation":0,"type":"created","subject":{"step":null,"iteration":null,"attempt":null},"time":1790000100,"data":{}}
+seq 0 created, key 1 generation 0, step null, time T0 + 100
+  previous null
+  digest   sha256:95049ef399c42b01b6ae1a43613101467d8b8c92f9031445970c0a8b1c367163
+seq 1 admitted, key 1 generation 0, step null, time T0 + 99
+  previous sha256:95049ef399c42b01b6ae1a43613101467d8b8c92f9031445970c0a8b1c367163
+  digest   sha256:e3c22e5652391dae99b3eedb21f2916be072169e9aa7e43674f3d88aea2c0d89
+seq 2 dispatched, key 1 generation 0, step build, time T0 + 98
+  previous sha256:e3c22e5652391dae99b3eedb21f2916be072169e9aa7e43674f3d88aea2c0d89
+  digest   sha256:ab466665c375391da1fddfed52da6305c64039930068423f1244ea3aa53049f1
+seq 3 handoff, key 1 generation 0, step null, time T0 + 97
+  previous sha256:ab466665c375391da1fddfed52da6305c64039930068423f1244ea3aa53049f1
+  digest   sha256:c86e8b7605c80d2c6a9f8db27435cc3be2a47e34e032526b1443e68e69eee3e5
+seq 4 unknown, key 2 generation 1, step build, time T0 + 96
+  previous sha256:c86e8b7605c80d2c6a9f8db27435cc3be2a47e34e032526b1443e68e69eee3e5
+  digest   sha256:62cdbddee0ab9ded39e8ad3be801cbb9e17df7b0c21e63151a1f0e72fff4645d
+seq 5 reconciled, key 2 generation 1, step build, time T0 + 95
+  previous sha256:62cdbddee0ab9ded39e8ad3be801cbb9e17df7b0c21e63151a1f0e72fff4645d
+  digest   sha256:fd922bec5e277b2d0d222c7e6fea072b3f5bdd95e6f6b2dd711f12cd5b3d900d
+seq 6 settled, key 2 generation 1, step null, time T0 + 94
+  previous sha256:fd922bec5e277b2d0d222c7e6fea072b3f5bdd95e6f6b2dd711f12cd5b3d900d
+  digest   sha256:b071b1250fbbd3fe616a4f1f2a672218d3efce1517c8ade3716600b5faf603ae
+replay
+in order: ok; head seq 6, key 2 generation 1, sha256:b071b1250fbb..., settled
+reversed and shuffled, with three duplicates: ok; head seq 6, key 2 generation 1, sha256:b071b1250fbb..., settled
+only seq 0 to 2, before the handoff: ok; head seq 2, key 1 generation 0, sha256:ab466665c375...
+seq 4 missing: incomplete: a gap at seq 4; head seq 3, key 2 generation 1, sha256:c86e8b7605c8...
+a second record at seq 4: conflict: a fork at seq 4; head seq 3, key 2 generation 1, sha256:c86e8b7605c8...
+that record instead of the first: broken chain at seq 5; head seq 4, key 2 generation 1, sha256:26ccb0af8c1d...
+key 1 appends seq 4 after its handoff: stale at seq 4; head seq 3, key 2 generation 1, sha256:c86e8b7605c8...
+the handoff without a fencing acknowledgment: unfenced handoff at seq 3; head seq 2, key 1 generation 0, sha256:ab466665c375...
+key 7 signs a created record naming itself: not_admitted at seq 0
+seq 2 edited to attempt 2, digest kept: digest mismatch at seq 2; head seq 1, key 1 generation 0, sha256:e3c22e565239...
+reconciled with no unknown before it: order at seq 4; head seq 3, key 2 generation 1, sha256:c86e8b7605c8...
+cancel_requested after settled: closed: after settled at seq 7; head seq 6, key 2 generation 1, sha256:b071b1250fbb..., settled
+head hints against the replayed journal
+seq 6, generation 1, the head's digest: ok
+seq 3, generation 0 (key 1's last head): stale
+seq 8: incomplete: a gap
+seq 6 with seq 5's digest: conflict: a fork
+NIP-44: record 0's content sealed to two recipients
+content: 433 bytes; payloads: 688 and 688 characters
+  recipient A: AhERERERERERERERERERERER...
+  recipient B: AiIiIiIiIiIiIiIiIiIiIiIi...
+both open to the same content, one record digest: yes
+recipient B's key on A's payload: refused, MAC mismatch
+ATIF: trajectory-1, a 60-byte log in three chunks, published by key 1
+chunks 2, 0, 1: bytes verified, rendered fields unverified, 60 bytes
+chunk 1 missing: partial: content_unavailable, 1 missing (index 1), verified prefix 17 bytes
+chunk 1's text edited: refused, digest, at list position 2
+chunk 0 signed by key 7: refused, author, at list position 1
+TERM: frames retained over a relay, after a reconnect with after = 2
+output 2: duplicate
+gap 3 to 7: gap
+output 8: applied
+output 8: duplicate
+exit 9: exit: complete
+a fresh client at 2 gets output 4: lost: reattach, applied stays 2

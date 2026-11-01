@@ -1,0 +1,155 @@
+// book:begin example
+// Chapter 78: one run's journal through a controller handoff, replayed in
+// two arrival orders; the same record sealed with NIP-44 to two recipients;
+// a three-chunk trajectory with one chunk missing; and a terminal's frames
+// after a reconnect. Keys are the x-only public keys of the scalars 1, 2
+// and 7; conversation keys and nonces are fixed bytes: TEST ONLY.
+#load "../../coax/lib/nostr/run/journal.coax";
+#load "../../coax/lib/nostr/atif/chunks.coax";
+#load "../../coax/lib/nostr/term/frames.coax";
+#load "../../coax/lib/nostr/nip44.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+KEY_1 :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+KEY_2 :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+KEY_7 :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+RUN :: "9999999999999999999999999999999999999999999999999999999999999999";
+FENCE :: "sha256:8888888888888888888888888888888888888888888888888888888888888888";
+
+RN_WORDS :: [12]string.["ok","incomplete: a gap","conflict: a fork","broken chain","digest mismatch",
+  "not_admitted","stale","order","unfenced handoff","closed: after settled","malformed","limit_exceeded"];
+AT_OUTCOMES :: [3]string.["bytes verified, rendered fields unverified","partial: content_unavailable","refused"];
+AT_REASONS :: [8]string.["","manifest","author","trajectory","index","digest","entry","artifact"];
+TA_WORDS :: [8]string.["applied","duplicate","lost: reattach","gap","exit: complete","complete: ignored","detached","malformed"];
+
+key_name :: (key:string)->string {
+  if key==KEY_1 {return "key 1";}
+  if key==KEY_2 {return "key 2";}
+  return "key 7";
+}
+record :: (seq:int,type:int,key:string,generation:int)->RunRecord {
+  r:RunRecord;r.run=RUN;r.seq=seq;r.controller=key;r.signer=key;r.generation=generation;r.type=type;
+  r.iteration=-1;r.time=T0+100-seq;r.data="{}";return r;
+}
+on_step :: (r:RunRecord)->RunRecord {s:=r;s.step="build";s.attempt=1;return s;}
+// Chains records: each previous is the Digest before it; store keeps the digests.
+chain :: (rs:[]RunRecord,store:[]u8) {
+  work:[4096]u8;prev:="";
+  for i:0..<rs.count {
+    rs[i].previous=prev;d:=store[i*71..<i*71+71];
+    status:=run_digest(rs[i],work[..],d);
+    rs[i].digest=cast(string)d;prev=rs[i].digest;
+  }
+}
+replay :: (label:string,rs:[]RunRecord) {
+  t:[8]RunSubject;w:[4096]u8;h:=run_replay(rs,KEY_1,t[..],w[..]);
+  print("%: %",label,RN_WORDS[h.error]);
+  if h.error!=RN_OK {print(" at seq %",h.at);}
+  if h.seq>=0 {d:=h.digest;print("; head seq %, % generation %, %...",h.seq,key_name(h.controller),h.generation,cast(string)d[0..<19]);}
+  if h.settled {print(", settled");}
+  print("\n");
+}
+// book:end example
+
+// book:begin main
+main :: () {
+  print("RUN: run 9999..., created by key 1; key 1 hands off to key 2 at seq 3\n");
+  rs:[7]RunRecord;store:[497]u8;
+  rs[0]=record(0,RN_CREATED,KEY_1,0);rs[1]=record(1,RN_ADMITTED,KEY_1,0);rs[2]=on_step(record(2,RN_DISPATCHED,KEY_1,0));
+  rs[3]=record(3,RN_HANDOFF,KEY_1,0);rs[3].next=KEY_2;rs[3].fence=FENCE;
+  rs[4]=on_step(record(4,RN_UNKNOWN,KEY_2,1));rs[5]=on_step(record(5,RN_RECONCILED,KEY_2,1));rs[6]=record(6,RN_SETTLED,KEY_2,1);
+  chain(rs[..],store[..]);
+  json:[1024]u8;n:=run_record_write(rs[0],json[..]);
+  print("record 0 as written (% bytes):\n  %\n",n,cast(string)json[0..<n]);
+  for r:rs {
+    print("seq % %, % generation %, step %, time T0 + %\n  previous %\n  digest   %\n",r.seq,RN_NAMES[r.type],key_name(r.signer),r.generation,
+      ifx r.step.count==0 then "null" else r.step,r.time-T0,ifx r.previous.count==0 then "null" else r.previous,r.digest);
+  }
+
+  print("replay\n");
+  replay("in order",rs[..]);
+  mixed:=[10]RunRecord.[rs[6],rs[4],rs[0],rs[2],rs[5],rs[2],rs[1],rs[3],rs[6],rs[0]];
+  replay("reversed and shuffled, with three duplicates",mixed[..]);
+  replay("only seq 0 to 2, before the handoff",rs[0..<3]);
+  gap:=[6]RunRecord.[rs[0],rs[1],rs[2],rs[3],rs[5],rs[6]];
+  replay("seq 4 missing",gap[..]);
+  other:=rs[4];other.time+=1;od:[71]u8;w:[4096]u8;
+  status:=run_digest(other,w[..],od[..]);other.digest=cast(string)od[..];
+  fork:=[8]RunRecord.[rs[0],rs[1],rs[2],rs[3],rs[4],other,rs[5],rs[6]];
+  replay("a second record at seq 4",fork[..]);
+  alone:=[7]RunRecord.[rs[0],rs[1],rs[2],rs[3],other,rs[5],rs[6]];
+  replay("that record instead of the first",alone[..]);
+  x:=rs;xd:[497]u8;x[4].controller=KEY_1;x[4].signer=KEY_1;x[4].generation=0;chain(x[..],xd[..]);
+  replay("key 1 appends seq 4 after its handoff",x[..]);
+  x=rs;x[3].fence="";chain(x[..],xd[..]);
+  replay("the handoff without a fencing acknowledgment",x[..]);
+  x=rs;x[0].controller=KEY_7;x[0].signer=KEY_7;chain(x[..],xd[..]);
+  replay("key 7 signs a created record naming itself",x[0..<1]);
+  x=rs;x[2].attempt=2;
+  replay("seq 2 edited to attempt 2, digest kept",x[..]);
+  x=rs;x[4].type=RN_RECONCILED;chain(x[..],xd[..]);
+  replay("reconciled with no unknown before it",x[..]);
+  more:[8]RunRecord;md:[568]u8;for i:0..<7 {more[i]=rs[i];}
+  more[7]=record(7,RN_CANCEL_REQUESTED,KEY_2,1);chain(more[..],md[..]);
+  replay("cancel_requested after settled",more[..]);
+
+  print("head hints against the replayed journal\n");
+  t:[8]RunSubject;h:=run_replay(rs[..],KEY_1,t[..],w[..]);
+  print("seq 6, generation 1, the head's digest: %\n",RN_WORDS[run_head_check(h,6,rs[6].digest,1)]);
+  print("seq 3, generation 0 (key 1's last head): %\n",RN_WORDS[run_head_check(h,3,rs[3].digest,0)]);
+  print("seq 8: %\n",RN_WORDS[run_head_check(h,8,rs[6].digest,1)]);
+  print("seq 6 with seq 5's digest: %\n",RN_WORDS[run_head_check(h,6,rs[5].digest,1)]);
+
+  print("NIP-44: record 0's content sealed to two recipients\n");
+  content:[2048]u8;
+  at:=json_raw(content[..],0,"{\"v\":\"openagents.run-record.v1\",\"requires\":[],\"record\":");
+  at=json_raw(content[..],at,cast(string)json[0..<n]);
+  at=json_raw(content[..],at,",\"digest\":");at=json_write_string(content[..],at,rs[0].digest);at=json_raw(content[..],at,"}");
+  plain:=content[0..<at];
+  k1:[32]u8;k2:[32]u8;n1:[32]u8;n2:[32]u8;
+  for i:0..<32 {k1[i]=1;k2[i]=2;n1[i]=17;n2[i]=34;}
+  ework:[4096]u8;p1:[4096]u8;p2:[4096]u8;opened:[2048]u8;dwork:[8192]u8;
+  s1:=nip44_encrypt_checked(NIP44_COMPAT,k1[..],n1[..],plain,ework[..],p1[..],false);
+  s2:=nip44_encrypt_checked(NIP44_COMPAT,k2[..],n2[..],plain,ework[..],p2[..],false);
+  print("content: % bytes; payloads: % and % characters\n",at,s1.written,s2.written);
+  print("  recipient A: %...\n  recipient B: %...\n",cast(string)p1[0..<24],cast(string)p2[0..<24]);
+  o1:=nip44_decrypt_checked(NIP44_COMPAT,k1[..],cast(string)p1[0..<s1.written],dwork[..],opened[..],false);
+  same1:=o1.error==NIP44_OK && cast(string)opened[0..<o1.written]==cast(string)plain;
+  o2:=nip44_decrypt_checked(NIP44_COMPAT,k2[..],cast(string)p2[0..<s2.written],dwork[..],opened[..],false);
+  same2:=o2.error==NIP44_OK && cast(string)opened[0..<o2.written]==cast(string)plain;
+  print("both open to the same content, one record digest: %\n",ifx same1 && same2 then "yes" else "no");
+  wrong:=nip44_decrypt_checked(NIP44_COMPAT,k2[..],cast(string)p1[0..<s1.written],dwork[..],opened[..],false);
+  print("recipient B's key on A's payload: %\n",ifx wrong.error==NIP44_MAC then "refused, MAC mismatch" else "opened");
+
+  print("ATIF: trajectory-1, a 60-byte log in three chunks, published by key 1\n");
+  m:=AtifManifest.{publisher=KEY_1,trajectory_id=AT_ID,artifact=AT_ALL,size=60};
+  e:[3]AtifEntry;at_entries(e[..]);miss:=[3]int.[-1,-1,-1];
+  c:=[3]AtifChunk.[at_chunk(2,AT_D2,AT_L2),at_chunk(0,AT_D0,AT_L0),at_chunk(1,AT_D1,AT_L1)];
+  r:=atif_check(m,e[..],c[..],miss[..]);
+  print("chunks 2, 0, 1: %, % bytes\n",AT_OUTCOMES[r.outcome],r.prefix);
+  two:=[2]AtifChunk.[c[0],c[1]];
+  r=atif_check(m,e[..],two[..],miss[..]);
+  print("chunk 1 missing: %, % missing (index %), verified prefix % bytes\n",AT_OUTCOMES[r.outcome],r.missing,miss[0],r.prefix);
+  bad:=c;bad[2].text="{\"kind\":\"step\",\"step_id\":2}\n";
+  r=atif_check(m,e[..],bad[..],miss[..]);
+  print("chunk 1's text edited: %, %, at list position %\n",AT_OUTCOMES[r.outcome],AT_REASONS[r.reason],r.chunk);
+  bad=c;bad[1].author=KEY_7;
+  r=atif_check(m,e[..],bad[..],miss[..]);
+  print("chunk 0 signed by key 7: %, %, at list position %\n",AT_OUTCOMES[r.outcome],AT_REASONS[r.reason],r.chunk);
+
+  print("TERM: frames retained over a relay, after a reconnect with after = 2\n");
+  f:=[5]TermFrame.[TermFrame.{type=TF_EXIT,seq=9},TermFrame.{type=TF_OUTPUT,seq=8},TermFrame.{type=TF_GAP,from=3,to=7},
+    TermFrame.{type=TF_OUTPUT,seq=8},TermFrame.{type=TF_OUTPUT,seq=2}];
+  term_order(f[..]);
+  client:=[1]TermClient.[TermClient.{applied=2}];
+  names:=[4]string.["output","exit","gap","detached"];
+  for fr:f {
+    a:=term_apply(client[..],fr);
+    if fr.type==TF_GAP {print("gap % to %: %\n",fr.from,fr.to,TA_WORDS[a]);}
+    else {print("% %: %\n",names[fr.type],fr.seq,TA_WORDS[a]);}
+  }
+  fresh:=[1]TermClient.[TermClient.{applied=2}];
+  print("a fresh client at 2 gets output 4: %, applied stays %\n",TA_WORDS[term_apply(fresh[..],TermFrame.{type=TF_OUTPUT,seq=4})],fresh[0].applied);
+}
+// book:end main

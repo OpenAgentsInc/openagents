@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 89 are implemented and 15 are design drafts.
+Of the 104 chapters, 90 are implemented and 14 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -268,7 +268,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [75. Hosts and reachability](ch075-hosts-and-reachability.md) | Runnable: native C | NIP-HOST grants bound to the original host-signed 3188 envelope and admitted against the host's record (request window, revocation, expiry, epochs, rights, retained replies), and NIP-REACH presence freshness and route generations. Invitations, enrollment, the directory, hint selection and direct channels are not built. |
 | [76. Work, coordination and control](ch076-work-coordination-and-control.md) | Runnable: native C | NIP-COORD atomic claims with fencing tokens and leases (renew, release, cancel, the dispatcher fence) and NIP-CTRL pairing, revocation and command admission with the JCS command fingerprint. NIP-WORK items and NIP-CTX frames, COORD proposals, reservations and findings, and CTRL reads are not built. |
 | [77. Capabilities, policy and extensions](ch077-capabilities-policy-and-extensions.md) | Runnable: native C | NIP-CAP dispatch (definition, exact binding, presence, grant, effects, ceilings, enforcement plan), NIP-POL single-use approvals, and NIP-EXT installation of signed releases (namespace, unknown features, equivocation, revocation, checkpoint freshness). Probes, preferences, instruction sets, listings, migration and NIP-REG are not built. |
-| [78. Runs, sessions, terminals and trajectories](ch078-runs-sessions-terminals-and-trajectories.md) | Unimplemented: design draft | NIP-RUN durable run journals with controller handoff, NIP-SESS engine sessions, NIP-TERM terminal sessions, and NIP-ATIF agent trajectories as manifests and chunks. |
+| [78. Runs, sessions, terminals and trajectories](ch078-runs-sessions-terminals-and-trajectories.md) | Runnable: native C | NIP-RUN record digests and journal replay (gaps, forks, broken chains, controller handoff with fencing, the per-attempt state machine, head hints), NIP-ATIF chunk checks that report missing chunks, NIP-TERM client frame order with gaps. NIP-SESS, RUN retention and the 3187/30186, 3188 and 3198/3199 events are not built. |
 | [79. Agents, skills and automation](ch079-agents-skills-and-automation.md) | Unimplemented: design draft | NIP-AGENT saved agents (30187), NIP-SKILL published `SKILL.md` listings (30188), NIP-SOV sovereign agents with local custody, and NIP-AUTO scheduled and triggered work. |
 | [80. Jobs, labor and markets](ch080-jobs-labor-and-markets.md) | Unimplemented: design draft | NIP-CJ encrypted conversation, typed-decision and execution jobs, NIP-LAB agent labor terms and delivery, and NIP-MKT offerings, negotiated orders and Bitcoin settlement. |
 | [81. Decisions, evaluations, optimization and programs](ch081-decisions-evaluations-optimization-and-programs.md) | Unimplemented: design draft | NIP-DEC decision requests and answers (25910), NIP-EVAL suites and reports, NIP-OPT optimization studies, and NIP-PRG typed programs (30182, 30183). |

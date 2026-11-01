@@ -1,0 +1,135 @@
+// TERM terminal frames: a client applying a terminal's output frames in
+// order. NIP-TERM "Frames", "Client state" and "Transport".
+//
+// Output and exit frames carry a per-terminal sequence number: the first is
+// 1, each next one is one more, and exit is the last. A gap frame names a
+// range from..to the host's replay buffer discarded; the client shows it as
+// a gap and never joins the output on both sides as continuous. The client
+// keeps the highest number through which it applied every frame or a gap.
+// A frame at or below it is a duplicate. A frame above the next expected
+// number, with no gap before it, means the transport lost frames: the client
+// applies nothing further and reattaches with after set to its number.
+// After exit the attachment is complete and nothing more applies.
+//
+// Over a relay, retained frames can come back in any order, so the client
+// sorts them by sequence (a gap by its from) before applying them.
+//
+// Frame content is untrusted terminal data; this file never reads it.
+// Not here: opening, attaching, input, resize, signals, rights, the frames'
+// JSON and base64, and the 3188 envelope that seals each frame with NIP-44.
+//   coax/bin/coax test coax/lib/nostr/term/frames.coax
+
+// book:begin codes
+TF_OUTPUT :: 0; TF_EXIT :: 1; TF_GAP :: 2; TF_DETACHED :: 3;
+
+TA_APPLIED :: cast(u32)0;
+TA_DUPLICATE :: cast(u32)1;   // at or below the applied number: ignored
+TA_LOST :: cast(u32)2;        // above the next number: reattach with after = applied
+TA_GAP :: cast(u32)3;         // a discarded range, shown as a gap
+TA_EXIT :: cast(u32)4;        // the last frame: the attachment is complete
+TA_COMPLETE :: cast(u32)5;    // a frame after exit: nothing applies
+TA_DETACHED :: cast(u32)6;
+TA_MALFORMED :: cast(u32)7;
+// book:end codes
+
+// book:begin record
+TermFrame :: struct {type:int;seq:int;from:int;to:int;}
+TermClient :: struct {applied:int;complete:bool;}
+// book:end record
+
+// book:begin apply
+term_apply :: (c:[]TermClient,f:TermFrame)->u32 {
+  if c[0].complete {return TA_COMPLETE;}
+  if f.type==TF_DETACHED {return TA_DETACHED;}
+  next:=c[0].applied+1;
+  if f.type==TF_GAP {
+    if f.from<1 || f.to<f.from {return TA_MALFORMED;}
+    if f.from>next {return TA_LOST;}
+    if f.to<next {return TA_DUPLICATE;}
+    c[0].applied=f.to;return TA_GAP;
+  }
+  if f.type!=TF_OUTPUT && f.type!=TF_EXIT {return TA_MALFORMED;}
+  if f.seq<1 {return TA_MALFORMED;}
+  if f.seq<next {return TA_DUPLICATE;}
+  if f.seq>next {return TA_LOST;}
+  c[0].applied=f.seq;
+  if f.type==TF_EXIT {c[0].complete=true;return TA_EXIT;}
+  return TA_APPLIED;
+}
+// book:end apply
+
+// book:begin order
+// Sorts frames by sequence, a gap by its from, keeping arrival order among
+// equal keys. A detached frame has no sequence (seq 0): it sorts first and
+// changes nothing when applied.
+term_key :: (f:TermFrame)->int {
+  if f.type==TF_GAP {return f.from;}
+  return f.seq;
+}
+term_order :: (frames:[]TermFrame) {
+  for i:1..<frames.count {
+    j:=i;
+    while j>0 && term_key(frames[j-1])>term_key(frames[j]) {
+      t:=frames[j-1];frames[j-1]=frames[j];frames[j]=t;j-=1;
+    }
+  }
+}
+// book:end order
+
+// ---- checks
+tf_out :: (seq:int)->TermFrame {return TermFrame.{type=TF_OUTPUT,seq=seq};}
+
+#test "the codes" {
+  #assert TF_OUTPUT==0 && TF_EXIT==1 && TF_GAP==2 && TF_DETACHED==3;
+  #assert TA_APPLIED==0 && TA_DUPLICATE==1 && TA_LOST==2 && TA_GAP==3 && TA_EXIT==4 && TA_COMPLETE==5 && TA_DETACHED==6 && TA_MALFORMED==7;
+}
+#test "in order, duplicates ignored, a lost frame stops the client, exit completes it" {
+  c:=[1]TermClient.[TermClient.{}];
+  #assert term_apply(c[..],tf_out(1))==TA_APPLIED && c[0].applied==1;
+  #assert term_apply(c[..],tf_out(2))==TA_APPLIED && c[0].applied==2;
+  #assert term_apply(c[..],tf_out(2))==TA_DUPLICATE && term_apply(c[..],tf_out(1))==TA_DUPLICATE && c[0].applied==2;
+  #assert term_apply(c[..],tf_out(4))==TA_LOST && c[0].applied==2;
+  #assert term_apply(c[..],TermFrame.{type=TF_DETACHED})==TA_DETACHED && c[0].applied==2;
+  #assert term_apply(c[..],tf_out(3))==TA_APPLIED;
+  #assert term_apply(c[..],TermFrame.{type=TF_EXIT,seq=4})==TA_EXIT && c[0].complete && c[0].applied==4;
+  #assert term_apply(c[..],tf_out(5))==TA_COMPLETE && term_apply(c[..],TermFrame.{type=TF_DETACHED})==TA_COMPLETE;
+}
+#test "gaps: the discarded range moves the applied number" {
+  c:=[1]TermClient.[TermClient.{applied=2}];
+  #assert term_apply(c[..],TermFrame.{type=TF_GAP,from=4,to=9})==TA_LOST && c[0].applied==2;
+  #assert term_apply(c[..],TermFrame.{type=TF_GAP,from=1,to=2})==TA_DUPLICATE;
+  #assert term_apply(c[..],TermFrame.{type=TF_GAP,from=3,to=9})==TA_GAP && c[0].applied==9;
+  #assert term_apply(c[..],tf_out(10))==TA_APPLIED;
+  d:=[1]TermClient.[TermClient.{applied=5}];
+  #assert term_apply(d[..],TermFrame.{type=TF_GAP,from=2,to=6})==TA_GAP && d[0].applied==6;
+  #assert term_apply(d[..],TermFrame.{type=TF_GAP,from=7,to=7})==TA_GAP && d[0].applied==7;
+  #assert term_apply(d[..],TermFrame.{type=TF_GAP,from=0,to=9})==TA_MALFORMED;
+  #assert term_apply(d[..],TermFrame.{type=TF_GAP,from=8,to=7})==TA_MALFORMED && d[0].applied==7;
+}
+#test "malformed frames" {
+  c:=[1]TermClient.[TermClient.{}];
+  #assert term_apply(c[..],tf_out(0))==TA_MALFORMED && term_apply(c[..],tf_out(-1))==TA_MALFORMED;
+  #assert term_apply(c[..],TermFrame.{type=4,seq=1})==TA_MALFORMED && term_apply(c[..],TermFrame.{type=-1,seq=1})==TA_MALFORMED;
+  #assert c[0].applied==0 && !c[0].complete;
+}
+#test "frames retained out of order sort into the order they apply in" {
+  f:=[5]TermFrame.[TermFrame.{type=TF_DETACHED},tf_out(5),TermFrame.{type=TF_EXIT,seq=6},TermFrame.{type=TF_GAP,from=1,to=4},tf_out(5)];
+  term_order(f[..]);
+  #assert f[0].type==TF_DETACHED && f[1].type==TF_GAP && f[2].seq==5 && f[3].seq==5 && f[4].type==TF_EXIT;
+  c:=[1]TermClient.[TermClient.{}];
+  r:=[5]u32.[TA_DETACHED,TA_GAP,TA_APPLIED,TA_DUPLICATE,TA_EXIT];
+  for i:0..<5 {#assert term_apply(c[..],f[i])==r[i];}
+  g:=[3]TermFrame.[tf_out(3),tf_out(1),tf_out(2)];term_order(g[..]);
+  #assert g[0].seq==1 && g[1].seq==2 && g[2].seq==3;
+  h:=[4]TermFrame.[tf_out(2),tf_out(3),tf_out(4),tf_out(1)];term_order(h[..]);
+  #assert h[0].seq==1 && h[1].seq==2 && h[2].seq==3 && h[3].seq==4;
+  one:=[1]TermFrame.[tf_out(7)];term_order(one[..]);#assert one[0].seq==7;
+  // Equal keys keep their arrival order.
+  eq:=[2]TermFrame.[TermFrame.{type=TF_GAP,from=3,to=4},tf_out(3)];term_order(eq[..]);
+  #assert eq[0].type==TF_GAP && eq[1].type==TF_OUTPUT;
+  eq=[2]TermFrame.[tf_out(3),TermFrame.{type=TF_GAP,from=3,to=4}];term_order(eq[..]);
+  #assert eq[0].type==TF_OUTPUT && eq[1].type==TF_GAP;
+  // A detached frame sorts before the first gap.
+  eq=[2]TermFrame.[TermFrame.{type=TF_GAP,from=1,to=4},TermFrame.{type=TF_DETACHED}];term_order(eq[..]);
+  #assert eq[0].type==TF_DETACHED && eq[1].type==TF_GAP;
+}
