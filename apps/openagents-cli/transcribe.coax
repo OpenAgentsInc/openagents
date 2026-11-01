@@ -2,14 +2,17 @@
 // text, SRT, WebVTT or JSON. Design: psionic/docs/transcribe.md.
 //   openagents transcribe FILE [--model tiny|base|small|medium|large-v3|large-v3-turbo]
 //                              [--language en|auto|CODE] [--text|--srt|--vtt|--json]
-//                              [--backend whispercpp] [--threads N]
+//                              [--backend whispercpp|psionic] [--threads N]
 //   openagents transcribe models          the cached models
 //   openagents transcribe fetch MODEL     downloads one to ~/.cache/openagents/models/whisper
-// Backends. The target is Psionic's own Whisper (psionic/lib/whisper/),
-// which does not run end to end yet. Until it does, the only backend is the
-// interim one, whisper.cpp's whisper-cli (Homebrew: brew install
-// whisper-cpp), on the same ggml model files Psionic reads. It is removed
-// when Psionic matches it (#12621, #12623).
+// Backends, on the same ggml model files:
+// - psionic: Psionic's own Whisper (psionic/lib/whisper/), the psionic-whisper
+//   host built from this checkout on first use (psionic/platform/whisper-build.sh).
+//   Greedy decoding, English and named languages; no beam search or
+//   language detection yet (#12619).
+// - whispercpp: the interim default, whisper.cpp's whisper-cli (Homebrew:
+//   brew install whisper-cpp). It is removed when Psionic matches it with
+//   beam search (#12621, #12623).
 // Decoding: ffmpeg turns any audio or video into 16 kHz mono 16-bit WAV.
 // Firm reason: 6 (no Coax decoder for compressed audio and video
 // containers yet); it is one program call, and the WAV it writes is all
@@ -17,11 +20,15 @@
 #load "transcribe-rules.coax";
 
 TR_HF :: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-";
+// What psionic-whisper is built from; a newer one rebuilds it.
+TR_ENGINE_SOURCES :: [8] string.["psionic/lib/whisper/engine.coax", "psionic/lib/whisper/front.coax", "psionic/lib/whisper/ggml.coax",
+  "psionic/lib/whisper/tokens.coax", "psionic/lib/whisper/segments.coax", "psionic/lib/spectral.coax",
+  "psionic/platform/whisper-face.c", "psionic/platform/whisper-build.sh"];
 
 transcribe_usage :: () {
   print("%\n", "Transcribe (speech to text, on this computer):");
   print("%\n", "  transcribe FILE [--model tiny|base|small|medium|large-v3|large-v3-turbo] [--language en|auto|CODE]");
-  print("%\n", "                  [--text|--srt|--vtt|--json] [--backend whispercpp] [--threads N]");
+  print("%\n", "                  [--text|--srt|--vtt|--json] [--backend whispercpp|psionic] [--threads N]");
   print("%\n", "                                     audio or video; base and English by default");
   print("%\n", "  transcribe models                  the models in ~/.cache/openagents/models/whisper");
   print("%\n", "  transcribe fetch MODEL             downloads a model (transcribe fetches one it needs)");
@@ -48,6 +55,26 @@ tr_model_path :: (name: string, out: [] u8) -> string {
 tr_program :: (env_name: string, name: string, out: [] u8) -> string {
   s := proc_getenv(env_name, out);
   return ifx s.count > 0 then s else name;
+}
+
+// psionic-whisper in this checkout's psionic/build/whisper, built when it is
+// missing or older than a source; "" when there is no checkout or the build fails.
+tr_engine :: (out: [] u8) -> string {
+  sr: [1024] u8; root := source_root(sr[..]);
+  if root == "" { return ""; }
+  d: [1100] u8; dir := fs_join(root, "psionic/build/whisper", d[..]);
+  bin := fs_join(dir, "psionic-whisper", out);
+  built := fs_mtime_ns(bin);
+  stale := built < 0;
+  for src: TR_ENGINE_SOURCES { q: [1200] u8; if fs_mtime_ns(fs_join(root, src, q[..])) > built { stale = true; } }
+  if !stale { return bin; }
+  tool_errln("transcribe: building psionic-whisper (psionic/platform/whisper-build.sh)");
+  sb: [1200] u8; script := fs_join(root, "psionic/platform/whisper-build.sh", sb[..]);
+  argv := [3] string.["bash", script, dir];
+  o: [4096] u8; e: [8192] u8;
+  got := proc_run(argv[..], 600000, o[..], e[..]);
+  if got.started != 0 || got.status != 0 { if got.err_n > 0 { tool_err(cast(string) e[0..<got.err_n]); } return ""; }
+  return bin;
 }
 
 // Downloads ggml-NAME.bin to the cache through a .part file. 0, or an exit code.
@@ -112,8 +139,13 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   format := tr_format(args_has(a, "--text"), args_has(a, "--srt"), args_has(a, "--vtt"), r[0].json);
   if format < 0 { return fail(r, EXIT_USAGE, "pick one of --text, --srt, --vtt and --json"); }
   backend := args_value(a, "--backend", "whispercpp");
-  if backend == "psionic" { return fail(r, EXIT_FAIL, "Psionic's Whisper does not run end to end yet (#12623); use --backend whispercpp"); }
-  if backend != "whispercpp" { return fail(r, EXIT_USAGE, "--backend is whispercpp (psionic when it lands)"); }
+  if backend != "whispercpp" && backend != "psionic" { return fail(r, EXIT_USAGE, "--backend is whispercpp or psionic"); }
+  if backend == "psionic" && language == "auto" { return fail(r, EXIT_USAGE, "the psionic backend does not detect languages yet (#12619); name one with --language"); }
+  eb: [1100] u8; engine := "";
+  if backend == "psionic" {
+    engine = tr_engine(eb[..]);
+    if engine == "" { return fail(r, EXIT_FAIL, "cannot build psionic-whisper from this checkout (psionic/platform/whisper-build.sh)"); }
+  }
   threads := args_value(a, "--threads", "8");
   if text_int(threads) < 1 || text_int(threads) > 64 { return fail(r, EXIT_USAGE, "--threads is 1 to 64"); }
 
@@ -137,6 +169,30 @@ transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   }
 
   run_: [1] TrRun; run := run_[..];
+  lang0 := ifx language == "" then "en" else language;
+  if backend == "psionic" {
+    flag := "--text";
+    if format == cast(int) TrFormat.srt { flag = "--srt"; } else if format == cast(int) TrFormat.vtt { flag = "--vtt"; } else if format == cast(int) TrFormat.json { flag = "--json"; }
+    pv := [11] string.[engine, "transcribe", model, wav, flag, "--language", lang0, "--threads", threads, "--name", name];
+    t0 := proc_now_ms();
+    got = proc_run(pv[..], 900000, run[0].out[..], err[..]);
+    ms := proc_now_ms() - t0;
+    rm := fs_remove(tmp);
+    if got.started != 0 || got.status != 0 || got.timed_out {
+      if got.err_n > 0 { tool_err(cast(string) err[0..<got.err_n]); }
+      return fail(r, EXIT_FAIL, "psionic-whisper failed");
+    }
+    if got.cut { return fail(r, EXIT_FAIL, "the transcript is longer than this build holds (4 MB)"); }
+    out := cast(string) run[0].out[0..<got.out_n];
+    print("%", out);
+    if out.count > 0 && out[out.count - 1] != '\n' { print("\n"); }
+    if format != cast(int) TrFormat.json {
+      sec: [24] u8;
+      tool_err("transcribe: "); tool_err(name); tool_err(" on Psionic, ");
+      tool_err(int_text(ms, sec[..])); tool_errln(" ms");
+    }
+    return EXIT_OK;
+  }
   wc: [1024] u8; whisper := tr_program("OPENAGENTS_WHISPER_CLI", "whisper-cli", wc[..]);
   lang := ifx language == "" then "en" else language;
   argv := [10] string.[whisper, "-m", model, "-f", wav, "-np", "-t", threads, "-l", lang];

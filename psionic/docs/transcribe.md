@@ -1,9 +1,12 @@
 # Transcription: Whisper in Psionic
 
-Status, 2026-11-01: the command line works on an interim whisper.cpp
-backend. Psionic's own Whisper has its pure parts (log-mel front end, model
-file reader, special tokens, segment output) with checks; the encoder and
-decoder are next. Tracking issue:
+Status, 2026-11-01: Psionic's Whisper transcribes end to end on the CPU
+(`openagents transcribe FILE --backend psionic`). With greedy decoding it
+writes the same text and timestamps as whisper.cpp on our fixtures, and it
+runs about 2× slower than whisper.cpp. Beam search, language detection and
+the oracle harness come next. The default backend is still the interim
+whisper.cpp one, because whisper.cpp's default beam search hears names
+better. Tracking issue:
 [#12614](https://github.com/OpenAgentsInc/openagents/issues/12614).
 
 Speech to text is a primitive of the stack. You call it the same way
@@ -107,8 +110,8 @@ GGUF: the magic, eleven hyperparameters, the mel filters, the vocabulary,
 then each tensor's rank, name, type, sizes and data with no padding. The
 reader checks every length against the mapped bytes and refuses anything
 else with a typed status. The host maps the file; Coax only reads views.
-f16 is decoded to f32 per row as the products need it. q8_0 and q5 come
-after f16 parity.
+f16 is decoded exactly to f32 once, at load, into the host's weight arena.
+The decoder is checked on all 65,536 bit patterns. q8_0 and q5 come next.
 
 ## Coax module layout
 
@@ -117,18 +120,20 @@ after f16 parity.
 | `psionic/lib/whisper/segments.coax` | segments; text, SRT, WebVTT, JSON writers | done, checked |
 | `psionic/lib/whisper/ggml.coax` | the model file reader: hyperparameters, filters, vocabulary, tensors | done, checked |
 | `psionic/lib/whisper/tokens.coax` | special ids, languages, timestamps, window prompts | done, checked |
-| `psionic/lib/whisper/front.coax` | Whisper's log-mel on `spectral.coax`; two passes, bounded memory | done, checked; parity next |
-| `psionic/lib/whisper/wav.coax` | WAV (PCM 16, float 32, extensible) to mono f32; a resampler | next |
-| `psionic/lib/whisper/encoder.coax` | convolution stem, blocks | next |
-| `psionic/lib/whisper/decoder.coax` | blocks, the key and value cache, cross-attention, logits | next |
-| `psionic/lib/whisper/search.coax` | logit rules, greedy, beam, fallback, seek | next |
-| `psionic/lib/whisper/engine.coax` | `#export_c` entry points for the host: load, transcribe a window, a file | next |
-| `psionic/platform/whisper-face.c` | the host: maps files, owns threads and memory, calls the exports | next |
-| `psionic/tests/whisper_oracle.c` | the oracle: links libwhisper, writes reference logits and transcripts | next |
+| `psionic/lib/whisper/front.coax` | Whisper's log-mel on `spectral.coax`; a frame cache, or two passes in bounded memory | done, checked |
+| `psionic/lib/whisper/engine.coax` | f16 weights, tensor names and sizes, the encoder, the decoder and its caches, greedy search with whisper.cpp's logit rules, seek and segments, and the `#export_c` entry points | runs end to end; greedy only |
+| `psionic/platform/whisper-face.c` | the host: maps files, owns memory and threads, calls the exports (`psionic-whisper info`, `filters`, `transcribe`) | done |
+| `psionic/platform/whisper-build.sh` | builds `psionic-whisper` into `psionic/build/whisper` | done |
+| `psionic/lib/whisper/wav.coax` | WAV (PCM 16, float 32, extensible) to mono f32; a resampler | next (#12615) |
+| `psionic/lib/whisper/search.coax` | beam search, temperature fallback, language detection, the previous-text prompt | next (#12619, #12620) |
+| `psionic/tests/whisper_oracle.c` | the oracle: links libwhisper, writes reference logits and transcripts | next (#12621) |
 
-Coax has no threads yet. The host owns them, as with chapter 35's
-`cores.coax`: each worker calls an exported procedure on a fixed run of
-rows, and the result is the same for every worker count.
+Coax has no threads yet. The host owns them, as chapter 35's `cores.coax`
+does. Each heavy kernel (products, attention, the convolution stem, mel
+frames) is a foreign `cxwh_*` call. The host splits it into fixed ranges and
+calls the matching `psionic_whisper_*_part` export once per range. Each
+output element belongs to one range, so the transcript is byte-identical
+for 1, 8 and 16 threads.
 
 ## Command line
 
@@ -154,12 +159,16 @@ openagents transcribe fetch MODEL
 - Code: `apps/openagents-cli/transcribe.coax` (effects) and
   `transcribe-rules.coax` (pure, checked).
 
-**The interim backend.** Until Psionic runs end to end,
-`--backend whispercpp` (the only backend today, and the default) runs
-whisper.cpp's `whisper-cli` on the same cached ggml file. It is labelled
-interim in the status line and in the JSON. It is removed in the same change
-that lands Psionic parity: issue
-[#12623](https://github.com/OpenAgentsInc/openagents/issues/12623).
+**Backends.** Both read the same cached ggml file.
+
+- `--backend psionic` runs `psionic-whisper`, which the CLI builds from its
+  checkout on first use, and again when a source is newer. It decodes
+  greedily, so `--language auto` is refused until language detection lands.
+- `--backend whispercpp` is the interim default. It runs whisper.cpp's
+  `whisper-cli`, and is labelled interim in the status line and the JSON.
+  It is removed in the change that makes Psionic the default, once beam
+  search matches (issue
+  [#12623](https://github.com/OpenAgentsInc/openagents/issues/12623)).
 
 ## Engine API for in-game voice
 
@@ -169,22 +178,25 @@ resamples it to 16 kHz, detects speech and ends a turn. The voice host
 `speech_recognize`. Today that is Google's Chirp 3, or a stand-in
 `PROVIDER_LOCAL` sentence.
 
-Psionic becomes a third provider, `PROVIDER_PSIONIC`:
+Psionic becomes a third provider, `PROVIDER_PSIONIC` (#12622):
 
 ```c
 // verse/voice-host/speech.c
 bool speech_recognize(speech_provider p, const int16_t *pcm, size_t n, char *out, size_t cap, char *err, size_t errcap);
-//   p == PROVIDER_PSIONIC: psionic_whisper_pcm16(model, pcm, n, language, out, cap) through
-//   psionic/platform/whisper-face.c, with the model mapped once at startup.
+//   p == PROVIDER_PSIONIC: the turn's samples as f32, then psionic_whisper_transcribe,
+//   with the model mapped and its weights loaded once at startup.
 ```
 
 Exported from `psionic/lib/whisper/engine.coax` (all views; the host owns
 memory):
 
 ```text
-psionic_whisper_open(file: []u8, tensors: []WgTensor, work: []f32) -> WgModel
-psionic_whisper_window(model, mel: []f32, prompt: []int, options, out: []WsSegment, text: []u8) -> status
-psionic_whisper_pcm16(model, pcm: []s16, language, options, out: []WsSegment, text: []u8) -> status
+psionic_whisper_read(file: []u8, tensors: []WgTensor) -> WgModel                 // the file's directory
+psionic_whisper_net(file, model, tensors, offsets: []int, ctx: int) -> WeNet     // names, sizes, the work layout
+psionic_whisper_load(file, tensors, count, offsets, W: []f32) -> WeStatus        // weights as f32
+psionic_whisper_transcribe(net, W, work, file, model, bank, audio: []f32, cache: []f32,
+                           language: int, segs: []WsSegment, text: []u8) -> WeRun
+psionic_whisper_format(segs, format, model, language, out: []u8) -> int
 ```
 
 - Turns are at most 30 s, the voice engine's maximum turn length, so a turn
@@ -222,6 +234,29 @@ With Metal, `base.en` takes 191 ms in total. GPUs in the cloud are off for
 budget, so the first Psionic target is this machine's CPU. Metal follows,
 using the backend from chapters 47 and 72.
 
+Measured 2026-11-01, Apple M5 Max, CPU only. Both backends use the same
+ggml files and greedy decoding (`whisper-cli -ng -bs 1 -bo 1`), and every
+time includes loading the model:
+
+| Model | Audio | Psionic text vs whisper.cpp | Psionic, 8 threads | whisper.cpp, 8 threads | Psionic, 16 threads | whisper.cpp, 16 threads |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| `tiny.en` | `jfk.wav`, 11.0 s | identical, timestamps too | 537 ms | 267 ms | 373 ms | |
+| `base.en` | `jfk.wav`, 11.0 s | identical, timestamps too | 1,078 ms | 487 ms | 738 ms | 404 ms |
+| `tiny.en` | `say` clip, 8.2 s | identical, timestamps too | 619 ms | 243 ms | | |
+| `base.en` | `say` clip, 8.2 s | one comma differs; timestamps identical | 1,175 ms | 478 ms | | |
+
+- Mel filters: our binary64 Slaney filters are within 1.3e-9 of the f32
+  filters stored in `ggml-tiny.en.bin` and `ggml-base.en.bin`
+  (`psionic-whisper filters MODEL`).
+- Word error rate: 0 for both backends on these fixtures, after removing
+  punctuation. Both models write "Psionic" as "Sionic" with greedy
+  decoding. whisper.cpp's default beam search gets it right with
+  `base.en`, which is why beam search is next.
+- Speed: Psionic takes 2.0 to 2.5× whisper.cpp's time at 8 threads, and
+  1.8× at 16. The first run after a reboot also pays for reading the
+  model from disk (up to 0.2 s). whisper.cpp uses Accelerate's matrix units; our products are
+  plain Coax loops with bounds checks.
+
 Fixtures are public domain or generated: whisper.cpp's `jfk.wav` (a
 public-domain speech, 11 s) and clips made with macOS `say` from a fixed
 script, including the names Psionic, Coax, Verse and Aethyr. WER uses the
@@ -234,7 +269,12 @@ coax/bin/coax test psionic/lib/whisper/segments.coax --library
 coax/bin/coax test psionic/lib/whisper/ggml.coax --library
 coax/bin/coax test psionic/lib/whisper/tokens.coax --library
 coax/bin/coax test psionic/lib/whisper/front.coax --library
+coax/bin/coax test psionic/lib/whisper/engine.coax --library
 coax/bin/coax test apps/openagents-cli/transcribe-rules.coax --library
+psionic/platform/whisper-build.sh            # psionic/build/whisper/psionic-whisper
+psionic/build/whisper/psionic-whisper filters ~/.cache/openagents/models/whisper/ggml-base.en.bin
+psionic/build/whisper/psionic-whisper transcribe ~/.cache/openagents/models/whisper/ggml-base.en.bin \
+  /opt/homebrew/share/whisper-cpp/jfk.wav --srt
 ```
 
 ## Issues

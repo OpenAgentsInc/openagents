@@ -5,7 +5,7 @@
  *   psionic/platform/whisper-build.sh OUT
  *   OUT/psionic-whisper info MODEL
  *   OUT/psionic-whisper filters MODEL
- *   OUT/psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json] [--language CODE] [--threads N]
+ *   OUT/psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json] [--language CODE] [--threads N] [--name NAME]
  * WAV is 16 kHz mono 16-bit PCM (`ffmpeg -i IN -ar 16000 -ac 1 OUT.wav`).
  * Design: psionic/docs/transcribe.md. */
 #include "whisper.h"
@@ -87,7 +87,7 @@ static coax_v_u8 map(const char *path) {
 }
 static int usage(void) {
     fputs("usage: psionic-whisper info|filters MODEL\n"
-          "       psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json] [--language CODE] [--threads N]\n", stderr);
+          "       psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json] [--language CODE] [--threads N] [--name NAME]\n", stderr);
     return 64;
 }
 
@@ -116,13 +116,14 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (strcmp(cmd, "transcribe") != 0 || argc < 4) return usage();
-    int format = 0; const char *lang = "en"; long ctx = p.n_audio_ctx;
+    int format = 0; const char *lang = "en", *name_arg = 0; long ctx = p.n_audio_ctx;
     for (int i = 4; i < argc; i++) {
         if (strcmp(argv[i], "--text") == 0) format = 0;
         else if (strcmp(argv[i], "--srt") == 0) format = 1;
         else if (strcmp(argv[i], "--vtt") == 0) format = 2;
         else if (strcmp(argv[i], "--json") == 0) format = 3;
         else if (strcmp(argv[i], "--language") == 0 && i + 1 < argc) lang = argv[++i];
+        else if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) name_arg = argv[++i];
         else if (strcmp(argv[i], "--threads") == 0 && i + 1 < argc) g_threads = (int)strtol(argv[++i], 0, 10);
         else return usage();
     }
@@ -155,7 +156,7 @@ int main(int argc, char **argv) {
                                                   (coax_v_t_WsSegment){segs, SEGMENTS}, (coax_v_u8){text, (int64_t)text_cap});
     double t_end = now_ms();
     if (run.status != COAX_WeStatus_ok) { fprintf(stderr, "psionic-whisper: transcribe (status %d)\n", (int)run.status); return 1; }
-    const char *name = strrchr(argv[2], '/'); name = name ? name + 1 : argv[2];
+    const char *name = strrchr(argv[2], '/'); name = name_arg ? name_arg : name ? name + 1 : argv[2];
     int64_t n = psionic_whisper_format((coax_v_t_WsSegment){segs, run.segments}, format, (coax_string){name, (int64_t)strlen(name)},
                                        (coax_string){lang, (int64_t)strlen(lang)}, (coax_v_u8){out, (int64_t)text_cap * 2});
     if (n < 0) { fputs("psionic-whisper: output too long\n", stderr); return 1; }
