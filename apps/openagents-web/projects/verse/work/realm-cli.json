@@ -1,0 +1,90 @@
+{
+ "v": "openagents.project-work-seed.v1",
+ "project": "verse",
+ "initiative": {
+  "slug": "realm-cli",
+  "title": "Edit realms from the command line",
+  "body": "Aethyrforge's programmatic surface: `openagents realm ...` makes and edits realms through the same routes, SQL rules and forge edit operations as the page, so Claude Code and other agents can build realms. Plan: docs/cli/2026-11-01-openagents-cli-v1.md, 'The realm domain'. Needs the Coax project's cli-account milestone (NIP-98 as the caller).",
+  "spec": "docs/cli/2026-11-01-openagents-cli-v1.md",
+  "labels": [
+   "cli",
+   "aethyrforge"
+  ]
+ },
+ "milestones": [
+  {
+   "slug": "realm-cli-v1",
+   "title": "Make, read and edit a realm from the CLI",
+   "body": "List, show, make, edit, batch, shoot and publish.",
+   "parent": "realm-cli"
+  }
+ ],
+ "tasks": [
+  {
+   "slug": "api-realms-mine",
+   "parent": "realm-cli-v1",
+   "title": "GET /api/playtest/realms/mine",
+   "size": "S",
+   "labels": [
+    "api",
+    "realms"
+   ],
+   "body": "The caller's realms (player key, account or NIP-98 key): slug, name, rev, published rev, listed, as lines and JSON.",
+   "files": [
+    "coax/web/api/realms.c",
+    "coax/web/api/migrations/"
+   ],
+   "acceptance": [
+    "a Coax API test covers an owner with realms, one with none, and a guest key"
+   ],
+   "blocked_by": [],
+   "blocks": []
+  },
+  {
+   "slug": "cli-realm-read",
+   "parent": "realm-cli-v1",
+   "title": "openagents realm list, show, doc, asks, proposals, panes, open, shot",
+   "size": "M",
+   "labels": [
+    "cli",
+    "realms"
+   ],
+   "body": "Read verbs over the HTTPS client, signed with NIP-98. `realm shot SLUG OUT.png [--phone]` uses coax/web/shot.coax (headless, muted).",
+   "files": [
+    "apps/openagents-cli/realm.coax"
+   ],
+   "acceptance": [
+    "openagents realm show everglade prints the spec lines",
+    "openagents realm shot <a made realm> out.png writes a lit PNG at 1440x900"
+   ],
+   "blocked_by": [
+    "api-realms-mine"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "cli-realm-edit",
+   "parent": "realm-cli-v1",
+   "title": "openagents realm new, make, revise, switch, ask, move, place, settings, lore, quest, accept, decline, undo, publish, fork, apply",
+   "size": "L",
+   "labels": [
+    "cli",
+    "realms",
+    "aethyrforge"
+   ],
+   "body": "Every edit names a revision (read first, or --rev N); 409 exits 5 with `rev N`. `realm move` merges the move with aethyr/forge/edit.coax's operations. `realm apply SLUG FILE` runs JSON-lines ops, consecutive moves as one save. A cli-journey check like forge-journey: make, move, stale save (exit 5), undo, publish, fork.",
+   "files": [
+    "apps/openagents-cli/realm.coax",
+    "coax/web/tool.sh"
+   ],
+   "acceptance": [
+    "the cli-journey check passes against staging with a test account",
+    "a realm made and edited by Claude Code through the CLI is published and shows the edits in a headless shot"
+   ],
+   "blocked_by": [
+    "cli-realm-read"
+   ],
+   "blocks": []
+  }
+ ]
+}

@@ -1,0 +1,303 @@
+{
+ "v": "openagents.project-work-seed.v1",
+ "project": "coax",
+ "initiative": {
+  "slug": "openagents-cli",
+  "title": "The openagents command line, in Coax",
+  "body": "One native `openagents` binary (apps/openagents-cli) that people and agents use for their account, the project queue, Pylons, Nostr and realms. The first slice shipped 2026-11-01 (57442f33be): a NIP-06 identity in the Keychain, event signing, NIP-98 headers, and pylon start/stop/status/logs. These tasks finish v1.0.0: the project queue from the CLI, Pylon links and listing, account login, and the agent surfaces (skill, MCP). Realm editing is the Verse project's `realm-cli` initiative.",
+  "spec": "docs/cli/2026-11-01-openagents-cli-v1.md",
+  "labels": [
+   "cli"
+  ]
+ },
+ "milestones": [
+  {
+   "slug": "cli-foundations",
+   "title": "The CLI talks to relays and HTTPS",
+   "body": "Domain files, TLS, a relay client and an HTTPS client the domains share.",
+   "parent": "openagents-cli"
+  },
+  {
+   "slug": "cli-project",
+   "title": "The project queue from the CLI",
+   "body": "Everything coax/web/project/publish.ts does, in Coax, as `openagents project ...`. No TypeScript in the flow: publish.ts, its helpers and QUEUE.md's bun steps are deleted when the CLI covers them.",
+   "parent": "openagents-cli"
+  },
+  {
+   "slug": "cli-pylon",
+   "title": "Pylons linked to their person, and listed",
+   "body": "NIP-XP key links (13195) and trainer profiles (13193) from the join and the CLI, and the network's Pylons from their signed beacons.",
+   "parent": "openagents-cli"
+  },
+  {
+   "slug": "cli-account",
+   "title": "Log in to openagents.com from the CLI",
+   "body": "The server takes a NIP-98-signed request as its key's account; the CLI logs in by browser approval and acts as the account.",
+   "parent": "openagents-cli"
+  },
+  {
+   "slug": "cli-agents",
+   "title": "Agents use the CLI as a skill and over MCP",
+   "body": "One command table drives the parser, help, a generated SKILL.md and an MCP stdio server.",
+   "parent": "openagents-cli"
+  }
+ ],
+ "tasks": [
+  {
+   "slug": "cli-relay",
+   "parent": "cli-foundations",
+   "title": "CLI domain files, TLS and a relay client",
+   "size": "M",
+   "labels": [
+    "cli",
+    "nostr"
+   ],
+   "body": "Split apps/openagents-cli/main.coax into per-domain files (nostr.coax, pylon.coax, shared report/args in out.coax) so domains can be worked on apart. Link coax/platform/socket-native.c and tls-native.c (coax/platform/tls-env.sh, as psionic/platform/pylon-build.sh does). Add apps/openagents-cli/relay.coax over coax/lib/net/relay_conn.coax and coax/lib/nostr/relay.coax: connect ws:// or wss://, answer NIP-42 AUTH with the profile's key, REQ a filter and collect verified events until EOSE (bounded count and time), and publish an EVENT and wait for its OK. Add `openagents nostr publish --content TEXT [--kind N] [--relay URL]` and `openagents nostr req FILTER-JSON [--relay URL] [--limit N]` on it.",
+   "files": [
+    "apps/openagents-cli/"
+   ],
+   "acceptance": [
+    "apps/openagents-cli/build.sh && apps/openagents-cli/build/openagents nostr publish --content test --kind 1 --relay wss://relay.openagents.com prints ok 1 and the event id",
+    "apps/openagents-cli/build/openagents nostr req '{\"ids\":[\"<that id>\"]}' prints that event, verified",
+    "coax/bin/coax test apps/openagents-cli/rules.coax --library passes and coax/bin/coax mutate on it has 0 survivors"
+   ],
+   "blocked_by": [],
+   "blocks": []
+  },
+  {
+   "slug": "cli-http",
+   "parent": "cli-foundations",
+   "title": "An HTTPS client in Coax",
+   "size": "M",
+   "labels": [
+    "cli",
+    "net"
+   ],
+   "body": "coax/lib/net/http.coax: HTTP/1.1 GET and POST over socket-native.c and tls-native.c with headers, Content-Length and chunked bodies, at most 5 redirects, a deadline per request and a bounded body. Pure parsing (status line, headers, chunked decoding) with #test vectors; the effectful client checked against a local server and openagents.com. tools-in-coax.md lists it as blocking other ports.",
+   "files": [
+    "coax/lib/net/http.coax",
+    "coax/lib/net/README.md",
+    "apps/openagents-cli/"
+   ],
+   "acceptance": [
+    "coax/bin/coax test coax/lib/net/http.coax --library passes, including chunked and malformed-response vectors",
+    "apps/openagents-cli/build/openagents with a hidden `http GET https://openagents.com/api/playtest/access` prints the status and body"
+   ],
+   "blocked_by": [
+    "cli-relay"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "cli-project-read",
+   "parent": "cli-project",
+   "title": "Read a project's queue from the CLI",
+   "size": "M",
+   "labels": [
+    "cli",
+    "projects"
+   ],
+   "body": "`openagents project list [--project SLUG]`, `project show SLUG|#alias`, `project plan SLUG`: REQ the project's events from its relay (project.json), verify them, fold them with apps/openagents-web/project-fold.coax (the page's fold) and print the queue as `bun publish.ts list` does: in progress (on:NAME), ready by rank, waiting, done with commit. `--json` for agents.",
+   "files": [
+    "apps/openagents-cli/project.coax"
+   ],
+   "acceptance": [
+    "openagents project list --project coax prints the same tasks, in the same order and states, as the /projects/coax page shows for the same relay state",
+    "openagents project show <a task> prints its body, acceptance checks, claim, plan and notes"
+   ],
+   "blocked_by": [
+    "cli-relay"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "cli-project-write",
+   "parent": "cli-project",
+   "title": "Work the queue from the CLI: claim, plan, notes, done",
+   "size": "M",
+   "labels": [
+    "cli",
+    "projects"
+   ],
+   "body": "claim --by NAME, release, note TEXT [--by NAME], plan set|add|start|check|uncheck|drop|file, done --commit HASH (refused unless HASH is a full hash that `git merge-base --is-ancestor HASH origin/main` accepts), status open|resolved|closed|draft, move --before|--after: each signed with the project key (default ~/work/.secrets/openagents-project-SLUG.key, `--key FILE`) exactly as publish.ts signs them (model.ts tags), published with the relay client. Update coax/web/project/QUEUE.md to the CLI commands.",
+   "files": [
+    "apps/openagents-cli/project.coax",
+    "coax/web/project/QUEUE.md"
+   ],
+   "acceptance": [
+    "a claim, plan, note, release made with the CLI on a test task show on https://openagents.com/projects/coax within seconds and in `openagents project show`",
+    "done with a short or unpushed hash is refused"
+   ],
+   "blocked_by": [
+    "cli-project-read"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "cli-project-publish",
+   "parent": "cli-project",
+   "title": "Publish work files from the CLI and retire publish.ts",
+   "size": "L",
+   "labels": [
+    "cli",
+    "projects"
+   ],
+   "body": "`openagents project publish [--project SLUG] [--dry-run]`: read projects/SLUG/work/*.json (seed and work schemas), fold the relay, and publish only what changed: new issues, kind-1111 revisions, statuses and the 30623 order, with rank.ts's rules (respread, rebalance, tag limit). Same events as publish.ts on the same inputs; then delete publish.ts and its tests in the commit that moves callers (tools-in-coax.md).",
+   "files": [
+    "apps/openagents-cli/project.coax",
+    "coax/web/project/",
+    "coax/tools-port.txt"
+   ],
+   "acceptance": [
+    "openagents project publish --dry-run --project coax plans no change on the current relay state (everything publish.ts published folds back identically)",
+    "a new test task in a work file appears on the page after `openagents project publish`, and a second run publishes nothing"
+   ],
+   "blocked_by": [
+    "cli-project-write"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "pylon-trainer-link",
+   "parent": "cli-pylon",
+   "title": "Link a Pylon to your identity with NIP-XP key links",
+   "size": "M",
+   "labels": [
+    "pylon",
+    "nostr",
+    "xp"
+   ],
+   "body": "Per docs/web-log-in.md 'Linking a Pylon to its person' and NIP-XP: scripts/join-pylon.sh --trainer NPUB, and psionic/lib/pylon/run.coax publishes the key link (13195) {v:1,requires:[],type:link,trainer:HEX} once online. `openagents pylon start` passes --trainer with your profile's npub by default (`--no-link` skips). `openagents pylon claim` publishes your trainer profile (13193) listing the running Pylon's key (keeping keys already listed, at most 16); `pylon unclaim` drops it.",
+   "files": [
+    "scripts/join-pylon.sh",
+    "psionic/lib/pylon/run.coax",
+    "apps/openagents-cli/pylon.coax"
+   ],
+   "acceptance": [
+    "coax/bin/coax test psionic/lib/pylon/run.coax --run-steps 250000000 passes with a check of the 13195 body",
+    "openagents pylon start --wait 120 then openagents pylon claim: the relay has the Pylon's 13195 naming your key and your 13193 listing the Pylon's key"
+   ],
+   "blocked_by": [
+    "cli-relay"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "cli-pylon-list",
+   "parent": "cli-pylon",
+   "title": "List the network's Pylons from their beacons",
+   "size": "S",
+   "labels": [
+    "pylon",
+    "cli"
+   ],
+   "body": "`openagents pylon list [--relay URL]`: REQ NIP-PYLON beacons, verify signatures and freshness as the homepage reader does (coax/web/project/landing-nostr.coax), and print slug, label, model identity, free slots, age and npub, newest first. `--mine` keeps Pylons linked to your profile.",
+   "files": [
+    "apps/openagents-cli/pylon.coax"
+   ],
+   "acceptance": [
+    "with a toy Pylon started by the CLI, openagents pylon list shows it with its slug and model psionic-toy"
+   ],
+   "blocked_by": [
+    "cli-relay"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "api-nip98-caller",
+   "parent": "cli-account",
+   "title": "The API takes a NIP-98-signed request as its key's account",
+   "size": "M",
+   "labels": [
+    "api",
+    "auth"
+   ],
+   "body": "coax/web/api: on every /api/playtest/realms route (and /api/auth/v2/me), a valid NIP-98 Authorization (kind 27235, URL, method, payload hash, 60 s, each id once) makes the caller auth.account_of(pubkey); X-Verse-Player keeps working. Ownership rules in SQL do not change. The Origin check stays. Tests are Coax programs over the CLI's HTTPS client (no new Python or TypeScript): an owner's signed save works, another key's is 403, a replay is refused, a changed body is refused. Update INVARIANTS.md if the auth invariant's wording changes. Deploy through the documented API path (staging first).",
+   "files": [
+    "coax/web/api/realms.c",
+    "coax/web/api/access.c",
+    "coax/web/api/tests/",
+    "INVARIANTS.md"
+   ],
+   "acceptance": [
+    "the Coax API tests for the NIP-98 caller pass against a local API and staging",
+    "on production, a CLI-signed GET /api/auth/v2/me answers the key's account"
+   ],
+   "blocked_by": [
+    "cli-http"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "api-device-login",
+   "parent": "cli-account",
+   "title": "Log the CLI in by approving it in the browser",
+   "size": "M",
+   "labels": [
+    "api",
+    "auth",
+    "web"
+   ],
+   "body": "POST /api/auth/v2/device/start (signed by the new key: machine name) -> {id, code}; GET /api/auth/v2/device/<id> (signed) -> waiting|approved account; /login/device#code= page in Coax (approve while logged in links the key as an identity, label cli:MACHINE); POST /api/auth/v2/unlink {pubkey}. Codes kept as SHA-256, 10 minutes, approved once, limits as invite redemption. Migration additive.",
+   "files": [
+    "coax/web/api/access.c",
+    "coax/web/api/migrations/",
+    "apps/openagents-web/"
+   ],
+   "acceptance": [
+    "Coax API tests cover start, approve, poll, expiry, reuse and unlink",
+    "the /login/device page has goldens for desktop and a 390 px phone"
+   ],
+   "blocked_by": [
+    "api-nip98-caller"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "cli-login",
+   "parent": "cli-account",
+   "title": "openagents login, logout, whoami and access",
+   "size": "M",
+   "labels": [
+    "cli",
+    "auth"
+   ],
+   "body": "`openagents login` (device approval: prints the link and a terminal QR from coax/lib/qr, polls), `login --words|--key-stdin` reuse the nostr identity, `logout` (unlink + forget), `whoami` adds the server's account and identities, `account keys`, `access`, `access redeem CODE`, `access request TEXT`. Profiles keep their origin (`--origin`, staging).",
+   "files": [
+    "apps/openagents-cli/account.coax"
+   ],
+   "acceptance": [
+    "a fresh profile runs openagents login, the owner approves in the browser, and openagents whoami prints the account",
+    "openagents --origin https://staging.openagents.com whoami works against staging"
+   ],
+   "blocked_by": [
+    "api-device-login"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "cli-skill-mcp",
+   "parent": "cli-agents",
+   "title": "A command table, a generated skill and an MCP server",
+   "size": "M",
+   "labels": [
+    "cli",
+    "agents"
+   ],
+   "body": "apps/openagents-cli/commands.coax: one row per command (domain, verb, args with bounds, flags, help). The parser and help read it; `openagents skill DOMAIN [--install]` writes a SKILL.md; `openagents mcp [--domains ...] [--read-only]` serves the rows as MCP tools over stdio (JSON-RPC 2.0: initialize, tools/list, tools/call), results are the --json output. A #test checks every row.",
+   "files": [
+    "apps/openagents-cli/commands.coax",
+    "apps/openagents-cli/mcp.coax",
+    "apps/openagents-cli/skill.coax"
+   ],
+   "acceptance": [
+    "`claude mcp add openagents -- apps/openagents-cli/build/openagents mcp` then Claude Code lists the tools and runs project list and nostr show through them",
+    "openagents skill project --install writes .claude/skills/openagents-project/SKILL.md"
+   ],
+   "blocked_by": [
+    "cli-project-write"
+   ],
+   "blocks": []
+  }
+ ]
+}
