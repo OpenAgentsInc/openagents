@@ -39,6 +39,13 @@ Commit: [`9e29938427cba24fd4fa6778812c216f2f3ad1f5`](https://github.com/OpenAgen
   140,348), and compiling the Fairy Forest page peaks at 376 MB (was 630
   MB). The bootstrap seeds lose their unused helpers; `coax test` and
   `coax mutate` still run every check.
+- Follow-up (#12611): a call reads a view argument for its storage when the
+  helper's result is a slice of an array in that argument's pointee, so
+  `ft(field(u))` compiles and `ft(field(a[..]))` on a local array is E0383.
+  Before, the first was E0381, which stopped the myrealm, realm, Fairy and
+  Everglade pages, and the second was accepted. A constant is one static
+  origin, and static origins that alone overflow a set collapse to one per
+  type.
 
 ## 0.45.0 — Bounded Storage Library — 2026-10-31
 

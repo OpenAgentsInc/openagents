@@ -65,3 +65,42 @@ The [follow-up static review](books/review.json) now verifies actual pushed
 capability bindings. Its [post-rebase proof](books/post-rebase-proof.json)
 confirms the incoming Gaussian evidence and the preserved A1/0.46 book prose.
 No programs, models or native gates were executed by this static review.
+
+## Follow-up compiler (#12611)
+
+This qualification binds compiler fingerprint `7c749e9b`. That compiler stops
+the myrealm, realm, Fairy and Everglade pages with E0381, and it accepts a local
+array returned through a helper that slices its view parameter's pointee
+(`ft(field(a[..]))`). The follow-up in `coax/lib/compiler/checker.coax` reads a
+call's argument for its storage when the formal's place is an array, and
+collapses static origins that alone overflow a set. It changes the compiler, so
+the record above doesn't cover it.
+
+Follow-up compiler, rebased onto `ax-library-check-cache` (33dceac432):
+fingerprint `9cedc78bc1512694ef3d2720332b76a6b728bafaa50686aff816497828c97970`,
+binary `0dfbbc17347d78314a53022b79280752e0671f46061a3d78e4bb0e6fcf61c4d1`,
+built by a full `coax/build.sh` bootstrap (29 min, every gate; the stage0
+`checker.coax` mutation gate took 1,371 s with no survivors). The checks below
+ran on the same change before that rebase (fingerprint `1c12c8f8`, 23-minute
+bootstrap, checker mutation 1,134 s). On the rebased compiler, the 44 source
+fixtures pass and the four pages check again.
+Checks with that compiler:
+
+- `borrow_summaries.py`: 44 source fixtures pass, the original 39 and five new
+  ones: the issue's six lines, its string form and a long table of literals
+  compile, and a local array returned through the helper chain (slice and
+  string forms) is E0383.
+- `borrow_query_work.py` (1,000 independent returns), `borrow_summary_native.py`
+  and `borrow_summary_systemone.py` pass.
+- Two new `checker.coax` checks, which fail on the `7c749e9b` checker source:
+  storage behind a passed-on helper slice, and static-origin overflow.
+- `coax/seed-portability.sh --linux`: every seed matches Clang and Debian GCC.
+- `tests/provenance.py` passes. `coax/tests/run.sh` passes except
+  `ct_strings.py`, which fails the same way with the `7c749e9b` compiler: its
+  `make` returns a string viewing a local array, which is E0383.
+- The four pages check with their declared step budgets: myrealm 152 of
+  152, realm 86 of 86, Fairy 163 of 163, and Everglade 342 of 438 run with none
+  failing (the run was stopped at the owner's wrap-up). Of 216 entry and
+  module files, 28 that 0.46.0 stopped with E0381 now check. `chat.coax` still
+  stops: its `PkCatalog` return has 122 string leaves, over the analysis's
+  64-leaf bound, which `reject-borrow-leaves-65` keeps as E0381 by design.
