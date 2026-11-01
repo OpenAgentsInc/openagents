@@ -36,7 +36,7 @@ Read our four books on GitBook:
 
 - [**The Coax Programming Language**](https://openagents.gitbook.io/the-coax-programming-language):
   the language.
-- [**Psionic: ML From Scratch**](https://openagents.gitbook.io/building-psionic-in-coax):
+- [**Psionic: ML From Scratch**](https://openagents.gitbook.io/psionic-ml-from-scratch):
   the machine-learning and execution engine, built in Coax.
 - [**Aethyr, World Engine**](https://openagents.gitbook.io/building-aethyr-in-coax):
   the game engine that runs the Verse's realms, built in Coax.

@@ -45,8 +45,8 @@ def book_gate(name):
 BOOKS = {
     "coax": ("coax/book", "sZhQ0yptSOKMneBDWMti", "The Coax Programming Language",
              "https://openagents.gitbook.io/the-coax-programming-language", coax_gate, True),
-    "psionic": ("psionic/book", "Sha9csfX5lAIHvjiIheN", "Building Psionic in Coax",
-                "https://openagents.gitbook.io/building-psionic-in-coax", book_gate("psionic"), True),
+    "psionic": ("psionic/book", "Sha9csfX5lAIHvjiIheN", "Psionic: ML From Scratch",
+                "https://openagents.gitbook.io/psionic-ml-from-scratch", book_gate("psionic"), True),
     "aethyr": ("aethyr/book", "QxVdkZGgQYnLsXWZlkTh", "Building Aethyr in Coax",
                "https://openagents.gitbook.io/building-aethyr-in-coax", book_gate("aethyr"), True),
     "nostr": ("nostr/book", "FJJZf8YunJx2R1toVsuv", "Nostr From Scratch",

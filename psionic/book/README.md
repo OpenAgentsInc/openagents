@@ -1,4 +1,4 @@
-# Building Psionic in Coax
+# Psionic: ML From Scratch
 
 This book builds a machine-learning library from small understandable pieces.
 Every completed chapter runs the actual [Psionic library](../README.md), with

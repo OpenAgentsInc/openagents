@@ -1,7 +1,7 @@
 # Paths through the books
 
 The four books are [The Coax Programming Language](../../coax/book/README.md),
-[Building Psionic in Coax](../../psionic/book/README.md),
+[Psionic: ML From Scratch](../../psionic/book/README.md),
 [Building Aethyr in Coax](../../aethyr/book/README.md) and
 [Nostr From Scratch](../../nostr/book/README.md). Each route below
 lists what you need and the chapters to read, in order, across the books.
