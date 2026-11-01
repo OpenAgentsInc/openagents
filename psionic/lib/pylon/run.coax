@@ -31,6 +31,12 @@
 // TEST-ONLY (see the record, docs/verification/psionic-ch19-2026-10-29.md):
 //   - The key is sha256 of --test-key-label. --key-file is refused until the
 //     secret-handling audit (#4828) admits real keys.
+//
+// --trainer NPUB (or 64 hex) links this Pylon's key to a person's without
+// sharing a key: once online it publishes a NIP-XP key link (13195,
+// coax/lib/nostr/xp_keys.coax) naming that trainer. The person's trainer
+// profile (13193) listing the Pylon's key completes the link
+// (docs/web-log-in.md, "Linking a Pylon to its person").
 #import "Basic";
 #load "demo-label.coax";
 #load "generation.coax";
@@ -50,6 +56,7 @@
 #load "../../../coax/lib/nostr/nip44-key.coax";
 #load "../../../coax/lib/nostr/nip42.coax";
 #load "../../../coax/lib/nostr/relay_read.coax";
+#load "../../../coax/lib/nostr/xp_keys.coax";
 
 // queue.coax names these PdCode and PdType values as integers.
 #assert PQ_NONE==cast(int)PdCode.none && PQ_BUSY==cast(int)PdCode.busy && PQ_TIMEOUT==cast(int)PdCode.timeout;
@@ -117,6 +124,7 @@ PyConfig :: struct {
     decide_ms:int;refresh:int;ttl:int;
     references:string;state:string;declared:string;doctor:bool;
     text:bool;probe:bool;engine_key_file:string;
+    trainer:string;trainer_hex:[64]u8;
 }
 py_arg :: (c:[]PyConfig,i:int)->string {
     n:=pyh_arg_len(i);if n<0 || c[0].used+n>PY_ARGS {return "";}
@@ -139,7 +147,7 @@ py_usage :: () {
     print("usage: pylon --relay ws[s]://HOST[:PORT] --engine http://HOST:PORT --model NAME --slug SLUG\n");
     print("             (--test-key-label LABEL | --test-key-label-file PATH | --key-file PATH)\n");
     print("             [--list URL]... [--label TEXT] [--family gpu|cpu|unified-memory] [--memory-gb N]\n");
-    print("             [--decide-ms N] [--refresh S] [--ttl S] [--stop-file PATH]\n");
+    print("             [--decide-ms N] [--refresh S] [--ttl S] [--stop-file PATH] [--trainer NPUB]\n");
     print("             --references SET --identity-state PATH [--declare-identity ID]\n");
     print("       pylon --doctor --engine http://HOST:PORT --model NAME --references SET --identity-state PATH [--declare-identity ID]\n");
 }
@@ -171,6 +179,10 @@ py_config :: (c:[]PyConfig)->bool {
         else if name=="--identity-state" {c[0].state=v;}
         else if name=="--declare-identity" {c[0].declared=v;}
         else if name=="--engine-key-file" {c[0].engine_key_file=v;}
+        else if name=="--trainer" {
+            c[0].trainer=py_trainer(v,c[0].trainer_hex[..]);
+            if c[0].trainer.count==0 {print("pylon: --trainer is an npub1... or 64 lowercase hex public key\n");return false;}
+        }
         else {print("pylon: unknown option %\n",name);return false;}
     }
     if c[0].engine_port<0 || c[0].engine_host.count==0 {print("pylon: --engine must be http://HOST:PORT\n");return false;}
@@ -191,6 +203,34 @@ py_config :: (c:[]PyConfig)->bool {
     }
     if c[0].stop_file.count!=0 {for b:c[0].stop_file {if pyh_stop_path_push(cast(int)b)!=0 {return false;}}}
     return true;
+}
+
+// --trainer: an npub or 64 lowercase hex, as hex (in out), or "" refused.
+py_trainer :: (v:string,out:[]u8)->string {
+    if xk_hex64(v) {for i:0..<64 {out[i]=v[i];}return cast(string)out[0..<64];}
+    key:[64]u8;r:=nip19_decode_checked(v,key[..],false);
+    if r.error!=NC_OK || r.type!=N19_NPUB || r.written!=32 {return "";}
+    return py_hex(key[0..<32],out);
+}
+// The 13195 key link template: me (hex) names trainer (hex). -1 refused.
+py_link_template :: (out:[]u8,me:string,now:int,trainer:string)->int {
+    body:[256]u8;tags:[256]u8;
+    b:=xk_link_body(body[..],me,trainer);t:=xk_link_tags(tags[..],trainer);
+    if b<0 || t<0 {return -1;}
+    return pt_template(out,me,now,XK_LINK,cast(string)tags[0..<t],cast(string)body[0..<b]);
+}
+#test "--trainer takes an npub or hex, and the 13195 link is exactly NIP-XP's" {
+    hex:="c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";me:="f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+    out:[64]u8;#assert py_trainer(hex,out[..])==hex;
+    key:[32]u8;#assert py_unhex(hex,key[..]);np:[128]u8;e:=nip19_encode_checked(N19_NPUB,cast(string)key[..],np[..],false);#assert e.error==NC_OK;
+    #assert py_trainer(cast(string)np[0..<e.written],out[..])==hex;
+    #assert py_trainer("C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5",out[..])=="" && py_trainer("npub1xyz",out[..])=="" && py_trainer("",out[..])=="";
+    nsec:[128]u8;s:=nip19_encode_checked(N19_NSEC,cast(string)key[..],nsec[..],false);#assert s.error==NC_OK && py_trainer(cast(string)nsec[0..<s.written],out[..])=="";
+    t:[1024]u8;n:=py_link_template(t[..],me,1793500000,hex);
+    #assert cast(string)t[0..<n]=="{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1793500000,\"kind\":13195,\"tags\":[[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]],\"content\":\"{\\\"v\\\":1,\\\"requires\\\":[],\\\"type\\\":\\\"link\\\",\\\"trainer\\\":\\\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\\\"}\"}";
+    content:[512]u8;f:=py_fields(cast(string)t[0..<n],content[..]);#assert f.ok && f.kind==13195;
+    l:=xk_link_read(f.kind,me,f.tags,f.content);#assert l.code==XkCode.ok && l.trainer==hex;
+    #assert py_link_template(t[..],me,1,me)== -1 && py_link_template(t[..],me,1,"x")== -1;
 }
 
 // ---- effects shared with the engine's HTTP -----------------------------------
@@ -693,6 +733,16 @@ py_acked :: (p:[]Py,slot:int,limit_ms:int)->bool {
     }
     return false;
 }
+// The key link to --trainer, once online. A link the relay doesn't accept is
+// reported and the Pylon serves anyway: the link is the person's, not the job's.
+py_link :: (p:[]Py,trainer:string) {
+    t:[1024]u8;n:=py_link_template(t[..],py_me(p),pyh_now_s(),trainer);
+    if n<0 {print("pylon: no key link: --trainer names this Pylon's own key\n");return;}
+    slot:=py_publish(p,cast(string)t[0..<n],"key link");
+    if !py_acked(p,slot,30000) {print("pylon: key link to % not accepted\n",trainer);return;}
+    f:=cast(string)p[0].outbox[slot].text[0..<p[0].outbox[slot].n];
+    print("pylon: key link 13195 % names trainer %\n",f[16..<80],trainer);
+}
 // ---- chapter 218: the self-check and the doctor -----------------------------
 
 // One named file through the host: its bytes into out, the length, -1 when it
@@ -830,6 +880,7 @@ py_main :: (p:[]Py)->int {
     // The first connection: AUTH, the beacon, the REQ and the list, all acknowledged.
     if !py_acked(p,p[0].list_slot,30000) {print("pylon: relay list not accepted\n");return 5;}
     if !py_acked(p,p[0].beacon_slot,30000) {print("pylon: beacon not accepted\n");return 5;}
+    if c.trainer.count>0 {py_link(p,c.trainer);}
     print("pylon: online, waiting for jobs\n");
 // book:begin loop
     while true {

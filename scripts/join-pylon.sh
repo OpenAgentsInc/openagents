@@ -4,16 +4,18 @@ set -euo pipefail
 umask 077
 home_dir="${OPENAGENTS_PYLON_HOME:-$HOME/.openagents/pylon}"
 source_dir='' relay='wss://relay.openagents.com' slug='' label='' port='' update=true stop=false
-model=psionic-toy device=auto model_cache='' self_test=false reported_failure=false
+model=psionic-toy device=auto model_cache='' self_test=false reported_failure=false trainer=''
 usage() {
   cat <<'HELP'
 Usage: join-pylon.sh [--relay wss://HOST] [--slug NAME] [--label TEXT] [--port N]
                      [--model psionic-toy|elephant-1] [--device auto|cuda|metal]
-                     [--model-cache DIR] [--self-test] [--source DIR] [--no-update] [--stop]
+                     [--model-cache DIR] [--self-test] [--trainer NPUB] [--source DIR] [--no-update] [--stop]
 Default: small toy engine. --model elephant-1 uses the real original 18.8 GB
 Elephant checkpoint on CUDA or Metal; no CPU or toy fallback. --self-test sends
 an encrypted relay task pinned to YOUR provider, then keeps serving. Keep this
 terminal open; Ctrl-C stops both programs. --stop stops the current join.
+--trainer NPUB (the npub /login shows) links this Pylon's own key to yours with
+a NIP-XP key link; claim it from your profile to count its XP as yours.
 Default checkout and private state: ~/.openagents/pylon (OPENAGENTS_PYLON_HOME overrides).
 Learned state: state/elephant-1; stop it with --model elephant-1 --stop.
 Interrupted downloads retain .part files; repeat the same command to resume.
@@ -31,15 +33,16 @@ while (($#)); do
     --no-update) update=false; shift ;;
     --stop) stop=true; shift ;;
     --self-test) self_test=true; shift ;;
-    --relay|--slug|--label|--port|--source|--model|--device|--model-cache)
+    --relay|--slug|--label|--port|--source|--model|--device|--model-cache|--trainer)
       (($#>=2)) || die "$1 needs a value"
-      case "$1" in --relay) relay=$2 ;; --slug) slug=$2 ;; --label) label=$2 ;; --port) port=$2 ;; --source) source_dir=$2; update=false ;; --model) model=$2 ;; --device) device=$2 ;; --model-cache) model_cache=$2 ;; esac
+      case "$1" in --relay) relay=$2 ;; --slug) slug=$2 ;; --label) label=$2 ;; --port) port=$2 ;; --source) source_dir=$2; update=false ;; --model) model=$2 ;; --device) device=$2 ;; --model-cache) model_cache=$2 ;; --trainer) trainer=$2 ;; esac
       shift 2 ;;
     *) die "unknown option $1 (use --help)" ;;
   esac
 done
 [[ $model == psionic-toy || $model == elephant-1 ]] || die 'supported models: psionic-toy, elephant-1'
 [[ $device == auto || $device == cuda || $device == metal ]] || die 'device must be auto, cuda or metal'
+[[ -z $trainer || $trainer =~ ^npub1[02-9ac-hj-np-z]{58}$ || $trainer =~ ^[0-9a-f]{64}$ ]] || die '--trainer is your npub1... (or 64 lowercase hex)'
 state="$home_dir/state"
 [[ $model == psionic-toy ]] || state="$state/$model"
 if $stop; then
@@ -316,6 +319,7 @@ if ((warmup_status)); then [[ ! -e "$state/stop" ]] || exit 0; tail -20 "$state/
   --slug "$slug" --label "$label" --test-key-label-file "$label_file" \
   --references "$root/psionic/fixtures/pylon/$model.selfcheck" \
   --identity-state "$state/identity" --stop-file "$state/stop" --decide-ms 30000 \
+  ${trainer:+--trainer "$trainer"} \
   > "$state/pylon.log" 2>&1 & pylon_pid=$!
 printf 'pylon: connecting %s to %s\n' "$slug" "$relay"
 ready=false
@@ -327,7 +331,7 @@ for ((i=0;i<900;i++)); do
 done
 $ready || { tail -20 "$state/pylon.log" >&2; die 'Pylon did not become online within 90 seconds'; }
 printf '\nPylon online: %s\n' "$slug"
-grep -E '^pylon: (TEST-ONLY key|npub )' "$state/pylon.log" || true
+grep -E '^pylon: (TEST-ONLY key|npub |key link)' "$state/pylon.log" || true
 printf 'Model: %s\nLogs: %s\n' "$model" "$state"
 printf 'Stop: Ctrl-C, or touch %q\n' "$state/stop"
 printf 'Throwaway identity: keep its demo-label private. This demo does no paid work.\n'

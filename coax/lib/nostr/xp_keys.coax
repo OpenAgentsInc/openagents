@@ -1,0 +1,382 @@
+// NIP-XP trainer profiles (13193) and key links (13195), the two records
+// that let one person's XP sum over several keys without a key ever leaving
+// its device (nostr/nips/openagents/NIP-XP.md, "Trainer profiles" and "Key
+// links"; schemas xp-profile.v1.json and xp-link.v1.json). A link is valid
+// only both ways: the trainer's newest profile lists the key, and the key's
+// newest link names the trainer. A Pylon signs the link with its own key
+// (psionic/lib/pylon/run.coax --trainer); the person's CLI signs the profile
+// (apps/openagents-cli/pylon.coax: pylon claim and unclaim).
+//
+// Writers produce the body and the tags; the caller signs. Readers take an
+// event's kind, signer (hex), raw tags JSON and decoded content, and refuse
+// anything the NIP refuses: another kind, a marker that isn't exactly one
+// oa:xp:<type>:v1, an uppercase t value, a body with an unknown, missing or
+// repeated key, v other than 1, a non-empty requires, another type, a key
+// that isn't 64 lowercase hex characters, the signer's own key, a key listed
+// twice, more than 16 keys, and p tags that disagree with the body.
+//
+// Checks: coax test coax/lib/nostr/xp_keys.coax
+//         coax mutate coax/lib/nostr/xp_keys.coax
+#load "json.coax";
+#authority;
+
+XK_PROFILE :: 13193;
+XK_LINK :: 13195;
+XK_KEYS :: 16;     // keys one profile lists, at most
+XK_LINK_MARKER :: "oa:xp:link:v1";
+XK_PROFILE_MARKER :: "oa:xp:profile:v1";
+
+XkCode :: enum u8 {ok;kind;tags;marker;body;version;requires;type;field;key;mismatch;}
+// trainer is "" when the link is withdrawn (trainer: null).
+XkLink :: struct {code:XkCode;trainer:string;}
+XkProfile :: struct {code:XkCode;shown:bool;count:int;}
+
+XK_A :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+XK_B :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+XK_C :: "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13";
+
+#test "the NIP's key link body and tags, exactly" {
+  out:[256]u8;
+  n:=xk_link_body(out[..],XK_A,XK_B);
+  #assert cast(string)out[0..<n]=="{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"}";
+  n=xk_link_tags(out[..],XK_B);
+  #assert cast(string)out[0..<n]=="[[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]";
+  n=xk_link_body(out[..],XK_A,"");#assert cast(string)out[0..<n]=="{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null}";
+  n=xk_link_tags(out[..],"");#assert cast(string)out[0..<n]=="[[\"t\",\"oa:xp:link:v1\"]]";
+  // The writers refuse what the reader refuses.
+  #assert xk_link_body(out[..],XK_A,XK_A)== -1 && xk_link_body(out[..],XK_A,"C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5")== -1;
+  #assert xk_link_body(out[..],"x",XK_B)== -1 && xk_link_tags(out[..],"x")== -1;
+  #assert xk_link_body(out[0..<20],XK_A,XK_B)== -1 && xk_link_tags(out[0..<20],XK_B)== -1;
+}
+#test "the NIP's trainer profile body and tags, exactly" {
+  out:[2048]u8;keys:=[2]string.[XK_B,XK_C];
+  n:=xk_profile_body(out[..],XK_A,true,keys[..]);
+  #assert cast(string)out[0..<n]=="{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"keys\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]}";
+  n=xk_profile_tags(out[..],XK_A,keys[..]);
+  #assert cast(string)out[0..<n]=="[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]]";
+  n=xk_profile_body(out[..],XK_A,false,keys[0..<0]);#assert cast(string)out[0..<n]=="{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":false,\"keys\":[]}";
+  n=xk_profile_tags(out[..],XK_A,keys[0..<0]);#assert cast(string)out[0..<n]=="[[\"t\",\"oa:xp:profile:v1\"]]";
+  own:=[1]string.[XK_A];twice:=[2]string.[XK_B,XK_B];bad:=[1]string.["b"];
+  #assert xk_profile_body(out[..],XK_A,true,own[..])== -1 && xk_profile_tags(out[..],XK_A,own[..])== -1;
+  #assert xk_profile_body(out[..],XK_A,true,twice[..])== -1 && xk_profile_body(out[..],XK_A,true,bad[..])== -1;
+  #assert xk_profile_body(out[0..<40],XK_A,true,keys[..])== -1 && xk_profile_tags(out[0..<40],XK_A,keys[..])== -1;
+  many:[17]string;hex:[17*64]u8;xk_fill(many[..],hex[..]);
+  #assert xk_profile_body(out[..],XK_A,true,many[0..<16])>0 && xk_profile_body(out[..],XK_A,true,many[..])== -1;
+}
+#test "a written link and profile read back" {
+  body:[256]u8;tags:[256]u8;
+  b:=xk_link_body(body[..],XK_A,XK_B);t:=xk_link_tags(tags[..],XK_B);
+  l:=xk_link_read(XK_LINK,XK_A,cast(string)tags[0..<t],cast(string)body[0..<b]);
+  #assert l.code==XkCode.ok && l.trainer==XK_B;
+  b=xk_link_body(body[..],XK_A,"");t=xk_link_tags(tags[..],"");
+  l=xk_link_read(XK_LINK,XK_A,cast(string)tags[0..<t],cast(string)body[0..<b]);#assert l.code==XkCode.ok && l.trainer=="";
+  pb:[2048]u8;pt:[2048]u8;keys:=[2]string.[XK_B,XK_C];got:[16]string;
+  b=xk_profile_body(pb[..],XK_A,true,keys[..]);t=xk_profile_tags(pt[..],XK_A,keys[..]);
+  p:=xk_profile_read(XK_PROFILE,XK_A,cast(string)pt[0..<t],cast(string)pb[0..<b],got[..]);
+  #assert p.code==XkCode.ok && p.shown && p.count==2 && got[0]==XK_B && got[1]==XK_C;
+  p=xk_profile_read(XK_PROFILE,XK_A,"[[\"t\",\"oa:xp:profile:v1\"]]","{\"keys\":[],\"shown\":false,\"type\":\"profile\",\"requires\":[],\"v\":1}",got[..]);
+  #assert p.code==XkCode.ok && !p.shown && p.count==0;
+}
+#test "the link reader refuses what NIP-XP refuses" {
+  tb:="[[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]";
+  good:="{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"}";
+  #assert xk_link_read(XK_LINK,XK_A,tb,good).code==XkCode.ok;
+  #assert xk_link_read(XK_PROFILE,XK_A,tb,good).code==XkCode.kind;
+  // Markers: exactly one oa:xp: marker (season and rule tags aside), all t lowercase.
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.marker;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.marker;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v1\"],[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.marker;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:season:s1\"],[\"t\",\"oa:xp:rule:x\"],[\"t\",\"pylon\"],[\"t\",\"@[\"],[\"t\",\"oa:xp:season:\"],[\"t\",\"oa:xp:rule:\"],[\"t\",\"oa:xp\"],[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"wss://r\"],[\"x\"]]",good).code==XkCode.ok;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"Pylon\"],[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.tags;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v\\u0031\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.tags;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\"],[\"t\",\"oa:xp:link:v1\"]]",good).code==XkCode.tags;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"A\"],[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.tags;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"Z\"],[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.tags;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:\"],[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.marker;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v1\"],[\"p\"]]",good).code==XkCode.tags;
+  #assert xk_link_read(XK_LINK,XK_A,"{}",good).code==XkCode.tags && xk_link_read(XK_LINK,XK_A,"[1]",good).code==XkCode.tags;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",1]]",good).code==XkCode.tags && xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v1\"]] x",good).code==XkCode.tags;
+  // p tags agree with trainer.
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v1\"]]",good).code==XkCode.mismatch;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v1\"],[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]]",good).code==XkCode.mismatch;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",good).code==XkCode.mismatch;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.mismatch;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v1\"]]","{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.ok;
+  // The body.
+  #assert xk_link_read(XK_LINK,XK_A,tb,"[]").code==XkCode.body && xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1").code==XkCode.body;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null} {}").code==XkCode.body;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":2,\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.version;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1.0,\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.version;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":\"1\",\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.version;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[\"x\"],\"type\":\"link\",\"trainer\":null}").code==XkCode.requires;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":{},\"type\":\"link\",\"trainer\":null}").code==XkCode.requires;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"trainer\":null}").code==XkCode.type;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":1,\"trainer\":null}").code==XkCode.type;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null,\"x\":1}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null,\"shown\":true}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"type\":\"link\",\"trainer\":null}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null,\"trainer\":null}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"type\":\"link\",\"trainer\":null}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"trainer\":null}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\"}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"x\":1,\"requires\":[],\"type\":\"link\",\"trainer\":null}").code==XkCode.field;
+  #assert xk_link_read(XK_LINK,XK_A,"[[\"t\",\"oa:xp:link:v1\"]]","{\"v\":1,\"requires\":[],\"type\":\"link\",\"x\":null}").code==XkCode.field;
+  // The trainer key.
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":\"\"}").code==XkCode.key;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":1}").code==XkCode.key;
+  #assert xk_link_read(XK_LINK,XK_B,tb,good).code==XkCode.key;
+  #assert xk_link_read(XK_LINK,XK_A,tb,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":\"C6047F9441ED7D6D3045406E95C07CD85C778E4B8CEF3CA7ABAC09B95C709EE5\"}").code==XkCode.key;
+}
+#test "the profile reader refuses what NIP-XP refuses" {
+  got:[16]string;
+  t2:="[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]]";
+  b2:="{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"keys\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]}";
+  #assert xk_profile_read(XK_PROFILE,XK_A,t2,b2,got[..]).code==XkCode.ok;
+  #assert xk_profile_read(XK_LINK,XK_A,t2,b2,got[..]).code==XkCode.kind;
+  #assert xk_profile_read(XK_PROFILE,XK_A,"[[\"t\",\"oa:xp:link:v1\"]]",b2,got[..]).code==XkCode.marker;
+  #assert xk_profile_read(XK_PROFILE,XK_A,"[]",b2,got[..]).code==XkCode.marker;
+  #assert xk_profile_read(XK_PROFILE,XK_A,"[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",b2,got[..]).code==XkCode.mismatch;
+  #assert xk_profile_read(XK_PROFILE,XK_A,"[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",b2,got[..]).code==XkCode.mismatch;
+  #assert xk_profile_read(XK_PROFILE,XK_A,"[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"],[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]]",b2,got[..]).code==XkCode.mismatch;
+  t0:="[[\"t\",\"oa:xp:profile:v1\"]]";
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":1,\"keys\":[]}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":null,\"keys\":[]}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"keys\":{}}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"keys\":[1]}",got[..]).code==XkCode.key;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"keys\":[],\"trainer\":null}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"shown\":true,\"keys\":[]}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"keys\":[],\"keys\":[]}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"keys\":[]}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"x\":[]}",got[..]).code==XkCode.field;
+  #assert xk_profile_read(XK_PROFILE,XK_A,"[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13\"]]",b2,got[..]).code==XkCode.mismatch;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t0,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"shown\":true,\"keys\":[]}",got[..]).code==XkCode.type;
+  // The keys: lowercase hex, never the signer, distinct, at most 16 (and at most what the caller holds).
+  own:="[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+  #assert xk_profile_read(XK_PROFILE,XK_A,own,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"keys\":[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]}",got[..]).code==XkCode.key;
+  tw:="[[\"t\",\"oa:xp:profile:v1\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]";
+  #assert xk_profile_read(XK_PROFILE,XK_A,tw,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":true,\"keys\":[\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]}",got[..]).code==XkCode.key;
+  #assert xk_profile_read(XK_PROFILE,XK_A,t2,b2,got[0..<1]).code==XkCode.key;
+  many:[17]string;hex:[17*64]u8;xk_fill(many[..],hex[..]);
+  body:[4096]u8;tags:[4096]u8;more:[17]string;
+  b:=xk_profile_body(body[..],XK_A,true,many[0..<16]);t:=xk_profile_tags(tags[..],XK_A,many[0..<16]);
+  #assert xk_profile_read(XK_PROFILE,XK_A,cast(string)tags[0..<t],cast(string)body[0..<b],more[..]).count==16;
+  // Seventeen, written by hand around the writer's refusal.
+  b=json_raw(body[..],b-2,",\"");b=json_raw(body[..],b,many[16]);b=json_raw(body[..],b,"\"]}");
+  t=json_raw(tags[..],t-1,",[\"p\",\"");t=json_raw(tags[..],t,many[16]);t=json_raw(tags[..],t,"\"]]");
+  #assert json_valid(cast(string)body[0..<b]) && json_valid(cast(string)tags[0..<t]);
+  #assert xk_profile_read(XK_PROFILE,XK_A,cast(string)tags[0..<t],cast(string)body[0..<b],more[..]).code==XkCode.key;
+}
+#test "newest replaceable: later created_at, then the lowest id" {
+  #assert xk_newer(20,XK_B,10,XK_A) && !xk_newer(10,XK_A,20,XK_B);
+  #assert xk_newer(10,XK_B,10,XK_A) && !xk_newer(10,XK_A,10,XK_B) && !xk_newer(10,XK_A,10,XK_A);   // XK_B sorts first
+  #assert xk_newer(0,XK_A,-1,"");
+  #assert xk_newer(10,"a9",10,"b1") && !xk_newer(10,"a9",10,"a1") && xk_newer(10,"a1",10,"a9");
+}
+#test "claim adds a key once, at most 16; unclaim drops it in order" {
+  keys:[16]string;n:=0;
+  n=xk_add(keys[..],n,XK_A,XK_B);#assert n==1 && keys[0]==XK_B;
+  n=xk_add(keys[..],n,XK_A,XK_B);#assert n==1;
+  n=xk_add(keys[..],n,XK_A,XK_C);#assert n==2 && keys[1]==XK_C;
+  #assert xk_add(keys[..],n,XK_A,XK_A)== -1 && xk_add(keys[..],n,XK_A,"x")== -1 && xk_add(keys[0..<2],n,XK_A,XK_A)== -1;
+  m2:[17]string;f2:[17]string;h2:[17*64]u8;xk_fill(f2[..],h2[..]);
+  #assert xk_add(keys[0..<2],n,XK_A,f2[0])== -1 && xk_add(m2[..],16,XK_A,f2[16])== -1 && xk_add(m2[..],15,XK_A,f2[16])==16;
+  #assert xk_drop(keys[..],n,XK_A)==2;
+  n=xk_drop(keys[..],n,XK_B);#assert n==1 && keys[0]==XK_C;
+  n=xk_drop(keys[..],n,XK_C);#assert n==0;
+  many:[17]string;hex:[17*64]u8;xk_fill(many[..],hex[..]);
+  for i:0..<16 {n=xk_add(keys[..],n,XK_A,many[i]);}
+  #assert n==16 && xk_add(keys[..],n,XK_A,many[16])== -1 && xk_add(keys[..],n,XK_A,many[3])==16;
+  n=xk_drop(keys[..],n,many[0]);#assert n==15 && keys[0]==many[1] && keys[14]==many[15];
+}
+#test "hex64 is 64 lowercase hex characters" {
+  #assert xk_hex64(XK_A) && !xk_hex64(XK_A[0..<63]) && !xk_hex64("");
+  b:[64]u8;for i:0..<64 {b[i]='0';}#assert xk_hex64(cast(string)b[..]);
+  edges:="09af/:`gAF";
+  for e:0..<edges.count {b[5]=edges[e];#assert xk_hex64(cast(string)b[..])==(e<4);}
+  long:[65]u8;for i:0..<65 {long[i]='a';}#assert !xk_hex64(cast(string)long[..]);
+  many:[17]string;hex:[17*64]u8;xk_fill(many[..],hex[..]);
+  #assert many[0]=="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa00" && many[16][60..<64]=="aa10" && many[15][61..<64]=="a0f";
+}
+
+// Seventeen distinct hex keys for the bound checks.
+xk_fill :: (keys:[]string,hex:[]u8) {
+  digits:="0123456789abcdef";
+  for i:0..<keys.count {for k:0..<64 {hex[64*i+k]=ifx k<62 then 'a' else digits[ifx k==62 then i/16 else i%16];}keys[i]=cast(string)hex[64*i..<64*i+64];}
+}
+
+xk_hex64 :: (s:string)->bool {
+  if s.count!=64 {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+// The profile's keys: at most 16, each hex64, never the signer, distinct.
+xk_keys_ok :: (signer:string,keys:[]string)->bool {
+  if keys.count>XK_KEYS {return false;}
+  for i:0..<keys.count {
+    if !xk_hex64(keys[i]) || keys[i]==signer {return false;}
+    for k:0..<i {if keys[k]==keys[i] {return false;}}
+  }
+  return true;
+}
+// A key link's content; trainer "" withdraws (null). -1 refused.
+xk_link_body :: (out:[]u8,signer:string,trainer:string)->int #export_c {
+  if !xk_hex64(signer) {return -1;}
+  n:=json_raw(out,0,"{\"v\":1,\"requires\":[],\"type\":\"link\",\"trainer\":");
+  if trainer.count==0 {n=json_raw(out,n,"null");}
+  else {
+    if !xk_hex64(trainer) || trainer==signer {return -1;}
+    n=json_raw(out,n,"\"");n=json_raw(out,n,trainer);n=json_raw(out,n,"\"");
+  }
+  return json_raw(out,n,"}");
+}
+xk_link_tags :: (out:[]u8,trainer:string)->int #export_c {
+  n:=json_raw(out,0,"[[\"t\",\"oa:xp:link:v1\"]");
+  if trainer.count>0 {
+    if !xk_hex64(trainer) {return -1;}
+    n=json_raw(out,n,",[\"p\",\"");n=json_raw(out,n,trainer);n=json_raw(out,n,"\"]");
+  }
+  return json_raw(out,n,"]");
+}
+xk_profile_body :: (out:[]u8,signer:string,shown:bool,keys:[]string)->int {
+  if !xk_keys_ok(signer,keys) {return -1;}
+  n:=json_raw(out,0,"{\"v\":1,\"requires\":[],\"type\":\"profile\",\"shown\":");
+  n=json_raw(out,n,ifx shown then "true" else "false");n=json_raw(out,n,",\"keys\":[");
+  for i:0..<keys.count {if i>0 {n=json_raw(out,n,",");}n=json_raw(out,n,"\"");n=json_raw(out,n,keys[i]);n=json_raw(out,n,"\"");}
+  return json_raw(out,n,"]}");
+}
+xk_profile_tags :: (out:[]u8,signer:string,keys:[]string)->int {
+  if !xk_keys_ok(signer,keys) {return -1;}
+  n:=json_raw(out,0,"[[\"t\",\"oa:xp:profile:v1\"]");
+  for k:keys {n=json_raw(out,n,",[\"p\",\"");n=json_raw(out,n,k);n=json_raw(out,n,"\"]");}
+  return json_raw(out,n,"]");
+}
+
+// The tags: the p values in order into ps. XkCode.ok, tags (a malformed tag,
+// an escaped or uppercase t), marker (not exactly one oa:xp:<record>:v1), or
+// mismatch (more p tags than ps holds). count is set to the p tags read.
+XkTags :: struct {code:XkCode;count:int;}
+xk_tags :: (tags:string,marker:string,ps:[]string)->XkTags {
+  r:XkTags;markers:=0;mine:=0;j:[1]Json;json_start(j[..],tags);
+  if json_next(j[..])!=JSON_ARRAY {return XkTags.{code=XkCode.tags};}
+  t:=json_next(j[..]);
+  while t!=JSON_ARRAY_END {
+    if t!=JSON_ARRAY {return XkTags.{code=XkCode.tags};}
+    values:[2]string;size:=0;v:=json_next(j[..]);
+    while v!=JSON_ARRAY_END {
+      if v!=JSON_STRING {return XkTags.{code=XkCode.tags};}
+      if size<2 {values[size]=json_text(j[..]);}size+=1;v=json_next(j[..]);
+    }
+    name:=values[0];value:=values[1];
+    if (name=="t" || name=="p") && size<2 {return XkTags.{code=XkCode.tags};}
+    if name=="t" {
+      for c:value {if c=='\\' || (c>='A' && c<='Z') {return XkTags.{code=XkCode.tags};}}
+      xp:=value.count>=6 && value[0..<6]=="oa:xp:";
+      season:=value.count>=13 && value[0..<13]=="oa:xp:season:";
+      rule:=value.count>=11 && value[0..<11]=="oa:xp:rule:";
+      if xp && !season && !rule {markers+=1;if value==marker {mine+=1;}}
+    }
+    if name=="p" {
+      if r.count==ps.count {return XkTags.{code=XkCode.mismatch};}
+      ps[r.count]=value;r.count+=1;
+    }
+    t=json_next(j[..]);
+  }
+  if json_next(j[..])!=JSON_END {return XkTags.{code=XkCode.tags};}
+  if markers!=1 || mine!=1 {return XkTags.{code=XkCode.marker};}
+  return r;
+}
+
+// One XP body with the fields of type: link (trainer) or profile (shown,
+// keys, into keys). XkCode.ok or its refusal.
+XkBody :: struct {code:XkCode;trainer:string;shown:bool;count:int;}
+XK_V :: 1; XK_REQUIRES :: 2; XK_TYPE :: 4; XK_TRAINER :: 8; XK_SHOWN :: 16; XK_KEYS_FIELD :: 32;
+xk_body :: (content:string,type:string,keys:[]string)->XkBody {
+  r:XkBody;link:=type=="link";seen:=0;j:[1]Json;json_start(j[..],content);
+  if json_next(j[..])!=JSON_OBJECT {return XkBody.{code=XkCode.body};}
+  while true {
+    t:=json_next(j[..]);
+    if t==JSON_OBJECT_END {break;}
+    if t!=JSON_STRING {return XkBody.{code=XkCode.body};}
+    key:=json_text(j[..]);v:=json_next(j[..]);
+    bit:=0;
+    if json_is(key,"v") {bit=XK_V;}
+    else if json_is(key,"requires") {bit=XK_REQUIRES;}
+    else if json_is(key,"type") {bit=XK_TYPE;}
+    else if link && json_is(key,"trainer") {bit=XK_TRAINER;}
+    else if !link && json_is(key,"shown") {bit=XK_SHOWN;}
+    else if !link && json_is(key,"keys") {bit=XK_KEYS_FIELD;}
+    if bit==0 || (seen&bit)!=0 {return XkBody.{code=XkCode.field};}
+    seen|=bit;
+    if bit==XK_V {if v!=JSON_NUMBER || json_text(j[..])!="1" {return XkBody.{code=XkCode.version};}}
+    if bit==XK_REQUIRES {if v!=JSON_ARRAY || json_next(j[..])!=JSON_ARRAY_END {return XkBody.{code=XkCode.requires};}}
+    if bit==XK_TYPE {if v!=JSON_STRING || !json_is(json_text(j[..]),type) {return XkBody.{code=XkCode.type};}}
+    if bit==XK_TRAINER {
+      if v==JSON_STRING {r.trainer=json_text(j[..]);if !xk_hex64(r.trainer) {return XkBody.{code=XkCode.key};}}
+      else if v!=JSON_NULL {return XkBody.{code=XkCode.key};}
+    }
+    if bit==XK_SHOWN {if v!=JSON_TRUE && v!=JSON_FALSE {return XkBody.{code=XkCode.field};}r.shown=v==JSON_TRUE;}
+    if bit==XK_KEYS_FIELD {
+      if v!=JSON_ARRAY {return XkBody.{code=XkCode.field};}
+      e:=json_next(j[..]);
+      while e!=JSON_ARRAY_END {
+        if e!=JSON_STRING || r.count==keys.count {return XkBody.{code=XkCode.key};}
+        keys[r.count]=json_text(j[..]);r.count+=1;e=json_next(j[..]);
+      }
+    }
+  }
+  if json_next(j[..])!=JSON_END {return XkBody.{code=XkCode.body};}
+  want:=ifx link then 15 else 55;   // v, requires, type and trainer; or v, requires, type, shown and keys
+  if seen!=want {return XkBody.{code=XkCode.field};}
+  return r;
+}
+
+// A 13195 from signer (hex): the trainer it names, "" when withdrawn.
+xk_link_read :: (kind:int,signer:string,tags:string,content:string)->XkLink {
+  if kind!=XK_LINK {return XkLink.{code=XkCode.kind};}
+  ps:[1]string;t:=xk_tags(tags,XK_LINK_MARKER,ps[..]);
+  if t.code!=XkCode.ok {return XkLink.{code=t.code};}
+  b:=xk_body(content,"link",ps[..]);   // a link has no keys to read
+  if b.code!=XkCode.ok {return XkLink.{code=b.code};}
+  if b.trainer==signer {return XkLink.{code=XkCode.key};}
+  if t.count!=ifx b.trainer.count==0 then 0 else 1 {return XkLink.{code=XkCode.mismatch};}
+  if t.count==1 && ps[0]!=b.trainer {return XkLink.{code=XkCode.mismatch};}
+  return XkLink.{trainer=b.trainer};
+}
+// A 13193 from signer (hex): shown, and its keys into keys (count of them).
+xk_profile_read :: (kind:int,signer:string,tags:string,content:string,keys:[]string)->XkProfile {
+  if kind!=XK_PROFILE {return XkProfile.{code=XkCode.kind};}
+  ps:[17]string;t:=xk_tags(tags,XK_PROFILE_MARKER,ps[..]);
+  if t.code!=XkCode.ok {return XkProfile.{code=t.code};}
+  b:=xk_body(content,"profile",keys);
+  if b.code!=XkCode.ok {return XkProfile.{code=b.code};}
+  if !xk_keys_ok(signer,keys[0..<b.count]) {return XkProfile.{code=XkCode.key};}
+  if t.count!=b.count {return XkProfile.{code=XkCode.mismatch};}
+  for i:0..<b.count {if ps[i]!=keys[i] {return XkProfile.{code=XkCode.mismatch};}}
+  return XkProfile.{shown=b.shown,count=b.count};
+}
+
+// Whether a replaceable event (created_at, id hex) replaces the held one:
+// later, or as old with a lower id (NIP-01). held_at -1 holds nothing.
+xk_newer :: (at:int,id:string,held_at:int,held_id:string)->bool {
+  if at>held_at {return true;}
+  if at<held_at {return false;}
+  for i:0..<id.count {if id[i]<held_id[i] {return true;}if id[i]>held_id[i] {return false;}}
+  return false;
+}
+// keys[0..<n] with key added at the end (unchanged when already listed),
+// for signer's profile: the new count, or -1 when key can't be listed.
+xk_add :: (keys:[]string,n:int,signer:string,key:string)->int {
+  for i:0..<n {if keys[i]==key {return n;}}
+  if n>=XK_KEYS || n>=keys.count || !xk_hex64(key) || key==signer {return -1;}
+  keys[n]=key;return n+1;
+}
+// keys[0..<n] without key, the rest in order: the new count.
+xk_drop :: (keys:[]string,n:int,key:string)->int {
+  m:=0;
+  for i:0..<n {if keys[i]!=key {keys[m]=keys[i];m+=1;}}
+  return m;
+}
