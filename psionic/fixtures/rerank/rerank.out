@@ -1,0 +1,17 @@
+hand trace: loss at w = 0 is 0.6931, gradient (-0.5000, 0.5000)
+one step with lr 1: w = (0.5000, -0.5000), loss 0.3133
+
+trained on 3 queries, 7 pairs: loss 0.6931 -> 0.3457; weights lexical -0.9784, dense 3.8812
+
+merged: 4 candidates, 2 in both lists
+  passage 7: lexical rank 1, dense rank 3
+  passage 2: lexical rank 2, dense rank 1
+  passage 5: lexical rank 3, dense rank 0
+  passage 4: lexical rank 0, dense rank 2
+index recall: BM25 alone holds a relevant passage: false; the merged pool: true
+fused:    2 7 4 5; reciprocal rank 0.3333, nDCG@10 0.5000
+reranked: 4 2 7 5; reciprocal rank 1.0000, nDCG@10 1.0000
+  passage 4 scores 3.7560
+  passage 2 scores 2.8708
+  passage 7 scores 2.7341
+  passage 5 scores -0.9318

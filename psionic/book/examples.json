@@ -1482,6 +1482,26 @@
       ]
     },
     {
+      "source": "psionic/examples/rerank.coax",
+      "chapter": "psionic/book/ch056-rerank-the-candidates.md",
+      "stdout": "psionic/fixtures/rerank/rerank.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/rerank-refuse.coax",
+      "chapter": "psionic/book/ch056-rerank-the-candidates.md",
+      "stdout": "psionic/fixtures/rerank/rerank-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/book-search-stale.coax",
       "chapter": "psionic/book/ch054-search-the-coax-book.md",
       "stdout": "psionic/fixtures/book-search/book-search-stale.out",

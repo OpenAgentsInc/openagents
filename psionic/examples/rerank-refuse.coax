@@ -1,0 +1,31 @@
+// Chapter 56: malformed merges, training sets and rerankings, each refused.
+#import "Basic";
+#load "../lib/book-search/rerank.coax";
+
+// book:begin refuse
+main :: () {
+  lex := [3] BsHit.[BsHit.{passage = 7}, BsHit.{passage = 2}, BsHit.{passage = 7}];
+  den := [2] BsHit.[BsHit.{passage = 2}, BsHit.{passage = 4}];
+  out: [4] RrCand;
+  print("a lexical list that names passage 7 twice: %\n", rr_status_name(rr_merge(lex[..], den[..], out[..]).status));
+  print("two distinct lists into room for 2 of 3: %\n", rr_status_name(rr_merge(lex[0..<2], den[..], out[0..<2]).status));
+  f := [4] f64.[1, 0, 0, 1]; label := [2] bool.[true, false]; groups := [2] int.[0, 2]; w: [2] f64;
+  c := RrConfig.{steps = 300, lr = 0.5, l2 = 0.001};
+  print("a good training set: %\n", rr_status_name(rr_train(c, f[..], label[..], groups[..], w[..]).status));
+  print("3 feature values for 2 candidates of 2 features: %\n", rr_status_name(rr_train(c, f[0..<3], label[..], groups[..], w[..]).status));
+  back := [3] int.[0, 3, 2];
+  print("query groups that run backwards: %\n", rr_status_name(rr_train(c, f[..], label[..], back[..], w[..]).status));
+  bad := f; bad[2] = 0.0 / 0.0;
+  print("a feature that is not a number: %\n", rr_status_name(rr_train(c, bad[..], label[..], groups[..], w[..]).status));
+  bad = f; bad[2] = 2000000;
+  print("a feature of 2 * 10^6: %\n", rr_status_name(rr_train(c, bad[..], label[..], groups[..], w[..]).status));
+  x := c; x.lr = 0;
+  print("learning rate 0: %\n", rr_status_name(rr_train(x, f[..], label[..], groups[..], w[..]).status));
+  x = c; x.steps = 0;
+  print("0 steps: %\n", rr_status_name(rr_train(x, f[..], label[..], groups[..], w[..]).status));
+  none := [2] bool.[false, false];
+  print("a query with no relevant candidate: %\n", rr_status_name(rr_train(c, f[..], none[..], groups[..], w[..]).status));
+  cands := [2] RrCand.[RrCand.{passage = 3}, RrCand.{passage = 9}]; hits: [1] BsHit;
+  print("rerank 2 candidates into room for 1: %\n", rr_rerank(w[..], f[..], cands[..], hits[..]));
+}
+// book:end refuse

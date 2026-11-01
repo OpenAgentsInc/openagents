@@ -1,10 +1,10 @@
 # 55. Search without scanning everything
 
 > **Status: partly implemented.** The HNSW index, its recall against
-> exhaustive search and its saved form run on fixed unit vectors. It is not
-> yet built over chapter 54's passage embeddings or used by the book-search
-> tool, the saved bytes are not yet written to a file on disk, and cost is
-> reported as similarities computed, not wall-clock time.
+> exhaustive search and its saved form run on fixed unit vectors. Chapter 56
+> builds it over chapter 54's passage embeddings, but only in the book-search
+> tool's evaluation; the saved bytes are not yet written to a file on disk,
+> and cost is reported as similarities computed, not wall-clock time.
 
 [Chapter 54](ch054-search-the-coax-book.md) searches embeddings
 exhaustively: every query computes its similarity to every stored vector.
@@ -694,9 +694,11 @@ and `hnsw.coax`, and checks the book. The checks cover:
 
 ## What this does not do yet
 
-- The index is not built over chapter 54's passage embeddings, and the
-  book-search tool does not use it. Its figures come from random unit vectors,
-  which are harder for a graph index than clustered embeddings usually are.
+- This chapter's figures come from random unit vectors.
+  [Chapter 56](ch056-rerank-the-candidates.md) builds the index over chapter
+  54's 5,899 passage embeddings inside the book-search tool's `--rerank-eval`:
+  at `ef` 200 its top 100 shares 98.6% of the exhaustive top 100. The tool's
+  everyday search still scans exhaustively.
 - The saved form is bytes in memory. Writing them to a file and reading them
   back needs the tool's host, which this chapter does not call.
 - Cost is counted in similarities. Wall-clock latency, and the corpus size at

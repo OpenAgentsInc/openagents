@@ -1,0 +1,433 @@
+// Chapter 56: merge chapter 54's lexical and dense candidate lists and rerank
+// them with a small learned scorer. A candidate carries its rank in each list
+// (0 when absent). The reranker reads seven features per candidate and scores
+// them with one weight each; it is trained with a pairwise logistic loss
+// (RankNet): every relevant candidate of a training query should outscore every
+// other candidate of that query. Training is full-batch gradient descent from
+// zero weights, so it repeats exactly. Measurements are kept apart: index
+// recall (did a relevant passage reach the candidates) is counted by the
+// caller with rr_holds, relevance by chapter 54's reciprocal rank and by
+// rr_ndcg here. Malformed input is refused with a typed status.
+#load "rank.coax";
+
+RrStatus :: enum u8 { ok; shape; number; empty; budget; }
+// A merged candidate: its passage and its 1-based rank in the lexical and the
+// dense list, 0 when that list does not hold it.
+RrCand :: struct { passage: int; lexical: int; dense: int; }
+RrMerged :: struct { status: RrStatus; count: int; both: int; }
+RrConfig :: struct { steps: int; lr: f64; l2: f64; }
+// queries and pairs: those that train; first and last: the loss before the
+// first step and after the last.
+RrTrained :: struct { status: RrStatus; queries: int; pairs: int; first: f64; last: f64; }
+RrLoss :: struct { loss: f64; queries: int; pairs: int; }
+
+RR_FEATURES :: 7;
+RR_VALUE_MAX :: 1000000.0;
+RR_STEPS_MAX :: 100000;
+RR_FEATURE_NAMES :: [RR_FEATURES] string.["lexical rank", "dense rank", "BM25 share", "cosine", "heading coverage", "text coverage", "word match"];
+
+rr_status_name :: (s: RrStatus) -> string {
+  if s == RrStatus.shape { return "shape: a list, a row or a group does not fit"; }
+  if s == RrStatus.number { return "number: a value is not finite or exceeds 10^6"; }
+  if s == RrStatus.empty { return "empty: no query has both a relevant and another candidate"; }
+  if s == RrStatus.budget { return "budget: need 1 <= steps <= 100000, 0 < lr <= 10^6, 0 <= l2 <= 10^6"; }
+  return "ok";
+}
+
+#test "every status has a name" {
+  #assert rr_status_name(RrStatus.ok) == "ok" && rr_status_name(RrStatus.shape)[0..<6] == "shape:" && rr_status_name(RrStatus.number)[0..<7] == "number:";
+  #assert rr_status_name(RrStatus.empty)[0..<6] == "empty:" && rr_status_name(RrStatus.budget)[0..<7] == "budget:";
+}
+
+#test "merging keeps each passage once with its rank in both lists" {
+  lex := [3] BsHit.[BsHit.{passage = 7, score = 9}, BsHit.{passage = 2, score = 8}, BsHit.{passage = 5, score = 1}];
+  den := [3] BsHit.[BsHit.{passage = 2, score = 0.9}, BsHit.{passage = 4, score = 0.8}, BsHit.{passage = 7, score = 0.1}];
+  out: [6] RrCand;
+  r := rr_merge(lex[..], den[..], out[..]);
+  #assert r.status == RrStatus.ok && r.count == 4 && r.both == 2;
+  #assert out[0].passage == 7 && out[0].lexical == 1 && out[0].dense == 3;
+  #assert out[1].passage == 2 && out[1].lexical == 2 && out[1].dense == 1;
+  #assert out[2].passage == 5 && out[2].lexical == 3 && out[2].dense == 0;
+  #assert out[3].passage == 4 && out[3].lexical == 0 && out[3].dense == 2;
+  // Exactly enough room, and one slot too few.
+  #assert rr_merge(lex[..], den[..], out[0..<4]).count == 4 && rr_merge(lex[..], den[..], out[0..<3]).status == RrStatus.shape;
+  #assert rr_merge(lex[..], den[0..<0], out[0..<3]).status == RrStatus.ok && rr_merge(lex[..], den[0..<0], out[0..<2]).status == RrStatus.shape;
+  // A list that names a passage twice is refused.
+  dup := [2] BsHit.[BsHit.{passage = 3}, BsHit.{passage = 3}];
+  #assert rr_merge(dup[..], den[..], out[..]).status == RrStatus.shape && rr_merge(lex[..], dup[..], out[..]).status == RrStatus.shape;
+  #assert rr_merge(lex[0..<0], den[0..<0], out[..]).count == 0;
+  #assert rr_merge(lex[0..<0], den[..], out[..]).count == 3 && out[0].lexical == 0 && out[0].dense == 1 && out[2].dense == 3;
+}
+
+// book:begin merge
+// The union of the two lists, lexical order first, then the dense passages
+// the lexical list lacks. both counts passages that are in both lists.
+rr_merge :: (lexical: [] BsHit, dense: [] BsHit, out: [] RrCand) -> RrMerged {
+  r: RrMerged; n := 0;
+  for h, i: lexical {
+    if rr_find(out[0..<n], h.passage) >= 0 || n == out.count { return RrMerged.{status = RrStatus.shape}; }
+    out[n] = RrCand.{passage = h.passage, lexical = i + 1}; n += 1;
+  }
+  for h, i: dense {
+    j := rr_find(out[0..<n], h.passage);
+    if j >= 0 {
+      if out[j].dense != 0 { return RrMerged.{status = RrStatus.shape}; }
+      out[j].dense = i + 1; r.both += 1; continue;
+    }
+    if n == out.count { return RrMerged.{status = RrStatus.shape}; }
+    out[n] = RrCand.{passage = h.passage, dense = i + 1}; n += 1;
+  }
+  r.count = n;
+  return r;
+}
+rr_find :: (c: [] RrCand, passage: int) -> int {
+  for x, i: c { if x.passage == passage { return i; } }
+  return -1;
+}
+// book:end merge
+
+#test "coverage is the weighted share of query terms a passage holds" {
+  q := [3] int.[2, 5, 9]; w := [3] f64.[1, 2, 4];
+  words := [4] int.[1, 5, 9, 12];
+  #assert rr_coverage(q[..], w[..], words[..]) == 6.0 / 7;
+  #assert rr_coverage(q[..], w[..], words[0..<2]) == 2.0 / 7 && rr_coverage(q[..], w[..], words[0..<1]) == 0;
+  all := [5] int.[0, 2, 5, 9, 10];
+  #assert rr_coverage(q[..], w[..], all[..]) == 1 && rr_coverage(q[0..<1], w[0..<1], all[..]) == 1;
+  #assert rr_coverage(q[0..<0], w[0..<0], all[..]) == 0 && rr_coverage(q[..], w[..], all[0..<0]) == 0;
+  zero := [3] f64.[0, 0, 0];
+  #assert rr_coverage(q[..], zero[..], all[..]) == 0;
+  // A query term past the last passage word, and one before the first.
+  tail := [2] int.[3, 20]; one := [2] f64.[1, 1]; mid := [1] int.[20];
+  #assert rr_coverage(tail[..], one[..], mid[..]) == 0.5 && rr_coverage(tail[..], one[..], words[..]) == 0;
+}
+
+// book:begin features
+// query: sorted distinct term ids with a weight each (the tool uses BM25's
+// IDF); words: a passage's sorted distinct term ids. The weighted share of
+// the query that the passage holds, 0 when the query weighs nothing.
+rr_coverage :: (query: [] int, weight: [] f64, words: [] int) -> f64 {
+  total := 0.0; held := 0.0; i := 0; j := 0;
+  for x: weight { total += x; }
+  while i < query.count && j < words.count {
+    if query[i] < words[j] { i += 1; }
+    else if query[i] > words[j] { j += 1; }
+    else { held += weight[i]; i += 1; }
+  }
+  if total <= 0 { return 0; }
+  return held / total;
+}
+// Late interaction over the encoder's word rows: unit holds every row scaled
+// to length one (rr_unit). For each query word, its best cosine with any
+// passage word; their mean. A zero row scores 0 against every word.
+rr_late :: (unit: [] f64, width: int, query: [] int, words: [] int) -> f64 {
+  if query.count == 0 || words.count == 0 { return 0; }
+  sum := 0.0;
+  for a: query {
+    best := -1.0;
+    for b: words {
+      c := 0.0;
+      for d: 0..<width { c += unit[a * width + d] * unit[b * width + d]; }
+      best = (best + c + abs(best - c)) / 2;
+    }
+    sum += best;
+  }
+  return sum / f64(query.count);
+}
+// Scales each row of table (width numbers) to length one into unit; a zero
+// row stays zero.
+rr_unit :: (table: [] f64, width: int, unit: [] f64) {
+  for r: 0..<table.count / width {
+    n := 0.0;
+    for d: 0..<width { n += table[r * width + d] * table[r * width + d]; }
+    n = sqrt(n);
+    for d: 0..<width { unit[r * width + d] = ifx n > 0 then table[r * width + d] / n else 0.0; }
+  }
+}
+// One candidate's seven features, in RR_FEATURE_NAMES order. Ranks become
+// 60 / (60 + rank), chapter 54's fusion term scaled to 1 at rank 0; bm25 is
+// divided by the best BM25 score among the candidates (0 when none scored).
+rr_row :: (c: RrCand, bm25: f64, best: f64, cosine: f64, heading: f64, text: f64, late: f64, out: [] f64) {
+  out[0] = rr_rank_term(c.lexical);
+  out[1] = rr_rank_term(c.dense);
+  out[2] = ifx best > 0 then bm25 / best else 0.0;
+  out[3] = cosine; out[4] = heading; out[5] = text; out[6] = late;
+}
+rr_rank_term :: (rank: int) -> f64 { if rank < 1 { return 0; } return f64(BS_FUSE) / f64(BS_FUSE + rank); }
+// book:end features
+
+#test "late interaction takes each query word's best cosine and averages" {
+  // Rows: 0 = (1, 0), 1 = (0, 1), 2 = (3, 4), 3 = (0, 0), 4 = (-1, 0).
+  raw := [10] f64.[1, 0, 0, 1, 3, 4, 0, 0, -1, 0]; t: [10] f64;
+  rr_unit(raw[..], 2, t[..]);
+  #assert t[0] == 1 && t[1] == 0 && t[4] == 0.6 && t[5] == 0.8 && t[6] == 0 && t[7] == 0 && t[8] == -1;
+  q := [2] int.[0, 1]; w := [1] int.[2];
+  #assert abs(rr_late(t[..], 2, q[..], w[..]) - (0.6 + 0.8) / 2) < 1e-15;
+  both := [2] int.[0, 2];
+  #assert abs(rr_late(t[..], 2, q[..], both[..]) - (1 + 0.8) / 2) < 1e-15;
+  #assert rr_late(t[..], 2, q[0..<0], w[..]) == 0 && rr_late(t[..], 2, q[..], w[0..<0]) == 0;
+  z := [1] int.[3];
+  #assert rr_late(t[..], 2, q[..], z[..]) == 0;
+  // A word opposite every passage word still counts its best, -1.
+  opp := [1] int.[4]; first := [1] int.[0];
+  #assert rr_late(t[..], 2, opp[..], first[..]) == -1;
+  far := [2] int.[4, 3];
+  #assert rr_late(t[..], 2, first[..], far[..]) == 0;
+  mixed := [3] int.[4, 2, 0]; two := [2] int.[1, 0];
+  #assert abs(rr_late(t[..], 2, two[..], mixed[..]) - (0.8 + 1) / 2) < 1e-15;
+}
+
+#test "a feature row scales ranks and BM25 as documented" {
+  out: [RR_FEATURES] f64;
+  rr_row(RrCand.{passage = 3, lexical = 1, dense = 0}, 4, 8, 0.5, 0.25, 0.75, 0.125, out[..]);
+  #assert out[0] == 60.0 / 61 && out[1] == 0 && out[2] == 0.5 && out[3] == 0.5 && out[4] == 0.25 && out[5] == 0.75 && out[6] == 0.125;
+  rr_row(RrCand.{passage = 3, lexical = 0, dense = 2}, 4, 0, -0.5, 0, 0, 0, out[..]);
+  #assert out[0] == 0 && out[1] == 60.0 / 62 && out[2] == 0 && out[3] == -0.5;
+  #assert rr_rank_term(-1) == 0 && rr_rank_term(1) == 60.0 / 61 && rr_rank_term(100) == 60.0 / 160;
+  #assert RR_FEATURE_NAMES[0] == "lexical rank" && RR_FEATURE_NAMES[6] == "word match";
+}
+
+// The chapter's hand trace: one query, a relevant candidate with features
+// (1, 0) and another with (0, 1).
+#test "one step of the pairwise loss matches the hand trace" {
+  f := [4] f64.[1, 0, 0, 1]; label := [2] bool.[true, false]; groups := [2] int.[0, 2];
+  w := [2] f64.[0, 0]; g: [2] f64;
+  l := rr_loss(w[..], f[..], label[..], groups[..], 0, g[..]);
+  #assert l.queries == 1 && l.pairs == 1 && l.loss == log(2.0) && g[0] == -0.5 && g[1] == 0.5;
+  r := rr_train(RrConfig.{steps = 1, lr = 1, l2 = 0}, f[..], label[..], groups[..], w[..]);
+  #assert r.status == RrStatus.ok && r.queries == 1 && r.pairs == 1 && w[0] == 0.5 && w[1] == -0.5;
+  #assert abs(r.first - log(2.0)) < 1e-15 && abs(r.last - log(1 + exp(-1.0))) < 1e-15;
+  // L2 adds l2/2 |w|^2 to the loss and l2 w to the gradient.
+  w2 := [2] f64.[1, -1];
+  l = rr_loss(w2[..], f[..], label[..], groups[..], 0.5, g[..]);
+  s := 1 / (1 + exp(2.0));
+  #assert abs(l.loss - (log(1 + exp(-2.0)) + 0.5)) < 1e-15 && abs(g[0] - (-s + 0.5)) < 1e-15 && abs(g[1] - (s - 0.5)) < 1e-15;
+}
+
+// An independent check: the gradient against central differences on three
+// queries, one with two relevant candidates and one with none.
+#test "the gradient matches central finite differences" {
+  f := [21] f64.[0.2, -0.4, 1.1, 0.7, 0.3, -0.2, -0.5, 0.9, 0.4, 0.1, 0.1, 0.1, 0.6, -0.3, 0.8, 0.0, 0.5, -0.7, 0.9, 0.2, -0.1];
+  label := [7] bool.[true, false, true, false, false, true, false];
+  groups := [4] int.[0, 3, 5, 7];
+  w := [3] f64.[0.3, -0.8, 0.5]; g: [3] f64; h: [3] f64;
+  l := rr_loss(w[..], f[..], label[..], groups[..], 0.1, g[..]);
+  #assert l.queries == 2 && l.pairs == 3;
+  for k: 0..<3 {
+    up := w; down := w; up[k] += 1e-6; down[k] -= 1e-6;
+    d := (rr_loss(up[..], f[..], label[..], groups[..], 0.1, h[..]).loss - rr_loss(down[..], f[..], label[..], groups[..], 0.1, h[..]).loss) / 2e-6;
+    #assert abs(d - g[k]) < 1e-9;
+  }
+  // The loss is a mean over training queries of each query's mean pair loss.
+  s0 := 0.3 * 0.2 - 0.8 * -0.4 + 0.5 * 1.1; s1 := 0.3 * 0.7 - 0.8 * 0.3 + 0.5 * -0.2; s2 := 0.3 * -0.5 - 0.8 * 0.9 + 0.5 * 0.4;
+  s5 := 0.3 * 0.0 - 0.8 * 0.5 + 0.5 * -0.7; s6 := 0.3 * 0.9 - 0.8 * 0.2 + 0.5 * -0.1;
+  q0 := (log(1 + exp(s1 - s0)) + log(1 + exp(s1 - s2))) / 2; q2 := log(1 + exp(s6 - s5));
+  #assert abs(l.loss - ((q0 + q2) / 2 + 0.05 * (0.09 + 0.64 + 0.25))) < 1e-12;
+}
+
+#test "large score gaps keep the loss finite and exact" {
+  f := [4] f64.[1, 0, 0, 1]; label := [2] bool.[true, false]; groups := [2] int.[0, 2];
+  g: [2] f64;
+  big := [2] f64.[500, -500];
+  #assert rr_loss(big[..], f[..], label[..], groups[..], 0, g[..]).loss == log(1 + exp(-1000.0)) && g[0] <= 0;
+  wrong := [2] f64.[-500, 500];
+  l := rr_loss(wrong[..], f[..], label[..], groups[..], 0, g[..]);
+  #assert l.loss == 1000 && g[0] == -1 && g[1] == 1;
+  #assert rr_softplus(0) == log(2.0) && rr_softplus(-1) == log(1 + exp(-1.0)) && rr_softplus(1) == 1 + log(1 + exp(-1.0));
+  #assert rr_sigmoid(0) == 0.5 && abs(rr_sigmoid(2) - 1 / (1 + exp(-2.0))) < 1e-15 && abs(rr_sigmoid(-2) - exp(-2.0) / (1 + exp(-2.0))) < 1e-15;
+  #assert rr_sigmoid(-1000) == 0 && rr_sigmoid(1000) == 1 && rr_softplus(-1000) == 0;
+}
+
+// book:begin loss
+// log(1 + e^x) and 1 / (1 + e^-x), written so neither overflows.
+rr_softplus :: (x: f64) -> f64 { return (x + abs(x)) / 2 + log(1 + exp(-abs(x))); }
+rr_sigmoid :: (x: f64) -> f64 { return exp(x - rr_softplus(x)); }
+rr_score :: (w: [] f64, f: [] f64) -> f64 {
+  s := 0.0;
+  for k: 0..<f.count { s += w[k] * f[k]; }
+  return s;
+}
+// Candidates of query q are rows groups[q]..<groups[q + 1] of f (w.count
+// features each). For every relevant i and other j of one query the pair loss
+// is softplus(s_j - s_i); a query's loss is the mean over its pairs, and the
+// total the mean over queries that have a pair, plus l2/2 |w|^2. grad gets
+// the gradient.
+rr_loss :: (w: [] f64, f: [] f64, label: [] bool, groups: [] int, l2: f64, grad: [] f64) -> RrLoss {
+  F := w.count; r: RrLoss; total := 0.0;
+  for k: 0..<F { grad[k] = 0; }
+  for q: 0..<groups.count - 1 {
+    a := groups[q]; b := groups[q + 1];
+    pairs := 0; sum := 0.0; dq: [RR_FEATURES] f64;
+    for i: a..<b {
+      if !label[i] { continue; }
+      si := rr_score(w, f[i * F..<(i + 1) * F]);
+      for j: a..<b {
+        if label[j] { continue; }
+        d := rr_score(w, f[j * F..<(j + 1) * F]) - si;
+        sum += rr_softplus(d); pairs += 1;
+        p := rr_sigmoid(d);
+        for k: 0..<F { dq[k] += p * (f[j * F + k] - f[i * F + k]); }
+      }
+    }
+    if pairs == 0 { continue; }
+    r.queries += 1; r.pairs += pairs;
+    total += sum / f64(pairs);
+    for k: 0..<F { grad[k] += dq[k] / f64(pairs); }
+  }
+  if r.queries == 0 { return r; }
+  norm := 0.0;
+  for k: 0..<F { grad[k] = grad[k] / f64(r.queries) + l2 * w[k]; norm += w[k] * w[k]; }
+  r.loss = total / f64(r.queries) + l2 / 2 * norm;
+  return r;
+}
+// book:end loss
+
+#test "training refuses bad shapes, numbers, budgets and queries with no pair" {
+  f := [4] f64.[1, 0, 0, 1]; label := [2] bool.[true, false]; groups := [2] int.[0, 2]; w: [2] f64;
+  c := RrConfig.{steps = 3, lr = 0.5, l2 = 0};
+  #assert rr_train(c, f[..], label[..], groups[..], w[..]).status == RrStatus.ok;
+  #assert rr_train(c, f[0..<3], label[..], groups[..], w[..]).status == RrStatus.shape;
+  #assert rr_train(c, f[..], label[..], groups[..], w[0..<0]).status == RrStatus.shape;
+  big: [RR_FEATURES + 1] f64; wide: [RR_FEATURES + 1] f64; one := [1] bool.[true]; g1 := [2] int.[0, 1];
+  #assert rr_train(c, big[..], one[..], g1[..], wide[..]).status == RrStatus.shape && rr_train(c, big[0..<RR_FEATURES], one[..], g1[..], wide[0..<RR_FEATURES]).status == RrStatus.empty;
+  bad := [2] int.[1, 2]; short := [2] int.[0, 1]; back := [3] int.[0, 2, 1]; past := [3] int.[0, 3, 2]; lone := [1] int.[0];
+  #assert rr_train(c, f[..], label[..], bad[..], w[..]).status == RrStatus.shape && rr_train(c, f[..], label[..], short[..], w[..]).status == RrStatus.shape;
+  #assert rr_train(c, f[..], label[..], back[..], w[..]).status == RrStatus.shape && rr_train(c, f[..], label[..], past[..], w[..]).status == RrStatus.shape;
+  #assert rr_train(c, f[..], label[..], lone[..], w[..]).status == RrStatus.shape;
+  split := [3] int.[0, 1, 2];
+  #assert rr_train(c, f[..], label[..], split[..], w[..]).status == RrStatus.empty;
+  nan := f; nan[1] = 0.0 / 0.0;
+  #assert rr_train(c, nan[..], label[..], groups[..], w[..]).status == RrStatus.number;
+  huge := f; huge[3] = 1000001;
+  #assert rr_train(c, huge[..], label[..], groups[..], w[..]).status == RrStatus.number;
+  edge := f; edge[3] = -1000000; edge[0] = 1000000;
+  #assert rr_train(c, edge[..], label[..], groups[..], w[..]).status == RrStatus.ok;
+  // One feature trains; a negative step between groups is refused; an empty group is allowed.
+  one1 := [2] f64.[1, 0]; w1: [1] f64;
+  #assert rr_train(c, one1[..], label[..], groups[..], w1[..]).status == RrStatus.ok && w1[0] > 0;
+  neg := [3] int.[0, -1, 2]; hole := [3] int.[0, 0, 2];
+  #assert rr_train(c, f[..], label[..], neg[..], w[..]).status == RrStatus.shape && rr_train(c, f[..], label[..], hole[..], w[..]).status == RrStatus.ok;
+  x := c; x.steps = 0; #assert rr_train(x, f[..], label[..], groups[..], w[..]).status == RrStatus.budget;
+  x = c; x.steps = RR_STEPS_MAX + 1; #assert rr_train(x, f[..], label[..], groups[..], w[..]).status == RrStatus.budget;
+  x = c; x.lr = 0; #assert rr_train(x, f[..], label[..], groups[..], w[..]).status == RrStatus.budget;
+  x = c; x.lr = 1000001; #assert rr_train(x, f[..], label[..], groups[..], w[..]).status == RrStatus.budget;
+  x = c; x.lr = 0.0 / 0.0; #assert rr_train(x, f[..], label[..], groups[..], w[..]).status == RrStatus.budget;
+  x = c; x.l2 = -1; #assert rr_train(x, f[..], label[..], groups[..], w[..]).status == RrStatus.budget;
+  x = c; x.l2 = 1000001; #assert rr_train(x, f[..], label[..], groups[..], w[..]).status == RrStatus.budget;
+  x = c; x.l2 = 0.0 / 0.0; #assert rr_train(x, f[..], label[..], groups[..], w[..]).status == RrStatus.budget;
+  x = c; x.steps = RR_STEPS_MAX; x.lr = 1000000; x.l2 = 1000000;
+  #assert rr_budget_ok(x) && rr_finite(edge[..]) && !rr_finite(huge[..]);
+}
+
+#test "training lowers the loss, repeats exactly and separates a separable query" {
+  f := [21] f64.[0.2, -0.4, 1.1, 0.7, 0.3, -0.2, -0.5, 0.9, 0.4, 0.1, 0.1, 0.1, 0.6, -0.3, 0.8, 0.0, 0.5, -0.7, 0.9, 0.2, -0.1];
+  label := [7] bool.[true, false, true, false, false, true, false];
+  groups := [4] int.[0, 3, 5, 7];
+  c := RrConfig.{steps = 200, lr = 0.5, l2 = 0.01};
+  w: [3] f64; v := [3] f64.[9, 9, 9];
+  r := rr_train(c, f[..], label[..], groups[..], w[..]);
+  s := rr_train(c, f[..], label[..], groups[..], v[..]);
+  #assert r.status == RrStatus.ok && r.queries == 2 && r.pairs == 3 && r.last < r.first && abs(r.first - log(2.0)) < 1e-15;
+  #assert w[0] == v[0] && w[1] == v[1] && w[2] == v[2] && s.last == r.last;
+  g: [3] f64;
+  #assert abs(rr_loss(w[..], f[..], label[..], groups[..], 0.01, g[..]).loss - r.last) < 1e-15;
+  // Every relevant candidate now outscores the others of its query.
+  for q: 0..<3 { for i: groups[q]..<groups[q + 1] { for j: groups[q]..<groups[q + 1] {
+    if label[i] && !label[j] { #assert rr_score(w[..], f[i * 3..<i * 3 + 3]) > rr_score(w[..], f[j * 3..<j * 3 + 3]); }
+  } } }
+}
+
+// book:begin train
+rr_finite :: (v: [] f64) -> bool {
+  for x: v { if !(x >= -RR_VALUE_MAX && x <= RR_VALUE_MAX) { return false; } }
+  return true;
+}
+rr_budget_ok :: (c: RrConfig) -> bool {
+  return c.steps >= 1 && c.steps <= RR_STEPS_MAX && c.lr > 0 && c.lr <= RR_VALUE_MAX && c.l2 >= 0 && c.l2 <= RR_VALUE_MAX;
+}
+// Full-batch gradient descent on rr_loss from zero weights. w.count is the
+// number of features (1 to 7); groups starts at 0, never decreases and ends
+// at the row count.
+rr_train :: (c: RrConfig, f: [] f64, label: [] bool, groups: [] int, w: [] f64) -> RrTrained {
+  F := w.count; n := label.count;
+  if F < 1 || F > RR_FEATURES || f.count != n * F || groups.count < 2 { return RrTrained.{status = RrStatus.shape}; }
+  if groups[0] != 0 || groups[groups.count - 1] != n { return RrTrained.{status = RrStatus.shape}; }
+  for q: 0..<groups.count - 1 { if groups[q + 1] < groups[q] { return RrTrained.{status = RrStatus.shape}; } }
+  if !rr_finite(f) { return RrTrained.{status = RrStatus.number}; }
+  if !rr_budget_ok(c) { return RrTrained.{status = RrStatus.budget}; }
+  for k: 0..<F { w[k] = 0; }
+  g: [RR_FEATURES] f64; r: RrTrained;
+  for step: 0..<c.steps {
+    l := rr_loss(w, f, label, groups, c.l2, g[0..<F]);
+    if l.queries == 0 { return RrTrained.{status = RrStatus.empty}; }
+    if step == 0 { r = RrTrained.{queries = l.queries, pairs = l.pairs, first = l.loss}; }
+    for k: 0..<F { w[k] -= c.lr * g[k]; }
+  }
+  r.last = rr_loss(w, f, label, groups, c.l2, g[0..<F]).loss;
+  return r;
+}
+// book:end train
+
+#test "reranking sorts by learned score with chapter 54's tie rule" {
+  cands := [3] RrCand.[RrCand.{passage = 9}, RrCand.{passage = 4}, RrCand.{passage = 6}];
+  f := [6] f64.[0, 1, 1, 0, 1, 0];
+  w := [2] f64.[2, 1];
+  out: [3] BsHit;
+  #assert rr_rerank(w[..], f[..], cands[..], out[..]) == 3;
+  #assert out[0].passage == 4 && out[0].score == 2 && out[1].passage == 6 && out[2].passage == 9 && out[2].score == 1;
+  #assert rr_rerank(w[..], f[..], cands[..], out[0..<2]) == -1 && rr_rerank(w[..], f[0..<5], cands[..], out[..]) == -1;
+  #assert rr_rerank(w[..], f[0..<0], cands[0..<0], out[..]) == 0;
+  // Equal scores: the lower passage id first, wherever it sits in the list.
+  same := [2] f64.[1, 1];
+  #assert rr_rerank(same[..], f[..], cands[..], out[..]) == 3 && out[0].passage == 4 && out[1].passage == 6 && out[2].passage == 9;
+}
+
+// book:begin rerank
+// Scores every candidate (row i of f belongs to cands[i]) and writes them to
+// out best first; -1 when out or f does not fit.
+rr_rerank :: (w: [] f64, f: [] f64, cands: [] RrCand, out: [] BsHit) -> int {
+  F := w.count;
+  if out.count < cands.count || f.count != cands.count * F { return -1; }
+  for c, i: cands {
+    hit := BsHit.{passage = c.passage, score = rr_score(w, f[i * F..<(i + 1) * F])};
+    j := i;
+    while j > 0 && bs_before(hit, out[j - 1]) { out[j] = out[j - 1]; j -= 1; }
+    out[j] = hit;
+  }
+  return cands.count;
+}
+// book:end rerank
+
+#test "nDCG at k with binary gains, by hand" {
+  hits := [4] BsHit.[BsHit.{passage = 3}, BsHit.{passage = 1}, BsHit.{passage = 0}, BsHit.{passage = 2}];
+  rel := [5] bool.[true, false, true, false, true];
+  // Relevant at ranks 3 and 4; three relevant passages exist.
+  dcg := 0.5 + log(2.0) / log(5.0); ideal := 1 + log(2.0) / log(3.0) + 0.5;
+  #assert abs(rr_ndcg(hits[..], rel[..], 3, 10) - dcg / ideal) < 1e-15;
+  #assert abs(rr_ndcg(hits[..], rel[..], 3, 3) - 0.5 / ideal) < 1e-15;
+  #assert rr_ndcg(hits[..], rel[..], 3, 2) == 0 && rr_ndcg(hits[..], rel[..], 0, 10) == 0 && rr_ndcg(hits[..], rel[..], 3, 0) == 0;
+  // Fewer relevant passages than k: the ideal list stops at them.
+  best := [2] BsHit.[BsHit.{passage = 0}, BsHit.{passage = 2}];
+  #assert rr_ndcg(best[..], rel[..], 2, 10) == 1 && abs(rr_ndcg(best[..], rel[..], 3, 10) - (1 + log(2.0) / log(3.0)) / ideal) < 1e-15;
+  #assert rr_ndcg(hits[2..<4], rel[..], 1, 1) == 1;
+  #assert rr_holds(hits[..], rel[..]) && !rr_holds(hits[1..<2], rel[..]) && !rr_holds(hits[0..<0], rel[..]);
+  cands := [2] RrCand.[RrCand.{passage = 1}, RrCand.{passage = 4}];
+  #assert rr_pool_holds(cands[..], rel[..]) && !rr_pool_holds(cands[0..<1], rel[..]);
+}
+
+// book:begin metrics
+// nDCG at k with gain 1 for a relevant passage: DCG of the list over the DCG
+// of an ideal list that puts all `total` relevant passages first.
+rr_ndcg :: (hits: [] BsHit, relevant: [] bool, total: int, k: int) -> f64 {
+  dcg := 0.0; ideal := 0.0;
+  for i: 0..<k {
+    if i < hits.count && relevant[hits[i].passage] { dcg += log(2.0) / log(f64(i + 2)); }
+    if i < total { ideal += log(2.0) / log(f64(i + 2)); }
+  }
+  if ideal == 0 { return 0; }
+  return dcg / ideal;
+}
+// Index recall for one query: does the list, or the candidate pool, hold a
+// relevant passage at all?
+rr_holds :: (hits: [] BsHit, relevant: [] bool) -> bool { for h: hits { if relevant[h.passage] { return true; } } return false; }
+rr_pool_holds :: (cands: [] RrCand, relevant: [] bool) -> bool { for c: cands { if relevant[c.passage] { return true; } } return false; }
+// book:end metrics

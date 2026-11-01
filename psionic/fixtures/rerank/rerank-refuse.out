@@ -1,0 +1,11 @@
+a lexical list that names passage 7 twice: shape: a list, a row or a group does not fit
+two distinct lists into room for 2 of 3: shape: a list, a row or a group does not fit
+a good training set: ok
+3 feature values for 2 candidates of 2 features: shape: a list, a row or a group does not fit
+query groups that run backwards: shape: a list, a row or a group does not fit
+a feature that is not a number: number: a value is not finite or exceeds 10^6
+a feature of 2 * 10^6: number: a value is not finite or exceeds 10^6
+learning rate 0: budget: need 1 <= steps <= 100000, 0 < lr <= 10^6, 0 <= l2 <= 10^6
+0 steps: budget: need 1 <= steps <= 100000, 0 < lr <= 10^6, 0 <= l2 <= 10^6
+a query with no relevant candidate: empty: no query has both a relevant and another candidate
+rerank 2 candidates into room for 1: -1

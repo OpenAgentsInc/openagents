@@ -1,0 +1,64 @@
+// Chapter 56: merge a lexical and a dense list, train a two-feature reranker
+// on three training queries, and rerank a fourth query it never saw.
+#import "Basic";
+#load "../lib/book-search/rerank.coax";
+
+// book:begin example
+// Prints x to four decimals, rounded half away from zero.
+put4 :: (x: f64) {
+  h := 0.5; if x < 0 { h = -0.5; }
+  t := cast(int) (x * 10000 + h);
+  if t < 0 { print("-"); t = -t; }
+  print("%.", t / 10000); print("%", t / 1000 % 10); print("%", t / 100 % 10); print("%", t / 10 % 10); print("%", t % 10);
+}
+// Two features per candidate: chapter 54's fusion terms, 60 / (60 + rank).
+row :: (c: RrCand, out: [] f64) { out[0] = rr_rank_term(c.lexical); out[1] = rr_rank_term(c.dense); }
+
+main :: () {
+  // The hand trace: one relevant candidate (1, 0), one other (0, 1).
+  f := [4] f64.[1, 0, 0, 1]; label := [2] bool.[true, false]; groups := [2] int.[0, 2];
+  w: [2] f64; g: [2] f64;
+  l := rr_loss(w[..], f[..], label[..], groups[..], 0, g[..]);
+  print("hand trace: loss at w = 0 is "); put4(l.loss); print(", gradient ("); put4(g[0]); print(", "); put4(g[1]); print(")\n");
+  r := rr_train(RrConfig.{steps = 1, lr = 1, l2 = 0}, f[..], label[..], groups[..], w[..]);
+  print("one step with lr 1: w = ("); put4(w[0]); print(", "); put4(w[1]); print("), loss "); put4(r.last); print("\n\n");
+
+  // Three training queries.
+  train := [10] RrCand.[
+    RrCand.{passage = 0, lexical = 1}, RrCand.{passage = 1, lexical = 2, dense = 1}, RrCand.{passage = 2, dense = 3},
+    RrCand.{passage = 3, lexical = 1, dense = 4}, RrCand.{passage = 4, dense = 1}, RrCand.{passage = 5, lexical = 3, dense = 2},
+    RrCand.{passage = 6, lexical = 1}, RrCand.{passage = 7, lexical = 2}, RrCand.{passage = 8, dense = 1}, RrCand.{passage = 9, lexical = 4, dense = 2}];
+  tl := [10] bool.[false, true, false, false, true, false, false, false, true, false];
+  tg := [4] int.[0, 3, 6, 10];
+  tf: [20] f64;
+  for c, i: train { row(c, tf[i * 2..<i * 2 + 2]); }
+  r = rr_train(RrConfig.{steps = 300, lr = 0.5, l2 = 0.001}, tf[..], tl[..], tg[..], w[..]);
+  print("trained on % queries, % pairs: loss ", r.queries, r.pairs); put4(r.first); print(" -> "); put4(r.last);
+  print("; weights lexical "); put4(w[0]); print(", dense "); put4(w[1]); print("\n\n");
+
+  // A new query: BM25 and dense search each return three passages.
+  lex := [3] BsHit.[BsHit.{passage = 7, score = 9}, BsHit.{passage = 2, score = 8}, BsHit.{passage = 5, score = 1}];
+  den := [3] BsHit.[BsHit.{passage = 2, score = 0.9}, BsHit.{passage = 4, score = 0.8}, BsHit.{passage = 7, score = 0.1}];
+  relevant := [8] bool.[false, false, false, false, true, false, false, false];
+  cands: [6] RrCand;
+  m := rr_merge(lex[..], den[..], cands[..]);
+  print("merged: % candidates, % in both lists\n", m.count, m.both);
+  for c: cands[0..<m.count] { print("  passage %: lexical rank %, dense rank %\n", c.passage, c.lexical, c.dense); }
+  print("index recall: BM25 alone holds a relevant passage: %; the merged pool: %\n", rr_holds(lex[..], relevant[..]), rr_pool_holds(cands[0..<m.count], relevant[..]));
+  scores: [8] f64; fusedhits: [6] BsHit;
+  bs_fuse(lex[..], den[..], scores[..]);
+  n := bs_top(scores[..], 0, fusedhits[..]);
+  print("fused:   ");
+  for h: fusedhits[0..<n] { print(" %", h.passage); }
+  print("; reciprocal rank "); put4(bs_reciprocal(bs_first_relevant(fusedhits[0..<n], relevant[..]), 10));
+  print(", nDCG@10 "); put4(rr_ndcg(fusedhits[0..<n], relevant[..], 1, 10)); print("\n");
+  cf: [12] f64; ranked: [6] BsHit;
+  for c, i: cands[0..<m.count] { row(c, cf[i * 2..<i * 2 + 2]); }
+  k := rr_rerank(w[..], cf[0..<m.count * 2], cands[0..<m.count], ranked[..]);
+  print("reranked:");
+  for h: ranked[0..<k] { print(" %", h.passage); }
+  print("; reciprocal rank "); put4(bs_reciprocal(bs_first_relevant(ranked[0..<k], relevant[..]), 10));
+  print(", nDCG@10 "); put4(rr_ndcg(ranked[0..<k], relevant[..], 1, 10)); print("\n");
+  for h: ranked[0..<k] { print("  passage % scores ", h.passage); put4(h.score); print("\n"); }
+}
+// book:end example
