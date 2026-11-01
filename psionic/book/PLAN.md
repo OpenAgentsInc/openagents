@@ -58,6 +58,9 @@ training six ways on purpose and names each fault from the run's record.
 [Chapter 108](ch108-choose-the-next-example-to-learn-from.md) chooses which
 labels to buy by uncertainty, diversity or both, and judges each rule against
 random selection with a noise floor over seed blocks.
+[Chapter 140](ch140-post-train-a-decision-model.md) trains low-rank adapters on
+a frozen stand-in decoder and promotes one only through both of chapter 241's
+gates; adapters on Elephant and Mammoth themselves remain.
 [Chapter 215](ch215-fit-our-own-calibration.md) fits and gates its own
 calibration maps, and refuses them for another model version.
 [Chapter 216](ch216-thresholds-from-written-costs.md) derives a cascade's
@@ -483,7 +486,7 @@ before longer runs rather than postponing provenance until this part.
 | [137. Continued pretraining and task adaptation](ch137-continued-pretraining-and-task-adaptation.md) — design draft | A separately specified domain workload, data mixture, retention checks and promotion criteria. This is a Psionic extension, not a stage claimed from the pinned nanochat speedrun. |
 | [138. Preferences and reward models](ch138-preferences-and-reward-models.md) — design draft | HelpSteer3 pairwise data, ranking/reward losses and an optional separately specified DPO experiment; held-out comparisons and reward-model limitations. |
 | [139. Learn from rollouts](ch139-learn-from-rollouts.md) — design draft | The pinned nanochat on-policy, mean-centered-reward recipe; bounded rollouts, independent gradient/reward checks and held-out task results. Rollouts come from chapter 242's environments. |
-| [140. Post-train a decision model](ch140-post-train-a-decision-model.md) — design draft | Qualified hybrid backward and LoRA adapters (W + (α/r)·BA with W frozen, so only A and B carry gradients and optimizer state while backward still passes through the frozen layers), selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. Promotion passes both of chapter 241's decision and probability gates. A zero adapter reproduces the base model exactly, only the intended parameters change, the adapter records the base-model identity it is compatible with and loads and unloads through the serving path, and task gains and retained abilities are evaluated separately. A quantized-base variant names its full recipe before it is called QLoRA. |
+| [140. Post-train a decision model](ch140-post-train-a-decision-model.md) — partly implemented: cpu-f64-post-train-v1, stand-in decoder | Qualified hybrid backward and LoRA adapters (W + (α/r)·BA with W frozen, so only A and B carry gradients and optimizer state while backward still passes through the frozen layers), selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. Promotion passes both of chapter 241's decision and probability gates. A zero adapter reproduces the base model exactly, only the intended parameters change, the adapter records the base-model identity it is compatible with and loads and unloads through the serving path, and task gains and retained abilities are evaluated separately. A quantized-base variant names its full recipe before it is called QLoRA. |
 | [141. Distill Mammoth into Elephant](ch141-distill-mammoth-into-elephant.md) — design draft | Mammoth's slot distributions as soft targets on a recorded request corpus; KL/cross-entropy over slots, held-out agreement and chapter 16's quality metrics, with Elephant's cost measured against Mammoth's. |
 
 The [nanochat study](../docs/targets/nanochat.md) is the compatibility

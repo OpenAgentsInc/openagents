@@ -472,6 +472,16 @@
       ]
     },
     {
+      "source": "psionic/examples/post-train-decision.coax",
+      "chapter": "psionic/book/ch140-post-train-a-decision-model.md",
+      "stdout": "psionic/fixtures/post-train-decision.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/model-router.coax",
       "chapter": "psionic/book/ch225-learn-which-model-to-call.md",
       "stdout": "psionic/fixtures/model-router.out",

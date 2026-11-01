@@ -1,0 +1,24 @@
+base 83b865c4d32b41e8...: h0 = tanh(x0 + x1), h1 = tanh(x0 - x1), z = 4 h0
+held out: 400 rows in 50 groups; the true model's accuracy 0.915 (new task), 0.81 (retained)
+zero adapter: 400 of 400 held-out probabilities equal the base's
+hidden, 480 rows, cross-entropy + Brier: training loss 0.3688
+  new task accuracy 0.675 -> 0.92, floor 0.029, 0 of 1000 at or below it: passed (beyond the floor)
+  retained accuracy 0.81 -> 0.8, floor 0.018, is the base ahead? unverifiable (near the floor)
+  log loss 0.6272 -> 0.3083, confident errors 34 -> 5, calibration error 0.113 -> 0.051: passed (lower log loss)
+  promoted: true
+readout, 480 rows, cross-entropy + Brier: training loss 0.7279
+  new task accuracy 0.675 -> 0.675, floor 0.032, 1000 of 1000 at or below it: failed (within the floor)
+  retained accuracy 0.81 -> 0.81, floor 0.015, is the base ahead? failed (within the floor)
+  log loss 0.6272 -> 0.5584, confident errors 34 -> 0, calibration error 0.113 -> 0.041: passed (lower log loss)
+  promoted: false
+hidden, 16 rows, cross-entropy only: training loss 0.0186
+  new task accuracy 0.675 -> 0.9, floor 0.111, 1 of 1000 at or below it: passed (beyond the floor)
+  retained accuracy 0.81 -> 0.71, floor 0.126, is the base ahead? unverifiable (near the floor)
+  log loss 0.6272 -> 0.7872, confident errors 34 -> 76, calibration error 0.113 -> 0.178: failed (higher log loss)
+  promoted: false
+resume after 120 of 300 steps: 16 of 16 parameters the same bits, step 300; 10 parameters moved; base digest unchanged: true
+a training row recorded on another base: identity at row 7
+a held-out group that also trains: leak at row 496
+training the adapter on another base: identity, still at step 300
+serving it on another base: identity
+that base with the adapter unloaded: ok (p 0.0318)

@@ -1,0 +1,579 @@
+// Chapter 140: post-train a decision model. A frozen stand-in decoder (four
+// inputs, one tanh layer of four units, one yes-or-no logit) gets a low-rank
+// adapter W + (alpha/r)·BA on one selected region, the hidden layer or the
+// readout. Only A and B carry gradients and AdamW state; backward passes
+// through the frozen layers. The loss is cross-entropy plus a weighted Brier
+// score. Rows are admitted only for the base they were recorded on and only
+// when no held-out group also appears outside the held-out split. An adapter
+// records the digest of the base it was trained on, and serving refuses it on
+// any other base.
+// Profile cpu-f64-post-train-v1: binary64, sums in row order, chapter 103's
+// tanh and sigmoid, chapter 124's AdamW, chapter 247's time cuts, rank 1 or 2,
+// at most 1,024 rows. The base digest is SHA-256 over the 25 weights as
+// 8-byte little-endian IEEE 754 words.
+#load "verdict.coax";
+#load "training-rows.coax";
+#load "optim/adamw.coax";
+#load "../tests/post-train-checks.coax";
+#authority;
+
+PtStatus :: enum u8 {ok;shape;number;identity;leak;empty;}
+PtRegion :: enum u8 {hidden;readout;}
+PtBase :: struct {w1:[16]f64;c1:[4]f64;w2:[4]f64;c2:f64;}
+// p holds A (rank x 4, row-major) then B (out x rank). rank 0 is no adapter.
+PtAdapter :: struct {region:PtRegion;rank:int;alpha:f64;base:[32]u8;p:[16]f64;}
+PtNew :: struct {status:PtStatus;adapter:PtAdapter;}
+// task 0 is the task being taught, 1 an ability the base already has.
+PtRow :: struct {group:int;time:int;model:[32]u8;task:int;x:[4]f64;y:f64;}
+PtAdmit :: struct {status:PtStatus;train:int;heldout:int;row:int;}
+// A checkpoint is the whole trainer: the adapter, both moments and the step.
+PtTrainer :: struct {adapter:PtAdapter;m:[16]f64;v:[16]f64;state:AwState;}
+PtTrain :: struct {status:PtStatus;trainer:PtTrainer;loss:f64;}
+PtPass :: struct {h:[4]f64;u:[4]f64;au:[2]f64;z:f64;p:f64;}
+PtServe :: struct {status:PtStatus;p:f64;}
+// A training recipe: the Brier weight and AdamW's settings.
+PtRecipe :: struct {brier:f64;lr:f64;decay:f64;}
+
+PT_D :: 4;
+PT_H :: 4;
+PT_R :: 2;
+PT_ROWS_MAX :: 1024;
+PT_GROUPS_MAX :: 1024;
+PT_STEPS_MAX :: 10000;
+PT_BIG :: 1.0e6;
+
+// Checks precede the implementation. Expected values are derived in chapter 140.
+
+
+#test "the stand-in base by hand" {
+    b:=pt_t_base();none:PtAdapter;x:=[4]f64.[0.5,0,0,0];
+    q:=pt_forward(b,none,x);
+    #assert q.h[0]==tb_tanh(0.5) && q.h[1]==tb_tanh(0.5) && q.h[2]==0 && q.h[3]==0;
+    #assert q.z==4*tb_tanh(0.5) && q.p==tb_sigmoid(4*tb_tanh(0.5));
+    #assert abs(q.z-1.8484686)<1e-7 && abs(q.p-0.8639472)<1e-7;
+    b.c1[2]=0.25;b.c2=-1;q=pt_forward(b,none,x);
+    #assert q.h[2]==tb_tanh(0.25) && q.z==4*tb_tanh(0.5)-1;
+    b.w2[2]=2;q=pt_forward(b,none,x);#assert q.z==4*tb_tanh(0.5)+2*tb_tanh(0.25)-1;
+}
+
+#test "the digest names every weight" {
+    b:=pt_t_base();d:=pt_digest(b);e:=pt_digest(b);
+    #assert pt_same(d,e);
+    for k:0..<25 {
+        c:=b;
+        if k<16 {c.w1[k]+=0.5;} else if k<20 {c.c1[k-16]+=0.5;} else if k<24 {c.w2[k-20]+=0.5;} else {c.c2+=0.5;}
+        #assert !pt_same(pt_digest(c),d);
+    }
+    // pt_same reads every byte.
+    for i:0..<32 {x:=d;x[i]^=1;#assert !pt_same(x,d) && pt_same(x,x);}
+    // A signed zero is a different word.
+    c:=b;c.c2=-0.0;#assert !pt_same(pt_digest(c),d);
+    // The empty base hashes 200 zero bytes.
+    z:PtBase;buf:[200]u8;want:[32]u8;#assert sha256_hash_checked(buf[..],want[..],false)==SHA_OK;
+    #assert pt_same(pt_digest(z),want);
+    // The first word is w1[0] = 1.0, 0x3ff0000000000000, low byte first.
+    // The first word is w1[0] = 0.1, 0x3fb999999999999a, low byte first.
+    one:PtBase;one.w1[0]=0.1;buf[0]=0x9a;for i:1..<6 {buf[i]=0x99;}buf[6]=0xb9;buf[7]=0x3f;
+    #assert sha256_hash_checked(buf[..],want[..],false)==SHA_OK && pt_same(pt_digest(one),want);
+    for i:0..<8 {buf[i]=0;}
+    last:PtBase;last.c2=1;buf[198]=0xf0;buf[199]=0x3f;#assert sha256_hash_checked(buf[..],want[..],false)==SHA_OK;
+    #assert pt_same(pt_digest(last),want);
+}
+
+#test "a new adapter: A from the seed, B zero, the base recorded" {
+    b:=pt_t_base();
+    n:=pt_new(b,PtRegion.hidden,2,4,7);
+    #assert n.status==PtStatus.ok && n.adapter.rank==2 && n.adapter.alpha==4 && pt_same(n.adapter.base,pt_digest(b));
+    for i:0..<8 {#assert n.adapter.p[i]==tb_uniform(7,cast(u64)i)-0.5;}
+    for i:8..<16 {#assert n.adapter.p[i]==0;}
+    #assert pt_count(n.adapter)==16 && pt_count(pt_new(b,PtRegion.readout,2,4,7).adapter)==10;
+    #assert pt_count(pt_new(b,PtRegion.hidden,1,4,7).adapter)==8 && pt_count(pt_new(b,PtRegion.readout,1,4,7).adapter)==5;
+    r:=pt_new(b,PtRegion.readout,1,1,7);
+    for i:0..<4 {#assert r.adapter.p[i]==tb_uniform(7,cast(u64)i)-0.5;}
+    for i:4..<16 {#assert r.adapter.p[i]==0;}
+    #assert pt_new(b,PtRegion.hidden,0,4,7).status==PtStatus.shape && pt_new(b,PtRegion.hidden,3,4,7).status==PtStatus.shape;
+    #assert pt_new(b,PtRegion.hidden,1,0,7).status==PtStatus.number && pt_new(b,PtRegion.hidden,1,-1,7).status==PtStatus.number;
+    #assert pt_new(b,PtRegion.hidden,1,PT_BIG,7).status==PtStatus.ok && pt_new(b,PtRegion.hidden,1,PT_BIG*2,7).status==PtStatus.number;
+    #assert pt_new(b,PtRegion.hidden,1,0.0/0.0,7).status==PtStatus.number;
+}
+
+#test "a zero adapter reproduces the base exactly" {
+    b:=pt_t_base();b.c1[0]=0.125;b.c1[3]=-0.5;b.w2[3]=1.5;b.c2=0.25;
+    none:PtAdapter;
+    for region:0..<2 {for rank:1..<3 {
+        n:=pt_new(b,cast(PtRegion)region,rank,4,3);
+        for k:0..<64 {
+            x:=[4]f64.[tb_uniform(9,cast(u64)(4*k))*2-1,tb_uniform(9,cast(u64)(4*k+1))*2-1,tb_uniform(9,cast(u64)(4*k+2))*2-1,tb_uniform(9,cast(u64)(4*k+3))*2-1];
+            q:=pt_forward(b,n.adapter,x);r:=pt_forward(b,none,x);
+            #assert q.z==r.z && q.p==r.p && pt_t_same(q.h[..],r.h[..]);
+        }
+    }}
+    // A nonzero B moves the answer.
+    n:=pt_new(b,PtRegion.hidden,1,4,3);n.adapter.p[4]=1;
+    x:=[4]f64.[0.5,0.25,-0.5,1];#assert pt_forward(b,n.adapter,x).z!=pt_forward(b,none,x).z;
+}
+
+#test "the adapter's forward by hand" {
+    b:=pt_t_base();x:=[4]f64.[0.5,0,1,1];
+    // Hidden, rank 1, alpha 2: A = [0,0,1,0], B = [0.5,0,0,0]^T. s = 2.
+    a:PtAdapter;a.region=PtRegion.hidden;a.rank=1;a.alpha=2;a.p[2]=1;a.p[4]=0.5;
+    q:=pt_forward(b,a,x);
+    #assert q.au[0]==1 && q.u[2]==1 && q.h[0]==tb_tanh(0.5+2*0.5*1) && q.h[1]==tb_tanh(0.5) && q.z==4*tb_tanh(1.5);
+    // Rank 2 divides alpha by 2, and B moves to p[8]: B is 4 x 2.
+    a.rank=2;a.p[4]=0;a.p[8]=0.5;q=pt_forward(b,a,x);#assert q.au[1]==0 && q.h[0]==tb_tanh(0.5+1*0.5*1);
+    // B's second column, read through A's second row, [0,0,0,1].
+    a.p[7]=1;a.p[9]=2;q=pt_forward(b,a,x);
+    #assert q.au[1]==1 && q.h[0]==tb_tanh(0.5+(0.5*1+2*1)) && q.h[2]==0;
+    // B's row 2 writes into the dead unit h2.
+    a.p[8+2*2]=1;q=pt_forward(b,a,x);#assert q.h[2]==tb_tanh(1) && q.z==4*tb_tanh(3);
+    // Readout, rank 1, alpha 1: A = [1,0,0,0] reads h0; B = [3].
+    r:PtAdapter;r.region=PtRegion.readout;r.rank=1;r.alpha=1;r.p[0]=1;r.p[4]=3;
+    q=pt_forward(b,r,x);
+    #assert q.u[0]==tb_tanh(0.5) && q.au[0]==tb_tanh(0.5) && q.z==4*tb_tanh(0.5)+3*tb_tanh(0.5);
+    // Rank 2, alpha 2: B = [0,1] reads A's second row, [0,1,0,0], which reads h1.
+    r.rank=2;r.alpha=2;r.p[0]=0;r.p[4]=0;r.p[5]=1;r.p[8]=0;r.p[9]=1;
+    q=pt_forward(b,r,x);#assert q.au[0]==0 && q.au[1]==tb_tanh(0.5) && q.z==4*tb_tanh(0.5)+tb_tanh(0.5);
+}
+
+
+#forall "backward through frozen layers matches central differences" i:0..<16 {
+    b:=pt_t_base();b.w2[1]=-1.5;b.w2[2]=0.5;b.c1[2]=0.3;rows:[6]PtRow;pt_t_rows(b,rows[..]);
+    for region:0..<2 {for brier:0..<2 {
+        a:=pt_new(b,cast(PtRegion)region,2,3,11).adapter;
+        for k:pt_count(a)/2..<pt_count(a) {a.p[k]=0.25*f64(k%3)-0.2;}
+        g:[16]f64;l:=pt_gradient(b,a,rows[..],f64(brier)*2,g[..]);
+        #assert l==pt_loss(b,a,rows[..],f64(brier)*2);
+        if i<pt_count(a) {
+            n:=pt_t_numeric(b,a,rows[..],f64(brier)*2,i);
+            #assert abs(g[i]-n)<1e-8*(1+abs(n));
+        } else {#assert g[i]==0;}
+    }}
+}
+
+#test "the gradient by hand on one row" {
+    // Hidden, rank 1, alpha 1, A = [0,0,1,0], B = 0, x = [0.5,0,1,1], y = 1.
+    b:=pt_t_base();a:PtAdapter;a.region=PtRegion.hidden;a.rank=1;a.alpha=1;a.p[2]=1;a.base=pt_digest(b);
+    rows:=[1]PtRow.[pt_t_row(b,0,0,0.5,0,1,1,1)];g:[16]f64;
+    l:=pt_gradient(b,a,rows[..],0,g[..]);
+    h:=tb_tanh(0.5);p:=tb_sigmoid(4*h);
+    #assert l==tb_softplus(4*h)-4*h;
+    // dz = p - 1; g0 = dz * 4 * (1 - h^2); dB0 = s g0 (A x) = g0; dA = s B g0 x = 0.
+    #assert g[4]==(p-1)*4*(1-h*h) && g[5]==0 && g[6]==0 && g[7]==0;
+    for k:0..<4 {#assert g[k]==0;}
+    #assert abs(g[4]+0.4279937)<1e-7;
+    // With the Brier term at weight 1: dz gains 2 (p - y) p (1 - p).
+    l=pt_gradient(b,a,rows[..],1,g[..]);
+    #assert l==tb_softplus(4*h)-4*h+(p-1)*(p-1) && g[4]==((p-1)+2*(p-1)*p*(1-p))*4*(1-h*h);
+}
+
+#test "admission refuses another model's rows and leaked groups" {
+    b:=pt_t_base();d:=pt_digest(b);cuts:=TrCuts.{calibration=10,development=10,heldout=20};
+    rows:[6]PtRow;
+    for k:0..<6 {rows[k]=pt_t_row(b,k,ifx k<3 then k else 20+k,0.5,0,0,0,f64(k%2));}
+    r:=pt_admit(d,rows[..],cuts);
+    #assert r.status==PtStatus.ok && r.train==3 && r.heldout==3 && r.row==-1;
+    // Development rows are neither trained on nor held out.
+    rows[2].time=15;r=pt_admit(d,rows[..],cuts);#assert r.status==PtStatus.ok && r.train==2 && r.heldout==3;
+    rows[2].time=2;
+    // Row 4 was recorded on another base.
+    c:=b;c.c2=0.5;rows[4].model=pt_digest(c);
+    r=pt_admit(d,rows[..],cuts);#assert r.status==PtStatus.identity && r.row==4 && r.train==0 && r.heldout==0;
+    rows[4].model=pt_digest(b);
+    // Group 4 also appears before the held-out cut: a leak, named at its later row.
+    rows[1].group=4;r=pt_admit(d,rows[..],cuts);#assert r.status==PtStatus.leak && r.row==4;
+    rows[1].time=15;r=pt_admit(d,rows[..],cuts);#assert r.status==PtStatus.leak && r.row==4;
+    rows[1].time=21;r=pt_admit(d,rows[..],cuts);#assert r.status==PtStatus.ok && r.train==2 && r.heldout==4;
+    // A held-out row before a training row of its group is a leak at the later row.
+    rows[1].time=1;rows[1].group=1;rows[0].group=5;rows[0].time=22;rows[5].time=0;
+    r=pt_admit(d,rows[..],cuts);#assert r.status==PtStatus.leak && r.row==5;
+    rows[0].group=0;rows[0].time=0;rows[5].time=25;
+    #assert pt_admit(d,rows[..],cuts).status==PtStatus.ok;
+    // Labels, tasks, groups and inputs.
+    rows[3].y=0.5;r=pt_admit(d,rows[..],cuts);#assert r.status==PtStatus.number && r.row==3;
+    rows[3].y=1;rows[3].task=2;#assert pt_admit(d,rows[..],cuts).status==PtStatus.number;
+    rows[3].task=-1;#assert pt_admit(d,rows[..],cuts).status==PtStatus.number;
+    rows[3].task=1;#assert pt_admit(d,rows[..],cuts).status==PtStatus.ok;
+    rows[3].group=-1;#assert pt_admit(d,rows[..],cuts).status==PtStatus.number;
+    rows[3].group=PT_GROUPS_MAX;#assert pt_admit(d,rows[..],cuts).status==PtStatus.number;
+    rows[3].group=PT_GROUPS_MAX-1;#assert pt_admit(d,rows[..],cuts).status==PtStatus.ok;
+    rows[3].x[2]=0.0/0.0;r=pt_admit(d,rows[..],cuts);#assert r.status==PtStatus.number && r.row==3;
+    rows[3].x[2]=PT_BIG*2;#assert pt_admit(d,rows[..],cuts).status==PtStatus.number;
+    rows[3].x[2]=-PT_BIG*2;#assert pt_admit(d,rows[..],cuts).status==PtStatus.number;
+    rows[3].x[3]=PT_BIG;rows[3].x[2]=-PT_BIG;#assert pt_admit(d,rows[..],cuts).status==PtStatus.ok;
+    rows[3].y=0;#assert pt_admit(d,rows[..],cuts).status==PtStatus.ok;
+    // Shapes.
+    r=pt_admit(d,rows[0..<0],cuts);#assert r.status==PtStatus.shape && r.row==-1;
+    #assert pt_admit(d,rows[0..<1],cuts).status==PtStatus.ok;
+    bad:=cuts;bad.calibration=0;#assert pt_admit(d,rows[..],bad).status==PtStatus.shape;
+    big:[PT_ROWS_MAX+1]PtRow;one:=pt_t_row(b,0,0,0,0,0,0,0);
+    for k:0..<big.count {big[k]=one;big[k].group=k%64;big[k].time=k%64;}
+    #assert pt_admit(d,big[0..<PT_ROWS_MAX],cuts).status==PtStatus.ok;
+    #assert pt_admit(d,big[..],cuts).status==PtStatus.shape;
+}
+
+
+#test "one AdamW step by hand" {
+    // The row and adapter of the gradient by hand: only B0 has a gradient,
+    // and Adam's first step moves it by lr (g / |g|) when eps is small.
+    b:=pt_t_base();cuts:=TrCuts.{calibration=10,development=10,heldout=20};
+    a:PtAdapter;a.region=PtRegion.hidden;a.rank=1;a.alpha=1;a.p[2]=1;a.base=pt_digest(b);
+    rows:=[1]PtRow.[pt_t_row(b,0,0,0.5,0,1,1,1)];
+    t:=pt_trainer(a);
+    r:=pt_train(b,t,rows[..],cuts,PtRecipe.{brier=0,lr=0.125,decay=0},1);
+    #assert r.status==PtStatus.ok && r.trainer.state.step==1;
+    g:=pt_t_grad(b,a,rows[..]);#assert abs(g+0.4279937)<1e-7;
+    #assert abs(r.trainer.adapter.p[4]-0.125*(-g)/(abs(g)+1e-8))<1e-12;
+    #assert abs(r.trainer.adapter.p[4]-0.125)<1e-7 && r.trainer.adapter.p[2]==1;
+    for k:0..<16 {if k!=4 && k!=2 {#assert r.trainer.adapter.p[k]==0;}}
+    #assert r.trainer.m[4]==(1-0.9)*g && r.trainer.v[4]==(1-0.999)*g*g;
+    // The new logit: 4 tanh(0.5 + 0.125).
+    #assert abs(pt_forward(b,r.trainer.adapter,rows[0].x).z-4*tb_tanh(0.625))<1e-7;
+    // The reported loss is the trained adapter's.
+    #assert r.loss==pt_loss(b,r.trainer.adapter,rows[..],0) && abs(r.loss-0.1032631)<1e-6 && abs(tb_softplus(4*tb_tanh(0.5))-4*tb_tanh(0.5)-0.1462436)<1e-6;
+}
+
+#test "training changes only the adapter, and resumes exactly" {
+    b:=pt_t_base();d:=pt_digest(b);cuts:=TrCuts.{calibration=100,development=100,heldout=200};
+    rows:[24]PtRow;n:=pt_world(3,0,6,4,d,rows[..]);#assert n==24;
+    for region:0..<2 {
+        a:=pt_new(b,cast(PtRegion)region,2,4,5).adapter;t:=pt_trainer(a);
+        r:=pt_train(b,t,rows[..],cuts,pt_t_recipe(),12);
+        #assert r.status==PtStatus.ok && r.trainer.state.step==12 && pt_same(pt_digest(b),d);
+        #assert pt_same(r.trainer.adapter.base,d) && r.trainer.adapter.rank==2 && r.trainer.adapter.alpha==4 && r.trainer.adapter.region==cast(PtRegion)region;
+        // B's rows for the dead units (hidden), and A's columns that read them
+        // (readout), get no gradient and never move.
+        c:=pt_count(a);moved:=0;
+        for k:0..<16 {if r.trainer.adapter.p[k]!=a.p[k] {moved+=1;#assert k<c;}}
+        #assert moved==ifx region==0 then 10 else 6;
+        for k:c..<16 {#assert r.trainer.m[k]==0 && r.trainer.v[k]==0;}
+        // Lower loss than the base on the training rows.
+        none:PtAdapter;#assert pt_loss(b,r.trainer.adapter,rows[..],1)<pt_loss(b,none,rows[..],1);
+        // 5 steps, a checkpoint, 7 more: the same bits as 12.
+        h:=pt_train(b,t,rows[..],cuts,pt_t_recipe(),5);#assert h.status==PtStatus.ok;
+        saved:=h.trainer;
+        s:=pt_train(b,saved,rows[..],cuts,pt_t_recipe(),7);
+        #assert s.status==PtStatus.ok && s.trainer.state.step==12 && pt_t_same(s.trainer.adapter.p[..],r.trainer.adapter.p[..]) && s.loss==r.loss;
+        #assert pt_t_same(s.trainer.m[..],r.trainer.m[..]) && pt_t_same(s.trainer.v[..],r.trainer.v[..]);
+        // Resuming without the moments is not the same run.
+        lost:=pt_trainer(saved.adapter);lost.state=saved.state;
+        u:=pt_train(b,lost,rows[..],cuts,pt_t_recipe(),7);#assert !pt_t_same(u.trainer.adapter.p[..],r.trainer.adapter.p[..]);
+    }
+    // Zero steps return the trainer unchanged, with the loss before any step.
+    a:=pt_new(b,PtRegion.hidden,1,4,5).adapter;t:=pt_trainer(a);
+    z:=pt_train(b,t,rows[..],cuts,pt_t_recipe(),0);
+    #assert z.status==PtStatus.ok && z.trainer.state.step==0 && pt_t_same(z.trainer.adapter.p[..],a.p[..]) && z.loss==pt_loss(b,a,rows[..],1);
+}
+
+#test "training only on the training split" {
+    b:=pt_t_base();d:=pt_digest(b);cuts:=TrCuts.{calibration=8,development=8,heldout=12};
+    rows:[64]PtRow;n:=pt_world(3,0,16,4,d,rows[..]);
+    a:=pt_new(b,PtRegion.hidden,2,4,5).adapter;t:=pt_trainer(a);
+    r:=pt_train(b,t,rows[..],cuts,pt_t_recipe(),5);
+    // Groups 0 to 7 are the training split; changing a held-out or development label changes nothing.
+    rows[8*4].y=1-rows[8*4].y;rows[15*4+3].y=1-rows[15*4+3].y;
+    s:=pt_train(b,t,rows[..],cuts,pt_t_recipe(),5);
+    #assert pt_t_same(s.trainer.adapter.p[..],r.trainer.adapter.p[..]) && s.loss==r.loss;
+    #assert r.loss==pt_loss(b,r.trainer.adapter,rows[0..<32],1);
+    rows[7*4].y=1-rows[7*4].y;s=pt_train(b,t,rows[..],cuts,pt_t_recipe(),5);
+    #assert !pt_t_same(s.trainer.adapter.p[..],r.trainer.adapter.p[..]);
+}
+
+#test "training refusals change nothing" {
+    b:=pt_t_base();d:=pt_digest(b);cuts:=TrCuts.{calibration=8,development=8,heldout=12};
+    rows:[64]PtRow;n:=pt_world(3,0,16,4,d,rows[..]);
+    a:=pt_new(b,PtRegion.hidden,2,4,5).adapter;t:=pt_trainer(a);
+    #assert pt_train(b,t,rows[..],cuts,pt_t_recipe(),1).status==PtStatus.ok;
+    // An adapter for another base.
+    c:=b;c.w1[15]=0.5;
+    r:=pt_train(c,t,rows[..],cuts,pt_t_recipe(),3);#assert r.status==PtStatus.identity && r.trainer.state.step==0;
+    // Rows for another base, and a leaked group.
+    r=pt_train(c,pt_trainer(pt_new(c,PtRegion.hidden,2,4,5).adapter),rows[..],cuts,pt_t_recipe(),3);#assert r.status==PtStatus.identity;
+    rows[60].group=1;r=pt_train(b,t,rows[..],cuts,pt_t_recipe(),3);#assert r.status==PtStatus.leak && r.trainer.state.step==0;
+    rows[60].group=15;
+    // No training rows.
+    late:=cuts;late.calibration=1;late.development=1;late.heldout=1;
+    #assert pt_train(b,t,rows[4..<64],late,pt_t_recipe(),3).status==PtStatus.empty;
+    #assert pt_train(b,t,rows[0..<4],late,pt_t_recipe(),3).status==PtStatus.ok;
+    // Steps and recipe.
+    #assert pt_train(b,t,rows[..],cuts,pt_t_recipe(),-1).status==PtStatus.shape;
+    #assert pt_train(b,t,rows[..],cuts,pt_t_recipe(),PT_STEPS_MAX+1).status==PtStatus.shape;
+    #assert pt_train(c,t,rows[0..<4],cuts,pt_t_recipe(),PT_STEPS_MAX).status==PtStatus.identity;
+    #assert pt_train(b,t,rows[..],cuts,PtRecipe.{brier=-1,lr=0.05},3).status==PtStatus.number;
+    #assert pt_train(b,t,rows[..],cuts,PtRecipe.{brier=PT_BIG*2,lr=0.05},3).status==PtStatus.number;
+    #assert pt_train(b,t,rows[..],cuts,PtRecipe.{brier=0.0/0.0,lr=0.05},3).status==PtStatus.number;
+    #assert pt_train(b,t,rows[..],cuts,PtRecipe.{brier=PT_BIG,lr=0.05},3).status==PtStatus.ok;
+    #assert pt_train(b,t,rows[..],cuts,PtRecipe.{brier=1,lr=0},3).status==PtStatus.number;
+    #assert pt_train(b,t,rows[..],cuts,PtRecipe.{brier=1,lr=0.5,decay=2},3).status==PtStatus.number;
+    #assert pt_train(b,t,rows[..],cuts,PtRecipe.{brier=1,lr=0.5,decay=1},3).status==PtStatus.ok;
+    // A trainer whose adapter has no rank, a bad rank, or a bad scale.
+    bad:=t;bad.adapter.rank=0;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.shape;
+    bad.adapter.rank=3;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.shape;
+    bad=t;bad.adapter.alpha=0;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.number;
+    // A broken optimizer state is refused before anything moves.
+    bad=t;bad.state.step=-1;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.number;
+    bad=t;bad.m[0]=0.0/0.0;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.number;
+    bad=t;bad.v[0]=-1;r=pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3);
+    #assert r.status==PtStatus.number && r.trainer.state.step==0 && r.trainer.v[0]==-1;
+    bad=t;bad.adapter.p[0]=0.0/0.0;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.number;
+    // A parameter beyond the used count must be zero.
+    one:=pt_trainer(pt_new(b,PtRegion.hidden,1,4,5).adapter);
+    bad=one;bad.adapter.p[8]=1;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.shape;
+    bad=one;bad.m[8]=1;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.shape;
+    bad=one;bad.v[8]=1;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),3).status==PtStatus.shape;
+    bad=one;bad.m[7]=1;bad.v[7]=1;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),1).status==PtStatus.ok;
+    bad=one;bad.m[7]=0.0/0.0;#assert pt_train(b,bad,rows[..],cuts,pt_t_recipe(),1).status==PtStatus.number;
+}
+
+#test "serving loads, unloads and refuses another base" {
+    b:=pt_t_base();d:=pt_digest(b);none:PtAdapter;x:=[4]f64.[0.5,0.25,-0.5,1];
+    s:=pt_serve(b,none,x);#assert s.status==PtStatus.ok && s.p==pt_forward(b,none,x).p;
+    a:=pt_new(b,PtRegion.hidden,1,4,5).adapter;a.p[4]=1;
+    s=pt_serve(b,a,x);#assert s.status==PtStatus.ok && s.p==pt_forward(b,a,x).p && s.p!=pt_forward(b,none,x).p;
+    c:=b;c.c1[1]=0.5;s=pt_serve(c,a,x);#assert s.status==PtStatus.identity && s.p==0;
+    // Unloaded, any base serves.
+    #assert pt_serve(c,none,x).status==PtStatus.ok;
+    bad:=a;bad.rank=3;#assert pt_serve(b,bad,x).status==PtStatus.shape;
+    bad=a;bad.alpha=-1;#assert pt_serve(b,bad,x).status==PtStatus.number;
+    bad=a;bad.p[8]=1;#assert pt_serve(b,bad,x).status==PtStatus.shape;
+    bad=a;bad.p[7]=1;#assert pt_serve(b,bad,x).status==PtStatus.ok;
+    bad=a;bad.p[7]=0.0/0.0;#assert pt_serve(b,bad,x).status==PtStatus.number;
+    bad=a;bad.p[7]=PT_BIG*2;#assert pt_serve(b,bad,x).status==PtStatus.number;
+    y:=x;y[3]=0.0/0.0;#assert pt_serve(b,a,y).status==PtStatus.number;
+    y[3]=PT_BIG;#assert pt_serve(b,a,y).status==PtStatus.ok;
+    // Held-out probabilities, row by row.
+    cuts:=TrCuts.{calibration=8,development=8,heldout=12};rows:[64]PtRow;n:=pt_world(3,0,16,4,d,rows[..]);
+    p:[16]f64;#assert pt_heldout(b,a,rows[..],cuts,p[..])==16;
+    for k:0..<16 {#assert p[k]==pt_forward(b,a,rows[48+k].x).p;}
+    #assert pt_heldout(b,a,rows[..],cuts,p[0..<15])==-1 && pt_heldout(c,a,rows[..],cuts,p[..])==-1;
+    bad=a;bad.rank=3;#assert pt_heldout(b,bad,rows[..],cuts,p[..])==-1;
+    rows[50].group=0;#assert pt_heldout(b,a,rows[..],cuts,p[..])==-1;
+}
+
+#test "the world by hand" {
+    b:=pt_t_base();d:=pt_digest(b);rows:[12]PtRow;
+    #assert pt_world(4,10,3,4,d,rows[..])==12;
+    // Labels on 64 rows: each the draw at counter 3 of its row's eight.
+    big:[64]PtRow;#assert pt_world(4,0,8,8,d,big[..])==64;
+    for r,k:big {
+        c:=cast(u64)((k/8)*64+(k%8)*8);z:=3*(r.x[0]+r.x[1]);if r.task==0 {z+=8*r.x[2]-2;}
+        #assert r.y==ifx tb_uniform(4,c+3)>=1-tb_sigmoid(z) then 1.0 else 0.0;
+    }
+    for k:0..<12 {
+        r:=rows[k];g:=k/4;j:=k%4;c:=cast(u64)((10+g)*64+j*8);
+        #assert r.group==10+g && r.time==10+g && pt_same(r.model,d) && r.task==j%2;
+        #assert r.x[0]==2*tb_uniform(4,c)-1 && r.x[1]==2*tb_uniform(4,c+1)-1;
+        if r.task==0 {#assert r.x[2]==2*tb_uniform(4,c+2)-1 && r.x[3]==1;} else {#assert r.x[2]==0 && r.x[3]==0;}
+        z:=3*(r.x[0]+r.x[1]);if r.task==0 {z+=8*r.x[2]-2;}
+        #assert r.y==ifx tb_uniform(4,c+3)>=1-tb_sigmoid(z) then 1.0 else 0.0;
+    }
+    #assert pt_world(4,10,3,4,d,rows[0..<11])==-1 && pt_world(4,10,0,4,d,rows[..])==-1 && pt_world(4,10,3,0,d,rows[..])==-1;
+    #assert pt_world(4,-1,3,4,d,rows[..])==-1 && pt_world(4,PT_GROUPS_MAX-3,3,4,d,rows[..])==12 && pt_world(4,PT_GROUPS_MAX-2,3,4,d,rows[..])==-1;
+    #assert pt_world(4,0,1,9,d,rows[0..<9])==-1 && pt_world(4,0,1,8,d,rows[0..<8])==8;
+    #assert pt_world(4,0,3,1,d,rows[0..<3])==3 && pt_world(4,0,0,4,d,rows[0..<0])==-1 && pt_world(4,0,3,0,d,rows[0..<0])==-1;
+}
+
+// book:begin digest
+pt_put :: (buf:[]u8,n:int,v:f64)->int {
+    w:=f64_bits(v);
+    for i:0..<8 {buf[n+i]=cast(u8)((w>>cast(u64)(i*8))&0xff);}
+    return n+8;
+}
+// SHA-256 over w1, c1, w2 and c2 in that order.
+pt_digest :: (b:PtBase)->[32]u8 {
+    buf:[200]u8;n:=0;
+    for v:b.w1 {n=pt_put(buf[..],n,v);}
+    for v:b.c1 {n=pt_put(buf[..],n,v);}
+    for v:b.w2 {n=pt_put(buf[..],n,v);}
+    n=pt_put(buf[..],n,b.c2);
+    d:[32]u8;#assert sha256_hash_checked(buf[..],d[..],false)==SHA_OK;
+    return d;
+}
+// book:end digest
+
+pt_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+pt_out :: (region:PtRegion)->int {return ifx region==PtRegion.hidden then PT_H else 1;}
+pt_count :: (a:PtAdapter)->int {return a.rank*4+pt_out(a.region)*a.rank;}
+pt_finite :: (v:f64)->bool {return tb_in(v,-PT_BIG,PT_BIG);}
+
+// A rank-0 adapter is none. Otherwise the region, rank and scale must be
+// valid and every parameter past the used count zero.
+pt_adapter_ok :: (a:PtAdapter)->PtStatus {
+    if a.rank==0 {return PtStatus.ok;}
+    if a.rank<1 || a.rank>PT_R {return PtStatus.shape;}
+    if !tb_in(a.alpha,0,PT_BIG) || a.alpha==0 {return PtStatus.number;}
+    for k:pt_count(a)..<16 {if a.p[k]!=0 {return PtStatus.shape;}}
+    for v:a.p {if !pt_finite(v) {return PtStatus.number;}}
+    return PtStatus.ok;
+}
+
+pt_new :: (b:PtBase,region:PtRegion,rank:int,alpha:f64,seed:u64)->PtNew {
+    a:=PtAdapter.{region=region,rank=rank,alpha=alpha,base=pt_digest(b)};
+    s:=pt_adapter_ok(a);
+    if a.rank==0 {s=PtStatus.shape;}
+    if s!=PtStatus.ok {return PtNew.{status=s};}
+    for k:0..<rank*4 {a.p[k]=tb_uniform(seed,cast(u64)k)-0.5;}
+    return PtNew.{adapter=a};
+}
+
+// book:begin forward
+// The frozen layers, plus (alpha / rank) B (A u) on the selected region,
+// where u is the input to that region's matrix.
+pt_forward :: (b:PtBase,a:PtAdapter,x:[4]f64)->PtPass {
+    q:PtPass;on:=a.rank>0;s:=0.0;if on {s=a.alpha/f64(a.rank);}
+    hidden:=on && a.region==PtRegion.hidden;
+    readout:=on && a.region==PtRegion.readout;
+    if hidden {q.u=x;}
+    for k:0..<a.rank {if hidden {for i:0..<4 {q.au[k]+=a.p[k*4+i]*x[i];}}}
+    for o:0..<PT_H {
+        pre:=b.c1[o];
+        for i:0..<PT_D {pre+=b.w1[o*4+i]*x[i];}
+        if hidden {
+            delta:=0.0;for k:0..<a.rank {delta+=a.p[a.rank*4+o*a.rank+k]*q.au[k];}
+            pre+=s*delta;
+        }
+        q.h[o]=tb_tanh(pre);
+    }
+    q.z=b.c2;for o:0..<PT_H {q.z+=b.w2[o]*q.h[o];}
+    if readout {
+        q.u=q.h;delta:=0.0;
+        for k:0..<a.rank {for i:0..<4 {q.au[k]+=a.p[k*4+i]*q.h[i];}delta+=a.p[a.rank*4+k]*q.au[k];}
+        q.z+=s*delta;
+    }
+    q.p=tb_sigmoid(q.z);
+    return q;
+}
+// book:end forward
+
+// book:begin gradient
+// Mean of cross-entropy plus brier times the Brier score over rows, and its
+// gradient in the adapter's used parameters (A, then B). The upstream
+// gradient g passes back through the frozen readout and tanh to the hidden
+// region; the frozen weights get none.
+pt_gradient :: (b:PtBase,a:PtAdapter,rows:[]PtRow,brier:f64,grad:[]f64)->f64 {
+    for k:0..<16 {grad[k]=0;}
+    s:=a.alpha/f64(a.rank);out:=pt_out(a.region);total:=0.0;
+    for row:rows {
+        q:=pt_forward(b,a,row.x);e:=q.p-row.y;
+        total+=tb_softplus(q.z)-row.y*q.z+brier*e*e;
+        dz:=e+brier*2*e*q.p*(1-q.p);
+        g:[4]f64;
+        if a.region==PtRegion.hidden {for o:0..<PT_H {g[o]=dz*b.w2[o]*(1-q.h[o]*q.h[o]);}}
+        else {g[0]=dz;}
+        for k:0..<a.rank {
+            back:=0.0;
+            for o:0..<out {back+=a.p[a.rank*4+o*a.rank+k]*g[o];grad[a.rank*4+o*a.rank+k]+=s*g[o]*q.au[k];}
+            for i:0..<4 {grad[k*4+i]+=s*back*q.u[i];}
+        }
+    }
+    n:=f64(rows.count);
+    for k:0..<pt_count(a) {grad[k]/=n;}
+    return total/n;
+}
+pt_loss :: (b:PtBase,a:PtAdapter,rows:[]PtRow,brier:f64)->f64 {g:[16]f64;return pt_gradient(b,a,rows,brier,g[..]);}
+// book:end gradient
+
+// book:begin admit
+// Every row must come from this base, with a finite input, a 0 or 1 label
+// and task, and a group in range. A group with a held-out row may have no
+// row in any other split; the refusal names the later row of the pair.
+pt_admit :: (model:[32]u8,rows:[]PtRow,cuts:TrCuts)->PtAdmit {
+    n:=rows.count;
+    if n<1 || n>PT_ROWS_MAX || !tr_cuts_ok(cuts) {return PtAdmit.{status=PtStatus.shape,row=-1};}
+    roles:[PT_GROUPS_MAX]u8;a:=PtAdmit.{row=-1};
+    for r,i:rows {
+        if !pt_same(r.model,model) {return PtAdmit.{status=PtStatus.identity,row=i};}
+        ok:=r.group>=0 && r.group<PT_GROUPS_MAX && (r.y==0 || r.y==1) && (r.task==0 || r.task==1);
+        for v:r.x {if !pt_finite(v) {ok=false;}}
+        if !ok {return PtAdmit.{status=PtStatus.number,row=i};}
+        // Bit 1: held out; bit 2: anything else.
+        role:=tr_role(cuts,r.time);held:=role==TrRole.heldout;
+        if held {a.heldout+=1;} else if role==TrRole.train {a.train+=1;}
+        roles[r.group]|=ifx held then cast(u8)1 else cast(u8)2;
+        if roles[r.group]==3 {return PtAdmit.{status=PtStatus.leak,row=i};}
+    }
+    return a;
+}
+// book:end admit
+
+pt_trainer :: (a:PtAdapter)->PtTrainer {return PtTrainer.{adapter=a};}
+
+// book:begin train
+// Full-batch AdamW on the training split only. Everything is admitted
+// before the first step; a refusal returns the trainer unchanged.
+pt_train :: (b:PtBase,t:PtTrainer,rows:[]PtRow,cuts:TrCuts,recipe:PtRecipe,steps:int)->PtTrain {
+    r:=PtTrain.{trainer=t};
+    if steps<0 || steps>PT_STEPS_MAX {r.status=PtStatus.shape;return r;}
+    r.status=pt_adapter_ok(t.adapter);
+    if r.status==PtStatus.ok && t.adapter.rank==0 {r.status=PtStatus.shape;}
+    if r.status!=PtStatus.ok {return r;}
+    n:=pt_count(t.adapter);
+    for k:n..<16 {if t.m[k]!=0 || t.v[k]!=0 {r.status=PtStatus.shape;return r;}}
+    if !pt_same(t.adapter.base,pt_digest(b)) {r.status=PtStatus.identity;return r;}
+    admitted:=pt_admit(t.adapter.base,rows,cuts);
+    if admitted.status!=PtStatus.ok {r.status=admitted.status;return r;}
+    if admitted.train==0 {r.status=PtStatus.empty;return r;}
+    if !tb_in(recipe.brier,0,PT_BIG) {r.status=PtStatus.number;return r;}
+    group:=[1]AwGroup.[AwGroup.{first=0,count=n,lr=recipe.lr,beta1=0.9,beta2=0.999,eps=1e-8,decay=recipe.decay}];
+    if !aw_hyper(group[0]) || !aw_state(t.state) {r.status=PtStatus.number;return r;}
+    for k:0..<n {if !aw_finite(t.m[k]) || !tb_in(t.v[k],0,AW_F64_MAX) {r.status=PtStatus.number;return r;}}
+    train:[PT_ROWS_MAX]PtRow;count:=0;
+    for row:rows {if tr_role(cuts,row.time)==TrRole.train {train[count]=row;count+=1;}}
+    g:[16]f64;none:[1]f32;
+    for step:0..<steps {
+        l:=pt_gradient(b,r.trainer.adapter,train[0..<count],recipe.brier,g[..]);
+        w:=aw_step(group[..],AwPolicy.{},r.trainer.state,r.trainer.adapter.p[0..<n],g[0..<n],r.trainer.m[0..<n],r.trainer.v[0..<n],none[0..<0],false);
+        // Admission above leaves AdamW nothing to refuse.
+        #assert w.status==AwStatus.ok;
+        r.trainer.state=w.state;
+    }
+    r.loss=pt_loss(b,r.trainer.adapter,train[0..<count],recipe.brier);
+    return r;
+}
+// book:end train
+
+// book:begin serve
+// Serving checks the adapter against the base it is loaded on; rank 0 is
+// the base alone.
+pt_serve :: (b:PtBase,a:PtAdapter,x:[4]f64)->PtServe {
+    s:=pt_adapter_ok(a);
+    if s!=PtStatus.ok {return PtServe.{status=s};}
+    if a.rank>0 && !pt_same(a.base,pt_digest(b)) {return PtServe.{status=PtStatus.identity};}
+    for v:x {if !pt_finite(v) {return PtServe.{status=PtStatus.number};}}
+    return PtServe.{p=pt_forward(b,a,x).p};
+}
+// book:end serve
+
+// Yes probabilities for the held-out rows in order, through the serving
+// path; -1 on any refusal.
+pt_heldout :: (b:PtBase,a:PtAdapter,rows:[]PtRow,cuts:TrCuts,p:[]f64)->int {
+    admitted:=pt_admit(pt_digest(b),rows,cuts);
+    if admitted.status!=PtStatus.ok || p.count!=admitted.heldout {return -1;}
+    k:=0;
+    for row:rows {
+        if tr_role(cuts,row.time)!=TrRole.heldout {continue;}
+        s:=pt_serve(b,a,row.x);
+        if s.status!=PtStatus.ok {return -1;}
+        p[k]=s.p;k+=1;
+    }
+    return k;
+}
+
+// book:begin world
+// per rows in each of groups groups, from group first; group g's rows are
+// recorded at time g. Even rows are the new task (x2 matters, x3 = 1), odd
+// rows the retained one (x2 = x3 = 0). The truth's logit is 3 (x0 + x1),
+// plus 8 x2 - 2 on the new task.
+pt_world :: (seed:u64,first:int,groups:int,per:int,model:[32]u8,rows:[]PtRow)->int {
+    if groups<1 || per<1 || per>8 || first<0 || first+groups>PT_GROUPS_MAX || rows.count!=groups*per {return -1;}
+    for g:0..<groups {for j:0..<per {
+        c:=cast(u64)((first+g)*64+j*8);
+        r:=PtRow.{group=first+g,time=first+g,model=model,task=j%2};
+        r.x[0]=2*tb_uniform(seed,c)-1;r.x[1]=2*tb_uniform(seed,c+1)-1;
+        z:=3*(r.x[0]+r.x[1]);
+        if r.task==0 {r.x[2]=2*tb_uniform(seed,c+2)-1;r.x[3]=1;z+=8*r.x[2]-2;}
+        r.y=floor(tb_uniform(seed,c+3)+tb_sigmoid(z));
+        rows[g*per+j]=r;
+    }}
+    return groups*per;
+}
+// book:end world

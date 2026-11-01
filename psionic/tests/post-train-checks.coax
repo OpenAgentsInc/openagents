@@ -1,0 +1,32 @@
+// Helpers for the checks of psionic/lib/post-train.coax (chapter 140): the
+// chapter's base, rows, central differences and exact slice comparison. They
+// call the library but implement none of it.
+// The base of the chapter: h0 = tanh(x0 + x1), h1 = tanh(x0 - x1), the
+// other two units dead, and z = 4 h0.
+pt_t_base :: ()->PtBase {
+    b:PtBase;b.w1[0]=1;b.w1[1]=1;b.w1[4]=1;b.w1[5]=-1;b.w2[0]=4;
+    return b;
+}
+pt_t_same :: (a:[]f64,b:[]f64)->bool {
+    if a.count!=b.count {return false;}
+    for i:0..<a.count {if a[i]!=b[i] {return false;}}
+    return true;
+}
+pt_t_row :: (base:PtBase,group:int,time:int,x0:f64,x1:f64,x2:f64,x3:f64,y:f64)->PtRow {
+    return PtRow.{group=group,time=time,model=pt_digest(base),x=[4]f64.[x0,x1,x2,x3],y=y};
+}
+
+// Central differences of the mean loss in every adapter parameter.
+pt_t_numeric :: (b:PtBase,a:PtAdapter,rows:[]PtRow,brier:f64,i:int)->f64 {
+    e:=1e-6;hi:=a;lo:=a;hi.p[i]+=e;lo.p[i]-=e;
+    return (pt_loss(b,hi,rows,brier)-pt_loss(b,lo,rows,brier))/(2*e);
+}
+pt_t_rows :: (b:PtBase,rows:[]PtRow) {
+    for k:0..<rows.count {
+        rows[k]=pt_t_row(b,k,k,tb_uniform(5,cast(u64)(4*k))*2-1,tb_uniform(5,cast(u64)(4*k+1))*2-1,tb_uniform(5,cast(u64)(4*k+2))*2-1,f64(k%2),f64((k/2)%2));
+    }
+}
+
+pt_t_recipe :: ()->PtRecipe {return PtRecipe.{brier=1,lr=0.05,decay=0};}
+
+pt_t_grad :: (b:PtBase,a:PtAdapter,rows:[]PtRow)->f64 {g:[16]f64;l:=pt_gradient(b,a,rows,0,g[..]);return g[4];}

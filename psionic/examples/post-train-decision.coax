@@ -1,0 +1,112 @@
+// Chapter 140: post-train a frozen stand-in decision model with low-rank
+// adapters, and promote one only through chapter 241's decision and
+// probability gates, with the retained task checked separately.
+#import "Basic";
+#load "../lib/post-train.coax";
+
+k3 :: (v:f64)->f64 {return floor(v*1000+0.5)/1000;}
+k4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+STATUS :: [6]string.["ok","shape","number","identity","leak","empty"];
+VERDICTS :: [3]string.["unverifiable","passed","failed"];
+REASONS :: [14]string.["none","beyond the floor","within the floor","near the floor","no headroom","no floor","few tasks",
+    "lower log loss","higher log loss","more confident errors","log loss unclear","over cost","over time","unmeasured"];
+
+TRAIN_GROUPS :: 60;
+HELD_GROUPS :: 50;
+PER :: 8;
+HELD :: HELD_GROUPS*PER;
+ROWS :: TRAIN_GROUPS*PER+HELD;
+HELD_FIRST :: 500;
+SEEDS :: 16;
+CUTS :: TrCuts.{calibration=100,development=100,heldout=HELD_FIRST};
+
+Candidate :: struct {name:string;region:PtRegion;recipe:PtRecipe;groups:int;steps:int;}
+
+// Seed k's own training rows and adapter A, then the shared held-out rows.
+ex_rows :: (d:[32]u8,groups:int,k:int,held:[]PtRow,rows:[]PtRow)->int {
+    n:=pt_world(cast(u64)(1000+k),0,groups,PER,d,rows[0..<groups*PER]);
+    for i:0..<HELD {rows[n+i]=held[i];}
+    return n+HELD;
+}
+ex_run :: (base:PtBase,c:Candidate,k:int,held:[]PtRow,p:[]f64)->PtTrain {
+    rows:[ROWS]PtRow;n:=ex_rows(pt_digest(base),c.groups,k,held,rows[..]);
+    a:=pt_new(base,c.region,2,4,cast(u64)(2000+k)).adapter;
+    t:=pt_train(base,pt_trainer(a),rows[0..<n],CUTS,c.recipe,c.steps);
+    #assert t.status==PtStatus.ok && pt_heldout(base,t.trainer.adapter,rows[0..<n],CUTS,p)==HELD;
+    return t;
+}
+ex_right :: (p:f64,y:f64)->f64 {return ifx (p>=0.5)==(y==1) then 1.0 else 0.0;}
+say :: (r:VdResult) {print("% (%)\n",VERDICTS[cast(int)r.verdict],REASONS[cast(int)r.reason]);}
+
+// book:begin example
+main :: () {
+    base:=PtBase.{};base.w1[0]=1;base.w1[1]=1;base.w1[4]=1;base.w1[5]=-1;base.w2[0]=4;
+    d:=pt_digest(base);none:PtAdapter;
+    text:[16]u8;digits:="0123456789abcdef";
+    for i:0..<8 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("base %...: h0 = tanh(x0 + x1), h1 = tanh(x0 - x1), z = 4 h0\n",cast(string)text[0..<16]);
+    held:[HELD]PtRow;#assert pt_world(99,HELD_FIRST,HELD_GROUPS,PER,d,held[..])==HELD;
+    y:[HELD]f64;group:[HELD]int;part:[HELD]int;pb:[HELD]f64;cb:[HELD]f64;oc:[2]f64;n:[2]f64;
+    for r,i:held {
+        y[i]=r.y;group[i]=i/PER;part[i]=r.task;pb[i]=pt_forward(base,none,r.x).p;cb[i]=ex_right(pb[i],y[i]);
+        z:=3*(r.x[0]+r.x[1]);if r.task==0 {z+=8*r.x[2]-2;}
+        oc[r.task]+=ex_right(tb_sigmoid(z),r.y);n[r.task]+=1;
+    }
+    print("held out: % rows in % groups; the true model's accuracy % (new task), % (retained)\n",HELD,HELD_GROUPS,k3(oc[0]/n[0]),k3(oc[1]/n[1]));
+
+    // A zero adapter is the base.
+    zero:=pt_new(base,PtRegion.hidden,2,4,2000).adapter;same:=0;
+    for r,i:held {if pt_serve(base,zero,r.x).p==pb[i] {same+=1;}}
+    print("zero adapter: % of % held-out probabilities equal the base's\n",same,HELD);
+
+    cands:=[3]Candidate.[
+        Candidate.{name="hidden, 480 rows, cross-entropy + Brier",region=PtRegion.hidden,recipe=PtRecipe.{brier=1,lr=0.1},groups=TRAIN_GROUPS,steps=300},
+        Candidate.{name="readout, 480 rows, cross-entropy + Brier",region=PtRegion.readout,recipe=PtRecipe.{brier=1,lr=0.1},groups=TRAIN_GROUPS,steps=300},
+        Candidate.{name="hidden, 16 rows, cross-entropy only",region=PtRegion.hidden,recipe=PtRecipe.{brier=0,lr=0.3},groups=2,steps=400},
+    ];
+    for c:cands {
+        // Seed 1 is the adapter offered for promotion; seeds 1 to 16 give the floor.
+        scores:[SEEDS*HELD]f64;first:[HELD]f64;loss:=0.0;
+        for k:0..<SEEDS {
+            p:[HELD]f64;t:=ex_run(base,c,k,held[..],p[..]);
+            if k==0 {loss=t.loss;for i:0..<HELD {first[i]=p[i];}}
+            for i:0..<HELD {scores[k*HELD+i]=ex_right(p[i],y[i]);}
+        }
+        acc:[2][2]f64;
+        for i:0..<HELD {acc[part[i]][0]+=cb[i];acc[part[i]][1]+=scores[i];}
+        fl:=ns_floor(scores[..],part[..],0,SEEDS,1);
+        task:=vd_decision(cb[..],scores[0..<HELD],group[..],part[..],0,fl,1,140,1000);
+        kept:=ns_floor(scores[..],part[..],1,SEEDS,1);
+        lost:=vd_decision(scores[0..<HELD],cb[..],group[..],part[..],1,kept,1,141,1000);
+        prob:=vd_probability(pb[..],first[..],y[..],group[..],142,1000);
+        print("%: training loss %\n",c.name,k4(loss));
+        print("  new task accuracy % -> %, floor %, % of 1000 at or below it: ",k3(acc[0][0]/n[0]),k3(acc[0][1]/n[0]),k3(fl.floor),task.gain.below);say(task.result);
+        print("  retained accuracy % -> %, floor %, is the base ahead? ",k3(acc[1][0]/n[1]),k3(acc[1][1]/n[1]),k3(kept.floor));say(lost.result);
+        print("  log loss % -> %, confident errors % -> %, calibration error % -> %: ",k4(prob.loss[0]),k4(prob.loss[1]),prob.errors[0],prob.errors[1],k3(prob.ece[0]),k3(prob.ece[1]));say(prob.result);
+        promote:=task.result.verdict==VdVerdict.passed && prob.result.verdict==VdVerdict.passed && lost.result.verdict!=VdVerdict.passed;
+        print("  promoted: %\n",promote);
+    }
+
+    // Checkpoint and resume: 120 steps, a copy of the trainer, 180 more.
+    rows:[ROWS]PtRow;m:=ex_rows(d,TRAIN_GROUPS,0,held[..],rows[..]);
+    c:=cands[0];start:=pt_trainer(pt_new(base,c.region,2,4,2000).adapter);
+    whole:=pt_train(base,start,rows[0..<m],CUTS,c.recipe,300);
+    half:=pt_train(base,start,rows[0..<m],CUTS,c.recipe,120);
+    rest:=pt_train(base,half.trainer,rows[0..<m],CUTS,c.recipe,180);
+    bits:=0;moved:=0;
+    for k:0..<16 {if rest.trainer.adapter.p[k]==whole.trainer.adapter.p[k] {bits+=1;}if whole.trainer.adapter.p[k]!=start.adapter.p[k] {moved+=1;}}
+    print("resume after 120 of 300 steps: % of 16 parameters the same bits, step %; % parameters moved; base digest unchanged: %\n",
+        bits,rest.trainer.state.step,moved,pt_same(pt_digest(base),d));
+
+    // Refusals.
+    other:=base;other.c2=0.25;
+    bad:=rows;bad[7].model=pt_digest(other);
+    a:=pt_admit(d,bad[0..<m],CUTS);print("a training row recorded on another base: % at row %\n",STATUS[cast(int)a.status],a.row);
+    bad=rows;bad[3].group=HELD_FIRST+2;
+    a=pt_admit(d,bad[0..<m],CUTS);print("a held-out group that also trains: % at row %\n",STATUS[cast(int)a.status],a.row);
+    t:=pt_train(other,whole.trainer,rows[0..<m],CUTS,c.recipe,1);
+    print("training the adapter on another base: %, still at step %\n",STATUS[cast(int)t.status],t.trainer.state.step);
+    s:=pt_serve(other,whole.trainer.adapter,held[0].x);print("serving it on another base: %\n",STATUS[cast(int)s.status]);
+    s=pt_serve(other,none,held[0].x);print("that base with the adapter unloaded: % (p %)\n",STATUS[cast(int)s.status],k4(s.p));
+}
+// book:end example
