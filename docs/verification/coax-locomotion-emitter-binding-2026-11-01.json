@@ -1,0 +1,450 @@
+{
+  "schema": "coax.locomotion.emitter-binding.publication.v1",
+  "passed": true,
+  "original_record": {
+    "bytes": 4070,
+    "sha256": "efb08018a1583e59b2d48f0eb9f3c71740b82b1d3f8188a6eefbd3354ba099a5"
+  },
+  "record": {
+    "schema": "psionic.locomotion.current-emitter-binding.v1",
+    "passed": true,
+    "commands": [
+      {
+        "mode": "debug",
+        "argv": [
+          "/tmp/coax-locomotion-current-compiler-first/coax",
+          "c",
+          "psionic/lib/robotics/locomotion.coax",
+          "--library",
+          "--header",
+          "/private/tmp/locomotion-main-emitter-binding-first/debug/locomotion.h"
+        ],
+        "exit": 0,
+        "seconds": 0.0670449580065906,
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "mode": "release",
+        "argv": [
+          "/tmp/coax-locomotion-current-compiler-first/coax",
+          "c",
+          "psionic/lib/robotics/locomotion.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/private/tmp/locomotion-main-emitter-binding-first/release/locomotion.h"
+        ],
+        "exit": 0,
+        "seconds": 0.0585075409617275,
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    ],
+    "current_private_build": {
+      "bytes": 375140,
+      "sha256": "ea9389c0d16afb5ead7533be550ee836c6d8d12d85d066f75cfd02466745d90a"
+    },
+    "native_first": {
+      "bytes": 21900,
+      "sha256": "890ae428e387bdd37846feadbe1dbc7e1c12216c4f233e9a93aa322b2273edc6"
+    },
+    "compiler": {
+      "bytes": 3012376,
+      "sha256": "edcfc624f8313dde3a53786e2f91dfbb8ab072f74a7d9e48cdbe1635b90912d1"
+    },
+    "source_fingerprint": "908b63638f485a67f68f4d0c147ed6ab0ebcf7668e62ee0ac85e06558707f339",
+    "source_commit": "d8918f1434e3f620d9d55838d7221a4897250eb5",
+    "numerical_or_old_tests_or_models_executed": false,
+    "source": {
+      "psionic/lib/robotics/locomotion.coax": {
+        "bytes": 152,
+        "sha256": "6bb99eeb9a11071cc3b5ba5f991e297598529ecf92f0a8a413f73f26f759e736"
+      },
+      "psionic/lib/robotics/locomotion/gae.coax": {
+        "bytes": 8544,
+        "sha256": "7fd60401ad6b602587b5298fc166f29995fcd8152ed87d3308f5b576c8ffdcae"
+      },
+      "psionic/lib/robotics/locomotion/fixtures.coax": {
+        "bytes": 928,
+        "sha256": "b7eb84112d283c05d8cb71ee1f10aa555c12537504378f250295baf108a72713"
+      },
+      "psionic/lib/robotics/locomotion/types.coax": {
+        "bytes": 610,
+        "sha256": "b94591e9210b25abb74a3354d4630cfdf40127d780746c40a45c5d0c5d228d15"
+      },
+      "coax/lib/quantity.coax": {
+        "bytes": 585,
+        "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+      },
+      "psionic/lib/robotics/locomotion/ppo-surrogate.coax": {
+        "bytes": 7175,
+        "sha256": "db03f7df27e0bcfbf6c319d2fd9b2021539539d60b388820da7310cc018870d6"
+      },
+      "psionic/tests/robotics/locomotion_native.c": {
+        "bytes": 12121,
+        "sha256": "9fce11b86ee01d4bbccfa3fbe7613222dc8efcd4fb20cef0d2da6a098471e2e4"
+      },
+      "psionic/tests/robotics/locomotion_native_reference.py": {
+        "bytes": 16424,
+        "sha256": "adc4f2e6a17c9aac40e93cea6436e345987810544e4d11eb718f852ad57efa36"
+      }
+    },
+    "emissions": {
+      "debug": {
+        "C": {
+          "bytes": 40112,
+          "sha256": "7a715716a000cf865557c9ef12bf49c5dd2c37ad4b4cf8a163f076b3e6bca62e"
+        },
+        "header": {
+          "bytes": 10931,
+          "sha256": "1bfc64815e4cc307242cac03bfb746af429e1fef0e01da208e85780b8577ed6c"
+        }
+      },
+      "release": {
+        "C": {
+          "bytes": 40094,
+          "sha256": "64ffe829338d0126d697ef56e7cbb67a102d33ada46741e1bedc063f68e359c6"
+        },
+        "header": {
+          "bytes": 10931,
+          "sha256": "1bfc64815e4cc307242cac03bfb746af429e1fef0e01da208e85780b8577ed6c"
+        }
+      }
+    },
+    "all_four_raw_C_H_files_exact": true,
+    "scope": "Current private normal-C emitter and first qualified a429 native emissions produce four byte-exact C/H files for unchanged Rga/Rcp source. Carries first numerical/oracle proof without repeating it. Private build is not full bootstrap/release qualification.",
+    "seconds": 0.13327016599942,
+    "tool": {
+      "bytes": 2463,
+      "sha256": "b6a636d8c1222caadb8f86b45951662e9ca38f7ad05fc97220b6b624609475db"
+    }
+  },
+  "executed_tool": {
+    "identity": {
+      "bytes": 2463,
+      "sha256": "b6a636d8c1222caadb8f86b45951662e9ca38f7ad05fc97220b6b624609475db"
+    },
+    "source": "from pathlib import Path\nimport hashlib,json,subprocess,time\nROOT=Path('/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents');OUT=Path(__file__).resolve().parent;COMP=Path('/tmp/coax-locomotion-current-compiler-first/coax');BUILD=Path('/tmp/coax-locomotion-current-compiler-first/record.json');NATIVE=ROOT/'psionic/fixtures/robotics/locomotion/native-qualification.json'\ndef ident(p):\n b=Path(p).read_bytes();return dict(bytes=len(b),sha256=hashlib.sha256(b).hexdigest())\nb=json.loads(BUILD.read_text());n=json.loads(NATIVE.read_text());r=dict(schema='psionic.locomotion.current-emitter-binding.v1',passed=False,commands=[],current_private_build=ident(BUILD),native_first=ident(NATIVE),compiler=ident(COMP),source_fingerprint=b['source_fingerprint'],source_commit=b['source_commit'],numerical_or_old_tests_or_models_executed=False);began=time.monotonic()\ndef save():(OUT/'record.json').write_text(json.dumps(r,indent=2)+'\\n')\nsave()\ntry:\n assert b['passed'] and n['passed'] and r['compiler']=={k:v for k,v in b['binary'].items()if k!='path'}\n for p,v in n['source'].items():assert ident(ROOT/p)==v,p\n r['source']=n['source'];r['emissions']={}\n for mode,args in [('debug',[]),('release',['--release'])]:\n  d=OUT/mode;d.mkdir();h=d/'locomotion.h';c=d/'locomotion.c';argv=[str(COMP),'c','psionic/lib/robotics/locomotion.coax','--library',*args,'--header',str(h)];start=time.monotonic();q=subprocess.run(argv,cwd=ROOT,capture_output=True,timeout=180);c.write_bytes(q.stdout);(d/'stderr').write_bytes(q.stderr);r['commands'].append(dict(mode=mode,argv=argv,exit=q.returncode,seconds=time.monotonic()-start,stderr=ident(d/'stderr')));save();assert q.returncode==0 and not q.stderr\n  actual=dict(C=ident(c),header=ident(h));r['emissions'][mode]=actual;assert actual==n['emissions'][mode],mode+' raw C/H differs'\n assert ident(COMP)==r['compiler'] and all(ident(ROOT/p)==v for p,v in n['source'].items())\n r.update(passed=True,all_four_raw_C_H_files_exact=True,scope='Current private normal-C emitter and first qualified a429 native emissions produce four byte-exact C/H files for unchanged Rga/Rcp source. Carries first numerical/oracle proof without repeating it. Private build is not full bootstrap/release qualification.')\nexcept BaseException as e:r['error']=repr(e);raise\nfinally:r['seconds']=time.monotonic()-began;r['tool']=ident(__file__);save()\nprint(json.dumps(dict(passed=True,seconds=r['seconds'],record=str(OUT/'record.json'))))\n"
+  },
+  "current_compiler_inputs_after_rebase": {
+    "scripts/coax-release.sh": {
+      "bytes": 6406,
+      "sha256": "bcd5c4d50472ebab69d403300ad51e559ea0dc42bf9dbaffefcdb7120ad777e7"
+    },
+    "coax/changelog-bridge.c": {
+      "bytes": 1696,
+      "sha256": "954a971ca3f3da8154942d58b057beeed3bfa1c7dbc3b499484eef8783e90bb1"
+    },
+    "coax/release-model.coax": {
+      "bytes": 5973,
+      "sha256": "c9521dba6c5377ea5c699f78d802b90e59ebf7ce8c0686db5dceb6ef554d8434"
+    },
+    "coax/bootstrap-build.sh": {
+      "bytes": 18294,
+      "sha256": "73b8987005876a08a624d98d46c5fb8d6bf55c0832b418ca33688ddbcb973c4b"
+    },
+    "coax/provenance.sh": {
+      "bytes": 5897,
+      "sha256": "83911369edc980979c0e198eabe44b06c33177f385cb3fb1ec53d2ded59d17ce"
+    },
+    "coax/mutation-gate.sh": {
+      "bytes": 6535,
+      "sha256": "c84daacc5a4d26a1bb7e73cd767da53f7f37e411ff6afbcb169d04179edf1825"
+    },
+    "coax/build.sh": {
+      "bytes": 10586,
+      "sha256": "eab2880d3f749dad20ef64a9902862c5adf4c74096f071ecab121769cb070d09"
+    },
+    "coax/provenance-bridge.c": {
+      "bytes": 400,
+      "sha256": "a5ba56de19ccec3d350491831fa4e367d509d5c8d718c237f78627ae45092c3c"
+    },
+    "coax/changelog.coax": {
+      "bytes": 274,
+      "sha256": "41c0030e66cc60e34424442aef732506b620bc2899bcaf1c35c63e8886dc1fa8"
+    },
+    "coax/changelog-model.coax": {
+      "bytes": 18604,
+      "sha256": "6591b31d63f086f9a7ad1494dea067cfabef1010c76ae524a3ccb92b68ce3c4c"
+    },
+    "coax/release.coax": {
+      "bytes": 31525,
+      "sha256": "cff1f297bd471033f36a2dd0b6978c4b43ad49f6a76b564d5197f5a35d72c32c"
+    },
+    "coax/check-proto-cap.sh": {
+      "bytes": 719,
+      "sha256": "465f082009c64f3735347687b9ceebbc57fd91469e7b4d37d80d56f5cf08b705"
+    },
+    "coax/bootstrap/profiles.h": {
+      "bytes": 8936,
+      "sha256": "631833a9bd6dfe7c2310fd5a87b0e7e837f845bbcbf1aed3754a26ee8b63a7ad"
+    },
+    "coax/bootstrap/checker.c": {
+      "bytes": 812771,
+      "sha256": "4a0b81e733c8d52e25ffd731ec56f6600dee042efcc909f4c2934c6dedd4787c"
+    },
+    "coax/bootstrap/sources.c": {
+      "bytes": 50931,
+      "sha256": "cbb409049de14ffc3e70a087c54d3ed376d878241e9ebafe5e0ea5957973c1da"
+    },
+    "coax/bootstrap/check-domains.h": {
+      "bytes": 7256,
+      "sha256": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8"
+    },
+    "coax/bootstrap/parser.h": {
+      "bytes": 26166,
+      "sha256": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef"
+    },
+    "coax/bootstrap/budget.c": {
+      "bytes": 10828,
+      "sha256": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb"
+    },
+    "coax/bootstrap/lexer.c": {
+      "bytes": 93997,
+      "sha256": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366"
+    },
+    "coax/bootstrap/mutation-schedule.c": {
+      "bytes": 13893,
+      "sha256": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf"
+    },
+    "coax/bootstrap/checker.h": {
+      "bytes": 78575,
+      "sha256": "ebc8089701f27d12926ff87e9f4ed831fb209013ca0cfeb05e700ad7ead9ec4a"
+    },
+    "coax/bootstrap/profiles.c": {
+      "bytes": 28684,
+      "sha256": "7695b432925a5dd538be5e80a5633bc34b17aa79a65a1fe56e311523750d61b8"
+    },
+    "coax/bootstrap/README.md": {
+      "bytes": 7525,
+      "sha256": "76187d9c755f128ddb5ff32955f3409cfe4a6b9b2e5fdaff656d6006c5bafbaf"
+    },
+    "coax/bootstrap/check-domains.c": {
+      "bytes": 26948,
+      "sha256": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058"
+    },
+    "coax/bootstrap/sources.h": {
+      "bytes": 12992,
+      "sha256": "7b42c1a235dc3290952eaa151d08ad65f64c86a7a37ec5683f80cdb30930b587"
+    },
+    "coax/bootstrap/lexer.h": {
+      "bytes": 18459,
+      "sha256": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a"
+    },
+    "coax/bootstrap/budget.h": {
+      "bytes": 1098,
+      "sha256": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b"
+    },
+    "coax/bootstrap/parser.c": {
+      "bytes": 170733,
+      "sha256": "4f35b14409341802ad9e638e2e4af727bda52a89ab93fa6b80f2a7e1f99326f9"
+    },
+    "coax/bootstrap/mutation-schedule.h": {
+      "bytes": 1529,
+      "sha256": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da"
+    },
+    "coax/src/effects.cpp": {
+      "bytes": 10883,
+      "sha256": "70c519d9ba267451e719049685e5a051ac54577e8984dff0cbce17d8e94ba1f0"
+    },
+    "coax/src/query.cpp": {
+      "bytes": 26086,
+      "sha256": "cb6b2cec1fb496c90d381b17910844390d0034864ba1fe30eb1ba895767736db"
+    },
+    "coax/src/native_checks.cpp": {
+      "bytes": 13092,
+      "sha256": "e734bc75c57f56c347c5d67b0e26ab9b08a111d6640bfe06f1222fa9be139578"
+    },
+    "coax/src/parse.cpp": {
+      "bytes": 13020,
+      "sha256": "8eab27e22ca741746ac619a3e95914264189200d8c1c0e0e40efb2e668eda7f7"
+    },
+    "coax/src/verify.cpp": {
+      "bytes": 40061,
+      "sha256": "50e028ce8d1344160e47857259f02a01c2f5023f2cc751a03bc807c75dd02f39"
+    },
+    "coax/src/proto.cpp": {
+      "bytes": 4741,
+      "sha256": "7fe87ed1d59813557c0b69d40c874553ee62dc37bab478037c6d66f7d5818b90"
+    },
+    "coax/src/release.h": {
+      "bytes": 44564,
+      "sha256": "6684aafe3f49491980659ebb890b82deb23c28bee5ba8e3d55e19d8f1db05489"
+    },
+    "coax/src/shader.cpp": {
+      "bytes": 27198,
+      "sha256": "81ba54bcade424843c453e2b9e49f072f0ad8100146008f4f9ec0fde218a2190"
+    },
+    "coax/src/coax.h": {
+      "bytes": 24088,
+      "sha256": "ea7f9e7a455429f4515ce960016c5c45a3aea8d7c60ffbe322db2930099173d2"
+    },
+    "coax/src/lex.cpp": {
+      "bytes": 6976,
+      "sha256": "8b96d730631a7121c0f452e6315fdfa5eaba69f8c621927d0cf44f5a23cf27f0"
+    },
+    "coax/src/spirv.cpp": {
+      "bytes": 8979,
+      "sha256": "204e426cff3728ef43d0a8236d579a8bb7522987354d334221a770a57f1fd541"
+    },
+    "coax/src/compute.cpp": {
+      "bytes": 36592,
+      "sha256": "68ac126895f1cd29389632fd3a1ac8290eee6f3600c16c348f2625eec04ebb14"
+    },
+    "coax/src/errors.cpp": {
+      "bytes": 36938,
+      "sha256": "621c927122e8c180513d8328033be625e5e940e1a1e158fb54b995fe8a30d1fe"
+    },
+    "coax/src/check.cpp": {
+      "bytes": 22135,
+      "sha256": "c48644ab420ff007bf40b35cb79f3bd87d4a3863e8e44643938880437407db08"
+    },
+    "coax/src/emit_c.cpp": {
+      "bytes": 146640,
+      "sha256": "dc66c9fa5cdf489f161c10167041896a89c8f1399e1f3524549cd4563dccd782"
+    },
+    "coax/src/main.cpp": {
+      "bytes": 84723,
+      "sha256": "51c6a478b140d6c6069d69b8f291ff85620972d2de29c80445d80fe422391e99"
+    },
+    "coax/src/eval.cpp": {
+      "bytes": 48468,
+      "sha256": "c1dbf166c7fb31cb60213965afdfc9cb217deafb1e56305206f9c3d6e222f9ee"
+    },
+    "coax/src/sources.cpp": {
+      "bytes": 16547,
+      "sha256": "4e886a42c462ef29f39df8b06ddb6fc9db66e50bb12c1cf77332e89fce028d00"
+    },
+    "coax/lib/crypto/sha256-kernel.coax": {
+      "bytes": 16502,
+      "sha256": "ee2cf6275f1c5573af8456cf71e08a06f0d5320f9ddfc24ea8c332709139e926"
+    },
+    "coax/lib/proto/fingerprint.coax": {
+      "bytes": 4495,
+      "sha256": "257f1224ca907bb8b0ed313b0b1800605d023f393eb1178fc69c5db9e02d6878"
+    },
+    "coax/lib/proto/memory.coax": {
+      "bytes": 675,
+      "sha256": "33824860ebf8c95173332b908f9221918c51264cac2e07d659b1d3308ca61326"
+    },
+    "coax/lib/proto/importer.coax": {
+      "bytes": 310626,
+      "sha256": "49f0f70af48e9037aa0929c36748294a1d25a1e68d8ba74a90adb9d678fc16da"
+    },
+    "coax/lib/proto/wire.coax": {
+      "bytes": 20246,
+      "sha256": "bf7f55c25616bcabe0417b0ed2cfa56272e75545b2dc8e13c961d88bb458b87a"
+    },
+    "coax/lib/compiler/profiles.coax": {
+      "bytes": 19918,
+      "sha256": "63d6f27409cffa04173cb4b0e5e202b27d587d2c50af55d93aab7deb1da320ba"
+    },
+    "coax/lib/compiler/effects.coax": {
+      "bytes": 8676,
+      "sha256": "fba1813883474c6f69474bc35b5caa61ed168ee750279d818e2fd373fb881b86"
+    },
+    "coax/lib/compiler/check-domains.coax": {
+      "bytes": 12689,
+      "sha256": "cb4a86f77970c736e45616824a9e55efa2fe87ca1547b70e32f1b041a31964db"
+    },
+    "coax/lib/compiler/borrow-summary.coax": {
+      "bytes": 26958,
+      "sha256": "57669ee3bb36f792c78ca0c93031da389d870171d9673c25a5fa54ed33fe8429"
+    },
+    "coax/lib/compiler/spatial-policy.coax": {
+      "bytes": 9550,
+      "sha256": "53c8948ec27bf5bc4735fd06ad321bfa8f26629355dff831bf84759d45abb536"
+    },
+    "coax/lib/compiler/native-execution.coax": {
+      "bytes": 47329,
+      "sha256": "d1f61ac080270b172407477b38787652d273f042907a2f758bd5fb38ac9429df"
+    },
+    "coax/lib/compiler/lexer.coax": {
+      "bytes": 64960,
+      "sha256": "081bb890698d380dffba3d0595ff7b0021ce280a1e2c96095489606d19346f94"
+    },
+    "coax/lib/compiler/wgsl.coax": {
+      "bytes": 154427,
+      "sha256": "2ca4a94751c10c9d3c4879e7f1730d3f32052fd86bdb34eef434933fcd6820f5"
+    },
+    "coax/lib/compiler/provenance.coax": {
+      "bytes": 1545,
+      "sha256": "1f021275b37151ff515174e1f42d7f081f03608638c03379c6dd4f952ee78456"
+    },
+    "coax/lib/compiler/spatial-mutation.coax": {
+      "bytes": 5163,
+      "sha256": "36931ca6781a382b88beb04eefcaeeae49dccfac4ac6472d5bf75ee843178ab4"
+    },
+    "coax/lib/compiler/native-semantics.coax": {
+      "bytes": 35201,
+      "sha256": "899575c96835c539e974a6d27404d4472bff1366743e4f314c276ca7d61fcbe6"
+    },
+    "coax/lib/compiler/native-checks.coax": {
+      "bytes": 20476,
+      "sha256": "45913fc236eaf2dbe8354cf8dcb53339aad32f01901ecbce464d40ef9d497ba1"
+    },
+    "coax/lib/compiler/sources.coax": {
+      "bytes": 28085,
+      "sha256": "699825c85fc6f436e004d862d2e75d829b370042f43184d85c1891004ff239f1"
+    },
+    "coax/lib/compiler/unit-forms.coax": {
+      "bytes": 8595,
+      "sha256": "ab8b0df47f428e1437d221170b095e1d0b6b931fb22833a44aa54f49e1878b33"
+    },
+    "coax/lib/compiler/spirv.coax": {
+      "bytes": 49961,
+      "sha256": "9b51822bbd4af5d54210c7f4b670ecd675f0d6fe5af2162d8011010c0d50f970"
+    },
+    "coax/lib/compiler/checker.coax": {
+      "bytes": 4801002,
+      "sha256": "a12c2e68d88ebef916cc36fc2fe50ede03b2180f6161513a1784c6dc22ce3738"
+    },
+    "coax/lib/compiler/mutation-schedule.coax": {
+      "bytes": 7027,
+      "sha256": "eabc3f4ff894c108785d918391b724ca08624bedd512d7820bef6730f7d2e7f1"
+    },
+    "coax/lib/compiler/compute.coax": {
+      "bytes": 26548,
+      "sha256": "dbefb1aed80a91231cc6982d4dad90c2d1b122f9e63bc5d649083f15df6da8b3"
+    },
+    "coax/lib/compiler/parser.coax": {
+      "bytes": 360542,
+      "sha256": "3ecd66f4bd1fe06e9d1d056d4f8a74ab82e88f7f39ed0f878844a60799c7cb26"
+    },
+    "coax/lib/compiler/quantified-execution.coax": {
+      "bytes": 48319,
+      "sha256": "3ed83abe03f893ab99e0aaa68eaf0df23bf91f576e37b33a5b044acda4849436"
+    },
+    "coax/lib/compiler/shader.coax": {
+      "bytes": 121464,
+      "sha256": "27be5f4a525cc6e161a41e52f7f3155cc2e9113085a0516e1bd86bed8de69d98"
+    },
+    "coax/lib/compiler/compiler.coax": {
+      "bytes": 572,
+      "sha256": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b"
+    },
+    "coax/lib/compiler/unit-algebra.coax": {
+      "bytes": 9564,
+      "sha256": "c23c20da8c88f7b6b78e266a2575c9320adf4e387b01fdbcd3ee22237192a780"
+    },
+    "coax/lib/compiler/quantity.coax": {
+      "bytes": 6156,
+      "sha256": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+    },
+    "coax/lib/compiler/budget.coax": {
+      "bytes": 3653,
+      "sha256": "d012cffd599203030e37f68672ac5626dc7fcac0c8fac7a0beebf3712987a80b"
+    }
+  },
+  "current_input_fingerprint_carried": "908b63638f485a67f68f4d0c147ed6ab0ebcf7668e62ee0ac85e06558707f339",
+  "private_build": {
+    "path": "docs/verification/coax-locomotion-emitter-build-2026-11-01.json",
+    "bytes": 400906,
+    "sha256": "5156365cc99bbdb0fe794c83f69e597382115e71b2a34c660e105db1ac063032"
+  }
+}
