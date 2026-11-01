@@ -1,0 +1,117 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip06.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print the 11-bit index of each word, with its bits.
+show_indexes :: (phrase: string) {
+  at := 0;
+  while at < phrase.count {
+    e := at;
+    while e < phrase.count && phrase[e] != ' ' { e += 1; }
+    v := bip39_index(phrase[at..<e]);
+    bits: [11] u8;
+    for b: 0..<11 { bits[b] = cast(u8) (ifx (v >> (10 - b)) & 1 == 1 then '1' else '0'); }
+    print("  % %: %\n", phrase[at..<e], v, cast(string) bits[..]);
+    at = e + 1;
+  }
+}
+// The key at a path from a seed, printed one level at a time.
+show_path :: (seed: [] u8, path: [] int) {
+  key: [32] u8; chain: [32] u8; k: [32] u8; c: [32] u8;
+  #assert bip32_master(seed, key[..], chain[..]);
+  show("  m key", key[..]);
+  show("  m chain", chain[..]);
+  for step: path {
+    #assert bip32_child(key[..], chain[..], step, k[..], c[..]);
+    hardened := step >= BIP32_HARDENED;
+    index := ifx hardened then step - BIP32_HARDENED else step;
+    mark := ifx hardened then "'" else "";
+    print("  child %", index); print("% (index %): ", mark, step);
+    show("key", k[..]);
+    for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  }
+}
+// The NIP-06 key of a phrase, its x-only public key and its npub.
+show_nip06 :: (label: string, phrase: string) {
+  key: [32] u8; pub: [33] u8; npub: [80] u8;
+  ok := nip06_key(phrase, key[..]);
+  print("% key: ok %\n", label, ok);
+  show("  private key", key[..]);
+  #assert bip32_public(key[..], pub[..]);
+  show("  public key", pub[1..<33]);
+  n := nip06_npub(key[..], npub[..]);
+  print("  npub: %\n", cast(string) npub[0..<n]);
+}
+
+VECTOR_1 :: "leader monkey parrot ring guide accident before fence cannon height naive bean";
+VECTOR_2 :: "what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade";
+ZEROS    :: "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+main :: () {
+  entropy: [16] u8; h: [32] u8; words: [200] u8; seed: [64] u8;
+
+  // The checksum by hand: 128 zero bits; SHA-256 starts 0x37, so the
+  // checksum is 0011 and the last word is index 3, "about".
+  #assert bip39_entropy(ZEROS, entropy[..]);
+  show("all-zero entropy", entropy[..]);
+  #assert sha256_hash_checked(entropy[..], h[..], false) == SHA_OK;
+  show("its SHA-256, first 2 bytes", h[0..<2]);
+  print("word 3 is %\n", bip39_word(3));
+
+  // NIP-06 vector 1: words to indexes, entropy and checksum.
+  print("vector 1 word indexes:\n");
+  show_indexes(VECTOR_1);
+  print("vector 1 checksum: ok %\n", bip39_entropy(VECTOR_1, entropy[..]));
+  show("  entropy", entropy[..]);
+  #assert sha256_hash_checked(entropy[..], h[..], false) == SHA_OK;
+  show("  SHA-256 of entropy, first byte", h[0..<1]);
+  n := bip39_words(entropy[..], words[..]);
+  print("  entropy back to words: %\n", cast(string) words[0..<n]);
+
+  // Words to seed: PBKDF2-HMAC-SHA512, 2048 rounds, salt "mnemonic".
+  #assert bip39_seed(VECTOR_1, seed[..]);
+  show("vector 1 seed", seed[..]);
+
+  // The seed down m/44'/1237'/0'/0/0.
+  path := NIP06_PATH;
+  print("path m/44'/1237'/0'/0/0:\n");
+  show_path(seed[..], path[..]);
+
+  show_nip06("vector 1", VECTOR_1);
+  show_nip06("vector 2", VECTOR_2);
+
+  // Other paths from the same seed are other keys.
+  key: [32] u8; chain: [32] u8;
+  account := [5] int.[44 + BIP32_HARDENED, 1237 + BIP32_HARDENED, 1 + BIP32_HARDENED, 0, 0];
+  #assert bip32_path(seed[..], account[..], key[..], chain[..]);
+  show("account 1, m/44'/1237'/1'/0/0", key[..]);
+  plain := [5] int.[44, 1237, 0, 0, 0];
+  #assert bip32_path(seed[..], plain[..], key[..], chain[..]);
+  show("no hardening, m/44/1237/0/0/0", key[..]);
+
+  // Refusals.
+  print("checksum, last word beauty: ok %\n",
+        bip39_entropy("leader monkey parrot ring guide accident before fence cannon height naive beauty", entropy[..]));
+  print("unknown word xyzzy: ok %\n",
+        bip39_entropy("leader monkey parrot ring guide accident before fence cannon height naive xyzzy", entropy[..]));
+  print("11 words: ok %\n",
+        bip39_entropy("leader monkey parrot ring guide accident before fence cannon height naive", entropy[..]));
+  print("24 words (vector 2): ok %\n", bip39_entropy(VECTOR_2, entropy[..]));
+  print("nip06_key, last word beauty: ok %\n",
+        nip06_key("leader monkey parrot ring guide accident before fence cannon height naive beauty", key[..]));
+  show("  key", key[..]);
+  k: [32] u8; c: [32] u8;
+  #assert bip32_master(seed[..], key[..], chain[..]);
+  print("child index 2^32: ok %\n", bip32_child(key[..], chain[..], 4294967296, k[..], c[..]));
+  print("child index -1: ok %\n", bip32_child(key[..], chain[..], -1, k[..], c[..]));
+  print("master of a 15-byte seed: ok %\n", bip32_master(seed[0..<15], key[..], chain[..]));
+  print("31-byte key buffer: ok %\n", nip06_key(VECTOR_1, key[0..<31]));
+}
+// book:end example

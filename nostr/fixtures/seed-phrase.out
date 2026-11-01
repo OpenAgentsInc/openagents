@@ -1,0 +1,49 @@
+all-zero entropy: 00000000000000000000000000000000
+its SHA-256, first 2 bytes: 3747
+word 3 is about
+vector 1 word indexes:
+  leader 1012: 01111110100
+  monkey 1145: 10001111001
+  parrot 1283: 10100000011
+  ring 1488: 10111010000
+  guide 828: 01100111100
+  accident 11: 00000001011
+  before 161: 00010100001
+  fence 680: 01010101000
+  cannon 267: 00100001011
+  height 853: 01101010101
+  naive 1173: 10010010101
+  bean 156: 00010011100
+vector 1 checksum: ok true
+  entropy: 7e91e681dd067802c50aa8216d564a89
+  SHA-256 of entropy, first byte: c0
+  entropy back to words: leader monkey parrot ring guide accident before fence cannon height naive bean
+vector 1 seed: 173b9c5f0d165502d08a4d122b2c9bf1e33e27806eac119713600a263c1241101dc55fb7cffb8f48a59b19a5ba65b037904f907bb8d08eb5bff8a17e85c2ee93
+path m/44'/1237'/0'/0/0:
+  m key: dbbcc0e112894d1430d5bc348d1bd72e8ac339952702be1fe572de80fe1b7fcb
+  m chain: 9ebdd3f7c9808336542f29a7b53f7a31290619cefc9dc54d5c8bd2d83d930bdc
+  child 44' (index 2147483692): key: 2ae2db9aa7a3f566e41ceb7d0b6ea3aec082ba395822063f32d2d8a789ba8921
+  child 1237' (index 2147484885): key: 6437d89d482a14aad16a4dde69ee28be50b49e83a31e9aa048564606fd75f1b4
+  child 0' (index 2147483648): key: 1b794bd84d20a272bbe312deb2966b4aa9ac989784bb0c27aa0b995189ad95cd
+  child 0 (index 0): key: 2ba8f6f59d4a6e323b3b1af12633bcf7fd295ac5ee903a2492b3d0da4f1fb818
+  child 0 (index 0): key: 7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a
+vector 1 key: ok true
+  private key: 7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a
+  public key: 17162c921dc4d2518f9a101db33695df1afb56ab82f5ff3e5da6eec3ca5cd917
+  npub: npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu
+vector 2 key: ok true
+  private key: c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add
+  public key: d41b22899549e1f3d335a31002cfd382174006e166d3e658e3a5eecdb6463573
+  npub: npub16sdj9zv4f8sl85e45vgq9n7nsgt5qphpvmf7vk8r5hhvmdjxx4es8rq74h
+account 1, m/44'/1237'/1'/0/0: 3790c23940f62b23754115ef70f16e63cca8e9015a532b8a891171ccdadcf910
+no hardening, m/44/1237/0/0/0: 88a7533bccda9ab25127c961764d309dd4181763730814ca1ea94bcb311aa754
+checksum, last word beauty: ok false
+unknown word xyzzy: ok false
+11 words: ok false
+24 words (vector 2): ok false
+nip06_key, last word beauty: ok true
+  key: 4ed23d190a70f69ca3731710572a23da0bb4cbcf57e8e6af5769b40510805514
+child index 2^32: ok false
+child index -1: ok false
+master of a 15-byte seed: ok false
+31-byte key buffer: ok false

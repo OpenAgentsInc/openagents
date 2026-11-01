@@ -153,7 +153,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
 | [45. Profiles, follows and names](ch045-profiles-follows-and-names.md) — partly implemented | 22, 28 | NIP-05 lookups refuse redirects and non-matching keys. A newer kind 3 replaces an older one in the store. | [NIP-02](../nips/official/02.md), [NIP-05](../nips/official/05.md), [NIP-24](../nips/official/24.md), [NIP-39](../nips/official/39.md) |
-| [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) — partly implemented | 13, 5 | Both NIP-06 vectors produce their stated private and public keys. An invalid checksum refuses. | [NIP-06](../nips/official/06.md) |
+| [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) — implemented | 13, 5 | Both NIP-06 vectors produce their stated private and public keys. An invalid checksum refuses. | [NIP-06](../nips/official/06.md) |
 | [47. Encrypted key backup](ch047-encrypted-key-backup.md) — partly implemented | 18, 5, 15 | The NIP-49 test vector decrypts to its stated key. A `log_n` of 22 refuses on a profile limited to 20. | [NIP-49](../nips/official/49.md) |
 | [48. Signers outside the app](ch048-signers-outside-the-app.md) — design draft | 12, 20, 31 | A Coax client signs through a Coax bunker and an independent bunker. A reused connect secret refuses. | [NIP-07](../nips/official/07.md), [NIP-46](../nips/official/46.md), [NIP-55](../nips/official/55.md) |
 | [49. HTTP auth](ch049-http-auth.md) — partly implemented | 21, 4 | Each server check has a refusing test. The same event ID used twice refuses the second time. | [NIP-98](../nips/official/98.md) |

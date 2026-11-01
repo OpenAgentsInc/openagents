@@ -238,6 +238,17 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/seed-phrase.coax",
+      "chapter": "nostr/book/ch046-keys-from-a-seed-phrase.md",
+      "stdout": "nostr/fixtures/seed-phrase.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180
     }
   ]
 }

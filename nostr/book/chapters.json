@@ -891,7 +891,7 @@
    "number": 46,
    "title": "Keys from a seed phrase",
    "file": "ch046-keys-from-a-seed-phrase.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     13,
@@ -902,7 +902,9 @@
     "coax/lib/crypto/bip39.coax",
     "coax/lib/crypto/pbkdf2.coax",
     "coax/lib/crypto/sha512.coax",
-    "coax/lib/nostr/nip06.coax"
+    "coax/lib/nostr/nip06.coax",
+    "nostr/examples/seed-phrase.coax",
+    "nostr/examples/checks/seed-phrase.coax"
    ],
    "qualified_targets": [
     "cpu"

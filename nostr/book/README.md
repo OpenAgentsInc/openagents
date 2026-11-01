@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 23 are implemented, 33 are partly implemented and
+Of the 104 chapters, 24 are implemented, 32 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -237,7 +237,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [45. Profiles, follows and names](ch045-profiles-follows-and-names.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Kind 0 profiles with NIP-24's extra fields, kind 3 follow lists, NIP-05 DNS identifiers checked through `/.well-known/nostr.json`, and NIP-39 external identity claims in kind 10011. |
-| [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | BIP-39 words to seed with PBKDF2-HMAC-SHA512, BIP-32 derivation at m/44'/1237'/0'/0/0, and the NIP-06 key and its npub. |
+| [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) | Runnable: native C | BIP-39 words to seed with PBKDF2-HMAC-SHA512, BIP-32 derivation at m/44'/1237'/0'/0/0, and the NIP-06 key and its npub. |
 | [47. Encrypted key backup](ch047-encrypted-key-backup.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | NIP-49 `ncryptsec`: NFKC-normalized passwords, scrypt with `log_n` from the payload, XChaCha20-Poly1305 with the key-security byte as associated data, and bounded KDF memory. |
 | [48. Signers outside the app](ch048-signers-outside-the-app.md) | Unimplemented: design draft | NIP-07's `window.nostr`, NIP-46 remote signing over kind 24133 with `bunker://` and `nostrconnect://` URIs, and NIP-55's Android signer intents. |
 | [49. HTTP auth](ch049-http-auth.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | NIP-98 kind 27235 events in `Authorization: Nostr <base64>`, binding the exact URL, method and payload hash within 60 seconds, with single-use event IDs. |
