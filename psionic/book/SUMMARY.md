@@ -114,7 +114,7 @@
 
 - [103. Learning with arrays](ch103-learning-with-arrays.md) — first learning chapter
 - [104. Gradients as a program](ch104-gradients-as-a-program.md)
-- [105. Make a model fail, then find out why](ch105-make-a-model-fail-then-find-out-why.md) — design draft
+- [105. Make a model fail, then find out why](ch105-make-a-model-fail-then-find-out-why.md)
 - [106. Differentiate any tensor program](ch106-differentiate-any-tensor-program.md)
 - [107. Transform functions, not just tensors](ch107-transform-functions-not-just-tensors.md) — composable graph-function derivatives and batching
 - [108. Choose the next example to learn from](ch108-choose-the-next-example-to-learn-from.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103, 104, 106, 107, 109, 111, 112, 117, 120, 123, 124, 142, 147, 151, 156, 158, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103–106, 107, 109, 111, 112, 117, 120, 123, 124, 142, 147, 151, 156, 158, 167–172, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

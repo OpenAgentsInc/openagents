@@ -1,0 +1,483 @@
+// Chapter 105: make a model fail, then find out why. Chapter 103's models,
+// trained through chapter 104's tape by a trainer whose settings can be got
+// wrong in six ways; a record of what each run did; and a diagnosis that
+// names every fault the records point at. Profile cpu-f64-diagnose-v1:
+// binary64, chapter 103's models and bounds, batches packed into at most 16
+// slots, at most 60,000 steps, every run reproducible from its three seeds.
+#load "tape.coax";
+
+DgStatus :: enum u8 {ok;shape;capacity;}
+// The settings a training bug gets wrong. All false is the healthy trainer;
+// the sixth fault, a rate too large, is DgConfig.rate.
+DgFaults :: struct {
+    stale_gradients:bool;   // the gradient buffer is never cleared between steps
+    shuffled_targets:bool;  // the targets are shuffled once on their own, out of step with the rows
+    padding_in_loss:bool;   // the loss averages over the batch's padding slots too
+    identical_init:bool;    // every hidden unit starts with unit 0's weights
+    dropout_at_eval:bool;   // input dropout stays on when the model is evaluated
+}
+// `batch` rows per step, packed into `slots` slots; the rest are padding.
+// `dropout` is the chance each input feature is zeroed during training.
+DgConfig :: struct {epochs:int;batch:int;slots:int;rate:f64;dropout:f64;init_seed:u64;shuffle_seed:u64;drop_seed:u64;}
+// What one run did. Losses are mean log loss, or half the squared error for a line.
+DgRecord :: struct {
+    status:DgStatus;
+    steps:int;
+    diverged:bool;     // an update left chapter 103's parameter domain, or the tape refused a value
+    first_loss:f64;    // mean batch loss over the first epoch
+    last_loss:f64;     // mean batch loss over the last epoch that ran
+    stale:f64;         // norm of the gradient buffer just before the last backward pass
+    mask:f64;          // last step: |tape's batch loss - the batch rows' own loss| / (1 + |own|)
+    train_loss:f64;    // evaluated on the training rows
+    held_loss:f64;     // evaluated on the held-out rows
+    base_loss:f64;     // the constant predictor on the held-out rows
+    distinct:int;      // hidden units whose held-out activations differ from every earlier unit's
+    repeat:f64;        // mean change in an output when the held-out rows are evaluated twice
+}
+// A run, the same run at a tenth of the rate, and the causes they point at.
+DgCase :: struct {status:DgStatus;record:DgRecord;slower:DgRecord;found:int;}
+// One bit per cause.
+DG_STALE :: 1;
+DG_TARGETS :: 2;
+DG_PADDING :: 4;
+DG_IDENTICAL :: 8;
+DG_EVAL_RANDOM :: 16;
+DG_RATE :: 32;
+DG_LEARNED :: 0.05;   // held-out loss must beat the constant predictor by this much
+DG_MASK :: 1e-9;      // the tape's loss and the rows' own loss agree to rounding
+DG_SLOTS_MAX :: 16;
+DG_STEPS_MAX :: 60000;
+// Dropout draws: training counters count up from 0, evaluation counters from 2^40.
+DG_EVAL_COUNTER :: (cast(u64)1099511627776);
+
+// Checks precede the implementation. Expected values are derived in chapter 105.
+// The line: two rows, x = -2 and x = 2, targets -2 and 6, fitted exactly by
+// w = b = 2. Its loss is 4 (w - 2)^2 / 2 + (b - 2)^2 / 2: curvature 4 in w, 1 in b.
+dg_line :: TbModel.{features=1};
+dg_full :: (rate:f64,steps:int)->DgConfig {return DgConfig.{epochs=steps,batch=2,slots=2,rate=rate};}
+#test "a full batch on the quadratic: rate 2/L = 0.5 separates converging from diverging" {
+    x:=[2]f64.[-2,2];y:=[2]f64.[-2,6];rows:=[2]int.[0,1];p:[2]f64;
+    // From w = b = 0, w's error -2 is multiplied by 1 - 4 rate each step and b's by 1 - rate.
+    r:=dg_train(dg_line,dg_full(0.25,1),DgFaults.{},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert r.status==DgStatus.ok && r.steps==1 && p[0]==2 && p[1]==0.5;
+    #assert r.first_loss==10 && r.last_loss==10 && r.train_loss==1.125 && r.held_loss==1.125 && r.base_loss==8;
+    #assert r.stale==0 && r.mask==0 && r.repeat==0 && r.distinct==0 && !r.diverged;
+    // 0.45: the error in w shrinks by 0.8 a step; after 40 steps the loss is 2 (2 0.8^40)^2.
+    r=dg_train(dg_line,dg_full(0.45,40),DgFaults.{},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert r.status==DgStatus.ok && !r.diverged && r.steps==40 && r.train_loss>1.4e-7 && r.train_loss<1.5e-7 && r.last_loss<r.first_loss;
+    // 0.55: it grows by 1.2 a step, to 2 1.2^40 = 2939.5, a loss of about 1.728e7.
+    s:=dg_train(dg_line,dg_full(0.55,40),DgFaults.{},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert s.status==DgStatus.ok && !s.diverged && s.train_loss>1.72e7 && s.train_loss<1.73e7 && s.last_loss>s.first_loss;
+    #assert dg_diagnose(dg_line,r,r)==0 && dg_diagnose(dg_line,s,r)==DG_RATE;
+    // 4: it grows by 15 a step; the fifth update would put w at 2 + 2 15^5, past 2^20.
+    // The fifth epoch ran its forward pass before its update was refused: errors 2 15^4 and 2 3^4.
+    s=dg_train(dg_line,dg_full(4,40),DgFaults.{},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert s.status==DgStatus.ok && s.diverged && s.steps==4 && p[0]==2-2*15.0*15*15*15 && p[1]==2-2*81.0;
+    #assert s.last_loss==2*101250.0*101250+162*162/2.0 && dg_diagnose(dg_line,s,r)==DG_RATE;
+}
+#test "a gradient buffer never cleared carries every earlier gradient into the next step" {
+    x:=[2]f64.[-2,2];y:=[2]f64.[-2,6];rows:=[2]int.[0,1];p:[2]f64;
+    // Step 0's gradient is (-8, -2); step 1's own is (0, -1.5), but (-8, -3.5) is applied.
+    r:=dg_train(dg_line,dg_full(0.25,2),DgFaults.{stale_gradients=true},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert r.status==DgStatus.ok && r.stale==sqrt(68.0) && p[0]==4 && p[1]==1.375 && r.train_loss==8.1953125;
+    #assert dg_diagnose(dg_line,r,r)==DG_STALE;
+    // Step 2's own is (8, -0.625), so (0, -4.125) is applied.
+    r=dg_train(dg_line,dg_full(0.25,3),DgFaults.{stale_gradients=true},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert r.stale==sqrt(76.25) && p[0]==4 && p[1]==2.40625;
+    h:=dg_train(dg_line,dg_full(0.25,2),DgFaults.{},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert h.stale==0 && p[0]==2 && p[1]==0.875 && dg_diagnose(dg_line,h,h)==0;
+}
+#test "padding in the loss halves the first batch loss: 5 where the rows' own is 10" {
+    x:=[2]f64.[-2,2];y:=[2]f64.[-2,6];rows:=[2]int.[0,1];p:[2]f64;
+    c:=dg_full(0.25,1);c.slots=4;
+    r:=dg_train(dg_line,c,DgFaults.{padding_in_loss=true},x[..],y[..],rows[..],rows[..],p[..]);
+    // The gradient is divided by 4 slots, not 2 rows: (-4, -1), so one step lands on (1, 0.25).
+    #assert r.status==DgStatus.ok && r.first_loss==5 && r.mask==5.0/11 && p[0]==1 && p[1]==0.25 && r.held_loss==3.53125;
+    #assert dg_diagnose(dg_line,r,r)==DG_PADDING;
+    k:=dg_investigate(dg_line,c,DgFaults.{padding_in_loss=true},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert k.status==DgStatus.ok && k.found==DG_PADDING && k.slower.first_loss==5;
+    h:=dg_train(dg_line,c,DgFaults.{},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert h.first_loss==10 && h.mask==0 && p[0]==2 && p[1]==0.5 && dg_diagnose(dg_line,h,h)==0;
+}
+#test "inverted dropout keeps a feature when its draw is at least the rate" {
+    // tb_uniform(0, 0) = 0.8833108082136426 (chapter 103).
+    #assert dg_keep(0,0,0)==1 && dg_keep(0,0,0.5)==2 && dg_keep(0,0,0.9)==0;
+    #assert dg_keep(0,0,0.8833108082136426)==1/(1-0.8833108082136426) && dg_keep(0,0,0.8833108082136427)==0;
+}
+#test "distinct units count activations, not weights, on the rows given" {
+    // One feature, three units: input weights 1, 2, 1, biases 0. Units 0 and 2 always agree.
+    m:=TbModel.{features=1,hidden=3,logistic=true};p:=[10]f64.[1,2,1,0,0,0,1,1,1,0];x:=[2]f64.[0,1];
+    one:=[1]int.[0];two:=[2]int.[0,1];
+    #assert dg_distinct(m,p[..],x[..],one[..])==1 && dg_distinct(m,p[..],x[..],two[..])==2;
+    p[2]=3;#assert dg_distinct(m,p[..],x[..],two[..])==3;
+    p[2]=1;p[5]=0.5;#assert dg_distinct(m,p[..],x[..],one[..])==2 && dg_distinct(m,p[..],x[..],two[..])==3;
+    p[1]=1;p[5]=0;#assert dg_distinct(m,p[..],x[..],two[..])==1;
+}
+#test "the diagnosis reads each record at its thresholds" {
+    m:=TbModel.{features=4,hidden=8,logistic=true};
+    r:=DgRecord.{first_loss=0.5,last_loss=0.4,held_loss=0.35,base_loss=0.4,distinct=8};
+    #assert dg_diagnose(m,r,r)==0;
+    t:=r;t.held_loss=t.base_loss-DG_LEARNED;#assert dg_diagnose(m,t,t)==0;
+    t.held_loss=0.3500001;#assert dg_diagnose(m,t,t)==DG_TARGETS;
+    t=r;t.last_loss=0.5;#assert dg_diagnose(m,t,r)==0;
+    t.last_loss=0.5000001;#assert dg_diagnose(m,t,r)==DG_RATE;
+    t=r;t.diverged=true;#assert dg_diagnose(m,t,r)==DG_RATE;
+    t=r;t.stale=1e-300;t.diverged=true;t.held_loss=9;#assert dg_diagnose(m,t,r)==DG_STALE;
+    slower:=r;slower.held_loss=r.held_loss-DG_LEARNED;#assert dg_diagnose(m,r,slower)==0;
+    slower.held_loss=0.2999999;#assert dg_diagnose(m,r,slower)==DG_RATE;
+    t=r;t.mask=1e-9;#assert dg_diagnose(m,t,r)==0;
+    t.mask=1.0000001e-9;#assert dg_diagnose(m,t,r)==DG_PADDING;
+    t=r;t.distinct=1;#assert dg_diagnose(m,t,r)==DG_IDENTICAL;
+    #assert dg_diagnose(TbModel.{features=4,hidden=2,logistic=true},t,r)==DG_IDENTICAL;
+    #assert dg_diagnose(TbModel.{features=4,hidden=1,logistic=true},t,r)==0;
+    t.distinct=2;#assert dg_diagnose(m,t,r)==0;
+    t=r;t.repeat=1e-300;#assert dg_diagnose(m,t,r)==DG_EVAL_RANDOM;
+    t.stale=1;t.mask=1;t.distinct=1;#assert dg_diagnose(m,t,r)==DG_STALE|DG_PADDING|DG_IDENTICAL|DG_EVAL_RANDOM;
+}
+#test "every refusal, before any work" {
+    x:=[2]f64.[-2,2];y:=[2]f64.[-2,6];rows:=[2]int.[0,1];p:[2]f64;c:=dg_full(0.25,1);f:DgFaults;
+    #assert dg_admit(dg_line,c,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.ok;
+    #assert dg_admit(TbModel.{features=0},c,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    #assert dg_admit(TbModel.{features=1,hidden=17},c,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    #assert dg_admit(dg_line,c,x[..],y[0..<1],rows[..],rows[..],p[..])==DgStatus.shape;
+    bad:=[1]int.[2];
+    #assert dg_admit(dg_line,c,x[..],y[..],bad[..],rows[..],p[..])==DgStatus.shape;
+    #assert dg_admit(dg_line,c,x[..],y[..],rows[..],bad[..],p[..])==DgStatus.shape;
+    k:=c;k.epochs=0;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k.epochs=513;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k.epochs=512;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.ok;
+    k=c;k.batch=0;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k=c;k.batch=3;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k.slots=3;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.ok;
+    k=c;k.slots=17;k.batch=1;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k.slots=16;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.ok;
+    // Steps are epochs times batches, with a short last batch: 480 epochs of
+    // 250 rows in pairs is 60,000 steps; 251 rows is 60,480; 29 epochs of 2069 one-row batches is 60,001.
+    big:[4096]f64;all:[4096]int;for i:0..<4096 {all[i]=i;}
+    k=c;k.epochs=480;#assert dg_admit(dg_line,k,big[..],big[..],all[0..<250],rows[..],p[..])==DgStatus.ok;
+    #assert dg_admit(dg_line,k,big[..],big[..],all[0..<251],rows[..],p[..])==DgStatus.shape;
+    k.batch=1;k.epochs=29;#assert dg_admit(dg_line,k,big[..],big[..],all[0..<2069],rows[..],p[..])==DgStatus.shape;
+    #assert dg_admit(dg_line,k,big[..],big[..],all[0..<2068],rows[..],p[..])==DgStatus.ok;
+    k=c;k.rate=0;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k.rate=16.000000000000004;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k.rate=16;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.ok;
+    k.rate=5e-324;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.ok;
+    k=c;k.dropout=1;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k.dropout=-1e-300;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    k.dropout=0.999;#assert dg_admit(dg_line,k,x[..],y[..],rows[..],rows[..],p[..])==DgStatus.ok;
+    #assert dg_admit(dg_line,c,x[..],y[..],rows[..],rows[..],p[0..<1])==DgStatus.capacity;
+    // A classifier needs both classes among its training rows, and 0/1 targets.
+    lg:=TbModel.{features=1,logistic=true};z:=[2]f64.[1,1];
+    #assert dg_admit(lg,c,x[..],z[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    z[0]=0;#assert dg_admit(lg,c,x[..],z[..],rows[..],rows[..],p[..])==DgStatus.ok;
+    #assert dg_admit(dg_line,c,x[..],z[..],rows[0..<1],rows[..],p[..])==DgStatus.ok;
+    #assert dg_admit(lg,c,x[..],z[..],rows[0..<1],rows[..],p[..])==DgStatus.shape;
+    #assert dg_admit(lg,c,x[..],z[..],rows[1..<2],rows[..],p[..])==DgStatus.shape;
+    z[1]=2;#assert dg_admit(lg,c,x[..],z[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    z[1]=1;z[0]=0.5;#assert dg_admit(lg,c,x[..],z[..],rows[..],rows[..],p[..])==DgStatus.shape;
+    // Every value of the table, named or not, within chapter 103's domain.
+    one:=[1]int.[0];w:=[2]f64.[-2,TB_DOMAIN*2];
+    #assert dg_admit(dg_line,c,w[..],y[..],one[..],one[..],p[..])==DgStatus.shape;
+    w[1]=-TB_DOMAIN*2;#assert dg_admit(dg_line,c,w[..],y[..],one[..],one[..],p[..])==DgStatus.shape;
+    w[1]=TB_DOMAIN;#assert dg_admit(dg_line,c,w[..],y[..],one[..],one[..],p[..])==DgStatus.ok;
+    w[1]=-TB_DOMAIN;#assert dg_admit(dg_line,c,w[..],y[..],one[..],one[..],p[..])==DgStatus.ok;
+    #assert dg_admit(dg_line,c,x[..],w[..],one[..],one[..],p[..])==DgStatus.ok;
+    w[1]=TB_DOMAIN*2;#assert dg_admit(dg_line,c,x[..],w[..],one[..],one[..],p[..])==DgStatus.shape;
+    w[1]=-TB_DOMAIN*2;#assert dg_admit(dg_line,c,x[..],w[..],one[..],one[..],p[..])==DgStatus.shape;
+    // The trainer refuses what admission refuses, and leaves the caller's parameters alone.
+    p[0]=7;p[1]=7;k=c;k.epochs=0;
+    #assert dg_train(dg_line,k,f,x[..],y[..],rows[..],rows[..],p[..]).status==DgStatus.shape && p[0]==7 && p[1]==7;
+    #assert dg_investigate(dg_line,k,f,x[..],y[..],rows[..],rows[..],p[..]).status==DgStatus.shape && p[0]==7;
+    // A tenth of the smallest rate rounds to zero, so the slower run is refused.
+    k=c;k.rate=5e-324;#assert dg_investigate(dg_line,k,f,x[..],y[..],rows[..],rows[..],p[..]).status==DgStatus.shape;
+    k.rate=5e-323;#assert dg_investigate(dg_line,k,f,x[..],y[..],rows[..],rows[..],p[..]).status==DgStatus.ok;
+    // Thirteen slots of the widest model need 4,283 nodes, past the tape's 4,096; twelve need 3,966.
+    wide:=TbModel.{features=8,hidden=16,logistic=true};wx:[16]f64;wy:=[2]f64.[0,1];wp:[161]f64;
+    k=c;k.slots=13;
+    #assert dg_train(wide,k,f,wx[..],wy[..],rows[..],rows[..],wp[..]).status==DgStatus.capacity;
+    k.slots=12;#assert dg_train(wide,k,f,wx[..],wy[..],rows[..],rows[..],wp[..]).status==DgStatus.ok;
+}
+// Six rows of two features with labels 1 0 0 1 0 1, for small classifier runs.
+DG_SIX_X :: [12]f64.[-1.5,0.5, -0.5,1, -0.25,-1, 0.25,0.75, 0.75,-0.5, 1.5,0.25];
+DG_SIX_Y :: [6]f64.[1,0,0,1,0,1];
+#test "the healthy trainer is chapter 104's trainer, step for step" {
+    x:=DG_SIX_X;y:=DG_SIX_Y;rows:=[6]int.[0,1,2,3,4,5];train:=rows[1..<6];
+    m:=TbModel.{features=2,hidden=2,logistic=true};
+    // Five rows in pairs: two full batches and one of a single row, each epoch.
+    c:=DgConfig.{epochs=3,batch=2,slots=2,rate=0.5,init_seed=1,shuffle_seed=2,drop_seed=3};
+    t:=TbConfig.{epochs=3,batch=2,rate=0.5,init_seed=1,shuffle_seed=2};
+    a:[9]f64;b:[9]f64;order:[5]int;nodes:[4096]TpNode;values:[4096]f64;
+    r:=dg_train(m,c,DgFaults.{},x[..],y[..],train,rows[0..<1],a[..]);
+    s:=tp_train(m,t,x[..],y[..],train,b[..],order[..],nodes[..],values[..],false);
+    #assert r.status==DgStatus.ok && s.status==TbStatus.ok && r.steps==9 && s.steps==9 && abs(r.train_loss-s.loss)<=1e-15;
+    for k:0..<9 {#assert a[k]==b[k];}
+    // Held-out and constant losses are chapter 103's metrics.
+    z:[6]f64;#assert tb_predict(m,a[..],x[..],z[..],false)==TbStatus.ok;
+    base:=tb_base_logit(y[..],train);flat:[6]f64;for i:0..<6 {flat[i]=base.value;}
+    #assert abs(r.held_loss-tb_log_loss(z[..],y[..],rows[0..<1]).value)<=1e-15 && abs(r.base_loss-tb_log_loss(flat[..],y[..],rows[0..<1]).value)<=1e-15;
+    #assert r.base_loss>0.3 && r.held_loss>0.3;
+}
+#test "shuffled targets train exactly as the healthy trainer on targets permuted beforehand" {
+    x:=DG_SIX_X;y:=DG_SIX_Y;rows:=[6]int.[0,1,2,3,4,5];train:=rows[1..<6];held:=rows[0..<1];
+    m:=TbModel.{features=2,hidden=2,logistic=true};c:=DgConfig.{epochs=3,batch=4,slots=4,rate=0.5,init_seed=1,shuffle_seed=4,drop_seed=3};
+    // The fault draws its permutation of the training rows from shuffle_seed + 1 = 5 at counter 0.
+    order:=[5]int.[1,2,3,4,5];unused:=tb_shuffle(order[..],5,0);
+    permuted:=y;for i:0..<5 {permuted[train[i]]=y[order[i]];}
+    moved:=0;for i:1..<6 {if permuted[i]!=y[i] {moved+=1;}}
+    #assert moved>0;
+    a:[9]f64;b:[9]f64;
+    r:=dg_train(m,c,DgFaults.{shuffled_targets=true},x[..],y[..],train,held,a[..]);
+    s:=dg_train(m,c,DgFaults.{},x[..],permuted[..],train,held,b[..]);
+    #assert r.status==DgStatus.ok && r.steps==6 && r.first_loss==s.first_loss && r.last_loss==s.last_loss;
+    for k:0..<9 {#assert a[k]==b[k];}
+    // Evaluation still scores the true targets.
+    #assert r.train_loss!=s.train_loss;
+}
+#test "identical units stay identical, and only that fault makes them so" {
+    x:=DG_SIX_X;y:=DG_SIX_Y;rows:=[6]int.[0,1,2,3,4,5];
+    m:=TbModel.{features=2,hidden=3,logistic=true};c:=DgConfig.{epochs=2,batch=6,slots=6,rate=0.5,init_seed=1,shuffle_seed=2,drop_seed=3};
+    a:[13]f64;
+    r:=dg_train(m,c,DgFaults.{identical_init=true},x[..],y[..],rows[..],rows[..],a[..]);
+    // W1 rows, b1 and w2 hold one value each for all three units.
+    #assert r.status==DgStatus.ok && r.distinct==1 && a[0]!=a[1] && a[9]!=0;
+    #assert a[2]==a[0] && a[4]==a[0] && a[3]==a[1] && a[5]==a[1] && a[7]==a[6] && a[8]==a[6] && a[10]==a[9] && a[11]==a[9];
+    #assert (dg_diagnose(m,r,r)&DG_IDENTICAL)==DG_IDENTICAL;
+    h:=dg_train(m,c,DgFaults.{},x[..],y[..],rows[..],rows[..],a[..]);
+    #assert h.distinct==3 && (dg_diagnose(m,h,h)&DG_IDENTICAL)==0;
+}
+#test "dropout draws its training masks by step, slot and feature" {
+    // A two-feature line, one row a step, three slots: step t, slot 0, feature j draws counter 6t + j.
+    x:=DG_SIX_X;y:=[6]f64.[1,-2,0.5,3,-1,2];rows:=[3]int.[2,5,0];m:=TbModel.{features=2};p:[3]f64;
+    c:=DgConfig.{epochs=1,batch=1,slots=3,rate=0.25,dropout=0.5,shuffle_seed=2,drop_seed=3};
+    order:=rows;unused:=tb_shuffle(order[..],2,0);
+    q:[3]f64;sum:=0.0;
+    for t:0..<3 {
+        i:=order[t];v0:=x[2*i]*dg_keep(3,cast(u64)(6*t),0.5);v1:=x[2*i+1]*dg_keep(3,cast(u64)(6*t+1),0.5);
+        e:=(q[2]+q[0]*v0)+q[1]*v1-y[i];sum+=e*e*0.5;
+        q[0]-=0.25*(e*v0);q[1]-=0.25*(e*v1);q[2]-=0.25*e;
+    }
+    r:=dg_train(m,c,DgFaults.{},x[..],y[..],rows[..],rows[..],p[..]);
+    #assert r.status==DgStatus.ok && r.steps==3 && r.first_loss==sum/3 && r.last_loss==sum/3 && p[0]==q[0] && p[1]==q[1] && p[2]==q[2] && r.repeat==0;
+}
+#test "dropout left on at evaluation scores each pass with its own masks" {
+    x:=DG_SIX_X;y:=[6]f64.[1,-2,0.5,3,-1,2];rows:=[6]int.[0,1,2,3,4,5];m:=TbModel.{features=2};p:[3]f64;
+    c:=DgConfig.{epochs=1,batch=6,slots=6,rate=0.25,dropout=0.5,shuffle_seed=2,drop_seed=3};
+    r:=dg_train(m,c,DgFaults.{dropout_at_eval=true},x[..],y[..],rows[0..<4],rows[2..<6],p[..]);
+    // Training rows draw from 2^40, the two held-out passes from 2^40 + 2^32 and 2^40 + 2^33.
+    first:=DG_EVAL_COUNTER+(cast(u64)1<<32);second:=DG_EVAL_COUNTER+(cast(u64)2<<32);
+    change:=0.0;held:=0.0;train:=0.0;
+    for i:0..<4 {
+        a:[2]f64;b:[2]f64;t:[2]f64;
+        for j:0..<2 {
+            a[j]=x[2*(i+2)+j]*dg_keep(3,first+cast(u64)(2*i+j),0.5);b[j]=x[2*(i+2)+j]*dg_keep(3,second+cast(u64)(2*i+j),0.5);
+            t[j]=x[2*i+j]*dg_keep(3,DG_EVAL_COUNTER+cast(u64)(2*i+j),0.5);
+        }
+        za:=tb_output(m,p[..],a[..]);zb:=tb_output(m,p[..],b[..]);zt:=tb_output(m,p[..],t[..]);
+        change+=abs(za-zb);held+=(za-y[i+2])*(za-y[i+2])/2;train+=(zt-y[i])*(zt-y[i])/2;
+    }
+    #assert r.status==DgStatus.ok && change>0 && r.repeat==change/4 && r.held_loss==held/4 && r.train_loss==train/4;
+    #assert (dg_diagnose(m,r,r)&DG_EVAL_RANDOM)==DG_EVAL_RANDOM;
+    h:=dg_train(m,c,DgFaults.{},x[..],y[..],rows[0..<4],rows[2..<6],p[..]);
+    #assert h.repeat==0 && (dg_diagnose(m,h,h)&DG_EVAL_RANDOM)==0;
+}
+#test "the deadline data is chapter 103's, scaled on its training rows" #steps 400000000 {
+    x:[9600]f64;y:[2400]f64;tr:[2400]int;he:[2400]int;
+    d:=dg_deadline(70,x[..],y[..],tr[..],he[..]);
+    #assert d.status==DgStatus.ok && d.train==1440 && d.held==480;
+    raw:[9600]f64;yy:[2400]f64;lat:[2400]f64;g:[2400]int;
+    #assert tb_simulate(70,300,raw[..],yy[..],lat[..],g[..],false).on_time>0;
+    // Session 0 trains, session 3 is held out; every training feature has mean 0 and deviation 1.
+    #assert tr[0]==0 && he[0]==24 && tb_part(g[he[0]])==1 && y[5]==yy[5] && y[2399]==yy[2399];
+    for j:0..<4 {
+        m:=0.0;v:=0.0;for i:0..<1440 {m+=x[tr[i]*4+j];}m/=1440;
+        for i:0..<1440 {v+=(x[tr[i]*4+j]-m)*(x[tr[i]*4+j]-m);}
+        #assert abs(m)<1e-12 && abs(v/1440-1)<1e-12;
+    }
+    #assert dg_deadline(70,x[0..<9599],y[..],tr[..],he[..]).status==DgStatus.capacity;
+    #assert dg_deadline(70,x[..],y[0..<2399],tr[..],he[..]).status==DgStatus.capacity;
+    #assert dg_deadline(70,x[..],y[..],tr[0..<2399],he[..]).status==DgStatus.capacity;
+    #assert dg_deadline(70,x[..],y[..],tr[..],he[0..<2399]).status==DgStatus.capacity;
+}
+
+// book:begin keep
+// Inverted dropout: a feature is zeroed with chance `drop`, and otherwise
+// scaled by 1 / (1 - drop), so its expected value is unchanged.
+dg_keep :: (seed:u64,counter:u64,drop:f64)->f64 {
+    if tb_uniform(seed,counter)<drop {return 0;}
+    return 1/(1-drop);
+}
+// book:end keep
+dg_norm :: (v:[]f64)->f64 {s:=0.0;for e:v {s+=e*e;}return sqrt(s);}
+// Every refusal, before any work.
+dg_admit :: (m:TbModel,c:DgConfig,x:[]f64,y:[]f64,train:[]int,held:[]int,params:[]f64)->DgStatus {
+    d:=m.features;
+    if !tb_model_ok(m) || x.count!=y.count*d || !tb_row_ok(train,y.count) || !tb_row_ok(held,y.count) {return DgStatus.shape;}
+    if c.epochs<1 || c.epochs>TB_EPOCHS_MAX || c.batch<1 || c.slots<c.batch || c.slots>DG_SLOTS_MAX {return DgStatus.shape;}
+    if c.epochs*((train.count+c.batch-1)/c.batch)>DG_STEPS_MAX || !(c.rate>0 && c.rate<=16) || !(c.dropout>=0 && c.dropout<1) {return DgStatus.shape;}
+    if params.count<tb_param_count(m) {return DgStatus.capacity;}
+    mixed:=false;
+    for r:train {if y[r]!=y[train[0]] {mixed=true;}}
+    if m.logistic && !mixed {return DgStatus.shape;}
+    for i:0..<y.count {
+        for j:0..<d {if !tb_in(x[i*d+j],-TB_DOMAIN,TB_DOMAIN) {return DgStatus.shape;}}
+        if !tb_in(y[i],-TB_DOMAIN,TB_DOMAIN) || (m.logistic && y[i]!=0 && y[i]!=1) {return DgStatus.shape;}
+    }
+    return DgStatus.ok;
+}
+// The model's output for each named row, with input dropout when `drop` > 0.
+dg_outputs :: (m:TbModel,p:[]f64,x:[]f64,rows:[]int,seed:u64,base:u64,drop:f64,out:[]f64) {
+    d:=m.features;v:[8]f64;
+    for r,i:rows {
+        for j:0..<d {v[j]=x[r*d+j]*dg_keep(seed,base+cast(u64)(i*d+j),drop);}
+        out[i]=tb_output(m,p,v[0..<d]);
+    }
+}
+// Outputs for the rows of a packed block, in slot order; returns `out`.
+dg_block :: (m:TbModel,p:[]f64,block:[]f64,out:[]f64)->[]f64 {
+    d:=m.features;
+    for i:0..<block.count/d {out[i]=tb_output(m,p,block[i*d..<i*d+d]);}
+    return out[0..<block.count/d];
+}
+// Mean loss of outputs against targets: log loss on a logit, or half the squared error.
+dg_loss :: (m:TbModel,z:[]f64,y:[]f64,rows:[]int)->f64 {
+    s:=0.0;
+    for r,i:rows {
+        if m.logistic {s+=tb_softplus(z[i])-y[r]*z[i];}
+        else {e:=z[i]-y[r];s+=e*e/2;}
+    }
+    return s/f64(rows.count);
+}
+// Hidden units whose activations on `rows` differ from every earlier unit's.
+dg_distinct :: (m:TbModel,p:[]f64,x:[]f64,rows:[]int)->int {
+    d:=m.features;differ:[16][16]bool;h:[16]f64;
+    for r:rows {
+        tb_hidden(m,p,x[r*d..<r*d+d],h[..]);
+        for k:1..<m.hidden {for j:0..<k {if h[j]!=h[k] {differ[k][j]=true;}}}
+    }
+    n:=0;
+    for k:0..<m.hidden {
+        fresh:=true;
+        for j:0..<k {if !differ[k][j] {fresh=false;}}
+        if fresh {n+=1;}
+    }
+    return n;
+}
+// Chapter 103's deadline data from `seed`: 300 sessions split by session,
+// features scaled with training statistics only. `x` holds 2400 rows of 4.
+DgDeadline :: struct {status:DgStatus;train:int;held:int;}
+dg_deadline :: (seed:u64,x:[]f64,y:[]f64,train:[]int,held:[]int)->DgDeadline {
+    if x.count<9600 || y.count<2400 || train.count<2400 || held.count<2400 {return DgDeadline.{status=DgStatus.capacity};}
+    raw:[9600]f64;late:[2400]f64;g:[2400]int;mean:[4]f64;sd:[4]f64;
+    sim:=tb_simulate(seed,300,raw[..],y[0..<2400],late[..],g[..],false);
+    nt:=tb_rows(g[..],0,train,false);nh:=tb_rows(g[..],1,held,false);
+    s:=tb_fit_scale(raw[..],4,train[0..<nt],mean[..],sd[..],false);
+    s=tb_apply_scale(raw[..],4,mean[..],sd[..],x[0..<9600],false);
+    return DgDeadline.{train=nt,held=nh};
+}
+
+// book:begin train
+// Chapter 104's tape, driven by a trainer whose settings can be wrong. Each
+// step packs `batch` rows into `slots` slots, takes the mean loss over the
+// slots the mask names, runs the tape forward and backward, and moves every
+// parameter by `rate` times its gradient. The record says what happened.
+dg_train :: (m:TbModel,c:DgConfig,f:DgFaults,x:[]f64,y:[]f64,train:[]int,held:[]int,params:[]f64)->DgRecord {
+    admitted:=dg_admit(m,c,x,y,train,held,params);
+    if admitted!=DgStatus.ok {return DgRecord.{status=admitted};}
+    n:=tb_param_count(m);d:=m.features;nt:=train.count;rec:DgRecord;
+    // The largest program a step builds has every slot in the loss.
+    nodes:[4096]TpNode;values:[4096]f64;z:[16]f64;slot:[16]int;zero:[128]f64;
+    for s:1..<16 {slot[s]=s;}
+    if tp_tabular(m,zero[0..<c.slots*d],zero[0..<c.slots],slot[0..<c.slots],nodes[..],false).status!=TpStatus.ok {return DgRecord.{status=DgStatus.capacity};}
+    p:[161]f64;g:[161]f64;tb_initialize(m,c.init_seed,p[..]);
+    if f.identical_init {
+        // Every hidden unit copies unit 0's input weights and output weight.
+        base:=m.hidden*d+m.hidden;
+        for k:1..<m.hidden {for j:0..<d {p[k*d+j]=p[j];}p[base+k]=p[base];}
+    }
+    // The target each training row is paired with.
+    target:[4096]f64;for i:0..<y.count {target[i]=y[i];}
+    if f.shuffled_targets {
+        order:[4096]int;for i:0..<nt {order[i]=train[i];}
+        unused:=tb_shuffle(order[0..<nt],c.shuffle_seed+1,0);
+        for i:0..<nt {target[train[i]]=y[order[i]];}
+    }
+    o:[4096]int;for i:0..<nt {o[i]=train[i];}
+    counter:=(cast(u64)0);
+    for epoch:0..<c.epochs {
+        counter=tb_shuffle(o[0..<nt],c.shuffle_seed,counter);
+        sum:=0.0;batches:=0;start:=0;
+        for i:0..<nt {
+            // A batch closes when it holds `batch` rows or the epoch runs out of rows.
+            if i+1-start!=c.batch && i+1!=nt {continue;}
+            real:=i+1-start;bx:[128]f64;by:[16]f64;
+            for s:0..<real {
+                r:=o[start+s];by[s]=target[r];
+                for j:0..<d {bx[s*d+j]=x[r*d+j]*dg_keep(c.drop_seed,cast(u64)((rec.steps*c.slots+s)*d+j),c.dropout);}
+            }
+            masked:=real;if f.padding_in_loss {masked=c.slots;}
+            // Admission built a block of `slots` rows, so this one fits, and it
+            // bounds every value the tape sees, so neither pass can refuse.
+            b:=tp_tabular(m,bx[0..<c.slots*d],by[0..<c.slots],slot[0..<masked],nodes[..],false);
+            if !f.stale_gradients {for k:0..<n {g[k]=0;}}
+            rec.stale=dg_norm(g[0..<n]);
+            forward:=tp_forward(nodes[0..<b.count],p[0..<n],values[..],false);
+            backward:=tp_backward(nodes[0..<b.count],values[..],g[0..<n],false);
+            loss:=values[b.count-1];sum+=loss;batches+=1;
+            // The loss over the batch's own rows, through chapter 103's forward pass.
+            own:=dg_loss(m,dg_block(m,p[0..<n],bx[0..<real*d],z[..]),by[0..<real],slot[0..<real]);
+            rec.mask=abs(loss-own)/(1+abs(own));
+            next:[161]f64;
+            for k:0..<n {next[k]=p[k]-c.rate*g[k];if !tb_in(next[k],-TB_DOMAIN,TB_DOMAIN) {rec.diverged=true;}}
+            if rec.diverged {break;}
+            for k:0..<n {p[k]=next[k];}
+            rec.steps+=1;start=i+1;
+        }
+        if epoch==0 {rec.first_loss=sum/f64(batches);}
+        rec.last_loss=sum/f64(batches);
+        if rec.diverged {break;}
+    }
+    // Evaluation: dropout stays off unless the fault leaves it on.
+    drop:=0.0;if f.dropout_at_eval {drop=c.dropout;}
+    zt:[4096]f64;zh:[4096]f64;again:[4096]f64;
+    dg_outputs(m,p[0..<n],x,train,c.drop_seed,DG_EVAL_COUNTER,drop,zt[..]);
+    dg_outputs(m,p[0..<n],x,held,c.drop_seed,DG_EVAL_COUNTER+(cast(u64)1<<32),drop,zh[..]);
+    dg_outputs(m,p[0..<n],x,held,c.drop_seed,DG_EVAL_COUNTER+(cast(u64)2<<32),drop,again[..]);
+    rec.train_loss=dg_loss(m,zt[..],y,train);rec.held_loss=dg_loss(m,zh[..],y,held);
+    change:=0.0;for i:0..<held.count {change+=abs(zh[i]-again[i]);}
+    rec.repeat=change/f64(held.count);
+    // The constant predictor: the training rate (or mean), as an output.
+    mean:=0.0;for r:train {mean+=y[r];}mean/=f64(nt);
+    constant:=mean;if m.logistic {constant=log(mean/(1-mean));}
+    for i:0..<held.count {again[i]=constant;}
+    rec.base_loss=dg_loss(m,again[..],y,held);
+    rec.distinct=dg_distinct(m,p[0..<n],x,held);
+    for k:0..<n {params[k]=p[k];}
+    return rec;
+}
+// book:end train
+
+// book:begin diagnose
+// A run learned something when its held-out loss beats the constant predictor's.
+dg_learned :: (r:DgRecord)->bool {return r.held_loss<=r.base_loss-DG_LEARNED;}
+// Every cause the two records point at, one bit each: `r` is the run, and
+// `slower` the same run at a tenth of the rate.
+dg_diagnose :: (m:TbModel,r:DgRecord,slower:DgRecord)->int {
+    found:=0;
+    if r.stale>0 {found|=DG_STALE;}
+    else if r.diverged || r.last_loss>r.first_loss || slower.held_loss<r.held_loss-DG_LEARNED {found|=DG_RATE;}
+    else if !dg_learned(r) {found|=DG_TARGETS;}
+    if r.mask>DG_MASK {found|=DG_PADDING;}
+    if m.hidden>1 && r.distinct==1 {found|=DG_IDENTICAL;}
+    if r.repeat>0 {found|=DG_EVAL_RANDOM;}
+    return found;
+}
+// The run, the same run at a tenth of the rate, and what they point at.
+dg_investigate :: (m:TbModel,c:DgConfig,f:DgFaults,x:[]f64,y:[]f64,train:[]int,held:[]int,params:[]f64)->DgCase {
+    slow:=c;slow.rate=c.rate/10;scratch:[161]f64;
+    out:=DgCase.{record=dg_train(m,c,f,x,y,train,held,params),slower=dg_train(m,slow,f,x,y,train,held,scratch[..])};
+    if out.record.status!=DgStatus.ok {out.status=out.record.status;}
+    else if out.slower.status!=DgStatus.ok {out.status=out.slower.status;}
+    else {out.found=dg_diagnose(m,out.record,out.slower);}
+    return out;
+}
+// book:end diagnose

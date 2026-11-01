@@ -452,6 +452,16 @@
       ]
     },
     {
+      "source": "psionic/examples/diagnose-faults.coax",
+      "chapter": "psionic/book/ch105-make-a-model-fail-then-find-out-why.md",
+      "stdout": "psionic/fixtures/diagnose-faults.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/model-router.coax",
       "chapter": "psionic/book/ch225-learn-which-model-to-call.md",
       "stdout": "psionic/fixtures/model-router.out",

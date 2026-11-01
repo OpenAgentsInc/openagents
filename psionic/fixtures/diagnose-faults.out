@@ -1,0 +1,36 @@
+line at rate 0.45: loss 10.0 -> 1.4134776518227987e-07 after 40 steps; found nothing
+line at rate 0.55: loss 10.0 -> 17281827.696082696 after 40 steps; found rate too large
+line at rate 4: diverged true after 4 steps, w = -101248.0; found rate too large
+line, buffer never cleared, 2 steps at rate 0.25: buffer 8.246211251235321 before step 2, (w, b) = (4.0, 1.375), loss 8.1953125; found stale gradients
+line, 2 rows in 4 slots, padding in the loss: batch loss 5.0, gap 0.45454545454545453, (w, b) = (1.0, 0.25); found padding in the loss
+deadline data, seed 70: 1440 training rows (12 a step in 16 slots), 480 held out, constant predictor 0.4088
+healthy: held-out loss 0.1295 (0.1248 at a tenth of the rate), batch loss 0.2428 -> 0.1703
+  buffer 0.0, loss gap 0.0, distinct units 8, repeat 0.0: found nothing
+stale gradients: held-out loss 40.0537 (3.8325 at a tenth of the rate), batch loss 0.718 -> 43.8487
+  buffer 55.3089, loss gap 0.0, distinct units 8, repeat 0.0: found stale gradients
+shuffled targets: held-out loss 0.4155 (0.4091 at a tenth of the rate), batch loss 0.4463 -> 0.433
+  buffer 0.0, loss gap 0.0, distinct units 8, repeat 0.0: found shuffled targets
+padding in the loss: held-out loss 0.1187 (0.1747 at a tenth of the rate), batch loss 0.5563 -> 0.16
+  buffer 0.0, loss gap 0.0489, distinct units 8, repeat 0.0: found padding in the loss
+identical units: held-out loss 0.1467 (0.1247 at a tenth of the rate), batch loss 0.2592 -> 0.1842
+  buffer 0.0, loss gap 0.0, distinct units 1, repeat 0.0: found identical units
+dropout at evaluation: held-out loss 0.178 (0.1673 at a tenth of the rate), batch loss 0.2428 -> 0.1703
+  buffer 0.0, loss gap 0.0, distinct units 8, repeat 0.6225: found dropout at evaluation
+rate 8: held-out loss 1.3174 (0.1304 at a tenth of the rate), batch loss 0.7832 -> 0.4624
+  buffer 0.0, loss gap 0.0, distinct units 8, repeat 0.0: found rate too large
+the healthy run again from the same seeds, as after any repair: the same record bit for bit: true
+overfit one batch of 12, 300 steps, training loss:
+  healthy: 0.0193 (reaches 0.05)
+  stale gradients: 0.7943 (does not reach 0.05)
+  shuffled targets: 0.7685 (does not reach 0.05)
+  padding in the loss: 0.0288 (reaches 0.05)
+  identical units: 0.0152 (reaches 0.05)
+  dropout at evaluation: 0.014 (reaches 0.05)
+  rate 8: 0.0003 (reaches 0.05)
+data seeds 71 to 74: 28 of 28 runs found exactly their planted fault, or nothing when healthy
+a batch of 12 in 8 slots: shape
+512 epochs of 120 batches, 61,440 steps: shape
+dropout 1: shape
+training rows that are all on time: shape
+47 parameter slots for 49 parameters: capacity
+16 slots of a model with 8 features and 16 units: capacity

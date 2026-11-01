@@ -1,0 +1,100 @@
+// Chapter 105: break chapter 103's classifier six ways, train each through
+// chapter 104's tape, and let the records name the fault.
+#import "Basic";
+#load "../lib/diagnose.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+CAUSES :: [6]string.["stale gradients","shuffled targets","padding in the loss","identical units","dropout at evaluation","rate too large"];
+say :: (found:int) {
+    if found==0 {print("nothing");return;}
+    first:=true;
+    for k:0..<6 {if (found>>k)&1==1 {if !first {print(", ");}print("%",CAUSES[k]);first=false;}}
+}
+show :: (name:string,k:DgCase) {
+    r:=k.record;
+    print("%: held-out loss % (% at a tenth of the rate), batch loss % -> %\n",name,r4(r.held_loss),r4(k.slower.held_loss),r4(r.first_loss),r4(r.last_loss));
+    print("  buffer %, loss gap %, distinct units %, repeat %: found ",r4(r.stale),r4(r.mask),r.distinct,r4(r.repeat));
+    say(k.found);print("\n");
+}
+
+// book:begin example
+main :: () {
+    // The line, full batch, from w = b = 0: curvature 4 in w, so rates above 2/4 diverge.
+    lx:=[2]f64.[-2,2];ly:=[2]f64.[-2,6];both:=[2]int.[0,1];lp:[2]f64;line:=TbModel.{features=1};
+    full:=DgConfig.{epochs=40,batch=2,slots=2,rate=0.45};
+    calm:=dg_train(line,full,DgFaults.{},lx[..],ly[..],both[..],both[..],lp[..]);
+    full.rate=0.55;wild:=dg_train(line,full,DgFaults.{},lx[..],ly[..],both[..],both[..],lp[..]);
+    print("line at rate 0.45: loss % -> % after % steps; found ",calm.first_loss,calm.train_loss,calm.steps);say(dg_diagnose(line,calm,calm));print("\n");
+    print("line at rate 0.55: loss % -> % after % steps; found ",wild.first_loss,wild.train_loss,wild.steps);say(dg_diagnose(line,wild,calm));print("\n");
+    full.rate=4;wild=dg_train(line,full,DgFaults.{},lx[..],ly[..],both[..],both[..],lp[..]);
+    print("line at rate 4: diverged % after % steps, w = %; found ",wild.diverged,wild.steps,lp[0]);say(dg_diagnose(line,wild,calm));print("\n");
+    full.rate=0.25;full.epochs=2;
+    r:=dg_train(line,full,DgFaults.{stale_gradients=true},lx[..],ly[..],both[..],both[..],lp[..]);
+    print("line, buffer never cleared, 2 steps at rate 0.25: buffer % before step 2, (w, b) = (%, %), loss %; found ",r.stale,lp[0],lp[1],r.train_loss);
+    say(dg_diagnose(line,r,r));print("\n");
+    full.epochs=1;full.slots=4;
+    r=dg_train(line,full,DgFaults.{padding_in_loss=true},lx[..],ly[..],both[..],both[..],lp[..]);
+    print("line, 2 rows in 4 slots, padding in the loss: batch loss %, gap %, (w, b) = (%, %); found ",r.first_loss,r.mask,lp[0],lp[1]);
+    say(dg_diagnose(line,r,r));print("\n");
+
+    // Chapter 103's data and hidden-layer classifier, trained as chapter 104 did, with input dropout 0.1.
+    x:[9600]f64;y:[2400]f64;tr:[2400]int;he:[2400]int;
+    d:=dg_deadline(70,x[..],y[..],tr[..],he[..]);train:=tr[0..<d.train];held:=he[0..<d.held];
+    mlp:=TbModel.{features=4,hidden=8,logistic=true};p:[49]f64;
+    c:=DgConfig.{epochs=20,batch=12,slots=16,rate=0.5,dropout=0.1,init_seed=1,shuffle_seed=2,drop_seed=3};
+    fast:=c;fast.rate=8;
+    faults:=[6]DgFaults.[DgFaults.{},DgFaults.{stale_gradients=true},DgFaults.{shuffled_targets=true},DgFaults.{padding_in_loss=true},DgFaults.{identical_init=true},DgFaults.{dropout_at_eval=true}];
+    names:=[7]string.["healthy","stale gradients","shuffled targets","padding in the loss","identical units","dropout at evaluation","rate 8"];
+    want:=[7]int.[0,DG_STALE,DG_TARGETS,DG_PADDING,DG_IDENTICAL,DG_EVAL_RANDOM,DG_RATE];
+    print("deadline data, seed 70: % training rows (12 a step in 16 slots), % held out, constant predictor %\n",d.train,d.held,r4(dg_train(mlp,c,DgFaults.{},x[..],y[..],train,held,p[..]).base_loss));
+    healthy:DgCase;
+    for i:0..<7 {
+        k:DgCase;
+        if i<6 {k=dg_investigate(mlp,c,faults[i],x[..],y[..],train,held,p[..]);}
+        else {k=dg_investigate(mlp,fast,DgFaults.{},x[..],y[..],train,held,p[..]);}
+        if i==0 {healthy=k;}
+        show(names[i],k);
+    }
+    again:=dg_investigate(mlp,c,DgFaults.{},x[..],y[..],train,held,p[..]);
+    a:=again.record;h:=healthy.record;
+    same:=a.steps==h.steps && a.first_loss==h.first_loss && a.last_loss==h.last_loss && a.mask==h.mask && a.train_loss==h.train_loss && a.held_loss==h.held_loss && again.slower.held_loss==healthy.slower.held_loss;
+    print("the healthy run again from the same seeds, as after any repair: the same record bit for bit: %\n",same);
+
+    // Overfit one batch: six late and six on-time training rows, 300 steps.
+    one:[12]int;late:=0;on:=0;
+    for row:train {if y[row]==0 && late<6 {one[late+on]=row;late+=1;} else if y[row]==1 && on<6 {one[late+on]=row;on+=1;}}
+    print("overfit one batch of 12, 300 steps, training loss:\n");
+    small:=c;small.epochs=300;quick:=fast;quick.epochs=300;
+    for i:0..<7 {
+        k:DgRecord;
+        if i<6 {k=dg_train(mlp,small,faults[i],x[..],y[..],one[..],one[..],p[..]);}
+        else {k=dg_train(mlp,quick,DgFaults.{},x[..],y[..],one[..],one[..],p[..]);}
+        reached:="reaches";if k.train_loss>=0.05 {reached="does not reach";}
+        print("  %: % (% 0.05)\n",names[i],r4(k.train_loss),reached);
+    }
+
+    // Four more data seeds: does each run find exactly its planted fault?
+    exact:=0;
+    for seed:[4]u64.[71,72,73,74] {
+        d=dg_deadline(seed,x[..],y[..],tr[..],he[..]);train=tr[0..<d.train];held=he[0..<d.held];
+        for i:0..<7 {
+            k:DgCase;
+            if i<6 {k=dg_investigate(mlp,c,faults[i],x[..],y[..],train,held,p[..]);}
+            else {k=dg_investigate(mlp,fast,DgFaults.{},x[..],y[..],train,held,p[..]);}
+            if k.found==want[i] {exact+=1;}
+        }
+    }
+    print("data seeds 71 to 74: % of 28 runs found exactly their planted fault, or nothing when healthy\n",exact);
+
+    // Refusals, before any work.
+    d=dg_deadline(70,x[..],y[..],tr[..],he[..]);train=tr[0..<d.train];held=he[0..<d.held];
+    k:=c;k.slots=8;print("a batch of 12 in 8 slots: %\n",dg_train(mlp,k,DgFaults.{},x[..],y[..],train,held,p[..]).status);
+    k=c;k.epochs=512;print("512 epochs of 120 batches, 61,440 steps: %\n",dg_train(mlp,k,DgFaults.{},x[..],y[..],train,held,p[..]).status);
+    k=c;k.dropout=1;print("dropout 1: %\n",dg_train(mlp,k,DgFaults.{},x[..],y[..],train,held,p[..]).status);
+    ontime:[1440]int;n:=0;for row:train {if y[row]==1 {ontime[n]=row;n+=1;}}
+    print("training rows that are all on time: %\n",dg_train(mlp,c,DgFaults.{},x[..],y[..],ontime[0..<n],held,p[..]).status);
+    print("47 parameter slots for 49 parameters: %\n",dg_train(mlp,c,DgFaults.{},x[..],y[..],train,held,p[0..<47]).status);
+    wide:=TbModel.{features=8,hidden=16,logistic=true};wp:[161]f64;wx:[16]f64;wy:=[2]f64.[0,1];pair:=[2]int.[0,1];
+    print("16 slots of a model with 8 features and 16 units: %\n",dg_train(wide,c,DgFaults.{},wx[..],wy[..],pair[..],pair[..],wp[..]).status);
+}
+// book:end example
