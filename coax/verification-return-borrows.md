@@ -59,11 +59,30 @@ outside this extension. Stores into longer-lived caller state and completion,
 cancellation and late-callback lifetimes remain the next linked child; the
 borrow-summary umbrella stays open.
 
+## Storage behind a view parameter
+
+A helper can return a slice of an array inside its view parameter's pointee,
+such as `field :: (u: [] Ui) -> [] Field { return u[0].fields[0..<1]; }`.
+Its summary names that array's storage, reached through the parameter's
+descriptor. At a call, the checker reads the argument for its storage at the
+same place, so a caller that passes its own view on (`ft(field(u))`) returns
+a borrow of its caller's storage, and a caller that passes a local array
+(`ft(field(a[..]))`) is E0383. A summary query at an array place, and a
+dereferencing storage path through a call or a literal, also ask where the
+storage lives, not which descriptors it holds. Before #12611 the argument was
+read for descriptors, which made the first form E0381 and accepted the second.
+
+Static data lives for the whole program, so a static origin never decides a
+returned borrow. A constant is one static origin, not one for each literal in
+its initializer. When static origins alone would overflow a 64-origin set,
+they collapse to one per type. Local and parameter origins never collapse.
+
 ## Bounds and verification
 
 The Coax checker admits bounded query/origin workspaces and bounded projection,
 depth and work. Malformed storage or capacity/depth/work exhaustion is E0381,
-with no native resolver fallback or silent safe-empty result. The native bridge
+with no native resolver fallback or silent safe-empty result. Static origins
+that alone overflow a set collapse first, as described above. The native bridge
 supplies owned storage; it does not decide borrow origins.
 
 Memo lookups follow only the queried declaration's chain, so independent

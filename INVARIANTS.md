@@ -2149,6 +2149,11 @@ Direct immutable by-value array slices retain E0366; local-copy slices are
 E0383. Known local witnesses survive incomplete origins. Recursive queries and
 unsupported helper writes remain explicitly incomplete/manual, never complete
 empty or lifetime-safe by default. Bounded analysis exhaustion is E0381.
+Storage a view parameter points into is read at the call as the argument's
+storage at that place, so a passed-on slice of a caller's array keeps its
+caller (or local, E0383) origin. Static origins never decide a returned
+borrow: a constant is one, and static origins alone that would overflow a set
+collapse to one per type; local and parameter origins never collapse.
 Retained caller-state stores, completion/cancellation, general fixed points
 and nested-block regions remain work; this is not general ownership safety.
 Check: checker authority/mutation and seeds, original-source diagnostics,
