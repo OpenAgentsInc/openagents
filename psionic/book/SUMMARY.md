@@ -47,7 +47,7 @@
 - [40. Add your own operator](ch040-add-your-own-operator.md)
 - [41. Attention in tiles](ch041-attention-in-tiles.md) — partly implemented
 - [42. DeltaNet in chunks](ch042-deltanet-in-chunks.md) — partly implemented
-- [43. Fuse and replay](ch043-fuse-and-replay.md) — design draft
+- [43. Fuse and replay](ch043-fuse-and-replay.md) — partly implemented
 - [44. Elephant on CUDA](ch044-elephant-on-cuda.md)
 - [45. Share the card](ch045-share-the-card.md)
 - [46. Mammoth on CUDA](ch046-mammoth-on-cuda.md)
