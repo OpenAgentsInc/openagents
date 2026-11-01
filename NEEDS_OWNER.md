@@ -1,5 +1,21 @@
 # Owner actions
 
+## Nostr book follow-ups that need the owner (2026-11-01)
+
+Details: `docs/verification/2026-11-01-nostr-book-chapters-11-104.md`.
+
+1. **x402 settlement expiry (money path).** The live route settles in SQL
+   (`inference.topup_settle`) with no invoice expiry check at settlement.
+   `coax/lib/x402/settle.coax` (`#authority`, zero survivors) has the check
+   but isn't wired in. Decide whether to wire it in or add the check in SQL.
+2. **Plan rewrites.** Confirm the rewritten "Done means" lines for chapters
+   101 (offline presence, with an assumed latency) and 102 (offline agent
+   path; the move of the hosted runner to staging isn't built).
+3. **NIP-KEYS pin.** Review `nostr/nips/openagents/NIP-KEYS.md` (from
+   `b01de252f7`), then re-pin the OpenAgents NIP folder digest in
+   `coax/tests/nostr/profiles.py` (now `fb7563e7…`, pinned `2fb1f51f…`).
+   Its pin test fails until then.
+
 ## Nostr chapter 103: export, shadow period, cutover and rollback rehearsal for relay.openagents.com (2026-11-01)
 
 The importer (`coax/lib/nostr/relay_import.coax`, `relay_import_run.coax`),
