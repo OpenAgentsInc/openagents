@@ -132,6 +132,16 @@
       ]
     },
     {
+      "source": "psionic/examples/choose-next-token.coax",
+      "chapter": "psionic/book/ch053-choosing-the-next-token.md",
+      "stdout": "psionic/fixtures/choose-next-token.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/original-mxfp4.coax",
       "chapter": "psionic/book/ch060-original-mxfp4-weights.md",
       "stdout": "psionic/fixtures/original-mxfp4.out",

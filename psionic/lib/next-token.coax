@@ -1,0 +1,414 @@
+// Chapter 53: choosing the next token. A model-independent sampler: a named
+// counter RNG, temperature, top-k and top-p with one stated tie rule, stop
+// conditions with cancellation, and a byte-level finite-state grammar that
+// masks the vocabulary before every draw.
+// Profile next-token-cpu-f64-v1: binary64 weights from f32 logits, plain
+// left-to-right sums in the stated order, 1 to 262,144 tokens, temperature
+// in [0, 100], 1 to 4,096 grammar states. The RNG is chapter 64's
+// splitmix64-top53-v1 (counter-rng.coax): one draw is one counter.
+#load "counter-rng.coax";
+#authority;
+
+NxStatus :: enum u8 {ok;shape;capacity;alias;number;empty;state;grammar;}
+// temperature 0 is greedy; top_k 0 keeps every allowed token; top_p 1 keeps
+// the whole kept mass. Nothing is a hidden default: the zero value is
+// temperature 1, top-k off, top-p 1.
+NxOptions :: struct {temperature:f64=1;top_k:int;top_p:f64=1;}
+NxWork :: struct {stage:[]f64;order:[]int;temporary:[]int;}
+NxResult :: struct {status:NxStatus;written:int;kept:int;passes:int;}
+NxPick :: struct {status:NxStatus;token:int;}
+NxStop :: enum u8 {running;stop_token;limit;cancelled;}
+NxRun :: struct {random:CrSeed;emitted:int;limit:int;stop:NxStop;}
+NxEmission :: struct {status:NxStatus;token:int=-1;run:NxRun;}
+// A byte transition: from state `from`, every byte in [low, high] goes to `to`.
+NxEdge :: struct {from:int;low:u8;high:u8;to:int;}
+// next[s*256+b] is the state after byte b in state s, or -1.
+NxGrammar :: struct {states:int;start:int;next:[]int;accepting:[]u8;live:[]u8;}
+NxCompiled :: struct {status:NxStatus;cause:int;grammar:NxGrammar;}
+NxGuided :: struct {status:NxStatus;token:int=-1;run:NxRun;state:int;}
+
+NX_VOCAB_MAX :: 262144;
+NX_LIMIT_MAX :: 1048576;
+NX_STATES_MAX :: 4096;
+NX_LOGIT_MAX :: 1000000015047466219876688855040.0;
+NX_MASS :: 0.000000000931322574615478515625;
+
+// Checks first. Values marked "oracle" come from psionic/tests/next_token_oracle.py.
+nx_work :: (s:[]f64,o:[]int,t:[]int)->NxWork {return NxWork.{stage=s,order=o,temporary=t};}
+#test "the counter RNG reproduces independent SplitMix64 words" {
+    // oracle: bits(45001, 0..2) and bits(53, 7)
+    #assert cr_bits(45001,0)==(cast(u64)0x647296f449639db9) && cr_bits(45001,1)==(cast(u64)0x4b212ad972e938d9);
+    #assert cr_bits(45001,2)==(cast(u64)0x05dc8b11eff1893a) && cr_bits(53,7)==(cast(u64)0x3b9a4d0b450293cd);
+    d:=cr_draw(CrSeed.{seed=45001});#assert d.ok && d.value==0.3923734995272653 && d.next.counter==1;
+    d=cr_draw(d.next);#assert d.value==0.2934748440629037;d=cr_draw(d.next);#assert d.value==0.022896472815722047 && d.next.counter==3;
+    #assert cr_draw(CrSeed.{seed=53,counter=7}).value==0.23282319569717402;
+}
+#test "distributions match the oracle, ties go to the lower ID" {
+    x:=[5]f32.[2,1,2,0,-1];p:=[6]f64.[-7,-7,-7,-7,-7,-7];s:[5]f64;o:[5]int;t:[5]int;w:=nx_work(s[..],o[..],t[..]);none:[1]u8;
+    r:=nx_distribution(x[..],none[0..<0],NxOptions.{},p[..],w,false);
+    #assert r.status==NxStatus.ok && r.written==5 && r.kept==5 && p[5]== -7;
+    #assert o[0]==0 && o[1]==2 && o[2]==1 && o[3]==3 && o[4]==4;
+    #assert p[0]==0.39169576881208695 && p[1]==0.14409682053980902 && p[2]==0.39169576881208695 && p[3]==0.05301025781476656 && p[4]==0.019501384021250404;
+    r=nx_distribution(x[..],none[0..<0],NxOptions.{temperature=0.5},p[..],w,false);
+    #assert p[0]==0.46379399714153186 && p[1]==0.06276769196658996 && p[3]==0.00849468337040691 && p[4]==0.001149630379939363;
+    r=nx_distribution(x[..],none[0..<0],NxOptions.{top_k=2},p[..],w,false);#assert r.kept==2 && p[0]==0.5 && p[2]==0.5 && p[1]==0;
+    r=nx_distribution(x[..],none[0..<0],NxOptions.{top_k=1},p[..],w,false);#assert r.kept==1 && p[0]==1 && p[2]==0;
+    r=nx_distribution(x[..],none[0..<0],NxOptions.{top_p=0.5},p[..],w,false);#assert r.kept==2 && p[0]==0.5 && p[2]==0.5 && p[1]==0 && p[3]==0;
+    r=nx_distribution(x[..],none[0..<0],NxOptions.{top_p=0.3},p[..],w,false);#assert r.kept==1 && p[0]==1 && p[2]==0;
+    r=nx_distribution(x[..],none[0..<0],NxOptions.{temperature=2,top_k=3,top_p=0.9},p[..],w,false);
+    #assert r.kept==3 && p[0]==0.38365173119055074 && p[1]==0.23269653761889864 && p[2]==0.38365173119055074 && p[3]==0 && p[4]==0;
+    r=nx_distribution(x[..],none[0..<0],NxOptions.{temperature=0},p[..],w,false);#assert r.kept==1 && p[0]==1 && p[1]==0 && p[2]==0;
+    m:=[5]u8.[0,1,1,1,0];r=nx_distribution(x[..],m[..],NxOptions.{},p[..],w,false);
+    #assert r.kept==3 && p[0]==0 && p[1]==0.24472847105479764 && p[2]==0.6652409557748218 && p[3]==0.09003057317038046 && p[4]==0;
+    // Equal logits everywhere: the order is the IDs, greedy takes ID 0.
+    e:=[4]f32.[3,3,3,3];r=nx_distribution(e[..],none[0..<0],NxOptions.{temperature=0},p[..],nx_work(s[0..<4],o[0..<4],t[0..<4]),false);
+    #assert r.status==NxStatus.ok && p[0]==1 && o[0]==0 && o[1]==1 && o[2]==2 && o[3]==3;
+    r=nx_distribution(e[..],none[0..<0],NxOptions.{},p[..],nx_work(s[0..<4],o[0..<4],t[0..<4]),false);#assert p[0]==0.25 && p[3]==0.25;
+}
+#test "the merge sort is stable across uneven runs" {
+    x:=[7]f32.[3,8,4,8,1,4,9];p:[7]f64;s:[7]f64;o:[7]int;t:[7]int;none:[1]u8;
+    r:=nx_distribution(x[..],none[0..<0],NxOptions.{},p[..],nx_work(s[..],o[..],t[..]),false);
+    #assert r.status==NxStatus.ok && r.passes==3 && o[0]==6 && o[1]==1 && o[2]==3 && o[3]==2 && o[4]==5 && o[5]==0 && o[6]==4;
+    #assert nx_distribution(x[0..<4],none[0..<0],NxOptions.{},p[..],nx_work(s[..],o[..],t[..]),false).passes==2;
+    #assert nx_distribution(x[0..<5],none[0..<0],NxOptions.{},p[..],nx_work(s[..],o[..],t[..]),false).passes==3;
+    one:=[1]f32.[-5];r=nx_distribution(one[..],none[0..<0],NxOptions.{temperature=100},p[..],nx_work(s[..],o[..],t[..]),false);#assert r.kept==1 && p[0]==1 && r.passes==0;
+    #assert nx_min(0,0)==0 && nx_min(3,7)==3 && nx_min(7,3)==3 && nx_min(-2,5)== -2 && nx_min(NX_VOCAB_MAX,NX_VOCAB_MAX)==NX_VOCAB_MAX;
+    // A weight far below the top underflows to exactly zero and still counts as kept.
+    far:=[2]f32.[0,-1e30];r=nx_distribution(far[..],none[0..<0],NxOptions.{},p[..],nx_work(s[..],o[..],t[..]),false);#assert r.kept==1 && p[0]==1 && p[1]==0;
+}
+#test "bad inputs refuse before anything is published" {
+    x:=[3]f32.[1,2,3];p:=[3]f64.[-7,-7,-7];s:[3]f64;o:[3]int;t:[3]int;m:=[3]u8.[1,1,1];w:=nx_work(s[..],o[..],t[..]);
+    #assert nx_distribution(x[..],m[..],NxOptions.{temperature=-1},p[..],w,false).status==NxStatus.shape;
+    #assert nx_distribution(x[..],m[..],NxOptions.{temperature=100.00000000000001},p[..],w,false).status==NxStatus.shape;
+    #assert nx_distribution(x[..],m[..],NxOptions.{temperature=100},p[..],w,false).status==NxStatus.ok;p[0]=-7;p[1]=-7;p[2]=-7;
+    #assert nx_distribution(x[..],m[..],NxOptions.{top_k=-1},p[..],w,false).status==NxStatus.shape;
+    #assert nx_distribution(x[..],m[..],NxOptions.{top_k=4},p[..],w,false).status==NxStatus.shape;
+    #assert nx_distribution(x[..],m[..],NxOptions.{top_k=3},p[..],w,false).status==NxStatus.ok;p[0]=-7;p[1]=-7;p[2]=-7;
+    #assert nx_distribution(x[..],m[..],NxOptions.{top_p=0},p[..],w,false).status==NxStatus.shape;
+    #assert nx_distribution(x[..],m[..],NxOptions.{top_p=1.0000000000000002},p[..],w,false).status==NxStatus.shape;
+    #assert nx_distribution(x[0..<0],m[0..<0],NxOptions.{},p[..],w,false).status==NxStatus.shape;
+    #assert nx_distribution(x[..],m[0..<2],NxOptions.{},p[..],w,false).status==NxStatus.capacity;
+    #assert nx_distribution(x[..],m[..],NxOptions.{},p[0..<2],w,false).status==NxStatus.capacity;
+    #assert nx_distribution(x[..],m[..],NxOptions.{},p[..],nx_work(s[0..<2],o[..],t[..]),false).status==NxStatus.capacity;
+    #assert nx_distribution(x[..],m[..],NxOptions.{},p[..],nx_work(s[..],o[0..<2],t[..]),false).status==NxStatus.capacity;
+    #assert nx_distribution(x[..],m[..],NxOptions.{},p[..],nx_work(s[..],o[..],t[0..<2]),false).status==NxStatus.capacity;
+    #assert nx_distribution(x[..],m[..],NxOptions.{},p[..],w,true).status==NxStatus.alias;
+    m[1]=2;#assert nx_distribution(x[..],m[..],NxOptions.{},p[..],w,false).status==NxStatus.number;m[1]=1;
+    x[2]=1.0000001e30;#assert nx_distribution(x[..],m[..],NxOptions.{},p[..],w,false).status==NxStatus.number;
+    x[2]=-1.0000001e30;#assert nx_distribution(x[..],m[..],NxOptions.{},p[..],w,false).status==NxStatus.number;x[2]=3;
+    #assert nx_logit(1e30) && nx_logit(-1e30) && nx_logit(0) && !nx_logit(f32_from_bits(0x7f7fffff)) && !nx_logit(f32_from_bits(0xff7fffff));
+    m[0]=0;m[1]=0;m[2]=0;#assert nx_distribution(x[..],m[..],NxOptions.{},p[..],w,false).status==NxStatus.empty;
+    #assert p[0]== -7 && p[1]== -7 && p[2]== -7;
+    #assert nx_vocab(1) && nx_vocab(NX_VOCAB_MAX) && !nx_vocab(0) && !nx_vocab(NX_VOCAB_MAX+1);
+}
+#test "inverse CDF in ID order, with the rounding fallback" {
+    p:=[4]f64.[0.25,0,0.5,0.25];
+    #assert nx_pick(p[..],0).token==0 && nx_pick(p[..],0.2499).token==0 && nx_pick(p[..],0.25).token==2 && nx_pick(p[..],0.75).token==3;
+    #assert nx_pick(p[..],0.9999999999999999).token==3 && nx_pick(p[..],0.7499999).token==2;
+    q:=[3]f64.[0,0.9999999999,0];#assert nx_pick(q[..],0.99999999999).status==NxStatus.ok && nx_pick(q[..],0.99999999999).token==1;
+    #assert nx_pick(q[0..<2],0.99999999999).token==1;
+    #assert nx_pick(p[..],-0.1).status==NxStatus.shape && nx_pick(p[..],1).status==NxStatus.shape && nx_pick(p[0..<0],0).status==NxStatus.shape;
+    p[0]=1.5;#assert nx_pick(p[..],0).status==NxStatus.number;p[0]=-0.25;#assert nx_pick(p[..],0).status==NxStatus.number;
+    p[0]=0.25+2*NX_MASS;#assert nx_pick(p[..],0).status==NxStatus.number;p[0]=0.25-2*NX_MASS;#assert nx_pick(p[..],0).status==NxStatus.number;
+    p[0]=0.25+NX_MASS/2;#assert nx_pick(p[..],0).status==NxStatus.ok;p[0]=0.25+NX_MASS;#assert nx_pick(p[..],0).status==NxStatus.number;
+    big:=[1]f64.[1+NX_MASS/2];#assert nx_pick(big[..],0).status==NxStatus.number;neg:=[2]f64.[-NX_MASS/4,1];#assert nx_pick(neg[..],0).status==NxStatus.number;
+    one:=[1]f64.[1];#assert nx_pick(one[..],0.5).token==0;
+}
+#test "sampled frequencies over 20,000 seeds stay within five standard deviations" #steps 200000000 {
+    x:=[5]f32.[2,1,2,0,-1];none:[1]u8;s:[5]f64;o:[5]int;t:[5]int;w:=nx_work(s[..],o[..],t[..]);
+    settings:=[3]NxOptions.[NxOptions.{},NxOptions.{temperature=2,top_k=3},NxOptions.{temperature=0.5,top_p=0.9}];
+    for k:0..<3 {
+        p:[5]f64;#assert nx_distribution(x[..],none[0..<0],settings[k],p[..],w,false).status==NxStatus.ok;
+        seen:[5]int;n:=20000;
+        for seed:0..<n {d:=cr_draw(CrSeed.{seed=cast(u64)seed});seen[nx_pick(p[..],d.value).token]+=1;}
+        for i:0..<5 {e:=f64(n)*p[i];#assert (f64(seen[i])-e)*(f64(seen[i])-e)<=25*e*(1-p[i]);if p[i]==0 {#assert seen[i]==0;}}
+    }
+}
+#test "a step consumes one counter, stops and cancels exactly" {
+    x:=[3]f32.[1,4,2];none:[1]u8;p:[3]f64;s:[3]f64;o:[3]int;t:[3]int;w:=nx_work(s[..],o[..],t[..]);stops:=[1]int.[2];greedy:=NxOptions.{temperature=0};
+    r:=nx_step(x[..],none[0..<0],greedy,NxRun.{limit=2},stops[..],false,p[..],w,false);
+    #assert r.status==NxStatus.ok && r.token==1 && r.run.random.counter==1 && r.run.emitted==1 && r.run.stop==NxStop.running;
+    r=nx_step(x[..],none[0..<0],greedy,r.run,stops[..],false,p[..],w,false);#assert r.token==1 && r.run.stop==NxStop.limit && r.run.emitted==2;
+    #assert nx_step(x[..],none[0..<0],greedy,r.run,stops[..],false,p[..],w,false).status==NxStatus.state;
+    x[2]=5;r=nx_step(x[..],none[0..<0],greedy,NxRun.{limit=1},stops[..],false,p[..],w,false);#assert r.token==2 && r.run.stop==NxStop.stop_token && r.run.emitted==1;
+    c:=nx_step(x[..],none[0..<0],greedy,NxRun.{limit=3,random=CrSeed.{seed=9,counter=4}},stops[..],true,p[..],w,false);
+    #assert c.status==NxStatus.ok && c.token== -1 && c.run.stop==NxStop.cancelled && c.run.random.counter==4 && c.run.random.seed==9 && c.run.emitted==0;
+    #assert nx_step(x[..],none[0..<0],greedy,c.run,stops[..],false,p[..],w,false).status==NxStatus.state;
+    #assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=0},stops[..],false,p[..],w,false).status==NxStatus.state;
+    #assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=3,emitted=3},stops[..],false,p[..],w,false).status==NxStatus.state;
+    #assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=NX_LIMIT_MAX+1},stops[..],false,p[..],w,false).status==NxStatus.state;
+    #assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=NX_LIMIT_MAX,emitted=NX_LIMIT_MAX-1},stops[0..<0],false,p[..],w,false).run.stop==NxStop.limit;
+    #assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=3,emitted=-1},stops[..],false,p[..],w,false).status==NxStatus.state;
+    #assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=3,random=CrSeed.{counter=18446744073709551615}},stops[..],false,p[..],w,false).status==NxStatus.state;
+    zero:=[1]int.[0];#assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=3},zero[..],false,p[..],w,false).status==NxStatus.ok;
+    bad:=[1]int.[3];#assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=3},bad[..],false,p[..],w,false).status==NxStatus.shape;
+    bad[0]=-1;#assert nx_step(x[..],none[0..<0],greedy,NxRun.{limit=3},bad[..],false,p[..],w,false).status==NxStatus.shape;
+    e:=nx_step(x[..],none[0..<0],NxOptions.{top_k=9},NxRun.{limit=3,random=CrSeed.{counter=4}},stops[..],false,p[..],w,false);#assert e.status==NxStatus.shape && e.token== -1;
+    // Seeded: the oracle's uniform at (45001, 0) is 0.392..., which lands on ID 0 of [0.5, 0.5].
+    two:=[2]f32.[1,1];r=nx_step(two[..],none[0..<0],NxOptions.{},NxRun.{limit=4,random=CrSeed.{seed=45001}},stops[0..<0],false,p[..],w,false);#assert r.token==0;
+    r=nx_step(two[..],none[0..<0],NxOptions.{},NxRun.{limit=4,random=CrSeed.{seed=53,counter=7}},stops[0..<0],false,p[..],w,false);#assert r.token==0 && r.run.random.counter==8;
+    r=nx_step(two[..],none[0..<0],NxOptions.{},NxRun.{limit=4,random=CrSeed.{seed=0}},stops[0..<0],false,p[..],w,false);#assert r.token==1;
+}
+
+// The integer-list grammar of the chapter: [ int (, int)* ] with int = 0 | [1-9][0-9]*.
+nx_list_edges :: ()->[10]NxEdge {
+    return [10]NxEdge.[NxEdge.{from=0,low='[',high='[',to=1},NxEdge.{from=1,low='0',high='0',to=3},NxEdge.{from=1,low='1',high='9',to=2},
+        NxEdge.{from=2,low='0',high='9',to=2},NxEdge.{from=2,low=',',high=',',to=4},NxEdge.{from=2,low=']',high=']',to=5},
+        NxEdge.{from=3,low=',',high=',',to=4},NxEdge.{from=3,low=']',high=']',to=5},NxEdge.{from=4,low='0',high='0',to=3},NxEdge.{from=4,low='1',high='9',to=2}];
+}
+// The same grammar stated as a rule per state, to check the compiled table cell by cell.
+nx_list_rule :: (s:int,b:int)->int {
+    digit:=b>=48 && b<=57;
+    if s==0 {return ifx b==91 then 1 else -1;}
+    if s==1 || s==4 {return ifx b==48 then 3 else ifx digit then 2 else -1;}
+    if s==2 && digit {return 2;}
+    if s==2 || s==3 {return ifx b==44 then 4 else ifx b==93 then 5 else -1;}
+    return -1;
+}
+#test "the grammar compiler builds a table and refuses what it cannot keep" {
+    edges:=nx_list_edges();acc:=[1]int.[5];next:[1793]int;a:[7]u8;l:[7]u8;
+    // Six states plus a seventh that nothing reaches and that reaches nothing.
+    c:=nx_compile(7,0,edges[..],acc[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.ok && c.grammar.states==7 && c.grammar.start==0;
+    #assert next[0*256+'[']==1 && next[1*256+'7']==2 && next[1*256+'9']==2 && next[1*256+'1']==2 && next[1*256+'0']==3 && next[2*256+'0']==2 && next[0*256+']']== -1;
+    #assert next[1*256+':']== -1 && next[1*256+'/']== -1 && next[6*256+255]== -1 && next[1792]==0;
+    for st:0..<6 {for b:0..<256 {#assert next[st*256+b]==nx_list_rule(st,b);}}
+    #assert a[5]==1 && a[4]==0 && a[0]==0 && l[0]==1 && l[4]==1 && l[5]==1 && l[6]==0;
+    #assert nx_accepts(c.grammar,"[0]") && nx_accepts(c.grammar,"[10,0,972]") && !nx_accepts(c.grammar,"[01]") && !nx_accepts(c.grammar,"[1,]") && !nx_accepts(c.grammar,"[") && !nx_accepts(c.grammar,"[1]x");
+    // Overlapping ranges from one state make it nondeterministic: refused, naming the edge.
+    bad:=nx_list_edges();bad[3].low='5';bad[3].high='5';bad[3].from=1;
+    c=nx_compile(6,0,bad[..],acc[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.grammar && c.cause==3;
+    bad=nx_list_edges();bad[4].low='9';bad[4].high='0';#assert nx_compile(6,0,bad[..],acc[..],next[..],a[..],l[..],false).cause==4;
+    bad=nx_list_edges();bad[2].to=6;c=nx_compile(6,0,bad[..],acc[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.grammar && c.cause==2;
+    bad[2].to=-1;#assert nx_compile(6,0,bad[..],acc[..],next[..],a[..],l[..],false).cause==2;
+    bad=nx_list_edges();bad[8].from=6;#assert nx_compile(6,0,bad[..],acc[..],next[..],a[..],l[..],false).cause==8;
+    bad[8].from=-1;#assert nx_compile(6,0,bad[..],acc[..],next[..],a[..],l[..],false).cause==8;
+    far:=[1]int.[6];c=nx_compile(6,0,edges[..],far[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.grammar && c.cause==10;
+    far2:=[2]int.[5,6];#assert nx_compile(6,0,edges[..],far2[..],next[..],a[..],l[..],false).cause==11;
+    dup:[11]NxEdge;for e,k:edges {dup[k]=e;}dup[10]=NxEdge.{from=3,low=']',high=']',to=5};c=nx_compile(6,0,dup[..],acc[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.grammar && c.cause==10;
+    far[0]=-1;#assert nx_compile(6,0,edges[..],far[..],next[..],a[..],l[..],false).status==NxStatus.grammar;
+    // No accepting state reachable from the start: the language is empty.
+    c=nx_compile(6,0,edges[..],acc[0..<0],next[..],a[..],l[..],false);#assert c.status==NxStatus.empty;
+    #assert nx_compile(7,6,edges[..],acc[..],next[..],a[..],l[..],false).status==NxStatus.empty;
+    #assert nx_compile(0,0,edges[..],acc[..],next[..],a[..],l[..],false).status==NxStatus.shape;
+    #assert nx_compile(6,6,edges[..],acc[..],next[..],a[..],l[..],false).status==NxStatus.shape;
+    #assert nx_compile(6,-1,edges[..],acc[..],next[..],a[..],l[..],false).status==NxStatus.shape;
+    #assert nx_compile(6,0,edges[..],acc[..],next[0..<1535],a[..],l[..],false).status==NxStatus.capacity;
+    #assert nx_compile(6,0,edges[..],acc[..],next[..],a[0..<5],l[..],false).status==NxStatus.capacity;
+    #assert nx_compile(6,0,edges[..],acc[..],next[..],a[..],l[0..<5],false).status==NxStatus.capacity;
+    #assert nx_compile(6,0,edges[..],acc[..],next[..],a[..],l[..],true).status==NxStatus.alias;
+    #assert nx_states(1) && nx_states(NX_STATES_MAX) && !nx_states(0) && !nx_states(NX_STATES_MAX+1);
+    // Liveness needs more than one pass when edges point backward.
+    back:=[3]NxEdge.[NxEdge.{from=0,low='a',high='a',to=1},NxEdge.{from=1,low='b',high='b',to=2},NxEdge.{from=2,low='c',high='c',to=3}];
+    end:=[1]int.[3];c=nx_compile(4,0,back[..],end[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.ok && l[0]==1 && l[1]==1 && l[2]==1;
+    top:=[1]NxEdge.[NxEdge.{from=0,low=255,high=255,to=1}];c=nx_compile(2,0,top[..],acc[0..<0],next[..],a[..],l[..],false);#assert c.status==NxStatus.empty;
+    end[0]=1;c=nx_compile(2,0,top[..],end[..],next[..],a[..],l[..],false);ff:=[1]u8.[255];#assert c.status==NxStatus.ok && next[255]==1 && nx_accepts(c.grammar,cast(string)ff[..]);
+    // Byte 0 and state 0 are ordinary: 2 -a-> 0 -NUL-> 1, and only 1 accepts.
+    zl:=[2]NxEdge.[NxEdge.{from=0,low=0,high=0,to=1},NxEdge.{from=2,low='a',high='a',to=0}];one:=[1]int.[1];
+    c=nx_compile(3,2,zl[..],one[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.ok && l[0]==1 && l[2]==1 && next[0]==1;
+    zp:=[3]string.["<end>","a","b"];zm:[3]u8;r:=nx_mask(c.grammar,2,zp[..],0,zm[..],false);#assert r.status==NxStatus.ok && zm[0]==0 && zm[1]==1 && zm[2]==0;
+    zero:=[1]int.[0];c=nx_compile(6,0,edges[..],zero[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.ok && next[0]== -1 && nx_accepts(c.grammar,"") && !nx_accepts(c.grammar,"[0]");
+    // Reused buffers start clean: only state 3 accepts now, so "[0" is complete and "[0]" is not.
+    three:=[1]int.[3];c=nx_compile(6,0,edges[..],three[..],next[..],a[..],l[..],false);#assert c.status==NxStatus.ok && a[5]==0 && l[5]==0 && nx_accepts(c.grammar,"[0") && !nx_accepts(c.grammar,"[0]");
+}
+nx_list_pieces :: ()->[13]string {return [13]string.["[","]",",","0","1","7","42","[1","],","x","<end>",",0]",""];}
+#test "the mask offers exactly the tokens that keep a parse possible" {
+    edges:=nx_list_edges();acc:=[1]int.[5];next:[1536]int;a:[6]u8;l:[6]u8;g:=nx_compile(6,0,edges[..],acc[..],next[..],a[..],l[..],false).grammar;
+    pieces:=nx_list_pieces();m:=[14]u8.[7,7,7,7,7,7,7,7,7,7,7,7,7,7];
+    r:=nx_mask(g,0,pieces[..],10,m[..],false);#assert r.status==NxStatus.ok && r.written==13 && r.kept==2 && m[0]==1 && m[7]==1 && m[1]==0 && m[9]==0 && m[10]==0 && m[12]==0 && m[13]==7;
+    r=nx_mask(g,2,pieces[..],10,m[..],false);#assert r.kept==7 && m[1]==1 && m[2]==1 && m[3]==1 && m[6]==1 && m[8]==0 && m[11]==1 && m[0]==0 && m[10]==0 && m[12]==0;
+    r=nx_mask(g,5,pieces[..],10,m[..],false);#assert r.kept==1 && m[10]==1 && m[1]==0;
+    r=nx_mask(g,4,pieces[..],10,m[..],false);#assert r.kept==4 && m[3]==1 && m[4]==1 && m[5]==1 && m[6]==1 && m[11]==0 && m[2]==0;
+    #assert nx_walk(g,2,"],")== -1 && nx_walk(g,2,",0]")==5 && nx_walk(g,-1,"")== -1 && nx_walk(g,1,"")==1 && nx_walk(g,0,"[x")== -1 && nx_walk(g,0,"x[")== -1;
+    #assert nx_mask(g,0,pieces[..],13,m[..],false).status==NxStatus.shape && nx_mask(g,0,pieces[..],-1,m[..],false).status==NxStatus.shape;
+    #assert nx_mask(g,0,pieces[0..<0],0,m[..],false).status==NxStatus.shape;
+    #assert nx_mask(g,6,pieces[..],10,m[..],false).status==NxStatus.state && nx_mask(g,-1,pieces[..],10,m[..],false).status==NxStatus.state;
+    #assert nx_mask(g,0,pieces[..],10,m[0..<12],false).status==NxStatus.capacity && nx_mask(g,0,pieces[..],10,m[..],true).status==NxStatus.alias;
+    h:=g;h.next=next[0..<1535];#assert nx_mask(h,0,pieces[..],10,m[..],false).status==NxStatus.capacity;
+    h=g;h.accepting=a[0..<5];#assert nx_mask(h,0,pieces[..],10,m[..],false).status==NxStatus.capacity;
+    h=g;h.live=l[0..<5];#assert nx_mask(h,0,pieces[..],10,m[..],false).status==NxStatus.capacity;
+    // A state that cannot reach acceptance is refused, not masked to nothing.
+    l[3]=0;#assert nx_mask(g,3,pieces[..],10,m[..],false).status==NxStatus.state;
+    r=nx_mask(g,4,pieces[..],10,m[..],false);#assert r.kept==3 && m[3]==0;
+}
+#test "guided generation emits only parseable text, for every seed" #steps 400000000 {
+    edges:=nx_list_edges();acc:=[1]int.[5];next:[1536]int;a:[6]u8;l:[6]u8;g:=nx_compile(6,0,edges[..],acc[..],next[..],a[..],l[..],false).grammar;
+    pieces:=nx_list_pieces();logits:=[13]f32.[0,1.5,0.5,0,0,0,0,0,0,9,0,-2,9];
+    m:[13]u8;p:[13]f64;s:[13]f64;o:[13]int;t:[13]int;w:=nx_work(s[..],o[..],t[..]);
+    ended:=0;limited:=0;
+    for seed:0..<300 {
+        run:=NxRun.{limit=12,random=CrSeed.{seed=cast(u64)seed}};state:=g.start;text:[64]u8;n:=0;
+        while run.stop==NxStop.running {
+            e:=nx_guided(logits[..],g,state,pieces[..],10,NxOptions.{temperature=1.5},run,false,m[..],p[..],w,false);
+            #assert e.status==NxStatus.ok && e.token!=9 && e.token!=12;
+            if e.token!=10 {for c:pieces[e.token] {text[n]=c;n+=1;}#assert l[e.state]==1 && nx_walk(g,g.start,cast(string)text[0..<n])==e.state;}
+            run=e.run;state=e.state;
+        }
+        if run.stop==NxStop.stop_token {ended+=1;#assert nx_accepts(g,cast(string)text[0..<n]) && a[state]==1;}else {limited+=1;#assert run.stop==NxStop.limit && run.emitted==12;}
+    }
+    #assert ended==288 && limited==12;
+}
+#test "guided steps refuse, cancel and keep the grammar state" {
+    edges:=nx_list_edges();acc:=[1]int.[5];next:[1536]int;a:[6]u8;l:[6]u8;g:=nx_compile(6,0,edges[..],acc[..],next[..],a[..],l[..],false).grammar;
+    pieces:=nx_list_pieces();logits:=[13]f32.[0,0,0,0,0,0,9,8,0,9,0,0,9];m:[13]u8;p:[13]f64;s:[13]f64;o:[13]int;t:[13]int;w:=nx_work(s[..],o[..],t[..]);
+    greedy:=NxOptions.{temperature=0};
+    e:=nx_guided(logits[..],g,0,pieces[..],10,greedy,NxRun.{limit=5},false,m[..],p[..],w,false);#assert e.status==NxStatus.ok && e.token==7 && e.state==2 && e.run.emitted==1;
+    e=nx_guided(logits[..],g,2,pieces[..],10,greedy,e.run,false,m[..],p[..],w,false);#assert e.token==6 && e.state==2;
+    e=nx_guided(logits[..],g,5,pieces[..],10,greedy,e.run,false,m[..],p[..],w,false);#assert e.token==10 && e.state==5 && e.run.stop==NxStop.stop_token;
+    c:=nx_guided(logits[..],g,2,pieces[..],10,greedy,NxRun.{limit=5},true,m[..],p[..],w,false);#assert c.status==NxStatus.ok && c.token== -1 && c.state==2 && c.run.stop==NxStop.cancelled;
+    #assert nx_guided(logits[0..<12],g,0,pieces[..],10,greedy,NxRun.{limit=5},false,m[..],p[..],w,false).status==NxStatus.shape;
+    #assert nx_guided(logits[..],g,0,pieces[..],10,greedy,NxRun.{limit=5},false,m[0..<12],p[..],w,false).status==NxStatus.capacity;
+    #assert nx_guided(logits[..],g,0,pieces[..],10,greedy,NxRun.{},false,m[..],p[..],w,false).status==NxStatus.state;
+    // A vocabulary that cannot spell any continuation: nothing is offered, so nothing is drawn.
+    few:=[3]string.["[","]",""];x:=[3]f32.[0,0,0];e=nx_guided(x[..],g,1,few[..],2,greedy,NxRun.{limit=5,random=CrSeed.{counter=3}},false,m[..],p[..],w,false);
+    #assert e.status==NxStatus.empty && e.token== -1 && e.state==1;
+}
+
+nx_vocab :: (n:int)->bool {return n>=1 && n<=NX_VOCAB_MAX;}
+nx_states :: (n:int)->bool {return n>=1 && n<=NX_STATES_MAX;}
+nx_options :: (o:NxOptions,n:int)->bool {return o.temperature>=0 && o.temperature<=100 && o.top_k>=0 && o.top_k<=n && o.top_p>0 && o.top_p<=1;}
+nx_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+// A logit lies within ±10^30. NaN fails both comparisons, infinities fail one.
+nx_logit :: (v:f32)->bool {return f64(v)>=-NX_LOGIT_MAX && f64(v)<=NX_LOGIT_MAX;}
+
+// book:begin order
+// Allowed IDs, sorted by logit descending; equal logits keep ascending ID.
+// A bottom-up merge sort: stable, O(V log V), no allocation.
+nx_order :: (logits:[]f32,order:[]int,temporary:[]int,count:int)->int {
+    width:=1;passes:=0;
+    while width<count {
+        first:=0;
+        while first<count {
+            mid:=nx_min(first+width,count);end:=nx_min(first+2*width,count);a:=first;b:=mid;
+            for dest:first..<end {
+                left:=b==end;if a<mid && b<end {left=logits[order[a]]>=logits[order[b]];}
+                if left {temporary[dest]=order[a];a+=1;}else {temporary[dest]=order[b];b+=1;}
+            }
+            first=end;
+        }
+        for i:0..<count {order[i]=temporary[i];}width*=2;passes+=1;
+    }
+    return passes;
+}
+// book:end order
+// book:begin distribution
+nx_distribution :: (logits:[]f32,mask:[]u8,options:NxOptions,out:[]f64,work:NxWork,overlap:bool)->NxResult #export_c {
+    n:=logits.count;
+    if !nx_vocab(n) || !nx_options(options,n) {return NxResult.{status=NxStatus.shape};}
+    if (mask.count!=0 && mask.count!=n) || out.count<n || work.stage.count<n || work.order.count<n || work.temporary.count<n {return NxResult.{status=NxStatus.capacity};}
+    if overlap {return NxResult.{status=NxStatus.alias};}
+    count:=0;
+    for i:0..<n {
+        if !nx_logit(logits[i]) || (mask.count!=0 && mask[i]>1) {return NxResult.{status=NxStatus.number};}
+        if mask.count==0 || mask[i]==1 {work.order[count]=i;count+=1;}work.stage[i]=0;
+    }
+    if count==0 {return NxResult.{status=NxStatus.empty};}
+    passes:=nx_order(logits,work.order,work.temporary,count);
+    take:=1;
+    if options.temperature==0 {work.stage[work.order[0]]=1;}
+    else {
+        kept:=count;if options.top_k!=0 {kept=nx_min(kept,options.top_k);}
+        top:=f64(logits[work.order[0]]);total:=0.0;
+        for i:0..<kept {v:=exp((f64(logits[work.order[i]])-top)/options.temperature);work.stage[work.order[i]]=v;total+=v;}
+        // The same weights in the same order: at top_p 1 the loop ends with mass == total.
+        mass:=0.0;take=0;
+        while mass<options.top_p*total {mass+=work.stage[work.order[take]];take+=1;}
+        for i:0..<take {work.stage[work.order[i]]/=mass;}
+        for i:take..<kept {work.stage[work.order[i]]=0;}
+    }
+    for i:0..<n {out[i]=work.stage[i];}
+    return NxResult.{written=n,kept=take,passes=passes};
+}
+// book:end distribution
+// book:begin pick
+// The first ID whose running mass exceeds the uniform. If rounding leaves the
+// uniform at or above the final mass, the last ID with positive mass wins.
+nx_pick :: (probabilities:[]f64,uniform:f64)->NxPick #export_c {
+    if !nx_vocab(probabilities.count) || !(uniform>=0 && uniform<1) {return NxPick.{status=NxStatus.shape};}
+    total:=0.0;
+    for v:probabilities {if !(v>=0 && v<=1) {return NxPick.{status=NxStatus.number};}total+=v;}
+    if !(abs(total-1)<NX_MASS) {return NxPick.{status=NxStatus.number};}
+    running:=0.0;
+    for v,i:probabilities {running+=v;if uniform<running {return NxPick.{token=i};}}
+    last:=probabilities.count-1;while probabilities[last]==0 {last-=1;}
+    return NxPick.{token=last};
+}
+// book:end pick
+// book:begin step
+nx_step :: (logits:[]f32,mask:[]u8,options:NxOptions,run:NxRun,stops:[]int,cancel:bool,out:[]f64,work:NxWork,overlap:bool)->NxEmission #export_c {
+    if run.stop!=NxStop.running || run.limit>NX_LIMIT_MAX || run.emitted<0 || run.emitted>=run.limit {return NxEmission.{status=NxStatus.state};}
+    for s:stops {if s<0 || s>=logits.count {return NxEmission.{status=NxStatus.shape};}}
+    if cancel {next:=run;next.stop=NxStop.cancelled;return NxEmission.{run=next};}
+    draw:=cr_draw(run.random);if !draw.ok {return NxEmission.{status=NxStatus.state};}
+    d:=nx_distribution(logits,mask,options,out,work,overlap);if d.status!=NxStatus.ok {return NxEmission.{status=d.status};}
+    pick:=nx_pick(out[0..<logits.count],draw.value);#assert pick.status==NxStatus.ok;
+    next:=run;next.random=draw.next;next.emitted+=1;
+    for s:stops {if s==pick.token {next.stop=NxStop.stop_token;}}
+    if next.stop==NxStop.running && next.emitted==next.limit {next.stop=NxStop.limit;}
+    return NxEmission.{token=pick.token,run=next};
+}
+// book:end step
+// book:begin compile
+nx_compile :: (states:int,start:int,edges:[]NxEdge,accepting:[]int,next:[]int,accept:[]u8,live:[]u8,overlap:bool)->NxCompiled #export_c {
+    if !nx_states(states) || start<0 || start>=states {return NxCompiled.{status=NxStatus.shape};}
+    if next.count<states*256 || accept.count<states || live.count<states {return NxCompiled.{status=NxStatus.capacity};}
+    if overlap {return NxCompiled.{status=NxStatus.alias};}
+    for i:0..<states*256 {next[i]=-1;}
+    for s:0..<states {accept[s]=0;live[s]=0;}
+    for e,k:edges {
+        if e.from<0 || e.from>=states || e.to<0 || e.to>=states || e.low>e.high {return NxCompiled.{status=NxStatus.grammar,cause=k};}
+        for b:cast(int)e.low..<cast(int)e.high+1 {
+            if next[e.from*256+b]!=-1 {return NxCompiled.{status=NxStatus.grammar,cause=k};}
+            next[e.from*256+b]=e.to;
+        }
+    }
+    for s,k:accepting {if s<0 || s>=states {return NxCompiled.{status=NxStatus.grammar,cause=edges.count+k};}accept[s]=1;live[s]=1;}
+    // Live: some byte path leads to acceptance. Repeat until nothing changes.
+    changed:=true;
+    while changed {
+        changed=false;
+        for s:0..<states {
+            reach:=false;for b:0..<256 {t:=next[s*256+b];if t>=0 && live[t]==1 {reach=true;}}
+            if reach && live[s]==0 {live[s]=1;changed=true;}
+        }
+    }
+    if live[start]==0 {return NxCompiled.{status=NxStatus.empty};}
+    return NxCompiled.{grammar=NxGrammar.{states=states,start=start,next=next[0..<states*256],accepting=accept[0..<states],live=live[0..<states]}};
+}
+// book:end compile
+// The state after the bytes of `text`, or -1 once a byte has no transition.
+nx_walk :: (g:NxGrammar,state:int,text:string)->int #export_c {
+    s:=state;
+    for c:text {if s<0 {return -1;}s=g.next[s*256+cast(int)c];}
+    return s;
+}
+nx_accepts :: (g:NxGrammar,text:string)->bool #export_c {s:=nx_walk(g,g.start,text);return s>=0 && g.accepting[s]==1;}
+// book:begin mask
+// 1 where the token keeps a complete parse reachable; the end token only
+// where the text so far is complete. Empty pieces other than the end token
+// make no progress and are never offered.
+nx_mask :: (g:NxGrammar,state:int,pieces:[]string,end_token:int,out:[]u8,overlap:bool)->NxResult #export_c {
+    if !nx_vocab(pieces.count) || end_token<0 || end_token>=pieces.count {return NxResult.{status=NxStatus.shape};}
+    if g.next.count<g.states*256 || g.accepting.count<g.states || g.live.count<g.states || out.count<pieces.count {return NxResult.{status=NxStatus.capacity};}
+    if state<0 || state>=g.states || g.live[state]!=1 {return NxResult.{status=NxStatus.state};}
+    if overlap {return NxResult.{status=NxStatus.alias};}
+    allowed:=0;
+    for piece,i:pieces {
+        ok:=false;
+        if i==end_token {ok=g.accepting[state]==1;}
+        else if piece.count!=0 {t:=nx_walk(g,state,piece);ok=t>=0 && g.live[t]==1;}
+        out[i]=ifx ok then 1 else 0;if ok {allowed+=1;}
+    }
+    return NxResult.{written=pieces.count,kept=allowed};
+}
+// book:end mask
+// book:begin guided
+nx_guided :: (logits:[]f32,g:NxGrammar,state:int,pieces:[]string,end_token:int,options:NxOptions,run:NxRun,cancel:bool,mask:[]u8,out:[]f64,work:NxWork,overlap:bool)->NxGuided #export_c {
+    if logits.count!=pieces.count {return NxGuided.{status=NxStatus.shape};}
+    m:=nx_mask(g,state,pieces,end_token,mask,overlap);if m.status!=NxStatus.ok {return NxGuided.{status=m.status};}
+    stops:=[1]int.[end_token];
+    e:=nx_step(logits,mask[0..<pieces.count],options,run,stops[..],cancel,out,work,overlap);
+    if e.status!=NxStatus.ok {return NxGuided.{status=e.status,state=state};}
+    after:=state;if e.token>=0 && e.token!=end_token {after=nx_walk(g,state,pieces[e.token]);}
+    return NxGuided.{token=e.token,run=e.run,state=after};
+}
+// book:end guided

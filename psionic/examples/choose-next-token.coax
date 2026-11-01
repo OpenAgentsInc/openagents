@@ -1,0 +1,69 @@
+#import "Basic";
+#load "../lib/next-token.coax";
+
+END :: 10;
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+show :: (label:string,p:[]f64,kept:int) {
+    print("  %:",label);for v:p {print(" %",r4(v));}print("  (% kept)\n",kept);
+}
+text_of :: (pieces:[]string,tokens:[]int,end_token:int,out:[]u8)->string {
+    n:=0;for t:tokens {if t!=end_token {for c:pieces[t] {out[n]=c;n+=1;}}}return cast(string)out[0..<n];
+}
+
+// book:begin example
+main :: () {
+    logits:=[5]f32.[2,1,2,0,-1];none:[1]u8;p:[5]f64;s:[5]f64;o:[5]int;t:[5]int;w:=NxWork.{stage=s[..],order=o[..],temporary=t[..]};nostop:[1]int;
+    print("logits: 2 1 2 0 -1\n");
+    settings:=[6]NxOptions.[NxOptions.{},NxOptions.{temperature=0.5},NxOptions.{top_k=1},NxOptions.{top_k=2},NxOptions.{top_p=0.5},NxOptions.{temperature=0}];
+    labels:=[6]string.["T 1","T 0.5","T 1, top-k 1","T 1, top-k 2","T 1, top-p 0.5","T 0 (greedy)"];
+    for k:0..<6 {r:=nx_distribution(logits[..],none[0..<0],settings[k],p[..],w,false);#assert r.status==NxStatus.ok;show(labels[k],p[..],r.kept);}
+    print("  sort order: % % % % %\n",o[0],o[1],o[2],o[3],o[4]);
+
+    // Three seeded draws at temperature 1, seed 45001.
+    #assert nx_distribution(logits[..],none[0..<0],NxOptions.{},p[..],w,false).status==NxStatus.ok;
+    run:=NxRun.{limit=3,random=CrSeed.{seed=45001}};
+    while run.stop==NxStop.running {
+        u:=cr_draw(run.random).value;e:=nx_step(logits[..],none[0..<0],NxOptions.{},run,nostop[0..<0],false,p[..],w,false);
+        print("seed 45001 counter %: uniform %, token %\n",run.random.counter,r4(u),e.token);run=e.run;
+    }
+    print("stopped: %, counter now %\n",run.stop,run.random.counter);
+
+    // 20,000 seeds, one draw each.
+    seen:[5]int;
+    for seed:0..<20000 {e:=nx_step(logits[..],none[0..<0],NxOptions.{},NxRun.{limit=1,random=CrSeed.{seed=cast(u64)seed}},nostop[0..<0],false,p[..],w,false);seen[e.token]+=1;}
+    print("20000 seeds, counts:");for c:seen {print(" %",c);}print("; expected:");for v:p {print(" %",floor(20000*v+0.5));}print("\n");
+
+    // The integer-list grammar and a 13-token vocabulary.
+    edges:=nx_list_edges();accepting:=[1]int.[5];next:[1536]int;accept:[6]u8;live:[6]u8;
+    c:=nx_compile(6,0,edges[..],accepting[..],next[..],accept[..],live[..],false);#assert c.status==NxStatus.ok;g:=c.grammar;
+    pieces:=nx_list_pieces();
+    mask:[13]u8;for state:0..<6 {
+        r:=nx_mask(g,state,pieces[..],END,mask[..],false);#assert r.status==NxStatus.ok;
+        print("state %: offers",state);for i:0..<13 {if mask[i]==1 {print(" '%'",pieces[i]);}}print("\n");
+    }
+    model:=[13]f32.[0,1.5,0.5,0,0,0,0,0,0,9,0,-2,9];
+    gp:[13]f64;gs:[13]f64;go:[13]int;gt:[13]int;gw:=NxWork.{stage=gs[..],order=go[..],temporary=gt[..]};
+    for seed:1..<6 {
+        run=NxRun.{limit=12,random=CrSeed.{seed=cast(u64)seed}};state:=g.start;tokens:[12]int;n:=0;buffer:[64]u8;
+        while run.stop==NxStop.running {
+            e:=nx_guided(model[..],g,state,pieces[..],END,NxOptions.{temperature=1.5},run,false,mask[..],gp[..],gw,false);
+            #assert e.status==NxStatus.ok;tokens[n]=e.token;n+=1;run=e.run;state=e.state;
+        }
+        out:=text_of(pieces[..],tokens[0..<n],END,buffer[..]);
+        print("seed %: % (% tokens, %, parses: %)\n",seed,out,n,run.stop,nx_accepts(g,out));
+    }
+
+    // Cancellation: no token, no counter.
+    run=NxRun.{limit=12,random=CrSeed.{seed=1,counter=2}};
+    e:=nx_guided(model[..],g,2,pieces[..],END,NxOptions.{},run,true,mask[..],gp[..],gw,false);
+    print("cancelled: token %, state %, counter %, %\n",e.token,e.state,e.run.random.counter,e.run.stop);
+
+    // Broken inputs.
+    bad:=nx_list_edges();bad[3]=NxEdge.{from=1,low='5',high='5',to=2};
+    c=nx_compile(6,0,bad[..],accepting[..],next[..],accept[..],live[..],false);print("overlapping edges: %, edge %\n",c.status,c.cause);
+    c=nx_compile(6,0,edges[..],accepting[..],next[..],accept[..],live[..],false);g=c.grammar;
+    short:=[3]string.["[","]","<end>"];flat:=[3]f32.[0,0,0];
+    e=nx_guided(flat[..],g,1,short[..],2,NxOptions.{},NxRun.{limit=4},false,mask[..],gp[..],gw,false);print("vocabulary cannot continue '[': %\n",e.status);
+    print("temperature -1: %\n",nx_distribution(logits[..],none[0..<0],NxOptions.{temperature=-1},p[..],w,false).status);
+}
+// book:end example
