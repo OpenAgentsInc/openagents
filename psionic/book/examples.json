@@ -1332,6 +1332,26 @@
       ]
     },
     {
+      "source": "psionic/examples/hnsw.coax",
+      "chapter": "psionic/book/ch055-search-without-scanning-everything.md",
+      "stdout": "psionic/fixtures/hnsw/hnsw.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/hnsw-refuse.coax",
+      "chapter": "psionic/book/ch055-search-without-scanning-everything.md",
+      "stdout": "psionic/fixtures/hnsw/hnsw-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/book-search-stale.coax",
       "chapter": "psionic/book/ch054-search-the-coax-book.md",
       "stdout": "psionic/fixtures/book-search/book-search-stale.out",

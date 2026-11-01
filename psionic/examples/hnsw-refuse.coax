@@ -1,0 +1,38 @@
+// Chapter 55: malformed requests to an HNSW index, each refused with its status.
+#import "Basic";
+#load "../lib/book-search/hnsw.coax";
+
+Store :: struct { v: [64] f32; level: [8] int; upper: [8] int; base: [64] int; pool: [32] int; seen: [8] int; }
+
+// book:begin refuse
+main :: () {
+  s: [2] Store; ix: [1] HnIndex; iy: [1] HnIndex;
+  st := hn_init(ix[..], 2, 2, 2, 5, s[0].v[..], s[0].level[0..<6], s[0].upper[0..<6], s[0].base[..], s[0].pool[..], s[0].seen[0..<6]);
+  out: [4] BsHit; q := [2] f32.[0.8, -0.6];
+  print("search an empty index: %\n", hn_status_name(hn_search(ix[..], q[..], 1, 1, out[..]).status));
+  circle := HN_CIRCLE;
+  for i: 0..<6 { r := hn_add(ix[..], circle[i * 2..<i * 2 + 2]); }
+  print("six points on the circle, m 2, ef_build 2, seed 5\n");
+  r := hn_search(ix[..], q[..], 2, 2, out[..]);
+  print("query (0.8, -0.6), k 2, ef 2: %, points % and %, % similarities\n", hn_status_name(r.status), out[0].passage, out[1].passage, r.sims);
+  three := [3] f32.[0.8, -0.6, 0];
+  print("a query of 3 values: %\n", hn_status_name(hn_search(ix[..], three[..], 2, 2, out[..]).status));
+  print("k 0: %\n", hn_status_name(hn_search(ix[..], q[..], 0, 2, out[..]).status));
+  print("k 3, ef 2: %\n", hn_status_name(hn_search(ix[..], q[..], 3, 2, out[..]).status));
+  print("k 2, ef 513: %\n", hn_status_name(hn_search(ix[..], q[..], 2, 513, out[..]).status));
+  far := [2] f32.[10000000, 0];
+  print("a query value of 10^7: %\n", hn_status_name(hn_search(ix[..], far[..], 2, 2, out[..]).status));
+  seventh := [2] f32.[0, -1];
+  print("a seventh point into storage for six: %\n", hn_status_name(hn_add(ix[..], seventh[..]).status));
+  file: [256] u8;
+  n := hn_save(ix[..], file[..]);
+  st = hn_init(iy[..], 2, 2, 2, 5, s[1].v[..], s[1].level[..], s[1].upper[..], s[1].base[..], s[1].pool[..], s[1].seen[..]);
+  print("saved % bytes; reload: %\n", n, hn_status_name(hn_load(iy[..], file[0..<n])));
+  print("reload without the last byte: %\n", hn_status_name(hn_load(iy[..], file[0..<n - 1])));
+  file[100] ^= 1;
+  print("reload with one bit of a vector flipped: %\n", hn_status_name(hn_load(iy[..], file[0..<n])));
+  file[100] ^= 1;
+  st = hn_init(iy[..], 2, 2, 2, 5, s[1].v[..], s[1].level[0..<5], s[1].upper[0..<5], s[1].base[..], s[1].pool[..], s[1].seen[0..<5]);
+  print("reload into storage for five points: %\n", hn_status_name(hn_load(iy[..], file[0..<n])));
+}
+// book:end refuse

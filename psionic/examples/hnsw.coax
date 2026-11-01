@@ -1,0 +1,83 @@
+// Chapter 55: build an HNSW index over fixed unit vectors, measure recall at
+// 10 against exhaustive search at several budgets, and reload a saved copy.
+#import "Basic";
+#load "../lib/book-search/hnsw.coax";
+
+// book:begin example
+N :: 4000; D :: 16; M :: 8; EF_BUILD :: 64; QUERIES :: 200; K :: 10;
+POOL :: 16000; FILE :: 900000;
+Store :: struct { v: [N * D] f32; level: [N] int; upper: [N] int; base: [N * 2 * M] int; pool: [POOL] int; seen: [N] int; }
+
+// Prints num / den to three decimals, rounded half up.
+put3 :: (num: int, den: int) {
+  t := (num * 2000 + den) / (2 * den);
+  print("%.", t / 1000); print("%", t / 100 % 10); print("%", t / 10 % 10); print("%", t % 10);
+}
+
+build :: (ix: [] HnIndex, store: [] Store, s: int, n: int) -> int {
+  st := hn_init(ix, D, M, EF_BUILD, 55, store[s].v[0..<n * D], store[s].level[0..<n], store[s].upper[0..<n], store[s].base[0..<n * 2 * M], store[s].pool[..], store[s].seen[0..<n]);
+  if st != HnStatus.ok { print("init: %\n", hn_status_name(st)); return -1; }
+  v: [D] f32; sims := 0;
+  for i: 0..<n {
+    hn_fixture(1, i, v[..]);
+    r := hn_add(ix, v[..]);
+    if r.status != HnStatus.ok { print("add: %\n", hn_status_name(r.status)); return -1; }
+    sims += r.sims;
+  }
+  return sims;
+}
+
+measure :: (ix: [] HnIndex, n: int) {
+  efs := [5] int.[10, 20, 40, 80, 160];
+  shared: [5] int; sims: [5] int;
+  scores: [N] f64; exact: [K] BsHit; found: [K] BsHit; q: [D] f32;
+  for qi: 0..<QUERIES {
+    hn_fixture(2, qi, q[..]);
+    e := hn_exact(ix, q[..], K, scores[..], exact[..]);
+    for b: 0..<5 {
+      r := hn_search(ix, q[..], K, efs[b], found[..]);
+      shared[b] += hn_shared(found[0..<r.found], exact[0..<e.found]); sims[b] += r.sims;
+    }
+  }
+  for b: 0..<5 {
+    print("  ef %: recall@10 ", efs[b]); put3(shared[b], QUERIES * K);
+    print(", "); put3(sims[b], QUERIES); print(" similarities per query, "); put3(sims[b], QUERIES * n); print(" of exhaustive\n");
+  }
+  print("  exhaustive: recall 1.000 at % similarities per query\n", n);
+}
+
+main :: () {
+  ix: [1] HnIndex; store: [2] Store; file: [FILE] u8;
+  sizes := [2] int.[500, N];
+  for s: sizes {
+    built := build(ix[..], store[..], 0, s);
+    if built < 0 { return; }
+    count: [HN_LEVEL_MAX + 1] int;
+    for i: 0..<s { count[store[0].level[i]] += 1; }
+    print("% unit vectors of % values; m %, ef_build %, seed 55\n", s, D, M, EF_BUILD);
+    print("  points whose highest level is 0");
+    for l: 1..<ix[0].top + 1 { print(" / %", l); }
+    print(": %", count[0]);
+    for l: 1..<ix[0].top + 1 { print(" / %", count[l]); }
+    print("; entry point % on level %\n", ix[0].entry, ix[0].top);
+    mem := hn_memory(ix[..]);
+    print("  build: % similarities; memory % bytes (% per point, % of them the vector)\n", built, mem, mem / s, 4 * D);
+    measure(ix[..], s);
+  }
+  // Save the larger index, reload it into separate storage, and compare.
+  size := hn_save(ix[..], file[..]);
+  copy: [1] HnIndex;
+  st := hn_init(copy[..], 1, 2, 2, 0, store[1].v[..], store[1].level[..], store[1].upper[..], store[1].base[..], store[1].pool[..], store[1].seen[..]);
+  st = hn_load(copy[..], file[0..<size]);
+  print("saved % bytes (% per point); reload: %\n", size, size / N, hn_status_name(st));
+  same := 0; a: [K] BsHit; b: [K] BsHit; q: [D] f32;
+  for qi: 0..<QUERIES {
+    hn_fixture(2, qi, q[..]);
+    ra := hn_search(ix[..], q[..], K, 40, a[..]); rb := hn_search(copy[..], q[..], K, 40, b[..]);
+    ok := ra.found == rb.found && ra.sims == rb.sims;
+    for i: 0..<ra.found { if a[i].passage != b[i].passage || a[i].score != b[i].score { ok = false; } }
+    if ok { same += 1; }
+  }
+  print("reloaded index at ef 40: % of % queries return the same hits, scores and cost\n", same, QUERIES);
+}
+// book:end example

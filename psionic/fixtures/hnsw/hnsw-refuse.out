@@ -1,0 +1,13 @@
+search an empty index: empty: the index holds no points
+six points on the circle, m 2, ef_build 2, seed 5
+query (0.8, -0.6), k 2, ef 2: ok, points 5 and 0, 5 similarities
+a query of 3 values: dimension: vector length differs from the index
+k 0: budget: need 1 <= k <= ef <= 512
+k 3, ef 2: budget: need 1 <= k <= ef <= 512
+k 2, ef 513: budget: need 1 <= k <= ef <= 512
+a query value of 10^7: number: a value is not finite or exceeds 10^6
+a seventh point into storage for six: capacity: storage is full or too small
+saved 254 bytes; reload: ok
+reload without the last byte: format: not a valid saved index
+reload with one bit of a vector flipped: format: not a valid saved index
+reload into storage for five points: capacity: storage is full or too small

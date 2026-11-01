@@ -1,0 +1,20 @@
+500 unit vectors of 16 values; m 8, ef_build 64, seed 55
+  points whose highest level is 0 / 1 / 2 / 3 / 4 / 5: 375 / 99 / 20 / 4 / 1 / 1; entry point 66 on level 5
+  build: 138598 similarities; memory 118240 bytes (236 per point, 64 of them the vector)
+  ef 10: recall@10 0.866, 129.140 similarities per query, 0.258 of exhaustive
+  ef 20: recall@10 0.965, 185.405 similarities per query, 0.371 of exhaustive
+  ef 40: recall@10 0.997, 269.260 similarities per query, 0.539 of exhaustive
+  ef 80: recall@10 1.000, 373.145 similarities per query, 0.746 of exhaustive
+  ef 160: recall@10 1.000, 471.550 similarities per query, 0.943 of exhaustive
+  exhaustive: recall 1.000 at 500 similarities per query
+4000 unit vectors of 16 values; m 8, ef_build 64, seed 55
+  points whose highest level is 0 / 1 / 2 / 3 / 4 / 5 / 6: 2975 / 758 / 198 / 52 / 11 / 3 / 3; entry point 504 on level 6
+  build: 2258808 similarities; memory 952768 bytes (238 per point, 64 of them the vector)
+  ef 10: recall@10 0.733, 174.450 similarities per query, 0.044 of exhaustive
+  ef 20: recall@10 0.878, 255.010 similarities per query, 0.064 of exhaustive
+  ef 40: recall@10 0.959, 396.470 similarities per query, 0.099 of exhaustive
+  ef 80: recall@10 0.995, 642.575 similarities per query, 0.161 of exhaustive
+  ef 160: recall@10 1.000, 1033.805 similarities per query, 0.258 of exhaustive
+  exhaustive: recall 1.000 at 4000 similarities per query
+saved 560472 bytes (140 per point); reload: ok
+reloaded index at ef 40: 200 of 200 queries return the same hits, scores and cost

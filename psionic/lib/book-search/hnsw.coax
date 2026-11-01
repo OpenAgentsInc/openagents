@@ -1,0 +1,717 @@
+// Chapter 55: an HNSW index (hierarchical navigable small world graph) over
+// the vectors chapter 54 searches exhaustively. Construction is deterministic:
+// a point's level comes from a counter hash of its id, neighbor lists are kept
+// best first with chapter 54's tie rule (higher similarity, then lower id), and
+// points are inserted in id order. All storage is supplied by the caller and
+// bounded; malformed requests are refused with a typed status. The exhaustive
+// search here is the oracle that recall is measured against.
+#load "rank.coax";
+#load "../counter-rng.coax";
+
+HnStatus :: enum u8 { ok; shape; budget; dimension; number; capacity; empty; format; }
+// One search or insertion: how it ended, how many hits it wrote, how many
+// similarities it computed (its cost), and how many level searches it ran.
+HnResult :: struct { status: HnStatus; found: int; sims: int; levels: int; }
+
+HN_DIM_MAX :: 1024;
+HN_M_MAX :: 32;
+HN_EF_MAX :: 512;
+HN_LEVEL_MAX :: 15;
+HN_VALUE_MAX :: 1000000.0;
+HN_VERSION :: 1;
+HN_MAGIC :: "PSHNSW01";
+HN_HEADER :: 80;
+
+hn_status_name :: (s: HnStatus) -> string {
+  if s == HnStatus.shape { return "shape: parameters or storage out of range"; }
+  if s == HnStatus.budget { return "budget: need 1 <= k <= ef <= 512"; }
+  if s == HnStatus.dimension { return "dimension: vector length differs from the index"; }
+  if s == HnStatus.number { return "number: a value is not finite or exceeds 10^6"; }
+  if s == HnStatus.capacity { return "capacity: storage is full or too small"; }
+  if s == HnStatus.empty { return "empty: the index holds no points"; }
+  if s == HnStatus.format { return "format: not a valid saved index"; }
+  return "ok";
+}
+#test "every status has a name" {
+  #assert hn_status_name(HnStatus.ok) == "ok" && hn_status_name(HnStatus.shape) == "shape: parameters or storage out of range";
+  #assert hn_status_name(HnStatus.budget) == "budget: need 1 <= k <= ef <= 512" && hn_status_name(HnStatus.dimension) == "dimension: vector length differs from the index";
+  #assert hn_status_name(HnStatus.number) == "number: a value is not finite or exceeds 10^6" && hn_status_name(HnStatus.capacity) == "capacity: storage is full or too small";
+  #assert hn_status_name(HnStatus.empty) == "empty: the index holds no points" && hn_status_name(HnStatus.format) == "format: not a valid saved index";
+}
+
+// The index. vectors: capacity * dim values; level, upper and seen: one per
+// point; base: the level-0 links, 2m per point; pool: the links on levels 1
+// and up, m per level, handed out in insertion order. A link slot holds a
+// point id, or -1 when empty; filled slots come first, best first.
+// w, done, wn: the working list of one layer search.
+HnIndex :: struct {
+  dim: int; m: int; ef_build: int; seed: u64;
+  capacity: int; count: int; entry: int; top: int; used: int; stamp: int; sims: int;
+  vectors: [] f32; level: [] int; upper: [] int; base: [] int; pool: [] int; seen: [] int;
+  w: [HN_EF_MAX] BsHit; done: [HN_EF_MAX] bool; wn: int;
+}
+
+// Storage for the checks: up to 64 points of up to 8 dimensions, m up to 4.
+HnTest :: struct { v: [512] f32; level: [64] int; upper: [64] int; base: [512] int; pool: [256] int; seen: [64] int; }
+hn_test_init :: (ix: [] HnIndex, s: [] HnTest, dim: int, m: int, ef: int, seed: u64) -> HnStatus {
+  return hn_init(ix, dim, m, ef, seed, s[0].v[..], s[0].level[..], s[0].upper[..], s[0].base[..], s[0].pool[..], s[0].seen[..]);
+}
+// The chapter's worked example: six points on the unit circle (x, y).
+HN_CIRCLE :: [12] f32.[1, 0, 0.6, 0.8, 0, 1, -0.6, 0.8, -1, 0, 0.6, -0.8];
+
+#test "a point's level counts the zero bit pairs at the bottom of its hash" {
+  #assert hn_level(0, 0) == hn_level_bits(cr_bits(0, 0));
+  #assert hn_level_bits(1) == 0 && hn_level_bits(2) == 0 && hn_level_bits(3) == 0 && hn_level_bits(4) == 1 && hn_level_bits(8) == 1;
+  #assert hn_level_bits(12) == 1 && hn_level_bits(16) == 2 && hn_level_bits(0x100) == 4 && hn_level_bits(0x8000_0000) == 15;
+  #assert hn_level_bits(0) == HN_LEVEL_MAX && hn_level_bits(0x4000_0000) == 15 && hn_level_bits(0x1000_0000) == 14;
+  // Over 4096 ids, about a quarter reach level 1 and a sixteenth level 2.
+  up := 0; up2 := 0;
+  for i: 0..<4096 { l := hn_level(7, i); if l >= 1 { up += 1; } if l >= 2 { up2 += 1; } }
+  #assert up > 900 && up < 1150 && up2 > 200 && up2 < 320;
+}
+
+// book:begin level
+// A point's level: how many of the lowest bit pairs of its hash are zero, up
+// to 15. Each pair is zero with probability 1/4, so a quarter of the points
+// reach level 1, a sixteenth level 2, and so on. The hash is chapter 54's
+// counter generator, keyed by the index's seed and the point's id.
+hn_level_bits :: (h: u64) -> int {
+  l := 0; x := h;
+  while l < HN_LEVEL_MAX && (x & 3) == 0 { l += 1; x = x >> 2; }
+  return l;
+}
+hn_level :: (seed: u64, id: int) -> int { return hn_level_bits(cr_bits(seed, cast(u64) id)); }
+// book:end level
+
+#test "an index refuses parameters and storage it cannot hold" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 4, 1) == HnStatus.ok && ix[0].capacity == 64 && ix[0].count == 0 && ix[0].entry == -1;
+  #assert ix[0].dim == 2 && ix[0].m == 2 && ix[0].ef_build == 4 && ix[0].seed == 1 && ix[0].top == -1 && ix[0].used == 0;
+  #assert hn_test_init(ix[..], s[..], 0, 2, 4, 1) == HnStatus.shape && hn_test_init(ix[..], s[..], 9, 2, 4, 1) == HnStatus.shape;
+  #assert hn_test_init(ix[..], s[..], 8, 2, 4, 1) == HnStatus.ok && hn_test_init(ix[..], s[..], 1, 2, 4, 1) == HnStatus.ok;
+  #assert hn_test_init(ix[..], s[..], 2, 1, 4, 1) == HnStatus.shape && hn_test_init(ix[..], s[..], 2, 5, 5, 1) == HnStatus.shape;
+  #assert hn_test_init(ix[..], s[..], 2, 4, 4, 1) == HnStatus.ok;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 1, 1) == HnStatus.budget && hn_test_init(ix[..], s[..], 2, 2, 2, 1) == HnStatus.ok;
+  #assert hn_test_init(ix[..], s[..], 2, 2, HN_EF_MAX + 1, 1) == HnStatus.budget && hn_test_init(ix[..], s[..], 2, 2, HN_EF_MAX, 1) == HnStatus.ok;
+  t := s[0];
+  #assert hn_init(ix[..], 2, 2, 4, 1, t.v[..], t.level[0..<0], t.upper[0..<0], t.base[0..<0], t.pool[..], t.seen[0..<0]) == HnStatus.shape;
+  #assert hn_init(ix[..], 2, 2, 4, 1, t.v[..], t.level[..], t.upper[0..<63], t.base[..], t.pool[..], t.seen[..]) == HnStatus.shape;
+  #assert hn_init(ix[..], 2, 2, 4, 1, t.v[..], t.level[..], t.upper[..], t.base[..], t.pool[..], t.seen[0..<63]) == HnStatus.shape;
+  #assert hn_init(ix[..], 2, 2, 4, 1, t.v[0..<127], t.level[..], t.upper[..], t.base[..], t.pool[..], t.seen[..]) == HnStatus.shape;
+  #assert hn_init(ix[..], 2, 2, 4, 1, t.v[0..<128], t.level[..], t.upper[..], t.base[0..<255], t.pool[..], t.seen[..]) == HnStatus.shape;
+  #assert hn_init(ix[..], 2, 2, 4, 1, t.v[0..<128], t.level[..], t.upper[..], t.base[0..<256], t.pool[0..<0], t.seen[..]) == HnStatus.ok;
+  #assert hn_init(ix[..], 2, 2, 4, 1, t.v[..], t.level[0..<1], t.upper[0..<1], t.base[..], t.pool[..], t.seen[0..<1]) == HnStatus.ok && ix[0].capacity == 1;
+  // The largest vectors and lists, for one point.
+  e: [1] HnEdge;
+  #assert hn_edge_init(ix[..], e[..], 1024, 32, 512) == HnStatus.ok && hn_edge_init(ix[..], e[..], 1025, 32, 512) == HnStatus.shape;
+  #assert hn_edge_init(ix[..], e[..], 1024, 33, 512) == HnStatus.shape && hn_edge_init(ix[..], e[..], 1024, 32, 31) == HnStatus.budget;
+  // Starting again empties an index that held points.
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  c := HN_CIRCLE;
+  for i: 0..<6 { #assert hn_add(ix[..], c[i * 2..<i * 2 + 2]).status == HnStatus.ok; }
+  #assert ix[0].count == 6 && ix[0].used == 4;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok && ix[0].count == 0 && ix[0].entry == -1 && ix[0].top == -1 && ix[0].used == 0;
+  for i: 0..<64 { #assert s[0].seen[i] == 0; }
+}
+HnEdge :: struct { v: [1025] f32; level: [1] int; upper: [1] int; base: [66] int; seen: [1] int; }
+hn_edge_init :: (ix: [] HnIndex, e: [] HnEdge, dim: int, m: int, ef: int) -> HnStatus {
+  return hn_init(ix, dim, m, ef, 9, e[0].v[..], e[0].level[..], e[0].upper[..], e[0].base[..], e[0].upper[0..<0], e[0].seen[..]);
+}
+
+// book:begin init
+// Checks the parameters and the storage, then empties the index. Neighbor
+// lists hold m links on levels 1 and up and 2m on level 0; ef_build is the
+// working-list size used while inserting.
+hn_init :: (ix: [] HnIndex, dim: int, m: int, ef_build: int, seed: u64,
+            vectors: [] f32, level: [] int, upper: [] int, base: [] int, pool: [] int, seen: [] int) -> HnStatus {
+  if dim < 1 || dim > HN_DIM_MAX || m < 2 || m > HN_M_MAX { return HnStatus.shape; }
+  if ef_build < m || ef_build > HN_EF_MAX { return HnStatus.budget; }
+  n := level.count;
+  if n < 1 || upper.count != n || seen.count != n { return HnStatus.shape; }
+  if vectors.count < n * dim || base.count < n * 2 * m { return HnStatus.shape; }
+  ix[0].dim = dim; ix[0].m = m; ix[0].ef_build = ef_build; ix[0].seed = seed;
+  ix[0].capacity = n; ix[0].count = 0; ix[0].entry = -1; ix[0].top = -1; ix[0].used = 0;
+  ix[0].vectors = vectors; ix[0].level = level; ix[0].upper = upper; ix[0].base = base; ix[0].pool = pool; ix[0].seen = seen;
+  for i: 0..<n { seen[i] = 0; }
+  return HnStatus.ok;
+}
+// book:end init
+
+// A point's stored vector and its neighbor list on one level.
+hn_vector :: (ix: [] HnIndex, id: int) -> [] f32 { d := ix[0].dim; return ix[0].vectors[id * d..<id * d + d]; }
+hn_links :: (ix: [] HnIndex, id: int, layer: int) -> [] int {
+  m := ix[0].m;
+  if layer == 0 { return ix[0].base[id * 2 * m..<id * 2 * m + 2 * m]; }
+  at := ix[0].upper[id] + (layer - 1) * m;
+  return ix[0].pool[at..<at + m];
+}
+hn_sim :: (ix: [] HnIndex, q: [] f32, id: int) -> f64 { ix[0].sims += 1; return bs_dot(q, hn_vector(ix, id)); }
+// Finite and within +-10^6, so every similarity is finite.
+hn_values_ok :: (v: [] f32) -> bool {
+  for x: v { if !(x == x) || abs(f64(x)) > HN_VALUE_MAX { return false; } }
+  return true;
+}
+
+#test "the working list keeps the best ef hits, best first, with ties to the lower id" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 4, 1) == HnStatus.ok;
+  hn_offer(ix[..], BsHit.{passage = 3, score = 0.5}, 3); #assert ix[0].wn == 1 && ix[0].w[0].passage == 3 && !ix[0].done[0];
+  hn_offer(ix[..], BsHit.{passage = 1, score = 0.9}, 3); #assert ix[0].wn == 2 && ix[0].w[0].passage == 1 && ix[0].w[1].passage == 3;
+  ix[0].done[0] = true;
+  hn_offer(ix[..], BsHit.{passage = 0, score = 0.5}, 3); #assert ix[0].wn == 3 && ix[0].w[1].passage == 0 && ix[0].w[2].passage == 3;
+  #assert ix[0].done[0] && !ix[0].done[1] && !ix[0].done[2];
+  hn_offer(ix[..], BsHit.{passage = 4, score = 0.5}, 3); #assert ix[0].wn == 3 && ix[0].w[2].passage == 3;
+  hn_offer(ix[..], BsHit.{passage = 5, score = 0.1}, 3); #assert ix[0].wn == 3 && ix[0].w[2].passage == 3;
+  ix[0].done[1] = true;
+  hn_offer(ix[..], BsHit.{passage = 2, score = 0.95}, 3); #assert ix[0].wn == 3;
+  #assert ix[0].w[0].passage == 2 && ix[0].w[1].passage == 1 && ix[0].w[2].passage == 0 && ix[0].w[0].score == 0.95;
+  #assert !ix[0].done[0] && ix[0].done[1] && ix[0].done[2];
+  hn_offer(ix[..], BsHit.{passage = 7, score = 0.2}, 4); #assert ix[0].wn == 4 && ix[0].w[3].passage == 7 && !ix[0].done[3];
+}
+
+// book:begin offer
+// Offers one hit to the working list of at most ef hits, sorted best first.
+// A hit that is not better than the last of a full list is turned away; the
+// list keeps which of its hits have had their links read (done).
+hn_offer :: (ix: [] HnIndex, hit: BsHit, ef: int) {
+  n := ix[0].wn;
+  if n == ef && !bs_before(hit, ix[0].w[n - 1]) { return; }
+  if n < ef { n += 1; }
+  j := n - 1;
+  while j > 0 && bs_before(hit, ix[0].w[j - 1]) { ix[0].w[j] = ix[0].w[j - 1]; ix[0].done[j] = ix[0].done[j - 1]; j -= 1; }
+  ix[0].w[j] = hit; ix[0].done[j] = false; ix[0].wn = n;
+}
+// book:end offer
+
+// book:begin layer
+// Searches one level, starting from the hits already in the working list.
+// Each round reads the links of the best hit not yet read; a neighbor seen
+// for the first time is scored and offered. The search ends when every hit
+// in the list has been read: a better point could only be reached through
+// one of them.
+hn_layer :: (ix: [] HnIndex, q: [] f32, layer: int, ef: int) {
+  while true {
+    i := 0;
+    while i < ix[0].wn && ix[0].done[i] { i += 1; }
+    if i == ix[0].wn { return; }
+    ix[0].done[i] = true;
+    links := hn_links(ix, ix[0].w[i].passage, layer);
+    for e: links {
+      if e < 0 { break; }
+      if ix[0].seen[e] == ix[0].stamp { continue; }
+      ix[0].seen[e] = ix[0].stamp;
+      hn_offer(ix, BsHit.{passage = e, score = hn_sim(ix, q, e)}, ef);
+    }
+  }
+}
+// A level search starts from the hits in the working list, none read yet.
+// The stamp numbers the level searches: a point is seen in this one when
+// its seen value equals the stamp, so nothing needs clearing.
+hn_restart :: (ix: [] HnIndex) {
+  ix[0].stamp += 1;
+  for i: 0..<ix[0].wn { ix[0].done[i] = false; ix[0].seen[ix[0].w[i].passage] = ix[0].stamp; }
+}
+// A search starts from the entry point alone.
+hn_start :: (ix: [] HnIndex, q: [] f32) {
+  ix[0].w[0] = BsHit.{passage = ix[0].entry, score = hn_sim(ix, q, ix[0].entry)}; ix[0].wn = 1;
+}
+// book:end layer
+
+#test "a link is kept in order of similarity to its owner, and a full list drops its worst" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 4, 1) == HnStatus.ok;
+  c := HN_CIRCLE;
+  for i: 0..<6 { for d: 0..<2 { s[0].v[i * 2 + d] = c[i * 2 + d]; } }
+  for i: 0..<16 { s[0].base[i] = -1; }
+  ix[0].count = 6;
+  hn_link(ix[..], 0, 0, 4); hn_link(ix[..], 0, 0, 2); hn_link(ix[..], 0, 0, 5);
+  l := hn_links(ix[..], 0, 0);
+  #assert l.count == 4 && l[0] == 5 && l[1] == 2 && l[2] == 4 && l[3] == -1;
+  hn_link(ix[..], 0, 0, 3); hn_link(ix[..], 0, 0, 1);
+  #assert l[0] == 1 && l[1] == 5 && l[2] == 2 && l[3] == 3;
+  hn_link(ix[..], 0, 0, 4);
+  #assert l[0] == 1 && l[1] == 5 && l[2] == 2 && l[3] == 3;
+  // Points 1 and 5 are equally similar to point 0; the lower id ranks first.
+  #assert hn_sim(ix[..], hn_vector(ix[..], 0), 1) == hn_sim(ix[..], hn_vector(ix[..], 0), 5);
+}
+
+// book:begin link
+// Adds a link from owner to id on one level, in order of similarity to the
+// owner. When the list is full, the least similar of the m + 1 (or 2m + 1)
+// candidates is dropped, which may be the new link.
+hn_link :: (ix: [] HnIndex, owner: int, layer: int, id: int) {
+  list := hn_links(ix, owner, layer);
+  me := hn_vector(ix, owner);
+  hit := BsHit.{passage = id, score = hn_sim(ix, me, id)};
+  j := 0;
+  while j < list.count && list[j] >= 0 && bs_before(BsHit.{passage = list[j], score = hn_sim(ix, me, list[j])}, hit) { j += 1; }
+  if j == list.count { return; }
+  k := list.count - 1;
+  while k > j { list[k] = list[k - 1]; k -= 1; }
+  list[j] = id;
+}
+// book:end link
+
+#test "the six circle points build the graph traced in the chapter" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  c := HN_CIRCLE;
+  levels := [6] int.[0, 1, 0, 0, 0, 1];
+  sims := [6] int.[0, 2, 6, 9, 11, 12]; walked := [6] int.[0, 1, 2, 2, 2, 2];
+  for i: 0..<6 {
+    r := hn_add(ix[..], c[i * 2..<i * 2 + 2]);
+    #assert r.status == HnStatus.ok && r.found == levels[i] && hn_level(5, i) == levels[i] && r.sims == sims[i] && r.levels == walked[i];
+  }
+  #assert ix[0].count == 6 && ix[0].entry == 1 && ix[0].top == 1 && ix[0].used == 4;
+  want0 := [24] int.[1, 5, 2, -1, 2, 0, 3, 5, 1, 3, 0, 4, 2, 4, 1, -1, 3, 2, -1, -1, 0, 1, -1, -1];
+  for i: 0..<24 { #assert s[0].base[i] == want0[i]; }
+  #assert s[0].pool[0] == 5 && s[0].pool[1] == -1 && s[0].pool[2] == 1 && s[0].pool[3] == -1;
+  #assert s[0].upper[1] == 0 && s[0].upper[5] == 2 && s[0].upper[2] == 2 && s[0].level[5] == 1 && s[0].level[4] == 0;
+}
+
+#test "adding a point refuses the wrong length, bad numbers and a full index" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  three := [3] f32.[1, 0, 0];
+  #assert hn_add(ix[..], three[..]).status == HnStatus.dimension && hn_add(ix[..], three[0..<1]).status == HnStatus.dimension && ix[0].count == 0;
+  zero := 0.0;
+  bad := [2] f32.[cast(f32) (zero / zero), 0];
+  #assert hn_add(ix[..], bad[..]).status == HnStatus.number;
+  big := [2] f32.[0, 1000001];
+  #assert hn_add(ix[..], big[..]).status == HnStatus.number;
+  edge := [2] f32.[0, -1000000];
+  #assert hn_add(ix[..], edge[..]).status == HnStatus.ok && ix[0].count == 1;
+  t := s[0];
+  #assert hn_init(ix[..], 2, 2, 2, 5, t.v[..], t.level[0..<2], t.upper[0..<2], t.base[..], t.pool[..], t.seen[0..<2]) == HnStatus.ok;
+  #assert hn_add(ix[..], edge[..]).status == HnStatus.ok && hn_add(ix[..], edge[..]).status == HnStatus.ok;
+  r := hn_add(ix[..], edge[..]);
+  #assert r.status == HnStatus.capacity && ix[0].count == 2;
+  // Point 1 has level 1 under seed 5 and needs m = 2 pool slots.
+  #assert hn_init(ix[..], 2, 2, 2, 5, t.v[..], t.level[..], t.upper[..], t.base[..], t.pool[0..<1], t.seen[..]) == HnStatus.ok;
+  #assert hn_add(ix[..], edge[..]).status == HnStatus.ok;
+  #assert hn_add(ix[..], edge[..]).status == HnStatus.capacity && ix[0].count == 1 && ix[0].used == 0;
+  #assert hn_init(ix[..], 2, 2, 2, 5, t.v[..], t.level[..], t.upper[..], t.base[..], t.pool[0..<2], t.seen[..]) == HnStatus.ok;
+  for i: 0..<3 { #assert hn_add(ix[..], edge[..]).status == HnStatus.ok; }
+  #assert ix[0].used == 2 && ix[0].count == 3;
+}
+
+// book:begin add
+// Inserts the next point (its id is the current count). From the entry
+// point, a greedy search (a working list of one) walks down every level
+// above the new point's own; on each level the point joins, a search with
+// ef_build finds its m nearest, which become its links, and each of them
+// links back. A point above the old top becomes the entry point.
+// found reports the point's level; sims, the similarities computed.
+hn_add :: (ix: [] HnIndex, v: [] f32) -> HnResult {
+  if v.count != ix[0].dim { return HnResult.{status = HnStatus.dimension}; }
+  if !hn_values_ok(v) { return HnResult.{status = HnStatus.number}; }
+  id := ix[0].count; m := ix[0].m;
+  if id == ix[0].capacity { return HnResult.{status = HnStatus.capacity}; }
+  l := hn_level(ix[0].seed, id);
+  if ix[0].used + l * m > ix[0].pool.count { return HnResult.{status = HnStatus.capacity}; }
+  before := ix[0].sims; stamp := ix[0].stamp;
+  ix[0].level[id] = l; ix[0].upper[id] = ix[0].used; ix[0].used += l * m;
+  me := hn_vector(ix, id);
+  for d: 0..<v.count { me[d] = v[d]; }
+  for layer: 0..<l + 1 { list := hn_links(ix, id, layer); for i: 0..<list.count { list[i] = -1; } }
+  ix[0].count = id + 1;
+  if id == 0 { ix[0].entry = 0; ix[0].top = l; return HnResult.{status = HnStatus.ok, found = l}; }
+  hn_start(ix, me);
+  layer := ix[0].top;
+  while layer > l { hn_restart(ix); hn_layer(ix, me, layer, 1); layer -= 1; }
+  while layer >= 0 {
+    hn_restart(ix); hn_layer(ix, me, layer, ix[0].ef_build);
+    list := hn_links(ix, id, layer);
+    j := 0;
+    while j < m && j < ix[0].wn { list[j] = ix[0].w[j].passage; j += 1; }
+    for e: list { if e < 0 { break; } hn_link(ix, e, layer, id); }
+    layer -= 1;
+  }
+  if l > ix[0].top { ix[0].entry = id; ix[0].top = l; }
+  return HnResult.{status = HnStatus.ok, found = l, sims = ix[0].sims - before, levels = ix[0].stamp - stamp};
+}
+// book:end add
+
+#test "searching the circle finds the hand-traced neighbors at each budget" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  c := HN_CIRCLE;
+  for i: 0..<6 { #assert hn_add(ix[..], c[i * 2..<i * 2 + 2]).status == HnStatus.ok; }
+  q := [2] f32.[0.8, -0.6];
+  out: [4] BsHit;
+  r := hn_search(ix[..], q[..], 2, 2, out[..]);
+  #assert r.status == HnStatus.ok && r.found == 2 && out[0].passage == 5 && out[1].passage == 0 && r.sims == 5 && r.levels == 2;
+  #assert out[0].score == f64(0.8f32) * f64(0.6f32) + f64(0.6f32) * f64(0.8f32) && out[1].score == f64(0.8f32);
+  r = hn_search(ix[..], q[..], 1, 1, out[..]);
+  #assert r.status == HnStatus.ok && r.found == 1 && out[0].passage == 5 && r.sims == 4;
+  r = hn_search(ix[..], q[..], 4, 4, out[..]);
+  #assert r.status == HnStatus.ok && r.found == 4 && out[0].passage == 5 && out[1].passage == 0 && out[2].passage == 1 && out[3].passage == 2 && r.sims == 7;
+  r = hn_search(ix[..], q[..], 4, 5, out[..]);
+  #assert r.status == HnStatus.ok && r.found == 4 && out[3].passage == 2;
+  // Fewer points than k: every point, in order.
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  for i: 0..<2 { #assert hn_add(ix[..], c[i * 2..<i * 2 + 2]).status == HnStatus.ok; }
+  r = hn_search(ix[..], q[..], 3, 3, out[..]);
+  #assert r.status == HnStatus.ok && r.found == 2 && out[0].passage == 0 && out[1].passage == 1;
+}
+
+#test "a search refuses a wrong length, bad numbers, an empty index and out-of-range budgets" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  q := [3] f32.[0.8, -0.6, 0];
+  out: [8] BsHit;
+  #assert hn_search(ix[..], q[0..<2], 1, 1, out[..]).status == HnStatus.empty;
+  c := HN_CIRCLE;
+  for i: 0..<6 { #assert hn_add(ix[..], c[i * 2..<i * 2 + 2]).status == HnStatus.ok; }
+  #assert hn_search(ix[..], q[..], 1, 1, out[..]).status == HnStatus.dimension && hn_search(ix[..], q[0..<1], 1, 1, out[..]).status == HnStatus.dimension;
+  #assert hn_search(ix[..], q[0..<2], 0, 1, out[..]).status == HnStatus.budget;
+  #assert hn_search(ix[..], q[0..<2], 2, 1, out[..]).status == HnStatus.budget;
+  #assert hn_search(ix[..], q[0..<2], 1, HN_EF_MAX + 1, out[..]).status == HnStatus.budget;
+  #assert hn_search(ix[..], q[0..<2], 1, HN_EF_MAX, out[..]).status == HnStatus.ok;
+  #assert hn_search(ix[..], q[0..<2], 3, 3, out[0..<2]).status == HnStatus.shape && hn_search(ix[..], q[0..<2], 2, 3, out[0..<2]).status == HnStatus.ok;
+  big := [2] f32.[1000001, 0];
+  #assert hn_search(ix[..], big[..], 1, 1, out[..]).status == HnStatus.number;
+  r := hn_search(ix[..], q[0..<1], 1, 1, out[..]);
+  #assert r.found == 0 && r.sims == 0;
+}
+
+// book:begin search
+// The k points most similar to q, best first, using a working list of ef on
+// level 0 (k <= ef <= 512). The levels above are walked greedily from the
+// entry point, as in hn_add. sims counts the similarities computed.
+hn_search :: (ix: [] HnIndex, q: [] f32, k: int, ef: int, out: [] BsHit) -> HnResult {
+  if q.count != ix[0].dim { return HnResult.{status = HnStatus.dimension}; }
+  if k < 1 || ef < k || ef > HN_EF_MAX { return HnResult.{status = HnStatus.budget}; }
+  if out.count < k { return HnResult.{status = HnStatus.shape}; }
+  if !hn_values_ok(q) { return HnResult.{status = HnStatus.number}; }
+  if ix[0].count == 0 { return HnResult.{status = HnStatus.empty}; }
+  before := ix[0].sims; stamp := ix[0].stamp;
+  hn_start(ix, q);
+  layer := ix[0].top;
+  while layer > 0 { hn_restart(ix); hn_layer(ix, q, layer, 1); layer -= 1; }
+  hn_restart(ix); hn_layer(ix, q, 0, ef);
+  n := 0;
+  while n < k && n < ix[0].wn { out[n] = ix[0].w[n]; n += 1; }
+  return HnResult.{status = HnStatus.ok, found = n, sims = ix[0].sims - before, levels = ix[0].stamp - stamp};
+}
+// book:end search
+
+#test "the exhaustive oracle scores every point and recall counts shared ids" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  c := HN_CIRCLE;
+  for i: 0..<6 { #assert hn_add(ix[..], c[i * 2..<i * 2 + 2]).status == HnStatus.ok; }
+  q := [2] f32.[0.8, -0.6]; scores: [64] f64; out: [6] BsHit;
+  r := hn_exact(ix[..], q[..], 6, scores[..], out[..]);
+  #assert r.status == HnStatus.ok && r.found == 6 && r.sims == 6;
+  want := [6] int.[5, 0, 1, 2, 4, 3];
+  for i: 0..<6 { #assert out[i].passage == want[i]; }
+  #assert hn_exact(ix[..], q[0..<1], 2, scores[..], out[..]).status == HnStatus.dimension;
+  #assert hn_exact(ix[..], q[..], 0, scores[..], out[..]).status == HnStatus.budget;
+  r = hn_exact(ix[..], q[..], 1, scores[..], out[..]);
+  #assert r.status == HnStatus.ok && r.found == 1 && out[0].passage == 5;
+  #assert hn_exact(ix[..], q[..], 7, scores[..], out[..]).status == HnStatus.shape;
+  #assert hn_exact(ix[..], q[..], 2, scores[0..<5], out[..]).status == HnStatus.shape && hn_exact(ix[..], q[..], 2, scores[0..<6], out[..]).status == HnStatus.ok;
+  a := [3] BsHit.[BsHit.{passage = 5}, BsHit.{passage = 0}, BsHit.{passage = 4}];
+  b := [3] BsHit.[BsHit.{passage = 0}, BsHit.{passage = 1}, BsHit.{passage = 5}];
+  #assert hn_shared(a[..], b[..]) == 2 && hn_shared(a[0..<1], b[..]) == 1 && hn_shared(a[..], b[0..<2]) == 1 && hn_shared(a[2..<3], b[..]) == 0;
+  #assert hn_shared(a[0..<0], b[..]) == 0;
+}
+
+// book:begin exact
+// The oracle: score every point and keep the best k with chapter 54's
+// bs_top. scores holds one value per point.
+hn_exact :: (ix: [] HnIndex, q: [] f32, k: int, scores: [] f64, out: [] BsHit) -> HnResult {
+  if q.count != ix[0].dim { return HnResult.{status = HnStatus.dimension}; }
+  if k < 1 { return HnResult.{status = HnStatus.budget}; }
+  if out.count < k || scores.count < ix[0].count { return HnResult.{status = HnStatus.shape}; }
+  for p: 0..<ix[0].count { scores[p] = bs_dot(q, hn_vector(ix, p)); }
+  n := bs_top(scores[0..<ix[0].count], -1.0e300, out[0..<k]);
+  return HnResult.{status = HnStatus.ok, found = n, sims = ix[0].count};
+}
+// How many of found's ids also appear in exact: recall at k is this over k.
+hn_shared :: (found: [] BsHit, exact: [] BsHit) -> int {
+  n := 0;
+  for a: found { for b: exact { if a.passage == b.passage { n += 1; break; } } }
+  return n;
+}
+// book:end exact
+
+// A fixture vector: dim values from the counter hash, uniform in [-1, 1),
+// scaled to unit length.
+hn_fixture :: (seed: u64, i: int, v: [] f32) {
+  t := 0.0;
+  for d: 0..<v.count {
+    x := f64(cr_bits(seed, cast(u64) (i * v.count + d)) >> 11) / 4503599627370496.0 - 1;
+    v[d] = cast(f32) x; t += f64(v[d]) * f64(v[d]);
+  }
+  r := sqrt(t);
+  for d: 0..<v.count { v[d] = cast(f32) (f64(v[d]) / r); }
+}
+
+#test "on 60 random unit vectors, recall against the oracle rises with ef and reaches 1" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 8, 4, 16, 11) == HnStatus.ok;
+  v: [8] f32;
+  built := 0;
+  for i: 0..<60 { hn_fixture(5, i, v[..]); r := hn_add(ix[..], v[..]); #assert r.status == HnStatus.ok; built += r.sims; }
+  // The counts come from an independent model of the same rules (Python, tooling only).
+  #assert built == 2876 && ix[0].top == 4 && ix[0].entry == 33;
+  hn_fixture(5, 0, v[..]);
+  #assert f32_bits(v[0]) == 0xbe0f295b && f32_bits(v[7]) == 0x3c6092d3;
+  hn_fixture(5, 1, v[..]);
+  #assert f32_bits(v[0]) == 0xbdb5091e && f32_bits(v[7]) == 0x3f07105b;
+  t := 0.0; for d: 0..<8 { t += f64(v[d]) * f64(v[d]); }
+  #assert abs(t - 1) < 1e-6;
+  scores: [64] f64; exact: [5] BsHit; found: [5] BsHit;
+  shared := [3] int.[0, 0, 0]; efs := [3] int.[5, 10, 60]; sims := [3] int.[0, 0, 0];
+  for qi: 0..<20 {
+    hn_fixture(6, qi, v[..]);
+    #assert hn_exact(ix[..], v[..], 5, scores[..], exact[..]).found == 5;
+    for b: 0..<3 {
+      r := hn_search(ix[..], v[..], 5, efs[b], found[..]);
+      #assert r.status == HnStatus.ok && r.found == 5;
+      shared[b] += hn_shared(found[..], exact[..]); sims[b] += r.sims;
+      for i: 1..<5 { #assert bs_before(found[i - 1], found[i]); }
+    }
+  }
+  #assert shared[0] == 83 && shared[1] == 98 && shared[2] == 100;
+  #assert sims[0] == 617 && sims[1] == 838 && sims[2] == 1361;
+}
+
+#test "memory and file size follow the layout" {
+  s: [1] HnTest; ix: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  #assert hn_memory(ix[..]) == 0 && hn_file_size(ix[..]) == 88;
+  c := HN_CIRCLE;
+  for i: 0..<6 { #assert hn_add(ix[..], c[i * 2..<i * 2 + 2]).status == HnStatus.ok; }
+  // Six points of 8 vector bytes, 24 bookkeeping bytes and 32 link bytes, and 4 pool slots.
+  #assert hn_memory(ix[..]) == 6 * (8 + 24 + 32) + 4 * 8;
+  #assert hn_file_size(ix[..]) == 80 + 6 + 6 * 8 + 6 * 16 + 4 * 4 + 8;
+}
+
+#test "a saved index reloads to the same graph and the same answers" {
+  s: [1] HnTest; ix: [1] HnIndex; t: [1] HnTest; iy: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  c := HN_CIRCLE;
+  for i: 0..<6 { #assert hn_add(ix[..], c[i * 2..<i * 2 + 2]).status == HnStatus.ok; }
+  file: [512] u8;
+  n := hn_save(ix[..], file[..]);
+  #assert n == hn_file_size(ix[..]) && n == 254;
+  #assert cast(string) file[0..<8] == HN_MAGIC && file[8] == 1 && file[9] == 0 && file[16] == 2 && file[24] == 2 && file[32] == 2 && file[40] == 5;
+  #assert file[48] == 6 && file[56] == 2 && file[64] == 2 && file[72] == 4 && file[80] == 0 && file[81] == 1 && file[85] == 1;
+  #assert hn_save(ix[..], file[0..<253]) == -1;
+  #assert hn_test_init(iy[..], t[..], 1, 2, 2, 0) == HnStatus.ok;
+  #assert hn_load(iy[..], file[0..<n]) == HnStatus.ok;
+  #assert iy[0].dim == 2 && iy[0].m == 2 && iy[0].ef_build == 2 && iy[0].seed == 5 && iy[0].count == 6 && iy[0].entry == 1 && iy[0].top == 1 && iy[0].used == 4;
+  for i: 0..<12 { #assert f32_bits(t[0].v[i]) == f32_bits(s[0].v[i]); }
+  for i: 0..<24 { #assert t[0].base[i] == s[0].base[i]; }
+  for i: 0..<4 { #assert t[0].pool[i] == s[0].pool[i]; }
+  for i: 0..<6 { #assert t[0].level[i] == s[0].level[i] && t[0].upper[i] == s[0].upper[i]; }
+  q := [2] f32.[0.8, -0.6]; a: [4] BsHit; b: [4] BsHit;
+  ra := hn_search(ix[..], q[..], 4, 4, a[..]); rb := hn_search(iy[..], q[..], 4, 4, b[..]);
+  #assert ra.found == 4 && rb.found == 4 && ra.sims == rb.sims;
+  for i: 0..<4 { #assert a[i].passage == b[i].passage && a[i].score == b[i].score; }
+  // Saving the reloaded index gives the same bytes.
+  again: [512] u8;
+  #assert hn_save(iy[..], again[..]) == n;
+  for i: 0..<n { #assert again[i] == file[i]; }
+  // An empty index saves and reloads too.
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok && hn_save(ix[..], file[..]) == 88;
+  #assert hn_load(iy[..], file[0..<88]) == HnStatus.ok && iy[0].count == 0 && iy[0].entry == -1 && iy[0].top == -1;
+}
+
+// Rewrites the checksum after a deliberate edit, so the edit itself is what a load sees.
+hn_reseal :: (file: [] u8) { hn_put(file, file.count - 8, hn_fnv(file[0..<file.count - 8])); }
+
+#test "a damaged or inconsistent file is refused" {
+  s: [1] HnTest; ix: [1] HnIndex; t: [1] HnTest; iy: [1] HnIndex;
+  #assert hn_test_init(ix[..], s[..], 2, 2, 2, 5) == HnStatus.ok;
+  c := HN_CIRCLE;
+  for i: 0..<6 { #assert hn_add(ix[..], c[i * 2..<i * 2 + 2]).status == HnStatus.ok; }
+  good: [254] u8; f: [254] u8;
+  #assert hn_save(ix[..], good[..]) == 254;
+  #assert hn_test_init(iy[..], t[..], 2, 2, 2, 5) == HnStatus.ok;
+  #assert hn_load(iy[..], good[0..<253]) == HnStatus.format && hn_load(iy[..], good[0..<87]) == HnStatus.format && hn_load(iy[..], good[0..<0]) == HnStatus.format;
+  // Any flipped bit fails the checksum.
+  for at: 0..<254 { f = good; f[at] ^= 1; #assert hn_load(iy[..], f[..]) == HnStatus.format; }
+  #assert hn_load(iy[..], good[..]) == HnStatus.ok;
+  // Edits that keep a valid checksum are still caught by the structure checks.
+  f = good; f[0] = 'X'; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[8] = 2; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[16] = 9; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[16] = 0; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[24] = 1; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[32] = 1; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[40] = 6; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[48] = 5; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[55] = 1; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[56] = 6; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[56] = 0; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[64] = 1; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[64] = 3; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[72] = 2; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[80] = 1; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  // A vector value that is not a number: point 0's x becomes 0x7fc00000.
+  f = good; f[89] = 0x7f; f[88] = 0xc0; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  // Infinity, and a finite value above 10^6 (2^20).
+  f = good; f[89] = 0x7f; f[88] = 0x80; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[89] = 0x49; f[88] = 0x80; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[89] = 0x49; f[88] = 0x74; f[87] = 0x24; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.ok && t[0].v[0] == 1000000;
+  // The same for the last value, point 5's y.
+  f = good; f[133] = 0x49; f[132] = 0x80; f[131] = 0; f[130] = 0; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[133] = 0x7f; f[132] = 0x80; f[131] = 0; f[130] = 0; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  // Links (stored plus one): past the last point, to itself, after an empty
+  // slot, or to a point that is not on that level.
+  links := 86 + 48;
+  f = good; f[links] = 7; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[links] = 1; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[links + 8] = 0; f[links + 12] = 4; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[links + 96] = 1; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[links + 100] = 2; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[links + 104] = 0; f[links + 108] = 2; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.format;
+  f = good; f[links + 12] = 5; hn_reseal(f[..]); #assert hn_load(iy[..], f[..]) == HnStatus.ok && t[0].base[3] == 4;
+  // Storage too small for the file: too few points, or too few pool slots.
+  u := t[0];
+  #assert hn_init(iy[..], 2, 2, 2, 5, u.v[..], u.level[0..<5], u.upper[0..<5], u.base[..], u.pool[..], u.seen[0..<5]) == HnStatus.ok;
+  #assert hn_load(iy[..], good[..]) == HnStatus.capacity;
+  #assert hn_init(iy[..], 2, 2, 2, 5, u.v[..], u.level[0..<6], u.upper[0..<6], u.base[..], u.pool[0..<3], u.seen[0..<6]) == HnStatus.ok;
+  #assert hn_load(iy[..], good[..]) == HnStatus.capacity;
+  #assert hn_init(iy[..], 2, 2, 2, 5, u.v[..], u.level[0..<6], u.upper[0..<6], u.base[..], u.pool[0..<4], u.seen[0..<6]) == HnStatus.ok;
+  #assert hn_load(iy[..], good[..]) == HnStatus.ok;
+  // Storage that fits 2-dimensional points but not 9-dimensional ones.
+  #assert hn_init(iy[..], 2, 2, 2, 5, u.v[0..<12], u.level[0..<6], u.upper[0..<6], u.base[..], u.pool[..], u.seen[0..<6]) == HnStatus.ok;
+  #assert hn_load(iy[..], good[..]) == HnStatus.ok;
+  #assert hn_init(iy[..], 2, 2, 2, 5, u.v[0..<11], u.level[0..<5], u.upper[0..<5], u.base[..], u.pool[..], u.seen[0..<5]) == HnStatus.ok;
+  #assert hn_load(iy[..], good[..]) == HnStatus.capacity;
+}
+
+// book:begin size
+// Bytes held for the stored points: each point's vector (4 bytes a value),
+// its level, pool offset and search stamp (8 bytes each), its 2m level-0
+// link slots (8 bytes each), and every pool slot handed out (8 bytes each).
+hn_memory :: (ix: [] HnIndex) -> int {
+  return ix[0].count * (4 * ix[0].dim + 24 + 16 * ix[0].m) + 8 * ix[0].used;
+}
+// The saved file: an 80-byte header, a byte per level, 4 bytes per value
+// and per link slot, and an 8-byte checksum.
+hn_file_size :: (ix: [] HnIndex) -> int {
+  n := ix[0].count;
+  return HN_HEADER + n + 4 * n * ix[0].dim + 8 * n * ix[0].m + 4 * ix[0].used + 8;
+}
+// book:end size
+
+// Little-endian words and the FNV-1a checksum of the file.
+hn_put :: (out: [] u8, at: int, v: u64) { for i: 0..<8 { out[at + i] = cast,trunc(u8) (v >> cast(u64) (8 * i)); } }
+hn_get :: (b: [] u8, at: int) -> u64 { v: u64 = 0; for i: 0..<8 { v = v | (cast(u64) b[at + i] << cast(u64) (8 * i)); } return v; }
+hn_put4 :: (out: [] u8, at: int, v: u32) { for i: 0..<4 { out[at + i] = cast,trunc(u8) (v >> cast(u32) (8 * i)); } }
+hn_get4 :: (b: [] u8, at: int) -> u32 { v: u32 = 0; for i: 0..<4 { v = v | (cast(u32) b[at + i] << cast(u32) (8 * i)); } return v; }
+hn_fnv :: (b: [] u8) -> u64 {
+  h: u64 = 0xcbf29ce484222325;
+  for x: b { h = mul_wrap(h ^ cast(u64) x, cast(u64) 0x100000001b3); }
+  return h;
+}
+
+#test "words, links and the checksum have fixed encodings" {
+  b: [8] u8;
+  hn_put(b[..], 0, 0x0102030405060708);
+  #assert b[0] == 8 && b[1] == 7 && b[7] == 1 && hn_get(b[..], 0) == 0x0102030405060708;
+  hn_put4(b[..], 4, 0xa1b2c3d4);
+  #assert b[4] == 0xd4 && b[5] == 0xc3 && b[7] == 0xa1 && hn_get4(b[..], 4) == 0xa1b2c3d4 && b[3] == 5;
+  #assert hn_fnv(b[0..<0]) == 0xcbf29ce484222325;
+  a := [2] u8.['a', 'b'];
+  #assert hn_fnv(a[0..<1]) == 0xaf63dc4c8601ec8c && hn_fnv(a[..]) == 0x089c4407b545986a;
+}
+
+// book:begin save
+// Writes the index into out and returns its length, or -1 when out is too
+// small. Links are stored plus one, so an empty slot is 0.
+hn_save :: (ix: [] HnIndex, out: [] u8) -> int {
+  size := hn_file_size(ix);
+  if out.count < size { return -1; }
+  n := ix[0].count; d := ix[0].dim; m := ix[0].m;
+  for i: 0..<8 { out[i] = HN_MAGIC[i]; }
+  head := [9] u64.[cast(u64) HN_VERSION, cast(u64) d, cast(u64) m, cast(u64) ix[0].ef_build, ix[0].seed,
+    cast(u64) n, cast(u64) (ix[0].entry + 1), cast(u64) (ix[0].top + 1), cast(u64) ix[0].used];
+  for i: 0..<9 { hn_put(out, 8 + 8 * i, head[i]); }
+  at := HN_HEADER;
+  for i: 0..<n { out[at] = cast(u8) ix[0].level[i]; at += 1; }
+  for i: 0..<n * d { hn_put4(out, at, f32_bits(ix[0].vectors[i])); at += 4; }
+  for i: 0..<n * 2 * m { hn_put4(out, at, cast(u32) (ix[0].base[i] + 1)); at += 4; }
+  for i: 0..<ix[0].used { hn_put4(out, at, cast(u32) (ix[0].pool[i] + 1)); at += 4; }
+  hn_put(out, at, hn_fnv(out[0..<at]));
+  return size;
+}
+// book:end save
+
+// book:begin load
+// Reads a saved index into ix's storage. The file must carry a matching
+// checksum and be exactly the size its header implies. Then every stored
+// fact is checked against the rules that built it: each level is the seed's
+// level for that id, the pool holds m slots per level above 0, the entry is
+// the first point on the top level, every value is finite, and every link
+// names another point on that level, filled slots first. A valid file that
+// does not fit ix's storage is refused with capacity.
+hn_load :: (ix: [] HnIndex, file: [] u8) -> HnStatus {
+  if file.count < HN_HEADER + 8 { return HnStatus.format; }
+  if hn_fnv(file[0..<file.count - 8]) != hn_get(file, file.count - 8) { return HnStatus.format; }
+  if cast(string) file[0..<8] != HN_MAGIC || hn_get(file, 8) != cast(u64) HN_VERSION { return HnStatus.format; }
+  dw := hn_get(file, 16); mw := hn_get(file, 24); efw := hn_get(file, 32); seed := hn_get(file, 40);
+  if dw < 1 || dw > cast(u64) HN_DIM_MAX || mw < 2 || mw > cast(u64) HN_M_MAX || efw < mw || efw > cast(u64) HN_EF_MAX { return HnStatus.format; }
+  d := cast(int) dw; m := cast(int) mw; ef := cast(int) efw;
+  // The header's sizes must account for the file's length exactly.
+  room := file.count - HN_HEADER - 8; per := 1 + 4 * d + 8 * m;
+  if hn_get(file, 48) > cast(u64) (room / per) { return HnStatus.format; }
+  n := cast(int) hn_get(file, 48); rest := room - n * per;
+  if rest % 4 != 0 || hn_get(file, 72) != cast(u64) (rest / 4) { return HnStatus.format; }
+  used := rest / 4;
+  vectors := ix[0].vectors; level := ix[0].level; upper := ix[0].upper; base := ix[0].base; pool := ix[0].pool; seen := ix[0].seen;
+  if hn_init(ix, d, m, ef, seed, vectors, level, upper, base, pool, seen) != HnStatus.ok { return HnStatus.capacity; }
+  if n > ix[0].capacity || used > pool.count { return HnStatus.capacity; }
+  at := HN_HEADER; total := 0; top := -1; entry := -1;
+  for i: 0..<n {
+    l := cast(int) file[at]; at += 1;
+    if l != hn_level(seed, i) { return HnStatus.format; }
+    level[i] = l; upper[i] = total; total += l * m;
+    if l > top { top = l; entry = i; }
+  }
+  if total != used || hn_get(file, 56) != cast(u64) (entry + 1) || hn_get(file, 64) != cast(u64) (top + 1) { return HnStatus.format; }
+  for i: 0..<n * d {
+    bits := hn_get4(file, at); at += 4;
+    if (bits >> 23) & 0xff == 0xff { return HnStatus.format; }
+    vectors[i] = f32_from_bits(bits);
+  }
+  if !hn_values_ok(vectors[0..<n * d]) { return HnStatus.format; }
+  for i: 0..<n * 2 * m { base[i] = cast(int) hn_get4(file, at) - 1; at += 4; }
+  for i: 0..<used { pool[i] = cast(int) hn_get4(file, at) - 1; at += 4; }
+  for id: 0..<n {
+    for layer: 0..<level[id] + 1 {
+      empty := false;
+      for e: hn_links(ix, id, layer) {
+        if e < 0 { empty = true; continue; }
+        if empty || e >= n || e == id || level[e] < layer { return HnStatus.format; }
+      }
+    }
+  }
+  ix[0].count = n; ix[0].entry = entry; ix[0].top = top; ix[0].used = used;
+  return HnStatus.ok;
+}
+// book:end load
+
+#test "a saved file may hold the largest and smallest parameters, and no more" {
+  e: [1] HnEdge; ix: [1] HnIndex; file: [88] u8;
+  #assert hn_edge_init(ix[..], e[..], 1024, 32, 512) == HnStatus.ok && hn_save(ix[..], file[..]) == 88;
+  #assert ix[0].seed == 9 && ix[0].pool.count == 0;
+  #assert hn_load(ix[..], file[..]) == HnStatus.ok && ix[0].dim == 1024 && ix[0].m == 32 && ix[0].ef_build == 512 && ix[0].seed == 9;
+  f := file;
+  f[16] = 1; hn_reseal(f[..]); #assert hn_load(ix[..], f[..]) == HnStatus.format;
+  f = file; f[24] = 33; hn_reseal(f[..]); #assert hn_load(ix[..], f[..]) == HnStatus.format;
+  f = file; f[32] = 1; f[33] = 2; hn_reseal(f[..]); #assert hn_load(ix[..], f[..]) == HnStatus.format;
+  #assert hn_edge_init(ix[..], e[..], 1, 2, 2) == HnStatus.ok && hn_save(ix[..], file[..]) == 88;
+  #assert hn_load(ix[..], file[..]) == HnStatus.ok && ix[0].dim == 1 && ix[0].m == 2 && ix[0].ef_build == 2;
+  f = file; f[16] = 0; hn_reseal(f[..]); #assert hn_load(ix[..], f[..]) == HnStatus.format;
+  f = file; f[24] = 1; f[32] = 1; hn_reseal(f[..]); #assert hn_load(ix[..], f[..]) == HnStatus.format;
+  // An empty index whose header claims a point, or a pool slot.
+  f = file; f[48] = 1; hn_reseal(f[..]); #assert hn_load(ix[..], f[..]) == HnStatus.format;
+  f = file; f[72] = 1; hn_reseal(f[..]); #assert hn_load(ix[..], f[..]) == HnStatus.format;
+}
