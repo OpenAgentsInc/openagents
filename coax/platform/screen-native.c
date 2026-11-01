@@ -98,6 +98,7 @@ int64_t cxscr_open(void) {
   scr_w = scr_mode.hdisplay; scr_h = scr_mode.vdisplay;
   if (scr_make(&scr_buf[0]) < 0 || scr_make(&scr_buf[1]) < 0) return -5;
   if (drmModeSetCrtc(scr_fd, scr_crtc, scr_buf[0].fb, 0, 0, &scr_conn, 1, &scr_mode) < 0) return -6;
+  drmModeSetCursor(scr_fd, scr_crtc, 0, 0, 0);   /* a cursor another session left on the CRTC: off (the pointer is drawn in the frame) */
   scr_back = 1;
   return 0;
 }
@@ -258,6 +259,7 @@ int64_t cxvt_poll(void) {
       if (poll(&q, 1, 0) > 0) { drmEventContext ev = {.version = 2, .page_flip_handler = scr_on_flip}; drmHandleEvent(scr_fd, &ev); }
       scr_flip_pending = 0;
       drmModeSetCrtc(scr_fd, scr_crtc, scr_buf[scr_back ^ 1].fb, 0, 0, &scr_conn, 1, &scr_mode);
+      drmModeSetCursor(scr_fd, scr_crtc, 0, 0, 0);
     }
     struct input_event junk[64];
     for (int i = 0; i < in_n; i++) { if (in_file) continue; while (read(in_fd[i], junk, sizeof junk) > 0) {} ioctl(in_fd[i], EVIOCGRAB, 1); }
