@@ -24,7 +24,7 @@ events match.
 
 | File | What it holds |
 | --- | --- |
-| `coax/lib/nostr/store_index.coax` | New in this chapter: `NsiIndex`, `nsi_build`, `nsi_query`, its checks and the `#forall` that compares the index with the scan |
+| `coax/lib/nostr/store_index.coax` | New in this chapter: `NsiIndex`, `nsi_build`, `nsi_query`, its checks, and the generated check that compares the index with the scan |
 | `coax/lib/nostr/store.coax` | `rsd_query`, the scan: every record, `nf_match`, then `ns_store_insert` |
 | `coax/lib/nostr/store_core.coax` | `ns_store_newer` (the order), `ns_store_insert` (the cut at the limit), `ns_store_visible` |
 | `coax/lib/nostr/relay_server.coax` | `rs_limit`, `rs_cost`, `rs_req` and the limits `RS_MAX_SUBS`, `RS_MAX_FILTERS`, `RS_MAX_LIMIT`, `RS_MAX_COST` |
@@ -83,8 +83,8 @@ search finds the range of records that share a key.
   record.
 - **By author and kind.** Sorted by public key, then kind. One
   `(author, kind)` pair is the range from `(author, kind)` to
-  `(author, kind + 1)`. An author alone is the range from `(author, 0)` to
-  `(author, 65536)`.
+  `(author, kind + 1)`. An author alone is the range of records with that
+  public key, whatever their kind.
 - **By tag.** One entry per tag whose name decodes to one ASCII letter and
   whose second element is a string. The key is a 31-bit hash of the name
   and the decoded value, so `["t","a"]` has the same key as
@@ -93,6 +93,10 @@ search finds the range of records that share a key.
 - **By time.** Sorted in query order. `since` and `until` become one range
   by binary search, and because the range is already in answer order, the
   walk stops after `limit` matches.
+
+`nsi_build` sorts the record numbers by insertion, so records that tie in
+an order (one author and kind, or one tag key) stay in record order, and
+each order has one right answer that a check can state.
 
 The rule that keeps the answer exact: an index must return every record
 that could match (it may return more), and every record it returns goes
@@ -113,8 +117,14 @@ reads the smallest:
 4. Each tag list counts its values' ranges. A tag wins when its count is
    smaller than the best so far, or equal to the time range's.
 
-A filter whose fields `nf_valid` refuses matches nothing in the scan, so
-`nsi_query` returns 0 without reading. A refused index, one that was never
+The count comes from the same code that reads the index (`nsi_range` with
+`read` false), so the winning count is exactly `scanned`, the number of
+records the answer reads. Only the time walk can read fewer, when it stops
+at the limit.
+
+A filter whose fields `nf_valid` refuses matches nothing in the scan, and
+neither does one whose `since` is after its `until`, so `nsi_query` returns
+0 without reading. A refused index, one that was never
 built or whose store has changed since, returns `n = -1`.
 
 <!-- source: coax/lib/nostr/store_index.coax query -->
@@ -126,6 +136,37 @@ nsi_take :: (s: [] RsdStore, f: NostrFilter, now: int, i: int, n: int, limit: in
   for k: 0..<n { if out[k] == i { return n; } }
   return ns_store_insert(s, i, n, limit, out);
 }
+// One index's candidates at[from..<to]: counted, and taken into out (n[0]
+// long) when read is set. Choosing an index counts; answering reads.
+nsi_range :: (s: [] RsdStore, f: NostrFilter, now: int, limit: int, out: [] int, n: [] int, read: bool, at: [] int, from: int, to: int) -> int {
+  if read { for i: from..<to { n[0] = nsi_take(s, f, now, at[i], n[0], limit, out); } }
+  return to - from;
+}
+// Each ids value's record, if it is stored.
+nsi_ids :: (s: [] RsdStore, x: NsiIndex, f: NostrFilter, now: int, limit: int, out: [] int, n: [] int, read: bool) -> int {
+  c := 0;
+  for v: f.ids {
+    key: [32] u8; nsi_hex32(v, key[..]);
+    c += nsi_range(s, f, now, limit, out, n, read, x.by_id, nsi_bound(s, x.by_id, x.n, key, false, false), nsi_bound(s, x.by_id, x.n, key, false, true));
+  }
+  return c;
+}
+// Each author's records, or with kinds each (author, kind) pair's.
+nsi_authors :: (s: [] RsdStore, x: NsiIndex, f: NostrFilter, now: int, limit: int, out: [] int, n: [] int, read: bool) -> int {
+  c := 0;
+  for a: f.authors {
+    key: [32] u8; nsi_hex32(a, key[..]);
+    if f.has_kinds { for k: f.kinds { c += nsi_range(s, f, now, limit, out, n, read, x.by_ak, nsi_ak_lower(s, x, key, k), nsi_ak_lower(s, x, key, k + 1)); } }
+    else { c += nsi_range(s, f, now, limit, out, n, read, x.by_ak, nsi_bound(s, x.by_ak, x.n, key, true, false), nsi_bound(s, x.by_ak, x.n, key, true, true)); }
+  }
+  return c;
+}
+// Each value's entries in one tag list.
+nsi_tags :: (s: [] RsdStore, x: NsiIndex, f: NostrFilter, t: NostrTagFilter, now: int, limit: int, out: [] int, n: [] int, read: bool) -> int {
+  c := 0;
+  for v: t.values { key := nsi_key(t.name, v); c += nsi_range(s, f, now, limit, out, n, read, x.tag_rec, nsi_tag_lower(x, key), nsi_tag_lower(x, key + 1)); }
+  return c;
+}
 // Up to rs_limit(f) (and out.count) visible records matching f, newest
 // first, then lowest id, exactly as rsd_query, read through one index.
 nsi_query :: (s: [] RsdStore, ix: [] NsiIndex, f: NostrFilter, now: int, out: [] int) -> NsiResult {
@@ -133,44 +174,24 @@ nsi_query :: (s: [] RsdStore, ix: [] NsiIndex, f: NostrFilter, now: int, out: []
   if !x.ok || x.n != s[0].n || x.used != s[0].used { return NsiResult.{n = -1, plan = NSI_REFUSED}; }
   later := ns_store_seen(s, now);
   limit := rs_limit(f);
-  if !nf_valid(f) || limit == 0 || out.count == 0 { return NsiResult.{}; }
+  if !nf_valid(f) || limit == 0 || out.count == 0 || (f.has_since && f.has_until && f.since > f.until) { return NsiResult.{}; }
+  n: [1] int; tag: int;
   res := NsiResult.{plan = NSI_TIME};
-  tag := -1;
   span := nsi_time_range(s, x, f);
   best := span.to - span.from;
   if f.has_ids { res.plan = NSI_ID; }
   else {
-    if f.has_authors { c := nsi_author_count(s, x, f); if c <= best { best = c; res.plan = ifx f.has_kinds then NSI_AUTHOR_KIND else NSI_AUTHOR; } }
-    for k: 0..<f.tags.count { c := nsi_tag_count(x, f.tags[k]); if c < best || (c == best && res.plan == NSI_TIME) { best = c; tag = k; res.plan = NSI_TAG; } }
+    if f.has_authors { c := nsi_authors(s, x, f, now, limit, out, n[..], false); if c <= best { best = c; res.plan = ifx f.has_kinds then NSI_AUTHOR_KIND else NSI_AUTHOR; } }
+    for k: 0..<f.tags.count { c := nsi_tags(s, x, f, f.tags[k], now, limit, out, n[..], false); if c < best || (c == best && res.plan == NSI_TIME) { best = c; tag = k; res.plan = NSI_TAG; } }
   }
-  n := 0;
-  if res.plan == NSI_ID {
-    for v: f.ids {
-      key: [32] u8; nsi_hex32(v, key[..]);
-      at := nsi_id_lower(s, x, key);
-      while at < x.n && ns_equal32(s[0].recs[x.by_id[at]].id, key) { res.scanned += 1; n = nsi_take(s, f, now, x.by_id[at], n, limit, out); at += 1; }
-    }
-  } else if res.plan == NSI_AUTHOR_KIND || res.plan == NSI_AUTHOR {
-    for a: f.authors {
-      key: [32] u8; nsi_hex32(a, key[..]);
-      if f.has_kinds {
-        for k: f.kinds { to := nsi_ak_lower(s, x, key, k + 1); for at: nsi_ak_lower(s, x, key, k)..<to { res.scanned += 1; n = nsi_take(s, f, now, x.by_ak[at], n, limit, out); } }
-      } else {
-        to := nsi_ak_lower(s, x, key, 65536); for at: nsi_ak_lower(s, x, key, 0)..<to { res.scanned += 1; n = nsi_take(s, f, now, x.by_ak[at], n, limit, out); }
-      }
-    }
-  } else if res.plan == NSI_TAG {
-    t := f.tags[tag];
-    for v: t.values {
-      key := nsi_key(t.name, v); to := nsi_tag_lower(x, key + 1);
-      for at: nsi_tag_lower(x, key)..<to { res.scanned += 1; n = nsi_take(s, f, now, x.tag_rec[at], n, limit, out); }
-    }
-  } else {
+  if res.plan == NSI_ID { res.scanned = nsi_ids(s, x, f, now, limit, out, n[..], true); }
+  else if res.plan == NSI_TAG { res.scanned = nsi_tags(s, x, f, f.tags[tag], now, limit, out, n[..], true); }
+  else if res.plan == NSI_TIME {
     // time order is the answer's order: stop at the limit
     at := span.from;
-    while at < span.to && n < limit && n < out.count { res.scanned += 1; n = nsi_take(s, f, now, x.by_time[at], n, limit, out); at += 1; }
-  }
-  res.n = n;
+    while at < span.to && n[0] < limit && n[0] < out.count { res.scanned += 1; n[0] = nsi_take(s, f, now, x.by_time[at], n[0], limit, out); at += 1; }
+  } else { res.scanned = nsi_authors(s, x, f, now, limit, out, n[..], true); }
+  res.n = n[0];
   return res;
 }
 ```
@@ -523,7 +544,7 @@ indexes, filters 3, 5 and 9, the refusals and the recording:
 ```text
 the indexes, as record names
   by id:     e3(0976) e4(2b76) e1(2f95) e2(3721) e8(75e5) e5(9c69) e7(9efd) e6(fac7)
-  by author, kind: e8(B,0) e6(B,1) e3(B,1) e4(B,7) e7(A,1) e2(A,1) e1(A,1) e5(A,30023)
+  by author, kind: e8(B,0) e3(B,1) e6(B,1) e4(B,7) e1(A,1) e2(A,1) e7(A,1) e5(A,30023)
   by time:   e7 e6 e5 e4 e3 e2 e1 e8
   9 tag entries: e4 e5 e4 e2 e3 e5 e1 e3 e7 (sorted by key)
 ...
@@ -685,11 +706,36 @@ coax/bin/coax test nostr/examples/checks/match-indexes.coax --run-steps 25000000
 
 ### The library's checks
 
-`coax/bin/coax test coax/lib/nostr/store_index.coax` runs five `#test`s and
-one `#forall`:
+`coax/bin/coax test coax/lib/nostr/store_index.coax` runs eight `#test`s.
+The first is this chapter's worked example again, built from unsigned
+records with the same authors, kinds, times, tags and first two ID bytes
+(`NOW` is 1000). It asserts every entry of the three orders and the nine
+tag entries, the keys of `t nostr`, `t coax` and `d intro`, and for each of
+the eleven filters the plan, the count read and the answer. Ten more
+filters pin each rule of the choice at its edge:
 
+| Filter | Candidates | Plan, read |
+| --- | --- | --- |
+| `authors [A]`, `kinds [1]`, `#t nostr` | `(A, 1)` 3, tag 3 | author and kind, 3: the author index keeps a tie |
+| `authors [A]`, `kinds [30023]`, `#t coax` | `(A, 30023)` 1, tag 3 | author and kind, 1 |
+| `authors [B]`, `kinds [0]` | `(B, 0)` 1 | author and kind, 1: not B's kind 1 |
+| `since NOW`, `until NOW-100` | | none, 0: nothing can match |
+| `since NOW-200`, `until NOW-200` | time 2 | time, 2: e3, e2 |
+| `kinds [1]`, room for 2 in `out` | time 8 | time, 2: the walk stops when `out` is full |
+| `authors [B]`, `until NOW-300` | time 2 (e1, e8), B 4 | time, 2: e8 |
+| `#d intro` and `#t coax`, in either order | 1 and 3 | tag, 1 |
+| `#t nostr`, `since NOW` | time 2, tag 3 | time, 2: e7 |
+| `#t nostr`, `since NOW-50` | time 3, tag 3 | tag, 3: the tag takes a tie with time |
+
+Then it stores e9, checks that the old index is refused, rebuilds, and
+asserts the new orders and `#t coax` reading 4.
+
+The other tests:
+
+- arrays exactly as long as the store build, a tag array one entry short
+  refuses, and an ID or author past every entry reads nothing;
 - each plan reads only its candidates, including escaped tag names and
-  values;
+  values, and `#t a` reads 3 although `t b`'s key is `t a`'s plus 1;
 - the cheapest index wins, duplicate list values and duplicate tags are
   read once, and an invalid filter answers nothing;
 - tag names `a`, `z`, `A` and `Z`, an empty tag value, and kinds 0 and
@@ -698,21 +744,24 @@ one `#forall`:
   build;
 - retired and expired records are read but not served.
 
-The `#forall` generates 500 stores of 4 to 14 records (regular,
+The last test generates 500 stores of 4 to 14 records (regular,
 replaceable, addressable, ephemeral and expiring kinds, tied times, escaped
 tag names) and 8 filters for each from the same seed, with random `ids`,
 `authors`, `kinds`, one or two tag lists, `since`, `until`, `limit`, query
 time and output room. For all 4,000 filters, `nsi_query` returns the same
-records in the same order as `rsd_query`.
+records in the same order as `rsd_query`. It then asserts its totals: how
+many filters each plan answered (1,085 none, 1,469 by ID, 285 by author
+and kind, 250 by author, 432 by tag, 479 by time), 4,718 records read,
+1,554 events served, and a sum over every answer's order. Equal answers
+alone can't see a change that only picks another index or reads more
+records; the totals can, and they also pin the generated stores and
+filters themselves.
 
-Run on 2026-11-01: all 308 checks of `store_index.coax` (with the store
+Run on 2026-11-01: all 310 checks of `store_index.coax` (with the store
 and relay checks it loads) pass, and the checks file passes. `coax mutate
-coax/lib/nostr/store_index.coax --root-only` made 700 mutants and killed
-500. Most of the 200 survivors are in the `#forall`'s generator helpers or
-change only which index is chosen or how many records are read (the hash,
-the heap's tie handling, the cost counts): the property compares answers,
-so it can't see them. The file is not `#authority`, and those survivors are
-not marked equivalent.
+coax/lib/nostr/store_index.coax --root-only` made 588 mutants and
+killed all of them: zero survivors. The file is not `#authority`, and no
+mutant is marked equivalent.
 
 ## Summary
 
@@ -723,8 +772,9 @@ not marked equivalent.
 - `nsi_query` reads the index with the fewest candidates. The time index
   can stop at the limit, because its order is the answer's order.
 - Every candidate still passes the visibility check and `nf_match`, so an
-  index can't change which events match; a `#forall` and the recording of
-  relay.openagents.com check that the answers are equal.
+  index can't change which events match; a generated check over 4,000
+  filters and the recording of relay.openagents.com check that the answers
+  are equal, and hand-worked filters pin each plan and count read.
 
 ## Dependencies
 

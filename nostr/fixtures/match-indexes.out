@@ -12,7 +12,7 @@ the store: eight events from two test keys, A (vector 1) and B (vector 2)
 
 the indexes, as record names
   by id:     e3(0976) e4(2b76) e1(2f95) e2(3721) e8(75e5) e5(9c69) e7(9efd) e6(fac7)
-  by author, kind: e8(B,0) e6(B,1) e3(B,1) e4(B,7) e7(A,1) e2(A,1) e1(A,1) e5(A,30023)
+  by author, kind: e8(B,0) e3(B,1) e6(B,1) e4(B,7) e1(A,1) e2(A,1) e7(A,1) e5(A,30023)
   by time:   e7 e6 e5 e4 e3 e2 e1 e8
   9 tag entries: e4 e5 e4 e2 e3 e5 e1 e3 e7 (sorted by key)
 
