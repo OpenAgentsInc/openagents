@@ -1,0 +1,193 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip56.coax";
+#load "../../coax/lib/nostr/nip85.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+LABEL :: [8] string.["ok", "event", "tag", "shape", "no matching L", "label on nothing", "no label", "limit"];
+REPORT :: [9] string.["ok", "event", "kind", "tag", "missing p", "unknown report type", "no report type", "x without e", "limit"];
+SUBJECT :: [3] string.["p", "e", "x"];
+ASSERTION :: [7] string.["ok", "event", "kind", "bad provider tag", "missing d", "subject", "limit"];
+// BIP-340 test vectors 0 to 3's public keys, then the public keys of the
+// secret keys 1 and 2.
+PEOPLE :: [6] string.["Alice", "Bob", "Carol", "Mallory", "Dave", "Erin"];
+PUB :: [6] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517",
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"];
+// Their secret keys: published test values. Never sign with a real key in
+// an example.
+SECRET :: [6] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710",
+  "0000000000000000000000000000000000000000000000000000000000000001",
+  "0000000000000000000000000000000000000000000000000000000000000002"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; MALLORY :: 3; DAVE :: 4; ERIN :: 5;
+RELAY :: "wss://relay.example.com";
+T0 :: 1761686400;
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+
+// The events, by name, so the output names ids and keys by name.
+Named :: struct { name: string; event: NostrEvent; }
+EVENTS :: 11;
+show_id :: (all: [] Named, id: [32] u8) {
+  for n: all { if n.event.error == NE_OK && ns_equal32(n.event.id, id) { print("%", n.name); return; } }
+  for k: 0..<PEOPLE.count { if ns_equal32(key_of(k), id) { print("%", PEOPLE[k]); return; } }
+  text: [64] u8; print("%...", hex32(id, text[..])[0..<8]);
+}
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(SECRET[who], key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+// The tags with each @ replaced by the note N's id and each % by Dave's key.
+with_note :: (template: string, note: NostrEvent, out: [] u8) -> string {
+  n := 0; i := 0; hex: [64] u8;
+  while i < template.count {
+    if template[i] == '@' { n = json_raw(out, n, hex32(note.id, hex[..])); i += 1; continue; }
+    if template[i] == '%' { n = json_raw(out, n, PUB[DAVE]); i += 1; continue; }
+    n = json_raw(out, n, template[i..<i + 1]); i += 1;
+  }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+show_report :: (all: [] Named, label: string, e: NostrEvent) {
+  r := n56_report(e);
+  print("%: %", label, REPORT[r.status]);
+  if r.at >= 0 { print(" at tag %", r.at); }
+  if r.status != N56_OK { print("\n"); return; }
+  print(", % about % ", N56_TYPES[r.type], SUBJECT[r.subject]);
+  if r.subject == N56_SUBJECT_E { show_id(all, r.event); } else if r.subject == N56_SUBJECT_P { show_id(all, r.pubkey); }
+  if r.has_pubkey && r.subject != N56_SUBJECT_P { print(", user "); show_id(all, r.pubkey); }
+  print(", by "); show_id(all, e.public_key); print("\n");
+}
+show_labels :: (all: [] Named, label: string, e: NostrEvent) {
+  l := n32_labels(e);
+  print("%: %", label, LABEL[l.status]);
+  if l.at >= 0 { print(" at tag %", l.at); }
+  if l.status != N32_OK { print("\n"); return; }
+  for k: 0..<l.n { print(", "); say(l.labels[k].ns); print(" "); say(l.labels[k].value); }
+  if l.self { print(", about itself"); }
+  for k: 0..<l.targets_n { print(", about "); show_id(all, l.targets[k].key); }
+  print(", by "); show_id(all, e.public_key); print("\n");
+}
+show_result :: (all: [] Named, label: string, e: NostrEvent, providers: N85Providers, name: string) {
+  r := n85_result(e, providers, name);
+  print("%: %", label, ASSERTION[r.status]);
+  if r.status != N85_OK { print("\n"); return; }
+  a := n85_assertion(e); s := a.subject; subject: [32] u8; decode_hex(cast(string) s.b[0..<s.n], subject[..]);
+  print(", kind %, about ", a.kind); show_id(all, subject);
+  print(", % ", name); if r.present { say(r.value); } else { print("absent"); }
+  print(", by "); show_id(all, a.provider);
+  print(", trusted %\n", r.trusted);
+}
+
+// An unsigned event by Mallory with these tags, parsed but not verified:
+// its id and sig are zeros. Used for the refusals, which no signer here
+// would write.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[MALLORY]); n = json_raw(out, n, "\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+// The events: who signs, when (after T0), the kind, the tags with @ for
+// N's id and % for Dave's key, and the content.
+NAME :: [EVENTS] string.["N", "R1", "R2", "R3", "L1", "L2", "L3", "L4", "P", "A1", "A2"];
+WHO :: [EVENTS] int.[DAVE, BOB, CAROL, MALLORY, BOB, CAROL, MALLORY, BOB, ALICE, ERIN, MALLORY];
+AT :: [EVENTS] int.[0, 60, 120, 180, 240, 300, 360, 420, 480, 540, 600];
+KIND :: [EVENTS] int.[1, 1984, 1984, 1984, 1985, 1985, 1985, 1985, 10040, 30382, 30382];
+TAGS :: [EVENTS] string.[
+  "[[\"L\",\"ISO-639-1\"],[\"l\",\"en\",\"ISO-639-1\"]]",
+  "[[\"e\",\"@\",\"spam\"],[\"p\",\"%\"]]",
+  "[[\"e\",\"@\",\"spam\"],[\"p\",\"%\"]]",
+  "[[\"e\",\"@\",\"illegal\"],[\"p\",\"%\"]]",
+  "[[\"L\",\"social.nos.ontology\"],[\"l\",\"NS-spm\",\"social.nos.ontology\"],[\"e\",\"@\",\"wss://relay.example.com\"]]",
+  "[[\"L\",\"social.nos.ontology\"],[\"l\",\"NS-spm\",\"social.nos.ontology\"],[\"e\",\"@\",\"wss://relay.example.com\"]]",
+  "[[\"L\",\"social.nos.ontology\"],[\"l\",\"NS-hat\",\"social.nos.ontology\"],[\"e\",\"@\",\"wss://relay.example.com\"]]",
+  "[[\"L\",\"ISO-639-1\"],[\"l\",\"en\",\"ISO-639-1\"],[\"e\",\"@\",\"wss://relay.example.com\"]]",
+  "[[\"30382:rank\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"wss://relay.example.com\"]]",
+  "[[\"d\",\"%\"],[\"rank\",\"12\"],[\"reports_cnt_recd\",\"3\"]]",
+  "[[\"d\",\"%\"],[\"rank\",\"100\"]]"];
+CONTENT :: [EVENTS] string.["Buy followers now at example.com!", "", "Same link in 40 replies.", "", "", "", "", "", "", "", ""];
+
+main :: () {
+  all: [EVENTS] Named; buf: [EVENTS][8192] u8; tags: [4096] u8;
+  for k: 0..<EVENTS {
+    all[k].name = NAME[k];
+    all[k].event = sign(WHO[k], T0 + AT[k], KIND[k], with_note(TAGS[k], all[0].event, tags[..]), CONTENT[k], buf[k][..]);
+  }
+  print("each event's id\n");
+  for e: all { hex: [64] u8; print("%: %, verified %\n", e.name, hex32(e.event.id, hex[..]), e.event.verified); }
+
+  print("reports about N\n");
+  for k: 1..<4 { show_report(all[..], all[k].name, all[k].event); }
+  set: [EVENTS] NostrEvent; for k: 0..<EVENTS { set[k] = all[k].event; }
+  trusted: [2][32] u8; trusted[0] = key_of(BOB); trusted[1] = key_of(CAROL);
+  print("the tally for N, trusting Bob and Carol\n");
+  t := n56_tally(set[..], trusted[..], all[0].event.id);
+  for k: 0..<7 { if t.counts[k] > 0 { print("% %, ", N56_TYPES[k], t.counts[k]); } }
+  print("illegal %, ignored %, duplicates %, refused %\n", t.counts[N56_ILLEGAL], t.ignored, t.duplicates, t.refused);
+
+  print("labels about N\n");
+  show_labels(all[..], "N", all[0].event);
+  for k: 4..<8 { show_labels(all[..], all[k].name, all[k].event); }
+  print("grouped by namespace and signer, trusting Bob and Carol\n");
+  out: [8] N32Entry;
+  g := n32_group(set[..], trusted[..], all[0].event.id, out[..]);
+  for k: 0..<g.n { say(out[k].ns); print(" / "); show_id(all[..], out[k].signer); print(" / "); say(out[k].value); print("\n"); }
+  print("entries %, ignored %, duplicates %, refused %\n", g.n, g.ignored, g.duplicates, g.refused);
+  print("social.nos.ontology NS-spm from % trusted signers\n", n32_signers(out[0..<g.n], "social.nos.ontology", "NS-spm"));
+
+  print("trusted assertions about Dave\n");
+  providers := n85_providers(all[8].event);
+  print("P: %, % provider: % ", ASSERTION[providers.status], providers.n, providers.list[0].kind);
+  say(providers.list[0].result); print(", "); show_id(all[..], providers.list[0].key); print("\n");
+  show_result(all[..], "A1", all[9].event, providers, "rank");
+  show_result(all[..], "A1", all[9].event, providers, "reports_cnt_recd");
+  show_result(all[..], "A2", all[10].event, providers, "rank");
+
+  print("refusals\n");
+  bad: [4096] u8;
+  show_report(all[..], "report of type scam", unsigned(1984, with_note("[[\"e\",\"@\",\"scam\"],[\"p\",\"%\"]]", all[0].event, tags[..]), bad[..]));
+  show_report(all[..], "report without p", unsigned(1984, with_note("[[\"e\",\"@\",\"spam\"]]", all[0].event, tags[..]), bad[..]));
+  show_report(all[..], "report without a type", unsigned(1984, with_note("[[\"e\",\"@\"],[\"p\",\"%\"]]", all[0].event, tags[..]), bad[..]));
+  show_report(all[..], "blob report without e", unsigned(1984, "[[\"x\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"malware\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]", bad[..]));
+  show_labels(all[..], "l without its L", unsigned(1985, with_note("[[\"L\",\"social.nos.ontology\"],[\"l\",\"NS-spm\",\"nostr.mod\"],[\"e\",\"@\"]]", all[0].event, tags[..]), bad[..]));
+  show_labels(all[..], "label on nothing", unsigned(1985, "[[\"L\",\"social.nos.ontology\"],[\"l\",\"NS-spm\",\"social.nos.ontology\"]]", bad[..]));
+  show_labels(all[..], "self-label without its L", unsigned(1, "[[\"l\",\"en\",\"ISO-639-1\"]]", bad[..]));
+  p := n85_providers(unsigned(10040, "[[\"30382:rank\",\"c6047f94\"]]", bad[..]));
+  print("provider list with a short key: % at tag %\n", ASSERTION[p.status], p.at);
+  show_result(all[..], "assertion without d", unsigned(30382, "[[\"rank\",\"100\"]]", bad[..]), providers, "rank");
+}
+// book:end example

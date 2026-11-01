@@ -711,6 +711,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 300
+    },
+    {
+      "source": "nostr/examples/labels-reports.coax",
+      "chapter": "nostr/book/ch055-labels-reports-and-trusted-assertions.md",
+      "stdout": "nostr/fixtures/labels-reports.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

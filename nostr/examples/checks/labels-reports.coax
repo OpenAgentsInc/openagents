@@ -1,0 +1,143 @@
+// The checks of labels-reports.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/labels-reports.coax --run-steps 250000000
+#load "../labels-reports.coax";
+
+// book:begin check
+// The ids from a Python script written from NIP-01, NIP-32, NIP-56 and
+// NIP-85 (it shares no code with Coax): hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False), over the same events.
+PY_ID :: [EVENTS] string.[
+  "a74fb478fce08ec9047e0e78edf913e7795fd32ea9b9163e5a8e1141d218ecd4",
+  "a8d3832c382553d85dbd9727463fdb1ee09c6041d608e2673637fc83672471d8",
+  "5931a73187a06aa48e8da03f14a3db0302615075226477a745d47d3440277acd",
+  "9ae5f873b96895d5635867f06096515f78ad79852199ad6716a3e8c2104cee6e",
+  "c83ecc6c363509cc1059fd3d1c437113c01ddd085acce5036e29e3ebe7659d8a",
+  "29f7c0ea938d8b448fccdb5e58b28d8a4e56a108db79a896e5b01f5c5091be65",
+  "a1a2b80c611dc0b06366109df595296b77fea8c36bdb224840426e9b3df01907",
+  "2685e2342412b4e6b50588210ff7f8e740689125c5e1b27b63d4e82aeace0d1c",
+  "fce1d7ba776d6b29473334903324c613c193fa8e60dc114717eb3ad67213b856",
+  "ccedac91cfec707ba2c0497a5ba6052e1037a936717b2f063364c76be46d06aa",
+  "2169377eee55425e9668627f51d8f6a106366b25e88f68697314c8e6c3e59ddb"];
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// Event k with Python's id and a zero signature, read with its id
+// recomputed; the signature is not checked.
+py :: (k: int, note: NostrEvent, out: [] u8, scratch: [] u8) -> NostrEvent {
+  tags: [1024] u8;
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[WHO[k]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, with_note(TAGS[k], note, tags[..]));
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, CONTENT[k]);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+read_all :: (ev: [] NostrEvent, buf: [][2048] u8) {
+  scratch: [4096] u8;
+  ev[0] = py(0, ev[0], buf[0][..], scratch[..]);
+  for k: 1..<EVENTS { ev[k] = py(k, ev[0], buf[k][..], scratch[..]); }
+}
+
+#test "the ids are Python's" {
+  buf: [EVENTS][2048] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..]);
+  for k: 0..<EVENTS { #assert ev[k].error == NE_OK && ns_equal32(ev[k].computed_id, ev[k].id); }
+}
+
+// The tally by hand. R1 (Bob, spam) and R2 (Carol, spam) are by trusted
+// reporters: spam 2. R3 (Mallory, illegal) is not: ignored 1, illegal 0.
+// No one reports twice; nothing else in the set is kind 1984.
+#test "the report tally of N matches the hand count, in any order and trust" {
+  buf: [EVENTS][2048] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..]);
+  trusted: [3][32] u8; trusted[0] = key_of(BOB); trusted[1] = key_of(CAROL); trusted[2] = key_of(MALLORY);
+  t := n56_tally(ev[..], trusted[0..<2], ev[0].id);
+  #assert t.counts[N56_SPAM] == 2 && t.counts[N56_ILLEGAL] == 0 && t.ignored == 1 && t.duplicates == 0 && t.refused == 0;
+  for k: 0..<7 { if k != N56_SPAM { #assert t.counts[k] == 0; } }
+  rev: [EVENTS] NostrEvent; for k: 0..<EVENTS { rev[k] = ev[EVENTS - 1 - k]; }
+  t = n56_tally(rev[..], trusted[0..<2], ev[0].id);
+  #assert t.counts[N56_SPAM] == 2 && t.ignored == 1;
+  // Trust Mallory too: illegal 1. Trust no one: everything ignored.
+  t = n56_tally(ev[..], trusted[..], ev[0].id); #assert t.counts[N56_SPAM] == 2 && t.counts[N56_ILLEGAL] == 1 && t.ignored == 0;
+  t = n56_tally(ev[..], trusted[0..<0], ev[0].id); #assert t.counts[N56_SPAM] == 0 && t.ignored == 3;
+  // The reports name Dave's key too, so his tally is the same.
+  t = n56_tally(ev[..], trusted[0..<2], key_of(DAVE)); #assert t.counts[N56_SPAM] == 2 && t.ignored == 1;
+}
+
+// The grouping by hand, trusting Bob and Carol: L1 (Bob) and L2 (Carol) give
+// social.nos.ontology NS-spm, L4 (Bob) ISO-639-1 en. L3 (Mallory) and N's
+// self-label (Dave) are ignored. Namespaces sort "ISO-639-1" before
+// "social.nos.ontology" ('I' is 0x49, 's' 0x73); within one, Carol's key
+// (dd30...) before Bob's (dff1...).
+#test "the label grouping of N matches the hand order" {
+  buf: [EVENTS][2048] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..]);
+  trusted: [2][32] u8; trusted[0] = key_of(BOB); trusted[1] = key_of(CAROL);
+  out: [8] N32Entry; g := n32_group(ev[..], trusted[..], ev[0].id, out[..]);
+  #assert g.status == N32_OK && g.n == 3 && g.ignored == 2 && g.duplicates == 0 && g.refused == 0;
+  #assert n32_is(out[0].ns, "ISO-639-1") && n32_is(out[0].value, "en") && ns_equal32(out[0].signer, key_of(BOB));
+  #assert n32_is(out[1].ns, "social.nos.ontology") && n32_is(out[1].value, "NS-spm") && ns_equal32(out[1].signer, key_of(CAROL));
+  #assert n32_is(out[2].ns, "social.nos.ontology") && ns_equal32(out[2].signer, key_of(BOB));
+  // Trusting Dave, his self-label on N joins the ISO-639-1 group.
+  dave: [1][32] u8; dave[0] = key_of(DAVE);
+  g = n32_group(ev[..], dave[..], ev[0].id, out[..]);
+  #assert g.n == 1 && n32_is(out[0].ns, "ISO-639-1") && ns_equal32(out[0].signer, key_of(DAVE)) && g.ignored == 4;
+}
+
+// Alice names Erin for 30382:rank only. A1's rank is trusted, A1's
+// reports_cnt_recd is not (Alice named no one for it), A2's rank is not
+// (Alice did not name Mallory).
+#test "assertions are trusted only from the providers Alice named" {
+  buf: [EVENTS][2048] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..]);
+  p := n85_providers(ev[8]); #assert p.status == N85_OK && p.n == 1 && ns_equal32(p.list[0].key, key_of(ERIN));
+  r := n85_result(ev[9], p, "rank"); #assert r.trusted && r.number == 12;
+  r = n85_result(ev[9], p, "reports_cnt_recd"); #assert !r.trusted && r.number == 3;
+  r = n85_result(ev[10], p, "rank"); #assert !r.trusted && r.number == 100;
+  // The provider list carries no signer: the caller passes the user's own.
+  a := n85_assertion(ev[9]); #assert a.status == N85_OK && n32_is(a.subject, PUB[DAVE]);
+}
+
+// NIP-32's six examples, placeholders filled with Dave's key, N's id and the
+// relay. Each reads with the label, namespace and targets the NIP describes.
+#test "NIP-32's examples read as the NIP says" {
+  b: [2048] u8;
+  pk := "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  l := n32_labels(unsigned(1985, "[[\"L\",\"#t\"],[\"l\",\"permies\",\"#t\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"wss://relay.example.com\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"wss://relay.example.com\"]]", b[..]));
+  #assert l.status == N32_OK && l.n == 1 && n32_is(l.labels[0].ns, "#t") && n32_is(l.labels[0].value, "permies") && l.targets_n == 2;
+  l = n32_labels(unsigned(1985, "[[\"L\",\"com.example.ontology\"],[\"l\",\"VI-hum\",\"com.example.ontology\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"wss://relay.example.com\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"wss://relay.example.com\"]]", b[..]));
+  #assert l.status == N32_OK && n32_is(l.labels[0].value, "VI-hum") && l.targets[1].key[0] == 0xc6;
+  l = n32_labels(unsigned(1985, "[[\"L\",\"nip28.moderation\"],[\"l\",\"approve\",\"nip28.moderation\"],[\"e\",\"a74fb478fce08ec9047e0e78edf913e7795fd32ea9b9163e5a8e1141d218ecd4\",\"wss://relay.example.com\"]]", b[..]));
+  #assert l.status == N32_OK && n32_is(l.labels[0].value, "approve") && l.targets[0].type == NT_E && l.targets[0].key[0] == 0xa7;
+  l = n32_labels(unsigned(1985, "[[\"L\",\"license\"],[\"l\",\"MIT\",\"license\"],[\"e\",\"a74fb478fce08ec9047e0e78edf913e7795fd32ea9b9163e5a8e1141d218ecd4\",\"wss://relay.example.com\"]]", b[..]));
+  #assert l.status == N32_OK && n32_is(l.labels[0].ns, "license") && n32_is(l.labels[0].value, "MIT");
+  l = n32_labels(unsigned(1, "[[\"L\",\"ISO-3166-2\"],[\"l\",\"IT-MI\",\"ISO-3166-2\"]]", b[..]));
+  #assert l.status == N32_OK && l.self && n32_is(l.labels[0].value, "IT-MI");
+  l = n32_labels(unsigned(1, "[[\"L\",\"ISO-639-1\"],[\"l\",\"en\",\"ISO-639-1\"]]", b[..]));
+  #assert l.status == N32_OK && l.self && n32_is(l.labels[0].ns, "ISO-639-1") && pk.count == 64;
+}
+
+// NIP-56's four examples, placeholders filled. Each reads with the type and
+// subject the NIP describes; the first also carries a NIP-32 label.
+#test "NIP-56's examples read as the NIP says" {
+  b: [2048] u8;
+  e := unsigned(1984, "[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"nudity\"],[\"L\",\"social.nos.ontology\"],[\"l\",\"NS-nud\",\"social.nos.ontology\"]]", b[..]);
+  r := n56_report(e); #assert r.status == N56_OK && r.type == N56_NUDITY && r.subject == N56_SUBJECT_P;
+  l := n32_labels(e); #assert l.status == N32_OK && l.self && n32_is(l.labels[0].value, "NS-nud");
+  r = n56_report(unsigned(1984, "[[\"e\",\"a74fb478fce08ec9047e0e78edf913e7795fd32ea9b9163e5a8e1141d218ecd4\",\"illegal\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]", b[..]));
+  #assert r.status == N56_OK && r.type == N56_ILLEGAL && r.subject == N56_SUBJECT_E;
+  r = n56_report(unsigned(1984, "[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"impersonation\"]]", b[..]));
+  #assert r.status == N56_OK && r.type == N56_IMPERSONATION;
+  r = n56_report(unsigned(1984, "[[\"x\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"malware\"],[\"e\",\"a74fb478fce08ec9047e0e78edf913e7795fd32ea9b9163e5a8e1141d218ecd4\",\"malware\"],[\"server\",\"https://you-may-find-the-blob-here.com/path-to-url.ext\"]]", b[..]));
+  #assert r.status == N56_OK && r.type == N56_MALWARE && r.subject == N56_SUBJECT_X && !r.has_pubkey;
+}
+
+// NIP-85's examples: the rank-89 assertion and the three public provider tags.
+#test "NIP-85's examples read as the NIP says" {
+  b: [2048] u8; c: [2048] u8;
+  p := n85_providers(unsigned(10040, N85_T_LIST, b[..]));
+  #assert p.status == N85_OK && p.n == 3 && n32_is(p.list[2].result, "zap_amt_sent") && n32_is(p.list[1].relay, "wss://nostr.wine");
+  a := unsigned(30382, "[[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"],[\"rank\",\"89\"]]", c[..]);
+  r := n85_result(a, p, "rank"); #assert r.status == N85_OK && r.number == 89 && !r.trusted;   // signed by Mallory here
+}
+// book:end check

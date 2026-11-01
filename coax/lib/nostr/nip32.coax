@@ -1,0 +1,331 @@
+// NIP-32 labels read from a parsed event through tags.coax: kind 1985 label
+// events, whose e, p, a, r and t tags name what they label, and self-labels,
+// l and L tags on any other kind, which label the event that carries them.
+// Then a grouping of the labels about one target from the signers a caller
+// trusts.
+//
+// A label is a statement by its signer, not a fact. Nothing here fetches,
+// verifies a signature or decides whom to trust: the caller verifies the
+// events it passes to n32_group and names the signers it trusts. Labels
+// from anyone else are counted as ignored and never grouped.
+//
+// Namespaces: ["L", ns] declares a namespace and ["l", value, ns] puts a
+// label in it. When an event has L tags, every l tag's mark must match one
+// of them. Without L tags, an unmarked l tag is in "ugc" (user generated
+// content), as NIP-32 says. This reader is stricter than NIP-32 on one
+// point: an l tag marked with a namespace other than "ugc" needs its L tag
+// (NIP-32 only says it SHOULD carry a mark), so a label's namespace is
+// always one the event declared.
+#load "tags.coax";
+#authority;
+
+N32_OK :: 0; N32_EVENT :: 1; N32_TAG :: 2; N32_SHAPE :: 3; N32_NAMESPACE :: 4;
+N32_TARGET :: 5; N32_MISSING :: 6; N32_LIMIT :: 7;
+N32_KIND :: 1985;
+N32_MAX_LABELS :: 8; N32_MAX_NAMESPACES :: 4; N32_MAX_TARGETS :: 8;
+
+// book:begin record
+N32Text :: struct {b:[NT_MAX_VALUE]u8; n:int;}         // a decoded string
+// A tag's name and its first two values, decoded; values counts them all.
+N32Tag :: struct {error:int=NT_EVENT; values:int; v:[3]N32Text;}
+N32Label :: struct {value:N32Text; ns:N32Text; at:int;}  // at: its l tag
+N32Target :: struct {type:int; key:[32]u8;}              // NT_E or NT_P
+N32Labels :: struct {
+  status:int=N32_EVENT; at:int=-1; tag_error:int;        // the refusing tag
+  self:bool;                                             // not kind 1985: about itself
+  labels:[N32_MAX_LABELS]N32Label; n:int;
+  namespaces:[N32_MAX_NAMESPACES]N32Text; ns_n:int;      // the L tags
+  targets:[N32_MAX_TARGETS]N32Target; targets_n:int;     // e and p targets
+  others:int;                                            // a, r and t targets
+}
+// book:end record
+// book:begin entry
+// One label about the target: its namespace, its signer and its value.
+N32Entry :: struct {ns:N32Text; signer:[32]u8; value:N32Text;}
+N32Tally :: struct {
+  status:int=N32_OK; n:int;   // entries written, sorted by namespace, signer, value
+  ignored:int;                // events about the target by signers not trusted
+  duplicates:int;             // a label a trusted signer already gave
+  refused:int;                // events whose labels don't read
+}
+// book:end entry
+
+N32_T_PK :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+N32_T_ID :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+#test "a generic tag: name and first two values, decoded" {
+  t:=n32_tag(nt_event("[[\"l\",\"caf\\u00e9\",\"ns\",\"x\",\"y\"],[\"t\"]]"),0);
+  #assert t.error==NT_OK && t.values==5 && n32_is(t.v[0],"l") && t.v[1].n==5 && t.v[1].b[3]==0xc3 && t.v[1].b[4]==0xa9 && n32_is(t.v[2],"ns");
+  t=n32_tag(nt_event("[[\"l\",\"caf\\u00e9\",\"ns\",\"x\",\"y\"],[\"t\"]]"),1);#assert t.error==NT_OK && t.values==1 && n32_is(t.v[0],"t") && t.v[1].n==0;
+  #assert n32_tag(nt_event("[[\"t\"]]"),1).error==NT_INDEX && n32_tag(nt_event("[[\"t\"]]"),-1).error==NT_INDEX;
+  #assert n32_tag(nt_event("[[\"t\",1]]"),0).error==NT_EVENT && n32_tag(nt_event("[1]"),0).error==NT_EVENT;
+  #assert n32_tag(nt_event("[[]]"),0).error==NT_SHAPE;
+  none:NostrEvent;#assert n32_tag(none,0).error==NT_EVENT;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"l\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n32_tag(nt_event(cast(string)long[0..<n]),0).error==NT_LIMIT;
+  // A long fourth value is not read.
+  n=json_raw(long[..],0,"[[\"l\",\"a\",\"b\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  t=n32_tag(nt_event(cast(string)long[0..<n]),0);#assert t.error==NT_OK && t.values==4;
+  #assert n32_is(t.v[1],"a") && !n32_is(t.v[1],"b") && !n32_is(t.v[1],"ab") && !n32_is(t.v[1],"");
+}
+#test "kind 1985: labels in declared namespaces, e and p targets" {
+  r:=n32_labels(n32_event(1985,"[[\"L\",\"license\"],[\"l\",\"MIT\",\"license\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]"));
+  #assert r.status==N32_OK && !r.self && r.n==1 && n32_is(r.labels[0].value,"MIT") && n32_is(r.labels[0].ns,"license") && r.labels[0].at==1;
+  #assert r.ns_n==1 && r.targets_n==2 && r.targets[0].type==NT_E && r.targets[0].key[0]==0xaa && r.targets[1].type==NT_P && r.targets[1].key[0]==0xf9 && r.others==0 && r.at== -1;
+  // a, r and t targets count as others; two namespaces; an L used by no l.
+  r=n32_labels(n32_event(1985,"[[\"L\",\"#t\"],[\"L\",\"x\"],[\"L\",\"#t\"],[\"l\",\"permies\",\"#t\"],[\"l\",\"y\",\"x\"],[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:d\"],[\"r\",\"wss://relay.example\"],[\"t\",\"tea\"],[\"L\",\"unused\"]]"));
+  #assert r.status==N32_OK && r.n==2 && r.ns_n==3 && r.targets_n==0 && r.others==3 && n32_is(r.labels[1].ns,"x");
+  // Without L, unmarked is ugc and ugc may be marked.
+  r=n32_labels(n32_event(1985,"[[\"l\",\"a\"],[\"t\",\"tea\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]"));#assert r.status==N32_OK && r.targets_n==1 && r.others==1;
+  r=n32_labels(n32_event(1985,"[[\"l\",\"a\"],[\"l\",\"b\",\"ugc\"],[\"t\",\"tea\"]]"));
+  #assert r.status==N32_OK && r.n==2 && n32_is(r.labels[0].ns,"ugc") && n32_is(r.labels[1].ns,"ugc") && r.ns_n==0;
+  // With an L, an l marked ugc still needs its own L tag.
+  r=n32_labels(n32_event(1985,"[[\"L\",\"x\"],[\"l\",\"b\",\"ugc\"],[\"t\",\"tea\"]]"));#assert r.status==N32_OK && n32_is(r.labels[0].ns,"ugc");
+}
+#test "self-labels: any other kind labels itself; target tags are not targets" {
+  r:=n32_labels(n32_event(1,"[[\"L\",\"ISO-639-1\"],[\"l\",\"en\",\"ISO-639-1\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"x\"],[\"t\"]]"));
+  #assert r.status==N32_OK && r.self && r.n==1 && r.targets_n==0 && r.others==0;
+  r=n32_labels(n32_event(1,"[]"));#assert r.status==N32_OK && r.self && r.n==0;
+  r=n32_labels(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"nudity\"],[\"L\",\"social.nos.ontology\"],[\"l\",\"NS-nud\",\"social.nos.ontology\"]]"));
+  #assert r.status==N32_OK && r.self && r.n==1 && n32_is(r.labels[0].value,"NS-nud");
+}
+#test "refusals: l without its L, label on nothing, no label, shapes, limits" {
+  r:=n32_labels(n32_event(1985,"[[\"L\",\"license\"],[\"l\",\"MIT\",\"other\"],[\"t\",\"x\"]]"));#assert r.status==N32_NAMESPACE && r.at==1;
+  r=n32_labels(n32_event(1985,"[[\"L\",\"license\"],[\"l\",\"MIT\"],[\"t\",\"x\"]]"));#assert r.status==N32_NAMESPACE && r.at==1;
+  r=n32_labels(n32_event(1985,"[[\"l\",\"MIT\",\"license\"],[\"t\",\"x\"]]"));#assert r.status==N32_NAMESPACE && r.at==0;
+  r=n32_labels(n32_event(1,"[[\"l\",\"en\",\"ISO-639-1\"]]"));#assert r.status==N32_NAMESPACE && r.at==0;
+  r=n32_labels(n32_event(1985,"[[\"L\",\"license\"],[\"l\",\"MIT\",\"license\"]]"));#assert r.status==N32_TARGET && r.at== -1;
+  r=n32_labels(n32_event(1985,"[[\"t\",\"x\"]]"));#assert r.status==N32_MISSING && r.at== -1;
+  r=n32_labels(n32_event(1985,"[[\"L\",\"x\"],[\"t\",\"x\"]]"));#assert r.status==N32_MISSING;
+  #assert n32_labels(n32_event(1985,"[[\"L\"],[\"t\",\"x\"]]")).status==N32_SHAPE;
+  #assert n32_labels(n32_event(1985,"[[\"L\",\"\"],[\"t\",\"x\"]]")).status==N32_SHAPE;
+  r=n32_labels(n32_event(1985,"[[\"t\",\"x\"],[\"l\"]]"));#assert r.status==N32_SHAPE && r.at==1;
+  #assert n32_labels(n32_event(1985,"[[\"l\",\"\"],[\"t\",\"x\"]]")).status==N32_SHAPE;
+  #assert n32_labels(n32_event(1985,"[[\"l\",\"a\"],[\"t\"]]")).status==N32_SHAPE;
+  #assert n32_labels(n32_event(1985,"[[\"l\",\"a\"],[\"r\",\"\"]]")).status==N32_SHAPE;
+  r=n32_labels(n32_event(1985,"[[\"l\",\"a\"],[\"e\",\"aaaa\"]]"));#assert r.status==N32_TAG && r.tag_error==NT_HEX && r.at==1;
+  r=n32_labels(n32_event(1985,"[[\"l\",\"a\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"x\"]]"));#assert r.status==N32_TAG && r.tag_error==NT_RELAY;
+  #assert n32_labels(n32_event(1985,"[[\"l\",\"a\"],[\"a\",\"1:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:\"]]")).status==N32_TAG;
+  none:NostrEvent;#assert n32_labels(none).status==N32_EVENT;
+  e:=n32_event(1985,"[[\"l\",\"a\"],[\"t\",\"x\"]]");e.original="[[\"l\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  r=n32_labels(e);#assert r.status==N32_EVENT && r.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"l\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  r=n32_labels(nt_event(cast(string)long[0..<n]));#assert r.status==N32_LIMIT && r.at==0;
+  // Nine labels, five namespaces, nine e targets: over the bounds.
+  #assert n32_labels(n32_event(1,"[[\"l\",\"1\"],[\"l\",\"2\"],[\"l\",\"3\"],[\"l\",\"4\"],[\"l\",\"5\"],[\"l\",\"6\"],[\"l\",\"7\"],[\"l\",\"8\"]]")).n==8;
+  r=n32_labels(n32_event(1,"[[\"l\",\"1\"],[\"l\",\"2\"],[\"l\",\"3\"],[\"l\",\"4\"],[\"l\",\"5\"],[\"l\",\"6\"],[\"l\",\"7\"],[\"l\",\"8\"],[\"l\",\"9\"]]"));#assert r.status==N32_LIMIT && r.at==8;
+  #assert n32_labels(n32_event(1,"[[\"L\",\"1\"],[\"L\",\"2\"],[\"L\",\"3\"],[\"L\",\"4\"],[\"L\",\"1\"]]")).ns_n==4;
+  r=n32_labels(n32_event(1,"[[\"L\",\"1\"],[\"L\",\"2\"],[\"L\",\"3\"],[\"L\",\"4\"],[\"L\",\"5\"]]"));#assert r.status==N32_LIMIT && r.at==4;
+  p:="[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]";
+  buf:[1024]u8;m:=json_raw(buf[..],0,"[[\"l\",\"a\"]");for i:0..<8 {m=json_raw(buf[..],m,",");m=json_raw(buf[..],m,p);}
+  #assert n32_labels(n32_event(1985,cast(string)buf[0..<json_raw(buf[..],m,"]")])).targets_n==8;
+  m=json_raw(buf[..],m,",");m=json_raw(buf[..],m,p);m=json_raw(buf[..],m,"]");
+  r=n32_labels(n32_event(1985,cast(string)buf[0..<m]));#assert r.status==N32_LIMIT && r.at==9;
+}
+#test "group: trusted signers only, sorted by namespace, signer and value" {
+  buf:[8][1024]u8;set:[8]NostrEvent;
+  target:[32]u8;for i:0..<32 {target[i]=0xaa;}
+  set[0]=n32_at(n32_event_in(1985,"[[\"L\",\"mod\"],[\"l\",\"spam\",\"mod\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",buf[0][..]),0x02,0x10);
+  set[1]=n32_at(n32_event_in(1985,"[[\"L\",\"mod\"],[\"l\",\"spam\",\"mod\"],[\"l\",\"bot\",\"mod\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",buf[1][..]),0x01,0x11);
+  set[2]=n32_at(n32_event_in(1985,"[[\"L\",\"license\"],[\"l\",\"MIT\",\"license\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",buf[2][..]),0x02,0x12);
+  set[3]=n32_at(n32_event_in(1985,"[[\"L\",\"mod\"],[\"l\",\"spam\",\"mod\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",buf[3][..]),0x09,0x13);   // not trusted
+  set[4]=n32_at(n32_event_in(1985,"[[\"L\",\"mod\"],[\"l\",\"spam\",\"mod\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]]",buf[4][..]),0x01,0x14);   // other target
+  set[5]=n32_at(n32_event_in(1985,"[[\"l\",\"spam\",\"mod\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",buf[5][..]),0x01,0x15);   // refused
+  set[6]=n32_at(n32_event_in(1985,"[[\"L\",\"mod\"],[\"l\",\"spam\",\"mod\"],[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]",buf[6][..]),0x02,0x16);  // again, by p
+  set[7]=n32_at(n32_event_in(1,"[[\"L\",\"ISO-639-1\"],[\"l\",\"en\",\"ISO-639-1\"]]",buf[7][..]),0x01,0xaa);   // the target labels itself
+  trusted:[2][32]u8;for i:0..<32 {trusted[0][i]=0x01;trusted[1][i]=0x02;}
+  out:[8]N32Entry;
+  t:=n32_group(set[..],trusted[..],target,out[..]);
+  #assert t.status==N32_OK && t.n==5 && t.ignored==1 && t.duplicates==1 && t.refused==1;
+  // ISO-639-1 < license < mod; within mod, signer 01 before 02, bot before spam.
+  #assert n32_is(out[0].ns,"ISO-639-1") && n32_is(out[0].value,"en") && out[0].signer[0]==0x01;
+  #assert n32_is(out[1].ns,"license") && out[1].signer[0]==0x02;
+  #assert n32_is(out[2].ns,"mod") && n32_is(out[2].value,"bot") && out[2].signer[0]==0x01;
+  #assert n32_is(out[3].value,"spam") && out[3].signer[0]==0x01 && n32_is(out[4].value,"spam") && out[4].signer[0]==0x02;
+  #assert n32_signers(out[0..<t.n],"ISO-639-1","en")==1 && n32_signers(out[0..<t.n],"mod","spam")==2 && n32_signers(out[0..<t.n],"mod","bot")==1 && n32_signers(out[0..<t.n],"mod","MIT")==0 && n32_signers(out[0..<t.n],"license","spam")==0;
+  // Reversed, the same entries.
+  rev:[8]NostrEvent;for k:0..<8 {rev[k]=set[7-k];}
+  back:[8]N32Entry;t=n32_group(rev[..],trusted[..],target,back[..]);
+  #assert t.n==5 && t.duplicates==1 && t.ignored==1;
+  for k:0..<5 {#assert n32_text_order(out[k].value,back[k].value)==0 && n32_text_order(out[k].ns,back[k].ns)==0 && ns_equal32(out[k].signer,back[k].signer);}
+  // Trusting nobody groups nothing.
+  t=n32_group(set[..],trusted[0..<0],target,out[..]);#assert t.n==0 && t.ignored==6 && t.refused==1;
+  // A short output refuses.
+  t=n32_group(set[..],trusted[..],target,out[0..<4]);#assert t.status==N32_LIMIT && t.n==4;
+  t=n32_group(set[..],trusted[..],target,out[0..<5]);#assert t.status==N32_OK && t.n==5;
+  // Full, and the next label sorts last.
+  pair:[2]NostrEvent;pair[0]=set[2];pair[1]=set[0];
+  t=n32_group(pair[..],trusted[..],target,out[0..<1]);#assert t.status==N32_LIMIT && t.n==1 && n32_is(out[0].ns,"license");
+}
+#test "text order: bytes, then length" {
+  a:N32Text;b:N32Text;a.b[0]='a';a.n=1;b.b[0]='b';b.n=1;
+  #assert n32_text_order(a,b)== -1 && n32_text_order(b,a)==1 && n32_text_order(a,a)==0;
+  b.b[0]='a';b.b[1]='a';b.n=2;#assert n32_text_order(a,b)== -1 && n32_text_order(b,a)==1;
+  // Bytes past a text's length don't count.
+  c:=a;c.b[1]='a';#assert n32_text_order(b,c)==1 && n32_text_order(c,b)== -1 && n32_text_order(c,a)==0;
+  e:N32Entry;f:N32Entry;e.ns=a;f.ns=a;e.value=a;f.value=a;e.signer[31]=1;
+  #assert n32_entry_order(f,e)<0 && n32_entry_order(e,f)>0 && n32_entry_order(e,e)==0;
+  f.signer[31]=1;f.value=b;#assert n32_entry_order(e,f)<0 && n32_entry_order(f,e)>0;
+  f.signer[0]=1;#assert n32_entry_order(e,f)<0;
+  g:=e;g.signer[31]=0;g.signer[0]=1;h:=g;h.signer[0]=0;#assert n32_entry_order(g,h)==1 && n32_entry_order(h,g)== -1;
+  f.signer[0]=0;f.ns=b;f.value=a;#assert n32_entry_order(e,f)<0 && n32_entry_order(f,e)>0;
+}
+
+// ---- test events: a parsed event of this kind with these tags, read from
+// out, and the same with every byte of its author and id set to one value.
+n32_event :: (kind:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;return e;}
+n32_event_in :: (kind:int,tags:string,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,tags);e:=nt_event(cast(string)out[0..<n]);e.kind=kind;return e;
+}
+n32_at :: (e:NostrEvent,author:u8,id:u8)->NostrEvent {
+  r:=e;for i:0..<32 {r.public_key[i]=author;r.id[i]=id;}return r;
+}
+
+n32_is :: (t:N32Text,s:string)->bool {c:=t;return cast(string)c.b[0..<c.n]==s;}
+n32_refuse :: (r:N32Labels,status:int,at:int)->N32Labels {o:=r;o.status=status;o.at=at;return o;}
+n32_fail :: (t:N32Tag,error:int)->N32Tag {r:=t;r.error=error;return r;}
+
+// book:begin tag
+// The index'th tag of any name: its name and first two values decoded, and
+// how many values it has. Later values are counted, not read.
+n32_tag :: (e:NostrEvent,index:int)->N32Tag {
+  t:N32Tag;j:[1]Json;if !nt_start(j[..],e) {return t;}
+  k:=0;tok:=json_next(j[..]);
+  while tok==JSON_ARRAY && k<index {skipped:=json_skip(j[..]);k+=1;tok=json_next(j[..]);}
+  if index<0 || tok==JSON_ARRAY_END {return n32_fail(t,NT_INDEX);}
+  if tok!=JSON_ARRAY {return t;}
+  v:=json_next(j[..]);
+  while v!=JSON_ARRAY_END {
+    if v!=JSON_STRING {return n32_fail(t,NT_EVENT);}
+    if t.values<3 {
+      n:=json_unescape(json_text(j[..]),t.v[t.values].b[..]);
+      if n<0 {return n32_fail(t,NT_LIMIT);}
+      t.v[t.values].n=n;
+    }
+    t.values+=1;v=json_next(j[..]);
+  }
+  if t.values==0 {return n32_fail(t,NT_SHAPE);}
+  return n32_fail(t,NT_OK);
+}
+// book:end tag
+
+// book:begin read
+// The labels an event carries. Kind 1985 labels the targets its e, p, a, r
+// and t tags name; any other kind labels itself.
+n32_labels :: (e:NostrEvent)->N32Labels {
+  r:N32Labels;if e.error!=NE_OK {return r;}
+  r.self=e.kind!=N32_KIND;
+  marks:[N32_MAX_LABELS]N32Text;marked:[N32_MAX_LABELS]bool;
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n32_refuse(r,N32_LIMIT,i);}
+    if t.error!=NT_OK {return n32_refuse(r,N32_EVENT,i);}
+    name:=t.v[0];
+    if n32_is(name,"L") {
+      if t.v[1].n==0 {return n32_refuse(r,N32_SHAPE,i);}
+      if n32_find(r.namespaces[0..<r.ns_n],t.v[1])<0 {
+        if r.ns_n==N32_MAX_NAMESPACES {return n32_refuse(r,N32_LIMIT,i);}
+        r.namespaces[r.ns_n]=t.v[1];r.ns_n+=1;
+      }
+    } else if n32_is(name,"l") {
+      if t.v[1].n==0 {return n32_refuse(r,N32_SHAPE,i);}
+      if r.n==N32_MAX_LABELS {return n32_refuse(r,N32_LIMIT,i);}
+      r.labels[r.n].value=t.v[1];r.labels[r.n].at=i;
+      marked[r.n]=t.v[2].n>0;marks[r.n]=t.v[2];r.n+=1;
+    } else if !r.self && (n32_is(name,"e") || n32_is(name,"p") || n32_is(name,"a")) {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {r.tag_error=s.error;return n32_refuse(r,N32_TAG,i);}
+      if s.type==NT_A {r.others+=1;}
+      else {
+        if r.targets_n==N32_MAX_TARGETS {return n32_refuse(r,N32_LIMIT,i);}
+        r.targets[r.targets_n].type=s.type;
+        r.targets[r.targets_n].key=ifx s.type==NT_E then s.id else s.pubkey;
+        r.targets_n+=1;
+      }
+    } else if !r.self && (n32_is(name,"r") || n32_is(name,"t")) {
+      if t.v[1].n==0 {return n32_refuse(r,N32_SHAPE,i);}
+      r.others+=1;
+    }
+    i+=1;
+  }
+  // Each label's namespace: its mark, which must be an L tag's value, or
+  // "ugc" when it is unmarked and there are no L tags, or marked "ugc".
+  for k:0..<r.n {
+    ugc:N32Text;ugc.b[0]='u';ugc.b[1]='g';ugc.b[2]='c';ugc.n=3;
+    if !marked[k] {
+      if r.ns_n>0 {return n32_refuse(r,N32_NAMESPACE,r.labels[k].at);}
+      r.labels[k].ns=ugc;
+    } else {
+      if n32_find(r.namespaces[0..<r.ns_n],marks[k])<0 && !n32_is(marks[k],"ugc") {return n32_refuse(r,N32_NAMESPACE,r.labels[k].at);}
+      r.labels[k].ns=marks[k];
+    }
+  }
+  if !r.self && r.targets_n+r.others==0 {return n32_refuse(r,N32_TARGET,-1);}
+  if !r.self && r.n==0 {return n32_refuse(r,N32_MISSING,-1);}
+  r.status=N32_OK;return r;
+}
+// book:end read
+
+n32_find :: (list:[]N32Text,s:N32Text)->int {
+  for k:0..<list.count {if n32_text_order(list[k],s)==0 {return k;}}
+  return -1;
+}
+// Byte order, a prefix first: negative, zero or positive.
+n32_text_order :: (a:N32Text,b:N32Text)->int {
+  for i:0..<a.n {
+    if i==b.n {return 1;}
+    if a.b[i]!=b.b[i] {return cast(int)a.b[i]-cast(int)b.b[i];}
+  }
+  return a.n-b.n;
+}
+n32_entry_order :: (a:N32Entry,b:N32Entry)->int {
+  o:=n32_text_order(a.ns,b.ns);if o!=0 {return o;}
+  for i:0..<32 {if a.signer[i]!=b.signer[i] {return cast(int)a.signer[i]-cast(int)b.signer[i];}}
+  return n32_text_order(a.value,b.value);
+}
+
+// book:begin group
+// Whether key is one of the signers the caller trusts.
+n32_trusted :: (trusted:[][32]u8,key:[32]u8)->bool {
+  for k:0..<trusted.count {if ns_equal32(trusted[k],key) {return true;}}
+  return false;
+}
+// Whether the labels l, read from e, are about target: kind 1985 names it
+// in an e or p tag; a self-label is about the event itself.
+n32_about :: (e:NostrEvent,l:N32Labels,target:[32]u8)->bool {
+  if l.self {return ns_equal32(e.id,target);}
+  for k:0..<l.targets_n {if ns_equal32(l.targets[k].key,target) {return true;}}
+  return false;
+}
+// The labels about target from the trusted signers in set, one entry per
+// namespace, signer and value, sorted in that order so each namespace's
+// labels sit together, signer by signer. Labels by anyone else are ignored.
+n32_group :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8,out:[]N32Entry)->N32Tally {
+  t:N32Tally;
+  for i:0..<set.count {
+    l:=n32_labels(set[i]);
+    if l.status!=N32_OK {t.refused+=1;continue;}
+    if l.n==0 || !n32_about(set[i],l,target) {continue;}
+    if !n32_trusted(trusted,set[i].public_key) {t.ignored+=1;continue;}
+    for k:0..<l.n {
+      x:N32Entry;x.ns=l.labels[k].ns;x.signer=set[i].public_key;x.value=l.labels[k].value;
+      at:=0;
+      while at<t.n && n32_entry_order(out[at],x)<0 {at+=1;}
+      if at<t.n && n32_entry_order(out[at],x)==0 {t.duplicates+=1;continue;}
+      if t.n==out.count {t.status=N32_LIMIT;return t;}
+      m:=t.n;
+      while m>at {out[m]=out[m-1];m-=1;}
+      out[at]=x;t.n+=1;
+    }
+  }
+  return t;
+}
+// How many trusted signers gave this label: entries are one per signer.
+n32_signers :: (entries:[]N32Entry,ns:string,value:string)->int {
+  c:=0;
+  for k:0..<entries.count {if n32_is(entries[k].ns,ns) && n32_is(entries[k].value,value) {c+=1;}}
+  return c;
+}
+// book:end group

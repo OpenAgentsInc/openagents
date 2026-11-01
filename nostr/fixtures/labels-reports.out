@@ -1,0 +1,45 @@
+each event's id
+N: a74fb478fce08ec9047e0e78edf913e7795fd32ea9b9163e5a8e1141d218ecd4, verified true
+R1: a8d3832c382553d85dbd9727463fdb1ee09c6041d608e2673637fc83672471d8, verified true
+R2: 5931a73187a06aa48e8da03f14a3db0302615075226477a745d47d3440277acd, verified true
+R3: 9ae5f873b96895d5635867f06096515f78ad79852199ad6716a3e8c2104cee6e, verified true
+L1: c83ecc6c363509cc1059fd3d1c437113c01ddd085acce5036e29e3ebe7659d8a, verified true
+L2: 29f7c0ea938d8b448fccdb5e58b28d8a4e56a108db79a896e5b01f5c5091be65, verified true
+L3: a1a2b80c611dc0b06366109df595296b77fea8c36bdb224840426e9b3df01907, verified true
+L4: 2685e2342412b4e6b50588210ff7f8e740689125c5e1b27b63d4e82aeace0d1c, verified true
+P: fce1d7ba776d6b29473334903324c613c193fa8e60dc114717eb3ad67213b856, verified true
+A1: ccedac91cfec707ba2c0497a5ba6052e1037a936717b2f063364c76be46d06aa, verified true
+A2: 2169377eee55425e9668627f51d8f6a106366b25e88f68697314c8e6c3e59ddb, verified true
+reports about N
+R1: ok, spam about e N, user Dave, by Bob
+R2: ok, spam about e N, user Dave, by Carol
+R3: ok, illegal about e N, user Dave, by Mallory
+the tally for N, trusting Bob and Carol
+spam 2, illegal 0, ignored 1, duplicates 0, refused 0
+labels about N
+N: ok, ISO-639-1 en, about itself, by Dave
+L1: ok, social.nos.ontology NS-spm, about N, by Bob
+L2: ok, social.nos.ontology NS-spm, about N, by Carol
+L3: ok, social.nos.ontology NS-hat, about N, by Mallory
+L4: ok, ISO-639-1 en, about N, by Bob
+grouped by namespace and signer, trusting Bob and Carol
+ISO-639-1 / Bob / en
+social.nos.ontology / Carol / NS-spm
+social.nos.ontology / Bob / NS-spm
+entries 3, ignored 2, duplicates 0, refused 0
+social.nos.ontology NS-spm from 2 trusted signers
+trusted assertions about Dave
+P: ok, 1 provider: 30382 rank, Erin
+A1: ok, kind 30382, about Dave, rank 12, by Erin, trusted true
+A1: ok, kind 30382, about Dave, reports_cnt_recd 3, by Erin, trusted false
+A2: ok, kind 30382, about Dave, rank 100, by Mallory, trusted false
+refusals
+report of type scam: unknown report type at tag 0
+report without p: missing p
+report without a type: no report type
+blob report without e: x without e
+l without its L: no matching L at tag 1
+label on nothing: label on nothing
+self-label without its L: no matching L at tag 0
+provider list with a short key: bad provider tag at tag 0
+assertion without d: missing d

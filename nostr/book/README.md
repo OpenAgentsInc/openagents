@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 64 are implemented and 40 are design drafts.
+Of the 104 chapters, 65 are implemented and 39 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -245,7 +245,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [52. Reposts, reactions and comments](ch052-reposts-reactions-and-comments.md) | Runnable: native C | Kind 6 and 16 reposts, kind 7 reactions (`+`, `-`, emoji) and kind 17 website reactions, and NIP-22 kind 1111 comments with uppercase root and lowercase parent scope tags. |
 | [53. Long-form, drafts and wiki](ch053-long-form-drafts-and-wiki.md) | Unimplemented: design draft | Kind 30023 articles and 30024 drafts in Markdown, NIP-37 kind 31234 draft wraps encrypted with NIP-44, and NIP-54 kind 30818 wiki articles with `d`-tag normalization. |
 | [54. Lists, sets and bookmarks](ch054-lists-sets-and-bookmarks.md) | Unimplemented: design draft | NIP-51 standard lists (10000 mutes, 10001 pins, 10003 bookmarks and others) and sets (30000 follow sets and others) with public tags and private items encrypted to self, and NIP-B0 kind 39701 web bookmarks. |
-| [55. Labels, reports and trusted assertions](ch055-labels-reports-and-trusted-assertions.md) | Unimplemented: design draft | NIP-32 kind 1985 labels in `L` namespaces, NIP-56 kind 1984 reports with report types, and NIP-85 kinds 30382–30385 assertions from declared providers (kind 10040). |
+| [55. Labels, reports and trusted assertions](ch055-labels-reports-and-trusted-assertions.md) | Runnable: native C | NIP-32 kind 1985 labels in `L` namespaces, NIP-56 kind 1984 reports with report types, and NIP-85 kinds 30382–30385 assertions from declared providers (kind 10040). |
 | [56. Proof of work](ch056-proof-of-work.md) | Runnable: native C | NIP-13 difficulty as the number of leading zero bits of the event ID, the `nonce` tag with its target, and relay admission by `pow:` reason. |
 | [57. Media and files](ch057-media-and-files.md) | Unimplemented: design draft | `imeta` tags (NIP-92), kind 1063 file metadata (NIP-94), picture (20) and video (21, 22, 34235, 34236) events, voice messages (1222, 1244), Blossom servers (kind 10063) and the deprecated NIP-96. |
 | [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) | Unimplemented: design draft | NIP-52 date (31922) and time (31923) events, calendars (31924) and RSVPs (31925); NIP-88 polls (1068) and responses (1018); NIP-84 highlights (9802). |

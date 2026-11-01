@@ -1,0 +1,220 @@
+// NIP-85 trusted assertions read from parsed events: the addressable kinds
+// 30382 to 30385 a service provider signs about a user, an event, an
+// addressable event or a NIP-73 identifier (the d tag names it), and kind
+// 10040, where a user names the providers they trust for each result.
+//
+// An assertion is a statement by its provider, not a fact. A result is
+// trusted only when the user's kind 10040 names the assertion's signer for
+// that kind and result: "30382:rank" from this key. Anyone can sign a kind
+// 30382 with any rank, so a result from a provider the user did not name
+// reads with trusted false. Nothing here fetches or verifies a signature;
+// the caller verifies both events and passes the user's own kind 10040.
+//
+// Not built: the private provider list, which kind 10040 may carry as a
+// NIP-44 encrypted JSON tag list in its content. A caller that decrypts it
+// (chapter 19) can pass the decrypted tags as an event's tags.
+#load "nip32.coax";
+#authority;
+
+N85_OK :: 0; N85_EVENT :: 1; N85_KIND :: 2; N85_TAG :: 3; N85_MISSING :: 4;
+N85_SUBJECT :: 5; N85_LIMIT :: 6;
+N85_USER :: 30382; N85_NOTE :: 30383; N85_ADDRESS :: 30384; N85_EXTERNAL :: 30385;
+N85_KIND_PROVIDERS :: 10040;
+N85_MAX_PROVIDERS :: 8;
+
+// book:begin record
+N85Provider :: struct {kind:int; result:N32Text; key:[32]u8; relay:N32Text;}
+N85Providers :: struct {
+  status:int=N85_EVENT; at:int=-1;            // the refusing tag
+  list:[N85_MAX_PROVIDERS]N85Provider; n:int;
+}
+N85Assertion :: struct {
+  status:int=N85_EVENT; at:int=-1;
+  kind:int; subject:N32Text;                  // the d tag
+  provider:[32]u8;                            // the signer
+}
+N85Result :: struct {
+  status:int=N85_EVENT;                       // the assertion's status
+  present:bool; value:N32Text;                // the first tag of the result's name
+  is_number:bool; number:int;                 // the value as an integer
+  trusted:bool;                               // the user named this provider for it
+}
+// book:end record
+
+N85_T_PK :: "e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411";
+N85_T_LIST :: "[[\"30382:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\",\"wss://nip85.nostr.band\"],[\"30382:rank\",\"3d842afecd5e293f28b6627933704a3fb8ce153aa91d790ab11f6a752d44a42d\",\"wss://nostr.wine\"],[\"30382:zap_amt_sent\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\",\"wss://nip85.nostr.band\"]]";
+
+#test "kind 10040: NIP-85's example names three providers" {
+  p:=n85_providers(n32_event(10040,N85_T_LIST));
+  #assert p.status==N85_OK && p.n==3 && p.at== -1 && p.list[0].kind==30382 && n32_is(p.list[0].result,"rank") && p.list[0].key[0]==0x4f && p.list[0].key[31]==0xfe;
+  #assert n32_is(p.list[0].relay,"wss://nip85.nostr.band") && p.list[1].key[0]==0x3d && n32_is(p.list[2].result,"zap_amt_sent");
+  // Other tags are passed over; a relay hint is optional; each kind of subject.
+  p=n85_providers(n32_event(10040,"[[\"client\",\"x\"],[\"30383:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\"],[\"30385:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\",\"\"]]"));
+  #assert p.status==N85_OK && p.n==2 && p.list[0].kind==30383 && p.list[0].relay.n==0 && p.list[1].kind==30385;
+  p=n85_providers(n32_event(10040,"[[\"30382:t\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\"]]"));#assert p.status==N85_OK && n32_is(p.list[0].result,"t");
+}
+#test "kind 10040 refusals" {
+  #assert n85_providers(n32_event(3,N85_T_LIST)).status==N85_KIND;
+  none:NostrEvent;#assert n85_providers(none).status==N85_EVENT;
+  p:=n85_providers(n32_event(10040,"[[\"30381:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\"]]"));#assert p.status==N85_TAG && p.at==0;
+  #assert n85_providers(n32_event(10040,"[[\"30386:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\"]]")).status==N85_TAG;
+  #assert n85_providers(n32_event(10040,"[[\"30382:\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\"]]")).status==N85_TAG;
+  #assert n85_providers(n32_event(10040,"[[\":rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\"]]")).status==N85_TAG;
+  #assert n85_providers(n32_event(10040,"[[\"030382:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\"]]")).status==N85_TAG;
+  #assert n85_providers(n32_event(10040,"[[\"30382:rank\",\"4fd5\"]]")).status==N85_TAG;
+  #assert n85_providers(n32_event(10040,"[[\"30382:rank\"]]")).status==N85_TAG;
+  p=n85_providers(n32_event(10040,"[[\"x\"],[\"30382:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\",\"https://x\"]]"));#assert p.status==N85_TAG && p.at==1;
+  e:=n32_event(10040,"[]");e.original="[[\"x\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  p=n85_providers(e);#assert p.status==N85_EVENT && p.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  p=n85_providers(n32_event(10040,cast(string)long[0..<n]));#assert p.status==N85_LIMIT && p.at==0;
+  one:="[\"30382:rank\",\"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe\"]";
+  buf:[1024]u8;m:=json_raw(buf[..],0,"[");m=json_raw(buf[..],m,one);for i:0..<7 {m=json_raw(buf[..],m,",");m=json_raw(buf[..],m,one);}
+  #assert n85_providers(n32_event(10040,cast(string)buf[0..<json_raw(buf[..],m,"]")])).n==8;
+  m=json_raw(buf[..],m,",");m=json_raw(buf[..],m,one);m=json_raw(buf[..],m,"]");
+  p=n85_providers(n32_event(10040,cast(string)buf[0..<m]));#assert p.status==N85_LIMIT && p.at==8;
+}
+#test "assertions: each subject kind and its d tag" {
+  a:=n85_assertion(n32_event(30382,"[[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"],[\"rank\",\"89\"]]"));
+  #assert a.status==N85_OK && a.kind==30382 && n32_is(a.subject,N85_T_PK) && a.at== -1;
+  #assert n85_assertion(n32_event(30383,"[[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"]]")).status==N85_OK;
+  #assert n85_assertion(n32_event(30384,"[[\"d\",\"30023:e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411:tea\"]]")).status==N85_OK;
+  #assert n85_assertion(n32_event(30385,"[[\"d\",\"#tea\"],[\"k\",\"#\"]]")).status==N85_OK;
+  a=n85_assertion(n32_at(n32_event(30382,"[[\"rank\",\"1\"],[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"],[\"d\",\"x\"]]"),0x07,0x01));
+  #assert a.status==N85_OK && a.provider[0]==0x07 && a.subject.n==64;
+  // Refusals.
+  a=n85_assertion(n32_event(30381,"[[\"d\",\"x\"]]"));#assert a.status==N85_KIND && a.at== -1;
+  a=n85_assertion(n32_event(30382,"[[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"],[\"d\",\"x\"]]"));#assert a.status==N85_OK && a.subject.n==64;
+  #assert n85_assertion(n32_event(30386,"[[\"d\",\"x\"]]")).status==N85_KIND;
+  none:NostrEvent;#assert n85_assertion(none).status==N85_EVENT;
+  a=n85_assertion(n32_event(30382,"[[\"rank\",\"89\"]]"));#assert a.status==N85_MISSING && a.at== -1;
+  #assert n85_assertion(n32_event(30385,"[[\"d\",\"\"]]")).status==N85_MISSING;
+  #assert n85_assertion(n32_event(30385,"[[\"d\"]]")).status==N85_MISSING;
+  a=n85_assertion(n32_event(30382,"[[\"rank\",\"89\"],[\"d\",\"E88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"]]"));#assert a.status==N85_SUBJECT && a.at==1;
+  #assert n85_assertion(n32_event(30383,"[[\"d\",\"e88a\"]]")).status==N85_SUBJECT;
+  #assert n85_assertion(n32_event(30384,"[[\"d\",\"1:e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411:tea\"]]")).status==N85_SUBJECT;
+  #assert n85_assertion(n32_event(30384,"[[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"]]")).status==N85_SUBJECT;
+  e:=n32_event(30382,"[]");e.original="[[\"d\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  a=n85_assertion(e);#assert a.status==N85_EVENT && a.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  a=n85_assertion(n32_event(30385,cast(string)long[0..<n]));#assert a.status==N85_LIMIT && a.at==0;
+}
+#test "results: trusted only from a provider the user named for that kind and result" {
+  providers:=n85_providers(n32_event(10040,N85_T_LIST));
+  rank:="[[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"],[\"rank\",\"89\"],[\"t\",\"tea\"],[\"followers\",\"-3\"]]";
+  named:=n85_signed(n32_event(30382,rank),"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe");
+  r:=n85_result(named,providers,"rank");
+  #assert r.status==N85_OK && r.present && r.trusted && r.is_number && r.number==89 && n32_is(r.value,"89");
+  second:=n85_signed(n32_event(30382,rank),"3d842afecd5e293f28b6627933704a3fb8ce153aa91d790ab11f6a752d44a42d");
+  #assert n85_result(second,providers,"rank").trusted;
+  // Named for zap_amt_sent and rank, not for followers or t.
+  r=n85_result(named,providers,"followers");#assert r.status==N85_OK && r.present && !r.trusted && r.is_number && r.number== -3;
+  r=n85_result(second,providers,"zap_amt_sent");#assert r.status==N85_OK && !r.present && !r.trusted;
+  r=n85_result(named,providers,"t");#assert r.present && !r.is_number && n32_is(r.value,"tea");
+  // A key the user did not name, and the named key for another kind.
+  stranger:=n85_signed(n32_event(30382,rank),"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659");
+  r=n85_result(stranger,providers,"rank");#assert r.status==N85_OK && r.present && r.number==89 && !r.trusted;
+  other:=n85_signed(n32_event(30383,rank),"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe");
+  #assert !n85_result(other,providers,"rank").trusted;
+  // A provider list that doesn't read trusts nobody.
+  bad:=providers;bad.status=N85_TAG;#assert !n85_result(named,bad,"rank").trusted;
+  // An assertion that doesn't read has no result.
+  r=n85_result(n85_signed(n32_event(30382,"[[\"rank\",\"89\"]]"),"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe"),providers,"rank");
+  #assert r.status==N85_MISSING && !r.present && !r.trusted;
+  // A valueless result tag is present and empty; the d tag is no result.
+  r=n85_result(n85_signed(n32_event(30382,"[[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"],[\"rank\"]]"),"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe"),providers,"rank");
+  #assert r.present && r.value.n==0 && !r.is_number && r.trusted;
+  #assert !n85_result(named,providers,"d").present;
+  first:=n85_signed(n32_event(30382,"[[\"rank\",\"7\"],[\"d\",\"e88a691e98d9987c964521dff60025f60700378a4879180dcbbb4a5027850411\"]]"),"4fd5e210530e4f6b2cb083795834bfe5108324f1ed9f00ab73b9e8fcfe5f12fe");
+  r=n85_result(first,providers,"rank");#assert r.present && r.number==7 && r.trusted;
+}
+
+// An event signed, for the checks, by this hex key.
+n85_signed :: (e:NostrEvent,key:string)->NostrEvent {r:=e;ok:=ne_lower_hex(key,r.public_key[..]);return r;}
+
+// book:begin providers
+// The providers a user names in kind 10040: each "kind:result" tag gives
+// the provider's key and a relay hint. Tags of other names are passed over.
+n85_providers :: (e:NostrEvent)->N85Providers {
+  p:N85Providers;if e.error!=NE_OK {return p;}
+  if e.kind!=N85_KIND_PROVIDERS {p.status=N85_KIND;return p;}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {p.status=ifx t.error==NT_LIMIT then N85_LIMIT else N85_EVENT;p.at=i;return p;}
+    name:=t.v[0];colon:= -1;
+    for c:0..<name.n {if name.b[c]==':' {colon=c;break;}}
+    if colon>=0 {
+      x:N85Provider;key:=t.v[1];relay:=t.v[2];
+      kind:=json_int(cast(string)name.b[0..<colon]);
+      ok:=kind.ok && kind.value>=N85_USER && kind.value<=N85_EXTERNAL && colon+1<name.n;
+      ok=ok && ne_lower_hex(cast(string)key.b[0..<key.n],x.key[..]);
+      ok=ok && (relay.n==0 || nt_relay_ok(cast(string)relay.b[0..<relay.n]));
+      if !ok {p.status=N85_TAG;p.at=i;return p;}
+      if p.n==N85_MAX_PROVIDERS {p.status=N85_LIMIT;p.at=i;return p;}
+      x.kind=kind.value;x.relay=relay;
+      for c:colon+1..<name.n {x.result.b[c-colon-1]=name.b[c];}
+      x.result.n=name.n-colon-1;
+      p.list[p.n]=x;p.n+=1;
+    }
+    i+=1;
+  }
+  p.status=N85_OK;return p;
+}
+// book:end providers
+
+n85_refuse :: (a:N85Assertion,status:int,at:int)->N85Assertion {o:=a;o.status=status;o.at=at;return o;}
+
+// book:begin assertion
+// An assertion's kind, subject and provider. The subject is the first d
+// tag's value, read by the kind: a pubkey, an event id, an address, or any
+// NIP-73 identifier.
+n85_assertion :: (e:NostrEvent)->N85Assertion {
+  a:N85Assertion;if e.error!=NE_OK {return a;}
+  if e.kind<N85_USER || e.kind>N85_EXTERNAL {return n85_refuse(a,N85_KIND,-1);}
+  a.kind=e.kind;a.provider=e.public_key;
+  i:=0;at:= -1;
+  while at<0 {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n85_refuse(a,N85_LIMIT,i);}
+    if t.error!=NT_OK {return n85_refuse(a,N85_EVENT,i);}
+    if n32_is(t.v[0],"d") {at=i;a.subject=t.v[1];}
+    i+=1;
+  }
+  if a.subject.n==0 {return n85_refuse(a,N85_MISSING,-1);}
+  s:=a.subject;text:=cast(string)s.b[0..<s.n];
+  key:[32]u8;ok:=true;
+  if e.kind==N85_USER || e.kind==N85_NOTE {ok=ne_lower_hex(text,key[..]);}
+  if e.kind==N85_ADDRESS {probe:NostrTag;probe.error=NT_OK;ok=nt_read_address(probe,text).error==NT_OK;}
+  if !ok {return n85_refuse(a,N85_SUBJECT,at);}
+  a.status=N85_OK;return a;
+}
+// book:end assertion
+
+// book:begin result
+// The result named name in an assertion, and whether the user's providers
+// name its signer for this kind and result. A provider list that doesn't
+// read trusts nobody.
+n85_result :: (e:NostrEvent,providers:N85Providers,name:string)->N85Result {
+  r:N85Result;a:=n85_assertion(e);r.status=a.status;
+  if a.status!=N85_OK || name=="d" {return r;}
+  i:=0;
+  while !r.present {
+    t:=n32_tag(e,i);
+    if t.error!=NT_OK {break;}
+    if n32_is(t.v[0],name) {
+      r.present=true;r.value=t.v[1];
+      v:=t.v[1];n:=json_int(cast(string)v.b[0..<v.n]);r.is_number=n.ok;r.number=n.value;
+    }
+    i+=1;
+  }
+  if providers.status!=N85_OK {return r;}
+  for k:0..<providers.n {
+    p:=providers.list[k];
+    if p.kind==e.kind && n32_is(p.result,name) && ns_equal32(p.key,a.provider) {r.trusted=true;}
+  }
+  return r;
+}
+// book:end result

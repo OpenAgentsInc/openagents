@@ -1156,13 +1156,21 @@
    "number": 55,
    "title": "Labels, reports and trusted assertions",
    "file": "ch055-labels-reports-and-trusted-assertions.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip32.coax",
+    "coax/lib/nostr/nip56.coax",
+    "coax/lib/nostr/nip85.coax",
+    "nostr/examples/labels-reports.coax",
+    "nostr/examples/checks/labels-reports.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

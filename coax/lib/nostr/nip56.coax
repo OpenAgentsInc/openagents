@@ -1,0 +1,204 @@
+// NIP-56 reports read from a parsed event: kind 1984, whose p, e and x tags
+// name the reported user, note and blob, with a report type as the tag's
+// third entry. Then a tally of the reports about one target from the
+// reporters a caller trusts.
+//
+// A report is a statement by its signer, not a fact, and NIP-56 warns that
+// reports are easily gamed. Nothing here fetches, verifies a signature or
+// decides whom to trust: the caller verifies the events it passes to
+// n56_tally and names the reporters it trusts. Reports by anyone else are
+// counted as ignored, never by type.
+//
+// The subject of a report is its x tag (a blob) when it has one, else its
+// e tag (a note), else its p tag (a user), and the subject's tag carries the
+// report type. Every other p, e or x tag with a third entry must carry one of
+// the seven types too. NIP-56 says a report MUST have a p tag, but its own
+// blob example has only x and e; this reader accepts that example, so a
+// report needs a p tag or an x tag, and an x tag needs an e tag.
+//
+// In a report the third entry of e and p is the report type, where NIP-01
+// puts a relay hint, so these tags are read here, not through nostr_tag.
+#load "nip32.coax";
+#authority;
+
+N56_OK :: 0; N56_EVENT :: 1; N56_KIND :: 2; N56_TAG :: 3; N56_MISSING :: 4;
+N56_TYPE :: 5; N56_UNTYPED :: 6; N56_BLOB :: 7; N56_LIMIT :: 8;
+N56_KIND_REPORT :: 1984;
+N56_NUDITY :: 0; N56_MALWARE :: 1; N56_PROFANITY :: 2; N56_ILLEGAL :: 3;
+N56_SPAM :: 4; N56_IMPERSONATION :: 5; N56_OTHER :: 6;
+N56_SUBJECT_P :: 0; N56_SUBJECT_E :: 1; N56_SUBJECT_X :: 2;
+
+// book:begin record
+N56Report :: struct {
+  status:int=N56_EVENT; at:int=-1;            // the refusing tag
+  type:int=-1;                                // the subject's report type
+  subject:int;                                // p, e or x
+  has_pubkey:bool; pubkey:[32]u8;             // the first p tag
+  has_event:bool; event:[32]u8;               // the first e tag
+  has_blob:bool; blob:[32]u8;                 // the first x tag
+}
+N56Tally :: struct {
+  counts:[7]int;      // trusted reporters per type, one per reporter and type
+  ignored:int;        // reports about the target by reporters not trusted
+  duplicates:int;     // a type a trusted reporter already gave
+  refused:int;        // kind 1984 events that don't read
+}
+// book:end record
+
+#test "the closed set of report types" {
+  #assert n56_type("nudity")==N56_NUDITY && n56_type("malware")==N56_MALWARE && n56_type("profanity")==N56_PROFANITY;
+  #assert n56_type("illegal")==N56_ILLEGAL && n56_type("spam")==N56_SPAM && n56_type("impersonation")==N56_IMPERSONATION && n56_type("other")==N56_OTHER;
+  #assert n56_type("Spam")== -1 && n56_type("scam")== -1 && n56_type("")== -1 && n56_type("spam ")== -1;
+}
+#test "NIP-56's four examples" {
+  r:=n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"nudity\"],[\"L\",\"social.nos.ontology\"],[\"l\",\"NS-nud\",\"social.nos.ontology\"]]"));
+  #assert r.status==N56_OK && r.type==N56_NUDITY && r.subject==N56_SUBJECT_P && r.has_pubkey && r.pubkey[0]==0xf9 && !r.has_event && !r.has_blob && r.at== -1;
+  r=n56_report(n32_event(1984,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"illegal\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]"));
+  #assert r.status==N56_OK && r.type==N56_ILLEGAL && r.subject==N56_SUBJECT_E && r.event[31]==0xaa && r.has_pubkey;
+  r=n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"impersonation\"]]"));
+  #assert r.status==N56_OK && r.type==N56_IMPERSONATION && r.subject==N56_SUBJECT_P;
+  r=n56_report(n32_event(1984,"[[\"x\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"malware\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"malware\"],[\"server\",\"https://you-may-find-the-blob-here.com/path-to-url.ext\"]]"));
+  #assert r.status==N56_OK && r.type==N56_MALWARE && r.subject==N56_SUBJECT_X && r.has_blob && r.blob[0]==0xbb && r.has_event && !r.has_pubkey;
+}
+#test "the subject's tag carries the type; the first of each tag counts" {
+  // e is the subject: p's type is checked but not used.
+  r:=n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"spam\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"other\"]]"));
+  #assert r.status==N56_OK && r.type==N56_OTHER && r.subject==N56_SUBJECT_E;
+  r=n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"spam\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"));
+  #assert r.status==N56_UNTYPED && r.at== -1;
+  r=n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"\"]]"));#assert r.status==N56_UNTYPED;
+  r=n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"spam\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"nudity\"]]"));
+  #assert r.status==N56_OK && r.type==N56_SPAM && r.pubkey[0]==0xf9;
+  r=n56_report(n32_event(1984,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"spam\"],[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"t\",\"x\"]]"));
+  #assert r.status==N56_OK && r.type==N56_SPAM && r.event[0]==0xaa;
+  r=n56_report(n32_event(1984,"[[\"x\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"malware\"],[\"x\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"));
+  #assert r.status==N56_OK && r.blob[0]==0xbb;
+}
+#test "refusals: unknown type, kind, missing p, x without e, bad hex" {
+  r:=n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"scam\"]]"));#assert r.status==N56_TYPE && r.at==0;
+  r=n56_report(n32_event(1984,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"spam\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"wss://relay.example\"]]"));#assert r.status==N56_TYPE && r.at==1;
+  r=n56_report(n32_event(1985,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"spam\"]]"));#assert r.status==N56_KIND && r.at== -1;
+  #assert n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"x\"]]")).status==N56_TYPE;
+  r=n56_report(n32_event(1984,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"spam\"]]"));#assert r.status==N56_MISSING && r.at== -1;
+  #assert n56_report(n32_event(1984,"[]")).status==N56_MISSING;
+  r=n56_report(n32_event(1984,"[[\"x\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"malware\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]"));#assert r.status==N56_BLOB && r.at== -1;
+  r=n56_report(n32_event(1984,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"spam\"],[\"e\",\"aaaa\",\"spam\"]]"));#assert r.status==N56_TAG && r.at==1;
+  #assert n56_report(n32_event(1984,"[[\"p\",\"F9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"spam\"]]")).status==N56_TAG;
+  #assert n56_report(n32_event(1984,"[[\"p\"]]")).status==N56_TAG;
+  #assert n56_report(n32_event(1984,"[[\"x\",\"bb\",\"malware\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]")).status==N56_TAG;
+  none:NostrEvent;#assert n56_report(none).status==N56_EVENT;
+  e:=n32_event(1984,"[]");e.original="[[\"p\",1]]";e.tags_from=0;e.tags_to=e.original.count;
+  r=n56_report(e);#assert r.status==N56_EVENT && r.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"p\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  r=n56_report(n32_event(1984,cast(string)long[0..<n]));#assert r.status==N56_LIMIT && r.at==0;
+}
+#test "tally: trusted reporters per type, others ignored" {
+  buf:[8][1024]u8;set:[8]NostrEvent;
+  target:[32]u8;for i:0..<32 {target[i]=0xaa;}
+  on_e:="[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"spam\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]";
+  set[0]=n32_at(n32_event_in(1984,on_e,buf[0][..]),0x01,0x10);   // trusted, spam
+  set[1]=n32_at(n32_event_in(1984,on_e,buf[1][..]),0x02,0x11);   // trusted, spam
+  set[2]=n32_at(n32_event_in(1984,on_e,buf[2][..]),0x09,0x12);   // not trusted
+  set[3]=n32_at(n32_event_in(1984,on_e,buf[3][..]),0x01,0x13);   // spam again
+  set[4]=n32_at(n32_event_in(1984,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"illegal\"]]",buf[4][..]),0x01,0x14);  // a new type, by p
+  set[5]=n32_at(n32_event_in(1984,"[[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"nudity\"]]",buf[5][..]),0x02,0x15);  // another target
+  set[6]=n32_at(n32_event_in(1984,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"scam\"]]",buf[6][..]),0x02,0x16);   // refused
+  set[7]=n32_at(n32_event_in(1,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"spam\"]]",buf[7][..]),0x02,0x17);   // not a report
+  trusted:[2][32]u8;for i:0..<32 {trusted[0][i]=0x01;trusted[1][i]=0x02;}
+  t:=n56_tally(set[..],trusted[..],target);
+  #assert t.counts[N56_SPAM]==2 && t.counts[N56_ILLEGAL]==1 && t.counts[N56_NUDITY]==0 && t.ignored==1 && t.duplicates==1 && t.refused==1;
+  rev:[8]NostrEvent;for k:0..<8 {rev[k]=set[7-k];}
+  t=n56_tally(rev[..],trusted[..],target);
+  #assert t.counts[N56_SPAM]==2 && t.counts[N56_ILLEGAL]==1 && t.ignored==1 && t.duplicates==1 && t.refused==1;
+  t=n56_tally(set[..],trusted[0..<1],target);#assert t.counts[N56_SPAM]==1 && t.ignored==2 && t.duplicates==1;
+  t=n56_tally(set[..],trusted[0..<0],target);#assert t.counts[N56_SPAM]==0 && t.counts[N56_ILLEGAL]==0 && t.ignored==5 && t.duplicates==0;
+  // A note report and a blob report about other things don't count.
+  away:[2]NostrEvent;
+  away[0]=n32_at(n32_event_in(1984,"[[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"spam\"],[\"p\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",buf[2][..]),0x01,0x30);
+  away[1]=n32_at(n32_event_in(1984,"[[\"x\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"malware\"],[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]",buf[3][..]),0x01,0x31);
+  t=n56_tally(away[..],trusted[..],target);#assert t.counts[N56_SPAM]==0 && t.counts[N56_MALWARE]==0 && t.refused==0;
+  // A blob target.
+  blob:[1]NostrEvent;blob[0]=n32_at(n32_event_in(1984,"[[\"x\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"malware\"],[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"malware\"]]",buf[0][..]),0x01,0x20);
+  t=n56_tally(blob[..],trusted[..],target);#assert t.counts[N56_MALWARE]==1;
+  // A refused report by a trusted reporter is not a duplicate source.
+  pair:[2]NostrEvent;pair[0]=set[6];pair[1]=n32_at(set[4],0x02,0x18);
+  t=n56_tally(pair[..],trusted[..],target);#assert t.counts[N56_ILLEGAL]==1 && t.duplicates==0 && t.refused==1;
+  // A report about another target by the same reporter and type is no duplicate.
+  pair[0]=n32_at(set[5],0x02,0x19);pair[1]=n32_at(n32_event_in(1984,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"nudity\"]]",buf[1][..]),0x02,0x1a);
+  t=n56_tally(pair[..],trusted[..],target);#assert t.counts[N56_NUDITY]==1 && t.duplicates==0;
+  // Nor is an earlier untrusted report of the same type.
+  pair[0]=set[2];pair[1]=set[0];t=n56_tally(pair[..],trusted[..],target);#assert t.counts[N56_SPAM]==1 && t.duplicates==0 && t.ignored==1;
+}
+
+n56_refuse :: (r:N56Report,status:int,at:int)->N56Report {o:=r;o.status=status;o.at=at;return o;}
+
+// book:begin read
+N56_TYPES :: [7] string.["nudity", "malware", "profanity", "illegal", "spam", "impersonation", "other"];
+// The report type a string names, or -1: the set is closed.
+n56_type :: (s:string)->int {
+  for k:0..<N56_TYPES.count {if s==N56_TYPES[k] {return k;}}
+  return -1;
+}
+// A report's subject, its type and whom and what it names.
+n56_report :: (e:NostrEvent)->N56Report {
+  r:N56Report;if e.error!=NE_OK {return r;}
+  if e.kind!=N56_KIND_REPORT {return n56_refuse(r,N56_KIND,-1);}
+  types:[3]int;   // each is set with its tag
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n56_refuse(r,N56_LIMIT,i);}
+    if t.error!=NT_OK {return n56_refuse(r,N56_EVENT,i);}
+    s:=ifx n32_is(t.v[0],"p") then N56_SUBJECT_P else ifx n32_is(t.v[0],"e") then N56_SUBJECT_E else ifx n32_is(t.v[0],"x") then N56_SUBJECT_X else -1;
+    if s>=0 {
+      key:[32]u8;hex:=t.v[1];
+      if !ne_lower_hex(cast(string)hex.b[0..<hex.n],key[..]) {return n56_refuse(r,N56_TAG,i);}
+      ty:= -1;
+      if t.v[2].n>0 {
+        mark:=t.v[2];ty=n56_type(cast(string)mark.b[0..<mark.n]);
+        if ty<0 {return n56_refuse(r,N56_TYPE,i);}
+      }
+      if s==N56_SUBJECT_P && !r.has_pubkey {r.has_pubkey=true;r.pubkey=key;types[s]=ty;}
+      if s==N56_SUBJECT_E && !r.has_event {r.has_event=true;r.event=key;types[s]=ty;}
+      if s==N56_SUBJECT_X && !r.has_blob {r.has_blob=true;r.blob=key;types[s]=ty;}
+    }
+    i+=1;
+  }
+  if r.has_blob && !r.has_event {return n56_refuse(r,N56_BLOB,-1);}
+  if !r.has_pubkey && !r.has_blob {return n56_refuse(r,N56_MISSING,-1);}
+  r.subject=ifx r.has_blob then N56_SUBJECT_X else ifx r.has_event then N56_SUBJECT_E else N56_SUBJECT_P;
+  r.type=types[r.subject];
+  if r.type<0 {return n56_refuse(r,N56_UNTYPED,-1);}
+  r.status=N56_OK;return r;
+}
+// book:end read
+
+// book:begin tally
+// Whether the report names target as its user, note or blob.
+n56_about :: (r:N56Report,target:[32]u8)->bool {
+  return (r.has_pubkey && ns_equal32(r.pubkey,target)) || (r.has_event && ns_equal32(r.event,target)) || (r.has_blob && ns_equal32(r.blob,target));
+}
+// The reports about target from the trusted reporters in set, by type: one
+// per reporter and type, so a reporter who reports twice counts once.
+// Reports by anyone else are ignored. Other kinds are passed over.
+n56_tally :: (set:[]NostrEvent,trusted:[][32]u8,target:[32]u8)->N56Tally {
+  t:N56Tally;
+  for i:0..<set.count {
+    if set[i].kind!=N56_KIND_REPORT {continue;}
+    r:=n56_report(set[i]);
+    if r.status!=N56_OK {t.refused+=1;continue;}
+    if !n56_about(r,target) {continue;}
+    if !n32_trusted(trusted,set[i].public_key) {t.ignored+=1;continue;}
+    seen:=false;
+    for k:0..<i {
+      if !ns_equal32(set[k].public_key,set[i].public_key) || set[k].kind!=N56_KIND_REPORT {continue;}
+      q:=n56_report(set[k]);
+      if q.status==N56_OK && q.type==r.type && n56_about(q,target) {seen=true;}
+    }
+    if seen {t.duplicates+=1;continue;}
+    t.counts[r.type]+=1;
+  }
+  return t;
+}
+// book:end tally
