@@ -227,19 +227,21 @@ tag failing:
 // vmk is AES-256-GCM of the VMK under it with the slot's associated data.
 // A wrong secret, or any changed byte of the slot, fails the tag.
 vt_slot_open :: (text:string,secret:[]u8,vmk:[]u8)->VtCode {
+  kdf:[1]VtKdf;return vt_slot_open_work(text,secret,vmk,kdf[..]);
+}
+vt_slot_open_work :: (text:string,secret:[]u8,vmk:[]u8,kdf:[]VtKdf)->VtCode {
   aad:[VT_AAD_MAX]u8;s:=vt_slot_read(text,aad[..]);
   if s.code!=VtCode.ok {return s.code;}
-  if secret.count<32 {return VtCode.secret;}
+  if secret.count<32 || secret.count>VT_SECRET_MAX {return VtCode.secret;}
   if vmk.count<32 {return VtCode.room;}
   nonce:[12]u8;sealed:[48]u8;
   if !vt_b64(s.nonce,nonce[..],12) || !vt_b64(s.vmk,sealed[..],48) {return VtCode.field;}
   salt:[32]u8;vt_bytes(s.slot,salt[..]);
   info:[64]u8;n:=json_raw(info[..],0,"openagents.vault.v1/slot");n=json_raw(info[..],n+1,s.method);  // info[24] stays 0
-  prk:[32]u8;key:[32]u8;
-  ok:=hkdf_extract_checked(salt[..],secret,prk[..],false)==SHA_OK && hkdf_expand_checked(prk[..],info[0..<n],key[..],32,false)==SHA_OK;
-  opened:=ifx ok then aes256_gcm_open(key[..],nonce[..],aad[0..<s.aad],sealed[..],vmk) else -1;
-  for i:0..<32 {prk[i]=0;key[i]=0;}
-  return ifx opened==32 then VtCode.ok else VtCode.slot;
+  ok:=hkdf_extract_checked(salt[..],secret,kdf[0].prk[..],false)==SHA_OK && hkdf_expand_checked(kdf[0].prk[..],info[0..<n],kdf[0].key[..],32,false)==SHA_OK
+    && aes256_gcm_open(kdf[0].key[..],nonce[..],aad[0..<s.aad],sealed[..],vmk)==32;
+  kdf[0]=VtKdf.{};
+  return ifx ok then VtCode.ok else VtCode.slot;
 }
 ```
 
@@ -256,14 +258,17 @@ From the VMK come `K_user_wrap` and the public `user_key_id`:
 // "openagents.vault.v1/user-wrap"); user_key_id = the first 16 bytes of
 // SHA-256("openagents.vault.v1/key-id" 0 K_user_wrap), as 32 hex digits.
 vt_user_keys :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8)->bool {
-  prk:[32]u8;none:[1]u8;info:[29]u8;i0:=json_raw(info[..],0,"openagents.vault.v1/user-wrap");
-  ok:=hkdf_extract_checked(none[0..<0],vmk,prk[..],false)==SHA_OK && hkdf_expand_checked(prk[..],info[0..<i0],kwrap,32,false)==SHA_OK;
+  kdf:[1]VtKdf;return vt_user_keys_work(vmk,kwrap,key_id,kdf[..]);
+}
+vt_user_keys_work :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8,kdf:[]VtKdf)->bool {
+  info:[29]u8;i0:=json_raw(info[..],0,"openagents.vault.v1/user-wrap");
+  ok:=hkdf_extract_checked(vmk[0..<0],vmk,kdf[0].prk[..],false)==SHA_OK && hkdf_expand_checked(kdf[0].prk[..],info[0..<i0],kwrap,32,false)==SHA_OK;
   msg:[59]u8;n:=json_raw(msg[..],0,"openagents.vault.v1/key-id");   // msg[26] stays 0
   for i:0..<32 {msg[n+1+i]=kwrap[i];}
   digest:[32]u8;ok=ok && sha256_hash_checked(msg[..],digest[..],false)==SHA_OK;
   hex:="0123456789abcdef";
   for i:0..<16 {key_id[2*i]=hex[cast(int)digest[i]>>4];key_id[2*i+1]=hex[cast(int)digest[i]&15];}
-  for i:0..<32 {prk[i]=0;}
+  kdf[0]=VtKdf.{};
   return ok;
 }
 ```
@@ -297,40 +302,60 @@ leaving nothing in the output:
 // Slot -> VMK -> K_user_wrap -> the user wrap whose key is user_key_id ->
 // DEK -> every chunk. Nothing is left in out unless every link holds.
 vt_open :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8)->VtResult {
+  work:[1]VtWork;return vt_open_work(blob,slot,secret,out,work[..]);
+}
+vt_open_work :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8,work:[]VtWork)->VtResult {
   o:=vt_object_read(blob);if o.code!=VtCode.ok {return VtResult.{code=o.code};}
   aad:[VT_AAD_MAX]u8;s:=vt_slot_read(slot,aad[..]);if s.code!=VtCode.ok {return VtResult.{code=s.code};}
   if s.vault!=o.vault {return VtResult.{code=VtCode.vault};}
-  vmk:[32]u8;code:=vt_slot_open(slot,secret,vmk[..]);if code!=VtCode.ok {return VtResult.{code=code};}
-  kwrap:[32]u8;id:[32]u8;dek:[32]u8;opened:=-1;
-  if vt_user_keys(vmk[..],kwrap[..],id[..]) {
-    wad:[62]u8;n:=json_raw(wad[..],0,"openagents.vault.v1/wrap-user");for i:0..<32 {wad[n+1+i]=o.digest[i];}
-    for w:o.wraps[0..<o.count] {
-      nonce:[12]u8;sealed:[48]u8;
-      if opened<0 && w.key==cast(string)id[..] && vt_b64(w.nonce,nonce[..],12) && vt_b64(w.dek,sealed[..],48) {
-        opened=aes256_gcm_open(kwrap[..],nonce[..],wad[..],sealed[..],dek[..]);
-      }
-    }
-  }
-  for i:0..<32 {vmk[i]=0;kwrap[i]=0;}
-  if opened!=32 {return VtResult.{code=VtCode.wrap};}
-  total:=blob.count-o.body-16*o.chunks;
-  if out.count<total {for i:0..<32 {dek[i]=0;}return VtResult.{code=VtCode.room};}
+  if out.count<blob.count-o.body-16*o.chunks {return VtResult.{code=VtCode.room};}
+  code:=vt_slot_open_work(slot,secret,work[0].vmk[..],work[0].kdf[..]);
+  if code==VtCode.ok {code=vt_unwrap(o,work);}
   cad:[58]u8;n:=json_raw(cad[..],0,"openagents.vault.v1/chunk");for i:0..<32 {cad[n+1+i]=o.digest[i];}
-  at:=o.body;written:=0;result:=VtCode.ok;
-  for i:0..<o.chunks {
+  at:=o.body;written:=0;i:=0;
+  while code==VtCode.ok && i<o.chunks {
     last:=i==o.chunks-1;size:=ifx last then blob.count-at else o.chunk_bytes+16;
-    nonce:[12]u8;for k:0..<7 {nonce[k]=o.prefix[k];}
-    for k:0..<4 {nonce[7+k]=cast(u8)((i>>(8*(3-k)))&255);}
-    nonce[11]=ifx last then cast(u8)1 else cast(u8)0;
-    got:=aes256_gcm_open(dek[..],nonce[..],cad[0..<n+33],blob[at..<at+size],out[written..<out.count]);
-    if got<0 {result=VtCode.chunk;break;}
-    written+=got;at+=size;
+    nonce:[12]u8;vt_chunk_nonce(o.prefix,i,last,nonce[..]);
+    got:=aes256_gcm_open(work[0].dek[..],nonce[..],cad[..],blob[at..<at+size],out[written..<out.count]);
+    if got==-1 {code=VtCode.chunk;} else {written+=got;at+=size;i+=1;}
   }
-  for i:0..<32 {dek[i]=0;}
-  if result!=VtCode.ok {for i:0..<written {out[i]=0;}return VtResult.{code=result};}
+  work[0]=VtWork.{};
+  if code!=VtCode.ok {for k:0..<written {out[k]=0;}return VtResult.{code=code};}
   return VtResult.{code=VtCode.ok,written=written};
 }
+// VMK -> K_user_wrap and user_key_id -> the DEK from the wrap with that key.
+vt_unwrap :: (o:VtObject,work:[]VtWork)->VtCode {
+  id:[32]u8;
+  if !vt_user_keys_work(work[0].vmk[..],work[0].kwrap[..],id[..],work[0].kdf[..]) {return VtCode.wrap;}
+  wad:[62]u8;n:=json_raw(wad[..],0,"openagents.vault.v1/wrap-user");for i:0..<32 {wad[n+1+i]=o.digest[i];}
+  wraps:=o.wraps;
+  for w:wraps[0..<o.count] {
+    nonce:[12]u8;sealed:[48]u8;
+    if w.key==cast(string)id[..] && vt_b64(w.nonce,nonce[..],12) && vt_b64(w.dek,sealed[..],48)
+      && aes256_gcm_open(work[0].kwrap[..],nonce[..],wad[..],sealed[..],work[0].dek[..])==32 {return VtCode.ok;}
+  }
+  return VtCode.wrap;
+}
+// Chunk i's nonce: nonce_prefix (7 bytes) || be32(i) || 1 for the last chunk, else 0.
+vt_chunk_nonce :: (prefix:[7]u8,i:int,last:bool,nonce:[]u8) {
+  for k:0..<7 {nonce[k]=prefix[k];}
+  for k:0..<4 {nonce[7+k]=cast(u8)((i>>(8*(3-k)))&255);}
+  nonce[11]=ifx last then cast(u8)1 else cast(u8)0;
+}
 ```
+
+Each step keeps its key material (the HKDF pseudorandom key, the wrapping
+key, the VMK, `K_user_wrap` and the DEK) in a work value the caller
+passes in, and sets it to zero before every return after it is written.
+The public procedures (`vt_slot_open`, `vt_user_keys`, `vt_nostr_secret`
+and `vt_open`) hold that value on their own stack; the checks call the
+`*_work` forms and read the value afterwards, so a wipe that was left out
+fails a check. As in `aes.coax` and `nip44-key.coax`, these are plain
+stores: erasure the C compiler cannot drop is the host's contract
+([coax/lib/crypto/zeroize.coax](../../coax/lib/crypto/zeroize.coax)).
+`vt_open` checks the output has room before it opens the slot, and a
+method secret is 32 to 1024 bytes (`VT_SECRET_MAX`), so neither HKDF
+step can refuse.
 
 ### Worked example: the object, by hand
 
@@ -672,23 +697,28 @@ compare.
 
 ### The units' own checks
 
-- `aes_gcm.coax`: FIPS-197 appendix C.3 (the forward cipher, round by
-  round) and GCM spec test cases 13 to 16 for AES-256, and refusal of a
-  changed byte, key, nonce or associated data with nothing written.
+- `aes_gcm.coax` (35 checks with the units it loads): FIPS-197 appendix
+  C.3 (the forward cipher, round by round), GCM spec test cases 13 to 16
+  for AES-256, refusal of a changed byte, key, nonce or associated data
+  with nothing written, the size edges, CTR for texts of 0 to 48 bytes
+  against each block's pad, the big-endian counter and length bytes, and
+  the expanded key zero again after seal, open and a refused open.
 - `att.coax` (77 checks): every reader refusal, the admission edges, the
   binding, every claim, token shapes and the chain.
-- `vault.coax` (182 checks): slot fields and canonical form, slot opening,
-  the nostr secret, the user keys, header refusals, chunk spans for every
-  size, and the chain with each broken link.
+- `vault.coax` (192 checks with the units it loads): slot fields and
+  canonical form, every platform, secret lengths, slot opening, the nostr
+  secret, the user keys, header refusals and trailing members, chunk spans
+  for every size, chunk nonces for indexes 256, 65536 and above, the
+  chapter's two-chunk object (a bad last chunk leaves nothing of the
+  first), the chain with each broken link, and the key material zero again
+  after each step.
 
 Run on 2026-11-01 with the cached compiler
 `bcefdc7fa553`: `att.coax` 77/77 checks and root-only mutation 1066/1066
-killed; `vault.coax` 182/182 checks, root-only mutation 665 of 754 killed,
-89 surviving (key-erasure loops whose effect a check cannot see, the chunk
-nonce's counter bytes, which only an object of 257 or more chunks would
-reach, and some redundant guards), which is open work; `aes_gcm.coax`
-31/31 checks, mutation not run; the example in debug and release; the
-checks file.
+killed; `vault.coax` 192/192 checks and root-only mutation 730/730 killed;
+`aes_gcm.coax` 35/35 checks and root-only mutation 239/239 killed; the
+example in debug and release, with the same output; the checks file
+375/375.
 
 ## Summary
 

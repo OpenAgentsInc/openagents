@@ -25,6 +25,12 @@ VtWrap :: struct {key:string;nonce:string;dek:string;}
 VT_WRAPS :: 4;
 VtObject :: struct {code:VtCode;vault:string;object:string;digest:[32]u8;chunk_bytes:int;chunks:int;prefix:[7]u8;body:int;wraps:[VT_WRAPS]VtWrap;count:int;}
 VtResult :: struct {code:VtCode;written:int;}
+// Key material between derivation steps. The *_work procedures take it from
+// the caller and leave it zero on every return, so the checks can read the
+// wipe; the public procedures keep it on their own stack.
+VtKdf :: struct {prk:[32]u8;key:[32]u8;}
+VtPlain :: struct {work:[512]u8;plain:[256]u8;}
+VtWork :: struct {kdf:[1]VtKdf;vmk:[32]u8;kwrap:[32]u8;dek:[32]u8;}
 
 VT_SLOT_V :: "openagents.vault-slot.v1";
 VT_OBJECT_V :: "openagents.vault-object.v1";
@@ -32,6 +38,7 @@ VT_MAGIC :: "OAVAULT1";
 VT_HEADER_MAX :: 65536;
 VT_LABEL_MAX :: 64;
 VT_AAD_MAX :: 2048;
+VT_SECRET_MAX :: 1024;   // method secret bytes at most: the spec asks for at least 32
 
 #load "../../tests/nostr/vault_fixtures.coax";
 
@@ -210,6 +217,77 @@ VT_AAD_MAX :: 2048;
   #assert vt_open_t(u8b[..],vt_case(x[..],blob,"\"created_at\":1791997000","\"created_at\":1791997001"),VT_SLOT_DEVICE,secret[..],out[..]).code==VtCode.wrap;
 }
 
+#test "hex digits are 0-9 and a-f, exactly n of them" {
+  #assert vt_hex("0123456789abcdef",16) && !vt_hex("0123456789abcdef",15);
+  for c:[6]string.["/",":","`","g","A","F"] {#assert !vt_hex(c,1);}
+}
+#test "slot refusals: numbers, trailing members, the other method's params, every platform, secret lengths" #steps 400000000 {
+  aad:[VT_AAD_MAX]u8;c:[2048]u8;
+  #assert vt_slot_read(vt_case(c[..],VT_SLOT_NOSTR,"\"created_at\":1791995000","\"created_at\":\"1\""),aad[..]).code==VtCode.field;
+  #assert vt_slot_read(vt_append(c[..],VT_SLOT_NOSTR,",\"zz\":1}"),aad[..]).code==VtCode.field;
+  #assert vt_slot_read(vt_case(c[..],VT_SLOT_NOSTR,"\"sealed\":\"An","\"sealer\":\"An"),aad[..]).code==VtCode.params;
+  #assert vt_slot_read(vt_case(c[..],VT_SLOT_DEVICE,"\"platform\":\"linux\"}","\"platform\":\"linux\",\"z\":\"linux\"}"),aad[..]).code==VtCode.params;
+  for p:[4]string.["ios","android","macos","windows"] {
+    to:[32]u8;n:=json_raw(to[..],0,"\"platform\":\"");n=json_raw(to[..],n,p);n=json_raw(to[..],n,"\"");
+    #assert vt_slot_read(vt_case(c[..],VT_SLOT_DEVICE,"\"platform\":\"linux\"",cast(string)to[0..<n]),aad[..]).code==VtCode.ok;
+  }
+  vmk:[32]u8;wide:[1025]u8;
+  #assert vt_slot_open(VT_SLOT_DEVICE,wide[0..<1024],vmk[..])==VtCode.slot;
+  #assert vt_slot_open(VT_SLOT_DEVICE,wide[..],vmk[..])==VtCode.secret;
+}
+#test "the key material is zero again after each step" #steps 600000000 {
+  secret:[32]u8;vt_hex_test(VT_DEVICE_SECRET,secret[..]);vmk:[32]u8;kdf:[1]VtKdf;
+  #assert vt_slot_open_work(VT_SLOT_DEVICE,secret[..],vmk[..],kdf[..])==VtCode.ok && vt_kdf_zero_test(kdf[0]);
+  k:[32]u8;id:[32]u8;
+  #assert vt_user_keys_work(vmk[..],k[..],id[..],kdf[..]) && vt_kdf_zero_test(kdf[0]) && cast(string)id[..]==VT_KEY_ID;
+  ck:[32]u8;vt_hex_test(VT_CK,ck[..]);aad:[VT_AAD_MAX]u8;s:=vt_slot_read(VT_SLOT_NOSTR,aad[..]);
+  out:[32]u8;p:[1]VtPlain;
+  #assert vt_nostr_secret_work(s.sealed,ck[..],out[..],p[..]) && vt_plain_zero_test(p[0]);
+  u8b:[4096]u8;b:[1024]u8;blob:=vt_blob_test(VT_SMALL,b[..]);text:[64]u8;work:[1]VtWork;x:[1024]u8;
+  r:=vt_open_work(vt_u8(blob,u8b[..]),VT_SLOT_DEVICE,secret[..],text[..],work[..]);
+  #assert r.code==VtCode.ok && r.written==26 && vt_work_zero_test(work[0]);
+  r=vt_open_work(vt_u8(vt_case(x[..],blob,"tCEPQ","tCEPR"),u8b[..]),VT_SLOT_DEVICE,secret[..],text[..],work[..]);
+  #assert r.code==VtCode.wrap && vt_work_zero_test(work[0]);
+}
+#test "two chunks open in order; a bad last chunk leaves nothing of the first" #steps 1000000000 {
+  b:[2048]u8;blob:=vt_blob_test(VT_TWO,b[..]);u8b:[2048]u8;secret:[32]u8;vt_hex_test(VT_NOSTR_SECRET,secret[..]);
+  out:[1100]u8;work:[1]VtWork;
+  o:=vt_object_read_t(u8b[..],blob);#assert o.chunks==2 && o.chunk_bytes==1024;
+  r:=vt_open_work(vt_u8(blob,u8b[..]),VT_SLOT_NOSTR,secret[..],out[..],work[..]);
+  #assert r.code==VtCode.ok && r.written==1060 && vt_work_zero_test(work[0]);
+  first:=out[0];#assert first!=0;
+  x:[2048]u8;for i:0..<1100 {out[i]=0;}
+  r=vt_open_work(vt_u8(vt_flip(blob,blob.count-1,1,x[..]),u8b[..]),VT_SLOT_NOSTR,secret[..],out[..],work[..]);
+  #assert r.code==VtCode.chunk && vt_work_zero_test(work[0]);
+  for i:0..<1100 {#assert out[i]==0;}
+}
+#test "chunk nonces: the prefix, the index as four big-endian bytes, the last-chunk marker" {
+  prefix:=[7]u8.[1,2,3,4,5,6,7];nonce:[12]u8;
+  vt_chunk_nonce(prefix,0x0a0b0c0d,true,nonce[..]);
+  want:=[12]u8.[1,2,3,4,5,6,7,10,11,12,13,1];for k:0..<12 {#assert nonce[k]==want[k];}
+  for k:0..<12 {nonce[k]=170;}
+  vt_chunk_nonce(prefix,256,false,nonce[..]);
+  #assert nonce[7]==0 && nonce[8]==0 && nonce[9]==1 && nonce[10]==0 && nonce[11]==0;
+  vt_chunk_nonce(prefix,65536,false,nonce[..]);
+  #assert nonce[7]==0 && nonce[8]==1 && nonce[9]==0 && nonce[10]==0;
+  vt_chunk_nonce(prefix,0x01ff02fe,false,nonce[..]);
+  #assert nonce[7]==1 && nonce[8]==255 && nonce[9]==2 && nonce[10]==254;
+}
+#test "object refusals: lengths, names, trailing members, edges of chunk_bytes and created_at" #steps 400000000 {
+  u8b:[4096]u8;
+  h:[2048]u8;c:[2048]u8;b:[1024]u8;blob:=vt_blob_test(VT_SMALL,b[..]);head:=blob[12..<12+516];body:=blob[12+516..<blob.count];
+  #assert vt_object_read_t(u8b[..],blob).object=="67ee69f06559550c59fc6b499f2bec41aafd2d2c6841138a6156894361780345";
+  #assert vt_object_read_t(u8b[..],blob[0..<12]).code==VtCode.header;
+  #assert vt_object_read_t(u8b[..],blob[0..<12+516]).code==VtCode.chunks;
+  cases:=[11]string.["\"alg\"","\"ieWnAiKt/Q==\"}","0028\"},\"requires\"","\"mode\":\"user\"","\"mode\":\"user\"",",\"nonce\":\"SLcTE0zPk5Hgdo67\"",
+    "\"SLcTE0zPk5Hgdo67\"}","\"SLcTE0zPk5Hgdo67\"}]","\"chunk_bytes\":1024","\"created_at\":1791997000","\"created_at\":1791997000"];
+  into:=[11]string.["\"alh\"","\"ieWnAiKt/Q==\",\"zz\":1}","0028\",\"zz\":1},\"requires\"","\"modf\":\"user\"","\"mode\":7","",
+    "\"SLcTE0zPk5Hgdo67\",\"zz\":1}","\"SLcTE0zPk5Hgdo67\"}],\"zz\":1","\"chunk_bytes\":1048576","\"created_at\":0","\"created_at\":\"0\""];
+  want:=[11]VtCode.[VtCode.content,VtCode.content,VtCode.field,VtCode.wrap,VtCode.wrap,VtCode.wrap,
+    VtCode.wrap,VtCode.field,VtCode.ok,VtCode.ok,VtCode.field];
+  for i:0..<11 {#assert vt_object_read_t(u8b[..],vt_rebuild(vt_case(h[..],head,cases[i],into[i]),body,c[..])).code==want[i];}
+}
+
 // ---- small readers
 vt_hex64 :: (s:string)->bool {return vt_hex(s,64);}
 vt_hex :: (s:string,n:int)->bool {
@@ -226,12 +304,17 @@ vt_b64 :: (text:string,out:[]u8,n:int)->bool {
   if base64_decode_size(text)!=n {return false;}
   return base64_decode_checked(text,out,false).written==n;
 }
+// A JSON integer, or -1 when the value is not a number. Both readers have
+// already checked the text is canonical, and canonical numbers are safe
+// integers, so json_int reads every one. Every caller refuses a negative
+// result, so a negative integer refuses as it is.
 vt_uint :: (j:[]Json,t:int)->int {
-  if t!=JSON_NUMBER {return -1;}v:=json_int(json_text(j));if !v.ok || v.value<0 {return -1;}return v.value;
+  if t!=JSON_NUMBER {return -1;}return json_int(json_text(j)).value;
 }
+// A string or number member's raw bytes (the slot reader takes objects and
+// arrays from the text itself).
 vt_raw :: (j:[]Json,t:int)->string {
   if t==JSON_STRING {return j[0].text[j[0].from-1..<j[0].to+1];}
-  if t==JSON_OBJECT || t==JSON_ARRAY {from:=j[0].from;if !json_skip(j) {return "";}return j[0].text[from..<j[0].at];}
   return json_text(j);
 }
 // Whether text is exactly its own RFC 8785 form.
@@ -241,23 +324,23 @@ vt_canonical :: (text:string)->bool {
 }
 
 // ---- key slots
-// device: {key_ref, platform}; nostr: {pubkey, sealed}. Exactly those.
+// device: {key_ref, platform}; nostr: {pubkey, sealed}. Exactly those, in
+// that order, which is the canonical order the slot already has.
 vt_params :: (j:[]Json,s:[]VtSlot)->bool {
-  nostr:=s[0].method=="nostr";seen:=0;
+  nostr:=s[0].method=="nostr";
+  names:=ifx nostr then [2]string.["pubkey","sealed"] else [2]string.["key_ref","platform"];k:=0;
   while true {
     t:=json_next(j);if t==JSON_OBJECT_END {break;}
-    key:=json_text(j);t=json_next(j);if t!=JSON_STRING {return false;}
-    v:=json_text(j);bit:int;
-    if nostr && json_is(key,"pubkey") {bit=1;if !vt_hex64(v) {return false;}}
-    else if nostr && json_is(key,"sealed") {bit=2;s[0].sealed=v;}
-    else if !nostr && json_is(key,"key_ref") {bit=1;if v.count==0 {return false;}}
-    else if !nostr && json_is(key,"platform") {
-      bit=2;if !(v=="ios" || v=="android" || v=="macos" || v=="linux" || v=="windows") {return false;}
-    }
-    else {return false;}
-    if (seen&bit)!=0 {return false;}seen|=bit;
+    if k==2 || !json_is(json_text(j),names[k]) {return false;}
+    t=json_next(j);if t!=JSON_STRING {return false;}
+    v:=json_text(j);
+    if nostr && k==0 {if !vt_hex64(v) {return false;}}
+    else if nostr {s[0].sealed=v;}
+    else if k==0 {if v.count==0 {return false;}}
+    else if !(v=="ios" || v=="android" || v=="macos" || v=="linux" || v=="windows") {return false;}
+    k+=1;
   }
-  return seen==3;
+  return k==2;
 }
 // book:begin slot_read
 // The slot's fields, and in aad its associated data: the slot's JCS bytes
@@ -292,7 +375,7 @@ vt_slot_read :: (text:string,aad:[]u8)->VtSlot {
     else {if t!=JSON_STRING {return VtSlot.{code=VtCode.field};}s[0].vmk=json_text(j[..]);}
     if k!=3 && k!=9 {
       // canonical text: each member is "name":raw, with no spaces
-      if n>1 {n=json_raw(aad,n,",");}
+      if k>0 {n=json_raw(aad,n,",");}
       n=json_raw(aad,n,"\"");n=json_raw(aad,n,names[k]);n=json_raw(aad,n,"\":");
       raw:=ifx k==4 || k==5 then text[start..<j[0].at] else vt_raw(j[..],t);
       n=json_raw(aad,n,raw);
@@ -300,7 +383,7 @@ vt_slot_read :: (text:string,aad:[]u8)->VtSlot {
     k+=1;
   }
   if k!=10 {return VtSlot.{code=VtCode.field};}
-  n=json_raw(aad,n,"}");if n<0 {return VtSlot.{code=VtCode.field};}
+  n=json_raw(aad,n,"}");if n==-1 {return VtSlot.{code=VtCode.field};}
   s[0].aad=n;return s[0];
 }
 // book:end slot_read
@@ -310,19 +393,21 @@ vt_slot_read :: (text:string,aad:[]u8)->VtSlot {
 // vmk is AES-256-GCM of the VMK under it with the slot's associated data.
 // A wrong secret, or any changed byte of the slot, fails the tag.
 vt_slot_open :: (text:string,secret:[]u8,vmk:[]u8)->VtCode {
+  kdf:[1]VtKdf;return vt_slot_open_work(text,secret,vmk,kdf[..]);
+}
+vt_slot_open_work :: (text:string,secret:[]u8,vmk:[]u8,kdf:[]VtKdf)->VtCode {
   aad:[VT_AAD_MAX]u8;s:=vt_slot_read(text,aad[..]);
   if s.code!=VtCode.ok {return s.code;}
-  if secret.count<32 {return VtCode.secret;}
+  if secret.count<32 || secret.count>VT_SECRET_MAX {return VtCode.secret;}
   if vmk.count<32 {return VtCode.room;}
   nonce:[12]u8;sealed:[48]u8;
   if !vt_b64(s.nonce,nonce[..],12) || !vt_b64(s.vmk,sealed[..],48) {return VtCode.field;}
   salt:[32]u8;vt_bytes(s.slot,salt[..]);
   info:[64]u8;n:=json_raw(info[..],0,"openagents.vault.v1/slot");n=json_raw(info[..],n+1,s.method);  // info[24] stays 0
-  prk:[32]u8;key:[32]u8;
-  ok:=hkdf_extract_checked(salt[..],secret,prk[..],false)==SHA_OK && hkdf_expand_checked(prk[..],info[0..<n],key[..],32,false)==SHA_OK;
-  opened:=ifx ok then aes256_gcm_open(key[..],nonce[..],aad[0..<s.aad],sealed[..],vmk) else -1;
-  for i:0..<32 {prk[i]=0;key[i]=0;}
-  return ifx opened==32 then VtCode.ok else VtCode.slot;
+  ok:=hkdf_extract_checked(salt[..],secret,kdf[0].prk[..],false)==SHA_OK && hkdf_expand_checked(kdf[0].prk[..],info[0..<n],kdf[0].key[..],32,false)==SHA_OK
+    && aes256_gcm_open(kdf[0].key[..],nonce[..],aad[0..<s.aad],sealed[..],vmk)==32;
+  kdf[0]=VtKdf.{};
+  return ifx ok then VtCode.ok else VtCode.slot;
 }
 // book:end slot_open
 // book:begin nostr_secret
@@ -330,12 +415,14 @@ vt_slot_open :: (text:string,secret:[]u8,vmk:[]u8)->VtCode {
 // secret as 64 lowercase hex digits. ck is the conversation key of the
 // person's key with itself (nip44-key.coax computes it from the secret key).
 vt_nostr_secret :: (sealed:string,ck:[]u8,out:[]u8)->bool {
+  p:[1]VtPlain;return vt_nostr_secret_work(sealed,ck,out,p[..]);
+}
+vt_nostr_secret_work :: (sealed:string,ck:[]u8,out:[]u8,p:[]VtPlain)->bool {
   if out.count<32 {return false;}
-  work:[512]u8;plain:[256]u8;
-  r:=nip44_decrypt_checked(NIP44_COMPAT,ck,sealed,work[..],plain[..],false);
-  ok:=r.error==NIP44_OK && vt_hex64(cast(string)plain[0..<r.written]);
-  if ok {vt_bytes(cast(string)plain[0..<64],out);}
-  for i:0..<256 {plain[i]=0;}
+  r:=nip44_decrypt_checked(NIP44_COMPAT,ck,sealed,p[0].work[..],p[0].plain[..],false);
+  ok:=r.error==NIP44_OK && vt_hex64(cast(string)p[0].plain[0..<r.written]);
+  if ok {vt_bytes(cast(string)p[0].plain[0..<r.written],out);}
+  p[0]=VtPlain.{};
   return ok;
 }
 // book:end nostr_secret
@@ -344,14 +431,17 @@ vt_nostr_secret :: (sealed:string,ck:[]u8,out:[]u8)->bool {
 // "openagents.vault.v1/user-wrap"); user_key_id = the first 16 bytes of
 // SHA-256("openagents.vault.v1/key-id" 0 K_user_wrap), as 32 hex digits.
 vt_user_keys :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8)->bool {
-  prk:[32]u8;none:[1]u8;info:[29]u8;i0:=json_raw(info[..],0,"openagents.vault.v1/user-wrap");
-  ok:=hkdf_extract_checked(none[0..<0],vmk,prk[..],false)==SHA_OK && hkdf_expand_checked(prk[..],info[0..<i0],kwrap,32,false)==SHA_OK;
+  kdf:[1]VtKdf;return vt_user_keys_work(vmk,kwrap,key_id,kdf[..]);
+}
+vt_user_keys_work :: (vmk:[]u8,kwrap:[]u8,key_id:[]u8,kdf:[]VtKdf)->bool {
+  info:[29]u8;i0:=json_raw(info[..],0,"openagents.vault.v1/user-wrap");
+  ok:=hkdf_extract_checked(vmk[0..<0],vmk,kdf[0].prk[..],false)==SHA_OK && hkdf_expand_checked(kdf[0].prk[..],info[0..<i0],kwrap,32,false)==SHA_OK;
   msg:[59]u8;n:=json_raw(msg[..],0,"openagents.vault.v1/key-id");   // msg[26] stays 0
   for i:0..<32 {msg[n+1+i]=kwrap[i];}
   digest:[32]u8;ok=ok && sha256_hash_checked(msg[..],digest[..],false)==SHA_OK;
   hex:="0123456789abcdef";
   for i:0..<16 {key_id[2*i]=hex[cast(int)digest[i]>>4];key_id[2*i+1]=hex[cast(int)digest[i]&15];}
-  for i:0..<32 {prk[i]=0;}
+  kdf[0]=VtKdf.{};
   return ok;
 }
 // book:end user_keys
@@ -379,14 +469,14 @@ vt_core :: (j:[]Json,o:[]VtObject)->VtCode {
   while true {
     t:=json_next(j);if t==JSON_OBJECT_END {break;}
     while k<6 && !json_is(json_text(j),names[k]) {if k!=2 {return VtCode.field;}k+=1;}
-    if k==6 {return VtCode.field;}
     t=json_next(j);
     if k==0 {if t!=JSON_OBJECT || !vt_content(j,o) {return VtCode.content;}}
     else if k==1 {if vt_uint(j,t)<0 {return VtCode.field;}}
     else if k==2 {if t!=JSON_STRING {return VtCode.field;}}
     else if k==3 {if t!=JSON_STRING || !vt_hex64(json_text(j)) {return VtCode.field;}o[0].object=json_text(j);}
     else if k==4 {if t!=JSON_STRING || !json_is(json_text(j),"user") {return VtCode.tier;}}   // sealed and operator are not built
-    else {if t!=JSON_STRING || !vt_hex64(json_text(j)) {return VtCode.field;}o[0].vault=json_text(j);}
+    else if k==5 {if t!=JSON_STRING || !vt_hex64(json_text(j)) {return VtCode.field;}o[0].vault=json_text(j);}
+    else {return VtCode.field;}   // a member after vault
     k+=1;
   }
   return ifx k==6 then VtCode.ok else VtCode.field;
@@ -427,7 +517,7 @@ vt_object_read :: (blob:[]u8)->VtObject {
   o:=[1]VtObject.[VtObject.{}];
   if blob.count<12 || cast(string)blob[0..<8]!=VT_MAGIC {return VtObject.{code=VtCode.magic};}
   hlen:=0;for k:8..<12 {hlen=hlen*256+cast(int)blob[k];}
-  if hlen>VT_HEADER_MAX || 12+hlen>blob.count {return VtObject.{code=VtCode.header};}
+  if 12+hlen>blob.count {return VtObject.{code=VtCode.header};}   // a header over VT_HEADER_MAX is not canonical below
   header:=cast(string)blob[12..<12+hlen];
   if !vt_canonical(header) {return VtObject.{code=VtCode.canonical};}
   j:[1]Json;json_start(j[..],header);if json_next(j[..])!=JSON_OBJECT {return VtObject.{code=VtCode.json};}
@@ -456,37 +546,44 @@ vt_object_read :: (blob:[]u8)->VtObject {
 // Slot -> VMK -> K_user_wrap -> the user wrap whose key is user_key_id ->
 // DEK -> every chunk. Nothing is left in out unless every link holds.
 vt_open :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8)->VtResult {
+  work:[1]VtWork;return vt_open_work(blob,slot,secret,out,work[..]);
+}
+vt_open_work :: (blob:[]u8,slot:string,secret:[]u8,out:[]u8,work:[]VtWork)->VtResult {
   o:=vt_object_read(blob);if o.code!=VtCode.ok {return VtResult.{code=o.code};}
   aad:[VT_AAD_MAX]u8;s:=vt_slot_read(slot,aad[..]);if s.code!=VtCode.ok {return VtResult.{code=s.code};}
   if s.vault!=o.vault {return VtResult.{code=VtCode.vault};}
-  vmk:[32]u8;code:=vt_slot_open(slot,secret,vmk[..]);if code!=VtCode.ok {return VtResult.{code=code};}
-  kwrap:[32]u8;id:[32]u8;dek:[32]u8;opened:=-1;
-  if vt_user_keys(vmk[..],kwrap[..],id[..]) {
-    wad:[62]u8;n:=json_raw(wad[..],0,"openagents.vault.v1/wrap-user");for i:0..<32 {wad[n+1+i]=o.digest[i];}
-    for w:o.wraps[0..<o.count] {
-      nonce:[12]u8;sealed:[48]u8;
-      if opened<0 && w.key==cast(string)id[..] && vt_b64(w.nonce,nonce[..],12) && vt_b64(w.dek,sealed[..],48) {
-        opened=aes256_gcm_open(kwrap[..],nonce[..],wad[..],sealed[..],dek[..]);
-      }
-    }
-  }
-  for i:0..<32 {vmk[i]=0;kwrap[i]=0;}
-  if opened!=32 {return VtResult.{code=VtCode.wrap};}
-  total:=blob.count-o.body-16*o.chunks;
-  if out.count<total {for i:0..<32 {dek[i]=0;}return VtResult.{code=VtCode.room};}
+  if out.count<blob.count-o.body-16*o.chunks {return VtResult.{code=VtCode.room};}
+  code:=vt_slot_open_work(slot,secret,work[0].vmk[..],work[0].kdf[..]);
+  if code==VtCode.ok {code=vt_unwrap(o,work);}
   cad:[58]u8;n:=json_raw(cad[..],0,"openagents.vault.v1/chunk");for i:0..<32 {cad[n+1+i]=o.digest[i];}
-  at:=o.body;written:=0;result:=VtCode.ok;
-  for i:0..<o.chunks {
+  at:=o.body;written:=0;i:=0;
+  while code==VtCode.ok && i<o.chunks {
     last:=i==o.chunks-1;size:=ifx last then blob.count-at else o.chunk_bytes+16;
-    nonce:[12]u8;for k:0..<7 {nonce[k]=o.prefix[k];}
-    for k:0..<4 {nonce[7+k]=cast(u8)((i>>(8*(3-k)))&255);}
-    nonce[11]=ifx last then cast(u8)1 else cast(u8)0;
-    got:=aes256_gcm_open(dek[..],nonce[..],cad[0..<n+33],blob[at..<at+size],out[written..<out.count]);
-    if got<0 {result=VtCode.chunk;break;}
-    written+=got;at+=size;
+    nonce:[12]u8;vt_chunk_nonce(o.prefix,i,last,nonce[..]);
+    got:=aes256_gcm_open(work[0].dek[..],nonce[..],cad[..],blob[at..<at+size],out[written..<out.count]);
+    if got==-1 {code=VtCode.chunk;} else {written+=got;at+=size;i+=1;}
   }
-  for i:0..<32 {dek[i]=0;}
-  if result!=VtCode.ok {for i:0..<written {out[i]=0;}return VtResult.{code=result};}
+  work[0]=VtWork.{};
+  if code!=VtCode.ok {for k:0..<written {out[k]=0;}return VtResult.{code=code};}
   return VtResult.{code=VtCode.ok,written=written};
+}
+// VMK -> K_user_wrap and user_key_id -> the DEK from the wrap with that key.
+vt_unwrap :: (o:VtObject,work:[]VtWork)->VtCode {
+  id:[32]u8;
+  if !vt_user_keys_work(work[0].vmk[..],work[0].kwrap[..],id[..],work[0].kdf[..]) {return VtCode.wrap;}
+  wad:[62]u8;n:=json_raw(wad[..],0,"openagents.vault.v1/wrap-user");for i:0..<32 {wad[n+1+i]=o.digest[i];}
+  wraps:=o.wraps;
+  for w:wraps[0..<o.count] {
+    nonce:[12]u8;sealed:[48]u8;
+    if w.key==cast(string)id[..] && vt_b64(w.nonce,nonce[..],12) && vt_b64(w.dek,sealed[..],48)
+      && aes256_gcm_open(work[0].kwrap[..],nonce[..],wad[..],sealed[..],work[0].dek[..])==32 {return VtCode.ok;}
+  }
+  return VtCode.wrap;
+}
+// Chunk i's nonce: nonce_prefix (7 bytes) || be32(i) || 1 for the last chunk, else 0.
+vt_chunk_nonce :: (prefix:[7]u8,i:int,last:bool,nonce:[]u8) {
+  for k:0..<7 {nonce[k]=prefix[k];}
+  for k:0..<4 {nonce[7+k]=cast(u8)((i>>(8*(3-k)))&255);}
+  nonce[11]=ifx last then cast(u8)1 else cast(u8)0;
 }
 // book:end open

@@ -12,6 +12,9 @@ VT_VMK :: "6253099880e6ad1190cbe0e77c20a21ad2e6aa7f80f497f997ae320714b7e506";
 VT_KWRAP :: "c26f6fc125e52e0fec93d129c4ef679bc7099ccf6ce5e416f713aba62d1db7a8";
 VT_KEY_ID :: "027fdf6029d13db20b2462c5424fcc73";
 VT_SMALL :: "T0FWQVVMVDEAAAIEeyJjb3JlIjp7ImNvbnRlbnQiOnsiYWxnIjoiYWVzLTI1Ni1nY20tY2h1bmtlZC12MSIsImNodW5rX2J5dGVzIjoxMDI0LCJjaHVua3MiOjEsIm5vbmNlX3ByZWZpeCI6ImllV25BaUt0L1E9PSJ9LCJjcmVhdGVkX2F0IjoxNzkxOTk3MDAwLCJvYmplY3QiOiI2N2VlNjlmMDY1NTk1NTBjNTlmYzZiNDk5ZjJiZWM0MWFhZmQyZDJjNjg0MTEzOGE2MTU2ODk0MzYxNzgwMzQ1IiwidGllciI6InVzZXIiLCJ2YXVsdCI6IjVjNDdjNzY0MjUzZjVmZDI2OWNiNTg2YzBlOTkxZWUxMzQ0NmIwNjczNjk5OGU0ZTUyOGQwMDQ3OTQ3MDAwMjgifSwicmVxdWlyZXMiOltdLCJ2Ijoib3BlbmFnZW50cy52YXVsdC1vYmplY3QudjEiLCJ3cmFwcyI6W3siZGVrIjoidENFUFFUZVdVZnNrQW9WSU5QWHdBSTBFNlhYMGxpV0NaU09CNHJVdFBNenljMzdpZHUxTUJla05sNkdpbFZTRCIsImtleSI6IjAyN2ZkZjYwMjlkMTNkYjIwYjI0NjJjNTQyNGZjYzczIiwibW9kZSI6InVzZXIiLCJub25jZSI6IlNMY1RFMHpQazVIZ2RvNjcifV19zw9rxsLdJ7v8wPYSJdUAP4qmB+xtqin9cP924TbRd01YONceB52NPo+l";   // one chunk: "Test data only: 21000 sat."
+// The chapter's example object (nostr/examples/attested-vault.coax): two
+// chunks of chunk_bytes 1024, 1060 bytes of text, opened by VT_SLOT_NOSTR.
+VT_TWO :: "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";
 VT_SMALL_CORE_DIGEST :: "a490dc5b02c070adfd14be2152abf085e69ddf74684177d18f71b9829523bf5a";
 
 // 2n hex digits into n bytes.
@@ -40,3 +43,14 @@ vt_flip :: (text:string,i:int,x:u8,out:[]u8)->string {for k:0..<text.count {out[
 vt_u8 :: (text:string,buf:[]u8)->[]u8 {for k:0..<text.count {buf[k]=text[k];}return buf[0..<text.count];}
 vt_object_read_t :: (buf:[]u8,text:string)->VtObject {return vt_object_read(vt_u8(text,buf));}
 vt_open_t :: (buf:[]u8,text:string,slot:string,secret:[]u8,out:[]u8)->VtResult {return vt_open(vt_u8(text,buf),slot,secret,out);}
+// text with its last byte (the closing brace) replaced by tail.
+vt_append :: (out:[]u8,text:string,tail:string)->string {
+  n:=json_raw(out,0,text[0..<text.count-1]);n=json_raw(out,n,tail);return cast(string)out[0..<n];
+}
+// Whether every byte of the key material is zero again.
+vt_zero_test :: (b:[]u8)->bool {for x:b {if x!=0 {return false;}}return true;}
+vt_kdf_zero_test :: (k:VtKdf)->bool {p:=k.prk;q:=k.key;return vt_zero_test(p[..]) && vt_zero_test(q[..]);}
+vt_work_zero_test :: (w:VtWork)->bool {
+  a:=w.vmk;b:=w.kwrap;c:=w.dek;return vt_kdf_zero_test(w.kdf[0]) && vt_zero_test(a[..]) && vt_zero_test(b[..]) && vt_zero_test(c[..]);
+}
+vt_plain_zero_test :: (p:VtPlain)->bool {a:=p.work;b:=p.plain;return vt_zero_test(a[..]) && vt_zero_test(b[..]);}

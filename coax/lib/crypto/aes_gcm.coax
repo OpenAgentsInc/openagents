@@ -94,6 +94,49 @@ GCM_MAX :: 1048576;   // plaintext bytes at most, the byte helpers' limit
   #assert gcm_sizes_ok(32,12,GCM_MAX) && !gcm_sizes_ok(32,12,GCM_MAX+1) && !gcm_sizes_ok(32,12,-1);
 }
 
+#test "the expanded key is zero again after seal, open and a refused open" #steps 200000000 {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)(i+1);}nonce:[12]u8;none:[1]u8;
+  plain:[20]u8;sealed:[36]u8;back:[20]u8;work:[1]AesSchedule;
+  #assert gcm_seal_work(key[..],nonce[..],none[0..<0],plain[..],sealed[..],work[..])==36;
+  for b:work[0].b {#assert b==0;}
+  #assert gcm_open_work(key[..],nonce[..],none[0..<0],sealed[..],back[..],work[..])==20;
+  for b:work[0].b {#assert b==0;}
+  sealed[35]^=1;
+  #assert gcm_open_work(key[..],nonce[..],none[0..<0],sealed[..],back[..],work[..])==-1;
+  for b:work[0].b {#assert b==0;}
+}
+#test "a counter block puts every byte of the count big-endian; lengths fill all 8 bytes" {
+  out:[10]u8;for i:0..<10 {out[i]=255;}
+  gcm_be(out[..],1,0x0102030405060708,8);
+  #assert out[0]==255 && out[9]==255;
+  for i:0..<8 {#assert out[1+i]==cast(u8)(i+1);}
+  gcm_be(out[..],0,0x0a0b0c0d,4);
+  #assert out[0]==10 && out[1]==11 && out[2]==12 && out[3]==13 && out[4]==4;
+}
+#test "CTR: texts of 0 to 48 bytes are their own inverse and block i uses E(K, nonce || be32(i + 2))" #steps 400000000 {
+  key:[32]u8;for i:0..<32 {key[i]=cast(u8)(3*i);}s:=aes256_expand(key[..]);
+  nonce:[12]u8;for i:0..<12 {nonce[i]=cast(u8)(i+9);}
+  pads:[3]AesBlock;
+  for i:0..<3 {counter:AesBlock;for k:0..<12 {counter.b[k]=nonce[k];}counter.b[15]=cast(u8)(i+2);pads[i]=aes256_encrypt_block(s,counter);}
+  input:[48]u8;for i:0..<48 {input[i]=cast(u8)(i*5+1);}
+  for n:[9]int.[0,1,15,16,17,31,32,33,48] {
+    out:[49]u8;for i:0..<49 {out[i]=165;}back:[48]u8;
+    gcm_ctr(s,nonce[..],input[0..<n],out[..]);
+    #assert out[n]==165;
+    for i:0..<n {#assert out[i]==input[i]^pads[i/16].b[i%16];}
+    gcm_ctr(s,nonce[..],out[0..<n],back[..]);
+    for i:0..<n {#assert back[i]==input[i];}
+  }
+}
+#test "the hex comparison the checks use tells lengths and every byte apart" {
+  b:=[2]u8.[0xab,0x01];
+  #assert gcm_hex_equals_test(b[..],"ab01");
+  #assert !gcm_hex_equals_test(b[..],"ab0");
+  #assert !gcm_hex_equals_test(b[..],"ab011");
+  #assert !gcm_hex_equals_test(b[..],"bb01");
+  #assert !gcm_hex_equals_test(b[..],"ab02");
+}
+
 GCM_P15 :: "d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255";
 GCM_C15 :: "522dc1f099567d07f47f37a32a84427d643a8cdcbfe5c0c97598a2bd2555d1aa8cb08e48590dbb3da7b08b1056828838c5f61e6393ba7a0abcc9f662898015ad";
 gcm_hex_test :: (text:string,out:[]u8) {for i:0..<out.count {out[i]=cast(u8)(aes_nibble_test(text[2*i])*16+aes_nibble_test(text[2*i+1]));}}
@@ -176,15 +219,17 @@ gcm_tag :: (s:AesSchedule,h:AesBlock,j0:AesBlock,aad:[]u8,ct:[]u8)->AesBlock {
 }
 // book:end gcm_ghash
 // book:begin gcm_ctr
-// CTR from J0 + 1: block i of the text is XORed with E(K, nonce || be32(i + 2)).
+// CTR from J0 + 1: byte at of the text is XORed with byte at % 16 of
+// E(K, nonce || be32(at / 16 + 2)), a new pad at each 16-byte boundary.
 gcm_ctr :: (s:AesSchedule,nonce:[]u8,input:[]u8,out:[]u8) {
-  block:=0;
-  while block*16<input.count {
-    counter:AesBlock;for k:0..<12 {counter.b[k]=nonce[k];}
-    gcm_be(counter.b[..],12,block+2,4);
-    pad:=aes256_encrypt_block(s,counter);
-    for k:0..<16 {at:=block*16+k;if at<input.count {out[at]=input[at]^pad.b[k];}}
-    block+=1;
+  pad:AesBlock;
+  for at:0..<input.count {
+    if at%16==0 {
+      counter:AesBlock;for k:0..<12 {counter.b[k]=nonce[k];}
+      gcm_be(counter.b[..],12,at/16+2,4);
+      pad=aes256_encrypt_block(s,counter);
+    }
+    out[at]=input[at]^pad.b[at%16];
   }
 }
 // width big-endian bytes of v at out[at..].
@@ -194,24 +239,32 @@ gcm_j0 :: (nonce:[]u8)->AesBlock {j:AesBlock;for k:0..<12 {j.b[k]=nonce[k];}j.b[
 // Seal plain under key and nonce, binding aad: out gets ciphertext || tag.
 // Returns the bytes written (plain.count + 16), or -1 for bad sizes.
 aes256_gcm_seal :: (key:[]u8,nonce:[]u8,aad:[]u8,plain:[]u8,out:[]u8)->int {
-  if !gcm_sizes_ok(key.count,nonce.count,plain.count) || out.count<plain.count+GCM_TAG {return -1;}
-  s:=aes256_expand(key);h:=aes256_encrypt_block(s,AesBlock.{});
-  gcm_ctr(s,nonce,plain,out);
-  t:=gcm_tag(s,h,gcm_j0(nonce),aad,out[0..<plain.count]);
-  for k:0..<16 {out[plain.count+k]=t.b[k];}
-  s=AesSchedule.{};
-  return plain.count+GCM_TAG;
+  work:[1]AesSchedule;return gcm_seal_work(key,nonce,aad,plain,out,work[..]);
 }
 // Open sealed = ciphertext || tag. Returns the plaintext length, or -1 when
 // the sizes are wrong or the tag does not verify; out is untouched then.
 aes256_gcm_open :: (key:[]u8,nonce:[]u8,aad:[]u8,sealed:[]u8,out:[]u8)->int {
+  work:[1]AesSchedule;return gcm_open_work(key,nonce,aad,sealed,out,work[..]);
+}
+// The expanded key lives in work[0], which is zero again on every return
+// (aes.coax's rule; the checks read it).
+gcm_seal_work :: (key:[]u8,nonce:[]u8,aad:[]u8,plain:[]u8,out:[]u8,work:[]AesSchedule)->int {
+  if !gcm_sizes_ok(key.count,nonce.count,plain.count) || out.count<plain.count+GCM_TAG {return -1;}
+  work[0]=aes256_expand(key);h:=aes256_encrypt_block(work[0],AesBlock.{});
+  gcm_ctr(work[0],nonce,plain,out);
+  t:=gcm_tag(work[0],h,gcm_j0(nonce),aad,out[0..<plain.count]);
+  for k:0..<16 {out[plain.count+k]=t.b[k];}
+  work[0]=AesSchedule.{};
+  return plain.count+GCM_TAG;
+}
+gcm_open_work :: (key:[]u8,nonce:[]u8,aad:[]u8,sealed:[]u8,out:[]u8,work:[]AesSchedule)->int {
   n:=sealed.count-GCM_TAG;
   if !gcm_sizes_ok(key.count,nonce.count,n) || out.count<n {return -1;}
-  s:=aes256_expand(key);h:=aes256_encrypt_block(s,AesBlock.{});
-  t:=gcm_tag(s,h,gcm_j0(nonce),aad,sealed[0..<n]);
-  if cb_ct_equal(t.b[..],sealed[n..<sealed.count])!=CB_MAX64 {s=AesSchedule.{};return -1;}
-  gcm_ctr(s,nonce,sealed[0..<n],out);
-  s=AesSchedule.{};
-  return n;
+  work[0]=aes256_expand(key);h:=aes256_encrypt_block(work[0],AesBlock.{});
+  t:=gcm_tag(work[0],h,gcm_j0(nonce),aad,sealed[0..<n]);
+  ok:=cb_ct_equal(t.b[..],sealed[n..<sealed.count])==CB_MAX64;
+  if ok {gcm_ctr(work[0],nonce,sealed[0..<n],out);}
+  work[0]=AesSchedule.{};
+  return ifx ok then n else -1;
 }
 // book:end gcm_ctr
