@@ -495,8 +495,15 @@ compiler and the examples have not been run on Linux yet.
   focused window and #4a4a4a on the rest. A fullscreen window has no gap
   and no border.
 
-  Also left: client cursors, damage tracking (it composites the whole
-  screen on every change), and the protocols foot still reports missing
+  It composites only when something changed, but then it composites the
+  whole screen. With three terminals open, a frame takes 1.8 ms at
+  1280x720, 6.4 ms at 2560x1440 (the 4080's screen) and 13.9 ms at 4K, on
+  one core of coderos-4080. That was 2.5, about 9 and 20.8 ms before the
+  blit worked out each row's visible span once and checked a pool's size
+  once per surface. The screenshot came out byte-identical.
+
+  Also left: client cursors, damage tracking (redrawing only what
+  changed), and the protocols foot still reports missing
   (primary selection, fractional scale, activation, text input).
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of

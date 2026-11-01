@@ -216,3 +216,10 @@ int64_t cxwl_spawn(coax_v_u8 path, coax_v_u8 display) {
   }
   return pid;
 }
+/* Whether a pool's file still holds end bytes (a client may shrink it under the map): checked once
+   per surface draw, so the row reads can pass fd -1 and skip the check. */
+int64_t cxwl_fits(int64_t m, int64_t fd, int64_t end) {
+  if (m < 0 || m >= WL_MAPS || !map_used[m] || end < 0 || (size_t)end > map_len[m]) return 0;
+  struct stat st;
+  return (fd >= 0 && fstat((int)fd, &st) == 0 && st.st_size >= end) ? 1 : 0;
+}

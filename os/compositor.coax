@@ -21,6 +21,7 @@
 //   wm OP [ARG]              a window-policy verb: movefocus D, movewindow D, resize D F, togglesplit,
 //                            togglefloating, fullscreen, maximize, switch N, moveto N (D 0..3 left
 //                            right up down, N 0..8)
+//   bench N                  composites N times and says how long a frame took
 //   quit
 // Effects (sockets, descriptors, shared memory) are coax/platform/wayland-native.c; the protocol,
 // every object and every decision is here.
@@ -49,6 +50,7 @@ cxwl_ms :: () -> int #foreign;
 cxwl_stdin :: (out: [] u8) -> int #foreign;
 cxwl_out :: (s: [] u8) -> int #foreign;
 cxwl_spawn :: (path: [] u8, display: [] u8) -> int #foreign;
+cxwl_fits :: (m: int, fd: int, end: int) -> int #foreign;
 cxscr_open :: () -> int #foreign;
 cxscr_width :: () -> int #foreign;
 cxscr_height :: () -> int #foreign;
@@ -565,17 +567,27 @@ cx_draw_surf :: (x: [] Cx, o: [] CxFrame, s: int, ox: int, oy: int, cx0: int, cy
   if b >= 0 && x[0].bufs[b].used {
     bf := x[0].bufs[b]; p := x[0].pools[bf.pool];
     rowbytes := cx_min(bf.w * 4, 65536);
-    for r: 0..<bf.h {
+    // one size check for the whole buffer, then plain row copies; a buffer past its pool is not drawn
+    whole := bf.h > 0 && bf.offset >= 0 && cxwl_fits(p.map, p.fd, bf.offset + (bf.h - 1) * bf.stride + bf.w * 4) == 1;
+    rows := ifx whole then bf.h else 0;   // its subsurfaces and popups are still drawn
+    for r: 0..<rows {
       dy := oy + r; if dy < cy0 || dy >= cy1 { continue; }
-      got := cxwl_read(p.map, p.fd, bf.offset + r * bf.stride, x[0].row[0..<rowbytes]);
+      c0 := cx_max(0, cx0 - ox); c1 := cx_min(bf.w, cx1 - ox);   // the columns that land inside the clip
+      if c1 <= c0 { continue; }
+      got := cxwl_read(p.map, -1, bf.offset + r * bf.stride + 4 * c0, x[0].row[0..<cx_min(4 * (c1 - c0), rowbytes)]);
+      at := 3 * (dy * x[0].w + ox + c0);
+      opaque := bf.fmt == 1;
       for c: 0..<got / 4 {
-        dx := ox + c; if dx < cx0 || dx >= cx1 { continue; }
-        bb := cast(int) x[0].row[4 * c]; gg := cast(int) x[0].row[4 * c + 1]; rr := cast(int) x[0].row[4 * c + 2]; aa := ifx bf.fmt == 1 then 255 else cast(int) x[0].row[4 * c + 3];
-        at := 3 * (dy * x[0].w + dx);
-        if aa != 255 {   // premultiplied: src + dst * (1 - alpha)
-          rr += cast(int) o[0].b[at] * (255 - aa) / 255; gg += cast(int) o[0].b[at + 1] * (255 - aa) / 255; bb += cast(int) o[0].b[at + 2] * (255 - aa) / 255;
+        q := 4 * c;
+        bb := cast(int) x[0].row[q]; gg := cast(int) x[0].row[q + 1]; rr := cast(int) x[0].row[q + 2]; aa := ifx opaque then 255 else cast(int) x[0].row[q + 3];
+        if aa == 255 { o[0].b[at] = x[0].row[q + 2]; o[0].b[at + 1] = x[0].row[q + 1]; o[0].b[at + 2] = x[0].row[q]; }
+        else if aa != 0 || rr + gg + bb != 0 {   // premultiplied: src + dst * (1 - alpha)
+          k := 255 - aa;
+          o[0].b[at] = cast,trunc(u8) cx_min(rr + cast(int) o[0].b[at] * k / 255, 255);
+          o[0].b[at + 1] = cast,trunc(u8) cx_min(gg + cast(int) o[0].b[at + 1] * k / 255, 255);
+          o[0].b[at + 2] = cast,trunc(u8) cx_min(bb + cast(int) o[0].b[at + 2] * k / 255, 255);
         }
-        o[0].b[at] = cast,trunc(u8) cx_min(rr, 255); o[0].b[at + 1] = cast,trunc(u8) cx_min(gg, 255); o[0].b[at + 2] = cast,trunc(u8) cx_min(bb, 255);
+        at += 3;
       }
     }
   }
@@ -898,6 +910,12 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
     else if v == "switch" { wm_switch_workspace(m, a1); } else if v == "moveto" { wm_movetoworkspace(m, a1); }
     else { cx_say("unknown wm verb"); return; }
     cx_sync(x); cx_say("ok");
+  }
+  else if c == "bench" && nw == 2 {   // composites N times: the milliseconds a frame takes
+    k := cx_max(cx_num(w[1]), 1); t0 := cxwl_ms();
+    for i: 0..<k { cx_composite(x, o); }
+    b: [64] u8; n := cx_num_into(b[..], 0, (cxwl_ms() - t0) * 1000 / k); for ch: " us a frame" { b[n] = ch; n += 1; }
+    cx_say(cast(string) b[0..<n]);
   }
   else if c == "quit" { x[0].quit = true; cx_say("bye"); }
   else { cx_say("unknown command"); }

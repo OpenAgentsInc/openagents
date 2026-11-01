@@ -39,6 +39,7 @@ int64_t cxwl_ms(void);
 int64_t cxwl_stdin(coax_v_u8 out);
 int64_t cxwl_out(coax_v_u8 s);
 int64_t cxwl_spawn(coax_v_u8 path, coax_v_u8 display);
+int64_t cxwl_fits(int64_t m, int64_t fd, int64_t end);
 #ifdef __cplusplus
 }
 #endif
