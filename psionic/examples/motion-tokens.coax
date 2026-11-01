@@ -1,0 +1,101 @@
+#import "Basic";
+#load "../lib/motion-token.coax";
+
+// Round to a whole number of millionths (or thousandths) for printing.
+mtx_micro :: (x:f64)->int {return cast(int)floor(x*1000000+0.5);}
+mtx_milli :: (x:f64)->int {return cast(int)floor(x*1000+0.5);}
+// A rotation's angle in thousandths of a degree.
+mtx_degrees :: (q:[4]f64)->int {return mtx_milli(pose_norm3(pose_quat_vector(q))*180/POSE_PI);}
+#test "printing rounds half up and keeps signs" {
+    #assert mtx_micro(0.0872387747)==87239 && mtx_micro(-0.5)== -500000 && mtx_micro(-1e-9)==0;
+    #assert mtx_milli(0.4)==400 && mtx_milli(-0.0006)== -1 && mtx_degrees(mt_x(80))==80000;
+}
+mtx_print :: (label:string,q:MtSequence) {
+    print("%",label);
+    for i:0..<q.count {if q.token[i]==MT_MASK {print("_");} else {print("%",q.token[i]);}}
+    print("\n");
+}
+// Every frame turns the hip a further turn degrees about X and steps the
+// root a further step metres along Z.
+mtx_perturb :: (c:PoseClip,turn:f64,step:f64)->PoseClip {
+    out:=c;
+    for k:0..<c.frames {out.frame[k].rotation[0]=pfk_multiply(c.frame[k].rotation[0],mt_x(turn));out.frame[k].root[2]+=step*f64(k);}
+    return out;
+}
+// Hide every third token, starting with the second.
+mtx_mask_thirds :: (q:MtSequence)->MtSequence {out:=q;for i:0..<q.count {if i%3==1 {out.token[i]=MT_MASK;}}return out;}
+// Hide four tokens in a row from position 5.
+mtx_mask_run :: (q:MtSequence)->MtSequence {out:=q;for i:5..<9 {out.token[i]=MT_MASK;}return out;}
+
+main :: () {
+// book:begin hand
+    hand:=mt_hand_codebook();one:=mt_one_joint();
+    near:=mt_separation(hand);
+    print("hand separation (millionths): % between codes % and %\n",mtx_micro(near.distance),near.first,near.second);
+    t:=mt_encode(hand,one,mt_hand_clip());
+    mtx_print("hand tokens: ",t.sequence);
+    print("hand distances (millionths): % % %\n",mtx_micro(t.distance[0]),mtx_micro(t.distance[1]),mtx_micro(t.distance[2]));
+    d:=mt_decode(hand,t.sequence);
+    for k:0..<d.clip.frames {print("decoded frame %: turn (millidegrees) %, root z (mm) %\n",k,mtx_degrees(d.clip.frame[k].rotation[0]),mtx_milli(d.clip.frame[k].root[2]));}
+// book:end hand
+// book:begin gait
+    gait:=mt_gait_codebook();leg:=pose_leg(1);
+    near=mt_separation(gait);
+    print("gait separation (millionths): % between codes % and %, half: %\n",mtx_micro(near.distance),near.first,near.second,mtx_micro(near.distance/2));
+    walk:=mt_decode(gait,mt_at(mt_parse("01234560"),[3]f64.[0,0.9,0]));
+    back:=mt_encode(gait,leg,walk.clip);
+    mtx_print("member tokens: ",back.sequence);
+    print("member error below 1e-15: %, frames identical: %\n",back.error<1e-15,mt_same_frames(mt_decode(gait,back.sequence).clip,walk.clip,3));
+    // Stated before the run: 1 degree of hip and 1 mm of step on both frames
+    // of a token move it at most sqrt(2 (4 sin^2(0.5 deg) + 0.001^2)).
+    h:=sin(0.5*POSE_PI/180);bound:=sqrt(2*(4*h*h+0.000001));
+    moved:=mt_encode(gait,leg,mtx_perturb(walk.clip,1,0.001));
+    mtx_print("perturbed tokens: ",moved.sequence);
+    print("perturbed error (millionths): %, bound: %\n",mtx_micro(moved.error),mtx_micro(bound));
+// book:end gait
+// book:begin continuity
+    j:=mt_continuity(walk.clip,leg,MT_GAIT_TURN,MT_GAIT_STEP);
+    print("walk: %, worst turn (millidegrees) %, worst step (mm) %\n",j.status,mtx_milli(j.angle*180/POSE_PI),mtx_milli(j.step));
+    skip:=mt_decode(gait,mt_at(mt_parse("003"),[3]f64.[0,0.9,0]));
+    j=mt_continuity(skip.clip,leg,MT_GAIT_TURN,MT_GAIT_STEP);
+    print("stand, stand, code 3: % at frame %, joint %, worst turn (millidegrees) %\n",j.status,j.frame,j.joint,mtx_milli(j.angle*180/POSE_PI));
+// book:end continuity
+// book:begin train
+    // Training: six walks, each decoded, perturbed and encoded again.
+    stands:=[6]int.[1,3,1,3,2,4];cycles:=[6]int.[1,1,2,2,1,1];
+    model:=mt_model(gait.codes);
+    for n:0..<6 {
+        q:=mt_gait_sequence(stands[n],cycles[n]);
+        heard:=mt_encode(gait,leg,mtx_perturb(mt_decode(gait,q).clip,1,0.001));
+        same:=true;for i:0..<q.count {if heard.sequence.token[i]!=q.token[i] {same=false;}}
+        model=mt_train(model,heard.sequence).model;
+        print("train %: tokens recovered %\n",n,same);
+    }
+    print("pairs: stand-stand %, stand-walk %, walk-stand %\n",model.pair[0][0],model.pair[0][1],model.pair[6][0]);
+    // Held out: walks the model never saw, with tokens masked two ways.
+    held:=[4][2]int.[[2]int.[0,1],[2]int.[0,2],[2]int.[2,2],[2]int.[4,2]];
+    right:=0;hidden:=0;whole:=0;smooth:=0;
+    for n:0..<4 {for way:0..<2 {
+        q:=mt_gait_sequence(held[n][0],held[n][1]);
+        masked:=ifx way==0 then mtx_mask_thirds(q) else mtx_mask_run(q);
+        f:=mt_fill(model,masked,4);
+        good:=0;for i:0..<q.count {if masked.token[i]==MT_MASK && f.sequence.token[i]==q.token[i] {good+=1;}}
+        right+=good;hidden+=f.masked;if good==f.masked {whole+=1;}
+        c:=mt_continuity(mt_decode(gait,f.sequence).clip,leg,MT_GAIT_TURN,MT_GAIT_STEP);if c.status==MtStatus.ok {smooth+=1;}
+        mtx_print("held ",q);mtx_print("mask ",masked);mtx_print("fill ",f.sequence);
+        print("  % of % right, continuity %\n",good,f.masked,c.status);
+    }}
+    print("held out: % of % masked tokens right, % of 8 sequences whole, % of 8 continuous\n",right,hidden,whole,smooth);
+// book:end train
+// book:begin refuse
+    zup:=walk.clip;zup.convention=pose_zup();
+    print("clip in another convention: %\n",mt_encode(gait,leg,zup).status);
+    odd:=walk.clip;odd.frames=7;
+    print("7 frames at 2 a token: %\n",mt_encode(gait,leg,odd).status);
+    print("code 7 of 7: %\n",mt_decode(gait,mt_parse("017")).status);
+    print("a mask left in: %\n",mt_decode(gait,mt_parse("01_")).status);
+    print("a model asked for 0 steps: %\n",mt_fill(model,mt_parse("0_2"),0).status);
+    twins:=gait;twins.entry[6]=twins.entry[5];
+    print("two equal codes: %\n",mt_codebook_check(twins).status);
+// book:end refuse
+}

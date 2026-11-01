@@ -1,0 +1,59 @@
+hand separation (millionths): 805162 between codes 1 and 2
+hand tokens: 012
+hand distances (millionths): 0 87239 174311
+decoded frame 0: turn (millidegrees) 0, root z (mm) 0
+decoded frame 1: turn (millidegrees) 45000, root z (mm) 250
+decoded frame 2: turn (millidegrees) 90000, root z (mm) 750
+gait separation (millionths): 274472 between codes 0 and 1, half: 137236
+member tokens: 01234560
+member error below 1e-15: true, frames identical: true
+perturbed tokens: 01234560
+perturbed error (millionths): 24723, bound: 24723
+walk: ok, worst turn (millidegrees) 15000, worst step (mm) 50
+stand, stand, code 3: jump at frame 4, joint 0, worst turn (millidegrees) 30000
+train 0: tokens recovered true
+train 1: tokens recovered true
+train 2: tokens recovered true
+train 3: tokens recovered true
+train 4: tokens recovered true
+train 5: tokens recovered true
+pairs: stand-stand 36, stand-walk 6, walk-stand 6
+held 1234560000000000
+mask 1_34_60_00_00_00
+fill 1234560000000000
+  5 of 5 right, continuity ok
+held 1234560000000000
+mask 12345____0000000
+fill 1234500000000000
+  3 of 4 right, continuity jump
+held 1234561234560000
+mask 1_34_61_34_60_00
+fill 1234561234560000
+  5 of 5 right, continuity ok
+held 1234561234560000
+mask 12345____4560000
+fill 1234561234560000
+  4 of 4 right, continuity ok
+held 0012345612345600
+mask 0_12_45_12_45_00
+fill 0012345612345000
+  4 of 5 right, continuity jump
+held 0012345612345600
+mask 00123____2345600
+fill 0012345612345600
+  4 of 4 right, continuity ok
+held 0000123456123456
+mask 0_00_23_56_23_56
+fill 0000023456123456
+  4 of 5 right, continuity jump
+held 0000123456123456
+mask 00001____6123456
+fill 0000123456123456
+  4 of 4 right, continuity ok
+held out: 33 of 36 masked tokens right, 5 of 8 sequences whole, 5 of 8 continuous
+clip in another convention: convention
+7 frames at 2 a token: shape
+code 7 of 7: token
+a mask left in: token
+a model asked for 0 steps: shape
+two equal codes: duplicate

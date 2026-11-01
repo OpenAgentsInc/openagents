@@ -528,7 +528,7 @@ need; it does not qualify their architectures.
 | Chapter | What we build and check |
 | --- | --- |
 | [147. Poses have conventions](ch147-poses-have-conventions.md) — runnable rotation forms, declared conventions, forward kinematics, resampling and same-skeleton retargeting | Rotation representations, skeleton hierarchy, root coordinates, units, timing and retargeting fixtures. |
-| [148. Motion tokens become poses](ch148-motion-tokens-become-poses.md) — design draft | A tiny codebook/VQ decoder and masked-token generation; known token-to-pose and pose-continuity checks. |
+| [148. Motion tokens become poses](ch148-motion-tokens-become-poses.md) — partly implemented: runnable pose-segment codebook, nearest-code encoder, lookup decoder, continuity check and counted masked-token filling | A tiny codebook/VQ decoder and masked-token generation; known token-to-pose and pose-continuity checks. |
 | [149. Execute MotionBricks](ch149-execute-motionbricks.md) — design draft | One pinned SOMA package: root timing/trajectory, masked motion-token transformer and VQ-VAE decoder, with full trajectory references. |
 | [150. Put generated motion in Verse](ch150-put-generated-motion-in-verse.md) — design draft | An explicit skeleton/target interface, bounded generation and animation handoff; a reproducible destination-to-pose scene. |
 

@@ -1,0 +1,604 @@
+// Chapter 148: motion tokens become poses. A codebook holds short pose
+// segments; the encoder replaces each segment of a clip with the number of
+// its nearest entry, and the decoder turns those numbers back into a clip.
+// A counted bigram model fills masked tokens over a fixed unmasking
+// schedule, and a continuity check refuses decoded motion that jumps.
+// Profile cpu-f64-motion-token-v1: binary64 on chapter 147's pose profile
+// (24 joints, 64 frames, tolerance 2^-30), at most 16 codes and 8 frames a
+// code. Distances compare the 6D form of every joint rotation and the
+// root's step from the previous frame. Codebook rotations are w,x,y,z and
+// codebook roots are steps; clips use the codebook's declared convention.
+#load "pose.coax";
+#load "../tests/motion-token-checks.coax";   // the checks' oracles and fixtures
+
+MT_CODES :: 16;
+MT_SEGMENT :: 8;
+MT_TOKENS :: POSE_FRAMES;
+MT_MASK :: -1;
+
+MtStatus :: enum u8 {ok;pose;convention;shape;token;duplicate;jump;}
+MtCheck :: struct {status:MtStatus;detail:PoseStatus;}
+// entry[e][k] is frame k of code e: local rotations and the root's step
+// from the frame before it.
+MtCodebook :: struct {convention:PoseConvention;joints:int;codes:int;segment:int;root_weight:f64;entry:[MT_CODES][MT_SEGMENT]PoseFrame;}
+// The closest pair of codes, the lower pair on ties; first is -1 when there
+// is no pair.
+MtSeparation :: struct {first:int;second:int;squared:f64;distance:f64;}
+// origin is the clip's first root; the first token's first step is unused.
+MtSequence :: struct {count:int;token:[MT_TOKENS]int;origin:[3]f64;}
+// error is distance[worst], the first largest.
+MtTokens :: struct {status:MtStatus;detail:PoseStatus;sequence:MtSequence;distance:[MT_TOKENS]f64;worst:int;error:f64;}
+MtClip :: struct {status:MtStatus;detail:PoseStatus;clip:PoseClip;}
+// The worst joint turn and root step between neighbouring frames and where
+// each first happens (-1 if nothing moved), and the first frame and joint
+// that break a bound (frame -1 if none does; joint -1 is the root).
+MtJump :: struct {status:MtStatus;detail:PoseStatus;frame:int;joint:int;angle:f64;turn_frame:int;turn_joint:int;step:f64;step_frame:int;}
+// pair[a][b] counts token a followed by token b in the training sequences.
+MtModel :: struct {codes:int;sequences:int;pair:[MT_CODES][MT_CODES]int;}
+MtModelResult :: struct {status:MtStatus;model:MtModel;}
+// step[i] is the schedule step that unmasked token i, 0 if it was given;
+// confidence[i] is the score it was unmasked with.
+MtFill :: struct {status:MtStatus;sequence:MtSequence;step:[MT_TOKENS]int;confidence:[MT_TOKENS]int;masked:int;}
+
+// ---- Checks. Expected values are derived by hand in chapter 148. ----
+
+#test "the 6D distance of turns about X is 4 sin^2(d/2)" {
+    for a:0..<7 {for c:0..<7 {
+        p:=mt_x(30*f64(a));q:=mt_x(30*f64(c));h:=sin((f64(c-a)*POSE_PI/6)/2);
+        #assert pose_near(mt_turn(p,q),4*h*h,1e-14) && pose_near(mt_oracle_turn(p,q),4*h*h,1e-14);
+    }}
+    // q and -q are one rotation and have one 6D form.
+    q:=mt_x(80);#assert mt_turn(q,[4]f64.[-q[0],-q[1],-q[2],-q[3]])==0;
+    #assert mt_x(90)[0]==cos(POSE_PI/4) && mt_x(90)[1]==sin(POSE_PI/4) && mt_x(90)[2]==0;
+}
+#test "hand codebook: the trace in chapter 148" {
+    b:=mt_hand_codebook();s:=mt_one_joint();c:=mt_hand_clip();
+    #assert mt_codebook_check(b).status==MtStatus.ok;
+    t:=mt_encode(b,s,c);#assert t.status==MtStatus.ok && t.detail==PoseStatus.ok;
+    #assert t.sequence.count==3 && t.sequence.token[0]==0 && t.sequence.token[1]==1 && t.sequence.token[2]==2;
+    // 4 sin^2(2.5 deg) and 4 sin^2(5 deg), the root steps matching exactly.
+    s25:=sin(2.5*POSE_PI/180);s5:=sin(5*POSE_PI/180);
+    #assert t.distance[0]==0 && pose_near(t.distance[1],sqrt(4*s25*s25),1e-15) && pose_near(t.distance[2],sqrt(4*s5*s5),1e-15);
+    #assert pose_near(t.distance[1],0.087239,1e-6) && pose_near(t.distance[2],0.174311,1e-6) && t.worst==2 && t.error==t.distance[2];
+    #assert t.sequence.origin[0]==0 && t.sequence.origin[1]==0 && t.sequence.origin[2]==0;
+    // Separation: 4 sin^2(22.5 deg) + 0.25^2 between neighbours.
+    s225:=sin(22.5*POSE_PI/180);p:=mt_separation(b);
+    #assert pose_near(p.squared,4*s225*s225+0.0625,1e-15) && p.distance==sqrt(p.squared) && pose_near(p.distance,0.805162,1e-6);
+    #assert p.second==p.first+1;
+    d:=mt_decode(b,t.sequence);#assert d.status==MtStatus.ok && d.detail==PoseStatus.ok && d.clip.frames==3;
+    z:=[3]f64.[0,0.25,0.75];
+    for k:0..<3 {
+        #assert d.clip.frame[k].root[2]==z[k] && d.clip.frame[k].root[0]==0 && d.clip.frame[k].root[1]==0;
+        #assert pose_same_rotation(d.clip.frame[k].rotation[0],mt_x(45*f64(k)),0);
+    }
+    // The decoded clip is a codebook member, so it encodes to itself; every
+    // error is 0 and the first is the worst.
+    again:=mt_encode(b,s,d.clip);#assert again.error==0 && again.worst==0 && again.sequence.token[2]==2;
+}
+#test "nearest code: lowest number on ties, the first root step ignored" {
+    b:=mt_hand_codebook();s:=mt_one_joint();c:=mt_hand_clip();
+    // Codes 0 and 1 share a rotation; a step of 0.125 m lies halfway
+    // between their steps, so both are equally far and code 0 wins.
+    e:=b;e.entry[1][0].rotation[0]=e.entry[0][0].rotation[0];
+    c.frame[1].rotation[0]=mt_x(22.5);c.frame[1].root[2]=0.125;c.frame[2].root[2]=0.625;
+    t:=mt_encode(e,s,c);#assert t.distance[1]==sqrt(0.125*0.125+mt_turn(mt_x(22.5),[4]f64.[1,0,0,0]));
+    #assert t.sequence.token[1]==0 && t.sequence.token[2]==2 && t.worst==1 && t.error==t.distance[1];
+    c.frame[1].root[2]=0.125+1.0/1024;c.frame[2].root[2]=0.625+1.0/1024;t=mt_encode(e,s,c);#assert t.sequence.token[1]==1;
+    // Frame 0's step is unknown, so a first root far away changes nothing
+    // but the origin.
+    c=mt_hand_clip();for k:0..<3 {c.frame[k].root[0]+=100;}
+    t=mt_encode(b,s,c);#assert t.sequence.token[0]==0 && t.distance[0]==0 && t.sequence.origin[0]==100 && t.sequence.token[2]==2;
+    #assert pose_near(t.distance[2],0.174311,1e-6);
+}
+#forall "nearest code matches the brute-force oracle on the gait codebook" axis:0..<7,angle:0..<3,shift:0..<2 #steps 400000000 {
+    b:=mt_gait_codebook();s:=pose_leg(1);c:PoseClip;c.convention=b.convention;c.frames=4;
+    for k:0..<4 {
+        c.frame[k].root=[3]f64.[0.02*f64(k*(shift+1)),0.9-0.01*f64(k*shift),0.03*f64(k)];
+        for j:0..<3 {c.frame[k].rotation[j]=pose_axis_angle(pose_fixed_axis((axis+j+k)%7),pose_fixed_angle((3*angle+2+2*j+k)%9)+0.37*f64(shift+1));}
+    }
+    t:=mt_encode(b,s,c);#assert t.status==MtStatus.ok;w:=pose_internal(c,3);
+    for i:0..<2 {
+        o:=mt_oracle(b,w,i);#assert o.zeros==1 && t.sequence.token[i]==o.token;
+        #assert pose_near(t.distance[i]*t.distance[i],o.distance[o.token],1e-12);
+    }
+}
+#forall "codebook members round-trip exactly" start:0..<7,length:1..<9,phase:0..<3 #steps 400000000 {
+    b:=mt_gait_codebook();s:=pose_leg(1);tokens:[16]int;q:MtSequence;q.count=length;q.origin=[3]f64.[0.5,0.9,-0.25*f64(phase)];
+    for i:0..<length {tokens[i]=(start+i*(phase+1))%7;q.token[i]=tokens[i];}
+    d:=mt_decode(b,q);#assert d.status==MtStatus.ok && d.clip.frames==2*length;
+    t:=mt_encode(b,s,d.clip);#assert t.status==MtStatus.ok && t.sequence.count==length;
+    for i:0..<length {#assert t.sequence.token[i]==tokens[i] && t.distance[i]<=1e-15;}
+    for i:0..<3 {#assert t.sequence.origin[i]==q.origin[i];}
+    again:=mt_decode(b,t.sequence);#assert mt_same_frames(again.clip,d.clip,3);
+}
+#forall "a perturbation smaller than half the separation keeps every token; the error is at most its size" tokens:0..<7,turn:0..<5,step:0..<3 #steps 400000000 {
+    b:=mt_gait_codebook();s:=pose_leg(1);
+    list:=[6]int.[tokens,(tokens+1)%7,(tokens+3)%7,0,(tokens+5)%7,tokens];q:MtSequence;q.count=6;q.origin=[3]f64.[0,0.9,0];
+    for i:0..<6 {q.token[i]=list[i];}
+    d:=mt_decode(b,q);c:=d.clip;
+    // Every frame: the hip turns a further 0.5 * turn degrees about X and
+    // the root moves step mm further along Z than the frame before.
+    for k:0..<c.frames {
+        c.frame[k].rotation[0]=pfk_multiply(c.frame[k].rotation[0],mt_x(0.5*f64(turn)));
+        c.frame[k].root[2]+=0.001*f64(step*k);
+    }
+    // Stated before the run: per frame the hip contributes 4 sin^2(turn/4)
+    // degrees and the root step^2, so per token at most twice that.
+    h:=sin(0.25*f64(turn)*POSE_PI/180);bound:=sqrt(2*(4*h*h+0.000001*f64(step*step)));
+    #assert bound<mt_separation(b).distance/2;
+    t:=mt_encode(b,s,c);
+    for i:0..<6 {#assert t.sequence.token[i]==list[i] && t.distance[i]<=bound+1e-12;}
+    #assert t.error<=bound+1e-12;
+}
+#test "the bit-exact clip comparison reads every frame, root and declared rotation" {
+    b:=mt_gait_codebook();a:=mt_decode(b,mt_parse("0123")).clip;
+    #assert mt_same_frames(a,a,3);
+    c:=a;c.frames=7;#assert !mt_same_frames(a,c,3);
+    c=a;c.frame[0].root[0]= -0.0;#assert !mt_same_frames(a,c,3);
+    c=a;c.frame[0].rotation[0][0]= -c.frame[0].rotation[0][0];#assert !mt_same_frames(a,c,3);
+    c=a;c.frame[7].rotation[2][3]=0.5;#assert !mt_same_frames(a,c,3) && mt_same_frames(a,c,2);
+}
+#test "separation: the closest pair, the lower pair on ties" {
+    // Equal rotations and steps 0, 0.25 and 0.5: pairs (0, 1) and (1, 2)
+    // are both exactly 0.25^2 apart.
+    b:=mt_hand_codebook();for e:0..<3 {b.entry[e][0].rotation[0]=[4]f64.[1,0,0,0];}
+    p:=mt_separation(b);#assert p.first==0 && p.second==1 && p.squared==0.0625 && p.distance==0.25;
+    // Codes 1 and 2 nearer than 0 and 1.
+    b.entry[2][0].root[2]=0.375;p=mt_separation(b);#assert p.first==1 && p.second==2 && p.squared==0.015625;
+    // A duplicate first pair stays the answer.
+    b.entry[1][0].root[2]=0;p=mt_separation(b);#assert p.first==0 && p.second==1 && p.squared==0 && p.distance==0;
+    b.codes=2;b.entry[1][0].root[2]=0.5;p=mt_separation(b);#assert p.first==0 && p.second==1 && p.distance==0.5;
+    b.codes=1;p=mt_separation(b);#assert p.first== -1 && p.second== -1 && p.distance==0 && p.squared==0;
+}
+#test "codebook admission" {
+    b:=mt_hand_codebook();#assert mt_codebook_check(b).status==MtStatus.ok;
+    b.convention.unit=PoseUnit.undeclared;r:=mt_codebook_check(b);#assert r.status==MtStatus.pose && r.detail==PoseStatus.convention;
+    b=mt_hand_codebook();b.joints=0;#assert mt_codebook_check(b).status==MtStatus.shape;
+    b.joints=POSE_JOINTS+1;#assert mt_codebook_check(b).status==MtStatus.shape;
+    b.joints=POSE_JOINTS;#assert mt_codebook_check(b).status==MtStatus.pose;
+    b=mt_hand_codebook();b.codes=0;#assert mt_codebook_check(b).status==MtStatus.shape;
+    b.codes=MT_CODES+1;#assert mt_codebook_check(b).status==MtStatus.shape;
+    b=mt_hand_codebook();b.segment=0;#assert mt_codebook_check(b).status==MtStatus.shape;
+    b.segment=MT_SEGMENT+1;#assert mt_codebook_check(b).status==MtStatus.shape;
+    b=mt_hand_codebook();b.root_weight= -1;r=mt_codebook_check(b);#assert r.status==MtStatus.pose && r.detail==PoseStatus.range;
+    b.root_weight=0;#assert mt_codebook_check(b).status==MtStatus.ok;
+    b.root_weight=POSE_LENGTH_MAX*2;r=mt_codebook_check(b);#assert r.detail==PoseStatus.range;
+    b=mt_hand_codebook();b.entry[2][0].rotation[0]=[4]f64.[1,0,0,0.1];r=mt_codebook_check(b);#assert r.status==MtStatus.pose && r.detail==PoseStatus.not_unit;
+    b=mt_hand_codebook();b.entry[0][0].rotation[0]=[4]f64.[1,0,0,0.1];r=mt_codebook_check(b);#assert r.status==MtStatus.pose && r.detail==PoseStatus.not_unit;
+    b=mt_hand_codebook();b.entry[2][0].root[1]=POSE_LENGTH_MAX*2;r=mt_codebook_check(b);#assert r.status==MtStatus.pose && r.detail==PoseStatus.range;
+    // Two codes no more than 2^-30 apart are one code: a step 2^-15 apart
+    // sits exactly on the tolerance.
+    b=mt_hand_codebook();b.entry[2][0]=b.entry[0][0];b.entry[2][0].root[2]=0.000030517578125;r=mt_codebook_check(b);#assert r.status==MtStatus.duplicate;
+    b.entry[2][0].root[2]=0.00003052;#assert mt_codebook_check(b).status==MtStatus.ok;
+    b=mt_hand_codebook();b.entry[1][0]=b.entry[0][0];#assert mt_codebook_check(b).status==MtStatus.duplicate;
+    b=mt_hand_codebook();b.codes=1;#assert mt_codebook_check(b).status==MtStatus.ok;
+    b.codes=2;b.entry[1][0]=b.entry[0][0];#assert mt_codebook_check(b).status==MtStatus.duplicate;
+    // Only the declared joints and frames are read.
+    b=mt_hand_codebook();b.entry[0][1].rotation[0]=[4]f64.[2,0,0,0];b.entry[0][0].rotation[1]=[4]f64.[2,0,0,0];#assert mt_codebook_check(b).status==MtStatus.ok;
+    // The limits themselves: 16 codes of 8 frames.
+    full:=mt_hand_codebook();full.codes=MT_CODES;full.segment=MT_SEGMENT;
+    for e:0..<MT_CODES {for k:0..<MT_SEGMENT {full.entry[e][k].rotation[0]=[4]f64.[1,0,0,0];full.entry[e][k].root=[3]f64.[0,0,0.125*f64(e)];}}
+    #assert mt_codebook_check(full).status==MtStatus.ok;
+}
+#test "encoding refuses a convention mismatch, a bad clip and a length that is not whole tokens" {
+    b:=mt_hand_codebook();s:=mt_one_joint();c:=mt_hand_clip();
+    for field:0..<7 {
+        d:=c;
+        if field==0 {d.convention.up=PoseAxis.pos_z;d.convention.forward=PoseAxis.neg_y;}
+        if field==1 {d.convention.forward=PoseAxis.pos_x;}
+        if field==2 {d.convention.hand=PoseHand.left;}
+        if field==3 {d.convention.order=PoseOrder.xyzw;for k:0..<3 {d.frame[k].rotation[0]=pose_write(PoseOrder.xyzw,c.frame[k].rotation[0]);}}
+        if field==4 {d.convention.unit=PoseUnit.centimetre;}
+        if field==5 {d.convention.root=PoseRoot.delta;}
+        if field==6 {d.convention.rate=60;}
+        t:=mt_encode(b,s,d);#assert t.status==MtStatus.convention && t.detail==PoseStatus.ok;
+        e:=b;e.convention=d.convention;#assert mt_encode(e,s,d).status==MtStatus.ok;
+    }
+    d:=c;d.convention.hand=PoseHand.undeclared;t:=mt_encode(b,s,d);#assert t.status==MtStatus.pose && t.detail==PoseStatus.convention;
+    d=c;d.frame[1].rotation[0]=[4]f64.[1,0,0,0.1];t=mt_encode(b,s,d);#assert t.status==MtStatus.pose && t.detail==PoseStatus.not_unit;
+    t=mt_encode(b,pose_leg(1),c);#assert t.status==MtStatus.pose;
+    late:=b;late.convention.rate=0;t=mt_encode(late,s,c);#assert t.status==MtStatus.pose && t.detail==PoseStatus.rate;
+    b.segment=2;b.entry[0][1]=b.entry[0][0];b.entry[1][1]=b.entry[1][0];b.entry[2][1]=b.entry[2][0];
+    t=mt_encode(b,s,c);#assert t.status==MtStatus.shape;
+    c.frames=2;t=mt_encode(b,s,c);#assert t.status==MtStatus.ok && t.sequence.count==1;
+    for e:0..<3 {for k:0..<2 {b.entry[e][k].rotation[1]=[4]f64.[1,0,0,0];}}
+    b.joints=2;t=mt_encode(b,s,c);#assert t.status==MtStatus.shape;
+    two:=pose_leg(1);two.count=2;c.frame[0].rotation[1]=[4]f64.[1,0,0,0];c.frame[1].rotation[1]=[4]f64.[1,0,0,0];
+    #assert mt_encode(b,two,c).status==MtStatus.ok;
+    b.codes=0;t=mt_encode(b,two,c);#assert t.status==MtStatus.shape;
+}
+#test "an xyzw clip with delta roots encodes like its absolute w-first twin" {
+    b:=mt_hand_codebook();s:=mt_one_joint();c:=mt_hand_clip();
+    z:=pose_zup();z.unit=PoseUnit.metre;z.rate=30;
+    e:=b;e.convention=z;d:=c;d.convention=z;
+    for k:0..<3 {d.frame[k].rotation[0]=pose_write(PoseOrder.xyzw,c.frame[k].rotation[0]);}
+    d.frame[1].root[2]=0.25;d.frame[2].root[2]=0.5;
+    t:=mt_encode(e,s,d);#assert t.status==MtStatus.ok && t.sequence.token[1]==1 && t.sequence.token[2]==2;
+    #assert pose_near(t.distance[2],0.174311,1e-6);
+    back:=mt_decode(e,t.sequence);#assert back.status==MtStatus.ok && back.clip.convention.root==PoseRoot.delta;
+    #assert back.clip.frame[2].root[2]==0.5 && back.clip.frame[1].rotation[0][3]==b.entry[1][0].rotation[0][0];
+}
+#test "decoding refuses unknown tokens, masks, bad lengths and bad origins" {
+    b:=mt_hand_codebook();
+    r:=mt_decode(b,mt_parse("031"));#assert r.status==MtStatus.token;
+    r=mt_decode(b,mt_parse("02_"));#assert r.status==MtStatus.token;
+    r=mt_decode(b,mt_parse("?"));#assert r.status==MtStatus.token;
+    r=mt_decode(b,mt_parse("222"));#assert r.status==MtStatus.ok && r.clip.frames==3 && r.clip.frame[2].root[2]==1;
+    r=mt_decode(b,mt_at(mt_parse("2"),[3]f64.[1,2,3]));#assert r.status==MtStatus.ok && r.clip.frames==1 && r.clip.frame[0].root[2]==3;
+    q:MtSequence;r=mt_decode(b,q);#assert r.status==MtStatus.shape;
+    q.count=POSE_FRAMES;r=mt_decode(b,q);#assert r.status==MtStatus.ok && r.clip.frames==POSE_FRAMES;
+    b.segment=2;for e:0..<3 {b.entry[e][1]=b.entry[e][0];}r=mt_decode(b,q);#assert r.status==MtStatus.shape;
+    q.count=POSE_FRAMES/2;r=mt_decode(b,q);#assert r.status==MtStatus.ok && r.clip.frames==POSE_FRAMES;
+    q.count=MT_TOKENS+1;r=mt_decode(b,q);#assert r.status==MtStatus.shape;
+    q.count= -1;r=mt_decode(b,q);#assert r.status==MtStatus.shape;
+    b=mt_hand_codebook();q.count=1;q.origin[1]=POSE_LENGTH_MAX*2;r=mt_decode(b,q);#assert r.status==MtStatus.pose && r.detail==PoseStatus.range;
+    q.origin[1]=0;b.codes=0;r=mt_decode(b,q);#assert r.status==MtStatus.shape;
+    b=mt_hand_codebook();b.convention.up=PoseAxis.undeclared;r=mt_decode(b,q);#assert r.status==MtStatus.pose && r.detail==PoseStatus.convention;
+}
+#test "text form: digits, a to f, and _ for a mask" {
+    q:=mt_parse("09af_/:`g");
+    want:=[9]int.[0,9,10,15,MT_MASK,-2,-2,-2,-2];
+    #assert q.count==9;for i:0..<9 {#assert q.token[i]==want[i];}
+    #assert q.origin[0]==0 && mt_at(q,[3]f64.[1,2,3]).origin[1]==2 && mt_at(q,[3]f64.[1,2,3]).token[3]==15;
+    // 65 characters: the count says so, the first 64 are kept, and every
+    // user refuses the length.
+    long:=mt_parse("01234567890123456789012345678901234567890123456789012345678901234");
+    #assert long.count==65 && long.token[63]==3 && mt_decode(mt_hand_codebook(),long).status==MtStatus.shape;
+}
+#test "continuity: the worst turn and step, and the first pair past a bound" {
+    b:=mt_gait_codebook();s:=pose_leg(1);
+    walk:=mt_decode(b,mt_at(mt_parse("01234560"),[3]f64.[0,0.9,0])).clip;
+    j:=mt_continuity(walk,s,MT_GAIT_TURN,MT_GAIT_STEP);#assert j.status==MtStatus.ok && j.frame== -1;
+    // The largest hip change is 15 degrees, the largest step 0.05 m.
+    #assert pose_near(j.angle,15*POSE_PI/180,1e-12) && pose_near(j.step,0.05,1e-15) && j.turn_joint==0 && j.step_frame>=2;
+    j=mt_continuity(walk,s,15*POSE_PI/180-1e-9,MT_GAIT_STEP);#assert j.status==MtStatus.jump && j.frame==3 && j.joint==0;
+    j=mt_continuity(walk,s,MT_GAIT_TURN,0.05-1e-12);#assert j.status==MtStatus.jump && j.frame==2 && j.joint== -1 && pose_near(j.step,0.05,1e-15);
+    // Standing, then the walk's third code: the hip jumps 26 degrees and
+    // the knee 30, the worst turn.
+    bad:=mt_decode(b,mt_at(mt_parse("003"),[3]f64.[0,0.9,0])).clip;
+    j=mt_continuity(bad,s,MT_GAIT_TURN,MT_GAIT_STEP);#assert j.status==MtStatus.jump && j.frame==4 && j.joint==0;
+    #assert pose_near(j.angle,POSE_PI/6,1e-12) && j.turn_frame==4 && j.turn_joint==1 && pose_near(j.step,0.05,1e-15) && j.step_frame==4;
+    // The knee only: hip and root still, knee from 0 to 40 degrees.
+    c:PoseClip;c.convention=pose_gltf();c.frames=2;for k:0..<2 {for jj:0..<3 {c.frame[k].rotation[jj]=[4]f64.[1,0,0,0];}}
+    still:=mt_continuity(c,s,0,0);#assert still.status==MtStatus.ok && still.angle==0 && still.turn_frame== -1 && still.turn_joint== -1 && still.step_frame== -1;
+    c.frame[1].rotation[1]=mt_x(40);j=mt_continuity(c,s,MT_GAIT_TURN,MT_GAIT_STEP);#assert j.status==MtStatus.jump && j.frame==1 && j.joint==1 && j.step==0;
+    // A bound equal to the turn is not broken.
+    j=mt_continuity(c,s,j.angle,0);#assert j.status==MtStatus.ok;
+    one:=c;one.frames=1;j=mt_continuity(one,s,0,0);#assert j.status==MtStatus.ok && j.angle==0 && j.step==0 && j.frame== -1;
+    j=mt_continuity(c,s,-1,0);#assert j.status==MtStatus.pose && j.detail==PoseStatus.range;
+    j=mt_continuity(c,s,POSE_PI+1e-9,0);#assert j.status==MtStatus.pose && j.detail==PoseStatus.range;
+    j=mt_continuity(c,s,POSE_PI,0);#assert j.status==MtStatus.ok;
+    j=mt_continuity(c,s,1,-1);#assert j.status==MtStatus.pose && j.detail==PoseStatus.range;
+    j=mt_continuity(c,s,1,POSE_LENGTH_MAX*2);#assert j.detail==PoseStatus.range;
+    c.convention.rate=0;j=mt_continuity(c,s,1,1);#assert j.status==MtStatus.pose && j.detail==PoseStatus.rate;
+}
+#test "continuity measures any turn and a step in every direction" {
+    s:=pose_leg(1);c:PoseClip;c.convention=pose_gltf();c.frames=3;
+    a:=pose_axis_angle(pose_fixed_axis(4),2.5);
+    for k:0..<3 {for jj:0..<3 {c.frame[k].rotation[jj]=a;}c.frame[k].root=[3]f64.[0.375*f64(k),0.75+0.5*f64(k),-1.5*f64(k)];}
+    // The hip turns 0.7 rad about a tilted axis on top of a dense rotation;
+    // the root steps (0.375, 0.5, -1.5), exactly 1.625 m each frame.
+    c.frame[2].rotation[0]=pfk_multiply(a,pose_axis_angle(pose_fixed_axis(5),0.7));
+    j:=mt_continuity(c,s,POSE_PI,2);#assert j.status==MtStatus.ok && pose_near(j.angle,0.7,1e-12) && j.step==1.625;
+    #assert j.turn_frame==2 && j.turn_joint==0 && j.step_frame==1;
+    j=mt_continuity(c,s,POSE_PI,j.step);#assert j.status==MtStatus.ok;
+    j=mt_continuity(c,s,POSE_PI,1.62);#assert j.status==MtStatus.jump && j.frame==1 && j.joint== -1;
+}
+#test "training counts neighbouring pairs" {
+    m:=mt_model(3);
+    for q:[3]string.["0122","0120","0012"] {r:=mt_train(m,mt_parse(q));#assert r.status==MtStatus.ok;m=r.model;}
+    #assert m.sequences==3 && m.pair[0][1]==3 && m.pair[1][2]==3 && m.pair[2][2]==1 && m.pair[2][0]==1 && m.pair[0][0]==1;
+    #assert m.pair[1][0]==0 && m.pair[1][1]==0 && m.pair[0][2]==0 && m.pair[2][1]==0;
+    one:=mt_train(m,mt_parse("2"));#assert one.status==MtStatus.ok && one.model.sequences==4 && one.model.pair[2][2]==1;
+    r:=mt_train(m,mt_parse("03"));#assert r.status==MtStatus.token && r.model.sequences==3 && r.model.pair[0][1]==3;
+    r=mt_train(m,mt_parse("_0"));#assert r.status==MtStatus.token;
+    q:MtSequence;r=mt_train(m,q);#assert r.status==MtStatus.shape;
+    q.count=MT_TOKENS+1;r=mt_train(m,q);#assert r.status==MtStatus.shape;
+    q.count=MT_TOKENS;r=mt_train(m,q);#assert r.status==MtStatus.ok && r.model.pair[0][0]==1+MT_TOKENS-1;
+    #assert mt_train(mt_model(0),mt_parse("0")).status==MtStatus.shape;
+    #assert mt_train(mt_model(MT_CODES+1),mt_parse("0")).status==MtStatus.shape;
+    #assert mt_train(mt_model(MT_CODES),mt_parse("f")).status==MtStatus.ok;
+    r=mt_train(mt_model(1),mt_parse("00"));#assert r.status==MtStatus.ok && r.model.pair[0][0]==1;
+}
+#test "filling: the hand trace in chapter 148" {
+    m:=mt_hand_model();
+    f:=mt_fill(m,mt_at(mt_parse("0___"),[3]f64.[1,2,3]),3);
+    #assert f.status==MtStatus.ok && f.masked==3 && f.sequence.count==4 && f.sequence.origin[2]==3;
+    t:=[4]int.[0,1,2,0];st:=[4]int.[0,1,2,3];sc:=[4]int.[0,3,3,1];
+    for i:0..<4 {#assert f.sequence.token[i]==t[i] && f.step[i]==st[i] && f.confidence[i]==sc[i];}
+    // One step: every prediction is made from the first context only.
+    f=mt_fill(m,mt_parse("0___"),1);
+    #assert f.sequence.token[1]==1 && f.sequence.token[2]==0 && f.sequence.token[3]==0 && f.step[3]==1 && f.confidence[3]==0;
+    // Both neighbours known: the counts add, 3 + 3 for code 1.
+    f=mt_fill(m,mt_parse("0_2"),1);#assert f.sequence.token[1]==1 && f.confidence[1]==6;
+    // Right neighbour only: code 1 before 2 (3), against 2 before 2 (1).
+    f=mt_fill(m,mt_parse("_2"),1);#assert f.sequence.token[0]==1 && f.confidence[0]==3;
+    // A tie in confidence unmasks the lower position first; a tie in score
+    // takes the lower code.
+    f=mt_fill(m,mt_parse("1___1"),3);
+    #assert f.step[1]==1 && f.step[3]==2 && f.step[2]==3 && f.sequence.token[1]==2 && f.sequence.token[3]==0 && f.sequence.token[2]==0;
+    f=mt_fill(m,mt_parse("_1_"),2);#assert f.step[0]==1 && f.step[2]==2 && f.sequence.token[0]==0 && f.sequence.token[2]==2;
+    // Nothing masked: nothing changes.
+    f=mt_fill(m,mt_parse("20"),4);#assert f.status==MtStatus.ok && f.masked==0 && f.sequence.token[0]==2 && f.step[0]==0;
+    // More steps than masks: one mask over 4 steps leaves 1 (4 - 1) / 4 = 0
+    // after step 1, and the later steps unmask nothing.
+    f=mt_fill(m,mt_parse("0_"),4);#assert f.sequence.token[1]==1 && f.step[1]==1;
+    // An empty model scores everything 0: code 0, and the given token stays.
+    f=mt_fill(mt_model(3),mt_parse("1_"),1);#assert f.sequence.token[0]==1 && f.sequence.token[1]==0 && f.step[0]==0 && f.step[1]==1;
+}
+#test "filling: the ends of the sequence have no outside neighbour" {
+    // Pairs (0, 0) twice and (2, 1) twice: before a 1 only code 2 scores.
+    m:=mt_model(3);for q:[3]string.["000","21","21"] {m=mt_train(m,mt_parse(q)).model;}
+    f:=mt_fill(m,mt_parse("_1"),1);#assert f.sequence.token[0]==2 && f.confidence[0]==2;
+    // Pairs (0, 0) twice and (1, 2) twice: after a 1 only code 2 scores.
+    m=mt_model(3);for q:[3]string.["000","12","12"] {m=mt_train(m,mt_parse(q)).model;}
+    f=mt_fill(m,mt_parse("1_"),1);#assert f.sequence.token[1]==2 && f.confidence[1]==2;
+}
+#test "the schedule unmasks M (S - s) / S remaining after step s" {
+    m:=mt_hand_model();q:MtSequence;q.count=10;for i:0..<10 {q.token[i]=MT_MASK;}q.token[0]=0;
+    f:=mt_fill(m,q,3);#assert f.masked==9;
+    count:[4]int;for i:1..<10 {count[f.step[i]]+=1;}
+    // 9 masked over 3 steps: 6, 3 and 0 remain, so 3 are unmasked each step.
+    #assert count[1]==3 && count[2]==3 && count[3]==3 && f.step[0]==0;
+    f=mt_fill(m,q,4);count=[4]int.[0,0,0,0];c4:=0;for i:1..<10 {if f.step[i]==4 {c4+=1;} else {count[f.step[i]]+=1;}}
+    // 9 (4 - s) / 4 = 6, 4, 2, 0 remain: 3, 2, 2, 2.
+    #assert count[1]==3 && count[2]==2 && count[3]==2 && c4==2;
+    for i:0..<10 {#assert f.sequence.token[i]>=0;}
+}
+#test "filling refuses bad shapes, steps and tokens" {
+    m:=mt_hand_model();
+    #assert mt_fill(m,mt_parse("03"),1).status==MtStatus.token;
+    #assert mt_fill(m,mt_parse("0?"),1).status==MtStatus.token;
+    #assert mt_fill(m,mt_parse("0_"),0).status==MtStatus.shape;
+    #assert mt_fill(m,mt_parse("0_"),MT_TOKENS+1).status==MtStatus.shape;
+    #assert mt_fill(m,mt_parse("0_"),MT_TOKENS).status==MtStatus.ok;
+    q:MtSequence;#assert mt_fill(m,q,1).status==MtStatus.shape;
+    q.count=MT_TOKENS+1;#assert mt_fill(m,q,1).status==MtStatus.shape;
+    q.count=MT_TOKENS;for i:0..<MT_TOKENS {q.token[i]=MT_MASK;}f:=mt_fill(m,q,2);#assert f.status==MtStatus.ok && f.masked==MT_TOKENS;
+    m.codes=0;#assert mt_fill(m,mt_parse("_"),1).status==MtStatus.shape;
+    m.codes=MT_CODES+1;#assert mt_fill(m,mt_parse("_"),1).status==MtStatus.shape;
+    #assert mt_fill(mt_model(1),mt_parse("0_"),1).sequence.token[1]==0;
+}
+#test "the gait codebook and its sequences" {
+    b:=mt_gait_codebook();#assert mt_codebook_check(b).status==MtStatus.ok && b.codes==7 && b.segment==2 && b.joints==3 && b.root_weight==1;
+    #assert b.convention.up==PoseAxis.pos_y && b.convention.rate==30;
+    // Phase u of 12: the hip turns 30 sin(30u) degrees, the knee 20 (1 - cos(30u)).
+    #assert pose_same_rotation(b.entry[2][1].rotation[0],mt_x(30),1e-15) && pose_same_rotation(b.entry[4][0].rotation[1],mt_x(40),1e-15);
+    #assert pose_same_rotation(b.entry[1][1].rotation[0],mt_x(15),1e-15) && pose_same_rotation(b.entry[6][1].rotation[1],mt_x(20*(1-cos(POSE_PI/6))),1e-15);
+    #assert pose_same_rotation(b.entry[0][1].rotation[0],[4]f64.[1,0,0,0],0) && b.entry[0][1].root[2]==0 && b.entry[3][0].root[2]==0.05;
+    // The closest pair is standing and the first walk code.
+    h:=sin(7.5*POSE_PI/180);p:=mt_separation(b);
+    #assert p.first==0 && p.second==1 && pose_near(p.distance,sqrt(4*h*h+mt_gait_knee_term()+2*0.0025),1e-12);
+    q:=mt_gait_sequence(2,1);#assert q.count==16 && q.token[0]==0 && q.token[1]==0 && q.token[2]==1 && q.token[7]==6 && q.token[8]==0 && q.token[15]==0;
+    #assert q.origin[0]==0 && q.origin[1]==0.9 && q.origin[2]==0;
+    q=mt_gait_sequence(4,2);#assert q.token[3]==0 && q.token[4]==1 && q.token[15]==6;
+    q=mt_gait_sequence(1,2);#assert q.token[1]==1 && q.token[7]==1 && q.token[12]==6 && q.token[13]==0;
+}
+
+// ---- Codebooks ----
+
+mt_x :: (degrees:f64)->[4]f64 {return pose_axis_angle([3]f64.[1,0,0],degrees*POSE_PI/180);}
+mt_frame_value :: (f:PoseFrame,joints:int)->PoseStatus {
+    for x:f.root {status:=pose_value(x,POSE_LENGTH_MAX);if status!=PoseStatus.ok {return status;}}
+    for j:0..<joints {status:=pose_quat_check(f.rotation[j]);if status!=PoseStatus.ok {return status;}}
+    return PoseStatus.ok;
+}
+
+// book:begin distance
+// The 6D form keeps the first two columns of the rotation matrix. It is the
+// same for q and -q and changes smoothly, so squared differences of it
+// compare two rotations.
+mt_turn :: (a:[4]f64,b:[4]f64)->f64 {
+    x:=pose_matrix_six(pfk_matrix(a));y:=pose_matrix_six(pfk_matrix(b));
+    sum:f64=0;for i:0..<6 {d:=x[i]-y[i];sum+=d*d;}return sum;
+}
+// Squared distance between two frames of the same joints: every joint's
+// turn, plus the weighted squared difference of the roots, which hold steps.
+mt_frame_distance :: (a:PoseFrame,b:PoseFrame,joints:int,weight:f64)->f64 {
+    sum:f64=0;for j:0..<joints {sum+=mt_turn(a.rotation[j],b.rotation[j]);}
+    for i:0..<3 {d:=a.root[i]-b.root[i];sum+=weight*d*d;}
+    return sum;
+}
+// The closest two codes, all frames summed; the lower pair on ties.
+mt_separation :: (b:MtCodebook)->MtSeparation {
+    out:MtSeparation;out.first= -1;out.second= -1;
+    for e:0..<b.codes {for o:e+1..<b.codes {
+        d:f64=0;for k:0..<b.segment {d+=mt_frame_distance(b.entry[e][k],b.entry[o][k],b.joints,b.root_weight);}
+        if out.first== -1 || d<out.squared {out.first=e;out.second=o;out.squared=d;}
+    }}
+    out.distance=sqrt(out.squared);
+    return out;
+}
+// book:end distance
+
+// book:begin codebook
+mt_codebook_check :: (b:MtCodebook)->MtCheck {
+    status:=pose_convention_check(b.convention);if status!=PoseStatus.ok {return MtCheck.{status=MtStatus.pose,detail=status};}
+    if b.joints<1 || b.joints>POSE_JOINTS || b.codes<1 || b.codes>MT_CODES || b.segment<1 || b.segment>MT_SEGMENT {return MtCheck.{status=MtStatus.shape};}
+    status=pose_value(b.root_weight,POSE_LENGTH_MAX);if status==PoseStatus.ok && b.root_weight<0 {status=PoseStatus.range;}
+    if status!=PoseStatus.ok {return MtCheck.{status=MtStatus.pose,detail=status};}
+    for e:0..<b.codes {for k:0..<b.segment {status=mt_frame_value(b.entry[e][k],b.joints);if status!=PoseStatus.ok {return MtCheck.{status=MtStatus.pose,detail=status};}}}
+    // Two codes within the tolerance could not be told apart.
+    if mt_separation(b).squared<=POSE_TOLERANCE && b.codes>1 {return MtCheck.{status=MtStatus.duplicate};}
+    return MtCheck.{};
+}
+mt_same_convention :: (a:PoseConvention,b:PoseConvention)->bool {
+    return a.up==b.up && a.forward==b.forward && a.hand==b.hand && a.order==b.order && a.unit==b.unit && a.root==b.root && a.rate==b.rate;
+}
+// book:end codebook
+
+// ---- Encoding and decoding ----
+
+// book:begin encode
+// Each segment of the clip becomes the code nearest to it; on a tie the
+// lower code wins. The clip must use the codebook's convention exactly:
+// convert it with chapter 147's pose_convert first.
+mt_encode :: (b:MtCodebook,s:PoseSkeleton,c:PoseClip)->MtTokens {
+    out:MtTokens;check:=mt_codebook_check(b);out.status=check.status;out.detail=check.detail;
+    if out.status!=MtStatus.ok {return out;}
+    out.detail=pose_clip_check(c,s);if out.detail!=PoseStatus.ok {out.status=MtStatus.pose;return out;}
+    if !mt_same_convention(c.convention,b.convention) {out.status=MtStatus.convention;return out;}
+    if s.count!=b.joints || c.frames%b.segment!=0 {out.status=MtStatus.shape;return out;}
+    // Work in w,x,y,z rotations with each root after the first replaced by
+    // its step.
+    w:=pose_internal(c,s.count);out.sequence.count=c.frames/b.segment;out.sequence.origin=w.frame[0].root;
+    for back:1..<c.frames {f:=c.frames-back;for x:0..<3 {w.frame[f].root[x]-=w.frame[f-1].root[x];}}
+    for i:0..<out.sequence.count {
+        best:= -1;least:f64;
+        for e:0..<b.codes {
+            // Frame 0 has no step, so its root does not count.
+            d:f64;
+            for k:0..<b.segment {f:=i*b.segment+k;d+=mt_frame_distance(b.entry[e][k],w.frame[f],b.joints,ifx f>0 then b.root_weight else 0.0);}
+            if best== -1 || d<least {best=e;least=d;}
+        }
+        out.sequence.token[i]=best;out.distance[i]=sqrt(least);
+    }
+    for i:1..<out.sequence.count {if out.distance[i]>out.distance[out.worst] {out.worst=i;}}
+    out.error=out.distance[out.worst];
+    return out;
+}
+// book:end encode
+
+// book:begin decode
+// Codes become frames in order; each root is the one before it plus the
+// code's step, starting from the origin.
+mt_decode :: (b:MtCodebook,q:MtSequence)->MtClip {
+    out:MtClip;check:=mt_codebook_check(b);out.status=check.status;out.detail=check.detail;
+    if out.status!=MtStatus.ok {return out;}
+    if q.count<1 || q.count*b.segment>POSE_FRAMES {out.status=MtStatus.shape;return out;}
+    for x:q.origin {out.detail=pose_value(x,POSE_LENGTH_MAX);if out.detail!=PoseStatus.ok {out.status=MtStatus.pose;return out;}}
+    for i:0..<q.count {if q.token[i]<0 || q.token[i]>=b.codes {out.status=MtStatus.token;return out;}}
+    w:PoseClip;w.frames=q.count*b.segment;
+    for f:0..<w.frames {
+        code:=b.entry[q.token[f/b.segment]][f%b.segment];w.frame[f].rotation=code.rotation;
+        if f==0 {w.frame[f].root=q.origin;} else {for i:0..<3 {w.frame[f].root[i]=w.frame[f-1].root[i]+code.root[i];}}
+    }
+    out.clip=pose_external(w,b.joints,b.convention);
+    return out;
+}
+// book:end decode
+
+// Text form of a sequence: 0-9 and a-f are codes 0 to 15, _ is a mask;
+// any other character becomes -2, which every user refuses.
+mt_parse :: (text:string)->MtSequence {
+    q:MtSequence;q.count=text.count;
+    for i:0..<text.count {
+        if i==MT_TOKENS {break;}
+        c:=cast(int)text[i];t:=-2;
+        if c>=48 && c<=57 {t=c-48;} else if c>=97 && c<=102 {t=c-87;} else if c==95 {t=MT_MASK;}
+        q.token[i]=t;
+    }
+    return q;
+}
+mt_at :: (q:MtSequence,origin:[3]f64)->MtSequence {out:=q;out.origin=origin;return out;}
+
+// ---- Continuity ----
+
+// book:begin continuity
+// Between neighbouring frames, each joint turns by the angle of
+// conj(a) b and the root moves by the length of its step. Any turn above
+// max_turn radians or step above max_step refuses the clip.
+mt_continuity :: (c:PoseClip,s:PoseSkeleton,max_turn:f64,max_step:f64)->MtJump {
+    out:MtJump;out.frame= -1;out.turn_frame= -1;out.turn_joint= -1;out.step_frame= -1;
+    out.detail=pose_clip_check(c,s);
+    if out.detail==PoseStatus.ok {out.detail=pose_value(max_turn,POSE_PI);if max_turn<0 {out.detail=PoseStatus.range;}}
+    if out.detail==PoseStatus.ok {out.detail=pose_value(max_step,POSE_LENGTH_MAX);if max_step<0 {out.detail=PoseStatus.range;}}
+    if out.detail!=PoseStatus.ok {out.status=MtStatus.pose;return out;}
+    w:=pose_internal(c,s.count);
+    for f:1..<w.frames {
+        a:=w.frame[f-1];b:=w.frame[f];
+        for j:0..<s.count {
+            r:=pfk_multiply([4]f64.[a.rotation[j][0],-a.rotation[j][1],-a.rotation[j][2],-a.rotation[j][3]],b.rotation[j]);
+            turn:=pose_norm3(pose_quat_vector(r));
+            if turn>out.angle {out.angle=turn;out.turn_frame=f;out.turn_joint=j;}
+            if turn>max_turn && out.frame== -1 {out.frame=f;out.joint=j;}
+        }
+        d:=[3]f64.[b.root[0]-a.root[0],b.root[1]-a.root[1],b.root[2]-a.root[2]];
+        step:=pose_norm3(d);if step>out.step {out.step=step;out.step_frame=f;}
+        if step>max_step && out.frame== -1 {out.frame=f;out.joint= -1;}
+    }
+    if out.frame!= -1 {out.status=MtStatus.jump;}
+    return out;
+}
+// book:end continuity
+
+// ---- Masked-token generation ----
+
+mt_model :: (codes:int)->MtModel {m:MtModel;m.codes=codes;return m;}
+mt_tokens_ok :: (q:MtSequence,codes:int,mask:bool)->MtStatus {
+    if codes<1 || codes>MT_CODES || q.count<1 || q.count>MT_TOKENS {return MtStatus.shape;}
+    for i:0..<q.count {t:=q.token[i];if (t<0 || t>=codes) && !(mask && t==MT_MASK) {return MtStatus.token;}}
+    return MtStatus.ok;
+}
+
+// book:begin train
+// Training counts which code follows which.
+mt_train :: (m:MtModel,q:MtSequence)->MtModelResult {
+    out:MtModelResult;out.model=m;out.status=mt_tokens_ok(q,m.codes,false);if out.status!=MtStatus.ok {return out;}
+    for i:1..<q.count {out.model.pair[q.token[i-1]][q.token[i]]+=1;}
+    out.model.sequences+=1;
+    return out;
+}
+// book:end train
+
+// book:begin fill
+// A masked position's score for code c is the count of (left, c) when the
+// left neighbour is known plus the count of (c, right) when the right one
+// is. Its prediction is the best code (lower on ties), its confidence that
+// score. After step s of S, M (S - s) / S of the M masked tokens remain:
+// each step unmasks the most confident positions (lower first on ties),
+// all predicted from the tokens known when the step began.
+mt_fill :: (m:MtModel,q:MtSequence,steps:int)->MtFill {
+    out:MtFill;out.sequence=q;out.status=mt_tokens_ok(q,m.codes,true);
+    if out.status==MtStatus.ok && (steps<1 || steps>MT_TOKENS) {out.status=MtStatus.shape;}
+    if out.status!=MtStatus.ok {return out;}
+    for i:0..<q.count {if q.token[i]==MT_MASK {out.masked+=1;}}
+    left:=out.masked;
+    for s:1..<steps+1 {
+        guess:[MT_TOKENS]int;score:[MT_TOKENS]int;
+        for i:0..<q.count {
+            if out.sequence.token[i]!=MT_MASK {continue;}
+            l:=ifx i>0 then out.sequence.token[i-1] else MT_MASK;r:=ifx i+1<q.count then out.sequence.token[i+1] else MT_MASK;
+            for c:0..<m.codes {
+                v:=0;if l!=MT_MASK {v+=m.pair[l][c];}if r!=MT_MASK {v+=m.pair[c][r];}
+                if c==0 || v>score[i] {score[i]=v;guess[i]=c;}
+            }
+        }
+        reveal:=left-out.masked*(steps-s)/steps;
+        for n:0..<reveal {
+            pick:= -1;
+            for i:0..<q.count {if out.sequence.token[i]==MT_MASK && out.step[i]==0 && (pick== -1 || score[i]>score[pick]) {pick=i;}}
+            out.step[pick]=s;
+        }
+        for i:0..<q.count {if out.step[i]==s {out.sequence.token[i]=guess[i];out.confidence[i]=score[i];left-=1;}}
+    }
+    return out;
+}
+// book:end fill
+
+// ---- The gait ----
+
+// book:begin gait
+// A leg walking: phase u of a 12-frame cycle turns the hip 30 sin(30u)
+// degrees about X and bends the knee 20 (1 - cos(30u)) degrees; the root
+// steps 0.05 m along +Z each frame. Code 0 stands still; code p, from 1 to
+// 6, holds phases 2p - 2 and 2p - 1.
+MT_GAIT_TURN :: 0.3490658503988659; // 20 degrees
+MT_GAIT_STEP :: 0.1;
+mt_gait_codebook :: ()->MtCodebook {
+    b:MtCodebook;b.convention=pose_gltf();b.joints=3;b.codes=7;b.segment=2;b.root_weight=1;
+    for k:0..<b.segment {for j:0..<b.joints {b.entry[0][k].rotation[j]=[4]f64.[1,0,0,0];}}
+    for p:1..<b.codes {for k:0..<b.segment {
+        u:=f64(2*p-2+k)*POSE_PI/6;
+        b.entry[p][k].rotation[0]=mt_x(30*sin(u));b.entry[p][k].rotation[1]=mt_x(20*(1-cos(u)));
+        b.entry[p][k].rotation[2]=[4]f64.[1,0,0,0];b.entry[p][k].root=[3]f64.[0,0,0.05];
+    }}
+    return b;
+}
+// stand tokens of standing, cycles whole walk cycles, then standing to 16.
+mt_gait_sequence :: (stand:int,cycles:int)->MtSequence {
+    q:MtSequence;q.count=16;q.origin=[3]f64.[0,0.9,0];
+    for i:0..<6*cycles {q.token[stand+i]=1+i%6;}
+    return q;
+}
+// book:end gait
