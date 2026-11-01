@@ -66,10 +66,19 @@ depth and work. Malformed storage or capacity/depth/work exhaustion is E0381,
 with no native resolver fallback or silent safe-empty result. The native bridge
 supplies owned storage; it does not decide borrow origins.
 
+Memo lookups follow only the queried declaration's chain, so independent
+procedures do not consume work scanning one another's queries. Query rows stay
+append-only, and an active recursive row remains incomplete. The checker
+rebuilds the invocation's heads over the actual used-node prefix before any
+query; a second check cannot reuse an earlier invocation's scratch results.
+These memo links and workspace tails are internal scratch, not a published
+summary format. The query, origin and work limits are unchanged.
+
 The source gate is maintenance tooling:
 
 ```sh
 python3 coax/tests/borrow_summaries.py --compiler /path/to/matching/coax --record-dir /tmp/coax-return-source-record
+python3 coax/tests/borrow_query_work.py --compiler /path/to/matching/coax --record-dir /tmp/coax-query-work-record
 ```
 
 It checks the original fixture files directly and compares exact physical
@@ -78,6 +87,10 @@ rejected sources, accepted sources and accepted/manual sources. The last
 category still needs an independent graph/native observation of incomplete
 status; source acceptance alone cannot supply that observation. It never
 executes the recursive fixtures.
+
+The separate work regression checks a whole file containing 1,000 independent
+caller-string-return procedures under the normal limits. It requires successful
+compilation, without inspecting memo ordering or increasing the work budget.
 
 The integrating qualification separately binds the actual compiler, checker
 source and generated seeds; runs the affected Coax authority/mutation gates;

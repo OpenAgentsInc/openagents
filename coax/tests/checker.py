@@ -21,7 +21,7 @@ class Spatial(C.Structure):_fields_=[('kind',C.c_uint8),('frame',C.c_int64),('un
 class Node(C.Structure):
     _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_uint64),('type',C.c_int64),('field_index',C.c_int64),('proc',C.c_int64),('constant',C.c_int64),('negative',C.c_bool),('folded',C.c_bool),('builtin_print',C.c_bool),('byte_intrinsic',C.c_uint32),('intrinsic',C.c_uint32),('mark',C.c_int64),('reached',C.c_bool),('metal_done',C.c_bool),('metal_active',C.c_bool),('skip_authority',C.c_bool),('scope',C.c_int64),('collides',C.c_bool),('clash',C.c_int64),('effects',C.c_uint8),('own_effects',C.c_uint8),('effects_known',C.c_bool),('generic',C.c_bool),('origin',C.c_int64),('pristine',C.c_int64),('chain',C.c_int64),('key',LX.Text)]
     _fields_ += [('quantity',C.c_uint8),('unit',Unit),('unit_form',C.c_int64),('unit_link',C.c_int64),('unit_generated',C.c_bool),('frame_decl',C.c_bool),('frame',Frame),('spatial_link',C.c_int64),('lowering',C.c_uint8),('mutation_status',C.c_uint8),('mutation_op',C.c_uint32),('mutation_proc',C.c_int64)]
-    _fields_ += [(n,C.c_int64) for n in ('borrow_binding','borrow_owner','borrow_writes','borrow_returns','borrow_calls','borrow_next')]+[('borrow_status',C.c_uint8)]
+    _fields_ += [(n,C.c_int64) for n in ('borrow_binding','borrow_owner','borrow_writes','borrow_returns','borrow_calls','borrow_next')]+[('borrow_status',C.c_uint8),('borrow_query',C.c_int64)]
 class Type(C.Structure):_fields_=[('kind',C.c_uint8),('name',LX.Text),('size',C.c_int64),('alignment',C.c_int64),('bits',C.c_int64),('is_signed',C.c_bool)]+[(n,C.c_int64) for n in ('elem','length','decl','id','scope','need','carrier','unit')]+[('space',Spatial)]
 class Local(C.Structure):_fields_=[('name',LX.Text),('type',C.c_int64),('loc',Loc),('immutable',LX.Text),('local_backing',C.c_bool),('decl',C.c_int64)]
 class Error(C.Structure):_fields_=[('loc',Loc),('code',LX.Text),('message',LX.Text),('fix',LX.Text)]
@@ -33,7 +33,7 @@ class BorrowStep(C.Structure):_fields_=[('kind',C.c_uint8),('index',C.c_int64)]
 class BorrowSteps(C.Structure):_fields_=[('e',BorrowStep*8)]
 class BorrowPath(C.Structure):_fields_=[('count',C.c_int64),('steps',BorrowSteps)]
 class BorrowOrigin(C.Structure):_fields_=[('kind',C.c_uint8),('root',C.c_int64),('role',C.c_uint8),('type',C.c_int64),('path',BorrowPath)]
-class BorrowQuery(C.Structure):_fields_=[('kind',C.c_uint8),('decl',C.c_int64),('type',C.c_int64),('path',BorrowPath),('status',C.c_uint8),('start',C.c_int64),('count',C.c_int64)]
+class BorrowQuery(C.Structure):_fields_=[('kind',C.c_uint8),('decl',C.c_int64),('type',C.c_int64),('path',BorrowPath),('status',C.c_uint8),('start',C.c_int64),('count',C.c_int64),('next',C.c_int64)]
 class BorrowCaps(C.Structure):_fields_=[('queries',C.c_int64),('origins',C.c_int64),('work',C.c_int64)]
 class Context(C.Structure):_fields_=[('nodes',PS.view(Node)),('types',PS.view(Type)),('locals',PS.view(Local)),('errors',PS.view(Error)),('bytes',PS.view(C.c_uint8)),('state',PS.view(State)),('modules',PS.view(LX.Text)),('aliases',PS.view(Alias)),('exports',PS.view(Export)),('borrow_queries',PS.view(BorrowQuery)),('borrow_origins',PS.view(BorrowOrigin))]
 

@@ -181,7 +181,7 @@ CK_Lowering :: enum u8 {none;spatial_binary;spatial_unary;invalid=255;}
 CK_Mutation :: enum u8 {unprepared;eligible;no_alternative;unsupported;}
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
   type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;own_effects:u8;effects_known:bool;generic:bool;
-  origin:int;pristine:int;chain:int;key:string;quantity:u8;unit:Q_Unit;unit_form:int;unit_link:int;unit_generated:bool;frame_decl:bool;frame:SP_Frame;spatial_link:int;lowering:CK_Lowering;mutation_status:CK_Mutation;mutation_op:u32;mutation_proc:int;borrow_binding:int;borrow_owner:int;borrow_writes:int;borrow_returns:int;borrow_calls:int;borrow_next:int;borrow_status:u8;}
+  origin:int;pristine:int;chain:int;key:string;quantity:u8;unit:Q_Unit;unit_form:int;unit_link:int;unit_generated:bool;frame_decl:bool;frame:SP_Frame;spatial_link:int;lowering:CK_Lowering;mutation_status:CK_Mutation;mutation_op:u32;mutation_proc:int;borrow_binding:int;borrow_owner:int;borrow_writes:int;borrow_returns:int;borrow_calls:int;borrow_next:int;borrow_status:u8;borrow_query:int;}
 CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;need:int;carrier:int;unit:int;space:SP_Type;}
 CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;decl:int;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
@@ -198,7 +198,7 @@ CK_Export :: struct {scope:int;name:string;loc:CK_Loc;}
 CK_Context :: struct {nodes:[] CK_Node;types:[] CK_Type;locals:[] CK_Local;errors:[] CK_Error;bytes:[] u8;state:[] CK_State;modules:[] string;aliases:[] CK_Alias;exports:[] CK_Export;borrow_queries:[]CK_BorrowQuery;borrow_origins:[]BS_Origin;}
 CK_Options :: struct {library:bool;metal:bool;authority:bool;quantity_device:bool;}
 CK_Caps :: struct {nodes:int;types:int;locals:int;errors:int;bytes:int;}
-CK_BorrowQuery :: struct {kind:u8;decl:int;type:int;path:BS_Path;status:u8;start:int;count:int;}
+CK_BorrowQuery :: struct {kind:u8;decl:int;type:int;path:BS_Path;status:u8;start:int;count:int;next:int;}
 CK_BorrowCaps :: struct {queries:int;origins:int;work:int;}
 // Independent effect-opacity facts, separate from the lookup/type controls.
 // Declared typed-graph semantic oracles. No captured checker outputs or private cache layout/order expectations.
@@ -324,6 +324,53 @@ CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_ov
  #assert CK_run(c,8,CK_Options.{library=true}) && !state[0].fatal && state[0].error_count==0;
  #assert nodes[8].borrow_binding==3 && nodes[3].borrow_owner==2 && nodes[7].borrow_owner==2;
  #assert nodes[2].borrow_calls==0 && nodes[2].borrow_returns==7 && nodes[2].borrow_status==1;
+}
+
+#test "return borrow a second complete check does not reuse the previous invocation memo" {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.proc,name="identity",head=3,a=4,b=6};nodes[3]=CK_Node.{kind=CK_Tag.param,name="input",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};
+ #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1;
+ #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[2].borrow_status==1 && nodes[8].borrow_binding==3;
+}
+
+#test "return borrow repeated checking includes a queryable final used declaration" {
+ nodes:[16]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ nodes[1]=CK_Node.{kind=CK_Tag.file,head=8};nodes[8]=CK_Node.{kind=CK_Tag.proc,name="identity",head=3,a=4,b=6};nodes[3]=CK_Node.{kind=CK_Tag.param,name="input",a=4};nodes[4]=CK_Node.{kind=CK_Tag.type_named,name="string"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=2};nodes[2]=CK_Node.{kind=CK_Tag.expr_ident,name="input"};
+ #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[8].borrow_status==1;
+ #assert CK_run(c,8,CK_Options.{library=true}) && state[0].error_count==0 && nodes[8].borrow_status==1 && nodes[2].borrow_binding==3;
+}
+
+#test "return borrow cached default empty remains complete at an empty origin prefix" {
+ nodes:[16]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=15,type_count=17}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;out:[64]BS_Origin;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};nodes[2]=CK_Node.{kind=CK_Tag.proc};nodes[3]=CK_Node.{kind=CK_Tag.stmt_var,type=16,borrow_owner=2};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ first:=CB_query(b,2,3,BS_Path.{},out[..]);again:=CB_query(b,2,3,BS_Path.{},out[..]);#assert first.count==0 && !first.incomplete && again.count==0 && !again.incomplete && !state[0].fatal && state[0].error_count==0;
+}
+
+#forall "return borrow malformed memo links and published prefixes are hard failures" mode:0..<23 {
+ nodes:[16]CK_Node;types:[20]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=15,type_count=18}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;out:[64]BS_Origin;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.view,elem=12};types[17]=CK_Type.{kind=CK_Kind.view,elem=13};nodes[2]=CK_Node.{kind=CK_Tag.proc,head=3};nodes[3]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2,next=4,loc=CK_Loc.{line=42,column=7}};nodes[4]=CK_Node.{kind=CK_Tag.param,type=16,borrow_owner=2};work[0].loc=CK_Loc.{line=40,column=2};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ first:=CB_query(b,2,3,BS_Path.{},out[..]);#assert first.count==1 && !first.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0;
+ row:=nodes[3].borrow_query-1;
+ if mode==1 {nodes[3].borrow_query=-1;}if mode==2 {nodes[3].borrow_query=work[0].queries+1;}
+ if mode==3 {queries[row].decl=4;}if mode==4 {queries[row].kind=0;}if mode==5 {queries[row].kind=4;}
+ if mode==6 {queries[row].status=0;}if mode==7 {queries[row].status=4;}if mode==8 {queries[row].next=-1;}
+ if mode==9 {queries[row].next=nodes[3].borrow_query;}if mode==10 {queries[row].next=nodes[3].borrow_query+1;}
+ if mode==11 {queries[row].path.count=9;}if mode==12 {queries[row].type=17;}if mode==13 {queries[row].start=-1;}if mode==14 {queries[row].count=-1;}
+ if mode==15 {queries[row].start=work[0].origins+1;}if mode==16 {queries[row].count=2;}
+ if mode==18 {work[0].queries=-1;}if mode==19 {work[0].queries=129;}if mode==20 {work[0].origins=-1;}if mode==21 {work[0].origins=1025;}if mode==22 {work[0].work=1048576;}
+ result:=CB_query(b,2,3,BS_Path.{},ifx mode==17 then out[0..<0] else out[..]);
+ if mode==0 {#assert !state[0].fatal && state[0].error_count==0 && result.count==1 && !result.incomplete && out[0].kind==BS_PARAMETER && out[0].root==0;}
+ else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}
+}
+
+#forall "return borrow invocation node extents admit both endpoints before reset" variant:0..<5 {
+ nodes:[8]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;used:=[5]int.[-1,0,1,7,8];state[0].used=used[variant];nodes[1]=CK_Node.{kind=CK_Tag.file};c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+ CB_run(c,queries[..],origins[..]);if variant==2 || variant==3 {#assert !state[0].fatal && state[0].error_count==0;}else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==1 && errors[0].loc.column==1;}
+}
+
+#forall "return borrow head preparation reports the first exhausted source witness" located:bool {
+ nodes:[4]CK_Node;types:[16]CK_Type;locals:[4]CK_Local;errors:[4]CK_Error;bytes:[512]u8;state:=[1]CK_State.[CK_State.{used=3}];queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:=[1]CB_State.[CB_State.{work=1048576,loc=CK_Loc.{line=22,column=4}}];c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};nodes[1]=CK_Node.{kind=CK_Tag.file};nodes[2]=CK_Node.{kind=CK_Tag.proc,loc=ifx located then CK_Loc.{line=17,column=7} else CK_Loc.{}};nodes[3]=CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=29,column=3}};b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..]};
+ #assert !CB_reset_heads(b) && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==(ifx located then 17 else 22) && errors[0].loc.column==(ifx located then 7 else 4);
 }
 
 #forall "value_barrier takes a u32 or a u64 and returns its type" variant:0..<6 {
@@ -81073,7 +81120,7 @@ CK_spatial_fixture :: (c:CK_Context) {
  if mode==9 {work[0].origins=1024;ignored:=CB_query(b,2,3,BS_Path.{},out[..]);}
  if mode==10 {path:=BS_Path.{count=1};path.steps[0]=BS_Step.{kind=BS_FIELD};ignored:=CB_type(b,17,path);}
  if mode==11 {nodes[5].type=0;ignored:=CB_expr(b,5,BS_Path.{},false,out[..]);}
- if mode==12 {work[0].queries=1;queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=16,status=1};r:=CB_query(b,2,3,BS_Path.{},out[..]);#assert r.incomplete && r.count==0 && !state[0].fatal && state[0].error_count==0;}
+ if mode==12 {work[0].queries=1;queries[0]=CK_BorrowQuery.{kind=2,decl=3,type=16,status=1};nodes[3].borrow_query=1;r:=CB_query(b,2,3,BS_Path.{},out[..]);#assert r.incomplete && r.count==0 && !state[0].fatal && state[0].error_count==0;}
  else {#assert state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381";}
 }
 
@@ -81280,9 +81327,22 @@ CB_expr :: (b:CB_Context,id:int,path:BS_Path,storage:bool,out:[]BS_Origin)->CB_R
 }
 CB_query :: (b:CB_Context,kind:u8,decl:int,path:BS_Path,out:[]BS_Origin)->CB_Result {
  if kind<1 || kind>3 || decl<2 || decl>b.c.state[0].used || !BS_path_valid(path) {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}
+ if b.state[0].queries<0 || b.state[0].queries>b.queries.count || b.state[0].origins<0 || b.state[0].origins>b.origins.count {CK_resource(b.c,b.state[0].loc);return CB_Result.{};}
  expected_type:=CB_type(b,b.c.nodes[decl].type,path);if b.c.state[0].fatal {return CB_Result.{};}prior_loc:=b.state[0].loc;if b.c.nodes[decl].loc.line>0 {b.state[0].loc=b.c.nodes[decl].loc;}defer b.state[0].loc=prior_loc;
- for at:0..<b.state[0].queries {if !CB_tick(b,b.c.nodes[decl].loc) {return CB_Result.{};}q:=b.queries[at];if q.kind==kind && q.decl==decl && bs_path_equal(q.path,path) {if q.type!=expected_type {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}if q.status==1 {return CB_Result.{incomplete=true};}if q.count>out.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}for i:0..<q.count {out[i]=b.origins[q.start+i];}return CB_Result.{count=q.count,incomplete=q.status==3};}}
- slot:=b.state[0].queries;if slot>=b.queries.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}b.state[0].queries+=1;b.queries[slot]=CK_BorrowQuery.{kind=kind,decl=decl,type=expected_type,path=path,status=1};r:CB_Result;n:=b.c.nodes[decl];
+ // Per-declaration one-based links keep unrelated procedures out of a lookup.
+ // Rows stay append-only: even a recursive query retains its original slot.
+ head:=b.c.nodes[decl].borrow_query;link:=head;
+ while link!=0 {
+  if link<1 || link>b.state[0].queries {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}
+  if !CB_tick(b,b.c.nodes[decl].loc) {return CB_Result.{};}q:=b.queries[link-1];
+  if q.decl!=decl || q.kind<1 || q.kind>3 || q.status<1 || q.status>3 || q.next<0 || q.next>=link || !BS_path_valid(q.path) {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}
+  if q.kind==kind && bs_path_equal(q.path,path) {
+   if q.type!=expected_type {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}if q.status==1 {return CB_Result.{incomplete=true};}
+   if q.start<0 || q.count<0 || q.start>b.state[0].origins || q.count>b.state[0].origins-q.start || q.count>out.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}
+   for i:0..<q.count {out[i]=b.origins[q.start+i];}return CB_Result.{count=q.count,incomplete=q.status==3};
+  }link=q.next;
+ }
+ slot:=b.state[0].queries;if slot>=b.queries.count {CK_resource(b.c,b.c.nodes[decl].loc);return CB_Result.{};}b.state[0].queries+=1;b.queries[slot]=CK_BorrowQuery.{kind=kind,decl=decl,type=expected_type,path=path,status=1,next=head};b.c.nodes[decl].borrow_query=slot+1;r:CB_Result;n:=b.c.nodes[decl];
  if kind==1 {
   if n.kind!=CK_Tag.proc {CK_resource(b.c,n.loc);return CB_Result.{};}if n.flag2 || n.generic || n.b==0 || n.borrow_returns==0 {CK_resource(b.c,n.loc);return CB_Result.{};}
   ret:=n.borrow_returns;temp:[64]BS_Origin;while ret!=0 {if ret<2 || ret>b.c.state[0].used || b.c.nodes[ret].kind!=CK_Tag.stmt_return {CK_resource(b.c,n.loc);return CB_Result.{};}z:=CB_expr(b,b.c.nodes[ret].a,path,false,temp[..]);for i:0..<z.count {if temp[i].kind==BS_LOCAL {CK_error(b.c,b.c.nodes[b.c.nodes[ret].a].loc,"E0383","returned borrow may refer to local inline storage through a helper or aggregate","return owned storage, or keep the borrowed backing in the caller");break;}}r=CB_merge(b,out,r,temp[..],z);ret=b.c.nodes[ret].borrow_next;}
@@ -81317,8 +81377,15 @@ CB_walk :: (b:CB_Context,head:int,instances:bool) {
  }
 }
 CB_workspace_admitted :: (query_count:int,origin_count:int)->bool {return query_count>=128 && query_count<=16384 && origin_count>=1024 && origin_count<=65536;}
+CB_reset_heads :: (b:CB_Context)->bool {
+ c:=b.c;if c.state[0].used<1 || c.state[0].used>=c.nodes.count {CK_resource(c,CK_Loc.{line=1,column=1});return false;}
+ // Scratch heads live for this invocation only; all concrete cloning is over.
+ for id:2..<c.state[0].used+1 {if !CB_tick(b,c.nodes[id].loc) {return false;}c.nodes[id].borrow_query=0;}
+ return true;
+}
 CB_run :: (c:CK_Context,queries:[]CK_BorrowQuery,origins:[]BS_Origin) {
  if !CB_workspace_admitted(queries.count,origins.count) {CK_resource(c,CK_Loc.{line=1,column=1});return;}state:[1]CB_State;b:=CB_Context.{c=c,queries=queries,origins=origins,state=state[..]};
+ if !CB_reset_heads(b) {return;}
  CB_walk(b,c.nodes[1].head,false);if c.state[0].fatal || c.state[0].error_count>0 {return;}CB_walk(b,c.state[0].instances,true);
 }
 CK_borrow_returns :: (c:CK_Context) {
