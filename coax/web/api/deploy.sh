@@ -5,6 +5,12 @@
 #   coax/web/api/deploy.sh            # build, staging, smoke, production, smoke
 #   coax/web/api/deploy.sh --staging  # stop after staging
 #
+# No test pass gates the deploy (owner, 2026-11-01: the 11-minute test.sh held
+# every API change back). Staging's smoke still gates production. test.sh runs
+# after the rollout, in the background on its own worktree, as a report:
+# ${TMPDIR:-/tmp}/api-tests-<commit>.log.
+# OA_API_DEPLOY_TESTS=1 runs it first and gates on it, as before.
+#
 # Services: oa-api-staging (database oa_analytics_staging) and oa-api
 # (oa_analytics), both on the Cloud SQL instance openagents-production-pg,
 # reachable only through the openagents.com load balancer (path rule /api/
@@ -40,7 +46,7 @@ case "${1:-}" in '') prod=true ;; --staging) prod=false ;; *) echo 'usage: deplo
 project=openagentsgemini region=us-central1
 instance="$project:$region:openagents-production-pg"
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
-"$here/test.sh"
+if [[ -n "${OA_API_DEPLOY_TESTS:-}" ]]; then "$here/test.sh"; fi
 
 stage="$work/context"
 mkdir -p "$stage/src"
@@ -106,3 +112,8 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
 deploy oa-api-staging oa-analytics-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging
 $prod && deploy oa-api oa-analytics-database-url openagents.com oa-agent-projects oa-agent production
 echo "api: deployed $image"
+if [[ -z "${OA_API_DEPLOY_TESTS:-}" ]]; then
+  report="${TMPDIR:-/tmp}/api-tests-${commit:0:12}.log"
+  nohup bash -c 'd="$(mktemp -d)"; git -C "$1" worktree add --detach "$d/s" "$2" >/dev/null 2>&1 && "$d/s/coax/web/api/test.sh"; echo "test.sh exit $?"; git -C "$1" worktree remove --force "$d/s" >/dev/null 2>&1; rm -rf "$d"' _ "$repo" "$commit" > "$report" 2>&1 < /dev/null &
+  echo "api: test.sh runs after the deploy as a report: $report"
+fi
