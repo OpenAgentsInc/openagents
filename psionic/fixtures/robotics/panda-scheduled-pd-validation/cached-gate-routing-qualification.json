@@ -1,0 +1,30 @@
+{
+  "schema": "psionic.panda-scheduled-pd-validation.cached-routing.v1",
+  "passed": true,
+  "gate": {
+    "bytes": 425,
+    "sha256": "09100b90501e01ce0d8928b3cff7bddfd259b822209b7e57b58572463156663e"
+  },
+  "adapter": {
+    "bytes": 5584,
+    "sha256": "01913ed67909c0e0d9cee4a6be47d2eb5837ef7d8e4b6c9c2aa36004a32b8400"
+  },
+  "source_guards_before_trust": true,
+  "source_compiler_capture_cache_guards_after": true,
+  "syntax_checks": [
+    "Pythonpy_compile",
+    "POSIXsh-n"
+  ],
+  "AST_compare_score_only": true,
+  "stub_routing": [
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_scheduled_pd_validation_cached.py",
+    "--compiler",
+    "/stub/coax",
+    "--output",
+    "/stub/output"
+  ],
+  "adapter_numeric_execution": false,
+  "SDK_calls": 0,
+  "new_plant_steps": 0,
+  "old_gates_repeated": false
+}

@@ -1,0 +1,67 @@
+{
+  "schema": "psionic.panda-scheduled-pd-validation.collection-lineage.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 116077,
+    "sha256": "32b5d8ae1cc6e07dba317677102681a831d5b94a19c5e7df78167b57f017f640"
+  },
+  "preparation": {
+    "bytes": 105977,
+    "sha256": "d2ea44783841c76c774596986ed95ec35eff36a9ef16bceeeddba6345757ebb8"
+  },
+  "SDK_record": {
+    "bytes": 95460,
+    "sha256": "96403874c03fea177d31f68dff38e280a12d95733ddcf85f11ce991b3e3e030c"
+  },
+  "OWN_record": {
+    "bytes": 39419,
+    "sha256": "7a534fbdad6110f533d1749ed02ca12b10f50d761fa0f8203dd542e13424fd1b"
+  },
+  "SDK_trace": {
+    "bytes": 6432024,
+    "sha256": "cf9b86934a175196041490657a61d4ade906902c88d76b33439366fc01f2c4dc"
+  },
+  "SDK_index": {
+    "bytes": 384,
+    "sha256": "4fbd733abdcd1eadd35711d171ac56ccc97d3da621ce86489c16b0fb3500d725"
+  },
+  "OWN_trace": {
+    "bytes": 6432024,
+    "sha256": "321a59ec35d6549ff520ccfbcd87beab6f1b7a64c1fbce703cdfbb1da05dc7a8"
+  },
+  "OWN_index": {
+    "bytes": 384,
+    "sha256": "4fbd733abdcd1eadd35711d171ac56ccc97d3da621ce86489c16b0fb3500d725"
+  },
+  "actual_SDK_model": {
+    "bytes": 66500,
+    "sha256": "f3951316829c63be5b7d77c1d8d1fe360f93d7e3de4c3bbf721df5cb5b9e8843"
+  },
+  "qualified_model": {
+    "bytes": 66500,
+    "sha256": "f3951316829c63be5b7d77c1d8d1fe360f93d7e3de4c3bbf721df5cb5b9e8843"
+  },
+  "actual_model_equal_before_forward": true,
+  "SDK_model_loads": 1,
+  "SDK_resets": 8,
+  "SDK_initial_forwards": 8,
+  "SDK_steps": 6000,
+  "OWN_steps": 6000,
+  "shadow_steps": 0,
+  "post_step_forwards": 0,
+  "NN_calls": 0,
+  "render_calls": 0,
+  "old_original_case_or_scalar_runs": 0,
+  "SDK_progress": {
+    "bytes": 1607109,
+    "sha256": "bf65f3837957d280619411abda5654a09fad77b0f10f595c935006b5d32d8067"
+  },
+  "OWN_progress": {
+    "bytes": 1084976,
+    "sha256": "75e1c3db377bb317ee9a56d5eaa30b904b200e0b4470de5760b8969251fba471"
+  },
+  "SDK_events": 18018,
+  "OWN_events": 12008,
+  "committed_context_order": "pose-major then scenario-major then tick; both indexes exactly8x750",
+  "quality_scope": "New C/D only. One fixed common law, not two gain families; old A/B unexecuted and PartA NONE unchanged."
+}
