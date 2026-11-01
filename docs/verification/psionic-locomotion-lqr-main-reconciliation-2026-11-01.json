@@ -1,0 +1,25 @@
+{
+  "schema": "psionic.locomotion-lqr.main-reconciliation.v1",
+  "passed": true,
+  "changed_context": "Upstream refreshed unrelated native-gpu claim evidence after galaxy retirement; preserved upstream change and our four Psionic evidence hashes.",
+  "source_commit": "574f9e40e1e7c41f06599a7173bd7345af98a507",
+  "main": "4b8c6e2e07b58663f0f501e639312030af6520d4",
+  "source_fingerprint_context_unchanged_since_current_C_H_binding": true,
+  "book_check": {
+    "argv": [
+      "/opt/homebrew/opt/python@3.15/bin/python3.15",
+      "psionic/tests/book.py"
+    ],
+    "exit": 0,
+    "stdout": "psionic book structure: 137 programs, 484 source-linked listings, local links pass\n",
+    "stderr": "",
+    "seconds": 0.4451487499754876,
+    "claims": {
+      "bytes": 16143,
+      "sha256": "f3234035a7ff25867037f75ec1ba2e74ac3c7a5ce44a5d2d29118488c41c4869"
+    },
+    "programs": 137,
+    "listings": 484
+  },
+  "no_numeric_model_learning_emitter_or_other_gate_reruns": true
+}

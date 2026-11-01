@@ -91,6 +91,10 @@
     "docs/verification/coax-lqr-current-emitter-binding-2026-11-01.json": {
       "bytes": 20477,
       "sha256": "172011918352e78815eb6855837ac50de51b3cc4db7841570299f8122bc9a592"
+    },
+    "docs/verification/psionic-locomotion-lqr-main-reconciliation-2026-11-01.json": {
+      "bytes": 974,
+      "sha256": "035dde55e563102fd29b4ed050184313052847b447eaf23755b265f774f90307"
     }
   },
   "source_proofs": {
@@ -770,7 +774,11 @@
     "programs": 137,
     "source_linked_listings": 484,
     "compile_or_execute_examples_again": false,
-    "format_followup_context": "Preserve original compact registry format and every non171 line; parsed registry JSON equals prior successful input. Original first receipt retained."
+    "format_followup_context": "Preserve original compact registry format and every non171 line; parsed registry JSON equals prior successful input. Original first receipt retained.",
+    "current_main_reconciliation": {
+      "bytes": 974,
+      "sha256": "035dde55e563102fd29b4ed050184313052847b447eaf23755b265f774f90307"
+    }
   },
   "current_emitter": {
     "original_measured_emitter": {
@@ -812,7 +820,7 @@
   "published_inventory": {
     "coax/book/capability-claims.json": {
       "bytes": 16143,
-      "sha256": "320decf2588170c5c470be8e918399fc4f3b575969ee435211bbd46dc2b593f0"
+      "sha256": "f3234035a7ff25867037f75ec1ba2e74ac3c7a5ce44a5d2d29118488c41c4869"
     },
     "psionic/book/PLAN.md": {
       "bytes": 172159,
@@ -1849,6 +1857,10 @@
     "docs/verification/coax-lqr-current-emitter-binding-2026-11-01.json": {
       "bytes": 20477,
       "sha256": "172011918352e78815eb6855837ac50de51b3cc4db7841570299f8122bc9a592"
+    },
+    "docs/verification/psionic-locomotion-lqr-main-reconciliation-2026-11-01.json": {
+      "bytes": 974,
+      "sha256": "035dde55e563102fd29b4ed050184313052847b447eaf23755b265f774f90307"
     }
   },
   "publication_hygiene": {
@@ -1864,10 +1876,35 @@
       "--check"
     ]
   },
-  "rebase": {
+  "first_rebase_context": {
     "source_commit_after_rebase": "65a0abd75202038428dafc33ac0fc80537dcdeca",
     "main_parent": "3d39563bc3ef54a231fdedde565d71b853e7dd90",
     "all_preexisting_published_identities_unchanged": true,
     "compiler_context_advanced_and_qualified_by_additive_C_header_binding": true
+  },
+  "latest_rebase_context": {
+    "schema": "psionic.locomotion-lqr.main-reconciliation.v1",
+    "passed": true,
+    "changed_context": "Upstream refreshed unrelated native-gpu claim evidence after galaxy retirement; preserved upstream change and our four Psionic evidence hashes.",
+    "source_commit": "574f9e40e1e7c41f06599a7173bd7345af98a507",
+    "main": "4b8c6e2e07b58663f0f501e639312030af6520d4",
+    "source_fingerprint_context_unchanged_since_current_C_H_binding": true,
+    "book_check": {
+      "argv": [
+        "/opt/homebrew/opt/python@3.15/bin/python3.15",
+        "psionic/tests/book.py"
+      ],
+      "exit": 0,
+      "stdout": "psionic book structure: 137 programs, 484 source-linked listings, local links pass\n",
+      "stderr": "",
+      "seconds": 0.4451487499754876,
+      "claims": {
+        "bytes": 16143,
+        "sha256": "f3234035a7ff25867037f75ec1ba2e74ac3c7a5ce44a5d2d29118488c41c4869"
+      },
+      "programs": 137,
+      "listings": 484
+    },
+    "no_numeric_model_learning_emitter_or_other_gate_reruns": true
   }
 }
