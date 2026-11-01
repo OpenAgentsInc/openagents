@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_bad_discount.coax:2:148: error[E0317]: argument 3 of 'rga_returns' is Quantity(UnitOne, f64), given Quantity(Second, f64)
+  main :: () {gamma:rlu.Quantity(rlu.Second,f64);trace_lambda:rlu.Quantity(UnitOne,f64);steps:[1]RgaStep;output:[1]RgaOutput;status:=rga_returns(1,1,gamma,trace_lambda,steps[..],output[..]);}
+                                                                                                                                                     ^
+1 error

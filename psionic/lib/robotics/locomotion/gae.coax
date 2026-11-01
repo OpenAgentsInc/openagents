@@ -1,0 +1,52 @@
+#load "fixtures.coax";
+#authority;
+#test "GAE independent dyadic targets and world-major isolation expose every output" {
+ s:[6]RgaStep;for i:0..<3 {s[i].reward.value=f64(i+1);s[i].current_value.value=0.5*f64(i+1);s[i].next_value.value=f64(i+2)*0.5;s[3+i].reward.value= -10*f64(i+1);}out:[7]RgaOutput;out[6]=rga_poison();#assert rga_returns_raw(2,3,0.5,0.5,s[..],out[0..<6])==RgaStatus.ok;
+ delta:=[6]f64.[1,1.75,2.5,-10,-20,-30];adv:=[6]f64.[1.59375,2.375,2.5,-16.875,-27.5,-30];target:=[6]f64.[2.09375,3.375,4,-16.875,-27.5,-30];for i:0..<6 {#assert out[i].delta.value==delta[i] && out[i].advantage.value==adv[i] && out[i].lambda_return.value==target[i] && out[i].bootstrap==1 && out[i].trace==ifx i%3==2 then 0 else 1;}rga_same(out[6],rga_poison());
+}
+#forall "GAE terminal and truncation flags are distinct and simultaneous termination wins" terminated:bool,truncated:bool {
+ s:[1]RgaStep;s[0].reward.value=2;s[0].current_value.value=3;s[0].next_value.value=10;s[0].terminated=ifx terminated then 1 else 0;s[0].truncated=ifx truncated then 1 else 0;out:[1]RgaOutput;#assert rga_returns_raw(1,1,0.5,1,s[..],out[..])==RgaStatus.ok;expected:=ifx terminated then -1.0 else 4.0;#assert out[0].bootstrap==ifx terminated then 0 else 1;#assert out[0].trace==0 && out[0].delta.value==expected && out[0].advantage.value==expected && out[0].lambda_return.value==expected+3;
+}
+#test "GAE truncation and collector tails use final-state value without crossing a reset" {
+ s:[3]RgaStep;s[0].reward.value=1;s[0].next_value.value=2;s[0].truncated=1;s[1].reward.value= -100;s[2].reward.value=1000;s[2].next_value.value=10;out:[3]RgaOutput;#assert rga_returns_raw(1,3,1,1,s[..],out[..])==RgaStatus.ok;#assert out[0].delta.value==3 && out[0].advantage.value==3 && out[0].bootstrap==1 && out[0].trace==0 && out[1].advantage.value==910 && out[2].advantage.value==1010 && out[2].bootstrap==1 && out[2].trace==0;
+ s[0].terminated=1;#assert rga_returns_raw(1,3,1,1,s[..],out[..])==RgaStatus.ok && out[0].advantage.value==1 && out[0].bootstrap==0 && out[0].trace==0;
+ s[0].next_value.value= -1000000;#assert rga_returns_raw(1,3,1,1,s[..],out[..])==RgaStatus.ok && out[0].advantage.value==1;
+}
+#test "GAE gamma and lambda endpoints typed/raw identity and zero-hyperparameter behavior" {
+ s:[2]RgaStep;s[0].reward.value=2;s[0].current_value.value=3;s[0].next_value.value=10;s[1].reward.value=5;s[1].current_value.value=7;s[1].next_value.value=11;out:[2]RgaOutput;for discount:[2]f64.[0,1] {for trace_lambda:[2]f64.[0,1] {g:rlu.Quantity(UnitOne,f64);l:rlu.Quantity(UnitOne,f64);g.value=discount;l.value=trace_lambda;other:[2]RgaOutput;#assert rga_returns(1,2,g,l,s[..],out[..])==RgaStatus.ok && rga_returns_raw(1,2,discount,trace_lambda,s[..],other[..])==RgaStatus.ok;for i:0..<2 {rga_same(out[i],other[i]);}if discount==0 || trace_lambda==0 {#assert out[0].advantage.value==out[0].delta.value && out[1].advantage.value==out[1].delta.value;}else {#assert out[0].advantage.value==18 && out[1].advantage.value==9;}}}
+}
+#test "GAE every shape axis bound precedes hyperparameters and leaves complete poison unchanged" {
+ s:[2]RgaStep;out:=[2]RgaOutput.[rga_poison(),rga_poison()];for worlds:[4]int.[0,-1,17,9223372036854775807] {#assert rga_returns_raw(worlds,1,-1,2,s[0..<1],out[0..<1])==RgaStatus.shape;}for horizon:[4]int.[0,-1,129,9223372036854775807] {#assert rga_returns_raw(1,horizon,-1,2,s[0..<1],out[0..<1])==RgaStatus.shape;}#assert rga_returns_raw(1,1,0,0,s[..],out[0..<1])==RgaStatus.shape && rga_returns_raw(1,1,0,0,s[0..<1],out[..])==RgaStatus.shape;for i:0..<2 {rga_same(out[i],rga_poison());}
+}
+#test "GAE hyperparameters numeric words flags and masked values all receive admission before computation" {
+ #assert rga_finite(0) && rga_finite(0x8000000000000000) && rga_finite(0x7fefffffffffffff) && !rga_finite(0x7ff0000000000000) && !rga_finite(0xfff0000000000000) && !rga_finite(0x7ff8000000000001);
+ s:[1]RgaStep;s[0].terminated=1;s[0].truncated=1;out:=[2]RgaOutput.[rga_poison(),rga_poison()];for bad:[2]f64.[-0.000001,1.000001] {#assert rga_returns_raw(1,1,bad,0,s[..],out[0..<1])==RgaStatus.range && rga_returns_raw(1,1,0,bad,s[..],out[0..<1])==RgaStatus.range;}
+ for role:0..<3 {for sign:[2]f64.[-1,1] {x:=s;if role==0 {x[0].reward.value=sign*1000001;}if role==1 {x[0].current_value.value=sign*1000001;}if role==2 {x[0].next_value.value=sign*1000001;}#assert rga_returns_raw(1,1,1,1,x[..],out[0..<1])==RgaStatus.range;}}
+ for flag:[2]int.[-1,2] {x:=s;x[0].terminated=flag;#assert rga_returns_raw(1,1,1,1,x[..],out[0..<1])==RgaStatus.range;x=s;x[0].truncated=flag;#assert rga_returns_raw(1,1,1,1,x[..],out[0..<1])==RgaStatus.range;}for i:0..<2 {rga_same(out[i],rga_poison());}
+}
+#test "GAE maximum shape has independent per-world recurrence tails and finite derived bounds" {
+ s:[2048]RgaStep;out:[2049]RgaOutput;out[2048]=rga_poison();for w:0..<16 {for j:0..<128 {s[w*128+j].reward.value=f64(w+1);}}#assert rga_returns_raw(16,128,1,1,s[..],out[0..<2048])==RgaStatus.ok;for w:0..<16 {for j:0..<128 {x:=out[w*128+j];#assert x.delta.value==f64(w+1) && x.advantage.value==f64((w+1)*(128-j)) && x.lambda_return.value==x.advantage.value && x.bootstrap==1 && x.trace==ifx j==127 then 0 else 1;}}rga_same(out[2048],rga_poison());
+ for i:0..<128 {s[i].reward.value= -1000000;s[i].current_value.value=1000000;s[i].next_value.value= -1000000;}#assert rga_returns_raw(1,128,1,1,s[0..<128],out[0..<128])==RgaStatus.ok && out[0].advantage.value== -384000000 && out[0].lambda_return.value== -383000000;
+}
+
+#test "GAE axis guard owns matching zero and next-outside spans before shape-product reuse" {
+ steps:[129]RgaStep;out:[129]RgaOutput;#assert rga_returns_raw(0,1,0,0,steps[0..<0],out[0..<0])==RgaStatus.shape && rga_returns_raw(17,1,0,0,steps[0..<17],out[0..<17])==RgaStatus.shape && rga_returns_raw(1,0,0,0,steps[0..<0],out[0..<0])==RgaStatus.shape && rga_returns_raw(1,129,0,0,steps[..],out[..])==RgaStatus.shape;
+}
+#test "GAE raw numeric predicates admit every finite lane and reject each masked nonfinite bit class" {
+ #assert rga_finite_pair(0,0) && rga_finite_step(0,0,0);
+ for bad:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {#assert !rga_finite_pair(bad,0) && !rga_finite_pair(0,bad) && !rga_finite_step(bad,0,0) && !rga_finite_step(0,bad,0) && !rga_finite_step(0,0,bad);}
+}
+
+rga_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+rga_finite_pair :: (a:u64,b:u64)->bool {return rga_finite(a) && rga_finite(b);}
+rga_finite_step :: (a:u64,b:u64,c:u64)->bool {return rga_finite(a) && rga_finite(b) && rga_finite(c);}
+rga_returns :: (worlds:int,horizon:int,gamma:rlu.Quantity(UnitOne,f64),trace_lambda:rlu.Quantity(UnitOne,f64),steps:[]RgaStep,output:[]RgaOutput)->RgaStatus #export_c {
+ if worlds<1 || worlds>16 || horizon<1 || horizon>128 {return RgaStatus.shape;}count:=worlds*horizon;if steps.count!=count || output.count!=count {return RgaStatus.shape;}
+ if !rga_finite_pair(f64_bits(gamma.value),f64_bits(trace_lambda.value)) {return RgaStatus.number;}if gamma.value<0 || gamma.value>1 || trace_lambda.value<0 || trace_lambda.value>1 {return RgaStatus.range;}
+ for s:steps {if !rga_finite_step(f64_bits(s.reward.value),f64_bits(s.current_value.value),f64_bits(s.next_value.value)) {return RgaStatus.number;}}
+ for s:steps {if abs(s.reward.value)>1000000 || abs(s.current_value.value)>1000000 || abs(s.next_value.value)>1000000 || s.terminated<0 || s.terminated>1 || s.truncated<0 || s.truncated>1 {return RgaStatus.range;}}
+ stage:[2048]RgaOutput;discount:=gamma.value*trace_lambda.value;
+ for world:0..<worlds {next_advantage:f64=0;for reverse:0..<horizon {local:=horizon-1-reverse;index:=world*horizon+local;s:=steps[index];bootstrap:=ifx s.terminated==0 then 1 else 0;trace:=ifx s.terminated==0 && s.truncated==0 && local!=horizon-1 then 1 else 0;future:f64=0;if bootstrap==1 {future=gamma.value*s.next_value.value;}delta:=(s.reward.value+future)-s.current_value.value;advantage:=delta;if trace==1 {advantage=delta+discount*next_advantage;}fresh:RgaOutput;fresh.delta.value=delta;fresh.advantage.value=advantage;fresh.lambda_return.value=advantage+s.current_value.value;fresh.bootstrap=bootstrap;fresh.trace=trace;stage[index]=fresh;next_advantage=advantage;}}
+ for i:0..<count {output[i]=stage[i];}return RgaStatus.ok;
+}
+rga_returns_raw :: (worlds:int,horizon:int,gamma:f64,trace_lambda:f64,steps:[]RgaStep,output:[]RgaOutput)->RgaStatus #export_c {g:rlu.Quantity(UnitOne,f64);l:rlu.Quantity(UnitOne,f64);g.value=gamma;l.value=trace_lambda;return rga_returns(worlds,horizon,g,l,steps,output);}

@@ -1,0 +1,8 @@
+two synthetic fragments; no environment or learner
+row 0: bootstrap 1, trace 1; delta 1000000, advantage 1250000, target 1750000 micro-reward
+row 1: bootstrap 0, trace 0; delta 1000000, advantage 1000000, target 2000000 micro-reward
+row 2: bootstrap 1, trace 0; delta 5000000, advantage 5000000, target 5000000 micro-reward
+row 3: bootstrap 1, trace 0; delta -99000000, advantage -99000000, target -99000000 micro-reward
+PPO ratio 1500000; clipped ratio 1250000; active 1
+surrogate 1562500, loss -1562500, formal logp gradient 0 micro-reward
+a truncated row bootstraps its final value; it never traces into the reset row

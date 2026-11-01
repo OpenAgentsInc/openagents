@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_bad_ratio.coax:2:141: error[E0317]: argument 1 of 'rcp_surrogate' is Quantity(UnitOne, f64), given Quantity(Metre, f64)
+  main :: () {rho:rlu.Quantity(rlu.Metre,f64);epsilon:rlu.Quantity(UnitOne,f64);advantage:RgaReward;output:[1]RcpOutput;status:=rcp_surrogate(rho,advantage,epsilon,output[..]);}
+                                                                                                                                              ^
+1 error

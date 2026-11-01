@@ -1,0 +1,100 @@
+{
+  "schema": "psionic.locomotion.source-qualification.v1",
+  "passed": true,
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "source_files": {
+    "psionic/lib/robotics/locomotion/types.coax": {
+      "bytes": 610,
+      "sha256": "b94591e9210b25abb74a3354d4630cfdf40127d780746c40a45c5d0c5d228d15"
+    },
+    "psionic/lib/robotics/locomotion/fixtures.coax": {
+      "bytes": 928,
+      "sha256": "b7eb84112d283c05d8cb71ee1f10aa555c12537504378f250295baf108a72713"
+    },
+    "psionic/lib/robotics/locomotion/gae.coax": {
+      "bytes": 8544,
+      "sha256": "7fd60401ad6b602587b5298fc166f29995fcd8152ed87d3308f5b576c8ffdcae"
+    },
+    "psionic/lib/robotics/locomotion/ppo-surrogate.coax": {
+      "bytes": 7175,
+      "sha256": "db03f7df27e0bcfbf6c319d2fd9b2021539539d60b388820da7310cc018870d6"
+    },
+    "psionic/lib/robotics/locomotion.coax": {
+      "bytes": 152,
+      "sha256": "6bb99eeb9a11071cc3b5ba5f991e297598529ecf92f0a8a413f73f26f759e736"
+    }
+  },
+  "new_check_groups": 16,
+  "actual_emitted_mutants": 156,
+  "killed": 156,
+  "survived": 0,
+  "root_scopes": {
+    "locomotion/gae": 100,
+    "locomotion/ppo-surrogate": 56
+  },
+  "public_aggregate_new_body_sites": 0,
+  "public_aggregate_mutation_run": false,
+  "runs": {
+    "gae-first": {
+      "stdout": {
+        "bytes": 2592,
+        "sha256": "172772824a0a206acee7a42b325dbf48c68cb28c57bb2c0e644d1242889cdf95"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 100,
+      "killed": 92,
+      "survived": 8
+    },
+    "gae-second": {
+      "stdout": {
+        "bytes": 116,
+        "sha256": "078b5e7ec2e8cbdfaa6a44d80d37bf3789a96e5e7302e3adf95964554fc8f1b6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 100,
+      "killed": 100,
+      "survived": 0
+    },
+    "ppo-first": {
+      "stdout": {
+        "bytes": 114,
+        "sha256": "99dbf66c7475e37212970072fd7b0b44083214c9e2027b00fd73a5fd4d1fd5f5"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "mutants": 56,
+      "killed": 56,
+      "survived": 0
+    }
+  },
+  "units": {
+    "bytes": 1472,
+    "sha256": "af5292522c884e081eb6653e9f12acc8877fa3e9e17a7cf93ad2d13be3156815"
+  },
+  "history": "Initial GAE8 observational survivors closed by matching zero/next-outside dimension spans and source-visible raw-bit finite predicates; the VM refuses constructing NaN/Inf F64 itself. GAE recurrence and mask arithmetic unchanged. Final GAE100zero and firstPPO56zero. No equivalent waiver.",
+  "contract": [
+    "CPUF64/no contraction, world-major W1..16/H1..128/N<=2048; internal fixed staging supports overlapping views",
+    "Shape/axes before multiplication, hyper allfinite/range, ALL input numeric finite before per-row caps/flags; even masked nextV is admitted",
+    "Termination removes bootstrap+trace; truncation/localtail retains final-state bootstrap but cuts recursion; bothflags1 terminationwins",
+    "Conditional RN64 recipe, per-world recurrence reset and detached lambda-return target; physical time-limit semantics remain caller provenance",
+    "PPO rho[2^-20,16],A\u00b11e9,epsilon[0,1]; rounded1\u00b1epsilon endpoints; strict sign-aware active branch, exactknots unclip formal derivative",
+    "PPO A==0 only canonicalizesS/loss/gradient+0; other signedzero follows frozen arithmetic; derivative is real-formal not quantized-output derivative",
+    "No exp/logprob/optimizer,KL/entropy/advantage normalization/value-loss/training/walking/R14 claim; helpers numeric/source-visible,not provenance certificates"
+  ],
+  "execution": "Only new source checks/mutations and compiler refusals. No old gate, native oracle/model, SDK, simulation, learner or RNG run.",
+  "experiment": {
+    "bytes": 187424,
+    "sha256": "5a4916124d35b051cc5f408e3cb33a68eebba2b94c765619cedcabb3387b2008"
+  }
+}

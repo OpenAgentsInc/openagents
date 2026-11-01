@@ -1,0 +1,119 @@
+{
+  "schema": "psionic.locomotion-foundation.native.v1",
+  "passed": true,
+  "old_source_or_mutation_gates": 0,
+  "model_environment_RNG_optimizer_calls": 0,
+  "commands": [],
+  "modes": {},
+  "plan_only": true,
+  "source": {
+    "psionic/lib/robotics/locomotion.coax": {
+      "bytes": 152,
+      "sha256": "6bb99eeb9a11071cc3b5ba5f991e297598529ecf92f0a8a413f73f26f759e736"
+    },
+    "psionic/lib/robotics/locomotion/gae.coax": {
+      "bytes": 8544,
+      "sha256": "7fd60401ad6b602587b5298fc166f29995fcd8152ed87d3308f5b576c8ffdcae"
+    },
+    "psionic/lib/robotics/locomotion/fixtures.coax": {
+      "bytes": 928,
+      "sha256": "b7eb84112d283c05d8cb71ee1f10aa555c12537504378f250295baf108a72713"
+    },
+    "psionic/lib/robotics/locomotion/types.coax": {
+      "bytes": 610,
+      "sha256": "b94591e9210b25abb74a3354d4630cfdf40127d780746c40a45c5d0c5d228d15"
+    },
+    "coax/lib/quantity.coax": {
+      "bytes": 585,
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "psionic/lib/robotics/locomotion/ppo-surrogate.coax": {
+      "bytes": 7175,
+      "sha256": "db03f7df27e0bcfbf6c319d2fd9b2021539539d60b388820da7310cc018870d6"
+    },
+    "psionic/tests/robotics/locomotion_native.c": {
+      "bytes": 12121,
+      "sha256": "9fce11b86ee01d4bbccfa3fbe7613222dc8efcd4fb20cef0d2da6a098471e2e4"
+    },
+    "psionic/tests/robotics/locomotion_native_reference.py": {
+      "bytes": 16424,
+      "sha256": "adc4f2e6a17c9aac40e93cea6436e345987810544e4d11eb718f852ad57efa36"
+    }
+  },
+  "input_and_oracle": {
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-cases.bin": {
+      "bytes": 4608,
+      "sha256": "8b6db98634ef89ef8e80d1be688a0e11977cd068623a9cafe8c0d1b645cb5967"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-steps.bin": {
+      "bytes": 200920,
+      "sha256": "89998d3f789266b406f2702defcb43cd55541aea838897f3997cc943eabd057f"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/ppo-inputs.f64": {
+      "bytes": 26592,
+      "sha256": "f318a0533ca3d6ff7fb379b91d97f0694d9255b1662741306bacf1d861785b31"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-expected.bin": {
+      "bytes": 200920,
+      "sha256": "0489f9ca0f19b42faf512cb0005bee1091c069cb5bd2710ffdb6401ee6ef5d7f"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-budgets.f64": {
+      "bytes": 120552,
+      "sha256": "33f32a9c8be83636a6895fbd40769202721f3c9b40d7cefadb524f3db3edbd7f"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-exact.u8": {
+      "bytes": 5023,
+      "sha256": "4ef4f1b72506c3187e9483fcced65ae3e5ef57886b465ac8f02c1712c1f51591"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-rounding.json": {
+      "bytes": 1191005,
+      "sha256": "353b6c73c71d9101f81432cfb1479c7b19029acdac1cbdd5258286c27cc8a57a"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/ppo-expected.bin": {
+      "bytes": 44320,
+      "sha256": "505e42bc0f85717800da5fa020610b38c4352323c81dbee4f23178ccb0999bf8"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/locomotion_reference.py": {
+      "bytes": 17341,
+      "sha256": "f78d03724bcb040292ba2408db3108962f20e5980ab0ad53291edcabbaeb14d0"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/experiment.json": {
+      "bytes": 187424,
+      "sha256": "5a4916124d35b051cc5f408e3cb33a68eebba2b94c765619cedcabb3387b2008"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/input-freeze.json": {
+      "bytes": 741,
+      "sha256": "c405d4ede32ee286f55d9cc05f701b565c4cbf80ff0e89a462a0aaea86c88beb"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/source-qualification.json": {
+      "bytes": 4121,
+      "sha256": "b4b3718f9e4ebedfd2129bca0822cc0162a093358f09c829eea6ec926bdd88dd"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/unit-refusals.json": {
+      "bytes": 1472,
+      "sha256": "af5292522c884e081eb6653e9f12acc8877fa3e9e17a7cf93ad2d13be3156815"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/reference.json": {
+      "bytes": 2018,
+      "sha256": "cb54d196dd8ce05391c3d8d1801bf0bed131821365b22962db77e918d766c230"
+    }
+  },
+  "experiment": {
+    "bytes": 187424,
+    "sha256": "5a4916124d35b051cc5f408e3cb33a68eebba2b94c765619cedcabb3387b2008"
+  },
+  "reference": {
+    "bytes": 2018,
+    "sha256": "cb54d196dd8ce05391c3d8d1801bf0bed131821365b22962db77e918d766c230"
+  },
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "counts": {
+    "gae_cases": 96,
+    "gae_rows": 5023,
+    "PPO_cases": 1108
+  },
+  "seconds": 0.014092084020376205
+}

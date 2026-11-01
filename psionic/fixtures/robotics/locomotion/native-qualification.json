@@ -1,0 +1,633 @@
+{
+  "schema": "psionic.locomotion-foundation.native.v1",
+  "passed": true,
+  "old_source_or_mutation_gates": 0,
+  "model_environment_RNG_optimizer_calls": 0,
+  "commands": [
+    {
+      "label": "host-compiler-version",
+      "argv": [
+        "cc",
+        "--version"
+      ],
+      "exit": 0,
+      "seconds": 0.03679174999706447,
+      "stdout": {
+        "bytes": 202,
+        "sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "emit-debug",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/locomotion.coax",
+        "--library",
+        "--header",
+        "/private/tmp/locomotion-native-first/debug/locomotion.h"
+      ],
+      "exit": 0,
+      "seconds": 0.05678275000536814,
+      "stdout": {
+        "bytes": 40112,
+        "sha256": "7a715716a000cf865557c9ef12bf49c5dd2c37ad4b4cf8a163f076b3e6bca62e"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "emit-release",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/locomotion.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/locomotion-native-first/release/locomotion.h"
+      ],
+      "exit": 0,
+      "seconds": 0.05859254201641306,
+      "stdout": {
+        "bytes": 40094,
+        "sha256": "64ffe829338d0126d697ef56e7cbb67a102d33ada46741e1bedc063f68e359c6"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "compile-generated-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-Wno-unused-parameter",
+        "-O0",
+        "-g",
+        "-c",
+        "/private/tmp/locomotion-native-first/debug/locomotion.c",
+        "-o",
+        "/private/tmp/locomotion-native-first/native-debug/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.07213141699321568,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "compile-effects-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O0",
+        "-g",
+        "-I/private/tmp/locomotion-native-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/locomotion_native.c",
+        "/private/tmp/locomotion-native-first/native-debug/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/locomotion-native-first/native-debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.16926112503279,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "execute-debug",
+      "argv": [
+        "/private/tmp/locomotion-native-first/native-debug/native",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-cases.bin",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-steps.bin",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/ppo-inputs.f64",
+        "/private/tmp/locomotion-native-first/native-debug"
+      ],
+      "exit": 0,
+      "seconds": 0.2904539169976488,
+      "stdout": {
+        "bytes": 145,
+        "sha256": "fa05f520ba46f5875b3accb49d8c3609b090874e2144eb534f7ff6a14ad2a487"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "compile-generated-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-Wno-unused-parameter",
+        "-O2",
+        "-c",
+        "/private/tmp/locomotion-native-first/release/locomotion.c",
+        "-o",
+        "/private/tmp/locomotion-native-first/native-release/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.09040445898426697,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "compile-effects-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O2",
+        "-I/private/tmp/locomotion-native-first/release",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/locomotion_native.c",
+        "/private/tmp/locomotion-native-first/native-release/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/locomotion-native-first/native-release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.39646274998085573,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "execute-release",
+      "argv": [
+        "/private/tmp/locomotion-native-first/native-release/native",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-cases.bin",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-steps.bin",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/ppo-inputs.f64",
+        "/private/tmp/locomotion-native-first/native-release"
+      ],
+      "exit": 0,
+      "seconds": 0.2515448749763891,
+      "stdout": {
+        "bytes": 145,
+        "sha256": "fa05f520ba46f5875b3accb49d8c3609b090874e2144eb534f7ff6a14ad2a487"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "compile-generated-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-Wno-unused-parameter",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-c",
+        "/private/tmp/locomotion-native-first/debug/locomotion.c",
+        "-o",
+        "/private/tmp/locomotion-native-first/native-sanitized/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.23782033304451033,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "compile-effects-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/locomotion-native-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/locomotion_native.c",
+        "/private/tmp/locomotion-native-first/native-sanitized/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/locomotion-native-first/native-sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 0.479985875019338,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "label": "execute-sanitized",
+      "argv": [
+        "/private/tmp/locomotion-native-first/native-sanitized/native",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-cases.bin",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-steps.bin",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/ppo-inputs.f64",
+        "/private/tmp/locomotion-native-first/native-sanitized"
+      ],
+      "exit": 0,
+      "seconds": 0.3250064169988036,
+      "stdout": {
+        "bytes": 145,
+        "sha256": "fa05f520ba46f5875b3accb49d8c3609b090874e2144eb534f7ff6a14ad2a487"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "modes": {
+    "debug": {
+      "native": {
+        "assertions": 22545,
+        "refusal_queries": 374,
+        "alias_queries": 22,
+        "IEEE_patterns": 85,
+        "gae_cases": 96,
+        "gae_rows": 5023,
+        "ppo_rows": 1108,
+        "fpcr_zero": true
+      },
+      "comparison": {
+        "passed": true,
+        "GAE_rows": 5023,
+        "GAE_finite_words": 15069,
+        "GAE_exact_word_comparisons": 6153,
+        "GAE_max_absolute_errors": [
+          0.0,
+          1.2830237494653685e-08,
+          1.280568540096283e-08
+        ],
+        "GAE_max_fraction_of_frozen_budget": [
+          0.0,
+          0.037604544942571885,
+          0.04278329580200043
+        ],
+        "GAE_all_masks_exact": true,
+        "PPO_rows": 1108,
+        "PPO_finite_words_bit_exact": 4432,
+        "PPO_active_flags_exact": true,
+        "PPO_clipped_active_rows": 273,
+        "PPO_zero_advantage_rows": 218,
+        "PPO_exact_rounded_knot_rows": 152
+      },
+      "C": {
+        "bytes": 40112,
+        "sha256": "7a715716a000cf865557c9ef12bf49c5dd2c37ad4b4cf8a163f076b3e6bca62e"
+      },
+      "header": {
+        "bytes": 10931,
+        "sha256": "1bfc64815e4cc307242cac03bfb746af429e1fef0e01da208e85780b8577ed6c"
+      },
+      "object": {
+        "bytes": 19360,
+        "sha256": "765b930657aa80c99581dd2a1add7c2bd8df64962afbb4102f3aa3bc32da5d63"
+      },
+      "binary": {
+        "bytes": 72232,
+        "sha256": "593bc12289c9f01c0a5df64f8da673e729d40a8a209ec6ed8c80b2868e8080f2"
+      },
+      "GAE": {
+        "bytes": 200920,
+        "sha256": "d69825a3559d5ab9a2dcad4f3d408a54dab192d0c13510b32d64713179e49ab2"
+      },
+      "PPO": {
+        "bytes": 44320,
+        "sha256": "505e42bc0f85717800da5fa020610b38c4352323c81dbee4f23178ccb0999bf8"
+      }
+    },
+    "release": {
+      "native": {
+        "assertions": 22545,
+        "refusal_queries": 374,
+        "alias_queries": 22,
+        "IEEE_patterns": 85,
+        "gae_cases": 96,
+        "gae_rows": 5023,
+        "ppo_rows": 1108,
+        "fpcr_zero": true
+      },
+      "comparison": {
+        "passed": true,
+        "GAE_rows": 5023,
+        "GAE_finite_words": 15069,
+        "GAE_exact_word_comparisons": 6153,
+        "GAE_max_absolute_errors": [
+          0.0,
+          1.2830237494653685e-08,
+          1.280568540096283e-08
+        ],
+        "GAE_max_fraction_of_frozen_budget": [
+          0.0,
+          0.037604544942571885,
+          0.04278329580200043
+        ],
+        "GAE_all_masks_exact": true,
+        "PPO_rows": 1108,
+        "PPO_finite_words_bit_exact": 4432,
+        "PPO_active_flags_exact": true,
+        "PPO_clipped_active_rows": 273,
+        "PPO_zero_advantage_rows": 218,
+        "PPO_exact_rounded_knot_rows": 152
+      },
+      "C": {
+        "bytes": 40094,
+        "sha256": "64ffe829338d0126d697ef56e7cbb67a102d33ada46741e1bedc063f68e359c6"
+      },
+      "header": {
+        "bytes": 10931,
+        "sha256": "1bfc64815e4cc307242cac03bfb746af429e1fef0e01da208e85780b8577ed6c"
+      },
+      "object": {
+        "bytes": 4672,
+        "sha256": "aa44709186f71720f40d3e25a6b7546c22429ef610c963f257bebe2238ece00b"
+      },
+      "binary": {
+        "bytes": 53496,
+        "sha256": "18ffe59631ce0f3d11fb25abe5391bed7555418f46e13116becb573684f4168c"
+      },
+      "GAE": {
+        "bytes": 200920,
+        "sha256": "d69825a3559d5ab9a2dcad4f3d408a54dab192d0c13510b32d64713179e49ab2"
+      },
+      "PPO": {
+        "bytes": 44320,
+        "sha256": "505e42bc0f85717800da5fa020610b38c4352323c81dbee4f23178ccb0999bf8"
+      }
+    },
+    "sanitized": {
+      "native": {
+        "assertions": 22545,
+        "refusal_queries": 374,
+        "alias_queries": 22,
+        "IEEE_patterns": 85,
+        "gae_cases": 96,
+        "gae_rows": 5023,
+        "ppo_rows": 1108,
+        "fpcr_zero": true
+      },
+      "comparison": {
+        "passed": true,
+        "GAE_rows": 5023,
+        "GAE_finite_words": 15069,
+        "GAE_exact_word_comparisons": 6153,
+        "GAE_max_absolute_errors": [
+          0.0,
+          1.2830237494653685e-08,
+          1.280568540096283e-08
+        ],
+        "GAE_max_fraction_of_frozen_budget": [
+          0.0,
+          0.037604544942571885,
+          0.04278329580200043
+        ],
+        "GAE_all_masks_exact": true,
+        "PPO_rows": 1108,
+        "PPO_finite_words_bit_exact": 4432,
+        "PPO_active_flags_exact": true,
+        "PPO_clipped_active_rows": 273,
+        "PPO_zero_advantage_rows": 218,
+        "PPO_exact_rounded_knot_rows": 152
+      },
+      "C": {
+        "bytes": 40112,
+        "sha256": "7a715716a000cf865557c9ef12bf49c5dd2c37ad4b4cf8a163f076b3e6bca62e"
+      },
+      "header": {
+        "bytes": 10931,
+        "sha256": "1bfc64815e4cc307242cac03bfb746af429e1fef0e01da208e85780b8577ed6c"
+      },
+      "object": {
+        "bytes": 29576,
+        "sha256": "0a182635318ec876bb6bf43f75e77cea1c4aac34204cce9f637206d3be4001cb"
+      },
+      "binary": {
+        "bytes": 101304,
+        "sha256": "9160a7f4a56f06ff9cf3660e2d637c6c1cea2f87de0d3b299adcb7dffce981cc"
+      },
+      "GAE": {
+        "bytes": 200920,
+        "sha256": "d69825a3559d5ab9a2dcad4f3d408a54dab192d0c13510b32d64713179e49ab2"
+      },
+      "PPO": {
+        "bytes": 44320,
+        "sha256": "505e42bc0f85717800da5fa020610b38c4352323c81dbee4f23178ccb0999bf8"
+      }
+    }
+  },
+  "plan_only": false,
+  "source": {
+    "psionic/lib/robotics/locomotion.coax": {
+      "bytes": 152,
+      "sha256": "6bb99eeb9a11071cc3b5ba5f991e297598529ecf92f0a8a413f73f26f759e736"
+    },
+    "psionic/lib/robotics/locomotion/gae.coax": {
+      "bytes": 8544,
+      "sha256": "7fd60401ad6b602587b5298fc166f29995fcd8152ed87d3308f5b576c8ffdcae"
+    },
+    "psionic/lib/robotics/locomotion/fixtures.coax": {
+      "bytes": 928,
+      "sha256": "b7eb84112d283c05d8cb71ee1f10aa555c12537504378f250295baf108a72713"
+    },
+    "psionic/lib/robotics/locomotion/types.coax": {
+      "bytes": 610,
+      "sha256": "b94591e9210b25abb74a3354d4630cfdf40127d780746c40a45c5d0c5d228d15"
+    },
+    "coax/lib/quantity.coax": {
+      "bytes": 585,
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "psionic/lib/robotics/locomotion/ppo-surrogate.coax": {
+      "bytes": 7175,
+      "sha256": "db03f7df27e0bcfbf6c319d2fd9b2021539539d60b388820da7310cc018870d6"
+    },
+    "psionic/tests/robotics/locomotion_native.c": {
+      "bytes": 12121,
+      "sha256": "9fce11b86ee01d4bbccfa3fbe7613222dc8efcd4fb20cef0d2da6a098471e2e4"
+    },
+    "psionic/tests/robotics/locomotion_native_reference.py": {
+      "bytes": 16424,
+      "sha256": "adc4f2e6a17c9aac40e93cea6436e345987810544e4d11eb718f852ad57efa36"
+    }
+  },
+  "input_and_oracle": {
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-cases.bin": {
+      "bytes": 4608,
+      "sha256": "8b6db98634ef89ef8e80d1be688a0e11977cd068623a9cafe8c0d1b645cb5967"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-steps.bin": {
+      "bytes": 200920,
+      "sha256": "89998d3f789266b406f2702defcb43cd55541aea838897f3997cc943eabd057f"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/ppo-inputs.f64": {
+      "bytes": 26592,
+      "sha256": "f318a0533ca3d6ff7fb379b91d97f0694d9255b1662741306bacf1d861785b31"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-expected.bin": {
+      "bytes": 200920,
+      "sha256": "0489f9ca0f19b42faf512cb0005bee1091c069cb5bd2710ffdb6401ee6ef5d7f"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-budgets.f64": {
+      "bytes": 120552,
+      "sha256": "33f32a9c8be83636a6895fbd40769202721f3c9b40d7cefadb524f3db3edbd7f"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-exact.u8": {
+      "bytes": 5023,
+      "sha256": "4ef4f1b72506c3187e9483fcced65ae3e5ef57886b465ac8f02c1712c1f51591"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/gae-rounding.json": {
+      "bytes": 1191005,
+      "sha256": "353b6c73c71d9101f81432cfb1479c7b19029acdac1cbdd5258286c27cc8a57a"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/ppo-expected.bin": {
+      "bytes": 44320,
+      "sha256": "505e42bc0f85717800da5fa020610b38c4352323c81dbee4f23178ccb0999bf8"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/locomotion_reference.py": {
+      "bytes": 17341,
+      "sha256": "f78d03724bcb040292ba2408db3108962f20e5980ab0ad53291edcabbaeb14d0"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/experiment.json": {
+      "bytes": 187424,
+      "sha256": "5a4916124d35b051cc5f408e3cb33a68eebba2b94c765619cedcabb3387b2008"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/input-freeze.json": {
+      "bytes": 741,
+      "sha256": "c405d4ede32ee286f55d9cc05f701b565c4cbf80ff0e89a462a0aaea86c88beb"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/source-qualification.json": {
+      "bytes": 4121,
+      "sha256": "b4b3718f9e4ebedfd2129bca0822cc0162a093358f09c829eea6ec926bdd88dd"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/unit-refusals.json": {
+      "bytes": 1472,
+      "sha256": "af5292522c884e081eb6653e9f12acc8877fa3e9e17a7cf93ad2d13be3156815"
+    },
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/locomotion/reference.json": {
+      "bytes": 2018,
+      "sha256": "cb54d196dd8ce05391c3d8d1801bf0bed131821365b22962db77e918d766c230"
+    }
+  },
+  "experiment": {
+    "bytes": 187424,
+    "sha256": "5a4916124d35b051cc5f408e3cb33a68eebba2b94c765619cedcabb3387b2008"
+  },
+  "reference": {
+    "bytes": 2018,
+    "sha256": "cb54d196dd8ce05391c3d8d1801bf0bed131821365b22962db77e918d766c230"
+  },
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "counts": {
+    "gae_cases": 96,
+    "gae_rows": 5023,
+    "PPO_cases": 1108
+  },
+  "reader_guards": {
+    "passed": true,
+    "new_poison_cases": 28,
+    "models_environments_old_gates": 0
+  },
+  "host_profile": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.15.1 (main, Oct 21 2026, 05:55:12) [Clang 21.0.0 (clang-2100.3.34.2)]",
+    "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n"
+  },
+  "emissions": {
+    "debug": {
+      "C": {
+        "bytes": 40112,
+        "sha256": "7a715716a000cf865557c9ef12bf49c5dd2c37ad4b4cf8a163f076b3e6bca62e"
+      },
+      "header": {
+        "bytes": 10931,
+        "sha256": "1bfc64815e4cc307242cac03bfb746af429e1fef0e01da208e85780b8577ed6c"
+      }
+    },
+    "release": {
+      "C": {
+        "bytes": 40094,
+        "sha256": "64ffe829338d0126d697ef56e7cbb67a102d33ada46741e1bedc063f68e359c6"
+      },
+      "header": {
+        "bytes": 10931,
+        "sha256": "1bfc64815e4cc307242cac03bfb746af429e1fef0e01da208e85780b8577ed6c"
+      }
+    }
+  },
+  "all_native_output_bytes_exact": true,
+  "seconds": 2.5545471669756807
+}

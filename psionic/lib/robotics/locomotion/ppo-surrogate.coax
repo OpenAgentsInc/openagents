@@ -1,0 +1,55 @@
+#load "fixtures.coax";
+#authority;
+#test "PPO positive and negative quadrants clip only the sign-aware improving side" {
+ out:[1]RcpOutput;
+ #assert rcp_surrogate_raw(1.5,2,0.25,out[..])==RcpStatus.ok && out[0].clipped_ratio.value==1.25 && out[0].surrogate.value==2.5 && out[0].loss.value== -2.5 && out[0].dloss_dlogp.value==0 && out[0].clipped_active==1;
+ #assert rcp_surrogate_raw(0.5,2,0.25,out[..])==RcpStatus.ok && out[0].clipped_ratio.value==0.75 && out[0].surrogate.value==1 && out[0].loss.value== -1 && out[0].dloss_dlogp.value== -1 && out[0].clipped_active==0;
+ #assert rcp_surrogate_raw(0.5,-2,0.25,out[..])==RcpStatus.ok && out[0].clipped_ratio.value==0.75 && out[0].surrogate.value== -1.5 && out[0].loss.value==1.5 && out[0].dloss_dlogp.value==0 && out[0].clipped_active==1;
+ #assert rcp_surrogate_raw(1.5,-2,0.25,out[..])==RcpStatus.ok && out[0].clipped_ratio.value==1.25 && out[0].surrogate.value== -3 && out[0].loss.value==3 && out[0].dloss_dlogp.value==3 && out[0].clipped_active==0;
+ #assert rcp_surrogate_raw(1.1,2,0.25,out[..])==RcpStatus.ok && out[0].clipped_ratio.value==1.1 && out[0].clipped_active==0;
+}
+#test "PPO exact knots use the unclipped formal derivative while adjacent outside ratios saturate" {
+ out:[1]RcpOutput;lower:f64=0.75;upper:f64=1.25;
+ #assert rcp_surrogate_raw(upper,2,0.25,out[..])==RcpStatus.ok && out[0].clipped_active==0 && out[0].dloss_dlogp.value== -2.5;
+ #assert rcp_surrogate_raw(f64_from_bits(f64_bits(upper)+1),2,0.25,out[..])==RcpStatus.ok && out[0].clipped_active==1 && out[0].dloss_dlogp.value==0;
+ #assert rcp_surrogate_raw(f64_from_bits(f64_bits(upper)-1),2,0.25,out[..])==RcpStatus.ok && out[0].clipped_active==0;
+ #assert rcp_surrogate_raw(lower,-2,0.25,out[..])==RcpStatus.ok && out[0].clipped_active==0 && out[0].dloss_dlogp.value==1.5;
+ #assert rcp_surrogate_raw(f64_from_bits(f64_bits(lower)-1),-2,0.25,out[..])==RcpStatus.ok && out[0].clipped_active==1 && out[0].dloss_dlogp.value==0;
+ #assert rcp_surrogate_raw(f64_from_bits(f64_bits(lower)+1),-2,0.25,out[..])==RcpStatus.ok && out[0].clipped_active==0;
+ #assert rcp_side(lower,lower,upper)==0 && rcp_side(upper,lower,upper)==0 && rcp_side(0.5,lower,upper)== -1 && rcp_side(1,lower,upper)==0 && rcp_side(1.5,lower,upper)==1;
+}
+#test "PPO rounded-product equality never decides the active branch and only zero advantage canonicalizes zero" {
+ out:[1]RcpOutput;tiny:=f64_from_bits(1);upper:f64=1.25;above:=f64_from_bits(f64_bits(upper)+1);#assert above*tiny==upper*tiny;
+ #assert rcp_surrogate_raw(above,tiny,0.25,out[..])==RcpStatus.ok && out[0].clipped_active==1 && f64_bits(out[0].dloss_dlogp.value)==0;
+ #assert rcp_surrogate_raw(upper,tiny,0.25,out[..])==RcpStatus.ok && out[0].clipped_active==0 && f64_bits(out[0].dloss_dlogp.value)==0x8000000000000001;
+ for zero:[2]f64.[0,f64_from_bits(0x8000000000000000)] {for ratio:[2]f64.[0.5,1.5] {#assert rcp_surrogate_raw(ratio,zero,0.25,out[..])==RcpStatus.ok && f64_bits(out[0].surrogate.value)==0 && f64_bits(out[0].loss.value)==0 && f64_bits(out[0].dloss_dlogp.value)==0 && out[0].clipped_active==0;}}
+}
+#test "PPO zero and unit epsilon endpoint policies and GAE-sized advantages remain admitted" {
+ out:[1]RcpOutput;for sign:[2]f64.[-1,1] {#assert rcp_surrogate_raw(1,sign*2,0,out[..])==RcpStatus.ok && out[0].clipped_active==0 && out[0].dloss_dlogp.value== -sign*2;#assert rcp_surrogate_raw(1,sign*1000000000,1,out[..])==RcpStatus.ok && out[0].loss.value== -sign*1000000000;}
+ #assert rcp_surrogate_raw(16,-1000000000,1,out[..])==RcpStatus.ok && out[0].clipped_ratio.value==2 && out[0].surrogate.value== -16000000000 && out[0].loss.value==16000000000 && out[0].dloss_dlogp.value==16000000000 && out[0].clipped_active==0;
+ #assert rcp_surrogate_raw(0.00000095367431640625,1,1,out[..])==RcpStatus.ok && out[0].clipped_ratio.value==0.00000095367431640625;
+ #assert rcp_surrogate_raw(2,-384000000,1,out[..])==RcpStatus.ok && out[0].loss.value==768000000;
+ #assert rcp_surrogate_raw(0.5,-2,1,out[..])==RcpStatus.ok && out[0].clipped_ratio.value==0.5 && out[0].clipped_active==0;
+}
+#test "PPO typed and raw dimensionless ratio wrappers preserve every result field" {
+ rho:rlu.Quantity(UnitOne,f64);epsilon:rlu.Quantity(UnitOne,f64);a:RgaReward;rho.value=1.5;epsilon.value=0.25;a.value=2;typed:[1]RcpOutput;raw:[1]RcpOutput;#assert rcp_surrogate(rho,a,epsilon,typed[..])==RcpStatus.ok && rcp_surrogate_raw(rho.value,a.value,epsilon.value,raw[..])==RcpStatus.ok;rcp_same(typed[0],raw[0]);
+}
+#test "PPO shape and scalar ranges refuse completely before even zero-advantage computation" {
+ out:=[2]RcpOutput.[rcp_poison(),rcp_poison()];#assert rcp_surrogate_raw(0,0,2,out[..])==RcpStatus.shape && rcp_surrogate_raw(1,0,0,out[0..<0])==RcpStatus.shape;
+ for ratio:[2]f64.[0.000000476837158203125,16.000001] {#assert rcp_surrogate_raw(ratio,0,0,out[0..<1])==RcpStatus.range;}for a:[2]f64.[-1000000001,1000000001] {#assert rcp_surrogate_raw(1,a,0,out[0..<1])==RcpStatus.range;}for epsilon:[2]f64.[-0.000001,1.000001] {#assert rcp_surrogate_raw(1,0,epsilon,out[0..<1])==RcpStatus.range;}for i:0..<2 {rcp_same(out[i],rcp_poison());}
+}
+#test "PPO all three raw exponent guards reject each nonfinite class before numerical admission" {
+ #assert rcp_finite(0) && rcp_finite(0x8000000000000000) && rcp_finite(0x7fefffffffffffff) && rcp_finite3(0,0,0);
+ for bad:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {#assert !rcp_finite(bad) && !rcp_finite3(bad,0,0) && !rcp_finite3(0,bad,0) && !rcp_finite3(0,0,bad);}
+}
+
+rcp_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+rcp_finite3 :: (a:u64,b:u64,c:u64)->bool {return rcp_finite(a) && rcp_finite(b) && rcp_finite(c);}
+// Trusted finite ordered bounds; integer band is strict so exact knots stay inside.
+rcp_side :: (rho:f64,lower:f64,upper:f64)->int {return ifx rho<lower then -1 else ifx rho>upper then 1 else 0;}
+rcp_surrogate :: (rho:rlu.Quantity(UnitOne,f64),advantage:RgaReward,epsilon:rlu.Quantity(UnitOne,f64),output:[]RcpOutput)->RcpStatus #export_c {
+ if output.count!=1 {return RcpStatus.shape;}if !rcp_finite3(f64_bits(rho.value),f64_bits(advantage.value),f64_bits(epsilon.value)) {return RcpStatus.number;}if rho.value<0.00000095367431640625 || rho.value>16 || abs(advantage.value)>1000000000 || epsilon.value<0 || epsilon.value>1 {return RcpStatus.range;}
+ lower:=1.0-epsilon.value;upper:=1.0+epsilon.value;side:=rcp_side(rho.value,lower,upper);clipped:=ifx side== -1 then lower else ifx side==1 then upper else rho.value;active:=(advantage.value>0 && side==1) || (advantage.value<0 && side== -1);fresh:RcpOutput;fresh.clipped_ratio.value=clipped;fresh.clipped_active=ifx active then 1 else 0;
+ if advantage.value!=0 {product:=rho.value*advantage.value;fresh.surrogate.value=ifx active then clipped*advantage.value else product;fresh.loss.value= -fresh.surrogate.value;fresh.dloss_dlogp.value=ifx active then 0 else -product;}output[0]=fresh;return RcpStatus.ok;
+}
+rcp_surrogate_raw :: (rho:f64,advantage:f64,epsilon:f64,output:[]RcpOutput)->RcpStatus #export_c {r:rlu.Quantity(UnitOne,f64);e:rlu.Quantity(UnitOne,f64);a:RgaReward;r.value=rho;e.value=epsilon;a.value=advantage;return rcp_surrogate(r,a,e,output);}

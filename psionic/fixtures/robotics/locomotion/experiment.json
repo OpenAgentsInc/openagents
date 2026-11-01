@@ -1,0 +1,8030 @@
+{
+  "schema": "psionic.locomotion-foundation.experiment.v1",
+  "frozen_before_product_comparison": true,
+  "scope": "CPUF64 typed GAEreturn targets and clippedPPO scalar objective only; no policy/model/RNG/optimizer/environment/gait/physics/device/training claim.",
+  "ABI": {
+    "RgaStep40": "<3d2q> reward/current_value/next_value,terminated/truncated",
+    "RgaOutput40": "<3d2q> delta/advantage/lambda_return,bootstrap/trace",
+    "RcpOutput40": "<4dq> surrogate/loss/dloss_dlogp,clipped_ratio,clipped_active",
+    "gae_cases48": "<4q2d> worlds,horizon,offset_steps,count,gamma,lambda",
+    "ppo_input24": "<3d> rho,advantage,epsilon"
+  },
+  "domain": {
+    "worlds": [
+      1,
+      16
+    ],
+    "horizon": [
+      1,
+      128
+    ],
+    "world_major_total_max": 2048,
+    "reward_value_nextvalue_abs_max": 1000000.0,
+    "flags": [
+      0,
+      1
+    ],
+    "both_flags_true": "permitted; terminationwins",
+    "gamma_lambda": [
+      0,
+      1
+    ],
+    "rho": [
+      9.5367431640625e-07,
+      16
+    ],
+    "PPO_advantage_abs_max": 1000000000.0,
+    "epsilon": [
+      0,
+      1
+    ],
+    "all_numeric_inputs_finite_even_masked": true
+  },
+  "gae_recipe": [
+    "q=RN(gamma*lambda)",
+    "bootstrap=!terminated",
+    "trace=!(terminated||truncated||local_collector_last_row)",
+    "next=bootstrap?RN(gamma*next_value):positivezero",
+    "delta=RN(RN(reward+next)-current_value)",
+    "advantage=trace?RN(delta+RN(q*next_advantage)):delta",
+    "lambda_return=RN(advantage+current_value)"
+  ],
+  "semantics": {
+    "next_value": "Actual final observation value before reset; API cannot attest caller observation identity.",
+    "collector_tail": "notenvironmenttermination; bootstrap survives unless terminated, recursive tailA0",
+    "truncation": "external continuing-task cut; bootstrapfinalV and cutrecursion, do not passresetV",
+    "finite_horizon_terminal": "a truefinite-horizon MDP end must be labelledterminated, not indiscriminatelybootstrapped",
+    "targets_detached": true,
+    "masks_not_one_done_bit": true
+  },
+  "ppo_recipe": [
+    "lower=RN(1-epsilon);upper=RN(1+epsilon)",
+    "clipped_ratio=clamp(rho,lower,upper)",
+    "active=(A>0&&rho>upper)||(A<0&&rho<lower)",
+    "A==signedzero:surrogate/loss/gradient allpositivezero;clipped_ratio stillobserved",
+    "otherwise:unclipped=RN(rho*A);limited=RN(clipped_ratio*A);surrogate=min(unclipped,limited);loss=-surrogate",
+    "formal_dloss_dlogp=active?positivezero:-unclipped"
+  ],
+  "derivative": "Formal piecewise objective wrt newlogprob with oldpolicy/advantagestopgradient; at EXACT rounded ratio knots chooseUNCLIPPEDderivative. Activeflag fromsign/ratiobounds,NEVERroundedproductties. NotgradientofquantizedroundedF64program.",
+  "numeric_profile": "IEEE754binary64 RNties-even eachlistedop,gradualunderflow,noFMA/no-fastmath/reassociation; GAEsignedzerosfollowrecipe;PPOzeroAcanonicalpositivezeros",
+  "budget": {
+    "gae_unit_roundoff": "u=2^-53",
+    "gae_effective_segment_L": "countfromrowthroughfirsttracecut,atmostlocalhorizon128,NEVERtotalbatch2048",
+    "gae_local_delta_and_coefficient": "exactFraction+RN atlistedboundaries;deltaall64bits exact",
+    "gae_advantage_absolute": "2e-12 + gamma_(2L+4)*sum_abs(q^j*rounded_delta[t+j]);gamma_n=n*u/(1-n*u)",
+    "gae_return_absolute": "advantageallowance + u*(abs(exact_future_sum)+abs(current_value)+advantageallowance) + 2^-1074",
+    "gae_budgets_rounded_outward": true,
+    "gae_primary": "Explicitfuture residualsum/products againstreverseproductionrecurrence;Fraction orDecimal80,neverreverseoracle",
+    "gae_single_segment_L1": "delta/advantage/return bits exact,including signedzero;longer mathematicalzero signnotassertedfromrealoracle",
+    "ppo": "ALL4F64outputwords andactiveflag bitexact against exactFraction-RN operation/branchpolicy",
+    "all_masks_status_flags_exact": true,
+    "all3_native_context_bytes_exact": true,
+    "all_actual_expected_finite_beforemax": true
+  },
+  "input_files": {
+    "gae-cases.bin": {
+      "bytes": 4608,
+      "sha256": "8b6db98634ef89ef8e80d1be688a0e11977cd068623a9cafe8c0d1b645cb5967"
+    },
+    "gae-steps.bin": {
+      "bytes": 200920,
+      "sha256": "89998d3f789266b406f2702defcb43cd55541aea838897f3997cc943eabd057f"
+    },
+    "ppo-inputs.f64": {
+      "bytes": 26592,
+      "sha256": "f318a0533ca3d6ff7fb379b91d97f0694d9255b1662741306bacf1d861785b31"
+    }
+  },
+  "gae_cases": [
+    {
+      "case": 0,
+      "name": "three-row-all-flags-00",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 0,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 1,
+      "name": "three-row-all-flags-01",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 3,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 2,
+      "name": "three-row-all-flags-02",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 6,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 3,
+      "name": "three-row-all-flags-03",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 9,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 4,
+      "name": "three-row-all-flags-04",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 12,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 5,
+      "name": "three-row-all-flags-05",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 15,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 6,
+      "name": "three-row-all-flags-06",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 18,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 7,
+      "name": "three-row-all-flags-07",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 21,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 8,
+      "name": "three-row-all-flags-08",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 24,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 9,
+      "name": "three-row-all-flags-09",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 27,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 10,
+      "name": "three-row-all-flags-10",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 30,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 11,
+      "name": "three-row-all-flags-11",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 33,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 12,
+      "name": "three-row-all-flags-12",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 36,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 13,
+      "name": "three-row-all-flags-13",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 39,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 14,
+      "name": "three-row-all-flags-14",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 42,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 15,
+      "name": "three-row-all-flags-15",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 45,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 16,
+      "name": "three-row-all-flags-16",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 48,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 17,
+      "name": "three-row-all-flags-17",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 51,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 18,
+      "name": "three-row-all-flags-18",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 54,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 19,
+      "name": "three-row-all-flags-19",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 57,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 20,
+      "name": "three-row-all-flags-20",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 60,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 21,
+      "name": "three-row-all-flags-21",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 63,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 22,
+      "name": "three-row-all-flags-22",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 66,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 23,
+      "name": "three-row-all-flags-23",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 69,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 24,
+      "name": "three-row-all-flags-24",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 72,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 25,
+      "name": "three-row-all-flags-25",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 75,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 26,
+      "name": "three-row-all-flags-26",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 78,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 27,
+      "name": "three-row-all-flags-27",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 81,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 28,
+      "name": "three-row-all-flags-28",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 84,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 29,
+      "name": "three-row-all-flags-29",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 87,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 30,
+      "name": "three-row-all-flags-30",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 90,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 31,
+      "name": "three-row-all-flags-31",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 93,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 32,
+      "name": "three-row-all-flags-32",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 96,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 33,
+      "name": "three-row-all-flags-33",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 99,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 34,
+      "name": "three-row-all-flags-34",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 102,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 35,
+      "name": "three-row-all-flags-35",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 105,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 36,
+      "name": "three-row-all-flags-36",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 108,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 37,
+      "name": "three-row-all-flags-37",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 111,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 38,
+      "name": "three-row-all-flags-38",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 114,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 39,
+      "name": "three-row-all-flags-39",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 117,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 40,
+      "name": "three-row-all-flags-40",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 120,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 41,
+      "name": "three-row-all-flags-41",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 123,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 42,
+      "name": "three-row-all-flags-42",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 126,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 43,
+      "name": "three-row-all-flags-43",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 129,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 44,
+      "name": "three-row-all-flags-44",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 132,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 45,
+      "name": "three-row-all-flags-45",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 135,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 46,
+      "name": "three-row-all-flags-46",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 138,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 47,
+      "name": "three-row-all-flags-47",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 141,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 48,
+      "name": "three-row-all-flags-48",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 144,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 49,
+      "name": "three-row-all-flags-49",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 147,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 50,
+      "name": "three-row-all-flags-50",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 150,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 51,
+      "name": "three-row-all-flags-51",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 153,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 52,
+      "name": "three-row-all-flags-52",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 156,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 53,
+      "name": "three-row-all-flags-53",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 159,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 54,
+      "name": "three-row-all-flags-54",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 162,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 55,
+      "name": "three-row-all-flags-55",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 165,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 56,
+      "name": "three-row-all-flags-56",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 168,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 57,
+      "name": "three-row-all-flags-57",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 171,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 58,
+      "name": "three-row-all-flags-58",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 174,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 59,
+      "name": "three-row-all-flags-59",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 177,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 60,
+      "name": "three-row-all-flags-60",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 180,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 61,
+      "name": "three-row-all-flags-61",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 183,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 62,
+      "name": "three-row-all-flags-62",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 186,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 63,
+      "name": "three-row-all-flags-63",
+      "worlds": 1,
+      "horizon": 3,
+      "offset_steps": 189,
+      "count": 3,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 64,
+      "name": "hyper-grid-0.0-0.0",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 192,
+      "count": 8,
+      "gamma": 0.0,
+      "lambda_": 0.0,
+      "gamma_bits": "0x0",
+      "lambda_bits": "0x0",
+      "oracle": "fraction"
+    },
+    {
+      "case": 65,
+      "name": "hyper-grid-0.0-0.5",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 200,
+      "count": 8,
+      "gamma": 0.0,
+      "lambda_": 0.5,
+      "gamma_bits": "0x0",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 66,
+      "name": "hyper-grid-0.0-1.0",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 208,
+      "count": 8,
+      "gamma": 0.0,
+      "lambda_": 1.0,
+      "gamma_bits": "0x0",
+      "lambda_bits": "0x3ff0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 67,
+      "name": "hyper-grid-0.5-0.0",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 216,
+      "count": 8,
+      "gamma": 0.5,
+      "lambda_": 0.0,
+      "gamma_bits": "0x3fe0000000000000",
+      "lambda_bits": "0x0",
+      "oracle": "fraction"
+    },
+    {
+      "case": 68,
+      "name": "hyper-grid-0.5-0.5",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 224,
+      "count": 8,
+      "gamma": 0.5,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe0000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 69,
+      "name": "hyper-grid-0.5-1.0",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 232,
+      "count": 8,
+      "gamma": 0.5,
+      "lambda_": 1.0,
+      "gamma_bits": "0x3fe0000000000000",
+      "lambda_bits": "0x3ff0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 70,
+      "name": "hyper-grid-1.0-0.0",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 240,
+      "count": 8,
+      "gamma": 1.0,
+      "lambda_": 0.0,
+      "gamma_bits": "0x3ff0000000000000",
+      "lambda_bits": "0x0",
+      "oracle": "fraction"
+    },
+    {
+      "case": 71,
+      "name": "hyper-grid-1.0-0.5",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 248,
+      "count": 8,
+      "gamma": 1.0,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3ff0000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 72,
+      "name": "hyper-grid-1.0-1.0",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 256,
+      "count": 8,
+      "gamma": 1.0,
+      "lambda_": 1.0,
+      "gamma_bits": "0x3ff0000000000000",
+      "lambda_bits": "0x3ff0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 73,
+      "name": "single-continuing",
+      "worlds": 1,
+      "horizon": 1,
+      "offset_steps": 264,
+      "count": 1,
+      "gamma": 0.9,
+      "lambda_": 0.95,
+      "gamma_bits": "0x3feccccccccccccd",
+      "lambda_bits": "0x3fee666666666666",
+      "oracle": "decimal80"
+    },
+    {
+      "case": 74,
+      "name": "single-terminated",
+      "worlds": 1,
+      "horizon": 1,
+      "offset_steps": 265,
+      "count": 1,
+      "gamma": 0.9,
+      "lambda_": 0.95,
+      "gamma_bits": "0x3feccccccccccccd",
+      "lambda_bits": "0x3fee666666666666",
+      "oracle": "decimal80"
+    },
+    {
+      "case": 75,
+      "name": "single-truncated",
+      "worlds": 1,
+      "horizon": 1,
+      "offset_steps": 266,
+      "count": 1,
+      "gamma": 0.9,
+      "lambda_": 0.95,
+      "gamma_bits": "0x3feccccccccccccd",
+      "lambda_bits": "0x3fee666666666666",
+      "oracle": "decimal80"
+    },
+    {
+      "case": 76,
+      "name": "single-both-termination-wins",
+      "worlds": 1,
+      "horizon": 1,
+      "offset_steps": 267,
+      "count": 1,
+      "gamma": 0.9,
+      "lambda_": 0.95,
+      "gamma_bits": "0x3feccccccccccccd",
+      "lambda_bits": "0x3fee666666666666",
+      "oracle": "decimal80"
+    },
+    {
+      "case": 77,
+      "name": "collector-final-nextvalue-not-reset",
+      "worlds": 1,
+      "horizon": 1,
+      "offset_steps": 268,
+      "count": 1,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 78,
+      "name": "collector-reset-value-alternative",
+      "worlds": 1,
+      "horizon": 1,
+      "offset_steps": 269,
+      "count": 1,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 79,
+      "name": "terminated-nextvalue-1000000.0",
+      "worlds": 1,
+      "horizon": 4,
+      "offset_steps": 270,
+      "count": 4,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 80,
+      "name": "terminated-nextvalue--1000000.0",
+      "worlds": 1,
+      "horizon": 4,
+      "offset_steps": 274,
+      "count": 4,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 81,
+      "name": "truncation-nextvalue-7.0",
+      "worlds": 1,
+      "horizon": 4,
+      "offset_steps": 278,
+      "count": 4,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 82,
+      "name": "truncation-nextvalue-0.0",
+      "worlds": 1,
+      "horizon": 4,
+      "offset_steps": 282,
+      "count": 4,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 83,
+      "name": "signed-zero-cuts",
+      "worlds": 2,
+      "horizon": 4,
+      "offset_steps": 286,
+      "count": 8,
+      "gamma": -0.0,
+      "lambda_": 1.0,
+      "gamma_bits": "0x8000000000000000",
+      "lambda_bits": "0x3ff0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 84,
+      "name": "subnormal-rewards-and-values",
+      "worlds": 1,
+      "horizon": 8,
+      "offset_steps": 294,
+      "count": 8,
+      "gamma": 1.0,
+      "lambda_": 1.0,
+      "gamma_bits": "0x3ff0000000000000",
+      "lambda_bits": "0x3ff0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 85,
+      "name": "subnormal-discount-product",
+      "worlds": 1,
+      "horizon": 8,
+      "offset_steps": 302,
+      "count": 8,
+      "gamma": 5e-324,
+      "lambda_": 0.5,
+      "gamma_bits": "0x1",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 86,
+      "name": "near-one-discount-cancellation",
+      "worlds": 1,
+      "horizon": 128,
+      "offset_steps": 310,
+      "count": 128,
+      "gamma": 0.9999999999999999,
+      "lambda_": 0.9999999999999999,
+      "gamma_bits": "0x3fefffffffffffff",
+      "lambda_bits": "0x3fefffffffffffff",
+      "oracle": "decimal80"
+    },
+    {
+      "case": 87,
+      "name": "unit-discount-long-residuals",
+      "worlds": 1,
+      "horizon": 128,
+      "offset_steps": 438,
+      "count": 128,
+      "gamma": 1.0,
+      "lambda_": 1.0,
+      "gamma_bits": "0x3ff0000000000000",
+      "lambda_bits": "0x3ff0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 88,
+      "name": "max16worlds128steps-continuing",
+      "worlds": 16,
+      "horizon": 128,
+      "offset_steps": 566,
+      "count": 2048,
+      "gamma": 0.75,
+      "lambda_": 0.875,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fec000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 89,
+      "name": "max16worlds128steps-moving-flags",
+      "worlds": 16,
+      "horizon": 128,
+      "offset_steps": 2614,
+      "count": 2048,
+      "gamma": 0.99,
+      "lambda_": 0.95,
+      "gamma_bits": "0x3fefae147ae147ae",
+      "lambda_bits": "0x3fee666666666666",
+      "oracle": "decimal80"
+    },
+    {
+      "case": 90,
+      "name": "world-isolation-large",
+      "worlds": 2,
+      "horizon": 8,
+      "offset_steps": 4662,
+      "count": 16,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 91,
+      "name": "world-isolation-tiny",
+      "worlds": 2,
+      "horizon": 8,
+      "offset_steps": 4678,
+      "count": 16,
+      "gamma": 0.75,
+      "lambda_": 0.5,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fe0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 92,
+      "name": "unit-discount-telescoping",
+      "worlds": 3,
+      "horizon": 7,
+      "offset_steps": 4694,
+      "count": 21,
+      "gamma": 1.0,
+      "lambda_": 1.0,
+      "gamma_bits": "0x3ff0000000000000",
+      "lambda_bits": "0x3ff0000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 93,
+      "name": "arbitrary64-dense",
+      "worlds": 4,
+      "horizon": 13,
+      "offset_steps": 4715,
+      "count": 52,
+      "gamma": 0.99,
+      "lambda_": 0.95,
+      "gamma_bits": "0x3fefae147ae147ae",
+      "lambda_bits": "0x3fee666666666666",
+      "oracle": "decimal80"
+    },
+    {
+      "case": 94,
+      "name": "singleworld-copy-of-maxbatch-world0",
+      "worlds": 1,
+      "horizon": 128,
+      "offset_steps": 4767,
+      "count": 128,
+      "gamma": 0.75,
+      "lambda_": 0.875,
+      "gamma_bits": "0x3fe8000000000000",
+      "lambda_bits": "0x3fec000000000000",
+      "oracle": "fraction"
+    },
+    {
+      "case": 95,
+      "name": "large-small-cancellation-order",
+      "worlds": 1,
+      "horizon": 128,
+      "offset_steps": 4895,
+      "count": 128,
+      "gamma": 1.0,
+      "lambda_": 1.0,
+      "gamma_bits": "0x3ff0000000000000",
+      "lambda_bits": "0x3ff0000000000000",
+      "oracle": "fraction"
+    }
+  ],
+  "gae_steps": 5023,
+  "PPO_cases": [
+    {
+      "name": "zero/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/cap-negative",
+      "rho": 0.9999999999999999,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/negative-one",
+      "rho": 0.9999999999999999,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/negative-eighth",
+      "rho": 0.9999999999999999,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/negative-subnormal",
+      "rho": 0.9999999999999999,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/negative-zero",
+      "rho": 0.9999999999999999,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/zero",
+      "rho": 0.9999999999999999,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/subnormal",
+      "rho": 0.9999999999999999,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/eighth",
+      "rho": 0.9999999999999999,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/one",
+      "rho": 0.9999999999999999,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-below/cap",
+      "rho": 0.9999999999999999,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/cap-negative",
+      "rho": 1.0000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/negative-one",
+      "rho": 1.0000000000000002,
+      "advantage": -1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/negative-eighth",
+      "rho": 1.0000000000000002,
+      "advantage": -0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/negative-subnormal",
+      "rho": 1.0000000000000002,
+      "advantage": -5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/negative-zero",
+      "rho": 1.0000000000000002,
+      "advantage": -0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/zero",
+      "rho": 1.0000000000000002,
+      "advantage": 0.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/subnormal",
+      "rho": 1.0000000000000002,
+      "advantage": 5e-324,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/eighth",
+      "rho": 1.0000000000000002,
+      "advantage": 0.125,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/one",
+      "rho": 1.0000000000000002,
+      "advantage": 1.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "zero/lower-above/cap",
+      "rho": 1.0000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "negative-zero/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/cap-negative",
+      "rho": 0.9999999999999999,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/negative-one",
+      "rho": 0.9999999999999999,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/negative-eighth",
+      "rho": 0.9999999999999999,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/negative-subnormal",
+      "rho": 0.9999999999999999,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/negative-zero",
+      "rho": 0.9999999999999999,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/zero",
+      "rho": 0.9999999999999999,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/subnormal",
+      "rho": 0.9999999999999999,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/eighth",
+      "rho": 0.9999999999999999,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/one",
+      "rho": 0.9999999999999999,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-below/cap",
+      "rho": 0.9999999999999999,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/cap-negative",
+      "rho": 1.0000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/negative-one",
+      "rho": 1.0000000000000002,
+      "advantage": -1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/negative-eighth",
+      "rho": 1.0000000000000002,
+      "advantage": -0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/negative-subnormal",
+      "rho": 1.0000000000000002,
+      "advantage": -5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/negative-zero",
+      "rho": 1.0000000000000002,
+      "advantage": -0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/zero",
+      "rho": 1.0000000000000002,
+      "advantage": 0.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/subnormal",
+      "rho": 1.0000000000000002,
+      "advantage": 5e-324,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/eighth",
+      "rho": 1.0000000000000002,
+      "advantage": 0.125,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/one",
+      "rho": 1.0000000000000002,
+      "advantage": 1.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "negative-zero/lower-above/cap",
+      "rho": 1.0000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": -0.0
+    },
+    {
+      "name": "subnormal/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/cap-negative",
+      "rho": 0.9999999999999999,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/negative-one",
+      "rho": 0.9999999999999999,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/negative-eighth",
+      "rho": 0.9999999999999999,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/negative-subnormal",
+      "rho": 0.9999999999999999,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/negative-zero",
+      "rho": 0.9999999999999999,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/zero",
+      "rho": 0.9999999999999999,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/subnormal",
+      "rho": 0.9999999999999999,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/eighth",
+      "rho": 0.9999999999999999,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/one",
+      "rho": 0.9999999999999999,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-below/cap",
+      "rho": 0.9999999999999999,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/cap-negative",
+      "rho": 1.0000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/negative-one",
+      "rho": 1.0000000000000002,
+      "advantage": -1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/negative-eighth",
+      "rho": 1.0000000000000002,
+      "advantage": -0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/negative-subnormal",
+      "rho": 1.0000000000000002,
+      "advantage": -5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/negative-zero",
+      "rho": 1.0000000000000002,
+      "advantage": -0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/zero",
+      "rho": 1.0000000000000002,
+      "advantage": 0.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/subnormal",
+      "rho": 1.0000000000000002,
+      "advantage": 5e-324,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/eighth",
+      "rho": 1.0000000000000002,
+      "advantage": 0.125,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/one",
+      "rho": 1.0000000000000002,
+      "advantage": 1.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "subnormal/lower-above/cap",
+      "rho": 1.0000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 5e-324
+    },
+    {
+      "name": "dyadic/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/cap-negative",
+      "rho": 0.8749999999999999,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/negative-one",
+      "rho": 0.8749999999999999,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/negative-eighth",
+      "rho": 0.8749999999999999,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/negative-subnormal",
+      "rho": 0.8749999999999999,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/negative-zero",
+      "rho": 0.8749999999999999,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/zero",
+      "rho": 0.8749999999999999,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/subnormal",
+      "rho": 0.8749999999999999,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/eighth",
+      "rho": 0.8749999999999999,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/one",
+      "rho": 0.8749999999999999,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-below/cap",
+      "rho": 0.8749999999999999,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/cap-negative",
+      "rho": 0.875,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/negative-one",
+      "rho": 0.875,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/negative-eighth",
+      "rho": 0.875,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/negative-subnormal",
+      "rho": 0.875,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/negative-zero",
+      "rho": 0.875,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/zero",
+      "rho": 0.875,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/subnormal",
+      "rho": 0.875,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/eighth",
+      "rho": 0.875,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/one",
+      "rho": 0.875,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower/cap",
+      "rho": 0.875,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/cap-negative",
+      "rho": 0.8750000000000001,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/negative-one",
+      "rho": 0.8750000000000001,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/negative-eighth",
+      "rho": 0.8750000000000001,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/negative-subnormal",
+      "rho": 0.8750000000000001,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/negative-zero",
+      "rho": 0.8750000000000001,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/zero",
+      "rho": 0.8750000000000001,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/subnormal",
+      "rho": 0.8750000000000001,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/eighth",
+      "rho": 0.8750000000000001,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/one",
+      "rho": 0.8750000000000001,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/lower-above/cap",
+      "rho": 0.8750000000000001,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/cap-negative",
+      "rho": 1.1249999999999998,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/negative-one",
+      "rho": 1.1249999999999998,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/negative-eighth",
+      "rho": 1.1249999999999998,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/negative-subnormal",
+      "rho": 1.1249999999999998,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/negative-zero",
+      "rho": 1.1249999999999998,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/zero",
+      "rho": 1.1249999999999998,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/subnormal",
+      "rho": 1.1249999999999998,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/eighth",
+      "rho": 1.1249999999999998,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/one",
+      "rho": 1.1249999999999998,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-below/cap",
+      "rho": 1.1249999999999998,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/cap-negative",
+      "rho": 1.125,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/negative-one",
+      "rho": 1.125,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/negative-eighth",
+      "rho": 1.125,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/negative-subnormal",
+      "rho": 1.125,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/negative-zero",
+      "rho": 1.125,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/zero",
+      "rho": 1.125,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/subnormal",
+      "rho": 1.125,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/eighth",
+      "rho": 1.125,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/one",
+      "rho": 1.125,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper/cap",
+      "rho": 1.125,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/cap-negative",
+      "rho": 1.1250000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/negative-one",
+      "rho": 1.1250000000000002,
+      "advantage": -1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/negative-eighth",
+      "rho": 1.1250000000000002,
+      "advantage": -0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/negative-subnormal",
+      "rho": 1.1250000000000002,
+      "advantage": -5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/negative-zero",
+      "rho": 1.1250000000000002,
+      "advantage": -0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/zero",
+      "rho": 1.1250000000000002,
+      "advantage": 0.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/subnormal",
+      "rho": 1.1250000000000002,
+      "advantage": 5e-324,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/eighth",
+      "rho": 1.1250000000000002,
+      "advantage": 0.125,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/one",
+      "rho": 1.1250000000000002,
+      "advantage": 1.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "dyadic/upper-above/cap",
+      "rho": 1.1250000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 0.125
+    },
+    {
+      "name": "point2-below/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/cap-negative",
+      "rho": 0.7999999999999999,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/negative-one",
+      "rho": 0.7999999999999999,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/negative-eighth",
+      "rho": 0.7999999999999999,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/negative-subnormal",
+      "rho": 0.7999999999999999,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/negative-zero",
+      "rho": 0.7999999999999999,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/zero",
+      "rho": 0.7999999999999999,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/subnormal",
+      "rho": 0.7999999999999999,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/eighth",
+      "rho": 0.7999999999999999,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/one",
+      "rho": 0.7999999999999999,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-below/cap",
+      "rho": 0.7999999999999999,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/cap-negative",
+      "rho": 0.8,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/negative-one",
+      "rho": 0.8,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/negative-eighth",
+      "rho": 0.8,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/negative-subnormal",
+      "rho": 0.8,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/negative-zero",
+      "rho": 0.8,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/zero",
+      "rho": 0.8,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/subnormal",
+      "rho": 0.8,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/eighth",
+      "rho": 0.8,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/one",
+      "rho": 0.8,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower/cap",
+      "rho": 0.8,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/cap-negative",
+      "rho": 0.8000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/negative-one",
+      "rho": 0.8000000000000002,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/negative-eighth",
+      "rho": 0.8000000000000002,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/negative-subnormal",
+      "rho": 0.8000000000000002,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/negative-zero",
+      "rho": 0.8000000000000002,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/zero",
+      "rho": 0.8000000000000002,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/subnormal",
+      "rho": 0.8000000000000002,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/eighth",
+      "rho": 0.8000000000000002,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/one",
+      "rho": 0.8000000000000002,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/lower-above/cap",
+      "rho": 0.8000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/cap-negative",
+      "rho": 1.1999999999999997,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/negative-one",
+      "rho": 1.1999999999999997,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/negative-eighth",
+      "rho": 1.1999999999999997,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/negative-subnormal",
+      "rho": 1.1999999999999997,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/negative-zero",
+      "rho": 1.1999999999999997,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/zero",
+      "rho": 1.1999999999999997,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/subnormal",
+      "rho": 1.1999999999999997,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/eighth",
+      "rho": 1.1999999999999997,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/one",
+      "rho": 1.1999999999999997,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-below/cap",
+      "rho": 1.1999999999999997,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/cap-negative",
+      "rho": 1.2,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/negative-one",
+      "rho": 1.2,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/negative-eighth",
+      "rho": 1.2,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/negative-subnormal",
+      "rho": 1.2,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/negative-zero",
+      "rho": 1.2,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/zero",
+      "rho": 1.2,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/subnormal",
+      "rho": 1.2,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/eighth",
+      "rho": 1.2,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/one",
+      "rho": 1.2,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper/cap",
+      "rho": 1.2,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/cap-negative",
+      "rho": 1.2000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/negative-one",
+      "rho": 1.2000000000000002,
+      "advantage": -1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/negative-eighth",
+      "rho": 1.2000000000000002,
+      "advantage": -0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/negative-subnormal",
+      "rho": 1.2000000000000002,
+      "advantage": -5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/negative-zero",
+      "rho": 1.2000000000000002,
+      "advantage": -0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/zero",
+      "rho": 1.2000000000000002,
+      "advantage": 0.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/subnormal",
+      "rho": 1.2000000000000002,
+      "advantage": 5e-324,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/eighth",
+      "rho": 1.2000000000000002,
+      "advantage": 0.125,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/one",
+      "rho": 1.2000000000000002,
+      "advantage": 1.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2-below/upper-above/cap",
+      "rho": 1.2000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 0.19999999999999998
+    },
+    {
+      "name": "point2/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/cap-negative",
+      "rho": 0.7999999999999999,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/negative-one",
+      "rho": 0.7999999999999999,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/negative-eighth",
+      "rho": 0.7999999999999999,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/negative-subnormal",
+      "rho": 0.7999999999999999,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/negative-zero",
+      "rho": 0.7999999999999999,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/zero",
+      "rho": 0.7999999999999999,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/subnormal",
+      "rho": 0.7999999999999999,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/eighth",
+      "rho": 0.7999999999999999,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/one",
+      "rho": 0.7999999999999999,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-below/cap",
+      "rho": 0.7999999999999999,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/cap-negative",
+      "rho": 0.8,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/negative-one",
+      "rho": 0.8,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/negative-eighth",
+      "rho": 0.8,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/negative-subnormal",
+      "rho": 0.8,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/negative-zero",
+      "rho": 0.8,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/zero",
+      "rho": 0.8,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/subnormal",
+      "rho": 0.8,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/eighth",
+      "rho": 0.8,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/one",
+      "rho": 0.8,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower/cap",
+      "rho": 0.8,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/cap-negative",
+      "rho": 0.8000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/negative-one",
+      "rho": 0.8000000000000002,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/negative-eighth",
+      "rho": 0.8000000000000002,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/negative-subnormal",
+      "rho": 0.8000000000000002,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/negative-zero",
+      "rho": 0.8000000000000002,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/zero",
+      "rho": 0.8000000000000002,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/subnormal",
+      "rho": 0.8000000000000002,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/eighth",
+      "rho": 0.8000000000000002,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/one",
+      "rho": 0.8000000000000002,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/lower-above/cap",
+      "rho": 0.8000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/cap-negative",
+      "rho": 1.1999999999999997,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/negative-one",
+      "rho": 1.1999999999999997,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/negative-eighth",
+      "rho": 1.1999999999999997,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/negative-subnormal",
+      "rho": 1.1999999999999997,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/negative-zero",
+      "rho": 1.1999999999999997,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/zero",
+      "rho": 1.1999999999999997,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/subnormal",
+      "rho": 1.1999999999999997,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/eighth",
+      "rho": 1.1999999999999997,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/one",
+      "rho": 1.1999999999999997,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-below/cap",
+      "rho": 1.1999999999999997,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/cap-negative",
+      "rho": 1.2,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/negative-one",
+      "rho": 1.2,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/negative-eighth",
+      "rho": 1.2,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/negative-subnormal",
+      "rho": 1.2,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/negative-zero",
+      "rho": 1.2,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/zero",
+      "rho": 1.2,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/subnormal",
+      "rho": 1.2,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/eighth",
+      "rho": 1.2,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/one",
+      "rho": 1.2,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper/cap",
+      "rho": 1.2,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/cap-negative",
+      "rho": 1.2000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/negative-one",
+      "rho": 1.2000000000000002,
+      "advantage": -1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/negative-eighth",
+      "rho": 1.2000000000000002,
+      "advantage": -0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/negative-subnormal",
+      "rho": 1.2000000000000002,
+      "advantage": -5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/negative-zero",
+      "rho": 1.2000000000000002,
+      "advantage": -0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/zero",
+      "rho": 1.2000000000000002,
+      "advantage": 0.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/subnormal",
+      "rho": 1.2000000000000002,
+      "advantage": 5e-324,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/eighth",
+      "rho": 1.2000000000000002,
+      "advantage": 0.125,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/one",
+      "rho": 1.2000000000000002,
+      "advantage": 1.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2/upper-above/cap",
+      "rho": 1.2000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "point2-above/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/cap-negative",
+      "rho": 0.7999999999999998,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/negative-one",
+      "rho": 0.7999999999999998,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/negative-eighth",
+      "rho": 0.7999999999999998,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/negative-subnormal",
+      "rho": 0.7999999999999998,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/negative-zero",
+      "rho": 0.7999999999999998,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/zero",
+      "rho": 0.7999999999999998,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/subnormal",
+      "rho": 0.7999999999999998,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/eighth",
+      "rho": 0.7999999999999998,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/one",
+      "rho": 0.7999999999999998,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-below/cap",
+      "rho": 0.7999999999999998,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/cap-negative",
+      "rho": 0.7999999999999999,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/negative-one",
+      "rho": 0.7999999999999999,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/negative-eighth",
+      "rho": 0.7999999999999999,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/negative-subnormal",
+      "rho": 0.7999999999999999,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/negative-zero",
+      "rho": 0.7999999999999999,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/zero",
+      "rho": 0.7999999999999999,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/subnormal",
+      "rho": 0.7999999999999999,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/eighth",
+      "rho": 0.7999999999999999,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/one",
+      "rho": 0.7999999999999999,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower/cap",
+      "rho": 0.7999999999999999,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/cap-negative",
+      "rho": 0.8,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/negative-one",
+      "rho": 0.8,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/negative-eighth",
+      "rho": 0.8,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/negative-subnormal",
+      "rho": 0.8,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/negative-zero",
+      "rho": 0.8,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/zero",
+      "rho": 0.8,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/subnormal",
+      "rho": 0.8,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/eighth",
+      "rho": 0.8,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/one",
+      "rho": 0.8,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/lower-above/cap",
+      "rho": 0.8,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/cap-negative",
+      "rho": 1.1999999999999997,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/negative-one",
+      "rho": 1.1999999999999997,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/negative-eighth",
+      "rho": 1.1999999999999997,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/negative-subnormal",
+      "rho": 1.1999999999999997,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/negative-zero",
+      "rho": 1.1999999999999997,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/zero",
+      "rho": 1.1999999999999997,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/subnormal",
+      "rho": 1.1999999999999997,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/eighth",
+      "rho": 1.1999999999999997,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/one",
+      "rho": 1.1999999999999997,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-below/cap",
+      "rho": 1.1999999999999997,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/cap-negative",
+      "rho": 1.2,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/negative-one",
+      "rho": 1.2,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/negative-eighth",
+      "rho": 1.2,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/negative-subnormal",
+      "rho": 1.2,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/negative-zero",
+      "rho": 1.2,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/zero",
+      "rho": 1.2,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/subnormal",
+      "rho": 1.2,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/eighth",
+      "rho": 1.2,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/one",
+      "rho": 1.2,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper/cap",
+      "rho": 1.2,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/cap-negative",
+      "rho": 1.2000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/negative-one",
+      "rho": 1.2000000000000002,
+      "advantage": -1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/negative-eighth",
+      "rho": 1.2000000000000002,
+      "advantage": -0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/negative-subnormal",
+      "rho": 1.2000000000000002,
+      "advantage": -5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/negative-zero",
+      "rho": 1.2000000000000002,
+      "advantage": -0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/zero",
+      "rho": 1.2000000000000002,
+      "advantage": 0.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/subnormal",
+      "rho": 1.2000000000000002,
+      "advantage": 5e-324,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/eighth",
+      "rho": 1.2000000000000002,
+      "advantage": 0.125,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/one",
+      "rho": 1.2000000000000002,
+      "advantage": 1.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "point2-above/upper-above/cap",
+      "rho": 1.2000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 0.20000000000000004
+    },
+    {
+      "name": "half/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/cap-negative",
+      "rho": 0.49999999999999994,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/negative-one",
+      "rho": 0.49999999999999994,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/negative-eighth",
+      "rho": 0.49999999999999994,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/negative-subnormal",
+      "rho": 0.49999999999999994,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/negative-zero",
+      "rho": 0.49999999999999994,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/zero",
+      "rho": 0.49999999999999994,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/subnormal",
+      "rho": 0.49999999999999994,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/eighth",
+      "rho": 0.49999999999999994,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/one",
+      "rho": 0.49999999999999994,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-below/cap",
+      "rho": 0.49999999999999994,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/cap-negative",
+      "rho": 0.5000000000000001,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/negative-one",
+      "rho": 0.5000000000000001,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/negative-eighth",
+      "rho": 0.5000000000000001,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/negative-subnormal",
+      "rho": 0.5000000000000001,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/negative-zero",
+      "rho": 0.5000000000000001,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/zero",
+      "rho": 0.5000000000000001,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/subnormal",
+      "rho": 0.5000000000000001,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/eighth",
+      "rho": 0.5000000000000001,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/one",
+      "rho": 0.5000000000000001,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/lower-above/cap",
+      "rho": 0.5000000000000001,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/cap-negative",
+      "rho": 1.4999999999999998,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/negative-one",
+      "rho": 1.4999999999999998,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/negative-eighth",
+      "rho": 1.4999999999999998,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/negative-subnormal",
+      "rho": 1.4999999999999998,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/negative-zero",
+      "rho": 1.4999999999999998,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/zero",
+      "rho": 1.4999999999999998,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/subnormal",
+      "rho": 1.4999999999999998,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/eighth",
+      "rho": 1.4999999999999998,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/one",
+      "rho": 1.4999999999999998,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-below/cap",
+      "rho": 1.4999999999999998,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/cap-negative",
+      "rho": 1.5,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/negative-one",
+      "rho": 1.5,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/negative-eighth",
+      "rho": 1.5,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/negative-subnormal",
+      "rho": 1.5,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/negative-zero",
+      "rho": 1.5,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/zero",
+      "rho": 1.5,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/subnormal",
+      "rho": 1.5,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/eighth",
+      "rho": 1.5,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/one",
+      "rho": 1.5,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper/cap",
+      "rho": 1.5,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/cap-negative",
+      "rho": 1.5000000000000002,
+      "advantage": -1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/negative-one",
+      "rho": 1.5000000000000002,
+      "advantage": -1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/negative-eighth",
+      "rho": 1.5000000000000002,
+      "advantage": -0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/negative-subnormal",
+      "rho": 1.5000000000000002,
+      "advantage": -5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/negative-zero",
+      "rho": 1.5000000000000002,
+      "advantage": -0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/zero",
+      "rho": 1.5000000000000002,
+      "advantage": 0.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/subnormal",
+      "rho": 1.5000000000000002,
+      "advantage": 5e-324,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/eighth",
+      "rho": 1.5000000000000002,
+      "advantage": 0.125,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/one",
+      "rho": 1.5000000000000002,
+      "advantage": 1.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "half/upper-above/cap",
+      "rho": 1.5000000000000002,
+      "advantage": 1000000000.0,
+      "epsilon": 0.5
+    },
+    {
+      "name": "one-below/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/cap-negative",
+      "rho": 1.9999999999999998,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/negative-one",
+      "rho": 1.9999999999999998,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/negative-eighth",
+      "rho": 1.9999999999999998,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/negative-subnormal",
+      "rho": 1.9999999999999998,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/negative-zero",
+      "rho": 1.9999999999999998,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/zero",
+      "rho": 1.9999999999999998,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/subnormal",
+      "rho": 1.9999999999999998,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/eighth",
+      "rho": 1.9999999999999998,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/one",
+      "rho": 1.9999999999999998,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-below/cap",
+      "rho": 1.9999999999999998,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/cap-negative",
+      "rho": 2.0000000000000004,
+      "advantage": -1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/negative-one",
+      "rho": 2.0000000000000004,
+      "advantage": -1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/negative-eighth",
+      "rho": 2.0000000000000004,
+      "advantage": -0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/negative-subnormal",
+      "rho": 2.0000000000000004,
+      "advantage": -5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/negative-zero",
+      "rho": 2.0000000000000004,
+      "advantage": -0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/zero",
+      "rho": 2.0000000000000004,
+      "advantage": 0.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/subnormal",
+      "rho": 2.0000000000000004,
+      "advantage": 5e-324,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/eighth",
+      "rho": 2.0000000000000004,
+      "advantage": 0.125,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/one",
+      "rho": 2.0000000000000004,
+      "advantage": 1.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one-below/upper-above/cap",
+      "rho": 2.0000000000000004,
+      "advantage": 1000000000.0,
+      "epsilon": 0.9999999999999999
+    },
+    {
+      "name": "one/minimum/cap-negative",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/negative-one",
+      "rho": 9.5367431640625e-07,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/negative-eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/negative-subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/negative-zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/zero",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/subnormal",
+      "rho": 9.5367431640625e-07,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/eighth",
+      "rho": 9.5367431640625e-07,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/one",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum/cap",
+      "rho": 9.5367431640625e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/cap-negative",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/negative-one",
+      "rho": 9.536743164062502e-07,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/negative-eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/negative-subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/negative-zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/zero",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/subnormal",
+      "rho": 9.536743164062502e-07,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/eighth",
+      "rho": 9.536743164062502e-07,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/one",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/minimum-next/cap",
+      "rho": 9.536743164062502e-07,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/cap-negative",
+      "rho": 0.25,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/negative-one",
+      "rho": 0.25,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/negative-eighth",
+      "rho": 0.25,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/negative-subnormal",
+      "rho": 0.25,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/negative-zero",
+      "rho": 0.25,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/zero",
+      "rho": 0.25,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/subnormal",
+      "rho": 0.25,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/eighth",
+      "rho": 0.25,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/one",
+      "rho": 0.25,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/quarter/cap",
+      "rho": 0.25,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/cap-negative",
+      "rho": 0.5,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/negative-one",
+      "rho": 0.5,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/negative-eighth",
+      "rho": 0.5,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/negative-subnormal",
+      "rho": 0.5,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/negative-zero",
+      "rho": 0.5,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/zero",
+      "rho": 0.5,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/subnormal",
+      "rho": 0.5,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/eighth",
+      "rho": 0.5,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/one",
+      "rho": 0.5,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/half/cap",
+      "rho": 0.5,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/cap-negative",
+      "rho": 1.0,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/negative-one",
+      "rho": 1.0,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/negative-eighth",
+      "rho": 1.0,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/negative-subnormal",
+      "rho": 1.0,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/negative-zero",
+      "rho": 1.0,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/zero",
+      "rho": 1.0,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/subnormal",
+      "rho": 1.0,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/eighth",
+      "rho": 1.0,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/one",
+      "rho": 1.0,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/one/cap",
+      "rho": 1.0,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/cap-negative",
+      "rho": 2.0,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/negative-one",
+      "rho": 2.0,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/negative-eighth",
+      "rho": 2.0,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/negative-subnormal",
+      "rho": 2.0,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/negative-zero",
+      "rho": 2.0,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/zero",
+      "rho": 2.0,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/subnormal",
+      "rho": 2.0,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/eighth",
+      "rho": 2.0,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/one",
+      "rho": 2.0,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/two/cap",
+      "rho": 2.0,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/cap-negative",
+      "rho": 16.0,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/negative-one",
+      "rho": 16.0,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/negative-eighth",
+      "rho": 16.0,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/negative-subnormal",
+      "rho": 16.0,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/negative-zero",
+      "rho": 16.0,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/zero",
+      "rho": 16.0,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/subnormal",
+      "rho": 16.0,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/eighth",
+      "rho": 16.0,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/one",
+      "rho": 16.0,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/maximum/cap",
+      "rho": 16.0,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/cap-negative",
+      "rho": 1.9999999999999998,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/negative-one",
+      "rho": 1.9999999999999998,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/negative-eighth",
+      "rho": 1.9999999999999998,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/negative-subnormal",
+      "rho": 1.9999999999999998,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/negative-zero",
+      "rho": 1.9999999999999998,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/zero",
+      "rho": 1.9999999999999998,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/subnormal",
+      "rho": 1.9999999999999998,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/eighth",
+      "rho": 1.9999999999999998,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/one",
+      "rho": 1.9999999999999998,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-below/cap",
+      "rho": 1.9999999999999998,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/cap-negative",
+      "rho": 2.0000000000000004,
+      "advantage": -1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/negative-one",
+      "rho": 2.0000000000000004,
+      "advantage": -1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/negative-eighth",
+      "rho": 2.0000000000000004,
+      "advantage": -0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/negative-subnormal",
+      "rho": 2.0000000000000004,
+      "advantage": -5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/negative-zero",
+      "rho": 2.0000000000000004,
+      "advantage": -0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/zero",
+      "rho": 2.0000000000000004,
+      "advantage": 0.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/subnormal",
+      "rho": 2.0000000000000004,
+      "advantage": 5e-324,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/eighth",
+      "rho": 2.0000000000000004,
+      "advantage": 0.125,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/one",
+      "rho": 2.0000000000000004,
+      "advantage": 1.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "one/upper-above/cap",
+      "rho": 2.0000000000000004,
+      "advantage": 1000000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "GAE-composable-0.0-9.5367431640625e-07--384000000.0",
+      "rho": 9.5367431640625e-07,
+      "advantage": -384000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "GAE-composable-0.0-9.5367431640625e-07-384000000.0",
+      "rho": 9.5367431640625e-07,
+      "advantage": 384000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "GAE-composable-0.0-1.0--384000000.0",
+      "rho": 1.0,
+      "advantage": -384000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "GAE-composable-0.0-1.0-384000000.0",
+      "rho": 1.0,
+      "advantage": 384000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "GAE-composable-0.0-16.0--384000000.0",
+      "rho": 16.0,
+      "advantage": -384000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "GAE-composable-0.0-16.0-384000000.0",
+      "rho": 16.0,
+      "advantage": 384000000.0,
+      "epsilon": 0.0
+    },
+    {
+      "name": "GAE-composable-0.2-9.5367431640625e-07--384000000.0",
+      "rho": 9.5367431640625e-07,
+      "advantage": -384000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "GAE-composable-0.2-9.5367431640625e-07-384000000.0",
+      "rho": 9.5367431640625e-07,
+      "advantage": 384000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "GAE-composable-0.2-1.0--384000000.0",
+      "rho": 1.0,
+      "advantage": -384000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "GAE-composable-0.2-1.0-384000000.0",
+      "rho": 1.0,
+      "advantage": 384000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "GAE-composable-0.2-16.0--384000000.0",
+      "rho": 16.0,
+      "advantage": -384000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "GAE-composable-0.2-16.0-384000000.0",
+      "rho": 16.0,
+      "advantage": 384000000.0,
+      "epsilon": 0.2
+    },
+    {
+      "name": "GAE-composable-1.0-9.5367431640625e-07--384000000.0",
+      "rho": 9.5367431640625e-07,
+      "advantage": -384000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "GAE-composable-1.0-9.5367431640625e-07-384000000.0",
+      "rho": 9.5367431640625e-07,
+      "advantage": 384000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "GAE-composable-1.0-1.0--384000000.0",
+      "rho": 1.0,
+      "advantage": -384000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "GAE-composable-1.0-1.0-384000000.0",
+      "rho": 1.0,
+      "advantage": 384000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "GAE-composable-1.0-16.0--384000000.0",
+      "rho": 16.0,
+      "advantage": -384000000.0,
+      "epsilon": 1.0
+    },
+    {
+      "name": "GAE-composable-1.0-16.0-384000000.0",
+      "rho": 16.0,
+      "advantage": 384000000.0,
+      "epsilon": 1.0
+    }
+  ],
+  "counts": {
+    "gae_cases": 96,
+    "gae_rows": 5023,
+    "PPO_cases": 1108
+  },
+  "sources": [
+    {
+      "title": "High-Dimensional Continuous Control Using Generalized Advantage Estimation",
+      "revision": "arXiv1506.02438v6",
+      "equation": "16",
+      "url": "https://arxiv.org/pdf/1506.02438v6"
+    },
+    {
+      "title": "Proximal Policy Optimization Algorithms",
+      "revision": "arXiv1707.06347v2",
+      "equation": "7",
+      "url": "https://arxiv.org/pdf/1707.06347v2"
+    },
+    {
+      "title": "Time Limits in Reinforcement Learning",
+      "venue": "PMLR80:4045-4054,2018",
+      "url": "https://proceedings.mlr.press/v80/pardo18a.html"
+    }
+  ],
+  "paper_vs_owned_profile": "Papers provide GAE/clippedsurrogate andtime-limitbootstrapping motivation. Bounds,finiteflags,maskoutput/layout,roundedknots/subgradient,atomicity andnumericprofileareowned explicitcontracts.",
+  "source": {
+    "psionic/tests/robotics/locomotion_reference.py": {
+      "bytes": 17341,
+      "sha256": "f78d03724bcb040292ba2408db3108962f20e5980ab0ad53291edcabbaeb14d0"
+    }
+  }
+}

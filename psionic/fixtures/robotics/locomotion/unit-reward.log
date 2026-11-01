@@ -1,0 +1,4 @@
+psionic/tests/robotics/locomotion_bad_reward.coax:2:159: error[E0317]: argument 2 of 'rcp_surrogate' is RgaReward, given Quantity(UnitOne, f64)
+  main :: () {rho:rlu.Quantity(UnitOne,f64);epsilon:rlu.Quantity(UnitOne,f64);advantage:rlu.Quantity(UnitOne,f64);output:[1]RcpOutput;status:=rcp_surrogate(rho,advantage,epsilon,output[..]);}
+                                                                                                                                                                ^
+1 error

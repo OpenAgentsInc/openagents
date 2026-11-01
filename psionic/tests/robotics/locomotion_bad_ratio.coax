@@ -1,0 +1,2 @@
+#load "../../lib/robotics/locomotion.coax";
+main :: () {rho:rlu.Quantity(rlu.Metre,f64);epsilon:rlu.Quantity(UnitOne,f64);advantage:RgaReward;output:[1]RcpOutput;status:=rcp_surrogate(rho,advantage,epsilon,output[..]);}

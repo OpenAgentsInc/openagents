@@ -1,0 +1,44 @@
+{
+  "schema": "psionic.locomotion-foundation.gate-qualification.v1",
+  "passed": true,
+  "syntax_pass": true,
+  "source": {
+    "psionic/tests/robotics/check-locomotion.sh": {
+      "bytes": 402,
+      "sha256": "e01c42c801b58e63a50f7d5115d48c7f975157c15aa3e08b5e766714ad46ddf8"
+    },
+    "psionic/tests/robotics/locomotion_native_reference.py": {
+      "bytes": 16424,
+      "sha256": "adc4f2e6a17c9aac40e93cea6436e345987810544e4d11eb718f852ad57efa36"
+    }
+  },
+  "metadata_plan": {
+    "bytes": 5590,
+    "sha256": "f180e2387a644cc2eb48fb5038642d0cfa7076eecee8bc34ac945f0abc6c072c"
+  },
+  "metadata_plan_numeric_path_executed": false,
+  "stub": {
+    "argv": [
+      "bash",
+      "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/check-locomotion.sh",
+      "/tmp/locomotion-gate-routing-first/would-be-native-output",
+      "--plan"
+    ],
+    "observed": [
+      "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/locomotion_native_reference.py",
+      "--work-dir",
+      "/tmp/locomotion-gate-routing-first/would-be-native-output",
+      "--coax",
+      "/tmp/locomotion-gate-routing-first/compiler-must-not-run",
+      "--plan"
+    ],
+    "exit": 0,
+    "real_compiler_native_model_calls": 0
+  },
+  "gate_numerical_path_repeated_during_packaging": false,
+  "underlying_native_proof": {
+    "bytes": 21900,
+    "sha256": "890ae428e387bdd37846feadbe1dbc7e1c12216c4f233e9a93aa322b2273edc6"
+  },
+  "scope": "Thin shell uses caller COAX or repository current compiler; no private compiler/cache fallback. First native profile remains Darwin-arm64; no other-platform qualification claimed."
+}

@@ -1,0 +1,101 @@
+{
+  "schema": "psionic.locomotion.example.v1",
+  "prewrite": {
+    "source": {
+      "bytes": 1677,
+      "sha256": "46c0569ebeba182a6bb0d677ad50bc9d6f74f6de66c4ed4b3bd1c6d8540fdd07"
+    },
+    "golden": {
+      "bytes": 621,
+      "sha256": "d7d4a9c3a6939c139a969f46f5bfa3f6dc5b7dd4a198efa19f2ca49e29588f4b"
+    },
+    "basis": "Prewritten before first execution from four independently hand-calculated dyadic rows: gamma=lambda=.5,adv[1.25,1,5,-99],target[1.75,2,5,-99]. PPOmin(1.5*1.25,1.25*1.25)=1.5625, formal active gradient0. No learned/model/environment result."
+  },
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "checks": [
+    {
+      "mode": "debug",
+      "exit": 0,
+      "seconds": 0.4650100410217419,
+      "exact_prewritten_golden": true,
+      "generated_c": {
+        "bytes": 72899,
+        "sha256": "3dd1987664add252b1749dd25956e4efd9ceb31cfc5a7193358e98cb91da20a3"
+      },
+      "binary": {
+        "bytes": 53944,
+        "sha256": "16f987cb98b63a3efbc98ee284e1902a1d6aaeb70ff38c75201bb89506fb5ad1"
+      },
+      "stdout": {
+        "bytes": 621,
+        "sha256": "d7d4a9c3a6939c139a969f46f5bfa3f6dc5b7dd4a198efa19f2ca49e29588f4b"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "mode": "release",
+      "exit": 0,
+      "seconds": 0.6400191659922712,
+      "exact_prewritten_golden": true,
+      "generated_c": {
+        "bytes": 45348,
+        "sha256": "26a483543eb0c80f977634d8823d2f6101cea0f173380d60b71a8734e91839d5"
+      },
+      "binary": {
+        "bytes": 34552,
+        "sha256": "de5d889e908c807fb56549953a2da4a8ae2e13dc9811ca6679d862c717c810bd"
+      },
+      "stdout": {
+        "bytes": 621,
+        "sha256": "d7d4a9c3a6939c139a969f46f5bfa3f6dc5b7dd4a198efa19f2ca49e29588f4b"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "passed": true,
+  "scope": "Pure return-target/surrogate fixtures only; no rollout, reset, policy/critic network, exp/logprob, optimizer, training, simulator, NN or SDK.",
+  "dependencies": {
+    "coax/lib/quantity.coax": {
+      "bytes": 585,
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "psionic/examples/locomotion-targets.coax": {
+      "bytes": 1677,
+      "sha256": "46c0569ebeba182a6bb0d677ad50bc9d6f74f6de66c4ed4b3bd1c6d8540fdd07"
+    },
+    "psionic/lib/robotics/locomotion/fixtures.coax": {
+      "bytes": 928,
+      "sha256": "b7eb84112d283c05d8cb71ee1f10aa555c12537504378f250295baf108a72713"
+    },
+    "psionic/lib/robotics/locomotion/gae.coax": {
+      "bytes": 8544,
+      "sha256": "7fd60401ad6b602587b5298fc166f29995fcd8152ed87d3308f5b576c8ffdcae"
+    },
+    "psionic/lib/robotics/locomotion/ppo-surrogate.coax": {
+      "bytes": 7175,
+      "sha256": "db03f7df27e0bcfbf6c319d2fd9b2021539539d60b388820da7310cc018870d6"
+    },
+    "psionic/lib/robotics/locomotion/types.coax": {
+      "bytes": 610,
+      "sha256": "b94591e9210b25abb74a3354d4630cfdf40127d780746c40a45c5d0c5d228d15"
+    },
+    "psionic/lib/robotics/locomotion.coax": {
+      "bytes": 152,
+      "sha256": "6bb99eeb9a11071cc3b5ba5f991e297598529ecf92f0a8a413f73f26f759e736"
+    }
+  },
+  "source_qualification": {
+    "bytes": 4121,
+    "sha256": "b4b3718f9e4ebedfd2129bca0822cc0162a093358f09c829eea6ec926bdd88dd"
+  },
+  "metadata_binding": "Post-execution read-only source closure, numerical producer bodies frozen; no source/example rerun."
+}

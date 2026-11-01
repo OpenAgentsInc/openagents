@@ -1,0 +1,3 @@
+// First CPU-F64 locomotion-learning math profile, not a learner or walking policy.
+#load "locomotion/gae.coax";
+#load "locomotion/ppo-surrogate.coax";

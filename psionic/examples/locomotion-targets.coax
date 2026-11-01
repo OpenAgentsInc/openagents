@@ -1,0 +1,24 @@
+#import "Basic";
+#load "../lib/robotics/locomotion.coax";
+locomotion_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("two synthetic fragments; no environment or learner\n");
+// book:begin locomotion-targets
+ steps:[4]RgaStep;
+ steps[0].reward.value=1;steps[0].current_value.value=0.5;steps[0].next_value.value=1;
+ steps[1].reward.value=2;steps[1].current_value.value=1;steps[1].next_value.value=100;steps[1].terminated=1;
+ steps[2].reward.value=3;steps[2].next_value.value=4;steps[2].truncated=1;
+ steps[3].reward.value= -100;steps[3].next_value.value=2;
+ targets:[4]RgaOutput;
+ #assert rga_returns_raw(2,2,0.5,0.5,steps[..],targets[..])==RgaStatus.ok;
+ for i:0..<4 {
+  print("row %: bootstrap %, trace %; delta %, advantage %, target % micro-reward\n",i,targets[i].bootstrap,targets[i].trace,locomotion_micro(targets[i].delta.value),locomotion_micro(targets[i].advantage.value),locomotion_micro(targets[i].lambda_return.value));
+ }
+ rho:rlu.Quantity(UnitOne,f64);epsilon:rlu.Quantity(UnitOne,f64);rho.value=1.5;epsilon.value=0.25;
+ objective:[1]RcpOutput;
+ #assert rcp_surrogate(rho,targets[0].advantage,epsilon,objective[..])==RcpStatus.ok;
+ print("PPO ratio %; clipped ratio %; active %\n",locomotion_micro(rho.value),locomotion_micro(objective[0].clipped_ratio.value),objective[0].clipped_active);
+ print("surrogate %, loss %, formal logp gradient % micro-reward\n",locomotion_micro(objective[0].surrogate.value),locomotion_micro(objective[0].loss.value),locomotion_micro(objective[0].dloss_dlogp.value));
+// book:end locomotion-targets
+ print("a truncated row bootstraps its final value; it never traces into the reset row\n");
+}

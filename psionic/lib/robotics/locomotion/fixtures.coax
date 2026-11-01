@@ -1,0 +1,5 @@
+#load "types.coax";
+rga_poison :: ()->RgaOutput {o:RgaOutput;o.delta.value=101;o.advantage.value=102;o.lambda_return.value=103;o.bootstrap=104;o.trace=105;return o;}
+rga_same :: (a:RgaOutput,b:RgaOutput) {#assert f64_bits(a.delta.value)==f64_bits(b.delta.value) && f64_bits(a.advantage.value)==f64_bits(b.advantage.value) && f64_bits(a.lambda_return.value)==f64_bits(b.lambda_return.value) && a.bootstrap==b.bootstrap && a.trace==b.trace;}
+rcp_poison :: ()->RcpOutput {o:RcpOutput;o.surrogate.value=101;o.loss.value=102;o.dloss_dlogp.value=103;o.clipped_ratio.value=104;o.clipped_active=105;return o;}
+rcp_same :: (a:RcpOutput,b:RcpOutput) {#assert f64_bits(a.surrogate.value)==f64_bits(b.surrogate.value) && f64_bits(a.loss.value)==f64_bits(b.loss.value) && f64_bits(a.dloss_dlogp.value)==f64_bits(b.dloss_dlogp.value) && f64_bits(a.clipped_ratio.value)==f64_bits(b.clipped_ratio.value) && a.clipped_active==b.clipped_active;}

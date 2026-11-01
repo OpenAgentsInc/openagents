@@ -1,0 +1,25 @@
+{
+  "schema": "psionic.locomotion-foundation.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 187424,
+    "sha256": "5a4916124d35b051cc5f408e3cb33a68eebba2b94c765619cedcabb3387b2008"
+  },
+  "input_files": {
+    "gae-cases.bin": {
+      "bytes": 4608,
+      "sha256": "8b6db98634ef89ef8e80d1be688a0e11977cd068623a9cafe8c0d1b645cb5967"
+    },
+    "gae-steps.bin": {
+      "bytes": 200920,
+      "sha256": "89998d3f789266b406f2702defcb43cd55541aea838897f3997cc943eabd057f"
+    },
+    "ppo-inputs.f64": {
+      "bytes": 26592,
+      "sha256": "f318a0533ca3d6ff7fb379b91d97f0694d9255b1662741306bacf1d861785b31"
+    }
+  },
+  "metadata_only": true,
+  "expected_generation_calls": 0,
+  "product_or_model_or_environment_calls": 0
+}

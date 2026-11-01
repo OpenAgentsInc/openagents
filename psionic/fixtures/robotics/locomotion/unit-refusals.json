@@ -1,0 +1,41 @@
+{
+  "schema": "psionic.locomotion.unit-refusals.v1",
+  "passed": true,
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "checks": [
+    {
+      "name": "discount",
+      "source": "psionic/tests/robotics/locomotion_bad_discount.coax",
+      "source_sha256": "828695c85565aebd660b541392c6703ee83f44aebdd1315259db43f991029cf6",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-discount.log",
+      "log_sha256": "fce81ab0a144d2c28413e8920fb96e1097a79701468e00a7b2179f3da496a3bf"
+    },
+    {
+      "name": "ratio",
+      "source": "psionic/tests/robotics/locomotion_bad_ratio.coax",
+      "source_sha256": "ff8bce0c41e7cf80a53681b5a30cda0e365bd506c4301aaef57b8869c207ce23",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-ratio.log",
+      "log_sha256": "dcf733ae994e8a986a874ed5a63b778af58bee56cf3c27f7e23d19e352fbc554"
+    },
+    {
+      "name": "reward",
+      "source": "psionic/tests/robotics/locomotion_bad_reward.coax",
+      "source_sha256": "7a4ec433510e30041ace5dd7a533b78cc22b21a505485c993028c8f1d79ef88f",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "refused": true,
+      "log": "unit-reward.log",
+      "log_sha256": "ddfbac94501e7a6dde5b322c720cdb003f59d9c02ca0ebd8d54a5179c71bcee1"
+    }
+  ],
+  "scope": "Three new unit/nominal-role compiler witnesses, no arithmetic/native/model execution."
+}

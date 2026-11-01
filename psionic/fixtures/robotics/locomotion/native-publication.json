@@ -1,0 +1,52 @@
+{
+  "schema": "psionic.locomotion-foundation.native-publication.v1",
+  "passed": true,
+  "published_utc": "2026-11-01T03:48:55.075049+00:00",
+  "original_receipt": {
+    "bytes": 21900,
+    "sha256": "890ae428e387bdd37846feadbe1dbc7e1c12216c4f233e9a93aa322b2273edc6"
+  },
+  "native_modes": [
+    "debug",
+    "release",
+    "fail-fast-ASan-UBSan"
+  ],
+  "byte_exact_original_evidence_copies": true,
+  "artifacts": {
+    "psionic/tests/robotics/locomotion_native.c": {
+      "bytes": 12121,
+      "sha256": "9fce11b86ee01d4bbccfa3fbe7613222dc8efcd4fb20cef0d2da6a098471e2e4"
+    },
+    "psionic/tests/robotics/locomotion_native_reference.py": {
+      "bytes": 16424,
+      "sha256": "adc4f2e6a17c9aac40e93cea6436e345987810544e4d11eb718f852ad57efa36"
+    },
+    "psionic/tests/robotics/check-locomotion.sh": {
+      "bytes": 402,
+      "sha256": "e01c42c801b58e63a50f7d5115d48c7f975157c15aa3e08b5e766714ad46ddf8"
+    },
+    "psionic/fixtures/robotics/locomotion/native-qualification.json": {
+      "bytes": 21900,
+      "sha256": "890ae428e387bdd37846feadbe1dbc7e1c12216c4f233e9a93aa322b2273edc6"
+    },
+    "psionic/fixtures/robotics/locomotion/native-gae.bin": {
+      "bytes": 200920,
+      "sha256": "d69825a3559d5ab9a2dcad4f3d408a54dab192d0c13510b32d64713179e49ab2"
+    },
+    "psionic/fixtures/robotics/locomotion/native-ppo.bin": {
+      "bytes": 44320,
+      "sha256": "505e42bc0f85717800da5fa020610b38c4352323c81dbee4f23178ccb0999bf8"
+    }
+  },
+  "frozen_experiment": {
+    "bytes": 187424,
+    "sha256": "5a4916124d35b051cc5f408e3cb33a68eebba2b94c765619cedcabb3387b2008"
+  },
+  "frozen_reference": {
+    "bytes": 2018,
+    "sha256": "cb54d196dd8ce05391c3d8d1801bf0bed131821365b22962db77e918d766c230"
+  },
+  "gate_qualification_file": "gate-qualification.json",
+  "gate_numeric_path_repeated_during_packaging": false,
+  "scope": "First Darwin-arm64 CPU-F64 native math/ABI contexts. Named input/output overlaps and atomic refusals observed; no general compiler borrow or boundedness proof. No model/environment/RNG/optimizer/learner/training claim."
+}

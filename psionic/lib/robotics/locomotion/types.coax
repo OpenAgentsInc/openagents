@@ -1,0 +1,8 @@
+// Normalized reward semantics are nominal, not a physical-unit conversion.
+#load "../../../../coax/lib/quantity.coax" as rlu;
+RgaReward :: struct {value:f64;}
+RgaStatus :: enum u8 {ok;shape;number;range;}
+RcpStatus :: enum u8 {ok;shape;number;range;}
+RgaStep :: struct {reward:RgaReward;current_value:RgaReward;next_value:RgaReward;terminated:int;truncated:int;}
+RgaOutput :: struct {delta:RgaReward;advantage:RgaReward;lambda_return:RgaReward;bootstrap:int;trace:int;}
+RcpOutput :: struct {surrogate:RgaReward;loss:RgaReward;dloss_dlogp:RgaReward;clipped_ratio:rlu.Quantity(UnitOne,f64);clipped_active:int;}
