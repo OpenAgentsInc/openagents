@@ -9,7 +9,7 @@ Every realm made at https://openagents.com/realms/new opens here: `/realms/<slug
 - W and S (or the up and down arrows) walk, A and D turn, a mouse drag turns. On a phone, drag a thumb to walk and turn. Characters' names show when you're near.
 - The owner gives visitors their tools in SETTINGS: BUILD, FLY, JUMP, MAP, talking to characters and voice. Only the tools that are on show.
 - BUILD places a crate, barrel, tree, rock, fern, lantern, fence or chest in front of you. The owner's goes in at once. A visitor's goes to the owner as a card with ACCEPT and DECLINE.
-- GALAXY (or Escape) goes to the galaxy.
+- REALMS (or Escape) goes to the [realms list](https://openagents.com/realms).
 
 ## How it is made
 

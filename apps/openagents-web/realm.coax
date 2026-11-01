@@ -412,7 +412,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_USE { r[0].asks |= ifx v.target.count > 0 then ASK_USE else ASK_GOAL; }
   if b == BTN_HINT { r[0].asks |= ASK_HINT; }
   if b == BTN_BYE { r[0].asks |= ASK_BYE; }
-  if b == BTN_EXIT && r[0].action == 0 { r[0].out_n = put(r[0].outbox[..], 0, "/verse/galaxy"); r[0].action = ACT_NAVIGATE; }
+  if b == BTN_EXIT && r[0].action == 0 { r[0].out_n = put(r[0].outbox[..], 0, "/realms"); r[0].action = ACT_NAVIGATE; }
   if b == BTN_MAP { r[0].map = !r[0].map && redit_tool(r[0].ed[..], "map"); }   // SETTINGS can keep the big map from visitors
   if b == BTN_SEND && r[0].typed_n > 0 { r[0].asks |= ASK_SEND; }
   if b == BTN_CANCEL { r[0].typing = false; }
@@ -669,7 +669,7 @@ jump_circle :: (r: [] Realm) -> Circle {
 }
 voice_circle :: (r: [] Realm) -> Circle {
   k := r[0].dpr;
-  if phone(r) { b := minimap_box(r); rad := 24 * k; return Circle.{x = b.x1 - rad, y = b.y1 + 8 * k + 34 * k + 12 * k + rad, r = rad}; }   // under the minimap and GALAXY, clear of the hotbar
+  if phone(r) { b := minimap_box(r); rad := 24 * k; return Circle.{x = b.x1 - rad, y = b.y1 + 8 * k + 34 * k + 12 * k + rad, r = rad}; }   // under the minimap and REALMS, clear of the hotbar
   rad := 28 * k;
   return Circle.{x = r[0].width - gutter(r) - 4 * k - rad, y = r[0].height - gutter(r) - 4 * k - rad, r = rad};
 }
@@ -1441,10 +1441,10 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
     if redit_row_on(r[0].ed[..], "others") { vertices = draw_others(r, v, out, vertices); }
     vertices = draw_map(r, v, out, vertices, uniforms);
   }
-  // GALAXY, under the minimap: back to the galaxy (a way out without the browser's back)
+  // REALMS, under the minimap: to /realms (a way out without the browser's back)
   if !aside && !r[0].map && !(phone(r) && chat_shown(r, v)) {   // a phone's chat spans the width under the minimap
     mb := minimap_box(r);
-    vertices = hud_button(r, out, vertices, BTN_EXIT, Box.{x0 = mb.x0, y0 = mb.y1 + 8 * k, x1 = mb.x1, y1 = mb.y1 + 8 * k + (ifx phone(r) then 34 * k else 30 * k)}, "GALAXY", "", false);
+    vertices = hud_button(r, out, vertices, BTN_EXIT, Box.{x0 = mb.x0, y0 = mb.y1 + 8 * k, x1 = mb.x1, y1 = mb.y1 + 8 * k + (ifx phone(r) then 34 * k else 30 * k)}, "REALMS", "", false);
   }
   if !aside && !v.no_voice && redit_tool(r[0].ed[..], "voice") { vertices = draw_voice_button(r, out, vertices); }
   vertices = redit_hud(r[0].ed[..], out, vertices, edit_box(r));
@@ -1983,18 +1983,18 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   #assert r[0].quality == 0;
 }
 
-#test "on screen while walking: your name, the minimap, GALAXY, VOICE and the hotbar, and no other button" {
+#test "on screen while walking: your name, the minimap, REALMS, VOICE and the hotbar, and no other button" {
   r: [1] Realm; desk(r[..]); v := items(view());
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
   shown := 0;
   for i: 0..<BUTTONS { if r[0].shown[i] { shown += 1; } }
   #assert shown == 3 + v.item_n && r[0].shown[BTN_MAP] && r[0].shown[BTN_VOICE] && r[0].shown[BTN_EXIT];
-  // GALAXY, pressed and lifted on it, goes to the galaxy
+  // REALMS, pressed and lifted on it, goes to /realms
   g := r[0].boxes[BTN_EXIT]; gx := (g.x0 + g.x1) * 0.5; gy := (g.y0 + g.y1) * 0.5;
   #assert g.y0 > minimap_box(r[..]).y1 && g.x1 <= 1440 * 2;
   #assert realm_pointer(r[..], v, gx, gy, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, gx, gy, POINTER_UP, 0, 1);
-  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/verse/galaxy";
+  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/realms";
   #assert !r[0].shown[BTN_VIEW] && !r[0].shown[BTN_EDIT] && !r[0].shown[BTN_CHAT] && !r[0].shown[BTN_GFX];
   // the hotbar's slots act on release over them: one takes its item in hand, again puts it away
   b := slot_box(r[..], 1);
@@ -2529,7 +2529,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
   pt(o[..], v, (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_DOWN, 0, 1);
   pt(o[..], v, (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, POINTER_UP, 0, 1);
   #assert o[0].ed[0].pane == REDIT_BOARD;
-  // on a phone the open pane spans the width: the minimap, GALAXY, VOICE and the hotbar step aside
+  // on a phone the open pane spans the width: the minimap, REALMS, VOICE and the hotbar step aside
   ph: [1] Realm; desk(ph[..]); vi := items(v);
   a = realm_draw(ph[..], vi, out[..], u[..], 390 * 3, 844 * 3, 3, 0.016);
   redit_requested(ph[0].ed[..], 5);
@@ -2540,7 +2540,7 @@ plated :: (u: [] f32, b: Box) -> f32 {
   a = realm_draw(ph[..], vi, out[..], u[..], 390 * 3, 844 * 3, 3, 0.016);
   #assert !ph[0].shown[BTN_EXIT] && !ph[0].shown[BTN_VOICE] && realm_map_box(ph[..]).x1 == 0 && ph[0].ed[0].shown[RB_EDIT];
   for i: 0..<BUTTONS { #assert !ph[0].shown[i]; }
-  // and with the pane shut, VOICE sits under GALAXY, not over it
+  // and with the pane shut, VOICE sits under REALMS, not over it
   ph[0].ed[0].pane = REDIT_SHUT;
   a = realm_draw(ph[..], vi, out[..], u[..], 390 * 3, 844 * 3, 3, 0.016);
   c := voice_circle(ph[..]); g := ph[0].boxes[BTN_EXIT];

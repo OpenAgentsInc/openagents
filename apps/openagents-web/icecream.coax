@@ -167,7 +167,7 @@ ice_next_act :: (s: [] IceRealm) -> int #export_c {
 }
 h_leave_to :: (s: [] IceRealm, url: string) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, url); s[0].action = ACT_NAVIGATE; } }
 h_do_act :: (s: [] IceRealm, a: int) {
-  if a / 256 == A_GALAXY { h_leave_to(s, "/verse/galaxy"); return; }
+  if a / 256 == A_GALAXY { h_leave_to(s, "/realms"); return; }
   h_queue_act(s, a / 256, a % 256);
 }
 ice_action :: (s: [] IceRealm) -> int #export_c {
@@ -202,7 +202,7 @@ ice_key :: (s: [] IceRealm, key: int, down: bool) -> bool #export_c {
   used := redit_key(s[0].ed[..], key, down);
   if used > 0 { return used == 1; }
   if down && key == KEY_ENTER && h_card_on(s) && s[0].main_act > 0 { h_do_act(s, s[0].main_act); return true; }
-  if down && key == KEY_ESCAPE && run_phase(s) == PH_OVER { h_leave_to(s, "/verse/galaxy"); return true; }
+  if down && key == KEY_ESCAPE && run_phase(s) == PH_OVER { h_leave_to(s, "/realms"); return true; }
   return false;
 }
 h_let_go :: (s: [] IceRealm) {
@@ -533,7 +533,7 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     buttons[5] = CardButton.{label = DIFFICULTIES[cast(int) f[F_NEXT_DIFFICULTY] % 3], act = A_DIFFICULTY * 256};
     button_n = 6;
     if s[0].touch { buttons[button_n] = CardButton.{label = sprint, act = A_SPRINT_MODE * 256}; button_n += 1; }
-    buttons[button_n] = CardButton.{label = "Galaxy", act = A_GALAXY * 256}; button_n += 1;
+    buttons[button_n] = CardButton.{label = "Realms", act = A_GALAXY * 256}; button_n += 1;
   } else {
     status := cast(int) f[F_STATUS];
     won := f[F_WON] > 0;
@@ -570,7 +570,7 @@ h_draw_card :: (s: [] IceRealm, out: [] f32, at: int) -> int {
     buttons[0] = CardButton.{label = ifx won then "Again" else "Again", act = A_NEW_HOUSE * 256, main = !keep};
     button_n = 1;
     if keep { buttons[button_n] = CardButton.{label = "Continue", act = A_KEEP * 256, main = true}; button_n += 1; }
-    buttons[button_n] = CardButton.{label = "Galaxy", act = A_GALAXY * 256}; button_n += 1;
+    buttons[button_n] = CardButton.{label = "Realms", act = A_GALAXY * 256}; button_n += 1;
   }
   // The sheet: its width, the lines wrapped to it, the buttons in rows.
   cw := lo(600 * k, w - 32 * k);
@@ -771,7 +771,7 @@ h_playing_facts :: (f: [] f32) {
   #assert s[0].button_n == 2 && s[0].main_act == A_NEW_HOUSE * 256;
   b := s[0].boxes[1];
   #assert ice_pointer(s[..], b.x0 + 2, b.y0 + 2, POINTER_DOWN, 0, 1) == 0 && ice_pointer(s[..], b.x0 + 2, b.y0 + 2, POINTER_UP, 0, 1) == 0;
-  #assert ice_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  #assert ice_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms";
   f[F_STATUS] = ST_ESCAPED; f[F_WON] = 1; f[F_SECONDS] = 187.4; f[F_BEST] = 150; f[F_RUN_KEYS] = 3; f[F_HITS] = 2; f[F_ACCURACY] = 64; f[F_MELTED_MINIONS] = 3;
   n = ice_frame(s[..], out[..], u[..], 390, 844, 1, 0.016, true, f[..], 3);
   #assert s[0].button_n == 2;

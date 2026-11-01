@@ -7,7 +7,7 @@ Where a project made from a drop first opens, at https://openagents.com/realms/d
 - The models stand in a ring round where you start, each facing in, on the floor. One bigger than 5 m is shown smaller; one made in centimetres is shown bigger.
 - You carry a lamp among them. W and S (or the up and down arrows) walk, A and D (or left and right) turn, a mouse drag turns. On a phone, drag a thumb to walk and turn. The camera follows behind you. You can't walk into a model or off the floor.
 - A panel says how many models stand here and whose each is: its file and its licence ("licence unknown: ask the owner" until the owner says).
-- PROJECT (or Escape) goes back to the project's page; here, GALAXY goes to the galaxy.
+- PROJECT (or Escape) goes back to the project's page; here, REALMS goes to the [realms list](https://openagents.com/realms).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## How it is made

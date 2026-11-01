@@ -1653,7 +1653,7 @@ realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_
 }
 realm_blur :: (s: [] MyRealm) #export_c { talk_let_go(s); s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
 can_build :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && (s[0].owner || s[0].tools[TOOL_BUILD]); }
-leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; } }
+leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms"); s[0].action = ACT_NAVIGATE; } }
 go_new :: (s: [] MyRealm) { if s[0].action == 0 && !access_hides_make(s[0].acc[..]) { s[0].out_n = put(s[0].outbox[..], 0, "/realms/new"); s[0].action = ACT_NAVIGATE; } }
 
 // A thing placed two metres in front of you.
@@ -1919,7 +1919,7 @@ button_at :: (s: [] MyRealm, x: f32, y: f32) -> int {
 cell_at :: (s: [] MyRealm, x: f32, y: f32) -> int { for i: 0..<THINGS { if s[0].cell_shown[i] && inside(s[0].cells[i], x, y) { return i; } } return -1; }
 realm_label :: (s: [] MyRealm, x: f32, y: f32) -> string #export_c {
   b := button_at(s, x, y);
-  if b == BTN_BACK { return "galaxy"; }
+  if b == BTN_BACK { return "realms"; }
   if b == BTN_BUILD { return "build"; } if b == BTN_MAP { return "map"; } if b == BTN_FLY { return "fly"; } if b == BTN_JUMP { return "jump"; }
   if b == BTN_CLOSE { return "close"; } if b == BTN_NEW { return "new"; }
   if b == BTN_BYE { return "bye"; } if b == BTN_HOLD { return "hold-to-talk"; }
@@ -2205,8 +2205,8 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   n = write(d, out, n, title, tb.x0 + 14 * k, tb.y0 + 22 * k, fit_cap(title, 11 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.97), false, false);
   n = write(d, out, n, sub, tb.x0 + 14 * k, tb.y0 + 39 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, bronze(k, 0.9), false, false);
   if ln > 0 { n = write(d, out, n, live, tb.x0 + 14 * k, tb.y0 + 54 * k, fit_cap(live, 7 * k, tb.x1 - tb.x0 - 28 * k), GAP, SPACE, white(k, 0.8), false, false); }
-  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 36 * k}, "GALAXY", false);
-  // the owner's and admins', under GALAXY: EDIT, and its pane (verse/edit/edit.coax)
+  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 36 * k}, "REALMS", false);
+  // the owner's and admins', under REALMS: EDIT, and its pane (verse/edit/edit.coax)
   right := g + 46 * k;
   n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = w - g - bw, y0 = right, x1 = w - g, y1 = right + 36 * k});
   for i: 0..<s[0].ed[0].plate_n {

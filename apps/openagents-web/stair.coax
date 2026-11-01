@@ -1438,7 +1438,7 @@ press :: (s: [] Stair, b: int) {
   if b == B_START { if start_wave(s) { s[0].selected = -1; s[0].card = -1; } return; }
   if b == B_FAST { coop_do(s, CoOrder.{kind = CO_SPEED, cls = ifx s[0].speed >= 3 then 1 else s[0].speed + 1}); return; }
   if b == B_PAUSE { coop_do(s, CoOrder.{kind = CO_PAUSE, cls = ifx s[0].paused then 0 else 1}); return; }
-  if b == B_GALAXY { leave_to(s, "/verse/galaxy"); return; }
+  if b == B_GALAXY { leave_to(s, "/realms"); return; }
   if b == B_MAP { coop_do(s, CoOrder.{kind = CO_MAP, cls = s[0].map + 1}); return; }
   if b == B_AGAIN { coop_do(s, CoOrder.{kind = CO_AGAIN}); return; }
   if b == B_INVITE { coop_invite(s); return; }
@@ -2132,7 +2132,7 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
     n := put(buf, 0, "WAVE "); n = put_int(buf, n, s[0].wave); return put(buf, n, " CLIMBING");
   }
   if b == B_FAST { n := put(buf, 0, "SPEED "); return put_int(buf, n, s[0].speed); }
-  if b == B_GALAXY { return put(buf, 0, "GALAXY"); }
+  if b == B_GALAXY { return put(buf, 0, "REALMS"); }
   if b >= B_STONE && b <= B_SLOW {
     sp := b - B_STONE;
     if sp == SPELL_SLOW && s[0].slow_t > 0 { n := put(buf, 0, "SLOW "); n = put_int(buf, n, cast(int) floor(s[0].slow_t + 0.999)); return put(buf, n, "S"); }

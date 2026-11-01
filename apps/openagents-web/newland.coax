@@ -25,7 +25,7 @@
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 400000;
 TEST_VERTICES :: 75000;   // what the checks give a frame: a page draws well under it
-PANELS :: 5;              // the page's own glass: title, HOME, GALAXY, the hint, the card
+PANELS :: 5;              // the page's own glass: title, HOME, REALMS, the hint, the card
 EDIT_PANELS :: 8;         // and the Grid's edit layer's plates after them (verse/edit/edit.coax REDIT_PLATES)
 UNIFORM_FLOATS :: 8 + (PANELS + EDIT_PANELS) * 8;   // width, height, time, fade, still, panels, vignette, 0, then the panels
 

@@ -10,7 +10,7 @@ A Verse realm at https://openagents.com/realms/dead-gears: a ship's hold to hold
 - Lift costs 15 psi and holds a crate in front of you; throw it into a creature to stun and hurt it. Stun costs 35 psi and freezes everything in front of you for a moment. Psi comes back while you don't use it.
 - The support engineer follows you, fights beside you and walks over to help repair.
 - Each wave comes later in the day: the afternoon, the golden hour, then dusk, and the lamps come up as the light goes. Alarms flash as a wave comes.
-- The fight is kept in this browser at each wave and each repair: come back and it goes on from there. AGAIN starts over; GALAXY goes back to the galaxy.
+- The fight is kept in this browser at each wave and each repair: come back and it goes on from there. AGAIN starts over; REALMS goes to the [realms list](https://openagents.com/realms).
 - `?hour=17.5` holds the deck at that hour; `?spawn=200` adds 200 more mutants, to see a crowd.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 

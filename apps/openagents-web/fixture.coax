@@ -1,13 +1,12 @@
 // The fixture realm (openagents.com/realms/fixture): the realm host's test
 // world (docs/verse/realm-host.md). It is a realm like any other: its own
 // module (this file and fixture-face.c), its own page written from
-// realms.json, a world on the galaxy (unlisted: /verse/galaxy?realms=all
-// shows it), its own save slot and its own asset pack. A lamp stands on a
+// realms.json (unlisted: the /realms list leaves it out), its own save slot and its own asset pack. A lamp stands on a
 // round floor ringed with kit pieces from the pack; you move it (WASD or the
 // arrows, or a drag) and it lights what it nears, and it stays where you left
 // it, kept in this realm's slot with how many times you came, apart from
 // every other realm's save. While the pack streams a line says how much has
-// come; then a panel names every source in it and its licence. GALAXY goes
+// come; then a panel names every source in it and its licence. REALMS goes
 // back.
 //
 // Plates and words are verse.coax's look; fixture.wgsl draws the plates and
@@ -291,7 +290,7 @@ fixture_key :: (s: [] Fixture, key: int, down: bool) -> bool #export_c {
   if !s[0].started { fixture_reset(s); }
   h := hold_of(key);
   if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
-  if down && key == KEY_ESCAPE { leave_to(s, "/verse/galaxy"); return true; }
+  if down && key == KEY_ESCAPE { leave_to(s, "/realms"); return true; }
   return false;
 }
 fixture_blur :: (s: [] Fixture) #export_c { s[0].held = 0; s[0].dragging = false; s[0].press = -1; }
@@ -476,7 +475,7 @@ fixture_pointer :: (s: [] Fixture, x: f32, y: f32, phase: int, kind: int, id: in
     return true;
   }
   if s[0].press >= 0 {
-    if phase == POINTER_UP && b == s[0].press && b == BTN_GALAXY { leave_to(s, "/verse/galaxy"); }
+    if phase == POINTER_UP && b == s[0].press && b == BTN_GALAXY { leave_to(s, "/realms"); }
     if phase != POINTER_MOVE { s[0].press = -1; }
     return true;
   }
@@ -621,14 +620,14 @@ draw_realm :: (s: [] Fixture, out: [] f32) -> int {
   vertices = write(d, out, vertices, title, tb.x0 + 16 * k, tb.y0 + 24 * k, fit_cap(title, 11 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, white(k, 0.97), false, false);
   vertices = write(d, out, vertices, sub, tb.x0 + 16 * k, tb.y0 + 42 * k, fit_cap(sub, 7.5 * k, tb.x1 - tb.x0 - 32 * k), GAP, SPACE, bronze(k, 0.9), false, false);
 
-  // GALAXY, top right
+  // REALMS, top right
   bw := 104 * k;
   b := Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 34 * k};
   if phone { b = Box.{x0 = w - g - bw, y0 = tb.y1 + 10 * k, x1 = w - g, y1 = tb.y1 + 44 * k}; }
   s[0].boxes[BTN_GALAXY] = b; s[0].shown[BTN_GALAXY] = true;
   look: f32 = LOOK_LIT; if s[0].hover == BTN_GALAXY || s[0].press == BTN_GALAXY { look += LOOK_HOVER; }
   plate(s, b, 0.92, look);
-  vertices = centred(d, out, vertices, "GALAXY", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+  vertices = centred(d, out, vertices, "REALMS", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
 
   // what to do
   hint := ifx phone then "DRAG TO MOVE THE LAMP. IT STAYS WHERE YOU LEAVE IT." else "WASD, THE ARROWS OR A DRAG MOVE THE LAMP. IT STAYS WHERE YOU LEAVE IT.";
@@ -661,7 +660,7 @@ draw_paint :: (s: [] Fixture, out: [] f32) -> int {
   s[0].boxes[BTN_GALAXY] = b; s[0].shown[BTN_GALAXY] = true;
   look: f32 = LOOK_LIT; if s[0].hover == BTN_GALAXY || s[0].press == BTN_GALAXY { look += LOOK_HOVER; }
   plate(s, b, 0.92, look);
-  vertices = centred(d, out, vertices, "GALAXY", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
+  vertices = centred(d, out, vertices, "REALMS", (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + 4.5 * k, 9 * k, white(k, 0.95));
   return vertices;
 }
 
@@ -836,12 +835,12 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   #assert cast(string) buf[0..<put_kb(buf[..], 0, 524288)] == "512 KB";
 }
 
-#test "GALAXY and Escape go back to the galaxy" {
+#test "REALMS and Escape go to /realms" {
   s: [1] Fixture;
   tick(s[..], 0.016);
   b := s[0].boxes[BTN_GALAXY];
   tap(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, 0);
-  #assert fixture_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/verse/galaxy");
+  #assert fixture_action(s[..]) == ACT_NAVIGATE && outbox_is(s[..], "/realms");
   t: [1] Fixture;
   #assert fixture_key(t[..], KEY_ESCAPE, true) && fixture_action(t[..]) == ACT_NAVIGATE;
 }

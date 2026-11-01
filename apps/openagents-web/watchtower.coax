@@ -121,7 +121,7 @@ Watch :: struct {
   panels: [PANELS] Rect;
   buttons: [BUTTONS] Rect;
   galaxy: Rect;
-  pressing: int;     // a button held: 1 + its index, 100 GALAXY
+  pressing: int;     // a button held: 1 + its index, 100 REALMS
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
   ed: [1] RealmEdit;
   track: [1] Track; loaded: bool;
@@ -971,7 +971,7 @@ layout :: (s: [] Watch, w: f32, h: f32, k: f32) {
   pad := 14 * k;
   s[0].portrait = w < h * 1.05;
   for i: 0..<PANELS { s[0].panels[i] = Rect.{}; }
-  gw := text_width("GALAXY", 11 * k) + 28 * k;
+  gw := text_width("REALMS", 11 * k) + 28 * k;
   s[0].galaxy = Rect.{x0 = w - pad - gw, y0 = pad, x1 = w - pad, y1 = pad + 34 * k};
   mx0: f32; my0: f32; mx1: f32; my1: f32;
   if !s[0].portrait {
@@ -1022,9 +1022,9 @@ draw_hud :: (s: [] Watch, out: [] f32, at: int, w: f32, h: f32, k: f32, t: f32) 
   title := fit_cap("WATCHTOWER", 20 * k, w * 0.5);
   n = say_at(out, n, "WATCHTOWER", pad + 4 * k, pad + title + 4 * k, title, ink(k, 1, WHITE));
   n = say_at(out, n, "DEFENSE RANGE · SIMULATED", pad + 4 * k, pad + title + 4 * k + cap * 1.6, cap * 0.8, ink(k, 0.6, DIM));
-  // GALAXY
-  n = draw_button(s, out, n, s[0].galaxy, "GALAXY", k, WHITE, false, s[0].pressing == 100);
-  // EDIT, left of GALAXY, for its owner and admins (verse/edit/edit.coax); open, the shift waits
+  // REALMS
+  n = draw_button(s, out, n, s[0].galaxy, "REALMS", k, WHITE, false, s[0].pressing == 100);
+  // EDIT, left of REALMS, for its owner and admins (verse/edit/edit.coax); open, the shift waits
   g := s[0].galaxy;
   ew := text_width("EDIT", 9 * k) + 32 * k;
   n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = g.x0 - 8 * k - ew, y0 = g.y0, x1 = g.x0 - 8 * k, y1 = g.y1});
@@ -1388,7 +1388,7 @@ watch_key :: (s: [] Watch, key: int, mods: int) -> bool #export_c {
   used := redit_key(s[0].ed[..], key, true);
   if used > 0 { return used == 1; }
   if key != KEY_ESCAPE { take_over(s); }
-  if key == KEY_ESCAPE { leave_to(s, "/verse/galaxy"); return true; }
+  if key == KEY_ESCAPE { leave_to(s, "/realms"); return true; }
   if key == ' ' || key == KEY_ENTER { if s[0].phase != PLAY { go(s); } return true; }
   if key >= '1' && key <= '9' { s[0].sel = key - '0'; return true; }
   if key == KEY_LEFT || key == KEY_UP || key == '[' { cycle(s, -1); return true; }
@@ -1428,7 +1428,7 @@ watch_pointer :: (s: [] Watch, x: f32, y: f32, phase: int, kind: int, id: int) -
   if phase == 1 { return false; }
   held := s[0].pressing;
   s[0].pressing = 0;
-  if held == 100 { if phase == 2 && in_rect(s[0].galaxy, x, y) { leave_to(s, "/verse/galaxy"); } return true; }
+  if held == 100 { if phase == 2 && in_rect(s[0].galaxy, x, y) { leave_to(s, "/realms"); } return true; }
   if held > 0 {
     if phase == 2 && in_rect(s[0].buttons[held - 1], x, y) { press(s, held - 1); }
     return true;
@@ -1581,13 +1581,13 @@ run :: (s: [] Watch, secs: f32) {
   #assert s[0].phase == LOST && s[0].why == 2;
 }
 
-#test "GALAXY and Escape go back to the galaxy" {
+#test "REALMS and Escape go to /realms" {
   s: [1] Watch;
   n := frame_at(s[..], 1440, 900, 1, 0.016);
   g := s[0].galaxy;
   #assert watch_pointer(s[..], (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 0, 1, 1);
   #assert watch_pointer(s[..], (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 2, 1, 1);
-  #assert watch_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  #assert watch_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms";
   watch_action_done(s[..]);
   #assert watch_key(s[..], KEY_ESCAPE, 0) && watch_action(s[..]) == ACT_NAVIGATE;
 }

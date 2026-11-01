@@ -4,7 +4,7 @@ A Verse realm at https://openagents.com/realms/orbit-league: electric roadsters 
 
 ## How to play
 
-- Keyboard: W and S (or the up and down arrows) drive and reverse, A and D steer, Space jumps (press again in the air for a second jump), Shift boosts, C switches between the chase camera and ball cam, Escape goes back to the galaxy.
+- Keyboard: W and S (or the up and down arrows) drive and reverse, A and D steer, Space jumps (press again in the air for a second jump), Shift boosts, C switches between the chase camera and ball cam, Escape goes to the [realms list](https://openagents.com/realms).
 - Phone: drag the left thumb to steer and drive; JUMP and BOOST are at the bottom right, BALL CAM at the top right.
 - Drive into the ball to hit it. Boost fills slowly while your wheels are on the ground.
 - In zero-g the ball and the cars float. Boost is how you get anywhere; in the air W and S pitch the car, A and D turn it.

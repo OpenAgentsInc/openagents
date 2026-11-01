@@ -733,7 +733,7 @@ toggle :: (s: [] Builder, t: [] Track, i: int) {
   s[0].on[i] = !s[0].on[i];
   if track_begin(t, "builder-toggle") { track_str(t, "feature", kind_of(s, i)); track_bool(t, "on", s[0].on[i]); track_end(t); }
 }
-go_back :: (s: [] Builder) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; } }
+go_back :: (s: [] Builder) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms"); s[0].action = ACT_NAVIGATE; } }
 
 builder_key :: (s: [] Builder, t: [] Track, key: int, mods: int, down: bool) -> bool #export_c {
   begin(s);
@@ -779,7 +779,7 @@ row_at :: (s: [] Builder, x: f32, y: f32) -> int {
 builder_label :: (s: [] Builder, x: f32, y: f32) -> string #export_c {
   b := button_at(s, x, y);
   if b == BTN_TALK { return "talk"; } if b == BTN_TYPE { return "type"; } if b == BTN_MAKE { return "make"; }
-  if b == BTN_BACK { return "galaxy"; } if b == BTN_SEND { return "send"; }
+  if b == BTN_BACK { return "realms"; } if b == BTN_SEND { return "send"; }
   if b == BTN_SKIP { return "skip"; } if b == BTN_PREV { return "back"; } if b == BTN_SETUP { return "setup"; }
   if b == BTN_DESC { return "description"; }
   if b == BTN_DOC { return "document"; }
@@ -1111,13 +1111,13 @@ draw_builder :: (s: [] Builder, out: [] f32) -> int {
   ph := phone(s);
   g := 16 * k;
   n := 0;
-  // the title, and GALAXY
+  // the title, and REALMS
   bw := 104 * k;
   tb := Box.{x0 = g, y0 = g, x1 = w - g - bw - 10 * k, y1 = g + 44 * k};
   // a heading, not a plate: a plate here read as a box to type in
   title := "BUILD YOUR OWN REALM";
   n = write(d, out, n, title, tb.x0 + 2 * k, tb.y0 + 31 * k, fit_cap(title, 15 * k, tb.x1 - tb.x0 - 4 * k), GAP, SPACE, white(k, 0.98), false, false);
-  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 44 * k}, "GALAXY", false);
+  n = pill(s, out, n, BTN_BACK, Box.{x0 = w - g - bw, y0 = g, x1 = w - g, y1 = g + 44 * k}, "REALMS", false);
   if s[0].phase == PH_SETUP { return draw_setup(s, out, n, tb.y1 + 14 * k); }
   if s[0].phase == PH_INVITE { return draw_invite(s, out, n, tb.y1 + 14 * k); }
 

@@ -42,7 +42,7 @@ move, the jump that stutters, the feet drawn above the ground.
 - **Drawing** ([chapters 11](ch011-the-wgsl-renderer.md),
   [14](ch014-figures-and-animation.md), [15](ch015-ui-and-the-hud.md)):
   screen-space line quads, the cast skinned on the GPU, the HUD (THE GRID,
-  the nearest project, HOME, GALAXY).
+  the nearest project, HOME, REALMS).
 - **People** ([chapter 49](ch049-rooms-and-presence.md)): the playtest room
   `the-grid` sends everyone else's position; each is an entity
   ([chapter 6](ch006-entities-are-born-and-die.md)).

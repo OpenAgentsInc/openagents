@@ -13,7 +13,7 @@ Everything is simulated. No real systems or traffic are involved. The log lines 
 - C reimages it: the host goes offline for 5 seconds and comes back clean.
 - R resets every admin credential. It costs a little uptime and can run every 25 seconds. If the DC still holds an implant, the intruder takes the keys again, so clean the DC first.
 - You have two responders, so two scans or reimages can run at once.
-- GALAXY at the top right, or Escape, goes back to the galaxy.
+- REALMS at the top right, or Escape, goes to the [realms list](https://openagents.com/realms).
 
 ## What you are watching
 

@@ -10,7 +10,7 @@ At https://openagents.com/realms/new, the step after the Haunted House. You say 
 - Tap a row to check it on or off. Talk again to change the board; your checks go with it.
 - MAKE IT makes the realm from only the checked features and takes you to `/realms/<slug>`. It is empty except what you checked: characters are there only if you checked them.
 - The realm is yours: your playtest key's, or your account's when you're logged in. Log in later and it moves to your account.
-- GALAXY (or Escape) goes back to the galaxy.
+- REALMS (or Escape) goes to the [realms list](https://openagents.com/realms).
 - Without WebGPU the page shows only its name and a link here.
 
 ## How it is made

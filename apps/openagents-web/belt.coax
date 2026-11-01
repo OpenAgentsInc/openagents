@@ -1643,7 +1643,7 @@ press_button :: (s: [] Belt, i: int) {
     // twice to start over: the first press asks
     if s[0].new_armed > 0 { s[0].new_armed = 0; if !net_send(s, N_NEW, 0, 0, 0) { new_game(s); } } else { s[0].new_armed = 3.0; }
   }
-  if b.id == B_GALAXY && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; }
+  if b.id == B_GALAXY && s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms"); s[0].action = ACT_NAVIGATE; }
 }
 
 screen_of :: (s: [] Belt, p: D3) -> D2 { return spacecam_screen(s[0].cam, p, f64(s[0].w), f64(s[0].h)); }
@@ -2554,7 +2554,7 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     button(s, out, d, x0, sy, x0 + bw, sy + 28 * k, B_SPEED, i, labels[i], 6.5 * k, s[0].speed == i);
   }
   gx := m + 4 * (bw + 6 * k);
-  button(s, out, d, ifx phone then w - m - 46 * k else gx, sy, ifx phone then w - m else gx + 70 * k, sy + 28 * k, B_GALAXY, 0, ifx phone then "EXIT" else "GALAXY", 6.5 * k, false);
+  button(s, out, d, ifx phone then w - m - 46 * k else gx, sy, ifx phone then w - m else gx + 70 * k, sy + 28 * k, B_GALAXY, 0, ifx phone then "EXIT" else "REALMS", 6.5 * k, false);
   // INVITE: a game for two (belt-net.coax); on a phone where SYSTEM goes, when SYSTEM isn't up
   away0 := s[0].cam.goal_scale > system_scale(s) * 4.0 || s[0].cam.goal_scale < system_scale(s) / 3.0 || s[0].follow >= 0 || s[0].follow_place >= 0;
   if !s[0].golden && !s[0].card && s[0].stage == STAGE_NONE && (!phone || !away0) {

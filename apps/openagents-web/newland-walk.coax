@@ -6,7 +6,7 @@
 // shaders. Only the camera differs: behind you as you walk among them, with the engine's
 // controller (verse/player.coax, its own library, which the face steps) and the phone's thumbs
 // (verse/grid.coax). The HUD is the Grid's: THE GRID with the project you are nearest, HOME and
-// GALAXY, the controls' hint, the live status and the thumb's ring. A click (not a drag) on a
+// REALMS, the controls' hint, the live status and the thumb's ring. A click (not a drag) on a
 // project, a person, an agent or a Pylon opens the homepage's card for it.
 //
 // Where you are: the Grid's metres are the playtest room the-grid's (room.coax), half a grid unit
@@ -16,7 +16,7 @@
 // WALK AROUND (?from=home) the camera comes down from the homepage's view onto you.
 
 WK_HOME :: "/";
-WK_GALAXY :: "/verse/galaxy";
+WK_GALAXY :: "/realms";
 WK_ROOM :: "the-grid";
 WK_POST_EVERY :: 0.2;        // s between posts to the room
 WK_SPAWN_X :: 28.0;          // m from the places' middle: south-east of them, where the homepage looks from,
@@ -43,7 +43,7 @@ Walk :: struct {
   zoom: f32;                         // m to move the camera out; the face takes it
   drag_on: bool; drag_id: int; drag_x: f32; drag_y: f32; down_x: f32; down_y: f32; dragged: bool;
   home_box: Box; galaxy_box: Box; title_box: Box;
-  press: int; press_id: int;         // a press begun on HOME, GALAXY or the card (WK_PRESS_*), and its finger
+  press: int; press_id: int;         // a press begun on HOME, REALMS or the card (WK_PRESS_*), and its finger
   feet: Fv; face: f32; phase: f32; act: int; placed: bool;   // you, in grid units, and your stride
   from_home: bool; dive: f32;        // WALK AROUND brought you: the camera comes down
 }
@@ -153,7 +153,7 @@ coaxial_walk_used :: (s: [] LandState) #export_c {
   s[0].wk[0].look_yaw = 0; s[0].wk[0].look_pitch = 0; s[0].wk[0].zoom = 0;
 }
 
-// A mouse drag turns the camera; a press let go where it began is a click: HOME, GALAXY, the card's
+// A mouse drag turns the camera; a press let go where it began is a click: HOME, REALMS, the card's
 // buttons, or a project, person, agent or Pylon (its card). A finger off them is the face's thumbs.
 coaxial_walk_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if s.count < 1 { return false; }
@@ -351,16 +351,16 @@ wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width
   v = frame(out, v, tb, 7 * d, ink(p, INK_BRIGHT), 0.5 * hud, p);
   v = draw_text(out, v, title, tb.x0 + 14 * d, tb.y0 + 12 * d + cap, cap, TITLE_GAP, TITLE_SPACE, dimmed(word, 0.95 * hud), false, false);
   if near.count > 0 { v = put(out, v, near, tb.x0 + 14 * d, tb.y1 - 11 * d, small, dimmed(ink(p, INK_PALE), hud)); }
-  // GALAXY, top right; HOME left of it
+  // REALMS, top right; HOME left of it
   bw := (ifx l.phone then 92.0f32 else 120.0f32) * d; bh := 40 * d;
   gb := Box.{x0 = width - m - bw, y0 = m, x1 = width - m, y1 = m + bh};
   hb := Box.{x0 = gb.x0 - 8 * d - bw, y0 = m, x1 = gb.x0 - 8 * d, y1 = m + bh};
   w[0].galaxy_box = gb; w[0].home_box = hb;
   v = button(out, v, hb, "HOME", true, hover && inside(hb, s[0].px, s[0].py) || w[0].press == WK_PRESS_HOME, false, p, hud);
   glass(u, 1, hb, 7 * d, 0.95 * hud, 1);
-  v = button(out, v, gb, "GALAXY", true, hover && inside(gb, s[0].px, s[0].py) || w[0].press == WK_PRESS_GALAXY, false, p, hud);
+  v = button(out, v, gb, "REALMS", true, hover && inside(gb, s[0].px, s[0].py) || w[0].press == WK_PRESS_GALAXY, false, p, hud);
   glass(u, 2, gb, 7 * d, 0.95 * hud, 1);
-  // EDIT for the Grid's owner and admins (verse/edit/edit.coax): left of HOME, or under GALAXY on a
+  // EDIT for the Grid's owner and admins (verse/edit/edit.coax): left of HOME, or under REALMS on a
   // phone where the title fills the row; its plates are the glass after the page's own
   e := s[0].ed[..];
   ew := redit_width("EDIT", 9 * d) + 32 * d;
@@ -504,7 +504,7 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
   return coaxial_walk_frame(s, out, u, 1440, 900, 1, 0.016, false, WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0,
                             WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
 }
-#test "keys walk and turn, a drag looks and is never a click, HOME and GALAXY go where they say" {
+#test "keys walk and turn, a drag looks and is never a click, HOME and REALMS go where they say" {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   coaxial_land_page(s[..], 1); s[0].time = 9;
@@ -562,7 +562,7 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
                              WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0) > 0;
   #assert s[0].view.eye.y < 2;
 }
-#test "the Grid's EDIT: its owner gets it left of HOME (under GALAXY on a phone), its pane's glass, and the board's rows switch the names and the walkers" {
+#test "the Grid's EDIT: its owner gets it left of HOME (under REALMS on a phone), its pane's glass, and the board's rows switch the names and the walkers" {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   coaxial_land_page(s[..], 1); s[0].time = 9;
@@ -585,7 +585,7 @@ wk_test_frame :: (s: [] LandState, out: [] f32, u: [] f32) -> int {
                          WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);
   #assert u[5] > f32(PANELS) && u[8 + PANELS * 8 + 5] > 0;
   // a key typed into its pane is the pane's, not a step
-  // on a phone the title fills the row: EDIT goes under GALAXY, clear of it
+  // on a phone the title fills the row: EDIT goes under REALMS, clear of it
   p: [1] LandState; coaxial_land_page(p[..], 1); p[0].time = 9;
   m := coaxial_walk_frame(p[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false,
                           WK_SPAWN_X, 0, WK_SPAWN_Z, WK_SPAWN_FACE, 0, WK_SPAWN_X + 6.2, 3.5, WK_SPAWN_Z + 6.2, WK_SPAWN_X, 1.52, WK_SPAWN_Z, false, 0, 0, 0, 0);

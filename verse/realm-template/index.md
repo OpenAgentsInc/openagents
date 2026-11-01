@@ -7,7 +7,7 @@ A Verse realm at https://openagents.com/realms/star-catcher: stars fall from a n
 - Space or Enter starts (and plays again after the end); a tap does the same on a phone.
 - The left and right arrows (or A and D) move the basket. On a phone, hold the left or right half of the screen.
 - The stars fall a little faster as you catch more, and come more often.
-- CAUGHT and MISSED at the top right count the game; GALAXY at the top left (or Escape) goes back to the galaxy.
+- CAUGHT and MISSED at the top right count the game; REALMS at the top left (or Escape) goes to the [realms list](https://openagents.com/realms).
 
 ## How it is made
 

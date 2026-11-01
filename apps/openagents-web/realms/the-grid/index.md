@@ -15,7 +15,7 @@ Click a project, a person, an agent or a Pylon (a click, not a drag) and its car
 
 - Computer: W A S D move, drag the mouse or the arrow keys turn, the wheel or + and - zoom, Shift walks (you run), Space jumps.
 - Phone: the left thumb walks, the right thumb looks, a tap jumps.
-- HOME, top right, goes back to the [homepage](https://openagents.com/), whose WALK AROUND brings you here; GALAXY to the [galaxy](https://openagents.com/verse/galaxy).
+- HOME, top right, goes back to the [homepage](https://openagents.com/), whose WALK AROUND brings you here; REALMS to the [realms list](https://openagents.com/realms).
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 
 ## How it is made

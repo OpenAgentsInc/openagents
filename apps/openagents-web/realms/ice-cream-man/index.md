@@ -9,7 +9,7 @@ A Verse realm at https://openagents.com/realms/ice-cream-man: the Ice Cream Man'
 - On a phone: the stick on the left walks, drag on the right to look, and the Fire, Jump, Use, Sprint and View buttons sit under your right thumb. Tap a tool in the bar to pick it, or Next.
 - The first visit starts with a four-step tour; Help in the menu shows it again.
 - Add `#seed=12` (any number) to the address for another house; without one it is house 3. `#easy` and `#hard` set the difficulty, `#bot` lets the game's own bot play.
-- Galaxy in the menu (or Escape on the end card) goes back to the galaxy, where Ice Cream Man has its own orbit at https://openagents.com/verse/galaxy.
+- Realms in the menu (or Escape on the end card) goes to the [realms list](https://openagents.com/realms).
 - This browser keeps your settings (timer, jumpscares, sprint, difficulty), your best escape on each difficulty and whether you've seen the tour. A private window keeps nothing.
 - Without WebGPU (a current Chrome, Edge or Safari) the page shows only its name and a link here.
 

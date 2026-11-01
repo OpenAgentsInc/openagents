@@ -9,7 +9,7 @@
 // match, a goal at each end of a flat box arena. Every 90 seconds of play the
 // station spins down: gravity fades to nothing for half a minute, then
 // comes back. W/S (or the arrows) drive, A/D steer, Space jumps (twice),
-// Shift boosts, C is ball cam, Escape goes back to the galaxy. On a phone
+// Shift boosts, C is ball cam, Escape goes to /realms. On a phone
 // the left thumb steers and drives; JUMP and BOOST are on the right.
 // ?stage=highlight plays a staged goal for clips (docs/verse/clips.md).
 // ?arena=drum (or PLAY IN THE DRUM when a match ends) plays inside a spinning drum
@@ -1904,7 +1904,7 @@ hold_of :: (key: int) -> int {
   return 0;
 }
 
-leave :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; } }
+leave :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms"); s[0].action = ACT_NAVIGATE; } }
 
 toggle_cam :: (s: [] OrbitLeague) {
   s[0].ball_cam = !s[0].ball_cam;
@@ -2299,9 +2299,9 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   v = centred(d, out, v, cast(string) buf[0..<n], sb.x1 - 34 * k, sb.y0 + 32 * k, 18 * k, team_ink(MAGENTA, k, 1));
   n = ifx s[0].overtime then put(buf[..], 0, "+OT") else clock_text(buf[..], 0, s[0].clock);
   v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, sb.y0 + 29 * k, 12 * k, white(k, 0.95));
-  // GALAXY, top left
+  // REALMS, top left
   bb := Box.{x0 = g, y0 = g, x1 = g + 96 * k, y1 = g + 34 * k};
-  v = hud_button(s, out, v, BTN_BACK, bb, "GALAXY", 8 * k);
+  v = hud_button(s, out, v, BTN_BACK, bb, "REALMS", 8 * k);
   // PAINT, under it, before a kickoff and at the end; it opens the picker
   if (s[0].phase == PHASE_KICKOFF || s[0].phase == PHASE_OVER || s[0].paint_open) && !s[0].clip_play {
     pb := Box.{x0 = g, y0 = bb.y1 + 10 * k, x1 = g + 96 * k, y1 = bb.y1 + 44 * k};

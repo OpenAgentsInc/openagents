@@ -54,7 +54,7 @@ Catch :: struct {
   clock: f32; acc: f32; flash: f32;
   width: f32; height: f32; dpr: f32;
   golden: bool;
-  galaxy: Rect;          // the GALAXY button
+  galaxy: Rect;          // the REALMS button
   pressing_galaxy: bool;
   outbox: [OUTBOX_CAP] u8; out_n: int; action: int;
 }
@@ -255,16 +255,16 @@ draw_hud :: (s: [] Catch, out: [] f32, at: int, w: f32, h: f32, k: f32) -> int {
   white := ink(k, 0.95, 0.9, 0.92, 1.0);
   gold := ink(k, 1.0, 1.0, 0.85, 0.4);
   red := ink(k, 1.0, 1.0, 0.35, 0.35);
-  // GALAXY, top left: leaves for the galaxy
+  // REALMS, top left: leaves for /realms
   pad := 12 * k;
-  gw := text_width("GALAXY", cap) + 2 * pad;
+  gw := text_width("REALMS", cap) + 2 * pad;
   s[0].galaxy = Rect.{x0 = pad, y0 = pad, x1 = pad + gw, y1 = pad + cap + 2 * pad};
   g := s[0].galaxy;
   n = seg(out, n, g.x0, g.y0, g.x1, g.y0, 0.8 * k, 0.6, 1.5 * k, 0.7, 0.75, 0.9);
   n = seg(out, n, g.x1, g.y0, g.x1, g.y1, 0.8 * k, 0.6, 1.5 * k, 0.7, 0.75, 0.9);
   n = seg(out, n, g.x1, g.y1, g.x0, g.y1, 0.8 * k, 0.6, 1.5 * k, 0.7, 0.75, 0.9);
   n = seg(out, n, g.x0, g.y1, g.x0, g.y0, 0.8 * k, 0.6, 1.5 * k, 0.7, 0.75, 0.9);
-  n = say_at(out, n, "GALAXY", g.x0 + pad, g.y1 - pad, cap, white);
+  n = say_at(out, n, "REALMS", g.x0 + pad, g.y1 - pad, cap, white);
   // the counts, top right
   line: [32] u8;
   m := put(line[..], 0, "CAUGHT ");
@@ -328,7 +328,7 @@ catch_key :: (s: [] Catch, key: int, mods: int) -> bool #export_c {
   if key == KEY_LEFT || key == 'a' || key == 'A' { s[0].keys |= HOLD_LEFT; return true; }
   if key == KEY_RIGHT || key == 'd' || key == 'D' { s[0].keys |= HOLD_RIGHT; return true; }
   if key == ' ' || key == KEY_ENTER { go(s); return true; }
-  if key == KEY_ESCAPE { leave_to(s, "/verse/galaxy"); return true; }
+  if key == KEY_ESCAPE { leave_to(s, "/realms"); return true; }
   return false;
 }
 catch_key_up :: (s: [] Catch, key: int, mods: int) -> bool #export_c {
@@ -337,7 +337,7 @@ catch_key_up :: (s: [] Catch, key: int, mods: int) -> bool #export_c {
   return false;
 }
 catch_blur :: (s: [] Catch) #export_c { s[0].keys = 0; s[0].finger = 0; s[0].pressing_galaxy = false; }
-// A finger or the mouse: GALAXY leaves; otherwise a press starts the game, and
+// A finger or the mouse: REALMS leaves; otherwise a press starts the game, and
 // holding the left or right half of the screen moves the basket that way.
 catch_pointer :: (s: [] Catch, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   catch_start(s);
@@ -354,7 +354,7 @@ catch_pointer :: (s: [] Catch, x: f32, y: f32, phase: int, kind: int, id: int) -
   }
   if s[0].pressing_galaxy {
     s[0].pressing_galaxy = false;
-    if phase == 2 && in_rect(s[0].galaxy, x, y) { leave_to(s, "/verse/galaxy"); }
+    if phase == 2 && in_rect(s[0].galaxy, x, y) { leave_to(s, "/realms"); }
     return true;
   }
   if id == s[0].finger_id { s[0].finger = 0; }
@@ -429,11 +429,11 @@ frame_at :: (s: [] Catch, w: f32, h: f32, dpr: f32, dt: f32) -> int {
   for i: 0..<20 { step(s[..], f32(STEP)); }
   #assert s[0].x > x0;
   #assert catch_pointer(s[..], 1000, 1500, 2, 1, 8) && s[0].finger == 0;
-  // GALAXY leaves for the galaxy
+  // REALMS leaves for /realms
   g := s[0].galaxy;
   #assert catch_pointer(s[..], (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 0, 1, 9);
   #assert catch_pointer(s[..], (g.x0 + g.x1) / 2, (g.y0 + g.y1) / 2, 2, 1, 9);
-  #assert catch_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/verse/galaxy";
+  #assert catch_action(s[..]) == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms";
 }
 
 // A simple player: keeps the basket under the lowest star.
