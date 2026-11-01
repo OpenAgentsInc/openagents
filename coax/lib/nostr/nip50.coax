@@ -1,0 +1,486 @@
+// NIP-50 search (Nostr From Scratch, chapter 41): the "search" string of a
+// filter, read by filter_read.coax's filter_read_search, answered from the
+// verified store through a word index, best match first.
+//
+// - Words: a maximal run of ASCII letters, ASCII digits and bytes 0x80 and
+//   up. Everything else (ASCII spaces, punctuation, controls) separates
+//   words. A-Z fold to a-z; non-ASCII bytes are kept as they are and
+//   compared exactly, so "café" and "CAFÉ" are different words and a
+//   non-ASCII punctuation mark such as U+2014 joins the words around it.
+//   Content is read decoded (JSON escapes as what they mean).
+// - The search string splits on ASCII whitespace into fields. A field that
+//   holds a ':' is a key:value extension (the Rust relay's rule): the key is
+//   the text before the first ':'. "include:spam" is supported and changes
+//   nothing (this store has no spam filter to turn off); every other
+//   extension is counted and ignored, as NIP-50 says relays SHOULD. Every
+//   other field is split into words; the distinct words are the terms, at
+//   most N50_MAX_TERMS.
+// - An event matches when it matches the filter's other fields and every
+//   term occurs in its content as a whole word. Its score is the sum of the
+//   terms' counts in the content. Results go highest score first, then
+//   newest, then lowest id; the filter's limit (rs_limit) applies after the
+//   ordering. With no terms, the answer is chapter 36's query: every score
+//   is 0 and the order is time order.
+// - Kinds 4, 1059 and 21059 (NIP-04 and NIP-59 ciphertext) are not indexed,
+//   and a search never returns them, with terms or without.
+// - The index holds one entry per (word, record): a 31-bit hash of the
+//   word, and the record. It only picks candidates (the term with the
+//   fewest entries); each candidate's content is re-read and its counts
+//   computed exactly, so a hash collision adds work, never a result. Like
+//   chapter 36's index it is built whole and refused once the store changes.
+//
+// Not built: wiring search into coax/relay/relay.coax (relay_server.coax's
+// REQ path still reads filters with filter_read, which refuses "search"),
+// tag search, the language:, domain:, sentiment: and nsfw: extensions, and
+// stemming or Unicode case folding. Not #authority, like store_index.coax.
+#load "store_index.coax";
+
+N50_MAX_TERMS :: 16;
+// n50_parse's results.
+N50_OK :: 0; N50_TERMS :: 1; N50_SPACE :: 2;
+// How a query was answered.
+N50_REFUSED :: -1; N50_NONE :: 0; N50_TERM :: 1; N50_FILTER :: 2;
+
+N50Query :: struct {
+  error: int;
+  terms: [16] string; n: int;   // distinct lowercase words
+  spam: bool;                   // include:spam was given
+  ignored: int;                 // extensions not supported
+}
+// The caller owns key and rec: one slot per distinct (word, record).
+N50Index :: struct { ok: bool; n: int; used: int; count: int; key: [] int; rec: [] int; }
+// n results (or -1 refused), the plan, which term's entries were read
+// (N50_TERM), how many records were read, and how many of those were
+// skipped because their content did not fit the caller's buffer.
+N50Result :: struct { n: int; plan: int; term: int; scanned: int; unread: int; }
+// A word's span [from, to) in a text; from == text.count when there is none.
+N50Word :: struct { from: int; to: int; }
+
+// ---- test helpers ------------------------------------------------------------
+N50T :: struct {
+  t: [1] NsiT; key: [64] int; rec: [64] int; x: [1] N50Index; buf: [256] u8;
+  qbuf: [128] u8; q: [1] N50Query; out: [16] int; score: [16] int;
+}
+n50_t_init :: (t: [] N50T) {
+  nsi_t_init(t[0].t[0..<1]);
+  t[0].x[0] = N50Index.{key = t[0].key[..], rec = t[0].rec[..]};
+}
+// A record whose text is a small event object with content, created at the
+// given time; its id's first byte is id.
+n50_t_add :: (t: [] N50T, id: u8, kind: int, created: int, content: string) -> int {
+  text: [192] u8;
+  n := json_raw(text[..], 0, "{\"kind\":1,\"tags\":[],\"content\":\""); n = json_raw(text[..], n, content); n = json_raw(text[..], n, "\"}");
+  c: RsdRec; c.id[0] = id; c.kind = kind; c.created = created; c.expiry = -1;
+  return ns_store_admit(t[0].t[0].s[..], c, cast(string) text[0..<n], true);
+}
+n50_t_parse :: (t: [] N50T, search: string) -> int { return n50_parse(search, t[0].qbuf[..], t[0].q[..]); }
+n50_t_query :: (t: [] N50T, f: NostrFilter) -> N50Result {
+  return n50_query(t[0].t[0].s[..], t[0].t[0].ix[..], t[0].x[..], f, t[0].q[0], 1000, t[0].buf[..], t[0].out[..], t[0].score[..]);
+}
+
+#test "words: ASCII folded, non-ASCII exact, punctuation and escapes separate" {
+  text := "Coax compiles Coax.";
+  w := n50_next(text, 0); #assert w.from == 0 && w.to == 4;
+  w = n50_next(text, w.to); #assert w.from == 5 && w.to == 13;
+  w = n50_next(text, w.to); #assert w.from == 14 && w.to == 18;
+  w = n50_next(text, w.to); #assert w.from == text.count;
+  #assert n50_next("", 0).from == 0 && n50_next("  ,", 0).from == 3;
+  #assert n50_tf(text, "coax") == 2 && n50_tf(text, "compiles") == 1 && n50_tf(text, "coa") == 0 && n50_tf(text, "coaxx") == 0;
+  // the word boundaries: digits and every letter join, the ASCII bytes around them separate
+  #assert n50_tf("a9Z", "a9z") == 1 && n50_tf("/a@a[a`a{a", "a") == 5 && n50_tf("0a:a", "a") == 1 && n50_tf("a9", "a") == 0;
+  #assert n50_word_byte('0') && n50_word_byte('9') && n50_word_byte('a') && n50_word_byte('z') && n50_word_byte('A') && n50_word_byte('Z') && n50_word_byte(0x80) && n50_word_byte(0xff);
+  #assert !n50_word_byte('/') && !n50_word_byte(':') && !n50_word_byte('@') && !n50_word_byte('[') && !n50_word_byte('`') && !n50_word_byte('{') && !n50_word_byte(0x7f) && !n50_word_byte(' ');
+  #assert n50_lower('A') == 'a' && n50_lower('Z') == 'z' && n50_lower('@') == '@' && n50_lower('[') == '[' && n50_lower('a') == 'a' && n50_lower(0xc3) == 0xc3;
+  // non-ASCII: kept and compared exactly; "café" is two bytes longer than "cafe"
+  cafe := "Café CAFÉ café, cafés";
+  #assert n50_tf(cafe, "café") == 2 && n50_tf(cafe, "cafÉ") == 1 && "café".count == 5 && n50_tf(cafe, "caf") == 0;
+  // a word must equal the term, not start with it
+  #assert n50_tf("relays relay", "relay") == 1 && n50_tf("relay", "relays") == 0 && n50_tf("rel", "relay") == 0;
+  // the key folds case and depends on every byte
+  #assert n50_key("Coax", 0, 4) == n50_key("coax", 0, 4) && n50_key("coax", 0, 4) != n50_key("coay", 0, 4) && n50_key("xcoax", 1, 5) == n50_key("coax", 0, 4);
+  #assert n50_key("abcdefgh", 0, 8) == 743249677;   // reduced modulo 2^31 - 1 twice on the way
+  #assert n50_key("a", 0, 1) == 257 + 98 && n50_key("ab", 0, 2) == 355 * 257 + 99 && n50_key("", 0, 0) == 1;
+}
+#test "the search string: terms, extensions, limits" {
+  t: [1] N50T; n50_t_init(t[..]);
+  #assert n50_t_parse(t[..], "Coax nostr language:en include:spam NOSTR") == N50_OK;
+  q := t[0].q[0];
+  #assert q.n == 2 && q.terms[0] == "coax" && q.terms[1] == "nostr" && q.spam && q.ignored == 1;
+  // a field with a ':' anywhere is an extension; include must say spam
+  #assert n50_t_parse(t[..], "a:b :x https://x.y include:SPAM includes:spam") == N50_OK;
+  q = t[0].q[0]; #assert q.n == 0 && !q.spam && q.ignored == 5;
+  #assert n50_t_parse(t[..], "include:spam") == N50_OK && t[0].q[0].spam && t[0].q[0].ignored == 0;
+  // fields split into words; whitespace is space, tab, LF, VT, FF, CR
+  ws: [18] u8; wt := " e-cash,\tE \n..\rok "; for i: 0..<18 { ws[i] = wt[i]; } ws[12] = 11; ws[13] = 12;
+  #assert n50_t_parse(t[..], cast(string) ws[..]) == N50_OK;
+  q = t[0].q[0]; #assert q.n == 3 && q.terms[0] == "e" && q.terms[1] == "cash" && q.terms[2] == "ok" && q.ignored == 0;
+  #assert n50_t_parse(t[..], "") == N50_OK && t[0].q[0].n == 0 && !t[0].q[0].spam;
+  // which bytes split fields: "a:b" then byte c then "c"
+  sep: [5] u8; sep[0] = 'a'; sep[1] = ':'; sep[2] = 'b'; sep[4] = 'c';
+  sep[3] = 9; #assert n50_t_parse(t[..], cast(string) sep[..]) == N50_OK && t[0].q[0].n == 1 && t[0].q[0].ignored == 1;
+  sep[3] = 13; #assert n50_t_parse(t[..], cast(string) sep[..]) == N50_OK && t[0].q[0].n == 1;
+  sep[3] = 32; #assert n50_t_parse(t[..], cast(string) sep[..]) == N50_OK && t[0].q[0].n == 1;
+  sep[3] = 8; #assert n50_t_parse(t[..], cast(string) sep[..]) == N50_OK && t[0].q[0].n == 0 && t[0].q[0].ignored == 1;
+  sep[3] = 14; #assert n50_t_parse(t[..], cast(string) sep[..]) == N50_OK && t[0].q[0].n == 0;
+  sep[3] = 33; #assert n50_t_parse(t[..], cast(string) sep[..]) == N50_OK && t[0].q[0].n == 0;
+  us: [4] u8; us[0] = 'x'; us[1] = ':'; us[2] = 31; us[3] = 'z';
+  #assert n50_t_parse(t[..], cast(string) us[..]) == N50_OK && t[0].q[0].n == 0 && t[0].q[0].ignored == 1;
+  // sixteen distinct terms, repeated or not, fit; a seventeenth refuses
+  #assert n50_t_parse(t[..], "a b c d e f g h i j k l m n o p a P") == N50_OK && t[0].q[0].n == 16 && t[0].q[0].terms[15] == "p";
+  #assert n50_t_parse(t[..], "a b c d e f g h i j k l m n o p q") == N50_TERMS && t[0].q[0].error == N50_TERMS;
+  // the lowercase copy needs room
+  small: [4] u8; q2: [1] N50Query;
+  #assert n50_parse("abcd", small[..], q2[..]) == N50_OK && q2[0].terms[0] == "abcd";
+  #assert n50_parse("ab cde", small[..], q2[..]) == N50_SPACE && q2[0].error == N50_SPACE;
+  #assert n50_parse("ab ab cd", small[..], q2[..]) == N50_OK && q2[0].n == 2;
+}
+#test "the chapter's three notes: index, matches, scores and order by hand" {
+  t: [1] N50T; n50_t_init(t[..]);
+  #assert n50_t_add(t[..], 0x31, 1, 100, "Coax compiles Coax.") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x32, 1, 200, "Nostr relays, written in Coax") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x33, 1, 300, "nostr relay, nostr client, in COAX") == NSS_ACCEPT;
+  #assert nsi_build(t[0].t[0].s[..], t[0].t[0].ix[..]) && n50_build(t[0].t[0].s[..], t[0].x[..], t[0].buf[..]);
+  // distinct words: n1 2 (coax compiles), n2 5 (nostr relays written in coax), n3 5 (nostr relay client in coax)
+  #assert t[0].x[0].count == 12 && t[0].x[0].n == 3;
+  for i: 1..<12 { #assert t[0].x[0].key[i - 1] < t[0].x[0].key[i] || (t[0].x[0].key[i - 1] == t[0].x[0].key[i] && t[0].x[0].rec[i - 1] < t[0].x[0].rec[i]); }
+  f: NostrFilter;
+  // "coax nostr": n3 scores 1 + 2 = 3, n2 1 + 1 = 2; n1 has no nostr
+  #assert n50_t_parse(t[..], "coax nostr language:en") == N50_OK;
+  r := n50_t_query(t[..], f);
+  #assert r.n == 2 && r.plan == N50_TERM && r.term == 1 && r.scanned == 2;
+  #assert t[0].out[0] == 2 && t[0].score[0] == 3 && t[0].out[1] == 1 && t[0].score[1] == 2;
+  // "coax": n1 2, then the ties at 1 newest first: n3, n2
+  #assert n50_t_parse(t[..], "Coax") == N50_OK;
+  r = n50_t_query(t[..], f);
+  #assert r.n == 3 && r.scanned == 3 && t[0].out[0] == 0 && t[0].score[0] == 2 && t[0].out[1] == 2 && t[0].out[2] == 1 && t[0].score[2] == 1;
+  // limit after scoring: the best one, not the newest one
+  f.has_limit = true; f.limit = 1;
+  r = n50_t_query(t[..], f); #assert r.n == 1 && t[0].out[0] == 0;
+  f.limit = 0; r = n50_t_query(t[..], f); #assert r.n == 0;
+  f.has_limit = false;
+  // "relay" is a word of n3 only; "relays" of n2 only
+  #assert n50_t_parse(t[..], "relay") == N50_OK; r = n50_t_query(t[..], f); #assert r.n == 1 && t[0].out[0] == 2 && r.scanned == 1;
+  #assert n50_t_parse(t[..], "zebra") == N50_OK; r = n50_t_query(t[..], f); #assert r.n == 0 && r.scanned == 0 && r.plan == N50_TERM;
+  // no terms: chapter 36's answer, time order, scores 0 (here no kind is ciphertext)
+  #assert n50_t_parse(t[..], "nsfw:false") == N50_OK;
+  t[0].score[0] = 9; r = n50_t_query(t[..], f);
+  #assert r.n == 3 && r.plan == N50_FILTER && t[0].out[0] == 2 && t[0].out[1] == 1 && t[0].out[2] == 0 && t[0].score[0] == 0 && t[0].score[2] == 0;
+  // the other fields still apply: since 150 drops n1
+  f.has_since = true; f.since = 150;
+  #assert n50_t_parse(t[..], "coax") == N50_OK; r = n50_t_query(t[..], f);
+  #assert r.n == 2 && t[0].out[0] == 2 && t[0].out[1] == 1 && r.scanned == 3;
+  f.has_until = true; f.until = 100; r = n50_t_query(t[..], f); #assert r.n == 0 && r.plan == N50_NONE;
+  // since == until is one second, not none
+  f.since = 300; f.until = 300; r = n50_t_query(t[..], f); #assert r.n == 1 && t[0].out[0] == 2;
+  // two terms with as many entries: the first one's are read
+  #assert n50_t_parse(t[..], "compiles written") == N50_OK; r = n50_t_query(t[..], f); #assert r.n == 0 && r.term == 0 && r.scanned == 1;
+  f.has_since = false;
+  // no terms: chapter 36's plans and refusals
+  #assert n50_t_parse(t[..], "") == N50_OK;
+  f.until = 50; r = n50_t_query(t[..], f); #assert r.n == 0 && r.plan == N50_FILTER;
+  f.has_since = true; f.since = 60; r = n50_t_query(t[..], f); #assert r.n == 0 && r.plan == N50_NONE;
+  f = NostrFilter.{};
+  ids := [1] string.["3200000000000000000000000000000000000000000000000000000000000000"]; f.has_ids = true; f.ids = ids[..];
+  r = n50_t_query(t[..], f); #assert r.n == 1 && t[0].out[0] == 1 && r.plan == N50_FILTER;
+  // chapter 36's index out of date, the word index not: refused
+  t[0].t[0].ix[0].ok = false; r = n50_t_query(t[..], f); #assert r.n == -1 && r.plan == N50_REFUSED;
+}
+#test "candidates, ties, ciphertext kinds, collisions and a stale index" {
+  t: [1] N50T; n50_t_init(t[..]);
+  // equal score and time: lowest id first
+  #assert n50_t_add(t[..], 0x52, 1, 500, "b a") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x51, 1, 500, "a b \\n a\\u0042 A") == NSS_ACCEPT;   // decoded: "a b \n aB A"
+  #assert n50_t_add(t[..], 0x53, 1059, 900, "a a a") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x54, 4, 900, "a") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x56, 1060, 400, "a") == NSS_ACCEPT;
+  #assert nsi_build(t[0].t[0].s[..], t[0].t[0].ix[..]) && n50_build(t[0].t[0].s[..], t[0].x[..], t[0].buf[..]);
+  // 0x51: a, b, ab; 0x52: b, a; 0x56: a; ciphertext kinds have no entries
+  // (kind 21059 is ephemeral: the store never keeps it)
+  #assert n50_excluded(4) && n50_excluded(1059) && n50_excluded(21059) && !n50_excluded(1) && !n50_excluded(1060) && !n50_excluded(5) && !n50_excluded(3) && !n50_excluded(1058) && !n50_excluded(21058) && !n50_excluded(21060);
+  #assert t[0].x[0].count == 6;
+  f: NostrFilter;
+  #assert n50_t_parse(t[..], "a") == N50_OK; r := n50_t_query(t[..], f);
+  #assert r.n == 3 && t[0].out[0] == 1 && t[0].score[0] == 2 && t[0].out[1] == 0 && t[0].out[2] == 4;
+  #assert n50_t_parse(t[..], "b a") == N50_OK; r = n50_t_query(t[..], f);
+  // b has 2 entries, a 3: b's are read
+  #assert r.n == 2 && r.term == 0 && r.scanned == 2 && t[0].out[0] == 1 && t[0].out[1] == 0 && t[0].score[0] == 3 && t[0].score[1] == 2;
+  // "b": a tie in score and time goes to the lower id, 0x51 (record 1)
+  #assert t[0].t[0].s[0].recs[0].id[0] == 0x52 && t[0].t[0].s[0].recs[1].id[0] == 0x51;
+  #assert n50_t_parse(t[..], "b") == N50_OK; r = n50_t_query(t[..], f);
+  #assert r.n == 2 && t[0].out[0] == 1 && t[0].out[1] == 0 && t[0].score[0] == 1 && t[0].score[1] == 1;
+  #assert n50_t_parse(t[..], "a b") == N50_OK; r = n50_t_query(t[..], f); #assert r.term == 1 && r.scanned == 2;
+  #assert n50_t_parse(t[..], "ab") == N50_OK; r = n50_t_query(t[..], f); #assert r.n == 1 && t[0].out[0] == 1 && t[0].score[0] == 1;
+  // out is short: the best ones kept
+  o: [1] int; sc: [1] int;
+  r = n50_query(t[0].t[0].s[..], t[0].t[0].ix[..], t[0].x[..], f, t[0].q[0], 1000, t[0].buf[..], o[..], sc[..]);
+  #assert r.n == 1 && o[0] == 1;
+  #assert n50_t_parse(t[..], "a") == N50_OK;
+  r = n50_query(t[0].t[0].s[..], t[0].t[0].ix[..], t[0].x[..], f, t[0].q[0], 1000, t[0].buf[..], o[..], sc[..]);
+  #assert r.n == 1 && o[0] == 1 && sc[0] == 2 && r.scanned == 3;
+  r = n50_query(t[0].t[0].s[..], t[0].t[0].ix[..], t[0].x[..], f, t[0].q[0], 1000, t[0].buf[..], o[0..<0], sc[0..<0]);
+  #assert r.n == 0 && r.plan == N50_NONE;
+  // a forged entry (a collision): read, then dropped by the exact count
+  x := t[0].x[0]; zk := n50_key("zz", 0, 2); at := n50_bound(x, zk, 2);
+  e := x.count; while e > at { x.key[e] = x.key[e - 1]; x.rec[e] = x.rec[e - 1]; e -= 1; }
+  x.key[at] = zk; x.rec[at] = 2; t[0].x[0].count += 1;
+  #assert n50_t_parse(t[..], "zz") == N50_OK; r = n50_t_query(t[..], f); #assert r.n == 0 && r.scanned == 1;
+  // a filter that is not valid answers nothing
+  bad := [1] string.["x"]; f.has_ids = true; f.ids = bad[..];
+  #assert n50_t_parse(t[..], "a") == N50_OK; r = n50_t_query(t[..], f); #assert r.n == 0 && r.plan == N50_NONE;
+  f.has_ids = false; f.ids = bad[0..<0];
+  // kinds filter with search
+  kinds := [1] int.[1060]; f.has_kinds = true; f.kinds = kinds[..];
+  r = n50_t_query(t[..], f); #assert r.n == 1 && t[0].out[0] == 4;
+  f = NostrFilter.{};
+  // the store changes: refused until rebuilt, with or without terms
+  #assert n50_t_add(t[..], 0x57, 1, 600, "a") == NSS_ACCEPT;
+  r = n50_t_query(t[..], f); #assert r.n == -1 && r.plan == N50_REFUSED;
+  #assert n50_t_parse(t[..], "") == N50_OK; r = n50_t_query(t[..], f); #assert r.n == -1;
+  #assert nsi_build(t[0].t[0].s[..], t[0].t[0].ix[..]); r = n50_t_query(t[..], f); #assert r.n == -1;
+  #assert n50_build(t[0].t[0].s[..], t[0].x[..], t[0].buf[..]); r = n50_t_query(t[..], f); #assert r.n == 4 && r.plan == N50_FILTER && r.scanned == 6;
+  // no terms: kinds 1059 and 4 are dropped before the limit, time order
+  #assert t[0].out[0] == 5 && t[0].out[1] == 1 && t[0].out[2] == 0 && t[0].out[3] == 4;
+  f.has_limit = true; f.limit = 2; r = n50_t_query(t[..], f); #assert r.n == 2 && t[0].out[0] == 5 && t[0].out[1] == 1;
+  f = NostrFilter.{};
+  // a record past its expiry is not answered
+  #assert n50_t_parse(t[..], "zz") == N50_OK; r = n50_t_query(t[..], f); #assert r.scanned == 0;
+  t[0].t[0].s[0].recs[5].expiry = 1001;
+  #assert n50_t_parse(t[..], "a") == N50_OK; r = n50_t_query(t[..], f); #assert r.n == 4 && r.scanned == 4;
+  t[0].t[0].s[0].recs[5].expiry = 1000; r = n50_t_query(t[..], f); #assert r.n == 3 && r.scanned == 4;
+  t[0].x[0].ok = false; r = n50_t_query(t[..], f); #assert r.n == -1;
+}
+#test "n50_insert: score, then time, then id; shifts; nothing written past the limit" {
+  t: [1] N50T; n50_t_init(t[..]);
+  #assert n50_t_add(t[..], 0x10, 1, 300, "w") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x11, 1, 200, "w") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x12, 1, 100, "w") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x13, 1, 50, "w") == NSS_ACCEPT;
+  s := t[0].t[0].s[..];
+  out: [5] int; sc: [5] int; for i: 0..<5 { out[i] = 3; sc[i] = -7; }
+  n := n50_insert(s, 0, 1, 0, 3, out[..], sc[..]); #assert n == 1 && out[0] == 0;
+  // older, same score: after record 0 (record 3 in out[2] is older still)
+  n = n50_insert(s, 2, 1, n, 3, out[..], sc[..]); #assert n == 2 && out[0] == 0 && out[1] == 2;
+  // a higher score goes first, two entries move down
+  n = n50_insert(s, 3, 5, n, 3, out[..], sc[..]); #assert n == 3 && out[0] == 3 && out[1] == 0 && out[2] == 2 && sc[0] == 5 && sc[1] == 1 && sc[2] == 1;
+  // full: record 1 (200) displaces record 2 (100); out[3] is never written
+  n = n50_insert(s, 1, 1, n, 3, out[..], sc[..]); #assert n == 3 && out[2] == 1 && out[3] == 3 && sc[3] == -7;
+  n = n50_insert(s, 2, 1, n, 3, out[..], sc[..]); #assert n == 3 && out[2] == 1 && out[3] == 3 && sc[3] == -7;
+  // out shorter than the limit
+  n = n50_insert(s, 2, 9, 0, 127, out[0..<1], sc[0..<1]); #assert n == 1 && out[0] == 2;
+  n = n50_insert(s, 1, 9, n, 127, out[0..<1], sc[0..<1]); #assert n == 1 && out[0] == 1 && out[1] == 0;
+  n = n50_insert(s, 3, 9, n, 127, out[0..<1], sc[0..<1]); #assert n == 1 && out[0] == 1;
+}
+#test "building refuses short arrays and content that doesn't fit" {
+  t: [1] N50T; n50_t_init(t[..]);
+  #assert n50_t_add(t[..], 0x31, 1, 100, "one two three") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x32, 1, 100, "four") == NSS_ACCEPT;
+  short := N50Index.{key = t[0].key[0..<3], rec = t[0].rec[..]}; x: [1] N50Index; x[0] = short;
+  #assert !n50_build(t[0].t[0].s[..], x[..], t[0].buf[..]) && !x[0].ok;
+  x[0] = N50Index.{key = t[0].key[..], rec = t[0].rec[0..<3]}; #assert !n50_build(t[0].t[0].s[..], x[..], t[0].buf[..]);
+  x[0] = N50Index.{key = t[0].key[0..<4], rec = t[0].rec[0..<4]}; #assert n50_build(t[0].t[0].s[..], x[..], t[0].buf[..]) && x[0].ok && x[0].count == 4;
+  #assert !n50_build(t[0].t[0].s[..], x[..], t[0].buf[0..<12]) && !x[0].ok;
+  #assert n50_build(t[0].t[0].s[..], x[..], t[0].buf[0..<13]);
+  // empty content adds no entries and is no error
+  #assert n50_t_add(t[..], 0x33, 1, 100, "") == NSS_ACCEPT;
+  x[0] = N50Index.{key = t[0].key[0..<4], rec = t[0].rec[0..<4]}; #assert n50_build(t[0].t[0].s[..], x[..], t[0].buf[0..<13]) && x[0].count == 4;
+  // a candidate whose content doesn't fit the query's buffer is counted, not read
+  q: [1] N50Query; qb: [16] u8; o: [4] int; sc: [4] int;
+  #assert n50_parse("three", qb[..], q[..]) == N50_OK;
+  r := n50_query(t[0].t[0].s[..], t[0].t[0].ix[..], x[..], NostrFilter.{}, q[0], 1000, t[0].buf[0..<12], o[..], sc[..]);
+  #assert r.n == 0 && r.scanned == 1 && r.unread == 1;
+  r = n50_query(t[0].t[0].s[..], t[0].t[0].ix[..], x[..], NostrFilter.{}, q[0], 1000, t[0].buf[0..<13], o[..], sc[..]);
+  #assert r.n == 1 && r.unread == 0 && sc[0] == 1;
+  // a forged entry for the empty record: read, scored 0, not unread
+  y: [1] N50Index; y[0] = N50Index.{key = t[0].key[..], rec = t[0].rec[..]}; #assert n50_build(t[0].t[0].s[..], y[..], t[0].buf[..]);
+  zk := n50_key("zz", 0, 2); at := n50_bound(y[0], zk, 2);
+  e := y[0].count; while e > at { y[0].key[e] = y[0].key[e - 1]; y[0].rec[e] = y[0].rec[e - 1]; e -= 1; }
+  y[0].key[at] = zk; y[0].rec[at] = 2; y[0].count += 1;
+  #assert n50_parse("zz", qb[..], q[..]) == N50_OK;
+  r = n50_query(t[0].t[0].s[..], t[0].t[0].ix[..], y[..], NostrFilter.{}, q[0], 1000, t[0].buf[..], o[..], sc[..]);
+  #assert r.n == 0 && r.scanned == 1 && r.unread == 0;
+  // the content is found among the object's keys, whatever their order
+  #assert n50_content("{\"content\":\"a\\\"b\",\"kind\":1}") == "a\\\"b";
+  #assert n50_content("{\"tags\":[[\"content\",\"x\"]],\"content\":\"y\"}") == "y";
+  #assert n50_content("{\"kind\":1}").count == 0 && n50_content("[\"content\",\"x\"]").count == 0 && n50_content("{\"content\":1}").count == 0;
+}
+
+// ---- words ----------------------------------------------------------------------
+
+n50_word_byte :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c >= 0x80; }
+n50_lower :: (c: u8) -> u8 { if c >= 'A' && c <= 'Z' { return c + 32; } return c; }
+// book:begin words
+// The first word in text at or after at.
+n50_next :: (text: string, at: int) -> N50Word {
+  i := at;
+  while i < text.count && !n50_word_byte(text[i]) { i += 1; }
+  w := N50Word.{from = i, to = i};
+  while w.to < text.count && n50_word_byte(text[w.to]) { w.to += 1; }
+  return w;
+}
+// The key of the word text[from..<to], folded to lowercase.
+n50_key :: (text: string, from: int, to: int) -> int {
+  h := 1;
+  for i: from..<to { h = (h * 257 + cast(int) n50_lower(text[i]) + 1) % NSI_HASH; }
+  return h;
+}
+// How many words of text equal term (lowercase) once folded.
+n50_tf :: (text: string, term: string) -> int {
+  n := 0; w := n50_next(text, 0);
+  while w.from < text.count {
+    same := w.to - w.from == term.count;
+    for k: 0..<term.count { if same && n50_lower(text[w.from + k]) != term[k] { same = false; } }
+    if same { n += 1; }
+    w = n50_next(text, w.to);
+  }
+  return n;
+}
+// book:end words
+
+// ---- the search string --------------------------------------------------------------
+
+n50_space :: (c: u8) -> bool { return c == ' ' || (c >= 9 && c <= 13); }
+// book:begin parse
+// Reads a search string into q[0]: the distinct words of its fields, each
+// copied in lowercase into buf, and its key:value extensions.
+n50_parse :: (search: string, buf: [] u8, q: [] N50Query) -> int {
+  q[0] = N50Query.{}; used := 0; at := 0;
+  while at < search.count {
+    if n50_space(search[at]) { at += 1; continue; }
+    end := at; colon := false;
+    while end < search.count && !n50_space(search[end]) { if search[end] == ':' { colon = true; } end += 1; }
+    field := search[at..<end];
+    if field == "include:spam" { q[0].spam = true; }
+    else if colon { q[0].ignored += 1; }
+    else {
+      w := n50_next(field, 0);
+      while w.from < field.count {
+        k := w.to - w.from;
+        if used + k > buf.count { q[0].error = N50_SPACE; return N50_SPACE; }
+        for i: 0..<k { buf[used + i] = n50_lower(field[w.from + i]); }
+        term := cast(string) buf[used..<used + k]; seen := false;
+        for i: 0..<q[0].n { if q[0].terms[i] == term { seen = true; } }
+        if !seen {
+          if q[0].n == N50_MAX_TERMS { q[0].error = N50_TERMS; return N50_TERMS; }
+          q[0].terms[q[0].n] = term; q[0].n += 1; used += k;
+        }
+        w = n50_next(field, w.to);
+      }
+    }
+    at = end;
+  }
+  return N50_OK;
+}
+// book:end parse
+
+// ---- the index ------------------------------------------------------------------------
+
+// The raw (still escaped) content string of an event object's text, or ""
+// when it has none.
+n50_content :: (text: string) -> string {
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return ""; }
+  t := json_next(j[..]);
+  while t == JSON_STRING {
+    key := json_is(json_text(j[..]), "content");
+    v := json_next(j[..]);
+    if key && v == JSON_STRING { return json_text(j[..]); }
+    if !json_skip(j[..]) { return ""; }
+    t = json_next(j[..]);
+  }
+  return "";
+}
+// Ciphertext kinds: NIP-04 messages and NIP-59 gift wraps.
+n50_excluded :: (kind: int) -> bool { return kind == 4 || kind == 1059 || kind == 21059; }
+// The first entry not before (key, rec).
+n50_bound :: (x: N50Index, key: int, rec: int) -> int {
+  lo := 0; hi := x.count;
+  while lo < hi {
+    mid := (lo + hi) / 2;
+    if x.key[mid] < key || (x.key[mid] == key && x.rec[mid] < rec) { lo = mid + 1; } else { hi = mid; }
+  }
+  return lo;
+}
+// book:begin build
+// Builds the word index over every record's decoded content (buf must hold
+// the longest). False, and the index refused, when an array is too short.
+n50_build :: (s: [] RsdStore, x: [] N50Index, buf: [] u8) -> bool {
+  x[0].ok = false; x[0].count = 0;
+  for i: 0..<s[0].n {
+    if n50_excluded(s[0].recs[i].kind) { continue; }
+    k := json_unescape(n50_content(rsd_text(s, i)), buf);
+    if k < 0 { return false; }
+    text := cast(string) buf[0..<k]; w := n50_next(text, 0);
+    while w.from < k {
+      key := n50_key(text, w.from, w.to); at := n50_bound(x[0], key, i);
+      if at == x[0].count || x[0].key[at] != key || x[0].rec[at] != i {
+        if x[0].count >= x[0].key.count || x[0].count >= x[0].rec.count { return false; }
+        e := x[0].count;
+        while e > at { x[0].key[e] = x[0].key[e - 1]; x[0].rec[e] = x[0].rec[e - 1]; e -= 1; }
+        x[0].key[at] = key; x[0].rec[at] = i; x[0].count += 1;
+      }
+      w = n50_next(text, w.to);
+    }
+  }
+  x[0].n = s[0].n; x[0].used = s[0].used; x[0].ok = true;
+  return true;
+}
+// book:end build
+
+// ---- the query ---------------------------------------------------------------------------
+
+// book:begin query
+// The score of decoded content: the sum of the terms' counts, or 0 when a
+// term is missing.
+n50_score :: (text: string, q: N50Query) -> int {
+  sum := 0;
+  for i: 0..<q.n { c := n50_tf(text, q.terms[i]); if c == 0 { return 0; } sum += c; }
+  return sum;
+}
+// Puts record i with score sc into out[0..<n] (best first, then newest,
+// then lowest id), at most limit and out.count long: the new length.
+n50_insert :: (s: [] RsdStore, i: int, sc: int, n: int, limit: int, out: [] int, score: [] int) -> int {
+  at := n;
+  while at > 0 && (sc > score[at - 1] || (sc == score[at - 1] && ns_store_newer(s[0].recs[i], s[0].recs[out[at - 1]]))) { at -= 1; }
+  if at >= limit || at >= out.count { return n; }
+  k := n; if k >= limit || k >= out.count { k -= 1; }
+  m := k + 1;
+  while k > at { out[k] = out[k - 1]; score[k] = score[k - 1]; k -= 1; }
+  out[at] = i; score[at] = sc;
+  return m;
+}
+// Up to rs_limit(f) (and out.count) visible records that match f and every
+// term of q, best first, with their scores in score. buf holds one decoded
+// content. Refused while either index is out of date.
+n50_query :: (s: [] RsdStore, ix: [] NsiIndex, x: [] N50Index, f: NostrFilter, q: N50Query, now: int, buf: [] u8, out: [] int, score: [] int) -> N50Result {
+  if !x[0].ok || x[0].n != s[0].n || x[0].used != s[0].used { return N50Result.{n = -1, plan = N50_REFUSED}; }
+  if q.n == 0 {
+    // every match in time order, then the ciphertext kinds dropped and the limit applied
+    r := nsi_query_limit(s, ix, f, now, out.count, out);
+    if r.n < 0 { return N50Result.{n = -1, plan = N50_REFUSED}; }
+    limit := rs_limit(f); n := 0;
+    for k: 0..<r.n { if n < limit && !n50_excluded(s[0].recs[out[k]].kind) { out[n] = out[k]; score[n] = 0; n += 1; } }
+    return N50Result.{n = n, plan = ifx r.plan == NSI_NONE then N50_NONE else N50_FILTER, scanned = r.scanned};
+  }
+  later := ns_store_seen(s, now);
+  limit := rs_limit(f);
+  if !nf_valid(f) || limit == 0 || out.count == 0 || (f.has_since && f.has_until && f.since > f.until) { return N50Result.{}; }
+  // the term with the fewest entries gives the candidates
+  res := N50Result.{plan = N50_TERM}; from: int; to: int; best := -1;
+  for t: 0..<q.n {
+    term := q.terms[t]; key := n50_key(term, 0, term.count);
+    a := n50_bound(x[0], key, 0); b := n50_bound(x[0], key + 1, 0);
+    if best < 0 || b - a < to - from { from = a; to = b; res.term = t; best = t; }
+  }
+  n := 0;
+  for p: from..<to {
+    i := x[0].rec[p]; res.scanned += 1;
+    if !ns_store_visible(s, i, now) || !nf_match(f, rsd_event(s, i)) { continue; }
+    k := json_unescape(n50_content(rsd_text(s, i)), buf);
+    if k < 0 { res.unread += 1; continue; }
+    sc := n50_score(cast(string) buf[0..<k], q);
+    if sc > 0 { n = n50_insert(s, i, sc, n, limit, out, score); }
+  }
+  res.n = n;
+  return res;
+}
+// book:end query

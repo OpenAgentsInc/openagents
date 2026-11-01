@@ -474,7 +474,7 @@ What the output shows:
 | --- | --- | --- |
 | `ids` `"5c83"`, uppercase `ids`, `#p` of 64 `x` | `FR_INVALID` | not 64 lowercase hex digits; `nf_valid` refuses after reading |
 | `kinds [65536]`, `limit -1`, `since 9007199254740992` | `FR_INVALID` | kind above 65535, negative limit, time beyond 2^53 − 1 |
-| `search`, `#ab`, `#1` | `FR_FIELD` | not one of the seven keys; a tag key is `#` and one ASCII letter. NIP-50's `search` is not in this profile |
+| `search`, `#ab`, `#1` | `FR_FIELD` | not one of the seven keys; a tag key is `#` and one ASCII letter. NIP-50's `search` is not in this profile; chapter 41's `filter_read_search` reads it |
 | `kinds` twice | `FR_FIELD` | a repeated key refuses the filter instead of keeping one value |
 | `kinds 1`, `kinds ["1"]`, `kinds [1.5]`, `since "1"` | `FR_TYPE` | a list must be a list of integers; a time must be an integer |
 | an array, no closing brace | `FR_JSON` | a filter is one complete JSON object |

@@ -1,0 +1,106 @@
+// The checks of search.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/search.coax --run-steps 250000000
+#load "../search.coax";
+
+// book:begin check
+// Expected values from two Python transcriptions written for this chapter.
+// They share no code with nip50.coax.
+//
+// This chapter's rule:
+//
+//   def words(b): return [bytes(c + 32 if 65 <= c <= 90 else c for c in w)
+//                         for w in re.findall(rb'[A-Za-z0-9\x80-\xff]+', b)]
+//   def terms(s):    # fields on ASCII whitespace; a field with ':' is an extension
+//       out = []
+//       for field in re.split(rb'[ \t\n\x0b\x0c\r]+', s.encode()):
+//           if field and b':' not in field:
+//               out += [w for w in words(field) if w not in out]
+//       return out
+//   def mine(s):     # every term a whole word; score = sum of counts;
+//       ...          # score desc, created desc, id asc; kinds 4, 1059, 21059 never
+//
+// The Rust relay's rule (crates/nostr/src/domain/filter.rs at 0b401561a0^,
+// search_terms, and the replay query in nostr-relay's statements.rs):
+//
+//   def rust(s):
+//       t = [fold(x) for x in s.split() if ':' not in x]   # fold: A-Z only
+//       hits = [e for e in C if e.kind not in RUST_EXCLUDED
+//               and all(x in fold(e.content) for x in t)]
+//       return sorted(hits, key=lambda e: (-e.created, e.id))
+//
+// over the nine-event corpus below (ids are the first byte, the rest zero).
+// book:end check
+
+CORPUS :: [9] string.[
+  "Coax compiles Coax.",
+  "Nostr relays, written in Coax",
+  "nostr relay, nostr client, in COAX",
+  "Café au lait at the relay",
+  "CAFÉ CLUB: relay-to-relay sync",
+  "catwalk: the cat sat",
+  "cat cat cat",
+  "line one\\nline two\\tcat",
+  "Long-form: Coax and Nostr, Nostr and Coax"];
+CORPUS_KIND :: [9] int.[1, 1, 1, 1, 1, 1, 1059, 1, 30023];
+CORPUS_TIME :: [9] int.[100, 200, 300, 300, 400, 500, 600, 700, 800];
+
+Corpus :: struct { t: [1] N50T; arena: [4096] u8; }
+corpus :: (c: [] Corpus) {
+  n50_t_init(c[0].t[..]);
+  c[0].t[0].t[0].s[0].arena = c[0].arena[..];
+  for i: 0..<9 { #assert n50_t_add(c[0].t[..], cast(u8) (i + 1), CORPUS_KIND[i], CORPUS_TIME[i], CORPUS[i]) == NSS_ACCEPT; }
+  #assert nsi_build(c[0].t[0].t[0].s[..], c[0].t[0].t[0].ix[..]) && n50_build(c[0].t[0].t[0].s[..], c[0].t[0].x[..], c[0].t[0].buf[..]);
+}
+// This chapter's answer as "id:score id:score ...", ids 1..9.
+answer :: (c: [] Corpus, search: string, out: [] u8) -> string {
+  #assert n50_t_parse(c[0].t[..], search) == N50_OK;
+  r := n50_t_query(c[0].t[..], NostrFilter.{});
+  n := 0;
+  for k: 0..<r.n {
+    if k > 0 { out[n] = ' '; n += 1; }
+    out[n] = cast(u8) ('0' + c[0].t[0].t[0].s[0].recs[c[0].t[0].out[k]].id[0]); out[n + 1] = ':'; n += 2;
+    n = json_write_int(out, n, c[0].t[0].score[k]);
+  }
+  return cast(string) out[0..<n];
+}
+
+#test "the corpus against the Python transcription of this chapter's rule" #steps 2000000000 {
+  c: [1] Corpus; corpus(c[..]); b: [128] u8;
+  #assert answer(c[..], "coax nostr", b[..]) == "9:4 3:3 2:2";
+  #assert answer(c[..], "Coax", b[..]) == "9:2 1:2 3:1 2:1";
+  #assert answer(c[..], "relay", b[..]) == "5:2 3:1 4:1";
+  #assert answer(c[..], "café", b[..]) == "4:1";
+  #assert answer(c[..], "CAFÉ", b[..]) == "5:1";
+  #assert answer(c[..], "cat", b[..]) == "8:1 6:1";
+  #assert answer(c[..], "relay-to-relay", b[..]) == "5:3";
+  #assert answer(c[..], "nsfw:false", b[..]) == "9:0 8:0 6:0 5:0 3:0 4:0 2:0 1:0";
+  #assert answer(c[..], "LINE two", b[..]) == "8:3";
+  #assert answer(c[..], "Nostr, Coax!", b[..]) == "9:4 3:3 2:2";
+}
+
+// The Rust relay's answers over the same corpus, ids in its order.
+RUST :: [10] string.["9 3 2", "9 3 2 1", "5 3 4 2", "4", "5", "8 6", "5", "9 8 6 5 3 4 2 1", "8", ""];
+QUERIES :: [10] string.["coax nostr", "Coax", "relay", "café", "CAFÉ", "cat", "relay-to-relay", "nsfw:false", "LINE two", "Nostr, Coax!"];
+
+#test "the recorded differences from the Rust relay" #steps 2000000000 {
+  c: [1] Corpus; corpus(c[..]); b: [128] u8;
+  // Same events (order aside) for 8 of the 10 queries. The two differences:
+  // "relay" also finds 2 there ("relays" holds "relay" as a substring), and
+  // "Nostr, Coax!" finds nothing there (the fields keep their punctuation).
+  same := 0;
+  for q: 0..<10 {
+    a := answer(c[..], QUERIES[q], b[..]);
+    // the ids of this chapter's answer, as a set of bits, and the Rust one's
+    mine := 0; at := 0;
+    while at < a.count { mine |= 1 << (a[at] - '0'); while at < a.count && a[at] != ' ' { at += 1; } at += 1; }
+    rust := 0; for ch: RUST[q] { if ch != ' ' { rust |= 1 << (ch - '0'); } }
+    if mine == rust { same += 1; }
+    if q == 2 { #assert rust == mine | (1 << 2); }
+    if q == 9 { #assert rust == 0 && mine != 0; }
+  }
+  #assert same == 8;
+  // Order: the Rust relay is newest first. Score first differs for "Coax"
+  // (1 has two mentions) and "relay" (5 has two).
+  #assert answer(c[..], "Coax", b[..]) != "9:2 3:1 2:1 1:2";
+}

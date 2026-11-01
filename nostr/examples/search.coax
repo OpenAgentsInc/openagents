@@ -1,0 +1,166 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip50.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The relay's clock for the whole run: 2026-11-01T00:00:00Z.
+NOW :: 1793491200;
+// BIP-340 vector 1's published test key and aux. Never sign with a real key
+// in an example.
+KEY_A :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_A :: "0000000000000000000000000000000000000000000000000000000000000001";
+
+// A store of up to 64 records, both indexes, and room to read one filter.
+Relay :: struct {
+  arena: [16384] u8; recs: [64] RsdRec; s: [1] RsdStore;
+  by_id: [64] int; by_ak: [64] int; by_time: [64] int; tag_key: [128] int; tag_rec: [128] int;
+  ix: [1] NsiIndex;
+  key: [512] int; rec: [512] int; x: [1] N50Index;
+  buf: [65536] u8; scratch: [4096] u8;
+}
+relay_init :: (r: [] Relay) {
+  r[0].s[0] = RsdStore.{}; r[0].s[0].arena = r[0].arena[..]; r[0].s[0].recs = r[0].recs[..];
+  r[0].ix[0] = NsiIndex.{by_id = r[0].by_id[..], by_ak = r[0].by_ak[..], by_time = r[0].by_time[..], tag_key = r[0].tag_key[..], tag_rec = r[0].tag_rec[..]};
+  r[0].x[0] = N50Index.{key = r[0].key[..], rec = r[0].rec[..]};
+}
+// One EVENT through the relay's admission: read, signature, store.
+admit :: (r: [] Relay, text: string) -> int {
+  a := rs_admit_read(text, NOW, false, false, r[0].scratch[..]);
+  if a.reason == RS_ACCEPT { a = rs_admit_verified(a, nostr_event_verify_vartime(text, r[0].scratch[..], false)); }
+  if a.reason != RS_ACCEPT { return a.reason; }
+  return rsd_admit(r[0].s[..], a, text);
+}
+sign :: (created_at: int, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(KEY_A, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(AUX_A, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [8192] u8;
+  n := EVENT_MORE;
+  while n == EVENT_MORE { n = nostr_event_sign_step(key[..], aux[..], created_at, 1, "[]", content, work[..], scratch[..], out, false); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+to_hex :: (b: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<b.count { out[2 * i] = digits[b[i] >> 4]; out[2 * i + 1] = digits[b[i] & 15]; }
+  return cast(string) out[0..<2 * b.count];
+}
+// Record i's content, decoded.
+text_of :: (r: [] Relay, i: int) -> string {
+  k := json_unescape(n50_content(rsd_text(r[0].s[..], i)), r[0].buf[..]);
+  return cast(string) r[0].buf[0..<k];
+}
+FR_NAMES :: [6] string.["FR_OK", "FR_JSON", "FR_FIELD", "FR_TYPE", "FR_SPACE", "FR_INVALID"];
+N50_NAMES :: [3] string.["N50_OK", "N50_TERMS", "N50_SPACE"];
+
+// book:begin ask
+// One filter with a search through the relay's reader, the search string's
+// parser and the word index; the answer with scores.
+ask :: (r: [] Relay, text: string) {
+  strs: [64] string; ints: [16] int; tags: [8] NostrTagFilter; bytes: [1024] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter; srch: [1] FrSearch;
+  print("-> %\n", text);
+  e := filter_read_search(text, f[..], sp[..], srch[..]);
+  if e != FR_OK { print("    refused by filter_read_search: %\n", FR_NAMES[e]); return; }
+  qbuf: [1024] u8; q: [1] N50Query;
+  pe := n50_parse(srch[0].text, qbuf[..], q[..]);
+  if pe != N50_OK { print("    refused by n50_parse: %\n", N50_NAMES[pe]); return; }
+  print("    terms:"); for i: 0..<q[0].n { print(" %", q[0].terms[i]); }
+  if q[0].n == 0 { print(" (none)"); }
+  print("; include:spam %; extensions ignored %\n", q[0].spam, q[0].ignored);
+  out: [64] int; score: [64] int;
+  res := n50_query(r[0].s[..], r[0].ix[..], r[0].x[..], f[0], q[0], NOW, r[0].buf[..], out[..], score[..]);
+  if res.n < 0 { print("    refused: the word index is out of date\n"); return; }
+  plan := ifx res.plan == N50_TERM then "the entries of one term" else "chapter 36's query";
+  print("    % result(s), read through %, % record(s) read\n", res.n, plan, res.scanned);
+  for k: 0..<res.n { i := out[k]; print("    score % n% at NOW-%: %\n", score[k], i + 1, NOW - r[0].recs[i].created, text_of(r, i)); }
+}
+// book:end ask
+
+// book:begin rust
+// The Rust relay's rule (crates/nostr/src/domain/filter.rs, search_terms,
+// and the replay query): whitespace fields without a ':', A-Z folded; each
+// must be a substring of the folded content; newest first, then lowest id.
+rust_relay :: (r: [] Relay, search: string) {
+  print("    the Rust relay's rule would answer:");
+  hits: [64] int; n := 0;
+  for i: 0..<r[0].s[0].n {
+    text := text_of(r, i); all := true; at := 0;
+    while at < search.count {
+      if search[at] == ' ' { at += 1; continue; }
+      end := at; colon := false;
+      while end < search.count && search[end] != ' ' { if search[end] == ':' { colon = true; } end += 1; }
+      found := colon;
+      for p: 0..<text.count - (end - at) + 1 {
+        same := true;
+        for k: 0..<end - at { if n50_lower(text[p + k]) != n50_lower(search[at + k]) { same = false; } }
+        if same { found = true; }
+      }
+      if !found { all = false; }
+      at = end;
+    }
+    if all && ns_store_visible(r[0].s[..], i, NOW) { n = ns_store_insert(r[0].s[..], i, n, 64, hits[..]); }
+  }
+  for k: 0..<n { print(" n%", hits[k] + 1); }
+  if n == 0 { print(" nothing"); }
+  print("\n");
+}
+// book:end rust
+
+main :: () {
+  r: [1] Relay; relay_init(r[..]);
+  h: [64] u8;
+  notes := [3] string.["Coax compiles Coax.", "Nostr relays, written in Coax", "nostr relay, nostr client, in COAX"];
+
+  print("the words of three notes (ASCII letters and digits, A-Z folded)\n");
+  for i: 0..<3 {
+    print("  n%: \"%\" ->", i + 1, notes[i]);
+    w := n50_next(notes[i], 0);
+    while w.from < notes[i].count {
+      word: [32] u8; for k: w.from..<w.to { word[k - w.from] = n50_lower(notes[i][k]); }
+      print(" %", cast(string) word[0..<w.to - w.from]);
+      w = n50_next(notes[i], w.to);
+    }
+    print("\n");
+  }
+  print("  counts: coax n1 2, n2 1, n3 1; nostr n2 1, n3 2; relay n3 1; relays n2 1\n\n");
+
+  print("the store: the three notes signed by the BIP-340 vector 1 key, 300, 200 and 100 seconds old\n");
+  texts: [3] string; bufs: [3] [1024] u8;
+  for i: 0..<3 {
+    texts[i] = sign(NOW - 300 + 100 * i, notes[i], bufs[i][..]);
+    result := admit(r[..], texts[i]);
+    id := r[0].recs[i].id;
+    print("  n% id %...: %\n", i + 1, to_hex(id[0..<4], h[..]), ifx result == RS_ACCEPT then "accepted" else "refused");
+  }
+  #assert nsi_build(r[0].s[..], r[0].ix[..]) && n50_build(r[0].s[..], r[0].x[..], r[0].buf[..]);
+  print("  word index: % entries (n1 2, n2 5, n3 5 distinct words)\n\n", r[0].x[0].count);
+
+  print("searches\n");
+  ask(r[..], "{\"search\":\"coax nostr language:en\"}");
+  rust_relay(r[..], "coax nostr language:en");
+  ask(r[..], "{\"search\":\"Coax\"}");
+  rust_relay(r[..], "Coax");
+  ask(r[..], "{\"search\":\"Coax\",\"limit\":1}");
+  ask(r[..], "{\"search\":\"relay\"}");
+  rust_relay(r[..], "relay");
+  ask(r[..], "{\"search\":\"Nostr, Coax!\"}");
+  rust_relay(r[..], "Nostr, Coax!");
+  ask(r[..], "{\"kinds\":[1],\"search\":\"nsfw:false include:spam\"}");
+  ask(r[..], "{\"search\":\"coax\",\"since\":1793491000}");
+  ask(r[..], "{\"search\":\"zebra\"}");
+
+  print("\nrefusals\n");
+  strs: [8] string; ints: [4] int; tags: [2] NostrTagFilter; bytes: [64] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  print("  chapter 23's filter_read on {\"search\":\"coax\"}: %\n", FR_NAMES[filter_read("{\"search\":\"coax\"}", f[..], sp[..])]);
+  ask(r[..], "{\"search\":5}");
+  ask(r[..], "{\"search\":\"a\",\"search\":\"b\"}");
+  ask(r[..], "{\"search\":\"a b c d e f g h i j k l m n o p q\"}");
+  b4: [1024] u8; e4 := sign(NOW, "a fourth note about coax", b4[..]);
+  print("a fourth note admitted, word index not rebuilt: %\n", ifx admit(r[..], e4) == RS_ACCEPT then "accepted" else "refused");
+  ask(r[..], "{\"search\":\"coax\"}");
+}
+// book:end example

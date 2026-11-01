@@ -8,6 +8,8 @@
 // integers within 2^53 and limit >= 0 (limit 0 asks for no stored events);
 // tag keys are "#" and one ASCII letter, case-sensitive; every other key,
 // a repeated key or a value of the wrong type refuses the whole filter.
+// "search" (NIP-50) is one of those other keys for filter_read; only
+// filter_read_search reads it.
 // The result is checked with nf_valid before it is returned. Reading grants
 // nothing: a filter only selects.
 #load "filter.coax";
@@ -16,6 +18,8 @@
 FR_OK :: 0; FR_JSON :: 1; FR_FIELD :: 2; FR_TYPE :: 3; FR_SPACE :: 4; FR_INVALID :: 5;
 // Caller storage for one or more filters; the used counts advance.
 FrSpace :: struct { strs: []string; ints: []int; tags: []NostrTagFilter; bytes: []u8; strs_used: int; ints_used: int; tags_used: int; bytes_used: int; }
+// NIP-50's search string, when filter_read_search reads one.
+FrSearch :: struct { has: bool; text: string; }
 
 #test "a filter round-trips through nf_write" {
   strs: [16] string; ints: [8] int; tags: [4] NostrTagFilter; bytes: [1024] u8;
@@ -62,6 +66,29 @@ FrSpace :: struct { strs: []string; ints: []int; tags: []NostrTagFilter; bytes: 
   #assert filter_read("{\"kinds\":x}", f[..], sp[..]) == FR_JSON && filter_read("{\"since\":x}", f[..], sp[..]) == FR_JSON;
   #assert filter_read("{\"#t\":[\"\"]}", f[..], sp[..]) == FR_OK && f[0].tags[0].values[0].count == 0;
   #assert filter_read("{\"limitless\":1}", f[..], sp[..]) == FR_FIELD;
+}
+#test "search (NIP-50, chapter 41): read only by filter_read_search" {
+  strs: [8] string; ints: [4] int; tags: [2] NostrTagFilter; bytes: [64] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter; q: [1] FrSearch;
+  // filter_read keeps refusing the key; filter_read_search reads it decoded
+  #assert filter_read("{\"search\":\"x\"}", f[..], sp[..]) == FR_FIELD;
+  #assert filter_read_search("{\"kinds\":[1],\"search\":\"Coax \\u006eostr\",\"limit\":2}", f[..], sp[..], q[..]) == FR_OK;
+  #assert q[0].has && q[0].text == "Coax nostr" && f[0].kinds[0] == 1 && f[0].limit == 2 && sp[0].bytes_used == 10;
+  // absent: has is false; an empty string is present
+  q[0].has = true; q[0].text = "z";
+  #assert filter_read_search("{\"kinds\":[1]}", f[..], sp[..], q[..]) == FR_OK && !q[0].has && q[0].text.count == 0;
+  #assert filter_read_search("{\"search\":\"\"}", f[..], sp[..], q[..]) == FR_OK && q[0].has && q[0].text.count == 0;
+  // the same rules as every other key: one string, once, room for it
+  #assert filter_read_search("{\"search\":5}", f[..], sp[..], q[..]) == FR_TYPE;
+  #assert filter_read_search("{\"search\":[\"x\"]}", f[..], sp[..], q[..]) == FR_TYPE;
+  #assert filter_read_search("{\"search\":\"a\",\"search\":\"b\"}", f[..], sp[..], q[..]) == FR_FIELD;
+  #assert filter_read_search("{\"searc\":\"a\"}", f[..], sp[..], q[..]) == FR_FIELD;
+  #assert filter_read_search("{\"search\":\"a\",\"x\":1}", f[..], sp[..], q[..]) == FR_FIELD;
+  #assert filter_read_search("{\"ids\":[\"ab\"],\"search\":\"a\"}", f[..], sp[..], q[..]) == FR_INVALID;
+  sp[0].bytes_used = 60;
+  #assert filter_read_search("{\"search\":\"abcde\"}", f[..], sp[..], q[..]) == FR_SPACE;
+  #assert filter_read_search("{\"search\":\"abcd\"}", f[..], sp[..], q[..]) == FR_OK && sp[0].bytes_used == 64 && q[0].text == "abcd";
 }
 #test "storage limits refuse instead of truncating" {
   strs: [2] string; ints: [1] int; tags: [1] NostrTagFilter; bytes: [4] u8;
@@ -114,22 +141,32 @@ fr_letter :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <
 // Reads the filter object text into f[0]. On a refusal f[0] is unspecified
 // and the space may have advanced; the caller discards both.
 filter_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace) -> int {
-  f[0] = NostrFilter.{};
+  q: [1] FrSearch;
+  return fr_read(text, f, sp, q[..], false);
+}
+// The same, and NIP-50's "search" key (chapter 41): a string, decoded into
+// the space, in q[0]; q[0].has says whether the key was there. Only a
+// reader that answers searches calls this; filter_read refuses the key.
+filter_read_search :: (text: string, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch) -> int {
+  return fr_read(text, f, sp, q, true);
+}
+fr_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch, search: bool) -> int {
+  f[0] = NostrFilter.{}; q[0] = FrSearch.{};
   j: [1] Json; json_start(j[..], text);
   if json_next(j[..]) != JSON_OBJECT { return FR_JSON; }
   seen := 0; tag_from := sp[0].tags_used;
-  names := [6] string.["ids", "authors", "kinds", "since", "until", "limit"];
+  names := [7] string.["ids", "authors", "kinds", "since", "until", "limit", "search"];
   while true {
     t := json_next(j[..]);
     if t == JSON_OBJECT_END { break; }
     if t != JSON_STRING { return FR_JSON; }
     key: [8] u8;
     kn := json_unescape(json_text(j[..]), key[..]);
-    field := 6;
+    field := 7;
     for i: 0..<names.count { if json_is(json_text(j[..]), names[i]) { field = i; } }
     tag := kn == 2 && key[0] == '#' && fr_letter(key[1]);
-    if field == 6 && !tag { return FR_FIELD; }
-    if field < 6 {
+    if (field == 7 && !tag) || (field == 6 && !search) { return FR_FIELD; }
+    if field < 7 {
       if (seen & (1 << field)) != 0 { return FR_FIELD; }
       seen |= 1 << field;
     } else {
@@ -147,6 +184,13 @@ filter_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace) -> int {
       if field == 3 { f[0].has_since = true; f[0].since = n.value; }
       else if field == 4 { f[0].has_until = true; f[0].until = n.value; }
       else { f[0].has_limit = true; f[0].limit = n.value; }
+    }
+    else if field == 6 {
+      if v != JSON_STRING { return FR_TYPE; }
+      at := sp[0].bytes_used;
+      n := json_unescape(json_text(j[..]), sp[0].bytes[at..<sp[0].bytes.count]);
+      if n < 0 { return FR_SPACE; }
+      q[0].has = true; q[0].text = cast(string) sp[0].bytes[at..<at + n]; sp[0].bytes_used += n;
     } else {
       if sp[0].tags_used >= sp[0].tags.count { return FR_SPACE; }
       list: [1] []string; r = fr_strings(j[..], sp, list[..]);

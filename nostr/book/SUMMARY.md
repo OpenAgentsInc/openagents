@@ -69,7 +69,7 @@
 - [38. NIP-42 authentication](ch038-nip-42-authentication.md) — implemented
 - [39. Delete, expire and vanish](ch039-delete-expire-and-vanish.md) — implemented
 - [40. Count events](ch040-count-events.md) — implemented
-- [41. Search](ch041-search.md) — design draft
+- [41. Search](ch041-search.md) — implemented
 - [42. Protected events](ch042-protected-events.md) — implemented
 - [43. Negentropy sync](ch043-negentropy-sync.md) — design draft
 - [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) — implemented

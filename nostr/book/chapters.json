@@ -874,13 +874,21 @@
    "number": 41,
    "title": "Search",
    "file": "ch041-search.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     36
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip50.coax",
+    "coax/lib/nostr/filter_read.coax",
+    "coax/lib/nostr/store_index.coax",
+    "nostr/examples/search.coax",
+    "nostr/examples/checks/search.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

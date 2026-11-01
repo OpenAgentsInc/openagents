@@ -1,0 +1,68 @@
+the words of three notes (ASCII letters and digits, A-Z folded)
+  n1: "Coax compiles Coax." -> coax compiles coax
+  n2: "Nostr relays, written in Coax" -> nostr relays written in coax
+  n3: "nostr relay, nostr client, in COAX" -> nostr relay nostr client in coax
+  counts: coax n1 2, n2 1, n3 1; nostr n2 1, n3 2; relay n3 1; relays n2 1
+
+the store: the three notes signed by the BIP-340 vector 1 key, 300, 200 and 100 seconds old
+  n1 id 598aeaf6...: accepted
+  n2 id 97572924...: accepted
+  n3 id c18ebd30...: accepted
+  word index: 12 entries (n1 2, n2 5, n3 5 distinct words)
+
+searches
+-> {"search":"coax nostr language:en"}
+    terms: coax nostr; include:spam false; extensions ignored 1
+    2 result(s), read through the entries of one term, 2 record(s) read
+    score 3 n3 at NOW-100: nostr relay, nostr client, in COAX
+    score 2 n2 at NOW-200: Nostr relays, written in Coax
+    the Rust relay's rule would answer: n3 n2
+-> {"search":"Coax"}
+    terms: coax; include:spam false; extensions ignored 0
+    3 result(s), read through the entries of one term, 3 record(s) read
+    score 2 n1 at NOW-300: Coax compiles Coax.
+    score 1 n3 at NOW-100: nostr relay, nostr client, in COAX
+    score 1 n2 at NOW-200: Nostr relays, written in Coax
+    the Rust relay's rule would answer: n3 n2 n1
+-> {"search":"Coax","limit":1}
+    terms: coax; include:spam false; extensions ignored 0
+    1 result(s), read through the entries of one term, 3 record(s) read
+    score 2 n1 at NOW-300: Coax compiles Coax.
+-> {"search":"relay"}
+    terms: relay; include:spam false; extensions ignored 0
+    1 result(s), read through the entries of one term, 1 record(s) read
+    score 1 n3 at NOW-100: nostr relay, nostr client, in COAX
+    the Rust relay's rule would answer: n3 n2
+-> {"search":"Nostr, Coax!"}
+    terms: nostr coax; include:spam false; extensions ignored 0
+    2 result(s), read through the entries of one term, 2 record(s) read
+    score 3 n3 at NOW-100: nostr relay, nostr client, in COAX
+    score 2 n2 at NOW-200: Nostr relays, written in Coax
+    the Rust relay's rule would answer: nothing
+-> {"kinds":[1],"search":"nsfw:false include:spam"}
+    terms: (none); include:spam true; extensions ignored 1
+    3 result(s), read through chapter 36's query, 3 record(s) read
+    score 0 n3 at NOW-100: nostr relay, nostr client, in COAX
+    score 0 n2 at NOW-200: Nostr relays, written in Coax
+    score 0 n1 at NOW-300: Coax compiles Coax.
+-> {"search":"coax","since":1793491000}
+    terms: coax; include:spam false; extensions ignored 0
+    2 result(s), read through the entries of one term, 3 record(s) read
+    score 1 n3 at NOW-100: nostr relay, nostr client, in COAX
+    score 1 n2 at NOW-200: Nostr relays, written in Coax
+-> {"search":"zebra"}
+    terms: zebra; include:spam false; extensions ignored 0
+    0 result(s), read through the entries of one term, 0 record(s) read
+
+refusals
+  chapter 23's filter_read on {"search":"coax"}: FR_FIELD
+-> {"search":5}
+    refused by filter_read_search: FR_TYPE
+-> {"search":"a","search":"b"}
+    refused by filter_read_search: FR_FIELD
+-> {"search":"a b c d e f g h i j k l m n o p q"}
+    refused by n50_parse: N50_TERMS
+a fourth note admitted, word index not rebuilt: accepted
+-> {"search":"coax"}
+    terms: coax; include:spam false; extensions ignored 0
+    refused: the word index is out of date
