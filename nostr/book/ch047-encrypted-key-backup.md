@@ -263,13 +263,19 @@ the vector, runs scrypt at `log_n = 4`, shows the admission limits, opens
 the vector, and shows ten refusals. Above the listings it defines `show`,
 `bytes_of` and `unhex`, small print and copy helpers.
 
-scrypt at the vector's `log_n = 16` needs a 64 MiB array. `coax0` has no
-heap, and its programs' arrays live on the stack, which is 8 MiB by default
-on Linux and macOS. So the example takes the 32-byte scrypt output for
-`nostr` and the vector's salt, `KEY_NOSTR`, from OpenSSL's scrypt through
-Python's `hashlib.scrypt`, and runs its own scrypt at `log_n = 4`, which
-needs 16 KiB. "How the code is checked" shows the Coax scrypt deriving
-`KEY_NOSTR` itself.
+scrypt at the vector's `log_n = 16` needs a 64 MiB workspace. The library
+never allocates it: `nip49_scrypt_start` and `nip49_scrypt_step` take `V`,
+`128 · r · N` bytes, as a `[] u8` from the caller and refuse a view that is
+too small. `coax0` has no heap, so a Coax program's arrays live on the
+stack, 8 MiB by default on Linux and macOS, and macOS can't raise it past
+64 MiB. A host allocates the workspace instead, with `malloc` in C
+platform code on Linux or Apple. The book runs each example as a
+plain Coax program, with no host to hand it a heap buffer, so this example
+takes the 32-byte scrypt output for `nostr` and the vector's salt,
+`KEY_NOSTR`, from OpenSSL's scrypt through Python's `hashlib.scrypt`, and
+runs its own scrypt at `log_n = 4`, which needs 16 KiB. "How the code is
+checked" shows the Coax scrypt deriving `KEY_NOSTR` itself, from a C host
+that owns the 64 MiB.
 
 <!-- source: nostr/examples/ncryptsec.coax example -->
 ```jai
@@ -298,8 +304,9 @@ try_open :: (label: string, payload: [] u8, key: [] u8) {
 // NIP-49's published vector, password "nostr", log_n 16.
 VECTOR :: "ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p";
 // scrypt(password, the vector's salt, N = 2^16, r = 8, p = 1), 32 bytes,
-// from OpenSSL through Python's hashlib.scrypt. N = 2^16 needs 64 MiB, more
-// than the stack that coax0 gives a program.
+// from OpenSSL through Python's hashlib.scrypt. N = 2^16 needs a 64 MiB
+// workspace, more than the stack that coax0 gives a program; a host passes
+// it from the heap (coax/tests/nostr/ncryptsec_vector.sh derives this key).
 KEY_NOSTR :: "6d1e8b279f52b3a9ba60a2b43cab50804a67ac763ff4bafa782475efb0722aff";
 KEY_WRONG :: "aaa80aa968b73767fbf6055b1aa804df774a66180d02d54b67cabded04055212"; // "Nostr"
 
@@ -648,13 +655,24 @@ the example with these checks appended killed all 134 mutants in
 
 ### The full vector, scrypt included
 
-On 2026-11-01, a copy of this example whose `main` ran `derive` on the
-vector's salt with `log_n = 16` in a 64 MiB array, run under `ulimit -s
-unlimited` on Linux x86_64, printed `KEY_NOSTR`, then `open: ok` and the
-published private key. It took 13 seconds in a debug build and 3.8 seconds
-in a release build. This run isn't part of the book's checks, because it
-needs a stack larger than the default; on macOS the stack can't be raised
-past 64 MiB, so it doesn't fit there.
+```shell
+coax/tests/nostr/ncryptsec_vector.sh
+```
+
+[ncryptsec_vector.c](../../coax/tests/nostr/ncryptsec_vector.c) is a small
+C host for the library's generated C (checked and release builds, each
+under ASan and UBSan). It `malloc`s the 64 MiB workspace, runs
+`nip49_scrypt_start`, `nip49_scrypt_step` and `nip49_scrypt_finish` on
+the vector's salt at `log_n = 16`, checks the key against `KEY_NOSTR`, then
+opens the vector with `xcp_open` and checks NIP-49's published private key.
+It also checks the refusals: a heap workspace one byte short (so ASan would
+report any write past it) is refused before the state is touched, 64 MiB is
+refused for `log_n = 17`, and a step given a shorter view is refused. On
+2026-11-01 on Linux x86_64 both builds passed in about 31 seconds each
+under the sanitizers. Earlier, a copy of the example run under `ulimit -s
+unlimited` derived the same key on the stack (13 seconds debug, 3.8
+release); that needs a stack larger than macOS allows, which is why the
+workspace comes from the host.
 
 ### Library records
 

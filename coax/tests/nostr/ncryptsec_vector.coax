@@ -1,0 +1,5 @@
+// The library that ncryptsec_vector.c links: NIP-49's scrypt and the AEAD
+// that opens an ncryptsec. The C harness owns scrypt's 64 MiB workspace on
+// the heap and passes it in as a view. Run: coax/tests/nostr/ncryptsec_vector.sh
+#load "../../lib/crypto/scrypt_nip49.coax";
+#load "../../lib/crypto/xchacha20_poly1305.coax";

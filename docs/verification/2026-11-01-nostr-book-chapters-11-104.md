@@ -58,9 +58,19 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
    namespace. Chapter 98 renamed a local in `secp_field.coax` (`fold` to
    `reduced`) and parameters in `schnorr.coax` (`event_id` to `nostr_id`)
    so the project fold and the verifier load together.
-5. **NIP-49 scrypt needs a 64 MiB stack.** Coax has no heap, so log_n 16
-   puts a 64 MiB array on the stack. It crashes at the default 8 MiB and
-   can't run on macOS, whose stack limit is 64 MiB (chapter 47).
+5. **NIP-49 scrypt needs a 64 MiB workspace. Fixed for hosts.** Coax has
+   no heap, so a Coax program that runs log_n 16 puts a 64 MiB array on
+   the stack, which crashes at the default 8 MiB and can't run on macOS
+   (stack limit 64 MiB). The library already takes the workspace from its
+   caller (`nip49_scrypt_start`/`step` take `V` as a `[] u8`, and refuse a
+   view shorter than `128 · r · N` bytes), so a host owns it.
+   `coax/tests/nostr/ncryptsec_vector.sh` is that host: C that `malloc`s
+   64 MiB, derives the published vector's key at log_n 16 and opens it to
+   the published private key, and checks the one-byte-short workspace, the
+   log_n 17 and the short-step refusals, in checked and release builds
+   under ASan/UBSan (about 31 s each). The book's example still takes
+   `KEY_NOSTR` from `hashlib.scrypt`, because `book.py` runs plain Coax
+   programs with no host to supply a heap buffer (chapter 47).
 6. **Relay modules not wired. Partly fixed.** When this record was written
    the running relay called none of these: `store_index`, `store_delete`,
    `relay_rate`, `nip45`, `nip50` (`filter_read_search`), `nip70`,
