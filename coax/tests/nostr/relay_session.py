@@ -355,6 +355,52 @@ def nip42(port, a, b, first):
     c.close()
 
 
+def deletion(port):
+    """NIP-09 and NIP-62 (store_delete.coax): what a stored kind 5 or kind 62
+    covers is retired and can't come back. Returns an event that stays
+    deleted, for the check after a restart."""
+    now = int(time.time())
+    w = Ws(port)
+    check(w.auth()[2] is True, 'NIP-09: AUTH for the deletion session')
+    ev = sign([{"kind": 1, "created_at": now - 50, "tags": [], "content": "to be deleted"},          # 0
+               {"kind": 30023, "created_at": now - 50, "tags": [["d", "post"]], "content": "v1"},   # 1
+               {"kind": 1, "created_at": now - 50, "tags": [], "content": "kept"}])                 # 2
+    for e in ev:
+        check(publish(w, e)[2] is True, 'NIP-09: publish %s' % e['content'])
+    pk = ev[0]['pubkey']
+    req = sign([{"kind": 5, "created_at": now - 40, "content": "",
+                 "tags": [["e", ev[0]['id']], ["a", "30023:%s:post" % pk], ["e", "9" * 64]]}])[0]
+    check(publish(w, req) == ['OK', req['id'], True, ''], 'NIP-09: a kind 5 naming an e, an a and an unknown id is stored')
+    w.send(['REQ', 'gone', {'ids': [ev[0]['id'], ev[1]['id'], ev[2]['id']]}])
+    got, _ = w.until_eose('gone')
+    check([e['id'] for e in got] == [ev[2]['id']], 'NIP-09: the e and a targets are no longer served; the other note is')
+    w.send(['REQ', 'k5', {'kinds': [5], 'authors': [pk]}])
+    got, _ = w.until_eose('k5')
+    check([e['id'] for e in got] == [req['id']], 'NIP-09: the deletion request itself is served')
+    check(publish(w, ev[0]) == ['OK', ev[0]['id'], False, 'blocked: a deletion request covers this event'],
+          'NIP-09: the deleted event published again is refused')
+    newer = sign([{"kind": 30023, "created_at": now - 30, "tags": [["d", "post"]], "content": "v2"}])[0]
+    check(publish(w, newer)[2] is True, 'NIP-09: a version of the address newer than the request is accepted')
+    # NIP-62 from a second key: every one of its events up to the request goes
+    other = sign([{"kind": 1, "created_at": now - 50, "tags": [], "content": "second key"}], 'coax relay r1 second test key')[0]
+    check(publish(w, other)[2] is True, 'NIP-62: an event by a second key')
+    url = '%s://127.0.0.1:%d' % (SCHEME, port)
+    wrong = sign([{"kind": 62, "created_at": now - 45, "tags": [["relay", url + '0']], "content": ""}], 'coax relay r1 second test key')[0]
+    check(publish(w, wrong)[2] is True, 'NIP-62: a request naming another relay is stored')
+    w.send(['REQ', 'v0', {'ids': [other['id']]}])
+    check(len(w.until_eose('v0')[0]) == 1, 'NIP-62: and changes nothing here')
+    # ALL_RELAYS, not this relay's URL: the restart below listens on another
+    # port (the URL match is relay_store.coax's check)
+    vanish = sign([{"kind": 62, "created_at": now - 40, "tags": [["relay", "ALL_RELAYS"]], "content": ""}], 'coax relay r1 second test key')[0]
+    check(publish(w, vanish)[2] is True, 'NIP-62: a request naming ALL_RELAYS is stored')
+    w.send(['REQ', 'v1', {'authors': [other['pubkey']]}])
+    got, _ = w.until_eose('v1')
+    check(sorted(e['kind'] for e in got) == [62, 62], 'NIP-62: only the requests remain from that key')
+    check(publish(w, other)[3] == 'blocked: a deletion request covers this event', 'NIP-62: its old event is refused')
+    w.close()
+    return ev[0], ev[2]
+
+
 def nip11(port):
     s = connect(port)
     s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nAccept: application/nostr+json\r\n\r\n')
@@ -503,6 +549,7 @@ def main():
             try:
                 nip11(port)
                 session(port, int(time.time()))
+                deleted, kept = deletion(port)
                 w = Ws(port)
                 w.send(['REQ', 'before', {}])
                 before, _ = w.until_eose('before')
@@ -516,6 +563,9 @@ def main():
                 got, _ = w.until_eose('after')
                 check(len(before) > 0 and got == before,
                       'restart with --store: the same %d events come back, in order' % len(before))
+                check(w.auth()[2] is True and publish(w, deleted)[3] == 'blocked: a deletion request covers this event'
+                      and publish(w, kept)[3].startswith('duplicate'),
+                      'restart with --store: the tombstones come back from the saved requests')
                 w.close()
             finally:
                 p.terminate(); p.wait(10)

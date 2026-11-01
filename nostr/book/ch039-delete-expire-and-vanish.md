@@ -21,9 +21,12 @@ that survive a restart, and NIP-62 kind-62 requests to vanish.
   deleted event can't come back after a restart.
 - NIP-62: a kind 62 request that names this relay (or `ALL_RELAYS`) removes
   every event by its pubkey up to its `created_at` and keeps them out.
+- The relay (`coax/relay/relay.coax`) admits every event through this code
+  (`rsd_admit_deleting` in `store_saved.coax`, called by `relay_store.coax`)
+  and rebuilds the tombstones on replay (`rsd_replay_deleting`). A covered
+  event gets OK false "blocked: a deletion request covers this event".
 - What is not built: the bytes of a deleted event stay in the append-only
-  file, NIP-62's removal of gift wraps addressed to the pubkey, and the
-  relay process (`coax/relay/relay.coax`) does not call this code yet.
+  file, and NIP-62's removal of gift wraps addressed to the pubkey.
 
 ## Where the code is
 
@@ -770,9 +773,6 @@ change. Their records were not rerun for this chapter:
   read again on every restart. NIP-62 says relays should truly delete; that
   needs the file to be rewritten without those frames, which is not built.
 - Gift wraps addressed to a vanished pubkey are not deleted.
-- `coax/relay/relay.coax` still admits through chapter 35's
-  `rsd_admit_saved`. Until it calls `nsd_plan` and `nsd_apply_plan`, the
-  running relay stores kind 5 and kind 62 events without acting on them.
 - The tombstone table is fixed in size. When it is full, requests are
   refused with `NSD_NO_ROOM`; nothing is evicted.
 

@@ -1,7 +1,13 @@
 // The Coax relay's store (coax/relay/relay.coax): the verified store
 // (store.coax, store_saved.coax for --store) with chapter 36's indexes kept
-// beside it. Every admission goes through rd_admit and every REQ through
-// rd_query.
+// beside it and NIP-09/NIP-62 deletion (store_delete.coax) in admission.
+// Every admission goes through rd_admit and every REQ through rd_query.
+//
+// Deletion: rd_admit is store_saved.coax's rsd_admit_deleting, so a stored
+// kind 5 or kind 62 (naming this relay's URL or ALL_RELAYS) retires what it
+// covers, and an event a stored request covers is refused (NSD_DELETED).
+// The tombstones are not written anywhere: the requests are in the --store
+// file, and rd_replay rebuilds the tombstones from them in file order.
 //
 // The index: after each admission relay_route.coax's rr_index_step says
 // whether it still holds (nothing appended), takes the one appended record
@@ -19,10 +25,13 @@
 #load "relay_route.coax";
 
 RD_TAGS :: RSD_MAX * RS_MAX_TAGS;
+RD_TOMBS :: 8192;             // tombstones the relay keeps
+RD_WORK :: RS_MAX_TAGS;       // one request's tombstones (one per tag at most)
 
 RdStore :: struct {
   s: [1] RsdStore;
   ix: [1] NsiIndex;
+  tb: [1] NsdTombs; work: [] NsdTomb; relay: string;
   saved: bool;      // --store: every write goes to the file first
   builds: int;      // whole builds, for the checks
 }
@@ -32,17 +41,20 @@ RdSpace :: struct {
   arena: [RSD_ARENA] u8; recs: [RSD_MAX] RsdRec;
   by_id: [RSD_MAX] int; by_ak: [RSD_MAX] int; by_time: [RSD_MAX] int;
   tag_key: [RD_TAGS] int; tag_rec: [RD_TAGS] int;
+  tombs: [RD_TOMBS] NsdTomb; work: [RD_WORK] NsdTomb;
 }
 
 // The caller owns every array (an RdSpace for the relay); none may move
 // afterwards.
-rd_init :: (d: [] RdStore, arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, saved: bool) {
+// relay is this relay's URL, for NIP-62.
+rd_init :: (d: [] RdStore, arena: [] u8, recs: [] RsdRec, by_id: [] int, by_ak: [] int, by_time: [] int, tag_key: [] int, tag_rec: [] int, tombs: [] NsdTomb, work: [] NsdTomb, relay: string, saved: bool) {
   d[0].s[0] = RsdStore.{arena = arena, recs = recs};
+  d[0].tb[0] = NsdTombs.{t = tombs}; d[0].work = work; d[0].relay = relay;
   d[0].ix[0] = NsiIndex.{by_id = by_id, by_ak = by_ak, by_time = by_time, tag_key = tag_key, tag_rec = tag_rec};
   d[0].saved = saved; d[0].builds = 0;
 }
-rd_init_space :: (d: [] RdStore, sp: [] RdSpace, saved: bool) {
-  rd_init(d, sp[0].arena[..], sp[0].recs[..], sp[0].by_id[..], sp[0].by_ak[..], sp[0].by_time[..], sp[0].tag_key[..], sp[0].tag_rec[..], saved);
+rd_init_space :: (d: [] RdStore, sp: [] RdSpace, relay: string, saved: bool) {
+  rd_init(d, sp[0].arena[..], sp[0].recs[..], sp[0].by_id[..], sp[0].by_ak[..], sp[0].by_time[..], sp[0].tag_key[..], sp[0].tag_rec[..], sp[0].tombs[..], sp[0].work[..], relay, saved);
 }
 rd_store :: (d: [] RdStore) -> [] RsdStore { return d[0].s[..]; }
 
@@ -61,9 +73,15 @@ rd_index_after :: (d: [] RdStore, may: bool, before: int) {
 // file first with --store): the store's reason.
 rd_admit :: (d: [] RdStore, r: RsAdmit, text: string) -> int {
   may := rd_may_compact(d, text); before := d[0].s[0].n;
-  reason := ifx d[0].saved then rsd_admit_saved(d[0].s[..], r, text) else rsd_admit(d[0].s[..], r, text);
+  reason := rsd_admit_deleting(d[0].s[..], d[0].tb[..], r, text, d[0].relay, d[0].work, d[0].saved);
   rd_index_after(d, may, before);
   return reason;
+}
+// Rebuilds the store and its tombstones from the --store file at time now
+// (store_saved.coax's replay, through deletion).
+rd_replay :: (d: [] RdStore, now: int, text: [] u8, scratch: [] u8) -> RsdReplay {
+  d[0].ix[0].ok = false;
+  return rsd_replay_deleting(d[0].s[..], d[0].tb[..], d[0].relay, d[0].work, now, text, scratch, true);
 }
 // A current index, rebuilt when stale: whether there is one.
 rd_index :: (d: [] RdStore) -> bool {
@@ -84,8 +102,8 @@ rd_query :: (d: [] RdStore, f: NostrFilter, now: int, out: [] int) -> int {
 
 // ---- checks -------------------------------------------------------------------
 
-RdT :: struct { arena: [8192] u8; recs: [4] RsdRec; by_id: [4] int; by_ak: [4] int; by_time: [4] int; tag_key: [32] int; tag_rec: [32] int; d: [1] RdStore; }
-rd_t_init :: (t: [] RdT) { rd_init(t[0].d[..], t[0].arena[..], t[0].recs[..], t[0].by_id[..], t[0].by_ak[..], t[0].by_time[..], t[0].tag_key[..], t[0].tag_rec[..], false); }
+RdT :: struct { arena: [8192] u8; recs: [4] RsdRec; by_id: [4] int; by_ak: [4] int; by_time: [4] int; tag_key: [32] int; tag_rec: [32] int; tombs: [4] NsdTomb; work: [4] NsdTomb; d: [1] RdStore; }
+rd_t_init :: (t: [] RdT) { rd_init(t[0].d[..], t[0].arena[..], t[0].recs[..], t[0].by_id[..], t[0].by_ak[..], t[0].by_time[..], t[0].tag_key[..], t[0].tag_rec[..], t[0].tombs[..], t[0].work[..], "wss://r", false); }
 
 #test "the index follows admissions, and a compaction makes it rebuild" {
   t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
@@ -123,4 +141,29 @@ rd_t_init :: (t: [] RdT) { rd_init(t[0].d[..], t[0].arena[..], t[0].recs[..], t[
   #assert rd_query(d, f, 1001, idx[..]) == 4 && d[0].builds == 2 && rsd_text(rd_store(d), idx[3]) == RST_ADDR_NOD;
   ids := [1] string.["ee726a272c80bc6a20e153b38df5b5e3defa8c78faaeda2fd513fcbc59638b4e"]; f.has_ids = true; f.ids = ids[..];
   #assert rd_query(d, f, 1001, idx[..]) == 1 && rsd_text(rd_store(d), idx[0]) == RST_ADDR_NOD;
+}
+RD_T_DEL :: "{\"id\":\"08df718fe6f4fcf0794d3e1154204a3ad61ab675b63b1d216b08d3d7e77709f3\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1001,\"kind\":5,\"tags\":[[\"e\",\"18c059d7cc15e21c516db0807a502f8ab482a23b7e9d64c27ecf4af5b010bc53\"]],\"content\":\"\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
+RD_T_VANISH :: "{\"id\":\"f64c68b89efc1f2f80e46f16057cf6cd4d461b1dfd64fcaf5e720d6d1d1d5811\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1001,\"kind\":62,\"tags\":[[\"relay\",\"wss://r\"]],\"content\":\"\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
+RD_T_VANISH_OTHER :: "{\"id\":\"0c4de3267d0088f7cc5557615d5eccbfa20b918501354ce4afad69b23002c2fe\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1002,\"kind\":62,\"tags\":[[\"relay\",\"wss://other\"]],\"content\":\"\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
+#test "a stored kind 5 retires its target, which can't come back; the index keeps up" {
+  t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
+  scratch: [4096] u8; f: NostrFilter; idx: [8] int;
+  #assert rd_admit(d, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == RS_ACCEPT;
+  #assert rd_admit(d, rst_store_read(RST_EDGE, scratch[..]), RST_EDGE) == RS_ACCEPT;
+  #assert rd_query(d, f, 1000, idx[..]) == 2;
+  #assert rd_admit(d, rst_store_read(RD_T_DEL, scratch[..]), RD_T_DEL) == RS_ACCEPT && d[0].tb[0].n == 1 && d[0].tb[0].last == 1;
+  #assert d[0].ix[0].ok && rd_query(d, f, 1000, idx[..]) == 2 && rsd_text(rd_store(d), idx[0]) == RST_EDGE && rsd_text(rd_store(d), idx[1]) == RD_T_DEL;
+  #assert rd_admit(d, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == NSD_DELETED && d[0].builds == 1;
+}
+#test "a kind 62 naming this relay retires the signer's events; one naming another relay doesn't" {
+  t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
+  scratch: [4096] u8; f: NostrFilter; idx: [8] int;
+  #assert rd_admit(d, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == RS_ACCEPT;
+  #assert rd_admit(d, rst_store_read(RD_T_VANISH_OTHER, scratch[..]), RD_T_VANISH_OTHER) == RS_ACCEPT && d[0].tb[0].n == 0;
+  #assert rd_query(d, f, 1000, idx[..]) == 2;
+  #assert rd_admit(d, rst_store_read(RD_T_VANISH, scratch[..]), RD_T_VANISH) == RS_ACCEPT && d[0].tb[0].n == 1;
+  // kind 62 requests are never covered: both remain
+  #assert rd_query(d, f, 1000, idx[..]) == 2 && rsd_text(rd_store(d), idx[0]) == RD_T_VANISH_OTHER && rsd_text(rd_store(d), idx[1]) == RD_T_VANISH;
+  #assert rd_admit(d, rst_store_read(RST_EDGE, scratch[..]), RST_EDGE) == RS_ACCEPT;
+  #assert rd_admit(d, rst_store_read(RST_LIVE, scratch[..]), RST_LIVE) == NSD_DELETED;
 }

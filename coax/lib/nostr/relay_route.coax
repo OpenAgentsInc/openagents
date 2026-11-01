@@ -389,3 +389,29 @@ rr_index_step :: (may_compact: bool, before: int, after: int) -> int {
   return RR_IX_STALE;
 }
 
+// ---- NIP-09 and NIP-62 (chapter 39) -----------------------------------------
+//
+// The store admits every event through store_delete.coax: a stored kind 5
+// or kind 62 retires what it covers, and an event a stored request covers
+// is refused. Its two results beyond relay_server.coax's reasons, mirrored
+// (tied to store_delete.coax in relay.coax), and their OK texts.
+RR_NSD_DELETED :: 30; RR_NSD_NO_ROOM :: 31;
+
+#test "deletion refusals: blocked when a request covers the event, error when the table is full" {
+  #assert rr_store_extra(RR_NSD_DELETED) && rr_store_extra(RR_NSD_NO_ROOM);
+  #assert !rr_store_extra(0) && !rr_store_extra(29) && !rr_store_extra(32) && !rr_store_extra(-1);
+  #assert rr_store_prefix(RR_NSD_DELETED) == "blocked" && rr_store_text(RR_NSD_DELETED) == "a deletion request covers this event";
+  #assert rr_store_prefix(RR_NSD_NO_ROOM) == "error" && rr_store_text(RR_NSD_NO_ROOM) == "no room for this request's deletions";
+  #assert rr_store_prefix(5) == "error" && rr_store_text(5) == "unknown";
+}
+// Whether reason is one of these (else it is a relay_server.coax reason).
+rr_store_extra :: (reason: int) -> bool { return reason == RR_NSD_DELETED || reason == RR_NSD_NO_ROOM; }
+rr_store_prefix :: (reason: int) -> string {
+  if reason == RR_NSD_DELETED { return "blocked"; }
+  return "error";
+}
+rr_store_text :: (reason: int) -> string {
+  if reason == RR_NSD_DELETED { return "a deletion request covers this event"; }
+  if reason == RR_NSD_NO_ROOM { return "no room for this request's deletions"; }
+  return "unknown";
+}

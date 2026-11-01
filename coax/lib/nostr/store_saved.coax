@@ -15,6 +15,7 @@
 #load "store.coax";
 #load "store_file.coax";
 #load "store_recover.coax";
+#load "store_delete.coax";
 
 cxstore_load :: () -> int #foreign;
 cxstore_byte :: (i: int) -> int #foreign;
@@ -75,6 +76,17 @@ rsd_admit_saved :: (s: [] RsdStore, r: RsAdmit, text: string) -> int {
   if p.write != NS_W_NONE && !rsd_save(text) { return RS_FULL; }
   return ns_store_apply(s, p, c, text);
 }
+// rsd_admit_saved with NIP-09 deletion and NIP-62 vanish (store_delete.coax's
+// nsd_plan and nsd_apply_plan): what a stored request's tombstones cover is
+// retired, and an event a tombstone covers is refused (NSD_DELETED). relay
+// is this relay's URL (a kind 62 must name it or ALL_RELAYS); out is room
+// for one request's tombstones. With save, a write goes to the file first.
+rsd_admit_deleting :: (s: [] RsdStore, tb: [] NsdTombs, r: RsAdmit, text: string, relay: string, out: [] NsdTomb, save: bool) -> int {
+  c := rsd_rec(r);
+  p := nsd_plan(s, tb, c, text, rsd_verified(r, text), relay, out);
+  if save && p.store.write != NS_W_NONE && !rsd_save(text) { return RS_FULL; }
+  return nsd_apply_plan(s, tb, p, c, text, out);
+}
 // Rebuilds s from the file at time now. text holds one original
 // (NS_FRAME_MAX_ORIGINAL bytes); scratch is the verifier's (the relay's
 // 262144). Each frame's fate is store_recover.coax's: a crash's partial
@@ -83,6 +95,13 @@ rsd_admit_saved :: (s: [] RsdStore, r: RsAdmit, text: string) -> int {
 // reason) and leaves the file as it is. ok is false when the file cannot be
 // read or cut, or the replay is refused.
 rsd_replay :: (s: [] RsdStore, now: int, text: [] u8, scratch: [] u8) -> RsdReplay {
+  tb: [1] NsdTombs; none: [1] NsdTomb;
+  return rsd_replay_deleting(s, tb[..], "", none[0..<0], now, text, scratch, false);
+}
+// rsd_replay, re-admitting each frame through nsd_admit when deleting is set,
+// so the stored deletion and vanish requests' tombstones come back in tb in
+// file order (relay and out as rsd_admit_deleting's).
+rsd_replay_deleting :: (s: [] RsdStore, tb: [] NsdTombs, relay: string, work: [] NsdTomb, now: int, text: [] u8, scratch: [] u8, deleting: bool) -> RsdReplay {
   out: RsdReplay;
   total := cxstore_load();
   if total < 0 { return out; }
@@ -110,7 +129,7 @@ rsd_replay :: (s: [] RsdStore, now: int, text: [] u8, scratch: [] u8) -> RsdRepl
     r := rsd_replay_read(t, now, scratch);
     if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(t, scratch, false)); }
     reason := r.reason;
-    if reason == RS_ACCEPT { reason = rsd_admit(s, r, t); }
+    if reason == RS_ACCEPT { reason = ifx deleting then rsd_admit_deleting(s, tb, r, t, relay, work, false) else rsd_admit(s, r, t); }
     if nsr_replayed(reason) != NSR_NEXT { out.refused = true; out.at = at; out.reason = reason; return out; }
     if reason == RS_ACCEPT { out.stored += 1; } else { out.kept += 1; }
     at = f.to;

@@ -7,7 +7,11 @@
 //
 // STORE: the verified store (coax/lib/nostr/store_saved.coax, #8eb5), with
 // chapter 36's indexes beside it (relay_store.coax): REQ reads one index per
-// filter instead of scanning every record. With
+// filter instead of scanning every record. NIP-09 and NIP-62 (chapter 39,
+// store_delete.coax): a stored kind 5 or kind 62 (naming this relay's URL,
+// the one NIP-42 answers name, or ALL_RELAYS) retires what it covers, and a
+// covered event is refused "blocked:"; a restart rebuilds the tombstones
+// from the requests in the --store file. With
 // --store FILE every stored original is appended to FILE and synced before
 // it is stored, and a restart replays FILE, verifying every event again.
 // Without --store the store is in memory only. A crash's partial last write
@@ -45,6 +49,7 @@
 #assert RR_WS_CLOSE_NORMAL == WS_CLOSE_NORMAL && RR_WS_CLOSE_PROTOCOL == WS_CLOSE_PROTOCOL && RR_WS_CLOSE_TOO_BIG == WS_CLOSE_TOO_BIG;
 #assert RR_N42_OK == N42_OK && RR_N42_STALE == N42_STALE && RR_N42_NO_CHALLENGE == N42_NO_CHALLENGE && RR_N42_EVENT == N42_EVENT;
 #assert RR_N42_KIND == N42_KIND && RR_N42_TIME == N42_TIME && RR_N42_TAGS == N42_TAGS && RR_N42_RELAY == N42_RELAY && RR_N42_CHALLENGE == N42_CHALLENGE;
+#assert RR_NSD_DELETED == NSD_DELETED && RR_NSD_NO_ROOM == NSD_NO_ROOM;
 #assert RY_SENT <= 2032;
 
 cxsrv_listen :: (port: int) -> int #foreign;
@@ -143,7 +148,9 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
     reason = rd_admit(store, r, event);
   }
   id := r.e.id;
-  ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), rs_prefix(reason), rs_text(reason), w[0].body[..]));
+  prefix := ifx rr_store_extra(reason) then rr_store_prefix(reason) else rs_prefix(reason);
+  why := ifx rr_store_extra(reason) then rr_store_text(reason) else rs_text(reason);
+  ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), prefix, why, w[0].body[..]));
   if rr_fanout(reason) { ry_fanout(conns, w, r.e); }
 }
 ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg) {
@@ -326,10 +333,10 @@ main :: () {
     print("relay: NIP-42 needs a ws:// (wss:// with TLS) relay URL without brackets: pass --url\n"); return;
   }
   space: [1] RdSpace;
-  store: [1] RdStore; rd_init_space(store[..], space[..], ry_host_store() == 1);
+  store: [1] RdStore; rd_init_space(store[..], space[..], cast(string) url[0..<u], ry_host_store() == 1);
   if ry_host_store() == 1 {
     text: [NS_FRAME_MAX_ORIGINAL] u8;
-    rp := rsd_replay(rd_store(store[..]), cxsrv_now_s(), text[..], w[0].scratch[..]);
+    rp := rd_replay(store[..], cxsrv_now_s(), text[..], w[0].scratch[..]);
     if rp.refused { print("relay: refusing to start: the --store file is damaged at byte % (reason %); it was not changed\n", rp.at, rp.reason); return; }
     if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); return; }
     print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");

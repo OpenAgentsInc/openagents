@@ -573,7 +573,7 @@ Part X are wired into it, and what the rest still need.
 | Module | Chapter | Status | What wiring it needs, or how it is wired |
 | --- | --- | --- | --- |
 | `store_index.coax` | 36 | Wired | `relay_store.coax` keeps an `NsiIndex` beside the store: `nsi_add` after each admission that appends, a rebuild (`nsi_build`) before the next query after one that may have compacted (`rr_may_compact`, `rr_index_step`), and `ry_req` answers with `nsi_query` (`rd_query`) |
-| `store_delete.coax` | 39 | Not wired | Route kinds 5 and 62 through `nsd_admit` instead of `rsd_admit`, keep the tombstones in the `--store` file, and refuse events a tombstone covers |
+| `store_delete.coax` | 39 | Wired | Every admission goes through `nsd_plan` and `nsd_apply_plan` (`rsd_admit_deleting`), saving to the `--store` file between them; a covered event is refused "blocked:"; replay (`rsd_replay_deleting`) rebuilds the tombstones from the saved requests. A kind 62 must name the relay's URL (the NIP-42 one) or `ALL_RELAYS` |
 | `relay_rate.coax` | 44 | Not wired | Per-connection and per-key windows (`rt_event`, `rt_req`) in `RyConn`, checked before admission and REQ, with their refusal text and NIP-11 limits (`rt_nip11`) |
 | `nip45.coax` | 40 | Not wired | A `COUNT` branch in `ry_message` (`rr_message` already routes it) that answers with `n45_answer` over the store, and `45` in the NIP-11 document |
 | `nip50.coax` via `filter_read_search` | 41 | Not wired | Read filters with `filter_read_search` in `rs_filter`, build and update the word index (`n50_build`), answer search filters with `n50_query`, and advertise `50` |
