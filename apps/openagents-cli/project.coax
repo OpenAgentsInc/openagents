@@ -21,6 +21,7 @@
 #load "project-write.coax";
 #load "project-publish.coax";
 #load "project-review.coax";
+#load "project-page.coax";
 
 project_usage :: () {
   print("%\n", "Projects (the queue at openagents.com/projects/SLUG; --project SLUG, default coax):");
@@ -37,6 +38,9 @@ project_usage :: () {
   print("%\n", "  project publish [--dry-run]      the work files, as issues, revisions, statuses and the order");
   print("%\n", "  project check                    check the work files without the relay");
   print("%\n", "  project review COMMIT --key FILE an independent review of COMMIT, signed with the reviewer's own key");
+  print("%\n", "  project snapshot [--if-older MIN] the page's work.coax, index.md and index.html from the relay");
+  print("%\n", "  project index                    the projects list (projects/list.coax and index.md)");
+  print("%\n", "  project bake [--list]            baked.coax and each project's commits.coax for the page");
   print("%\n", "  (--dir DIR the project's folder, --key FILE its key, --relay URL, --forget)");
   print("%\n", "");
 }
@@ -128,6 +132,7 @@ Proj :: struct {
   last_id: [64] u8;                     // the id of the last event signed
   outside: [FOLD_ISSUES] bool;          // waits on another project's work not done
   dry: bool; forget: bool;
+  public_only: bool;                    // set before pj_open: read public events only, never load a key
   sent: int; sent_what: [PJ_SENT] Ref; sent_buf: [8192] u8; sent_used: int;
   why: [512] u8; why_n: int;
 }
@@ -193,7 +198,7 @@ pj_open :: (p: [] Proj, a: [] Args) -> string {
     path = fs_join(fs_join(home(hb[..]), "work/.secrets", kf[..]), cast(string) ks[0..<n + m + o], ks[1024..<2048]);
   }
   text: [256] u8;
-  kn := fs_read(path, text[..]);
+  kn := ifx p[0].public_only then -1 else fs_read(path, text[..]);
   want := pc(cfg, cfg[0].pubkey);
   if kn > 0 {
     hex := trimmed(cast(string) text[0..<kn]);
@@ -203,7 +208,7 @@ pj_open :: (p: [] Proj, a: [] Args) -> string {
     p[0].keyed = true;
     if want.count > 0 && want != pj_pk(p) { wipe(p[0].key[..]); return "the project key is not project.json's pubkey"; }
   } else {
-    if args_has(a, "--key") { return "can't read --key"; }
+    if args_has(a, "--key") && !p[0].public_only { return "can't read --key"; }
     if want.count != 64 || !hex_lower(want) { return "no project key, and project.json has no pubkey"; }
     for i: 0..<64 { p[0].pk[i] = want[i]; }
   }
@@ -669,10 +674,13 @@ project_show :: (p: [] Proj, r: [] Rep, what: string) -> int {
 project_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if verb == "" || verb == "help" { project_usage(); return ifx verb == "" then EXIT_USAGE else EXIT_OK; }
   if verb == "review" { return project_review(a, r); }
+  if verb == "snapshot" { return project_snapshot(a, r); }
+  if verb == "index" { return project_index(a, r); }
+  if verb == "bake" { return project_bake(a, r); }
   known := [12] string.["list", "show", "plan", "claim", "release", "note", "done", "status", "move", "respread", "publish", "check"];
   ok := false;
   for k: known { if verb == k { ok = true; } }
-  if !ok { return fail(r, EXIT_USAGE, "project: list, show, plan, claim, release, note, done, status, move, respread, publish, check, review (openagents project help)"); }
+  if !ok { return fail(r, EXIT_USAGE, "project: list, show, plan, claim, release, note, done, status, move, respread, publish, check, review, snapshot, index, bake (openagents project help)"); }
   what := positional(a, 2);
   needs_item := verb == "show" || verb == "plan" || verb == "claim" || verb == "release" || verb == "note" || verb == "done" || verb == "status" || verb == "move";
   if needs_item && what == "" { return fail(r, EXIT_USAGE, "which item? (openagents project help)"); }

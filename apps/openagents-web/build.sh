@@ -131,21 +131,22 @@ verse_app=$!
 # The project pages: every projects/<slug>/project.json with a page, its tasks
 # read from Nostr into projects/<slug>/work.coax (a release always reads
 # afresh, a dev build when the snapshot is ten minutes old; an unreachable
-# relay keeps the last snapshot), then baked.ts writes its commits and the
-# projects/baked.coax table project.coax draws from. Adding a project is data.
-tools="$here/../../coax/web/project"
-[[ -d "$tools/node_modules" ]] || (cd "$tools" && bun install --silent)
+# relay keeps the last snapshot), then `openagents project bake` writes its
+# commits and the projects/baked.coax table project.coax draws from. Adding a
+# project is data. The CLI is Coax (apps/openagents-cli), built here in seconds.
+"$here/../openagents-cli/build.sh" > /dev/null
+oa="$here/../openagents-cli/build/openagents"
 fresh=(); [[ "${COAXIAL_MODE:-dev}" == release ]] || fresh=(--if-older 10)
 snaps=()
-for slug in $(bun "$tools/baked.ts" --list); do
-  bun "$tools/snapshot.ts" --project "$slug" ${fresh[@]+"${fresh[@]}"} & snaps+=($!)
+for slug in $("$oa" project bake --list); do
+  "$oa" project snapshot --project "$slug" ${fresh[@]+"${fresh[@]}"} & snaps+=($!)
 done
 # The /projects list: every project on the relay (kind 30621) into projects/list.coax.
-bun "$tools/list.ts" ${fresh[@]+"${fresh[@]}"}
+"$oa" project index ${fresh[@]+"${fresh[@]}"}
 "$here/../../coax/web/wasm.sh" "$here/projects.coax" "$here/projects-face.c" "$here/build/projects.wasm" &
 list=$!
 for pid in "${snaps[@]}"; do wait "$pid"; done
-bun "$tools/baked.ts"
+"$oa" project bake
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-names.coax" "$here/project-capacity.coax"
 wait "$list"
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.

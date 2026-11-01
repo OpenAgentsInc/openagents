@@ -139,6 +139,9 @@ openagents project move SLUG --before SLUG     # or --after SLUG; respread [--se
 openagents project check                       # the work files' rules, no relay
 openagents project publish [--dry-run]         # the work files, as events
 openagents project review COMMIT --key FILE    # an independent review, coax/reviews/COMMIT.json
+openagents project snapshot [--if-older MIN]   # the page's work.coax, index.md and index.html
+openagents project index                       # projects/list.coax and projects/index.md
+openagents project bake [--list]               # baked.coax and each commits.coax
 ```
 
 How to work the queue is [coax/web/project/QUEUE.md](../../coax/web/project/QUEUE.md);
@@ -159,6 +162,10 @@ the events are [docs/protocol/2026-10-28-projects.md](../../docs/protocol/2026-1
   `origin/main`.
 - `review` signs with the reviewer's own key and refuses an author key
   (`coax/reviews/authors.json`). It writes the file and publishes nothing.
+- `snapshot`, `index` and `bake` write what the site's build bakes into the
+  page (`apps/openagents-web/build.sh`). They read public events only and
+  never load a key. They write a file only when its bytes change, ignoring
+  the snapshot time.
 
 ## Output and exit codes
 
@@ -180,6 +187,7 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `project-write.coax` | claim, release, note, plan, done, status, move and respread, signed with the project key |
 | `project-publish.coax` | `check` and `publish`: the work files as announcements, issues, revisions, statuses and the order |
 | `project-review.coax` | `review`: an independent review file signed with the reviewer's key |
+| `project-page.coax` | `snapshot`, `index` and `bake`: the page's tables, Markdown and lists from the relay |
 | `project-rules.coax` | `#authority`: hashes, slugs, standing, claims, plans, ranks, the order, relay paging |
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, the host name, process liveness, the executable's path |

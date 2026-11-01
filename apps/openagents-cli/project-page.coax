@@ -1,0 +1,1082 @@
+// What the site's build bakes from the relay (coax/web/project/QUEUE.md,
+// docs/protocol/2026-10-28-projects.md): a project page's tables and
+// Markdown, the /projects list, and the table of every project with a page.
+//
+//   openagents project snapshot [--project SLUG] [--relay URL] [--if-older MINUTES]
+//       apps/openagents-web/projects/SLUG/work.coax   the tables project.coax draws
+//       apps/openagents-web/projects/SLUG/index.md    the same, for agents
+//       apps/openagents-web/projects/SLUG/index.html  its hidden <main>, between the snapshot markers
+//   openagents project index [--relay URL] [--if-older MINUTES]
+//       apps/openagents-web/projects/list.coax and projects/index.md: every
+//       project on the relay (kind 30621), public and unlisted
+//   openagents project bake [--list]
+//       apps/openagents-web/projects/baked.coax and each SLUG/commits.coax
+//
+// Nothing here signs or uses a key: it reads public events only, and every
+// event the relay client hands back is verified (relay.coax). The tables come
+// from the page's own fold (apps/openagents-web/project-fold.coax
+// write_tables) and links (project-links.coax write_links), so the baked first
+// paint and the live page are one fold. A relay that can't be read keeps the
+// last snapshot. These replace coax/web/project/snapshot.ts, list.ts and
+// baked.ts, byte for byte (docs/verification/2026-11-01-project-page-coax.md).
+#load "../openagents-web/project-links.coax";
+
+// ---- a big text being written ---------------------------------------------------
+
+PG_BIG :: 8388608;
+Pg :: struct { b: [PG_BIG] u8; n: int; bad: bool; }
+pg_s :: (g: [] Pg, s: string) {
+  if g[0].n + s.count > PG_BIG { g[0].bad = true; return; }
+  for i: 0..<s.count { g[0].b[g[0].n + i] = s[i]; }
+  g[0].n += s.count;
+}
+pg_c :: (g: [] Pg, c: u8) { if g[0].n >= PG_BIG { g[0].bad = true; return; } g[0].b[g[0].n] = c; g[0].n += 1; }
+pg_i :: (g: [] Pg, v: int) { t: [24] u8; pg_s(g, int_text(v, t[..])); }
+pg_text :: (g: [] Pg) -> string { return cast(string) g[0].b[0..<g[0].n]; }
+// One line of Markdown: the text, then a newline (pg_md_text drops the last).
+pg_ln :: (g: [] Pg, s: string) { pg_s(g, s); pg_c(g, 10); }
+// cell(text) (project-fold.coax cell_into, tables.ts cell)
+pg_cell :: (g: [] Pg, s: string) {
+  m := cell_into(g[0].b[..], g[0].n, s);
+  if m < 0 { g[0].bad = true; return; }
+  g[0].n = m;
+}
+// "MM-DD HH:MM CDT", tables.ts chicago()
+pg_time :: (g: [] Pg, t: int) {
+  m := chicago_zone_into(g[0].b[..], g[0].n, t);
+  if m < 0 { g[0].bad = true; return; }
+  g[0].n = m;
+}
+// A string as JSON.stringify writes it: the Coax string literal of a generated table.
+pg_lit :: (g: [] Pg, s: string) {
+  digits := "0123456789abcdef";
+  pg_c(g, '"');
+  for c: s {
+    if c == '"' { pg_s(g, "\\\""); } else if c == '\\' { pg_s(g, "\\\\"); }
+    else if c == 10 { pg_s(g, "\\n"); } else if c == 13 { pg_s(g, "\\r"); } else if c == 9 { pg_s(g, "\\t"); }
+    else if c == 8 { pg_s(g, "\\b"); } else if c == 12 { pg_s(g, "\\f"); }
+    else if c < 32 { pg_s(g, "\\u00"); pg_c(g, digits[cast(int) (c >> 4)]); pg_c(g, digits[cast(int) (c & 15)]); }
+    else { pg_c(g, c); }
+  }
+  pg_c(g, '"');
+}
+// < > & as entities (snapshot.ts esc)
+pg_html :: (g: [] Pg, s: string) {
+  for c: s {
+    if c == '&' { pg_s(g, "&amp;"); } else if c == '<' { pg_s(g, "&lt;"); } else if c == '>' { pg_s(g, "&gt;"); } else { pg_c(g, c); }
+  }
+}
+
+// The lines of text without those that start with volatile.
+pg_kept :: (text: string, volatile: string, out: [] Pg) {
+  out[0].n = 0; i := 0; first := true;
+  while i <= text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    line := text[i..<e];
+    if volatile.count == 0 || !starts(line, volatile) {
+      if !first { pg_c(out, 10); }
+      pg_s(out, line); first = false;
+    }
+    i = e + 1;
+  }
+}
+// A generated file, written only when its bytes change; when only the lines
+// that start with volatile (a capture time) differ, it keeps its old ones too.
+// 1 written, 0 unchanged, -1 failed.
+pg_write_changed :: (path: string, text: string, volatile: string) -> int {
+  old: [1] Pg;
+  n := fs_read(path, old[0].b[..]);
+  if n >= 0 {
+    o := cast(string) old[0].b[0..<n];
+    if o == text { return 0; }
+    if volatile.count > 0 {
+      a: [1] Pg; b: [1] Pg;
+      pg_kept(o, volatile, a[..]); pg_kept(text, volatile, b[..]);
+      if !a[0].bad && !b[0].bad && pg_text(a[..]) == pg_text(b[..]) { return 0; }
+    }
+  }
+  ok := fs_mkdir_all(fs_dir(path));
+  return ifx pg_write(path, text) then 1 else -1;
+}
+// Written aside and renamed, so a reader never sees half a file.
+pg_write :: (path: string, text: string) -> bool {
+  tb: [4200] u8; t: [24] u8;
+  k := copy(path, tb[..]);
+  if k < 0 { return false; }
+  m := copy(".", tb[k..<4200]); o := copy(int_text(cxcli_now_s() % 1000000 + cxsock_now_ms() % 1000, t[..]), tb[k + m..<4200]);
+  tmp := cast(string) tb[0..<k + m + o];
+  if !fs_write(tmp, text) { return false; }
+  if fs_rename(tmp, path) { return true; }
+  ok := fs_remove(tmp);
+  return false;
+}
+fs_mkdir_all :: (dir: string) -> bool {
+  if dir.count == 0 || fs_kind(dir) == FS_DIR { return true; }
+  up := fs_dir(dir);
+  if up.count > 0 && up != dir && !fs_mkdir_all(up) { return false; }
+  return fs_mkdir(dir) || fs_kind(dir) == FS_DIR;
+}
+// Whether path was written less than minutes ago (--if-older).
+pg_fresh :: (path: string, minutes: int) -> bool {
+  if minutes <= 0 { return false; }
+  ns := fs_mtime_ns(path);
+  if ns < 0 { return false; }
+  return cxcli_now_s() * 1000 - ns / 1000000 < minutes * 60000;
+}
+pg_minutes :: (a: [] Args) -> int { v := text_int(args_value(a, "--if-older", "0")); return ifx v < 0 then 0 else v; }
+
+// A Coax constant's string value from a source file (NAME :: "...";), unescaped; "" when absent.
+pg_constant :: (source: string, name: string, out: [] u8) -> string {
+  i := 0;
+  while i < source.count {
+    e := i; while e < source.count && source[e] != 10 { e += 1; }
+    line := source[i..<e];
+    if starts(line, name) && line.count > name.count + 6 && line[name.count..<name.count + 5] == " :: \"" && line[line.count - 2..<line.count] == "\";" {
+      n := json_unescape(line[name.count + 5..<line.count - 2], out);
+      return ifx n < 0 then "" else cast(string) out[0..<n];
+    }
+    i = e + 1;
+  }
+  return "";
+}
+
+// ---- reading a project's events ----------------------------------------------
+
+// pubkey's project slug folded from the relay into s and f: its repository
+// (repo_d), project and order, its issues, and what hangs off each issue
+// (fifty at a time). more_from: where the follow-ups start in s.
+pg_read :: (p: [] Proj, s: [] Store, f: [] Fold, pk: string, slug: string, repo_d: string, more_from: [] int) -> bool {
+  store_clear(s);
+  fl: [1] PjFilter;
+  coord: [256] u8;
+  cn := copy("30621:", coord[..]); cn += copy(pk, coord[cn..<256]); cn += copy(":", coord[cn..<256]); cn += copy(slug, coord[cn..<256]);
+  repo_k := [1] int.[KIND_REPO]; proj_k := [2] int.[KIND_PROJECT, KIND_ORDER]; issue_k := [1] int.[KIND_ISSUE];
+  rd := [1] string.[repo_d]; sd := [1] string.[slug]; ca := [1] string.[cast(string) coord[0..<cn]];
+  pf_start(fl[..], repo_k[..], pk); pf_tag(fl[..], "#d", rd[..]);
+  if !pj_all(p, s, pk, pf_text(fl[..])) { return false; }
+  pf_start(fl[..], proj_k[..], pk); pf_tag(fl[..], "#d", sd[..]);
+  if !pj_all(p, s, pk, pf_text(fl[..])) { return false; }
+  pf_start(fl[..], issue_k[..], pk); pf_tag(fl[..], "#a", ca[..]);
+  if !pj_all(p, s, pk, pf_text(fl[..])) { return false; }
+  more_from[0] = s[0].n;
+  ids: [64] string; n := 0;
+  issues := s[0].n;
+  com_k := [1] int.[KIND_COMMENT]; st_k := [4] int.[1630, 1631, 1632, 1633];
+  for e: 0..<issues {
+    if s[0].kind[e] == KIND_ISSUE { ids[n] = stored_id(s, e); n += 1; }
+    if n > 0 && (n == 50 || e == issues - 1) {
+      pf_start(fl[..], com_k[..], pk); pf_tag(fl[..], "#E", ids[0..<n]);
+      if !pj_all(p, s, pk, pf_text(fl[..])) { return false; }
+      pf_start(fl[..], st_k[..], pk); pf_tag(fl[..], "#e", ids[0..<n]);
+      if !pj_all(p, s, pk, pf_text(fl[..])) { return false; }
+      n = 0;
+    }
+  }
+  if s[0].overflow { pj_say(p, "the project has more events than the CLI holds", "", ""); return false; }
+  fold(s, f, slug);
+  if f[0].n >= FOLD_ISSUES { pj_say(p, "the project has more issues than the CLI holds", "", ""); return false; }
+  return true;
+}
+
+// One filter for any key, every stored event, into ls.
+pg_ask :: (p: [] Proj, ls: [] Store, kinds: [] int, tag: string, values: [] string) -> bool {
+  if values.count == 0 { return true; }
+  fl: [1] PjFilter;
+  pf_start(fl[..], kinds, ""); pf_tag(fl[..], tag, values);
+  return pj_all(p, ls, ANY_KEY, pf_text(fl[..]));
+}
+pg_has :: (list: [] string, n: int, id: string) -> bool { for k: 0..<n { if list[k] == id { return true; } } return false; }
+
+// The other projects' events this one's LINKS table reads (links.ts): first
+// the issues it needs and every issue or revision that cites it, then for
+// each root found its missing issue, its comments and its statuses.
+pg_linked :: (p: [] Proj, s: [] Store, f: [] Fold, ls: [] Store, pk: string, slug: string) -> bool {
+  store_clear(ls);
+  needed: [LINK_ROOTS] string; nn := 0;
+  ns: [64] N34Need;
+  for r: 0..<f[0].n {
+    ev := store_nt(s, f[0].fields[r]);
+    k := n34_needs(ev, ns[..]);
+    for i: 0..<k {
+      id := nt_raw(ev, ns[i].id);
+      if nn < LINK_ROOTS && !pg_has(needed[..], nn, id) { needed[nn] = id; nn += 1; }
+    }
+  }
+  iss_k := [1] int.[KIND_ISSUE]; q_k := [2] int.[KIND_ISSUE, KIND_COMMENT];
+  com_k := [1] int.[KIND_COMMENT]; st_k := [4] int.[1630, 1631, 1632, 1633];
+  if !pg_ask(p, ls, iss_k[..], "ids", needed[0..<nn]) { return false; }
+  coord: [256] u8;
+  cn := copy("30621:", coord[..]); cn += copy(pk, coord[cn..<256]); cn += copy(":", coord[cn..<256]); cn += copy(slug, coord[cn..<256]);
+  ours := [1] string.[cast(string) coord[0..<cn]];
+  if !pg_ask(p, ls, q_k[..], "#q", ours[..]) { return false; }
+  // the roots: other keys' issues, and the issues other keys' revisions revise
+  roots: [LINK_ROOTS] string; rn := 0;
+  for e: 0..<ls[0].n {
+    if equal(author_of(ls, e), pk) { continue; }
+    id := "";
+    if ls[0].kind[e] == KIND_ISSUE { id = stored_id(ls, e); }
+    else if ls[0].kind[e] == KIND_COMMENT {
+      rv := tag_value(ls, e, "revision");
+      if rv.ok && equal(str(ls, rv.ref), ISSUE_REVISION) {
+        root := tag_value(ls, e, "E");
+        if root.ok && str(ls, root.ref).count == 64 && hex_lower(str(ls, root.ref)) { id = str(ls, root.ref); }
+      }
+    }
+    if id.count > 0 && rn < LINK_ROOTS && !pg_has(roots[..], rn, id) { roots[rn] = id; rn += 1; }
+  }
+  missing: [LINK_ROOTS] string; mn := 0;
+  for k: 0..<rn {
+    e := store_find(ls, roots[k]);
+    if e < 0 || ls[0].kind[e] != KIND_ISSUE { missing[mn] = roots[k]; mn += 1; }
+  }
+  all: [LINK_ROOTS] string; an := 0;
+  for k: 0..<nn { if an < LINK_ROOTS && !pg_has(all[..], an, needed[k]) { all[an] = needed[k]; an += 1; } }
+  for k: 0..<rn { if an < LINK_ROOTS && !pg_has(all[..], an, roots[k]) { all[an] = roots[k]; an += 1; } }
+  if an == 0 { return true; }
+  if !pg_ask(p, ls, iss_k[..], "ids", missing[0..<mn]) { return false; }
+  if !pg_ask(p, ls, com_k[..], "#E", all[0..<an]) { return false; }
+  return pg_ask(p, ls, st_k[..], "#e", all[0..<an]);
+}
+
+// ---- snapshot ----------------------------------------------------------------------
+
+PgSnap :: struct {
+  s: [1] Store; f: [1] Fold; t: [1] Tables; ls: [1] Store; lr: [1] LinkRoots;
+  links: [LINKS_CAP] u8; links_n: int;
+  outside: [FOLD_ISSUES] bool;     // waits on another project's issue not done
+  milestone: [FOLD_ISSUES] int;    // the parent issue's row, or -1
+}
+
+pg_alias :: (g: [] PgSnap, r: int) -> string { return stored_id(g[0].s[..], g[0].f[0].root[r])[0..<g[0].f[0].alias[r]]; }
+pg_title :: (g: [] PgSnap, r: int) -> string { return str(g[0].s[..], g[0].f[0].subject[r]); }
+pg_body :: (g: [] PgSnap, r: int) -> string { return content_of(g[0].s[..], g[0].f[0].fields[r]); }
+pg_done :: (g: [] PgSnap, r: int) -> bool { return done_issue(g[0].f[..], r); }
+pg_task :: (g: [] PgSnap, r: int) -> bool { return g[0].f[0].kind[r] == FK_TASK; }
+pg_claimed :: (g: [] PgSnap, r: int) -> string { return str(g[0].s[..], g[0].f[0].claimed[r]); }
+// tables.ts isReady: open, every blocker held and finished, nothing outside it waits on
+pg_ready :: (g: [] PgSnap, r: int) -> bool {
+  if g[0].f[0].status[r] != ST_OPEN || g[0].outside[r] { return false; }
+  ev := store_nt(g[0].s[..], g[0].f[0].fields[r]);
+  for k: 0..<nt_tags(ev, "blocked-by") {
+    t := nt_tag(ev, "blocked-by", k);
+    if t.values < 1 { continue; }
+    b := fold_issue_of(g[0].s[..], g[0].f[..], nt_raw(ev, t.v[0]));
+    if b < 0 || !pg_done(g, b) { return false; }
+  }
+  return true;
+}
+// The rows in rank order (tables.ts rankOrder, stable) that pick takes.
+PG_WORKING :: 0; PG_READY :: 1; PG_WAITING :: 2; PG_FINISHED :: 3;
+pg_pick :: (g: [] PgSnap, r: int, what: int) -> bool {
+  if !pg_task(g, r) { return false; }
+  on := pg_claimed(g, r).count > 0;
+  if what == PG_WORKING { return !pg_done(g, r) && on; }
+  if what == PG_READY { return pg_ready(g, r) && !on; }
+  if what == PG_WAITING { return !pg_done(g, r) && !pg_ready(g, r) && !on; }
+  return pg_done(g, r);
+}
+pg_rows :: (g: [] PgSnap, what: int, rows: [] int) -> int {
+  n := 0;
+  for k: 0..<g[0].f[0].n {
+    r := ifx what == PG_FINISHED then k else g[0].t[0].order[k];
+    if !pg_pick(g, r, what) { continue; }
+    j := n; n += 1;
+    // finished: newest status first, else the order already is rank's
+    while what == PG_FINISHED && j > 0 && g[0].f[0].status_at[r] > g[0].f[0].status_at[rows[j - 1]] { rows[j] = rows[j - 1]; j -= 1; }
+    rows[j] = r;
+  }
+  return n;
+}
+
+// A log line's text as model.ts fold() wrote it.
+pg_log_text :: (g: [] PgSnap, k: int, out: [] Pg) {
+  s := g[0].s[..]; f := g[0].f[..];
+  ty := f[0].log_type[k]; r := f[0].log_issue[k]; e := f[0].log_ev[k];
+  who := ifx f[0].log_who[k].len > 0 then str(s, f[0].log_who[k]) else "";
+  if ty == LOG_CLAIM { pg_s(out, "claimed by "); pg_s(out, who); }
+  else if ty == LOG_RELEASE { pg_s(out, "released by "); pg_s(out, ifx who.count > 0 then who else "its worker"); }
+  else if ty == LOG_DONE {
+    c := str(s, f[0].c_commit[e]);
+    pg_s(out, "done in "); pg_s(out, c[0..<(ifx c.count > 10 then 10 else c.count)]);
+    if who.count > 0 { pg_s(out, " by "); pg_s(out, who); }
+  } else if ty == LOG_NOTE {
+    if who.count > 0 { pg_s(out, who); pg_s(out, ": "); }
+    pg_s(out, trimmed(content_of(s, e)));
+  } else if ty == LOG_PLAN {
+    if who.count > 0 { pg_s(out, who); pg_s(out, " "); }
+    pg_s(out, "planned "); pg_i(out, f[0].steps_done[r]); pg_s(out, " of "); pg_i(out, f[0].steps[r]); pg_s(out, " done");
+  } else if ty == LOG_STATUS { pg_s(out, STATUS_NAME[f[0].status[r]]); }
+}
+
+// The workers' activity, newest first (ties as pushed): log indexes into out.
+pg_activity :: (g: [] PgSnap, out: [] int) -> int {
+  f := g[0].f[..]; n := 0;
+  for k: 0..<f[0].log_n {
+    if !worked(g[0].s[..], f, k) { continue; }
+    j := n; n += 1;
+    while j > 0 && f[0].log_at[k] > f[0].log_at[out[j - 1]] { out[j] = out[j - 1]; j -= 1; }
+    out[j] = k;
+  }
+  return n;
+}
+
+// The LINKS rows of row r (split by '|'), as the Markdown cites them.
+pg_link_lines :: (g: [] PgSnap, r: int, dir: string, md: [] Pg, write: bool) -> bool {
+  text := cast(string) g[0].links[0..<g[0].links_n];
+  alias := pg_alias(g, r);
+  first := true; i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    line := text[i..<e];
+    i = e + 1;
+    // alias | dir | project | its alias | its status | its title
+    f: [6] string; nf := 0; a := 0;
+    for c: 0..<line.count + 1 {
+      if c == line.count || line[c] == '|' { if nf < 6 { f[nf] = line[a..<c]; nf += 1; } a = c + 1; }
+    }
+    if nf < 6 || f[0] != alias || f[1] != dir { continue; }
+    if !write { return true; }
+    pg_s(md, ifx first then "" else "; ");
+    pg_s(md, "["); pg_s(md, f[2]); pg_s(md, " #"); pg_s(md, f[3]); pg_s(md, "](https://openagents.com/projects/"); pg_s(md, f[2]);
+    pg_s(md, "#"); pg_s(md, f[3]); pg_s(md, ") "); pg_s(md, f[5]); pg_s(md, " ("); pg_s(md, f[4]); pg_s(md, ")");
+    first = false;
+  }
+  return !first;
+}
+
+// One fact about a task, " · " between them.
+pg_fact :: (l: [] Ln, n: int, s1: string, s2: string) -> int {
+  if n > 0 { ln_s(l, " · "); }
+  ln_s(l, s1); ln_s(l, s2);
+  return n + 1;
+}
+// One task's section of index.md (snapshot.ts task()).
+pg_md_task :: (g: [] PgSnap, p: [] Proj, r: int, md: [] Pg) {
+  s := g[0].s[..]; f := g[0].f[..];
+  pg_s(md, "### #"); pg_s(md, pg_alias(g, r)); pg_c(md, ' '); pg_ln(md, pg_title(g, r));
+  pg_ln(md, "");
+  facts: [1] Ln; nf := 0;
+  nf = pg_fact(facts[..], nf, "status ", STATUS_NAME[f[0].status[r]]);
+  if pg_ready(g, r) { nf = pg_fact(facts[..], nf, "ready", ""); }
+  if pg_claimed(g, r).count > 0 { nf = pg_fact(facts[..], nf, "in progress: ", pg_claimed(g, r)); }
+  if f[0].size[r].len > 0 { nf = pg_fact(facts[..], nf, "size ", str(s, f[0].size[r])); }
+  ev := store_nt(s, f[0].fields[r]);
+  labels: [FOLD_LABELS] NtSpan; nl := n34_labels(ev, labels[..]);
+  if nl > 0 {
+    lb: [1] Ln;
+    for q: 0..<nl { if q > 0 { ln_s(lb[..], ", "); } ln_s(lb[..], span_str(s, f[0].fields[r], labels[q])); }
+    nf = pg_fact(facts[..], nf, "labels ", ln_text(lb[..]));
+  }
+  ms := g[0].milestone[r];
+  if ms >= 0 {
+    mt: [1] Ln; ln_s(mt[..], "#"); ln_s(mt[..], pg_alias(g, ms)); ln_s(mt[..], " "); ln_s(mt[..], pg_title(g, ms));
+    nf = pg_fact(facts[..], nf, "milestone ", ln_text(mt[..]));
+  }
+  pg_ln(md, ln_text(facts[..]));
+  first := true;
+  for k: 0..<nt_tags(ev, "blocked-by") {
+    t := nt_tag(ev, "blocked-by", k);
+    if t.values < 1 { continue; }
+    b := fold_issue_of(s, f, nt_raw(ev, t.v[0]));
+    if b < 0 { continue; }
+    pg_s(md, ifx first then "\nWaits on: " else "; ");
+    pg_s(md, "#"); pg_s(md, pg_alias(g, b)); pg_c(md, ' '); pg_s(md, pg_title(g, b)); pg_s(md, " ("); pg_s(md, STATUS_NAME[f[0].status[b]]); pg_s(md, ")");
+    first = false;
+  }
+  if !first { pg_c(md, 10); }
+  if pg_link_lines(g, r, "needs", md, false) { pg_s(md, "\nWaits on another project: "); ok := pg_link_lines(g, r, "needs", md, true); pg_c(md, 10); }
+  if pg_link_lines(g, r, "by", md, false) { pg_s(md, "\nNeeded by: "); ok := pg_link_lines(g, r, "by", md, true); pg_c(md, 10); }
+  pg_ln(md, "");
+  nb: [512] u8;
+  nv := name_nevent(stored_id(s, f[0].root[r]), pj_cfg_relay(p), pj_pk(p), KIND_ISSUE, nb[..]);
+  pg_s(md, "Event: `"); pg_s(md, cast(string) nb[0..<ifx nv > 0 then nv else 0]); pg_s(md, "` (id `"); pg_s(md, stored_id(s, f[0].root[r])); pg_ln(md, "`)");
+  pg_ln(md, "");
+  if f[0].plan[r] >= 0 {
+    pg_s(md, "Plan ("); pg_i(md, f[0].steps_done[r]); pg_s(md, " of "); pg_i(md, f[0].steps[r]); pg_s(md, " done, updated ");
+    pg_time(md, s[0].at[f[0].plan[r]]);
+    by := str(s, f[0].plan_by[r]);
+    if f[0].plan_by[r].len > 0 && by.count > 0 { pg_s(md, " by "); pg_s(md, by); }
+    pg_ln(md, "):");
+    pg_ln(md, "");
+    content := content_of(s, f[0].plan[r]);
+    for k: 0..<f[0].steps[r] {
+      st := plan_step(content, k);
+      pg_s(md, "- ["); pg_c(md, ifx st.mark == '>' then ' ' else st.mark); pg_s(md, "] ");
+      if st.mark == '>' { pg_s(md, "**now:** "); }
+      pg_ln(md, st.text);
+    }
+    pg_ln(md, "");
+  }
+  pg_ln(md, trimmed(pg_body(g, r)));
+  pg_ln(md, "");
+  if f[0].note_cnt[r] > 0 {
+    pg_ln(md, "Notes:");
+    pg_ln(md, "");
+    for c: 0..<f[0].note_cnt[r] {
+      j := f[0].note_from[r] + c; e := f[0].notes_ev[j];
+      by := ifx f[0].notes_by[j].len > 0 then str(s, f[0].notes_by[j]) else "";
+      pg_s(md, "- "); pg_time(md, s[0].at[e]);
+      if by.count > 0 { pg_c(md, ' '); pg_s(md, by); }
+      pg_s(md, ": "); pg_ln(md, trimmed(content_of(s, e)));
+    }
+    pg_ln(md, "");
+  }
+}
+
+// NAME :: "value"; with the project's prefix, value as a JSON string.
+pg_konst :: (w: [] Pg, pre: string, name: string, value: string) { pg_s(w, pre); pg_s(w, name); pg_s(w, " :: "); pg_lit(w, value); pg_ln(w, ";"); }
+pg_cellv :: (text: string, out: [] u8) -> string { m := cell_into(out, 0, text); return ifx m < 0 then "" else cast(string) out[0..<m]; }
+
+project_snapshot :: (a: [] Args, r: [] Rep) -> int {
+  p: [1] Proj;
+  p[0].public_only = true;   // public events only: no key, no AUTH
+  bad := pj_open(p[..], a);
+  if bad.count > 0 { pj_close(p[..]); return fail(r, EXIT_USAGE, bad); }
+  code := pg_snapshot(p[..], a, r);
+  pj_close(p[..]);
+  return code;
+}
+
+pg_snapshot :: (p: [] Proj, a: [] Args, r: [] Rep) -> int {
+  cfg := p[0].cfg[..];
+  slug := pj_slug(p); pk := pj_pk(p);
+  ob: [2048] u8;
+  out := fs_join(pj_dir(p), "work.coax", ob[..]);
+  if pg_fresh(out, pg_minutes(a)) { return EXIT_OK; }
+  if pc(cfg, cfg[0].pubkey).count != 64 { return fail(r, EXIT_FAIL, "snapshot: project.json has no pubkey"); }
+  g_: [1] PgSnap; g := g_[..];
+  s := g[0].s[..]; f := g[0].f[..]; t := g[0].t[..];
+  more: [1] int;
+  ok := pg_read(p, s, f, pk, slug, pc(cfg, cfg[0].repo_d), more[..]) && pg_linked(p, s, f, g[0].ls[..], pk, slug);
+  if !ok {
+    tool_err("snapshot: "); tool_err(pj_why(p)); tool_errln("; keeping the last snapshot");
+    return ifx fs_exists(out) then EXIT_OK else EXIT_FAIL;
+  }
+  write_tables(s, f, t);
+  g[0].links_n = write_links(s, f, t[0].order[..], g[0].ls[..], pk, slug, g[0].lr[..], g[0].links[..]);
+  if !t[0].complete || g[0].links_n < 0 {
+    tool_errln("snapshot: the project's tables are larger than the page holds; keeping the last snapshot");
+    return ifx fs_exists(out) then EXIT_OK else EXIT_FAIL;
+  }
+  // the issues still waiting on another project's (a needs row not resolved or closed)
+  links := cast(string) g[0].links[0..<g[0].links_n];
+  for k: 0..<f[0].n { g[0].outside[k] = false; g[0].milestone[k] = -1; }
+  li := 0;
+  while li < links.count {
+    e := li; while e < links.count && links[e] != 10 { e += 1; }
+    line := links[li..<e]; li = e + 1;
+    fs: [6] string; nf := 0; at := 0;
+    for c: 0..<line.count + 1 { if c == line.count || line[c] == '|' { if nf < 6 { fs[nf] = line[at..<c]; nf += 1; } at = c + 1; } }
+    if nf < 5 || fs[1] != "needs" || fs[4] == "resolved" || fs[4] == "closed" { continue; }
+    for k: 0..<f[0].n { if pg_alias(g, k) == fs[0] { g[0].outside[k] = true; } }
+  }
+  for k: 0..<f[0].n { if f[0].parent[k].len > 0 { g[0].milestone[k] = fold_issue_of(s, f, str(s, f[0].parent[k])); } }
+  // the editorial intro lives with its Coax renderer, outside the signed relay data
+  ib: [2048] u8; isrc: [65536] u8; iv: [8192] u8; bk: [2048] u8; chl: [2048] u8; ik: [256] u8;
+  intro := ""; book := ""; changelog := "";
+  isn := fs_read(fs_join(pj_root(p), "apps/openagents-web/project-intro.coax", ib[..]), isrc[..]);
+  if isn > 0 && slug == "coax" {
+    src := cast(string) isrc[0..<isn];
+    if pg_constant(src, "COAX_PROJECT_KEY", ik[..]) == pk {
+      intro = pg_constant(src, "COAX_INTRO", iv[..]);
+      book = pg_constant(src, "COAX_BOOK_URL", bk[..]);
+      changelog = pg_constant(src, "COAX_CHANGELOG_URL", chl[..]);
+    }
+  }
+  now := cxcli_now_s();
+  coord: [256] u8; cn := pj_coord(p, KIND_PROJECT, coord[..]);
+  co := cast(string) coord[0..<cn];
+  nab: [512] u8; naddr := pj_naddr(p, nab[..]);
+  npb: [128] u8; npn := name_npub(pk, npb[..]); npub := cast(string) npb[0..<ifx npn > 0 then npn else 0];
+  relay := pj_cfg_relay(p);
+
+  // ---- work.coax
+  w_: [1] Pg; w := w_[..];
+  P: [80] u8; pn := 0;
+  for c: slug { P[pn] = ifx c == '-' then '_' else ifx c >= 'a' && c <= 'z' then c - 32 else c; pn += 1; }
+  pn += copy("_WORK_", P[pn..<80]);
+  pre := cast(string) P[0..<pn];
+  pg_s(w, "// Generated by `openagents project snapshot` from "); pg_s(w, relay); pg_s(w, ": the "); pg_s(w, pc(cfg, cfg[0].name)); pg_ln(w, "");
+  pg_ln(w, "// project's events, verified and folded. Do not edit; run the snapshot.");
+  pg_ln(w, "// Items: alias | kind | status | title | labels | size | worker | parent | blocked by | rank | slug | commit | done at");
+  pg_ln(w, "// Log: the workers' activity, newest first: time (Chicago) | what");
+  pg_ln(w, "// Plans: the steps of each task with a plan: alias | mark (x done, > doing, o to do) | step");
+  pg_ln(w, "// Plan info: one row a task in progress: alias | done | steps | plan updated | claimed | latest note");
+  pg_ln(w, "// Details: one row an item, what its detail panel shows:");
+  pg_ln(w, "//   alias | event id | claimed at (Chicago) | body | acceptance | notes");
+  pg_ln(w, "// A field never holds a raw '|' or newline: \"\\\\\" is a backslash, \"\\n\" a newline,");
+  pg_ln(w, "// \"\\p\" a '|'. acceptance and notes are lists, items apart by \"\\.\"; a note is");
+  pg_ln(w, "// time (Chicago) \"\\:\" by \"\\:\" text. (project-fold.coax write_details; the page's live fold fills the same.)");
+  pg_ln(w, "// Links: work across projects (project-links.coax): alias | needs or by | project | its alias | its status | its title");
+  cb: [65536] u8;
+  pg_konst(w, pre, "RELAY", relay); pg_konst(w, pre, "NADDR", naddr); pg_konst(w, pre, "NPUB", npub); pg_konst(w, pre, "PUBKEY", pk);
+  pg_konst(w, pre, "SLUG", pc(cfg, cfg[0].slug));
+  pg_konst(w, pre, "NAME", pg_cellv(pc(cfg, cfg[0].name), cb[..])); pg_konst(w, pre, "DESCRIPTION", pg_cellv(pc(cfg, cfg[0].description), cb[..]));
+  pg_konst(w, pre, "LICENSE", pg_cellv(pc(cfg, cfg[0].license), cb[..])); pg_konst(w, pre, "PATH", pg_cellv(pc(cfg, cfg[0].path), cb[..]));
+  pg_konst(w, pre, "REPO", pg_cellv(pc(cfg, cfg[0].repo_name), cb[..]));
+  pg_konst(w, pre, "ITEMS", cast(string) t[0].items[0..<t[0].items_n]);
+  pg_konst(w, pre, "LOG", cast(string) t[0].log[0..<t[0].log_n]);
+  pg_konst(w, pre, "PLANS", cast(string) t[0].plans[0..<t[0].plans_n]);
+  pg_konst(w, pre, "PLAN_INFO", cast(string) t[0].info[0..<t[0].info_n]);
+  pg_konst(w, pre, "DETAILS", cast(string) t[0].details[0..<t[0].details_n]);
+  steps_: [1] Pg; steps := steps_[..];
+  pg_s(steps, "READ|/projects/"); pg_s(steps, slug); pg_ln(steps, "/index.md");
+  pg_s(steps, "RELAY|"); pg_ln(steps, relay);
+  pg_s(steps, "TASKS|kind 1621, #a "); pg_s(steps, co[0..<18]); pg_ln(steps, "...");
+  pg_s(steps, "ORDER|kind 30623, d "); pg_ln(steps, pc(cfg, cfg[0].slug));
+  pg_ln(steps, "TAKE|a NIP-22 comment on the issue: [\"claim\", NAME]");
+  pg_ln(steps, "PLAN|[\"plan\", \"openagents.task-plan.v1\"]: your to-do list");
+  pg_ln(steps, "NOTE|comments on the issue as you go");
+  pg_ln(steps, "DONE|the checks pass; [\"commit\", HASH], status 1631");
+  pg_konst(w, pre, "STEPS", pg_text(steps[..]));
+  pg_konst(w, pre, "LINKS", links);
+  if w[0].bad || !pg_write(out, pg_text(w)) { return fail(r, EXIT_FAIL, "snapshot: can't write work.coax"); }
+
+  // ---- index.md
+  md_: [1] Pg; md := md_[..];
+  web := pc(cfg, cfg[0].web);
+  pg_s(md, "# "); pg_ln(md, pc(cfg, cfg[0].name));
+  pg_ln(md, "");
+  pg_ln(md, ifx intro.count > 0 then intro else pc(cfg, cfg[0].description));
+  pg_ln(md, "");
+  if book.count > 0 { pg_s(md, "[Read The Coax Programming Language]("); pg_s(md, book); pg_ln(md, ")."); pg_ln(md, ""); }
+  if changelog.count > 0 { pg_s(md, "[Coax changelog](https://openagents.com"); pg_s(md, changelog); pg_ln(md, ")."); pg_ln(md, ""); }
+  pg_s(md, "An OpenAgents project, open for contributions from people and agents. Home: `"); pg_s(md, pc(cfg, cfg[0].path));
+  pg_s(md, "` in the [OpenAgents repository]("); pg_s(md, web); pg_s(md, "). Licence: "); pg_s(md, pc(cfg, cfg[0].license)); pg_ln(md, ".");
+  pg_ln(md, "");
+  pg_s(md, "Snapshot of the project's Nostr events taken "); pg_time(md, now); pg_s(md, " from `"); pg_s(md, relay);
+  pg_s(md, "`. Every event below is signed by the project key `"); pg_s(md, npub); pg_ln(md, "`.");
+  pg_ln(md, "");
+  pg_ln(md, "## How to take a task");
+  pg_ln(md, "");
+  pg_ln(md, "1. Pick the top task under **Ready** that nobody is on. Its blockers are done.");
+  pg_ln(md, "2. Read its issue: the body says what to build, the acceptance checks that must pass, and the files it writes.");
+  pg_ln(md, "3. Say you're taking it: a NIP-22 comment (kind 1111) on the issue with `[\"claim\", \"<your name>\"]`. Tasks under **In progress** are taken.");
+  pg_ln(md, "   Then post your plan, a checklist comment with `[\"plan\", \"openagents.task-plan.v1\"]`, and keep it current as you work: the page shows it under the task.");
+  pg_s(md, "4. Leave comments on the issue as you go, then open a pull request on [");
+  pg_s(md, ifx starts(web, "https://") then web[8..<web.count] else web); pg_s(md, "]("); pg_s(md, web);
+  pg_ln(md, ") that meets every acceptance check, and link the issue's alias in it.");
+  pg_ln(md, "");
+  pg_ln(md, "The project's own workers follow `coax/web/project/QUEUE.md` in the repository. Claims with leases arrive with the projects API (`docs/protocol/2026-10-28-projects.md`).");
+  pg_ln(md, "");
+  pg_ln(md, "## Reading the project from Nostr");
+  pg_ln(md, "");
+  pg_s(md, "- Relay: `"); pg_s(md, relay); pg_ln(md, "`");
+  pg_s(md, "- Project key: `"); pg_s(md, npub); pg_s(md, "` (hex `"); pg_s(md, pk); pg_ln(md, "`)");
+  pg_s(md, "- Project: `"); pg_s(md, naddr); pg_s(md, "` (kind 30621, `d` = `"); pg_s(md, pc(cfg, cfg[0].slug)); pg_s(md, "`, coordinate `"); pg_s(md, co); pg_ln(md, "`)");
+  pg_ln(md, "- Names: keys, events and addresses here are NIP-19 (`npub`, `nevent`, `naddr`) with the relay hint; the page draws the same names, encoded in Coax.");
+  pg_s(md, "- Tasks, milestones and the initiative: kind 1621 issues with `[\"a\", \""); pg_s(md, co);
+  pg_ln(md, "\"]`; the issue's `subject` is its title, `t` its labels, `parent` and `blocked-by` its relations (event ids).");
+  pg_ln(md, "- Edits: kind 1111 comments on the issue with `[\"revision\", \"openagents.issue-revision.v1\"]`; the latest one by the project key is current.");
+  pg_ln(md, "- Work on an issue: kind 1111 comments without that mark. `[\"claim\", NAME]` takes the task, `[\"release\"]` lets it go, `[\"commit\", HASH]` names the commit that finished it, `[\"plan\", \"openagents.task-plan.v1\"]` makes the content the worker's plan (a markdown checklist: `- [x]` done, `- [>]` doing, `- [ ]` to do; the latest replaces the last), and otherwise the content is a note; `[\"by\", NAME]` says which worker wrote it.");
+  pg_ln(md, "- Status: kinds 1630 open, 1631 resolved, 1632 closed, 1633 draft; the latest by the project key wins.");
+  pg_s(md, "- Order: kind 30623, `d` = `"); pg_s(md, pc(cfg, cfg[0].slug));
+  pg_ln(md, "`: `[\"item\", <issue id>, <rank>]`, ranks compared as strings. Ready tasks come first by rank, then waiting ones.");
+  pg_ln(md, "");
+  for k: 0..<f[0].n {
+    ini := t[0].order[k];
+    if f[0].kind[ini] != FK_INITIATIVE { continue; }
+    pg_s(md, "## Initiative: "); pg_ln(md, pg_title(g, ini));
+    pg_ln(md, "");
+    pg_ln(md, trimmed(pg_body(g, ini)));
+    pg_ln(md, "");
+    pg_ln(md, "Milestones, in order:");
+    pg_ln(md, "");
+    for q: 0..<f[0].n {
+      m := t[0].order[q];
+      if f[0].kind[m] != FK_MILESTONE || g[0].milestone[m] != ini { continue; }
+      under := 0; done := 0; ready := 0;
+      for x: 0..<f[0].n {
+        if !pg_task(g, x) || g[0].milestone[x] != m { continue; }
+        under += 1;
+        if pg_done(g, x) { done += 1; }
+        if pg_ready(g, x) { ready += 1; }
+      }
+      pg_s(md, "- #"); pg_s(md, pg_alias(g, m)); pg_s(md, " **"); pg_s(md, pg_title(g, m)); pg_s(md, "**: ");
+      pg_i(md, done); pg_s(md, " of "); pg_i(md, under); pg_s(md, " done, "); pg_i(md, ready); pg_s(md, " ready. ");
+      pg_ln(md, pg_body(g, m));
+    }
+    pg_ln(md, "");
+  }
+  act: [FOLD_LOG] int;
+  an := pg_activity(g, act[..]);
+  if an > 0 {
+    pg_ln(md, "## Activity");
+    pg_ln(md, "");
+    for k: 0..<(ifx an < 30 then an else 30) {
+      l := act[k]; i := f[0].log_issue[l];
+      pg_s(md, "- "); pg_time(md, f[0].log_at[l]); pg_c(md, ' ');
+      if i >= 0 { pg_s(md, "#"); pg_s(md, pg_alias(g, i)); pg_c(md, ' '); }
+      pg_log_text(g, l, md);
+      if i >= 0 { pg_s(md, " ("); pg_s(md, pg_title(g, i)); pg_s(md, ")"); }
+      pg_ln(md, "");
+    }
+    pg_ln(md, "");
+  }
+  rows: [FOLD_ISSUES] int; counts: [4] int;
+  heads := [3] string.["## In progress (", "## Ready (", "## Waiting ("];
+  for what: 0..<3 {
+    n := pg_rows(g, what, rows[..]); counts[what] = n;
+    pg_s(md, heads[what]); pg_i(md, n); pg_ln(md, ")");
+    pg_ln(md, "");
+    for k: 0..<n { pg_md_task(g, p, rows[k], md); }
+  }
+  counts[PG_FINISHED] = pg_rows(g, PG_FINISHED, rows[..]);
+  if counts[PG_FINISHED] > 0 {
+    pg_s(md, "## Done ("); pg_i(md, counts[PG_FINISHED]); pg_ln(md, ")");
+    pg_ln(md, "");
+    for k: 0..<counts[PG_FINISHED] {
+      i := rows[k]; c := str(s, f[0].commit[i]);
+      pg_s(md, "- #"); pg_s(md, pg_alias(g, i)); pg_c(md, ' '); pg_s(md, pg_title(g, i));
+      if c.count > 0 { pg_s(md, " · ["); pg_s(md, c[0..<(ifx c.count > 10 then 10 else c.count)]); pg_s(md, "]("); pg_s(md, web); pg_s(md, "/commit/"); pg_s(md, c); pg_s(md, ")"); }
+      pg_ln(md, "");
+    }
+    pg_ln(md, "");
+  }
+  if f[0].n == 0 { pg_ln(md, "No tasks are published yet.\n"); }
+  if md[0].bad { return fail(r, EXIT_FAIL, "snapshot: index.md is too big"); }
+  mb: [2048] u8;
+  text := pg_text(md);
+  if pg_write_changed(fs_join(pj_dir(p), "index.md", mb[..]), text[0..<text.count - 1], "Snapshot of the project's Nostr events taken ") < 0 {
+    return fail(r, EXIT_FAIL, "snapshot: can't write index.md");
+  }
+
+  // ---- the hidden text: the name and where the tasks are; agents read index.md
+  sum: [1] Ln;
+  ln_s(sum[..], "snapshot "); ln_time(sum[..], now); ln_s(sum[..], ": "); ln_i(sum[..], f[0].n); ln_s(sum[..], " items");
+  hb: [2048] u8; page := fs_join(pj_dir(p), "index.html", hb[..]);
+  html: [1] Pg;
+  hn := fs_read(page, html[0].b[..]);
+  if hn < 0 {
+    ln_s(sum[..], " (no page yet; index.md only)");
+    print("%\n", ln_text(sum[..]));
+    return EXIT_OK;
+  }
+  html[0].n = hn;
+  old := pg_text(html[..]);
+  open := "<!-- snapshot -->"; shut := "<!-- /snapshot -->";
+  at_a := pg_find(old, open); at_b := pg_find(old, shut);
+  if at_a < 0 || at_b < at_a { return fail(r, EXIT_FAIL, "snapshot: index.html has no <!-- snapshot --> markers"); }
+  nh_: [1] Pg; nh := nh_[..];
+  pg_s(nh, old[0..<at_a + open.count]); pg_c(nh, 10);
+  pg_s(nh, "<h1>"); pg_html(nh, pc(cfg, cfg[0].name)); pg_s(nh, "</h1>");
+  if intro.count > 0 {
+    pg_s(nh, "\n<p>"); pg_html(nh, intro); pg_s(nh, "</p>");
+    pg_s(nh, "\n<p><a href=\""); pg_html(nh, book); pg_s(nh, "\">Read The Coax Programming Language</a> · <a href=\""); pg_html(nh, changelog); pg_s(nh, "\">Coax changelog</a></p>");
+  }
+  pg_s(nh, "\n<p><a href=\"/projects/"); pg_s(nh, slug); pg_s(nh, "/index.md\">Tasks</a></p>");
+  pg_c(nh, 10); pg_s(nh, old[at_b..<old.count]);
+  if nh[0].bad || pg_write_changed(page, pg_text(nh[..]), "") < 0 { return fail(r, EXIT_FAIL, "snapshot: can't write index.html"); }
+  ln_s(sum[..], " ("); ln_i(sum[..], counts[PG_WORKING]); ln_s(sum[..], " in progress, "); ln_i(sum[..], counts[PG_READY]); ln_s(sum[..], " ready, ");
+  ln_i(sum[..], counts[PG_WAITING]); ln_s(sum[..], " waiting, "); ln_i(sum[..], counts[PG_FINISHED]); ln_s(sum[..], " done, ");
+  ln_i(sum[..], an); ln_s(sum[..], " activity), order "); ln_s(sum[..], ifx f[0].order >= 0 then "kind 30623" else "none");
+  print("%\n", ln_text(sum[..]));
+  return EXIT_OK;
+}
+pg_find :: (text: string, what: string) -> int {
+  if what.count == 0 { return 0; }
+  for i: 0..<text.count - what.count + 1 { if text[i..<i + what.count] == what { return i; } }
+  return -1;
+}
+
+// ---- index: the /projects list (projects.coax) ----------------------------------------
+
+// list.ts plain() then cell(): fewer marks than the tables' (no ~, <=, >=, !=, <-, =).
+pg_list_cell :: (g: [] Pg, text: string) {
+  t: [1] Ln; i := 0;
+  while i < text.count {
+    b := text[i];
+    if b < 0x80 { ln_c(t[..], b); i += 1; continue; }
+    w := utf8_width(text, i); c := text[i..<i + w];
+    if equal(c, "×") || equal(c, "–") || equal(c, "—") || equal(c, "’") || equal(c, "‘") || equal(c, "“") || equal(c, "”") ||
+       equal(c, "→") || equal(c, "·") || equal(c, "…") { ln_s(t[..], c); }
+    i += w;
+  }
+  pg_cell(g, ln_text(t[..]));
+}
+
+PG_PROJECTS :: 256; PG_MEMBERS :: 64;
+PgRow :: struct {
+  slug: [64] u8; slug_n: int; name: [1024] u8; name_n: int; description: [4096] u8; description_n: int;
+  contributions: [64] u8; contributions_n: int; visibility: string; open: int; ready: int; done: int;
+  working: [2048] u8; working_n: int; last: int; page: [256] u8; page_n: int; owner: [64] u8;
+  members: [PG_MEMBERS * 65] u8; members_n: int;
+}
+PgList :: struct {
+  s: [1] Store; f: [1] Fold; heads: [1] Store; far: [1] Store; repos: [1] Store;
+  n: int; rows: [PG_PROJECTS] PgRow;
+}
+pg_tag :: (s: [] Store, e: int, name: string) -> string { v := tag_value(s, e, name); return ifx v.ok then str(s, v.ref) else ""; }
+pg_keep :: (s: string, out: [] u8) -> int { n := copy(s, out); return ifx n < 0 then 0 else n; }
+// list.ts visibility(): what it says (public, unlisted or private), else private when it takes no outside work.
+pg_visibility :: (v: string, contributions: string) -> string {
+  if v == "public" || v == "unlisted" || v == "private" { return v; }
+  if v.count > 0 { return "private"; }
+  c := ifx contributions.count > 0 then contributions else "closed";
+  return ifx c == "open" || c == "invited" then "public" else "private";
+}
+pg_add_member :: (row: [] PgRow, m: string) {
+  if m.count != 64 || !hex_lower(m) { return; }
+  text := cast(string) row[0].members[0..<row[0].members_n];
+  i := 0;
+  while i + 64 <= text.count { if text[i..<i + 64] == m { return; } i += 65; }
+  if row[0].members_n + 65 > row[0].members.count { return; }
+  if row[0].members_n > 0 { row[0].members[row[0].members_n] = ' '; row[0].members_n += 1; }
+  row[0].members_n += copy(m, row[0].members[row[0].members_n..<row[0].members.count]);
+}
+
+project_index :: (a: [] Args, r: [] Rep) -> int {
+  p: [1] Proj;
+  p[0].public_only = true;
+  if !pj_find_root(p[..]) { return fail(r, EXIT_USAGE, "run this inside the openagents checkout"); }
+  url := relay_flag(a, "wss://relay.openagents.com");
+  if url == "" { return fail(r, EXIT_USAGE, "--relay is a ws:// or wss:// URL"); }
+  p[0].relay_n = copy(url, p[0].relay[..]);
+  sb: [2048] u8; ob: [2048] u8;
+  site := fs_join(pj_root(p[..]), "apps/openagents-web/projects", sb[..]);
+  out := fs_join(site, "list.coax", ob[..]);
+  if pg_fresh(out, pg_minutes(a)) { return EXIT_OK; }
+  l_: [1] PgList; l := l_[..];
+  ok := pg_index_read(p[..], l, site);
+  pj_close(p[..]);
+  if !ok {
+    tool_err("projects list: "); tool_err(pj_why(p[..])); tool_errln("; keeping the last list");
+    return ifx fs_exists(out) then EXIT_OK else EXIT_FAIL;
+  }
+  // public and unlisted rows, newest activity first (unlisted rows only reach the table, where members see them)
+  order: [PG_PROJECTS] int; n := 0;
+  for k: 0..<l[0].n {
+    row := l[0].rows[k..<k + 1];
+    if row[0].visibility != "public" && row[0].visibility != "unlisted" { continue; }
+    j := n; n += 1;
+    while j > 0 && pg_row_before(l, k, order[j - 1]) { order[j] = order[j - 1]; j -= 1; }
+    order[j] = k;
+  }
+  now := cxcli_now_s();
+  table_: [1] Pg; table := table_[..];
+  for q: 0..<n {
+    row := l[0].rows[order[q]..<order[q] + 1];
+    pg_s(table, cast(string) row[0].slug[0..<row[0].slug_n]); pg_c(table, '|');
+    pg_list_cell(table, cast(string) row[0].name[0..<row[0].name_n]); pg_c(table, '|');
+    pg_list_cell(table, cast(string) row[0].description[0..<row[0].description_n]); pg_c(table, '|');
+    pg_s(table, cast(string) row[0].contributions[0..<row[0].contributions_n]); pg_c(table, '|');
+    pg_s(table, row[0].visibility); pg_c(table, '|');
+    pg_i(table, row[0].open); pg_c(table, '|'); pg_i(table, row[0].ready); pg_c(table, '|'); pg_i(table, row[0].done); pg_c(table, '|');
+    pg_list_cell(table, cast(string) row[0].working[0..<row[0].working_n]); pg_c(table, '|');
+    tb: [32] u8; tn := int_into(tb[..], 0, row[0].last, 10); pg_s(table, cast(string) tb[0..<tn]); pg_c(table, '|');
+    cb: [32] u8; cn := chicago_into(cb[..], 0, row[0].last, true); pg_s(table, cast(string) cb[0..<cn]); pg_c(table, '|');
+    pg_s(table, cast(string) row[0].page[0..<row[0].page_n]); pg_c(table, '|');
+    pg_s(table, cast(string) row[0].owner[..]); pg_c(table, '|');
+    pg_s(table, cast(string) row[0].members[0..<row[0].members_n]); pg_c(table, 10);
+  }
+  lc_: [1] Pg; lc := lc_[..];
+  pg_s(lc, "// Generated by `openagents project index` from "); pg_s(lc, url); pg_ln(lc, ". Do not edit; run it.");
+  pg_ln(lc, "// Rows: slug | name | description | contributions | visibility | open | ready | done | working | last active (unix) | last active (Chicago) | page | owner | members");
+  at: [1] Pg; pg_time(at[..], now);
+  pg_s(lc, "PROJECTS_AT :: "); pg_lit(lc, pg_text(at[..])); pg_ln(lc, ";");
+  pg_s(lc, "PROJECTS_RELAY :: "); pg_lit(lc, url); pg_ln(lc, ";");
+  pg_s(lc, "PROJECTS_ROWS :: "); pg_lit(lc, pg_text(table)); pg_ln(lc, ";");
+  if lc[0].bad || pg_write_changed(out, pg_text(lc), "PROJECTS_AT :: ") < 0 { return fail(r, EXIT_FAIL, "projects list: can't write list.coax"); }
+  md_: [1] Pg; md := md_[..];
+  pg_ln(md, "# Projects"); pg_ln(md, "");
+  pg_s(md, "OpenAgents projects that people and agents can pick up work from, read from `"); pg_s(md, url); pg_s(md, "` at "); pg_time(md, now);
+  pg_ln(md, ": every kind 30621 project event there, signature checked, that is public (`contributions` open or invited, or marked public).");
+  pg_ln(md, "");
+  listed := 0; names: [1] Ln;
+  for q: 0..<n {
+    row := l[0].rows[order[q]..<order[q] + 1];
+    if row[0].visibility != "public" { continue; }
+    if listed > 0 { ln_s(names[..], ", "); }
+    listed += 1; ln_s(names[..], cast(string) row[0].slug[0..<row[0].slug_n]);
+    page := cast(string) row[0].page[0..<row[0].page_n];
+    working := cast(string) row[0].working[0..<row[0].working_n];
+    pg_s(md, "## "); pg_ln(md, cast(string) row[0].name[0..<row[0].name_n]); pg_ln(md, "");
+    pg_ln(md, cast(string) row[0].description[0..<row[0].description_n]); pg_ln(md, "");
+    pg_s(md, "- Page: "); if page.count > 0 { pg_s(md, "https://openagents.com"); pg_ln(md, page); } else { pg_ln(md, "none on this site yet"); }
+    if starts(page, "/projects/") && !(page.count >= 3 && page[page.count - 3..<page.count] == ".md") { pg_s(md, "- Tasks: https://openagents.com"); pg_s(md, page); pg_ln(md, "/index.md"); }
+    pg_s(md, "- Contributions: "); pg_ln(md, cast(string) row[0].contributions[0..<row[0].contributions_n]);
+    pg_s(md, "- Tasks: "); pg_i(md, row[0].open); pg_s(md, " open, "); pg_i(md, row[0].ready); pg_s(md, " ready, "); pg_i(md, row[0].done); pg_ln(md, " done");
+    pg_s(md, "- Working now: "); pg_ln(md, ifx working.count > 0 then working else "nobody");
+    pg_s(md, "- Last active: "); pg_time(md, row[0].last); pg_ln(md, "");
+    pg_s(md, "- Project event: kind 30621, `d` = `"); pg_s(md, cast(string) row[0].slug[0..<row[0].slug_n]); pg_s(md, "`, signed by `");
+    pg_s(md, cast(string) row[0].owner[..]); pg_ln(md, "`"); pg_ln(md, "");
+  }
+  if listed == 0 { pg_ln(md, "No public projects are published yet."); pg_ln(md, ""); }
+  ib: [2048] u8; text := pg_text(md);
+  if md[0].bad || pg_write_changed(fs_join(site, "index.md", ib[..]), text[0..<text.count - 1], "OpenAgents projects that people and agents can pick up work from, read from ") < 0 {
+    return fail(r, EXIT_FAIL, "projects list: can't write index.md");
+  }
+  sum: [1] Ln;
+  ln_s(sum[..], "projects list "); ln_time(sum[..], now); ln_s(sum[..], ": "); ln_i(sum[..], listed); ln_s(sum[..], " public (");
+  ln_s(sum[..], ln_text(names[..])); ln_s(sum[..], "), "); ln_i(sum[..], n - listed); ln_s(sum[..], " unlisted");
+  print("%\n", ln_text(sum[..]));
+  return EXIT_OK;
+}
+pg_row_before :: (l: [] PgList, a: int, b: int) -> bool {
+  x := l[0].rows[a..<a + 1]; y := l[0].rows[b..<b + 1];
+  if x[0].last != y[0].last { return x[0].last > y[0].last; }
+  return before_text(cast(string) x[0].slug[0..<x[0].slug_n], cast(string) y[0].slug[0..<y[0].slug_n]);
+}
+
+// Every project head on the relay, folded into l's rows.
+pg_index_read :: (p: [] Proj, l: [] PgList, site: string) -> bool {
+  heads := l[0].heads[..]; store_clear(heads);
+  proj_k := [1] int.[KIND_PROJECT];
+  fl: [1] PjFilter; pf_start(fl[..], proj_k[..], "");
+  if !pj_all(p, heads, ANY_KEY, pf_text(fl[..])) { return false; }
+  if heads[0].overflow { pj_say(p, "the relay holds more projects than the CLI holds", "", ""); return false; }
+  // the latest valid head per (signer, d): exactly one d tag
+  best: [PG_PROJECTS] int; bn := 0;
+  for e: 0..<heads[0].n {
+    ds := 0;
+    for t: heads[0].tag0[e]..<heads[0].tag0[e] + heads[0].tags[e] { if heads[0].tag_len[t] > 0 && equal(element(heads, t, 0), "d") { ds += 1; } }
+    d := pg_tag(heads, e, "d");
+    if ds != 1 || d.count == 0 { continue; }
+    k := -1;
+    for q: 0..<bn { if equal(author_of(heads, best[q]), author_of(heads, e)) && equal(pg_tag(heads, best[q], "d"), d) { k = q; } }
+    if k < 0 { if bn >= PG_PROJECTS { pj_say(p, "the relay holds more projects than the CLI holds", "", ""); return false; } best[bn] = e; bn += 1; }
+    else if newer(heads, e, best[k]) { best[k] = e; }
+  }
+  l[0].n = 0;
+  for q: 0..<bn {
+    e := best[q];
+    pk := author_of(heads, e); slug := pg_tag(heads, e, "d");
+    if slug.count > 64 { continue; }
+    row := l[0].rows[l[0].n..<l[0].n + 1]; l[0].n += 1;
+    row[0].slug_n = pg_keep(slug, row[0].slug[..]);
+    for i: 0..<64 { row[0].owner[i] = pk[i]; }
+    // the project's own repository: its first a tag 30617:<its key>:<d>
+    own := "";
+    for t: heads[0].tag0[e]..<heads[0].tag0[e] + heads[0].tags[e] {
+      if heads[0].tag_len[t] < 2 || !equal(element(heads, t, 0), "a") { continue; }
+      c := element(heads, t, 1);
+      if own.count == 0 && starts(c, "30617:") && c.count >= 71 && equal(c[6..<70], pk) && c[70] == ':' { own = c[71..<c.count]; }
+    }
+    more: [1] int;
+    if !pg_read(p, l[0].s[..], l[0].f[..], pk, cast(string) row[0].slug[0..<row[0].slug_n], own, more[..]) { return false; }
+    s := l[0].s[..]; f := l[0].f[..];
+    // members: the member repositories' maintainers, and the p tags on the project and on claims and commits
+    row[0].members_n = 0;
+    for t: heads[0].tag0[e]..<heads[0].tag0[e] + heads[0].tags[e] {
+      if heads[0].tag_len[t] < 2 || !equal(element(heads, t, 0), "a") { continue; }
+      c := element(heads, t, 1);
+      if !starts(c, "30617:") || c.count < 71 || c[70] != ':' { continue; }
+      rs := l[0].repos[..]; store_clear(rs);
+      repo_k := [1] int.[KIND_REPO]; rd := [1] string.[c[71..<c.count]];
+      rf: [1] PjFilter; pf_start(rf[..], repo_k[..], c[6..<70]); pf_tag(rf[..], "#d", rd[..]);
+      if !pj_all(p, rs, ANY_KEY, pf_text(rf[..])) { return false; }
+      for x: 0..<rs[0].n {
+        for u: rs[0].tag0[x]..<rs[0].tag0[x] + rs[0].tags[x] {
+          if !equal(element(rs, u, 0), "maintainers") { continue; }
+          for v: 1..<rs[0].tag_len[u] { pg_add_member(row, element(rs, u, v)); }
+        }
+      }
+    }
+    for t: heads[0].tag0[e]..<heads[0].tag0[e] + heads[0].tags[e] {
+      if heads[0].tag_len[t] > 1 && equal(element(heads, t, 0), "p") { pg_add_member(row, element(heads, t, 1)); }
+    }
+    for x: more[0]..<s[0].n {
+      if s[0].kind[x] != KIND_COMMENT || (pg_tag(s, x, "claim").count == 0 && pg_tag(s, x, "commit").count == 0) { continue; }
+      for u: s[0].tag0[x]..<s[0].tag0[x] + s[0].tags[x] {
+        if s[0].tag_len[u] > 1 && equal(element(s, u, 0), "p") { pg_add_member(row, element(s, u, 1)); }
+      }
+    }
+    pg_drop_member(row, pk);
+    // where the needs stand: a need counts until its issue, by its own key, is resolved or closed
+    far := l[0].far[..]; store_clear(far);
+    needed: [512] string; nn := 0; ns: [64] N34Need;
+    for x: 0..<f[0].n {
+      if f[0].kind[x] != FK_TASK { continue; }
+      ev := store_nt(s, f[0].fields[x]);
+      k := n34_needs(ev, ns[..]);
+      for i: 0..<k { id := nt_raw(ev, ns[i].id); if nn < 512 && !pg_has(needed[..], nn, id) { needed[nn] = id; nn += 1; } }
+    }
+    iss_k := [1] int.[KIND_ISSUE]; st_k := [4] int.[1630, 1631, 1632, 1633];
+    for at: 0..<(nn + 49) / 50 {
+      hi := ifx at * 50 + 50 < nn then at * 50 + 50 else nn;
+      if !pg_ask(p, far, iss_k[..], "ids", needed[at * 50..<hi]) || !pg_ask(p, far, st_k[..], "#e", needed[at * 50..<hi]) { return false; }
+    }
+    row[0].open = 0; row[0].ready = 0; row[0].done = 0; row[0].working_n = 0;
+    names: [1] Ln; seen: [FOLD_ISSUES] string; sn := 0;
+    for x: 0..<f[0].n {
+      if f[0].kind[x] != FK_TASK { continue; }
+      fin := done_issue(f, x); on := str(s, f[0].claimed[x]);
+      if fin { row[0].done += 1; } else { row[0].open += 1; }
+      if !fin && on.count > 0 && !pg_has(seen[..], sn, on) { if sn > 0 { ln_s(names[..], ", "); } ln_s(names[..], on); seen[sn] = on; sn += 1; }
+      if f[0].status[x] != ST_OPEN || on.count > 0 { continue; }
+      ready := true;
+      ev := store_nt(s, f[0].fields[x]);
+      for k: 0..<nt_tags(ev, "blocked-by") {
+        t := nt_tag(ev, "blocked-by", k);
+        if t.values < 1 { continue; }
+        b := fold_issue_of(s, f, nt_raw(ev, t.v[0]));
+        if b < 0 || !done_issue(f, b) { ready = false; }
+      }
+      k := n34_needs(ev, ns[..]);
+      for i: 0..<k { if !pj_far_done(far, nt_raw(ev, ns[i].id)) { ready = false; } }
+      if ready { row[0].ready += 1; }
+    }
+    row[0].working_n = pg_keep(ln_text(names[..]), row[0].working[..]);
+    // the site's page for it: only when the site's own copy of the project names this signer
+    row[0].page_n = 0;
+    jb: [2048] u8; kb: [2048] u8; pjt: [65536] u8;
+    dir := fs_join(site, cast(string) row[0].slug[0..<row[0].slug_n], jb[..]);
+    jn := fs_read(fs_join(dir, "project.json", kb[..]), pjt[..]);
+    if jn > 0 {
+      nodes: [2048] JvNode; d: [1] Jv; kv: [128] u8;
+      if jv_parse(d[..], cast(string) pjt[0..<jn], nodes[..]) {
+        kn := jv_str(d[0], jv_get(d[0], 0, "pubkey"), kv[..]);
+        if kn == 64 && cast(string) kv[0..<64] == pk {
+          pg: [1] Ln; ln_s(pg[..], "/projects/"); ln_s(pg[..], cast(string) row[0].slug[0..<row[0].slug_n]);
+          hb: [2048] u8;
+          if !fs_exists(fs_join(dir, "index.html", hb[..])) { ln_s(pg[..], "/index.md"); }
+          row[0].page_n = pg_keep(ln_text(pg[..]), row[0].page[..]);
+        }
+      }
+    }
+    row[0].name_n = pg_keep(ifx pg_tag(heads, e, "name").count > 0 then pg_tag(heads, e, "name") else slug, row[0].name[..]);
+    row[0].description_n = pg_keep(pg_tag(heads, e, "description"), row[0].description[..]);
+    contributions := pg_tag(heads, e, "contributions");
+    row[0].contributions_n = pg_keep(ifx contributions.count > 0 then contributions else "closed", row[0].contributions[..]);
+    row[0].visibility = pg_visibility(pg_tag(heads, e, "visibility"), contributions);
+    row[0].last = heads[0].at[e];
+    for k: 0..<f[0].log_n { if !f[0].log_dead[k] && f[0].log_at[k] > row[0].last { row[0].last = f[0].log_at[k]; } }
+  }
+  return true;
+}
+pg_drop_member :: (row: [] PgRow, m: string) {
+  text: [PG_MEMBERS * 65] u8; n := copy(cast(string) row[0].members[0..<row[0].members_n], text[..]);
+  row[0].members_n = 0;
+  i := 0;
+  while i + 64 <= n { k := cast(string) text[i..<i + 64]; if k != m { pg_add_member(row, k); } i += 65; }
+}
+
+// ---- bake: every project with a page, in the one project.wasm --------------------------
+
+PgSite :: struct { n: int; slug: [64] string; owner: [64] string; path: [64] string; buf: [65536] u8; used: int; }
+pg_site_keep :: (s: [] PgSite, text: string) -> string {
+  n := copy(text, s[0].buf[s[0].used..<s[0].buf.count]);
+  if n < 0 { return ""; }
+  out := cast(string) s[0].buf[s[0].used..<s[0].used + n]; s[0].used += n;
+  return out;
+}
+// baked.ts projects(): each projects/<slug>/project.json with a pubkey and a page (index.html), Coax first.
+pg_site :: (site: string, out: [] PgSite) -> bool {
+  out[0].n = 0; out[0].used = 0;
+  l: [1] FsList;
+  if fs_list(site, l[..]) < 0 { return false; }
+  names: [FS_LIST_MAX] string; nn := 0;
+  for i: 0..<l[0].n {
+    e := fs_entry(l[..], i);
+    j := nn; nn += 1;
+    while j > 0 && before_text(e, names[j - 1]) { names[j] = names[j - 1]; j -= 1; }
+    names[j] = e;
+  }
+  for i: 0..<nn {
+    slug := names[i];
+    db: [2048] u8; jb: [2048] u8; hb: [2048] u8; text: [65536] u8;
+    dir := fs_join(site, slug, db[..]);
+    n := fs_read(fs_join(dir, "project.json", jb[..]), text[..]);
+    if n <= 0 || !fs_exists(fs_join(dir, "index.html", hb[..])) { continue; }
+    nodes: [2048] JvNode; d: [1] Jv;
+    if !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { return false; }
+    v := d[0];
+    kb: [128] u8; sb: [128] u8; pb: [4096] u8; ob: [4096] u8;
+    kn := jv_str(v, jv_get(v, 0, "pubkey"), kb[..]); sn := jv_str(v, jv_get(v, 0, "slug"), sb[..]);
+    if kn != 64 || !hex_lower(cast(string) kb[0..<64]) || sn < 0 || cast(string) sb[0..<sn] != slug || !pr_slug_ok(slug) { continue; }
+    // the folder (or file) whose commits the page draws; the slug when it names none
+    pn := jv_str(v, jv_get(v, 0, "path"), pb[..]);
+    path := ifx pn > 0 then cast(string) pb[0..<pn] else slug;
+    while path.count > 0 && path[path.count - 1] == '/' { path = path[0..<path.count - 1]; }
+    if path.count == 0 { path = slug; }
+    on := jv_str(v, jv_get(v, 0, "owner"), ob[..]);
+    if on <= 0 { on = jv_str(v, jv_path(v, 0, "repo.name"), ob[..]); }
+    owner := ifx on > 0 then cast(string) ob[0..<on] else "OpenAgents";
+    if out[0].n >= 64 { return false; }
+    k := out[0].n; out[0].n += 1;
+    out[0].slug[k] = pg_site_keep(out, slug); out[0].owner[k] = pg_site_keep(out, owner); out[0].path[k] = pg_site_keep(out, path);
+  }
+  // Coax first, the rest by slug (they already are)
+  for k: 0..<out[0].n {
+    if out[0].slug[k] != "coax" { continue; }
+    s := out[0].slug[k]; o := out[0].owner[k]; p := out[0].path[k];
+    j := k;
+    while j > 0 { out[0].slug[j] = out[0].slug[j - 1]; out[0].owner[j] = out[0].owner[j - 1]; out[0].path[j] = out[0].path[j - 1]; j -= 1; }
+    out[0].slug[0] = s; out[0].owner[0] = o; out[0].path[0] = p;
+  }
+  return true;
+}
+pg_prefix :: (slug: string, out: [] u8) -> string {
+  for i: 0..<slug.count { c := slug[i]; out[i] = ifx c == '-' then '_' else ifx c >= 'a' && c <= 'z' then c - 32 else c; }
+  return cast(string) out[0..<slug.count];
+}
+
+project_bake :: (a: [] Args, r: [] Rep) -> int {
+  p: [1] Proj;
+  if !pj_find_root(p[..]) { return fail(r, EXIT_USAGE, "run this inside the openagents checkout"); }
+  sb: [2048] u8;
+  site := fs_join(pj_root(p[..]), "apps/openagents-web/projects", sb[..]);
+  list: [1] PgSite;
+  if !pg_site(site, list[..]) { return fail(r, EXIT_FAIL, "bake: can't read the project folders"); }
+  if args_has(a, "--list") {
+    for k: 0..<list[0].n { print("%\n", list[0].slug[k]); }
+    return EXIT_OK;
+  }
+  loads_: [1] Pg; loads := loads_[..]; cases_: [1] Pg; cases := cases_[..]; names: [1] Ln;
+  cb: [2048] u8;
+  commits := fs_join(site, "commits.sh", cb[..]);
+  for k: 0..<list[0].n {
+    slug := list[0].slug[k];
+    pb: [80] u8; P := pg_prefix(slug, pb[..]);
+    // its commit history (projects/commits.sh, a git log reader) into <slug>/commits.coax
+    // Its output is one long line (well past proc_run's 64 KiB line), so the shell writes it to a
+    // temporary file next to the page and the bake reads that back.
+    hist: [1] Pg; err: [8192] u8; quiet: [16] u8;
+    db: [2048] u8; fb: [2048] u8; tb: [2100] u8;
+    dir := fs_join(site, slug, db[..]);
+    tmp := fs_join(dir, "commits.coax.bake", tb[..]);
+    argv := [7] string.["bash", "-c", "exec bash \"$0\" \"$1\" \"$2\" > \"$3\"", commits, list[0].path[k], P, tmp];
+    got := proc_run(argv[..], 300000, quiet[..], err[..]);
+    hn := ifx got.status == 0 then fs_read(tmp, hist[0].b[..]) else -1;
+    gone := fs_remove(tmp);
+    if hn < 0 || hn >= hist[0].b.count { tool_err("bake: commits.sh "); tool_err(slug); tool_err(": "); tool_errln(cast(string) err[0..<got.err_n]); return EXIT_FAIL; }
+    if pg_write_changed(fs_join(dir, "commits.coax", fb[..]), cast(string) hist[0].b[0..<hn], "") < 0 { return fail(r, EXIT_FAIL, "bake: can't write commits.coax"); }
+    wb: [2048] u8;
+    if !fs_exists(fs_join(dir, "work.coax", wb[..])) {
+      tool_err("bake: "); tool_err(slug); tool_err("/work.coax is missing: run openagents project snapshot --project "); tool_errln(slug);
+      return EXIT_FAIL;
+    }
+    if k > 0 { pg_c(loads, 10); ln_s(names[..], ", "); }
+    ln_s(names[..], slug);
+    pg_s(loads, "#load \""); pg_s(loads, slug); pg_s(loads, "/commits.coax\";\n#load \""); pg_s(loads, slug); pg_s(loads, "/work.coax\";");
+    entry_: [1] Pg; entry := entry_[..];
+    pg_s(entry, "Baked.{");
+    fields := [16] string.["slug", "pubkey", "relay", "naddr", "name", "description", "license", "path", "repo", "items", "log", "plans", "plan_info", "details", "steps", "links"];
+    for i: 0..<fields.count {
+      if i > 0 { pg_s(entry, ", "); }
+      fu: [32] u8;
+      pg_s(entry, fields[i]); pg_s(entry, " = "); pg_s(entry, P); pg_s(entry, "_WORK_"); pg_s(entry, pg_prefix(fields[i], fu[..]));
+    }
+    // the owner as baked.ts's lit(): printable ASCII, '|' a space
+    own: [1] Ln;
+    for c: list[0].owner[k] { if c >= 0x20 && c <= 0x7e { ln_c(own[..], ifx c == '|' then ' ' else c); } }
+    pg_s(entry, ", owner = "); pg_lit(entry, ln_text(own[..])); pg_s(entry, ",\n      history = "); pg_s(entry, P); pg_s(entry, "_HISTORY, commits = ");
+    pg_s(entry, P); pg_s(entry, "_COMMITS, authors = "); pg_s(entry, P); pg_s(entry, "_AUTHORS, lines = "); pg_s(entry, P); pg_s(entry, "_LINES}");
+    if k > 0 { pg_c(cases, 10); }
+    if k == list[0].n - 1 { pg_s(cases, "  return "); pg_s(cases, pg_text(entry[..])); pg_s(cases, ";"); }
+    else { pg_s(cases, "  if k == "); pg_i(cases, k); pg_s(cases, " { return "); pg_s(cases, pg_text(entry[..])); pg_s(cases, "; }"); }
+  }
+  out_: [1] Pg; out := out_[..];
+  pg_ln(out, "// Generated by `openagents project bake`: do not edit. Every project with a");
+  pg_s(out, "// page, Coax first: "); pg_s(out, ln_text(names[..])); pg_ln(out, ".");
+  pg_ln(out, pg_text(loads));
+  pg_s(out, "BAKED_N :: "); pg_i(out, list[0].n); pg_ln(out, ";");
+  pg_ln(out, "baked :: (k: int) -> Baked {");
+  pg_ln(out, pg_text(cases));
+  pg_ln(out, "}");
+  bb: [2048] u8;
+  if out[0].bad || pg_write_changed(fs_join(site, "baked.coax", bb[..]), pg_text(out), "") < 0 { return fail(r, EXIT_FAIL, "bake: can't write baked.coax"); }
+  nt: [24] u8;
+  print("baked % projects: %\n", int_text(list[0].n, nt[..]), ln_text(names[..]));
+  return EXIT_OK;
+}
