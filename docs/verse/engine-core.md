@@ -18,9 +18,34 @@ many fixed steps to run and how far the frame lies between the last two.
   counted in `dropped_ns`: a stall never makes the next frame slower.
   Non-number and infinite frame times count as none.
 - `loop_alpha` is what drawing mixes the last two steps by.
+- `loop_counted` is the time the last frame counted for, after the refusal,
+  clamp and drop, and `loop_counts` the time a frame would count for. A realm
+  moves everything outside its steps (animation, its room's timing) by it, so
+  one clock clamps the whole frame. `ran` is the steps the last frame ran.
 
 The player controller (`verse/player.coax`, every walking realm) steps on it
-at 1/64 s, and Orbit League at 1/120 s. Checks: a run and jump passes through
+at 1/64 s, Orbit League at 1/120 s, and Dead Gears' rules
+(`verse/deadgears/ecs.coax`), Everglade's debris (`verse/demolish.coax`) and
+Hold the Stair at 1/60 s. The page faces of the haunted house, Fairy Forest,
+the Garden, Everglade and the villa no longer clamp the frame to 0.1 s; they
+move their realm by `verse_player_counts`, what the player's clock counts the
+frame for.
+
+No frame runs more steps than a realm's budget (8, `aethyr/budget.coax`):
+
+| Realm | Step | Clamp | Most steps a frame |
+| --- | --- | --- | --- |
+| Walking realms (the player) | 1/64 s | 0.25 s | 8 |
+| Orbit League | 1/120 s | 0.1 s | 8 (it was 12) |
+| Dead Gears' rules | 1/60 s | 0.05 s | 3 |
+| Everglade's debris | 1/60 s | 0.25 s | 6 |
+| Hold the Stair | 1/60 s | 0.1 s of play times the speed | 8 (it was 64) |
+| Hold the Stair in co-op | 1/60 s ticks of `speed` steps | 8 ticks | 8 |
+
+At 8x, Hold the Stair runs at full speed down to 60 FPS; below that, and in
+Orbit League below 15 FPS, the time past the cap is dropped and counted on the
+clock (`stalls`, `dropped_ns`). Everglade runs two clocks a frame, the player's
+and the debris', so a stalled frame there runs up to 14 steps in all. Checks: a run and jump passes through
 the same states, bit for bit, at 30, 60, 120 and 144 FPS; drawn at 60 FPS, a
 jump's feet change their per-frame move by at most 0.008 m (gravity alone is
 0.0067 m; drawing the last step instead lurches by 0.077 m) and its camera by
@@ -244,9 +269,11 @@ report; `budget_ok` is what a check asserts.
 Checks: the planted overflow (one vertex too many is refused whole and
 reported), takes, peaks and ties, measured frames over budget in each kind,
 counts below zero, unknown kinds and a sum past the largest `int`.
-Mutation: 139 of 139 killed. Content-hashed asset identity, steps measured
-per realm (the private clocks move with ec-migrate) and refusal inside the
-writers are still to do.
+Mutation: 139 of 139 killed. Steps are measured per realm (Loop, above):
+Hold the Stair's, Orbit League's and Dead Gears' budget checks take each
+frame's steps, a 3 s stall's included, and `verse/player.coax` checks the
+walkers'. Content-hashed asset identity and refusal inside the writers are
+still to do.
 
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 

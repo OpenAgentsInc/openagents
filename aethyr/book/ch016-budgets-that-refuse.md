@@ -369,12 +369,6 @@ which its check pins.
   pack past its byte budget. Today asset packs have byte budgets in
   `verse/packs/` that `verse/tools/pack_realm.py` checks
   ([realm-host.md](../../docs/verse/realm-host.md)).
-- **Steps measured per realm.** Every realm declares 8 steps a frame. The
-  walking realms and Orbit League step on `aethyr/loop.coax`, which runs at
-  most 8. Hold the Stair's own clock allows 64 steps a frame (its guard),
-  and Dead Gears' rules clock and the other private clocks move onto
-  `aethyr/loop.coax` with the realm migration
-  ([chapter 64](ch064-every-realm-runs-on-aethyr.md)).
 - **Refusal at the writer.** The realms' quad writers still stop silently
   at a full buffer. The check catches a clipped frame because the vertex
   limit is below the buffer. The renderer's writers

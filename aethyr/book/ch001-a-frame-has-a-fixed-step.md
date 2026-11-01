@@ -94,6 +94,8 @@ FrameClock :: struct {
   overlong: int;       // frames longer than max_frame_ns, counted as that long
   stalls: int;       // frames owed more than max_steps
   dropped_ns: int;   // backlog thrown away on those
+  counted_ns: int;   // the time the last frame counted for: refused, clamped and dropped as above
+  ran: int;          // steps the last frame ran (loop_ran)
 }
 ```
 
@@ -104,25 +106,28 @@ default. A clock read from memory that was never constructed
 
 <!-- source: aethyr/loop.coax accept -->
 ```jai
-loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock #export_c {
+loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock {
   next := c;
   // A clock read from zeroed memory takes the defaults it was declared with.
   if c.step_ns <= 0 { next.step_ns = LOOP_STEP_NS; }
   if c.max_frame_ns <= 0 { next.max_frame_ns = LOOP_MAX_FRAME_NS; }
   if c.max_steps <= 0 { next.max_steps = LOOP_MAX_STEPS; }
   next.frames += 1;
+  next.ran = 0;
   f := frame_ns;
   if f < 0 { next.refused += 1; f = 0; }
   if f > next.max_frame_ns { next.overlong += 1; f = next.max_frame_ns; }
   next.carry_ns += f;
   next.due = next.carry_ns / next.step_ns;
   if next.due > next.max_steps {
-    drop := (next.due - next.max_steps) * next.step_ns;
+    lost_ns := (next.due - next.max_steps) * next.step_ns;
     next.stalls += 1;
-    next.dropped_ns += drop;
-    next.carry_ns -= drop;
+    next.dropped_ns += lost_ns;
+    next.carry_ns -= lost_ns;
     next.due = next.max_steps;
+    f -= lost_ns;
   }
+  next.counted_ns = f;
   return next;
 }
 ```
@@ -133,27 +138,28 @@ returns the value that drawing mixes by.
 <!-- source: aethyr/loop.coax ran -->
 ```jai
 // How many steps to run now.
-loop_due :: (c: FrameClock) -> int #export_c { return c.due; }
+loop_due :: (c: FrameClock) -> int { return c.due; }
 
 // The steps due have run: they are paid, and simulation time moves on by them.
-loop_ran :: (c: FrameClock) -> FrameClock #export_c {
+loop_ran :: (c: FrameClock) -> FrameClock {
   next := c;
   next.carry_ns -= c.due * c.step_ns;
   next.ticks += c.due;
+  next.ran = c.due;
   next.due = 0;
   return next;
 }
 
 // One frame in one call: accept its time, and the steps it runs.
 FrameTick :: struct { clock: FrameClock; steps: int; }
-loop_frame :: (c: FrameClock, frame: f64) -> FrameTick #export_c {
+loop_frame :: (c: FrameClock, frame: f64) -> FrameTick {
   a := loop_accept(c, frame);
   return FrameTick.{clock = loop_ran(a), steps = a.due};
 }
 
 // How far this frame lies from the last step to the next, in [0, 1), once the steps due
 // have run: what drawing mixes the last two by.
-loop_alpha :: (c: FrameClock) -> f32 #export_c {
+loop_alpha :: (c: FrameClock) -> f32 {
   return cast(f32) (cast(f64) (c.carry_ns - c.due * c.step_ns) / cast(f64) c.step_ns);
 }
 ```
@@ -404,7 +410,7 @@ coax/bin/coax test verse/player.coax --library --only FPS
 
 ## What it replaced
 
-Before this module, three realms each had their own accumulator:
+Before this module, each realm kept its own accumulator:
 
 - `verse/player.coax`: f32 seconds, 1/64 s, eight steps, 0.25 s.
 - Orbit League: f64, 1/120 s, at most eight steps of carried time.
@@ -412,11 +418,36 @@ Before this module, three realms each had their own accumulator:
   [verse/deadgears/ecs.coax](../../verse/deadgears/ecs.coax): f64, 1/60 s, a
   0.1 s limit, eight steps, and `1e-7` of slack so that 0.05 s counts as
   three steps.
+- `verse/demolish.coax`, Everglade's debris: f64, 1/60 s, 0.25 s, six steps.
+- Hold the Stair: f32, 1/60 s, 0.1 s of play times the speed, and a guard of
+  64 steps a frame.
+- The page faces of the haunted house, Fairy Forest, the Garden, Everglade
+  and the villa: a 0.1 s clamp in C before the player stepped.
 
-The first two now use `aethyr/loop.coax`. The realm migration
-([chapter 64](ch064-every-realm-runs-on-aethyr.md)) moves the rest: Dead
-Gears' clock, Ice Cream Man's 1/30 s step, the 0.1 s frame clamps in six page
-shells' C code, and the accumulator in `verse/demolish.coax`.
+All of them now step on `aethyr/loop.coax`. Dead Gears' clock keeps its
+1/60 s step as 16,666,666 ns, rounded down, so 0.05 s is still three steps
+without the slack. The faces move their realm by `verse_player_counts`, the
+time the player's clock counts the frame for (`loop_counts`), so the frame's
+animation and the player's steps are clamped by one clock.
+
+No frame runs more steps than a realm's budget of 8
+([chapter 16](ch016-budgets-that-refuse.md)):
+
+| Realm | Step | Clamp | Most steps a frame |
+| --- | --- | --- | --- |
+| Walking realms (the player) | 1/64 s | 0.25 s | 8 |
+| Orbit League | 1/120 s | 0.1 s | 8 (it was 12) |
+| Dead Gears' rules | 1/60 s | 0.05 s | 3 |
+| Everglade's debris | 1/60 s | 0.25 s | 6 |
+| Hold the Stair | 1/60 s | 0.1 s of play times the speed | 8 (it was 64) |
+
+At 8x, Hold the Stair runs at full speed down to 60 FPS. Below that, and in
+Orbit League below 15 FPS, the time past the cap is dropped and counted on
+the clock. Everglade runs two clocks a frame, the player's and the debris',
+so a stalled frame there runs up to 14 steps in all.
+
+The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
+still moves Ice Cream Man's 1/30 s step.
 
 ## Dependencies
 

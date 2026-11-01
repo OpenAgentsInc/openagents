@@ -592,6 +592,14 @@ verse_player_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32
   return advance_in(w, p, frame);
 }
 
+// The seconds a frame of `frame` counts for on the player's clock, before it advances: what a
+// page face moves the rest of its realm by (its animation, its room's timing), so the realm
+// and the player are clamped and dropped by the one clock. It replaced the faces' own 0.1 s
+// clamps.
+verse_player_counts :: (p: Player, frame: f32) -> f32 #export_c { return cast(f32) loop_counts(p.clock, cast(f64) frame); }
+// The fixed steps the player's last frame ran.
+verse_player_ran :: (p: Player) -> int #export_c { return p.clock.ran; }
+
 // How far this frame is between the last two steps, in [0, 1].
 alpha :: (p: Player) -> f32 { return loop_alpha(p.clock); }
 
@@ -1119,6 +1127,26 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player {
   p.face = -3.1;
   p.clock.carry_ns = LOOP_STEP_NS / 2;
   #assert abs(verse_player_face(p)) > 3.1;
+}
+
+// A page face moves its realm by what the player's clock counts a frame for, and the player by
+// the frame itself: the two agree on every frame, a stall's included, and no frame runs more
+// steps than a realm's declared budget (8, aethyr/budget.coax).
+#test "a face's frame time is what the player's clock counts, and runs at most 8 steps" {
+  w: World;
+  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, false, 0, 0);
+  frames := [9] f32.[1.0 / 144.0, 1.0 / 60.0, 1.0 / 30.0, 0.1, 0.2, 3.0, -1.0, 0.0 / 0.0, 1.0 / 60.0];
+  most := 0;
+  for i: 0..<9 {
+    counts := verse_player_counts(p, frames[i]);
+    before := p.clock.ticks;
+    p = verse_player_advance(p, frames[i]);
+    #assert counts == cast(f32) loop_counted(p.clock);
+    #assert verse_player_ran(p) == p.clock.ticks - before && verse_player_ran(p) <= 8;
+    if verse_player_ran(p) > most { most = verse_player_ran(p); }
+  }
+  #assert most == 8 && verse_player_counts(p, 3.0) <= 0.140625 && verse_player_counts(p, 1.0 / 60.0) == cast(f32) loop_counts(p.clock, cast(f64) (1.0f32 / 60.0f32));
+  #assert verse_player_counts(p, -1.0) == 0 && verse_player_counts(p, 0.0 / 0.0) == 0;
 }
 
 // The engine core's loop contract (aethyr/loop.coax, #12609): the steps are fixed whatever

@@ -71,6 +71,7 @@
 #load "rigid.coax";
 #load "terrain.coax";
 #load "stand.coax";
+#load "../aethyr/loop.coax";   // the steps are Aethyr's one clock's
 
 DEMO_PIECES :: 4000;
 DEMO_MESHES :: 96;
@@ -80,7 +81,8 @@ DEMO_LOOSE :: 40;          // loose whole pieces at once
 DEMO_BODIES :: DEMO_CHUNKS + DEMO_LOOSE;
 DEMO_EVENTS :: 32;         // breaks and landings this frame, for dust
 DEMO_HZ :: 60.0;
-DEMO_MAX_STEPS :: 6;       // a quarter-second frame steps at most 0.1 s
+DEMO_MAX_STEPS :: 6;       // a quarter-second frame steps at most 0.1 s; a longer backlog is dropped
+DEMO_STEP_NS :: 16666667;  // 1/60 s on the clock (aethyr/loop.coax)
 DEMO_SUP_CAP :: 48;       // supports a piece keeps at most
 DEMO_CELL :: 8.0;          // the support search's grid
 DEMO_GRID :: 40;           // cells a side (320 m)
@@ -226,7 +228,8 @@ DemoWorld :: struct {
   // each chunk's cell: DEMO_PLANES planes (x y z d: inside where x·p ≤ d) in its piece's mesh space
   cell: [DEMO_BODIES * DEMO_CELL_FLOATS] f32;
   chunk_cap: int; loose_cap: int;
-  clock: f64; carry: f64; tick: u64;
+  clock: f64; tick: u64;
+  steps: FrameClock;   // the fixed steps (aethyr/loop.coax): 1/60 s, a frame clamped to 0.25 s, at most 6
   seed: int;
   events: [DEMO_EVENTS] DemoEvent; event_n: int;
   linked: bool;
@@ -1791,12 +1794,12 @@ demo_apart :: (w: [] DemoWorld, a: int, c: int) -> bool {
 // The same with water: the surface and current on the ground's grid (demo_water_at; empty, none).
 demo_step_wet :: (w: [] DemoWorld, g: Ground, heights: [] f32, water: [] f32, dt: f32) {
   w[0].event_n = 0;
-  demo_fine(w, g, heights, clamp(dt, 0, 0.25));
-  w[0].carry += f64(clamp(dt, 0, 0.25));
+  l := w[0].steps;
+  l.step_ns = DEMO_STEP_NS; l.max_steps = DEMO_MAX_STEPS;
+  w[0].steps = loop_accept(l, f64(dt));
+  demo_fine(w, g, heights, f32(loop_counted(w[0].steps)));   // what the frame counts for, as the steps
   h := 1.0 / DEMO_HZ;
-  steps := 0;
-  while w[0].carry >= h && steps < DEMO_MAX_STEPS {
-    w[0].carry -= h; steps += 1;
+  for k: 0..<loop_due(w[0].steps) {
     w[0].clock += h; w[0].tick += 1;
     awake := 0;
     for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 && !demo_asleep(w, b) { awake += 1; } }
@@ -1869,7 +1872,7 @@ demo_step_wet :: (w: [] DemoWorld, g: Ground, heights: [] f32, water: [] f32, dt
       if body.pos.y < ground_y - 5.0 { w[0].meta[b].kind = 0; }
     }
   }
-  if w[0].carry > h { w[0].carry = h; }
+  w[0].steps = loop_ran(w[0].steps);
 }
 
 // ---- drawing
@@ -2061,6 +2064,28 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   #assert rows[0] == 0 && rows[5] == 0 && rows[3] == 0;
   // the chunks fly away from the blow (from the south, so north)
   for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_CHUNK { #assert demo_body(w[..], b).vel.z > 0.0; } }
+}
+
+#test "demolish: the steps are Aethyr's clock's, 1/60 s, at most six a frame, and a stall's backlog is dropped" {
+  w: [1] DemoWorld;
+  g := Ground.{n = 8, cell = 40, west = -160, south = -160};
+  heights: [81] f32;
+  demo_cottage(w[..]);
+  demo_step(w[..], g, heights[..], 1.0 / 30.0);
+  #assert w[0].tick == 2 && w[0].steps.ran == 2 && w[0].steps.step_ns == DEMO_STEP_NS && w[0].steps.max_steps == 6;
+  owed := w[0].steps.carry_ns;
+  // dust and splinters move by what the frame counts for, as the steps do: not the 3 s stall
+  w[0].dust[0].live = true; w[0].dust[0].life = 100; w[0].dust[0].t = 0;
+  demo_step(w[..], g, heights[..], 3.0);
+  // the 0.25 s it is clamped to, less the eight steps dropped (0.1167 s): not 0.25 s or 3 s
+  #assert w[0].dust[0].live && w[0].dust[0].t > 0.11 && w[0].dust[0].t < 0.12;
+  #assert w[0].dust[0].t == f32(loop_counted(w[0].steps));
+  #assert w[0].tick == 8 && w[0].steps.ran == 6 && w[0].steps.overlong == 1 && w[0].steps.stalls == 1;
+  #assert owed + w[0].steps.counted_ns == 6 * DEMO_STEP_NS + w[0].steps.carry_ns && w[0].steps.carry_ns < DEMO_STEP_NS;
+  demo_step(w[..], g, heights[..], 1.0 / 60.0);
+  #assert w[0].steps.ran == 1 && w[0].tick == 9 && abs(w[0].clock - 9.0 / 60.0) < 0.0000001;
+  demo_step(w[..], g, heights[..], -1.0);
+  #assert w[0].steps.ran == 0 && w[0].tick == 9 && w[0].steps.refused == 1;
 }
 
 #test "demolish: the wall over a broken one comes loose, falls and breaks on the ground; the roof holds" {

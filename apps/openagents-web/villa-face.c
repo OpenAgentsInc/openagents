@@ -232,7 +232,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   start(state);
   coax_t_Villa *v = villa(state);
   width = w; height = h; dpr = scale;
-  dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
+  float frame = dt;   /* the player's clock (aethyr/loop.coax) steps it; the rest moves by what it counts */
+  dt = verse_player_counts(player, frame);
   now += dt;
   v->golden = golden;
   if (!v->started || v->time == 0) v->still = still != 0;
@@ -245,7 +246,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (sticks.zoom != 0) villa_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = villa_walls(at(state));
-  player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6});
+  player = verse_player_advance_among(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6});
   coax_t_Vec3 feet = verse_player_feet(player);
   villa_step(at(state), dt, feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.vel.x, player.vel.z);
   {   // metres walked and each 20 m square of the cemetery visited once (analytics.coax track_walk, track_area)

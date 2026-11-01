@@ -16,13 +16,16 @@
 // (saves, replays, determinism) and the only one there is.
 //
 // Systems run in the order the world calls them; ecs_clock_frame says how
-// many fixed 1/60 s steps a frame covers (capped for a stalled frame), and
+// many fixed 1/60 s steps a frame covers, on Aethyr's one clock
+// (aethyr/loop.coax: a frame clamped to 0.1 s, at most 8 steps), and
 // Stats keeps each system's last and smoothed milliseconds, read off the
 // host's clock, for the stats overlay and the frame budget.
 //
 // All storage is the host's (or a test's): Entities and Stats are views,
 // so passing them copies only the views and every write reaches the store.
 //   coax/bin/coax test --library verse/deadgears/ecs.coax
+
+#load "../../aethyr/loop.coax";
 
 ECS_INDEX_BITS :: 20;
 ECS_INDEX_MASK :: 1048575;   // (1 << 20) - 1
@@ -147,10 +150,11 @@ ecs_first :: (w: Entities, all: int) -> int {
 // ---- the clock: fixed steps
 
 ECS_FIXED_DT :: 0.016666668;
+ECS_STEP_NS :: 16666666;   // the step on the clock: 1/60 s, rounded down, so 0.05 s is three
 
 Clock :: struct {
-  dt: f32 = 0.016666668;   // the fixed step
-  frame_dt: f32;           // this frame, after the cap
+  dt: f32 = 0.016666668;   // the fixed step the systems are given
+  frame_dt: f32;           // what this frame counted for, after the clamp
   max_frame_dt: f32 = 0.1; // a stalled frame covers no more than this
   max_steps: int = 8;      // nor more fixed steps than this
   acc: f64;                // time not yet stepped
@@ -159,29 +163,36 @@ Clock :: struct {
   fixed_now: f64;          // seconds of fixed steps
   frame: int;              // frames so far
   steps: int;              // this frame's fixed steps
+  loop: FrameClock;        // the steps are this clock's (aethyr/loop.coax)
+}
+
+// The seconds a frame of dt counts for, at most max_frame_dt: none for a time that isn't one. What a
+// realm moves the time outside its steps by (Dead Gears' walk, turn and animation).
+ecs_counts :: (max_frame_dt: f32, dt: f32) -> f32 {
+  c: FrameClock;
+  c.max_frame_ns = loop_ns(f64(max_frame_dt));
+  return f32(loop_counts(c, f64(dt)));
 }
 
 // The clock after a frame of frame_dt seconds; its steps is how many fixed
-// steps the world runs this frame.
+// steps the world runs this frame. The clamp and the cap are the Clock's own,
+// handed to the loop each frame.
 ecs_clock_frame :: (c: Clock, frame_dt: f32) -> Clock {
   next := c;
-  d := frame_dt;
-  if !(d > 0) { d = 0; }
-  if d > c.max_frame_dt { d = c.max_frame_dt; }
-  next.frame_dt = d;
-  next.now = c.now + f64(d);
+  l := c.loop;
+  l.step_ns = ECS_STEP_NS;
+  l.max_frame_ns = loop_ns(f64(c.max_frame_dt));
+  l.max_steps = c.max_steps;
+  l = loop_accept(l, f64(frame_dt));
+  next.steps = loop_due(l);
+  l = loop_ran(l);
+  next.loop = l;
+  next.frame_dt = f32(loop_counted(l));
+  next.now = c.now + loop_counted(l);
   next.frame = c.frame + 1;
-  next.acc = c.acc + f64(d);
-  next.steps = 0;
-  // As the demo's World::frame: a hair of slack, so 0.05 s is three steps of 1/60.
-  while next.acc + 0.0000001 >= f64(c.dt) && next.steps < c.max_steps {
-    next.acc = next.acc - f64(c.dt);
-    if next.acc < 0 { next.acc = 0; }
-    next.steps += 1;
-    next.fixed_now += f64(c.dt);
-  }
-  if next.steps == c.max_steps && next.acc > f64(c.dt) { next.acc = f64(c.dt); }
-  next.alpha = f32(next.acc / f64(c.dt));
+  next.fixed_now = f64(l.ticks) * f64(c.dt);
+  next.acc = f64(l.carry_ns) / f64(LOOP_SECOND);
+  next.alpha = loop_alpha(l);
   return next;
 }
 
@@ -356,6 +367,27 @@ T_POS :: 1; T_VEL :: 2; T_TAG :: 4; T_HP :: 8;
   #assert c.steps == 3 && c.frame == 4 && c.frame_dt == 0.05;
   c = ecs_clock_frame(c, -1);
   #assert c.steps == 0 && c.alpha >= 0 && c.alpha < 1;
+}
+
+#test "the clock is Aethyr's: a stall runs six steps of 0.1 s and the next frame is ordinary" {
+  c: Clock;
+  c = ecs_clock_frame(c, 3.0);
+  #assert c.steps == 6 && c.frame_dt == 0.1 && c.loop.overlong == 1 && c.loop.stalls == 0;
+  #assert c.loop.step_ns == ECS_STEP_NS && c.loop.ticks == 6 && c.fixed_now == 6.0 * f64(c.dt);
+  #assert c.loop.carry_ns == 5 && c.acc == 0.000000005 && c.alpha < 0.000001 && abs(c.now - 0.1) < 0.0000001;
+  c = ecs_clock_frame(c, 1.0 / 30);
+  #assert c.steps == 2 && c.loop.ticks == 8 && c.frame == 2 && c.loop.ran == 2;
+  c = ecs_clock_frame(c, 1.0 / 120);
+  #assert c.steps == 0 && abs(c.alpha - 0.5) < 0.00001;
+  c.max_steps = 2;
+  c = ecs_clock_frame(c, 0.1);
+  #assert c.steps == 2 && c.loop.stalls == 1 && c.frame_dt < 0.05 && c.loop.max_steps == 2;
+  // a declared clamp below zero is no clamp: the loop's own (0.25 s) holds
+  d: Clock; d.max_frame_dt = -1; d.max_steps = 20;
+  d = ecs_clock_frame(d, 0.2);
+  #assert d.steps == 12 && d.loop.max_frame_ns == LOOP_MAX_FRAME_NS && d.loop.overlong == 0;
+  #assert ecs_counts(0.05, 3.0) == 0.05 && ecs_counts(0.05, 0.02) == 0.02 && ecs_counts(0.05, -1.0) == 0;
+  #assert ecs_counts(0.05, 0.0 / 0.0) == 0 && ecs_counts(0.1, 3.0) == 0.1 && ecs_counts(0.05, 0.05) == 0.05;
 }
 
 #forall "the clock never runs more steps than the cap, nor loses time under it" k: 0..<40 {

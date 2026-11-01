@@ -216,7 +216,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   start(state);
   coax_t_Fairy *g = fairy(state);
   width = w; height = h; dpr = scale;
-  dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
+  float frame = dt;   /* the player's clock (aethyr/loop.coax) steps it; the rest moves by what it counts */
+  dt = verse_player_counts(player, frame);
   now += dt;
   fairy_golden(at(state), golden);
   fairy_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
@@ -252,7 +253,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (sticks.zoom != 0) fairy_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = fairy_walls(at(state));
-  player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6});
+  player = verse_player_advance_among(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6});
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 heights = {g->heights.e, fairy_heights(at(state))};
   fairy_stream_drop(sv(), heights, fairy_pond_drop(at(state)));   /* the pond: low until filled (fairypond.coax) */

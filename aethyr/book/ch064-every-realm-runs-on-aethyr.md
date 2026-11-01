@@ -55,6 +55,13 @@ ground query instead of loading Aethyr's.
 | Fairy Forest | flight in `fairy-face.c` |
 | Space games | 120 Hz substeps in `orbitleague.coax`; lockstep ticks and `spacecam.coax` in Belt 2200 |
 
+The first migration step moved the private clocks onto `aethyr/loop.coax`
+([chapter 1](ch001-a-frame-has-a-fixed-step.md), "What it replaced"): Dead
+Gears' `ecs_clock_frame`, Orbit League's step cap, `verse/demolish.coax`,
+Hold the Stair's solo and co-op clocks, and the 0.1 s clamps in five page
+faces. Ice Cream Man's 30-a-second loop and Belt 2200's lockstep ticks still
+keep their own.
+
 Shared modules already in use: [verse/player.coax](../../verse/player.coax),
 [camera.coax](../../verse/camera.coax),
 [terrain.coax](../../verse/terrain.coax),

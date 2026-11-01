@@ -1987,10 +1987,14 @@ step_fight :: (s: [] DeadGears, t: f32) {
 // over or held for a golden), the events play, then the world, the light
 // and the HUD are written. The fight's step is at most 0.05 s a frame: a
 // stalled frame slows the fight rather than skipping it.
+// A frame counts for at most 0.05 s (verse/deadgears/ecs.coax ecs_counts, on Aethyr's clock), so
+// the rules run at most three steps of 1/60 s.
+DG_FRAME_DT :: 0.05;
+
 deadgears_frame :: (s: [] DeadGears, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   started(s);
   if u.count < UNIFORM_FLOATS || out.count < MAX_VERTICES * VERTEX_FLOATS || width < 1 || height < 1 { return 0; }
-  t := ifx finite(dt) then clamp(dt, 0, 0.05) else 0.0f32;
+  t := ecs_counts(DG_FRAME_DT, dt);
   s[0].time += f64(t);
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
   redit_start(s[0].ed[..], "dead-gears");
@@ -2699,7 +2703,13 @@ DEADGEARS_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 
       dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
       n := deadgears_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
       budget_measure(m[..], n, 0, bytes);
+      #assert budget_take(m[..], BUDGET_STEPS, s[0].store[0].clock[0].steps);
     }
   }
   #assert budget_ok(m[0]);
+  // a frame counts for at most 0.05 s, so the rules run at most three steps of 1/60 s
+  #assert ecs_counts(DG_FRAME_DT, 3.0) == 0.05;
+  c: Clock;
+  c = ecs_clock_frame(c, ecs_counts(DG_FRAME_DT, 3.0));
+  #assert c.steps == 3 && c.steps <= DEADGEARS_BUDGET.steps;
 }

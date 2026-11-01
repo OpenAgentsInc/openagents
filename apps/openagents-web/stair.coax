@@ -19,6 +19,7 @@
 #load "stair-coop.coax";
 #load "lockroom.coax";
 #load "../../aethyr/budget.coax";
+#load "../../aethyr/loop.coax";   // the fixed steps: Aethyr's one clock
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 52000;   // the swarm stage draws 39,318 at 1440 px; 36,000 clipped it (STAIR_BUDGET)
@@ -280,6 +281,9 @@ BEASTS :: 512;
 DEFENDERS :: 48;
 FX :: 160;
 STEP :: 0.0166666667;
+STAIR_STEP_NS :: 16666667;        // the same step on the clock (aethyr/loop.coax)
+STAIR_FRAME_NS :: 100000000;      // a frame's real time counts for at most 0.1 s
+STAIR_MAX_STEPS :: 8;             // and runs at most 8 steps (STAIR_BUDGET): fast-forward included
 
 // Phases
 BUILD :: 0; FIGHT :: 1; WON :: 2; LOST :: 3;
@@ -348,7 +352,8 @@ Stair :: struct {
   looks: [1] SrdDice;      // the looks' (a bubble's wobble, a number's drift), apart so they never shift a roll
   seed: u64;               // the map's seed (its table's, or ?seed=): the same seed rolls the same game
   rules: [RULES_LOG] Rule; rules_n: int;   // the rules log: pops and splits, newest last (a ring)
-  time: f64; clock: f32; acc: f32;
+  time: f64; clock: f32;
+  steps: FrameClock;   // the game's steps: a frame's time times the speed, at most STAIR_MAX_STEPS
   width: f32; height: f32; dpr: f32;
   golden: bool; still: bool; touch: bool;
   card_shot: bool;   // ?card=1: the world without the HUD, for a link's card (coax/web/og-render.ts)
@@ -394,7 +399,7 @@ Stair :: struct {
   swarm: bool;   // ?stage=swarm: SWARM beasts climb round and round, for the frame-rate check
   // co-op over the room server (stair-coop.coax, lockroom.coax); the face copies the game's bytes
   // (all before fx but the analytics) into snap for a partner, and from snap when one arrives
-  lock: [1] Lock; tick_acc: f32; applying: bool; nudge: bool; nudge_t: f32;
+  lock: [1] Lock; ticks: FrameClock; applying: bool; nudge: bool; nudge_t: f32;
   snap: [SNAP_CAP] u8;
 }
 SNAP_CAP :: 80000;
@@ -2477,11 +2482,39 @@ class_cap :: (s: [] Stair, k: f32, names: bool) -> f32 {
   }
   return ifx names then cnc else lo(ccc, cnc);
 }
+// The seconds a frame's real time counts for: refused below zero or past a number, at most 0.1 s
+// (aethyr/loop.coax, as a frame's time counts on the game's clock).
+stair_pace :: () -> FrameClock {
+  c: FrameClock;
+  c.max_frame_ns = STAIR_FRAME_NS;
+  return c;
+}
+stair_counts :: (dt: f32) -> f32 { return cast(f32) loop_counts(stair_pace(), cast(f64) dt); }
+// The co-op ticks a frame of dt makes due (stair-coop.coax): 1/60 s ticks, each `speed` steps, so
+// at most STAIR_MAX_STEPS / speed ticks a frame (8 at 1x, 2 at 4x, 1 at 8x), and no more than 8
+// steps in all.
+stair_tick_clock :: (c: FrameClock, speed: int, dt: f32) -> FrameClock {
+  t := c;
+  t.step_ns = STAIR_STEP_NS;
+  t.max_steps = STAIR_MAX_STEPS / hi_i(speed, 1);
+  return loop_accept(t, cast(f64) dt);
+}
+// The game's fixed steps for `game` seconds of play (the frame's time times the speed): at most
+// STAIR_MAX_STEPS a frame, so 8x runs at full speed down to 60 FPS, and a backlog past the cap is
+// dropped (and counted on the clock), never run later.
+stair_run :: (s: [] Stair, game: f32) {
+  l := s[0].steps;
+  l.step_ns = STAIR_STEP_NS;   // at most LOOP_MAX_STEPS, which is STAIR_MAX_STEPS
+  l = loop_accept(l, cast(f64) game);
+  for k: 0..<loop_due(l) { step(s, f32(STEP)); }
+  s[0].steps = loop_ran(l);
+}
+
 stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   stair_start(s);
   s[0].width = width; s[0].height = height; s[0].dpr = dpr; s[0].still = still;
   k := hi(dpr, 0.5);
-  step_dt := lo(hi(dt, 0), 0.1);
+  step_dt := stair_counts(dt);
   if s[0].golden { step_dt = 0; }
   s[0].time += f64(step_dt);
   s[0].clock += step_dt;
@@ -2491,10 +2524,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   if lr_on(s[0].lock[..]) {
     coop_frame(s, step_dt);
   } else {
-    if !s[0].paused { s[0].acc += step_dt * f32(s[0].speed); }
-    guard := 0;
-    while s[0].acc >= f32(STEP) && guard < 64 { step(s, f32(STEP)); s[0].acc -= f32(STEP); guard += 1; }
-    if guard >= 64 { s[0].acc = 0; }
+    stair_run(s, ifx s[0].paused then 0.0f32 else step_dt * f32(s[0].speed));
   }
   if s[0].wave != s[0].tracked_wave && s[0].phase == FIGHT {
     s[0].tracked_wave = s[0].wave;
@@ -3379,6 +3409,61 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
 // use. Its heaviest frame is the swarm stage's tenth: 39,318 vertices at 1440 by 900, which the
 // 36,000-vertex buffer clipped before this check; the buffer is now 52,000.
 STAIR_BUDGET :: FrameBudget.{steps = 8, vertices = 48000, draws = 0, bytes = 3932160};
+
+// The steps a frame runs, measured against the budget: at 1x, 4x and 8x, at 30, 60 and 144 FPS
+// and through a 3 s stall, no frame runs more than STAIR_BUDGET.steps (8). It allowed 64 (its
+// own clock, a guard of 64 and 0.1 s of play times the speed); 8x now runs at full speed at
+// 60 FPS (8 steps a frame) and drops what is past the cap below that, counted on the clock.
+#test "Hold the Stair's frames run at most its budget's steps, fast-forward included" {
+  m := [1] BudgetMeter.[budget_meter(STAIR_BUDGET)];
+  speeds := [3] int.[1, 4, 8];
+  rates := [3] f32.[30, 60, 144];
+  for a: 0..<3 {
+    s: [1] Stair;
+    stair_start(s[..]);
+    for r: 0..<3 {
+      for f: 0..<4 {
+        before := s[0].steps.ticks; game := s[0].tick;
+        stair_run(s[..], stair_counts(1.0 / rates[r]) * f32(speeds[a]));
+        budget_frame(m[..]);
+        #assert budget_take(m[..], BUDGET_STEPS, s[0].steps.ran) && s[0].steps.ticks - before == s[0].steps.ran;
+        #assert s[0].tick - game == s[0].steps.ran;   // each step the clock runs is one of the game's
+      }
+    }
+    stair_run(s[..], stair_counts(3.0) * f32(speeds[a]));
+    budget_frame(m[..]);
+    #assert budget_take(m[..], BUDGET_STEPS, s[0].steps.ran);
+    // at 1x a stall counts for 0.1 s, six steps (five with no carry); faster, it fills the cap
+    #assert ifx speeds[a] == 1 then s[0].steps.ran >= 5 && s[0].steps.ran <= 6 && s[0].steps.stalls == 0 else s[0].steps.ran == STAIR_MAX_STEPS && s[0].steps.stalls >= 1;
+    #assert s[0].steps.step_ns == STAIR_STEP_NS && s[0].steps.max_steps == STAIR_MAX_STEPS;
+  }
+  #assert budget_ok(m[0]) && m[0].peak[BUDGET_STEPS] == 8 && STAIR_BUDGET.steps == STAIR_MAX_STEPS;
+  // in co-op, ticks of `speed` steps: never more than 8 steps a frame
+  z: FrameClock;
+  for sp: 0..<9 {
+    t := stair_tick_clock(z, sp, 3.0);
+    #assert t.step_ns == STAIR_STEP_NS && t.due * (ifx sp > 1 then sp else 1) <= STAIR_MAX_STEPS && t.due >= 1;
+    #assert t.due == (ifx sp > 1 then 8 / sp else 8) || sp <= 1;
+  }
+  #assert stair_tick_clock(z, 1, 0.11).due == 6 && stair_tick_clock(z, 0, 3.0).due == 8 && stair_tick_clock(z, 2, 3.0).due == 4;
+  #assert stair_tick_clock(z, 1, 1.0 / 60.0).due == 1 && stair_tick_clock(z, 8, 3.0).due == 1 && stair_tick_clock(z, 3, 3.0).due == 2;
+  // the real time a frame counts for: none, a frame's own, at most 0.1 s
+  #assert stair_counts(-1) == 0 && stair_counts(0.0 / 0.0) == 0 && stair_counts(0.05) == 0.05 && stair_counts(3) == 0.1;
+  #assert loop_counts(stair_pace(), 3.0) == 0.1 && STAIR_MAX_STEPS == LOOP_MAX_STEPS;
+  // a frame: its time times the speed, as the clock counts it; paused or golden, no steps
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  q: [1] Stair; stair_start(q[..]); q[0].speed = 8;
+  _ := stair_frame(q[..], out[..], u[..], 64, 64, 1, 3.0, false);
+  #assert q[0].steps.ran == 8 && q[0].steps.stalls == 1 && abs(q[0].time - 0.1) < 0.000001 && q[0].clock == 0.1;
+  _ = stair_frame(q[..], out[..], u[..], 64, 64, 1, 1.0 / 60.0, false);
+  #assert q[0].steps.ran == 8 && q[0].steps.ticks == 16;
+  q[0].paused = true;
+  _ = stair_frame(q[..], out[..], u[..], 64, 64, 1, 0.1, false);
+  #assert q[0].steps.ran == 0 && q[0].steps.ticks == 16;
+  q[0].paused = false; q[0].golden = true;
+  _ = stair_frame(q[..], out[..], u[..], 64, 64, 1, 0.1, false);
+  #assert q[0].steps.ran == 0 && q[0].steps.ticks == 16;
+}
 
 // Ten frames of the opening and ten of the swarm stage, at every budget screen.
 #test "Hold the Stair's frames fit its declared budget" {

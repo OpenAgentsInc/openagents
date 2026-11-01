@@ -94,7 +94,7 @@ stair_snap_adopted :: (s: [] Stair, old: [] Stair) #export_c { coop_keep(s, old)
 // What stays this client's when a partner's game comes in: the view, the hands, the seat.
 coop_keep :: (s: [] Stair, old: [] Stair) {
   s[0].started = old[0].started; s[0].spell_pick = -1;
-  s[0].time = old[0].time; s[0].clock = old[0].clock; s[0].acc = 0;
+  s[0].time = old[0].time; s[0].clock = old[0].clock; s[0].steps.carry_ns = 0;
   s[0].width = old[0].width; s[0].height = old[0].height; s[0].dpr = old[0].dpr;
   s[0].golden = old[0].golden; s[0].still = old[0].still; s[0].touch = old[0].touch; s[0].card_shot = old[0].card_shot;
   s[0].portrait = old[0].portrait; s[0].ox = old[0].ox; s[0].oy = old[0].oy; s[0].tile = old[0].tile; s[0].scols = old[0].scols; s[0].srows = old[0].srows;
@@ -111,9 +111,12 @@ coop_frame :: (s: [] Stair, dt: f32) {
   lr_frame(L, f64(dt));
   lr_snapshot_send(L, s[0].snap[..]);
   if L[0].note_new { L[0].note_new = false; say(s, cast(string) L[0].note[0..<L[0].note_n]); }
-  s[0].tick_acc += dt;
-  guard := 0;
-  while s[0].tick_acc >= f32(STEP) && guard < 8 {
+  // The ticks both have committed to, on Aethyr's clock: each runs `speed` steps, so a frame runs at
+  // most STAIR_MAX_STEPS steps in all (8 ticks at 1x, one at 8x); a tick the lock can't take yet
+  // stays owed to the next frame.
+  t := stair_tick_clock(s[0].ticks, s[0].speed, dt);
+  ran := 0;
+  while ran < loop_due(t) {
     if !lr_may_step(L) { break; }
     buf: [LR_ORDER] u8; who: [1] int;
     while true {
@@ -123,9 +126,10 @@ coop_frame :: (s: [] Stair, dt: f32) {
     }
     if !s[0].paused { for i: 0..<s[0].speed { step(s, f32(STEP)); } }
     if lr_ticked(L) { lr_hash(L, stair_hash(s)); }
-    s[0].tick_acc -= f32(STEP); guard += 1;
+    ran += 1;
   }
-  if s[0].tick_acc > 8 * f32(STEP) { s[0].tick_acc = 8 * f32(STEP); }
+  t.due = ran;
+  s[0].ticks = loop_ran(t);
   // ?desync=1: this client's gold nudged once, five seconds into a game together
   if s[0].nudge && lr_together(L) {
     s[0].nudge_t += dt;
@@ -215,7 +219,7 @@ coop_face :: (a: [] Stair, b: [] Stair) {
     lock := b[0].lock[0];
     b[0] = a[0];
     // what the face leaves: everything from fx on (the lock, the nudge)
-    b[0].lock[0] = lock; b[0].nudge = old[0].nudge; b[0].nudge_t = old[0].nudge_t; b[0].tick_acc = old[0].tick_acc;
+    b[0].lock[0] = lock; b[0].nudge = old[0].nudge; b[0].nudge_t = old[0].nudge_t; b[0].ticks = old[0].ticks;
     stair_snap_adopted(b, old[..]);
   }
 }

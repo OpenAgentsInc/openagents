@@ -9,9 +9,10 @@
 // a backlog past that is dropped, so a stall never makes the next frame slower. Each of
 // those is counted on the clock (refused, overlong, stalls, dropped_ns): frame pacing a realm
 // and its checks can read.
-// It was three accumulators: verse/player.coax's (f32 seconds, 1/64 s, 8 steps, 0.25 s),
-// Orbit League's (f64, 1/120 s, a carry capped at 8 steps) and Dead Gears' ECS clock
-// (f64, 1/60 s, 0.1 s, 8 steps); they now step here.
+// It replaced the realms' own accumulators: verse/player.coax's (f32 seconds, 1/64 s, 8 steps,
+// 0.25 s), Orbit League's (f64, 1/120 s, a carry capped at 8 steps), Dead Gears' ECS clock
+// (f64, 1/60 s, 0.1 s, 8 steps), verse/demolish.coax's (f64, 1/60 s, 0.25 s, 6 steps), Hold the
+// Stair's (f32, 1/60 s, 0.1 s, up to 64 steps) and the 0.1 s clamps in the page faces' C.
 //   coax/bin/coax test aethyr/loop.coax --library
 //   coax/bin/coax mutate aethyr/loop.coax
 
@@ -36,11 +37,13 @@ FrameClock :: struct {
   overlong: int;       // frames longer than max_frame_ns, counted as that long
   stalls: int;       // frames owed more than max_steps
   dropped_ns: int;   // backlog thrown away on those
+  counted_ns: int;   // the time the last frame counted for: refused, clamped and dropped as above
+  ran: int;          // steps the last frame ran (loop_ran)
 }
 // book:end clock
 
 // A clock stepping `step_ns` at a time (the default for none), with the default clamps.
-loop_clock :: (step_ns: int) -> FrameClock #export_c {
+loop_clock :: (step_ns: int) -> FrameClock {
   c: FrameClock;
   if step_ns > 0 { c.step_ns = step_ns; }
   return c;
@@ -48,7 +51,7 @@ loop_clock :: (step_ns: int) -> FrameClock #export_c {
 
 // Seconds as whole nanoseconds, to the nearest; -1 for what is not a frame's time: a
 // negative, infinite or non-number time, or one of LOOP_NEVER seconds or more.
-loop_ns :: (seconds: f64) -> int #export_c {
+loop_ns :: (seconds: f64) -> int {
   if seconds >= 0.0 && seconds < LOOP_NEVER { return cast(int) floor(seconds * f64(LOOP_SECOND) + 0.5); }
   return -1;
 }
@@ -57,60 +60,70 @@ loop_ns :: (seconds: f64) -> int #export_c {
 // then owed to the steps. The steps due are the whole steps owed, at most max_steps; a
 // backlog past that is dropped, keeping the part of a step it leaves.
 // book:begin accept
-loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock #export_c {
+loop_accept_ns :: (c: FrameClock, frame_ns: int) -> FrameClock {
   next := c;
   // A clock read from zeroed memory takes the defaults it was declared with.
   if c.step_ns <= 0 { next.step_ns = LOOP_STEP_NS; }
   if c.max_frame_ns <= 0 { next.max_frame_ns = LOOP_MAX_FRAME_NS; }
   if c.max_steps <= 0 { next.max_steps = LOOP_MAX_STEPS; }
   next.frames += 1;
+  next.ran = 0;
   f := frame_ns;
   if f < 0 { next.refused += 1; f = 0; }
   if f > next.max_frame_ns { next.overlong += 1; f = next.max_frame_ns; }
   next.carry_ns += f;
   next.due = next.carry_ns / next.step_ns;
   if next.due > next.max_steps {
-    drop := (next.due - next.max_steps) * next.step_ns;
+    lost_ns := (next.due - next.max_steps) * next.step_ns;
     next.stalls += 1;
-    next.dropped_ns += drop;
-    next.carry_ns -= drop;
+    next.dropped_ns += lost_ns;
+    next.carry_ns -= lost_ns;
     next.due = next.max_steps;
+    f -= lost_ns;
   }
+  next.counted_ns = f;
   return next;
 }
 // book:end accept
-loop_accept :: (c: FrameClock, frame: f64) -> FrameClock #export_c { return loop_accept_ns(c, loop_ns(frame)); }
+loop_accept :: (c: FrameClock, frame: f64) -> FrameClock { return loop_accept_ns(c, loop_ns(frame)); }
 
 // book:begin ran
 // How many steps to run now.
-loop_due :: (c: FrameClock) -> int #export_c { return c.due; }
+loop_due :: (c: FrameClock) -> int { return c.due; }
 
 // The steps due have run: they are paid, and simulation time moves on by them.
-loop_ran :: (c: FrameClock) -> FrameClock #export_c {
+loop_ran :: (c: FrameClock) -> FrameClock {
   next := c;
   next.carry_ns -= c.due * c.step_ns;
   next.ticks += c.due;
+  next.ran = c.due;
   next.due = 0;
   return next;
 }
 
 // One frame in one call: accept its time, and the steps it runs.
 FrameTick :: struct { clock: FrameClock; steps: int; }
-loop_frame :: (c: FrameClock, frame: f64) -> FrameTick #export_c {
+loop_frame :: (c: FrameClock, frame: f64) -> FrameTick {
   a := loop_accept(c, frame);
   return FrameTick.{clock = loop_ran(a), steps = a.due};
 }
 
 // How far this frame lies from the last step to the next, in [0, 1), once the steps due
 // have run: what drawing mixes the last two by.
-loop_alpha :: (c: FrameClock) -> f32 #export_c {
+loop_alpha :: (c: FrameClock) -> f32 {
   return cast(f32) (cast(f64) (c.carry_ns - c.due * c.step_ns) / cast(f64) c.step_ns);
 }
 // book:end ran
 
+// The seconds the last accepted frame counted for, and the seconds a frame of `frame` would
+// count for on c: what a realm advances the time outside its steps by (its animation, its
+// room's timing), so that time is clamped and dropped as the steps are, by this clock alone.
+loop_counted :: (c: FrameClock) -> f64 { return cast(f64) c.counted_ns / f64(LOOP_SECOND); }
+loop_counts :: (c: FrameClock, frame: f64) -> f64 { return loop_counted(loop_accept(c, frame)); }
+
 // One step's time, and the simulation's time so far, in seconds.
-loop_step :: (c: FrameClock) -> f64 #export_c { return cast(f64) c.step_ns / f64(LOOP_SECOND); }
-loop_time :: (c: FrameClock) -> f64 #export_c { return cast(f64) c.ticks * loop_step(c); }
+loop_step :: (c: FrameClock) -> f64 { return cast(f64) c.step_ns / f64(LOOP_SECOND); }
+loop_time :: (c: FrameClock) -> f64 { return cast(f64) c.ticks * loop_step(c); }
 
 // The same position drawn between the last two steps.
 loop_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
@@ -177,6 +190,34 @@ loop_mix :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
   #assert loop_accept_ns(d, 5).max_frame_ns == 1 && loop_accept_ns(d, 5).carry_ns == 1 && loop_accept_ns(d, 5).overlong == 1;
   e := c; e.max_steps = 1;
   #assert loop_accept_ns(e, 3 * LOOP_STEP_NS).due == 1 && loop_accept_ns(e, 3 * LOOP_STEP_NS).max_steps == 1;
+}
+
+#test "a frame counts for its time, refused, clamped and dropped as the steps are" {
+  c: FrameClock;
+  #assert loop_counted(c) == 0 && loop_counts(c, 0.01) == 0.01 && loop_counts(c, 0.0) == 0;
+  #assert loop_counts(c, -1.0) == 0 && loop_counts(c, 0.0 / 0.0) == 0 && loop_counts(c, 1.0 / 0.0) == 0;
+  // past the cap, the frame counts for the whole steps it runs and the part of a step it keeps
+  #assert loop_accept_ns(c, 8 * LOOP_STEP_NS).counted_ns == 8 * LOOP_STEP_NS;
+  #assert loop_accept_ns(c, 11 * LOOP_STEP_NS + 5).counted_ns == 8 * LOOP_STEP_NS + 5;
+  #assert loop_accept_ns(c, 3 * LOOP_SECOND).counted_ns == loop_accept_ns(c, 3 * LOOP_SECOND).carry_ns;
+  // a carry already owed leaves less room in a stalled frame
+  h := c; h.carry_ns = LOOP_STEP_NS / 2;
+  #assert loop_accept_ns(h, 9 * LOOP_STEP_NS).counted_ns == 8 * LOOP_STEP_NS;
+  #assert loop_accept_ns(h, 9 * LOOP_STEP_NS).carry_ns == 8 * LOOP_STEP_NS + LOOP_STEP_NS / 2;
+  #assert loop_accept_ns(h, 7 * LOOP_STEP_NS).counted_ns == 7 * LOOP_STEP_NS;
+  // what loop_counts says a frame counts for is what accepting it counts
+  a := loop_accept(h, 0.3);
+  #assert loop_counted(a) == loop_counts(h, 0.3) && a.counted_ns == 8 * LOOP_STEP_NS;
+  #assert loop_counted(loop_accept_ns(c, 15625000)) == 0.015625;
+}
+
+#test "a frame's steps are kept once it has run, until the next frame" {
+  c: FrameClock;
+  #assert c.ran == 0;
+  r := loop_ran(loop_accept_ns(c, 3 * LOOP_STEP_NS));
+  #assert r.ran == 3 && loop_ran(r).ran == 0;
+  #assert loop_accept_ns(r, LOOP_STEP_NS).ran == 0 && loop_accept_ns(r, LOOP_STEP_NS).due == 1;
+  #assert loop_frame(c, 2.0).clock.ran == LOOP_MAX_STEPS && loop_frame(c, 0.001).clock.ran == 0;
 }
 
 #test "running pays the steps due" {

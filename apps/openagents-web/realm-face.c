@@ -866,7 +866,7 @@ static void queue_sounds(void) {
 }
 
 // The phone's frame (HauntViewController.tick), then the HUD over it.
-static void step(float dt) {
+static void step(float frame, float dt) {
   coax_v_t_Realm r = realm_of();
   coax_t_Vec3 was = player.pos;
   house.camera = 1;
@@ -884,7 +884,7 @@ static void step(float dt) {
                                  sticks.dyaw + realm.dyaw, sticks.dpitch + realm.dpitch);
   realm.dyaw = 0; realm.dpitch = 0;
   sticks = verse_sticks_used(sticks);
-  player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6});
+  player = verse_player_advance_among(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6});
   coax_t_HauntPoint kept = verse_haunt_constrain(house, point(was), point(player.pos));
   player = verse_player_constrain(player, kept.x, kept.z);
   coax_t_Vec3 feet = verse_player_feet(player);
@@ -994,11 +994,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   (void)state; (void)still;
   if (!realm.dpr) realm_reset(realm_of());
   width = w; height = h; dpr = scale;
-  dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
+  float frame = dt;   /* the player's clock (aethyr/loop.coax) steps it; the rest moves by what it counts */
+  dt = verse_player_counts(player, frame);
   now += dt;
   if (!opened && !failed && (ready & 15) == 15) open_house();
   draw_count = 0;
-  if (opened) { step(dt); place_frame(state); }
+  if (opened) { step(frame, dt); place_frame(state); }
   describe();
   float *u = (float *)(uintptr_t)uniforms;
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_realm_max_vertices() * coaxial_realm_vertex_floats()};

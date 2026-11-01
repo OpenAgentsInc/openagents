@@ -153,8 +153,8 @@ HIT_FLATTEN :: 0.65;
 HIT_SPIN :: 0.6;         // the share of the car's spin speed across the contact that the ball takes     // how much of the up-down part of a hit's line the kick drops (ol-hit-feel)        // the share of the closing speed added to the ball on a car's hit
 STEP :: 0.008333333333333333;   // physics at 120 Hz
 STEP_NS :: 8333333;             // the same step on the engine's clock (aethyr/loop.coax)
-MAX_STEPS :: 12;
-MAX_FRAME_NS :: 100000000;      // a frame counts for at most 0.1 s: 12 steps
+MAX_STEPS :: 8;                 // the realm's step budget (ORBITLEAGUE_BUDGET); it was 12
+MAX_FRAME_NS :: 100000000;      // a frame counts for at most 0.1 s, and at most 8 steps of it run
 BLUE :: 0; MAGENTA :: 1;
 PHASE_KICKOFF :: 0; PHASE_PLAY :: 1; PHASE_GOAL :: 2; PHASE_OVER :: 3; PHASE_REPLAY :: 4;
 // ol-replay: each step's drives and a whole physics state each second, so a
@@ -2466,10 +2466,11 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
   if !s[0].started { game_reset(s); }
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
-  step := clamp(dt, 0, 0.1);
+  // the time outside the steps moves by what the physics clock counts the frame for
+  step := cast(f32) loop_counts(s[0].sim, cast(f64) dt);
   if !s[0].golden { s[0].time += step; }
   s[0].replays = !s[0].golden && !s[0].online;
-  game_step(s, cast(f64) step);
+  game_step(s, cast(f64) dt);
   room_frame(s, cast(f64) step);
   if !s[0].golden { effects_step(s, cast(f64) step); }
   if s[0].jumped[0] { s[0].jumped[0] = false; track_tally(s[0].track[..], "jump", ""); }
@@ -3473,7 +3474,16 @@ ORBITLEAGUE_BUDGET :: FrameBudget.{steps = 8, vertices = 5000, draws = 0, bytes 
       dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
       n := game_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
       budget_measure(m[..], n, 0, bytes);
+      #assert budget_take(m[..], BUDGET_STEPS, s[0].sim.ran);
     }
+    // a 3 s stall runs the budget's 8 steps of 1/120 s and drops the rest
+    n := game_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, 3.0, false);
+    budget_measure(m[..], n, 0, bytes);
+    #assert budget_take(m[..], BUDGET_STEPS, s[0].sim.ran) && s[0].sim.ran == 8 && s[0].sim.stalls == 2;   // the 0.1 s frame owed 12 too
   }
-  #assert budget_ok(m[0]);
+  #assert budget_ok(m[0]) && m[0].peak[BUDGET_STEPS] == ORBITLEAGUE_BUDGET.steps;
+  // the time outside the steps is what the clock counts: a stall, the 8 steps it runs and the part
+  // of a step it keeps (0.1 s less the four steps dropped)
+  c: FrameClock = FrameClock.{step_ns = STEP_NS, max_frame_ns = MAX_FRAME_NS, max_steps = MAX_STEPS};
+  #assert loop_counts(c, 3.0) == 0.066666668 && loop_counts(c, 0.05) == 0.05 && loop_counts(c, -1.0) == 0;
 }

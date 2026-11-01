@@ -67,7 +67,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   start(state);
   coax_t_Garden *g = garden(state);
   width = w; height = h; dpr = scale;
-  dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
+  float frame = dt;   /* the player's clock (aethyr/loop.coax) steps it; the rest moves by what it counts */
+  dt = verse_player_counts(player, frame);
   now += dt;
   g->golden = golden;
   g->wall_ms = track_state.epoch + track_state.t * 1000.0;
@@ -79,7 +80,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (sticks.zoom != 0) garden_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = garden_walls(at(state));
-  player = verse_player_advance_among(player, dt, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6});
+  player = verse_player_advance_among(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6});
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_garden_max_vertices() * coaxial_garden_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_garden_uniform_floats()};
