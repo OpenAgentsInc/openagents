@@ -168,6 +168,19 @@ overlaps against the containment oracle in `aethyr/tests/query-oracle.coax`;
 mutation 0 survivors) and `verse/player.coax` ("jumping onto, landing on
 and walking off a ledge is the same in every realm").
 
+## One follow camera eases the walker's view
+
+The walking controller's camera (`verse/player.coax`, every walking realm and
+Dead Gears' `camera_room`) moves only through `aethyr/follow.coax`: the look
+and zoom (`follow_look`, `follow_zoom`), one step of the spring and the room
+(`follow_track`), and the eye drawn between the last two steps (`follow_at`,
+`follow_eye`). No other code eases that camera. `follow_room` reads a realm's
+`Colliders` and never changes them, the camera pulls in at once and backs out
+by a closed form in the step's time, and its direction uses strict math.
+Checks: `aethyr/follow.coax` (mutation 0 survivors) and `verse/gridwalk.coax`
+("the Grid's camera follows a walk, a run and a jump at 60 FPS without a
+jump").
+
 ## The Grid steps only on its session's record
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,
