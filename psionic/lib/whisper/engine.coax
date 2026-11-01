@@ -525,6 +525,7 @@ psionic_whisper_format :: (segs: [] WsSegment, format: int, model: string, langu
   if format == 1 { wsg_srt(segs, w[..]); }
   else if format == 2 { wsg_vtt(segs, w[..]); }
   else if format == 3 { wsg_json(segs, model, "psionic", language, w[..]); }
+  else if format == 4 { wsg_lines(segs, w[..]); }
   else { wsg_text(segs, w[..]); }
   return ifx w[0].full then -1 else w[0].n;
 }

@@ -264,6 +264,65 @@ public-domain speech, 11 s) and clips made with macOS `say` from a fixed
 script, including the names Psionic, Coax, Verse and Aethyr. WER uses the
 standard word edit distance after lowercasing and removing punctuation.
 
+## Comparison harness
+
+`openagents transcribe compare` runs both backends on the same files and
+models, and prints one markdown row per file and model (#12621):
+
+```sh
+openagents transcribe corpus ~/.cache/openagents/transcribe-corpus   # the generated clips and their references
+openagents transcribe compare ~/.cache/openagents/transcribe-corpus ~/code/cakbags/speedrun-video/cut.wav \
+  --models tiny.en,base.en [--diffs]
+```
+
+- Words: the reference's word count. A file's reference is its sibling
+  `.txt`.
+- WER: word edits from the reference, over its words, after lowercasing and
+  dropping punctuation (`psionic/lib/whisper/score.coax`).
+- Between: the same rate with whisper.cpp's transcript as the reference.
+- Drift: for each Psionic segment, the distance from its start to the
+  nearest whisper.cpp segment start; mean and largest.
+- Time: wall time, including loading the model. Peak: the largest resident
+  set size (`/usr/bin/time -l`).
+- whisper.cpp runs with its defaults: beam 5, best of 5, temperature
+  fallback. `--diffs` lists the word differences; it is left out for
+  private audio.
+
+The corpus:
+
+- `jfk.wav`, from whisper.cpp's samples.
+- `say` clips: the fox sentence with "Psionic", a names sentence (Psionic,
+  Coax, Nostr, OpenAgents) at two speeds, and the Gettysburg Address (80 s,
+  three windows), clean and mixed with pink noise at two levels.
+- `cut.wav`: a 178 s talk recorded outdoors with street noise, scored
+  against a hand-corrected transcript. It is private: only its numbers are
+  published here.
+
+Before beam search, 2026-11-01, Apple M5 Max, 8 threads, CPU only. Psionic
+decodes greedily:
+
+| File | Model | Words | Psionic WER | whisper.cpp WER | Between | Drift (mean / max) | Psionic | whisper.cpp | Psionic peak | whisper.cpp peak |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| gettysburg-loud-noise.wav | tiny.en | 268 | 7.09% | 6.72% | 4.10% | 928 / 1680 ms | 2350 ms | 930 ms | 278 MB | 298 MB |
+| gettysburg-noise.wav | tiny.en | 268 | 4.10% | 4.10% | 2.21% | 2785 / 9180 ms | 2501 ms | 663 ms | 278 MB | 290 MB |
+| gettysburg.wav | tiny.en | 268 | 1.12% | 1.12% | 0.75% | 122 / 1160 ms | 2194 ms | 646 ms | 278 MB | 299 MB |
+| jfk.wav | tiny.en | 22 | 0.00% | 0.00% | 0.00% | 20 / 40 ms | 549 ms | 185 ms | 268 MB | 238 MB |
+| say-fox.wav | tiny.en | 23 | 4.35% | 4.35% | 0.00% | 1340 / 2680 ms | 542 ms | 199 ms | 268 MB | 237 MB |
+| say-names-fast.wav | tiny.en | 28 | 42.86% | 32.14% | 23.33% | 60 / 120 ms | 599 ms | 211 ms | 268 MB | 237 MB |
+| say-names.wav | tiny.en | 28 | 32.14% | 32.14% | 6.67% | 1535 / 2680 ms | 630 ms | 217 ms | 268 MB | 238 MB |
+| cut.wav | tiny.en | 395 | 7.09% | 7.09% | 6.19% | 2653 / 7760 ms | 4361 ms | 1143 ms | 290 MB | 310 MB |
+| **all** | tiny.en | 1300 | 6.38% | 6.08% |  |  | 13726 ms | 4194 ms | | |
+| gettysburg-loud-noise.wav | base.en | 268 | 2.24% | 2.99% | 2.60% | 188 / 880 ms | 4261 ms | 813 ms | 506 MB | 407 MB |
+| gettysburg-noise.wav | base.en | 268 | 1.87% | 1.49% | 1.12% | 876 / 2320 ms | 4154 ms | 772 ms | 506 MB | 407 MB |
+| gettysburg.wav | base.en | 268 | 1.12% | 0.75% | 0.37% | 301 / 1320 ms | 4285 ms | 782 ms | 506 MB | 407 MB |
+| jfk.wav | base.en | 22 | 0.00% | 0.00% | 0.00% | 0 / 0 ms | 1058 ms | 217 ms | 495 MB | 346 MB |
+| say-fox.wav | base.en | 23 | 0.00% | 0.00% | 0.00% | 0 / 0 ms | 1089 ms | 232 ms | 495 MB | 346 MB |
+| say-names-fast.wav | base.en | 28 | 25.00% | 28.57% | 3.33% | 3140 / 5960 ms | 1178 ms | 243 ms | 495 MB | 346 MB |
+| say-names.wav | base.en | 28 | 28.57% | 28.57% | 0.00% | 7 / 20 ms | 1160 ms | 262 ms | 495 MB | 346 MB |
+| cut.wav | base.en | 395 | 6.84% | 7.09% | 4.67% | 1319 / 3420 ms | 8693 ms | 1226 ms | 517 MB | 421 MB |
+| **all** | base.en | 1300 | 4.31% | 4.46% |  |  | 25878 ms | 4547 ms | | |
+
+
 ## Checks
 
 ```sh
@@ -272,6 +331,7 @@ coax/bin/coax test psionic/lib/whisper/ggml.coax --library
 coax/bin/coax test psionic/lib/whisper/tokens.coax --library
 coax/bin/coax test psionic/lib/whisper/front.coax --library
 coax/bin/coax test psionic/lib/whisper/engine.coax --library
+coax/bin/coax test psionic/lib/whisper/score.coax --library
 coax/bin/coax test apps/openagents-cli/transcribe-rules.coax --library
 psionic/platform/whisper-build.sh            # psionic/build/whisper/psionic-whisper
 psionic/build/whisper/psionic-whisper filters ~/.cache/openagents/models/whisper/ggml-base.en.bin

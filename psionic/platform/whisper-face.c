@@ -122,6 +122,7 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--srt") == 0) format = 1;
         else if (strcmp(argv[i], "--vtt") == 0) format = 2;
         else if (strcmp(argv[i], "--json") == 0) format = 3;
+        else if (strcmp(argv[i], "--lines") == 0) format = 4;
         else if (strcmp(argv[i], "--language") == 0 && i + 1 < argc) lang = argv[++i];
         else if (strcmp(argv[i], "--name") == 0 && i + 1 < argc) name_arg = argv[++i];
         else if (strcmp(argv[i], "--threads") == 0 && i + 1 < argc) g_threads = (int)strtol(argv[++i], 0, 10);

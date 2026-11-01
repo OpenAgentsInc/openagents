@@ -76,6 +76,15 @@ wsg_vtt :: (segs: [] WsSegment, w: [] WsOut) {
     wsg_put(w, s.text); wsg_put(w, "\n\n");
   }
 }
+// whisper-cli's lines, "[00:00:00.000 --> 00:00:03.400]  text", so the
+// comparison harness reads both backends with one parser.
+wsg_lines :: (segs: [] WsSegment, w: [] WsOut) {
+  for s: segs {
+    if s.text.count == 0 { continue; }
+    wsg_byte(w, '['); wsg_clock(w, s.start_ms, '.'); wsg_put(w, " --> "); wsg_clock(w, s.end_ms, '.'); wsg_put(w, "]  ");
+    wsg_put(w, s.text); wsg_byte(w, '\n');
+  }
+}
 // A JSON string: quotes, backslashes and control bytes escaped; other bytes,
 // UTF-8 included, as they are.
 wsg_quoted :: (w: [] WsOut, s: string) {
@@ -145,6 +154,8 @@ wsg_test_segments :: (segs: [] WsSegment) {
   w[0].n = 0; wsg_vtt(segs[..], w[..]);
   #assert cast(string) b[0..<w[0].n] == "WEBVTT\n\n00:00:00.000 --> 00:00:03.400\nThe quick brown fox.\n\n00:00:03.725 --> 01:02:03.006\nSay \"hi\" \\ é\n\n";
   #assert !w[0].full;
+  w[0].n = 0; wsg_lines(segs[..], w[..]);
+  #assert cast(string) b[0..<w[0].n] == "[00:00:00.000 --> 00:00:03.400]  The quick brown fox.\n[00:00:03.725 --> 01:02:03.006]  Say \"hi\" \\ é\n";
 }
 #test "json" {
   segs: [3] WsSegment; wsg_test_segments(segs[..]);

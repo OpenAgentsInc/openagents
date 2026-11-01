@@ -18,6 +18,7 @@
 // containers yet); it is one program call, and the WAV it writes is all
 // either backend reads.
 #load "transcribe-rules.coax";
+#load "transcribe-compare.coax";
 
 TR_HF :: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-";
 // What psionic-whisper is built from; a newer one rebuilds it.
@@ -32,6 +33,9 @@ transcribe_usage :: () {
   print("%\n", "                                     audio or video; base and English by default");
   print("%\n", "  transcribe models                  the models in ~/.cache/openagents/models/whisper");
   print("%\n", "  transcribe fetch MODEL             downloads a model (transcribe fetches one it needs)");
+  print("%\n", "  transcribe compare FILE|DIR... [--models tiny.en,base.en] [--prompt TEXT] [--diffs]");
+  print("%\n", "                                     Psionic and whisper.cpp side by side: error rates, time, memory");
+  print("%\n", "  transcribe corpus DIR              writes the generated comparison clips (macOS say)");
   print("%\n", "");
 }
 
@@ -121,6 +125,8 @@ transcribe_models :: (r: [] Rep) -> int {
 transcribe_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if verb == "" { transcribe_usage(); return EXIT_USAGE; }
   if verb == "models" { return transcribe_models(r); }
+  if verb == "compare" { return transcribe_compare(a, r); }
+  if verb == "corpus" { return transcribe_corpus(r, positional(a, 2)); }
   language := args_value(a, "--language", "en");
   if !tr_language_ok(language) { return fail(r, EXIT_USAGE, "--language is en, auto, or a two or three letter code such as de"); }
   nb: [64] u8;

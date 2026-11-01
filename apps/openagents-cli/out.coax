@@ -94,8 +94,8 @@ VALUE_FLAGS :: [54] string.["--profile",
   "--header", "--redirects", "--origin", "--machine", "--note", "--contact", "--poll",   // http, account
   "--if-older", "--out", "--api", "--from", "--to",   // project snapshot, index, landing, adopt, review report
   "--rev", "--name", "--uses", "--days", "--visibility",   // realm, admin
-  "--language", "--backend", "--threads",   // transcribe (--model is pylon's)
-  "", "", "", "", "", "", ""];
+  "--language", "--backend", "--threads", "--models", "--prompt",   // transcribe (--model is pylon's)
+  "", "", "", "", ""];
 takes_value :: (s: string) -> bool { for f: VALUE_FLAGS { if f.count > 0 && s == f { return true; } } return false; }
 // The k-th argument that is not a flag or a flag's value, or "".
 positional :: (a: [] Args, k: int) -> string {
