@@ -1,16 +1,17 @@
 # 167. Command a robot
 
 This chapter builds position-only inverse kinematics, principal orientation
-error, a capped whole-pose solve, isolated PD gain/response analysis, seven-joint
-PD with gravity compensation, and a short coupled run on our owned Panda dynamics.
-The queries return source-limited coordinates or explicit force terms. The
+error, a capped whole-pose solve, linearized posture projection, isolated PD
+gain/response analysis, seven-joint PD with gravity compensation, and a short
+coupled run on our owned Panda dynamics. IK returns source-limited coordinates;
+the posture query returns a delta, and PD returns explicit force terms. The
 250-step experiment then recomputes the PD command on every owned state and
 compares that trajectory with one MuJoCo reference. General stability and
 the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
 runs operational-space control against MuJoCo. Holding/tracking experiments,
-nullspace IK, collision-free planning, trajectory timing and
+finite-step nullspace/IK integration, collision-free planning, trajectory timing and
 compiler-enforced bounded control retain their separate acceptance criteria.
 
 ## A source-bound position IK query
@@ -347,13 +348,128 @@ whole-solver output. The first debug, release and fail-fast ASan/UBSan profiles 
 All six new whole-path comparison groups retain absolute 2e-10 budgets with zero
 relative tolerance. This does not change the standalone principal-error budget.
 The source-bound scalar-libm profile does not establish arbitrary cross-target
-determinism. Collision checks, nullspace objectives, RRT, trajectory and actuator
+determinism. Finite-step nullspace integration, collision checks, RRT, trajectory and actuator
 admission, compiler `#bounded` control and hardware behavior remain separate.
 
 The [complete component record](../fixtures/robotics/panda-pose-solve/README.md)
 links frozen inputs, independent trajectory/terminal bindings and numerical,
 source, typing and example receipts.
 
+
+## A genuine linearized posture nullspace
+
+A secondary rest posture should not be confused with a new grip target. Query
+a fresh seven-hinge Jacobian instead: the six task rows leave one joint-space
+null direction when the normalized matrix has full row rank. This new `Pns`
+query leaves every pose-solver and physics source unchanged.
+
+Normalize dimensions before arithmetic. Multiply linear derivatives by one
+radian to get metres. Multiply angular derivatives by one radian and the fixed
+0.25 metre/radian weight to get metres. Divide every task row by one explicit
+metre. This gives dimensionless A6x7 and dimensionless rest preference
+`d=(rest-q)/one_radian`. A unit right-null direction n gives `p=n*(n^T*d)`;
+restore p with the same radian basis to return typed projected radians.
+
+The product uses signed six-by-six column cofactors, partial-pivot LU and a
+scaled vector norm. Row-max scaling is only arithmetic conditioning: restore
+**all six row scales** when reporting gamma, the normalized cofactor volume.
+By Cauchy-Binet it is the product of the six singular values in exact
+arithmetic, not the smallest singular value or a general condition
+certificate. The frozen numerical profile requires gamma **strictly greater
+than 2^-24**. Earliest largest-magnitude component chooses the direction sign;
+exact zero direction and projected components become positive zero. The
+independent comparison uses `n*n^T` and the projected vector, so arbitrary
+mathematical line orientation is not mistaken for a physical difference.
+Literal ties are checked separately.
+
+Check squared-norm error `abs(dot(n,n)-1) <= 2e-12`, `max(abs(A*n)) <= 2e-10`,
+and `max(abs(A*p)) <= 2e-10*max(1,norm(d))`. Physical output leakage is in
+metres: the first three rows are linear displacement and the final three are
+weighted angular displacement. The separate checked residual operator admits
+deliberately bad finite diagnostics so those refusal branches are observable.
+It validates finite/nonnegative values **per field**, then the rest-norm
+domain, then the policy thresholds. Trusted owned helpers remain unsealed;
+their staged PODs are not forged-input admission certificates. Public wrappers
+publish only `ok`.
+
+Both q and rest must meet source joint limits, but **q+p need not**. In
+already frozen case 20, joint 2 starts at -1.7578 rad and the independently
+projected delta is -0.0662561668 rad. Their sum would be -1.8240561668 rad,
+below its -1.7628-rad source lower limit by about 0.06126 rad. This is
+arithmetic over cached facts, not a newly applied pose. Componentwise clipping
+would also destroy the null property. Return a delta only: finite-pose
+preservation, joint-step policy, collision and actuation remain separate.
+
+The example uses independent Gaussian-projector physical case 22. It shows the
+line direction, projected preference, volume, this query's small weighted
+leakage, exact self-rest zero and atomic refusal of an invalid rest posture.
+
+<!-- source: psionic/examples/panda-nullspace.coax pns-query -->
+```jai
+ // Both source-limited vectors are radians. The result is a projected delta;
+ // it is never applied here as a finite pose, trajectory or motor command.
+ words:=[14]f64.[0.5916784815654972,-1.1314303950772526,1.3723101939314204,-0.7863450971120733,0.9193678441656266,2.7243916210477472,-1.0067594805156277,0.0,0.19634954084936207,0.0,-2.617993877991494,0.0,2.941592653589793,0.7853981633974483];q:[7]pfku.Quantity(pfku.Radian,f64);rest:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=words[i];rest[i].value=words[7+i];}
+ out:[1]PnsOutput;#assert pns_query(q[..],rest[..],out[..])==PnsStatus.ok;
+ n:=out[0].direction;d:=out[0].projected_delta;
+ print("unit null direction (ppm): % % % % % % %\n",pns_example_micro(n[0].value),pns_example_micro(n[1].value),pns_example_micro(n[2].value),pns_example_micro(n[3].value),pns_example_micro(n[4].value),pns_example_micro(n[5].value),pns_example_micro(n[6].value));
+ print("projected preference (urad): % % % % % % %\n",pns_example_micro(d[0].value),pns_example_micro(d[1].value),pns_example_micro(d[2].value),pns_example_micro(d[3].value),pns_example_micro(d[4].value),pns_example_micro(d[5].value),pns_example_micro(d[6].value));
+ print("normalized volume (ppm): %; singular-value product\n",pns_example_micro(out[0].normalized_volume.value));
+ for i:0..<6 {#assert abs(out[0].task_leak[i].value)<1e-9;}
+ print("this query's weighted task leakage is below 1 nm\n");
+ // Self-rest has exactly zero projected preference, with canonical positive zero.
+ zero:[1]PnsOutput;#assert pns_query(q[..],q[..],zero[..])==PnsStatus.ok;for i:0..<7 {#assert f64_bits(zero[0].projected_delta[i].value)==0;}
+ print("self-rest: complete projected delta is +0\n");
+ before:=out[0];rest[0].value=3;#assert pns_query(q[..],rest[..],out[..])==PnsStatus.limits;pns_same(out[0],before);
+ print("outside source rest limit: refusal; complete old query unchanged\n");
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-nullspace.coax
+```
+
+The independent reference freezes **48 genuine queries** (16 configurations
+and three rest postures each) plus **24 synthetic numerical cases**. All 48
+genuine queries pass this numerical profile; none is mislabeled singular
+merely because an axis is aligned. Synthetic controls supply fourteen accepted
+and ten rank-refused cases, including exact restored-volume floors and one-ULP
+neighbors across three first-row scaling families. Their first-row scale
+factors and products of row maxima are 1, 2 and 0.5; the global maximum
+coefficients are 1, 2 and 1, respectively. The all-zero arm is not a legal
+public source-limit case. Exact-Fraction Gram arithmetic and an 80-digit
+Decimal Gaussian projector `I-A^T*(A*A^T)^-1*A` provide an independent recipe
+with **no damping** and no cofactor oracle. A damped inverse complement is not
+called an exact nullspace.
+
+Thirteen new source groups, four meaningful unit refusals and three focused
+root runs kill **209/65/42 actual emitted sites**, with no equivalence
+waivers. The math history retains hidden zero-residual and global-gauge
+observations, followed by independently oriented cofactor and deliberately
+non-null diagnostic checks. The bridge history retains seven missed
+transport/endpoint observations and their closure. These counts do not
+establish complete authored quantity-token provenance. The independently
+prewritten example passes its own display check and debug/release output. The
+first debug, release and fail-fast ASan/UBSan profiles each pass **9,760
+assertions**. All 72 complete records match byte for byte across modes: 62
+successful payloads and 10 unavailable rank markers. Maximum null-line
+projector discrepancy is 2.082e-15; projected-angle discrepancy is 9.881e-15
+rad. Maximum measured null residual is 3.919e-16, scaled posture residual
+3.369e-16, and volume discrepancy 2.220e-16. Direct projector idempotence
+error is 2.22e-16, trace error 4.44e-16, symmetry error 0, and
+delta-versus-P*d error 1.02e-16. Exact restored-threshold bits, canonical
+ties/+0, thirteen overlap cases, fifty-three residual probes and twenty-six
+poisoned-reader guards pass.
+
+Frozen comparisons use 2e-8 absolute for projected radians and the null-line
+projector; squared norm has 2e-12, projector symmetry/idempotence/trace 2e-10,
+and volume 2e-12+2e-10*abs(reference). Numeric rank labels, canonical literal
+rules, statuses and mode bytes have exact criteria. No SDK, neural model,
+renderer, old kinematic corpus or old mutation gate is run. This is a
+source-bound F64 scalar-libm profile, not finite motion preservation,
+dynamically consistent torque nullspace, collision/trajectory admission,
+compiler `#bounded` control, R14 or hardware qualification.
+
+The [component record](../fixtures/robotics/panda-nullspace/README.md) links
+the frozen corpus, independent projector, source and native qualifications.
 
 ## Joint errors become forces
 
@@ -690,7 +806,8 @@ do not qualify these complete control and planning tools.
 
 - Nonlinear Panda holding/tracking, disturbance and dynamic saturation analysis
   beyond the isolated rotor and short no-contact prefix.
-- Null-space posture objectives beyond the implemented position and pose queries.
+- Finite, range-preserving nullspace steps and their integration with pose IK,
+  beyond the delivered linearized posture projection.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
 - Trajectory timing within velocity and acceleration limits.
 
@@ -704,11 +821,16 @@ still needs the full coupled dynamics and a declared timestep:
 τ = K_p (q_ref − q) + K_d (q̇_ref − q̇) + g(q)
 ```
 
-Damped least squares IK for an end-effector error `e` with Jacobian `J`:
+The primary damped IK update and linearized posture projection are delivered
+separately. A finite, range-preserving combination with controlled task drift
+remains planned:
 
 ```jai
-Δq = Jᵀ (J Jᵀ + λ² I)⁻¹ e + (I − J⁺ J) Δq_null
+Δq_primary = Jᵀ (J Jᵀ + λ² I)⁻¹ e
+Δq_posture = n (nᵀ Δq_rest)  // J n = 0 in the normalized linear task
 ```
+
+`I − J_damped# J` is not an exact nullspace projector.
 
 ([Buss, *Introduction to IK with Jacobian Transpose, Pseudoinverse and
 Damped Least Squares*, 2004](https://www.math.ucsd.edu/~sbuss/ResearchWeb/ikmethods/iksurvey.pdf)).
@@ -735,10 +857,12 @@ plan is reproducible; shortcutting and time parameterization follow.
 - Nonlinear Panda PD holds a pose under gravity with steady-state error below
   a stated bound, including disturbance and saturation experiments. The isolated
   single-rotor response and computed Jury diagnostic are qualified above.
-- Broader pose/nullspace behavior near singularities and the principal cut;
-  keep typed local nonconvergence distinct from global unreachability. The
-  fixed-source position and pose profiles above already enforce source ranges
-  and their separate convergence criteria.
+- Finite nullspace-step policy and pose-IK integration, plus broader behavior
+  near singularities and the principal cut. The delivered posture query has
+  explicit numerical rank/residual refusal; it does not qualify a finite motion.
+  Keep typed local nonconvergence distinct from global unreachability. The
+  fixed-source position and pose profiles already enforce source ranges and
+  their separate convergence criteria.
 - Planned edges retain fixed-scene conservative clearance evidence; a 10×
   denser recheck is an additional oracle. The same seed gives the same plan.
   Follow the [collision-to-planning sequence](../docs/robotics/panda-motion-planning.md)

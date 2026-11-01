@@ -1,0 +1,667 @@
+{
+  "schema": "psionic.panda-nullspace.publication.v1",
+  "passed": true,
+  "component_commit": "82d4b4fa9b",
+  "original_component_commit": "bd08543dbb",
+  "compiler_binding": {
+    "passed": true,
+    "input_fingerprint": "fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3",
+    "compiler_sha256": "ac8e535598afff1f13b56c6e9b2f065238b1f2e8563e9488a0183be9c8455ba6",
+    "emissions": [
+      {
+        "mode": "debug",
+        "artifact": "panda-nullspace.c",
+        "bytes": 135516,
+        "sha256": "5df5a7cbbb9c853b8ecdd8e24fbe670648385ee0c28bf996b8f9ddf607f102b8",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "debug",
+        "artifact": "panda-nullspace.h",
+        "bytes": 23209,
+        "sha256": "07d2aba516e089d7baa71b7251ead3f3e0a77430777614a25a0166f926d46351",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-nullspace.c",
+        "bytes": 134222,
+        "sha256": "2c17a44c189cecd5db668d14cb1d333b55bc78bc824821ec1ca388a7f9954553",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-nullspace.h",
+        "bytes": 23209,
+        "sha256": "07d2aba516e089d7baa71b7251ead3f3e0a77430777614a25a0166f926d46351",
+        "exact_native_context_match": true
+      }
+    ],
+    "commands": [
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "c",
+          "psionic/tests/robotics/panda-nullspace-native.coax",
+          "--library",
+          "--header",
+          "/tmp/panda-nullspace-main-binding-first/debug/panda-nullspace.h"
+        ],
+        "exit": 0,
+        "seconds": 0.06205254199448973,
+        "stderr_bytes": 0
+      },
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "c",
+          "psionic/tests/robotics/panda-nullspace-native.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/panda-nullspace-main-binding-first/release/panda-nullspace.h"
+        ],
+        "exit": 0,
+        "seconds": 0.05911345803178847,
+        "stderr_bytes": 0
+      }
+    ],
+    "numerical_reruns": 0,
+    "new_source_inventory_exact": true,
+    "frozen_native_input_files": 41
+  },
+  "compiler_provenance_carried": {
+    "record": "docs/verification/psionic-panda-pose-solve-2026-11-01.json",
+    "sha256": "854d8665068a4a896e3478fceecc045b176acd3b3eb36bfc57da0827d7321110",
+    "same_input_fingerprint": true,
+    "same_compiler_artifact": true,
+    "old_verification_not_repeated": true
+  },
+  "receipts": {
+    "psionic/fixtures/robotics/panda-nullspace/checks-qualification.json": "f29c6202662bd807562d7524ac0b750080df6c9e32d2289f0e4a961f62a2a29c",
+    "psionic/fixtures/robotics/panda-nullspace/unit-refusals.json": "5cd5d6a51a7995461a0b7c7dfbada812d55b4441da285cf7588401a5e1c583ce",
+    "psionic/fixtures/robotics/panda-nullspace/input-freeze-v1.json": "1f6f6d3b5fb2545df337e2a6e762a48ed8221c0de5a0b2bf32a7d94b04336081",
+    "psionic/fixtures/robotics/panda-nullspace/reference.json": "6a351cea3e2c481b6218e33341d9a4f5b960f53ca743a692ee80c60e5f42ea5d",
+    "psionic/fixtures/robotics/panda-nullspace/reference-publication-v1.json": "1e0980cf9503bc5f680a60f34e87313c09efce9bc67fe76faf96858817c76347",
+    "psionic/fixtures/robotics/panda-nullspace/native-contract-v1.json": "f90617717368d9cafbf8d5433e67e3cc8ca3a422bca6d9a23d467ec55f7cccbb",
+    "psionic/fixtures/robotics/panda-nullspace/native-qualification.json": "e43569c49b0b7fdde206e8f9052163bc95a566f1deb35e2e91eb53dc1a243723",
+    "psionic/fixtures/robotics/panda-nullspace/native-publication-v1.json": "a71c47b3f18b7e8ab8799d57ae7254e816cfe9b3935c2cf17611ea71e4b6b5b1",
+    "psionic/fixtures/robotics/panda-nullspace/example-qualification.json": "796100eddbea9a6ea7d7a14b57862f8335719a44484fef39de9e234e1fed3371"
+  },
+  "new_source_groups": 13,
+  "root_mutation": {
+    "roots": [
+      {
+        "root": "psionic/lib/robotics/panda-nullspace-math.coax",
+        "root_only": true,
+        "emitted_sites": 209,
+        "killed": 209,
+        "survivors": 0,
+        "stdout_sha256": "7f2499fab7161a629dd1ccc8d927bdce9aa6c9380e775073e89b022b190df84a"
+      },
+      {
+        "root": "psionic/lib/robotics/panda-nullspace.coax",
+        "root_only": true,
+        "emitted_sites": 65,
+        "killed": 65,
+        "survivors": 0,
+        "stdout_sha256": "521b7ae6419cba8917c7f606714886aafc4ab7a42033c4cea3ffe1428de826fd"
+      },
+      {
+        "root": "psionic/tests/robotics/panda-nullspace-native.coax",
+        "root_only": true,
+        "emitted_sites": 42,
+        "killed": 42,
+        "survivors": 0,
+        "stdout_sha256": "9673552a998ed6aa0d23e3a707349e053e29a3e837db5f4819e1b4660f6994f7"
+      }
+    ],
+    "emitted": 316,
+    "killed": 316,
+    "survivors": 0,
+    "equivalence_waivers": false,
+    "initial_math_and_bridge_survivors_preserved": true
+  },
+  "new_numerical_work": {
+    "physical_queries": 48,
+    "unique_physical_configurations": 16,
+    "synthetic_queries": 24,
+    "successful_payloads": 62,
+    "unavailable_rank_markers": 10,
+    "successful_F64_fields": 1674,
+    "canonical_unavailable_transport_words": 270,
+    "profiles_run": [
+      "debug",
+      "release",
+      "sanitized"
+    ],
+    "assertions_per_profile": 9760,
+    "all_complete_bytes_identical": true,
+    "reference": "Exact-Fraction Gram determinants and80digit Decimal Gaussian orthogonal projectors; independent homogeneous-matrix/tangent Jacobians, no cofactors or damped complement.",
+    "comparisons": {
+      "passed": true,
+      "successful_payloads": 62,
+      "unavailable_payloads": 10,
+      "all_actual_serialized_finite_words": 1944,
+      "all_expected_serialized_finite_words": 1944,
+      "metrics": {
+        "projector": {
+          "passed": true,
+          "values": 3038,
+          "max_abs_error": 2.0816681711721685e-15,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "delta": {
+          "passed": true,
+          "values": 434,
+          "max_abs_error": 9.880984919163893e-15,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "reported_null": {
+          "passed": true,
+          "values": 372,
+          "max_abs_error": 3.9536113373527648e-16,
+          "atol": 2e-10,
+          "rtol": 0
+        },
+        "reported_leak": {
+          "passed": true,
+          "values": 372,
+          "max_abs_error": 3.3873540909894133e-16,
+          "atol": 2e-10,
+          "rtol": 0
+        },
+        "unit_squarednorm": {
+          "passed": true,
+          "values": 62,
+          "max_abs_error": 4.440892098500626e-16,
+          "atol": 2e-12,
+          "rtol": 0
+        },
+        "computed_null": {
+          "passed": true,
+          "values": 372,
+          "max_abs_error": 3.9189168678332286e-16,
+          "atol": 2e-10,
+          "rtol": 0
+        },
+        "computed_leak": {
+          "passed": true,
+          "values": 372,
+          "max_abs_error": 3.368535659031235e-16,
+          "atol": 2e-10,
+          "rtol": 0
+        },
+        "projector_symmetry": {
+          "passed": true,
+          "values": 3038,
+          "max_abs_error": 0.0,
+          "atol": 2e-10,
+          "rtol": 0
+        },
+        "projector_idempotence": {
+          "passed": true,
+          "values": 3038,
+          "max_abs_error": 2.220446049250313e-16,
+          "atol": 2e-10,
+          "rtol": 0
+        },
+        "projector_trace": {
+          "passed": true,
+          "values": 62,
+          "max_abs_error": 4.440892098500626e-16,
+          "atol": 2e-10,
+          "rtol": 0
+        },
+        "delta_from_actual_projector": {
+          "passed": true,
+          "values": 434,
+          "max_abs_error": 1.017384182748462e-16,
+          "atol": 2e-10,
+          "rtol": 0
+        }
+      },
+      "volume_max_abs_error": 2.220446049250313e-16,
+      "volume_maximum_budget_fraction": 5.326594288363886e-06,
+      "maximum_independent_scaled_leak_fraction": 1.6842678295156175e-06,
+      "exact_threshold_S_restore_and_canonical_ties": true,
+      "applied_candidate": false
+    },
+    "alias_cases": 13,
+    "residual_probe_queries": 53,
+    "reader_poison_cases": 26
+  },
+  "book": {
+    "passed": true,
+    "exit": 0,
+    "seconds": 0.4150076250080019,
+    "stdout_sha256": "1999849fc5f6885c40295e6d273795e31b66b96ed9679c66279b592b090b5f5d",
+    "stderr_bytes": 0,
+    "programs": 129,
+    "source_linked_listings": 476
+  },
+  "registration": {
+    "schema": "psionic.panda-nullspace.registration.v1",
+    "passed": true,
+    "scope": "Syntax and exact command-routing stubs only; no real Coax, C compiler, native/numeric/SDK/model/oracle/old gate execution.",
+    "sources": {
+      "psionic/check.sh": {
+        "bytes": 44628,
+        "sha256": "b32a4efdc996171bed54681d6364fd6ebaed21c91087beb93b86e97261bf490b"
+      },
+      "psionic/tests/robotics/check.sh": {
+        "bytes": 19260,
+        "sha256": "d0e7cc3f04f8f0a9b98f66eb9fb356c648932d6f4e3e0df96eb72cae0a45be75"
+      }
+    },
+    "commands": [
+      {
+        "label": "syntax-psionic-check.sh",
+        "argv": [
+          "bash",
+          "-n",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/check.sh"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "syntax-psionic-tests-robotics-check.sh",
+        "argv": [
+          "bash",
+          "-n",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/tests/robotics/check.sh"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "math-only",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-nullspace-math"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "bridge-only",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-nullspace-native"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "query-group",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-nullspace"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "cf42fa598e8357af72818d21c8218dc4a36d601c2370285c803431c78e702385"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "query-no-mutation",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-nullspace"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "cf42fa598e8357af72818d21c8218dc4a36d601c2370285c803431c78e702385"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "explicit-three-deduplicated",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-nullspace-math",
+          "robotics/panda-nullspace",
+          "robotics/panda-nullspace-native"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "cf42fa598e8357af72818d21c8218dc4a36d601c2370285c803431c78e702385"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-panda-nullspace-math",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-nullspace-math",
+          "--jobs",
+          "3"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-panda-nullspace",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-nullspace",
+          "--jobs",
+          "3"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "cf42fa598e8357af72818d21c8218dc4a36d601c2370285c803431c78e702385"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-panda-nullspace-native",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-nullspace-native",
+          "--jobs",
+          "3"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "default-list",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--list",
+          "all"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 2133,
+          "sha256": "05761d4bf14472fa52a0de0a5f015da446489c7dc553bc5a0ae7096d55a02031"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "unknown-rejected",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-nullspace-unknown"
+        ],
+        "exit": 2,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 56,
+          "sha256": "8d0031bfccc21bb93fe9ac521ccdfd264d9e6004c4f5974138405b290ab4cb95"
+        }
+      },
+      {
+        "label": "whitelist-isolated",
+        "argv": [
+          "bash",
+          "/tmp/panda-nullspace-registration-first/whitelist.sh",
+          "robotics/panda-nullspace-math",
+          "robotics/panda-nullspace",
+          "robotics/panda-nullspace-native",
+          "psionic/lib/robotics/panda-nullspace-math.coax",
+          "psionic/lib/robotics/panda-nullspace.coax",
+          "psionic/lib/robotics/panda-nullspace-native.coax",
+          "robotics/panda-nullspace-unknown"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 285,
+          "sha256": "ae96b898287da6d5d43ee0ada652c0916570cb9ff1a30e0239c96cab9acb1421"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    ],
+    "cases": [
+      {
+        "name": "math-only",
+        "source_units": [
+          "panda-nullspace-math"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "bridge-only",
+        "source_units": [
+          "panda-nullspace-native"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "query-group",
+        "source_units": [
+          "panda-nullspace-math",
+          "panda-nullspace",
+          "panda-nullspace-native"
+        ],
+        "Coax_stub_commands": 9,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "query-no-mutation",
+        "source_units": [
+          "panda-nullspace-math",
+          "panda-nullspace",
+          "panda-nullspace-native"
+        ],
+        "Coax_stub_commands": 6,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "explicit-three-deduplicated",
+        "source_units": [
+          "panda-nullspace-math",
+          "panda-nullspace",
+          "panda-nullspace-native"
+        ],
+        "Coax_stub_commands": 9,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "top-panda-nullspace-math",
+        "source_units": [
+          "panda-nullspace-math"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "top-panda-nullspace",
+        "source_units": [
+          "panda-nullspace-math",
+          "panda-nullspace",
+          "panda-nullspace-native"
+        ],
+        "Coax_stub_commands": 9,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "top-panda-nullspace-native",
+        "source_units": [
+          "panda-nullspace-native"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      }
+    ],
+    "default_list": {
+      "passed": true,
+      "new_units": [
+        "panda-nullspace-math",
+        "panda-nullspace",
+        "panda-nullspace-native"
+      ],
+      "no_gate_execution": true
+    },
+    "whitelist": {
+      "passed": true,
+      "positive_cases": 6,
+      "negative_cases": 1,
+      "exact_function_sha256": "b3a06b284e5838d874717b9f5a4eca7b455fd0d9ab5603a1d59f578c863cbb01"
+    },
+    "real_Coax_calls": 0,
+    "real_C_compiler_calls": 0,
+    "real_native_runs": 0,
+    "SDK_calls": 0,
+    "old_gates_repeated": false,
+    "seconds": 1.8991656670114025,
+    "tooling": {
+      "check-routing.py": {
+        "bytes": 6334,
+        "sha256": "27e26ebd35d44b7030a1ff9b757d897e7b33b62b448408eda5108a776a783630"
+      },
+      "shadow/coax-stub": {
+        "bytes": 206,
+        "sha256": "afd9da0922a8011fc4b19dd91d6964a8fd080cef112d477dd01004ec3dcd5721"
+      },
+      "shadow/psionic/tests/robotics/check-panda-nullspace-native.sh": {
+        "bytes": 213,
+        "sha256": "497d6a2b36b51a1838ead05ee23326d6805b809b45dc19791b78516248a9bac1"
+      }
+    },
+    "post_execution_binding": "Metadata-only tooling identities added after the passing stub run; command routing and source scripts unchanged. No repeated gates."
+  },
+  "manifest_claim_review": {
+    "scope": "Own167 CPU posture-projection status and example only. Existing model/device/serving claims remain unchanged.",
+    "updates": [
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "95f49548d73f3b278855304dc1db983c0a7f33f20824a53b90c8df3399e9cdc4",
+        "new": "1ac1a4fbe8c35badd72d99b74013fb226c8e1dfbce14afaad7e632a57b223198"
+      },
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/examples.json",
+        "old": "f90c3e293b2c5276b70d8ce8d6391a3e1104bc605fd8593d6b492e225b55b92a",
+        "new": "4548df41f5c9ea23f205e157a633b8e485e26c8017ae2f961723fdb3f922d4be"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "95f49548d73f3b278855304dc1db983c0a7f33f20824a53b90c8df3399e9cdc4",
+        "new": "1ac1a4fbe8c35badd72d99b74013fb226c8e1dfbce14afaad7e632a57b223198"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/examples.json",
+        "old": "f90c3e293b2c5276b70d8ce8d6391a3e1104bc605fd8593d6b492e225b55b92a",
+        "new": "4548df41f5c9ea23f205e157a633b8e485e26c8017ae2f961723fdb3f922d4be"
+      }
+    ]
+  },
+  "documentation_correction": "First-row scale factors and row-max products1/2/.5 remain distinct from global maximum coefficients1/2/1. No source, oracle, output or tolerance changed.",
+  "scope": "Linearized WORLD grip posture projection only. No finite q+delta admission, applied motion, nonlinear pose preservation, torque-nullspace, collision, tracking, compilerR14 or hardware qualification.",
+  "publication_numerical_reruns": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false,
+  "quantity_operator_token_gap_retained": true
+}

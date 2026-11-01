@@ -11,6 +11,8 @@ Aethyr's general query, broad phase, narrow phase and robot import chapters
 remain design work. Existing F64 Verse contact primitives are useful references,
 but do not provide an owned robot collision pipeline. The renderer's mesh BVH
 thins and rescales geometry; it cannot establish collision containment.
+The owned fluid model’s inertia-equivalent boxes are also fluid approximations,
+not collision enclosures: mass and inertia do not prove vertex containment.
 
 The pinned LIBERO scene has 66 robot geoms: 53 explicitly visual meshes and
 13 collision-role shapes. The latter are eleven mesh instances using ten binary
