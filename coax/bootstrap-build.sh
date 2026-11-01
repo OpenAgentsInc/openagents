@@ -17,6 +17,13 @@ if [[ -n "${COAX_HOST_TARGET:-}" ]]; then c_flags+=(-target "$COAX_HOST_TARGET")
 # It compiles the authoritative Coax importer, then we link that C11 object
 # into the standalone final compiler. Nothing is downloaded or interpreted.
 ./check-proto-cap.sh lib/proto/wire.coax lib/proto/importer.coax
+# The emitter numbers temporaries as it goes, so two ex() calls in one C++
+# expression (the operands of + are unsequenced) emit different C under Clang
+# and GCC, and a seed refreshed on one fails the other (seed-portability.sh).
+if grep -nE '\bex\([^;]*\bex\(' src/emit_c.cpp >&2; then
+  echo 'src/emit_c.cpp: emit each operand into its own variable first, in source order (above)' >&2
+  exit 1
+fi
 work="bin/.bootstrap-$$"
 mkdir -p "$work"
 trap 'rm -rf "$work"' EXIT

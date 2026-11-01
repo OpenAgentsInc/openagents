@@ -850,17 +850,20 @@ struct Emitter {
         if (e->byte_intrinsic != ByteIntrinsic::none) {
           if (e->byte_intrinsic == ByteIntrinsic::bytes_overlap) {
             std::string a=new_temp(c_type(e->args[0]->type)),b=new_temp(c_type(e->args[1]->type));
-            return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_bytes_overlap("+a+".data, "+a+".count, "+b+".data, "+b+".count))";
+            std::string x=ex(e->args[0]); std::string y=ex(e->args[1]);  // in source order (operands of + are unsequenced)
+            return "("+a+" = "+x+", "+b+" = "+y+", coax_bytes_overlap("+a+".data, "+a+".count, "+b+".data, "+b+".count))";
           }
           if (e->byte_intrinsic == ByteIntrinsic::mul_wide) {
             wide=true;
             std::string a=new_temp("uint64_t"),b=new_temp("uint64_t");
-            return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_mul_wide("+a+", "+b+"))";
+            std::string x=ex(e->args[0]); std::string y=ex(e->args[1]);
+            return "("+a+" = "+x+", "+b+" = "+y+", coax_mul_wide("+a+", "+b+"))";
           }
           if (e->byte_intrinsic >= ByteIntrinsic::add_wrap) {
             wrapping=true;
             std::string a=new_temp(c_type(e->type)),b=new_temp(c_type(e->type));
-            return "("+a+" = "+ex(e->args[0])+", "+b+" = "+ex(e->args[1])+", coax_"+to_std(e->text)+(e->type==&T_U32?"_u32(":"_u64(")+a+", "+b+"))";
+            std::string x=ex(e->args[0]); std::string y=ex(e->args[1]);
+            return "("+a+" = "+x+", "+b+" = "+y+", coax_"+to_std(e->text)+(e->type==&T_U32?"_u32(":"_u64(")+a+", "+b+"))";
           }
           if (e->byte_intrinsic == ByteIntrinsic::value_barrier) barrier = true;
           if (e->byte_intrinsic == ByteIntrinsic::value_barrier)
@@ -1000,7 +1003,12 @@ struct Emitter {
         });
       }
       case ExprKind::cast: return cast(e);
-      case ExprKind::ifx: return "(" + ex(e->lhs) + " ? " + ex(e->rhs) + " : " + ex(e->third) + ")";
+      case ExprKind::ifx: {
+        // Emit operands in source order: the operands of + are unsequenced, and
+        // each ex() may number temporaries, so GCC and Clang would differ.
+        std::string c = ex(e->lhs); std::string a = ex(e->rhs); std::string b = ex(e->third);
+        return "(" + c + " ? " + a + " : " + b + ")";
+      }
     }
     return "0";
   }
@@ -1047,7 +1055,11 @@ struct Emitter {
       case Tok::oror: op = " || "; break;
       default: break;
     }
-    if (e->op == Tok::andand || e->op == Tok::oror) return "(" + ex(e->lhs) + op + ex(e->rhs) + ")";
+    if (e->op == Tok::andand || e->op == Tok::oror) {
+      // Left operand first: ex() numbers temporaries, and + leaves the order unspecified.
+      std::string l = ex(e->lhs); std::string r = ex(e->rhs);
+      return "(" + l + op + r + ")";
+    }
     bool bits = e->op == Tok::amp || e->op == Tok::pipe || e->op == Tok::caret;
     return ordered({{e->lhs, false}, {e->rhs, false}}, [&](const std::vector<std::string> &x) {
       std::string s = "(" + x[0] + op + x[1] + ")";
@@ -1163,7 +1175,9 @@ struct Emitter {
     if (s->op == Tok::equal) {
       bool order = lowering_place_first(target, s->expr, policy());
       if (!order) {
-        line(ex(target) + " = " + ex(s->expr) + ";");
+        // Same order as the C the old emitter produced under Clang: target, then value.
+        std::string to = ex(target); std::string value = ex(s->expr);
+        line(to + " = " + value + ";");
       } else {
         // The place first, then the value (spec §7.3).
         std::string p = new_temp(pointer_type(target));

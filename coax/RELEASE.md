@@ -199,6 +199,25 @@ that binary's version, Markdown and JSON with fresh generator output. A matching
 version string alone cannot hide stale feature data. The native frontend,
 generator, shell adapter and toolchain remain trust inputs.
 
+### Seeds must match on every host compiler
+
+The seeds are emitted by stage0, which is C++ built by the host compiler:
+Clang on a Mac, GCC in the API image (`web/api/Dockerfile`). Until #12611 the
+C emitter (`src/emit_c.cpp`) built some C from two `ex()` calls in one
+expression, such as `"(" + ex(lhs) + " || " + ex(rhs) + ")"`. Each call
+numbers temporaries, and C++ leaves the order of those operands unspecified:
+Clang emits the left operand first and GCC the right one. A seed refreshed on
+a Mac (`checker.c` since 373400c446, the first checker `||` whose operands
+both need temporaries) then failed every Linux bootstrap with
+"Checker seed is stale", and the API image couldn't build from `main`.
+
+The emitter now emits each operand into its own variable, in source order,
+and the bootstrap refuses an `emit_c.cpp` line with two `ex()` calls in one
+expression. After refreshing a seed or changing the emitter, run
+`coax/seed-portability.sh --linux`: it compares the seeds with what stage0
+emits on this host and under Debian GCC (Docker when it runs, else Cloud
+Build), in about a minute and without gates.
+
 The iOS generator performs the same source/snapshot/binary drift check before
 emitting application C. The book publisher does so before reading credentials
 or creating a remote draft; its existing clean, pushed-main and page checks
