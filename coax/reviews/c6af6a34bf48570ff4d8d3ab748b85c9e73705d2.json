@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793493775,
+  "content": "Compared all 15 touch #tests (119 check and setup lines) removed from verse/grid.coax with verse/sticks.coax: the same inputs, tolerances (1e-5, 1e-4, 1e-3) and conditions, names only prefixed sticks_; one is stronger ('each finger keeps its own job' also asserts zoom == 0) and 9 new #tests cover the helpers, the slot edges and slop, finger 0, the 0.8 run edge, pinch moves, two-finger taps and the no-hotbar world. The pad clamp dx / sticks_hi(d, 1) equals the old if d > 1 branch, NaN included. No other #test, #forall or #assert was removed or changed; mutation: sticks.coax 207 of 207, gridwalk.coax --root-only 213 of 213. The INVARIANTS entry in 8d1ab618c0 held except for gridwalk_blur, which changed the input buffer outside the record so a record spanning a blur did not replay; fixed with a check in cf23b1331a and stated in INVARIANTS in e09bfdf114.",
+  "tags": [
+    [
+      "commit",
+      "c6af6a34bf48570ff4d8d3ab748b85c9e73705d2"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "8f3ee3a2d6c2af227eb9b3ece0e76a7fb0ebd0ac6e82dfdcafc9935c7e4906b2",
+  "sig": "ae628c2d71dbbbd630f435a39561e23e96dc772f8dcf4ec01d0d5a7265e063b5a93ec41261a5b6bc79ee6f111712253d237a2d0afee1f0fdd79d2b19c22a404c"
+}
