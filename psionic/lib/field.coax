@@ -23,8 +23,12 @@ FdDistance :: struct {status:FdStatus;d:f64;grad:[3]f64;closest:[3]f64;triangle:
 FdMesh :: struct {vertices:[]f64;triangles:[]int;}
 // A mesh that passed admission, with its surface area and enclosed volume.
 FdChecked :: struct {status:FdStatus=FdStatus.shape;mesh:FdMesh;area:f64;volume:f64;}
+// Which part of a triangle holds its point nearest p.
+FdFeature :: enum u8 {face;corner_a;corner_b;corner_c;edge_ab;edge_bc;edge_ca;}
+FdNearest :: struct {point:[3]f64;feature:FdFeature;}
 // Points bucketed by cell: cell k holds order[start[k] ..< start[k+1]].
-FdGrid :: struct {status:FdStatus=FdStatus.shape;points:[]f64;n:int;low:[3]f64;cell:f64;side:[3]int;start:[]int;order:[]int;}
+// low and high are the smallest and largest coordinates on each axis.
+FdGrid :: struct {status:FdStatus=FdStatus.shape;points:[]f64;n:int;low:[3]f64;high:[3]f64;cell:f64;side:[3]int;start:[]int;order:[]int;}
 // count neighbours written; visited is how many distances the search computed.
 FdFound :: struct {status:FdStatus;count:int;visited:int;}
 FdAggregate :: enum u8 {mean;max;}
@@ -146,10 +150,41 @@ fd_lcg :: (r:[]u64)->f64 {r[0]+=1;return f64(cr_bits(9001,r[0])>>11)/90071992547
     // Seven regions: the face, three edges, three corners.
     want:=[42]f64.[1,1,5, 1,1,0, -1,-1,2, 0,0,0, 5,-1,0, 4,0,0, -1,5,1, 0,4,0,
         2,-3,1, 2,0,0, -2,3,0, 0,3,0, 3,3,-2, 2,2,0];
+    feature:=[7]FdFeature.[FdFeature.face,FdFeature.corner_a,FdFeature.corner_b,FdFeature.corner_c,FdFeature.edge_ab,FdFeature.edge_ca,FdFeature.edge_bc];
     for k:0..<7 {
         q:=fd_closest_triangle([3]f64.[want[6*k],want[6*k+1],want[6*k+2]],a,b,c);
-        for i:0..<3 {#assert q[i]==want[6*k+3+i];}
+        for i:0..<3 {#assert q.point[i]==want[6*k+3+i];}
+        #assert q.feature==feature[k];
     }
+    // On the boundary between two regions the nearest point is the same from
+    // either side; the feature names the smaller part. A projection onto an
+    // edge, or a corner, is still the face's.
+    edge:=[90]f64.[2,0,3, 2,0,0, 0,2,-3, 0,2,0, 2,2,1, 2,2,0, 0,0,7, 0,0,0, 4,0,-1, 4,0,0,
+        0,-1,0, 0,0,0, -1,0,0, 0,0,0, 4,-1,0, 4,0,0, 5,1,0, 4,0,0, -1,4,0, 0,4,0, 1,5,0, 0,4,0,
+        -1,-1,0, 0,0,0, 2,-1,0, 2,0,0, -1,2,0, 0,2,0, 3,3,0, 2,2,0];
+    kinds:=[15]FdFeature.[FdFeature.face,FdFeature.face,FdFeature.face,FdFeature.face,FdFeature.face,
+        FdFeature.corner_a,FdFeature.corner_a,FdFeature.corner_b,FdFeature.corner_b,FdFeature.corner_c,FdFeature.corner_c,
+        FdFeature.corner_a,FdFeature.edge_ab,FdFeature.edge_ca,FdFeature.edge_bc];
+    for k:0..<15 {
+        q:=fd_closest_triangle([3]f64.[edge[6*k],edge[6*k+1],edge[6*k+2]],a,b,c);
+        for i:0..<3 {#assert q.point[i]==edge[6*k+3+i];}
+        #assert q.feature==kinds[k];
+    }
+    // The same triangle listed from b: its first edge is b to c. A later
+    // edge is taken only when strictly nearer; at a shared corner both agree.
+    q:=fd_closest_triangle([3]f64.[2,5,0],b,c,a);#assert q.feature==FdFeature.edge_ab && q.point[0]==0.5 && q.point[1]==3.5;
+    q=fd_closest_triangle([3]f64.[-1,-1,0],b,c,a);#assert q.feature==FdFeature.corner_c && q.point[0]==0 && q.point[1]==0;
+    q=fd_closest_triangle([3]f64.[-1,2,0],b,c,a);#assert q.feature==FdFeature.edge_bc && q.point[1]==2;
+}
+#test "exact minimum, maximum and clamp" {
+    #assert fd_below(1,2)==1;#assert fd_below(2,1)==0;#assert fd_below(3,3)==0;#assert fd_below(-5,-0.5)==1;#assert fd_below(0.1,0.1+5e-18)==0 && fd_below(0.1,0.1+1e-17)==1;
+    #assert fd_below(1e-300,2e-300)==1 && fd_below(-1e6,1e6)==1;
+    #assert fd_min(3,-7)==-7 && fd_min(-7,3)==-7 && fd_max(3,-7)==3 && fd_max(-7,3)==3 && fd_min(0.1,0.3)==0.1 && fd_max(0.1,0.3)==0.3;
+    #assert fd_min(2.5,2.5)==2.5 && fd_max(-1.5,-1.5)==-1.5;
+    #assert fd_clamp(0.3,0,1)==0.3 && fd_clamp(-2,0,1)==0 && fd_clamp(7,0,1)==1 && fd_clamp(3,2,5)==3 && fd_clamp(9,2,5)==5 && fd_clamp(-9,2,5)==2;
+    #assert fd_pick(3,5,0)==3 && fd_pick(3,5,1)==5;
+    #assert fd_imax(3,5)==5 && fd_imax(5,3)==5 && fd_imax(-4,-9)==-4 && fd_imax(2,2)==2 && fd_imax(7,0)==7 && fd_imax(-1,0)==0;
+    #assert fd_imin(3,5)==3 && fd_imin(5,3)==3 && fd_imin(-4,-9)==-9 && fd_imin(6,6)==6 && fd_imin(9,4)==4;
 }
 // The closest point is no farther than any point of a fine barycentric grid
 // over the triangle, and at most the grid's spacing nearer.
@@ -157,7 +192,7 @@ fd_lcg :: (r:[]u64)->f64 {r[0]+=1;return f64(cr_bits(9001,r[0])>>11)/90071992547
     r:=[1]u64.[cast(u64)seed+101];
     v:[12]f64;for i:0..<12 {v[i]=fd_lcg(r[..])*4-2;}
     a:=[3]f64.[v[0],v[1],v[2]];b:=[3]f64.[v[3],v[4],v[5]];c:=[3]f64.[v[6],v[7],v[8]];p:=[3]f64.[v[9]*2,v[10]*2,v[11]*2];
-    q:=fd_closest_triangle(p,a,b,c);best:=fd_norm(fd_sub(p,q));
+    q:=fd_closest_triangle(p,a,b,c).point;best:=fd_norm(fd_sub(p,q));
     n:=30;low:=1e300;
     for i:0..<n+1 {for j:0..<n+1-i {
         x:=fd_add(fd_add(fd_scale(a,f64(n-i-j)/f64(n)),fd_scale(b,f64(i)/f64(n))),fd_scale(c,f64(j)/f64(n)));
@@ -262,11 +297,15 @@ fd_lcg :: (r:[]u64)->f64 {r[0]+=1;return f64(cr_bits(9001,r[0])>>11)/90071992547
     #assert !fd_flat(a,b,[3]f64.[1,0.00000000093132258,0]);
     #assert fd_flat(a,b,a) && fd_flat(a,a,b) && fd_flat(a,b,b) && !fd_flat(a,b,[3]f64.[0,1,0]);
 }
-#test "surface samples lie on the surface with outward normals" {
+#test "surface samples lie on the surface with outward normals" #steps 40000000 {
     v:=fd_cube(-0.5,0.5);t:=FD_CUBE;m:=fd_mesh_admit(FdMesh.{vertices=v[..],triangles=t[..]});
     pts:[3072]f64;nrm:[3072]f64;r:=fd_sample_surface(m,5,pts[..],nrm[..]);#assert r.status==FdStatus.ok && r.written==1024;
     // The same seed gives the same points: a single draw is the first of 1,024.
     one:[3]f64;n1:[3]f64;#assert fd_sample_surface(m,5,one[..],n1[..]).written==1;for k:0..<3 {#assert one[k]==pts[k] && n1[k]==nrm[k];}
+    // Each triangle has area 0.5: a draw of exactly 0.5 starts the second,
+    // and anything past 5.5 is the last.
+    #assert fd_pick_triangle(m,0)==0 && fd_pick_triangle(m,0.49)==0 && fd_pick_triangle(m,0.5)==1 && fd_pick_triangle(m,2.75)==5;
+    #assert fd_pick_triangle(m,5.4)==10 && fd_pick_triangle(m,5.5)==11 && fd_pick_triangle(m,5.999)==11;
     faces:[6]int;
     for i:0..<1024 {
         p:=fd_at(pts[..],i);n:=fd_at(nrm[..],i);d:=fd_mesh_distance(m,p);
@@ -339,6 +378,16 @@ fd_cloud :: (seed:int,n:int,out:[]f64) {r:=[1]u64.[cast(u64)seed];for i:0..<3*n 
     f=fd_radius_brute(tie[..],[3]f64.[0,0,0],1,out[..]);#assert f.count==2 && out[0]==0 && out[1]==1;
     f=fd_knn_brute(tie[..],[3]f64.[0,0,0],1,out[..]);#assert out[0]==0;
     f=fd_radius(g2,[3]f64.[0,0,0],0.9999999999999999,out[..]);#assert f.status==FdStatus.ok && f.count==0;
+    // A strict order: nothing is before itself, and the index breaks a tie.
+    #assert !fd_before(1,3,1,3) && fd_before(1,2,1,3) && !fd_before(1,3,1,2) && fd_before(0.5,9,1,0) && !fd_before(1,0,0.5,9);
+    // The grid keeps the smallest and largest coordinates; a far query lands in the last cell.
+    #assert g.low[0]==0 && g.low[1]==0 && g.low[2]==0 && g.high[0]==2 && g.high[1]==1 && g.high[2]==0.5;
+    c=fd_cell(g,[3]f64.[9,9,9]);#assert c[0]==2 && c[1]==1 && c[2]==0;
+    // The k-nearest search stops once the k-th distance is under ring - 1
+    // cells: from (0, 0, 0) at distance 0, not after ring 1 (0 is not under
+    // 0), so ring 2's point is visited too.
+    gap:=[6]f64.[0,0,0, 2,0,0];s3:[4]int;o3:[2]int;g3:=fd_grid_build(gap[..],1,s3[..],o3[..]);
+    f=fd_knn(g3,[3]f64.[0,0,0],1,out[..]);#assert f.count==1 && out[0]==0 && f.visited==2;
 }
 #forall "grid queries equal brute force exactly" seed:1..<7 {
     n:=24*seed;pts:[720]f64;fd_cloud(seed,n,pts[..]);
@@ -421,6 +470,10 @@ fd_cloud :: (seed:int,n:int,out:[]f64) {r:=[1]u64.[cast(u64)seed];for i:0..<3*n 
     #assert out[0]==0.75 && out[1]==0.25;
     // A point with no neighbours outputs 0.
     counts[1]=0;#assert fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]).written==2 && out[1]==0;
+    // One neighbour: the max and the mean are its activation.
+    counts[0]=1;#assert fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]).written==2 && out[0]==0.75;
+    c.aggregate=FdAggregate.mean;#assert fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]).written==2 && out[0]==0.75;
+    counts[0]=2;c.aggregate=FdAggregate.max;
     c.aggregate=FdAggregate.mean;#assert fd_conv_forward(c,pts[..],feat[..],nbr[..],counts[..],2,w[..],b[..],out[..]).written==2 && out[1]==0 && out[0]==0.375;
     // With no neighbours, max ignores the row's unused slots.
     other:=[4]int.[0,1, 0,1];none:=[2]int.[2,0];c.aggregate=FdAggregate.max;
@@ -576,7 +629,23 @@ fd_dot :: (a:[3]f64,b:[3]f64)->f64 {return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];}
 fd_cross :: (a:[3]f64,b:[3]f64)->[3]f64 {return [3]f64.[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
 fd_norm :: (a:[3]f64)->f64 {return sqrt(fd_dot(a,a));}
 fd_div :: (a:[3]f64,s:f64)->[3]f64 {return [3]f64.[a[0]/s,a[1]/s,a[2]/s];}
+fd_gap2 :: (p:[3]f64,q:[3]f64)->f64 {v:=fd_sub(p,q);return fd_dot(v,v);}
 // book:end vectors
+
+// book:begin pick
+// Minimum, maximum and clamp, exact and without a comparison. fd_below is 1
+// when a < b and 0 otherwise, from the sign of b - a, which rounding never
+// flips or turns to zero; fd_pick then multiplies a and b by 0 and 1. Ties
+// need no rule: both choices are the same number.
+fd_below :: (a:f64,b:f64)->f64 {d:=b-a;return ifx d==0 then 0.0 else (d+abs(d))/(2*abs(d));}
+fd_pick :: (a:f64,b:f64,s:f64)->f64 {return a*(1-s)+b*s;}
+fd_min :: (a:f64,b:f64)->f64 {return fd_pick(a,b,fd_below(b,a));}
+fd_max :: (a:f64,b:f64)->f64 {return fd_pick(a,b,fd_below(a,b));}
+fd_clamp :: (x:f64,lo:f64,hi:f64)->f64 {return fd_min(fd_max(x,lo),hi);}
+// The same for grid indices, which are exact in binary64.
+fd_imax :: (a:int,b:int)->int {return cast(int)fd_max(f64(a),f64(b));}
+fd_imin :: (a:int,b:int)->int {return cast(int)fd_min(f64(a),f64(b));}
+// book:end pick
 
 // book:begin shapes
 fd_shape_check :: (s:FdShape)->FdStatus {
@@ -598,17 +667,19 @@ fd_shape_distance :: (s:FdShape,p:[3]f64)->FdDistance #export_c {
     if s.kind==FdKind.sphere {out=fd_round(fd_sub(p,s.a),s.r);}
     else if s.kind==FdKind.capsule {
         ab:=fd_sub(s.b,s.a);l2:=fd_dot(ab,ab);t:=0.0;
-        if l2>0 {t=fd_dot(fd_sub(p,s.a),ab)/l2;if t<0 {t=0;}if t>1 {t=1;}}
+        if l2>0 {t=fd_clamp(fd_dot(fd_sub(p,s.a),ab)/l2,0,1);}
         out=fd_round(fd_sub(p,fd_add(s.a,fd_scale(ab,t))),s.r);
     } else {
         // q > 0 on an axis where p is past a face. Outside, the distance is
-        // |max(q, 0)|; inside, it is the largest q (the nearest face).
-        u:[3]f64;q:[3]f64;o:=0.0;
-        for i:0..<3 {u[i]=p[i]-(s.a[i]+s.b[i])/2;q[i]=abs(u[i])-(s.b[i]-s.a[i])/2;if q[i]>0 {o+=q[i]*q[i];}}
-        if o>0 {
-            o=sqrt(o);out.d=o;
-            for i:0..<3 {if q[i]>0 {out.grad[i]=ifx u[i]<0 then -q[i]/o else q[i]/o;}}
-        } else {
+        // the length of v = max(q, 0) with the sign of u, the offset from the
+        // centre; inside, it is the largest q (the nearest face).
+        u:[3]f64;q:[3]f64;v:[3]f64;o:=0.0;
+        for i:0..<3 {
+            h:=(s.b[i]-s.a[i])/2;u[i]=p[i]-(s.a[i]+s.b[i])/2;q[i]=abs(u[i])-h;
+            v[i]=fd_max(u[i]-h,0)-fd_max(-u[i]-h,0);o+=v[i]*v[i];
+        }
+        if o>0 {o=sqrt(o);out.d=o;out.grad=fd_div(v,o);}
+        else {
             k:=0;if q[1]>q[k] {k=1;}if q[2]>q[k] {k=2;}
             out.d=q[k];out.grad[k]=ifx u[k]<0 then -1.0 else 1.0;
         }
@@ -618,24 +689,35 @@ fd_shape_distance :: (s:FdShape,p:[3]f64)->FdDistance #export_c {
 // book:end shapes
 
 // book:begin closest
-// The point of triangle abc nearest p (Ericson, Real-Time Collision
-// Detection, 5.1.5): test the corner regions, then the edges, then the face.
-fd_closest_triangle :: (p:[3]f64,a:[3]f64,b:[3]f64,c:[3]f64)->[3]f64 {
-    ab:=fd_sub(b,a);ac:=fd_sub(c,a);ap:=fd_sub(p,a);
-    d1:=fd_dot(ab,ap);d2:=fd_dot(ac,ap);
-    if d1<=0 && d2<=0 {return a;}
-    bp:=fd_sub(p,b);d3:=fd_dot(ab,bp);d4:=fd_dot(ac,bp);
-    if d3>=0 && d4<=d3 {return b;}
-    vc:=d1*d4-d3*d2;
-    if vc<=0 && d1>=0 && d3<=0 {return fd_add(a,fd_scale(ab,d1/(d1-d3)));}
-    cp:=fd_sub(p,c);d5:=fd_dot(ab,cp);d6:=fd_dot(ac,cp);
-    if d6>=0 && d5<=d6 {return c;}
-    vb:=d5*d2-d1*d6;
-    if vb<=0 && d2>=0 && d6<=0 {return fd_add(a,fd_scale(ac,d2/(d2-d6)));}
-    va:=d3*d6-d5*d4;
-    if va<=0 && d4-d3>=0 && d5-d6>=0 {return fd_add(b,fd_scale(fd_sub(c,b),(d4-d3)/((d4-d3)+(d5-d6))));}
-    s:=va+vb+vc;
-    return fd_add(a,fd_add(fd_scale(ab,vb/s),fd_scale(ac,vc/s)));
+// The point of segment ab nearest p: t along it, clamped to [0, 1], then
+// a (1 - t) + b t, exactly a at t = 0 and exactly b at t = 1.
+fd_segment :: (p:[3]f64,a:[3]f64,b:[3]f64,ka:FdFeature,kb:FdFeature,edge:FdFeature)->FdNearest {
+    ab:=fd_sub(b,a);t:=fd_clamp(fd_dot(fd_sub(p,a),ab)/fd_dot(ab,ab),0,1);
+    out:FdNearest;out.point=fd_add(fd_scale(a,1-t),fd_scale(b,t));
+    out.feature=ifx t==0 then ka else (ifx t==1 then kb else edge);
+    return out;
+}
+// The point of triangle abc nearest p. va, vb and vc are the barycentric
+// weights of p's projection onto the plane, times |ab x ac|^2 (Ericson,
+// Real-Time Collision Detection, 5.1.5). If none is negative the projection
+// is in the triangle, and nearest. Otherwise the nearest point is on an
+// edge: the nearest of the three, the first on a tie.
+fd_closest_triangle :: (p:[3]f64,a:[3]f64,b:[3]f64,c:[3]f64)->FdNearest {
+    ab:=fd_sub(b,a);ac:=fd_sub(c,a);ap:=fd_sub(p,a);bp:=fd_sub(p,b);cp:=fd_sub(p,c);
+    d1:=fd_dot(ab,ap);d2:=fd_dot(ac,ap);d3:=fd_dot(ab,bp);d4:=fd_dot(ac,bp);d5:=fd_dot(ab,cp);d6:=fd_dot(ac,cp);
+    va:=d3*d6-d5*d4;vb:=d5*d2-d1*d6;vc:=d1*d4-d3*d2;
+    out:FdNearest;
+    if va>=0 && vb>=0 && vc>=0 {s:=va+vb+vc;out.point=fd_add(a,fd_add(fd_scale(ab,vb/s),fd_scale(ac,vc/s)));return out;}
+    e:=[3]FdNearest.[fd_segment(p,a,b,FdFeature.corner_a,FdFeature.corner_b,FdFeature.edge_ab),
+        fd_segment(p,b,c,FdFeature.corner_b,FdFeature.corner_c,FdFeature.edge_bc),
+        fd_segment(p,c,a,FdFeature.corner_c,FdFeature.corner_a,FdFeature.edge_ca)];
+    out=e[0];
+    for k:1..<3 {
+        s:=fd_below(fd_gap2(p,e[k].point),fd_gap2(p,out.point));
+        for i:0..<3 {out.point[i]=fd_pick(out.point[i],e[k].point[i],s);}
+        out.feature=cast(FdFeature)(cast(int)out.feature+(cast(int)e[k].feature-cast(int)out.feature)*cast(int)s);
+    }
+    return out;
 }
 // book:end closest
 
@@ -648,19 +730,20 @@ fd_atan_unit :: (x:f64)->f64 {
     for k:0..<8 {j:=7-k;term:=1/f64(2*j+1);s=s*z2+(ifx j%2==1 then -term else term);}
     return 8*z*s;
 }
+// atan2(0, 0) is 0. Past the diagonal y is not 0, and y / |y| is its sign.
 fd_atan2 :: (y:f64,x:f64)->f64 {
-    if x==0 && y==0 {return 0;}
     if abs(y)<=abs(x) {
-        t:=fd_atan_unit(y/x);if x>0 {return t;}
-        return ifx y>=0 then t+FD_PI else t-FD_PI;
+        t:=fd_atan_unit(ifx x==0 then 0.0 else y/x);
+        if x<0 {return ifx y<0 then t-FD_PI else t+FD_PI;}
+        return t;
     }
-    t:=fd_atan_unit(x/y);
-    return ifx y>0 then FD_PI/2-t else -FD_PI/2-t;
+    return (y/abs(y))*FD_PI/2-fd_atan_unit(x/y);
 }
 // book:end atan
 
 // book:begin mesh
 fd_corner :: (m:FdMesh,t:int,k:int)->[3]f64 {return fd_at(m.vertices,m.triangles[3*t+k]);}
+fd_area :: (m:FdMesh,t:int)->f64 {a:=fd_corner(m,t,0);return fd_norm(fd_cross(fd_sub(fd_corner(m,t,1),a),fd_sub(fd_corner(m,t,2),a)))/2;}
 // sin^2 of the angle at a, times |ab|^2 |ac|^2, is |ab x ac|^2.
 fd_flat :: (a:[3]f64,b:[3]f64,c:[3]f64)->bool {
     e1:=fd_sub(b,a);e2:=fd_sub(c,a);n:=fd_cross(e1,e2);
@@ -673,21 +756,18 @@ fd_mesh_admit :: (m:FdMesh)->FdChecked #export_c {
     for x:m.vertices {if !fd_finite(x) {out.status=FdStatus.number;return out;}}
     for k:m.triangles {if k<0 || k>=nv {return out;}}
     for t:0..<nt {if fd_flat(fd_corner(m,t,0),fd_corner(m,t,1),fd_corner(m,t,2)) {out.status=FdStatus.degenerate;return out;}}
-    // Closed and consistently turned: each directed edge u -> v appears
-    // once, and so does v -> u, in the triangle across it.
+    // Closed and consistently turned: for each directed edge u -> v, the
+    // reverse v -> u appears exactly once, in the triangle across it. Then
+    // no edge appears twice either: its reverse would have two partners.
     for t:0..<nt {for e:0..<3 {
-        u:=m.triangles[3*t+e];v:=m.triangles[3*t+(e+1)%3];same:=0;back:=0;
-        for s:0..<nt {for f:0..<3 {
-            x:=m.triangles[3*s+f];y:=m.triangles[3*s+(f+1)%3];
-            if x==u && y==v {same+=1;}if x==v && y==u {back+=1;}
-        }}
-        if same!=1 || back!=1 {out.status=FdStatus.open;return out;}
+        u:=m.triangles[3*t+e];v:=m.triangles[3*t+(e+1)%3];back:=0;
+        for s:0..<nt {for f:0..<3 {if m.triangles[3*s+f]==v && m.triangles[3*s+(f+1)%3]==u {back+=1;}}}
+        if back!=1 {out.status=FdStatus.open;return out;}
     }}
     // Area, and volume by the divergence theorem: the sum of a . (b x c) / 6.
     area:=0.0;volume:=0.0;
     for t:0..<nt {
-        a:=fd_corner(m,t,0);b:=fd_corner(m,t,1);c:=fd_corner(m,t,2);
-        area+=fd_norm(fd_cross(fd_sub(b,a),fd_sub(c,a)))/2;volume+=fd_dot(a,fd_cross(b,c))/6;
+        area+=fd_area(m,t);volume+=fd_dot(fd_corner(m,t,0),fd_cross(fd_corner(m,t,1),fd_corner(m,t,2)))/6;
     }
     if !(volume>0) {out.status=FdStatus.inside_out;return out;}
     out.status=FdStatus.ok;out.mesh=m;out.area=area;out.volume=volume;return out;
@@ -717,8 +797,8 @@ fd_mesh_distance :: (m:FdChecked,p:[3]f64)->FdDistance #export_c {
     if out.status!=FdStatus.ok {return out;}
     best:=0.0;
     for t:0..<m.mesh.triangles.count/3 {
-        q:=fd_closest_triangle(p,fd_corner(m.mesh,t,0),fd_corner(m.mesh,t,1),fd_corner(m.mesh,t,2));
-        v:=fd_sub(p,q);d2:=fd_dot(v,v);
+        q:=fd_closest_triangle(p,fd_corner(m.mesh,t,0),fd_corner(m.mesh,t,1),fd_corner(m.mesh,t,2)).point;
+        d2:=fd_gap2(p,q);
         if out.triangle<0 || d2<best {best=d2;out.triangle=t;out.closest=q;}
     }
     dist:=sqrt(best);
@@ -726,8 +806,9 @@ fd_mesh_distance :: (m:FdChecked,p:[3]f64)->FdDistance #export_c {
         a:=fd_corner(m.mesh,out.triangle,0);n:=fd_cross(fd_sub(fd_corner(m.mesh,out.triangle,1),a),fd_sub(fd_corner(m.mesh,out.triangle,2),a));
         out.grad=fd_div(n,fd_norm(n));return out;
     }
-    // Inside, the field grows toward the surface: the gradient points from p to it.
-    if fd_winding(m,p)>0.5 {out.d=-dist;out.grad=fd_div(fd_sub(out.closest,p),dist);}
+    // Inside, the winding number rounds to 1 or more, and the field grows
+    // toward the surface: the gradient points from p to it.
+    if cast(int)floor(fd_winding(m,p)+0.5)>0 {out.d=-dist;out.grad=fd_div(fd_sub(out.closest,p),dist);}
     else {out.d=dist;out.grad=fd_div(fd_sub(p,out.closest),dist);}
     return out;
 }
@@ -740,6 +821,13 @@ fd_sample_count :: (points:[]f64)->FdStatus {
     if points.count/3>FD_POINTS_MAX {return FdStatus.limit;}
     return FdStatus.ok;
 }
+// The triangle whose share of the area holds u, for u in [0, area): the
+// number of triangles before the last whose running total is at most u.
+fd_pick_triangle :: (m:FdChecked,u:f64)->int {
+    t:=0;acc:=0.0;
+    for s:0..<m.mesh.triangles.count/3-1 {acc+=fd_area(m.mesh,s);if acc<=u {t+=1;}}
+    return t;
+}
 // Area-weighted: one draw picks a triangle, two more a point in it, uniform
 // by area (the square root keeps points from crowding corner a).
 fd_sample_surface :: (m:FdChecked,seed:u64,points:[]f64,normals:[]f64)->FdResult {
@@ -747,13 +835,9 @@ fd_sample_surface :: (m:FdChecked,seed:u64,points:[]f64,normals:[]f64)->FdResult
     if out.status==FdStatus.ok {out.status=fd_sample_count(points);}
     if out.status==FdStatus.ok && normals.count!=points.count {out.status=FdStatus.shape;}
     if out.status!=FdStatus.ok {return out;}
-    r:=[1]CrSeed.[CrSeed.{seed=seed}];nt:=m.mesh.triangles.count/3;
+    r:=[1]CrSeed.[CrSeed.{seed=seed}];
     for i:0..<points.count/3 {
-        u:=fd_draw(r[..])*m.area;t:=nt-1;acc:=0.0;
-        for s:0..<nt {
-            a:=fd_corner(m.mesh,s,0);acc+=fd_norm(fd_cross(fd_sub(fd_corner(m.mesh,s,1),a),fd_sub(fd_corner(m.mesh,s,2),a)))/2;
-            if u<acc {t=s;break;}
-        }
+        t:=fd_pick_triangle(m,fd_draw(r[..])*m.area);
         a:=fd_corner(m.mesh,t,0);b:=fd_corner(m.mesh,t,1);c:=fd_corner(m.mesh,t,2);
         s:=sqrt(fd_draw(r[..]));v:=fd_draw(r[..]);
         p:=fd_add(fd_add(fd_scale(a,1-s),fd_scale(b,s*(1-v))),fd_scale(c,s*v));
@@ -783,11 +867,11 @@ fd_grid_build :: (points:[]f64,cell:f64,start:[]int,order:[]int)->FdGrid {
     g:FdGrid;g.status=fd_points_status(points);
     if g.status==FdStatus.ok && !(cell>0 && fd_finite(cell)) {g.status=FdStatus.parameter;}
     if g.status!=FdStatus.ok {return g;}
-    n:=points.count/3;g.low=fd_at(points,0);high:=g.low;
-    for i:1..<n {for k:0..<3 {x:=points[3*i+k];if x<g.low[k] {g.low[k]=x;}if x>high[k] {high[k]=x;}}}
+    n:=points.count/3;g.low=fd_at(points,0);g.high=g.low;
+    for i:1..<n {for k:0..<3 {x:=points[3*i+k];g.low[k]=fd_min(g.low[k],x);g.high[k]=fd_max(g.high[k],x);}}
     cells:=1;
     for k:0..<3 {
-        span:=floor((high[k]-g.low[k])/cell);
+        span:=floor((g.high[k]-g.low[k])/cell);
         if span>=FD_SIDE_MAX {g.status=FdStatus.limit;return g;}
         g.side[k]=cast(int)span+1;cells*=g.side[k];
     }
@@ -797,15 +881,16 @@ fd_grid_build :: (points:[]f64,cell:f64,start:[]int,order:[]int)->FdGrid {
     // in index order, then shift the advanced starts back by one cell.
     for k:0..<cells+1 {start[k]=0;}
     for i:0..<n {start[fd_cell_index(g,fd_cell(g,fd_at(points,i)))+1]+=1;}
-    for k:0..<cells {start[k+1]+=start[k];}
+    for k:1..<cells {start[k+1]+=start[k];}
     for i:0..<n {k:=fd_cell_index(g,fd_cell(g,fd_at(points,i)));order[start[k]]=i;start[k]+=1;}
-    for j:0..<cells {k:=cells-j;start[k]=start[k-1];}
+    for j:1..<cells {k:=cells-j;start[k]=start[k-1];}
     start[0]=0;return g;
 }
-// The cell holding p, clamped into the grid: a far query lands on the edge.
+// The cell holding p clamped into [low, high], so a far query lands on the
+// edge: high gives floor((high - low) / cell), the last cell, as in the build.
 fd_cell :: (g:FdGrid,p:[3]f64)->[3]int {
     c:[3]int;
-    for k:0..<3 {x:=floor((p[k]-g.low[k])/g.cell);if x<0 {x=0;}if x>f64(g.side[k]-1) {x=f64(g.side[k]-1);}c[k]=cast(int)x;}
+    for k:0..<3 {c[k]=cast(int)floor((fd_clamp(p[k],g.low[k],g.high[k])-g.low[k])/g.cell);}
     return c;
 }
 fd_cell_index :: (g:FdGrid,c:[3]int)->int {return (c[2]*g.side[1]+c[1])*g.side[0]+c[0];}
@@ -853,7 +938,7 @@ fd_radius :: (g:FdGrid,q:[3]f64,r:f64,out:[]int)->FdFound {
     if f.status==FdStatus.ok {f.status=fd_query_status(q,r);}
     if f.status!=FdStatus.ok {return f;}
     lo:=fd_cell(g,fd_sub(q,[3]f64.[r,r,r]));hi:=fd_cell(g,fd_add(q,[3]f64.[r,r,r]));
-    for k:0..<3 {if lo[k]>0 {lo[k]-=1;}if hi[k]<g.side[k]-1 {hi[k]+=1;}}
+    for k:0..<3 {lo[k]=fd_imax(lo[k]-1,0);hi[k]=fd_imin(hi[k]+1,g.side[k]-1);}
     h:[1]FdHits;
     for z:lo[2]..<hi[2]+1 {for y:lo[1]..<hi[1]+1 {for x:lo[0]..<hi[0]+1 {
         k:=fd_cell_index(g,[3]int.[x,y,z]);
@@ -895,10 +980,10 @@ fd_knn :: (g:FdGrid,q:[3]f64,k:int,out:[]int)->FdFound {
     if f.status==FdStatus.ok {f.status=fd_knn_status(g.n,q,k,out);}
     if f.status!=FdStatus.ok {return f;}
     c:=fd_cell(g,q);h:[1]FdHits;
-    rings:=g.side[0];if g.side[1]>rings {rings=g.side[1];}if g.side[2]>rings {rings=g.side[2];}
+    rings:=fd_imax(g.side[0],fd_imax(g.side[1],g.side[2]));
     for ring:0..<rings {
         lo:[3]int;hi:[3]int;
-        for a:0..<3 {lo[a]=c[a]-ring;if lo[a]<0 {lo[a]=0;}hi[a]=c[a]+ring;if hi[a]>g.side[a]-1 {hi[a]=g.side[a]-1;}}
+        for a:0..<3 {lo[a]=fd_imax(c[a]-ring,0);hi[a]=fd_imin(c[a]+ring,g.side[a]-1);}
         for z:lo[2]..<hi[2]+1 {for y:lo[1]..<hi[1]+1 {
             // On the ring's y or z faces every x belongs to it; inside them, only its two x ends.
             if z==c[2]-ring || z==c[2]+ring || y==c[1]-ring || y==c[1]+ring {for x:lo[0]..<hi[0]+1 {fd_knn_visit(h[..],g,x,y,z,q,k);}}
@@ -970,10 +1055,11 @@ fd_conv_h :: (c:FdConv,points:[]f64,features:[]f64,w:[]f64,b:[]f64,i:int,j:int,o
     for ch:0..<c.channels {h+=w[row+3+ch]*features[j*c.channels+ch];}
     return h;
 }
-// The neighbour slot whose activation is largest, the first on ties.
+// The neighbour slot whose activation is largest, the first on ties; the
+// row has at least one neighbour.
 fd_conv_argmax :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,width:int,w:[]f64,b:[]f64,i:int,o:int)->int {
-    best:=0;top:=0.0;
-    for s:0..<counts[i] {h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o);a:=ifx h>0 then h else 0.0;if s==0 || a>top {best=s;top=a;}}
+    best:=0;top:=fd_max(fd_conv_h(c,points,features,w,b,i,nbr[i*width],o),0);
+    for s:1..<counts[i] {a:=fd_max(fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o),0);if a>top {best=s;top=a;}}
     return best;
 }
 fd_conv_forward :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,width:int,w:[]f64,b:[]f64,out:[]f64)->FdResult {
@@ -983,12 +1069,9 @@ fd_conv_forward :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,
     if r.status!=FdStatus.ok {return r;}
     for i:0..<n {for o:0..<c.outputs {
         v:=0.0;
-        if counts[i]>0 && c.aggregate==FdAggregate.max {
-            h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+fd_conv_argmax(c,points,features,nbr,counts,width,w,b,i,o)],o);
-            if h>0 {v=h;}
-        } else if counts[i]>0 {
-            for s:0..<counts[i] {h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o);if h>0 {v+=h;}}
-            v/=f64(counts[i]);
+        if counts[i]>0 {
+            if c.aggregate==FdAggregate.max {v=fd_max(fd_conv_h(c,points,features,w,b,i,nbr[i*width+fd_conv_argmax(c,points,features,nbr,counts,width,w,b,i,o)],o),0);}
+            else {for s:0..<counts[i] {v+=fd_max(fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o),0);}v/=f64(counts[i]);}
         }
         out[i*c.outputs+o]=v;
     }}

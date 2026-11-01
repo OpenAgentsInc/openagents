@@ -72,8 +72,12 @@ FdDistance :: struct {status:FdStatus;d:f64;grad:[3]f64;closest:[3]f64;triangle:
 FdMesh :: struct {vertices:[]f64;triangles:[]int;}
 // A mesh that passed admission, with its surface area and enclosed volume.
 FdChecked :: struct {status:FdStatus=FdStatus.shape;mesh:FdMesh;area:f64;volume:f64;}
+// Which part of a triangle holds its point nearest p.
+FdFeature :: enum u8 {face;corner_a;corner_b;corner_c;edge_ab;edge_bc;edge_ca;}
+FdNearest :: struct {point:[3]f64;feature:FdFeature;}
 // Points bucketed by cell: cell k holds order[start[k] ..< start[k+1]].
-FdGrid :: struct {status:FdStatus=FdStatus.shape;points:[]f64;n:int;low:[3]f64;cell:f64;side:[3]int;start:[]int;order:[]int;}
+// low and high are the smallest and largest coordinates on each axis.
+FdGrid :: struct {status:FdStatus=FdStatus.shape;points:[]f64;n:int;low:[3]f64;high:[3]f64;cell:f64;side:[3]int;start:[]int;order:[]int;}
 // count neighbours written; visited is how many distances the search computed.
 FdFound :: struct {status:FdStatus;count:int;visited:int;}
 FdAggregate :: enum u8 {mean;max;}
@@ -105,6 +109,33 @@ point's position along the segment is t = 7/4, clamped to 1, so the nearest
 point of the segment is (0, 4, 0). The vector from it is (0, 3, 4), so
 d = 5 − 1 = 4 and the gradient is (0, 0.6, 0.8).
 
+The capsule clamps t to [0, 1] and the box keeps the positive parts of q.
+Both use a minimum and maximum written without a comparison. With
+`if t < 0 {t = 0;}`, a t of exactly 0 gives 0 whichever way the test goes, so
+no check can tell `<` from `<=`, and the mutation test below would report
+that change as a survivor. Instead the sign of b − a, which rounding never
+flips or turns to 0, becomes a weight s of 0 or 1, and a(1 − s) + b s is
+exactly a or exactly b. For the box, each axis's outside part
+v = max(u − h, 0) − max(−u − h, 0) is q's positive part with the sign of u,
+the offset from the centre, so the outside distance is |v| and the gradient
+v / |v|.
+
+<!-- source: psionic/lib/field.coax pick -->
+```jai
+// Minimum, maximum and clamp, exact and without a comparison. fd_below is 1
+// when a < b and 0 otherwise, from the sign of b - a, which rounding never
+// flips or turns to zero; fd_pick then multiplies a and b by 0 and 1. Ties
+// need no rule: both choices are the same number.
+fd_below :: (a:f64,b:f64)->f64 {d:=b-a;return ifx d==0 then 0.0 else (d+abs(d))/(2*abs(d));}
+fd_pick :: (a:f64,b:f64,s:f64)->f64 {return a*(1-s)+b*s;}
+fd_min :: (a:f64,b:f64)->f64 {return fd_pick(a,b,fd_below(b,a));}
+fd_max :: (a:f64,b:f64)->f64 {return fd_pick(a,b,fd_below(a,b));}
+fd_clamp :: (x:f64,lo:f64,hi:f64)->f64 {return fd_min(fd_max(x,lo),hi);}
+// The same for grid indices, which are exact in binary64.
+fd_imax :: (a:int,b:int)->int {return cast(int)fd_max(f64(a),f64(b));}
+fd_imin :: (a:int,b:int)->int {return cast(int)fd_min(f64(a),f64(b));}
+```
+
 <!-- source: psionic/lib/field.coax shapes -->
 ```jai
 fd_shape_check :: (s:FdShape)->FdStatus {
@@ -126,17 +157,19 @@ fd_shape_distance :: (s:FdShape,p:[3]f64)->FdDistance #export_c {
     if s.kind==FdKind.sphere {out=fd_round(fd_sub(p,s.a),s.r);}
     else if s.kind==FdKind.capsule {
         ab:=fd_sub(s.b,s.a);l2:=fd_dot(ab,ab);t:=0.0;
-        if l2>0 {t=fd_dot(fd_sub(p,s.a),ab)/l2;if t<0 {t=0;}if t>1 {t=1;}}
+        if l2>0 {t=fd_clamp(fd_dot(fd_sub(p,s.a),ab)/l2,0,1);}
         out=fd_round(fd_sub(p,fd_add(s.a,fd_scale(ab,t))),s.r);
     } else {
         // q > 0 on an axis where p is past a face. Outside, the distance is
-        // |max(q, 0)|; inside, it is the largest q (the nearest face).
-        u:[3]f64;q:[3]f64;o:=0.0;
-        for i:0..<3 {u[i]=p[i]-(s.a[i]+s.b[i])/2;q[i]=abs(u[i])-(s.b[i]-s.a[i])/2;if q[i]>0 {o+=q[i]*q[i];}}
-        if o>0 {
-            o=sqrt(o);out.d=o;
-            for i:0..<3 {if q[i]>0 {out.grad[i]=ifx u[i]<0 then -q[i]/o else q[i]/o;}}
-        } else {
+        // the length of v = max(q, 0) with the sign of u, the offset from the
+        // centre; inside, it is the largest q (the nearest face).
+        u:[3]f64;q:[3]f64;v:[3]f64;o:=0.0;
+        for i:0..<3 {
+            h:=(s.b[i]-s.a[i])/2;u[i]=p[i]-(s.a[i]+s.b[i])/2;q[i]=abs(u[i])-h;
+            v[i]=fd_max(u[i]-h,0)-fd_max(-u[i]-h,0);o+=v[i]*v[i];
+        }
+        if o>0 {o=sqrt(o);out.d=o;out.grad=fd_div(v,o);}
+        else {
             k:=0;if q[1]>q[k] {k=1;}if q[2]>q[k] {k=2;}
             out.d=q[k];out.grad[k]=ifx u[k]<0 then -1.0 else 1.0;
         }
@@ -180,9 +213,10 @@ order, and refuses with the first status that applies:
    corner, |e1 × e2|² = sin²θ |e1|²|e2|², so the triangle is flat when
    |e1 × e2|² ≤ 2⁻⁶⁰ |e1|²|e2|². A repeated corner or a zero-length edge
    gives 0 ≤ 0 and is flat too.
-5. `open`: some directed edge u → v does not appear exactly once with its
-   reverse v → u exactly once. That one rule catches a hole, a triangle
-   turned over, and an edge shared by three triangles.
+5. `open`: for some directed edge u → v, the reverse v → u does not appear
+   exactly once. That one rule catches a hole, a triangle turned over, and
+   an edge shared by three triangles. It also refuses an edge that appears
+   twice in the same direction: its reverse then has two partners.
 6. `inside_out`: the enclosed volume is not positive. By the divergence
    theorem the volume is the sum over triangles of a · (b × c) / 6; a closed
    mesh turned the wrong way gives a negative sum, a doubled sheet gives 0.
@@ -190,6 +224,7 @@ order, and refuses with the first status that applies:
 <!-- source: psionic/lib/field.coax mesh -->
 ```jai
 fd_corner :: (m:FdMesh,t:int,k:int)->[3]f64 {return fd_at(m.vertices,m.triangles[3*t+k]);}
+fd_area :: (m:FdMesh,t:int)->f64 {a:=fd_corner(m,t,0);return fd_norm(fd_cross(fd_sub(fd_corner(m,t,1),a),fd_sub(fd_corner(m,t,2),a)))/2;}
 // sin^2 of the angle at a, times |ab|^2 |ac|^2, is |ab x ac|^2.
 fd_flat :: (a:[3]f64,b:[3]f64,c:[3]f64)->bool {
     e1:=fd_sub(b,a);e2:=fd_sub(c,a);n:=fd_cross(e1,e2);
@@ -202,21 +237,18 @@ fd_mesh_admit :: (m:FdMesh)->FdChecked #export_c {
     for x:m.vertices {if !fd_finite(x) {out.status=FdStatus.number;return out;}}
     for k:m.triangles {if k<0 || k>=nv {return out;}}
     for t:0..<nt {if fd_flat(fd_corner(m,t,0),fd_corner(m,t,1),fd_corner(m,t,2)) {out.status=FdStatus.degenerate;return out;}}
-    // Closed and consistently turned: each directed edge u -> v appears
-    // once, and so does v -> u, in the triangle across it.
+    // Closed and consistently turned: for each directed edge u -> v, the
+    // reverse v -> u appears exactly once, in the triangle across it. Then
+    // no edge appears twice either: its reverse would have two partners.
     for t:0..<nt {for e:0..<3 {
-        u:=m.triangles[3*t+e];v:=m.triangles[3*t+(e+1)%3];same:=0;back:=0;
-        for s:0..<nt {for f:0..<3 {
-            x:=m.triangles[3*s+f];y:=m.triangles[3*s+(f+1)%3];
-            if x==u && y==v {same+=1;}if x==v && y==u {back+=1;}
-        }}
-        if same!=1 || back!=1 {out.status=FdStatus.open;return out;}
+        u:=m.triangles[3*t+e];v:=m.triangles[3*t+(e+1)%3];back:=0;
+        for s:0..<nt {for f:0..<3 {if m.triangles[3*s+f]==v && m.triangles[3*s+(f+1)%3]==u {back+=1;}}}
+        if back!=1 {out.status=FdStatus.open;return out;}
     }}
     // Area, and volume by the divergence theorem: the sum of a . (b x c) / 6.
     area:=0.0;volume:=0.0;
     for t:0..<nt {
-        a:=fd_corner(m,t,0);b:=fd_corner(m,t,1);c:=fd_corner(m,t,2);
-        area+=fd_norm(fd_cross(fd_sub(b,a),fd_sub(c,a)))/2;volume+=fd_dot(a,fd_cross(b,c))/6;
+        area+=fd_area(m,t);volume+=fd_dot(fd_corner(m,t,0),fd_cross(fd_corner(m,t,1),fd_corner(m,t,2)))/6;
     }
     if !(volume>0) {out.status=FdStatus.inside_out;return out;}
     out.status=FdStatus.ok;out.mesh=m;out.area=area;out.volume=volume;return out;
@@ -233,39 +265,67 @@ triangles of one face have area 1 together and height 0.5, so each face adds
 ## The nearest point
 
 The unsigned distance to the mesh is the smallest distance to any of its
-triangles. The nearest point of one triangle is found by Ericson's method:
-the dot products of p's offsets with the two edges decide which of seven
-regions p projects into, three corners, three edges or the face, and each
-region has its own closed form. The first triangle wins a tie.
+triangles; the first triangle wins a tie. For one triangle, first project p
+onto the triangle's plane. Ericson's dot products of p's offsets with the
+two edges give the projection's barycentric weights va, vb and vc, each
+times |ab × ac|². If none is negative, the projection lies in the triangle
+and is the nearest point. Otherwise the nearest point is on the boundary:
+the nearest of the three edges' nearest points. On edge ab,
+t = (p − a) · ab / |ab|², clamped to [0, 1], gives a(1 − t) + b t, which is
+exactly a corner when t is clamped.
+
+The answer also names the feature that holds the point: the face, an edge,
+or a corner when t is 0 or 1. On the line between two features the point is
+the same from either side, and the order of the code decides the name: the
+face keeps its own edges and corners, a corner keeps the ends of its edges,
+and an earlier edge keeps a tie with a later one. The nearest edge is chosen
+with the 0-or-1 weight from the shapes, so that choice has no comparison
+either.
 
 <!-- source: psionic/lib/field.coax closest -->
 ```jai
-// The point of triangle abc nearest p (Ericson, Real-Time Collision
-// Detection, 5.1.5): test the corner regions, then the edges, then the face.
-fd_closest_triangle :: (p:[3]f64,a:[3]f64,b:[3]f64,c:[3]f64)->[3]f64 {
-    ab:=fd_sub(b,a);ac:=fd_sub(c,a);ap:=fd_sub(p,a);
-    d1:=fd_dot(ab,ap);d2:=fd_dot(ac,ap);
-    if d1<=0 && d2<=0 {return a;}
-    bp:=fd_sub(p,b);d3:=fd_dot(ab,bp);d4:=fd_dot(ac,bp);
-    if d3>=0 && d4<=d3 {return b;}
-    vc:=d1*d4-d3*d2;
-    if vc<=0 && d1>=0 && d3<=0 {return fd_add(a,fd_scale(ab,d1/(d1-d3)));}
-    cp:=fd_sub(p,c);d5:=fd_dot(ab,cp);d6:=fd_dot(ac,cp);
-    if d6>=0 && d5<=d6 {return c;}
-    vb:=d5*d2-d1*d6;
-    if vb<=0 && d2>=0 && d6<=0 {return fd_add(a,fd_scale(ac,d2/(d2-d6)));}
-    va:=d3*d6-d5*d4;
-    if va<=0 && d4-d3>=0 && d5-d6>=0 {return fd_add(b,fd_scale(fd_sub(c,b),(d4-d3)/((d4-d3)+(d5-d6))));}
-    s:=va+vb+vc;
-    return fd_add(a,fd_add(fd_scale(ab,vb/s),fd_scale(ac,vc/s)));
+// The point of segment ab nearest p: t along it, clamped to [0, 1], then
+// a (1 - t) + b t, exactly a at t = 0 and exactly b at t = 1.
+fd_segment :: (p:[3]f64,a:[3]f64,b:[3]f64,ka:FdFeature,kb:FdFeature,edge:FdFeature)->FdNearest {
+    ab:=fd_sub(b,a);t:=fd_clamp(fd_dot(fd_sub(p,a),ab)/fd_dot(ab,ab),0,1);
+    out:FdNearest;out.point=fd_add(fd_scale(a,1-t),fd_scale(b,t));
+    out.feature=ifx t==0 then ka else (ifx t==1 then kb else edge);
+    return out;
+}
+// The point of triangle abc nearest p. va, vb and vc are the barycentric
+// weights of p's projection onto the plane, times |ab x ac|^2 (Ericson,
+// Real-Time Collision Detection, 5.1.5). If none is negative the projection
+// is in the triangle, and nearest. Otherwise the nearest point is on an
+// edge: the nearest of the three, the first on a tie.
+fd_closest_triangle :: (p:[3]f64,a:[3]f64,b:[3]f64,c:[3]f64)->FdNearest {
+    ab:=fd_sub(b,a);ac:=fd_sub(c,a);ap:=fd_sub(p,a);bp:=fd_sub(p,b);cp:=fd_sub(p,c);
+    d1:=fd_dot(ab,ap);d2:=fd_dot(ac,ap);d3:=fd_dot(ab,bp);d4:=fd_dot(ac,bp);d5:=fd_dot(ab,cp);d6:=fd_dot(ac,cp);
+    va:=d3*d6-d5*d4;vb:=d5*d2-d1*d6;vc:=d1*d4-d3*d2;
+    out:FdNearest;
+    if va>=0 && vb>=0 && vc>=0 {s:=va+vb+vc;out.point=fd_add(a,fd_add(fd_scale(ab,vb/s),fd_scale(ac,vc/s)));return out;}
+    e:=[3]FdNearest.[fd_segment(p,a,b,FdFeature.corner_a,FdFeature.corner_b,FdFeature.edge_ab),
+        fd_segment(p,b,c,FdFeature.corner_b,FdFeature.corner_c,FdFeature.edge_bc),
+        fd_segment(p,c,a,FdFeature.corner_c,FdFeature.corner_a,FdFeature.edge_ca)];
+    out=e[0];
+    for k:1..<3 {
+        s:=fd_below(fd_gap2(p,e[k].point),fd_gap2(p,out.point));
+        for i:0..<3 {out.point[i]=fd_pick(out.point[i],e[k].point[i],s);}
+        out.feature=cast(FdFeature)(cast(int)out.feature+(cast(int)e[k].feature-cast(int)out.feature)*cast(int)s);
+    }
+    return out;
 }
 ```
 
 For the triangle (0, 0, 0), (4, 0, 0), (0, 4, 0) and the point (2, −3, 1),
-ab · ap = 8 and ac · ap = −12, so the corner a is not nearest; from b,
-ab · bp = −8 and ac · bp = −12, so b is not; vc = d1·d4 − d3·d2 =
-8 · (−12) − (−8)(−12) = −192 ≤ 0 with d1 = 8 ≥ 0 and d3 = −8 ≤ 0, so the
-point projects onto edge ab, at a + ab · 8 / 16 = (2, 0, 0).
+d1 = ab · ap = 8, d2 = ac · ap = −12, d3 = ab · bp = −8 and
+d4 = ac · bp = −12, so vc = d1·d4 − d3·d2 = 8 · (−12) − (−8)(−12) = −192.
+That is negative: the projection (2, −3, 0) is past edge ab, outside the
+triangle. On edge ab, t = 8 / 16 = 0.5 gives (2, 0, 0), at squared distance
+3² + 1² = 10. On edge bc, (p − b) · (c − b) = (−2, −3, 1) · (−4, 4, 0) = −4,
+so t clamps to 0 and the point is b, at squared distance 14. On edge ca,
+(p − c) · (a − c) = (2, −7, 1) · (0, −4, 0) = 28 is more than |ca|² = 16, so
+t clamps to 1 and the point is a, also at 14. Edge ab is nearest: (2, 0, 0),
+feature `edge_ab`.
 
 ## Inside or outside
 
@@ -276,7 +336,8 @@ gives each triangle's solid angle Ω from its corners x, y, z relative to p:
 
 tan(Ω/2) = x · (y × z) / (|x||y||z| + (x·y)|z| + (x·z)|y| + (y·z)|x|).
 
-A point is inside when the winding number exceeds 0.5. Unlike casting a ray
+A point is inside when the winding number w rounds to 1 or more, that is
+when floor(w + 0.5) > 0. Unlike casting a ray
 and counting crossings, nothing goes wrong when p lines up with an edge or a
 vertex.
 
@@ -301,7 +362,8 @@ Coax has no arctangent, so the chapter writes one. Three halvings,
 atan z = 2 atan(z / (1 + √(1 + z²))), bring |z| ≤ 1 below tan(π/32) ≈ 0.0985.
 There eight terms of z − z³/3 + z⁵/5 − … reach the last bit: the ninth term
 would be below 0.0985¹⁷/17 ≈ 4.5 × 10⁻¹⁹, under half a unit in the last place
-of the result. `fd_atan2` places the angle in its quadrant.
+of the result. `fd_atan2` places the angle in its quadrant, and gives 0 at
+the origin.
 
 <!-- source: psionic/lib/field.coax atan -->
 ```jai
@@ -313,14 +375,14 @@ fd_atan_unit :: (x:f64)->f64 {
     for k:0..<8 {j:=7-k;term:=1/f64(2*j+1);s=s*z2+(ifx j%2==1 then -term else term);}
     return 8*z*s;
 }
+// atan2(0, 0) is 0. Past the diagonal y is not 0, and y / |y| is its sign.
 fd_atan2 :: (y:f64,x:f64)->f64 {
-    if x==0 && y==0 {return 0;}
     if abs(y)<=abs(x) {
-        t:=fd_atan_unit(y/x);if x>0 {return t;}
-        return ifx y>=0 then t+FD_PI else t-FD_PI;
+        t:=fd_atan_unit(ifx x==0 then 0.0 else y/x);
+        if x<0 {return ifx y<0 then t-FD_PI else t+FD_PI;}
+        return t;
     }
-    t:=fd_atan_unit(x/y);
-    return ifx y>0 then FD_PI/2-t else -FD_PI/2-t;
+    return (y/abs(y))*FD_PI/2-fd_atan_unit(x/y);
 }
 ```
 
@@ -336,8 +398,8 @@ fd_mesh_distance :: (m:FdChecked,p:[3]f64)->FdDistance #export_c {
     if out.status!=FdStatus.ok {return out;}
     best:=0.0;
     for t:0..<m.mesh.triangles.count/3 {
-        q:=fd_closest_triangle(p,fd_corner(m.mesh,t,0),fd_corner(m.mesh,t,1),fd_corner(m.mesh,t,2));
-        v:=fd_sub(p,q);d2:=fd_dot(v,v);
+        q:=fd_closest_triangle(p,fd_corner(m.mesh,t,0),fd_corner(m.mesh,t,1),fd_corner(m.mesh,t,2)).point;
+        d2:=fd_gap2(p,q);
         if out.triangle<0 || d2<best {best=d2;out.triangle=t;out.closest=q;}
     }
     dist:=sqrt(best);
@@ -345,8 +407,9 @@ fd_mesh_distance :: (m:FdChecked,p:[3]f64)->FdDistance #export_c {
         a:=fd_corner(m.mesh,out.triangle,0);n:=fd_cross(fd_sub(fd_corner(m.mesh,out.triangle,1),a),fd_sub(fd_corner(m.mesh,out.triangle,2),a));
         out.grad=fd_div(n,fd_norm(n));return out;
     }
-    // Inside, the field grows toward the surface: the gradient points from p to it.
-    if fd_winding(m,p)>0.5 {out.d=-dist;out.grad=fd_div(fd_sub(out.closest,p),dist);}
+    // Inside, the winding number rounds to 1 or more, and the field grows
+    // toward the surface: the gradient points from p to it.
+    if cast(int)floor(fd_winding(m,p)+0.5)>0 {out.d=-dist;out.grad=fd_div(fd_sub(out.closest,p),dist);}
     else {out.d=dist;out.grad=fd_div(fd_sub(p,out.closest),dist);}
     return out;
 }
@@ -390,7 +453,10 @@ The winding numbers miss 1 and 0 by a few units of rounding, far from the
 ## Samples
 
 Surface samples are uniform by area. One draw u, scaled by the total area,
-picks the first triangle whose running area exceeds it. Two more draws r1 and
+picks the first triangle whose running area exceeds it. `fd_pick_triangle`
+counts the triangles, all but the last, whose running total is at most u, so
+a draw that rounding carries past the total still lands in the last
+triangle, with no fallback branch. Two more draws r1 and
 r2 place the point at the barycentric weights (1 − √r1, √r1(1 − r2), √r1 r2).
 Without the square root, points would crowd the first corner: half of them
 would land in the quarter of the triangle nearest it. Each sample's normal is
@@ -404,6 +470,13 @@ fd_sample_count :: (points:[]f64)->FdStatus {
     if points.count/3>FD_POINTS_MAX {return FdStatus.limit;}
     return FdStatus.ok;
 }
+// The triangle whose share of the area holds u, for u in [0, area): the
+// number of triangles before the last whose running total is at most u.
+fd_pick_triangle :: (m:FdChecked,u:f64)->int {
+    t:=0;acc:=0.0;
+    for s:0..<m.mesh.triangles.count/3-1 {acc+=fd_area(m.mesh,s);if acc<=u {t+=1;}}
+    return t;
+}
 // Area-weighted: one draw picks a triangle, two more a point in it, uniform
 // by area (the square root keeps points from crowding corner a).
 fd_sample_surface :: (m:FdChecked,seed:u64,points:[]f64,normals:[]f64)->FdResult {
@@ -411,13 +484,9 @@ fd_sample_surface :: (m:FdChecked,seed:u64,points:[]f64,normals:[]f64)->FdResult
     if out.status==FdStatus.ok {out.status=fd_sample_count(points);}
     if out.status==FdStatus.ok && normals.count!=points.count {out.status=FdStatus.shape;}
     if out.status!=FdStatus.ok {return out;}
-    r:=[1]CrSeed.[CrSeed.{seed=seed}];nt:=m.mesh.triangles.count/3;
+    r:=[1]CrSeed.[CrSeed.{seed=seed}];
     for i:0..<points.count/3 {
-        u:=fd_draw(r[..])*m.area;t:=nt-1;acc:=0.0;
-        for s:0..<nt {
-            a:=fd_corner(m.mesh,s,0);acc+=fd_norm(fd_cross(fd_sub(fd_corner(m.mesh,s,1),a),fd_sub(fd_corner(m.mesh,s,2),a)))/2;
-            if u<acc {t=s;break;}
-        }
+        t:=fd_pick_triangle(m,fd_draw(r[..])*m.area);
         a:=fd_corner(m.mesh,t,0);b:=fd_corner(m.mesh,t,1);c:=fd_corner(m.mesh,t,2);
         s:=sqrt(fd_draw(r[..]));v:=fd_draw(r[..]);
         p:=fd_add(fd_add(fd_scale(a,1-s),fd_scale(b,s*(1-v))),fd_scale(c,s*v));
@@ -477,8 +546,11 @@ only the cells a query can reach.
 
 The grid is built by a counting sort: count the points in each cell, turn the
 counts into starting offsets, place the points in index order, then shift the
-offsets back. Cell k then holds `order[start[k] ..< start[k+1]]`. A query
-point outside the grid is clamped onto its edge cells.
+offsets back. Cell k then holds `order[start[k] ..< start[k+1]]`. The build
+keeps the smallest and largest coordinates on each axis, low and high. A
+query point is clamped into [low, high] before its cell is found, so a point
+outside the grid lands in an edge cell, and high lands in the last cell
+because the build sized the grid from the same expression.
 
 <!-- source: psionic/lib/field.coax grid -->
 ```jai
@@ -491,11 +563,11 @@ fd_grid_build :: (points:[]f64,cell:f64,start:[]int,order:[]int)->FdGrid {
     g:FdGrid;g.status=fd_points_status(points);
     if g.status==FdStatus.ok && !(cell>0 && fd_finite(cell)) {g.status=FdStatus.parameter;}
     if g.status!=FdStatus.ok {return g;}
-    n:=points.count/3;g.low=fd_at(points,0);high:=g.low;
-    for i:1..<n {for k:0..<3 {x:=points[3*i+k];if x<g.low[k] {g.low[k]=x;}if x>high[k] {high[k]=x;}}}
+    n:=points.count/3;g.low=fd_at(points,0);g.high=g.low;
+    for i:1..<n {for k:0..<3 {x:=points[3*i+k];g.low[k]=fd_min(g.low[k],x);g.high[k]=fd_max(g.high[k],x);}}
     cells:=1;
     for k:0..<3 {
-        span:=floor((high[k]-g.low[k])/cell);
+        span:=floor((g.high[k]-g.low[k])/cell);
         if span>=FD_SIDE_MAX {g.status=FdStatus.limit;return g;}
         g.side[k]=cast(int)span+1;cells*=g.side[k];
     }
@@ -505,15 +577,16 @@ fd_grid_build :: (points:[]f64,cell:f64,start:[]int,order:[]int)->FdGrid {
     // in index order, then shift the advanced starts back by one cell.
     for k:0..<cells+1 {start[k]=0;}
     for i:0..<n {start[fd_cell_index(g,fd_cell(g,fd_at(points,i)))+1]+=1;}
-    for k:0..<cells {start[k+1]+=start[k];}
+    for k:1..<cells {start[k+1]+=start[k];}
     for i:0..<n {k:=fd_cell_index(g,fd_cell(g,fd_at(points,i)));order[start[k]]=i;start[k]+=1;}
-    for j:0..<cells {k:=cells-j;start[k]=start[k-1];}
+    for j:1..<cells {k:=cells-j;start[k]=start[k-1];}
     start[0]=0;return g;
 }
-// The cell holding p, clamped into the grid: a far query lands on the edge.
+// The cell holding p clamped into [low, high], so a far query lands on the
+// edge: high gives floor((high - low) / cell), the last cell, as in the build.
 fd_cell :: (g:FdGrid,p:[3]f64)->[3]int {
     c:[3]int;
-    for k:0..<3 {x:=floor((p[k]-g.low[k])/g.cell);if x<0 {x=0;}if x>f64(g.side[k]-1) {x=f64(g.side[k]-1);}c[k]=cast(int)x;}
+    for k:0..<3 {c[k]=cast(int)floor((fd_clamp(p[k],g.low[k],g.high[k])-g.low[k])/g.cell);}
     return c;
 }
 fd_cell_index :: (g:FdGrid,c:[3]int)->int {return (c[2]*g.side[1]+c[1])*g.side[0]+c[0];}
@@ -582,7 +655,7 @@ fd_radius :: (g:FdGrid,q:[3]f64,r:f64,out:[]int)->FdFound {
     if f.status==FdStatus.ok {f.status=fd_query_status(q,r);}
     if f.status!=FdStatus.ok {return f;}
     lo:=fd_cell(g,fd_sub(q,[3]f64.[r,r,r]));hi:=fd_cell(g,fd_add(q,[3]f64.[r,r,r]));
-    for k:0..<3 {if lo[k]>0 {lo[k]-=1;}if hi[k]<g.side[k]-1 {hi[k]+=1;}}
+    for k:0..<3 {lo[k]=fd_imax(lo[k]-1,0);hi[k]=fd_imin(hi[k]+1,g.side[k]-1);}
     h:[1]FdHits;
     for z:lo[2]..<hi[2]+1 {for y:lo[1]..<hi[1]+1 {for x:lo[0]..<hi[0]+1 {
         k:=fd_cell_index(g,[3]int.[x,y,z]);
@@ -630,10 +703,10 @@ fd_knn :: (g:FdGrid,q:[3]f64,k:int,out:[]int)->FdFound {
     if f.status==FdStatus.ok {f.status=fd_knn_status(g.n,q,k,out);}
     if f.status!=FdStatus.ok {return f;}
     c:=fd_cell(g,q);h:[1]FdHits;
-    rings:=g.side[0];if g.side[1]>rings {rings=g.side[1];}if g.side[2]>rings {rings=g.side[2];}
+    rings:=fd_imax(g.side[0],fd_imax(g.side[1],g.side[2]));
     for ring:0..<rings {
         lo:[3]int;hi:[3]int;
-        for a:0..<3 {lo[a]=c[a]-ring;if lo[a]<0 {lo[a]=0;}hi[a]=c[a]+ring;if hi[a]>g.side[a]-1 {hi[a]=g.side[a]-1;}}
+        for a:0..<3 {lo[a]=fd_imax(c[a]-ring,0);hi[a]=fd_imin(c[a]+ring,g.side[a]-1);}
         for z:lo[2]..<hi[2]+1 {for y:lo[1]..<hi[1]+1 {
             // On the ring's y or z faces every x belongs to it; inside them, only its two x ends.
             if z==c[2]-ring || z==c[2]+ring || y==c[1]-ring || y==c[1]+ring {for x:lo[0]..<hi[0]+1 {fd_knn_visit(h[..],g,x,y,z,q,k);}}
@@ -763,10 +836,11 @@ fd_conv_h :: (c:FdConv,points:[]f64,features:[]f64,w:[]f64,b:[]f64,i:int,j:int,o
     for ch:0..<c.channels {h+=w[row+3+ch]*features[j*c.channels+ch];}
     return h;
 }
-// The neighbour slot whose activation is largest, the first on ties.
+// The neighbour slot whose activation is largest, the first on ties; the
+// row has at least one neighbour.
 fd_conv_argmax :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,width:int,w:[]f64,b:[]f64,i:int,o:int)->int {
-    best:=0;top:=0.0;
-    for s:0..<counts[i] {h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o);a:=ifx h>0 then h else 0.0;if s==0 || a>top {best=s;top=a;}}
+    best:=0;top:=fd_max(fd_conv_h(c,points,features,w,b,i,nbr[i*width],o),0);
+    for s:1..<counts[i] {a:=fd_max(fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o),0);if a>top {best=s;top=a;}}
     return best;
 }
 fd_conv_forward :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,width:int,w:[]f64,b:[]f64,out:[]f64)->FdResult {
@@ -776,12 +850,9 @@ fd_conv_forward :: (c:FdConv,points:[]f64,features:[]f64,nbr:[]int,counts:[]int,
     if r.status!=FdStatus.ok {return r;}
     for i:0..<n {for o:0..<c.outputs {
         v:=0.0;
-        if counts[i]>0 && c.aggregate==FdAggregate.max {
-            h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+fd_conv_argmax(c,points,features,nbr,counts,width,w,b,i,o)],o);
-            if h>0 {v=h;}
-        } else if counts[i]>0 {
-            for s:0..<counts[i] {h:=fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o);if h>0 {v+=h;}}
-            v/=f64(counts[i]);
+        if counts[i]>0 {
+            if c.aggregate==FdAggregate.max {v=fd_max(fd_conv_h(c,points,features,w,b,i,nbr[i*width+fd_conv_argmax(c,points,features,nbr,counts,width,w,b,i,o)],o),0);}
+            else {for s:0..<counts[i] {v+=fd_max(fd_conv_h(c,points,features,w,b,i,nbr[i*width+s],o),0);}v/=f64(counts[i]);}
         }
         out[i*c.outputs+o]=v;
     }}
@@ -970,24 +1041,20 @@ test. Each compares the library with something that does not share its code:
   where area predicts 1,004.
 
 `coax mutate psionic/lib/field.coax --root-only` changes the library's own
-code one site at a time and reruns the checks. Of 1,174 mutants, 1,122 are
-caught. The 52 that survive fall into three groups:
+code one site at a time and reruns the checks. All 1,102 mutants are caught:
+none survive, and none is marked equivalent.
 
-- **Comparisons at a boundary where both branches agree.** Clamping t to 0
-  with `t < 0` or `t <= 0`; Ericson's region tests, where a point on the line
-  between two regions has the same nearest point from either; relu's `h > 0`,
-  which adds 0 either way; a directed-edge test read in the other direction,
-  which is the same test on a consistent mesh.
-- **Fallbacks that are not reached.** The last triangle when the area draw
-  runs past the total, a winding number of exactly 0.5, an argmax start that
-  the first neighbour always overwrites.
-- **The grid's rounding margins.** The extra cell around a radius query, the
-  clamping of a cell index and the ring search's stopping bound only matter
-  when a coordinate rounds across a cell boundary, and the checks do not
-  construct such a point.
-
-The library is not an `#authority` file: it decides no money, admission or
-policy, so these survivors are reported rather than gated.
+Two things keep it at zero. Some checks sit exactly on a boundary: the knn
+search's stopping bound is checked at a k-th distance of exactly ring − 1
+cells, where stopping a ring early shows in the count of distances computed;
+the area draw is checked at exactly the boundary between two triangles; the
+neighbour order is checked to be strict, with nothing before itself. And a
+comparison whose two branches give the same answer at its boundary is not
+written at all, since no input could catch a change to it: clamps, minimums
+and maximums use the 0-or-1 weights; the nearest point is a face test and
+three clamped edges rather than Ericson's seven region tests; the area draw
+counts instead of falling back to the last triangle; and the sign rounds the
+winding number instead of comparing it with 0.5.
 
 ## What this does not do
 
