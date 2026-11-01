@@ -1,0 +1,267 @@
+// NIP-34 beyond nip34.coax's tag readers: a patch (1617), a repository's
+// maintainers, and which status (1630-1633) decides the state of an issue
+// or a patch.
+//
+// NIP-34: "The most recent Status event (by created_at date) from either the
+// issue/patch author or a maintainer is considered valid." A maintainer is
+// the repository announcement's author or a key in its maintainers tags.
+// n34_resolve takes the repository, the root (an issue or a patch that
+// names that repository in its first 30617 a tag) and a set of events, and
+// returns the state the newest authorized status gives the root, or open
+// when there is none. A tie in created_at goes to the lower id (NIP-01's
+// rule for replaceable events; NIP-34 does not say).
+//
+// It trusts each event's pubkey, id and created_at: the caller passes events
+// from nostr_event_verify_vartime, as N34Signed (nt_signed_of in
+// nip34-event.coax). This file doesn't load event.coax, so the checks that
+// run wherever it is loaded stay small. It does not follow a repository's u tag
+// (a subordinate fork), merge announcements of the same euc by other
+// authors, or work out a patch revision's status from its root patch's.
+#load "nip34.coax";
+#authority;
+
+N34_KIND_PATCH :: 1617;
+N34_ELSEWHERE :: 6;   // the root names another repository, or none
+
+// book:begin patch
+// ---- 1617: a NIP-34 patch. At least one a tag is required, every a is a
+// coordinate, and repo is the first of kind 30617 (required). commit and
+// parent-commit, when present, are 40 hex digits. root says a t tag is
+// "root" (the first patch of a series), revision that one is
+// "root-revision".
+N34Patch :: struct {status:int;repo:NtSpan;root:bool;revision:bool;commit:NtTag;parent:NtTag;}
+n34_patch :: (e:NtEvent)->N34Patch {
+ r:N34Patch;r.status=n34_start(e,N34_KIND_PATCH);if r.status!=N34_OK {return r;}
+ a:=nt_tags(e,"a");s:=ifx a==0 then N34_MISSING else N34_OK;
+ for k:0..<a {
+  t:=nt_tag(e,"a",k);c:=nt_coord(nt_raw(e,t.v[0]));
+  if c.kind<0 {s=nt_and(s,N34_MALFORMED);}
+  if c.kind==N34_KIND_REPO && r.repo.to==0 {r.repo=t.v[0];}
+ }
+ if s==N34_OK && r.repo.to==0 {s=N34_MISSING;}
+ // A valueless commit's first span is empty, which is no commit.
+ r.commit=nt_tag(e,"commit",0);r.parent=nt_tag(e,"parent-commit",0);
+ if s==N34_OK && r.commit.n>0 && !nt_hex(nt_raw(e,r.commit.v[0]),40) {s=N34_MALFORMED;}
+ if s==N34_OK && r.parent.n>0 && !nt_hex(nt_raw(e,r.parent.v[0]),40) {s=N34_MALFORMED;}
+ r.root=nt_count(e,"t",0,"root")>0;r.revision=nt_count(e,"t",0,"root-revision")>0;
+ r.status=s;return r;
+}
+// book:end patch
+
+N34_PATCH_A :: "30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:openagents";
+N34_COMMIT :: "0aa2d953dd48f0d402ea7c826bad90b2548524c2";
+#test "a patch reads its repository, commits and series marks" {
+ tags:[1024]u8;n:=json_raw(tags[..],0,"[[\"a\",\"30621:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:coax\"],[\"a\",\"");n=json_raw(tags[..],n,N34_PATCH_A);
+ n=json_raw(tags[..],n,"\"],[\"a\",\"30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:other\"],[\"t\",\"root\"],[\"commit\",\"");n=json_raw(tags[..],n,N34_COMMIT);
+ n=json_raw(tags[..],n,"\"],[\"parent-commit\",\"");n=json_raw(tags[..],n,N34_COMMIT);n=json_raw(tags[..],n,"\"]]");
+ e:=n34_event(cast(string)tags[0..<n],1617);p:=n34_patch(e);
+ #assert p.status==N34_OK && nt_raw(e,p.repo)==N34_PATCH_A && p.root && !p.revision;
+ #assert nt_raw(e,p.commit.v[0])==N34_COMMIT && nt_raw(e,p.parent.v[0])==N34_COMMIT;
+ n=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_PATCH_A);n=json_raw(tags[..],n,"\"],[\"t\",\"x\"],[\"t\",\"root-revision\"]]");
+ e=n34_event(cast(string)tags[0..<n],1617);p=n34_patch(e);
+ #assert p.status==N34_OK && !p.root && p.revision && p.commit.n==0 && p.parent.n==0;
+ // A kind 0 coordinate is a coordinate.
+ n=json_raw(tags[..],0,"[[\"a\",\"0:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:\"],[\"a\",\"");n=json_raw(tags[..],n,N34_PATCH_A);n=json_raw(tags[..],n,"\"]]");
+ #assert n34_patch(n34_event(cast(string)tags[0..<n],1617)).status==N34_OK;
+}
+#test "a patch refuses no repository, a bad a and bad commits" {
+ #assert n34_patch(n34_event("[[\"t\",\"root\"]]",1617)).status==N34_MISSING;
+ #assert n34_patch(n34_event("[[\"a\",\"30621:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:coax\"]]",1617)).status==N34_MISSING;
+ #assert n34_patch(n34_event("[[\"a\",\"x\"]]",1617)).status==N34_MALFORMED;
+ #assert n34_patch(n34_event("[[\"a\"]]",1617)).status==N34_MALFORMED;
+ tags:[512]u8;n:=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_PATCH_A);n=json_raw(tags[..],n,"\"],[\"a\",\"x\"]]");
+ #assert n34_patch(n34_event(cast(string)tags[0..<n],1617)).status==N34_MALFORMED;
+ bad:=[6]string.["\"],[\"commit\"]]","\"],[\"parent-commit\"]]","\"],[\"commit\",\"0aa2d953dd48f0d402ea7c826bad90b2548524c\"]]",
+  "\"],[\"parent-commit\",\"0aa2d953dd48f0d402ea7c826bad90b2548524cZ\"]]","\"],[\"commit\",\"0AA2D953DD48F0D402EA7C826BAD90B2548524C2\"]]","\"],[\"parent-commit\",\"0aa2d953dd48f0d402ea7c826bad90b2548524c2a\"]]"];
+ for i:0..<6 {
+  n=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_PATCH_A);n=json_raw(tags[..],n,bad[i]);
+  #assert n34_patch(n34_event(cast(string)tags[0..<n],1617)).status==N34_MALFORMED;
+ }
+ #assert n34_patch(n34_event("[[\"a\",\"x\"]]",1618)).status==N34_KIND && n34_patch(n34_event("[[\"a\",\"x\"]]",1616)).status==N34_KIND;
+ #assert n34_patch(n34_event("[1]",1617)).status==N34_EVENT;
+}
+
+// 32 bytes as 64 lowercase hex digits.
+n34_hex32 :: (key:[32]u8)->[64]u8 {
+ digits:="0123456789abcdef";out:[64]u8;
+ for i:0..<32 {out[2*i]=digits[key[i]>>4];out[2*i+1]=digits[key[i]&15];}
+ return out;
+}
+#test "keys spell as lowercase hex" {
+ k:[32]u8;for i:0..<32 {k[i]=cast(u8)(i*8+7);}
+ h:=n34_hex32(k);#assert cast(string)h[0..<8]=="070f171f" && cast(string)h[56..<64]=="e7eff7ff";
+}
+
+// book:begin maintainer
+// Whether key is a value of a maintainers tag of the repository (any tag,
+// any position), as 64 lowercase hex digits. The announcement's author is a
+// maintainer too; n34_resolve checks that separately.
+n34_maintainer :: (repo:NtEvent,key:[32]u8)->bool {
+ hex:=n34_hex32(key);
+ for k:0..<nt_tags(repo,"maintainers") {
+  for i:0..<nt_tag(repo,"maintainers",k).values {if nt_count(repo,"maintainers",i,cast(string)hex[..])>0 {return true;}}
+ }
+ return false;
+}
+// book:end maintainer
+
+n34_key :: (b:u8)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=b;}return k;}
+N34_KEY_11 :: "1111111111111111111111111111111111111111111111111111111111111111";
+N34_KEY_22 :: "2222222222222222222222222222222222222222222222222222222222222222";
+#test "maintainers are any value of any maintainers tag" {
+ tags:[1024]u8;n:=json_raw(tags[..],0,"[[\"d\",\"x\"],[\"maintainers\",\"aa\",\"bb\",\"cc\",\"dd\",\"");n=json_raw(tags[..],n,N34_KEY_11);
+ n=json_raw(tags[..],n,"\"],[\"maintainers\",\"");n=json_raw(tags[..],n,N34_KEY_22);n=json_raw(tags[..],n,"\"]]");
+ e:=n34_event(cast(string)tags[0..<n],30617);
+ #assert n34_maintainer(e,n34_key(0x11)) && n34_maintainer(e,n34_key(0x22)) && !n34_maintainer(e,n34_key(0x33));
+ #assert !n34_maintainer(n34_event("[[\"d\",\"x\"]]",30617),n34_key(0x11));
+ // The key as a tag's name, or as another tag's value, is no maintainer.
+ n=json_raw(tags[..],0,"[[\"");n=json_raw(tags[..],n,N34_KEY_11);n=json_raw(tags[..],n,"\"],[\"p\",\"");n=json_raw(tags[..],n,N34_KEY_11);n=json_raw(tags[..],n,"\"],[\"maintainers\"]]");
+ #assert !n34_maintainer(n34_event(cast(string)tags[0..<n],30617),n34_key(0x11));
+ n=json_raw(tags[..],0,"[[\"maintainers\",\"1111111111111111111111111111111111111111111111111111111111111111x\"]]");
+ #assert !n34_maintainer(n34_event(cast(string)tags[0..<n],30617),n34_key(0x11));
+}
+
+// book:begin record
+// An event as the resolver reads it: its tags, and the author, id and time
+// its signature covers.
+N34Signed :: struct {e:NtEvent;public_key:[32]u8;id:[32]u8;created_at:int;}
+N34State :: struct {
+ status:int=N34_EVENT;     // N34_OK, or why the repository or root doesn't read or match
+ state:int=N34_STATE_OPEN; // the winning status's, or open when none counts
+ winner:int=-1;            // the winning status's index in the set, or -1
+ counted:int;              // statuses for the root by its author or a maintainer
+ ignored:int;              // statuses for the root by anyone else
+ refused:int;              // events of a status kind that don't read
+}
+// book:end record
+
+// book:begin resolve
+// The repository's address, "30617:<its author>:<its d>", is the root's
+// first 30617 coordinate, byte for byte.
+n34_names :: (repo:N34Signed,d:string,a:string)->bool {
+ c:=nt_coord(a);
+ if c.kind!=N34_KIND_REPO || a[c.d..<a.count]!=d {return false;}
+ hex:=n34_hex32(repo.public_key);
+ return a[c.d-65..<c.d-1]==cast(string)hex[..];
+}
+n34_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+// a is newer than b: a later created_at, or the same and a lower id.
+n34_newer :: (a:N34Signed,b:N34Signed)->bool {
+ if a.created_at>b.created_at {return true;}
+ if a.created_at<b.created_at {return false;}
+ for i:0..<32 {
+  if a.id[i]<b.id[i] {return true;}
+  if a.id[i]>b.id[i] {return false;}
+ }
+ return false;
+}
+n34_resolve :: (repo:N34Signed,root:N34Signed,set:[]N34Signed)->N34State {
+ out:N34State;
+ re:=repo.e;rr:=n34_repo(re);
+ if rr.status!=N34_OK {out.status=rr.status;return out;}
+ te:=root.e;at:NtSpan;
+ if te.kind==N34_KIND_PATCH {
+  p:=n34_patch(te);if p.status!=N34_OK {out.status=p.status;return out;}
+  at=p.repo;
+ } else {
+  i:=n34_issue(te);if i.status!=N34_OK {out.status=i.status;return out;}
+  at=i.repo;
+ }
+ if !n34_names(repo,nt_raw(re,rr.d.v[0]),nt_raw(te,at)) {out.status=N34_ELSEWHERE;return out;}
+ out.status=N34_OK;
+ for k:0..<set.count {
+  ev:=set[k];
+  if ev.e.kind<N34_KIND_OPEN || ev.e.kind>N34_KIND_DRAFT {continue;}
+  se:=ev.e;st:=n34_status(se);
+  if st.status!=N34_OK {out.refused+=1;continue;}
+  id:=n34_hex32(root.id);
+  if nt_raw(se,st.root.v[0])!=cast(string)id[..] {continue;}
+  if !n34_same(ev.public_key,root.public_key) && !n34_same(ev.public_key,repo.public_key) && !n34_maintainer(re,ev.public_key) {
+   out.ignored+=1;continue;
+  }
+  out.counted+=1;
+  if out.winner<0 || n34_newer(ev,set[out.winner]) {out.winner=k;out.state=st.state;}
+ }
+ return out;
+}
+// book:end resolve
+
+// ---- test events: a parsed event with these tags, then given its author,
+// time and id (the bytes the resolver compares).
+n34_parsed :: (kind:int,tags:string,out:[]u8)->N34Signed {
+ r:N34Signed;r.e=n34_event(tags,kind);return r;
+}
+n34_as :: (e:N34Signed,author:u8,at:int,id:u8)->N34Signed {
+ r:=e;r.public_key=n34_key(author);r.id=n34_key(id);r.created_at=at;return r;
+}
+// Repository "tea" by key 0xaa with maintainer 0xbb; issue 0x01 by 0xcc.
+N34_T_REPO :: "[[\"d\",\"tea\"],[\"maintainers\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]]";
+N34_T_A :: "30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea";
+N34_T_ISSUE :: "[[\"a\",\"30617:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"]]";
+N34_T_ROOT :: "[[\"e\",\"0101010101010101010101010101010101010101010101010101010101010101\",\"\",\"root\"]]";
+N34_T_OTHER :: "[[\"e\",\"0202020202020202020202020202020202020202020202020202020202020202\",\"\",\"root\"]]";
+
+#test "the newest status by the author or a maintainer decides; others are ignored" {
+ b:[8][1024]u8;
+ repo:=n34_as(n34_parsed(30617,N34_T_REPO,b[0][..]),0xaa,1,0x0a);
+ issue:=n34_as(n34_parsed(1621,N34_T_ISSUE,b[1][..]),0xcc,2,0x01);
+ set:[6]N34Signed;
+ set[0]=n34_as(n34_parsed(1632,N34_T_ROOT,b[2][..]),0xcc,10,0x20);   // the issue's author closes
+ set[1]=n34_as(n34_parsed(1630,N34_T_ROOT,b[3][..]),0xdd,30,0x21);   // a stranger reopens: ignored
+ set[2]=n34_as(n34_parsed(1631,N34_T_ROOT,b[4][..]),0xbb,20,0x22);   // the maintainer resolves
+ set[3]=n34_as(n34_parsed(1633,N34_T_OTHER,b[5][..]),0xaa,40,0x23);  // another root
+ set[4]=n34_as(n34_parsed(1630,"[[\"p\",\"x\"]]",b[6][..]),0xaa,50,0x24); // no root: refused
+ set[5]=n34_as(n34_parsed(1,N34_T_ROOT,b[7][..]),0xaa,60,0x25);      // not a status
+ s:=n34_resolve(repo,issue,set[..]);
+ #assert s.status==N34_OK && s.state==N34_STATE_RESOLVED && s.winner==2 && s.counted==2 && s.ignored==1 && s.refused==1;
+ // In reverse, the same status wins.
+ rev:[6]N34Signed;for k:0..<6 {rev[k]=set[5-k];}
+ s=n34_resolve(repo,issue,rev[..]);#assert s.state==N34_STATE_RESOLVED && s.winner==3 && s.counted==2;
+ // The repository's author counts, and a later status of theirs wins.
+ set[1]=n34_as(set[1],0xaa,30,0x21);s=n34_resolve(repo,issue,set[..]);
+ #assert s.state==N34_STATE_OPEN && s.winner==1 && s.counted==3 && s.ignored==0;
+ // None counted: open, no winner.
+ s=n34_resolve(repo,issue,set[3..<6]);#assert s.status==N34_OK && s.state==N34_STATE_OPEN && s.winner==-1 && s.counted==0 && s.refused==1;
+ // A tie goes to the lower id, in either order.
+ two:[2]N34Signed;two[0]=n34_as(set[0],0xcc,10,0x30);two[1]=n34_as(set[2],0xbb,10,0x2f);
+ s=n34_resolve(repo,issue,two[..]);#assert s.winner==1 && s.state==N34_STATE_RESOLVED;
+ two[1]=n34_as(set[2],0xbb,10,0x31);s=n34_resolve(repo,issue,two[..]);#assert s.winner==0 && s.state==N34_STATE_CLOSED;
+ // The same event twice: the first is the winner.
+ two[1]=two[0];s=n34_resolve(repo,issue,two[..]);#assert s.winner==0 && s.counted==2;
+ // A draft (1633) counts; kind 1634 is no status and is refused when it reads as one would.
+ three:[3]N34Signed;three[0]=set[2];three[1]=n34_as(n34_parsed(1633,N34_T_ROOT,b[3][..]),0xcc,70,0x40);three[2]=n34_as(n34_parsed(1634,N34_T_ROOT,b[5][..]),0xcc,80,0x41);
+ s=n34_resolve(repo,issue,three[..]);#assert s.state==N34_STATE_DRAFT && s.winner==1 && s.counted==2 && s.refused==0;
+ // A status whose event didn't parse is refused.
+ bad:[1]N34Signed;bad[0]=set[0];bad[0].e.ok=false;s=n34_resolve(repo,issue,bad[..]);#assert s.refused==1 && s.counted==0;
+}
+#test "a newer status compares created_at first, then the id from its first byte" {
+ a:N34Signed;b:N34Signed;
+ a=n34_as(a,1,5,0x10);b=n34_as(b,1,4,0x01);#assert n34_newer(a,b) && !n34_newer(b,a);
+ b=n34_as(b,1,5,0x10);#assert !n34_newer(a,b) && !n34_newer(b,a);
+ b.id[31]=0x11;#assert n34_newer(a,b) && !n34_newer(b,a);
+ b.id[31]=0x0f;#assert !n34_newer(a,b) && n34_newer(b,a);
+ // The first differing byte decides, not a later one.
+ b=n34_as(b,1,5,0x10);b.id[0]=0x0f;b.id[1]=0x11;#assert n34_newer(b,a) && !n34_newer(a,b);
+}
+#test "a patch is a root too, and a root must name this repository" {
+ b:[8][1024]u8;
+ repo:=n34_as(n34_parsed(30617,N34_T_REPO,b[0][..]),0xaa,1,0x0a);
+ patch:=n34_as(n34_parsed(1617,N34_T_ISSUE,b[1][..]),0xcc,2,0x01);
+ set:[1]N34Signed;set[0]=n34_as(n34_parsed(1631,N34_T_ROOT,b[2][..]),0xbb,10,0x20);
+ s:=n34_resolve(repo,patch,set[..]);#assert s.status==N34_OK && s.state==N34_STATE_RESOLVED && s.counted==1;
+ // The same repository name under another author, another name, and a project coordinate only.
+ other:=n34_as(repo,0xab,1,0x0a);#assert n34_resolve(other,patch,set[..]).status==N34_ELSEWHERE;
+ coffee:=n34_as(n34_parsed(30617,"[[\"d\",\"te\"]]",b[3][..]),0xaa,1,0x0a);#assert n34_resolve(coffee,patch,set[..]).status==N34_ELSEWHERE;
+ longer:=n34_as(n34_parsed(30617,"[[\"d\",\"teas\"]]",b[4][..]),0xaa,1,0x0a);#assert n34_resolve(longer,patch,set[..]).status==N34_ELSEWHERE;
+ project:=n34_as(n34_parsed(1621,"[[\"a\",\"30621:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:tea\"]]",b[5][..]),0xcc,2,0x01);
+ #assert n34_resolve(repo,project,set[..]).status==N34_ELSEWHERE;
+ // A root or repository that doesn't read says why.
+ #assert n34_resolve(repo,n34_as(n34_parsed(1617,"[]",b[6][..]),0xcc,2,0x01),set[..]).status==N34_MISSING;
+ #assert n34_resolve(repo,n34_as(n34_parsed(1621,"[]",b[6][..]),0xcc,2,0x01),set[..]).status==N34_MISSING;
+ #assert n34_resolve(n34_as(n34_parsed(30617,"[]",b[7][..]),0xaa,1,0x0a),patch,set[..]).status==N34_MISSING;
+ #assert n34_resolve(patch,patch,set[..]).status==N34_KIND && n34_resolve(repo,repo,set[..]).status==N34_KIND;
+ #assert n34_same(n34_key(1),n34_key(1)) && !n34_same(n34_key(1),n34_key(2));
+ k:=n34_key(1);k[31]=2;#assert !n34_same(n34_key(1),k);
+ k=n34_key(1);k[0]=2;#assert !n34_same(n34_key(1),k);
+ #assert n34_names(repo,"tea",N34_T_A) && !n34_names(repo,"tea","30617:aaaa:tea") && !n34_names(repo,"tea","x");
+}

@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 40 are implemented, 16 are partly implemented and
+Of the 104 chapters, 41 are implemented, 15 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -254,7 +254,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [60. Private messages](ch060-private-messages.md) | Unimplemented: design draft | NIP-17 kind 14 chat and kind 15 file messages sent as gift wraps, kind 10050 DM relay lists, NIP-A4 kind 24 public messages, and the unrecommended NIP-EE MLS groups. |
 | [61. Live activities](ch061-live-activities.md) | Unimplemented: design draft | NIP-53 kind 30311 live events with `streaming`, `status` and participant roles, kind 1311 live chat, and kind 30312/30313 meeting spaces and rooms with kind 10312 presence. |
 | [62. Badges and statuses](ch062-badges-and-statuses.md) | Unimplemented: design draft | NIP-58 badge definitions (30009), awards (8) and profile badges (10008, formerly 30008), and NIP-38 kind 30315 user statuses with `expiration`. |
-| [63. Git on Nostr](ch063-git-on-nostr.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | NIP-34 repository announcements (30617) and state (30618), patches (1617), pull requests (1618, 1619), issues (1621) and statuses (1630–1633), and NIP-C0 code snippets (1337). |
+| [63. Git on Nostr](ch063-git-on-nostr.md) | Runnable: native C | NIP-34 repository announcements (30617), issues (1621), patches (1617) and statuses (1630–1633), with the newest status by the author or a maintainer deciding the state. Repository state (30618), pull requests (1618, 1619) and NIP-C0 snippets (1337) are not built. |
 | [64. App data and handlers](ch064-app-data-and-handlers.md) | Unimplemented: design draft | NIP-78 kind 30078 application data, NIP-89 handler recommendations (31989) and announcements (31990), NIP-5A static websites (35128 and 15128 manifests), and NIP-CD slash commands (31992, 10992). |
 | [65. Data vending machines](ch065-data-vending-machines.md) | Unimplemented: design draft | NIP-90 job requests (5000–5999), results (6000–6999) and feedback (7000), job chaining, and why the pinned text marks it `unrecommended`. |
 | [66. Markets and orders](ch066-markets-and-orders.md) | Unimplemented: design draft | NIP-99 classified listings (30402 and 30403 drafts) with `price` in a currency and frequency, NIP-69 peer-to-peer order events (38383), and the unrecommended NIP-15 marketplace. |

@@ -1,0 +1,40 @@
+the repository announcement, by Alice
+Alice: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+Bob: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+Carol: dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8
+Dave: 25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517
+read: ok, d tea-tools, name "Tea tools", clone 2 values, first https://git.example.com/tea-tools.git, euc 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+maintainers: Alice (the author) and Bob
+its address: 30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools
+an issue and a patch, by Carol
+issue tags: [["a","30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["subject","The timer stops at 59 seconds"],["t","bug"]]
+issue: ok, repository tea-tools (the address above), subject "The timer stops at 59 seconds"
+patch: ok, root true, revision false, commit 9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6, parent 5d7f1e0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e
+statuses
+S1..S3 tags: [["e","f56388ff36057e4382436dcb6c7e466328019080c3a4617ba03555d92491b47e","","root"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["p","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["a","30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools"]]
+S1: kind 1630 by Carol at T0+100, state open (1630)
+S2: kind 1631 by Bob at T0+200, state applied, merged or resolved (1631)
+S3: kind 1632 by Dave at T0+300, state closed (1632)
+S4: kind 1631 by Alice at T0+400, state applied, merged or resolved (1631)
+each event's id
+repository: 8c99e43141fd7751a14b2419acea50a71a7db6fc89afd3551f2d6418b2b2b513, verified true
+issue: f56388ff36057e4382436dcb6c7e466328019080c3a4617ba03555d92491b47e, verified true
+patch: 606040c51ab0b8131b7e6c3ca860d45c310d300ec4aefa0bb3ee78649cb420c8, verified true
+S1: 33e5c7180963549bbd238029724b512732c60b3d4497857726b0b582e3501014, verified true
+S2: 4e0c22de598048943e380a75221b3b20351958fcd50564121e4ec76c8ff0ccd4, verified true
+S3: 671a13e44d859aedc490b7b48e6ebb552afaae12c535dfc6cc59d500dc6291f3, verified true
+S4: 187a30002610c4704b812372c6a0a5ca3d6db3afba75061ba50744da7d552810, verified true
+the issue: ok, state applied, merged or resolved (1631), winner S2, counted 2, ignored 1, refused 0
+the patch: ok, state applied, merged or resolved (1631), winner S4, counted 1, ignored 0, refused 0
+the issue without S2: ok, state open (1630), winner S1, counted 1, ignored 1, refused 0
+the issue against Bob's tea-tools: elsewhere
+refusals
+repository, euc of 39 digits: malformed
+repository, clone without a URL: malformed
+repository without d: missing
+issue without a: missing
+issue, a with an uppercase key: malformed
+patch, commit of 8 digits: malformed
+patch naming only a project: missing
+status without e: missing
+status, e of 8 digits: malformed

@@ -1201,7 +1201,7 @@
    "number": 63,
    "title": "Git on Nostr",
    "file": "ch063-git-on-nostr.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     22,
@@ -1209,7 +1209,10 @@
    ],
    "source": [
     "coax/lib/nostr/nip34-event.coax",
-    "coax/lib/nostr/nip34.coax"
+    "coax/lib/nostr/nip34-patch.coax",
+    "coax/lib/nostr/nip34.coax",
+    "nostr/examples/checks/repositories.coax",
+    "nostr/examples/repositories.coax"
    ],
    "qualified_targets": [
     "cpu"

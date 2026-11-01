@@ -1,0 +1,106 @@
+// The checks of repositories.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/repositories.coax --run-steps 250000000
+#load "../repositories.coax";
+
+// book:begin check
+// The ids and tags from a Python script written from NIP-01 and NIP-34 (it
+// shares no code with Coax): the ids are hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False).
+PUB :: [4] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517"];
+PY_ID :: [7] string.[
+  "8c99e43141fd7751a14b2419acea50a71a7db6fc89afd3551f2d6418b2b2b513",
+  "f56388ff36057e4382436dcb6c7e466328019080c3a4617ba03555d92491b47e",
+  "606040c51ab0b8131b7e6c3ca860d45c310d300ec4aefa0bb3ee78649cb420c8",
+  "33e5c7180963549bbd238029724b512732c60b3d4497857726b0b582e3501014",
+  "4e0c22de598048943e380a75221b3b20351958fcd50564121e4ec76c8ff0ccd4",
+  "671a13e44d859aedc490b7b48e6ebb552afaae12c535dfc6cc59d500dc6291f3",
+  "187a30002610c4704b812372c6a0a5ca3d6db3afba75061ba50744da7d552810"];
+PY_REPO :: "[[\"d\",\"tea-tools\"],[\"name\",\"Tea tools\"],[\"description\",\"Timers and scales for brewing tea\"],[\"web\",\"https://git.example.com/tea-tools\"],[\"clone\",\"https://git.example.com/tea-tools.git\",\"ssh://git@git.example.com/tea-tools.git\"],[\"relays\",\"wss://relay.example.com\"],[\"r\",\"4b825dc642cb6eb9a060e54bf8d69288fbee4904\",\"euc\"],[\"maintainers\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]";
+PY_ISSUE :: "[[\"a\",\"30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"subject\",\"The timer stops at 59 seconds\"],[\"t\",\"bug\"]]";
+PY_PATCH :: "[[\"a\",\"30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools\"],[\"r\",\"4b825dc642cb6eb9a060e54bf8d69288fbee4904\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"t\",\"root\"],[\"commit\",\"9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6\"],[\"parent-commit\",\"5d7f1e0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e\"]]";
+PY_ON_ISSUE :: "[[\"e\",\"f56388ff36057e4382436dcb6c7e466328019080c3a4617ba03555d92491b47e\",\"\",\"root\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"a\",\"30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools\"]]";
+PY_ON_PATCH :: "[[\"e\",\"606040c51ab0b8131b7e6c3ca860d45c310d300ec4aefa0bb3ee78649cb420c8\",\"\",\"root\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"a\",\"30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools\"]]";
+PY_AUTHOR :: [7] int.[0, 2, 2, 2, 1, 3, 0];
+PY_AT :: [7] int.[0, 60, 90, 100, 200, 300, 400];
+PY_KIND :: [7] int.[30617, 1621, 1617, 1630, 1631, 1632, 1631];
+PY_TAGS :: [7] string.[PY_REPO, PY_ISSUE, PY_PATCH, PY_ON_ISSUE, PY_ON_ISSUE, PY_ON_ISSUE, PY_ON_PATCH];
+PY_CONTENT :: [7] string.["", "Set the timer to 1:30 and it stops at 0:59.",
+  "From 9c4f6e2b Mon Sep 17 00:00:00 2001\nSubject: [PATCH] timer: count minutes past 59 seconds\n",
+  "Still happens on 2.1.", "Fixed by the patch.", "Not a bug.", "Applied."];
+
+// Event i of the script with a zero signature, read with its id recomputed;
+// the signature is not checked.
+py :: (i: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[i]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[PY_AUTHOR[i]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + PY_AT[i]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, PY_KIND[i]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, PY_TAGS[i]);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, PY_CONTENT[i]);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+py_key :: (k: int) -> [32] u8 { out: [32] u8; decode_hex(PUB[k], out[..]); return out; }
+
+#test "the ids are Python's, and so are the tags the example writes" {
+  buf: [7][4096] u8; scratch: [4096] u8;
+  for i: 0..<7 { e := py(i, buf[i][..], scratch[..]); #assert e.error == NE_OK && n34_same(e.computed_id, e.id); }
+  issue := py(1, buf[1][..], scratch[..]); patch := py(2, buf[2][..], scratch[..]);
+  t: [1] Tags;
+  repo_tags(t[..], py_key(BOB)); #assert tags_of(t[..]) == PY_REPO;
+  t[0].n = 0; issue_tags(t[..], py_key(ALICE)); #assert tags_of(t[..]) == PY_ISSUE;
+  t[0].n = 0; patch_tags(t[..], py_key(ALICE)); #assert tags_of(t[..]) == PY_PATCH;
+  t[0].n = 0; status_tags(t[..], issue, py_key(ALICE)); #assert tags_of(t[..]) == PY_ON_ISSUE;
+  t[0].n = 0; status_tags(t[..], patch, py_key(ALICE)); #assert tags_of(t[..]) == PY_ON_PATCH;
+}
+
+// By hand: S1 (Carol, the issue's author, open, T0+100), S2 (Bob, a
+// maintainer, resolved, T0+200) and S3 (Dave, neither, closed, T0+300) are
+// about the issue; S4 (Alice, the owner, applied, T0+400) is about the
+// patch. Dave's is the newest but doesn't count, so S2 decides: resolved,
+// counted 2, ignored 1. The patch: S4, applied.
+#test "the statuses resolve as worked by hand, in any order" {
+  buf: [7][4096] u8; scratch: [4096] u8; ev: [7] N34Signed;
+  for i: 0..<7 { ev[i] = nt_signed_of(py(i, buf[i][..], scratch[..])); }
+  // Four orders of S1..S4 (events 3 to 6), four entries each.
+  orders := [16] int.[3, 4, 5, 6, 6, 5, 4, 3, 5, 3, 6, 4, 4, 6, 3, 5];
+  for o: 0..<4 {
+    set: [4] N34Signed; for k: 0..<4 { set[k] = ev[orders[4 * o + k]]; }
+    s := n34_resolve(ev[0], ev[1], set[..]);
+    #assert s.status == N34_OK && s.state == N34_STATE_RESOLVED && s.counted == 2 && s.ignored == 1 && s.refused == 0;
+    #assert n34_same(set[s.winner].id, ev[4].id);
+    s = n34_resolve(ev[0], ev[2], set[..]);
+    #assert s.status == N34_OK && s.state == N34_STATE_RESOLVED && s.counted == 1 && s.ignored == 0 && n34_same(set[s.winner].id, ev[6].id);
+  }
+}
+
+// PLAN.md's "Done means": a status from someone who is neither the author
+// nor a maintainer is ignored. Dave's close alone leaves the issue open.
+#test "a status by neither the author nor a maintainer is ignored" {
+  buf: [7][4096] u8; scratch: [4096] u8; ev: [7] N34Signed;
+  for i: 0..<7 { ev[i] = nt_signed_of(py(i, buf[i][..], scratch[..])); }
+  dave := [1] N34Signed.[ev[5]];
+  s := n34_resolve(ev[0], ev[1], dave[..]);
+  #assert s.status == N34_OK && s.state == N34_STATE_OPEN && s.winner == -1 && s.counted == 0 && s.ignored == 1;
+  // The same close by Bob, who the announcement names, counts.
+  bob := ev[5]; bob.public_key = py_key(BOB);
+  one := [1] N34Signed.[bob];
+  s = n34_resolve(ev[0], ev[1], one[..]);
+  #assert s.state == N34_STATE_CLOSED && s.counted == 1 && s.ignored == 0;
+}
+
+// NIP-34's status example, with a reply e for an accepted revision, q,
+// merge-commit and r tags: the root is the e marked root, wherever it is.
+#test "NIP-34's status layout reads its root" {
+  tags := "[[\"e\",\"0202020202020202020202020202020202020202020202020202020202020202\",\"\",\"reply\"],[\"e\",\"f56388ff36057e4382436dcb6c7e466328019080c3a4617ba03555d92491b47e\",\"\",\"root\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"a\",\"30617:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools\",\"wss://relay.example.com\"],[\"r\",\"4b825dc642cb6eb9a060e54bf8d69288fbee4904\"],[\"q\",\"606040c51ab0b8131b7e6c3ca860d45c310d300ec4aefa0bb3ee78649cb420c8\",\"wss://relay.example.com\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"merge-commit\",\"9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6\"]]";
+  e := n34_event(tags, 1631); s := n34_status(e);
+  #assert s.status == N34_OK && s.state == N34_STATE_RESOLVED && nt_raw(e, s.root.v[0]) == PY_ID[1];
+}
+// book:end check

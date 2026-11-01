@@ -211,6 +211,7 @@ nt_values :: (e:NtEvent,name:string,out:[]NtSpan)->int {
  #assert nt_values(e,"b",out[0..<1])==-1 && nt_values(e,"q",out[0..<0])==0;
 }
 
+// book:begin repo
 // ---- 30617: a NIP-34 repository announcement. d is required; euc is the
 // first r tag marked "euc", whose commit is 40 hex digits.
 N34Repo :: struct {status:int;d:NtTag;name:NtTag;description:NtTag;web:NtTag;clone:NtTag;relays:NtTag;euc:NtTag;}
@@ -223,6 +224,7 @@ n34_repo :: (e:NtEvent)->N34Repo #export_c {
  if s==N34_OK && r.euc.n>0 && !nt_hex(nt_raw(e,r.euc.v[0]),40) {s=N34_MALFORMED;}
  r.status=s;return r;
 }
+// book:end repo
 #test "a repository announcement reads its fields" {
  e:=n34_event("[[\"d\",\"openagents\"],[\"name\",\"OpenAgents\"],[\"description\",\"mono\"],[\"web\",\"https://w\"],[\"clone\",\"https://c\"],[\"relays\",\"wss://a\",\"wss://b\"],[\"r\",\"0aa2d953dd48f0d402ea7c826bad90b2548524c2\",\"euc\"]]",30617);
  r:=n34_repo(e);#assert r.status==N34_OK;
@@ -438,6 +440,7 @@ n34_needs :: (e:NtEvent,out:[]N34Need)->int {
  #assert n34_fields(n34_event("[]",1621)).status==N34_OK;
 }
 
+// book:begin issue
 // ---- 1621: a NIP-34 issue. At least one a tag is required and every a is
 // a coordinate; repo and project are the first of kinds 30617 and 30621
 // (to>from when present). slug is OpenAgents' item slug.
@@ -455,6 +458,7 @@ n34_issue :: (e:NtEvent)->N34Issue #export_c {
  }
  r.status=s;return r;
 }
+// book:end issue
 #test "an issue reads its coordinates, slug and fields" {
  tags:[1024]u8;n:=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\",\"wss://r\"],[\"a\",\"");
  n=json_raw(tags[..],n,N34_PROJECT_A);n=json_raw(tags[..],n,"\"],[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"x\"],[\"a\",\"");
@@ -486,6 +490,7 @@ n34_issue :: (e:NtEvent)->N34Issue #export_c {
  #assert n34_issue(n34_event("[[\"a\",\"x\"]]",1111)).status==N34_KIND && n34_issue(n34_event("[[\"a\",\"x\"]]",1622)).status==N34_KIND;
 }
 
+// book:begin status
 // ---- 1630-1633: a NIP-34 status. root is the first e tag marked "root",
 // else the first e tag; it is required and is an event id.
 N34Status :: struct {status:int;state:int;root:NtTag;}
@@ -498,6 +503,7 @@ n34_status :: (e:NtEvent)->N34Status #export_c {
  if s==N34_OK && !nt_hex(nt_raw(e,r.root.v[0]),64) {s=N34_MALFORMED;}
  r.status=s;return r;
 }
+// book:end status
 #test "a status reads its state and root" {
  tags:[512]u8;n:=json_raw(tags[..],0,"[[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\",\"\",\"reply\"],[\"e\",\"");
  n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\",\"\",\"root\"],[\"p\",\"x\"]]");

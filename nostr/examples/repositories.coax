@@ -1,0 +1,171 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip34-event.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+STATUS :: [7] string.["ok", "event", "kind", "missing", "malformed", "output", "elsewhere"];
+STATE :: [4] string.["open (1630)", "applied, merged or resolved (1631)", "closed (1632)", "draft (1633)"];
+// BIP-340 test vectors 0, 1, 2 and 3's published secret keys. Never sign
+// with a real key in an example.
+KEYS :: [4] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710"];
+PEOPLE :: [4] string.["Alice", "Bob", "Carol", "Dave"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; DAVE :: 3;
+EUC :: "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+COMMIT :: "9c4f6e2bd3a1f0e8c7b6a5d4c3b2a1f0e9d8c7b6";
+PARENT :: "5d7f1e0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e";
+T0 :: 1761686400;
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (key: [] u8, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// A tag list is built from pieces: raw JSON text and 64-digit hex keys/ids.
+Tags :: struct { b: [4096] u8; n: int; }
+put :: (t: [] Tags, s: string) { t[0].n = json_raw(t[0].b[..], t[0].n, s); #assert t[0].n > 0; }
+put_key :: (t: [] Tags, id: [32] u8) { h := n34_hex32(id); put(t, cast(string) h[..]); }
+tags_of :: (t: [] Tags) -> string { return cast(string) t[0].b[0..<t[0].n]; }
+// "30617:<owner>:<d>", the repository's address.
+put_address :: (t: [] Tags, owner: [32] u8, d: string) { put(t, "30617:"); put_key(t, owner); put(t, ":"); put(t, d); }
+
+// The tags of each event, as NIP-34 lays them out.
+repo_tags :: (t: [] Tags, maintainer: [32] u8) {
+  put(t, "[[\"d\",\"tea-tools\"],[\"name\",\"Tea tools\"],[\"description\",\"Timers and scales for brewing tea\"],");
+  put(t, "[\"web\",\"https://git.example.com/tea-tools\"],[\"clone\",\"https://git.example.com/tea-tools.git\",\"ssh://git@git.example.com/tea-tools.git\"],");
+  put(t, "[\"relays\",\"wss://relay.example.com\"],[\"r\",\""); put(t, EUC); put(t, "\",\"euc\"],[\"maintainers\",\""); put_key(t, maintainer); put(t, "\"]]");
+}
+issue_tags :: (t: [] Tags, owner: [32] u8) {
+  put(t, "[[\"a\",\""); put_address(t, owner, "tea-tools"); put(t, "\"],[\"p\",\""); put_key(t, owner);
+  put(t, "\"],[\"subject\",\"The timer stops at 59 seconds\"],[\"t\",\"bug\"]]");
+}
+patch_tags :: (t: [] Tags, owner: [32] u8) {
+  put(t, "[[\"a\",\""); put_address(t, owner, "tea-tools"); put(t, "\"],[\"r\",\""); put(t, EUC); put(t, "\"],[\"p\",\""); put_key(t, owner);
+  put(t, "\"],[\"t\",\"root\"],[\"commit\",\""); put(t, COMMIT); put(t, "\"],[\"parent-commit\",\""); put(t, PARENT); put(t, "\"]]");
+}
+status_tags :: (t: [] Tags, root: NostrEvent, owner: [32] u8) {
+  put(t, "[[\"e\",\""); put_key(t, root.id); put(t, "\",\"\",\"root\"],[\"p\",\""); put_key(t, owner);
+  put(t, "\"],[\"p\",\""); put_key(t, root.public_key); put(t, "\"],[\"a\",\""); put_address(t, owner, "tea-tools"); put(t, "\"]]");
+}
+
+// An unsigned event with these tags, parsed but not verified: its id and
+// sig are zeros. Used for the refusals, which the readers refuse on their
+// tags alone.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+who :: (keys: [] [32] u8, key: [32] u8) -> string {
+  for k: 0..<keys.count { if n34_same(keys[k], key) { return PEOPLE[k]; } }
+  return "someone else";
+}
+show_resolve :: (label: string, names: [] string, s: N34State) {
+  print("%: %", label, STATUS[s.status]);
+  if s.status != N34_OK { print("\n"); return; }
+  print(", state %, winner %, counted %, ignored %, refused %\n", STATE[s.state], ifx s.winner >= 0 then names[s.winner] else "none", s.counted, s.ignored, s.refused);
+}
+
+main :: () {
+  secret: [4][32] u8; keys: [4][32] u8;
+  for k: 0..<4 { decode_hex(KEYS[k], secret[k][..]); }
+  buf: [8][8192] u8;
+
+  print("the repository announcement, by Alice\n");
+  t: [1] Tags;
+  // Alice's public key comes from signing: sign an empty note first.
+  for k: 0..<4 { keys[k] = sign(secret[k][..], T0, 1, "[]", "", buf[0][..]).public_key; }
+  for k: 0..<4 { h := n34_hex32(keys[k]); print("%: %\n", PEOPLE[k], cast(string) h[..]); }
+  repo_tags(t[..], keys[BOB]);
+  repo := sign(secret[ALICE][..], T0, 30617, tags_of(t[..]), "", buf[0][..]);
+  re := nt_event_of(repo); r := n34_repo(re);
+  print("read: %, d %, name \"%\", clone % values, first %, euc %\n", STATUS[r.status], nt_raw(re, r.d.v[0]), nt_raw(re, r.name.v[0]), r.clone.values, nt_raw(re, r.clone.v[0]), nt_raw(re, r.euc.v[0]));
+  print("maintainers: Alice (the author) and");
+  for k: 1..<4 { if n34_maintainer(re, keys[k]) { print(" %", PEOPLE[k]); } }
+  print("\n");
+  a: [1] Tags; put_address(a[..], keys[ALICE], "tea-tools");
+  print("its address: %\n", tags_of(a[..]));
+
+  print("an issue and a patch, by Carol\n");
+  t[0].n = 0; issue_tags(t[..], keys[ALICE]);
+  print("issue tags: %\n", tags_of(t[..]));
+  issue := sign(secret[CAROL][..], T0 + 60, 1621, tags_of(t[..]), "Set the timer to 1:30 and it stops at 0:59.", buf[1][..]);
+  ie := nt_event_of(issue); i := n34_issue(ie);
+  print("issue: %, repository %, subject \"%\"\n", STATUS[i.status], ifx nt_raw(ie, i.repo) == tags_of(a[..]) then "tea-tools (the address above)" else "another", nt_raw(ie, i.fields.subject.v[0]));
+  t[0].n = 0; patch_tags(t[..], keys[ALICE]);
+  patch := sign(secret[CAROL][..], T0 + 90, 1617, tags_of(t[..]), "From 9c4f6e2b Mon Sep 17 00:00:00 2001\nSubject: [PATCH] timer: count minutes past 59 seconds\n", buf[2][..]);
+  pe := nt_event_of(patch); p := n34_patch(pe);
+  print("patch: %, root %, revision %, commit %, parent %\n", STATUS[p.status], p.root, p.revision, nt_raw(pe, p.commit.v[0]), nt_raw(pe, p.parent.v[0]));
+
+  print("statuses\n");
+  set: [4] NostrEvent; names := [4] string.["S1", "S2", "S3", "S4"];
+  t[0].n = 0; status_tags(t[..], issue, keys[ALICE]);
+  print("S1..S3 tags: %\n", tags_of(t[..]));
+  set[0] = sign(secret[CAROL][..], T0 + 100, 1630, tags_of(t[..]), "Still happens on 2.1.", buf[3][..]);
+  set[1] = sign(secret[BOB][..], T0 + 200, 1631, tags_of(t[..]), "Fixed by the patch.", buf[4][..]);
+  set[2] = sign(secret[DAVE][..], T0 + 300, 1632, tags_of(t[..]), "Not a bug.", buf[5][..]);
+  t[0].n = 0; status_tags(t[..], patch, keys[ALICE]);
+  set[3] = sign(secret[ALICE][..], T0 + 400, 1631, tags_of(t[..]), "Applied.", buf[6][..]);
+  for k: 0..<4 {
+    st := n34_status(nt_event_of(set[k]));
+    print("%: kind % by % at T0+%, state %\n", names[k], set[k].kind, who(keys[..], set[k].public_key), set[k].created_at - T0, STATE[st.state]);
+  }
+  print("each event's id\n");
+  all := [7] NostrEvent.[repo, issue, patch, set[0], set[1], set[2], set[3]];
+  all_names := [7] string.["repository", "issue", "patch", "S1", "S2", "S3", "S4"];
+  for k: 0..<7 { h := n34_hex32(all[k].id); print("%: %, verified %\n", all_names[k], cast(string) h[..], all[k].verified); }
+  // The resolver reads each event's tags, author, id and time.
+  signed: [4] N34Signed; for k: 0..<4 { signed[k] = nt_signed_of(set[k]); }
+  show_resolve("the issue", names[..], n34_resolve(nt_signed_of(repo), nt_signed_of(issue), signed[..]));
+  show_resolve("the patch", names[..], n34_resolve(nt_signed_of(repo), nt_signed_of(patch), signed[..]));
+  // Without Bob's status, Carol's own "open" is the newest that counts.
+  less := [3] N34Signed.[signed[0], signed[2], signed[3]]; less_names := [3] string.["S1", "S3", "S4"];
+  show_resolve("the issue without S2", less_names[..], n34_resolve(nt_signed_of(repo), nt_signed_of(issue), less[..]));
+  // Bob signs the same repository name: it is another repository.
+  t[0].n = 0; repo_tags(t[..], keys[BOB]);
+  bobs := sign(secret[BOB][..], T0, 30617, tags_of(t[..]), "", buf[7][..]);
+  show_resolve("the issue against Bob's tea-tools", names[..], n34_resolve(nt_signed_of(bobs), nt_signed_of(issue), signed[..]));
+
+  print("refusals\n");
+  bad: [8192] u8;
+  e := unsigned(30617, "[[\"d\",\"tea-tools\"],[\"r\",\"4b825dc642cb6eb9a060e54bf8d69288fbee490\",\"euc\"]]", bad[..]);
+  print("repository, euc of 39 digits: %\n", STATUS[n34_repo(nt_event_of(e)).status]);
+  e = unsigned(30617, "[[\"d\",\"tea-tools\"],[\"clone\"]]", bad[..]);
+  print("repository, clone without a URL: %\n", STATUS[n34_repo(nt_event_of(e)).status]);
+  e = unsigned(30617, "[[\"name\",\"Tea tools\"]]", bad[..]);
+  print("repository without d: %\n", STATUS[n34_repo(nt_event_of(e)).status]);
+  e = unsigned(1621, "[[\"subject\",\"No repository\"]]", bad[..]);
+  print("issue without a: %\n", STATUS[n34_issue(nt_event_of(e)).status]);
+  e = unsigned(1621, "[[\"a\",\"30617:F9308A019258C31049344F85F89D5229B531C845836F99B08601F113BCE036F9:tea-tools\"]]", bad[..]);
+  print("issue, a with an uppercase key: %\n", STATUS[n34_issue(nt_event_of(e)).status]);
+  t[0].n = 0; put(t[..], "[[\"a\",\""); put(t[..], tags_of(a[..])); put(t[..], "\"],[\"commit\",\"9c4f6e2b\"]]");
+  e = unsigned(1617, tags_of(t[..]), bad[..]);
+  print("patch, commit of 8 digits: %\n", STATUS[n34_patch(nt_event_of(e)).status]);
+  e = unsigned(1617, "[[\"a\",\"30621:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea-tools\"]]", bad[..]);
+  print("patch naming only a project: %\n", STATUS[n34_patch(nt_event_of(e)).status]);
+  e = unsigned(1631, "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]", bad[..]);
+  print("status without e: %\n", STATUS[n34_status(nt_event_of(e)).status]);
+  e = unsigned(1631, "[[\"e\",\"9c4f6e2b\",\"\",\"root\"]]", bad[..]);
+  print("status, e of 8 digits: %\n", STATUS[n34_status(nt_event_of(e)).status]);
+}
+// book:end example
