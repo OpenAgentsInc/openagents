@@ -2780,6 +2780,23 @@ defaulted state with native `coax_init` byte for byte, compares every face
 global of a defaulted type natively, and fails when a zeroed state would
 pass. The iOS app's Swift host doesn't call it yet.
 
+## Machine-readable diagnostics keep one schema and leave text unchanged
+
+`--diagnostics json` writes each diagnostic on stderr as one
+`coax.diagnostic.v1` object a line, with the keys `schema`, `severity`,
+`code`, `message`, `span`, `notes` and `fixes` in that order. Every span lies
+inside its file, and its line and column agree with its byte offset. A fix
+carries edits only where its insertion is certain ("add 'X'", "add 'X'
+before the end of the line"); otherwise it carries text only. A change to
+this shape takes a new schema name. Without the flag, or with
+`--diagnostics text`, the text output is byte-identical to the release
+before the flag.
+
+Check: `coax/tests/diagnostics_json.py` (recorded lexer, parser, checker
+and failing-check diagnostics; every line parses and every span is checked
+against its file; the parser fix applied makes the file check; `mutate`
+gives the same object; text recorded with 0.45.0 is unchanged).
+
 ## CPU reflection lowers to bounded ordinary values
 
 `type_info`, `field_info` and `enum_info` are implemented in the Coax parser
