@@ -1,0 +1,15 @@
+"abd" against the pin of "abc": state failed, ready false, failed at verify (check)
+then the host reports mapped: state failed, ready false, failed at verify (check)
+record for the old change time: admitted false, hashed 3 bytes
+kernel for another device: stale
+kernel from another compiler: stale
+kernel for other source: stale
+kernel bytes changed: check
+a hash rate of 0: rate
+2 cached pages of a 1-page file: shape
+no golden decisions: shape
+a clock that runs backwards: clock
+mapped before verified: state failed, ready false, failed at verify (order)
+ready: state ready, ready true
+ready, then a golden re-check fails: state failed, ready false, failed at ready (check)
+ready, then the host reports broken: state failed, ready false, failed at ready (check)

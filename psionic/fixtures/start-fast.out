@@ -1,0 +1,11 @@
+first start: verify 1024000 + map 128000 + arenas 100000 + warm-up 60000 = 1312000 us (hashed 409600000, read 512000000, slowest lane 0)
+lazy map: verify 1024000 + map 0 + arenas 100000 + warm-up 188000 = 1312000 us (hashed 409600000, read 512000000, slowest lane 0)
+warm restart: verify 0 + map 76800 + arenas 100000 + warm-up 60000 = 236800 us (hashed 0, read 0, slowest lane 0)
+no records, 1 worker: verify 1484800 + map 76800 + arenas 100000 + warm-up 60000 = 1721600 us (hashed 614400000, read 512000000, slowest lane 0)
+no records, 2 workers: verify 1075200 + map 76800 + arenas 100000 + warm-up 60000 = 1312000 us (hashed 614400000, read 512000000, slowest lane 0)
+verified passed: state map, golden 0 of 3, ready false
+mapped passed: state arenas, golden 0 of 3, ready false
+allocated passed: state warmup, golden 0 of 3, ready false
+warmed passed: state warmup, golden 1 of 3, ready false
+warmed passed: state warmup, golden 2 of 3, ready false
+warmed passed: state ready, golden 3 of 3, ready true

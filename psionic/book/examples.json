@@ -2255,6 +2255,26 @@
       ],
       "timeout": 180,
       "stack_kib": 65536
+    },
+    {
+      "source": "psionic/examples/start-fast.coax",
+      "chapter": "psionic/book/ch178-start-fast.md",
+      "stdout": "psionic/fixtures/start-fast.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/start-fast-refuse.coax",
+      "chapter": "psionic/book/ch178-start-fast.md",
+      "stdout": "psionic/fixtures/start-fast-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

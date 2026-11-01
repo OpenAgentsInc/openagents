@@ -1,0 +1,40 @@
+// Chapter 178: predict a replica's start phase by phase, then walk the
+// readiness machine. The rates are the chapter's round teaching numbers;
+// psionic/tests/startup.sh measures this host's.
+#import "Basic";
+#load "../lib/startup.coax";
+
+SHA_A :: "0000000000000000000000000000000000000000000000000000000000000001";
+SHA_B :: "0000000000000000000000000000000000000000000000000000000000000002";
+STAT_A :: PaStat.{device=66306,inode=11,size=409600000,mtime_ns=1793000000000000000,ctime_ns=1793000000000000000};
+STAT_B :: PaStat.{device=66306,inode=12,size=204800000,mtime_ns=1793000000000000000,ctime_ns=1793000000000000000};
+
+say :: (label:string,p:CsPlan) {
+    print("%: verify % + map % + arenas % + warm-up % = % us (hashed %, read %, slowest lane %)\n",
+        label,p.verify_us,p.map_us,p.arena_us,p.warm_us,p.total_us,p.hashed,p.read,p.lane);
+}
+// book:begin example
+main :: () {
+    h:=CsHost.{hash=500,read=2000,fault=8000,zero=4000,page=4096,decision_us=20000};
+    rb:[512]u8;nb:=pv_record("b.safetensors",SHA_B,STAT_B,rb[..]);
+    ra:[512]u8;na:=pv_record("a.safetensors",SHA_A,STAT_A,ra[..]);
+    // A: 100,000 pages, none cached, no record. B: 50,000 pages, half cached, with its record.
+    files:=[2]CsFile.[CsFile.{name="a.safetensors",sha=SHA_A,stat=STAT_A},
+        CsFile.{name="b.safetensors",sha=SHA_B,stat=STAT_B,record=rb[0..<nb],cached_pages=25000}];
+    arena:=400000000;
+    say("first start",cs_plan(files[..],h,arena,3,1,true));
+    say("lazy map",cs_plan(files[..],h,arena,3,1,false));
+    warm:=files;warm[0].record=ra[0..<na];warm[0].cached_pages=100000;warm[1].cached_pages=50000;
+    say("warm restart",cs_plan(warm[..],h,arena,3,1,true));
+    fresh:=files;fresh[1].record=rb[0..<0];
+    say("no records, 1 worker",cs_plan(fresh[..],h,arena,3,1,true));
+    say("no records, 2 workers",cs_plan(fresh[..],h,arena,3,2,true));
+
+    l:=cs_start(3);
+    events:=[6]CsEvent.[CsEvent.verified,CsEvent.mapped,CsEvent.allocated,CsEvent.warmed,CsEvent.warmed,CsEvent.warmed];
+    for e:events {
+        l=cs_step(l,e,true);
+        print("% passed: state %, golden % of %, ready %\n",e,cs_state_name(l.state),l.warm,l.golden,cs_ready(l));
+    }
+}
+// book:end example

@@ -1,0 +1,324 @@
+// Chapter 178: start fast. A replica's start is an ordered run of phases:
+// verify each weight file's identity, map its pages, allocate the arenas, run
+// the golden warm-up, then report ready. This file predicts each phase's cost
+// from the files' sizes, their page-cache state, whether a verified-file record
+// (chapter 19, model-io/access.coax) lets verification skip the hash, and the
+// host's measured rates. It also decides when a replica is ready and when a
+// cached generated kernel may be reused. The host (psionic/platform/startup.c)
+// owns the clock, the files and the mappings; every decision is made here.
+// Profile cs-start-v1: integer microseconds and bytes, every division rounded
+// up, at most 64 files of at most 64 GiB each.
+#load "model-io/access.coax";
+#load "model-io/identity.coax";
+#load "cores.coax";
+#authority;
+
+CsStatus :: enum u8 {ok;shape;rate;clock;order;stale;check;}
+// The phases in order. A replica moves forward one phase at a time; failed
+// is final.
+CsState :: enum u8 {verify;map;arenas;warmup;ready;failed;}
+CsEvent :: enum u8 {verified;mapped;allocated;warmed;broken;}
+// book:begin types
+// Measured host rates in bytes per microsecond (1 B/us is 1 MB/s): SHA-256
+// over cached bytes, reading uncached pages from disk, mapping and touching
+// cached pages, and first-touching fresh arena memory. One golden warm-up
+// decision takes decision_us. Pages are 4, 16 or 64 KiB.
+CsHost :: struct {hash:int;read:int;fault:int;zero:int;page:int;decision_us:int;}
+// A weight file: its pinned name and digest, its identity now, the verified
+// record the host found for it (empty if none), and how many of its pages
+// the page cache holds.
+CsFile :: struct {name:string;sha:string;stat:PaStat;record:[]u8;cached_pages:int;}
+// Each phase's time in microseconds, the bytes hashed and the bytes read from disk.
+// lane is the worker whose hashing takes longest, the first of equals.
+CsPlan :: struct {status:CsStatus;verify_us:int;map_us:int;arena_us:int;warm_us:int;total_us:int;hashed:int;read:int;lane:int;}
+// book:end types
+CsLife :: struct {state:CsState;warm:int;golden:int;why:CsStatus;at:CsState;}
+// A cached generated kernel is filed under the device it was compiled for,
+// the compiler's identity and the generated source's identity.
+CsKernelKey :: struct {device:string;compiler:string;source:string;}
+
+CS_FILES_MAX :: 64;
+CS_RATE_MAX :: 1048576;
+CS_ARENA_MAX :: 1099511627776;
+CS_GOLDEN_MAX :: 16;
+CS_DECISION_MAX :: 60000000;
+CS_NAME_MAX :: 64;
+
+// Checks precede the implementation. Expected values are worked by hand in chapter 178.
+cs_host :: ()->CsHost {return CsHost.{hash=500,read=2000,fault=8000,zero=4000,page=4096,decision_us=20000};}
+CS_SHA_A :: "0000000000000000000000000000000000000000000000000000000000000001";
+CS_SHA_B :: "0000000000000000000000000000000000000000000000000000000000000002";
+CS_STAT_A :: PaStat.{device=66306,inode=11,size=409600000,mtime_ns=1793000000000000000,ctime_ns=1793000000000000000};
+CS_STAT_B :: PaStat.{device=66306,inode=12,size=204800000,mtime_ns=1793000000000000000,ctime_ns=1793000000000000000};
+#test "rates, pages and counts are bounded" {
+    h:=cs_host();#assert cs_host_ok(h);
+    for k:0..<5 {
+        bad:=h;
+        if k==0 {bad.hash=0;}if k==1 {bad.read=0;}if k==2 {bad.fault=0;}if k==3 {bad.zero=0;}if k==4 {bad.decision_us=0;}
+        #assert !cs_host_ok(bad);
+        if k==0 {bad.hash=CS_RATE_MAX+1;}if k==1 {bad.read=CS_RATE_MAX+1;}if k==2 {bad.fault=CS_RATE_MAX+1;}if k==3 {bad.zero=CS_RATE_MAX+1;}if k==4 {bad.decision_us=CS_DECISION_MAX+1;}
+        #assert !cs_host_ok(bad);
+    }
+    top:=CsHost.{hash=CS_RATE_MAX,read=CS_RATE_MAX,fault=CS_RATE_MAX,zero=CS_RATE_MAX,page=65536,decision_us=CS_DECISION_MAX};#assert cs_host_ok(top);
+    one:=CsHost.{hash=1,read=1,fault=1,zero=1,page=4096,decision_us=1};#assert cs_host_ok(one);
+    p:=h;p.page=2048;#assert !cs_host_ok(p);p.page=131072;#assert !cs_host_ok(p);p.page=12288;#assert !cs_host_ok(p);p.page=16384;#assert cs_host_ok(p);
+    #assert cs_pages(1,4096)==1 && cs_pages(4096,4096)==1 && cs_pages(4097,4096)==2 && cs_up(0,7)==0 && cs_up(7,7)==1 && cs_up(8,7)==2;
+    f:=CsFile.{name="a",sha=CS_SHA_A,stat=CS_STAT_A,cached_pages=2};f.stat.size=4097;
+    #assert cs_file_ok(f,4096) && cs_cold(f,4096)==0;
+    f.cached_pages=1;#assert cs_cold(f,4096)==1;f.cached_pages=0;#assert cs_cold(f,4096)==4097;
+    f.cached_pages=3;#assert !cs_file_ok(f,4096);f.cached_pages=-1;#assert !cs_file_ok(f,4096);f.cached_pages=0;
+    f.stat.size=0;#assert !cs_file_ok(f,4096);f.stat.size=1;#assert cs_file_ok(f,4096);f.stat.size=PW_FILE_MAX;#assert cs_file_ok(f,4096);f.stat.size=PW_FILE_MAX+1;#assert !cs_file_ok(f,4096);
+}
+// Two files: A, 100,000 pages, none cached, no record; B, 50,000 pages, half
+// cached, with the record that admits it.
+cs_two :: (files:[]CsFile,record:[]u8)->int {
+    files[0]=CsFile.{name="a.safetensors",sha=CS_SHA_A,stat=CS_STAT_A};
+    n:=pv_record("b.safetensors",CS_SHA_B,CS_STAT_B,record);
+    files[1]=CsFile.{name="b.safetensors",sha=CS_SHA_B,stat=CS_STAT_B,record=record[0..<n],cached_pages=25000};
+    return n;
+}
+#test "the hand-worked start: hash A, read what is cold, map, allocate, warm up" {
+    files:[2]CsFile;record:[512]u8;#assert cs_two(files[..],record[..])>0;
+    p:=cs_plan(files[..],cs_host(),400000000,3,1,true);
+    // A: hash 409,600,000 / 500 = 819,200 us, read it all 204,800 us. B: no hash.
+    #assert p.status==CsStatus.ok && p.verify_us==819200+204800 && p.hashed==409600000;
+    // A was read by hashing: map 51,200 us. B: read 25,000 cold pages 51,200 us, map 25,600 us.
+    #assert p.map_us==51200+51200+25600 && p.read==409600000+102400000;
+    #assert p.arena_us==100000 && p.warm_us==60000 && p.total_us==1024000+128000+100000+60000;
+    // Lazy mapping moves the map cost into the warm-up, which touches every weight: ready no sooner.
+    l:=cs_plan(files[..],cs_host(),400000000,3,1,false);
+    #assert l.map_us==0 && l.warm_us==60000+128000 && l.total_us==p.total_us && l.verify_us==p.verify_us;
+}
+#test "a warm restart: every page cached, every record admits" {
+    files:[2]CsFile;record:[512]u8;n:=cs_two(files[..],record[..]);
+    a:[512]u8;m:=pv_record("a.safetensors",CS_SHA_A,files[0].stat,a[..]);files[0].record=a[0..<m];
+    files[0].cached_pages=100000;files[1].cached_pages=50000;
+    p:=cs_plan(files[..],cs_host(),400000000,3,1,true);
+    #assert p.status==CsStatus.ok && p.verify_us==0 && p.hashed==0 && p.read==0;
+    #assert p.map_us==51200+25600 && p.total_us==76800+100000+60000;
+    #assert n>0;
+}
+#test "parallel verification: hashing splits across cores, the disk stays one queue" {
+    files:[2]CsFile;record:[512]u8;n:=cs_two(files[..],record[..]);files[1].record=record[0..<0];
+    one:=cs_plan(files[..],cs_host(),0,1,1,true);
+    // One core hashes both: 819,200 + 409,600; reads 204,800 + 51,200.
+    #assert one.verify_us==819200+409600+256000 && one.hashed==614400000 && one.map_us==51200+25600 && one.arena_us==0;
+    two:=cs_plan(files[..],cs_host(),0,1,2,true);
+    // Two cores: the longer lane, A's 819,200, then the same reads.
+    #assert two.verify_us==819200+256000 && two.map_us==one.map_us && two.total_us==two.verify_us+76800+20000;
+    // More workers than files: the extra lanes are empty.
+    #assert cs_plan(files[..],cs_host(),0,1,8,true).verify_us==two.verify_us;
+    // Swapped order, two lanes: the longer lane still decides.
+    swapped:=[2]CsFile.[files[1],files[0]];s:=cs_plan(swapped[..],cs_host(),0,1,2,true);
+    #assert s.verify_us==two.verify_us && s.lane==1 && two.lane==0 && one.lane==0;
+    // Two equal lanes: the first is named.
+    same:=[2]CsFile.[files[0],files[0]];e:=cs_plan(same[..],cs_host(),0,1,2,true);#assert e.lane==0 && e.verify_us==819200+409600;
+    #assert n>0;
+}
+#test "a changed file or pin is hashed again: every part of the record's key" {
+    files:[2]CsFile;record:[512]u8;#assert cs_two(files[..],record[..])>0;
+    base:=cs_plan(files[0..<2],cs_host(),0,1,1,true);#assert base.hashed==409600000;
+    for k:0..<7 {
+        g:=files;
+        if k==0 {g[1].stat.device+=1;}if k==1 {g[1].stat.inode+=1;}if k==2 {g[1].stat.mtime_ns+=1;}if k==3 {g[1].stat.ctime_ns+=1;}
+        if k==4 {g[1].sha=CS_SHA_A;}if k==5 {g[1].name="c.safetensors";}if k==6 {g[1].record=record[0..<10];}
+        // B is now hashed in full: 409,600 us more and 204,800,000 bytes more.
+        p:=cs_plan(g[..],cs_host(),0,1,1,true);#assert p.status==CsStatus.ok && p.hashed==614400000 && p.verify_us==base.verify_us+409600+51200;
+    }
+    // A size change is a different file too; its pages are counted again.
+    g:=files;g[1].stat.size=204800001;g[1].cached_pages=0;p:=cs_plan(g[..],cs_host(),0,1,1,true);#assert p.hashed==614400001;
+}
+#test "plans refuse what they cannot predict" {
+    files:[2]CsFile;record:[512]u8;#assert cs_two(files[..],record[..])>0;h:=cs_host();
+    #assert cs_plan(files[0..<0],h,0,1,1,true).status==CsStatus.shape;
+    big:[65]CsFile;for i:0..<65 {big[i]=files[0];}
+    #assert cs_plan(big[0..<64],h,0,1,1,true).status==CsStatus.ok && cs_plan(big[..],h,0,1,1,true).status==CsStatus.shape;
+    #assert cs_plan(files[..],h,-1,1,1,true).status==CsStatus.shape && cs_plan(files[..],h,CS_ARENA_MAX,1,1,true).status==CsStatus.ok;
+    #assert cs_plan(files[..],h,CS_ARENA_MAX+1,1,1,true).status==CsStatus.shape;
+    #assert cs_plan(files[..],h,0,0,1,true).status==CsStatus.shape && cs_plan(files[..],h,0,CS_GOLDEN_MAX,1,true).status==CsStatus.ok;
+    #assert cs_plan(files[..],h,0,CS_GOLDEN_MAX+1,1,true).status==CsStatus.shape;
+    #assert cs_plan(files[..],h,0,1,0,true).status==CsStatus.shape && cs_plan(files[..],h,0,1,64,true).status==CsStatus.ok && cs_plan(files[..],h,0,1,65,true).status==CsStatus.shape;
+    bad:=h;bad.read=0;#assert cs_plan(files[..],bad,0,1,1,true).status==CsStatus.rate;
+    g:=files;g[1].cached_pages=50001;r:=cs_plan(g[..],h,0,1,1,true);#assert r.status==CsStatus.shape && r.total_us==0;
+}
+#test "measured phases come from five monotonic readings" {
+    t:=[5]int.[1000,1024000+1000,1152000+1000,1252000+1000,1312000+1000];
+    m:=cs_measured(t[..]);
+    #assert m.status==CsStatus.ok && m.verify_us==1024000 && m.map_us==128000 && m.arena_us==100000 && m.warm_us==60000 && m.total_us==1312000;
+    #assert cs_measured(t[0..<4]).status==CsStatus.clock;
+    for i:0..<5 {b:=t;b[i]-=1025000;r:=cs_measured(b[..]);#assert r.status==CsStatus.clock && r.total_us==0;}
+    s:=t;s[2]=s[1];#assert cs_measured(s[..]).status==CsStatus.ok && cs_measured(s[..]).map_us==0;
+    s[0]=0;#assert cs_measured(s[..]).status==CsStatus.ok;
+}
+
+// The readiness machine, checked against an independent oracle: the legal
+// path is verified, mapped, allocated, then warmed golden times; after that
+// only passing golden re-checks keep a replica ready. Symbols 0-3 are those
+// events passing, 4 is a failed warm-up, 5 is a broken report.
+cs_symbol :: (s:int)->CsEvent {if s==4 {return CsEvent.warmed;}if s==5 {return CsEvent.broken;}return cast(CsEvent)cast(u8)s;}
+#forall "ready exactly after verify, map, allocate and every golden warm-up, in order" g:1..<3,a:0..<6,b:0..<6,c:0..<6,d:0..<6,e:0..<6 {
+    seq:=[5]int.[a,b,c,d,e];l:=cs_start(g);
+    #assert l.state==CsState.verify && !cs_ready(l);
+    legal:=true;
+    for k:0..<5 {
+        l=cs_step(l,cs_symbol(seq[k]),seq[k]!=4);
+        want:=k;if want>3 {want=3;}
+        legal=legal && seq[k]==want;
+        if !legal {#assert l.state==CsState.failed && !cs_ready(l);}
+        else if k+1>=3+g {#assert l.state==CsState.ready && cs_ready(l) && l.warm==g;}
+        else if k<3 {#assert cast(int)l.state==k+1 && l.warm==0;}
+        else {#assert l.state==CsState.warmup && !cs_ready(l) && l.warm==k-2;}
+    }
+}
+#test "failures name the phase and the reason" {
+    l:=cs_step(cs_start(3),CsEvent.verified,false);#assert l.state==CsState.failed && l.at==CsState.verify && l.why==CsStatus.check;
+    l=cs_step(cs_start(3),CsEvent.mapped,true);#assert l.state==CsState.failed && l.at==CsState.verify && l.why==CsStatus.order;
+    l=cs_step(cs_start(3),CsEvent.broken,true);#assert l.state==CsState.failed && l.why==CsStatus.check;
+    l=cs_start(1);l=cs_step(l,CsEvent.verified,true);l=cs_step(l,CsEvent.mapped,true);l=cs_step(l,CsEvent.allocated,true);
+    #assert l.state==CsState.warmup && l.warm==0;
+    w:=cs_step(l,CsEvent.warmed,false);#assert w.state==CsState.failed && w.at==CsState.warmup && w.why==CsStatus.check && w.warm==0;
+    l=cs_step(l,CsEvent.warmed,true);#assert cs_ready(l) && l.warm==1;
+    l=cs_step(l,CsEvent.warmed,true);#assert cs_ready(l) && l.warm==1;
+    r:=cs_step(l,CsEvent.verified,true);#assert r.state==CsState.failed && r.at==CsState.ready && r.why==CsStatus.order;
+    r=cs_step(l,CsEvent.broken,true);#assert r.at==CsState.ready && r.why==CsStatus.check;
+    // Failed is final, and keeps its first reason.
+    r=cs_step(r,CsEvent.verified,true);#assert r.state==CsState.failed && r.at==CsState.ready && r.why==CsStatus.check;
+    #assert cs_start(0).state==CsState.failed && cs_start(0).why==CsStatus.shape && cs_start(CS_GOLDEN_MAX).state==CsState.verify;
+    #assert cs_start(CS_GOLDEN_MAX+1).why==CsStatus.shape && cs_start(2).golden==2;
+}
+
+// The kernel cache. A digest is 64 lowercase hex digits; a device is a plain name.
+CS_ABC :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+#test "a cached kernel is used only under the same device, compiler and source, with its bytes intact" {
+    bytes:=[3]u8.[97,98,99];
+    key:=CsKernelKey.{device="cpu-x86_64",compiler=CS_SHA_A,source=CS_SHA_B};
+    #assert cs_kernel(key,key,bytes[..],CS_ABC)==CsStatus.ok;
+    for k:0..<3 {
+        want:=key;if k==0 {want.device="cuda-sm89";}if k==1 {want.compiler=CS_SHA_B;}if k==2 {want.source=CS_SHA_A;}
+        #assert cs_kernel(key,want,bytes[..],CS_ABC)==CsStatus.stale;
+        #assert cs_kernel(want,key,bytes[..],CS_ABC)==CsStatus.stale;
+    }
+    bytes[2]=100;#assert cs_kernel(key,key,bytes[..],CS_ABC)==CsStatus.check;bytes[2]=99;
+    #assert cs_kernel(key,key,bytes[..],"abc")==CsStatus.shape;
+    bad:=key;bad.compiler="abc";#assert cs_kernel(bad,bad,bytes[..],CS_ABC)==CsStatus.shape && cs_kernel(key,bad,bytes[..],CS_ABC)==CsStatus.shape;
+    bad=key;bad.source="";#assert cs_kernel(bad,key,bytes[..],CS_ABC)==CsStatus.shape;
+    #assert cs_device("a") && !cs_device("") && !cs_device("cpu x86") && !cs_device("cpu\n");
+    long:[65]u8;for i:0..<65 {long[i]='a';}
+    #assert cs_device(cast(string)long[0..<64]) && !cs_device(cast(string)long[..]);
+    long[0]=127;#assert !cs_device(cast(string)long[0..<1]);long[0]='~';#assert cs_device(cast(string)long[0..<1]);long[0]='!';#assert cs_device(cast(string)long[0..<1]);
+}
+#test "names" {
+    #assert cs_state_name(CsState.verify)=="verify" && cs_state_name(CsState.failed)=="failed" && cs_status_name(CsStatus.ok)=="ok" && cs_status_name(CsStatus.check)=="check";
+}
+
+cs_up :: (a:int,b:int)->int {return (a+b-1)/b;}
+cs_pages :: (bytes:int,page:int)->int {return cs_up(bytes,page);}
+cs_rate_ok :: (r:int)->bool {return r>=1 && r<=CS_RATE_MAX;}
+cs_host_ok :: (h:CsHost)->bool {
+    if !cs_rate_ok(h.hash) || !cs_rate_ok(h.read) || !cs_rate_ok(h.fault) || !cs_rate_ok(h.zero) {return false;}
+    if h.page!=4096 && h.page!=16384 && h.page!=65536 {return false;}
+    return h.decision_us>=1 && h.decision_us<=CS_DECISION_MAX;
+}
+cs_file_ok :: (f:CsFile,page:int)->bool {
+    if f.stat.size<1 || f.stat.size>PW_FILE_MAX {return false;}
+    return f.cached_pages>=0 && f.cached_pages<=cs_pages(f.stat.size,page);
+}
+// Bytes that must come from disk: the uncached pages, counting the short last
+// page among them while any page is uncached.
+cs_cold :: (f:CsFile,page:int)->int {
+    if f.cached_pages==cs_pages(f.stat.size,page) {return 0;}
+    return f.stat.size-f.cached_pages*page;
+}
+
+// book:begin plan
+// Predict each phase. A file whose verified record admits it skips the hash;
+// its cold pages are read when it is mapped. Any other file is hashed, which
+// reads its cold pages, so mapping finds it cached. Hashing splits across
+// workers by chapter 35's partition; the disk is one queue, so reads add up.
+// A lazy map defers the mapping into the warm-up, which touches every weight.
+cs_plan :: (files:[]CsFile,h:CsHost,arena:int,golden:int,workers:int,eager:bool)->CsPlan #export_c {
+    if !cs_host_ok(h) {return CsPlan.{status=CsStatus.rate};}
+    if files.count>CS_FILES_MAX || arena<0 || arena>CS_ARENA_MAX || golden<1 || golden>CS_GOLDEN_MAX {return CsPlan.{status=CsStatus.shape};}
+    lanes:=pc_plan(files.count,1,workers);
+    if lanes.status!=PcStatus.ok {return CsPlan.{status=CsStatus.shape};}
+    for f:files {if !cs_file_ok(f,h.page) {return CsPlan.{status=CsStatus.shape};}}
+    p:=CsPlan.{status=CsStatus.ok};lane_max:=0;reads:=0;load:=0;
+    for w:0..<workers {
+        lane:=0;
+        for i:pc_first(lanes,w)..<pc_first(lanes,w+1) {
+            f:=files[i];cold:=cs_cold(f,h.page);p.read+=cold;
+            if pv_admits(f.record,f.name,f.sha,f.stat) {load+=cs_up(cold,h.read);}
+            else {lane+=cs_up(f.stat.size,h.hash);reads+=cs_up(cold,h.read);p.hashed+=f.stat.size;}
+            load+=cs_up(f.stat.size,h.fault);
+        }
+        if lane>lane_max {lane_max=lane;p.lane=w;}
+    }
+    p.verify_us=lane_max+reads;p.arena_us=cs_up(arena,h.zero);p.warm_us=golden*h.decision_us;
+    if eager {p.map_us=load;} else {p.warm_us+=load;}
+    p.total_us=p.verify_us+p.map_us+p.arena_us+p.warm_us;
+    return p;
+}
+// book:end plan
+
+// Phases measured by the host: clock readings at start and at the end of
+// each of the four phases, in microseconds, never decreasing.
+cs_measured :: (t:[]int)->CsPlan #export_c {
+    if t.count!=5 || t[0]<0 {return CsPlan.{status=CsStatus.clock};}
+    for i:1..<5 {if t[i]<t[i-1] {return CsPlan.{status=CsStatus.clock};}}
+    return CsPlan.{status=CsStatus.ok,verify_us=t[1]-t[0],map_us=t[2]-t[1],arena_us=t[3]-t[2],warm_us=t[4]-t[3],total_us=t[4]-t[0]};
+}
+
+// book:begin life
+CS_NEXT :: [4]CsEvent.[CsEvent.verified,CsEvent.mapped,CsEvent.allocated,CsEvent.warmed];
+cs_start :: (golden:int)->CsLife #export_c {
+    if golden<1 || golden>CS_GOLDEN_MAX {return CsLife.{state=CsState.failed,why=CsStatus.shape};}
+    return CsLife.{state=CsState.verify,golden=golden};
+}
+cs_fail :: (l:CsLife,why:CsStatus)->CsLife {n:=l;n.state=CsState.failed;n.why=why;n.at=l.state;return n;}
+// One event: the phase in progress finished, passing (ok) or not. Only the
+// current phase's own event moves a replica forward; a failed check, a
+// broken report or an event out of order fails it for good. Ready needs
+// golden passing warm-ups; a ready replica stays ready through passing re-checks.
+cs_step :: (l:CsLife,e:CsEvent,ok:bool)->CsLife #export_c {
+    if l.state==CsState.failed {return l;}
+    if e==CsEvent.broken || (!ok && e==CS_NEXT[cast(int)cs_last(l.state)]) {return cs_fail(l,CsStatus.check);}
+    if l.state==CsState.ready {if e==CsEvent.warmed {return l;}return cs_fail(l,CsStatus.order);}
+    if e!=CS_NEXT[cast(int)l.state] {return cs_fail(l,CsStatus.order);}
+    n:=l;
+    if l.state!=CsState.warmup {n.state=cast(CsState)(cast(u8)l.state+1);return n;}
+    n.warm+=1;if n.warm==n.golden {n.state=CsState.ready;}
+    return n;
+}
+// The only answer to "may this replica take requests?".
+cs_ready :: (l:CsLife)->bool #export_c {return l.state==CsState.ready;}
+// book:end life
+// A ready replica's phase for the next event is the warm-up's.
+cs_last :: (s:CsState)->CsState {if s==CsState.ready {return CsState.warmup;}return s;}
+
+// book:begin kernel
+cs_device :: (s:string)->bool {
+    if s.count<1 || s.count>CS_NAME_MAX {return false;}
+    for c:s {if c<=32 || c>=127 {return false;}}
+    return true;
+}
+cs_key_ok :: (k:CsKernelKey)->bool {return cs_device(k.device) && pw_hex_digest(k.compiler) && pw_hex_digest(k.source);}
+// A cached kernel filed under `entry` may serve a compile asking for `want`
+// only if every part of the key is the same and its bytes still hash to the
+// digest recorded when it was compiled.
+cs_kernel :: (entry:CsKernelKey,want:CsKernelKey,binary:[]u8,binary_sha:string)->CsStatus #export_c {
+    if !cs_key_ok(entry) || !cs_key_ok(want) || !pw_hex_digest(binary_sha) {return CsStatus.shape;}
+    if entry.device!=want.device || entry.compiler!=want.compiler || entry.source!=want.source {return CsStatus.stale;}
+    if !pw_digest(binary,binary_sha) {return CsStatus.check;}
+    return CsStatus.ok;
+}
+// book:end kernel
+#test "the stand-in warm-up pass weighs each byte by its place" {
+    d:=[3]u8.[1,2,3];#assert cs_golden(d[..])==14 && cs_golden(d[0..<0])==0;
+    ones:[257]u8;for i:0..<257 {ones[i]=1;}#assert cs_golden(ones[..])==32896+1;
+    ones[0]=255;#assert cs_golden(ones[..])==32896+1+254;
+}
+// The native harness's stand-in for a golden decision: it reads every weight
+// byte once and must reproduce the answer pinned for these bytes.
+cs_golden :: (data:[]u8)->int #export_c {s:=0;for i:0..<data.count {s+=cast(int)data[i]*((i&255)+1);}return s;}
+cs_state_name :: (s:CsState)->string {names:=[6]string.["verify","map","arenas","warmup","ready","failed"];return names[cast(int)s];}
+cs_status_name :: (s:CsStatus)->string {names:=[7]string.["ok","shape","rate","clock","order","stale","check"];return names[cast(int)s];}

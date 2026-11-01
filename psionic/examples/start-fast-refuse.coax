@@ -1,0 +1,50 @@
+// Chapter 178: what a start refuses. A changed byte fails verification and the
+// replica never reports ready; a record for a changed file no longer skips
+// the hash; a cached kernel under another key, or with changed bytes, is not
+// used; plans and events out of their bounds are refused with their reason.
+#import "Basic";
+#load "../lib/startup.coax";
+
+SHA_ABC :: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+COMPILER :: "0000000000000000000000000000000000000000000000000000000000000001";
+SOURCE :: "0000000000000000000000000000000000000000000000000000000000000002";
+
+life :: (label:string,l:CsLife) {
+    print("%: state %, ready %",label,cs_state_name(l.state),cs_ready(l));
+    if l.state==CsState.failed {print(", failed at % (%)",cs_state_name(l.at),cs_status_name(l.why));}
+    print("\n");
+}
+// book:begin refuse
+main :: () {
+    // The weights are the three bytes "abc", pinned by their SHA-256. One byte changes.
+    weights:=[3]u8.[97,98,100];
+    l:=cs_step(cs_start(3),CsEvent.verified,pw_digest(weights[..],SHA_ABC));
+    life("\"abd\" against the pin of \"abc\"",l);
+    life("then the host reports mapped",cs_step(l,CsEvent.mapped,true));
+
+    // A record written before the change: any change to the file moves its change time.
+    st:=PaStat.{device=66306,inode=12,size=3,mtime_ns=1793000000000000000,ctime_ns=1793000000000000000};
+    rec:[512]u8;n:=pv_record("w.bin",SHA_ABC,st,rec[..]);
+    now:=st;now.ctime_ns+=1;
+    h:=CsHost.{hash=500,read=2000,fault=8000,zero=4000,page=4096,decision_us=20000};
+    f:=[1]CsFile.[CsFile.{name="w.bin",sha=SHA_ABC,stat=now,record=rec[0..<n],cached_pages=1}];
+    print("record for the old change time: admitted %, hashed % bytes\n",pv_admits(rec[0..<n],"w.bin",SHA_ABC,now),cs_plan(f[..],h,0,1,1,true).hashed);
+
+    abc:=[3]u8.[97,98,99];
+    key:=CsKernelKey.{device="cpu-x86_64",compiler=COMPILER,source=SOURCE};
+    other:=key;other.device="cuda-sm89";print("kernel for another device: %\n",cs_status_name(cs_kernel(key,other,abc[..],SHA_ABC)));
+    other=key;other.compiler=SOURCE;print("kernel from another compiler: %\n",cs_status_name(cs_kernel(key,other,abc[..],SHA_ABC)));
+    other=key;other.source=COMPILER;print("kernel for other source: %\n",cs_status_name(cs_kernel(key,other,abc[..],SHA_ABC)));
+    print("kernel bytes changed: %\n",cs_status_name(cs_kernel(key,key,weights[..],SHA_ABC)));
+
+    print("a hash rate of 0: %\n",cs_status_name(cs_plan(f[..],CsHost.{read=1,fault=1,zero=1,page=4096,decision_us=1},0,1,1,true).status));
+    f[0].cached_pages=2;print("2 cached pages of a 1-page file: %\n",cs_status_name(cs_plan(f[..],h,0,1,1,true).status));
+    f[0].cached_pages=0;print("no golden decisions: %\n",cs_status_name(cs_plan(f[..],h,0,0,1,true).status));
+    t:=[5]int.[100,90,200,300,400];print("a clock that runs backwards: %\n",cs_status_name(cs_measured(t[..]).status));
+    life("mapped before verified",cs_step(cs_start(3),CsEvent.mapped,true));
+    r:=cs_start(1);r=cs_step(r,CsEvent.verified,true);r=cs_step(r,CsEvent.mapped,true);r=cs_step(r,CsEvent.allocated,true);r=cs_step(r,CsEvent.warmed,true);
+    life("ready",r);
+    life("ready, then a golden re-check fails",cs_step(r,CsEvent.warmed,false));
+    life("ready, then the host reports broken",cs_step(r,CsEvent.broken,true));
+}
+// book:end refuse
