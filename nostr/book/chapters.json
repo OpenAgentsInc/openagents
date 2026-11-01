@@ -2082,15 +2082,20 @@
    "number": 96,
    "title": "Formal properties",
    "file": "ch096-formal-properties.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     11,
     23,
     36
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "nostr/examples/formal-properties.coax",
+    "nostr/examples/checks/formal-properties.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

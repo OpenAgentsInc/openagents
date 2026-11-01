@@ -1,0 +1,202 @@
+// The checks of formal-properties.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/formal-properties.coax
+#load "../formal-properties.coax";
+
+// book:begin check
+// The worked example: the kinds field alone, on its whole domain of 4
+// filters times 2 event kinds. The chapter's table, row by row: absent
+// matches both kinds, [1] only kind 1, [0] only kind 0, [1,0] both.
+WORKED :: [8] bool.[true, true,  true, false,  false, true,  true, true];
+#forall "the kinds table by hand" kinds: 0..<4, kind: 0..<2 {
+  f: Flt; f.kinds = kinds; e: Ev; e.kind = kind;
+  #assert spec_match(f, e) == WORKED[2 * kinds + kind];
+  #assert match_impl(f, e, false) == WORKED[2 * kinds + kind];
+  // the planted matcher is wrong in exactly one row: [1,0] and kind 0
+  #assert match_impl(f, e, true) == (WORKED[2 * kinds + kind] && !(kinds == 3 && kind == 1));
+}
+
+// Domain sizes and counts, computed separately by a Python model of NIP-01
+// (scratch script, 2026-11-01) that shares no code with this file.
+#test "domain sizes and the Python model's counts" {
+  #assert EVENTS == 2 * 2 * 2 * 3 * 4 && FILTERS == 4 * 4 * 4 * 4 * 4 * 4;
+  #assert SUB_FILTERS * SUB_FILTERS * SUB_EVENTS == 65536;
+  #assert TRIPLES == REP * REP * REP && STORES == 1 + IX_EVENTS + IX_EVENTS * IX_EVENTS;
+  replacing := 0;
+  for t: 0..<TRIPLES { if spec_kept(triple(t)) != 7 { replacing += 1; } }
+  #assert replacing == 1280;
+}
+fp_one :: (b: bool) -> int { return ifx b then 1 else 0; }
+// The case numbers decode one to one: re-encoding each decoded case, last
+// field fastest, gives its number back, and every field stays in range.
+#forall "event and filter numbers decode one to one" n: 0..<FILTERS {
+  f := filter_of(n);
+  #assert ((((f.ids * 4 + f.authors) * 4 + f.kinds) * 4 + f.since) * 4 + f.until) * 4 + f.tag == n;
+  if n < EVENTS {
+    e := event_of(n);
+    #assert (((e.id * 2 + e.author) * 2 + e.kind) * 3 + e.time) * 4 + e.tag == n && e.id < 2 && e.time < 3;
+  }
+  if n < SUB_FILTERS { g := sub_filter(n); #assert g.authors * 16 + g.kinds * 4 + g.tag == n && g.ids == 0 && g.since == 0 && g.until == 0; }
+  if n < SUB_EVENTS { e := sub_event(n); #assert e.author * 8 + e.kind * 4 + e.tag == n && e.id == 0 && e.time == 1; }
+  if n < REP { r := rep_of(n); #assert r.author * 8 + r.kind * 4 + r.time * 2 + r.tag == n; }
+  if n < IX_EVENTS { e := ix_event(n, 1); #assert e.author * 16 + e.kind * 8 + e.time * 4 + e.tag == n && e.id == 1; }
+  if n < IX_FILTERS {
+    x := ix_filter(n);
+    #assert (((x.f.authors * 4 + x.f.kinds) * 4 + x.f.tag) * 2 + x.f.since / 2) * 2 + fp_one(x.limit) == n;
+    #assert (x.f.since == 0 || x.f.since == 2) && x.f.ids == 0 && x.f.until == 0;
+  }
+  if n < TRIPLES { r := triple(n); #assert ((r[0].author * 8 + r[0].kind * 4 + r[0].time * 2 + r[0].tag) * 16 + r[1].author * 8 + r[1].kind * 4 + r[1].time * 2 + r[1].tag) * 16 + r[2].author * 8 + r[2].kind * 4 + r[2].time * 2 + r[2].tag == n; }
+}
+// The library types hold exactly the decoded fields, for every filter and
+// event of the domain.
+#forall "rendering copies every field" n: 0..<FILTERS {
+  f := filter_of(n); l: [1] Lists; r := nostr_filter(f, l[..]);
+  #assert r.has_ids == (f.ids != 0) && r.has_authors == (f.authors != 0) && r.has_kinds == (f.kinds != 0);
+  #assert r.has_since == (f.since != 0) && r.has_until == (f.until != 0) && !r.has_limit && r.tags.count == fp_one(f.tag != 0);
+  for w: 0..<2 {
+    #assert listed(f.ids, w) == (f.ids == 0 || r.ids.count == 2 || r.ids[0] == ID_HEX[w]);
+    #assert f.ids == 0 || r.ids.count == fp_one(f.ids == 3) + 1;
+    #assert f.authors == 0 || (r.authors.count == fp_one(f.authors == 3) + 1 && listed(f.authors, w) == (r.authors[0] == AUTHOR_HEX[w] || r.authors[r.authors.count - 1] == AUTHOR_HEX[w]));
+    #assert f.kinds == 0 || (r.kinds.count == fp_one(f.kinds == 3) + 1 && listed(f.kinds, w) == (r.kinds[0] == KIND[w] || r.kinds[r.kinds.count - 1] == KIND[w]));
+    #assert f.tag == 0 || (r.tags[0].name == 't' && r.tags[0].values.count == fp_one(f.tag == 3) + 1 && listed(f.tag, w) == (r.tags[0].values[0] == VALUE[w] || r.tags[0].values[r.tags[0].values.count - 1] == VALUE[w]));
+  }
+  #assert f.since == 0 || r.since == T0 + f.since - 1;
+  #assert f.until == 0 || r.until == T0 + f.until - 1;
+  if n < EVENTS {
+    e := event_of(n); v := nostr_event(e);
+    #assert v.error == NE_OK && v.id[0] == ID_BYTE[e.id] && v.public_key[0] == AUTHOR_BYTE[e.author] && v.id[1] == 0;
+    #assert v.kind == KIND[e.kind] && v.created_at == T0 + e.time && v.original == TAG_TEXT[e.tag] && v.tags_from == 0 && v.tags_to == TAG_TEXT[e.tag].count;
+  }
+}
+
+// Property 1 as #forall over two slices of its domain the evaluator runs
+// in seconds, against every event: filters with ids and until absent, and
+// filters with kinds and since absent. The example runs all 4096 filters
+// natively.
+#forall "nf_match is the conjunction of the field predicates" f: 0..<256, ev: 0..<EVENTS #steps 2000000000 {
+  // f's digits are authors, kinds, since and tag; ids and until stay 0
+  code := (f / 64) * 256 + ((f / 16) % 4) * 64 + ((f / 4) % 4) * 16 + f % 4;
+  #assert filter_of(code).ids == 0 && filter_of(code).until == 0;
+  #assert match_impl(filter_of(code), event_of(ev), false) == spec_match(filter_of(code), event_of(ev));
+}
+#forall "nf_match: ids, authors, until and tag" f: 0..<256, ev: 0..<EVENTS #steps 2000000000 {
+  code := (f / 64) * 1024 + ((f / 16) % 4) * 256 + ((f / 4) % 4) * 4 + f % 4;
+  #assert filter_of(code).kinds == 0 && filter_of(code).since == 0;
+  #assert match_impl(filter_of(code), event_of(ev), false) == spec_match(filter_of(code), event_of(ev));
+}
+// Property 2 on every filter F, with G its mirror (63 - F) and every event.
+#forall "a subscription is the union of its filters" a: 0..<SUB_FILTERS, k: 0..<SUB_EVENTS #steps 2000000000 {
+  t: [512] u8; subs: [1] RsSub; fa := sub_filter(a); fb := sub_filter(63 - a); e := sub_event(k);
+  text := req_text(fa, fb, t[..]); m := ms_read(text);
+  #assert rs_req(m, text) == RS_ACCEPT && rs_sub_open(subs[..], m, text, 1) == 0 && subs[0].filters == 2;
+  #assert rs_sub_matches(subs[..], 0, nostr_event(e)) == (spec_match(fa, e) || spec_match(fb, e));
+  subs[0].filters = 1;
+  #assert rs_sub_matches(subs[..], 0, nostr_event(e)) == spec_match(fa, e);
+}
+// Property 3 in the evaluator, on the triples whose first slot is author
+// A's kind 0 at T0 with no tags (256 triples, all six orders). The example
+// runs all 4096 natively; the evaluator's aggregate-copy budget for one
+// check stops near this size.
+#forall "replacement is order-independent" t: 0..<256, p: 0..<6 #steps 2000000000 {
+  r := triple(4 * 256 + t);
+  #assert r[0].kind == 1 && r[0].author == 0 && r[0].time == 0 && r[0].tag == 0;
+  #assert store_kept(r, p, false) == spec_kept(r);
+}
+// The planted store, on the slice whose first slot is at T0+1: it differs
+// from NIP-01 only when two kind 0 events by one author tie in created_at.
+#forall "the planted store fails only on a tie" t: 0..<256, p: 0..<6 #steps 2000000000 {
+  r := triple(6 * 256 + t); want := spec_kept(r);
+  #assert r[0].kind == 1 && r[0].author == 0 && r[0].time == 1 && r[0].tag == 0;
+  tie := false;
+  for i: 0..<3 { for j: 0..<3 { if i < j && r[i].kind == 1 && r[j].kind == 1 && r[i].author == r[j].author && r[i].time == r[j].time { tie = true; } } }
+  #assert tie || store_kept(r, p, true) == want;
+}
+// Property 4 on every store, with four filters: {}, since T0+1, kinds [0]
+// with limit 1, and authors [B] with #t ["a","b"].
+IX_SOME :: [4] int.[0, 2, 65, 236];
+#forall "the index answers what the scan answers" k: 0..<STORES, q: 0..<4 #steps 2000000000 {
+  t: [1] Indexed; n := ix_store(k, t[..]);
+  #assert n == ifx k == 0 then 0 else ifx k <= IX_EVENTS then 1 else 2;
+  // every record is its slot's decoded event (a superseded one is not
+  // stored; a replaced one stays, retired)
+  #assert t[0].s[0].n >= 1 || n == 0;
+  for i: 0..<t[0].s[0].n {
+    rec := t[0].recs[i]; slot := ifx rec.id[0] == ID_BYTE[0] then 0 else 1;
+    code := ifx n == 1 then k - 1 else ifx slot == 0 then (k - 1 - IX_EVENTS) / IX_EVENTS else (k - 1 - IX_EVENTS) % IX_EVENTS;
+    e := ix_event(code, slot);
+    #assert rec.id[0] == ID_BYTE[slot] && rec.author[0] == AUTHOR_BYTE[e.author] && rec.kind == KIND[e.kind] && rec.created == T0 + e.time && rec.expiry == -1;
+    #assert rsd_text(t[0].s[..], i) == TAG_TEXT[e.tag] && rec.tags_to - rec.tags_from == TAG_TEXT[e.tag].count;
+  }
+  x := ix_filter(IX_SOME[q]); l: [1] Lists; f := nostr_filter(x.f, l[..]);
+  if x.limit { f.has_limit = true; f.limit = 1; }
+  a: [4] int; b: [4] int;
+  na := rsd_query(t[0].s[..], f, T0 + 2, a[..]);
+  r := nsi_query(t[0].s[..], t[0].ix[..], f, T0 + 2, b[..]);
+  #assert r.n == na;
+  for i: 0..<na { #assert a[i] == b[i]; }
+}
+// Each flip changes exactly one bit of the 128 bytes id || key || sig:
+// bit f % 8 of byte f / 8.
+#forall "flip f changes bit f of id, key and signature" f: 0..<FLIPS {
+  id: [1] [32] u8; key: [1] [32] u8; sig: [1] [64] u8;
+  flipped(f, id[..], key[..], sig[..]);
+  for b: 0..<128 {
+    v := ifx b < 32 then id[0][b] else ifx b < 64 then key[0][b - 32] else sig[0][b - 64];
+    #assert cast(int) v == ifx b == f / 8 then 1 << (f % 8) else 0;
+  }
+}
+
+// Each counterexample the example printed, kept as a regression test: the
+// library passes it and the planted bug fails it.
+#test "regression: kinds [1,0] matches a kind 0 event" {
+  f := filter_of(192); e := event_of(12);
+  #assert f.kinds == 3 && f.ids == 0 && f.authors == 0 && f.since == 0 && f.until == 0 && f.tag == 0;
+  #assert e.kind == 1 && KIND[e.kind] == 0 && e.tag == 0 && e.time == 0;
+  #assert spec_match(f, e) && match_impl(f, e, false) && !match_impl(f, e, true);
+}
+#test "regression: [{\"#t\":[\"a\"]},{}] sends an untagged event" {
+  t: [512] u8; subs: [1] RsSub; fa := sub_filter(1); fb := sub_filter(0); e := sub_event(0);
+  #assert fa.tag == 1 && fb.authors == 0 && fb.kinds == 0 && fb.tag == 0 && e.tag == 0;
+  text := req_text(fa, fb, t[..]);
+  #assert text == "[\"REQ\",\"s\",{\"#t\":[\"a\"]},{}]";
+  #assert rs_sub_open(subs[..], ms_read(text), text, 1) == 0 && rs_sub_matches(subs[..], 0, nostr_event(e));
+  subs[0].filters = 1; #assert !rs_sub_matches(subs[..], 0, nostr_event(e));
+}
+#test "regression: a kind 0 tie keeps the lower id in both orders" {
+  r := triple(68);
+  #assert r[1].kind == 1 && r[2].kind == 1 && r[1].time == r[2].time && r[1].author == r[2].author;
+  #assert spec_kept(r) == 3;
+  for p: 0..<6 { #assert store_kept(r, p, false) == 3; }
+  // the planted store keeps whichever of Y and Z arrives last: Z (bit 2)
+  // in the orders X Y Z, Y X Z and Y Z X, and Y in the other three
+  for p: 0..<6 { #assert store_kept(r, p, true) == ifx p == 0 || p == 2 || p == 3 then 5 else 3; }
+}
+#test "regression: since equal to created_at is served by the index" {
+  t: [1] Indexed; #assert ix_store(5, t[..]) == 1;
+  x := ix_filter(2); #assert x.f.since == 2 && !x.limit && x.f.authors == 0 && x.f.kinds == 0 && x.f.tag == 0;
+  #assert t[0].recs[0].created == T0 + 1;
+  l: [1] Lists; f := nostr_filter(x.f, l[..]); a: [4] int; b: [4] int;
+  #assert rsd_query(t[0].s[..], f, T0 + 2, a[..]) == 1;
+  #assert nsi_query(t[0].s[..], t[0].ix[..], f, T0 + 2, b[..]).n == 1;
+  f.since += 1; #assert nsi_query(t[0].s[..], t[0].ix[..], f, T0 + 2, b[..]).n == 0;
+}
+// A since of T0 lets every event of the alphabet through, so only an event
+// before T0 shows that the specification reads it.
+#test "since and until bound an event outside the alphabet's times" {
+  f: Flt; f.since = 1; e: Ev; e.time = -1;
+  #assert !spec_match(f, e); e.time = 0; #assert spec_match(f, e);
+  f.since = 0; f.until = 3; e.time = 3; #assert !spec_match(f, e); e.time = 2; #assert spec_match(f, e);
+}
+// A store record holds exactly its slot's fields.
+#forall "store records copy every field" n: 0..<REP, slot: 0..<3 {
+  r := rep_of(n); c := rep_rec(r, slot);
+  #assert c.id[0] == ID_BYTE[slot] && c.author[0] == AUTHOR_BYTE[r.author] && c.author[1] == 0 && c.id[1] == 0;
+  #assert c.kind == KIND[r.kind] && c.created == T0 + r.time && c.expiry == -1 && c.tags_from == 0 && c.tags_to == TAG_TEXT[r.tag].count;
+}
+#test "the flip numbering by hand" {
+  id: [1] [32] u8; key: [1] [32] u8; sig: [1] [64] u8;
+  flipped(248, id[..], key[..], sig[..]); #assert id[0][31] == 1;
+  flipped(256, id[..], key[..], sig[..]); #assert key[0][0] == 1;
+  flipped(1023, id[..], key[..], sig[..]); #assert sig[0][63] == 0x80;
+}
+// book:end check

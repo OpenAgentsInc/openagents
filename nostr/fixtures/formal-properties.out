@@ -1,0 +1,31 @@
+1. nf_match is the AND of the field predicates, OR within each list
+  library: 393216 cases, all hold (59400 pairs match)
+  planted: kinds list reads its first entry only: counterexample at case 18445
+  first counterexample: filter #192 {"kinds":[1,0]}, event #12 id X author A kind 0 created T0+0 tags []
+    spec true library true planted false
+
+2. a subscription [F, G] sends exactly what F or G matches
+  library: 65536 cases, all hold (39348 sent)
+  planted: only the first filter is read: counterexample at case 1025
+  first counterexample: F {"#t":["a"]}, G {}, event id X author A kind 1 created T0+1 tags []
+
+3. replacement keeps the newest, then the lowest id, in every arrival order
+  library: 24576 cases, all hold (1280 of 4096 triples replace something)
+  planted: a tie goes to the later arrival: counterexample at case 409
+  first counterexample: triple #68, order X Y Z
+    id X author A kind 1 created T0+0 tags []
+    id Y author A kind 0 created T0+0 tags []
+    id Z author A kind 0 created T0+0 tags []
+    NIP-01 keeps {X,Y}, library keeps {X,Y}, planted keeps {X,Z}
+
+4. the indexed query answers what the scan answers
+  library: 270592 cases, all hold (132990 events served)
+  planted: the time range starts one second late: counterexample at case 1283
+  first counterexample: store #5, filter #2 {"since":T0+1}
+    store: id X author A kind 1 created T0+1 tags []
+
+5. verification refuses every one-bit change
+  library: 1025 cases, all hold (1 unchanged accepted)
+  planted: only 31 id bytes are read: counterexample at case 250
+  first counterexample: flip 248, id byte 31 mask 1
+  sign then verify, sampled: 8 events, 8 verified

@@ -1115,6 +1115,18 @@
         "release"
       ],
       "timeout": 600
+    },
+    {
+      "source": "nostr/examples/formal-properties.coax",
+      "chapter": "nostr/book/ch096-formal-properties.md",
+      "stdout": "nostr/fixtures/formal-properties.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 480
     }
   ]
 }

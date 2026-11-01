@@ -1,0 +1,430 @@
+// book:begin example
+#load "../../coax/lib/nostr/store_index.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// book:begin alphabet
+// The tiny alphabet every domain below is built from. Times are T0, T0+1
+// and T0+2. Ids X and Y, authors A and B: only the first byte is not 0.
+T0 :: 100;
+ID_BYTE :: [3] u8.[0x30, 0x10, 0x20];  // X, Y and (for the store) Z
+AUTHOR_BYTE :: [2] u8.[0xdf, 0xdd];    // A, B
+KIND :: [2] int.[1, 0];                // 1 is regular, 0 is replaceable
+TAG_TEXT :: [4] string.["[]", "[[\"t\",\"a\"]]", "[[\"t\",\"b\"]]", "[[\"t\",\"a\"],[\"t\",\"b\"]]"];
+VALUE :: [2] string.["a", "b"];
+ID_HEX :: [2] string.["3000000000000000000000000000000000000000000000000000000000000000",
+                      "1000000000000000000000000000000000000000000000000000000000000000"];
+AUTHOR_HEX :: [2] string.["df00000000000000000000000000000000000000000000000000000000000000",
+                          "dd00000000000000000000000000000000000000000000000000000000000000"];
+// One event: an index into each row above. tag is a bit set: bit 0 is
+// t=a, bit 1 is t=b.
+Ev :: struct { id: int; author: int; kind: int; time: int; tag: int; }
+// One filter. ids, authors, kinds and tag are 0 when absent, else a bit
+// set over the two letters of their row (1 the first, 2 the second, 3
+// both). since and until are 0 when absent, else 1 + a time index.
+Flt :: struct { ids: int; authors: int; kinds: int; since: int; until: int; tag: int; }
+// Case numbers: the last field changes fastest.
+EVENTS :: 96;     // 2 ids * 2 authors * 2 kinds * 3 times * 4 tag sets
+FILTERS :: 4096;  // 4 ^ 6
+event_of :: (code: int) -> Ev {
+  e: Ev; c := code;
+  e.tag = c % 4; c /= 4; e.time = c % 3; c /= 3; e.kind = c % 2; c /= 2; e.author = c % 2; c /= 2; e.id = c;
+  return e;
+}
+filter_of :: (code: int) -> Flt {
+  f: Flt; c := code;
+  f.tag = c % 4; c /= 4; f.until = c % 4; c /= 4; f.since = c % 4; c /= 4;
+  f.kinds = c % 4; c /= 4; f.authors = c % 4; c /= 4; f.ids = c;
+  return f;
+}
+// book:end alphabet
+
+// book:begin spec
+// The specification, read from NIP-01's filter section. A list field
+// matches when it is absent or holds the event's value: "any of them may
+// match" (OR within a list).
+listed :: (field: int, which: int) -> bool { return field == 0 || field & (1 << which) != 0; }
+// "All of the conditions of a filter that are specified must match" (AND
+// across fields), and "since <= created_at <= until".
+spec_match :: (f: Flt, e: Ev) -> bool {
+  created := T0 + e.time;
+  return listed(f.ids, e.id) && listed(f.authors, e.author) && listed(f.kinds, e.kind)
+      && (f.since == 0 || T0 + f.since - 1 <= created)
+      && (f.until == 0 || created <= T0 + f.until - 1)
+      && (f.tag == 0 || f.tag & e.tag != 0);
+}
+// book:end spec
+
+// book:begin render
+// The library's types for one case. Lists holds the storage a
+// NostrFilter's slices point into.
+Lists :: struct { ids: [2] string; authors: [2] string; kinds: [2] int; values: [2] string; tags: [1] NostrTagFilter; }
+// The slice of a two-entry row that a bit set names: 1 is [0], 2 is [1],
+// 3 is both.
+set_lo :: (set: int) -> int { return ifx set == 2 then 1 else 0; }
+set_hi :: (set: int) -> int { return ifx set == 1 then 1 else 2; }
+nostr_filter :: (f: Flt, l: [] Lists) -> NostrFilter {
+  for i: 0..<2 { l[0].ids[i] = ID_HEX[i]; l[0].authors[i] = AUTHOR_HEX[i]; l[0].kinds[i] = KIND[i]; l[0].values[i] = VALUE[i]; }
+  r: NostrFilter;
+  if f.ids != 0 { r.has_ids = true; r.ids = l[0].ids[set_lo(f.ids)..<set_hi(f.ids)]; }
+  if f.authors != 0 { r.has_authors = true; r.authors = l[0].authors[set_lo(f.authors)..<set_hi(f.authors)]; }
+  if f.kinds != 0 { r.has_kinds = true; r.kinds = l[0].kinds[set_lo(f.kinds)..<set_hi(f.kinds)]; }
+  if f.tag != 0 { l[0].tags[0].name = 't'; l[0].tags[0].values = l[0].values[set_lo(f.tag)..<set_hi(f.tag)]; r.tags = l[0].tags[0..<1]; }
+  if f.since != 0 { r.has_since = true; r.since = T0 + f.since - 1; }
+  if f.until != 0 { r.has_until = true; r.until = T0 + f.until - 1; }
+  return r;
+}
+// A parsed event as nf_match reads it: its tags array is the whole text.
+nostr_event :: (e: Ev) -> NostrEvent {
+  n: NostrEvent; n.error = NE_OK;
+  n.id[0] = ID_BYTE[e.id]; n.public_key[0] = AUTHOR_BYTE[e.author];
+  n.kind = KIND[e.kind]; n.created_at = T0 + e.time;
+  n.original = TAG_TEXT[e.tag]; n.tags_to = n.original.count;
+  return n;
+}
+// book:end render
+
+// What a property check reports: the cases run, how many failed, and the
+// first failing case (its numbers; -1 when none failed). Like #forall, a
+// check stops at its first counterexample, so failed is 0 or 1.
+Outcome :: struct { cases: int; held: int; failed: int; a: int = -1; b: int = -1; c: int = -1; }
+fail :: (o: [] Outcome, a: int, b: int, c: int) {
+  o[0].failed += 1;
+  if o[0].a < 0 { o[0].a = a; o[0].b = b; o[0].c = c; }
+}
+
+// book:begin match
+// Property 1: nf_match is the conjunction of the field predicates, on
+// every (filter, event) pair of the domain. planted: a matcher that reads
+// only the first entry of a kinds list.
+match_impl :: (f: Flt, e: Ev, planted: bool) -> bool {
+  l: [1] Lists; nf := nostr_filter(f, l[..]);
+  if planted && nf.has_kinds { nf.kinds = nf.kinds[0..<1]; }
+  return nf_match(nf, nostr_event(e));
+}
+check_match :: (planted: bool) -> Outcome {
+  o: [1] Outcome;
+  for fc: 0..<FILTERS {
+    f := filter_of(fc);
+    for ec: 0..<EVENTS {
+      e := event_of(ec); want := spec_match(f, e);
+      o[0].cases += 1; if want { o[0].held += 1; }
+      if match_impl(f, e, planted) != want { fail(o[..], fc, ec, -1); return o[0]; }
+    }
+  }
+  return o[0];
+}
+// book:end match
+
+// book:begin union
+// Property 2: a subscription with filters [F, G] sends an event exactly
+// when F or G matches it. F and G range over the 64 filters with no ids,
+// since or until; the events over the 16 with id X at T0+1. planted: a
+// subscription that reads only its first filter.
+SUB_FILTERS :: 64; SUB_EVENTS :: 16;
+sub_filter :: (s: int) -> Flt { f: Flt; f.authors = s / 16; f.kinds = (s / 4) % 4; f.tag = s % 4; return f; }
+sub_event :: (s: int) -> Ev { e: Ev; e.time = 1; e.author = s / 8; e.kind = (s / 4) % 2; e.tag = s % 4; return e; }
+put :: (out: [] u8, at: int, s: string) -> int { for i: 0..<s.count { out[at + i] = s[i]; } return at + s.count; }
+// The REQ a client sends: ["REQ","s",F,G].
+req_text :: (f: Flt, g: Flt, out: [] u8) -> string {
+  lf: [1] Lists; lg: [1] Lists; at := put(out, 0, "[\"REQ\",\"s\",");
+  at += nf_write(nostr_filter(f, lf[..]), out[at..<out.count], false);
+  at = put(out, at, ",");
+  at += nf_write(nostr_filter(g, lg[..]), out[at..<out.count], false);
+  at = put(out, at, "]");
+  return cast(string) out[0..<at];
+}
+check_union :: (planted: bool) -> Outcome {
+  o: [1] Outcome; text: [512] u8; subs: [1] RsSub;
+  for a: 0..<SUB_FILTERS {
+    for b: 0..<SUB_FILTERS {
+      fa := sub_filter(a); fb := sub_filter(b);
+      // admitted as the relay admits a REQ (rs_req), then opened
+      t := req_text(fa, fb, text[..]); m := ms_read(t);
+      #assert rs_req(m, t) == RS_ACCEPT && rs_sub_open(subs[..], m, t, 1) == 0 && subs[0].filters == 2;
+      if planted { subs[0].filters = 1; }
+      for k: 0..<SUB_EVENTS {
+        e := sub_event(k);
+        want := match_impl(fa, e, false) || match_impl(fb, e, false);
+        o[0].cases += 1; if want { o[0].held += 1; }
+        if rs_sub_matches(subs[..], 0, nostr_event(e)) != want { fail(o[..], a, b, k); return o[0]; }
+      }
+    }
+  }
+  return o[0];
+}
+// book:end union
+
+// book:begin replace
+// Property 3: after admitting three events in any order, the store holds
+// exactly the events NIP-01 keeps: every regular one, and for each author's
+// kind 0 the newest, then the lowest id. Event slot i has id ID_BYTE[i];
+// its author, kind, time (T0 or T0+1) and tag set (none or t=a) range over
+// 16 values. planted: a store where the later arrival wins a tie.
+Rep :: struct { author: int; kind: int; time: int; tag: int; }
+REP :: 16; TRIPLES :: 4096;
+rep_of :: (code: int) -> Rep { return Rep.{author = code / 8, kind = (code / 4) % 2, time = (code / 2) % 2, tag = code % 2}; }
+PERM :: [18] int.[0, 1, 2,  0, 2, 1,  1, 0, 2,  1, 2, 0,  2, 0, 1,  2, 1, 0];
+// The events NIP-01 keeps, as a bit set over the slots.
+spec_kept :: (r: [3] Rep) -> int {
+  kept := 0;
+  for i: 0..<3 {
+    gone := false;
+    for j: 0..<3 {
+      // j == i is never newer than itself
+      same := r[i].kind == 1 && r[j].kind == 1 && r[j].author == r[i].author;
+      newer := r[j].time > r[i].time || (r[j].time == r[i].time && ID_BYTE[j] < ID_BYTE[i]);
+      if same && newer { gone = true; }
+    }
+    if !gone { kept |= 1 << i; }
+  }
+  return kept;
+}
+Store :: struct { arena: [256] u8; recs: [4] RsdRec; s: [1] RsdStore; }
+rep_rec :: (r: Rep, slot: int) -> RsdRec {
+  c: RsdRec; c.id[0] = ID_BYTE[slot]; c.author[0] = AUTHOR_BYTE[r.author];
+  c.kind = KIND[r.kind]; c.created = T0 + r.time; c.expiry = -1; c.tags_to = TAG_TEXT[r.tag].count;
+  return c;
+}
+admit :: (s: [] RsdStore, c: RsdRec, text: string, planted: bool) -> int {
+  if planted && ns_class(c.kind) == NS_REPLACEABLE {
+    for i: 0..<s[0].n {
+      if s[0].recs[i].live && ns_store_same_address(s[0].recs[i], c) && s[0].recs[i].created == c.created {
+        ns_store_retire(s, i); ns_store_append(s, c, text); return NSS_ACCEPT;
+      }
+    }
+  }
+  return ns_store_admit(s, c, text, true);
+}
+// The slots the store holds after admitting r in the order of permutation p.
+store_kept :: (r: [3] Rep, p: int, planted: bool) -> int {
+  st: [1] Store; st[0].s[0].arena = st[0].arena[..]; st[0].s[0].recs = st[0].recs[..];
+  for k: 0..<3 {
+    slot := PERM[3 * p + k];
+    admitted := admit(st[0].s[..], rep_rec(r[slot], slot), TAG_TEXT[r[slot].tag], planted);
+    #assert admitted == NSS_ACCEPT || admitted == NSS_SUPERSEDED;
+  }
+  kept := 0;
+  for i: 0..<st[0].s[0].n {
+    if !st[0].recs[i].live { continue; }  // retired: replaced
+    for slot: 0..<3 { if st[0].recs[i].id[0] == ID_BYTE[slot] { kept |= 1 << slot; } }
+  }
+  return kept;
+}
+triple :: (code: int) -> [3] Rep { r: [3] Rep; r[0] = rep_of(code / 256); r[1] = rep_of((code / 16) % 16); r[2] = rep_of(code % 16); return r; }
+check_replace :: (planted: bool) -> Outcome {
+  o: [1] Outcome;
+  for t: 0..<TRIPLES {
+    r := triple(t); want := spec_kept(r);
+    if want != 7 { o[0].held += 1; }  // triples where something is replaced
+    for p: 0..<6 { o[0].cases += 1; if store_kept(r, p, planted) != want { fail(o[..], t, p, -1); return o[0]; } }
+  }
+  return o[0];
+}
+// book:end replace
+
+// book:begin index
+// Property 4: the indexed query answers exactly what the scan answers,
+// in the same order, for every store of at most two events and every
+// filter below. An event is any of 32 (author, kind, time T0 or T0+1, tag set) with
+// id X in slot 0 and Y in slot 1. A filter is authors, kinds and tag (4
+// each), since absent or T0+1, and limit absent or 1. planted: an index
+// whose time range starts one second late.
+IX_EVENTS :: 32; IX_FILTERS :: 256; STORES :: 1057;  // 1 + 32 + 32 * 32
+ix_event :: (code: int, slot: int) -> Ev { return Ev.{id = slot, author = code / 16, kind = (code / 8) % 2, time = (code / 4) % 2, tag = code % 4}; }
+IxFlt :: struct { f: Flt; limit: bool; }
+ix_filter :: (code: int) -> IxFlt {
+  x: IxFlt; c := code;
+  x.limit = c % 2 == 1; c /= 2; x.f.since = ifx c % 2 == 1 then 2 else 0; c /= 2;
+  x.f.tag = c % 4; c /= 4; x.f.kinds = c % 4; c /= 4; x.f.authors = c;
+  return x;
+}
+Indexed :: struct {
+  arena: [256] u8; recs: [4] RsdRec; s: [1] RsdStore;
+  by_id: [4] int; by_ak: [4] int; by_time: [4] int; tag_key: [8] int; tag_rec: [8] int; ix: [1] NsiIndex;
+}
+// Store number k: 0 is empty, 1..32 one event, then every ordered pair.
+ix_store :: (k: int, t: [] Indexed) -> int {
+  t[0].s[0].arena = t[0].arena[..]; t[0].s[0].recs = t[0].recs[..];
+  t[0].ix[0] = NsiIndex.{by_id = t[0].by_id[..], by_ak = t[0].by_ak[..], by_time = t[0].by_time[..], tag_key = t[0].tag_key[..], tag_rec = t[0].tag_rec[..]};
+  codes: [2] int; n := 0;
+  if k > IX_EVENTS {
+    pair := k - 1 - IX_EVENTS; codes[0] = pair / IX_EVENTS; codes[1] = pair - codes[0] * IX_EVENTS; n = 2;
+  } else if k >= 1 { codes[0] = k - 1; n = 1; }
+  for i: 0..<n {
+    e := ix_event(codes[i], i);
+    c: RsdRec; c.id[0] = ID_BYTE[i]; c.author[0] = AUTHOR_BYTE[e.author]; c.kind = KIND[e.kind];
+    c.created = T0 + e.time; c.expiry = -1; c.tags_to = TAG_TEXT[e.tag].count;
+    admitted := ns_store_admit(t[0].s[..], c, TAG_TEXT[e.tag], true);
+  }
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  return n;
+}
+check_index :: (planted: bool) -> Outcome {
+  o: [1] Outcome;
+  for k: 0..<STORES {
+    t: [1] Indexed; events := ix_store(k, t[..]);
+    for q: 0..<IX_FILTERS {
+      x := ix_filter(q); l: [1] Lists; f := nostr_filter(x.f, l[..]);
+      if x.limit { f.has_limit = true; f.limit = 1; }
+      a: [4] int; b: [4] int;
+      na := rsd_query(t[0].s[..], f, T0 + 2, a[..]);
+      g := f; if planted && g.has_since { g.since += 1; }
+      r := nsi_query(t[0].s[..], t[0].ix[..], g, T0 + 2, b[..]);
+      o[0].cases += 1; o[0].held += na;
+      same := r.n == na;
+      if same { for i: 0..<na { if a[i] != b[i] { same = false; } } }
+      if !same { fail(o[..], k, q, -1); return o[0]; }
+    }
+  }
+  return o[0];
+}
+// book:end index
+
+// book:begin signature
+// Property 5: verification never accepts a changed id, key or signature.
+// The domain is every one-bit change of BIP-340 vector 0 (its message is a
+// 32-byte id): 256 id bits, 256 key bits and 512 signature bits, plus the
+// unchanged triple, which must verify. planted: a verifier that copies
+// only the first 31 bytes of the id.
+V0_KEY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+V0_ID :: "0000000000000000000000000000000000000000000000000000000000000000";
+V0_SIG :: "e907831f80848d1069a5371b402410364bdf1c5f8307b0084c55f1ce2dca821525f66a4a85ea8b71e482a74f382d2ce5ebeee8fdb2172f477df4900d310536c0";
+FLIPS :: 1024;
+decode :: (text: string, out: [] u8) { #assert hex_decode_checked(text, out, false).written == out.count; }
+verify_impl :: (id: [32] u8, key: [32] u8, sig: [64] u8, planted: bool) -> bool {
+  m := id; k := key; s := sig; if planted { m[31] = 0; }
+  return nostr_verify_vartime(m[..], k[..], s[..]);
+}
+// Flip f: 0..255 an id bit, 256..511 a key bit, 512..1023 a signature bit;
+// bit b is byte b / 8, mask 1 << (b % 8).
+flipped :: (f: int, id: [] [32] u8, key: [] [32] u8, sig: [] [64] u8) {
+  if f < 256 { id[0][f / 8] ^= cast(u8) (1 << (f % 8)); }
+  else if f < 512 { key[0][(f - 256) / 8] ^= cast(u8) (1 << (f % 8)); }
+  else { sig[0][(f - 512) / 8] ^= cast(u8) (1 << (f % 8)); }
+}
+check_signature :: (planted: bool) -> Outcome {
+  o: [1] Outcome; id: [1] [32] u8; key: [1] [32] u8; sig: [1] [64] u8;
+  decode(V0_ID, id[0][..]); decode(V0_KEY, key[0][..]); decode(V0_SIG, sig[0][..]);
+  o[0].cases = 1;
+  if verify_impl(id[0], key[0], sig[0], planted) { o[0].held = 1; } else { fail(o[..], -1, -1, -1); }
+  for f: 0..<FLIPS {
+    i := id; k := key; s := sig; flipped(f, i[..], k[..], s[..]);
+    o[0].cases += 1;
+    if verify_impl(i[0], k[0], s[0], planted) { fail(o[..], f, -1, -1); return o[0]; }
+  }
+  return o[0];
+}
+// Sign then verify, sampled: two published BIP-340 test keys, four
+// contents each, signed as kind 1 events and verified from their JSON.
+KEYS :: [2] string.["b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+                    "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9"];
+CONTENT :: [4] string.["", "a", "hello", "{\"x\":1}"];
+check_round_trip :: () -> Outcome {
+  o: [1] Outcome;
+  for k: 0..<2 {
+    for c: 0..<4 {
+      key: [32] u8; aux: [32] u8; decode(KEYS[k], key[..]);
+      work: [1] NostrSignWork; scratch: [4096] u8; out: [512] u8;
+      n := EVENT_MORE;
+      while n == EVENT_MORE { n = nostr_event_sign_step(key[..], aux[..], T0, 1, "[]", CONTENT[c], work[..], scratch[..], out[..], false); }
+      #assert n > 0;
+      o[0].cases += 1;
+      v := nostr_event_verify_vartime(cast(string) out[0..<n], scratch[..], false);
+      if v.error == NE_OK && v.verified { o[0].held += 1; } else { fail(o[..], k, c, -1); return o[0]; }
+    }
+  }
+  return o[0];
+}
+// book:end signature
+
+// ---- printing ------------------------------------------------------------------
+LETTER_ID :: [2] string.["X", "Y"]; LETTER_AUTHOR :: [2] string.["A", "B"];
+show_set :: (key: string, set: int, row: [2] string, first: bool) -> bool {
+  if set == 0 { return first; }
+  if !first { print(","); }
+  print("\"%\":[", key);
+  if set & 1 != 0 { print("%", row[0]); }
+  if set == 3 { print(","); }
+  if set & 2 != 0 { print("%", row[1]); }
+  print("]");
+  return false;
+}
+show_filter :: (f: Flt) {
+  first := true; kinds := [2] string.["1", "0"]; values := [2] string.["\"a\"", "\"b\""];
+  print("{");
+  first = show_set("ids", f.ids, LETTER_ID, first);
+  first = show_set("authors", f.authors, LETTER_AUTHOR, first);
+  first = show_set("kinds", f.kinds, kinds, first);
+  first = show_set("#t", f.tag, values, first);
+  if f.since != 0 { if !first { print(","); } print("\"since\":T0+%", f.since - 1); first = false; }
+  if f.until != 0 { if !first { print(","); } print("\"until\":T0+%", f.until - 1); first = false; }
+  print("}");
+}
+show_event :: (e: Ev) {
+  print("id % author % kind % created T0+% tags %", LETTER_ID[e.id], LETTER_AUTHOR[e.author], KIND[e.kind], e.time, TAG_TEXT[e.tag]);
+}
+show_outcome :: (label: string, o: Outcome) {
+  if o.failed == 0 { print("  %: % cases, all hold", label, o.cases); }
+  else { print("  %: counterexample at case %", label, o.cases); }
+}
+SLOT :: [3] string.["X", "Y", "Z"];
+show_slots :: (set: int) {
+  print("{"); first := true;
+  for i: 0..<3 { if set & (1 << i) != 0 { if !first { print(","); } print("%", SLOT[i]); first = false; } }
+  print("}");
+}
+
+// book:begin main
+main :: () {
+  print("1. nf_match is the AND of the field predicates, OR within each list\n");
+  o := check_match(false);
+  show_outcome("library", o); print(" (% pairs match)\n", o.held);
+  o = check_match(true);
+  show_outcome("planted: kinds list reads its first entry only", o); print("\n");
+  print("  first counterexample: filter #% ", o.a); show_filter(filter_of(o.a));
+  print(", event #% ", o.b); show_event(event_of(o.b));
+  print("\n    spec % library % planted %\n", spec_match(filter_of(o.a), event_of(o.b)),
+    match_impl(filter_of(o.a), event_of(o.b), false), match_impl(filter_of(o.a), event_of(o.b), true));
+
+  print("\n2. a subscription [F, G] sends exactly what F or G matches\n");
+  o = check_union(false);
+  show_outcome("library", o); print(" (% sent)\n", o.held);
+  o = check_union(true);
+  show_outcome("planted: only the first filter is read", o); print("\n");
+  print("  first counterexample: F "); show_filter(sub_filter(o.a)); print(", G "); show_filter(sub_filter(o.b));
+  print(", event "); show_event(sub_event(o.c)); print("\n");
+
+  print("\n3. replacement keeps the newest, then the lowest id, in every arrival order\n");
+  o = check_replace(false);
+  show_outcome("library", o); print(" (% of % triples replace something)\n", o.held, TRIPLES);
+  o = check_replace(true);
+  show_outcome("planted: a tie goes to the later arrival", o); print("\n");
+  r := triple(o.a);
+  print("  first counterexample: triple #%, order", o.a);
+  for k: 0..<3 { print(" %", SLOT[PERM[3 * o.b + k]]); } print("\n");
+  for i: 0..<3 { print("    id % author % kind % created T0+% tags %\n", SLOT[i], LETTER_AUTHOR[r[i].author], KIND[r[i].kind], r[i].time, TAG_TEXT[r[i].tag]); }
+  print("    NIP-01 keeps "); show_slots(spec_kept(r));
+  print(", library keeps "); show_slots(store_kept(r, o.b, false));
+  print(", planted keeps "); show_slots(store_kept(r, o.b, true)); print("\n");
+
+  print("\n4. the indexed query answers what the scan answers\n");
+  o = check_index(false);
+  show_outcome("library", o); print(" (% events served)\n", o.held);
+  o = check_index(true);
+  show_outcome("planted: the time range starts one second late", o); print("\n");
+  x := ix_filter(o.b);
+  print("  first counterexample: store #%, filter #% ", o.a, o.b); show_filter(x.f); if x.limit { print(" limit 1"); } print("\n");
+  print("    store: "); show_event(ix_event(o.a - 1, 0)); print("\n");
+
+  print("\n5. verification refuses every one-bit change\n");
+  o = check_signature(false);
+  show_outcome("library", o); print(" (% unchanged accepted)\n", o.held);
+  o = check_signature(true);
+  show_outcome("planted: only 31 id bytes are read", o); print("\n");
+  print("  first counterexample: flip %, id byte % mask %\n", o.a, o.a / 8, 1 << (o.a % 8));
+  o = check_round_trip();
+  print("  sign then verify, sampled: % events, % verified\n", o.cases, o.held);
+}
+// book:end main
+// book:end example
