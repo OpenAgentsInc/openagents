@@ -1,0 +1,185 @@
+{
+  "schema": "psionic.rotor-pd.publication.v1",
+  "passed": true,
+  "component_commit": "fafe9756fd",
+  "original_component_commit": "6bf2f8e668",
+  "compiler_binding": {
+    "passed": true,
+    "input_fingerprint": "fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3",
+    "compiler_sha256": "ac8e535598afff1f13b56c6e9b2f065238b1f2e8563e9488a0183be9c8455ba6",
+    "emissions": [
+      {
+        "mode": "debug",
+        "artifact": "rotor-pd.c",
+        "bytes": 56718,
+        "sha256": "423ffb832b57702e83734b7becae7427cb2d59fca21e1bed27148f96c37be2cb",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "debug",
+        "artifact": "rotor-pd.h",
+        "bytes": 12278,
+        "sha256": "4e7a3dc0c7a6a3f02c9811be5d0e00bc6a9eb872727e95ed39a92bbaf228a345",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "rotor-pd.c",
+        "bytes": 56718,
+        "sha256": "423ffb832b57702e83734b7becae7427cb2d59fca21e1bed27148f96c37be2cb",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "rotor-pd.h",
+        "bytes": 12278,
+        "sha256": "4e7a3dc0c7a6a3f02c9811be5d0e00bc6a9eb872727e95ed39a92bbaf228a345",
+        "exact_native_context_match": true
+      }
+    ],
+    "commands": [
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "c",
+          "psionic/lib/robotics/rotor-pd.coax",
+          "--library",
+          "--header",
+          "/tmp/rotor-pd-main-binding-first/debug/rotor-pd.h"
+        ],
+        "exit": 0,
+        "seconds": 0.015988583967555314,
+        "stderr_bytes": 0
+      },
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "c",
+          "psionic/lib/robotics/rotor-pd.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/rotor-pd-main-binding-first/release/rotor-pd.h"
+        ],
+        "exit": 0,
+        "seconds": 0.012483583006542176,
+        "stderr_bytes": 0
+      }
+    ],
+    "new_source_inventory_exact": true,
+    "numerical_reruns": 0
+  },
+  "compiler_provenance_carried": {
+    "record": "docs/verification/psionic-panda-pose-solve-2026-11-01.json",
+    "sha256": "854d8665068a4a896e3478fceecc045b176acd3b3eb36bfc57da0827d7321110",
+    "same_input_fingerprint": true,
+    "same_compiler_artifact": true,
+    "old_verification_not_repeated": true
+  },
+  "receipts": {
+    "psionic/fixtures/robotics/rotor-pd/checks-qualification.json": "3cb6f3ad4c943295b3386424b8551275559e9fa124f40bda1ceeb4cc583d960b",
+    "psionic/fixtures/robotics/rotor-pd/unit-refusals.json": "a43277999f9af0ad14d3bc9614ee127f91aae5fa025819fface0e7a51eedba63",
+    "psionic/fixtures/robotics/rotor-pd/input-freeze-v1.json": "f9ad79097c524d7abe836b4318b12f04915ae5265e5111f5cc1bc8616b80cff5",
+    "psionic/fixtures/robotics/rotor-pd/reference.json": "113b84b50a8f5a82f76d0575715b9db9c7ffb3ca50d1d895cce2b43d00a48741",
+    "psionic/fixtures/robotics/rotor-pd/reference-publication-v1.json": "48df347ecc137c70f883f53ad413b05d397de4cb7b41fd9502e20ee78c9d3c31",
+    "psionic/fixtures/robotics/rotor-pd/native-contract-v1.json": "bd8d4d3ae1af965c73c436d8ebbcc0ae1c30e367220c1bbc30f06d9abddc1020",
+    "psionic/fixtures/robotics/rotor-pd/native-qualification.json": "6a317f8b07b8e9485cb57acd0c2e242fa3ea62aa187f12e6839e5976697dc88a",
+    "psionic/fixtures/robotics/rotor-pd/native-publication-v1.json": "842acc998e215fe872740ddb97d040421f3f1e7bc4eff3c4d80b4bf2e25ed2d7",
+    "psionic/fixtures/robotics/rotor-pd/example-qualification.json": "7d4f6bb9757e5459061022b3039190134a4b364afef9d0fdef55c865bc250389"
+  },
+  "new_source_groups": 8,
+  "root_mutation": {
+    "emitted": 136,
+    "killed": 136,
+    "survivors": 0,
+    "equivalence_waivers": false,
+    "initial_single_survivor_preserved": true
+  },
+  "new_numerical_work": {
+    "profiles": 11,
+    "runs": 22,
+    "applied_updates": 2032,
+    "unapplied_initial_transport_records": 22,
+    "analysis_finite_words": 143,
+    "response_finite_words": 6162,
+    "reference": "Exact binary-input Fraction Jury and80digit Decimal distinct/complex/repeated-root closed forms; no product recurrence targets.",
+    "assertions_per_profile": 22225,
+    "profiles_run": [
+      "debug",
+      "release",
+      "sanitized"
+    ],
+    "all_complete_bytes_identical": true,
+    "exact_Jury_margins": [
+      0,
+      "+2^-51",
+      "-2^-51"
+    ],
+    "strict_flags_and_classes_exact": true,
+    "response_worst_budget_fraction": 0.011247,
+    "maximum_absolute_acceleration_error": 5.22e-08
+  },
+  "book": {
+    "passed": true,
+    "exit": 0,
+    "seconds": 0.41888295800890774,
+    "stdout_sha256": "f05ff1e7f330ff21ac1fad8fc9e7de5910a36c1276947dc975dac23c95f6f448",
+    "stderr_bytes": 0,
+    "programs": 128,
+    "source_linked_listings": 475
+  },
+  "registration": {
+    "passed": true,
+    "shell_syntax_passed": true,
+    "command": [
+      "bash",
+      "psionic/check.sh",
+      "--jobs",
+      "2",
+      "--only",
+      "robotics/rotor-pd"
+    ],
+    "stubbed": true,
+    "routed_Coax_commands": 3,
+    "routed_native_commands": 1,
+    "log_sha256": "03dced75ffd1251477c25ac16c6e6c955bf4b5f1214f272889abe093a59f148c",
+    "Coax_calls": 0,
+    "SDK_calls": 0,
+    "NN_calls": 0
+  },
+  "manifest_claim_review": {
+    "scope": "Own167 status and new isolated CPU rotor example only; dated model/device/serving claims remain unchanged.",
+    "updates": [
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "95e7886d02c870452bc85569f4fd9c3b101daef61cbb8a42f9be79b317c114a2",
+        "new": "95f49548d73f3b278855304dc1db983c0a7f33f20824a53b90c8df3399e9cdc4"
+      },
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/examples.json",
+        "old": "6e2680e348c3fc0c8c926751bdda82e41fd2849d5c81b39889681458f9b74517",
+        "new": "f90c3e293b2c5276b70d8ce8d6391a3e1104bc605fd8593d6b492e225b55b92a"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "95e7886d02c870452bc85569f4fd9c3b101daef61cbb8a42f9be79b317c114a2",
+        "new": "95f49548d73f3b278855304dc1db983c0a7f33f20824a53b90c8df3399e9cdc4"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/examples.json",
+        "old": "6e2680e348c3fc0c8c926751bdda82e41fd2849d5c81b39889681458f9b74517",
+        "new": "f90c3e293b2c5276b70d8ce8d6391a3e1104bc605fd8593d6b492e225b55b92a"
+      }
+    ]
+  },
+  "scope": "Isolated constant rotor PD with explicit feedback and implicit physical damping. Continuous diagnostics and F64 sampled Jury classification remain distinct; no nonlinear Panda stability, motor permission, contact, compilerR14 or hardware certificate.",
+  "publication_numerical_reruns": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false,
+  "quantity_operator_token_gap_retained": true
+}

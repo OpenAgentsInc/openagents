@@ -1112,6 +1112,16 @@
       ]
     },
     {
+      "source": "psionic/examples/rotor-pd.coax",
+      "chapter": "psionic/book/ch167-command-a-robot.md",
+      "stdout": "psionic/examples/rotor-pd.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/panda-joint-pd-rollout.coax",
       "chapter": "psionic/book/ch167-command-a-robot.md",
       "stdout": "psionic/examples/panda-joint-pd-rollout.out",

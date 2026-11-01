@@ -1,8 +1,8 @@
 # 167. Command a robot
 
 This chapter builds position-only inverse kinematics, principal orientation
-error, a capped whole-pose solve, seven-joint PD with gravity compensation, and a
-short coupled run on our owned Panda dynamics.
+error, a capped whole-pose solve, isolated PD gain/response analysis, seven-joint
+PD with gravity compensation, and a short coupled run on our owned Panda dynamics.
 The queries return source-limited coordinates or explicit force terms. The
 250-step experiment then recomputes the PD command on every owned state and
 compares that trajectory with one MuJoCo reference. General stability and
@@ -481,6 +481,130 @@ native execution. No budget, gain or corpus was tuned after comparison.
 The pure query supplies force terms. A response experiment additionally needs
 a fixed plant, timestep, initial state, target, gains and comparison contract.
 
+## A gain test with an isolated rotor
+
+A pose query and a PD torque formula do not tell us which gains behave well at a
+particular step size. Study that question first in a deliberately smaller model:
+a constant rotor with inertia M, physical damping B, and a fixed target. Its error
+e is unwrapped angle from that target, and v is angular rate. The controller uses
+`-Kp*e - Kd*v`; physical B acts implicitly at the **new** rate.
+
+Keep dimensions visible. M is J*s²/rad², B and Kd are J*s/rad², Kp is J/rad², and
+h is seconds. Define `D = M + h*B`, `alpha = h²*Kp/D`, and
+`beta = (M-h*Kd)/D`. Normalize `[e, h*v]` by one explicit radian before reading
+its numeric coordinates. The dimensionless transition is:
+
+```jai
+A = [[1 - alpha, beta],
+     [   -alpha, beta]]
+```
+
+The physically typed step is `a = (-Kp*e-(B+Kd)*v)/D`, then `v += h*a`, then
+`e += h*v` using that new rate. The returned acceleration is the effective
+velocity change over this step. Shape and finite-domain admission precede
+arithmetic, and acceleration/rate/error endcaps precede atomic publication.
+An out-of-domain update refuses the entire result; it does not clamp a state.
+
+For this constant real-arithmetic matrix and admitted positive M/Kp/h, strict
+Jury stability is exactly `B+Kd > 0` and `4M+2hB-2hKd-h²Kp > 0`. The other Jury
+term is alpha, already positive. The implementation reports a **computed F64
+Jury diagnostic**, including a boundary class. That boundary is not a generic
+boundedness or marginal-stability certificate: defective unit poles can grow
+polynomially. Stable/unstable diagnostics do not authorize or prohibit a
+numerically admitted step.
+
+The continuous natural coefficient is `sqrt(Kp/M)` in **1/second**, because the
+state's angle dimension cancels. It is not a joint rate in radian/second.
+Continuous damping ratio is `(B+Kd)/(2*sqrt(M*Kp))`. Typed squared quantities are
+converted before the explicit scalar square roots; no implicit angle erasure or
+quantity-square-root language extension is used.
+
+Continuous critical damping and a repeated discrete pole are different tests.
+The continuous-critical fixture has M=1, B=0, Kp=4 and Kd=4: zeta is one, but its
+0.002-second transition has distinct poles. The separate dyadic fixture uses
+h=1/512, M=1, B=0, Kp=64 and Kd=15.875. Its transition has the exact repeated
+pole 63/64, while continuous zeta is 127/128. The independent repeated-root
+branch uses the appropriate n*r^n term rather than dividing by a zero pole gap.
+
+More explicit derivative gain can also destabilize sampling. With M=0.01,
+B=0.02, Kp=100 and h=0.002, raising Kd from 0.2 to 12 raises continuous zeta
+from 0.11 to 6.01 but makes the computed flip margin negative. The `-2*h*Kd`
+term explains this loss of strict discrete stability. It does not contradict
+the continuous damping ratio; it describes a different update map.
+
+All three rows below use the same M=0.01, B=0.02, Kp=100 and h=0.002; the
+values are read from the already frozen independent analysis table.
+
+| Kd (J*s/rad²) | Continuous zeta | Computed flip margin (J*s²/rad²) | Strict class |
+| --- | --- | --- | --- |
+| 0.2 | 0.11 | 0.03888 | Stable |
+| 4 | 2.01 | 0.02368 | Stable |
+| 12 | 6.01 | -0.00832 | Unstable |
+
+The [example](../examples/rotor-pd.coax) runs a 0.002-second isolated rotor and prints selected response
+states against an independently prewritten closed-form output. Its initial
+acceleration is unavailable because no step has yet occurred. It also shows the
+exact Kd=3 one-ULP neighbors at a coarse 0.5-second **mathematical** fixture:
+computed strict stable, boundary, and unstable. These are not Panda gains or a
+nonlinear plant certificate.
+
+<!-- source: psionic/examples/rotor-pd.coax rpd-response -->
+```jai
+ // M is J*s^2/rad^2; B and Kd are J*s/rad^2; Kp is J/rad^2.
+ // Physical B acts implicitly at the new velocity; controller Kd uses old rate.
+ p:[1]RpdParams;p[0].inertia.value=0.01;p[0].physical_damping.value=0.02;p[0].kp.value=100;p[0].kd.value=0.2;p[0].step.value=0.002;
+ analysis:[1]RpdAnalysis;#assert rpd_analyze(p[..],analysis[..])==RpdStatus.ok;
+ print("natural coefficient (1/s): %; zeta (ppm): %\n",cast(int)analysis[0].natural_inverse_seconds.value,rpd_example_micro(analysis[0].zeta.value));
+ print("alpha/beta (ppm): % %; strict Jury: %\n",rpd_example_micro(analysis[0].alpha.value),rpd_example_micro(analysis[0].beta.value),analysis[0].strict_stable);
+ state:[1]RpdState;state[0].error.value=0.375;state[0].rate.value= -0.5;out:[1]RpdOutput;
+ print("initial: % urad; % urad/s; acceleration unavailable\n",rpd_example_micro(state[0].error.value),rpd_example_micro(state[0].rate.value));
+ for n:1..<129 {
+  #assert rpd_step(p[..],state[..],out[..])==RpdStatus.ok;state[0]=out[0].state;
+  if n==1 || n==32 || n==64 || n==128 {print("step %: % urad; % urad/s; % urad/s^2\n",n,rpd_example_micro(state[0].error.value),rpd_example_micro(state[0].rate.value),rpd_example_micro(out[0].effective_acceleration.value));}
+ }
+ // Exact one-ULP neighbors distinguish the strict computed Jury boundary.
+ p[0].inertia.value=1;p[0].physical_damping.value=0;p[0].kp.value=4;p[0].step.value=0.5;
+ for side:0..<3 {word:=f64_bits(3.0);if side==0 {word-=1;}if side==2 {word+=1;}p[0].kd.value=f64_from_bits(word);#assert rpd_analyze(p[..],analysis[..])==RpdStatus.ok;print("Kd3 neighbor %: class %; strict %\n",side,analysis[0].classification,analysis[0].strict_stable);}
+ before:=out[0];state[0].error.value=1e6+1;#assert rpd_step(p[..],state[..],out[..])==RpdStatus.range;rpd_same(out[0],before);
+ print("outside error domain: range; complete result unchanged\n");
+```
+
+```shell
+coax/bin/coax run psionic/examples/rotor-pd.coax
+COAX=coax/bin/coax psionic/tests/robotics/check-rotor-pd-native.sh /tmp/new-rotor-proof
+```
+
+The independent reference freezes eleven profiles and two initial states each.
+It uses exact binary-input Fractions and 80-digit Decimal root closed forms,
+including distinct-real, complex-conjugate and repeated-root branches. It does
+not use the product recurrence as its expected response. There are **2,032 new
+applied updates** and **22 input-transport initial records**; the latter carry a
+zero acceleration placeholder; the response index explicitly marks it
+unavailable. No initial acceleration is computed. All thirteen analysis coefficients and both classification
+fields are checked.
+
+Eight new source groups, four meaningful unit refusals, and **136/136 actual
+emitted mutation sites** qualify the new root. The first mutation run's single
+survivor hid `2*sqrt` versus `2+sqrt` at the coincident literal square root two;
+an independent dense profile closes that observation without changing the
+product or budgets. Current quantity lowering omits some authored token
+provenance, so this count is not full quantity-token mutation coverage. The
+example passes its own display check and its prewritten debug/release output.
+The first debug, release and fail-fast ASan/UBSan profiles each pass **22,225 assertions**. Complete analysis and response files are byte-identical across all three. Eleven analyses, 2,032 applied steps and 22 explicitly unapplied initial records match the independent reference. Maximum analysis discrepancy is 2.23e-16. Exact one-ULP Jury margins are 0 and +/-2^-51. Fourteen overlap cases, parameter/state endpoints, isolated late result endcaps, IEEE poisons and sixteen poisoned-reader guards pass. The worst response budget fraction is **1.125%**; the largest absolute acceleration discrepancy is **5.22e-8 rad/s²** on large values, within the frozen combined absolute/relative budget.
+
+The per-scalar response bound is **2e-10 + 2e-12*abs(reference)** for error,
+rate and effective acceleration; analysis uses **2e-12 + 2e-12*abs(reference)**.
+Classification, statuses and cross-profile bytes have exact criteria. No old
+Panda, pose, kinematic, physics, SDK, neural or renderer gate is repeated. This
+isolated constant-rotor evidence does not establish nonlinear Panda stability,
+contact behavior, motor-command admission, compiler `#bounded` control or
+hardware behavior.
+
+The [component record](../fixtures/robotics/rotor-pd/README.md) links the
+exact-input Jury facts, independent closed forms and source/native/example
+receipts.
+
+
 ## Couple PD to the owned plant
 
 The next [runnable example](../examples/panda-joint-pd-rollout.coax) couples
@@ -546,7 +670,8 @@ source law, not an SDK-observed counter.
 The target-error norm falls from **0.0384057 to 0.00993709 rad**. This is a
 reported result for these gains and this short prefix, without a convergence,
 steady-state or stability threshold. Contact response, large disturbances,
-gain analysis, timed trajectories and whole-policy success are still open.
+nonlinear Panda gain analysis, timed trajectories and whole-policy success are
+still open.
 
 The [complete evidence](../fixtures/robotics/panda-joint-pd-prefix/README.md)
 retains the first generated-C printer-warning build failure, before any SDK
@@ -563,15 +688,17 @@ The following sections are design work; the position and force queries above
 do not qualify these complete control and planning tools.
 
 
-- Measured joint-space PD holding/tracking, gain analysis and saturation behavior.
+- Nonlinear Panda holding/tracking, disturbance and dynamic saturation analysis
+  beyond the isolated rotor and short no-contact prefix.
 - Null-space posture objectives beyond the implemented position and pose queries.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
 - Trajectory timing within velocity and acceleration limits.
 
 ## Planned control and planning math
 
-The typed PD query above supplies this force equation. Its remaining response
-and gain analysis needs the dynamics and a declared timestep:
+The typed PD query supplies this force equation. The isolated rotor above
+qualifies its sampled constant-inertia response; a nonlinear Panda gain analysis
+still needs the full coupled dynamics and a declared timestep:
 
 ```jai
 τ = K_p (q_ref − q) + K_d (q̇_ref − q̇) + g(q)
@@ -605,9 +732,9 @@ plan is reproducible; shortcutting and time parameterization follow.
 
 ## Remaining acceptance checks and oracles
 
-- PD holds a pose under gravity with steady-state error below a stated bound;
-  step response matches the second-order model of its gains on a single
-  joint.
+- Nonlinear Panda PD holds a pose under gravity with steady-state error below
+  a stated bound, including disturbance and saturation experiments. The isolated
+  single-rotor response and computed Jury diagnostic are qualified above.
 - Broader pose/nullspace behavior near singularities and the principal cut;
   keep typed local nonconvergence distinct from global unreachability. The
   fixed-source position and pose profiles above already enforce source ranges
