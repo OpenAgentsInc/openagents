@@ -1,13 +1,15 @@
 // openagents: the OpenAgents command line, v1.0.0-dev
 // (docs/cli/2026-11-01-openagents-cli-v1.md). One Coax program on the C tool
 // host; cli-native.c does the platform effects (Keychain, 0600 files, stdin,
-// the clock), and every decision is here or in rules.coax.
+// the clock), and every decision is in the Coax files or rules.coax.
 //
 //   apps/openagents-cli/build.sh            builds apps/openagents-cli/build/openagents
 //   openagents help
 //
-// Domains today: nostr (your NIP-06 identity: new, import, show, forget, sign,
-// auth) and pylon (start, stop, status, logs, around scripts/join-pylon.sh).
+// This file is the dispatch. Each domain has its own file, so domains change
+// apart: out.coax (the report, arguments, paths), nostr.coax (your NIP-06
+// identity, signing, NIP-98, publish and req), relay.coax (the relay client),
+// and pylon.coax (start, stop, status, logs, around scripts/join-pylon.sh).
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -16,6 +18,10 @@
 #load "../../coax/lib/nostr/event_sign.coax";
 #load "../../coax/lib/nostr/base64.coax";
 #load "rules.coax";
+#load "out.coax";
+#load "relay.coax";
+#load "nostr.coax";
+#load "pylon.coax";
 
 CLI_VERSION :: "1.0.0-dev";
 
@@ -29,28 +35,15 @@ cxcli_exe_path :: (out: [] u8) -> int #foreign;
 cxcli_keychain_set :: (account: [] u8, secret: [] u8) -> int #foreign;
 cxcli_keychain_get :: (account: [] u8, out: [] u8) -> int #foreign;
 cxcli_keychain_remove :: (account: [] u8) -> int #foreign;
-cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+// cxrand_draw comes from coax/lib/net/relay_conn.coax (loaded by relay.coax).
 
 usage :: () {
   print("%\n", "openagents 1.0.0-dev: the OpenAgents command line");
   print("%\n", "");
   print("%\n", "Usage: openagents [--json] [--profile NAME] DOMAIN VERB [ARGS]");
   print("%\n", "");
-  print("%\n", "Identity (Nostr, NIP-06):");
-  print("%\n", "  nostr new [--force]              make a key from 12 new words; the words are shown once");
-  print("%\n", "  nostr import --words | --nsec    read 12 words or an nsec/hex secret from stdin");
-  print("%\n", "  nostr show                       your npub and public key (also: openagents whoami)");
-  print("%\n", "  nostr forget --yes               delete this profile's stored key");
-  print("%\n", "  nostr sign --content TEXT [--kind N] [--tags JSON]   print a signed event");
-  print("%\n", "  nostr auth URL [--method M] [--body FILE]            print a NIP-98 Authorization header");
-  print("%\n", "");
-  print("%\n", "Pylon (sells this computer's compute; scripts/join-pylon.sh does the work):");
-  print("%\n", "  pylon start [--model psionic-toy|elephant-1] [--label TEXT] [--slug NAME]");
-  print("%\n", "              [--relay wss://HOST] [--self-test] [--official] [--wait SECONDS]");
-  print("%\n", "  pylon status [--model M]");
-  print("%\n", "  pylon stop [--model M] [--wait SECONDS]");
-  print("%\n", "  pylon logs [--model M] [--lines N] [--engine | --join]");
-  print("%\n", "");
+  nostr_usage();
+  pylon_usage();
   print("%\n", "Other:");
   print("%\n", "  version, help");
   print("%\n", "");
@@ -60,501 +53,6 @@ usage :: () {
   print("%\n", "Exit codes: 0 done, 1 failed, 2 usage, 3 no identity, 6 not found.");
 }
 
-// ---- the report: `key value` lines, or one JSON object with --json -------
-
-REP_BYTES :: 65536;
-Rep :: struct { json: bool; buf: [REP_BYTES] u8; n: int; pairs: int; }
-
-rep_put :: (r: [] Rep, s: string) {
-  for c: s { if r[0].n < REP_BYTES { r[0].buf[r[0].n] = c; r[0].n += 1; } }
-}
-rep_byte :: (r: [] Rep, c: u8) { if r[0].n < REP_BYTES { r[0].buf[r[0].n] = c; r[0].n += 1; } }
-rep_quoted :: (r: [] Rep, s: string) {
-  digits := "0123456789abcdef";
-  rep_byte(r, '"');
-  for c: s {
-    if c == '"' || c == '\\' { rep_byte(r, '\\'); rep_byte(r, c); continue; }
-    if c < 32 { rep_put(r, "\\u00"); rep_byte(r, digits[cast(int) (c >> 4)]); rep_byte(r, digits[cast(int) (c & 15)]); continue; }
-    rep_byte(r, c);
-  }
-  rep_byte(r, '"');
-}
-rep_key :: (r: [] Rep, key: string) {
-  if r[0].json {
-    rep_put(r, ifx r[0].pairs == 0 then "{" else ",");
-    rep_quoted(r, key); rep_byte(r, ':');
-  } else { rep_put(r, key); rep_byte(r, ' '); }
-  r[0].pairs += 1;
-}
-rep_str :: (r: [] Rep, key: string, value: string) {
-  rep_key(r, key);
-  if r[0].json { rep_quoted(r, value); } else { rep_put(r, value); rep_byte(r, '\n'); }
-}
-rep_raw :: (r: [] Rep, key: string, json: string) {   // a JSON value; printed as is in text mode
-  rep_key(r, key);
-  rep_put(r, json);
-  if !r[0].json { rep_byte(r, '\n'); }
-}
-rep_int :: (r: [] Rep, key: string, v: int) {
-  t: [24] u8;
-  rep_key(r, key);
-  rep_put(r, int_text(v, t[..]));
-  if !r[0].json { rep_byte(r, '\n'); }
-}
-rep_bool :: (r: [] Rep, key: string, v: bool) {
-  rep_key(r, key);
-  if r[0].json { rep_put(r, ifx v then "true" else "false"); } else { rep_put(r, ifx v then "1\n" else "0\n"); }
-}
-// Prints the report and returns code. An error goes to stderr in text mode.
-rep_done :: (r: [] Rep, code: int) -> int {
-  if r[0].json {
-    if r[0].pairs == 0 { rep_put(r, "{"); }
-    rep_put(r, ifx code == EXIT_OK then ",\"ok\":true}\n" else ",\"ok\":false}\n");
-    if r[0].pairs == 0 { r[0].buf[1] = ' '; }
-  }
-  print("%", cast(string) r[0].buf[0..<r[0].n]);
-  return code;
-}
-fail :: (r: [] Rep, code: int, message: string) -> int {
-  if r[0].json { rep_str(r, "error", message); return rep_done(r, code); }
-  tool_err("openagents: "); tool_errln(message);
-  return code;
-}
-
-int_text :: (v: int, out: [] u8) -> string {
-  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
-  t: [24] u8; n := 0; x := ifx v < 0 then -v else v;
-  while x > 0 && n < 20 { t[n] = cast(u8) (x % 10) + '0'; x = x / 10; n += 1; }
-  k := 0;
-  if v < 0 { out[0] = '-'; k = 1; }
-  for i: 0..<n { out[k + i] = t[n - 1 - i]; }
-  return cast(string) out[0..<k + n];
-}
-text_int :: (s: string) -> int {   // a plain non-negative decimal, or -1
-  if s.count < 1 || s.count > 9 { return -1; }
-  v := 0;
-  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
-  return v;
-}
-copy :: (s: string, out: [] u8) -> int {
-  if s.count > out.count { return -1; }
-  for i: 0..<s.count { out[i] = s[i]; }
-  return s.count;
-}
-
-// ---- arguments: flags anywhere, positionals in order ----------------------
-
-VALUE_FLAGS :: [16] string.["--profile", "--model", "--label", "--slug", "--relay", "--device", "--model-cache",
-  "--source", "--wait", "--lines", "--kind", "--content", "--tags", "--method", "--body", "--port"];
-takes_value :: (s: string) -> bool { for f: VALUE_FLAGS { if s == f { return true; } } return false; }
-// The k-th argument that is not a flag or a flag's value, or "".
-positional :: (a: [] Args, k: int) -> string {
-  seen := 0; i := 0;
-  while i < args_count(a) {
-    s := args_at(a, i);
-    if s.count > 1 && s[0] == '-' && s[1] == '-' { i += ifx takes_value(s) then 2 else 1; continue; }
-    if seen == k { return s; }
-    seen += 1; i += 1;
-  }
-  return "";
-}
-
-// ---- where things live ------------------------------------------------------
-
-home :: (out: [] u8) -> string { return proc_getenv("HOME", out); }
-cli_dir :: (out: [] u8) -> string {
-  h: [1024] u8;
-  return fs_join(home(h[..]), ".openagents/cli", out);
-}
-key_file :: (profile: string, out: [] u8) -> string {
-  d: [1024] u8; k: [1024] u8;
-  return fs_join(fs_join(cli_dir(d[..]), "keys", k[..]), profile, out);
-}
-keychain_account :: (profile: string, out: [] u8) -> int {
-  n := copy("nostr:", out);
-  m := copy(profile, out[n..<out.count]);
-  return ifx m < 0 then -1 else n + m;
-}
-
-// ---- the identity -----------------------------------------------------------
-
-Key :: struct { ok: bool; secret: [32] u8; from: string; }
-
-wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
-
-// A secret as typed: nsec1... or 64 hex. False for anything else.
-secret_of :: (typed: string, key: [] u8) -> bool {
-  if typed.count == 64 { return cli_unhex(typed, key); }
-  if typed.count < 5 || typed[0..<5] != "nsec1" { return false; }
-  out: [64] u8;
-  r := nip19_decode_checked(typed, out[..], false);
-  if r.error != NC_OK || r.type != N19_NSEC || r.written != 32 { wipe(out[..]); return false; }
-  for i: 0..<32 { key[i] = out[i]; }
-  wipe(out[..]);
-  return true;
-}
-
-load_key :: (profile: string, k: [] Key) -> bool {
-  env: [256] u8;
-  typed := proc_getenv("OPENAGENTS_NSEC", env[..]);
-  if typed.count > 0 {
-    ok := secret_of(typed, k[0].secret[..]);
-    wipe(env[..]);
-    k[0].ok = ok; k[0].from = "env";
-    return ok;
-  }
-  text: [128] u8; acct: [64] u8;
-  an := keychain_account(profile, acct[..]);
-  n := cxcli_keychain_get(acct[0..<an], text[..]);
-  if n > 0 {
-    k[0].ok = cli_key_parse(cast(string) text[0..<n], k[0].secret[..]); k[0].from = "keychain";
-    wipe(text[..]);
-    return k[0].ok;
-  }
-  p: [1024] u8;
-  path := key_file(profile, p[..]);
-  if fs_kind(path) != FS_FILE { return false; }
-  n = fs_read(path, text[..]);
-  if n <= 0 { return false; }
-  k[0].ok = cli_key_parse(cast(string) text[0..<n], k[0].secret[..]); k[0].from = "file";
-  wipe(text[..]);
-  return k[0].ok;
-}
-
-// Keeps the secret: the Keychain on a Mac, else a 0600 file in a 0700 directory.
-store_key :: (profile: string, secret: [] u8) -> string {
-  text: [CLI_KEY_TEXT] u8; acct: [64] u8;
-  if cli_key_text(secret, text[..]) != CLI_KEY_TEXT { return ""; }
-  an := keychain_account(profile, acct[..]);
-  r := cxcli_keychain_set(acct[0..<an], text[..]);
-  if r == 0 { wipe(text[..]); return "keychain"; }
-  d: [1024] u8; kd: [1024] u8; p: [1024] u8;
-  dir := fs_join(cli_dir(d[..]), "keys", kd[..]);
-  dn := dir.count; path := key_file(profile, p[..]);
-  db: [1024] u8; pb: [1024] u8;
-  for i: 0..<dn { db[i] = dir[i]; }
-  for i: 0..<path.count { pb[i] = path[i]; }
-  ok := cxcli_mkdir_private(db[0..<dn]) == 0 && cxcli_write_private(pb[0..<path.count], text[..]) == 0;
-  wipe(text[..]);
-  return ifx ok then "file" else "";
-}
-
-npub_of :: (secret: [] u8, out: [] u8) -> int { return nip06_npub(secret, out); }
-pubkey_hex :: (secret: [] u8, out: [] u8) -> bool {
-  pub: [33] u8;
-  return bip32_public(secret, pub[..]) && cli_hex(pub[1..<33], out);
-}
-
-report_identity :: (r: [] Rep, profile: string, secret: [] u8, store: string) {
-  np: [80] u8; hx: [64] u8;
-  n := npub_of(secret, np[..]);
-  if n > 0 { rep_str(r, "npub", cast(string) np[0..<n]); }
-  if pubkey_hex(secret, hx[..]) { rep_str(r, "pubkey", cast(string) hx[..]); }
-  rep_str(r, "profile", profile);
-  rep_str(r, "store", store);
-}
-
-nostr_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
-  k: [1] Key;
-  if !args_has(a, "--force") && load_key(profile, k[..]) {
-    wipe(k[0].secret[..]);
-    return fail(r, EXIT_USAGE, "this profile already has a key (nostr show); --force replaces it, and the old key is gone unless you saved its words");
-  }
-  e: [16] u8; words: [256] u8; key: [32] u8;
-  if cxrand_draw(e[..], 16) != 0 { return fail(r, EXIT_FAIL, "no entropy from the system"); }
-  n := bip39_words(e[..], words[..]);
-  wipe(e[..]);
-  if n <= 0 || !nip06_key(cast(string) words[0..<n], key[..]) { wipe(words[..]); return fail(r, EXIT_FAIL, "could not derive the key"); }
-  store := store_key(profile, key[..]);
-  if store == "" { wipe(words[..]); wipe(key[..]); return fail(r, EXIT_FAIL, "could not store the key"); }
-  tool_errln("openagents: these 12 words are your Nostr key. They are shown once. Write them down and keep them private;");
-  tool_errln("openagents: anyone with them is you, and without them a lost key cannot be recovered.");
-  rep_str(r, "words", cast(string) words[0..<n]);
-  report_identity(r, profile, key[..], store);
-  wipe(words[..]); wipe(key[..]);
-  return rep_done(r, EXIT_OK);
-}
-
-nostr_import :: (a: [] Args, r: [] Rep, profile: string) -> int {
-  words := args_has(a, "--words");
-  if words == args_has(a, "--nsec") { return fail(r, EXIT_USAGE, "say --words (12 words) or --nsec (nsec1... or 64 hex), then give it on stdin"); }
-  if cxcli_isatty(0) == 1 { tool_err(ifx words then "words: " else "secret: "); }
-  line: [512] u8; key: [32] u8;
-  n := cxcli_read_line(line[..], 1);
-  if n <= 0 { wipe(line[..]); return fail(r, EXIT_USAGE, "nothing on stdin"); }
-  ok := false;
-  if words {
-    phrase: [512] u8; e: [32] u8;
-    c := cli_words(cast(string) line[0..<n], phrase[..]);
-    count := ifx c > 0 then c / 1000 else 0;
-    m := ifx c > 0 then c % 1000 else 0;
-    ok = (count == 12 || count == 24) && bip39_entropy(cast(string) phrase[0..<m], e[..]) && nip06_key(cast(string) phrase[0..<m], key[..]);
-    wipe(phrase[..]); wipe(e[..]);
-    if !ok { wipe(line[..]); return fail(r, EXIT_USAGE, "those are not 12 or 24 BIP-39 words with a good checksum"); }
-  } else {
-    ok = secret_of(cast(string) line[0..<n], key[..]);
-    if !ok { wipe(line[..]); return fail(r, EXIT_USAGE, "that is not an nsec1... or 64-hex secret"); }
-  }
-  wipe(line[..]);
-  store := store_key(profile, key[..]);
-  if store == "" { wipe(key[..]); return fail(r, EXIT_FAIL, "could not store the key"); }
-  report_identity(r, profile, key[..], store);
-  wipe(key[..]);
-  return rep_done(r, EXIT_OK);
-}
-
-nostr_show :: (r: [] Rep, profile: string) -> int {
-  k: [1] Key;
-  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new` or `openagents nostr import --words`"); }
-  report_identity(r, profile, k[0].secret[..], k[0].from);
-  wipe(k[0].secret[..]);
-  return rep_done(r, EXIT_OK);
-}
-
-nostr_forget :: (a: [] Args, r: [] Rep, profile: string) -> int {
-  if !args_has(a, "--yes") { return fail(r, EXIT_USAGE, "this deletes the key; without its words it is gone. Add --yes"); }
-  acct: [64] u8; p: [1024] u8;
-  an := keychain_account(profile, acct[..]);
-  kc := cxcli_keychain_remove(acct[0..<an]);
-  path := key_file(profile, p[..]);
-  had := fs_kind(path) == FS_FILE;
-  if had { gone := fs_remove(path); }
-  rep_str(r, "profile", profile);
-  rep_bool(r, "forgot", kc == 1 || had);
-  return rep_done(r, EXIT_OK);
-}
-
-// Signs one event with the profile's key into out; its length, or -1.
-sign_event :: (secret: [] u8, kind: int, tags: string, content: string, out: [] u8) -> int {
-  aux: [32] u8;
-  if cxrand_draw(aux[..], 32) != 0 { return -1; }
-  work: [1] NostrSignWork; scratch: [70000] u8;
-  r := EVENT_MORE; steps := 0;
-  while r == EVENT_MORE && steps < 4096 {
-    r = nostr_event_sign_step(secret, aux[..], cxcli_now_s(), kind, tags, content, work[..], scratch[..], out, false);
-    steps += 1;
-  }
-  return ifx r > 0 then r else -1;
-}
-
-nostr_sign :: (a: [] Args, r: [] Rep, profile: string) -> int {
-  if !args_has(a, "--content") { return fail(r, EXIT_USAGE, "nostr sign --content TEXT [--kind N] [--tags JSON]"); }
-  kind := text_int(args_value(a, "--kind", "1"));
-  if kind < 0 || kind > 65535 { return fail(r, EXIT_USAGE, "--kind is 0 to 65535"); }
-  k: [1] Key;
-  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
-  ev: [70000] u8;
-  n := sign_event(k[0].secret[..], kind, args_value(a, "--tags", "[]"), args_value(a, "--content", ""), ev[..]);
-  wipe(k[0].secret[..]);
-  if n <= 0 { return fail(r, EXIT_USAGE, "could not sign: --tags must be a JSON array of string arrays, and the event at most 64 KB"); }
-  if !r[0].json { print("%\n", cast(string) ev[0..<n]); return EXIT_OK; }
-  rep_raw(r, "event", cast(string) ev[0..<n]);
-  return rep_done(r, EXIT_OK);
-}
-
-nostr_auth :: (a: [] Args, r: [] Rep, profile: string) -> int {
-  url := positional(a, 2);
-  method := args_value(a, "--method", ifx args_has(a, "--body") then "POST" else "GET");
-  if url.count < 8 || url.count > 2000 || (url[0..<7] != "http://" && (url.count < 9 || url[0..<8] != "https://")) {
-    return fail(r, EXIT_USAGE, "nostr auth URL [--method M] [--body FILE]: URL is http(s)://...");
-  }
-  for c: url { if c == '"' || c == '\\' || c < 33 || c > 126 { return fail(r, EXIT_USAGE, "the URL has a character it can't carry"); } }
-  for c: method { if c < 'A' || c > 'Z' { return fail(r, EXIT_USAGE, "--method is an uppercase HTTP method"); } }
-  if method.count < 3 || method.count > 7 { return fail(r, EXIT_USAGE, "--method is an uppercase HTTP method"); }
-  tags: [4300] u8;
-  t := copy("[[\"u\",\"", tags[..]); t += copy(url, tags[t..<tags.count]);
-  t += copy("\"],[\"method\",\"", tags[t..<tags.count]); t += copy(method, tags[t..<tags.count]); t += copy("\"]", tags[t..<tags.count]);
-  if args_has(a, "--body") {
-    body: [1048576] u8; h: [32] u8; hx: [64] u8;
-    bn := fs_read(args_value(a, "--body", ""), body[..]);
-    if bn < 0 { return fail(r, EXIT_NOT_FOUND, "could not read --body (at most 1 MB)"); }
-    if sha256_hash_checked(body[0..<bn], h[..], false) != SHA_OK || !cli_hex(h[..], hx[..]) { return fail(r, EXIT_FAIL, "could not hash the body"); }
-    t += copy(",[\"payload\",\"", tags[t..<tags.count]); t += copy(cast(string) hx[..], tags[t..<tags.count]); t += copy("\"]", tags[t..<tags.count]);
-  }
-  t += copy("]", tags[t..<tags.count]);
-  k: [1] Key;
-  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
-  ev: [8192] u8;
-  n := sign_event(k[0].secret[..], 27235, cast(string) tags[0..<t], "", ev[..]);
-  wipe(k[0].secret[..]);
-  if n <= 0 { return fail(r, EXIT_FAIL, "could not sign"); }
-  header: [12000] u8;
-  h := copy("Nostr ", header[..]);
-  e := base64_encode_checked(cast(string) ev[0..<n], header[h..<header.count], false);
-  if e.error != NC_OK { return fail(r, EXIT_FAIL, "could not encode"); }
-  if !r[0].json { print("%\n", cast(string) header[0..<h + e.written]); return EXIT_OK; }
-  rep_str(r, "authorization", cast(string) header[0..<h + e.written]);
-  rep_raw(r, "event", cast(string) ev[0..<n]);
-  return rep_done(r, EXIT_OK);
-}
-
-// ---- the Pylon ----------------------------------------------------------------
-
-// The checkout that holds scripts/join-pylon.sh: OPENAGENTS_SOURCE, else the one
-// this binary was built in (it sits at apps/openagents-cli/build/openagents).
-source_root :: (out: [] u8) -> string {
-  env: [1024] u8; p: [1024] u8;
-  s := proc_getenv("OPENAGENTS_SOURCE", env[..]);
-  if s.count == 0 {
-    n := cxcli_exe_path(p[..]);
-    if n <= 0 { return ""; }
-    s = cast(string) p[0..<n];
-    for up: 0..<4 { s = fs_dir(s); }
-  }
-  q: [1024] u8;
-  if fs_kind(fs_join(s, "scripts/join-pylon.sh", q[..])) != FS_FILE { return ""; }
-  n := copy(s, out);
-  return ifx n < 0 then "" else cast(string) out[0..<n];
-}
-pylon_home :: (out: [] u8) -> string {
-  env: [1024] u8; h: [1024] u8;
-  s := proc_getenv("OPENAGENTS_PYLON_HOME", env[..]);
-  if s.count > 0 { n := copy(s, out); return cast(string) out[0..<n]; }
-  return fs_join(home(h[..]), ".openagents/pylon", out);
-}
-model_ok :: (m: string) -> bool { return m == "psionic-toy" || m == "elephant-1"; }
-pylon_state :: (model: string, out: [] u8) -> string {
-  h: [1024] u8; s: [1024] u8;
-  state := fs_join(pylon_home(h[..]), "state", s[..]);
-  if model == "psionic-toy" { n := copy(state, out); return cast(string) out[0..<n]; }
-  return fs_join(state, model, out);
-}
-state_file :: (model: string, name: string, out: [] u8) -> string {
-  s: [1024] u8;
-  return fs_join(pylon_state(model, s[..]), name, out);
-}
-read_small :: (path: string, out: [] u8) -> string {
-  n := fs_read(path, out);
-  if n <= 0 { return ""; }
-  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == ' ') { n -= 1; }
-  return cast(string) out[0..<n];
-}
-// The join's pid while it runs, or 0.
-join_pid :: (model: string) -> int {
-  p: [1024] u8; t: [32] u8;
-  pid := text_int(read_small(state_file(model, "join.lock/pid", p[..]), t[..]));
-  return ifx pid > 1 && cxcli_alive(pid) == 1 then pid else 0;
-}
-
-pylon_status :: (a: [] Args, r: [] Rep) -> int {
-  model := args_value(a, "--model", "psionic-toy");
-  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
-  st: [1024] u8;
-  state := pylon_state(model, st[..]);
-  rep_str(r, "model", model);
-  rep_str(r, "state", state);
-  if fs_kind(state) != FS_DIR { rep_bool(r, "running", false); rep_bool(r, "online", false); return rep_done(r, EXIT_OK); }
-  pid := join_pid(model);
-  rep_bool(r, "running", pid > 0);
-  if pid > 0 { rep_int(r, "pid", pid); }
-  p: [1024] u8; t: [256] u8;
-  slug := read_small(state_file(model, "slug", p[..]), t[..]);
-  if slug.count > 0 { rep_str(r, "slug", slug); }
-  logbuf: [262144] u8; lp: [1024] u8;
-  n := fs_read(state_file(model, "pylon.log", lp[..]), logbuf[..]);
-  text := ifx n > 0 then cast(string) logbuf[0..<n] else "";
-  facts := cli_pylon_log(text);
-  rep_bool(r, "online", pid > 0 && facts.online);
-  if facts.npub_n > 0 { rep_str(r, "npub", text[facts.npub_at..<facts.npub_at + facts.npub_n]); }
-  if facts.key_n > 0 { rep_str(r, "pubkey", text[facts.key_at..<facts.key_at + facts.key_n]); }
-  sp: [1024] u8;
-  rep_bool(r, "self_test", fs_kind(state_file(model, "self-test.json", sp[..])) == FS_FILE);
-  return rep_done(r, EXIT_OK);
-}
-
-pylon_start :: (a: [] Args, r: [] Rep) -> int {
-  model := args_value(a, "--model", "psionic-toy");
-  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
-  if join_pid(model) > 0 { rep_str(r, "already", "running"); return pylon_status(a, r); }
-  src: [1024] u8;
-  root := source_root(src[..]);
-  if root.count == 0 { return fail(r, EXIT_NOT_FOUND, "no OpenAgents checkout with scripts/join-pylon.sh: set OPENAGENTS_SOURCE"); }
-  wait := text_int(args_value(a, "--wait", "0"));
-  if wait < 0 || wait > 3600 { return fail(r, EXIT_USAGE, "--wait is 0 to 3600 seconds"); }
-  hb: [1024] u8; lb: [1024] u8; sb: [1024] u8; hbuf: [1024] u8;
-  ph := pylon_home(hb[..]);
-  for i: 0..<ph.count { hbuf[i] = ph[i]; }
-  if cxcli_mkdir_private(hbuf[0..<ph.count]) != 0 { return fail(r, EXIT_FAIL, "could not make the Pylon's home directory"); }
-  logname: [64] u8;
-  ln := copy("cli-join-", logname[..]); ln += copy(model, logname[ln..<64]); ln += copy(".log", logname[ln..<64]);
-  joinlog := fs_join(ph, cast(string) logname[0..<ln], lb[..]);
-  script := fs_join(root, "scripts/join-pylon.sh", sb[..]);
-  // Detached, its own session; sh only redirects the join's output to the log.
-  h := proc_new();
-  envb: [1100] u8;
-  en := copy("OA_JOIN_LOG=", envb[..]); en += copy(joinlog, envb[en..<envb.count]);
-  ok := proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, "exec bash \"$0\" \"$@\" >>\"$OA_JOIN_LOG\" 2>&1") &&
-        proc_arg(h, script) && proc_arg(h, "--model") && proc_arg(h, model) && proc_env(h, cast(string) envb[0..<en]);
-  if !args_has(a, "--official") { ok = ok && proc_arg(h, "--source") && proc_arg(h, root); }
-  flags := [5] string.["--label", "--slug", "--relay", "--device", "--model-cache"];
-  for f: flags { if args_has(a, f) { ok = ok && proc_arg(h, f) && proc_arg(h, args_value(a, f, "")); } }
-  if args_has(a, "--self-test") { ok = ok && proc_arg(h, "--self-test"); }
-  ok = ok && proc_detach(h);
-  started_at := cxcli_now_s();
-  if !ok || proc_start(h) != 0 { return fail(r, EXIT_FAIL, "could not start the join"); }
-  pid := proc_pid(h);
-  released := proc_release(h);
-  rep_str(r, "model", model);
-  rep_int(r, "join_pid", pid);
-  rep_str(r, "log", joinlog);
-  if wait == 0 {
-    rep_str(r, "next", "openagents pylon status");
-    return rep_done(r, EXIT_OK);
-  }
-  // Wait for this run's log to say online (the join empties pylon.log when it starts the Pylon).
-  lp: [1024] u8; buf: [262144] u8;
-  plog := state_file(model, "pylon.log", lp[..]);
-  deadline := started_at + wait;
-  while cxcli_now_s() < deadline {
-    if fs_mtime_ns(plog) >= started_at * 1000000000 {
-      n := fs_read(plog, buf[..]);
-      if n > 0 && cli_pylon_log(cast(string) buf[0..<n]).online { rep_bool(r, "online", true); return rep_done(r, EXIT_OK); }
-    }
-    if cxcli_alive(pid) != 1 { rep_bool(r, "online", false); return fail(r, EXIT_FAIL, "the join stopped before the Pylon came online: openagents pylon logs --join"); }
-    proc_sleep(500);
-  }
-  rep_bool(r, "online", false);
-  return fail(r, EXIT_FAIL, "not online yet (a first build or download takes longer): openagents pylon logs --join");
-}
-
-pylon_stop :: (a: [] Args, r: [] Rep) -> int {
-  model := args_value(a, "--model", "psionic-toy");
-  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
-  pid := join_pid(model);
-  rep_str(r, "model", model);
-  if pid == 0 { rep_bool(r, "running", false); return rep_done(r, EXIT_OK); }
-  sp: [1024] u8;
-  if !fs_write(state_file(model, "stop", sp[..]), "") { return fail(r, EXIT_FAIL, "could not write the stop file"); }
-  wait := text_int(args_value(a, "--wait", "20"));
-  if wait < 0 || wait > 600 { return fail(r, EXIT_USAGE, "--wait is 0 to 600 seconds"); }
-  deadline := cxcli_now_s() + wait;
-  while cxcli_alive(pid) == 1 && cxcli_now_s() < deadline { proc_sleep(250); }
-  stopped := cxcli_alive(pid) != 1;
-  rep_bool(r, "stopped", stopped);
-  return rep_done(r, ifx stopped || wait == 0 then EXIT_OK else EXIT_FAIL);
-}
-
-pylon_logs :: (a: [] Args, r: [] Rep) -> int {
-  model := args_value(a, "--model", "psionic-toy");
-  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
-  lines := text_int(args_value(a, "--lines", "40"));
-  if lines < 1 || lines > 10000 { return fail(r, EXIT_USAGE, "--lines is 1 to 10000"); }
-  p: [1024] u8; hb: [1024] u8; nb: [64] u8;
-  path := state_file(model, ifx args_has(a, "--engine") then "engine.log" else "pylon.log", p[..]);
-  if args_has(a, "--join") {
-    n := copy("cli-join-", nb[..]); n += copy(model, nb[n..<64]); n += copy(".log", nb[n..<64]);
-    path = fs_join(pylon_home(hb[..]), cast(string) nb[0..<n], p[..]);
-  }
-  buf: [4194304] u8;
-  n := fs_read(path, buf[..]);
-  if n < 0 { return fail(r, EXIT_NOT_FOUND, "no log yet (start one with openagents pylon start)"); }
-  at := n; seen := 0;
-  if at > 0 && buf[at - 1] == '\n' { at -= 1; }
-  while at > 0 { if buf[at - 1] == '\n' { seen += 1; if seen == lines { break; } } at -= 1; }
-  if r[0].json { rep_str(r, "path", path); rep_str(r, "log", cast(string) buf[at..<n]); return rep_done(r, EXIT_OK); }
-  print("%", cast(string) buf[at..<n]);
-  return EXIT_OK;
-}
 
 // ---- dispatch -----------------------------------------------------------------
 
@@ -572,21 +70,8 @@ tool_main :: () -> int #export_c {
   if domain == "" || domain == "help" || args_has(a[..], "--help") || domain == "-h" { usage(); return ifx domain == "" && !args_has(a[..], "--help") then EXIT_USAGE else EXIT_OK; }
   if domain == "version" { rep_str(r[..], "openagents", CLI_VERSION); return rep_done(r[..], EXIT_OK); }
   if domain == "whoami" { return nostr_show(r[..], profile); }
-  if domain == "nostr" {
-    if verb == "new" { return nostr_new(a[..], r[..], profile); }
-    if verb == "import" { return nostr_import(a[..], r[..], profile); }
-    if verb == "show" { return nostr_show(r[..], profile); }
-    if verb == "forget" { return nostr_forget(a[..], r[..], profile); }
-    if verb == "sign" { return nostr_sign(a[..], r[..], profile); }
-    if verb == "auth" { return nostr_auth(a[..], r[..], profile); }
-    return fail(r[..], EXIT_USAGE, "nostr: new, import, show, forget, sign or auth (openagents help)");
-  }
-  if domain == "pylon" {
-    if verb == "start" { return pylon_start(a[..], r[..]); }
-    if verb == "status" || verb == "" { return pylon_status(a[..], r[..]); }
-    if verb == "stop" { return pylon_stop(a[..], r[..]); }
-    if verb == "logs" { return pylon_logs(a[..], r[..]); }
-    return fail(r[..], EXIT_USAGE, "pylon: start, status, stop or logs (openagents help)");
-  }
+  // One line per domain; each domain file dispatches its own verbs.
+  if domain == "nostr" { return nostr_main(a[..], r[..], profile, verb); }
+  if domain == "pylon" { return pylon_main(a[..], r[..], verb); }
   return fail(r[..], EXIT_USAGE, "unknown command (openagents help)");
 }

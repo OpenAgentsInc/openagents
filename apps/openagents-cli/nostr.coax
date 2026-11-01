@@ -1,0 +1,337 @@
+// The nostr domain: your NIP-06 identity (new, import, show, forget), event
+// signing, NIP-98 headers, and publishing and reading over a relay
+// (relay.coax).
+
+nostr_usage :: () {
+  print("%\n", "Identity (Nostr, NIP-06):");
+  print("%\n", "  nostr new [--force]              make a key from 12 new words; the words are shown once");
+  print("%\n", "  nostr import --words | --nsec    read 12 words or an nsec/hex secret from stdin");
+  print("%\n", "  nostr show                       your npub and public key (also: openagents whoami)");
+  print("%\n", "  nostr forget --yes               delete this profile's stored key");
+  print("%\n", "  nostr sign --content TEXT [--kind N] [--tags JSON]   print a signed event");
+  print("%\n", "  nostr auth URL [--method M] [--body FILE]            print a NIP-98 Authorization header");
+  print("%\n", "  nostr publish --content TEXT [--kind N] [--tags JSON] [--relay URL]   sign, publish, wait for OK");
+  print("%\n", "  nostr req FILTER-JSON [--relay URL] [--limit N] [--timeout S]        verified events to EOSE");
+  print("%\n", "");
+}
+
+// ---- the identity -----------------------------------------------------------
+
+Key :: struct { ok: bool; secret: [32] u8; from: string; }
+
+wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
+
+// A secret as typed: nsec1... or 64 hex. False for anything else.
+secret_of :: (typed: string, key: [] u8) -> bool {
+  if typed.count == 64 { return cli_unhex(typed, key); }
+  if typed.count < 5 || typed[0..<5] != "nsec1" { return false; }
+  out: [64] u8;
+  r := nip19_decode_checked(typed, out[..], false);
+  if r.error != NC_OK || r.type != N19_NSEC || r.written != 32 { wipe(out[..]); return false; }
+  for i: 0..<32 { key[i] = out[i]; }
+  wipe(out[..]);
+  return true;
+}
+
+load_key :: (profile: string, k: [] Key) -> bool {
+  env: [256] u8;
+  typed := proc_getenv("OPENAGENTS_NSEC", env[..]);
+  if typed.count > 0 {
+    ok := secret_of(typed, k[0].secret[..]);
+    wipe(env[..]);
+    k[0].ok = ok; k[0].from = "env";
+    return ok;
+  }
+  text: [128] u8; acct: [64] u8;
+  an := keychain_account(profile, acct[..]);
+  n := cxcli_keychain_get(acct[0..<an], text[..]);
+  if n > 0 {
+    k[0].ok = cli_key_parse(cast(string) text[0..<n], k[0].secret[..]); k[0].from = "keychain";
+    wipe(text[..]);
+    return k[0].ok;
+  }
+  p: [1024] u8;
+  path := key_file(profile, p[..]);
+  if fs_kind(path) != FS_FILE { return false; }
+  n = fs_read(path, text[..]);
+  if n <= 0 { return false; }
+  k[0].ok = cli_key_parse(cast(string) text[0..<n], k[0].secret[..]); k[0].from = "file";
+  wipe(text[..]);
+  return k[0].ok;
+}
+
+// Keeps the secret: the Keychain on a Mac, else a 0600 file in a 0700 directory.
+store_key :: (profile: string, secret: [] u8) -> string {
+  text: [CLI_KEY_TEXT] u8; acct: [64] u8;
+  if cli_key_text(secret, text[..]) != CLI_KEY_TEXT { return ""; }
+  an := keychain_account(profile, acct[..]);
+  r := cxcli_keychain_set(acct[0..<an], text[..]);
+  if r == 0 { wipe(text[..]); return "keychain"; }
+  d: [1024] u8; kd: [1024] u8; p: [1024] u8;
+  dir := fs_join(cli_dir(d[..]), "keys", kd[..]);
+  dn := dir.count; path := key_file(profile, p[..]);
+  db: [1024] u8; pb: [1024] u8;
+  for i: 0..<dn { db[i] = dir[i]; }
+  for i: 0..<path.count { pb[i] = path[i]; }
+  ok := cxcli_mkdir_private(db[0..<dn]) == 0 && cxcli_write_private(pb[0..<path.count], text[..]) == 0;
+  wipe(text[..]);
+  return ifx ok then "file" else "";
+}
+
+npub_of :: (secret: [] u8, out: [] u8) -> int { return nip06_npub(secret, out); }
+pubkey_hex :: (secret: [] u8, out: [] u8) -> bool {
+  pub: [33] u8;
+  return bip32_public(secret, pub[..]) && cli_hex(pub[1..<33], out);
+}
+
+report_identity :: (r: [] Rep, profile: string, secret: [] u8, store: string) {
+  np: [80] u8; hx: [64] u8;
+  n := npub_of(secret, np[..]);
+  if n > 0 { rep_str(r, "npub", cast(string) np[0..<n]); }
+  if pubkey_hex(secret, hx[..]) { rep_str(r, "pubkey", cast(string) hx[..]); }
+  rep_str(r, "profile", profile);
+  rep_str(r, "store", store);
+}
+
+nostr_new :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  k: [1] Key;
+  if !args_has(a, "--force") && load_key(profile, k[..]) {
+    wipe(k[0].secret[..]);
+    return fail(r, EXIT_USAGE, "this profile already has a key (nostr show); --force replaces it, and the old key is gone unless you saved its words");
+  }
+  e: [16] u8; words: [256] u8; key: [32] u8;
+  if cxrand_draw(e[..], 16) != 0 { return fail(r, EXIT_FAIL, "no entropy from the system"); }
+  n := bip39_words(e[..], words[..]);
+  wipe(e[..]);
+  if n <= 0 || !nip06_key(cast(string) words[0..<n], key[..]) { wipe(words[..]); return fail(r, EXIT_FAIL, "could not derive the key"); }
+  store := store_key(profile, key[..]);
+  if store == "" { wipe(words[..]); wipe(key[..]); return fail(r, EXIT_FAIL, "could not store the key"); }
+  tool_errln("openagents: these 12 words are your Nostr key. They are shown once. Write them down and keep them private;");
+  tool_errln("openagents: anyone with them is you, and without them a lost key cannot be recovered.");
+  rep_str(r, "words", cast(string) words[0..<n]);
+  report_identity(r, profile, key[..], store);
+  wipe(words[..]); wipe(key[..]);
+  return rep_done(r, EXIT_OK);
+}
+
+nostr_import :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  words := args_has(a, "--words");
+  if words == args_has(a, "--nsec") { return fail(r, EXIT_USAGE, "say --words (12 words) or --nsec (nsec1... or 64 hex), then give it on stdin"); }
+  if cxcli_isatty(0) == 1 { tool_err(ifx words then "words: " else "secret: "); }
+  line: [512] u8; key: [32] u8;
+  n := cxcli_read_line(line[..], 1);
+  if n <= 0 { wipe(line[..]); return fail(r, EXIT_USAGE, "nothing on stdin"); }
+  ok := false;
+  if words {
+    phrase: [512] u8; e: [32] u8;
+    c := cli_words(cast(string) line[0..<n], phrase[..]);
+    count := ifx c > 0 then c / 1000 else 0;
+    m := ifx c > 0 then c % 1000 else 0;
+    ok = (count == 12 || count == 24) && bip39_entropy(cast(string) phrase[0..<m], e[..]) && nip06_key(cast(string) phrase[0..<m], key[..]);
+    wipe(phrase[..]); wipe(e[..]);
+    if !ok { wipe(line[..]); return fail(r, EXIT_USAGE, "those are not 12 or 24 BIP-39 words with a good checksum"); }
+  } else {
+    ok = secret_of(cast(string) line[0..<n], key[..]);
+    if !ok { wipe(line[..]); return fail(r, EXIT_USAGE, "that is not an nsec1... or 64-hex secret"); }
+  }
+  wipe(line[..]);
+  store := store_key(profile, key[..]);
+  if store == "" { wipe(key[..]); return fail(r, EXIT_FAIL, "could not store the key"); }
+  report_identity(r, profile, key[..], store);
+  wipe(key[..]);
+  return rep_done(r, EXIT_OK);
+}
+
+nostr_show :: (r: [] Rep, profile: string) -> int {
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new` or `openagents nostr import --words`"); }
+  report_identity(r, profile, k[0].secret[..], k[0].from);
+  wipe(k[0].secret[..]);
+  return rep_done(r, EXIT_OK);
+}
+
+nostr_forget :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  if !args_has(a, "--yes") { return fail(r, EXIT_USAGE, "this deletes the key; without its words it is gone. Add --yes"); }
+  acct: [64] u8; p: [1024] u8;
+  an := keychain_account(profile, acct[..]);
+  kc := cxcli_keychain_remove(acct[0..<an]);
+  path := key_file(profile, p[..]);
+  had := fs_kind(path) == FS_FILE;
+  if had { gone := fs_remove(path); }
+  rep_str(r, "profile", profile);
+  rep_bool(r, "forgot", kc == 1 || had);
+  return rep_done(r, EXIT_OK);
+}
+
+// Signs one event with the profile's key into out; its length, or -1.
+sign_event :: (secret: [] u8, kind: int, tags: string, content: string, out: [] u8) -> int {
+  return sign_event_at(secret, cxcli_now_s(), kind, tags, content, out);
+}
+// The same, created at a given time (seconds).
+sign_event_at :: (secret: [] u8, at: int, kind: int, tags: string, content: string, out: [] u8) -> int {
+  aux: [32] u8;
+  if cxrand_draw(aux[..], 32) != 0 { return -1; }
+  work: [1] NostrSignWork; scratch: [70000] u8;
+  r := EVENT_MORE; steps := 0;
+  while r == EVENT_MORE && steps < 4096 {
+    r = nostr_event_sign_step(secret, aux[..], at, kind, tags, content, work[..], scratch[..], out, false);
+    steps += 1;
+  }
+  return ifx r > 0 then r else -1;
+}
+
+nostr_sign :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  if !args_has(a, "--content") { return fail(r, EXIT_USAGE, "nostr sign --content TEXT [--kind N] [--tags JSON]"); }
+  kind := text_int(args_value(a, "--kind", "1"));
+  if kind < 0 || kind > 65535 { return fail(r, EXIT_USAGE, "--kind is 0 to 65535"); }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
+  ev: [70000] u8;
+  n := sign_event(k[0].secret[..], kind, args_value(a, "--tags", "[]"), args_value(a, "--content", ""), ev[..]);
+  wipe(k[0].secret[..]);
+  if n <= 0 { return fail(r, EXIT_USAGE, "could not sign: --tags must be a JSON array of string arrays, and the event at most 64 KB"); }
+  if !r[0].json { print("%\n", cast(string) ev[0..<n]); return EXIT_OK; }
+  rep_raw(r, "event", cast(string) ev[0..<n]);
+  return rep_done(r, EXIT_OK);
+}
+
+nostr_auth :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  url := positional(a, 2);
+  method := args_value(a, "--method", ifx args_has(a, "--body") then "POST" else "GET");
+  if url.count < 8 || url.count > 2000 || (url[0..<7] != "http://" && (url.count < 9 || url[0..<8] != "https://")) {
+    return fail(r, EXIT_USAGE, "nostr auth URL [--method M] [--body FILE]: URL is http(s)://...");
+  }
+  for c: url { if c == '"' || c == '\\' || c < 33 || c > 126 { return fail(r, EXIT_USAGE, "the URL has a character it can't carry"); } }
+  for c: method { if c < 'A' || c > 'Z' { return fail(r, EXIT_USAGE, "--method is an uppercase HTTP method"); } }
+  if method.count < 3 || method.count > 7 { return fail(r, EXIT_USAGE, "--method is an uppercase HTTP method"); }
+  tags: [4300] u8;
+  t := copy("[[\"u\",\"", tags[..]); t += copy(url, tags[t..<tags.count]);
+  t += copy("\"],[\"method\",\"", tags[t..<tags.count]); t += copy(method, tags[t..<tags.count]); t += copy("\"]", tags[t..<tags.count]);
+  if args_has(a, "--body") {
+    body: [1048576] u8; h: [32] u8; hx: [64] u8;
+    bn := fs_read(args_value(a, "--body", ""), body[..]);
+    if bn < 0 { return fail(r, EXIT_NOT_FOUND, "could not read --body (at most 1 MB)"); }
+    if sha256_hash_checked(body[0..<bn], h[..], false) != SHA_OK || !cli_hex(h[..], hx[..]) { return fail(r, EXIT_FAIL, "could not hash the body"); }
+    t += copy(",[\"payload\",\"", tags[t..<tags.count]); t += copy(cast(string) hx[..], tags[t..<tags.count]); t += copy("\"]", tags[t..<tags.count]);
+  }
+  t += copy("]", tags[t..<tags.count]);
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
+  ev: [8192] u8;
+  n := sign_event(k[0].secret[..], 27235, cast(string) tags[0..<t], "", ev[..]);
+  wipe(k[0].secret[..]);
+  if n <= 0 { return fail(r, EXIT_FAIL, "could not sign"); }
+  header: [12000] u8;
+  h := copy("Nostr ", header[..]);
+  e := base64_encode_checked(cast(string) ev[0..<n], header[h..<header.count], false);
+  if e.error != NC_OK { return fail(r, EXIT_FAIL, "could not encode"); }
+  if !r[0].json { print("%\n", cast(string) header[0..<h + e.written]); return EXIT_OK; }
+  rep_str(r, "authorization", cast(string) header[0..<h + e.written]);
+  rep_raw(r, "event", cast(string) ev[0..<n]);
+  return rep_done(r, EXIT_OK);
+}
+
+
+nostr_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "new" { return nostr_new(a, r, profile); }
+  if verb == "import" { return nostr_import(a, r, profile); }
+  if verb == "show" { return nostr_show(r, profile); }
+  if verb == "forget" { return nostr_forget(a, r, profile); }
+  if verb == "sign" { return nostr_sign(a, r, profile); }
+  if verb == "auth" { return nostr_auth(a, r, profile); }
+  if verb == "publish" { return nostr_publish(a, r, profile); }
+  if verb == "req" { return nostr_req(a, r, profile); }
+  return fail(r, EXIT_USAGE, "nostr: new, import, show, forget, sign, auth, publish or req (openagents help)");
+}
+
+// ---- over a relay (relay.coax) ------------------------------------------------
+
+CLI_RELAY :: "wss://relay.openagents.com";
+
+// The relay a command uses: --relay, else fallback; "" when it isn't ws:// or wss://.
+relay_flag :: (a: [] Args, fallback: string) -> string {
+  url := args_value(a, "--relay", fallback);
+  ok := (url.count > 5 && url[0..<5] == "ws://") || (url.count > 6 && url[0..<6] == "wss://");
+  return ifx ok && url.count <= 500 then url else "";
+}
+// A whole-second --timeout as a deadline on cxsock_now_ms's clock, or -1.
+deadline_flag :: (a: [] Args, fallback: string) -> int {
+  s := text_int(args_value(a, "--timeout", fallback));
+  if s < 1 || s > 600 { return -1; }
+  return cxsock_now_ms() + s * 1000;
+}
+
+nostr_publish :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  if !args_has(a, "--content") { return fail(r, EXIT_USAGE, "nostr publish --content TEXT [--kind N] [--tags JSON] [--relay URL]"); }
+  kind := text_int(args_value(a, "--kind", "1"));
+  if kind < 0 || kind > 65535 { return fail(r, EXIT_USAGE, "--kind is 0 to 65535"); }
+  url := relay_flag(a, CLI_RELAY);
+  if url == "" { return fail(r, EXIT_USAGE, "--relay is a ws:// or wss:// URL"); }
+  deadline := deadline_flag(a, "15");
+  if deadline < 0 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600 seconds"); }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
+  ev: [70000] u8;
+  n := sign_event(k[0].secret[..], kind, args_value(a, "--tags", "[]"), args_value(a, "--content", ""), ev[..]);
+  if n <= 0 { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "could not sign: --tags must be a JSON array of string arrays, and the event at most 64 KB"); }
+  c: [1] CliRelay;
+  opened := cr_open(c[..], url, k[0].secret[..]);
+  wipe(k[0].secret[..]);
+  if !opened { cr_close(c[..]); return fail(r, EXIT_FAIL, "could not connect to the relay (or it refused our AUTH)"); }
+  ok := cr_publish(c[..], cast(string) ev[0..<n], deadline);
+  message := cr_message(c[..]);
+  rep_str(r, "id", cast(string) ev[7..<71]);
+  rep_str(r, "relay", url);
+  rep_bool(r, "auth", c[0].rl[0].auth == RA_OK);
+  if message.count > 0 { rep_str(r, "message", message); }
+  cr_close(c[..]);
+  if !ok { return fail(r, EXIT_FAIL, ifx message.count > 0 then message else "the relay did not accept the event in time"); }
+  if !r[0].json { rep_bool(r, "ok", true); }
+  return rep_done(r, EXIT_OK);
+}
+
+nostr_req :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  filter := positional(a, 2);
+  if filter.count == 0 { return fail(r, EXIT_USAGE, "nostr req FILTER-JSON [--relay URL] [--limit N] [--timeout S]"); }
+  url := relay_flag(a, CLI_RELAY);
+  if url == "" { return fail(r, EXIT_USAGE, "--relay is a ws:// or wss:// URL"); }
+  limit := text_int(args_value(a, "--limit", "500"));
+  if limit < 1 || limit > 100000 { return fail(r, EXIT_USAGE, "--limit is 1 to 100000"); }
+  deadline := deadline_flag(a, "20");
+  if deadline < 0 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600 seconds"); }
+  // AUTH with the profile's key when it has one; a relay that asks for none gets none
+  k: [1] Key;
+  keyed := load_key(profile, k[..]);
+  c: [1] CliRelay;
+  opened := cr_open(c[..], url, ifx keyed then k[0].secret[..] else k[0].secret[0..<0]);
+  wipe(k[0].secret[..]);
+  if !opened { cr_close(c[..]); return fail(r, EXIT_FAIL, "could not connect to the relay (or it refused our AUTH)"); }
+  if !cr_req(c[..], filter) { cr_close(c[..]); return fail(r, EXIT_USAGE, "FILTER-JSON is one JSON object, at most 16 KB"); }
+  count := 0; end := CR_TIMEOUT;
+  if r[0].json { print("%", "{\"events\":["); }
+  while count < limit {
+    end = cr_next(c[..], deadline);
+    if end != CR_EVENT { break; }
+    if r[0].json { print("% %", ifx count > 0 then "," else "", cr_event(c[..])); } else { print("%\n", cr_event(c[..])); }
+    count += 1;
+  }
+  why: [512] u8;
+  wn := copy(cr_message(c[..]), why[..]);
+  if wn <= 0 {
+    wn = copy(ifx end == CR_CLOSED then "the relay closed the request" else ifx end == CR_TIMEOUT then "no EOSE before the timeout" else "the connection ended", why[..]);
+  }
+  cr_req_end(c[..]); cr_close(c[..]);
+  eose := end == CR_EOSE;
+  code := ifx eose || count == limit then EXIT_OK else EXIT_FAIL;
+  t: [24] u8;
+  if r[0].json {
+    print("],\"count\":%,\"eose\":%", int_text(count, t[..]), ifx eose then "true" else "false");
+    if code != EXIT_OK { e: [1] Rep; rep_quoted(e[..], cast(string) why[0..<wn]); print(",\"error\":%", cast(string) e[0].buf[0..<e[0].n]); }
+    print(",\"ok\":%}\n", ifx code == EXIT_OK then "true" else "false");
+    return code;
+  }
+  tool_err("openagents: "); tool_err(int_text(count, t[..])); tool_err(ifx count == 1 then " event, verified" else " events, verified");
+  tool_errln(ifx eose then ", to EOSE" else ifx count == limit then ", to --limit" else "");
+  if code != EXIT_OK { tool_err("openagents: "); tool_errln(cast(string) why[0..<wn]); }
+  return code;
+}

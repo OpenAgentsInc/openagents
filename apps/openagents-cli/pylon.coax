@@ -1,0 +1,189 @@
+// The pylon domain: starts, stops and watches this computer's Pylon around
+// scripts/join-pylon.sh.
+
+pylon_usage :: () {
+  print("%\n", "Pylon (sells this computer's compute; scripts/join-pylon.sh does the work):");
+  print("%\n", "  pylon start [--model psionic-toy|elephant-1] [--label TEXT] [--slug NAME]");
+  print("%\n", "              [--relay wss://HOST] [--self-test] [--official] [--wait SECONDS]");
+  print("%\n", "  pylon status [--model M]");
+  print("%\n", "  pylon stop [--model M] [--wait SECONDS]");
+  print("%\n", "  pylon logs [--model M] [--lines N] [--engine | --join]");
+  print("%\n", "");
+}
+
+// ---- the Pylon ----------------------------------------------------------------
+
+// The checkout that holds scripts/join-pylon.sh: OPENAGENTS_SOURCE, else the one
+// this binary was built in (it sits at apps/openagents-cli/build/openagents).
+source_root :: (out: [] u8) -> string {
+  env: [1024] u8; p: [1024] u8;
+  s := proc_getenv("OPENAGENTS_SOURCE", env[..]);
+  if s.count == 0 {
+    n := cxcli_exe_path(p[..]);
+    if n <= 0 { return ""; }
+    s = cast(string) p[0..<n];
+    for up: 0..<4 { s = fs_dir(s); }
+  }
+  q: [1024] u8;
+  if fs_kind(fs_join(s, "scripts/join-pylon.sh", q[..])) != FS_FILE { return ""; }
+  n := copy(s, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+pylon_home :: (out: [] u8) -> string {
+  env: [1024] u8; h: [1024] u8;
+  s := proc_getenv("OPENAGENTS_PYLON_HOME", env[..]);
+  if s.count > 0 { n := copy(s, out); return cast(string) out[0..<n]; }
+  return fs_join(home(h[..]), ".openagents/pylon", out);
+}
+model_ok :: (m: string) -> bool { return m == "psionic-toy" || m == "elephant-1"; }
+pylon_state :: (model: string, out: [] u8) -> string {
+  h: [1024] u8; s: [1024] u8;
+  state := fs_join(pylon_home(h[..]), "state", s[..]);
+  if model == "psionic-toy" { n := copy(state, out); return cast(string) out[0..<n]; }
+  return fs_join(state, model, out);
+}
+state_file :: (model: string, name: string, out: [] u8) -> string {
+  s: [1024] u8;
+  return fs_join(pylon_state(model, s[..]), name, out);
+}
+read_small :: (path: string, out: [] u8) -> string {
+  n := fs_read(path, out);
+  if n <= 0 { return ""; }
+  while n > 0 && (out[n - 1] == '\n' || out[n - 1] == ' ') { n -= 1; }
+  return cast(string) out[0..<n];
+}
+// The join's pid while it runs, or 0.
+join_pid :: (model: string) -> int {
+  p: [1024] u8; t: [32] u8;
+  pid := text_int(read_small(state_file(model, "join.lock/pid", p[..]), t[..]));
+  return ifx pid > 1 && cxcli_alive(pid) == 1 then pid else 0;
+}
+
+pylon_status :: (a: [] Args, r: [] Rep) -> int {
+  model := args_value(a, "--model", "psionic-toy");
+  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
+  st: [1024] u8;
+  state := pylon_state(model, st[..]);
+  rep_str(r, "model", model);
+  rep_str(r, "state", state);
+  if fs_kind(state) != FS_DIR { rep_bool(r, "running", false); rep_bool(r, "online", false); return rep_done(r, EXIT_OK); }
+  pid := join_pid(model);
+  rep_bool(r, "running", pid > 0);
+  if pid > 0 { rep_int(r, "pid", pid); }
+  p: [1024] u8; t: [256] u8;
+  slug := read_small(state_file(model, "slug", p[..]), t[..]);
+  if slug.count > 0 { rep_str(r, "slug", slug); }
+  logbuf: [262144] u8; lp: [1024] u8;
+  n := fs_read(state_file(model, "pylon.log", lp[..]), logbuf[..]);
+  text := ifx n > 0 then cast(string) logbuf[0..<n] else "";
+  facts := cli_pylon_log(text);
+  rep_bool(r, "online", pid > 0 && facts.online);
+  if facts.npub_n > 0 { rep_str(r, "npub", text[facts.npub_at..<facts.npub_at + facts.npub_n]); }
+  if facts.key_n > 0 { rep_str(r, "pubkey", text[facts.key_at..<facts.key_at + facts.key_n]); }
+  sp: [1024] u8;
+  rep_bool(r, "self_test", fs_kind(state_file(model, "self-test.json", sp[..])) == FS_FILE);
+  return rep_done(r, EXIT_OK);
+}
+
+pylon_start :: (a: [] Args, r: [] Rep) -> int {
+  model := args_value(a, "--model", "psionic-toy");
+  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
+  if join_pid(model) > 0 { rep_str(r, "already", "running"); return pylon_status(a, r); }
+  src: [1024] u8;
+  root := source_root(src[..]);
+  if root.count == 0 { return fail(r, EXIT_NOT_FOUND, "no OpenAgents checkout with scripts/join-pylon.sh: set OPENAGENTS_SOURCE"); }
+  wait := text_int(args_value(a, "--wait", "0"));
+  if wait < 0 || wait > 3600 { return fail(r, EXIT_USAGE, "--wait is 0 to 3600 seconds"); }
+  hb: [1024] u8; lb: [1024] u8; sb: [1024] u8; hbuf: [1024] u8;
+  ph := pylon_home(hb[..]);
+  for i: 0..<ph.count { hbuf[i] = ph[i]; }
+  if cxcli_mkdir_private(hbuf[0..<ph.count]) != 0 { return fail(r, EXIT_FAIL, "could not make the Pylon's home directory"); }
+  logname: [64] u8;
+  ln := copy("cli-join-", logname[..]); ln += copy(model, logname[ln..<64]); ln += copy(".log", logname[ln..<64]);
+  joinlog := fs_join(ph, cast(string) logname[0..<ln], lb[..]);
+  script := fs_join(root, "scripts/join-pylon.sh", sb[..]);
+  // Detached, its own session; sh only redirects the join's output to the log.
+  h := proc_new();
+  envb: [1100] u8;
+  en := copy("OA_JOIN_LOG=", envb[..]); en += copy(joinlog, envb[en..<envb.count]);
+  ok := proc_arg(h, "/bin/sh") && proc_arg(h, "-c") && proc_arg(h, "exec bash \"$0\" \"$@\" >>\"$OA_JOIN_LOG\" 2>&1") &&
+        proc_arg(h, script) && proc_arg(h, "--model") && proc_arg(h, model) && proc_env(h, cast(string) envb[0..<en]);
+  if !args_has(a, "--official") { ok = ok && proc_arg(h, "--source") && proc_arg(h, root); }
+  flags := [5] string.["--label", "--slug", "--relay", "--device", "--model-cache"];
+  for f: flags { if args_has(a, f) { ok = ok && proc_arg(h, f) && proc_arg(h, args_value(a, f, "")); } }
+  if args_has(a, "--self-test") { ok = ok && proc_arg(h, "--self-test"); }
+  ok = ok && proc_detach(h);
+  started_at := cxcli_now_s();
+  if !ok || proc_start(h) != 0 { return fail(r, EXIT_FAIL, "could not start the join"); }
+  pid := proc_pid(h);
+  released := proc_release(h);
+  rep_str(r, "model", model);
+  rep_int(r, "join_pid", pid);
+  rep_str(r, "log", joinlog);
+  if wait == 0 {
+    rep_str(r, "next", "openagents pylon status");
+    return rep_done(r, EXIT_OK);
+  }
+  // Wait for this run's log to say online (the join empties pylon.log when it starts the Pylon).
+  lp: [1024] u8; buf: [262144] u8;
+  plog := state_file(model, "pylon.log", lp[..]);
+  deadline := started_at + wait;
+  while cxcli_now_s() < deadline {
+    if fs_mtime_ns(plog) >= started_at * 1000000000 {
+      n := fs_read(plog, buf[..]);
+      if n > 0 && cli_pylon_log(cast(string) buf[0..<n]).online { rep_bool(r, "online", true); return rep_done(r, EXIT_OK); }
+    }
+    if cxcli_alive(pid) != 1 { rep_bool(r, "online", false); return fail(r, EXIT_FAIL, "the join stopped before the Pylon came online: openagents pylon logs --join"); }
+    proc_sleep(500);
+  }
+  rep_bool(r, "online", false);
+  return fail(r, EXIT_FAIL, "not online yet (a first build or download takes longer): openagents pylon logs --join");
+}
+
+pylon_stop :: (a: [] Args, r: [] Rep) -> int {
+  model := args_value(a, "--model", "psionic-toy");
+  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
+  pid := join_pid(model);
+  rep_str(r, "model", model);
+  if pid == 0 { rep_bool(r, "running", false); return rep_done(r, EXIT_OK); }
+  sp: [1024] u8;
+  if !fs_write(state_file(model, "stop", sp[..]), "") { return fail(r, EXIT_FAIL, "could not write the stop file"); }
+  wait := text_int(args_value(a, "--wait", "20"));
+  if wait < 0 || wait > 600 { return fail(r, EXIT_USAGE, "--wait is 0 to 600 seconds"); }
+  deadline := cxcli_now_s() + wait;
+  while cxcli_alive(pid) == 1 && cxcli_now_s() < deadline { proc_sleep(250); }
+  stopped := cxcli_alive(pid) != 1;
+  rep_bool(r, "stopped", stopped);
+  return rep_done(r, ifx stopped || wait == 0 then EXIT_OK else EXIT_FAIL);
+}
+
+pylon_logs :: (a: [] Args, r: [] Rep) -> int {
+  model := args_value(a, "--model", "psionic-toy");
+  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
+  lines := text_int(args_value(a, "--lines", "40"));
+  if lines < 1 || lines > 10000 { return fail(r, EXIT_USAGE, "--lines is 1 to 10000"); }
+  p: [1024] u8; hb: [1024] u8; nb: [64] u8;
+  path := state_file(model, ifx args_has(a, "--engine") then "engine.log" else "pylon.log", p[..]);
+  if args_has(a, "--join") {
+    n := copy("cli-join-", nb[..]); n += copy(model, nb[n..<64]); n += copy(".log", nb[n..<64]);
+    path = fs_join(pylon_home(hb[..]), cast(string) nb[0..<n], p[..]);
+  }
+  buf: [4194304] u8;
+  n := fs_read(path, buf[..]);
+  if n < 0 { return fail(r, EXIT_NOT_FOUND, "no log yet (start one with openagents pylon start)"); }
+  at := n; seen := 0;
+  if at > 0 && buf[at - 1] == '\n' { at -= 1; }
+  while at > 0 { if buf[at - 1] == '\n' { seen += 1; if seen == lines { break; } } at -= 1; }
+  if r[0].json { rep_str(r, "path", path); rep_str(r, "log", cast(string) buf[at..<n]); return rep_done(r, EXIT_OK); }
+  print("%", cast(string) buf[at..<n]);
+  return EXIT_OK;
+}
+
+
+pylon_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
+  if verb == "start" { return pylon_start(a, r); }
+  if verb == "status" || verb == "" { return pylon_status(a, r); }
+  if verb == "stop" { return pylon_stop(a, r); }
+  if verb == "logs" { return pylon_logs(a, r); }
+  return fail(r, EXIT_USAGE, "pylon: start, status, stop or logs (openagents help)");
+}

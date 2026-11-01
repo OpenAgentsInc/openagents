@@ -1,0 +1,124 @@
+// The CLI's shared parts: the report (`key value` lines, or one JSON object
+// with --json), arguments, numbers as text, and where things live. Every
+// domain file (nostr.coax, pylon.coax, project.coax, ...) uses these.
+
+// ---- the report: `key value` lines, or one JSON object with --json -------
+
+REP_BYTES :: 65536;
+Rep :: struct { json: bool; buf: [REP_BYTES] u8; n: int; pairs: int; }
+
+rep_put :: (r: [] Rep, s: string) {
+  for c: s { if r[0].n < REP_BYTES { r[0].buf[r[0].n] = c; r[0].n += 1; } }
+}
+rep_byte :: (r: [] Rep, c: u8) { if r[0].n < REP_BYTES { r[0].buf[r[0].n] = c; r[0].n += 1; } }
+rep_quoted :: (r: [] Rep, s: string) {
+  digits := "0123456789abcdef";
+  rep_byte(r, '"');
+  for c: s {
+    if c == '"' || c == '\\' { rep_byte(r, '\\'); rep_byte(r, c); continue; }
+    if c < 32 { rep_put(r, "\\u00"); rep_byte(r, digits[cast(int) (c >> 4)]); rep_byte(r, digits[cast(int) (c & 15)]); continue; }
+    rep_byte(r, c);
+  }
+  rep_byte(r, '"');
+}
+rep_key :: (r: [] Rep, key: string) {
+  if r[0].json {
+    rep_put(r, ifx r[0].pairs == 0 then "{" else ",");
+    rep_quoted(r, key); rep_byte(r, ':');
+  } else { rep_put(r, key); rep_byte(r, ' '); }
+  r[0].pairs += 1;
+}
+rep_str :: (r: [] Rep, key: string, value: string) {
+  rep_key(r, key);
+  if r[0].json { rep_quoted(r, value); } else { rep_put(r, value); rep_byte(r, '\n'); }
+}
+rep_raw :: (r: [] Rep, key: string, json: string) {   // a JSON value; printed as is in text mode
+  rep_key(r, key);
+  rep_put(r, json);
+  if !r[0].json { rep_byte(r, '\n'); }
+}
+rep_int :: (r: [] Rep, key: string, v: int) {
+  t: [24] u8;
+  rep_key(r, key);
+  rep_put(r, int_text(v, t[..]));
+  if !r[0].json { rep_byte(r, '\n'); }
+}
+rep_bool :: (r: [] Rep, key: string, v: bool) {
+  rep_key(r, key);
+  if r[0].json { rep_put(r, ifx v then "true" else "false"); } else { rep_put(r, ifx v then "1\n" else "0\n"); }
+}
+// Prints the report and returns code. An error goes to stderr in text mode.
+rep_done :: (r: [] Rep, code: int) -> int {
+  if r[0].json {
+    if r[0].pairs == 0 { rep_put(r, "{"); }
+    rep_put(r, ifx code == EXIT_OK then ",\"ok\":true}\n" else ",\"ok\":false}\n");
+    if r[0].pairs == 0 { r[0].buf[1] = ' '; }
+  }
+  print("%", cast(string) r[0].buf[0..<r[0].n]);
+  return code;
+}
+fail :: (r: [] Rep, code: int, message: string) -> int {
+  if r[0].json { rep_str(r, "error", message); return rep_done(r, code); }
+  tool_err("openagents: "); tool_errln(message);
+  return code;
+}
+
+int_text :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  t: [24] u8; n := 0; x := ifx v < 0 then -v else v;
+  while x > 0 && n < 20 { t[n] = cast(u8) (x % 10) + '0'; x = x / 10; n += 1; }
+  k := 0;
+  if v < 0 { out[0] = '-'; k = 1; }
+  for i: 0..<n { out[k + i] = t[n - 1 - i]; }
+  return cast(string) out[0..<k + n];
+}
+text_int :: (s: string) -> int {   // a plain non-negative decimal, or -1
+  if s.count < 1 || s.count > 9 { return -1; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+copy :: (s: string, out: [] u8) -> int {
+  if s.count > out.count { return -1; }
+  for i: 0..<s.count { out[i] = s[i]; }
+  return s.count;
+}
+
+// ---- arguments: flags anywhere, positionals in order ----------------------
+
+// Flags that take a value, a domain's on its own line ("" pads the array).
+VALUE_FLAGS :: [40] string.["--profile",
+  "--kind", "--content", "--tags", "--method", "--body", "--relay", "--limit", "--timeout",   // nostr
+  "--model", "--label", "--slug", "--device", "--model-cache", "--source", "--wait", "--lines", "--port",   // pylon
+  "--project", "--key", "--by", "--commit", "--before", "--after", "--dir",   // project
+  "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
+takes_value :: (s: string) -> bool { for f: VALUE_FLAGS { if f.count > 0 && s == f { return true; } } return false; }
+// The k-th argument that is not a flag or a flag's value, or "".
+positional :: (a: [] Args, k: int) -> string {
+  seen := 0; i := 0;
+  while i < args_count(a) {
+    s := args_at(a, i);
+    if s.count > 1 && s[0] == '-' && s[1] == '-' { i += ifx takes_value(s) then 2 else 1; continue; }
+    if seen == k { return s; }
+    seen += 1; i += 1;
+  }
+  return "";
+}
+
+// ---- where things live ------------------------------------------------------
+
+home :: (out: [] u8) -> string { return proc_getenv("HOME", out); }
+cli_dir :: (out: [] u8) -> string {
+  h: [1024] u8;
+  return fs_join(home(h[..]), ".openagents/cli", out);
+}
+key_file :: (profile: string, out: [] u8) -> string {
+  d: [1024] u8; k: [1024] u8;
+  return fs_join(fs_join(cli_dir(d[..]), "keys", k[..]), profile, out);
+}
+keychain_account :: (profile: string, out: [] u8) -> int {
+  n := copy("nostr:", out);
+  m := copy(profile, out[n..<out.count]);
+  return ifx m < 0 then -1 else n + m;
+}
+

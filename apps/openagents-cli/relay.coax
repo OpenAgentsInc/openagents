@@ -1,0 +1,246 @@
+// The CLI's relay client: one connection to a Nostr relay, ws:// or wss://,
+// for one command. It connects (coax/lib/net/relay_conn.coax), answers the
+// relay's NIP-42 AUTH challenge with the given key (coax/lib/nostr/nip42.coax),
+// sends one REQ at a time and hands back each verified event until EOSE, and
+// publishes an event and waits for its OK. relay.coax's machine
+// (coax/lib/nostr/relay.coax, #authority) decides what each relay message
+// means: which subscription it is for, whether a publish was accepted, when
+// an AUTH answer is due and what to send again after it. rl_read
+// (relay_read.coax) checks every event's id and signature first; an event
+// that fails is never handed back.
+//
+// relay.openagents.com refuses a connection whose REQ comes before AUTH
+// completes, so a keyed session waits for the challenge (at most
+// CR_CHALLENGE_MS) and its OK before it sends anything else.
+//
+//   c: [1] CliRelay;
+//   if cr_open(c[..], "wss://relay.openagents.com", key) {
+//     if cr_req(c[..], "{\"kinds\":[1],\"limit\":2}") {
+//       while cr_next(c[..], deadline_ms) == CR_EVENT { use(cr_event(c[..])); }
+//     }
+//     cr_close(c[..]);
+//   }
+#load "../../coax/lib/net/relay_conn.coax";
+#load "../../coax/lib/nostr/relay.coax";
+#load "../../coax/lib/nostr/relay_read.coax";
+#load "../../coax/lib/nostr/nip42.coax";
+
+CR_CHALLENGE_MS :: 1200;   // how long a keyed session waits for an AUTH challenge before its first request
+CR_AUTH_MS :: 8000;        // how long it waits for the relay's OK on its AUTH
+CR_FILTER :: 16384;
+CR_EVENT_MAX :: 70000;     // the largest event the CLI publishes
+
+// What cr_next returns.
+CR_EVENT :: 1; CR_EOSE :: 2; CR_CLOSED :: 3; CR_TIMEOUT :: 4; CR_FAIL :: 5;
+
+CliRelay :: struct {
+  url: [512] u8; url_n: int;
+  conn: [1] RelayConn; rl: [1] Relay; n42: [1] Nip42;
+  gen: int; open: bool;
+  keyed: bool; secret: [32] u8;
+  auths: int; auth_refused: bool;
+  filter: [CR_FILTER] u8; filter_n: int; sub: int = -1;
+  out: [CR_EVENT_MAX + 16] u8; out_n: int; pub: int = -1;
+  event_from: int; event_to: int;        // the last delivered event in conn.text
+  message: [512] u8; message_n: int;     // the last OK, CLOSED or NOTICE message
+  forged: int;
+}
+
+cr_url :: (c: [] CliRelay) -> string { return cast(string) c[0].url[0..<c[0].url_n]; }
+cr_message :: (c: [] CliRelay) -> string { return cast(string) c[0].message[0..<c[0].message_n]; }
+// The event cr_next just returned CR_EVENT for, as the relay sent it (verified).
+cr_event :: (c: [] CliRelay) -> string { return cast(string) c[0].conn[0].text[c[0].event_from..<c[0].event_to]; }
+
+cr_keep_message :: (c: [] CliRelay, text: string) {
+  m := nostr_message_read(text);
+  c[0].message_n = 0;
+  if m.error != NM_OK { return; }
+  raw := nm_text(m, m.message);
+  n := json_unescape(raw, c[0].message[..]);
+  c[0].message_n = ifx n < 0 then 0 else n;
+}
+
+// Opens the connection; with a key, waits for the relay's AUTH challenge and
+// answers it. False when the relay can't be reached or refuses the AUTH.
+cr_open :: (c: [] CliRelay, url: string, key: [] u8) -> bool {
+  if url.count > 500 || nip42_init(c[0].n42[..], url) != N42_OK { return false; }
+  for i: 0..<url.count { c[0].url[i] = url[i]; }
+  c[0].url_n = url.count;
+  c[0].keyed = key.count == 32;
+  if c[0].keyed { for i: 0..<32 { c[0].secret[i] = key[i]; } }
+  return cr_connect(c);
+}
+cr_connect :: (c: [] CliRelay) -> bool {
+  r := c[0].rl[..];
+  c[0].open = false;
+  g := rl_start(r, cxsock_now_ms());
+  if g < 0 { return false; }
+  c[0].gen = g;
+  if !relay_conn_open(c[0].conn[..], cr_url(c)) || !rl_opened(r, g, cxsock_now_ms()) {
+    d := rl_dropped(r, g, cxsock_now_ms(), 0);
+    return false;
+  }
+  c[0].open = true;
+  if !c[0].keyed { return true; }
+  // a keyed session waits briefly for the challenge, then for its AUTH's OK
+  end := cxsock_now_ms() + CR_CHALLENGE_MS;
+  while c[0].open && r[0].auth == RA_NONE && cxsock_now_ms() < end { ev := cr_pump(c, 100); }
+  if r[0].auth == RA_NONE { return c[0].open; }   // this relay asks for no AUTH
+  end = cxsock_now_ms() + CR_AUTH_MS;
+  while c[0].open && r[0].auth != RA_OK && !c[0].auth_refused && cxsock_now_ms() < end { ev := cr_pump(c, 100); }
+  return c[0].open && r[0].auth == RA_OK;
+}
+
+// The connection ended: the machine forgets the generation.
+cr_dropped :: (c: [] CliRelay) {
+  relay_conn_drop(c[0].conn[..]);
+  d := rl_dropped(c[0].rl[..], c[0].gen, cxsock_now_ms(), 0);
+  c[0].open = false;
+}
+cr_close :: (c: [] CliRelay) {
+  if c[0].open { ok := relay_conn_close(c[0].conn[..], WS_CLOSE_NORMAL); }
+  rl_shutdown(c[0].rl[..]);
+  c[0].open = false;
+  wipe(c[0].secret[..]);
+}
+
+// Signs and sends the AUTH answer to the current challenge.
+cr_auth :: (c: [] CliRelay) -> bool {
+  if !c[0].keyed { return false; }
+  tags: [1024] u8;
+  t := nip42_template(c[0].n42[..], c[0].gen, cxcli_now_s(), tags[..]);
+  if t.error != N42_OK { return false; }
+  signed: [4096] u8;
+  n := sign_event_at(c[0].secret[..], t.created_at, t.kind, t.tags, t.content, signed[..]);
+  scratch: [4096] u8;
+  e := nostr_event_read(cast(string) signed[0..<ifx n > 0 then n else 0], scratch[..], false);
+  if n <= 0 || e.error != NE_OK { return false; }
+  frame: [4200] u8;
+  f := nip42_send_fields(c[0].rl[..], c[0].n42[..], c[0].gen, cxcli_now_s(), true, e.kind, e.created_at, t.tags, e.id[..],
+    cast(string) signed[0..<n], frame[..]);
+  if f.error != N42_OK { return false; }
+  c[0].auths += 1;
+  return relay_conn_send(c[0].conn[..], cast(string) frame[0..<f.written]);
+}
+
+// Sends what the machine asks for: the REQ, a CLOSE, the event, the AUTH answer.
+cr_flush :: (c: [] CliRelay) -> bool {
+  r := c[0].rl[..];
+  while r[0].state == RL_OPEN {
+    o := rl_next(r, cxsock_now_ms());
+    if o.kind == RL_OUT_NONE { return true; }
+    ok := false;
+    sb: [24] u8;
+    if o.kind == RL_OUT_AUTH {
+      ok = cr_auth(c);
+      if !ok { return true; }
+    } else if o.kind == RL_OUT_REQ || o.kind == RL_OUT_CLOSE {
+      id := rl_sub_text(o.slot, r[0].subs[o.slot].serial, sb[..]);
+      frame: [CR_FILTER + 64] u8;
+      n := json_raw(frame[..], 0, ifx o.kind == RL_OUT_REQ then "[\"REQ\"," else "[\"CLOSE\",");
+      n = json_write_string(frame[..], n, id);
+      if o.kind == RL_OUT_REQ { n = json_raw(frame[..], n, ","); n = json_raw(frame[..], n, cast(string) c[0].filter[0..<c[0].filter_n]); }
+      n = json_raw(frame[..], n, "]");
+      ok = n > 0 && relay_conn_send(c[0].conn[..], cast(string) frame[0..<n]);
+    } else if o.kind == RL_OUT_EVENT {
+      frame: [CR_EVENT_MAX + 32] u8;
+      n := json_raw(frame[..], 0, "[\"EVENT\",");
+      n = json_raw(frame[..], n, cast(string) c[0].out[0..<c[0].out_n]);
+      n = json_raw(frame[..], n, "]");
+      ok = n > 0 && relay_conn_send(c[0].conn[..], cast(string) frame[0..<n]);
+    }
+    if !ok { cr_dropped(c); return false; }
+  }
+  return true;
+}
+
+// One relay message, at most wait_ms away, through the machine. What
+// rl_input decided (RL_*), or -1 when nothing came, -2 when the connection ended.
+cr_pump :: (c: [] CliRelay, wait_ms: int) -> int {
+  if !c[0].open { return -2; }
+  if !cr_flush(c) { return -2; }
+  ev := relay_conn_poll(c[0].conn[..], wait_ms);
+  if ev == RC_NONE { return -1; }
+  if ev != RC_TEXT { cr_dropped(c); return -2; }
+  conn := c[0].conn[..];
+  text := cast(string) conn[0].text[0..<conn[0].text_n];
+  scratch: [NE_MAX_OUTPUT] u8;
+  in := rl_read(text, scratch[..], false);
+  r := c[0].rl[..];
+  if in.kind == 0 {
+    // an AUTH challenge, or a frame nothing reads
+    d := nip42_input(r, c[0].n42[..], c[0].gen, text);
+    if d >= 0 { ok := cr_flush(c); return d; }
+    return rl_input(r, c[0].gen, in);
+  }
+  d := rl_input(r, c[0].gen, in);
+  if in.kind == RL_IN_OK || in.kind == RL_IN_CLOSED || in.kind == RL_IN_NOTICE { cr_keep_message(c, text); }
+  if in.kind == RL_IN_OK && d == RL_AUTH && !in.accepted { c[0].auth_refused = true; }
+  if d == RL_FORGED { c[0].forged += 1; }
+  if d == RL_DELIVER {
+    m := nostr_message_read(text);
+    c[0].event_from = m.event.from; c[0].event_to = m.event.to;
+  }
+  return d;
+}
+
+// Starts a request for one filter (a JSON object). One request at a time.
+cr_req :: (c: [] CliRelay, filter: string) -> bool {
+  if !c[0].open || filter.count > CR_FILTER || !json_valid(filter) { return false; }
+  i := 0;
+  while i < filter.count && (filter[i] == ' ' || filter[i] == '\n' || filter[i] == '\t' || filter[i] == '\r') { i += 1; }
+  if i >= filter.count || filter[i] != '{' { return false; }
+  if c[0].sub >= 0 { ok := rl_unsubscribe(c[0].rl[..], c[0].sub); }
+  for k: 0..<filter.count { c[0].filter[k] = filter[k]; }
+  c[0].filter_n = filter.count;
+  c[0].sub = rl_subscribe(c[0].rl[..]);
+  return c[0].sub >= 0 && cr_flush(c);
+}
+
+// The request's next verified event (CR_EVENT, then cr_event), or how it
+// ended: CR_EOSE, CR_CLOSED (refused: cr_message says why), CR_TIMEOUT at
+// deadline_ms (cxsock_now_ms's clock), CR_FAIL when the connection ended.
+cr_next :: (c: [] CliRelay, deadline_ms: int) -> int {
+  r := c[0].rl[..];
+  while true {
+    if c[0].sub < 0 { return CR_FAIL; }
+    left := deadline_ms - cxsock_now_ms();
+    if left <= 0 { return CR_TIMEOUT; }
+    d := cr_pump(c, ifx left < 250 then left else 250);
+    if d == -2 { return CR_FAIL; }
+    if d == RL_DELIVER { return CR_EVENT; }
+    st := r[0].subs[c[0].sub].state;
+    if d == RL_EOSE && st == RS_CAUGHT { return CR_EOSE; }
+    if st == RS_REFUSED { return CR_CLOSED; }
+  }
+  return CR_FAIL;
+}
+// Ends the request (a CLOSE goes out with the next send).
+cr_req_end :: (c: [] CliRelay) {
+  if c[0].sub >= 0 { ok := rl_unsubscribe(c[0].rl[..], c[0].sub); ok = cr_flush(c); }
+  c[0].sub = -1;
+}
+
+// Publishes one signed event and waits until deadline_ms for its OK. True
+// when the relay accepted it; cr_message has the relay's words either way.
+cr_publish :: (c: [] CliRelay, event: string, deadline_ms: int) -> bool {
+  if !c[0].open || event.count > CR_EVENT_MAX { return false; }
+  scratch: [NE_MAX_OUTPUT] u8;
+  e := nostr_event_read(event, scratch[..], false);
+  if e.error != NE_OK { return false; }
+  for i: 0..<event.count { c[0].out[i] = event[i]; }
+  c[0].out_n = event.count;
+  r := c[0].rl[..];
+  c[0].pub = rl_publish(r, e.id[..]);
+  if c[0].pub < 0 { return false; }
+  c[0].message_n = 0;
+  while cxsock_now_ms() < deadline_ms {
+    st := r[0].pubs[c[0].pub].state;
+    if st == RP_ACCEPTED { done := rl_cancel_publish(r, c[0].pub); return true; }
+    if st == RP_REFUSED || st == RP_TIMEOUT { done := rl_cancel_publish(r, c[0].pub); return false; }
+    d := cr_pump(c, 250);
+    if d == -2 { return false; }
+  }
+  done := rl_cancel_publish(r, c[0].pub);
+  return false;
+}

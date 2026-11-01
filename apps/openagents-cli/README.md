@@ -2,8 +2,8 @@
 
 The OpenAgents command line, in Coax. The plan for v1.0.0 is
 [docs/cli/2026-11-01-openagents-cli-v1.md](../../docs/cli/2026-11-01-openagents-cli-v1.md).
-Today it has two domains: `nostr`, your NIP-06 identity, and `pylon`, which
-starts and stops this computer's Pylon.
+Today it has two domains: `nostr`, your NIP-06 identity and a relay client,
+and `pylon`, which starts and stops this computer's Pylon.
 
 ## Build
 
@@ -13,8 +13,9 @@ apps/openagents-cli/build.sh     # about 10 seconds; writes apps/openagents-cli/
 ln -sf "$PWD/apps/openagents-cli/build/openagents" ~/.local/bin/openagents
 ```
 
-macOS and Linux. The build needs only the Coax compiler and the system C
-compiler.
+macOS and Linux. The build needs the Coax compiler and the system C
+compiler; on Linux, TLS comes from OpenSSL through Nix
+([coax/platform/tls-env.sh](../../coax/platform/tls-env.sh)).
 
 ## Identity
 
@@ -41,6 +42,21 @@ openagents nostr forget --yes
 curl -H "Authorization: $(openagents nostr auth https://openagents.com/api/v1/systemone --body d.json)" \
      -H 'Content-Type: application/json' --data-binary @d.json https://openagents.com/api/v1/systemone
 ```
+
+## Relays
+
+```sh
+openagents nostr publish --content "hi" [--kind 1] [--tags JSON] [--relay wss://relay.openagents.com]
+openagents nostr req '{"ids":["ID"]}' [--relay URL] [--limit 500] [--timeout 20]
+```
+
+`publish` signs the event with your key, publishes it and waits for the
+relay's OK; it prints `id`, `auth` (whether the relay asked for and accepted
+NIP-42 AUTH) and `ok`. `req` sends one filter and prints each event, one JSON
+line each, until EOSE, `--limit` or `--timeout`. Every event it prints has a
+checked id and signature; one that fails is dropped. Both answer the relay's
+NIP-42 challenge with your key when you have one. The relay is
+`wss://relay.openagents.com` unless you pass `--relay`.
 
 ## Pylon
 
@@ -71,10 +87,18 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 
 | File | What |
 | --- | --- |
-| `main.coax` | arguments, the report, the `nostr` and `pylon` domains |
+| `main.coax` | the dispatch: one line per domain |
+| `out.coax` | the report, arguments, numbers as text, where things live |
+| `nostr.coax` | the `nostr` domain: identity, signing, NIP-98, publish and req |
+| `relay.coax` | the relay client: connect, NIP-42 AUTH, one REQ to EOSE, publish and OK |
+| `pylon.coax` | the `pylon` domain |
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, process liveness, the executable's path |
-| `build.sh` | compiles `main.coax` to C and links it with the host |
+| `build.sh` | compiles `main.coax` to C and links it with the host, sockets and TLS |
+
+A new domain goes in its own file with a `DOMAIN_main` dispatch, one
+`#load` and one line in `main.coax`, and its value flags on their own line of
+`VALUE_FLAGS` in `out.coax`.
 
 ## Checks
 
