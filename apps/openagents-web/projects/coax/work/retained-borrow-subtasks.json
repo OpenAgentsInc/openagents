@@ -1,0 +1,76 @@
+{
+  "v": "openagents.project-work.v1",
+  "items": [
+    {
+      "slug": "r3a-retain-origin-policy",
+      "kind": "task",
+      "parent": "r3a-retained-request-borrows",
+      "title": "Qualify frame-relative retained-store facts and obligations",
+      "size": "S",
+      "labels": [
+        "r3",
+        "usage-audit",
+        "borrows",
+        "compiler"
+      ],
+      "blocked_by": [
+        "r3a-return-borrow-summaries"
+      ],
+      "body": "## Scope\n\nFirst bounded foundation for retained request borrows. Specify and implement a Coax authority policy over the checker's resolved declarations, typed paths and source witnesses. Keep addressed storage separate from the descriptor previously stored there. Distinguish exact supplied effect facts from discharged outlives obligations. No second name/type resolver or new accepted-source claim belongs in this standalone policy slice.\n\n## Acceptance\n\n- Check-first independent tables distinguish callee-local sources, parameter sources, caller-addressed storage, locally copied inline storage, static/default-empty descriptors and unknown alternatives. A known forbidden local witness survives an incomplete arm.\n- Parameter-to-parameter stores retain a frame-relative outlives obligation for caller substitution; complete effect facts alone cannot claim host ownership safety. Invalid facts and exhausted specified bounds refuse without partial publication or safe-empty fallback.\n- Keep exact field paths, conservative view dereference and owned-array element paths distinct. No unsupported per-view-element strong update, invented padding contract or cache-layout oracle.\n- New authority checks and mutation have zero survivors, with independent native generated-header/layout/guard/sanitizer observations. No equivalent-mutant waiver, native semantic fallback or enlarged existing resource budget.\n- Push the qualified bounded slice within two hours, commands below fifteen minutes. Parent retention, actual SoPost composition and runtime lifecycle acceptance remain open."
+    },
+    {
+      "slug": "r3a-retain-store-checks",
+      "kind": "task",
+      "parent": "r3a-retained-request-borrows",
+      "title": "Check retained stores in every concrete procedure body",
+      "size": "M",
+      "labels": [
+        "r3",
+        "usage-audit",
+        "borrows",
+        "compiler"
+      ],
+      "blocked_by": [
+        "r3a-retain-origin-policy"
+      ],
+      "body": "## Scope\n\nIntegrate the retained-store policy with existing resolved bindings, writes, calls and concrete generic instances. Visit void and uncalled checked bodies independently of returned-borrow demand. Preserve A1's inline-storage versus pointee distinction and original source provenance.\n\n## Acceptance\n\n- Direct and helper/callee-local stores into caller-addressed request state report E0383 at the specified original physical witness. Loaded and concrete generic helpers retain their authored locations; E0366 immutable inline-parameter precedence remains unchanged.\n- A locally copied inline destination is not external storage. Crossing a Context's contained view is external storage, regardless of its old descriptor value. Caller-source/parameter-destination effects retain latent obligations for actual caller substitution. Instantiate those latent helper-store obligations at actual callers in this child; local-carrier read-after-write return composition remains B2.\n- Whole-record/default, repeated and conditional stores preserve known local witnesses; a later good write cannot erase an earlier forbidden store. Unknown-only paths remain explicit manual scope, with exact fact/obligation status.\n- Check-first source positives and negatives, affected native bridge layout/status/sanitizer controls, all relevant authority zero-survivor gates and deterministic seeds/both bootstrap fixed points pass. Keep current resource limits and recursion/foreign/nested-region boundaries explicit.\n- Actual SoPost return composition and completion/cancellation owner evidence remain open for the next children. Finish and push within two hours; split a complete smaller slice if necessary."
+    },
+    {
+      "slug": "r3a-retain-helper-composition",
+      "kind": "task",
+      "parent": "r3a-retained-request-borrows",
+      "title": "Compose real System One retained writes into precise returned borrows",
+      "size": "M",
+      "labels": [
+        "r3",
+        "usage-audit",
+        "borrows",
+        "compiler",
+        "systemone"
+      ],
+      "blocked_by": [
+        "r3a-retain-store-checks"
+      ],
+      "body": "## Scope\n\nCompose the selected typed write effects through actual so_start, so_step, so_fail_call and so_post. Reuse existing return queries and formal substitution; do not globally union every read argument or confuse a local SoCall carrier with its descriptor pointees.\n\n## Acceptance\n\n- Actual source-bound SoPost facts become complete: body derives from caller out formal2 or modeled default empty, stderr from err formal3 or default empty, problem from the actual static message arguments, usage from scalars. Local Call/timeout scratch, client fields and request-body reads add no unrelated retained byte origins.\n- Field-selected callers exclude unused local scratch. A caller that exposes local output/error backing through the actual helper chain is rejected; known-local plus unknown still rejects. Complete effect inventory remains distinct from discharged host lifetime obligations.\n- Default-empty is complete and differs from unknown. Recursive effect dependencies never become safe-empty merely because a query is active. Retain explicit bounded may-effect semantics and unsupported view-element precision.\n- Original physical source fixtures, actual internal summary/status observations, independent native caller-pointer/extent/content/guard checks, authority zero-survivor mutation and matching seed/fixedpoint/bridge gates pass without budget inflation or waivers.\n- Request ownership, terminal/cancel traces and all result uses remain open for the final child. Push this bounded complete slice within two hours; commands stay below fifteen minutes."
+    },
+    {
+      "slug": "r3a-retain-request-owner",
+      "kind": "task",
+      "parent": "r3a-retained-request-borrows",
+      "title": "Qualify the actual request owner through terminal and cancelled states",
+      "size": "M",
+      "labels": [
+        "r3",
+        "usage-audit",
+        "borrows",
+        "compiler",
+        "systemone",
+        "lifetimes"
+      ],
+      "blocked_by": [
+        "r3a-retain-helper-composition"
+      ],
+      "body": "## Scope\n\nFinish retained-request acceptance on the actual System One transport and its current desktop owner. Document and exercise backing buffers through terminal completion, cancellation and every borrowed-result use. Use the actual polling API; do not invent callbacks or a handle-generation guarantee.\n\nAdopt actual generated Coax ZeronState construction once at each successful zr_new/root calloc allocation, before attachment or any live-owner use. The expected coax_default_t_ZeronState helper name remains source-derived until the matching generated desktop header and native behavior are observed. Constructing a Desk or a descriptor never implicitly initializes its separately allocated descriptor pointee.\n\n## Acceptance\n\n- At each successful actual ZeronState root allocation, invoke the matching generated in-place Coax default initializer exactly once before an active-so_start refusal can inspect the call and before the never-started quit/cancel path. Preserve allocation-failure behavior without dereferencing null; never reapply the root initializer to an attached, active or previously constructed owner, and do not hand-code h=-1 or weaken active admission to treat handle0 as fresh.\n- Retain actual emitted-helper/header/layout and offline native evidence from the real desktop factory. Verify named declared defaults (including owned Lab.call.h=-1, false done and modeled empty results), descriptor pointer/extent and payload-byte/guard invariants; prove no initialization of view pointees is assumed. Exercise allocation -> defaults -> attachment -> first start, active refusal with existing state/results unchanged, and never-started quit that does not release an unrelated process slot0. Compare named fields/descriptors and actual buffer bytes, never aggregate C padding. Keep the selected app-life pool and unsupported copied-owner/lifetime boundaries explicit.\n- A checked Coax single-active-owner admission refuses restarting an active call without changing any named live-call state, descriptors, existing results or buffer bytes. Specify false-with-existing-result behavior explicitly; compare semantic fields rather than C padding. Preserve actual supported return/status behavior and explicitly document unsupported copied active handles and ownership transfer.\n- Offline generated-Coax/native traces cover success, refusal/error, timeout, cancellation, supported late/invalid/duplicate polling observations and idempotent release. No live service or unsafe automatic retry is involved; cancellation alone never revokes copied result descriptors.\n- Verify caller pointer/extent/bytes/guards after stack disturbance and through all valid result uses. Exercise actual owner quit/cancel and process-slot reclamation under ASan/UBSan. The selected caller pool is app-life; do not invent a pool-free path or infer caller-buffer death from process-slot release. Any actual buffer reuse/free follows its documented lifetime and all result uses.\n- All new admission/policy authority mutation is zero-survivor; matching source, native ABI and any changed compiler seed/fixedpoint gates pass. Reuse unchanged qualified results with exact input/producer scope.\n- Retain unsupported foreign retention, copied-handle transfer and general block/loop/epoch-region limits. Close this parent and #1a6a only after every original external-store negative/positive, precise helper composition and request owner/lifecycle row passes. Push within two hours; every command stays below fifteen minutes."
+    }
+  ]
+}

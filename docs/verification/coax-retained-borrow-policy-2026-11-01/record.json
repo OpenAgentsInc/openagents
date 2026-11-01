@@ -1,0 +1,89 @@
+{
+  "schema": "coax.retain-policy.standalone-qualification.v1",
+  "outcome": "passed bounded unloaded supplied-fact policy only",
+  "qualified_base": "3e95149816d2d296a27670afe413e66bd05a801f",
+  "policy_sha256": "ddfdfd79d76d633dfa6c97f2c11af15b61b7bea66525a3a9c1d872b8d213e00a",
+  "producer": {
+    "compiler_sha256": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+    "qualified_source": "44b25a4b3e83797ed8d6d3ffd9ca885aab8c1449",
+    "normal_receipt_sha256": "cfd90bb0b29e59417478a69c69cb25bf46bb39416fbe6e87f8db9b2575e2aef8",
+    "fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+    "scope": "Earlier normally qualified producer used to evaluate/compile NEW standalone program; no new compiler behavior, accepted-source or current-normal seal claimed."
+  },
+  "initial_failed_mutation": {
+    "sha256": "50417f757fad2470817ac6cbd12f059f5f1f87ed33edeca370a9a2b8bd6a9b79",
+    "source_sha256": "760958ebee14d31b64949c0c3988881fb64bf505a88065bfbfbedd8c193c50ed",
+    "mutants": 128,
+    "killed": 122,
+    "survived": 6,
+    "disposition": "Four scalar-bound checks sharpened independently of secondary metadata; helper uses explicit -1 refusal sentinel instead of equivalent unreachable-zero predicate variants. No waiver."
+  },
+  "final_mutation": {
+    "transport_sha256": "1e0c53c72cd5d8eb65e1629dcae9ebf6fd5be17338d754c86b4250300e1d84ec",
+    "mutants": 128,
+    "killed": 128,
+    "survived": 0,
+    "scope": "All new policy entry-source procedure mutation sites, original loaded baseline retained; unchanged imported BS semantics keep prior authority qualification."
+  },
+  "native": {
+    "qualification_sha256": "085b4b49277f1ff2860ccc9993e69430c753c1eb18cdf1b86546b3ffc6f91ea0",
+    "outer_sha256": "ea1e6f162f4afaa7ddfbd327e9993f7aa63878d7dfe6527291475ea87bb8dc14",
+    "profiles": {
+      "O0": {
+        "cases": 1251,
+        "calls": 1251,
+        "refusals": 72,
+        "independent_check_cases": 112,
+        "independent_bounds_cases": 16,
+        "term_size": 176,
+        "address_size": 184,
+        "obligation_size": 360,
+        "result_size": 32
+      },
+      "O2": {
+        "cases": 1251,
+        "calls": 1251,
+        "refusals": 72,
+        "independent_check_cases": 112,
+        "independent_bounds_cases": 16,
+        "term_size": 176,
+        "address_size": 184,
+        "obligation_size": 360,
+        "result_size": 32
+      },
+      "sanitized": {
+        "cases": 1251,
+        "calls": 1251,
+        "refusals": 72,
+        "independent_check_cases": 112,
+        "independent_bounds_cases": 16,
+        "term_size": 176,
+        "address_size": 184,
+        "obligation_size": 360,
+        "result_size": 32
+      }
+    },
+    "c_sha256": "05f8377b49a592e9b9b6bf9e65fd1b26e3dcc41af7e3f487f4f8f23a1a739420",
+    "header_sha256": "f677dbd637840ea06570937f332fd7e9c4abcd32c60812928f7ab6b33717f57a",
+    "vectors_sha256": "b5cc1694473053c0eb62a74aa0c4bf0da9dadb9d31eee98d3dadfc588bf134d9",
+    "scope": "Actual LP64 generated-header/layout and logical fields/input-output guards/tails at O0/O2/ASan+UBSan,1251calls per profile including112independentpolicy+16bounds. No C padding/target-device/host-lifetime inference."
+  },
+  "proof": {
+    "path": "proof.tar.gz",
+    "sha256": "49f44ec15283b8edb9e3964d8ebdabb2cd4817a70eafcd57f1780496e31f2c2d",
+    "bytes": 134937,
+    "members": 86
+  },
+  "manifest_sha256": "8a1698fb01a186ae8feb2b1d1403ff94f32ed5402eb705e7b66a2e27d9f326c7",
+  "remaining": [
+    "B1 concrete-body traversal and caller substitution with complete compiler fingerprint/bootstrap admission",
+    "B2 actual helper-write/read-after-write SoPost composition",
+    "B3 actual request-owner defaults/admission/lifecycle/result-buffer uses"
+  ],
+  "parent_status": "Retained request and borrow umbrella remain OPEN.",
+  "final_readonly_peer_review": {
+    "path": "final-peer-review.json",
+    "sha256": "e27d57a378c5fedea63f8e07e4190bf985e5e1db0ec4db7e433adb0b836dbd66",
+    "scope": "Final source/gate/native/oracle evidence read-only review; no passing gate repeated."
+  }
+}

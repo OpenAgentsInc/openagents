@@ -2135,6 +2135,26 @@ internal summary status and native/sanitizer buffer-return profiles in
 `coax/verification-return-borrows.md`; the initial direct-local profile remains
 in `coax/verification-local-borrows.md`.
 
+## Supplied retained-store facts do not prove lifetimes
+
+`coax/policy/retain-policy.coax` is a standalone, unloaded supplied-fact
+policy. Descriptor backing and addressed storage have separate checked keys;
+nonstatic terms belong to the supplied current frame, static terms to frame 0.
+Fact completeness is independent of known-relation completeness, forbidden
+witnesses and pending outlives obligations. Unknown alternatives never erase
+known pairs; complete-empty descriptor facts are not an ordinary zero-length
+view of an owner. Canonical pending rows have 64-term/128-pair/8-path bounds
+and atomic logical publication, without a C-padding contract. This directory
+is outside the compiler input fingerprint; qualification by its earlier
+producer does not create a new accepted-source/compiler seal. Before B1 loads
+it, the compiler fingerprint/bootstrap inventory and snapshot closure must
+include it. B1 traversal and substitution, B2 local-carrier helper composition
+and B3 request ownership remain work; the A1 retained-store/lifecycle limitation above stays.
+Check: [verification profile](coax/verification-retain-policy.md) and
+[actual root-mutation/native evidence](docs/verification/coax-retained-borrow-policy-2026-11-01/record.json):
+128/128 root mutants killed and LP64 O0/O2/ASan+UBSan, using the earlier
+qualified producer with explicit standalone scope.
+
 ## One protocol for all OpenAgents surfaces
 
 Root `proto/` and the OpenAgents Protocol specification define interchange for

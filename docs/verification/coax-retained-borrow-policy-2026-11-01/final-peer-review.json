@@ -1,0 +1,17 @@
+{
+  "schema": "coax.retain-policy.documentation-review.v1",
+  "scope": "Read-only retained-artifact and final source-delta inspection; no compiler, mutation or native invocation.",
+  "policy_sha256": "ddfdfd79d76d633dfa6c97f2c11af15b61b7bea66525a3a9c1d872b8d213e00a",
+  "final_diff_sha256": "12159dc21d4fb66dcbc87be1abd646667abd1f21e962cd27be4873b5dc079830",
+  "mutation_transport_sha256": "1e0c53c72cd5d8eb65e1629dcae9ebf6fd5be17338d754c86b4250300e1d84ec",
+  "native_transport_sha256": "ea1e6f162f4afaa7ddfbd327e9993f7aa63878d7dfe6527291475ea87bb8dc14",
+  "native_qualification_sha256": "085b4b49277f1ff2860ccc9993e69430c753c1eb18cdf1b86546b3ffc6f91ea0",
+  "literal_inputs_expected_unchanged": true,
+  "checks": {
+    "transport_receipts_and_stream_hashes": true,
+    "source_before_after_current_bytes": true,
+    "generated_c_header_and_native_binary_hashes": true,
+    "all_three_profiles_exact_counts": true
+  },
+  "limits": "Native oracles compare named logical fields and all path slots, plus outside guards, not C aggregate padding; root-only entry policy mutation, imported BS checks retained; unloaded policy is not compiler acceptance or host lifetime safety."
+}
