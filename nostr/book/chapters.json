@@ -477,14 +477,16 @@
    "number": 23,
    "title": "Filters",
    "file": "ch023-filters.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     22
    ],
    "source": [
     "coax/lib/nostr/filter.coax",
-    "coax/lib/nostr/filter_read.coax"
+    "coax/lib/nostr/filter_read.coax",
+    "nostr/examples/checks/filters.coax",
+    "nostr/examples/filters.coax"
    ],
    "qualified_targets": [
     "cpu",

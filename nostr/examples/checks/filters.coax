@@ -1,0 +1,124 @@
+// The checks of filters.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/filters.coax
+#load "../filters.coax";
+
+// book:begin check
+// A second matcher, written from NIP-01's filter sentences over small
+// integers instead of JSON and bytes. It shares no code with filter.coax.
+// A list field is one of four choices: 0 absent, 1 [], 2 [first value],
+// 3 [second value, first value]. An event field holds 0 (the first value)
+// or 1 (the second value).
+in_list :: (choice: int, v: int) -> bool {
+  if choice == 0 { return true; }    // absent: no condition
+  if choice == 1 { return false; }   // []: "no event can satisfy that condition"
+  if choice == 2 { return v == 0; }
+  return v == 0 || v == 1;
+}
+// The event's e tag: 0 none, 1 ["e",R], 2 ["e",S], 3 ["e",S,R]. Only the
+// first value of a tag is indexed, so case 3 holds S and not R.
+e_value :: (etag: int) -> int { return ifx etag == 1 then 0 else ifx etag >= 2 then 1 else -1; }
+// since: 0 absent, 1 since 10, 2 since 11. until: 0 absent, 1 until 9,
+// 2 until 10.
+nip01_match :: (ids: int, authors: int, kinds: int, e: int, since: int, until: int,
+              id: int, author: int, kind: int, created: int, etag: int) -> bool {
+  if !in_list(ids, id) || !in_list(authors, author) || !in_list(kinds, kind) { return false; }
+  if e != 0 && (e_value(etag) < 0 || !in_list(e, e_value(etag))) { return false; }
+  if since != 0 && created < 9 + since { return false; }   // since <= created_at
+  if until != 0 && created > 8 + until { return false; }   // created_at <= until
+  return true;
+}
+
+// A key, after a comma unless it is the object's first.
+key_json :: (out: [] u8, at: int, key: string) -> int {
+  n := at; if out[n - 1] != '{' { n = json_raw(out, n, ","); }
+  n = json_raw(out, n, "\""); n = json_raw(out, n, key); return json_raw(out, n, "\":");
+}
+list_json :: (out: [] u8, at: int, key: string, choice: int, first: string, second: string) -> int {
+  if choice == 0 { return at; }
+  n := key_json(out, at, key); n = json_raw(out, n, "[");
+  if choice == 3 { n = json_raw(out, n, second); n = json_raw(out, n, ","); }
+  if choice >= 2 { n = json_raw(out, n, first); }
+  return json_raw(out, n, "]");
+}
+filter_text :: (out: [] u8, fi: int, fa: int, fk: int, fe: int, since: int, until: int) -> string {
+  n := json_raw(out, 0, "{");
+  n = list_json(out, n, "ids", fi, "\"1111111111111111111111111111111111111111111111111111111111111111\"", "\"2222222222222222222222222222222222222222222222222222222222222222\"");
+  n = list_json(out, n, "authors", fa, "\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"", "\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\"");
+  n = list_json(out, n, "kinds", fk, "1", "7");
+  n = list_json(out, n, "#e", fe, "\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"", "\"0000000000000000000000000000000000000000000000000000000000000001\"");
+  if since != 0 { n = key_json(out, n, "since"); n = json_write_int(out, n, 9 + since); }
+  if until != 0 { n = key_json(out, n, "until"); n = json_write_int(out, n, 8 + until); }
+  n = json_raw(out, n, "}");
+  return cast(string) out[0..<n];
+}
+
+// The corpus space: events with one of 2 ids, 2 authors, kinds 1 and 7,
+// created_at 9, 10 or 11 and the four e tags (96 events), against filters
+// with four choices for each of ids, authors, kinds and #e, since absent,
+// 10 or 11 and until absent, 9 or 10 (2,304 filters): 221,184 pairs. The
+// check takes PAIRS of them from a fixed linear congruential generator, so
+// every run checks the same pairs. Event records are set field by field, as
+// filter.coax's own checks set them; the worked example uses parsed events.
+PAIRS :: 4000;
+ETAGS :: [4] string.["[]", TAGS1,
+  "[[\"e\",\"0000000000000000000000000000000000000000000000000000000000000001\"]]",
+  "[[\"e\",\"0000000000000000000000000000000000000000000000000000000000000001\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]"];
+#test "matching agrees with the second matcher on 4,000 generated pairs" #steps 1000000000 {
+  ids := [2] string.[ID1, ID2]; authors := [2] string.[A, B]; kinds := [2] int.[1, 7];
+  id_bytes: [2] [32] u8; key_bytes: [2] [32] u8;
+  for i: 0..<2 { #assert ne_lower_hex(ids[i], id_bytes[i][..]) && ne_lower_hex(authors[i], key_bytes[i][..]); }
+  seed := 23; matched := 0; empty := 0;
+  for p: 0..<PAIRS {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff; r := seed >> 4;
+    fi := r & 3; fa := (r >> 2) & 3; fk := (r >> 4) & 3; fe := (r >> 6) & 3;
+    fs := ((r >> 8) & 3) % 3; fu := ((r >> 10) & 3) % 3;
+    id := (r >> 12) & 1; au := (r >> 13) & 1; ki := (r >> 14) & 1; cr := 9 + ((r >> 15) & 3) % 3; et := (r >> 17) & 3;
+    text: [1024] u8; s: [1] Space; f: [1] NostrFilter;
+    #assert read(filter_text(text[..], fi, fa, fk, fe, fs, fu), f[..], s[..]) == FR_OK;
+    e: NostrEvent; e.error = NE_OK; e.id = id_bytes[id]; e.public_key = key_bytes[au];
+    e.kind = kinds[ki]; e.created_at = cr; e.original = ETAGS[et]; e.tags_from = 0; e.tags_to = e.original.count;
+    got := nf_match(f[0], e);
+    #assert got == nip01_match(fi, fa, fk, fe, fs, fu, id, au, ki, cr, et);
+    if got { matched += 1; }
+    if fi == 1 || fa == 1 || fk == 1 || fe == 1 { empty += 1; #assert !got; }
+  }
+  #assert matched > 100 && empty > 1000;
+}
+
+#test "the worked example, decided by hand" {
+  b: [4096] u8; ev: [4] NostrEvent;
+  ev[0] = make_event(b[0..<1024], ID1, A, 1761686400, 1, TAGS1);
+  ev[1] = make_event(b[1024..<2048], ID2, B, 1761686460, 1, TAGS2);
+  ev[2] = make_event(b[2048..<3072], ID3, A, 1761686520, 7, TAGS3);
+  ev[3] = make_event(b[3072..<4096], ID4, B, 1761686460, 1, TAGS4);
+  s: [1] Space; f: [1] NostrFilter; out: [4] int;
+  #assert read(F1, f[..], s[..]) == FR_OK;
+  #assert nf_match(f[0], ev[0]) && nf_match(f[0], ev[1]) && !nf_match(f[0], ev[2]) && nf_match(f[0], ev[3]);
+  // E2 and E4 share created_at 1761686460; 0x20 < 0x22, so E4 comes first. Limit 2 cuts E1.
+  #assert query(f[0], ev[..], out[..]) == 2 && out[0] == 3 && out[1] == 1;
+  f[0].has_limit = false;
+  #assert query(f[0], ev[..], out[..]) == 3 && out[0] == 3 && out[1] == 1 && out[2] == 0;
+  s2: [1] Space; g: [1] NostrFilter;
+  #assert read(F2, g[..], s2[..]) == FR_OK && query(g[0], ev[..], out[..]) == 1 && out[0] == 2;
+  s3: [1] Space;
+  #assert read("{}", g[..], s3[..]) == FR_OK && query(g[0], ev[..], out[..]) == 4;
+  #assert out[0] == 2 && out[1] == 3 && out[2] == 1 && out[3] == 0;
+  #assert read("{\"#t\":[\"later\"]}", g[..], s3[..]) == FR_OK && query(g[0], ev[..], out[..]) == 0;
+  #assert read("{\"limit\":0}", g[..], s3[..]) == FR_OK && query(g[0], ev[..], out[..]) == 0;
+  #assert read("{\"since\":1761686500,\"until\":1761686400}", g[..], s3[..]) == FR_OK && query(g[0], ev[..], out[..]) == 0;
+}
+
+#test "each refusal has its own status, and over-limit lists refuse" {
+  s: [1] Space; f: [1] NostrFilter; text: [512] u8;
+  #assert read("{\"ids\":[\"5c83\"]}", f[..], s[..]) == FR_INVALID;
+  #assert read("{\"kinds\":[65536]}", f[..], s[..]) == FR_INVALID && read("{\"limit\":-1}", f[..], s[..]) == FR_INVALID;
+  #assert read("{\"since\":9007199254740992}", f[..], s[..]) == FR_INVALID && read("{\"since\":9007199254740991}", f[..], s[..]) == FR_OK;
+  #assert read("{\"search\":\"nostr\"}", f[..], s[..]) == FR_FIELD && read("{\"#ab\":[\"x\"]}", f[..], s[..]) == FR_FIELD;
+  #assert read("{\"kinds\":[1],\"kinds\":[7]}", f[..], s[..]) == FR_FIELD;
+  #assert read("{\"kinds\":1}", f[..], s[..]) == FR_TYPE && read("{\"kinds\":[1.5]}", f[..], s[..]) == FR_TYPE;
+  #assert read("[{\"kinds\":[1]}]", f[..], s[..]) == FR_JSON && read("{\"kinds\":[1]", f[..], s[..]) == FR_JSON;
+  #assert read(repeat(text[..], "kinds", "1", 64), f[..], s[..]) == FR_OK && f[0].kinds.count == 64;
+  #assert read(repeat(text[..], "kinds", "1", 65), f[..], s[..]) == FR_INVALID;
+}
+// book:end check

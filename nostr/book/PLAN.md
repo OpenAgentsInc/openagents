@@ -110,7 +110,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | --- | --- | --- | --- |
 | [21. Events, IDs and signatures](ch021-events-ids-and-signatures.md) — implemented | 11, 13, 17, coax:18 | A captured real event verifies; altered copies (ID, signature, kind, one content byte) each refuse with their own status. Events signed in Coax verify in an independent library. | [NIP-01](../nips/official/01.md) |
 | [22. Kinds and tags](ch022-kinds-and-tags.md) — implemented | 21 | Every range boundary (9999, 10000, 19999, 20000, 29999, 30000, 39999, 40000) classifies correctly. A malformed `a` tag refuses. | [NIP-01](../nips/official/01.md), [NIP-16](../nips/official/16.md), [NIP-33](../nips/official/33.md) |
-| [23. Filters](ch023-filters.md) — partly implemented | 22 | Matching agrees with an independent implementation on a generated corpus of events and filters. Over-limit filters refuse instead of truncating. | [NIP-01](../nips/official/01.md), [NIP-12](../nips/official/12.md) |
+| [23. Filters](ch023-filters.md) — implemented | 22 | Matching agrees with an independent implementation on a generated corpus of events and filters. Over-limit filters refuse instead of truncating. | [NIP-01](../nips/official/01.md), [NIP-12](../nips/official/12.md) |
 | [24. Relay messages](ch024-relay-messages.md) — partly implemented | 21, 23 | Every frame written by one side is read back exactly by the other. Captured relay sessions parse without loss. | [NIP-01](../nips/official/01.md), [NIP-20](../nips/official/20.md) |
 | [25. Gift wrap](ch025-gift-wrap.md) — implemented | 20, 21, 13 | Wraps from Coax open in an independent implementation and the reverse. A seal whose pubkey differs from the rumor's refuses. | [NIP-59](../nips/official/59.md) |
 

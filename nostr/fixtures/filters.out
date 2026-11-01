@@ -1,0 +1,52 @@
+events
+E1: id 1111..., kind 1, created_at 1761686400, 1 tags
+E2: id 2222..., kind 1, created_at 1761686460, 2 tags
+E3: id 3333..., kind 7, created_at 1761686520, 2 tags
+E4: id 2020..., kind 1, created_at 1761686460, 1 tags
+filter F1
+read: ok, written back byte for byte
+authors 2, kinds 1, tag filters 1, limit 2
+E1 matches F1: true
+E2 matches F1: true
+E3 matches F1: false
+E4 matches F1: true
+F1 initial query: E4 E2
+F1 without limit: E4 E2 E1
+filter F2
+F2 initial query: E3
+one REQ with F1 and F2
+initial: E4 E2 E3
+then EOSE; later events are sent when F1 or F2 matches, with no limit
+E1 would be sent live: true
+E2 would be sent live: true
+E3 would be sent live: true
+E4 would be sent live: true
+absent, empty and edge cases
+{}: E3 E4 E2 E1
+kinds []: none
+#t later (a second value): none
+#E 5c83... (uppercase E): none
+since 1761686460 until 1761686460: E4 E2
+since 1761686500 until 1761686400: none
+limit 0: none
+limit 3: E3 E4 E2
+refusals
+ids 5c83: invalid
+ids uppercase: invalid
+#p 64 x: invalid
+kinds 65536: invalid
+limit -1: invalid
+since 2^53: invalid
+search: field
+#ab: field
+#1: field
+kinds twice: field
+kinds 1: type
+kinds ["1"]: type
+kinds [1.5]: type
+since "1": type
+an array: json
+no closing brace: json
+64 kinds: ok
+65 kinds: invalid
+3 kinds into room for 2: space

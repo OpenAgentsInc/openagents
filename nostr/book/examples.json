@@ -272,6 +272,17 @@
         "release"
       ],
       "timeout": 120
+    },
+    {
+      "source": "nostr/examples/filters.coax",
+      "chapter": "nostr/book/ch023-filters.md",
+      "stdout": "nostr/fixtures/filters.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

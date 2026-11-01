@@ -1,0 +1,179 @@
+// book:begin example
+#load "../../coax/lib/nostr/filter_read.coax";
+#load "../../coax/lib/nostr/store_policy.coax";
+#import "Basic";
+
+READ :: [6] string.["ok", "json", "field", "type", "space", "invalid"];
+NAME :: [4] string.["E1", "E2", "E3", "E4"];
+
+// NIP-01's example event id, and two authors.
+R :: "5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36";
+A :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+B :: "f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca";
+ID1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+ID2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+ID3 :: "3333333333333333333333333333333333333333333333333333333333333333";
+ID4 :: "2020202020202020202020202020202020202020202020202020202020202020";
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// The event's JSON, written into out, then parsed (not verified: matching
+// reads a parsed event's fields, and the IDs here are chosen, not hashed).
+make_event :: (out: [] u8, id: string, pubkey: string, created: int, kind: int, tags: string) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"");
+  n = json_raw(out, n, id);
+  n = json_raw(out, n, "\",\"pubkey\":\"");
+  n = json_raw(out, n, pubkey);
+  n = json_raw(out, n, "\",\"created_at\":");
+  n = json_write_int(out, n, created);
+  n = json_raw(out, n, ",\"kind\":");
+  n = json_write_int(out, n, kind);
+  n = json_raw(out, n, ",\"tags\":");
+  n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"");
+  n = json_raw(out, n, SIG);
+  n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  e := ne_parse(cast(string) out[0..<n]);
+  #assert e.error == NE_OK;
+  return e;
+}
+
+// The fields NIP-01 orders by: created_at, then the id.
+meta :: (e: NostrEvent) -> NsMeta {
+  m: NsMeta; m.id = e.id; m.author = e.public_key; m.kind = e.kind; m.created = e.created_at;
+  return m;
+}
+
+// A filter's initial query over a small event set: the indexes of the
+// matching events, newest first and the lowest id first on a tie, cut to
+// limit when the filter has one. Returns the count written to out.
+query :: (f: NostrFilter, events: [] NostrEvent, out: [] int) -> int {
+  n := 0;
+  for i: 0..<events.count {
+    if !nf_match(f, events[i]) { continue; }
+    // Insert i after every kept event that comes before it.
+    at := n;
+    while at > 0 && ns_newer(meta(events[i]), meta(events[out[at - 1]])) { out[at] = out[at - 1]; at -= 1; }
+    out[at] = i; n += 1;
+  }
+  if f.has_limit && f.limit < n { n = f.limit; }
+  return n;
+}
+
+// Storage that filter_read puts one filter's lists in.
+Space :: struct { strs: [80] string; ints: [80] int; tags: [8] NostrTagFilter; bytes: [8192] u8; }
+read :: (text: string, f: [] NostrFilter, s: [] Space) -> int {
+  sp: [1] FrSpace;
+  sp[0] = FrSpace.{strs = s[0].strs[..], ints = s[0].ints[..], tags = s[0].tags[..], bytes = s[0].bytes[..]};
+  return filter_read(text, f, sp[..]);
+}
+
+print_list :: (label: string, idx: [] int) {
+  print("%:", label);
+  if idx.count == 0 { print(" none"); }
+  for i: idx { print(" %", NAME[i]); }
+  print("\n");
+}
+
+// Read a filter and print its initial query, or its refusal.
+run :: (label: string, text: string, events: [] NostrEvent) {
+  s: [1] Space; f: [1] NostrFilter;
+  r := read(text, f[..], s[..]);
+  if r != FR_OK { print("%: refused, %\n", label, READ[r]); return; }
+  idx: [4] int; n := query(f[0], events[..], idx[..]);
+  print_list(label, idx[0..<n]);
+}
+refuse :: (label: string, text: string) {
+  s: [1] Space; f: [1] NostrFilter;
+  print("%: %\n", label, READ[read(text, f[..], s[..])]);
+}
+
+// A JSON filter {"<key>":[v,v,...]} with count copies of v.
+repeat :: (out: [] u8, key: string, v: string, count: int) -> string {
+  n := json_raw(out, 0, "{\"");
+  n = json_raw(out, n, key);
+  n = json_raw(out, n, "\":[");
+  for i: 0..<count { if i > 0 { n = json_raw(out, n, ","); } n = json_raw(out, n, v); }
+  n = json_raw(out, n, "]}");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+TAGS1 :: "[[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]]";
+TAGS2 :: "[[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]";
+TAGS3 :: "[[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],[\"t\",\"nostr\",\"later\"]]";
+TAGS4 :: "[[\"e\",\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\",\"wss://nostr.example.com\"]]";
+
+// The two filters of the worked REQ.
+F1 :: "{\"authors\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\"],\"kinds\":[1],\"#e\":[\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],\"since\":1761686400,\"until\":1761686460,\"limit\":2}";
+F2 :: "{\"ids\":[\"3333333333333333333333333333333333333333333333333333333333333333\"],\"#t\":[\"nostr\"]}";
+
+main :: () {
+  b1: [1024] u8; b2: [1024] u8; b3: [1024] u8; b4: [1024] u8;
+  events: [4] NostrEvent;
+  events[0] = make_event(b1[..], ID1, A, 1761686400, 1, TAGS1);
+  events[1] = make_event(b2[..], ID2, B, 1761686460, 1, TAGS2);
+  events[2] = make_event(b3[..], ID3, A, 1761686520, 7, TAGS3);
+  events[3] = make_event(b4[..], ID4, B, 1761686460, 1, TAGS4);
+  print("events\n");
+  for i: 0..<4 {
+    e := events[i];
+    print("%: id %..., kind %, created_at %, % tags\n", NAME[i], cast(string) e.original[7..<11], e.kind, e.created_at, e.tags);
+  }
+
+  print("filter F1\n");
+  s: [1] Space; f: [1] NostrFilter;
+  r := read(F1, f[..], s[..]);
+  out: [1024] u8; w := nf_write(f[0], out[..], false);
+  print("read: %, written back %\n", READ[r], ifx w == F1.count && cast(string) out[0..<w] == F1 then "byte for byte" else "differently");
+  print("authors %, kinds %, tag filters %, limit %\n", f[0].authors.count, f[0].kinds.count, f[0].tags.count, f[0].limit);
+  for i: 0..<4 { print("% matches F1: %\n", NAME[i], nf_match(f[0], events[i])); }
+  run("F1 initial query", F1, events[..]);
+  run("F1 without limit", "{\"authors\":[\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\"],\"kinds\":[1],\"#e\":[\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"],\"since\":1761686400,\"until\":1761686460}", events[..]);
+
+  print("filter F2\n");
+  run("F2 initial query", F2, events[..]);
+
+  print("one REQ with F1 and F2\n");
+  s2: [1] Space; g: [1] NostrFilter;
+  #assert read(F2, g[..], s2[..]) == FR_OK;
+  sent: [8] int; n := query(f[0], events[..], sent[..]);
+  n += query(g[0], events[..], sent[n..<8]);
+  print_list("initial", sent[0..<n]);
+  print("then EOSE; later events are sent when F1 or F2 matches, with no limit\n");
+  for i: 0..<4 { print("% would be sent live: %\n", NAME[i], nf_match(f[0], events[i]) || nf_match(g[0], events[i])); }
+
+  print("absent, empty and edge cases\n");
+  run("{}", "{}", events[..]);
+  run("kinds []", "{\"kinds\":[]}", events[..]);
+  run("#t later (a second value)", "{\"#t\":[\"later\"]}", events[..]);
+  run("#E 5c83... (uppercase E)", "{\"#E\":[\"5c83da77af1dec6d7289834998ad7aafbd9e2191396d75ec3cc27f5a77226f36\"]}", events[..]);
+  run("since 1761686460 until 1761686460", "{\"since\":1761686460,\"until\":1761686460}", events[..]);
+  run("since 1761686500 until 1761686400", "{\"since\":1761686500,\"until\":1761686400}", events[..]);
+  run("limit 0", "{\"limit\":0}", events[..]);
+  run("limit 3", "{\"limit\":3}", events[..]);
+
+  print("refusals\n");
+  refuse("ids 5c83", "{\"ids\":[\"5c83\"]}");
+  refuse("ids uppercase", "{\"ids\":[\"5C83DA77AF1DEC6D7289834998AD7AAFBD9E2191396D75EC3CC27F5A77226F36\"]}");
+  refuse("#p 64 x", "{\"#p\":[\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"]}");
+  refuse("kinds 65536", "{\"kinds\":[65536]}");
+  refuse("limit -1", "{\"limit\":-1}");
+  refuse("since 2^53", "{\"since\":9007199254740992}");
+  refuse("search", "{\"search\":\"nostr\"}");
+  refuse("#ab", "{\"#ab\":[\"x\"]}");
+  refuse("#1", "{\"#1\":[\"x\"]}");
+  refuse("kinds twice", "{\"kinds\":[1],\"kinds\":[7]}");
+  refuse("kinds 1", "{\"kinds\":1}");
+  refuse("kinds [\"1\"]", "{\"kinds\":[\"1\"]}");
+  refuse("kinds [1.5]", "{\"kinds\":[1.5]}");
+  refuse("since \"1\"", "{\"since\":\"1\"}");
+  refuse("an array", "[{\"kinds\":[1]}]");
+  refuse("no closing brace", "{\"kinds\":[1]");
+  text: [512] u8;
+  refuse("64 kinds", repeat(text[..], "kinds", "1", 64));
+  refuse("65 kinds", repeat(text[..], "kinds", "1", 65));
+  small: [2] int; sp: [1] FrSpace; sp[0] = FrSpace.{strs = s[0].strs[..], ints = small[..], tags = s[0].tags[..], bytes = s[0].bytes[..]};
+  print("3 kinds into room for 2: %\n", READ[filter_read("{\"kinds\":[1,7,30023]}", f[..], sp[..])]);
+}
+// book:end example
