@@ -1736,7 +1736,7 @@ note names it (`in #test NAME`), and its counterexample is a note without a
 span. A fix has a `message` and `edits`, each a span and its `replacement`;
 "add 'X'" and "add 'X' before the end of the line" fixes carry their
 insertion, and other fixes carry no edits. `--diagnostics text` is the
-default and leaves the text output unchanged. Errors have stable codes,
+default and leaves the text output unchanged. With `coax mutate --diagnostics json`, each surviving mutant is an `E0414` error at the mutated token and each procedure that no check reaches is an `E0415` error at its name; the summary line stays on stdout. Errors have stable codes,
 source locations and fix text where available; compile-time failures add call
 site notes. Version 0.13.0 adds `--debug-info` line directives and
 `--source-map FILE` for original locations, source hashes and procedure/local

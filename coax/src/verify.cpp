@@ -809,10 +809,13 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     else survivors.push_back(&m.mutants[i]);
   }
   std::string unreached;
+  std::vector<const ProcDecl *> unreached_procs;
   for (const ProcDecl *p : file->procs) {
     if (!SU_check_required(p->authority,p->root_source,true) || p->foreign || str_eq(p->name, "main")) continue;
-    if (std::find(m.reached.begin(), m.reached.end(), p) == m.reached.end())
+    if (std::find(m.reached.begin(), m.reached.end(), p) == m.reached.end()) {
       unreached += (unreached.empty() ? "" : ", ") + to_std(p->name);
+      unreached_procs.push_back(p);
+    }
   }
   // A shard prints a record for `--merge` on stdout and its own survivors on
   // stderr; the full report comes from the merge.
@@ -827,13 +830,21 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
     fflush(stdout);
   }
   if (opt.root_only) fprintf(report, "mutation scope: root-only (entry-source procedures; dependency checks retained)\n");
-  for (const Mutant *mu : survivors) {
-    Loc loc = diagnostic_loc(file->src, mu->loc);
-    auto point = source_point(file->src, loc);
-    fprintf(report, "%s:%d:%d: mutant survived: %s\n", point.path.c_str(), point.loc.line, point.loc.col, mu->what.c_str());
-    show_source(report, file->src, mu->loc);
+  if (g_diagnostics_json) {
+    // One coax.diagnostic.v1 object per survivor and per unreached procedure, on stderr.
+    for (const Mutant *mu : survivors)
+      error_at(file->src, mu->loc, "E0414", "mutant survived: " + mu->what, "add a check that fails for this change, or end the line with '// mutant: equivalent' if it can't change behavior");
+    for (const ProcDecl *p : unreached_procs)
+      error_at(file->src, p->loc, "E0415", "'" + to_std(p->name) + "' is not reached by any check", "call it from a #test or #forall");
+  } else {
+    for (const Mutant *mu : survivors) {
+      Loc loc = diagnostic_loc(file->src, mu->loc);
+      auto point = source_point(file->src, loc);
+      fprintf(report, "%s:%d:%d: mutant survived: %s\n", point.path.c_str(), point.loc.line, point.loc.col, mu->what.c_str());
+      show_source(report, file->src, mu->loc);
+    }
+    if (!unreached.empty()) fprintf(report, "not reached by any check: %s\n", unreached.c_str());
   }
-  if (!unreached.empty()) fprintf(report, "not reached by any check: %s\n", unreached.c_str());
   if (sharded) {
     fprintf(report, "shard %llu/%llu: %zu of %zu mutant%s, %zu killed, %zu survived", (unsigned long long)opt.shard,
             (unsigned long long)opt.shards, owned.size(), total, total == 1 ? "" : "s",

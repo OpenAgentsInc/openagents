@@ -5,6 +5,8 @@ One recorded diagnostic of each family (lexer, parser, checker, a failing
 check) must match its `.jsonl`; every line must parse, and every span must lie
 inside its file with a line and column that agree with its byte offset. An
 "add 'X'" fix carries an edit, and applying the parser's makes the file check.
+`coax mutate` gives each surviving mutant (E0414) and each procedure no check
+reaches (E0415) as an object too.
 Without the flag, the text is byte-identical to the `.txt` recorded with the
 release before the flag existed.
 """
@@ -97,6 +99,23 @@ class DiagnosticsJson(unittest.TestCase):
         result = coax("mutate", "--diagnostics", "json", "tests/diagnostics/checker.coax")
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(result.stderr, (CASES / "checker.jsonl").read_text())
+
+    def test_mutate_reports_survivors_and_unreached_procedures(self):
+        result = coax("mutate", "--diagnostics", "json", "tests/diagnostics/survivor.coax")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertEqual(result.stdout, "2 mutants, 0 killed, 2 survived\n")
+        self.assertEqual(result.stderr, (CASES / "survivor.jsonl").read_text())
+        records = [json.loads(line) for line in result.stderr.splitlines()]
+        self.assertEqual([r["code"] for r in records], ["E0414", "E0414", "E0415"])
+        for r in records:
+            self.assertEqual(list(r), KEYS)
+            self.check_span(r["span"])
+        self.assertEqual([r["span"]["line"] for r in records], [2, 2, 3])
+        text = coax("mutate", "tests/diagnostics/survivor.coax")
+        self.assertEqual(text.returncode, 1)
+        self.assertIn("survivor.coax:2:37: mutant survived: '*' became '+'", text.stdout)
+        self.assertIn("not reached by any check: next", text.stdout)
+        self.assertEqual(text.stderr, "")
 
     def test_text_is_unchanged_without_the_flag(self):
         for name in FAMILIES:

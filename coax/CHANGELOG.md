@@ -46,6 +46,10 @@ Commit: [`9e29938427cba24fd4fa6778812c216f2f3ad1f5`](https://github.com/OpenAgen
   Everglade pages, and the second was accepted. A constant is one static
   origin, and static origins that alone overflow a set collapse to one per
   type.
+- Follow-up (`ax-library-check-cache`): `coax mutate --diagnostics json`
+  prints each surviving mutant as an `E0414` `coax.diagnostic.v1` object at
+  the mutated token, and each procedure no check reaches as `E0415` at its
+  name. The summary line stays on stdout, and the text output is unchanged.
 
 ## 0.45.0 — Bounded Storage Library — 2026-10-31
 

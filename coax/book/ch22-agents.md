@@ -174,6 +174,19 @@ The flag works with `coax c`, `coax check`, `coax test` and `coax mutate`.
 Without it, or with `--diagnostics text`, the output is the text above,
 byte for byte.
 
+`coax mutate` reports the code its checks don't pin down the same way. Each
+surviving mutant is an `E0414` object whose span is the token the mutant
+changed, and each procedure that no check calls is an `E0415` object whose
+span is its name. The summary line stays on stdout:
+
+```shell
+$ coax mutate tests/diagnostics/survivor.coax --diagnostics json
+{"schema":"coax.diagnostic.v1","severity":"error","code":"E0414","message":"mutant survived: '*' became '+'","span":{"file":"tests/diagnostics/survivor.coax","line":2,"column":37,"offset":53,"length":1},"notes":[],"fixes":[{"message":"add a check that fails for this change, or end the line with '// mutant: equivalent' if it can't change behavior","edits":[]}]}
+{"schema":"coax.diagnostic.v1","severity":"error","code":"E0414","message":"mutant survived: 2 became 3","span":{"file":"tests/diagnostics/survivor.coax","line":2,"column":39,"offset":55,"length":1},"notes":[],"fixes":[{"message":"add a check that fails for this change, or end the line with '// mutant: equivalent' if it can't change behavior","edits":[]}]}
+{"schema":"coax.diagnostic.v1","severity":"error","code":"E0415","message":"'next' is not reached by any check","span":{"file":"tests/diagnostics/survivor.coax","line":3,"column":1,"offset":60,"length":4},"notes":[],"fixes":[{"message":"call it from a #test or #forall","edits":[]}]}
+2 mutants, 0 killed, 2 survived
+```
+
 ## Codes, not messages
 
 The `code` field is the part a tool should match on. Messages get

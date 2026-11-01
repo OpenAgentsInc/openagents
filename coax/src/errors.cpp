@@ -185,6 +185,8 @@ const ErrorInfo ERRORS[] = {
     {"E0411", "compile-time cast or shift out of range", "A cast evaluated while compiling does not fit its target, a value is not a member of the enum, or a shift amount is out of range."},
     {"E0412", "compile-time math has no finite result", "A math intrinsic evaluated while compiling gave infinity or NaN, such as sqrt(-1.0) or log(0.0). Compile-time results must be finite."},
     {"E0413", "native check emission is not qualified", "The verification-only checks-c command supports selected zero-argument #test bodies and their admitted checked callees. Selected #forall bodies, host effects, product main and unsupported representation/lifetime forms refuse at their original source location. This does not change ordinary product emission or waive authority checks."},
+    {"E0414", "mutant survived", "coax mutate changed this code and every check still passed, so no check depends on what it does. Add a check that fails for the change, or end the line with // mutant: equivalent when the change can't alter behavior. Printed by coax mutate --diagnostics json."},
+    {"E0415", "procedure not reached by any check", "coax mutate found no check that calls this procedure, so none of its mutants can be killed. Call it from a #test or #forall. Printed by coax mutate --diagnostics json."},
     // ---- E05xx: proto imports ----
     {"E0501", "invalid proto import", "Use #import_proto \"profile.pb\" as Prefix; with an exact FileDescriptorSet path relative to the source file."},
     {"E0502", "proto descriptor rejected", "The descriptor is malformed, outside importer limits or uses an unsupported shape. The importer reports the exact reason; no placeholder types are generated."},

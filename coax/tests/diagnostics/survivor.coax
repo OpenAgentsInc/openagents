@@ -1,0 +1,5 @@
+#import "Basic";
+twice :: (x: int) -> int { return x * 2; }
+next :: (x: int) -> int { return x + 1; }
+#test "twice is not negative" { #assert twice(3) >= 0; }
+main :: () { print("%\n", twice(next(1))); }
