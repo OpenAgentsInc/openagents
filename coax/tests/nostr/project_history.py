@@ -3,6 +3,9 @@
 
 This checks log projection only, not cryptographic verification or relay trust.
 The test key is the public scalar 1 fixture and is never used outside tests.
+fixtures/project_history.json is history-fixture.ts's output (signed events
+and model.ts's log), frozen on 2026-11-01 when the TypeScript project tools
+were removed.
 """
 import json, os, subprocess, tempfile
 from pathlib import Path
@@ -12,7 +15,7 @@ def run(*args, **kw):
  p=subprocess.run([str(x) for x in args],text=True,capture_output=True,**kw)
  if p.returncode: raise RuntimeError(f'{args[0]} failed {p.returncode}: {p.stderr[-2000:]}')
  return p.stdout
-fixture=json.loads(run('bun',ROOT/'coax/web/project/history-fixture.ts'))
+fixture=json.loads((ROOT/'coax/tests/nostr/fixtures/project_history.json').read_text())
 frames=''.join(json.dumps(['EVENT','issues',e],separators=(',',':'))+'\n' for e in fixture['events'])
 with tempfile.TemporaryDirectory(prefix='coax-project-history-') as tmp:
  d=Path(tmp);runner=d/'run.mjs'

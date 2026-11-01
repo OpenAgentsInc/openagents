@@ -1,7 +1,10 @@
 // What nip34.coax and nip22.coax read from every event in the captured coax
-// relay transcript, a JSON line per EVENT frame in order. nip34_parity.ts
-// compares these lines with what coax/web/project/model.ts reads from the
-// same events. Test tooling: it prints raw spans, so each line is JSON.
+// relay transcript, a JSON line per EVENT frame in order. Test tooling: it
+// prints raw spans, so each line is JSON. fixtures/nip34_dump.jsonl is this
+// output as of 2026-11-01, when nip34_parity.ts last found all 237 lines equal
+// to what the TypeScript model.ts read from the same events (237 match, 0
+// differ) before the TypeScript was removed. Check it with:
+//   coax/bin/coax run coax/tests/nostr/nip34_dump.coax | cmp - coax/tests/nostr/fixtures/nip34_dump.jsonl
 #import "Basic";
 #load "../../lib/nostr/nip34-event.coax";
 #load "../../lib/nostr/fixtures/coax_relay.coax";

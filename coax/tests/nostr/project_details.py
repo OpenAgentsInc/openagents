@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""The actual Coax details fold against the TS oracle, not event admission."""
+"""The actual Coax details fold against the TS oracle, not event admission.
+
+fixtures/project_details.json is details-fixture.ts's output, frozen on
+2026-11-01 when the TypeScript project tools were removed.
+"""
 import json, os, subprocess, tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[3]
@@ -8,7 +12,7 @@ def run(*args, data=None):
  p=subprocess.run([str(x) for x in args],input=data,capture_output=True)
  if p.returncode: raise RuntimeError(f'{args[0]} failed {p.returncode}: {p.stderr[-2000:].decode(errors="replace")}')
  return p.stdout
-cases=json.loads(run('bun',ROOT/'coax/web/project/details-fixture.ts'))
+cases=json.loads((ROOT/'coax/tests/nostr/fixtures/project_details.json').read_text())
 with tempfile.TemporaryDirectory(prefix='coax-project-details-') as tmp:
  d=Path(tmp); runner=d/'run.mjs'
  runner.write_text("import{WASI}from'node:wasi';import{readFileSync}from'node:fs';const w=new WASI({version:'preview1',args:process.argv.slice(2),env:{},preopens:{}});const{instance}=await WebAssembly.instantiate(readFileSync(process.argv[2]),{wasi_snapshot_preview1:w.wasiImport});w.start(instance);\n")

@@ -1,0 +1,312 @@
+// The Coax project's work seeds, checked offline before they are published:
+//
+//   openagents project plan-rules
+//
+// Every work file of apps/openagents-web/projects/coax/work reads and passes
+// work_check (unique slugs, known parents and blockers, no cycles), and the
+// items fit the page (MAX_ITEMS in apps/openagents-web/project.coax). In the
+// coax-nostr seed, every task names its files and its acceptance, comes after
+// its blockers, and lists as blocks exactly the tasks it blocks. Then the
+// plan's own rules (PLAN_RULES) hold: tasks that must exist, ordering through
+// blocked_by, and wording a task's body or acceptance must keep.
+// This replaces coax/web/project/nostr-plan.test.ts.
+
+// A rule a line, its fields split by '|':
+//   has|SLUG                     the task exists
+//   reaches|FROM|TO|yes or no    FROM waits on TO through blocked_by, at any depth
+//   status|SLUG|STATE
+//   body|SLUG|TEXT               the body holds TEXT
+//   acceptance|SLUG|TEXT         the acceptance, its checks joined by spaces, holds TEXT
+//   acceptance=|SLUG|A|B...      the acceptance is exactly A, B, ...
+PLAN_RULES :: [122] string.[
+  "reaches|nostr-event|schnorr-verify|yes",
+  "reaches|nostr-event|schnorr-sign|no",
+  "reaches|nostr-event-sign|schnorr-sign|yes",
+  "reaches|project-page-verify|nostr-event|yes",
+  "reaches|project-page-verify|schnorr-sign|no",
+  "reaches|claim-from-page|coord-fenced-claims|yes",
+  "reaches|secp-mult-base|crypto-secret-aggregate-closure|yes",
+  "reaches|secp-mult-const|crypto-secret-aggregate-closure|yes",
+  "reaches|crypto-secret-codegen|crypto-secret-aggregate-closure|yes",
+  "reaches|nostr-production-cutover|crypto-independent-review|yes",
+  "reaches|nostr-production-cutover|crypto-target-conformance|yes",
+  "reaches|nostr-production-cutover|crypto-secure-zero|yes",
+  "reaches|nostr-production-cutover|crypto-secret-codegen|yes",
+  "reaches|invariant-coax-only|nostr-production-cutover|yes",
+  "reaches|unlock-gate-coax|unlock-gate-format|yes",
+  "reaches|phone-sign-in-e2e|server-session-lifecycle|yes",
+  "has|nostr-support-profiles",
+  "has|nostr-proto-adapters",
+  "has|nostr-event-store",
+  "has|nostr-multirelay",
+  "has|host-grants",
+  "has|reach-freshness",
+  "has|host-codex-e2e",
+  "has|block-owner-admission",
+  "has|fi-jwks-policy",
+  "has|fi-jws-verifier",
+  "has|block-channel-policy",
+  "has|block-artifact-cas",
+  "has|agent-private-data",
+  "has|nip49-backup",
+  "status|coax-fix-compound-assign-view|resolved",
+  "body|coax-fix-compound-assign-view|e2f8432ea2",
+  "status|host-socket-pipe|resolved",
+  "body|host-socket-pipe|df008f96a4",
+  "status|coax-intrinsic-value-barrier|resolved",
+  "body|coax-intrinsic-value-barrier|b9a5f216f0",
+  "status|nostr-json|resolved",
+  "body|nostr-json|8f23a77f35",
+  "body|unicode-nfkc|Unicode 18.0.0",
+  "body|unicode-nfkc|UAX #15 revision 58",
+  "acceptance|unicode-nfkc|Full NormalizationTest",
+  "acceptance|unicode-nfkc|assigned scalars omitted by Part 1",
+  "reaches|nip49-primitives|unicode-nfkc|yes",
+  "reaches|nip49-primitives|nip49-aead-workspace|yes",
+  "reaches|nip49-primitives|nip49-kdf-workspace|yes",
+  "reaches|nip49-backup|nip49-kdf-workspace|yes",
+  "acceptance|nip49-kdf-workspace|password-derived temporary arrays",
+  "reaches|nip49-backup|nip49-aead-workspace|yes",
+  "reaches|nip49-backup|unicode-nfkc|yes",
+  "reaches|nostr-event|nostr-json-parser-checks|yes",
+  "reaches|nostr-jcs|nostr-json-parser-checks|yes",
+  "reaches|fi-jws-verifier|nostr-json-parser-checks|yes",
+  "body|fi-jws-verifier|RS256 only",
+  "body|fi-jws-verifier|fi-rs256-policy-v1",
+  "body|fi-jws-verifier|grants no identity authority",
+  "acceptance|fi-jws-verifier|Full AssertionPolicyId",
+  "acceptance|fi-jws-verifier|Real key-source adapters",
+  "reaches|fi-jws-verifier|fi-jwks-policy|yes",
+  "reaches|secp-mult-base|coax-run-resource-inputs|yes",
+  "reaches|coax-run-resource-inputs|coax-debug-only-fields|yes",
+  "body|coax-run-resource-inputs|Keep the current default",
+  "body|coax-run-resource-inputs|check/mutation budget waivers",
+  "body|coax-run-resource-inputs|live aggregate-storage budget",
+  "has|crypto-secret-public-loop-summaries",
+  "reaches|crypto-secret-public-loop-summaries|crypto-secret-aggregate-closure|yes",
+  "reaches|secp-mult-const|crypto-secret-public-loop-summaries|yes",
+  "body|crypto-secret-public-loop-summaries|smc_multiply",
+  "body|crypto-secret-public-loop-summaries|Do not raise or waive existing audit limits",
+  "body|crypto-secret-public-loop-summaries|cannot authorize production paths",
+  "acceptance|crypto-secret-public-loop-summaries|unproved guard keeps full admission false",
+  "acceptance=|secp-mult-const|100000 random scalar/peer pairs and exceptional points match|Secret branches/indices are forbidden by the documented source scope; timing probe records methodology without claiming proof",
+  "reaches|coax-run-copy-work|coax-run-resource-inputs|yes",
+  "body|coax-run-copy-work|does not charge",
+  "body|coax-run-copy-work|preserving the existing counter",
+  "acceptance|coax-run-copy-work|aggregate assignments",
+  "acceptance|coax-run-copy-work|contains_view",
+  "reaches|coax-mutation-scheduling|coax-run-resource-inputs|yes",
+  "body|coax-mutation-scheduling|fall back to the full reference runner",
+  "acceptance|coax-mutation-scheduling|every reachable mutation site",
+  "has|coax-release-compiler-provenance",
+  "reaches|coax-release-compiler-provenance|coax-mutation-scheduling|yes",
+  "body|coax-release-compiler-provenance|unrelated main commits must not trigger redundant compiler checks",
+  "acceptance|coax-release-compiler-provenance|before any staging write",
+  "acceptance|coax-release-compiler-provenance|without rerunning checks",
+  "has|schnorr-fast-verify",
+  "reaches|schnorr-sign|schnorr-fast-verify|yes",
+  "reaches|schnorr-fast-verify|schnorr-verify|yes",
+  "acceptance|schnorr-fast-verify|20,000,000-step",
+  "body|schnorr-fast-verify|do not replace it with a mock",
+  "has|project-verified-borrowed-state",
+  "reaches|project-page-verify|project-verified-borrowed-state|yes",
+  "acceptance|project-verified-borrowed-state|zero survivors",
+  "acceptance|project-verified-borrowed-state|interpreter-cap increase",
+  "acceptance|project-verified-borrowed-state|production-max",
+  "body|project-verified-borrowed-state|200-issue/1,562-event",
+  "reaches|nostr-host-proto-adapter|nip44-v2|yes",
+  "reaches|nostr-host-proto-adapter|nostr-proto-adapters|yes",
+  "reaches|host-grants|nostr-host-proto-adapter|yes",
+  "reaches|nostr-proto-adapters|nip44-v2|no",
+  "body|nostr-host-proto-adapter|plaintext supplied alongside an envelope is not evidence",
+  "reaches|nostr-proto-adapters|proto-generated-checks|yes",
+  "body|proto-generated-checks|Do not bypass generated validators",
+  "acceptance|proto-generated-checks|zero survivors",
+  "has|web-nostr-api-verifier-parity",
+  "reaches|web-nostr-api-verifier-parity|nostr-event|yes",
+  "reaches|web-nostr-api-verifier-parity|schnorr-sign|no",
+  "reaches|web-nostr-api-verifier-cutover|web-nostr-api-verifier-parity|yes",
+  "reaches|web-nostr-api-publisher|crypto-secret-audit-large-closure|yes",
+  "reaches|web-nostr-api-publisher|schnorr-self-verification-boundary|yes",
+  "reaches|web-nostr-api-publisher|crypto-independent-review|yes",
+  "reaches|nostr-production-cutover|web-nostr-api-publisher|yes",
+  "reaches|web-nostr-surface-retirement|web-nostr-api-publisher|yes",
+  "reaches|web-nostr-agent-publisher|crypto-secret-audit-large-closure|yes",
+  "reaches|web-nostr-agent-publisher|schnorr-self-verification-boundary|yes",
+  "reaches|web-nostr-agent-publisher|crypto-independent-review|yes",
+  "reaches|nostr-production-cutover|web-nostr-agent-publisher|yes",
+  "reaches|web-nostr-surface-retirement|web-nostr-agent-publisher|yes",
+  "reaches|web-nostr-surface-retirement|project-page-verify|yes",
+  "reaches|web-nostr-surface-retirement|publish-project-events|yes",
+  "reaches|web-nostr-surface-retirement|unlock-opener-coax|yes",
+  "reaches|web-nostr-surface-retirement|web-nostr-api-verifier-cutover|yes",
+  "reaches|web-nostr-surface-retirement|nostr-production-cutover|yes"
+];
+
+// Task slugs published long ago: renaming one would orphan its issue.
+PLAN_STABLE :: "coax-fix-compound-assign-view coax-intrinsic-value-barrier coax-intrinsic-wrapping-ops coax-intrinsic-mul-wide coax-debug-only-fields crypto-bytes crypto-vectors-pinned crypto-vector-runner crypto-sha256 crypto-hmac-hkdf crypto-pbkdf2 crypto-chacha20 nostr-hex-base64 secp-field-repr secp-field-mul secp-field-inv-sqrt secp-scalar secp-libsecp-harness secp-group secp-mult-verify schnorr-verify verify-one-real-event secp-mult-base secp-mult-const schnorr-sign crypto-ecdh-xonly crypto-ct-timing-harness nip44-v2 nip59-seal-wrap open-sealed-deck-native nostr-json nostr-event nostr-filter nostr-bech32 nostr-jcs nostr-envelope host-random-import host-socket-pipe host-storage-pipe nostr-relay-state-machine nostr-nip42 nostr-keys relay-in-page unlock-opener-coax unlock-gate-coax coax-nostr-cli invariant-coax-only publish-project-events project-page-live claim-from-page secp-glv ios-coax-nostr-native ios-key-custody nip46-signer nip46-client-page coax-qr-encoder ios-scan-to-sign-in server-nip98-session web-sign-in-page phone-sign-in-e2e project-page-verify";
+
+PL_TASKS :: 1024;
+// The coax-nostr seed, parsed: its tasks' nodes and slugs.
+Plan :: struct {
+  file: [WK_FILE] u8; nodes: [WK_NODES] JvNode; d: [1] Jv;
+  n: int; node: [PL_TASKS] int; slug: [PL_TASKS] string;
+  text: [WK_BYTES] u8; used: int;
+}
+// A string node's text, kept in the plan's arena ("" when it isn't one).
+pl_s :: (p: [] Plan, at: int) -> string {
+  if jv_kind(p[0].d[0], at) != JV_STRING { return ""; }
+  n := jv_str(p[0].d[0], at, p[0].text[p[0].used..<WK_BYTES]);
+  if n < 0 { return ""; }
+  s := cast(string) p[0].text[p[0].used..<p[0].used + n]; p[0].used += n;
+  return s;
+}
+pl_task :: (p: [] Plan, slug: string) -> int {
+  for k: 0..<p[0].n { if p[0].slug[k] == slug { return k; } }
+  return -1;
+}
+pl_list :: (p: [] Plan, k: int, name: string) -> int { return jv_get(p[0].d[0], p[0].node[k], name); }
+pl_has :: (p: [] Plan, k: int, name: string, slug: string) -> bool {
+  l := pl_list(p, k, name); d := p[0].d[0];
+  for i: 0..<jv_len(d, l) { if jv_raw(d, jv_at(d, l, i)) == slug { return true; } }
+  return false;
+}
+// from waits on target through blocked_by, at any depth (nostr-plan.test.ts reaches).
+pl_reaches :: (p: [] Plan, from: int, target: string, seen: [] bool) -> bool {
+  if from < 0 || seen[from] { return false; }
+  seen[from] = true;
+  l := pl_list(p, from, "blocked_by"); d := p[0].d[0];
+  for i: 0..<jv_len(d, l) {
+    s := jv_raw(d, jv_at(d, l, i));
+    if s == target || pl_reaches(p, pl_task(p, s), target, seen) { return true; }
+  }
+  return false;
+}
+// The acceptance checks joined by spaces, into out.
+pl_acceptance :: (p: [] Plan, k: int, out: [] u8) -> string {
+  l := pl_list(p, k, "acceptance"); d := p[0].d[0]; n: [1] int; n[0] = 0;
+  for i: 0..<jv_len(d, l) { if i > 0 { pd_put(out, n[..], " "); } pd_put(out, n[..], pl_s(p, jv_at(d, l, i))); }
+  return ifx n[0] < 0 then "" else cast(string) out[0..<n[0]];
+}
+pl_field :: (line: string, k: int) -> string {
+  i := 0; at := 0;
+  while at <= line.count {
+    e := at; while e < line.count && line[e] != '|' { e += 1; }
+    if i == k { return line[at..<e]; }
+    i += 1; at = e + 1;
+  }
+  return "";
+}
+pl_fields :: (line: string) -> int { n := 1; for c: line { if c == '|' { n += 1; } } return n; }
+// One rule: "" when it holds, else why not (into why).
+pl_rule :: (p: [] Plan, line: string, why: [] u8) -> string {
+  w: [1] int; w[0] = 0;
+  op := pl_field(line, 0); slug := pl_field(line, 1);
+  k := pl_task(p, slug);
+  if k < 0 { pd_put(why, w[..], "no task "); pd_put(why, w[..], slug); return cast(string) why[0..<w[0]]; }
+  ok := false;
+  if op == "has" { ok = true; }
+  else if op == "reaches" {
+    seen: [PL_TASKS] bool; for i: 0..<PL_TASKS { seen[i] = false; }
+    ok = pl_reaches(p, k, pl_field(line, 2), seen[..]) == (pl_field(line, 3) == "yes");
+  }
+  else if op == "status" { ok = pl_s(p, pl_list(p, k, "status")) == pl_field(line, 2); }
+  else if op == "body" { ok = pd_index(pl_s(p, pl_list(p, k, "body")), pl_field(line, 2), 0) >= 0; }
+  else if op == "acceptance" { buf: [262144] u8; ok = pd_index(pl_acceptance(p, k, buf[..]), pl_field(line, 2), 0) >= 0; }
+  else if op == "acceptance=" {
+    l := pl_list(p, k, "acceptance"); d := p[0].d[0];
+    ok = jv_len(d, l) == pl_fields(line) - 2;
+    for i: 0..<jv_len(d, l) { if ok && pl_s(p, jv_at(d, l, i)) != pl_field(line, i + 2) { ok = false; } }
+  }
+  else { pd_put(why, w[..], "unknown rule "); pd_put(why, w[..], op); return cast(string) why[0..<w[0]]; }
+  if ok { return ""; }
+  pd_put(why, w[..], "doesn't hold: "); pd_put(why, w[..], line);
+  return cast(string) why[0..<w[0]];
+}
+#test "plan rules read their fields" {
+  #assert pl_field("reaches|a|b|yes", 0) == "reaches" && pl_field("reaches|a|b|yes", 3) == "yes" && pl_field("has|a", 2) == "";
+  #assert pl_fields("acceptance=|s|x|y") == 4 && pl_fields("has|a") == 2;
+}
+
+pl_say :: (bad: [] int, a: string, b: string) { tool_err("plan-rules: "); tool_err(a); tool_errln(b); bad[0] += 1; }
+
+project_plan_rules :: (a: [] Args, r: [] Rep) -> int {
+  pj: [1] Proj;
+  if !pj_find_root(pj[..]) { return fail(r, EXIT_USAGE, "run it inside the openagents checkout"); }
+  root := pj_root(pj[..]);
+  bad: [1] int; bad[0] = 0; checked := 0; t: [24] u8;
+  // every work file reads and passes work_check, and the items fit the page
+  db: [2048] u8; dir := fs_join(root, "apps/openagents-web/projects/coax", db[..]);
+  w_: [1] Work; w := w_[..];
+  why := work_read(w, dir);
+  if why.count > 0 { return fail(r, EXIT_FAIL, why); }
+  cb: [2048] u8; src: [1] Pg;
+  sn := fs_read(fs_join(root, "apps/openagents-web/project.coax", cb[..]), src[0].b[..]);
+  text := ifx sn > 0 then cast(string) src[0].b[0..<sn] else "";
+  at := pd_index(text, "\nMAX_ITEMS :: ", 0); cap := 0;
+  if at >= 0 { i := at + 14; while i < text.count && text[i] >= '0' && text[i] <= '9' { cap = cap * 10 + cast(int) (text[i] - '0'); i += 1; } }
+  if cap <= 0 { pl_say(bad[..], "can't read MAX_ITEMS from ", "apps/openagents-web/project.coax"); }
+  else if w[0].n > cap { pl_say(bad[..], int_text(w[0].n, t[..]), " items, more than the page's MAX_ITEMS"); }
+  checked += 2;
+  // the coax-nostr seed
+  p_: [1] Plan; p := p_[..];
+  wb: [2048] u8; wdir := fs_join(dir, "work", wb[..]);
+  ls: [1] FsList; found := false;
+  if fs_list(wdir, ls[..]) >= 0 {
+    for e: 0..<ls[0].n {
+      name := fs_entry(ls[..], e);
+      if found || name.count < 6 || name[name.count - 5..<name.count] != ".json" { continue; }
+      fb: [4096] u8; n := fs_read(fs_join(wdir, name, fb[..]), p[0].file[..]);
+      if n < 0 || !jv_parse(p[0].d[..], cast(string) p[0].file[0..<n], p[0].nodes[..]) { continue; }
+      d := p[0].d[0];
+      if jv_raw(d, jv_get(d, 0, "v")) == SEED_SCHEMA && jv_raw(d, jv_path(d, 0, "initiative.slug")) == "coax-nostr" { found = true; }
+    }
+  }
+  if !found { return fail(r, EXIT_FAIL, "plan-rules: no coax-nostr seed in apps/openagents-web/projects/coax/work"); }
+  d := p[0].d[0]; ts := jv_get(d, 0, "tasks");
+  for i: 0..<jv_len(d, ts) {
+    if p[0].n >= PL_TASKS { return fail(r, EXIT_FAIL, "plan-rules: more tasks than it holds"); }
+    k := p[0].n; p[0].node[k] = jv_at(d, ts, i); p[0].slug[k] = pl_s(p, jv_get(d, p[0].node[k], "slug")); p[0].n += 1;
+  }
+  // each task: files, acceptance, after its blockers, and blocks the inverse of blocked_by
+  pos: [WK_ITEMS] int;
+  for k: 0..<w[0].n { pos[w[0].order[k]] = k; }
+  for k: 0..<p[0].n {
+    s := p[0].slug[k];
+    if jv_len(d, pl_list(p, k, "files")) == 0 { pl_say(bad[..], s, ": no files"); }
+    if jv_len(d, pl_list(p, k, "acceptance")) == 0 { pl_say(bad[..], s, ": no acceptance"); }
+    me := wk_find(w, s);
+    bl := pl_list(p, k, "blocked_by");
+    for i: 0..<jv_len(d, bl) {
+      b := wk_find(w, jv_raw(d, jv_at(d, bl, i)));
+      if me < 0 || b < 0 || pos[b] >= pos[me] { pl_say(bad[..], s, ": not after its blockers"); }
+    }
+    inverse := 0;
+    for o: 0..<p[0].n {
+      if !pl_has(p, o, "blocked_by", s) { continue; }
+      inverse += 1;
+      if !pl_has(p, k, "blocks", p[0].slug[o]) { pl_say(bad[..], s, ": blocks leaves out a task it blocks"); }
+    }
+    if jv_len(d, pl_list(p, k, "blocks")) != inverse { pl_say(bad[..], s, ": blocks names a task that doesn't wait on it"); }
+    checked += 4;
+  }
+  // the slugs published long ago
+  i := 0;
+  while i < PLAN_STABLE.count {
+    e := i; while e < PLAN_STABLE.count && PLAN_STABLE[e] != ' ' { e += 1; }
+    if pl_task(p, PLAN_STABLE[i..<e]) < 0 { pl_say(bad[..], "a published task is gone: ", PLAN_STABLE[i..<e]); }
+    checked += 1; i = e + 1;
+  }
+  // the plan's rules
+  for line: PLAN_RULES {
+    wb2: [4096] u8; no := pl_rule(p, line, wb2[..]);
+    if no.count > 0 { pl_say(bad[..], no, ""); }
+    checked += 1;
+  }
+  l: [1] Ln;
+  ln_s(l[..], "plan-rules: "); ln_s(l[..], int_text(checked, t[..])); ln_s(l[..], " checks over ");
+  ln_s(l[..], int_text(w[0].n, t[..])); ln_s(l[..], " items and "); ln_s(l[..], int_text(p[0].n, t[..])); ln_s(l[..], " coax-nostr tasks, ");
+  ln_s(l[..], int_text(bad[0], t[..])); ln_s(l[..], " failed");
+  print("%\n", ln_text(l[..]));
+  return ifx bad[0] == 0 then EXIT_OK else EXIT_FAIL;
+}

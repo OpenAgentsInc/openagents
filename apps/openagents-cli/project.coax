@@ -25,6 +25,7 @@
 #load "project-page.coax";
 #load "project-landing.coax";
 #load "project-data.coax";
+#load "project-plan-rules.coax";
 
 project_usage :: () {
   print("%\n", "Projects (the queue at openagents.com/projects/SLUG; --project SLUG, default coax):");
@@ -50,6 +51,7 @@ project_usage :: () {
   print("%\n", "  project publish-data [SLUG...] [--dry-run]  refresh the site's Markdown for SLUG without a release");
   print("%\n", "  project adopt SLUG [--api URL]   give the site a hand-made project's key");
   print("%\n", "  project capture [--tables]       the relay's frames for the page's subscriptions, as fixtures");
+  print("%\n", "  project plan-rules               check the Coax project's work seeds and the coax-nostr plan's rules");
   print("%\n", "  (--dir DIR the project's folder, --key FILE its key, --relay URL, --forget)");
   print("%\n", "");
 }
@@ -690,10 +692,11 @@ project_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if verb == "publish-data" { return project_publish_data(a, r); }
   if verb == "adopt" { return project_adopt(a, r); }
   if verb == "capture" { return project_capture(a, r); }
+  if verb == "plan-rules" { return project_plan_rules(a, r); }
   known := [12] string.["list", "show", "plan", "claim", "release", "note", "done", "status", "move", "respread", "publish", "check"];
   ok := false;
   for k: known { if verb == k { ok = true; } }
-  if !ok { return fail(r, EXIT_USAGE, "project: list, show, plan, claim, release, note, done, status, move, respread, publish, check, review, snapshot, index, bake, landing, publish-data, adopt, capture (openagents project help)"); }
+  if !ok { return fail(r, EXIT_USAGE, "project: list, show, plan, claim, release, note, done, status, move, respread, publish, check, review, snapshot, index, bake, landing, publish-data, adopt, capture, plan-rules (openagents project help)"); }
   what := positional(a, 2);
   needs_item := verb == "show" || verb == "plan" || verb == "claim" || verb == "release" || verb == "note" || verb == "done" || verb == "status" || verb == "move";
   if needs_item && what == "" { return fail(r, EXIT_USAGE, "which item? (openagents project help)"); }

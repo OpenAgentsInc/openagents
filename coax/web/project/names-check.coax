@@ -1,0 +1,66 @@
+// The project page's NIP-19 names (apps/openagents-web/project-names.coax)
+// against nostr-tools' encoder for every key, event and coordinate in the
+// captured relay transcript: coax_relay_names.coax holds nostr-tools' answers,
+// frozen when the TypeScript nip19.test.ts was removed.
+//   coax test coax/web/project/names-check.coax --library
+#load "../../../apps/openagents-web/project-names.coax";
+#load "../../lib/nostr/fixtures/coax_relay_names.coax";
+
+// The k-th tab-separated field of line, or "".
+nc_field :: (line: string, k: int) -> string {
+  i := 0; at := 0;
+  while at <= line.count {
+    e := at; while e < line.count && line[e] != 9 { e += 1; }
+    if i == k { return line[at..<e]; }
+    i += 1; at = e + 1;
+  }
+  return "";
+}
+nc_int :: (s: string) -> int {
+  if s.count == 0 { return 0; }
+  neg := s[0] == '-'; v := 0;
+  for i: (ifx neg then 1 else 0)..<s.count { v = v * 10 + cast(int) (s[i] - '0'); }
+  return ifx neg then -v else v;
+}
+// The lines whose name Coax spells differently: 0 when every one agrees.
+nc_mismatches :: (which: string) -> int {
+  bad := 0; i := 0; text := COAX_RELAY_NAMES;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    line := text[i..<e]; i = e + 1;
+    kind := nc_field(line, 0);
+    if kind != which { continue; }
+    out: [512] u8; n := -1; want := "";
+    if kind == "npub" { n = name_npub(nc_field(line, 1), out[..]); want = nc_field(line, 2); }
+    if kind == "nevent" { n = name_nevent(nc_field(line, 1), nc_field(line, 2), nc_field(line, 3), nc_int(nc_field(line, 4)), out[..]); want = nc_field(line, 5); }
+    if kind == "naddr" { n = name_coord(nc_field(line, 1), nc_field(line, 2), out[..]); want = nc_field(line, 3); }
+    if n < 0 || cast(string) out[0..<n] != want { bad += 1; }
+  }
+  return bad;
+}
+nc_count :: (which: string) -> int {
+  c := 0; i := 0; text := COAX_RELAY_NAMES;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    if nc_field(text[i..<e], 0) == which { c += 1; }
+    i = e + 1;
+  }
+  return c;
+}
+
+#test "the transcript names enough to check" {
+  #assert COAX_RELAY_NAMES_KEYS > 0 && COAX_RELAY_NAMES_IDS > 100 && COAX_RELAY_NAMES_COORDS > 2;
+  #assert nc_count("npub") + nc_count("nevent") + nc_count("naddr") == COAX_RELAY_NAMES_COUNT;
+  #assert nc_count("nevent") > 600;
+}
+#test "every key is the npub nostr-tools spells" #steps 200000000 { #assert nc_mismatches("npub") == 0; }
+#test "every event is the nevent nostr-tools spells: bare, with the relay hint, and with author and kind" #steps 2000000000 { #assert nc_mismatches("nevent") == 0; }
+#test "every coordinate is the naddr nostr-tools spells, with its tag's relay hint and with the page's" #steps 200000000 { #assert nc_mismatches("naddr") == 0; }
+#test "what isn't a key, an event or a coordinate gets no name" {
+  k := "9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575";
+  K := "9EF92E341B43EBC5617A75CF7ECA7E2E30FAE41E08A0614A344D851D98731575";
+  out: [512] u8;
+  #assert name_npub(K, out[..]) <= 0 && name_npub(k[1..<64], out[..]) <= 0;
+  #assert name_nevent("x", "wss://relay.openagents.com", k, 1, out[..]) <= 0;
+  #assert name_coord("30621;9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575:coax", "wss://relay.openagents.com", out[..]) <= 0;
+}
