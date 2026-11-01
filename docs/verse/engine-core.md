@@ -188,4 +188,8 @@ start new ones that replay), and `coax/web/replay-hosts.test.ts`: a 1,000-frame
 Grid session (keys, Shift, Space, arrows, a drag, the wheel, the stick, a
 full push, a look finger, a pinch and taps, at 60, 120 and 144 FPS with a
 stall) gives the same digest at every one of its 673 steps natively and in
-wasm.
+wasm. The session turns slowly while you walk, so its steps take the sine and
+cosine of angles where macOS's libm and wasi-libc round differently (sinf
+below a quarter of pi and past three quarters, cosf between, about 3 inputs
+in 100): with `sin` or `cos` in place of `math_sin` or `math_cos` in the
+walker's steering, the check fails at step 243 or 434.

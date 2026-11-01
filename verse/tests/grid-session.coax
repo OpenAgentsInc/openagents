@@ -5,6 +5,12 @@
 // the stick, run on a full push, look and pinch with the right thumb, and tap to jump. Natively
 // (`coax run verse/tests/grid-session.coax`) it prints every step's digest; the browser build
 // (grid-session-face.c) exports the same numbers, and the check compares them step by step.
+//
+// The turns are slow and come while you walk, so the steps' sines and cosines of the camera's
+// turn (verse/player.coax `wish`) cover angles where macOS's libm and wasi-libc round sinf and
+// cosf differently: sinf for |theta| < pi/4 and past 3 pi/4, cosf between, about 3 inputs in
+// 100 in each. With `sin` or `cos` there instead of aethyr/math.coax's, the host check fails
+// (sinf at step 243, cosf at step 434, 2026-10-31).
 
 #load "../gridwalk.coax";
 #import "Basic";
@@ -44,7 +50,9 @@ gs_touch :: (g: [] GridWalk, f: int) {
 }
 
 // One frame, as the face plays it: the fingers, then the keys held and the drag, arrows and
-// wheel gathered since the last frame (the arrows turn 1.8 rad/s; the pinch zooms as the wheel).
+// wheel gathered since the last frame (the arrows turn 0.3, 0.4 or 1.8 rad/s; the pinch zooms as
+// the wheel). You turn slowly while you walk: 0.79 to 0.24 rad and -0.88 to -0.33 rad with the
+// keys, then 1.53 to 2.66 rad with the keys and the stick.
 gs_frame :: (g: [] GridWalk, f: int) {
   gs_touch(g, f);
   dt := gs_dt(f);
@@ -52,7 +60,8 @@ gs_frame :: (g: [] GridWalk, f: int) {
   side := ifx f % 120 < 30 && f < 600 then 1.0f32 else ifx f > 500 && f < 540 then -1.0f32 else 0;
   shift := f > 180 && f < 240;
   space := (f >= 90 && f < 96) || (f >= 450 && f < 452) || f == 985;
-  arrows := ifx f > 300 && f < 380 then 1.8f32 * dt else 0;
+  arrows := ifx f > 10 && f < 120 then -0.3f32 * dt else ifx f > 150 && f < 260 then 0.3f32 * dt
+    else ifx f > 300 && f < 380 then 1.8f32 * dt else ifx f > 410 && f < 760 then 0.4f32 * dt else 0;
   drag := ifx f > 120 && f < 150 then -0.0055f32 * 7 else 0;
   tilt := ifx f > 520 && f < 560 then 0.0055f32 * 3 else 0;
   wheel := ifx f == 200 then 0.006f32 * 120 else ifx f == 560 then -0.006f32 * 300 else 0;

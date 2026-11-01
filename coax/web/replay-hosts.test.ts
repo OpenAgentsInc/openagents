@@ -5,7 +5,8 @@
 // native run of aethyr/examples/replay-a-walk.coax. The second check does the same for a recorded
 // Grid session (verse/tests/grid-session.coax: the Grid's own session code, verse/gridwalk.coax,
 // with keys, a drag, the wheel, the touch stick, a pinch and taps) and compares the digest of
-// every step.
+// every step. Both sessions turn while they walk through angles where the hosts' sinf and cosf
+// round differently, so either check fails if a step calls the C library's sin or cos.
 //   bun test coax/web/replay-hosts.test.ts
 import { expect, test } from "bun:test"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
