@@ -1,0 +1,104 @@
+// The checks of profiles-follows.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/profiles-follows.coax --run-steps 250000000
+#load "../profiles-follows.coax";
+#load "../../../coax/lib/nostr/nip19-core.coax";
+
+// book:begin check
+// NIP-05's example, as the NIP prints it: the kind 0 content, the URL the
+// client must GET, and both example responses, whitespace and all.
+SPEC_CONTENT :: "{\"name\": \"bob\", \"nip05\": \"bob@example.com\"}";
+SPEC_URL :: "https://example.com/.well-known/nostr.json?name=bob";
+SPEC_BODY :: "{\n  \"names\": {\n    \"bob\": \"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"\n  }\n}";
+SPEC_BODY_RELAYS :: "{\n  \"names\": {\n    \"bob\": \"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"\n  },\n  \"relays\": {\n    \"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\": [ \"wss://relay.example.com\", \"wss://relay2.example.com\" ]\n  }\n}";
+
+#test "NIP-05's example: content, URL and both responses" {
+  ident: [64] u8; n := nip05_from_metadata(SPEC_CONTENT, ident[..]);
+  id := nip05_parse(cast(string) ident[0..<n]);
+  url: [128] u8; u := nip05_url(id, url[..]);
+  #assert cast(string) url[0..<u] == SPEC_URL;
+  key: [32] u8; decode_hex(BOB_HEX, key[..]);
+  #assert nip05_check(id, 200, SPEC_BODY, key[..]) == N5_OK;
+  #assert nip05_check(id, 200, SPEC_BODY_RELAYS, key[..]) == N5_OK;
+  // NIP-05: "Fetchers MUST ignore any HTTP redirects".
+  for status: 300..<309 { #assert nip05_check(id, status, SPEC_BODY, key[..]) == N5_REDIRECT; }
+}
+// The npub in NAMES_NPUB is bob's key: NIP-19's decoder (chapter 19), and a
+// Python BIP-173 encoder that gives NIP-19's own npub example, agree. NIP-05
+// requires hex, so the response refuses.
+#test "an npub of the right key is still refused" {
+  out: [64] u8;
+  r := nip19_decode_checked("npub1kp34665c28f6a5xdd3y4k2ppv7k0wctjjpudja0uxsdjyegtq7us853d4g", out[..], false);
+  key: [32] u8; decode_hex(BOB_HEX, key[..]);
+  #assert r.error == NC_OK && r.type == N19_NPUB && r.written == 32;
+  for i: 0..<32 { #assert out[i] == key[i]; }
+  #assert nip05_check(nip05_parse("bob@example.com"), 200, NAMES_NPUB, key[..]) == N5_HEX;
+}
+// NIP-02's petname example tag, verbatim.
+#test "NIP-02's petname example reads as erin" {
+  e := fl_event(3, "[[\"p\", \"21df6d143fb96c2ec9d63726bf9edc7121df6d143fb96c2ec9d63726bf9edc71\", \"\", \"erin\"]]");
+  f := nostr_follow(e, 0);
+  #assert f.error == FL_OK && !f.has_relay && cast(string) f.petname[0..<f.petname_n] == "erin" && f.resolvable;
+  #assert f.pubkey[0] == 0x21 && f.pubkey[1] == 0xdf && f.pubkey[31] == 0x71;
+}
+// The follow lists' ids from Python's hashlib over json.dumps([0, pubkey,
+// created_at, 3, tags, ""], separators=(",", ":")), and the signer's key
+// from BIP-340 vector 0 (secret key 3).
+OLD_ID :: "af17d275dbf2dab414fefb86ada21f479067e19f9e1f3cc20fc34583d91ace68";
+NEW_ID :: "2a0b4f5525259c0747d8e5834fcf7c0c983047166ace36dd3c32c9f47d630d21";
+EARLY_ID :: "427487804bb316d3e5a937c06ea69ebd1eda5ca819134fb5808f6cb6fbb82776";
+VECTOR0_PUB :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+same_hex :: (bytes: [32] u8, text: string) -> bool {
+  want: [32] u8; decode_hex(text, want[..]);
+  for i: 0..<32 { if bytes[i] != want[i] { return false; } }
+  return true;
+}
+#test "same_hex sees a difference in the first byte" {
+  a: [32] u8; decode_hex(NEW_ID, a[..]);
+  #assert same_hex(a, NEW_ID);
+  a[0] ^= 1; #assert !same_hex(a, NEW_ID);
+}
+#test "the signed follow lists have the independent ids and signer" #steps 1000000000 {
+  b: [1024] u8; scratch: [4096] u8;
+  times := [3] int.[T0, T0 + 60, T0 - 60];
+  tags := [3] string.[OLD_TAGS, NEW_TAGS, OLD_TAGS];
+  ids := [3] string.[OLD_ID, NEW_ID, EARLY_ID];
+  for i: 0..<3 {
+    e := nostr_event_verify_vartime(sign_follows(times[i], tags[i], b[..]), scratch[..], false);
+    #assert e.verified && e.kind == 3 && e.created_at == times[i];
+    #assert same_hex(e.id, ids[i]) && same_hex(e.public_key, VECTOR0_PUB);
+  }
+}
+// By NIP-01 and NIP-02, worked out by hand: the newer list (T0 + 60) is the
+// one live record whichever order the three lists arrive in; a list older
+// than the live one is superseded; one already seen is a duplicate.
+#test "the newest follow list is the only live one in every arrival order" #steps 1000000000 {
+  bo: [1024] u8; bn: [1024] u8; be: [1024] u8; scratch: [4096] u8;
+  texts := [3] string.[sign_follows(T0, OLD_TAGS, bo[..]), sign_follows(T0 + 60, NEW_TAGS, bn[..]), sign_follows(T0 - 60, OLD_TAGS, be[..])];
+  orders := [18] int.[0, 1, 2, 0, 2, 1, 1, 0, 2, 1, 2, 0, 2, 0, 1, 2, 1, 0];
+  recs3: [3] RsdRec; ok: [3] bool;
+  for k: 0..<3 { e := nostr_event_verify_vartime(texts[k], scratch[..], false); recs3[k] = record(e); ok[k] = e.verified; }
+  for o: 0..<6 {
+    arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+    seen_new := false;
+    for step: 0..<3 {
+      k := orders[3 * o + step];
+      got := ns_store_admit(s[..], recs3[k], texts[k], ok[k]);
+      if k == 1 { #assert got == NSS_ACCEPT; seen_new = true; }
+      else if seen_new { #assert got == NSS_SUPERSEDED; }
+    }
+    live := 0;
+    for i: 0..<s[0].n { if ns_store_visible(s[..], i, T0) { live += 1; #assert same_hex(s[0].recs[i].id, NEW_ID); } }
+    #assert live == 1 && s[0].live == 1;
+    #assert ns_store_admit(s[..], recs3[0], texts[0], ok[0]) != NSS_ACCEPT;
+  }
+}
+// A list that was not verified is never stored.
+#test "an unverified follow list is refused" #steps 1000000000 {
+  b: [1024] u8; scratch: [4096] u8;
+  text := sign_follows(T0, OLD_TAGS, b[..]);
+  e := nostr_event_verify_vartime(text, scratch[..], false);
+  arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  #assert ns_store_admit(s[..], record(e), text, false) == NSS_UNVERIFIED && s[0].n == 0;
+}
+// book:end check

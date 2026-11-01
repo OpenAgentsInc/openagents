@@ -1,0 +1,151 @@
+// book:begin example
+#load "../../coax/lib/nostr/metadata.coax";
+#load "../../coax/lib/nostr/follows.coax";
+#load "../../coax/lib/nostr/nip05.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/store_core.coax";
+#import "Basic";
+
+META :: [8] string.["ok", "event", "kind", "json", "shape", "duplicate key", "field", "output"];
+N5 :: [12] string.["ok", "identifier", "output", "redirect", "status", "json", "shape",
+                   "duplicate", "unknown name", "hex", "mismatch", "absent"];
+FOLLOW :: [6] string.["ok", "event", "kind", "index", "not p", "tag"];
+STORE :: [12] string.["accept", "duplicate", "superseded", "bad", "", "unverified", "", "", "", "", "", "full"];
+
+// Print a label and bytes as lowercase hex.
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// NIP-05's example user and its example responses.
+BOB_HEX :: "b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9";
+BOB_PROFILE :: "{\"name\": \"bob\", \"nip05\": \"bob@example.com\", \"display_name\": \"Bob B.\", \"bot\": false}";
+NAMES :: "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"}}";
+NAMES_RELAYS :: "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"},\"relays\":{\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\":[\"wss://relay.example.com\",\"wss://relay2.example.com\"]}}";
+NAMES_NPUB :: "{\"names\":{\"bob\":\"npub1kp34665c28f6a5xdd3y4k2ppv7k0wctjjpudja0uxsdjyegtq7us853d4g\"}}";
+// The BIP-340 vector 0 secret key, 3, signs the follow lists; vector 1's
+// public key is one of the followed keys.
+SECRET_HEX :: "0000000000000000000000000000000000000000000000000000000000000003";
+VECTOR1_PUB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+OLD_TAGS :: "[[\"p\",\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\",\"wss://relay.example.com\",\"bob\"]]";
+NEW_TAGS :: "[[\"p\",\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\",\"wss://relay.example.com\",\"bob\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"\",\"vector_1\"],[\"t\",\"x\"]]";
+T0 :: 1761686400;
+
+// Check one response to bob@example.com's URL.
+check :: (label: string, identifier: string, status: int, body: string, pubkey: string) {
+  key: [32] u8; decode_hex(pubkey, key[..]);
+  print("%: %\n", label, N5[nip05_check(nip05_parse(identifier), status, body, key[..])]);
+}
+// Sign a kind 3 event with the fixed key and zero aux, so the output repeats.
+sign_follows :: (created: int, tags: string, out: [] u8) -> string {
+  key: [32] u8; decode_hex(SECRET_HEX, key[..]); aux: [32] u8;
+  sw: [1] NostrSignWork; scratch: [4096] u8;
+  k := EVENT_MORE;
+  while k == EVENT_MORE { k = nostr_event_sign_step(key[..], aux[..], created, 3, tags, "", sw[..], scratch[..], out, false); }
+  #assert k > 0;
+  return cast(string) out[0..<k];
+}
+// Print every tag of a follow list as a follow.
+show_follows :: (e: NostrEvent) {
+  for i: 0..<e.tags {
+    f := nostr_follow(e, i);
+    print("tag %: %", i, FOLLOW[f.error]);
+    if f.error != FL_OK { print("\n"); continue; }
+    print(", petname \"%\" (%), relay \"%\"\n", cast(string) f.petname[0..<f.petname_n],
+          ifx f.resolvable then "resolvable" else "not resolvable", cast(string) f.relay[0..<f.relay_n]);
+    print_hex("  pubkey", f.pubkey[..]);
+  }
+}
+// The store record for a verified event; tags relative to its text.
+record :: (e: NostrEvent) -> RsdRec {
+  c: RsdRec;
+  c.id = e.id; c.author = e.public_key; c.kind = e.kind; c.created = e.created_at; c.expiry = -1;
+  c.tags_from = e.tags_from; c.tags_to = e.tags_to;
+  return c;
+}
+admit :: (s: [] RsdStore, label: string, text: string) {
+  scratch: [4096] u8;
+  e := nostr_event_verify_vartime(text, scratch[..], false);
+  print("admit %: %\n", label, STORE[ns_store_admit(s, record(e), text, e.verified)]);
+}
+show_store :: (s: [] RsdStore) {
+  for i: 0..<s[0].n {
+    r := s[0].recs[i];
+    print("record %: created_at %, %, ", i, r.created, ifx ns_store_visible(s, i, T0) then "live" else "replaced");
+    print_hex("id begins", r.id[0..<4]);
+  }
+}
+
+main :: () {
+  print("a profile\n");
+  m := nostr_metadata_parse(BOB_PROFILE);
+  print("kind 0 content: %, name \"%\", about %\n", META[m.error], nmd_text(m, NMD_NAME),
+        ifx m.has[NMD_ABOUT] then "present" else "absent");
+  ident: [64] u8;
+  n := nip05_from_metadata(BOB_PROFILE, ident[..]);
+  identifier := cast(string) ident[0..<n];
+  print("nip05: %\n", identifier);
+
+  print("the identifier\n");
+  id := nip05_parse(identifier);
+  print("parse: %, local \"%\", domain \"%\", root %\n", N5[id.error], id.local, id.domain, id.root);
+  url: [128] u8;
+  u := nip05_url(id, url[..]);
+  print("GET %\n", cast(string) url[0..<u]);
+  root := nip05_parse("_@bob.com");
+  u = nip05_url(root, url[..]);
+  print("_@bob.com: root %, GET %\n", root.root, cast(string) url[0..<u]);
+
+  print("responses for bob@example.com\n");
+  check("200, names", "bob@example.com", 200, NAMES, BOB_HEX);
+  check("200, names and relays", "bob@example.com", 200, NAMES_RELAYS, BOB_HEX);
+
+  print("a follow list\n");
+  old_buf: [1024] u8; new_buf: [1024] u8; scratch: [4096] u8;
+  old := sign_follows(T0, OLD_TAGS, old_buf[..]);
+  early_buf: [1024] u8;
+  early := sign_follows(T0 - 60, OLD_TAGS, early_buf[..]);
+  new := sign_follows(T0 + 60, NEW_TAGS, new_buf[..]);
+  e := nostr_event_verify_vartime(new, scratch[..], false);
+  print("kind %, created_at %, tags %, verified %\n", e.kind, e.created_at, e.tags, e.verified);
+  print_hex("signer", e.public_key[..]);
+  show_follows(e);
+
+  print("a newer follow list replaces the older one\n");
+  arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  admit(s[..], "older list", old);
+  admit(s[..], "newer list", new);
+  admit(s[..], "older list again", old);
+  admit(s[..], "a list from a minute before", early);
+  admit(s[..], "newer list again", new);
+  show_store(s[..]);
+
+  print("refusals\n");
+  check("301 redirect", "bob@example.com", 301, NAMES, BOB_HEX);
+  check("404", "bob@example.com", 404, NAMES, BOB_HEX);
+  check("another key", "bob@example.com", 200, NAMES, VECTOR1_PUB);
+  check("Bob@example.com", "Bob@example.com", 200, NAMES, BOB_HEX);
+  check("bob+x@example.com", "bob+x@example.com", 200, NAMES, BOB_HEX);
+  check("bob@example.com:443", "bob@example.com:443", 200, NAMES, BOB_HEX);
+  check("alice@example.com", "alice@example.com", 200, NAMES, BOB_HEX);
+  check("npub value", "bob@example.com", 200, NAMES_NPUB, BOB_HEX);
+  check("names an array", "bob@example.com", 200, "{\"names\":[]}", BOB_HEX);
+  print("kind 0, name twice: %\n", META[nostr_metadata_parse("{\"name\":\"a\",\"name\":\"b\"}").error]);
+  print("kind 0, not JSON: %\n", META[nostr_metadata_parse("{\"name\":").error]);
+  print("kind 0, nip05 1: %\n", nip05_from_metadata("{\"nip05\":1}", ident[..]));
+  sb: [1024] u8;
+  wrong := nostr_event_verify_vartime(sign_follows(T0, OLD_TAGS, sb[..]), scratch[..], false);
+  wrong.kind = 1;
+  print("follow of a kind 1 event: %\n", FOLLOW[nostr_follow(wrong, 0).error]);
+  bad := nostr_event_verify_vartime(sign_follows(T0, "[[\"p\",\"B0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"]]", sb[..]), scratch[..], false);
+  f := nostr_follow(bad, 0);
+  print("p tag with uppercase hex: %, tag status %\n", FOLLOW[f.error], f.tag);
+}
+// book:end example

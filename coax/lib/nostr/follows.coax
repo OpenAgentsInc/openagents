@@ -1,0 +1,113 @@
+// NIP-02 follow lists: a kind 3 event's p tags, each a followed pubkey with
+// an optional relay URL and an optional petname, ["p", key, relay, petname].
+// The content is not used. Kind 3 is replaceable, so the newest list is the
+// whole set; store_core.coax does that replacement. A follow says only that
+// the signer chose to list the key; a petname is the signer's local name for
+// it, not the followed person's.
+#load "tags.coax";
+#authority;
+
+FL_OK :: 0; FL_EVENT :: 1; FL_KIND :: 2; FL_INDEX :: 3; FL_NOT_P :: 4; FL_TAG :: 5;
+FL_KIND_FOLLOWS :: 3;
+
+NostrFollow :: struct {
+  error: int = FL_EVENT; tag: int;         // tag: nostr_tag's status when error is FL_TAG
+  pubkey: [32] u8;
+  has_relay: bool; relay: [NT_MAX_VALUE] u8; relay_n: int;
+  petname: [NT_MAX_VALUE] u8; petname_n: int;
+  resolvable: bool;                        // a petname of only ASCII letters, digits and _
+}
+
+// NIP-02's example follow list. The NIP abbreviates its first three keys
+// ("91cf9..4e5ca"); here each is its first five and last five digits with
+// zeros between, to make 64. The fourth is the NIP's petname example; a t tag and a bare
+// p tag follow.
+FL_EXAMPLE :: "[[\"p\",\"91cf90000000000000000000000000000000000000000000000000000004e5ca\",\"wss://alicerelay.com/\",\"alice\"],[\"p\",\"14aeb0000000000000000000000000000000000000000000000000000008dad4\",\"wss://bobrelay.com/nostr\",\"bob\"],[\"p\",\"612ae000000000000000000000000000000000000000000000000000000e610f\",\"ws://carolrelay.com/ws\",\"carol\"],[\"p\",\"21df6d143fb96c2ec9d63726bf9edc7121df6d143fb96c2ec9d63726bf9edc71\",\"\",\"erin\"],[\"t\",\"x\"],[\"p\",\"21df6d143fb96c2ec9d63726bf9edc7121df6d143fb96c2ec9d63726bf9edc71\"]]";
+fl_event :: (kind: int, tags: string) -> NostrEvent { e := nt_event(tags); e.kind = kind; return e; }
+
+#test "NIP-02's example: pubkey, relay and petname per p tag" {
+  e := fl_event(3, FL_EXAMPLE);
+  f := nostr_follow(e, 0);
+  #assert f.error == FL_OK && f.pubkey[0] == 0x91 && f.pubkey[2] == 0x90 && f.pubkey[31] == 0xca && f.has_relay;
+  #assert cast(string) f.relay[0..<f.relay_n] == "wss://alicerelay.com/" && cast(string) f.petname[0..<f.petname_n] == "alice" && f.resolvable;
+  f = nostr_follow(e, 1); #assert f.error == FL_OK && f.pubkey[0] == 0x14 && f.pubkey[31] == 0xd4 && cast(string) f.petname[0..<f.petname_n] == "bob";
+  f = nostr_follow(e, 2); #assert f.error == FL_OK && cast(string) f.relay[0..<f.relay_n] == "ws://carolrelay.com/ws" && f.petname_n == 5;
+  f = nostr_follow(e, 3); #assert f.error == FL_OK && !f.has_relay && f.relay_n == 0 && cast(string) f.petname[0..<f.petname_n] == "erin";
+  #assert f.pubkey[0] == 0x21 && f.pubkey[31] == 0x71;
+  #assert nostr_follow(e, 4).error == FL_NOT_P;
+  f = nostr_follow(e, 5); #assert f.error == FL_OK && !f.has_relay && f.petname_n == 0 && !f.resolvable;
+  #assert nostr_follow(e, 6).error == FL_INDEX && nostr_follow(e, -1).error == FL_INDEX;
+}
+#test "only a parsed kind 3 event is read" {
+  #assert nostr_follow(fl_event(1, FL_EXAMPLE), 0).error == FL_KIND;
+  #assert nostr_follow(fl_event(10002, FL_EXAMPLE), 0).error == FL_KIND;
+  bad: NostrEvent; bad.kind = 3; #assert nostr_follow(bad, 0).error == FL_EVENT;
+  e := fl_event(3, FL_EXAMPLE); e.tags_to = e.original.count + 1; #assert nostr_follow(e, 0).error == FL_EVENT;
+}
+#test "a broken p tag refuses with the tag reader's status" {
+  f := nostr_follow(fl_event(3, "[[\"p\",\"91CF9b7f3ad9fe8a2d1d7a6f4e8f3f2d1a9c5b0e7d6f4a3b2c1d0e9f8a7b4e5c\"]]"), 0);
+  #assert f.error == FL_TAG && f.tag == NT_HEX;
+  f = nostr_follow(fl_event(3, "[[\"p\",\"91cf90000000000000000000000000000000000000000000000000000004e5ca\",\"https://x\"]]"), 0);
+  #assert f.error == FL_TAG && f.tag == NT_RELAY;
+  f = nostr_follow(fl_event(3, "[[\"p\"]]"), 0); #assert f.error == FL_TAG && f.tag == NT_SHAPE;
+  f = nostr_follow(fl_event(3, "[[\"p\",\"91cf90000000000000000000000000000000000000000000000000000004e5ca\",\"\",1]]"), 0);
+  #assert f.error == FL_TAG && f.tag == NT_EVENT;
+}
+#test "petnames decode; only letters, digits and _ resolve; extra values are ignored" {
+  f := nostr_follow(fl_event(3, "[[\"p\",\"91cf90000000000000000000000000000000000000000000000000000004e5ca\",\"\",\"Z_9\\u0061\",\"extra\"]]"), 0);
+  #assert f.error == FL_OK && cast(string) f.petname[0..<f.petname_n] == "Z_9a" && f.resolvable;
+  names := [10] string.["a b", "a.b", "a-b", "a/b", "a@b", "a`b", "a{b", "a[b", "a:b", ".ab"];
+  for name: names {
+    tags: [256] u8;
+    n := json_raw(tags[..], 0, "[[\"p\",\"91cf90000000000000000000000000000000000000000000000000000004e5ca\",\"\",");
+    n = json_write_string(tags[..], n, name); n = json_raw(tags[..], n, "]]");
+    f = nostr_follow(fl_event(3, cast(string) tags[0..<n]), 0);
+    #assert f.error == FL_OK && cast(string) f.petname[0..<f.petname_n] == name && !f.resolvable;
+  }
+  ok := [4] string.["A", "z", "0", "9"];
+  for name: ok {
+    tags: [256] u8;
+    n := json_raw(tags[..], 0, "[[\"p\",\"91cf90000000000000000000000000000000000000000000000000000004e5ca\",\"\",");
+    n = json_write_string(tags[..], n, name); n = json_raw(tags[..], n, "]]");
+    #assert nostr_follow(fl_event(3, cast(string) tags[0..<n]), 0).resolvable;
+  }
+  long: [NT_MAX_VALUE + 100] u8; n := json_raw(long[..], 0, "[[\"p\",\"91cf90000000000000000000000000000000000000000000000000000004e5ca\",\"\",\"");
+  start := n; for i: 0..<NT_MAX_VALUE { long[n] = 'a'; n += 1; }
+  n = json_raw(long[..], n, "\"]]");
+  f = nostr_follow(fl_event(3, cast(string) long[0..<n]), 0); #assert f.error == FL_OK && f.petname_n == NT_MAX_VALUE;
+  n = json_raw(long[..], start + NT_MAX_VALUE, "a\"]]");
+  // A longer one is over the tag reader's value bound.
+  f = nostr_follow(fl_event(3, cast(string) long[0..<n]), 0); #assert f.error == FL_TAG && f.tag == NT_LIMIT;
+}
+
+fl_fail :: (f: NostrFollow, error: int) -> NostrFollow { r := f; r.error = error; return r; }
+fl_name_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; }
+// The petname of tag index, decoded into out: its length, 0 when absent, or
+// -1 when it does not fit. nostr_tag has already read the tag.
+
+fl_petname :: (e: NostrEvent, index: int, out: [] u8) -> int {
+  j: [1] Json; started := nt_start(j[..], e);
+  tok := json_next(j[..]);
+  for k: 0..<index { skipped := json_skip(j[..]); tok = json_next(j[..]); }
+  at := 0; v := json_next(j[..]);
+  while v == JSON_STRING {
+    if at == 3 { return json_unescape(json_text(j[..]), out); }
+    at += 1; v = json_next(j[..]);
+  }
+  return 0;
+}
+// The index'th tag of a kind 3 event as a follow: FL_NOT_P for any other tag.
+nostr_follow :: (e: NostrEvent, index: int) -> NostrFollow {
+  f: NostrFollow; j: [1] Json;
+  if !nt_start(j[..], e) { return f; }
+  if e.kind != FL_KIND_FOLLOWS { return fl_fail(f, FL_KIND); }
+  t := nostr_tag(e, index);
+  if t.error == NT_INDEX { return fl_fail(f, FL_INDEX); }
+  if t.error != NT_OK { f.tag = t.error; return fl_fail(f, FL_TAG); }
+  if t.type != NT_P { return fl_fail(f, FL_NOT_P); }
+  f.pubkey = t.pubkey; f.has_relay = t.has_relay; f.relay = t.relay; f.relay_n = t.relay_n;
+  // nostr_tag already refused a petname over NT_MAX_VALUE bytes.
+  f.petname_n = fl_petname(e, index, f.petname[..]); f.resolvable = f.petname_n > 0;
+  for i: 0..<f.petname_n { if !fl_name_char(f.petname[i]) { f.resolvable = false; } }
+  return fl_fail(f, FL_OK);
+}

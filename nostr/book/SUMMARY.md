@@ -76,7 +76,7 @@
 
 **X. Every NIP**
 
-- [45. Profiles, follows and names](ch045-profiles-follows-and-names.md) — partly implemented
+- [45. Profiles, follows and names](ch045-profiles-follows-and-names.md) — implemented
 - [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) — implemented
 - [47. Encrypted key backup](ch047-encrypted-key-backup.md) — implemented
 - [48. Signers outside the app](ch048-signers-outside-the-app.md) — design draft

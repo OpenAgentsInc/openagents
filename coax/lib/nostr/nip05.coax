@@ -1,0 +1,220 @@
+// NIP-05 internet identifiers, offline: split "local@domain", write the
+// https://<domain>/.well-known/nostr.json?name=<local> URL, read a kind 0
+// content's "nip05" value, and check a fetched response against a pubkey.
+// The fetch itself is the host's: this file takes the HTTP status and body it
+// got. A redirect status refuses (NIP-05: fetchers MUST ignore redirects), so
+// a host that follows redirects cannot pass a check here, but it must also not
+// follow them itself. A match only says the domain names this key today; it
+// is identification, not proof of who a person is. The "relays" object is not
+// read.
+#load "hex.coax";
+#load "json.coax";
+#authority;
+
+N5_OK :: 0; N5_IDENTIFIER :: 1; N5_OUTPUT :: 2; N5_REDIRECT :: 3; N5_STATUS :: 4;
+N5_JSON :: 5; N5_SHAPE :: 6; N5_DUPLICATE :: 7; N5_UNKNOWN :: 8; N5_HEX :: 9;
+N5_MISMATCH :: 10; N5_ABSENT :: 11;
+N5_MAX_LOCAL :: 64; N5_MAX_DOMAIN :: 253; N5_MAX_BODY :: 65536;
+N5_PREFIX :: "https://"; N5_PATH :: "/.well-known/nostr.json?name=";
+
+// Spans of the identifier text; root is "_@domain", shown as the domain.
+Nip05Id :: struct { error: int = N5_IDENTIFIER; local: string; domain: string; root: bool; }
+
+N5_BOB :: "b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9";
+n5_key :: (text: string) -> [32] u8 { k: [32] u8; r := hex_decode_checked(text, k[..], false); return k; }
+
+#test "an identifier splits at its @ into a local part and a domain" {
+  id := nip05_parse("bob@example.com");
+  #assert id.error == N5_OK && id.local == "bob" && id.domain == "example.com" && !id.root;
+  id = nip05_parse("_@bob.com"); #assert id.error == N5_OK && id.local == "_" && id.root;
+  id = nip05_parse("a-z_0.9@sub-1.example.org"); #assert id.error == N5_OK && id.local == "a-z_0.9";
+  #assert nip05_parse("x@localhost").error == N5_OK;
+}
+#test "the local part allows only a-z, 0-9, -, _ and ." {
+  #assert nip05_parse("Bob@example.com").error == N5_IDENTIFIER;
+  #assert nip05_parse("bob+x@example.com").error == N5_IDENTIFIER;
+  #assert nip05_parse("@example.com").error == N5_IDENTIFIER;
+  #assert nip05_parse("bob").error == N5_IDENTIFIER && nip05_parse("").error == N5_IDENTIFIER;
+  #assert nip05_parse("a@b@example.com").error == N5_IDENTIFIER;
+  #assert nip05_parse("b/b@example.com").error == N5_IDENTIFIER && nip05_parse("b:b@example.com").error == N5_IDENTIFIER;
+  #assert nip05_parse("b`b@example.com").error == N5_IDENTIFIER && nip05_parse("b{b@example.com").error == N5_IDENTIFIER;
+  long: [N5_MAX_LOCAL + 4] u8;
+  for i: 0..<N5_MAX_LOCAL { long[i] = 'a'; }
+  long[N5_MAX_LOCAL] = '@'; long[N5_MAX_LOCAL + 1] = 'x'; long[N5_MAX_LOCAL + 2] = '.'; long[N5_MAX_LOCAL + 3] = 'y';
+  #assert nip05_parse(cast(string) long[..]).error == N5_OK;
+  over: [N5_MAX_LOCAL + 5] u8;
+  for i: 0..<N5_MAX_LOCAL + 1 { over[i] = 'a'; }
+  over[N5_MAX_LOCAL + 1] = '@'; over[N5_MAX_LOCAL + 2] = 'x'; over[N5_MAX_LOCAL + 3] = '.'; over[N5_MAX_LOCAL + 4] = 'y';
+  #assert nip05_parse(cast(string) over[..]).error == N5_IDENTIFIER;
+}
+#test "the domain is lowercase DNS labels: no port, path, empty label or uppercase" {
+  #assert nip05_parse("bob@").error == N5_IDENTIFIER && nip05_parse("bob@Example.com").error == N5_IDENTIFIER;
+  #assert nip05_parse("bob@example.com:8080").error == N5_IDENTIFIER && nip05_parse("bob@example.com/x").error == N5_IDENTIFIER;
+  #assert nip05_parse("bob@.example.com").error == N5_IDENTIFIER && nip05_parse("bob@example.com.").error == N5_IDENTIFIER;
+  #assert nip05_parse("bob@example..com").error == N5_IDENTIFIER && nip05_parse("bob@ex_ample.com").error == N5_IDENTIFIER;
+  #assert nip05_parse("bob@exam`le.com").error == N5_IDENTIFIER && nip05_parse("bob@exam{le.com").error == N5_IDENTIFIER;
+  #assert nip05_parse("bob@a").error == N5_OK && nip05_parse("bob@9-z.0").error == N5_OK;
+  d: [N5_MAX_DOMAIN + 3] u8; d[0] = 'b'; d[1] = '@';
+  for i: 2..<N5_MAX_DOMAIN + 2 { d[i] = ifx i % 2 == 0 then 'a' else '.'; }
+  #assert nip05_parse(cast(string) d[0..<N5_MAX_DOMAIN + 2]).error == N5_OK;
+  d[N5_MAX_DOMAIN + 2] = 'a';
+  #assert nip05_parse(cast(string) d[..]).error == N5_IDENTIFIER;
+}
+#test "the well-known URL puts the local part in the query" {
+  out: [128] u8;
+  n := nip05_url(nip05_parse("bob@example.com"), out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "https://example.com/.well-known/nostr.json?name=bob";
+  n = nip05_url(nip05_parse("_@bob.com"), out[..]);
+  #assert cast(string) out[0..<n] == "https://bob.com/.well-known/nostr.json?name=_";
+  #assert nip05_url(nip05_parse("Bob@example.com"), out[..]) == -1;
+  #assert nip05_url(nip05_parse("bob@example.com"), out[0..<50]) == -1;
+  #assert nip05_url(nip05_parse("bob@example.com"), out[0..<51]) == 51;
+}
+#test "a kind 0 content's nip05 value, decoded" {
+  out: [64] u8;
+  n := nip05_from_metadata("{\"name\": \"bob\", \"nip05\": \"bob@example.com\"}", out[..]);
+  #assert n == 15 && cast(string) out[0..<n] == "bob@example.com";
+  n = nip05_from_metadata("{\"nip\\u0030\\u0035\":\"b\\u006fb@x.y\",\"x\":{\"nip05\":1}}", out[..]);
+  #assert cast(string) out[0..<n] == "bob@x.y";
+  n = nip05_from_metadata("{\"x\":1,\"nip05\":\"a@b\"}", out[..]); #assert n == 3 && cast(string) out[0..<n] == "a@b";
+  #assert nip05_from_metadata("{\"name\":\"bob\"}", out[..]) == -1;
+  #assert nip05_from_metadata("{\"nip05\":1}", out[..]) == -1;
+  #assert nip05_from_metadata("{\"nip05\":\"a@b\"", out[..]) == -1;
+  #assert nip05_from_metadata("[\"nip05\"]", out[..]) == -1;
+  #assert nip05_from_metadata("{\"nip05\":\"bob@example.com\"}", out[0..<14]) == -1;
+}
+#test "NIP-05's example response names bob's key" {
+  id := nip05_parse("bob@example.com"); key := n5_key(N5_BOB);
+  body := "{\n  \"names\": {\n    \"bob\": \"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"\n  }\n}";
+  #assert nip05_check(id, 200, body, key[..]) == N5_OK;
+  relays := "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"},\"relays\":{\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\":[\"wss://relay.example.com\",\"wss://relay2.example.com\"]}}";
+  #assert nip05_check(id, 200, relays, key[..]) == N5_OK;
+  first := "{\"relays\":{},\"names\":{\"alice\":\"00\",\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\",\"carol\":[]}}";
+  #assert nip05_check(id, 200, first, key[..]) == N5_OK;
+  number := "{\"names\":{\"alice\":1,\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"}}";
+  #assert nip05_check(id, 200, number, key[..]) == N5_OK;
+}
+#test "redirects, other statuses and bad bodies refuse" {
+  id := nip05_parse("bob@example.com"); key := n5_key(N5_BOB);
+  ok := "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"}}";
+  #assert nip05_check(id, 301, ok, key[..]) == N5_REDIRECT && nip05_check(id, 300, ok, key[..]) == N5_REDIRECT;
+  #assert nip05_check(id, 399, ok, key[..]) == N5_REDIRECT && nip05_check(id, 400, ok, key[..]) == N5_STATUS;
+  #assert nip05_check(id, 299, ok, key[..]) == N5_STATUS && nip05_check(id, 204, ok, key[..]) == N5_STATUS;
+  #assert nip05_check(id, 201, ok, key[..]) == N5_STATUS;
+  #assert nip05_check(nip05_parse("Bob@example.com"), 200, ok, key[..]) == N5_IDENTIFIER;
+  #assert nip05_check(id, 200, ok, key[0..<31]) == N5_OUTPUT;
+  #assert nip05_check(id, 200, "{\"names\":", key[..]) == N5_JSON;
+  #assert nip05_check(id, 200, "[]", key[..]) == N5_SHAPE && nip05_check(id, 200, "{}", key[..]) == N5_SHAPE;
+  #assert nip05_check(id, 200, "{\"names\":[]}", key[..]) == N5_SHAPE;
+  #assert nip05_check(id, 200, "{\"names\":{}}", key[..]) == N5_UNKNOWN;
+  #assert nip05_check(id, 200, "{\"names\":{\"bobby\":\"x\",\"bo\":\"x\"}}", key[..]) == N5_UNKNOWN;
+  #assert nip05_check(id, 200, "{\"names\":{\"bob\":1}}", key[..]) == N5_SHAPE;
+  #assert nip05_check(id, 200, "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"},\"names\":{}}", key[..]) == N5_DUPLICATE;
+  #assert nip05_check(id, 200, "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\",\"b\\u006fb\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"}}", key[..]) == N5_DUPLICATE;
+  #assert nip05_check(id, 200, "{\"names\":{\"bob\":\"B0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"}}", key[..]) == N5_HEX;
+  #assert nip05_check(id, 200, "{\"names\":{\"bob\":\"b0635d6A9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9\"}}", key[..]) == N5_HEX;
+  #assert nip05_check(id, 200, "{\"names\":{\"bob\":\"b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b\"}}", key[..]) == N5_HEX;
+  #assert nip05_check(id, 200, "{\"names\":{\"bob\":\"npub1kp34665c28f6a5xdd3y4k2ppv7k0wctjjpudja0uxsdjyegtq7us853d4g\"}}", key[..]) == N5_HEX;
+  other := n5_key("f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9");
+  #assert nip05_check(id, 200, ok, other[..]) == N5_MISMATCH;
+  key[31] ^= 1; #assert nip05_check(id, 200, ok, key[..]) == N5_MISMATCH;
+  key[31] ^= 1; key[0] ^= 1; #assert nip05_check(id, 200, ok, key[..]) == N5_MISMATCH;
+  key[0] ^= 1; key[31] ^= 1;
+  big: [N5_MAX_BODY + 1] u8; for i: 0..<big.count { big[i] = ' '; }
+  for i: 0..<ok.count { big[i] = ok[i]; }
+  key[31] ^= 1;
+  #assert nip05_check(id, 200, cast(string) big[0..<N5_MAX_BODY], key[..]) == N5_OK;
+  #assert nip05_check(id, 200, cast(string) big[..], key[..]) == N5_JSON;
+}
+
+n5_local_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.'; }
+n5_label_char :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'; }
+// Splits "local@domain". The local part is NIP-05's a-z0-9-_. (at most 64
+// bytes); the domain is dot-separated nonempty labels of a-z0-9- (at most
+// 253 bytes). Uppercase is refused, not folded: lowercase it before.
+nip05_parse :: (text: string) -> Nip05Id {
+  id: Nip05Id; at := 0;
+  while at < text.count && n5_local_char(text[at]) { at += 1; }
+  if at == 0 || at > N5_MAX_LOCAL || at >= text.count || text[at] != '@' { return id; }
+  domain := text[at + 1..<text.count];
+  if domain.count > N5_MAX_DOMAIN { return id; }
+  // Every label, the first and the last among them, needs one character.
+  empty := true;
+  for c: domain {
+    if c == '.' { if empty { return id; } empty = true; continue; }
+    if !n5_label_char(c) { return id; }
+    empty = false;
+  }
+  if empty { return id; }
+  id.error = N5_OK; id.local = text[0..<at]; id.domain = domain; id.root = id.local == "_";
+  return id;
+}
+// The URL to GET into out: its length, or -1 for a bad id or a short out.
+// The local part's characters need no percent-escaping in a query.
+nip05_url :: (id: Nip05Id, out: [] u8) -> int {
+  if id.error != N5_OK { return -1; }
+  n := json_raw(out, 0, N5_PREFIX); n = json_raw(out, n, id.domain);
+  n = json_raw(out, n, N5_PATH); return json_raw(out, n, id.local);
+}
+// The decoded top-level "nip05" string of a kind 0 content into out: its
+// length, or -1 when the content is not one object, the value is absent or
+// not a string, or it does not fit.
+nip05_from_metadata :: (content: string, out: [] u8) -> int {
+  if !json_valid(content) { return -1; }
+  j: [1] Json; json_start(j[..], content);
+  if json_next(j[..]) != JSON_OBJECT { return -1; }
+  t := json_next(j[..]);
+  while t == JSON_STRING {
+    wanted := json_is(json_text(j[..]), "nip05"); t = json_next(j[..]);
+    if wanted && t == JSON_STRING { return json_unescape(json_text(j[..]), out); }
+    if wanted { return -1; }
+    skipped := json_skip(j[..]); t = json_next(j[..]);
+  }
+  return -1;
+}
+// The key a "names" object gives the local part: N5_OK with it in key, or
+// N5_UNKNOWN, N5_DUPLICATE, N5_SHAPE or N5_HEX. j is just past the {.
+n5_name :: (j: [] Json, local: string, key: [] u8) -> int {
+  found := N5_UNKNOWN; t := json_next(j);
+  while t == JSON_STRING {
+    mine := json_is(json_text(j), local); t = json_next(j);
+    if mine {
+      if found != N5_UNKNOWN { return N5_DUPLICATE; }
+      if t != JSON_STRING { return N5_SHAPE; }
+      found = N5_HEX; raw := json_text(j);
+      // Lowercase hex has ASCII bit 5 set; uppercase A-F does not.
+      lower := raw.count == 64;
+      for c: raw { if (c & 32) == 0 { lower = false; } }
+      if lower && hex_decode_checked(raw, key, false).error == NC_OK { found = N5_OK; }
+    }
+    skipped := json_skip(j); t = json_next(j);
+  }
+  return found;
+}
+// Checks a response to nip05_url(id): the HTTP status the host got and the
+// body. N5_OK only for status 200 and a JSON object whose "names" object
+// maps the local part (once) to pubkey in 64 lowercase hex digits.
+nip05_check :: (id: Nip05Id, status: int, body: string, pubkey: [] u8) -> int {
+  if id.error != N5_OK { return N5_IDENTIFIER; }
+  if pubkey.count != 32 { return N5_OUTPUT; }
+  if status >= 300 && status < 400 { return N5_REDIRECT; }
+  if status != 200 { return N5_STATUS; }
+  if body.count > N5_MAX_BODY || !json_valid(body) { return N5_JSON; }
+  j: [1] Json; json_start(j[..], body);
+  if json_next(j[..]) != JSON_OBJECT { return N5_SHAPE; }
+  result := N5_ABSENT; key: [32] u8;
+  t := json_next(j[..]);
+  while t == JSON_STRING {
+    names := json_is(json_text(j[..]), "names"); t = json_next(j[..]);
+    if names {
+      if result != N5_ABSENT { return N5_DUPLICATE; }
+      if t != JSON_OBJECT { return N5_SHAPE; }
+      result = n5_name(j[..], id.local, key[..]);
+      if result != N5_OK { return result; }
+    } else { skipped := json_skip(j[..]); }
+    t = json_next(j[..]);
+  }
+  if result == N5_ABSENT { return N5_SHAPE; }
+  for i: 0..<32 { if key[i] != pubkey[i] { return N5_MISMATCH; } }
+  return N5_OK;
+}

@@ -1,0 +1,41 @@
+a profile
+kind 0 content: ok, name "bob", about absent
+nip05: bob@example.com
+the identifier
+parse: ok, local "bob", domain "example.com", root false
+GET https://example.com/.well-known/nostr.json?name=bob
+_@bob.com: root true, GET https://bob.com/.well-known/nostr.json?name=_
+responses for bob@example.com
+200, names: ok
+200, names and relays: ok
+a follow list
+kind 3, created_at 1761686460, tags 3, verified true
+signer: f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9
+tag 0: ok, petname "bob" (resolvable), relay "wss://relay.example.com"
+  pubkey: b0635d6a9851d3aed0cd6c495b282167acf761729078d975fc341b22650b07b9
+tag 1: ok, petname "vector_1" (resolvable), relay ""
+  pubkey: dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659
+tag 2: not p
+a newer follow list replaces the older one
+admit older list: accept
+admit newer list: accept
+admit older list again: duplicate
+admit a list from a minute before: superseded
+admit newer list again: duplicate
+record 0: created_at 1761686400, replaced, id begins: af17d275
+record 1: created_at 1761686460, live, id begins: 2a0b4f55
+refusals
+301 redirect: redirect
+404: status
+another key: mismatch
+Bob@example.com: identifier
+bob+x@example.com: identifier
+bob@example.com:443: identifier
+alice@example.com: unknown name
+npub value: hex
+names an array: shape
+kind 0, name twice: duplicate key
+kind 0, not JSON: json
+kind 0, nip05 1: -1
+follow of a kind 1 event: kind
+p tag with uppercase hex: tag, tag status 4

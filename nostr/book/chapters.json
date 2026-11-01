@@ -882,14 +882,19 @@
    "number": 45,
    "title": "Profiles, follows and names",
    "file": "ch045-profiles-follows-and-names.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     22,
     28
    ],
    "source": [
-    "coax/lib/nostr/metadata.coax"
+    "coax/lib/nostr/follows.coax",
+    "coax/lib/nostr/metadata.coax",
+    "coax/lib/nostr/nip05.coax",
+    "coax/lib/nostr/store_core.coax",
+    "nostr/examples/checks/profiles-follows.coax",
+    "nostr/examples/profiles-follows.coax"
    ],
    "qualified_targets": [
     "cpu"
