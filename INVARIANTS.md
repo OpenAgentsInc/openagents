@@ -2824,6 +2824,25 @@ and failing-check diagnostics; every line parses and every span is checked
 against its file; the parser fix applied makes the file check; `mutate`
 gives the same object; text recorded with 0.45.0 is unchanged).
 
+## Code queries answer from the checked graph and use a cache only while its inputs match
+
+`coax query FILE defines|uses|exports` answers from the checked program
+through `#load`, never from text, so no answer lies in a comment or a string,
+and each use's line and column point at the written name. A use is a written
+name that resolves to the declaration; an inferred type is not a use. The
+cached index is used only when the compiler binary's SHA-256, the entry unit,
+and every source unit's path and SHA-256 and every descriptor's SHA-256 match
+the ones it was built from; any difference, or a damaged file, makes the query
+check the program again. The query's check stops before compile-time
+evaluation and `#authority` checks and changes nothing the compiler emits.
+
+Check: `coax/tests/query.coax` (recorded answers for a fixture module with
+comments, strings, an alias, an export list, untyped and folded constants
+and a generic body, and for the compiler's own sources; every compiler use
+is checked to be the name in code; a cold and a warm answer match, and a warm
+query over the compiler sources takes under 1 s; an edit to a loaded unit
+changes the next answer; a damaged cache is rebuilt).
+
 ## CPU reflection lowers to bounded ordinary values
 
 `type_info`, `field_info` and `enum_info` are implemented in the Coax parser
