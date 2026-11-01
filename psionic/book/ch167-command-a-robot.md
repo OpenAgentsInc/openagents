@@ -1013,7 +1013,6 @@ Among valid candidates meeting every goal, compare these keys exactly, without a
 SSE reduces in tick-major, joint-major order. For IAE, sum seven absolute errors for each post-state, multiply that row by 0.002 seconds, then accumulate rows; combined cards add cases 0 through 3. Each candidate retains every case score and goal flag. The selector publishes both winner and next feasible runner-up, the first separating key and signed runner-minus-winner gaps. If no candidate meets all goals, it returns no winner. No larger grid or best-available promotion follows a miss.
 
 <!-- source: psionic/examples/panda-pd-gain-search.coax pgs-study -->
-
 ```jai
  gains:[1]PgsGains;
  #assert pnt_ok(pgs_gains(8,0,gains[..]));

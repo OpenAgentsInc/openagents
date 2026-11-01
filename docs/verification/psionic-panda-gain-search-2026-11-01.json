@@ -1,0 +1,1004 @@
+{
+  "schema": "psionic.panda-gain-search.publication.v1",
+  "passed": true,
+  "scope": "Test-only frozen nine-family gain study, exact baseline carry, Coax scoring/selection and chapter167. No feasible family is an admitted result.",
+  "source_tree_commit": "331be04ed1bf0c33dad4b0ec0792f3e7de7959dc",
+  "original_measured_receipts": {
+    "source-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/source-qualification.json",
+      "bytes": 5704,
+      "sha256": "184000c11331980c066604f6b5c1c6b8cd380700ef8e83d38325387f3beafe0f"
+    },
+    "preparation-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/preparation-qualification.json",
+      "bytes": 30166,
+      "sha256": "5d8d0f76f012273bf16cf6e6d672bf65a6cdc863cfd94d8c68ed73813dc4fd51"
+    },
+    "native-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/native-qualification.json",
+      "bytes": 34314,
+      "sha256": "101480a5223bc2dd2a18e703742ab51fd20e2d29932991b9a7f897e16af162d3"
+    },
+    "independent-objective.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/independent-objective.json",
+      "bytes": 72494,
+      "sha256": "a641a64aaff428f5504a6295749ce52499f58f1cc15d3adf88325c068472076e"
+    },
+    "independent-publication.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/independent-publication.json",
+      "bytes": 2671,
+      "sha256": "38e45ff4b6a844d9bda3b8dcf6c3538e4ed60eb2118443ac2a29e583b21dfac3"
+    },
+    "native-publication-v1.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/native-publication-v1.json",
+      "bytes": 5911,
+      "sha256": "594af690fe2280f0695ade572f1e9b1ec3ac0093e49099bb497259c4d5bce9ad"
+    },
+    "example-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/example-qualification.json",
+      "bytes": 13201,
+      "sha256": "9b111cfcea03a13eed70cd33c40cf579856f4557659ce1efcbaea402c54da455"
+    },
+    "cached-gate-routing-qualification.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/cached-gate-routing-qualification.json",
+      "bytes": 905,
+      "sha256": "2c99f0f17d4b3706fb806e92a5c7f5c0ec56729473ab4f9af03d0a5841513ca1"
+    },
+    "cached-adapter-provenance-v2.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/cached-adapter-provenance-v2.json",
+      "bytes": 1793,
+      "sha256": "5d02466752ca79792127b5a24e8d55ac5440886c33323a05665969db8c35136a"
+    },
+    "baseline-carry.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/baseline-carry.json",
+      "bytes": 17541,
+      "sha256": "b21ec4de9f02ddfe9fd25c97c220f33f456fda3e66d9c6b366f428138b68643e"
+    },
+    "experiment.json": {
+      "path": "psionic/fixtures/robotics/panda-gain-search/experiment.json",
+      "bytes": 59450,
+      "sha256": "67c872e87b64041c9a0fde7014f828a345a0d48148d496fe087575d49fe38b31"
+    }
+  },
+  "new_source_checks": {
+    "groups": 25,
+    "actual_emitted_root_mutants": 578,
+    "killed": 578,
+    "survived": 0,
+    "equivalence_waivers": false,
+    "quantity_operator_token_provenance_complete": false
+  },
+  "once_only_canonical_grid": {
+    "passed": true,
+    "SDK_calls": 0,
+    "new_trajectories": 32,
+    "new_plant_steps": 24000,
+    "attempted_steps": 24000,
+    "baseline_plant_steps": 0,
+    "refused_trajectories": 0,
+    "assertions": 6337236
+  },
+  "carried_baseline": {
+    "rollouts": 4,
+    "new_plant_steps": 0,
+    "exact_trace_and_source_bound": true
+  },
+  "cached_scorer_modes": {
+    "debug": {
+      "passed": true,
+      "SDK_calls": 0,
+      "plant_steps": 0,
+      "case_cards": 36,
+      "candidates": 9,
+      "selection_bytes": 64,
+      "assertions": 515393
+    },
+    "release": {
+      "passed": true,
+      "SDK_calls": 0,
+      "plant_steps": 0,
+      "case_cards": 36,
+      "candidates": 9,
+      "selection_bytes": 64,
+      "assertions": 515393
+    },
+    "sanitized": {
+      "passed": true,
+      "SDK_calls": 0,
+      "plant_steps": 0,
+      "case_cards": 36,
+      "candidates": 9,
+      "selection_bytes": 64,
+      "assertions": 515393
+    }
+  },
+  "independent_objective": {
+    "case_metric_comparison": {
+      "passed": true,
+      "values": 1152,
+      "max_abs_error": 5.773159728050814e-14,
+      "maximum_fraction_of_frozen_budget": 0.009323734327124756,
+      "atol": 2e-12,
+      "rtol": 2e-12
+    },
+    "candidate_metric_comparison": {
+      "passed": true,
+      "values": 18,
+      "max_abs_error": 1.6653345369377348e-16,
+      "maximum_fraction_of_frozen_budget": 7.279461594749587e-05,
+      "atol": 2e-12,
+      "rtol": 2e-12
+    },
+    "reader_guards": {
+      "passed": true,
+      "refused_cache_cases": 14,
+      "refused_score_cases": 14,
+      "SDK_calls": 0,
+      "plant_steps": 0
+    },
+    "exact_policy_guards": {
+      "passed": true,
+      "cases": 6,
+      "plant_steps": 0,
+      "SDK_calls": 0
+    },
+    "all_integer_flags_counts_exact": true,
+    "winner": -1,
+    "runner_up": -1,
+    "feasible_candidates": 0
+  },
+  "outcome": {
+    "valid_complete_profiles": 9,
+    "feasible_profiles": 0,
+    "winner": -1,
+    "runner_up": -1,
+    "diagnostic_minimax_profile": 7,
+    "diagnostic_profile_promoted": false,
+    "heldout_validation_executed": false,
+    "SDK_calls": 0,
+    "grid_expanded": false,
+    "goals_retuned": false
+  },
+  "new_current_emitter": {
+    "path": "docs/verification/coax-gain-search-emitter-binding-2026-11-01.json",
+    "bytes": 26018,
+    "sha256": "dd229921cf9c0eaef50d746b87996deb9f26cdc6b52201abd9d4c8fab3267614"
+  },
+  "main_binding": {
+    "passed": true,
+    "scope": "One new aggregate C/H binding only. Original source/native/independent numerical results carried; no old gates/grid/scorer/SDK reruns.",
+    "input_fingerprint": "1f705c937102977db5dd7de04cee3451dcbcc29d67f66cf7081dd27e78966892",
+    "compiler_sha256": "26c061b8508bdc5e8ac4cc9bed3417005d3091b0df21dd6c11909a74908062b1",
+    "compiler_build_receipt_sha256": "dd229921cf9c0eaef50d746b87996deb9f26cdc6b52201abd9d4c8fab3267614",
+    "compiler_scope": "PRIVATE current C++ build with source-bound reuse of unchanged generated frontend/protocol inputs and object. Not bootstrap/fixed-point/release/cache/cross-host/query-feature qualification.",
+    "commands": [
+      {
+        "argv": [
+          "/tmp/coax-gain-search-current-compiler-first/coax",
+          "c",
+          "psionic/tests/robotics/panda-pd-gain-search.coax",
+          "--library",
+          "--header",
+          "/tmp/panda-gain-search-main-binding-first/debug/panda-pd-gain-search.h"
+        ],
+        "returncode": 0,
+        "seconds": 1.6560695830266923
+      },
+      {
+        "argv": [
+          "/tmp/coax-gain-search-current-compiler-first/coax",
+          "c",
+          "psionic/tests/robotics/panda-pd-gain-search.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/panda-gain-search-main-binding-first/release/panda-pd-gain-search.h"
+        ],
+        "returncode": 0,
+        "seconds": 1.7019648340065032
+      }
+    ],
+    "emissions": [
+      {
+        "mode": "debug",
+        "artifact": "panda-pd-gain-search.c",
+        "bytes": 484125,
+        "sha256": "aaa4d69170aad14057b3f6c0dd08711a1197df82a750e8eb17325d7ba0392a45",
+        "first_native_artifact_sha256": "aaa4d69170aad14057b3f6c0dd08711a1197df82a750e8eb17325d7ba0392a45",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "debug",
+        "artifact": "panda-pd-gain-search.h",
+        "bytes": 80303,
+        "sha256": "a729f78e19f6cb8a608c9f84f73bd4a70fd331b32bb7927b8b973c4129de85c0",
+        "first_native_artifact_sha256": "a729f78e19f6cb8a608c9f84f73bd4a70fd331b32bb7927b8b973c4129de85c0",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-pd-gain-search.c",
+        "bytes": 481611,
+        "sha256": "d27fc1e4b3a205c6dba67eafa145b4007a3009963fcef21ed0fe84d40376a131",
+        "first_native_artifact_sha256": "d27fc1e4b3a205c6dba67eafa145b4007a3009963fcef21ed0fe84d40376a131",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-pd-gain-search.h",
+        "bytes": 80303,
+        "sha256": "a729f78e19f6cb8a608c9f84f73bd4a70fd331b32bb7927b8b973c4129de85c0",
+        "first_native_artifact_sha256": "a729f78e19f6cb8a608c9f84f73bd4a70fd331b32bb7927b8b973c4129de85c0",
+        "exact_native_context_match": true
+      }
+    ],
+    "source": {
+      "psionic/lib/robotics/panda-fluid-types.coax": {
+        "bytes": 967,
+        "sha256": "ef46794ed2297b0487e28506c3aa9b440b1c1cf527ae8f69ab48cf5b57fb90ea"
+      },
+      "psionic/lib/robotics/panda-mass-solve.coax": {
+        "bytes": 5391,
+        "sha256": "6d25a8837e7e3be1e922dd753a54f5dc40ab1f32697236069c8d00169c21221f"
+      },
+      "psionic/fixtures/robotics/panda-joint-pd-tracking/sdk-reference.json": {
+        "bytes": 94039,
+        "sha256": "dde03524accbad921211a6e27f2b86858827b68aa83c8b0b03759db063aca21c"
+      },
+      "psionic/fixtures/robotics/panda-joint-pd-tracking/experiment.json": {
+        "bytes": 31229,
+        "sha256": "cfe805220004838440a4ea92c258880597ca5de42b7360ca7102281e242b3612"
+      },
+      "psionic/lib/robotics/panda-forward-dynamics.coax": {
+        "bytes": 8440,
+        "sha256": "c6fa01c7b366425bcf2dd8bfc985135e136411e08d29d15587652522820298d0"
+      },
+      "psionic/fixtures/robotics/panda-joint-pd-tracking/analytic-reference.json": {
+        "bytes": 9507,
+        "sha256": "ded8453aa62076fcac37eff5e71d776fd666692b220472d10f8e75199eedffc3"
+      },
+      "psionic/lib/robotics/panda-actuation-math.coax": {
+        "bytes": 2909,
+        "sha256": "509d6f7dce0fc238700b9dfcbca31234203692397cf28dd130f67f2d2d09c106"
+      },
+      "psionic/lib/robotics/panda-euler-fixtures.coax": {
+        "bytes": 3545,
+        "sha256": "d552e8bf57b85b9b435f1b90a388b9303acc0f18323173ed6f5907e3f77c64f6"
+      },
+      "psionic/lib/robotics/panda-mass-solve-basis.coax": {
+        "bytes": 3024,
+        "sha256": "1b13f3d784293110920ac3bd250dd08ba472e9105a2cc312781ab750eb54ce56"
+      },
+      "psionic/fixtures/robotics/panda-joint-pd-tracking/native-qualification.json": {
+        "bytes": 38013,
+        "sha256": "86cc01d00e0f765b3bca61873d1cd38c16768440adbb13f2272fa999554f17dc"
+      },
+      "psionic/lib/robotics/panda-mass-solve-check-fixtures.coax": {
+        "bytes": 630,
+        "sha256": "57299d5100b559e4aa64e29db9809458a2b25ce858afc4568cd71862c66d57d3"
+      },
+      "psionic/lib/robotics/panda-fluid-body.coax": {
+        "bytes": 5664,
+        "sha256": "f0e29ce67269e08cdaf31a404622e33c397a0b40e3ebf29876b14be273d9b6f7"
+      },
+      "psionic/lib/robotics/panda-inverse-dynamics-check-fixtures.coax": {
+        "bytes": 489,
+        "sha256": "08f5603db29e1a6fa6b04c8745c01bd5e0dedd6d44d1b97395daa02c03060618"
+      },
+      "psionic/lib/robotics/panda-forward-dynamics-net.coax": {
+        "bytes": 1527,
+        "sha256": "37cc3cdc321bba9e5a46f4570f4bddf26ff99b2abbe31123d030818e9b634365"
+      },
+      "psionic/tests/robotics/panda-pd-gain-search-control.coax": {
+        "bytes": 5105,
+        "sha256": "3687d0d2431113ffaf071ad7af90fce4cefd0cedd08d6d0b4da462ec312bcb14"
+      },
+      "psionic/lib/robotics/panda-inverse-dynamics.coax": {
+        "bytes": 7962,
+        "sha256": "7eb8047eb124653073ca6a7223f071e79f36d197a09370ce7b7c2e51c0bd0dff"
+      },
+      "psionic/lib/robotics/panda-quintic.coax": {
+        "bytes": 8360,
+        "sha256": "24c2071b031738094307cbfa1d08b86579c0db2299ab7d5f407f83944195882c"
+      },
+      "psionic/tests/robotics/panda-pd-gain-search.coax": {
+        "bytes": 12911,
+        "sha256": "0aa7674649abf3eeef092f149fb22280277e6b8fb3df156d05bf88772e1df0e7"
+      },
+      "psionic/lib/robotics/panda-fingers-types.coax": {
+        "bytes": 260,
+        "sha256": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a"
+      },
+      "psionic/lib/robotics/panda-mass-solve-types.coax": {
+        "bytes": 829,
+        "sha256": "e9377ab6bdb6627bbcc47d071790f2bc2eeb9444711ea3cde6c80afa6c5c4a0e"
+      },
+      "psionic/tests/robotics/panda-pd-gain-search-fixtures.coax": {
+        "bytes": 3408,
+        "sha256": "03f7455b6eaea9c2265fece8e6917300401c42c7efe741fc9c6a3d038f5bbdd6"
+      },
+      "psionic/lib/robotics/panda-fk-types.coax": {
+        "bytes": 722,
+        "sha256": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b"
+      },
+      "psionic/lib/robotics/panda-smooth-types.coax": {
+        "bytes": 340,
+        "sha256": "faba3149108fd931971ff269670250ae64f2b564b414cc162364c7aa6f18eec1"
+      },
+      "psionic/lib/robotics/panda-quintic-types.coax": {
+        "bytes": 866,
+        "sha256": "181e9e03c4cb9f4e33fa514c2b3ca5d24f5bb73483928967c76bde1326a65eb4"
+      },
+      "psionic/tests/robotics/panda_pose_ik_native_reference.py": {
+        "bytes": 22571,
+        "sha256": "fe9b4e594b2a7841953f7630928143a4182d15738033e0ba41949bc05a5b54f2"
+      },
+      "psionic/fixtures/robotics/panda-fingers/sdk-model.json": {
+        "bytes": 9576,
+        "sha256": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031"
+      },
+      "psionic/tests/robotics/panda-joint-pd-tracking-fixtures.coax": {
+        "bytes": 1154,
+        "sha256": "e8ea3b93c51e8c56fa6b84abdcaef6f433b987394ea53e2111851dd6696c5a5e"
+      },
+      "psionic/lib/robotics/panda-actuation-fixtures.coax": {
+        "bytes": 229,
+        "sha256": "a5c2735594b81a5eafcf7cdd18b6a38b9c08341ddbd2d3d2d332334dcfc04f95"
+      },
+      "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": {
+        "bytes": 3251,
+        "sha256": "a054399cb437fb4bfa88ab691e4f098f1bab8329af631134c8acd399c3212095"
+      },
+      "psionic/fixtures/robotics/panda-joint-pd-tracking/cases.f64": {
+        "bytes": 2048,
+        "sha256": "31bde2768bad55d3a64b2ab5cce5d13f0f6efaaba38baa0f7d00f9737cd26400"
+      },
+      "psionic/lib/robotics/panda-joint-pd-math.coax": {
+        "bytes": 4664,
+        "sha256": "34ff88f6cd51b6d12cffeaadc62a6d15c25c178f8b6bde848a67e87873999e0e"
+      },
+      "psionic/lib/robotics/panda-actuation-types.coax": {
+        "bytes": 540,
+        "sha256": "09c5bfc3cee7afd518519e93894546143ca0523d4c9b3a9a77cd47ccfb6f9023"
+      },
+      "psionic/lib/robotics/panda-fluid-math.coax": {
+        "bytes": 6634,
+        "sha256": "c1253ca63dc59844acd97477165c33d3ef8ba9174799428b44379330604e12cb"
+      },
+      "psionic/tests/robotics/panda_joint_pd_prefix_reference.py": {
+        "bytes": 31402,
+        "sha256": "d1117359b7f8e511ecde1f661c3aed123eeb18e4b4452858bb97ffcc148a0a2a"
+      },
+      "psionic/lib/robotics/panda-smooth.coax": {
+        "bytes": 7230,
+        "sha256": "99715c0a724199e464b67f4f47db7a6e0cc002ada55166c898b43e01b41a1ca2"
+      },
+      "psionic/tests/robotics/panda-pd-gain-search-types.coax": {
+        "bytes": 1050,
+        "sha256": "87019a74c5d1a06560fe491b0c832a20664c1a27a068edcdb80d9dd155253197"
+      },
+      "psionic/lib/robotics/panda-inverse-dynamics-types.coax": {
+        "bytes": 912,
+        "sha256": "635b534b622f63fd185a852198895b15c4940172f7c0f3740024ce36b4333d8a"
+      },
+      "psionic/lib/robotics/panda-ik-types.coax": {
+        "bytes": 392,
+        "sha256": "c0a6ecd30ef3bfcd54038c94442616a45bb76f1ae517e19fd64451b1f0d69f83"
+      },
+      "psionic/lib/robotics/panda-quintic-fixtures.coax": {
+        "bytes": 990,
+        "sha256": "7cf0b3b8997c25d5ef8016b357784864bd870d10a9b5e738482445c4464664c1"
+      },
+      "psionic/lib/robotics/panda-inverse-dynamics-force.coax": {
+        "bytes": 5006,
+        "sha256": "99964a02044375639d1346174d9be37e71736c8e5ef67ce499b2baa846d69511"
+      },
+      "psionic/lib/robotics/panda-inverse-dynamics-math.coax": {
+        "bytes": 3043,
+        "sha256": "3bcb40973b5c7ed020322bb76f11c836416021d199862d96d1b1cf55dbd10997"
+      },
+      "psionic/tests/robotics/panda-joint-pd-tracking.coax": {
+        "bytes": 5139,
+        "sha256": "6048af9b718bebbcaa9f92f3af67df824e4222672ea3373a687a8af411999aef"
+      },
+      "coax/lib/quantity.coax": {
+        "bytes": 585,
+        "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+      },
+      "psionic/fixtures/robotics/panda-joint-pd-tracking/external-forces.f64": {
+        "bytes": 216000,
+        "sha256": "25803423e1bd98022622c6be4d4a07b120da11fa2963bd16a2444e9763647dbe"
+      },
+      "psionic/lib/robotics/panda-inertia-profile.coax": {
+        "bytes": 2648,
+        "sha256": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618"
+      },
+      "psionic/tests/robotics/panda-pd-gain-search-score.coax": {
+        "bytes": 13523,
+        "sha256": "9654163eb3df904140b1a5c1cb3aa4b656ea7453be4fb21370c3fb9abd337dc4"
+      },
+      "psionic/lib/robotics/panda-inertia-math.coax": {
+        "bytes": 6118,
+        "sha256": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3"
+      },
+      "psionic/tests/robotics/panda-joint-pd-tracking-types.coax": {
+        "bytes": 976,
+        "sha256": "d0af0c1b3ff5f6e2c39ad4720f3b5a86cf87f367e79f90353b0f1183eb34b3e0"
+      },
+      "psionic/lib/robotics/panda-matrix-types.coax": {
+        "bytes": 203,
+        "sha256": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483"
+      },
+      "psionic/lib/robotics/panda-euler-types.coax": {
+        "bytes": 429,
+        "sha256": "84e3caab18d7e9066b258f258defd500176de246038daa3cb4bf5602adf11feb"
+      },
+      "psionic/lib/robotics/panda-fluid-check-fixtures.coax": {
+        "bytes": 348,
+        "sha256": "4211371dd6d5ea584cf3b3f783ed77efd507b8a4d579f7b74045aa31838addda"
+      },
+      "psionic/fixtures/robotics/panda-gain-search/heldout-unscaled.f64": {
+        "bytes": 4096,
+        "sha256": "ff5ff6e22688fc6211416f531f5b6e9f519f49ab41ec62822f4f9c9cb55f2e38"
+      },
+      "psionic/fixtures/robotics/panda-gain-search/profiles.f64": {
+        "bytes": 18432,
+        "sha256": "31aa6183d98bc73e25d463e2fb2428b7a9270dbfa3916652df160730c4649b7a"
+      },
+      "psionic/lib/robotics/panda-joint-pd.coax": {
+        "bytes": 5079,
+        "sha256": "dcd2248ee1a008a62487d32d15d04af494969666b8db1700d6cd65768bb451b8"
+      },
+      "psionic/lib/robotics/panda-mass-solve-captured-checks.coax": {
+        "bytes": 1277,
+        "sha256": "b198ffc969a86c8f86981c0899c2141ad0eedc7fbebfa44806e41f0c6996b2b4"
+      },
+      "psionic/lib/robotics/panda-ik-math.coax": {
+        "bytes": 5810,
+        "sha256": "adb1cfee76c0d7d4bee84ff4abb24a7446222265a9ba4c19ab593b08fdbde6c7"
+      },
+      "psionic/tests/robotics/panda_gain_search_native.c": {
+        "bytes": 15067,
+        "sha256": "8ab95f2df02fd58b8152afcc4b813f0ec75d6e55a34eb4b181f4bf3b843720cb"
+      },
+      "psionic/fixtures/robotics/panda-joint-pd-tracking/source-qualification.json": {
+        "bytes": 5792,
+        "sha256": "802d488b046130c402d509ba634ccf957728a75951a26b07d450f8341f9ab0d6"
+      },
+      "psionic/lib/robotics/panda-fingers-profile.coax": {
+        "bytes": 1449,
+        "sha256": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07"
+      },
+      "psionic/fixtures/robotics/panda-joint-pd-tracking/reference-states.f64": {
+        "bytes": 504672,
+        "sha256": "9fd37cf888cb4d9cb73ecaa9e2e8279b1437e9564c5ba2117b89b7ecccf49af5"
+      },
+      "psionic/lib/robotics/panda-joint-pd-fixtures.coax": {
+        "bytes": 1202,
+        "sha256": "d179ed3cd55a1ec205e1948138d1af55134e516d2cc0e56bccdb2447bf627688"
+      },
+      "psionic/tests/robotics/panda_gain_search_native_reference.py": {
+        "bytes": 17841,
+        "sha256": "bb6c802fceff44522ecf6dfba0d1a7615ff331b4c941bb077e3db8922a290da5"
+      },
+      "psionic/lib/robotics/panda-inertia-types.coax": {
+        "bytes": 1027,
+        "sha256": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195"
+      },
+      "psionic/lib/robotics/panda-fingers-chain.coax": {
+        "bytes": 6288,
+        "sha256": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52"
+      },
+      "psionic/lib/robotics/panda-fk-profile.coax": {
+        "bytes": 1984,
+        "sha256": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2"
+      },
+      "psionic/lib/robotics/panda-inertia.coax": {
+        "bytes": 4822,
+        "sha256": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc"
+      },
+      "psionic/lib/robotics/panda-mass-solve-math.coax": {
+        "bytes": 5086,
+        "sha256": "6748aab83899698dba5cf400c07ca44c1e69869c49ea9eddcc236ce1a8c0af78"
+      },
+      "psionic/lib/robotics/panda-quintic-math.coax": {
+        "bytes": 9105,
+        "sha256": "d7d834285ae9f415a35337fea21c478018c0b0500b38982ce8554fd7faf70fd9"
+      },
+      "psionic/lib/robotics/panda-inertia-check-fixtures.coax": {
+        "bytes": 1319,
+        "sha256": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad"
+      },
+      "psionic/tests/robotics/panda_gain_search_reference.py": {
+        "bytes": 13861,
+        "sha256": "e3437a661be99aeb72bcad394bc17d4673476fcbe9183fa69ec53b13628dc9f7"
+      },
+      "psionic/lib/robotics/panda-euler-math.coax": {
+        "bytes": 6298,
+        "sha256": "67a8ede88255fef0989481c67f2017fef885eb775898dec7873c91a9b40d3f40"
+      },
+      "psionic/fixtures/robotics/panda-gain-search/experiment.json": {
+        "bytes": 59450,
+        "sha256": "67c872e87b64041c9a0fde7014f828a345a0d48148d496fe087575d49fe38b31"
+      },
+      "psionic/lib/robotics/panda-euler.coax": {
+        "bytes": 11702,
+        "sha256": "47a8df251ef5ff798eea61d087040411150f1f767c1cb502de2031a329be4893"
+      },
+      "psionic/tests/robotics/panda_joint_pd_tracking_format.h": {
+        "bytes": 6704,
+        "sha256": "b6f32765322a81c5d7b7fe92f6b5b329bd197c656634c8d4b18d985d44371388"
+      },
+      "psionic/fixtures/robotics/panda-gain-search/baseline-carry.json": {
+        "bytes": 17541,
+        "sha256": "b21ec4de9f02ddfe9fd25c97c220f33f456fda3e66d9c6b366f428138b68643e"
+      },
+      "psionic/lib/robotics/panda-fingers-check-fixtures.coax": {
+        "bytes": 383,
+        "sha256": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f"
+      },
+      "psionic/lib/robotics/panda-smooth-fixtures.coax": {
+        "bytes": 2089,
+        "sha256": "578663cd2d716a9faef982e680c41974d17f3974385a16747d210320fed93935"
+      },
+      "psionic/lib/robotics/panda-fk-math.coax": {
+        "bytes": 5124,
+        "sha256": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e"
+      },
+      "psionic/lib/robotics/panda-fk-check-fixtures.coax": {
+        "bytes": 812,
+        "sha256": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7"
+      },
+      "psionic/lib/robotics/panda-fk-chain.coax": {
+        "bytes": 4459,
+        "sha256": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba"
+      },
+      "psionic/lib/robotics/panda-actuation.coax": {
+        "bytes": 7444,
+        "sha256": "dfccb6c0bd02d6e1294d3317d8108d7a780a25ea7d82a01c1e5ffd2b8a117111"
+      },
+      "psionic/lib/robotics/panda-matrix.coax": {
+        "bytes": 8993,
+        "sha256": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f"
+      },
+      "psionic/lib/robotics/panda-fluid.coax": {
+        "bytes": 7992,
+        "sha256": "8f9054ea80d0ebeecebb80d7d7262fb82b6bb2c8a689c412eaf0a5ac4b76fa39"
+      },
+      "psionic/lib/robotics/panda-ik-check-fixtures.coax": {
+        "bytes": 742,
+        "sha256": "f54cadbfac0df67d2f83185a100c8ed2ed4972bb51c7010130cbaa3bad96b8d9"
+      },
+      "psionic/lib/robotics/panda-joint-pd-types.coax": {
+        "bytes": 960,
+        "sha256": "bc86a3feaa97ef774aae5a03d669561db3ae3cda57b9f44fc07d7a17382dc1a5"
+      },
+      "psionic/tests/robotics/panda-joint-pd-tracking-control.coax": {
+        "bytes": 10686,
+        "sha256": "cf406c2422bf663b8605ea321bd48ecb5a687bb685aa518bb044005de73f41b8"
+      }
+    }
+  },
+  "registration": {
+    "schema": "psionic.panda-pd-gain-search.registration.v1",
+    "passed": true,
+    "scope": "Syntax and exact command-routing stubs only; no real Coax, C compiler, native/numeric/SDK/model/oracle/old gate execution.",
+    "sources": {
+      "psionic/check.sh": {
+        "bytes": 44857,
+        "sha256": "681f07060888e447cee243d650cd6412d9287f181b0633bacbbd42f9ffa8d155"
+      },
+      "psionic/tests/robotics/check.sh": {
+        "bytes": 20675,
+        "sha256": "f3221a47cf95d79c3905a3376c9eb6e4b964fe92776581913cd5881da56765b5"
+      }
+    },
+    "commands": [
+      {
+        "label": "syntax-psionic-check.sh",
+        "argv": [
+          "bash",
+          "-n",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/check.sh"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "syntax-psionic-tests-robotics-check.sh",
+        "argv": [
+          "bash",
+          "-n",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/tests/robotics/check.sh"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "math-only",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-pd-gain-search-control"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "score-only",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-pd-gain-search-score"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "query-group",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-pd-gain-search"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "cf42fa598e8357af72818d21c8218dc4a36d601c2370285c803431c78e702385"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "query-no-mutation",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-pd-gain-search"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "cf42fa598e8357af72818d21c8218dc4a36d601c2370285c803431c78e702385"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "explicit-two-deduplicated",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--mutate",
+          "--jobs",
+          "3",
+          "robotics/panda-pd-gain-search-control",
+          "robotics/panda-pd-gain-search-score",
+          "robotics/panda-pd-gain-search"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "cf42fa598e8357af72818d21c8218dc4a36d601c2370285c803431c78e702385"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-panda-pd-gain-search-control",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-pd-gain-search-control",
+          "--jobs",
+          "3"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-panda-pd-gain-search-score",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-pd-gain-search-score",
+          "--jobs",
+          "3"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "c7feb464ff297a2d0c3bc7d9abbb406b77db652d9130c86637822d4e4338435d"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "top-panda-pd-gain-search",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/check.sh",
+          "--only",
+          "robotics/panda-pd-gain-search",
+          "--jobs",
+          "3"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 96,
+          "sha256": "cf42fa598e8357af72818d21c8218dc4a36d601c2370285c803431c78e702385"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "default-list",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "--list",
+          "all"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 2402,
+          "sha256": "9ff9730576233246cbf6f0f303984f024a04fa0354368f425c65f7a3286146d6"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "unknown-rejected",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/shadow/psionic/tests/robotics/check.sh",
+          "robotics/panda-pd-gain-search-unknown"
+        ],
+        "exit": 2,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 61,
+          "sha256": "5db74df0d8e68320c15c467dd91b91e0b634e6fa5120a322e4e8b4b54fb35ce4"
+        }
+      },
+      {
+        "label": "whitelist-isolated",
+        "argv": [
+          "bash",
+          "/tmp/panda-gain-search-registration-first/whitelist.sh",
+          "robotics/panda-pd-gain-search-control",
+          "robotics/panda-pd-gain-search-score",
+          "robotics/panda-pd-gain-search",
+          "psionic/lib/robotics/panda-pd-gain-search-control.coax",
+          "psionic/lib/robotics/panda-pd-gain-search-score.coax",
+          "psionic/lib/robotics/panda-pd-gain-search.coax",
+          "robotics/panda-pd-gain-search-unknown"
+        ],
+        "exit": 0,
+        "stdout": {
+          "bytes": 324,
+          "sha256": "be070b065ac6a39598d7c052567b69227e3612525d31eee8564df094b4fa6002"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    ],
+    "cases": [
+      {
+        "name": "math-only",
+        "source_units": [
+          "panda-pd-gain-search-control"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "score-only",
+        "source_units": [
+          "panda-pd-gain-search-score"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "query-group",
+        "source_units": [
+          "panda-pd-gain-search-control",
+          "panda-pd-gain-search-score",
+          "panda-pd-gain-search"
+        ],
+        "Coax_stub_commands": 9,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "query-no-mutation",
+        "source_units": [
+          "panda-pd-gain-search-control",
+          "panda-pd-gain-search-score",
+          "panda-pd-gain-search"
+        ],
+        "Coax_stub_commands": 6,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "explicit-two-deduplicated",
+        "source_units": [
+          "panda-pd-gain-search-control",
+          "panda-pd-gain-search-score",
+          "panda-pd-gain-search"
+        ],
+        "Coax_stub_commands": 9,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "top-panda-pd-gain-search-control",
+        "source_units": [
+          "panda-pd-gain-search-control"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "top-panda-pd-gain-search-score",
+        "source_units": [
+          "panda-pd-gain-search-score"
+        ],
+        "Coax_stub_commands": 3,
+        "native_gate_stub_calls": 0,
+        "real_Coax_or_native_execution": false
+      },
+      {
+        "name": "top-panda-pd-gain-search",
+        "source_units": [
+          "panda-pd-gain-search-control",
+          "panda-pd-gain-search-score",
+          "panda-pd-gain-search"
+        ],
+        "Coax_stub_commands": 9,
+        "native_gate_stub_calls": 1,
+        "real_Coax_or_native_execution": false
+      }
+    ],
+    "source_identity_only_copies_from_NEW": {
+      "psionic/tests/robotics/panda-pd-gain-search-score.coax": {
+        "bytes": 13523,
+        "sha256": "9654163eb3df904140b1a5c1cb3aa4b656ea7453be4fb21370c3fb9abd337dc4"
+      },
+      "psionic/tests/robotics/panda-pd-gain-search-control.coax": {
+        "bytes": 5105,
+        "sha256": "3687d0d2431113ffaf071ad7af90fce4cefd0cedd08d6d0b4da462ec312bcb14"
+      },
+      "psionic/tests/robotics/panda-pd-gain-search.coax": {
+        "bytes": 12911,
+        "sha256": "0aa7674649abf3eeef092f149fb22280277e6b8fb3df156d05bf88772e1df0e7"
+      }
+    },
+    "product_copied_into_PUB": false,
+    "default_list": {
+      "passed": true,
+      "new_units": [
+        "panda-pd-gain-search-control",
+        "panda-pd-gain-search-score",
+        "panda-pd-gain-search"
+      ],
+      "no_gate_execution": true
+    },
+    "whitelist": {
+      "passed": true,
+      "positive_cases": 6,
+      "negative_cases": 1,
+      "exact_function_sha256": "a833ab5851517db7a6e5e7041a792d9f106c22fa5879e9f2890bd95fbf13299d"
+    },
+    "real_Coax_calls": 0,
+    "real_C_compiler_calls": 0,
+    "real_native_runs": 0,
+    "SDK_calls": 0,
+    "old_gates_repeated": false,
+    "seconds": 2.751307124970481
+  },
+  "book": {
+    "original_failure": {
+      "passed": false,
+      "returncode": 1,
+      "seconds": 0.3610204999567941,
+      "source": {
+        "psionic/book/README.md": "45214cb6588443ce5d5a5857e507f55d673599c1855146341766d375e431d63e",
+        "psionic/book/SUMMARY.md": "d309a840b43b6be22e192396f7742f3a820134ca62ff683fd5d124a79ee17b04",
+        "psionic/book/ch167-command-a-robot.md": "0fdfe3448d8c60dc7e14727c1a057275ae26fd77fefba8eaf495a06fa4ed8175",
+        "psionic/book/chapters.json": "36f58809af1059114c3720b9623c5bf9eecd06151e323f9a4e5bd39616ba4957",
+        "psionic/book/examples.json": "390525cbdd570996e95d2b17d583b1642f1493a9dad0552ca2883c9e41d87873",
+        "psionic/tests/book.py": "b11541e899f4d629a638c6fd8cd9b2a1a5fe32694b5d881499745e5414dc2f37"
+      }
+    },
+    "failure": "Blank line between new pgs-study source marker and Jai fence. Preserved first failure; removed only that line.",
+    "changed_context_first_pass": {
+      "passed": true,
+      "returncode": 0,
+      "seconds": 0.3994013749761507,
+      "changed_context": "Removed blank line between the one new pgs-study source marker and its fence; original failed result retained.",
+      "chapter_sha256": "a16d24998f468ae1ff104b2b5666d337f457fd23359fa4793383bd4ca63fe3e7"
+    },
+    "programs": 132,
+    "source_linked_listings": 479
+  },
+  "preserved_first_failures": [
+    "Initial effects C compile could not find legacy header basename; original failed C/driver/stderr retained under header-failure-v1. Reused successful emissions/SDK-free objects and supplied a byte-identical private alias.",
+    "First book source marker had a blank line before its fence; only listing formatting changed before the first changed-context pass."
+  ],
+  "carry_and_limits": [
+    "All86 source identities and four main C/H artifacts match first measured context exactly. Prior numerical proofs are carried, not rerun.",
+    "The current compiler snapshot differs only in main.cpp/query.cpp. Its private build reuses exact generated inputs/frontend object; no full bootstrap/release/query-feature qualification is claimed.",
+    "Default cached adapter is additive tooling, syntax/plan/routing checked; its original-source/capture/compiler/cache guards were strengthened in the separately recorded v2 amendment. No numeric adapter rerun.",
+    "No old mutation/native/grid/reference/SDK/NN/model gates repeated. No hardware.",
+    "These are scenario-conditioned gain families, not a universal gain vector or general nonlinear stability certificate. Casecards are unsealed observations. Collision/contact, compiler bounds and whole-runtime qualification remain separate."
+  ]
+}
