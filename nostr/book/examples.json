@@ -283,6 +283,16 @@
         "release"
       ],
       "timeout": 120
+    },
+    {
+      "source": "nostr/examples/ncryptsec.coax",
+      "chapter": "nostr/book/ch047-encrypted-key-backup.md",
+      "stdout": "nostr/fixtures/ncryptsec.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

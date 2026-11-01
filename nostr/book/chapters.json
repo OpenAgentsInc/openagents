@@ -922,7 +922,7 @@
    "number": 47,
    "title": "Encrypted key backup",
    "file": "ch047-encrypted-key-backup.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     18,
@@ -933,7 +933,9 @@
     "coax/lib/crypto/poly1305.coax",
     "coax/lib/crypto/scrypt_nip49.coax",
     "coax/lib/crypto/xchacha20_poly1305.coax",
-    "coax/lib/text/nfkc.coax"
+    "coax/lib/text/nfkc.coax",
+    "nostr/examples/ncryptsec.coax",
+    "nostr/examples/checks/ncryptsec.coax"
    ],
    "qualified_targets": [
     "cpu",

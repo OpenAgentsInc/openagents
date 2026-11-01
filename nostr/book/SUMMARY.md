@@ -78,7 +78,7 @@
 
 - [45. Profiles, follows and names](ch045-profiles-follows-and-names.md) — partly implemented
 - [46. Keys from a seed phrase](ch046-keys-from-a-seed-phrase.md) — implemented
-- [47. Encrypted key backup](ch047-encrypted-key-backup.md) — partly implemented
+- [47. Encrypted key backup](ch047-encrypted-key-backup.md) — implemented
 - [48. Signers outside the app](ch048-signers-outside-the-app.md) — design draft
 - [49. HTTP auth](ch049-http-auth.md) — partly implemented
 - [50. Notes, threads and subjects](ch050-notes-threads-and-subjects.md) — partly implemented

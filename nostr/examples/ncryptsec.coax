@@ -1,0 +1,193 @@
+#load "../../coax/lib/crypto/scrypt_nip49.coax";
+#load "../../coax/lib/crypto/xchacha20_poly1305.coax";
+#load "../../coax/lib/text/nfkc.coax";
+#load "../../coax/lib/nostr/bech32-core.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [200] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Copy text into bytes; the procedures take byte views.
+bytes_of :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count { out[i] = text[i]; }
+  return out[0..<text.count];
+}
+// Decode hex that the program itself supplies.
+unhex :: (text: string, out: [] u8) {
+  #assert hex_decode_checked(text, out, false).error == 0;
+}
+
+// book:begin layout
+// The 91 bytes of a version 2 payload.
+NCS_BYTES :: 91;
+// Refusal codes.
+NCS_OK :: 0; NCS_BECH32 :: 1; NCS_PREFIX :: 2; NCS_LENGTH :: 3;
+NCS_VERSION :: 4; NCS_LOG_N :: 5; NCS_SECURITY :: 6; NCS_TAG :: 7;
+Ncryptsec :: struct {
+  log_n: int;
+  salt: [16] u8;
+  nonce: [24] u8;
+  security: u8;     // 0 handled insecurely, 1 not known to be, 2 not tracked
+  box: [48] u8;     // 32 ciphertext bytes, then the 16-byte Poly1305 tag
+}
+NcsParsed :: struct { error: int; value: Ncryptsec; }
+
+// The bech32 text to its 91 payload bytes: HRP "ncryptsec", 146 five-bit
+// words regrouped into bytes, and the 2 left-over bits zero.
+ncs_decode :: (text: string, out: [] u8) -> int {
+  hrp: [83] u8; words: [160] u8;
+  r := bech32_decode_checked(text, hrp[..], words[..], true, false);
+  if r.error != NC_OK { return NCS_BECH32; }
+  if cast(string) hrp[0..<r.hrp_written] != "ncryptsec" { return NCS_PREFIX; }
+  if r.written != 146 || out.count != NCS_BYTES { return NCS_LENGTH; }
+  acc: u32; bits := 0; at := 0;
+  for i: 0..<r.written {
+    acc = ((acc << 5) | cast(u32) words[i]) & 0xfff; bits += 5;
+    if bits >= 8 { bits -= 8; out[at] = cast(u8) ((acc >> bits) & 255); at += 1; }
+  }
+  if (acc & ((cast(u32) 1 << bits) - 1)) != 0 { return NCS_LENGTH; }
+  return NCS_OK;
+}
+
+// The payload's fields. A log_n outside 1..18, the library's limit, refuses
+// here, before anything is allocated for scrypt.
+ncs_parse :: (payload: [] u8) -> NcsParsed {
+  p: NcsParsed;
+  if payload.count != NCS_BYTES { p.error = NCS_LENGTH; return p; }
+  if payload[0] != 0x02 { p.error = NCS_VERSION; return p; }
+  if nip49_scrypt_cost(cast(int) payload[1]) == 0 { p.error = NCS_LOG_N; return p; }
+  if payload[42] > 2 { p.error = NCS_SECURITY; return p; }
+  p.value.log_n = cast(int) payload[1];
+  for i: 0..<16 { p.value.salt[i] = payload[2 + i]; }
+  for i: 0..<24 { p.value.nonce[i] = payload[18 + i]; }
+  p.value.security = payload[42];
+  for i: 0..<48 { p.value.box[i] = payload[43 + i]; }
+  return p;
+}
+// book:end layout
+
+// book:begin open
+// Decrypt with the 32-byte scrypt key. The key-security byte is the
+// associated data, so changing it also fails the tag. On a refusal the
+// output is not written.
+ncs_open :: (n: Ncryptsec, key: [] u8, out: [] u8) -> int {
+  aad: [1] u8; aad[0] = n.security;
+  nonce := n.nonce; box := n.box;
+  if !xcp_open(key, nonce[..], aad[..], box[..], out, false) { return NCS_TAG; }
+  return NCS_OK;
+}
+
+// scrypt with r = 8, p = 1 and N = 2^log_n, in the caller's memory. ROMix
+// runs its 2N BlockMix steps at most 64 per call, so a caller could stop.
+derive :: (password: [] u8, salt: [] u8, log_n: int, memory: [] u8, out: [] u8) -> bool {
+  state: [1] Nip49Scrypt;
+  if !nip49_scrypt_start(state[..], password, salt, memory, log_n, false) { return false; }
+  while state[0].romix[0].phase != ROMIX_DONE && nip49_scrypt_step(state[..], memory, ROMIX_MAX_STEP, false) {}
+  // A failed step leaves ROMix unfinished, and finish then refuses.
+  return nip49_scrypt_finish(state[..], out, false);
+}
+// book:end open
+
+// book:begin example
+error_name :: (e: int) -> string {
+  if e == NCS_OK { return "ok"; }
+  if e == NCS_BECH32 { return "bad bech32"; }
+  if e == NCS_PREFIX { return "not ncryptsec"; }
+  if e == NCS_LENGTH { return "bad length"; }
+  if e == NCS_VERSION { return "unknown version"; }
+  if e == NCS_LOG_N { return "log_n outside 1..18"; }
+  if e == NCS_SECURITY { return "bad key-security byte"; }
+  return "tag mismatch";
+}
+// Parse a payload, open it with a key, and say whether the output was written.
+try_open :: (label: string, payload: [] u8, key: [] u8) {
+  out: [32] u8;
+  for i: 0..<32 { out[i] = 0xa5; }
+  p := ncs_parse(payload);
+  e := p.error;
+  if e == NCS_OK { e = ncs_open(p.value, key, out[..]); }
+  untouched := true;
+  for v: out { if v != 0xa5 { untouched = false; } }
+  print("%: %, output untouched %\n", label, error_name(e), untouched);
+}
+
+// NIP-49's published vector, password "nostr", log_n 16.
+VECTOR :: "ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p";
+// scrypt(password, the vector's salt, N = 2^16, r = 8, p = 1), 32 bytes,
+// from OpenSSL through Python's hashlib.scrypt. N = 2^16 needs 64 MiB, more
+// than the stack that coax0 gives a program.
+KEY_NOSTR :: "6d1e8b279f52b3a9ba60a2b43cab50804a67ac763ff4bafa782475efb0722aff";
+KEY_WRONG :: "aaa80aa968b73767fbf6055b1aa804df774a66180d02d54b67cabded04055212"; // "Nostr"
+
+main :: () {
+  // One Poly1305 block by hand: RFC 8439 section 2.5.2.
+  rfc: [32] u8;
+  unhex("85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b", rfc[..]);
+  text: [34] u8; msg := bytes_of("Cryptographic Forum Research Group", text[..]);
+  tag: [16] u8;
+  #assert poly1305_checked(rfc[..], msg[0..<16], tag[..], false);
+  show("Poly1305 tag of the first 16 bytes", tag[..]);
+  #assert poly1305_checked(rfc[..], msg, tag[..], false);
+  show("Poly1305 tag of all 34 bytes", tag[..]);
+
+  // The password: NIP-49's NFKC example, U+212B U+2126 U+1E9B U+0323.
+  scratch: [64] u32; normal: [32] u8; typed: [11] u8;
+  unhex("e284abe284a6e1ba9bcca3", typed[..]);
+  n := un_nfkc(cast(string) typed[..], scratch[..], normal[..], false);
+  print("NFKC: error %, % bytes\n", n.error, n.written);
+  show("NFKC bytes", normal[0..<n.written]);
+
+  // The payload's layout.
+  payload: [NCS_BYTES] u8;
+  print("decode: %\n", error_name(ncs_decode(VECTOR, payload[..])));
+  p := ncs_parse(payload[..]);
+  salt := p.value.salt; nonce := p.value.nonce; box := p.value.box;
+  print("version %, log_n %, key-security byte %\n", payload[0], p.value.log_n, p.value.security);
+  show("salt", salt[..]);
+  show("nonce", nonce[..]);
+  show("ciphertext", box[0..<32]);
+  show("tag", box[32..<48]);
+
+  // scrypt at a small cost, against hashlib.scrypt.
+  memory: [16384] u8; small: [32] u8; word: [5] u8;
+  #assert derive(bytes_of("nostr", word[..]), salt[..], 4, memory[..], small[..]);
+  show("scrypt(\"nostr\", salt, 2^4)", small[..]);
+  print("log_n 16 admitted with 64 MiB: %\n", nip49_scrypt_params(5, 16, 67108864, 16, false));
+  print("log_n 16 with one byte less: %\n", nip49_scrypt_params(5, 16, 67108863, 16, false));
+  print("log_n 18, the limit, with 256 MiB: %\n", nip49_scrypt_params(5, 16, 268435456, 18, false));
+  print("log_n 22 with 4 GiB: %\n", nip49_scrypt_params(5, 16, 4294967296, 22, false));
+
+  // Decrypt the vector with the key scrypt gives for "nostr".
+  key: [32] u8; secret: [32] u8;
+  unhex(KEY_NOSTR, key[..]);
+  print("open: %\n", error_name(ncs_open(p.value, key[..], secret[..])));
+  show("private key", secret[..]);
+
+  // Refusals.
+  wrong: [32] u8; unhex(KEY_WRONG, wrong[..]);
+  try_open("password \"Nostr\"", payload[..], wrong[..]);
+  bad := payload; bad[0] = 0x01;
+  try_open("version 1", bad[..], key[..]);
+  bad = payload; bad[1] = 22;
+  try_open("log_n 22", bad[..], key[..]);
+  bad = payload; bad[1] = 0;
+  try_open("log_n 0", bad[..], key[..]);
+  bad = payload; bad[42] = 0x01;
+  try_open("key-security byte 0 changed to 1", bad[..], key[..]);
+  bad = payload; bad[42] = 0x03;
+  try_open("key-security byte 3", bad[..], key[..]);
+  bad = payload; bad[60] ^= 0x01;
+  try_open("ciphertext byte 17 flipped", bad[..], key[..]);
+  bad = payload; bad[90] ^= 0x80;
+  try_open("tag byte 15 flipped", bad[..], key[..]);
+  typo: [162] u8;
+  for i: 0..<162 { typo[i] = VECTOR[i]; }
+  typo[20] = 'q';
+  print("one character changed: %\n", error_name(ncs_decode(cast(string) typo[..], payload[..])));
+  print("an npub: %\n", error_name(ncs_decode("npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6", payload[..])));
+}
+// book:end example

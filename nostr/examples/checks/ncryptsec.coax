@@ -1,0 +1,175 @@
+// The checks of ncryptsec.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/ncryptsec.coax
+#load "../ncryptsec.coax";
+
+// book:begin check
+// True when bytes equal the hex text.
+hex_is :: (got: [] u8, want: string) -> bool {
+  b: [128] u8;
+  if got.count > 128 || want.count != 2 * got.count { return false; }
+  unhex(want, b[0..<got.count]);
+  for i: 0..<got.count { if got[i] != b[i] { return false; } }
+  return true;
+}
+#test "hex_is refuses a different first or last byte and a wrong length" {
+  b: [129] u8; text: [258] u8;
+  b[0] = 0x35; b[1] = 0x01;
+  #assert hex_is(b[0..<2], "3501") && !hex_is(b[0..<2], "3401") && !hex_is(b[0..<2], "3502");
+  #assert !hex_is(b[0..<2], "35") && !hex_is(b[0..<1], "3501");
+  for i: 0..<258 { text[i] = '0'; }
+  b[0] = 0; b[1] = 0;
+  #assert hex_is(b[0..<128], cast(string) text[0..<256]);
+  #assert !hex_is(b[..], cast(string) text[..]);
+}
+// The vector's 91 payload bytes, decoded by hand in Python from the
+// published bech32 text: 02, 10 (log_n 16), salt, nonce, 00, box.
+PAYLOAD :: "021052d7c3f8580e7b41953381e5bc49646bc33f02a7dcaac8bdd8da23cd449783240b6ebc12edeea7bf00b8e8803440de7b3e9519c3e734cb2ac9a211ea2dc52312e5117a11a3022d813ab438719ca0b504a1193be510c3aee776";
+PRIVATE :: "3501454135014541350145413501453fefb02227e449e57cf4d3a3ce05378683";
+vector :: (out: [] u8) { #assert ncs_decode(VECTOR, out) == NCS_OK; }
+
+#test "the vector decodes to the hand-decoded payload and re-encodes to itself" {
+  payload: [NCS_BYTES] u8; text: [200] u8;
+  vector(payload[..]);
+  #assert hex_is(payload[..], PAYLOAD);
+  r := bech32_encode_checked("ncryptsec", cast(string) payload[..], true, text[..], true, false);
+  #assert r.error == NC_OK && cast(string) text[0..<r.written] == VECTOR;
+}
+
+#test "the vector opens to the published key, and sealing it gives the published box" {
+  payload: [NCS_BYTES] u8; key: [32] u8; secret: [32] u8; box: [48] u8;
+  vector(payload[..]);
+  p := ncs_parse(payload[..]);
+  #assert p.error == NCS_OK && p.value.log_n == 16 && p.value.security == 0;
+  unhex(KEY_NOSTR, key[..]);
+  #assert ncs_open(p.value, key[..], secret[..]) == NCS_OK;
+  #assert hex_is(secret[..], PRIVATE);
+  nonce := p.value.nonce; aad: [1] u8;
+  #assert xcp_seal(key[..], nonce[..], aad[..], secret[..], box[..], false);
+  #assert hex_is(box[..], "b8e8803440de7b3e9519c3e734cb2ac9a211ea2dc52312e5117a11a3022d813ab438719ca0b504a1193be510c3aee776");
+}
+
+// The nonce, the key-security byte, the ciphertext and the tag are all
+// covered by the tag: one flipped bit in any of payload bytes 18..90
+// refuses and leaves the output alone. (The salt and log_n are covered
+// differently: changing them changes the key that scrypt derives.)
+#forall "a flipped bit after the salt fails the tag or the parse" i: 18..<91 #steps 1000000000 {
+  payload: [NCS_BYTES] u8; key: [32] u8; out: [32] u8;
+  vector(payload[..]); unhex(KEY_NOSTR, key[..]);
+  payload[i] ^= cast(u8) (1 << (i % 8));
+  for j: 0..<32 { out[j] = 0xa5; }
+  p := ncs_parse(payload[..]);
+  #assert p.error != NCS_OK || ncs_open(p.value, key[..], out[..]) == NCS_TAG;
+  for v: out { #assert v == 0xa5; }
+}
+
+#forall "every version but 2 refuses" v: 0..<256 {
+  payload: [NCS_BYTES] u8; vector(payload[..]);
+  payload[0] = cast(u8) v;
+  #assert (ncs_parse(payload[..]).error == NCS_VERSION) == (v != 2);
+}
+#forall "log_n 1..18 parses and every other value refuses" n: 0..<256 {
+  payload: [NCS_BYTES] u8; vector(payload[..]);
+  payload[1] = cast(u8) n;
+  #assert (ncs_parse(payload[..]).error == NCS_LOG_N) == (n < 1 || n > 18);
+}
+#forall "key-security bytes 0, 1 and 2 parse" s: 0..<256 {
+  payload: [NCS_BYTES] u8; vector(payload[..]);
+  payload[42] = cast(u8) s;
+  #assert (ncs_parse(payload[..]).error == NCS_SECURITY) == (s > 2);
+}
+
+// Bech32 finds any one changed character.
+#forall "one changed character fails the checksum" i: 10..<162 #steps 1000000000 {
+  typo: [162] u8; payload: [NCS_BYTES] u8;
+  for j: 0..<162 { typo[j] = VECTOR[j]; }
+  typo[i] = ifx typo[i] == 'q' then 'p' else 'q';
+  #assert ncs_decode(cast(string) typo[..], payload[..]) == NCS_BECH32;
+}
+#test "wrong lengths, padding bits and prefixes refuse" {
+  payload: [NCS_BYTES] u8; words: [146] u8; text: [200] u8;
+  vector(payload[..]);
+  r := bech32_encode_checked("ncryptsec", cast(string) payload[0..<90], true, text[..], true, false);
+  #assert ncs_decode(cast(string) text[0..<r.written], payload[..]) == NCS_LENGTH;
+  r = bech32_encode_checked("nsec", cast(string) payload[..], true, text[..], true, false);
+  #assert ncs_decode(cast(string) text[0..<r.written], payload[..]) == NCS_PREFIX;
+  short: [90] u8;
+  #assert ncs_decode(VECTOR, short[..]) == NCS_LENGTH;
+  long: [92] u8; vector(long[0..<91]);
+  #assert ncs_parse(long[0..<90]).error == NCS_LENGTH && ncs_parse(long[..]).error == NCS_LENGTH;
+}
+// 146 words carry 730 bits: 91 bytes and 2 padding bits, which must be 0.
+#forall "the last word's two padding bits must be zero" w: 0..<32 #steps 1000000000 {
+  payload: [NCS_BYTES] u8; words: [146] u8; text: [200] u8;
+  words[145] = cast(u8) w;
+  r := bech32_encode_checked("ncryptsec", cast(string) words[..], false, text[..], true, false);
+  #assert (ncs_decode(cast(string) text[0..<r.written], payload[..]) == NCS_LENGTH) == ((w & 3) != 0);
+}
+// The key-security byte is the associated data: a payload sealed with
+// byte 1 or 2 parses to that byte and opens only with it.
+#forall "key-security bytes 1 and 2 are the associated data" s: 1..<3 #steps 1000000000 {
+  payload: [NCS_BYTES] u8; key: [32] u8; secret: [32] u8; out: [32] u8; aad: [1] u8;
+  vector(payload[..]); unhex(KEY_NOSTR, key[..]); unhex(PRIVATE, secret[..]);
+  nonce := ncs_parse(payload[..]).value.nonce;
+  aad[0] = cast(u8) s;
+  #assert xcp_seal(key[..], nonce[..], aad[..], secret[..], payload[43..<91], false);
+  payload[42] = cast(u8) s;
+  p := ncs_parse(payload[..]);
+  #assert p.error == NCS_OK && p.value.security == cast(u8) s;
+  #assert ncs_open(p.value, key[..], out[..]) == NCS_OK && hex_is(out[..], PRIVATE);
+  payload[42] = 0;
+  #assert ncs_open(ncs_parse(payload[..]).value, key[..], out[..]) == NCS_TAG;
+}
+
+// scrypt(b"nostr", the vector's salt, 2^log_n, 8, 1, 32) from OpenSSL
+// through Python's hashlib.scrypt, for log_n 1..6.
+SCRYPT :: [6] string.[
+  "1e69cb277f3127419fed938fad417bcc87d7e26cc04054f74aad32f027dcd239",
+  "37d4e5e74740d024f0e836ad0d4b28bc7fc64daf9ba83a779accea03ef984d09",
+  "aefdabe7f80b46f3b99bc22a46f2e08b2b549cec905654f0a22b8503313ef3f1",
+  "63587b915af5343363dbe8f9a811b1b7149d3866b40203a576e1ac7a50fd3e47",
+  "e03aab70bcd0bef66c7fbfd238112fd51a7322f430700ed358ff6520f0eae977",
+  "7f61c6400dfffc3fa86c540d03dd2f2d3af1765282f008da7e3382e7d983590e"];
+#forall "scrypt matches hashlib for log_n 1..6" n: 1..<7 #steps 1000000000 {
+  payload: [NCS_BYTES] u8; vector(payload[..]);
+  p := ncs_parse(payload[..]); salt := p.value.salt;
+  memory: [65536] u8; out: [32] u8; word: [5] u8;
+  #assert derive(bytes_of("nostr", word[..]), salt[..], n, memory[..], out[..]);
+  #assert hex_is(out[..], SCRYPT[n - 1]);
+}
+#test "scrypt refuses log_n 19 and 22, and memory below 128 * 8 * 2^log_n" {
+  #assert !nip49_scrypt_params(5, 16, 268435456, 19, false);
+  #assert !nip49_scrypt_params(5, 16, 4294967296, 22, false);
+  #assert nip49_scrypt_params(5, 16, 1024 * 16, 4, false);
+  #assert !nip49_scrypt_params(5, 16, 1024 * 16 - 1, 4, false);
+  memory: [16383] u8; out: [32] u8; salt: [16] u8; word: [5] u8;
+  #assert !derive(bytes_of("nostr", word[..]), salt[..], 4, memory[..], out[..]);
+}
+
+#test "NIP-49's NFKC example" {
+  typed: [11] u8; scratch: [64] u32; out: [32] u8;
+  unhex("e284abe284a6e1ba9bcca3", typed[..]);
+  n := un_nfkc(cast(string) typed[..], scratch[..], out[..], false);
+  #assert n.error == UN_OK && hex_is(out[0..<n.written], "c385cea9e1b9a9");
+}
+
+// RFC 8439 section 2.5.2 prints the accumulator after block 1,
+// 2c88c77849d64ae9147ddeb88e69c83fc, and s. Tagging the first 16 bytes
+// alone stops there: the tag is (acc + s) mod 2^128, added here byte by
+// byte in little-endian order.
+#test "the first Poly1305 block matches RFC 8439's accumulator plus s" {
+  acc_be: [17] u8; s_le: [16] u8; want: [16] u8; key: [32] u8; text: [34] u8; tag: [16] u8;
+  unhex("02c88c77849d64ae9147ddeb88e69c83fc", acc_be[..]);
+  unhex("85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b", key[..]);
+  for i: 0..<16 { s_le[i] = key[16 + i]; }
+  carry := 0;
+  for i: 0..<16 {
+    sum := cast(int) acc_be[16 - i] + cast(int) s_le[i] + carry;
+    want[i] = cast(u8) (sum & 255); carry = sum >> 8;
+  }
+  msg := bytes_of("Cryptographic Forum Research Group", text[..]);
+  #assert poly1305_checked(key[..], msg[0..<16], tag[..], false);
+  for i: 0..<16 { #assert tag[i] == want[i]; }
+  #assert hex_is(tag[..], "fd861c7184f98f45dc6d5b4dc6c081e4");
+}
+// book:end check

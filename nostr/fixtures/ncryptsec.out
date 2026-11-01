@@ -1,0 +1,27 @@
+Poly1305 tag of the first 16 bytes: fd861c7184f98f45dc6d5b4dc6c081e4
+Poly1305 tag of all 34 bytes: a8061dc1305136c6c22b8baf0c0127a9
+NFKC: error 0, 7 bytes
+NFKC bytes: c385cea9e1b9a9
+decode: ok
+version 2, log_n 16, key-security byte 0
+salt: 52d7c3f8580e7b41953381e5bc49646b
+nonce: c33f02a7dcaac8bdd8da23cd449783240b6ebc12edeea7bf
+ciphertext: b8e8803440de7b3e9519c3e734cb2ac9a211ea2dc52312e5117a11a3022d813a
+tag: b438719ca0b504a1193be510c3aee776
+scrypt("nostr", salt, 2^4): 63587b915af5343363dbe8f9a811b1b7149d3866b40203a576e1ac7a50fd3e47
+log_n 16 admitted with 64 MiB: true
+log_n 16 with one byte less: false
+log_n 18, the limit, with 256 MiB: true
+log_n 22 with 4 GiB: false
+open: ok
+private key: 3501454135014541350145413501453fefb02227e449e57cf4d3a3ce05378683
+password "Nostr": tag mismatch, output untouched true
+version 1: unknown version, output untouched true
+log_n 22: log_n outside 1..18, output untouched true
+log_n 0: log_n outside 1..18, output untouched true
+key-security byte 0 changed to 1: tag mismatch, output untouched true
+key-security byte 3: bad key-security byte, output untouched true
+ciphertext byte 17 flipped: tag mismatch, output untouched true
+tag byte 15 flipped: tag mismatch, output untouched true
+one character changed: bad bech32
+an npub: not ncryptsec
