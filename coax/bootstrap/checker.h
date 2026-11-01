@@ -825,6 +825,9 @@ coax_t_SP_Op SOM_pair(coax_t_SP_Op operation);
 _Bool SOM_same(coax_t_SP_Type a, coax_t_SP_Type b);
 coax_t_SOM_Status SOM_select(coax_t_SP_Result original, coax_t_SP_Result alternate, coax_t_SP_Type result);
 coax_t_SOM_Candidate SOM_candidate(coax_t_SP_Op operation, coax_t_SP_Type left, coax_t_SP_Type right, coax_t_SP_Type result);
+void coax_default_t_CK_Type(coax_t_CK_Type *p);
+void coax_default_t_CK_Node(coax_t_CK_Node *p);
+void coax_default_t_SOM_Candidate(coax_t_SOM_Candidate *p);
 
 #ifdef __cplusplus
 }

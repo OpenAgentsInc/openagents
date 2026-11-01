@@ -1140,3 +1140,14 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (kind == 4 && !opened) take_kept(length);   // restore_kept opens it with the house
 }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { (void)state; return realm_wants_text(realm_of()) ? 1 : 0; }
+
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser, the loader natively.
+__attribute__((constructor)) static void coaxial_face_defaults(void) {
+  for (size_t i = 0; i < sizeof entities / sizeof entities[0]; i++) coax_default_t_HauntEntity(&entities[i]);
+  for (size_t i = 0; i < sizeof people / sizeof people[0]; i++) coax_default_t_HauntPerson(&people[i]);
+  coax_default_t_Haunt(&house);
+  coax_default_t_Player(&player);
+  coax_default_t_Sticks(&sticks);
+  coax_default_t_Place(&place_pending);
+}

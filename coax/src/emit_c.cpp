@@ -1639,6 +1639,51 @@ std::string init_functions(const File *file, Emitter &em) {
   return protos + bodies;
 }
 
+// The types a --library header declares: those the exported and foreign
+// procedures use, and everything they contain.
+TypeWriter header_types(const File *file) {
+  TypeWriter types;
+  types.header = true;
+  for (const ProcDecl *p : file->procs) {
+    // A #foreign prototype names its view parameters' types too.
+    if (!p->export_c && !p->foreign) continue;
+    types.need(p->ret);
+    for (const Param &prm : p->params) types.need(prm.type);
+  }
+  return types;
+}
+
+// A header type a host constructs: a struct or array with a declared default.
+bool host_default(Type t) {
+  return (t->kind == TypeKind::struct_ || t->kind == TypeKind::array) && needs_init(t);
+}
+
+// State construction for hosts (spec 17.2): each header type with a declared
+// default gets coax_default_T(T *p), which writes those defaults in place over
+// any bytes, so a host's zeroed or reused state starts as `s: [1] T` does
+// natively. In place, because a state can be larger than a host's stack.
+// Weak, because two units that share a type both define it, identically.
+std::string state_defaults(const File *file, Emitter &em) {
+  std::string protos, bodies;
+  for (Type t : header_types(file).done) {
+    if (!host_default(t)) continue;
+    std::string c = c_type(t), tg = tag(t);
+    protos += "void coax_default_" + tg + "(" + c + " *p);\n";
+    bodies += "__attribute__((weak)) void coax_default_" + tg + "(" + c + " *p) {\n  memset(p, 0, sizeof *p);\n";
+    if (t->kind == TypeKind::struct_) {
+      for (const Field &f : t->struct_decl->fields) {
+        if (f.init) bodies += "  p->" + to_std(f.name) + " = " + em.ex(f.init) + ";\n";
+        else if (needs_init(f.type)) bodies += "  coax_default_" + tag(f.type) + "(&p->" + to_std(f.name) + ");\n";
+      }
+    } else {
+      bodies += "  for (int64_t i = 0; i < " + std::to_string(t->length) + "; i++) coax_default_" + tag(t->elem) + "(&p->e[i]);\n";
+    }
+    bodies += "}\n";
+  }
+  if (bodies.empty()) return "";
+  return "\n/* Struct defaults for hosts: coax_default_T writes T's declared defaults in place. */\n" + protos + bodies;
+}
+
 std::string escape_path(const std::string &path) {
   std::string s;
   for (unsigned char c : path) {
@@ -2317,6 +2362,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   }
   std::string inits = init_functions(file, em);
   std::string shows = show_functions(file, em);
+  std::string hosted = opts.library ? state_defaults(file, em) : std::string();
 
   TypeWriter types;
   types.forward_structs(file);
@@ -2344,6 +2390,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   s += "\n" + inits + shows + "\n";
   for (const ProcDecl *p : file->procs) s += em.prototype(p) + ";\n";
   s += functions;
+  s += hosted;
   bool has_main = false;
   for (const ProcDecl *p : file->procs) has_main = has_main || str_eq(p->name, "main");
   if (!opts.library && has_main) s += "\nint main(void) {\n  coax_p_main();\n  return 0;\n}\n";
@@ -2524,11 +2571,10 @@ std::string emit_header(const File *file) {
     }
     if (used && !d->type->physical) types.out += "typedef struct coax_" + tag(d->type) + " coax_" + tag(d->type) + ";\n";
   }
-  for (const ProcDecl *p : file->procs) {
-    // A #foreign prototype below names its view parameters' types too.
-    if (!p->export_c && !p->foreign) continue;
-    types.need(p->ret);
-    for (const Param &prm : p->params) types.need(prm.type);
+  {
+    TypeWriter used = header_types(file);
+    types.out += used.out;
+    types.done = used.done;
   }
   std::string asserts;
   for (const StructDecl *d : file->structs) {
@@ -2555,6 +2601,8 @@ std::string emit_header(const File *file) {
   s += types.out + asserts + "\n";
   for (const ProcDecl *p : file->procs)
     if (p->export_c) s += em.prototype(p, true) + ";\n";
+  for (Type t : types.done)
+    if (host_default(t)) s += "void coax_default_" + tag(t) + "(" + c_type(t) + " *p);\n";
   bool any_foreign = false;
   for (const ProcDecl *p : file->procs) any_foreign = any_foreign || p->foreign;
   if (any_foreign) {

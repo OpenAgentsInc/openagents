@@ -7,6 +7,8 @@ static coax_t_Ng *at(uint32_t p) {return (coax_t_Ng *)(uintptr_t)p;}
 static coax_v_t_Ng view(uint32_t p) {return (coax_v_t_Ng){at(p),1};}
 EXPORT("coaxial_layout") uint32_t layout(void) {return sizeof(coax_t_Ng)*1000003u+0x4e495047u;}
 EXPORT("coaxial_state_size") uint32_t state_size(void) {return sizeof(coax_t_Ng);}
+// A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Ng((coax_t_Ng *)(uintptr_t)state); }
 EXPORT("coaxial_max_vertices") uint32_t max_vertices(void) {return 80000;}
 EXPORT("coaxial_vertex_floats") uint32_t vertex_floats(void) {return 16;}
 EXPORT("coaxial_uniform_floats") uint32_t uniform_floats(void) {return 16;}

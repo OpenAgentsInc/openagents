@@ -85,6 +85,8 @@ COAX_LAYOUT(offsetof(coax_t_CP_Profile, native) == 40, "offset of CP_Profile.nat
 
 coax_t_CP_Profile CP_resolve(coax_string command, coax_t_CP_Request request);
 coax_string CP_message(coax_t_CP_Error error);
+void coax_default_t_CP_Profile(coax_t_CP_Profile *p);
+void coax_default_t_CP_Request(coax_t_CP_Request *p);
 
 #ifdef __cplusplus
 }

@@ -24,6 +24,8 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_DeadGears) * 1000003u + offsetof(coax_t_DeadGears, objects) * 7u + offsetof(coax_t_DeadGears, outbox) * 13u + 0x44474552u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_DeadGears); }
+// A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_DeadGears((coax_t_DeadGears *)(uintptr_t)state); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_deadgears_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_deadgears_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_deadgears_uniform_floats(); }

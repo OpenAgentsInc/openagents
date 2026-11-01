@@ -21,16 +21,15 @@ for library in verse/gridwalk.coax; do
   (cd "$repo" && coax/bin/coax c "$library" --library --header "$work/$base.h") > "$work/$base.c"
   units+=("$base")
 done
-# Struct defaults, as native applies them (coax/web/defaults.py): the Grid's face
-# is built through a wrapper that defaults its globals and exports coaxial_state_init.
-python3 "$repo/coax/web/defaults.py" "$repo/apps/openagents-web/newland-face.c" "$work/newland-defaults.c" $(for unit in "${units[@]}"; do printf '%s ' "$work/$unit.c"; done)
+# Struct defaults come from the compiler (coax_default_T in each unit's header):
+# the Grid's face calls them for its globals.
 for unit in "${units[@]}"; do
   "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$unit.c" -o "$work/$unit.o"
   objects+=("$work/$unit.o")
 done
 for unit in newland landing-reader landing-fold landing-cache; do
   directory="$here"; [[ "$unit" != newland ]] || directory="$repo/apps/openagents-web"
-  face="$directory/$unit-face.c"; [[ "$unit" != newland ]] || face="$work/newland-defaults.c"
+  face="$directory/$unit-face.c"
   "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -I"$work" -I"$directory" -c "$face" -o "$work/$unit-face.o"
   objects+=("$work/$unit-face.o")
 done

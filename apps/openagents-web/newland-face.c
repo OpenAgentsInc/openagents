@@ -254,3 +254,9 @@ EXPORT("coaxial_land_pylon_control") float pylon_control(uint32_t state,uint32_t
   if(which==0)b=s->network_box;else if(which==1)b=s->network_join;else if(which==2)b=s->network_guide;else if(which==3)b=s->close_box;
   if(axis==0)return b.x0;if(axis==1)return b.y0;if(axis==2)return b.x1;if(axis==3)return b.y1;return 0;
 }
+
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser, the loader natively.
+__attribute__((constructor)) static void coaxial_face_defaults(void) {
+  coax_default_t_GridWalk(&walk);
+}

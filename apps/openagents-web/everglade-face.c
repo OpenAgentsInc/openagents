@@ -174,6 +174,8 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Everglade) * 1000003u + offsetof(coax_t_Everglade, objects) * 7u + offsetof(coax_t_Everglade, draws) * 13u + 0x45474c44u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_Everglade); }
+// A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Everglade((coax_t_Everglade *)(uintptr_t)state); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_everglade_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_everglade_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_everglade_uniform_floats(); }
@@ -715,4 +717,13 @@ EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_
   if (field >= 240 && field <= 252) return (int32_t)everglade_guide_probe(at(state), field);
   if (field >= 200) return (int32_t)ggs_probe(guides(), field);
   return (int32_t)ga_probe(gs(), field);
+}
+
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser, the loader natively.
+__attribute__((constructor)) static void coaxial_face_defaults(void) {
+  coax_default_t_Player(&player);
+  coax_default_t_Sticks(&sticks);
+  coax_default_t_GaSession(&guard_state);
+  coax_default_t_River(&river);
 }

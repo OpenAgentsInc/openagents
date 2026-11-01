@@ -18796,3 +18796,20 @@ coax_t_SOM_Candidate SOM_candidate(coax_t_SP_Op l_operation, coax_t_SP_Type l_le
   }
   return ((coax_t_SOM_Candidate){.status = ((coax_t_SOM_Status)UINT64_C(0)), .operation = l_alternate});
 }
+
+/* Struct defaults for hosts: coax_default_T writes T's declared defaults in place. */
+void coax_default_t_CK_Type(coax_t_CK_Type *p);
+void coax_default_t_CK_Node(coax_t_CK_Node *p);
+void coax_default_t_SOM_Candidate(coax_t_SOM_Candidate *p);
+__attribute__((weak)) void coax_default_t_CK_Type(coax_t_CK_Type *p) {
+  memset(p, 0, sizeof *p);
+  p->alignment = INT64_C(1);
+}
+__attribute__((weak)) void coax_default_t_CK_Node(coax_t_CK_Node *p) {
+  memset(p, 0, sizeof *p);
+  p->field_index = INT64_C(-1);
+}
+__attribute__((weak)) void coax_default_t_SOM_Candidate(coax_t_SOM_Candidate *p) {
+  memset(p, 0, sizeof *p);
+  p->operation = ((coax_t_SP_Op)UINT64_C(255));
+}

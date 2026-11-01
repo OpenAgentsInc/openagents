@@ -202,6 +202,8 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Fairy) * 1000003u + offsetof(coax_t_Fairy, objects) * 7u + offsetof(coax_t_Fairy, draws) * 13u + 0x46414952u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_Fairy); }
+// A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Fairy((coax_t_Fairy *)(uintptr_t)state); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_fairy_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_fairy_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_fairy_uniform_floats(); }
@@ -619,3 +621,11 @@ EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) {
 // While you talk, type a line or a message, or type to the board, the phone's keyboard comes up over the typed line (the host's field, put where the page draws it).
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return fairy_wants_text(at(state)) ? 1 : 0; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)fairy(state)->field.e; }
+
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser, the loader natively.
+__attribute__((constructor)) static void coaxial_face_defaults(void) {
+  coax_default_t_Player(&player);
+  coax_default_t_Sticks(&sticks);
+  coax_default_t_Stream(&stream);
+}

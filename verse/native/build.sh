@@ -10,8 +10,8 @@
 #   any other   apps/openagents-web/REALM.coax and REALM-face.c with the libraries the site's
 #               build (apps/openagents-web/build.sh) links it with: `build.sh --libraries REALM`
 #               prints them
-# The face is built through coax/web/defaults.py's wrapper (REALM.face.c), as coax/web/wasm.sh
-# builds it: its globals and a fresh state get their struct defaults (coaxial_state_init).
+# The face gets its struct defaults from the compiler, as in the browser: each unit's header
+# declares coax_default_T, and the face calls it for its globals and a new state (coaxial_state_init).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
@@ -67,8 +67,8 @@ if [[ -x "$coax" ]]; then
   units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
   # C the face includes itself (the haunted house's realm-flight.c ...): beside it, not a unit
   for inc in $(grep -o '^#include "[^"]*\.c"' "$face" | cut -d'"' -f2); do cp "$web/$inc" "$out/"; done
-  # shellcheck disable=SC2086
-  (cd "$out" && python3 "$root/coax/web/defaults.py" "$(basename "$face")" "$realm.face.c" $units)
+  # The face's unit, so the export aliases below go with it rather than into the face.
+  printf '#include "%s"\n' "$(basename "$face")" > "$out/$realm.face.c"
   # An export named apart from its C function (the homepage's EXPORT("coaxial_page") void page): wasm
   # renames it; natively the name is an alias of the function, so the host's call reaches it.
   grep -o 'EXPORT("[a-z_0-9]*")[^(;{]*(' "$face" | sed -E 's/^EXPORT\("([a-z_0-9]+)"\).*[^a-z_0-9]([a-z_0-9]+)\($/\1 \2/' |

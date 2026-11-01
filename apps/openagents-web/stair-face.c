@@ -61,6 +61,8 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Stair) * 1000003u + offsetof(coax_t_Stair, outbox) * 13u + 0x53544152u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_Stair); }
+// A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Stair((coax_t_Stair *)(uintptr_t)state); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_stair_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_stair_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_stair_uniform_floats(); }
@@ -103,3 +105,9 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)game_at(state)->outbox.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)game_at(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { stair_action_done(at(state)); }
+
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser, the loader natively.
+__attribute__((constructor)) static void coaxial_face_defaults(void) {
+  coax_default_t_Stair(&kept);
+}

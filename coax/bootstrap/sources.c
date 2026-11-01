@@ -1269,3 +1269,15 @@ int64_t SU_revision_text(uint8_t l_kind, coax_v_string l_own, coax_v_string l_de
   }
   return l_n;
 }
+
+/* Struct defaults for hosts: coax_default_T writes T's declared defaults in place. */
+void coax_default_t_SU_Scan(coax_t_SU_Scan *p);
+void coax_default_t_SU_Visit(coax_t_SU_Visit *p);
+__attribute__((weak)) void coax_default_t_SU_Scan(coax_t_SU_Scan *p) {
+  memset(p, 0, sizeof *p);
+  p->balanced = 1;
+}
+__attribute__((weak)) void coax_default_t_SU_Visit(coax_t_SU_Visit *p) {
+  memset(p, 0, sizeof *p);
+  p->index = INT64_C(-1);
+}

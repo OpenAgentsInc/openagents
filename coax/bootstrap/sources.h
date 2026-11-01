@@ -173,6 +173,8 @@ _Bool SU_digest_valid(coax_string d);
 int64_t SU_digest_cmp(coax_string a, coax_string b);
 _Bool SU_digests_sorted(coax_v_string ds);
 int64_t SU_revision_text(uint8_t kind, coax_v_string own, coax_v_string deps, coax_v_u8 out);
+void coax_default_t_SU_Scan(coax_t_SU_Scan *p);
+void coax_default_t_SU_Visit(coax_t_SU_Visit *p);
 
 #ifdef __cplusplus
 }

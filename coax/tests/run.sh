@@ -51,7 +51,7 @@ if [[ "$got" == *"matches the C reference byte for byte"* ]]; then pass=$((pass 
 echo "$pass passed, $fail failed"
 [[ $fail -eq 0 ]]
 fixtures_rc=$?
-python3 tests/crash_reporting.py && python3 tests/compile_time.py && python3 tests/tools.py
+python3 tests/crash_reporting.py && python3 tests/compile_time.py && python3 tests/tools.py && python3 tests/state_defaults.py
 python_rc=$?
 python3 tests/native.py
 native_rc=$?

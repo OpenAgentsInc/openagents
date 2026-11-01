@@ -56,6 +56,8 @@ EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_Garden) * 1000003u + offsetof(coax_t_Garden, objects) * 7u + offsetof(coax_t_Garden, draws) * 13u + 0x47415244u);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_Garden); }
+// A new state's declared defaults (coax_default_T, from the compiler). The host calls this first.
+EXPORT("coaxial_state_init") void coaxial_state_init(uint32_t state) { coax_default_t_Garden((coax_t_Garden *)(uintptr_t)state); }
 EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uint32_t)coaxial_garden_max_vertices(); }
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_garden_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_garden_uniform_floats(); }
@@ -137,3 +139,10 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { int32_t a = (i
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)garden(state)->kept.e; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return place_out_now ? place_outbox_len() : (uint32_t)garden_outbox_len(at(state)); }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (place_out_now) place_done(); else garden_action_done(at(state)); }
+
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser, the loader natively.
+__attribute__((constructor)) static void coaxial_face_defaults(void) {
+  coax_default_t_Player(&player);
+  coax_default_t_Sticks(&sticks);
+}

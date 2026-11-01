@@ -31,3 +31,7 @@ EXPORT("nl_stats") int32_t stats(int32_t work_n,int32_t requests_n,int32_t key_n
 int64_t home_watch_request(int64_t mode,int64_t keys_n,int64_t now) {nl_output_count=lb_begin((coax_v_t_LbSeen){&activity_seen,1},mode,in(1,(int)keys_n),now,out());return nl_output_count;}
 int64_t home_watch_message(int64_t text_n,int64_t keys_n,int64_t now) {coax_t_LbMessage r=lb_message((coax_v_t_LbSeen){&activity_seen,1},in(0,(int)text_n),in(1,(int)keys_n),now,out());nl_output_count=r.written;return r.code;}
 coax_v_t_LrQuery home_query(void) {return q();}
+
+// The globals' declared defaults (coax_default_T, from the compiler), before any call:
+// _initialize runs this in the browser.
+__attribute__((constructor)) static void coaxial_face_defaults(void) { coax_default_t_LrQuery(&query); }

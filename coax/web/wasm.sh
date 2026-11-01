@@ -47,7 +47,7 @@ opt=-O2; [[ "$mode" == dev ]] && opt=-O1
 cflags=(--target=wasm32-wasip1 --sysroot="$sysroot" -resource-dir="$resources" -std=c11 "$opt"
         -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable
         -Wno-unused-but-set-variable -I"$work")
-# Every unit's C first (in parallel), so defaults.py can see them all.
+# Every unit's C first (in parallel): the face includes their headers.
 units=("$coax_file:$name"); gen=()
 for library in ${libraries[@]+"${libraries[@]}"}; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
@@ -57,9 +57,9 @@ for unit in "${units[@]}"; do
   (cd "$repo" && "$coax_driver" c "${unit%%:*}" --library --header "$work/${unit##*:}.h" ${run_steps[@]+"${run_steps[@]}"}) > "$work/${unit##*:}.c" & gen+=($!)
 done
 for pid in "${gen[@]}"; do wait "$pid"; done
-# Struct defaults, as native applies them: the face is built through a
-# wrapper that defaults its coax globals and exports coaxial_state_init.
-python3 "$repo/coax/web/defaults.py" "$face" "$work/$name.face.c" $(for unit in "${units[@]}"; do printf '%s ' "$work/${unit##*:}.c"; done)
+# Struct defaults come from the compiler: each unit's header declares
+# coax_default_T for its types with declared defaults, and the face calls
+# them for a new state (coaxial_state_init) and its own globals.
 "$clang" "${cflags[@]}" -c "$work/$name.c" -o "$work/$name.o" & coax_pid=$!
 objects=("$work/$name.o" "$work/$name.face.o")
 pids=()
@@ -68,7 +68,7 @@ for unit in "${units[@]:1}"; do
   "$clang" "${cflags[@]}" -c "$work/$base.c" -o "$work/$base.o" & pids+=($!)
   objects+=("$work/$base.o")
 done
-"$clang" "${cflags[@]}" -I"$(dirname "$face")" -c "$work/$name.face.c" -o "$work/$name.face.o"
+"$clang" "${cflags[@]}" -I"$(dirname "$face")" -c "$face" -o "$work/$name.face.o"
 wait "$coax_pid"
 for pid in ${pids[@]+"${pids[@]}"}; do wait "$pid"; done
 link_opt=(); [[ "$mode" == dev ]] || link_opt=("$opt")

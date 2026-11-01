@@ -527,3 +527,15 @@ coax_string CP_message(coax_t_CP_Error l_error) {
   }
   return COAX_STR("checks-c does not emit a standalone source map; use ABI locations and #line", 75);
 }
+
+/* Struct defaults for hosts: coax_default_T writes T's declared defaults in place. */
+void coax_default_t_CP_Profile(coax_t_CP_Profile *p);
+void coax_default_t_CP_Request(coax_t_CP_Request *p);
+__attribute__((weak)) void coax_default_t_CP_Profile(coax_t_CP_Profile *p) {
+  memset(p, 0, sizeof *p);
+  p->identity = INT64_C(-1);
+}
+__attribute__((weak)) void coax_default_t_CP_Request(coax_t_CP_Request *p) {
+  memset(p, 0, sizeof *p);
+  p->debug_info = INT64_C(-1);
+}
