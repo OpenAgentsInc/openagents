@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+"""OFFLINE default gate: recompile the cached Coax scorer, never run the plant.
+
+The expensive grid is the explicit one-shot native_reference workflow. This
+adapter consumes only committed compact states, lineage and measured scorecards.
+"""
+from pathlib import Path
+import argparse,json,os,platform
+import panda_gain_search_native_reference as core
+ROOT=core.ROOT;F=core.F;identity=core.identity;require=core.require;Run=core.Run
+NAMES=['case-scores.bin','candidates.bin','selection.bin']
+def main():
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--compiler',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();require(platform.system()=='Darwin'and platform.machine()=='arm64'and os.sys.byteorder=='little','qualifiedDarwinarm64');e,b=core.frozen(baseline=None);lineage=json.loads((F/'lineage.json').read_text());qualification=json.loads((F/'native-qualification.json').read_text());require(lineage['passed']and lineage['experiment']==identity(F/'experiment.json')and lineage['baseline_trace']==b['previous_trace']and lineage['baseline_qualification']==b['previous_native_qualification']and lineage['baseline_new_plant_steps']==0 and lineage['baseline_fresh_only'],'committedcarrylineage');require(lineage['compact']==identity(F/'compact-cache.bin')and lineage['index']==identity(F/'compact-index.bin'),'exactcommittedcache');require(qualification['passed']and qualification['collection_passed']and qualification['baseline_new_plant_steps']==0 and qualification['scorer_modes_byte_identical'],'originalonce-onlygrid+cachedscorequalification');expected=qualification['scores']['debug']['outputs'];require(all(identity(F/n)==expected[n]for n in NAMES),'originalmeasuredscorefiles');out=a.output.resolve();require(not out.exists(),'preserveallgateattempts');out.mkdir(parents=True);source={str(p.relative_to(ROOT)):identity(p)for p in set(core.graph(core.SOURCE))|{core.NATIVE,core.FORMAT,Path(core.__file__).resolve(),Path(__file__).resolve(),ROOT/'psionic/tests/robotics/panda_joint_pd_prefix_reference.py',ROOT/'psionic/tests/robotics/panda_pose_ik_native_reference.py'}};r=dict(schema='psionic.panda-gain-search.cached-score-gate.v1',passed=False,commands=[],SDK_calls=0,plant_steps=0,baseline_new_plant_steps=0,source=source,compiler=identity(a.compiler),original_qualification=identity(F/'native-qualification.json'),lineage=identity(F/'lineage.json'),cache=identity(F/'compact-cache.bin'),cache_index=identity(F/'compact-index.bin'),scope='CachedCoaxscorer/combiner/selectorONLY. Noownedgrid,baselinephysics,SDKoroldgate.');run=Run(out,r);run.save()
+ try:
+  for mode,extra in[('debug',[]),('release',['--release'])]:
+   d=out/mode;d.mkdir();c=d/'panda-pd-gain-search.c';h=d/'panda-pd-gain-search.h';c.write_bytes(run.command('emit-'+mode,[a.compiler,'c',core.SOURCE.relative_to(ROOT),'--library',*extra,'--header',h]));alias=d/'panda-joint-pd-tracking.h';alias.write_bytes(h.read_bytes());r.setdefault('emissions',{})[mode]=dict(source=identity(c),header=identity(h),private_header_alias=identity(alias))
+  for mode,cmode,opts in[('debug','debug',['-O0','-g']),('release','release',['-O2']),('sanitized','debug',['-O1','-g','-fsanitize=address,undefined','-fno-sanitize-recover=all','-fno-omit-frame-pointer'])]:
+   d=out/mode;d.mkdir(exist_ok=True);h=out/cmode/'panda-pd-gain-search.h';run.command('compile-Coax-'+mode,[os.environ.get('CC','cc'),*core.flags(),'-Wno-unused-parameter',*opts,'-c',out/cmode/'panda-pd-gain-search.c','-o',d/'coax.o']);run.command('compile-effects-'+mode,[os.environ.get('CC','cc'),*core.flags(),*opts,'-I'+str(h.parent),core.NATIVE,d/'coax.o','-lm','-o',d/'native']);env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0:halt_on_error=1',UBSAN_OPTIONS='halt_on_error=1');report=json.loads(run.command('CACHED-SCORER-ONLY-'+mode,[d/'native','score',F/'compact-cache.bin',F/'compact-index.bin',*[d/n for n in NAMES]],env));require(report['passed']and report['SDK_calls']==report['plant_steps']==0,'NOphysicalsteps');outputs={n:identity(d/n)for n in NAMES};require(outputs==expected,'allcachedscorebytesexacttomeasuredcontext');r.setdefault('modes',{})[mode]=dict(native=report,binary=identity(d/'native'),outputs=outputs);run.save()
+  core.verify(source);r['passed']=True
+ except BaseException as error:r['failure']=repr(error);raise
+ finally:run.save()
+ print(json.dumps(dict(passed=True,SDK_calls=0,plant_steps=0,record=str(out/'record.json'))))
+if __name__=='__main__':main()

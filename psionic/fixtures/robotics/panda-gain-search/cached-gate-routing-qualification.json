@@ -1,0 +1,29 @@
+{
+  "schema": "psionic.panda-gain-search.cached-gate-routing.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "plant_steps": 0,
+  "Coax_calls": 0,
+  "numerical_calls": 0,
+  "executed_python_adapter": false,
+  "invocation": [
+    "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_gain_search_cached.py",
+    "--compiler",
+    "/stub/coax",
+    "--output",
+    "/stub/output"
+  ],
+  "gate": {
+    "bytes": 406,
+    "sha256": "126f9bb45da75ca9d37324fb7fb1e512559e2f302f727897c3353cd4bf4b397e"
+  },
+  "cached_adapter": {
+    "bytes": 4491,
+    "sha256": "062ab59fb8587fdc40979a09a565e0aae5fa98669f2a10bc9914345a9043d5d5"
+  },
+  "clean_prepare_adapter": {
+    "bytes": 1542,
+    "sha256": "bde0e602b4dacbf909153479dd9f97f49e7539ea454fa6440c45e2da01ce98ed"
+  },
+  "scope": "Shellsyntax/Pythoncompile andstubroutingonly; no passed numeric result repeated."
+}

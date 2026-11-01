@@ -1,0 +1,70 @@
+#load "panda-pd-gain-search-fixtures.coax";
+#authority;
+#test "Panda gain score bit admission distinguishes every IEEE family without manufacturing VM NaNs" {
+ #assert pgs_finite_bits(0) && pgs_finite_bits(0x8000000000000000) && pgs_finite_bits(0x7fefffffffffffff) && pgs_finite_bits(0xffefffffffffffff);
+ #assert !pgs_finite_bits(0x7ff0000000000000) && !pgs_finite_bits(0xfff0000000000000) && !pgs_finite_bits(0x7ff8000000000001);
+}
+#test "Panda gain score exact source boxes and per-sample reduction observe every diagnostic lane" {
+ cfg:=pnt_case_owned(0);s:=pgs_begin_owned(2,0);o:PgsObservation;o.q=cfg.initial.q;o.previous_v=cfg.initial.v;for i:0..<9 {o.q[i]+=0.001*f64(i+1);o.v[i]=0.01*f64(i+1);}o.pjp_clipped=2;o.pa_control_clipped=3;o.pa_force_clipped=1;r:=pnt_reference_owned(cfg,1);s=pgs_add_owned(s,o,r.reference,cfg.initial.q);#assert s.samples==1 && abs(s.position_square-0.00014)<2e-15 && s.stationary_square==0 && abs(s.iae-0.000056)<2e-15 && abs(s.hold_peak-0.007)<2e-15 && s.terminal==0 && s.pjp_clipped==2 && s.pa_control_clipped==3 && s.pa_force_clipped==1;
+ bounds:=pgs_bounds();for i:0..<9 {#assert abs(s.peak_speed[i]-o.v[i])<2e-15 && abs(s.peak_acceleration[i]-o.v[i]/0.002)<2e-13;want:=pgs_min(o.q[i]-bounds.lower[i],bounds.upper[i]-o.q[i]);#assert s.minimum_margin[i]==want;}#assert bounds.lower[7]==0 && bounds.upper[7]==0.04 && bounds.lower[8]== -0.04 && bounds.upper[8]==0;
+ s.samples=625;s=pgs_add_owned(s,o,r.reference,cfg.initial.q);#assert abs(s.terminal-1.4)<2e-15;s.samples=749;s.terminal=0;s=pgs_add_owned(s,o,r.reference,cfg.initial.q);#assert abs(s.terminal-1.4)<2e-15;s.samples=624;s.terminal=0;s=pgs_add_owned(s,o,r.reference,cfg.initial.q);#assert s.terminal==0;
+ cfg=pnt_case_owned(1);r=pnt_reference_owned(cfg,135);s=pgs_begin_owned(0,1);o.q=cfg.initial.q;for i:0..<7 {o.q[i]=r.reference.angle[i].value;}s=pgs_add_owned(s,o,r.reference,cfg.initial.q);#assert abs(s.stationary_square-0.00089375)<2e-15;
+}
+#test "Panda gain score full AND goals use all cases strict nominal SSE and full completion" {
+ for c:0..<4 {s:=pgs_literal_card(0,c);s=pgs_finish_owned(s);#assert s.valid==1 && s.complete==1 && s.feasible==1 && s.terminal_ok==1 && s.hold_ok==1 && s.nominal_ok==1;s.terminal=1;s=pgs_finish_owned(s);#assert s.terminal_ok==1;s.terminal=f64_from_bits(f64_bits(1.0)+1);s=pgs_finish_owned(s);#assert s.terminal_ok==0 && s.feasible==0;}
+ s:=pgs_literal_card(0,0);s.hold_peak=0.005;s=pgs_finish_owned(s);#assert s.hold_ok==1;s.hold_peak=f64_from_bits(f64_bits(0.005)+1);s=pgs_finish_owned(s);#assert s.hold_ok==0 && s.feasible==0;s.case_id=1;s.position_square=s.stationary_square;s=pgs_finish_owned(s);#assert s.nominal_ok==0;s.position_square=f64_from_bits(f64_bits(s.stationary_square)-1);s=pgs_finish_owned(s);#assert s.nominal_ok==1;
+ s=pgs_literal_card(0,2);s.samples=749;s=pgs_finish_owned(s);#assert s.valid==0 && s.complete==0 && s.feasible==0 && s.reason==1 && s.terminal_ok==0 && s.hold_ok==0 && s.nominal_ok==0;s.reason=4;s=pgs_finish_owned(s);#assert s.reason==4;
+}
+#test "Panda gain score trace refusal is finite invalid data while API refusal remains atomic" {
+ obs:[2]PgsObservation;cfg:=pnt_case_owned(0);for i:0..<2 {obs[i].q=cfg.initial.q;obs[i].previous_v=cfg.initial.v;}out:=[2]PgsCaseScore.[pgs_case_poison(),pgs_case_poison()];old:=out[0];#assert pgs_score(0,0,obs[..],out[..])==PgsStatus.shape;#assert pgs_score(-1,0,obs[..],out[0..<1])==PgsStatus.range;#assert pgs_score(9,0,obs[..],out[0..<1])==PgsStatus.range;#assert pgs_score(0,-1,obs[..],out[0..<1])==PgsStatus.range;#assert pgs_score(0,4,obs[..],out[0..<1])==PgsStatus.range;pgs_case_same(out[0],old);pgs_case_same(out[1],old);
+ #assert pgs_score(1,0,obs[0..<0],out[0..<1])==PgsStatus.ok && out[0].valid==0 && out[0].reason==1 && out[0].samples==0;
+ #assert pgs_score(1,0,obs[..],out[0..<1])==PgsStatus.ok && out[0].reason==1 && out[0].samples==2;
+ obs[0].status=pnt_status(6,3);#assert pgs_score(0,0,obs[..],out[0..<1])==PgsStatus.ok && out[0].reason==2 && out[0].samples==0;obs[0].status=pnt_status(0,1);#assert pgs_score(0,0,obs[..],out[0..<1])==PgsStatus.ok && out[0].reason==2;obs[0].status=pnt_status(0,0);
+ obs[0].pjp_clipped=8;#assert pgs_score(0,0,obs[..],out[0..<1])==PgsStatus.ok && out[0].reason==6;obs[0].pjp_clipped=0;obs[0].previous_v[8]=0.1;#assert pgs_score(0,0,obs[..],out[0..<1])==PgsStatus.ok && out[0].reason==5;obs[0].previous_v=cfg.initial.v;
+ obs[0].q[7]=0.05;#assert pgs_score(0,0,obs[..],out[0..<1])==PgsStatus.ok && out[0].reason==4;obs[0].q=cfg.initial.q;obs[0].v[8]=3;#assert pgs_score(0,0,obs[..],out[0..<1])==PgsStatus.ok && out[0].reason==7;
+}
+#test "Panda gain scorer complete literal hold fixture publishes complete card without plant simulation" {
+ cfg:=pnt_case_owned(0);obs:[750]PgsObservation;for i:0..<750 {obs[i].q=cfg.initial.q;obs[i].previous_v=cfg.initial.v;}out:[1]PgsCaseScore;#assert pgs_score(0,0,obs[..],out[..])==PgsStatus.ok && out[0].samples==750 && out[0].valid==1 && out[0].complete==1 && out[0].feasible==1 && out[0].terminal==0 && out[0].iae==0 && out[0].hold_peak==0;bounds:=pgs_bounds();for i:0..<9 {#assert out[0].minimum_margin[i]==pgs_min(cfg.initial.q[i]-bounds.lower[i],bounds.upper[i]-cfg.initial.q[i]);}
+}
+
+#test "Panda gain metric extrema retain defined equality and signed-zero behavior" {
+ #assert pgs_min(-2,3)== -2 && pgs_min(3,-2)== -2 && pgs_max(-2,3)==3 && pgs_max(3,-2)==3;z:=f64_from_bits(0x8000000000000000);#assert f64_bits(pgs_min(z,0))==0 && f64_bits(pgs_max(z,0))==0;
+}
+pgs_min :: (a:f64,b:f64)->f64 {return ifx a<b then a else b;}
+pgs_max :: (a:f64,b:f64)->f64 {return ifx a>b then a else b;}
+#test "Panda gain score initial identity and invalid latches remain explicit" {
+ s:=pgs_begin_owned(8,3);#assert s.profile==8 && s.case_id==3 && s.valid==1 && s.samples==0 && s.peak_speed[6]==2;
+ s=pgs_literal_card(7,2);s.reason=4;s=pgs_finish_owned(s);#assert s.valid==0 && s.complete==1 && s.feasible==0 && s.reason==4 && s.terminal_ok==0 && s.hold_ok==0 && s.nominal_ok==0;
+}
+#forall "Panda gain score raw-bit finite admission observes every coefficient" lane:0..<27 {
+ cfg:=pnt_case_owned(0);words:[27]u64;previous:[9]u64;for i:0..<9 {words[i]=f64_bits(cfg.initial.q[i]);}words[lane]=0x7ff8000000000001;#assert pgs_check_bits(words,previous,pnt_status(0,0),0,0,0)==3;
+}
+#forall "Panda gain score counters include endpoints and refuse both neighboring domains" role:0..<3,negative:bool {
+ cfg:=pnt_case_owned(0);o:PgsObservation;o.q=cfg.initial.q;cap:=ifx role==0 then 7 else ifx role==1 then 9 else 2;if role==0 {o.pjp_clipped=cap;}else if role==1 {o.pa_control_clipped=cap;}else {o.pa_force_clipped=cap;}#assert pgs_check_owned(o,cfg.initial.v)==0;value:=ifx negative then -1 else cap+1;if role==0 {o.pjp_clipped=value;}else if role==1 {o.pa_control_clipped=value;}else {o.pa_force_clipped=value;}#assert pgs_check_owned(o,cfg.initial.v)==6;
+}
+#forall "Panda gain score every raw state role and source endpoint remains observable" axis:0..<9 {
+ cfg:=pnt_case_owned(0);o:PgsObservation;o.q=cfg.initial.q;b:=pgs_bounds();o.q[axis]=b.lower[axis];#assert pgs_check_owned(o,cfg.initial.v)==0;o.q[axis]=b.upper[axis];#assert pgs_check_owned(o,cfg.initial.v)==0;o.q[axis]=b.lower[axis]-0.001;#assert pgs_check_owned(o,cfg.initial.v)==4;o.q[axis]=b.upper[axis]+0.001;#assert pgs_check_owned(o,cfg.initial.v)==4;o.q=cfg.initial.q;
+ for role:0..<3 {bound:=ifx role==0 then (ifx axis<7 then 100.0 else 1.0) else (ifx axis<7 then 20.0 else 2.0);if role==0 {o.q[axis]=bound;}else if role==1 {o.v[axis]=bound;}else {o.previous_v[axis]=bound;}expected:=cfg.initial.v;if role==2 {expected[axis]=bound;}#assert pgs_check_owned(o,expected)==(ifx role==0 then 4 else 0);if role==0 {o.q[axis]=bound+1;}else if role==1 {o.v[axis]=bound+1;}else if role==2 {o.previous_v[axis]=bound+1;expected[axis]=bound+1;}#assert pgs_check_owned(o,expected)==7;o.q=cfg.initial.q;o.v=cfg.initial.v;o.previous_v=cfg.initial.v;}
+ o.previous_v[axis]=0.1;#assert pgs_check_owned(o,cfg.initial.v)==5;
+}
+#test "Panda gain metric terminal channels and changing rates have independent nonzero witnesses" {
+ cfg:=pnt_case_owned(1);r:=pnt_reference_owned(cfg,135);o:PgsObservation;o.q=cfg.initial.q;o.previous_v=cfg.initial.v;for i:0..<7 {o.q[i]=r.reference.angle[i].value+0.001*f64(i+1);o.v[i]=r.reference.rate[i].value;}s:=pgs_begin_owned(0,1);s.samples=625;s=pgs_add_owned(s,o,r.reference,cfg.initial.q);#assert abs(s.terminal-0.7)<2e-14;
+ for i:0..<7 {o.q[i]=r.reference.angle[i].value;o.previous_v[i]=r.reference.rate[i].value-0.01*f64(i+1);o.v[i]=r.reference.rate[i].value+0.01*f64(i+1);}s=pgs_begin_owned(0,1);s.samples=625;s=pgs_add_owned(s,o,r.reference,cfg.initial.q);#assert abs(s.terminal-1.4)<2e-14;for i:0..<7 {#assert abs(s.peak_acceleration[i]-10*f64(i+1))<2e-13;}
+ cfg=pnt_case_owned(0);b:=pgs_bounds();o.q=cfg.initial.q;for i:0..<9 {o.q[i]=b.lower[i]+0.001*f64(i+1);}s=pgs_add_owned(pgs_begin_owned(0,0),o,pnt_reference_owned(cfg,1).reference,cfg.initial.q);for i:0..<9 {#assert abs(s.minimum_margin[i]-0.001*f64(i+1))<2e-15;}
+}
+#test "Panda gain score source wrapper observes next-reference and previous-state publication" {
+ cfg:=pnt_case_owned(1);obs:[2]PgsObservation;for k:0..<2 {r:=pnt_reference_owned(cfg,k+1);obs[k].q=cfg.initial.q;for i:0..<7 {obs[k].q[i]=r.reference.angle[i].value;obs[k].v[i]=r.reference.rate[i].value;}obs[k].previous_v=ifx k==0 then cfg.initial.v else obs[k-1].v;}out:[1]PgsCaseScore;#assert pgs_score(8,1,obs[..],out[..])==PgsStatus.ok && out[0].profile==8 && out[0].case_id==1 && out[0].samples==2 && out[0].position_square==0;
+ big:[751]PgsObservation;#assert pgs_score(0,0,big[..],out[..])==PgsStatus.shape;
+}
+
+PgsBounds :: struct {lower:[9]f64;upper:[9]f64;}
+pgs_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+pgs_bounds :: ()->PgsBounds {x:PgsBounds;lo:=pik_lower();hi:=pik_upper();for i:0..<9 {if i<7 {x.lower[i]=lo[i];x.upper[i]=hi[i];}else if i==7 {x.upper[i]=0.04;}else {x.lower[i]= -0.04;}}return x;}
+pgs_begin_owned :: (profile:int,case_id:int)->PgsCaseScore {s:PgsCaseScore;s.profile=profile;s.case_id=case_id;s.valid=1;cfg:=pnt_case_owned(case_id);s.peak_speed[6]=abs(cfg.initial.v[6]);return s;}
+// Trusted reducer: finite admitted observation/reference, coherent prior metrics.
+pgs_add_owned :: (prior:PgsCaseScore,o:PgsObservation,reference:PqtSample,initial:[9]f64)->PgsCaseScore {s:=prior;b:=pgs_bounds();row_iae:f64=0;for i:0..<7 {error:=o.q[i]-reference.angle[i].value;stationary:=initial[i]-reference.angle[i].value;s.position_square+=error*error;s.stationary_square+=stationary*stationary;row_iae+=abs(error);s.hold_peak=pgs_max(s.hold_peak,abs(o.q[i]-initial[i]));if s.samples>=625 {s.terminal=pgs_max(s.terminal,pgs_max(abs(error)/0.01,abs(o.v[i]-reference.rate[i].value)/0.05));}}s.iae+=row_iae*0.002;for i:0..<9 {s.peak_speed[i]=pgs_max(s.peak_speed[i],pgs_max(abs(o.previous_v[i]),abs(o.v[i])));s.peak_acceleration[i]=pgs_max(s.peak_acceleration[i],abs((o.v[i]-o.previous_v[i])/0.002));margin:=pgs_min(o.q[i]-b.lower[i],b.upper[i]-o.q[i]);s.minimum_margin[i]=ifx s.samples==0 then margin else pgs_min(s.minimum_margin[i],margin);}s.pjp_clipped+=o.pjp_clipped;s.pa_control_clipped+=o.pa_control_clipped;s.pa_force_clipped+=o.pa_force_clipped;s.samples+=1;return s;}
+pgs_finish_owned :: (prior:PgsCaseScore)->PgsCaseScore {s:=prior;s.complete=ifx s.samples==750 then 1 else 0;if s.complete==0 || s.reason!=0 {s.valid=0;if s.reason==0 {s.reason=1;}}s.terminal_ok=0;s.hold_ok=0;s.nominal_ok=0;s.feasible=0;if s.valid==1 {s.terminal_ok=ifx s.terminal<=1 then 1 else 0;s.hold_ok=ifx s.case_id!=0 || s.hold_peak<=0.005 then 1 else 0;s.nominal_ok=ifx s.case_id!=1 || s.position_square<s.stationary_square then 1 else 0;s.feasible=ifx s.terminal_ok==1 && s.hold_ok==1 && s.nominal_ok==1 then 1 else 0;}return s;}
+pgs_bad_owned :: (prior:PgsCaseScore,reason:int)->PgsCaseScore {s:=prior;s.reason=reason;return s;}
+pgs_check_bits :: (words:[27]u64,previous:[9]u64,status:PntStatus,pjp:int,cc:int,fc:int)->int {if !pnt_ok(status) {return 2;}if pjp<0 || pjp>7 || cc<0 || cc>9 || fc<0 || fc>2 {return 6;}for i:0..<27 {if !pgs_finite_bits(words[i]) {return 3;}}for i:0..<9 {if words[18+i]!=previous[i] {return 5;}}for i:0..<9 {q:=f64_from_bits(words[i]);v:=f64_from_bits(words[9+i]);w:=f64_from_bits(words[18+i]);if abs(q)>(ifx i<7 then 100.0 else 1.0) || abs(v)>(ifx i<7 then 20.0 else 2.0) || abs(w)>(ifx i<7 then 20.0 else 2.0) {return 7;}}b:=pgs_bounds();for i:0..<9 {q:=f64_from_bits(words[i]);if q<b.lower[i] || q>b.upper[i] {return 4;}}return 0;}
+pgs_check_owned :: (o:PgsObservation,previous:[9]f64)->int {words:[27]u64;old:[9]u64;for i:0..<9 {words[i]=f64_bits(o.q[i]);words[9+i]=f64_bits(o.v[i]);words[18+i]=f64_bits(o.previous_v[i]);old[i]=f64_bits(previous[i]);}return pgs_check_bits(words,old,o.status,o.pjp_clipped,o.pa_control_clipped,o.pa_force_clipped);}
+pgs_score :: (profile:int,case_id:int,observations:[]PgsObservation,output:[]PgsCaseScore)->PgsStatus #export_c {if observations.count<0 || observations.count>750 || output.count!=1 {return PgsStatus.shape;}if !pgs_profile_valid(profile) || !pnt_case_valid(case_id) {return PgsStatus.range;}cfg:=pnt_case_owned(case_id);previous:=cfg.initial.v;score:=pgs_begin_owned(profile,case_id);for k:0..<observations.count {o:=observations[k];reason:=pgs_check_owned(o,previous);if reason!=0 {score=pgs_bad_owned(score,reason);break;}reference:=pnt_reference_owned(cfg,k+1);score=pgs_add_owned(score,o,reference.reference,cfg.initial.q);previous=o.v;}output[0]=pgs_finish_owned(score);return PgsStatus.ok;}

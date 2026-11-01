@@ -1,0 +1,155 @@
+{
+  "schema": "psionic.panda-gain-search.source-qualification.v1",
+  "passed": true,
+  "compiler": {
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "bytes": 2886376
+  },
+  "source_files": {
+    "psionic/tests/robotics/panda-pd-gain-search-types.coax": {
+      "sha256": "87019a74c5d1a06560fe491b0c832a20664c1a27a068edcdb80d9dd155253197",
+      "bytes": 1050
+    },
+    "psionic/tests/robotics/panda-pd-gain-search-fixtures.coax": {
+      "sha256": "03f7455b6eaea9c2265fece8e6917300401c42c7efe741fc9c6a3d038f5bbdd6",
+      "bytes": 3408
+    },
+    "psionic/tests/robotics/panda-pd-gain-search-control.coax": {
+      "sha256": "3687d0d2431113ffaf071ad7af90fce4cefd0cedd08d6d0b4da462ec312bcb14",
+      "bytes": 5105
+    },
+    "psionic/tests/robotics/panda-pd-gain-search-score.coax": {
+      "sha256": "9654163eb3df904140b1a5c1cb3aa4b656ea7453be4fb21370c3fb9abd337dc4",
+      "bytes": 13523
+    },
+    "psionic/tests/robotics/panda-pd-gain-search.coax": {
+      "sha256": "0aa7674649abf3eeef092f149fb22280277e6b8fb3df156d05bf88772e1df0e7",
+      "bytes": 12911
+    }
+  },
+  "experiment": {
+    "sha256": "67c872e87b64041c9a0fde7014f828a345a0d48148d496fe087575d49fe38b31",
+    "bytes": 59450
+  },
+  "new_check_groups": 25,
+  "root_scopes": {
+    "control": 73,
+    "score": 219,
+    "selector": 286
+  },
+  "actual_emitted_mutants": 578,
+  "killed": 578,
+  "survived": 0,
+  "runs": {
+    "control-first": {
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "83591895ed8a55c6a9750203e3440c73ee0277157e8c584ee56582777f5fe5c6",
+        "bytes": 398
+      },
+      "phase": "preserved compile-only failure before mutation"
+    },
+    "control-second": {
+      "stdout": {
+        "sha256": "609a1261c8a032a9a548df1b49d9ca8f1e6dfb14123a15f57e88af903ae0a171",
+        "bytes": 114
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 73,
+      "killed": 73,
+      "survived": 0
+    },
+    "score-first": {
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "46893db55829a5cb2c7e23972b645870b4b1843db6ccbc0b7ad4372f01590a84",
+        "bytes": 14698
+      },
+      "phase": "preserved compile-only failure before mutation"
+    },
+    "score-second": {
+      "stdout": {
+        "sha256": "30e128d43e13ceee19a4bfd9e116f5aae7dc8ea373813ec13f6c5c92b450a3e8",
+        "bytes": 43367
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 207,
+      "killed": 167,
+      "survived": 40
+    },
+    "score-third": {
+      "stdout": {
+        "sha256": "6c3bf1c0d20f8a563e85ae953eff3ff16868daccd4b87cd5ec56f644f7716662",
+        "bytes": 116
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 219,
+      "killed": 219,
+      "survived": 0
+    },
+    "select-first": {
+      "stdout": {
+        "sha256": "820aa07854d7c60e1f26f20086d5792fcb8fd4132b4238e34be9c32c41386247",
+        "bytes": 101682
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 288,
+      "killed": 199,
+      "survived": 89
+    },
+    "select-second": {
+      "stdout": {
+        "sha256": "7946d9a5eb7abd579fb274e1f79547821b670e044240c5d52a30929a2446b52c",
+        "bytes": 3654
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 286,
+      "killed": 284,
+      "survived": 2
+    },
+    "select-third": {
+      "stdout": {
+        "sha256": "4c8aaa135923b8e426e741b288874ac2e996eccad5bce036e4d9e231035596e7",
+        "bytes": 116
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 286,
+      "killed": 286,
+      "survived": 0
+    }
+  },
+  "source_history": "Control first compile caught leading-decimal test literals; score first compile caught absent min/max intrinsics. Initial scorer207 had40 observation survivors; final raw-bit admission/extrema/lineage/domain witnesses close219sites. Initial selector288 had89 survivors; redundant feasibility assignment removed, exact integer/ordering/runner-zero witnesses close286sites. No equivalence waiver. No grid observations were used to alter cases, scoring, gains or budgets.",
+  "baseline_policy": "Profile1=(1,1) metadata/scoring allowed; pgs_step explicitly refuses stage7/code2 before numerical model calls. Four historical baseline trajectories are carry-only.",
+  "scope": [
+    "New test-only consumer/scoring/selection; unchanged Pjp/Peu/Pqt/pnt math and existing numerical receipts carried",
+    "Scorer/selector source tests use literal finite policy fixtures, no simulated full rollouts",
+    "No canonical search,SDK,NN,render or whole-model execution in source qualification",
+    "No standalone old gate rerun; imported dependency baseline checks remain part of new authority/mutation context",
+    "Counts name actual emitted sites, not full Quantity token provenance or compiler #bounded guarantees",
+    "All case/combined score PODs are unsealed observations, not trajectory certificates; fixed factory/reference and bounded reducer/card helper preconditions apply."
+  ]
+}

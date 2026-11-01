@@ -1,0 +1,142 @@
+{
+  "schema": "psionic.panda-gain-search.native-publication.v1",
+  "passed": true,
+  "packaging_only": true,
+  "physics_or_score_execution_repeated": false,
+  "SDK_calls": 0,
+  "native_qualification": {
+    "bytes": 34314,
+    "sha256": "101480a5223bc2dd2a18e703742ab51fd20e2d29932991b9a7f897e16af162d3"
+  },
+  "preparation_qualification": {
+    "bytes": 30166,
+    "sha256": "5d8d0f76f012273bf16cf6e6d672bf65a6cdc863cfd94d8c68ed73813dc4fd51"
+  },
+  "lineage": {
+    "bytes": 22287,
+    "sha256": "603507044bd00c61670f986f3d37e6e889d88f1e35134912a9de0eb8826a5a18"
+  },
+  "canonical_new_rollouts": 32,
+  "new_attempted_steps": 24000,
+  "new_committed_steps": 24000,
+  "baseline_new_steps": 0,
+  "carried_baseline_rollouts": 4,
+  "new_grid_native_assertions": 6337236,
+  "scorer_modes": 3,
+  "scorer_assertions_each": 515393,
+  "ABI_guard_assertions_each": 1338,
+  "scorer_modes_byte_identical": true,
+  "selection": {
+    "winner": -1,
+    "runner_up": -1,
+    "feasible_count": 0
+  },
+  "offline_adapter_scope": "Syntax/Pythoncompile/shellrouting only; underlying original numeric qualification carried. No cached gate or clean-prepare adapter numeric rerun.",
+  "files": {
+    "psionic/fixtures/robotics/panda-gain-search/cached-gate-routing-qualification.json": {
+      "bytes": 905,
+      "sha256": "2c99f0f17d4b3706fb806e92a5c7f5c0ec56729473ab4f9af03d0a5841513ca1"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/candidates.bin": {
+      "bytes": 648,
+      "sha256": "fc18cf34dfe540ac48c7ddf278aa43fbf4c00fc8c79e9ec825c24d508e9cdcff"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/case-scores.bin": {
+      "bytes": 12960,
+      "sha256": "cb7f5031db18b5993e01aa87430763d99e5392cc5b6853a28868b580bc181cb4"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/compact-cache.bin": {
+      "bytes": 5616024,
+      "sha256": "8f4cde2c22c60ad39f2029a5926b1f872cacb8adf69ca2018db9ab4631b3530f"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/compact-index.bin": {
+      "bytes": 1728,
+      "sha256": "bbe26f283bf9617da59e13e5fc911437cf33120a59e826312c62432d973d03ad"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/gains.f64": {
+      "bytes": 4032,
+      "sha256": "d5d9377e3775d5e45b54a97fc79c2ff20fe1b91db97c428ab48d2d9dcdb996a9"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/grid-progress.jsonl": {
+      "bytes": 4032,
+      "sha256": "836417346a83acef80049da61b8c47ed1c85ea3c2fdd44a5343c62905c9bc9f3"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/header-failure-v1/compile-effects-debug.stderr": {
+      "bytes": 460,
+      "sha256": "bcaaf29280dd2713e98fd781e58996d03ce7712ed62233ee1d08f7bad6905910"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/header-failure-v1/panda_gain_search_native.c": {
+      "bytes": 15101,
+      "sha256": "6b4628e98a65835591ca2b7ef45662ae294f205e86bbac03186e6f4ec579c0a8"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/header-failure-v1/panda_gain_search_native_reference.py": {
+      "bytes": 14441,
+      "sha256": "22f19bb339625bd4ddff2e8513cd50bc49e4303121bff5b486df0d23034eebbc"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/header-failure-v1/preserved-identities.json": {
+      "bytes": 555,
+      "sha256": "b03d6773d890605a434ee888a9a954cf4974b80c7d32e23090eac065aefcfd17"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/header-failure-v1/record.json": {
+      "bytes": 20640,
+      "sha256": "d566ef1f18568fd450bd27e46756efbb1b34f87c0cd6c295b1f04975be20d59e"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/lineage.json": {
+      "bytes": 22287,
+      "sha256": "603507044bd00c61670f986f3d37e6e889d88f1e35134912a9de0eb8826a5a18"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/native-qualification.json": {
+      "bytes": 34314,
+      "sha256": "101480a5223bc2dd2a18e703742ab51fd20e2d29932991b9a7f897e16af162d3"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/one-shot-marker.json": {
+      "bytes": 324,
+      "sha256": "d651bebf9add1bd45388eaf2efa1be22ccfadaf11104fab5c409e02c952ea60c"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/preparation-qualification.json": {
+      "bytes": 30166,
+      "sha256": "5d8d0f76f012273bf16cf6e6d672bf65a6cdc863cfd94d8c68ed73813dc4fd51"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/selection.bin": {
+      "bytes": 64,
+      "sha256": "a59d987f728cf88a9914086132908fd7b8e28c150e05aac22d23bcd8c4767389"
+    },
+    "psionic/tests/robotics/check-panda-pd-gain-search.sh": {
+      "bytes": 406,
+      "sha256": "126f9bb45da75ca9d37324fb7fb1e512559e2f302f727897c3353cd4bf4b397e"
+    },
+    "psionic/tests/robotics/panda-gain-search-native-contract.md": {
+      "bytes": 4399,
+      "sha256": "3016f6836250cd6cb93104a311d13d46ae0bf5fe4d87aab3058d2afb14fef8dd"
+    },
+    "psionic/tests/robotics/panda_gain_search_cached.py": {
+      "bytes": 4491,
+      "sha256": "062ab59fb8587fdc40979a09a565e0aae5fa98669f2a10bc9914345a9043d5d5"
+    },
+    "psionic/tests/robotics/panda_gain_search_native.c": {
+      "bytes": 15067,
+      "sha256": "8ab95f2df02fd58b8152afcc4b813f0ec75d6e55a34eb4b181f4bf3b843720cb"
+    },
+    "psionic/tests/robotics/panda_gain_search_native_reference.py": {
+      "bytes": 17841,
+      "sha256": "bb6c802fceff44522ecf6dfba0d1a7615ff331b4c941bb077e3db8922a290da5"
+    },
+    "psionic/tests/robotics/panda_gain_search_prepare.py": {
+      "bytes": 1542,
+      "sha256": "bde0e602b4dacbf909153479dd9f97f49e7539ea454fa6440c45e2da01ce98ed"
+    }
+  },
+  "private_raw_retention": {
+    "directory": "/tmp/panda-gain-search-owned-first/raw",
+    "files": 32,
+    "bytes": 24961280,
+    "identities_in": "lineage.json"
+  },
+  "limits": [
+    "NoSDK/load/step/NN/heldoutsinPartA",
+    "scenario-conditionedgainfamily",
+    "nonefeasiblemeansnoselection/noexpandedgrid",
+    "fixedprofileunconstrainedimplicitEulerplant",
+    "nofullhardware/contact/collision/clock/R14certificate"
+  ]
+}

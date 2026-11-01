@@ -1,0 +1,916 @@
+{
+  "schema": "psionic.panda-gain-search.compact-lineage.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 59450,
+    "sha256": "67c872e87b64041c9a0fde7014f828a345a0d48148d496fe087575d49fe38b31"
+  },
+  "baseline_trace": {
+    "bytes": 3648016,
+    "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+  },
+  "baseline_qualification": {
+    "bytes": 38013,
+    "sha256": "86cc01d00e0f765b3bca61873d1cd38c16768440adbb13f2272fa999554f17dc"
+  },
+  "raw_trajectories": [
+    {
+      "profile": 0,
+      "case_id": 0,
+      "offset_records": 0,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "a7b85d0a9b05e9a71fb23cddf348d4064f6d922199f17659c5c15975c50efd25"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 0,
+      "case_id": 1,
+      "offset_records": 750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "1bdd80f426269e1d98367e93a37fe59afdf2dc94ff16ddd1e2dd906080aa5ac9"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 0,
+      "case_id": 2,
+      "offset_records": 1500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "9781949a3ce3457c4fecf1af81e0897b1a165eff77a1455dbfb10f0fbf168449"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 0,
+      "case_id": 3,
+      "offset_records": 2250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "b6dbee8d666aa91e1cc1a9e858a8a2cf3e74e2f5dd2fcc43d5ba46a5c84f9303"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 2,
+      "case_id": 0,
+      "offset_records": 6000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "19321d0cfee74eb48c1d1d54ba79a3fcfa5d201a88581bb7e2c5fe18cb1c447c"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 2,
+      "case_id": 1,
+      "offset_records": 6750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "61249076052102033d9a9cab57942d5cdd4c8358c4c12fff55b83182ba20f84c"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 2,
+      "case_id": 2,
+      "offset_records": 7500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "4e04c5e2c4ab31cd3cb120ca211afc356eb28fee9aa03152e623855ddad2bf32"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 2,
+      "case_id": 3,
+      "offset_records": 8250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "497f06f02d518eca571943f55cba1d94e8088120d3141ada0111ddb33b728d29"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 3,
+      "case_id": 0,
+      "offset_records": 9000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "8bbdc052580391b33e71f9995a6677dfffb7b77c69568007f0c23f4bb2218f50"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 3,
+      "case_id": 1,
+      "offset_records": 9750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "ada2967fb423a8243409ed976401d7eb175077ed53fd9fff29435248f88d28ee"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 3,
+      "case_id": 2,
+      "offset_records": 10500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "05363beee817ce6f648d0cad550bf28e011c0ed754d54f1c4f3d406039586fc0"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 3,
+      "case_id": 3,
+      "offset_records": 11250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "56f72a0a1bc4ed215c42ef8d5267648e56e768bbcfda5fdcbd82e6265747c2ca"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 4,
+      "case_id": 0,
+      "offset_records": 12000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "0547322bbb90a8fdf2a8ec1349c6253585cc11077827424f6fd0a5cab2e9b71f"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 4,
+      "case_id": 1,
+      "offset_records": 12750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "ad44521883889512f7ac414261ccc19f22990197be60a9ce3741855ee45966d1"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 4,
+      "case_id": 2,
+      "offset_records": 13500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "78e4768bfb1aacdf3119e51919a95bfb6925ce2949ea5d669f3ed2788520af88"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 4,
+      "case_id": 3,
+      "offset_records": 14250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "abd7132f7646ea05c7fbb758767f963982ac6ec6c979fda6861b679e35c9b661"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 5,
+      "case_id": 0,
+      "offset_records": 15000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "78a993532092b6759e7e37c138eb28ac568f5e178dff986f71afcd442d48a024"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 5,
+      "case_id": 1,
+      "offset_records": 15750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "2984639fc9ab3ad1a1d440556cb132bafa2b1a21e06a0a56caa84f25846cfe76"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 5,
+      "case_id": 2,
+      "offset_records": 16500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "36e04bb7dd187dc302fda98350460e68036223d4bfaae10e7316707bf0330eb3"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 5,
+      "case_id": 3,
+      "offset_records": 17250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "c405014edc6b3f1b7e17de522e063397d73df995d2572574c95ef0cd88901892"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 6,
+      "case_id": 0,
+      "offset_records": 18000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "d13596fda775bf3737d9c49e055a0740cff9d8678c47e622b4108ea2dcb0d363"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 6,
+      "case_id": 1,
+      "offset_records": 18750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "517c11e31c93a25dc72794620b936e9e2afc76b7c7caf2a9e107d0cf60c2138c"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 6,
+      "case_id": 2,
+      "offset_records": 19500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "51c89820a0e0733df6c68da37c88b0ffa1b8d7c98f3efe06eae0d51857fb5285"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 6,
+      "case_id": 3,
+      "offset_records": 20250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "f186263db818f4a80a9d6ee8b0fa87589f7bf8420365ae1876d6faab90f622bd"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 7,
+      "case_id": 0,
+      "offset_records": 21000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "b0e972e63fcd78a8c2bee0efb417ee21aa37d2282591b5d819f3deaa2f104546"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 7,
+      "case_id": 1,
+      "offset_records": 21750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "cbcfd9480d5fc5e2cfd7b9f64cf01b2e91e917318b89fd9a4dfd094e2b1bdea8"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 7,
+      "case_id": 2,
+      "offset_records": 22500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "aeb2884c385c09910d554cb99e88b80ce0d4442616036cf91f067e245f759657"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 7,
+      "case_id": 3,
+      "offset_records": 23250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "958b09452638d2ac364ad592994fdfe45cbe9853106dfbb606ffd3f7c8bf594e"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 8,
+      "case_id": 0,
+      "offset_records": 24000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "f5718536e8a4b3b42a0ab4fd273b953640ee323cb6a73619b7fe02ea3e6af73e"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 8,
+      "case_id": 1,
+      "offset_records": 24750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "1e40ed13651fece765f6fa6d5ccdcf58f2f93b6cea99260a1c14022f1e7486d7"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 8,
+      "case_id": 2,
+      "offset_records": 25500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "4c83f6fe38c5cca69119f215e4315ffc851f98eace57f2e88a681cabcea654f4"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 8,
+      "case_id": 3,
+      "offset_records": 26250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "0dd08d66c6fd95ed8bb8cd2cbb762f789a27983d8c07216ebe506d7ac6628ac7"
+      },
+      "origin": "newownedtrajectory"
+    }
+  ],
+  "all_trajectories": [
+    {
+      "profile": 0,
+      "case_id": 0,
+      "offset_records": 0,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "a7b85d0a9b05e9a71fb23cddf348d4064f6d922199f17659c5c15975c50efd25"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 0,
+      "case_id": 1,
+      "offset_records": 750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "1bdd80f426269e1d98367e93a37fe59afdf2dc94ff16ddd1e2dd906080aa5ac9"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 0,
+      "case_id": 2,
+      "offset_records": 1500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "9781949a3ce3457c4fecf1af81e0897b1a165eff77a1455dbfb10f0fbf168449"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 0,
+      "case_id": 3,
+      "offset_records": 2250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "b6dbee8d666aa91e1cc1a9e858a8a2cf3e74e2f5dd2fcc43d5ba46a5c84f9303"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 1,
+      "case_id": 0,
+      "offset_records": 3000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "origin": "carriedoldfresh-prefix-only"
+    },
+    {
+      "profile": 1,
+      "case_id": 1,
+      "offset_records": 3750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "origin": "carriedoldfresh-prefix-only"
+    },
+    {
+      "profile": 1,
+      "case_id": 2,
+      "offset_records": 4500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "origin": "carriedoldfresh-prefix-only"
+    },
+    {
+      "profile": 1,
+      "case_id": 3,
+      "offset_records": 5250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "origin": "carriedoldfresh-prefix-only"
+    },
+    {
+      "profile": 2,
+      "case_id": 0,
+      "offset_records": 6000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "19321d0cfee74eb48c1d1d54ba79a3fcfa5d201a88581bb7e2c5fe18cb1c447c"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 2,
+      "case_id": 1,
+      "offset_records": 6750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "61249076052102033d9a9cab57942d5cdd4c8358c4c12fff55b83182ba20f84c"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 2,
+      "case_id": 2,
+      "offset_records": 7500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "4e04c5e2c4ab31cd3cb120ca211afc356eb28fee9aa03152e623855ddad2bf32"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 2,
+      "case_id": 3,
+      "offset_records": 8250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "497f06f02d518eca571943f55cba1d94e8088120d3141ada0111ddb33b728d29"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 3,
+      "case_id": 0,
+      "offset_records": 9000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "8bbdc052580391b33e71f9995a6677dfffb7b77c69568007f0c23f4bb2218f50"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 3,
+      "case_id": 1,
+      "offset_records": 9750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "ada2967fb423a8243409ed976401d7eb175077ed53fd9fff29435248f88d28ee"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 3,
+      "case_id": 2,
+      "offset_records": 10500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "05363beee817ce6f648d0cad550bf28e011c0ed754d54f1c4f3d406039586fc0"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 3,
+      "case_id": 3,
+      "offset_records": 11250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "56f72a0a1bc4ed215c42ef8d5267648e56e768bbcfda5fdcbd82e6265747c2ca"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 4,
+      "case_id": 0,
+      "offset_records": 12000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "0547322bbb90a8fdf2a8ec1349c6253585cc11077827424f6fd0a5cab2e9b71f"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 4,
+      "case_id": 1,
+      "offset_records": 12750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "ad44521883889512f7ac414261ccc19f22990197be60a9ce3741855ee45966d1"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 4,
+      "case_id": 2,
+      "offset_records": 13500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "78e4768bfb1aacdf3119e51919a95bfb6925ce2949ea5d669f3ed2788520af88"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 4,
+      "case_id": 3,
+      "offset_records": 14250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "abd7132f7646ea05c7fbb758767f963982ac6ec6c979fda6861b679e35c9b661"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 5,
+      "case_id": 0,
+      "offset_records": 15000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "78a993532092b6759e7e37c138eb28ac568f5e178dff986f71afcd442d48a024"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 5,
+      "case_id": 1,
+      "offset_records": 15750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "2984639fc9ab3ad1a1d440556cb132bafa2b1a21e06a0a56caa84f25846cfe76"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 5,
+      "case_id": 2,
+      "offset_records": 16500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "36e04bb7dd187dc302fda98350460e68036223d4bfaae10e7316707bf0330eb3"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 5,
+      "case_id": 3,
+      "offset_records": 17250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "c405014edc6b3f1b7e17de522e063397d73df995d2572574c95ef0cd88901892"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 6,
+      "case_id": 0,
+      "offset_records": 18000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "d13596fda775bf3737d9c49e055a0740cff9d8678c47e622b4108ea2dcb0d363"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 6,
+      "case_id": 1,
+      "offset_records": 18750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "517c11e31c93a25dc72794620b936e9e2afc76b7c7caf2a9e107d0cf60c2138c"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 6,
+      "case_id": 2,
+      "offset_records": 19500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "51c89820a0e0733df6c68da37c88b0ffa1b8d7c98f3efe06eae0d51857fb5285"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 6,
+      "case_id": 3,
+      "offset_records": 20250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "f186263db818f4a80a9d6ee8b0fa87589f7bf8420365ae1876d6faab90f622bd"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 7,
+      "case_id": 0,
+      "offset_records": 21000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "b0e972e63fcd78a8c2bee0efb417ee21aa37d2282591b5d819f3deaa2f104546"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 7,
+      "case_id": 1,
+      "offset_records": 21750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "cbcfd9480d5fc5e2cfd7b9f64cf01b2e91e917318b89fd9a4dfd094e2b1bdea8"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 7,
+      "case_id": 2,
+      "offset_records": 22500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "aeb2884c385c09910d554cb99e88b80ce0d4442616036cf91f067e245f759657"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 7,
+      "case_id": 3,
+      "offset_records": 23250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "958b09452638d2ac364ad592994fdfe45cbe9853106dfbb606ffd3f7c8bf594e"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 8,
+      "case_id": 0,
+      "offset_records": 24000,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "f5718536e8a4b3b42a0ab4fd273b953640ee323cb6a73619b7fe02ea3e6af73e"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 8,
+      "case_id": 1,
+      "offset_records": 24750,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "1e40ed13651fece765f6fa6d5ccdcf58f2f93b6cea99260a1c14022f1e7486d7"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 8,
+      "case_id": 2,
+      "offset_records": 25500,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "4c83f6fe38c5cca69119f215e4315ffc851f98eace57f2e88a681cabcea654f4"
+      },
+      "origin": "newownedtrajectory"
+    },
+    {
+      "profile": 8,
+      "case_id": 3,
+      "offset_records": 26250,
+      "records": 750,
+      "stage": 0,
+      "code": 0,
+      "raw": {
+        "bytes": 780040,
+        "sha256": "0dd08d66c6fd95ed8bb8cd2cbb762f789a27983d8c07216ebe506d7ac6628ac7"
+      },
+      "origin": "newownedtrajectory"
+    }
+  ],
+  "compact": {
+    "bytes": 5616024,
+    "sha256": "8f4cde2c22c60ad39f2029a5926b1f872cacb8adf69ca2018db9ab4631b3530f"
+  },
+  "index": {
+    "bytes": 1728,
+    "sha256": "bbe26f283bf9617da59e13e5fc911437cf33120a59e826312c62432d973d03ad"
+  },
+  "records": 27000,
+  "baseline_new_plant_steps": 0,
+  "baseline_fresh_only": true,
+  "extraction": "BytecopyPntfresh1040B poststate[808:952];intmetadata copied/insertsprofilefromheader. Allprestate bytes equalinitial/previouspost. Baselineshadow neverinterpreted; no physics/scorerecomputed."
+}

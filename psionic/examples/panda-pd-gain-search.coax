@@ -1,0 +1,26 @@
+#import "Basic";
+#load "../tests/robotics/panda-pd-gain-search.coax";
+main :: () {
+ print("gain study metadata and policy only; no rollout\n");
+// book:begin pgs-study
+ gains:[1]PgsGains;
+ #assert pnt_ok(pgs_gains(8,0,gains[..]));
+ print("profile 8 ordinary joint7 Kp/Kd: %/%\n",cast(int)gains[0].kp[6].value,cast(int)gains[0].kd[6].value);
+ #assert pnt_ok(pgs_gains(8,3,gains[..]));
+ print("profile 8 brake joint7 Kp/Kd: %/%\n",cast(int)gains[0].kp[6].value,cast(int)gains[0].kd[6].value);
+ // The profile scales a scenario-conditioned family, not a universal vector.
+ initial:[1]PntInitial;#assert pnt_ok(pnt_initial(0,initial[..]));q:=initial[0].q;v:=initial[0].v;
+ step:=[1]PntStep.[pnt_step_poison()];old:=step[0];status:=pgs_step(1,0,0,q[..],v[..],step[..]);
+ #assert status.stage==7 && status.code==2;pnt_step_same(step[0],old);
+ print("baseline step refused: stage % code %; carry saved trajectories\n",status.stage,status.code);
+ // Missing evidence produces a finite invalid card, not an admitted candidate.
+ observations:[1]PgsObservation;score:[1]PgsCaseScore;
+ #assert pgs_score(0,0,observations[0..<0],score[..])==PgsStatus.ok;
+ print("empty trace: valid % complete % feasible % reason %\n",score[0].valid,score[0].complete,score[0].feasible,score[0].reason);
+ // These are literal absent-evidence policy fixtures, not model results.
+ candidates:[9]PgsCandidate;for i:0..<9 {candidates[i].profile=i;}
+ selected:[1]PgsSelection;#assert pgs_select(candidates[..],selected[..])==PgsStatus.ok;
+ print("no feasible evidence: winner % runner % feasible %\n",selected[0].winner,selected[0].runner_up,selected[0].feasible_count);
+// book:end pgs-study
+ print("the measured nine scorecards are a separate frozen experiment\n");
+}

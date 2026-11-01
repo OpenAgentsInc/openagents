@@ -1,0 +1,66 @@
+#load "panda-pd-gain-search-score.coax";
+#authority;
+#test "Panda gain selection finite bounded words admit endpoints and refuse IEEE families" {
+ #assert pgs_bound_word(f64_bits(0.0),1000000)==PgsStatus.ok && pgs_bound_word(f64_bits(1000000.0),1000000)==PgsStatus.ok;
+ #assert pgs_bound_word(f64_bits(-1.0),1000000)==PgsStatus.range && pgs_bound_word(f64_bits(1000001.0),1000000)==PgsStatus.range;
+ #assert pgs_bound_word(0x7ff0000000000000,1000000)==PgsStatus.number && pgs_bound_word(0xfff0000000000000,1000000)==PgsStatus.number && pgs_bound_word(0x7ff8000000000001,1000000)==PgsStatus.number;
+}
+#forall "Panda gain case-card admission observes every serialized metric" lane:0..<32 {
+ cards:[4]PgsCaseScore;for c:0..<4 {cards[c]=pgs_literal_card(2,c);}cards[2]=pgs_fixture_word(cards[2],lane,-1);out:[1]PgsCandidate;#assert pgs_combine(2,cards[..],out[..])==PgsStatus.range;
+}
+#test "Panda gain combine reduces ordered cases and retains invalidity without promoting a candidate" {
+ cards:[4]PgsCaseScore;for c:0..<4 {cards[c]=pgs_literal_card(8,c);cards[c].terminal=0.1*f64(c+1);cards[c].iae=f64(c+1);cards[c].pjp_clipped=c+1;cards[c].pa_control_clipped=2*(c+1);cards[c].pa_force_clipped=c+1;}
+ out:[2]PgsCandidate;out[0]=PgsCandidate.{terminal=101,iae=102,profile=103,valid=104,feasible=105,pjp_clipped=106,pa_control_clipped=107,pa_force_clipped=108,reason=109};old:=out[0];out[1]=old;
+ #assert pgs_combine(8,cards[0..<3],out[0..<1])==PgsStatus.shape && pgs_combine(8,cards[..],out[..])==PgsStatus.shape && pgs_combine(-1,cards[..],out[0..<1])==PgsStatus.range && pgs_combine(9,cards[..],out[0..<1])==PgsStatus.range;pgs_candidate_same(out[0],old);pgs_candidate_same(out[1],old);
+ #assert pgs_combine(8,cards[..],out[0..<1])==PgsStatus.ok;#assert out[0].profile==8 && out[0].valid==1 && out[0].feasible==1 && abs(out[0].terminal-0.4)<1e-15 && out[0].iae==10 && out[0].pjp_clipped==10 && out[0].pa_control_clipped==20 && out[0].pa_force_clipped==10 && out[0].reason==0;
+ cards[1].valid=0;cards[1].feasible=0;cards[1].reason=4;#assert pgs_combine(8,cards[..],out[0..<1])==PgsStatus.ok && out[0].valid==0 && out[0].feasible==0 && out[0].reason==4;cards[2].valid=0;cards[2].feasible=0;cards[2].reason=6;#assert pgs_combine(8,cards[..],out[0..<1])==PgsStatus.ok && out[0].reason==4;
+ cards[1]=pgs_literal_card(8,1);cards[2]=pgs_literal_card(8,2);cards[3].feasible=0;#assert pgs_combine(8,cards[..],out[0..<1])==PgsStatus.ok && out[0].valid==1 && out[0].feasible==0;
+ cards[0].profile=7;#assert pgs_combine(8,cards[..],out[0..<1])==PgsStatus.order;cards[0].profile=8;cards[0].case_id=1;#assert pgs_combine(8,cards[..],out[0..<1])==PgsStatus.order;
+}
+#test "Panda gain lexicographic comparison and distinguishing key are exact with no epsilon" {
+ a:=PgsCandidate.{terminal=0.5,iae=2,profile=3,valid=1,feasible=1,pjp_clipped=7};b:=a;#assert !pgs_better(a,b);b.profile=4;#assert pgs_better(a,b) && !pgs_better(b,a) && pgs_key(a,b)==4;b.pjp_clipped=8;#assert pgs_better(a,b) && !pgs_better(b,a) && pgs_key(a,b)==3;b.iae=3;#assert pgs_better(a,b) && !pgs_better(b,a) && pgs_key(a,b)==2;b.terminal=0.6;#assert pgs_better(a,b) && !pgs_better(b,a) && pgs_key(a,b)==1;
+}
+#test "Panda gain select none single runner and signed later gaps without plant execution" {
+ cards:[9]PgsCandidate;for i:0..<9 {cards[i].profile=i;cards[i].valid=1;}out:[2]PgsSelection;out[0]=PgsSelection.{winner=101,runner_up=102,feasible_count=103,first_key=104,terminal_gap=105,iae_gap=106,clip_gap=107,id_gap=108};old:=out[0];out[1]=old;
+ #assert pgs_select(cards[0..<8],out[0..<1])==PgsStatus.shape && pgs_select(cards[..],out[..])==PgsStatus.shape;pgs_selection_same(out[0],old);pgs_selection_same(out[1],old);
+ #assert pgs_select(cards[..],out[0..<1])==PgsStatus.ok && out[0].winner== -1 && out[0].runner_up== -1 && out[0].feasible_count==0 && out[0].first_key==0 && out[0].terminal_gap==0 && out[0].iae_gap==0 && out[0].clip_gap==0 && out[0].id_gap==0;
+ cards[6].feasible=1;#assert pgs_select(cards[..],out[0..<1])==PgsStatus.ok && out[0].winner==6 && out[0].runner_up== -1 && out[0].feasible_count==1 && out[0].first_key==0;
+ cards[6].terminal=0.3;cards[6].iae=0.1;cards[6].pjp_clipped=2;cards[4].feasible=1;cards[4].terminal=0.2;cards[4].iae=1;cards[4].pjp_clipped=5;#assert pgs_select(cards[..],out[0..<1])==PgsStatus.ok && out[0].winner==4 && out[0].runner_up==6 && out[0].feasible_count==2 && out[0].first_key==1 && abs(out[0].terminal_gap-0.1)<1e-15 && out[0].iae_gap== -0.9 && out[0].clip_gap== -3 && out[0].id_gap==2;
+ cards[2]=cards[4];cards[2].profile=2;cards[2].terminal=0.1;#assert pgs_select(cards[..],out[0..<1])==PgsStatus.ok && out[0].winner==2 && out[0].runner_up==4 && out[0].feasible_count==3;cards[0]=cards[2];cards[0].profile=0;cards[0].terminal=0.05;#assert pgs_select(cards[..],out[0..<1])==PgsStatus.ok && out[0].winner==0 && out[0].runner_up==2;
+ cards[0].profile=1;#assert pgs_select(cards[..],out[0..<1])==PgsStatus.order;
+}
+
+#forall "Panda gain case-card integer domains observe both inclusive endpoints and adjacent refusals" role:0..<11 {
+ base:=pgs_literal_card(0,0);base.feasible=0;cap:=ifx role==0 then 750 else ifx role==4 then 7 else ifx role==8 then 5250 else ifx role==9 then 6750 else ifx role==10 then 1500 else 1;
+ #assert pgs_case_admit(pgs_fixture_case_int(base,role,0))==PgsStatus.ok && pgs_case_admit(pgs_fixture_case_int(base,role,cap))==PgsStatus.ok;
+ #assert pgs_case_admit(pgs_fixture_case_int(base,role,-1))==PgsStatus.range && pgs_case_admit(pgs_fixture_case_int(base,role,cap+1))==PgsStatus.range;
+}
+#forall "Panda gain candidate integer domains observe both endpoints and adjacent refusals" role:0..<6 {
+ base:=PgsCandidate.{valid=1};cap:=ifx role<2 then 1 else ifx role==2 then 7 else ifx role==3 then 21000 else ifx role==4 then 27000 else 6000;
+ #assert pgs_candidate_admit(pgs_fixture_candidate_int(base,role,0))==PgsStatus.ok && pgs_candidate_admit(pgs_fixture_candidate_int(base,role,cap))==PgsStatus.ok;
+ #assert pgs_candidate_admit(pgs_fixture_candidate_int(base,role,-1))==PgsStatus.range && pgs_candidate_admit(pgs_fixture_candidate_int(base,role,cap+1))==PgsStatus.range;
+}
+#test "Panda gain incoherent feasibility and bounded candidate objective fields refuse atomically" {
+ s:=pgs_literal_card(0,0);s.valid=0;#assert pgs_case_admit(s)==PgsStatus.range;s.valid=1;s.complete=0;#assert pgs_case_admit(s)==PgsStatus.range;
+ c:=PgsCandidate.{feasible=1};#assert pgs_candidate_admit(c)==PgsStatus.range;c.feasible=0;c.terminal= -1;#assert pgs_candidate_admit(c)==PgsStatus.range;c.terminal=0;c.iae= -1;#assert pgs_candidate_admit(c)==PgsStatus.range;c.iae=4000000;c.terminal=4000000;#assert pgs_candidate_admit(c)==PgsStatus.ok;c.iae=4000001;#assert pgs_candidate_admit(c)==PgsStatus.range;c.iae=0;c.terminal=4000001;#assert pgs_candidate_admit(c)==PgsStatus.range;
+ cards:[9]PgsCandidate;for i:0..<9 {cards[i].profile=i;}out:[1]PgsSelection;out[0].winner=101;old:=out[0];cards[8].iae= -1;#assert pgs_select(cards[..],out[..])==PgsStatus.range;pgs_selection_same(out[0],old);
+}
+#test "Panda gain case combination fallback reasons and complete flag are independently observable" {
+ cards:[4]PgsCaseScore;for i:0..<4 {cards[i]=pgs_literal_card(0,i);}cards[0].valid=0;cards[0].feasible=0;out:[1]PgsCandidate;#assert pgs_combine(0,cards[..],out[..])==PgsStatus.ok && out[0].valid==0 && out[0].feasible==0 && out[0].reason==1;
+ cards[0]=pgs_literal_card(0,0);cards[2].complete=0;cards[2].feasible=0;#assert pgs_combine(0,cards[..],out[..])==PgsStatus.ok && out[0].valid==0 && out[0].feasible==0 && out[0].reason==1;
+}
+#test "Panda gain selection changes the winner and retains runner zero before later improvements" {
+ cards:[9]PgsCandidate;for i:0..<9 {cards[i]=PgsCandidate.{profile=i,valid=1,feasible=1,terminal=f64(9-i),iae=f64(i),pjp_clipped=i};}out:[1]PgsSelection;#assert pgs_select(cards[..],out[..])==PgsStatus.ok && out[0].winner==8 && out[0].runner_up==7 && out[0].feasible_count==9;
+ for i:2..<9 {cards[i].feasible=0;}#assert pgs_select(cards[..],out[..])==PgsStatus.ok && out[0].winner==1 && out[0].runner_up==0 && out[0].feasible_count==2 && out[0].first_key==1 && out[0].terminal_gap==1 && out[0].iae_gap== -1 && out[0].clip_gap== -1 && out[0].id_gap== -1;
+ cards[2].feasible=1;cards[2].terminal=10;#assert pgs_select(cards[..],out[..])==PgsStatus.ok && out[0].winner==1 && out[0].runner_up==0 && out[0].feasible_count==3;cards[2].feasible=0;
+ cards[0].terminal=1;cards[1].terminal=1;cards[0].iae=3;cards[1].iae=2;#assert pgs_select(cards[..],out[..])==PgsStatus.ok && out[0].winner==1 && out[0].first_key==2;cards[0].iae=2;cards[0].pjp_clipped=2;#assert pgs_select(cards[..],out[..])==PgsStatus.ok && out[0].winner==1 && out[0].first_key==3;cards[0].pjp_clipped=1;#assert pgs_select(cards[..],out[..])==PgsStatus.ok && out[0].winner==0 && out[0].first_key==4;
+}
+
+pgs_bound_word :: (bits:u64,bound:f64)->PgsStatus {if !pgs_finite_bits(bits) {return PgsStatus.number;}v:=f64_from_bits(bits);if v<0 || v>bound {return PgsStatus.range;}return PgsStatus.ok;}
+pgs_card_words :: (s:PgsCaseScore)->[32]u64 {w:[32]u64;w[0]=f64_bits(s.position_square);w[1]=f64_bits(s.stationary_square);w[2]=f64_bits(s.iae);w[3]=f64_bits(s.terminal);w[4]=f64_bits(s.hold_peak);for i:0..<9 {w[5+i]=f64_bits(s.peak_speed[i]);w[14+i]=f64_bits(s.peak_acceleration[i]);w[23+i]=f64_bits(s.minimum_margin[i]);}return w;}
+pgs_case_admit :: (s:PgsCaseScore)->PgsStatus {words:=pgs_card_words(s);for i:0..<32 {status:=pgs_bound_word(words[i],1000000);if status!=PgsStatus.ok {return status;}}if s.samples<0 || s.samples>750 || s.valid<0 || s.valid>1 || s.complete<0 || s.complete>1 || s.feasible<0 || s.feasible>1 || s.reason<0 || s.reason>7 || s.terminal_ok<0 || s.terminal_ok>1 || s.hold_ok<0 || s.hold_ok>1 || s.nominal_ok<0 || s.nominal_ok>1 || s.pjp_clipped<0 || s.pjp_clipped>5250 || s.pa_control_clipped<0 || s.pa_control_clipped>6750 || s.pa_force_clipped<0 || s.pa_force_clipped>1500 {return PgsStatus.range;}if s.feasible==1 && (s.valid!=1 || s.complete!=1) {return PgsStatus.range;}return PgsStatus.ok;}
+pgs_combine :: (profile:int,cases:[]PgsCaseScore,output:[]PgsCandidate)->PgsStatus #export_c {if cases.count!=4 || output.count!=1 {return PgsStatus.shape;}if !pgs_profile_valid(profile) {return PgsStatus.range;}fresh:PgsCandidate;fresh.profile=profile;fresh.valid=1;fresh.feasible=1;for c:0..<4 {s:=cases[c];if s.profile!=profile || s.case_id!=c {return PgsStatus.order;}status:=pgs_case_admit(s);if status!=PgsStatus.ok {return status;}if s.valid!=1 || s.complete!=1 {fresh.valid=0;if fresh.reason==0 {fresh.reason=ifx s.reason==0 then 1 else s.reason;}}if s.feasible!=1 {fresh.feasible=0;}fresh.terminal=pgs_max(fresh.terminal,s.terminal);fresh.iae+=s.iae;fresh.pjp_clipped+=s.pjp_clipped;fresh.pa_control_clipped+=s.pa_control_clipped;fresh.pa_force_clipped+=s.pa_force_clipped;}output[0]=fresh;return PgsStatus.ok;}
+pgs_better :: (a:PgsCandidate,b:PgsCandidate)->bool {if a.terminal<b.terminal {return true;}if a.terminal>b.terminal {return false;}if a.iae<b.iae {return true;}if a.iae>b.iae {return false;}if a.pjp_clipped<b.pjp_clipped {return true;}if a.pjp_clipped>b.pjp_clipped {return false;}return a.profile<b.profile;}
+pgs_key :: (a:PgsCandidate,b:PgsCandidate)->int {if a.terminal!=b.terminal {return 1;}if a.iae!=b.iae {return 2;}if a.pjp_clipped!=b.pjp_clipped {return 3;}return 4;}
+pgs_candidate_admit :: (s:PgsCandidate)->PgsStatus {status:=pgs_bound_word(f64_bits(s.terminal),4000000);if status!=PgsStatus.ok {return status;}status=pgs_bound_word(f64_bits(s.iae),4000000);if status!=PgsStatus.ok {return status;}if s.valid<0 || s.valid>1 || s.feasible<0 || s.feasible>1 || s.reason<0 || s.reason>7 || s.pjp_clipped<0 || s.pjp_clipped>21000 || s.pa_control_clipped<0 || s.pa_control_clipped>27000 || s.pa_force_clipped<0 || s.pa_force_clipped>6000 || (s.feasible==1 && s.valid!=1) {return PgsStatus.range;}return PgsStatus.ok;}
+pgs_select :: (candidates:[]PgsCandidate,output:[]PgsSelection)->PgsStatus #export_c {if candidates.count!=9 || output.count!=1 {return PgsStatus.shape;}cards:[9]PgsCandidate;for i:0..<9 {cards[i]=candidates[i];if cards[i].profile!=i {return PgsStatus.order;}status:=pgs_candidate_admit(cards[i]);if status!=PgsStatus.ok {return status;}}fresh:PgsSelection;fresh.winner= -1;fresh.runner_up= -1;for i:0..<9 {if cards[i].valid==1 && cards[i].feasible==1 {fresh.feasible_count+=1;if fresh.winner<0 {fresh.winner=i;}else if pgs_better(cards[i],cards[fresh.winner]) {fresh.runner_up=fresh.winner;fresh.winner=i;}else if fresh.runner_up<0 || pgs_better(cards[i],cards[fresh.runner_up]) {fresh.runner_up=i;}}}if fresh.runner_up>=0 {winner:=cards[fresh.winner];runner:=cards[fresh.runner_up];fresh.first_key=pgs_key(winner,runner);fresh.terminal_gap=runner.terminal-winner.terminal;fresh.iae_gap=runner.iae-winner.iae;fresh.clip_gap=runner.pjp_clipped-winner.pjp_clipped;fresh.id_gap=runner.profile-winner.profile;}output[0]=fresh;return PgsStatus.ok;}

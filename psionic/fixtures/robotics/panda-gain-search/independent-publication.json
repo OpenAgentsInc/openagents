@@ -1,0 +1,66 @@
+{
+  "schema": "psionic.panda-gain-search.independent-publication.v1",
+  "passed": true,
+  "files": {
+    "experiment.json": {
+      "bytes": 59450,
+      "sha256": "67c872e87b64041c9a0fde7014f828a345a0d48148d496fe087575d49fe38b31"
+    },
+    "profiles.f64": {
+      "bytes": 18432,
+      "sha256": "31aa6183d98bc73e25d463e2fb2428b7a9270dbfa3916652df160730c4649b7a"
+    },
+    "heldout-unscaled.f64": {
+      "bytes": 4096,
+      "sha256": "ff5ff6e22688fc6211416f531f5b6e9f519f49ab41ec62822f4f9c9cb55f2e38"
+    },
+    "baseline-carry.json": {
+      "bytes": 17541,
+      "sha256": "b21ec4de9f02ddfe9fd25c97c220f33f456fda3e66d9c6b366f428138b68643e"
+    },
+    "input-freeze.json": {
+      "bytes": 1151,
+      "sha256": "716a67a8e0a3fd254999502bd8df4d12e38d49b22d3c9aa8408bf25d1605d8b9"
+    },
+    "independent-objective.json": {
+      "bytes": 72494,
+      "sha256": "a641a64aaff428f5504a6295749ce52499f58f1cc15d3adf88325c068472076e"
+    },
+    "independent-case-scores.bin": {
+      "bytes": 12960,
+      "sha256": "9e34f0c72d243a43eb2e5efad23c8a12d8fa44a8b73dc0c25c02f46295b20349"
+    },
+    "independent-candidates.bin": {
+      "bytes": 648,
+      "sha256": "7439a85dd4eb31d1dcb25a3984d42627828f79fafadf394f2b4016b51e9dc366"
+    },
+    "independent-selection.bin": {
+      "bytes": 64,
+      "sha256": "a59d987f728cf88a9914086132908fd7b8e28c150e05aac22d23bcd8c4767389"
+    },
+    "scorecards.json": {
+      "bytes": 64553,
+      "sha256": "a2e863fed50065601c745c9cedeef359d161301bac6efc6d4c8fcd17100e2078"
+    }
+  },
+  "executed_source": {
+    "psionic/tests/robotics/panda_gain_search_reference.py": {
+      "bytes": 13861,
+      "sha256": "e3437a661be99aeb72bcad394bc17d4673476fcbe9183fa69ec53b13628dc9f7"
+    },
+    "psionic/tests/robotics/panda_gain_search_objective.py": {
+      "bytes": 18880,
+      "sha256": "375c4d36c1e1b848a858f4ebdfde6b38866c8e119396389ecde2524b915ff6c6"
+    }
+  },
+  "first_original_audit": "/tmp/panda-gain-search-objective-first/record.json",
+  "original_audit_and_expected_tables_byte_exact": true,
+  "no_numerical_rerun_for_publication": true,
+  "SDK_calls_by_independent_tooling": 0,
+  "new_plant_steps_by_independent_tooling": 0,
+  "old_reference_generation_calls": 0,
+  "baseline_resimulation_calls": 0,
+  "immutable_grid_goal_and_budget_preserved": true,
+  "result": "No feasible candidate among nine fixed pairs. No winner or runner-up; no promoted best-available profile. Two held-out start descriptors remain frozen but unevaluated.",
+  "scope": "PartA independent direct-array metric/policy audit only. Canonical32new/24k ownplant steps and4carried baseline trajectories are qualified by Core separately. No SDK validation."
+}

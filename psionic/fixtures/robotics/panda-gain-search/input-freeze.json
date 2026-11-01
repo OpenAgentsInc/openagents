@@ -1,0 +1,38 @@
+{
+  "schema": "psionic.panda-gain-search.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 59450,
+    "sha256": "67c872e87b64041c9a0fde7014f828a345a0d48148d496fe087575d49fe38b31"
+  },
+  "inputs": {
+    "profiles.f64": {
+      "bytes": 18432,
+      "sha256": "31aa6183d98bc73e25d463e2fb2428b7a9270dbfa3916652df160730c4649b7a"
+    },
+    "heldout-unscaled.f64": {
+      "bytes": 4096,
+      "sha256": "ff5ff6e22688fc6211416f531f5b6e9f519f49ab41ec62822f4f9c9cb55f2e38"
+    }
+  },
+  "baseline_carry": {
+    "bytes": 17541,
+    "sha256": "b21ec4de9f02ddfe9fd25c97c220f33f456fda3e66d9c6b366f428138b68643e"
+  },
+  "sources": {
+    "psionic/tests/robotics/panda_gain_search_reference.py": {
+      "bytes": 13861,
+      "sha256": "e3437a661be99aeb72bcad394bc17d4673476fcbe9183fa69ec53b13628dc9f7"
+    },
+    "psionic/fixtures/robotics/panda-fingers/sdk-model.json": {
+      "bytes": 9576,
+      "sha256": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031"
+    }
+  },
+  "new_plant_steps": 0,
+  "SDK_loads": 0,
+  "score_calls": 0,
+  "reference_generation_calls": 0,
+  "heldout_result_calls": 0,
+  "execution_authorized": false
+}

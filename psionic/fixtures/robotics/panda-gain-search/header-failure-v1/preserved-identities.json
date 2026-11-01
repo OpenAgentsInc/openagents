@@ -1,0 +1,18 @@
+{
+  "panda_gain_search_native.c": {
+    "bytes": 15101,
+    "sha256": "6b4628e98a65835591ca2b7ef45662ae294f205e86bbac03186e6f4ec579c0a8"
+  },
+  "panda_gain_search_native_reference.py": {
+    "bytes": 14441,
+    "sha256": "22f19bb339625bd4ddff2e8513cd50bc49e4303121bff5b486df0d23034eebbc"
+  },
+  "record.json": {
+    "bytes": 20640,
+    "sha256": "d566ef1f18568fd450bd27e46756efbb1b34f87c0cd6c295b1f04975be20d59e"
+  },
+  "passed_debug_C_object": {
+    "bytes": 309632,
+    "sha256": "742868e4efc442086f3ace735c4dddc10b289e29e8ba40aaa0543383d0148e4d"
+  }
+}

@@ -1,0 +1,5 @@
+In file included from /Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_gain_search_native.c:4:
+/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_joint_pd_tracking_format.h:4:10: fatal error: 'panda-joint-pd-tracking.h' file not found
+    4 | #include "panda-joint-pd-tracking.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.

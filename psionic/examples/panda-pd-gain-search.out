@@ -1,0 +1,7 @@
+gain study metadata and policy only; no rollout
+profile 8 ordinary joint7 Kp/Kd: 40/4
+profile 8 brake joint7 Kp/Kd: 40/40
+baseline step refused: stage 7 code 2; carry saved trajectories
+empty trace: valid 0 complete 0 feasible 0 reason 1
+no feasible evidence: winner -1 runner -1 feasible 0
+the measured nine scorecards are a separate frozen experiment

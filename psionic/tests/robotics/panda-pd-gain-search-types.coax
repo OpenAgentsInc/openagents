@@ -1,0 +1,8 @@
+// TEST-ONLY fixed nine-pair owned-model study. Old pnt/Pjp/Peu/Pqt unchanged.
+#load "panda-joint-pd-tracking.coax";
+PgsStatus :: enum u8 {ok;shape;range;number;order;}
+PgsGains :: struct {kp:[7]pfku.Quantity(PjpStiffness,f64);kd:[7]pfku.Quantity(PjpDamping,f64);}
+PgsObservation :: struct {q:[9]f64;v:[9]f64;previous_v:[9]f64;status:PntStatus;pjp_clipped:int;pa_control_clipped:int;pa_force_clipped:int;}
+PgsCaseScore :: struct {position_square:f64;stationary_square:f64;iae:f64;terminal:f64;hold_peak:f64;peak_speed:[9]f64;peak_acceleration:[9]f64;minimum_margin:[9]f64;profile:int;case_id:int;samples:int;valid:int;complete:int;feasible:int;reason:int;terminal_ok:int;hold_ok:int;nominal_ok:int;pjp_clipped:int;pa_control_clipped:int;pa_force_clipped:int;}
+PgsCandidate :: struct {terminal:f64;iae:f64;profile:int;valid:int;feasible:int;pjp_clipped:int;pa_control_clipped:int;pa_force_clipped:int;reason:int;}
+PgsSelection :: struct {winner:int;runner_up:int;feasible_count:int;first_key:int;terminal_gap:f64;iae_gap:f64;clip_gap:int;id_gap:int;}
