@@ -1,0 +1,1059 @@
+// The labs domain's rules (docs/cli/2026-11-01-openagents-labs.md): where a
+// page is, the sizes, times and qualities the flags name, the programs Labs
+// needs and how to install them, the .cut and .board formats and their
+// checks, the playtest summary, and how two labels differ. No effects: the
+// labs*.coax files run Chrome, ffmpeg and the rules, and print. Not
+// #authority: nothing here decides money, admission or policy.
+//   coax/bin/coax test apps/openagents-cli/labs-rules.coax --library
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/json/json.coax";
+
+EXIT_MISSING :: 8;   // a program Labs needs is missing (Chrome, ffmpeg, the transcribe backend)
+
+// ---- a small writer ----------------------------------------------------------
+
+LbW :: struct { buf: [] u8; n: int; full: bool; }
+lbw_byte :: (w: [] LbW, c: u8) { if w[0].n < w[0].buf.count { w[0].buf[w[0].n] = c; w[0].n += 1; } else { w[0].full = true; } }
+lbw_put :: (w: [] LbW, s: string) { for c: s { lbw_byte(w, c); } }
+lbw_text :: (w: [] LbW) -> string { return cast(string) w[0].buf[0..<w[0].n]; }
+lbw_int :: (w: [] LbW, v: int) {
+  if v < 0 { lbw_byte(w, '-'); lbw_int(w, -v); return; }
+  d: [24] u8; k := 0; x := v;
+  if x == 0 { d[0] = '0'; k = 1; }
+  while x > 0 { d[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  for j: 0..<k { lbw_byte(w, d[k - 1 - j]); }
+}
+// Milliseconds as seconds, with no trailing zeros: 4500 is 4.5, 6000 is 6.
+lbw_secs :: (w: [] LbW, ms: int) {
+  if ms < 0 { lbw_byte(w, '-'); lbw_secs(w, -ms); return; }
+  lbw_int(w, ms / 1000);
+  f := ms % 1000;
+  if f == 0 { return; }
+  lbw_byte(w, '.');
+  digits := [3] u8.[cast(u8) ('0' + f / 100), cast(u8) ('0' + f / 10 % 10), cast(u8) ('0' + f % 10)];
+  last := 2;
+  while last > 0 && digits[last] == '0' { last -= 1; }
+  for i: 0..<last + 1 { lbw_byte(w, digits[i]); }
+}
+lb_secs_text :: (ms: int, out: [] u8) -> string { w: [1] LbW; w[0].buf = out; lbw_secs(w[..], ms); return lbw_text(w[..]); }
+// m:ss, as Game Lab showed a time.
+lb_clock :: (ms: int, out: [] u8) -> string {
+  w: [1] LbW; w[0].buf = out;
+  s := (ifx ms < 0 then 0 else ms + 500) / 1000;
+  lbw_int(w[..], s / 60); lbw_byte(w[..], ':');
+  if s % 60 < 10 { lbw_byte(w[..], '0'); }
+  lbw_int(w[..], s % 60);
+  return lbw_text(w[..]);
+}
+
+lb_starts :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[0..<p.count] == p; }
+lb_ends :: (s: string, p: string) -> bool { return s.count >= p.count && cast(string) s[s.count - p.count..<s.count] == p; }
+lb_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if cast(string) s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+#test "the writer: numbers, seconds and clocks" {
+  b: [64] u8;
+  #assert lb_secs_text(4500, b[..]) == "4.5" && lb_secs_text(6000, b[..]) == "6" && lb_secs_text(0, b[..]) == "0";
+  #assert lb_secs_text(750, b[..]) == "0.75" && lb_secs_text(1001, b[..]) == "1.001" && lb_secs_text(-250, b[..]) == "-0.25";
+  #assert lb_clock(151000, b[..]) == "2:31" && lb_clock(0, b[..]) == "0:00" && lb_clock(59600, b[..]) == "1:00" && lb_clock(-5, b[..]) == "0:00";
+  w: [1] LbW; small: [3] u8; w[0].buf = small[..];
+  lbw_put(w[..], "abcd");
+  #assert w[0].full && lbw_text(w[..]) == "abc";
+  #assert lb_starts("https://x", "https://") && !lb_starts("http", "https://") && lb_ends("a.cut", ".cut") && !lb_ends("t", ".cut");
+  #assert lb_has("abcdef", "cde") && !lb_has("abc", "abcd") && lb_has("x", "");
+}
+
+// ---- times: 1.5, 12, 1:26, 1:02:03.25 ---------------------------------------
+
+// Seconds as milliseconds, rounded; -1 for anything but a plain non-negative number.
+lb_ms :: (s: string) -> int {
+  if s.count == 0 || s.count > 16 { return -1; }
+  for c: s { if !((c >= '0' && c <= '9') || c == '.') { return -1; } }
+  n := args_number(s);
+  if !n.ok || n.value < 0.0 || n.value > 86400.0 { return -1; }
+  return cast(int) (n.value * 1000.0 + 0.5);
+}
+// A time as seconds or m:ss or h:mm:ss (seconds may have a fraction): milliseconds, or -1.
+lb_time :: (s: string) -> int {
+  parts := 0; total := 0; start := 0;
+  for i: 0..<s.count + 1 {
+    if i < s.count && s[i] != ':' { continue; }
+    piece := cast(string) s[start..<i];
+    last := i == s.count;
+    v := ifx last then lb_ms(piece) else args_whole(piece);
+    if v < 0 || (parts > 0 && !last && v > 59) || (parts > 0 && last && v >= 60000) { return -1; }
+    total = ifx last then total * 60000 + v else total * 60 + v;
+    parts += 1; start = i + 1;
+    if parts > 3 { return -1; }
+  }
+  if parts == 3 { total = total; }
+  return total;
+}
+// A comma list of times into out: how many, or -1 (a bad time, or more than out holds).
+lb_times :: (s: string, out: [] int) -> int {
+  n := 0; start := 0;
+  for i: 0..<s.count + 1 {
+    if i < s.count && s[i] != ',' { continue; }
+    t := lb_time(cast(string) s[start..<i]);
+    if t < 0 || n >= out.count { return -1; }
+    out[n] = t; n += 1; start = i + 1;
+  }
+  return n;
+}
+
+#test "times" {
+  #assert lb_ms("1.5") == 1500 && lb_ms("12") == 12000 && lb_ms("0.0005") == 1 && lb_ms("") == -1 && lb_ms("-1") == -1 && lb_ms("1e3") == -1 && lb_ms("x") == -1;
+  #assert lb_time("1:26") == 86000 && lb_time("1.5") == 1500 && lb_time("1:02:03.25") == 3723250 && lb_time("0:59.5") == 59500;
+  #assert lb_time("1:60") == -1 && lb_time("1:75:00") == -1 && lb_time("") == -1 && lb_time("1::2") == -1 && lb_time("1:2:3:4") == -1;
+  t: [4] int;
+  #assert lb_times("1.5,12,1:26", t[..]) == 3 && t[0] == 1500 && t[1] == 12000 && t[2] == 86000;
+  #assert lb_times("1,2,3,4,5", t[..]) == -1 && lb_times("1,,2", t[..]) == -1 && lb_times("7", t[..]) == 1 && t[0] == 7000;
+}
+
+// ---- where: a URL from a URL or a path ---------------------------------------
+
+lb_is_url :: (s: string) -> bool { return lb_starts(s, "https://") || lb_starts(s, "http://") || lb_starts(s, "file://"); }
+// target as it is when it is a URL; a path (/realms/x) joined to origin; "" otherwise.
+lb_url :: (origin: string, target: string, out: [] u8) -> string {
+  w: [1] LbW; w[0].buf = out;
+  if lb_is_url(target) { lbw_put(w[..], target); }
+  else if target.count > 0 && target[0] == '/' && lb_is_url(origin) {
+    o := origin;
+    while o.count > 0 && o[o.count - 1] == '/' { o = cast(string) o[0..<o.count - 1]; }
+    lbw_put(w[..], o); lbw_put(w[..], target);
+  } else { return ""; }
+  for c: lbw_text(w[..]) { if c <= ' ' || c == 127 { return ""; } }
+  return ifx w[0].full then "" else lbw_text(w[..]);
+}
+// A stage name is 1 to 32 of a-z, 0-9, - and _.
+lb_stage_ok :: (s: string) -> bool {
+  if s.count < 1 || s.count > 32 { return false; }
+  for c: s { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' || c == '_') { return false; } }
+  return true;
+}
+// url with ?stage=NAME&card=1 (or &stage=... when it has a query), before any #fragment.
+lb_with_stage :: (url: string, stage: string, out: [] u8) -> string {
+  hash := url.count;
+  for i: 0..<url.count { if url[i] == '#' && hash == url.count { hash = i; } }
+  q := false;
+  for i: 0..<hash { if url[i] == '?' { q = true; } }
+  w: [1] LbW; w[0].buf = out;
+  lbw_put(w[..], cast(string) url[0..<hash]);
+  lbw_put(w[..], ifx q then "&stage=" else "?stage="); lbw_put(w[..], stage); lbw_put(w[..], "&card=1");
+  lbw_put(w[..], cast(string) url[hash..<url.count]);
+  return ifx w[0].full then "" else lbw_text(w[..]);
+}
+
+#test "where a page is" {
+  b: [256] u8;
+  #assert lb_url("https://openagents.com", "/realms/orbit-league?stage=highlight", b[..]) == "https://openagents.com/realms/orbit-league?stage=highlight";
+  #assert lb_url("https://openagents.com/", "/", b[..]) == "https://openagents.com/";
+  #assert lb_url("https://openagents.com", "http://127.0.0.1:8800/x", b[..]) == "http://127.0.0.1:8800/x";
+  #assert lb_url("https://openagents.com", "realms/x", b[..]) == "" && lb_url("", "/x", b[..]) == "" && lb_url("https://a", "/a b", b[..]) == "";
+  #assert lb_with_stage("https://o.com/realms/belt", "highlight", b[..]) == "https://o.com/realms/belt?stage=highlight&card=1";
+  #assert lb_with_stage("https://o.com/r?x=1#top", "a", b[..]) == "https://o.com/r?x=1&stage=a&card=1#top";
+  #assert lb_stage_ok("highlight") && lb_stage_ok("a_b-2") && !lb_stage_ok("") && !lb_stage_ok("Hi") && !lb_stage_ok("a&b");
+}
+
+// ---- sizes and qualities -----------------------------------------------------
+
+LB_DESKTOP :: ArgsSize.{ok = true, w = 1440, h = 900};
+LB_PHONE :: ArgsSize.{ok = true, w = 390, h = 844};
+LB_SQUARE :: ArgsSize.{ok = true, w = 1080, h = 1080};
+LB_VERTICAL :: ArgsSize.{ok = true, w = 1080, h = 1920};
+// The size from --size or one preset flag (at most one), else fallback; ok false when two are given or --size is bad.
+lb_size :: (size: string, phone: bool, square: bool, vertical: bool, fallback: ArgsSize) -> ArgsSize {
+  bad: ArgsSize;
+  n := 0;
+  if size.count > 0 { n += 1; } if phone { n += 1; } if square { n += 1; } if vertical { n += 1; }
+  if n > 1 { return bad; }
+  if phone { return LB_PHONE; }
+  if square { return LB_SQUARE; }
+  if vertical { return LB_VERTICAL; }
+  if size.count == 0 { return fallback; }
+  s := args_size(size);
+  if !s.ok || s.w < 16 || s.h < 16 || s.w > 7680 || s.h > 7680 { return bad; }
+  return s;
+}
+// A board's size word: desktop, phone, square, vertical or WxH.
+lb_size_word :: (word: string) -> ArgsSize {
+  if word == "desktop" { return LB_DESKTOP; }
+  if word == "phone" { return LB_PHONE; }
+  if word == "square" { return LB_SQUARE; }
+  if word == "vertical" { return LB_VERTICAL; }
+  return lb_size(word, false, false, false, LB_DESKTOP);
+}
+
+LB_PREVIEW :: 0; LB_REVIEW :: 1; LB_MASTER :: 2;
+lb_quality :: (s: string) -> int {
+  if s == "preview" { return LB_PREVIEW; }
+  if s == "review" || s == "" { return LB_REVIEW; }
+  if s == "master" { return LB_MASTER; }
+  return -1;
+}
+// The size a quality renders at: preview is a quarter of the area (half each side, even).
+lb_quality_size :: (q: int, w: int, h: int) -> ArgsSize {
+  if q != LB_PREVIEW { return ArgsSize.{ok = true, w = w, h = h}; }
+  return ArgsSize.{ok = true, w = (w / 2) / 2 * 2, h = (h / 2) / 2 * 2};
+}
+
+#test "sizes and qualities" {
+  d := lb_size("", false, false, false, LB_DESKTOP);
+  #assert d.ok && d.w == 1440 && d.h == 900;
+  p := lb_size("", true, false, false, LB_DESKTOP);
+  #assert p.w == 390 && p.h == 844 && lb_size("", false, true, false, LB_DESKTOP).h == 1080 && lb_size("", false, false, true, LB_DESKTOP).h == 1920;
+  #assert lb_size("1280x720", false, false, false, LB_DESKTOP).w == 1280 && !lb_size("1280x720", true, false, false, LB_DESKTOP).ok;
+  #assert !lb_size("8x8", false, false, false, LB_DESKTOP).ok && !lb_size("9000x10", false, false, false, LB_DESKTOP).ok && !lb_size("big", false, false, false, LB_DESKTOP).ok;
+  #assert lb_size_word("phone").w == 390 && lb_size_word("desktop").w == 1440 && lb_size_word("800x600").h == 600 && !lb_size_word("tablet").ok;
+  #assert lb_quality("preview") == LB_PREVIEW && lb_quality("") == LB_REVIEW && lb_quality("master") == LB_MASTER && lb_quality("best") == -1;
+  q := lb_quality_size(LB_PREVIEW, 1920, 1080);
+  #assert q.w == 960 && q.h == 540 && lb_quality_size(LB_PREVIEW, 1366, 770).w == 682 && lb_quality_size(LB_REVIEW, 1366, 770).w == 1366;
+}
+
+// ---- programs Labs needs -----------------------------------------------------
+
+// The one command that installs a program, by system (tool_os: TOOL_MAC or not).
+lb_install :: (program: string, mac: bool) -> string {
+  if program == "chrome" { return ifx mac then "install Google Chrome from https://www.google.com/chrome/, or set CHROME" else "install Chromium (nix profile install nixpkgs#chromium, or apt install chromium), or set CHROME"; }
+  if program == "ffmpeg" { return ifx mac then "brew install ffmpeg" else "nix profile install nixpkgs#ffmpeg, or apt install ffmpeg"; }
+  if program == "whisper-cli" { return ifx mac then "brew install whisper-cpp" else "nix profile install nixpkgs#whisper-cpp"; }
+  return "";
+}
+lb_missing_text :: (program: string, mac: bool, out: [] u8) -> string {
+  w: [1] LbW; w[0].buf = out;
+  lbw_put(w[..], ifx program == "chrome" then "Chrome" else program);
+  lbw_put(w[..], " was not found: "); lbw_put(w[..], lb_install(program, mac));
+  return lbw_text(w[..]);
+}
+
+#test "missing programs name their install command" {
+  b: [256] u8;
+  #assert lb_missing_text("ffmpeg", true, b[..]) == "ffmpeg was not found: brew install ffmpeg";
+  #assert lb_missing_text("chrome", true, b[..]) == "Chrome was not found: install Google Chrome from https://www.google.com/chrome/, or set CHROME";
+  #assert lb_has(lb_missing_text("ffmpeg", false, b[..]), "nixpkgs#ffmpeg") && lb_install("whisper-cli", true) == "brew install whisper-cpp" && lb_install("x", true) == "";
+}
+
+// ---- text pools and problems -------------------------------------------------
+
+LB_POOL :: 65536; LB_PROBLEMS :: 64;
+LbSpan :: struct { at: int; n: int; }
+LbPool :: struct { b: [LB_POOL] u8; n: int; full: bool; }
+lb_add :: (p: [] LbPool, s: string) -> LbSpan {
+  if p[0].n + s.count > LB_POOL { p[0].full = true; return LbSpan.{at = 0, n = 0}; }
+  at := p[0].n;
+  for c: s { p[0].b[p[0].n] = c; p[0].n += 1; }
+  return LbSpan.{at = at, n = s.count};
+}
+lb_sp :: (p: [] LbPool, s: LbSpan) -> string { return cast(string) p[0].b[s.at..<s.at + s.n]; }
+LbProblem :: struct { line: int; text: LbSpan; }
+LbProblems :: struct { p: [LB_PROBLEMS] LbProblem; n: int; more: int; }
+lb_problem :: (ps: [] LbProblems, p: [] LbPool, line: int, a: string, b: string, c: string) {
+  if ps[0].n >= LB_PROBLEMS { ps[0].more += 1; return; }
+  t: [1024] u8; w: [1] LbW; w[0].buf = t[..];
+  lbw_put(w[..], a); lbw_put(w[..], b); lbw_put(w[..], c);
+  ps[0].p[ps[0].n] = LbProblem.{line = line, text = lb_add(p, lbw_text(w[..]))}; ps[0].n += 1;
+}
+
+// A path as written: ~/x becomes HOME/x; anything else is kept (relative paths are the caller's).
+lb_path :: (p: [] LbPool, hm: string, s: string) -> LbSpan {
+  if lb_starts(s, "~/") && hm.count > 0 {
+    t: [2048] u8; w: [1] LbW; w[0].buf = t[..];
+    lbw_put(w[..], hm); lbw_put(w[..], cast(string) s[1..<s.count]);
+    return lb_add(p, lbw_text(w[..]));
+  }
+  return lb_add(p, s);
+}
+
+// ---- words on a line: name=value, values may be "quoted with spaces" -----------
+
+LbWords :: struct { at: [32] int; to: [32] int; n: int; bad: bool; }
+lb_words :: (line: string) -> LbWords {
+  r: LbWords; i := 0;
+  while i < line.count {
+    while i < line.count && (line[i] == ' ' || line[i] == '\t') { i += 1; }
+    if i >= line.count { break; }
+    start := i; quoted := false;
+    while i < line.count && (quoted || (line[i] != ' ' && line[i] != '\t')) { if line[i] == '"' { quoted = !quoted; } i += 1; }
+    if quoted || r.n >= 32 { r.bad = true; return r; }
+    r.at[r.n] = start; r.to[r.n] = i; r.n += 1;
+  }
+  return r;
+}
+lb_word :: (line: string, w: LbWords, k: int) -> string { return ifx k < w.n then cast(string) line[w.at[k]..<w.to[k]] else ""; }
+// A word's name (before =) and value (after, without its quotes); no = gives a value of "" and has false.
+LbPair :: struct { name: string; value: string; has: bool; }
+lb_pair :: (word: string) -> LbPair {
+  r: LbPair; r.name = word;
+  for i: 0..<word.count {
+    if word[i] == '=' {
+      r.name = cast(string) word[0..<i]; r.has = true;
+      v := cast(string) word[i + 1..<word.count];
+      if v.count >= 2 && v[0] == '"' && v[v.count - 1] == '"' { v = cast(string) v[1..<v.count - 1]; }
+      r.value = v;
+      return r;
+    }
+  }
+  return r;
+}
+
+#test "words and pairs" {
+  line := "shot portal src=clips/portal.mp4  in=2.2 title=\"THE PORTAL\"";
+  w := lb_words(line);
+  #assert !w.bad && w.n == 5 && lb_word(line, w, 0) == "shot" && lb_word(line, w, 4) == "title=\"THE PORTAL\"" && lb_word(line, w, 9) == "";
+  p := lb_pair(lb_word(line, w, 4));
+  #assert p.has && p.name == "title" && p.value == "THE PORTAL";
+  q := lb_pair("open");
+  #assert !q.has && q.name == "open" && q.value == "";
+  #assert lb_words("title=\"open").bad && lb_words("").n == 0;
+  e := lb_pair("x=");
+  #assert e.has && e.value == "";
+}
+
+// ---- the .cut format ---------------------------------------------------------
+// Video Lab's cut.v1 in line form (docs/cli/cut-format.md). One word starts
+// each line; # starts a comment.
+//   cut NAME...                      size WxH          fps N
+//   music PATH [gain=DB] [duck=DB]   voice PATH [gain=DB]   fade [in=S] [out=S]
+//   shot NAME [src=PATH|URL] [in=S] dur=S [xfade=S] [title="TEXT"]... [under=PATH] [under_in=S]
+// Each title= is one line of the title; the lines after the first are drawn at half its size.
+// A shot with a title and no src is a title card (over under= when given).
+// The first shot's xfade fades it in from black.
+
+LB_SHOTS :: 128;
+LB_TITLE_LINES :: 8;
+// title holds the title's lines, split by newlines; title_cap is the first
+// line's cap height as a share of the frame's height (0: the default), and
+// scale[k] line k's size against the first (0: 1 for the first, 1/2 after).
+LbShot :: struct { line: int; name: LbSpan; src: LbSpan; in_ms: int; dur_ms: int = -1; xfade_ms: int; title: LbSpan; under: LbSpan; under_in_ms: int;
+  title_cap: f32; scale: [LB_TITLE_LINES] f32; }
+lb_line_scale :: (s: LbShot, k: int) -> f32 {
+  if k < LB_TITLE_LINES && s.scale[k] > 0 { return s.scale[k]; }
+  return ifx k == 0 then 1.0 else 0.5;
+}
+LbCut :: struct {
+  pool: [1] LbPool;
+  name: LbSpan; w: int = 1920; h: int = 1080; fps: int = 30;
+  music: LbSpan; music_gain: f64; duck: f64; voice: LbSpan; voice_gain: f64;
+  fade_in_ms: int; fade_out_ms: int;
+  shots: [LB_SHOTS] LbShot; shot_n: int;
+  problems: [1] LbProblems;
+  notes: [1] LbProblems;      // what a cut.v1 file asks for that labs cut does not draw
+}
+lb_cut_sp :: (c: [] LbCut, s: LbSpan) -> string { return lb_sp(c[0].pool[..], s); }
+lb_cut_problem :: (c: [] LbCut, line: int, a: string, b: string, d: string) { lb_problem(c[0].problems[..], c[0].pool[..], line, a, b, d); }
+lb_cut_note :: (c: [] LbCut, line: int, a: string, b: string, d: string) { lb_problem(c[0].notes[..], c[0].pool[..], line, a, b, d); }
+
+// A gain in dB: -60 to 20; ok false otherwise.
+LbDb :: struct { ok: bool; v: f64; }
+lb_db :: (s: string) -> LbDb {
+  r: LbDb; n := args_number(s);
+  if s.count == 0 || !n.ok || n.value < -60.0 || n.value > 20.0 { return r; }
+  r.ok = true; r.v = n.value; return r;
+}
+
+lb_cut_line :: (c: [] LbCut, line: string, at: int, hm: string) {
+  w := lb_words(line);
+  if w.bad { lb_cut_problem(c, at, "a quote is not closed, or the line has more than 32 words", "", ""); return; }
+  if w.n == 0 || lb_word(line, w, 0)[0] == '#' { return; }
+  head := lb_word(line, w, 0);
+  if head == "cut" {
+    rest := ifx w.n > 1 then cast(string) line[w.at[1]..<line.count] else "";
+    while rest.count > 0 && (rest[rest.count - 1] == ' ' || rest[rest.count - 1] == '\r') { rest = cast(string) rest[0..<rest.count - 1]; }
+    c[0].name = lb_add(c[0].pool[..], rest);
+    return;
+  }
+  if head == "size" {
+    s := args_size(lb_word(line, w, 1));
+    if w.n != 2 || !s.ok || s.w < 64 || s.h < 64 || s.w > 7680 || s.h > 7680 || s.w % 2 != 0 || s.h % 2 != 0 { lb_cut_problem(c, at, "size is WxH, two even numbers from 64 to 7680, for example 1920x1080", "", ""); return; }
+    c[0].w = s.w; c[0].h = s.h; return;
+  }
+  if head == "fps" {
+    f := args_whole(lb_word(line, w, 1));
+    if w.n != 2 || f < 1 || f > 120 { lb_cut_problem(c, at, "fps is a whole number from 1 to 120", "", ""); return; }
+    c[0].fps = f; return;
+  }
+  if head == "music" || head == "voice" {
+    if w.n < 2 || lb_pair(lb_word(line, w, 1)).has { lb_cut_problem(c, at, head, " needs a file: ", ifx head == "music" then "music PATH [gain=DB] [duck=DB]" else "voice PATH [gain=DB]"); return; }
+    sp := lb_path(c[0].pool[..], hm, lb_word(line, w, 1));
+    if head == "music" { c[0].music = sp; } else { c[0].voice = sp; }
+    for k: 2..<w.n {
+      p := lb_pair(lb_word(line, w, k));
+      db := lb_db(p.value);
+      if !p.has || !(p.name == "gain" || (p.name == "duck" && head == "music")) { lb_cut_problem(c, at, "unknown word ", p.name, ifx head == "music" then " (music takes gain= and duck=)" else " (voice takes gain=)"); continue; }
+      if !db.ok { lb_cut_problem(c, at, p.name, " is a number of dB from -60 to 20", ""); continue; }
+      if p.name == "duck" { c[0].duck = db.v; } else if head == "music" { c[0].music_gain = db.v; } else { c[0].voice_gain = db.v; }
+    }
+    return;
+  }
+  if head == "fade" {
+    for k: 1..<w.n {
+      p := lb_pair(lb_word(line, w, k)); ms := lb_ms(p.value);
+      if !p.has || (p.name != "in" && p.name != "out") { lb_cut_problem(c, at, "unknown word ", p.name, " (fade takes in= and out=)"); continue; }
+      if ms < 0 || ms > 60000 { lb_cut_problem(c, at, p.name, " is a number of seconds from 0 to 60", ""); continue; }
+      if p.name == "in" { c[0].fade_in_ms = ms; } else { c[0].fade_out_ms = ms; }
+    }
+    return;
+  }
+  if head == "shot" {
+    if c[0].shot_n >= LB_SHOTS { lb_cut_problem(c, at, "a cut has at most 128 shots", "", ""); return; }
+    s: LbShot; s.line = at;
+    nm := lb_word(line, w, 1);
+    if w.n < 2 || lb_pair(nm).has { lb_cut_problem(c, at, "a shot starts with its name: shot NAME src=... dur=...", "", ""); return; }
+    s.name = lb_add(c[0].pool[..], nm);
+    for k: 2..<w.n {
+      p := lb_pair(lb_word(line, w, k));
+      if !p.has { lb_cut_problem(c, at, "unknown word ", p.name, ""); continue; }
+      if p.name == "src" { s.src = lb_path(c[0].pool[..], hm, p.value); continue; }
+      if p.name == "under" { s.under = lb_path(c[0].pool[..], hm, p.value); continue; }
+      if p.name == "title" {
+        if p.value.count == 0 || lb_has(p.value, "\n") { lb_cut_problem(c, at, "a title line is text in quotes: title=\"TEXT\"", "", ""); continue; }
+        if s.title.n == 0 { s.title = lb_add(c[0].pool[..], p.value); continue; }
+        lines := 1; old := lb_cut_sp(c, s.title); for ch: old { if ch == '\n' { lines += 1; } }
+        if lines >= LB_TITLE_LINES { lb_cut_problem(c, at, "a title has at most 8 lines", "", ""); continue; }
+        tb: [2048] u8; tw: [1] LbW; tw[0].buf = tb[..]; lbw_put(tw[..], old); lbw_byte(tw[..], '\n'); lbw_put(tw[..], p.value);
+        s.title = lb_add(c[0].pool[..], lbw_text(tw[..])); continue;
+      }
+      ms := lb_ms(p.value);
+      if p.name == "in" || p.name == "dur" || p.name == "xfade" || p.name == "under_in" {
+        if ms < 0 { lb_cut_problem(c, at, p.name, " is a number of seconds, not ", p.value); continue; }
+        if p.name == "in" { s.in_ms = ms; } else if p.name == "dur" { s.dur_ms = ms; } else if p.name == "xfade" { s.xfade_ms = ms; } else { s.under_in_ms = ms; }
+        continue;
+      }
+      lb_cut_problem(c, at, "unknown word ", p.name, " (a shot takes src, in, dur, xfade, title, under and under_in)");
+    }
+    c[0].shots[c[0].shot_n] = s; c[0].shot_n += 1;
+    return;
+  }
+  lb_cut_problem(c, at, "unknown word ", head, " (a line starts with cut, size, fps, music, voice, fade or shot)");
+}
+
+// Reads a .cut file's text into c (problems in c[0].problems).
+lb_cut_parse :: (c: [] LbCut, text: string, hm: string) {
+  start := 0; line := 1;
+  for i: 0..<text.count + 1 {
+    if i < text.count && text[i] != '\n' { continue; }
+    l := cast(string) text[start..<i];
+    if l.count > 0 && l[l.count - 1] == '\r' { l = cast(string) l[0..<l.count - 1]; }
+    lb_cut_line(c, l, line, hm);
+    start = i + 1; line += 1;
+  }
+  if c[0].shot_n == 0 && c[0].problems[0].n == 0 { lb_cut_problem(c, 0, "the cut has no shots", "", ""); }
+  if c[0].pool[0].full { lb_cut_problem(c, 0, "the cut's text is longer than 64 KB of names and paths", "", ""); }
+}
+
+// ---- cut.v1, the JSON cut lists Video Lab and scripts/film/cut.py read ----------
+
+lb_json_ms :: (d: Jv, at: int) -> int {
+  if jv_kind(d, at) != JV_NUMBER { return -1; }
+  return lb_ms(jv_raw(d, at));
+}
+lb_json_text :: (d: Jv, at: int, out: [] u8) -> string {
+  if jv_kind(d, at) != JV_STRING { return ""; }
+  n := jv_str(d, at, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+LB_JSON_DRAWN :: [13] string.["name", "src", "in", "dur", "xfade", "title", "dark_ok", "label", "", "", "", "", ""];
+// Whether labs cut draws a cut.v1 shot key; the others are noted, once per shot.
+lb_json_drawn :: (k: string) -> bool { for d: LB_JSON_DRAWN { if d.count > 0 && d == k { return true; } } return false; }
+
+// Reads cut.v1 JSON into c. Shots are numbered as lines (shot 1 is line 1).
+lb_cut_json :: (c: [] LbCut, text: string, hm: string, nodes: [] JvNode) {
+  d: [1] Jv;
+  if !jv_parse(d[..], text, nodes) || jv_kind(d[0], 0) != JV_OBJECT { lb_cut_problem(c, 0, "the file is not JSON (a .cut line file, or cut.v1 JSON)", "", ""); return; }
+  j := d[0]; t: [4096] u8;
+  fps := jv_get(j, 0, "fps");
+  if fps >= 0 { f := jv_int(j, fps, -1); if f < 1 || f > 120 { lb_cut_problem(c, 0, "fps is a whole number from 1 to 120", "", ""); } else { c[0].fps = f; } }
+  size := jv_get(j, 0, "size");
+  if size >= 0 {
+    sw := jv_int(j, jv_at(j, size, 0), -1); sh := jv_int(j, jv_at(j, size, 1), -1);
+    if sw < 64 || sh < 64 || sw > 7680 || sh > 7680 || sw % 2 != 0 || sh % 2 != 0 { lb_cut_problem(c, 0, "size is [W, H], two even numbers from 64 to 7680", "", ""); } else { c[0].w = sw; c[0].h = sh; }
+  }
+  m := lb_json_text(j, jv_get(j, 0, "music"), t[..]);
+  if m.count > 0 { c[0].music = lb_path(c[0].pool[..], hm, m); }
+  v := lb_json_text(j, jv_get(j, 0, "voice"), t[..]);
+  if v.count > 0 { c[0].voice = lb_path(c[0].pool[..], hm, v); }
+  fi := lb_json_ms(j, jv_get(j, 0, "fade_in")); if fi > 0 { c[0].fade_in_ms = fi; }
+  fo := lb_json_ms(j, jv_get(j, 0, "fade_out")); if fo > 0 { c[0].fade_out_ms = fo; }
+  if jv_get(j, 0, "captions") >= 0 { lb_cut_note(c, 0, "captions", " (the script's caption lines) are not drawn; --captions transcribes the voice instead", ""); }
+  if jv_get(j, 0, "voices") >= 0 { lb_cut_note(c, 0, "voices", " is not mixed; give one voice", ""); }
+  shots := jv_get(j, 0, "shots");
+  if jv_kind(j, shots) != JV_ARRAY { lb_cut_problem(c, 0, "a cut.v1 file has a shots list", "", ""); return; }
+  for i: 0..<jv_len(j, shots) {
+    sh := jv_at(j, shots, i);
+    if c[0].shot_n >= LB_SHOTS { lb_cut_problem(c, i + 1, "a cut has at most 128 shots", "", ""); return; }
+    s: LbShot; s.line = i + 1;
+    nm := lb_json_text(j, jv_get(j, sh, "name"), t[..]);
+    s.name = lb_add(c[0].pool[..], ifx nm.count > 0 then nm else "shot");
+    src := lb_json_text(j, jv_get(j, sh, "src"), t[..]);
+    if src.count > 0 { s.src = lb_path(c[0].pool[..], hm, src); }
+    if jv_get(j, sh, "in") >= 0 { s.in_ms = lb_json_ms(j, jv_get(j, sh, "in")); }
+    s.dur_ms = lb_json_ms(j, jv_get(j, sh, "dur"));
+    if jv_get(j, sh, "xfade") >= 0 { s.xfade_ms = lb_json_ms(j, jv_get(j, sh, "xfade")); }
+    if s.in_ms < 0 { lb_cut_problem(c, i + 1, "in is a number of seconds", "", ""); s.in_ms = 0; }
+    if s.xfade_ms < 0 { lb_cut_problem(c, i + 1, "xfade is a number of seconds", "", ""); s.xfade_ms = 0; }
+    ti := jv_get(j, sh, "title");
+    if jv_kind(j, ti) == JV_STRING { s.title = lb_add(c[0].pool[..], lb_json_text(j, ti, t[..])); }
+    else if jv_kind(j, ti) == JV_OBJECT {
+      // the title's lines, each at its own size; colour, weight, spacing and timing are noted
+      lines := jv_get(j, ti, "lines"); w: [1] LbW; tb: [2048] u8; w[0].buf = tb[..];
+      first: f64 = 0; styled := jv_get(j, ti, "center") >= 0 || jv_get(j, ti, "gap") >= 0 || jv_get(j, ti, "out") >= 0;
+      for k: 0..<jv_len(j, lines) {
+        if k >= LB_TITLE_LINES { lb_cut_problem(c, i + 1, "a title has at most 8 lines", "", ""); break; }
+        ln := jv_at(j, lines, k);
+        if k > 0 { lbw_byte(w[..], '\n'); }
+        lbw_put(w[..], lb_json_text(j, jv_get(j, ln, "text"), t[..]));
+        sz := jv_get(j, ln, "size");
+        if jv_kind(j, sz) == JV_NUMBER {
+          nv := args_number(jv_raw(j, sz)); f := ifx nv.ok then nv.value else 0.0;
+          if f > 0 && f < 1 { if k == 0 { first = f; s.title_cap = cast(f32) f; } else if first > 0 { s.scale[k] = cast(f32) (f / first); } }
+        }
+        q := j.nodes[ln].first;
+        while q >= 0 { key := jv_key(j, q); if key != "\"text\"" && key != "\"size\"" { styled = true; } q = j.nodes[q].next; }
+      }
+      s.title = lb_add(c[0].pool[..], lbw_text(w[..]));
+      if styled { lb_cut_note(c, i + 1, "the title's colour, weight, spacing and timing are not drawn by labs cut yet", "", ""); }
+      under := jv_get(j, ti, "under");
+      us := lb_json_text(j, jv_get(j, under, "src"), t[..]);
+      if us.count > 0 { s.under = lb_path(c[0].pool[..], hm, us); s.under_in_ms = lb_json_ms(j, jv_get(j, under, "in")); if s.under_in_ms < 0 { s.under_in_ms = 0; } }
+    }
+    // keys labs cut does not draw yet
+    k := j.nodes[sh].first;
+    while k >= 0 {
+      key := jv_key(j, k);
+      if key.count > 2 && key[0] == '"' { key = cast(string) key[1..<key.count - 1]; }
+      if !lb_json_drawn(key) { lb_cut_note(c, i + 1, key, " is not drawn by labs cut yet", ""); }
+      k = j.nodes[k].next;
+    }
+    c[0].shots[c[0].shot_n] = s; c[0].shot_n += 1;
+  }
+  if c[0].shot_n == 0 { lb_cut_problem(c, 0, "the cut has no shots", "", ""); }
+}
+// A cut file is JSON when its first character that isn't a space is {.
+lb_cut_is_json :: (text: string) -> bool {
+  for ch: text { if ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t' { continue; } return ch == '{'; }
+  return false;
+}
+
+// ---- the cut's checks ----------------------------------------------------------
+
+// What the caller found about each shot's source: whether the file exists (or
+// it is a URL, recorded before rendering), and its length (-1 when unknown).
+LbSource :: struct { exists: bool; url: bool; ms: int = -1; }
+LB_TITLE_SAFE :: 0.8;      // a title fits in the middle 80% of the width
+LB_TITLE_CAP :: 0.06;      // a title's cap height over a clip, of the height
+LB_CARD_CAP :: 0.085;      // ... on a title card
+lb_tail_ms :: (c: [] LbCut, i: int) -> int { return ifx i + 1 < c[0].shot_n then c[0].shots[i + 1].xfade_ms else 0; }
+lb_cut_total_ms :: (c: [] LbCut) -> int { t := 0; for i: 0..<c[0].shot_n { if c[0].shots[i].dur_ms > 0 { t += c[0].shots[i].dur_ms; } } return t; }
+lb_start_ms :: (c: [] LbCut, i: int) -> int { t := 0; for k: 0..<i { t += c[0].shots[k].dur_ms; } return t; }
+// The title's width as a share of the frame: title_em (its width in cap heights, from font.coax's measure) times its cap.
+lb_title_share :: (c: [] LbCut, i: int, title_em: f32) -> f64 {
+  s := c[0].shots[i];
+  cap := ifx s.title_cap > 0 then cast(f64) s.title_cap else ifx s.src.n == 0 then LB_CARD_CAP else LB_TITLE_CAP;
+  return cast(f64) title_em * cap * cast(f64) c[0].h / cast(f64) c[0].w;
+}
+lb_pct :: (share: f64, out: [] u8) -> string { b: [1] LbW; b[0].buf = out; lbw_int(b[..], cast(int) (share * 100.0 + 0.5)); lbw_byte(b[..], '%'); return lbw_text(b[..]); }
+
+// Video Lab's inspect, the parts that need no private tools. src[i] and title_em[i] are shot i's.
+lb_cut_check :: (c: [] LbCut, src: [] LbSource, title_em: [] f32) {
+  b1: [32] u8; b2: [32] u8; b3: [32] u8;
+  for i: 0..<c[0].shot_n {
+    s := c[0].shots[i]; at := s.line;
+    if s.src.n == 0 && s.title.n == 0 { lb_cut_problem(c, at, "this shot needs a source (src=) or a title (title=)", "", ""); }
+    if s.dur_ms <= 0 { lb_cut_problem(c, at, "dur is missing; give the shot's length in seconds (dur=4.5)", "", ""); continue; }
+    if s.xfade_ms > 0 && s.xfade_ms >= s.dur_ms { lb_cut_problem(c, at, "the crossfade (", lb_secs_text(s.xfade_ms, b1[..]), " s) must be shorter than this shot"); }
+    if i > 0 && s.xfade_ms > 0 && c[0].shots[i - 1].dur_ms > 0 && s.xfade_ms >= c[0].shots[i - 1].dur_ms {
+      lb_cut_problem(c, at, "the crossfade (", lb_secs_text(s.xfade_ms, b1[..]), " s) must be shorter than the shot before it");
+    }
+    if s.src.n > 0 && i < src.count {
+      if !src[i].exists && !src[i].url { lb_cut_problem(c, at, "no source at ", lb_cut_sp(c, s.src), ""); }
+      else if src[i].ms >= 0 {
+        need := s.in_ms + s.dur_ms + lb_tail_ms(c, i);
+        if need > src[i].ms + 1000 / c[0].fps {
+          t: [256] u8; w: [1] LbW; w[0].buf = t[..];
+          lbw_put(w[..], "in + dur"); if lb_tail_ms(c, i) > 0 { lbw_put(w[..], " + the next crossfade"); }
+          lbw_put(w[..], " is "); lbw_secs(w[..], need); lbw_put(w[..], " s, longer than the source's ");
+          lb_cut_problem(c, at, lbw_text(w[..]), lb_secs_text(src[i].ms, b2[..]), " s");
+        }
+      }
+    }
+    if s.title.n > 0 && i < title_em.count {
+      share := lb_title_share(c, i, title_em[i]);
+      if share > LB_TITLE_SAFE { lb_cut_problem(c, at, "the title is ", lb_pct(share, b3[..]), " of the width; the title-safe area is the middle 80%"); }
+    }
+  }
+}
+
+#test "a .cut file reads" {
+  c: [1] LbCut;
+  text := "cut EPISODE 291\nsize 1280x720\nfps 24\nmusic ~/audio/theme.m4a gain=-14 duck=-8\nvoice audio/vo.m4a\nfade in=0.5 out=2\n\n# the shots\nshot open   src=clips/belt.mp4      in=0    dur=4.5  xfade=0.5\nshot portal src=clips/portal.mp4    in=2.2  dur=6    xfade=0.75 title=\"THE PORTAL\"\nshot grid   src=https://openagents.com/realms/orbit-league?stage=highlight  dur=5\nshot end title=\"OPENAGENTS\" dur=3\n";
+  lb_cut_parse(c[..], text, "/Users/me");
+  #assert c[0].problems[0].n == 2 - 2;
+  #assert lb_cut_sp(c[..], c[0].name) == "EPISODE 291" && c[0].w == 1280 && c[0].h == 720 && c[0].fps == 24;
+  #assert lb_cut_sp(c[..], c[0].music) == "/Users/me/audio/theme.m4a" && c[0].music_gain == -14.0 && c[0].duck == -8.0 && lb_cut_sp(c[..], c[0].voice) == "audio/vo.m4a";
+  #assert c[0].fade_in_ms == 500 && c[0].fade_out_ms == 2000 && c[0].shot_n == 4;
+  p := c[0].shots[1];
+  #assert lb_cut_sp(c[..], p.name) == "portal" && p.in_ms == 2200 && p.dur_ms == 6000 && p.xfade_ms == 750 && lb_cut_sp(c[..], p.title) == "THE PORTAL" && p.line == 10;
+  #assert lb_cut_sp(c[..], c[0].shots[2].src) == "https://openagents.com/realms/orbit-league?stage=highlight" && c[0].shots[3].src.n == 0;
+  #assert lb_cut_total_ms(c[..]) == 18500 && lb_start_ms(c[..], 2) == 10500 && lb_tail_ms(c[..], 0) == 750 && lb_tail_ms(c[..], 1) == 0 && lb_tail_ms(c[..], 2) == 0;
+  #assert lb_cut_is_json("  {\"fps\":30}") && !lb_cut_is_json("cut X");
+}
+
+// The problems' texts, joined "LINE TEXT\n", for the tests.
+lb_problems_text :: (ps: [] LbProblems, p: [] LbPool, out: [] u8) -> string {
+  w: [1] LbW; w[0].buf = out;
+  for i: 0..<ps[0].n { lbw_int(w[..], ps[0].p[i].line); lbw_byte(w[..], ' '); lbw_put(w[..], lb_sp(p, ps[0].p[i].text)); lbw_byte(w[..], '\n'); }
+  return lbw_text(w[..]);
+}
+
+#test "each refusal of a .cut line, in its words" {
+  b: [4096] u8;
+  c: [1] LbCut;
+  lb_cut_parse(c[..], "size 1281x720\nfps 0\nmusic\nmusic a.m4a gain=99 loud=1\nfade in=x\nshot\nshot a src=x in=two dur=1 color=red\nlights on\nshot b title=\"open\n", "");
+  t := lb_problems_text(c[0].problems[..], c[0].pool[..], b[..]);
+  #assert lb_has(t, "1 size is WxH, two even numbers from 64 to 7680, for example 1920x1080\n");
+  #assert lb_has(t, "2 fps is a whole number from 1 to 120\n");
+  #assert lb_has(t, "3 music needs a file: music PATH [gain=DB] [duck=DB]\n");
+  #assert lb_has(t, "4 gain is a number of dB from -60 to 20\n") && lb_has(t, "4 unknown word loud (music takes gain= and duck=)\n");
+  #assert lb_has(t, "5 in is a number of seconds from 0 to 60\n");
+  #assert lb_has(t, "6 a shot starts with its name: shot NAME src=... dur=...\n");
+  #assert lb_has(t, "7 in is a number of seconds, not two\n") && lb_has(t, "7 unknown word color (a shot takes src, in, dur, xfade, title, under and under_in)\n");
+  #assert lb_has(t, "8 unknown word lights (a line starts with cut, size, fps, music, voice, fade or shot)\n");
+  #assert lb_has(t, "9 a quote is not closed, or the line has more than 32 words\n");
+  e: [1] LbCut;
+  lb_cut_parse(e[..], "cut EMPTY\n", "");
+  #assert lb_problems_text(e[0].problems[..], e[0].pool[..], b[..]) == "0 the cut has no shots\n";
+}
+
+#test "each check of a cut, in its words" {
+  b: [4096] u8;
+  c: [1] LbCut;
+  lb_cut_parse(c[..], "size 1280x720\nshot a src=a.mp4 dur=4 xfade=1\nshot b src=b.mp4 in=3 dur=4 xfade=5\nshot c src=gone.mp4 dur=2\nshot d\nshot e src=e.mp4 dur=1 title=\"A VERY LONG TITLE THAT DOES NOT FIT\"\nshot f src=f.mp4 dur=2 xfade=0.5\n", "");
+  #assert c[0].problems[0].n == 0;
+  src := [6] LbSource.[LbSource.{exists = true, ms = 10000}, LbSource.{exists = true, ms = 6000}, LbSource.{exists = false},
+                       LbSource.{exists = false}, LbSource.{exists = true, ms = 30000}, LbSource.{exists = true, ms = 2000}];
+  em := [6] f32.[0, 0, 0, 0, 40, 0];
+  lb_cut_check(c[..], src[..], em[..]);
+  t := lb_problems_text(c[0].problems[..], c[0].pool[..], b[..]);
+  #assert !lb_has(t, "\n2 ");   // the first shot's xfade fades in from black
+  #assert lb_has(t, "3 the crossfade (5 s) must be shorter than this shot\n") && lb_has(t, "3 the crossfade (5 s) must be shorter than the shot before it\n");
+  #assert lb_has(t, "3 in + dur is 7 s, longer than the source's 6 s\n");
+  #assert lb_has(t, "4 no source at gone.mp4\n");
+  #assert lb_has(t, "5 this shot needs a source (src=) or a title (title=)\n") && lb_has(t, "5 dur is missing; give the shot's length in seconds (dur=4.5)\n");
+  #assert lb_has(t, "6 the title is 135% of the width; the title-safe area is the middle 80%\n");
+  #assert !lb_has(t, "\n7 ") && lb_has(lb_problems_text(c[0].problems[..], c[0].pool[..], b[..]), "6 in + dur + the next crossfade is 1.5 s, longer than") == false;
+  ok: [1] LbCut;
+  lb_cut_parse(ok[..], "shot a src=a.mp4 dur=4\nshot b src=b.mp4 dur=4 xfade=1 title=\"PORTAL\" title=\"the second line\"\n", "");
+  #assert lb_cut_sp(ok[..], ok[0].shots[1].title) == "PORTAL\nthe second line" && lb_line_scale(ok[0].shots[1], 1) == 0.5;
+  src2 := [2] LbSource.[LbSource.{exists = true, ms = 4900}, LbSource.{exists = true, ms = 4000}];
+  em2 := [2] f32.[0, 4.5];
+  lb_cut_check(ok[..], src2[..], em2[..]);
+  t = lb_problems_text(ok[0].problems[..], ok[0].pool[..], b[..]);
+  #assert t == "1 in + dur + the next crossfade is 5 s, longer than the source's 4.9 s\n";
+}
+
+#test "cut.v1 JSON reads, and what it can't draw is noted" {
+  c: [1] LbCut; nodes: [4096] JvNode; b: [4096] u8;
+  text := "{\"fps\": 30, \"size\": [3840, 2160], \"music\": \"~/film/score.wav\", \"fade_in\": 0.5, \"fade_out\": 2.0, \"bpm\": 120, \"captions\": [],\n \"shots\": [{\"name\": \"title\", \"dur\": 4.0, \"title\": {\"under\": {\"src\": \"~/film/plate.mp4\", \"in\": 1.5}, \"lines\": [{\"text\": \"OpenAgents\", \"size\": 0.08}, {\"text\": \"1.0\", \"size\": 0.04, \"delay\": 2}]}},\n {\"name\": \"chat\", \"src\": \"~/film/chat.mp4\", \"in\": 0.0, \"dur\": 8.0, \"xfade\": 0.5, \"over\": {\"src\": \"x\"}}]}";
+  lb_cut_json(c[..], text, "/h", nodes[..]);
+  #assert c[0].problems[0].n == 0 && c[0].w == 3840 && c[0].h == 2160 && c[0].fps == 30 && c[0].shot_n == 2;
+  #assert lb_cut_sp(c[..], c[0].music) == "/h/film/score.wav" && c[0].fade_in_ms == 500 && c[0].fade_out_ms == 2000;
+  t := c[0].shots[0];
+  #assert lb_cut_sp(c[..], t.title) == "OpenAgents\n1.0" && t.title_cap > 0.0799 && t.title_cap < 0.0801 && lb_line_scale(t, 1) > 0.499 && lb_line_scale(t, 1) < 0.501 && lb_line_scale(t, 0) == 1 && t.src.n == 0 && lb_cut_sp(c[..], t.under) == "/h/film/plate.mp4" && t.under_in_ms == 1500 && t.dur_ms == 4000;
+  s := c[0].shots[1];
+  #assert lb_cut_sp(c[..], s.src) == "/h/film/chat.mp4" && s.dur_ms == 8000 && s.xfade_ms == 500 && s.line == 2;
+  notes := lb_problems_text(c[0].notes[..], c[0].pool[..], b[..]);
+  #assert lb_has(notes, "0 captions (the script's caption lines) are not drawn; --captions transcribes the voice instead\n");
+  #assert lb_has(notes, "1 the title's colour, weight, spacing and timing are not drawn by labs cut yet\n") && lb_has(notes, "2 over is not drawn by labs cut yet\n");
+  bad: [1] LbCut;
+  lb_cut_json(bad[..], "{\"fps\": 500, \"size\": [3, 3]}", "", nodes[..]);
+  #assert lb_has(lb_problems_text(bad[0].problems[..], bad[0].pool[..], b[..]), "0 fps is a whole number from 1 to 120\n0 size is [W, H], two even numbers from 64 to 7680\n0 a cut.v1 file has a shots list\n");
+  nj: [1] LbCut;
+  lb_cut_json(nj[..], "{nope", "", nodes[..]);
+  #assert nj[0].problems[0].n == 1;
+}
+
+// ---- the .board format ---------------------------------------------------------
+//   board NAME...        base URL        sizes desktop phone|WxH...        themes light dark
+//   page PATH NAME [wait=MS]
+
+LB_PAGES :: 128;
+LbPage :: struct { line: int; path: LbSpan; name: LbSpan; wait: int = 4000; }
+LbBoard :: struct {
+  pool: [1] LbPool;
+  name: LbSpan; base: LbSpan;
+  sizes: [4] ArgsSize; size_words: [4] LbSpan; size_n: int;
+  dark: [2] bool; theme_n: int;
+  pages: [LB_PAGES] LbPage; page_n: int;
+  problems: [1] LbProblems;
+}
+lb_board_problem :: (b: [] LbBoard, line: int, a: string, c: string, d: string) { lb_problem(b[0].problems[..], b[0].pool[..], line, a, c, d); }
+lb_board_line :: (b: [] LbBoard, line: string, at: int) {
+  w := lb_words(line);
+  if w.bad { lb_board_problem(b, at, "a quote is not closed, or the line has more than 32 words", "", ""); return; }
+  if w.n == 0 || lb_word(line, w, 0)[0] == '#' { return; }
+  head := lb_word(line, w, 0);
+  if head == "board" { b[0].name = lb_add(b[0].pool[..], ifx w.n > 1 then cast(string) line[w.at[1]..<w.to[w.n - 1]] else ""); return; }
+  if head == "base" {
+    u := lb_word(line, w, 1);
+    if w.n != 2 || !(lb_starts(u, "https://") || lb_starts(u, "http://")) { lb_board_problem(b, at, "base is one URL: base https://openagents.com", "", ""); return; }
+    b[0].base = lb_add(b[0].pool[..], u); return;
+  }
+  if head == "sizes" {
+    b[0].size_n = 0;
+    for k: 1..<w.n {
+      s := lb_size_word(lb_word(line, w, k));
+      if !s.ok { lb_board_problem(b, at, "a size is desktop, phone, square, vertical or WxH, not ", lb_word(line, w, k), ""); continue; }
+      if b[0].size_n >= 4 { lb_board_problem(b, at, "a board has at most 4 sizes", "", ""); break; }
+      b[0].sizes[b[0].size_n] = s; b[0].size_words[b[0].size_n] = lb_add(b[0].pool[..], lb_word(line, w, k)); b[0].size_n += 1;
+    }
+    return;
+  }
+  if head == "themes" {
+    b[0].theme_n = 0;
+    for k: 1..<w.n {
+      t := lb_word(line, w, k);
+      if t != "light" && t != "dark" { lb_board_problem(b, at, "a theme is light or dark, not ", t, ""); continue; }
+      if b[0].theme_n >= 2 { lb_board_problem(b, at, "a board has at most 2 themes", "", ""); break; }
+      b[0].dark[b[0].theme_n] = t == "dark"; b[0].theme_n += 1;
+    }
+    return;
+  }
+  if head == "page" {
+    if b[0].page_n >= LB_PAGES { lb_board_problem(b, at, "a board has at most 128 pages", "", ""); return; }
+    path := lb_word(line, w, 1); name := lb_word(line, w, 2);
+    if w.n < 3 || path.count == 0 || !(path[0] == '/' || lb_is_url(path)) || lb_pair(name).has { lb_board_problem(b, at, "a page line is: page /PATH NAME [wait=MS]", "", ""); return; }
+    p: LbPage; p.line = at; p.path = lb_add(b[0].pool[..], path); p.name = lb_add(b[0].pool[..], name);
+    for k: 3..<w.n {
+      q := lb_pair(lb_word(line, w, k));
+      ms := args_whole(q.value);
+      if q.name != "wait" || !q.has { lb_board_problem(b, at, "unknown word ", q.name, " (a page takes wait=)"); continue; }
+      if ms < 0 || ms > 120000 { lb_board_problem(b, at, "wait is milliseconds from 0 to 120000", "", ""); continue; }
+      p.wait = ms;
+    }
+    b[0].pages[b[0].page_n] = p; b[0].page_n += 1;
+    return;
+  }
+  lb_board_problem(b, at, "unknown word ", head, " (a line starts with board, base, sizes, themes or page)");
+}
+lb_board_parse :: (b: [] LbBoard, text: string) {
+  start := 0; line := 1;
+  for i: 0..<text.count + 1 {
+    if i < text.count && text[i] != '\n' { continue; }
+    l := cast(string) text[start..<i];
+    if l.count > 0 && l[l.count - 1] == '\r' { l = cast(string) l[0..<l.count - 1]; }
+    lb_board_line(b, l, line);
+    start = i + 1; line += 1;
+  }
+  if b[0].size_n == 0 { b[0].sizes[0] = LB_DESKTOP; b[0].size_words[0] = lb_add(b[0].pool[..], "desktop"); b[0].size_n = 1; }
+  if b[0].theme_n == 0 { b[0].theme_n = 1; }
+  if b[0].page_n == 0 && b[0].problems[0].n == 0 { lb_board_problem(b, 0, "the board has no pages", "", ""); }
+  for i: 0..<b[0].page_n {
+    if lb_sp(b[0].pool[..], b[0].pages[i].path)[0] == '/' && b[0].base.n == 0 { lb_board_problem(b, b[0].pages[i].line, "a page by path needs a base line (base https://openagents.com) or --origin", "", ""); break; }
+  }
+}
+
+#test "a .board file reads, and its refusals" {
+  b: [1] LbBoard; t: [4096] u8;
+  lb_board_parse(b[..], "board OPENAGENTS WEB\nbase https://openagents.com\nsizes desktop phone\nthemes light dark\npage /                 HOME\npage /realms           REALMS\npage /realms/everglade EVERGLADE wait=9000\n");
+  #assert b[0].problems[0].n == 0 && lb_sp(b[0].pool[..], b[0].name) == "OPENAGENTS WEB" && lb_sp(b[0].pool[..], b[0].base) == "https://openagents.com";
+  #assert b[0].size_n == 2 && b[0].sizes[1].w == 390 && lb_sp(b[0].pool[..], b[0].size_words[1]) == "phone" && b[0].theme_n == 2 && !b[0].dark[0] && b[0].dark[1];
+  #assert b[0].page_n == 3 && lb_sp(b[0].pool[..], b[0].pages[2].name) == "EVERGLADE" && b[0].pages[2].wait == 9000 && b[0].pages[0].wait == 4000;
+  d: [1] LbBoard;
+  lb_board_parse(d[..], "page https://example.com/ EX\n");
+  #assert d[0].problems[0].n == 0 && d[0].size_n == 1 && d[0].sizes[0].w == 1440 && d[0].theme_n == 1 && !d[0].dark[0];
+  e: [1] LbBoard;
+  lb_board_parse(e[..], "base openagents.com\nsizes tablet\nthemes sepia\npage realms R\npage /x X wait=-1 zoom=2\nwhat\npage /y Y\n");
+  s := lb_problems_text(e[0].problems[..], e[0].pool[..], t[..]);
+  #assert lb_has(s, "1 base is one URL: base https://openagents.com\n") && lb_has(s, "2 a size is desktop, phone, square, vertical or WxH, not tablet\n");
+  #assert lb_has(s, "3 a theme is light or dark, not sepia\n") && lb_has(s, "4 a page line is: page /PATH NAME [wait=MS]\n");
+  #assert lb_has(s, "5 wait is milliseconds from 0 to 120000\n") && lb_has(s, "5 unknown word zoom (a page takes wait=)\n");
+  #assert lb_has(s, "6 unknown word what (a line starts with board, base, sizes, themes or page)\n");
+  #assert lb_has(s, "5 a page by path needs a base line (base https://openagents.com) or --origin\n");
+  z: [1] LbBoard;
+  lb_board_parse(z[..], "board EMPTY\n");
+  #assert lb_problems_text(z[0].problems[..], z[0].pool[..], t[..]) == "0 the board has no pages\n";
+}
+
+// ---- playtest: the bot's runs and their summary --------------------------------
+
+LB_ESCAPED :: 1; LB_MELTED :: 2; LB_SCOOPED :: 3;   // a run's end, as Ice Cream Man's Status; 0 is a timeout
+LbRun :: struct { seed: int; end: int; ms: int; keys: int; hits: int; spotted: int; }
+LbSummary :: struct { runs: int; won: int; escaped: int; melted: int; lost: int; timeout: int; median_ms: int = -1; keys_x10: int; hits_x10: int; spotted_x10: int; }
+lb_end_word :: (end: int) -> string {
+  if end == LB_ESCAPED { return "won"; }
+  if end == LB_MELTED { return "won"; }
+  if end == LB_SCOOPED { return "lost"; }
+  return "timeout";
+}
+lb_end_how :: (end: int) -> string {
+  if end == LB_ESCAPED { return "escaped"; }
+  if end == LB_MELTED { return "melted"; }
+  if end == LB_SCOOPED { return "scooped"; }
+  return "timeout";
+}
+// Tenths, rounded: the average of total over n.
+lb_tenths :: (total: int, n: int) -> int { return ifx n <= 0 then 0 else (total * 10 + n / 2) / n; }
+lb_tenths_text :: (x10: int, out: [] u8) -> string { w: [1] LbW; w[0].buf = out; lbw_int(w[..], x10 / 10); lbw_byte(w[..], '.'); lbw_int(w[..], x10 % 10); return lbw_text(w[..]); }
+// Won is escaped or melted (Game Lab's wins); the median is of the won runs' times, the middle one (upper middle for an even count).
+lb_summary :: (runs: [] LbRun) -> LbSummary {
+  s: LbSummary; s.runs = runs.count;
+  won: [1024] int; wn := 0; keys := 0; hits := 0; spotted := 0;
+  for r: runs {
+    if r.end == LB_ESCAPED { s.escaped += 1; } else if r.end == LB_MELTED { s.melted += 1; } else if r.end == LB_SCOOPED { s.lost += 1; } else { s.timeout += 1; }
+    if (r.end == LB_ESCAPED || r.end == LB_MELTED) && wn < won.count { won[wn] = r.ms; wn += 1; }
+    keys += r.keys; hits += r.hits; spotted += r.spotted;
+  }
+  s.won = s.escaped + s.melted;
+  // sort the won times (insertion; at most 1024)
+  for i: 1..<wn { v := won[i]; j := i - 1; while j >= 0 && won[j] > v { won[j + 1] = won[j]; j -= 1; } won[j + 1] = v; }
+  if wn > 0 { s.median_ms = won[wn / 2]; }
+  s.keys_x10 = lb_tenths(keys, runs.count); s.hits_x10 = lb_tenths(hits, runs.count); s.spotted_x10 = lb_tenths(spotted, runs.count);
+  return s;
+}
+
+#test "the playtest summary" {
+  runs := [5] LbRun.[LbRun.{seed = 0, end = LB_ESCAPED, ms = 90000, keys = 3, hits = 1, spotted = 2},
+                     LbRun.{seed = 1, end = LB_SCOOPED, ms = 40000, keys = 1, hits = 9, spotted = 5},
+                     LbRun.{seed = 2, end = LB_ESCAPED, ms = 150000, keys = 3},
+                     LbRun.{seed = 3, end = LB_MELTED, ms = 60000, keys = 3, hits = 2},
+                     LbRun.{seed = 4, end = 0, ms = 600000, keys = 2}];
+  s := lb_summary(runs[..]);
+  #assert s.runs == 5 && s.won == 3 && s.escaped == 2 && s.melted == 1 && s.lost == 1 && s.timeout == 1;
+  #assert s.median_ms == 90000 && s.keys_x10 == 24 && s.hits_x10 == 24 && s.spotted_x10 == 14;
+  #assert lb_summary(runs[0..<2]).median_ms == 90000 && lb_summary(runs[1..<2]).median_ms == -1 && lb_summary(runs[0..<0]).keys_x10 == 0;
+  b: [16] u8;
+  #assert lb_tenths_text(24, b[..]) == "2.4" && lb_tenths_text(0, b[..]) == "0.0" && lb_tenths_text(105, b[..]) == "10.5";
+  #assert lb_end_word(LB_MELTED) == "won" && lb_end_word(LB_SCOOPED) == "lost" && lb_end_word(0) == "timeout" && lb_end_how(LB_MELTED) == "melted";
+}
+
+// ---- two labels, or two playtest summaries: what differs ------------------------
+
+// One "KEY A → B" line per top-level key whose JSON differs between a and b
+// (a key only one has shows as -), skipping skip (a space-separated list).
+lb_diff :: (a: string, b: string, skip: string, w: [] LbW, na: [] JvNode, nb: [] JvNode) -> int {
+  da: [1] Jv; db: [1] Jv;
+  if !jv_parse(da[..], a, na) || !jv_parse(db[..], b, nb) || jv_kind(da[0], 0) != JV_OBJECT || jv_kind(db[0], 0) != JV_OBJECT { return -1; }
+  n := 0;
+  for pass: 0..<2 {
+    x := ifx pass == 0 then da[0] else db[0]; y := ifx pass == 0 then db[0] else da[0];
+    k := x.nodes[0].first;
+    while k >= 0 {
+      raw := jv_key(x, k);
+      key := ifx raw.count >= 2 && raw[0] == '"' then cast(string) raw[1..<raw.count - 1] else raw;
+      other := jv_get(y, 0, key);
+      skipped := lb_word_in(skip, key);
+      if !skipped && (pass == 0 || other < 0) {
+        va := ifx pass == 0 then jv_raw(x, k) else "-";
+        vb := ifx pass == 0 then (ifx other >= 0 then jv_raw(y, other) else "-") else jv_raw(x, k);
+        if va != vb {
+          lbw_put(w, key); lbw_byte(w, ' '); lbw_put(w, lb_unquote(va)); lbw_put(w, " → "); lbw_put(w, lb_unquote(vb)); lbw_byte(w, '\n');
+          n += 1;
+        }
+      }
+      k = x.nodes[k].next;
+    }
+  }
+  return n;
+}
+lb_unquote :: (raw: string) -> string { return ifx raw.count >= 2 && raw[0] == '"' && raw[raw.count - 1] == '"' then cast(string) raw[1..<raw.count - 1] else raw; }
+lb_word_in :: (list: string, word: string) -> bool {
+  start := 0;
+  for i: 0..<list.count + 1 {
+    if i < list.count && list[i] != ' ' { continue; }
+    if cast(string) list[start..<i] == word && word.count > 0 { return true; }
+    start = i + 1;
+  }
+  return false;
+}
+
+#test "what differs between two labels" {
+  na: [256] JvNode; nb: [256] JvNode; t: [1024] u8;
+  w: [1] LbW; w[0].buf = t[..];
+  a := "{\"kind\":\"shot\",\"url\":\"https://o.com/\",\"size\":\"1440x900\",\"made\":\"x\",\"build\":\"newland.1\"}";
+  b := "{\"kind\":\"shot\",\"url\":\"https://o.com/\",\"size\":\"390x844\",\"made\":\"y\",\"dark\":true}";
+  #assert lb_diff(a, b, "made", w[..], na[..], nb[..]) == 3;
+  #assert lbw_text(w[..]) == "size 1440x900 → 390x844\nbuild newland.1 → -\ndark - → true\n";
+  w[0].n = 0;
+  #assert lb_diff(a, a, "", w[..], na[..], nb[..]) == 0 && lb_diff("[1]", a, "", w[..], na[..], nb[..]) == -1;
+  #assert lb_word_in("made output", "output") && !lb_word_in("made output", "put") && !lb_word_in("", "");
+}
+
+
+// ==== Ice Cream Man, headless ===================================================
+
+// Ice Cream Man played headless: the bot plays a seeded house to its end
+// with no window, as Game Lab measured a tuning (24 houses, 600 seconds
+// each, the Ice Cream Man in). The CLI's `openagents labs playtest icecream`
+// runs it (ice_run below); verse/icecream/replay.c steps the same rules natively.
+#load "../../verse/icecream/rules.coax";
+
+ICE_RUNS :: 24;         // the houses Game Lab measured a tuning on
+ICE_LIMIT_S :: 600;     // the longest a bot run lasts, seconds
+
+// One run's end (Status: 0 still playing at the limit, 1 escaped, 2 melted
+// him, 3 scooped), its game time, and what happened on the way.
+IceRun :: struct { end: int; ms: int; keys: int; hits: int; spotted: int; fingerprint: u64; }
+
+// The bot plays seed's house with tuning t until the run ends or limit_s
+// seconds of game time pass.
+ice_run :: (g: [] Game, b: [] Bot, seed: u64, t: Tuning, limit_s: int) -> IceRun {
+  r: IceRun;
+  game_new(g, seed, true, t);
+  fresh: Bot; b[0] = fresh;
+  for i: 0..<limit_s * HZ {
+    game_step(g, bot_input(g, b));
+    for k: 0..<g[0].event_n { if g[0].events[k].kind == EventKind.spotted { r.spotted += 1; } }
+    if g[0].status != Status.playing { break; }
+  }
+  r.end = cast(int) g[0].status;
+  r.ms = cast(int) (g[0].tick * 1000 / cast(u64) HZ);
+  r.keys = cast(int) g[0].player.keys;
+  r.hits = cast(int) g[0].stats.hits_taken;
+  r.fingerprint = fingerprint(g);
+  return r;
+}
+
+// The tunable at index (in TUNABLE_BOUNDS), as tuning_put sets it.
+tuning_get :: (t: Tuning, index: int) -> f64 {
+  if index == 0 { return cast(f64) t.walk; }
+  else if index == 1 { return cast(f64) t.sprint; }
+  else if index == 2 { return cast(f64) t.jump_speed; }
+  else if index == 3 { return cast(f64) t.gravity; }
+  else if index == 4 { return cast(f64) t.max_health; }
+  else if index == 5 { return cast(f64) t.regen_after; }
+  else if index == 6 { return cast(f64) t.regen_rate; }
+  else if index == 7 { return cast(f64) t.man_wander; }
+  else if index == 8 { return cast(f64) t.man_investigate; }
+  else if index == 9 { return cast(f64) t.man_search; }
+  else if index == 10 { return cast(f64) t.man_chase; }
+  else if index == 11 { return cast(f64) t.sight; }
+  else if index == 12 { return cast(f64) t.sight_angle; }
+  else if index == 13 { return cast(f64) t.notice; }
+  else if index == 14 { return cast(f64) t.search_time; }
+  else if index == 15 { return cast(f64) t.sniff_every; }
+  else if index == 16 { return cast(f64) t.patrol_keys; }
+  else if index == 17 { return cast(f64) t.corners; }
+  else if index == 18 { return cast(f64) t.sprinkle_damage; }
+  else if index == 19 { return cast(f64) t.grab_damage; }
+  else if index == 20 { return cast(f64) t.grab_shove; }
+  else if index == 21 { return cast(f64) t.grab_reach; }
+  else if index == 22 { return cast(f64) t.grab_wait; }
+  else if index == 23 { return cast(f64) t.gloat; }
+  else if index == 24 { return cast(f64) t.volley_min; }
+  else if index == 25 { return cast(f64) t.volley_max; }
+  else if index == 26 { return cast(f64) t.volley_spread; }
+  else if index == 27 { return cast(f64) t.pellet_speed; }
+  else if index == 28 { return cast(f64) t.volley_wait; }
+  else if index == 29 { return cast(f64) t.pellet_dodge; }
+  else if index == 30 { return cast(f64) t.fudge_start; }
+  else if index == 31 { return cast(f64) t.fudge_max; }
+  else if index == 32 { return cast(f64) t.fudge_pickup; }
+  else if index == 33 { return cast(f64) t.fudge_rate; }
+  else if index == 34 { return cast(f64) t.fudge_speed; }
+  else if index == 35 { return cast(f64) t.fudge_range; }
+  else if index == 36 { return cast(f64) t.fudge_slow; }
+  else if index == 37 { return cast(f64) t.slowed; }
+  else if index == 38 { return cast(f64) t.freeze_hits; }
+  else if index == 39 { return cast(f64) t.fudge_memory; }
+  else if index == 40 { return cast(f64) t.frozen; }
+  else if index == 41 { return cast(f64) t.farts_start; }
+  else if index == 42 { return cast(f64) t.farts_max; }
+  else if index == 43 { return cast(f64) t.fart_range; }
+  else if index == 44 { return cast(f64) t.fart_radius; }
+  else if index == 45 { return cast(f64) t.fart_shove; }
+  else if index == 46 { return cast(f64) t.confused; }
+  else if index == 47 { return cast(f64) t.fart_wait; }
+  else if index == 48 { return cast(f64) t.cloud_life; }
+  else if index == 49 { return cast(f64) t.jingle_noise; }
+  else if index == 50 { return cast(f64) t.jingle_wait; }
+  else if index == 51 { return cast(f64) t.sprint_noise; }
+  else if index == 52 { return cast(f64) t.fudge_noise; }
+  else if index == 53 { return cast(f64) t.fridge_noise; }
+  else if index == 54 { return cast(f64) t.door_noise; }
+  else if index == 55 { return cast(f64) t.extra_closets; }
+  else if index == 56 { return cast(f64) t.unlock; }
+  else if index == 57 { return cast(f64) t.unlock_guard; }
+  else if index == 58 { return cast(f64) t.puzzle_key; }
+  else if index == 59 { return cast(f64) t.reach; }
+  else if index == 60 { return cast(f64) t.key_reach; }
+  else if index == 61 { return cast(f64) t.backrooms; }
+  else if index == 62 { return cast(f64) t.loops; }
+  else if index == 63 { return cast(f64) t.house_size; }
+  else if index == 64 { return cast(f64) t.key_spread; }
+  else if index == 65 { return cast(f64) t.earned_weapons; }
+  else if index == 66 { return cast(f64) t.man_health; }
+  else if index == 67 { return cast(f64) t.sword_damage; }
+  else if index == 68 { return cast(f64) t.sword_reach; }
+  else if index == 69 { return cast(f64) t.sword_wait; }
+  else if index == 70 { return cast(f64) t.sword_task; }
+  else if index == 71 { return cast(f64) t.spear_damage; }
+  else if index == 72 { return cast(f64) t.spear_reach; }
+  else if index == 73 { return cast(f64) t.spear_wait; }
+  else if index == 74 { return cast(f64) t.pistol_damage; }
+  else if index == 75 { return cast(f64) t.pistol_rate; }
+  else if index == 76 { return cast(f64) t.pistol_speed; }
+  else if index == 77 { return cast(f64) t.pistol_range; }
+  else if index == 78 { return cast(f64) t.pistol_ammo; }
+  else if index == 79 { return cast(f64) t.pistol_max; }
+  else if index == 80 { return cast(f64) t.pistol_pickup; }
+  else if index == 81 { return cast(f64) t.pistol_task; }
+  else if index == 82 { return cast(f64) t.sugar_damage; }
+  else if index == 83 { return cast(f64) t.sugar_radius; }
+  else if index == 84 { return cast(f64) t.sugar_speed; }
+  else if index == 85 { return cast(f64) t.sugar_range; }
+  else if index == 86 { return cast(f64) t.sugar_wait; }
+  else if index == 87 { return cast(f64) t.sugar_ammo; }
+  else if index == 88 { return cast(f64) t.sugar_max; }
+  else if index == 89 { return cast(f64) t.sugar_pickup; }
+  else if index == 90 { return cast(f64) t.sugar_task; }
+  else if index == 91 { return cast(f64) t.minion_count; }
+  else if index == 92 { return cast(f64) t.minion_first; }
+  else if index == 93 { return cast(f64) t.minion_every; }
+  else if index == 94 { return cast(f64) t.minion_growth; }
+  else if index == 95 { return cast(f64) t.minion_speed; }
+  else if index == 96 { return cast(f64) t.minion_health; }
+  else if index == 97 { return cast(f64) t.minion_damage; }
+  else if index == 98 { return cast(f64) t.minion_bite_wait; }
+  else if index == 99 { return cast(f64) t.minion_sight; }
+  else if index == 100 { return cast(f64) t.fudge_minion_damage; }
+  else if index == 101 { return cast(f64) t.fart_minion_damage; }
+  else if index == 102 { return cast(f64) t.cone_drop; }
+  else if index == 103 { return cast(f64) t.cone_boost; }
+  else if index == 104 { return cast(f64) t.cone_time; }
+  else if index == 105 { return cast(f64) t.staff_length; }
+  else if index == 106 { return cast(f64) t.staff_damage; }
+  else if index == 107 { return cast(f64) t.staff_wait; }
+  else if index == 108 { return cast(f64) t.staff_minions; }
+  else if index == 109 { return cast(f64) t.staff_minion_life; }
+  else if index == 110 { return cast(f64) t.free_roam; }
+  else if index == 111 { return cast(f64) t.yellow; }
+  else if index == 112 { return cast(f64) t.fog_near; }
+  else if index == 113 { return cast(f64) t.fog_far; }
+  else if index == 114 { return cast(f64) t.flicker; }
+  else if index == 115 { return cast(f64) t.buzz; }
+  else if index == 116 { return cast(f64) t.first_person; }
+  return 0;
+}
+
+#test "every tunable reads back what tuning_put set" {
+  t: Tuning;
+  for i: 0..<TUNABLES {
+    b := TUNABLE_BOUNDS[i];
+    v := ifx b.whole then b.hi else (b.lo + b.hi) / 2.0;
+    #assert cast(f32) tuning_get(tuning_put(t, i, v), i) == cast(f32) v;
+  }
+  #assert tuning_get(t, 0) == 4.5 && tuning_get(t, TUNABLES) == 0;
+}
+
+#test "the same seed and tuning give the same run" #steps 600000000 {
+  games: [1] Game; bots: [1] Bot;
+  t: Tuning;
+  a := ice_run(games[..], bots[..], 11, t, 1);
+  again := ice_run(games[..], bots[..], 11, t, 1);
+  other := ice_run(games[..], bots[..], 12, t, 1);
+  #assert a.fingerprint == again.fingerprint && a.ms == again.ms && a.fingerprint != other.fingerprint;
+  #assert a.end == 0 && a.ms == 1000;
+}

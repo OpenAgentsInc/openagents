@@ -7,9 +7,9 @@
 // --eval runs a script once the page has started, before the skip (a staged moment's inputs).
 // --frames keeps the PNG frames (f00000.png, ...) in DIR.
 // A page stages its own moments from its URL (?stage=NAME): see docs/verse/clips.md.
-// The recording is coax/lib/media/clip.coax, which `openagents labs clip` uses too.
+// The recording is coax/lib/media/media.coax, which `openagents labs clip` uses too.
 #import "Basic";
-#load "../lib/media/clip.coax";
+#load "../lib/media/media.coax";
 
 tool_main :: () -> int #export_c {
   a: [1] Args;

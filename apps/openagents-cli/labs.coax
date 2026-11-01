@@ -1,0 +1,1279 @@
+// The labs domain: repeatable media and game work from the command line
+// (docs/cli/2026-11-01-openagents-labs.md). Every command checks its input
+// before it makes anything, writes a label beside its output (OUT.json: how
+// it was made, and the digest of everything it depended on), and does
+// nothing when the label says the output is already there (--fresh makes it
+// again). Chrome is always headless and muted; nothing opens on screen.
+//   labs shot URL OUT.png      labs clip URL OUT.mp4      labs deck FILE.deck OUT.pdf
+//   labs frames VIDEO OUTDIR   labs compare A B [OUT]     labs cut FILE.cut OUT.mp4
+//   labs board FILE.board OUTDIR                          labs playtest icecream
+// The rules (formats, checks, sizes, the summary) are in labs-rules.coax;
+// this file runs Chrome (coax/lib/media/) and ffmpeg and prints.
+#load "labs-rules.coax";
+#load "../../coax/lib/media/media.coax";
+
+labs_usage :: () {
+  print("%\n", "Labs (make files from pages, cut lists and games, the same way every time; nothing opens on screen):");
+  print("%\n", "  labs shot URL OUT.png [--size WxH|--phone] [--wait MS] [--eval JS] [--dark] [--fresh]");
+  print("%\n", "  labs clip URL OUT.mp4 [--size WxH|--phone|--square|--vertical] [--seconds S] [--fps N] [--skip S]");
+  print("%\n", "                        [--stage NAME] [--eval JS] [--frames DIR] [--fresh]");
+  print("%\n", "  labs deck FILE.deck OUT.pdf [--check] [--fresh]       a slide deck (docs/web/decks.md)");
+  print("%\n", "  labs cut FILE.cut OUT.mp4 [--quality preview|review|master] [--captions] [--check] [--fresh]");
+  print("%\n", "                                                        a cut list (.cut lines, or cut.v1 JSON) to video");
+  print("%\n", "  labs frames VIDEO OUTDIR --at T[,T...] | --every S | --strip N");
+  print("%\n", "  labs compare A B [OUT.png|OUT.mp4] [--at T]           what differs, and side by side");
+  print("%\n", "  labs board FILE.board OUTDIR [--fresh]                every page at each size and theme");
+  print("%\n", "  labs playtest icecream [--set NAME=VALUE ...] [--seeds N] [--from SEED] [--against FILE.json] | --tunables");
+  print("%\n", "                                    URL may be a path (/realms/SLUG), joined to --origin (https://openagents.com)");
+  print("%\n", "");
+}
+
+labs_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "shot" { return labs_shot(a, r, profile); }
+  if verb == "clip" { return labs_clip(a, r, profile); }
+  if verb == "deck" { return labs_deck(a, r); }
+  if verb == "frames" { return labs_frames(a, r); }
+  if verb == "compare" { return labs_compare(a, r); }
+  if verb == "cut" { return labs_cut(a, r, profile); }
+  if verb == "board" { return labs_board(a, r, profile); }
+  if verb == "playtest" { return labs_playtest(a, r); }
+  if verb == "suite" { return fail(r, EXIT_USAGE, "labs suite is not built yet (phase 4 of docs/cli/2026-11-01-openagents-labs.md)"); }
+  if verb == "" { labs_usage(); return EXIT_USAGE; }
+  return fail(r, EXIT_USAGE, "labs: shot, clip, deck, cut, frames, compare, board or playtest (openagents help)");
+}
+
+// ---- programs ------------------------------------------------------------------
+
+lb_mac :: () -> bool { return tool_os() == TOOL_MAC; }
+// ffmpeg and ffprobe: OPENAGENTS_FFMPEG / OPENAGENTS_FFPROBE, else on PATH.
+lb_ffmpeg :: (out: [] u8) -> string { s := proc_getenv("OPENAGENTS_FFMPEG", out); return ifx s.count > 0 then s else "ffmpeg"; }
+lb_ffprobe :: (out: [] u8) -> string { s := proc_getenv("OPENAGENTS_FFPROBE", out); return ifx s.count > 0 then s else "ffprobe"; }
+lb_missing :: (r: [] Rep, program: string) -> int { t: [400] u8; return fail(r, EXIT_MISSING, lb_missing_text(program, lb_mac(), t[..])); }
+// EXIT_OK, or exit 8 naming the install command.
+lb_need_ffmpeg :: (r: [] Rep) -> int {
+  fb: [1024] u8; pb: [1024] u8; o: [4096] u8; e: [4096] u8;
+  v1 := [2] string.[lb_ffmpeg(fb[..]), "-version"];
+  if proc_run(v1[..], 20000, o[..], e[..]).started != 0 { return lb_missing(r, "ffmpeg"); }
+  vv := [2] string.[lb_ffprobe(pb[..]), "-version"];
+  if proc_run(vv[..], 20000, o[..], e[..]).started != 0 { return lb_missing(r, "ffmpeg"); }
+  return EXIT_OK;
+}
+lb_need_chrome :: (r: [] Rep) -> int {
+  b: [4096] u8; c := cdp_chrome(b[..]);
+  if c.count == 0 || fs_kind(c) != FS_FILE { return lb_missing(r, "chrome"); }
+  return EXIT_OK;
+}
+
+// ---- argv with its own text --------------------------------------------------------
+
+LbArgv :: struct { s: [512] string; n: int; b: [262144] u8; bn: int; bad: bool; }
+lba :: (v: [] LbArgv, s: string) {
+  if v[0].n >= 512 || v[0].bn + s.count > v[0].b.count { v[0].bad = true; return; }
+  at := v[0].bn;
+  for c: s { v[0].b[v[0].bn] = c; v[0].bn += 1; }
+  v[0].s[v[0].n] = cast(string) v[0].b[at..<at + s.count]; v[0].n += 1;
+}
+lba_int :: (v: [] LbArgv, x: int) { t: [24] u8; lba(v, int_text(x, t[..])); }
+lba_secs :: (v: [] LbArgv, ms: int) { t: [32] u8; lba(v, lb_secs_text(ms, t[..])); }
+lba_reset :: (v: [] LbArgv) { v[0].n = 0; v[0].bn = 0; v[0].bad = false; }
+// Runs it to its end; "" when it exited 0, else what went wrong (stderr's end), in err.
+// Puts text in why (a NUL-terminated message buffer).
+lb_say :: (text: string, why: [] u8) { n := copy(text, why); if n >= 0 && n < why.count { why[n] = 0; } }
+
+lb_run :: (v: [] LbArgv, timeout_ms: int, err: [] u8) -> string {
+  if v[0].bad { return "the command line is too long"; }
+  o: [4096] u8;
+  got := proc_run(v[0].s[0..<v[0].n], timeout_ms, o[..], err);
+  if got.started != 0 { return "could not start the program"; }
+  if got.timed_out { return "the program ran too long"; }
+  if got.status != 0 { return ifx got.err_n > 0 then cast(string) err[0..<got.err_n] else "the program failed"; }
+  return "";
+}
+// A video or audio file's length in ms by ffprobe, or -1.
+lb_probe_ms :: (path: string) -> int {
+  pb: [1024] u8; o: [4096] u8; e: [4096] u8;
+  argv := [7] string.[lb_ffprobe(pb[..]), "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1"];
+  v: [1] LbArgv; for x: argv { lba(v[..], x); } lba(v[..], path);
+  got := proc_run(v[0].s[0..<v[0].n], 60000, o[..], e[..]);
+  if got.started != 0 || got.status != 0 { return -1; }
+  t := cast(string) o[0..<got.out_n];
+  while t.count > 0 && (t[t.count - 1] == '\n' || t[t.count - 1] == ' ') { t = cast(string) t[0..<t.count - 1]; }
+  n := args_number(t);
+  if !n.ok || n.value < 0.0 { return -1; }
+  return cast(int) (n.value * 1000.0 + 0.5);
+}
+
+// ---- digests and labels ---------------------------------------------------------
+
+LB_HASH_MAX :: 67108864;   // files up to 64 MiB are hashed here; larger ones by shasum
+// "sha256:" and the hex digest of data, into out (72 bytes).
+lb_sha :: (data: string, out: [] u8) -> string {
+  st: [SHA_STATE_BYTES] u8; h: [32] u8;
+  if sha256_init(st[..]) != SHA_OK { return ""; }
+  i := 0; chunk: [65536] u8;
+  while i < data.count {
+    k := copy(cast(string) data[i..<(ifx data.count - i < 65536 then data.count else i + 65536)], chunk[..]);
+    if sha256_update_checked(st[..], chunk[0..<k], false) != SHA_OK { return ""; }
+    i += k;
+  }
+  if sha256_final_checked(st[..], h[..], false) != SHA_OK { return ""; }
+  n := copy("sha256:", out);
+  if !cli_hex(h[..], out[n..<n + 64]) { return ""; }
+  return cast(string) out[0..<n + 64];
+}
+LbBig :: struct { b: [LB_HASH_MAX] u8; }
+// A file's digest ("sha256:..."), or "" when it can't be read.
+lb_file_sha :: (path: string, out: [] u8) -> string {
+  size := fs_size(path);
+  if size < 0 { return ""; }
+  if size <= LB_HASH_MAX {
+    big: [1] LbBig;
+    n := fs_read(path, big[0].b[..]);
+    if n < 0 { return ""; }
+    return lb_sha(cast(string) big[0].b[0..<n], out);
+  }
+  o: [4096] u8; e: [1024] u8;
+  argv := [4] string.[ifx lb_mac() then "shasum" else "sha256sum", ifx lb_mac() then "-a" else "--", ifx lb_mac() then "256" else path, path];
+  got := proc_run(ifx lb_mac() then argv[..] else argv[0..<3], 600000, o[..], e[..]);
+  if got.started != 0 || got.status != 0 || got.out_n < 64 { return ""; }
+  n := copy("sha256:", out);
+  for i: 0..<64 { out[n + i] = o[i]; }
+  return cast(string) out[0..<n + 64];
+}
+// The served page's digest: its HTML as fetched now (a page's build is in it),
+// or "unreached"/"file" when it can't be fetched.
+lb_page_sha :: (url: string, out: [] u8) -> string {
+  if !(lb_starts(url, "https://") || lb_starts(url, "http://")) { n := copy("file", out); return cast(string) out[0..<n]; }
+  w: [1] HttpWork; got: [HTTP_BODY_MAX] u8; hs: [1] string;
+  res := http_do(w[..], "GET", url, hs[0..<0], "", CLI_HTTP_MS, 5, got[..]);
+  if res.error != HTTP_OK || res.code < 200 || res.code >= 300 { n := copy("unreached", out); return cast(string) out[0..<n]; }
+  return lb_sha(cast(string) got[0..<res.n], out);
+}
+
+// UTC as 2026-11-01T20:04:05Z.
+lb_iso :: (s: int, out: [] u8) -> string {
+  days := s / 86400; rem := s % 86400;
+  // civil from days (Howard Hinnant)
+  z := days + 719468; era := z / 146097; doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400; doy := doe - (365 * yoe + yoe / 4 - yoe / 100); mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1; m := ifx mp < 10 then mp + 3 else mp - 9;
+  if m <= 2 { y += 1; }
+  w: [1] LbW; w[0].buf = out;
+  lbw_int(w[..], y); lbw_byte(w[..], '-'); lb_two(w[..], m); lbw_byte(w[..], '-'); lb_two(w[..], d);
+  lbw_byte(w[..], 'T'); lb_two(w[..], rem / 3600); lbw_byte(w[..], ':'); lb_two(w[..], rem / 60 % 60); lbw_byte(w[..], ':'); lb_two(w[..], rem % 60); lbw_byte(w[..], 'Z');
+  return lbw_text(w[..]);
+}
+lb_two :: (w: [] LbW, v: int) { if v < 10 { lbw_byte(w, '0'); } lbw_int(w, v); }
+#test "times as ISO" {
+  b: [32] u8;
+  #assert lb_iso(0, b[..]) == "1970-01-01T00:00:00Z" && lb_iso(1793564345, b[..]) == "2026-11-01T20:19:05Z" && lb_iso(951782400, b[..]) == "2000-02-29T00:00:00Z";
+}
+
+// The label: one JSON object, written to OUT.json.
+LbLabel :: struct { o: [1] Jo; buf: [65536] u8; }
+lbl_start :: (l: [] LbLabel, kind: string, source: string) {
+  jo_start(l[0].o[..], l[0].buf[..]); jo_obj(l[0].o[..]);
+  lbl_str(l, "kind", kind); lbl_str(l, "source", source);
+}
+lbl_str :: (l: [] LbLabel, k: string, v: string) { jo_key(l[0].o[..], k); jo_str(l[0].o[..], v); }
+lbl_int :: (l: [] LbLabel, k: string, v: int) { jo_key(l[0].o[..], k); jo_int(l[0].o[..], v); }
+lbl_raw :: (l: [] LbLabel, k: string, v: string) { jo_key(l[0].o[..], k); jo_raw(l[0].o[..], v); }
+lbl_secs :: (l: [] LbLabel, k: string, ms: int) { t: [32] u8; lbl_raw(l, k, lb_secs_text(ms, t[..])); }
+// Ends the label with input, output (the file's digest), made and cli, and writes it beside out.
+lbl_write :: (l: [] LbLabel, input: string, out: string, label_path: string) -> bool {
+  d: [80] u8; t: [32] u8;
+  lbl_str(l, "input", input);
+  lbl_str(l, "output", ifx fs_kind(out) == FS_FILE then lb_file_sha(out, d[..]) else "");
+  lbl_str(l, "made", lb_iso(cxcli_now_s(), t[..]));
+  lbl_str(l, "cli", CLI_VERSION);
+  jo_end(l[0].o[..]);
+  if l[0].o[0].bad { return false; }
+  text: [65600] u8; n := copy(jo_text(l[0].o[..]), text[..]); text[n] = '\n';
+  return fs_write(label_path, cast(string) text[0..<n + 1]);
+}
+lb_label_path :: (out: string, buf: [] u8) -> string {
+  n := copy(out, buf); m := copy(".json", buf[n..<buf.count]);
+  return ifx n < 0 || m < 0 then "" else cast(string) buf[0..<n + m];
+}
+// Whether out and its label are there with this input (and the output the label names).
+lb_cached :: (out: string, label_path: string, input: string) -> bool {
+  if fs_kind(out) != FS_FILE || fs_kind(label_path) != FS_FILE { return false; }
+  text: [65536] u8; n := fs_read(label_path, text[..]);
+  if n <= 0 { return false; }
+  nodes: [512] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) text[0..<n], nodes[..]) { return false; }
+  v: [128] u8; k := jv_str(d[0], jv_get(d[0], 0, "input"), v[..]);
+  return k > 0 && cast(string) v[0..<k] == input;
+}
+// The input digest of a canonical text (one "key value" line per thing the output depends on).
+lb_input :: (w: [] LbW, out: [] u8) -> string { return lb_sha(lbw_text(w), out); }
+lbi :: (w: [] LbW, k: string, v: string) { lbw_put(w, k); lbw_byte(w, ' '); lbw_put(w, v); lbw_byte(w, '\n'); }
+lbi_int :: (w: [] LbW, k: string, v: int) { lbw_put(w, k); lbw_byte(w, ' '); lbw_int(w, v); lbw_byte(w, '\n'); }
+lb_size_text :: (s: ArgsSize, out: [] u8) -> string { w: [1] LbW; w[0].buf = out; lbw_int(w[..], s.w); lbw_byte(w[..], 'x'); lbw_int(w[..], s.h); return lbw_text(w[..]); }
+
+// The flags' values, checked: a whole number of ms, or -1.
+lb_flag_ms :: (a: [] Args, flag: string, fallback: string) -> int { return lb_ms(args_value(a, flag, fallback)); }
+
+// ---- labs shot ------------------------------------------------------------------
+
+LbShotJob :: struct { url: string; out: string; size: ArgsSize; wait: int; script: string; dark: bool; fresh: bool; }
+LbShotDone :: struct { code: int; cached: bool; value_n: int = -1; }
+// Takes one shot with its label (Chrome launched by the caller when c is up; launched here when not).
+lb_shot_one :: (r: [] Rep, ch: [] DkChrome, j: LbShotJob, value: [] u8, why: [] u8) -> LbShotDone {
+  done: LbShotDone;
+  lp: [4200] u8; label := lb_label_path(j.out, lp[..]);
+  pg: [80] u8; page := lb_page_sha(j.url, pg[..]);
+  ib: [8192] u8; w: [1] LbW; w[0].buf = ib[..]; sz: [32] u8;
+  lbi(w[..], "kind", "shot"); lbi(w[..], "url", j.url); lbi(w[..], "size", lb_size_text(j.size, sz[..])); lbi_int(w[..], "wait", j.wait);
+  lbi(w[..], "eval", j.script); lbi(w[..], "dark", ifx j.dark then "1" else "0"); lbi(w[..], "page", page);
+  inb: [80] u8; input := lb_input(w[..], inb[..]);
+  if !j.fresh && lb_cached(j.out, label, input) { done.cached = true; return done; }
+  if !ch[0].up {
+    if !cdp_launch(ch[0].c[..], j.size.w, j.size.h, "openagents-labs-") { done.code = 1; lb_say(cdp_error(ch[0].c[..]), why); return done; }
+    ch[0].up = true;
+  }
+  o: MediaShotOptions; o.wait = j.wait; o.script = j.script; o.dark = j.dark;
+  build: [256] u8;
+  s := media_shot(ch[0].c[..], j.url, j.out, j.size, o, value, build[..]);
+  if s.status != 0 {
+    done.code = ifx s.status == 2 then EXIT_USAGE else EXIT_FAIL;
+    msg := ifx s.status == 1 then cdp_error(ch[0].c[..]) else ifx s.status == 2 then "the URL is too long" else "could not write the picture";
+    n := copy(msg, why); if n < 0 { lb_say("Chrome failed", why); }
+    return done;
+  }
+  done.value_n = s.value_n;
+  l: [1] LbLabel;
+  lbl_start(l[..], "shot", "page"); lbl_str(l[..], "url", j.url); lbl_str(l[..], "build", cast(string) build[0..<s.build_n]);
+  lbl_str(l[..], "size", lb_size_text(j.size, sz[..])); lbl_int(l[..], "wait", j.wait);
+  if j.dark { lbl_raw(l[..], "dark", "true"); }
+  if j.script.count > 0 { lbl_str(l[..], "eval", j.script); }
+  lbl_str(l[..], "page", page);
+  if !lbl_write(l[..], input, j.out, label) { done.code = EXIT_FAIL; lb_say("could not write the label", why); }
+  return done;
+}
+
+labs_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  target := positional(a, 2); out := positional(a, 3);
+  if target == "" || out == "" { return fail(r, EXIT_USAGE, "labs shot URL OUT.png [--size WxH|--phone] [--wait MS] [--eval JS] [--dark] [--fresh]"); }
+  if args_has(a, "--as-me") { return fail(r, EXIT_USAGE, "--as-me is not built yet: the site has no NIP-98 sign-in for a headless page, so shots are taken as a visitor"); }
+  ob: [300] u8; ub: [4096] u8;
+  url := lb_url(acct_origin(a, profile, ob[..]), target, ub[..]);
+  if url == "" { return fail(r, EXIT_USAGE, "URL is https://..., http://..., file://... or a path such as /realms/SLUG"); }
+  size := lb_size(args_value(a, "--size", ""), args_has(a, "--phone"), args_has(a, "--square"), args_has(a, "--vertical"), LB_DESKTOP);
+  if !size.ok { return fail(r, EXIT_USAGE, "--size is WxH from 16 to 7680 each, and at most one of --size, --phone, --square, --vertical"); }
+  wait := args_whole(args_value(a, "--wait", "4000"));
+  if wait < 0 || wait > 120000 { return fail(r, EXIT_USAGE, "--wait is milliseconds from 0 to 120000"); }
+  if !lb_ends(out, ".png") { return fail(r, EXIT_USAGE, "OUT is a .png file"); }
+  code := lb_need_chrome(r); if code != EXIT_OK { return code; }
+  j := LbShotJob.{url = url, out = out, size = size, wait = wait, script = args_value(a, "--eval", ""), dark = args_has(a, "--dark"), fresh = args_has(a, "--fresh")};
+  ch: [1] DkChrome; value: [1048576] u8; why: [600] u8;
+  for i: 0..<why.count { why[i] = 0; }
+  done := lb_shot_one(r, ch[..], j, value[..], why[..]);
+  if ch[0].up { cdp_close(ch[0].c[..]); }
+  if done.code != EXIT_OK { return fail(r, done.code, lb_cstr(why[..])); }
+  lp: [4200] u8; sz: [32] u8;
+  rep_str(r, "out", out); rep_str(r, "url", url); rep_str(r, "size", lb_size_text(size, sz[..]));
+  if done.value_n >= 0 { rep_str(r, "eval", cast(string) value[0..<done.value_n]); }
+  rep_bool(r, "cached", done.cached);
+  rep_str(r, "label", lb_label_path(out, lp[..]));
+  return rep_done(r, EXIT_OK);
+}
+// The text up to the first zero byte.
+lb_cstr :: (b: [] u8) -> string { n := 0; while n < b.count && b[n] != 0 { n += 1; } return cast(string) b[0..<n]; }
+
+// `realm shot SLUG [OUT.png]`: labs shot /realms/SLUG, as a visitor sees it.
+labs_realm_shot :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  slug := positional(a, 2);
+  if !cli_slug_ok(slug) { return fail(r, EXIT_USAGE, "realm shot SLUG [OUT.png]: a slug is 1 to 48 of a-z, 0-9 and -"); }
+  path: [128] u8; n := copy("/realms/", path[..]); n += copy(slug, path[n..<path.count]);
+  name: [128] u8; m := copy(slug, name[..]); m += copy(".png", name[m..<name.count]);
+  out := positional(a, 3);
+  b: [1] Args;
+  ok := args_add(b[..], "labs") && args_add(b[..], "shot") && args_add(b[..], cast(string) path[0..<n]) && args_add(b[..], ifx out != "" then out else cast(string) name[0..<m]);
+  for i: 0..<args_count(a) {
+    s := args_at(a, i);
+    if s.count > 1 && s[0] == '-' && s[1] == '-' { ok = ok && args_add(b[..], s); if takes_value(s) && i + 1 < args_count(a) { ok = ok && args_add(b[..], args_at(a, i + 1)); } }
+  }
+  if !ok { return fail(r, EXIT_USAGE, "arguments too long"); }
+  return labs_shot(b[..], r, profile);
+}
+
+// ---- labs clip ------------------------------------------------------------------
+
+labs_clip :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  target := positional(a, 2); out := positional(a, 3);
+  if target == "" || out == "" { return fail(r, EXIT_USAGE, "labs clip URL OUT.mp4 [--size WxH|--phone|--square|--vertical] [--seconds S] [--fps N] [--skip S] [--stage NAME] [--eval JS] [--frames DIR] [--fresh]"); }
+  ob: [300] u8; ub: [4096] u8; sb: [4200] u8;
+  url := lb_url(acct_origin(a, profile, ob[..]), target, ub[..]);
+  if url == "" { return fail(r, EXIT_USAGE, "URL is https://..., http://..., file://... or a path such as /realms/SLUG"); }
+  stage := args_value(a, "--stage", "");
+  if args_has(a, "--stage") {
+    if !lb_stage_ok(stage) { return fail(r, EXIT_USAGE, "--stage is 1 to 32 of a-z, 0-9, - and _"); }
+    url = lb_with_stage(url, stage, sb[..]);
+    if url == "" { return fail(r, EXIT_USAGE, "the URL is too long"); }
+  }
+  size := lb_size(args_value(a, "--size", ""), args_has(a, "--phone"), args_has(a, "--square"), args_has(a, "--vertical"), ArgsSize.{ok = true, w = 1280, h = 720});
+  if !size.ok { return fail(r, EXIT_USAGE, "--size is WxH from 16 to 7680 each, and at most one of --size, --phone, --square, --vertical"); }
+  if size.w % 2 != 0 || size.h % 2 != 0 { return fail(r, EXIT_USAGE, "a clip's width and height are even numbers (H.264)"); }
+  seconds := lb_flag_ms(a, "--seconds", "3"); skip := lb_flag_ms(a, "--skip", "0");
+  fps := args_whole(args_value(a, "--fps", "30"));
+  if seconds <= 0 || seconds > 600000 { return fail(r, EXIT_USAGE, "--seconds is above 0 and at most 600"); }
+  if skip < 0 || skip > 3600000 { return fail(r, EXIT_USAGE, "--skip is seconds from 0 to 3600"); }
+  if fps < 1 || fps > 120 { return fail(r, EXIT_USAGE, "--fps is a whole number from 1 to 120"); }
+  if !lb_ends(out, ".mp4") { return fail(r, EXIT_USAGE, "OUT is an .mp4 file"); }
+  code := lb_need_chrome(r); if code != EXIT_OK { return code; }
+  code = lb_need_ffmpeg(r); if code != EXIT_OK { return code; }
+  why: [2048] u8;
+  res := lb_clip_one(url, out, size, seconds, fps, skip, args_value(a, "--eval", ""), args_value(a, "--frames", ""), args_has(a, "--fresh"), ifx args_has(a, "--stage") then "staged" else "simulated", why[..]);
+  if res.code != EXIT_OK { return fail(r, res.code, lb_cstr(why[..])); }
+  lp: [4200] u8; sz: [32] u8; st: [32] u8;
+  rep_str(r, "out", out); rep_str(r, "url", url); rep_str(r, "size", lb_size_text(size, sz[..]));
+  rep_int(r, "frames", res.frames); rep_raw(r, "seconds", lb_secs_text(seconds, st[..]));
+  rep_bool(r, "cached", res.cached);
+  rep_str(r, "label", lb_label_path(out, lp[..]));
+  return rep_done(r, EXIT_OK);
+}
+
+LbClipDone :: struct { code: int; cached: bool; frames: int; }
+// Records url into out (an MP4) with its label; frames_dir keeps the PNGs when given.
+lb_clip_one :: (url: string, out: string, size: ArgsSize, seconds: int, fps: int, skip: int, script: string, frames_dir: string, fresh: bool, source: string, why: [] u8) -> LbClipDone {
+  done: LbClipDone;
+  for i: 0..<why.count { why[i] = 0; }
+  done.frames = (seconds * fps + 500) / 1000;
+  lp: [4200] u8; label := lb_label_path(out, lp[..]);
+  pg: [80] u8; page := lb_page_sha(url, pg[..]);
+  ib: [8192] u8; w: [1] LbW; w[0].buf = ib[..]; sz: [32] u8;
+  lbi(w[..], "kind", "clip"); lbi(w[..], "url", url); lbi(w[..], "size", lb_size_text(size, sz[..])); lbi_int(w[..], "fps", fps);
+  lbi_int(w[..], "seconds_ms", seconds); lbi_int(w[..], "skip_ms", skip); lbi(w[..], "eval", script); lbi(w[..], "page", page);
+  inb: [80] u8; input := lb_input(w[..], inb[..]);
+  if !fresh && lb_cached(out, label, input) { done.cached = true; return done; }
+  db: [4096] u8;
+  frames := frames_dir;
+  if frames.count == 0 { frames = fs_temp("openagents-labs-frames-", db[..]); }
+  if frames.count == 0 || (!fs_exists(frames) && !fs_mkdir(frames)) { done.code = EXIT_FAIL; lb_say("could not make the frames directory", why); return done; }
+  ch: [1] DkChrome;
+  ft: [16] u8; fr := int_text(fps, ft[..]);
+  failed := "";
+  build: [256] u8; bn := 0;
+  if !cdp_launch(ch[0].c[..], size.w, size.h, "openagents-labs-") { failed = cdp_error(ch[0].c[..]); }
+  else {
+    failed = media_record(ch[0].c[..], url, size, cast(f64) seconds / 1000.0, cast(f64) fps, fr, cast(f64) skip / 1000.0, script, frames);
+    if failed.count == 0 { k := media_value(ch[0].c[..], MEDIA_BUILD_JS, build[..]); bn = ifx k > 0 then k else 0; }
+  }
+  if failed.count > 0 { lb_say(failed, why); cdp_close(ch[0].c[..]); done.code = EXIT_FAIL; if frames_dir.count == 0 { g := fs_remove(frames); } return done; }
+  cdp_close(ch[0].c[..]);
+  fb: [1024] u8; se: [65536] u8;
+  bad := media_encode(lb_ffmpeg(fb[..]), frames, fr, out, se[..]);
+  if frames_dir.count == 0 { g := fs_remove(frames); }
+  if bad.count > 0 { done.code = EXIT_FAIL; n := copy("ffmpeg: ", why); lb_say(cast(string) bad[0..<(ifx bad.count < 1900 then bad.count else 1900)], why[n..<why.count]); return done; }
+  l: [1] LbLabel; st: [32] u8;
+  lbl_start(l[..], "clip", source); lbl_str(l[..], "url", url); lbl_str(l[..], "build", cast(string) build[0..<bn]);
+  lbl_str(l[..], "size", lb_size_text(size, sz[..])); lbl_int(l[..], "fps", fps); lbl_secs(l[..], "seconds", seconds); lbl_secs(l[..], "skip", skip);
+  if script.count > 0 { lbl_str(l[..], "eval", script); }
+  lbl_int(l[..], "frames", done.frames); lbl_str(l[..], "page", page);
+  if !lbl_write(l[..], input, out, label) { done.code = EXIT_FAIL; lb_say("could not write the label", why); }
+  return done;
+}
+
+// ---- labs deck ------------------------------------------------------------------
+
+LbDeckWork :: struct { d: [1] DkDeck; pic: [1] DkPic; ch: [1] DkChrome; p: [1] DkPdf; o: [1] DkCs; }
+labs_deck :: (a: [] Args, r: [] Rep) -> int {
+  spec := positional(a, 2); out := positional(a, 3);
+  check := args_has(a, "--check");
+  if spec == "" || (out == "" && !check) { return fail(r, EXIT_USAGE, "labs deck FILE.deck OUT.pdf [--check] [--fresh]"); }
+  if out != "" && !lb_ends(out, ".pdf") { return fail(r, EXIT_USAGE, "OUT is a .pdf file"); }
+  wk_: [1] LbDeckWork; cw := wk_[..];
+  d := cw[0].d[..];
+  n := fs_read(spec, d[0].src[..]);
+  if n < 0 { return fail(r, EXIT_NOT_FOUND, "could not read the deck file (at most 1 MB)"); }
+  d[0].n = n;
+  if !dk_parse(d) {
+    if r[0].json { rep_str(r, "problem", dk_deck_error(d)); return rep_done(r, EXIT_FAIL); }
+    print("problem %\n", dk_deck_error(d)); return EXIT_FAIL;
+  }
+  scenes := 0; images := 0;
+  for k: 0..<d[0].asset_n { if d[0].assets[k].kind == DK_AK_SCENE { scenes += 1; } else { images += 1; } }
+  if check {
+    rep_int(r, "slides", d[0].slide_n); rep_int(r, "scenes", scenes); rep_int(r, "images", images);
+    return rep_done(r, EXIT_OK);
+  }
+  if scenes > 0 { code := lb_need_chrome(r); if code != EXIT_OK { return code; } }
+  dk_place(d);
+  db: [4096] u8; dir := dk_captures(spec, db[..]);
+  if !fs_exists(dir) && !fs_mkdir(dir) { return fail(r, EXIT_FAIL, "could not make the deck's captures folder"); }
+  sd := fs_dir(spec);
+  got := dk_pictures(d, dir, ifx sd.count > 0 then sd else ".", args_has(a, "--fresh"), cw[0].ch[..], cw[0].pic[..]);
+  if cw[0].ch[0].up { cdp_close(cw[0].ch[0].c[..]); }
+  if !got { return fail(r, EXIT_FAIL, "a scene or an image could not be taken (above)"); }
+  if !dk_write_pdf(d, out, cw[0].pic[..], cw[0].p[..], cw[0].o[..]) { return fail(r, EXIT_FAIL, "could not write the PDF (above)"); }
+  // The input: the deck file and every picture the PDF holds.
+  ib: [65536] u8; w: [1] LbW; w[0].buf = ib[..]; hb: [80] u8;
+  lbi(w[..], "kind", "deck"); lbi(w[..], "deck", lb_sha(cast(string) d[0].src[0..<d[0].n], hb[..]));
+  for k: 0..<d[0].asset_n { lbi(w[..], "picture", lb_file_sha(dk_asset_path(d, k), hb[..])); }
+  inb: [80] u8; input := lb_input(w[..], inb[..]);
+  lp: [4200] u8; label := lb_label_path(out, lp[..]);
+  l: [1] LbLabel;
+  lbl_start(l[..], "deck", "generated"); lbl_str(l[..], "deck", spec); lbl_int(l[..], "slides", d[0].slide_n);
+  lbl_int(l[..], "scenes", scenes); lbl_int(l[..], "taken", d[0].taken); lbl_int(l[..], "kept", d[0].kept);
+  if !lbl_write(l[..], input, out, label) { return fail(r, EXIT_FAIL, "could not write the label"); }
+  rep_str(r, "out", out); rep_int(r, "slides", d[0].slide_n); rep_int(r, "scenes", scenes);
+  rep_int(r, "taken", d[0].taken); rep_int(r, "kept", d[0].kept); rep_str(r, "label", label);
+  return rep_done(r, EXIT_OK);
+}
+
+// ---- labs frames ----------------------------------------------------------------
+
+LB_FRAMES_MAX :: 1000;
+// One frame of video at ms into path (a PNG), scaled to height h when h > 0.
+lb_grab :: (video: string, ms: int, path: string, h: int, why: [] u8) -> string {
+  fb: [1024] u8; v: [1] LbArgv;
+  lba(v[..], lb_ffmpeg(fb[..])); lba(v[..], "-v"); lba(v[..], "error"); lba(v[..], "-y"); lba(v[..], "-ss"); lba_secs(v[..], ms);
+  lba(v[..], "-i"); lba(v[..], video); lba(v[..], "-frames:v"); lba(v[..], "1");
+  if h > 0 { t: [64] u8; w: [1] LbW; w[0].buf = t[..]; lbw_put(w[..], "scale=-2:"); lbw_int(w[..], h); lba(v[..], "-vf"); lba(v[..], lbw_text(w[..])); }
+  lba(v[..], path);
+  return lb_run(v[..], 120000, why);
+}
+labs_frames :: (a: [] Args, r: [] Rep) -> int {
+  video := positional(a, 2); dir := positional(a, 3);
+  at := args_value(a, "--at", ""); every := args_value(a, "--every", ""); strip := args_value(a, "--strip", "");
+  modes := (ifx args_has(a, "--at") then 1 else 0) + (ifx args_has(a, "--every") then 1 else 0) + (ifx args_has(a, "--strip") then 1 else 0);
+  if video == "" || dir == "" || modes != 1 { return fail(r, EXIT_USAGE, "labs frames VIDEO OUTDIR --at T[,T...] | --every S | --strip N"); }
+  if fs_kind(video) != FS_FILE { return fail(r, EXIT_NOT_FOUND, "no such video file"); }
+  code := lb_need_ffmpeg(r); if code != EXIT_OK { return code; }
+  times: [LB_FRAMES_MAX] int; n := 0;
+  total := lb_probe_ms(video);
+  if total < 0 { return fail(r, EXIT_FAIL, "ffprobe could not read the video's length"); }
+  if args_has(a, "--at") {
+    n = lb_times(at, times[..]);
+    if n <= 0 { return fail(r, EXIT_USAGE, "--at is times such as 1.5,12,1:26 (at most 1000)"); }
+    for i: 0..<n { if times[i] >= total { tb: [32] u8; return fail(r, EXIT_USAGE, "a time is past the video's end"); } }
+  } else if args_has(a, "--every") {
+    s := lb_ms(every);
+    if s <= 0 { return fail(r, EXIT_USAGE, "--every is a number of seconds above 0"); }
+    t := 0;
+    while t < total && n < LB_FRAMES_MAX { times[n] = t; n += 1; t += s; }
+  } else {
+    k := args_whole(strip);
+    if k < 2 || k > 64 { return fail(r, EXIT_USAGE, "--strip is a number of frames from 2 to 64"); }
+    for i: 0..<k { times[i] = (total * (2 * i + 1)) / (2 * k); }
+    n = k;
+  }
+  if !fs_exists(dir) && !fs_mkdir(dir) { return fail(r, EXIT_FAIL, "could not make OUTDIR"); }
+  list: [131072] u8; lw: [1] LbW; lw[0].buf = list[..]; lbw_byte(lw[..], '[');
+  paths: [1] LbArgv;
+  why: [4096] u8;
+  for i: 0..<n {
+    nb: [64] u8; nw: [1] LbW; nw[0].buf = nb[..];
+    lbw_put(nw[..], ifx args_has(a, "--strip") then "strip-" else "at-"); lbw_secs(nw[..], times[i]); lbw_put(nw[..], ".png");
+    pb: [4200] u8; path := fs_join(dir, lbw_text(nw[..]), pb[..]);
+    bad := lb_grab(video, times[i], path, ifx args_has(a, "--strip") then 180 else 0, why[..]);
+    if bad.count > 0 { tool_errln(bad); return fail(r, EXIT_FAIL, "ffmpeg could not take a frame"); }
+    lba(paths[..], path);
+    ts: [32] u8;
+    if !r[0].json { print("frame % %\n", lb_secs_text(times[i], ts[..]), path); }
+    if i > 0 { lbw_byte(lw[..], ','); }
+    lbw_put(lw[..], "{\"at\":"); lbw_secs(lw[..], times[i]); lbw_put(lw[..], ",\"path\":"); lb_json_quote(lw[..], path); lbw_byte(lw[..], '}');
+  }
+  lbw_byte(lw[..], ']');
+  sp: [4200] u8; strip_path := "";
+  if args_has(a, "--strip") {
+    strip_path = fs_join(dir, "strip.png", sp[..]);
+    fb: [1024] u8; v: [1] LbArgv;
+    lba(v[..], lb_ffmpeg(fb[..])); lba(v[..], "-v"); lba(v[..], "error"); lba(v[..], "-y");
+    for i: 0..<paths[0].n { lba(v[..], "-i"); lba(v[..], paths[0].s[i]); }
+    g: [256] u8; gw: [1] LbW; gw[0].buf = g[..]; lbw_put(gw[..], "hstack=inputs="); lbw_int(gw[..], paths[0].n);
+    lba(v[..], "-filter_complex"); lba(v[..], lbw_text(gw[..])); lba(v[..], strip_path);
+    bad := lb_run(v[..], 120000, why[..]);
+    if bad.count > 0 { tool_errln(bad); return fail(r, EXIT_FAIL, "ffmpeg could not join the strip"); }
+  }
+  // The label: the video's digest and the times.
+  ib: [65536] u8; w: [1] LbW; w[0].buf = ib[..]; hb: [80] u8;
+  vsha := lb_file_sha(video, hb[..]);
+  lbi(w[..], "kind", "frames"); lbi(w[..], "video", vsha); lbi(w[..], "frames", lbw_text(lw[..]));
+  inb: [80] u8; input := lb_input(w[..], inb[..]);
+  lp: [4200] u8; label := fs_join(dir, "frames.json", lp[..]);
+  l: [1] LbLabel;
+  lbl_start(l[..], "frames", "file"); lbl_str(l[..], "video", video); lbl_str(l[..], "video_digest", vsha); lbl_raw(l[..], "frames", lbw_text(lw[..]));
+  if strip_path.count > 0 { lbl_str(l[..], "strip", strip_path); }
+  if !lbl_write(l[..], input, ifx strip_path.count > 0 then strip_path else "", label) { return fail(r, EXIT_FAIL, "could not write the label"); }
+  if r[0].json { rep_raw(r, "frames", lbw_text(lw[..])); }
+  if strip_path.count > 0 { rep_str(r, "strip", strip_path); }
+  rep_str(r, "label", label);
+  return rep_done(r, EXIT_OK);
+}
+lb_json_quote :: (w: [] LbW, s: string) {
+  t: [8192] u8; o: [1] Jo; jo_start(o[..], t[..]); jo_str(o[..], s);
+  lbw_put(w, jo_text(o[..]));
+}
+
+// ---- labs compare ---------------------------------------------------------------
+
+LbCompareWork :: struct { a: [262144] u8; b: [262144] u8; na: [16384] JvNode; nb: [16384] JvNode; diff: [65536] u8; }
+labs_compare :: (a: [] Args, r: [] Rep) -> int {
+  x := positional(a, 2); y := positional(a, 3); out := positional(a, 4);
+  if x == "" || y == "" { return fail(r, EXIT_USAGE, "labs compare A B [OUT.png|OUT.mp4] [--at T]"); }
+  if fs_kind(x) != FS_FILE || fs_kind(y) != FS_FILE { return fail(r, EXIT_NOT_FOUND, "A and B are files"); }
+  wk_: [1] LbCompareWork; cw := wk_[..];
+  dw: [1] LbW; dw[0].buf = cw[0].diff[..];
+  playtest := lb_ends(x, ".json") && lb_ends(y, ".json");
+  differs := 0;
+  if playtest {
+    // two playtest results: their tunings and summaries
+    an := fs_read(x, cw[0].a[..]); bn := fs_read(y, cw[0].b[..]);
+    if an <= 0 || bn <= 0 { return fail(r, EXIT_FAIL, "A and B are playtest JSON files (at most 256 KB)"); }
+    k := lb_playtest_diff(cast(string) cw[0].a[0..<an], cast(string) cw[0].b[0..<bn], dw[..], cw[0].na[..], cw[0].nb[..]);
+    if k < 0 { return fail(r, EXIT_FAIL, "A and B are not playtest results (openagents labs playtest GAME --json)"); }
+    differs = k;
+  } else {
+    // two outputs: their labels first, so you can see why they differ
+    la: [4200] u8; lb_: [4200] u8;
+    pa := lb_label_path(x, la[..]); pb := lb_label_path(y, lb_[..]);
+    an := ifx fs_kind(pa) == FS_FILE then fs_read(pa, cw[0].a[..]) else -1;
+    bn := ifx fs_kind(pb) == FS_FILE then fs_read(pb, cw[0].b[..]) else -1;
+    if an > 0 && bn > 0 {
+      k := lb_diff(cast(string) cw[0].a[0..<an], cast(string) cw[0].b[0..<bn], "made cli", dw[..], cw[0].na[..], cw[0].nb[..]);
+      differs = ifx k > 0 then k else 0;
+    } else { lbw_put(dw[..], ifx an <= 0 then "label - (A has no label)\n" else "label - (B has no label)\n"); }
+  }
+  if !r[0].json { print("%", lbw_text(dw[..])); }
+  else { rep_str(r, "differs", lbw_text(dw[..])); }
+  if out != "" && !playtest {
+    code := lb_need_ffmpeg(r); if code != EXIT_OK { return code; }
+    video := lb_ends(x, ".mp4") || lb_ends(x, ".mov") || lb_ends(x, ".webm");
+    to_png := lb_ends(out, ".png");
+    if !to_png && !lb_ends(out, ".mp4") { return fail(r, EXIT_USAGE, "OUT is a .png or .mp4 file"); }
+    if !video && !to_png { return fail(r, EXIT_USAGE, "two pictures compare into a .png"); }
+    at := lb_time(args_value(a, "--at", "0"));
+    if at < 0 { return fail(r, EXIT_USAGE, "--at is a time such as 1.5 or 1:26"); }
+    fb: [1024] u8; v: [1] LbArgv; why: [4096] u8;
+    lba(v[..], lb_ffmpeg(fb[..])); lba(v[..], "-v"); lba(v[..], "error"); lba(v[..], "-y");
+    for f: 0..<2 {
+      if video && to_png { lba(v[..], "-ss"); lba_secs(v[..], at); }
+      lba(v[..], "-i"); lba(v[..], ifx f == 0 then x else y);
+    }
+    lba(v[..], "-filter_complex"); lba(v[..], "[0:v]scale=-2:720,setsar=1[a];[1:v]scale=-2:720,setsar=1[b];[a][b]hstack=inputs=2:shortest=1");
+    if to_png { lba(v[..], "-frames:v"); lba(v[..], "1"); }
+    else { lba(v[..], "-an"); lba(v[..], "-c:v"); lba(v[..], "libx264"); lba(v[..], "-pix_fmt"); lba(v[..], "yuv420p"); lba(v[..], "-crf"); lba(v[..], "20"); }
+    lba(v[..], out);
+    bad := lb_run(v[..], 600000, why[..]);
+    if bad.count > 0 { tool_errln(bad); return fail(r, EXIT_FAIL, "ffmpeg could not put them side by side"); }
+    rep_str(r, "out", out);
+  }
+  rep_int(r, "differences", differs);
+  return rep_done(r, EXIT_OK);
+}
+
+
+// ==== labs cut ====================================================================
+
+// labs cut: a cut list to video, Video Lab's render without the chat. The
+// file is the .cut line format or Video Lab's cut.v1 JSON (both read, see
+// labs-rules.coax and docs/cli/cut-format.md); every render runs the checks
+// first and makes nothing when one fails.
+//   1. Shots whose src is a URL are recorded with labs clip first, into
+//      FILE.clips/ beside the cut, and kept by their label.
+//   2. Titles and captions are drawn in Filament (apps/openagents-web/font.coax)
+//      as SVG strokes and taken as transparent PNGs by headless Chrome.
+//   3. ffmpeg cuts each shot to its slot (and the next crossfade), puts the
+//      title over it, joins the shots with crossfades, lays the captions over,
+//      and mixes the music (ducked under the voice) and the voice.
+// --captions transcribes the voice with `openagents transcribe` (this same
+// program, run as a separate process) and draws its segments.
+
+LB_CAPS_MAX :: 512;
+LbCaption :: struct { a: int; b: int; text: [512] u8; n: int; }
+LbCutWork :: struct {
+  c: [1] LbCut; text: [1048576] u8; nodes: [65536] JvNode;
+  src: [LB_SHOTS] LbSource; em: [LB_SHOTS] f32;
+  ch: [1] DkChrome; value: [4096] u8;
+  caps: [LB_CAPS_MAX] LbCaption; cap_n: int;
+  tr: [4194304] u8; trn: [65536] JvNode;
+  html: [262144] u8;
+  graph: [262144] u8;
+}
+
+// ---- Filament as SVG ---------------------------------------------------------------
+
+// text's strokes as SVG path data, the baseline's left end at x, base, cap high (as the deck's dk_fil).
+lb_fil_svg :: (w: [] LbW, text: string, x: f32, base: f32, cap: f32) {
+  points: [FONT_MAX_POINTS * 2] u8;
+  unit := cap / 12; pen := x; i := 0; after := false;
+  while i < text.count {
+    d := decode(text, i); i += d.len;
+    k := font_fold(d.code);
+    if k == ' ' { pen += DK_SPACE * cap; after = false; continue; }
+    if k < 32 { continue; }
+    if after { pen += DK_GAP * cap; }
+    n := glyph(k, points[..]); down := false;
+    for p: 0..<n {
+      if points[p * 2] == FONT_BREAK { down = false; continue; }
+      px := pen + cast(f32) points[p * 2] * unit;
+      py := base - (cast(f32) points[p * 2 + 1] - 2) * unit;
+      lbw_put(w, ifx down then " L" else " M"); lbw_num(w, cast(f64) px); lbw_byte(w, ' '); lbw_num(w, cast(f64) py); down = true;
+      if p + 1 >= n || points[(p + 1) * 2] == FONT_BREAK { lbw_put(w, " L"); lbw_num(w, cast(f64) px + 0.01); lbw_byte(w, ' '); lbw_num(w, cast(f64) py); }
+    }
+    pen += glyph_width(k) * cap;
+    after = true;
+  }
+}
+lb_fil_em :: (text: string) -> f32 { return measure(text, DK_GAP, DK_SPACE, false); }
+
+LB_TEXT_TITLE :: 0; LB_TEXT_CARD :: 1; LB_TEXT_CAPTION :: 2;
+// Line k of text (lines split by newlines), or "".
+lb_line :: (text: string, k: int) -> string {
+  at := 0; start := 0;
+  for i: 0..<text.count + 1 {
+    if i < text.count && text[i] != '\n' { continue; }
+    if at == k { return cast(string) text[start..<i]; }
+    at += 1; start = i + 1;
+  }
+  return "";
+}
+lb_lines :: (text: string) -> int { n := 1; for ch: text { if ch == '\n' { n += 1; } } return n; }
+// The title's widest line in first-line cap heights (each line at its scale).
+lb_title_em :: (s: LbShot, text: string) -> f32 {
+  most: f32 = 0;
+  for k: 0..<lb_lines(text) { e := lb_fil_em(lb_line(text, k)) * lb_line_scale(s, k); if e > most { most = e; } }
+  return most;
+}
+// One line's strokes, a dark halo under them over a picture.
+lb_text_line :: (w: [] LbW, text: string, x: f32, base: f32, cap: f32, halo: bool) {
+  path: [131072] u8; pw: [1] LbW; pw[0].buf = path[..];
+  lb_fil_svg(pw[..], text, x, base, cap);
+  sw := cap * 0.075; if sw < 1.5 { sw = 1.5; }
+  if halo {
+    lbw_put(w, "<path fill=\"none\" stroke=\"rgba(0,0,0,0.55)\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\""); lbw_num(w, cast(f64) (sw * 3));
+    lbw_put(w, "\" d=\""); lbw_put(w, lbw_text(pw[..])); lbw_put(w, "\"/>");
+  }
+  lbw_put(w, "<path fill=\"none\" stroke=\"#e4e4e8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\""); lbw_num(w, cast(f64) sw);
+  lbw_put(w, "\" d=\""); lbw_put(w, lbw_text(pw[..])); lbw_put(w, "\"/>");
+}
+// A page that draws text at width x height: a title in the lower third over
+// the picture, a title card (on the Grid's near-black, or over the picture
+// when transparent), or a caption on a dark band near the bottom. A title's
+// lines stack, each at its size (s's title_cap and scale).
+lb_text_html :: (w: [] LbW, text: string, kind: int, width: int, height: int, ground: bool, s: LbShot) {
+  fw := cast(f32) width; fh := cast(f32) height;
+  cap := ifx kind == LB_TEXT_CAPTION then fh * 0.032 else ifx s.title_cap > 0 then fh * s.title_cap else ifx kind == LB_TEXT_CARD then fh * cast(f32) LB_CARD_CAP else fh * cast(f32) LB_TITLE_CAP;
+  n := ifx kind == LB_TEXT_CAPTION then 1 else lb_lines(text);
+  em := ifx kind == LB_TEXT_CAPTION then lb_fil_em(text) else lb_title_em(s, text);
+  most := fw * (ifx kind == LB_TEXT_CAPTION then 0.9 else cast(f32) LB_TITLE_SAFE);
+  if em * cap > most && em > 0 { cap = most / em; }
+  // the block's height: each line's cap, and 0.8 of the next line's cap between lines
+  tall: f32 = 0;
+  for k: 0..<n { lc := cap * (ifx kind == LB_TEXT_CAPTION then 1.0 else lb_line_scale(s, k)); tall += lc; if k > 0 { tall += lc * 0.8; } }
+  top := ifx kind == LB_TEXT_CARD then (fh - tall) / 2 else ifx kind == LB_TEXT_TITLE then fh * 0.8 - tall else fh * 0.92 - tall;
+  lbw_put(w, "<!doctype html><meta charset=\"utf-8\"><style>html,body{margin:0;background:transparent;overflow:hidden}</style>");
+  lbw_put(w, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\""); lbw_int(w, width); lbw_put(w, "\" height=\""); lbw_int(w, height);
+  lbw_put(w, "\" viewBox=\"0 0 "); lbw_int(w, width); lbw_byte(w, ' '); lbw_int(w, height); lbw_put(w, "\">");
+  if ground { lbw_put(w, "<rect width=\"100%\" height=\"100%\" fill=\"#06070a\"/>"); }
+  if kind == LB_TEXT_CAPTION {
+    tw := em * cap; x := (fw - tw) / 2; pad := cap * 0.9;
+    lbw_put(w, "<rect x=\""); lbw_num(w, cast(f64) (x - pad)); lbw_put(w, "\" y=\""); lbw_num(w, cast(f64) (top - pad));
+    lbw_put(w, "\" width=\""); lbw_num(w, cast(f64) (tw + 2 * pad)); lbw_put(w, "\" height=\""); lbw_num(w, cast(f64) (cap + 2 * pad));
+    lbw_put(w, "\" rx=\""); lbw_num(w, cast(f64) (pad * 0.4)); lbw_put(w, "\" fill=\"rgba(0,0,0,0.6)\"/>");
+    lb_text_line(w, text, x, top + cap, cap, false);
+  } else {
+    y := top;
+    for k: 0..<n {
+      lc := cap * lb_line_scale(s, k);
+      if k > 0 { y += lc * 0.8; }
+      y += lc;
+      line := lb_line(text, k);
+      lb_text_line(w, line, (fw - lb_fil_em(line) * lc) / 2, y, lc, !ground);
+    }
+  }
+  lbw_put(w, "</svg>");
+}
+
+// Takes one text page as a transparent PNG at out.
+lb_text_png :: (cw: [] LbCutWork, dir: string, name: string, text: string, kind: int, width: int, height: int, ground: bool, s: LbShot, out: string, why: [] u8) -> bool {
+  if !cw[0].ch[0].up {
+    if !cdp_launch(cw[0].ch[0].c[..], width, height, "openagents-labs-") { lb_say(cdp_error(cw[0].ch[0].c[..]), why); return false; }
+    cw[0].ch[0].up = true;
+    if cdp_call(cw[0].ch[0].c[..], "Emulation.setDefaultBackgroundColorOverride", "{\"color\":{\"r\":0,\"g\":0,\"b\":0,\"a\":0}}", CDP_CALL_MS) < 0 { lb_say(cdp_error(cw[0].ch[0].c[..]), why); return false; }
+  }
+  hw: [1] LbW; hw[0].buf = cw[0].html[..];
+  lb_text_html(hw[..], text, kind, width, height, ground, s);
+  hb: [4200] u8; nb: [256] u8; nw: [1] LbW; nw[0].buf = nb[..]; lbw_put(nw[..], name); lbw_put(nw[..], ".html");
+  page := fs_join(dir, lbw_text(nw[..]), hb[..]);
+  if hw[0].full || !fs_write(page, lbw_text(hw[..])) { lb_say("could not write a title page", why); return false; }
+  ub: [4300] u8; uw: [1] LbW; uw[0].buf = ub[..]; lbw_put(uw[..], "file://"); lbw_put(uw[..], page);
+  o: MediaShotOptions; o.wait = 300;
+  build: [64] u8;
+  got := media_shot(cw[0].ch[0].c[..], lbw_text(uw[..]), out, ArgsSize.{ok = true, w = width, h = height}, o, cw[0].value[..], build[..]);
+  if got.status != 0 { lb_say(ifx got.status == 1 then cdp_error(cw[0].ch[0].c[..]) else "could not take a title", why); return false; }
+  return true;
+}
+
+// ---- captions from openagents transcribe ------------------------------------------
+
+// Runs `openagents transcribe VOICE --json` (this program) and keeps its segments. EXIT_OK, or an exit code with why.
+lb_captions :: (cw: [] LbCutWork, voice: string, why: [] u8) -> int {
+  exe: [4096] u8; en := cxcli_exe_path(exe[..]);
+  if en <= 0 { lb_say("can't find this program's path to run openagents transcribe", why); return EXIT_FAIL; }
+  argv := [4] string.[cast(string) exe[0..<en], "transcribe", voice, "--json"];
+  err: [8192] u8;
+  tool_errln("cut: transcribing the voice (openagents transcribe --json) for captions");
+  got := proc_run(argv[..], 3600000, cw[0].tr[..], err[..]);
+  e := cast(string) err[0..<got.err_n];
+  if got.started != 0 { lb_say("could not run openagents transcribe", why); return EXIT_FAIL; }
+  if got.status != 0 {
+    if lb_has(e, "whisper-cli was not found") { t: [400] u8; lb_say(lb_missing_text("whisper-cli", lb_mac(), t[..]), why); return EXIT_MISSING; }
+    if lb_has(e, "ffmpeg was not found") { t: [400] u8; lb_say(lb_missing_text("ffmpeg", lb_mac(), t[..]), why); return EXIT_MISSING; }
+    if lb_has(e, "unknown command") { lb_say("--captions needs openagents transcribe, which this build does not have", why); return EXIT_FAIL; }
+    n := copy("openagents transcribe failed: ", why); lb_say(cast(string) e[0..<(ifx e.count < 1500 then e.count else 1500)], why[n..<why.count]); return EXIT_FAIL;
+  }
+  d: [1] Jv;
+  if !jv_parse(d[..], cast(string) cw[0].tr[0..<got.out_n], cw[0].trn[..]) { lb_say("openagents transcribe's JSON did not read", why); return EXIT_FAIL; }
+  segs := jv_get(d[0], 0, "segments");
+  cw[0].cap_n = 0;
+  for i: 0..<jv_len(d[0], segs) {
+    if cw[0].cap_n >= LB_CAPS_MAX { break; }
+    s := jv_at(d[0], segs, i);
+    a := lb_ms(jv_raw(d[0], jv_get(d[0], s, "start"))); b := lb_ms(jv_raw(d[0], jv_get(d[0], s, "end")));
+    k := cw[0].cap_n;
+    n := jv_str(d[0], jv_get(d[0], s, "text"), cw[0].caps[k].text[..]);
+    if a < 0 || b <= a || n <= 0 { continue; }
+    cw[0].caps[k].a = a; cw[0].caps[k].b = b; cw[0].caps[k].n = n; cw[0].cap_n += 1;
+  }
+  return EXIT_OK;
+}
+
+// ---- the command --------------------------------------------------------------------
+
+// A path in the cut, relative to the cut file's folder when it is not absolute or a URL.
+lb_resolve :: (c: [] LbCut, s: LbSpan, dir: string) -> LbSpan {
+  t := lb_cut_sp(c, s);
+  if t.count == 0 || t[0] == '/' || lb_is_url(t) || dir.count == 0 { return s; }
+  b: [4200] u8;
+  return lb_add(c[0].pool[..], fs_join(dir, t, b[..]));
+}
+// A file's identity for the input digest without reading it: path, size, change time.
+lbi_file :: (w: [] LbW, k: string, path: string) {
+  lbw_put(w, k); lbw_byte(w, ' '); lbw_put(w, path); lbw_byte(w, ' '); lbw_int(w, fs_size(path)); lbw_byte(w, ' '); lbw_int(w, fs_mtime_ns(path)); lbw_byte(w, '\n');
+}
+// Prints problems or notes as "WORD LINE TEXT" lines (text), or puts them in the report (JSON).
+lb_print_problems :: (r: [] Rep, word: string, ps: [] LbProblems, p: [] LbPool) {
+  if ps[0].n == 0 { return; }
+  t: [65536] u8; text := lb_problems_text(ps, p, t[..]);
+  if r[0].json { rep_str(r, ifx word == "problem" then "problems" else "notes", text); return; }
+  start := 0;
+  for i: 0..<text.count { if text[i] == '\n' { print("% %\n", word, cast(string) text[start..<i]); start = i + 1; } }
+  if ps[0].more > 0 { print("% and % more\n", word, ps[0].more); }
+}
+
+labs_cut :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  file := positional(a, 2); out := positional(a, 3);
+  check := args_has(a, "--check");
+  if file == "" || (out == "" && !check) { return fail(r, EXIT_USAGE, "labs cut FILE.cut OUT.mp4 [--quality preview|review|master] [--captions] [--check] [--fresh]"); }
+  if out != "" && !lb_ends(out, ".mp4") { return fail(r, EXIT_USAGE, "OUT is an .mp4 file"); }
+  q := lb_quality(args_value(a, "--quality", ""));
+  if q < 0 { return fail(r, EXIT_USAGE, "--quality is preview, review or master"); }
+  wk_: [1] LbCutWork; cw := wk_[..]; c := cw[0].c[..];
+  n := fs_read(file, cw[0].text[..]);
+  if n < 0 { return fail(r, EXIT_NOT_FOUND, "could not read the cut file (at most 1 MB)"); }
+  text := cast(string) cw[0].text[0..<n];
+  hb: [1024] u8; hm := home(hb[..]);
+  if lb_cut_is_json(text) { lb_cut_json(c, text, hm, cw[0].nodes[..]); } else { lb_cut_parse(c, text, hm); }
+  dir := fs_dir(file);
+  for i: 0..<c[0].shot_n { c[0].shots[i].src = lb_resolve(c, c[0].shots[i].src, dir); c[0].shots[i].under = lb_resolve(c, c[0].shots[i].under, dir); }
+  c[0].music = lb_resolve(c, c[0].music, dir); c[0].voice = lb_resolve(c, c[0].voice, dir);
+  if c[0].problems[0].n == 0 {
+    code := lb_need_ffmpeg(r); if code != EXIT_OK { return code; }
+    for i: 0..<c[0].shot_n {
+      s := c[0].shots[i];
+      sp := lb_cut_sp(c, s.src);
+      if sp.count > 0 {
+        if lb_is_url(sp) { cw[0].src[i].url = true; }
+        else { cw[0].src[i].exists = fs_kind(sp) == FS_FILE; if cw[0].src[i].exists { cw[0].src[i].ms = lb_probe_ms(sp); } }
+      } else { cw[0].src[i].exists = true; }
+      up := lb_cut_sp(c, s.under);
+      if up.count > 0 && fs_kind(up) != FS_FILE { lb_cut_problem(c, s.line, "no picture under the title at ", up, ""); }
+      cw[0].em[i] = ifx s.title.n > 0 then lb_title_em(s, lb_cut_sp(c, s.title)) else 0;
+    }
+    if c[0].music.n > 0 && fs_kind(lb_cut_sp(c, c[0].music)) != FS_FILE { lb_cut_problem(c, 0, "no music at ", lb_cut_sp(c, c[0].music), ""); }
+    if c[0].voice.n > 0 && fs_kind(lb_cut_sp(c, c[0].voice)) != FS_FILE { lb_cut_problem(c, 0, "no voice at ", lb_cut_sp(c, c[0].voice), ""); }
+    if args_has(a, "--captions") && c[0].voice.n == 0 { lb_cut_problem(c, 0, "--captions transcribes the voice, and this cut has no voice line", "", ""); }
+    lb_cut_check(c, cw[0].src[0..<c[0].shot_n], cw[0].em[0..<c[0].shot_n]);
+  }
+  total := lb_cut_total_ms(c);
+  st: [32] u8;
+  lb_print_problems(r, "note", c[0].notes[..], c[0].pool[..]);
+  lb_print_problems(r, "problem", c[0].problems[..], c[0].pool[..]);
+  if c[0].problems[0].n > 0 {
+    if r[0].json { rep_int(r, "shots", c[0].shot_n); return rep_done(r, EXIT_FAIL); }
+    tool_errln("openagents: the cut has problems; nothing was made");
+    return EXIT_FAIL;
+  }
+  if check { rep_int(r, "shots", c[0].shot_n); rep_raw(r, "seconds", lb_secs_text(total, st[..])); return rep_done(r, EXIT_OK); }
+
+  // The input: the cut, the flags, and every file it reads.
+  ib: [65536] u8; w: [1] LbW; w[0].buf = ib[..]; sh: [80] u8;
+  lbi(w[..], "kind", "cut"); lbi(w[..], "cut", lb_sha(text, sh[..])); lbi_int(w[..], "quality", q); lbi(w[..], "captions", ifx args_has(a, "--captions") then "1" else "0");
+  for i: 0..<c[0].shot_n {
+    sp := lb_cut_sp(c, c[0].shots[i].src);
+    if sp.count > 0 && !lb_is_url(sp) { lbi_file(w[..], "src", sp); } else if sp.count > 0 { lbi(w[..], "url", sp); }
+    if c[0].shots[i].under.n > 0 { lbi_file(w[..], "under", lb_cut_sp(c, c[0].shots[i].under)); }
+  }
+  if c[0].music.n > 0 { lbi_file(w[..], "music", lb_cut_sp(c, c[0].music)); }
+  if c[0].voice.n > 0 { lbi_file(w[..], "voice", lb_cut_sp(c, c[0].voice)); }
+  inb: [80] u8; input := lb_input(w[..], inb[..]);
+  lp: [4200] u8; label := lb_label_path(out, lp[..]);
+  mb: [4200] u8; master := "";
+  if q == LB_MASTER { k := copy(cast(string) out[0..<out.count - 4], mb[..]); k += copy(".mov", mb[k..<mb.count]); master = cast(string) mb[0..<k]; }
+  size := lb_quality_size(q, c[0].w, c[0].h);
+  if !args_has(a, "--fresh") && lb_cached(out, label, input) && (master.count == 0 || fs_kind(master) == FS_FILE) {
+    return lb_cut_report(r, out, master, label, total, c[0].shot_n, size, true);
+  }
+  for i: 0..<c[0].shot_n { if cw[0].src[i].url || c[0].shots[i].title.n > 0 || args_has(a, "--captions") { code := lb_need_chrome(r); if code != EXIT_OK { return code; } break; } }
+  why: [4096] u8;
+  for i: 0..<why.count { why[i] = 0; }
+  if args_has(a, "--captions") {
+    code := lb_captions(cw, lb_cut_sp(c, c[0].voice), why[..]);
+    if code != EXIT_OK { return fail(r, code, lb_cstr(why[..])); }
+  }
+
+  // 1. URL shots, recorded once into FILE.clips/
+  cb: [4200] u8; cn := copy(ifx lb_ends(file, ".cut") then cast(string) file[0..<file.count - 4] else file, cb[..]); cn += copy(".clips", cb[cn..<cb.count]);
+  clips := cast(string) cb[0..<cn];
+  for i: 0..<c[0].shot_n {
+    if !cw[0].src[i].url { continue; }
+    s := c[0].shots[i];
+    url := lb_cut_sp(c, s.src);
+    if !fs_exists(clips) && !fs_mkdir(clips) { return fail(r, EXIT_FAIL, "could not make the cut's clips folder"); }
+    secs := s.in_ms + s.dur_ms + lb_tail_ms(c, i);
+    kb: [8192] u8; kw: [1] LbW; kw[0].buf = kb[..]; lbw_put(kw[..], url); lbw_byte(kw[..], ' '); lbw_int(kw[..], c[0].w); lbw_byte(kw[..], 'x'); lbw_int(kw[..], c[0].h); lbw_byte(kw[..], ' '); lbw_int(kw[..], c[0].fps); lbw_byte(kw[..], ' '); lbw_int(kw[..], secs);
+    kh: [80] u8; key := lb_sha(lbw_text(kw[..]), kh[..]);
+    nb: [256] u8; nw: [1] LbW; nw[0].buf = nb[..]; lb_slug(lb_cut_sp(c, s.name), nw[..]); lbw_byte(nw[..], '-'); lbw_put(nw[..], cast(string) key[7..<19]); lbw_put(nw[..], ".mp4");
+    pb: [4200] u8; path := fs_join(clips, lbw_text(nw[..]), pb[..]);
+    tool_err("cut: recording "); tool_errln(url);
+    done := lb_clip_one(url, path, ArgsSize.{ok = true, w = c[0].w, h = c[0].h}, secs, c[0].fps, 0, "", "", false, ifx lb_has(url, "stage=") then "staged" else "simulated", why[..]);
+    if done.code != EXIT_OK { return fail(r, done.code, lb_cstr(why[..])); }
+    c[0].shots[i].src = lb_add(c[0].pool[..], path);
+  }
+
+  // 2. Titles and captions as PNGs
+  td: [4096] u8; work := fs_temp("openagents-labs-cut-", td[..]);
+  if work.count == 0 { return fail(r, EXIT_FAIL, "could not make a temporary directory"); }
+  code := lb_cut_render(cw, r, work, out, master, size, q, total, why[..]);
+  if cw[0].ch[0].up { cdp_close(cw[0].ch[0].c[..]); cw[0].ch[0].up = false; }
+  if code != EXIT_OK { g := fs_remove(work); return fail(r, code, lb_cstr(why[..])); }
+  g := fs_remove(work);
+
+  l: [1] LbLabel; sz: [32] u8;
+  lbl_start(l[..], "cut", "file"); lbl_str(l[..], "cut", file); lbl_str(l[..], "size", lb_size_text(size, sz[..])); lbl_int(l[..], "fps", c[0].fps);
+  lbl_secs(l[..], "seconds", total); lbl_int(l[..], "shots", c[0].shot_n);
+  lbl_str(l[..], "quality", ifx q == LB_PREVIEW then "preview" else ifx q == LB_MASTER then "master" else "review");
+  if args_has(a, "--captions") { lbl_int(l[..], "captions", cw[0].cap_n); }
+  if master.count > 0 { lbl_str(l[..], "master", master); }
+  if !lbl_write(l[..], input, out, label) { return fail(r, EXIT_FAIL, "could not write the label"); }
+  return lb_cut_report(r, out, master, label, total, c[0].shot_n, size, false);
+}
+
+lb_cut_report :: (r: [] Rep, out: string, master: string, label: string, total: int, shots: int, size: ArgsSize, cached: bool) -> int {
+  st: [32] u8; sz: [32] u8;
+  rep_str(r, "out", out);
+  if master.count > 0 { rep_str(r, "master", master); }
+  rep_raw(r, "seconds", lb_secs_text(total, st[..])); rep_int(r, "shots", shots); rep_str(r, "size", lb_size_text(size, sz[..]));
+  rep_bool(r, "cached", cached); rep_str(r, "label", label);
+  return rep_done(r, EXIT_OK);
+}
+
+lb_name :: (w: [] LbW, prefix: string, i: int, ext: string) { w[0].n = 0; lbw_put(w, prefix); lbw_int(w, i); lbw_put(w, ext); }
+
+// Steps 2 and 3: titles, each shot's segment, then the join with captions and sound.
+lb_cut_render :: (cw: [] LbCutWork, r: [] Rep, work: string, out: string, master: string, size: ArgsSize, q: int, total: int, why: [] u8) -> int {
+  c := cw[0].c[..];
+  fb: [1024] u8; ffmpeg := lb_ffmpeg(fb[..]);
+  fps := c[0].fps;
+  preset := ifx q == LB_PREVIEW then "ultrafast" else "medium";
+  crf := ifx q == LB_PREVIEW then "30" else ifx q == LB_MASTER then "12" else "18";
+  nb: [256] u8; nw: [1] LbW; nw[0].buf = nb[..];
+  segs: [LB_SHOTS] [4200] u8; segn: [LB_SHOTS] int;
+  v: [1] LbArgv; g: [1] LbW; g[0].buf = cw[0].graph[..];
+  for i: 0..<c[0].shot_n {
+    s := c[0].shots[i];
+    slot := s.dur_ms + lb_tail_ms(c, i);
+    title_png := "";
+    tb: [4200] u8;
+    if s.title.n > 0 {
+      lb_name(nw[..], "title-", i, ".png");
+      tp := fs_join(work, lbw_text(nw[..]), tb[..]);
+      lb_name(nw[..], "title-", i, "");
+      hn: [64] u8; hname := lb_cp(lbw_text(nw[..]), hn[..]);
+      card := s.src.n == 0;
+      tool_err("cut: drawing the title of "); tool_errln(lb_cut_sp(c, s.name));
+      if !lb_text_png(cw, work, hname, lb_cut_sp(c, s.title), ifx card then LB_TEXT_CARD else LB_TEXT_TITLE, size.w, size.h, card && s.under.n == 0, s, tp, why) { return EXIT_FAIL; }
+      title_png = tp;
+    }
+    lb_name(nw[..], "seg-", i, ".mp4");
+    sp := fs_join(work, lbw_text(nw[..]), segs[i][..]); segn[i] = sp.count;
+    lba_reset(v[..]); g[0].n = 0;
+    lba(v[..], ffmpeg); lba(v[..], "-v"); lba(v[..], "error"); lba(v[..], "-y");
+    src := ifx s.src.n > 0 then lb_cut_sp(c, s.src) else lb_cut_sp(c, s.under);
+    if src.count > 0 {
+      lba(v[..], "-ss"); lba_secs(v[..], ifx s.src.n > 0 then s.in_ms else s.under_in_ms); lba(v[..], "-t"); lba_secs(v[..], slot + 1000); lba(v[..], "-i"); lba(v[..], src);
+    } else {
+      cb2: [128] u8; cww: [1] LbW; cww[0].buf = cb2[..];
+      lbw_put(cww[..], "color=c=0x06070a:s="); lbw_int(cww[..], size.w); lbw_byte(cww[..], 'x'); lbw_int(cww[..], size.h); lbw_put(cww[..], ":r="); lbw_int(cww[..], fps);
+      lba(v[..], "-f"); lba(v[..], "lavfi"); lba(v[..], "-i"); lba(v[..], lbw_text(cww[..]));
+    }
+    if title_png.count > 0 { lba(v[..], "-loop"); lba(v[..], "1"); lba(v[..], "-framerate"); lba_int(v[..], fps); lba(v[..], "-i"); lba(v[..], title_png); }
+    lbw_put(g[..], "[0:v]fps="); lbw_int(g[..], fps); lbw_put(g[..], ",scale="); lbw_int(g[..], size.w); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
+    lbw_put(g[..], ":force_original_aspect_ratio=decrease,pad="); lbw_int(g[..], size.w); lbw_byte(g[..], ':'); lbw_int(g[..], size.h);
+    lbw_put(g[..], ":(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p,tpad=stop_mode=clone:stop_duration=2");
+    if s.src.n == 0 && s.under.n > 0 { lbw_put(g[..], ",eq=brightness=-0.25"); }
+    if title_png.count > 0 { lbw_put(g[..], "[b];[b][1:v]overlay=0:0:format=auto:shortest=0,format=yuv420p"); }
+    lbw_put(g[..], "[o]");
+    lba(v[..], "-filter_complex"); lba(v[..], lbw_text(g[..])); lba(v[..], "-map"); lba(v[..], "[o]");
+    lba(v[..], "-t"); lba_secs(v[..], slot); lba(v[..], "-r"); lba_int(v[..], fps); lba(v[..], "-an");
+    lba(v[..], "-c:v"); lba(v[..], "libx264"); lba(v[..], "-preset"); lba(v[..], preset); lba(v[..], "-crf"); lba(v[..], crf); lba(v[..], "-pix_fmt"); lba(v[..], "yuv420p");
+    lba(v[..], sp);
+    tool_err("cut: shot "); tool_errln(lb_cut_sp(c, s.name));
+    bad := lb_run(v[..], 1800000, why);
+    if bad.count > 0 { m := copy("ffmpeg could not cut a shot: ", why); lb_say(cast(string) bad[0..<(ifx bad.count < 3000 then bad.count else 3000)], why[m..<why.count]); return EXIT_FAIL; }
+  }
+  // captions as PNGs
+  caps: [LB_CAPS_MAX] [4200] u8; capn: [LB_CAPS_MAX] int;
+  plain: LbShot;
+  for k: 0..<cw[0].cap_n {
+    lb_name(nw[..], "caption-", k, ".png");
+    cp := fs_join(work, lbw_text(nw[..]), caps[k][..]); capn[k] = cp.count;
+    lb_name(nw[..], "caption-", k, "");
+    hn: [64] u8; hname := lb_cp(lbw_text(nw[..]), hn[..]);
+    if !lb_text_png(cw, work, hname, cast(string) cw[0].caps[k].text[0..<cw[0].caps[k].n], LB_TEXT_CAPTION, size.w, size.h, false, plain, cp, why) { return EXIT_FAIL; }
+  }
+  if cw[0].ch[0].up { cdp_close(cw[0].ch[0].c[..]); cw[0].ch[0].up = false; }
+
+  // 3. the join
+  lba_reset(v[..]); g[0].n = 0;
+  lba(v[..], ffmpeg); lba(v[..], "-v"); lba(v[..], "error"); lba(v[..], "-y");
+  for i: 0..<c[0].shot_n { lba(v[..], "-i"); lba(v[..], cast(string) segs[i][0..<segn[i]]); }
+  inputs := c[0].shot_n;
+  for k: 0..<cw[0].cap_n { lba(v[..], "-loop"); lba(v[..], "1"); lba(v[..], "-framerate"); lba_int(v[..], fps); lba(v[..], "-t"); lba_secs(v[..], total); lba(v[..], "-i"); lba(v[..], cast(string) caps[k][0..<capn[k]]); }
+  music := -1; voice := -1;
+  if c[0].music.n > 0 { lba(v[..], "-i"); lba(v[..], lb_cut_sp(c, c[0].music)); music = inputs + cw[0].cap_n; }
+  if c[0].voice.n > 0 { lba(v[..], "-i"); lba(v[..], lb_cut_sp(c, c[0].voice)); voice = inputs + cw[0].cap_n + (ifx music >= 0 then 1 else 0); }
+  for i: 0..<c[0].shot_n { lbw_byte(g[..], '['); lbw_int(g[..], i); lbw_put(g[..], ":v]settb=AVTB,setpts=PTS-STARTPTS[s"); lbw_int(g[..], i); lbw_put(g[..], "];"); }
+  // the first shot's crossfade fades it in from black
+  x0 := c[0].shots[0].xfade_ms;
+  lbw_put(g[..], "[s0]"); if x0 > 0 { lbw_put(g[..], "fade=t=in:st=0:d="); lbw_secs(g[..], x0); } else { lbw_put(g[..], "null"); } lbw_put(g[..], "[j0];");
+  for i: 1..<c[0].shot_n {
+    x := c[0].shots[i].xfade_ms;
+    lbw_put(g[..], "[j"); lbw_int(g[..], i - 1); lbw_put(g[..], "][s"); lbw_int(g[..], i); lbw_byte(g[..], ']');
+    if x > 0 { lbw_put(g[..], "xfade=transition=fade:duration="); lbw_secs(g[..], x); lbw_put(g[..], ":offset="); lbw_secs(g[..], lb_start_ms(c, i)); }
+    else { lbw_put(g[..], "concat=n=2:v=1:a=0"); }
+    lbw_put(g[..], "[j"); lbw_int(g[..], i); lbw_put(g[..], "];");
+  }
+  lbw_put(g[..], "[j"); lbw_int(g[..], c[0].shot_n - 1); lbw_put(g[..], "]trim=duration="); lbw_secs(g[..], total);
+  if c[0].fade_in_ms > 0 { lbw_put(g[..], ",fade=t=in:st=0:d="); lbw_secs(g[..], c[0].fade_in_ms); }
+  if c[0].fade_out_ms > 0 { lbw_put(g[..], ",fade=t=out:st="); lbw_secs(g[..], total - c[0].fade_out_ms); lbw_put(g[..], ":d="); lbw_secs(g[..], c[0].fade_out_ms); }
+  lbw_put(g[..], "[c0]");
+  for k: 0..<cw[0].cap_n {
+    lbw_put(g[..], ";[c"); lbw_int(g[..], k); lbw_put(g[..], "]["); lbw_int(g[..], inputs + k); lbw_put(g[..], ":v]overlay=0:0:enable='between(t,");
+    lbw_secs(g[..], cw[0].caps[k].a); lbw_byte(g[..], ','); lbw_secs(g[..], cw[0].caps[k].b); lbw_put(g[..], ")'[c"); lbw_int(g[..], k + 1); lbw_byte(g[..], ']');
+  }
+  lbw_put(g[..], ";[c"); lbw_int(g[..], cw[0].cap_n); lbw_put(g[..], "]format=yuv420p[vout]");
+  if music >= 0 {
+    lbw_put(g[..], ";["); lbw_int(g[..], music); lbw_put(g[..], ":a]volume="); lbw_num(g[..], c[0].music_gain + (ifx voice >= 0 then c[0].duck else 0.0)); lbw_put(g[..], "dB[m]");
+  }
+  if voice >= 0 { lbw_put(g[..], ";["); lbw_int(g[..], voice); lbw_put(g[..], ":a]volume="); lbw_num(g[..], c[0].voice_gain); lbw_put(g[..], "dB[vo]"); }
+  sound := music >= 0 || voice >= 0;
+  if sound {
+    if music >= 0 && voice >= 0 { lbw_put(g[..], ";[m][vo]amix=inputs=2:duration=longest:normalize=0"); }
+    else { lbw_put(g[..], ifx music >= 0 then ";[m]anull" else ";[vo]anull"); }
+    lbw_put(g[..], ",apad,atrim=duration="); lbw_secs(g[..], total);
+    if c[0].fade_in_ms > 0 { lbw_put(g[..], ",afade=t=in:st=0:d="); lbw_secs(g[..], c[0].fade_in_ms); }
+    if c[0].fade_out_ms > 0 { lbw_put(g[..], ",afade=t=out:st="); lbw_secs(g[..], total - c[0].fade_out_ms); lbw_put(g[..], ":d="); lbw_secs(g[..], c[0].fade_out_ms); }
+    lbw_put(g[..], "[aout]");
+  }
+  if g[0].full { lb_say("the cut's filter graph is too long", why); return EXIT_FAIL; }
+  lba(v[..], "-filter_complex"); lba(v[..], lbw_text(g[..])); lba(v[..], "-map"); lba(v[..], "[vout]");
+  if sound { lba(v[..], "-map"); lba(v[..], "[aout]"); }
+  lba(v[..], "-r"); lba_int(v[..], fps);
+  if master.count > 0 {
+    lba(v[..], "-c:v"); lba(v[..], "prores_ks"); lba(v[..], "-profile:v"); lba(v[..], "3"); lba(v[..], "-pix_fmt"); lba(v[..], "yuv422p10le");
+    if sound { lba(v[..], "-c:a"); lba(v[..], "pcm_s16le"); }
+    lba(v[..], master);
+  } else {
+    lba(v[..], "-c:v"); lba(v[..], "libx264"); lba(v[..], "-preset"); lba(v[..], preset); lba(v[..], "-crf"); lba(v[..], crf); lba(v[..], "-pix_fmt"); lba(v[..], "yuv420p");
+    if sound { lba(v[..], "-c:a"); lba(v[..], "aac"); lba(v[..], "-b:a"); lba(v[..], "192k"); }
+    lba(v[..], "-movflags"); lba(v[..], "+faststart"); lba(v[..], out);
+  }
+  tool_errln("cut: joining the shots");
+  bad := lb_run(v[..], 3600000, why);
+  if bad.count > 0 { m := copy("ffmpeg could not join the shots: ", why); lb_say(cast(string) bad[0..<(ifx bad.count < 3000 then bad.count else 3000)], why[m..<why.count]); return EXIT_FAIL; }
+  if master.count > 0 {
+    // the MP4 from the master
+    lba_reset(v[..]);
+    lba(v[..], ffmpeg); lba(v[..], "-v"); lba(v[..], "error"); lba(v[..], "-y"); lba(v[..], "-i"); lba(v[..], master);
+    lba(v[..], "-c:v"); lba(v[..], "libx264"); lba(v[..], "-preset"); lba(v[..], "medium"); lba(v[..], "-crf"); lba(v[..], "18"); lba(v[..], "-pix_fmt"); lba(v[..], "yuv420p");
+    if sound { lba(v[..], "-c:a"); lba(v[..], "aac"); lba(v[..], "-b:a"); lba(v[..], "192k"); }
+    lba(v[..], "-movflags"); lba(v[..], "+faststart"); lba(v[..], out);
+    bad = lb_run(v[..], 3600000, why);
+    if bad.count > 0 { m := copy("ffmpeg could not make the MP4 from the master: ", why); lb_say(cast(string) bad[0..<(ifx bad.count < 3000 then bad.count else 3000)], why[m..<why.count]); return EXIT_FAIL; }
+  }
+  return EXIT_OK;
+}
+
+
+// ==== labs board ====================================================================
+
+// labs board: every page of a .board file taken at each size and theme
+// (labs shot in a loop, one Chrome), then OUTDIR/index.html, a static grid
+// of the pictures with no scripts, and OUTDIR/board.json. A board checks
+// nothing; it is a picture of a site. The format is in labs-rules.coax.
+
+LbBoardWork :: struct { b: [1] LbBoard; text: [262144] u8; ch: [1] DkChrome; value: [65536] u8; html: [1048576] u8; json: [262144] u8; }
+
+// A file name piece from a page's name: a-z, 0-9 and -, lowercased.
+lb_slug :: (s: string, w: [] LbW) {
+  dash := false; any := false;
+  for c: s {
+    k := ifx c >= 'A' && c <= 'Z' then c + 32 else c;
+    if (k >= 'a' && k <= 'z') || (k >= '0' && k <= '9') { if dash && any { lbw_byte(w, '-'); } lbw_byte(w, k); dash = false; any = true; }
+    else { dash = true; }
+  }
+  if !any { lbw_put(w, "page"); }
+}
+lb_html_text :: (w: [] LbW, s: string) {
+  for c: s {
+    if c == '<' { lbw_put(w, "&lt;"); } else if c == '>' { lbw_put(w, "&gt;"); } else if c == '&' { lbw_put(w, "&amp;"); }
+    else if c == '"' { lbw_put(w, "&quot;"); } else { lbw_byte(w, c); }
+  }
+}
+
+labs_board :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  file := positional(a, 2); dir := positional(a, 3);
+  if file == "" || dir == "" { return fail(r, EXIT_USAGE, "labs board FILE.board OUTDIR [--fresh]"); }
+  wk_: [1] LbBoardWork; cw := wk_[..];
+  n := fs_read(file, cw[0].text[..]);
+  if n < 0 { return fail(r, EXIT_NOT_FOUND, "could not read the board file (at most 256 KB)"); }
+  b := cw[0].b[..];
+  ob: [300] u8;
+  origin := acct_origin(a, profile, ob[..]);
+  if origin != "" { b[0].base = lb_add(b[0].pool[..], origin); }
+  lb_board_parse(b, cast(string) cw[0].text[0..<n]);
+  if b[0].problems[0].n > 0 {
+    pt: [16384] u8; t := lb_problems_text(b[0].problems[..], b[0].pool[..], pt[..]);
+    if r[0].json { rep_str(r, "problems", t); return rep_done(r, EXIT_FAIL); }
+    start := 0;
+    for i: 0..<t.count { if t[i] == '\n' { print("problem %\n", cast(string) t[start..<i]); start = i + 1; } }
+    return EXIT_FAIL;
+  }
+  code := lb_need_chrome(r); if code != EXIT_OK { return code; }
+  if !fs_exists(dir) && !fs_mkdir(dir) { return fail(r, EXIT_FAIL, "could not make OUTDIR"); }
+  hw: [1] LbW; hw[0].buf = cw[0].html[..];
+  jw: [1] LbW; jw[0].buf = cw[0].json[..];
+  title := lb_sp(b[0].pool[..], b[0].name);
+  lbw_put(hw[..], "<!doctype html>\n<meta charset=\"utf-8\">\n<title>"); lb_html_text(hw[..], ifx title.count > 0 then title else "Board"); lbw_put(hw[..], "</title>\n");
+  lbw_put(hw[..], "<style>body{margin:0;padding:24px;background:#06070a;color:#d6d6db;font:13px/1.4 -apple-system,Helvetica,sans-serif}h1{font-size:15px;letter-spacing:.12em}section{margin:0 0 32px}h2{font-size:13px;letter-spacing:.1em;color:#8a8d96}.row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}figure{margin:0}figure img{display:block;max-height:420px;border:1px solid #23252b}figcaption{color:#737680;margin-top:4px}</style>\n");
+  lbw_put(hw[..], "<h1>"); lb_html_text(hw[..], title); lbw_put(hw[..], "</h1>\n");
+  lbw_put(jw[..], "{\"board\":"); lb_json_quote(jw[..], title); lbw_put(jw[..], ",\"pictures\":[");
+  pictures := 0; taken := 0;
+  why: [600] u8;
+  for p: 0..<b[0].page_n {
+    pg := b[0].pages[p];
+    name := lb_sp(b[0].pool[..], pg.name);
+    ub: [4096] u8; url := lb_url(lb_sp(b[0].pool[..], b[0].base), lb_sp(b[0].pool[..], pg.path), ub[..]);
+    if url == "" { if cw[0].ch[0].up { cdp_close(cw[0].ch[0].c[..]); } return fail(r, EXIT_USAGE, "a page's URL does not read"); }
+    lbw_put(hw[..], "<section><h2>"); lb_html_text(hw[..], name); lbw_put(hw[..], " &middot; "); lb_html_text(hw[..], url); lbw_put(hw[..], "</h2><div class=\"row\">\n");
+    for s: 0..<b[0].size_n {
+      for t: 0..<b[0].theme_n {
+        dark := b[0].dark[t];
+        sw := lb_sp(b[0].pool[..], b[0].size_words[s]);
+        fb: [512] u8; fw: [1] LbW; fw[0].buf = fb[..];
+        lb_slug(name, fw[..]); lbw_byte(fw[..], '-'); lb_slug(sw, fw[..]); lbw_put(fw[..], ifx dark then "-dark.png" else "-light.png");
+        pb: [4200] u8; path := fs_join(dir, lbw_text(fw[..]), pb[..]);
+        for i: 0..<why.count { why[i] = 0; }
+        j := LbShotJob.{url = url, out = path, size = b[0].sizes[s], wait = pg.wait, script = "", dark = dark, fresh = args_has(a, "--fresh")};
+        done := lb_shot_one(r, cw[0].ch[..], j, cw[0].value[..], why[..]);
+        if done.code != EXIT_OK { if cw[0].ch[0].up { cdp_close(cw[0].ch[0].c[..]); } return fail(r, done.code, lb_cstr(why[..])); }
+        if !done.cached { taken += 1; }
+        theme := ifx dark then "dark" else "light";
+        if !r[0].json { print("page % % % %\n", name, sw, theme, path); }
+        lbw_put(hw[..], "<figure><img src=\""); lb_html_text(hw[..], lbw_text(fw[..])); lbw_put(hw[..], "\" alt=\"\"><figcaption>");
+        lb_html_text(hw[..], sw); lbw_put(hw[..], " &middot; "); lbw_put(hw[..], theme); lbw_put(hw[..], "</figcaption></figure>\n");
+        if pictures > 0 { lbw_byte(jw[..], ','); }
+        lbw_put(jw[..], "{\"page\":"); lb_json_quote(jw[..], name); lbw_put(jw[..], ",\"url\":"); lb_json_quote(jw[..], url);
+        lbw_put(jw[..], ",\"size\":"); lb_json_quote(jw[..], sw); lbw_put(jw[..], ",\"theme\":\""); lbw_put(jw[..], theme);
+        lbw_put(jw[..], "\",\"path\":"); lb_json_quote(jw[..], lbw_text(fw[..])); lbw_byte(jw[..], '}');
+        pictures += 1;
+      }
+    }
+    lbw_put(hw[..], "</div></section>\n");
+  }
+  if cw[0].ch[0].up { cdp_close(cw[0].ch[0].c[..]); }
+  lbw_put(jw[..], "]}\n");
+  ib: [4200] u8; jb: [4200] u8;
+  index := fs_join(dir, "index.html", ib[..]); bj := fs_join(dir, "board.json", jb[..]);
+  if hw[0].full || jw[0].full { return fail(r, EXIT_FAIL, "the board is too large"); }
+  if !fs_write(index, lbw_text(hw[..])) || !fs_write(bj, lbw_text(jw[..])) { return fail(r, EXIT_FAIL, "could not write index.html and board.json"); }
+  rep_int(r, "pictures", pictures); rep_int(r, "taken", taken); rep_str(r, "index", index); rep_str(r, "board", bj);
+  return rep_done(r, EXIT_OK);
+}
+
+
+// ==== labs playtest ====================================================================
+
+// labs playtest: a game's bot plays seeded runs headless with the tuning you
+// set, and the summary says whether it is still winnable (Game Lab's
+// measure, without the chat). Ice Cream Man first: its rules, tunables and
+// bot are Coax (verse/icecream/rules.coax, tuning.coax), and
+// ice_run (labs-rules.coax) plays a run to its end.
+
+LB_SEEDS_MAX :: 1024;
+LbPlay :: struct { g: [1] Game; b: [1] Bot; runs: [LB_SEEDS_MAX] LbRun; json: [262144] u8; }
+
+// A number with up to three decimals: 4.5, 0.35, 1000.
+lbw_num :: (w: [] LbW, v: f64) { lbw_secs(w, cast(int) (ifx v < 0.0 then v * 1000.0 - 0.5 else v * 1000.0 + 0.5)); }
+
+lb_tunables :: (r: [] Rep) -> int {
+  t: Tuning;
+  out: [65536] u8; w: [1] LbW; w[0].buf = out[..];
+  if r[0].json { lbw_byte(w[..], '['); }
+  for i: 0..<TUNABLES {
+    b := TUNABLE_BOUNDS[i];
+    if r[0].json {
+      if i > 0 { lbw_byte(w[..], ','); }
+      lbw_put(w[..], "{\"name\":\""); lbw_put(w[..], b.name); lbw_put(w[..], "\",\"default\":"); lbw_num(w[..], tuning_get(t, i));
+      lbw_put(w[..], ",\"lo\":"); lbw_num(w[..], b.lo); lbw_put(w[..], ",\"hi\":"); lbw_num(w[..], b.hi);
+      lbw_put(w[..], ",\"whole\":"); lbw_put(w[..], ifx b.whole then "true" else "false"); lbw_byte(w[..], '}');
+    } else {
+      lbw_put(w[..], "tunable "); lbw_put(w[..], b.name); lbw_byte(w[..], ' '); lbw_num(w[..], tuning_get(t, i));
+      lbw_put(w[..], "  "); lbw_num(w[..], b.lo); lbw_put(w[..], " to "); lbw_num(w[..], b.hi);
+      if b.whole { lbw_put(w[..], " whole"); }
+      lbw_byte(w[..], '\n');
+    }
+  }
+  if r[0].json { lbw_byte(w[..], ']'); rep_str(r, "game", "icecream"); rep_raw(r, "tunables", lbw_text(w[..])); return rep_done(r, EXIT_OK); }
+  print("%", lbw_text(w[..]));
+  return EXIT_OK;
+}
+
+// The summary as one JSON object.
+lb_summary_json :: (s: LbSummary, w: [] LbW) {
+  t: [32] u8;
+  lbw_put(w, "{\"runs\":"); lbw_int(w, s.runs); lbw_put(w, ",\"won\":"); lbw_int(w, s.won);
+  lbw_put(w, ",\"escaped\":"); lbw_int(w, s.escaped); lbw_put(w, ",\"melted\":"); lbw_int(w, s.melted);
+  lbw_put(w, ",\"lost\":"); lbw_int(w, s.lost); lbw_put(w, ",\"timeout\":"); lbw_int(w, s.timeout);
+  lbw_put(w, ",\"median\":\""); lbw_put(w, ifx s.median_ms >= 0 then lb_clock(s.median_ms, t[..]) else "-"); lbw_byte(w, '"');
+  lbw_put(w, ",\"keys\":"); lbw_put(w, lb_tenths_text(s.keys_x10, t[..]));
+  lbw_put(w, ",\"hits\":"); lbw_put(w, lb_tenths_text(s.hits_x10, t[..]));
+  lbw_put(w, ",\"spotted\":"); lbw_put(w, lb_tenths_text(s.spotted_x10, t[..]));
+  lbw_byte(w, '}');
+}
+
+// Two playtest results' tunings and summaries: one "KEY A → B" line each that differs; -1 when either isn't one.
+lb_playtest_diff :: (a: string, b: string, w: [] LbW, na: [] JvNode, nb: [] JvNode) -> int {
+  da: [1] Jv; db: [1] Jv;
+  if !jv_parse(da[..], a, na) || !jv_parse(db[..], b, nb) { return -1; }
+  sa := jv_get(da[0], 0, "summary"); sb := jv_get(db[0], 0, "summary");
+  if jv_kind(da[0], sa) != JV_OBJECT || jv_kind(db[0], sb) != JV_OBJECT { return -1; }
+  // copies, since lb_diff parses again into the same nodes
+  ta: [16384] u8; tb: [16384] u8; ca: [16384] u8; cb: [16384] u8;
+  sat := lb_cp(jv_raw(da[0], sa), ta[..]); sbt := lb_cp(jv_raw(db[0], sb), tb[..]);
+  ka := jv_get(da[0], 0, "set"); kb := jv_get(db[0], 0, "set");
+  sea := lb_cp(ifx ka >= 0 then jv_raw(da[0], ka) else "{}", ca[..]); seb := lb_cp(ifx kb >= 0 then jv_raw(db[0], kb) else "{}", cb[..]);
+  sw: [1] LbW; sbuf: [8192] u8; sw[0].buf = sbuf[..];
+  k1 := lb_diff(sea, seb, "", sw[..], na, nb);
+  if k1 > 0 { lbw_put(w, lb_prefixed("set ", lbw_text(sw[..]), sbuf[..])); }
+  k2 := lb_diff(sat, sbt, "", w, na, nb);
+  if k1 < 0 || k2 < 0 { return -1; }
+  return k1 + k2;
+}
+lb_cp :: (s: string, out: [] u8) -> string { n := ifx s.count < out.count then s.count else out.count; for i: 0..<n { out[i] = s[i]; } return cast(string) out[0..<n]; }
+// Each line of text with prefix in front, into buf.
+lb_prefixed :: (prefix: string, text: string, buf: [] u8) -> string {
+  t: [16384] u8; w: [1] LbW; w[0].buf = t[..];
+  start := true;
+  for c: text { if start { lbw_put(w[..], prefix); start = false; } lbw_byte(w[..], c); if c == '\n' { start = true; } }
+  return lb_cp(lbw_text(w[..]), buf);
+}
+
+labs_playtest :: (a: [] Args, r: [] Rep) -> int {
+  game := positional(a, 2);
+  if game != "icecream" { return fail(r, EXIT_USAGE, "labs playtest icecream [--set NAME=VALUE ...] [--seeds N] [--from SEED] [--against FILE.json] | --tunables (icecream is the game with rules and a bot in Coax so far)"); }
+  if args_has(a, "--tunables") { return lb_tunables(r); }
+  t: Tuning;
+  set: [8192] u8; sw: [1] LbW; sw[0].buf = set[..]; lbw_byte(sw[..], '{'); sets := 0;
+  for i: 0..<args_count(a) {
+    if args_at(a, i) != "--set" { continue; }
+    p := lb_pair(ifx i + 1 < args_count(a) then args_at(a, i + 1) else "");
+    v := args_number(p.value);
+    if !p.has || p.value.count == 0 || !v.ok { return fail(r, EXIT_USAGE, "--set is NAME=VALUE, for example --set walk=5.5"); }
+    s := tuning_set(t, p.name, v.value);
+    if !s.ok {
+      m: [512] u8; w: [1] LbW; w[0].buf = m[..];
+      if s.why == WHY_UNKNOWN { lbw_put(w[..], "no tunable "); lbw_put(w[..], p.name); lbw_put(w[..], " (openagents labs playtest icecream --tunables)"); }
+      else {
+        b := TUNABLE_BOUNDS[tunable_index(p.name)];
+        lbw_put(w[..], p.name); lbw_put(w[..], " is "); lbw_num(w[..], b.lo); lbw_put(w[..], " to "); lbw_num(w[..], b.hi);
+        if b.whole { lbw_put(w[..], ", whole numbers"); }
+      }
+      return fail(r, EXIT_USAGE, lbw_text(w[..]));
+    }
+    t = s.tuning;
+    if sets > 0 { lbw_byte(sw[..], ','); }
+    lbw_byte(sw[..], '"'); lbw_put(sw[..], p.name); lbw_put(sw[..], "\":"); lbw_num(sw[..], v.value); sets += 1;
+  }
+  lbw_byte(sw[..], '}');
+  seeds := args_whole(args_value(a, "--seeds", "24")); from := args_whole(args_value(a, "--from", "0"));
+  if seeds < 1 || seeds > LB_SEEDS_MAX { return fail(r, EXIT_USAGE, "--seeds is 1 to 1024"); }
+  if from < 0 { return fail(r, EXIT_USAGE, "--from is a seed, a whole number"); }
+  against := args_value(a, "--against", "");
+  prev: [262144] u8; pn := 0;
+  if args_has(a, "--against") {
+    pn = fs_read(against, prev[..]);
+    if pn <= 0 { return fail(r, EXIT_NOT_FOUND, "could not read --against (a playtest's --json output, at most 256 KB)"); }
+  }
+  wk_: [1] LbPlay; cw := wk_[..];
+  for i: 0..<seeds {
+    run := ice_run(cw[0].g[..], cw[0].b[..], cast(u64) (from + i), t, ICE_LIMIT_S);
+    cw[0].runs[i] = LbRun.{seed = from + i, end = run.end, ms = run.ms, keys = run.keys, hits = run.hits, spotted = run.spotted};
+    if !r[0].json { st: [32] u8; print("seed % % %\n", from + i, lb_end_word(run.end), lb_secs_text(run.ms / 100 * 100, st[..])); }
+  }
+  runs := cw[0].runs[0..<seeds];
+  s := lb_summary(runs);
+  jw: [1] LbW; jw[0].buf = cw[0].json[..];
+  lbw_put(jw[..], "{\"game\":\"icecream\",\"seeds\":"); lbw_int(jw[..], seeds); lbw_put(jw[..], ",\"from\":"); lbw_int(jw[..], from);
+  lbw_put(jw[..], ",\"limit\":"); lbw_int(jw[..], ICE_LIMIT_S); lbw_put(jw[..], ",\"set\":"); lbw_put(jw[..], lbw_text(sw[..]));
+  lbw_put(jw[..], ",\"summary\":"); lb_summary_json(s, jw[..]);
+  lbw_put(jw[..], ",\"runs\":[");
+  for i: 0..<seeds {
+    x := runs[i];
+    if i > 0 { lbw_byte(jw[..], ','); }
+    lbw_put(jw[..], "{\"seed\":"); lbw_int(jw[..], x.seed); lbw_put(jw[..], ",\"result\":\""); lbw_put(jw[..], lb_end_word(x.end));
+    lbw_put(jw[..], "\",\"end\":\""); lbw_put(jw[..], lb_end_how(x.end)); lbw_put(jw[..], "\",\"seconds\":"); lbw_secs(jw[..], x.ms);
+    lbw_put(jw[..], ",\"keys\":"); lbw_int(jw[..], x.keys); lbw_put(jw[..], ",\"hits\":"); lbw_int(jw[..], x.hits);
+    lbw_put(jw[..], ",\"spotted\":"); lbw_int(jw[..], x.spotted); lbw_byte(jw[..], '}');
+  }
+  lbw_put(jw[..], "]}");
+  diff: [16384] u8; dw: [1] LbW; dw[0].buf = diff[..];
+  if pn > 0 {
+    na: [16384] JvNode; nb: [16384] JvNode;
+    k := lb_playtest_diff(cast(string) prev[0..<pn], lbw_text(jw[..]), dw[..], na[..], nb[..]);
+    if k < 0 { return fail(r, EXIT_FAIL, "--against is not a playtest result (openagents labs playtest icecream --json > FILE.json)"); }
+  }
+  if r[0].json {
+    // the whole result, so a later --against can read it
+    print("%", cast(string) lbw_text(jw[..])[0..<jw[0].n - 1]);
+    if pn > 0 { o: [1] Jo; ob: [32768] u8; jo_start(o[..], ob[..]); jo_str(o[..], lbw_text(dw[..])); print(",\"changed\":%", jo_text(o[..])); }
+    print("%\n", ",\"ok\":true}");
+    return EXIT_OK;
+  }
+  t1: [32] u8; t2: [16] u8; t3: [16] u8; t4: [16] u8;
+  print("won % of %\n", s.won, s.runs);
+  if s.melted > 0 { print("melted %\n", s.melted); }
+  print("median %\n", ifx s.median_ms >= 0 then lb_clock(s.median_ms, t1[..]) else "-");
+  print("deaths %\n", s.lost);
+  if s.timeout > 0 { print("timeouts %\n", s.timeout); }
+  print("keys % a run\n", lb_tenths_text(s.keys_x10, t2[..]));
+  print("hits % a run\n", lb_tenths_text(s.hits_x10, t3[..]));
+  print("spotted % a run\n", lb_tenths_text(s.spotted_x10, t4[..]));
+  if pn > 0 { print("%", lbw_text(dw[..])); if dw[0].n == 0 { print("%\n", "changed nothing"); } }
+  return EXIT_OK;
+}

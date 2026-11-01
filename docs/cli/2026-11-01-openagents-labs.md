@@ -1,6 +1,9 @@
 # openagents labs: repeatable media, game and agent work from the command line
 
-Status: spec, 2026-11-01. Nothing here is built yet. It extends
+Status: phases 1 to 3 shipped 2026-11-01 (see [What shipped](#what-shipped)):
+`shot`, `clip`, `deck`, `frames`, `compare`, `cut`, `board` and `playtest
+icecream`. `suite` (phase 4) and the MCP rows and skill (phase 5) are not
+built. It extends
 [the openagents CLI, v1.0.0](2026-11-01-openagents-cli-v1.md) with one more
 domain, `labs`. The primitives it calls exist unless a row says **new**.
 
@@ -200,8 +203,8 @@ openagents labs cut FILE.cut OUT.mp4 [--quality preview|review|master]
                                      [--captions] [--check] [--fresh]
 ```
 
-A `.cut` file is Video Lab's `cut.v1` in line form (**new** format, in
-`docs/cli/cut-format.md` when built):
+A `.cut` file is Video Lab's `cut.v1` in line form (the format is in
+[cut-format.md](cut-format.md)):
 
 ```text
 cut EPISODE 291
@@ -374,7 +377,56 @@ Each phase ships on its own and leaves `coax/web/tool.sh` working.
    run where Claude Code makes a clip of a realm, looks at its frames, and
    cuts it into a short with captions.
 
-## Decisions for the owner
+## What shipped
+
+Phases 1 to 3, on 2026-11-01. The code is `apps/openagents-cli/labs.coax`
+(the commands) and `labs-rules.coax` (formats, checks and the summary, with
+tests) and `coax/lib/media/media.coax` (shot, clip and deck as loadable
+code). `coax/web/tool.sh shot|clip|deck` call the same
+code. Verified end to end against openagents.com: the same stage clipped
+twice gives the same output digest; a fixture cut (a title card, a local
+clip with a title, a recorded URL, a card over a clip, music, a voice and
+`--captions`) renders at preview, review and master; the Video Lab cuts in
+`~/work/film-out/cut` read and check.
+
+Where the build differs from the text above:
+
+- `labs-rules.coax` is not `#authority`; it has tests but no mutation run yet.
+- Strips and side-by-sides are joined with ffmpeg's `hstack`, not
+  `coax/lib/image/png.coax`.
+- `--square` and `--vertical` are sizes for one run, not crops from one run.
+- `--as-me` refuses: the site has no NIP-98 sign-in for a headless page yet.
+- `deck` remakes the PDF each run and reuses its scene pictures from
+  `DECK.captures/`.
+- Titles and captions are drawn in Filament as SVG, taken as transparent
+  PNGs by headless Chrome and overlaid by ffmpeg (this ffmpeg has no
+  `drawtext` or `subtitles`). `--captions` reads `openagents transcribe
+  --json`, not `--srt`.
+- The music duck is a constant level while there is a voice, not a
+  sidechain.
+- A cut.v1 title's lines are drawn at their sizes; their colour, weight,
+  spacing and timing, and `over`, `push` and script captions, are printed as
+  notes.
+- To stay inside the compiler's 128-unit budget for one program, the
+  commands are one file (`labs.coax`), shot, clip and deck are one library
+  (`media.coax`), and Ice Cream Man's headless run is in `labs-rules.coax`
+  rather than `verse/icecream/run.coax`.
+
+Left: `labs suite` (phase 4), the MCP rows and `openagents skill labs`
+(phase 5), `--as-me`, and drawing the cut.v1 keys above.
+
+## Decisions
+
+Decided by the owner, 2026-11-01:
+
+1. **Name.** `openagents labs`.
+2. **Cut format.** `labs cut` reads both the old `cut.v1` JSON (for example
+   `~/work/film-out/cut`) and the new line format, and writes the line
+   format.
+3. **Agent runs.** Deferred: `labs suite run` is not built until the owner
+   decides who may spend model credit on it.
+
+The questions as first asked:
 
 1. **Name.** `openagents labs` (this spec) or a plainer `openagents make`?
    "Labs" keeps the pre-Nuke name; "make" says what the verbs do.

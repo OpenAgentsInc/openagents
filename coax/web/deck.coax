@@ -1,9 +1,9 @@
 // Build a PDF slide deck in the Grid style of openagents.com from a deck file.
 //   coax/web/tool.sh deck DECK.deck OUT.pdf [--fresh]
-// The deck is coax/lib/media/deck.coax, which `openagents labs deck` uses
+// The deck is coax/lib/media/media.coax, which `openagents labs deck` uses
 // too; the format is in docs/web/decks.md.
 #import "Basic";
-#load "../lib/media/deck.coax";
+#load "../lib/media/media.coax";
 
 tool_main :: () -> int #export_c {
   a: [1] Args;

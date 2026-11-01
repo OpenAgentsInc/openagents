@@ -4,8 +4,9 @@ The OpenAgents command line, in Coax. The plan for v1.0.0 is
 [docs/cli/2026-11-01-openagents-cli-v1.md](../../docs/cli/2026-11-01-openagents-cli-v1.md).
 Its domains include `nostr`, your NIP-06 identity and a relay client;
 `pylon`, which starts and stops this computer's Pylon; `project`, the
-project queue at openagents.com/projects/SLUG; and `transcribe`, speech to
-text on this computer.
+project queue at openagents.com/projects/SLUG; `transcribe`, speech to
+text on this computer; and `labs`, repeatable shots, clips, decks, cuts and
+playtests.
 
 ## Build
 
@@ -253,11 +254,45 @@ openagents transcribe fetch medium                # downloads one; transcribe al
 - A status line (model, backend, milliseconds) goes to stderr; the
   transcript is the only thing on stdout.
 
+## Labs
+
+`labs` makes files from pages, cut lists and games, the same way every time
+([the spec](../../docs/cli/2026-11-01-openagents-labs.md)). Chrome is always
+headless and muted. Each command checks its input first, writes a label
+beside its output (`OUT.json`: how it was made, and the digest of
+everything it read), and does nothing when the label says the output is
+already there. `--fresh` makes it again.
+
+```sh
+openagents labs shot /realms/orbit-league home.png --phone        # a PNG of a page; realm shot SLUG is the short name
+openagents labs clip /realms/hold-the-stair stair.mp4 --stage highlight --seconds 6
+openagents labs deck docs/decks/demo.deck demo.pdf                # --check prints slides, scenes and images
+openagents labs cut episode.cut episode.mp4 --quality review      # .cut lines or cut.v1 JSON; --check, --captions
+openagents labs frames episode.mp4 frames --strip 8               # or --at 1.5,4 or --every 2
+openagents labs compare a.mp4 b.mp4 side.mp4                      # what differs in the labels, and side by side
+openagents labs board site.board shots                            # every page at each size and theme, with index.html
+openagents labs playtest icecream --set walk=3 --against base.json
+```
+
+- The cut format is in [docs/cli/cut-format.md](../../docs/cli/cut-format.md).
+  Titles and captions are drawn in Filament. `--captions` runs
+  `openagents transcribe --json` on the voice. `--quality master` adds a
+  ProRes `.mov` beside the MP4.
+- `playtest icecream` plays Ice Cream Man's bot on 24 seeded houses (as
+  Game Lab did), prints each run and a summary, and `--json` writes a result
+  that `--against` and `labs compare` read. `--tunables` lists what `--set`
+  can change.
+- A `.board` file is `board NAME`, `base URL`, `sizes desktop phone`,
+  `themes light dark`, and `page PATH NAME [wait=MS]` lines.
+- Needs Chrome and ffmpeg; exit 8 names the install command when one is
+  missing. `--as-me` (a page signed in as the profile) is not built yet.
+
 ## Output and exit codes
 
 Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 0 done, 1 failed, 2 usage, 3 no identity or key, 4 forbidden, 5 conflict
-(changed since), 6 not found, 7 slow down.
+(changed since), 6 not found, 7 slow down, 8 a needed program (Chrome,
+ffmpeg, whisper-cli) is missing.
 
 ## Files
 
@@ -287,6 +322,8 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
 | `transcribe.coax` | the `transcribe` domain: fetch a model, decode with ffmpeg, run the backend, print the transcript |
 | `transcribe-rules.coax` | model names and files, formats, whisper.cpp's segment lines ([segments.coax](../../psionic/lib/whisper/segments.coax) writes text, SRT, WebVTT and JSON) |
+| `labs.coax` | the `labs` domain: shot, clip, deck, frames, compare, cut, board and playtest, with Chrome ([media.coax](../../coax/lib/media/media.coax)) and ffmpeg |
+| `labs-rules.coax` | the `.cut` and `.board` formats and their checks, cut.v1 JSON, sizes and qualities, times, the playtest summary, Ice Cream Man's headless run |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, the host name, process liveness, the executable's path |
 | `build.sh` | compiles `main.coax` to C and links it with the host, sockets and TLS |
 
@@ -303,6 +340,7 @@ coax/bin/coax test apps/openagents-cli/project-rules.coax --library
 coax/bin/coax mutate apps/openagents-cli/project-rules.coax --library    # 750 mutants, 0 survivors (2026-11-01)
 coax/bin/coax test apps/openagents-cli/account_rules.coax --library
 coax/bin/coax test apps/openagents-cli/transcribe-rules.coax --library
+coax/bin/coax test apps/openagents-cli/labs-rules.coax --library
 coax/bin/coax mutate apps/openagents-cli/account_rules.coax --library   # 0 survivors (2026-11-01)
 coax/web/api/cli-auth-test.sh https://staging.openagents.com     # the server side of login, as a Coax program
 ```

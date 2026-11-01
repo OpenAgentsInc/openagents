@@ -168,6 +168,7 @@ realm_fork :: (a: [] Args, r: [] Rep, profile: string) -> int {
 
 realm_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
   if verb == "list" { return realm_list(a, r, profile); }
+  if verb == "shot" { return labs_realm_shot(a, r, profile); }
   if verb == "show" { return realm_show(a, r, profile); }
   if verb == "new" { return realm_new(a, r, profile); }
   if verb == "visibility" { return realm_visibility(a, r, profile, 2); }

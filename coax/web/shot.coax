@@ -3,10 +3,10 @@
 //   coax/web/tool.sh shot URL OUT.png [WIDTHxHEIGHT] [WAIT_MS] [--eval JS]   (prints what JS returns)
 // It waits WAIT_MS of real time (the pages animate in), then captures. A
 // value the script returns is printed: a string as it is, anything else as
-// compact JSON. Then OUT is printed. The capture is coax/lib/media/shot.coax,
+// compact JSON. Then OUT is printed. The capture is coax/lib/media/media.coax,
 // which `openagents labs shot` uses too.
 #import "Basic";
-#load "../lib/media/shot.coax";
+#load "../lib/media/media.coax";
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
