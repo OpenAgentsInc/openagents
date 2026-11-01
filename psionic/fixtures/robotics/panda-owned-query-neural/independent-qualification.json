@@ -1,0 +1,114 @@
+{
+  "schema": "psionic.panda-owned-query-neural.independent.v1",
+  "passed": true,
+  "NN_calls": 0,
+  "SDK_calls": 0,
+  "render_calls": 0,
+  "build_calls": 0,
+  "old_gate_calls": 0,
+  "physics_replay_calls": 0,
+  "experiment": {
+    "bytes": 28719,
+    "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+  },
+  "native_receipt": {
+    "bytes": 12788,
+    "sha256": "e00dca003389010e3455d06cbfd2d983623693d4432d6efc87df13d64863c9de"
+  },
+  "case_record": {
+    "bytes": 943,
+    "sha256": "acc7262723be3f42d571e09ad7b1551d0f03b0628603612eecfda8f708bf06b0"
+  },
+  "trace": {
+    "bytes": 115264,
+    "sha256": "25c0cb31b2be085389901e9347c795f0030ced92f1949531b030005b633c4d90"
+  },
+  "first_decoded": {
+    "bytes": 448,
+    "sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521"
+  },
+  "source": {
+    "psionic/tests/robotics/panda_owned_query_neural_audit.py": {
+      "bytes": 17083,
+      "sha256": "523ad47b3a0a932cf01fdcf3e37e33cac8b2e7b6df05d38aa1149870b832cf9e"
+    }
+  },
+  "reader_guards": {
+    "bytes": 545,
+    "sha256": "0d382f2c9ffedd0fb72afd6e05b2b740bbfdfb0bba9b729f01608c916e93b91e"
+  },
+  "trace_audit": {
+    "passed": true,
+    "canonical_records": 225,
+    "canonical_bytes": 115200,
+    "finite_action_F32words": 1575,
+    "finite_control_state_F64words": 12150,
+    "all_clocks": 225,
+    "max_clock_error_seconds": 3.3306690738754696e-16,
+    "clock_atol_seconds": 1.4901161193847656e-08,
+    "epoch": 1,
+    "request_serials": [
+      1,
+      2
+    ],
+    "first_consumed_decoded_rows_bound": 8,
+    "second_full_decoded_array_persisted": false,
+    "torque_clipped_flagged_substeps": 0,
+    "reported_coordinate_clips": 0,
+    "coordinate_clip_exact_reconstruction_claimed": false,
+    "seed_sha256": "94f6e468ce9fa434b968f7b2cb9833d3a8a29a12940e7025af751014301d7c98",
+    "final_chain_sha256": "436e2efba0681e2a0f45f6f8bcfa3fe17ca909d6738578d51b0c34c07485256c",
+    "success_flag_always_unset": true,
+    "native_replay_repeated": false
+  },
+  "exact_native_replay_observed": true,
+  "native_replay_evidence_scope": "Exact bound-source SDK replay of all45F64statewords. Not independently rerun here; excludes render/NN/controller recomputation.",
+  "source_derived_counts": {
+    "SOURCE_DERIVED_NOT_RUNTIME_INSTRUMENTED": true,
+    "completed_ticks": 9,
+    "NN_calls_recorded": 2,
+    "live_physics_steps_recorded": 225,
+    "mandatory_native_replay_steps_source_and_exact_receipt": 225,
+    "total_SDK_steps": 450,
+    "SDK_resets": 2,
+    "explicit_mj_forward": 452,
+    "telemetry_sample_calls": 237,
+    "robot_state_owned_query_paths": 226,
+    "OFFSCREENimage_captures": 4,
+    "model_open": 1,
+    "setup_integration_steps": 0,
+    "second_request_full_decoded_bytes_audited": false
+  },
+  "observations": {
+    "completed_prespecified_tick_cap": true,
+    "early_authoritative_source_success": false,
+    "task_success_observed": false,
+    "task_success_was_required": false,
+    "full_first_decoded_sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521",
+    "prior_frame_decoded_sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521",
+    "first_frame_hash_matches_prior_DIAGNOSTIC_ONLY": true,
+    "no_model_parity_gate_from_hash": true,
+    "first_consumed_rows_bound": 8,
+    "torque_coordinate_clips_observed": 0,
+    "runtime_geometry_retained": true,
+    "NN_source_profile_is_public_endpoint_qualified_not_all_global_hidden_parity": true
+  },
+  "timing": {
+    "native_loop_wall_excludes_context_open_and_replay_seconds": 10.348945,
+    "model_context_open_seconds": 12.463753,
+    "inference_seconds": 8.971714,
+    "inference_max_seconds": 4.755421,
+    "GPU_compute_seconds": 2.09474417,
+    "simulated_seconds": 0.45,
+    "synchronous_simulation_paused_for_inference": true,
+    "no_wall_realtime_claim": true
+  },
+  "outputs": {
+    "observations.json": {
+      "bytes": 663,
+      "sha256": "dd91a75b5fc9574ad9cfb89a7848e8a47c0ade0d8f0637aca73a00f4bf837746"
+    }
+  },
+  "scope": "FIRST genuine neural+owned-query integration prefix. One fixed demo000 fullrecorded reset. SDK geometry/contacts/actuation/integration/cameras remain; originalOSC controller, NOT C/D law or ownEuler. Synchronous inference pauses simulation. No tasksuccess threshold, benchmark, globalstability, wall deadline, trainingholdout or hardwareclaim.",
+  "seconds": 0.027245207980740815
+}

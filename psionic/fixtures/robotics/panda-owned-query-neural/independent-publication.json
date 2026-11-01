@@ -1,0 +1,46 @@
+{
+  "schema": "psionic.panda-owned-query-neural.independent-publication.v1",
+  "passed": true,
+  "original_reader_receipt_byte_exact": true,
+  "original_actual_audit_receipt_byte_exact": true,
+  "executed_guard_receipt": {
+    "bytes": 545,
+    "sha256": "0d382f2c9ffedd0fb72afd6e05b2b740bbfdfb0bba9b729f01608c916e93b91e"
+  },
+  "executed_actual_audit_receipt": {
+    "bytes": 4406,
+    "sha256": "b3089434fef53120dcdb3fd333c63bba4971a59e7da3cc6b37bbc9f5d0a6e53b"
+  },
+  "publication_SDK_NN_render_build_or_old_gate_calls": 0,
+  "whole_auditor_unchanged_from_prelaunch_guard": true,
+  "first_frame_hash_diagnostic_only": true,
+  "source_derived_counts_not_runtime_counters": true,
+  "task_success_not_required_and_not_observed": true,
+  "scope": "One9tick normaldemo000 neural+owned-query prefix, twoNNcalls,225live+225nativeexactreplay SDKsteps, SDKgeometry/contact/integration/rendering retained. Publicendpoint-profile evidence and failedglobalhidden diagnostics carried, not rerun.",
+  "files": {
+    "psionic/tests/robotics/panda_owned_query_neural_audit.py": {
+      "bytes": 17083,
+      "sha256": "523ad47b3a0a932cf01fdcf3e37e33cac8b2e7b6df05d38aa1149870b832cf9e"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/experiment.json": {
+      "bytes": 28719,
+      "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/input-freeze.json": {
+      "bytes": 4293,
+      "sha256": "64805c6e09c2c79f361bdb092497794f3a916b340e9d89143855067ea1c16c37"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/reader-qualification.json": {
+      "bytes": 545,
+      "sha256": "0d382f2c9ffedd0fb72afd6e05b2b740bbfdfb0bba9b729f01608c916e93b91e"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/independent-qualification.json": {
+      "bytes": 4406,
+      "sha256": "b3089434fef53120dcdb3fd333c63bba4971a59e7da3cc6b37bbc9f5d0a6e53b"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/observations.json": {
+      "bytes": 663,
+      "sha256": "dd91a75b5fc9574ad9cfb89a7848e8a47c0ade0d8f0637aca73a00f4bf837746"
+    }
+  }
+}

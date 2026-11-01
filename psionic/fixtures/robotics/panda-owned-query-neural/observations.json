@@ -1,0 +1,14 @@
+{
+  "completed_prespecified_tick_cap": true,
+  "early_authoritative_source_success": false,
+  "task_success_observed": false,
+  "task_success_was_required": false,
+  "full_first_decoded_sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521",
+  "prior_frame_decoded_sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521",
+  "first_frame_hash_matches_prior_DIAGNOSTIC_ONLY": true,
+  "no_model_parity_gate_from_hash": true,
+  "first_consumed_rows_bound": 8,
+  "torque_coordinate_clips_observed": 0,
+  "runtime_geometry_retained": true,
+  "NN_source_profile_is_public_endpoint_qualified_not_all_global_hidden_parity": true
+}

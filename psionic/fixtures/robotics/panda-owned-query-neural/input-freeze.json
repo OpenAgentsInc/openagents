@@ -1,0 +1,90 @@
+{
+  "schema": "psionic.panda-owned-query-neural.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 28719,
+    "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+  },
+  "selected_inputs": {
+    "/tmp/panda-query-runtime-build-only-final/build/panda-loop": {
+      "bytes": 812808,
+      "sha256": "e42e44510708cad102db08f64dbd7e1d1acf5e0a9e04f542c6e243c51b6ba779"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-session.c": {
+      "bytes": 453047,
+      "sha256": "b681d601cc328029882ae0dc677a76aff02c70f70bbaaab8b62e085ae4e8acbc"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-session.h": {
+      "bytes": 107997,
+      "sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-policy-generated.c": {
+      "bytes": 561365,
+      "sha256": "e537539fa2973f4c3640b6a632111ea1b6e85db598447b45eab6323ea925aec3"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-policy-generated.h": {
+      "bytes": 118879,
+      "sha256": "771a64d35ec18a38cfa1ccfbe8c4601abab69ca739bee8e4e5b7c378bd03e8cd"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/metal-host.o": {
+      "bytes": 18104,
+      "sha256": "743488b51f685d73501bd5fc95c51dd871f653456d998516f2480b45d9fa0d03"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/tile.metal": {
+      "bytes": 32331,
+      "sha256": "e998a0f6febd253b4ff12fdd994a73e1ee6f1ababfc1860fed0159be519dc8d0"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/device.metal": {
+      "bytes": 57896,
+      "sha256": "2258055ec33f376b1c69150a5a7e4f05335308ebbd80a9697aa2a73bc862359d"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/action.metal": {
+      "bytes": 72453,
+      "sha256": "ad3f67e74753ee28009ac8fb7746add2b227885484a4ec1c4db3ec00a1a80f31"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/text.metal": {
+      "bytes": 43099,
+      "sha256": "7513007e844eb19b0621c7cd1a6a1fcc35a389af51d28996414ecf8bde13a2b7"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/wide.metal": {
+      "bytes": 62112,
+      "sha256": "3d67a475f65a9500e7d1751b28f26b164863eaf938b7df35d44f620c5d3ed822"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/vision.metal": {
+      "bytes": 42651,
+      "sha256": "1b55da19303ef4adc2f54e750b656984fffe90f0390bb4d9d0f59a06be4ecc72"
+    },
+    "/Users/christopherdavid/.cache/psionic/groot-libero/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/cosmos-tokenizer.pst": {
+      "bytes": 5100329,
+      "sha256": "f856fb8ef64650f2841a3ec36792d9c52ada0ead2b44d04cb120c9be6cc2d73d"
+    },
+    "/tmp/panda-policy-frame0-input/noise.f32": {
+      "bytes": 21120,
+      "sha256": "59e012a91bd82498415471c884fd6bc7f0e2a5fa920ddc48bf79d1a9c1e899a0"
+    },
+    "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/scene.xml": {
+      "bytes": 66846,
+      "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f"
+    },
+    "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/init.f64": {
+      "bytes": 360,
+      "sha256": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc"
+    }
+  },
+  "prior_shards_stat_only": [
+    {
+      "path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model-00001-of-00002.safetensors",
+      "bytes_observed": 4990519232,
+      "prior_completed_full_sha256": "39b7beaadd9a06c87502f2b741a36f939b84941f37fef757c6177e54e34a5eff",
+      "current_payload_hash_recomputed": false
+    },
+    {
+      "path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model-00002-of-00002.safetensors",
+      "bytes_observed": 1919980184,
+      "prior_completed_full_sha256": "8c4fa56f1b4f25a1a842c811e8a12d2bf6d77d73942f9a04f5b876a11bd6d703",
+      "current_payload_hash_recomputed": false
+    }
+  ],
+  "source125_hashes_match": true,
+  "source_or_executable_or_SDK_or_NN_or_model_or_build_calls": 0
+}

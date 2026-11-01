@@ -1,0 +1,20 @@
+{
+  "schema": "psionic.panda-owned-query-neural.reader-guards.v1",
+  "passed": true,
+  "source": {
+    "bytes": 17083,
+    "sha256": "523ad47b3a0a932cf01fdcf3e37e33cac8b2e7b6df05d38aa1149870b832cf9e"
+  },
+  "guards": {
+    "passed": true,
+    "synthetic_valid_records": 25,
+    "poisoned_trace_cases": 198,
+    "poisoned_case_records": 18,
+    "all61_raw_numeric_lanes_tested": true,
+    "poison_hash_chains_recomputed_to_isolate_field_admission": true,
+    "SDK_calls": 0,
+    "NN_calls": 0,
+    "plant_steps": 0,
+    "old_gate_calls": 0
+  }
+}

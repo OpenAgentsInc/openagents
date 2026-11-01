@@ -1,0 +1,199 @@
+{
+  "NN_calls": 0,
+  "SDK_loads": 0,
+  "SDK_steps": 0,
+  "argv": [
+    "/tmp/panda-query-runtime-build-only-final/build/panda-loop",
+    "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10",
+    "/Users/christopherdavid/.cache/psionic/groot-libero/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/cosmos-tokenizer.pst",
+    "/tmp/panda-policy-frame0-input/noise.f32",
+    "/tmp/panda-query-runtime-build-only-final/build/shaders",
+    "/private/tmp/panda-owned-query-neural-first/episode",
+    "pick up the book and place it in the back compartment of the caddy",
+    "9",
+    "0",
+    "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000"
+  ],
+  "builds_or_old_gates_executed": 0,
+  "carried_receipts": {
+    "psionic/fixtures/robotics/groot-libero/full-cache-verification.json": {
+      "bytes": 1479,
+      "sha256": "43c01ce9070e355abce12ada18fb1e4e71bf489636e7b61baa6b896297c22c22"
+    },
+    "psionic/fixtures/robotics/groot-libero/request-contract.json": {
+      "bytes": 58055,
+      "sha256": "4b07e9389a197eb592024bb81de79057c66c160f54004f73e371673dd1fe14f7"
+    },
+    "psionic/fixtures/robotics/libero-panda/evaluation-profile.json": {
+      "bytes": 8296,
+      "sha256": "aeeb005f6ae6315441716592c1b6d7d022f13898512d81e9b5ce262b1bf91587"
+    },
+    "psionic/fixtures/robotics/libero-panda/integration-qualification.json": {
+      "bytes": 9280,
+      "sha256": "7f2aedb435c06842e154a07812ef354575f9f6946c63d8bb72cf7998e3eb3409"
+    },
+    "psionic/fixtures/robotics/libero-panda/policy-qualification.json": {
+      "bytes": 38085,
+      "sha256": "0f88bcf190b5381798157ba1ab2a6b00441d4c7046a826bd960f31582f29877b"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/SDK-build-inputs.json": {
+      "bytes": 1900,
+      "sha256": "2e30165981adf6d78000face3265bc606bb0fba32b11ff1650c3b8f64b3e7e67"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/build.json": {
+      "bytes": 3824,
+      "sha256": "df25eab9f307bc09c53123a0b0f7227a6ab6d739053889dbcf955243a4f4a2cd"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/current-binding.json": {
+      "bytes": 3932,
+      "sha256": "e8cc5263425a6e936314c252246199abaf4ea37650f41fa4a1541b795ca7993b"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/effect-order.json": {
+      "bytes": 21178,
+      "sha256": "229023fc998644ddebd3ea105186a62d3e8015c20eb43d5dd34097cf0ddc6f0c"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/file-preflight.json": {
+      "bytes": 3067,
+      "sha256": "2ef86f74147b143bd3cc42ffd4f00a6e57e86128e8b9dd4d14ff637918077ee0"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/hash.json": {
+      "bytes": 6766,
+      "sha256": "a9fbf4627bd9ee4d18ab583bfb98bd7a3dbbc09f6b1fc4712b5e07cd8c2e24aa"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/native.json": {
+      "bytes": 9782,
+      "sha256": "9438a7eb8697e965cc4034e5503104f52820097fa035600db8d0da7a138851c2"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/qualification.json": {
+      "bytes": 4708,
+      "sha256": "b9a796cb446fcab70b5e09678603ac16c8d0f6ac5845c05fc20eac944e537493"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/source-inventory.json": {
+      "bytes": 17102,
+      "sha256": "f0fa5c5913f309c4502709a24bd2f66f42221318c96e02c88c693111ebf781bb"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/wiring.json": {
+      "bytes": 8022,
+      "sha256": "9d66eab99d21ae0278bb0ca2b7fc77027b58b552d7dd58b180fc9bcd448e7548"
+    }
+  },
+  "environment_overrides": {
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "DYLD_LIBRARY_PATH": "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco",
+    "PANDA_QUERY_SOURCE": "owned-shadow-v1",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "experiment": {
+    "bytes": 28719,
+    "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+  },
+  "finished_utc": "2026-11-01T03:26:01.614220+00:00",
+  "global_launch_marker": "/tmp/psionic-panda-owned-query-neural-bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc.launch-once.json",
+  "inputs": {
+    "/Users/christopherdavid/.cache/psionic/groot-libero/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/cosmos-tokenizer.pst": {
+      "bytes": 5100329,
+      "sha256": "f856fb8ef64650f2841a3ec36792d9c52ada0ead2b44d04cb120c9be6cc2d73d"
+    },
+    "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/init.f64": {
+      "bytes": 360,
+      "sha256": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc"
+    },
+    "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/scene.xml": {
+      "bytes": 66846,
+      "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f"
+    },
+    "/tmp/panda-policy-frame0-input/noise.f32": {
+      "bytes": 21120,
+      "sha256": "59e012a91bd82498415471c884fd6bc7f0e2a5fa920ddc48bf79d1a9c1e899a0"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/metal-host.o": {
+      "bytes": 18104,
+      "sha256": "743488b51f685d73501bd5fc95c51dd871f653456d998516f2480b45d9fa0d03"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-loop": {
+      "bytes": 812808,
+      "sha256": "e42e44510708cad102db08f64dbd7e1d1acf5e0a9e04f542c6e243c51b6ba779"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-policy-generated.c": {
+      "bytes": 561365,
+      "sha256": "e537539fa2973f4c3640b6a632111ea1b6e85db598447b45eab6323ea925aec3"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-policy-generated.h": {
+      "bytes": 118879,
+      "sha256": "771a64d35ec18a38cfa1ccfbe8c4601abab69ca739bee8e4e5b7c378bd03e8cd"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-session.c": {
+      "bytes": 453047,
+      "sha256": "b681d601cc328029882ae0dc677a76aff02c70f70bbaaab8b62e085ae4e8acbc"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-session.h": {
+      "bytes": 107997,
+      "sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/action.metal": {
+      "bytes": 72453,
+      "sha256": "ad3f67e74753ee28009ac8fb7746add2b227885484a4ec1c4db3ec00a1a80f31"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/device.metal": {
+      "bytes": 57896,
+      "sha256": "2258055ec33f376b1c69150a5a7e4f05335308ebbd80a9697aa2a73bc862359d"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/text.metal": {
+      "bytes": 43099,
+      "sha256": "7513007e844eb19b0621c7cd1a6a1fcc35a389af51d28996414ecf8bde13a2b7"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/tile.metal": {
+      "bytes": 32331,
+      "sha256": "e998a0f6febd253b4ff12fdd994a73e1ee6f1ababfc1860fed0159be519dc8d0"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/vision.metal": {
+      "bytes": 42651,
+      "sha256": "1b55da19303ef4adc2f54e750b656984fffe90f0390bb4d9d0f59a06be4ecc72"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/wide.metal": {
+      "bytes": 62112,
+      "sha256": "3d67a475f65a9500e7d1751b28f26b164863eaf938b7df35d44f620c5d3ed822"
+    }
+  },
+  "passed": true,
+  "render_calls": 0,
+  "schema": "psionic.panda-owned-query-neural.preparation.v1",
+  "source": {
+    "psionic/platform/metal-host.m": "557ec0faae9c72581e1d0ce3feb11ec03a3a63618ee290a9216ec4845a2d19f6",
+    "psionic/platform/panda-env.c": "6224a6be7cd742654c2ab45eea40ee0625e86a8c08c2a8daacdd22a3e12c9f8e",
+    "psionic/platform/panda-policy.c": "fc09e6093f395074b558e8cea136043ef2b959e98c6db0c8ef3be9eb1f21ebf0",
+    "psionic/tests/robotics/panda_loop_effects.h": "2628cef17553f7b1f203409dc3e66b539bea9cf2f406ad28feed80b4e1938d0b",
+    "psionic/tests/robotics/panda_loop_metal.c": "2ed76a170c4daad692cc9d8ee02e689207666f89aa9d7c227a224157a824cb13",
+    "psionic/tests/robotics/panda_owned_query_neural_run.py": "32d9de4df5bb7818411776ce15537e7e4ee29f14f24eeaec195e4526cf267d55",
+    "psionic/tests/robotics/panda_query_runtime.h": "f5e3ec8b94460789dffbdd3a5cb43d7ffb706e5cab1bef58fb3cfe50b4ac4abe",
+    "psionic/tests/robotics/run-panda-loop-metal.sh": "d2a4c0582e848abf9aca18ca21349741f051f276080e14009b26b8090a3dee93"
+  },
+  "source125_proof_reused": true,
+  "standalone_88_file_admission_executed": false,
+  "started_utc": "2026-11-01T03:26:01.605337+00:00",
+  "timeout_seconds": 840,
+  "weight_stats": [
+    {
+      "bytes": 4990519232,
+      "ctime_ns": 1793458409175019051,
+      "device": 16777233,
+      "inode": 2888699719,
+      "mtime_ns": 1793458409140743460,
+      "path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model-00001-of-00002.safetensors",
+      "payload_hash_recomputed": false,
+      "prior_completed_full_sha256": "39b7beaadd9a06c87502f2b741a36f939b84941f37fef757c6177e54e34a5eff",
+      "resolved_path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/blobs/39b7beaadd9a06c87502f2b741a36f939b84941f37fef757c6177e54e34a5eff"
+    },
+    {
+      "bytes": 1919980184,
+      "ctime_ns": 1793458325376684535,
+      "device": 16777233,
+      "inode": 2888699716,
+      "mtime_ns": 1793458325370415794,
+      "path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model-00002-of-00002.safetensors",
+      "payload_hash_recomputed": false,
+      "prior_completed_full_sha256": "8c4fa56f1b4f25a1a842c811e8a12d2bf6d77d73942f9a04f5b876a11bd6d703",
+      "resolved_path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/blobs/8c4fa56f1b4f25a1a842c811e8a12d2bf6d77d73942f9a04f5b876a11bd6d703"
+    }
+  ]
+}

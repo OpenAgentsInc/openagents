@@ -1,0 +1,36 @@
+{
+  "schema": "psionic.panda-owned-query-neural.cached-audit.v1",
+  "passed": true,
+  "SDK_loads": 0,
+  "SDK_steps": 0,
+  "NN_calls": 0,
+  "render_calls": 0,
+  "build_calls": 0,
+  "private_input_files_opened": 0,
+  "plan_only": true,
+  "experiment": {
+    "bytes": 28719,
+    "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+  },
+  "execution": {
+    "bytes": 12788,
+    "sha256": "e00dca003389010e3455d06cbfd2d983623693d4432d6efc87df13d64863c9de"
+  },
+  "independent": {
+    "bytes": 4406,
+    "sha256": "b3089434fef53120dcdb3fd333c63bba4971a59e7da3cc6b37bbc9f5d0a6e53b"
+  },
+  "source": {
+    "psionic/tests/robotics/panda_owned_query_neural_cached.py": {
+      "bytes": 8340,
+      "sha256": "51d503186e9436ff8152b88fb3fdf84c4376770d6b7cf9254d20c3e86a241051"
+    },
+    "psionic/tests/robotics/panda_owned_query_neural_audit.py": {
+      "bytes": 17083,
+      "sha256": "523ad47b3a0a932cf01fdcf3e37e33cac8b2e7b6df05d38aa1149870b832cf9e"
+    }
+  },
+  "carried_private_admission_and_source125_proof": true,
+  "fresh_private_admission_or_product_numeric_qualification_claimed": false,
+  "seconds": 0.007229916984215379
+}

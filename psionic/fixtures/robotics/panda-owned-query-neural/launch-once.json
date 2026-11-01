@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "/tmp/panda-query-runtime-build-only-final/build/panda-loop",
+    "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10",
+    "/Users/christopherdavid/.cache/psionic/groot-libero/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/cosmos-tokenizer.pst",
+    "/tmp/panda-policy-frame0-input/noise.f32",
+    "/tmp/panda-query-runtime-build-only-final/build/shaders",
+    "/private/tmp/panda-owned-query-neural-first/episode",
+    "pick up the book and place it in the back compartment of the caddy",
+    "9",
+    "0",
+    "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000"
+  ],
+  "experiment": {
+    "bytes": 28719,
+    "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+  },
+  "preparation": {
+    "bytes": 9988,
+    "sha256": "5de66520daef9f3e01b671a0395dc2026b6873a313e150bdbbb72b6eccc82b52"
+  },
+  "retry_permitted": false,
+  "run_directory": "/private/tmp/panda-owned-query-neural-first",
+  "schema": "psionic.panda-owned-query-neural.one-shot.v1",
+  "started_utc": "2026-11-01T03:27:29.111158+00:00"
+}

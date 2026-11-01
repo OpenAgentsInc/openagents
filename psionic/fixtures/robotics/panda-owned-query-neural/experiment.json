@@ -1,0 +1,427 @@
+{
+  "schema": "psionic.panda-owned-query-neural.experiment.v1",
+  "frozen_before_FIRST_neural_owned_query_execution": true,
+  "mode": "owned-shadow-v1",
+  "profile": "panda-libero-mujoco331-gr00t-wide-fixed-noise-owned-query-shadow-v1",
+  "case_schema": "psionic-panda-owned-query-closed-loop-v1",
+  "query_profile": "panda-owned-query-shadow-v1",
+  "policy_profile": "panda-libero-mujoco331-gr00t-wide-fixed-noise-v1",
+  "case": "demo_000",
+  "scenario": 0,
+  "maximum_action_ticks": 9,
+  "physics_substeps_per_action": 25,
+  "physical_dt_seconds": 0.002,
+  "maximum_forward_physics_steps": 225,
+  "maximum_replay_physics_steps": 225,
+  "maximum_total_SDK_steps": 450,
+  "maximum_model_calls": 2,
+  "maximum_source_backed_OFFSCREENimages": 4,
+  "instruction": "pick up the book and place it in the back compartment of the caddy",
+  "request_tokens_source_gate": 152,
+  "binary_path": "/tmp/panda-query-runtime-build-only-final/build/panda-loop",
+  "shards_path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10",
+  "PST_path": "/Users/christopherdavid/.cache/psionic/groot-libero/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/cosmos-tokenizer.pst",
+  "noise_path": "/tmp/panda-policy-frame0-input/noise.f32",
+  "shader_directory": "/tmp/panda-query-runtime-build-only-final/build/shaders",
+  "pair_path": "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000",
+  "SDK_directory": "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco",
+  "child_output_relative": "episode",
+  "case_output_relative": "episode/demo_000-fault0",
+  "timeout_seconds": 840,
+  "inputs": {
+    "/tmp/panda-query-runtime-build-only-final/build/panda-loop": {
+      "bytes": 812808,
+      "sha256": "e42e44510708cad102db08f64dbd7e1d1acf5e0a9e04f542c6e243c51b6ba779"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-session.c": {
+      "bytes": 453047,
+      "sha256": "b681d601cc328029882ae0dc677a76aff02c70f70bbaaab8b62e085ae4e8acbc"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-session.h": {
+      "bytes": 107997,
+      "sha256": "6ebea81f2475d21ad3c6f01202c45a44e3bceb46f85aa7253ff6bb802c7a72b6"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-policy-generated.c": {
+      "bytes": 561365,
+      "sha256": "e537539fa2973f4c3640b6a632111ea1b6e85db598447b45eab6323ea925aec3"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/panda-policy-generated.h": {
+      "bytes": 118879,
+      "sha256": "771a64d35ec18a38cfa1ccfbe8c4601abab69ca739bee8e4e5b7c378bd03e8cd"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/metal-host.o": {
+      "bytes": 18104,
+      "sha256": "743488b51f685d73501bd5fc95c51dd871f653456d998516f2480b45d9fa0d03"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/tile.metal": {
+      "bytes": 32331,
+      "sha256": "e998a0f6febd253b4ff12fdd994a73e1ee6f1ababfc1860fed0159be519dc8d0"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/device.metal": {
+      "bytes": 57896,
+      "sha256": "2258055ec33f376b1c69150a5a7e4f05335308ebbd80a9697aa2a73bc862359d"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/action.metal": {
+      "bytes": 72453,
+      "sha256": "ad3f67e74753ee28009ac8fb7746add2b227885484a4ec1c4db3ec00a1a80f31"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/text.metal": {
+      "bytes": 43099,
+      "sha256": "7513007e844eb19b0621c7cd1a6a1fcc35a389af51d28996414ecf8bde13a2b7"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/wide.metal": {
+      "bytes": 62112,
+      "sha256": "3d67a475f65a9500e7d1751b28f26b164863eaf938b7df35d44f620c5d3ed822"
+    },
+    "/tmp/panda-query-runtime-build-only-final/build/shaders/vision.metal": {
+      "bytes": 42651,
+      "sha256": "1b55da19303ef4adc2f54e750b656984fffe90f0390bb4d9d0f59a06be4ecc72"
+    },
+    "/Users/christopherdavid/.cache/psionic/groot-libero/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/cosmos-tokenizer.pst": {
+      "bytes": 5100329,
+      "sha256": "f856fb8ef64650f2841a3ec36792d9c52ada0ead2b44d04cb120c9be6cc2d73d"
+    },
+    "/tmp/panda-policy-frame0-input/noise.f32": {
+      "bytes": 21120,
+      "sha256": "59e012a91bd82498415471c884fd6bc7f0e2a5fa920ddc48bf79d1a9c1e899a0"
+    },
+    "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/scene.xml": {
+      "bytes": 66846,
+      "sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f"
+    },
+    "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/init.f64": {
+      "bytes": 360,
+      "sha256": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc"
+    }
+  },
+  "prior_shards": [
+    {
+      "path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model-00001-of-00002.safetensors",
+      "bytes_observed": 4990519232,
+      "prior_completed_full_sha256": "39b7beaadd9a06c87502f2b741a36f939b84941f37fef757c6177e54e34a5eff",
+      "current_payload_hash_recomputed": false
+    },
+    {
+      "path": "/Users/christopherdavid/.cache/huggingface/hub/models--nvidia--GR00T-N1.7-LIBERO/snapshots/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10/model-00002-of-00002.safetensors",
+      "bytes_observed": 1919980184,
+      "prior_completed_full_sha256": "8c4fa56f1b4f25a1a842c811e8a12d2bf6d77d73942f9a04f5b876a11bd6d703",
+      "current_payload_hash_recomputed": false
+    }
+  ],
+  "carried_receipts": {
+    "psionic/fixtures/robotics/panda-query-runtime/build.json": {
+      "bytes": 3824,
+      "sha256": "df25eab9f307bc09c53123a0b0f7227a6ab6d739053889dbcf955243a4f4a2cd"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/qualification.json": {
+      "bytes": 4708,
+      "sha256": "b9a796cb446fcab70b5e09678603ac16c8d0f6ac5845c05fc20eac944e537493"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/source-inventory.json": {
+      "bytes": 17102,
+      "sha256": "f0fa5c5913f309c4502709a24bd2f66f42221318c96e02c88c693111ebf781bb"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/current-binding.json": {
+      "bytes": 3932,
+      "sha256": "e8cc5263425a6e936314c252246199abaf4ea37650f41fa4a1541b795ca7993b"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/SDK-build-inputs.json": {
+      "bytes": 1900,
+      "sha256": "2e30165981adf6d78000face3265bc606bb0fba32b11ff1650c3b8f64b3e7e67"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/effect-order.json": {
+      "bytes": 21178,
+      "sha256": "229023fc998644ddebd3ea105186a62d3e8015c20eb43d5dd34097cf0ddc6f0c"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/native.json": {
+      "bytes": 9782,
+      "sha256": "9438a7eb8697e965cc4034e5503104f52820097fa035600db8d0da7a138851c2"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/hash.json": {
+      "bytes": 6766,
+      "sha256": "a9fbf4627bd9ee4d18ab583bfb98bd7a3dbbc09f6b1fc4712b5e07cd8c2e24aa"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/file-preflight.json": {
+      "bytes": 3067,
+      "sha256": "2ef86f74147b143bd3cc42ffd4f00a6e57e86128e8b9dd4d14ff637918077ee0"
+    },
+    "psionic/fixtures/robotics/panda-query-runtime/wiring.json": {
+      "bytes": 8022,
+      "sha256": "9d66eab99d21ae0278bb0ca2b7fc77027b58b552d7dd58b180fc9bcd448e7548"
+    },
+    "psionic/fixtures/robotics/groot-libero/full-cache-verification.json": {
+      "bytes": 1479,
+      "sha256": "43c01ce9070e355abce12ada18fb1e4e71bf489636e7b61baa6b896297c22c22"
+    },
+    "psionic/fixtures/robotics/groot-libero/request-contract.json": {
+      "bytes": 58055,
+      "sha256": "4b07e9389a197eb592024bb81de79057c66c160f54004f73e371673dd1fe14f7"
+    },
+    "psionic/fixtures/robotics/libero-panda/integration-qualification.json": {
+      "bytes": 9280,
+      "sha256": "7f2aedb435c06842e154a07812ef354575f9f6946c63d8bb72cf7998e3eb3409"
+    },
+    "psionic/fixtures/robotics/libero-panda/policy-qualification.json": {
+      "bytes": 38085,
+      "sha256": "0f88bcf190b5381798157ba1ab2a6b00441d4c7046a826bd960f31582f29877b"
+    },
+    "psionic/fixtures/robotics/libero-panda/evaluation-profile.json": {
+      "bytes": 8296,
+      "sha256": "aeeb005f6ae6315441716592c1b6d7d022f13898512d81e9b5ce262b1bf91587"
+    }
+  },
+  "source125_sha256": {
+    "coax/lib/compute/apple.coax": "68507e75ba716ee13f005e917a8734986c5f487ee5fbceea143eb028bb56d4fb",
+    "coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "psionic/fixtures/models/ch04/fixtures.coax": "76b0c43873153f80e8eace07329f128a6f3e6d9e34ff99c76b4c392b958d5aaa",
+    "psionic/fixtures/text/ch05/goldens.coax": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0",
+    "psionic/fixtures/text/ch05/toy.coax": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547",
+    "psionic/lib/device/tile.coax": "c619fe1a32afc068473b085ab6832439bd589720067a68527ad705ce3fd02d8e",
+    "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+    "psionic/lib/model-io/rank5.coax": "b763f1b5077e1ab7b6b7f8ce43ed44bf17c597d7f4a6cf7a7f0b6fa1c69319e5",
+    "psionic/lib/model-io/reader.coax": "83ac499c1c3e39a2a8c6e2e4469c773dbf8566d3631241f11ea1423f4629a627",
+    "psionic/lib/ops-contract.coax": "40610524dfded7d4c7b9746ea7b2a837ebf2c0e1697414477741ead38301c52d",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/physics/step-clock-domain.coax": "b442a75ebb290c852fa5f894e651896abdf583af497ccfaf26d4b24567c459c5",
+    "psionic/lib/physics/step-clock-schedule.coax": "96d73ee216b4c12d292cbff4607b2729a4d9a761fab8f2799cb1f2beb2e10cf1",
+    "psionic/lib/physics/step-clock-types.coax": "64e095bd2b781b9bca33f8905d79294e6bdbf9628cc376c2b384f0396ed8cd94",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/robotics/groot-action-dynamic-plan.coax": "7ac9bd122ca23f4cb9470101147b7b51807a499e2d71f471b905aacdc66e8da2",
+    "psionic/lib/robotics/groot-action-metadata-fixtures.coax": "0059bfa82a6444fd74179a850428845f0d799844da5d1b4ed021458e3af116b4",
+    "psionic/lib/robotics/groot-action-metal-kernels.coax": "93e6474a9496f2693881c97c49e2c19ad8bed26c9ebcb2d8e5ec2625f63308e3",
+    "psionic/lib/robotics/groot-action-metal-plan.coax": "e2806f0e262b50dbc5cbed221c628fe370ab1b5a37000fdec6573cbcccacd3ff",
+    "psionic/lib/robotics/groot-action-metal-types.coax": "8f5f049c9ea209edee5a5b608d4405d836b1d9069f6142665333c2403d8a170d",
+    "psionic/lib/robotics/groot-action-trace-fixtures.coax": "55873160192e22d28b4cdaed553b0159373738ba5be49cc37688d3ceea8d7713",
+    "psionic/lib/robotics/groot-action-transcript.coax": "0142af0102a735c00a0c0f040cb6be1c3dfa5e848f24e05a95a6bb5c5b28bb0c",
+    "psionic/lib/robotics/groot-action-wide-kernels.coax": "273b955f6bc5467416aaf3c7a884d4ed3b58d21d8cd0c99d7a7febeb33ccd37c",
+    "psionic/lib/robotics/groot-artifact.coax": "9dae1ba455d87673696681ce8ebd5f8e2f64ba326c4f69908b907e71e2532c62",
+    "psionic/lib/robotics/groot-device-kernels.coax": "b04fd9f25f40cea80cce975ef5b1d8e4bf7a4ce0582b94c7d0d8f935207587af",
+    "psionic/lib/robotics/groot-embodiment-check-fixtures.coax": "71e88c0db05cea9fc11fc12cea08622b4f11a31ee887c4156188a78bf2d8e99a",
+    "psionic/lib/robotics/groot-embodiment-types.coax": "29a98db6066afbc3f039f914ed1d149b0a815723ce758e082137181d3b781640",
+    "psionic/lib/robotics/groot-embodiment.coax": "456d51c8d26a71a3e4ac112233178420f354f2aea5e423208d665603f5211337",
+    "psionic/lib/robotics/groot-image-check-fixtures.coax": "231d74c0152cfe9532f27e19b0ea93c4a171df34e75ccb043a09f67e4dc5c63e",
+    "psionic/lib/robotics/groot-image-types.coax": "80ec9a49bee1c0f37db5ef6fa751b3d918676fa92e8f76cf9b6c6ed76628c7dd",
+    "psionic/lib/robotics/groot-image.coax": "9c16d70b0ec51e482de53983f80cb0c34fd357dc21450990b96a88b58c413871",
+    "psionic/lib/robotics/groot-linear-check-fixtures.coax": "8270aae4fce241d70e5350168b5b4487e642d3707baabeb1ab62e0423f4a4e11",
+    "psionic/lib/robotics/groot-linear-types.coax": "3a6ca8232f2ebabbfd222e6fc92541e7d6df9f1f0378de2499a0ee8a3cc50d05",
+    "psionic/lib/robotics/groot-linear.coax": "91fe573f5a18cb3df20d8044e94a179f9baf8a91da3b7f779386edac416aa743",
+    "psionic/lib/robotics/groot-request-check-fixtures.coax": "c72a1669da9e56f94f8e1a80780aec118728746c5c8a51c857d6ba342c2c49c3",
+    "psionic/lib/robotics/groot-request-types.coax": "9a5b1e226be67aa1a3c9a4b8a8807a11e8131d87f0972f02b945ed5b2cb09f11",
+    "psionic/lib/robotics/groot-request.coax": "3222cd09e9b4cf12fe0fc4dfccb3d6318bd5a6e2ed76882e6f072f69d6c50ecd",
+    "psionic/lib/robotics/groot-text-kernels.coax": "88c0b2425c07b0bc61f5107ae63fe7b4c6a056d9c4f9563e8f7752f589ce1924",
+    "psionic/lib/robotics/groot-text-metal-check-fixtures.coax": "8f7aceb0de9a20e336b0c077dce2fe994009ab04df2a4f5b1c5cc51b3705b253",
+    "psionic/lib/robotics/groot-text-metal-contract-fixtures.coax": "6d2787d7538bc9c26b0ce410ded37574966917579b4bfaacd1984a6b1f6c6c8a",
+    "psionic/lib/robotics/groot-text-metal-plan.coax": "95c58cf76f16cfd69bbdcc9027d7d4493444c7760bf7464610b2ab5102b8e3a9",
+    "psionic/lib/robotics/groot-text-types.coax": "8232011ecfc7bb5c9dc626069194534af68eb4dbab39216a9fb786825f080482",
+    "psionic/lib/robotics/groot-text.coax": "1fff896d8bb2792d548b16197b80aefbf31d396b832c96c325fff1233c533631",
+    "psionic/lib/robotics/groot-vision-device.coax": "31b266a9c1d58bb7705024019385c65f07382e17d4090b4bb9176a2b8a5ca7cf",
+    "psionic/lib/robotics/groot-vision-metal-check-fixtures.coax": "219abddac099785ade76693490261e19259d04fa6b3b9d0011a99e507b429a42",
+    "psionic/lib/robotics/groot-vision-metal-plan.coax": "39c7ee071c940a3a0f78141a29addaef180115e6f9d33ffbd0bed4ca05f7677e",
+    "psionic/lib/robotics/groot-vision-metal-types.coax": "e7e115d3d7ecd9b2701d64d27fd6876233b98cabdf4b53afff2360306b3a429d",
+    "psionic/lib/robotics/groot-vision-types.coax": "f267c7f42eb0db6e443e799347c4201b9c6d8517af758cc3b33ec8506bcb6753",
+    "psionic/lib/robotics/groot-vision.coax": "ef96476d3d9dba666dde18389d88d442f72cdbe215566a7eb64f98f4675af694",
+    "psionic/lib/robotics/panda-clock-adapter.coax": "5fb0b43b118614bb740c3aa5b59556123d676eda9d2942f2d60a0e58fe4adaa1",
+    "psionic/lib/robotics/panda-clock-types.coax": "e7cb9bcf182c2677503d940736b69d81b1638d9ba347c78f7cfc44008fa88d7f",
+    "psionic/lib/robotics/panda-control-check-fixtures.coax": "1d2e336f81cd09575232a197d93586c68dafed83c7cd6a14e7055aaffddc216e",
+    "psionic/lib/robotics/panda-control-types.coax": "168dddd1822bee04fb85e710912f9f844f1c4b4745a13b952c8a9cc9094916d3",
+    "psionic/lib/robotics/panda-control.coax": "6a0ef9ad54cd0ea9d12a1ce77a1e73a48c957bbba173281e5a1de0cf6020bdbc",
+    "psionic/lib/robotics/panda-env-types.coax": "24419ee28de39785d971ed7ccaf84199c4f7405b0cdf8265028700e131b5ee2f",
+    "psionic/lib/robotics/panda-env.coax": "65a97726171e175479d3da4fdbd919944d72032b3baebcb1dc0addbaa3a053ec",
+    "psionic/lib/robotics/panda-fingers-chain.coax": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+    "psionic/lib/robotics/panda-fingers-profile.coax": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+    "psionic/lib/robotics/panda-fingers-types.coax": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+    "psionic/lib/robotics/panda-inverse-dynamics-force.coax": "99964a02044375639d1346174d9be37e71736c8e5ef67ce499b2baa846d69511",
+    "psionic/lib/robotics/panda-inverse-dynamics-math.coax": "3bcb40973b5c7ed020322bb76f11c836416021d199862d96d1b1cf55dbd10997",
+    "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": "a054399cb437fb4bfa88ab691e4f098f1bab8329af631134c8acd399c3212095",
+    "psionic/lib/robotics/panda-inverse-dynamics-types.coax": "635b534b622f63fd185a852198895b15c4940172f7c0f3740024ce36b4333d8a",
+    "psionic/lib/robotics/panda-jacobian-check-fixtures.coax": "7b010bc725c0c0494fc7377003591d1a16e63f334e7d409f6e73e936668252ac",
+    "psionic/lib/robotics/panda-jacobian-math.coax": "b9791923effe7f9766134fa67bb28dc8d94ff177da43b81007f053ade10fd64f",
+    "psionic/lib/robotics/panda-jacobian-types.coax": "408c9a3ff60888564b189ad5920f97ed9761a060cf981c7701979d4f9c08e58a",
+    "psionic/lib/robotics/panda-loop-types.coax": "3dfa3af43145054fbac21680f5f99f8f8e5b22012769034409e7c5b6922b6abe",
+    "psionic/lib/robotics/panda-loop.coax": "9a35fbd0fefaa34f23ed0bb6026dc7821d7dfa9f6ba9eafedb4fc8e583a4fcd8",
+    "psionic/lib/robotics/panda-matrix-types.coax": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483",
+    "psionic/lib/robotics/panda-matrix.coax": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f",
+    "psionic/lib/robotics/panda-owned-sample-check-fixtures.coax": "7b5e33d1289fe3f19ae17da4ba8f7c536675052f0bfa48ee6c32425a96229b1c",
+    "psionic/lib/robotics/panda-owned-sample.coax": "fc6e0ca52e36ad031b1958e564069fe71b87306c0dcf7b6a8fdd5db312387a13",
+    "psionic/lib/robotics/panda-policy.coax": "ff47118d0157aa344b3b93828b0d7e973309151ba18fdb60f05d47456c9dd56e",
+    "psionic/lib/robotics/panda-query-source-fixtures.coax": "7ff8403f58634a2da9eead21fb5c84a636ac7a37ba035c9629739a6967de9d9c",
+    "psionic/lib/robotics/panda-query-source-types.coax": "d6838d028acac7ae3178275587a96da3738f83044c9fea3f5410c200d7de6d9a",
+    "psionic/lib/robotics/panda-query-source.coax": "cf1ea3e086ee86dc5f9ecd27f0ee2076ec10f095562d52724191cd82348d0e31",
+    "psionic/lib/robotics/panda-trace.coax": "4e264ac9e6380bf4bcef4085e3ef9b0c9bdb4d1a957695a6056fee765217916f",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/lib/text/tokenizer.coax": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027",
+    "psionic/lib/text/unicode.coax": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681",
+    "psionic/platform/metal-host.h": "69e9902d82b74d06f7eebce3043149870332046770dcef3ef6b029816645f377",
+    "psionic/platform/metal-host.m": "557ec0faae9c72581e1d0ce3feb11ec03a3a63618ee290a9216ec4845a2d19f6",
+    "psionic/platform/panda-env.c": "6224a6be7cd742654c2ab45eea40ee0625e86a8c08c2a8daacdd22a3e12c9f8e",
+    "psionic/platform/panda-env.h": "fd07afc9c529c44cefc7de766db82e970a6d380313f705b62aa616784ab404a9",
+    "psionic/platform/panda-policy.c": "fc09e6093f395074b558e8cea136043ef2b959e98c6db0c8ef3be9eb1f21ebf0",
+    "psionic/platform/panda-policy.h": "f2f9a806eaf5da388ccbe1198bccc35559395029abc707350452991794cfca2a",
+    "psionic/tests/robotics/groot_gpu_dispatch.h": "1390e35f49513a4ae17f75ba4cbd53c0be02b1ad83caa1bcf1e520abc5a41a4d",
+    "psionic/tests/robotics/panda-clock-session.coax": "7705f0af69d0cb73f28ad82ff08f1421260c748c99be159ca123ee42aef28a25",
+    "psionic/tests/robotics/panda-query-runtime-assets.coax": "e6672dc424b867855d364d0256be835a3c8b21cc3b6d0b7fd6817360c4f4ff7d",
+    "psionic/tests/robotics/panda-query-runtime-fixtures.coax": "392c3a966a6b718cd500c67c02f2cbf994575d552c793e07dc06074f9c758b06",
+    "psionic/tests/robotics/panda-query-runtime-hash.coax": "db74c7418af6027ed8dd8930208fa8a1527aad4b7b03e023b81d61c9e4534f3a",
+    "psionic/tests/robotics/panda-query-runtime.coax": "82cb186328637d4902015e7f9e30216958707d8f8302683a6966854a4702e39f",
+    "psionic/tests/robotics/panda-query-session.coax": "86e0627dd558b775cdad477a808f47fe0f0b117bb89bbd30fe3abc4fd2f5d3aa",
+    "psionic/tests/robotics/panda-session.coax": "1bdf3eac860ac9d95391bf1bfcd27588fc0b811adfaa518108fb93973ae91c61",
+    "psionic/tests/robotics/panda_loop_effects.h": "2628cef17553f7b1f203409dc3e66b539bea9cf2f406ad28feed80b4e1938d0b",
+    "psionic/tests/robotics/panda_loop_metal.c": "2ed76a170c4daad692cc9d8ee02e689207666f89aa9d7c227a224157a824cb13",
+    "psionic/tests/robotics/panda_loop_provider.h": "1163f9991b722665ae85b2a7390cc558692e25470af8743616cff14d7eb25f01",
+    "psionic/tests/robotics/panda_query_runtime.h": "f5e3ec8b94460789dffbdd3a5cb43d7ffb706e5cab1bef58fb3cfe50b4ac4abe",
+    "psionic/tests/robotics/panda_query_runtime_binding.py": "e38d5c85ad2f99df1109e0215e18b764fadc6f057fc16fe3e2ba93cf4428f882",
+    "psionic/tests/robotics/panda_query_runtime_hash_native.c": "21fd5e738fcd7f3f4a2a2f527a58eb3b592db87f1036dc0d8389594717a9eca9",
+    "psionic/tests/robotics/panda_query_runtime_hash_reference.py": "c1123b28bd251f4c480a363db03c2f454cd1791e8502ac615a792119cbde2007",
+    "psionic/tests/robotics/panda_query_runtime_mock.c": "956adc89b370212b674dbd81f2ed49efab961cc73d674634bd8afdaaad2c02c3",
+    "psionic/tests/robotics/panda_query_runtime_mock.py": "b0d212b78bcda537ca6840615628a13f732ab34d9dcb968bf976dc8f39864aec",
+    "psionic/tests/robotics/panda_query_runtime_native.c": "00aebbdd2e236ace73e66de95d3b814f7d466b16447d66d0583d83681a8feca3",
+    "psionic/tests/robotics/panda_query_runtime_preflight.c": "8ebd5a35824dcd036b5592347352126d700d1e4a7f6beae9f83de44bf99347e4",
+    "psionic/tests/robotics/panda_query_runtime_reference.py": "a770aaf9b322d1ab981e951142ffad993d1e2c4fcf5bd81b3abd278db3de0504",
+    "psionic/tests/robotics/panda_query_runtime_wiring.py": "70c92b90f13b30fbba9ee26466af1989e6312bc75027c4d10780c4cc8b04db71",
+    "psionic/tests/robotics/run-panda-loop-metal.sh": "d2a4c0582e848abf9aca18ca21349741f051f276080e14009b26b8090a3dee93"
+  },
+  "source125_count": 125,
+  "source_context_unchanged": true,
+  "SDK_library_prior_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "runtime_admission": {
+    "product_entry88_file_preflight_required": true,
+    "standalone_old88_file_gate_repeated": false,
+    "exact_model_reset_then85asset_paths_before_neural_open": true,
+    "actual_loaded_SDK_dylib_symbol_path": true,
+    "immutable_file_and_prior_weight_cache_contract": true
+  },
+  "native_profile": {
+    "target": "Darwin-arm64",
+    "Coax_compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "frozen_linked_binary": true,
+    "no_build_or_emission": true,
+    "flags": [
+      "-std=c11",
+      "-ffp-contract=off",
+      "-fno-fast-math",
+      "-Wno-deprecated-declarations",
+      "-O1",
+      "-g",
+      "-fsanitize=address,undefined",
+      "-DPANDA_OWNED_QUERY_V1=1",
+      "-D_DARWIN_C_SOURCE",
+      "-fno-builtin-sin",
+      "-fno-builtin-cos",
+      "-fno-sanitize-recover=all",
+      "-fno-omit-frame-pointer"
+    ],
+    "fail_fast_ASan_UBSan": true,
+    "SDK_and_GPU_runtime_uninstrumented": true,
+    "scalar_libm_sin_cos": true,
+    "environment": {
+      "PANDA_QUERY_SOURCE": "owned-shadow-v1",
+      "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+      "UBSAN_OPTIONS": "halt_on_error=1",
+      "DYLD_LIBRARY_PATH": "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco"
+    }
+  },
+  "effect_counts": {
+    "source_derived_NOT_runtime_instrumented": true,
+    "definitions": "T=completed actionticks,P=25*T,N=ceil(T/8)",
+    "SDK_model_opens": "1",
+    "SDK_resets": "2",
+    "SDK_steps": "P live +P mandatoryreplay",
+    "explicit_mj_forward": "2 resets +P livecontrol +P replay",
+    "telemetry_sample_calls": "1 initial +N requests +P livecontrol +T postaction",
+    "robot_state_and_owned_sample_paths": "1 initial +P livecontrol",
+    "NN_calls": "N",
+    "OFFSCREENimage_captures": "2*N",
+    "at_full9": {
+      "T": 9,
+      "P": 225,
+      "N": 2,
+      "SDK_steps": 450,
+      "SDK_resets": 2,
+      "explicit_mj_forward": 452,
+      "telemetry_samples": 237,
+      "robot_state_owned_sample_paths": 226,
+      "OFFSCREENimages": 4
+    },
+    "internal_SDK_forward_passes_NOT_separately_counted": true,
+    "model_or_GPU_open_and_compile_are_product_required_lifecycle": true
+  },
+  "acceptance": {
+    "clean_exit_required": true,
+    "complete_native_record_required": true,
+    "exit_zero_alone_insufficient": true,
+    "ticks": "1..9; if<9 source-authoritative success MUST true, else9is prespecified integrationcap",
+    "model_calls": "ceil(completed_ticks/8)",
+    "physics_records": "25*completed_ticks",
+    "no_fallbacks": true,
+    "no_refusals": true,
+    "native_physics_replay_exact": true,
+    "task_success_required": false,
+    "torque_clipping_threshold": null,
+    "torque_clipping_reported": true,
+    "sourcebound_success_not_PTR_successbit": true,
+    "successbit_PTR_always_zero": true,
+    "early_success_does_not_trigger_another_run": true,
+    "firstdecoded_hash_diagnostic_only": true,
+    "partial_timeout_or_refusal_preserved_no_retry": true
+  },
+  "first_decoded_diagnostic": {
+    "bytes": 448,
+    "prior_SHA256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521",
+    "identity_source": "libero-panda/integration-qualification.json",
+    "mismatch_does_not_fail_integration": true,
+    "no_vendor_or_old_model_rerun": true,
+    "all112actualF32finite_required": true,
+    "first8consumed_rows_bind_to_PTR_actions": true,
+    "second_request_full_decoded_array_not_persisted": true
+  },
+  "PTR1": {
+    "record_bytes": 512,
+    "file_seed_bytes": 32,
+    "file_footer_bytes": 32,
+    "full9_trace_bytes": 115264,
+    "epoch": 1,
+    "serial": "floor(tick/8)+1",
+    "tick": "0..T-1",
+    "substep": "1..25",
+    "ordinal": "25*tick+substep",
+    "flags": "fallbackbit0=0,torqueclipbit1allowed,successbit2=0",
+    "reserved_bytes_40_47_zero": true,
+    "action7": "finite F32 abs<=1; gripper in{-1,0,1}; constantall25substepsperactiontick",
+    "control9": "finite F64 first5abs<=80,next2abs<=12,leftfinger[0,.04],rightfinger[-.04,0]",
+    "state45": "ALLfinite F64, fullrecorded SDKstate",
+    "clock": "initial_time+(25*tick+substep)*.002,absoluteerror<=2^-26seconds",
+    "clock_atol_seconds": 1.4901161193847656e-08,
+    "seed": "SHA256(SHA256(xml)||SHA256(init)||SHA256(noise)||SHA256(profileUTF8))",
+    "chain": "SHA256(previous32 || canonicalrecord512)",
+    "source_success_not_encodable_as_PTRflag_here": true
+  },
+  "no_repeated_evidence": {
+    "old_neural_episodes": 0,
+    "old_SDK_model_gates": 0,
+    "old125_source_verification_execution": 0,
+    "old_standalone88_preflight": 0,
+    "new_builds": 0,
+    "new_shader_generation": 0,
+    "new_reference_generation": 0,
+    "original_scalar_or_metric_reruns": 0,
+    "weight_payload_GB_rehash": 0
+  },
+  "scope": "FIRST genuine neural+owned-query integration prefix. One fixed demo000 fullrecorded reset. SDK geometry/contacts/actuation/integration/cameras remain; originalOSC controller, NOT C/D law or ownEuler. Synchronous inference pauses simulation. No tasksuccess threshold, benchmark, globalstability, wall deadline, trainingholdout or hardwareclaim."
+}

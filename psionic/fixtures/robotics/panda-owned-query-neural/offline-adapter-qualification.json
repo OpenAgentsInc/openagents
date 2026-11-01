@@ -1,0 +1,48 @@
+{
+  "schema": "psionic.panda-owned-query-neural.offline-adapter-qualification.v1",
+  "passed": true,
+  "syntax_pass": true,
+  "scoped_shell_change": "Accept parent dispatch OUT and translate to --output; adapter and numerical path unchanged.",
+  "preserved_first_plan": {
+    "record": {
+      "bytes": 1149,
+      "sha256": "44e9992449f0bab96b2ca0a5007c0fa00c19dd548438e7c3fffbd1fecf21a379"
+    },
+    "publication": {
+      "bytes": 4980,
+      "sha256": "c8182d782bf4c776910237be09c9babd292ca5c8bc094aa999a44d628052065b"
+    }
+  },
+  "first_plan_carried_without_repeat": true,
+  "stub": {
+    "argv": [
+      "bash",
+      "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/check-panda-owned-query-neural.sh",
+      "/tmp/panda-owned-query-neural-offline-routing-first/would-be-output"
+    ],
+    "exit": 0,
+    "observed_arguments": [
+      "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_query_neural_cached.py",
+      "--output",
+      "/tmp/panda-owned-query-neural-offline-routing-first/would-be-output"
+    ],
+    "real_python_decoder_calls": 0,
+    "real_NN_SDK_render_calls": 0
+  },
+  "source": {
+    "psionic/tests/robotics/check-panda-owned-query-neural.sh": {
+      "bytes": 319,
+      "sha256": "d53dbf8173698cf85114e0b61bb9407fd3c15655508dc5cadc6d1463251efb2e"
+    },
+    "psionic/tests/robotics/panda_owned_query_neural_cached.py": {
+      "bytes": 8340,
+      "sha256": "51d503186e9436ff8152b88fb3fdf84c4376770d6b7cf9254d20c3e86a241051"
+    }
+  },
+  "numeric_adapter_path_executed": false,
+  "underlying_numerical_evidence_carried_byte_exact": true,
+  "current_publication": {
+    "bytes": 4980,
+    "sha256": "9a9c542595cdc86b5e383a6ea9014a3d2b3a0293bd1fb331b02199f20a57add2"
+  }
+}

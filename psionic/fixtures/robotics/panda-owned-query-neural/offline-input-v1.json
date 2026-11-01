@@ -1,0 +1,21 @@
+{
+  "schema": "psionic.panda-owned-query-neural.offline-input.v1",
+  "experiment": {
+    "bytes": 28719,
+    "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+  },
+  "execution": {
+    "bytes": 12788,
+    "sha256": "e00dca003389010e3455d06cbfd2d983623693d4432d6efc87df13d64863c9de"
+  },
+  "initial_time_u64_hex": "3fd0000000000003",
+  "initial_time_source": "Exact first64 bits of the hash-admitted original45F64 reset; copied after the successful audit, no value fitted to output.",
+  "seed_input_sha256": {
+    "xml": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+    "reset": "e1c2d3ee5192158b0f896456c1e312ea8ed5eef001862cae3d8c551ffb26eddc",
+    "noise": "59e012a91bd82498415471c884fd6bc7f0e2a5fa920ddc48bf79d1a9c1e899a0",
+    "profile": "afd8e16280706c58471c0fc1378ddc9437b437c135f7b587b9cbcb27c4b2c929"
+  },
+  "private_files_required_by_offline_gate": false,
+  "private_admission_source125_and_prior_weight_hashes": "Carried measured invocation and frozen experiment; not freshly reexecuted by the cached gate."
+}

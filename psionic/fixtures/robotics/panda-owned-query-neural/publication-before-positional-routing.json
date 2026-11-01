@@ -1,0 +1,106 @@
+{
+  "schema": "psionic.panda-owned-query-neural.core-publication.v1",
+  "passed": true,
+  "published_utc": "2026-11-01T03:30:41.930944+00:00",
+  "experiment": {
+    "bytes": 28719,
+    "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+  },
+  "private_execution_receipt": {
+    "bytes": 12788,
+    "sha256": "e00dca003389010e3455d06cbfd2d983623693d4432d6efc87df13d64863c9de"
+  },
+  "private_preparation_receipt": {
+    "bytes": 9988,
+    "sha256": "5de66520daef9f3e01b671a0395dc2026b6873a313e150bdbbb72b6eccc82b52"
+  },
+  "byte_exact_copies_no_effect_repetition": true,
+  "actual_binary_executions": 1,
+  "SDK_NN_render_repeated_during_packaging": 0,
+  "artifacts": {
+    "psionic/fixtures/robotics/panda-owned-query-neural/preparation.json": {
+      "bytes": 9988,
+      "sha256": "5de66520daef9f3e01b671a0395dc2026b6873a313e150bdbbb72b6eccc82b52"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/prelaunch-audit-contract.json": {
+      "bytes": 2073,
+      "sha256": "1cce08104e8d640f2c90cd54da48338c019356f15b548eab9d8f658e898d8990"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/prelaunch-verified.json": {
+      "bytes": 2193,
+      "sha256": "0587e19df747fdd170e26e5e37ca98bac188f5a8b6843b5c462f90dbc79f29d9"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/launch-once.json": {
+      "bytes": 1189,
+      "sha256": "bdba2ad21188cbc652889dd1d4b08b2f72feb4c81209a1c4a1f23b0fbe9bccdd"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/launch-authorized.py": {
+      "bytes": 1031,
+      "sha256": "6c6aefe5a3d4258181c39646967474334c13241cf748fe731dba6be74a676f67"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/stdout.txt": {
+      "bytes": 97,
+      "sha256": "11e5ddc8de98b94ded1a5f33fd587b4c377ed408a68d4782fd2e95fa36ce58b0"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/stderr.txt": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/episode/demo_000-fault0/record.json": {
+      "bytes": 943,
+      "sha256": "acc7262723be3f42d571e09ad7b1551d0f03b0628603612eecfda8f708bf06b0"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/episode/demo_000-fault0/physics.ptr": {
+      "bytes": 115264,
+      "sha256": "25c0cb31b2be085389901e9347c795f0030ced92f1949531b030005b633c4d90"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/episode/demo_000-fault0/first-decoded.f32": {
+      "bytes": 448,
+      "sha256": "a2b47687df04b712ce431128fdd2abfdf72b07415ff72a2b95a649bb4e676521"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/execution.json": {
+      "bytes": 12788,
+      "sha256": "e00dca003389010e3455d06cbfd2d983623693d4432d6efc87df13d64863c9de"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/offline-input-v1.json": {
+      "bytes": 1070,
+      "sha256": "0b848d344aa65393b1866c7551fa9f130d8be9519c78143a83ba7558906899f7"
+    },
+    "psionic/tests/robotics/panda_owned_query_neural_run.py": {
+      "bytes": 12586,
+      "sha256": "32d9de4df5bb7818411776ce15537e7e4ee29f14f24eeaec195e4526cf267d55"
+    },
+    "psionic/tests/robotics/panda_owned_query_neural_cached.py": {
+      "bytes": 8340,
+      "sha256": "51d503186e9436ff8152b88fb3fdf84c4376770d6b7cf9254d20c3e86a241051"
+    },
+    "psionic/tests/robotics/check-panda-owned-query-neural.sh": {
+      "bytes": 222,
+      "sha256": "7c082a91b29e01d52e20be06927b51bb73e00bae4872b30c32f09ff9577951b2"
+    }
+  },
+  "independent_bindings": {
+    "psionic/fixtures/robotics/panda-owned-query-neural/independent-qualification.json": {
+      "bytes": 4406,
+      "sha256": "b3089434fef53120dcdb3fd333c63bba4971a59e7da3cc6b37bbc9f5d0a6e53b"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/reader-qualification.json": {
+      "bytes": 545,
+      "sha256": "0d382f2c9ffedd0fb72afd6e05b2b740bbfdfb0bba9b729f01608c916e93b91e"
+    },
+    "psionic/fixtures/robotics/panda-owned-query-neural/observations.json": {
+      "bytes": 663,
+      "sha256": "dd91a75b5fc9574ad9cfb89a7848e8a47c0ade0d8f0637aca73a00f4bf837746"
+    },
+    "psionic/tests/robotics/panda_owned_query_neural_audit.py": {
+      "bytes": 17083,
+      "sha256": "523ad47b3a0a932cf01fdcf3e37e33cac8b2e7b6df05d38aa1149870b832cf9e"
+    }
+  },
+  "offline_adapter_scope": {
+    "numeric_path_executed_during_publication": false,
+    "validation_record": "offline-adapter-qualification.json",
+    "validation": "Syntax, metadata plan, and stub routing only; underlying numerical evidence carried unchanged."
+  },
+  "scope": "FIRST genuine neural+owned-query integration prefix. One fixed demo000 fullrecorded reset. SDK geometry/contacts/actuation/integration/cameras remain; originalOSC controller, NOT C/D law or ownEuler. Synchronous inference pauses simulation. No tasksuccess threshold, benchmark, globalstability, wall deadline, trainingholdout or hardwareclaim."
+}

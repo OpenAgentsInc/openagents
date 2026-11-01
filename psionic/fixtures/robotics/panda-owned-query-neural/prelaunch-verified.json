@@ -1,0 +1,57 @@
+{
+  "schema": "psionic.panda-owned-query-neural.prelaunch-verified.v1",
+  "passed": true,
+  "verified_utc": "2026-11-01T03:27:29.030467+00:00",
+  "contract": {
+    "bytes": 2073,
+    "sha256": "1cce08104e8d640f2c90cd54da48338c019356f15b548eab9d8f658e898d8990"
+  },
+  "launcher": {
+    "bytes": 1031,
+    "sha256": "6c6aefe5a3d4258181c39646967474334c13241cf748fe731dba6be74a676f67"
+  },
+  "targets": {
+    "driver": {
+      "path": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_query_neural_run.py",
+      "identity": {
+        "bytes": 12586,
+        "sha256": "32d9de4df5bb7818411776ce15537e7e4ee29f14f24eeaec195e4526cf267d55"
+      }
+    },
+    "independent_auditor": {
+      "path": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_query_neural_audit.py",
+      "identity": {
+        "bytes": 17083,
+        "sha256": "523ad47b3a0a932cf01fdcf3e37e33cac8b2e7b6df05d38aa1149870b832cf9e"
+      }
+    },
+    "reader_guards": {
+      "path": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/panda-owned-query-neural/reader-qualification.json",
+      "identity": {
+        "bytes": 545,
+        "sha256": "0d382f2c9ffedd0fb72afd6e05b2b740bbfdfb0bba9b729f01608c916e93b91e"
+      }
+    },
+    "preparation": {
+      "path": "/private/tmp/panda-owned-query-neural-first/preparation.json",
+      "identity": {
+        "bytes": 9988,
+        "sha256": "5de66520daef9f3e01b671a0395dc2026b6873a313e150bdbbb72b6eccc82b52"
+      }
+    },
+    "launcher": {
+      "path": "/private/tmp/panda-owned-query-neural-first/launch-authorized.py",
+      "identity": {
+        "bytes": 1031,
+        "sha256": "6c6aefe5a3d4258181c39646967474334c13241cf748fe731dba6be74a676f67"
+      }
+    },
+    "experiment": {
+      "path": "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/panda-owned-query-neural/experiment.json",
+      "identity": {
+        "bytes": 28719,
+        "sha256": "bfdd85bf14ed244f9c0b303c1f742a19086e821a229c207f242bc575836845bc"
+      }
+    }
+  }
+}
