@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-quintic.coax";
+main :: () {q:[7]pfku.Quantity(pfku.Radian,f64);v:[7]pfku.Quantity(PqtRate,f64);a:[7]pfku.Quantity(PqtRate,f64);out:[1]PqtTiming;status:=pqt_time(q[..],q[..],v[..],a[..],out[..]);}

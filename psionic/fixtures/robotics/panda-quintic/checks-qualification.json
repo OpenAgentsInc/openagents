@@ -1,0 +1,71 @@
+{
+  "schema": "psionic.panda-quintic.source-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_inventory": {
+    "psionic/lib/robotics/panda-quintic-types.coax": "181e9e03c4cb9f4e33fa514c2b3ca5d24f5bb73483928967c76bde1326a65eb4",
+    "psionic/lib/robotics/panda-quintic-fixtures.coax": "7cf0b3b8997c25d5ef8016b357784864bd870d10a9b5e738482445c4464664c1",
+    "psionic/lib/robotics/panda-quintic-math.coax": "d7d834285ae9f415a35337fea21c478018c0b0500b38982ce8554fd7faf70fd9",
+    "psionic/lib/robotics/panda-quintic.coax": "24c2071b031738094307cbfa1d08b86579c0db2299ab7d5f407f83944195882c"
+  },
+  "checks": {
+    "new_unique_groups": 13,
+    "new_unique_cases": 13,
+    "first_math_five_stdout_sha256": "3f47a8afdaebf54aebfd63e7a8a9e8bf2bc2f329b28f5a123f3f7f6d002419c9",
+    "independent_dense_stdout_sha256": "5569e86fe3cdc4b62f5d0beba004c803e7457f1e2ba03d065630a0f4b5865910",
+    "independent_half_stdout_sha256": "6157452bca05121072caf6470f3110cf18766ce2369dac717ddb8111251eeec4",
+    "public_first_four_stdout_sha256": "48712ebadc33fc9f56549c0ffde0c0adc0ffdfb68e77a4946bde3e3ceb79e91e",
+    "new_exact_boundaries_qualified_in_changed_root_baselines": true
+  },
+  "mutations": [
+    {
+      "root": "psionic/lib/robotics/panda-quintic-math.coax",
+      "root_only": true,
+      "emitted_sites": 107,
+      "killed": 107,
+      "survivors": 0,
+      "stdout_sha256": "07d1ecec328d12041b7f77fa4c391d369098a143211a0d89768cf6b650e3896d"
+    },
+    {
+      "root": "psionic/lib/robotics/panda-quintic.coax",
+      "root_only": true,
+      "emitted_sites": 89,
+      "killed": 89,
+      "survivors": 0,
+      "stdout_sha256": "005329f3dedb5d1546db78cf7b8a7890e35f48032b2e834a0d7762853ea52d9f"
+    }
+  ],
+  "history": {
+    "first_math_compile": {
+      "diagnostic": "E0315",
+      "stderr_sha256": "cd5f84df41e971e36ab8e688a054da24c920fb95f073c992d185f9edec8e8432",
+      "fix": "Use already loaded pm_finite_bits rather than unavailable pfk_finite; no numerical change."
+    },
+    "first_public_compile": {
+      "diagnostic": "E0380",
+      "stderr_sha256": "1df7503ce76f5f1faf71a67cd8917f1392b2cd534273824e4fa67454f3afc02f",
+      "fix": "Add meaningful raw-adapter checks before authority execution."
+    },
+    "first_math_mutation": {
+      "emitted_sites": 108,
+      "killed": 103,
+      "survivors": 5,
+      "stdout_sha256": "00bd1b2537f49dfb7e1e23b49aa58d5988c767b33dd3ec985bb24a8e60f36e79"
+    },
+    "first_public_mutation": {
+      "emitted_sites": 89,
+      "killed": 86,
+      "survivors": 3,
+      "stdout_sha256": "c99fdd60ad38c6257225439a29fa150065b8c48ea3e25ca15de74c6987c57f10"
+    },
+    "closure": "Exact per-role/tick endpoints and one independently observable strict-half policy reused by basis and sampler; no equivalence waiver or input/budget change."
+  },
+  "unit_refusals": {
+    "file": "unit-refusals.json",
+    "sha256": "5e7f52b97d01bfc10a765ebb5e686b2cd9ec8bce5ecb9c561eb63a49594f2cd7",
+    "count": 4,
+    "passed": true
+  },
+  "scope": "New timing/sampler roots only. Counts describe actual emitted sites, not full authored Quantity-token provenance. No SDK/NN/old gates.",
+  "ceil_policy": "After finite admitted R<=999999, floor(R) plus one iff R>floor(R), then reserve one. Exactly ceil(R)+1 for this nonnegative finite domain; Coax has no ceil intrinsic."
+}

@@ -1,0 +1,60 @@
+// Fixed500Hz reserve-tick policy; low-level helpers trust admitted finite inputs.
+// Timing PODs are unsealed values, never accepted as public admission tickets.
+#load "panda-quintic-fixtures.coax";
+#authority;
+#test "Panda quintic admission orders all four spans before zero-edge handling" {
+ x:=pqt_fixture();w:=pqt_words(x);#assert pqt_admit(w)==PqtStatus.ok;lo:=pik_lower();hi:=pik_upper();for i:0..<28 {old:=w[i];w[i]=0x7ff8000000000001;#assert pqt_admit(w)==PqtStatus.number;w[i]=f64_bits(ifx i<14 then hi[i%7]+1 else 0.0);#assert pqt_admit(w)==(ifx i<14 then PqtStatus.limits else PqtStatus.range);w[i]=old;}
+ w[0]=f64_bits(hi[0]+1);w[14]=0x7ff8000000000001;#assert pqt_admit(w)==PqtStatus.limits;
+}
+#test "Panda quintic exact literal extrema constants and half interval coefficients are observable" {
+ a:=pqt_basis(1,4);#assert a[0]==0.103515625 && a[1]==1.0546875 && a[2]==5.625;b:=pqt_basis(3,4);#assert b[0]==a[0] && b[1]==a[1] && b[2]== -a[2];mid:=pqt_basis(2,4);#assert mid[0]==0.5 && mid[1]==1.875 && mid[2]==0;
+ #assert pqt_cv().value==1.875 && pqt_ca().value==5.773502691896258;
+}
+#test "Panda quintic reserve grid handles fractional integer zero-estimate and duration cap before cast" {
+ t:pfku.Quantity(pfku.Second,f64);t.value=0.9375;p:=pqt_quantize(t);#assert p.status==PqtStatus.ok && p.timing.steps==470 && p.timing.total_nanoseconds==940000000 && p.timing.duration.value==0.94 && p.timing.required_estimate.value==0.9375;
+ t.value=1;p=pqt_quantize(t);#assert p.timing.steps==501;t.value=0;p=pqt_quantize(t);#assert p.timing.steps==1;t.value=1999.998;p=pqt_quantize(t);#assert p.status==PqtStatus.ok && p.timing.steps==1000000 && p.timing.total_nanoseconds==2000000000000;t.value=2000;#assert pqt_quantize(t).status==PqtStatus.duration;
+}
+#test "Panda quintic numeric-zero target wins signed zeros and endpoints publish exact derivatives" {
+ x:=pqt_fixture();x.q1=x.q0;x.q1[0].value=f64_from_bits(0x8000000000000000);p:=pqt_plan_owned(x);#assert p.status==PqtStatus.ok && p.timing.steps==0 && p.timing.total_nanoseconds==0 && p.timing.duration.value==0 && p.timing.required_estimate.value==0;s:=pqt_sample_owned(x,p.timing,0);#assert f64_bits(s.angle[0].value)==0x8000000000000000;
+ x=pqt_fixture();p=pqt_plan_owned(x);first:=pqt_sample_owned(x,p.timing,0);last:=pqt_sample_owned(x,p.timing,p.timing.steps);for i:0..<7 {#assert f64_bits(first.angle[i].value)==f64_bits(x.q0[i].value) && f64_bits(last.angle[i].value)==f64_bits(x.q1[i].value) && f64_bits(first.rate[i].value)==0 && f64_bits(last.rate[i].value)==0 && f64_bits(first.acceleration[i].value)==0 && f64_bits(last.acceleration[i].value)==0;}
+}
+#test "Panda quintic nonzero subnormal edge retains reserve work despite underflowed estimate" {
+ x:=pqt_fixture();x.q1=x.q0;x.q1[0].value=f64_from_bits(1);for i:0..<7 {x.vlim[i].value=20;x.alim[i].value=100;}p:=pqt_plan_owned(x);#assert p.status==PqtStatus.ok && p.timing.steps==1;first:=pqt_sample_owned(x,p.timing,0);last:=pqt_sample_owned(x,p.timing,1);#assert f64_bits(first.angle[0].value)==0 && f64_bits(last.angle[0].value)==1;
+}
+
+#test "Panda quintic independent dense edge observes all coordinates derivatives and selected time" {
+ words:=[28]f64.[0.028771497922223332,0.4629753503959626,0.9877187830970251,-2.5718369793383404,2.283177250511479,3.215206956625916,1.354698062203434,0.6987064662988667,1.3195679747519642,0.17667229781204874,-2.460783275076188,-1.3582579483261517,2.1067665759725496,0.1425860246152615,2.5122745840635616,0.7478672803321389,2.6806237336772027,1.6161279264546466,0.8826108008914162,1.0891826648672578,1.9710670525266325,5.486416818608995,18.607633621024434,7.5056741779553695,4.163699645653832,9.305320428626146,28.83909741869429,3.0834905979107132];x:PqtEdge;for i:0..<7 {x.q0[i].value=words[i];x.q1[i].value=words[7+i];x.vlim[i].value=words[14+i];x.alim[i].value=words[21+i];}p:=pqt_plan_owned(x);#assert p.status==PqtStatus.ok && p.timing.steps==3869 && p.timing.total_nanoseconds==7738000000 && abs(p.timing.duration.value-7.738)<2e-12 && abs(p.timing.required_estimate.value-7.735789082713184)<2e-12;
+ sample:=pqt_sample_owned(x,p.timing,967);expected:=[21]f64.[0.09807458676444057,0.5515877046535429,0.9038180624627917,-2.5603487527252606,1.9064799306063314,3.1005415849065323,1.2293081181149104,0.0912805024405122,0.1167131271375784,-0.11050733903145397,0.015131376031158553,-0.4961556721839777,-0.15102808428788891,-0.1651536358422141,0.0629412131071005,0.08047792914319127,-0.07619881343674954,0.010433631913907322,-0.34211730941753143,-0.104139335172001,-0.11387941467271949];for i:0..<7 {#assert abs(sample.angle[i].value-expected[i])<=2e-12 && abs(sample.rate[i].value-expected[7+i])<=2e-10+2e-12*abs(expected[7+i]) && abs(sample.acceleration[i].value-expected[14+i])<=2e-10+2e-12*abs(expected[14+i]);}
+}
+#test "Panda quintic owned analytic sampler has exact opposite half anchors and physical derivatives" {
+ x:=pqt_fixture();t:PqtTiming;t.steps=4;t.duration.value=0.008;first:=pqt_sample_owned(x,t,1);second:=pqt_sample_owned(x,t,3);#assert first.angle[0].value==0.103515625 && second.angle[0].value==0.896484375 && first.rate[0].value==131.8359375 && second.rate[0].value==131.8359375 && first.acceleration[0].value==87890.625 && second.acceleration[0].value== -87890.625;
+ x.vlim[0].value=20;x.alim[0].value=5.773502691896258;p:=pqt_plan_owned(x);#assert p.status==PqtStatus.ok && p.timing.required_estimate.value==1 && p.timing.steps==501;
+}
+
+#test "Panda quintic exact role endpoints and stable-half midpoint policy are independently observable" {
+ x:=pqt_fixture();w:=pqt_words(x);lo:=pik_lower();hi:=pik_upper();for i:0..<28 {old:=w[i];w[i]=f64_bits(ifx i<14 then lo[i%7] else 0.001);#assert pqt_admit(w)==PqtStatus.ok;w[i]=f64_bits(ifx i<14 then hi[i%7] else ifx i<21 then 20.0 else 100.0);#assert pqt_admit(w)==PqtStatus.ok;w[i]=old;}
+ #assert !pqt_second_half(1,4) && !pqt_second_half(2,4) && pqt_second_half(3,4);mid:=pqt_basis(2,4);#assert f64_bits(mid[2])==0;
+}
+
+pqt_cv :: ()->pfku.Quantity(UnitOne,f64) {x:pfku.Quantity(UnitOne,f64);x.value=1.875;return x;}
+pqt_ca :: ()->pfku.Quantity(UnitOne,f64) {x:pfku.Quantity(UnitOne,f64);x.value=5.773502691896258;return x;}
+pqt_words :: (x:PqtEdge)->[28]u64 {w:[28]u64;for i:0..<7 {w[i]=f64_bits(x.q0[i].value);w[7+i]=f64_bits(x.q1[i].value);w[14+i]=f64_bits(x.vlim[i].value);w[21+i]=f64_bits(x.alim[i].value);}return w;}
+pqt_admit :: (words:[28]u64)->PqtStatus {lo:=pik_lower();hi:=pik_upper();for i:0..<28 {if !pm_finite_bits(words[i]) {return PqtStatus.number;}value:=f64_from_bits(words[i]);if i<14 {if value<lo[i%7] || value>hi[i%7] {return PqtStatus.limits;}}else {upper:=ifx i<21 then 20.0 else 100.0;if value<0.001 || value>upper {return PqtStatus.range;}}}return PqtStatus.ok;}
+pqt_quantize :: (required:pfku.Quantity(pfku.Second,f64))->PqtPlan {
+ out:PqtPlan;out.status=PqtStatus.duration;scaled:=required.value*500;if scaled>999999 {return out;}
+ integral:=floor(scaled);ticks:=cast(int)integral;if pik_greater(scaled,integral) {ticks+=1;}out.timing.steps=ticks+1;out.timing.total_nanoseconds=out.timing.steps*2000000;out.timing.duration.value=f64(out.timing.steps)/500;out.timing.required_estimate=required;out.status=PqtStatus.ok;return out;
+}
+pqt_plan_owned :: (x:PqtEdge)->PqtPlan {
+ same:=true;for i:0..<7 {if x.q0[i].value!=x.q1[i].value {same=false;}}if same {return PqtPlan.{};}
+ required:pfku.Quantity(pfku.Second,f64);for i:0..<7 {distance:pfku.Quantity(pfku.Radian,f64);distance.value=abs(x.q1[i].value-x.q0[i].value);velocity:=convert_unit(pfku.Second,(pqt_cv()*distance)/x.vlim[i]);squared:=convert_unit(UnitProduct(pfku.Second,pfku.Second),(pqt_ca()*distance)/x.alim[i]);acceleration:pfku.Quantity(pfku.Second,f64);acceleration.value=sqrt(squared.value);if pik_greater(velocity.value,required.value) {required=velocity;}if pik_greater(acceleration.value,required.value) {required=acceleration;}}
+ return pqt_quantize(required);
+}
+pqt_second_half :: (tick:int,steps:int)->bool {return tick>steps-tick;}
+pqt_basis :: (tick:int,steps:int)->[3]f64 {
+ remaining:=steps-tick;second:=pqt_second_half(tick,steps);near:=ifx second then remaining else tick;v:=f64(near)/f64(steps);v2:=v*v;v3:=v2*v;inner:= -15+6*v;b:=v3*(10+v*inner);w:=1-v;first:=(30*v2)*(w*w);second_derivative:=((60*v)*w)*(1-2*v);return [3]f64.[b,first,ifx second then -second_derivative else second_derivative];
+}
+pqt_sample_owned :: (x:PqtEdge,timing:PqtTiming,tick:int)->PqtSample {
+ out:PqtSample;if tick==timing.steps {out.angle=x.q1;return out;}if tick==0 {out.angle=x.q0;return out;}
+ basis:=pqt_basis(tick,timing.steps);b:pfku.Quantity(UnitOne,f64);b.value=basis[0];first:pfku.Quantity(UnitOne,f64);first.value=basis[1];second:pfku.Quantity(UnitOne,f64);second.value=basis[2];second_half:=pqt_second_half(tick,timing.steps);
+ for i:0..<7 {distance:=x.q1[i]-x.q0[i];out.angle[i]=ifx second_half then x.q1[i]-convert_unit(pfku.Radian,distance*b) else x.q0[i]+convert_unit(pfku.Radian,distance*b);out.rate[i]=convert_unit(PqtRate,(distance*first)/timing.duration);out.acceleration[i]=convert_unit(PqtAcceleration,(distance*second)/(timing.duration*timing.duration));}return out;
+}

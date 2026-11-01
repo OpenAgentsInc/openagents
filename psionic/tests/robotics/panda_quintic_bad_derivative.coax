@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-quintic.coax";
+consume_angle :: (angle:pfku.Quantity(pfku.Radian,f64)) {}
+main :: () {sample:PqtSample;consume_angle(sample.rate[0]);}

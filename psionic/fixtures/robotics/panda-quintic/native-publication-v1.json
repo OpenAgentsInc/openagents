@@ -1,0 +1,86 @@
+{
+  "schema": "psionic.panda-quintic.native-publication.v1",
+  "passed": true,
+  "original_native_receipt": {
+    "bytes": 24306,
+    "sha256": "81dc5c4774a50989c85ecffaa763657fbf2379f0e4518db0385655674cb58b05"
+  },
+  "original_independent_reference": {
+    "bytes": 2408,
+    "sha256": "0f23456968a3ccc8196f386477128e3a60baafdfe8f770f13c8dd185eb1e439b"
+  },
+  "native_or_oracle_or_old_gate_repeated": false,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "motion_executed": false,
+  "edges": 27,
+  "timing_ok": 25,
+  "duration_refusal_markers": 2,
+  "sample_queries": 238,
+  "published_samples": 236,
+  "unavailable_sample_markers": 2,
+  "all_actual_timing_finite_words": 54,
+  "all_actual_sample_finite_words": 4998,
+  "assertions_each_profile": 26756,
+  "complete_mode_bytes_exact": true,
+  "timing_file_byte_exact_to_independent_oracle": true,
+  "exact_policy": "All27statuses,N/ns exact; operation-rounded Fraction arithmetic and rational sqrt-midpoint certificates precede product calls. Near-grid/capIEEEneighbors and genuinely nonzero underflowing-estimate edge are observed; no epsilon correction.",
+  "primary_oracle": "Original cached Decimal80 direct polynomial/derivative targets, independent real extrema/reserve and specified Fraction-RN timing policy; no product sampler or recurrence oracle.",
+  "metrics": {
+    "time": {
+      "passed": true,
+      "values": 50,
+      "max_abs_error": 0.0,
+      "maximum_budget_fraction": 0.0,
+      "atol": 2e-12,
+      "rtol": 2e-12
+    },
+    "position": {
+      "passed": true,
+      "values": 1652,
+      "max_abs_error": 4.440892098500626e-16,
+      "maximum_budget_fraction": 0.0002220446049250313,
+      "atol": 2e-12,
+      "rtol": 0
+    },
+    "rate": {
+      "passed": true,
+      "values": 1652,
+      "max_abs_error": 4.440892098500626e-16,
+      "maximum_budget_fraction": 2.1700978348013183e-06,
+      "atol": 2e-10,
+      "rtol": 2e-12
+    },
+    "acceleration": {
+      "passed": true,
+      "values": 1652,
+      "max_abs_error": 1.4210854715202004e-14,
+      "maximum_budget_fraction": 5.298911567521749e-05,
+      "atol": 2e-10,
+      "rtol": 2e-12
+    }
+  },
+  "exact_endpoint_samples": 47,
+  "guards": {
+    "passed": true,
+    "SDK_calls": 0,
+    "edges": 27,
+    "samples": 238,
+    "time_record_bytes": 40,
+    "sample_record_bytes": 176,
+    "assertions": 26756,
+    "alias_cases": 24,
+    "source_and_limit_endpoints": 56,
+    "tick_refusals": 10,
+    "duration_refused_edges": 2,
+    "nonfinite_role_patterns": 140,
+    "fpcr": 0
+  },
+  "reader_poison_cases": 20,
+  "finite_scope": "4998serializedsample words include42unavailablezero transportwords;236successpayloads contain4956numericfields.54timing words include4unavailablezero markers;25successplans contain50floatingfields.",
+  "failure_scope": "Failed transport zeros follow full actual output/spare/canary/input atomicity assertions. They are never published plans or samples.",
+  "source_scope": "Typed q/limits/time/derivatives, raw adapters and source-visible helpers; low-level helpers/PODs remain unsealed/trusted. Samples recompute admission/timing instead of treating a mutable plan as an admission certificate.",
+  "omissions": "Pure rest-to-rest QUERY. No executed motion, collision/RRT clearance,tracking,jerk bound,global/grid-minimal-time guarantee,R13 clocks,R14 certificate or hardware claim.",
+  "reused_tooling_scope": "Only authored Run/source-inventory utility definitions imported from an earlier native driver; no earlier model/gate/corpus/generator invoked.",
+  "post_execution_packaging": "Native receipt copied verbatim; thin shell gate syntax only. No measured Coax/C/driver/reference inputs changed, no numerical rerun."
+}

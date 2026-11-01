@@ -1,0 +1,43 @@
+{
+  "schema": "psionic.panda-quintic.unit-refusals.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "checks": [
+    {
+      "name": "q",
+      "source_sha256": "cc55b9f30528ce4d2552e0cbf4cef02e9a164231689e259ad2675359041aec22",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "1c1994273af056cb296b27b380804af03b046fd047ef91ca5541aa49e27c82d6"
+    },
+    {
+      "name": "velocity",
+      "source_sha256": "eb5fe6565353e71c9bbd4cdc5211e6a332f28972a6c6a929752ba27c18974b60",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "b36e44d138b7aca97304cb87fa30b71bf28bc7e147dd8d003e9421b006093b79"
+    },
+    {
+      "name": "acceleration",
+      "source_sha256": "7a931b540e705440f759e3a66126be67189cf57b4937a900124f55cc5492f971",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "c15f2550005d84568277c6f3a63431b6dfa460b2590ca06f4ffb5309af08a254"
+    },
+    {
+      "name": "derivative",
+      "source_sha256": "01b058ed93aab9e995b61b302f6113e37bf36769e437676ab414e72348b12c01",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "4ac81c82dcd784e7fe505c72b18f2392ab6d5331e6d2ce2599a7f6024a65699d"
+    }
+  ]
+}

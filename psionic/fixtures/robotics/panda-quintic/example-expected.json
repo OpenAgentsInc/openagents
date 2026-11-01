@@ -1,0 +1,16 @@
+{
+  "schema": "psionic.panda-quintic.example-expected.v1",
+  "source": "Independent frozen edge3 timing and analytic midpoint supplied before own example execution; exact endpoint/zero-edge contract.",
+  "steps": 5626,
+  "total_nanoseconds": 11252000000,
+  "duration": 11.252,
+  "required_estimate": 11.25,
+  "midpoint": {
+    "tick": 2813,
+    "angle": 0.15,
+    "rate": 0.04999111269107714,
+    "acceleration": 0
+  },
+  "expected_sha256": "99996158989a072de4c9b4ca08bb5e172d6b52db04161c416bbb11ebb8bcc9cf",
+  "generated_before_example_execution": true
+}

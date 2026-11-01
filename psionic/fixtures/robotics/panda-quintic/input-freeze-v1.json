@@ -1,0 +1,15 @@
+{
+  "schema": "psionic.panda-quintic.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 21228,
+    "sha256": "642fbb94e348acf85f4594737ecbabf7e2619260cc2fe66954650613a45ffd99"
+  },
+  "edges": {
+    "bytes": 6048,
+    "sha256": "d3a7100985b8d9a0faf53ad5aa91b3d2811d18b012135c9c5fb442ce8f9e8f00"
+  },
+  "construction_policy_probes_only": true,
+  "full_expected_generated": false,
+  "product_comparisons": 0
+}

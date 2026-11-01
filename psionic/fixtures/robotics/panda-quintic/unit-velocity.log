@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_quintic_bad_velocity.coax:2:176: error[E0317]: argument 3 of 'pqt_time' is [] Quantity(PqtRate, f64), given [] Quantity(PqtAcceleration, f64)
+  main :: () {q:[7]pfku.Quantity(pfku.Radian,f64);v:[7]pfku.Quantity(PqtAcceleration,f64);a:[7]pfku.Quantity(PqtAcceleration,f64);out:[1]PqtTiming;status:=pqt_time(q[..],q[..],v[..],a[..],out[..]);}
+                                                                                                                                                                                 ^
+1 error

@@ -1,0 +1,6 @@
+#load "panda-quintic-types.coax";
+pqt_fixture :: ()->PqtEdge {x:PqtEdge;x.q0=pik_home();x.q1=x.q0;x.q1[0].value=1;for i:0..<7 {x.vlim[i].value=2;x.alim[i].value=100;}return x;}
+pqt_timing_poison :: ()->PqtTiming {x:PqtTiming;x.steps=101;x.total_nanoseconds=103;x.duration.value=107;x.required_estimate.value=109;return x;}
+pqt_sample_poison :: ()->PqtSample {x:PqtSample;for i:0..<7 {x.angle[i].value=101+f64(i);x.rate[i].value=211+f64(i);x.acceleration[i].value=307+f64(i);}return x;}
+pqt_timing_same :: (a:PqtTiming,b:PqtTiming) {#assert a.steps==b.steps && a.total_nanoseconds==b.total_nanoseconds && f64_bits(a.duration.value)==f64_bits(b.duration.value) && f64_bits(a.required_estimate.value)==f64_bits(b.required_estimate.value);}
+pqt_sample_same :: (a:PqtSample,b:PqtSample) {for i:0..<7 {#assert f64_bits(a.angle[i].value)==f64_bits(b.angle[i].value) && f64_bits(a.rate[i].value)==f64_bits(b.rate[i].value) && f64_bits(a.acceleration[i].value)==f64_bits(b.acceleration[i].value);}}

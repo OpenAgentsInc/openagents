@@ -1,0 +1,748 @@
+{
+  "schema": "psionic.panda-quintic.native.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false,
+  "oracle_regenerated": false,
+  "motion_executed": false,
+  "experiment": {
+    "bytes": 21228,
+    "sha256": "642fbb94e348acf85f4594737ecbabf7e2619260cc2fe66954650613a45ffd99"
+  },
+  "reference": {
+    "bytes": 2408,
+    "sha256": "0f23456968a3ccc8196f386477128e3a60baafdfe8f770f13c8dd185eb1e439b"
+  },
+  "compiler": {
+    "bytes": 2886376,
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818"
+  },
+  "commands": [
+    {
+      "name": "emit-debug",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-quintic.coax",
+        "--library",
+        "--header",
+        "/private/tmp/panda-quintic-native-first/debug/panda-quintic.h"
+      ],
+      "exit": 0,
+      "seconds": 0.03800579201197252,
+      "stdout": {
+        "bytes": 89795,
+        "sha256": "2d9de0c9d94ec16f9110c96f4d16c9a873437c55cdb1b83e9f08a832e6bbdd72"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "emit-release",
+      "argv": [
+        "/private/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "c",
+        "psionic/lib/robotics/panda-quintic.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/panda-quintic-native-first/release/panda-quintic.h"
+      ],
+      "exit": 0,
+      "seconds": 0.03627279098145664,
+      "stdout": {
+        "bytes": 89403,
+        "sha256": "b5ec61dd43abf9871c8bd499994cdc37439d526145724931740de80439f279bc"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-Wno-unused-parameter",
+        "-O0",
+        "-g",
+        "-c",
+        "/private/tmp/panda-quintic-native-first/debug/panda-quintic.c",
+        "-o",
+        "/private/tmp/panda-quintic-native-first/native-debug/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.08092445903457701,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-g",
+        "-I/private/tmp/panda-quintic-native-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_quintic_native.c",
+        "/private/tmp/panda-quintic-native-first/native-debug/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-quintic-native-first/native-debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.13777029095217586,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/panda-quintic-native-first/native-debug/native",
+        "/private/tmp/panda-quintic-native-first/input.bin",
+        "/private/tmp/panda-quintic-native-first/native-debug/timing.bin",
+        "/private/tmp/panda-quintic-native-first/native-debug/sample.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.24171654199017212,
+      "stdout": {
+        "bytes": 257,
+        "sha256": "e709edce2de6bcebbb17c43d3261d2199c40da797a36b57a42c6f4e180e10cbc"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-Wno-unused-parameter",
+        "-O2",
+        "-c",
+        "/private/tmp/panda-quintic-native-first/release/panda-quintic.c",
+        "-o",
+        "/private/tmp/panda-quintic-native-first/native-release/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.23114212503423914,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I/private/tmp/panda-quintic-native-first/release",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_quintic_native.c",
+        "/private/tmp/panda-quintic-native-first/native-release/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-quintic-native-first/native-release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.2234477910096757,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-quintic-native-first/native-release/native",
+        "/private/tmp/panda-quintic-native-first/input.bin",
+        "/private/tmp/panda-quintic-native-first/native-release/timing.bin",
+        "/private/tmp/panda-quintic-native-first/native-release/sample.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.20724791701650247,
+      "stdout": {
+        "bytes": 257,
+        "sha256": "e709edce2de6bcebbb17c43d3261d2199c40da797a36b57a42c6f4e180e10cbc"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-Wno-unused-parameter",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-c",
+        "/private/tmp/panda-quintic-native-first/debug/panda-quintic.c",
+        "-o",
+        "/private/tmp/panda-quintic-native-first/native-sanitized/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.3014359590015374,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I/private/tmp/panda-quintic-native-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_quintic_native.c",
+        "/private/tmp/panda-quintic-native-first/native-sanitized/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-quintic-native-first/native-sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 0.3350950420135632,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/panda-quintic-native-first/native-sanitized/native",
+        "/private/tmp/panda-quintic-native-first/input.bin",
+        "/private/tmp/panda-quintic-native-first/native-sanitized/timing.bin",
+        "/private/tmp/panda-quintic-native-first/native-sanitized/sample.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.3164522910374217,
+      "stdout": {
+        "bytes": 257,
+        "sha256": "e709edce2de6bcebbb17c43d3261d2199c40da797a36b57a42c6f4e180e10cbc"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "budgets": {
+    "position_radians_atol": 2e-12,
+    "derivatives_atol": 2e-10,
+    "derivatives_rtol": 2e-12,
+    "time_atol": 2e-12,
+    "time_rtol": 2e-12,
+    "steps": "exact rounded-operation policy",
+    "nanoseconds": "exact",
+    "status": "exact",
+    "endpoint_bits": "exact",
+    "mode_bytes": "exact"
+  },
+  "frozen_inputs": {
+    "coax/lib/quantity.coax": {
+      "bytes": 585,
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "psionic/fixtures/robotics/panda-quintic/checks-qualification.json": {
+      "bytes": 3381,
+      "sha256": "83298ad4deaaaae993f4c441ad73ffabf8c78edbcff030eafa85336011f56f97"
+    },
+    "psionic/fixtures/robotics/panda-quintic/edges.f64": {
+      "bytes": 6048,
+      "sha256": "d3a7100985b8d9a0faf53ad5aa91b3d2811d18b012135c9c5fb442ce8f9e8f00"
+    },
+    "psionic/fixtures/robotics/panda-quintic/experiment.json": {
+      "bytes": 21228,
+      "sha256": "642fbb94e348acf85f4594737ecbabf7e2619260cc2fe66954650613a45ffd99"
+    },
+    "psionic/fixtures/robotics/panda-quintic/input-freeze-v1.json": {
+      "bytes": 423,
+      "sha256": "cbe6806534cedb6c5ebc6456656741a592b02c052ac8b274490dc220f18d1f38"
+    },
+    "psionic/fixtures/robotics/panda-quintic/native-contract-v1.json": {
+      "bytes": 3274,
+      "sha256": "b9366c81dd9fa9f3b83f0edcd48637ffe3b3457705a5143217472845c7d4d480"
+    },
+    "psionic/fixtures/robotics/panda-quintic/plans.json": {
+      "bytes": 23955,
+      "sha256": "59211f416de04cfc0134a0cb9d5e65dc362147f427fad6e851467f31645616da"
+    },
+    "psionic/fixtures/robotics/panda-quintic/reference-publication-v1.json": {
+      "bytes": 2077,
+      "sha256": "2b2522e032bbd1c576bb484778ef7f28e0554d0dad491932dd818a8445ca2615"
+    },
+    "psionic/fixtures/robotics/panda-quintic/reference.json": {
+      "bytes": 2408,
+      "sha256": "0f23456968a3ccc8196f386477128e3a60baafdfe8f770f13c8dd185eb1e439b"
+    },
+    "psionic/fixtures/robotics/panda-quintic/sample-expected.bin": {
+      "bytes": 41888,
+      "sha256": "c1fa955b48f3ed125a62f86ff38a5a1f8774a0da50f9f293062ada9d88be8af7"
+    },
+    "psionic/fixtures/robotics/panda-quintic/sample-queries.bin": {
+      "bytes": 3808,
+      "sha256": "ee31778dc3057510f3a5d9f12b1dff36d6f9d397f37ce4a0842ea19fef2d7d74"
+    },
+    "psionic/fixtures/robotics/panda-quintic/sample-queries.json": {
+      "bytes": 22403,
+      "sha256": "54369c993dbdfe5c3a3d19738c2f62045ba2420e427b37ed3616ac66991462d0"
+    },
+    "psionic/fixtures/robotics/panda-quintic/timing-expected.bin": {
+      "bytes": 1080,
+      "sha256": "c3027288bd0734ad3d364e984e17713b2e022379ddb3d7c8e61404a527f262df"
+    },
+    "psionic/fixtures/robotics/panda-quintic/unit-acceleration.log": {
+      "bytes": 535,
+      "sha256": "c15f2550005d84568277c6f3a63431b6dfa460b2590ca06f4ffb5309af08a254"
+    },
+    "psionic/fixtures/robotics/panda-quintic/unit-derivative.log": {
+      "bytes": 291,
+      "sha256": "4ac81c82dcd784e7fe505c72b18f2392ab6d5331e6d2ce2599a7f6024a65699d"
+    },
+    "psionic/fixtures/robotics/panda-quintic/unit-q.log": {
+      "bytes": 588,
+      "sha256": "1c1994273af056cb296b27b380804af03b046fd047ef91ca5541aa49e27c82d6"
+    },
+    "psionic/fixtures/robotics/panda-quintic/unit-refusals.json": {
+      "bytes": 1489,
+      "sha256": "5e7f52b97d01bfc10a765ebb5e686b2cd9ec8bce5ecb9c561eb63a49594f2cd7"
+    },
+    "psionic/fixtures/robotics/panda-quintic/unit-velocity.log": {
+      "bytes": 557,
+      "sha256": "b36e44d138b7aca97304cb87fa30b71bf28bc7e147dd8d003e9421b006093b79"
+    },
+    "psionic/lib/robotics/panda-fk-types.coax": {
+      "bytes": 722,
+      "sha256": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b"
+    },
+    "psionic/lib/robotics/panda-ik-check-fixtures.coax": {
+      "bytes": 742,
+      "sha256": "f54cadbfac0df67d2f83185a100c8ed2ed4972bb51c7010130cbaa3bad96b8d9"
+    },
+    "psionic/lib/robotics/panda-ik-math.coax": {
+      "bytes": 5810,
+      "sha256": "adb1cfee76c0d7d4bee84ff4abb24a7446222265a9ba4c19ab593b08fdbde6c7"
+    },
+    "psionic/lib/robotics/panda-ik-types.coax": {
+      "bytes": 392,
+      "sha256": "c0a6ecd30ef3bfcd54038c94442616a45bb76f1ae517e19fd64451b1f0d69f83"
+    },
+    "psionic/lib/robotics/panda-matrix-types.coax": {
+      "bytes": 203,
+      "sha256": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483"
+    },
+    "psionic/lib/robotics/panda-matrix.coax": {
+      "bytes": 8993,
+      "sha256": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f"
+    },
+    "psionic/lib/robotics/panda-quintic-fixtures.coax": {
+      "bytes": 990,
+      "sha256": "7cf0b3b8997c25d5ef8016b357784864bd870d10a9b5e738482445c4464664c1"
+    },
+    "psionic/lib/robotics/panda-quintic-math.coax": {
+      "bytes": 9105,
+      "sha256": "d7d834285ae9f415a35337fea21c478018c0b0500b38982ce8554fd7faf70fd9"
+    },
+    "psionic/lib/robotics/panda-quintic-types.coax": {
+      "bytes": 866,
+      "sha256": "181e9e03c4cb9f4e33fa514c2b3ca5d24f5bb73483928967c76bde1326a65eb4"
+    },
+    "psionic/lib/robotics/panda-quintic.coax": {
+      "bytes": 8360,
+      "sha256": "24c2071b031738094307cbfa1d08b86579c0db2299ab7d5f407f83944195882c"
+    },
+    "psionic/tests/robotics/panda_pose_ik_native_reference.py": {
+      "bytes": 22571,
+      "sha256": "fe9b4e594b2a7841953f7630928143a4182d15738033e0ba41949bc05a5b54f2"
+    },
+    "psionic/tests/robotics/panda_quintic_native.c": {
+      "bytes": 14083,
+      "sha256": "192eb664cfeed3b9350af8f357a376b418e758141ea0415b75b84fe8562659c9"
+    },
+    "psionic/tests/robotics/panda_quintic_native_reference.py": {
+      "bytes": 15869,
+      "sha256": "66e09988db86aedb17af6e1abfa6bb3ba2767c7de1431a1d55daa24e0f202fe5"
+    }
+  },
+  "independent_preflight": {
+    "edges": 27,
+    "sample_queries": 238,
+    "Fraction_RN_operations": true,
+    "sqrt_RN_midpoint_certified": true,
+    "exact_cap_and_near_grid_fixtures": true,
+    "subnormal_nonzero_not_misclassified": true,
+    "cached_continuous_extrema_and_real_reserve_checked": true,
+    "no_motion_or_collision_claim": true
+  },
+  "input": {
+    "bytes": 9984,
+    "sha256": "6f99a34eab4a07f90df383c0c583df7ca8eefbab62488424df0185a766b8727c"
+  },
+  "emissions": {
+    "debug": {
+      "C": {
+        "bytes": 89795,
+        "sha256": "2d9de0c9d94ec16f9110c96f4d16c9a873437c55cdb1b83e9f08a832e6bbdd72"
+      },
+      "header": {
+        "bytes": 10489,
+        "sha256": "94b54677b07398d6340a7ebe68ebe1de5c0da0910c5df735ad69062dbb2ab247"
+      }
+    },
+    "release": {
+      "C": {
+        "bytes": 89403,
+        "sha256": "b5ec61dd43abf9871c8bd499994cdc37439d526145724931740de80439f279bc"
+      },
+      "header": {
+        "bytes": 10489,
+        "sha256": "94b54677b07398d6340a7ebe68ebe1de5c0da0910c5df735ad69062dbb2ab247"
+      }
+    }
+  },
+  "modes": {
+    "debug": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "edges": 27,
+        "samples": 238,
+        "time_record_bytes": 40,
+        "sample_record_bytes": 176,
+        "assertions": 26756,
+        "alias_cases": 24,
+        "source_and_limit_endpoints": 56,
+        "tick_refusals": 10,
+        "duration_refused_edges": 2,
+        "nonfinite_role_patterns": 140,
+        "fpcr": 0
+      },
+      "comparison": {
+        "passed": true,
+        "timing_ok": 25,
+        "duration_refusals": 2,
+        "sample_ok": 236,
+        "unavailable_samples": 2,
+        "all_actual_timing_finite_words": 54,
+        "all_actual_sample_finite_words": 4998,
+        "exact_endpoint_samples": 47,
+        "steps_nanoseconds_status_exact": true,
+        "metrics": {
+          "time": {
+            "passed": true,
+            "values": 50,
+            "max_abs_error": 0.0,
+            "maximum_budget_fraction": 0.0,
+            "atol": 2e-12,
+            "rtol": 2e-12
+          },
+          "position": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 4.440892098500626e-16,
+            "maximum_budget_fraction": 0.0002220446049250313,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "rate": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 4.440892098500626e-16,
+            "maximum_budget_fraction": 2.1700978348013183e-06,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "acceleration": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 1.4210854715202004e-14,
+            "maximum_budget_fraction": 5.298911567521749e-05,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          }
+        }
+      },
+      "binary": {
+        "bytes": 92024,
+        "sha256": "883c22fd117fa6e0493ae28f3685029f5004a2fcd6661b63cf4fbddbd5223e38"
+      },
+      "timing": {
+        "bytes": 1080,
+        "sha256": "c3027288bd0734ad3d364e984e17713b2e022379ddb3d7c8e61404a527f262df"
+      },
+      "sample": {
+        "bytes": 41888,
+        "sha256": "d5073b45eebf341bd805de681ac099de2790a63500d8e80a7c566223e13e6ee3"
+      }
+    },
+    "release": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "edges": 27,
+        "samples": 238,
+        "time_record_bytes": 40,
+        "sample_record_bytes": 176,
+        "assertions": 26756,
+        "alias_cases": 24,
+        "source_and_limit_endpoints": 56,
+        "tick_refusals": 10,
+        "duration_refused_edges": 2,
+        "nonfinite_role_patterns": 140,
+        "fpcr": 0
+      },
+      "comparison": {
+        "passed": true,
+        "timing_ok": 25,
+        "duration_refusals": 2,
+        "sample_ok": 236,
+        "unavailable_samples": 2,
+        "all_actual_timing_finite_words": 54,
+        "all_actual_sample_finite_words": 4998,
+        "exact_endpoint_samples": 47,
+        "steps_nanoseconds_status_exact": true,
+        "metrics": {
+          "time": {
+            "passed": true,
+            "values": 50,
+            "max_abs_error": 0.0,
+            "maximum_budget_fraction": 0.0,
+            "atol": 2e-12,
+            "rtol": 2e-12
+          },
+          "position": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 4.440892098500626e-16,
+            "maximum_budget_fraction": 0.0002220446049250313,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "rate": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 4.440892098500626e-16,
+            "maximum_budget_fraction": 2.1700978348013183e-06,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "acceleration": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 1.4210854715202004e-14,
+            "maximum_budget_fraction": 5.298911567521749e-05,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          }
+        }
+      },
+      "binary": {
+        "bytes": 72024,
+        "sha256": "8e140be286df84b4e8f9bdbe38bd1b808eaea937c9f806baa71542644f97faa0"
+      },
+      "timing": {
+        "bytes": 1080,
+        "sha256": "c3027288bd0734ad3d364e984e17713b2e022379ddb3d7c8e61404a527f262df"
+      },
+      "sample": {
+        "bytes": 41888,
+        "sha256": "d5073b45eebf341bd805de681ac099de2790a63500d8e80a7c566223e13e6ee3"
+      }
+    },
+    "sanitized": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "edges": 27,
+        "samples": 238,
+        "time_record_bytes": 40,
+        "sample_record_bytes": 176,
+        "assertions": 26756,
+        "alias_cases": 24,
+        "source_and_limit_endpoints": 56,
+        "tick_refusals": 10,
+        "duration_refused_edges": 2,
+        "nonfinite_role_patterns": 140,
+        "fpcr": 0
+      },
+      "comparison": {
+        "passed": true,
+        "timing_ok": 25,
+        "duration_refusals": 2,
+        "sample_ok": 236,
+        "unavailable_samples": 2,
+        "all_actual_timing_finite_words": 54,
+        "all_actual_sample_finite_words": 4998,
+        "exact_endpoint_samples": 47,
+        "steps_nanoseconds_status_exact": true,
+        "metrics": {
+          "time": {
+            "passed": true,
+            "values": 50,
+            "max_abs_error": 0.0,
+            "maximum_budget_fraction": 0.0,
+            "atol": 2e-12,
+            "rtol": 2e-12
+          },
+          "position": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 4.440892098500626e-16,
+            "maximum_budget_fraction": 0.0002220446049250313,
+            "atol": 2e-12,
+            "rtol": 0
+          },
+          "rate": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 4.440892098500626e-16,
+            "maximum_budget_fraction": 2.1700978348013183e-06,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          },
+          "acceleration": {
+            "passed": true,
+            "values": 1652,
+            "max_abs_error": 1.4210854715202004e-14,
+            "maximum_budget_fraction": 5.298911567521749e-05,
+            "atol": 2e-10,
+            "rtol": 2e-12
+          }
+        }
+      },
+      "binary": {
+        "bytes": 119464,
+        "sha256": "94ea0ca25784487fb5832441f54b8b31c5d48af57568907f235cacf0652dcc22"
+      },
+      "timing": {
+        "bytes": 1080,
+        "sha256": "c3027288bd0734ad3d364e984e17713b2e022379ddb3d7c8e61404a527f262df"
+      },
+      "sample": {
+        "bytes": 41888,
+        "sha256": "d5073b45eebf341bd805de681ac099de2790a63500d8e80a7c566223e13e6ee3"
+      }
+    }
+  },
+  "new_reader_guards": {
+    "passed": true,
+    "cases": 20
+  },
+  "modes_byte_identical": true,
+  "timing_sha256": "c3027288bd0734ad3d364e984e17713b2e022379ddb3d7c8e61404a527f262df",
+  "sample_sha256": "d5073b45eebf341bd805de681ac099de2790a63500d8e80a7c566223e13e6ee3",
+  "seconds": 2.1916632499778643,
+  "partial_or_full_outputs": {
+    "native-release/timing.bin": {
+      "bytes": 1080,
+      "sha256": "c3027288bd0734ad3d364e984e17713b2e022379ddb3d7c8e61404a527f262df"
+    },
+    "native-debug/timing.bin": {
+      "bytes": 1080,
+      "sha256": "c3027288bd0734ad3d364e984e17713b2e022379ddb3d7c8e61404a527f262df"
+    },
+    "native-sanitized/timing.bin": {
+      "bytes": 1080,
+      "sha256": "c3027288bd0734ad3d364e984e17713b2e022379ddb3d7c8e61404a527f262df"
+    },
+    "native-release/sample.bin": {
+      "bytes": 41888,
+      "sha256": "d5073b45eebf341bd805de681ac099de2790a63500d8e80a7c566223e13e6ee3"
+    },
+    "native-debug/sample.bin": {
+      "bytes": 41888,
+      "sha256": "d5073b45eebf341bd805de681ac099de2790a63500d8e80a7c566223e13e6ee3"
+    },
+    "native-sanitized/sample.bin": {
+      "bytes": 41888,
+      "sha256": "d5073b45eebf341bd805de681ac099de2790a63500d8e80a7c566223e13e6ee3"
+    }
+  }
+}

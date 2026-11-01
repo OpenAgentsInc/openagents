@@ -1,0 +1,33 @@
+#import "Basic";
+#load "../lib/robotics/panda-quintic.coax";
+
+#test "Panda quintic example display rounds independent duration position and rate values" {
+ #assert pqt_example_micro(11.252)==11252000 && pqt_example_micro(0.15)==150000;
+ #assert pqt_example_micro(0.04999111269107714)==49991 && pqt_example_micro(0)==0;
+}
+pqt_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("rest-to-rest reference; every edge stops at its endpoints\n");
+// book:begin pqt-timing
+ // Endpoints are radians, limits rad/s and rad/s^2. This API returns a
+ // numerical reference; it does not admit collision or tracking behavior.
+ x:=pqt_fixture();x.q1=x.q0;x.q1[0].value=0.3;x.vlim[0].value=0.05;
+ timing:[1]PqtTiming;#assert pqt_time(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],timing[..])==PqtStatus.ok;
+ print("ticks: %; total nanoseconds: %\n",timing[0].steps,timing[0].total_nanoseconds);
+ print("duration (us): %; required estimate (us): %\n",pqt_example_micro(timing[0].duration.value),pqt_example_micro(timing[0].required_estimate.value));
+ sample:[1]PqtSample;mid:=timing[0].steps/2;
+ #assert pqt_sample(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],mid,sample[..])==PqtStatus.ok;
+ print("midpoint joint1: % urad; % urad/s; % urad/s^2\n",pqt_example_micro(sample[0].angle[0].value),pqt_example_micro(sample[0].rate[0].value),pqt_example_micro(sample[0].acceleration[0].value));
+ #assert pqt_sample(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],timing[0].steps,sample[..])==PqtStatus.ok;
+ for i:0..<7 {#assert f64_bits(sample[0].angle[i].value)==f64_bits(x.q1[i].value) && f64_bits(sample[0].rate[i].value)==0 && f64_bits(sample[0].acceleration[i].value)==0;}
+ print("endpoint joint1: % urad; exact target and +0 derivatives\n",pqt_example_micro(sample[0].angle[0].value));
+ before:=sample[0];#assert pqt_sample(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],timing[0].steps+1,sample[..])==PqtStatus.range;pqt_sample_same(sample[0],before);
+ print("tick beyond duration: range; complete sample unchanged\n");
+ // Numeric equality does not erase the target's signed-zero representation.
+ x.q1=x.q0;x.q1[0].value=f64_from_bits(0x8000000000000000);
+ #assert pqt_time(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],timing[..])==PqtStatus.ok && timing[0].steps==0;
+ #assert pqt_sample(x.q0[..],x.q1[..],x.vlim[..],x.alim[..],0,sample[..])==PqtStatus.ok && f64_bits(sample[0].angle[0].value)==0x8000000000000000;
+ print("zero edge: % ticks; target signed zero retained\n",timing[0].steps);
+// book:end pqt-timing
+ print("not a moving-state retargeter or 20 Hz action-chunk interpolator\n");
+}

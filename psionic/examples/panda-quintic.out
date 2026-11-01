@@ -1,0 +1,8 @@
+rest-to-rest reference; every edge stops at its endpoints
+ticks: 5626; total nanoseconds: 11252000000
+duration (us): 11252000; required estimate (us): 11250000
+midpoint joint1: 150000 urad; 49991 urad/s; 0 urad/s^2
+endpoint joint1: 300000 urad; exact target and +0 derivatives
+tick beyond duration: range; complete sample unchanged
+zero edge: 0 ticks; target signed zero retained
+not a moving-state retargeter or 20 Hz action-chunk interpolator

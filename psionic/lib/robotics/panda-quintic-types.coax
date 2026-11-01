@@ -1,0 +1,9 @@
+// Rest-to-rest numerical timing, not collision/tracking or a typed clock.
+#load "panda-ik-math.coax";
+PqtRate :: struct @unit(mass=0,length=0,time=-1,angle=1,numerator=1,denominator=1) {}
+PqtAcceleration :: struct @unit(mass=0,length=0,time=-2,angle=1,numerator=1,denominator=1) {}
+PqtStatus :: enum u8 {ok;shape;number;range;limits;duration;}
+PqtTiming :: struct {steps:int;total_nanoseconds:int;duration:pfku.Quantity(pfku.Second,f64);required_estimate:pfku.Quantity(pfku.Second,f64);}
+PqtSample :: struct {angle:[7]pfku.Quantity(pfku.Radian,f64);rate:[7]pfku.Quantity(PqtRate,f64);acceleration:[7]pfku.Quantity(PqtAcceleration,f64);}
+PqtEdge :: struct {q0:[7]pfku.Quantity(pfku.Radian,f64);q1:[7]pfku.Quantity(pfku.Radian,f64);vlim:[7]pfku.Quantity(PqtRate,f64);alim:[7]pfku.Quantity(PqtAcceleration,f64);}
+PqtPlan :: struct {status:PqtStatus;timing:PqtTiming;}

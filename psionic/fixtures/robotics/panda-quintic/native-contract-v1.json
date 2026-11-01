@@ -1,0 +1,25 @@
+{
+  "schema": "psionic.panda-quintic.native-contract.v1",
+  "frozen_before_first_product_emission_or_comparison": true,
+  "experiment_sha256": "642fbb94e348acf85f4594737ecbabf7e2619260cc2fe66954650613a45ffd99",
+  "profile": "Darwin-arm64 scalar binary64 RN,gradualunderflow,FPCR0,correctsqrt,no fastmath/contraction",
+  "input": "PQT1 magic0x31545150,27edges,238samplequeries,version1 as4u32;27x28F64(q0/q1/vlim/alim7each);238x2I64(edgeindex,tick);lower7/upper7F64.",
+  "timing_output": "27x40B<3q2d>:statusI64,stepsI64,total_nanosecondsI64,durationseconds,required_estimate_seconds.",
+  "sample_output": "238x176B<q21d>:statusI64,angle7radians,rate7rad/s,acceleration7rad/s^2.",
+  "failure_transport": "Canonicalzero payload only AFTER actual full caller-output,spare,canary andinput refusal preservation is checked. It is never a published zero plan/sample; status is mandatory.",
+  "primary_oracle": "Frozen Decimal80 direct analytic quintic polynomial/derivatives and continuous extrema, independently specified Fraction-RN timing recipe. No recurrence or product half-interval evaluator is used as primary expected data.",
+  "independent_preflight": "Driver independently rounds exact rational operations and certifies host sqrt against exact rational midpoint-square intervals beforeproductcalls. It ties allN/ns/status fields to original27inputs, verifies238query metadata/binaryorder, capIEEE/integer/subnormal contexts, exact irrational-extremum tick brackets andcached real requirement/reserve consistency.",
+  "timing_policy": "Cv1.875,Ca literal5.773502691896258;Tv=(Cv*abs(RN(q1-q0)))/v;Ta=sqrt((Ca*absdq)/a);R=RN(max14times*500). R>999999 refuses BEFOREceil cast; otherwise nonzeroedgeN=ceilR+1,N<=1e6. Allinputs admitted BEFORE numericzeroedgeN0. Integer ns=2e6*N,duration=N/500; no epsilon subtraction.",
+  "endpoints": "Targetq1 copy wins forN0/k0 including signedzero. k0/kN exact anglecopies; all endpoint rate/acceleration components positivezero. Interiorfields match directanalytic targets within original per-scalar budgets and remainwithin endpoint/source intervals and derivative limits withoutclipping.",
+  "guard_cases": {
+    "nonfinite_input_role_patterns": 140,
+    "source_and_limit_inclusive_endpoints_plus_outside_neighbors": 56,
+    "negative_late_and_extreme_tick_refusals": 10,
+    "input_output_alias_cases": 24,
+    "actual_expected_reader_extent_and_lateIEEE_poisons": 20
+  },
+  "alias_scope": "Timing output overlaps eachoffour inputspans separately,typed/raw success/refusal(16). Sample168B overlaps allfour sourceviews,typed/raw success,NaN,late tick,shape(8). Allbytesoutside publishedoutput preserved on success; fullunionunchanged on refusal.",
+  "continuous_scope": "Cached analytic extrema/reserve checked for these admitted fixtureedges; sparse samples are not an executed trajectory or universal tracking/stability/collision certificate. Time fields are physicalquantity queries, not R13 clocks or R14 boundedness.",
+  "excluded": "No motionexecution,collision/RRT clearance,jerk bound,global/grid-minimal-time claim,hardware,SDK,NN,old FK/IK/nullspace/rotor gates or old expected-data generators.",
+  "warning_scope": "Only generated C suppresses empty-tag printer unusedparameters; authored nativeC warnings staystrict."
+}
