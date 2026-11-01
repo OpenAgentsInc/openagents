@@ -12,6 +12,8 @@
 #include "whisper.h"
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdatomic.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,28 +37,70 @@ static void run_job(job *j) {
     else if (j->kind == 3) psionic_whisper_mel_part(j->a, j->f, j->g, j->i0, j->b, j->lo, j->hi);
     else psionic_whisper_conv_part(j->a, j->i0, j->i1, j->b, j->c, j->i2, j->i3, j->i4, j->d, j->e, j->lo, j->hi);
 }
-static void *thread_main(void *p) { run_job(p); return 0; }
-static void split(job base, int64_t n, double work) {
-    int t = g_threads;
-    if (work < 2e6 || t <= 1 || n < 2) { base.lo = 0; base.hi = n; run_job(&base); return; }
-    if (t > n) t = (int)n;
-    if (t > 64) t = 64;
-    job jobs[64]; pthread_t ids[64];
-    for (int i = 0; i < t; i++) {
-        jobs[i] = base; jobs[i].lo = n * i / t; jobs[i].hi = n * (i + 1) / t;
-        if (i > 0 && pthread_create(&ids[i], 0, thread_main, &jobs[i]) != 0) { run_job(&jobs[i]); ids[i] = 0; }
+/* A pool of g_threads - 1 workers, started once. split() hands each one a
+ * job and runs the first itself; workers spin briefly on the generation
+ * counter, then sleep on a condition variable, so a burst of small calls
+ * (the decoder's) costs no thread creation. */
+static pthread_mutex_t g_mu = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t g_go = PTHREAD_COND_INITIALIZER, g_done = PTHREAD_COND_INITIALIZER;
+static job g_jobs[64];
+static _Atomic long g_gen;
+static _Atomic int g_pending;
+static int g_workers;
+static void *worker(void *arg) {
+    int me = (int)(intptr_t)arg; long seen = 0;
+    for (;;) {
+        long gen;
+        int spins = 0;
+        while ((gen = g_gen) == seen && spins < 200000) spins++;
+        if (gen == seen) {
+            pthread_mutex_lock(&g_mu);
+            while ((gen = g_gen) == seen) pthread_cond_wait(&g_go, &g_mu);
+            pthread_mutex_unlock(&g_mu);
+        }
+        seen = gen;
+        if (g_jobs[me].kind >= 0) run_job(&g_jobs[me]);
+        if (--g_pending == 0) { pthread_mutex_lock(&g_mu); pthread_cond_signal(&g_done); pthread_mutex_unlock(&g_mu); }
     }
-    run_job(&jobs[0]);
-    for (int i = 1; i < t; i++) if (ids[i]) pthread_join(ids[i], 0);
+    return 0;
+}
+static void pool_start(void) {
+    int n = g_threads - 1; if (n > 63) n = 63;
+    for (int i = 1; i <= n; i++) {
+        pthread_t id;
+        if (pthread_create(&id, 0, worker, (void *)(intptr_t)i) != 0) break;
+        pthread_detach(id); g_workers = i;
+    }
+}
+static double g_prof[6]; static long g_calls[6]; static int g_small; static int g_profile;
+static double now_ms(void);
+static void split(job base, int64_t n, double work) {
+    double t0 = g_profile ? now_ms() : 0;
+    int t = g_workers + 1;
+    if (work < 2e5 || t <= 1 || n < 2) { base.lo = 0; base.hi = n; run_job(&base); }
+    else {
+        if (t > n) t = (int)n;
+        for (int i = 1; i <= g_workers; i++) {
+            g_jobs[i] = base;
+            if (i < t) { g_jobs[i].lo = n * i / t; g_jobs[i].hi = n * (i + 1) / t; } else g_jobs[i].kind = -1;
+        }
+        g_pending = g_workers;
+        pthread_mutex_lock(&g_mu); g_gen++; pthread_cond_broadcast(&g_go); pthread_mutex_unlock(&g_mu);
+        base.lo = 0; base.hi = n / t; run_job(&base);
+        int spins = 0;
+        while (g_pending > 0 && spins < 2000000) spins++;
+        if (g_pending > 0) { pthread_mutex_lock(&g_mu); while (g_pending > 0) pthread_cond_wait(&g_done, &g_mu); pthread_mutex_unlock(&g_mu); }
+    }
+    if (g_profile) { int k = base.kind + (g_small && base.kind < 2 ? 4 : 0); g_prof[k] += now_ms() - t0; g_calls[k]++; }
 }
 int64_t cxwh_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, coax_v_f32 y) {
     job j = {0}; j.kind = 0; j.a = x; j.i0 = rows; j.i1 = n_in; j.b = w; j.c = b; j.i2 = n_out; j.d = y;
-    split(j, n_out, (double)rows * n_in * n_out);
+    g_small = rows < 256; split(j, n_out, (double)rows * n_in * n_out);
     return 0;
 }
 int64_t cxwh_attend(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, int64_t first, _Bool causal, coax_v_f32 out) {
     job j = {0}; j.kind = 1; j.a = q; j.i0 = nq; j.b = k; j.c = v; j.i1 = nk; j.i2 = d; j.i3 = heads; j.i4 = first; j.flag = causal; j.d = out;
-    split(j, heads * nq, (double)nq * nk * d * 2);
+    g_small = nq < 256; split(j, heads * nq, (double)nq * nk * d * 2);
     return 0;
 }
 int64_t cxwh_mel(coax_v_f32 x, coax_v_f64 window, coax_v_f64 bank, int64_t mels, coax_v_f32 cache, int64_t frames) {
@@ -118,6 +162,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (strcmp(cmd, "transcribe") != 0 || argc < 4) return usage();
+    g_profile = getenv("PSIONIC_WHISPER_PROFILE") != 0;
     int format = 0; const char *lang = "en", *name_arg = 0, *prompt = "", *words = ""; long ctx = p.n_audio_ctx;
     coax_t_WeOptions opt = psionic_whisper_options();
     for (int i = 4; i < argc; i++) {
@@ -136,6 +181,7 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--words") == 0 && i + 1 < argc) words = argv[++i];
         else return usage();
     }
+    pool_start();
     static int64_t offsets[TENSORS];
     coax_t_WeNet *net = malloc(sizeof *net);
     if (!net) return 1;
@@ -181,5 +227,9 @@ int main(int argc, char **argv) {
     fprintf(stderr, "psionic-whisper: %.0f ms load, %.0f ms transcribe (%d threads, %lld windows, %lld tokens, %lld fallbacks, %.*s, %.1f s audio)\n",
             t_load - t0, t_end - t_load, g_threads, (long long)run.windows, (long long)run.tokens, (long long)run.fallbacks, (int)lang_n, lang,
             wh.samples / 16000.0);
+    if (g_profile)
+        fprintf(stderr, "psionic-whisper profile: decoder linear %.0f ms (%ld), attend %.0f ms (%ld); encoder linear %.0f ms (%ld), attend %.0f ms (%ld), conv %.0f ms (%ld), mel %.0f ms (%ld), other %.0f ms\n",
+                g_prof[4], g_calls[4], g_prof[5], g_calls[5], g_prof[0], g_calls[0], g_prof[1], g_calls[1], g_prof[2], g_calls[2], g_prof[3], g_calls[3],
+                (t_end - t_load) - g_prof[0] - g_prof[1] - g_prof[2] - g_prof[3] - g_prof[4] - g_prof[5]);
     return 0;
 }
