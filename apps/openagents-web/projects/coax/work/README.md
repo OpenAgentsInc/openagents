@@ -58,8 +58,8 @@ Files:
   with shipped commits and expanded to include runtime authority, private data,
   phone sign-in and optional key backup. Counts come from the seed, not this text.
 
-Run `bun test coax/web/project/nostr-plan.test.ts` from the repository root
-before publication. It checks both initiatives together, stable task identities,
+Run `apps/openagents-cli/build/openagents project plan-rules` from the
+repository root before publication. It checks both initiatives together, stable task identities,
 acyclic dependencies and inverse `blocks`, read-only/signing separation, production
 gates, and the Coax page's bounded capacity. Keep worker comments/plans and resolved
 statuses; do not reset them when revising a task.

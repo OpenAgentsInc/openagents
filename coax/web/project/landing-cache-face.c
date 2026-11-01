@@ -71,7 +71,7 @@ int64_t home_cache_get(int64_t chunk,int64_t token) {
   char k[24];int32_t kn=key(k,chunk);
   return coaxial_storage_get(0,(int32_t)token,(uint32_t)(uintptr_t)NS,sizeof NS-1,1,(uint32_t)(uintptr_t)k,kn);
 }
-/* The build's seed part i (coax/web/project/landing.ts), named by its capture. */
+/* The build's seed part i (`openagents project landing`), named by its capture. */
 int64_t home_cache_seed(int64_t captured,int64_t part) {
   char url[96];int n=0;const char *p="/build/home-seed/";while(*p)url[n++]=*p++;
   char d[24];int m=0;do{d[m++]=(char)('0'+captured%10);captured/=10;}while(captured&&m<20);while(m)url[n++]=d[--m];

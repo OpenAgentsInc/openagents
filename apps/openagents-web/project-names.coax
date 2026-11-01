@@ -4,9 +4,9 @@
 // hint, the author, the kind. Each writes into out and returns the bytes
 // written, or 0 when the hex isn't 64 lowercase digits, a field is over 255
 // bytes or out is too small. A unit of its own so
-// coax/web/project/nip19.test.ts builds just this and checks it against
-// nostr-tools for every key, event and coordinate of the captured relay
-// transcript (coax/lib/nostr/fixtures/coax_relay.jsonl).
+// coax/web/project/names-check.coax loads just this and checks it against
+// nostr-tools' answers for every key, event and coordinate of the captured
+// relay transcript (coax/lib/nostr/fixtures/coax_relay_names.coax).
 // It is its own Wasm library (wasm.sh's LIBRARY argument), never #loaded by
 // project.coax: its #authority codecs would make every compile of the page run
 // all of the page's checks. project-names-face.h calls it from the face and

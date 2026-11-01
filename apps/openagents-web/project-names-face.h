@@ -3,7 +3,7 @@
 // task's nevent (relay hint, the project as author, kind 1621) once a task is
 // open. project-names.coax encodes them, its own library (wasm.sh's LIBRARY
 // argument), as nip01-verify.coax is /nip/01's. Included by project-face.c
-// and by coax/web/project/nip19.test.ts, which checks the drawn names.
+// and checked against nostr-tools' names by coax/web/project/names-check.coax.
 #include "Project-names.h"   // wasm.sh writes it for the LIBRARY argument
 static void project_names(coax_t_ProjectState *page, coax_t_Work *work) {
   if (!work->named && work->key.count == 64) {

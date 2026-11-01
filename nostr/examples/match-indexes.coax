@@ -76,7 +76,7 @@ ask :: (r: [] Relay, label: string, text: string) {
 // book:begin recording
 // What wss://relay.openagents.com (the production Rust relay) sent for the
 // Coax project page's five REQs, recorded on 2026-10-28 by
-// coax/web/project/capture.ts (coax/lib/nostr/fixtures/coax_relay.coax):
+// capture.ts, now `openagents project capture` (coax/lib/nostr/fixtures/coax_relay.coax):
 // 237 events, each sub's in the relay's order. The same REQs as
 // coax/tests/nostr/relay_differential.py.
 SUBS :: [5] string.["project", "issues", "comments", "status", "repo"];

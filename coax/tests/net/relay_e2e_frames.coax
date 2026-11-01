@@ -12,7 +12,7 @@
 // nostr_message_write_req/close/event.
 //
 // Fixture events are taken as verified: their signatures were checked when
-// the capture was made (coax/web/project/capture.ts) and this file checks
+// the capture was made (capture.ts, now `openagents project capture`) and this file checks
 // each one's id and created_at against its text. The driver never sees an
 // event the fixture didn't hold.
 #load "../../lib/nostr/fixtures/coax_relay.coax";

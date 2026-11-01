@@ -18,7 +18,7 @@
 // longest check ~135M), more than the default 20M a check.
 
 #load "font.coax";
-#load "projects/baked.coax";   // every project with a page (coax/web/project/baked.ts)
+#load "projects/baked.coax";   // every project with a page (`openagents project bake`)
 #load "project-live.coax";
 #load "analytics.coax";
 #load "project-intro.coax";
@@ -63,9 +63,9 @@ DETAIL_LIST :: 4096;
 MSG_PAGE_TEXT :: 2;   // the host's: the page's data-text, once the engine loads
 
 // What a build bakes for each project it knows: the first paint before the
-// relay's first EOSE (snapshot.ts), the commits (commits.sh) and the owner
-// (project.json), generated for every projects/<slug>/project.json into
-// projects/baked.coax by coax/web/project/baked.ts. A project
+// relay's first EOSE (`openagents project snapshot`), the commits (commits.sh)
+// and the owner (project.json), generated for every projects/<slug>/project.json
+// into projects/baked.coax by `openagents project bake`. A project
 // the build doesn't know still draws live, without a tree.
 Baked :: struct {
   slug: string; pubkey: string; relay: string; naddr: string;
@@ -358,7 +358,7 @@ AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
 
 // ---------------------------------------------------------------- the real work (from the relay)
 
-// WORK_ITEMS (projects/coax/work.coax, made by coax/web/project/snapshot.ts
+// WORK_ITEMS (projects/coax/work.coax, made by `openagents project snapshot`
 // from the project's Nostr events): one row an item, fields
 //   alias | kind | status | title | labels | size | worker | parent | blocked by | rank | slug | commit | done at
 // where parent and blocked by are aliases, worker is who claimed it (empty
@@ -407,7 +407,7 @@ Work :: struct {
   view: QueueView;            // what the queue drew last, for the pointer
   log: string;                // WORK_LOG: time (Chicago) | what, newest first
   steps: string;              // WORK_STEPS: how to take a task
-  naddr: string;              // the project's address as baked (snapshot.ts), or ""
+  naddr: string;              // the project's address as baked (project snapshot), or ""
   key: string; relay: string; // the project's key and relay (set_names)
   // the address and the key as NIP-19 names them, encoded in Coax and
   // written by the face (project-names-face.h) once key is set; named says so

@@ -87,7 +87,7 @@ for f in pages:
     # the bucket can't map to index.html on its own; upload.py serves it as HTML.
     if os.path.basename(f) == "index.html" and os.path.dirname(f):
         shutil.copy(os.path.join(site, f), os.path.join(site, os.path.dirname(f) + ".page"))
-# The homepage's seed (coax/web/project/landing.ts): this build's captured, admitted events, which the
+# The homepage's seed (`openagents project landing`): this build's captured, admitted events, which the
 # page reads itself (build/home-seed/<capture>-<part>.txt, named in its Wasm), so a first visit asks
 # the relay only for what is newer.
 seed = os.path.join(app, "build", "home-seed")

@@ -144,7 +144,7 @@ body changed, a status when its status changed, and then the task order
   project key (`coax/reviews/authors.json`):
   `openagents project review COMMIT --key ~/work/.secrets/openagents-coax-reviewer.key`
   writes `coax/reviews/COMMIT.json`; commit and push it. `release.sh` runs
-  `review.ts report` over the commits since the last live release, outside
+  `openagents project review report` over the commits since the last live release, outside
   the compiler, puts the result in `releases/<time>/REVIEW` and notes each
   unreviewed commit on its task. It is a report, never a stop (owner,
   2026-10-31): releases are not blocked by it.

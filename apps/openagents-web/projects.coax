@@ -4,7 +4,7 @@
 // active); a click or Enter opens its page. The filter is MINE or ALL.
 //
 // The rows are PROJECTS_ROWS (projects/list.coax, made by
-// coax/web/project/list.ts; its header says the columns). Who "me" is comes
+// `openagents project index`; its header says the columns). Who "me" is comes
 // from one place: the viewer's hex pubkey, sent in as message MSG_VIEWER by
 // whatever confirms it (a session the server checked, or a NIP-07 signer).
 // host.js sends MSG_ME on every page (/api/auth/me, the /login session), and MINE asks a

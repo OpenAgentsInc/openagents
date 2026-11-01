@@ -2,7 +2,8 @@
 """The Coax relay against relay.openagents.com's recorded behaviour.
 
 coax/lib/nostr/fixtures/coax_relay.jsonl is what the production (Rust)
-relay sent, read-only, for the project page's five REQs (capture.ts,
+relay sent, read-only, for the project page's five REQs (capture.ts, now
+`openagents project capture`;
 2026-10-28). This publishes every recorded event to a fresh Coax relay
 (ASan/UBSan build, 127.0.0.1), sends the same five REQs, and compares each
 subscription's events (ids, order and bytes) and its EOSE with the

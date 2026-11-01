@@ -142,6 +142,13 @@ openagents project review COMMIT --key FILE    # an independent review, coax/rev
 openagents project snapshot [--if-older MIN]   # the page's work.coax, index.md and index.html
 openagents project index                       # projects/list.coax and projects/index.md
 openagents project bake [--list]               # baked.coax and each commits.coax
+openagents project landing [--out FILE]        # the homepage's warm start: newland-data.coax, targets, seed
+openagents project publish-data [SLUG...] [--dry-run]   # a project's Markdown on the site, no release
+openagents project adopt SLUG [--api URL]      # give the site a hand-made project's key
+openagents project capture [--tables]          # the relay's frames for the page, as test fixtures
+openagents project plan-rules                  # the Coax work seeds and the coax-nostr plan's rules
+openagents project review report [--from BASE --to REF] [--notes]   # commits that weaken a check, and their reviews
+openagents project review keygen FILE          # a reviewer key (mode 600); prints only its public key
 ```
 
 How to work the queue is [coax/web/project/QUEUE.md](../../coax/web/project/QUEUE.md);
@@ -237,8 +244,12 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `project.coax` | the `project` domain: the config, the key, reading and folding the relay, `list` and `show` |
 | `project-write.coax` | claim, release, note, plan, done, status, move and respread, signed with the project key |
 | `project-publish.coax` | `check` and `publish`: the work files as announcements, issues, revisions, statuses and the order |
-| `project-review.coax` | `review`: an independent review file signed with the reviewer's key |
+| `project-review.coax` | `review`: an independent review file signed with the reviewer's key; `review report` and `review keygen` |
+| `review-rules.coax` | the review report's rules: a diff's weakened checks, a review's validity |
 | `project-page.coax` | `snapshot`, `index` and `bake`: the page's tables, Markdown and lists from the relay |
+| `project-landing.coax` | `landing`: the homepage's warm start, read and verified from the relay |
+| `project-data.coax` | `publish-data`, `adopt` and `capture` |
+| `project-plan-rules.coax` | `plan-rules`: the work seeds' and the coax-nostr plan's rules |
 | `api.coax` | one signed call to the API: the origin, the NIP-98 header, the status as an exit code |
 | `realm.coax` | the `realm` domain: list, show, new, visibility, publish, fork |
 | `admin.coax` | the `admin` domain: invites, requests, creators, flags, realms, admin keys |

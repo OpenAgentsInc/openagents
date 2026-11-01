@@ -28,11 +28,11 @@ curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /t
 Build only this page:
 
 ```sh
-bun coax/web/project/landing.ts
+apps/openagents-cli/build/openagents project landing
 coax/web/project/build-home.sh apps/openagents-web/build/newland.wasm
 ```
 
-`landing.ts` refreshes the real warm start. Runtime reads are independent of
+`openagents project landing` refreshes the real warm start. Runtime reads are independent of
 that snapshot. `newland-golden-data.coax` is an explicitly frozen public fixture
 for deterministic visual checks; production visitors use the live path.
 

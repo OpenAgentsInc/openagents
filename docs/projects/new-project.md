@@ -86,7 +86,7 @@ The aim is to manage everything on the website.
    signs them with the project's key (new issues, a design-notes comment,
    the task order extended) so the page's live view shows them
    (`coax/web/api/drops.c`, `0041_project_grow.sql`). A project made by hand
-   hands the site its key once with `bun coax/web/project/adopt.ts <slug>`.
+   hands the site its key once with `openagents project adopt <slug>`.
 
 The steps to build Part 2 are tasks in the Verse project under "Realm
 creation from a drop" (https://openagents.com/projects/verse).

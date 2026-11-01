@@ -64,7 +64,7 @@ From the repository root, use the trusted publisher and snapshot tools:
 openagents project list --project psionic
 openagents project publish --project psionic --dry-run
 openagents project publish --project psionic
-bun coax/web/project/snapshot.ts --project psionic
+openagents project snapshot --project psionic
 ```
 
 The project signing key stays in its existing per-project secret-file convention outside the repository, with private filesystem permissions. Never print or commit it. The public identity alone is in project.json. [QUEUE.md](../../coax/web/project/QUEUE.md) describes claims, plans, completion evidence and release. Current workers commit and push main; imported historical PR instructions do not override the agent contract.

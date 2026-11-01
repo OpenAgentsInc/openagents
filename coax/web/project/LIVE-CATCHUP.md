@@ -2,6 +2,11 @@
 
 2026-10-28, task `project-live-catchup` (#db36), coax0 0.15.0.
 
+The TypeScript `live-catchup.test.ts` named below was removed on 2026-11-01. Its
+scenarios that run without a browser or a live relay now run natively in Coax:
+`apps/openagents-web/project-catchup.coax` (a native suite with
+`project-capacity.coax`; see docs/verification/2026-11-01-project-page-coax.md).
+
 The old live reader counted `CLOSED` as EOSE and replaced the verified build-time
 snapshot after the five initial subscriptions ended. A relay cap of 100 could
 therefore replace 156 known roots with 100, and omit older current claims/plans or
