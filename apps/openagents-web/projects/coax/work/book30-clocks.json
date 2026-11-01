@@ -1,0 +1,153 @@
+{
+  "v": "openagents.project-work.v1",
+  "items": [
+    {
+      "slug": "book30-clocks-and-ticks",
+      "kind": "milestone",
+      "parent": "coax-roadmap",
+      "title": "Chapter 30: typed clocks, multirate ticks and astronomical warp",
+      "labels": [
+        "book",
+        "r13",
+        "language"
+      ],
+      "body": "Owner-selected full chapter 30 delivery, including prerequisite typed errors and enforced clock effects, nominal simulation/steady/civil and TAI/TT/TDB/UTC instants, pinned mappings, declared schedules and Hold age errors, real Panda/Verse adoption, astronomical conversion and event-capped warp. Implement the linked tasks in order; an initial clock-only profile is not completion. Existing R2 asynchronous acceptance and B2/B3 retained-request work remain open. Current ROADMAP numbering applies; this does not rename the historical r11/r12 project milestones."
+    },
+    {
+      "slug": "book30-analysis-cost",
+      "kind": "task",
+      "parent": "book30-clocks-and-ticks",
+      "title": "Create analysis headroom for typed errors and clocks",
+      "size": "L",
+      "labels": [
+        "book30",
+        "compiler",
+        "analysis-cost"
+      ],
+      "blocked_by": [
+        "r3a-retain-store-checks"
+      ],
+      "body": "Before adding language forms, reduce measured full-compiler retained-store analysis cost under the unchanged 1,048,576-work, 16,384-query and 65,536-origin capacities. B1 qualified at 1,047,475 work. Write checks first for sparse/ascending eight-slot field-cache reuse, block/type/source-mode separation, malformed IDs/kinds/types/row links, fuel/query exhaustion and atomic publication. Preserve the A1 ordinary walk and frozen-layout trust boundary. Measure a matching current compiler on the complete compiler source; qualify full authority mutation with zero survivors, original borrow/native controls, deterministic seeds and both bootstrap fixed points. No budget increase, check deletion or equivalent waiver. Push and record actual cost before language growth."
+    },
+    {
+      "slug": "book30-result-language",
+      "kind": "task",
+      "parent": "r2a-results",
+      "title": "Implement tagged results, optionals and exhaustive error handling",
+      "size": "L",
+      "labels": [
+        "book30",
+        "compiler",
+        "r2",
+        "errors"
+      ],
+      "blocked_by": [
+        "book30-analysis-cost"
+      ],
+      "body": "Implement the R2 first delivery required by chapter 30: actual compiler-owned tagged Result(T,E), general tagged unions, optionals, exhaustive switch, same-error-type try propagation and lazy or_else. Freeze surface/layout/handling/cleanup rules in spec and grammar before code. Naming or assigning an error alone must not count as handling; supported restrictions must be explicit. Execute defer exactly once in reverse lexical order on recoverable exits, preserving operand/place evaluation order and foreign domain/code. Integrate active payloads into A1/B1; reject escaped local backing. Coax owns semantic admission; native code transports and executes checked decisions. Qualify independent evaluator/C O0/O2/sanitizer/layout and negative-diagnostic cases plus authority zero-survivor/bootstrap gates. Migrate a real synchronous resource adapter with observed release and errors. This child does not close the existing R2 umbrella asynchronous adapter/procedure expansion or B2/B3."
+    },
+    {
+      "slug": "book30-effect-contract",
+      "kind": "task",
+      "parent": "book30-clocks-and-ticks",
+      "title": "Enforce transitive effects and pure clock boundaries",
+      "size": "L",
+      "labels": [
+        "book30",
+        "compiler",
+        "r11",
+        "effects"
+      ],
+      "blocked_by": [
+        "book30-result-language"
+      ],
+      "body": "Implement a versioned Coax-owned effect admission contract for #pure and explicit declared effects. Reading clocks is an effect, including through helpers, concrete generics, cleanup and error paths. Preserve effects.v1 inspection identity and ordering-effect bits; deterministic fatal traps and local memory must have explicit purity rules. Cover allocation/blocking/host I/O/clock/random/foreign/atomics and conservative region reads/writes for the supported language. Unknown foreign effects remain unfulfilled; reviewed summaries are explicit identities, never inferred from procedure names. Report transitive source witnesses; demonstrate engine and generic consumers plus native observed effects. Qualify sharp negatives, zero-survivor authority and deterministic bootstrap gates. Unsupported callbacks/alias precision remain visible limitations, never assumed pure."
+    },
+    {
+      "slug": "book30-typed-clocks",
+      "kind": "task",
+      "parent": "book30-clocks-and-ticks",
+      "title": "Implement nominal clock instants and named conversions",
+      "size": "L",
+      "labels": [
+        "book30",
+        "compiler",
+        "r13",
+        "clocks"
+      ],
+      "blocked_by": [
+        "book30-effect-contract"
+      ],
+      "body": "Implement distinct simulation, steady and civil instant types built on admitted durations. Same-domain subtraction yields duration; cross-domain arithmetic or implicit conversion refuses with original diagnostics. Clock reads obey enforced effects. Named recorded/pinned mappings carry identity, epoch, rate/offset and explicit coverage; invalid, stale or unsupported conversion returns typed error before mutation. Check normalization/overflow, pause/step/jump while steady advances, explicit correction and replay clock-boundary records. Qualify source type negatives, independent integer arithmetic, native/evaluator profiles and any changed compiler authority/bootstrap gates."
+    },
+    {
+      "slug": "book30-multirate-consumers",
+      "kind": "task",
+      "parent": "book30-clocks-and-ticks",
+      "title": "Drive Panda and Verse from declared multirate schedules",
+      "size": "L",
+      "labels": [
+        "book30",
+        "compiler",
+        "r13",
+        "psionic",
+        "verse"
+      ],
+      "blocked_by": [
+        "book30-typed-clocks"
+      ],
+      "body": "Each task declares integer/rational rate and phase, with deterministic inspectable within-tick order and explicit resource refusal. Connections declare Hold semantics and maximum age; empty/future/wrong-epoch/stale reads are typed errors with exact inclusive age boundaries. Compare long actual traces against an independent predeclared reference. Migrate actual simulated Panda physics/control to different rates and Verse fixed steps to the declared scheduler, preserving Aethyr nanosecond accounting, frame clamp, default fallback, eight-step cap/drop and interpolation. Preserve native clock-effect order; retain replayable boundaries. Qualify product consumer parity, independent scheduling/hold fault controls, mutation and relevant native/Wasm gates."
+    },
+    {
+      "slug": "book30-astronomical-time",
+      "kind": "task",
+      "parent": "book30-clocks-and-ticks",
+      "title": "Implement pinned TAI, TT, TDB and UTC conversions",
+      "size": "L",
+      "labels": [
+        "book30",
+        "compiler",
+        "r13",
+        "astronomy"
+      ],
+      "blocked_by": [
+        "book30-multirate-consumers"
+      ],
+      "body": "Implement distinct astronomical instant types with split integer day/subday precision, checked normalization and explicit rounding. Pin IERS leap-table bytes/identity and conservative validity interval; handle or explicitly refuse leap labels without POSIX ambiguity and refuse outside coverage. Pin a named TT\u2013TDB series with coefficient identity, licensed attribution, stated reference interval, physical model error and separate numerical tolerance. Compare real UTC\u2013TDB conversion against published primary-source literals and exact TAI\u2013TT offset. Never extrapolate a modern leap offset to year 2200; a separately supplied future TDB scenario is explicit. Preserve failure/table/identity/expiry tests and native debug/release numerical evidence. Downloaded reference code is read only."
+    },
+    {
+      "slug": "book30-event-warp",
+      "kind": "task",
+      "parent": "book30-clocks-and-ticks",
+      "title": "Stop accelerated simulation at every scheduled event",
+      "size": "L",
+      "labels": [
+        "book30",
+        "compiler",
+        "r13",
+        "warp"
+      ],
+      "blocked_by": [
+        "book30-astronomical-time"
+      ],
+      "body": "Implement warp on the simulation clock, with exact declared scale and scheduled-event caps. Burn boundaries, signal arrivals and contacts retain event time and deterministic tie order; warp 1 and 1,000,000 produce identical event sequence. Pause/jump/mapping epochs and an explicit bounded work budget refuse rather than silently skipping events. Record accepted clock boundaries for replay. Use independently frozen integer reference traces and boundary/overflow/stale-event faults; integrate the spacecraft scenario using an admitted time-scale source. Event location/integrator work beyond chapter 30 remains the chapter 32 contract."
+    },
+    {
+      "slug": "book30-runnable-chapter",
+      "kind": "task",
+      "parent": "book30-clocks-and-ticks",
+      "title": "Publish the complete runnable typed-clocks chapter",
+      "size": "L",
+      "labels": [
+        "book30",
+        "compiler",
+        "r13",
+        "book"
+      ],
+      "blocked_by": [
+        "book30-event-warp"
+      ],
+      "body": "Replace chapter 30 sketches with executable examples covering all declared forms, real Panda/Verse consumers, typed stale errors, pinned astronomical conversion and equal warp event order. Register excerpts/transcripts and run check-examples.sh in debug/release. Update spec, grammar, capability claims, status and verification records to distinguish completed scope from R2 async/B2/B3/R14/R15/R16 work. Preserve evidence identities and source boundaries; pass affected gates and push each completed child before resolving with its actual verified main commit. The full chapter milestone remains open until every promised scenario and prerequisite is implemented."
+    }
+  ]
+}
