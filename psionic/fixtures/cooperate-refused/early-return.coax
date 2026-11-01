@@ -1,0 +1,6 @@
+// Refused: a thread that returns early would skip the barrier after the loop.
+leave :: (item:int,x:[]f32,out:[]f32) #export_c {
+    a:[128]f32;
+    for thread:0..<128 {if x[thread]<0 {return;} a[thread]=x[thread];}
+    for thread:0..<128 {out[item*128+thread]=a[127-thread];}
+}

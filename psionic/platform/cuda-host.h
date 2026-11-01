@@ -29,6 +29,8 @@ typedef struct {
     char name[128];
     size_t free_bytes, total_bytes;
     int driver_version;
+    int max_threads;  /* attribute 1: threads per block */
+    int max_shared;   /* attribute 8: shared bytes per block */
 } PcDeviceInfo;
 
 /* Kernel arguments, in parameter order after the work-item count. */

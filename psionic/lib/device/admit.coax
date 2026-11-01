@@ -1,0 +1,136 @@
+// Chapter 68: device capability admission. A kernel states what it needs
+// from the device (threads per group, bytes of shared memory, the BF16
+// tensor-core instruction); the host reports what the device has (compute
+// capability, the most threads and shared bytes one block may use). This
+// file decides whether the kernel may run there. The host only reports and
+// obeys; it makes no admission decision of its own.
+#authority;
+
+// book:begin admit
+DaStatus :: enum u8 {ok;report;kernel;threads;shared;mma;}
+// What a kernel needs. threads: threads per group (a warp kernel's group is
+// one warp, 32). shared: bytes of threadgroup arrays. mma: it calls
+// cu_mma_bf16_16x8x16, which lowers to mma.sync.m16n8k16 with BF16 inputs,
+// an instruction of compute capability 8.0 and later.
+DaNeeds :: struct {threads:int;shared:int;mma:bool;}
+// What the device reports (CUDA device attributes 75, 76, 1 and 8).
+DaDevice :: struct {major:int;minor:int;max_threads:int;max_shared:int;}
+
+da_admit :: (need:DaNeeds,dev:DaDevice)->DaStatus {
+    if dev.major<1 || dev.minor<0 || dev.minor>9 || dev.max_threads<32 || dev.max_shared<0 {return DaStatus.report;}
+    if need.threads<32 || need.threads/32>32 || need.threads%32!=0 || need.shared<0 {return DaStatus.kernel;}
+    if need.threads>dev.max_threads {return DaStatus.threads;}
+    if need.shared>dev.max_shared {return DaStatus.shared;}
+    if need.mma && dev.major<8 {return DaStatus.mma;}
+    return DaStatus.ok;
+}
+da_text :: (s:DaStatus)->string {
+    if s==DaStatus.ok {return "admitted";}
+    if s==DaStatus.report {return "refused: the device report is malformed";}
+    if s==DaStatus.kernel {return "refused: the kernel's needs are malformed";}
+    if s==DaStatus.threads {return "refused: the group has more threads than the device allows in one block";}
+    if s==DaStatus.shared {return "refused: the kernel needs more shared memory than one block may use";}
+    return "refused: cu_mma_bf16_16x8x16 needs compute capability 8.0 or later";
+}
+// book:end admit
+
+// book:begin needs
+// The needs of chapter 68's group kernels and chapter 37's tensor-core
+// conformance kernel, stated next to their sources: 0 dc_tile_sum (two
+// [128]f32 arrays), 1 dc_butterfly (two [32]f32), 2 dc_bf16_rows (one
+// [256]f32 tile; its [128]f32 accumulator is per-thread registers),
+// 3 dw_mma_tile (one warp, registers only).
+DA_KERNELS :: 4;
+da_needs :: (kernel:int)->DaNeeds {
+    if kernel==0 {return DaNeeds.{threads=128,shared=1024,mma=false};}
+    if kernel==1 {return DaNeeds.{threads=32,shared=256,mma=false};}
+    if kernel==2 {return DaNeeds.{threads=128,shared=1024,mma=false};}
+    if kernel==3 {return DaNeeds.{threads=32,shared=0,mma=true};}
+    return DaNeeds.{threads=0,shared=0,mma=false};
+}
+da_name :: (kernel:int)->string {
+    if kernel==0 {return "dc_tile_sum";}
+    if kernel==1 {return "dc_butterfly";}
+    if kernel==2 {return "dc_bf16_rows";}
+    if kernel==3 {return "dw_mma_tile";}
+    return "unknown";
+}
+// book:end needs
+
+// The C host's entry: the decision for kernel `kernel` on the reported
+// device, as the DaStatus number (0 admits).
+da_admit_kernel :: (kernel:int,major:int,minor:int,max_threads:int,max_shared:int)->int #export_c {
+    return cast(int)da_admit(da_needs(kernel),DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=max_shared});
+}
+
+// ---- Checks.
+da_4080 :: ()->DaDevice {return DaDevice.{major=8,minor=9,max_threads=1024,max_shared=49152};}
+#test "the RTX 4080 report admits all four kernels" {
+    // The report psionic/tests/cooperate_device.c reads on this host.
+    d:=da_4080();
+    #assert d.major==8 && d.minor==9 && d.max_threads==1024 && d.max_shared==49152;
+    for k:0..<DA_KERNELS {#assert da_admit(da_needs(k),da_4080())==DaStatus.ok;}
+    #assert da_admit_kernel(3,8,9,1024,49152)==0;
+}
+#test "a compute capability 7.5 device refuses only the tensor-core kernel" {
+    dev:=DaDevice.{major=7,minor=5,max_threads=1024,max_shared=49152};
+    for k:0..<3 {#assert da_admit(da_needs(k),dev)==DaStatus.ok;}
+    #assert da_admit(da_needs(3),dev)==DaStatus.mma;
+    #assert da_admit_kernel(3,7,5,1024,49152)==5;
+    #assert da_admit(da_needs(3),DaDevice.{major=8,minor=0,max_threads=1024,max_shared=0})==DaStatus.ok;
+}
+#forall "the tensor-core instruction needs major 8 or later" major:1..<12, minor:0..<10, mma:bool {
+    dev:=DaDevice.{major=major,minor=minor,max_threads=1024,max_shared=49152};
+    expected:DaStatus=DaStatus.ok;
+    if mma && major<8 {expected=DaStatus.mma;}
+    #assert da_admit(DaNeeds.{threads=32,shared=0,mma=mma},dev)==expected;
+}
+#forall "threads: a multiple of 32 from 32 to 1024, within the device's block" threads:-1..<1100, max:0..<3 {
+    limits:=[3] int.[32,512,1024];
+    dev:=DaDevice.{major=8,minor=9,max_threads=limits[max],max_shared=49152};
+    expected:DaStatus=DaStatus.ok;
+    if threads<32 || threads>1024 || threads%32!=0 {expected=DaStatus.kernel;}
+    else if threads>limits[max] {expected=DaStatus.threads;}
+    #assert da_admit(DaNeeds.{threads=threads,shared=0,mma=false},dev)==expected;
+}
+#forall "shared bytes: nonnegative and within the device's block" shared:-2..<300, limit:-1..<260 {
+    dev:=DaDevice.{major=8,minor=9,max_threads=1024,max_shared=limit};
+    expected:DaStatus=DaStatus.ok;
+    if limit<0 {expected=DaStatus.report;}
+    else if shared<0 {expected=DaStatus.kernel;}
+    else if shared>limit {expected=DaStatus.shared;}
+    #assert da_admit(DaNeeds.{threads=64,shared=shared,mma=false},dev)==expected;
+}
+#forall "a malformed report is refused before the kernel is looked at" major:-1..<3, minor:-2..<12, max_threads:0..<70 {
+    dev:=DaDevice.{major=major,minor=minor,max_threads=max_threads,max_shared=0};
+    bad:=major<1 || minor<0 || minor>9 || max_threads<32;
+    // The needs are malformed too, so the report must win.
+    got:=da_admit(DaNeeds.{threads=0,shared=-1,mma=true},dev);
+    if bad {#assert got==DaStatus.report;} else {#assert got==DaStatus.kernel;}
+}
+#test "order: threads before shared before the instruction" {
+    dev:=DaDevice.{major=7,minor=0,max_threads=64,max_shared=100};
+    #assert da_admit(DaNeeds.{threads=128,shared=200,mma=true},dev)==DaStatus.threads;
+    #assert da_admit(DaNeeds.{threads=64,shared=200,mma=true},dev)==DaStatus.shared;
+    #assert da_admit(DaNeeds.{threads=64,shared=100,mma=true},dev)==DaStatus.mma;
+    #assert da_admit(DaNeeds.{threads=64,shared=100,mma=false},dev)==DaStatus.ok;
+}
+#test "every status has its own text" {
+    #assert da_text(DaStatus.ok)=="admitted";
+    #assert da_text(DaStatus.report)=="refused: the device report is malformed";
+    #assert da_text(DaStatus.kernel)=="refused: the kernel's needs are malformed";
+    #assert da_text(DaStatus.threads)=="refused: the group has more threads than the device allows in one block";
+    #assert da_text(DaStatus.shared)=="refused: the kernel needs more shared memory than one block may use";
+    #assert da_text(DaStatus.mma)=="refused: cu_mma_bf16_16x8x16 needs compute capability 8.0 or later";
+}
+#test "the stated needs and names" {
+    #assert da_needs(0).threads==128 && da_needs(0).shared==1024 && !da_needs(0).mma;
+    #assert da_needs(1).threads==32 && da_needs(1).shared==256 && !da_needs(1).mma;
+    #assert da_needs(2).threads==128 && da_needs(2).shared==1024 && !da_needs(2).mma;
+    #assert da_needs(3).threads==32 && da_needs(3).shared==0 && da_needs(3).mma;
+    #assert da_needs(4).threads==0 && da_needs(-1).threads==0 && da_needs(4).shared==0 && !da_needs(4).mma;
+    #assert da_admit(da_needs(4),da_4080())==DaStatus.kernel;
+    #assert da_name(0)=="dc_tile_sum" && da_name(1)=="dc_butterfly" && da_name(2)=="dc_bf16_rows" && da_name(3)=="dw_mma_tile" && da_name(4)=="unknown";
+    #assert da_admit_kernel(0,8,9,1024,49152)==0 && da_admit_kernel(0,8,9,64,49152)==3 && da_admit_kernel(0,8,9,1024,1023)==4;
+    #assert da_admit_kernel(0,0,9,1024,49152)==1 && da_admit_kernel(4,8,9,1024,49152)==2;
+}

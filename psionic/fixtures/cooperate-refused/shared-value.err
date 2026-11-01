@@ -1,0 +1,5 @@
+psionic/fixtures/cooperate-refused/shared-value.coax:5:25: error[E0700]: a thread loop assigning a value the group shares is outside the CUDA compute subset
+      for thread:0..<32 {t+=x[thread];}
+                          ^
+  fix: coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result
+1 error

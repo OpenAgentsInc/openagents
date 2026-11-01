@@ -1730,6 +1730,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/cooperate.coax",
+      "chapter": "psionic/book/ch068-coax-kernels-cooperate.md",
+      "stdout": "psionic/fixtures/cooperate.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

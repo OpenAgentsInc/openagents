@@ -1,0 +1,5 @@
+psionic/fixtures/cooperate-refused/size.coax:3:5: error[E0700]: a thread loop that is not for thread: 0..<T in a kernel, with T a multiple of 32 from 32 to 1024 is outside the CUDA compute subset
+      for thread:0..<100 {out[item*100+thread]=1;}
+      ^
+  fix: coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result
+1 error

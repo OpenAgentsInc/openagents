@@ -1,0 +1,4 @@
+// Refused: a group of 100 threads is not a whole number of warps.
+odd :: (item:int,out:[]f32) #export_c {
+    for thread:0..<100 {out[item*100+thread]=1;}
+}

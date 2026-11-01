@@ -1,0 +1,8 @@
+// Refused: a phase writes a[thread] while it reads a[thread+1], which the
+// next thread writes in the same phase.
+shift :: (item:int,x:[]f32,out:[]f32) #export_c {
+    a:[129]f32;
+    for thread:0..<128 {a[thread]=x[thread];}
+    for thread:0..<128 {a[thread]=a[thread]+a[thread+1];}
+    for thread:0..<128 {out[item*128+thread]=a[thread];}
+}

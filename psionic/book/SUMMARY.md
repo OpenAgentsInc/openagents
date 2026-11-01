@@ -74,7 +74,7 @@
 - [65. Original weights stay on the GPU](ch065-original-weights-stay-on-the-gpu.md)
 - [66. A complete CUDA decoder](ch066-a-complete-cuda-decoder.md)
 - [67. Prefill together](ch067-prefill-together.md)
-- [68. Coax kernels cooperate](ch068-coax-kernels-cooperate.md) — design draft
+- [68. Coax kernels cooperate](ch068-coax-kernels-cooperate.md) — partly implemented
 - [69. Original MXFP4 products use matrix hardware](ch069-original-mxfp4-products-use-matrix-hardware.md) — design draft
 - [70. Replay the device program](ch070-replay-the-device-program.md)
 - [71. Throughput is a gate](ch071-throughput-is-a-gate.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–42, 44–47, 49, 52, 53, 55, 56, 60–67, 70, 72, 73, 75, 77, 79, 80, 82, 88–98, 103–112, 114, 117, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 156–158, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–42, 44–47, 49, 52, 53, 55, 56, 60–68, 70, 72, 73, 75, 77, 79, 80, 82, 88–98, 103–112, 114, 117, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 156–158, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

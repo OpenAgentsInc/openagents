@@ -1,0 +1,7 @@
+// Refused: every thread would add into the group's one total, and the
+// branch after the loop depends on it.
+total :: (item:int,x:[]f32,out:[]f32) #export_c {
+    t:f32=0;
+    for thread:0..<32 {t+=x[thread];}
+    if t>0 {for thread:0..<32 {out[thread]=t;}}
+}

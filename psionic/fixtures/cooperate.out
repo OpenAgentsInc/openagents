@@ -1,0 +1,14 @@
+2^24 and 255 ones: tree 16777470.0, plain loop 16777216.0, exact 16777471
+butterfly of 2^24 and 31 ones: lane 0 16777246.0, lane 31 16777246.0, all lanes equal: true
+packed BF16 rows: 10.0 5.5
+compute capability 8.9:
+  dc_tile_sum: admitted
+  dc_butterfly: admitted
+  dc_bf16_rows: admitted
+  dw_mma_tile: admitted
+compute capability 7.5:
+  dc_tile_sum: admitted
+  dc_butterfly: admitted
+  dc_bf16_rows: admitted
+  dw_mma_tile: refused: cu_mma_bf16_16x8x16 needs compute capability 8.0 or later
+a 100-thread group: refused: the kernel's needs are malformed

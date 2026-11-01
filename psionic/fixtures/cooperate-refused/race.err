@@ -1,0 +1,5 @@
+psionic/fixtures/cooperate-refused/race.coax:6:46: error[E0700]: a thread loop that writes a threadgroup array and touches elements another thread owns is outside the CUDA compute subset
+      for thread:0..<128 {a[thread]=a[thread]+a[thread+1];}
+                                               ^
+  fix: coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result
+1 error

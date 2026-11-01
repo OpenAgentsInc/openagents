@@ -1,0 +1,5 @@
+psionic/fixtures/cooperate-refused/early-return.coax:4:41: error[E0700]: break, continue or return directly in a thread loop is outside the CUDA compute subset
+      for thread:0..<128 {if x[thread]<0 {return;} a[thread]=x[thread];}
+                                          ^
+  fix: coax cuda accepts bool, f32, f64 and sized integers, fixed arrays of at most 4096 scalars, views of numbers, if/else, for loops, break/continue and acyclic calls; every #export_c procedure is a kernel with an int work item first and no result
+1 error

@@ -184,6 +184,8 @@ PcStatus pc_open(PcDeviceInfo *info) {
         info->major = g.major;
         info->minor = g.minor;
         g.cuDeviceGetAttribute(&info->sms, 16, g.device); /* multiprocessor count */
+        g.cuDeviceGetAttribute(&info->max_threads, 1, g.device); /* threads per block */
+        g.cuDeviceGetAttribute(&info->max_shared, 8, g.device); /* shared bytes per block */
         g.cuDeviceGetName(info->name, (int)sizeof info->name, g.device);
         g.cuDriverGetVersion(&info->driver_version);
         if (check(g.cuMemGetInfo(&info->free_bytes, &info->total_bytes), "cuMemGetInfo")) return PC_DRIVER;

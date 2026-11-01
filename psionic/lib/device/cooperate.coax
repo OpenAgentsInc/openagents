@@ -1,0 +1,295 @@
+// Chapter 68: Coax kernels cooperate. Three group kernels in the coax cuda
+// subset, where the threads of one block share work through threadgroup
+// (CUDA __shared__) arrays and meet at the barriers that fence every thread
+// loop. Each fixes the order of every addition, so the same source compiled
+// to C is a bit-exact oracle for the device:
+//   dc_tile_sum   a tree reduction of 256 values per group of 128 threads;
+//   dc_butterfly  lane exchange: 32 threads swap partial sums with the
+//                 thread whose index differs in one bit, until every thread
+//                 holds its group's total;
+//   dc_bf16_rows  a packed-BF16 matrix times an f32 vector, with the vector
+//                 loaded into a shared tile once per group and read by all.
+// Profile DEVICE-F32-TREE-v1: f32 additions in the tree or butterfly order
+// written here, one rounding per operation (--fmad=false on the device).
+
+// book:begin tile
+DC_THREADS :: 128;
+DC_TILE :: 256;
+// The threads that add in a phase: the first half.
+dc_live :: (thread:int,half:int)->bool {return thread<half;}
+// Group `item` adds x[item*256 ..< item*256+256] (zero past count) into
+// sums[item]. Phase 0: thread t adds the values t and t+128 into a[t]. Then
+// seven phases with half = 64, 32, ..., 1: every thread reads its own
+// element, and threads t < half add the element half places on. Each phase
+// reads one array and writes the other, so no phase writes an element
+// another thread reads in that phase.
+dc_tile_sum :: (item:int,count:int,x:[]f32,sums:[]f32) #export_c {
+    a:[128]f32;b:[128]f32;
+    for thread:0..<DC_THREADS {
+        at:=item*DC_TILE+thread;lo:f32=0;hi:f32=0;
+        if at<count {lo=x[at];}
+        if at+DC_THREADS<count {hi=x[at+DC_THREADS];}
+        a[thread]=lo+hi;
+    }
+    for step:0..<7 {
+        half:=1<<(6-step);
+        if step%2==0 {
+            for thread:0..<DC_THREADS {s:=a[thread];if dc_live(thread,half) {b[thread]=s+a[thread+half];}}
+        } else {
+            for thread:0..<DC_THREADS {s:=b[thread];if dc_live(thread,half) {a[thread]=s+b[thread+half];}}
+        }
+    }
+    // Step 6 is even, so the total is b[0].
+    for thread:0..<DC_THREADS {s:=b[thread];if thread==0 {sums[item]=s;}}
+}
+// book:end tile
+
+// book:begin butterfly
+DC_WARP :: 32;
+// Group `item` of 32 threads: thread t starts with x[item*32+t] (zero past
+// count). In the step with mask m it adds the value of thread t^m. After
+// masks 16, 8, 4, 2 and 1 every thread holds the same total, which it writes
+// to out[item*32+t] (inside count).
+dc_butterfly :: (item:int,count:int,x:[]f32,out:[]f32) #export_c {
+    a:[32]f32;b:[32]f32;
+    for thread:0..<DC_WARP {
+        at:=item*DC_WARP+thread;v:f32=0;
+        if at<count {v=x[at];}
+        a[thread]=v;
+    }
+    for step:0..<5 {
+        mask:=1<<(4-step);
+        if step%2==0 {
+            for thread:0..<DC_WARP {b[thread]=a[thread]+a[thread^mask];}
+        } else {
+            for thread:0..<DC_WARP {a[thread]=b[thread]+b[thread^mask];}
+        }
+    }
+    for thread:0..<DC_WARP {
+        at:=item*DC_WARP+thread;
+        if at<count {out[at]=b[thread];}
+    }
+}
+// book:end butterfly
+
+// book:begin rows
+// Groups for a launch, and tiles of a row: n items in groups of per.
+dc_groups :: (n:int,per:int)->int {return (n+per-1)/per;}
+// Two BF16 values in one u32: column 2p in the low half, 2p+1 in the high.
+dc_bf16 :: (word:u32,high:bool)->f32 {
+    if high {return f32_from_bits(word&0xffff0000);}
+    return f32_from_bits(word<<16);
+}
+// Group `item` computes out[r] = sum over c of w[r][c] * x[c] for the rows
+// r = item*128 + t, one per thread. w is rows by cols BF16 (cols even),
+// packed two to a u32, cols/2 words per row. The vector is read in tiles of
+// 256: every thread loads two of its values into the shared tile, then
+// every thread reads the whole tile. Each thread adds its row's products in
+// f32 in column order.
+dc_bf16_rows :: (item:int,rows:int,cols:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+    tile:[256]f32;acc:[128]f32;
+    words:=cols/2;
+    for s:0..<dc_groups(cols,DC_TILE) {
+        c0:=s*DC_TILE;
+        for thread:0..<DC_THREADS {
+            for i:0..<2 {
+                c:=c0+thread+DC_THREADS*i;v:f32=0;
+                if c<cols {v=x[c];}
+                tile[thread+DC_THREADS*i]=v;
+            }
+        }
+        for thread:0..<DC_THREADS {
+            row:=item*DC_THREADS+thread;
+            if row<rows {
+                sum:=acc[thread];
+                for p:0..<DC_TILE/2 {
+                    c:=c0+2*p;
+                    if c<cols {
+                        word:=w[row*words+c/2];
+                        sum+=dc_bf16(word,false)*tile[2*p];
+                        sum+=dc_bf16(word,true)*tile[2*p+1];
+                    }
+                }
+                acc[thread]=sum;
+            }
+        }
+    }
+    for thread:0..<DC_THREADS {
+        row:=item*DC_THREADS+thread;
+        if row<rows {out[row]=acc[thread];}
+    }
+}
+// book:end rows
+
+
+// ---- Checks. The oracles below are written independently of the kernels:
+// the tree and butterfly orders are spelled out as plain loops over the
+// values, and the BF16 product is compared with an f64 sum.
+
+#test "the hand-worked tile trace: 2^24 then 255 ones" {
+    // Chapter 68 works this by hand. A plain f32 loop loses every one; the
+    // tree loses only the one added to 2^24 in phase 0.
+    x:[256]f32;sums:[1]f32;
+    x[0]=16777216;for i:1..<256 {x[i]=1;}
+    dc_tile_sum(0,256,x[..],sums[..]);
+    #assert sums[0]==16777470;
+    plain:f32=0;for i:0..<256 {plain+=x[i];}
+    #assert plain==16777216;
+    // The phase totals of thread 0: 2^24, then +2, +4, +8, +16, +32, +64, +128.
+    t:f32=16777216;
+    for step:0..<7 {t+=f32(2<<step);}
+    #assert t==16777470 && 16777216+255==16777471;
+}
+// The tree order, written as a plain loop over a copy: round r adds the
+// element r positions on.
+dc_tree_oracle :: (x:[]f32,base:int,count:int)->f32 {
+    padded:[256]f32;v:[128]f32;
+    for i:0..<256 {if base+i<count {padded[i]=x[base+i];}}
+    for t:0..<128 {v[t]=padded[t]+padded[t+128];}
+    half:=64;
+    while half>=1 {
+        for t:0..<half {v[t]=v[t]+v[t+half];}
+        half=half/2;
+    }
+    return v[0];
+}
+#test "the tile sum matches the tree oracle on ragged groups, run in any order" {
+    count:=700;
+    x:[700]f32;sums:[3]f32;
+    for i:0..<count {x[i]=f32((i*37)%101-50)*0.0625+f32(i%7)*0.001;}
+    for g:0..<3 {dc_tile_sum(2-g,count,x[..],sums[..]);}
+    #assert dc_groups(count,DC_TILE)==3;
+    for g:0..<3 {#assert sums[g]==dc_tree_oracle(x[..],g*256,count);}
+    // The last group holds 188 values and 68 zeros.
+    exact:f64=0;for i:512..<700 {exact+=f64(x[i]);}
+    #assert abs(f64(sums[2])-exact)<1e-4;
+}
+#test "phase 0 pairs t with t+128, then the tree pairs t with t+half" {
+    // Two ones survive next to 2^24 only if they meet each other before they
+    // meet 2^24: values 1 and 129 meet in phase 0 (2, kept: 2^24+2), values
+    // 1 and 2 never meet before thread 0, so each is lost (2^24+1 rounds to
+    // the even 2^24).
+    x:[256]f32;sums:[1]f32;
+    x[0]=16777216;x[1]=1;x[129]=1;
+    dc_tile_sum(0,256,x[..],sums[..]);
+    #assert sums[0]==16777218;
+    x[129]=0;x[2]=1;
+    dc_tile_sum(0,256,x[..],sums[..]);
+    #assert sums[0]==16777216;
+    // Values 1 and 65 meet at half 64 (thread 1), so they survive too.
+    x[2]=0;x[65]=1;
+    dc_tile_sum(0,256,x[..],sums[..]);
+    #assert sums[0]==16777218;
+}
+#forall "a single value anywhere in a tile comes back exactly" at:0..<256 {
+    x:[256]f32;sums:[1]f32;
+    x[at]=f32(at+1)*0.5;
+    dc_tile_sum(0,256,x[..],sums[..]);
+    #assert sums[0]==f32(at+1)*0.5;
+}
+#test "values past count are ignored" {
+    x:[256]f32;sums:[1]f32;
+    for i:0..<256 {x[i]=1;}
+    dc_tile_sum(0,129,x[..],sums[..]);#assert sums[0]==129;
+    dc_tile_sum(0,128,x[..],sums[..]);#assert sums[0]==128;
+    dc_tile_sum(0,1,x[..],sums[..]);#assert sums[0]==1;
+    dc_tile_sum(0,0,x[..],sums[..]);#assert sums[0]==0;
+}
+
+// The butterfly order as the oracle sees it: lane l's total is built from
+// the 32 values in the order the exchange pairs them.
+dc_butterfly_oracle :: (x:[]f32,base:int,count:int,lane:int)->f32 {
+    v:[32]f32;
+    for t:0..<32 {if base+t<count {v[t]=x[base+t];}}
+    mask:=16;
+    while mask>=1 {
+        w:[32]f32;
+        for t:0..<32 {w[t]=v[t]+v[t^mask];}
+        for t:0..<32 {v[t]=w[t];}
+        mask=mask/2;
+    }
+    return v[lane];
+}
+#test "every lane of the butterfly holds the same total" {
+    count:=90;
+    x:[90]f32;out:[90]f32;
+    for i:0..<count {x[i]=f32((i*53)%17)*0.3-2.1;}
+    for g:0..<3 {dc_butterfly(g,count,x[..],out[..]);}
+    for i:0..<count {
+        g:=i/32;
+        #assert out[i]==out[g*32];
+        #assert out[i]==dc_butterfly_oracle(x[..],g*32,count,i%32);
+    }
+}
+#test "the butterfly pairs lanes by xor: the hand-worked first exchange" {
+    // Lane l starts with l. Mask 16 gives l + (l^16) = 2l+16 for l<16. After
+    // all five masks every lane holds 0+1+...+31 = 496 (exact in f32).
+    x:[32]f32;out:[32]f32;
+    for i:0..<32 {x[i]=f32(i);}
+    dc_butterfly(0,32,x[..],out[..]);
+    for i:0..<32 {#assert out[i]==496;}
+    // With 2^24 at lane 0 and ones elsewhere, lane 16 adds 1 + 2^24 first and
+    // loses it, as lane 0 does: every lane ends with 2^24 + 30.
+    x[0]=16777216;for i:1..<32 {x[i]=1;}
+    dc_butterfly(0,32,x[..],out[..]);
+    for i:0..<32 {#assert out[i]==16777246;}
+}
+#forall "one value at lane k reaches every lane exactly" k:0..<32 {
+    x:[32]f32;out:[32]f32;
+    x[k]=f32(k)+0.25;
+    dc_butterfly(0,32,x[..],out[..]);
+    for i:0..<32 {#assert out[i]==f32(k)+0.25;}
+}
+
+// BF16 bits from f32 values chosen to be exact in BF16 (8 significant bits).
+dc_pack :: (a:f32,b:f32)->u32 {return (f32_bits(a)>>16)|((f32_bits(b)>>16)<<16);}
+#test "BF16 halves: low is column 2p, high is 2p+1" {
+    word:=dc_pack(1.5,-0.375);
+    #assert dc_bf16(word,false)==1.5 && dc_bf16(word,true)==-0.375;
+    #assert dc_bf16(0x3f80c000,false)==-2 && dc_bf16(0x3f80c000,true)==1;
+    // Each half ignores every bit of the other.
+    #assert dc_bf16(0x3f80ffff,true)==1 && dc_bf16(0xffff3f80,false)==1;
+}
+#test "the packed BF16 rows match a column-order f32 oracle and an f64 sum" {
+    rows:=130;cols:=262;words:=cols/2;
+    w:[17030]u32;x:[262]f32;out:[130]f32;
+    for c:0..<cols {x[c]=f32((c*29)%23-11)*0.125+f32(c%5)*0.0078125;}
+    for r:0..<rows {for p:0..<words {
+        a:=f32((r+3*p)%9-4)*0.25;b:=f32((2*r+p)%7-3)*0.5;
+        w[r*words+p]=dc_pack(a,b);
+    }}
+    for i:0..<rows {out[i]=-99;}
+    for g:0..<dc_groups(rows,DC_THREADS) {dc_bf16_rows(1-g,rows,cols,w[..],x[..],out[..]);}
+    for r:0..<rows {
+        sum:f32=0;exact:f64=0;mag:f64=0;
+        for p:0..<words {
+            a:=f32((r+3*p)%9-4)*0.25;b:=f32((2*r+p)%7-3)*0.5;
+            sum+=a*x[2*p];sum+=b*x[2*p+1];
+            exact+=f64(a)*f64(x[2*p])+f64(b)*f64(x[2*p+1]);
+            mag+=abs(f64(a)*f64(x[2*p]))+abs(f64(b)*f64(x[2*p+1]));
+        }
+        #assert out[r]==sum;
+        // Frozen bound for cols products added in f32: cols * 2^-24 of sum |w x|.
+        #assert abs(f64(out[r])-exact)<=f64(cols)*mag/16777216.0;
+    }
+}
+#test "rows past the matrix are not written, and one tile is enough for 256 columns" {
+    rows:=3;cols:=4;
+    w:[6]u32;x:[4]f32;out:[4]f32;
+    x[0]=1;x[1]=2;x[2]=3;x[3]=4;
+    for r:0..<rows {w[r*2]=dc_pack(f32(r+1),1);w[r*2+1]=dc_pack(0.5,-1);}
+    out[3]=7;
+    dc_bf16_rows(0,rows,cols,w[..],x[..],out[..]);
+    // Row r: (r+1)*1 + 1*2 + 0.5*3 - 1*4 = r + 0.5.
+    #assert out[0]==0.5 && out[1]==1.5 && out[2]==2.5 && out[3]==7;
+    // Four tiles, the last one of two columns: 770 columns of ones against
+    // x = 1, 2, ..., 770.
+    big:[385]u32;xs:[770]f32;one:[1]f32;
+    for p:0..<385 {big[p]=dc_pack(1,1);}
+    for c:0..<770 {xs[c]=f32(c+1);}
+    dc_bf16_rows(0,1,770,big[..],xs[..],one[..]);
+    #assert one[0]==296835;
+}
+#test "group counts" {
+    #assert dc_groups(0,128)==0 && dc_groups(1,128)==1 && dc_groups(128,128)==1 && dc_groups(129,128)==2 && dc_groups(700,256)==3;
+}
