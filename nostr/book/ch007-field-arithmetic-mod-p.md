@@ -394,10 +394,27 @@ python3 secp_field_mul.py
 python3 secp_field_inv.py
 ```
 
-`secp_field_inv.py` also compares roots with public points from a pinned
-libsecp256k1 build. That one test needs the native oracle in
-`tools/coax-nostr/fuzz/.cache/`, built separately; the other 17 tests run
-without it.
+`secp_field_inv.py` also compares square roots with the uncompressed public
+points of libsecp256k1. That test needs the native oracle in
+`tools/coax-nostr/fuzz/.cache/`, which you build from the pinned upstream
+release:
+
+1. Download the archive that
+   [UPSTREAM.json](../../tools/coax-nostr/fuzz/UPSTREAM.json) names, for
+   release `v0.8.0` at commit `6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d`,
+   into an empty directory, and check that its SHA-256 is
+   `3fe9fd705f4fdf2fe90d6e04b6c1fedd7e8f244a119315886f6468f52c2dfc33`.
+2. Build the oracle. The script checks the archive and the reviewed source
+   files again, and compiles the library with one `cc` command; it runs no
+   upstream build scripts:
+
+   ```shell
+   python3 -I tools/coax-nostr/fuzz/build_oracle.py --archive DIR/secp256k1.tar.gz --reviewed
+   ```
+
+With the oracle built, all 18 tests in the three harnesses pass, including
+the libsecp256k1 comparison. `secp_field_inv.py` runs its 6 tests in about
+45 seconds. The other 17 tests don't need the oracle.
 
 ### Checks in Coax
 
