@@ -1,7 +1,7 @@
 {
   "schema": "psionic.panda-joint-pd-prefix.publication.v1",
   "passed": true,
-  "component_commit": "643b0a6857",
+  "component_commit": "d330b06606f448ff840e4a52cc0d076980487ea4",
   "original_component_commit": "b3771e874d",
   "experiment_sha256": "23a533517be639cf4b428683c106b9ce64d26ee75ff88564c50849346beb8d6f",
   "new_work": {
@@ -33,7 +33,121 @@
     "psionic/fixtures/robotics/panda-joint-pd-prefix/example-reference.json": "aa7c92a0897cc0396e3e64eaa381b3f900bfeb0252ca5aa3b4ee9aa4425a8a7c",
     "psionic/fixtures/robotics/panda-joint-pd-prefix/example-qualification.json": "15656686ad4a81a3b54792896fe4f5e749871befd31640ae0d55842ce59b2a29"
   },
-  "compiler_binding": {
+  "compiler_provenance_carried": {
+    "record": "docs/verification/psionic-panda-joint-pd-2026-11-01.json",
+    "sha256": "47693c1e5adc174ed466f4fa62d13a491864bc7b63af16e22b69b8d481af0a66",
+    "same_input_fingerprint": true,
+    "same_compiler_bytes": true,
+    "scope": "Pre-rebase d6 context matched the already qualified cache. After rebase the new a1 cache was verified separately; new C/header bytes equal that earlier emission. The earlier emission differs from acquired C/header only in enumerated diagnostic path metadata, with all executable bodies/declarations exact."
+  },
+  "book": {
+    "passed": true,
+    "exit": 0,
+    "seconds": 0.597565250005573,
+    "stdout_sha256": "f3d423c1238ad89349d9c40d108beae8ae50dea9067079c714328e1d4310c7b5",
+    "stderr_bytes": 0,
+    "programs": 125,
+    "source_linked_listings": 472,
+    "initial_status_registry_failure": {
+      "record": {
+        "passed": false,
+        "exit": 1,
+        "seconds": 0.19839383399812505,
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_bytes": 852
+      },
+      "stderr": "Traceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/book.py\", line 182, in <module>\n    main()\n    ~~~~^^\n  File \"/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/book.py\", line 176, in main\n    examples = check(args.book)\n  File \"/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/book.py\", line 47, in check\n    assert not errors, f\"chapter registry ({book}/chapters.json): \" + \"; \".join(errors)\n           ^^^^^^^^^^\nAssertionError: chapter registry (psionic/book/chapters.json): README.md: ch167-command-a-robot.md status must be 'Runnable: position IK, joint PD and short owned Euler loop' (optionally followed by ' (...)'), not 'Runnable: position IK and joint PD queries'\n",
+      "repair": "Updated only chapter167 book/README status to match its new registry profile before rerunning the failed structure check."
+    }
+  },
+  "dispatch": {
+    "passed": true,
+    "checks": [
+      {
+        "name": "changed shell syntax",
+        "passed": true
+      },
+      {
+        "name": "panda-joint-pd-prefix dispatch",
+        "passed": true,
+        "command": [
+          "bash",
+          "psionic/check.sh",
+          "--jobs",
+          "2",
+          "--only",
+          "robotics/panda-joint-pd-prefix"
+        ],
+        "stubbed": true,
+        "Coax_calls": 0,
+        "SDK_calls": 0,
+        "NN_calls": 0,
+        "routed_Coax_commands": 0,
+        "routed_Python_commands": 1,
+        "log_sha256": "28cb7f2d6522258f6fa6df3d0fb3864463819a9b12ce67f3e4538384fdfb4ad2"
+      },
+      {
+        "name": "panda-query-runtime dispatch",
+        "passed": true,
+        "command": [
+          "bash",
+          "psionic/check.sh",
+          "--jobs",
+          "2",
+          "--only",
+          "robotics/panda-query-runtime"
+        ],
+        "stubbed": true,
+        "Coax_calls": 0,
+        "SDK_calls": 0,
+        "NN_calls": 0,
+        "routed_Coax_commands": 9,
+        "routed_Python_commands": 3,
+        "log_sha256": "85c376839a9edf330bc39878a27c775fd3f7424f30f98ffb930a96a751c37e83"
+      }
+    ]
+  },
+  "manifest_claim_review": {
+    "scope": "Unchanged dated model/device/serving claims; reviewed only the new CPU loop example inventory and own167 contents status.",
+    "updates": [
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "b63796e31a43ecbc37a713ee320fde9af89b516cebcf9617210fe5a0c24491dd",
+        "new": "836bfe7f79b8dabbbde2cc288a6d7002abd1fd1d61e3c2c0307e635602ea1cb4"
+      },
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/examples.json",
+        "old": "0db383b0b5fb67d273c8d10d6a7af402dd4d3f3713bdb7f7bbd70a76d3c50832",
+        "new": "e21a0c9fd93c96eb1715c23bba73600a6581df6a2f10fbe412b938dbd6b03f30"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "b63796e31a43ecbc37a713ee320fde9af89b516cebcf9617210fe5a0c24491dd",
+        "new": "836bfe7f79b8dabbbde2cc288a6d7002abd1fd1d61e3c2c0307e635602ea1cb4"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/examples.json",
+        "old": "0db383b0b5fb67d273c8d10d6a7af402dd4d3f3713bdb7f7bbd70a76d3c50832",
+        "new": "e21a0c9fd93c96eb1715c23bba73600a6581df6a2f10fbe412b938dbd6b03f30"
+      }
+    ]
+  },
+  "historical_product_checks": {
+    "joint_PD": "psionic/fixtures/robotics/panda-joint-pd/checks-qualification.json",
+    "Euler": "psionic/fixtures/robotics/panda-euler/qualification.json",
+    "unchanged_sources": true,
+    "rerun": false,
+    "combined_mutation_score_claimed": false,
+    "quantity_operator_token_gap_retained": true
+  },
+  "runtime_gate_repair": "panda-query-runtime was listed as opt-in but its case was unreachable inside the ordinary chosen-unit loop. Move that case to the explicit loop; dispatch-only stubs reach all three old authority roots and three native helpers without rerunning them.",
+  "scope": "One fixed half-second no-contact PD/owned-Euler prefix. Not a general stability, convergence, contact, hardware, policy-success, wall-clock or R14 qualification.",
+  "publication_numerical_reruns": 0,
+  "pre_rebase_compiler_binding": {
     "passed": true,
     "input_fingerprint": "d6c0e6e364379757a25221beb63b1b581aa9a87adf3a40918654d4594cf660e6",
     "compiler_sha256": "3483fd2cd7d48335274d342b4f34494236dbec56b8c76fea87fbe1b746511b60",
@@ -219,118 +333,101 @@
       "seconds": 2.5100344590027817
     }
   },
-  "compiler_provenance_carried": {
-    "record": "docs/verification/psionic-panda-joint-pd-2026-11-01.json",
-    "sha256": "47693c1e5adc174ed466f4fa62d13a491864bc7b63af16e22b69b8d481af0a66",
-    "same_input_fingerprint": true,
-    "same_compiler_bytes": true,
-    "scope": "Current fingerprint read and binary hash match the already qualified cache. New combined C/header bodies and declarations agree exactly; only enumerated absolute-versus-relative diagnostic source-path metadata differs."
-  },
-  "book": {
+  "compiler_binding": {
     "passed": true,
-    "exit": 0,
-    "seconds": 0.597565250005573,
-    "stdout_sha256": "f3d423c1238ad89349d9c40d108beae8ae50dea9067079c714328e1d4310c7b5",
-    "stderr_bytes": 0,
-    "programs": 125,
-    "source_linked_listings": 472,
-    "initial_status_registry_failure": {
-      "record": {
-        "passed": false,
-        "exit": 1,
-        "seconds": 0.19839383399812505,
-        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "stderr_bytes": 852
-      },
-      "stderr": "Traceback (most recent call last):\n  File \"/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/book.py\", line 182, in <module>\n    main()\n    ~~~~^^\n  File \"/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/book.py\", line 176, in main\n    examples = check(args.book)\n  File \"/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents/psionic/tests/book.py\", line 47, in check\n    assert not errors, f\"chapter registry ({book}/chapters.json): \" + \"; \".join(errors)\n           ^^^^^^^^^^\nAssertionError: chapter registry (psionic/book/chapters.json): README.md: ch167-command-a-robot.md status must be 'Runnable: position IK, joint PD and short owned Euler loop' (optionally followed by ' (...)'), not 'Runnable: position IK and joint PD queries'\n",
-      "repair": "Updated only chapter167 book/README status to match its new registry profile before rerunning the failed structure check."
-    }
-  },
-  "dispatch": {
-    "passed": true,
-    "checks": [
+    "input_fingerprint": "a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5",
+    "compiler_sha256": "910f0ba5f991e94b49df044f9fd8ca9099d00679c86640db8abe4988b96e00a1",
+    "provenance_record_sha256": "af088372b88629f920ef80e1f6a2276c80fcf7f46ed62ca0695e7d9a9b188530",
+    "commands": [
       {
-        "name": "changed shell syntax",
-        "passed": true
-      },
-      {
-        "name": "panda-joint-pd-prefix dispatch",
-        "passed": true,
-        "command": [
+        "argv": [
           "bash",
-          "psionic/check.sh",
-          "--jobs",
-          "2",
-          "--only",
-          "robotics/panda-joint-pd-prefix"
+          "coax/provenance.sh",
+          "verify",
+          "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+          "/Users/christopherdavid/.cache/coax-release/a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5/coax",
+          "/Users/christopherdavid/.cache/coax-release/a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5/provenance-check",
+          "/Users/christopherdavid/.cache/coax-release/a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5/provenance.record"
         ],
-        "stubbed": true,
-        "Coax_calls": 0,
-        "SDK_calls": 0,
-        "NN_calls": 0,
-        "routed_Coax_commands": 0,
-        "routed_Python_commands": 1,
-        "log_sha256": "28cb7f2d6522258f6fa6df3d0fb3864463819a9b12ce67f3e4538384fdfb4ad2"
+        "exit": 0,
+        "stderr_bytes": 0
       },
       {
-        "name": "panda-query-runtime dispatch",
-        "passed": true,
-        "command": [
-          "bash",
-          "psionic/check.sh",
-          "--jobs",
-          "2",
-          "--only",
-          "robotics/panda-query-runtime"
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5/coax",
+          "c",
+          "psionic/tests/robotics/panda-joint-pd-prefix.coax",
+          "--library",
+          "--header",
+          "/tmp/panda-joint-pd-prefix-rebase-binding-first/debug/panda-pd-session.h"
         ],
-        "stubbed": true,
-        "Coax_calls": 0,
-        "SDK_calls": 0,
-        "NN_calls": 0,
-        "routed_Coax_commands": 9,
-        "routed_Python_commands": 3,
-        "log_sha256": "85c376839a9edf330bc39878a27c775fd3f7424f30f98ffb930a96a751c37e83"
+        "exit": 0,
+        "seconds": 2.968602125009056,
+        "stderr_bytes": 0
+      },
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5/coax",
+          "c",
+          "psionic/tests/robotics/panda-joint-pd-prefix.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/panda-joint-pd-prefix-rebase-binding-first/release/panda-pd-session.h"
+        ],
+        "exit": 0,
+        "seconds": 2.8734821249963716,
+        "stderr_bytes": 0
       }
-    ]
-  },
-  "manifest_claim_review": {
-    "scope": "Unchanged dated model/device/serving claims; reviewed only the new CPU loop example inventory and own167 contents status.",
-    "updates": [
+    ],
+    "emissions": [
       {
-        "claim": "psionic.execution.current",
-        "path": "psionic/book/SUMMARY.md",
-        "old": "b63796e31a43ecbc37a713ee320fde9af89b516cebcf9617210fe5a0c24491dd",
-        "new": "836bfe7f79b8dabbbde2cc288a6d7002abd1fd1d61e3c2c0307e635602ea1cb4"
+        "mode": "debug",
+        "artifact": "panda-pd-session.c",
+        "bytes": 361049,
+        "sha256": "09745af50bbdee7505b7079fe61a4b1bd89b03c17eddfc7b5250f92e3b038a89",
+        "exact_pre_rebase_match": true
       },
       {
-        "claim": "psionic.execution.current",
-        "path": "psionic/book/examples.json",
-        "old": "0db383b0b5fb67d273c8d10d6a7af402dd4d3f3713bdb7f7bbd70a76d3c50832",
-        "new": "e21a0c9fd93c96eb1715c23bba73600a6581df6a2f10fbe412b938dbd6b03f30"
+        "mode": "debug",
+        "artifact": "panda-pd-session.h",
+        "bytes": 48001,
+        "sha256": "e162f6a04a6f1cca19b10a2a445d2d8b94095005fe7fdaab0c2c04301e0fb8a0",
+        "exact_pre_rebase_match": true
       },
       {
-        "claim": "psionic.gpu.current",
-        "path": "psionic/book/SUMMARY.md",
-        "old": "b63796e31a43ecbc37a713ee320fde9af89b516cebcf9617210fe5a0c24491dd",
-        "new": "836bfe7f79b8dabbbde2cc288a6d7002abd1fd1d61e3c2c0307e635602ea1cb4"
+        "mode": "release",
+        "artifact": "panda-pd-session.c",
+        "bytes": 358808,
+        "sha256": "cc34c2d6485a7ec786f9c3c0cf417404097fcbd033f75a2e2a45822b02892bbe",
+        "exact_pre_rebase_match": true
       },
       {
-        "claim": "psionic.gpu.current",
-        "path": "psionic/book/examples.json",
-        "old": "0db383b0b5fb67d273c8d10d6a7af402dd4d3f3713bdb7f7bbd70a76d3c50832",
-        "new": "e21a0c9fd93c96eb1715c23bba73600a6581df6a2f10fbe412b938dbd6b03f30"
+        "mode": "release",
+        "artifact": "panda-pd-session.h",
+        "bytes": 48001,
+        "sha256": "e162f6a04a6f1cca19b10a2a445d2d8b94095005fe7fdaab0c2c04301e0fb8a0",
+        "exact_pre_rebase_match": true
       }
-    ]
+    ],
+    "numerical_reruns": 0,
+    "reason": "Rebase changed only mutation/build/release workflow and documentation, not compiler C++ or Coax implementation inputs. New artifact gets a separate code-generation binding."
   },
-  "historical_product_checks": {
-    "joint_PD": "psionic/fixtures/robotics/panda-joint-pd/checks-qualification.json",
-    "Euler": "psionic/fixtures/robotics/panda-euler/qualification.json",
-    "unchanged_sources": true,
-    "rerun": false,
-    "combined_mutation_score_claimed": false,
-    "quantity_operator_token_gap_retained": true
-  },
-  "runtime_gate_repair": "panda-query-runtime was listed as opt-in but its case was unreachable inside the ordinary chosen-unit loop. Move that case to the explicit loop; dispatch-only stubs reach all three old authority roots and three native helpers without rerunning them.",
-  "scope": "One fixed half-second no-contact PD/owned-Euler prefix. Not a general stability, convergence, contact, hardware, policy-success, wall-clock or R14 qualification.",
-  "publication_numerical_reruns": 0
+  "rebase_delta_review": {
+    "upstream_commit": "e5c7d97f4c6aea953d8ded8ec709845d8458f089",
+    "changed_files": [
+      "INVARIANTS.md",
+      "README.md",
+      "coax/CHANGELOG.md",
+      "coax/RELEASE.md",
+      "coax/bootstrap-build.sh",
+      "coax/build.sh",
+      "coax/mutation-gate.sh",
+      "coax/reviews/ba440625d7dc70eb3ae3dc87d3c9ee0b04365385.json",
+      "coax/tests/mutation-gate.sh",
+      "coax/web/release.sh"
+    ],
+    "review": "Build/mutation/release scripts and policy documentation only; no C++ or Coax implementation source changes. All component numerical results retained, with a separate current-compiler C/H binding. Book inputs and registered capability-claim evidence did not change, so passing book/dispatch results are not repeated.",
+    "numerical_reruns": 0
+  }
 }
