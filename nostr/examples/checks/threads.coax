@@ -1,0 +1,124 @@
+// The checks of threads.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/threads.coax --run-steps 250000000
+#load "../threads.coax";
+
+// book:begin check
+// The thread's tags and ids from a Python script written from NIP-10 and
+// NIP-14 (it shares no code with Coax): a reply gets the parent's root tag
+// with the "root" marker, or the parent itself as root, then the parent with
+// the "reply" marker; p tags for the parent's author and then its p tags,
+// each once; the subject with "Re: " in front unless it starts with "Re:".
+// The ids are hashlib.sha256 of json.dumps([0, pubkey, created_at, 1, tags,
+// content], separators=(",", ":"), ensure_ascii=False).
+PY_ID :: [5] string.[
+  "fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf",
+  "eb003b0398251e7fea6283eded00e61929df01e834355c0526d810a434b68878",
+  "3142a493c70b7c8b5f291d5122b9c7fb18420cdbd80f8b38ebe7058a25ea05ec",
+  "e5752940041c8b798e5c9551aaccc4f23a31dfda33eceb3ab39581c761bb2803",
+  "2c31bdb33901ca6154bf1f51e459950b9319565b47b0ec36528d9a96eb350435"];
+PY_TAGS :: [5] string.[
+  "[[\"subject\",\"Tea\"]]",
+  "[[\"e\",\"fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf\",\"wss://relay.example.com\",\"root\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"subject\",\"Re: Tea\"]]",
+  "[[\"e\",\"fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf\",\"wss://relay.example.com\",\"root\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"e\",\"eb003b0398251e7fea6283eded00e61929df01e834355c0526d810a434b68878\",\"wss://relay.example.com\",\"reply\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"subject\",\"Re: Tea\"],[\"content-warning\",\"spoilers\"]]",
+  "[[\"e\",\"fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf\",\"wss://relay.example.com\",\"root\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"e\",\"3142a493c70b7c8b5f291d5122b9c7fb18420cdbd80f8b38ebe7058a25ea05ec\",\"wss://relay.example.com\",\"reply\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"subject\",\"Re: Tea\"]]",
+  "[[\"e\",\"fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf\"],[\"e\",\"eb003b0398251e7fea6283eded00e61929df01e834355c0526d810a434b68878\"]]"];
+// BIP-340 test vectors 0, 1 and 2's published public keys: Alice, Bob, Carol.
+PUB :: [3] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"];
+AUTHOR :: [5] int.[0, 1, 2, 0, 2];
+CONTENT :: [5] string.["Which tea keeps best?", "Oolong, sealed.", "It goes flat after a year.", "Even sealed?", "Green tea fades fastest."];
+// The tree by hand: A is the root; B answers A; C and P answer B; D answers C.
+HAND_PARENT :: [5] int.[-1, 0, 1, 2, 1];
+
+// Note i of the thread as an unsigned event carrying Python's id, read with
+// its ID recomputed; the signature is not checked here.
+py_note :: (i: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  text: [2048] u8;
+  n := json_raw(text[..], 0, "{\"id\":\"");
+  n = json_raw(text[..], n, PY_ID[i]);
+  n = json_raw(text[..], n, "\",\"pubkey\":\"");
+  n = json_raw(text[..], n, PUB[AUTHOR[i]]);
+  n = json_raw(text[..], n, "\",\"created_at\":");
+  n = json_write_int(text[..], n, T0 + 60 * i);
+  n = json_raw(text[..], n, ",\"kind\":1,\"tags\":");
+  n = json_raw(text[..], n, PY_TAGS[i]);
+  n = json_raw(text[..], n, ",\"content\":");
+  n = json_write_string(text[..], n, CONTENT[i]);
+  n = json_raw(text[..], n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  for k: 0..<n { out[k] = text[k]; }
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+
+#test "the ids are Python's and each reply's tags are Python's" {
+  buf: [5][2048] u8; scratch: [4096] u8; notes: [5] NostrEvent;
+  for i: 0..<5 {
+    notes[i] = py_note(i, buf[i][..], scratch[..]);
+    #assert notes[i].error == NE_OK && ns_equal32(notes[i].computed_id, notes[i].id);
+  }
+  out: [2048] u8;
+  for i: 0..<3 {
+    r := n10_reply_tags(notes[i], RELAY, out[..]);
+    #assert r.status == N10_OK;
+    // C's tags add a content warning after the reply tags.
+    want := PY_TAGS[i + 1];
+    if i == 1 { want = "[[\"e\",\"fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf\",\"wss://relay.example.com\",\"root\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"e\",\"eb003b0398251e7fea6283eded00e61929df01e834355c0526d810a434b68878\",\"wss://relay.example.com\",\"reply\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"subject\",\"Re: Tea\"]]"; }
+    #assert cast(string) out[0..<r.n] == want;
+  }
+  // The tree, from the set given in reverse, matches the hand-built one.
+  set: [5] NostrEvent; parent: [5] int;
+  for k: 0..<5 { set[k] = notes[4 - k]; }
+  n10_parents(set[..], parent[..]);
+  for k: 0..<5 {
+    want := HAND_PARENT[4 - k];
+    #assert (want < 0 && parent[k] == N10_TOP) || (want >= 0 && parent[k] == 4 - want);
+  }
+}
+
+// NIP-10's positional sentences, by hand: no e tag, no reply; one, the reply;
+// two, root then reply; more, root first, reply last, mentions between.
+#test "positional reading follows NIP-10's four cases for 0 to 5 unmarked tags" {
+  ids := "[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\"]";
+  for k: 0..<6 {
+    text: [1024] u8; n := json_raw(text[..], 0, "[");
+    for i: 0..<k { if i > 0 { n = json_raw(text[..], n, ","); } n = json_raw(text[..], n, ids); }
+    n = json_raw(text[..], n, "]");
+    buf: [2048] u8; th := n10_thread(unsigned(1, cast(string) text[0..<n], buf[..]));
+    // The zero id is the unsigned event's own id; give it another.
+    #assert th.status == (ifx k == 0 then N10_OK else N10_SELF);
+  }
+  ids = "[\"e\",\"1111111111111111111111111111111111111111111111111111111111111111\"]";
+  for k: 0..<6 {
+    text: [1024] u8; n := json_raw(text[..], 0, "[");
+    for i: 0..<k { if i > 0 { n = json_raw(text[..], n, ","); } n = json_raw(text[..], n, ids); }
+    n = json_raw(text[..], n, "]");
+    buf: [2048] u8; th := n10_thread(unsigned(1, cast(string) text[0..<n], buf[..]));
+    #assert th.status == N10_OK && th.is_reply == (k > 0);
+    if k == 0 { #assert th.scheme == N10_NONE && th.mentions == 0; }
+    if k == 1 { #assert th.root_at == 0 && th.parent_at == 0 && th.mentions == 0; }
+    if k >= 2 {
+      #assert th.root_at == 0 && th.parent_at == k - 1 && th.mentions == k - 2;
+      for m: 0..<k - 2 { #assert th.mention_at[m] == m + 1; }
+    }
+  }
+}
+
+// NIP-10's p example: a note by a1 with p tags p1, p2, p3; the reply's p tags
+// are a1, p1, p2, p3.
+#test "a reply's p tags are the parent's author and the parent's p tags" {
+  e := n10_event(1, "[[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"3333333333333333333333333333333333333333333333333333333333333333\"]]");
+  for i: 0..<32 { e.id[i] = 0xee; e.public_key[i] = 0xa1; }
+  out: [2048] u8; r := n10_reply_tags(e, "", out[..]);
+  #assert r.status == N10_OK;
+  reply := n10_event(1, cast(string) out[0..<r.n]);
+  want := [4] u8.[0xa1, 0x11, 0x22, 0x33]; seen := 0;
+  for k: 0..<8 {
+    t := nostr_tag(reply, k);
+    if t.error == NT_OK && t.type == NT_P { #assert t.pubkey[0] == want[seen] && t.pubkey[31] == want[seen]; seen += 1; }
+  }
+  #assert seen == 4;
+}
+// book:end check

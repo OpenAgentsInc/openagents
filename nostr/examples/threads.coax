@@ -1,0 +1,200 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip10.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+STATUS :: [9] string.["ok", "event", "kind", "tag", "two roots", "two replies", "itself", "limit", "output"];
+TAG_STATUS :: [8] string.["ok", "event", "index", "shape", "hex", "relay", "address", "limit"];
+SCHEME :: [3] string.["none", "marked", "positional"];
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// The notes of the thread, by letter, so the output names ids by letter.
+Note :: struct { letter: string; event: NostrEvent; }
+NOTES :: 5;
+
+// Print an id as its note's letter, or as its first 4 bytes in hex.
+show_id :: (notes: [] Note, id: [32] u8) {
+  for n: notes { if n.event.error == NE_OK && ns_equal32(n.event.id, id) { print("%", n.letter); return; } }
+  text: [8] u8; own := id; r := hex_encode_checked(cast(string) own[0..<4], text[..], false);
+  print("%...", cast(string) text[..]);
+}
+// Unmarked e tags, one per note, in this order: the deprecated positional form.
+positional :: (notes: [] Note, which: [] int, out: [] u8) -> string {
+  n := json_raw(out, 0, "[");
+  for w: 0..<which.count {
+    hex: [64] u8; id := notes[which[w]].event.id;
+    r := hex_encode_checked(cast(string) id[..], hex[..], false);
+    if w > 0 { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "[\"e\",\"");
+    n = json_raw(out, n, cast(string) hex[..]);
+    n = json_raw(out, n, "\"]");
+  }
+  n = json_raw(out, n, "]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// Print the tree under set[at], each child indented one step more.
+show_tree :: (notes: [] Note, order: [] int, parent: [] int, at: int, depth: int) {
+  for d: 0..<depth { print("  "); }
+  print("%\n", notes[order[at]].letter);
+  for k: 0..<parent.count { if parent[k] == at { show_tree(notes, order, parent, k, depth + 1); } }
+}
+
+// Sign a kind 1 note into out and read it back with its ID recomputed.
+sign_note :: (key: [] u8, created_at: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [4096] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, 1, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [4096] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// Print the thread n10_thread reads from one note.
+show_thread :: (notes: [] Note, label: string, e: NostrEvent) {
+  th := n10_thread(e);
+  print("%: %", label, STATUS[th.status]);
+  if th.status == N10_TAG { print(", tag % is %\n", th.at, TAG_STATUS[th.tag_error]); return; }
+  if th.status != N10_OK { if th.at >= 0 { print(" at tag %", th.at); } print("\n"); return; }
+  print(", %", SCHEME[th.scheme]);
+  if th.is_reply {
+    print(", root "); show_id(notes, th.root); print(" (tag %), parent ", th.root_at);
+    show_id(notes, th.parent); print(" (tag %)", th.parent_at);
+  } else { print(", not a reply"); }
+  for m: 0..<th.mentions {
+    print(", mention "); show_id(notes, nostr_tag(e, th.mention_at[m]).id); print(" (tag %)", th.mention_at[m]);
+  }
+  print("\n");
+}
+// Print a note's subject and content warning.
+show_text :: (label: string, e: NostrEvent) {
+  out: [NT_MAX_VALUE] u8;
+  s := n10_subject(e, out[..]);
+  print("%: subject %", label, ifx s.present then "present" else "absent");
+  if s.present { print(" \"%\"", cast(string) out[0..<s.n]); }
+  w := n10_warning(e, out[..]);
+  print(", content-warning %", ifx w.present then "present" else "absent");
+  if w.present { print(" \"%\"", cast(string) out[0..<w.n]); }
+  print("\n");
+}
+// The tags of a reply to parent, written into out; it must succeed.
+reply_tags :: (parent: NostrEvent, relay: string, out: [] u8) -> string {
+  r := n10_reply_tags(parent, relay, out);
+  #assert r.status == N10_OK;
+  return cast(string) out[0..<r.n];
+}
+// The same tags with more appended before the closing bracket.
+with_tag :: (tags: string, more: string, out: [] u8) -> string {
+  n := json_raw(out, 0, tags[0..<tags.count - 1]);
+  n = json_raw(out, n, ",");
+  n = json_raw(out, n, more);
+  n = json_raw(out, n, "]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+// An unsigned note with these tags, parsed but not verified: its id and sig
+// are zeros. Used for the refusals, which no signer would produce.
+EVENT_HEAD :: "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1761686400,\"kind\":";
+EVENT_TAIL :: ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, EVENT_HEAD);
+  n = json_write_int(out, n, kind);
+  n = json_raw(out, n, ",\"tags\":");
+  n = json_raw(out, n, tags);
+  n = json_raw(out, n, EVENT_TAIL);
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+refuse :: (notes: [] Note, label: string, kind: int, tags: string) {
+  buf: [2048] u8; show_thread(notes[..], label, unsigned(kind, tags, buf[..]));
+}
+
+// BIP-340 test vectors 0, 1 and 2's published secret keys. Never sign with
+// a real key in an example.
+ALICE :: "0000000000000000000000000000000000000000000000000000000000000003";
+BOB :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+CAROL :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";
+RELAY :: "wss://relay.example.com";
+T0 :: 1761686400;
+
+main :: () {
+  alice: [32] u8; bob: [32] u8; carol: [32] u8;
+  decode_hex(ALICE, alice[..]); decode_hex(BOB, bob[..]); decode_hex(CAROL, carol[..]);
+  notes: [NOTES] Note;
+  buf: [NOTES][4096] u8; tags: [4096] u8; more: [4096] u8;
+
+  print("a thread, three replies deep\n");
+  notes[0].letter = "A"; notes[0].event = sign_note(alice[..], T0, "[[\"subject\",\"Tea\"]]", "Which tea keeps best?", buf[0][..]);
+  t := reply_tags(notes[0].event, RELAY, tags[..]);
+  print("B's tags: %\n", t);
+  notes[1].letter = "B"; notes[1].event = sign_note(bob[..], T0 + 60, t, "Oolong, sealed.", buf[1][..]);
+  t = reply_tags(notes[1].event, RELAY, tags[..]);
+  t = with_tag(t, "[\"content-warning\",\"spoilers\"]", more[..]);
+  print("C's tags: %\n", t);
+  notes[2].letter = "C"; notes[2].event = sign_note(carol[..], T0 + 120, t, "It goes flat after a year.", buf[2][..]);
+  t = reply_tags(notes[2].event, RELAY, tags[..]);
+  print("D's tags: %\n", t);
+  notes[3].letter = "D"; notes[3].event = sign_note(alice[..], T0 + 180, t, "Even sealed?", buf[3][..]);
+  // An old client's reply to B: unmarked e tags, root then parent.
+  ab := [2] int.[0, 1];
+  t = positional(notes[..], ab[..], tags[..]);
+  print("P's tags: e A, e B, unmarked\n");
+  notes[4].letter = "P"; notes[4].event = sign_note(carol[..], T0 + 240, t, "Green tea fades fastest.", buf[4][..]);
+
+  print("each note's id\n");
+  for note: notes {
+    hex: [64] u8; id := note.event.id;
+    r := hex_encode_checked(cast(string) id[..], hex[..], false);
+    print("%: %, verified %\n", note.letter, cast(string) hex[..], note.event.verified);
+  }
+
+  print("read back\n");
+  for note: notes { show_thread(notes[..], note.letter, note.event); }
+  for note: notes { show_text(note.letter, note.event); }
+
+  print("the tree from the set, given out of order\n");
+  order := [NOTES] int.[3, 4, 0, 2, 1];
+  set: [NOTES] NostrEvent;
+  for k: 0..<NOTES { set[k] = notes[order[k]].event; }
+  parent: [NOTES] int;
+  n10_parents(set[..], parent[..]);
+  for k: 0..<NOTES {
+    print("set[%] = %, parent ", k, notes[order[k]].letter);
+    if parent[k] >= 0 { print("set[%] = %\n", parent[k], notes[order[parent[k]]].letter); }
+    else { print("none\n"); }
+  }
+  for k: 0..<NOTES { if parent[k] == N10_TOP { show_tree(notes[..], order[..], parent[..], k, 0); } }
+
+  print("D's thread in the positional form\n");
+  old: [2048] u8;
+  abc := [3] int.[0, 1, 2]; ac := [2] int.[0, 2];
+  t = positional(notes[..], abc[..], tags[..]);
+  show_thread(notes[..], "e A, e B, e C", unsigned(1, t, old[..]));
+  t = positional(notes[..], ac[..], tags[..]);
+  show_thread(notes[..], "e A, e C", unsigned(1, t, old[..]));
+
+  print("refusals\n");
+  refuse(notes[..], "two root markers", 1, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"root\"]]");
+  refuse(notes[..], "two reply markers", 1, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"reply\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"reply\"]]");
+  refuse(notes[..], "e id of 4 digits", 1, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"],[\"e\",\"bbbb\",\"\",\"reply\"]]");
+  refuse(notes[..], "e marker quote", 1, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"quote\"]]");
+  refuse(notes[..], "e relay https://x", 1, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"https://x\",\"root\"]]");
+  refuse(notes[..], "kind 7", 7, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"]]");
+  r := n10_reply_tags(notes[0].event, "https://relay.example.com", tags[..]);
+  print("reply with relay https://relay.example.com: %\n", STATUS[r.status]);
+  r = n10_reply_tags(notes[0].event, RELAY, tags[0..<100]);
+  print("reply tags into 100 bytes: %\n", STATUS[r.status]);
+  print("accepted\n");
+  refuse(notes[..], "reply marker alone", 1, "[[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"reply\"]]");
+  refuse(notes[..], "mention marker alone", 1, "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"mention\"]]");
+}
+// book:end example

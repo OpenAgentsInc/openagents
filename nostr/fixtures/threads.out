@@ -1,0 +1,48 @@
+a thread, three replies deep
+B's tags: [["e","fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf","wss://relay.example.com","root","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["subject","Re: Tea"]]
+C's tags: [["e","fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf","wss://relay.example.com","root","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["e","eb003b0398251e7fea6283eded00e61929df01e834355c0526d810a434b68878","wss://relay.example.com","reply","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"],["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["subject","Re: Tea"],["content-warning","spoilers"]]
+D's tags: [["e","fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf","wss://relay.example.com","root","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["e","3142a493c70b7c8b5f291d5122b9c7fb18420cdbd80f8b38ebe7058a25ea05ec","wss://relay.example.com","reply","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["p","dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"],["p","dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659"],["p","f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"],["subject","Re: Tea"]]
+P's tags: e A, e B, unmarked
+each note's id
+A: fed66d2f7eecb63f8b8d24c17e0a8f02288aa7f1e293f90d215f6056beed9eaf, verified true
+B: eb003b0398251e7fea6283eded00e61929df01e834355c0526d810a434b68878, verified true
+C: 3142a493c70b7c8b5f291d5122b9c7fb18420cdbd80f8b38ebe7058a25ea05ec, verified true
+D: e5752940041c8b798e5c9551aaccc4f23a31dfda33eceb3ab39581c761bb2803, verified true
+P: 2c31bdb33901ca6154bf1f51e459950b9319565b47b0ec36528d9a96eb350435, verified true
+read back
+A: ok, none, not a reply
+B: ok, marked, root A (tag 0), parent A (tag 0)
+C: ok, marked, root A (tag 0), parent B (tag 1)
+D: ok, marked, root A (tag 0), parent C (tag 1)
+P: ok, positional, root A (tag 0), parent B (tag 1)
+A: subject present "Tea", content-warning absent
+B: subject present "Re: Tea", content-warning absent
+C: subject present "Re: Tea", content-warning present "spoilers"
+D: subject present "Re: Tea", content-warning absent
+P: subject absent, content-warning absent
+the tree from the set, given out of order
+set[0] = D, parent set[3] = C
+set[1] = P, parent set[4] = B
+set[2] = A, parent none
+set[3] = C, parent set[4] = B
+set[4] = B, parent set[2] = A
+A
+  B
+    P
+    C
+      D
+D's thread in the positional form
+e A, e B, e C: ok, positional, root A (tag 0), parent C (tag 2), mention B (tag 1)
+e A, e C: ok, positional, root A (tag 0), parent C (tag 1)
+refusals
+two root markers: two roots at tag 1
+two reply markers: two replies at tag 1
+e id of 4 digits: tag, tag 1 is hex
+e marker quote: tag, tag 0 is hex
+e relay https://x: tag, tag 0 is relay
+kind 7: kind
+reply with relay https://relay.example.com: tag
+reply tags into 100 bytes: output
+accepted
+reply marker alone: ok, marked, root bbbbbbbb... (tag 0), parent bbbbbbbb... (tag 0)
+mention marker alone: ok, none, not a reply, mention aaaaaaaa... (tag 0)

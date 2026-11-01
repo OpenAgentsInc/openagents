@@ -996,13 +996,16 @@
    "number": 50,
    "title": "Notes, threads and subjects",
    "file": "ch050-notes-threads-and-subjects.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     22
    ],
    "source": [
-    "coax/lib/nostr/tags.coax"
+    "coax/lib/nostr/tags.coax",
+    "coax/lib/nostr/nip10.coax",
+    "nostr/examples/threads.coax",
+    "nostr/examples/checks/threads.coax"
    ],
    "qualified_targets": [
     "cpu"

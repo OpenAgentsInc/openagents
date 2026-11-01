@@ -1,0 +1,329 @@
+// NIP-10 threads over kind 1 notes, NIP-14 subjects and NIP-36 content
+// warnings, read from a parsed event through tags.coax.
+//
+// A reading of the signed tags, not authority: it verifies no signature and
+// fetches no event. A root or parent id is what the note says it answers,
+// not evidence that the event exists.
+//
+// Marked e tags win: when any e tag carries "root" or "reply", the root is
+// the one "root" tag, the parent the one "reply" tag (the root when there is
+// none), and every other e tag is a mention. A lone "reply" names the parent
+// and is read as the root too. Two "root" or two "reply" markers refuse.
+// Without those markers the deprecated positional rule applies to the
+// unmarked e tags: one names the parent, which is also the root; with two or
+// more, the first is the root, the last the parent, and the ones between are
+// mentions. An e tag marked "mention" is a mention under both rules.
+#load "tags.coax";
+
+N10_OK :: 0; N10_EVENT :: 1; N10_KIND :: 2; N10_TAG :: 3; N10_ROOTS :: 4;
+N10_REPLIES :: 5; N10_SELF :: 6; N10_LIMIT :: 7; N10_OUTPUT :: 8;
+N10_NONE :: 0; N10_MARKED :: 1; N10_POSITIONAL :: 2;
+N10_MAX_MENTIONS :: 16; N10_MAX_P :: 64;
+// n10_parents: a note that answers nothing, one whose parent isn't in the
+// set, and one whose thread tags refuse.
+N10_TOP :: -1; N10_MISSING :: -2; N10_BROKEN :: -3;
+
+// book:begin record
+N10Thread :: struct {
+  status:int=N10_EVENT; tag_error:int; at:int=-1;  // the refusing tag
+  scheme:int;                                      // none, marked, positional
+  is_reply:bool;
+  root_at:int=-1; parent_at:int=-1;                // tag indexes
+  root:[32]u8; parent:[32]u8;                      // their ids
+  mentions:int; mention_at:[N10_MAX_MENTIONS]int;
+}
+// book:end record
+N10Text :: struct {status:int=N10_EVENT; present:bool; n:int;}
+N10Reply :: struct {status:int=N10_EVENT; n:int;}
+
+#test "no e tags: not a reply; p and t tags are read and ignored" {
+  th:=n10_thread(n10_event(1,"[[\"p\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\"],[\"t\",\"x\"]]"));
+  #assert th.status==N10_OK && th.scheme==N10_NONE && !th.is_reply && th.root_at== -1 && th.parent_at== -1 && th.mentions==0;
+  th=n10_thread(n10_event(1,"[]"));#assert th.status==N10_OK && !th.is_reply;
+}
+#test "marked: root only is a direct reply; root and reply name both; others mention" {
+  th:=n10_thread(n10_event(1,N10_T_ROOT));
+  #assert th.status==N10_OK && th.scheme==N10_MARKED && th.is_reply && th.root_at==0 && th.parent_at==0 && th.root[0]==0xaa && th.parent[0]==0xaa;
+  th=n10_thread(n10_event(1,N10_T_DEEP));
+  #assert th.status==N10_OK && th.scheme==N10_MARKED && th.root_at==1 && th.parent_at==3 && th.root[0]==0xaa && th.parent[0]==0xbb && th.parent[31]==0xbb;
+  #assert th.mentions==2 && th.mention_at[0]==0 && th.mention_at[1]==2;
+  // A lone reply marker names the parent and stands for the root.
+  th=n10_thread(n10_event(1,"[[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"reply\"]]"));
+  #assert th.status==N10_OK && th.scheme==N10_MARKED && th.root_at==0 && th.parent_at==0 && th.root[0]==0xbb;
+  // The reply may come first; order doesn't decide a marked tag's role.
+  th=n10_thread(n10_event(1,"[[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"reply\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"]]"));
+  #assert th.status==N10_OK && th.root_at==1 && th.parent_at==0 && th.root[0]==0xaa && th.parent[0]==0xbb && th.mentions==0;
+}
+#test "positional: one is the parent and root, first and last of many, middles mention" {
+  one:=n10_thread(n10_event(1,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"));
+  #assert one.status==N10_OK && one.scheme==N10_POSITIONAL && one.is_reply && one.root_at==0 && one.parent_at==0 && one.mentions==0;
+  th:=n10_thread(n10_event(1,N10_T_POSITIONAL));
+  #assert th.status==N10_OK && th.scheme==N10_POSITIONAL && th.root_at==0 && th.parent_at==3 && th.root[0]==0xaa && th.parent[0]==0xbb;
+  #assert th.mentions==2 && th.mention_at[0]==1 && th.mention_at[1]==2;
+  two:=n10_thread(n10_event(1,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]]"));
+  #assert two.status==N10_OK && two.root_at==0 && two.parent_at==2 && two.mentions==0;
+  // A mention marker alone is no reply; beside unmarked tags it stays a mention.
+  m:=n10_thread(n10_event(1,"[[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"\",\"mention\"]]"));
+  #assert m.status==N10_OK && m.scheme==N10_NONE && !m.is_reply && m.mentions==1 && m.mention_at[0]==0;
+  m=n10_thread(n10_event(1,"[[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"\",\"mention\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"));
+  #assert m.status==N10_OK && m.scheme==N10_POSITIONAL && m.root_at==1 && m.parent_at==1 && m.mentions==1 && m.mention_at[0]==0;
+}
+#test "refusals: kind, a broken tag, two roots, two replies, itself, too many mentions" {
+  th0:=n10_thread(n10_event(7,N10_T_ROOT));#assert th0.status==N10_KIND && th0.at== -1;
+  e:NostrEvent;#assert n10_thread(e).status==N10_EVENT;
+  th:=n10_thread(n10_event(1,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"],[\"e\",\"aaaa\"]]"));
+  #assert th.status==N10_TAG && th.tag_error==NT_HEX && th.at==1;
+  th=n10_thread(n10_event(1,"[[\"p\",\"f7234bd4c1394dda46d09f35bd384dd30cc552ad5541990f98844fb06676e9ca\",\"http://x\"]]"));
+  #assert th.status==N10_TAG && th.tag_error==NT_RELAY && th.at==0;
+  th=n10_thread(n10_event(1,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"root\"]]"));
+  #assert th.status==N10_ROOTS && th.at==1 && !th.is_reply;
+  th=n10_thread(n10_event(1,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"reply\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"reply\"]]"));
+  #assert th.status==N10_REPLIES && th.at==1;
+  self:=n10_event(1,"[[\"t\",\"x\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]");for i:0..<32 {self.id[i]=0xaa;}
+  th=n10_thread(self);#assert th.status==N10_SELF && th.at==1;
+  many:[2048]u8;n:=json_raw(many[..],0,"[");
+  for i:0..<18 {if i>0 {n=json_raw(many[..],n,",");}n=json_raw(many[..],n,"[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]");}
+  n=json_raw(many[..],n,"]");
+  #assert n10_thread(n10_event(1,cast(string)many[0..<n])).status==N10_OK;
+  n=json_raw(many[..],n-1,",[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]");
+  th=n10_thread(n10_event(1,cast(string)many[0..<n]));#assert th.status==N10_LIMIT && th.mentions==17 && th.at== -1;
+}
+#test "subject and content-warning: the first such tag's first value" {
+  out:[256]u8;
+  e:=n10_event(1,"[[\"t\",\"subject\"],[\"subject\",\"Tea \\u2615\",\"x\"],[\"subject\",\"second\"],[\"content-warning\"]]");
+  s:=n10_subject(e,out[..]);#assert s.status==N10_OK && s.present && s.n==7 && cast(string)out[0..<4]=="Tea " && out[6]==0x95;
+  w:=n10_warning(e,out[..]);#assert w.status==N10_OK && w.present && w.n==0;
+  w=n10_warning(n10_event(1,"[[\"content-warning\",\"spoilers\"]]"),out[..]);#assert w.present && cast(string)out[0..<w.n]=="spoilers";
+  s=n10_subject(n10_event(1,"[[\"t\",\"x\"]]"),out[..]);#assert s.status==N10_OK && !s.present && s.n==0;
+  s=n10_subject(n10_event(1,"[[\"subject\",\"long\"]]"),out[0..<3]);#assert s.status==N10_LIMIT && s.present && s.n==0;
+  s=n10_subject(n10_event(1,"[[\"subject\",\"\"]]"),out[..]);#assert s.status==N10_OK && s.present && s.n==0;
+  #assert n10_subject(n10_event(1,"[[\"subject\",1]]"),out[..]).status==N10_EVENT;
+  #assert n10_subject(n10_event(1,"[[\"t\",1]]"),out[..]).status==N10_EVENT;
+  #assert n10_subject(n10_event(1,"[1]"),out[..]).status==N10_EVENT;
+  bad:NostrEvent;#assert n10_subject(bad,out[..]).status==N10_EVENT;
+  // A tag name over the bound is no "subject" and is passed over.
+  long:[400]u8;n:=json_raw(long[..],0,"[[\"");for i:0..<300 {long[n+i]='s';}n+=300;n=json_raw(long[..],n,"\",\"x\"],[\"subject\",\"y\"]]");
+  s=n10_subject(n10_event(1,cast(string)long[0..<n]),out[..]);#assert s.status==N10_OK && s.present && out[0]=='y';
+}
+#test "reply tags: root and reply markers, the parent's author and p tags once, Re: subject" {
+  out:[2048]u8;
+  root:=n10_event(1,"[[\"subject\",\"Tea\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+  for i:0..<32 {root.id[i]=0xaa;root.public_key[i]=0x22;}
+  r:=n10_reply_tags(root,"wss://r.example",out[..]);#assert r.status==N10_OK;
+  #assert cast(string)out[0..<r.n]=="[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\",\"root\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"subject\",\"Re: Tea\"]]";
+  mid:=n10_event(1,cast(string)out[0..<r.n]);for i:0..<32 {mid.id[i]=0xbb;mid.public_key[i]=0x11;}
+  deep:[2048]u8;d:=n10_reply_tags(mid,"",deep[..]);#assert d.status==N10_OK;
+  #assert cast(string)deep[0..<d.n]=="[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\",\"root\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"reply\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"subject\",\"Re: Tea\"]]";
+  th:=n10_thread(n10_event(1,cast(string)deep[0..<d.n]));#assert th.status==N10_OK && th.root[0]==0xaa && th.parent[0]==0xbb;
+  // A root tag without an author, no subject: the root's author is left out.
+  pos:=n10_event(1,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]");for i:0..<32 {pos.id[i]=0xbb;pos.public_key[i]=0x11;}
+  d=n10_reply_tags(pos,"",deep[..]);
+  #assert d.status==N10_OK && cast(string)deep[0..<d.n]=="[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"reply\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]";
+}
+#test "reply tags: Re: kept once, refusals pass through, bad relay and small buffers refuse" {
+  out:[2048]u8;
+  e:=n10_event(1,"[[\"subject\",\"Re: Tea\"]]");for i:0..<32 {e.id[i]=0xaa;}
+  r:=n10_reply_tags(e,"",out[..]);#assert r.status==N10_OK;
+  #assert n10_ends(cast(string)out[0..<r.n],"[\"subject\",\"Re: Tea\"]]");
+  e=n10_event(1,"[[\"subject\",\"Re:\"]]");r=n10_reply_tags(e,"",out[..]);#assert n10_ends(cast(string)out[0..<r.n],"[\"subject\",\"Re:\"]]");
+  e=n10_event(1,"[[\"subject\",\"Re\"]]");r=n10_reply_tags(e,"",out[..]);#assert n10_ends(cast(string)out[0..<r.n],"[\"subject\",\"Re: Re\"]]");
+  #assert n10_reply_tags(n10_event(1,"[[\"subject\",1]]"),"",out[..]).status==N10_TAG;
+  #assert n10_reply_tags(n10_event(7,"[]"),"",out[..]).status==N10_KIND;
+  #assert n10_reply_tags(n10_event(1,"[]"),"https://x",out[..]).status==N10_TAG && n10_reply_tags(n10_event(1,"[]"),"x",out[..]).status==N10_TAG;
+  long:[400]u8;n:=json_raw(long[..],0,"[[\"subject\",\"");for i:0..<257 {long[n+i]='s';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n10_reply_tags(n10_event(1,cast(string)long[0..<n]),"",out[..]).status==N10_LIMIT;
+  #assert n10_reply_tags(n10_event(1,"[]"),"",out[0..<100]).status==N10_OUTPUT;
+  #assert n10_reply_tags(n10_event(1,"[]"),"",out[0..<224]).status==N10_OK && n10_reply_tags(n10_event(1,"[]"),"",out[0..<223]).status==N10_OUTPUT;
+  // The parent's own pubkey in its p tags is written once.
+  e=n10_event(1,"[[\"p\",\"0000000000000000000000000000000000000000000000000000000000000000\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+  r=n10_reply_tags(e,"",out[..]);#assert r.status==N10_OK && n10_count(cast(string)out[0..<r.n],"[\"p\",")==2;
+}
+#test "reply tags: more distinct participants than N10_MAX_P refuse" #steps 100000000 {
+  many:[8192]u8;n:=json_raw(many[..],0,"[");
+  for i:0..<N10_MAX_P {
+    if i>0 {n=json_raw(many[..],n,",");}
+    n=json_raw(many[..],n,"[\"p\",\"");for k:0..<64 {many[n+k]=ifx k<2 then "0123456789abcdef"[(i>>(4-4*k))&15] else '3';}n+=64;n=json_raw(many[..],n,"\"]");
+  }
+  n=json_raw(many[..],n,"]");big:[16384]u8;
+  #assert n10_reply_tags(n10_event(1,cast(string)many[0..<n]),"",big[..]).status==N10_LIMIT;
+}
+#test "helpers: hex ids at their bounds, suffixes and counts" {
+  out:[80]u8;id:[32]u8;id[0]=0xab;id[31]=0x0f;
+  #assert n10_hex(out[0..<66],0,id)==66 && out[0]=='"' && out[1]=='a' && out[2]=='b' && out[63]=='0' && out[64]=='f' && out[65]=='"';
+  #assert n10_hex(out[0..<65],0,id)== -1 && n10_hex(out[..],-1,id)== -1 && n10_hex(out[..],14,id)==80 && n10_hex(out[..],15,id)== -1;
+  #assert n10_ends("ab","ab") && n10_ends("ab","b") && !n10_ends("ab","xb") && !n10_ends("b","ab");
+  #assert n10_count("ab","a")==1 && n10_count("ba","a")==1 && n10_count("aaa","a")==3 && n10_count("b","a")==0;
+}
+#test "parents: a tree from a set, missing parents and refused notes" {
+  set:[5]NostrEvent;
+  set[0]=n10_event(1,"[]");for i:0..<32 {set[0].id[i]=0xaa;}
+  set[1]=n10_event(1,N10_T_ROOT);for i:0..<32 {set[1].id[i]=0xbb;}
+  set[2]=n10_event(1,N10_T_DEEP);for i:0..<32 {set[2].id[i]=0xee;}
+  set[3]=n10_event(1,"[[\"e\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"]]");
+  set[4]=n10_event(1,"[[\"e\",\"aa\"]]");
+  parent:[5]int;n10_parents(set[..],parent[..]);
+  #assert parent[0]==N10_TOP && parent[1]==0 && parent[2]==1 && parent[3]==N10_MISSING && parent[4]==N10_BROKEN;
+}
+
+// A parsed event of this kind with only these tags, for checks.
+n10_event :: (kind:int,tags:string)->NostrEvent {e:=nt_event(tags);e.kind=kind;return e;}
+n10_ends :: (s:string,tail:string)->bool {return s.count>=tail.count && s[s.count-tail.count..<s.count]==tail;}
+n10_count :: (s:string,part:string)->int {
+  c:=0;for i:0..<s.count-part.count+1 {if s[i..<i+part.count]==part {c+=1;}}return c;
+}
+N10_T_ROOT :: "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"]]";
+// A mention, the root, an unmarked mention, then the reply.
+N10_T_DEEP :: "[[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"\",\"mention\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"\",\"root\"],[\"e\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"\",\"reply\"]]";
+N10_T_POSITIONAL :: "[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"e\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"],[\"e\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]]";
+
+n10_refuse :: (th:N10Thread,status:int,at:int)->N10Thread {r:=th;r.status=status;r.at=at;return r;}
+n10_mention :: (th:N10Thread,at:int)->N10Thread {
+  r:=th;if r.mentions<N10_MAX_MENTIONS {r.mention_at[r.mentions]=at;}r.mentions+=1;return r;
+}
+
+// book:begin thread
+// The thread a kind 1 note says it belongs to. Pass 1 reads every tag
+// (a broken standard tag refuses), finds the markers and counts the
+// unmarked e tags; pass 2 places each e tag by the marked or the
+// positional rule.
+n10_thread :: (e:NostrEvent)->N10Thread {
+  th:N10Thread;
+  if e.error!=NE_OK {return th;}
+  if e.kind!=1 {return n10_refuse(th,N10_KIND,-1);}
+  plain:=0;i:=0;
+  while true {
+    t:=nostr_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {th.tag_error=t.error;return n10_refuse(th,N10_TAG,i);}
+    if t.type==NT_E {
+      if ns_equal32(t.id,e.id) {return n10_refuse(th,N10_SELF,i);}
+      if t.marker==NT_MARK_ROOT {if th.root_at>=0 {return n10_refuse(th,N10_ROOTS,i);}th.root_at=i;}
+      if t.marker==NT_MARK_REPLY {if th.parent_at>=0 {return n10_refuse(th,N10_REPLIES,i);}th.parent_at=i;}
+      if t.marker==NT_MARK_NONE {plain+=1;}
+    }
+    i+=1;
+  }
+  marked:=th.root_at>=0 || th.parent_at>=0;
+  if marked {
+    th.scheme=N10_MARKED;
+    if th.root_at<0 {th.root_at=th.parent_at;}
+    if th.parent_at<0 {th.parent_at=th.root_at;}
+  } else if plain>0 {th.scheme=N10_POSITIONAL;}
+  seen:=0;
+  for k:0..<i {
+    t:=nostr_tag(e,k);
+    if t.type!=NT_E {continue;}
+    if marked || t.marker==NT_MARK_MENTION {
+      if k!=th.root_at && k!=th.parent_at {th=n10_mention(th,k);}
+      continue;
+    }
+    seen+=1;
+    if seen==1 {th.root_at=k;}
+    if seen==plain {th.parent_at=k;}
+    if seen>1 && seen<plain {th=n10_mention(th,k);}
+  }
+  if th.mentions>N10_MAX_MENTIONS {return n10_refuse(th,N10_LIMIT,-1);}
+  th.is_reply=th.parent_at>=0;
+  if th.is_reply {th.root=nostr_tag(e,th.root_at).id;th.parent=nostr_tag(e,th.parent_at).id;}
+  th.status=N10_OK;return th;
+}
+// book:end thread
+
+// book:begin text
+// The first value of the first tag with this name, unescaped into out.
+// Absent reads as not present; a tag with no value as present and empty.
+n10_text :: (e:NostrEvent,name:string,out:[]u8)->N10Text {
+  r:N10Text;j:[1]Json;if !nt_start(j[..],e) {return r;}
+  tok:=json_next(j[..]);
+  while tok==JSON_ARRAY {
+    v:=json_next(j[..]);
+    if v!=JSON_STRING {return r;}
+    if json_is(json_text(j[..]),name) {
+      r.present=true;v=json_next(j[..]);
+      if v==JSON_STRING {
+        r.n=json_unescape(json_text(j[..]),out);
+        if r.n<0 {r.n=0;r.status=N10_LIMIT;return r;}
+      } else if v!=JSON_ARRAY_END {return r;}
+      r.status=N10_OK;return r;
+    }
+    // v is the name's string; read past the values to the tag's end.
+    while v==JSON_STRING {v=json_next(j[..]);}
+    if v!=JSON_ARRAY_END {return r;}
+    tok=json_next(j[..]);
+  }
+  if tok==JSON_ARRAY_END {r.status=N10_OK;}
+  return r;
+}
+n10_subject :: (e:NostrEvent,out:[]u8)->N10Text {return n10_text(e,"subject",out);}
+n10_warning :: (e:NostrEvent,out:[]u8)->N10Text {return n10_text(e,"content-warning",out);}
+// book:end text
+
+n10_hex :: (out:[]u8,at:int,id:[32]u8)->int {
+  if at<0 || at+66>out.count {return -1;}
+  digits:="0123456789abcdef";out[at]='"';
+  for i:0..<32 {out[at+1+2*i]=digits[id[i]>>4];out[at+2+2*i]=digits[id[i]&15];}
+  out[at+65]='"';return at+66;
+}
+// One marked e tag: id, relay, marker and, when known, the author.
+n10_e :: (out:[]u8,at:int,id:[32]u8,relay:string,marker:string,has_author:bool,author:[32]u8)->int {
+  n:=json_raw(out,at,"[\"e\",");n=n10_hex(out,n,id);n=json_raw(out,n,",");n=json_write_string(out,n,relay);
+  n=json_raw(out,n,",");n=json_write_string(out,n,marker);
+  if has_author {n=json_raw(out,n,",");n=n10_hex(out,n,author);}
+  return json_raw(out,n,"]");
+}
+
+// book:begin reply
+// The tags of a reply to parent: a root e tag, a reply e tag when the
+// parent is itself a reply, the parent's author and then its p tags each
+// once, and its subject with "Re: " in front unless it starts with "Re:".
+// relay is where the parent was seen, or "".
+n10_reply_tags :: (parent:NostrEvent,relay:string,out:[]u8)->N10Reply {
+  r:N10Reply;th:=n10_thread(parent);
+  if th.status!=N10_OK {r.status=th.status;return r;}
+  if relay.count>0 && !nt_relay_ok(relay) {r.status=N10_TAG;return r;}
+  n:=json_raw(out,0,"[");
+  if th.is_reply {
+    t:=nostr_tag(parent,th.root_at);
+    n=n10_e(out,n,t.id,cast(string)t.relay[0..<t.relay_n],"root",t.has_author,t.author);
+    n=json_raw(out,n,",");n=n10_e(out,n,parent.id,relay,"reply",true,parent.public_key);
+  } else {n=n10_e(out,n,parent.id,relay,"root",true,parent.public_key);}
+  p:[N10_MAX_P][32]u8;p[0]=parent.public_key;count:=1;
+  k:=0;
+  while true {
+    t:=nostr_tag(parent,k);k+=1;
+    if t.error!=NT_OK {break;}
+    if t.type!=NT_P {continue;}
+    fresh:=true;for q:0..<count {if ns_equal32(p[q],t.pubkey) {fresh=false;}}
+    if !fresh {continue;}
+    if count==N10_MAX_P {r.status=N10_LIMIT;return r;}
+    p[count]=t.pubkey;count+=1;
+  }
+  for q:0..<count {n=json_raw(out,n,",[\"p\",");n=n10_hex(out,n,p[q]);n=json_raw(out,n,"]");}
+  subject:[NT_MAX_VALUE]u8;s:=n10_subject(parent,subject[..]);
+  if s.status!=N10_OK {r.status=s.status;return r;}
+  if s.present {
+    text:=cast(string)subject[0..<s.n];
+    re:[NT_MAX_VALUE+4]u8;m:=0;
+    if text.count<3 || text[0..<3]!="Re:" {m=json_raw(re[..],0,"Re: ");}
+    m=json_raw(re[..],m,text);
+    n=json_raw(out,n,",[\"subject\",");n=json_write_string(out,n,cast(string)re[0..<m]);n=json_raw(out,n,"]");
+  }
+  n=json_raw(out,n,"]");
+  if n== -1 {r.status=N10_OUTPUT;return r;}
+  r.n=n;r.status=N10_OK;return r;
+}
+// book:end reply
+
+// book:begin parents
+// Each note's parent as an index into the set: N10_TOP when it answers
+// nothing, N10_MISSING when its parent isn't in the set, N10_BROKEN when
+// its thread tags refuse.
+n10_parents :: (set:[]NostrEvent,parent:[]int) {
+  for i:0..<set.count {
+    th:=n10_thread(set[i]);
+    parent[i]=ifx th.status!=N10_OK then N10_BROKEN else ifx th.is_reply then N10_MISSING else N10_TOP;
+    if !th.is_reply {continue;}
+    for k:0..<set.count {if ns_equal32(set[k].id,th.parent) {parent[i]=k;}}
+  }
+}
+// book:end parents

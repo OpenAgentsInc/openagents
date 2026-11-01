@@ -81,7 +81,7 @@
 - [47. Encrypted key backup](ch047-encrypted-key-backup.md) — implemented
 - [48. Signers outside the app](ch048-signers-outside-the-app.md) — design draft
 - [49. HTTP auth](ch049-http-auth.md) — implemented
-- [50. Notes, threads and subjects](ch050-notes-threads-and-subjects.md) — partly implemented
+- [50. Notes, threads and subjects](ch050-notes-threads-and-subjects.md) — implemented
 - [51. References inside content](ch051-references-inside-content.md) — design draft
 - [52. Reposts, reactions and comments](ch052-reposts-reactions-and-comments.md) — partly implemented
 - [53. Long-form, drafts and wiki](ch053-long-form-drafts-and-wiki.md) — design draft
