@@ -1,0 +1,67 @@
+// The checks of verse-and-wallet.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/verse-and-wallet.coax --run-steps 250000000
+#load "../verse-and-wallet.coax";
+#load "../../../coax/tests/nostr/verse_wallet_vectors.coax";
+
+// book:begin check
+// The event ids, the lnurl and the invoice come from
+// coax/tests/nostr/verse_wallet_vectors.py, written from NIP-01, NIP-57,
+// LUD-16, BIP-173 and BOLT #11 with hashlib and Python integers; it shares
+// no code with Coax.
+#test "the pose frames are Python's, byte for byte" #steps 2000000000 {
+  hx: [64] u8; b: [3][2048] u8;
+  #assert PUB[ANA] == PY_ANA && PUB[BEN] == PY_BEN && PUB[SERVER] == PY_SERVER;
+  #assert hex32(pose_frame(ANA, MV_PLAZA, "0,-1", "ana", 1, 1000, "3.2,0,-10.5", b[0][..]).id, hx[..]) == PY_FRAME_ANA_1;
+  #assert hex32(pose_frame(ANA, MV_PLAZA, "0,-1", "ana", 2, 1250, "4.2,0,-10.5", b[1][..]).id, hx[..]) == PY_FRAME_ANA_2;
+  #assert hex32(pose_frame(BEN, MV_PLAZA, "-2,0", "ben", 1, 1100, "-70,0,12", b[2][..]).id, hx[..]) == PY_FRAME_BEN_1;
+}
+
+#test "the zap request, invoice and receipt are Python's" #steps 2000000000 {
+  hx: [64] u8; url: [256] u8; ln: [400] u8; gb: [1500] u8; rb: [1500] u8; ib: [600] u8; cb: [3000] u8;
+  nu := n57_lnurlp("ben@zaps.example.com", url[..]);
+  nl := n57_lnurl(cast(string) url[0..<nu], ln[..]);
+  #assert cast(string) ln[0..<nl] == PY_LNURL;
+  goal := sign(BEN, T0, 9041, "[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"50000\"],[\"closed_at\",\"1790086400\"]]", "Busking in the plaza", gb[..]);
+  #assert hex32(goal.id, hx[..]) == PY_GOAL_ID;
+  zr := zap_request(ANA, T0 + 60, 21000, PY_GOAL_ID, PY_LNURL, "Nice song", rb[..]);
+  #assert hex32(zr.id, hx[..]) == PY_REQUEST_ID;
+  #assert hex32(sha_of(zr.original), hx[..]) == PY_REQUEST_SHA;
+  inv := make_invoice(21000, T0 + 61, PREIMAGE, zr.original, "lnbc", ib[..]);
+  #assert inv == PY_INVOICE;
+  #assert hex32(n57_invoice(inv).payment_hash, hx[..]) == PY_PAYMENT_HASH;
+  #assert hex32(zap_receipt(SERVER, T0 + 70, zr, PY_GOAL_ID, inv, PREIMAGE, cb[..]).id, hx[..]) == PY_RECEIPT_ID;
+}
+
+#test "the hand-worked numbers" {
+  // 21 sats and a 1-sat fee from 1000; 21000 msat is 210n.
+  #assert BALANCE - 21 - FEE == 978 && verse_wallet_sat_to_msat(21) == 21000;
+  #assert n57_invoice(PY_INVOICE).msat == 21000;
+  // Ana's move at +1001 rides frame 2 (t = +1250) and is drawn at +1750.
+  #assert 1250 + DRAW_MS - 1001 == 749 && POST_MS + 2 * NET_MS + DRAW_MS == 830 && 830 <= BUDGET_MS;
+  // Drawn at +1600, 500 ms behind: 100 ms into the 250 ms between samples.
+  x := draw_x(3.2, 1000, 4.2, 1250, 1600);
+  #assert x > 3.5999999 && x < 3.6000001;
+  #assert draw_x(3.2, 1000, 4.2, 1250, 1400) == 3.2 && draw_x(3.2, 1000, 4.2, 1250, 1900) == 4.2;
+}
+
+// The wallet's verdict on a zap of `sats` with a 1-sat fee and 20 sats
+// spendable: sent only when the balance covers amount and fee.
+#forall "a zap over the balance is refused" sats: 0..<30 {
+  pay := n57_pay(PAY);
+  c := zap_check(pay, sats * 1000, PY_INVOICE, 1, 1, 20, T0 + 62, T0 + 3661);
+  #assert !c.pays;   // only a 21-sat invoice is exact, and 21 + 1 is over 20
+  if sats == 0 { #assert c.verdict == Verdict.bad_amount && !c.amount_ok; }
+  else if sats + 1 > 20 { #assert c.verdict == Verdict.over_limit; }
+  else { #assert c.verdict == Verdict.send; }
+  #assert c.amount_ok == (sats >= 1 && sats <= 20);
+  #assert c.invoice_ok == (sats == 21);
+}
+
+// The NWC budget takes the 21000 msat invoice only when it fits.
+#forall "Wallet Connect's budget" limit: 20995..<21006 {
+  s := nwc_pay(N47Budget.{limit = limit, period = 86400, start = T0}, PY_INVOICE, T0 + 62);
+  if limit >= 21000 { #assert s.error == N47_OK && s.budget.spent == 21000; }
+  else { #assert s.error == N47_QUOTA && s.budget.spent == 0; }
+}
+// book:end check

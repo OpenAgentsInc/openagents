@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 101 are implemented and 3 are design drafts.
+Of the 104 chapters, 102 are implemented and 2 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -307,7 +307,7 @@ stack, and the cutover of relay.openagents.com.
 | [98. Projects on Nostr](ch098-projects-on-nostr.md) | Runnable: native C and wasm | OpenAgents' project pages fold NIP-34 repositories, issues and statuses and NIP-22 comments from the relay, verify each event in the browser, and replace a snapshot only with a complete bounded capture. |
 | [99. The website and sign-in](ch099-the-website-and-sign-in.md) | Runnable: native C and wasm | Logging in to openagents.com with a NIP-98 signed request from a words account (NIP-06) or a browser signer (NIP-07), and the cutover of the C verifier to Coax. |
 | [100. Pylons and the mesh](ch100-pylons-and-the-mesh.md) | Runnable: native C | Pylons authenticate to the relay with NIP-42, announce beacons, and answer sealed NIP-44 decision requests; the mesh opens encrypted channels with this book's primitives. |
-| [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) | Unimplemented: design draft | Presence in realms with NIP-MV pose frames, Verse identities as Nostr keys, and zaps and Wallet Connect over the Spark wallet's existing payment rules. |
+| [101. The Verse and the wallet](ch101-the-verse-and-the-wallet.md) | Runnable: native C | Two players' NIP-MV presence through a Coax relay within the latency budget, and one in-world zap from request to counted receipt, paid only when the Spark wallet's rules in `verse/wallet.coax` pass, with Wallet Connect as a second path; what runs in production today and what is only in this book. |
 | [102. Agents on Nostr](ch102-agents-on-nostr.md) | Runnable: native C | One attested agent end to end, offline: NIP-42 and NIP-AA login, a NIP-MKT order, a sealed NIP-CJ job claimed once and journaled with NIP-RUN, the answer, and payment against a Lightning preimage; what runs in production today and what is only in this book. |
 | [103. Replace relay.openagents.com](ch103-replace-relay-openagents-com.md) | Unimplemented: design draft | Exporting the Rust relay's Postgres read-only, importing with re-verification of every event, a shadow period comparing both relays, and DNS cutover only with owner sign-off. |
 | [104. Agent treasuries and a network of keys](ch104-agent-treasuries-and-a-network-of-keys.md) | Unimplemented: design draft | NIP-KEYS multisig wallets across independent key agents: descriptors and composition rules, enrollment with possession proofs, PSBT signing requests and receipts, an attested co-signer enforcing a SOV treasury policy, timelocked recovery, rotation sweeps and a hot/cold treasury split. |

@@ -2206,16 +2206,27 @@
    "number": 101,
    "title": "The Verse and the wallet",
    "file": "ch101-the-verse-and-the-wallet.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     85,
     71,
     72,
     "aethyr:49"
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "verse/wallet.coax",
+    "coax/lib/nostr/nipmv.coax",
+    "coax/lib/nostr/nip57.coax",
+    "coax/lib/nostr/nip75.coax",
+    "coax/lib/nostr/nip47.coax",
+    "coax/tests/nostr/verse_wallet_vectors.py",
+    "nostr/examples/verse-and-wallet.coax",
+    "nostr/examples/checks/verse-and-wallet.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""The events and invoice of chapter 101, The Verse and the wallet, computed
+independently.
+
+Written from NIP-01, NIP-MV, NIP-57, NIP-75, LUD-06/LUD-16, BIP-173 and
+BOLT #11 with only hashlib and integers (signing comes from
+nip59_reference.py, which shares no code with Coax). Tooling only, never
+shipped. Test keys only: the world's owner is the secp256k1 scalar 1, Ana 2,
+Mallory 3, Ben 4 and Ben's LNURL server 7. BIP-340 aux is 32 zero bytes.
+
+  python3 coax/tests/nostr/verse_wallet_vectors.py > coax/tests/nostr/verse_wallet_vectors.coax
+
+It prints the Coax constants nostr/examples/checks/verse-and-wallet.coax
+compares with the example: the three pose frames' ids, Ben's goal, Ana's
+zap request (its id and the SHA-256 of its JSON, the invoice's h field),
+the invoice Ben's server makes, the payment hash and the receipt's id.
+"""
+import hashlib
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from nip59_reference import dumps, event_id, sign, xonly  # noqa: E402
+
+T0 = 1790000000
+OWNER, ANA, MALLORY, BEN, SERVER = ((n).to_bytes(32, "big") for n in (1, 2, 3, 4, 7))
+AUX = bytes(32)
+RELAY = "wss://relay.example.com"
+PLAZA = "33300:%s:plaza" % xonly(OWNER).hex()
+PREIMAGE = bytes(range(1, 33))
+CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"
+
+
+def event(secret, at, kind, tags, content):
+    """The event as Coax's signer writes it: id, pubkey, created_at, kind,
+    tags, content, sig, compact."""
+    pub = xonly(secret).hex()
+    eid = event_id(pub, at, kind, tags, content)
+    sig = sign(secret, eid, AUX)
+    return eid.hex(), dumps({"id": eid.hex(), "pubkey": pub, "created_at": at, "kind": kind,
+                             "tags": tags, "content": content, "sig": sig.hex()})
+
+
+def polymod(values):
+    gen = [0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3]
+    chk = 1
+    for v in values:
+        top = chk >> 25
+        chk = (chk & 0x1ffffff) << 5 ^ v
+        for i in range(5):
+            chk ^= gen[i] if (top >> i) & 1 else 0
+    return chk
+
+
+def bech32(hrp, words):
+    """BIP-173 bech32 (constant 1), no length limit."""
+    expanded = [ord(c) >> 5 for c in hrp] + [0] + [ord(c) & 31 for c in hrp]
+    mod = polymod(expanded + words + [0] * 6) ^ 1
+    check = [(mod >> 5 * (5 - i)) & 31 for i in range(6)]
+    return hrp + "1" + "".join(CHARSET[w] for w in words + check)
+
+
+def to5(data):
+    acc, bits, out = 0, 0, []
+    for b in data:
+        acc = acc << 8 | b
+        bits += 8
+        while bits >= 5:
+            bits -= 5
+            out.append(acc >> bits & 31)
+    if bits:
+        out.append(acc << (5 - bits) & 31)
+    return out
+
+
+def invoice(msat, at, preimage, description):
+    """BOLT #11: amount in n (100 msat), timestamp, p (payment hash), h
+    (SHA-256 of the description), and a zero signature: not payable."""
+    words = [(at >> 5 * (6 - i)) & 31 for i in range(7)]
+    for typ, value in ((1, hashlib.sha256(preimage).digest()), (23, hashlib.sha256(description.encode()).digest())):
+        words += [typ, 1, 20] + to5(value)
+    words += [0] * 104
+    return bech32("lnbc%dn" % (msat // 100), words)
+
+
+def main():
+    out = []
+    say = lambda name, value: out.append(f'PY_{name} :: "{value}";')
+    say("ANA", xonly(ANA).hex())
+    say("BEN", xonly(BEN).hex())
+    say("SERVER", xonly(SERVER).hex())
+
+    frames = (("ANA_1", ANA, "0,-1", "ana", 1, 1000, "3.2,0,-10.5"),
+              ("ANA_2", ANA, "0,-1", "ana", 2, 1250, "4.2,0,-10.5"),
+              ("BEN_1", BEN, "-2,0", "ben", 1, 1100, "-70,0,12"))
+    for name, who, cell, s, n, ms, p in frames:
+        body = ('{"v":1,"s":"%s","n":%d,"t":%d,"e":[{"id":"avatar","role":"avatar","p":[%s],"q":[0,0,0,1]}]}'
+                % (s, n, T0 * 1000 + ms, p))
+        say("FRAME_" + name, event(who, T0 + 1, 23300, [["w", PLAZA], ["c", cell]], body)[0])
+
+    url = "https://zaps.example.com/.well-known/lnurlp/ben"
+    lnurl = bech32("lnurl", to5(url.encode()))
+    say("LNURL", lnurl)
+    goal_id, _ = event(BEN, T0, 9041, [["relays", RELAY], ["amount", "50000"], ["closed_at", str(T0 + 86400)]],
+                       "Busking in the plaza")
+    say("GOAL_ID", goal_id)
+    req_tags = [["relays", RELAY], ["amount", "21000"], ["lnurl", lnurl], ["p", xonly(BEN).hex()],
+                ["e", goal_id], ["k", "9041"]]
+    req_id, req_json = event(ANA, T0 + 60, 9734, req_tags, "Nice song")
+    say("REQUEST_ID", req_id)
+    say("REQUEST_SHA", hashlib.sha256(req_json.encode()).hexdigest())
+    inv = invoice(21000, T0 + 61, PREIMAGE, req_json)
+    say("INVOICE", inv)
+    say("PAYMENT_HASH", hashlib.sha256(PREIMAGE).hexdigest())
+    receipt_tags = [["p", xonly(BEN).hex()], ["e", goal_id], ["P", xonly(ANA).hex()], ["bolt11", inv],
+                    ["description", req_json], ["preimage", PREIMAGE.hex()]]
+    say("RECEIPT_ID", event(SERVER, T0 + 70, 9735, receipt_tags, "")[0])
+    print("// Generated by coax/tests/nostr/verse_wallet_vectors.py. Do not edit.")
+    print("\n".join(out))
+
+
+if __name__ == "__main__":
+    main()

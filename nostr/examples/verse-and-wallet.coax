@@ -1,0 +1,378 @@
+// book:begin setup
+// Chapter 101: two players' presence through an in-memory Coax relay, then
+// one in-world zap from Ana to Ben, from the request through the wallet's
+// rules to the counted receipt, and the same payment over Wallet Connect.
+// Offline: test keys, fixture invoices and a fixed clock. The event ids and
+// the invoice come out the same in coax/tests/nostr/verse_wallet_vectors.py.
+#load "../../coax/lib/nostr/nipmv.coax";
+#load "../../coax/lib/nostr/nip75.coax";
+#load "../../coax/lib/nostr/nip47.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/store.coax";
+#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../coax/lib/nostr/filter.coax";
+#load "../../verse/wallet.coax";
+
+// Test keys only, the secp256k1 scalars 2 (Ana), 3 (Mallory), 4 (Ben) and
+// 7 (Ben's LNURL server). The plaza is chapter 85's world, owned by key 1.
+// Never sign with a real key in an example, and never print one.
+PEOPLE :: [4] string.["Ana", "Mallory", "Ben", "Ben's server"];
+SCALAR :: [4] u8.[2, 3, 4, 7];
+PUB :: [4] string.[
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+  "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc"];
+ANA :: 0; MALLORY :: 1; BEN :: 2; SERVER :: 3;
+T0 :: 1790000000;                       // the fixed clock, in seconds
+MS :: 1790000000000;                    // the same instant in milliseconds
+RELAY :: "wss://relay.example.com";
+GARDEN :: "33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:garden";
+
+// The presence budget. Aethyr chapter 49: a move is drawn on the other
+// screen within one second (coax/web/presence-pair.coax's budget).
+POST_MS :: 250;     // a client posts a frame every 250 ms (Fairy Forest's FF_ROOM_EVERY)
+NET_MS :: 40;       // assumed one-way time, client to relay and relay to client
+DRAW_MS :: 500;     // remote players are drawn D = 2 x 250 ms behind
+BUDGET_MS :: 1000;
+
+// Fixture values only: the payment's preimage is the bytes 01 02 ... 20,
+// and every invoice carries a zero signature, so no wallet would pay it.
+PREIMAGE :: "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+OTHER_PREIMAGE :: "2222222222222222222222222222222222222222222222222222222222222222";
+// The LNURL-pay response for ben@zaps.example.com: 1 to 100,000 sats, and
+// the server's key signs the receipts.
+PAY :: "{\"tag\":\"payRequest\",\"callback\":\"https://zaps.example.com/lnurlp/ben/callback\",\"minSendable\":1000,\"maxSendable\":100000000,\"metadata\":\"[[\\\"text/plain\\\",\\\"Ben\\\"]]\",\"allowsNostr\":true,\"nostrPubkey\":\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"}";
+// What Ana's Spark wallet reports (the host's numbers, not decided here).
+BALANCE :: 1000;    // spendable sats
+FEE :: 1;           // the quote's fee in sats, shown on the review screen
+EXPIRY :: 3600;     // BOLT #11's default invoice expiry, seconds
+// book:end setup
+
+MV_WORDS :: [24] string.["admitted", "another kind", "tags", "address", "not this world", "malformed", "version",
+  "field", "cell", "bounds", "session", "sequence", "time", "entities", "entity id", "role", "number",
+  "near-zero quaternion", "outside the world's bounds", "stamp", "status", "object id", "dropped: n not newer", "table full"];
+VERDICT :: [6] string.["send", "over_cap", "over_limit", "expired", "bad_amount", "busy"];
+PAY_STATE :: [6] string.["idle", "quoted", "sending", "succeeded", "not_sent", "unknown"];
+E47 :: [27] string.["ok", "", "", "", "", "", "", "", "", "", "kind", "", "not JSON", "unknown method",
+  "bad field", "missing field", "", "", "", "", "expired", "", "", "no amount", "amounts differ", "over the budget",
+  "before the budget starts"];
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+hex32 :: (k: [32] u8, out: [] u8) -> string { return n57_hex(k, out); }
+name_of :: (k: [32] u8) -> int {
+  for i: 0..<PEOPLE.count { if ns_equal32(key_of(i), k) { return i; } }
+  return -1;
+}
+sha_of :: (text: string) -> [32] u8 {
+  b: [8192] u8; h: [32] u8;
+  for i: 0..<text.count { b[i] = text[i]; }
+  #assert sha256_hash_checked(b[0..<text.count], h[..], false) == SHA_OK;
+  return h;
+}
+sha_of_hex :: (hex: string) -> [32] u8 { b: [32] u8; decode_hex(hex, b[..]); return sha_of(cast(string) b[..]); }
+text_of :: (n: int, out: [] u8) -> string { #assert n > 0; return cast(string) out[0..<n]; }
+
+// Sign an event with test key who into out, and read it back with its id
+// and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; key[31] = SCALAR[who];
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified && ns_equal32(e.public_key, key_of(who));
+  return e;
+}
+
+// book:begin relay
+// The Coax relay's EVENT path (chapters 34 and 35), with the socket and clock
+// replaced, and two connections that each hold one subscription.
+Conn :: struct { auth: [1] RrAuth; sub: string; filter: NostrFilter; inbox: [4][4096] u8; sizes: [4] int; n: int; }
+Relay :: struct {
+  arena: [16384] u8; recs: [5] RsdRec; store: [1] RsdStore;
+  scratch: [65536] u8; out: [512] u8;
+  conns: [2] Conn;
+}
+// One EVENT frame from connection `from`: the OK the relay answers, and,
+// when the event is accepted, the event sent to every connection whose
+// subscription matches it, the author's own included (NIP-01).
+publish :: (r: [] Relay, from: int, event: string, now: int) -> string {
+  frame: [4096] u8;
+  n := json_raw(frame[..], 0, "[\"EVENT\","); n = json_raw(frame[..], n, event); n = json_raw(frame[..], n, "]");
+  f := cast(string) frame[0..<n];
+  m := ms_read(f);
+  #assert rr_message(m.error, m.type, m.has_sub).action == RR_EVENT;
+  text := f[m.event_from..<m.event_to];
+  // Read and recompute the id, then the policy, then the signature, then
+  // the store (an ephemeral kind is accepted and never stored).
+  a := rs_admit_read(text, now, rr_writes_need_auth(true), rr_authed(r[0].conns[from].auth[..]), r[0].scratch[..]);
+  if a.reason == RS_BAD_EVENT { return text_of(ms_write_notice(rs_prefix(RS_BAD_EVENT), rs_text(RS_BAD_EVENT), r[0].out[..]), r[0].out[..]); }
+  if a.reason == RS_ACCEPT { a = rs_admit_verified(a, nostr_event_verify_vartime(text, r[0].scratch[..], false)); }
+  reason := a.reason;
+  if reason == RS_ACCEPT { reason = rsd_admit(r[0].store[..], a, text); }
+  if rr_fanout(reason) {
+    for c: 0..<2 {
+      k := r[0].conns[c].n;
+      if rr_deliver(true, true, nf_match(r[0].conns[c].filter, a.e)) && k < 4 {
+        r[0].conns[c].sizes[k] = ms_write_event(r[0].conns[c].sub, text, r[0].conns[c].inbox[k][..]);
+        r[0].conns[c].n = k + 1;
+      }
+    }
+  }
+  id := a.e.id;
+  return text_of(ms_write_ok(id[..], rs_accepted(reason), rs_prefix(reason), rs_text(reason), r[0].out[..]), r[0].out[..]);
+}
+// book:end relay
+
+// book:begin presence
+// One player's client: what it has seen of the others, by key and session.
+Client :: struct { me: int; seen: [4] MvSeen; count: int; bodies: [4][1024] u8; got: int; x: [4] f64; t: [4] int; }
+// A frame the relay delivered at arrive_ms (inbox entry k): check the
+// event, skip the client's own, read the pose frame for the plaza, order
+// it, and say when it is drawn: DRAW_MS after its own time t, or when it
+// arrives if that is later.
+receive :: (c: [] Client, conn: [] Conn, k: int, w: MvWorld, arrive_ms: int) {
+  wire := cast(string) conn[0].inbox[k][0..<conn[0].sizes[k]];
+  event := wire[12 + conn[0].sub.count..<wire.count - 1];     // ["EVENT","plaza",<event>]
+  scratch: [8192] u8;
+  e := nostr_event_verify_vartime(event, scratch[..], false);
+  who := name_of(e.public_key);
+  print("  % gets %'s frame at +% ms: ", PEOPLE[c[0].me], PEOPLE[who], arrive_ms - MS);
+  if !e.verified { print("refused, bad signature\n"); return; }
+  if who == c[0].me { print("its own, skipped\n"); return; }
+  body := c[0].bodies[c[0].got][..]; c[0].got += 1;
+  nb := json_unescape(event[e.content_from..<e.content_to], body);
+  poses: [MV_ENTITIES] MvPose;
+  f := mv_frame_read(e.kind, event[e.tags_from..<e.tags_to], cast(string) body[0..<nb], MV_PLAZA, w, poses[..]);
+  if f.code != MvCode.ok { print("refused, %\n", MV_WORDS[cast(int) f.code]); return; }
+  o := mv_order(c[0].seen[..], c[0].count, PUB[who], f.s, f.n, arrive_ms);
+  if o.code != MvCode.ok { print("s % n %, %\n", f.s, f.n, MV_WORDS[cast(int) o.code]); return; }
+  c[0].count = o.count;
+  if f.n <= 2 { c[0].x[f.n] = poses[0].p[0]; c[0].t[f.n] = f.t; }
+  drawn := f.t + DRAW_MS;
+  if arrive_ms > drawn { drawn = arrive_ms; }
+  print("s % n %, % at (%, %, %), drawn at +% ms\n", f.s, f.n, poses[0].id, poses[0].p[0], poses[0].p[1], poses[0].p[2], drawn - MS);
+}
+// Where a remote avatar is drawn at now_ms: D behind, between the two
+// samples around that time, holding the last one past it (Aethyr 49).
+draw_x :: (x1: f64, t1: int, x2: f64, t2: int, now_ms: int) -> f64 {
+  at := now_ms - DRAW_MS;
+  if at <= t1 { return x1; }
+  if at >= t2 { return x2; }
+  return x1 + (x2 - x1) * cast(f64) (at - t1) / cast(f64) (t2 - t1);
+}
+// book:end presence
+
+// book:begin zap
+// The wallet's side of a zap, as the host hands it to verse/wallet.coax in
+// whole sats: whether the LNURL server takes the amount and the balance
+// covers it, whether the invoice states exactly the zap's amount on
+// mainnet, and whether the confirmed quote (fee, the fee shown as cap,
+// and when the invoice expires) may be paid. All three must hold.
+ZapCheck :: struct { amount_ok: bool; invoice_ok: bool; verdict: Verdict; pays: bool; }
+zap_check :: (pay: N57Pay, msat: int, invoice: string, fee: int, cap: int, spendable: int, now: int, expires: int) -> ZapCheck {
+  c: ZapCheck;
+  sats := msat / 1000;                          // Spark pays whole sats
+  low := verse_wallet_msat_up(pay.min); high := verse_wallet_msat_down(pay.max);
+  c.amount_ok = msat % 1000 == 0 && verse_wallet_amount_ok(sats, low, high, spendable);
+  c.invoice_ok = bw_invoice_is(invoice, msat);
+  c.verdict = verse_wallet_may_send(Pay.quoted, sats, fee, cap, spendable, now, expires);
+  c.pays = c.amount_ok && c.invoice_ok && c.verdict == Verdict.send;
+  return c;
+}
+show_check :: (label: string, c: ZapCheck) {
+  print("%: amount %, invoice %, may_send % -> %\n", label, ifx c.amount_ok then "ok" else "refused",
+    ifx c.invoice_ok then "ok" else "refused", VERDICT[cast(int) c.verdict], ifx c.pays then "pay" else "refused");
+}
+// The same invoice as a Wallet Connect pay_invoice request, charged to a
+// connection's budget (chapter 72; sealing and signing are left out here).
+nwc_pay :: (b: N47Budget, invoice: string, now: int) -> N47Spend {
+  j: [2048] u8;
+  n := json_raw(j[..], 0, "{\"method\":\"pay_invoice\",\"params\":{\"invoice\":\"");
+  n = json_raw(j[..], n, invoice); n = json_raw(j[..], n, "\"}}");
+  return n47_spend(b, now, n47_request(cast(string) j[0..<n]));
+}
+// book:end zap
+
+// What Ben's server does with a zap request: a bolt11 invoice for msat (in
+// units of n, 100 msat), dated at, whose p field is the payment hash and
+// whose h field is SHA-256 of the request's JSON (chapter 71).
+make_invoice :: (msat: int, at: int, preimage: string, description: string, hrp_start: string, out: [] u8) -> string {
+  w: [400] u8; n := 0;
+  for i: 0..<7 { w[n] = cast(u8) ((at >> (5 * (6 - i))) & 31); n += 1; }
+  n = n57_field(w[..], n, 1, sha_of_hex(preimage));      // p
+  n = n57_field(w[..], n, 23, sha_of(description));     // h
+  for i: 0..<104 { w[n] = 0; n += 1; }                    // a zero signature
+  hrp: [20] u8; k := json_raw(hrp[..], 0, hrp_start); k = json_write_int(hrp[..], k, msat / 100); k = json_raw(hrp[..], k, "n");
+  r := bech32_encode_checked(cast(string) hrp[0..<k], cast(string) w[0..<n], false, out, true, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+frame_tags :: (world: string, cell: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[[\"w\",\""); n = json_raw(out, n, world); n = json_raw(out, n, "\"],[\"c\",\"");
+  n = json_raw(out, n, cell); return text_of(json_raw(out, n, "\"]]"), out);
+}
+frame_body :: (s: string, n: int, ms: int, p: string, out: [] u8) -> string {
+  k := json_raw(out, 0, "{\"v\":1,\"s\":\""); k = json_raw(out, k, s); k = json_raw(out, k, "\",\"n\":");
+  k = json_write_int(out, k, n); k = json_raw(out, k, ",\"t\":"); k = json_write_int(out, k, ms);
+  k = json_raw(out, k, ",\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":["); k = json_raw(out, k, p);
+  return text_of(json_raw(out, k, "],\"q\":[0,0,0,1]}]}"), out);
+}
+// A pose frame signed by who, created at T0 + 1.
+pose_frame :: (who: int, world: string, cell: string, s: string, n: int, ms: int, p: string, out: [] u8) -> NostrEvent {
+  tb: [512] u8; bb: [512] u8;
+  return sign(who, T0 + 1, MV_FRAME, frame_tags(world, cell, tb[..]), frame_body(s, n, MS + ms, p, bb[..]), out);
+}
+// The relay's view of the plaza's subscription, and the REQ that asks for it.
+plaza_filter :: (kinds: [] int, values: [] string, tags: [] NostrTagFilter) -> NostrFilter {
+  kinds[0] = MV_FRAME; values[0] = MV_PLAZA; tags[0] = NostrTagFilter.{name = 'w', values = values};
+  return NostrFilter.{has_kinds = true, kinds = kinds, tags = tags};
+}
+// The zap request: who zaps Ben's goal for msat (chapter 71).
+zap_request :: (who: int, at: int, msat: int, goal: string, lnurl: string, content: string, out: [] u8) -> NostrEvent {
+  tags: [1000] u8; relays := [1] string.[RELAY];
+  n := n57_request_tags(relays[..], msat, lnurl, PUB[BEN], goal, 9041, tags[..]);
+  #assert n > 0;
+  return sign(who, at, 9734, cast(string) tags[0..<n], content, out);
+}
+zap_receipt :: (signer: int, at: int, request: NostrEvent, goal: string, invoice: string, preimage: string, out: [] u8) -> NostrEvent {
+  tags: [3000] u8;
+  t := n57_receipt_tags(PUB[BEN], goal, PUB[ANA], invoice, request.original, preimage, tags[..]);
+  return sign(signer, at, 9735, t, "", out);
+}
+show_zap :: (label: string, z: N57Zap) {
+  if z.status == N57_OK { print("%: valid, % msat from %\n", label, z.msat, PEOPLE[name_of(z.sender)]); }
+  else { print("%: refused, %\n", label, N57_WHY[z.status]); }
+}
+
+// book:begin main
+main :: () {
+  hx: [64] u8;
+  w := mv_plaza();
+  print("== 1. Presence in the plaza through a Coax relay\n");
+  r: [1] Relay;
+  r[0].store[0].arena = r[0].arena[..]; r[0].store[0].recs = r[0].recs[..];
+  kinds: [1] int; values: [1] string; tags: [1] NostrTagFilter;
+  f := plaza_filter(kinds[..], values[..], tags[..]);
+  fb: [512] u8; nf := nf_write(f, fb[..], false);
+  print("each client sends [\"REQ\",\"plaza\",%]\n", cast(string) fb[0..<nf]);
+  for c: 0..<2 {
+    r[0].conns[c].sub = "plaza"; r[0].conns[c].filter = f;
+    pub := key_of(ifx c == 0 then ANA else BEN);
+    #assert rr_auth(r[0].conns[c].auth[..], RR_N42_OK, pub[..]) == RR_A_OK;   // as if NIP-42 AUTH had succeeded
+  }
+  print("connection 0 is Ana's, 1 is Ben's; both authenticated with NIP-42 (chapter 38)\n");
+  fe: [4][2048] u8;
+  a1 := pose_frame(ANA, MV_PLAZA, "0,-1", "ana", 1, 1000, "3.2,0,-10.5", fe[0][..]);
+  b1 := pose_frame(BEN, MV_PLAZA, "-2,0", "ben", 1, 1100, "-70,0,12", fe[1][..]);
+  a2 := pose_frame(ANA, MV_PLAZA, "0,-1", "ana", 2, 1250, "4.2,0,-10.5", fe[2][..]);
+  print("Ana's frame 1, id %\n", hex32(a1.id, hx[..]));
+  print("  content: %\n", a1.original[a1.content_from..<a1.content_to]);
+  ana: [1] Client; ana[0].me = ANA; ben: [1] Client; ben[0].me = BEN;
+  print("+1000 ms Ana posts frame 1; relay at +1040: %\n", publish(r[..], 0, a1.original, T0 + 1));
+  receive(ben[..], r[0].conns[1..<2], 0, w, MS + 1000 + 2 * NET_MS);
+  receive(ana[..], r[0].conns[0..<1], 0, w, MS + 1000 + 2 * NET_MS);
+  print("+1100 ms Ben posts frame 1; relay at +1140: %\n", publish(r[..], 1, b1.original, T0 + 1));
+  receive(ana[..], r[0].conns[0..<1], 1, w, MS + 1100 + 2 * NET_MS);
+  print("+1250 ms Ana posts frame 2 (she moved at +1001); relay at +1290: %\n", publish(r[..], 0, a2.original, T0 + 1));
+  receive(ben[..], r[0].conns[1..<2], 2, w, MS + 1250 + 2 * NET_MS);
+  drawn := 1250 + DRAW_MS;
+  print("Ana's move at +1001 is on Ben's screen at +%: % ms (bound %, budget %)\n", drawn, drawn - 1001,
+    POST_MS + 2 * NET_MS + DRAW_MS, BUDGET_MS);
+  print("Ben draws Ana at +1600: x = %\n", draw_x(ben[0].x[1], ben[0].t[1] - MS, ben[0].x[2], ben[0].t[2] - MS, 1600));
+  print("Ana sees Ben at +11179: %, at +11180: %\n", ifx mv_online(ana[0].seen[0].ms, MS + 11179) then "online" else "offline",
+    ifx mv_online(ana[0].seen[0].ms, MS + 11180) then "online" else "offline");
+
+  print("presence refusals\n");
+  print("Ana's frame 1 sent again; relay: %\n", publish(r[..], 0, a1.original, T0 + 1));
+  receive(ben[..], r[0].conns[1..<2], 3, w, MS + 1400);
+  eb: [2048] u8;
+  edited := cast(string) eb[0..<a1.original.count];
+  for i: 0..<a1.original.count { eb[i] = a1.original[i]; }
+  at := 0; for i: 0..<edited.count - 4 { if at == 0 && edited[i..<i + 4] == "-10." { at = i; } }
+  eb[at + 1] = '9';                                    // -10.5 becomes -90.5 after signing
+  print("Ana's frame 1 with p changed after signing; relay: %\n", publish(r[..], 0, edited, T0 + 1));
+  gb: [2048] u8;
+  garden := pose_frame(ANA, GARDEN, "0,-1", "ana", 3, 1500, "3.2,0,-10.5", gb[..]);
+  before := r[0].conns[1].n;
+  print("Ana's frame for the garden; relay: %\n", publish(r[..], 0, garden.original, T0 + 1));
+  print("  delivered to Ben: % (his filter asks for the plaza only)\n", r[0].conns[1].n - before);
+
+  print("\n== 2. Ana zaps Ben 21 sats in the plaza\n");
+  url: [256] u8; ln: [400] u8;
+  nu := n57_lnurlp("ben@zaps.example.com", url[..]);
+  nl := n57_lnurl(cast(string) url[0..<nu], ln[..]);
+  lnurl := cast(string) ln[0..<nl];
+  print("ben@zaps.example.com -> %\n", cast(string) url[0..<nu]);
+  pay := n57_pay(PAY);
+  print("pay response: %, % to % msat, receipts signed by %\n", N57P_WHY[pay.status], pay.min, pay.max, PEOPLE[name_of(pay.nostr_pubkey)]);
+  gbuf: [1500] u8;
+  goal := sign(BEN, T0, 9041, "[[\"relays\",\"wss://relay.example.com\"],[\"amount\",\"50000\"],[\"closed_at\",\"1790086400\"]]", "Busking in the plaza", gbuf[..]);
+  gid := hex32(goal.id, hx[..]); gidb: [64] u8; for i: 0..<64 { gidb[i] = gid[i]; } goal_id := cast(string) gidb[..];
+  print("Ben's goal, kind 9041 %: 50000 msat\n", goal_id);
+  rb: [4][1500] u8;
+  zr := zap_request(ANA, T0 + 60, 21000, goal_id, lnurl, "Nice song", rb[0][..]);
+  print("zap request %, % bytes, sent to the callback\n", hex32(zr.id, hx[..]), zr.original.count);
+  ib: [4][600] u8;
+  inv := make_invoice(21000, T0 + 61, PREIMAGE, zr.original, "lnbc", ib[0][..]);
+  print("invoice: %\n", inv);
+  v := n57_invoice(inv);
+  print("  % msat, h = %\n", v.msat, hex32(v.description_hash, hx[..]));
+  print("  sha256(zap request)   %\n", hex32(sha_of(zr.original), hx[..]));
+
+  print("the wallet's rules (verse/wallet.coax), Ana has % sats\n", BALANCE);
+  ok := zap_check(pay, 21000, inv, FEE, FEE, BALANCE, T0 + 62, T0 + 61 + EXPIRY);
+  show_check("21 sats, fee 1", ok);
+  fl := verse_wallet_start();
+  fl = verse_wallet_step(fl, Event.quote); fl = verse_wallet_step(fl, Event.confirm);
+  print("flow: quote, confirm -> % (sends %)\n", PAY_STATE[cast(int) fl.state], fl.sends);
+  fl = verse_wallet_step(fl, Event.confirm);
+  print("a second confirm -> % (sends %)\n", PAY_STATE[cast(int) fl.state], fl.sends);
+  fl = verse_wallet_step(fl, Event.sent);
+  balance := BALANCE - 21 - FEE;
+  print("the SDK reports sent -> %; balance % - 21 - % = % sats\n", PAY_STATE[cast(int) fl.state], BALANCE, FEE, balance);
+
+  print("the receipt, and Ben's goal in the plaza\n");
+  rcb: [4][3000] u8;
+  receipt := zap_receipt(SERVER, T0 + 70, zr, goal_id, inv, PREIMAGE, rcb[0][..]);
+  print("receipt %\n", hex32(receipt.id, hx[..]));
+  show_zap("  n57_receipt", n57_receipt(receipt, pay.nostr_pubkey, lnurl));
+  set: [4] NostrEvent;
+  set[0] = receipt;
+  set[1] = zap_receipt(SERVER, T0 + 80, zr, goal_id, inv, PREIMAGE, rcb[1][..]);        // published again
+  set[2] = zap_receipt(MALLORY, T0 + 90, zr, goal_id, inv, PREIMAGE, rcb[2][..]);       // not Ben's server
+  set[3] = zap_receipt(SERVER, T0 + 95, zr, goal_id, inv, OTHER_PREIMAGE, rcb[3][..]);  // another payment's preimage
+  show_zap("  signed by Mallory", n57_receipt(set[2], pay.nostr_pubkey, lnurl));
+  show_zap("  wrong preimage", n57_receipt(set[3], pay.nostr_pubkey, lnurl));
+  t := n75_tally(goal, set[..], pay.nostr_pubkey, lnurl, T0 + 100);
+  print("goal: % of 50000 msat, counted %, duplicates %, refused %\n", t.msat, t.counted, t.duplicates, t.refused);
+
+  print("\n== 3. Refusals by the wallet's rules\n");
+  show_check("2000 sats with 978 left", zap_check(pay, 2_000_000, inv, FEE, FEE, balance, T0 + 62, T0 + 61 + EXPIRY));
+  show_check("21 sats, fee 3 over the shown 1", zap_check(pay, 21000, inv, 3, FEE, balance, T0 + 62, T0 + 61 + EXPIRY));
+  show_check("21 sats at the invoice's expiry", zap_check(pay, 21000, inv, FEE, FEE, balance, T0 + 61 + EXPIRY, T0 + 61 + EXPIRY));
+  short := make_invoice(20000, T0 + 61, PREIMAGE, zr.original, "lnbc", ib[1][..]);
+  show_check("an invoice for 20 sats", zap_check(pay, 21000, short, FEE, FEE, balance, T0 + 62, T0 + 61 + EXPIRY));
+  testnet := make_invoice(21000, T0 + 61, PREIMAGE, zr.original, "lntb", ib[2][..]);
+  show_check("a testnet invoice", zap_check(pay, 21000, testnet, FEE, FEE, balance, T0 + 62, T0 + 61 + EXPIRY));
+  show_check("21500 msat (not whole sats)", zap_check(pay, 21500, inv, FEE, FEE, balance, T0 + 62, T0 + 61 + EXPIRY));
+
+  print("\n== 4. The same zap through Wallet Connect\n");
+  day := N47Budget.{limit = 12000, period = 86400, start = T0};
+  s := nwc_pay(day, inv, T0 + 62);
+  print("budget 12000 msat a day: %, % msat\n", E47[s.error], s.msats);
+  if s.error != N47_OK { print("  answered %\n", N47_CODES[n47_code(s.error)]); }
+  s = nwc_pay(N47Budget.{limit = 50000, period = 86400, start = T0}, inv, T0 + 62);
+  print("budget 50000 msat a day: %, spent % of %\n", E47[s.error], s.budget.spent, s.budget.limit);
+  s = nwc_pay(s.budget, inv, T0 + 63);
+  print("the same again: %, spent % of %\n", E47[s.error], s.budget.spent, s.budget.limit);
+}
+// book:end main

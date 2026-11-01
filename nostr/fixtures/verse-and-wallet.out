@@ -1,0 +1,55 @@
+== 1. Presence in the plaza through a Coax relay
+each client sends ["REQ","plaza",{"kinds":[23300],"#w":["33300:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:plaza"]}]
+connection 0 is Ana's, 1 is Ben's; both authenticated with NIP-42 (chapter 38)
+Ana's frame 1, id 4dee2ad7f7fd4a23c17f9b6debe1b9e254d456f42dea11ddff41a3b164ab1312
+  content: {\"v\":1,\"s\":\"ana\",\"n\":1,\"t\":1790000001000,\"e\":[{\"id\":\"avatar\",\"role\":\"avatar\",\"p\":[3.2,0,-10.5],\"q\":[0,0,0,1]}]}
++1000 ms Ana posts frame 1; relay at +1040: ["OK","4dee2ad7f7fd4a23c17f9b6debe1b9e254d456f42dea11ddff41a3b164ab1312",true,""]
+  Ben gets Ana's frame at +1080 ms: s ana n 1, avatar at (3.2, 0.0, -10.5), drawn at +1500 ms
+  Ana gets Ana's frame at +1080 ms: its own, skipped
++1100 ms Ben posts frame 1; relay at +1140: ["OK","5e0e48c558433980dd5b84a84d04784ddef1aefaeda2d8bfec44dc4bf2d5f56c",true,""]
+  Ana gets Ben's frame at +1180 ms: s ben n 1, avatar at (-70.0, 0.0, 12.0), drawn at +1600 ms
++1250 ms Ana posts frame 2 (she moved at +1001); relay at +1290: ["OK","985ab81e495f312c04589db5f349d7a114dedfd5726cac93e9a215abd33f75ea",true,""]
+  Ben gets Ana's frame at +1330 ms: s ana n 2, avatar at (4.2, 0.0, -10.5), drawn at +1750 ms
+Ana's move at +1001 is on Ben's screen at +1750: 749 ms (bound 830, budget 1000)
+Ben draws Ana at +1600: x = 3.6
+Ana sees Ben at +11179: online, at +11180: offline
+presence refusals
+Ana's frame 1 sent again; relay: ["OK","4dee2ad7f7fd4a23c17f9b6debe1b9e254d456f42dea11ddff41a3b164ab1312",true,""]
+  Ben gets Ana's frame at +1400 ms: s ana n 1, dropped: n not newer
+Ana's frame 1 with p changed after signing; relay: ["OK","4dee2ad7f7fd4a23c17f9b6debe1b9e254d456f42dea11ddff41a3b164ab1312",false,"invalid: event id does not match its content"]
+Ana's frame for the garden; relay: ["OK","e70ff5b21a9cb5d714507a40123db14d4181078a5b409631e50d4abd3cd32186",true,""]
+  delivered to Ben: 0 (his filter asks for the plaza only)
+
+== 2. Ana zaps Ben 21 sats in the plaza
+ben@zaps.example.com -> https://zaps.example.com/.well-known/lnurlp/ben
+pay response: ok, 1000 to 100000000 msat, receipts signed by Ben's server
+Ben's goal, kind 9041 138afa67d5c7f0c0a17eec7203cde3e7c234a6fb6be5e3b0e71b25df54736ff8: 50000 msat
+zap request f72c3d9c908806583cdd040a441709bc4ec3085ef705024d25db1ed875b109b9, 669 bytes, sent to the callback
+invoice: lnbc210n1p4tzwaapp54cskcth4y3ar0qkpxhh6y7drunxuvyy5yu8462l9333qfdaxztyshp5kqygvm23fy0yndxkah2yc756yv2gaxuzjhtfvs7efrrvj9l0g60qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqkmm3wn
+  21000 msat, h = b008866d51491e49b4d6edd44c7a9a23148e9b8295d69643d948c6c917ef469e
+  sha256(zap request)   b008866d51491e49b4d6edd44c7a9a23148e9b8295d69643d948c6c917ef469e
+the wallet's rules (verse/wallet.coax), Ana has 1000 sats
+21 sats, fee 1: amount ok, invoice ok, may_send send -> pay
+flow: quote, confirm -> sending (sends 1)
+a second confirm -> sending (sends 1)
+the SDK reports sent -> succeeded; balance 1000 - 21 - 1 = 978 sats
+the receipt, and Ben's goal in the plaza
+receipt a462e95d81fccb0c3d26d80f86bf54ac011ecfe64822f66eaea5f80653f7aaa3
+  n57_receipt: valid, 21000 msat from Ana
+  signed by Mallory: refused, not signed by the server's nostrPubkey
+  wrong preimage: refused, the preimage does not hash to the invoice's payment hash
+goal: 21000 of 50000 msat, counted 1, duplicates 1, refused 2
+
+== 3. Refusals by the wallet's rules
+2000 sats with 978 left: amount refused, invoice refused, may_send over_limit -> refused
+21 sats, fee 3 over the shown 1: amount ok, invoice ok, may_send over_cap -> refused
+21 sats at the invoice's expiry: amount ok, invoice ok, may_send expired -> refused
+an invoice for 20 sats: amount ok, invoice refused, may_send send -> refused
+a testnet invoice: amount ok, invoice refused, may_send send -> refused
+21500 msat (not whole sats): amount refused, invoice refused, may_send send -> refused
+
+== 4. The same zap through Wallet Connect
+budget 12000 msat a day: over the budget, 21000 msat
+  answered QUOTA_EXCEEDED
+budget 50000 msat a day: ok, spent 21000 of 50000
+the same again: ok, spent 42000 of 50000
