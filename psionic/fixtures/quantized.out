@@ -1,0 +1,19 @@
+Q8_0 block: 7.9375 -7.9375 0.0625 -8.0 ... 1.0
+Q4_0 scale 0.5, packed bytes 240 138 143, values -4.0 1.0 3.5 0.0 0.5 and 3.5
+GGUF tensor 'quants' type 2 (32 x 2): ok, first values -4.0 1.0 3.5
+GGUF tensor 'matrix' type 0 read as a quantized block: kind
+256 values in 272 bytes (8.5 bits each): largest error / bound 0.9947713414634146
+256 values in 144 bytes (4.5 bits each): largest error / bound 0.918127669462881
+KV cache: 10240 bytes as f32, 2880 as int8; bound 0.024005489764143365, largest error 0.0006980597972869873
+declared: KL + 2 SE <= 0.01, agreement - 2 SE >= 0.9; original f32 weights: 10240 bytes
+Q8_0: 2720 bytes, agreement 1.0 (low 1.0), KL 0.00024416445920068925 (high 0.0002952508403386442), perplexity 3.395443037495561 -> 3.4032991132398447, Brier 0.5552702201875571 -> 0.5568834103015776, correct 37 -> 37, promoted true
+Q4_0: 1440 bytes, agreement 0.859375 (low 0.7724664239793477), KL 0.057507185525802876 (high 0.06984262922602616), perplexity 3.395443037495561 -> 3.5089490854629446, Brier 0.5552702201875571 -> 0.5728581294841917, correct 37 -> 36, promoted false
+Q4_0 + imatrix: 1440 bytes, agreement 0.84375 (low 0.7529769528232637), KL 0.04507884708212467 (high 0.05592216045609964), perplexity 3.395443037495561 -> 3.4046271721331363, Brier 0.5552702201875571 -> 0.5515279400343417, correct 37 -> 41, promoted false
+mix: 1696 bytes, agreement 0.875 (low 0.7923202715292316), KL 0.03906635474139014 (high 0.049837036414141764), perplexity 3.395443037495561 -> 3.4483737640093772, Brier 0.5552702201875571 -> 0.5648069763836394, correct 37 -> 39, promoted false
+a row of 48 values: partial
+GGUF type 3 (Q4_1): kind
+a Q8_0 block one byte short: storage
+a Q8_0 block whose scale is NaN: scale
+code -128 into chapter 48's kernels: code
+a card measured on one item: measure
+output left unchanged: -7.0

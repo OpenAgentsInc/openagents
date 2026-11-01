@@ -182,6 +182,16 @@
       ]
     },
     {
+      "source": "psionic/examples/quantized.coax",
+      "chapter": "psionic/book/ch050-quantized-weights-and-caches.md",
+      "stdout": "psionic/fixtures/quantized.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/original-fp8.coax",
       "chapter": "psionic/book/ch082-original-fp8-weights.md",
       "stdout": "psionic/fixtures/original-fp8.out",

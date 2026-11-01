@@ -1,0 +1,88 @@
+// Chapter 50's check helpers: a counter stream, chapter 41's attention as the
+// reference, and the stand-in decision model the quality card measures.
+qz_next :: (state:int)->int {return (state*1103515245+12345)%2147483648;}
+qz_unit :: (state:int)->f64 {return f64((state>>8)%20001-10000)/10000;}
+// Values in [-1, 1], divided by 8^spread.
+qz_fill :: (x:[]f32,seed:int,spread:int) {
+    state:=seed*7919+29;
+    for i:0..<x.count {state=qz_next(state);x[i]=f32(qz_unit(state)/f64(1<<(3*spread)));}
+}
+// Chapter 41's f32 attention: one decode query at the last of t positions.
+qz_reference :: (d:int,t:int,q:[]f32,k:[]f32,v:[]f32,out:[]f32) {
+    s:=TaShape.{heads=1,kv_heads=1,head_dim=d,tile=8};work:[1024]f64;
+    p:=ta_plan(s,1,t,0);
+    #assert p.status==TaStatus.ok && p.work<=1024;
+    r:=ta_attend(s,TaMask.{},t-1,1,t,q,k,v,q[0..<0],out,work[0..<p.work],false);
+    #assert r.status==TaStatus.ok;
+}
+
+// The stand-in: 64 inputs, a ReLU layer of 32, a readout over 16 options.
+// Inputs have four loud columns in sixteen, and one weight in thirteen is an
+// outlier, so block scales and the importance matrix both matter.
+QZ_IN :: 64;
+QZ_HIDDEN :: 32;
+QZ_OPTIONS :: 16;
+QZ_STANDIN_ITEMS :: 64;
+QZ_CALIBRATION :: 64;
+qz_declared :: ()->QzBound {return QzBound.{kl=0.01,agreement=0.9};}
+qz_standin_weights :: (w1:[]f32,w2:[]f32) {
+    state:=77;
+    for i:0..<QZ_HIDDEN*QZ_IN {state=qz_next(state);w1[i]=f32(qz_unit(state)/8*f64(ifx i%13==0 then 6 else 1));}
+    for i:0..<QZ_OPTIONS*QZ_HIDDEN {state=qz_next(state);w2[i]=f32(qz_unit(state));}
+}
+qz_standin_input :: (x:[]f32,item:int) {
+    state:=item*104729+5;
+    for j:0..<QZ_IN {state=qz_next(state);x[j]=f32(qz_unit(state)*f64(ifx j%16<4 then 4 else 1));}
+}
+qz_standin_hidden :: (w1:[]f32,x:[]f32,h:[]f32) {
+    for r:0..<QZ_HIDDEN {s:=0.0;for j:0..<QZ_IN {s+=f64(w1[r*QZ_IN+j])*f64(x[j]);}h[r]=f32(qz_larger(0.0,s));}
+}
+qz_standin_forward :: (w1:[]f32,w2:[]f32,x:[]f32,probs:[]f64) {
+    h:[QZ_HIDDEN]f32;qz_standin_hidden(w1,x,h[..]);
+    logits:[QZ_OPTIONS]f64;top:=-1e300;
+    for o:0..<QZ_OPTIONS {s:=0.0;for r:0..<QZ_HIDDEN {s+=f64(w2[o*QZ_HIDDEN+r])*f64(h[r]);}logits[o]=s;top=qz_larger(top,s);}
+    total:=0.0;
+    for o:0..<QZ_OPTIONS {probs[o]=exp(logits[o]-top);total+=probs[o];}
+    for o:0..<QZ_OPTIONS {probs[o]/=total;}
+}
+// An importance matrix row: the mean squared input of each column.
+qz_standin_importance :: (w1:[]f32,i1:[]f32,i2:[]f32) {
+    x:[QZ_IN]f32;h:[QZ_HIDDEN]f32;
+    for c:0..<QZ_CALIBRATION {
+        qz_standin_input(x[..],1000+c);qz_standin_hidden(w1,x[..],h[..]);
+        for j:0..<QZ_IN {i1[j]+=f32(f64(x[j])*f64(x[j])/QZ_CALIBRATION);}
+        for j:0..<QZ_HIDDEN {i2[j]+=f32(f64(h[j])*f64(h[j])/QZ_CALIBRATION);}
+    }
+}
+// Profile 0: Q8_0. 1: Q4_0. 2: Q4_0 with the importance matrix. 3: a mix,
+// the first layer as 2 and the readout as Q8_0.
+qz_standin_kind :: (profile:int,layer:int)->int {
+    if profile==0 || (profile==3 && layer==1) {return QZ_Q8_0;}
+    return QZ_Q4_0;
+}
+qz_standin_layer :: (profile:int,layer:int,rows:int,width:int,w:[]f32,imp:[]f32,out:[]f32)->int {
+    bytes:[2176]u8;kind:=qz_standin_kind(profile,layer);
+    use:=ifx profile>=2 then imp else imp[0..<0];
+    p:=qz_plan(kind,rows,width);
+    #assert qz_quantize(kind,rows,width,w,use,bytes[0..<p.bytes]).status==QzStatus.ok;
+    #assert qz_decode(kind,rows,width,bytes[0..<p.bytes],out).status==QzStatus.ok;
+    return p.bytes;
+}
+qz_standin_card :: (profile:int)->QzCard {
+    w1:[QZ_HIDDEN*QZ_IN]f32;w2:[QZ_OPTIONS*QZ_HIDDEN]f32;q1:[QZ_HIDDEN*QZ_IN]f32;q2:[QZ_OPTIONS*QZ_HIDDEN]f32;
+    i1:[QZ_IN]f32;i2:[QZ_HIDDEN]f32;
+    qz_standin_weights(w1[..],w2[..]);qz_standin_importance(w1[..],i1[..],i2[..]);
+    bytes:=qz_standin_layer(profile,0,QZ_HIDDEN,QZ_IN,w1[..],i1[..],q1[..])+qz_standin_layer(profile,1,QZ_OPTIONS,QZ_HIDDEN,w2[..],i2[..],q2[..]);
+    a:[QZ_STANDIN_ITEMS*QZ_OPTIONS]f64;b:[QZ_STANDIN_ITEMS*QZ_OPTIONS]f64;items:[QZ_STANDIN_ITEMS]PqItem;x:[QZ_IN]f32;
+    state:=31;
+    for i:0..<QZ_STANDIN_ITEMS {
+        qz_standin_input(x[..],i);
+        qz_standin_forward(w1[..],w2[..],x[..],a[i*QZ_OPTIONS..<(i+1)*QZ_OPTIONS]);
+        qz_standin_forward(q1[..],q2[..],x[..],b[i*QZ_OPTIONS..<(i+1)*QZ_OPTIONS]);
+        // The gold answer is drawn from the original model, so it is calibrated by construction.
+        state=qz_next(state);u:=f64(state%1000000)/1000000;gold:=QZ_OPTIONS-1;run:=0.0;
+        for o:0..<QZ_OPTIONS {run+=a[i*QZ_OPTIONS+o];if u<run {gold=o;break;}}
+        items[i]=PqItem.{kind=QrKind.choice,count=QZ_OPTIONS,start=i*QZ_OPTIONS,gold=gold,abstain=-1};
+    }
+    return qz_card(qz_declared(),items[..],a[..],b[..],bytes);
+}

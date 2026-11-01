@@ -54,7 +54,7 @@
 - [47. Elephant on Metal](ch047-elephant-on-metal.md)
 - [48. Integer matrix products](ch048-integer-matrix-products.md) — partly implemented
 - [49. Read a GGUF file](ch049-read-a-gguf-file.md)
-- [50. Quantized weights and caches](ch050-quantized-weights-and-caches.md) — design draft
+- [50. Quantized weights and caches](ch050-quantized-weights-and-caches.md) — partly implemented
 - [51. K-quants and lattice quants](ch051-k-quants-and-lattice-quants.md) — design draft
 
 - [52. Tokenizers and chat templates](ch052-tokenizers-and-chat-templates.md)
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–49, 52, 53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114, 115, 117, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–50, 52, 53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114, 115, 117, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

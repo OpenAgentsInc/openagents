@@ -1,0 +1,636 @@
+// Chapter 50: quantized weights and caches.
+// Profiles: gguf-q8_0-v1 and gguf-q4_0-v1 weight blocks (GGUF types 8 and 2,
+// 32 values per block, an f16 scale), an importance-weighted Q4_0 quantizer,
+// int8-kv-v1 (chapter 48's 8-bit blocks, one per cached key or value row),
+// and a quality card that measures a derived profile against the original
+// and promotes it only within a loss bound declared before measuring.
+#load "int8-products.coax";     // chapter 48: rounding and the 8-bit blocks
+#load "tiled-attention.coax";   // chapter 41: the f32 attention reference
+#load "decision-quality.coax";  // chapter 16: decision metrics
+#load "gguf.coax";              // chapter 49: tensor descriptors
+#load "../tests/quantized-checks.coax";  // the checks' stand-in model and fixtures
+#authority;
+
+QZ_Q4_0 :: 2;
+QZ_Q8_0 :: 8;
+QZ_BLOCK :: 32;
+QZ_BLOCKS_MAX :: 32768;  // 1,048,576 values
+QZ_CANDIDATES :: 17;
+QZ_HALF_MAX :: 65504;
+
+// book:begin types
+QzStatus :: enum u8 {ok;shape;partial;limit;kind;storage;capacity;scale;number;code;measure;}
+QzPlan :: struct {status:QzStatus;blocks:int;bytes:int;values:int;block_bytes:int;}
+QzResult :: struct {status:QzStatus;written:int;}
+// The loss a derived profile may cost, fixed before anything is measured.
+QzBound :: struct {kl:f64;agreement:f64;}
+QzCard :: struct {status:QzStatus;items:int;bytes:int;agreement:f64;agreement_low:f64;kl:f64;kl_high:f64;
+    perplexity_original:f64;perplexity_quantized:f64;original:PqReport;quantized:PqReport;promoted:bool;}
+// book:end types
+
+// Checks precede the implementation.
+#test "half-precision values by hand: normal, subnormal, signed and the largest" {
+    #assert qz_half(0x3c00)==1 && qz_half(0xbc00)==-1 && qz_half(0x2c00)==0.0625 && qz_half(0x3800)==0.5;
+    #assert qz_half(0x0001)==1.0/16777216 && qz_half(0x03ff)==1023.0/16777216 && qz_half(0x0400)==1.0/16384;
+    #assert qz_half(0x7bff)==65504 && qz_half(0xfbff)==-65504 && qz_half(0x3555)==0.333251953125 && qz_half(0)==0;
+    #assert qz_half_ok(0x7bff) && qz_half_ok(0xfbff) && !qz_half_ok(0x7c00) && !qz_half_ok(0xfc00) && !qz_half_ok(0x7e00) && !qz_half_ok(0x7fff);
+    #assert qz_pow2(-25)==1.0/33554432 && qz_pow2(5)==32 && qz_pow2(0)==1;
+    #assert qz_larger(1,2)==2 && qz_larger(2,1)==2 && f64_bits(qz_larger(0.0,-0.0))==0 && f64_bits(qz_larger(-0.0,0.0))==0x8000000000000000;
+    #assert qz_half_up(65505)==0x7c00 && qz_half_up(1e9)==0x7c00;
+}
+#forall "rounding up to half precision gives the smallest half at or above" bits:0..<124 {
+    b:=bits*256+bits;
+    #assert qz_half_up(qz_half(b))==b;
+    if b<0x7bff {#assert qz_half_up(qz_half(b)+qz_half(1)/1024)==b+1;}
+    if b>0 {#assert qz_half_up(qz_half(b)-qz_half(1)/1024)==b;}
+    #assert qz_half_up(65504)==0x7bff && qz_half_up(0)==0 && qz_half_up(1.0/16777216)==1 && qz_half_up(1.0/33554432)==1;
+}
+#test "plans: whole blocks per row, both formats, and the refusals" {
+    p:=qz_plan(QZ_Q8_0,2,64);
+    #assert p.status==QzStatus.ok && p.blocks==4 && p.bytes==136 && p.values==128 && p.block_bytes==34;
+    p=qz_plan(QZ_Q4_0,3,32);
+    #assert p.status==QzStatus.ok && p.blocks==3 && p.bytes==54 && p.values==96 && p.block_bytes==18;
+    #assert qz_plan(QZ_Q8_0,1,1048576).status==QzStatus.ok && qz_plan(QZ_Q8_0,32768,32).status==QzStatus.ok;
+    #assert qz_plan(QZ_Q8_0,32769,32).status==QzStatus.limit && qz_plan(QZ_Q4_0,2,1048576).status==QzStatus.limit;
+    #assert qz_plan(QZ_Q8_0,16384,64).status==QzStatus.ok && qz_plan(QZ_Q8_0,16385,64).status==QzStatus.limit && qz_plan(QZ_Q8_0,1,1).status==QzStatus.partial;
+    #assert qz_plan(QZ_Q8_0,9223372036854775807,9223372036854775776).status==QzStatus.limit;
+    for kind:[6]int.[0,1,3,7,9,-1] {#assert qz_plan(kind,1,32).status==QzStatus.kind;}
+    for bad:[3]int.[16,48,33] {#assert qz_plan(QZ_Q8_0,1,bad).status==QzStatus.partial;}
+    for bad:[2]int.[0,-32] {#assert qz_plan(QZ_Q8_0,bad,32).status==QzStatus.shape && qz_plan(QZ_Q4_0,1,bad).status==QzStatus.shape;}
+}
+#test "Q8_0 decodes a hand-built GGUF block" {
+    // Scale 0x2c00 = 1/16, then 32 signed codes.
+    b:[34]u8;b[0]=0x00;b[1]=0x2c;b[2]=127;b[3]=cast(u8)(256-127);b[4]=1;b[5]=cast(u8)(256-128);b[33]=16;
+    out:[33]f32;out[32]=-7;
+    r:=qz_decode(QZ_Q8_0,1,32,b[..],out[..]);
+    #assert r.status==QzStatus.ok && r.written==32 && out[32]==-7;
+    #assert out[0]==7.9375 && out[1]==-7.9375 && out[2]==0.0625 && out[3]==-8 && out[4]==0 && out[31]==1;
+}
+#test "Q4_0 decodes a hand-built GGUF block: low nibbles first, then high" {
+    // Scale 0xbc00 = -1; byte j holds element j (low) and j + 16 (high).
+    b:[18]u8;b[0]=0x00;b[1]=0xbc;b[2]=0x80;b[3]=0x0f;b[17]=0x29;
+    out:[32]f32;
+    r:=qz_decode(QZ_Q4_0,1,32,b[..],out[..]);
+    #assert r.status==QzStatus.ok && r.written==32;
+    #assert out[0]==8 && out[16]==0 && out[1]==-7 && out[17]==8 && out[15]==-1 && out[31]==6 && out[2]==8 && out[18]==8;
+}
+#test "decoding refuses wrong formats, partial rows, short payloads and bad scales, leaving the output alone" {
+    b:[68]u8;b[1]=0x3c;b[35]=0x3c;out:[64]f32;for i:0..<64 {out[i]=-7;}
+    #assert qz_decode(QZ_Q8_0,1,64,b[..],out[..]).status==QzStatus.ok && out[0]==0;
+    for i:0..<64 {out[i]=-7;}
+    #assert qz_decode(1,1,64,b[..],out[..]).status==QzStatus.kind;
+    #assert qz_decode(QZ_Q8_0,1,48,b[0..<51],out[..]).status==QzStatus.partial;
+    #assert qz_decode(QZ_Q8_0,1,64,b[0..<67],out[..]).status==QzStatus.storage;
+    #assert qz_decode(QZ_Q8_0,1,64,b[..],out[0..<63]).status==QzStatus.capacity;
+    for bits:[4]int.[0x7c00,0xfc00,0x7e00,0x7c01] {
+        b[34]=cast(u8)(bits&255);b[35]=cast(u8)(bits>>8);
+        #assert qz_decode(QZ_Q8_0,1,64,b[..],out[..]).status==QzStatus.scale;
+    }
+    b[0]=0x01;b[1]=0x7c;#assert qz_decode(QZ_Q8_0,1,64,b[..],out[..]).status==QzStatus.scale;
+    for i:0..<64 {#assert out[i]==-7;}
+    #assert qz_decode(QZ_Q4_0,2,32,b[0..<36],out[..]).status==QzStatus.scale;
+}
+#test "a tensor read by chapter 49 decodes only as its own type" {
+    bytes:=PG_OWNED;m:[15]PgMeta;ms:[15]PgMeta;t:[2]PgTensor;ts:[2]PgTensor;
+    #assert pg_read(bytes[..],bytes.count,m[..],ms[..],t[..],ts[..],false).status==PgStatus.ok;
+    // Tensor 1 is Q4_0, 32 x 2: two 18-byte blocks. Write one hand block.
+    at:=t[1].begin;bytes[at]=0x00;bytes[at+1]=0x38;bytes[at+2]=0x9f;
+    out:[64]f32;
+    r:=qz_tensor(t[1],bytes[..],out[..]);
+    #assert r.status==QzStatus.ok && r.written==64 && out[0]==3.5 && out[16]==0.5 && out[1]==-4 && out[32]==0;
+    #assert qz_tensor(t[0],bytes[..],out[..]).status==QzStatus.kind;
+    #assert qz_tensor(t[1],bytes[0..<t[1].end-1],out[..]).status==QzStatus.storage;
+    #assert qz_tensor(t[1],bytes[..],out[0..<63]).status==QzStatus.capacity;
+    u:=t[1];u.dims[0]=0;#assert qz_tensor(u,bytes[..],out[..]).status==QzStatus.shape;
+    u.dims[0]=1;#assert qz_tensor(u,bytes[..],out[..]).status==QzStatus.partial;
+    #assert qz_tensor(t[1],bytes[0..<t[1].end],out[..]).status==QzStatus.ok;
+    u=t[1];u.begin=0;u.end=36;#assert qz_tensor(u,bytes[..],out[..]).status==QzStatus.ok && f64(out[0])==-3*qz_half(0x4747);
+    u=t[1];u.begin=-1;#assert qz_tensor(u,bytes[..],out[..]).status==QzStatus.storage;
+    u=t[1];u.elements=96;#assert qz_tensor(u,bytes[..],out[..]).status==QzStatus.storage;
+}
+#forall "Q8_0 round trip: every value within half a step, the scale at most 2^-10 above amax/127" seed:0..<12,spread:0..<4 {
+    x:[64]f32;b:[68]u8;y:[64]f32;
+    qz_fill(x[..],seed,spread);
+    q:=qz_quantize(QZ_Q8_0,1,64,x[..],x[0..<0],b[..]);
+    #assert q.status==QzStatus.ok && q.written==2;
+    #assert qz_decode(QZ_Q8_0,1,64,b[..],y[..]).status==QzStatus.ok;
+    for blk:0..<2 {
+        d:=qz_half(cast(int)b[34*blk]|cast(int)b[34*blk+1]<<8);amax:=0.0;
+        for k:0..<32 {amax=qz_larger(amax,abs(f64(x[32*blk+k])));}
+        #assert d>=amax/127 && d<=amax/127*(1+1.0/1024)+qz_half(1);
+        for k:0..<32 {
+            c:=qz_signed(b[34*blk+2+k]);
+            #assert c>=-127 && c<=127 && f64(y[32*blk+k])==d*f64(c);
+            #assert abs(f64(x[32*blk+k])-f64(y[32*blk+k]))<=d/2*(1+1.0/1099511627776);
+        }
+    }
+}
+#forall "Q4_0 round trip: within one step, and importance never makes the weighted error worse" seed:0..<12,spread:0..<4 {
+    x:[64]f32;imp:[32]f32;b:[36]u8;bi:[36]u8;y:[64]f32;yi:[64]f32;
+    qz_fill(x[..],seed+40,spread);
+    for k:0..<32 {imp[k]=f32(1+f64((k*7+seed)%5)*f64(k%3));}
+    #assert qz_quantize(QZ_Q4_0,2,32,x[..],x[0..<0],b[..]).status==QzStatus.ok;
+    #assert qz_quantize(QZ_Q4_0,2,32,x[..],imp[..],bi[..]).status==QzStatus.ok;
+    #assert qz_decode(QZ_Q4_0,2,32,b[..],y[..]).status==QzStatus.ok && qz_decode(QZ_Q4_0,2,32,bi[..],yi[..]).status==QzStatus.ok;
+    for blk:0..<2 {
+        d:=abs(qz_half(cast(int)b[18*blk]|cast(int)b[18*blk+1]<<8));di:=abs(qz_half(cast(int)bi[18*blk]|cast(int)bi[18*blk+1]<<8));
+        plain:=0.0;weighted:=0.0;amax:=0.0;
+        for k:0..<32 {
+            v:=f64(x[32*blk+k]);amax=qz_larger(amax,abs(v));
+            #assert abs(v-f64(y[32*blk+k]))<=d*(1+1.0/1099511627776);
+            #assert abs(v-f64(yi[32*blk+k]))<=2*di*(1+1.0/1099511627776);
+            plain+=f64(imp[k])*(v-f64(y[32*blk+k]))*(v-f64(y[32*blk+k]));
+            weighted+=f64(imp[k])*(v-f64(yi[32*blk+k]))*(v-f64(yi[32*blk+k]));
+        }
+        #assert d>=amax/8 && d<=amax/8*(1+1.0/1024)+qz_half(1);
+        #assert weighted<=plain;
+    }
+}
+#test "Q4_0 by hand: the extreme value sets the sign and size of the scale" {
+    // max = -4 (largest magnitude), so d = -4 / -8 = 0.5 and -4 is code 0.
+    x:[32]f32;x[0]=-4;x[1]=1;x[2]=3.9;x[3]=0.24;x[4]=0.25;x[16]=3.6;b:[18]u8;y:[32]f32;
+    #assert qz_quantize(QZ_Q4_0,1,32,x[..],x[0..<0],b[..]).status==QzStatus.ok;
+    #assert b[0]==0x00 && b[1]==0x38;
+    // Element 0 code 0, element 16 code 15 (3.6/0.5 = 7.2 rounds to 7, +8).
+    #assert b[2]==0xf0 && b[3]==0x8a && b[4]==0x8f && b[5]==0x88 && b[6]==0x89;
+    #assert qz_decode(QZ_Q4_0,1,32,b[..],y[..]).status==QzStatus.ok;
+    #assert y[0]==-4 && y[1]==1 && y[2]==3.5 && y[3]==0 && y[4]==0.5 && y[16]==3.5;
+    // A tie keeps the first: -4 before 4 gives a positive scale; 4 alone a negative one.
+    x[5]=4;#assert qz_quantize(QZ_Q4_0,1,32,x[..],x[0..<0],b[..]).status==QzStatus.ok && b[0]==0x00 && b[1]==0x38;
+    x[0]=0;#assert qz_quantize(QZ_Q4_0,1,32,x[..],x[0..<0],b[..]).status==QzStatus.ok && b[0]==0x00 && b[1]==0xb8;
+    x[0]=-4;x[5]=0;
+    // Every importance zero but one: the search fits that value exactly.
+    imp:[32]f32;imp[2]=1;
+    #assert qz_quantize(QZ_Q4_0,1,32,x[..],imp[..],b[..]).status==QzStatus.ok;
+    #assert qz_decode(QZ_Q4_0,1,32,b[..],y[..]).status==QzStatus.ok && abs(f64(y[2])-3.9)<abs(3.5-3.9);
+    // All importances zero: every candidate ties at 0, so the first, plain Q4_0, stays.
+    for i:0..<32 {imp[i]=0;}
+    b2:[18]u8;#assert qz_quantize(QZ_Q4_0,1,32,x[..],imp[..],b2[..]).status==QzStatus.ok && qz_quantize(QZ_Q4_0,1,32,x[..],x[0..<0],b[..]).status==QzStatus.ok;
+    for i:0..<18 {#assert b2[i]==b[i];}
+    // An all-zero block has scale 0 and decodes to zeros.
+    for i:0..<32 {x[i]=0;}
+    b8:[34]u8;for i:0..<34 {b8[i]=9;}
+    #assert qz_quantize(QZ_Q8_0,1,32,x[..],x[0..<0],b8[..]).status==QzStatus.ok && b8[0]==0 && b8[1]==0 && b8[2]==0 && b8[33]==0;
+    #assert qz_quantize(QZ_Q4_0,1,32,x[..],imp[..],b[..]).status==QzStatus.ok && b[0]==0 && b[1]==0 && b[2]==0x88 && b[17]==0x88;
+}
+#test "one Q4_0 trial by hand: codes clamp to 0..15 and the error is weighted" {
+    x:[32]f32;x[0]=-9.5;x[1]=8.5;x[2]=0.5;x[3]=-0.5;x[4]=3.25;codes:[32]int;imp:[32]f32;
+    err:=qz_q4_try(x[..],0,x[0..<0],1,codes[..]);
+    // -9.5 -> -9 clamps to -8 (code 0); 8.5 -> 9 clamps to 7 (code 15); ties round up.
+    #assert codes[0]==0 && codes[1]==15 && codes[2]==9 && codes[3]==8 && codes[4]==11 && codes[5]==8;
+    #assert err==1.5*1.5+1.5*1.5+0.25+0.25+0.0625;
+    imp[1]=2;imp[4]=4;
+    #assert qz_q4_try(x[..],0,imp[..],1,codes[..])==2*1.5*1.5+4*0.0625;
+    // Scale -1 mirrors the codes.
+    #assert qz_q4_try(x[..],0,x[0..<0],-1,codes[..])==6.25+0.25+0.25+0.25+0.0625;
+    #assert codes[0]==15 && codes[1]==0 && codes[2]==8 && codes[3]==9 && codes[4]==5;
+}
+#test "the importance search finds the least weighted error among divisors 7 to 9 in eighths" {
+    // Only element 1 is weighted. With extreme -73, no divisor in the set fits 56
+    // exactly (9.125 would: 73 / 9.125 = 8 and 56 = 7 x 8); with -72 only 9 does
+    // (72 / 9 = 8), and with -70 only 7 fits 30 (70 / 7 = 10, 30 = 3 x 10).
+    tops:=[3]f32.[-73,-72,-70];wants:=[3]f32.[56,56,30];
+    for at:0..<3 {
+        c:=[2]f32.[tops[at],wants[at]];
+        x:[32]f32;x[0]=c[0];x[1]=c[1];imp:[32]f32;imp[1]=1;b:[18]u8;y:[32]f32;
+        #assert qz_quantize(QZ_Q4_0,1,32,x[..],imp[..],b[..]).status==QzStatus.ok;
+        #assert qz_decode(QZ_Q4_0,1,32,b[..],y[..]).status==QzStatus.ok;
+        least:=-1.0;
+        for j:0..<17 {
+            d:=qz_half(qz_half_up(-f64(c[0])/(7+f64(j)/8)));n:=int8_nearest(f64(c[1])/d);
+            if n>7 {n=7;}
+            e:=(f64(c[1])-d*f64(n))*(f64(c[1])-d*f64(n));
+            if least<0 || e<least {least=e;}
+        }
+        #assert (f64(c[1])-f64(y[1]))*(f64(c[1])-f64(y[1]))==least;
+        #assert (least>0)==(c[0]==-73);
+    }
+}
+#test "quantizing refuses what a block cannot hold, leaving the output alone" {
+    x:[32]f32;imp:[32]f32;b:[34]u8;for i:0..<34 {b[i]=9;}
+    #assert qz_quantize(QZ_Q8_0,1,48,x[..],imp[..],b[..]).status==QzStatus.partial;
+    #assert qz_quantize(QZ_Q8_0,1,32,x[0..<31],imp[..],b[..]).status==QzStatus.storage;
+    #assert qz_quantize(QZ_Q8_0,1,32,x[..],imp[0..<31],b[..]).status==QzStatus.storage;
+    #assert qz_quantize(QZ_Q8_0,1,32,x[..],imp[..],b[0..<33]).status==QzStatus.capacity;
+    for k:0..<3 {x[5]=int8_special(k);#assert qz_quantize(QZ_Q8_0,1,32,x[..],imp[..],b[..]).status==QzStatus.number;}
+    x[5]=0;
+    for k:0..<4 {imp[31]=int8_special(k);#assert qz_quantize(QZ_Q4_0,1,32,x[..],imp[..],b[0..<18]).status==QzStatus.number;}
+    imp[31]=0;
+    // A scale above 65504 has no half-precision value.
+    x[0]=f32(65504.0*127+65504);#assert qz_quantize(QZ_Q8_0,1,32,x[..],imp[..],b[..]).status==QzStatus.number;
+    x[0]=f32(65504.0*127);#assert qz_quantize(QZ_Q8_0,1,32,x[..],imp[..],b[..]).status==QzStatus.ok;
+    for i:0..<34 {b[i]=9;}
+    x[0]=f32(-65504.0*7-512);#assert qz_quantize(QZ_Q4_0,1,32,x[..],imp[..],b[0..<18]).status==QzStatus.number;
+    x[0]=f32(-65504.0*7.5);#assert qz_quantize(QZ_Q4_0,1,32,x[..],x[0..<0],b[0..<18]).status==QzStatus.ok;
+    x[0]=f32(-65504.0*7);#assert qz_quantize(QZ_Q4_0,1,32,x[..],x[0..<0],b[0..<18]).status==QzStatus.ok;
+    #assert b[18]==9;
+    for i:0..<34 {b[i]=9;}
+    #assert qz_quantize(QZ_Q4_0,1,32,x[..],imp[..],b[0..<18]).status==QzStatus.ok;
+    for i:0..<18 {b[i]=9;}
+    x[0]=f32(-65504.0*8-1024);#assert qz_quantize(QZ_Q4_0,1,32,x[..],x[0..<0],b[0..<18]).status==QzStatus.number;
+    for i:0..<34 {#assert b[i]==9;}
+}
+#test "Q8_0 blocks become chapter 48's weights, equal to the decoded weights" {
+    x:[64]f32;b:[136]u8;wc:[128]s8;ws:[4]f32;wo:[4]f32;wf:[128]f32;
+    qz_fill(x[..],3,1);
+    #assert qz_quantize(QZ_Q8_0,2,32,x[..],x[0..<0],b[0..<68]).status==QzStatus.ok;
+    w:=Int8Weights.{codes=wc[0..<64],scales=ws[0..<2],offsets=wo[0..<2]};wo[0]=7;
+    r:=qz_int8(2,32,b[0..<68],w);
+    #assert r.status==QzStatus.ok && r.written==2 && wo[0]==0;
+    #assert qz_decode(QZ_Q8_0,2,32,b[0..<68],wf[0..<64]).status==QzStatus.ok;
+    for i:0..<64 {#assert f64(ws[i/32])*f64(wc[i])==f64(wf[i]);}
+    #assert qz_int8(2,32,b[0..<67],w).status==QzStatus.storage;
+    #assert qz_int8(2,32,b[0..<68],Int8Weights.{codes=wc[0..<63],scales=ws[0..<2],offsets=wo[0..<2]}).status==QzStatus.capacity;
+    #assert qz_int8(2,32,b[0..<68],Int8Weights.{codes=wc[0..<64],scales=ws[0..<1],offsets=wo[0..<2]}).status==QzStatus.capacity;
+    #assert qz_int8(2,32,b[0..<68],Int8Weights.{codes=wc[0..<64],scales=ws[0..<2],offsets=wo[0..<1]}).status==QzStatus.capacity;
+    #assert qz_int8(2,48,b[0..<68],w).status==QzStatus.partial;
+    wc[0]=5;b[2]=128;#assert qz_int8(2,32,b[0..<68],w).status==QzStatus.code && wc[0]!=-128;
+    b[2]=0;b[35]=0x7c;#assert qz_int8(2,32,b[0..<68],w).status==QzStatus.scale;b[35]=0;
+    b[1]=0x7c;#assert qz_int8(2,32,b[0..<68],w).status==QzStatus.scale;
+    b[1]=0x80;b[0]=0x01;#assert qz_int8(2,32,b[0..<68],w).status==QzStatus.scale;
+    b[1]=0x80;b[0]=0x00;#assert qz_int8(2,32,b[0..<68],w).status==QzStatus.scale;
+    b[1]=0x7b;b[0]=0xff;#assert qz_int8(2,32,b[0..<68],w).status==QzStatus.ok && ws[0]==65504;
+    b[1]=0x00;#assert qz_int8(2,32,b[0..<68],w).status==QzStatus.ok && ws[0]==255.0/16777216;
+}
+#forall "the int8 KV cache stays within the bound frozen before chapter 41's f32 attention" seed:0..<8,shape:0..<3 {
+    d:=16*(shape+1);t:=7+shape*13;
+    q:[48]f32;k:[2112]f32;v:[2112]f32;
+    qz_fill(q[0..<d],seed,0);qz_fill(k[0..<t*d],seed+11,shape);qz_fill(v[0..<t*d],seed+23,1);
+    kc:[2112]s8;ks:[44]f32;km:[44]s32;vc:[2112]s8;vs:[44]f32;vm:[44]s32;
+    keys:=Int8Activations.{codes=kc[0..<t*d],scales=ks[0..<t],sums=km[0..<t]};
+    values:=Int8Activations.{codes=vc[0..<t*d],scales=vs[0..<t],sums=vm[0..<t]};
+    #assert qz_kv_store(d,t,k[0..<t*d],v[0..<t*d],keys,values).written==2*t;
+    bound:=qz_kv_bound(d,t,q[0..<d],v[0..<t*d],keys,values);
+    #assert bound>0 && bound<0.05;
+    out:[48]f32;ref:[48]f32;scores:[44]f64;
+    #assert qz_kv_attend(d,t,q[0..<d],keys,values,scores[0..<t],out[0..<d]).status==QzStatus.ok;
+    qz_reference(d,t,q[0..<d],k[0..<t*d],v[0..<t*d],ref[0..<d]);
+    moved:=false;
+    for i:0..<d {e:=abs(f64(out[i])-f64(ref[i]));#assert e<=bound;moved=moved || e>0;}
+    #assert moved;
+}
+#test "the KV cache by hand: one key, so attention returns its decoded value" {
+    d:=4;q:=[4]f32.[0,0,0,0];k:=[4]f32.[1,2,3,4];v:=[4]f32.[1.984375,-0.5,0.1,0.0078125];
+    kc:[4]s8;ks:[1]f32;km:[1]s32;vc:[4]s8;vs:[1]f32;vm:[1]s32;out:[4]f32;scores:[1]f64;
+    keys:=Int8Activations.{codes=kc[..],scales=ks[..],sums=km[..]};values:=Int8Activations.{codes=vc[..],scales=vs[..],sums=vm[..]};
+    #assert qz_kv_store(d,1,k[..],v[..],keys,values).status==QzStatus.ok;
+    #assert qz_kv_attend(d,1,q[..],keys,values,scores[..],out[..]).status==QzStatus.ok;
+    #assert out[0]==1.984375 && out[1]==-0.5 && out[2]==0.09375 && out[3]==0.015625;
+    // Bound: a zero query moves no score, so half a value step, 1/128, and the slack.
+    #assert qz_kv_bound(d,1,q[..],v[..],keys,values)==1.0/128*(1+1.0/1099511627776)+1.9921875/1048576;
+}
+#test "the KV cache by hand: a dominant score far above 709 neither overflows nor leaks" {
+    d:=4;q:=[4]f32.[64,0,0,0];k:=[8]f32.[0,0,0,0,32,0,0,0];v:=[8]f32.[1,1,1,1,2,2,2,2];
+    kc:[8]s8;ks:[2]f32;km:[2]s32;vc:[8]s8;vs:[2]f32;vm:[2]s32;out:[4]f32;scores:[2]f64;
+    keys:=Int8Activations.{codes=kc[..],scales=ks[..],sums=km[..]};values:=Int8Activations.{codes=vc[..],scales=vs[..],sums=vm[..]};
+    #assert qz_kv_store(d,2,k[..],v[..],keys,values).written==4;
+    // Score 1 is 64 x 32 / 2 = 1024: exp(-1024) is 0, so the output is value 1 decoded.
+    #assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[..]).status==QzStatus.ok;
+    for i:0..<4 {#assert out[i]==f32(f64(vs[1])*127);}
+    // The same with the dominant key first.
+    k[0]=32;k[4]=0;for i:0..<4 {v[i]=2;v[4+i]=1;}
+    #assert qz_kv_store(d,2,k[..],v[..],keys,values).written==4;
+    #assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[..]).status==QzStatus.ok;
+    for i:0..<4 {#assert out[i]==f32(f64(vs[0])*127);}
+    // One position, with a stale score beyond it: only the first t scores count.
+    scores[1]=1e6;
+    #assert qz_kv_attend(d,1,q[..],Int8Activations.{codes=kc[0..<4],scales=ks[0..<1],sums=km[0..<1]},Int8Activations.{codes=vc[0..<4],scales=vs[0..<1],sums=vm[0..<1]},scores[..],out[..]).status==QzStatus.ok;
+    for i:0..<4 {#assert out[i]==f32(f64(vs[0])*127);}
+    k[0]=0;k[4]=32;for i:0..<4 {v[i]=1;v[4+i]=2;}
+    #assert qz_kv_store(d,2,k[..],v[..],keys,values).written==4;
+    #assert int8_plan(qz_kv_request(1024,1024)).status==Int8Status.ok && int8_plan(qz_kv_request(1024,1025)).status==Int8Status.limit;
+    // The bound by hand: |q| sums to 64 and the key scales are 0 and 32/127 rounded up.
+    e:=64*f64(ks[1])/2/2;top:=2+f64(vs[1])/2;
+    #assert ks[0]==0 && ks[1]==int8_scale(32);
+    #assert qz_kv_bound(d,2,q[..],v[..],keys,values)==(exp(2*e*(1+1.0/1099511627776))-1)*top+f64(vs[1])/2*(1+1.0/1099511627776)+top/1048576;
+}
+#test "the KV cache refuses bad shapes, short buffers, -128 codes and bad scales" {
+    d:=4;q:[4]f32;k:[8]f32;v:[8]f32;kc:[8]s8;ks:[2]f32;km:[2]s32;vc:[8]s8;vs:[2]f32;vm:[2]s32;out:[4]f32;scores:[2]f64;
+    keys:=Int8Activations.{codes=kc[..],scales=ks[..],sums=km[..]};values:=Int8Activations.{codes=vc[..],scales=vs[..],sums=vm[..]};
+    #assert qz_kv_store(d,2,k[..],v[..],keys,values).status==QzStatus.ok;
+    #assert qz_kv_store(6,1,k[0..<6],v[0..<6],keys,values).status==QzStatus.shape;
+    #assert qz_kv_store(d,2,k[0..<7],v[..],keys,values).status==QzStatus.storage;
+    #assert qz_kv_store(d,2,k[..],v[0..<7],keys,values).status==QzStatus.storage;
+    k[3]=int8_special(2);#assert qz_kv_store(d,2,k[..],v[..],keys,values).status==QzStatus.number;k[3]=0;
+    v[3]=int8_special(0);#assert qz_kv_store(d,2,k[..],v[..],keys,values).status==QzStatus.number;v[3]=0;
+    #assert qz_kv_store(d,2,k[..],v[..],Int8Activations.{codes=kc[0..<7],scales=ks[..],sums=km[..]},values).status==QzStatus.capacity;
+    #assert qz_kv_store(d,2,k[..],v[..],keys,Int8Activations.{codes=vc[0..<7],scales=vs[..],sums=vm[..]}).status==QzStatus.capacity;
+    #assert qz_kv_store(d,2,k[..],v[..],Int8Activations.{codes=kc[..],scales=ks[0..<1],sums=km[..]},values).status==QzStatus.capacity;
+    #assert qz_kv_store(d,2,k[..],v[..],Int8Activations.{codes=kc[..],scales=ks[..],sums=km[0..<1]},values).status==QzStatus.capacity;
+    #assert qz_kv_store(d,2,k[..],v[..],keys,Int8Activations.{codes=vc[..],scales=vs[0..<1],sums=vm[..]}).status==QzStatus.capacity;
+    #assert qz_kv_store(d,2,k[..],v[..],keys,Int8Activations.{codes=vc[..],scales=vs[..],sums=vm[0..<1]}).status==QzStatus.capacity;
+    for i:0..<4 {out[i]=-7;}
+    #assert qz_kv_attend(6,1,q[..],keys,values,scores[..],out[..]).status==QzStatus.shape;
+    #assert qz_kv_attend(d,0,q[..],keys,values,scores[..],out[..]).status==QzStatus.shape;
+    #assert qz_kv_attend(d,2,q[0..<3],keys,values,scores[..],out[..]).status==QzStatus.storage;
+    #assert qz_kv_attend(d,2,q[..],Int8Activations.{codes=kc[0..<7],scales=ks[..],sums=km[..]},values,scores[..],out[..]).status==QzStatus.storage;
+    #assert qz_kv_attend(d,2,q[..],keys,Int8Activations.{codes=vc[..],scales=vs[0..<1],sums=vm[..]},scores[..],out[..]).status==QzStatus.storage;
+    #assert qz_kv_attend(d,2,q[..],Int8Activations.{codes=kc[..],scales=ks[0..<1],sums=km[..]},values,scores[..],out[..]).status==QzStatus.storage;
+    #assert qz_kv_attend(d,2,q[..],keys,Int8Activations.{codes=vc[0..<7],scales=vs[..],sums=vm[..]},scores[..],out[..]).status==QzStatus.storage;
+    #assert qz_kv_attend(d,2,q[..],keys,values,scores[0..<1],out[..]).status==QzStatus.capacity;
+    #assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[0..<3]).status==QzStatus.capacity;
+    q[0]=int8_special(0);#assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[..]).status==QzStatus.number;q[0]=0;
+    kc[7]=-128;#assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[..]).status==QzStatus.code;kc[7]=0;
+    vc[0]=-128;#assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[..]).status==QzStatus.code;vc[0]=0;
+    for k2:0..<5 {
+        ks[1]=int8_special(k2);#assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[..]).status==QzStatus.scale;ks[1]=0;
+        vs[0]=int8_special(k2);#assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[..]).status==QzStatus.scale;vs[0]=0;
+    }
+    for i:0..<4 {#assert out[i]==-7;}
+    #assert qz_kv_attend(d,2,q[..],keys,values,scores[..],out[..]).status==QzStatus.ok && out[0]==0;
+}
+#test "the quality card by hand: four items, KL, agreement, perplexity and promotion" {
+    items:[4]PqItem;
+    for i:0..<4 {items[i]=PqItem.{kind=QrKind.choice,count=2,start=2*i,gold=ifx i==1 then 1 else 0,abstain=-1};}
+    p:=[8]f64.[0.5,0.5,0.25,0.75,0.5,0.5,0.5,0.5];q:=[8]f64.[0.5,0.5,0.5,0.5,0.5,0.5,0.5,0.5];
+    c:=qz_card(QzBound.{kl=1,agreement=0},items[..],p[..],p[..],100);
+    #assert c.status==QzStatus.ok && c.items==4 && c.bytes==100 && c.kl==0 && c.kl_high==0 && c.agreement==1 && c.agreement_low==1 && c.promoted;
+    #assert abs(c.perplexity_original-exp((3*log(2.0)+log(4.0/3))/4))<1e-15 && c.perplexity_quantized==c.perplexity_original;
+    c=qz_card(QzBound.{kl=1,agreement=0},items[..],p[..],q[..],100);
+    // Only item 1 differs: KL = 0.25 log(0.5) + 0.75 log(1.5), and its tie picks slot 0.
+    kl1:=0.25*log(0.5)+0.75*log(1.5);
+    #assert c.status==QzStatus.ok && c.kl==kl1/4 && c.agreement==0.75;
+    // Per-item KL 0, kl1, 0, 0: sample variance kl1^2/4, standard error kl1/4.
+    #assert abs(c.kl_high-3*kl1/4)<1e-17 && abs(c.agreement_low-(0.75-sqrt(3.0)/4))<1e-16;
+    #assert abs(c.perplexity_quantized-2)<1e-15 && c.original.correct==4 && c.quantized.correct==3 && c.promoted;
+    #assert !qz_card(QzBound.{kl=c.kl_high*(1-1.0/1048576),agreement=0},items[..],p[..],q[..],100).promoted;
+    #assert qz_card(QzBound.{kl=c.kl_high,agreement=0},items[..],p[..],q[..],100).promoted;
+    #assert !qz_card(QzBound.{kl=1,agreement=c.agreement_low*(1+1.0/1048576)},items[..],p[..],q[..],100).promoted;
+    #assert qz_card(QzBound.{kl=1,agreement=c.agreement_low},items[..],p[..],q[..],100).promoted;
+}
+#test "a card refuses missing measurements and invalid distributions, and is never promoted then" {
+    items:=[2]PqItem.[PqItem.{kind=QrKind.choice,count=2,start=0,gold=0,abstain=-1},PqItem.{kind=QrKind.choice,count=2,start=2,gold=1,abstain=-1}];
+    p:=[4]f64.[0.5,0.5,0.25,0.75];q:=p;b:=QzBound.{kl=1,agreement=0};
+    c:=qz_card(b,items[0..<1],p[..],q[..],100);#assert c.status==QzStatus.measure && !c.promoted;
+    #assert qz_card(b,items[0..<0],p[..],q[..],100).status==QzStatus.measure;
+    #assert qz_card(b,items[..],p[0..<3],q[..],100).status==QzStatus.storage;
+    #assert qz_card(b,items[..],p[..],q[0..<3],100).status==QzStatus.storage;
+    #assert qz_card(b,items[..],p[..],q[..],0).status==QzStatus.measure;
+    q[2]=0;q[3]=1;#assert qz_card(b,items[..],p[..],q[..],100).status==QzStatus.number;
+    q[2]=0.5;q[3]=0.75;#assert qz_card(b,items[..],p[..],q[..],100).status==QzStatus.number;
+    q=p;p[0]=0.75;#assert qz_card(b,items[..],p[..],q[..],100).status==QzStatus.number;
+    p[0]=1;p[1]=0;c=qz_card(b,items[..],p[..],q[..],100);
+    #assert c.status==QzStatus.ok && c.kl==log(2.0)/2;
+    bad:=items;bad[1].gold=2;#assert qz_card(b,bad[..],p[..],q[..],100).status==QzStatus.shape;
+    #assert qz_card(QzBound.{kl=f64(int8_special(2)),agreement=0},items[..],p[..],q[..],100).status==QzStatus.number;
+    #assert qz_card(QzBound.{kl=f64(int8_special(0)),agreement=0},items[..],p[..],q[..],100).status==QzStatus.number;
+    #assert qz_card(QzBound.{kl=1e300,agreement=0},items[..],p[..],q[..],100).status==QzStatus.number;
+    #assert qz_card(QzBound.{kl=1e299,agreement=0},items[..],p[..],q[..],1).status==QzStatus.ok;
+    p[0]=0;p[1]=1;#assert qz_card(b,items[..],p[..],q[..],100).status==QzStatus.number;p[0]=1;p[1]=0;
+    #assert qz_card(QzBound.{kl=-1,agreement=0},items[..],p[..],q[..],100).status==QzStatus.number;
+    #assert qz_card(QzBound.{kl=1,agreement=1.5},items[..],p[..],q[..],100).status==QzStatus.number;
+    #assert qz_card(QzBound.{kl=1,agreement=-0.5},items[..],p[..],q[..],100).status==QzStatus.number;
+    #assert qz_card(QzBound.{kl=1,agreement=f64(int8_special(2))},items[..],p[..],q[..],100).status==QzStatus.number;
+    #assert qz_card(QzBound.{kl=0,agreement=1},items[..],p[..],p[..],100).promoted;
+}
+#test "the stand-in model: Q8_0 is promoted under the declared bound, the 4-bit profiles are not" #steps 400000000 {
+    cards:[4]QzCard;
+    for profile:0..<4 {cards[profile]=qz_standin_card(profile);#assert cards[profile].status==QzStatus.ok && cards[profile].items==QZ_STANDIN_ITEMS;}
+    #assert cards[0].promoted && cards[0].bytes==2720 && cards[0].agreement==1 && cards[0].kl_high<qz_declared().kl;
+    #assert cards[1].bytes==1440 && cards[2].bytes==1440 && cards[3].bytes==1696;
+    for i:1..<4 {#assert !cards[i].promoted && cards[i].kl_high>qz_declared().kl && cards[i].kl>cards[0].kl;}
+    // The importance matrix lowers plain Q4_0's loss at the same size.
+    #assert cards[2].kl<cards[1].kl;
+}
+
+// book:begin half
+qz_larger :: (a:f64,b:f64)->f64 {return ifx b>a then b else a;}
+// 2^e for e >= -25, by exact doublings.
+qz_pow2 :: (e:int)->f64 {v:=1.0/33554432;for i:0..<e+25 {v*=2;}return v;}
+// IEEE half precision: 1 sign bit, 5 exponent bits, 10 fraction bits.
+qz_half_ok :: (bits:int)->bool {return (bits&0x7c00)!=0x7c00;}
+qz_half :: (bits:int)->f64 {
+    e:=(bits>>10)&31;m:=bits&1023;
+    v:=ifx e==0 then f64(m)*qz_pow2(-24) else f64(1024+m)*qz_pow2(e-25);
+    return ifx (bits&0x8000)!=0 then -v else v;
+}
+// The smallest non-negative half at or above want, or 0x7c00 (infinity)
+// above 65504. Non-negative halves order like their bits: a binary search.
+qz_half_up :: (want:f64)->int {
+    lo:=0;hi:=0x7c00;
+    while lo<hi {mid:=(lo+hi)/2;if qz_half(mid)>=want {hi=mid;} else {lo=mid+1;}}
+    return lo;
+}
+// book:end half
+
+// book:begin plan
+qz_plan :: (kind:int,rows:int,width:int)->QzPlan #export_c {
+    if kind!=QZ_Q8_0 && kind!=QZ_Q4_0 {return QzPlan.{status=QzStatus.kind};}
+    if rows<1 || width<1 {return QzPlan.{status=QzStatus.shape};}
+    if width%QZ_BLOCK!=0 {return QzPlan.{status=QzStatus.partial};}
+    if rows>QZ_BLOCKS_MAX/(width/QZ_BLOCK) {return QzPlan.{status=QzStatus.limit};}
+    blocks:=rows*width/QZ_BLOCK;size:=ifx kind==QZ_Q8_0 then 34 else 18;
+    return QzPlan.{blocks=blocks,bytes=blocks*size,values=rows*width,block_bytes=size};
+}
+// book:end plan
+
+// book:begin decode
+qz_signed :: (b:u8)->int {v:=cast(int)b;return ifx v>127 then v-256 else v;}
+qz_scale_bits :: (bytes:[]u8,block:int,size:int)->int {return cast(int)bytes[block*size]|cast(int)bytes[block*size+1]<<8;}
+// Q8_0 element k: d * code; Q4_0 element k: d * (nibble - 8), elements
+// 0..15 in the low nibbles and 16..31 in the high nibbles.
+qz_value :: (kind:int,bytes:[]u8,block:int,k:int)->f64 {
+    d:=qz_half(qz_scale_bits(bytes,block,ifx kind==QZ_Q8_0 then 34 else 18));
+    if kind==QZ_Q8_0 {return d*f64(qz_signed(bytes[block*34+2+k]));}
+    packed:=cast(int)bytes[block*18+2+k%16];
+    return d*f64(((packed>>(4*(k/16)))&15)-8);
+}
+qz_decode :: (kind:int,rows:int,width:int,bytes:[]u8,out:[]f32)->QzResult #export_c {
+    p:=qz_plan(kind,rows,width);
+    if p.status!=QzStatus.ok {return QzResult.{status=p.status};}
+    if bytes.count!=p.bytes {return QzResult.{status=QzStatus.storage};}
+    if out.count<p.values {return QzResult.{status=QzStatus.capacity};}
+    for b:0..<p.blocks {if !qz_half_ok(qz_scale_bits(bytes,b,p.block_bytes)) {return QzResult.{status=QzStatus.scale};}}
+    // A half times a code needs at most 19 significant bits: f32 holds it exactly.
+    for i:0..<p.values {out[i]=f32(qz_value(kind,bytes,i/QZ_BLOCK,i%QZ_BLOCK));}
+    return QzResult.{written=p.values};
+}
+// One tensor described by chapter 49's reader, decoded from the file bytes.
+qz_tensor :: (t:PgTensor,file:[]u8,out:[]f32)->QzResult #export_c {
+    if t.dims[0]<1 {return QzResult.{status=QzStatus.shape};}
+    if t.begin<0 || t.end>file.count {return QzResult.{status=QzStatus.storage};}
+    return qz_decode(t.kind,t.elements/t.dims[0],t.dims[0],file[t.begin..<t.end],out);
+}
+// book:end decode
+
+// book:begin quantize
+qz_bad :: (v:f32)->bool {return !int8_finite(v);}
+// Q4_0 for one block at scale d (d != 0): the weighted squared error, and the
+// codes nearest x/d + 8, clamped to 0..15 (max and min by |t| identities).
+qz_q4_try :: (x:[]f32,at:int,imp:[]f32,d:f64,codes:[]int)->f64 {
+    err:=0.0;
+    for k:0..<QZ_BLOCK {
+        t:=f64(int8_nearest(f64(x[at+k])/d));
+        t=(t+8+abs(t+8))/2-8;t=7-(7-t+abs(7-t))/2;
+        codes[k]=int(t)+8;e:=f64(x[at+k])-d*t;
+        err+=(ifx imp.count==0 then 1.0 else f64(imp[(at+k)%imp.count]))*e*e;
+    }
+    return err;
+}
+// The signed half scale: |top| / divisor rounded up, its sign opposite to top's.
+qz_q4_scale :: (top:f32,divisor:f64)->int {return qz_half_up(abs(f64(top))/divisor)|(cast(int)(f32_bits(top)>>16)&0x8000^0x8000);}
+qz_put :: (out:[]u8,at:int,bits:int) {out[at]=cast(u8)(bits&255);out[at+1]=cast(u8)(bits>>8);}
+qz_block :: (kind:int,x:[]f32,at:int,imp:[]f32,out:[]u8,base:int) {
+    // top: the value of largest magnitude, the first one on a tie.
+    top:f32=0;
+    for k:0..<QZ_BLOCK {if abs(x[at+k])>abs(top) {top=x[at+k];}}
+    if top==0 {
+        // Scale 0; Q8_0 codes 0, Q4_0 nibbles 8.
+        qz_put(out,base,0);
+        for k:2..<ifx kind==QZ_Q8_0 then 34 else 18 {out[base+k]=ifx kind==QZ_Q8_0 then 0 else 0x88;}
+        return;
+    }
+    if kind==QZ_Q8_0 {
+        bits:=qz_half_up(abs(f64(top))/127);d:=qz_half(bits);qz_put(out,base,bits);
+        for k:0..<QZ_BLOCK {out[base+2+k]=cast(u8)(int8_nearest(f64(x[at+k])/d)&255);}
+        return;
+    }
+    // Plain Q4_0 divides by 8. With importances, also try divisors 7, 7.125,
+    // ..., 9, and keep the first with the least weighted error, so plain wins ties.
+    codes:[32]int;best:[32]int;least:=-1.0;
+    for i:0..<ifx imp.count==0 then 1 else QZ_CANDIDATES+1 {
+        b:=qz_q4_scale(top,ifx i==0 then 8.0 else 7+f64(i-1)/8);
+        err:=qz_q4_try(x,at,imp,qz_half(b),codes[..]);
+        if least<0 || err<least {least=err;qz_put(out,base,b);for k:0..<QZ_BLOCK {best[k]=codes[k];}}
+    }
+    for j:0..<16 {out[base+2+j]=cast(u8)(best[j]|best[j+16]<<4);}
+}
+// importance: empty, or one non-negative weight per column (an imatrix row).
+qz_quantize :: (kind:int,rows:int,width:int,x:[]f32,importance:[]f32,out:[]u8)->QzResult #export_c {
+    p:=qz_plan(kind,rows,width);
+    if p.status!=QzStatus.ok {return QzResult.{status=p.status};}
+    if x.count!=p.values || (importance.count!=0 && importance.count!=width) {return QzResult.{status=QzStatus.storage};}
+    if out.count<p.bytes {return QzResult.{status=QzStatus.capacity};}
+    for v:importance {if qz_bad(v) || v<0 {return QzResult.{status=QzStatus.number};}}
+    // The largest scale is |x| / 127 for Q8_0 and |x| / 7 for Q4_0's search.
+    limit:=f64(QZ_HALF_MAX)*(ifx kind==QZ_Q8_0 then 127.0 else ifx importance.count==0 then 8.0 else 7.0);
+    for v:x {if qz_bad(v) || abs(f64(v))>limit {return QzResult.{status=QzStatus.number};}}
+    for b:0..<p.blocks {qz_block(kind,x,b*QZ_BLOCK,importance,out,b*p.block_bytes);}
+    return QzResult.{written=p.blocks};
+}
+// book:end quantize
+
+// book:begin int8
+// Q8_0 as chapter 48's weights: the same codes, the f16 scale as f32, offset 0.
+qz_int8 :: (rows:int,width:int,bytes:[]u8,w:Int8Weights)->QzResult #export_c {
+    p:=qz_plan(QZ_Q8_0,rows,width);
+    if p.status!=QzStatus.ok {return QzResult.{status=p.status};}
+    if bytes.count!=p.bytes {return QzResult.{status=QzStatus.storage};}
+    if w.codes.count<p.values || w.scales.count<p.blocks || w.offsets.count<p.blocks {return QzResult.{status=QzStatus.capacity};}
+    for b:0..<p.blocks {
+        s:=qz_scale_bits(bytes,b,34);
+        if !qz_half_ok(s) || s>=0x8000 {return QzResult.{status=QzStatus.scale};}
+        for k:0..<QZ_BLOCK {if bytes[b*34+2+k]==128 {return QzResult.{status=QzStatus.code};}}
+    }
+    for b:0..<p.blocks {
+        w.scales[b]=f32(qz_half(qz_scale_bits(bytes,b,34)));w.offsets[b]=0;
+        for k:0..<QZ_BLOCK {w.codes[b*QZ_BLOCK+k]=cast(s8)qz_signed(bytes[b*34+2+k]);}
+    }
+    return QzResult.{written=p.blocks};
+}
+// book:end int8
+
+// book:begin kv
+// int8-kv-v1: each cached key and value row (head width d) is one chapter 48
+// block: codes in [-127, 127] and an f32 scale rounded up from amax/127.
+qz_kv_request :: (d:int,t:int)->Int8Request {return Int8Request.{rows=1,width=d,tokens=t,block=d};}
+qz_kv_store :: (d:int,t:int,k:[]f32,v:[]f32,keys:Int8Activations,values:Int8Activations)->QzResult #export_c {
+    r:=qz_kv_request(d,t);
+    p:=int8_plan(r);
+    if p.status!=Int8Status.ok {return QzResult.{status=QzStatus.shape};}
+    if k.count!=p.activation_codes || v.count!=p.activation_codes {return QzResult.{status=QzStatus.storage};}
+    for x:k {if qz_bad(x) {return QzResult.{status=QzStatus.number};}}
+    for x:v {if qz_bad(x) {return QzResult.{status=QzStatus.number};}}
+    for a:[2]Int8Activations.[keys,values] {
+        if a.codes.count<p.activation_codes || a.scales.count<t || a.sums.count<t {return QzResult.{status=QzStatus.capacity};}
+    }
+    a:=int8_quantize(r,k,keys);b:=int8_quantize(r,v,values);
+    return QzResult.{written=a.written+b.written};
+}
+qz_kv_admit :: (d:int,t:int,q:[]f32,keys:Int8Activations,values:Int8Activations,scores:[]f64,out:[]f32)->QzStatus {
+    if int8_plan(qz_kv_request(d,t)).status!=Int8Status.ok {return QzStatus.shape;}
+    if q.count!=d || keys.codes.count!=t*d || values.codes.count!=t*d || keys.scales.count!=t || values.scales.count!=t {return QzStatus.storage;}
+    if scores.count<t || out.count<d {return QzStatus.capacity;}
+    for x:q {if qz_bad(x) {return QzStatus.number;}}
+    for c:keys.codes {if c==-128 {return QzStatus.code;}}
+    for c:values.codes {if c==-128 {return QzStatus.code;}}
+    for i:0..<t {if !int8_scale_ok(keys.scales[i]) || !int8_scale_ok(values.scales[i]) {return QzStatus.scale;}}
+    return QzStatus.ok;
+}
+qz_kv_at :: (a:Int8Activations,d:int,i:int)->f64 {return f64(a.scales[i/d])*f64(a.codes[i]);}
+// One decode query against every cached position, scores scaled by 1/sqrt(d)
+// as in chapter 41, in binary64, each cached code decoded as it is read.
+qz_kv_attend :: (d:int,t:int,q:[]f32,keys:Int8Activations,values:Int8Activations,scores:[]f64,out:[]f32)->QzResult #export_c {
+    status:=qz_kv_admit(d,t,q,keys,values,scores,out);
+    if status!=QzStatus.ok {return QzResult.{status=status};}
+    for j:0..<t {
+        s:=0.0;
+        for i:0..<d {s+=f64(q[i])*qz_kv_at(keys,d,j*d+i);}
+        scores[j]=s/sqrt(f64(d));
+    }
+    m:=scores[0];for j:1..<t {m=qz_larger(m,scores[j]);}
+    total:=0.0;
+    for j:0..<t {scores[j]=exp(scores[j]-m);total+=scores[j];}
+    for i:0..<d {
+        o:=0.0;
+        for j:0..<t {o+=scores[j]*qz_kv_at(values,d,j*d+i);}
+        out[i]=f32(o/total);
+    }
+    return QzResult.{written=d};
+}
+// The bound on |int8 attention - f32 attention| for every output, frozen
+// from the inputs before either runs. Each score moves by at most
+// e = max_j sum_i |q_i| dk_j / 2 / sqrt(d), so each probability moves by a
+// factor within exp(+-2e); each value moves by at most dv_j / 2. Then
+// |o' - o| <= (exp(2e) - 1) max|v'| + max_j dv_j / 2, plus 2^-20 max|v'|
+// for two f32 narrowings and the binary64 sums.
+qz_kv_bound :: (d:int,t:int,q:[]f32,v:[]f32,keys:Int8Activations,values:Int8Activations)->f64 #export_c {
+    norm:=0.0;for x:q {norm+=abs(f64(x));}
+    e:=0.0;step:=0.0;top:=0.0;
+    for j:0..<t {
+        e=qz_larger(e,norm*f64(keys.scales[j])/2/sqrt(f64(d)));
+        step=qz_larger(step,f64(values.scales[j])/2);
+        for i:0..<d {top=qz_larger(top,abs(f64(v[j*d+i]))+f64(values.scales[j])/2);}
+    }
+    slack:=1+1.0/1099511627776;
+    return (exp(2*e*slack)-1)*top+step*slack+top/1048576;
+}
+// book:end kv
+
+// book:begin card
+// Measures a derived profile against the original on the same items: mean
+// KL(original || derived) and top-1 agreement, each with two standard errors,
+// perplexity on the items' gold answers, and chapter 16's metrics for both.
+// Promotes only when the pessimistic ends are within the declared bound.
+qz_card :: (bound:QzBound,items:[]PqItem,original:[]f64,derived:[]f64,bytes:int)->QzCard #export_c {
+    if !(bound.kl>=0 && bound.kl<1e300) || !(bound.agreement>=0 && bound.agreement<=1) {return QzCard.{status=QzStatus.number};}
+    if items.count<2 || bytes<1 {return QzCard.{status=QzStatus.measure};}
+    if original.count!=derived.count {return QzCard.{status=QzStatus.storage};}
+    a:=pq_measure(items,original);b:=pq_measure(items,derived);
+    if a.status==PqStatus.shape {return QzCard.{status=QzStatus.shape};}
+    if a.status!=PqStatus.ok || b.status!=PqStatus.ok {return QzCard.{status=QzStatus.number};}
+    n:=f64(items.count);kl:=0.0;kl2:=0.0;agree:=0.0;nll_a:=0.0;nll_b:=0.0;
+    for item:items {
+        p:=original[item.start..<item.start+item.count];q:=derived[item.start..<item.start+item.count];
+        one:=0.0;
+        for i:0..<item.count {
+            if p[i]>0 {
+                if q[i]<=0 {return QzCard.{status=QzStatus.number};}
+                one+=p[i]*log(p[i]/q[i]);
+            }
+        }
+        // q[gold] > 0 already: p[gold] > 0 is checked here, so the KL term refused q[gold] = 0.
+        if p[item.gold]<=0 {return QzCard.{status=QzStatus.number};}
+        kl+=one;kl2+=one*one;nll_a-=log(p[item.gold]);nll_b-=log(q[item.gold]);
+        if pq_first_max(p)==pq_first_max(q) {agree+=1;}
+    }
+    c:=QzCard.{items=items.count,bytes=bytes,original=a,quantized=b};
+    c.kl=kl/n;c.agreement=agree/n;
+    // Sample variance of the per-item KL, and the binomial variance of agreement.
+    c.kl_high=c.kl+2*sqrt(qz_larger(0.0,kl2-n*c.kl*c.kl)/(n-1)/n);
+    c.agreement_low=c.agreement-2*sqrt(c.agreement*(1-c.agreement)/n);
+    c.perplexity_original=exp(nll_a/n);c.perplexity_quantized=exp(nll_b/n);
+    c.promoted=c.kl_high<=bound.kl && c.agreement_low>=bound.agreement;
+    return c;
+}
+// book:end card
