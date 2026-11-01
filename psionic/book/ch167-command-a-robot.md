@@ -8,7 +8,9 @@ IK returns source-limited coordinates; posture returns a delta, timing returns
 reference samples, and PD returns explicit force terms. A 250-step prefix and
 four new hold/track/pulse/brake cases compare owned feedback with MuJoCo.
 Numerical agreement passes; the four-case nominal final-error and brake-recovery
-goals remain unmet. General stability and the broader planning tools remain work.
+goals remain unmet. A separately frozen nine-profile owned-plant gain study
+finds no feasible family, so it selects no winner and runs no held-out SDK
+validation. General stability and the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
 runs operational-space control against MuJoCo. Meeting broader tracking and
@@ -991,6 +993,86 @@ adapter was syntax/plan/stub-routing checked here; the measured numerical proof
 above is carried unchanged, rather than rerun through that new adapter. New
 SDK acquisition is a separate opt-in tool and is not part of this gate.
 
+## Search a frozen gain family on the owned plant
+
+The four-case result above exposes two missed goals. We now make gain selection a reproducible owned-model experiment. Before running a new trajectory, freeze nine scale pairs in row-major order: Kp scales `[1,2,4]`, with Kd scales `[0.5,1,2]` inside each row. Profile 1 is the original `(1,1)` pair. Its four historical fresh-feedback traces are carried by exact source, reference, numerical-profile and byte identities; they are never simulated again. Only the other eight pairs execute: 32 new rollouts, bounded by 24,000 new owned steps. There is no SDK, NN or render during this selection.
+
+These are scales for a scenario-conditioned gain family. The original brake uses Kd7=20 while the ordinary cases use Kd7=2. Applying one scale pair preserves that distinction; it does not discover one universal gain vector. The existing controller, source actuators, reference and nonlinear Euler plant remain unchanged. The [new test consumer](../tests/robotics/panda-pd-gain-search.coax) owns only the profile factory, carry refusal, scoring and deterministic selection.
+
+The new goal is stronger than observing one early pulse recovery window. Every joint in **all four cases** must stay within 0.01 rad of its reference and within 0.05 rad/s of reference rate at **every post-state from 626 through 750**. Hold must additionally keep full-run drift within 0.005 rad. Nominal tracking must beat the analytic stationary-position baseline's global squared position error; equal sample counts make this the same strict ordering as RMS. The baseline is an analytic comparator, not another executed controller. Reference tick `k+1` is compared with post-state `k+1`.
+
+A refusal, nonfinite observation, post-state source-range excursion, broken previous-rate lineage or incomplete trace makes a candidate invalid. All nine coordinate ranges include both slide joints. Intentional controller or actuator clipping is recorded rather than treated as automatic invalidity. Peak actual speed, effective step acceleration and minimum source-range margin are diagnostic fields; reference limits do not constrain these actual quantities.
+
+Among valid candidates meeting every goal, compare these keys exactly, without an epsilon:
+
+1. Worst terminal normalized error, `max(abs(q_error)/0.01, abs(rate_error)/0.05)`.
+2. Total position IAE, in rad·s, over the four cases.
+3. Total number of controller-clipped coordinates.
+4. Profile ID in the fixed nine-pair order.
+
+SSE reduces in tick-major, joint-major order. For IAE, sum seven absolute errors for each post-state, multiply that row by 0.002 seconds, then accumulate rows; combined cards add cases 0 through 3. Each candidate retains every case score and goal flag. The selector publishes both winner and next feasible runner-up, the first separating key and signed runner-minus-winner gaps. If no candidate meets all goals, it returns no winner. No larger grid or best-available promotion follows a miss.
+
+<!-- source: psionic/examples/panda-pd-gain-search.coax pgs-study -->
+
+```jai
+ gains:[1]PgsGains;
+ #assert pnt_ok(pgs_gains(8,0,gains[..]));
+ print("profile 8 ordinary joint7 Kp/Kd: %/%\n",cast(int)gains[0].kp[6].value,cast(int)gains[0].kd[6].value);
+ #assert pnt_ok(pgs_gains(8,3,gains[..]));
+ print("profile 8 brake joint7 Kp/Kd: %/%\n",cast(int)gains[0].kp[6].value,cast(int)gains[0].kd[6].value);
+ // The profile scales a scenario-conditioned family, not a universal vector.
+ initial:[1]PntInitial;#assert pnt_ok(pnt_initial(0,initial[..]));q:=initial[0].q;v:=initial[0].v;
+ step:=[1]PntStep.[pnt_step_poison()];old:=step[0];status:=pgs_step(1,0,0,q[..],v[..],step[..]);
+ #assert status.stage==7 && status.code==2;pnt_step_same(step[0],old);
+ print("baseline step refused: stage % code %; carry saved trajectories\n",status.stage,status.code);
+ // Missing evidence produces a finite invalid card, not an admitted candidate.
+ observations:[1]PgsObservation;score:[1]PgsCaseScore;
+ #assert pgs_score(0,0,observations[0..<0],score[..])==PgsStatus.ok;
+ print("empty trace: valid % complete % feasible % reason %\n",score[0].valid,score[0].complete,score[0].feasible,score[0].reason);
+ // These are literal absent-evidence policy fixtures, not model results.
+ candidates:[9]PgsCandidate;for i:0..<9 {candidates[i].profile=i;}
+ selected:[1]PgsSelection;#assert pgs_select(candidates[..],selected[..])==PgsStatus.ok;
+ print("no feasible evidence: winner % runner % feasible %\n",selected[0].winner,selected[0].runner_up,selected[0].feasible_count);
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-pd-gain-search.coax
+COAX=coax/bin/coax psionic/tests/robotics/check-panda-pd-gain-search.sh /tmp/new-panda-gain-cached
+```
+
+This pure example runs no rollout. It demonstrates gain metadata, baseline refusal, a finite invalid empty trace and a no-feasible result using explicitly labelled absent-evidence policy fixtures. The measured scorecards are separate artifacts.
+
+The scorer consumes cached post-state rows. For a zero/partial/faulted trace it returns a finite invalid card and preserves metrics only through the admitted prefix. API shape/index refusals preserve the complete caller output. The trace cache binds profile/case/tick identities, while Coax derives completeness, previous-rate lineage, reference alignment and goal decisions. Case and combined cards are source-visible and unsealed observations, not trajectory or goal-proof certificates. Trusted reducer helpers require admitted finite bounded inputs, coherent prior metrics and the unchanged fixed-case reference profile.
+
+The new source qualifies 25 groups and 578 actual emitted root mutation sites: 73 control, 219 scorer and 286 selector, all killed. These counts describe actual sites, not full Quantity-token provenance or compiler-enforced bounds. The canonical physics grid executes once in release mode. Three native scorer/selector profiles then consume the same cached observations; they do not rerun the plant. Independent tooling checks objective fields under the predeclared 2e-12 absolute plus 2e-12 relative budget, and verifies flags, exact policy ordering and any threshold/tie ambiguity separately.
+
+The one release grid completed all 32 new rollouts and 24,000 new steps; the carried baseline contributed four old trajectories and zero new plant steps. Every one of the 36 casecards is valid and complete. **None of the nine profiles satisfies every goal.** The selector returns winner −1, runner-up −1 and zero feasible candidates; all key-gap fields are finite zero. There is no qualified family to send to held-out SDK validation.
+
+| Profile | Kp × | Kd × | Worst terminal ratio | Total IAE (rad·s) | Controller-clipped coordinates | Feasible |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | 1 | 0.5 | 3.879737 | 0.266187 | 14 | No |
+| 1 (carried) | 1 | 1 | 5.157346 | 0.229669 | 31 | No |
+| 2 | 1 | 2 | 6.202255 | 0.198056 | 41 | No |
+| 3 | 2 | 0.5 | 1.843086 | 0.206789 | 16 | No |
+| 4 | 2 | 1 | 2.854085 | 0.190134 | 32 | No |
+| 5 | 2 | 2 | 4.643709 | 0.173539 | 42 | No |
+| 6 | 4 | 0.5 | 1.730989 | 0.152021 | 18 | No |
+| 7 | 4 | 1 | 1.355279 | 0.143858 | 35 | No |
+| 8 | 4 | 2 | 2.587362 | 0.139504 | 43 | No |
+
+A terminal ratio at most one is required. Profile 7 has the smallest observed worst ratio, 1.35528, so even that diagnostic minimum misses. It is not selected or promoted as a best-available controller. Profiles 5 and 8 satisfy the moving-case terminal bands but fail braking; profiles 6 and 7 satisfy braking but fail the moving cases. Every profile meets the hold-drift and nominal-SSE improvement requirements. These observed tradeoffs apply to the fixed grid and horizon, not to all possible gains.
+
+The three cached scorer/selector profiles each pass 515,393 assertions and produce exact complete score bytes. They simulate no plant steps. Independent direct-array reductions check all 1,152 case metric coefficients with maximum error 5.77e−14, using at most 0.9324% of the frozen mixed budget; all goal flags, counters and selector outcomes agree exactly. Fourteen cache poisons, fourteen score-reader poisons and six exact lexicographic witnesses pass. No second grid, SDK call, expanded candidate set or changed goal follows this result.
+
+Two new geometry starts and their four scenarios were frozen before selection. No held-out validation was run after this no-winner outcome. A future separately frozen study with a qualifying family would require one-shot held-out validation: one chosen family only, both pulse signs and brake directions, and no trying a runner-up on the SDK. Owned-plant selection is not held-out validation, global optimization, general nonlinear stability or hardware qualification. Collision/contact handling, finite nullspace integration and compiler bounds remain separate.
+
+The [complete study evidence](../fixtures/robotics/panda-gain-search/README.md)
+links all nine scorecards, exact baseline carry, progress and independent
+objective receipts. The default gate consumes committed cached observations
+and runs only scorer/selector contexts. Its additive adapter was syntax/plan/
+stub-routing checked here; original measured numerical evidence is carried
+unchanged, with no canonical-grid or baseline rerun.
+
 ## The remaining control and planning layers
 
 The following sections are design work; the position and force queries above
@@ -999,7 +1081,9 @@ do not qualify these complete control and planning tools.
 
 - Meeting broader nonlinear tracking/recovery goals, including the retained
   nominal final-error and brake-recovery misses, with systematic gain,
-  disturbance and saturation analysis beyond the four measured cases.
+  disturbance and saturation analysis beyond the four measured cases. The
+  frozen nine-pair study finds no family satisfying every terminal goal; a
+  new hypothesis requires a separate freeze, not an expanded search here.
 - Finite, range-preserving nullspace steps and their integration with pose IK,
   beyond the delivered linearized posture projection.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
@@ -1011,8 +1095,9 @@ do not qualify these complete control and planning tools.
 
 The typed PD query supplies this force equation. The isolated rotor above
 qualifies its sampled constant-inertia response. The four nonlinear cases use
-the owned coupled dynamics at a declared 0.002-second step; broader gain analysis
-and acceptable tracking/recovery profiles remain work:
+the owned coupled dynamics at a declared 0.002-second step. The bounded gain
+study above reports no feasible family; broader gain analysis and acceptable
+tracking/recovery profiles remain work:
 
 ```jai
 τ = K_p (q_ref − q) + K_d (q̇_ref − q̇) + g(q)
@@ -1055,8 +1140,10 @@ goals remain planned.
 
 - Broader nonlinear PD holding/tracking acceptance under declared disturbance
   and saturation profiles. The measured four-case hold passes its drift goal,
-  while nominal final error and brake recovery miss their goals. The isolated
-  rotor response and computed Jury diagnostic remain separate evidence.
+  while nominal final error and brake recovery miss their goals. The fixed
+  nine-profile study has no feasible family and does not trigger held-out
+  validation. The isolated rotor response and computed Jury diagnostic remain
+  separate evidence.
 - Finite nullspace-step policy and pose-IK integration, plus broader behavior
   near singularities and the principal cut. The delivered posture query has
   explicit numerical rank/residual refusal; it does not qualify a finite motion.
