@@ -832,8 +832,12 @@ static std::string declarations_report(const Source *src, const File *file) {
 // header_path: also write the C header (`coax c FILE --library --header out.h`).
 // An #authority file's checks run on every compile: a failing check fails
 // the build. run_checks is false for coax test and mutate, which run them.
+// parsed: coax query's snapshot of the parse; it also stops after checking,
+// so constants and defaults keep the expressions their names were written in.
+struct QueryParsed;
+static void query_snapshot(QueryParsed *parsed, const File *file);
 static bool front_end(const char *path, Source *src, Arena *arena, File *file, const EmitOptions &opts, int library,
-                      bool run_checks = true, bool mutation_lowering = false) {
+                      bool run_checks = true, bool mutation_lowering = false, QueryParsed *parsed = nullptr) {
   {TimedPhase phase{"load"};if (!load_sources(arena, src, path)) return false;}
   for(const auto &unit:src->units)if(!profile_destination_disjoint(unit->canonical))return false;
   std::vector<Token> tokens;
@@ -853,6 +857,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     g_semantic.inputs_admitted=ok;
   }
   if (ok) {TimedPhase phase{"parse"};ok=parse(arena, src, tokens, file, opts.development);}
+  if (ok && parsed) query_snapshot(parsed, file);
   if (ok) {
     bool exports = false;
     for (const ProcDecl *p : file->procs) exports = exports || p->export_c;
@@ -861,9 +866,9 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     file->quantity_device=opts.quantity_device;
     file->execution_profile=std::to_string(opts.profile_identity);
     {TimedPhase phase{"check"};ok=check(arena,file,mutation_lowering);}
-    if(ok) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
+    if(ok && !parsed) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
   }
-  if (ok) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_all_checks(file,TEST_STEPS,false);}
+  if (ok && !parsed) {TimedPhase phase{"authority"};if(run_checks && file->authority)ok=run_all_checks(file,TEST_STEPS,false);}
   if (!ok && !g_json_errors) fprintf(stderr, "%d error%s\n", g_error_count, g_error_count == 1 ? "" : "s");
   return ok;
 }
@@ -966,6 +971,7 @@ static int usage() {
           "       coax layout  file.coax\n"
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax deps    file.coax --declarations            JSON logical owners, declaration IDs, references\n"
+          "       coax query   file.coax defines NAME | uses NAME | exports [MODULE] [--json] [--fresh]\n"
           "       coax deps    file.coax --lowering [--proc NAME]  JSON ordered lowering: operations, traps, sequencing\n"
           "       coax deps    file.coax --effects [--proc NAME]   JSON transitive may-effects and witness paths\n"
           "       coax deps    file.coax --modules                 JSON module content and dependency revisions\n"
@@ -1074,6 +1080,55 @@ static std::string executable_path() {
   return ec ? std::string(self) : path.string();
 }
 
+#include "query.cpp"
+static void query_snapshot(QueryParsed *parsed, const File *file) { parsed->file(file); }
+
+// coax query FILE defines NAME | uses NAME | exports [MODULE] [--json] [--fresh]
+static int query_command(const char *input, const EmitOptions &opts, QueryRequest request) {
+  namespace fs = std::filesystem;
+  const std::string compiler = profile_file_hash(executable_path());
+  if (compiler.empty()) {
+    fprintf(stderr, "coax: query needs the final compiler, which can hash itself; build-only stage0 cannot\n");
+    return 1;
+  }
+  std::error_code ec;
+  const fs::path entry = fs::canonical(input, ec);
+  if (ec) {
+    fprintf(stderr, "coax: query: cannot read '%s'\n", input);
+    return 1;
+  }
+  const std::string dir = query_cache_dir();
+  // One file per entry unit: a different compiler's index for it is replaced.
+  const std::string cache = dir + "/" + debug_source_hash(entry.string()) + ".index";
+  QueryIndex index;
+  std::string text;
+  bool warm = false;
+  if (!request.fresh && read_record(cache, &text)) {
+    warm = query_parse(text, &index) && query_current(index, compiler, entry.string());
+    if (!warm) index = QueryIndex{};
+  }
+  if (!warm) {
+    Source src;
+    Arena arena;
+    File file;
+    QueryParsed parsed;
+    if (!front_end(input, &src, &arena, &file, opts, 2, false, false, &parsed)) return 1;
+    index.compiler = compiler;
+    index.entry = entry.string();
+    QueryBuilder{&src, &file, &parsed, &index}.build();
+    // A stale or unwritable cache only costs time; the answer comes from the fresh index.
+    fs::create_directories(dir, ec);
+    const std::string temp = cache + "." + std::to_string(getpid()) + ".tmp";
+    if (!ec && write_file(temp, query_serialize(index))) {
+      if (rename(temp.c_str(), cache.c_str()) != 0) unlink(temp.c_str());
+    }
+  }
+  std::string out;
+  if (!query_answer(index, request, &out)) return 1;
+  fwrite(out.data(), 1, out.size(), stdout);
+  return 0;
+}
+
 // After a failed command: when this compiler sits at ROOT/coax/bin/coax with
 // the digest coax/build.sh wrote, and ROOT's compiler sources no longer match
 // it, say so and name the rebuild. Nothing runs when the command succeeds.
@@ -1124,7 +1179,7 @@ static int main_impl(int argc, char **argv) {
   }
   if (cmd == "explain") return explain(argc, argv);
   if (cmd != "run" && cmd != "build" && cmd != "c" && cmd != "checks-c" && cmd != "check" && cmd != "lib" && cmd != "header" &&
-      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto")
+      cmd != "layout" && cmd != "deps" && cmd != "metal" && cmd != "cuda" && cmd != "metal-compute" && cmd != "spirv" && cmd != "wgsl" && cmd != "test" && cmd != "mutate" && cmd != "proto" && cmd != "query")
     return usage();
 
   const char *input = nullptr;
@@ -1143,6 +1198,7 @@ static int main_impl(int argc, char **argv) {
   bool verification_abi_seen = false;
   bool list = false;
   uint64_t test_slots = 0;
+  QueryRequest query;
   for (int i = 2; i < argc; i++) {
     std::string a = argv[i];
     if (a == "--release") request.legacy_release = true;
@@ -1253,9 +1309,13 @@ static int main_impl(int argc, char **argv) {
     else if (a == "--lib" || a == "--library") opts.library = true;
     else if (a == "--header" && i + 1 < argc) header = argv[++i];
     else if (a == "-o" && i + 1 < argc) out = argv[++i];
+    else if (a == "--fresh" && cmd == "query") query.fresh = true;
     else if (!input && a.size() && a[0] != '-') input = argv[i];
+    else if (cmd == "query" && query.form.empty() && (a == "defines" || a == "uses" || a == "exports")) query.form = a;
+    else if (cmd == "query" && !query.form.empty() && query.name.empty() && a.size() && a[0] != '-') query.name = a;
     else return usage();
   }
+  if (cmd == "query" && (query.form.empty() || (query.form != "exports" && query.name.empty()))) return usage();
   if (!input || (!header.empty() && cmd != "c")) return usage();
   if (cmd == "deps" || cmd == "layout") {
     // Layout facts are qualified for one named target; any other refuses
@@ -1283,7 +1343,7 @@ static int main_impl(int argc, char **argv) {
   // one of the source commands admitted by the checked Coax resolver.
   if(cmd!="proto" || request.arithmetic_count || request.optimization_count || request.build_profile_count || request.debug_count || request.source_map || !g_semantic.path.empty()) {
     // coax wgsl takes the shader subset's profile, spirv's (lib/compiler/wgsl.coax)
-    const std::string profile_cmd=cmd=="wgsl"?"spirv":cmd;
+    const std::string profile_cmd=cmd=="wgsl"?"spirv":cmd=="query"?"deps":cmd;
     auto profile=CP_resolve({profile_cmd.data(),(int64_t)profile_cmd.size()},request);
     if(profile.error!=COAX_CP_Error_none) {
       auto message=CP_message(profile.error);fprintf(stderr,"coax: %.*s\n",(int)message.count,message.data);return 1;
@@ -1425,6 +1485,10 @@ static int main_impl(int argc, char **argv) {
     file.ct_memory->slot_limit = slots;
     file.ct_memory->container_limit = CB_test_container_limit();
     return record(cmd == "test" ? test_command(&file, steps, only, list) : mutate_command(&arena, &file, mutation), true);
+  }
+  if (cmd == "query") {
+    query.json = g_json_errors;
+    return query_command(input, opts, query);
   }
   std::string text;
   if (cmd == "check") return compile(input, opts, Output::none, &text, opts.library ? 1 : 2) ? 0 : 1;

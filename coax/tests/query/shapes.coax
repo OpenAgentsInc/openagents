@@ -1,0 +1,42 @@
+// The shapes module: area() is public, scale() is private.
+#module "demo.shapes";
+#export Shape, Kind, area, UNIT, corners;
+
+Kind :: enum u8 { square; circle; }
+
+Shape :: struct {
+  kind: Kind;
+  size: s32 = UNIT;
+}
+
+UNIT :: cast(s32) 2;
+
+// scale(s) doubles a shape; "area" in this comment is not a use.
+scale :: (s: Shape) -> Shape {
+  return Shape.{kind = s.kind, size = s.size * UNIT};
+}
+
+area :: (s: Shape) -> s32 {
+  if s.kind == Kind.circle { return 3 * s.size * s.size; }
+  return scale(s).size * s.size / UNIT;
+}
+
+#test "area of a unit square" {
+  #assert area(Shape.{kind = Kind.square}) == 4;
+  #assert area(Shape.{kind = Kind.circle, size = 3}) == 27 && scale(Shape.{size = 3}).size == 6;
+}
+
+CORNERS :: 4;
+
+// corners(xs) counts the corners of every shape it is given.
+corners :: (xs: [] $T) -> s32 {
+  return cast(s32) xs.count * CORNERS;
+}
+
+GRID :: CORNERS * 2;
+
+grid :: () -> int {
+  cells: [GRID * CORNERS] u8;
+  return cells.count;
+}
+#test "grid holds GRID * CORNERS cells" { #assert grid() == 32; }

@@ -1,0 +1,3 @@
+tests/query/shapes.coax:9:15: struct Shape
+tests/query/shapes.coax:16:48: proc scale
+tests/query/shapes.coax:21:35: proc area

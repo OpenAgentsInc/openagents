@@ -1,0 +1,3 @@
+tests/query/main.coax:8:17: proc total
+tests/query/shapes.coax:25:11: #test "area of a unit square"
+tests/query/shapes.coax:26:11: #test "area of a unit square"

@@ -1,0 +1,10 @@
+tests/query/main.coax:5:27: proc total
+tests/query/main.coax:15:19: proc main
+tests/query/main.coax:21:19: #test "total adds the areas"
+tests/query/shapes.coax:15:14: proc scale
+tests/query/shapes.coax:15:24: proc scale
+tests/query/shapes.coax:16:10: proc scale
+tests/query/shapes.coax:19:13: proc area
+tests/query/shapes.coax:25:16: #test "area of a unit square"
+tests/query/shapes.coax:26:16: #test "area of a unit square"
+tests/query/shapes.coax:26:69: #test "area of a unit square"

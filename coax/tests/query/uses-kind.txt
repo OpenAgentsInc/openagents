@@ -1,0 +1,4 @@
+tests/query/shapes.coax:8:9: struct Shape
+tests/query/shapes.coax:20:16: proc area
+tests/query/shapes.coax:25:30: #test "area of a unit square"
+tests/query/shapes.coax:26:30: #test "area of a unit square"

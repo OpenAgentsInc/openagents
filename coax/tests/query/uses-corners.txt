@@ -1,0 +1,3 @@
+tests/query/shapes.coax:33:31: proc corners
+tests/query/shapes.coax:36:9: const GRID
+tests/query/shapes.coax:39:18: proc grid

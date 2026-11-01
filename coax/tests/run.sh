@@ -69,6 +69,8 @@ python3 tests/traversal_work.py
 traversal_rc=$?
 python3 tests/provenance.py && web/tool.sh tests/stale-compiler.coax "$PWD" "$(cd "$(dirname "$COAX")" && pwd -P)/$(basename "$COAX")"
 provenance_rc=$?
+web/tool.sh tests/query.coax "$(cd "$(dirname "$COAX")" && pwd -P)/$(basename "$COAX")"
+query_rc=$?
 python3 tests/release.py
 release_rc=$?
 python3 tests/mutation_schedule.py && python3 tests/mutation_parallel.py && python3 tests/mutation_scope.py && python3 tests/evidence.py && tests/mutation-gate.sh
@@ -158,4 +160,4 @@ else
   echo "Spatial gate failed; evidence: $spatial_output" >&2
   spatial_rc=1
 fi
-[[ $spatial_operators_rc -eq 0 && $spatial_rc -eq 0 && $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $bounded_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]
+[[ $spatial_operators_rc -eq 0 && $spatial_rc -eq 0 && $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $query_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $bounded_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]

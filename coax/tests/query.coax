@@ -1,0 +1,288 @@
+// coax query: answers from the checked graph, with a cache keyed by source hash.
+//   coax/web/tool.sh coax/tests/query.coax COMPILER [--write]
+// Run from coax/. Each question about the fixture (tests/query/main.coax,
+// which loads shapes.coax as a sealed module) and about the compiler's own
+// sources (lib/compiler/compiler.coax) must give its recorded answer in
+// tests/query/*.txt. JSON answers are recorded with this directory's absolute
+// path removed; compiler answers with their line numbers replaced by N, so an
+// edit above a declaration does not change them. Then:
+//   - a cold (--fresh) and a warm answer are the same, and a warm question
+//     about the compiler takes under 1 s;
+//   - every compiler use is the name itself, outside comments and strings;
+//   - editing a loaded unit changes the next answer, and a damaged cache is
+//     rebuilt.
+// --write records the current answers instead of comparing them.
+#import "Basic";
+#load "../lib/sys/tool.coax";
+#load "../lib/sys/args.coax";
+#load "../lib/sys/fs.coax";
+#load "../lib/sys/proc.coax";
+
+check :: (ok: bool, what: string) -> int {
+  if ok { print("  ok   %\n", what); return 0; }
+  print("  FAIL %\n", what);
+  return 1;
+}
+
+starts :: (text: string, at: int, part: string) -> bool {
+  if at < 0 || at + part.count > text.count { return false; }
+  for j: 0..<part.count { if text[at + j] != part[j] { return false; } }
+  return true;
+}
+#test "starts matches a part at an offset and nowhere past the end" {
+  #assert starts("abc", 0, "ab") && starts("abc", 1, "bc") && starts("abc", 3, "");
+  #assert !starts("abc", 2, "cd") && !starts("abc", -1, "a") && !starts("abc", 1, "bd");
+}
+
+// text with every occurrence of part removed, into out ("" when it does not fit).
+without :: (text: string, part: string, out: [] u8) -> string {
+  n := 0;
+  i := 0;
+  while i < text.count {
+    if part.count > 0 && starts(text, i, part) { i += part.count; continue; }
+    if n == out.count { return ""; }
+    out[n] = text[i];
+    n += 1;
+    i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+#test "without removes every occurrence and refuses what does not fit" {
+  o: [16] u8; two: [2] u8;
+  #assert without("/a/x /a/y", "/a/", o[..]) == "x y" && without("x/a/", "/a/", o[..]) == "x";
+  #assert without("abc", "", o[..]) == "abc" && without("aaa", "aa", o[..]) == "a" && without("a-b", "-", o[..]) == "ab";
+  #assert without("ab", "x", two[..]) == "ab" && without("abc", "x", two[..]) == "";
+}
+
+// Each line's line number (the digits after its first ':') replaced by N,
+// into out ("" when it does not fit).
+masked :: (text: string, out: [] u8) -> string {
+  n := 0;
+  i := 0;
+  start := true;
+  while i < text.count {
+    if n == out.count { return ""; }
+    out[n] = text[i];
+    n += 1;
+    if text[i] == '\n' { start = true; }
+    else if start && text[i] == ':' {
+      start = false;
+      j := i + 1;
+      while j < text.count && text[j] >= '0' && text[j] <= '9' { j += 1; }
+      if j > i + 1 {
+        if n == out.count { return ""; }
+        out[n] = 'N';
+        n += 1;
+        i = j;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+#test "masked replaces the line number of every line" {
+  o: [64] u8; three: [3] u8;
+  #assert masked("a.coax:12:3: proc f\nb.coax:90:1: x", o[..]) == "a.coax:N:3: proc f\nb.coax:N:1: x";
+  #assert masked("x:09", o[..]) == "x:N" && masked("a:123:b", o[..]) == "a:N:b" && masked("no colon\n", o[..]) == "no colon\n" && masked("a::b", o[..]) == "a::b";
+  #assert masked("a:1", three[..]) == "a:N" && masked("ab:1", three[..]) == "" && masked("abcd", three[..]) == "";
+}
+
+// Whether the name at line[col-1] is code: the bytes are the name, and no
+// comment or unclosed string starts before it on the line.
+in_code :: (line: string, col: int, name: string) -> bool {
+  if !starts(line, col - 1, name) { return false; }
+  quoted := false;
+  i := 0;
+  while i < col - 1 {
+    c := line[i];
+    if quoted && c == '\\' { i += 2; continue; }
+    if c == '"' { quoted = !quoted; }
+    else if !quoted && c == '/' && line[i + 1] == '/' { return false; }
+    i += 1;
+  }
+  return !quoted;
+}
+#test "in_code refuses comments, strings and other names" {
+  #assert in_code("x := f(a);", 6, "f") && in_code("s := \"a\\\"b\"; f(1);", 14, "f") && in_code("a / b; f", 8, "f");
+  #assert in_code("\"\\\\\" f", 6, "f") && in_code("\"/\"/ f", 6, "f") && in_code("a \"x", 3, "\"x");
+  #assert !in_code("// f(a)", 4, "f") && !in_code("a; //f", 6, "f") && !in_code("s := \"f\";", 7, "f") && !in_code("x := g(a);", 6, "f");
+  #assert !in_code("\"\\\" f", 5, "f") && !in_code("\"a\\\" f\"", 6, "f");
+}
+
+// The integer at text[at..] up to the first non-digit, or -1.
+number :: (text: string, at: int) -> int {
+  i := at;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' { i += 1; }
+  if i == at { return -1; }
+  v := 0;
+  for k: at..<i { v = v * 10 + cast(int) (text[k] - '0'); }
+  return v;
+}
+#test "number reads leading digits" {
+  #assert number("12:3", 0) == 12 && number("x:45", 2) == 45 && number("09:", 0) == 9 && number("x90", 1) == 90;
+  #assert number("5", 0) == 5 && number("x", 0) == -1 && number("", 0) == -1 && number("/", 0) == -1 && number(":", 0) == -1;
+}
+
+// The line number of an answer's first row (path:LINE:COL: ...), or -1.
+line_of :: (text: string) -> int {
+  p := 0;
+  while p < text.count && text[p] != ':' { p += 1; }
+  return number(text, p + 1);
+}
+#test "line_of reads the first row's line" {
+  #assert line_of("a/b.coax:31:1: proc f\nc:2:1: x") == 31 && line_of("none") == -1 && line_of("a:3") == 3 && line_of(":7:1") == 7;
+}
+
+Ctx :: struct {
+  compiler: string;
+  cache: string;
+  write: bool;
+}
+
+// Runs `coax query ARGS` with COAX_QUERY_CACHE set (sh only sets the variable).
+ask :: (c: Ctx, entry: string, a: string, b: string, c3: string, out: [] u8, err: [] u8) -> ProcRun {
+  argv := [10] string.["sh", "-c", "COAX_QUERY_CACHE=\"$1\" exec \"$2\" query \"$3\" $4 $5 $6", "sh", c.cache, c.compiler, entry, a, b, c3];
+  return proc_run(argv[..], 120000, out, err);
+}
+
+// Compares (or with --write records) one answer with tests/query/NAME.txt.
+recorded :: (c: Ctx, name: string, answer: string) -> int {
+  pb: [256] u8; nb: [128] u8;
+  n := 0;
+  for ch: name { nb[n] = ch; n += 1; }
+  for ch: ".txt" { nb[n] = ch; n += 1; }
+  path := fs_join("tests/query", cast(string) nb[0..<n], pb[..]);
+  if c.write { return check(fs_write(path, answer), path); }
+  saved: [131072] u8;
+  k := fs_read(path, saved[..]);
+  return check(k >= 0 && cast(string) saved[0..<k] == answer, path);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: query.coax COMPILER [--write]"); return 2; }
+  tmp: [1024] u8;
+  dir := fs_temp("coax-query-", tmp[..]);
+  cb: [1024] u8;
+  c := Ctx.{compiler = args_at(a[..], 0), cache = fs_join(dir, "cache", cb[..]), write = args_has(a[..], "--write")};
+  wd: [1024] u8; wp: [1024] u8;
+  prefix := fs_join(fs_cwd(wd[..]), "", wp[..]);
+  bad := 0;
+  out: [131072] u8; err: [65536] u8;
+  o: [131072] u8;
+
+  // The fixture: a sealed module with comments and strings that name its declarations.
+  fixture := "tests/query/main.coax";
+  r := ask(c, fixture, "defines", "Shape", "", out[..], err[..]);
+  bad += recorded(c, "defines-shape", cast(string) out[0..<r.out_n]);
+  r = ask(c, fixture, "uses", "Shape", "", out[..], err[..]);
+  bad += recorded(c, "uses-shape", cast(string) out[0..<r.out_n]);
+  r = ask(c, fixture, "uses", "area", "", out[..], err[..]);
+  bad += recorded(c, "uses-area", cast(string) out[0..<r.out_n]);
+  r = ask(c, fixture, "uses", "UNIT", "", out[..], err[..]);
+  bad += recorded(c, "uses-unit", cast(string) out[0..<r.out_n]);
+  r = ask(c, fixture, "uses", "CORNERS", "", out[..], err[..]);
+  bad += recorded(c, "uses-corners", cast(string) out[0..<r.out_n]);
+  r = ask(c, fixture, "uses", "Kind", "", out[..], err[..]);
+  bad += recorded(c, "uses-kind", cast(string) out[0..<r.out_n]);
+  r = ask(c, fixture, "exports", "", "", out[..], err[..]);
+  bad += recorded(c, "exports-entry", cast(string) out[0..<r.out_n]);
+  r = ask(c, fixture, "exports", "demo.shapes", "", out[..], err[..]);
+  bad += recorded(c, "exports-module", cast(string) out[0..<r.out_n]);
+  r = ask(c, fixture, "uses", "Shape", "--json", out[..], err[..]);
+  bad += recorded(c, "uses-shape-json", without(cast(string) out[0..<r.out_n], prefix, o[..]));
+  r = ask(c, fixture, "exports", "demo.shapes", "--json", out[..], err[..]);
+  bad += recorded(c, "exports-module-json", without(cast(string) out[0..<r.out_n], prefix, o[..]));
+  r = ask(c, fixture, "defines", "scale_by", "", out[..], err[..]);
+  bad += check(r.status == 0 && r.out_n == 0, "a name with no declaration has no answer");
+  r = ask(c, fixture, "exports", "demo.circles", "", out[..], err[..]);
+  bad += check(r.status == 1 && starts(cast(string) err[0..<r.err_n], 0, "coax: query: no module 'demo.circles'"), "an unknown module is refused");
+
+  // The compiler's sources, through every #load.
+  compiler := "lib/compiler/compiler.coax";
+  r = ask(c, compiler, "defines", "CK_target", "--fresh", out[..], err[..]);
+  coldb: [4096] u8;
+  for k: 0..<r.out_n { coldb[k] = out[k]; }
+  cold := cast(string) coldb[0..<r.out_n];
+  bad += recorded(c, "compiler-defines", masked(cold, o[..]));
+  best := 1000000;
+  same := true;
+  for k: 0..<3 {
+    t0 := proc_now_ms();
+    r = ask(c, compiler, "defines", "CK_target", "", out[..], err[..]);
+    took := proc_now_ms() - t0;
+    same = same && r.status == 0 && cast(string) out[0..<r.out_n] == cold;
+    if took < best { best = took; }
+  }
+  print("  warm query over the compiler sources, best of 3: % ms\n", best);
+  bad += check(same, "a warm answer is the cold answer");
+  bad += check(best < 1000, "a warm query over the compiler sources answers in under 1 s");
+  r = ask(c, compiler, "uses", "CB_default_steps", "", out[..], err[..]);
+  bad += recorded(c, "compiler-uses", masked(cast(string) out[0..<r.out_n], o[..]));
+  r = ask(c, compiler, "uses", "SU_Export", "", out[..], err[..]);
+  bad += recorded(c, "compiler-uses-type", masked(cast(string) out[0..<r.out_n], o[..]));
+
+  // Every use the compiler reports for names that also appear in comments
+  // and strings is the name, in code.
+  names := [4] string.["LX_Kind", "CK_lookup", "SU_Export", "G_line"];
+  uses := 0;
+  coded := true;
+  for name: names {
+    r = ask(c, compiler, "uses", name, "", out[..], err[..]);
+    text := cast(string) out[0..<r.out_n];
+    i := 0;
+    while i < text.count {
+      j := i;
+      while j < text.count && text[j] != '\n' { j += 1; }
+      row := text[i..<j];
+      p := 0;
+      while p < row.count && row[p] != ':' { p += 1; }
+      line := number(row, p + 1);
+      q := p + 1;
+      while q < row.count && row[q] != ':' { q += 1; }
+      col := number(row, q + 1);
+      lb: [32] u8; ln := 0; v := line; digits: [20] u8; nd := 0;
+      while v > 0 { digits[nd] = cast(u8) ('0' + v % 10); v /= 10; nd += 1; }
+      for k: 0..<nd { lb[ln] = digits[nd - 1 - k]; ln += 1; }
+      lb[ln] = 'p'; ln += 1;
+      sed := [4] string.["sed", "-n", cast(string) lb[0..<ln], row[0..<p]];
+      line_out: [65536] u8; line_err: [1024] u8;
+      s := proc_run(sed[..], 30000, line_out[..], line_err[..]);
+      ok := s.status == 0 && in_code(cast(string) line_out[0..<s.out_n], col, name);
+      if !ok { print("  not code: %\n", row); }
+      coded = coded && ok;
+      uses += 1;
+      i = j + 1;
+    }
+  }
+  print("  % compiler uses checked\n", uses);
+  bad += check(uses > 20 && coded, "every compiler use is the name, outside comments and strings");
+
+  // The cache is keyed by source hash: an edit to a loaded unit changes the
+  // next answer, and a damaged cache file is rebuilt.
+  tb: [1024] u8; mb: [1024] u8; sb: [1024] u8;
+  tree := fs_join(dir, "tree", tb[..]);
+  copied := fs_join(tree, "main.coax", mb[..]);
+  shapes := fs_join(tree, "shapes.coax", sb[..]);
+  cp := [5] string.["sh", "-c", "mkdir -p \"$1\" && cp tests/query/main.coax tests/query/shapes.coax \"$1/\"", "sh", tree];
+  r = proc_run(cp[..], 30000, out[..], err[..]);
+  r = ask(c, copied, "defines", "area", "", out[..], err[..]);
+  before := line_of(cast(string) out[0..<r.out_n]);
+  saved: [16384] u8;
+  n := fs_read(shapes, saved[..]);
+  bad += check(n > 0 && fs_write(shapes, "// one more line\n") && fs_append(shapes, cast(string) saved[0..<n]), "a loaded unit is edited");
+  r = ask(c, copied, "defines", "area", "", out[..], err[..]);
+  after := line_of(cast(string) out[0..<r.out_n]);
+  bad += check(before > 0 && after == before + 1, "the next answer follows the edit");
+  damage := [5] string.["sh", "-c", "for f in \"$1\"/*.index; do printf 'coax.query-index.v1\\nunit\\tbroken\\n' > \"$f\"; done", "sh", c.cache];
+  r = proc_run(damage[..], 30000, out[..], err[..]);
+  r = ask(c, copied, "defines", "area", "", out[..], err[..]);
+  again := line_of(cast(string) out[0..<r.out_n]);
+  bad += check(r.status == 0 && again == after, "a damaged cache is rebuilt");
+
+  bad += check(fs_remove(dir), "the temporary directory is removed");
+  if bad == 0 { print("query: ok\n"); return 0; }
+  print("query: % failed\n", bad);
+  return 1;
+}

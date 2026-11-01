@@ -1,0 +1,2 @@
+tests/query/main.coax:5:1: proc total
+tests/query/main.coax:14:1: proc main

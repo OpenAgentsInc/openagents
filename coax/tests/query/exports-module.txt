@@ -1,0 +1,5 @@
+tests/query/shapes.coax:5:1: enum Kind
+tests/query/shapes.coax:7:1: struct Shape
+tests/query/shapes.coax:12:1: const UNIT
+tests/query/shapes.coax:19:1: proc area
+tests/query/shapes.coax:32:1: proc corners

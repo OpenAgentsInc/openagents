@@ -1,0 +1,1 @@
+tests/query/shapes.coax:7:1: struct Shape

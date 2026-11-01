@@ -1,0 +1,7 @@
+lib/compiler/sources.coax:N:10: #test "export lists record each name with its token and directive range"
+lib/compiler/sources.coax:N:10: #test "nested and other directives are not export lists"
+lib/compiler/sources.coax:N:10: #forall "only file scope admits an export list"
+lib/compiler/sources.coax:N:10: #test "a reexport after a plain name keeps no partial list"
+lib/compiler/sources.coax:N:10: #forall "an export list is names separated by commas and ended by ';'"
+lib/compiler/sources.coax:N:42: proc SU_exports
+lib/compiler/sources.coax:N:18: proc SU_exports
