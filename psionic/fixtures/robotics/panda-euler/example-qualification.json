@@ -1,0 +1,39 @@
+{
+  "schema": "psionic.panda-euler.example.v1",
+  "passed": true,
+  "source": "psionic/examples/panda-euler.coax",
+  "source_sha256": "e38641373732f3c000d1cec527adc87ef1d73c8238f177b382de4e718e18f2b2",
+  "stdout": "psionic/examples/panda-euler.out",
+  "stdout_sha256": "af3e75656f057f3c1c4b1faeb8a42cdf822aeadae31fa4bef759b588101e193e",
+  "prewritten_independent_reference": "example-reference.json",
+  "prewritten_independent_reference_sha256": "2cbd8a5ae7eb3dd1d1f4cc3ba18dde3172c456aaf82e027de9993b22bc6c5fe8",
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "checks_log_sha256": "64e513100710cdfef568eeb3d325525c5ae65e4ad5de271d29b20bd127dd8927",
+  "checks": 1,
+  "executions": [
+    {
+      "mode": "debug",
+      "command": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "run",
+        "psionic/examples/panda-euler.coax"
+      ],
+      "exit": 0,
+      "stdout_sha256": "af3e75656f057f3c1c4b1faeb8a42cdf822aeadae31fa4bef759b588101e193e",
+      "stderr_empty": true
+    },
+    {
+      "mode": "release",
+      "command": [
+        "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+        "run",
+        "psionic/examples/panda-euler.coax",
+        "--release"
+      ],
+      "exit": 0,
+      "stdout_sha256": "af3e75656f057f3c1c4b1faeb8a42cdf822aeadae31fa4bef759b588101e193e",
+      "stderr_empty": true
+    }
+  ],
+  "scope": "Only new example; all stdout matched independently prewritten original-operand Gaussian golden. No SDK, integration effect or neural execution; mathematical zero pose joint4=0 lies outside source soft range."
+}

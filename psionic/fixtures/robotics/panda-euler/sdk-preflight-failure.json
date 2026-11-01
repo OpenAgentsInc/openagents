@@ -1,0 +1,10 @@
+{
+  "schema": "psionic.panda-euler.sdk-preflight-failure.v1",
+  "passed": false,
+  "phase": "asset inventory before compilation/SDK loading",
+  "failure": "Mistakenly required85 declarations instead of85 unique paths",
+  "SDK_loads": 0,
+  "explicit_forwards": 0,
+  "steps": 0,
+  "frozen_profile_sha256": "461b8f11306223d93193be49f6f717e2dc39b4f2c6333de7ddb9c345ba1e4a5d"
+}

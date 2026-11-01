@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_euler_bad_target.coax:5:53: error[E0317]: argument 6 of 'peu_step' is [] Quantity(Metre, f64), given [] Quantity(PmSlideGravity, f64)
+   result:=peu_step(q[..],s[..],v[..],sv[..],u[..],bad[..],h[..],f[..],out[..]);
+                                                      ^
+1 error

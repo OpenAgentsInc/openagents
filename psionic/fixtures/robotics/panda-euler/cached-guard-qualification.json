@@ -1,0 +1,17 @@
+{
+  "schema": "psionic.panda-euler.cached-finite-guard.v1",
+  "passed": true,
+  "positive_rows": 3,
+  "finite_target_words": 81,
+  "new_negative_controls": 5,
+  "targets_sha256": "a6ae2fa733d6a8e56b3fb3607c65c0a42206a188355b7e292e5854c6cb6296ee",
+  "original_execution_record_sha256": "17a82d2ebc4d263c377c6e218ef29c8858c65ceb774a29f6bbb2e27a4da4f58c",
+  "current_guard_source_sha256": "2911917a39ec3e02af39c15b5d486342f43fca30556d46e058e41766eeca47fd",
+  "Gaussian_reexecuted": false,
+  "old_numeric_gate_repeated": false,
+  "source_receipts": {
+    "psionic/fixtures/robotics/panda-inverse-dynamics/sdk-reference.json": "27da6f9c18c45fd7f4572e630b42a0e80ddb56921679a34dfcdd51b16cdf89a4",
+    "psionic/fixtures/robotics/panda-actuation/sdk-reference.json": "2a973807ab8e9067f890e7f1a32f6fd80032eb847de1a417e37ba3ee2f8897da"
+  },
+  "source_M_and_Pa_artifacts_match_original_capture_hashes": true
+}

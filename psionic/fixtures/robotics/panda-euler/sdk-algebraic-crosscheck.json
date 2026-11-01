@@ -1,0 +1,39 @@
+{
+  "schema": "psionic.panda-euler.sdk-algebraic-crosscheck.v1",
+  "passed": true,
+  "source": "NEW3 SDKsteps; independently Gaussian-solve captured pre-step(M+hB), capturedsmoothforce and explicitvthenq integration, no Coax calls. q/v are directSDKstate, effectiveacceleration is derivedfromupdatedvelocity.",
+  "rows": [
+    {
+      "case": 3,
+      "max_q_error": 1.6940658945086007e-21,
+      "max_v_error": 6.938893903907228e-18,
+      "max_derived_effective_acceleration_error": 3.552713678800501e-15,
+      "instantaneous_vs_effective_max": 2.753518283950653
+    },
+    {
+      "case": 4,
+      "max_q_error": 0.0,
+      "max_v_error": 0.0,
+      "max_derived_effective_acceleration_error": 7.438494264988549e-15,
+      "instantaneous_vs_effective_max": 0.36398155244411745
+    },
+    {
+      "case": 5,
+      "max_q_error": 0.0,
+      "max_v_error": 0.0,
+      "max_derived_effective_acceleration_error": 2.842170943040401e-14,
+      "instantaneous_vs_effective_max": 7.311784121171563
+    }
+  ],
+  "frozen_budgets": {
+    "q_atol": 2e-12,
+    "v_atol": 2e-10,
+    "effective_atol": 1e-08,
+    "rtol": 0
+  },
+  "SDK_extra_calls": 0,
+  "old_Gaussian_contexts_repeated": false,
+  "record_sha256": "5f912685e3fb062eac8b7baa43a7f3aec314d70902bf5598d873b326e2a2e770",
+  "values_sha256": "59514bef266d6abbb75f570875b8b856afb7a8a5dffcaf2e1c0cd966064ca77d",
+  "independent_Gaussian_source_sha256": "2911917a39ec3e02af39c15b5d486342f43fca30556d46e058e41766eeca47fd"
+}

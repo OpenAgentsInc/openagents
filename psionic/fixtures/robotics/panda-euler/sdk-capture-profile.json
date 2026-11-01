@@ -1,0 +1,84 @@
+{
+  "schema": "psionic.panda-euler.sdk-capture-profile.v1",
+  "frozen_before_SDK_load": true,
+  "frozen_UTC": "2026-10-31T23:51:37.483822+00:00",
+  "experiment_sha256": "9f4eb555739fdc6ac2d61f02d68a1d432599078ce77eb792eba2ee68b1572262",
+  "case_sha256": "edb56d67dce42aa3beb61afceecc745d6a7251746216c1c54511c37ac34f0c41",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_euler_sdk_collect.c": "65b6aabe370e337c7e8812e9b977d09f6da16413928ca99956b13a41254c3a1a",
+    "psionic/tests/robotics/panda_euler_sdk_reference.py": "8856a4c3edef462d1046553a8f3b60915c62fbb3adaebd76b80b01f4a217056b",
+    "psionic/tests/robotics/panda_actuation_sdk_collect.c": "033278e1b18aaadb4dabbc2fb702d12acc1d44f3951ba43362a91f536129e324",
+    "psionic/tests/robotics/panda_actuation_sdk_reference.py": "7c860df8df491008d1bb0a39a41fe19d0cde7923ff96492db8b8f894f1f717e6",
+    "psionic/fixtures/robotics/panda-actuation/experiment.json": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e"
+  },
+  "selected_rows": [
+    3,
+    4,
+    5
+  ],
+  "source_disableflags": 0,
+  "capture_disableflags": 17,
+  "step_seconds": 0.002,
+  "row_shape": [
+    3,
+    154
+  ],
+  "layout": {
+    "mass9x9": [
+      0,
+      81
+    ],
+    "bias9": [
+      81,
+      90
+    ],
+    "passive9": [
+      90,
+      99
+    ],
+    "actuator9": [
+      99,
+      108
+    ],
+    "smooth_force9": [
+      108,
+      117
+    ],
+    "instantaneous_accel9": [
+      117,
+      126
+    ],
+    "post_q9": [
+      126,
+      135
+    ],
+    "post_v9": [
+      135,
+      144
+    ],
+    "derived_effective_accel9": [
+      144,
+      153
+    ],
+    "post_time": [
+      153,
+      154
+    ]
+  },
+  "checks": [
+    "original/modified coefficient/flag admission before all case forwards/steps",
+    "both9x12 robot/offscene mass blocks exactly zero",
+    "all SDK warning counters zero after each forward/step",
+    "exact source input unchanged before step",
+    "all poststate/reference observations finite; time==oneh",
+    "no post-forward; cached geometry not fresh after step"
+  ],
+  "work": {
+    "new_explicit_forwards": 3,
+    "new_steps": 3,
+    "NN": 0,
+    "render": 0,
+    "post_step_forward": 0
+  },
+  "scope": "Only new no-constraint Euler profile, not source contact/frictionloss/full episode/hardware/clock qualification."
+}

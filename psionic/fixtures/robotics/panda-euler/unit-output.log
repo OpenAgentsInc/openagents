@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_euler_bad_output.coax:5:71: error[E0317]: argument 9 of 'peu_step' is [] PeuOutput, given [] PmsOutput
+   result:=peu_step(q[..],s[..],v[..],sv[..],u[..],t[..],h[..],f[..],bad[..]);
+                                                                        ^
+1 error

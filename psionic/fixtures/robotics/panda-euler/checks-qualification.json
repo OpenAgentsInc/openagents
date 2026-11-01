@@ -1,0 +1,178 @@
+{
+  "schema": "psionic.panda-euler.checks.v1",
+  "passed": true,
+  "completion": "NEW Coax source checks/root mutation/type-refusal qualification only; original SDK/native evidence is separate",
+  "compiler": {
+    "path_at_execution": "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036"
+  },
+  "math": {
+    "root": "psionic/lib/robotics/panda-euler-math.coax",
+    "source_sha256": "67a8ede88255fef0989481c67f2017fef885eb775898dec7873c91a9b40d3f40",
+    "mutants": 47,
+    "killed": 47,
+    "survived": 0,
+    "waivers": 0,
+    "log_sha256": "97666fb7cb7ea3d729ca21d118f73d1505f2eb5433272b0a70fb1d66915eb8c8",
+    "unchanged_after_pass": true
+  },
+  "initial_wrapper": {
+    "mutants": 114,
+    "killed": 100,
+    "survived": 14,
+    "passed": false,
+    "log_sha256": "95f901a835276d6d96b531a30a011fd66d83a089247635e8aba6842383dcff52",
+    "source_refinement": "Removed duplicate rate-word admission immediately repeated by Pa; factored genuine applied/net caps into directly checked helper. Independent cached Gaussian assertions plus dense qualified-component residual observe assembly values; changed wrapper closes104/104 with no waiver."
+  },
+  "new_checks": {
+    "initial_Euler_groups": 9,
+    "initial_Euler_cases": 141,
+    "log_sha256": "477ffe0bf4ec35dd14d021a16f44914c469d468b5540761455a4c68dfb911c39",
+    "new_response_cases": 18,
+    "new_response_log_sha256": "7a27be554432d97658e45f472f7895e38dd68662c026593f026d102233148e4d",
+    "scope": "Only NEW Euler authored checks and new root mutation; mandatory imported VM baseline checks are retained by mutate, but no old mutation sites, native/model/SDK gates are repeated. Cached3 have independent original-operand Gaussian targets; moving residual is explicitly an owned-component consistency check, not external SDK step parity.",
+    "cached_algebraic_cases": 3,
+    "cached_algebraic_log_sha256": "737551a825148cc8bc100549f8e4e54b334041977bd7b43f354b2fbfd2e44fd1",
+    "moving_cross_component_residual_cases": 1,
+    "moving_cross_component_residual_log_sha256": "746b0b9020e5de381aa6d767b4522c76d321b4c77ad54c96bdd20589f38bc134",
+    "moving_residual_atol": 1e-10
+  },
+  "unit_refusals": [
+    {
+      "role": "angle",
+      "source": "psionic/tests/robotics/panda_euler_bad_angle.coax",
+      "source_sha256": "eb2c3e7c6f5770ac437bf206f895aa122b19035d5a642fb4810a630e4e062522",
+      "diagnostic": "E0317",
+      "log": "psionic/fixtures/robotics/panda-euler/unit-angle.log",
+      "log_sha256": "6eef64d69a08950b81ad9cb4d28a4e874f6aaabc03e329d0e6066fadff353360",
+      "initial_unrelated_diagnostic_log_sha256": "14a1acebec61e0a2ef1c63a74fff30b74b1cf287b81c6bfa597aded4f2b66ed8"
+    },
+    {
+      "role": "rate",
+      "source": "psionic/tests/robotics/panda_euler_bad_rate.coax",
+      "source_sha256": "c274f06d706b007efac891f0975c676fa59d655df988b76326526b39ba047e0b",
+      "diagnostic": "E0317",
+      "log": "psionic/fixtures/robotics/panda-euler/unit-rate.log",
+      "log_sha256": "3f8c18cc32def9fc55f007878947dd578bd075c0237ad5b6fb5b04f301bd53d7",
+      "initial_unrelated_diagnostic_log_sha256": "c345a080b09a4a577fbe9b9bdd91b6312a045770bf4f402e0a34b2bac23efc5c"
+    },
+    {
+      "role": "target",
+      "source": "psionic/tests/robotics/panda_euler_bad_target.coax",
+      "source_sha256": "f3f2bdeeca18171f1994cb90630f0322eb819d93a9cb5907128dfd26f933f6ee",
+      "diagnostic": "E0317",
+      "log": "psionic/fixtures/robotics/panda-euler/unit-target.log",
+      "log_sha256": "f04087277ef7e9521eb3a4a4747599a05278a9047c113b19d91c4458619b03c8",
+      "initial_unrelated_diagnostic_log_sha256": "6acbe4e7d39be06ef4caaec98444179b625456bd4951031646b18454dd222102"
+    },
+    {
+      "role": "output",
+      "source": "psionic/tests/robotics/panda_euler_bad_output.coax",
+      "source_sha256": "ca72184978b0871c6c9a2f1329785568382f078fec06923844179d23845af50c",
+      "diagnostic": "E0317",
+      "log": "psionic/fixtures/robotics/panda-euler/unit-output.log",
+      "log_sha256": "10e1161a2814242f73dae89e3b414515eb3f0e0e2f4f936dcc4b834bd2bd2914",
+      "initial_unrelated_diagnostic_log_sha256": "545cf9405a443f4ae6c5b0226762b5e218ea46757a5ca79c2a8fe80a44dd8412"
+    }
+  ],
+  "failures": [
+    {
+      "scope": "initial compile only, no numerical execution",
+      "detail": "Quantity += unsupported; replaced by typed x=x+increment before first successful checks",
+      "log_sha256": "d1cf78028156b3697720c7370a26dd8fdbbab2f5cc614cf0d4b9400edd33e822"
+    },
+    {
+      "scope": "initial unit fixtures only",
+      "detail": "Each intended E0317 also had unrelated unused-result E0323. Consume result then qualify changed fixture for exactly one E0317."
+    }
+  ],
+  "qualified_Euler_groups": 12,
+  "qualified_Euler_cases": 163,
+  "mutants_total": 151,
+  "mutants_survived": 0,
+  "equivalent_waivers": 0,
+  "source_sha256": {
+    "psionic/lib/robotics/panda-euler-fixtures.coax": "d552e8bf57b85b9b435f1b90a388b9303acc0f18323173ed6f5907e3f77c64f6",
+    "psionic/lib/robotics/panda-euler-math.coax": "67a8ede88255fef0989481c67f2017fef885eb775898dec7873c91a9b40d3f40",
+    "psionic/lib/robotics/panda-euler-types.coax": "84e3caab18d7e9066b258f258defd500176de246038daa3cb4bf5602adf11feb",
+    "psionic/lib/robotics/panda-euler.coax": "47a8df251ef5ff798eea61d087040411150f1f767c1cb502de2031a329be4893"
+  },
+  "executed_commands": [
+    [
+      "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+      "mutate",
+      "psionic/lib/robotics/panda-euler-math.coax",
+      "--root-only",
+      "--jobs",
+      "4"
+    ],
+    [
+      "/tmp/coax-spatial-fixture-fixes-reconstruction/coax",
+      "mutate",
+      "psionic/lib/robotics/panda-euler.coax",
+      "--root-only",
+      "--jobs",
+      "4"
+    ]
+  ],
+  "wrapper": {
+    "root": "psionic/lib/robotics/panda-euler.coax",
+    "source_sha256": "47a8df251ef5ff798eea61d087040411150f1f767c1cb502de2031a329be4893",
+    "production_suffix_sha256": "b17d5e86d54e1f594d527be7f721163b6bc81c15f3f8f0a3106281aedec32ce3",
+    "mutants": 104,
+    "killed": 104,
+    "survived": 0,
+    "waivers": 0,
+    "log_sha256": "dd67ee40c18ab2f3e991ea3f39a8c29be80140bd4d85e8d2b162ab81285cedf7",
+    "unchanged_after_pass": true
+  },
+  "unit_refusal_context_followup": "Four negative source witnesses and public argument/type declarations unchanged. Later changes add only positive checks/test-helper constants and directly qualify the force-admission helper; negative witnesses are carried without recompilation.",
+  "dependency_sources_at_final_qualification": {
+    "psionic/lib/robotics/panda-euler.coax": "47a8df251ef5ff798eea61d087040411150f1f767c1cb502de2031a329be4893",
+    "psionic/lib/robotics/panda-euler-math.coax": "67a8ede88255fef0989481c67f2017fef885eb775898dec7873c91a9b40d3f40",
+    "psionic/lib/robotics/panda-euler-fixtures.coax": "d552e8bf57b85b9b435f1b90a388b9303acc0f18323173ed6f5907e3f77c64f6",
+    "psionic/lib/robotics/panda-euler-types.coax": "84e3caab18d7e9066b258f258defd500176de246038daa3cb4bf5602adf11feb",
+    "psionic/lib/robotics/panda-smooth.coax": "99715c0a724199e464b67f4f47db7a6e0cc002ada55166c898b43e01b41a1ca2",
+    "psionic/lib/robotics/panda-smooth-fixtures.coax": "578663cd2d716a9faef982e680c41974d17f3974385a16747d210320fed93935",
+    "psionic/lib/robotics/panda-smooth-types.coax": "faba3149108fd931971ff269670250ae64f2b564b414cc162364c7aa6f18eec1",
+    "psionic/lib/robotics/panda-fluid.coax": "8f9054ea80d0ebeecebb80d7d7262fb82b6bb2c8a689c412eaf0a5ac4b76fa39",
+    "psionic/lib/robotics/panda-fluid-body.coax": "f0e29ce67269e08cdaf31a404622e33c397a0b40e3ebf29876b14be273d9b6f7",
+    "psionic/lib/robotics/panda-fluid-math.coax": "c1253ca63dc59844acd97477165c33d3ef8ba9174799428b44379330604e12cb",
+    "psionic/lib/robotics/panda-fluid-types.coax": "ef46794ed2297b0487e28506c3aa9b440b1c1cf527ae8f69ab48cf5b57fb90ea",
+    "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": "a054399cb437fb4bfa88ab691e4f098f1bab8329af631134c8acd399c3212095",
+    "psionic/lib/robotics/panda-inverse-dynamics-math.coax": "3bcb40973b5c7ed020322bb76f11c836416021d199862d96d1b1cf55dbd10997",
+    "psionic/lib/robotics/panda-inverse-dynamics-types.coax": "635b534b622f63fd185a852198895b15c4940172f7c0f3740024ce36b4333d8a",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-fingers-chain.coax": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+    "psionic/lib/robotics/panda-fingers-profile.coax": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+    "psionic/lib/robotics/panda-fingers-types.coax": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-actuation-math.coax": "509d6f7dce0fc238700b9dfcbca31234203692397cf28dd130f67f2d2d09c106",
+    "psionic/lib/robotics/panda-actuation-types.coax": "09c5bfc3cee7afd518519e93894546143ca0523d4c9b3a9a77cd47ccfb6f9023",
+    "psionic/lib/robotics/panda-inverse-dynamics.coax": "7eb8047eb124653073ca6a7223f071e79f36d197a09370ce7b7c2e51c0bd0dff",
+    "psionic/lib/robotics/panda-inverse-dynamics-force.coax": "99964a02044375639d1346174d9be37e71736c8e5ef67ce499b2baa846d69511",
+    "psionic/lib/robotics/panda-inverse-dynamics-check-fixtures.coax": "08f5603db29e1a6fa6b04c8745c01bd5e0dedd6d44d1b97395daa02c03060618",
+    "psionic/lib/robotics/panda-fluid-check-fixtures.coax": "4211371dd6d5ea584cf3b3f783ed77efd507b8a4d579f7b74045aa31838addda",
+    "psionic/lib/robotics/panda-actuation.coax": "dfccb6c0bd02d6e1294d3317d8108d7a780a25ea7d82a01c1e5ffd2b8a117111",
+    "psionic/lib/robotics/panda-actuation-fixtures.coax": "a5c2735594b81a5eafcf7cdd18b6a38b9c08341ddbd2d3d2d332334dcfc04f95",
+    "psionic/lib/robotics/panda-forward-dynamics.coax": "c6fa01c7b366425bcf2dd8bfc985135e136411e08d29d15587652522820298d0",
+    "psionic/lib/robotics/panda-forward-dynamics-net.coax": "37cc3cdc321bba9e5a46f4570f4bddf26ff99b2abbe31123d030818e9b634365",
+    "psionic/lib/robotics/panda-mass-solve.coax": "6d25a8837e7e3be1e922dd753a54f5dc40ab1f32697236069c8d00169c21221f",
+    "psionic/lib/robotics/panda-mass-solve-math.coax": "6748aab83899698dba5cf400c07ca44c1e69869c49ea9eddcc236ce1a8c0af78",
+    "psionic/lib/robotics/panda-mass-solve-check-fixtures.coax": "57299d5100b559e4aa64e29db9809458a2b25ce858afc4568cd71862c66d57d3",
+    "psionic/lib/robotics/panda-mass-solve-types.coax": "e9377ab6bdb6627bbcc47d071790f2bc2eeb9444711ea3cde6c80afa6c5c4a0e",
+    "psionic/lib/robotics/panda-mass-solve-basis.coax": "1b13f3d784293110920ac3bd250dd08ba472e9105a2cc312781ab750eb54ce56",
+    "psionic/lib/robotics/panda-mass-solve-captured-checks.coax": "b198ffc969a86c8f86981c0899c2141ad0eedc7fbebfa44806e41f0c6996b2b4"
+  }
+}

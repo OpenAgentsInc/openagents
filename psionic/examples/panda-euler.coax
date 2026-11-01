@@ -1,0 +1,27 @@
+#import "Basic";
+#load "../lib/robotics/panda-euler.coax";
+
+#test "Euler example signed display rounds both ties away from zero" {
+ #assert peu_example_micro(0)==0 && peu_example_micro(0.0000005)==1;
+ #assert peu_example_micro(-0.0000005)== -1 && peu_example_micro(-0.00000049)==0;
+}
+peu_example_micro :: (value:f64)->int {if value<0 {return -cast(int)floor(-value*1000000+0.5);}return cast(int)floor(value*1000000+0.5);}
+main :: () {
+// book:begin peu-step
+ q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Metre,f64);
+ v:[7]pfku.Quantity(PidAngularRate,f64);sv:[2]pfku.Quantity(PidLinearRate,f64);
+ arm:[7]pfku.Quantity(PmHingeGravity,f64);target:[2]pfku.Quantity(pfku.Metre,f64);
+ external_h:[7]pfku.Quantity(PmHingeGravity,f64);external_s:[2]pfku.Quantity(PmSlideGravity,f64);
+ target[0].value=0.02;target[1].value= -0.02;
+ out:[1]PeuOutput;
+ #assert peu_step(q[..],s[..],v[..],sv[..],arm[..],target[..],external_h[..],external_s[..],out[..])==PmsStatus.ok;
+ // Independent retained-operand Gaussian oracle, not an observed SDK step.
+ peu_cached_golden(out[0],0);
+ print("owned unconstrained Euler: 2000 microseconds\n");
+ for i:0..<7 {print("hinge %: q % urad, v % urad/s, a % urad/s2\n",i+1,peu_example_micro(out[0].angles[i].value),peu_example_micro(out[0].hinge_rates[i].value),peu_example_micro(out[0].effective.hinge[i].value));}
+ for i:0..<2 {print("slide %: q % um, v % um/s, a % um/s2\n",i+1,peu_example_micro(out[0].slides[i].value),peu_example_micro(out[0].slide_rates[i].value),peu_example_micro(out[0].effective.slide[i].value));}
+ print("actuator clips: % control, % force\n",out[0].control_clipped,out[0].force_clipped);
+// book:end peu-step
+ // Numerical/geometric zero pose; joint4=0 is outside its physical soft range.
+ // No constraints, object dynamics, motor effect, clock or hardware claim.
+}

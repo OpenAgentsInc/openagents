@@ -1,0 +1,368 @@
+{
+  "schema": "psionic.panda-euler.experiment.v1",
+  "frozen_UTC": "2026-10-31T23:42:04.953598+00:00",
+  "frozen_before_implementation_and_comparison": true,
+  "source_SDK_commit": "a209134315dda126a714529bfa80f7478902644d",
+  "scene_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "SDK_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "step_seconds": 0.002,
+  "damping": [
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.1,
+    0.01,
+    0.01,
+    100,
+    100
+  ],
+  "cases": [
+    {
+      "name": "cached-force-cap-zero-q-exact",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_kind": "algebraic from original Pa row 12 and PID M/bias row0, not observed SDK step"
+    },
+    {
+      "name": "cached-force-cap-zero-q-inside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.019999999999999997,
+        -0.019999999999999997
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_kind": "algebraic from original Pa row 13 and PID M/bias row0, not observed SDK step"
+    },
+    {
+      "name": "cached-force-cap-zero-q-outside",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.020000000000000004,
+        -0.020000000000000004
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_kind": "algebraic from original Pa row 14 and PID M/bias row0, not observed SDK step"
+    },
+    {
+      "name": "SDK-static-gravity",
+      "q": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.02,
+        -0.02
+      ],
+      "v": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "ctrl": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "external": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "SDK-moving-external",
+      "q": [
+        0,
+        0.19634954084936207,
+        0,
+        -2.617993877991494,
+        0,
+        2.941592653589793,
+        0.7853981633974483,
+        0.013,
+        -0.027
+      ],
+      "v": [
+        0.7,
+        -0.4,
+        0.3,
+        -0.6,
+        0.5,
+        -0.2,
+        0.1,
+        0.03,
+        -0.02
+      ],
+      "ctrl": [
+        7,
+        -9,
+        11,
+        -13,
+        15,
+        -3,
+        4,
+        0.013,
+        -0.027
+      ],
+      "external": [
+        0.5,
+        -0.6,
+        0.7,
+        -0.8,
+        0.9,
+        -0.1,
+        0.2,
+        0.3,
+        -0.4
+      ]
+    },
+    {
+      "name": "SDK-moving-saturated",
+      "q": [
+        0.3,
+        -0.4,
+        0.5,
+        -1.6,
+        -0.7,
+        1.2,
+        0.9,
+        0.017,
+        -0.029
+      ],
+      "v": [
+        -0.8,
+        0.6,
+        -0.4,
+        0.2,
+        -0.7,
+        0.5,
+        -0.3,
+        0.7,
+        -0.6
+      ],
+      "ctrl": [
+        100,
+        -100,
+        100,
+        -100,
+        100,
+        -20,
+        20,
+        0.05,
+        -0.05
+      ],
+      "external": [
+        -0.2,
+        0.4,
+        -0.6,
+        0.8,
+        -1,
+        0.3,
+        -0.5,
+        -0.7,
+        0.9
+      ]
+    }
+  ],
+  "cases_f64_sha256": "edb56d67dce42aa3beb61afceecc745d6a7251746216c1c54511c37ac34f0c41",
+  "input_shape": [
+    6,
+    36
+  ],
+  "input_order": "q9,v9,ctrl9,external9; little-endian F64",
+  "cached_rows": [
+    0,
+    1,
+    2
+  ],
+  "new_SDK_rows": [
+    3,
+    4,
+    5
+  ],
+  "SDK_profile": {
+    "original_disableflags": 0,
+    "selected_disableflags": 17,
+    "disabled": [
+      "CONSTRAINT",
+      "CONTACT"
+    ],
+    "required_enabled": [
+      "EULERDAMP",
+      "PASSIVE",
+      "GRAVITY",
+      "ACTUATION",
+      "CLAMPCTRL"
+    ],
+    "steps": 3,
+    "authored_pre_forwards": 3,
+    "render": 0,
+    "neural": 0,
+    "post_step_forward": 0
+  },
+  "numeric_box": {
+    "q_hinge": 100,
+    "q_slide": 1,
+    "v_hinge": 20,
+    "v_slide": 2,
+    "control_hinge": 10000,
+    "control_finger": 1,
+    "external": 10000,
+    "applied": 10000,
+    "net": 10000,
+    "all_inclusive": true,
+    "finite": true,
+    "post_state_same_box": true
+  },
+  "typed_API": "peu_step(q7,s2,v7,sv2,arm_control7,finger_target2,external_hinge7,external_slide2,output1)->PmsStatus; peu_step_raw(q9,v9,ctrl9,external9,output1)",
+  "output_order": "angles7,slides2,hinge_rates7,slide_rates2,effective.hinge7,effective.slide2,control_clipped:int,force_clipped:int",
+  "equation": "A=M+h*diag(B); r=((actuator+external)+fullpassive)-bias; a_eff=solve(A,r); v_next=v+h*a_eff; q_next=q+h*v_next",
+  "budgets": {
+    "q_absolute": 2e-12,
+    "v_absolute": 2e-10,
+    "effective_acceleration_absolute": 1e-08,
+    "relative": 0
+  },
+  "refusal_order": "all shapes, external, model q/v, control, applied/net, effective metric solve, final q then v; no output publication until complete",
+  "scope": "Pure fixed-source unconstrained one-step map; no time/clock, contact/frictionloss/limit constraints, generic model import, hardware or compiler boundedness claim"
+}

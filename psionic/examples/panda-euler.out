@@ -1,0 +1,11 @@
+owned unconstrained Euler: 2000 microseconds
+hinge 1: q 0 urad, v 0 urad/s, a 16 urad/s2
+hinge 2: q 4 urad, v 2246 urad/s, a 1122766 urad/s2
+hinge 3: q 0 urad, v 0 urad/s, a 53 urad/s2
+hinge 4: q 8 urad, v 4164 urad/s, a 2082240 urad/s2
+hinge 5: q 0 urad, v 0 urad/s, a 116 urad/s2
+hinge 6: q -8 urad, v -4173 urad/s, a -2086395 urad/s2
+hinge 7: q 0 urad, v 0 urad/s, a 40 urad/s2
+slide 1: q 61 um, v 30564 um/s, a 15282008 um/s2
+slide 2: q -61 um, v -30505 um/s, a -15252343 um/s2
+actuator clips: 0 control, 0 force

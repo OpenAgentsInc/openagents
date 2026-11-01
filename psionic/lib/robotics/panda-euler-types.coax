@@ -1,0 +1,8 @@
+// Fixed-source unconstrained Euler map. No clock, contacts or model importer.
+#load "panda-smooth.coax";
+PeuOutput :: struct {
+ angles:[7]pfku.Quantity(pfku.Radian,f64);slides:[2]pfku.Quantity(pfku.Metre,f64);
+ hinge_rates:[7]pfku.Quantity(PidAngularRate,f64);slide_rates:[2]pfku.Quantity(PidLinearRate,f64);
+ effective:PmsOutput;control_clipped:int;force_clipped:int;
+}
+PeuResult :: struct {status:PmsStatus;output:PeuOutput;}

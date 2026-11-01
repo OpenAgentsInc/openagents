@@ -1,0 +1,17 @@
+{
+  "schema": "psionic.panda-euler.example-reference.v1",
+  "prewritten_before_example_implementation": true,
+  "reference_kind": "Independent Gaussian solve of retained SDK operands; not an observed SDK step",
+  "reference_record_sha256": "17a82d2ebc4d263c377c6e218ef29c8858c65ceb774a29f6bbb2e27a4da4f58c",
+  "target_sha256": "a6ae2fa733d6a8e56b3fb3607c65c0a42206a188355b7e292e5854c6cb6296ee",
+  "case": 0,
+  "golden_sha256": "af3e75656f057f3c1c4b1faeb8a42cdf822aeadae31fa4bef759b588101e193e",
+  "rounding": "signed half away from zero after scaling1e6",
+  "minimum_rounding_margin": 0.008937890952786631,
+  "compiler_output_used_for_golden": false,
+  "minimum_rounding_margin_by_field": {
+    "q": 0.008937890952786631,
+    "v": 0.01957796127680922,
+    "effective_acceleration": 0.02726180339232087
+  }
+}

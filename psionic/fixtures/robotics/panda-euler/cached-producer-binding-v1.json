@@ -1,0 +1,10 @@
+{
+  "executed_original_producer_reconstructed_by_only_documented_guard_edits_sha256": "11fbff1cce5009b23842026b32ba58e8e4e0661c2ce4ea80850e7130d09ddb21",
+  "Gaussian_function_byte_identical_sha256": "8edb8286291de024a53656d6000d93de1c062dae66926df3c295f327e06b23e7",
+  "numeric_kernel_change": "None: only complete finite target/residual guards before the same residual maximum and serialization.",
+  "schema": "psionic.panda-euler.cached-producer-binding.v1",
+  "passed": true,
+  "guard_receipt_sha256": "bd54968e85ff80f67f05148f13ce1c16caa3534c3645ceffca233214d3ee5bfb",
+  "original_execution_record_sha256": "17a82d2ebc4d263c377c6e218ef29c8858c65ceb774a29f6bbb2e27a4da4f58c",
+  "old_numerics_repeated": false
+}

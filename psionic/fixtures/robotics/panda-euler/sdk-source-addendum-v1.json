@@ -1,0 +1,13 @@
+{
+  "schema": "psionic.panda-euler.sdk-source-addendum.v1",
+  "frozen_before_any_SDK_load": true,
+  "UTC": "2026-10-31T23:52:32.928327+00:00",
+  "original_profile_sha256": "461b8f11306223d93193be49f6f717e2dc39b4f2c6333de7ddb9c345ba1e4a5d",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_euler_sdk_reference.py": "c6de6b3f19eb348992b3ef4ffb5fe271cc88cabec9cd517807c04cbe5c58f6b4"
+  },
+  "reason": "Before compilation or SDK loading, distinguish86XML declarations from85unique asset paths (two distinct files also share hashes, so deduplication is bypath, not content). Preserve every unique file identity and the exact authenticatedXML that binds all declarations. No cases/budgets/Ccollector/math changed.",
+  "first_failed_preflight_sha256": "0654c771d5ded45b3fe0598aa157fb4ce10cf390e8e00693bb180f28e5021782",
+  "asset_declarations": 86,
+  "unique_paths": 85
+}
