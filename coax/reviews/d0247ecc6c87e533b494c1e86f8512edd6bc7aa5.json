@@ -1,0 +1,22 @@
+{
+  "kind": 1111,
+  "created_at": 1793554751,
+  "content": "Independent review of deliberate B1 streamed-store profile/invariant transition: old mode13/20 expectations, caller-local wide source fixture, fixed per-leaf/pair/effect/path/work limits, two private8-field shapes, exact layout/prefix validation, frozen-graph assumptions, first-error stages and atomic public report count. Owned patchc259fb0187442af555570a650a46bbb912124ee8df480ce7a36936841f42b833 preserved through rebase. Corrective check scoping/final controls are included in the reviewed integrated descendant. Final integrated code reviewed as model2b5523fce0ba7428282106b3635a93616a4631b6c78dbfc04c9b7b2eb29481aa, seed2f4a3aee625c314044aa397ad6ad2d4cfc1e8afdf5e83cea1ecb9e9c5b300774, fingerprint2afe7bcee85579256696e6e1d2ff55ad362174eb810a211b4c814d78f5a55c81. Actual frozen H a7eebcd5 qualification19d9faa61733cc549426643855a078c2116486093bf4212126b378c6a1083699 passes167 normal statements, actual supported checker merge9447/9447 killed/0 survivors; final-seven75630b42c384d68f6a5f7b8e8c15152ee7e3482e5b12459ac0c034df78f515c1 passes all7 with actual compiler6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648 and unchanged17-file package. J a4440424 continuityc91be5093e7279817fb753387822cef4603a77ac1c988f4a1da1db36aca57efb independently verified: five complete patches byte-identical,236 repository consumer pins and50 external pins unchanged. Actual H receipts remain H; no standalone intermediate-parent qualification is claimed. Historical failed F89/G2 and unqualified cost candidates retain their outcomes. Code review only; page run remains separate and unapproved by this event. Authorship disclosure: reviewer authored prior poison-fixture refinement and private inlining examples/planning; Root independently reviewed that test component0c0b920dec66fa749121c13160518fec21e090bc7708b9fa50a31939cd10d231. Reviewer authored no production/cache algorithm or actual final H controls.",
+  "tags": [
+    [
+      "commit",
+      "d0247ecc6c87e533b494c1e86f8512edd6bc7aa5"
+    ],
+    [
+      "t",
+      "coax-review"
+    ],
+    [
+      "review",
+      "approve"
+    ]
+  ],
+  "pubkey": "e2f21dd30b64bb58d41f66a0434033e1e62971a866e1e90ca9e45334f57469c8",
+  "id": "47b0f614776cce669ea3b6b349a508a849a8668f095084b3a9f944abfaf6717e",
+  "sig": "36bb509602730858cc361a4bb85c91f1411f759625e9d3498a7a01e594a74d3d7270a2ea383623eb56b65bd83cf77c61df820a70a1681972e9970e46ed7828f7"
+}

@@ -1,0 +1,260 @@
+{
+  "record_type": "documentation_summary_of_existing_retained_evidence",
+  "scope": "Compiler gates passed; four page goldens remain failed and unapproved. This document performs no new test, comparison, qualification or proof run.",
+  "qualified_source": {
+    "revision": "a7eebcd5c46565549534aa8f3fd566066e609ddb",
+    "checker_sha256": "2b5523fce0ba7428282106b3635a93616a4631b6c78dbfc04c9b7b2eb29481aa",
+    "fingerprint": "2afe7bcee85579256696e6e1d2ff55ad362174eb810a211b4c814d78f5a55c81",
+    "actual_installed_compiler_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648"
+  },
+  "measured_cost": {
+    "producer_scope": "Matching H development image, distinct from installed normal-qualified image",
+    "producer_sha256": "e89d29f728bed640c3c639ddbdafe736a5321d70fa21d20693ca4a0d6fc01274",
+    "work": 1035932,
+    "unchanged_work_limit": 1048576,
+    "headroom": 12644,
+    "queries": 14600,
+    "origins": 8271,
+    "depth": 0,
+    "compiler_exited_zero": true,
+    "transport_clean": true,
+    "inputs_unchanged": true,
+    "receipt": {
+      "path": "final-controls/cost-v1/process.json",
+      "sha256": "46a82bb992ef91d62f8cff5416c6fd1388cc391aa2a3e286f3f6ad8ab6abcb9e"
+    }
+  },
+  "compiler_gates": {
+    "normal_steps": 167,
+    "normal_outcome": "passed",
+    "normal_receipt": {
+      "path": "final-controls-qualification/normal167/qualification.json",
+      "sha256": "19d9faa61733cc549426643855a078c2116486093bf4212126b378c6a1083699"
+    },
+    "checker_mutation": {
+      "total": 9447,
+      "killed": 9447,
+      "survivors": 0,
+      "fresh_shards": 8,
+      "actual_supported_helper_merge": true,
+      "equivalent_marks": false
+    },
+    "package_artifacts": 17,
+    "seven_outcome": "passed",
+    "seven_receipt": {
+      "path": "final-controls-qualification/final-seven/qualification.json",
+      "sha256": "75630b42c384d68f6a5f7b8e8c15152ee7e3482e5b12459ac0c034df78f515c1"
+    },
+    "seven_counts": {
+      "b1-source": {
+        "cases": 34
+      },
+      "a1-source": {
+        "cases": 44
+      },
+      "b1-native": {
+        "cases_per_profile": 21,
+        "profiles": 3
+      },
+      "legacy-checker": {
+        "tests_run": 10
+      },
+      "systemone": {
+        "profiles": 3,
+        "tests_run": 3,
+        "digits_per_profile": 129,
+        "stderr_per_profile": 45
+      },
+      "memo1000": {
+        "independent_procedures": 1000
+      },
+      "diagnostics-json": {
+        "tests_run": 8
+      }
+    },
+    "root_core_readback": {
+      "path": "final-controls-qualification/root-core-readback.json",
+      "sha256": "8798046eaf9001802fad1a9979da64c83c4cb5c9104c8fed3935e6a226b67aad"
+    }
+  },
+  "main_continuity": {
+    "page_revision": "a4440424898b7a8f53f42498aeb76e3a47ae5340",
+    "fingerprint": "2afe7bcee85579256696e6e1d2ff55ad362174eb810a211b4c814d78f5a55c81",
+    "owned_patch_count": 5,
+    "unchanged_final7_repo_pins": 236,
+    "unchanged_external_final7_pins": 50,
+    "receipt": {
+      "path": "final-controls-qualification/main-integration/continuity.json",
+      "sha256": "c91be5093e7279817fb753387822cef4603a77ac1c988f4a1da1db36aca57efb"
+    },
+    "later_integration_revision": "fec729694e02275dfa5938856c6ca72edf487c46",
+    "later_receipt": {
+      "path": "final-controls-qualification/main-integration/final-rebase-continuity.json",
+      "sha256": "1997eeb59b7e8c6d9db2c97b33e3db83641714be7b17135520ccd5ff577dec9c"
+    },
+    "H_receipts_retagged": false
+  },
+  "page_check": {
+    "revision": "a4440424898b7a8f53f42498aeb76e3a47ae5340",
+    "actual_producer_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648",
+    "selected_page_names": 63,
+    "printed_lane_lines": 62,
+    "build_seconds": 392.9,
+    "walk_seconds": 97.6,
+    "command_exit_code": 1,
+    "golden_gate_passed": false,
+    "unapproved_golden_failures": [
+      "haunted-house",
+      "hecates-cemetery",
+      "coax-changelog",
+      "coax-changelog-phone"
+    ],
+    "other_failures": 0,
+    "images_approved": false,
+    "images_or_goldens_changed": false,
+    "process_receipt": {
+      "path": "final-controls-page-check/main-integration/run-a4440424898b7a8f53f42498aeb76e3a47ae5340/process.json",
+      "sha256": "1193a0b19463da673ed1f8d38e0c1cec9b2ae38fa2b967f9651a2d6a1e23a2bb"
+    },
+    "render_count_correction": {
+      "path": "final-controls-page-check/main-integration/run-a4440424898b7a8f53f42498aeb76e3a47ae5340/render-count-correction.json",
+      "sha256": "3b10926572e19c3adb6be2e44b014b89317e95cb721e6f7deb78a6bf9b7b8091"
+    }
+  },
+  "controlled_baseline_comparison": {
+    "baseline_revision": "d7c6d5fb26d6aa06f00719dec10c40aad3341252",
+    "baseline_checker_sha256": "4fc4444c8d0c15c9642395b11fad56f37a9c4443b89f5fe5c3f9e0ae0de0f1e9",
+    "baseline_image_sha256": "b1af4a5b9b3bada2f44cecb376d9952dffd13b1c10228d88c4a6fe5b2a2bbada",
+    "baseline_is_normal_qualified": false,
+    "matching_native_version": "0.47",
+    "mechanical_generator_sha256": "6018024e023446d34e0bdd4b74926b9d4edc982e5f5021da430070a94067c648",
+    "generator_qualification_transferred_to_baseline": false,
+    "primary_wasm_exact": [
+      {
+        "job": "realm",
+        "sha256": "f68b7fcddccd363dc1a9618ee1ad1af9b75667ad94a06578f8c5b8ba94e31084",
+        "exact_bytes_equal": true
+      },
+      {
+        "job": "villa",
+        "sha256": "1fd2a42d2892b8a7e2097e24b9d0efdf066ceb2da608098c18f5a77c3d08cd9e",
+        "exact_bytes_equal": true
+      },
+      {
+        "job": "changelog",
+        "sha256": "b54cde9c4fcbeccbe8e751108c82d22d79cac86c86a10e56f503aa470283d127",
+        "exact_bytes_equal": true
+      }
+    ],
+    "raw_WGSL": [
+      {
+        "job": "realm",
+        "candidate_sha256": "5c862b8996fd6e6b75885d576adc7a808bd7b02e232a75ac90860c30c15b0bc5",
+        "baseline_sha256": "8c8606df588fa04d94f69f1de133df95d2a438b666e871054985037b1a0ba02f",
+        "outcome": "different",
+        "baseline_is_candidate_plus_one_terminal_LF": true
+      },
+      {
+        "job": "villa",
+        "candidate_sha256": "19dc016a55ed1a5bee67988bdae3212cdba89a6a5a8c7db88f07ec0c9dacb460",
+        "baseline_sha256": "d5fdf625d43a47415349be325451fefa315e79585bef14403949c3d67349b894",
+        "outcome": "different",
+        "baseline_is_candidate_plus_one_terminal_LF": true
+      },
+      {
+        "job": "changelog",
+        "candidate_sha256": "89c5f0c35f396cb9daa661dc20de0f849f8909c5bf3fd514bd7796aaeaf0b6c4",
+        "baseline_sha256": "aeb103398da7b2d8c1b80f58167fd715174602479eeff81fbf779bbba1f7ce60",
+        "outcome": "different",
+        "baseline_is_candidate_plus_one_terminal_LF": true
+      },
+      {
+        "job": "particles",
+        "candidate_sha256": "4bf3486e6923dbd7b22daf44a61575a720ae7daf7a8e2df446bb1c882ecb6c05",
+        "baseline_sha256": "784524f79b5283721ad0bfcbfa6af1a2a1653d712f7bb669a415a955be760bd3",
+        "outcome": "different",
+        "baseline_is_candidate_plus_one_terminal_LF": true
+      }
+    ],
+    "raw_WGSL_exact_count": 0,
+    "raw_WGSL_one_terminal_LF_difference_count": 4,
+    "normalization_credited": false,
+    "served_shader_identity_claim": false,
+    "baseline_browser_or_screenshot_claim": false,
+    "visual_cause_proof_claim": false,
+    "auxiliary_voice_baseline_parity_claim": false,
+    "summary": {
+      "path": "final-controls-page-check/main-integration/baseline-comparison/summary.json",
+      "sha256": "8e0e5efe61f1ae89533dc1def4453919661f803d56300872925d3c6154507eeb"
+    },
+    "independent_review": {
+      "path": "final-controls-page-check/main-integration/visual-comparison-review/review.json",
+      "sha256": "ae4e480010bb9ea5c9b75a8127c121dcdd84027886d1bdf9bea59f23a55d69dd"
+    }
+  },
+  "source_reviews": {
+    "H_controls": {
+      "path": "final-controls-review/H-2b5523fc/review.json",
+      "sha256": "6358d6d09bda59fcfaf0fff2064a255c9422452a8b8ffea8695931a7bcab217a"
+    },
+    "normal_plan": {
+      "path": "final-controls-qualification/normal-plan-v4/root-preparation-review.json",
+      "sha256": "618d26b96113a485a1e1fbe15b36e6a7207f6e136779171be7fecc4e2817957d"
+    },
+    "final_seven_preparation": {
+      "path": "final-controls-qualification/prep/root-preparation-review.json",
+      "sha256": "2a88b9d4c381488c30bece9fb84b084291615b8896796f12ba4ef6b9478fee44"
+    }
+  },
+  "historical_stopped_epochs": [
+    {
+      "epoch": "E",
+      "observation": "Earlier165/9334/seven core passes remain historical; required page build stopped before browser at Chat E0381, also observed on the exact old parent.",
+      "later_H_evidence_not_retagged": true
+    },
+    {
+      "epoch": "F",
+      "observation": "Stopped first checker shard:89survivors, including unannotated fixture-helper sites.",
+      "receipt": {
+        "path": "final-stream-qualification/normal165-observation/failure.json",
+        "sha256": "fcc9fba89e0b5b31255fa2a18ce403a6bae3bc4d49018eaf2399adc987904f2a"
+      }
+    },
+    {
+      "epoch": "G",
+      "observation": "Stopped checker shard6:2survivors; no later merge/install.",
+      "receipt": {
+        "path": "mutation-fix-qualification/normal165-observation/failure.json",
+        "sha256": "94f9422e949d39bd3567079fb6ec1edc66d04865ffa0271759309ca9fdd274df"
+      }
+    }
+  ],
+  "archive": {
+    "file": "proof.tar.xz",
+    "sha256": "d4bef08d5b6d2aa421749650152493e10acbadc0883ddd354847e8e522ea3c29",
+    "bytes": 11710788,
+    "members_verified": 6881,
+    "manifest_file": "manifest.json",
+    "manifest_sha256": "c0843a35b36b582ac24194370852d3346e406782a678db3b925725798c3f03b1",
+    "assembly_outcome": "assembled-integrity-verified",
+    "all_input_inventories_stable": true,
+    "member_readback_verified": true,
+    "elapsed_seconds": 57.415012957993895,
+    "path_note": "Receipt paths below name original evidence scopes. manifest.json maps their source_path to the archive member; retained receipts keep their original source/producer/revision."
+  },
+  "limitations": [
+    "Measured compiler headroom is not a future growth guarantee.",
+    "Existing A1/B1 finite profiles remain; B2/B3 and fullchapter30 R2/R11/time work are separate.",
+    "No overall page-pass, image-approval or visual-cause claim."
+  ],
+  "signed_reviews": {
+    "code_commits": [
+      "47e8768cb4a2c8d3c8c060134653d0c4421b01cf",
+      "a3dd196c316c7d3dff577c991f9e300ec14e23f7"
+    ],
+    "record": {
+      "path": "final-controls-review/final-main-rebase/local-signing.json",
+      "sha256": "f90574ead9541145831199cc422ab20d27964efdd756d71d5677bcffae54fb63"
+    }
+  }
+}
