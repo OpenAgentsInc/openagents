@@ -241,7 +241,7 @@ ky_wallet_read :: (content:string)->KyWallet {
       if t!=JSON_ARRAY {return ky_wfail(KyCode.paths);}
       v:=json_next(j[..]);
       while v!=JSON_ARRAY_END {
-        if v!=JSON_OBJECT || w[0].npaths==KY_PATHS {return ky_wfail(KyCode.paths);}
+        if w[0].npaths==KY_PATHS {return ky_wfail(KyCode.paths);}   // a non-object never reads as a path
         c:=ky_path(j[..],w[0].paths[w[0].npaths..<w[0].npaths+1]);
         if c!=KyCode.ok {return KyWallet.{code=c};}
         w[0].npaths+=1;v=json_next(j[..]);
@@ -355,7 +355,7 @@ ky_admit :: (w:KyWallet,e:[]KyEnrollment,ind:[]KyIndependence,sov:bool,min_lock:
   }
   if w.npaths>2 {r.code=KyCode.not_built;return r;}
   d:[4096]u8;n:=ky_descriptor(w,e,d[..]);
-  r.code=KyCode.descriptor;if n<0 || cast(string)d[0..<n]!=w.descriptor {return r;}
+  r.code=KyCode.descriptor;if n==-1 || cast(string)d[0..<n]!=w.descriptor {return r;}
   r.code=ky_compose(w,e,ind,sov,min_lock,height);
   return r;
 }
@@ -503,12 +503,13 @@ ky_script :: (w:KyWallet,branch:[]KyExtKey,index:int)->KyScript {
     while at>0 && ky_less(c.key,keys[at-1]) {keys[at]=keys[at-1];at-=1;}
     keys[at]=c.key;
   }
-  ws:[3+34*KY_KEYS]u8;n:=0;
-  ws[0]=cast(u8)(0x50+p.threshold);n=1;
+  ws:[3+34*KY_KEYS]u8;
+  ws[0]=cast(u8)(0x50+p.threshold);n:=1;
   for i:0..<w.nenroll {ws[n]=0x21;for k:0..<33 {ws[n+1+k]=keys[i][k];}n+=34;}
   ws[n]=cast(u8)(0x50+w.nenroll);ws[n+1]=0xae;n+=2;
-  r.b[0]=0;r.b[1]=0x20;
-  if sha256_hash_checked(ws[0..<n],r.b[2..<34],false)!=SHA_OK {return KyScript.{};}
+  r.b[1]=0x20;                                            // r.b[0] is OP_0
+  h:[32]u8;#assert sha256_hash_checked(ws[0..<n],h[..],false)==SHA_OK;
+  for k:0..<32 {r.b[2+k]=h[k];}
   r.n=34;return r;
 }
 ```
@@ -547,7 +548,7 @@ ky_request_read :: (content:string)->KyRequest {
       v:=json_next(j[..]);
       while v!=JSON_ARRAY_END {
         n:=r[0].nout;
-        if v!=JSON_OBJECT || n==KY_IO || !ky_stated(j[..],r[0].out[n..<n+1]) {return ky_rfail(KyCode.outputs);}
+        if n==KY_IO || !ky_stated(j[..],r[0].out[n..<n+1]) {return ky_rfail(KyCode.outputs);}   // a non-object never reads as one
         r[0].nout+=1;v=json_next(j[..]);
       }
     }
@@ -583,7 +584,7 @@ ky_psbt_read :: (b:[]u8)->KyPsbt {
   if ni.value<1 || ni.value>KY_IO {return bad;}   // a malformed size reads as 0
   i:=ni.next;
   for k:0..<ni.value {
-    if i+41>end || b[i+36]!=0 {return bad;}
+    if ky_at(b,i+36)!=0 {return bad;}                      // past the end, the outputs fail to read
     i+=41;
   }
   no:=ky_var(b,i);
@@ -621,7 +622,8 @@ ky_sign_check :: (w:KyWallet,wallet_digest:[32]u8,all:KyScripts,r:KyRequest,psbt
   if now>=r.deadline {return KyCode.deadline;}
   if now>=w.expires_at {return KyCode.times;}
   d:[32]u8;
-  if sha256_hash_checked(psbt,d[..],false)!=SHA_OK || !ky_digest_is(r.psbt,d) {return KyCode.psbt;}
+  #assert sha256_hash_checked(psbt,d[..],false)==SHA_OK;
+  if !ky_digest_is(r.psbt,d) {return KyCode.psbt;}
   t:=ky_psbt_read(psbt);
   if t.code!=KyCode.ok {return t.code;}
   if w.npaths!=1 {return KyCode.not_built;}               // miniscript spends
