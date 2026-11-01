@@ -8,7 +8,7 @@
 namespace coax {
 
 #ifndef COAX_BOOTSTRAP_IMPORTER
-// Tree code v2, or v3 for the additive fine-derivative/helper operation registry.
+// Tree code v2, or v3 for fine/helper operations and array image queries.
 struct ShaderTree {
   const File *file;
   std::vector<uint32_t> words, types;   // types: the type table, encoded
@@ -22,7 +22,8 @@ struct ShaderTree {
   uint32_t locals = 0;
   uint32_t derivative_profile = 0;  // observed generic/fine calls, not an instruction policy
   uint32_t control_profile = 0;     // observed legacy kill/helper demotion
-  uint32_t tree_version() const { return ((derivative_profile | control_profile) & 2u) ? 3u : 2u; }
+  bool array_query = false;
+  uint32_t tree_version() const { return (((derivative_profile | control_profile) & 2u) || array_query) ? 3u : 2u; }
   bool ok = true;
 
   void refuse(Loc loc, const std::string &what) {
@@ -194,6 +195,10 @@ struct ShaderTree {
           if (g >= 15 && g <= 17) derivative_profile |= 2;
           if (g == 1) control_profile |= 1;
           if (g == 18) control_profile |= 2;
+          if ((g == 10 || g == 11) && e->args.count > 0) {
+            Type a = e->args[0]->type;
+            if (a->kind == TypeKind::struct_ && a->struct_decl && name(a->struct_decl->name) == "Tex2DArray") array_query = true;
+          }
           words.push_back(33); words.push_back(g); words.push_back(type(e->type, e->loc)); args(e->args); return;
         }
         words.push_back(22); words.push_back(proc_index(e->proc)); args(e->args);

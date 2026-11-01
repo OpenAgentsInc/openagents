@@ -75,7 +75,7 @@ def main():
         if extensions.count("SPV_EXT_demote_to_helper_invocation") != 1:
             raise RuntimeError("helper extension missing")
         lines, ops, caps, _ = emit(args.coax, directory, "array-size", "--fragment", "reflection_array_size_fs")
-        require(lines, ["tree-version 2", "resource 0 2 1 0 2 layers", "derivatives 1 0", "control 1 0"])
+        require(lines, ["tree-version 3", "resource 0 2 1 0 2 layers", "derivatives 1 0", "control 1 0"])
         if 103 not in ops or caps.count(50) != 1:
             raise RuntimeError("array dimension aliases lost image-query lowering")
         bindings = directory / "array.bindings"

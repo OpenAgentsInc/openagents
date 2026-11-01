@@ -10,8 +10,8 @@ record layout and GPU ids1–14. Tree3 uses that layout and adds:
 | 17 | `gpu_fwidth_fine(f32) -> f32` | Sum of absolute fine derivatives |
 | 18 | `gpu_demote_helper()` | Suppress publication; retain helper execution |
 
-The compiler chooses tree3 only when one of these operations is reachable
-from an emitted entry. Both lowerers accept tree2/tree3 and refuse the new
+The compiler chooses tree3 when one of these operations or an array image
+dimension query is reachable from an emitted entry. Both lowerers accept tree2/tree3 and refuse the new
 registry under tree2. The SPIR-V lowerer emits opcodes210–212 with capability51
 for fine derivatives, and opcode5380 with capability5379 and
 `SPV_EXT_demote_to_helper_invocation` for helper conversion. Unsupported device
@@ -27,7 +27,9 @@ generic hardware result from this registry alone.
 `gpu_layer_width(Tex2DArray)` and `gpu_layer_height(Tex2DArray)` are typed
 aliases of the existing image-query ids10/11. Their scalar bodies return the
 declared dimensions; both GPU targets query the bound image's base level.
-These aliases do not extend the tree2 operation registry or force tree3.
+The argument domain extends in tree3: the native lowerer retains tree2's
+array-query refusal, while tree3 emits a three-component signed size result
+and extracts width or height. These aliases force tree3 without changing ids.
 
 The SPIR-V command preserves `binding SLOT KIND NAME` report lines. Additional
 observations begin with `reflection 2`:

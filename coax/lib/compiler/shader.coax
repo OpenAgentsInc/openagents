@@ -30,8 +30,9 @@
 // procedures (gpu_discard, gpu_sample...) of verse/gpu/shader.coax become
 // their instructions.
 //
-// Tree code v2 retains GPU ids1..14. Version3 adds ids15..18; it keeps
-// the same record layout. New operations are refused under version2.
+// Tree code v2 retains GPU ids1..14 and 2D/depth image queries. Version3
+// adds ids15..18 and admits array image queries; it keeps the same record
+// layout. New operations and array query arguments are refused under version2.
 //   module: version types procs entries
 //   types: n type*, the first six always 0 void, 1 bool, 2 f32, 3 s32, 4 u32, 5 int
 //     type: 0 void | 1 bool | 2 f32 | 3 s32 | 4 u32 | 5 s64 | 6 u64
@@ -82,6 +83,7 @@ ShState :: struct {
   at:int; next:u32; ok:bool; reason:u32; open:bool; mute:int;
   nd:int; nt:int; nc:int; types:int; procs:int; insts:int; binds:int; consts:int; ftypes:int; loops:int; edges:int;
   locals:int; inst:int; ret:u32; fragment:bool; int64:bool; query:bool; glsl:u32; privs:int; depth:bool;
+  array_query_type:u32;
   c_true:u32; c_false:u32; u32_0:u32; fine_derivatives:bool; demote_helper:bool; tree_version:u32;
 }
 ShVal :: struct {id:u32; ty:u32;}
@@ -688,6 +690,12 @@ sh_ivec2 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
   w[sh_tw(SH_S32,6)]=id;
   return id;
 }
+sh_ivec3 :: (s:[]ShState,tree:[]u32,w:[]u32)->u32 {
+  if s[0].array_query_type!=0 {return s[0].array_query_type;}
+  id:=sh_id(s);sh3(s,w,SH_T,SH_OP_TYPE_VECTOR,id,sh_tid(s,tree,w,SH_S32),3);
+  s[0].array_query_type=id;
+  return id;
+}
 sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
   g:=sh_next(s,tree);ty:=sh_next(s,tree);n:=sh_next(s,tree);
   // How many arguments each takes.
@@ -776,15 +784,19 @@ sh_gpu :: (s:[]ShState,tree:[]u32,out:[]u32,w:[]u32)->ShVal {
     sh_word(s,w,SH_C,uv);sh_word(s,w,SH_C,ref);sh_word(s,w,SH_C,2);sh_word(s,w,SH_C,sh_f32(s,tree,w,0));
     return ShVal.{id=r,ty=ty};
   }
-  // width and height of a 2D or depth texture, at level 0, as u32
+  // Width/height at base level; tree3 also admits array images. Their
+  // SPIR-V size result includes the layer count as a third component.
   if sh_next(s,tree)!=18 {sh_fail(s,11);return sh_refused();}
   id:=sh_local(s,tree);
   if !s[0].ok {return sh_refused();}
   t:=w[sh_lw(id,1)];
-  if sh_kind(tree,w,t)!=10 || sh_part(tree,w,t,1)==1 || ty!=SH_U32 {sh_fail(s,11);return sh_refused();}
+  if sh_kind(tree,w,t)!=10 || ty!=SH_U32 {sh_fail(s,11);return sh_refused();}
+  array:=sh_part(tree,w,t,1)==1;
+  if array && s[0].tree_version!=3 {sh_fail(s,11);return sh_refused();}
   s[0].query=true;
   img:=sh_r1(s,w,SH_OP_LOAD,sh_tid(s,tree,w,t),w[sh_bw(cast(int)w[sh_lw(id,0)],2)]);
-  size:=sh_r2(s,w,SH_OP_QUERY_SIZE_LOD,sh_ivec2(s,tree,w),img,sh_const(s,tree,w,SH_S32,0,0));
+  size_type:=ifx array then sh_ivec3(s,tree,w) else sh_ivec2(s,tree,w);
+  size:=sh_r2(s,w,SH_OP_QUERY_SIZE_LOD,size_type,img,sh_const(s,tree,w,SH_S32,0,0));
   part:=sh_r2(s,w,SH_OP_COMPOSITE_EXTRACT,sh_tid(s,tree,w,SH_S32),size,ifx g==10 then 0 else 1);
   return ShVal.{id=sh_r1(s,w,SH_OP_BITCAST,sh_tid(s,tree,w,SH_U32),part),ty=ty};
 }
@@ -1892,6 +1904,39 @@ sh_gpu_profile_out :: (body:string,out:[]u32,version:u32)->int {
   #assert sh_vs("6 4 4 4 8 11 4 4 4 8 11 | 1 2 2 33 2 6 3 18 2 18 3 17 19 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")==-11;
   #assert sh_vs("6 4 4 4 9 11 4 4 4 9 11 | 1 2 2 33 6 6 5 18 2 18 3 17 19 16 3 0 16 2 0 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")==-11;
   #assert sh_vs("6 4 4 4 9 11 4 4 4 9 11 | 1 2 2 33 5 6 5 18 2 18 3 17 19 16 3 0 16 2 0 4 17 6 ;","","2 0 0 0 1 2 3 1 1 9")>0;
+}
+#test "array image base dimensions extend tree3 without changing tree2" {
+  aq_out:[8192]u32;
+  #assert sh_gpu_profile_out("2 33 10 4 1 18 2",aq_out[..],2)==-11;
+  #assert sh_gpu_profile_out("2 33 11 4 1 18 2",aq_out[..],2)==-11;
+  #assert sh_gpu_profile_out("2 33 10 4 1 18 2",aq_out[..],3)>0;
+  #assert sh_gpu_profile_out("2 33 11 4 1 18 2",aq_out[..],3)>0;
+  #assert sh_gpu_profile_out("2 33 10 4 1 18 1",aq_out[..],3)>0;
+  #assert sh_gpu_profile_out("2 33 11 4 1 18 3",aq_out[..],3)>0;
+  aq_n:=sh_gpu_profile_out("1 2 2 33 10 4 1 18 2 2 33 11 4 1 18 2",aq_out[..],3);
+  #assert aq_n>0;
+  aq_at:=5;aq_vec:u32;aq_signed:u32;aq_functions:bool;aq_vectors:int;aq_queries:int;aq_ids:[2]u32;aq_extracts:int;
+  while aq_at<aq_n {
+    aq_len:=cast(int)(aq_out[aq_at]>>16);aq_op:=aq_out[aq_at]&65535;
+    #assert aq_len>0 && aq_at+aq_len<=aq_n;
+    if aq_op==21 && aq_len==4 && aq_out[aq_at+2]==32 && aq_out[aq_at+3]==1 {aq_signed=aq_out[aq_at+1];}
+    if aq_op==54 {aq_functions=true;}
+    if aq_op==23 && aq_len==4 && aq_out[aq_at+3]==3 {
+      #assert !aq_functions && aq_signed!=0 && aq_out[aq_at+2]==aq_signed;
+      aq_vec=aq_out[aq_at+1];aq_vectors+=1;
+    }
+    if aq_op==103 {
+      #assert aq_vec!=0 && aq_out[aq_at+1]==aq_vec && aq_queries<2;
+      aq_ids[aq_queries]=aq_out[aq_at+2];aq_queries+=1;
+    }
+    if aq_op==81 && aq_len==5 {
+      for aq_i:0..<2 {if aq_ids[aq_i]!=0 && aq_out[aq_at+3]==aq_ids[aq_i] {
+        #assert aq_out[aq_at+4]==cast(u32)aq_i;aq_extracts+=1;
+      }}
+    }
+    aq_at+=aq_len;
+  }
+  #assert aq_vectors==1 && aq_queries==2 && aq_extracts==2;
 }
 // Modules too large for a limit: 0 an fs of n locals, 1 n loops in each
 // other, 2 n calls, 3 an array of n f32 made, 4 one read from a view.
