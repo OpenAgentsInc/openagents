@@ -30,7 +30,10 @@ attention, split-half YaRN, biased projection and clamped activation.
 tiles with an online softmax on the CPU; its device kernel remains.
 [Chapter 42](ch042-deltanet-in-chunks.md) runs chapter 11's Gated DeltaNet
 prefill in chunks in WY form on the CPU, with boundary snapshots; its device
-kernel remains. Chapters
+kernel remains. [Chapter 84](ch084-attention-through-a-latent.md) runs
+chapter 90's latent attention in its absorbed and expanded forms through a
+sequence, accounts the compressed cache exactly and compares the two forms
+with a dense oracle on the CPU. Chapters
 64, 73, 75 and 77 now provide CPU reference execution, sampling, speculative verification
 and a finite-schema tool round trip. Chapters
 [226](ch226-a-machine-whose-state-is-a-trace.md) and
@@ -379,7 +382,7 @@ Part XX, across a mesh.
 | [81. Execute Ministral 4](ch081-execute-ministral-4.md) — design draft | Ministral-3-3B (Apache-2.0, BF16 originals): the Tekken tokenizer through chapter 9's byte-BPE engine with its own pinned tables, Mistral's chat and reasoning format, and a dense grouped-query decoder with its long-context rotary scaling; token, intermediate and logit references. |
 | [82. Original FP8 weights](ch082-original-fp8-weights.md) — partly implemented: exact CPU FP8 E4M3 block decode and approximate activation profile on constructed files | E4M3 values with one scale per 128×128 block, including Large 4's power-of-two (UE8M0) scales: exact decode of every code at every admitted scale against an independent table, partial-block and scale refusals, and FP8 originals kept distinct from chapter 50's derived profiles. The reference's dynamic FP8 activations are a separate approximate profile. |
 | [83. A coding agent](ch083-a-coding-agent.md) — design draft | Devstral-Small-2-24B (Apache-2.0, FP8): Mistral's function-calling format with arguments constrained by chapter 53, and long-context requests through chapters 41 and 176; first measured against a fixed coding-task set. |
-| [84. Attention through a latent](ch084-attention-through-a-latent.md) — design draft | Multi-head latent attention: queries and keys split into rotary and non-rotary parts, keys and values reconstructed from a low-rank latent, and the absorbed projections that let decode attend in latent space. The compressed cache's size is accounted exactly, and the absorbed form is compared with the expanded one. |
+| [84. Attention through a latent](ch084-attention-through-a-latent.md) — partly implemented: latent-attention-cpu-f64-v1, bounded CPU; the comparison on original checkpoint layers remains | Multi-head latent attention: queries and keys split into rotary and non-rotary parts, keys and values reconstructed from a low-rank latent, and the absorbed projections that let decode attend in latent space. The compressed cache's size is accounted exactly, and the absorbed form is compared with the expanded one. |
 | [85. Execute Mistral Small 7](ch085-execute-mistral-small-7.md) — design draft | Mistral-Small-4-119B (Apache-2.0, FP8, 241.9 GB of originals): latent attention plus 128 routed experts with four selected and one shared expert, extending chapter 61's router. Measured residency on one large-memory machine, or the expert paging of chapter 73. |
 | [86. Sparse attention and shared layers](ch086-sparse-attention-and-shared-layers.md) — design draft | Large 4's attention features on tiny fixtures and selected real layers: a lightning indexer that picks the top 2,048 keys per query (FP8 indexer), indexer and KV sharing across layers from the pinned source map, no rotary positions on every fourth layer, tanh soft-capping of logits at 30, and YaRN scaling (factor 2048 over 512 positions) to 1,048,576. |
 | [87. The model's own draft head](ch087-the-models-own-draft-head.md) — design draft | Large 4's embedded multi-token-prediction draft head as a speculator under chapter 75's acceptance rule: identical greedy output, exact acceptance probabilities on tiny fixtures, and measured acceptance and draft length. |

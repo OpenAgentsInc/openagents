@@ -192,6 +192,16 @@
       ]
     },
     {
+      "source": "psionic/examples/latent-attention.coax",
+      "chapter": "psionic/book/ch084-attention-through-a-latent.md",
+      "stdout": "psionic/fixtures/latent-attention.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/delta-chunks.coax",
       "chapter": "psionic/book/ch042-deltanet-in-chunks.md",
       "stdout": "psionic/fixtures/delta-chunks.out",

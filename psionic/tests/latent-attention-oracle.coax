@@ -1,0 +1,46 @@
+// Chapter 84's check oracle, loaded by psionic/lib/latent-attention.coax.
+// A dense binary64 latent attention written separately from chapter 90's
+// ml_attention: it expands every past latent into per-head keys and values
+// without rounding, scores with plain binary64 sums and a plain softmax, and
+// never rounds to f32. Weights are decoded with the same BF16 reader.
+
+// Latent attention for the query at position p over positions 0..p.
+// q: one row of heads*(nope+rope); z: (p+1)*latent; pe: (p+1)*rope;
+// out: heads*value.
+lo_attend :: (s:MlShape,w:[]u8,q:[]f32,z:[]f32,pe:[]f32,p:int,scale:f64,out:[]f64) {
+    width:=s.nope+s.value;
+    for h:0..<s.heads {
+        score:[64]f64;top:=-1.0e300;
+        for t:0..<p+1 {
+            x:=0.0;
+            for i:0..<s.nope {key:=0.0;for j:0..<s.latent {key+=f64(ds_bf(w,(h*width+i)*s.latent+j))*f64(z[t*s.latent+j]);}x+=f64(q[h*(s.nope+s.rope)+i])*key;}
+            for i:0..<s.rope {x+=f64(q[h*(s.nope+s.rope)+s.nope+i])*f64(pe[t*s.rope+i]);}
+            score[t]=x*scale;if score[t]>top {top=score[t];}
+        }
+        sum:=0.0;for t:0..<p+1 {score[t]=exp(score[t]-top);sum+=score[t];}
+        for i:0..<s.value {
+            acc:=0.0;
+            for t:0..<p+1 {v:=0.0;for j:0..<s.latent {v+=f64(ds_bf(w,(h*width+s.nope+i)*s.latent+j))*f64(z[t*s.latent+j]);}acc+=score[t]*v;}
+            out[h*s.value+i]=acc/sum;
+        }
+    }
+}
+
+// The largest |a - r| / (1 + |r|) of an f32 run against the dense oracle.
+lo_gap :: (a:[]f32,r:[]f64)->f64 {
+    worst:=0.0;for i:0..<a.count {d:=abs(f64(a[i])-r[i])/(1+abs(r[i]));if d>worst {worst=d;}}return worst;
+}
+
+// A generated case: dyadic values exact in BF16 and f32.
+lo_value :: (i:int,m:int)->f32 {return f32((i*37+11)%m-m/2)/16;}
+lo_bf16 :: (x:f32,w:[]u8,i:int) {bits:=f32_bits(x);w[2*i]=cast,trunc(u8)(bits>>16);w[2*i+1]=cast,trunc(u8)(bits>>24);}
+
+// The rotary part of one score: a one-head query and a key, each in adjacent
+// pairs, rotated by chapter 90's YaRN rotation at positions p and t.
+lo_rotary_score :: (q:[]f32,k:[]f32,p:int,t:int)->f64 {
+    one:=[3]f32.[0,q[0],q[1]];qo:[3]f32;ko:[2]f32;spare:[3]f32;unused:[2]f32;work:[5]f32;
+    a:=dv_rotary(1,1,2,one[..],k,p,qo[..],unused[..],work[..],false);
+    b:=dv_rotary(1,1,2,one[..],k,t,spare[..],ko[..],work[..],false);
+    if a.status!=DsStatus.ok || b.status!=DsStatus.ok {return -1.0e300;}
+    return f64(qo[1])*f64(ko[0])+f64(qo[2])*f64(ko[1]);
+}

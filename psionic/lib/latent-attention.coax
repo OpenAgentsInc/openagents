@@ -1,0 +1,181 @@
+// Chapter 84: attention through a latent. Chapter 90's ml_attention computes
+// multi-head latent attention in two forms: expanded (each past latent is
+// projected to per-head keys and values once and cached) and absorbed (the
+// cache holds the latent itself; the query is moved into latent space and the
+// value projection is applied after the weighted sum). This unit runs either
+// form over a sequence of positions, measures the cache it writes, accounts
+// the cache of a whole model exactly, and compares the two forms.
+// Profile latent-attention-cpu-f64-v1: f32 inputs, cache and outputs; BF16
+// weights; binary64 compensated products, scores and sums; one f32 rounding
+// at each projection boundary chapter 90 fixes. The forms round at different
+// boundaries, so they agree within LA_TOLERANCE, not bit for bit.
+#load "deepseek/mla.coax";
+#load "deepseek/v2-rope.coax";
+#load "../tests/latent-attention-oracle.coax";   // the checks' dense oracle
+
+// book:begin types
+// Frozen before any comparison: two runs agree when every output differs by
+// at most LA_TOLERANCE * (1 + |reference|).
+LA_TOLERANCE :: 0.00001;
+// Cache values per token and layer, and bytes for layers x tokens at one
+// element size: latent (the absorbed form's row: latent plus the shared
+// rotary key), expanded (chapter 90's expanded row: each head's non-rotary
+// key and value plus the shared rotary key) and full (ordinary multi-head
+// attention: each head's whole key and value).
+LaCache :: struct {status:DsStatus;latent:int;expanded:int;full:int;latent_bytes:int;expanded_bytes:int;full_bytes:int;}
+// steps: positions completed; cache: f32 values written to the cache.
+LaRun :: struct {status:DsStatus;steps:int;cache:int;}
+LaGap :: struct {worst:f64;at:int;}
+// book:end types
+
+#test "hand case: one head, latent 2, both forms give 1 exactly" {
+    s:=MlShape.{heads=1,nope=1,rope=2,value=1,latent=2,capacity=2};
+    // W_UK = [1 2], W_UV = [3 -1], in BF16.
+    w:=[8]u8.[0x80,0x3f,0x00,0x40,0x40,0x40,0x80,0xbf];
+    q:=[6]f32.[1,1,0,1,1,0];z:=[4]f32.[1,0,0,1];pe:=[4]f32.[1,0,0,0];
+    for mode:0..<2 {
+        out:[2]f32;cache:[8]f32;work:[16]f32;scores:[2]f64;
+        r:=la_run(s,cast(MlMode)mode,w[..],q[..],z[..],pe[..],2,0.5,out[..],cache[..],work[..],scores[..]);
+        #assert r.status==DsStatus.ok && r.steps==2 && r.cache==8;
+        #assert out[0]==3 && out[1]==1;
+        p:=ml_plan(s,cast(MlMode)mode);v:=ml_views(work[..],p);
+        if mode==0 {
+            #assert cache[0]==1 && cache[1]==0 && cache[2]==1 && cache[3]==0 && cache[4]==0 && cache[5]==1;
+            #assert v.absorbed[0]==1 && v.absorbed[1]==2 && v.context[0]==0.5 && v.context[1]==0.5;
+        } else {
+            #assert cache[0]==1 && cache[1]==3 && cache[2]==1 && cache[4]==2 && cache[5]==-1 && cache[6]==0;
+        }
+    }
+    // Without the rotary key the two scores differ (1 and 2), so the output moves.
+    flat:=[4]f32.[0,0,0,0];out:[2]f32;cache:[8]f32;work:[16]f32;scores:[2]f64;
+    #assert la_run(s,MlMode.compressed,w[..],q[..],z[..],flat[..],2,1,out[..],cache[..],work[..],scores[..]).status==DsStatus.ok;
+    #assert abs(f64(out[1])-(3-exp(1.0))/(1+exp(1.0)))<0.0000001;
+}
+#test "cache accounting: hand formulas, DeepSeek-V2-Lite and refusals" {
+    lite:=MlShape.{heads=16,nope=128,rope=64,value=128,latent=512,capacity=163840};
+    c:=la_cache(lite,27,1,2);
+    #assert c.status==DsStatus.ok && c.latent==576 && c.expanded==4160 && c.full==16*(128+64+128);
+    #assert c.latent_bytes==27*576*2 && c.expanded_bytes==27*4160*2 && c.full_bytes==27*5120*2;
+    d:=la_cache(lite,1,4096,4);#assert d.latent_bytes==4096*576*4 && d.expanded_bytes==4096*4160*4 && d.full_bytes==4096*5120*4;
+    one:=la_cache(lite,1,1,1);#assert one.latent_bytes==576 && one.expanded_bytes==4160 && one.full_bytes==5120;
+    top:=la_cache(MlShape.{heads=64,nope=256,rope=128,value=256,latent=1024,capacity=163840},128,163840,4);
+    #assert top.status==DsStatus.ok && top.full_bytes==128*163840*4*64*640 && top.latent_bytes==128*163840*4*1152;
+    #assert la_cache(lite,128,163840,4).status==DsStatus.ok;
+    bad:=lite;bad.rope=3;#assert la_cache(bad,1,1,2).status==DsStatus.shape;
+    #assert la_cache(lite,0,1,2).status==DsStatus.capacity && la_cache(lite,129,1,2).status==DsStatus.capacity;
+    #assert la_cache(lite,1,0,2).status==DsStatus.capacity && la_cache(lite,1,163841,2).status==DsStatus.capacity;
+    for b:0..<6 {r:=la_cache(lite,1,1,b);#assert (r.status==DsStatus.ok)==(b==1 || b==2 || b==4);if r.status!=DsStatus.ok {#assert r.status==DsStatus.format && r.latent==0 && r.latent_bytes==0;}}
+}
+#test "measured cache equals the accounted bytes and both forms meet the dense oracle" {
+    s:=MlShape.{heads=4,nope=8,rope=4,value=6,latent=5,capacity=8};n:=8;
+    w:[2*4*14*5]u8;for i:0..<w.count/2 {lo_bf16(lo_value(i,23),w[..],i);}
+    q:[8*4*12]f32;for i:0..<q.count {q[i]=lo_value(i+5,19);}
+    z:[8*5]f32;for i:0..<z.count {z[i]=lo_value(i+3,13);}
+    pe:[8*4]f32;for i:0..<pe.count {pe[i]=lo_value(i+1,11);}
+    outs:[2][8*4*6]f32;cache:[8*(4*14+4)]f32;work:[256]f32;scores:[64]f64;
+    for mode:0..<2 {
+        r:=la_run(s,cast(MlMode)mode,w[..],q[..],z[..],pe[..],n,0.25,outs[mode][..],cache[..],work[..],scores[..]);
+        a:=la_cache(s,1,n,4);
+        #assert r.status==DsStatus.ok && r.steps==n;
+        if mode==0 {#assert 4*r.cache==a.latent_bytes && r.cache==8*9;}else {#assert 4*r.cache==a.expanded_bytes && r.cache==8*60;}
+        ref:[24]f64;
+        for p:0..<n {lo_attend(s,w[..],q[p*48..<(p+1)*48],z[0..<(p+1)*5],pe[0..<(p+1)*4],p,0.25,ref[..]);#assert lo_gap(outs[mode][p*24..<(p+1)*24],ref[..])<=LA_TOLERANCE;}
+    }
+    g:=la_gap(outs[0][..],outs[1][..]);#assert g.worst>0 && g.worst<=LA_TOLERANCE && g.at>=0;
+    m:=la_gap(outs[0][0..<3],outs[1][0..<4]);#assert m.worst==-1 && m.at==-1;
+    e:=la_gap(outs[0][0..<0],outs[1][0..<0]);#assert e.worst==0 && e.at==-1;
+    x:=[3]f32.[1,-3,2];y:=[3]f32.[1.5,-1,2];
+    #assert la_gap(x[..],y[..]).worst==1 && la_gap(x[..],y[..]).at==1 && la_gap(y[..],x[..]).worst==0.5 && la_gap(y[..],x[..]).at==1;
+    // The first of equal largest gaps, and a largest gap in the first place.
+    u:=[2]f32.[3,3];v:=[2]f32.[1,1];#assert la_gap(u[..],v[..]).worst==1 && la_gap(u[..],v[..]).at==0;
+    u[1]=1;#assert la_gap(u[..],v[..]).worst==1 && la_gap(u[..],v[..]).at==0;
+}
+#test "the rotary key: shared by every head, never absorbed, scores depend on distance" {
+    // Moving the shared rotary key by k moves each head's score by q_rope . k
+    // in both forms; the latent part is untouched. Equal latents and a zero
+    // non-rotary query leave only the rotary part: scores 0 and k (head 0),
+    // 0 and 2k (head 1).
+    s:=MlShape.{heads=2,nope=1,rope=2,value=1,latent=1,capacity=2};
+    w:=[8]u8.[0x80,0x3f,0x80,0x3f,0,0x40,0,0x40];q:=[12]f32.[0,1,0,0,0,2,0,1,0,0,0,2];z:=[2]f32.[1,1];
+    for mode:0..<2 {for k:0..<3 {pe:=[4]f32.[0,0,f32(k),f32(k)];out:[4]f32;cache:[16]f32;work:[32]f32;scores:[4]f64;
+        #assert la_run(s,cast(MlMode)mode,w[..],q[..],z[..],pe[..],2,1,out[..],cache[..],work[..],scores[..]).status==DsStatus.ok;
+        #assert scores[0]==exp(-f64(k)) && scores[1]==1 && scores[2]==exp(-2*f64(k)) && scores[3]==1 && out[2]==1 && out[3]==2;
+        p:=ml_plan(s,cast(MlMode)mode);#assert cache[2*p.row-2]==f32(k) && cache[2*p.row-1]==f32(k) && cache[p.row-1]==0;
+    }}
+    // Chapter 90's YaRN rotation: the rotary score of query position p and key
+    // position t depends only on p - t.
+    qr:=[2]f32.[0.75,-0.5];kr:=[2]f32.[0.25,1];
+    #assert abs(lo_rotary_score(qr[..],kr[..],7,3)-lo_rotary_score(qr[..],kr[..],1007,1003))<0.000001;
+    #assert abs(lo_rotary_score(qr[..],kr[..],7,3)-lo_rotary_score(qr[..],kr[..],7,4))>0.01;
+}
+#test "refusals for bad shapes and inputs leave the outputs alone" {
+    s:=MlShape.{heads=1,nope=1,rope=2,value=1,latent=2,capacity=2};
+    w:=[8]u8.[0x80,0x3f,0x00,0x40,0x40,0x40,0x80,0xbf];
+    q:=[6]f32.[1,1,0,1,1,0];z:=[4]f32.[1,0,0,1];pe:=[4]f32.[1,0,0,0];
+    for field:0..<10 {
+        t:=s;steps:=2;scale:=0.5;qi:=q[..];zi:=z[..];ri:=pe[..];out:=[2]f32.[-7,-7];cache:[8]f32;work:[16]f32;scores:[2]f64;oi:=out[..];ci:=cache[..];
+        if field==0 {t.rope=3;}else if field==1 {t.latent=0;}else if field==2 {steps=0;}else if field==3 {steps=3;}
+        else if field==4 {qi=q[0..<5];}else if field==5 {zi=z[0..<3];}else if field==6 {ri=pe[0..<3];}
+        else if field==7 {oi=out[0..<1];}else if field==8 {ci=cache[0..<7];}else {scale=0;}
+        r:=la_run(t,MlMode.compressed,w[..],qi,zi,ri,steps,scale,oi,ci,work[..],scores[..]);
+        expected:=DsStatus.capacity;if field<2 {expected=DsStatus.shape;}else if field==9 {expected=DsStatus.number;}
+        #assert r.status==expected && r.steps==0 && r.cache==0 && out[0]==-7 && out[1]==-7;
+    }
+    // A latent of 3e38 at position 1 overflows the value 3 x 3e38 in both
+    // forms: the run stops after position 0.
+    bad:=z;bad[2]=3e38;
+    for mode:0..<2 {part:=[2]f32.[-7,-7];held:[8]f32;hw:[16]f32;hs:[2]f64;
+        stop:=la_run(s,cast(MlMode)mode,w[..],q[..],bad[..],pe[..],2,0.5,part[..],held[..],hw[..],hs[..]);
+        #assert stop.status==DsStatus.arithmetic && stop.steps==1 && stop.cache==4 && part[0]==3 && part[1]==-7;
+    }
+    out:[2]f32;cache:[8]f32;work:[16]f32;scores:[2]f64;
+    // Zero steps, and three steps of complete inputs past a capacity of two.
+    #assert la_run(s,MlMode.compressed,w[..],q[0..<0],z[0..<0],pe[0..<0],0,0.5,out[..],cache[..],work[..],scores[..]).status==DsStatus.capacity;
+    q3:=[9]f32.[1,1,0,1,1,0,1,1,0];z3:=[6]f32.[1,0,0,1,1,1];p3:=[6]f32.[1,0,0,0,0,0];o3:=[3]f32.[-7,-7,-7];c3:[12]f32;
+    three:=la_run(s,MlMode.compressed,w[..],q3[..],z3[..],p3[..],3,0.5,o3[..],c3[..],work[..],scores[..]);
+    #assert three.status==DsStatus.capacity && three.steps==0 && o3[0]==-7;
+    one:=la_run(s,MlMode.compressed,w[..],q[0..<3],z[0..<2],pe[0..<2],1,0.5,out[0..<1],cache[0..<4],work[..],scores[..]);
+    #assert one.status==DsStatus.ok && one.steps==1 && one.cache==4 && out[0]==3;
+    #assert la_run(s,MlMode.expanded,w[..],q[..],z[..],pe[..],2,0.5,out[..],cache[..],work[..],scores[..]).status==DsStatus.ok;
+}
+
+// book:begin cache
+la_cache :: (s:MlShape,layers:int,tokens:int,bytes:int)->LaCache {
+    if !ml_shape(s) {return LaCache.{status=DsStatus.shape};}
+    if layers<1 || layers>128 || tokens<1 || tokens>s.capacity {return LaCache.{status=DsStatus.capacity};}
+    if bytes!=1 && bytes!=2 && bytes!=4 {return LaCache.{status=DsStatus.format};}
+    c:=LaCache.{latent=s.latent+s.rope,expanded=s.heads*(s.nope+s.value)+s.rope,full=s.heads*(s.nope+s.rope+s.value)};
+    n:=layers*tokens*bytes;
+    c.latent_bytes=n*c.latent;c.expanded_bytes=n*c.expanded;c.full_bytes=n*c.full;
+    return c;
+}
+// book:end cache
+
+// Runs positions 0..steps-1 through one form. Inputs are per position: q a
+// row of heads*(nope+rope), z a latent, pe the rotated rotary key. Position
+// p's cache row goes to cache[p*row..], its output to out[p*heads*value..].
+// Every count is checked before the first step; a step that fails on its
+// numbers stops the run with the steps completed so far.
+// book:begin run
+la_run :: (s:MlShape,mode:MlMode,w:[]u8,q:[]f32,z:[]f32,pe:[]f32,steps:int,scale:f64,out:[]f32,cache:[]f32,work:[]f32,scores:[]f64)->LaRun {
+    p:=ml_plan(s,mode);if p.status!=DsStatus.ok {return LaRun.{status=p.status};}
+    if steps<1 || steps>s.capacity {return LaRun.{status=DsStatus.capacity};}
+    qn:=s.heads*(s.nope+s.rope);
+    if q.count!=steps*qn || z.count!=steps*s.latent || pe.count!=steps*s.rope || out.count<steps*p.output || cache.count<steps*p.row {return LaRun.{status=DsStatus.capacity};}
+    for pos:0..<steps {
+        r:=ml_attention(s,mode,w,q[pos*qn..<(pos+1)*qn],z[pos*s.latent..<(pos+1)*s.latent],pe[pos*s.rope..<(pos+1)*s.rope],
+            cache[0..<pos*p.row],pos,scale,out[pos*p.output..<(pos+1)*p.output],cache[pos*p.row..<(pos+1)*p.row],work,scores,false);
+        if r.status!=DsStatus.ok {return LaRun.{status=r.status,steps=pos,cache=pos*p.row};}
+    }
+    return LaRun.{steps=steps,cache=steps*p.row};
+}
+// book:end run
+
+// The largest |a - b| / (1 + |b|) and the first index where it occurs (-1
+// when every gap is 0); worst and at are both -1 when the lengths differ.
+la_gap :: (a:[]f32,b:[]f32)->LaGap {
+    if a.count!=b.count {return LaGap.{worst=-1,at=-1};}
+    g:=LaGap.{at=-1};
+    for i:0..<a.count {d:=abs(f64(a[i])-f64(b[i]))/(1+abs(f64(b[i])));if d>g.worst {g.worst=d;g.at=i;}}
+    return g;
+}

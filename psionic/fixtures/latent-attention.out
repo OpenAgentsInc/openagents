@@ -1,0 +1,18 @@
+profile latent-attention-cpu-f64-v1, tolerance 0.00001 x (1 + |reference|)
+hand case, absorbed: cache rows [1.0 0.0 1.0 0.0] [0.0 1.0 0.0 0.0], outputs 3.0 1.0
+  query in latent space 1.0 2.0, context 0.5 0.5
+hand case, expanded: cache rows [1.0 3.0 1.0 0.0] [2.0 -1.0 0.0 0.0], outputs 3.0 1.0
+DeepSeek-V2-Lite shape, 27 layers, BF16, one token:
+  latent row 576 values, 31104 bytes
+  expanded row 4160 values, 224640 bytes
+  ordinary keys and values 5120 values, 276480 bytes
+  4096 tokens: latent 127401984 bytes, ordinary 1132462080 bytes
+generated case, 8 positions, f32 cache:
+  absorbed: measured cache 288 bytes, accounted 288; largest gap to the dense oracle 6.7679306011059066e-09
+  expanded: measured cache 1920 bytes, accounted 1920; largest gap to the dense oracle 6.082250388836328e-09
+  absorbed against expanded: largest gap 1.263610522686301e-08 at output 48, within tolerance true
+rotary score, positions 7 and 3: -0.45793853653614036; 1007 and 1003: -0.45793858097974294; 7 and 4: 0.43285268051225145
+refused: rotary width 3: shape, steps 0, output -7.0
+refused: 3 latent values for 2 positions of width 2: capacity, steps 0, output -7.0
+refused: 5 bytes per element: format
+refused: an infinite latent at position 1: number, steps 1, outputs 3.0 -7.0

@@ -1,0 +1,66 @@
+#import "Basic";
+#load "../lib/latent-attention.coax";
+
+// book:begin example
+main :: () {
+    print("profile latent-attention-cpu-f64-v1, tolerance % x (1 + |reference|)\n",LA_TOLERANCE);
+    // The hand case: one head, latent 2, W_UK = [1 2], W_UV = [3 -1].
+    s:=MlShape.{heads=1,nope=1,rope=2,value=1,latent=2,capacity=2};
+    w:=[8]u8.[0x80,0x3f,0x00,0x40,0x40,0x40,0x80,0xbf];
+    q:=[6]f32.[1,1,0,1,1,0];z:=[4]f32.[1,0,0,1];pe:=[4]f32.[1,0,0,0];
+    names:=[2]string.["absorbed","expanded"];
+    for mode:0..<2 {
+        out:[2]f32;cache:[8]f32;work:[16]f32;scores:[2]f64;form:=cast(MlMode)mode;
+        r:=la_run(s,form,w[..],q[..],z[..],pe[..],2,0.5,out[..],cache[..],work[..],scores[..]);
+        #assert r.status==DsStatus.ok;
+        print("hand case, %: cache rows [% % % %] [% % % %], outputs % %\n",names[mode],
+            cache[0],cache[1],cache[2],cache[3],cache[4],cache[5],cache[6],cache[7],out[0],out[1]);
+        if form==MlMode.compressed {v:=ml_views(work[..],ml_plan(s,form));
+            print("  query in latent space % %, context % %\n",v.absorbed[0],v.absorbed[1],v.context[0],v.context[1]);}
+    }
+
+    lite:=MlShape.{heads=16,nope=128,rope=64,value=128,latent=512,capacity=163840};
+    c:=la_cache(lite,27,1,2);
+    print("DeepSeek-V2-Lite shape, 27 layers, BF16, one token:\n");
+    print("  latent row % values, % bytes\n",c.latent,c.latent_bytes);
+    print("  expanded row % values, % bytes\n",c.expanded,c.expanded_bytes);
+    print("  ordinary keys and values % values, % bytes\n",c.full,c.full_bytes);
+    long:=la_cache(lite,27,4096,2);
+    print("  4096 tokens: latent % bytes, ordinary % bytes\n",long.latent_bytes,long.full_bytes);
+
+    // A generated case: 4 heads, non-rotary 8, rotary 4, value 6, latent 5.
+    g:=MlShape.{heads=4,nope=8,rope=4,value=6,latent=5,capacity=8};n:=8;
+    gw:[2*4*14*5]u8;for i:0..<gw.count/2 {lo_bf16(lo_value(i,23),gw[..],i);}
+    gq:[8*4*12]f32;for i:0..<gq.count {gq[i]=lo_value(i+5,19);}
+    gz:[8*5]f32;for i:0..<gz.count {gz[i]=lo_value(i+3,13);}
+    gp:[8*4]f32;for i:0..<gp.count {gp[i]=lo_value(i+1,11);}
+    outs:[2][8*4*6]f32;gc:[8*(4*14+4)]f32;gwork:[256]f32;gs:[64]f64;
+    a:=la_cache(g,1,n,4);accounted:=[2]int.[a.latent_bytes,a.expanded_bytes];
+    print("generated case, 8 positions, f32 cache:\n");
+    for mode:0..<2 {
+        r:=la_run(g,cast(MlMode)mode,gw[..],gq[..],gz[..],gp[..],n,0.25,outs[mode][..],gc[..],gwork[..],gs[..]);
+        #assert r.status==DsStatus.ok;
+        worst:=0.0;ref:[24]f64;
+        for p:0..<n {lo_attend(g,gw[..],gq[p*48..<(p+1)*48],gz[0..<(p+1)*5],gp[0..<(p+1)*4],p,0.25,ref[..]);
+            d:=lo_gap(outs[mode][p*24..<(p+1)*24],ref[..]);if d>worst {worst=d;}}
+        print("  %: measured cache % bytes, accounted %; largest gap to the dense oracle %\n",names[mode],4*r.cache,accounted[mode],worst);
+    }
+    gap:=la_gap(outs[0][..],outs[1][..]);
+    print("  absorbed against expanded: largest gap % at output %, within tolerance %\n",gap.worst,gap.at,gap.worst<=LA_TOLERANCE);
+
+    qr:=[2]f32.[0.75,-0.5];kr:=[2]f32.[0.25,1];
+    print("rotary score, positions 7 and 3: %; 1007 and 1003: %; 7 and 4: %\n",
+        lo_rotary_score(qr[..],kr[..],7,3),lo_rotary_score(qr[..],kr[..],1007,1003),lo_rotary_score(qr[..],kr[..],7,4));
+
+    out:=[2]f32.[-7,-7];cache:[8]f32;work:[16]f32;scores:[2]f64;
+    odd:=s;odd.rope=3;
+    r:=la_run(odd,MlMode.compressed,w[..],q[..],z[..],pe[..],2,0.5,out[..],cache[..],work[..],scores[..]);
+    print("refused: rotary width 3: %, steps %, output %\n",r.status,r.steps,out[0]);
+    r=la_run(s,MlMode.compressed,w[..],q[..],z[0..<3],pe[..],2,0.5,out[..],cache[..],work[..],scores[..]);
+    print("refused: 3 latent values for 2 positions of width 2: %, steps %, output %\n",r.status,r.steps,out[0]);
+    print("refused: 5 bytes per element: %\n",la_cache(lite,1,1,5).status);
+    bits:u32=0x7f000000;bits+=0x00800000;bad:=z;bad[2]=f32_from_bits(bits);
+    r=la_run(s,MlMode.compressed,w[..],q[..],bad[..],pe[..],2,0.5,out[..],cache[..],work[..],scores[..]);
+    print("refused: an infinite latent at position 1: %, steps %, outputs % %\n",r.status,r.steps,out[0],out[1]);
+}
+// book:end example
