@@ -1,0 +1,75 @@
+# A demo of every kind of slide. Build it with:
+#   coax/web/tool.sh deck docs/decks/demo.deck ~/Desktop/openagents-demo-deck.pdf
+# The format is in docs/web/decks.md.
+
+deck OPENAGENTS · DEMO DECK
+base https://openagents.com
+
+slide
+background / wait=8000
+kicker OPENAGENTS / DEMO
+title OPENAGENTS
+subtitle Three years of research and infrastructure, now shipping as releases anchored by the Verse.
+
+slide
+kicker OPENAGENTS / VERSE
+title THE VERSE
+subtitle WORLDS YOU PLAY IN THE BROWSER
+grid 3x2
+scene /realms/orbit-league?stage=highlight&card=1 wait=7000 | ORBIT LEAGUE | Rocket roadster ball in orbit
+scene /realms/hold-the-stair?stage=highlight&card=1 wait=7000 | HOLD THE STAIR | Tower defense on SRD 5e rules
+scene /realms/belt-2200?stage=highlight&card=1 wait=7000 | BELT 2200 | Strategy on the real orbits of 2200
+scene /realms/dead-gears?card=1 wait=8000 | DEAD GEARS | Hold a ship's hold against three waves
+scene /realms/hecates-cemetery wait=9000 | HECATE'S CEMETERY | A memorial garden you walk with your dog
+scene /realms/everglade wait=9000 | EVERGLADE | A forest city with quests
+
+slide
+kicker OPENAGENTS / VERSE
+title MAKE A REALM
+grid 2x1
+text | WHAT YOU DO | Invite only
+  - Describe a world in a sentence: "a stone courtyard with a fountain".
+  - The planner turns it into a typed plan: walls, a centrepiece, a layout, paths and water.
+  - Walk it, move anything, undo any edit, then publish. Visitors see the published version.
+  Every realm can be forked. The fork records its parent and revision.
+scene /realms/the-grid wait=9000 | THE GRID | The homepage's live projects, walked
+
+slide
+kicker OPENAGENTS / NUMBERS
+title WHERE THINGS STAND
+grid 3x1
+stat 9 | REALMS | Live on openagents.com/realms
+stat 103 | CHAPTERS | Nostr From Scratch, 10 implemented
+stat 0.46 | COAX | The compiler, released from main
+
+slide
+kicker OPENAGENTS / STACK
+title ONE LANGUAGE UNDER IT ALL
+grid 1x1
+diagram | THE STACK | Each box is built in Coax
+  node coax 0 1 COAX
+  node aethyr 1 0 AETHYR ENGINE
+  node psionic 1 1 PSIONIC
+  node nostr 1 2 NOSTR
+  node verse 2 0 THE VERSE
+  node pylon 2 1 PYLONS
+  node wallet 2 2 WALLETS
+  edge coax aethyr compiles
+  edge coax psionic compiles
+  edge coax nostr compiles
+  edge aethyr verse runs
+  edge psionic pylon serves models on
+  edge nostr wallet signs for
+
+slide
+kicker OPENAGENTS / VERSE
+title HOLD THE STAIR
+subtitle THE LAST WAVE
+grid 1x1
+scene /realms/hold-the-stair?stage=highlight&card=1 wait=8000 | WAVE 40 OF 40 | A realm made by Marc
+
+slide
+background /realms/orbit-league?stage=highlight&card=1 wait=7000
+kicker OPENAGENTS / PLAY
+title OPENAGENTS.COM/REALMS
+subtitle Every world in this deck is live. Open it in a browser and play.

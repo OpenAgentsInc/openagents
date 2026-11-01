@@ -94,11 +94,11 @@ ArgsNumber :: struct { ok: bool; value: f64; }
 // would give NaN or a value we do not need.
 args_number :: (text: string) -> ArgsNumber {
   r: ArgsNumber;
-  lo := 0; hi := text.count;
-  while lo < hi && text[lo] == ' ' { lo += 1; }
-  while hi > lo && text[hi - 1] == ' ' { hi -= 1; }
-  if lo == hi { r.ok = true; return r; }
-  s := text[lo..<hi];
+  first := 0; last := text.count;
+  while first < last && text[first] == ' ' { first += 1; }
+  while last > first && text[last - 1] == ' ' { last -= 1; }
+  if first == last { r.ok = true; return r; }
+  s := text[first..<last];
   i := 0; neg := false;
   if s[0] == '-' || s[0] == '+' { neg = s[0] == '-'; i = 1; }
   mant: s64 = 0; digits := 0; scale := 0; seen := false;
