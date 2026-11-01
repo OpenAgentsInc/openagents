@@ -675,14 +675,21 @@
    "number": 32,
    "title": "Many relays and the outbox model",
    "file": "ch032-many-relays-and-the-outbox-model.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     30,
     31
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip65.coax",
+    "coax/lib/nostr/outbox.coax",
+    "nostr/examples/outbox.coax",
+    "nostr/examples/checks/outbox.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

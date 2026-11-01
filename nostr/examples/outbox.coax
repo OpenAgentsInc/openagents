@@ -1,0 +1,243 @@
+// book:begin setup
+#load "../../coax/lib/nostr/outbox.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+N65 :: [8] string.["ok", "event", "kind", "tag", "marker", "url", "too many", "limit"];
+OB :: [5] string.["ok", "full", "list", "index", "too many"];
+MERGED :: [3] string.["new", "duplicate", "not asked"];
+SUB :: [4] string.["waiting", "EOSE", "timed out", "closed"];
+NAMES :: [5] string.["alice", "bob", "carol", "dave", "you"];
+// The chapter's lists. Alice to Dave are the follows; "you" publish.
+LISTS :: [5] string.[OB_ALICE, OB_BOB, OB_CAROL, OB_DAVE, OB_ME];
+T0 :: 1793300000;
+
+// Signs a kind 10002 list with secret key k (1 to 5: k*G is the author)
+// and zero aux, so the output repeats. Never sign with a real key in an
+// example.
+sign_list :: (k: int, tags: string, out: [] u8) -> string {
+  key: [32] u8; key[31] = cast(u8) k; aux: [32] u8;
+  sw: [1] NostrSignWork; scratch: [4096] u8;
+  r := EVENT_MORE;
+  while r == EVENT_MORE { r = nostr_event_sign_step(key[..], aux[..], T0, N65_KIND_RELAYS, tags, "", sw[..], scratch[..], out, false); }
+  #assert r > 0;
+  return cast(string) out[0..<r];
+}
+// Relay r's URL, copied out of the pool.
+url_of :: (o: [] Outbox, r: int, out: [] u8) -> string {
+  for i: 0..<o[0].url_n[r] { out[i] = o[0].url[r * N65_URL_MOST + i]; }
+  return cast(string) out[0..<o[0].url_n[r]];
+}
+// A relay set as the relays' host names' first labels: "r1 r3 r4".
+print_relays :: (o: [] Outbox, set: u64) {
+  first := true;
+  for r: 0..<o[0].relays {
+    if (set & (cast(u64) 1 << r)) == 0 { continue; }
+    buf: [N65_URL_MOST] u8; u := url_of(o, r, buf[..]);
+    end := 6; while end < u.count && u[end] != '.' { end += 1; }
+    if !first { print(" "); }
+    print("%", u[6..<end]); first = false;
+  }
+  if first { print("none"); }
+}
+// An author set as names (the five) or as ranges of numbers (the fifty).
+print_authors :: (set: u64, named: bool) {
+  first := true; a := 0;
+  while a < 64 {
+    if (set & (cast(u64) 1 << a)) == 0 { a += 1; continue; }
+    b := a; while b + 1 < 64 && (set & (cast(u64) 1 << (b + 1))) != 0 { b += 1; }
+    if !first { print(", "); }
+    first = false;
+    if named { print("%", NAMES[a]); b = a; } else if b > a { print("%-%", a, b); } else { print("%", a); }
+    a = b + 1;
+  }
+  if first { print("none"); }
+}
+print_plan :: (o: [] Outbox, p: ObPlan, named: bool) {
+  for k: 0..<p.count {
+    print("    pick %: ", k + 1); print_relays(o, cast(u64) 1 << p.relay[k]); print(" asked for ");
+    print_authors(p.asks[k], named); print("\n");
+  }
+}
+// book:end setup
+
+// book:begin lists
+// Signs, verifies and reads the five lists, and records each author.
+read_lists :: (o: [] Outbox, loud: bool) {
+  for a: 0..<5 {
+    text: [1024] u8; scratch: [4096] u8;
+    s := sign_list(a + 1, LISTS[a], text[..]);
+    e := nostr_event_verify_vartime(s, scratch[..], false);
+    #assert e.error == NE_OK;
+    l := nip65_read(e);
+    i := ob_author(o, e.public_key, l);
+    #assert i == a;
+    if !loud { continue; }
+    print("  %: list %, % relays:", NAMES[a], N65[l.error], l.count);
+    for k: 0..<l.count {
+      buf: [N65_URL_MOST] u8; for c: 0..<l.url_n[k] { buf[c] = l.url[k * N65_URL_MOST + c]; }
+      print(" % %", cast(string) buf[6..<8], ifx l.read[k] && l.write[k] then "both" else ifx l.read[k] then "read" else "write");
+    }
+    print("\n    writes to "); print_relays(o, o[0].author[a].write);
+    print("; reads mentions on "); print_relays(o, o[0].author[a].read); print("\n");
+  }
+}
+// book:end lists
+
+// book:begin merge
+// The scripted relays. Each step is one thing a relay's connection
+// reported after relay.coax admitted it: an event (by id number), EOSE,
+// CLOSED, or the clock reaching t.
+STEP_EVENT :: 0; STEP_EOSE :: 1; STEP_CLOSED :: 2; STEP_TICK :: 3;
+Step :: struct { t: int; what: int; relay: int; id: int; }
+// Relay indexes: r1 0, r2 1, r3 2, r4 3, r5 4. Ids 1-6 are events e1-e6.
+SCRIPT :: [16] Step.[
+  Step.{t = 10, what = STEP_EVENT, relay = 1, id = 1}, Step.{t = 10, what = STEP_EVENT, relay = 1, id = 2},
+  Step.{t = 12, what = STEP_EVENT, relay = 1, id = 3}, Step.{t = 15, what = STEP_EOSE, relay = 1},
+  Step.{t = 20, what = STEP_EVENT, relay = 0, id = 1}, Step.{t = 25, what = STEP_EOSE, relay = 0},
+  Step.{t = 30, what = STEP_EVENT, relay = 2, id = 2}, Step.{t = 31, what = STEP_EVENT, relay = 2, id = 5},
+  Step.{t = 35, what = STEP_EOSE, relay = 2}, Step.{t = 40, what = STEP_EVENT, relay = 4, id = 4},
+  Step.{t = 60, what = STEP_CLOSED, relay = 3}, Step.{t = 2999, what = STEP_TICK},
+  Step.{t = 3000, what = STEP_TICK}, Step.{t = 3100, what = STEP_EOSE, relay = 4},
+  Step.{t = 3200, what = STEP_EVENT, relay = 4, id = 4}, Step.{t = 3200, what = STEP_EVENT, relay = 0, id = 6}];
+// What the merge decided, for the checks: per step 'n' new, 'd' duplicate,
+// 'x' not asked, 'e' an end accepted, '-' an end ignored, or the number of
+// relays timed out; then 'c' when caught up after the step, '.' when not.
+Trace :: struct { steps: [64] u8; n: int; fresh: int; dups: int; }
+trace_put :: (t: [] Trace, c: u8) { t[0].steps[t[0].n] = c; t[0].n += 1; }
+
+merge :: (o: [] Outbox, relays: u64, loud: bool) -> Trace {
+  t: [1] Trace; s: [1] ObSub;
+  ob_sub_start(s[..], relays, 0, 3000);
+  if loud { print("  t=0 REQ to "); print_relays(o, relays); print(", wait 3000 ms for EOSE\n"); }
+  for step: SCRIPT {
+    if loud { print("  t=% ", step.t); }
+    if step.what == STEP_EVENT {
+      id: [32] u8; id[0] = cast(u8) step.id;
+      d := ob_sub_event(s[..], step.relay, id);
+      marks := "ndx"; trace_put(t[..], marks[d]);
+      if loud { print_relays(o, cast(u64) 1 << step.relay); print(" EVENT e%: %", step.id, MERGED[d]); }
+    } else if step.what == STEP_TICK {
+      n := ob_sub_tick(s[..], step.t);
+      trace_put(t[..], cast(u8) ('0' + n));
+      if loud { print("clock: % relay(s) timed out", n); }
+    } else {
+      ended := ifx step.what == STEP_EOSE then ob_sub_eose(s[..], step.relay) else ob_sub_closed(s[..], step.relay);
+      trace_put(t[..], ifx ended then 'e' else '-');
+      if loud {
+        print_relays(o, cast(u64) 1 << step.relay); print(" % ", ifx step.what == STEP_EOSE then "EOSE" else "CLOSED");
+        if ended { print("(ended)"); } else { print("(ignored: %)", SUB[s[0].state[step.relay]]); }
+      }
+    }
+    up := ob_caught_up(s[..]);
+    trace_put(t[..], ifx up then 'c' else '.');
+    if loud { print("%\n", ifx up then ", caught up" else ""); }
+  }
+  t[0].fresh = s[0].fresh; t[0].dups = s[0].dups;
+  if loud {
+    print("  % events delivered once, % duplicates dropped; per relay:", s[0].fresh, s[0].dups);
+    for r: 0..<o[0].relays {
+      if !ob_asked(s[..], r) { continue; }
+      print(" "); print_relays(o, cast(u64) 1 << r); print(" % (%)", s[0].events[r], SUB[s[0].state[r]]);
+    }
+    print("\n");
+  }
+  return t[0];
+}
+// book:end merge
+
+// book:begin fifty
+// Fifty authors, 0 to 49, over eight relays registered in this order: big,
+// east, west and s0 to s4. Author i writes to big when i < 30, to east when
+// 20 <= i < 40, to west when 35 <= i < 48, and to s(i mod 5) when i < 48.
+// Author 48 lists big as a read relay only; author 49 lists nothing.
+FIFTY_RELAYS :: [8] string.["wss://big.example", "wss://east.example", "wss://west.example", "wss://s0.example",
+                            "wss://s1.example", "wss://s2.example", "wss://s3.example", "wss://s4.example"];
+fifty :: (o: [] Outbox) {
+  for r: 0..<8 { #assert ob_relay(o, FIFTY_RELAYS[r]) == r; }
+  for i: 0..<50 {
+    tags: [512] u8; n := json_raw(tags[..], 0, "[");
+    if i < 48 {
+      if i < 30 { n = json_raw(tags[..], n, "[\"r\",\"wss://big.example\",\"write\"],"); }
+      if i >= 20 && i < 40 { n = json_raw(tags[..], n, "[\"r\",\"wss://east.example\",\"write\"],"); }
+      if i >= 35 { n = json_raw(tags[..], n, "[\"r\",\"wss://west.example\",\"write\"],"); }
+      n = json_raw(tags[..], n, "[\"r\",\"wss://s"); n = json_write_int(tags[..], n, i % 5); n = json_raw(tags[..], n, ".example\"]");
+    } else if i == 48 {
+      n = json_raw(tags[..], n, "[\"r\",\"wss://big.example\",\"read\"]");
+    }
+    n = json_raw(tags[..], n, "]");
+    key: [32] u8; key[0] = 0xa0; key[31] = cast(u8) i;
+    #assert ob_author(o, key, ob_list(cast(string) tags[0..<n])) == i;
+  }
+}
+fifty_follows :: () -> [50] int { f: [50] int; for i: 0..<50 { f[i] = i; } return f; }
+// book:end fifty
+
+// book:begin example
+main :: () {
+  o: [1] Outbox;
+  print("Relay lists (kind 10002, signed by keys 1-5 and verified)\n");
+  read_lists(o[..], true);
+
+  print("\nPublish a reply by you that tags alice and dave\n");
+  tagged := [2] int.[0, 3];
+  for cap: 1..<3 {
+    s := ob_publish(o[..], 4, tagged[..], cap, 4);
+    print("  % per author: ", cap); print_relays(o[..], s.relays);
+    print(" (% relays, %)\n", s.count, OB[s.error]);
+  }
+  s := ob_publish(o[..], 4, tagged[..], 2, 2);
+  print("  2 per author, at most 2 relays: "); print_relays(o[..], s.relays); print(" (% relays, %)\n", s.count, OB[s.error]);
+  print("  mentions of you are read from: "); print_relays(o[..], ob_inbox(o[..], 4, 2).relays); print("\n");
+
+  print("\nRead alice, bob, carol and dave from their write relays\n");
+  follows := [4] int.[0, 1, 2, 3];
+  pers := [3] int.[1, 2, 2]; mosts := [3] int.[8, 8, 3];
+  for k: 0..<3 {
+    per := pers[k]; most := mosts[k];
+    p := ob_cover(o[..], follows[..], per, most);
+    print("  % per author, at most % relays: % relays (%)\n", per, most, p.count, OB[p.error]);
+    print_plan(o[..], p, true);
+    print("    relays per author:"); for a: 0..<4 { print(" % %", NAMES[a], p.got[a]); } print("\n");
+  }
+
+  print("\nMerge one subscription across the 5 relays of the 2-per-author plan\n");
+  p := ob_cover(o[..], follows[..], 2, 8);
+  chosen: u64 = 0; for k: 0..<p.count { chosen |= cast(u64) 1 << p.relay[k]; }
+  t := merge(o[..], chosen, true);
+  print("  trace %\n", cast(string) t.steps[0..<t.n]);
+
+  print("\nFifty authors over eight relays\n");
+  f: [1] Outbox; fifty(f[..]); all := fifty_follows();
+  limits := [2] int.[8, 4];
+  for most: limits {
+    q := ob_cover(f[..], all[..], 2, most);
+    print("  2 per author, at most % relays: % relays\n", most, q.count);
+    print_plan(f[..], q, false);
+    counts: [3] u64; for a: 0..<50 { counts[q.got[a]] |= cast(u64) 1 << a; }
+    for c: 0..<3 { print("    on % relay(s): ", c); print_authors(counts[c], false); print(" (% authors)\n", ob_count(counts[c])); }
+  }
+
+  print("\nRefusals\n");
+  bad := [6] string.["[[\"r\",\"wss://r1.example\"],[\"r\"]]", "[[\"r\",\"wss://r1.example\",\"both\"]]",
+                     "[[\"r\",\"https://r1.example\"]]", "[[\"r\",\"ws://127.0.0.1:7777\"]]",
+                     "[[\"r\",\"wss://r1.example\",\"read\",\"extra\"]]", "[[\"r\",\"wss://[::1]/\"]]"];
+  for k: 0..<6 {
+    l := ob_list(bad[k]);
+    print("  %: %, tag %\n", bad[k], N65[l.error], l.tag);
+  }
+  many: [1024] u8; n := json_raw(many[..], 0, "[");
+  for i: 0..<17 {
+    if i > 0 { n = json_raw(many[..], n, ","); }
+    n = json_raw(many[..], n, "[\"r\",\"wss://m"); n = json_write_int(many[..], n, i); n = json_raw(many[..], n, ".example\"]");
+  }
+  n = json_raw(many[..], n, "]");
+  l := ob_list(cast(string) many[0..<n]);
+  print("  17 distinct r tags: %, tag %, % relays kept\n", N65[l.error], l.tag, l.count);
+  l = nip65_read(n65_event(3, OB_BOB));
+  print("  bob's tags as a kind 3 event: %\n", N65[l.error]);
+  print("  an author whose list was refused: ob_author %\n", OB[-ob_author(o[..], ob_key(9), ob_list(bad[0]))]);
+  past := [1] int.[50];
+  print("  a follow index past the table: %\n", OB[ob_cover(f[..], past[..], 2, 8).error]);
+}
+// book:end example

@@ -1,0 +1,110 @@
+// The checks of outbox.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/outbox.coax --run-steps 250000000
+#load "../outbox.coax";
+
+// book:begin check
+// The x coordinates of 1G to 5G on secp256k1, as published (SEC 2 gives G;
+// 2G to 5G are the well-known small multiples). Keys 1 to 5 sign the lists,
+// so these are alice, bob, carol, dave and you.
+MULTIPLES :: [5] string.[
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+  "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4"];
+#test "each signed list is recorded under its signer, k*G" #steps 2000000000 {
+  o: [1] Outbox; read_lists(o[..], false);
+  for a: 0..<5 {
+    key: [32] u8; r := hex_decode_checked(MULTIPLES[a], key[..], false);
+    for i: 0..<32 { #assert o[0].author[a].pubkey[i] == key[i]; }
+  }
+}
+
+// The chapter's hand tables. Relays r1-r5 are 0-4; alice-dave are 0-3.
+#test "publish and cover match the hand tables" #steps 2000000000 {
+  o: [1] Outbox; read_lists(o[..], false); tagged := [2] int.[0, 3]; follows := [4] int.[0, 1, 2, 3];
+  #assert ob_publish(o[..], 4, tagged[..], 2, 4).relays == ob_mask("0 2 3");
+  #assert ob_publish(o[..], 4, tagged[..], 1, 4).relays == ob_mask("0 2");
+  #assert ob_publish(o[..], 4, tagged[..], 2, 2).error == OB_TOO_MANY;
+  p := ob_cover(o[..], follows[..], 2, 8);
+  relays := [5] int.[1, 4, 0, 2, 3]; asks := [5] string.["0 1 2", "3", "0", "1", "2"];
+  #assert p.count == 5;
+  for k: 0..<5 { #assert p.relay[k] == relays[k] && p.asks[k] == ob_mask(asks[k]); }
+}
+
+// The smallest number of relays that puts every author with a write relay
+// on at least one, and how many subsets of the pool do so, by trying every
+// subset. The whole pool always covers, so the search for k ends.
+Cover :: struct { size: int; covers: int; }
+smallest_cover :: (o: [] Outbox, authors: int) -> Cover {
+  fits: [65] bool;   // fits[k]: some subset of k relays covers everyone
+  c: Cover;
+  for subset: 0..<(1 << o[0].relays) {
+    ok := true;
+    for a: 0..<authors {
+      w := o[0].author[a].write;
+      if w != 0 && (w & cast(u64) subset) == 0 { ok = false; }
+    }
+    if ok { fits[ob_count(cast(u64) subset)] = true; c.covers += 1; }
+  }
+  while !fits[c.size] { c.size += 1; }
+  return c;
+}
+#test "one relay per author: greedy is as small as the best subset" #steps 2000000000 {
+  o: [1] Outbox; read_lists(o[..], false); follows := [4] int.[0, 1, 2, 3];
+  // Covers of the five relays: r5 for dave, then r2 with any of r1, r3, r4
+  // (8), or r1, r3 and r4 without r2 (1): 9.
+  c := smallest_cover(o[..], 4); #assert c.size == 2 && c.covers == 9 && ob_cover(o[..], follows[..], 1, 8).count == 2;
+  f: [1] Outbox; fifty(f[..]); all := fifty_follows();
+  #assert smallest_cover(f[..], 50).size == 3 && ob_cover(f[..], all[..], 1, 8).count == 3;
+  // The search itself: nobody to cover needs no relay; two authors on two
+  // different relays need both.
+  e: [1] Outbox; #assert ob_author(e[..], ob_key(1), ob_list("[[\"r\",\"wss://a.example\",\"read\"]]")) == 0 && smallest_cover(e[..], 1).size == 0;
+  #assert ob_author(e[..], ob_key(2), ob_list("[[\"r\",\"wss://b.example\",\"write\"]]")) == 1 && smallest_cover(e[..], 2).size == 1;
+  #assert ob_author(e[..], ob_key(1), ob_list("[[\"r\",\"wss://a.example\",\"write\"]]")) == 0 && smallest_cover(e[..], 2).size == 2;
+}
+
+// The fifty-author table, from the rule that built the lists: author i
+// writes to big (i < 30), east (20 <= i < 40), west (35 <= i < 48) and
+// s(i mod 5) (i < 48). Pick k's authors are worked out in the chapter.
+in_s :: (i: int, k: int) -> bool { return i < 48 && i % 5 == k && (i < 20 || (i >= 30 && i < 35) || i >= 40); }
+#test "fifty authors: the plan follows the hand table" #steps 2000000000 {
+  f: [1] Outbox; fifty(f[..]); all := fifty_follows();
+  p := ob_cover(f[..], all[..], 2, 8);
+  #assert p.count == 8;
+  order := [8] int.[0, 2, 1, 3, 4, 5, 6, 7];   // big, west, east, s0-s4
+  for k: 0..<8 {
+    #assert p.relay[k] == order[k];
+    for i: 0..<50 {
+      want := false;
+      if k == 0 { want = i < 30; } else if k == 1 { want = i >= 35 && i < 48; } else if k == 2 { want = i >= 20 && i < 40; } else { want = in_s(i, k - 3); }
+      #assert ((p.asks[k] & (cast(u64) 1 << i)) != 0) == want;
+    }
+  }
+  for i: 0..<50 { #assert p.got[i] == ifx i < 48 then 2 else 0; }
+  q := ob_cover(f[..], all[..], 2, 4);
+  #assert q.count == 4;
+  ones := 0; for i: 0..<50 { if q.got[i] == 1 { ones += 1; } }
+  #assert ones == 26 && q.got[48] == 0 && q.got[49] == 0 && q.got[0] == 2 && q.got[1] == 1 && q.got[20] == 2 && q.got[30] == 2 && q.got[31] == 1;
+}
+
+// The merge's trace, worked out by hand in the chapter. Fresh and duplicate
+// counts are recounted from the script: distinct ids among the events, and
+// the rest.
+HAND_TRACE :: "n.n.n.e.d.e.d.n.e.n.e.0.1c-cdcnc";
+#test "the scripted relays merge to one copy per id" #steps 2000000000 {
+  o: [1] Outbox; read_lists(o[..], false); follows := [4] int.[0, 1, 2, 3];
+  p := ob_cover(o[..], follows[..], 2, 8);
+  chosen: u64 = 0; for k: 0..<p.count { chosen |= cast(u64) 1 << p.relay[k]; }
+  t := merge(o[..], chosen, false);
+  #assert cast(string) t.steps[0..<t.n] == HAND_TRACE;
+  events := 0; distinct := 0; seen: [256] bool;
+  for step: SCRIPT {
+    if step.what != STEP_EVENT { continue; }
+    events += 1;
+    if !seen[step.id] { seen[step.id] = true; distinct += 1; }
+  }
+  #assert t.fresh == distinct && t.dups == events - distinct && distinct == 6 && events == 9;
+}
+// book:end check

@@ -1,0 +1,155 @@
+// NIP-65 relay lists: a kind 10002 event's r tags, ["r", url] or
+// ["r", url, "read"|"write"]. No marker means the relay is both a read and a
+// write relay. A user's write relays are where they publish their own
+// events; their read relays are where they look for events that mention
+// them. Kind 10002 is replaceable, so the newest list is the whole list;
+// store_core.coax does that replacement. Other tags and the content are not
+// used. URLs are compared byte for byte after JSON unescaping: nothing is
+// normalized, so "wss://a.example" and "wss://a.example/" are two relays.
+//
+// Checks: coax test coax/lib/nostr/nip65.coax
+#load "tags.coax";
+#load "../net/relay_uri.coax";
+#authority;
+
+N65_OK :: 0; N65_EVENT :: 1; N65_KIND :: 2; N65_TAG :: 3; N65_MARKER :: 4; N65_URL :: 5; N65_TOO_MANY :: 6; N65_LIMIT :: 7;
+N65_KIND_RELAYS :: 10002;
+N65_MOST :: 16;     // distinct relays one list may name; NIP-65 asks for 2-4 of each
+N65_URL_MOST :: 256;
+
+// The list's relays in tag order. A URL listed twice is one relay with
+// both entries' markers.
+Nip65List :: struct {
+  error: int = N65_EVENT; tag: int;  // tag: the index of the refused tag
+  count: int;
+  url: [N65_MOST * N65_URL_MOST] u8; url_n: [N65_MOST] int;
+  read: [N65_MOST] bool; write: [N65_MOST] bool;
+}
+// Whether relay k of the list is exactly the bytes s.
+n65_is :: (l: Nip65List, k: int, s: string) -> bool {
+  url: [N65_URL_MOST] u8;
+  for i: 0..<l.url_n[k] { url[i] = l.url[k * N65_URL_MOST + i]; }
+  return cast(string) url[0..<l.url_n[k]] == s;
+}
+
+n65_event :: (kind: int, tags: string) -> NostrEvent { e := nt_event(tags); e.kind = kind; return e; }
+// NIP-65's example list, byte for byte.
+N65_EXAMPLE :: "[[\"r\",\"wss://alicerelay.example.com\"],[\"r\",\"wss://brando-relay.com\"],[\"r\",\"wss://expensive-relay.example2.com\",\"write\"],[\"r\",\"wss://nostr-relay.example.com\",\"read\"]]";
+
+#test "NIP-65's example: two relays for both, one write, one read" {
+  l := nip65_read(n65_event(10002, N65_EXAMPLE));
+  #assert l.error == N65_OK && l.count == 4 && l.tag == 0;
+  #assert n65_is(l, 0, "wss://alicerelay.example.com") && l.read[0] && l.write[0];
+  #assert n65_is(l, 1, "wss://brando-relay.com") && l.read[1] && l.write[1];
+  #assert n65_is(l, 2, "wss://expensive-relay.example2.com") && !l.read[2] && l.write[2];
+  #assert n65_is(l, 3, "wss://nostr-relay.example.com") && l.read[3] && !l.write[3];
+}
+#test "other tags are skipped; an empty list and a list of no r tags have no relays" {
+  l := nip65_read(n65_event(10002, "[[\"p\",\"x\"],[],[\"r\",\"ws://localhost\"],[\"t\",1,{}]]"));
+  #assert l.error == N65_OK && l.count == 1 && n65_is(l, 0, "ws://localhost");
+  l = nip65_read(n65_event(10002, "[]")); #assert l.error == N65_OK && l.count == 0;
+  l = nip65_read(n65_event(10002, "[[\"rr\",\"wss://a\"]]")); #assert l.error == N65_OK && l.count == 0;
+}
+#test "a relay listed twice is one relay with both markers" {
+  l := nip65_read(n65_event(10002, "[[\"r\",\"wss://a\",\"read\"],[\"r\",\"wss://b\",\"read\"],[\"r\",\"wss://a\",\"write\"]]"));
+  #assert l.error == N65_OK && l.count == 2 && l.read[0] && l.write[0] && l.read[1] && !l.write[1];
+  l = nip65_read(n65_event(10002, "[[\"r\",\"wss://a\",\"write\"],[\"r\",\"wss://a\",\"write\"]]"));
+  #assert l.error == N65_OK && l.count == 1 && !l.read[0] && l.write[0];
+  l = nip65_read(n65_event(10002, "[[\"r\",\"wss://a\",\"write\"],[\"r\",\"wss://a/\"]]"));
+  #assert l.error == N65_OK && l.count == 2;
+}
+#test "escapes are read before the URL is checked" {
+  l := nip65_read(n65_event(10002, "[[\"r\",\"wss:\\/\\/a\\u002eexample\",\"\\u0072ead\"]]"));
+  #assert l.error == N65_OK && l.count == 1 && n65_is(l, 0, "wss://a.example") && l.read[0] && !l.write[0];
+}
+#test "only a parsed kind 10002 event is read" {
+  l := nip65_read(n65_event(3, N65_EXAMPLE)); #assert l.error == N65_KIND && l.tag == 0;
+  #assert nip65_read(n65_event(10001, N65_EXAMPLE)).error == N65_KIND;
+  bad: NostrEvent; bad.kind = 10002; #assert nip65_read(bad).error == N65_EVENT;
+  e := n65_event(10002, N65_EXAMPLE); e.tags_to = e.original.count + 1; #assert nip65_read(e).error == N65_EVENT;
+}
+#test "malformed r tags, markers and URLs refuse, naming the tag" {
+  l := nip65_read(n65_event(10002, "[[\"r\",\"wss://a\"],[\"r\"]]")); #assert l.error == N65_TAG && l.tag == 1 && l.count == 1;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"wss://a\",\"read\",\"x\"]]")).error == N65_TAG;
+  #assert nip65_read(n65_event(10002, "[[\"r\",1]]")).error == N65_TAG;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"wss://a\",null]]")).error == N65_TAG;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"wss://a\"],7]")).error == N65_EVENT;
+  l = nip65_read(n65_event(10002, "[[\"p\"],[\"r\",\"wss://a\",\"both\"]]")); #assert l.error == N65_MARKER && l.tag == 1;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"wss://a\",\"\"]]")).error == N65_MARKER;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"wss://a\",\"Read\"]]")).error == N65_MARKER;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"https://a.example\"]]")).error == N65_URL;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"ws://127.0.0.1:7777\"]]")).error == N65_URL;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"wss://[::1]/\"]]")).error == N65_URL;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"\"]]")).error == N65_URL;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"w\"]]")).error == N65_URL;
+  #assert nip65_read(n65_event(10002, "[[\"r\",\"wss://a\\ud800\"]]")).error == N65_LIMIT;
+  #assert nip65_read(n65_event(10002, "[[\"p\",}]")).error == N65_EVENT;
+}
+#test "a URL of 256 bytes is read; 257 is refused" {
+  buf: [400] u8; n := json_raw(buf[..], 0, "[[\"r\",\"wss://a.test/");
+  for i: 0..<243 { buf[n] = 'a'; n += 1; }
+  m := json_raw(buf[..], n, "\"]]");
+  l := nip65_read(n65_event(10002, cast(string) buf[0..<m])); #assert l.error == N65_OK && l.url_n[0] == 256;
+  buf[n] = 'a'; m = json_raw(buf[..], n + 1, "\"]]");
+  #assert nip65_read(n65_event(10002, cast(string) buf[0..<m])).error == N65_LIMIT;
+}
+#test "16 relays are read; a 17th distinct relay is too many" {
+  buf: [1024] u8; n := json_raw(buf[..], 0, "[");
+  for i: 0..<17 {
+    if i > 0 { n = json_raw(buf[..], n, ","); }
+    n = json_raw(buf[..], n, "[\"r\",\"wss://r"); n = json_write_int(buf[..], n, i); n = json_raw(buf[..], n, ".example\"]");
+    if i == 15 {
+      m := json_raw(buf[..], n, ",[\"r\",\"wss://r0.example\",\"read\"]]");
+      l := nip65_read(n65_event(10002, cast(string) buf[0..<m])); #assert l.error == N65_OK && l.count == 16 && n65_is(l, 15, "wss://r15.example");
+    }
+  }
+  n = json_raw(buf[..], n, "]");
+  l := nip65_read(n65_event(10002, cast(string) buf[0..<n])); #assert l.error == N65_TOO_MANY && l.tag == 16 && l.count == 16;
+}
+
+n65_fail :: (l: Nip65List, error: int, tag: int) -> Nip65List { r := l; r.error = error; r.tag = tag; return r; }
+
+// book:begin read
+// The r tags of a parsed kind 10002 event. The signature is not checked
+// here: relay.coax refuses forged events before they reach a reader.
+nip65_read :: (e: NostrEvent) -> Nip65List {
+  l: Nip65List; j: [1] Json;
+  if !nt_start(j[..], e) { return l; }
+  if e.kind != N65_KIND_RELAYS { return n65_fail(l, N65_KIND, 0); }
+  k := 0; t := json_next(j[..]);
+  while t != JSON_ARRAY_END {
+    if t != JSON_ARRAY { return n65_fail(l, N65_EVENT, k); }
+    depth := j[0].depth; t = json_next(j[..]);
+    if t != JSON_STRING || !json_is(json_text(j[..]), "r") {
+      // Another tag: read on to the end of its array.
+      while j[0].depth >= depth { if json_next(j[..]) == JSON_ERROR { return n65_fail(l, N65_EVENT, k); } }
+      k += 1; t = json_next(j[..]); continue;
+    }
+    url: [N65_URL_MOST] u8; n: int; read := true; write := true; values := 1;
+    t = json_next(j[..]);
+    while t != JSON_ARRAY_END {
+      if t != JSON_STRING || values > 2 { return n65_fail(l, N65_TAG, k); }
+      raw := json_text(j[..]);
+      if values == 1 {
+        n = json_unescape(raw, url[..]);
+        if n < 0 { return n65_fail(l, N65_LIMIT, k); }
+        if !relay_uri(cast(string) url[0..<n]).ok { return n65_fail(l, N65_URL, k); }
+      } else if json_is(raw, "read") { write = false; }
+      else if json_is(raw, "write") { read = false; }
+      else { return n65_fail(l, N65_MARKER, k); }
+      values += 1; t = json_next(j[..]);
+    }
+    if values == 1 { return n65_fail(l, N65_TAG, k); }
+    at := l.count;
+    for i: 0..<l.count { if n65_is(l, i, cast(string) url[0..<n]) { at = i; } }
+    if at == N65_MOST { return n65_fail(l, N65_TOO_MANY, k); }
+    if at == l.count {
+      for i: 0..<n { l.url[at * N65_URL_MOST + i] = url[i]; }
+      l.url_n[at] = n; l.count += 1;
+    }
+    l.read[at] = l.read[at] || read; l.write[at] = l.write[at] || write;
+    k += 1; t = json_next(j[..]);
+  }
+  return n65_fail(l, N65_OK, 0);
+}
+// book:end read

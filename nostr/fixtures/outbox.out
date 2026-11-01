@@ -1,0 +1,90 @@
+Relay lists (kind 10002, signed by keys 1-5 and verified)
+  alice: list ok, 3 relays: r1 write r2 write r3 read
+    writes to r1 r2; reads mentions on r3
+  bob: list ok, 2 relays: r2 both r3 both
+    writes to r2 r3; reads mentions on r2 r3
+  carol: list ok, 2 relays: r2 write r4 both
+    writes to r2 r4; reads mentions on r4
+  dave: list ok, 3 relays: r5 write r1 read r3 read
+    writes to r5; reads mentions on r1 r3
+  you: list ok, 3 relays: r1 both r4 write r5 read
+    writes to r1 r4; reads mentions on r1 r5
+
+Publish a reply by you that tags alice and dave
+  1 per author: r1 r3 (2 relays, ok)
+  2 per author: r1 r3 r4 (3 relays, ok)
+  2 per author, at most 2 relays: r1 r3 r4 (3 relays, too many)
+  mentions of you are read from: r1 r5
+
+Read alice, bob, carol and dave from their write relays
+  1 per author, at most 8 relays: 2 relays (ok)
+    pick 1: r2 asked for alice, bob, carol
+    pick 2: r5 asked for dave
+    relays per author: alice 1 bob 1 carol 1 dave 1
+  2 per author, at most 8 relays: 5 relays (ok)
+    pick 1: r2 asked for alice, bob, carol
+    pick 2: r5 asked for dave
+    pick 3: r1 asked for alice
+    pick 4: r3 asked for bob
+    pick 5: r4 asked for carol
+    relays per author: alice 2 bob 2 carol 2 dave 1
+  2 per author, at most 3 relays: 3 relays (ok)
+    pick 1: r2 asked for alice, bob, carol
+    pick 2: r5 asked for dave
+    pick 3: r1 asked for alice
+    relays per author: alice 2 bob 1 carol 1 dave 1
+
+Merge one subscription across the 5 relays of the 2-per-author plan
+  t=0 REQ to r1 r2 r3 r4 r5, wait 3000 ms for EOSE
+  t=10 r2 EVENT e1: new
+  t=10 r2 EVENT e2: new
+  t=12 r2 EVENT e3: new
+  t=15 r2 EOSE (ended)
+  t=20 r1 EVENT e1: duplicate
+  t=25 r1 EOSE (ended)
+  t=30 r3 EVENT e2: duplicate
+  t=31 r3 EVENT e5: new
+  t=35 r3 EOSE (ended)
+  t=40 r5 EVENT e4: new
+  t=60 r4 CLOSED (ended)
+  t=2999 clock: 0 relay(s) timed out
+  t=3000 clock: 1 relay(s) timed out, caught up
+  t=3100 r5 EOSE (ignored: timed out), caught up
+  t=3200 r5 EVENT e4: duplicate, caught up
+  t=3200 r1 EVENT e6: new, caught up
+  6 events delivered once, 3 duplicates dropped; per relay: r1 2 (EOSE) r2 3 (EOSE) r3 2 (EOSE) r4 0 (closed) r5 2 (timed out)
+  trace n.n.n.e.d.e.d.n.e.n.e.0.1c-cdcnc
+
+Fifty authors over eight relays
+  2 per author, at most 8 relays: 8 relays
+    pick 1: big asked for 0-29
+    pick 2: west asked for 35-47
+    pick 3: east asked for 20-39
+    pick 4: s0 asked for 0, 5, 10, 15, 30, 40, 45
+    pick 5: s1 asked for 1, 6, 11, 16, 31, 41, 46
+    pick 6: s2 asked for 2, 7, 12, 17, 32, 42, 47
+    pick 7: s3 asked for 3, 8, 13, 18, 33, 43
+    pick 8: s4 asked for 4, 9, 14, 19, 34, 44
+    on 0 relay(s): 48-49 (2 authors)
+    on 1 relay(s): none (0 authors)
+    on 2 relay(s): 0-47 (48 authors)
+  2 per author, at most 4 relays: 4 relays
+    pick 1: big asked for 0-29
+    pick 2: west asked for 35-47
+    pick 3: east asked for 20-39
+    pick 4: s0 asked for 0, 5, 10, 15, 30, 40, 45
+    on 0 relay(s): 48-49 (2 authors)
+    on 1 relay(s): 1-4, 6-9, 11-14, 16-19, 31-34, 41-44, 46-47 (26 authors)
+    on 2 relay(s): 0, 5, 10, 15, 20-30, 35-40, 45 (22 authors)
+
+Refusals
+  [["r","wss://r1.example"],["r"]]: tag, tag 1
+  [["r","wss://r1.example","both"]]: marker, tag 0
+  [["r","https://r1.example"]]: url, tag 0
+  [["r","ws://127.0.0.1:7777"]]: url, tag 0
+  [["r","wss://r1.example","read","extra"]]: tag, tag 0
+  [["r","wss://[::1]/"]]: url, tag 0
+  17 distinct r tags: too many, tag 16, 16 relays kept
+  bob's tags as a kind 3 event: kind
+  an author whose list was refused: ob_author list
+  a follow index past the table: index

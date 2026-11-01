@@ -1,0 +1,431 @@
+// The outbox model (NIP-65): which relays a client asks for whose events,
+// and where it sends an event, from the users' kind 10002 relay lists.
+//
+// - To read an author's events, ask the author's write relays.
+// - To read events that mention a user, ask the user's read relays.
+// - To publish, send to your own write relays and to the read relays of
+//   every user the event tags.
+//
+// A client following many authors doesn't open every write relay of every
+// author. ob_cover picks a small set greedily: each author on at most
+// per_author of their write relays, at most `most` relays in all, and every
+// author on one relay before any author on two. ob_sub merges what the
+// chosen relays send for one subscription: one copy of each event id, and
+// caught up once every relay has sent EOSE, closed or passed its deadline.
+//
+// Relays are indexes into a pool of at most 64 distinct URLs, in the order
+// they were first added; a set of relays is a u64 with bit r for relay r.
+// Authors are indexes into a table of at most 64; a set of authors is a u64
+// the same way. Ties go to the lowest relay index, so a plan depends only on
+// the order in which relays and authors were added. Nothing here opens a
+// connection: relay.coax runs each connection (chapters 29-31) and the
+// caller hands this unit what each relay delivered.
+//
+// Checks: coax test coax/lib/nostr/outbox.coax
+#load "nip65.coax";
+#authority;
+
+OB_RELAYS :: 64; OB_AUTHORS :: 64; OB_SEEN :: 256;
+// Errors. A negative ob_author result is minus one of these.
+OB_OK :: 0; OB_FULL :: 1; OB_LIST :: 2; OB_INDEX :: 3; OB_TOO_MANY :: 4;
+// A relay's state in one subscription.
+OB_WAIT :: 0; OB_EOSE :: 1; OB_TIMEOUT :: 2; OB_CLOSED :: 3;
+// What ob_sub_event decided about one delivered event.
+OB_NEW :: 0; OB_DUP :: 1; OB_NOT_ASKED :: 2;
+
+ObAuthor :: struct { pubkey: [32] u8; read: u64; write: u64; }
+Outbox :: struct {
+  relays: int; url: [OB_RELAYS * N65_URL_MOST] u8; url_n: [OB_RELAYS] int;
+  authors: int; author: [OB_AUTHORS] ObAuthor;
+}
+// A set of relays to send to or ask, and how many it holds.
+ObSet :: struct { error: int; relays: u64; count: int; }
+// Pick k asks relay[k] for the authors in asks[k]; got[a] is how many picks
+// ask for author a.
+ObPlan :: struct {
+  error: int; count: int;
+  relay: [OB_RELAYS] int; asks: [OB_RELAYS] u64;
+  got: [OB_AUTHORS] int;
+}
+// One subscription sent to several relays.
+ObSub :: struct {
+  relays: u64; deadline: int;
+  state: [OB_RELAYS] int; events: [OB_RELAYS] int;
+  seen: [OB_SEEN * 32] u8; seen_count: int; seen_next: int;
+  fresh: int; dups: int;
+}
+
+// ---- check fixtures: the chapter's four follows, five relays and you ------
+OB_ALICE :: "[[\"r\",\"wss://r1.example\",\"write\"],[\"r\",\"wss://r2.example\",\"write\"],[\"r\",\"wss://r3.example\",\"read\"]]";
+OB_BOB :: "[[\"r\",\"wss://r2.example\"],[\"r\",\"wss://r3.example\"]]";
+OB_CAROL :: "[[\"r\",\"wss://r2.example\",\"write\"],[\"r\",\"wss://r4.example\"]]";
+OB_DAVE :: "[[\"r\",\"wss://r5.example\",\"write\"],[\"r\",\"wss://r1.example\",\"read\"],[\"r\",\"wss://r3.example\",\"read\"]]";
+OB_ME :: "[[\"r\",\"wss://r1.example\"],[\"r\",\"wss://r4.example\",\"write\"],[\"r\",\"wss://r5.example\",\"read\"]]";
+ob_key :: (b: int) -> [32] u8 { k: [32] u8; k[0] = cast(u8) b; return k; }
+ob_list :: (tags: string) -> Nip65List { return nip65_read(n65_event(N65_KIND_RELAYS, tags)); }
+// Alice, Bob, Carol, Dave and you as authors 0-4; relays r1-r5 as 0-4.
+ob_five :: (o: [] Outbox) {
+  lists := [5] string.[OB_ALICE, OB_BOB, OB_CAROL, OB_DAVE, OB_ME];
+  for a: 0..<5 { added := ob_author(o, ob_key(a + 1), ob_list(lists[a])); }
+}
+// The set of the relay numbers in bits, written in decimal with spaces between.
+ob_mask :: (bits: string) -> u64 {
+  m: u64 = 0; b := 0;
+  for i: 0..<bits.count + 1 {
+    if i == bits.count || bits[i] == ' ' { m |= cast(u64) 1 << b; b = 0; } else { b = b * 10 + cast(int) (bits[i] - '0'); }
+  }
+  return m;
+}
+
+#test "relays are numbered in the order they first appear" {
+  o: [1] Outbox; ob_five(o[..]);
+  #assert o[0].relays == 5 && o[0].authors == 5;
+  #assert ob_relay(o[..], "wss://r1.example") == 0 && ob_relay(o[..], "wss://r4.example") == 3 && ob_relay(o[..], "wss://r5.example") == 4;
+  #assert o[0].author[0].write == ob_mask("0 1") && o[0].author[0].read == ob_mask("2");
+  #assert o[0].author[1].write == ob_mask("1 2") && o[0].author[1].read == ob_mask("1 2");
+  #assert o[0].author[2].write == ob_mask("1 3") && o[0].author[2].read == ob_mask("3");
+  #assert o[0].author[3].write == ob_mask("4") && o[0].author[3].read == ob_mask("0 2");
+  #assert o[0].author[4].write == ob_mask("0 3") && o[0].author[4].read == ob_mask("0 4");
+  #assert o[0].author[3].pubkey[0] == 4 && o[0].author[4].pubkey[0] == 5;
+}
+#test "a newer list for the same key replaces the old one" {
+  o: [1] Outbox; ob_five(o[..]);
+  #assert ob_author(o[..], ob_key(2), ob_list("[[\"r\",\"wss://r6.example\",\"read\"]]")) == 1;
+  #assert o[0].authors == 5 && o[0].relays == 6 && o[0].author[1].write == 0 && o[0].author[1].read == ob_mask("5");
+  #assert ob_author(o[..], ob_key(1), ob_list(OB_BOB)) == 0 && o[0].authors == 5 && o[0].author[0].write == ob_mask("1 2");
+}
+#test "the pool and the author table refuse when full; a refused list adds nothing" {
+  o: [1] Outbox; buf: [64] u8;
+  for r: 0..<64 {
+    n := json_raw(buf[..], 0, "wss://p"); n = json_write_int(buf[..], n, r); n = json_raw(buf[..], n, ".example");
+    #assert ob_relay(o[..], cast(string) buf[0..<n]) == r;
+  }
+  #assert ob_relay(o[..], "wss://p0.example") == 0 && ob_relay(o[..], "wss://q.example") == -1 && o[0].relays == 64;
+  #assert ob_author(o[..], ob_key(1), ob_list("[[\"r\",\"wss://p63.example\"]]")) == 0 && o[0].author[0].write == cast(u64) 1 << 63;
+  #assert ob_author(o[..], ob_key(2), ob_list(OB_BOB)) == -OB_FULL && o[0].authors == 1;
+  #assert ob_author(o[..], ob_key(3), ob_list("[[\"r\"]]")) == -OB_LIST && o[0].authors == 1;
+  p: [1] Outbox;
+  for a: 0..<64 { #assert ob_author(p[..], ob_key(a), ob_list("[]")) == a; }
+  #assert ob_author(p[..], ob_key(64), ob_list("[]")) == -OB_FULL && ob_author(p[..], ob_key(63), ob_list(OB_BOB)) == 63;
+  #assert p[0].authors == 64 && p[0].author[63].write == ob_mask("0 1");
+}
+#test "the pool takes only URLs relay_uri admits" {
+  o: [1] Outbox;
+  #assert ob_relay(o[..], "https://a.example") == -1 && ob_relay(o[..], "") == -1 && o[0].relays == 0;
+  long: [257] u8; s := "wss://a.test/"; for i: 0..<257 { long[i] = ifx i < s.count then s[i] else 'a'; }
+  #assert ob_relay(o[..], cast(string) long[0..<256]) == 0 && ob_relay(o[..], cast(string) long[..]) == -1;
+}
+#test "publish: your write relays and each tagged user's read relays" {
+  o: [1] Outbox; ob_five(o[..]);
+  l0_3 := [2] int.[0, 3]; l0_5 := [2] int.[0, 5]; l_1 := [1] int.[-1];
+  s := ob_publish(o[..], 4, l0_3[..], 2, 4);
+  #assert s.error == OB_OK && s.relays == ob_mask("0 2 3") && s.count == 3;
+  s = ob_publish(o[..], 4, l0_3[..], 1, 4);
+  #assert s.error == OB_OK && s.relays == ob_mask("0 2") && s.count == 2;
+  none: [1] int;
+  s = ob_publish(o[..], 4, none[0..<0], 2, 2); #assert s.error == OB_OK && s.relays == ob_mask("0 3");
+  s = ob_publish(o[..], 4, l0_3[..], 2, 2);
+  #assert s.error == OB_TOO_MANY && s.relays == ob_mask("0 2 3") && s.count == 3;
+  #assert ob_publish(o[..], 5, none[0..<0], 2, 4).error == OB_INDEX && ob_publish(o[..], -1, none[0..<0], 2, 4).error == OB_INDEX;
+  #assert ob_publish(o[..], 4, l0_5[..], 2, 4).error == OB_INDEX && ob_publish(o[..], 4, l_1[..], 2, 4).error == OB_INDEX;
+}
+#test "mentions: a user's read relays, capped" {
+  o: [1] Outbox; ob_five(o[..]);
+  s := ob_inbox(o[..], 3, 2); #assert s.error == OB_OK && s.relays == ob_mask("0 2") && s.count == 2;
+  s = ob_inbox(o[..], 3, 1); #assert s.relays == ob_mask("0") && s.count == 1;
+  s = ob_inbox(o[..], 1, 0); #assert s.relays == 0 && s.count == 0;
+  #assert ob_inbox(o[..], 5, 2).error == OB_INDEX;
+}
+#test "the first n relays of a set, and its size" {
+  #assert ob_first(ob_mask("1 5 9 63"), 3) == ob_mask("1 5 9") && ob_first(ob_mask("1 63"), 9) == ob_mask("1 63");
+  #assert ob_first(ob_mask("63"), 1) == cast(u64) 1 << 63 && ob_first(7, 0) == 0 && ob_first(7, -1) == 0;
+  #assert ob_count(0) == 0 && ob_count(ob_mask("0 1 63")) == 3 && ob_count(0xffffffffffffffff) == 64;
+}
+#test "cover: everyone on one relay, then on two, from the hand table" {
+  o: [1] Outbox; ob_five(o[..]); follows := [4] int.[0, 1, 2, 3];
+  l0_5 := [2] int.[0, 5]; l_1 := [1] int.[-1];
+  p := ob_cover(o[..], follows[..], 2, 8);
+  #assert p.error == OB_OK && p.count == 5;
+  hand := [5] int.[1, 4, 0, 2, 3]; asks := [5] u64.[7, 8, 1, 2, 4];
+  for k: 0..<5 { #assert p.relay[k] == hand[k] && p.asks[k] == asks[k]; }
+  #assert p.got[0] == 2 && p.got[1] == 2 && p.got[2] == 2 && p.got[3] == 1 && p.got[4] == 0;
+  p = ob_cover(o[..], follows[..], 1, 8);
+  #assert p.count == 2 && p.relay[0] == 1 && p.asks[0] == 7 && p.relay[1] == 4 && p.asks[1] == 8 && p.got[3] == 1;
+  p = ob_cover(o[..], follows[..], 2, 3);
+  #assert p.count == 3 && p.relay[2] == 0 && p.got[0] == 2 && p.got[1] == 1 && p.got[2] == 1 && p.got[3] == 1;
+  p = ob_cover(o[..], follows[..], 2, 1); #assert p.count == 1 && p.relay[0] == 1 && p.got[3] == 0;
+  p = ob_cover(o[..], follows[..], 2, 0); #assert p.error == OB_OK && p.count == 0;
+  p = ob_cover(o[..], follows[..], 0, 8); #assert p.count == 0;
+  // Without alice: r2 for bob and carol, r5 for dave, then r3 and r4.
+  p = ob_cover(o[..], follows[1..<4], 2, 8);
+  #assert p.count == 4 && p.relay[0] == 1 && p.asks[0] == 6 && p.relay[1] == 4 && p.asks[1] == 8 && p.asks[2] == 2 && p.asks[3] == 4 && p.got[0] == 0;
+  #assert ob_cover(o[..], l0_5[..], 2, 8).error == OB_INDEX && ob_cover(o[..], l_1[..], 2, 8).error == OB_INDEX;
+}
+#test "cover: a relay already chosen serves later levels for free" {
+  // Author 0 writes to relays 0 and 1, author 1 to 1 and 2, author 2 to 0 only.
+  o: [1] Outbox;
+  #assert ob_author(o[..], ob_key(1), ob_list("[[\"r\",\"wss://a.example\",\"write\"],[\"r\",\"wss://b.example\",\"write\"]]")) == 0;
+  #assert ob_author(o[..], ob_key(2), ob_list("[[\"r\",\"wss://b.example\",\"write\"],[\"r\",\"wss://c.example\",\"write\"]]")) == 1;
+  #assert ob_author(o[..], ob_key(3), ob_list("[[\"r\",\"wss://a.example\",\"write\"]]")) == 2;
+  l0_1_2 := [3] int.[0, 1, 2]; l1_1_0 := [3] int.[1, 1, 0];
+  // Level 1: a serves 0 and 2, b serves 0 and 1; a wins the tie, then b for
+  // author 1. Level 2: b, already chosen, adds author 0; c is new for 1.
+  p := ob_cover(o[..], l0_1_2[..], 2, 3);
+  #assert p.count == 3 && p.relay[0] == 0 && p.asks[0] == 5 && p.relay[1] == 1 && p.asks[1] == 3 && p.relay[2] == 2 && p.asks[2] == 2;
+  #assert p.got[0] == 2 && p.got[1] == 2 && p.got[2] == 1;
+  p = ob_cover(o[..], l0_1_2[..], 2, 2);
+  #assert p.count == 2 && p.asks[1] == 3 && p.got[0] == 2 && p.got[1] == 1;
+  // Relay 0 joins second in level 1, for author 3 only; level 2 adds author 0 to it.
+  q: [1] Outbox; a01 := ob_list("[[\"r\",\"wss://a.example\",\"write\"],[\"r\",\"wss://b.example\",\"write\"]]");
+  b := ob_list("[[\"r\",\"wss://b.example\",\"write\"]]"); a := ob_list("[[\"r\",\"wss://a.example\",\"write\"]]");
+  #assert ob_author(q[..], ob_key(1), a01) == 0 && ob_author(q[..], ob_key(2), b) == 1 && ob_author(q[..], ob_key(3), b) == 2 && ob_author(q[..], ob_key(4), a) == 3;
+  l0_3 := [4] int.[0, 1, 2, 3];
+  p = ob_cover(q[..], l0_3[..], 2, 8);
+  #assert p.count == 2 && p.relay[0] == 1 && p.asks[0] == 7 && p.relay[1] == 0 && p.asks[1] == 9 && p.got[0] == 2 && p.got[3] == 1;
+  // A follow listed twice counts once.
+  p = ob_cover(o[..], l1_1_0[..], 1, 3); #assert p.count == 1 && p.relay[0] == 1 && p.asks[0] == 3;
+}
+#test "merge: one copy per id; caught up when every relay ended" {
+  s: [1] ObSub; ob_sub_start(s[..], ob_mask("1 4 0"), 100, 3000);
+  #assert s[0].deadline == 3100 && !ob_caught_up(s[..]);
+  #assert ob_sub_event(s[..], 1, ob_key(1)) == OB_NEW && ob_sub_event(s[..], 0, ob_key(1)) == OB_DUP;
+  #assert ob_sub_event(s[..], 2, ob_key(2)) == OB_NOT_ASKED && ob_sub_event(s[..], 64, ob_key(2)) == OB_NOT_ASKED && ob_sub_event(s[..], -1, ob_key(2)) == OB_NOT_ASKED;
+  #assert ob_sub_event(s[..], 4, ob_key(2)) == OB_NEW && s[0].fresh == 2 && s[0].dups == 1 && s[0].events[0] == 1 && s[0].events[1] == 1 && s[0].events[2] == 0;
+  #assert ob_sub_eose(s[..], 1) && !ob_sub_eose(s[..], 1) && !ob_sub_eose(s[..], 2) && !ob_sub_eose(s[..], 64) && !ob_sub_eose(s[..], -1);
+  #assert ob_sub_closed(s[..], 0) && !ob_sub_closed(s[..], 0) && !ob_sub_closed(s[..], 3) && !ob_sub_closed(s[..], 64) && !ob_sub_closed(s[..], -1);
+  #assert !ob_caught_up(s[..]) && ob_sub_tick(s[..], 3099) == 0 && !ob_caught_up(s[..]);
+  #assert ob_sub_tick(s[..], 3100) == 1 && ob_caught_up(s[..]) && s[0].state[4] == OB_TIMEOUT && ob_sub_tick(s[..], 9000) == 0;
+  #assert !ob_sub_eose(s[..], 4) && s[0].state[4] == OB_TIMEOUT && s[0].state[1] == OB_EOSE && s[0].state[0] == OB_CLOSED;
+  // After the deadline, events still merge: a late copy is a duplicate.
+  #assert ob_sub_event(s[..], 4, ob_key(1)) == OB_DUP && ob_sub_event(s[..], 4, ob_key(3)) == OB_NEW;
+  e: [1] ObSub; ob_sub_start(e[..], 0, 0, 10); #assert ob_caught_up(e[..]) && ob_sub_tick(e[..], 10) == 0;
+  z: [1] ObSub; ob_sub_start(z[..], ob_mask("0 2"), 0, 10);
+  #assert !ob_caught_up(z[..]) && ob_sub_eose(z[..], 2) && !ob_caught_up(z[..]) && ob_sub_tick(z[..], 10) == 1 && z[0].state[0] == OB_TIMEOUT && ob_caught_up(z[..]);
+  w: [1] ObSub; ob_sub_start(w[..], ob_mask("1 3"), 0, 10);
+  #assert ob_sub_eose(w[..], 1) && !ob_caught_up(w[..]) && ob_sub_tick(w[..], 10) == 1 && w[0].state[3] == OB_TIMEOUT && w[0].state[2] == OB_WAIT;
+  h: [1] ObSub; ob_sub_start(h[..], cast(u64) 1 << 63, 0, 10); #assert !ob_caught_up(h[..]) && ob_sub_eose(h[..], 63) && ob_caught_up(h[..]);
+}
+#test "merge: starting again forgets the last subscription" {
+  s: [1] ObSub; ob_sub_start(s[..], 1, 0, 10);
+  #assert ob_sub_event(s[..], 0, ob_key(1)) == OB_NEW && ob_sub_eose(s[..], 0);
+  ob_sub_start(s[..], 1, 50, 10);
+  #assert s[0].deadline == 60 && s[0].state[0] == OB_WAIT && s[0].events[0] == 0 && s[0].fresh == 0 && s[0].seen_count == 0;
+  #assert ob_sub_event(s[..], 0, ob_key(1)) == OB_NEW;
+}
+#test "merge: the all-zero id is an id like any other" {
+  s: [1] ObSub; ob_sub_start(s[..], 1, 0, 10); zero: [32] u8;
+  #assert ob_sub_event(s[..], 0, ob_key(1)) == OB_NEW && ob_sub_event(s[..], 0, zero) == OB_NEW && ob_sub_event(s[..], 0, zero) == OB_DUP;
+}
+#test "merge: the seen set holds the last 256 ids" {
+  s: [1] ObSub; ob_sub_start(s[..], 1, 0, 10);
+  for i: 0..<257 { id: [32] u8; id[0] = cast(u8) (i & 255); id[1] = cast(u8) (i >> 8); #assert ob_sub_event(s[..], 0, id) == OB_NEW; }
+  #assert s[0].seen_count == 256 && s[0].fresh == 257;
+  last: [32] u8; last[0] = 0; last[1] = 1; #assert ob_sub_event(s[..], 0, last) == OB_DUP;
+  second: [32] u8; second[0] = 1; #assert ob_sub_event(s[..], 0, second) == OB_DUP;
+  // Id 0 was the oldest and was forgotten when the 257th arrived.
+  first: [32] u8; #assert ob_sub_event(s[..], 0, first) == OB_NEW;
+}
+
+// ---- the pool and the author table ------------------------------------------
+ob_is :: (o: [] Outbox, r: int, url: string) -> bool {
+  have: [N65_URL_MOST] u8;
+  for i: 0..<o[0].url_n[r] { have[i] = o[0].url[r * N65_URL_MOST + i]; }
+  return cast(string) have[0..<o[0].url_n[r]] == url;
+}
+// The index of a relay URL, added when new: -1 when relay_uri refuses it,
+// it is longer than 256 bytes, or the pool is full.
+ob_relay :: (o: [] Outbox, url: string) -> int {
+  if url.count > N65_URL_MOST || !relay_uri(url).ok { return -1; }
+  for r: 0..<o[0].relays { if ob_is(o, r, url) { return r; } }
+  r := o[0].relays;
+  if r == OB_RELAYS { return -1; }
+  for i: 0..<url.count { o[0].url[r * N65_URL_MOST + i] = url[i]; }
+  o[0].url_n[r] = url.count; o[0].relays = r + 1;
+  return r;
+}
+// Records an author's relay list and returns the author's index, or
+// -OB_LIST when the list was refused, or -OB_FULL when the pool or the
+// table is full. A key seen before gets the new list in place of the old.
+ob_author :: (o: [] Outbox, pubkey: [32] u8, l: Nip65List) -> int {
+  if l.error != N65_OK { return -OB_LIST; }
+  read: u64 = 0; write: u64 = 0;
+  for k: 0..<l.count {
+    url: [N65_URL_MOST] u8;
+    for i: 0..<l.url_n[k] { url[i] = l.url[k * N65_URL_MOST + i]; }
+    r := ob_relay(o, cast(string) url[0..<l.url_n[k]]);
+    if r < 0 { return -OB_FULL; }
+    if l.read[k] { read |= cast(u64) 1 << r; }
+    if l.write[k] { write |= cast(u64) 1 << r; }
+  }
+  a := o[0].authors;
+  for k: 0..<o[0].authors {
+    same := true;
+    for i: 0..<32 { if o[0].author[k].pubkey[i] != pubkey[i] { same = false; } }
+    if same { a = k; }
+  }
+  if a == OB_AUTHORS { return -OB_FULL; }
+  if a == o[0].authors { o[0].authors = a + 1; }
+  o[0].author[a] = ObAuthor.{pubkey = pubkey, read = read, write = write};
+  return a;
+}
+ob_known :: (o: [] Outbox, a: int) -> bool { return a >= 0 && a < o[0].authors; }
+
+// ---- relay sets ---------------------------------------------------------------
+// The n lowest-numbered relays of a set.
+ob_first :: (relays: u64, n: int) -> u64 {
+  out: u64 = 0; left := n;
+  for r: 0..<OB_RELAYS {
+    bit := cast(u64) 1 << r;
+    if left > 0 && (relays & bit) != 0 { out |= bit; left -= 1; }
+  }
+  return out;
+}
+ob_count :: (set: u64) -> int {
+  n := 0;
+  for r: 0..<64 { if (set & (cast(u64) 1 << r)) != 0 { n += 1; } }
+  return n;
+}
+ob_sized :: (relays: u64, most: int) -> ObSet {
+  s := ObSet.{relays = relays, count = ob_count(relays)};
+  if s.count > most { s.error = OB_TOO_MANY; }
+  return s;
+}
+// Where to send an event by author `me` that tags the users `tagged`: me's
+// first per_author write relays and each tagged user's first per_author read
+// relays. OB_TOO_MANY when that is more than `most` relays; the set is still
+// reported, and the caller decides what to drop.
+ob_publish :: (o: [] Outbox, me: int, tagged: [] int, per_author: int, most: int) -> ObSet {
+  if !ob_known(o, me) { return ObSet.{error = OB_INDEX}; }
+  relays := ob_first(o[0].author[me].write, per_author);
+  for t: tagged {
+    if !ob_known(o, t) { return ObSet.{error = OB_INDEX}; }
+    relays |= ob_first(o[0].author[t].read, per_author);
+  }
+  return ob_sized(relays, most);
+}
+// Where to look for events that mention user a: a's first per_author read relays.
+ob_inbox :: (o: [] Outbox, a: int, per_author: int) -> ObSet {
+  if !ob_known(o, a) { return ObSet.{error = OB_INDEX}; }
+  return ob_sized(ob_first(o[0].author[a].read, per_author), per_author);
+}
+
+// ---- the greedy cover -----------------------------------------------------------
+// book:begin cover
+// The follows in `want` that still need a relay at this level, write to
+// relay r, and are not yet asked of r.
+ob_needing :: (o: [] Outbox, p: ObPlan, taken: [] u64, want: u64, r: int, level: int) -> u64 {
+  m: u64 = 0; bit := cast(u64) 1 << r;
+  for a: 0..<o[0].authors {
+    if (want & (cast(u64) 1 << a)) != 0 && p.got[a] < level && (o[0].author[a].write & bit) != 0 && (taken[a] & bit) == 0 {
+      m |= cast(u64) 1 << a;
+    }
+  }
+  return m;
+}
+ob_assign :: (p: ObPlan, taken: [] u64, k: int, m: u64) -> ObPlan {
+  q := p; r := q.relay[k];
+  q.asks[k] |= m;
+  for a: 0..<OB_AUTHORS {
+    if (m & (cast(u64) 1 << a)) != 0 { q.got[a] += 1; taken[a] |= cast(u64) 1 << r; }
+  }
+  return q;
+}
+// Which relays to ask for the follows' events. For level 1 to per_author:
+// first every relay already in the plan takes the follows it can serve at
+// this level, in relay order; then, while the plan has fewer than `most`
+// relays, the relay not yet in the plan that serves the most follows still
+// needing one at this level joins it (ties: the lowest index). A relay
+// picked later in a level serves only the follows still uncovered then; the
+// next level's first step lets it serve the others. A follow
+// with no write relays gets none (got 0); the caller decides the fallback.
+ob_cover :: (o: [] Outbox, follows: [] int, per_author: int, most: int) -> ObPlan {
+  // taken[a]: the relays asked for author a. slot[r]: 1 + relay r's pick,
+  // or 0 while r is not in the plan.
+  p: ObPlan; want: u64; taken: [OB_AUTHORS] u64; slot: [OB_RELAYS] int;
+  for f: follows {
+    if !ob_known(o, f) { p.error = OB_INDEX; return p; }
+    want |= cast(u64) 1 << f;
+  }
+  for level: 1..<per_author + 1 {
+    for r: 0..<o[0].relays {
+      if slot[r] != 0 { p = ob_assign(p, taken[..], slot[r] - 1, ob_needing(o, p, taken[..], want, r, level)); }
+    }
+    // A relay already in the plan serves nobody more at this level: the
+    // step above, or its own pick, gave it every follow it could take.
+    while p.count < most {
+      best := -1; best_n: int; best_m: u64;
+      for r: 0..<o[0].relays {
+        m := ob_needing(o, p, taken[..], want, r, level); n := ob_count(m);
+        if n > best_n { best = r; best_n = n; best_m = m; }
+      }
+      if best < 0 { break; }
+      p.relay[p.count] = best; p.count += 1; slot[best] = p.count;
+      p = ob_assign(p, taken[..], p.count - 1, best_m);
+    }
+  }
+  return p;
+}
+// book:end cover
+
+// ---- merging one subscription across relays ---------------------------------------
+// Starts a subscription on a set of relays, each with the same deadline.
+ob_sub_start :: (s: [] ObSub, relays: u64, now: int, wait_ms: int) {
+  fresh: ObSub; s[0] = fresh;
+  s[0].relays = relays; s[0].deadline = now + wait_ms;
+}
+ob_asked :: (s: [] ObSub, relay: int) -> bool {
+  return relay >= 0 && relay < OB_RELAYS && (s[0].relays & (cast(u64) 1 << relay)) != 0;
+}
+ob_seen :: (s: [] ObSub, id: [32] u8) -> bool {
+  for k: 0..<s[0].seen_count {
+    same := true;
+    for i: 0..<32 { if s[0].seen[k * 32 + i] != id[i] { same = false; } }
+    if same { return true; }
+  }
+  return false;
+}
+// book:begin merge
+// An event (by id) that relay `relay` delivered for this subscription: OB_NEW
+// the first time any relay delivers the id, OB_DUP after, OB_NOT_ASKED from
+// a relay the subscription was not sent to. relay.coax has already checked
+// the signature and dropped repeats from the same connection.
+ob_sub_event :: (s: [] ObSub, relay: int, id: [32] u8) -> int {
+  if !ob_asked(s, relay) { return OB_NOT_ASKED; }
+  s[0].events[relay] += 1;
+  if ob_seen(s, id) { s[0].dups += 1; return OB_DUP; }
+  at := s[0].seen_next * 32;
+  for i: 0..<32 { s[0].seen[at + i] = id[i]; }
+  s[0].seen_next = (s[0].seen_next + 1) % OB_SEEN;
+  if s[0].seen_count < OB_SEEN { s[0].seen_count += 1; }
+  s[0].fresh += 1;
+  return OB_NEW;
+}
+ob_sub_end :: (s: [] ObSub, relay: int, state: int) -> bool {
+  if !ob_asked(s, relay) || s[0].state[relay] != OB_WAIT { return false; }
+  s[0].state[relay] = state;
+  return true;
+}
+// The relay sent EOSE: true when it was still waiting.
+ob_sub_eose :: (s: [] ObSub, relay: int) -> bool { return ob_sub_end(s, relay, OB_EOSE); }
+// The relay sent CLOSED or the connection failed: true when it was still waiting.
+ob_sub_closed :: (s: [] ObSub, relay: int) -> bool { return ob_sub_end(s, relay, OB_CLOSED); }
+// At or after the deadline, every relay still waiting times out. Returns how many did.
+ob_sub_tick :: (s: [] ObSub, now: int) -> int {
+  if now < s[0].deadline { return 0; }
+  n := 0; rest := s[0].relays; r := 0;
+  while rest != 0 {
+    if (rest & 1) != 0 && s[0].state[r] == OB_WAIT { s[0].state[r] = OB_TIMEOUT; n += 1; }
+    rest = rest >> 1; r += 1;
+  }
+  return n;
+}
+// Caught up: no relay of the subscription is still waiting.
+ob_caught_up :: (s: [] ObSub) -> bool {
+  rest := s[0].relays; r := 0;
+  while rest != 0 {
+    if (rest & 1) != 0 && s[0].state[r] == OB_WAIT { return false; }
+    rest = rest >> 1; r += 1;
+  }
+  return true;
+}
+// book:end merge
