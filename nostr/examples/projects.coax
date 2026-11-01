@@ -66,7 +66,7 @@ show :: (s: [] Store, f: [] Fold) {
   print("project event %, order event %, repository %\n", f[0].project, f[0].order, ifx f[0].repo >= 0 then "kept" else "none");
   for r: 0..<f[0].n {
     root := f[0].root[r];
-    print("  %  %: %, size %, rank %, status % at T0+%", event_id(s, root)[0..<f[0].alias[r]], str(s, f[0].slug[r]),
+    print("  %  %: %, size %, rank %, status % at T0+%", stored_id(s, root)[0..<f[0].alias[r]], str(s, f[0].slug[r]),
       KIND_NAMES[f[0].kind[r]], ifx f[0].size[r].len > 0 then str(s, f[0].size[r]) else "none", ifx f[0].rank[r].len > 0 then str(s, f[0].rank[r]) else "none",
       STATUS_NAME[f[0].status[r]], f[0].status_at[r] - s[0].at[0]);
     print(", worker %, commit %, notes %, plan %/%\n", ifx f[0].claimed[r].len > 0 then str(s, f[0].claimed[r]) else "none",

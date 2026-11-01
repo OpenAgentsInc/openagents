@@ -54,7 +54,8 @@ variables. `project-fold.coax` defines procedures named `fold` and
 verifier together. The website avoids this by compiling them into separate
 units joined by C. The example needs both in one program, so `sf_multiply`'s
 local `fold` is now `reduced` and the two Nostr verify entry points' parameter
-`event_id` is now `nostr_id`.
+`event_id` is now `nostr_id`. Commit `8dedf60cd1` later renamed the fold's
+own `event_id` to `stored_id`, and the example calls it by that name.
 
 ## The events of a project
 
@@ -177,7 +178,7 @@ fold :: (s: [] Store, f: [] Fold, slug: string) {
     n := 4;
     for o: 0..<f[0].n {
       if o == r { continue; }
-      a := event_id(s, f[0].root[r]); b := event_id(s, f[0].root[o]);
+      a := stored_id(s, f[0].root[r]); b := stored_id(s, f[0].root[o]);
       while n < 64 && equal(a[0..<n], b[0..<n]) { n += 1; }
     }
     f[0].alias[r] = n;
@@ -398,7 +399,7 @@ show :: (s: [] Store, f: [] Fold) {
   print("project event %, order event %, repository %\n", f[0].project, f[0].order, ifx f[0].repo >= 0 then "kept" else "none");
   for r: 0..<f[0].n {
     root := f[0].root[r];
-    print("  %  %: %, size %, rank %, status % at T0+%", event_id(s, root)[0..<f[0].alias[r]], str(s, f[0].slug[r]),
+    print("  %  %: %, size %, rank %, status % at T0+%", stored_id(s, root)[0..<f[0].alias[r]], str(s, f[0].slug[r]),
       KIND_NAMES[f[0].kind[r]], ifx f[0].size[r].len > 0 then str(s, f[0].size[r]) else "none", ifx f[0].rank[r].len > 0 then str(s, f[0].rank[r]) else "none",
       STATUS_NAME[f[0].status[r]], f[0].status_at[r] - s[0].at[0]);
     print(", worker %, commit %, notes %, plan %/%\n", ifx f[0].claimed[r].len > 0 then str(s, f[0].claimed[r]) else "none",
@@ -612,7 +613,7 @@ check_admit :: (s: [] Store, text: string) -> int {
     e := check_admit(s[..], EVENTS[k]);
     #assert e != -2;
     #assert equal(EVENTS[k][7..<71], PY_ID[k]);
-    if e >= 0 { #assert equal(event_id(s[..], e), PY_ID[k]); }
+    if e >= 0 { #assert equal(stored_id(s[..], e), PY_ID[k]); }
   }
   // the owner's eleven are kept; the other key's close is dropped
   #assert s[0].n == 11 && s[0].dropped == 1;

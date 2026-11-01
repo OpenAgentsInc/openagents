@@ -42,7 +42,7 @@ check_admit :: (s: [] Store, text: string) -> int {
     e := check_admit(s[..], EVENTS[k]);
     #assert e != -2;
     #assert equal(EVENTS[k][7..<71], PY_ID[k]);
-    if e >= 0 { #assert equal(event_id(s[..], e), PY_ID[k]); }
+    if e >= 0 { #assert equal(stored_id(s[..], e), PY_ID[k]); }
   }
   // the owner's eleven are kept; the other key's close is dropped
   #assert s[0].n == 11 && s[0].dropped == 1;
