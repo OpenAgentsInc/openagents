@@ -1,0 +1,595 @@
+// CoderOS presentation mode: set the screen up to be watched, and put it back
+// (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 4), in place of os/bin/presentation-mode
+// (openagents 2ca255550e). Entering raises every screen's scale, puts the camera view (the
+// "selfie" window) in the top right, and writes what the desktop was to
+// ~/.openagents/presentation-mode.json; leaving reads that file, so it works from a fresh process
+// after whatever entered has died, and checks that each thing went back.
+//   coax/web/tool.sh os/presentation-mode.coax on [--scale N] | off | toggle | status
+// It drives the desktop through coder-desk, as the shell did, and prints the shell's lines; the
+// state file is the shell's too (jq's indented form), so either can leave a mode the other entered.
+// One change: an option missing its value ends the options (the shell looped on it for ever).
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "../coax/lib/json/json.coax";
+
+cxproc_uid :: () -> int #foreign;
+cxproc_wall_us :: () -> int #foreign;
+
+PM_USAGE :: "Usage: presentation-mode <on|off|toggle|status> [options]\n\nCommands:\n  on [--scale N]   Set the screen up to be watched: raise the monitor scale,\n                   put the camera view in the top right, and write down what\n                   the desktop was.\n  off              Put the desktop back from what was written down.\n  toggle           Enter when out, leave when in.\n  status           Say whether the mode is on, and since when.\n\nThe state lives in ~/.openagents/presentation-mode.json. Leaving reads that\nfile and needs nothing that entering left running, so `presentation-mode off`\nworks from a fresh process after whatever set the mode up has died.\n";
+
+// ---- pure pieces
+
+// The UTC time of epoch seconds as date -u +%Y-%m-%dT%H:%M:%SZ writes it (Hinnant's civil_from_days).
+pm_utc :: (secs: int, out: [] u8) -> string {
+  days := secs / 86400; rem := secs % 86400;
+  if rem < 0 { rem += 86400; days -= 1; }
+  z := days + 719468;
+  era := ifx z >= 0 then z / 146097 else (z - 146096) / 146097;
+  doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400;
+  doy := doe - (365 * yoe + yoe / 4 - yoe / 100);
+  mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1;
+  m := ifx mp < 10 then mp + 3 else mp - 9;
+  if m <= 2 { y += 1; }
+  n := 0;
+  n = pm_digits(out, n, y, 4); out[n] = '-'; n += 1; n = pm_digits(out, n, m, 2); out[n] = '-'; n += 1; n = pm_digits(out, n, d, 2);
+  out[n] = 'T'; n += 1; n = pm_digits(out, n, rem / 3600, 2); out[n] = ':'; n += 1; n = pm_digits(out, n, rem / 60 % 60, 2);
+  out[n] = ':'; n += 1; n = pm_digits(out, n, rem % 60, 2); out[n] = 'Z'; n += 1;
+  return cast(string) out[0..<n];
+}
+pm_digits :: (out: [] u8, at: int, v: int, width: int) -> int {
+  p := 1; for i: 1..<width { p = p * 10; }
+  n := at;
+  while p > 0 { out[n] = cast,trunc(u8) ('0' + (v / p) % 10); n += 1; p = p / 10; }
+  return n;
+}
+#test "UTC stamps" {
+  b: [32] u8;
+  #assert pm_utc(0, b[..]) == "1970-01-01T00:00:00Z" && pm_utc(951782400, b[..]) == "2000-02-29T00:00:00Z";
+  #assert pm_utc(1793495445, b[..]) == "2026-11-01T01:10:45Z" && pm_utc(4102444799, b[..]) == "2099-12-31T23:59:59Z";
+}
+
+// A JSON value as jq prints it without -c: two spaces an indent, "key": value, [] and {} when
+// empty, strings re-escaped as jq does, numbers as they were written (jq 1.7 and later keep them).
+pm_pretty :: (d: Jv, at: int, depth: int, o: [] Jo) {
+  k := jv_kind(d, at);
+  if k == JV_OBJECT || k == JV_ARRAY {
+    c := d.nodes[at].first;
+    if c < 0 { jo_put(o, ifx k == JV_OBJECT then "{}" else "[]"); return; }
+    jo_byte(o, ifx k == JV_OBJECT then '{' else '[');
+    first := true;
+    while c >= 0 {
+      if !first { jo_byte(o, ','); }
+      first = false;
+      jo_byte(o, '\n'); pm_indent(o, depth + 1);
+      if k == JV_OBJECT { pm_string(o, jv_key(d, c)); jo_put(o, ": "); }
+      pm_pretty(d, c, depth + 1, o);
+      c = d.nodes[c].next;
+    }
+    jo_byte(o, '\n'); pm_indent(o, depth); jo_byte(o, ifx k == JV_OBJECT then '}' else ']');
+    return;
+  }
+  if k == JV_STRING { pm_string(o, jv_raw(d, at)); return; }
+  jo_put(o, jv_raw(d, at));
+}
+pm_indent :: (o: [] Jo, depth: int) { for i: 0..<depth { jo_put(o, "  "); } }
+// A raw JSON string body (what jv_raw or jv_key gives) written as jq writes it.
+pm_string :: (o: [] Jo, raw: string) { jo_byte(o, '"'); jo_requote_body(o, raw); jo_byte(o, '"'); }
+jo_requote_body :: (o: [] Jo, raw: string) {
+  b: [65536] u8; t: [1] Jo; jo_start(t[..], b[..]); jo_requote(t[..], raw);
+  s := jo_text(t[..]);
+  if s.count >= 2 { jo_put(o, s[1..<s.count - 1]); }
+}
+#test "pretty JSON as jq prints it" {
+  nodes: [256] JvNode; d: [1] Jv; ob: [2048] u8; o: [1] Jo;
+  #assert jv_parse(d[..], "{\"version\":1,\"monitors\":[{\"name\":\"DP-1\",\"scale\":\"1.0\"}],\"camera\":{\"running\":false},\"e\":[],\"f\":{},\"focus\":\"\"}", nodes[..]);
+  jo_start(o[..], ob[..]); pm_pretty(d[0], 0, 0, o[..]);
+  #assert jo_text(o[..]) == "{\n  \"version\": 1,\n  \"monitors\": [\n    {\n      \"name\": \"DP-1\",\n      \"scale\": \"1.0\"\n    }\n  ],\n  \"camera\": {\n    \"running\": false\n  },\n  \"e\": [],\n  \"f\": {},\n  \"focus\": \"\"\n}";
+}
+
+// printf '%.2f' of a scale's text, for comparing two scales.
+pm_scale2 :: (t: string, out: [] u8) -> string { return pm_fixed2(pm_num(t), out); }
+pm_fixed2 :: (v: f64, out: [] u8) -> string {
+  neg := v < 0.0; x := ifx neg then -v else v;
+  q := cast(int) floor(x * 100.0 + 0.5);
+  n := 0; if neg && q != 0 { out[0] = '-'; n = 1; }
+  ib: [24] u8; t := pm_itoa(q / 100, ib[..]); for c: t { out[n] = c; n += 1; }
+  out[n] = '.'; out[n + 1] = cast,trunc(u8) ('0' + (q / 10) % 10); out[n + 2] = cast,trunc(u8) ('0' + q % 10);
+  return cast(string) out[0..<n + 3];
+}
+// A decimal number's value (digits, one point, an optional exponent); 0 when it is not one.
+pm_num :: (t: string) -> f64 {
+  i := 0; neg := false; v := 0.0; scale := 1.0; seen := false;
+  if i < t.count && (t[i] == '-' || t[i] == '+') { neg = t[i] == '-'; i += 1; }
+  while i < t.count && t[i] >= '0' && t[i] <= '9' { v = v * 10.0 + cast(f64) (t[i] - '0'); i += 1; seen = true; }
+  if i < t.count && t[i] == '.' { i += 1; while i < t.count && t[i] >= '0' && t[i] <= '9' { scale = scale / 10.0; v = v + cast(f64) (t[i] - '0') * scale; i += 1; seen = true; } }
+  if seen && i < t.count && (t[i] == 'e' || t[i] == 'E') {
+    i += 1; en := false; if i < t.count && (t[i] == '-' || t[i] == '+') { en = t[i] == '-'; i += 1; }
+    e := 0; while i < t.count && t[i] >= '0' && t[i] <= '9' { e = e * 10 + cast(int) (t[i] - '0'); i += 1; }
+    for k: 0..<e { v = ifx en then v / 10.0 else v * 10.0; }
+  }
+  return ifx neg then -v else v;
+}
+pm_itoa :: (v: int, out: [] u8) -> string {
+  if v == 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  d: [24] u8; k := 0; x := ifx v < 0 then -v else v;
+  while x > 0 { d[k] = cast,trunc(u8) ('0' + x % 10); x = x / 10; k += 1; }
+  n := 0; if v < 0 { out[0] = '-'; n = 1; }
+  for i: 0..<k { out[n + i] = d[k - 1 - i]; }
+  return cast(string) out[0..<n + k];
+}
+#test "scales compared to two places" {
+  b: [32] u8; c: [32] u8;
+  #assert pm_scale2("1.25", b[..]) == "1.25" && pm_scale2("1.0", b[..]) == "1.00" && pm_scale2("2", b[..]) == "2.00" && pm_scale2("1.2", b[..]) == "1.20";
+  #assert pm_scale2("1.249999", b[..]) == pm_scale2("1.25", c[..]) && pm_scale2("1.5e0", b[..]) == "1.50";
+}
+
+// ---- running coder-desk
+
+Session :: struct { socket: string; signature: string; }
+Run :: struct { ok: bool; text: string; }
+// coder-desk ARGS with the session's socket (or Hyprland signature), stdout into out; stderr goes
+// on to ours unless quiet, as the shell let it.
+pm_desk :: (s: Session, argv: [] string, out: [] u8, quiet: bool) -> Run {
+  h := proc_new();
+  ok := proc_arg(h, "coder-desk");
+  for x: argv { ok = ok && proc_arg(h, x); }
+  eb: [4200] u8; gb: [4200] u8;
+  if s.socket.count > 0 { n := pm_cat(eb[..], 0, "CODER_DESK_SOCKET="); n = pm_cat(eb[..], n, s.socket); ok = ok && proc_env(h, cast(string) eb[0..<n]); }
+  if s.signature.count > 0 { n := pm_cat(gb[..], 0, "HYPRLAND_INSTANCE_SIGNATURE="); n = pm_cat(gb[..], n, s.signature); ok = ok && proc_env(h, cast(string) gb[0..<n]); }
+  if !ok || proc_start(h) != 0 { r := proc_release(h); return Run.{}; }
+  n := 0; line: [65536] u8;
+  while true {
+    k := proc_line(h, -1, line[..]);
+    if k < 0 && k != PROC_TOO_LONG { break; }
+    if k < 0 { continue; }
+    if n > 0 && n < out.count { out[n] = '\n'; n += 1; }
+    for i: 0..<k { if n < out.count { out[n] = line[i]; n += 1; } }
+  }
+  status := proc_wait(h, -1);
+  er: [65536] u8; e := proc_stderr(h, er[..]);
+  if !quiet { tool_err(e); }
+  r := proc_release(h);
+  return Run.{ok = status == 0, text = cast(string) out[0..<n]};
+}
+pm_cat :: (out: [] u8, n: int, s: string) -> int { m := n; for c: s { if m < out.count { out[m] = c; m += 1; } } return m; }
+// command -v NAME: a regular file of that name in a PATH directory.
+pm_installed :: (name: string) -> bool {
+  pb: [16384] u8; path := proc_getenv("PATH", pb[..]);
+  i := 0;
+  while i <= path.count {
+    j := i; while j < path.count && path[j] != ':' { j += 1; }
+    dir := path[i..<j]; if dir.count == 0 { dir = "."; }
+    fb: [4300] u8; n := pm_cat(fb[..], 0, dir); n = pm_cat(fb[..], n, "/"); n = pm_cat(fb[..], n, name);
+    if fs_kind(cast(string) fb[0..<n]) == 1 { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+
+// The desktop to change: $CODER_DESK_SOCKET, else the newest coder-desk socket that answers, else
+// the newest Hyprland signature; false (and said) when none answers.
+pm_session :: (sb: [] u8, gb: [] u8) -> Session {
+  s: Session;
+  xb: [4096] u8; xdg := proc_getenv("XDG_RUNTIME_DIR", xb[..]);
+  rb: [64] u8;
+  if xdg.count == 0 { n := pm_cat(rb[..], 0, "/run/user/"); ib: [24] u8; n = pm_cat(rb[..], n, pm_itoa(cxproc_uid(), ib[..])); xdg = cast(string) rb[0..<n]; }
+  given := proc_getenv("CODER_DESK_SOCKET", sb);
+  if given.count > 0 { s.socket = given; return s; }
+  db: [4200] u8; dir := pm_path(xdg, "/coder-desk", db[..]);
+  l: [1] FsList; n := fs_list(dir, l[..]);
+  newest := 0; nb: [4300] u8; nlen := 0;
+  for i: 0..<n {
+    e := fs_entry(l[..], i);
+    if e.count < 6 || e[e.count - 5..<e.count] != ".sock" || e[0] == '.' { continue; }
+    cb: [4300] u8; cand := pm_join(dir, e, cb[..]);
+    if fs_kind(cand) <= 0 { continue; }
+    t := fs_mtime_ns(cand);
+    if nlen > 0 && !(t > newest) { continue; }
+    probe := Session.{socket = cand}; ob: [65536] u8; ps := [1] string.["screens"];
+    if pm_desk(probe, ps[..], ob[..], true).ok { nlen = pm_cat(nb[..], 0, cand); newest = t; }
+  }
+  if nlen > 0 { for i: 0..<nlen { sb[i] = nb[i]; } s.socket = cast(string) sb[0..<nlen]; return s; }
+  sig := proc_getenv("HYPRLAND_INSTANCE_SIGNATURE", gb);
+  if sig.count > 0 { s.signature = sig; return s; }
+  hb: [4200] u8; hdir := pm_path(xdg, "/hypr", hb[..]);
+  hl: [1] FsList; hn := fs_list(hdir, hl[..]);
+  best := ""; bt := 0;
+  for i: 0..<hn {
+    e := fs_entry(hl[..], i);
+    cb: [4300] u8; cand := pm_join(hdir, e, cb[..]);
+    if fs_kind(cand) != 2 { continue; }
+    t := fs_mtime_ns(cand);
+    if best.count == 0 || t > bt { best = e; bt = t; }
+  }
+  if best.count > 0 { k := pm_cat(gb, 0, best); s.signature = cast(string) gb[0..<k]; }
+  return s;
+}
+pm_path :: (a: string, b: string, out: [] u8) -> string { n := pm_cat(out, 0, a); n = pm_cat(out, n, b); return cast(string) out[0..<n]; }
+pm_join :: (dir: string, name: string, out: [] u8) -> string { n := pm_cat(out, 0, dir); n = pm_cat(out, n, "/"); n = pm_cat(out, n, name); return cast(string) out[0..<n]; }
+
+// ---- what the desktop is
+
+// read_monitors: [{name, scale (as text)}], compact.
+pm_monitors :: (s: Session, o: [] Jo) -> bool {
+  ob: [1048576] u8; a := [1] string.["screens"];
+  r := pm_desk(s, a[..], ob[..], false);
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], r.text, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return false; }
+  jo_arr(o);
+  c := d[0].nodes[0].first;
+  while c >= 0 {
+    if jv_kind(d[0], c) != JV_OBJECT && jv_kind(d[0], c) != JV_NULL { return false; }
+    jo_obj(o);
+    jo_key(o, "name"); pm_copy(d[0], jv_get(d[0], c, "name"), o);
+    jo_key(o, "scale"); sc := jv_get(d[0], c, "scale");
+    if jv_kind(d[0], sc) == JV_STRING { pm_copy(d[0], sc, o); } else if sc < 0 { jo_str(o, "null"); } else { jo_str(o, jv_raw(d[0], sc)); }
+    jo_end(o);
+    c = d[0].nodes[c].next;
+  }
+  jo_end(o);
+  return true;
+}
+// A value copied into o (null when it is missing).
+pm_copy :: (d: Jv, at: int, o: [] Jo) {
+  if at < 0 { jo_null(o); return; }
+  if jv_kind(d, at) == JV_STRING { jo_value(o); pm_string(o, jv_raw(d, at)); return; }
+  jo_raw(o, jv_raw(d, at));
+}
+// read_camera: {running: false}, or {running: true, x, y, width, height} of the first selfie window.
+pm_camera :: (s: Session, o: [] Jo) -> bool {
+  ob: [1048576] u8; a := [1] string.["list"];
+  r := pm_desk(s, a[..], ob[..], false);
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], r.text, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return false; }
+  w := pm_selfie(d[0]);
+  if w == -2 { return false; }
+  jo_obj(o);
+  if w < 0 { jo_key(o, "running"); jo_bool(o, false); jo_end(o); return true; }
+  jo_key(o, "running"); jo_bool(o, true);
+  jo_key(o, "x"); pm_copy(d[0], jv_path(d[0], w, "at.x"), o);
+  jo_key(o, "y"); pm_copy(d[0], jv_path(d[0], w, "at.y"), o);
+  jo_key(o, "width"); pm_copy(d[0], jv_path(d[0], w, "size.width"), o);
+  jo_key(o, "height"); pm_copy(d[0], jv_path(d[0], w, "size.height"), o);
+  jo_end(o);
+  return true;
+}
+// The first window titled "selfie" in a list: its node, -1 for none, -2 when jq would have stopped.
+pm_selfie :: (d: Jv) -> int {
+  c := d.nodes[0].first;
+  while c >= 0 {
+    k := jv_kind(d, c);
+    if k != JV_OBJECT && k != JV_NULL { return -2; }
+    if k == JV_OBJECT {
+      t := jv_get(d, c, "title"); tb: [16] u8;
+      if jv_kind(d, t) == JV_STRING && jv_str(d, t, tb[..]) == 6 && cast(string) tb[0..<6] == "selfie" { return c; }
+    }
+    c = d.nodes[c].next;
+  }
+  return -1;
+}
+// read_focus: the focused window's handle, "" for none.
+pm_focus :: (s: Session, out: [] u8) -> string {
+  ob: [65536] u8; a := [1] string.["focused"];
+  r := pm_desk(s, a[..], ob[..], true);
+  nodes: [1024] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], r.text, nodes[..]) { return ""; }
+  k := jv_kind(d[0], 0);
+  if k == JV_NULL { return ""; }
+  if k != JV_OBJECT { return ""; }
+  h := jv_get(d[0], 0, "handle"); hk := jv_kind(d[0], h);
+  if h < 0 || hk == JV_NULL || hk == JV_FALSE { return ""; }
+  if hk == JV_STRING { m := jv_str(d[0], h, out); return cast(string) out[0..<ifx m > 0 then m else 0]; }
+  n := pm_cat(out, 0, jv_raw(d[0], h)); return cast(string) out[0..<n];
+}
+// logical_width: the focused screen's (else the first's) width over its scale, floored.
+pm_logical_width :: (s: Session) -> int {
+  ob: [1048576] u8; a := [1] string.["reading"];
+  r := pm_desk(s, a[..], ob[..], false);
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], r.text, nodes[..]) { return 0; }
+  screens := jv_get(d[0], 0, "screens"); focused := jv_get(d[0], 0, "focused");
+  pick := -1;
+  c := ifx screens >= 0 then d[0].nodes[screens].first else -1;
+  fb: [4096] u8; fname := ""; if jv_kind(d[0], focused) == JV_STRING { m := jv_str(d[0], focused, fb[..]); fname = cast(string) fb[0..<m]; }
+  first := c;
+  while c >= 0 && fname.count > 0 {
+    nb: [4096] u8; n := jv_get(d[0], c, "name");
+    if jv_kind(d[0], n) == JV_STRING { m := jv_str(d[0], n, nb[..]); if cast(string) nb[0..<m] == fname { pick = c; break; } }
+    c = d[0].nodes[c].next;
+  }
+  if pick < 0 { pick = first; }
+  if pick < 0 { return 0; }
+  w := pm_num(jv_raw(d[0], jv_path(d[0], pick, "size.width"))); sc := pm_num(jv_raw(d[0], jv_get(d[0], pick, "scale")));
+  if sc == 0.0 { return 0; }
+  return cast(int) floor(w / sc);
+}
+
+// ---- on
+
+pm_on :: (a: [] Args, from: int) -> int {
+  eb: [64] u8; requested := proc_getenv("CODEROS_PRESENTATION_SCALE", eb[..]); if requested.count == 0 { requested = "1.25"; }
+  i := from;
+  while i < args_count(a) {
+    x := args_at(a, i);
+    if x == "--scale" { requested = ifx i + 1 < args_count(a) then args_at(a, i + 1) else ""; i += 2; }
+    else if x == "-h" || x == "--help" { print("%", PM_USAGE); return 0; }
+    else { tool_err("Unknown option: "); tool_errln(x); print("%", PM_USAGE); return 2; }
+  }
+  hb: [4096] u8; sf: [4200] u8; state_file := pm_state_file(hb[..], sf[..]);
+  if fs_exists(state_file) { print("Presentation mode is already on. Run 'presentation-mode off' to leave it.\n"); return 0; }
+  sb: [4200] u8; gb: [4200] u8; s := pm_session(sb[..], gb[..]);
+  if !pm_answers(s) { tool_errln("No desktop session to change. This runs on a CoderOS desktop."); return 1; }
+  mb: [65536] u8; m: [1] Jo; jo_start(m[..], mb[..]); okm := pm_monitors(s, m[..]);
+  cb: [4096] u8; c: [1] Jo; jo_start(c[..], cb[..]); okc := pm_camera(s, c[..]);
+  fb: [4096] u8; focus := pm_focus(s, fb[..]);
+  ub: [32] u8; entered := pm_utc(cxproc_wall_us() / 1000000, ub[..]);
+  // the state, built compact and written as jq -n printed it
+  tb: [131072] u8; t: [1] Jo; jo_start(t[..], tb[..]);
+  jo_obj(t[..]); jo_key(t[..], "version"); jo_int(t[..], 1); jo_key(t[..], "entered"); jo_str(t[..], entered);
+  jo_key(t[..], "monitors"); jo_raw(t[..], ifx okm then jo_text(m[..]) else "null");
+  jo_key(t[..], "camera"); jo_raw(t[..], ifx okc then jo_text(c[..]) else "null");
+  jo_key(t[..], "focus"); jo_str(t[..], focus); jo_end(t[..]);
+  if !pm_write_state(state_file, jo_text(t[..])) { tool_errln("presentation-mode: could not write the state file"); return 1; }
+  // every screen to the requested scale
+  nodes: [65536] JvNode; d: [1] Jv;
+  if okm && jv_parse(d[..], jo_text(m[..]), nodes[..]) {
+    e := d[0].nodes[0].first;
+    while e >= 0 {
+      nb: [4096] u8; nm := jv_str(d[0], jv_get(d[0], e, "name"), nb[..]);
+      if nm > 0 { ob: [4096] u8; sa := [3] string.["scale", cast(string) nb[0..<nm], requested]; r := pm_desk(s, sa[..], ob[..], false); }
+      e = d[0].nodes[e].next;
+    }
+  }
+  started := false;
+  if okc && jo_text(c[..]).count > 15 && jo_text(c[..])[0..<15] == "{\"running\":true" { started = true; }
+  else if pm_installed("camera-overlay") {
+    ob: [4096] u8; oa := [3] string.["open", "--", "camera-overlay start"]; r := pm_desk(s, oa[..], ob[..], false);
+    if pm_wait_camera(s) { started = true; } else { tool_errln("The camera view did not appear; the rest of the mode is on."); }
+  }
+  if started { pm_place_camera(s); }
+  if focus.count > 0 { ob: [4096] u8; fa := [2] string.["focus", focus]; r := pm_desk(s, fa[..], ob[..], true); }
+  print("Presentation mode is on.\n");
+  sc: [1048576] u8; sa := [1] string.["screens"]; r := pm_desk(s, sa[..], sc[..], false);
+  sn: [65536] JvNode; sd: [1] Jv;
+  if jv_parse(sd[..], r.text, sn[..]) && jv_kind(sd[0], 0) == JV_ARRAY {
+    e := sd[0].nodes[0].first;
+    while e >= 0 {
+      nb: [4096] u8; vb: [4096] u8;
+      print("  % scale %\n", pm_text(sd[0], jv_get(sd[0], e, "name"), nb[..]), pm_text(sd[0], jv_get(sd[0], e, "scale"), vb[..]));
+      e = sd[0].nodes[e].next;
+    }
+  }
+  if started { print("  camera view in the top right\n"); }
+  print("  state written to %\n", state_file);
+  return 0;
+}
+// A value as jq's string interpolation writes it: a string decoded, anything else as written,
+// null for missing.
+pm_text :: (d: Jv, at: int, out: [] u8) -> string {
+  if at < 0 { return "null"; }
+  if jv_kind(d, at) == JV_STRING { m := jv_str(d, at, out); return cast(string) out[0..<ifx m > 0 then m else 0]; }
+  return jv_raw(d, at);
+}
+pm_answers :: (s: Session) -> bool { ob: [65536] u8; a := [1] string.["screens"]; return pm_desk(s, a[..], ob[..], true).ok; }
+pm_state_file :: (hb: [] u8, out: [] u8) -> string {
+  home := proc_getenv("HOME", hb);
+  return pm_path(home, "/.openagents/presentation-mode.json", out);
+}
+pm_write_state :: (path: string, compact: string) -> bool {
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], compact, nodes[..]) { return false; }
+  pb: [262144] u8; o: [1] Jo; jo_start(o[..], pb[..]); pm_pretty(d[0], 0, 0, o[..]); jo_byte(o[..], '\n');
+  x := fs_mkdir(fs_dir(path));
+  tb: [4300] u8; ib: [24] u8; n := pm_cat(tb[..], 0, path); n = pm_cat(tb[..], n, ".writing."); n = pm_cat(tb[..], n, pm_itoa(cxproc_wall_us() % 1000000, ib[..]));
+  tmp := cast(string) tb[0..<n];
+  if !fs_write(tmp, jo_text(o[..])) { r := fs_remove(tmp); return false; }
+  return fs_rename(tmp, path);
+}
+pm_selfies :: (s: Session) -> int {
+  ob: [1048576] u8; a := [1] string.["list"];
+  r := pm_desk(s, a[..], ob[..], false);
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], r.text, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return -1; }
+  n := 0; c := d[0].nodes[0].first;
+  while c >= 0 {
+    if jv_kind(d[0], c) == JV_OBJECT { t := jv_get(d[0], c, "title"); tb: [16] u8; if jv_kind(d[0], t) == JV_STRING && jv_str(d[0], t, tb[..]) == 6 && cast(string) tb[0..<6] == "selfie" { n += 1; } }
+    c = d[0].nodes[c].next;
+  }
+  return n;
+}
+pm_wait_camera :: (s: Session) -> bool {
+  for i: 0..<40 { if pm_selfies(s) > 0 { return true; } proc_sleep(250); }
+  return false;
+}
+pm_place_camera :: (s: Session) {
+  eb: [64] u8; fb: [64] u8;
+  size := cast(int) pm_num(ifx proc_getenv("CODEROS_CAMERA_SIZE", eb[..]).count > 0 then proc_getenv("CODEROS_CAMERA_SIZE", eb[..]) else "560");
+  margin := cast(int) pm_num(ifx proc_getenv("CODEROS_CAMERA_MARGIN", fb[..]).count > 0 then proc_getenv("CODEROS_CAMERA_MARGIN", fb[..]) else "140");
+  x := pm_logical_width(s) - size - margin; y := margin;
+  xb: [24] u8; yb: [24] u8; zb: [24] u8;
+  xs := pm_itoa(x, xb[..]); ys := pm_itoa(y, yb[..]); zs := pm_itoa(size, zb[..]);
+  sz: [64] u8; sn := pm_cat(sz[..], 0, zs); sn = pm_cat(sz[..], sn, "x"); sn = pm_cat(sz[..], sn, zs);
+  at: [64] u8; an := pm_cat(at[..], 0, xs); an = pm_cat(at[..], an, ","); an = pm_cat(at[..], an, ys);
+  last: [4096] u8; ln := pm_cat(last[..], 0, "{}");
+  for tries: 0..<6 {
+    ob: [4096] u8; sa := [6] string.["shape", "title:selfie", "--size", cast(string) sz[0..<sn], "--at", cast(string) at[0..<an]];
+    r := pm_desk(s, sa[..], ob[..], false);
+    proc_sleep(400);
+    lb: [1048576] u8; la := [1] string.["list"]; l := pm_desk(s, la[..], lb[..], false);
+    nodes: [65536] JvNode; d: [1] Jv;
+    ln = pm_cat(last[..], 0, "{}");
+    if jv_parse(d[..], l.text, nodes[..]) && jv_kind(d[0], 0) == JV_ARRAY {
+      w := pm_selfie(d[0]);
+      if w >= 0 {
+        p := jv_get(d[0], w, "at");
+        if p >= 0 && jv_kind(d[0], p) != JV_NULL { cb: [4096] u8; o: [1] Jo; jo_start(o[..], cb[..]); pm_compact(d[0], p, o[..]); ln = pm_cat(last[..], 0, jo_text(o[..])); }
+      }
+    }
+    want: [128] u8; wn := pm_cat(want[..], 0, "{\"x\":"); wn = pm_cat(want[..], wn, xs); wn = pm_cat(want[..], wn, ",\"y\":"); wn = pm_cat(want[..], wn, ys); wn = pm_cat(want[..], wn, "}");
+    if cast(string) last[0..<ln] == cast(string) want[0..<wn] { return; }
+  }
+  tool_err("The camera view would not stay at "); tool_err(xs); tool_err(","); tool_err(ys); tool_err("; it is at "); tool_err(cast(string) last[0..<ln]); tool_errln(".");
+}
+// A value as jq -c writes it (numbers as written, strings re-escaped).
+pm_compact :: (d: Jv, at: int, o: [] Jo) {
+  k := jv_kind(d, at);
+  if k == JV_OBJECT || k == JV_ARRAY {
+    if k == JV_OBJECT { jo_obj(o); } else { jo_arr(o); }
+    c := d.nodes[at].first;
+    while c >= 0 {
+      if k == JV_OBJECT { jo_value(o); pm_string(o, jv_key(d, c)); jo_byte(o, ':'); o[0].keyed = true; }
+      pm_compact(d, c, o);
+      c = d.nodes[c].next;
+    }
+    jo_end(o); return;
+  }
+  if k == JV_STRING { jo_value(o); pm_string(o, jv_raw(d, at)); return; }
+  jo_raw(o, jv_raw(d, at));
+}
+
+// ---- off
+
+pm_off :: () -> int {
+  hb: [4096] u8; sf: [4200] u8; state_file := pm_state_file(hb[..], sf[..]);
+  if !fs_exists(state_file) { print("Presentation mode is off. Nothing to put back.\n"); return 0; }
+  sb: [4200] u8; gb: [4200] u8; s := pm_session(sb[..], gb[..]);
+  if !pm_answers(s) { tool_errln("No desktop session to change. This runs on a CoderOS desktop."); return 1; }
+  tb: [262144] u8; text := ""; n := fs_read(state_file, tb[..]); if n > 0 { text = cast(string) tb[0..<n]; }
+  nodes: [65536] JvNode; d: [1] Jv;
+  parsed := jv_parse(d[..], text, nodes[..]) && jv_kind(d[0], 0) == JV_OBJECT;
+  mons := ifx parsed then jv_get(d[0], 0, "monitors") else -1;
+  // each screen back to its scale
+  e := ifx mons >= 0 && jv_kind(d[0], mons) == JV_ARRAY then d[0].nodes[mons].first else -1;
+  while e >= 0 {
+    nb: [4096] u8; vb: [4096] u8;
+    name := pm_text(d[0], jv_get(d[0], e, "name"), nb[..]); want := pm_text(d[0], jv_get(d[0], e, "scale"), vb[..]);
+    if name.count > 0 { ob: [4096] u8; sa := [3] string.["scale", name, want]; r := pm_desk(s, sa[..], ob[..], false); }
+    e = d[0].nodes[e].next;
+  }
+  cam := ifx parsed then jv_get(d[0], 0, "camera") else -1;
+  was := cam >= 0 && jv_kind(d[0], jv_get(d[0], cam, "running")) == JV_TRUE;
+  xb: [64] u8; yb: [64] u8; wb: [64] u8; hb2: [64] u8;
+  cx := ""; cy := ""; cw := ""; ch := "";
+  if was {
+    cx = pm_text(d[0], jv_get(d[0], cam, "x"), xb[..]); cy = pm_text(d[0], jv_get(d[0], cam, "y"), yb[..]);
+    cw = pm_text(d[0], jv_get(d[0], cam, "width"), wb[..]); ch = pm_text(d[0], jv_get(d[0], cam, "height"), hb2[..]);
+    sz: [160] u8; sn := pm_cat(sz[..], 0, cw); sn = pm_cat(sz[..], sn, "x"); sn = pm_cat(sz[..], sn, ch);
+    at: [160] u8; an := pm_cat(at[..], 0, cx); an = pm_cat(at[..], an, ","); an = pm_cat(at[..], an, cy);
+    ob: [4096] u8; sa := [6] string.["shape", "title:selfie", "--size", cast(string) sz[0..<sn], "--at", cast(string) at[0..<an]];
+    r := pm_desk(s, sa[..], ob[..], false);
+  } else if pm_installed("camera-overlay") {
+    oa := [2] string.["camera-overlay", "stop"]; o: [4096] u8; er: [4096] u8; r := proc_run(oa[..], 60000, o[..], er[..]);
+  }
+  fb: [4096] u8; handle := ifx parsed then pm_text(d[0], jv_get(d[0], 0, "focus"), fb[..]) else "";
+  if handle == "null" { handle = ""; }
+  if handle.count > 0 { ob: [4096] u8; fa := [2] string.["focus", handle]; r := pm_desk(s, fa[..], ob[..], true); }
+  proc_sleep(300);
+  failures := 0;
+  e = ifx mons >= 0 && jv_kind(d[0], mons) == JV_ARRAY then d[0].nodes[mons].first else -1;
+  while e >= 0 {
+    nb: [4096] u8; vb: [4096] u8;
+    name := pm_text(d[0], jv_get(d[0], e, "name"), nb[..]); want := pm_text(d[0], jv_get(d[0], e, "scale"), vb[..]);
+    if name.count > 0 {
+      cb: [32] u8; current := pm_current_scale(s, name, cb[..]);
+      p2: [32] u8; q2: [32] u8;
+      if current == "none" { tool_err("Screen "); tool_err(name); tool_errln(" is gone, so its scale was not put back."); failures += 1; }
+      else if pm_scale2(current, p2[..]) == pm_scale2(want, q2[..]) { print("  % scale %\n", name, want); }
+      else { tool_err("Screen "); tool_err(name); tool_err(" is at scale "); tool_err(current); tool_err(", not "); tool_err(want); tool_errln("."); failures += 1; }
+    }
+    e = d[0].nodes[e].next;
+  }
+  nb2: [4096] u8; now: [1] Jo; jo_start(now[..], nb2[..]); oknow := pm_camera(s, now[..]);
+  if was {
+    wanted: [512] u8; wn := pm_cat(wanted[..], 0, "{\"x\":"); wn = pm_cat(wanted[..], wn, pm_json_of(d[0], jv_get(d[0], cam, "x"))); wn = pm_cat(wanted[..], wn, ",\"y\":"); wn = pm_cat(wanted[..], wn, pm_json_of(d[0], jv_get(d[0], cam, "y")));
+    wn = pm_cat(wanted[..], wn, ",\"width\":"); wn = pm_cat(wanted[..], wn, pm_json_of(d[0], jv_get(d[0], cam, "width"))); wn = pm_cat(wanted[..], wn, ",\"height\":"); wn = pm_cat(wanted[..], wn, pm_json_of(d[0], jv_get(d[0], cam, "height"))); wn = pm_cat(wanted[..], wn, "}");
+    nn: [256] JvNode; nd: [1] Jv;
+    got: [512] u8; gn := 0;
+    if oknow && jv_parse(nd[..], jo_text(now[..]), nn[..]) {
+      gn = pm_cat(got[..], 0, "{\"x\":"); gn = pm_cat(got[..], gn, pm_json_of(nd[0], jv_get(nd[0], 0, "x"))); gn = pm_cat(got[..], gn, ",\"y\":"); gn = pm_cat(got[..], gn, pm_json_of(nd[0], jv_get(nd[0], 0, "y")));
+      gn = pm_cat(got[..], gn, ",\"width\":"); gn = pm_cat(got[..], gn, pm_json_of(nd[0], jv_get(nd[0], 0, "width"))); gn = pm_cat(got[..], gn, ",\"height\":"); gn = pm_cat(got[..], gn, pm_json_of(nd[0], jv_get(nd[0], 0, "height"))); gn = pm_cat(got[..], gn, "}");
+    }
+    if cast(string) got[0..<gn] == cast(string) wanted[0..<wn] { print("  camera view back at %,% %x%\n", cx, cy, cw, ch); }
+    else { tool_err("The camera view is not where it was: "); tool_err(jo_text(now[..])); tool_err(", not "); tool_err(cast(string) wanted[0..<wn]); tool_errln("."); failures += 1; }
+  } else if oknow && jo_text(now[..]).count > 15 && jo_text(now[..])[0..<15] == "{\"running\":true" {
+    tool_errln("The camera view is still up, and there was none before."); failures += 1;
+  } else {
+    print("  no camera view, as before\n");
+  }
+  if failures > 0 {
+    ib: [24] u8;
+    tool_err("Left "); tool_err(pm_itoa(failures, ib[..])); tool_err(" item(s) unrestored. The state file stays at "); tool_err(state_file); tool_errln("; run 'presentation-mode off' again.");
+    return 1;
+  }
+  x := fs_remove(state_file);
+  print("Presentation mode is off.\n");
+  return 0;
+}
+// A value's compact JSON, "null" when missing.
+pm_json_of :: (d: Jv, at: int) -> string { return ifx at < 0 then "null" else jv_raw(d, at); }
+// (map(select(.name == $name)) | first | .scale) // "none"
+pm_current_scale :: (s: Session, name: string, out: [] u8) -> string {
+  ob: [1048576] u8; a := [1] string.["screens"];
+  r := pm_desk(s, a[..], ob[..], false);
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], r.text, nodes[..]) || jv_kind(d[0], 0) != JV_ARRAY { return "none"; }
+  c := d[0].nodes[0].first;
+  while c >= 0 {
+    nb: [4096] u8; n := jv_get(d[0], c, "name");
+    if jv_kind(d[0], n) == JV_STRING { m := jv_str(d[0], n, nb[..]); if cast(string) nb[0..<m] == name {
+      sc := jv_get(d[0], c, "scale"); k := jv_kind(d[0], sc);
+      if sc < 0 || k == JV_NULL || k == JV_FALSE { return "none"; }
+      t := pm_text(d[0], sc, out); return t;
+    } }
+    c = d[0].nodes[c].next;
+  }
+  return "none";
+}
+
+// ---- status
+
+pm_status :: () -> int {
+  hb: [4096] u8; sf: [4200] u8; state_file := pm_state_file(hb[..], sf[..]);
+  if !fs_exists(state_file) { print("Presentation mode is off.\n"); return 0; }
+  tb: [262144] u8; n := fs_read(state_file, tb[..]); text := ifx n > 0 then cast(string) tb[0..<n] else "";
+  nodes: [65536] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], text, nodes[..]) || jv_kind(d[0], 0) != JV_OBJECT { return 0; }
+  eb: [256] u8; print("Presentation mode is on since %.\n", pm_text(d[0], jv_get(d[0], 0, "entered"), eb[..]));
+  print("  monitors: ");
+  mons := jv_get(d[0], 0, "monitors");
+  e := ifx mons >= 0 then d[0].nodes[mons].first else -1; first := true;
+  while e >= 0 {
+    nb: [4096] u8; vb: [4096] u8;
+    if !first { print(", "); } first = false;
+    print("% at scale %", pm_text(d[0], jv_get(d[0], e, "name"), nb[..]), pm_text(d[0], jv_get(d[0], e, "scale"), vb[..]));
+    e = d[0].nodes[e].next;
+  }
+  print("\n");
+  cam := jv_get(d[0], 0, "camera");
+  if cam >= 0 && jv_kind(d[0], jv_get(d[0], cam, "running")) == JV_TRUE {
+    xb: [64] u8; yb: [64] u8;
+    print("  camera view was up at %,%\n", pm_text(d[0], jv_get(d[0], cam, "x"), xb[..]), pm_text(d[0], jv_get(d[0], cam, "y"), yb[..]));
+  } else { print("  no camera view before\n"); }
+  return 0;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  ok := args_load(a[..]);
+  verb := ifx ok && args_count(a[..]) > 0 then args_at(a[..], 0) else "";
+  if verb == "on" { return pm_on(a[..], 1); }
+  if verb == "off" { return pm_off(); }
+  if verb == "toggle" {
+    hb: [4096] u8; sf: [4200] u8;
+    return ifx fs_exists(pm_state_file(hb[..], sf[..])) then pm_off() else pm_on(a[..], 1);
+  }
+  if verb == "status" { return pm_status(); }
+  if verb == "-h" || verb == "--help" { print("%", PM_USAGE); return 0; }
+  print("%", PM_USAGE);
+  return 2;
+}

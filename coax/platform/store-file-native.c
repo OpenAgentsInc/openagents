@@ -213,6 +213,19 @@ int64_t cxfs_rename(void) {
   return ok && rename(fs_held, p) == 0 ? 0 : -1;
 }
 
+/* The pushed path's modification time in nanoseconds since the epoch (what test's -nt compares),
+   or -1 when it cannot be read. */
+int64_t cxfs_mtime_ns(void) {
+  const char *p = take_path();
+  struct stat st;
+  if (!p || stat(p, &st) != 0) return -1;
+#if defined(__APPLE__)
+  return (int64_t)st.st_mtimespec.tv_sec * 1000000000 + st.st_mtimespec.tv_nsec;
+#else
+  return (int64_t)st.st_mtim.tv_sec * 1000000000 + st.st_mtim.tv_nsec;
+#endif
+}
+
 int64_t cxfs_kind(void) {
   const char *p = take_path();
   struct stat st;

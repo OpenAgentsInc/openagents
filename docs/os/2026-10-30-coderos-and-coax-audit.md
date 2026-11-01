@@ -330,8 +330,14 @@ compiler and the examples have not been run on Linux yet.
   start. Every outside program in those runs was a stand-in, never the
   screen, the microphone or the desk. `os/screen-record.coax` now does
   everything `ops/screen-record.sh` did, and is not yet installed (owner).
-  Left in row 4: `recording-hud`, `presentation-mode` and
-  `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
+  `os/presentation-mode.coax` replaces `presentation-mode`. Against a
+  stand-in desk (a script that keeps screens, windows and focus and logs
+  every call) it gave the shell's output, exit codes, state file and desk
+  calls in twelve scenarios: on, status, off, toggle, a camera that has to
+  be opened or is never there, one that will not stay put, a screen that
+  goes away, a scale that will not change, no desk, a given socket, and
+  bad options.
+  Left in row 4: `recording-hud` and `dictate-toggle`. On 2026-10-31 the 4080's PipeWire graph had no microphone at
   all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.

@@ -56,6 +56,8 @@ int64_t cxfs_remove(void);
    replacing what is there (atomic within one file system). 0 or -1. */
 int64_t cxfs_hold(void);
 int64_t cxfs_rename(void);
+/* cxfs_mtime_ns: the pushed path's modification time in nanoseconds, or -1. */
+int64_t cxfs_mtime_ns(void);
 int64_t cxfs_list(void);
 int64_t cxfs_entry_len(int64_t i);
 int64_t cxfs_entry_byte(int64_t i, int64_t j);

@@ -26,6 +26,7 @@ cxfs_entry_byte :: (i: int, j: int) -> int #foreign;
 cxfs_cwd :: () -> int #foreign;
 cxfs_hold :: () -> int #foreign;
 cxfs_rename :: () -> int #foreign;
+cxfs_mtime_ns :: () -> int #foreign;
 
 FS_PATH_MAX :: 4096;
 FS_NONE :: 0; FS_FILE :: 1; FS_DIR :: 2; FS_OTHER :: 3;
@@ -102,6 +103,8 @@ fs_append :: (path: string, data: string) -> bool {
 fs_kind :: (path: string) -> int { return ifx fs_push(path) then cxfs_kind() else -1; }
 fs_exists :: (path: string) -> bool { return fs_kind(path) > 0; }
 fs_size :: (path: string) -> int { return ifx fs_push(path) then cxfs_size() else -1; }
+// When path last changed, in nanoseconds since the epoch (test -nt compares these); -1 when unknown.
+fs_mtime_ns :: (path: string) -> int { return ifx fs_push(path) then cxfs_mtime_ns() else -1; }
 // The directory and every missing parent.
 fs_mkdir :: (path: string) -> bool { return fs_push(path) && cxfs_mkdir() == 0; }
 // The file, or the directory with everything in it. A missing path is fine.

@@ -138,6 +138,9 @@ int64_t cxproc_self_path(coax_v_u8 out) {
   return (int64_t)n;
 }
 
+/* This process's real user id (id -u). */
+int64_t cxproc_uid(void) { return (int64_t)getuid(); }
+
 int64_t cxproc_local_stamp(coax_v_u8 out) {
   time_t now = time(NULL); struct tm t;
   if (!localtime_r(&now, &t) || out.count < 16) return -1;

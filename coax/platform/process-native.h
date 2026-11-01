@@ -69,6 +69,7 @@ typedef struct { uint8_t *data; int64_t count; } coax_v_u8;
 int64_t cxproc_self_path(coax_v_u8 out);
 /* The local time as YYYYmmdd-HHMMSS (date +'%Y%m%d-%H%M%S'): 15, or -1. */
 int64_t cxproc_local_stamp(coax_v_u8 out);
+int64_t cxproc_uid(void);   /* id -u */
 /* Before cxproc_spawn: the child's stdout and stderr go to /dev/null
    instead of pipes (a browser that logs freely must never block on a pipe
    nobody reads). stdin stays a pipe. */
