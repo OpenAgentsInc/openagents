@@ -1,6 +1,10 @@
 # The openagents CLI, v1.0.0
 
-Status: spec, 2026-11-01. Nothing here is built yet. The routes it calls
+Status: spec, 2026-11-01. The first slice is built in
+[apps/openagents-cli](../../apps/openagents-cli/README.md): the binary, the
+`nostr` domain (a NIP-06 identity kept in the Keychain, event signing and
+NIP-98 headers) and the `pylon` domain (start, stop, status and logs). The
+`account` and `realm` domains below are not built yet. The routes they call
 exist unless a row says **new**.
 
 `openagents` is one native binary, written in Coax. You use it to log in to
@@ -144,9 +148,9 @@ web. That's enough to make and own realms without a browser at all.
 | Platform | Store |
 | --- | --- |
 | macOS | Keychain, service `com.openagents.cli`, account = profile name. Through Security.framework's C API (`SecItemAdd`, `SecItemCopyMatching`) behind a `#foreign` in a new `coax/platform/keychain-native.c`. |
-| Linux | `~/.config/openagents/keys/PROFILE` mode 0600, as an NIP-49 `ncryptsec` when `--encrypt` is given (`coax/lib/crypto/scrypt_nip49.coax`), else the raw key with a warning at login. |
+| Linux | `~/.openagents/cli/keys/PROFILE` mode 0600 in a 0700 directory (built), as an NIP-49 `ncryptsec` when `--encrypt` is given (`coax/lib/crypto/scrypt_nip49.coax`), else the raw key with a warning at login. |
 
-The profile file `~/.config/openagents/profiles` holds each profile's origin
+The profile file `~/.openagents/cli/profiles` holds each profile's origin
 and public key, never a secret. The key is never printed, logged, put in
 argv or sent anywhere except as signatures. `openagents logout` deletes the
 key and asks the server to unlink it (`POST /api/auth/v2/unlink {pubkey}`,

@@ -1,0 +1,213 @@
+// The openagents CLI's decisions that touch identity and the Pylon's state,
+// with no host calls: profile names, the stored key's format, words as typed,
+// hex, the exit codes, and what a Pylon's log says about it.
+//   coax/bin/coax test apps/openagents-cli/rules.coax --library
+//   coax/bin/coax mutate apps/openagents-cli/rules.coax
+#authority;
+
+// Exit codes (docs/cli/2026-11-01-openagents-cli-v1.md, "Exit codes").
+EXIT_OK :: 0; EXIT_FAIL :: 1; EXIT_USAGE :: 2; EXIT_AUTH :: 3; EXIT_FORBIDDEN :: 4;
+EXIT_CONFLICT :: 5; EXIT_NOT_FOUND :: 6; EXIT_SLOW :: 7;
+
+#test "exit codes follow HTTP statuses" {
+  #assert cli_exit_of(200) == EXIT_OK && cli_exit_of(204) == EXIT_OK && cli_exit_of(299) == EXIT_OK;
+  #assert cli_exit_of(401) == EXIT_AUTH && cli_exit_of(403) == EXIT_FORBIDDEN && cli_exit_of(404) == EXIT_NOT_FOUND;
+  #assert cli_exit_of(409) == EXIT_CONFLICT && cli_exit_of(429) == EXIT_SLOW;
+  #assert cli_exit_of(500) == EXIT_FAIL && cli_exit_of(400) == EXIT_FAIL && cli_exit_of(199) == EXIT_FAIL && cli_exit_of(300) == EXIT_FAIL;
+}
+cli_exit_of :: (status: int) -> int {
+  if status >= 200 && status < 300 { return EXIT_OK; }
+  if status == 401 { return EXIT_AUTH; }
+  if status == 403 { return EXIT_FORBIDDEN; }
+  if status == 404 { return EXIT_NOT_FOUND; }
+  if status == 409 { return EXIT_CONFLICT; }
+  if status == 429 { return EXIT_SLOW; }
+  return EXIT_FAIL;
+}
+
+// A profile name: 1 to 32 of a-z, 0-9, '-' and '_', starting with a letter or digit.
+// It names a Keychain account and a file, so nothing else gets through.
+#test "profile names" {
+  #assert cli_profile_ok("default") && cli_profile_ok("a") && cli_profile_ok("work-2_b") && cli_profile_ok("9z");
+  #assert cli_profile_ok("abcdefghijklmnopqrstuvwxyz012345") && cli_profile_ok("a-b") && cli_profile_ok("a_");
+  #assert !cli_profile_ok("abcdefghijklmnopqrstuvwxyz0123456");
+  #assert !cli_profile_ok("") && !cli_profile_ok("-a") && !cli_profile_ok("_a") && !cli_profile_ok("A") && !cli_profile_ok("a/b");
+  #assert !cli_profile_ok("a.b") && !cli_profile_ok("..") && !cli_profile_ok("a b") && !cli_profile_ok("a`");
+  #assert !cli_profile_ok("a{") && !cli_profile_ok("a:") && !cli_profile_ok("a@");
+}
+cli_profile_ok :: (name: string) -> bool {
+  if name.count < 1 || name.count > 32 { return false; }
+  for i: 0..<name.count {
+    c := name[i];
+    lower := c >= 'a' && c <= 'z';
+    digit := c >= '0' && c <= '9';
+    if !(lower || digit || (i > 0 && (c == '-' || c == '_'))) { return false; }
+  }
+  return true;
+}
+
+// Hex: lowercase out, either case in.
+#test "hex both ways" {
+  b := [3] u8.[0, 171, 255]; out: [6] u8;
+  #assert cli_hex(b[..], out[..]) && cast(string) out[..] == "00abff";
+  #assert !cli_hex(b[..], out[0..<5]);
+  back: [3] u8;
+  #assert cli_unhex("00ABff", back[..]) && back[0] == 0 && back[1] == 171 && back[2] == 255;
+  #assert cli_unhex("09af9F", back[..]) && back[0] == 9 && back[1] == 175 && back[2] == 159;
+  #assert !cli_unhex("00abf", back[..]) && !cli_unhex("00abfg", back[..]) && !cli_unhex("0/abff", back[..]) && !cli_unhex("0:abff", back[..]);
+  #assert !cli_unhex("0@abff", back[..]) && !cli_unhex("0Gabff", back[..]) && !cli_unhex("0`abff", back[..]);
+  #assert cli_hex_digit('0') == 0 && cli_hex_digit('9') == 9 && cli_hex_digit('a') == 10 && cli_hex_digit('f') == 15 && cli_hex_digit('A') == 10 && cli_hex_digit('F') == 15;
+  #assert cli_hex_digit('g') == -1 && cli_hex_digit('G') == -1 && cli_hex_digit(' ') == -1;
+}
+cli_hex :: (bytes: [] u8, out: [] u8) -> bool {
+  if out.count != bytes.count * 2 { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<bytes.count {
+    out[2 * i] = digits[cast(int) (bytes[i] >> 4)];
+    out[2 * i + 1] = digits[cast(int) (bytes[i] & 15)];
+  }
+  return true;
+}
+cli_hex_digit :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+cli_unhex :: (hex: string, out: [] u8) -> bool {
+  if hex.count != out.count * 2 { return false; }
+  for i: 0..<out.count {
+    hi := cli_hex_digit(hex[2 * i]);
+    lo := cli_hex_digit(hex[2 * i + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return true;
+}
+
+// The stored secret: "nostr-secret-v1 " and 64 lowercase hex, an optional newline.
+// The same bytes go to the Keychain and to a 0600 file.
+CLI_KEY_TAG :: "nostr-secret-v1 ";
+CLI_KEY_TEXT :: 81;   // tag, 64 hex, newline
+
+#test "the stored key's format" {
+  key: [32] u8;
+  for i: 0..<32 { key[i] = cast(u8) (i * 7 + 1); }
+  text: [CLI_KEY_TEXT] u8;
+  #assert cli_key_text(key[..], text[..]) == CLI_KEY_TEXT && text[CLI_KEY_TEXT - 1] == '\n';
+  #assert cast(string) text[0..<16] == CLI_KEY_TAG;
+  back: [32] u8;
+  #assert cli_key_parse(cast(string) text[..], back[..]);
+  for i: 0..<32 { #assert back[i] == key[i]; }
+  #assert cli_key_parse(cast(string) text[0..<80], back[..]);
+  #assert !cli_key_parse(cast(string) text[0..<79], back[..]);
+  #assert cli_key_text(key[..], text[0..<80]) == -1 && cli_key_text(key[0..<31], text[..]) == -1;
+  bad := text;
+  bad[0] = 'm';
+  #assert !cli_key_parse(cast(string) bad[..], back[..]);
+  bad = text; bad[CLI_KEY_TEXT - 1] = ' ';
+  #assert !cli_key_parse(cast(string) bad[..], back[..]);
+  bad = text; bad[20] = 'z';
+  #assert !cli_key_parse(cast(string) bad[..], back[..]);
+  zero: [CLI_KEY_TEXT] u8; zk: [32] u8;
+  #assert cli_key_text(zk[..], zero[..]) == CLI_KEY_TEXT && !cli_key_parse(cast(string) zero[..], back[..]);
+  #assert !cli_key_parse(cast(string) text[..], back[0..<31]);
+  long: [82] u8;
+  for i: 0..<81 { long[i] = text[i]; }
+  long[81] = '\n';
+  #assert !cli_key_parse(cast(string) long[..], back[..]);
+  one: [32] u8; one[0] = 1; onet: [CLI_KEY_TEXT] u8;
+  #assert cli_key_text(one[..], onet[..]) == CLI_KEY_TEXT && cli_key_parse(cast(string) onet[..], back[..]) && back[0] == 1;
+}
+cli_key_text :: (key: [] u8, out: [] u8) -> int {
+  if key.count != 32 || out.count < CLI_KEY_TEXT { return -1; }
+  for i: 0..<16 { out[i] = CLI_KEY_TAG[i]; }
+  hexed := cli_hex(key, out[16..<80]);   // 32 bytes into 64: cannot fail here
+  out[80] = '\n';
+  return CLI_KEY_TEXT;
+}
+// False for anything else, and for the all-zero key (never a valid secret).
+cli_key_parse :: (text: string, key: [] u8) -> bool {
+  if key.count != 32 || text.count < 80 || text.count > CLI_KEY_TEXT { return false; }
+  if text.count == CLI_KEY_TEXT && text[80] != '\n' { return false; }
+  if text[0..<16] != CLI_KEY_TAG { return false; }
+  if !cli_unhex(text[16..<80], key) { return false; }
+  any := 0;
+  for i: 0..<32 { any = any | cast(int) key[i]; }
+  return any != 0;
+}
+
+// Words as someone typed or pasted them: lowercase, one space between words, no ends.
+// Returns the canonical phrase's length and its word count * 1000, or -1.
+#test "words as typed" {
+  out: [256] u8;
+  r := cli_words("  Legal   winner\tTHANK year  ", out[..]);
+  #assert r == 4 * 1000 + 23 && cast(string) out[0..<23] == "legal winner thank year";
+  #assert cli_words("a", out[..]) == 1001 && cli_words("", out[..]) == -1 && cli_words("   ", out[..]) == -1;
+  #assert cli_words("abc def", out[0..<6]) == -1 && cli_words("abc def", out[0..<7]) == 2007;
+  #assert cli_words("ab1", out[..]) == -1 && cli_words("a-b", out[..]) == -1 && cli_words("a\nb", out[..]) == 2003;
+  #assert cli_words("Zz", out[..]) == 1002 && cast(string) out[0..<2] == "zz";
+  #assert cli_words("a@", out[..]) == -1 && cli_words("a[", out[..]) == -1 && cli_words("a`", out[..]) == -1 && cli_words("a{", out[..]) == -1;
+  #assert cli_words("a\rb", out[..]) == 2003 && cli_words("ab c", out[0..<2]) == -1 && cli_words("ab c", out[0..<3]) == -1;
+  #assert cli_words("A@", out[..]) == -1 && cli_words("Z", out[..]) == 1001 && out[0] == 'z';
+}
+// A letter in lowercase, or -1.
+cli_lower :: (c: u8) -> int {
+  if c >= 'a' && c <= 'z' { return cast(int) c; }
+  if c >= 'A' && c <= 'Z' { return cast(int) c + 32; }
+  return -1;
+}
+cli_words :: (typed: string, out: [] u8) -> int {
+  n := 0; words := 0; gap := false;
+  for c: typed {
+    space := c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    if space { gap = n > 0; continue; }
+    letter := cli_lower(c);
+    if letter == -1 { return -1; }
+    lower := cast(u8) letter;
+    if gap { if n >= out.count { return -1; } out[n] = ' '; n += 1; gap = false; }
+    if n == 0 || out[n - 1] == ' ' { words += 1; }
+    if n >= out.count { return -1; }
+    out[n] = lower; n += 1;
+  }
+  if n == 0 { return -1; }
+  return words * 1000 + n;
+}
+
+// A Pylon's log (scripts/join-pylon.sh runs it): the facts the CLI reports.
+PylonLog :: struct { online: bool; npub_at: int; npub_n: int; key_at: int; key_n: int; }
+
+#test "what a Pylon log says" {
+  sample := "pylon: starting\npylon: TEST-ONLY key, signed in Coax; pubkey 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\npylon: npub npub1abc\npylon: online, waiting for jobs\n";
+  p := cli_pylon_log(sample);
+  #assert p.online && sample[p.npub_at..<p.npub_at + p.npub_n] == "npub1abc" && p.key_n == 64;
+  #assert sample[p.key_at..<p.key_at + p.key_n] == "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  q := cli_pylon_log("pylon: starting\npylon: npub npub1xyz");
+  #assert !q.online && q.npub_n == 8 && q.key_n == 0;
+  e := cli_pylon_log("");
+  #assert !e.online && e.npub_n == 0 && e.key_n == 0;
+  #assert !cli_pylon_log("xpylon: online, waiting for jobs\n").online;
+  #assert cli_pylon_log("pylon: online, waiting for jobs").online;
+  w := cli_pylon_log("pylon: TEST-ONLY key, signed in Coax; pubkey 0123\n");
+  #assert w.key_n == 0 && !cli_pylon_log("pylon: online, waiting for jobs!\n").online && !cli_pylon_log("pylon: npub abcdefghijklmnopqrs\n").online;
+  #assert !cli_pylon_log("a pylon: online, waiting for jobs\n").online && cli_pylon_log("x\npylon: online, waiting for jobs").online;
+  #assert cli_starts("abc", 0, "ab") && !cli_starts("abc", 2, "cd") && !cli_starts("abc", 0, "b") && cli_starts("abc", 3, "");
+}
+cli_starts :: (s: string, at: int, part: string) -> bool {
+  return at + part.count <= s.count && s[at..<at + part.count] == part;
+}
+cli_pylon_log :: (text: string) -> PylonLog {
+  p: PylonLog;
+  online := "pylon: online, waiting for jobs";
+  npub := "pylon: npub ";
+  key := "pylon: TEST-ONLY key, signed in Coax; pubkey ";
+  for at: 0..<text.count {
+    if at > 0 && text[at - 1] != '\n' { continue; }   // only where a line starts
+    end := at;
+    while end < text.count && text[end] != '\n' { end += 1; }
+    if cli_starts(text, at, online) && end - at == online.count { p.online = true; }
+    if cli_starts(text, at, npub) { p.npub_at = at + npub.count; p.npub_n = end - p.npub_at; }
+    if cli_starts(text, at, key) && end - at - key.count == 64 { p.key_at = at + key.count; p.key_n = 64; }
+  }
+  return p;
+}
