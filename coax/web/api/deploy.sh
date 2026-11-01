@@ -51,9 +51,10 @@ git -C "$work/source" ls-files -z -- coax/src coax/bootstrap coax/lib coax/book 
    ':(glob)coax/*' ':(glob)coax/tests/**/*.coax' ':(glob)coax/web/api/*.coax' ':(glob)coax/web/api/*.generated.*' | rsync -a --from0 --files-from=- "$work/source/" "$stage/"
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
 # Capture the authenticated build result, not the mutable tag's later value.
-# The compiler bootstrap is parallel: a 32-core builder keeps the build to minutes.
+# The compiler bootstrap is parallel on a 32-core builder, but with its
+# mutation gates it can pass 30 minutes (twice on 2026-11-01), so the limit is an hour.
 gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$tag" --format=json --suppress-logs --quiet \
-  --machine-type e2-highcpu-32 --timeout 1800s \
+  --machine-type e2-highcpu-32 --timeout 3600s \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
   --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$work/build.json" 2> "$work/build.log" || { tail -30 "$work/build.log"; exit 1; }
 image="$(python3 "$here/deploy_verify.py" build-image "$work/build.json" "$tag")"
