@@ -1,0 +1,1771 @@
+{
+ "schema": 1,
+ "book": "nostr",
+ "chapters": [
+  {
+   "number": 1,
+   "title": "Bytes, hex and base64",
+   "file": "ch001-bytes-hex-and-base64.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    "coax:5",
+    "coax:6"
+   ],
+   "source": [
+    "coax/lib/crypto/bytes.coax",
+    "coax/lib/nostr/base64.coax",
+    "coax/lib/nostr/codecs-common.coax",
+    "coax/lib/nostr/hex.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 2,
+   "title": "Big integers in fixed limbs",
+   "file": "ch002-big-integers-in-fixed-limbs.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    1,
+    "coax:13"
+   ],
+   "source": [
+    "coax/lib/crypto/secp_field.coax",
+    "coax/lib/crypto/secp_scalar.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 3,
+   "title": "Constant-time rules and secrets",
+   "file": "ch003-constant-time-rules.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    1,
+    2,
+    "coax:23"
+   ],
+   "source": [
+    "coax/lib/crypto/bytes.coax",
+    "coax/lib/crypto/secret-flow.coax",
+    "coax/lib/crypto/secret-types.coax",
+    "coax/lib/crypto/zeroize.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 4,
+   "title": "SHA-256",
+   "file": "ch004-sha-256.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    1
+   ],
+   "source": [
+    "coax/lib/crypto/sha256.coax",
+    "coax/lib/crypto/sha256_workspace.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 5,
+   "title": "HMAC-SHA256",
+   "file": "ch005-hmac-sha256.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    4
+   ],
+   "source": [
+    "coax/lib/crypto/hmac.coax",
+    "coax/lib/crypto/hmac_workspace.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 6,
+   "title": "HKDF",
+   "file": "ch006-hkdf.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    5
+   ],
+   "source": [
+    "coax/lib/crypto/hkdf.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 7,
+   "title": "Field arithmetic mod p",
+   "file": "ch007-field-arithmetic-mod-p.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    2,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/secp_field.coax",
+    "coax/lib/crypto/secp_field32.coax",
+    "coax/lib/crypto/secp_field32_total.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 8,
+   "title": "Scalars mod n",
+   "file": "ch008-scalars-mod-n.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    2,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/secp_scalar.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 9,
+   "title": "The secp256k1 group law",
+   "file": "ch009-the-secp256k1-group-law.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    7
+   ],
+   "source": [
+    "coax/lib/crypto/secp_group.coax",
+    "coax/lib/crypto/secp_group32.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 10,
+   "title": "Scalar multiplication",
+   "file": "ch010-scalar-multiplication.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    8,
+    9,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/secp_mult.coax",
+    "coax/lib/crypto/secp_mult_base.coax",
+    "coax/lib/crypto/secp_mult_const.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 11,
+   "title": "Verify a Schnorr signature",
+   "file": "ch011-verify-a-schnorr-signature.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    4,
+    8,
+    10
+   ],
+   "source": [
+    "coax/lib/crypto/schnorr.coax",
+    "coax/lib/crypto/schnorr_admission.coax",
+    "coax/lib/crypto/schnorr_fast.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 12,
+   "title": "Keys and randomness",
+   "file": "ch012-keys-and-randomness.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    8,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/entropy.coax",
+    "coax/lib/nostr/keys.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 13,
+   "title": "Sign with Schnorr",
+   "file": "ch013-sign-with-schnorr.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    11,
+    12,
+    3
+   ],
+   "source": [
+    "coax/lib/crypto/schnorr_self_verify.coax",
+    "coax/lib/crypto/schnorr_sign.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 14,
+   "title": "Shared secrets with ECDH",
+   "file": "ch014-shared-secrets-with-ecdh.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    10,
+    12
+   ],
+   "source": [
+    "coax/lib/crypto/ecdh.coax",
+    "coax/lib/crypto/ecdh_fast.coax",
+    "coax/lib/crypto/ecdh_lifecycle.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 15,
+   "title": "Bech32",
+   "file": "ch015-bech32.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    1
+   ],
+   "source": [
+    "coax/lib/nostr/bech32-core.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 16,
+   "title": "NIP-19 entities and nostr: URIs",
+   "file": "ch016-nip-19-entities-and-nostr-uris.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    15
+   ],
+   "source": [
+    "coax/lib/nostr/nip19-core.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 17,
+   "title": "JSON you can sign",
+   "file": "ch017-json-you-can-sign.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    1,
+    "coax:18"
+   ],
+   "source": [
+    "coax/lib/nostr/adapters/json-admission.coax",
+    "coax/lib/nostr/jcs.coax",
+    "coax/lib/nostr/json.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 18,
+   "title": "ChaCha20",
+   "file": "ch018-chacha20.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    1
+   ],
+   "source": [
+    "coax/lib/crypto/chacha20.coax",
+    "coax/lib/crypto/hchacha20.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 19,
+   "title": "NIP-04 and why it is retired",
+   "file": "ch019-nip-04-and-why-it-is-retired.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    14,
+    1
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 20,
+   "title": "NIP-44 encrypted payloads",
+   "file": "ch020-nip-44-encrypted-payloads.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    6,
+    14,
+    18,
+    5,
+    1
+   ],
+   "source": [
+    "coax/lib/nostr/nip44-key.coax",
+    "coax/lib/nostr/nip44.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 21,
+   "title": "Events, IDs and signatures",
+   "file": "ch021-events-ids-and-signatures.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    11,
+    13,
+    17,
+    "coax:18"
+   ],
+   "source": [
+    "coax/lib/nostr/event.coax",
+    "coax/lib/nostr/event_sign.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 22,
+   "title": "Kinds and tags",
+   "file": "ch022-kinds-and-tags.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    21
+   ],
+   "source": [
+    "coax/lib/nostr/metadata.coax",
+    "coax/lib/nostr/tags.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 23,
+   "title": "Filters",
+   "file": "ch023-filters.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    22
+   ],
+   "source": [
+    "coax/lib/nostr/filter.coax",
+    "coax/lib/nostr/filter_read.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 24,
+   "title": "Relay messages",
+   "file": "ch024-relay-messages.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    21,
+    23
+   ],
+   "source": [
+    "coax/lib/nostr/message.coax",
+    "coax/lib/nostr/message_agree.coax",
+    "coax/lib/nostr/message_server.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 25,
+   "title": "Gift wrap",
+   "file": "ch025-gift-wrap.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    20,
+    21,
+    13
+   ],
+   "source": [
+    "coax/lib/nostr/nip59.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 26,
+   "title": "WebSocket frames",
+   "file": "ch026-websocket-frames.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    4,
+    1
+   ],
+   "source": [
+    "coax/lib/crypto/sha1.coax",
+    "coax/lib/net/ws.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 27,
+   "title": "A WebSocket server",
+   "file": "ch027-a-websocket-server.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    26
+   ],
+   "source": [
+    "coax/lib/net/ws_server.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 28,
+   "title": "Sockets, TLS and relay URLs",
+   "file": "ch028-sockets-tls-and-relay-urls.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    26,
+    "coax:20"
+   ],
+   "source": [
+    "coax/lib/net/relay_conn.coax",
+    "coax/lib/net/relay_conn_rules.coax",
+    "coax/lib/net/relay_uri.coax",
+    "coax/lib/net/uri.coax",
+    "coax/platform/tls-native.c"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 29,
+   "title": "A relay connection",
+   "file": "ch029-a-relay-connection.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    24,
+    28
+   ],
+   "source": [
+    "coax/lib/nostr/relay.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 30,
+   "title": "Subscriptions and EOSE",
+   "file": "ch030-subscriptions-and-eose.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    29,
+    23
+   ],
+   "source": [
+    "coax/lib/nostr/relay.coax",
+    "coax/lib/nostr/relay_read.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 31,
+   "title": "Publish and wait for OK",
+   "file": "ch031-publish-and-wait-for-ok.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    29,
+    21
+   ],
+   "source": [
+    "coax/lib/nostr/relay.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 32,
+   "title": "Many relays and the outbox model",
+   "file": "ch032-many-relays-and-the-outbox-model.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    30,
+    31
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 33,
+   "title": "A client that survives restarts",
+   "file": "ch033-a-client-that-survives-restarts.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    32,
+    31
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 34,
+   "title": "Admit an event",
+   "file": "ch034-admit-an-event.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    21,
+    24,
+    27,
+    "coax:24"
+   ],
+   "source": [
+    "coax/lib/nostr/relay_route.coax",
+    "coax/lib/nostr/relay_server.coax",
+    "coax/lib/nostr/store_admit.coax",
+    "coax/relay/relay.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 35,
+   "title": "Store events",
+   "file": "ch035-store-events.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    34,
+    22
+   ],
+   "source": [
+    "coax/lib/nostr/store.coax",
+    "coax/lib/nostr/store_core.coax",
+    "coax/lib/nostr/store_dedup_policy.coax",
+    "coax/lib/nostr/store_dedup_rewrite.coax",
+    "coax/lib/nostr/store_file.coax",
+    "coax/lib/nostr/store_recover.coax",
+    "coax/lib/nostr/store_snapshot.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 36,
+   "title": "Match filters with indexes",
+   "file": "ch036-match-filters-with-indexes.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    23,
+    35
+   ],
+   "source": [
+    "coax/lib/nostr/filter.coax",
+    "coax/lib/nostr/store.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 37,
+   "title": "NIP-11 relay information",
+   "file": "ch037-nip-11-relay-information.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    34
+   ],
+   "source": [
+    "coax/lib/nostr/relay_route.coax",
+    "coax/lib/nostr/relay_server.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 38,
+   "title": "NIP-42 authentication",
+   "file": "ch038-nip-42-authentication.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    21,
+    29,
+    34
+   ],
+   "source": [
+    "coax/lib/nostr/nip42-event.coax",
+    "coax/lib/nostr/nip42.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 39,
+   "title": "Delete, expire and vanish",
+   "file": "ch039-delete-expire-and-vanish.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    35
+   ],
+   "source": [
+    "coax/lib/nostr/relay_server.coax",
+    "coax/lib/nostr/store_core.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 40,
+   "title": "Count events",
+   "file": "ch040-count-events.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    36
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 41,
+   "title": "Search",
+   "file": "ch041-search.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    36
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 42,
+   "title": "Protected events",
+   "file": "ch042-protected-events.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    38
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 43,
+   "title": "Negentropy sync",
+   "file": "ch043-negentropy-sync.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    36,
+    4
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 44,
+   "title": "Limits, policy and floods",
+   "file": "ch044-limits-policy-and-floods.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    34,
+    36
+   ],
+   "source": [
+    "coax/lib/net/relay_poll_budget.coax",
+    "coax/lib/nostr/relay_server.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 45,
+   "title": "Profiles, follows and names",
+   "file": "ch045-profiles-follows-and-names.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    22,
+    28
+   ],
+   "source": [
+    "coax/lib/nostr/metadata.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 46,
+   "title": "Keys from a seed phrase",
+   "file": "ch046-keys-from-a-seed-phrase.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    13,
+    5
+   ],
+   "source": [
+    "coax/lib/crypto/bip32.coax",
+    "coax/lib/crypto/bip39.coax",
+    "coax/lib/crypto/pbkdf2.coax",
+    "coax/lib/crypto/sha512.coax",
+    "coax/lib/nostr/nip06.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 47,
+   "title": "Encrypted key backup",
+   "file": "ch047-encrypted-key-backup.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    18,
+    5,
+    15
+   ],
+   "source": [
+    "coax/lib/crypto/poly1305.coax",
+    "coax/lib/crypto/scrypt_nip49.coax",
+    "coax/lib/crypto/xchacha20_poly1305.coax",
+    "coax/lib/text/nfkc.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 48,
+   "title": "Signers outside the app",
+   "file": "ch048-signers-outside-the-app.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    12,
+    20,
+    31
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 49,
+   "title": "HTTP auth",
+   "file": "ch049-http-auth.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    21,
+    4
+   ],
+   "source": [
+    "coax/lib/nostr/nip98-observe.coax",
+    "coax/lib/nostr/nip98-tags.coax",
+    "coax/lib/nostr/weblogin.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 50,
+   "title": "Notes, threads and subjects",
+   "file": "ch050-notes-threads-and-subjects.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    22
+   ],
+   "source": [
+    "coax/lib/nostr/tags.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 51,
+   "title": "References inside content",
+   "file": "ch051-references-inside-content.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    16,
+    50
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 52,
+   "title": "Reposts, reactions and comments",
+   "file": "ch052-reposts-reactions-and-comments.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    22,
+    50
+   ],
+   "source": [
+    "coax/lib/nostr/nip22.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 53,
+   "title": "Long-form, drafts and wiki",
+   "file": "ch053-long-form-drafts-and-wiki.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22,
+    20
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 54,
+   "title": "Lists, sets and bookmarks",
+   "file": "ch054-lists-sets-and-bookmarks.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22,
+    20
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 55,
+   "title": "Labels, reports and trusted assertions",
+   "file": "ch055-labels-reports-and-trusted-assertions.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 56,
+   "title": "Proof of work",
+   "file": "ch056-proof-of-work.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    21
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 57,
+   "title": "Media and files",
+   "file": "ch057-media-and-files.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22,
+    49
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 58,
+   "title": "Calendars, polls and highlights",
+   "file": "ch058-calendars-polls-and-highlights.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 59,
+   "title": "Groups and communities",
+   "file": "ch059-groups-and-communities.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    38,
+    34,
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 60,
+   "title": "Private messages",
+   "file": "ch060-private-messages.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    25,
+    32
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 61,
+   "title": "Live activities",
+   "file": "ch061-live-activities.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 62,
+   "title": "Badges and statuses",
+   "file": "ch062-badges-and-statuses.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 63,
+   "title": "Git on Nostr",
+   "file": "ch063-git-on-nostr.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    22,
+    52
+   ],
+   "source": [
+    "coax/lib/nostr/nip34-event.coax",
+    "coax/lib/nostr/nip34.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 64,
+   "title": "App data and handlers",
+   "file": "ch064-app-data-and-handlers.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 65,
+   "title": "Data vending machines",
+   "file": "ch065-data-vending-machines.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22,
+    20
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 66,
+   "title": "Markets and orders",
+   "file": "ch066-markets-and-orders.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 67,
+   "title": "Relay discovery, access and management",
+   "file": "ch067-relay-discovery-access-and-management.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    37,
+    38,
+    49
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 68,
+   "title": "Bridges, external IDs and timestamps",
+   "file": "ch068-bridges-external-ids-and-timestamps.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22,
+    4
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 69,
+   "title": "Small content kinds",
+   "file": "ch069-small-content-kinds.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 70,
+   "title": "Retired and experimental NIPs",
+   "file": "ch070-retired-and-experimental-nips.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    21
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 71,
+   "title": "Lightning zaps and goals",
+   "file": "ch071-lightning-zaps-and-goals.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    21,
+    45
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 72,
+   "title": "Wallet Connect",
+   "file": "ch072-wallet-connect.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    20,
+    31
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 73,
+   "title": "Payment targets",
+   "file": "ch073-payment-targets.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    22
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 74,
+   "title": "Cashu and Fedimint are excluded",
+   "file": "ch074-cashu-and-fedimint-are-excluded.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 75,
+   "title": "Hosts and reachability",
+   "file": "ch075-hosts-and-reachability.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    20,
+    21,
+    49
+   ],
+   "source": [
+    "coax/lib/nostr/host/grant.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 76,
+   "title": "Work, coordination and control",
+   "file": "ch076-work-coordination-and-control.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    75
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 77,
+   "title": "Capabilities, policy and extensions",
+   "file": "ch077-capabilities-policy-and-extensions.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    75
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 78,
+   "title": "Runs, sessions, terminals and trajectories",
+   "file": "ch078-runs-sessions-terminals-and-trajectories.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    76,
+    20
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 79,
+   "title": "Agents, skills and automation",
+   "file": "ch079-agents-skills-and-automation.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    76,
+    77
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 80,
+   "title": "Jobs, labor and markets",
+   "file": "ch080-jobs-labor-and-markets.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    20,
+    76
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 81,
+   "title": "Decisions, evaluations, optimization and programs",
+   "file": "ch081-decisions-evaluations-optimization-and-programs.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    80
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 82,
+   "title": "Pylons, environments and deploys",
+   "file": "ch082-pylons-environments-and-deploys.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    80,
+    75
+   ],
+   "source": [
+    "psionic/lib/mesh/receipt.coax",
+    "psionic/lib/pylon/beacon.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 83,
+   "title": "Attested work and sealed data",
+   "file": "ch083-attested-work-and-sealed-data.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    20,
+    82
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 84,
+   "title": "Knowledge and workspaces",
+   "file": "ch084-knowledge-and-workspaces.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    76
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 85,
+   "title": "Live media, worlds and experience",
+   "file": "ch085-live-media-worlds-and-experience.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    61,
+    20
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 86,
+   "title": "Lightning payments for requests",
+   "file": "ch086-lightning-payments-for-requests.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    49,
+    71
+   ],
+   "source": [
+    "coax/lib/x402/x402.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 87,
+   "title": "Owner attestation and agent authentication",
+   "file": "ch087-owner-attestation-and-agent-authentication.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    38
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 88,
+   "title": "Federated identity",
+   "file": "ch088-federated-identity.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    38,
+    1
+   ],
+   "source": [
+    "coax/lib/crypto/rsa_verify.coax",
+    "coax/lib/nostr/adapters/fi-projection.coax",
+    "coax/lib/nostr/block/fi-claims-parse.coax",
+    "coax/lib/nostr/block/fi-jwks.coax",
+    "coax/lib/nostr/block/fi-policy.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 89,
+   "title": "Channels",
+   "file": "ch089-channels.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    59
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 90,
+   "title": "Artifacts, archives and reminders",
+   "file": "ch090-artifacts-archives-and-reminders.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    89
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 91,
+   "title": "Git signing, projects, leases and read state",
+   "file": "ch091-git-signing-projects-leases-and-read-state.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    63,
+    13
+   ],
+   "source": [
+    "coax/lib/nostr/adapters/gs-projection.coax",
+    "coax/lib/nostr/adapters/mp-projection.coax",
+    "coax/lib/nostr/adapters/pl-projection.coax",
+    "coax/lib/nostr/adapters/rs-projection.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 92,
+   "title": "Private agent state",
+   "file": "ch092-private-agent-state.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    20,
+    87
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 93,
+   "title": "Test vectors and their provenance",
+   "file": "ch093-test-vectors-and-their-provenance.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    4,
+    11,
+    20
+   ],
+   "source": [
+    "coax/tests/vectors/SOURCES.md",
+    "coax/tests/vectors/check_vectors.py",
+    "coax/tests/vectors/manifest.json"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 94,
+   "title": "Differential tests",
+   "file": "ch094-differential-tests.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    34,
+    93
+   ],
+   "source": [
+    "coax/tests/nostr/relay_differential.py",
+    "coax/tests/nostr/relay_rust_differential.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 95,
+   "title": "Fuzzing",
+   "file": "ch095-fuzzing.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    17,
+    23,
+    26,
+    93
+   ],
+   "source": [
+    "tools/coax-nostr/fuzz/differential.py",
+    "tools/coax-nostr/fuzz/oracle.py",
+    "tools/coax-nostr/fuzz/run.sh"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 96,
+   "title": "Formal properties",
+   "file": "ch096-formal-properties.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    11,
+    23,
+    36
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 97,
+   "title": "A conformance report",
+   "file": "ch097-a-conformance-report.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    93,
+    94
+   ],
+   "source": [
+    "coax/lib/nostr/profiles.coax",
+    "coax/lib/nostr/profiles.json",
+    "coax/tests/nostr/profiles.py"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 98,
+   "title": "Projects on Nostr",
+   "file": "ch098-projects-on-nostr.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    63,
+    30,
+    21
+   ],
+   "source": [
+    "apps/openagents-web/project-fold.coax",
+    "apps/openagents-web/project-live.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 99,
+   "title": "The website and sign-in",
+   "file": "ch099-the-website-and-sign-in.md",
+   "status": "partly implemented",
+   "profile": "native C and wasm",
+   "depends_on": [
+    46,
+    49
+   ],
+   "source": [
+    "apps/openagents-web/nip01-verify.coax",
+    "coax/lib/nostr/weblogin.coax"
+   ],
+   "qualified_targets": [
+    "cpu",
+    "wasm"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 100,
+   "title": "Pylons and the mesh",
+   "file": "ch100-pylons-and-the-mesh.md",
+   "status": "partly implemented",
+   "profile": "native C",
+   "depends_on": [
+    82,
+    20,
+    38,
+    "psionic:24"
+   ],
+   "source": [
+    "psionic/lib/mesh/opening.coax",
+    "psionic/lib/pylon/run.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
+   "adopted_by": []
+  },
+  {
+   "number": 101,
+   "title": "The Verse and the wallet",
+   "file": "ch101-the-verse-and-the-wallet.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    85,
+    71,
+    72,
+    "aethyr:49"
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 102,
+   "title": "Agents on Nostr",
+   "file": "ch102-agents-on-nostr.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    79,
+    80,
+    13
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  },
+  {
+   "number": 103,
+   "title": "Replace relay.openagents.com",
+   "file": "ch103-replace-relay-openagents-com.md",
+   "status": "design draft",
+   "profile": null,
+   "depends_on": [
+    34,
+    35,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    94
+   ],
+   "source": [],
+   "qualified_targets": [],
+   "adopted_by": []
+  }
+ ]
+}
