@@ -186,6 +186,22 @@ Checks: `aethyr/follow.coax` (mutation 0 survivors) and `verse/gridwalk.coax`
 ("the Grid's camera follows a walk, a run and a jump at 60 FPS without a
 jump").
 
+## The camera only reads the player, and every camera makes one shot
+
+The player's step (`step` in `verse/player.coax`) never moves the camera.
+The camera steps after it (`camera_step`, run by `step_once` in
+`steps_in`) and changes only the camera's fields (`target`, `spring_vel`,
+`dist`), so the player is the same, bit for bit, whether the camera steps
+every step, never, or twice a step. Every camera answers with one
+`CameraShot` (`aethyr/shot.coax`) built from state already drawn between
+steps: third and first person (`follow_shot`, `follow_first_shot`), top down
+(`shot_top`), the free orbit (`shot_orbit`, which `verse/camera.coax` draws
+through) and the dive (`shot_dive`, where a time that isn't a number is a
+cut). No camera steps physics. Checks: `verse/player.coax` ("the player is
+the same whether its camera steps every step, never, or twice a step", "each
+view mode is its own shot of the frame drawn"), `aethyr/shot.coax` and
+`aethyr/follow.coax` (mutation 0 survivors).
+
 ## The Grid steps only on its session's record
 
 The web Grid's simulation (`verse/gridwalk.coax`) is one `GridWalk`: you,
