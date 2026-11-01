@@ -19,6 +19,9 @@ reflection_helper_fs :: (position:V4)->V4 {
   if position.x<0 {gpu_demote_helper();}
   return v4(gpu_dpdx_fine(position.x),gpu_dpdy_fine(position.y),position.z,1);
 }
+reflection_array_size_fs :: (position:V4,layers:Tex2DArray)->V4 {
+  return v4(cast(f32)gpu_layer_width(layers),cast(f32)gpu_layer_height(layers),position.x,1);
+}
 #test "reflection fixture keeps shared uniform and both fragment targets" {
   rf_u:=[1]f32.[2];rf_instances:=[1]V4.[v4(3,0,0,0)];
   rf_a:=ReflectionAttributes.{position=v4(4,5,0,1),uv=v2(0.25,0.5)};
@@ -29,4 +32,6 @@ reflection_helper_fs :: (position:V4)->V4 {
   #assert rf_r.light.y==0.4 && rf_r.aux.x==2 && rf_r.aux.y==1 && rf_r.aux.z==7;
   #assert reflection_fine_fs(v4(1,2,3,1)).x==0;
   #assert reflection_helper_fs(v4(-1,2,3,1)).z==3;
+  rf_size:=reflection_array_size_fs(v4(5,0,0,1),Tex2DArray.{width=7,height=9,layers=3});
+  #assert rf_size.x==7 && rf_size.y==9 && rf_size.z==5;
 }

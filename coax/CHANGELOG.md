@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.47.0 — Versioned Shader Operations — 2026-11-01
 
-Commit: pending
+Commit: [`f914a8dfd7fc94fb727db834739f5397e03296d6`](https://github.com/OpenAgentsInc/openagents/commit/f914a8dfd7fc94fb727db834739f5397e03296d6)
 
 - Preserve checked shader tree2 and its GPU operation registry. Emit tree3
   when a reachable procedure uses explicit fine derivatives or helper
@@ -27,6 +27,9 @@ Commit: pending
 - Append rich reflection2 for actual checked binding layouts, stage visibility,
   vertex inputs, fragment outputs and derivative/control requirements. Preserve
   the original binding report lines for trusted legacy tools.
+- Add typed array-image dimension aliases `gpu_layer_width` and
+  `gpu_layer_height` to the existing image-query operations10/11. Programs
+  using these queries alone retain tree2.
 
 ## 0.46.0 — Returned Borrow Summaries — 2026-10-31
 

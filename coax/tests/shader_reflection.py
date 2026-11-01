@@ -74,6 +74,21 @@ def main():
             raise RuntimeError("helper conversion was replaced by termination")
         if extensions.count("SPV_EXT_demote_to_helper_invocation") != 1:
             raise RuntimeError("helper extension missing")
+        lines, ops, caps, _ = emit(args.coax, directory, "array-size", "--fragment", "reflection_array_size_fs")
+        require(lines, ["tree-version 2", "resource 0 2 1 0 2 layers", "derivatives 1 0", "control 1 0"])
+        if 103 not in ops or caps.count(50) != 1:
+            raise RuntimeError("array dimension aliases lost image-query lowering")
+        bindings = directory / "array.bindings"
+        bindings.write_text("layers 0 0\n")
+        wgsl = subprocess.run([args.coax, "wgsl", FIXTURE, "--fragments", "reflection_array_size_fs", "--bindings", str(bindings)],
+                              cwd=ROOT, capture_output=True, text=True, timeout=180)
+        if wgsl.returncode or "textureDimensions(" not in wgsl.stdout or ").x" not in wgsl.stdout or ").y" not in wgsl.stdout:
+            raise RuntimeError("array dimensions were not emitted as WGSL queries: " + wgsl.stderr)
+        bindings.write_text("")
+        wgsl = subprocess.run([args.coax, "wgsl", FIXTURE, "--fragments", "reflection_fine_fs,reflection_helper_fs", "--bindings", str(bindings)],
+                              cwd=ROOT, capture_output=True, text=True, timeout=180)
+        if wgsl.returncode or not all(token in wgsl.stdout for token in ["dpdxFine(", "dpdyFine(", "fwidthFine(", "discard;"]):
+            raise RuntimeError("fine/helper WGSL bridge changed: " + wgsl.stderr)
         print("reflection2, legacy report/tree2, fine/helper tree3 and vertex-only entry pass")
 
 

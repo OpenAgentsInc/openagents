@@ -24,6 +24,11 @@ CPU library retains zero derivative bodies. Quad execution declares its lane
 order and generic derivative selection separately; it cannot infer a unique
 generic hardware result from this registry alone.
 
+`gpu_layer_width(Tex2DArray)` and `gpu_layer_height(Tex2DArray)` are typed
+aliases of the existing image-query ids10/11. Their scalar bodies return the
+declared dimensions; both GPU targets query the bound image's base level.
+These aliases do not extend the tree2 operation registry or force tree3.
+
 The SPIR-V command preserves `binding SLOT KIND NAME` report lines. Additional
 observations begin with `reflection 2`:
 

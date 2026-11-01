@@ -108,8 +108,8 @@ struct ShaderTree {
                                   "gpu_dpdx_fine", "gpu_dpdy_fine", "gpu_fwidth_fine", "gpu_demote_helper"};
     for (uint32_t i = 1; i < sizeof names / sizeof names[0]; i++) if (n == names[i]) return i;
     // A depth texture's size is the same instruction as a 2D texture's.
-    if (n == "gpu_depth_width") return 10;
-    if (n == "gpu_depth_height") return 11;
+    if (n == "gpu_depth_width" || n == "gpu_layer_width") return 10;
+    if (n == "gpu_depth_height" || n == "gpu_layer_height") return 11;
     return 0;
   }
 
