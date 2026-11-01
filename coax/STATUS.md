@@ -52,6 +52,7 @@ schema. Keep signed protocol/schema identities in their own version domains.
 | `#assert expr;` | A compile-time `bool` check at the top level; an always-on check as a statement | works | — |
 | `#test "name" { }` | A check run by `coax test`, never compiled into the program | works | 0.5.0 |
 | `#forall a: T, b: lo..<hi { }` (optionally `#forall "name" ...`) | A check over every combination of its bindings | works | 0.5.0 |
+| `#steps N` | Before a check's block: the check's own step budget, replacing the file's (`#test "name" #steps 150000000 { }`) | works | 0.45.0 |
 | `#authority;` | Every procedure in the file needs a check; checks run on every build | works | 0.5.0 |
 | `#export_c` | After a procedure's signature: give it its own C name and the C calling convention (`coax lib`, `coax header`) | works | — |
 | `#foreign` | After a procedure's signature, with no body: import a C function that passes integers, floats, `bool` and borrowed views of them (read/written during the call only, never retained), returning a scalar or nothing | works | — |

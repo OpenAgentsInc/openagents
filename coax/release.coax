@@ -3,7 +3,7 @@
 #load "release-model.coax";
 IMPLEMENTATION_VERSION :: "0.45.0";
 STATUS_SCHEMA_VERSION :: 1;
-CATALOGUE :: [121]ReleaseFeature.[
+CATALOGUE :: [122]ReleaseFeature.[
   ReleaseFeature.{id="keywords.if",section="Keywords",name="`if` `else`",meaning="Conditional",status="works",introduced=""},
   ReleaseFeature.{id="keywords.while",section="Keywords",name="`while`",meaning="Loop",status="works",introduced=""},
   ReleaseFeature.{id="keywords.for",section="Keywords",name="`for` `break` `continue`",meaning="`for i: lo..<hi`, `for x, i: collection`; leave or skip an iteration",status="works",introduced=""},
@@ -36,6 +36,7 @@ CATALOGUE :: [121]ReleaseFeature.[
   ReleaseFeature.{id="directives.assert-expr",section="Directives",name="`#assert expr;`",meaning="A compile-time `bool` check at the top level; an always-on check as a statement",status="works",introduced=""},
   ReleaseFeature.{id="directives.test-name",section="Directives",name="`#test \"name\" { }`",meaning="A check run by `coax test`, never compiled into the program",status="works",introduced="0.5.0"},
   ReleaseFeature.{id="directives.forall-a-t-b-lo-hi",section="Directives",name="`#forall a: T, b: lo..<hi { }` (optionally `#forall \"name\" ...`)",meaning="A check over every combination of its bindings",status="works",introduced="0.5.0"},
+  ReleaseFeature.{id="directives.steps",section="Directives",name="`#steps N`",meaning="Before a check's block: the check's own step budget, replacing the file's (`#test \"name\" #steps 150000000 { }`)",status="works",introduced="0.45.0"},
   ReleaseFeature.{id="directives.authority",section="Directives",name="`#authority;`",meaning="Every procedure in the file needs a check; checks run on every build",status="works",introduced="0.5.0"},
   ReleaseFeature.{id="directives.export-c",section="Directives",name="`#export_c`",meaning="After a procedure's signature: give it its own C name and the C calling convention (`coax lib`, `coax header`)",status="works",introduced=""},
   ReleaseFeature.{id="directives.foreign",section="Directives",name="`#foreign`",meaning="After a procedure's signature, with no body: import a C function that passes integers, floats, `bool` and borrowed views of them (read/written during the call only, never retained), returning a scalar or nothing",status="works",introduced=""},
