@@ -244,6 +244,7 @@ time includes loading the model:
 | `base.en` | `jfk.wav`, 11.0 s | identical, timestamps too | 1,078 ms | 487 ms | 738 ms | 404 ms |
 | `tiny.en` | `say` clip, 8.2 s | identical, timestamps too | 619 ms | 243 ms | | |
 | `base.en` | `say` clip, 8.2 s | one comma differs; timestamps identical | 1,175 ms | 478 ms | | |
+| `medium.en` | `say` clip, 8.2 s | identical, timestamps too; "Psionic" heard right | 12.7 s | 5.2 s | 8.6 s | 75.9 s |
 
 - Mel filters: our binary64 Slaney filters are within 1.3e-9 of the f32
   filters stored in `ggml-tiny.en.bin` and `ggml-base.en.bin`
@@ -253,7 +254,8 @@ time includes loading the model:
   decoding. whisper.cpp's default beam search gets it right with
   `base.en`, which is why beam search is next.
 - Speed: Psionic takes 2.0 to 2.5× whisper.cpp's time at 8 threads, and
-  1.8× at 16. The first run after a reboot also pays for reading the
+  1.8× at 16 for `base.en`. whisper.cpp 1.9.2 slows down badly at 16
+  threads on `medium.en` (75.9 s); Psionic does not. The first run after a reboot also pays for reading the
   model from disk (up to 0.2 s). whisper.cpp uses Accelerate's matrix units; our products are
   plain Coax loops with bounds checks.
 
