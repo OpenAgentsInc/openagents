@@ -316,7 +316,7 @@ n94_write :: (f:N94File,out:[]u8,at:int,imeta:bool)->int {
 ## The hash check
 
 `n94_check` is the one decision in this file. It hashes the bytes with
-chapter 4's SHA-256 and compares the result with `x`. Then, if the metadata
+chapter 4's streaming SHA-256 and compares the result with `x`. Then, if the metadata
 has a `size`, the byte count must equal it. With `original` set, the bytes
 must hash to `ox` instead: a server may resize or re-encode an upload, and
 `ox` names the file the author sent. `size` describes the served file, so
@@ -333,10 +333,23 @@ n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
   has:=ifx original then f.has_ox else f.has_x;
   if !has {return N94_NO_HASH;}
   h:[32]u8;
-  if sha256_hash_checked(bytes,h[..],false)!=SHA_OK {return N94_LIMIT;}   // over 1 MiB
-  if !ns_equal32(h,want) {return N94_MISMATCH;}
+  if n94_digest(bytes,CB_MAX_BYTES,h[..])!=SHA_OK || !ns_equal32(h,want) {return N94_MISMATCH;}
   if !original && f.has_size && f.size!=bytes.count {return N94_SIZE;}
   return N94_OK;
+}
+// The SHA-256 of bytes of any size, streamed in pieces of chunk bytes
+// (chapter 4's init, update and final); SHA_OK, or the hash's refusal.
+n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 {
+  if chunk<1 {return SHA_BAD_INPUT;}
+  state:[112]u8;
+  status:=sha256_init(state[..]);
+  full:=bytes.count/chunk;
+  for c:0..<full {
+    if status==SHA_OK {status=sha256_update_checked(state[..],bytes[c*chunk..<c*chunk+chunk],false);}
+  }
+  if status==SHA_OK {status=sha256_update_checked(state[..],bytes[full*chunk..<bytes.count],false);}
+  if status==SHA_OK {status=sha256_final_checked(state[..],out,false);}
+  return status;
 }
 ```
 
@@ -345,9 +358,13 @@ wrong size means the metadata is wrong, not the file: two different byte
 strings with one SHA-256 aren't known to exist. So the size check comes
 second and names its own refusal.
 
-`sha256_hash_checked` takes at most 1 MiB (chapter 4's limit for one-shot
-inputs), so a larger download is refused as `N94_LIMIT`. Hashing a large
-file in pieces through `sha256_update` is not built here.
+Chapter 4's one-shot `sha256_hash_checked` takes at most 1 MiB, and so
+does one `sha256_update_checked` call. `n94_digest` feeds the bytes to
+`sha256_init`, `sha256_update_checked` and `sha256_final_checked` in pieces
+of `chunk` bytes, so a file of any size verifies. `n94_check` uses 1 MiB
+pieces (`CB_MAX_BYTES`); the checks also hash with pieces of 1, 7, 64, 500,
+999, 1,000 and 1,001 bytes and get the same digest. A hash that can't be
+computed refuses as `N94_MISMATCH`.
 
 ## Picture, video and voice events
 
@@ -609,7 +626,8 @@ Alice signs a kind 24242 event at `created_at = T0 = 1790000000` with
 
 ## Not built
 
-- Hashing files over 1 MiB in pieces.
+- Hashing Blossom bodies over 1 MiB: `nb7_fetch` and `nb7_upload` still
+  use the one-shot hash and refuse larger bodies as `NB7_LIMIT`.
 - Matching `imeta` URLs against the content, and NIP-92's kind 0 profile
   rule (an `imeta` tag describes `picture` or `banner` when its `url` is
   equal).
@@ -988,7 +1006,9 @@ pass.
 `nip94.coax` and `nipb7.coax` have their own `#test` blocks: NIP-92's
 example, every refusal and the tag and entry it names, the 256-byte value
 and 1,024-byte entry bounds at their edges, kind 1063 with each required
-tag missing, the hash check with `x`, `ox` and `size`, the writers
+tag missing, the hash check with `x`, `ox` and `size`, a 1,100,000-byte
+file hashed in two pieces against Python's `hashlib`, a 1,000-byte one
+hashed with seven piece sizes, the writers
 round-tripping through the readers, blob URLs with and without
 extensions, server lists, and the authorization rules at each edge of the
 window, for each verb, with one and several `x` tags.
@@ -1003,7 +1023,10 @@ coax/bin/coax mutate coax/lib/nostr/nipb7.coax --root-only
 On 2026-11-01, `coax test` passed all 209 and 217 checks (with the loaded
 files'). `coax mutate --root-only` killed all 323 mutants of `nip94.coax`
 and all 215 of `nipb7.coax`, with none surviving and none marked
-equivalent. The full mutation run (`COAX_MUTATION_FULL=1`) and a mutation
+equivalent. After the streaming hash, `nip94.coax` passed 211 checks and
+`coax mutate --root-only` (two shards, merged) killed all 343 of its
+mutants, none marked equivalent. The 1,100,000-byte check takes about 11
+seconds. The full mutation run (`COAX_MUTATION_FULL=1`) and a mutation
 run of the example were not run.
 
 ## Summary

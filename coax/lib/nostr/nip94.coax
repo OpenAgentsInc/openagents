@@ -135,8 +135,31 @@ N94_T_URL :: "https://nostr.build/i/my-image.jpg";
   o.has_ox=false;#assert n94_check(o,b[..],true)==N94_NO_HASH;
   // The size binds only the file as served.
   o.has_ox=true;o.size=1;#assert n94_check(o,b[..],true)==N94_OK;
-  // The one-shot SHA-256 takes at most 1 MiB.
-  big:[1048577]u8;#assert n94_check(f,big[..],false)==N94_LIMIT;
+}
+#test "the hash streams: a file over 1 MiB verifies, in two chunks" #steps 1000000000 {
+  big:[1100000]u8;for i:0..<big.count {big[i]=cast(u8)(i%251);}
+  // x from Python: hashlib.sha256(bytes(i%251 for i in range(1100000)))
+  f:=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/big.bin\",\"x 94186eaa25e1dd82949de5ebc5bb883ddd45fe7b146fe300f028e12c07658315\",\"size 1100000\"]]"),0);
+  // (one hash: it takes seconds; the small checks below cover mismatches)
+  #assert f.status==N94_OK && n94_check(f,big[..],false)==N94_OK;
+}
+#test "any chunk size gives the same digest; a chunk under 1 byte is refused" {
+  b:[1000]u8;for i:0..<b.count {b[i]=cast(u8)(i%251);}
+  // x from Python: hashlib.sha256(bytes(i%251 for i in range(1000)))
+  f:=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://a.example/k.bin\",\"x 4e4c294b331f7a2099a379bec34b9f9fc03dc46ab465d998f4d683da53487e6d\"]]"),0);
+  #assert f.status==N94_OK && n94_check(f,b[..],false)==N94_OK;
+  h:[32]u8;
+  // 1000 = 142 chunks of 7 and 6 left; 1 byte at a time; one whole chunk and
+  // nothing left; a chunk larger than the input
+  sizes:=[7]int.[7,1,1000,1001,999,64,500];
+  for chunk:sizes {
+    for i:0..<32 {h[i]=0;}
+    #assert n94_digest(b[..],chunk,h[..])==SHA_OK && ns_equal32(h,f.x);
+  }
+  #assert n94_digest(b[..],0,h[..])==SHA_BAD_INPUT && n94_digest(b[..],-1,h[..])==SHA_BAD_INPUT;
+  // no bytes is the empty hash; a short out is the hash's refusal
+  #assert n94_digest(b[0..<0],7,h[..])==SHA_OK;
+  #assert n94_digest(b[..],7,h[0..<31])!=SHA_OK;
 }
 #test "the writers round-trip through the readers" {
   f:=n94_imeta(n32_event(1,"[[\"imeta\",\"url https://nostr.build/i/my-image.jpg\",\"m image/jpeg\",\"blurhash e\\\"F\",\"dim 3024x4032\",\"alt A \\\"photo\\\"\",\"x d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5\",\"ox a948904f2f0f479b8f8197694b30184b0d2ed1c1cd2a1ec0fb85d299a192a447\",\"size 12\",\"fallback https://void.cat/alt1.jpg\"]]"),0);
@@ -283,10 +306,23 @@ n94_check :: (f:N94File,bytes:[]u8,original:bool)->int {
   has:=ifx original then f.has_ox else f.has_x;
   if !has {return N94_NO_HASH;}
   h:[32]u8;
-  if sha256_hash_checked(bytes,h[..],false)!=SHA_OK {return N94_LIMIT;}   // over 1 MiB
-  if !ns_equal32(h,want) {return N94_MISMATCH;}
+  if n94_digest(bytes,CB_MAX_BYTES,h[..])!=SHA_OK || !ns_equal32(h,want) {return N94_MISMATCH;}
   if !original && f.has_size && f.size!=bytes.count {return N94_SIZE;}
   return N94_OK;
+}
+// The SHA-256 of bytes of any size, streamed in pieces of chunk bytes
+// (chapter 4's init, update and final); SHA_OK, or the hash's refusal.
+n94_digest :: (bytes:[]u8,chunk:int,out:[]u8)->u32 {
+  if chunk<1 {return SHA_BAD_INPUT;}
+  state:[112]u8;
+  status:=sha256_init(state[..]);
+  full:=bytes.count/chunk;
+  for c:0..<full {
+    if status==SHA_OK {status=sha256_update_checked(state[..],bytes[c*chunk..<c*chunk+chunk],false);}
+  }
+  if status==SHA_OK {status=sha256_update_checked(state[..],bytes[full*chunk..<bytes.count],false);}
+  if status==SHA_OK {status=sha256_final_checked(state[..],out,false);}
+  return status;
 }
 // book:end check
 
