@@ -4,14 +4,7 @@
 // verifying the chain and the host name; no switch to skip it). Their
 // contracts are in socket-native.h and tls-native.h. Link both, with the
 // flags from coax/platform/tls-env.sh.
-cxsock_host_push :: (byte: int) -> int #foreign;
-cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_byte :: (h: int, i: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
-cxsock_now_ms :: () -> int #foreign;
+#load "socket_foreign.coax";
 cxtls_host_push :: (byte: int) -> int #foreign;
 cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign;
 cxtls_write :: (h: int, byte: int) -> int #foreign;

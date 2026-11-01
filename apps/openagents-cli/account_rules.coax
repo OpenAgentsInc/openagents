@@ -208,8 +208,8 @@ ar_qr_text :: (grid: [] u8, size: int, out: [] u8) -> int {
   while y < w {
     for x: 0..<w {
       top := !ar_dark(grid, size, x, y); bottom := y + 1 < w && !ar_dark(grid, size, x, y + 1);
-      glyph := ifx top && bottom then "█" else ifx top then "▀" else ifx bottom then "▄" else " ";
-      for c: glyph { if n == out.count { return -1; } out[n] = c; n += 1; }
+      block := ifx top && bottom then "█" else ifx top then "▀" else ifx bottom then "▄" else " ";
+      for c: block { if n == out.count { return -1; } out[n] = c; n += 1; }
     }
     if n == out.count { return -1; }
     out[n] = '\n'; n += 1;

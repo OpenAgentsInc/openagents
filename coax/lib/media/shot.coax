@@ -1,0 +1,70 @@
+// A picture of a page: one headless Chrome tab (coax/lib/net/cdp.coax) set to
+// a size, sent to a URL, given time to draw, and captured as a PNG. No
+// window opens and nothing takes focus. The callers are coax/web/shot.coax
+// (`coax/web/tool.sh shot`) and the CLI's `openagents labs shot`.
+//   c: [1] Cdp; cdp_launch(c[..], 1440, 900, "coax-shot-");
+//   o: MediaShotOptions; o.wait = 4000;
+//   s := media_shot(c[..], url, "out.png", ArgsSize.{ok = true, w = 1440, h = 900}, o, value[..], build[..]);
+// It waits o.wait ms of real time (the pages animate in), runs o.script once
+// and keeps what it returns in value (a string as it is, anything else as
+// compact JSON), then captures. o.dark asks the page for its dark theme
+// (prefers-color-scheme: dark). The page's build (the hashed Wasm name of a
+// Coaxial page, or "") goes in build.
+#load "../net/cdp.coax";
+
+MEDIA_PNG :: 25165824;   // the largest screenshot, 24 MiB
+
+MediaShotOptions :: struct { wait: int = 4000; script: string; dark: bool; }
+// status 0 when the PNG was written, 1 when Chrome failed (cdp_error says
+// why), 2 for a URL too long, 3 when the file could not be written.
+// value_n: bytes of the script's value (-1 when none).
+MediaShot :: struct { status: int; value_n: int = -1; build_n: int; }
+
+// The page's built program, from its script tag: "newland.1f7cafcf955e" for
+// "/build/newland.1f7cafcf955e.wasm"; "" when it names none.
+MEDIA_BUILD_JS :: "(() => { const s = document.querySelector('script[data-wasm]'); const w = s && s.dataset.wasm || ''; return w.replace(/^.*\\//, '').replace(/\\.wasm$/, ''); })()";
+
+media_size :: (c: [] Cdp, wh: ArgsSize) -> bool {
+  params: [512] u8; o: [1] Jo;
+  jo_start(o[..], params[..]);
+  jo_obj(o[..]); jo_key(o[..], "width"); jo_int(o[..], wh.w); jo_key(o[..], "height"); jo_int(o[..], wh.h);
+  jo_key(o[..], "deviceScaleFactor"); jo_int(o[..], 1); jo_key(o[..], "mobile"); jo_bool(o[..], wh.w < 600); jo_end(o[..]);
+  return cdp_call(c, "Emulation.setDeviceMetricsOverride", jo_text(o[..]), CDP_CALL_MS) >= 0;
+}
+// prefers-color-scheme for the pages that follow: dark, or the browser's own.
+media_scheme :: (c: [] Cdp, dark: bool) -> bool {
+  return cdp_call(c, "Emulation.setEmulatedMedia",
+                  ifx dark then "{\"features\":[{\"name\":\"prefers-color-scheme\",\"value\":\"dark\"}]}"
+                  else "{\"features\":[{\"name\":\"prefers-color-scheme\",\"value\":\"\"}]}", CDP_CALL_MS) >= 0;
+}
+// A script's value as text into out: a string as it is, anything else as
+// compact JSON. Its length, or -1.
+media_value :: (c: [] Cdp, script: string, out: [] u8) -> int {
+  v := cdp_evaluate(c, script);
+  if v < 0 { return -1; }
+  d := cdp_doc(c);
+  if jv_kind(d, v) == JV_STRING { return jv_str(d, v, out); }
+  w: [1] Jo; jo_start(w[..], out); jv_write(d, v, w[..]);
+  return ifx w[0].bad then -1 else jo_text(w[..]).count;
+}
+
+media_shot :: (c: [] Cdp, url: string, out: string, wh: ArgsSize, o: MediaShotOptions, value: [] u8, build: [] u8) -> MediaShot {
+  s: MediaShot;
+  if !media_size(c, wh) || !media_scheme(c, o.dark) { s.status = 1; return s; }
+  params: [8192] u8; j: [1] Jo;
+  jo_start(j[..], params[..]); jo_obj(j[..]); jo_key(j[..], "url"); jo_str(j[..], url); jo_end(j[..]);
+  if j[0].bad { s.status = 2; return s; }
+  if cdp_call(c, "Page.navigate", jo_text(j[..]), CDP_CALL_MS) < 0 { s.status = 1; return s; }
+  proc_sleep(o.wait);
+  if o.script.count > 0 {
+    s.value_n = media_value(c, o.script, value);
+    proc_sleep(500);
+  }
+  bn := media_value(c, MEDIA_BUILD_JS, build);
+  s.build_n = ifx bn > 0 then bn else 0;
+  png: [MEDIA_PNG] u8;
+  n := cdp_screenshot(c, png[..]);
+  if n < 0 { s.status = 1; return s; }
+  if !fs_write(out, cast(string) png[0..<n]) { s.status = 3; return s; }
+  return s;
+}

@@ -621,7 +621,7 @@ counts_for_best :: (p: [] Play, g: [] Game) -> bool {
 finished :: (p: [] Play, g: [] Game) {
   p[0].new_best = false;
   if g[0].status == Status.escaped && counts_for_best(p, g) {
-    s := seconds(g);
+    s := ice_seconds(g);
     d := cast(int) p[0].difficulty;
     if s > 0 && (p[0].best[d] <= 0 || s < p[0].best[d]) { p[0].best[d] = s; p[0].new_best = true; p[0].save_want = true; }
   }
@@ -902,7 +902,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   prompt := p[0].phase == Phase.playing && target.has;
   out[F_PROMPT] = ifx prompt then f32(cast(int) target.prompt) else -1.0f32;
   out[F_UNLOCK] = ifx prompt && target.prompt == Prompt.unlock && pl.unlock > 0 then pl.unlock / cmax(t.unlock, 0.001) else -1.0f32;
-  out[F_TIMER] = ifx p[0].timer_on && !g[0].free_roam then seconds(g) else -1.0f32;
+  out[F_TIMER] = ifx p[0].timer_on && !g[0].free_roam then ice_seconds(g) else -1.0f32;
   out[F_HURT] = p[0].hurt;
   out[F_CLOSET] = yes(pl.hidden >= 0 && p[0].phase == Phase.playing);
   out[F_DAYLIGHT] = p[0].daylight;
@@ -916,7 +916,7 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   out[F_SCARE] = ifx p[0].phase == Phase.ending && g[0].status == Status.scooped then p[0].end_t else -1.0f32;
   out[F_SCARY] = yes(p[0].jumpscares);
   out[F_TOUCH] = yes(p[0].touch);
-  out[F_SECONDS] = seconds(g);
+  out[F_SECONDS] = ice_seconds(g);
   out[F_BEST] = p[0].best[cast(int) p[0].difficulty];
   out[F_NEW_BEST] = yes(p[0].new_best);
   out[F_RUN_KEYS] = f32(pl.keys);

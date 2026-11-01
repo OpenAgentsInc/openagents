@@ -52,7 +52,7 @@ CONE_LIFE :: 45.0f32;
 IN :: 4.85f32;
 
 // 1/30, PI, TAU and PI/180 in f32, as the Rust computes them.
-dt :: () -> f32 { one: f32 = 1.0; hz: f32 = 30.0; return one / hz; }
+ice_dt :: () -> f32 { one: f32 = 1.0; hz: f32 = 30.0; return one / hz; }
 PI_F :: 3.14159265358979323846f32;
 TAU_F :: 6.28318530717958647692f32;
 rads_per_deg :: () -> f32 { d: f32 = 180.0; return PI_F / d; }
@@ -364,7 +364,7 @@ cell_eq :: (a: Cell, b: Cell) -> bool { return a.col == b.col && a.row == b.row;
 side_at :: (i: int) -> Side { return cast(Side) cast(u8) i; }
 side_dx :: (s: Side) -> int { return ifx s == Side.east then 1 else ifx s == Side.west then -1 else 0; }
 side_dz :: (s: Side) -> int { return ifx s == Side.south then 1 else ifx s == Side.north then -1 else 0; }
-opposite :: (s: Side) -> Side {
+ice_opposite :: (s: Side) -> Side {
   if s == Side.north { return Side.south; }
   if s == Side.east { return Side.west; }
   if s == Side.south { return Side.north; }
@@ -870,7 +870,7 @@ house_generate :: (g: [] Game, seed: u64, shape: Shape) {
     s := open_sides[pick];
     n := open_cells[pick];
     g[0].house.rooms[c.row * cols + c.col].doors[cast(int) s] = true;
-    g[0].house.rooms[n.row * cols + n.col].doors[cast(int) opposite(s)] = true;
+    g[0].house.rooms[n.row * cols + n.col].doors[cast(int) ice_opposite(s)] = true;
     seen[n.row * cols + n.col] = true;
     stack[stack_n] = n;
     stack_n += 1;
@@ -886,7 +886,7 @@ house_generate :: (g: [] Game, seed: u64, shape: Shape) {
     n := neighbour_in(c, s, cols, rows);
     if n.col >= 0 && !g[0].house.rooms[c.row * cols + c.col].doors[cast(int) s] {
       g[0].house.rooms[c.row * cols + c.col].doors[cast(int) s] = true;
-      g[0].house.rooms[n.row * cols + n.col].doors[cast(int) opposite(s)] = true;
+      g[0].house.rooms[n.row * cols + n.col].doors[cast(int) ice_opposite(s)] = true;
       added += 1;
     }
   }
@@ -1201,13 +1201,13 @@ Game :: struct {
   stepping: bool;
 }
 
-ev :: (g: [] Game, kind: EventKind, n: u32, a: V2, b: V2) {
+ice_ev :: (g: [] Game, kind: EventKind, n: u32, a: V2, b: V2) {
   #assert g[0].event_n < MAX_EVENTS;
   g[0].events[g[0].event_n] = Event.{kind = kind, n = n, a = a, b = b};
   g[0].event_n += 1;
 }
-ev0 :: (g: [] Game, kind: EventKind) { ev(g, kind, 0, v2(0, 0), v2(0, 0)); }
-ev_at :: (g: [] Game, kind: EventKind, a: V2) { ev(g, kind, 0, a, v2(0, 0)); }
+ev0 :: (g: [] Game, kind: EventKind) { ice_ev(g, kind, 0, v2(0, 0), v2(0, 0)); }
+ev_at :: (g: [] Game, kind: EventKind, a: V2) { ice_ev(g, kind, 0, a, v2(0, 0)); }
 noise :: (g: [] Game, at: V2, radius: f32) {
   #assert g[0].noise_n < MAX_NOISES;
   g[0].noises[g[0].noise_n] = Noise.{at = at, radius = radius};
@@ -1296,7 +1296,7 @@ man_head_to :: (g: [] Game, goal: V2) {
 man_walk :: (g: [] Game, toward: V2, speed: f32) {
   to := vsub(toward, g[0].man.pos);
   dir := norm2(to);
-  step_len := fmin2(speed * dt(), len2(to));
+  step_len := fmin2(speed * ice_dt(), len2(to));
   before := g[0].man.pos;
   g[0].man.pos = slide(g, g[0].man.pos, vmul(dir, step_len), MAN_RADIUS, 0);
   if !vzero(dir) { g[0].man.facing = dir; }
@@ -1343,7 +1343,7 @@ man_search_from :: (g: [] Game, goal: V2) {
 man_step :: (g: [] Game, senses: Senses) -> Acts {
   acts: Acts;
   t := g[0].tuning;
-  step := dt();
+  step := ice_dt();
   g[0].man.moving = false;
   g[0].man.volley_wait = fmax2(g[0].man.volley_wait - step, 0);
   g[0].man.grab_wait = fmax2(g[0].man.grab_wait - step, 0);
@@ -1508,7 +1508,7 @@ man_step :: (g: [] Game, senses: Senses) -> Acts {
 // ---- minions (minion.rs) ----
 
 minion_tick :: (g: [] Game, i: int) {
-  step := dt();
+  step := ice_dt();
   g[0].minions[i].moving = false;
   g[0].minions[i].flash = fmax2(g[0].minions[i].flash - step, 0);
   g[0].minions[i].bite_wait = fmax2(g[0].minions[i].bite_wait - step, 0);
@@ -1520,7 +1520,7 @@ minion_step_toward :: (g: [] Game, i: int, toward: V2, speed: f32) {
   to := vsub(toward, g[0].minions[i].pos);
   dir := norm2(to);
   if vzero(dir) { return; }
-  s := fmin2(speed * dt(), len2(to));
+  s := fmin2(speed * ice_dt(), len2(to));
   g[0].minions[i].pos = slide(g, g[0].minions[i].pos, vmul(dir, s), MINION_RADIUS, 0);
   g[0].minions[i].facing = dir;
   g[0].minions[i].moving = true;
@@ -1611,15 +1611,15 @@ door_guarded :: (g: [] Game) -> bool {
   return g[0].tuning.unlock_guard > 0 && man_here(g) && !(st == ManState.frozen || st == ManState.confused) &&
          dist2(g[0].man.pos, g[0].player.pos) < g[0].tuning.unlock_guard;
 }
-seconds :: (g: [] Game) -> f32 { hz: f32 = 30.0; return f32(g[0].tick) / hz; }
+ice_seconds :: (g: [] Game) -> f32 { hz: f32 = 30.0; return f32(g[0].tick) / hz; }
 minion_cap :: (g: [] Game) -> u32 {
   more: u32 = 0;
-  if g[0].tuning.minion_growth > 0 { more = cast(u32) (seconds(g) / g[0].tuning.minion_growth); }
+  if g[0].tuning.minion_growth > 0 { more = cast(u32) (ice_seconds(g) / g[0].tuning.minion_growth); }
   cap := g[0].tuning.minion_count + more;
   if cap > 12 { return 12; }
   return cap;
 }
-has :: (g: [] Game, t: Tool) -> bool { return g[0].player.owned[cast(int) t]; }
+ice_has :: (g: [] Game, t: Tool) -> bool { return g[0].player.owned[cast(int) t]; }
 max_health :: (g: [] Game) -> f32 {
   boost: f32 = 0;
   if g[0].player.boost > 0 { boost = g[0].tuning.cone_boost; }
@@ -1628,12 +1628,12 @@ max_health :: (g: [] Game) -> f32 {
 }
 
 earn :: (g: [] Game, t: Tool) {
-  if has(g, t) { return; }
+  if ice_has(g, t) { return; }
   g[0].player.owned[cast(int) t] = true;
   if t == Tool.pistol { g[0].player.cones = g[0].tuning.pistol_ammo; }
   if t == Tool.sugar { g[0].player.sugar = g[0].tuning.sugar_ammo; }
   g[0].player.tool = t;
-  ev(g, EventKind.earned, cast(u32) t, v2(0, 0), v2(0, 0));
+  ice_ev(g, EventKind.earned, cast(u32) t, v2(0, 0), v2(0, 0));
 }
 
 // Every earned weapon from the start (Game::arm).
@@ -1749,7 +1749,7 @@ staff :: (g: [] Game, from: V2, aim: V2) {
   if t >= 0 { end = vadd(from, vmul(vsub(end, from), t)); }
   back := fmin2(len2(vsub(end, from)), 0.7);
   end = vsub(end, vmul(aim, back));
-  ev(g, EventKind.staff, 0, from, end);
+  ice_ev(g, EventKind.staff, 0, from, end);
   damage := g[0].tuning.staff_damage;
   if man_here(g) && seg_dist(from, end, g[0].man.pos) <= MAN_RADIUS + 0.4 { damage_man(g, damage); }
   for i: 0..<g[0].minion_n {
@@ -1779,7 +1779,7 @@ staff :: (g: [] Game, from: V2, aim: V2) {
     }
     g[0].minion_n = w;
   }
-  ev(g, EventKind.friends_came, n, v2(0, 0), v2(0, 0));
+  ice_ev(g, EventKind.friends_came, n, v2(0, 0), v2(0, 0));
 }
 
 begin_step :: (g: [] Game, input: Input) {
@@ -1795,13 +1795,13 @@ begin_step :: (g: [] Game, input: Input) {
   g[0].was_jump = input.jump;
   if input.select >= 0 && input.select < TOOLS {
     t := cast(Tool) cast(u8) input.select;
-    if has(g, t) { g[0].player.tool = t; }
+    if ice_has(g, t) { g[0].player.tool = t; }
   }
 }
 
 move_player :: (g: [] Game) {
   if !g[0].stepping { return; }
-  step := dt();
+  step := ice_dt();
   one: f32 = 1.0;
   g[0].player.fire_wait = fmax2(g[0].player.fire_wait - step, 0);
   if g[0].player.hidden >= 0 {
@@ -1909,7 +1909,7 @@ fire :: (g: [] Game) {
     damage := ifx sword then t.sword_damage else t.spear_damage;
     cosine: f32 = ifx sword then 0.3 else 0.88;
     g[0].player.fire_wait = wait;
-    ev(g, EventKind.swing, cast(u32) tool, v2(0, 0), v2(0, 0));
+    ice_ev(g, EventKind.swing, cast(u32) tool, v2(0, 0), v2(0, 0));
     melee(g, pos, aim, reach, cosine, damage);
     return;
   } else if tool == Tool.pistol {
@@ -1939,7 +1939,7 @@ fire :: (g: [] Game) {
     return;
   }
   g[0].player.fire_wait = 0.4;
-  ev(g, EventKind.empty, cast(u32) tool, v2(0, 0), v2(0, 0));
+  ice_ev(g, EventKind.empty, cast(u32) tool, v2(0, 0), v2(0, 0));
 }
 
 min_u32 :: (a: u32, b: u32) -> u32 { return ifx a < b then a else b; }
@@ -1979,16 +1979,16 @@ interact :: (g: [] Game) {
       } else {
         g[0].player.farts = min_u32(g[0].player.farts + 1, tn.farts_max);
       }
-      if has(g, Tool.pistol) { g[0].player.cones = min_u32(g[0].player.cones + tn.pistol_pickup, tn.pistol_max); }
-      if has(g, Tool.sugar) { g[0].player.sugar = min_u32(g[0].player.sugar + tn.sugar_pickup, tn.sugar_max); }
+      if ice_has(g, Tool.pistol) { g[0].player.cones = min_u32(g[0].player.cones + tn.pistol_pickup, tn.pistol_max); }
+      if ice_has(g, Tool.sugar) { g[0].player.sugar = min_u32(g[0].player.sugar + tn.sugar_pickup, tn.sugar_max); }
       noise(g, g[0].player.pos, tn.fridge_noise);
-      ev(g, EventKind.picked_up, cast(u32) pickup, v2(0, 0), v2(0, 0));
+      ice_ev(g, EventKind.picked_up, cast(u32) pickup, v2(0, 0), v2(0, 0));
     }
   } else if t.prompt == Prompt.button {
     if pressed {
       if cast(u32) i == g[0].lit {
         g[0].lit += 1;
-        ev(g, EventKind.button, g[0].lit, v2(0, 0), v2(0, 0));
+        ice_ev(g, EventKind.button, g[0].lit, v2(0, 0), v2(0, 0));
         if g[0].lit >= BUTTONS {
           g[0].solved = true;
           if weapons_on(g) { add_drop(g, Drop.{at = g[0].house.cabinet, kind = DropKind.weapon, tool = Tool.spear, age = 0}); }
@@ -2010,7 +2010,7 @@ interact :: (g: [] Game) {
     if g[0].input.interact && (pressed || g[0].tick % HZ == 0) { ev0(g, EventKind.door_guarded); }
   } else if t.prompt == Prompt.unlock {
     if g[0].input.interact {
-      g[0].player.unlock += dt();
+      g[0].player.unlock += ice_dt();
       if g[0].tick % (HZ / 2) == 0 { noise(g, g[0].player.pos, tn.door_noise); }
       if g[0].player.unlock >= tn.unlock - 0.0001 {
         g[0].status = Status.escaped;
@@ -2029,14 +2029,14 @@ pick_up_keys :: (g: [] Game) {
     if !g[0].taken[i] && locked != i && dist2(g[0].house.keys[i], g[0].player.pos) <= g[0].tuning.key_reach {
       g[0].taken[i] = true;
       g[0].player.keys += 1;
-      ev(g, EventKind.key, g[0].player.keys, v2(0, 0), v2(0, 0));
+      ice_ev(g, EventKind.key, g[0].player.keys, v2(0, 0), v2(0, 0));
     }
   }
 }
 
 pick_up_drops :: (g: [] Game) {
   if !g[0].stepping { return; }
-  step := dt();
+  step := ice_dt();
   for i: 0..<g[0].drop_n { g[0].drops[i].age += step; }
   w := 0;
   for i: 0..<g[0].drop_n {
@@ -2074,7 +2074,7 @@ pick_up_drops :: (g: [] Game) {
 
 fly :: (g: [] Game) {
   if !g[0].stepping { return; }
-  step := dt();
+  step := ice_dt();
   most: f32 = 0.9;
   bursts: [MAX_SHOTS] V2;
   burst_n := 0;
@@ -2290,10 +2290,10 @@ reap :: (g: [] Game) {
     g[0].stats.minions_melted += 1;
     ev_at(g, EventKind.minion_melted, at);
     weapons := weapons_on(g);
-    if weapons && !g[0].sword_dropped && !has(g, Tool.sword) && g[0].stats.minions_melted >= g[0].tuning.sword_task {
+    if weapons && !g[0].sword_dropped && !ice_has(g, Tool.sword) && g[0].stats.minions_melted >= g[0].tuning.sword_task {
       g[0].sword_dropped = true;
       add_drop(g, Drop.{at = at, kind = DropKind.weapon, tool = Tool.sword, age = 0});
-      ev(g, EventKind.weapon_dropped, cast(u32) Tool.sword, at, v2(0, 0));
+      ice_ev(g, EventKind.weapon_dropped, cast(u32) Tool.sword, at, v2(0, 0));
     } else if rng_unit(g, RNG_GAME) < g[0].tuning.cone_drop {
       add_drop(g, Drop.{at = at, kind = DropKind.cone, tool = Tool.sword, age = 0});
       ev_at(g, EventKind.cone_dropped, at);
@@ -2305,7 +2305,7 @@ reap :: (g: [] Game) {
 spawn_minions :: (g: [] Game) {
   if !g[0].stepping || !g[0].man_on { return; }
   if g[0].tuning.minion_count == 0 { return; }
-  g[0].minion_wait -= dt();
+  g[0].minion_wait -= ice_dt();
   if g[0].minion_wait > 0 { return; }
   g[0].minion_wait = g[0].tuning.minion_every;
   enemies: u32 = 0;
@@ -2328,7 +2328,7 @@ spawn_minions :: (g: [] Game) {
 
 age_clouds :: (g: [] Game) {
   if !g[0].stepping { return; }
-  step := dt();
+  step := ice_dt();
   life := g[0].tuning.cloud_life;
   w := 0;
   for i: 0..<g[0].cloud_n {
@@ -2343,7 +2343,7 @@ age_clouds :: (g: [] Game) {
 
 end_step :: (g: [] Game) {
   if !g[0].stepping { return; }
-  step := dt();
+  step := ice_dt();
   if g[0].player.boost > 0 {
     g[0].player.boost -= step;
     if g[0].player.boost <= 0 {
@@ -2438,7 +2438,7 @@ bot_goal :: (g: [] Game) -> BotGoal {
     if best < 0 || l < best_len { best = i; best_len = l; }
   }
   if best >= 0 { return BotGoal.{at = g[0].house.keys[best], press = false}; }
-  if locked >= 0 || (weapons_on(g) && !has(g, Tool.spear)) {
+  if locked >= 0 || (weapons_on(g) && !ice_has(g, Tool.spear)) {
     if !g[0].solved {
       if cast(int) g[0].lit < g[0].house.button_n { return BotGoal.{at = g[0].house.buttons[cast(int) g[0].lit], press = true}; }
     } else {
@@ -2503,10 +2503,10 @@ bot_input :: (g: [] Game, b: [] Bot) -> Input {
   if minion >= 0 && (minion_first || !man_on || !bot_sees(g, man_at, 12.0)) {
     d := dist2(minion_at, player.pos);
     pick: s8 = -1;
-    if has(g, Tool.sword) && d <= t.sword_reach + 0.2 { pick = cast(s8) Tool.sword; }
-    else if has(g, Tool.spear) && d <= t.spear_reach { pick = cast(s8) Tool.spear; }
+    if ice_has(g, Tool.sword) && d <= t.sword_reach + 0.2 { pick = cast(s8) Tool.sword; }
+    else if ice_has(g, Tool.spear) && d <= t.spear_reach { pick = cast(s8) Tool.spear; }
     else if player.fudge > 0 { pick = cast(s8) Tool.fudge; }
-    else if has(g, Tool.pistol) && player.cones > 0 { pick = cast(s8) Tool.pistol; }
+    else if ice_has(g, Tool.pistol) && player.cones > 0 { pick = cast(s8) Tool.pistol; }
     if pick >= 0 {
       input.aim = norm2(vsub(minion_at, player.pos));
       input.select = pick;
@@ -2520,10 +2520,10 @@ bot_input :: (g: [] Game, b: [] Bot) -> Input {
     dazed := g[0].man.state == ManState.frozen || g[0].man.state == ManState.confused;
     input.aim = norm2(to);
     hitter: s8 = -1;
-    if has(g, Tool.spear) && d <= t.spear_reach { hitter = cast(s8) Tool.spear; }
-    else if has(g, Tool.sword) && d <= t.sword_reach { hitter = cast(s8) Tool.sword; }
-    else if has(g, Tool.sugar) && player.sugar > 0 && d > t.sugar_radius + 0.5 && d < t.sugar_range { hitter = cast(s8) Tool.sugar; }
-    else if has(g, Tool.pistol) && player.cones > 0 { hitter = cast(s8) Tool.pistol; }
+    if ice_has(g, Tool.spear) && d <= t.spear_reach { hitter = cast(s8) Tool.spear; }
+    else if ice_has(g, Tool.sword) && d <= t.sword_reach { hitter = cast(s8) Tool.sword; }
+    else if ice_has(g, Tool.sugar) && player.sugar > 0 && d > t.sugar_radius + 0.5 && d < t.sugar_range { hitter = cast(s8) Tool.sugar; }
+    else if ice_has(g, Tool.pistol) && player.cones > 0 { hitter = cast(s8) Tool.pistol; }
     if dazed {
       if hitter >= 0 { input.select = hitter; input.fire = true; }
     } else if d < t.fart_radius - 0.8 && player.farts > 0 {
@@ -2661,7 +2661,7 @@ check_house :: (g: [] Game, d: Difficulty, seed: u64) -> bool {
   #assert g[0].status == Status.scooped && !game_keep_playing(g);
   game_new(g, 3, false, t);
   g[0].status = Status.escaped;
-  #assert game_keep_playing(g) && g[0].status == Status.playing && has(g, Tool.staff) && g[0].free_roam;
+  #assert game_keep_playing(g) && g[0].status == Status.playing && ice_has(g, Tool.staff) && g[0].free_roam;
   #assert g[0].event_n == 2 && g[0].events[1].kind == EventKind.free_roam;
   game_new(g, 3, false, t);
   in: Input;

@@ -1,0 +1,11 @@
+// The TCP effects (coax/platform/socket-native.c, its contract in
+// socket-native.h), declared once so that every client of them loads into
+// one program: transport.coax (relays, HTTP) and cdp.coax (headless Chrome).
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_byte :: (h: int, i: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
+cxsock_now_ms :: () -> int #foreign;

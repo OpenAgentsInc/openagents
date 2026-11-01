@@ -117,6 +117,11 @@ encode :: (c: u32, out: [] u8, at: int) -> int {
   return n;
 }
 
+// The larger and the smaller of two, kept here so that font.coax needs only
+// lit from the program that loads it.
+font_hi :: (a: f32, b: f32) -> f32 { return ifx a > b then a else b; }
+font_lo :: (a: f32, b: f32) -> f32 { return ifx a < b then a else b; }
+
 // The glyph a code point draws as: lowercase as capitals (until stage 3),
 // Latin-1 accented letters as their base letter, a no-break space as a space.
 font_fold :: (code: u32) -> u32 {
@@ -230,8 +235,8 @@ draw_text :: (out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, g
     small := k.scale > 0 && cap < SMALL_TEXT * k.scale;
     core := ifx strong then k.core * 1.5 else k.core;
     glow := k.glow;
-    light := ifx strong then hi(k.light, lo(1, k.light * 1.35)) else k.light;
-    if small { core = ifx strong then 0.85f32 else 0.6f32; glow = 1; light = lo(1, light * 1.2); }
+    light := ifx strong then font_hi(k.light, font_lo(1, k.light * 1.35)) else k.light;
+    if small { core = ifx strong then 0.85f32 else 0.6f32; glow = 1; light = font_lo(1, light * 1.2); }
     red := ifx strong then 1.0f32 else k.red;
     green := ifx strong then 1.0f32 else k.green;
     blue := ifx strong then 1.0f32 else k.blue;

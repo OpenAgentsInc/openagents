@@ -1,0 +1,4 @@
+// The system's random bytes (coax/platform/entropy-foreign.c), declared once
+// so that every client of them loads into one program: relay_conn.coax (mask
+// keys, nonces) and cdp.coax (mask keys).
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;

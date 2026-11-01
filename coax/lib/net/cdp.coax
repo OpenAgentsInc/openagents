@@ -27,14 +27,8 @@
 #load "../sys/fs.coax";
 #load "../sys/proc.coax";
 
-cxsock_host_push :: (byte: int) -> int #foreign;
-cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_byte :: (h: int, i: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
-cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+#load "socket_foreign.coax";
+#load "../crypto/rand_foreign.coax";
 
 CDP_MSG_MAX :: 33554432;                  // the largest message taken from Chrome (a screenshot's base64), 32 MiB
 CDP_IN :: CDP_MSG_MAX + 14 + 65536;       // one partial frame plus one read
