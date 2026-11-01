@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 103 chapters, 10 are implemented, 46 are partly implemented and
+Of the 103 chapters, 11 are implemented, 45 are partly implemented and
 47 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -167,7 +167,7 @@ against its official vectors.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [18. ChaCha20](ch018-chacha20.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | RFC 8439 ChaCha20 with caller-supplied nonce and counter, counter exhaustion refused, and HChaCha20 for NIP-49's XChaCha20. |
+| [18. ChaCha20](ch018-chacha20.md) | Runnable: native C and wasm | RFC 8439 ChaCha20 with caller-supplied nonce and counter, counter exhaustion refused, and HChaCha20 for NIP-49's XChaCha20. |
 | [19. NIP-04 and why it is retired](ch019-nip-04-and-why-it-is-retired.md) | Unimplemented: design draft | NIP-04's AES-256-CBC with the shared x as key and its `?iv=` suffix, its weaknesses (no authentication, metadata in the clear, the key used as is), and the decision to read it only where a consumer needs it. |
 | [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | NIP-44 version 2: conversation keys, padding, ChaCha20, HMAC over nonce‖ciphertext checked before decryption, and every valid and invalid vector in `nip44.vectors.json`. |
 

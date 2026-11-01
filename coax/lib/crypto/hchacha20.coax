@@ -40,6 +40,7 @@ hc_admit :: (key:int,nonce:int,capacity:int,overlap:bool)->u32 {
 }
 
 // Internal ABI: the caller must validate pointer views and the alias fact.
+// book:begin hchacha20_checked
 hchacha20_checked :: (key:[]u8,nonce:[]u8,out:[]u8,overlap:bool)->ChaChaResult #export_c {
   error:=hc_admit(key.count,nonce.count,out.count,overlap);
   if error!=CC_OK {return ChaChaResult.{error=error};}
@@ -52,3 +53,4 @@ hchacha20_checked :: (key:[]u8,nonce:[]u8,out:[]u8,overlap:bool)->ChaChaResult #
   }
   return ChaChaResult.{written=32};
 }
+// book:end hchacha20_checked

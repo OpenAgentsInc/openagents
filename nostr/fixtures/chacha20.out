@@ -1,0 +1,23 @@
+quarter round a b c d: ea2a92f4 cb1cf8ce 4581472e 5881c4bb
+state row 0: 61707865 3320646e 79622d32 6b206574
+state row 1: 03020100 07060504 0b0a0908 0f0e0d0c
+state row 2: 13121110 17161514 1b1a1918 1f1e1d1c
+state row 3: 00000001 09000000 4a000000 00000000
+block words 0-3: e4e7f110 15593bd1 1fdd0f50 c47120a3
+block: ok, 64 bytes
+serialized block 0-15: 10f1e7e4d13b5915500fdd1fa32071c4
+serialized block 48-63: b5129cd1de164eb9cbd083e8a2503c4e
+encrypt: ok, 114 bytes
+ciphertext 0-15: 6e2e359a2568f98041ba0728dd0d6981
+ciphertext 112-113: 874d
+ciphertext equals RFC 8439 2.4.2: true
+decrypt: ok, "Ladies and Gentlemen of"
+decrypt with byte 0 flipped: ok, "Madies and Gentlemen of"
+hchacha20: ok, 32 bytes
+subkey: 82413b4227b27bfed30e42508a877d73a0f9e4d58a74a853c12ec41326d3ecdc
+counter 0xffffffff, 64 bytes: ok, 64 bytes
+counter 0xffffffff, 65 bytes: counter exhausted, 0 bytes, output untouched true
+counter 0xfffffffe, 65 bytes: ok
+31-byte key: bad key, 0 bytes
+8-byte nonce: bad nonce, 0 bytes
+113-byte output for 114 bytes: bad output, 0 bytes

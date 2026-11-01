@@ -1,0 +1,88 @@
+// The checks of chacha20.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/chacha20.coax
+#load "../chacha20.coax";
+
+// book:begin check
+// Byte strings copied from the pinned RFC 8439 text
+// (coax/tests/vectors/upstream/rfc/rfc8439.txt) by its hex dumps.
+RFC_232_BLOCK :: "10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e";
+#test "RFC 8439 section 2.3.2: the serialized block" {
+  key: [32] u8; for i: 0..<32 { key[i] = cast(u8) i; }
+  nb: [12] u8; out: [64] u8; want: [64] u8;
+  r := chacha20_block_checked(key[..], from_hex("000000090000004a00000000", nb[..]), 1, out[..], false);
+  #assert r.error == CC_OK && r.written == 64;
+  #assert same(out[..], from_hex(RFC_232_BLOCK, want[..]));
+}
+#test "RFC 8439 section 2.4.2: the sunscreen ciphertext, both ways" {
+  key: [32] u8; for i: 0..<32 { key[i] = cast(u8) i; }
+  nb: [12] u8; pb: [114] u8; out: [114] u8; back: [114] u8; want: [114] u8;
+  nonce := from_hex("000000000000004a00000000", nb[..]);
+  r := chacha20_xor_checked(key[..], nonce, 1, bytes_of(SUNSCREEN, pb[..]), out[..], false);
+  #assert r.error == CC_OK && r.written == 114;
+  #assert same(out[..], from_hex(SUNSCREEN_CIPHER, want[..]));
+  r = chacha20_xor_checked(key[..], nonce, 1, out[..], back[..], false);
+  #assert r.error == CC_OK && same(back[..], pb[..]);
+}
+// The comparison the checks rely on tells different bytes apart.
+#test "same refuses another length and a differing byte" {
+  a := [3] u8.[1, 2, 3]; b := [3] u8.[0, 2, 3]; c := [3] u8.[1, 2, 4];
+  #assert same(a[..], a[..]) && !same(a[..], a[0..<2]);
+  #assert !same(a[..], b[..]) && !same(a[..], c[..]);
+}
+// RFC 8439 appendix A.1: five blocks. Each row is the key byte that is
+// set (index, value), the nonce byte that is set, the counter, and the key
+// stream.
+A1_KEYSTREAM :: [5] string.[
+  "76b8e0ada0f13d90405d6ae55386bd28bdd219b8a08ded1aa836efcc8b770dc7da41597c5157488d7724e03fb8d84a376a43b8f41518a11cc387b669b2ee6586",
+  "9f07e7be5551387a98ba977c732d080dcb0f29a048e3656912c6533e32ee7aed29b721769ce64e43d57133b074d839d531ed1f28510afb45ace10a1f4b794d6f",
+  "3aeb5224ecf849929b9d828db1ced4dd832025e8018b8160b82284f3c949aa5a8eca00bbb4a73bdad192b5c42f73f2fd4e273644c8b36125a64addeb006c13a0",
+  "72d54dfbf12ec44b362692df94137f328fea8da73990265ec1bbbea1ae9af0ca13b25aa26cb4a648cb9b9d1be65b2c0924a66c54d545ec1b7374f4872e99f096",
+  "c2c64d378cd536374ae204b9ef933fcd1a8b2288b3dfa49672ab765b54ee27c78a970e0e955c14f3a88e741b97c286f75f8fc299e8148362fa198a39531bed6d"];
+A1_KEY_AT :: [5] int.[0, 0, 31, 1, 0];
+A1_KEY_BYTE :: [5] u8.[0, 0, 1, 255, 0];
+A1_NONCE_BYTE :: [5] u8.[0, 0, 0, 0, 2];
+A1_COUNTER :: [5] u32.[0, 1, 1, 2, 0];
+#forall "RFC 8439 appendix A.1 block key streams" i: 0..<5 {
+  key: [32] u8; nonce: [12] u8; out: [64] u8; want: [64] u8;
+  key[A1_KEY_AT[i]] = A1_KEY_BYTE[i];
+  nonce[11] = A1_NONCE_BYTE[i];
+  #assert chacha20_block_checked(key[..], nonce[..], A1_COUNTER[i], out[..], false).error == CC_OK;
+  #assert same(out[..], from_hex(A1_KEYSTREAM[i], want[..]));
+}
+// RFC 8439 appendix A.2 test vector 3: 127 bytes from counter 42, so the
+// last block is partial.
+A23_KEY :: "1c9240a5eb55d38af333888604f6b5f0473917c1402b80099dca5cbc207075c0";
+A23_PLAIN :: "2754776173206272696c6c69672c20616e642074686520736c6974687920746f7665730a446964206779726520616e642067696d626c6520696e2074686520776162653a0a416c6c206d696d737920776572652074686520626f726f676f7665732c0a416e6420746865206d6f6d65207261746873206f757467726162652e";
+A23_CIPHER :: "62e6347f95ed87a45ffae7426f27a1df5fb69110044c0d73118effa95b01e5cf166d3df2d721caf9b21e5fb14c616871fd84c54f9d65b283196c7fe4f60553ebf39c6402c42234e32a356b3e764312a61a5532055716ead6962568f87d3f3f7704c6a8d1bcd1bf4d50d6154b6da731b187b58dfd728afa36757a797ac188d1";
+#test "RFC 8439 appendix A.2 vector 3: a partial last block" {
+  kb: [32] u8; nonce: [12] u8; pb: [127] u8; out: [127] u8; want: [127] u8;
+  nonce[11] = 2;
+  r := chacha20_xor_checked(from_hex(A23_KEY, kb[..]), nonce[..], 42, from_hex(A23_PLAIN, pb[..]), out[..], false);
+  #assert r.error == CC_OK && r.written == 127;
+  #assert same(out[..], from_hex(A23_CIPHER, want[..]));
+}
+// The stream is the blocks at counter, counter + 1, ... laid end to end.
+#forall "the stream is consecutive blocks" c: 0..<4 {
+  key: [32] u8; for i: 0..<32 { key[i] = cast(u8) (7 * i); }
+  nonce: [12] u8; nonce[4] = 74;
+  zero: [128] u8; stream: [128] u8; block: [64] u8;
+  #assert chacha20_xor_checked(key[..], nonce[..], cast(u32) c, zero[..], stream[..], false).error == CC_OK;
+  #assert chacha20_block_checked(key[..], nonce[..], cast(u32) c, block[..], false).error == CC_OK;
+  #assert same(stream[0..<64], block[..]);
+  #assert chacha20_block_checked(key[..], nonce[..], cast(u32) c + 1, block[..], false).error == CC_OK;
+  #assert same(stream[64..<128], block[..]);
+}
+// Near the top of the counter: n bytes from counter 2^32 - left need
+// ceil(n / 64) blocks and pass only when that is at most left.
+#forall "a request past counter 2^32 - 1 refuses" left: 1..<4, n: 0..<260 {
+  counter := cast(u32) (4294967296 - left);
+  want := ifx (n + 63) / 64 <= left then CC_OK else CC_COUNTER;
+  #assert cc_admit(32, 12, counter, n, n, false) == want;
+}
+#forall "only 32-byte keys and 12-byte nonces pass" k: 0..<40, m: 0..<20 {
+  want := CC_OK;
+  if k != 32 { want = CC_KEY; } else if m != 12 { want = CC_NONCE; }
+  #assert cc_admit(k, m, 0, 64, 64, false) == want;
+}
+// book:end check

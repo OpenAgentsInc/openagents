@@ -1,0 +1,120 @@
+// book:begin example
+#load "../../coax/lib/crypto/chacha20.coax";
+#load "../../coax/lib/crypto/hchacha20.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [160] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Print a label and four 32-bit words as 8 hex digits each.
+show_words :: (label: string, a: u32, b: u32, c: u32, d: u32) {
+  w: [16] u8;
+  ok := cb_store_be32(w[..], 0, a) && cb_store_be32(w[..], 4, b) &&
+        cb_store_be32(w[..], 8, c) && cb_store_be32(w[..], 12, d);
+  text: [32] u8;
+  r := hex_encode_checked(cast(string) w[..], text[..], false);
+  t := cast(string) text[0..<r.written];
+  if ok { print("%: % % % %\n", label, t[0..<8], t[8..<16], t[16..<24], t[24..<32]); }
+}
+// Copy a string's bytes into a buffer and return the filled part.
+bytes_of :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count { out[i] = text[i]; }
+  return out[0..<text.count];
+}
+// Decode hex that the program itself spells; it must be valid.
+from_hex :: (text: string, out: [] u8) -> [] u8 {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == 0;
+  return out[0..<r.written];
+}
+// True when the first bytes of a and b agree.
+same :: (a: [] u8, b: [] u8) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if a[i] != b[i] { return false; } }
+  return true;
+}
+
+ERROR :: [7] string.["ok", "bad key", "bad nonce", "bad input",
+  "bad output", "counter exhausted", "overlap"];
+
+ROW :: [4] string.["state row 0", "state row 1", "state row 2", "state row 3"];
+
+SUNSCREEN :: "Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
+SUNSCREEN_CIPHER :: "6e2e359a2568f98041ba0728dd0d6981e97e7aec1d4360c20a27afccfd9fae0bf91b65c5524733ab8f593dabcd62b3571639d624e65152ab8f530c359f0861d807ca0dbf500d6a6156a38e088a22b65e52bc514d16ccf806818ce91ab77937365af90bbf74a35be6b40b8eedf2785e42874d";
+
+main :: () {
+  // RFC 8439 section 2.1.1: one quarter round.
+  q := cc_quarter(0x11111111, 0x01020304, 0x9b8d6f43, 0x01234567);
+  show_words("quarter round a b c d", q.a, q.b, q.c, q.d);
+
+  // RFC 8439 section 2.3.2: the key 00..1f, nonce 000000090000004a00000000,
+  // block counter 1.
+  key: [32] u8;
+  for i: 0..<32 { key[i] = cast(u8) i; }
+  nb: [12] u8;
+  nonce := from_hex("000000090000004a00000000", nb[..]);
+  s := cc_initial(key[..], nonce, 1);
+  for row: 0..<4 {
+    show_words(ROW[row], s.words[4 * row], s.words[4 * row + 1], s.words[4 * row + 2], s.words[4 * row + 3]);
+  }
+  after := cc_block_words(s);
+  show_words("block words 0-3", after.words[0], after.words[1], after.words[2], after.words[3]);
+  block: [64] u8;
+  r := chacha20_block_checked(key[..], nonce, 1, block[..], false);
+  print("block: %, % bytes\n", ERROR[r.error], r.written);
+  show("serialized block 0-15", block[0..<16]);
+  show("serialized block 48-63", block[48..<64]);
+
+  // RFC 8439 section 2.4.2: encrypt 114 bytes from counter 1, so counters
+  // 1 and 2 make the two blocks of key stream.
+  nonce = from_hex("000000000000004a00000000", nb[..]);
+  pb: [114] u8; cipher: [114] u8; back: [114] u8; wb: [114] u8;
+  plain := bytes_of(SUNSCREEN, pb[..]);
+  r = chacha20_xor_checked(key[..], nonce, 1, plain, cipher[..], false);
+  print("encrypt: %, % bytes\n", ERROR[r.error], r.written);
+  show("ciphertext 0-15", cipher[0..<16]);
+  show("ciphertext 112-113", cipher[112..<114]);
+  print("ciphertext equals RFC 8439 2.4.2: %\n", same(cipher[..], from_hex(SUNSCREEN_CIPHER, wb[..])));
+  r = chacha20_xor_checked(key[..], nonce, 1, cipher[..], back[..], false);
+  print("decrypt: %, \"%\"\n", ERROR[r.error], cast(string) back[0..<23]);
+
+  // No authentication: flip one ciphertext bit and decryption still
+  // succeeds, with the same bit flipped in the plaintext.
+  cipher[0] ^= 1;
+  r = chacha20_xor_checked(key[..], nonce, 1, cipher[..], back[..], false);
+  print("decrypt with byte 0 flipped: %, \"%\"\n", ERROR[r.error], cast(string) back[0..<23]);
+
+  // HChaCha20, from the XChaCha draft section 2.2.1: a 16-byte nonce gives
+  // a 32-byte subkey.
+  hb: [16] u8; sub: [32] u8;
+  r = hchacha20_checked(key[..], from_hex("000000090000004a0000000031415927", hb[..]), sub[..], false);
+  print("hchacha20: %, % bytes\n", ERROR[r.error], r.written);
+  show("subkey", sub[..]);
+
+  // The counter is 32 bits. At 0xffffffff one block is left: 64 bytes pass,
+  // 65 bytes need a second block and refuse before writing.
+  out: [65] u8; zero: [65] u8;
+  for i: 0..<65 { out[i] = 165; }
+  r = chacha20_xor_checked(key[..], nonce, 0xffffffff, zero[0..<64], out[0..<64], false);
+  print("counter 0xffffffff, 64 bytes: %, % bytes\n", ERROR[r.error], r.written);
+  for i: 0..<65 { out[i] = 165; }
+  r = chacha20_xor_checked(key[..], nonce, 0xffffffff, zero[..], out[..], false);
+  untouched := true;
+  for b: out { if b != 165 { untouched = false; } }
+  print("counter 0xffffffff, 65 bytes: %, % bytes, output untouched %\n", ERROR[r.error], r.written, untouched);
+  print("counter 0xfffffffe, 65 bytes: %\n", ERROR[cc_admit(32, 12, 0xfffffffe, 65, 65, false)]);
+
+  // Wrong sizes: a 31-byte key, the 8-byte nonce of the original ChaCha20,
+  // and an output buffer one byte short.
+  r = chacha20_xor_checked(key[0..<31], nonce, 1, plain, cipher[..], false);
+  print("31-byte key: %, % bytes\n", ERROR[r.error], r.written);
+  r = chacha20_xor_checked(key[..], nonce[0..<8], 1, plain, cipher[..], false);
+  print("8-byte nonce: %, % bytes\n", ERROR[r.error], r.written);
+  r = chacha20_xor_checked(key[..], nonce, 1, plain, cipher[0..<113], false);
+  print("113-byte output for 114 bytes: %, % bytes\n", ERROR[r.error], r.written);
+}
+// book:end example

@@ -100,7 +100,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [18. ChaCha20](ch018-chacha20.md) — partly implemented | 1 | RFC 8439 sections 2.3.2 and 2.4.2 vectors pass. A request that would pass counter `2^32 - 1` refuses. | — |
+| [18. ChaCha20](ch018-chacha20.md) — implemented | 1 | RFC 8439 sections 2.3.2 and 2.4.2 vectors pass. A request that would pass counter `2^32 - 1` refuses. | — |
 | [19. NIP-04 and why it is retired](ch019-nip-04-and-why-it-is-retired.md) — design draft | 14, 1 | The chapter states every weakness above with a reference to the pinned text. If a reader is built: FIPS-197 and NIST CBC vectors pass, and the reader refuses to encrypt. | [NIP-04](../nips/official/04.md) |
 | [20. NIP-44 encrypted payloads](ch020-nip-44-encrypted-payloads.md) — partly implemented | 6, 14, 18, 5, 1 | Every `valid` and `invalid` entry in `nip44.vectors.json` gives its expected result. Lengths 65,535, 65,536 and 65,537 behave as the active profile states. A ciphertext with a wrong MAC never produces plaintext output. | [NIP-44](../nips/official/44.md) |
 

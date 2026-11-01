@@ -357,14 +357,16 @@
    "number": 18,
    "title": "ChaCha20",
    "file": "ch018-chacha20.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     1
    ],
    "source": [
     "coax/lib/crypto/chacha20.coax",
-    "coax/lib/crypto/hchacha20.coax"
+    "coax/lib/crypto/hchacha20.coax",
+    "nostr/examples/chacha20.coax",
+    "nostr/examples/checks/chacha20.coax"
    ],
    "qualified_targets": [
     "cpu",
