@@ -144,6 +144,8 @@ ca_name_of :: (t: [] CaT, who: string, out: [] u8) -> string {
   return ifx n < 0 then "" else cast(string) out[0..<n];
 }
 
+// A save refused: 403 on a realm the caller may see, 404 on a private one it may not.
+ca_refused :: (status: int) -> bool { return status == 403 || status == 404; }
 ca_nip98_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, kept: [] u8) -> int {
   me := "/api/auth/v2/me";
   ca_check(t, "me: nobody is 401", ca_call(t, "GET", me, "", false, "", "") == 401);
@@ -160,8 +162,10 @@ ca_nip98_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, kept: [] u8) -> int {
   ca_check(t, "realms: its owner makes it public", ca_signed(t, a, "POST", ca_path_of(slug, "/visibility", p[..]), "{\"visibility\":\"public\"}") == 200);
   ca_check(t, "realms: the signer owns it", ca_signed(t, a, "GET", ca_path_of(slug, "", p[..]), "") == 200 && ca_has(ca_body(t), "\nrole owner\n"));
   ca_check(t, "realms: the owner's signed save works", ca_signed(t, a, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 200 && ca_has(ca_body(t), "\"rev\""));
-  ca_check(t, "realms: another key's signed save is 403", ca_signed(t, b, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 403);
-  ca_check(t, "realms: another key is a visitor", ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 200 && ca_has(ca_body(t), "\nrole visitor\n"));
+  ca_check(t, "realms: another key's signed save is refused", ca_refused(ca_signed(t, b, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}")));
+  // A private realm is 404 to anyone but its owner (d5f78cbaee); a public one shows another key as a visitor.
+  vs := ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "");
+  ca_check(t, "realms: another key is a visitor, or can't see it", vs == 404 || (vs == 200 && ca_has(ca_body(t), "\nrole visitor\n")));
   ok := ca_sign(t, a, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}", true);
   ca_check(t, "realms: a changed body is refused", ok && ca_call(t, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":2,\"moved\":[]}", true, "", "") == 401);
   ok = ca_sign(t, a, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}", false);
@@ -185,8 +189,8 @@ ca_nip98_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, kept: [] u8) -> int {
   gslug := ca_make(t, a, guest, ca_name_of(t, "guest", ng[..]), sg[..]);
   ca_check(t, "guest: the player key makes a realm, as before", gslug.count > 0);
   ca_check(t, "guest: and saves it", ca_call(t, "POST", ca_path_of(gslug, "/save", q[..]), "{\"rev\":1,\"moved\":[]}", false, guest, "") == 200);
-  ca_check(t, "guest: a signer can't save the guest's realm", ca_signed(t, a, "POST", ca_path_of(gslug, "/save", q[..]), "{\"rev\":1,\"moved\":[]}") == 403);
-  ca_check(t, "guest: the guest can't save the signer's realm", ca_call(t, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":2,\"moved\":[]}", false, guest, "") == 403);
+  ca_check(t, "guest: a signer can't save the guest's realm", ca_refused(ca_signed(t, a, "POST", ca_path_of(gslug, "/save", q[..]), "{\"rev\":1,\"moved\":[]}")));
+  ca_check(t, "guest: the guest can't save the signer's realm", ca_refused(ca_call(t, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":2,\"moved\":[]}", false, guest, "")));
 
   // GET /api/playtest/realms/mine
   ra: [80] u8;
@@ -406,7 +410,7 @@ ca_device_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, slug: string) {
   own: [80] u8;
   on := ca_put(own[..], 0, "account n-"); on = ca_put(own[..], on, ca_pub_of(c[..]));
   ca_check(t, "unlink: and is its own account again", ca_signed(t, c[..], "GET", "/api/auth/v2/me", "") == 200 && ca_has(ca_body(t), cast(string) own[0..<on]));
-  ca_check(t, "unlink: so it can't save the account's realm", ca_signed(t, c[..], "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 403);
+  ca_check(t, "unlink: so it can't save the account's realm", ca_refused(ca_signed(t, c[..], "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}")));
 
   // Expiry: only where codes last seconds (test.sh sets OA_DEVICE_TTL_MS); ten minutes elsewhere.
   ie: [32] u8; ke: [64] u8; ien: [1] int; ken: [1] int;
