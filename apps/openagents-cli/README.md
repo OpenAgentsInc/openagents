@@ -29,9 +29,13 @@ openagents nostr auth https://openagents.com/api/v1/systemone --body request.jso
 openagents nostr forget --yes
 ```
 
-- The key is kept in the macOS Keychain (service `com.openagents.cli`,
-  account `nostr:PROFILE`). On Linux it is
-  `~/.openagents/cli/keys/PROFILE`, mode 0600, in a 0700 directory.
+- The key is kept in `~/.openagents/cli/keys/PROFILE`, mode 0600, in a
+  0700 directory, on every system.
+- `OPENAGENTS_KEYCHAIN=1` uses the macOS Keychain instead (service
+  `com.openagents.cli`, account `nostr:PROFILE`). It is off by default:
+  macOS ties a Keychain item to the binary that made it, so each rebuilt
+  `openagents` asks for your login password to read it. Agents rebuild and
+  run the CLI all the time, so never set it for them.
 - `--profile NAME` (or `OPENAGENTS_PROFILE`) keeps several identities.
 - `OPENAGENTS_NSEC=nsec1...` uses a key for one run and stores nothing.
 - `nostr auth` prints a NIP-98 `Authorization` header for one request:

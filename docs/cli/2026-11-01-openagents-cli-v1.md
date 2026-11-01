@@ -2,7 +2,7 @@
 
 Status: spec, 2026-11-01. The first slice is built in
 [apps/openagents-cli](../../apps/openagents-cli/README.md): the binary, the
-`nostr` domain (a NIP-06 identity kept in the Keychain, event signing and
+`nostr` domain (a NIP-06 identity in a 0600 key file, event signing and
 NIP-98 headers) and the `pylon` domain (start, stop, status and logs). The
 `account` and `realm` domains below are not built yet. The routes they call
 exist unless a row says **new**.
@@ -147,7 +147,7 @@ web. That's enough to make and own realms without a browser at all.
 
 | Platform | Store |
 | --- | --- |
-| macOS | Keychain, service `com.openagents.cli`, account = profile name. Through Security.framework's C API (`SecItemAdd`, `SecItemCopyMatching`) behind a `#foreign` in a new `coax/platform/keychain-native.c`. |
+| macOS | The same 0600 file as Linux (built). The Keychain (service `com.openagents.cli`) is opt-in with `OPENAGENTS_KEYCHAIN=1`: macOS ties an item to the binary that made it, so every rebuilt CLI asked for the login password, and agents rebuild it all day (owner, 2026-11-01). |
 | Linux | `~/.openagents/cli/keys/PROFILE` mode 0600 in a 0700 directory (built), as an NIP-49 `ncryptsec` when `--encrypt` is given (`coax/lib/crypto/scrypt_nip49.coax`), else the raw key with a warning at login. |
 
 The profile file `~/.openagents/cli/profiles` holds each profile's origin
@@ -390,7 +390,7 @@ Each one ships when its server surface exists:
 4. The edit verbs and `realm apply`; a `cli-journey` check like
    `forge-journey` that runs make, move, save, a stale save (exit 5), undo,
    publish and fork against staging with a test account.
-5. Device login (routes, page, Keychain store).
+5. Device login (routes and page; the key stays in the 0600 file).
 6. `openagents mcp` and `openagents skill`, then a run where Claude Code edits a
    realm through MCP from a fresh login.
 7. Release builds and the install script.

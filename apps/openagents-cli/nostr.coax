@@ -43,8 +43,11 @@ load_key :: (profile: string, k: [] Key) -> bool {
     return ok;
   }
   text: [128] u8; acct: [64] u8;
-  an := keychain_account(profile, acct[..]);
-  n := cxcli_keychain_get(acct[0..<an], text[..]);
+  n := 0;
+  if keychain_on() {
+    an := keychain_account(profile, acct[..]);
+    n = cxcli_keychain_get(acct[0..<an], text[..]);
+  }
   if n > 0 {
     k[0].ok = cli_key_parse(cast(string) text[0..<n], k[0].secret[..]); k[0].from = "keychain";
     wipe(text[..]);
@@ -60,13 +63,23 @@ load_key :: (profile: string, k: [] Key) -> bool {
   return k[0].ok;
 }
 
-// Keeps the secret: the Keychain on a Mac, else a 0600 file in a 0700 directory.
+// The Keychain is opt-in (OPENAGENTS_KEYCHAIN=1). macOS ties an item to the binary
+// that made it, so every rebuilt openagents asks for the login password to read
+// or delete it; agents rebuild and run the CLI all day, so by default it never
+// touches the Keychain and nothing ever prompts.
+keychain_on :: () -> bool {
+  v: [8] u8;
+  return proc_getenv("OPENAGENTS_KEYCHAIN", v[..]) == "1";
+}
+
+// Keeps the secret: a 0600 file in a 0700 directory (the Keychain only when opted in).
 store_key :: (profile: string, secret: [] u8) -> string {
   text: [CLI_KEY_TEXT] u8; acct: [64] u8;
   if cli_key_text(secret, text[..]) != CLI_KEY_TEXT { return ""; }
-  an := keychain_account(profile, acct[..]);
-  r := cxcli_keychain_set(acct[0..<an], text[..]);
-  if r == 0 { wipe(text[..]); return "keychain"; }
+  if keychain_on() {
+    an := keychain_account(profile, acct[..]);
+    if cxcli_keychain_set(acct[0..<an], text[..]) == 0 { wipe(text[..]); return "keychain"; }
+  }
   d: [1024] u8; kd: [1024] u8; p: [1024] u8;
   dir := fs_join(cli_dir(d[..]), "keys", kd[..]);
   dn := dir.count; path := key_file(profile, p[..]);
@@ -153,8 +166,8 @@ nostr_show :: (r: [] Rep, profile: string) -> int {
 nostr_forget :: (a: [] Args, r: [] Rep, profile: string) -> int {
   if !args_has(a, "--yes") { return fail(r, EXIT_USAGE, "this deletes the key; without its words it is gone. Add --yes"); }
   acct: [64] u8; p: [1024] u8;
-  an := keychain_account(profile, acct[..]);
-  kc := cxcli_keychain_remove(acct[0..<an]);
+  kc := 0;
+  if keychain_on() { an := keychain_account(profile, acct[..]); kc = cxcli_keychain_remove(acct[0..<an]); }
   path := key_file(profile, p[..]);
   had := fs_kind(path) == FS_FILE;
   if had { gone := fs_remove(path); }

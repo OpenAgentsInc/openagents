@@ -48,8 +48,8 @@ usage :: () {
   print("%\n", "Other:");
   print("%\n", "  version, help");
   print("%\n", "");
-  print("%\n", "Every command takes --json. Keys are kept in the macOS Keychain (service");
-  print("%\n", "com.openagents.cli), or in ~/.openagents/cli/keys/PROFILE mode 0600 elsewhere.");
+  print("%\n", "Every command takes --json. Keys are kept in ~/.openagents/cli/keys/PROFILE, mode 0600.");
+  print("%\n", "OPENAGENTS_KEYCHAIN=1 uses the macOS Keychain instead (it asks for your password after each rebuild).");
   print("%\n", "OPENAGENTS_NSEC=nsec1... uses that key for one run and stores nothing.");
   print("%\n", "Exit codes: 0 done, 1 failed, 2 usage, 3 no identity, 6 not found.");
 }

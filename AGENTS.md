@@ -17,7 +17,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 | `psionic/` | Psionic, the machine-learning library in Coax: `lib/`, the runnable `book/`, `examples/`, `platform/`, `tests/`, `fixtures/`, and its design notes in `docs/` (model surveys in `docs/targets/`, hosting and mesh notes in `docs/serving/`) |
 | `apps/openagents-ios/` | The iOS app: a UIKit and Metal shell around the Coax home. Bundle `com.openagents.app` |
 | `apps/openagents-web/` | openagents.com on Coaxial ([coax/web.md](coax/web.md)): the splash in Coax, drawn with WebGPU. `coax/web/` holds the browser host, the Coax-to-Wasm build and the `coax serve` dev server |
-| `apps/openagents-cli/` | The `openagents` command line in Coax ([plan](docs/cli/2026-11-01-openagents-cli-v1.md)): `nostr` (your NIP-06 identity, Keychain-stored; signing and NIP-98) and `pylon` (start, stop, status and logs around `scripts/join-pylon.sh`). Build with `apps/openagents-cli/build.sh` |
+| `apps/openagents-cli/` | The `openagents` command line in Coax ([plan](docs/cli/2026-11-01-openagents-cli-v1.md)): `nostr` (your NIP-06 identity in a 0600 key file, never the Keychain unless `OPENAGENTS_KEYCHAIN=1`; signing and NIP-98) and `pylon` (start, stop, status and logs around `scripts/join-pylon.sh`). Build with `apps/openagents-cli/build.sh` |
 | `proto/` | The protocol's protobuf schemas, descriptors, vendor schemas and checks |
 | `docs/protocol/` | The OpenAgents Protocol spec, the contract for every surface |
 | `docs/verification/`, `docs/lightning/`, `docs/verse/`, `docs/voice/` | Verification plan, the Breez Spark wallet plan, Verse and the Verse engine, the Coax-native voice proposal |
