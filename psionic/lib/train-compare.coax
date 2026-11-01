@@ -1,0 +1,168 @@
+// Chapter 131: compare two training runs (profile train-compare-v1). A run
+// carries its identity (what it trained) and its footprint (what a step
+// holds and launches); a comparison is refused unless both runs trained the
+// same thing, takes chapter 34's statistics of each side's step times
+// (two-pass and Welford), names a winner only beyond two standard errors,
+// and works out the step count at which a one-off compile pays for itself.
+// The runs themselves are psionic/lib/trainer-compiled.coax; this file
+// decides admission and the verdict and nothing else, so it loads only
+// chapter 34's comparator.
+//
+// Profile train-compare-v1: times as positive integer nanoseconds, 5 to
+// 1,024 warm steps a side (cm-warm-v1), binary64 statistics; memory as the
+// bytes of the values arena (f32), the gradient arena (f64) and the flags
+// workspace (u8).
+#authority;
+#load "comparator.coax";
+
+TC_SCHEMA :: "psionic.train-compare.v1";
+
+// book:begin types
+TcStatus :: enum u8 {ok;program;config;seed;shape;steps;few;}
+TcVerdict :: enum u8 {refused;faster;slower;same;noisy;}
+// What a run trained: digests of the program with its gradient mode and of
+// the trainer's configuration, the initialization seed, the trained and
+// input floats, and the steps.
+TcIdentity :: struct {program:u64;config:u64;seed:u64;floats:int;inputs:int;steps:int;}
+// What one step of a path holds and launches: values (f32) and gradients
+// (f64) in floats, the flags workspace in bytes, kernel launches (forward,
+// recompute and backward), and the three as bytes.
+TcFootprint :: struct {values:int;grads:int;flags:int;launches:int;bytes:int;}
+// One side of a comparison: its run's identity and footprint and its
+// one-off cost before the first step, in nanoseconds.
+TcSide :: struct {identity:TcIdentity;footprint:TcFootprint;compile:int;}
+// Side b against side a: both sides' statistics by two passes (a, b) and by
+// Welford's update (wa, wb), a's mean over b's (above 1 when b is faster),
+// the standard error of the difference, the verdict, b's bytes over a's,
+// b's launches less a's, and the steps after which b's extra one-off cost
+// is paid back (-1: never, or no winner).
+TcReport :: struct {
+    status:TcStatus;a:CmStats;b:CmStats;wa:CmStats;wb:CmStats;ratio:f64;se:f64;verdict:TcVerdict;
+    memory:f64;launches:int;break_even:int;
+}
+// book:end types
+
+// Checks first.
+tc_test_side :: (values:int,grads:int,launches:int,compile:int)->TcSide {
+    return TcSide.{identity=TcIdentity.{program=1,config=2,seed=7,floats=84,inputs=153,steps=8},footprint=tc_bytes(TcFootprint.{values=values,grads=grads,flags=32,launches=launches}),compile=compile};
+}
+#test "statistics, the verdict and the break-even step count match hand calculations" {
+    // Eager 1,000,000 ns +- 1,000; compiled 700,000 ns +- 1,000; the compile
+    // costs 2,400,000 ns. Each side: deviations -2,-1,0,1,2 thousand, so the
+    // sample variance is 10e6/4 and sd = sqrt(2.5e6) = 1581.14 ns.
+    ea:=[5]int.[998000,999000,1000000,1001000,1002000];cb:=[5]int.[698000,699000,700000,701000,702000];
+    a:=tc_test_side(144,148,30,0);b:=tc_test_side(144,140,30,2400000);
+    id:=a.identity;#assert id.program==1 && id.config==2 && id.seed==7 && id.floats==84 && id.inputs==153 && id.steps==8;
+    r:=tc_report(a,ea[..],b,cb[..]);
+    #assert r.status==TcStatus.ok && r.a.mean==1000000 && r.b.mean==700000 && r.a.sd==sqrt(2500000.0) && r.b.sd==sqrt(2500000.0) && r.a.n==5 && r.b.n==5;
+    #assert r.wa.status==CmStatus.ok && r.wa.mean==1000000 && r.wb.mean==700000 && tc_agree(r.a,r.wa) && tc_agree(r.b,r.wb);
+    #assert r.ratio==1000000.0/700000 && abs(r.se-1000)<1e-9 && r.verdict==TcVerdict.faster;
+    // Bytes: 144*4 + 148*8 + 32 = 1792 against 144*4 + 140*8 + 32 = 1728.
+    #assert a.footprint.bytes==1792 && b.footprint.bytes==1728 && r.memory==1728.0/1792 && r.launches==0;
+    // 2,400,000 / (1,000,000 - 700,000) = 8 steps exactly: at 8 the totals tie.
+    #assert r.break_even==8 && tc_break_even(2400001,1000000,700000)==9 && tc_break_even(2399999,1000000,700000)==8;
+    #assert tc_break_even(0,1000000,700000)==1 && tc_break_even(-5,1000000,700000)==1 && tc_break_even(1,700000,700000)==-1 && tc_break_even(1,700000,700001)==-1;
+    #assert tc_break_even(300000,1000000,700000)==1 && tc_break_even(300001,1000000,700000)==2 && tc_break_even(1,1.5,1)==2;
+    // Only b's cost beyond a's counts: 3,000,000 - 600,000 = 2,400,000.
+    early:=a;early.compile=600000;late:=b;late.compile=3000000;#assert tc_report(early,ea[..],late,cb[..]).break_even==8;
+    // The other way round: compiled is a, so b is slower and never pays back.
+    s:=tc_report(b,cb[..],a,ea[..]);#assert s.verdict==TcVerdict.slower && s.break_even==-1 && s.ratio==700000.0/1000000 && s.launches==0 && s.memory==1792.0/1728;
+    // Within two standard errors (2 * 1000 ns, up to rounding): the same.
+    edge:=[5]int.[998000+1999,999000+1999,1000000+1999,1001000+1999,1002000+1999];n:=tc_report(a,ea[..],b,edge[..]);
+    #assert n.status==TcStatus.ok && n.b.mean==1001999 && n.verdict==TcVerdict.same && n.break_even==-1;
+    back:=[5]int.[998000-1999,999000-1999,1000000-1999,1001000-1999,1002000-1999];#assert tc_report(a,ea[..],b,back[..]).verdict==TcVerdict.same;
+    over:=[5]int.[998000+2001,999000+2001,1000000+2001,1001000+2001,1002000+2001];#assert tc_report(a,ea[..],b,over[..]).verdict==TcVerdict.slower;
+    under:=[5]int.[998000-2001,999000-2001,1000000-2001,1001000-2001,1002000-2001];#assert tc_report(a,ea[..],b,under[..]).verdict==TcVerdict.faster;
+    // Exactly two standard errors apart is not beyond them. Eight steps with
+    // deviations 15,-15,10,-10,5,-5,0,0 have sum of squares 700, sd 10, and
+    // se = sqrt(100/8 + 100/8) = 5, so 2 * se = 10 exactly.
+    e8:=[8]int.[1015,985,1010,990,1005,995,1000,1000];lo:=e8;hi:=e8;for i:0..<8 {lo[i]-=10;hi[i]+=10;}
+    x:=tc_report(a,e8[..],b,lo[..]);#assert x.a.sd==10 && x.se==5 && x.verdict==TcVerdict.same;
+    #assert tc_report(a,e8[..],b,hi[..]).verdict==TcVerdict.same;
+    lo[0]-=1;#assert tc_report(a,e8[..],b,lo[..]).verdict==TcVerdict.faster;hi[0]+=1;#assert tc_report(a,e8[..],b,hi[..]).verdict==TcVerdict.slower;
+    // A side whose sd is over a tenth of its mean is noisy: no winner. At
+    // exactly a tenth (mean 100, sd 10) it is not.
+    wild:=[5]int.[100,300,100,300,100];k:=tc_report(a,ea[..],b,wild[..]);#assert k.status==TcStatus.ok && k.verdict==TcVerdict.noisy && k.break_even==-1;
+    #assert tc_report(b,wild[..],a,ea[..]).verdict==TcVerdict.noisy;
+    tenth:=[5]int.[90,90,100,110,110];#assert tc_report(a,ea[..],b,tenth[..]).verdict==TcVerdict.faster && tc_report(b,tenth[..],a,ea[..]).verdict==TcVerdict.slower;
+    // A recomputing side launches more.
+    c:=tc_test_side(113,140,34,2400000);#assert tc_report(b,cb[..],c,cb[..]).launches==4 && tc_report(b,cb[..],c,cb[..]).verdict==TcVerdict.same;
+    #assert tc_report(c,cb[..],b,cb[..]).launches==-4;
+}
+#test "comparisons are refused unless both runs trained the same thing with enough runs" {
+    ea:=[5]int.[998000,999000,1000000,1001000,1002000];a:=tc_test_side(144,148,30,0);
+    fields:=[6]TcStatus.[TcStatus.program,TcStatus.config,TcStatus.seed,TcStatus.shape,TcStatus.shape,TcStatus.steps];
+    for k:0..<6 {
+        b:=a;
+        if k==0 {b.identity.program+=1;} if k==1 {b.identity.config+=1;} if k==2 {b.identity.seed+=1;}
+        if k==3 {b.identity.floats+=1;} if k==4 {b.identity.inputs-=1;} if k==5 {b.identity.steps+=1;}
+        r:=tc_report(a,ea[..],b,ea[..]);#assert r.status==fields[k] && r.verdict==TcVerdict.refused && r.break_even==-1 && r.a.n==0;
+        r=tc_report(b,ea[..],a,ea[..]);#assert r.status==fields[k];
+    }
+    #assert tc_same(a.identity,a.identity)==TcStatus.ok;
+    // Chapter 34's admission: 5 to 1,024 positive times a side.
+    f:=tc_report(a,ea[0..<4],a,ea[..]);#assert f.status==TcStatus.few && f.verdict==TcVerdict.refused && f.break_even==-1;
+    #assert tc_report(a,ea[..],a,ea[0..<4]).status==TcStatus.few;
+    zero:=ea;zero[2]=0;#assert tc_report(a,zero[..],a,ea[..]).status==TcStatus.few && tc_report(a,ea[..],a,zero[..]).status==TcStatus.few;
+    big:[1025]int;for i:0..<1025 {big[i]=1000;}#assert tc_report(a,big[..],a,ea[..]).status==TcStatus.few && tc_report(a,big[0..<1024],a,ea[..]).status==TcStatus.ok;
+    // The two methods agree to a part in a billion of the mean.
+    #assert tc_agree(CmStats.{n=5,mean=1,sd=1},CmStats.{n=5,mean=1,sd=1}) && !tc_agree(CmStats.{n=5,mean=1,sd=1},CmStats.{n=5,mean=1.001,sd=1}) && !tc_agree(CmStats.{n=5,mean=1,sd=1},CmStats.{n=5,mean=1,sd=1.001});
+    #assert !tc_agree(CmStats.{n=5,mean=1.001,sd=1},CmStats.{n=5,mean=1,sd=1}) && !tc_agree(CmStats.{n=5,mean=1,sd=1.001},CmStats.{n=5,mean=1,sd=1});
+    #assert tc_agree(CmStats.{n=5,mean=1000000,sd=10},CmStats.{n=5,mean=1000000.0005,sd=10.0005}) && !tc_agree(CmStats.{n=5,mean=1000000,sd=10},CmStats.{n=5,mean=1000000.002,sd=10});
+    #assert !tc_agree(CmStats.{n=5,mean=1000000,sd=10},CmStats.{n=5,mean=1000000,sd=10.002});
+    // At a mean of 0 the tolerance is 0: equal statistics still agree.
+    #assert tc_agree(CmStats.{n=5},CmStats.{n=5});
+    // FNV-1a on one word by hand: offset basis xor 1, times the prime.
+    basis:u64=14695981039346656037;#assert tc_mix(basis,1)==mul_wrap(basis^1,1099511628211) && tc_mix(0,3)==3*1099511628211 && tc_mix(2,3)==1099511628211;
+    // Names.
+    #assert tc_status_name(TcStatus.ok)=="ok" && tc_status_name(TcStatus.seed)=="the seeds differ" && tc_status_name(TcStatus.few)=="fewer than 5 positive warm steps a side (or more than 1024)";
+    #assert tc_verdict_name(TcVerdict.refused)=="refused" && tc_verdict_name(TcVerdict.noisy)=="noisy";
+}
+
+// book:begin compare
+// FNV-1a over 64-bit words, for the identity's digests.
+tc_mix :: (h:u64,x:u64)->u64 {return mul_wrap(h^x,1099511628211);}
+tc_bytes :: (f:TcFootprint)->TcFootprint {r:=f;r.bytes=4*f.values+8*f.grads+f.flags;return r;}
+tc_same :: (a:TcIdentity,b:TcIdentity)->TcStatus {
+    if a.program!=b.program {return TcStatus.program;}
+    if a.config!=b.config {return TcStatus.config;}
+    if a.seed!=b.seed {return TcStatus.seed;}
+    if a.floats!=b.floats || a.inputs!=b.inputs {return TcStatus.shape;}
+    if a.steps!=b.steps {return TcStatus.steps;}
+    return TcStatus.ok;
+}
+// Two-pass and Welford agree to a part in a billion of the mean.
+tc_agree :: (x:CmStats,y:CmStats)->bool {
+    return abs(x.mean-y.mean)<=1e-9*x.mean && abs(x.sd-y.sd)<=1e-9*x.mean;
+}
+// Steps n at which b's extra one-off cost is paid back: the least n >= 1
+// with n * mean_a >= extra + n * mean_b. Never (-1) unless b's step is faster.
+tc_break_even :: (extra:int,mean_a:f64,mean_b:f64)->int {
+    if mean_b>=mean_a {return -1;}
+    if extra<=0 {return 1;}
+    q:=f64(extra)/(mean_a-mean_b);n:=cast(int)q;
+    if f64(n)<q {n+=1;}
+    return n;
+}
+tc_report :: (a:TcSide,ta:[]int,b:TcSide,tb:[]int)->TcReport {
+    r:=TcReport.{status=tc_same(a.identity,b.identity),break_even=-1};
+    if r.status!=TcStatus.ok {return r;}
+    r.a=cm_two_pass(ta);r.b=cm_two_pass(tb);r.wa=cm_welford(ta);r.wb=cm_welford(tb);
+    if r.a.status!=CmStatus.ok || r.b.status!=CmStatus.ok {r.status=TcStatus.few;return r;}
+    r.ratio=r.a.mean/r.b.mean;r.se=sqrt(r.a.sd*r.a.sd/f64(r.a.n)+r.b.sd*r.b.sd/f64(r.b.n));
+    r.memory=f64(b.footprint.bytes)/f64(a.footprint.bytes);r.launches=b.footprint.launches-a.footprint.launches;
+    // Chapter 34's rule: noisy when a side's sd is over a tenth of its mean,
+    // otherwise a winner only beyond two standard errors.
+    r.verdict=TcVerdict.same;
+    if r.a.sd*10>r.a.mean || r.b.sd*10>r.b.mean {r.verdict=TcVerdict.noisy;return r;}
+    if r.b.mean<r.a.mean-2*r.se {r.verdict=TcVerdict.faster;r.break_even=tc_break_even(b.compile-a.compile,r.a.mean,r.b.mean);}
+    if r.b.mean>r.a.mean+2*r.se {r.verdict=TcVerdict.slower;}
+    return r;
+}
+// book:end compare
+
+tc_status_name :: (s:TcStatus)->string {
+    names:=[7]string.["ok","the programs differ","the configurations differ","the seeds differ","the shapes differ","the step counts differ","fewer than 5 positive warm steps a side (or more than 1024)"];
+    return names[cast(int)s];
+}
+tc_verdict_name :: (v:TcVerdict)->string {names:=[5]string.["refused","faster","slower","the same","noisy"];return names[cast(int)v];}

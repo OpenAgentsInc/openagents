@@ -1,0 +1,49 @@
+#import "Basic";
+#load "../lib/trainer-compiled.coax";
+
+r6 :: (v:f64)->f64 {return floor(v*1000000+0.5)/1000000;}
+r3 :: (v:f64)->f64 {return floor(v*1000+0.5)/1000;}
+
+// book:begin example
+// Chapter 131: chapter 117's block trained for 6 steps under chapter 118's
+// trainer (AdamW), eager, compiled and recomputing; then the comparison of
+// a fixed set of step times (the bench measures real ones); then refusals.
+STEPS :: 6;
+main :: () {
+    m:=mdl_test_block(128);c:=tc_config(STEPS,0.01);
+    print("chapter 117's block: % trained floats, % input floats, AdamW at rate %\n",tm_module_floats(m),m.top,c.rate);
+    losses:[3][8]f64;p:[3][84]f64;pm:[3][84]f64;pv:[3][84]f64;fp:[3]TcFootprint;
+    for k:0..<3 {
+        path:=cast(TcPath)k;prog:=tc_program(path,m);inputs:[256]f32;fp[k]=tc_footprint(path,m,prog);
+        d:=tc_train(path,m,7,c,prog,inputs[..],p[k][..],pm[k][..],pv[k][..],losses[k][..]);
+        f:=fp[k];print("  %: %, % steps; values % floats, gradients % doubles, flags % bytes = % bytes; % launches a step\n",
+            tc_path_name(path),d.status,d.steps,f.values,f.grads,f.flags,f.bytes,f.launches);
+    }
+    for s:0..<STEPS {print("  step %: loss %\n",s,r6(losses[0][s]));}
+    for k:1..<3 {
+        print("  % against eager, bit for bit: losses %, weights %, first moments %, second moments %\n",tc_path_name(cast(TcPath)k),
+            tr_same(losses[k][0..<STEPS],losses[0][0..<STEPS]),tr_same(p[k][..],p[0][..]),tr_same(pm[k][..],pm[0][..]),tr_same(pv[k][..],pv[0][..]));
+    }
+
+    // Fixed step times in nanoseconds, so this transcript is exact.
+    id:=tc_identity(m,7,c);
+    eager:=[5]int.[998000,999000,1000000,1001000,1002000];compiled:=[5]int.[698000,699000,700000,701000,702000];
+    a:=TcSide.{identity=id,footprint=fp[0]};b:=TcSide.{identity=id,footprint=fp[1],compile=2400000};
+    r:=tc_report(a,eager[..],b,compiled[..]);
+    print("compiled against eager, 5 warm steps a side: %\n",tc_status_name(r.status));
+    print("  eager: mean % ns, sd % ns; compiled: mean % ns, sd % ns\n",r.a.mean,r3(r.a.sd),r.b.mean,r3(r.b.sd));
+    print("  verdict: %, % times eager's speed, standard error % ns\n",tc_verdict_name(r.verdict),r3(r.ratio),r3(r.se));
+    print("  memory: % of eager's bytes, % launches more; a 2400000 ns compile pays back after % steps\n",r3(r.memory),r.launches,r.break_even);
+    slow:=[5]int.[1098000,1099000,1100000,1101000,1102000];s:=tc_report(a,eager[..],b,slow[..]);
+    print("  a compiled step of 1100000 ns: %, break-even %\n",tc_verdict_name(s.verdict),s.break_even);
+
+    // Refusals: each side trained something else.
+    print("refusals:\n");
+    other:=b;other.identity=tc_identity(m,8,c);print("  seed 8 against seed 7: %\n",tc_status_name(tc_report(a,eager[..],other,compiled[..]).status));
+    other.identity=tc_identity(mdl_test_block(64),7,c);print("  dropout 64 against dropout 128: %\n",tc_status_name(tc_report(a,eager[..],other,compiled[..]).status));
+    other.identity=tc_identity(mdl_freeze(m,"norm",true),7,c);print("  norm frozen against norm trained: %\n",tc_status_name(tc_report(a,eager[..],other,compiled[..]).status));
+    other.identity=tc_identity(m,7,tc_config(STEPS,0.02));print("  rate 0.02 against 0.01: %\n",tc_status_name(tc_report(a,eager[..],other,compiled[..]).status));
+    other.identity=tc_identity(m,7,tc_config(STEPS+1,0.01));print("  7 steps against 6: %\n",tc_status_name(tc_report(a,eager[..],other,compiled[..]).status));
+    print("  4 timed steps: %\n",tc_status_name(tc_report(a,eager[0..<4],b,compiled[..]).status));
+}
+// book:end example

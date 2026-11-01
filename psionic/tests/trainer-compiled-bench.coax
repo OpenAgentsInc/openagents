@@ -1,0 +1,57 @@
+// Chapter 131: time the same training run eager, compiled and recomputing
+// on this machine, and print the receipt (psionic.train-compare.v1) as JSON.
+// The only host procedure is the monotonic clock (trainer_compiled_clock.c);
+// the paths, the trainer, the bit comparison and the statistics are Coax
+// (psionic/lib/trainer-compiled.coax). Built by check_trainer_compiled.sh.
+// Times are a receipt, never a transcript.
+#import "Basic";
+#load "../lib/trainer-compiled.coax";
+
+tcb_now :: ()->s64 #foreign;
+TCB_WARM :: 10;   // untimed steps first, as chapter 34 requires
+TCB_RUNS :: 400;  // timed steps a path
+TCB_COMPILES :: 5; // compiles timed a path; the receipt keeps their mean
+
+// One path: TCB_COMPILES compiles, then WARM + RUNS trainer steps, each timed
+// from the micro-batch to the trainer's committed update.
+TcbPath :: struct {compile:int;ns:[TCB_RUNS]int;losses:[512]f64;p:[84]f64;m:[84]f64;v:[84]f64;footprint:TcFootprint;}
+tcb_path :: (path:TcPath,mdl:MdlModel,c:TrConfig)->TcbPath {
+    out:TcbPath;prog:CbProgram;total:=0;
+    for k:0..<TCB_COMPILES {t0:=tcb_now();prog=tc_program(path,mdl);total+=cast(int)(tcb_now()-t0);}
+    if path==TcPath.eager {total=0;}
+    out.compile=total/TCB_COMPILES;out.footprint=tc_footprint(path,mdl,prog);
+    inputs:[256]f32;n:=tm_module_floats(mdl);
+    #assert mdl_init(mdl,7,inputs[..])==MdlStatus.ok;
+    for j:0..<16 {inputs[j]=f32(f64((j*5)%16-8)/8);inputs[16+j]=f32(f64((((j/4)*4+(j+1)%4)*5)%16-8)/16);}
+    tm_module_move(mdl,out.p[..],inputs[..],false);none:[1]PkDoc;nothing:[1]u8;order:[1]int;
+    run:=tr_begin(c,n,none[..],nothing[..],order[..]).run;g:[128]f64;sum:[128]f64;stage:[384]f64;
+    for step:0..<TCB_WARM+TCB_RUNS {
+        t0:=tcb_now();
+        x:=tr_next(c,run,none[..],nothing[..],nothing[..]);#assert x.status==TrStatus.ok;
+        s:=tr_add(x,TrSum.{},tc_step(path,mdl,prog,run.revision,out.p[0..<n],inputs[..],g[0..<n]),g[0..<n],sum[0..<n]);
+        a:=tr_apply(c,run,x,s,out.p[0..<n],out.m[0..<n],out.v[0..<n],sum[0..<n],stage[0..<3*n],order[..]);#assert a.status==TrStatus.ok;
+        t:=cast(int)(tcb_now()-t0);run=a.run;out.losses[step]=a.loss;
+        if step>=TCB_WARM {out.ns[step-TCB_WARM]=t;}
+    }
+    return out;
+}
+tcb_print_side :: (name:string,s:CmStats,r:TcbPath) {
+    print("    \"%\": {\"compile_ns\": %, \"step_mean_ns\": %, \"step_sd_ns\": %, \"values_floats\": %, \"grads_floats\": %, \"flags_bytes\": %, \"bytes\": %, \"launches\": %}",
+        name,r.compile,cast(int)s.mean,cast(int)s.sd,r.footprint.values,r.footprint.grads,r.footprint.flags,r.footprint.bytes,r.footprint.launches);
+}
+main :: () {
+    mdl:=mdl_test_block(128);c:=tc_config(TCB_WARM+TCB_RUNS,0.01);id:=tc_identity(mdl,7,c);
+    e:=tcb_path(TcPath.eager,mdl,c);k:=tcb_path(TcPath.compiled,mdl,c);r:=tcb_path(TcPath.recompute,mdl,c);
+    same:=tr_same(e.losses[..],k.losses[..]) && tr_same(e.losses[..],r.losses[..]) && tr_same(e.p[..],k.p[..]) && tr_same(e.p[..],r.p[..]);
+    same=same && tr_same(e.m[..],k.m[..]) && tr_same(e.m[..],r.m[..]) && tr_same(e.v[..],k.v[..]) && tr_same(e.v[..],r.v[..]);
+    a:=TcSide.{identity=id,footprint=e.footprint,compile=e.compile};
+    kr:=tc_report(a,e.ns[..],TcSide.{identity=id,footprint=k.footprint,compile=k.compile},k.ns[..]);
+    rr:=tc_report(a,e.ns[..],TcSide.{identity=id,footprint=r.footprint,compile=r.compile},r.ns[..]);
+    print("{\n  \"schema\": \"%\",\n  \"model\": \"chapter 117 block, dropout 128/256, seed 7, 84 trained floats\",\n",TC_SCHEMA);
+    print("  \"trainer\": \"AdamW rate 0.01, betas 0.9/0.999, eps 1e-8\",\n  \"warm_steps\": %, \"timed_steps\": %,\n",TCB_WARM,TCB_RUNS);
+    print("  \"bits_identical\": %,\n  \"paths\": {\n",same);
+    tcb_print_side("eager",kr.a,e);print(",\n");tcb_print_side("compiled",kr.b,k);print(",\n");tcb_print_side("recomputing",rr.b,r);print("\n  },\n");
+    print("  \"compiled_vs_eager\": {\"status\": \"%\", \"verdict\": \"%\", \"speedup\": %, \"memory\": %, \"break_even_steps\": %},\n",tc_status_name(kr.status),tc_verdict_name(kr.verdict),kr.ratio,kr.memory,kr.break_even);
+    print("  \"recomputing_vs_eager\": {\"status\": \"%\", \"verdict\": \"%\", \"speedup\": %, \"memory\": %, \"break_even_steps\": %}\n}\n",tc_status_name(rr.status),tc_verdict_name(rr.verdict),rr.ratio,rr.memory,rr.break_even);
+    #assert same && kr.status==TcStatus.ok && rr.status==TcStatus.ok && tc_agree(kr.a,kr.wa) && tc_agree(kr.b,kr.wb) && tc_agree(rr.b,rr.wb);
+}

@@ -1,0 +1,196 @@
+// Chapter 131: train the same model eager and compiled (profile
+// train-compare-v1). Chapter 117's block runs under chapter 118's trainer
+// with AdamW three ways: eager (chapter 106's tape, recorded again every
+// step, as a define-by-run framework records its graph), compiled (chapter
+// 114's program, compiled once) and compiled with recomputation (chapter
+// 114's chooser at a values goal). The trainer makes every update, so the
+// paths differ only in how a micro-batch's loss and gradient are computed.
+//
+// This file holds the paths, a run's identity and each path's memory and
+// launch footprint. The comparison (admission, chapter 34's statistics, the
+// verdict and the break-even count) is psionic/lib/train-compare.coax. The
+// clock is the bench's (psionic/tests/trainer-compiled-bench.coax); nothing
+// here reads one.
+#load "trainer-module.coax";
+#load "compiled-backward.coax";
+#load "train-compare.coax";
+
+TC_GOAL :: 127;   // the recomputing path's values goal in floats, chapter 114's
+TC_DROPOUT :: 100; // dropout counters start here, as in chapter 118's loop
+
+// book:begin kinds
+TcPath :: enum u8 {eager;compiled;recompute;}
+// book:end kinds
+
+// Checks first. Chapter 117's block with dropout 128 of 256, initialized
+// at seed 7 with chapter 118's example data, under AdamW.
+tc_test_config :: (steps:int)->TrConfig {return tc_config(steps,0.01);}
+#test "a run's identity changes with its program, mode, seed, configuration and steps" {
+    m:=mdl_test_block(128);f:=mdl_freeze(m,"norm",true);c:=tc_test_config(8);
+    i:=tc_identity(m,7,c);#assert i.floats==84 && i.inputs==153 && i.steps==8 && i.seed==7 && tc_same(i,tc_identity(m,7,c))==TcStatus.ok;
+    #assert tc_identity(m,8,c).seed==8 && tc_identity(f,7,c).program!=i.program && tc_identity(f,7,c).floats==76;
+    #assert tc_identity(mdl_test_block(64),7,c).program!=i.program && tc_identity(m,7,tc_test_config(9)).steps==9;
+    #assert tc_identity(m,7,tc_config(8,0.02)).config!=i.config && tc_identity(m,7,tc_config(8,0.01)).config==i.config;
+    d:=c;d.beta1=0.8;#assert tc_identity(m,7,d).config!=i.config;d=c;d.beta2=0.99;#assert tc_identity(m,7,d).config!=i.config;
+    d=c;d.eps=1e-6;#assert tc_identity(m,7,d).config!=i.config;d=c;d.decay=0.1;#assert tc_identity(m,7,d).config!=i.config;
+    d=c;d.clip=1;#assert tc_identity(m,7,d).config!=i.config;d=c;d.optimizer=TrOptimizer.sgd;#assert tc_identity(m,7,d).config!=i.config;
+}
+#test "each path's footprint: arenas, workspace and launches" {
+    m:=mdl_test_block(128);
+    e:=tc_footprint(TcPath.eager,m,tc_program(TcPath.eager,m));c:=tc_footprint(TcPath.compiled,m,tc_program(TcPath.compiled,m));
+    r:=tc_footprint(TcPath.recompute,m,tc_program(TcPath.recompute,m));
+    // The tape: 30 steps (16 forward, 14 rules); the largest node is 32 floats.
+    #assert e.values==144 && e.grads==148 && e.flags==32 && e.launches==30 && e.bytes==144*4+148*8+32;
+    #assert c.values==144 && c.grads==140 && c.flags==32 && c.launches==30 && c.bytes==144*4+140*8+32;
+    #assert r.values==113 && r.grads==140 && r.flags==32 && r.launches==34 && r.bytes==113*4+140*8+32;
+    #assert tc_program(TcPath.eager,m).status==CbStatus.state && tc_program(TcPath.recompute,m).values.top<=TC_GOAL;
+}
+TC_TEST_STEPS :: 2;
+#test "eager, compiled and recomputing training reach the trainer's own bits" {
+    // The independent reference: chapter 118's loop over chapter 117's block
+    // (tm_module_drive, its tape recorded once), under the same AdamW.
+    m:=mdl_test_block(128);c:=tc_test_config(TC_TEST_STEPS);none:[1]PkDoc;nothing:[1]u8;order:[1]int;
+    ref:[256]f32;tm_module_inputs(m,ref[..]);rp:[84]f64;rm:[84]f64;rv:[84]f64;rl:[4]f64;evals:[1]f32;
+    tm_module_move(m,rp[..],ref[..],false);
+    d:=tm_module_drive(m,c,tr_begin(c,84,none[..],nothing[..],order[..]).run,rp[..],rm[..],rv[..],ref[..],order[..],1048576,rl[..],evals[..]);
+    #assert d.status==TrStatus.done && d.steps==TC_TEST_STEPS && rl[1]<rl[0];
+    // tm_module_drive returns at done before writing the last step's values back.
+    tm_module_move(m,rp[..],ref[..],true);
+    for k:0..<3 {
+        path:=cast(TcPath)k;inputs:[256]f32;p:[84]f64;pm:[84]f64;pv:[84]f64;losses:[4]f64;
+        o:=tc_train(path,m,7,c,tc_program(path,m),inputs[..],p[..],pm[..],pv[..],losses[..]);
+        #assert o.status==TrStatus.done && o.steps==TC_TEST_STEPS && o.run.state.step==TC_TEST_STEPS;
+        #assert tr_same(losses[0..<TC_TEST_STEPS],rl[0..<TC_TEST_STEPS]) && tr_same(p[..],rp[..]) && tr_same(pm[..],rm[..]) && tr_same(pv[..],rv[..]);
+        for j:0..<256 {#assert f32_bits(inputs[j])==f32_bits(ref[j]);}
+        // The moments moved: AdamW ran, not SGD.
+        #assert pm[40]!=0 && pv[40]>0;
+    }
+    // Another seed starts elsewhere.
+    inputs:[256]f32;p:[84]f64;pm:[84]f64;pv:[84]f64;losses:[4]f64;one:=tc_test_config(1);
+    o:=tc_train(TcPath.compiled,m,8,one,tc_program(TcPath.compiled,m),inputs[..],p[..],pm[..],pv[..],losses[..]);
+    #assert o.status==TrStatus.done && f64_bits(losses[0])!=f64_bits(rl[0]);
+    // A program that is not compiled is refused before a step is taken.
+    #assert tc_train(TcPath.compiled,m,7,one,tc_program(TcPath.eager,m),inputs[..],p[..],pm[..],pv[..],losses[..]).status==TrStatus.shape;
+    #assert tc_train(TcPath.eager,m,7,one,tc_program(TcPath.eager,m),inputs[0..<152],p[..],pm[..],pv[..],losses[..]).status==TrStatus.shape;
+    #assert tc_train(TcPath.eager,m,7,one,tc_program(TcPath.eager,m),inputs[..],p[0..<83],pm[..],pv[..],losses[..]).status==TrStatus.shape;
+}
+#test "the whole step compiled, update included, equals the trainer's SGD" {
+    // Chapter 114's program with its update on is a whole training step. The
+    // trainer's SGD at chapter 117's f32 rate, binary32 storage, makes the same move.
+    m:=mdl_test_block(128);c:=tm_module(TC_TEST_STEPS,0);none:[1]PkDoc;nothing:[1]u8;order:[1]int;
+    ref:[256]f32;tm_module_inputs(m,ref[..]);rp:[84]f64;rm:[84]f64;rv:[84]f64;rl:[4]f64;evals:[1]f32;
+    tm_module_move(m,rp[..],ref[..],false);
+    d:=tm_module_drive(m,c,tr_begin(c,84,none[..],nothing[..],order[..]).run,rp[..],rm[..],rv[..],ref[..],order[..],1048576,rl[..],evals[..]);
+    #assert d.status==TrStatus.done;tm_module_move(m,rp[..],ref[..],true);
+    inputs:[256]f32;losses:[4]f64;#assert tc_whole(m,f32(c.rate),TC_TEST_STEPS,inputs[..],losses[..])==CbStatus.ok;
+    #assert tr_same(losses[0..<TC_TEST_STEPS],rl[0..<TC_TEST_STEPS]);
+    for j:0..<256 {#assert f32_bits(inputs[j])==f32_bits(ref[j]);}
+    #assert tc_whole(m,0,1,inputs[..],losses[..])==CbStatus.number;
+}
+
+// book:begin config
+// AdamW at rate, chapter 124's usual betas, no decay or clipping, one
+// example a step: the block sees the same batch each step and only its
+// dropout mask changes. Parameters are binary64 in the trainer and are
+// rounded to f32 into the model's input buffer before each step.
+tc_config :: (steps:int,rate:f64)->TrConfig {
+    return TrConfig.{optimizer=TrOptimizer.adamw,rate=rate,beta1=0.9,beta2=0.999,eps=1e-8,bound=AW_F32_MAX,examples=1,epochs=steps};
+}
+// book:end config
+
+// book:begin identity
+// The program's nodes, which inputs train, and each entry's layout and
+// initialization (a dropout rate lives in its mask entry, not the program).
+tc_digest :: (m:MdlModel)->u64 {
+    p:=m.program;mode:=mdl_mode(m);h:u64=14695981039346656037;h=tc_mix(h,cast(u64)p.count);h=tc_mix(h,cast(u64)p.output);
+    for i:0..<p.count {
+        n:=p.nodes[i];h=tc_mix(h,cast(u64)n.op);h=tc_mix(h,cast(u64)(n.a+1));h=tc_mix(h,cast(u64)(n.b+1));
+        for d:0..<4 {h=tc_mix(h,cast(u64)n.shape.dims[d]);}
+        h=tc_mix(h,cast(u64)n.input_base);h=tc_mix(h,cast(u64)n.axis);h=tc_mix(h,cast(u64)(ifx mode.grad[i] then 1 else 0));
+    }
+    for i:0..<m.count {e:=m.entries[i];h=tc_mix(h,cast(u64)e.kind);h=tc_mix(h,cast(u64)e.base);h=tc_mix(h,cast(u64)e.drop);h=tc_mix(h,cast(u64)f32_bits(e.value));}
+    return h;
+}
+tc_config_digest :: (c:TrConfig)->u64 {
+    h:u64=14695981039346656037;h=tc_mix(h,cast(u64)c.optimizer);
+    for x:[6]f64.[c.rate,c.beta1,c.beta2,c.eps,c.decay,c.clip] {h=tc_mix(h,f64_bits(x));}
+    return h;
+}
+tc_identity :: (m:MdlModel,seed:u64,c:TrConfig)->TcIdentity {
+    return TcIdentity.{program=tc_digest(m),config=tc_config_digest(c),seed=seed,floats=tm_module_floats(m),inputs=m.top,steps=tr_steps(c)};
+}
+// book:end identity
+
+// book:begin paths
+// The compiled paths' programs: chapter 114's, gradients only (the trainer
+// updates), plain or recomputing to meet TC_GOAL floats. Eager has none.
+tc_program :: (path:TcPath,m:MdlModel)->CbProgram {
+    if path==TcPath.compiled {return cb_compile(m.program,mdl_mode(m),OrRegistry.{},CbChoice.{});}
+    if path==TcPath.recompute {return cb_choose(m.program,mdl_mode(m),OrRegistry.{},TC_GOAL,false);}
+    return CbProgram.{};
+}
+// One micro-batch through the compiled program: the same refresh, inputs
+// and gradient publication as chapter 118's tape step (tm_module_step).
+tc_compiled_step :: (m:MdlModel,c:CbProgram,step:int,p:[]f64,inputs:[]f32,g:[]f64)->f64 {
+    tm_module_move(m,p,inputs,true);#assert mdl_refresh(m,cast(u64)(step+TC_DROPOUT),inputs)==MdlStatus.ok;
+    values:[1024]f32;grads:[1024]f64;flags:[64]u8;out:[1]f32;g32:[64]f32;mode:=mdl_mode(m);
+    #assert cb_run(c,0,inputs,values[..],grads[..],flags[..])==CbStatus.ok && cb_output(c,inputs,values[..],out[..])==CbStatus.ok;
+    at:=0;
+    for i:0..<m.count {e:=m.entries[i];if !mode.grad[e.node] {continue;}
+        #assert cb_gradient(c,e.node,grads[..],g32[0..<e.size])==CbStatus.ok;for j:0..<e.size {g[at+j]=f64(g32[j]);}at+=e.size;}
+    return f64(out[0]);
+}
+// One micro-batch on a path. Eager records chapter 106's tape again first.
+tc_step :: (path:TcPath,m:MdlModel,c:CbProgram,step:int,p:[]f64,inputs:[]f32,g:[]f64)->f64 {
+    if path==TcPath.eager {return tm_module_step(m,ad_tape(m.program,mdl_mode(m),OrRegistry.{}),step,p,inputs,g);}
+    return tc_compiled_step(m,c,step,p,inputs,g);
+}
+// book:end paths
+
+// book:begin train
+// Initialize at seed, then train every step of c on one path under the
+// trainer, recording each step's loss. Inputs end holding the trained values.
+tc_train :: (path:TcPath,m:MdlModel,seed:u64,c:TrConfig,prog:CbProgram,inputs:[]f32,p:[]f64,pm:[]f64,pv:[]f64,losses:[]f64)->TrDrive {
+    n:=tm_module_floats(m);
+    if inputs.count<m.top || p.count!=n || (path!=TcPath.eager && prog.status!=CbStatus.ok) {return TrDrive.{status=TrStatus.shape};}
+    #assert mdl_init(m,seed,inputs)==MdlStatus.ok;
+    for j:0..<16 {inputs[j]=f32(f64((j*5)%16-8)/8);inputs[16+j]=f32(f64((((j/4)*4+(j+1)%4)*5)%16-8)/16);}
+    tm_module_move(m,p,inputs,false);none:[1]PkDoc;nothing:[1]u8;order:[1]int;
+    b:=tr_begin(c,n,none[..],nothing[..],order[..]);out:=TrDrive.{status=b.status,run=b.run};
+    g:[128]f64;total:[128]f64;stage:[384]f64;
+    while out.status==TrStatus.ok {
+        x:=tr_next(c,out.run,none[..],nothing[..],nothing[..]);
+        if x.status!=TrStatus.ok {out.status=x.status;continue;}
+        s:=tr_add(x,TrSum.{},tc_step(path,m,prog,out.run.revision,p,inputs,g[0..<n]),g[0..<n],total[0..<n]);
+        a:=tr_apply(c,out.run,x,s,p,pm,pv,total[0..<n],stage[0..<3*n],order[..]);out.status=a.status;
+        if a.status==TrStatus.ok {losses[out.steps]=a.loss;out.run=a.run;out.steps+=1;}
+    }
+    tm_module_move(m,p,inputs,true);
+    return out;
+}
+// The whole step compiled: forward, backward and chapter 114's SGD update
+// in one program, no trainer. For the check against the trainer's SGD.
+tc_whole :: (m:MdlModel,rate:f32,steps:int,inputs:[]f32,losses:[]f64)->CbStatus {
+    c:=cb_compile(m.program,mdl_mode(m),OrRegistry.{},CbChoice.{update=true});tm_module_inputs(m,inputs);
+    values:[1024]f32;grads:[1024]f64;flags:[64]u8;out:[1]f32;
+    for step:0..<steps {
+        #assert mdl_refresh(m,cast(u64)(step+TC_DROPOUT),inputs)==MdlStatus.ok;
+        s:=cb_run(c,rate,inputs,values[..],grads[..],flags[..]);if s!=CbStatus.ok {return s;}
+        #assert cb_output(c,inputs,values[..],out[..])==CbStatus.ok;losses[step]=f64(out[0]);
+    }
+    return CbStatus.ok;
+}
+// book:end train
+
+// book:begin footprint
+// Eager's arenas are the tape's; its workspace is the largest node a step
+// runs, and each tape step is one launch. A compiled program states its own.
+tc_footprint :: (path:TcPath,m:MdlModel,c:CbProgram)->TcFootprint {
+    if path!=TcPath.eager {return tc_bytes(TcFootprint.{values=c.values.top,grads=c.grads.top,flags=c.flag_items,launches=c.launches});}
+    t:=ad_tape(m.program,mdl_mode(m),OrRegistry.{});f:=TcFootprint.{values=t.values.top,grads=t.grads.top,launches=t.count};
+    for s:0..<t.count {f.flags=cb_larger(f.flags,t.plan.values[t.steps[s].node].storage);}
+    return tc_bytes(f);
+}
+// book:end footprint
+
+tc_path_name :: (p:TcPath)->string {names:=[3]string.["eager","compiled","recomputing"];return names[cast(int)p];}

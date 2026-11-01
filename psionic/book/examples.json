@@ -2014,6 +2014,17 @@
       "timeout": 180
     },
     {
+      "source": "psionic/examples/eager-and-compiled.coax",
+      "chapter": "psionic/book/ch131-train-the-same-model-eager-and-compiled.md",
+      "stdout": "psionic/fixtures/eager-and-compiled.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 600
+    },
+    {
       "source": "psionic/examples/gpu-train.coax",
       "chapter": "psionic/book/ch129-train-a-whole-model-on-one-gpu.md",
       "stdout": "psionic/fixtures/gpu-train.out",

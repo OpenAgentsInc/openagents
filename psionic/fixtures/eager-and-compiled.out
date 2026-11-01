@@ -1,0 +1,24 @@
+chapter 117's block: 84 trained floats, 153 input floats, AdamW at rate 0.01
+  eager: done, 6 steps; values 144 floats, gradients 148 doubles, flags 32 bytes = 1792 bytes; 30 launches a step
+  compiled: done, 6 steps; values 144 floats, gradients 140 doubles, flags 32 bytes = 1728 bytes; 30 launches a step
+  recomputing: done, 6 steps; values 113 floats, gradients 140 doubles, flags 32 bytes = 1604 bytes; 34 launches a step
+  step 0: loss 9.820698
+  step 1: loss 9.182202
+  step 2: loss 9.313958
+  step 3: loss 8.655045
+  step 4: loss 7.852382
+  step 5: loss 8.439621
+  compiled against eager, bit for bit: losses true, weights true, first moments true, second moments true
+  recomputing against eager, bit for bit: losses true, weights true, first moments true, second moments true
+compiled against eager, 5 warm steps a side: ok
+  eager: mean 1000000.0 ns, sd 1581.139 ns; compiled: mean 700000.0 ns, sd 1581.139 ns
+  verdict: faster, 1.429 times eager's speed, standard error 1000.0 ns
+  memory: 0.964 of eager's bytes, 0 launches more; a 2400000 ns compile pays back after 8 steps
+  a compiled step of 1100000 ns: slower, break-even -1
+refusals:
+  seed 8 against seed 7: the seeds differ
+  dropout 64 against dropout 128: the programs differ
+  norm frozen against norm trained: the programs differ
+  rate 0.02 against 0.01: the configurations differ
+  7 steps against 6: the step counts differ
+  4 timed steps: fewer than 5 positive warm steps a side (or more than 1024)
