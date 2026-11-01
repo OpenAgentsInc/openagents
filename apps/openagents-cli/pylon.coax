@@ -1,13 +1,20 @@
 // The pylon domain: starts, stops and watches this computer's Pylon around
-// scripts/join-pylon.sh.
+// scripts/join-pylon.sh, links it to your identity (NIP-XP 13195 and 13193),
+// and lists the network's Pylons from their NIP-PYLON beacons.
+#load "../../coax/lib/nostr/xp_keys.coax";
+#load "../../psionic/lib/pylon/beacon.coax";
 
 pylon_usage :: () {
   print("%\n", "Pylon (sells this computer's compute; scripts/join-pylon.sh does the work):");
   print("%\n", "  pylon start [--model psionic-toy|elephant-1] [--label TEXT] [--slug NAME]");
   print("%\n", "              [--relay wss://HOST] [--self-test] [--official] [--wait SECONDS]");
+  print("%\n", "              [--trainer NPUB | --no-link]   links it to your npub by default");
   print("%\n", "  pylon status [--model M]");
   print("%\n", "  pylon stop [--model M] [--wait SECONDS]");
   print("%\n", "  pylon logs [--model M] [--lines N] [--engine | --join]");
+  print("%\n", "  pylon claim [--key NPUB] [--relay URL]     your profile (13193) lists the Pylon's key");
+  print("%\n", "  pylon unclaim [--key NPUB] [--relay URL]   drops it");
+  print("%\n", "  pylon list [--relay URL] [--mine]          the network's Pylons, verified and fresh");
   print("%\n", "");
 }
 
@@ -85,7 +92,7 @@ pylon_status :: (a: [] Args, r: [] Rep) -> int {
   return rep_done(r, EXIT_OK);
 }
 
-pylon_start :: (a: [] Args, r: [] Rep) -> int {
+pylon_start :: (a: [] Args, r: [] Rep, profile: string) -> int {
   model := args_value(a, "--model", "psionic-toy");
   if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
   if join_pid(model) > 0 { rep_str(r, "already", "running"); return pylon_status(a, r); }
@@ -112,6 +119,17 @@ pylon_start :: (a: [] Args, r: [] Rep) -> int {
   flags := [5] string.["--label", "--slug", "--relay", "--device", "--model-cache"];
   for f: flags { if args_has(a, f) { ok = ok && proc_arg(h, f) && proc_arg(h, args_value(a, f, "")); } }
   if args_has(a, "--self-test") { ok = ok && proc_arg(h, "--self-test"); }
+  // The Pylon keeps its own key and links it to yours (NIP-XP 13195).
+  tb: [128] u8; trainer := "";
+  if !args_has(a, "--no-link") {
+    if args_has(a, "--trainer") { trainer = args_value(a, "--trainer", ""); }
+    else {
+      k: [1] Key;
+      if load_key(profile, k[..]) { n := npub_of(k[0].secret[..], tb[..]); if n > 0 { trainer = cast(string) tb[0..<n]; } }
+      wipe(k[0].secret[..]);
+    }
+  }
+  if trainer.count > 0 { ok = ok && proc_arg(h, "--trainer") && proc_arg(h, trainer); }
   ok = ok && proc_detach(h);
   started_at := cxcli_now_s();
   if !ok || proc_start(h) != 0 { return fail(r, EXIT_FAIL, "could not start the join"); }
@@ -120,6 +138,7 @@ pylon_start :: (a: [] Args, r: [] Rep) -> int {
   rep_str(r, "model", model);
   rep_int(r, "join_pid", pid);
   rep_str(r, "log", joinlog);
+  rep_str(r, "trainer", ifx trainer.count > 0 then trainer else "none");
   if wait == 0 {
     rep_str(r, "next", "openagents pylon status");
     return rep_done(r, EXIT_OK);
@@ -180,10 +199,300 @@ pylon_logs :: (a: [] Args, r: [] Rep) -> int {
 }
 
 
-pylon_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
-  if verb == "start" { return pylon_start(a, r); }
+pylon_main :: (a: [] Args, r: [] Rep, profile: string, verb: string) -> int {
+  if verb == "start" { return pylon_start(a, r, profile); }
+  if verb == "claim" { return pylon_claim(a, r, profile, true); }
+  if verb == "unclaim" { return pylon_claim(a, r, profile, false); }
+  if verb == "list" { return pylon_list(a, r, profile); }
   if verb == "status" || verb == "" { return pylon_status(a, r); }
   if verb == "stop" { return pylon_stop(a, r); }
   if verb == "logs" { return pylon_logs(a, r); }
-  return fail(r, EXIT_USAGE, "pylon: start, status, stop or logs (openagents help)");
+  return fail(r, EXIT_USAGE, "pylon: start, status, stop, logs, claim, unclaim or list (openagents help)");
+}
+
+// ---- links, claims and the network's Pylons ----------------------------------
+//
+// A Pylon keeps its own key. `pylon start` passes the join --trainer with
+// your npub, so the Pylon signs a NIP-XP key link (13195) naming you; `pylon
+// claim` signs your trainer profile (13193) listing the Pylon's key, which
+// completes the link both ways (docs/web-log-in.md, "Linking a Pylon to its
+// person"). xp_keys.coax (#authority) writes and reads both records, and
+// beacon.coax (#authority) reads the beacons `pylon list` shows.
+
+// A key as typed: npub1... or 64 lowercase hex, as hex into out; "" refused.
+key_hex_of :: (typed: string, out: [] u8) -> string {
+  if xk_hex64(typed) { n := copy(typed, out); return cast(string) out[0..<n]; }
+  bytes: [64] u8;
+  d := nip19_decode_checked(typed, bytes[..], false);
+  if d.error != NC_OK || d.type != N19_NPUB || d.written != 32 || !cli_hex(bytes[0..<32], out) { return ""; }
+  return cast(string) out[0..<64];
+}
+npub_of_hex :: (hex: string, out: [] u8) -> string {
+  bytes: [32] u8;
+  if !cli_unhex(hex, bytes[..]) { return ""; }
+  e := nip19_encode_checked(N19_NPUB, cast(string) bytes[..], out, false);
+  return ifx e.error == NC_OK then cast(string) out[0..<e.written] else "";
+}
+
+// One delivered event's fields; content decoded into buf.
+Ev :: struct { ok: bool; kind: int; at: int; author: [64] u8; id: [64] u8; tags: string; content: string; content_n: int; }
+ev_of :: (text: string, scratch: [] u8, buf: [] u8) -> Ev {
+  v: Ev;
+  e := nostr_event_read(text, scratch, false);
+  if e.error != NE_OK || !cli_hex(e.public_key[..], v.author[..]) || !cli_hex(e.id[..], v.id[..]) { return v; }
+  n := json_unescape(e.original[e.content_from..<e.content_to], buf);
+  if n < 0 { return v; }
+  v.ok = true; v.kind = e.kind; v.at = e.created_at;
+  v.tags = e.original[e.tags_from..<e.tags_to]; v.content = cast(string) buf[0..<n]; v.content_n = n;
+  return v;
+}
+
+// A trainer's newest valid profile, as read from a relay.
+Held :: struct { have: bool; at: int = -1; id: [64] u8; shown: bool; n: int; keys: [XK_KEYS][64] u8; }
+held_keys :: (h: [] Held, out: [] string) -> int {
+  for i: 0..<h[0].n { out[i] = cast(string) h[0].keys[i][..]; }
+  return h[0].n;
+}
+// Runs one REQ to EOSE, keeping author's newest valid profile in h. False
+// when the relay ended the request first.
+fetch_profile :: (c: [] CliRelay, author: string, deadline: int, h: [] Held) -> bool {
+  f: [256] u8;
+  n := copy("{\"kinds\":[13193],\"authors\":[\"", f[..]); n += copy(author, f[n..<256]); n += copy("\"]}", f[n..<256]);
+  if !cr_req(c, cast(string) f[0..<n]) { return false; }
+  while true {
+    end := cr_next(c, deadline);
+    if end == CR_EOSE { cr_req_end(c); return true; }
+    if end != CR_EVENT { cr_req_end(c); return false; }
+    scratch: [NE_MAX_OUTPUT] u8; buf: [8192] u8; keys: [XK_KEYS] string;
+    v := ev_of(cr_event(c), scratch[..], buf[..]);
+    if !v.ok || cast(string) v.author[..] != author { continue; }
+    p := xk_profile_read(v.kind, author, v.tags, v.content, keys[..]);
+    if p.code != XkCode.ok || !xk_newer(v.at, cast(string) v.id[..], h[0].at, cast(string) h[0].id[..]) { continue; }
+    h[0].have = true; h[0].at = v.at; h[0].shown = p.shown; h[0].n = p.count;
+    for i: 0..<64 { h[0].id[i] = v.id[i]; }
+    for k: 0..<p.count { for i: 0..<64 { h[0].keys[k][i] = keys[k][i]; } }
+  }
+  return false;
+}
+// The newest valid key link of each of authors: the trainer it names into
+// trainers (hex, "" for none or withdrawn). False when the request failed.
+Links :: struct { n: int; author: [128][64] u8; at: [128] int; id: [128][64] u8; trainer: [128][64] u8; named: [128] bool; }
+fetch_links :: (c: [] CliRelay, authors: [] string, deadline: int, l: [] Links) -> bool {
+  if authors.count == 0 { return true; }
+  f: [CR_FILTER] u8;
+  n := copy("{\"kinds\":[13195],\"authors\":[", f[..]);
+  for i: 0..<authors.count {
+    if i > 0 { n += copy(",", f[n..<CR_FILTER]); }
+    n += copy("\"", f[n..<CR_FILTER]); n += copy(authors[i], f[n..<CR_FILTER]); n += copy("\"", f[n..<CR_FILTER]);
+  }
+  n += copy("]}", f[n..<CR_FILTER]);
+  for i: 0..<authors.count { for k: 0..<64 { l[0].author[i][k] = authors[i][k]; } l[0].at[i] = -1; l[0].named[i] = false; }
+  l[0].n = authors.count;
+  if !cr_req(c, cast(string) f[0..<n]) { return false; }
+  while true {
+    end := cr_next(c, deadline);
+    if end == CR_EOSE { cr_req_end(c); return true; }
+    if end != CR_EVENT { cr_req_end(c); return false; }
+    scratch: [NE_MAX_OUTPUT] u8; buf: [4096] u8;
+    v := ev_of(cr_event(c), scratch[..], buf[..]);
+    if !v.ok { continue; }
+    for i: 0..<l[0].n {
+      who := cast(string) l[0].author[i][..];
+      if cast(string) v.author[..] != who { continue; }
+      k := xk_link_read(v.kind, who, v.tags, v.content);
+      if k.code != XkCode.ok || !xk_newer(v.at, cast(string) v.id[..], l[0].at[i], cast(string) l[0].id[i][..]) { continue; }
+      l[0].at[i] = v.at; l[0].named[i] = k.trainer.count == 64;
+      for b: 0..<64 { l[0].id[i][b] = v.id[b]; l[0].trainer[i][b] = ifx k.trainer.count == 64 then k.trainer[b] else '0'; }
+    }
+  }
+  return false;
+}
+links_name :: (l: [] Links, author: string, trainer: string) -> bool {
+  for i: 0..<l[0].n {
+    if cast(string) l[0].author[i][..] == author { return l[0].named[i] && cast(string) l[0].trainer[i][..] == trainer; }
+  }
+  return false;
+}
+
+// pylon claim / unclaim: your profile with the Pylon's key added or dropped.
+pylon_claim :: (a: [] Args, r: [] Rep, profile: string, claim: bool) -> int {
+  model := args_value(a, "--model", "psionic-toy");
+  if !model_ok(model) { return fail(r, EXIT_USAGE, "--model is psionic-toy or elephant-1"); }
+  url := relay_flag(a, CLI_RELAY);
+  if url == "" { return fail(r, EXIT_USAGE, "--relay is a ws:// or wss:// URL"); }
+  deadline := deadline_flag(a, "20");
+  if deadline < 0 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600 seconds"); }
+  pk: [64] u8;
+  pylon := "";
+  if args_has(a, "--key") {
+    pylon = key_hex_of(args_value(a, "--key", ""), pk[..]);
+    if pylon == "" { return fail(r, EXIT_USAGE, "--key is the Pylon's npub1... or 64 hex public key"); }
+  } else {
+    logbuf: [262144] u8; lp: [1024] u8;
+    n := fs_read(state_file(model, "pylon.log", lp[..]), logbuf[..]);
+    facts := cli_pylon_log(ifx n > 0 then cast(string) logbuf[0..<n] else "");
+    if facts.key_n != 64 { return fail(r, EXIT_NOT_FOUND, "no Pylon key in this computer's Pylon log: start one (openagents pylon start) or pass --key"); }
+    m := copy(cast(string) logbuf[facts.key_at..<facts.key_at + 64], pk[..]);
+    pylon = cast(string) pk[0..<m];
+  }
+  k: [1] Key;
+  if !load_key(profile, k[..]) { return fail(r, EXIT_AUTH, "no Nostr key for this profile: run `openagents nostr new`"); }
+  mh: [64] u8;
+  if !pubkey_hex(k[0].secret[..], mh[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "could not read your public key"); }
+  me := cast(string) mh[..];
+  if pylon == me { wipe(k[0].secret[..]); return fail(r, EXIT_USAGE, "that is your own key, not a Pylon's"); }
+  c: [1] CliRelay;
+  if !cr_open(c[..], url, k[0].secret[..]) { wipe(k[0].secret[..]); cr_close(c[..]); return fail(r, EXIT_FAIL, "could not connect to the relay (or it refused our AUTH)"); }
+  deadline = deadline_flag(a, "20");   // the timeout counts from the connection, not from a slow Keychain read
+  h: [1] Held; l: [1] Links; who := [1] string.[pylon];
+  if !fetch_profile(c[..], me, deadline, h[..]) || !fetch_links(c[..], who[..], deadline, l[..]) {
+    wipe(k[0].secret[..]); cr_close(c[..]); return fail(r, EXIT_FAIL, "the relay did not finish sending your profile and the Pylon's link");
+  }
+  keys: [XK_KEYS] string;
+  before := held_keys(h[..], keys[..]);
+  after := ifx claim then xk_add(keys[..], before, me, pylon) else xk_drop(keys[..], before, pylon);
+  pn: [80] u8;
+  rep_str(r, "pylon", pylon);
+  rep_str(r, "pylon_npub", npub_of_hex(pylon, pn[..]));
+  rep_bool(r, "linked", links_name(l[..], pylon, me));
+  if after < 0 { wipe(k[0].secret[..]); cr_close(c[..]); return fail(r, EXIT_USAGE, "your profile already lists 16 keys: unclaim one first"); }
+  if after == before {   // already listed, or not listed: nothing to sign
+    wipe(k[0].secret[..]); cr_close(c[..]);
+    rep_bool(r, "changed", false); rep_int(r, "keys", after);
+    if h[0].have { rep_str(r, "profile", cast(string) h[0].id[..]); }
+    return rep_done(r, EXIT_OK);
+  }
+  shown := ifx h[0].have then h[0].shown else true;
+  body: [2048] u8; tags: [2048] u8; ev: [8192] u8;
+  bn := xk_profile_body(body[..], me, shown, keys[0..<after]);
+  tn := xk_profile_tags(tags[..], me, keys[0..<after]);
+  at := cxcli_now_s();
+  if at <= h[0].at { at = h[0].at + 1; }   // a newer profile replaces the old one
+  en := ifx bn > 0 && tn > 0 then sign_event_at(k[0].secret[..], at, XK_PROFILE, cast(string) tags[0..<tn], cast(string) body[0..<bn], ev[..]) else -1;
+  wipe(k[0].secret[..]);
+  if en <= 0 { cr_close(c[..]); return fail(r, EXIT_FAIL, "could not write or sign the profile"); }
+  ok := cr_publish(c[..], cast(string) ev[0..<en], deadline);
+  message := cr_message(c[..]);
+  cr_close(c[..]);
+  rep_bool(r, "changed", ok);
+  rep_str(r, "profile", cast(string) ev[7..<71]);
+  rep_int(r, "keys", after);
+  rep_bool(r, "shown", shown);
+  if !ok { return fail(r, EXIT_FAIL, ifx message.count > 0 then message else "the relay did not accept the profile in time"); }
+  return rep_done(r, EXIT_OK);
+}
+
+// pylon list: the network's Pylons from their NIP-PYLON beacons, each
+// verified (rl_read: id and signature; beacon.coax: digest, binding, schema)
+// and fresh by this computer's clock, as the homepage reads them.
+LIST_MOST :: 128;
+Row :: struct { provider: [64] u8; slug: [64] u8; slug_n: int; label: [64] u8; label_n: int; model: [160] u8; model_n: int;
+  status: PbStatus; generation: int; observed: int; free: int; total: int; }
+beacon_label :: (content: string, out: [] u8) -> int {
+  j: [1] Json; json_start(j[..], content);
+  if json_next(j[..]) != JSON_OBJECT { return 0; }
+  while true {
+    t := json_next(j[..]);
+    if t != JSON_STRING { return 0; }
+    key := json_text(j[..]); v := json_next(j[..]);
+    if json_is(key, "label") && v == JSON_STRING { n := json_unescape(json_text(j[..]), out); return ifx n < 0 then 0 else n; }
+    if !json_skip(j[..]) { return 0; }
+  }
+  return 0;
+}
+take_beacon :: (rows: [] Row, held: int, text: string, now: int) -> int {
+  n := held;
+  scratch: [NE_MAX_OUTPUT] u8; buf: [NE_MAX_OUTPUT] u8;
+  v := ev_of(text, scratch[..], buf[..]);
+  if !v.ok { return n; }
+  hash: [32] u8; digest: [64] u8;
+  if sha256_hash_checked(buf[0..<v.content_n], hash[..], false) != SHA_OK || !cli_hex(hash[..], digest[..]) { return n; }
+  b := pb_read(v.kind, cast(string) v.author[..], v.tags, v.content, cast(string) digest[..]);
+  if b.code != PbCode.ok || pb_fresh(b, now, PbHeld.{}) != PbFresh.fresh || now >= b.valid_until { return n; }
+  at := -1;
+  for i: 0..<n { if cast(string) rows[i].provider[..] == cast(string) v.author[..] && cast(string) rows[i].slug[0..<rows[i].slug_n] == b.pylon { at = i; } }
+  if at >= 0 && !(b.generation > rows[at].generation || (b.generation == rows[at].generation && b.observed_at > rows[at].observed)) { return n; }
+  if at < 0 { if n >= rows.count { return n; } at = n; n += 1; }
+  w: Row;
+  for i: 0..<64 { w.provider[i] = v.author[i]; }
+  w.slug_n = copy(b.pylon, w.slug[..]); w.model_n = copy(b.identity, w.model[..]);
+  w.label_n = beacon_label(v.content, w.label[..]);
+  w.status = b.status; w.generation = b.generation; w.observed = b.observed_at; w.free = b.free; w.total = b.total;
+  rows[at] = w;
+  return n;
+}
+
+pylon_list :: (a: [] Args, r: [] Rep, profile: string) -> int {
+  url := relay_flag(a, CLI_RELAY);
+  if url == "" { return fail(r, EXIT_USAGE, "--relay is a ws:// or wss:// URL"); }
+  deadline := deadline_flag(a, "20");
+  if deadline < 0 { return fail(r, EXIT_USAGE, "--timeout is 1 to 600 seconds"); }
+  mine := args_has(a, "--mine");
+  k: [1] Key;
+  keyed := load_key(profile, k[..]);
+  if mine && !keyed { return fail(r, EXIT_AUTH, "--mine needs your Nostr key: run `openagents nostr new`"); }
+  mh: [64] u8;
+  if keyed && !pubkey_hex(k[0].secret[..], mh[..]) { wipe(k[0].secret[..]); return fail(r, EXIT_FAIL, "could not read your public key"); }
+  c: [1] CliRelay;
+  opened := cr_open(c[..], url, ifx keyed then k[0].secret[..] else k[0].secret[0..<0]);
+  deadline = deadline_flag(a, "20");   // the timeout counts from the connection, not from a slow Keychain read
+  wipe(k[0].secret[..]);
+  if !opened { cr_close(c[..]); return fail(r, EXIT_FAIL, "could not connect to the relay (or it refused our AUTH)"); }
+  now := cxcli_now_s();
+  f: [256] u8; t: [24] u8;
+  fn := copy("{\"kinds\":[30200],\"#t\":[\"oa:pylon-beacon:v1\"],\"since\":", f[..]);
+  fn += copy(int_text(now - PB_WINDOW - PB_FUTURE, t[..]), f[fn..<256]); fn += copy("}", f[fn..<256]);
+  if !cr_req(c[..], cast(string) f[0..<fn]) { cr_close(c[..]); return fail(r, EXIT_FAIL, "could not send the request"); }
+  rows: [LIST_MOST] Row; n := 0; end := CR_TIMEOUT;
+  while true {
+    end = cr_next(c[..], deadline);
+    if end != CR_EVENT { break; }
+    n = take_beacon(rows[..], n, cr_event(c[..]), now);
+  }
+  cr_req_end(c[..]);
+  if end != CR_EOSE { cr_close(c[..]); return fail(r, EXIT_FAIL, ifx end == CR_CLOSED then "the relay closed the request" else "no EOSE before the timeout"); }
+  // --mine: the Pylons whose newest key link names you.
+  keep: [LIST_MOST] bool;
+  for i: 0..<n { keep[i] = !mine; }
+  if mine {
+    providers: [LIST_MOST] string; pn := 0;
+    for i: 0..<n {
+      p := cast(string) rows[i].provider[..]; seen := false;
+      for q: 0..<pn { if providers[q] == p { seen = true; } }
+      if !seen { providers[pn] = p; pn += 1; }
+    }
+    l: [1] Links;
+    if !fetch_links(c[..], providers[0..<pn], deadline, l[..]) { cr_close(c[..]); return fail(r, EXIT_FAIL, "the relay did not finish sending the key links"); }
+    for i: 0..<n { keep[i] = links_name(l[..], cast(string) rows[i].provider[..], cast(string) mh[..]); }
+  }
+  cr_close(c[..]);
+  // newest first
+  order: [LIST_MOST] int; m := 0;
+  for i: 0..<n { if keep[i] { order[m] = i; m += 1; } }
+  for i: 0..<m { for q: (i + 1)..<m { if rows[order[q]].observed > rows[order[i]].observed { x := order[i]; order[i] = order[q]; order[q] = x; } } }
+  e: [1] Rep;
+  if r[0].json { print("%", "{\"pylons\":["); }
+  else if m > 0 { print("%\n", "SLUG  MODEL  STATUS  FREE  AGE  NPUB  LABEL"); }
+  for o: 0..<m {
+    w := rows[order[o]];
+    np: [80] u8; npub := npub_of_hex(cast(string) w.provider[..], np[..]);
+    slug := cast(string) w.slug[0..<w.slug_n]; model := cast(string) w.model[0..<w.model_n]; label := cast(string) w.label[0..<w.label_n];
+    a1: [24] u8; a2: [24] u8; a3: [24] u8;
+    age := int_text(now - w.observed, a1[..]); free := int_text(w.free, a2[..]); total := int_text(w.total, a3[..]);
+    if r[0].json {
+      e[0].n = 0;
+      rep_put(e[..], ifx o > 0 then ",{" else "{");
+      rep_put(e[..], "\"slug\":"); rep_quoted(e[..], slug); rep_put(e[..], ",\"label\":"); rep_quoted(e[..], label);
+      rep_put(e[..], ",\"model\":"); rep_quoted(e[..], model); rep_put(e[..], ",\"status\":"); rep_quoted(e[..], pb_status_name(w.status));
+      rep_put(e[..], ",\"free\":"); rep_put(e[..], free); rep_put(e[..], ",\"total\":"); rep_put(e[..], total);
+      rep_put(e[..], ",\"age_s\":"); rep_put(e[..], age); rep_put(e[..], ",\"pubkey\":\""); rep_put(e[..], cast(string) w.provider[..]);
+      rep_put(e[..], "\",\"npub\":\""); rep_put(e[..], npub); rep_put(e[..], "\"}");
+      print("%", cast(string) e[0].buf[0..<e[0].n]);
+    } else {
+      print("%  %  %  %/%  %s  %  %\n", slug, model, pb_status_name(w.status), free, total, age, npub, label);
+    }
+  }
+  if r[0].json { print("],\"count\":%,\"ok\":true}\n", int_text(m, t[..])); return EXIT_OK; }
+  tool_err("openagents: "); tool_err(int_text(m, t[..])); tool_errln(ifx m == 1 then " Pylon, verified and fresh" else " Pylons, verified and fresh");
+  return EXIT_OK;
 }

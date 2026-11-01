@@ -76,7 +76,27 @@ the CLI was built in (`--source`). Set `OPENAGENTS_SOURCE` to use another
 checkout, or pass `--official` to let the join use its own clone of `main`.
 `pylon stop` writes the join's stop file and waits for it to exit.
 
-The Pylon has its own key, separate from your `nostr` identity.
+The Pylon has its own key, separate from your `nostr` identity. It links
+that key to yours instead of sharing one (NIP-XP; docs/web-log-in.md,
+"Linking a Pylon to its person"):
+
+```sh
+openagents pylon start --wait 120            # passes the join --trainer YOUR-NPUB (--no-link skips, --trainer NPUB names another)
+openagents pylon claim                       # your trainer profile (13193) lists the running Pylon's key
+openagents pylon unclaim [--key NPUB]        # drops it
+openagents pylon list [--mine] [--relay URL] # the network's Pylons from their beacons
+```
+
+- `start`: once online, the Pylon publishes a key link (13195) naming you.
+- `claim` reads your newest profile from the relay, keeps the keys it
+  already lists (at most 16) and its `shown`, adds the Pylon's key (from
+  this computer's Pylon log, or `--key`) and publishes the new profile. It
+  reports `linked`: whether the Pylon's newest link names you, which the
+  link needs both ways.
+- `list` prints slug, model identity, status, free slots, age, npub and
+  label, newest first. Each beacon is verified (id, signature, content
+  digest, schema) and fresh by this computer's clock, as the homepage
+  reads them. `--mine` keeps the Pylons whose newest link names you.
 
 ## Output and exit codes
 
@@ -91,7 +111,7 @@ Text is `key value` lines. `--json` prints one object with `"ok"`. Exit codes:
 | `out.coax` | the report, arguments, numbers as text, where things live |
 | `nostr.coax` | the `nostr` domain: identity, signing, NIP-98, publish and req |
 | `relay.coax` | the relay client: connect, NIP-42 AUTH, one REQ to EOSE, publish and OK |
-| `pylon.coax` | the `pylon` domain |
+| `pylon.coax` | the `pylon` domain: start, stop, status, logs; claim, unclaim and list over the relay ([xp_keys.coax](../../coax/lib/nostr/xp_keys.coax) and [beacon.coax](../../psionic/lib/pylon/beacon.coax) decide) |
 | `account.coax` | HTTPS calls through `coax/lib/net/http.coax`; the hidden `http METHOD URL` check |
 | `rules.coax` | `#authority`: profile names, the stored key's format, words as typed, hex, exit codes, the Pylon log's facts |
 | `cli-native.c` | effects: Keychain, 0600 files, stdin without echo, the clock, process liveness, the executable's path |

@@ -73,7 +73,7 @@ tool_main :: () -> int #export_c {
   if domain == "whoami" { return nostr_show(r[..], profile); }
   // One line per domain; each domain file dispatches its own verbs.
   if domain == "nostr" { return nostr_main(a[..], r[..], profile, verb); }
-  if domain == "pylon" { return pylon_main(a[..], r[..], verb); }
+  if domain == "pylon" { return pylon_main(a[..], r[..], profile, verb); }
   if domain == "http" { return cli_http(a[..], r[..]); }   // hidden: one request through coax/lib/net/http.coax
   return fail(r[..], EXIT_USAGE, "unknown command (openagents help)");
 }
