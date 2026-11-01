@@ -1104,7 +1104,7 @@ static int query_command(const char *input, const EmitOptions &opts, QueryReques
   std::string text;
   bool warm = false;
   if (!request.fresh && read_record(cache, &text)) {
-    warm = query_parse(text, &index) && query_current(index, compiler, entry.string());
+    warm = query_parse(text, &index) && query_current(index, compiler, entry.string(), opts);
     if (!warm) index = QueryIndex{};
   }
   if (!warm) {
@@ -1112,9 +1112,11 @@ static int query_command(const char *input, const EmitOptions &opts, QueryReques
     Arena arena;
     File file;
     QueryParsed parsed;
-    if (!front_end(input, &src, &arena, &file, opts, 2, false, false, &parsed)) return 1;
+    if (!front_end(input, &src, &arena, &file, opts, opts.library ? 1 : 2, false, false, &parsed)) return 1;
     index.compiler = compiler;
     index.entry = entry.string();
+    index.profile = opts.profile_identity;
+    index.library = opts.library;
     QueryBuilder{&src, &file, &parsed, &index}.build();
     // A stale or unwritable cache only costs time; the answer comes from the fresh index.
     fs::create_directories(dir, ec);

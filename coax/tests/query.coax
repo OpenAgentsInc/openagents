@@ -141,9 +141,45 @@ Ctx :: struct {
 }
 
 // Runs `coax query ARGS` with COAX_QUERY_CACHE set (sh only sets the variable).
-ask :: (c: Ctx, entry: string, a: string, b: string, c3: string, out: [] u8, err: [] u8) -> ProcRun {
+ask_for :: (c: Ctx, entry: string, a: string, b: string, c3: string, milliseconds: int, out: [] u8, err: [] u8) -> ProcRun {
   argv := [10] string.["sh", "-c", "COAX_QUERY_CACHE=\"$1\" exec \"$2\" query \"$3\" $4 $5 $6", "sh", c.cache, c.compiler, entry, a, b, c3];
-  return proc_run(argv[..], 120000, out, err);
+  return proc_run(argv[..], milliseconds, out, err);
+}
+
+
+ask :: (c: Ctx, entry: string, a: string, b: string, c3: string, out: [] u8, err: [] u8) -> ProcRun {
+  return ask_for(c, entry, a, b, c3, 120000, out, err);
+}
+
+#test "cache damage changes an actual row or creates a legacy payload" {
+  text := "coax.query-index.v2\ndecl\tproc\tidentity\tid\t0\t1\t1\t1\t0\t1\nend\nchecksum\tkept\n";
+  out: [256] u8;
+  #assert cache_damage(text, 0, out[..]) == "coax.query-index.v2\ndecl\tproc\tidentity\tid\t0\t-1\t1\t1\t0\t1\nend\nchecksum\tkept\n";
+  #assert cache_damage(text, 1, out[..]) == "coax.query-index.v2\ndecl\tproc\txdentity\tid\t0\t1\t1\t1\t0\t1\nend\nchecksum\tkept\n";
+  #assert cache_damage(text, 2, out[..]) == "coax.query-index.v1\ndecl\tproc\tidentity\tid\t0\t1\t1\t1\t0\t1\nend\n";
+  #assert cache_damage(text, 3, out[..]) == "coax.query-index.v2\ndecl\tproc\tidentity\tid\t0\t1\t1\t1\t7\t1\nend\nchecksum\tkept\n";
+}
+// Corrupt a cached fact without changing source bytes. Modes0/1/3 retain
+// the original checksum; mode2 makes the previous private format explicitly.
+cache_damage :: (text: string, mode: int, out: [] u8) -> string {
+  n := 0; i := 0; changed := false; in_decl := false; field := 0;
+  while i < text.count {
+    if mode == 2 && starts(text, i, "checksum\t") { break; }
+    if mode == 2 && starts(text, i, "coax.query-index.v2\n") {
+      for c: "coax.query-index.v1\n" { if n == out.count { return ""; } out[n] = c; n += 1; }
+      i += "coax.query-index.v2\n".count; continue;
+    }
+    if (i == 0 || text[i - 1] == '\n') { in_decl = starts(text, i, "decl\t"); field = 0; }
+    if in_decl && text[i] == '\t' { field += 1; }
+    if !changed && in_decl && ((mode == 0 && field == 5) || (mode == 1 && field == 2) || (mode == 3 && field == 8)) && text[i] != '\t' {
+      replacement := ifx mode == 0 then "-1" else ifx mode == 1 then "x" else "7";
+      for c: replacement { if n == out.count { return ""; } out[n] = c; n += 1; }
+      if mode == 1 { i += 1; } else { while i < text.count && text[i] != '\t' && text[i] != '\n' { i += 1; } }
+      changed = true; continue;
+    }
+    if n == out.count { return ""; } out[n] = text[i]; n += 1; i += 1;
+  }
+  return cast(string) out[0..<n];
 }
 
 // Compares (or with --write records) one answer with tests/query/NAME.txt.
@@ -280,6 +316,82 @@ tool_main :: () -> int #export_c {
   r = ask(c, copied, "defines", "area", "", out[..], err[..]);
   again := line_of(cast(string) out[0..<r.out_n]);
   bad += check(r.status == 0 && again == after, "a damaged cache is rebuilt");
+
+  // A tiny valid expression must not be walked exponentially through both
+  // its checked children and the unchanged parse snapshot.
+  focused: [1024] u8; focus_cache: [1024] u8;
+  chain_path := fs_join(dir, "chain.coax", focused[..]);
+  chain_text := "chain :: (x:int)->int {return x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x;}\nmain :: () {}\n";
+  bad += check(fs_write(chain_path, chain_text), "the bounded chain fixture is written");
+  focus := Ctx.{compiler = c.compiler, cache = fs_join(dir, "focused-cache", focus_cache[..])};
+  r = ask_for(focus, chain_path, "defines", "chain", "--fresh", 3000, out[..], err[..]);
+  bad += check(r.status == 0 && line_of(cast(string) out[0..<r.out_n]) == 1, "a30-term cold query completes within3s");
+  baseline: [4096] u8;
+  for k: 0..<r.out_n { baseline[k] = out[k]; }
+  expected := cast(string) baseline[0..<r.out_n];
+  names_cache: [1] FsList; cache_path_buffer: [1024] u8; cache_data: [16384] u8; damaged: [16384] u8;
+  kcache := fs_list(focus.cache, names_cache[..]);
+  bad += check(kcache == 1, "the focused query wrote exactly one cache entry");
+  if kcache == 1 {
+    cache_path := fs_join(focus.cache, fs_entry(names_cache[..], 0), cache_path_buffer[..]);
+    count := fs_read(cache_path, cache_data[..]);
+    bad += check(count > 0, "the actual cached payload is retained");
+    if count > 0 {
+      for mode: 0..<4 {
+        changed := cache_damage(cast(string) cache_data[0..<count], mode, damaged[..]);
+        bad += check(changed.count > 0 && fs_write(cache_path, changed), "a cached row or legacy payload is damaged");
+        r = ask_for(focus, chain_path, "defines", "chain", "", 3000, out[..], err[..]);
+        bad += check(r.status == 0 && cast(string) out[0..<r.out_n] == expected, "changed cached facts are rebuilt from unchanged source");
+      }
+    }
+  }
+
+  // Two aliases may legitimately read the same descriptor. Those repeated
+  // observed inputs must not make a valid warm cache rebuild every time.
+  descriptor_bytes: [16384] u8; descriptor_path_bytes: [1024] u8;
+  descriptor_path := fs_join(dir, "types.pb", descriptor_path_bytes[..]);
+  descriptor_count := fs_read("tests/proto/types.pb", descriptor_bytes[..]);
+  bad += check(descriptor_count > 0 && fs_write(descriptor_path, cast(string) descriptor_bytes[0..<descriptor_count]), "the real descriptor fixture is copied");
+  duplicate_source_bytes: [1024] u8; duplicate_cache_bytes: [1024] u8;
+  duplicate_source := fs_join(dir, "duplicate-descriptor.coax", duplicate_source_bytes[..]);
+  bad += check(fs_write(duplicate_source, "#import_proto \"types.pb\" as P;\n#import_proto \"types.pb\" as Q;\nmain :: () {}\n"), "two descriptor aliases are written");
+  duplicate := Ctx.{compiler = c.compiler, cache = fs_join(dir, "duplicate-cache", duplicate_cache_bytes[..])};
+  r = ask(duplicate, duplicate_source, "exports", "", "", out[..], err[..]);
+  bad += check(r.status == 0 && !r.cut && r.out_n > 0, "generated declarations have a cold answer");
+  for k: 0..<r.out_n { o[k] = out[k]; }
+  duplicate_answer := cast(string) o[0..<r.out_n];
+  entries: [1] FsList; entry_path_bytes: [1024] u8;
+  entry_count := fs_list(duplicate.cache, entries[..]);
+  bad += check(entry_count == 1, "the duplicate-import cache exists");
+  if entry_count == 1 {
+    entry_path := fs_join(duplicate.cache, fs_entry(entries[..], 0), entry_path_bytes[..]);
+    modified := fs_mtime_ns(entry_path);
+    r = ask(duplicate, duplicate_source, "exports", "", "", out[..], err[..]);
+    bad += check(r.status == 0 && !r.cut && cast(string) out[0..<r.out_n] == duplicate_answer && modified >= 0 && fs_mtime_ns(entry_path) == modified, "duplicate descriptor inputs preserve the warm answer and cache");
+  }
+
+  // The accepted library flag must be honored, and its cache may never
+  // make the plain command admit the same no-main unit.
+  library_path_bytes: [1024] u8; mode_cache_bytes: [1024] u8;
+  library_path := fs_join(dir, "library.coax", library_path_bytes[..]);
+  bad += check(fs_write(library_path, "library_value :: ()->int {return 1;}\n"), "a no-main library fixture is written");
+  mode_query := Ctx.{compiler = c.compiler, cache = fs_join(dir, "mode-cache", mode_cache_bytes[..])};
+  r = ask(mode_query, library_path, "defines", "library_value", "--library", out[..], err[..]);
+  bad += check(r.status == 0 && r.out_n > 0, "explicit library queries admit a no-main unit");
+  r = ask(mode_query, library_path, "defines", "library_value", "", out[..], err[..]);
+  bad += check(r.status == 1 && r.out_n == 0, "a warm library index cannot bypass plain main admission");
+
+  // BUILD_DEBUG selects fields during parsing. A development index cannot
+  // hide a release-only invalid array type in the same unchanged source.
+  profile_path_bytes: [1024] u8;
+  profile_path := fs_join(dir, "profile.coax", profile_path_bytes[..]);
+  bad += check(fs_write(profile_path, "Cell :: struct { #if BUILD_DEBUG { items:[1]int; } else { items:[-1]int; } }\nmain :: () {}\n"), "a real conditional-field fixture is written");
+  r = ask(mode_query, profile_path, "defines", "Cell", "", out[..], err[..]);
+  bad += check(r.status == 0 && r.out_n > 0, "development admits the positive array field");
+  r = ask(mode_query, profile_path, "defines", "Cell", "--release", out[..], err[..]);
+  bad += check(r.status == 1 && r.out_n == 0, "a warm development index cannot bypass release type admission");
+  r = ask(mode_query, profile_path, "defines", "Cell", "--release --fresh", out[..], err[..]);
+  bad += check(r.status == 1 && r.out_n == 0, "the uncached release refuses the same source");
 
   bad += check(fs_remove(dir), "the temporary directory is removed");
   if bad == 0 { print("query: ok\n"); return 0; }

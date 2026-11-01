@@ -28,13 +28,15 @@ struct QueryRef {
 };
 struct QueryIndex {
   std::string compiler, entry;
+  int32_t profile = -1;  // opaque identity supplied by the Coax profile resolver
+  bool library = false;
   std::vector<QueryUnit> units;
   std::vector<std::pair<std::string, std::string>> descriptors;  // path, sha256
   std::vector<QueryDecl> decls;
   std::vector<QueryRef> refs;
 };
 
-static const char *QUERY_SCHEMA = "coax.query-index.v1";
+static const char *QUERY_SCHEMA = "coax.query-index.v2";
 
 // Fields are tab-separated; a field never holds a raw tab, newline or backslash.
 static std::string query_escape(const std::string &s) {
@@ -117,6 +119,7 @@ struct QueryBuilder {
   QueryIndex *index;
   std::map<int32_t, int32_t> decl_at;  // declaration offset -> decls index
   std::map<std::string, std::vector<const ConstDecl *>> consts;  // by name
+  std::map<std::string, std::set<const Expr *>> walked;  // per owner: checked and saved edges may share a node
   std::set<std::tuple<int32_t, int32_t, std::string>> seen;  // (offset, to, from): instances share their template's sites
 
   int32_t unit_of(Loc loc) const {
@@ -201,7 +204,7 @@ struct QueryBuilder {
     if (t->kind == TypeKind::enum_ && t->enum_decl) reference(from, t->enum_decl->loc, te->loc);
   }
   void expr(const std::string &from, const Expr *e) {
-    if (!e) return;
+    if (!e || !walked[from].insert(e).second) return;
     if (e->kind == ExprKind::call && e->proc) reference(from, (e->proc->origin ? e->proc->origin : e->proc)->loc, e->loc);
     if (e->kind == ExprKind::ident && e->constant) reference(from, e->constant->loc, e->loc);
     const QueryParsed::Node *was = nullptr;
@@ -321,6 +324,7 @@ struct QueryBuilder {
 
 static std::string query_serialize(const QueryIndex &q) {
   std::string out = std::string(QUERY_SCHEMA) + "\ncompiler\t" + q.compiler + "\nentry\t" + query_escape(q.entry) + "\n";
+  out += "mode\t" + std::to_string(q.profile) + "\t" + (q.library ? "1" : "0") + "\n";
   for (const QueryUnit &u : q.units)
     out += "unit\t" + query_escape(u.path) + "\t" + query_escape(u.canonical) + "\t" + u.sha256 + "\t" + query_escape(u.module) + "\t" +
            (u.claims ? "1" : "0") + "\t" + (u.sealed ? "1" : "0") + "\n";
@@ -332,7 +336,8 @@ static std::string query_serialize(const QueryIndex &q) {
   for (const QueryRef &r : q.refs)
     out += "ref\t" + std::to_string(r.to) + "\t" + std::to_string(r.unit) + "\t" + std::to_string(r.line) + "\t" + std::to_string(r.col) + "\t" +
            query_escape(r.from) + "\t" + (r.generated ? "1" : "0") + "\n";
-  return out + "end\n";
+  out += "end\n";
+  return out + "checksum\t" + debug_source_hash(out) + "\n";
 }
 
 static bool query_number(const std::string &s, int32_t *out) {
@@ -347,10 +352,27 @@ static bool query_number(const std::string &s, int32_t *out) {
   return true;
 }
 
-// Parses a cached index. Any malformed or truncated record rejects the whole file.
-static bool query_parse(const std::string &text, QueryIndex *q) {
+// The private cache is a complete checked observation, not independent
+// source facts. Check its whole payload before accepting any record.
+static bool query_hash(const std::string &s) {
+  return s.size() == 64 && s.find_first_not_of("0123456789abcdef") == std::string::npos;
+}
+static bool query_flag(const std::string &s) { return s == "0" || s == "1"; }
+static bool query_field(const std::string &s) { return query_escape(query_unescape(s)) == s; }
+static bool query_coordinates(int32_t line, int32_t col, int32_t end) {
+  return line > 0 && col > 0 && end >= line;
+}
+// Any malformed, damaged or old-v1 record rejects the whole cache file.
+static bool query_parse(const std::string &sealed, QueryIndex *q) {
+  const std::string marker = "\nchecksum\t";
+  const size_t seal = sealed.rfind(marker);
+  if (seal == std::string::npos || sealed.size() != seal + marker.size() + 65 || sealed.back() != '\n') return false;
+  const std::string text = sealed.substr(0, seal + 1);
+  const std::string digest = sealed.substr(seal + marker.size(), 64);
+  if (!query_hash(digest) || debug_source_hash(text) != digest) return false;
   size_t at = 0;
-  bool header = false, ended = false;
+  bool header = false, compiler = false, entry = false, mode = false, ended = false, descriptors = false, declarations = false, references = false;
+  std::set<std::string> unit_paths, canonical_paths;
   while (at < text.size()) {
     size_t nl = text.find('\n', at);
     if (nl == std::string::npos) return false;
@@ -366,27 +388,39 @@ static bool query_parse(const std::string &text, QueryIndex *q) {
       s = t + 1;
     }
     const std::string &kind = f[0];
-    if (kind == "end" && f.size() == 1) ended = true;
-    else if (kind == "compiler" && f.size() == 2) q->compiler = f[1];
-    else if (kind == "entry" && f.size() == 2) q->entry = query_unescape(f[1]);
-    else if (kind == "unit" && f.size() == 7) q->units.push_back({query_unescape(f[1]), query_unescape(f[2]), f[3], query_unescape(f[4]), f[5] == "1", f[6] == "1"});
-    else if (kind == "descriptor" && f.size() == 3) q->descriptors.push_back({query_unescape(f[1]), f[2]});
-    else if (kind == "decl" && f.size() == 10) {
+    if (kind == "compiler" && f.size() == 2 && !compiler && !entry && query_hash(f[1])) { q->compiler = f[1]; compiler = true; }
+    else if (kind == "entry" && f.size() == 2 && compiler && !entry && query_field(f[1]) && !f[1].empty()) { q->entry = query_unescape(f[1]); entry = true; }
+    else if (kind == "mode" && f.size() == 3 && compiler && entry && !mode && query_number(f[1], &q->profile) && q->profile >= 0 && query_flag(f[2])) { q->library = f[2] == "1"; mode = true; }
+    else if (!compiler || !entry || !mode) return false;
+    else if (kind == "end" && f.size() == 1) ended = true;
+    else if (kind == "unit" && f.size() == 7 && !descriptors && !declarations && !references) {
+      if (!query_field(f[1]) || !query_field(f[2]) || !query_field(f[4]) || f[1].empty() || f[2].empty() || !query_hash(f[3]) || !query_flag(f[5]) || !query_flag(f[6])) return false;
+      QueryUnit u{query_unescape(f[1]), query_unescape(f[2]), f[3], query_unescape(f[4]), f[5] == "1", f[6] == "1"};
+      if (!unit_paths.insert(u.path).second || !canonical_paths.insert(u.canonical).second) return false;
+      q->units.push_back(u);
+    } else if (kind == "descriptor" && f.size() == 3 && !q->units.empty() && !declarations && !references) {
+      if (!query_field(f[1]) || f[1].empty() || !query_hash(f[2])) return false;
+      descriptors = true; q->descriptors.push_back({query_unescape(f[1]), f[2]});
+    } else if (kind == "decl" && f.size() == 10 && !q->units.empty() && !references) {
       QueryDecl d;
+      if ((f[1] != "proc" && f[1] != "struct" && f[1] != "enum" && f[1] != "const") || f[2].empty() || !query_field(f[2]) || !query_field(f[3]) || !query_flag(f[8]) || !query_flag(f[9])) return false;
       d.kind = f[1]; d.name = query_unescape(f[2]); d.id = query_unescape(f[3]);
       if (!query_number(f[4], &d.unit) || !query_number(f[5], &d.line) || !query_number(f[6], &d.col) || !query_number(f[7], &d.end_line)) return false;
-      if (d.unit < -1 || d.unit >= (int32_t)q->units.size()) return false;
+      if (d.unit < -1 || d.unit >= (int32_t)q->units.size() || !query_coordinates(d.line, d.col, d.end_line)) return false;
       d.generated = f[8] == "1"; d.exported = f[9] == "1";
-      q->decls.push_back(d);
-    } else if (kind == "ref" && f.size() == 7) {
+      if (d.unit == -1 && !d.generated) return false;
+      declarations = true; q->decls.push_back(d);
+    } else if (kind == "ref" && f.size() == 7 && !q->units.empty()) {
       QueryRef r;
+      if (!query_field(f[5]) || !query_flag(f[6])) return false;
       if (!query_number(f[1], &r.to) || !query_number(f[2], &r.unit) || !query_number(f[3], &r.line) || !query_number(f[4], &r.col)) return false;
-      if (r.to < 0 || r.to >= (int32_t)q->decls.size() || r.unit < -1 || r.unit >= (int32_t)q->units.size()) return false;
+      if (r.to < 0 || r.to >= (int32_t)q->decls.size() || r.unit < -1 || r.unit >= (int32_t)q->units.size() || !query_coordinates(r.line, r.col, r.line)) return false;
       r.from = query_unescape(f[5]); r.generated = f[6] == "1";
-      q->refs.push_back(r);
+      if (r.unit == -1 && !r.generated) return false;
+      references = true; q->refs.push_back(r);
     } else return false;
   }
-  return header && ended;
+  return header && compiler && entry && mode && ended && !q->units.empty() && canonical_paths.count(q->entry);
 }
 
 static std::string query_cache_dir() {
@@ -398,8 +432,8 @@ static std::string query_cache_dir() {
 
 // A cached index answers only when it was written by this compiler for this
 // entry, and every unit it read is still the same file with the same bytes.
-static bool query_current(const QueryIndex &q, const std::string &compiler, const std::string &entry) {
-  if (q.compiler != compiler || q.entry != entry || q.units.empty()) return false;
+static bool query_current(const QueryIndex &q, const std::string &compiler, const std::string &entry, const EmitOptions &opts) {
+  if (q.compiler != compiler || q.entry != entry || q.profile != opts.profile_identity || q.library != opts.library || q.units.empty()) return false;
   for (const QueryUnit &u : q.units) {
     std::error_code ec;
     auto canonical = std::filesystem::canonical(u.path, ec);
