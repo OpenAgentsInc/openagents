@@ -14,6 +14,26 @@ same statement that checks it. Checks: `coax/web/api/test_access.py` (each
 gated route refused on, admitted off and for creators and admins; codes
 hashed, spent once, revoked and expired refused).
 
+## A NIP-98 caller is its key's account, once per signature
+
+On `/api/playtest/realms` and `GET /api/auth/v2/me`, a request with an
+`Authorization: Nostr` header is its signer's account, `auth.account_of`
+(a linked key's account, else `n-<pubkey>`), and nothing else: a bad, forged
+or expired signature, a signed write without a `payload` tag, and a signature
+seen before are 401, never a fallback to the `X-Verse-Player` key. The
+decision is `cp_caller` (`coax/web/api/caller-policy.coax`, `#authority`,
+mutation-checked); `access.c` only moves the facts in and out. The signer acts
+through a player key the database derives for its account
+(`auth.caller_key`, `migrations/0098_cli_callers.sql`): kept nowhere, never
+sent, so every ownership and admission rule (`verse.owns`, `access.gate`, the
+builder's caps) is the same SQL a page's key meets; no rule was changed for
+it. The Origin check still runs first. Checks:
+`coax/web/api/tests/cli_auth.coax` (owner's signed save 200, another key's
+403, replay, changed body, unbound write, wrong URL and forged header 401,
+another site's Origin 403, the player key as before), run by `test.sh` and by
+`coax/web/api/cli-auth-test.sh` on staging.
+
+
 ## A made realm's document changes only from the revision it was read at
 
 A made realm is a versioned document (`verse.realm_doc`,

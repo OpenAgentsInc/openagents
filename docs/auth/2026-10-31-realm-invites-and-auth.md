@@ -111,14 +111,25 @@ their body (payload tag) and are good once.
 | `POST /api/admin/access/requests/<id>/approve\|decline` | admin | 409 decided |
 | `POST /api/admin/access/creators {who}`, `.../creators/<who>/remove` | admin | a pubkey or an account id |
 | `POST /api/admin/access/grandfather` | admin | `{approved: N}` |
-| `GET /api/auth/v2/me` | logged in | `account ID`, `id\|nostr\|npub…`, `id\|workos\|email` |
+| `GET /api/auth/v2/me` | logged in, or NIP-98 signed | `account ID`, `id\|nostr\|npub…`, `id\|workos\|email`; answers with the flags off too |
 | `POST /api/auth/v2/link/nostr {"kind":"link"}` | session + the new key's NIP-98 | 401, 409 |
 | `GET /api/auth/v2/workos/start` | anyone | 302 to AuthKit (`provider=GoogleOAuth`); 503 without `OA_WORKOS_CLIENT_ID` |
 | `GET /api/auth/v2/workos/callback?code&state` | WorkOS | state spent once; the code exchange answers 501 (not built) |
 
-With a flag off, its POSTs and `/api/auth/v2/*` fall through to the routes
+`GET /api/auth/v2/me` answers whatever the flags say, so the CLI can ask
+who its key is (`openagents whoami`). With a flag off, its POSTs and the rest
+of `/api/auth/v2/*` fall through to the routes
 that answered those paths before (404). The admin routes work with the flags
 off, so invites can be prepared first.
+
+**NIP-98 callers** (`docs/cli/2026-11-01-openagents-cli-v1.md`, 0098). A
+request signed with NIP-98 (kind 27235, `u`, `method`, and `payload` on every
+write) is its key's account on `/api/playtest/realms` and `/api/auth/v2/me`.
+Each signature is good once (`projects.seen`) and within 60 s. A bad one is
+401, never the player key. The signer acts through a player key the database
+derives for its account (`auth.caller_key`): never stored or sent, so the
+realm rules are unchanged. `GET /api/playtest/realms/mine` lists the caller's
+made realms (`?as=lines`: `realm SLUG|REV|PUBLISHED|LISTED|NAME`).
 
 **Data** (0090, additive: new schemas `access` and `auth`; no existing
 table, column, constraint, row or function changes): `access.flags`,

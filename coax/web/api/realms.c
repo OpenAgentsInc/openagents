@@ -17,6 +17,8 @@
 //   GET  /api/playtest/realms/<slug>/card              -> text/plain "want" (take its picture) or "no"
 //   POST /api/playtest/realms/<slug>/card  (image/jpeg) -> 200 {image}; 400 not a 1200x630 JPEG, 413, 403, 404
 //   GET  /api/playtest/realms/made                     -> text/plain, the newest made realms as /og's rows
+//   GET  /api/playtest/realms/mine                     -> the caller's made realms: {realms: [{slug, name, rev, published,
+//        listed}]}, or ?as=lines "realm SLUG|REV|PUBLISHED|LISTED|NAME" (published 0: never); none is {realms: []} or ""
 // FORK (migrations/0075_realm_forks.sql, docs/verse/realm-fork.md): any built-in realm with rule sets, or a fork.
 //   GET  /api/playtest/realms/<slug>/fork              -> text/plain: base, title, fork, from, maker, name, owner, published, rule ID 0|1 LABEL
 //   POST /api/playtest/realms/<slug>/fork {rules, name?}   -> 200 {slug, path, name, base, from, rules, page}; 400, 401, 404, 429
@@ -55,9 +57,12 @@
 // Realm invites (access.c, migrations/0090_realm_invites.sql): with the flag realm_invites on, plan,
 // pick, plan/doc, MAKE IT and a FORK's POST answer 403 "invite only" to anyone not an approved
 // creator or a site admin. Off (the default), they are as before.
-// Who asks: the X-Verse-Player key (a logged-in player's key carries its account). A write from
-// another site's page (Origin) is refused. As a question is, the model call and the page's writes
-// are made by a child with its own database connection.
+// Who asks: the X-Verse-Player key (a logged-in player's key carries its account), or a NIP-98
+// signature, which is its key's account (auth.account_of) through the player key SQL derives for that
+// account (auth.caller_key, migrations/0098_cli_callers.sql); a signed write binds its body and every
+// signature is good once (caller-policy.coax). A write from another site's page (Origin) is refused.
+// As a question is, the model call and the page's writes are made by a child with its own database
+// connection.
 //   OA_BUILDER_URL        the generateContent URL (tests point it at a fake)
 //   OA_BUILDER_MODEL      the model (gemini-2.5-flash, its thinking off: migrations/0060_builder_fast.sql)
 //   OA_BUILDER_TIMEOUT_MS how long one try may take (3500); an unanswered or failed try is tried once more
@@ -696,22 +701,40 @@ bool realms_route(const request *q) {
     api_json(q->fd, 403, "{\"error\":\"cross-site\"}");
     return true;
   }
+  // A NIP-98 signature (a CLI or an agent) is its key's account: its player key comes from SQL
+  // (auth.caller_key), so every rule below is the one the page's key meets. Forged, unbound or
+  // replayed: 401, never the player key instead (caller-policy.coax).
+  char signer[65] = "";
+  int sig = access_signed(q, db, signer);
+  if (sig < 0) return true;
+  if (sig > 0 && !access_caller_key(db, signer, key)) { api_json(q->fd, 500, "{\"error\":\"not read\"}"); return true; }
+  const char *by = sig > 0 ? signer : NULL;
   if (!*rest) {
     if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a board\"}"); return true; }
-    if (access_refused(q, db, key)) return true;   // realm_invites on: approved creators only
+    if (access_refused(q, db, key, by)) return true;   // realm_invites on: approved creators only
     make(q, db, key);
     return true;
   }
   if (!strcmp(rest, "plan/doc")) {
     if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a document\"}"); return true; }
-    if (access_refused(q, db, key)) return true;
+    if (access_refused(q, db, key, by)) return true;
     doc(q, db, NULL, key, "false");
     return true;
   }
   if (!strcmp(rest, "plan") || !strcmp(rest, "pick")) {
     if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a prompt\"}"); return true; }
-    if (access_refused(q, db, key)) return true;
+    if (access_refused(q, db, key, by)) return true;
     plan(q, db, key, !strcmp(rest, "pick"));
+    return true;
+  }
+  if (!strcmp(rest, "mine")) {   // the caller's realms (0098): "realm SLUG|REV|PUBLISHED|LISTED|NAME" lines, or JSON
+    if (post) { api_json(q->fd, 405, "{\"error\":\"GET your realms\"}"); return true; }
+    const char *v[1] = {key};
+    PGresult *r = PQexecParams(db, "SELECT x->>'lines', (x->'body')::text FROM verse.realms_mine($1) x", 1, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { api_log("realms: mine: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    else if (as_lines(q)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
+    else api_json(q->fd, 200, PQgetvalue(r, 0, 1));
+    PQclear(r);
     return true;
   }
   if (!strcmp(rest, "made")) {   // /og's rows ("made" is a reserved address: no realm has it)
@@ -730,7 +753,7 @@ bool realms_route(const request *q) {
   const char *what = slash ? slash + 1 : "";
   // A site admin (admins.conf, by site login or NIP-98) is an admin of every realm; SQL decides the rest.
   char who[65];
-  const char *admin = admin_who(q, db, who) == 0 ? "true" : "false";
+  const char *admin = (by ? admin_is(by) : admin_who(q, db, who) == 0) ? "true" : "false";
   if (!*what) {
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the realm\"}"); return true; }
     const char *v[3] = {slug, key, admin};
@@ -774,7 +797,7 @@ bool realms_route(const request *q) {
   }
   if (!strcmp(what, "card")) { card(q, db, slug, key, admin, post); return true; }
   if (!strcmp(what, "fork")) {   // a fork is a new realm: behind the same gate (its GET is not)
-    if (post && access_refused(q, db, key)) return true;
+    if (post && access_refused(q, db, key, by)) return true;
     fork_realm(q, db, slug, key, admin, post);
     return true;
   }

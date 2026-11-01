@@ -1,0 +1,211 @@
+// The API's checks for the CLI as a caller, in Coax over coax/lib/net/http.coax
+// (docs/cli/2026-11-01-openagents-cli-v1.md, "What the server needs"):
+//   nip98   a NIP-98 signature is its key's account on /api/playtest/realms and
+//           /api/auth/v2/me: an owner's signed save works, another key's is 403,
+//           a replay, a changed body, an unbound write and a signature for
+//           another URL are 401, another site's Origin is still 403, and the
+//           X-Verse-Player key works as before
+//   mine    GET /api/playtest/realms/mine: an owner with realms, one with none,
+//           a guest key, nobody
+// Every key is made for the run and never printed.
+//   coax/web/api/cli-auth-test.sh http://127.0.0.1:PORT        (test.sh runs it on its API)
+//   coax/web/api/cli-auth-test.sh https://staging.openagents.com
+#import "Basic";
+#load "../../../lib/sys/tool.coax";
+#load "../../../lib/sys/proc.coax";
+#load "../../../lib/net/http.coax";
+#load "../../../lib/nostr/nip98_sign.coax";
+#load "../../../lib/nostr/nip06.coax";
+
+cxrand_draw :: (out: [] u8, n: int) -> int #foreign;
+cxproc_wall_us :: () -> int #foreign;
+
+CaT :: struct {
+  api: [256] u8; api_n: int;
+  pass: int; fail: int;
+  w: [1] HttpWork; out: [HTTP_BODY_MAX] u8; n: int; code: int;
+  auth: [N98S_HEADER] u8; auth_n: int;          // the last signature sent
+  run: [16] u8;                                 // this run's tag, for names
+  cookie: [256] u8; cookie_n: int;              // a site session (oa_session=...), sent while cookie_on
+  cookie_on: bool;
+}
+CaKey :: struct { secret: [32] u8; pub: [64] u8; }
+
+ca_api :: (t: [] CaT) -> string { return cast(string) t[0].api[0..<t[0].api_n]; }
+ca_body :: (t: [] CaT) -> string { return cast(string) t[0].out[0..<t[0].n]; }
+ca_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+ca_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+ca_check :: (t: [] CaT, name: string, ok: bool) {
+  if ok { t[0].pass += 1; print("ok   %\n", name); return; }
+  t[0].fail += 1;
+  print("FAIL % (status %: %)\n", name, t[0].code, ca_body(t));
+}
+
+ca_new_key :: (k: [] CaKey) -> bool {
+  pub: [33] u8;
+  if cxrand_draw(k[0].secret[..], 32) != 0 || !bip32_public(k[0].secret[..], pub[..]) { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<32 { k[0].pub[2 * i] = digits[cast(int) (pub[1 + i] >> 4)]; k[0].pub[2 * i + 1] = digits[cast(int) (pub[1 + i] & 15)]; }
+  return true;
+}
+ca_pub_of :: (k: [] CaKey) -> string { return cast(string) k[0].pub[..]; }
+
+// Signs METHOD api+sign_path with ca_body (bound unless a GET) into t[0].auth.
+ca_sign :: (t: [] CaT, k: [] CaKey, method: string, sign_path: string, b: string, bind: bool) -> bool {
+  url: [2048] u8; bb: [65536] u8; aux: [32] u8; nonce: [16] u8;
+  u := ca_put(url[..], 0, ca_api(t)); u = ca_put(url[..], u, sign_path);
+  bn := ca_put(bb[..], 0, b);
+  if u < 0 || bn < 0 || cxrand_draw(aux[..], 32) != 0 || cxrand_draw(nonce[..], 16) != 0 { return false; }
+  t[0].auth_n = n98s_header(k[0].secret[..], aux[..], nonce[..], cxproc_wall_us() / 1000000, cast(string) url[0..<u], method, bb[0..<bn], bind, t[0].auth[..]);
+  return t[0].auth_n > 0;
+}
+// One request to api+path. auth: send t[0].auth; player: an X-Verse-Player key or ""; origin: an Origin or "".
+ca_call :: (t: [] CaT, method: string, path: string, b: string, auth: bool, player: string, origin: string) -> int {
+  url: [2048] u8; ah: [N98S_HEADER + 32] u8; ph: [300] u8; oh: [300] u8; ch: [300] u8;
+  u := ca_put(url[..], 0, ca_api(t)); u = ca_put(url[..], u, path);
+  hs: [5] string; n := 0;
+  if t[0].cookie_on { c := ca_put(ch[..], 0, "Cookie: "); c = ca_put(ch[..], c, cast(string) t[0].cookie[0..<t[0].cookie_n]); hs[n] = cast(string) ch[0..<c]; n += 1; }
+  hs[n] = "Content-Type: application/json"; n += 1;
+  if auth { a := ca_put(ah[..], 0, "Authorization: "); a = ca_put(ah[..], a, cast(string) t[0].auth[0..<t[0].auth_n]); hs[n] = cast(string) ah[0..<a]; n += 1; }
+  if player.count > 0 { p := ca_put(ph[..], 0, "X-Verse-Player: "); p = ca_put(ph[..], p, player); hs[n] = cast(string) ph[0..<p]; n += 1; }
+  if origin.count > 0 { o := ca_put(oh[..], 0, "Origin: "); o = ca_put(oh[..], o, origin); hs[n] = cast(string) oh[0..<o]; n += 1; }
+  r := http_do(t[0].w[..], method, cast(string) url[0..<u], hs[0..<n], b, 20000, 0, t[0].out[..]);
+  t[0].n = r.n; t[0].code = ifx r.error == HTTP_OK then r.code else -r.error;
+  return t[0].code;
+}
+// Signed by k for this path and body, then sent.
+ca_signed :: (t: [] CaT, k: [] CaKey, method: string, path: string, b: string) -> int {
+  if !ca_sign(t, k, method, path, b, method != "GET") { t[0].code = -100; t[0].n = 0; return -100; }
+  return ca_call(t, method, path, b, true, "", "");
+}
+// The same, from a page on the API's own origin (as /login's signed POSTs are).
+ca_signed_here :: (t: [] CaT, k: [] CaKey, method: string, path: string, b: string) -> int {
+  if !ca_sign(t, k, method, path, b, method != "GET") { t[0].code = -100; t[0].n = 0; return -100; }
+  return ca_call(t, method, path, b, true, "", ca_api(t));
+}
+// The value after "KEY " on a line of the last body, into out.
+ca_line_value :: (t: [] CaT, key: string, out: [] u8) -> string {
+  s := ca_body(t); at := 0;
+  while at < s.count {
+    e := at;
+    while e < s.count && s[e] != '\n' { e += 1; }
+    l := s[at..<e];
+    if l.count > key.count && l[0..<key.count] == key && l[key.count] == ' ' {
+      n := ca_put(out, 0, l[key.count + 1..<l.count]);
+      return ifx n < 0 then "" else cast(string) out[0..<n];
+    }
+    at = e + 1;
+  }
+  return "";
+}
+// A realm made with a board of its own name: its slug into out, or "".
+ca_make :: (t: [] CaT, k: [] CaKey, player: string, name: string, out: [] u8) -> string {
+  b: [256] u8;
+  n := ca_put(b[..], 0, "{\"board\":{\"name\":\""); n = ca_put(b[..], n, name); n = ca_put(b[..], n, "\",\"features\":[]}}");
+  code := ifx player.count > 0 then ca_call(t, "POST", "/api/playtest/realms?as=lines", cast(string) b[0..<n], false, player, "")
+          else ca_signed(t, k, "POST", "/api/playtest/realms?as=lines", cast(string) b[0..<n]);
+  return ifx code == 200 then ca_line_value(t, "slug", out) else "";
+}
+ca_path_of :: (slug: string, rest: string, out: [] u8) -> string {
+  n := ca_put(out, 0, "/api/playtest/realms/"); n = ca_put(out, n, slug); n = ca_put(out, n, rest);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+ca_name_of :: (t: [] CaT, who: string, out: [] u8) -> string {
+  n := ca_put(out, 0, "Cli "); n = ca_put(out, n, who); n = ca_put(out, n, " "); n = ca_put(out, n, cast(string) t[0].run[..]);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+ca_nip98_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, kept: [] u8) -> int {
+  me := "/api/auth/v2/me";
+  ca_check(t, "me: nobody is 401", ca_call(t, "GET", me, "", false, "", "") == 401);
+  want: [80] u8;
+  wn := ca_put(want[..], 0, "account n-"); wn = ca_put(want[..], wn, ca_pub_of(a));
+  ca_check(t, "me: a signed GET answers the key's own account", ca_signed(t, a, "GET", me, "") == 200 && ca_has(ca_body(t), cast(string) want[0..<wn]));
+  ca_check(t, "me: the same signature again is refused", ca_call(t, "GET", me, "", true, "", "") == 401 && ca_has(ca_body(t), "used already"));
+  ca_check(t, "me: a signature for another URL is refused", ca_sign(t, a, "GET", "/api/auth/v2/me?x=1", "", false) && ca_call(t, "GET", me, "", true, "", "") == 401);
+
+  na: [80] u8; sa: [64] u8; p: [200] u8;
+  slug := ca_make(t, a, "", ca_name_of(t, "a", na[..]), sa[..]);
+  ca_check(t, "realms: a signed MAKE IT makes a realm", slug.count > 0);
+  ca_check(t, "realms: a replayed MAKE IT is refused", ca_call(t, "POST", "/api/playtest/realms?as=lines", "{\"board\":{\"name\":\"Again\",\"features\":[]}}", true, "", "") == 401);
+  ca_check(t, "realms: the signer owns it", ca_signed(t, a, "GET", ca_path_of(slug, "", p[..]), "") == 200 && ca_has(ca_body(t), "\nrole owner\n"));
+  ca_check(t, "realms: the owner's signed save works", ca_signed(t, a, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 200 && ca_has(ca_body(t), "\"rev\""));
+  ca_check(t, "realms: another key's signed save is 403", ca_signed(t, b, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 403);
+  ca_check(t, "realms: another key is a visitor", ca_signed(t, b, "GET", ca_path_of(slug, "", p[..]), "") == 200 && ca_has(ca_body(t), "\nrole visitor\n"));
+  ok := ca_sign(t, a, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}", true);
+  ca_check(t, "realms: a changed body is refused", ok && ca_call(t, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":2,\"moved\":[]}", true, "", "") == 401);
+  ok = ca_sign(t, a, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}", false);
+  ca_check(t, "realms: an unbound signed write is refused", ok && ca_call(t, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}", true, "", "") == 401 && ca_has(ca_body(t), "payload"));
+  ok = ca_sign(t, a, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}", true);
+  ca_check(t, "realms: a signed write from another site's page is 403", ok && ca_call(t, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}", true, "", "https://evil.example") == 403);
+  t[0].auth_n = ca_put(t[0].auth[..], 0, "Nostr eyJub3QiOiJhbiBldmVudCJ9");
+  ca_check(t, "realms: a forged header is 401, never the player key", ca_call(t, "GET", ca_path_of(slug, "", p[..]), "", true, "", "") == 401);
+
+  // The page's key works as before, and is not the signer.
+  minted := ca_call(t, "POST", "/api/playtest/player", "{}", false, "", "") == 200;
+  gk: [200] u8;
+  gn := 0;
+  s := ca_body(t);
+  k := 0;
+  while k + 7 < s.count && s[k..<k + 7] != "\"key\": " { k += 1; }
+  if k + 8 < s.count { k += 8; while k < s.count && s[k] != '"' && gn < 199 { gk[gn] = s[k]; gn += 1; k += 1; } }
+  guest := cast(string) gk[0..<gn];
+  ca_check(t, "guest: a player key is minted", minted && gn >= 20);
+  ng: [80] u8; sg: [64] u8; q: [200] u8;
+  gslug := ca_make(t, a, guest, ca_name_of(t, "guest", ng[..]), sg[..]);
+  ca_check(t, "guest: the player key makes a realm, as before", gslug.count > 0);
+  ca_check(t, "guest: and saves it", ca_call(t, "POST", ca_path_of(gslug, "/save", q[..]), "{\"rev\":1,\"moved\":[]}", false, guest, "") == 200);
+  ca_check(t, "guest: a signer can't save the guest's realm", ca_signed(t, a, "POST", ca_path_of(gslug, "/save", q[..]), "{\"rev\":1,\"moved\":[]}") == 403);
+  ca_check(t, "guest: the guest can't save the signer's realm", ca_call(t, "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":2,\"moved\":[]}", false, guest, "") == 403);
+
+  // GET /api/playtest/realms/mine
+  ra: [80] u8;
+  rn := ca_put(ra[..], 0, "realm "); rn = ca_put(ra[..], rn, slug); rn = ca_put(ra[..], rn, "|");
+  rg: [80] u8;
+  gn2 := ca_put(rg[..], 0, "realm "); gn2 = ca_put(rg[..], gn2, gslug); gn2 = ca_put(rg[..], gn2, "|");
+  ca_check(t, "mine: an owner's realms, as lines", ca_signed(t, a, "GET", "/api/playtest/realms/mine?as=lines", "") == 200 &&
+        ca_has(ca_body(t), cast(string) ra[0..<rn]) && !ca_has(ca_body(t), cast(string) rg[0..<gn2]));
+  sj: [80] u8;
+  jn := ca_put(sj[..], 0, "\"slug\": \""); jn = ca_put(sj[..], jn, slug); jn = ca_put(sj[..], jn, "\"");
+  ca_check(t, "mine: and as JSON", ca_signed(t, a, "GET", "/api/playtest/realms/mine", "") == 200 && ca_has(ca_body(t), "{\"realms\": [") && ca_has(ca_body(t), cast(string) sj[0..<jn]));
+  ca_check(t, "mine: a key with no realms has none", ca_signed(t, b, "GET", "/api/playtest/realms/mine?as=lines", "") == 200 && t[0].n == 0 &&
+        ca_signed(t, b, "GET", "/api/playtest/realms/mine", "") == 200 && ca_body(t) == "{\"realms\": []}");
+  ca_check(t, "mine: a guest key's realms", ca_call(t, "GET", "/api/playtest/realms/mine?as=lines", "", false, guest, "") == 200 &&
+        ca_has(ca_body(t), cast(string) rg[0..<gn2]) && !ca_has(ca_body(t), cast(string) ra[0..<rn]));
+  ca_check(t, "mine: nobody has none", ca_call(t, "GET", "/api/playtest/realms/mine?as=lines", "", false, "", "") == 200 && t[0].n == 0);
+  ca_check(t, "mine: a replayed signature is refused", ca_call(t, "GET", "/api/playtest/realms/mine", "", true, "", "") == 401);
+  ca_check(t, "mine: is a GET", ca_signed(t, a, "POST", "/api/playtest/realms/mine", "{}") == 405);
+  return ca_put(kept, 0, slug);
+}
+text_int_of :: (s: string) -> int {
+  n := 0;
+  for c: s { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
+  return ifx s.count == 0 then -1 else n;
+}
+
+tool_main :: () -> int #export_c {
+  t: [1] CaT;
+  e: [256] u8;
+  base := proc_getenv("API", e[..]);
+  if base.count < 8 { tool_errln("cli_auth: set API, e.g. API=http://127.0.0.1:57000"); return 2; }
+  t[0].api_n = ca_put(t[0].api[..], 0, base);
+  r: [8] u8;
+  if cxrand_draw(r[..], 8) != 0 { return 1; }
+  digits := "0123456789abcdef";
+  for i: 0..<8 { t[0].run[2 * i] = digits[cast(int) (r[i] >> 4)]; t[0].run[2 * i + 1] = digits[cast(int) (r[i] & 15)]; }
+  a: [1] CaKey; b: [1] CaKey;
+  if !ca_new_key(a[..]) || !ca_new_key(b[..]) { tool_errln("cli_auth: no keys"); return 1; }
+  only := proc_getenv("ONLY", e[..]);
+  kept: [64] u8;
+  kn := ca_nip98_checks(t[..], a[..], b[..], kept[..]);
+  print("% checks, % passed, % failed\n", t[0].pass + t[0].fail, t[0].pass, t[0].fail);
+  return ifx t[0].fail == 0 then 0 else 1;
+}

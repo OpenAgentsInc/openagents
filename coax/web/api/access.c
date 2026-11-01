@@ -16,7 +16,8 @@
 //   POST /api/admin/access/requests/<id>/approve | decline
 //   POST /api/admin/access/creators {who}     a pubkey (hex) or an account id; .../creators/<who>/remove
 //   POST /api/admin/access/grandfather        everyone who owns a made realm becomes a creator
-//   GET  /api/auth/v2/me                      account ID, then id|nostr|npub..., id|workos|email
+//   GET  /api/auth/v2/me                      account ID, then id|nostr|npub..., id|workos|email (with the flags
+//                                             off too; a NIP-98 signature is good once, caller-policy.coax)
 //   POST /api/auth/v2/link/nostr {"kind":"link"}   the session's account takes the NIP-98 signer's key
 //   GET  /api/auth/v2/workos/start            302 to AuthKit (OA_WORKOS_CLIENT_ID); 503 while it isn't set
 //   GET  /api/auth/v2/workos/callback?code&state   the state spent; the code exchange is not built (501)
@@ -30,12 +31,15 @@
 //   OA_WORKOS_REDIRECT_URI  the callback WorkOS sends back to (origin + /api/auth/v2/workos/callback)
 //   OA_WORKOS_PROVIDER      the connection AuthKit opens (GoogleOAuth; "authkit" shows them all)
 #include "api.h"
+#include "nostr.h"
+#include "caller-policy.generated.h"
 #include <ctype.h>
 #include <signal.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 static const char *env_or(const char *name, const char *fallback) { const char *v = getenv(name); return v && *v ? v : fallback; }
 static const char *origin(void) { return env_or("OA_API_ORIGIN", "https://openagents.com"); }
@@ -100,6 +104,49 @@ static void player_key(const request *q, char key[160]) {
   api_header(q, "X-Verse-Player", key, 160);
 }
 
+// ---- a NIP-98-signed caller (caller-policy.coax decides; this moves the facts in and out)
+static bool first_seen(PGconn *db, const char *id) {
+  const char *v[1] = {id};
+  PGresult *r = PQexecParams(db, "INSERT INTO projects.seen (id, ms) VALUES ($1, projects.now_ms()) ON CONFLICT DO NOTHING", 1, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_COMMAND_OK && !strcmp(PQcmdTuples(r), "1");
+  PQclear(r);
+  return ok;
+}
+int access_signed(const request *q, PGconn *db, char pk[65]) {
+  char auth[4096];
+  pk[0] = 0;
+  bool signed_req = api_header(q, "Authorization", auth, sizeof auth) && !strncmp(auth, "Nostr ", 6);
+  bool verified = false, payload = false, unseen = false;
+  bool safe = !strcmp(q->method, "GET") || !strcmp(q->method, "HEAD");
+  nostr_event ev;
+  memset(&ev, 0, sizeof ev);
+  if (signed_req) {
+    char url[4300], err[160];
+    snprintf(url, sizeof url, "%s%s", origin(), q->target);
+    verified = nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err);
+    payload = verified && ev.payload[0] != 0;
+    if (cp_wants_seen(signed_req, verified, safe, payload)) unseen = first_seen(db, ev.id);
+  }
+  int64_t who = cp_caller(signed_req, verified, safe, payload, unseen);
+  if (who == 0) return 0;
+  if (who == 1) { memcpy(pk, ev.pubkey, 65); return 1; }
+  coax_string why = cp_refusal_text(who);
+  char out[160];
+  if (as_lines(q)) api_respond(q->fd, 401, "text/plain; charset=utf-8", NULL, why.data, (size_t)why.count);
+  else { snprintf(out, sizeof out, "{\"error\":\"%.*s\"}", (int)why.count, why.data); api_json(q->fd, 401, out); }
+  return -1;
+}
+// The player key the signer's account acts with (auth.caller_key, migrations/0098): derived in SQL, never kept or shown.
+bool access_caller_key(PGconn *db, const char *pk, char key[160]) {
+  const char *v[1] = {pk};
+  PGresult *r = PQexecParams(db, "SELECT auth.caller_key($1)", 1, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0) && PQgetlength(r, 0, 0) < 160;
+  if (ok) snprintf(key, 160, "%s", PQgetvalue(r, 0, 0));
+  else { key[0] = 0; api_log("access: caller key: %s", PQerrorMessage(db)); }
+  PQclear(r);
+  return ok;
+}
+
 // One answer from SQL: {status, body, lines}. Lines (as text/plain) when asked for and there.
 static void answer(const request *q, PGconn *db, const char *sql, int n, const char *const *v, const char *what) {
   PGresult *r = PQexecParams(db, sql, n, NULL, v, NULL, NULL, 0);
@@ -130,12 +177,12 @@ static bool same_site(const request *q) {
 }
 
 // ---- realm creation's gate (realms.c): true when it answered (403 invite only), false to go on.
-bool access_refused(const request *q, PGconn *db, const char *key) {
+bool access_refused(const request *q, PGconn *db, const char *key, const char *signer) {
   if (!flag(db, "realm_invites")) return false;
   char who[65], pk[65];
-  bool admin = admin_who(q, db, who) == 0;
+  bool admin = signer && *signer ? admin_is(signer) : admin_who(q, db, who) == 0;
   if (admin) return false;
-  logged_in(q, db, pk);
+  if (signer && *signer) snprintf(pk, sizeof pk, "%s", signer); else logged_in(q, db, pk);
   const char *v[2] = {key ? key : "", pk};
   PGresult *r = PQexecParams(db, "SELECT access.gate($1, nullif($2, ''), false)", 2, NULL, v, NULL, NULL, 0);
   int status = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 ? atoi(PQgetvalue(r, 0, 0)) : 500;
@@ -310,11 +357,12 @@ static int workos_exchange(const char *code, char *profile, size_t cap) {
 }
 
 static bool auth_v2(const request *q, PGconn *db, const char *rest) {
-  if (!flag(db, "auth_v2")) return false;   // off: /api/auth/* is private.c's, as before
   bool post = !strcmp(q->method, "POST");
   char pk[65];
-  if (!strcmp(rest, "me") && !post) {
-    logged_in(q, db, pk);
+  if (!strcmp(rest, "me") && !post) {   // any time, flags or not: who this session or signature is
+    int sig = access_signed(q, db, pk);
+    if (sig < 0) return true;
+    if (sig == 0) logged_in(q, db, pk);
     if (!pk[0]) { api_json(q->fd, 401, "{\"error\":\"log in first\"}"); return true; }
     const char *v[1] = {pk};
     PGresult *r = PQexecParams(db, "SELECT auth.me($1)", 1, NULL, v, NULL, NULL, 0);
@@ -323,6 +371,7 @@ static bool auth_v2(const request *q, PGconn *db, const char *rest) {
     PQclear(r);
     return true;
   }
+  if (!flag(db, "auth_v2")) return false;   // off: the rest of /api/auth/* is private.c's, as before
   if (!strcmp(rest, "link/nostr") && post) {
     // The new key signs (NIP-98, payload this exact body, fresh, once); the session says whose account.
     if (q->body_len != 15 || memcmp(q->body, "{\"kind\":\"link\"}", 15)) { api_json(q->fd, 400, "{\"error\":\"not a link\"}"); return true; }

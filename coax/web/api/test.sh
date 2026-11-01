@@ -6,6 +6,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 "$here/mesh-policy.sh" --check-inputs
+"$here/caller-policy.sh" --check-inputs
 "$here/nip98.sh" --check-inputs
 # NIP-98 is Coax (nip98.coax): with a compiler here, its checks and its C cache.
 repo_root="$(cd "$here/../../.." && pwd)"
@@ -24,7 +25,7 @@ cc=/usr/bin/clang
 secp="$(brew --prefix secp256k1 2>/dev/null || true)"
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
   -I"$pg/include" ${secp:+-I"$secp/include"} -I"$(brew --prefix openssl@3)/include" \
-  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/replies.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/nip98.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c \
+  -o "$work/api" "$here"/api.c "$here"/analytics.c "$here"/admin.c "$here"/player.c "$here"/npc.c "$here"/room.c "$here"/private.c "$here"/drops.c "$here"/villa.c "$here"/chat.c "$here"/realms.c "$here"/access.c "$here"/replies.c "$here"/makers.c "$here"/inference.c "$here"/mesh.c "$here"/mesh-policy.generated.c "$here"/caller-policy.generated.c "$here"/nip98.generated.c "$here"/nostr.c "$here"/email.c "$here"/jobs.c "$here"/relay.c \
   -L"$pg/lib" -lpq ${secp:+-L"$secp/lib"} -lsecp256k1 -L"$(brew --prefix openssl@3)/lib" -lssl -lcrypto -lcurl -lz -lm
 # The Coax NIP-98 check against the former C check, on the corpus and seeded mutations.
 $cc -std=c11 -O1 -g -Wall -Wextra -Werror -D_DEFAULT_SOURCE -fsanitize=address,undefined \
@@ -83,11 +84,13 @@ OA_INFERENCE_URL="http://127.0.0.1:$INFER_PORT/chat/completions" OA_INFERENCE_TO
 OA_SPARK_URL="http://127.0.0.1:$SPARK_PORT" OA_SPARK_TOKEN=test-spark \
 OA_WORKOS_CLIENT_ID=client_test \
 OA_RESEND_URL="http://127.0.0.1:$RESEND_PORT/emails" OA_RESEND_API_KEY=test-resend OA_EMAIL_ALLOW=owner@example.com OA_EMAIL_BACKOFF_MS=10 \
-OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=jobs@example.iam.gserviceaccount.com \
+OA_TOKENINFO_URL="http://127.0.0.1:$TOKENINFO_PORT/tokeninfo" OA_JOBS_CALLER=jobs@example.iam.gserviceaccount.com OA_DEVICE_TTL_MS=4000 \
 OA_NPC_URL="http://127.0.0.1:$NPC_PORT/model" OA_NPC_TOKEN=test-token OA_NPC_DAILY_CAP=5 OA_PIECE_URL="http://127.0.0.1:$PIECE_PORT/model" OA_PIECE_DAILY_CAP=40 OA_EDIT_URL="http://127.0.0.1:$PIECE_PORT/edit-model" OA_EDIT_TIMEOUT_MS=1500 OA_BUILDER_URL="http://127.0.0.1:$BUILDER_PORT/model" OA_BUILDER_TIMEOUT_MS=1200 OA_BUILDER_PER_DAY=6 \
   OA_BUILD_SHA=1111111111111111111111111111111111111111 OA_RELEASE_ID=123e4567-e89b-42d3-a456-426614174000 K_SERVICE=oa-api-staging K_REVISION=oa-api-staging-00002-new \
   OA_API_ORIGIN="http://127.0.0.1:$api_port" "$work/api" --listen 127.0.0.1:$api_port --migrations "$here/migrations" 2>"$work/api.log" & api_pid=$!
 for _ in $(seq 50); do curl -s "http://127.0.0.1:$api_port/api/playtest/health" >/dev/null && break; sleep 0.1; done
 API_LOG="$work/api.log" API="http://127.0.0.1:$api_port" PGURL="$OA_API_DATABASE" PSQL="$pg/bin/psql" python3 -I "$here/test.py" || { cat "$work/api.log"; exit 1; }
+# The CLI as a caller (NIP-98 callers, realms/mine, device login), in Coax: tests/cli_auth.coax.
+"$here/cli-auth-test.sh" "http://127.0.0.1:$api_port" || { cat "$work/api.log"; exit 1; }
 if grep -q "ERROR: AddressSanitizer\|runtime error" "$work/api.log"; then cat "$work/api.log"; exit 1; fi
 echo "api: checks passed"

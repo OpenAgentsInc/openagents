@@ -1,0 +1,66 @@
+// Who a request to a caller-taking route acts as (access.c, realms.c,
+// docs/cli/2026-11-01-openagents-cli-v1.md "What the server needs"). The host
+// passes what it observed: whether the request carries an Authorization:
+// Nostr header, whether nip98.coax verified it for this URL, method and body,
+// whether the request is a safe read (GET, HEAD), whether the event has a
+// payload tag (which nip98.coax has checked against the body), and whether its
+// id is new (projects.seen, recorded only after the rest passes). This file
+// decides; the host only moves the facts in and the answer out.
+//
+//   not signed            CP_PLAYER: the X-Verse-Player key, as before (or nobody)
+//   signed and good       CP_SIGNER: the signer's account (auth.account_of) acts
+//   signed and not good   a refusal (401): never a fall back to the player key
+//
+// A signed write must bind its body (payload) and every signed request is good
+// once, reads too: a replayed read is refused like a replayed write.
+#authority;
+
+CP_PLAYER :: 0; CP_SIGNER :: 1;
+CP_BAD_SIG :: 10; CP_UNBOUND :: 11; CP_REPLAY :: 12;
+
+#test "unsigned requests stay the player key's; signed ones are the signer's only when whole" {
+  #assert cp_caller(false, false, true, false, false) == CP_PLAYER;
+  #assert cp_caller(false, false, false, false, false) == CP_PLAYER;
+  #assert cp_caller(false, true, false, true, true) == CP_PLAYER;
+  #assert cp_caller(true, true, true, false, true) == CP_SIGNER;
+  #assert cp_caller(true, true, true, true, true) == CP_SIGNER;
+  #assert cp_caller(true, true, false, true, true) == CP_SIGNER;
+}
+#test "a signed request that is forged, unbound or replayed is refused" {
+  #assert cp_caller(true, false, true, false, true) == CP_BAD_SIG;
+  #assert cp_caller(true, false, false, true, true) == CP_BAD_SIG;
+  #assert cp_caller(true, true, false, false, true) == CP_UNBOUND;
+  #assert cp_caller(true, true, false, false, false) == CP_UNBOUND;
+  #assert cp_caller(true, true, true, false, false) == CP_REPLAY;
+  #assert cp_caller(true, true, false, true, false) == CP_REPLAY;
+  #assert cp_caller(true, true, true, true, false) == CP_REPLAY;
+}
+#test "whether the id must be recorded: only for a request that passes all else" {
+  #assert cp_wants_seen(true, true, true, false) && cp_wants_seen(true, true, false, true) && cp_wants_seen(true, true, true, true);
+  #assert !cp_wants_seen(false, true, true, true) && !cp_wants_seen(true, false, true, true) && !cp_wants_seen(true, true, false, false);
+}
+#test "each refusal has its words; the rest have none" {
+  #assert cp_refusal_text(CP_BAD_SIG) == "nip98: not a good signature for this request";
+  #assert cp_refusal_text(CP_UNBOUND) == "nip98: sign the body (a payload tag)";
+  #assert cp_refusal_text(CP_REPLAY) == "nip98: that signature was used already";
+  #assert cp_refusal_text(CP_PLAYER) == "" && cp_refusal_text(CP_SIGNER) == "" && cp_refusal_text(13) == "" && cp_refusal_text(9) == "";
+  #assert CP_PLAYER == 0 && CP_SIGNER == 1 && CP_BAD_SIG == 10 && CP_UNBOUND == 11 && CP_REPLAY == 12;
+}
+
+cp_caller :: (signed: bool, verified: bool, safe_method: bool, payload: bool, unseen: bool) -> int #export_c {
+  if !signed { return CP_PLAYER; }
+  if !verified { return CP_BAD_SIG; }
+  if !safe_method && !payload { return CP_UNBOUND; }
+  if !unseen { return CP_REPLAY; }
+  return CP_SIGNER;
+}
+// Whether the host should record the event's id now (it would pass with a new one).
+cp_wants_seen :: (signed: bool, verified: bool, safe_method: bool, payload: bool) -> bool #export_c {
+  return cp_caller(signed, verified, safe_method, payload, true) == CP_SIGNER;
+}
+cp_refusal_text :: (code: int) -> string #export_c {
+  if code == CP_BAD_SIG { return "nip98: not a good signature for this request"; }
+  if code == CP_UNBOUND { return "nip98: sign the body (a payload tag)"; }
+  if code == CP_REPLAY { return "nip98: that signature was used already"; }
+  return "";
+}

@@ -1,0 +1,195 @@
+// NIP-98 HTTP auth, the signing side, for any URL, method and body
+// (nostr/book/ch049-http-auth.md): a kind 27235 event with the tags
+// ["u", URL], ["method", METHOD] and, when the body is bound,
+// ["payload", SHA-256 of the body as hex], then ["nonce", 16 random bytes as
+// hex], signed with BIP-340, as the header "Nostr <base64 of the event>". The
+// nonce keeps two requests to one URL in one second two events (an event's ID
+// covers its tags and time, not the signature's randomness). The server's check is
+// coax/web/api/nip98.coax; it takes each event once and within 60 s, so sign a
+// new one for every request, just before sending it.
+//
+// The caller brings the key, 32 bytes of auxiliary randomness (BIP-340), the
+// 16-byte nonce and the time, so this file has no effects and the same inputs sign the same
+// bytes. Bind the body (bind true) for every request but GET and HEAD: the API
+// refuses an unbound write (caller-policy.coax).
+//   h: [N98S_HEADER] u8;
+//   n := n98s_header(key, aux, nonce, now_s, url, "POST", body_bytes, true, h[..]);   // its length, or -1
+#load "event_sign.coax";
+#load "base64.coax";
+#authority;
+
+N98S_KIND :: 27235;
+N98S_URL_MAX :: 2000;
+N98S_TAGS :: 2200;      // the tags JSON for the longest URL
+N98S_EVENT :: 4096;     // the signed event
+N98S_HEADER :: 5500;    // "Nostr " and the event's base64
+
+#test "a URL and a method we sign: http(s), visible ASCII that needs no JSON escape" {
+  #assert n98s_url_ok("https://openagents.com/api/auth/v2/me") && n98s_url_ok("http://127.0.0.1:5/x?a=b&c=%20") && n98s_url_ok("http://a") && n98s_url_ok("https://a");
+  #assert !n98s_url_ok("http://") && !n98s_url_ok("https://") && !n98s_url_ok("ftp://a.b/") && !n98s_url_ok("HTTPS://a/") && !n98s_url_ok("");
+  #assert !n98s_url_ok("https://a/\"") && !n98s_url_ok("https://a/\\") && !n98s_url_ok("https://a/ b") && !n98s_url_ok("https://a/\n");
+  long: [N98S_URL_MAX + 1] u8;
+  p := "https://a/";
+  for i: 0..<long.count { long[i] = ifx i < p.count then p[i] else 'x'; }
+  #assert n98s_url_ok(cast(string) long[0..<N98S_URL_MAX]) && !n98s_url_ok(cast(string) long[..]);
+  del: [11] u8;
+  for i: 0..<10 { del[i] = p[i]; }
+  del[10] = 127;
+  #assert !n98s_url_ok(cast(string) del[..]);
+  del[10] = 126;
+  #assert n98s_url_ok(cast(string) del[..]);
+  del[10] = 33;
+  #assert n98s_url_ok(cast(string) del[..]);
+  #assert n98s_method_ok("GET") && n98s_method_ok("POST") && n98s_method_ok("OPTIONS") && n98s_method_ok("A");
+  #assert !n98s_method_ok("") && !n98s_method_ok("get") && !n98s_method_ok("PO ST") && !n98s_method_ok("ABCDEFGHIJK") && n98s_method_ok("ABCDEFGHIJ");
+  #assert !n98s_method_ok("@") && !n98s_method_ok("[") && n98s_method_ok("Z");
+}
+
+#test "the tags: u, method, then payload when bound" {
+  out: [N98S_TAGS] u8;
+  n := n98s_tags("https://openagents.com/x", "GET", "", "00112233445566778899aabbccddeeff", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "[[\"u\",\"https://openagents.com/x\"],[\"method\",\"GET\"],[\"nonce\",\"00112233445566778899aabbccddeeff\"]]";
+  hx := "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
+  n = n98s_tags("http://h/", "POST", hx, "00112233445566778899aabbccddeeff", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "[[\"u\",\"http://h/\"],[\"method\",\"POST\"],[\"payload\",\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"],[\"nonce\",\"00112233445566778899aabbccddeeff\"]]";
+  #assert n98s_tags("http://h/", "POST", hx, "00112233445566778899aabbccddeeff", out[0..<n]) == n && n98s_tags("http://h/", "POST", hx, "00112233445566778899aabbccddeeff", out[0..<n - 1]) == -1;
+  #assert n98s_tags("http://h/", "POST", "a", "00112233445566778899aabbccddeeff", out[..]) == -1 && n98s_tags("http://h/", "POST", hx[0..<63], "00112233445566778899aabbccddeeff", out[..]) == -1 && n98s_tags("http://h/", "post", "", "00112233445566778899aabbccddeeff", out[..]) == -1 && n98s_tags("h", "GET", "", "00112233445566778899aabbccddeeff", out[..]) == -1;
+  #assert n98s_tags("http://h/", "POST", "44136FA355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", "00112233445566778899aabbccddeeff", out[..]) == -1;
+  #assert n98s_tags("http://h/", "POST", "g4136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", "00112233445566778899aabbccddeeff", out[..]) == -1;
+  #assert n98s_tags("http://h/", "GET", "", "00112233445566778899aabbccddeef", out[..]) == -1 && n98s_tags("http://h/", "GET", "", "00112233445566778899aabbccddeefg", out[..]) == -1;
+  #assert n98s_hex_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 64) && !n98s_hex_ok("", 64) && n98s_hex_ok("0123456789abcdef", 16);
+  #assert !n98s_hex_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde/", 64);
+  #assert !n98s_hex_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde:", 64);
+  #assert !n98s_hex_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde`", 64);
+}
+
+#test "a header signs the event the tags say, with a good id and signature" #steps 1500000000 {
+  key: [32] u8; aux: [32] u8;
+  nonce: [16] u8;
+  for i: 0..<32 { key[i] = cast(u8) (i + 1); aux[i] = cast(u8) (200 - i); }
+  for i: 0..<16 { nonce[i] = cast(u8) (17 * i); }
+  h: [N98S_HEADER] u8; body: [2] u8; none: [1] u8;
+  body[0] = '{'; body[1] = '}';
+  n := n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://openagents.com/api/playtest/realms", "POST", body[..], true, h[..]);
+  #assert n > 6 && cast(string) h[0..<6] == "Nostr ";
+  ev: [N98S_EVENT] u8;
+  d := base64_decode_checked(cast(string) h[6..<n], ev[..], false);
+  #assert d.error == NC_OK;
+  text := cast(string) ev[0..<d.written];
+  work: [N98S_EVENT] u8;
+  e := nostr_event_verify_vartime(text, work[..], false);
+  #assert e.error == NE_OK && e.verified && e.kind == 27235 && e.created_at == 1767225600;
+  #assert n98s_has(text, "[\"u\",\"https://openagents.com/api/playtest/realms\"]") && n98s_has(text, "[\"method\",\"POST\"]");
+  #assert n98s_has(text, "[\"payload\",\"44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a\"]") && n98s_has(text, "\"content\":\"\"");
+  #assert n98s_has(text, "[\"nonce\",\"00112233445566778899aabbccddeeff\"]");
+  // The same inputs sign the same bytes; an unbound GET has no payload.
+  h2: [N98S_HEADER] u8;
+  #assert n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://openagents.com/api/playtest/realms", "POST", body[..], true, h2[..]) == n;
+  for i: 0..<n { #assert h[i] == h2[i]; }
+  m := n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://openagents.com/api/auth/v2/me", "GET", none[0..<0], false, h[..]);
+  d = base64_decode_checked(cast(string) h[6..<m], ev[..], false);
+  #assert m > 6 && d.error == NC_OK && !n98s_has(cast(string) ev[0..<d.written], "payload") && n98s_has(cast(string) ev[0..<d.written], "[\"method\",\"GET\"]");
+  // An empty body bound still says its hash.
+  m = n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://h/", "POST", none[0..<0], true, h[..]);
+  d = base64_decode_checked(cast(string) h[6..<m], ev[..], false);
+  #assert m > 6 && d.error == NC_OK && n98s_has(cast(string) ev[0..<d.written], "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+  // Refusals: a bad URL or method, a zero key, a short key or aux, a full header.
+  zero: [32] u8;
+  #assert n98s_header(key[..], aux[..], nonce[..], 1767225600, "nope", "GET", none[0..<0], false, h[..]) == -1;
+  #assert n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://h/", "get", none[0..<0], false, h[..]) == -1;
+  #assert n98s_header(zero[..], aux[..], nonce[..], 1767225600, "https://h/", "GET", none[0..<0], false, h[..]) == -1;
+  #assert n98s_header(key[0..<31], aux[..], nonce[..], 1767225600, "https://h/", "GET", none[0..<0], false, h[..]) == -1;
+  #assert n98s_header(key[..], aux[0..<31], nonce[..], 1767225600, "https://h/", "GET", none[0..<0], false, h[..]) == -1;
+  #assert n98s_header(key[..], aux[..], nonce[0..<15], 1767225600, "https://h/", "GET", none[0..<0], false, h[..]) == -1;
+  // Another nonce is another event.
+  nonce[15] = 1;
+  h3: [N98S_HEADER] u8;
+  q := n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://h/", "GET", none[0..<0], false, h3[..]);
+  q2 := n98s_header(key[..], aux[..], nonce[0..<16], 1767225600, "https://h/", "GET", none[0..<0], false, h2[..]);
+  #assert q > 0 && q == q2;
+  nonce[15] = 2;
+  q2 = n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://h/", "GET", none[0..<0], false, h2[..]);
+  same := true;
+  for i: 0..<q { if h2[i] != h3[i] { same = false; } }
+  #assert q2 == q && !same;
+  #assert n98s_header(key[..], aux[..], nonce[..], -1, "https://h/", "GET", none[0..<0], false, h[..]) == -1;
+  #assert n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://h/", "GET", none[0..<0], false, h[0..<100]) == -1;
+  #assert n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://h/", "GET", none[0..<0], false, h[0..<5]) == -1;
+  big: [1048577] u8;
+  #assert n98s_header(key[..], aux[..], nonce[..], 1767225600, "https://h/", "POST", big[..], true, h[..]) == -1;
+}
+
+#test "the test helper finds a part anywhere, and nothing longer than the text" {
+  #assert n98s_has("ab", "ab") && n98s_has("ab", "a") && n98s_has("ab", "b") && n98s_has("ab", "") && !n98s_has("a", "ab") && !n98s_has("ab", "c");
+}
+n98s_has :: (s: string, part: string) -> bool {
+  if part.count > s.count { return false; }
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+n98s_url_ok :: (url: string) -> bool {
+  web := (url.count > 7 && url[0..<7] == "http://") || (url.count > 8 && url[0..<8] == "https://");
+  if !web || url.count > N98S_URL_MAX { return false; }
+  for c: url { if c < 33 || c > 126 || c == '"' || c == '\\' { return false; } }
+  return true;
+}
+n98s_method_ok :: (m: string) -> bool {
+  if m.count < 1 || m.count > 10 { return false; }
+  for c: m { if c < 'A' || c > 'Z' { return false; } }
+  return true;
+}
+n98s_hex_ok :: (h: string, n: int) -> bool {
+  if h.count != n { return false; }
+  for c: h { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+n98s_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+// The tags JSON: payload_hex is "" (unbound) or 64 lowercase hex; nonce_hex is 32. Its length, or -1.
+n98s_tags :: (url: string, method: string, payload_hex: string, nonce_hex: string, out: [] u8) -> int {
+  bound := payload_hex.count > 0;
+  if !n98s_url_ok(url) || !n98s_method_ok(method) || (bound && !n98s_hex_ok(payload_hex, 64)) || !n98s_hex_ok(nonce_hex, 32) { return -1; }
+  t := n98s_put(out, 0, "[[\"u\",\"");
+  t = n98s_put(out, t, url);
+  t = n98s_put(out, t, "\"],[\"method\",\"");
+  t = n98s_put(out, t, method);
+  t = n98s_put(out, t, "\"]");
+  if bound {
+    t = n98s_put(out, t, ",[\"payload\",\"");
+    t = n98s_put(out, t, payload_hex);
+    t = n98s_put(out, t, "\"]");
+  }
+  t = n98s_put(out, t, ",[\"nonce\",\"");
+  t = n98s_put(out, t, nonce_hex);
+  return n98s_put(out, t, "\"]]");
+}
+// The Authorization header's value for one request. Its length, or -1.
+n98s_header :: (key: [] u8, aux: [] u8, nonce: [] u8, created_at: int, url: string, method: string, body: [] u8, bind: bool, out: [] u8) -> int {
+  hx: [64] u8; hn := 0; nx: [32] u8;
+  digits := "0123456789abcdef";
+  if nonce.count != 16 { return -1; }
+  for i: 0..<16 { nx[2 * i] = digits[cast(int) (nonce[i] >> 4)]; nx[2 * i + 1] = digits[cast(int) (nonce[i] & 15)]; }
+  if bind {
+    h: [32] u8;
+    if sha256_hash_checked(body, h[..], false) != SHA_OK { return -1; }
+    for i: 0..<32 { hx[2 * i] = digits[cast(int) (h[i] >> 4)]; hx[2 * i + 1] = digits[cast(int) (h[i] & 15)]; }
+    hn = 64;
+  }
+  tags: [N98S_TAGS] u8;
+  tn := n98s_tags(url, method, cast(string) hx[0..<hn], cast(string) nx[..], tags[..]);
+  if tn == -1 { return -1; }
+  work: [1] NostrSignWork; scratch: [8192] u8; ev: [N98S_EVENT] u8;
+  r := EVENT_MORE;   // each stage moves on or refuses, so this ends
+  while r == EVENT_MORE {
+    r = nostr_event_sign_step(key, aux, created_at, N98S_KIND, cast(string) tags[0..<tn], "", work[..], scratch[..], ev[..], false);
+  }
+  if r == EVENT_REFUSED { return -1; }
+  p := n98s_put(out, 0, "Nostr ");
+  if p == -1 { return -1; }
+  e := base64_encode_checked(cast(string) ev[0..<r], out[p..<out.count], false);
+  if e.error != NC_OK { return -1; }
+  return p + e.written;
+}

@@ -72,4 +72,9 @@ int email_send(PGconn *db, const char *message, char id[128], char *err, size_t 
 bool replies_route(const request *q);     // replies.c: reply with a realm (ev-reply-realm)
 bool access_route(const request *q);      // access.c: realm invites, the waitlist, auth v2 (flags off by default)
 // realms.c, before a realm is planned or made: true when access.c answered 403 invite only (realm_invites on).
-bool access_refused(const request *q, PGconn *db, const char *key);
+// signer: a NIP-98 caller's pubkey (access_signed), or NULL.
+bool access_refused(const request *q, PGconn *db, const char *key, const char *signer);
+// A NIP-98 caller (access.c, caller-policy.coax): 0 not signed; 1 good, its pubkey in pk; -1 refused and answered 401.
+int access_signed(const request *q, PGconn *db, char pk[65]);
+// The player key a signer's account acts with on realm routes (auth.caller_key): false on a database error.
+bool access_caller_key(PGconn *db, const char *pk, char key[160]);
