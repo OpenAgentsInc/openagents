@@ -584,6 +584,12 @@ Part X are wired into it, and what the rest still need.
 | `nip43.coax` | 67 | Not wired | A relay key (`n43_self` in NIP-11), membership state from kinds 13534, 8000 and 8001, and the join and leave requests routed to `n43_request` |
 | `nip29.coax` | 59 | Not wired | Group state per `h` tag, `g29_admit` for events with an `h` tag, and the relay-signed metadata, admins and members events (`g29_write_*`) |
 
+Still to do for the wired rows: the served NIP-11 document's
+`supported_nips` still says `[1,11,40,42]`. Adding 9, 13, 45, 62 and 70
+changes `RR_NIP11` and its copy `RS_NIP11` in `relay_server.coax`
+(`#authority`, so a root-only mutation run), and chapter 37's example,
+transcript and byte counts, which are built around that document.
+
 ## How the code is checked
 
 ### Checks in the library
