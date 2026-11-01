@@ -198,3 +198,21 @@ int64_t cxwl_out(coax_v_u8 s) {
   while (done < s.count) { ssize_t n = write(1, s.data + done, (size_t)(s.count - done)); if (n < 0 && errno == EINTR) continue; if (n <= 0) return -1; done += n; }
   return 0;
 }
+/* Starts path detached, a client of the compositor at display (a full socket path): its pid, or
+   -errno. Children are reaped by the kernel (SIGCHLD is ignored once this has run). */
+int64_t cxwl_spawn(coax_v_u8 path, coax_v_u8 display) {
+  char p[1024], d[1024];
+  if (path.count <= 0 || path.count >= 1024 || display.count <= 0 || display.count >= 1024) return -ENAMETOOLONG;
+  memcpy(p, path.data, (size_t)path.count); p[path.count] = 0;
+  memcpy(d, display.data, (size_t)display.count); d[display.count] = 0;
+  if (access(p, X_OK) != 0) return -(int64_t)errno;
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid < 0) return -(int64_t)errno;
+  if (pid == 0) {
+    setsid(); setenv("WAYLAND_DISPLAY", d, 1); unsetenv("DISPLAY");
+    int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); }
+    execl(p, p, (char *)NULL); _exit(127);
+  }
+  return pid;
+}

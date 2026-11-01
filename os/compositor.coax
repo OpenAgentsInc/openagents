@@ -1,8 +1,11 @@
-// `compositor SOCKET KEYMAP [W H]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// `compositor SOCKET KEYMAP LAUNCH-DIR [W H]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
 // step 2 row 6). It serves real Wayland clients on SOCKET (WAYLAND_DISPLAY may name it as a full path):
 // wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (no clipboard data
 // moves yet) and xdg_wm_base, and it places every
 // toplevel with os/wm.coax, the CoderOS window policy, on one W x H screen (1280 x 720 when not given).
+// The CoderOS key bindings run first (Super+Return opens Coder, Super+arrows move the focus, and the
+// rest of Omarchy's tiling keys); a binding that starts a program runs LAUNCH-DIR/NAME with NAME one
+// of coder, pane, dictation, presentation, browser, android.
 // KEYMAP is the XKB keymap text clients get (os/compositor-us.xkb is the US layout, compiled once by
 // `xkbcli compile-keymap --layout us`; it is data, not a tool).
 // This first step is headless: it draws nothing to a display and reads no input device. Its input is
@@ -10,7 +13,8 @@
 //   list                     every window: id, desk, rectangle in pixels, focus, app id, title
 //   shot PATH                composites the screen and writes it to PATH as a PPM image
 //   move X Y | click         the pointer: moves (focus follows it, as Hyprland's follow_mouse) or clicks
-//   key CODE | text TEXT     a key by evdev code, or US-layout text, to the focused window
+//   key CODE | text TEXT     a key by evdev code, or US-layout text, through the bindings
+//   chord CODE...            keys pressed in order and released in reverse (125 is Super)
 //   close                    asks the focused window to close
 //   wm OP [ARG]              a window-policy verb: movefocus D, movewindow D, resize D F, togglesplit,
 //                            togglefloating, fullscreen, maximize, switch N, moveto N (D 0..3 left
@@ -42,8 +46,10 @@ cxwl_memfd :: (s: [] u8) -> int #foreign;
 cxwl_ms :: () -> int #foreign;
 cxwl_stdin :: (out: [] u8) -> int #foreign;
 cxwl_out :: (s: [] u8) -> int #foreign;
+cxwl_spawn :: (path: [] u8, display: [] u8) -> int #foreign;
 
-CX_CLIENTS :: 32; CX_OBJS :: 4096; CX_SURFS :: 512; CX_POOLS :: 256; CX_BUFS :: 1024; CX_POS :: 128; CX_DUE :: 1024;
+CX_CLIENTS :: 32; CX_OBJS :: 4096;   // live objects a client may hold (ids are reused lowest first)
+CX_SURFS :: 512; CX_POOLS :: 256; CX_BUFS :: 1024; CX_POS :: 128; CX_DUE :: 1024;
 CX_MAXW :: 3840; CX_MAXH :: 2160;
 // What an object id names.
 K_NONE :: 0; K_DISPLAY :: 1; K_REGISTRY :: 2; K_CALLBACK :: 3; K_COMPOSITOR :: 4; K_SUBCOMP :: 5; K_SHM :: 6; K_POOL :: 7;
@@ -56,7 +62,7 @@ CxObj :: struct { kind: int; ix: int; ver: int; }
 CxClient :: struct {
   used: bool; h: int;
   objs: [CX_OBJS] CxObj;
-  inb: [65536] u8; nin: int;
+  inb: [16384] u8; nin: int;
   fds: [32] int; nfd: int;
   kbds: [8] int; nk: int; ptrs: [8] int; npt: int; outs: [8] int; no: int;
 }
@@ -74,6 +80,8 @@ CxSurf :: struct {
 }
 CxPos :: struct { used: bool; w: int; h: int; ax: int; ay: int; aw: int; ah: int; anchor: int; gravity: int; dx: int; dy: int; }
 CxDue :: struct { client: int; id: int; }
+// The composited screen, RGB, with room for a PPM header in front.
+CxFrame :: struct { b: [CX_MAXW * CX_MAXH * 3 + 64] u8; }
 CxMsg :: struct { b: [16384] u8; n: int; start: int; op: int; }
 Cx :: struct {
   w: int; h: int;
@@ -83,11 +91,12 @@ Cx :: struct {
   due: [CX_DUE] CxDue; ndue: int;
   serial: int; kfocus: int; pfocus: int; px: int; py: int;
   wm: [1] Wm;
-  out: [CX_MAXW * CX_MAXH * 3] u8;
   g: [1] CxMsg;
   row: [65536] u8;
-  keymap: [262144] u8; nkeymap: int;
+  keymap: [131072] u8; nkeymap: int;
   line: [8192] u8; nline: int;
+  held: [256] bool; swallowed: [256] bool;   // keys down, and presses a binding took
+  sock: [256] u8; nsock: int; launch: [512] u8; nlaunch: int;
   quit: bool;
 }
 
@@ -432,7 +441,7 @@ cx_count_left :: (l: [] int, n: int) -> int { k := 0; for i: 0..<n { if l[i] != 
 cx_read_client :: (x: [] Cx, ci: int) -> bool {
   while true {
     n := x[0].clients[ci].nin;
-    got := cxwl_recv(x[0].clients[ci].h, x[0].clients[ci].inb[n..<65536]);
+    got := cxwl_recv(x[0].clients[ci].h, x[0].clients[ci].inb[n..<16384]);
     for i: 0..<cxwl_fd_count() {
       fd := cxwl_fd(i);
       if x[0].clients[ci].nfd < 32 { x[0].clients[ci].fds[x[0].clients[ci].nfd] = fd; x[0].clients[ci].nfd += 1; } else { r := cxwl_close_fd(fd); }
@@ -460,7 +469,7 @@ cx_read_client :: (x: [] Cx, ci: int) -> bool {
 
 // ---- drawing
 
-cx_draw_surf :: (x: [] Cx, s: int, ox: int, oy: int, cx0: int, cy0: int, cx1: int, cy1: int) {
+cx_draw_surf :: (x: [] Cx, o: [] CxFrame, s: int, ox: int, oy: int, cx0: int, cy0: int, cx1: int, cy1: int) {
   b := x[0].surfs[s].cur;
   if b >= 0 && x[0].bufs[b].used {
     bf := x[0].bufs[b]; p := x[0].pools[bf.pool];
@@ -473,32 +482,32 @@ cx_draw_surf :: (x: [] Cx, s: int, ox: int, oy: int, cx0: int, cy0: int, cx1: in
         bb := cast(int) x[0].row[4 * c]; gg := cast(int) x[0].row[4 * c + 1]; rr := cast(int) x[0].row[4 * c + 2]; aa := ifx bf.fmt == 1 then 255 else cast(int) x[0].row[4 * c + 3];
         at := 3 * (dy * x[0].w + dx);
         if aa != 255 {   // premultiplied: src + dst * (1 - alpha)
-          rr += cast(int) x[0].out[at] * (255 - aa) / 255; gg += cast(int) x[0].out[at + 1] * (255 - aa) / 255; bb += cast(int) x[0].out[at + 2] * (255 - aa) / 255;
+          rr += cast(int) o[0].b[at] * (255 - aa) / 255; gg += cast(int) o[0].b[at + 1] * (255 - aa) / 255; bb += cast(int) o[0].b[at + 2] * (255 - aa) / 255;
         }
-        x[0].out[at] = cast,trunc(u8) cx_min(rr, 255); x[0].out[at + 1] = cast,trunc(u8) cx_min(gg, 255); x[0].out[at + 2] = cast,trunc(u8) cx_min(bb, 255);
+        o[0].b[at] = cast,trunc(u8) cx_min(rr, 255); o[0].b[at + 1] = cast,trunc(u8) cx_min(gg, 255); o[0].b[at + 2] = cast,trunc(u8) cx_min(bb, 255);
       }
     }
   }
   for i: 0..<CX_SURFS {   // subsurfaces over it, then its popups (placed from its window geometry)
     if !x[0].surfs[i].used || x[0].surfs[i].parent != s { continue; }
-    if x[0].surfs[i].role == R_SUB { cx_draw_surf(x, i, ox + x[0].surfs[i].sx, oy + x[0].surfs[i].sy, cx0, cy0, cx1, cy1); }
+    if x[0].surfs[i].role == R_SUB { cx_draw_surf(x, o, i, ox + x[0].surfs[i].sx, oy + x[0].surfs[i].sy, cx0, cy0, cx1, cy1); }
   }
   for i: 0..<CX_SURFS {
     if !x[0].surfs[i].used || x[0].surfs[i].parent != s || x[0].surfs[i].role != R_POPUP { continue; }
-    cx_draw_surf(x, i, ox + x[0].surfs[s].gx + x[0].surfs[i].sx - x[0].surfs[i].gx, oy + x[0].surfs[s].gy + x[0].surfs[i].sy - x[0].surfs[i].gy, 0, 0, x[0].w, x[0].h);
+    cx_draw_surf(x, o, i, ox + x[0].surfs[s].gx + x[0].surfs[i].sx - x[0].surfs[i].gx, oy + x[0].surfs[s].gy + x[0].surfs[i].sy - x[0].surfs[i].gy, 0, 0, x[0].w, x[0].h);
   }
 }
-cx_composite :: (x: [] Cx) {
-  for i: 0..<x[0].w * x[0].h { x[0].out[3 * i] = 24; x[0].out[3 * i + 1] = 26; x[0].out[3 * i + 2] = 32; }
+cx_composite :: (x: [] Cx, o: [] CxFrame) {
+  for i: 0..<x[0].w * x[0].h { o[0].b[3 * i] = 24; o[0].b[3 * i + 1] = 26; o[0].b[3 * i + 2] = 32; }
   t: [WM_WINS] WmTile; n := wm_tiles_on(x[0].wm[..], 0, t[..]);
   for i: 0..<n {
     s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
     r: [4] int; if !cx_place(x, t[i].id, r[..]) { continue; }
-    cx_draw_surf(x, s, r[0] - x[0].surfs[s].gx, r[1] - x[0].surfs[s].gy, r[0], r[1], r[0] + r[2], r[1] + r[3]);
+    cx_draw_surf(x, o, s, r[0] - x[0].surfs[s].gx, r[1] - x[0].surfs[s].gy, r[0], r[1], r[0] + r[2], r[1] + r[3]);
   }
 }
-cx_shot :: (x: [] Cx, path: string) -> bool {
-  cx_composite(x);
+cx_shot :: (x: [] Cx, o: [] CxFrame, path: string) -> bool {
+  cx_composite(x, o);
   head: [64] u8; hn := 0;
   hs: [3] string; hs[0] = "P6\n";
   for c: "P6\n" { head[hn] = c; hn += 1; }
@@ -506,9 +515,9 @@ cx_shot :: (x: [] Cx, path: string) -> bool {
   for c: "\n255\n" { head[hn] = c; hn += 1; }
   n := 3 * x[0].w * x[0].h;
   // the header goes in front of the pixels, which stay where they are: shift them once
-  i := n - 1; while i >= 0 { x[0].out[i + hn] = x[0].out[i]; i -= 1; }
-  for j: 0..<hn { x[0].out[j] = head[j]; }
-  ok := fs_write(path, cast(string) x[0].out[0..<n + hn]);
+  i := n - 1; while i >= 0 { o[0].b[i + hn] = o[0].b[i]; i -= 1; }
+  for j: 0..<hn { o[0].b[j] = head[j]; }
+  ok := fs_write(path, cast(string) o[0].b[0..<n + hn]);
   return ok;
 }
 cx_num_into :: (b: [] u8, at: int, value: int) -> int {
@@ -516,6 +525,110 @@ cx_num_into :: (b: [] u8, at: int, value: int) -> int {
   while true { d[k] = cast,trunc(u8) ('0' + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
   for i: 0..<k { b[at + i] = d[k - 1 - i]; }
   return at + k;
+}
+
+// ---- keys: every press passes the CoderOS bindings first (os/modules/coderos/desktop.nix at
+// 2ca255550e~1, Omarchy's tiling keys); what no binding takes goes to the focused window.
+
+CX_SHIFT :: 1; CX_CTRL :: 4; CX_ALT :: 8; CX_SUPER :: 64;   // XKB modifier masks
+cx_mask :: (x: [] Cx) -> int {
+  m := 0;
+  if x[0].held[42] || x[0].held[54] { m |= CX_SHIFT; }
+  if x[0].held[29] || x[0].held[97] { m |= CX_CTRL; }
+  if x[0].held[56] || x[0].held[100] { m |= CX_ALT; }
+  if x[0].held[125] || x[0].held[126] { m |= CX_SUPER; }
+  return m;
+}
+cx_is_mod :: (code: int) -> bool { return code == 42 || code == 54 || code == 29 || code == 97 || code == 56 || code == 100 || code == 125 || code == 126; }
+cx_dir :: (code: int) -> int { if code == 105 { return WM_LEFT; } if code == 106 { return WM_RIGHT; } if code == 103 { return WM_UP; } if code == 108 { return WM_DOWN; } return -1; }
+// Runs launch-dir/NAME, a client of this compositor.
+cx_exec :: (x: [] Cx, name: string) {
+  p: [1024] u8; n := 0;
+  for i: 0..<x[0].nlaunch { p[n] = x[0].launch[i]; n += 1; }
+  p[n] = '/'; n += 1; for c: name { if n < 1023 { p[n] = c; n += 1; } }
+  r := cxwl_spawn(p[0..<n], x[0].sock[0..<x[0].nsock]);
+  b: [256] u8; k := 0; for c: "exec " { b[k] = c; k += 1; } for c: name { if k < 200 { b[k] = c; k += 1; } }
+  if r < 0 { for c: " failed" { b[k] = c; k += 1; } }
+  cx_say(cast(string) b[0..<k]);
+}
+// What a press with these modifiers does under the CoderOS bindings: verb 0 when nothing (Hyprland
+// matches the modifier set exactly). arg is a direction, a desk 0..8, or which program to start.
+B_NONE :: 0; B_EXEC :: 1; B_CLOSE :: 2; B_FOCUS :: 3; B_DESK :: 4; B_TO_DESK :: 5; B_MOVE :: 6; B_RESIZE :: 7;
+B_SPLIT :: 8; B_FLOAT :: 9; B_FULL :: 10; B_MAX :: 11; B_SCREEN :: 12; B_TO_SCREEN :: 13; B_DESK_TO_SCREEN :: 14;
+CX_PROGRAMS :: 6;
+cx_program :: (i: int) -> string {
+  if i == 0 { return "coder"; } if i == 1 { return "pane"; } if i == 2 { return "dictation"; }
+  if i == 3 { return "presentation"; } if i == 4 { return "browser"; } return "android";
+}
+CxBind :: struct { verb: int; arg: int; }
+cx_bind :: (code: int, mods: int) -> CxBind {
+  d := cx_dir(code); digit := ifx code >= 2 && code <= 10 then code - 2 else -1;
+  S := CX_SUPER; none := CxBind.{verb = B_NONE};
+  if mods == S {
+    if code == 28 { return CxBind.{verb = B_EXEC, arg = 0}; }
+    if code == 17 || code == 16 { return CxBind.{verb = B_CLOSE}; }
+    if d >= 0 { return CxBind.{verb = B_FOCUS, arg = d}; }
+    if digit >= 0 { return CxBind.{verb = B_DESK, arg = digit}; }
+    if code == 36 { return CxBind.{verb = B_SPLIT}; }
+    if code == 57 || code == 32 { return CxBind.{verb = B_FLOAT}; }
+    if code == 33 { return CxBind.{verb = B_FULL}; }
+    if code == 20 { return CxBind.{verb = B_EXEC, arg = 1}; }
+    if code == 47 { return CxBind.{verb = B_EXEC, arg = 2}; }
+    if code == 25 { return CxBind.{verb = B_EXEC, arg = 3}; }
+    if code == 48 { return CxBind.{verb = B_EXEC, arg = 4}; }
+    if code == 30 { return CxBind.{verb = B_EXEC, arg = 5}; }
+  }
+  if mods == S | CX_SHIFT {
+    if digit >= 0 { return CxBind.{verb = B_TO_DESK, arg = digit}; }
+    if d >= 0 { return CxBind.{verb = B_MOVE, arg = d}; }
+  }
+  if mods == S | CX_CTRL {
+    if d >= 0 { return CxBind.{verb = B_RESIZE, arg = d}; }
+    if code == 33 { return CxBind.{verb = B_MAX}; }
+  }
+  if mods == CX_CTRL | CX_ALT && code == 15 { return CxBind.{verb = B_SCREEN, arg = WM_NEXT}; }
+  if mods == CX_CTRL | CX_ALT | CX_SHIFT && code == 15 { return CxBind.{verb = B_SCREEN, arg = WM_PREVIOUS}; }
+  if d >= 0 {
+    if mods == S | CX_ALT { return CxBind.{verb = B_SCREEN, arg = d}; }
+    if mods == S | CX_SHIFT | CX_ALT { return CxBind.{verb = B_TO_SCREEN, arg = d}; }
+    if mods == S | CX_CTRL | CX_ALT { return CxBind.{verb = B_DESK_TO_SCREEN, arg = d}; }
+  }
+  return none;
+}
+// Runs the binding a press makes; false when there is none and the key is the window's.
+cx_binding :: (x: [] Cx, code: int, mods: int) -> bool {
+  b := cx_bind(code, mods); m := x[0].wm[..]; v := b.verb;
+  if v == B_NONE { return false; }
+  if v == B_EXEC { cx_exec(x, cx_program(b.arg)); return true; }
+  if v == B_CLOSE { cx_close_focused(x); return true; }
+  if v == B_FOCUS { wm_movefocus(m, b.arg); }
+  else if v == B_DESK { wm_switch_workspace(m, b.arg); }
+  else if v == B_TO_DESK { wm_movetoworkspace(m, b.arg); }
+  else if v == B_MOVE { wm_movewindow(m, b.arg); }
+  else if v == B_RESIZE { full := ifx b.arg == WM_LEFT || b.arg == WM_RIGHT then x[0].w else x[0].h; wm_resize(m, b.arg, 40.0 / cast(f32) full); }
+  else if v == B_SPLIT { wm_togglesplit(m); }
+  else if v == B_FLOAT { wm_togglefloating(m); }
+  else if v == B_FULL { wm_fullscreen(m); }
+  else if v == B_MAX { wm_maximize(m); }
+  else if v == B_SCREEN { y := wm_focus_screen(m, b.arg); }
+  else if v == B_TO_SCREEN { f := wm_focus(m); if f != 0 { y := wm_move_to_screen(m, f, b.arg); } }
+  else if v == B_DESK_TO_SCREEN { y := wm_move_desk_to_screen(m, b.arg); }
+  cx_sync(x);
+  return true;
+}
+// One key going down or up, from the keyboard (evdev code).
+cx_input_key :: (x: [] Cx, code: int, down: bool) {
+  if code < 0 || code >= 256 { return; }
+  if !down && x[0].swallowed[code] { x[0].swallowed[code] = false; x[0].held[code] = false; return; }
+  before := cx_mask(x);
+  x[0].held[code] = down;
+  if down && !cx_is_mod(code) && cx_binding(x, code, before) { x[0].swallowed[code] = true; return; }
+  cx_key(x, code, down);
+  if cx_is_mod(code) && cx_mask(x) != before { cx_mods(x, cx_mask(x)); }
+}
+cx_close_focused :: (x: [] Cx) {
+  f := wm_focus(x[0].wm[..]); s := ifx f != 0 then x[0].win_surf[f] else -1;
+  if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
 }
 
 // ---- input from the test channel
@@ -599,37 +712,39 @@ cx_list :: (x: [] Cx) {
     k = cx_num_into(b[..], k, w); b[k] = 'x'; k += 1; k = cx_num_into(b[..], k, h);
     if t[i].id == wm_focus(m) { for c: " focused" { b[k] = c; k += 1; } }
     if t[i].floating { for c: " floating" { b[k] = c; k += 1; } }
+    if wm_is_fullscreen(m, t[i].id) { for c: " fullscreen" { b[k] = c; k += 1; } }
     for c: " app=" { b[k] = c; k += 1; } for j: 0..<x[0].surfs[s].na { b[k] = x[0].surfs[s].app[j]; k += 1; }
     for c: " title=" { b[k] = c; k += 1; } for j: 0..<x[0].surfs[s].nt { b[k] = x[0].surfs[s].title[j]; k += 1; }
     cx_say(cast(string) b[0..<k]);
   }
   cx_say("end");
 }
-cx_command :: (x: [] Cx, line: string) {
+cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
   w: [8] string; nw := 0; st := 0;
   for i: 0..<line.count + 1 { if i == line.count || line[i] == ' ' { if nw < 8 && i > st { w[nw] = line[st..<i]; nw += 1; } st = i + 1; } }
   if nw == 0 { return; }
   c := w[0]; m := x[0].wm[..];
   if c == "list" { cx_list(x); }
-  else if c == "shot" && nw == 2 { cx_say(ifx cx_shot(x, w[1]) then "shot" else "shot failed"); }
+  else if c == "shot" && nw == 2 { cx_say(ifx cx_shot(x, o, w[1]) then "shot" else "shot failed"); }
   else if c == "move" && nw == 3 { cx_pointer(x, cx_num(w[1]), cx_num(w[2])); cx_say("ok"); }
   else if c == "click" { cx_click(x); cx_say("ok"); }
-  else if c == "key" && nw == 2 { cx_key(x, cx_num(w[1]), true); cx_key(x, cx_num(w[1]), false); cx_say("ok"); }
+  else if c == "key" && nw == 2 { cx_input_key(x, cx_num(w[1]), true); cx_input_key(x, cx_num(w[1]), false); cx_say("ok"); }
+  else if c == "chord" && nw >= 2 {   // keys pressed in order, released in reverse
+    for i: 1..<nw { cx_input_key(x, cx_num(w[i]), true); }
+    i := nw - 1; while i >= 1 { cx_input_key(x, cx_num(w[i]), false); i -= 1; }
+    cx_say("ok");
+  }
   else if c == "text" {
     text := ifx line.count > 5 then line[5..<line.count] else "";
     for ch: text {
       sh: [1] bool; code := cx_char_key(ch, sh[..]); if code == 0 { continue; }
-      if sh[0] { cx_key(x, 42, true); cx_mods(x, 1); }
-      cx_key(x, code, true); cx_key(x, code, false);
-      if sh[0] { cx_key(x, 42, false); cx_mods(x, 0); }
+      if sh[0] { cx_input_key(x, 42, true); }
+      cx_input_key(x, code, true); cx_input_key(x, code, false);
+      if sh[0] { cx_input_key(x, 42, false); }
     }
     cx_say("ok");
   }
-  else if c == "close" {
-    f := wm_focus(m); s := ifx f != 0 then x[0].win_surf[f] else -1;
-    if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
-    cx_say("ok");
-  }
+  else if c == "close" { cx_close_focused(x); cx_say("ok"); }
   else if c == "wm" && nw >= 2 {
     v := w[1]; a1 := ifx nw > 2 then cx_num(w[2]) else 0;
     if v == "movefocus" { wm_movefocus(m, a1); } else if v == "movewindow" { wm_movewindow(m, a1); }
@@ -646,12 +761,13 @@ cx_command :: (x: [] Cx, line: string) {
 
 tool_main :: () -> int #export_c {
   a: [1] Args; ok := args_load(a[..]);
-  if !ok || (args_count(a[..]) != 2 && args_count(a[..]) != 4) { tool_errln("usage: compositor SOCKET KEYMAP [W H]"); return 2; }
-  cc: [1] Cx; x := cc[..];
+  if !ok || (args_count(a[..]) != 3 && args_count(a[..]) != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H]"); return 2; }
+  cc: [1] Cx; x := cc[..]; ff: [1] CxFrame; fr := ff[..];
   x[0].w = 1280; x[0].h = 720;
-  if args_count(a[..]) == 4 { x[0].w = cx_num(args_at(a[..], 2)); x[0].h = cx_num(args_at(a[..], 3)); }
+  if args_count(a[..]) == 5 { x[0].w = cx_num(args_at(a[..], 3)); x[0].h = cx_num(args_at(a[..], 4)); }
+  for c: args_at(a[..], 2) { if x[0].nlaunch < 512 { x[0].launch[x[0].nlaunch] = c; x[0].nlaunch += 1; } }
   if x[0].w < 64 || x[0].h < 64 || x[0].w > CX_MAXW || x[0].h > CX_MAXH { tool_errln("compositor: the screen is 64x64 to 3840x2160"); return 2; }
-  n := fs_read(args_at(a[..], 1), x[0].keymap[0..<262143]);
+  n := fs_read(args_at(a[..], 1), x[0].keymap[0..<131071]);
   if n <= 0 { tool_errln("compositor: cannot read the keymap"); return 1; }
   x[0].nkeymap = n; x[0].keymap[n] = 0;
   wm_new(x[0].wm[..]);
@@ -659,6 +775,7 @@ tool_main :: () -> int #export_c {
   for i: 0..<WM_WINS { x[0].win_surf[i] = -1; }
   x[0].kfocus = -1; x[0].pfocus = -1;
   sock := args_at(a[..], 0); sp: [256] u8; sn := 0; for c: sock { if sn < 255 { sp[sn] = c; sn += 1; } }
+  for i: 0..<sn { x[0].sock[i] = sp[i]; } x[0].nsock = sn;
   r := cxwl_listen(sp[0..<sn]);
   if r < 0 { tool_errln("compositor: cannot listen on the socket"); return 1; }
   cx_say("ready");
@@ -684,7 +801,7 @@ tool_main :: () -> int #export_c {
       if got < 0 { stdin_open = false; }
       else if got > 0 {
         x[0].nline += got; st := 0;
-        for i: 0..<x[0].nline { if x[0].line[i] == '\n' { cx_command(x, cast(string) x[0].line[st..<i]); st = i + 1; } }
+        for i: 0..<x[0].nline { if x[0].line[i] == '\n' { cx_command(x, fr, cast(string) x[0].line[st..<i]); st = i + 1; } }
         rest := x[0].nline - st; for i: 0..<rest { x[0].line[i] = x[0].line[st + i]; } x[0].nline = rest;
         if x[0].nline == 8192 { x[0].nline = 0; }
       }
@@ -710,6 +827,18 @@ tool_main :: () -> int #export_c {
   cx_popup_place(CxPos.{w = 100, h = 50, ax = 10, ay = 20, aw = 30, ah = 40, anchor = 8, gravity = 8}, pl[..]); #assert pl[0] == 40 && pl[1] == 60;
   cx_popup_place(CxPos.{w = 100, h = 50, ax = 10, ay = 20, aw = 30, ah = 40, anchor = 5, gravity = 5, dx = 2, dy = 3}, pl[..]); #assert pl[0] == -88 && pl[1] == -27;
   cx_popup_place(CxPos.{w = 100, h = 50, ax = 0, ay = 0, aw = 30, ah = 40}, pl[..]); #assert pl[0] == -35 && pl[1] == -5;
+}
+#test "the CoderOS bindings" {
+  S := CX_SUPER;
+  #assert cx_bind(28, S).verb == B_EXEC && cx_program(cx_bind(28, S).arg) == "coder" && cx_bind(28, 0).verb == B_NONE;
+  #assert cx_bind(105, S).verb == B_FOCUS && cx_bind(105, S).arg == WM_LEFT && cx_bind(108, S | CX_SHIFT).verb == B_MOVE && cx_bind(108, S | CX_SHIFT).arg == WM_DOWN;
+  #assert cx_bind(3, S).verb == B_DESK && cx_bind(3, S).arg == 1 && cx_bind(10, S | CX_SHIFT).verb == B_TO_DESK && cx_bind(10, S | CX_SHIFT).arg == 8;
+  #assert cx_bind(17, S).verb == B_CLOSE && cx_bind(16, S).verb == B_CLOSE && cx_bind(17, S | CX_SHIFT).verb == B_NONE;
+  #assert cx_bind(33, S).verb == B_FULL && cx_bind(33, S | CX_CTRL).verb == B_MAX && cx_bind(106, S | CX_CTRL).verb == B_RESIZE;
+  #assert cx_bind(15, CX_CTRL | CX_ALT).arg == WM_NEXT && cx_bind(15, CX_CTRL | CX_ALT | CX_SHIFT).arg == WM_PREVIOUS && cx_bind(15, S).verb == B_NONE;
+  #assert cx_bind(103, S | CX_ALT).verb == B_SCREEN && cx_bind(103, S | CX_SHIFT | CX_ALT).verb == B_TO_SCREEN && cx_bind(103, S | CX_CTRL | CX_ALT).verb == B_DESK_TO_SCREEN;
+  #assert cx_bind(57, S).verb == B_FLOAT && cx_bind(32, S).verb == B_FLOAT && cx_bind(36, S).verb == B_SPLIT && cx_program(cx_bind(20, S).arg) == "pane" && cx_program(cx_bind(30, S).arg) == "android";
+  #assert cx_bind(30, 0).verb == B_NONE && cx_bind(30, CX_SHIFT).verb == B_NONE;
 }
 #test "US text to evdev keys" {
   sh: [1] bool;

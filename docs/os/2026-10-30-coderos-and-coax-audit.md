@@ -456,6 +456,18 @@ compiler and the examples have not been run on Linux yet.
   with `movefocus`. `close` closed the first terminal, and the second took
   the full 1280x720.
 
+  The CoderOS key bindings also run in it now: the Super chords from the
+  Hyprland configuration, which follow Omarchy's tiling keys, as one pure
+  table (`cx_bind`) ahead of the focused window. In the headless check,
+  Super+Return three times opened three terminals through the launch
+  directory. They tiled the way dwindle tiles: a left half, then a right
+  half split top and bottom. Super+Left moved the focus, and Super+Shift+2
+  took the window to desk 2 and followed it there. Super+F made it
+  fullscreen. Super+1 then Super+W closed desk 1's focused window, and the
+  last one filled the screen. Super+W closes right away; the Rust
+  `coder-close` first warned about a Coder turn still running, and that
+  check is not ported yet.
+
   Left: the compositor's two faces to the machine, DRM/KMS output (the
   native GPU path already drives KMS) and evdev input with the Super key
   bindings. Also left: clipboard data, the pointer cursor, and the
