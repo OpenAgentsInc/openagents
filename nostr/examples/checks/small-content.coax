@@ -1,0 +1,139 @@
+// The checks of small-content.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/small-content.coax --run-steps 250000000
+#load "../small-content.coax";
+
+// book:begin check
+// The ids from a Python script written from NIP-01, NIP-19, BIP-340,
+// NIP-35, NIP-CC and NIP-F4 (it shares no code with Coax): hashlib.sha256
+// of json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False), with its own bech32 for the
+// npubs and naddrs and its own BIP-340 signer (auxiliary randomness zero)
+// for the two proofs, whose JSON the found logs carry. The found logs' ids
+// matching means the proofs' signatures match too.
+PY_ID :: [EVENTS] string.[
+  "6d761b12ab026f6e2f8fd8004c944d90933106104b94659b29fa16848cb92a1e",
+  "d5977b40c51709866ab8eed83044d6611b401d1c9c59d90b71e560f10f209d38",
+  "01c338bb43dca47df38128ac798489e0050b9ac1ce0f5076b6929b58a239f3c9",
+  "f4731b9a17ede85099cf58f457d3e74bfa6f884c8acf29d19f22bcaa686d9985",
+  "6dcb54235470b5c71d029e7b85f75631c34e3257ff6d04c3dd6c27ab7c276389",
+  "67c9cf0ea42d77dd80b5e1dbff2d7aa8a05bf5fa22b4448585df431bb816009a",
+  "d0a88acb3ec102bfa8a144180c78a6d16f579d916d718ca28422aeb1ba1f17e1",
+  "5805c34d58a1439f945f241f4f2dc16b16130266066ef76209552c6dc462dd61",
+  "f322b5ce5b34c796132a939792142c002bd1f5c16343c0b94b6fcb1225116ad1",
+  "8a70460ca6bee4c7bfb45afec5518fb0fa6a7166c593b74a1d39b6b925c2ef53",
+  "dd2d4d06a2ce7375ead761020ccb39df1fdcb2b7b8bfd825d35251882b0b55da",
+  "dc3f330cf1a1ba2fd7fb3b966cc08e169e8edbb8778ec8c6a98d9fe43c927f08",
+  "758e8c6174931dfa4a0132090246b4c29dc502aca227ee395685816a7241fff3",
+  "e8c89e862675529e74dd7a4210fb51adf3191c169e2f65b841b410757380eaa9"];
+// Python's proofs PB and PD, signed by its own BIP-340 code.
+PY_PB :: "{\"id\":\"6dcb54235470b5c71d029e7b85f75631c34e3257ff6d04c3dd6c27ab7c276389\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686600,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"9e3576eaea2ea997c667cc17eb7027ed935bb3856d6e0bcff1ea0df5e7c4b06808a35e102c6fb34d2b2c615c7650f218d9a7b1516bdaac9481376ac707a8c435\"}";
+PY_PD :: "{\"id\":\"67c9cf0ea42d77dd80b5e1dbff2d7aa8a05bf5fa22b4448585df431bb816009a\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686500,\"kind\":7517,\"tags\":[[\"a\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache verification for npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d\",\"sig\":\"9e713b83f684b18c357cba4ae80f3af39d9227a0e1535b588f76a05b76bd0c20efb96e1da96312560c16af5ba663c3e2aea504d61a79aa4b42a9dde48cfbe0c4\"}";
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// Event k with Python's id and a zero signature, read with its id
+// recomputed; the signature is not checked. The proofs are Python's.
+py :: (k: int, out: [] u8, scratch: [] u8) -> NostrEvent {
+  if k == 4 { return nostr_event_read(PY_PB, scratch, false); }
+  if k == 5 { return nostr_event_read(PY_PD, scratch, false); }
+  tags: [4096] u8; text: [256] u8; t := "";
+  if k == 6 || k == 8 { t = found_tags("oak", PY_PB, tags[..]); }
+  else if k == 7 { t = found_tags("oak", PY_PD, tags[..]); }
+  else { n := json_raw(tags[..], 0, TAGS[k]); t = cast(string) tags[0..<n]; }
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[WHO[k]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, t);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content_of(k, text[..]));
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+
+#test "the ids are Python's, and Python's proofs verify" #steps 2000000000 {
+  buf: [EVENTS][4096] u8; scratch: [8192] u8;
+  for k: 0..<EVENTS { e := py(k, buf[k][..], scratch[..]); #assert e.error == NE_OK && ns_equal32(e.computed_id, e.id); }
+  p := nostr_event_verify_vartime(PY_PB, scratch[..], false); #assert p.error == NE_OK && p.verified;
+  p = nostr_event_verify_vartime(PY_PD, scratch[..], false); #assert p.error == NE_OK && p.verified;
+}
+
+// By hand: the torrent's two files are 276134947 + 310380 = 276445327
+// bytes. Its magnet link percent-encodes the title's spaces as %20 and the
+// tracker's : and / as %3A and %2F (Python's urllib.parse.quote with
+// safe "-_.~" gives the same).
+#test "the torrent and its magnet link" {
+  buf: [4096] u8; scratch: [8192] u8; link: [512] u8;
+  t := n35_read(py(0, buf[..], scratch[..]));
+  #assert t.status == N35_OK && t.bytes == 276445327 && t.files == 2 && t.refs == 2;
+  n := n35_magnet(t, link[..]);
+  #assert cast(string) link[0..<n] == "magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big%20Buck%20Bunny&tr=udp%3A%2F%2Ftracker.example.org%3A1337";
+}
+
+// NIP-64's five PGN examples (the first without the two // lines that
+// introduce it in the NIP: they are commentary, not PGN), and the kind 64
+// note example.
+#test "NIP-64's examples" {
+  #assert n64_pgn("*").status == N64_OK && n64_pgn("1. e4 *").status == N64_OK;
+  #assert n64_pgn("[White \"Fischer, Robert J.\"]\n[Black \"Spassky, Boris V.\"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 {This opening is called the Ruy Lopez.} *").moves == 5;
+  f := n64_pgn(N64_T_FISCHER); #assert f.status == N64_OK && f.moves == 85 && f.result == N64_DRAW;
+  two := n64_pgn(N64_T_TWO); #assert two.status == N64_OK && two.games == 2 && two.result == N64_WHITE;
+  // Read literally, the first example's // lines are not PGN.
+  #assert n64_pgn("// A game where nothing is known.\n*").status == N64_MOVE;
+}
+
+// NIP-CC's examples: three listings, the found log, the curation list. Its
+// DNF and note logs are NIP-22 comments; its verification example has no
+// id, a placeholder signature, and an npub and naddr whose bech32
+// checksums fail (Python's bech32 agrees), so the find it supports is
+// refused.
+#test "NIP-CC's examples" {
+  l := ncc_listing(n32_event(37516, "[[\"d\",\"verified-treasure-1748619568669\"],[\"name\",\"Verified Treasure\"],[\"g\",\"u4xsu6ry\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"t\",\"traditional\"],[\"hint\",\"Look for the secret code\"],[\"verification\",\"6805d4e5c0df48b4f76e2fdcb67a2acb1d97567b01c6fe17a236dc32f34f1c07\"]]"));
+  #assert l.status == NCC_OK && l.has_key && l.difficulty == 3;
+  f := ncc_found(n32_event(7516, "[[\"a\",\"37516:0461fcbecc4c3374439932d6b8f11269ccdb7cc973ad7a50ae362db135a474dd:first-treasure-1748619568668\"]]"));
+  #assert f.status == NCC_OK && f.proof_at == -1;
+  b: [8] u8;
+  #assert nip19_decode_checked("npub1qc0lc5lxnhxnfxlw2lxkv4x4vp6xsf4d5qwvlhfx6qmz6x4nfhqd8h2z3", b[..], false).error != NC_OK;
+  text: [4096] u8; scratch: [4096] u8; logs: [4096] u8; nip: [4096] u8;
+  fl := n32_event_in(7516, found_tags("oak", NCC_PROOF_NIP, nip[..]), logs[..]);
+  #assert ncc_proof(fl, text[..], scratch[..]).error != NE_OK;
+}
+
+// The geocaching by hand. L is first-to-find with the cache key. FB (Bob,
+// T0+200) and FD (Dave, T0+100) carry proofs signed by that key for
+// themselves; FC (Carol, T0+50) carries Bob's proof, which names Bob, so it
+// is refused although it is the earliest. Of the two verified logs FD is
+// earlier: Dave wins. LK locks the winner to Bob with an F tag: Bob wins,
+// as NIP-CC says, whatever the timestamps.
+#test "the first-to-find winner matches the hand count, in any order" #steps 2000000000 {
+  buf: [EVENTS][4096] u8; scratch: [8192] u8; ev: [EVENTS] NostrEvent;
+  for k: 0..<EVENTS { ev[k] = py(k, buf[k][..], scratch[..]); }
+  texts: [3][4096] u8; s: [4096] u8; logs: [3] NostrEvent; proofs: [3] NostrEvent;
+  logs[0] = ev[8]; logs[1] = ev[6]; logs[2] = ev[7];
+  for k: 0..<3 { proofs[k] = ncc_proof(logs[k], texts[k][..], s[..]); #assert proofs[k].verified; }
+  #assert ncc_verify(ev[3], ev[8], proofs[0]) == NCC_FINDER && ncc_verify(ev[3], ev[6], proofs[1]) == NCC_OK;
+  w := ncc_winner(ev[3], logs[..], proofs[..]);
+  #assert w.status == NCC_OK && w.index == 2 && ns_equal32(w.finder, key_of(DAVE)) && w.verified == 2 && w.refused == 1;
+  w = ncc_winner(ev[9], logs[..], proofs[..]);
+  #assert w.locked && w.index == 1 && ns_equal32(w.finder, key_of(BOB));
+  // Without Dave's log Bob wins L; reversed, the answer is the same.
+  w = ncc_winner(ev[3], logs[0..<2], proofs[0..<2]); #assert w.index == 1 && ns_equal32(w.finder, key_of(BOB));
+  rl: [3] NostrEvent; rp: [3] NostrEvent; for k: 0..<3 { rl[k] = logs[2 - k]; rp[k] = proofs[2 - k]; }
+  w = ncc_winner(ev[3], rl[..], rp[..]); #assert w.index == 0 && ns_equal32(w.finder, key_of(DAVE));
+}
+
+// The podcast by hand: S claims Alice (host) and Bob (cohost). Alice's
+// kind 10164 list A names Pod; Bob has none, so only Alice is shown.
+#test "the podcast credits and episode" {
+  buf: [EVENTS][4096] u8; scratch: [8192] u8; ev: [EVENTS] NostrEvent;
+  for k: 0..<EVENTS { ev[k] = py(k, buf[k][..], scratch[..]); }
+  c := nf4_credits(ev[11], ev[12..<13]); #assert c.confirmed[0] && !c.confirmed[1] && c.shown == 1;
+  c = nf4_credits(ev[11], ev[0..<11]); #assert c.shown == 0 && c.unconfirmed == 2;
+  e := nf4_episode(ev[13]); #assert e.status == NF4_OK && e.audios == 2 && n32_is(e.type, "audio/mpeg");
+  // NIP-F4's examples with their placeholders filled read; its author-list
+  // example is kind 10064, not the 10164 its text names, and is refused.
+  s := nf4_show(n32_event(10154, "[[\"title\",\"T\"],[\"image\",\"https://x\"],[\"description\",\"D\"],[\"website\",\"https://w\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"editor\"]]"));
+  #assert s.status == NF4_OK && s.authors[0].role == NF4_EDITOR;
+  #assert nf4_authored(n32_event(10064, "[]")).status == NF4_KIND;
+}
+// book:end check

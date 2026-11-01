@@ -1424,13 +1424,22 @@
    "number": 69,
    "title": "Small content kinds",
    "file": "ch069-small-content-kinds.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip35.coax",
+    "coax/lib/nostr/nip64.coax",
+    "coax/lib/nostr/nipcc.coax",
+    "coax/lib/nostr/nipf4.coax",
+    "nostr/examples/small-content.coax",
+    "nostr/examples/checks/small-content.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

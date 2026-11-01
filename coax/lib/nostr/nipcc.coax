@@ -1,0 +1,517 @@
+// NIP-CC geocaching read from parsed events through tags.coax and nip32's
+// reader for tags of any name: geocache listings (kind 37516, addressable),
+// found logs (kind 7516), the verification events that prove a finder
+// stood at the cache (kind 7517) and curation lists (kind 37517). Then the
+// check of a verified find and the winner of a first-to-find cache.
+//
+// A listing needs d, name, at least one g (a geohash), D and T (difficulty
+// and terrain, 1 to 5) and S (micro, small, regular, large or other). Its
+// type is the first t tag that is not "archived", traditional when there is
+// none; a t tag "archived" retires it. n tags are type modifiers: the first
+// of each category counts and unknown values are ignored, as NIP-CC says.
+// first-to-find needs a verification key, and an F tag (the locked-in
+// winner) is refused without first-to-find. The first mission tag counts.
+//
+// A verified find is a found log whose verification tag holds a kind 7517
+// event, as JSON, signed by the cache's verification key. Its a tag is
+// "<finder hex>:<naddr>": the finder must be the log's author and the naddr
+// the cache's address, and its content must be "Geocache verification for
+// <finder npub>". The inner event's id and signature are checked here; the
+// found log's own signature is the caller's to verify. Non-found logs are
+// NIP-22 comments (kind 1111, chapter 24); nothing here reads them.
+#load "nip32.coax";
+#load "nip19-core.coax";
+#authority;
+
+NCC_OK :: 0; NCC_EVENT :: 1; NCC_KIND :: 2; NCC_TAG :: 3; NCC_MISSING :: 4;
+NCC_GEOHASH :: 5; NCC_SCORE :: 6; NCC_SIZE :: 7; NCC_KEY :: 8; NCC_UNVERIFIABLE :: 9;
+NCC_WINNER :: 10; NCC_LIMIT :: 11; NCC_TARGET :: 12;
+// A verified find's verdicts after NCC_OK.
+NCC_NO_KEY :: 13; NCC_UNVERIFIED :: 14; NCC_INNER :: 15; NCC_SIGNER :: 16;
+NCC_FINDER :: 17; NCC_CACHE :: 18; NCC_CONTENT :: 19;
+NCC_KIND_LISTING :: 37516; NCC_KIND_FOUND :: 7516; NCC_KIND_PROOF :: 7517; NCC_KIND_LIST :: 37517;
+NCC_SIZES :: [5] string.["micro", "small", "regular", "large", "other"];
+NCC_GEOHASH_DIGITS :: "0123456789bcdefghjkmnpqrstuvwxyz";
+NCC_PROOF_TEXT :: "Geocache verification for ";
+NCC_MAX_PROOF :: 4096;
+
+// book:begin record
+NccListing :: struct {
+  status:int=NCC_EVENT; at:int=-1;        // the refusing tag
+  d:N32Text; name:N32Text; type:N32Text;  // type: traditional when absent
+  geohashes:int;                          // g tags
+  difficulty:int; terrain:int; size:int;  // size: an index into NCC_SIZES
+  archived:bool;
+  first_to_find:bool; art:bool;           // n modifiers
+  has_key:bool; key:[32]u8;               // verification
+  has_winner:bool; winner:[32]u8;         // F
+  has_mission:bool; mission:N32Text;
+}
+NccFound :: struct {
+  status:int=NCC_EVENT; at:int=-1;
+  cache:NostrTag;                         // the a tag: 37516:<owner>:<d>
+  proof_at:int=-1;                        // the verification tag, or -1
+  images:int;
+}
+NccList :: struct {status:int=NCC_EVENT; at:int=-1; d:N32Text; title:N32Text; caches:int;}
+NccWinner :: struct {
+  status:int=NCC_EVENT;
+  index:int=-1;                           // the winning log in the set, or -1
+  locked:bool; finder:[32]u8;             // locked: named by the F tag
+  verified:int; refused:int;              // logs with valid and invalid proofs
+}
+// book:end record
+
+#load "../../tests/nostr/nipcc_fixtures.coax";
+
+
+#test "NIP-CC's listing examples" {
+  l:=ncc_listing(n32_event(37516,"[[\"d\",\"first-treasure-1748619568668\"],[\"name\",\"First Treasure\"],[\"g\",\"u4x\"],[\"g\",\"u4xs\"],[\"g\",\"u4xsu\"],[\"g\",\"u4xsu6\"],[\"g\",\"u4xsu6r\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4xsu6ryb\"],[\"D\",\"1\"],[\"T\",\"1\"],[\"S\",\"small\"],[\"t\",\"traditional\"],[\"hint\",\"In the branches\"],[\"image\",\"https://blossom.primal.net/74efe01a767b27dead71b8a9bb8278a108360438e78e55194ed9ab14a9382dd3.jpg\"]]"));
+  #assert l.status==NCC_OK && l.at== -1 && n32_is(l.d,"first-treasure-1748619568668") && n32_is(l.name,"First Treasure") && l.geohashes==7;
+  #assert l.difficulty==1 && l.terrain==1 && l.size==1 && n32_is(l.type,"traditional") && !l.has_key && !l.first_to_find && !l.art && !l.archived && !l.has_mission && !l.has_winner;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"key-quest-treasure-1748619568670\"],[\"name\",\"Riddle of the Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"D\",\"4\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"t\",\"mystery\"],[\"hint\",\"Count the rings on the fallen log\"],[\"mission\",\"Bring a token of nature you found along the way\"],[\"verification\",\"6805d4e5c0df48b4f76e2fdcb67a2acb1d97567b01c6fe17a236dc32f34f1c07\"]]"));
+  #assert l.status==NCC_OK && n32_is(l.type,"mystery") && l.difficulty==4 && l.has_key && l.key[0]==0x68 && l.key[31]==0x07 && l.has_mission && n32_is(l.mission,"Bring a token of nature you found along the way");
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"linocut-aftermath-1748619568671\"],[\"name\",\"Aftermath (Linocut #1)\"],[\"g\",\"u4xsu6ry\"],[\"D\",\"2\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"t\",\"traditional\"],[\"n\",\"first-to-find\"],[\"n\",\"art\"],[\"hint\",\"Behind glass, but not in a frame\"],[\"image\",\"https://blossom.primal.net/example-linocut.jpg\"],[\"verification\",\"6805d4e5c0df48b4f76e2fdcb67a2acb1d97567b01c6fe17a236dc32f34f1c07\"]]"));
+  #assert l.status==NCC_OK && l.first_to_find && l.art && l.has_key && l.geohashes==1;
+}
+#test "listing defaults, firsts, archive and the locked winner" {
+  l:=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"S\",\"micro\"],[\"name\",\"x\"],[\"t\",\"archived\"],[\"t\",\"multi\"],[\"t\",\"mystery\"],[\"mission\",\"a\"],[\"mission\",\"b\"],[\"n\",\"glow\"]]"));
+  #assert l.status==NCC_OK && l.size==1 && n32_is(l.name,"Old Oak") && l.archived && n32_is(l.type,"multi") && n32_is(l.mission,"a") && !l.first_to_find && !l.art && l.geohashes==2;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"]]"));#assert l.status==NCC_OK && n32_is(l.type,"traditional") && !l.archived;
+  for k:0..<5 {
+    buf:[512]u8;n:=json_raw(buf[..],0,"[[\"d\",\"\"],[\"name\",\"N\"],[\"g\",\"0123456789bc\"],[\"D\",\"5\"],[\"T\",\"1\"],[\"S\",");
+    n=json_write_string(buf[..],n,NCC_SIZES[k]);n=json_raw(buf[..],n,"]]");
+    r:=ncc_listing(n32_event(37516,cast(string)buf[0..<n]));#assert r.status==NCC_OK && r.size==k && r.difficulty==5 && r.d.n==0;
+  }
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"verification\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"n\",\"first-to-find\"],[\"t\",\"archived\"],[\"F\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"F\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]"));
+  #assert l.status==NCC_OK && l.first_to_find && l.has_winner && l.winner[0]==0xdf && l.archived;
+  l=ncc_listing(n32_event(37516,"[[\"g\",\"zzzzzzzzzzzz\"],[\"D\",\"1\"],[\"T\",\"5\"],[\"S\",\"large\"],[\"d\",\"x\"],[\"name\",\"y\"]]"));#assert l.status==NCC_OK && l.terrain==5;
+}
+#test "listing firsts in any order" {
+  l:=ncc_listing(n32_event(37516,"[[\"name\",\"N\"],[\"d\",\"x\"],[\"S\",\"large\"],[\"T\",\"4\"],[\"D\",\"2\"],[\"D\",\"5\"],[\"T\",\"1\"],[\"S\",\"micro\"],[\"g\",\"u\"],[\"d\",\"y\"],[\"name\",\"M\"]]"));
+  #assert l.status==NCC_OK && n32_is(l.d,"x") && n32_is(l.name,"N") && l.size==3 && l.terrain==4 && l.difficulty==2 && l.geohashes==1;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"x\"],[\"name\",\"N\"],[\"g\",\"u\"],[\"D\",\"1\"],[\"T\",\"1\"],[\"S\",\"small\"],[\"verification\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"verification\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]"));
+  #assert l.status==NCC_OK && l.has_key && l.key[0]==0xc6 && !l.has_winner;
+  l=ncc_listing(n32_event(37516,"[[\"g\",\"a4x5\"]]"));#assert l.status==NCC_GEOHASH && l.at==0;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"x\"]]"));#assert l.status==NCC_MISSING && l.at== -1;
+  l=ncc_listing(n32_event(30023,"[]"));#assert l.status==NCC_KIND && l.at== -1;
+  f:=ncc_found(n32_event(1,"[]"));#assert f.status==NCC_KIND && f.at== -1;
+  c:=ncc_list(n32_event(1,"[]"));#assert c.status==NCC_KIND && c.at== -1;
+  f=ncc_found(n32_event(7516,"[[\"verification\",\"x\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"],[\"verification\",\"y\"]]"));
+  #assert f.status==NCC_OK && f.proof_at==0;
+  c=ncc_list(n32_event(37517,"[[\"title\",\"T\"],[\"d\",\"x\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"],[\"d\",\"y\"]]"));
+  #assert c.status==NCC_OK && n32_is(c.title,"T") && n32_is(c.d,"x");
+}
+#test "listing refusals" {
+  #assert ncc_listing(n32_event(37516,"[[\"name\",\"N\"],[\"g\",\"u4x\"],[\"D\",\"1\"],[\"T\",\"1\"],[\"S\",\"small\"]]")).status==NCC_MISSING;
+  #assert ncc_listing(n32_event(37516,"[[\"d\",\"x\"],[\"g\",\"u4x\"],[\"D\",\"1\"],[\"T\",\"1\"],[\"S\",\"small\"]]")).status==NCC_MISSING;
+  #assert ncc_listing(n32_event(37516,"[[\"d\",\"x\"],[\"name\",\"N\"],[\"D\",\"1\"],[\"T\",\"1\"],[\"S\",\"small\"]]")).status==NCC_MISSING;
+  #assert ncc_listing(n32_event(37516,"[[\"d\",\"x\"],[\"name\",\"N\"],[\"g\",\"u4x\"],[\"T\",\"1\"],[\"S\",\"small\"]]")).status==NCC_MISSING;
+  #assert ncc_listing(n32_event(37516,"[[\"d\",\"x\"],[\"name\",\"N\"],[\"g\",\"u4x\"],[\"D\",\"1\"],[\"S\",\"small\"]]")).status==NCC_MISSING;
+  l:=ncc_listing(n32_event(37516,"[[\"d\",\"x\"],[\"name\",\"N\"],[\"g\",\"u4x\"],[\"D\",\"1\"],[\"T\",\"1\"]]"));#assert l.status==NCC_MISSING && l.at== -1;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"g\",\"u4a\"]]"));#assert l.status==NCC_GEOHASH && l.at==7;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"g\",\"\"]]"));#assert l.status==NCC_GEOHASH;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"g\",\"0123456789bcd\"]]"));#assert l.status==NCC_GEOHASH;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"g\",\"U4X\"]]"));#assert l.status==NCC_GEOHASH;
+  l=ncc_listing(n32_event(37516,"[[\"D\",\"0\"]]"));#assert l.status==NCC_SCORE && l.at==0;
+  l=ncc_listing(n32_event(37516,"[[\"T\",\"6\"]]"));#assert l.status==NCC_SCORE;
+  l=ncc_listing(n32_event(37516,"[[\"D\",\"12\"]]"));#assert l.status==NCC_SCORE;
+  l=ncc_listing(n32_event(37516,"[[\"T\",\"\"]]"));#assert l.status==NCC_SCORE;
+  l=ncc_listing(n32_event(37516,"[[\"D\",\"1.5\"]]"));#assert l.status==NCC_SCORE;
+  l=ncc_listing(n32_event(37516,"[[\"S\",\"huge\"]]"));#assert l.status==NCC_SIZE && l.at==0;
+  l=ncc_listing(n32_event(37516,"[[\"S\",\"Small\"]]"));#assert l.status==NCC_SIZE;
+  l=ncc_listing(n32_event(37516,"[[\"verification\",\"6805\"]]"));#assert l.status==NCC_KEY && l.at==0;
+  l=ncc_listing(n32_event(37516,"[[\"F\",\"6805\"]]"));#assert l.status==NCC_KEY;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"n\",\"first-to-find\"]]"));#assert l.status==NCC_UNVERIFIABLE && l.at== -1;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"F\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]"));#assert l.status==NCC_WINNER && l.at== -1;
+  l=ncc_listing(n32_event(37516,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"verification\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"F\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]"));#assert l.status==NCC_WINNER;
+  #assert ncc_listing(n32_event(37517,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"]]")).status==NCC_KIND;
+  none:NostrEvent;#assert ncc_listing(none).status==NCC_EVENT;
+  b:=n32_event(37516,"[]");b.original="[[\"t\"],[\"x\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  l=ncc_listing(b);#assert l.status==NCC_EVENT && l.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"t\"],[\"hint\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  l=ncc_listing(n32_event(37516,cast(string)long[0..<n]));#assert l.status==NCC_LIMIT && l.at==1;
+}
+#test "found logs and curation lists" {
+  f:=ncc_found(n32_event(7516,"[[\"a\",\"37516:0461fcbecc4c3374439932d6b8f11269ccdb7cc973ad7a50ae362db135a474dd:first-treasure-1748619568668\"]]"));
+  #assert f.status==NCC_OK && f.at== -1 && f.cache.address_kind==37516 && f.cache.pubkey[0]==0x04 && f.cache.d_n==28 && f.proof_at== -1 && f.images==0;
+  f=ncc_found(n32_event(7516,"[[\"image\",\"https://x\"],[\"verification\",\"{}\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"],[\"image\",\"https://y\"],[\"verification\",\"[]\"]]"));
+  #assert f.status==NCC_OK && f.proof_at==1 && f.images==2;
+  f=ncc_found(n32_event(7516,"[[\"image\",\"https://x\"]]"));#assert f.status==NCC_MISSING && f.at== -1;
+  f=ncc_found(n32_event(7516,"[[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"]]"));#assert f.status==NCC_TARGET && f.at==0;
+  f=ncc_found(n32_event(7516,"[[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:elm\"]]"));#assert f.status==NCC_TARGET && f.at==1;
+  f=ncc_found(n32_event(7516,"[[\"a\",\"37516:6805:oak\"]]"));#assert f.status==NCC_TAG && f.at==0;
+  #assert ncc_found(n32_event(7517,"[]")).status==NCC_KIND;
+  none:NostrEvent;#assert ncc_found(none).status==NCC_EVENT && ncc_list(none).status==NCC_EVENT;
+  b:=n32_event(7516,"[]");b.original="[[\"t\"],[\"x\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  f=ncc_found(b);#assert f.status==NCC_EVENT && f.at==1;
+  // A long verification value reads: the embedded event is longer than a tag value.
+  big:[1200]u8;n:=json_raw(big[..],0,"[[\"verification\",\"");for i:0..<1000 {big[n+i]='x';}n+=1000;n=json_raw(big[..],n,"\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"]]");
+  f=ncc_found(n32_event(7516,cast(string)big[0..<n]));#assert f.status==NCC_OK && f.proof_at==0;
+  // NIP-CC's curation list example.
+  c:=ncc_list(n32_event(37517,"[[\"d\",\"ren-fest-hunt-1748619568670\"],[\"title\",\"Texas Ren Fest Treasure Hunt\"],[\"description\",\"Find all the hidden treasures at the festival!\"],[\"image\",\"https://blossom.primal.net/banner-example.jpg\"],[\"g\",\"9vk\"],[\"g\",\"9vk5\"],[\"g\",\"9vk5b\"],[\"g\",\"9vk5b7\"],[\"theme\",\"adventure\"],[\"map\",\"adventure\"],[\"a\",\"37516:0461fcbecc4c3374439932d6b8f11269ccdb7cc973ad7a50ae362db135a474dd:first-treasure-1748619568668\"],[\"a\",\"37516:0461fcbecc4c3374439932d6b8f11269ccdb7cc973ad7a50ae362db135a474dd:verified-treasure-1748619568669\"]]"));
+  #assert c.status==NCC_OK && c.caches==2 && n32_is(c.title,"Texas Ren Fest Treasure Hunt") && n32_is(c.d,"ren-fest-hunt-1748619568670") && c.at== -1;
+  c=ncc_list(n32_event(37517,"[[\"d\",\"x\"],[\"title\",\"T\"],[\"title\",\"U\"],[\"a\",\"37515:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:p\"]]"));#assert c.status==NCC_OK && c.caches==1 && n32_is(c.title,"T");
+  c=ncc_list(n32_event(37517,"[[\"d\",\"x\"],[\"title\",\"T\"]]"));#assert c.status==NCC_MISSING && c.at== -1;
+  c=ncc_list(n32_event(37517,"[[\"d\",\"x\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:p\"]]"));#assert c.status==NCC_MISSING;
+  c=ncc_list(n32_event(37517,"[[\"title\",\"T\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:p\"]]"));#assert c.status==NCC_MISSING;
+  c=ncc_list(n32_event(37517,"[[\"d\",\"x\"],[\"title\",\"T\"],[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:p\"]]"));#assert c.status==NCC_TARGET && c.at==2;
+  c=ncc_list(n32_event(37517,"[[\"a\",\"37516:xx:p\"]]"));#assert c.status==NCC_TAG && c.at==0;
+  #assert ncc_list(n32_event(37516,"[]")).status==NCC_KIND;
+  b.kind=37517;c=ncc_list(b);#assert c.status==NCC_EVENT && c.at==1;
+}
+#test "a tag value of any length, and tag names" {
+  out:[8]u8;e:=n32_event(1,"[[\"a\",\"b\\u00e9\"],[\"c\"],[\"d\",1],[\"e\",\"0123456789\"],[\"f\",\"\"],[\"g\",\"01234567\"]]");
+  #assert ncc_value(e,0,1,out[..])==3 && out[1]==0xc3 && ncc_value(e,0,0,out[..])==1 && out[0]=='a';
+  #assert ncc_value(e,1,1,out[..])== -1 && ncc_value(e,2,1,out[..])== -1 && ncc_value(e,3,1,out[..])== -1 && ncc_value(e,6,0,out[..])== -1 && ncc_value(e,-1,0,out[..])== -1;
+  #assert ncc_value(e,2,2,out[..])== -1 && ncc_value(e,3,0,out[..])==1 && ncc_value(e,4,1,out[..])==0 && ncc_value(e,5,1,out[..])==8 && out[7]=='7';
+  none:NostrEvent;#assert ncc_value(none,0,0,out[..])== -1;
+  b:=e;b.original="[[\"a\"],1]";b.tags_from=0;b.tags_to=b.original.count;#assert ncc_value(b,1,0,out[..])== -1;
+  #assert ncc_named(e,0,"a") && !ncc_named(e,0,"b") && !ncc_named(e,0,"ab") && !ncc_named(e,6,"a") && ncc_named(e,5,"g");
+  l:=n32_event(1,"[[\"verificationx\",\"1\"]]");#assert !ncc_named(l,0,"verification");
+  f:=n32_event(1,"[[\"t\"],[\"a\",\"x\"],[\"a\",\"y\"]]");#assert n32_is(ncc_first(f,"a"),"x") && ncc_first(f,"b").n==0;
+  f=n32_event(1,"[[\"t\"],[\"t\"],[\"a\",\"z\"]]");#assert n32_is(ncc_first(f,"a"),"z");
+}
+#test "the embedded proof: id and signature checked" #steps 2000000000 {
+  text:[NCC_MAX_PROOF]u8;scratch:[NCC_MAX_PROOF]u8;gb:[4096]u8;
+  p:=ncc_proof(ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]),text[..],scratch[..]);
+  #assert p.error==NE_OK && p.verified && p.kind==7517 && p.public_key[0]==0xc6;
+  p=ncc_proof(ncc_t_log_first(NCC_T_B,"oak",NCC_F_GOOD,gb[..]),text[..],scratch[..]);#assert p.error==NE_OK && p.verified;
+  #assert ncc_proof(ncc_t_log(NCC_T_B,"oak",NCC_F_BADSIG,1,gb[..]),text[..],scratch[..]).error==NE_SIGNATURE;
+  #assert ncc_proof(ncc_t_log(NCC_T_B,"oak",NCC_F_FORGED,1,gb[..]),text[..],scratch[..]).error==NE_ID;
+  // Not an event, an empty value: the parser's refusal, not "no proof".
+  #assert ncc_proof(ncc_t_log(NCC_T_B,"oak","x",1,gb[..]),text[..],scratch[..]).error==NE_JSON;
+  e:=n32_event_in(7516,"[[\"verification\",\"\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"]]",gb[..]);
+  #assert ncc_proof(e,text[..],scratch[..]).error==NE_JSON;
+  // No proof, a refused log, a proof longer than text.
+  #assert ncc_proof(ncc_t_log(NCC_T_B,"oak","",1,gb[..]),text[..],scratch[..]).error==NE_SHAPE;
+  g:=ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]);g.kind=1;#assert ncc_proof(g,text[..],scratch[..]).error==NE_SHAPE;
+  e=n32_event_in(7516,"[[\"verification\",\"{}\"],[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"]]",gb[..]);
+  #assert ncc_found(e).proof_at==0 && ncc_proof(e,text[..],scratch[..]).error==NE_SHAPE;
+  // text must hold the value as written, escapes included.
+  w:[2048]u8;m:=json_write_string(w[..],0,NCC_F_GOOD)-2;
+  #assert ncc_proof(ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]),text[0..<m-1],scratch[..]).error==NE_SHAPE;
+  #assert ncc_proof(ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]),text[0..<m],scratch[..]).error==NE_OK;
+}
+#test "verified finds: NIP-CC's validation, step by step" #steps 200000000 {
+  lb:[512]u8;ob:[512]u8;gb:[4096]u8;pb:[1024]u8;
+  l:=ncc_t_listing(NCC_T_A,"oak",true,lb[..]);
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_OK;
+  #assert ncc_verify(l,ncc_t_log_first(NCC_T_B,"oak",NCC_F_GOOD,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_OK;
+  // The cache without a key; the log without a proof; another cache.
+  #assert ncc_verify(ncc_t_listing(NCC_T_A,"oak",false,ob[..]),ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_NO_KEY;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak","",1,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_UNVERIFIED;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"elm",NCC_F_GOOD,1,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_TARGET;
+  #assert ncc_verify(ncc_t_listing(NCC_T_B,"oak",true,ob[..]),ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_TARGET;
+  #assert ncc_verify(ncc_t_listing(NCC_T_A,"oa",true,ob[..]),ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_TARGET;
+  // The proof: refused, not verified, another kind.
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_NIP,1,gb[..]),ncc_t_proof(NCC_F_NIP))==NCC_INNER;
+  u:=ncc_t_proof(NCC_F_GOOD);u.verified=false;#assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]),u)==NCC_INNER;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_KIND,1,gb[..]),ncc_t_proof(NCC_F_KIND))==NCC_INNER;
+  // Signed by another key; for another finder; for another cache; wrong content.
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_MALLORY,1,gb[..]),ncc_t_proof(NCC_F_MALLORY))==NCC_SIGNER;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_C,"oak",NCC_F_GOOD,1,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_FINDER;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_ELM,1,gb[..]),ncc_t_proof(NCC_F_ELM))==NCC_CACHE;
+  #assert ncc_verify(ncc_t_listing(NCC_T_A,"elm",true,ob[..]),ncc_t_log(NCC_T_B,"elm",NCC_F_GOOD,1,gb[..]),ncc_t_proof(NCC_F_GOOD))==NCC_CACHE;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_CONTENT,1,gb[..]),ncc_t_proof(NCC_F_CONTENT))==NCC_CONTENT;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_NOADDR,1,gb[..]),ncc_t_proof(NCC_F_NOADDR))==NCC_FINDER;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_NOTNADDR,1,gb[..]),ncc_t_proof(NCC_F_NOTNADDR))==NCC_CACHE;
+  #assert ncc_verify(l,ncc_t_log(NCC_T_B,"oak",NCC_F_NOATAG,1,gb[..]),ncc_t_proof(NCC_F_NOATAG))==NCC_FINDER;
+  // Unsigned proofs, each changing one thing in GOOD's a tag or content.
+  fl:=ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,1,gb[..]);
+  #assert ncc_verify(l,fl,ncc_t_made(0,"oak",37516,0,pb[..]))==NCC_OK;
+  #assert ncc_verify(l,fl,ncc_t_made(1,"oak",37516,0,pb[..]))==NCC_CACHE;      // "<bob>:"
+  #assert ncc_verify(l,fl,ncc_t_made(2,"oak",37516,0,pb[..]))==NCC_CACHE;      // "<bob>:x"
+  #assert ncc_verify(l,fl,ncc_t_made(3,"oak",37516,0,pb[..]))==NCC_FINDER;     // ";" for ":"
+  #assert ncc_verify(l,fl,ncc_t_made(4,"oak",37516,0,pb[..]))==NCC_FINDER;     // uppercase hex
+  #assert ncc_verify(l,fl,ncc_t_made(5,"oak",37516,0,pb[..]))==NCC_OK;         // the a tag second
+  #assert ncc_verify(l,fl,ncc_t_made(0,"oak",30023,0,pb[..]))==NCC_CACHE;
+  #assert ncc_verify(l,fl,ncc_t_made(6,"oak",37516,0,pb[..]))==NCC_CACHE;      // an nevent of kind 37516
+  #assert ncc_verify(l,fl,ncc_t_made(7,"oak",37516,0,pb[..]))==NCC_CACHE;      // another owner
+  #assert ncc_verify(l,fl,ncc_t_made(0,"oak",37516,1,pb[..]))==NCC_CONTENT;    // one more character
+  #assert ncc_verify(l,fl,ncc_t_made(0,"oak",37516,2,pb[..]))==NCC_CONTENT;    // n escaped as n
+  // Refused events.
+  bad:=l;bad.kind=1;#assert ncc_verify(bad,fl,ncc_t_proof(NCC_F_GOOD))==NCC_KIND;
+  g:=fl;g.kind=1;#assert ncc_verify(l,g,ncc_t_proof(NCC_F_GOOD))==NCC_KIND;
+}
+#test "an nevent with a 32-character d is no naddr" {
+  lb:[512]u8;gb:[4096]u8;pb:[1024]u8;
+  l:=ncc_t_listing(NCC_T_A,NCC_T_D32,true,lb[..]);
+  fl:=ncc_t_log(NCC_T_B,NCC_T_D32,NCC_F_GOOD,1,gb[..]);
+  #assert ncc_verify(l,fl,ncc_t_made(0,NCC_T_D32,37516,0,pb[..]))==NCC_OK;
+  #assert ncc_verify(l,fl,ncc_t_made(6,NCC_T_D32,37516,0,pb[..]))==NCC_CACHE;
+}
+#test "first to find: the earliest verified log, ties by lower id, F overrides" #steps 200000000 {
+  lb:[512]u8;fb:[512]u8;nb:[512]u8;gb:[4][4096]u8;
+  l:=ncc_t_listing(NCC_T_A,"oak",true,lb[..]);
+  logs:[4]NostrEvent;proofs:[4]NostrEvent;
+  logs[0]=ncc_t_log(NCC_T_C,"oak",NCC_F_GOOD,9,gb[0][..]);logs[0].created_at=100;  // Carol with Bob's proof: refused
+  logs[1]=ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,7,gb[1][..]);logs[1].created_at=300;
+  logs[2]=ncc_t_log(NCC_T_D,"oak",NCC_F_DAVE,5,gb[2][..]);logs[2].created_at=200;
+  logs[3]=ncc_t_log(NCC_T_B,"oak",NCC_F_GOOD,3,gb[3][..]);logs[3].created_at=200;
+  proofs[0]=ncc_t_proof(NCC_F_GOOD);proofs[1]=proofs[0];proofs[2]=ncc_t_proof(NCC_F_DAVE);proofs[3]=proofs[0];
+  w:=ncc_winner(l,logs[..],proofs[..]);
+  #assert w.status==NCC_OK && w.index==3 && w.verified==3 && w.refused==1 && !w.locked && w.finder[0]==0xdf;
+  w=ncc_winner(l,logs[0..<3],proofs[0..<3]);#assert w.index==2 && w.finder[0]==0x79 && w.verified==2;
+  w=ncc_winner(l,logs[0..<1],proofs[0..<1]);#assert w.status==NCC_OK && w.index== -1 && w.verified==0 && w.refused==1;
+  // Later with a lower id loses; the same time: the lower id wins, in either order.
+  logs[1].id[0]=1;w=ncc_winner(l,logs[1..<3],proofs[1..<3]);#assert w.index==1;
+  w=ncc_winner(l,logs[2..<4],proofs[2..<4]);#assert w.index==1;
+  logs[3].created_at=300;w=ncc_winner(l,logs[1..<4],proofs[1..<4]);#assert w.index==1;
+  logs[2].created_at=300;w=ncc_winner(l,logs[1..<4],proofs[1..<4]);#assert w.index==0;
+  for i:0..<32 {logs[1].id[i]=3;}logs[1].id[31]=4;w=ncc_winner(l,logs[1..<4],proofs[1..<4]);#assert w.index==2;
+  logs[1].id[31]=2;w=ncc_winner(l,logs[1..<4],proofs[1..<4]);#assert w.index==0 && w.finder[0]==0xdf;
+  logs[1].id[30]=2;logs[1].id[31]=9;w=ncc_winner(l,logs[1..<4],proofs[1..<4]);#assert w.index==0;
+  logs[3].id=logs[1].id;w=ncc_winner(l,logs[1..<4],proofs[1..<4]);#assert w.index==0;
+  logs[2].created_at=200;logs[3].created_at=200;
+  // Locked in to Dave: his log wins even though Bob's is as early.
+  f:=ncc_t_locked(fb[..]);
+  w=ncc_winner(f,logs[..],proofs[..]);#assert w.status==NCC_OK && w.locked && w.index==2 && w.finder[0]==0x79;
+  w=ncc_winner(f,logs[0..<2],proofs[0..<2]);#assert w.locked && w.index== -1 && w.finder[0]==0x79 && w.verified==1;
+  // Locked to Dave with two of his logs: the first stays.
+  two:[2]NostrEvent;tp:[2]NostrEvent;two[0]=logs[2];two[1]=logs[2];tp[0]=proofs[2];tp[1]=proofs[2];
+  w=ncc_winner(f,two[..],tp[..]);#assert w.index==0 && w.verified==2;
+  // Not first-to-find, or not a listing, or proofs that don't match the logs.
+  n:=ncc_t_listing(NCC_T_A,"oak",false,nb[..]);#assert ncc_winner(n,logs[..],proofs[..]).status==NCC_UNVERIFIABLE;
+  k:=l;k.kind=1;#assert ncc_winner(k,logs[..],proofs[..]).status==NCC_KIND;
+  #assert ncc_winner(l,logs[..],proofs[0..<3]).status==NCC_EVENT;
+  // Another cache's logs are not counted.
+  logs[1]=ncc_t_log(NCC_T_B,"elm",NCC_F_GOOD,7,gb[1][..]);w=ncc_winner(l,logs[0..<2],proofs[0..<2]);#assert w.refused==2 && w.index== -1;
+}
+#test "the id order" {
+  a:[32]u8;b:[32]u8;#assert !ncc_before(a,b);
+  b[31]=1;#assert ncc_before(a,b) && !ncc_before(b,a);
+  a[0]=1;#assert !ncc_before(a,b) && ncc_before(b,a);
+}
+
+n_cc_refuse_l :: (r:NccListing,status:int,at:int)->NccListing {o:=r;o.status=status;o.at=at;return o;}
+n_cc_refuse_f :: (r:NccFound,status:int,at:int)->NccFound {o:=r;o.status=status;o.at=at;return o;}
+n_cc_refuse_c :: (r:NccList,status:int,at:int)->NccList {o:=r;o.status=status;o.at=at;return o;}
+// A score: one digit from 1 to 5, or 0.
+ncc_score :: (t:N32Text)->int {c:=t;if c.n!=1 || c.b[0]<'1' || c.b[0]>'5' {return 0;}return cast(int)(c.b[0]-'0');}
+// A geohash: 1 to 12 of its 32 digits.
+ncc_geohash :: (t:N32Text)->bool {
+  c:=t;s:=cast(string)c.b[0..<c.n];
+  if s.count<1 || s.count>12 {return false;}
+  for i:0..<s.count {
+    found:=false;for k:0..<32 {if NCC_GEOHASH_DIGITS[k]==s[i] {found=true;}}
+    if !found {return false;}
+  }
+  return true;
+}
+ncc_key :: (t:N32Text,key:[]u8)->bool {c:=t;return ne_lower_hex(cast(string)c.b[0..<c.n],key);}
+
+// book:begin listing
+ncc_listing :: (e:NostrEvent)->NccListing {
+  r:NccListing;if e.error!=NE_OK {return r;}
+  if e.kind!=NCC_KIND_LISTING {return n_cc_refuse_l(r,NCC_KIND,-1);}
+  seen:[6]bool;   // d, name, D, T, S, a cache type
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n_cc_refuse_l(r,NCC_LIMIT,i);}
+    if t.error!=NT_OK {return n_cc_refuse_l(r,NCC_EVENT,i);}
+    tag:=t.v[0];v:=t.v[1];
+    if n32_is(tag,"d") {if !seen[0] {seen[0]=true;r.d=v;}}
+    else if n32_is(tag,"name") {if !seen[1] {seen[1]=true;r.name=v;}}
+    else if n32_is(tag,"g") {
+      if !ncc_geohash(v) {return n_cc_refuse_l(r,NCC_GEOHASH,i);}
+      r.geohashes+=1;
+    } else if n32_is(tag,"D") || n32_is(tag,"T") {
+      score:=ncc_score(v);if score==0 {return n_cc_refuse_l(r,NCC_SCORE,i);}
+      if n32_is(tag,"D") {if !seen[2] {seen[2]=true;r.difficulty=score;}}
+      else if !seen[3] {seen[3]=true;r.terrain=score;}
+    } else if n32_is(tag,"S") {
+      size:=-1;for k:0..<5 {if n32_is(v,NCC_SIZES[k]) {size=k;}}
+      if size<0 {return n_cc_refuse_l(r,NCC_SIZE,i);}
+      if !seen[4] {seen[4]=true;r.size=size;}
+    } else if n32_is(tag,"t") {
+      if n32_is(v,"archived") {r.archived=true;}
+      else if !seen[5] {seen[5]=true;r.type=v;}
+    } else if n32_is(tag,"n") {
+      // Each modifier is its own category: a repeat changes nothing.
+      if n32_is(v,"first-to-find") {r.first_to_find=true;}
+      if n32_is(v,"art") {r.art=true;}
+    } else if n32_is(tag,"verification") || n32_is(tag,"F") {
+      key:[32]u8;if !ncc_key(v,key[..]) {return n_cc_refuse_l(r,NCC_KEY,i);}
+      if n32_is(tag,"F") {if !r.has_winner {r.has_winner=true;r.winner=key;}}
+      else if !r.has_key {r.has_key=true;r.key=key;}
+    } else if n32_is(tag,"mission") && !r.has_mission {r.has_mission=true;r.mission=v;}
+    i+=1;
+  }
+  if !seen[0] || !seen[1] || r.geohashes==0 || !seen[2] || !seen[3] || !seen[4] {return n_cc_refuse_l(r,NCC_MISSING,-1);}
+  if !seen[5] {for c:"traditional" {r.type.b[r.type.n]=c;r.type.n+=1;}}
+  if r.first_to_find && !r.has_key {return n_cc_refuse_l(r,NCC_UNVERIFIABLE,-1);}
+  if r.has_winner && !r.first_to_find {return n_cc_refuse_l(r,NCC_WINNER,-1);}
+  r.status=NCC_OK;return r;
+}
+// book:end listing
+
+// book:begin value
+// The k'th string of the index'th tag (0 is its name), decoded into out
+// whatever its length: its length, or -1 when the tag or value is missing
+// or malformed, or the raw value is longer than out.
+ncc_value :: (e:NostrEvent,index:int,k:int,out:[]u8)->int {
+  j:[1]Json;if !nt_start(j[..],e) {return -1;}
+  at:=0;tok:=json_next(j[..]);
+  while tok==JSON_ARRAY && at<index {skipped:=json_skip(j[..]);at+=1;tok=json_next(j[..]);}
+  if index<0 || tok!=JSON_ARRAY {return -1;}
+  for s:0..<k {if json_next(j[..])!=JSON_STRING {return -1;}}
+  if json_next(j[..])!=JSON_STRING {return -1;}
+  raw:=json_text(j[..]);
+  if raw.count>out.count {return -1;}   // unescaping never lengthens
+  return json_unescape(raw,out);
+}
+// Is the index'th tag's name this one?
+ncc_named :: (e:NostrEvent,index:int,name:string)->bool {
+  b:[16]u8;n:=ncc_value(e,index,0,b[..]);
+  return n==name.count && cast(string)b[0..<n]==name;
+}
+// book:end value
+
+// book:begin found
+ncc_found :: (e:NostrEvent)->NccFound {
+  r:NccFound;if e.error!=NE_OK {return r;}
+  if e.kind!=NCC_KIND_FOUND {return n_cc_refuse_f(r,NCC_KIND,-1);}
+  has_cache:=false;i:=0;
+  while true {
+    // A verification value may be longer than tags.coax reads: NT_LIMIT is
+    // let through here and the value read by ncc_value.
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK && t.error!=NT_LIMIT {return n_cc_refuse_f(r,NCC_EVENT,i);}
+    if ncc_named(e,i,"a") {
+      a:=nostr_tag(e,i);
+      if a.error!=NT_OK {return n_cc_refuse_f(r,NCC_TAG,i);}
+      if a.address_kind!=NCC_KIND_LISTING || has_cache {return n_cc_refuse_f(r,NCC_TARGET,i);}
+      has_cache=true;r.cache=a;
+    } else if ncc_named(e,i,"verification") {if r.proof_at== -1 {r.proof_at=i;}}
+    else if ncc_named(e,i,"image") {r.images+=1;}
+    i+=1;
+  }
+  if !has_cache {return n_cc_refuse_f(r,NCC_MISSING,-1);}
+  r.status=NCC_OK;return r;
+}
+// book:end found
+
+ncc_list :: (e:NostrEvent)->NccList {
+  r:NccList;if e.error!=NE_OK {return r;}
+  if e.kind!=NCC_KIND_LIST {return n_cc_refuse_c(r,NCC_KIND,-1);}
+  has_d:=false;has_title:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {return n_cc_refuse_c(r,NCC_EVENT,i);}
+    if n32_is(t.v[0],"a") {
+      a:=nostr_tag(e,i);
+      if a.error!=NT_OK {return n_cc_refuse_c(r,NCC_TAG,i);}
+      if a.address_kind!=NCC_KIND_LISTING && a.address_kind!=37515 {return n_cc_refuse_c(r,NCC_TARGET,i);}
+      r.caches+=1;
+    } else if n32_is(t.v[0],"d") {if !has_d {has_d=true;r.d=t.v[1];}}
+    else if n32_is(t.v[0],"title") {if !has_title {has_title=true;r.title=t.v[1];}}
+    i+=1;
+  }
+  if !has_d || !has_title || r.caches==0 {return n_cc_refuse_c(r,NCC_MISSING,-1);}
+  r.status=NCC_OK;return r;
+}
+
+// book:begin proof
+// The found log's embedded verification event, read into text with its id
+// and signature checked (scratch holds its serialization): error NE_OK and
+// verified, or a refused event. text must outlive it.
+ncc_proof :: (found:NostrEvent,text:[]u8,scratch:[]u8)->NostrEvent {
+  none:NostrEvent;
+  f:=ncc_found(found);if f.status!=NCC_OK {return none;}
+  n:=ncc_value(found,f.proof_at,1,text);
+  if n<0 {return none;}
+  return nostr_event_verify_vartime(cast(string)text[0..<n],scratch,false);
+}
+// book:end proof
+
+// The first value of the first tag with this name, or empty.
+ncc_first :: (e:NostrEvent,name:string)->N32Text {
+  i:=0;none:N32Text;
+  while true {
+    t:=n32_tag(e,i);if t.error!=NT_OK {return none;}
+    if n32_is(t.v[0],name) {return t.v[1];}
+    i+=1;
+  }
+  return none;
+}
+
+// book:begin verify
+// Does this found log, with the proof ncc_proof read from it, prove its
+// author found this cache? NCC_OK, or the first check that fails, in
+// NIP-CC's order.
+ncc_verify :: (listing:NostrEvent,found:NostrEvent,p:NostrEvent)->int {
+  l:=ncc_listing(listing);if l.status!=NCC_OK {return NCC_KIND;}
+  f:=ncc_found(found);if f.status!=NCC_OK {return NCC_KIND;}
+  d:=nostr_tag_d(listing);
+  if !ns_equal32(f.cache.pubkey,listing.public_key) {return NCC_TARGET;}
+  if cast(string)f.cache.d[0..<f.cache.d_n]!=cast(string)d.d[0..<d.d_n] {return NCC_TARGET;}
+  if !l.has_key {return NCC_NO_KEY;}
+  if f.proof_at<0 {return NCC_UNVERIFIED;}
+  if p.error!=NE_OK || !p.verified || p.kind!=NCC_KIND_PROOF {return NCC_INNER;}
+  // 1. Signed by the cache's verification key.
+  if !ns_equal32(p.public_key,l.key) {return NCC_SIGNER;}
+  // 2. Its a tag is the log author's key in hex, a colon, then an naddr.
+  a:=ncc_first(p,"a");s:=cast(string)a.b[0..<a.n];finder:[32]u8;
+  if s.count<65 {return NCC_FINDER;}
+  if s[64]!=':' {return NCC_FINDER;}
+  if !ne_lower_hex(s[0..<64],finder[..]) {return NCC_FINDER;}
+  if !ns_equal32(finder,found.public_key) {return NCC_FINDER;}
+  // 3. The naddr is the cache's: kind 37516, the owner and the d tag.
+  bytes:[512]u8;
+  x:=nip19_decode_checked(s[65..<s.count],bytes[..],false);
+  if x.type!=N19_ADDR {return NCC_CACHE;}
+  if x.kind!=NCC_KIND_LISTING {return NCC_CACHE;}
+  owner:[32]u8;for k:0..<32 {owner[k]=bytes[x.author_at+k];}
+  if !ns_equal32(owner,listing.public_key) {return NCC_CACHE;}
+  if cast(string)bytes[x.special_at..<x.special_at+x.special_length]!=cast(string)d.d[0..<d.d_n] {return NCC_CACHE;}
+  // The content names the finder's npub, compared as written: an escaped
+  // spelling of the same text is refused.
+  text:[128]u8;want:[160]u8;
+  w:=nip19_encode_checked(N19_NPUB,cast(string)finder[..],text[..],false);
+  m:=json_raw(want[..],0,NCC_PROOF_TEXT);m=json_raw(want[..],m,cast(string)text[0..<w.written]);
+  if p.original[p.content_from..<p.content_to]!=cast(string)want[0..<m] {return NCC_CONTENT;}
+  return NCC_OK;
+}
+// book:end verify
+
+// The id order: does a come before b?
+ncc_before :: (a:[32]u8,b:[32]u8)->bool {
+  for i:0..<32 {
+    if a[i]<b[i] {return true;}
+    if a[i]>b[i] {return false;}
+  }
+  return false;
+}
+
+// book:begin winner
+// The first-to-find winner among found logs: the F tag's finder when the
+// listing locks one in, else the earliest verified log, the lower id first
+// when two are as early. proofs[k] is ncc_proof of logs[k]. Logs that
+// don't verify are counted, never chosen.
+ncc_winner :: (listing:NostrEvent,logs:[]NostrEvent,proofs:[]NostrEvent)->NccWinner {
+  w:NccWinner;if proofs.count!=logs.count {return w;}
+  l:=ncc_listing(listing);if l.status!=NCC_OK {w.status=NCC_KIND;return w;}
+  if !l.first_to_find {w.status=NCC_UNVERIFIABLE;return w;}
+  w.locked=l.has_winner;if w.locked {w.finder=l.winner;}
+  for k:0..<logs.count {
+    if ncc_verify(listing,logs[k],proofs[k])!=NCC_OK {w.refused+=1;continue;}
+    w.verified+=1;e:=logs[k];
+    if w.locked {
+      if w.index== -1 && ns_equal32(e.public_key,w.finder) {w.index=k;}
+      continue;
+    }
+    better:=w.index== -1;
+    if !better {
+      b:=logs[w.index];
+      better=e.created_at<b.created_at || (e.created_at==b.created_at && ncc_before(e.id,b.id));
+    }
+    if better {w.index=k;w.finder=e.public_key;}
+  }
+  w.status=NCC_OK;return w;
+}
+// book:end winner

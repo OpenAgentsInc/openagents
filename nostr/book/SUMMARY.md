@@ -100,7 +100,7 @@
 - [66. Markets and orders](ch066-markets-and-orders.md) — implemented
 - [67. Relay discovery, access and management](ch067-relay-discovery-access-and-management.md) — design draft
 - [68. Bridges, external IDs and timestamps](ch068-bridges-external-ids-and-timestamps.md) — design draft
-- [69. Small content kinds](ch069-small-content-kinds.md) — design draft
+- [69. Small content kinds](ch069-small-content-kinds.md) — implemented
 - [70. Retired and experimental NIPs](ch070-retired-and-experimental-nips.md) — design draft
 - [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md) — design draft
 - [72. Wallet Connect](ch072-wallet-connect.md) — design draft

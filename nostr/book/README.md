@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 72 are implemented and 32 are design drafts.
+Of the 104 chapters, 73 are implemented and 31 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -259,7 +259,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [66. Markets and orders](ch066-markets-and-orders.md) | Runnable: native C | NIP-99 classified listings (30402 and 30403 drafts) with `price` in a currency and frequency, NIP-69 peer-to-peer order events (38383), and the unrecommended NIP-15 marketplace. |
 | [67. Relay discovery, access and management](ch067-relay-discovery-access-and-management.md) | Unimplemented: design draft | NIP-66 relay discovery (30166) and monitor announcements (10166), NIP-43 membership lists (13534) and join and leave requests (28934–28936), and the NIP-86 JSON-RPC management API over HTTP with NIP-98 auth. |
 | [68. Bridges, external IDs and timestamps](ch068-bridges-external-ids-and-timestamps.md) | Unimplemented: design draft | NIP-48 `proxy` tags for bridged events, NIP-73 `i` and `k` tags for external content IDs (URLs, ISBNs, podcasts, geohashes), and NIP-03 kind 1040 OpenTimestamps attestations. |
-| [69. Small content kinds](ch069-small-content-kinds.md) | Unimplemented: design draft | NIP-35 torrents (2003), NIP-64 chess games in PGN (64), NIP-CC geocaches (37516) and logs (7516, 7517), and NIP-F4 podcasts. |
+| [69. Small content kinds](ch069-small-content-kinds.md) | Runnable: native C | NIP-35 torrents (2003), NIP-64 chess games in PGN (64), NIP-CC geocaches (37516) and logs (7516, 7517), and NIP-F4 podcasts. |
 | [70. Retired and experimental NIPs](ch070-retired-and-experimental-nips.md) | Unimplemented: design draft | NIP-26 delegation tokens, the NIP-31 `alt` tag and NIP-BE Bluetooth LE transport, each marked `unrecommended` in the pinned text, with what this stack reads and what it never builds. |
 | [71. Lightning zaps and goals](ch071-lightning-zaps-and-goals.md) | Unimplemented: design draft | NIP-57 zap requests (9734) sent to an LNURL server and zap receipts (9735) whose bolt11 description hash commits to the request, and NIP-75 zap goals (9041). |
 | [72. Wallet Connect](ch072-wallet-connect.md) | Unimplemented: design draft | NIP-47 Nostr Wallet Connect: `nostr+walletconnect://` URIs, info (13194), requests (23194) and responses (23195) encrypted with NIP-44, and the commands `pay_invoice`, `make_invoice`, `get_balance` and others. |

@@ -1,0 +1,267 @@
+// NIP-64 chess games: kind 64, whose content is a PGN database (one or more
+// games in Portable Game Notation). A client shows a game only when its
+// PGN reads; anything else is shown as invalid.
+//
+// This is a syntax check of PGN's import format (the lax form people type):
+// tag pairs [Name "value"] before the moves; move numbers ("12." or
+// "12..."); moves in Standard Algebraic Notation (SAN) with check, mate and
+// !/? suffixes; $n annotations; {brace} and ; line comments; % escape lines;
+// (variations) nested; and each game ends in 1-0, 0-1, 1/2-1/2 or *. A
+// Result tag must agree with the game's ending marker, as the PGN standard
+// says. A pawn capture moves to the next file, and a pawn that reaches the
+// first or last rank must promote; nothing else promotes.
+//
+// Not checked: whether the moves are legal on a board. NIP-64 says a
+// client SHOULD check that too; that needs a move generator and is not
+// built, so "1. e4 e4 *" reads here.
+#load "nip32.coax";
+
+N64_OK :: 0; N64_EVENT :: 1; N64_KIND :: 2; N64_EMPTY :: 3; N64_TAG :: 4;
+N64_MOVE :: 5; N64_COMMENT :: 6; N64_VARIATION :: 7; N64_UNFINISHED :: 8;
+N64_MISMATCH :: 9; N64_ROOM :: 10;
+N64_KIND_CHESS :: 64;
+N64_UNKNOWN :: 0; N64_WHITE :: 1; N64_BLACK :: 2; N64_DRAW :: 3;
+N64_ENDINGS :: [4] string.["*", "1-0", "0-1", "1/2-1/2"];
+
+// book:begin record
+N64Pgn :: struct {
+  status:int=N64_EMPTY; at:int=-1;   // the refusing byte's offset
+  games:int;                         // games that end with a marker
+  moves:int;                         // SAN moves, variations included
+  tags:int;                          // tag pairs in all games
+  result:int=N64_UNKNOWN;            // the first game's ending marker
+}
+// book:end record
+
+#test "NIP-64's examples read" {
+  p:=n64_pgn("*");#assert p.status==N64_OK && p.games==1 && p.moves==0 && p.result==N64_UNKNOWN && p.at== -1;
+  p=n64_pgn("1. e4 *");#assert p.status==N64_OK && p.moves==1 && p.tags==0;
+  p=n64_pgn("[White \"Fischer, Robert J.\"]\n[Black \"Spassky, Boris V.\"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 {This opening is called the Ruy Lopez.} *");
+  #assert p.status==N64_OK && p.moves==5 && p.tags==2 && p.games==1;
+  p=n64_pgn(N64_T_FISCHER);#assert p.status==N64_OK && p.moves==85 && p.tags==7 && p.result==N64_DRAW;
+  p=n64_pgn(N64_T_TWO);#assert p.status==N64_OK && p.games==2 && p.moves==56 && p.tags==32 && p.result==N64_WHITE;
+}
+#test "lax forms: no spaces, numbers without moves, comments, escapes, variations" {
+  p:=n64_pgn("1.e4 e5 2.Nf3 0-1");#assert p.status==N64_OK && p.moves==3 && p.result==N64_BLACK;
+  p=n64_pgn("1.e4 1... e5 (1... c5 2. Nf3 (2. c3) d6) 2. Qh5!? Nc6?! 3. Bc4 Nf6?? 4. Qxf7# $1 1-0");
+  #assert p.status==N64_OK && p.moves==11 && p.result==N64_WHITE;
+  p=n64_pgn("% an escape line\n1. d4 ; a line comment ] [ {\nd5 {multi\nline} 2. c4 dxc4 *");#assert p.status==N64_OK && p.moves==4;
+  p=n64_pgn("1. e4 e5 2. O-O O-O-O+ 3. exd5 e1=Q 4. h8Q f1=N+ 5. Raxb1 N1c3 6. Qh4e1 *");#assert p.status==N64_OK && p.moves==11;
+  p=n64_pgn("[Result \"*\"] *\n[Result \"0-1\"]\n1. f3 e5 2. g4 Qh4# 0-1");#assert p.status==N64_OK && p.games==2 && p.result==N64_UNKNOWN;
+  p=n64_pgn("[Event \"A \\\"quoted\\\" \\\\ name\"][Site_2 \"x\"] 1. e4 *");#assert p.status==N64_OK && p.tags==2;
+  p=n64_pgn("  \n\t1. e4\r\n*  \n");#assert p.status==N64_OK;
+}
+#test "refusals with the offending byte" {
+  p:=n64_pgn("");#assert p.status==N64_EMPTY && p.at==0 && p.games==0;
+  p=n64_pgn("  {just a comment}\n");#assert p.status==N64_EMPTY;
+  p=n64_pgn("1. e4 e9 *");#assert p.status==N64_MOVE && p.at==6;
+  p=n64_pgn("1. e4 e5");#assert p.status==N64_UNFINISHED && p.at==8;
+  p=n64_pgn("[White \"x\"]");#assert p.status==N64_UNFINISHED;
+  p=n64_pgn("1. e4 {open *");#assert p.status==N64_COMMENT && p.at==6;
+  p=n64_pgn("1. e4 (1. d4 *");#assert p.status==N64_VARIATION && p.at==13;
+  p=n64_pgn("1. e4 ) *");#assert p.status==N64_VARIATION && p.at==6;
+  p=n64_pgn("[Result \"1-0\"] 1. e4 0-1");#assert p.status==N64_MISMATCH && p.at==21;
+  p=n64_pgn("1. e4 [White \"x\"] *");#assert p.status==N64_TAG && p.at==6;
+  p=n64_pgn("[White x] *");#assert p.status==N64_TAG && p.at==7;
+  p=n64_pgn("[White \"x] *");#assert p.status==N64_TAG && p.at==12;
+  p=n64_pgn("[White \"x\" *");#assert p.status==N64_TAG && p.at==11;
+  p=n64_pgn("[ \"x\"] *");#assert p.status==N64_TAG && p.at==2;
+  p=n64_pgn("[White\"x\"] *");#assert p.status==N64_TAG && p.at==6;
+  p=n64_pgn("[White \"x\\");#assert p.status==N64_TAG && p.at==10;
+  p=n64_pgn("[Wh!te \"x\"] *");#assert p.status==N64_TAG && p.at==3;
+  p=n64_pgn("[White \"a\nb\"] *");#assert p.status==N64_TAG && p.at==9;
+  p=n64_pgn("1. e4 $ *");#assert p.status==N64_MOVE && p.at==6;
+  p=n64_pgn("1. e4 \"x\" *");#assert p.status==N64_MOVE && p.at==6;
+  p=n64_pgn("1. e4 } *");#assert p.status==N64_MOVE && p.at==6;
+  p=n64_pgn("1. e4 e5 1/2 *");#assert p.status==N64_MOVE && p.at==9;
+  p=n64_pgn("1. e4 * e5");#assert p.status==N64_UNFINISHED;
+  p=n64_pgn("1. e4 $: *");#assert p.status==N64_MOVE && p.at==6;
+  p=n64_pgn("[@ \"x\"] *");#assert p.status==N64_TAG && p.at==1;
+  p=n64_pgn("[Z[ \"x\"] *");#assert p.status==N64_TAG && p.at==2;
+  p=n64_pgn("[z{ \"x\"] *");#assert p.status==N64_TAG && p.at==2;
+  p=n64_pgn("[`a \"x\"] *");#assert p.status==N64_TAG && p.at==1;
+  p=n64_pgn("[AZaz09_ \"x\"] *");#assert p.status==N64_OK && p.tags==1;
+  p=n64_pgn("1. e4 %x\n*");#assert p.status==N64_MOVE && p.at==6;
+  p=n64_pgn(";\n1. e4 *");#assert p.status==N64_OK && p.moves==1;
+  p=n64_pgn("1. e4 {} *");#assert p.status==N64_OK && p.moves==1;
+  p=n64_pgn("{x}*");#assert p.status==N64_OK && p.games==1;
+  p=n64_pgn("[");#assert p.status==N64_TAG && p.at==1;
+  p=n64_pgn("[Ab");#assert p.status==N64_TAG && p.at==3;
+  p=n64_pgn("[Ab ");#assert p.status==N64_TAG && p.at==4;
+  p=n64_pgn("[Ab \"x\" ");#assert p.status==N64_TAG && p.at==8;
+  p=n64_pgn("[A \"\\\\\"] *");#assert p.status==N64_OK && p.tags==1;
+  p=n64_pgn("(");#assert p.status==N64_UNFINISHED && p.at==1;
+  p=n64_pgn("1.");#assert p.status==N64_UNFINISHED && p.at==2;
+  p=n64_pgn("1. e4 2...");#assert p.status==N64_UNFINISHED && p.at==10;
+  p=n64_pgn("1. e4 (d4)*");#assert p.status==N64_OK && p.moves==2;
+  p=n64_pgn("1. e4 $1");#assert p.status==N64_UNFINISHED && p.at==8;
+  p=n64_pgn("1. e4 12");#assert p.status==N64_MOVE && p.at==6;
+  p=n64_pgn("1. e4 *1. d4 *");#assert p.status==N64_OK && p.games==2;
+  p=n64_pgn("[Result \"*\"] 1. e4 1-0");#assert p.status==N64_MISMATCH && p.at==19;
+  p=n64_pgn("[Result \"1-0\"] 1. e4 1-0 1. d4 0-1");#assert p.status==N64_OK && p.games==2 && p.result==N64_WHITE;
+  p=n64_pgn("1. e4 * ; done");#assert p.status==N64_OK;
+  p=n64_pgn("1. e4\n% escape\n*");#assert p.status==N64_OK;
+}
+#test "SAN moves" {
+  ok:=[21] string.["e4","exd5","axb8=Q","axb1=N","h8=R","a1=B","e8Q","Nf3","Nbd7","R1e2","Qh4xe1","Kxe2","O-O","O-O-O","Bb5+","Qxh7#","e4!","e4??","e4!?","Nf3+!","e4!!"];
+  for s:ok {#assert n64_san(s);}
+  bad:=[39] string.["","e","e9","i4","exe5","exc5","axb8","e8","e1","e4=Q","Ne4=Q","Nf","Nf9","Kx","K4","Qxh7#+","O-O-O-O","O-","o-o","0-0","e4!!!","e4?!?","Nxx3","Na1b2c3","Pe4","exd","e4+#","xe4","N1","Na1b","e4=","Nf3!!!","O-O-O-O","1xd4","Nxe2x","exd5Q","e8=","Ke2=Q","Nbbd7"];
+  for s:bad {#assert !n64_san(s);}
+}
+#test "kind 64 events: the content decoded and read" {
+  work:[512]u8;
+  e:=n32_event(64,"[]");e.original="[]\"1. e4\\n*\"";e.tags_to=2;e.content_from=3;e.content_to=11;
+  p:=n64_read(e,work[..]);#assert p.status==N64_OK && p.moves==1;
+  e.content_to=10;p=n64_read(e,work[..]);#assert p.status==N64_UNFINISHED;
+  e.content_to=11;#assert n64_read(e,work[0..<6]).status==N64_ROOM && n64_read(e,work[0..<7]).status==N64_OK;
+  k:=e;k.kind=1;#assert n64_read(k,work[..]).status==N64_KIND;
+  f:=e;f.content_from= -1;#assert n64_read(f,work[..]).status==N64_EVENT;
+  f=e;f.content_to=f.original.count+1;#assert n64_read(f,work[..]).status==N64_EVENT;
+  f=e;f.content_from=12;p=n64_read(f,work[..]);#assert p.status==N64_EVENT && p.at== -1;
+  none:NostrEvent;#assert n64_read(none,work[..]).status==N64_EVENT;
+  #assert n64_read(k,work[..]).at== -1 && n64_read(e,work[0..<6]).at== -1;
+  f=e;f.content_from=11;p=n64_read(f,work[..]);#assert p.status==N64_EMPTY;
+  f=e;f.original="1. e4 *";f.content_from=0;f.content_to=7;p=n64_read(f,work[..]);#assert p.status==N64_OK && p.moves==1;
+}
+
+N64_T_FISCHER :: "[Event \"F/S Return Match\"]\n[Site \"Belgrade, Serbia JUG\"]\n[Date \"1992.11.04\"]\n[Round \"29\"]\n[White \"Fischer, Robert J.\"]\n[Black \"Spassky, Boris V.\"]\n[Result \"1/2-1/2\"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 {This opening is called the Ruy Lopez.} 3... a6\n4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 8. c3 O-O 9. h3 Nb8 10. d4 Nbd7\n11. c4 c6 12. cxb5 axb5 13. Nc3 Bb7 14. Bg5 b4 15. Nb1 h6 16. Bh4 c5 17. dxe5\nNxe4 18. Bxe7 Qxe7 19. exd6 Qf6 20. Nbd2 Nxd6 21. Nc4 Nxc4 22. Bxc4 Nb6\n23. Ne5 Rae8 24. Bxf7+ Rxf7 25. Nxf7 Rxe1+ 26. Qxe1 Kxf7 27. Qe3 Qg5 28. Qxg5\nhxg5 29. b3 Ke6 30. a3 Kd6 31. axb4 cxb4 32. Ra5 Nd5 33. f3 Bc8 34. Kf2 Bf5\n35. Ra7 g6 36. Ra6+ Kc5 37. Ke1 Nf4 38. g3 Nxh3 39. Kd2 Kb5 40. Rd6 Kc5 41. Ra6\nNf2 42. g4 Bd3 43. Re6 1/2-1/2";
+N64_T_TWO :: "[Event \"Hourly HyperBullet Arena\"]\n[Site \"https://lichess.org/wxx4GldJ\"]\n[Date \"2017.04.01\"]\n[White \"T_LUKE\"]\n[Black \"decidement\"]\n[Result \"1-0\"]\n[UTCDate \"2017.04.01\"]\n[UTCTime \"11:56:14\"]\n[WhiteElo \"2047\"]\n[BlackElo \"1984\"]\n[WhiteRatingDiff \"+10\"]\n[BlackRatingDiff \"-7\"]\n[Variant \"Standard\"]\n[TimeControl \"30+0\"]\n[ECO \"B00\"]\n[Termination \"Abandoned\"]\n\n1. e4 1-0\n\n\n[Event \"Hourly HyperBullet Arena\"]\n[Site \"https://lichess.org/rospUdSk\"]\n[Date \"2017.04.01\"]\n[White \"Bastel\"]\n[Black \"oslochess\"]\n[Result \"1-0\"]\n[UTCDate \"2017.04.01\"]\n[UTCTime \"11:55:56\"]\n[WhiteElo \"2212\"]\n[BlackElo \"2000\"]\n[WhiteRatingDiff \"+6\"]\n[BlackRatingDiff \"-4\"]\n[Variant \"Standard\"]\n[TimeControl \"30+0\"]\n[ECO \"A01\"]\n[Termination \"Normal\"]\n\n1. b3 d5 2. Bb2 c6 3. Nc3 Bf5 4. d4 Nf6 5. e3 Nbd7 6. f4 Bg6 7. Nf3 Bh5 8. Bd3 e6 9. O-O Be7 10. Qe1 O-O 11. Ne5 Bg6 12. Nxg6 hxg6 13. e4 dxe4 14. Nxe4 Nxe4 15. Bxe4 Nf6 16. c4 Bd6 17. Bc2 Qc7 18. f5 Be7 19. fxe6 fxe6 20. Qxe6+ Kh8 21. Qh3+ Kg8 22. Bxg6 Qd7 23. Qe3 Bd6 24. Bf5 Qe7 25. Be6+ Kh8 26. Qh3+ Nh7 27. Bf5 Rf6 28. Qxh7# 1-0";
+
+n64_file :: (c:u8)->bool {return c>='a' && c<='h';}
+n64_rank :: (c:u8)->bool {return c>='1' && c<='8';}
+n64_digit :: (c:u8)->bool {return c>='0' && c<='9';}
+n64_space :: (c:u8)->bool {return c==' ' || c=='\n' || c=='\t' || c=='\r';}
+// A tag name's characters: letters, digits and _.
+n64_name :: (c:u8)->bool {return (c>='A' && c<='Z') || (c>='a' && c<='z') || n64_digit(c) || c=='_';}
+// The characters a move token may hold.
+n64_token :: (c:u8)->bool {return n64_name(c) || c=='-' || c=='=' || c=='+' || c=='#' || c=='!' || c=='?' || c=='/';}
+
+// book:begin san
+// What may follow a move: + or #, then at most two of ! and ?.
+n64_suffix :: (rest:string)->bool {
+  i:=0;if i<rest.count && (rest[i]=='+' || rest[i]=='#') {i+=1;}
+  k:=0;while k<2 && i<rest.count && (rest[i]=='!' || rest[i]=='?') {i+=1;k+=1;}
+  return i==rest.count;
+}
+// Is s[i] a piece letter?
+n64_piece :: (s:string,i:int)->bool {return i<s.count && (s[i]=='K' || s[i]=='Q' || s[i]=='R' || s[i]=='B' || s[i]=='N');}
+n64_body :: (c:u8)->bool {return n64_file(c) || n64_rank(c) || c=='x';}
+// One move in SAN: castling; a piece letter, then an optional origin file
+// and rank, x for a capture and the target square; or a pawn's target,
+// after its file and x when it captures, then its promotion. Then the
+// suffix.
+n64_san :: (move:string)->bool {
+  n:=move.count;i:=0;
+  if n>=5 && move[0..<5]=="O-O-O" {i=5;}
+  else if n>=3 && move[0..<3]=="O-O" {i=3;}
+  else {
+    piece:=n64_piece(move,0);
+    if piece {i=1;}
+    from:=i;while i<n && n64_body(move[i]) {i+=1;}
+    s:=move[from..<i];m:=s.count;
+    if m<2 || !n64_file(s[m-2]) || !n64_rank(s[m-1]) {return false;}
+    if piece {
+      k:=0;e:=m-2;
+      if e>0 && s[e-1]=='x' {e-=1;}
+      if k<e && n64_file(s[k]) {k+=1;}
+      if n64_rank(s[k]) {k+=1;}   // s[e] is x or a file
+      if k!=e {return false;}
+    } else {
+      if m==4 && (s[1]!='x' || (s[2]!=s[0]+1 && s[2]+1!=s[0])) {return false;}
+      if m!=2 && m!=4 {return false;}
+      last:=s[m-1]=='1' || s[m-1]=='8';
+      equals:=i<n && move[i]=='=';if equals {i+=1;}
+      promote:=i<n && (move[i]=='Q' || move[i]=='R' || move[i]=='B' || move[i]=='N');
+      if promote {i+=1;}
+      if promote!=last || (equals && !promote) {return false;}
+    }
+  }
+  return n64_suffix(move[i..<n]);
+}
+// book:end san
+
+n64_fail :: (p:N64Pgn,status:int,at:int)->N64Pgn {r:=p;r.status=status;r.at=at;return r;}
+n64_ending :: (s:string)->int {
+  for k:0..<4 {if s==N64_ENDINGS[k] {return k;}}
+  return -1;
+}
+
+// book:begin pgn
+// A PGN database read token by token. A game is open from its first tag or
+// move until its ending marker; tags may only come before its moves.
+n64_pgn :: (s:string)->N64Pgn {
+  p:N64Pgn;i:=0;open:=false;moved:=false;depth:=0;result:=-1;
+  while i<s.count {
+    c:=s[i];
+    if n64_space(c) {i+=1;continue;}
+    if c=='%' && (i==0 || s[i-1]=='\n') || c==';' {while i<s.count && s[i]!='\n' {i+=1;}continue;}
+    if c=='{' {
+      j:=i+1;while j<s.count && s[j]!='}' {j+=1;}
+      if j==s.count {return n64_fail(p,N64_COMMENT,i);}
+      i=j+1;continue;
+    }
+    if c=='[' {
+      // [Name "value"]: the value is the Result tag's when the name is.
+      if moved {return n64_fail(p,N64_TAG,i);}
+      j:=i+1;while j<s.count && n64_space(s[j]) {j+=1;}
+      from:=j;while j<s.count && n64_name(s[j]) {j+=1;}
+      if j==from || j==s.count || !n64_space(s[j]) {return n64_fail(p,N64_TAG,j);}
+      name:=s[from..<j];
+      while j<s.count && n64_space(s[j]) {j+=1;}
+      if j==s.count || s[j]!='"' {return n64_fail(p,N64_TAG,j);}
+      j+=1;v:=j;
+      while j<s.count && s[j]!='"' {
+        if s[j]=='\n' {return n64_fail(p,N64_TAG,j);}
+        if s[j]=='\\' {j+=1;}
+        j+=1;
+      }
+      if j>=s.count {return n64_fail(p,N64_TAG,s.count);}
+      value:=s[v..<j];j+=1;
+      while j<s.count && n64_space(s[j]) {j+=1;}
+      if j==s.count || s[j]!=']' {return n64_fail(p,N64_TAG,j);}
+      if name=="Result" {result=n64_ending(value);}
+      open=true;p.tags+=1;i=j+1;continue;
+    }
+    if c=='(' {depth+=1;open=true;i+=1;continue;}
+    if c==')' {if depth==0 {return n64_fail(p,N64_VARIATION,i);}depth-=1;i+=1;continue;}
+    if c=='$' {
+      j:=i+1;while j<s.count && n64_digit(s[j]) {j+=1;}
+      if j==i+1 {return n64_fail(p,N64_MOVE,i);}
+      i=j;continue;
+    }
+    if !n64_token(c) && c!='*' {return n64_fail(p,N64_MOVE,i);}
+    // A move number: digits then periods.
+    j:=i;while j<s.count && n64_digit(s[j]) {j+=1;}
+    if j<s.count && s[j]=='.' {
+      while j<s.count && s[j]=='.' {j+=1;}
+      open=true;i=j;continue;
+    }
+    j=i+1;
+    if c!='*' {while j<s.count && n64_token(s[j]) {j+=1;}}
+    word:=s[i..<j];end:=n64_ending(word);
+    if end>=0 {
+      if depth>0 {return n64_fail(p,N64_VARIATION,i);}
+      if result>=0 && result!=end {return n64_fail(p,N64_MISMATCH,i);}
+      if p.games==0 {p.result=end;}
+      p.games+=1;open=false;moved=false;result=-1;i=j;continue;
+    }
+    if !n64_san(word) {return n64_fail(p,N64_MOVE,i);}
+    p.moves+=1;open=true;moved=true;i=j;
+  }
+  if open {return n64_fail(p,N64_UNFINISHED,i);}
+  if p.games==0 {return n64_fail(p,N64_EMPTY,i);}
+  p.status=N64_OK;return p;
+}
+// book:end pgn
+
+// book:begin read
+// A kind 64 event's PGN, its content decoded into work first.
+n64_read :: (e:NostrEvent,work:[]u8)->N64Pgn {
+  p:N64Pgn;
+  if e.error!=NE_OK || e.content_from<0 || e.content_to>e.original.count || e.content_from>e.content_to {return n64_fail(p,N64_EVENT,-1);}
+  if e.kind!=N64_KIND_CHESS {return n64_fail(p,N64_KIND,-1);}
+  n:=json_unescape(e.original[e.content_from..<e.content_to],work);
+  if n<0 {return n64_fail(p,N64_ROOM,-1);}
+  return n64_pgn(cast(string)work[0..<n]);
+}
+// book:end read

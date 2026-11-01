@@ -807,6 +807,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/small-content.coax",
+      "chapter": "nostr/book/ch069-small-content-kinds.md",
+      "stdout": "nostr/fixtures/small-content.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

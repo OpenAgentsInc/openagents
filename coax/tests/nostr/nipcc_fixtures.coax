@@ -1,0 +1,103 @@
+// Signed kind 7517 verification events for nipcc.coax's checks, made with
+// event_sign (aux zero, created_at 1761686400) and BIP-340 test keys: the
+// cache's verification key is the secret key 2. GOOD proves Bob found
+// Alice's cache oak; the others each break one rule. FORGED and BADSIG are
+// GOOD with one content byte added after signing and one signature digit
+// changed. NIP is NIP-CC's own example, verbatim.
+NCC_T_A :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";   // Alice, the owner
+NCC_T_B :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";   // Bob
+NCC_T_C :: "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8";   // Carol
+NCC_T_D :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";   // Dave
+NCC_T_V :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";   // the cache key
+NCC_F_GOOD :: "{\"id\":\"57dec4214d033ae4558d34fb0bfac85f0e70075e16854148c8dbffbc379f8ac6\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"b270edc5067d59b63960bd9c070386c30d5266945faa5710ad183c54988159511dec31d93b5b6d78172c8078fcd616b4850cc366414c8cc089a5cb954c103525\"}";
+NCC_F_DAVE :: "{\"id\":\"51dffe558e47c8349cddf0625238680ba0e2097e9ce42f859193af6ad23c1c30\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache verification for npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d\",\"sig\":\"63e3ffc1fda5681efa2f6eb3d22dc1684405571f2270f31a08bc2c2a5ee789dc3cae70091cc7752783ab17b089cc677348c3683209a0e920d833aac41446b2e6\"}";
+NCC_F_MALLORY :: "{\"id\":\"5c599bf311f4c90582308bcfccf8399447fc146d4d312d4b09899ab137d096e4\",\"pubkey\":\"25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"c592e63fef0ec8f536b47131480fc1172bad91cafb4b828d24ad5e616e2601567fc5eb36ab58afccd70b1782f698bb42a9e13b9f21a1db36fb4d3cc79fe4ffae\"}";
+NCC_F_ELM :: "{\"id\":\"cfb62fbf0d7b44837af6189c3204939e2a58f6e8f584ffd0f33081e5f1c79b18\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:naddr1qqpk2mrdqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vwmgql5\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"bdf520ac0dd8d0cf440fbfc40b75212ab214034413d89b3c22ad35c8b8c6ddc26b169cfea993874142ef1c56b261b6123564826abcf19e19c040abbd9b55cb39\"}";
+NCC_F_CONTENT :: "{\"id\":\"0f5663217860be6bb026475c551433b9a1c371c4422310955f2a8877706949d6\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache verification for npub1m5cg4lk9walpxysl5u4eesdhesqnju2npxcgdjtqux8aj6thf6uqgl8y4x\",\"sig\":\"762b1ecb31a7166c1d495ac0b8f610353771be51bfa7497605889049f4477b0de25bf2853a6a1b8c7c2caab03127a74f7a7d7ca7cc0c6866c62c4d9c87e65cf1\"}";
+NCC_F_NOADDR :: "{\"id\":\"3906c7ceda3462d523f475bdf11334ab042a484fb904bc6490f2468f81aa28c0\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"8792ad295214f7e8e7899cf64d54709b07e1317f6f3a99bbae2d8c345cbacecf99f53d02bc06bb6007092de0dc0396ade4b26b9cfb16125f334c46daff9ea653\"}";
+NCC_F_NOTNADDR :: "{\"id\":\"630f9ba929a4f491f00ca65de3c9bf72b11b8b3496a5e63daed9a3cf692fe218\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"c4d112c79c341d3db0426c1ed1e70591927d2e19c4efae3a923b4a0d9a7da146fcbc758917768383c1fdf76e01c51dc8b22b4d234b57c2025e9f87dc88c60a9b\"}";
+NCC_F_NOATAG :: "{\"id\":\"ce94e47987f5ced4e1867481107a7ac865e4502eea661f3350b607dbd53d0615\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"t\",\"geocache\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"a2d02e1571c30d7f3b00e4ac5f1ec0bd13b3e1ead2ed4b8bbc1fcc9bfa229afc65dcd8ad5a2226aa4811755ea85702252fed1e76d4ab355aa3a1c7af3797de33\"}";
+NCC_F_KIND :: "{\"id\":\"ecf87875ea575352c9fe48af136740c64a13a4c59ddab932570f23799a1fc748\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7518,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"f5ff451e0926e07e9b94b7e1c9ab0a5243a7bc2763c912d0f03bc67467b90551c1515e5bd901b86eb3786dc3f72b793b5dcb781f90516d7827dec8e8388e55cc\"}";
+NCC_F_FORGED :: "{\"id\":\"57dec4214d033ae4558d34fb0bfac85f0e70075e16854148c8dbffbc379f8ac6\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache  verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"b270edc5067d59b63960bd9c070386c30d5266945faa5710ad183c54988159511dec31d93b5b6d78172c8078fcd616b4850cc366414c8cc089a5cb954c103525\"}";
+NCC_F_BADSIG :: "{\"id\":\"57dec4214d033ae4558d34fb0bfac85f0e70075e16854148c8dbffbc379f8ac6\",\"pubkey\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[[\"a\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:naddr1qqpk7cttqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqpy5vge5j7y\"]],\"content\":\"Geocache verification for npub1mlcawle2vuw97dscxundkg6phev0atsa5t0vakzrys8hk5pt5evssm7a0a\",\"sig\":\"b270edc5067d59b63960bd9c070386c30d5266945faa5710ad183c54988159511dec31d93b5b6d78172c8078fcd616b4850cc366414c8cc089a5cb954c103520\"}";
+NCC_F_NIP :: "{\"kind\":7517,\"content\":\"Geocache verification for npub1qc0lc5lxnhxnfxlw2lxkv4x4vp6xsf4d5qwvlhfx6qmz6x4nfhqd8h2z3\",\"tags\":[[\"a\",\"0461fcbecc4c3374439932d6b8f11269ccdb7cc973ad7a50ae362db135a474dd:naddr1qqxnzd3e8q6n2dfk8qcnjve48qmnsw3jsqgswaehxw309aex2mrp0yhx6tpdsek6w309aex2mrp0yh56tnwdus8vatjvs6kzdrz956k7tjzw6qzypzgd2dmgxhxf34hnlw2y03nckr8f4g6mw9flxqq65v94zkp77rqfgrf8\"]],\"pubkey\":\"6805d4e5c0df48b4f76e2fdcb67a2acb1d97567b01c6fe17a236dc32f34f1c07\",\"created_at\":1672531200,\"sig\":\"a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456789012345678901234567890abcdef1234567890abcdef1234567890abcdef12\"}";
+
+// A listing by owner with the cache d; keyed adds the verification key and
+// first-to-find.
+ncc_t_listing :: (owner:string,d:string,keyed:bool,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,d);
+  n=json_raw(out,n,"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"]");
+  if keyed {n=json_raw(out,n,",[\"verification\",\"");n=json_raw(out,n,NCC_T_V);n=json_raw(out,n,"\"],[\"n\",\"first-to-find\"]");}
+  n=json_raw(out,n,"]");
+  e:=nt_event(cast(string)out[0..<n]);e.kind=NCC_KIND_LISTING;
+  k:=hex_decode_checked(owner,e.public_key[..],false);return e;
+}
+// The keyed listing of oak by Alice, archived and locked in to Dave.
+ncc_t_locked :: (out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"verification\",\"");
+  n=json_raw(out,n,NCC_T_V);n=json_raw(out,n,"\"],[\"n\",\"first-to-find\"],[\"t\",\"archived\"],[\"F\",\"");n=json_raw(out,n,NCC_T_D);n=json_raw(out,n,"\"]]");
+  e:=nt_event(cast(string)out[0..<n]);e.kind=NCC_KIND_LISTING;
+  k:=hex_decode_checked(NCC_T_A,e.public_key[..],false);return e;
+}
+// A found log by author of Alice's cache d, carrying proof as its
+// verification tag when it is not empty; every id byte is id.
+ncc_t_log :: (author:string,d:string,proof:string,id:u8,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"[[\"a\",\"37516:");n=json_raw(out,n,NCC_T_A);n=json_raw(out,n,":");n=json_raw(out,n,d);n=json_raw(out,n,"\"]");
+  if proof.count>0 {n=json_raw(out,n,",[\"verification\",");n=json_write_string(out,n,proof);n=json_raw(out,n,"]");}
+  n=json_raw(out,n,"]");
+  e:=nt_event(cast(string)out[0..<n]);e.kind=NCC_KIND_FOUND;
+  k:=hex_decode_checked(author,e.public_key[..],false);for i:0..<32 {e.id[i]=id;}return e;
+}
+// A proof parsed and marked verified, as if its id and signature were
+// checked: the checks of ncc_verify's rules don't pay for signature
+// checks, which ncc_proof's own check covers.
+ncc_t_proof :: (text:string)->NostrEvent {
+  e:=ne_parse(text);
+  if e.error==NE_OK {e.verified=true;}
+  return e;
+}
+// A found log like ncc_t_log with the verification tag first.
+ncc_t_log_first :: (author:string,d:string,proof:string,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"[[\"verification\",");n=json_write_string(out,n,proof);
+  n=json_raw(out,n,"],[\"a\",\"37516:");n=json_raw(out,n,NCC_T_A);n=json_raw(out,n,":");n=json_raw(out,n,d);n=json_raw(out,n,"\"]]");
+  e:=nt_event(cast(string)out[0..<n]);e.kind=NCC_KIND_FOUND;
+  k:=hex_decode_checked(author,e.public_key[..],false);return e;
+}
+// A cache d of 32 characters, the length of an nevent's id.
+NCC_T_D32 :: "abcdefghijklmnopqrstuvwxyz012345";
+// The NIP-19 form of type for the cache d by owner with this kind: the
+// special field is d, padded with x to 32 bytes for an nevent.
+ncc_t_nip19 :: (type:u32,owner:string,d:string,kind:int,out:[]u8)->string {
+  p:[128]u8;size:=ifx type==N19_EVENT then 32 else d.count;
+  p[0]=0;p[1]=cast(u8)size;for i:0..<size {p[2+i]=ifx i<d.count then d[i] else 'x';}
+  n:=2+size;p[n]=2;p[n+1]=32;k:=hex_decode_checked(owner,p[n+2..<n+34],false);n+=34;
+  p[n]=3;p[n+1]=4;p[n+2]=0;p[n+3]=0;p[n+4]=cast(u8)(kind>>8);p[n+5]=cast(u8)(kind&255);n+=6;
+  r:=nip19_encode_checked(type,cast(string)p[0..<n],out,false);
+  return cast(string)out[0..<r.written];
+}
+// An unsigned proof by the cache key, parsed and marked verified, for
+// Bob's find of Alice's cache d: variant 0 is GOOD's shape; 1 "<bob>:";
+// 2 "<bob>:x"; 3 ";" for ":"; 4 Bob's key in uppercase; 5 a t tag before
+// the a tag; 6 an nevent for the naddr; 7 Bob as the cache's owner.
+// Content 1 adds a character, 2 escapes the n of npub.
+ncc_t_made :: (variant:int,d:string,kind:int,content:int,out:[]u8)->NostrEvent {
+  addr:[256]u8;npub:[128]u8;
+  bob:=NCC_T_B;upper:="DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659";
+  a:=ncc_t_nip19(N19_ADDR,ifx variant==7 then NCC_T_B else NCC_T_A,d,kind,addr[..]);
+  if variant==6 {a=ncc_t_nip19(N19_EVENT,NCC_T_A,d,kind,addr[..]);}
+  n:=json_raw(out,0,"{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n=json_raw(out,n,NCC_T_V);n=json_raw(out,n,"\",\"created_at\":1761686400,\"kind\":7517,\"tags\":[");
+  if variant==5 {n=json_raw(out,n,"[\"t\",\"x\"],");}
+  n=json_raw(out,n,"[\"a\",\"");n=json_raw(out,n,ifx variant==4 then upper else bob);
+  n=json_raw(out,n,ifx variant==3 then ";" else ":");
+  if variant==2 {n=json_raw(out,n,"x");}
+  else if variant!=1 {n=json_raw(out,n,a);}
+  k:[32]u8;h:=hex_decode_checked(NCC_T_B,k[..],false);
+  r:=nip19_encode_checked(N19_NPUB,cast(string)k[..],npub[..],false);
+  n=json_raw(out,n,"\"]],\"content\":\"Geocache verification for ");
+  if content==2 {n=json_raw(out,n,"\\u006e");n=json_raw(out,n,cast(string)npub[1..<r.written]);}
+  else {n=json_raw(out,n,cast(string)npub[0..<r.written]);}
+  if content==1 {n=json_raw(out,n,"x");}
+  n=json_raw(out,n,"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  return ncc_t_proof(cast(string)out[0..<n]);
+}

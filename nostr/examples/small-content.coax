@@ -1,0 +1,279 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip35.coax";
+#load "../../coax/lib/nostr/nip64.coax";
+#load "../../coax/lib/nostr/nipcc.coax";
+#load "../../coax/lib/nostr/nipf4.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+TORRENT :: [10] string.["ok", "event", "kind", "missing x", "bad hash", "bad file size", "empty value", "bad i prefix", "limit", "repeated x"];
+PGN :: [11] string.["ok", "event", "kind", "empty", "bad tag pair", "bad move", "open comment", "unbalanced variation", "unfinished game", "Result tag disagrees", "no room"];
+CACHE :: [20] string.["ok", "event", "kind", "bad tag", "missing", "bad geohash", "bad score", "bad size", "bad key", "first-to-find without a key", "F without first-to-find", "limit", "wrong target", "no key", "no proof", "proof refused", "proof signed by another key", "proof for another finder", "proof for another cache", "proof content wrong"];
+PODCAST :: [9] string.["ok", "event", "kind", "bad tag", "missing", "bad role", "empty value", "bad media type", "limit"];
+ENDING :: [4] string.["unknown (*)", "white wins", "black wins", "draw"];
+// BIP-340 test vectors 0 to 3's public keys, then the public keys of the
+// secret keys 1 and 2. The secret key 2 is the cache's verification key,
+// printed on a QR code inside the box; Pod is the podcast's own key.
+PEOPLE :: [6] string.["Alice", "Bob", "Carol", "Pod", "Dave", "Cache"];
+PUB :: [6] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517",
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"];
+// Their secret keys: published test values. Never sign with a real key in
+// an example.
+SECRET :: [6] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710",
+  "0000000000000000000000000000000000000000000000000000000000000001",
+  "0000000000000000000000000000000000000000000000000000000000000002"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; POD :: 3; DAVE :: 4; CACHE_KEY :: 5;
+T0 :: 1761686400;
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+show_key :: (key: [32] u8) {
+  for k: 0..<PEOPLE.count { if ns_equal32(key_of(k), key) { print("%", PEOPLE[k]); return; } }
+  text: [64] u8; print("%...", hex32(key, text[..])[0..<8]);
+}
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(SECRET[who], key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [16384] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [16384] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// The npub of who, and the naddr of Alice's cache d (kind 37516): NIP-19.
+npub_of :: (who: int, out: [] u8) -> string {
+  k := key_of(who); r := nip19_encode_checked(N19_NPUB, cast(string) k[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+naddr_of :: (d: string, out: [] u8) -> string {
+  p: [128] u8; n := 2 + d.count; p[0] = 0; p[1] = cast(u8) d.count;
+  for i: 0..<d.count { p[2 + i] = d[i]; }
+  k := key_of(ALICE); p[n] = 2; p[n + 1] = 32; for i: 0..<32 { p[n + 2 + i] = k[i]; } n += 34;
+  p[n] = 3; p[n + 1] = 4; p[n + 2] = 0; p[n + 3] = 0; p[n + 4] = cast(u8)(37516 >> 8); p[n + 5] = cast(u8)(37516 & 255); n += 6;
+  r := nip19_encode_checked(N19_ADDR, cast(string) p[0..<n], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<r.written];
+}
+// A kind 7517 proof's tags and content: finder found Alice's cache d.
+proof_tags :: (finder: int, d: string, out: [] u8) -> string {
+  a: [256] u8;
+  n := json_raw(out, 0, "[[\"a\",\""); n = json_raw(out, n, PUB[finder]); n = json_raw(out, n, ":");
+  n = json_raw(out, n, naddr_of(d, a[..])); n = json_raw(out, n, "\"]]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+proof_content :: (finder: int, out: [] u8) -> string {
+  b: [128] u8; n := json_raw(out, 0, NCC_PROOF_TEXT); n = json_raw(out, n, npub_of(finder, b[..]));
+  return cast(string) out[0..<n];
+}
+// A found log's tags: Alice's cache d, then the proof's JSON when given.
+found_tags :: (d: string, proof: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[[\"a\",\"37516:"); n = json_raw(out, n, PUB[ALICE]); n = json_raw(out, n, ":");
+  n = json_raw(out, n, d); n = json_raw(out, n, "\"]");
+  if proof.count > 0 { n = json_raw(out, n, ",[\"verification\","); n = json_write_string(out, n, proof); n = json_raw(out, n, "]"); }
+  n = json_raw(out, n, "]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+event_text :: (e: NostrEvent) -> string { return e.original; }
+
+// The events. Templates whose tags hold proofs or whose content names an
+// npub are built by tags_of and content_of.
+EVENTS :: 14;
+NAME :: [EVENTS] string.["TOR", "G1", "G2", "L", "PB", "PD", "FB", "FD", "FC", "LK", "C", "S", "A", "E"];
+WHO :: [EVENTS] int.[ALICE, BOB, CAROL, ALICE, CACHE_KEY, CACHE_KEY, BOB, DAVE, CAROL, ALICE, CAROL, POD, ALICE, POD];
+AT :: [EVENTS] int.[0, 10, 20, 30, 200, 100, 200, 100, 50, 300, 40, 60, 70, 80];
+KIND :: [EVENTS] int.[2003, 64, 64, 37516, 7517, 7517, 7516, 7516, 7516, 37516, 37517, 10154, 10164, 54];
+TAGS :: [EVENTS] string.[
+  "[[\"title\",\"Big Buck Bunny\"],[\"x\",\"dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c\"],[\"file\",\"Big Buck Bunny/Big Buck Bunny.mp4\",\"276134947\"],[\"file\",\"Big Buck Bunny/poster.jpg\",\"310380\"],[\"tracker\",\"udp://tracker.example.org:1337\"],[\"i\",\"tcat:video,movie\"],[\"i\",\"imdb:tt1254207\"],[\"t\",\"movie\"]]",
+  "[[\"alt\",\"Fischer vs. Spassky, the Ruy Lopez\"]]",
+  "[[\"alt\",\"A broken game\"]]",
+  "[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"hint\",\"In the branches\"],[\"n\",\"first-to-find\"],[\"verification\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]]",
+  "", "", "", "", "",
+  "[[\"d\",\"oak\"],[\"name\",\"Old Oak\"],[\"g\",\"u4xsu6ry\"],[\"g\",\"u4x\"],[\"D\",\"3\"],[\"T\",\"2\"],[\"S\",\"small\"],[\"hint\",\"In the branches\"],[\"n\",\"first-to-find\"],[\"verification\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"t\",\"archived\"],[\"F\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]",
+  "[[\"d\",\"park-trail\"],[\"title\",\"Park trail\"],[\"a\",\"37516:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"]]",
+  "[[\"title\",\"Relay Hour\"],[\"image\",\"https://example.com/cover.jpg\"],[\"description\",\"Weekly talk about relays.\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"host\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"cohost\"]]",
+  "[[\"p\",\"25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517\"]]",
+  "[[\"title\",\"Episode 1: Outboxes\"],[\"audio\",\"https://example.com/1.mp3\",\"audio/mpeg\"],[\"audio\",\"https://example.com/1.ogg\",\"audio/ogg\"]]"];
+CONTENT :: [EVENTS] string.[
+  "A short open movie.",
+  "[White \"Fischer, Robert J.\"]\n[Black \"Spassky, Boris V.\"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 {This opening is called the Ruy Lopez.} *",
+  "1. e4 e9 *",
+  "Under the old oak by the pond.",
+  "", "", "Found it! Great hiding spot.", "First!", "Found it too.", "Under the old oak by the pond.",
+  "One cache by the pond.", "", "", "We compare outbox routing on three relays."];
+
+// The tags of event k: its template, or a proof's or found log's, which
+// need the proofs signed before them.
+tags_of :: (k: int, all: [] NostrEvent, out: [] u8) -> string {
+  if k == 4 { return proof_tags(BOB, "oak", out); }
+  if k == 5 { return proof_tags(DAVE, "oak", out); }
+  if k == 6 { return found_tags("oak", event_text(all[4]), out); }
+  if k == 7 { return found_tags("oak", event_text(all[5]), out); }
+  if k == 8 { return found_tags("oak", event_text(all[4]), out); }   // Carol copies Bob's proof
+  n := json_raw(out, 0, TAGS[k]); #assert n > 0;
+  return cast(string) out[0..<n];
+}
+content_of :: (k: int, out: [] u8) -> string {
+  if k == 4 { return proof_content(BOB, out); }
+  if k == 5 { return proof_content(DAVE, out); }
+  return CONTENT[k];
+}
+
+show_torrent :: (label: string, e: NostrEvent) {
+  t := n35_read(e);
+  print("%: %", label, TORRENT[t.status]);
+  if t.at >= 0 { print(" at tag %", t.at); }
+  if t.status != N35_OK { print("\n"); return; }
+  print(", \""); say(t.title); print("\", files %, % bytes, trackers %, references % (unknown %), topics %\n", t.files, t.bytes, t.tracker_n, t.refs, t.unknown, t.topics);
+  link: [512] u8; n := n35_magnet(t, link[..]);
+  print("  magnet: %\n", cast(string) link[0..<n]);
+}
+show_game :: (label: string, e: NostrEvent) {
+  work: [2048] u8; p := n64_read(e, work[..]);
+  print("%: ", label);
+  if p.status != N64_OK { print("invalid PGN, % at byte %\n", PGN[p.status], p.at); return; }
+  print("valid PGN, games %, moves %, tag pairs %, result %\n", p.games, p.moves, p.tags, ENDING[p.result]);
+}
+show_listing :: (label: string, e: NostrEvent) {
+  l := ncc_listing(e);
+  print("%: %", label, CACHE[l.status]);
+  if l.at >= 0 { print(" at tag %", l.at); }
+  if l.status != NCC_OK { print("\n"); return; }
+  print(", \""); say(l.name); print("\" (d "); say(l.d); print("), "); say(l.type);
+  print(", D% T%, %, geohashes %", l.difficulty, l.terrain, NCC_SIZES[l.size], l.geohashes);
+  if l.first_to_find { print(", first-to-find"); }
+  if l.has_key { print(", key "); show_key(l.key); }
+  if l.archived { print(", archived"); }
+  if l.has_winner { print(", locked to "); show_key(l.winner); }
+  print("\n");
+}
+show_found :: (label: string, e: NostrEvent) {
+  f := ncc_found(e);
+  print("%: %", label, CACHE[f.status]);
+  if f.at >= 0 { print(" at tag %", f.at); }
+  if f.status != NCC_OK { print("\n"); return; }
+  print(", by "); show_key(e.public_key); print(" at T0+%, of % ", e.created_at - T0, f.cache.address_kind);
+  print("%", cast(string) f.cache.d[0..<f.cache.d_n]); print(" by "); show_key(f.cache.pubkey);
+  print(", %\n", ifx f.proof_at >= 0 then "with a proof" else "no proof");
+}
+show_verdict :: (label: string, listing: NostrEvent, found: NostrEvent) {
+  text: [NCC_MAX_PROOF] u8; scratch: [NCC_MAX_PROOF] u8; p := ncc_proof(found, text[..], scratch[..]);
+  print("%: %\n", label, CACHE[ncc_verify(listing, found, p)]);
+}
+show_winner :: (label: string, listing: NostrEvent, logs: [] NostrEvent) {
+  texts: [3][NCC_MAX_PROOF] u8; scratch: [NCC_MAX_PROOF] u8; proofs: [3] NostrEvent;
+  for k: 0..<logs.count { proofs[k] = ncc_proof(logs[k], texts[k][..], scratch[..]); }
+  w := ncc_winner(listing, logs, proofs[0..<logs.count]);
+  print("%: %, verified %, refused %, ", label, CACHE[w.status], w.verified, w.refused);
+  if w.index >= 0 { print("winner "); show_key(w.finder); print(" (log %)", w.index); } else { print("no winner"); }
+  print("%\n", ifx w.locked then ", locked by F" else "");
+}
+show_show :: (label: string, e: NostrEvent) {
+  s := nf4_show(e);
+  print("%: %", label, PODCAST[s.status]);
+  if s.at >= 0 { print(" at tag %", s.at); }
+  if s.status != NF4_OK { print("\n"); return; }
+  print(", \""); say(s.title); print("\" by "); show_key(e.public_key); print(", claims");
+  for k: 0..<s.author_n { print(" "); show_key(s.authors[k].key); print(" (%)", ifx s.authors[k].role == NF4_NONE then "no role" else NF4_ROLES[s.authors[k].role]); }
+  print("\n");
+}
+show_episode :: (label: string, e: NostrEvent) {
+  p := nf4_episode(e);
+  print("%: %", label, PODCAST[p.status]);
+  if p.at >= 0 { print(" at tag %", p.at); }
+  if p.status != NF4_OK { print("\n"); return; }
+  print(", \""); say(p.title); print("\", audio "); say(p.audio);
+  if p.has_type { print(" ("); say(p.type); print(")"); }
+  print(", % audio tags\n", p.audios);
+}
+
+// An unsigned event by Carol with these tags and content, parsed but not
+// verified: its id and sig are zeros. Used for the refusals.
+unsigned :: (kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[CAROL]); n = json_raw(out, n, "\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+main :: () {
+  all: [EVENTS] NostrEvent; buf: [EVENTS][8192] u8; tags: [4096] u8; text: [256] u8;
+  for k: 0..<EVENTS {
+    all[k] = sign(WHO[k], T0 + AT[k], KIND[k], tags_of(k, all[..], tags[..]), content_of(k, text[..]), buf[k][..]);
+  }
+  print("each event's id, recomputed and its signature checked\n");
+  for k: 0..<EVENTS { hex: [64] u8; print("%: %, verified %\n", NAME[k], hex32(all[k].id, hex[..]), all[k].verified); }
+
+  print("NIP-35 torrent\n");
+  show_torrent("TOR", all[0]);
+  print("NIP-64 chess\n");
+  show_game("G1", all[1]); show_game("G2", all[2]);
+  print("NIP-CC geocaching\n");
+  show_listing("L", all[3]);
+  show_found("FB", all[6]); show_found("FD", all[7]); show_found("FC", all[8]);
+  show_verdict("FB proves", all[3], all[6]);
+  show_verdict("FD proves", all[3], all[7]);
+  show_verdict("FC proves", all[3], all[8]);
+  logs: [3] NostrEvent; logs[0] = all[6]; logs[1] = all[7]; logs[2] = all[8];
+  show_winner("first to find L", all[3], logs[..]);
+  show_listing("LK", all[9]);
+  show_winner("first to find LK", all[9], logs[..]);
+  c := ncc_list(all[10]);
+  print("C: %, \"", CACHE[c.status]); say(c.title); print("\", % caches\n", c.caches);
+  print("NIP-F4 podcast\n");
+  show_show("S", all[11]);
+  lists: [1] NostrEvent; lists[0] = all[12];
+  cr := nf4_credits(all[11], lists[..]);
+  s := nf4_show(all[11]);
+  print("credits:");
+  for k: 0..<s.author_n { print(" "); show_key(s.authors[k].key); print(" %;", ifx cr.confirmed[k] then "confirmed" else "not confirmed"); }
+  print(" shown %, unconfirmed %\n", cr.shown, cr.unconfirmed);
+  show_episode("E", all[13]);
+
+  print("refusals\n");
+  bad: [4096] u8;
+  show_torrent("torrent without x", unsigned(2003, "[[\"title\",\"T\"],[\"file\",\"a.txt\"]]", "", bad[..]));
+  show_torrent("torrent with a short info hash", unsigned(2003, "[[\"x\",\"dd8255ecdc7ca55f\"]]", "", bad[..]));
+  show_game("game whose Result tag disagrees", unsigned(64, "[]", "[Result \"1-0\"] 1. e4 0-1", bad[..]));
+  show_game("game with an open comment", unsigned(64, "[]", "1. e4 {unclosed *", bad[..]));
+  show_listing("listing with difficulty 6", unsigned(37516, "[[\"d\",\"x\"],[\"name\",\"N\"],[\"g\",\"u4x\"],[\"D\",\"6\"],[\"T\",\"1\"],[\"S\",\"small\"]]", "", bad[..]));
+  show_listing("first-to-find without a key", unsigned(37516, "[[\"d\",\"x\"],[\"name\",\"N\"],[\"g\",\"u4x\"],[\"D\",\"1\"],[\"T\",\"1\"],[\"S\",\"small\"],[\"n\",\"first-to-find\"]]", "", bad[..]));
+  show_found("found log of an article", unsigned(7516, "[[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:oak\"]]", "", bad[..]));
+  nip: [4096] u8;
+  show_verdict("found log carrying NIP-CC's example proof", all[3], unsigned(7516, found_tags("oak", NCC_PROOF_NIP, nip[..]), "", bad[..]));
+  show_show("show crediting a guest", unsigned(10154, "[[\"title\",\"T\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"guest\"]]", "", bad[..]));
+  show_episode("episode without audio", unsigned(54, "[[\"title\",\"Episode 2\"]]", "", bad[..]));
+}
+// NIP-CC's verification example without its whitespace: no id, a
+// placeholder signature, and an npub and naddr that don't decode.
+NCC_PROOF_NIP :: "{\"kind\":7517,\"content\":\"Geocache verification for npub1qc0lc5lxnhxnfxlw2lxkv4x4vp6xsf4d5qwvlhfx6qmz6x4nfhqd8h2z3\",\"tags\":[[\"a\",\"0461fcbecc4c3374439932d6b8f11269ccdb7cc973ad7a50ae362db135a474dd:naddr1qqxnzd3e8q6n2dfk8qcnjve48qmnsw3jsqgswaehxw309aex2mrp0yhx6tpdsek6w309aex2mrp0yh56tnwdus8vatjvs6kzdrz956k7tjzw6qzypzgd2dmgxhxf34hnlw2y03nckr8f4g6mw9flxqq65v94zkp77rqfgrf8\"]],\"pubkey\":\"6805d4e5c0df48b4f76e2fdcb67a2acb1d97567b01c6fe17a236dc32f34f1c07\",\"created_at\":1672531200,\"sig\":\"a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456789012345678901234567890abcdef1234567890abcdef1234567890abcdef12\"}";
+// book:end example

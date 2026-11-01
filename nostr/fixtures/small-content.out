@@ -1,0 +1,48 @@
+each event's id, recomputed and its signature checked
+TOR: 6d761b12ab026f6e2f8fd8004c944d90933106104b94659b29fa16848cb92a1e, verified true
+G1: d5977b40c51709866ab8eed83044d6611b401d1c9c59d90b71e560f10f209d38, verified true
+G2: 01c338bb43dca47df38128ac798489e0050b9ac1ce0f5076b6929b58a239f3c9, verified true
+L: f4731b9a17ede85099cf58f457d3e74bfa6f884c8acf29d19f22bcaa686d9985, verified true
+PB: 6dcb54235470b5c71d029e7b85f75631c34e3257ff6d04c3dd6c27ab7c276389, verified true
+PD: 67c9cf0ea42d77dd80b5e1dbff2d7aa8a05bf5fa22b4448585df431bb816009a, verified true
+FB: d0a88acb3ec102bfa8a144180c78a6d16f579d916d718ca28422aeb1ba1f17e1, verified true
+FD: 5805c34d58a1439f945f241f4f2dc16b16130266066ef76209552c6dc462dd61, verified true
+FC: f322b5ce5b34c796132a939792142c002bd1f5c16343c0b94b6fcb1225116ad1, verified true
+LK: 8a70460ca6bee4c7bfb45afec5518fb0fa6a7166c593b74a1d39b6b925c2ef53, verified true
+C: dd2d4d06a2ce7375ead761020ccb39df1fdcb2b7b8bfd825d35251882b0b55da, verified true
+S: dc3f330cf1a1ba2fd7fb3b966cc08e169e8edbb8778ec8c6a98d9fe43c927f08, verified true
+A: 758e8c6174931dfa4a0132090246b4c29dc502aca227ee395685816a7241fff3, verified true
+E: e8c89e862675529e74dd7a4210fb51adf3191c169e2f65b841b410757380eaa9, verified true
+NIP-35 torrent
+TOR: ok, "Big Buck Bunny", files 2, 276445327 bytes, trackers 1, references 2 (unknown 0), topics 1
+  magnet: magnet:?xt=urn:btih:dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c&dn=Big%20Buck%20Bunny&tr=udp%3A%2F%2Ftracker.example.org%3A1337
+NIP-64 chess
+G1: valid PGN, games 1, moves 5, tag pairs 2, result unknown (*)
+G2: invalid PGN, bad move at byte 6
+NIP-CC geocaching
+L: ok, "Old Oak" (d oak), traditional, D3 T2, small, geohashes 2, first-to-find, key Cache
+FB: ok, by Bob at T0+200, of 37516 oak by Alice, with a proof
+FD: ok, by Dave at T0+100, of 37516 oak by Alice, with a proof
+FC: ok, by Carol at T0+50, of 37516 oak by Alice, with a proof
+FB proves: ok
+FD proves: ok
+FC proves: proof for another finder
+first to find L: ok, verified 2, refused 1, winner Dave (log 1)
+LK: ok, "Old Oak" (d oak), traditional, D3 T2, small, geohashes 2, first-to-find, key Cache, archived, locked to Bob
+first to find LK: ok, verified 2, refused 1, winner Bob (log 0), locked by F
+C: ok, "Park trail", 1 caches
+NIP-F4 podcast
+S: ok, "Relay Hour" by Pod, claims Alice (host) Bob (cohost)
+credits: Alice confirmed; Bob not confirmed; shown 1, unconfirmed 1
+E: ok, "Episode 1: Outboxes", audio https://example.com/1.mp3 (audio/mpeg), 2 audio tags
+refusals
+torrent without x: missing x
+torrent with a short info hash: bad hash at tag 0
+game whose Result tag disagrees: invalid PGN, Result tag disagrees at byte 21
+game with an open comment: invalid PGN, open comment at byte 6
+listing with difficulty 6: bad score at tag 3
+first-to-find without a key: first-to-find without a key
+found log of an article: wrong target at tag 0
+found log carrying NIP-CC's example proof: proof refused
+show crediting a guest: bad role at tag 1
+episode without audio: missing

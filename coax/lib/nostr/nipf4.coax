@@ -1,0 +1,261 @@
+// NIP-F4 podcasts read from parsed events through tags.coax and nip32's
+// reader for tags of any name. A podcast is its own key. It publishes its
+// show's metadata (kind 10154, replaceable) and its episodes (kind 54); a
+// person lists the podcasts they author (kind 10164, replaceable).
+//
+// A show needs a title; image, description, website and p tags are
+// optional. A p tag claims an author with an optional role, host, cohost or
+// editor; any other role is refused. A claim is shown only when the
+// claimed author's newest kind 10164 list names the podcast back: anyone
+// can claim anyone, as NIP-F4 warns. An episode needs a title and at least
+// one audio tag with a URL; a media type, when given, has a slash.
+//
+// NIP-F4 names the author list kind 10164 in its text and 10064 in its
+// example; this reader takes the text's 10164. Favorite podcasts (kind
+// 10054) are a NIP-51 list (chapter 57); nothing here reads them.
+#load "nip32.coax";
+#authority;
+
+NF4_OK :: 0; NF4_EVENT :: 1; NF4_KIND :: 2; NF4_TAG :: 3; NF4_MISSING :: 4;
+NF4_ROLE :: 5; NF4_EMPTY :: 6; NF4_MEDIA :: 7; NF4_LIMIT :: 8;
+NF4_KIND_SHOW :: 10154; NF4_KIND_AUTHORED :: 10164; NF4_KIND_EPISODE :: 54;
+NF4_NONE :: 0; NF4_HOST :: 1; NF4_COHOST :: 2; NF4_EDITOR :: 3;
+NF4_ROLES :: [4] string.["", "host", "cohost", "editor"];
+NF4_MAX_AUTHORS :: 4; NF4_MAX_SHOWS :: 8;
+
+// book:begin record
+NF4Author :: struct {key:[32]u8; role:int;}
+NF4Show :: struct {
+  status:int=NF4_EVENT; at:int=-1;          // the refusing tag
+  title:N32Text; has_image:bool; image:N32Text; has_description:bool;
+  websites:int;
+  authors:[NF4_MAX_AUTHORS]NF4Author; author_n:int;   // claimed, in order
+}
+NF4Authored :: struct {status:int=NF4_EVENT; at:int=-1; shows:[NF4_MAX_SHOWS][32]u8; n:int;}
+NF4Episode :: struct {
+  status:int=NF4_EVENT; at:int=-1;
+  title:N32Text; audio:N32Text; has_type:bool; type:N32Text;   // the first audio tag
+  audios:int; has_image:bool; has_description:bool;
+}
+NF4Credits :: struct {
+  status:int=NF4_EVENT;
+  confirmed:[NF4_MAX_AUTHORS]bool;          // by the claimed author's newest list
+  shown:int; unconfirmed:int;
+}
+// book:end record
+
+NF4_T_A :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+NF4_T_B :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+
+#test "a show, its claimed authors and roles" {
+  s:=nf4_show(n32_event(10154,"[[\"title\",\"Nostr Talk\"],[\"image\",\"https://x/cover.jpg\"],[\"description\",\"Weekly.\"],[\"website\",\"https://a\"],[\"website\",\"https://b\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"host\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"editor\"],[\"p\",\"25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517\",\"cohost\"]]"));
+  #assert s.status==NF4_OK && s.at== -1 && n32_is(s.title,"Nostr Talk") && s.has_image && n32_is(s.image,"https://x/cover.jpg") && s.has_description && s.websites==2;
+  #assert s.author_n==4 && s.authors[0].role==NF4_HOST && s.authors[0].key[0]==0xf9 && s.authors[1].role==NF4_NONE && s.authors[2].role==NF4_EDITOR && s.authors[3].role==NF4_COHOST && s.authors[3].key[0]==0x25;
+  s=nf4_show(n32_event(10154,"[[\"title\",\"T\"],[\"title\",\"U\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]"));
+  #assert s.status==NF4_OK && n32_is(s.title,"T") && !s.has_image && !s.has_description && s.websites==0 && s.author_n==4 && s.authors[0].role==NF4_NONE;
+}
+#test "show refusals" {
+  s:=nf4_show(n32_event(10154,"[[\"image\",\"https://x\"]]"));#assert s.status==NF4_MISSING && s.at== -1;
+  s=nf4_show(n32_event(10154,"[[\"title\",\"\"]]"));#assert s.status==NF4_MISSING;
+  s=nf4_show(n32_event(10154,"[[\"title\",\"T\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"guest\"]]"));#assert s.status==NF4_ROLE && s.at==1;
+  s=nf4_show(n32_event(10154,"[[\"title\",\"T\"],[\"p\",\"f930\",\"host\"]]"));#assert s.status==NF4_TAG && s.at==1;
+  #assert nf4_show(n32_event(54,"[[\"title\",\"T\"]]")).status==NF4_KIND && nf4_show(n32_event(54,"[]")).at== -1;
+  #assert nf4_episode(n32_event(1,"[]")).at== -1 && nf4_authored(n32_event(1,"[]")).at== -1;
+  none:NostrEvent;#assert nf4_show(none).status==NF4_EVENT && nf4_episode(none).status==NF4_EVENT && nf4_authored(none).status==NF4_EVENT;
+  b:=n32_event(10154,"[]");b.original="[[\"t\"],[\"x\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  s=nf4_show(b);#assert s.status==NF4_EVENT && s.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"t\"],[\"title\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  s=nf4_show(n32_event(10154,cast(string)long[0..<n]));#assert s.status==NF4_LIMIT && s.at==1;
+  b.kind=54;#assert nf4_episode(b).status==NF4_EVENT && nf4_episode(b).at==1;
+  b.kind=10164;#assert nf4_authored(b).status==NF4_EVENT && nf4_authored(b).at==1;
+  #assert nf4_episode(n32_event(54,cast(string)long[0..<n])).status==NF4_LIMIT;
+}
+#test "episodes" {
+  p:=nf4_episode(n32_event(54,"[[\"title\",\"Episode 1\"],[\"image\",\"https://x/1.jpg\"],[\"description\",\"First.\"],[\"audio\",\"https://x/1.mp3\",\"audio/mpeg\"],[\"audio\",\"https://x/1.ogg\"]]"));
+  #assert p.status==NF4_OK && p.at== -1 && n32_is(p.title,"Episode 1") && n32_is(p.audio,"https://x/1.mp3") && p.has_type && n32_is(p.type,"audio/mpeg") && p.audios==2 && p.has_image && p.has_description;
+  p=nf4_episode(n32_event(54,"[[\"audio\",\"https://x/1.ogg\"],[\"title\",\"E\"],[\"title\",\"F\"]]"));#assert p.status==NF4_OK && !p.has_type && p.audios==1 && n32_is(p.title,"E") && !p.has_image && !p.has_description;
+  p=nf4_episode(n32_event(54,"[[\"audio\",\"https://x/1.ogg\",\"\"],[\"title\",\"E\"]]"));#assert p.status==NF4_OK && !p.has_type;
+  p=nf4_episode(n32_event(54,"[[\"title\",\"E\"]]"));#assert p.status==NF4_MISSING && p.at== -1;
+  p=nf4_episode(n32_event(54,"[[\"audio\",\"https://x\"]]"));#assert p.status==NF4_MISSING;
+  p=nf4_episode(n32_event(54,"[[\"audio\",\"https://x\"],[\"title\",\"\"]]"));#assert p.status==NF4_MISSING;
+  p=nf4_episode(n32_event(54,"[[\"title\",\"E\"],[\"audio\",\"\"]]"));#assert p.status==NF4_EMPTY && p.at==1;
+  p=nf4_episode(n32_event(54,"[[\"title\",\"E\"],[\"audio\",\"https://x\",\"mpeg\"]]"));#assert p.status==NF4_MEDIA && p.at==1;
+  p=nf4_episode(n32_event(54,"[[\"title\",\"E\"],[\"audio\",\"https://x\",\"/mpeg\"]]"));#assert p.status==NF4_MEDIA;
+  p=nf4_episode(n32_event(54,"[[\"title\",\"E\"],[\"audio\",\"https://x\",\"audio/\"]]"));#assert p.status==NF4_MEDIA;
+  p=nf4_episode(n32_event(54,"[[\"title\",\"E\"],[\"audio\",\"https://x\",\"/a/b\"]]"));#assert p.status==NF4_MEDIA;
+  p=nf4_episode(n32_event(54,"[[\"title\",\"E\"],[\"audio\",\"https://x\",\"a\"]]"));#assert p.status==NF4_MEDIA;
+  p=nf4_episode(n32_event(54,"[[\"title\",\"E\"],[\"audio\",\"https://x\",\"a/b\"]]"));#assert p.status==NF4_OK && p.has_type && n32_is(p.type,"a/b");
+  #assert nf4_episode(n32_event(10154,"[]")).status==NF4_KIND;
+}
+#test "author lists and confirmed credits" {
+  a:=nf4_authored(n32_event(10164,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"t\",\"x\"],[\"p\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]]"));
+  #assert a.status==NF4_OK && a.n==2 && a.shows[1][0]==0xbb && a.at== -1;
+  a=nf4_authored(n32_event(10164,"[[\"p\",\"aaaa\"]]"));#assert a.status==NF4_TAG && a.at==0;
+  #assert nf4_authored(n32_event(10064,"[]")).status==NF4_KIND;
+  many:[1200]u8;n:=json_raw(many[..],0,"[");
+  for k:0..<9 {if k>0 {n=json_raw(many[..],n,",");}n=json_raw(many[..],n,"[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]");}
+  n=json_raw(many[..],n,"]");a=nf4_authored(n32_event(10164,cast(string)many[0..<n]));#assert a.status==NF4_LIMIT && a.at==8;
+  // The show (podcast key aa..) claims Alice as host and Bob.
+  show:=n32_event(10154,"[[\"title\",\"T\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"host\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]]");
+  show=n32_at(show,0xaa,1);
+  lists:[4]NostrEvent;
+  lists[0]=n32_at(n32_event(10164,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"),0,2);   // someone else's list
+  lists[1]=nf4_t_by(n32_event(10164,"[[\"p\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"),NF4_T_A,100);
+  lists[2]=nf4_t_by(n32_event(10164,"[[\"p\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"),NF4_T_B,100);
+  lists[3]=nf4_t_by(n32_event(10164,"[[\"p\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"]]"),NF4_T_B,200);   // Bob's newer list drops it
+  c:=nf4_credits(show,lists[..]);
+  #assert c.status==NF4_OK && c.confirmed[0] && !c.confirmed[1] && c.shown==1 && c.unconfirmed==1;
+  c=nf4_credits(show,lists[0..<3]);#assert c.confirmed[0] && c.confirmed[1] && c.shown==2 && c.unconfirmed==0;
+  rev:[3]NostrEvent;rev[0]=lists[3];rev[1]=lists[2];rev[2]=lists[1];
+  c=nf4_credits(show,rev[..]);#assert c.confirmed[0] && !c.confirmed[1] && c.shown==1;
+  c=nf4_credits(show,lists[0..<1]);#assert c.shown==0 && c.unconfirmed==2;
+  // A list of another kind or that doesn't read is not counted.
+  odd:=lists[2];odd.kind=10064;rev[0]=odd;c=nf4_credits(show,rev[0..<1]);#assert !c.confirmed[1];
+  bad:=lists[2];bad.original="[[\"p\",\"aa\"]]";bad.tags_to=bad.original.count;rev[0]=bad;c=nf4_credits(show,rev[0..<1]);#assert !c.confirmed[1];
+  // Equal times: the lower id wins.
+  same:=lists[3];same.created_at=100;for i:0..<32 {same.id[i]=0;}rev[0]=lists[2];rev[1]=same;
+  for i:0..<32 {rev[0].id[i]=1;}
+  c=nf4_credits(show,rev[0..<2]);#assert !c.confirmed[1];
+  for i:0..<31 {rev[1].id[i]=1;}rev[1].id[31]=2;c=nf4_credits(show,rev[0..<2]);#assert c.confirmed[1];
+  k:=show;k.kind=54;#assert nf4_credits(k,lists[..]).status==NF4_KIND;
+  // A newer event of another kind, or one that doesn't parse, by Bob is skipped.
+  more:[3]NostrEvent;more[0]=lists[2];more[1]=lists[2];more[1].kind=10064;more[1].created_at=900;
+  more[2]=lists[2];more[2].error=NE_JSON;more[2].created_at=900;
+  c=nf4_credits(show,more[..]);#assert c.confirmed[1];
+  // Equal ids at equal times: the first stays; the same list twice.
+  more[1]=lists[2];more[2]=lists[3];more[2].created_at=100;more[2].id=lists[2].id;
+  c=nf4_credits(show,more[..]);#assert c.confirmed[1];
+  // Ids that differ first at byte 0 and the other way at byte 1.
+  x:=lists[2];y:=lists[3];y.created_at=100;for i:0..<32 {x.id[i]=0;y.id[i]=0;}
+  x.id[0]=1;y.id[1]=1;two:[2]NostrEvent;two[0]=x;two[1]=y;c=nf4_credits(show,two[..]);#assert !c.confirmed[1];
+  two[0]=y;two[1]=x;c=nf4_credits(show,two[..]);#assert !c.confirmed[1];
+  #assert !nf4_before(x.id,y.id) && nf4_before(y.id,x.id) && !nf4_before(x.id,x.id);
+  z:[32]u8;q:[32]u8;q[31]=1;#assert nf4_before(z,q) && !nf4_before(q,z);
+}
+
+// A copy of e by the author with this hex key, at this time.
+nf4_t_by :: (e:NostrEvent,author:string,at:int)->NostrEvent {
+  r:=e;k:=hex_decode_checked(author,r.public_key[..],false);r.created_at=at;return r;
+}
+
+nf4_refuse_s :: (r:NF4Show,status:int,at:int)->NF4Show {o:=r;o.status=status;o.at=at;return o;}
+nf4_refuse_e :: (r:NF4Episode,status:int,at:int)->NF4Episode {o:=r;o.status=status;o.at=at;return o;}
+nf4_refuse_a :: (r:NF4Authored,status:int,at:int)->NF4Authored {o:=r;o.status=status;o.at=at;return o;}
+
+// book:begin show
+nf4_show :: (e:NostrEvent)->NF4Show {
+  r:NF4Show;if e.error!=NE_OK {return r;}
+  if e.kind!=NF4_KIND_SHOW {return nf4_refuse_s(r,NF4_KIND,-1);}
+  has_title:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return nf4_refuse_s(r,NF4_LIMIT,i);}
+    if t.error!=NT_OK {return nf4_refuse_s(r,NF4_EVENT,i);}
+    tag:=t.v[0];
+    if n32_is(tag,"title") && !has_title {has_title=true;r.title=t.v[1];}
+    else if n32_is(tag,"image") && !r.has_image {r.has_image=true;r.image=t.v[1];}
+    else if n32_is(tag,"description") {r.has_description=true;}
+    else if n32_is(tag,"website") {r.websites+=1;}
+    else if n32_is(tag,"p") {
+      // The role is the tag's second value, where NIP-01 puts a relay, so
+      // tags.coax would refuse it: the key is read here.
+      key:[32]u8;v:=t.v[1];
+      if !ne_lower_hex(cast(string)v.b[0..<v.n],key[..]) {return nf4_refuse_s(r,NF4_TAG,i);}
+      role:=-1;for k:0..<4 {if n32_is(t.v[2],NF4_ROLES[k]) {role=k;}}
+      if role<0 {return nf4_refuse_s(r,NF4_ROLE,i);}
+      if r.author_n<NF4_MAX_AUTHORS {r.authors[r.author_n]=NF4Author.{key=key,role=role};r.author_n+=1;}
+    }
+    i+=1;
+  }
+  if !has_title || r.title.n==0 {return nf4_refuse_s(r,NF4_MISSING,-1);}
+  r.status=NF4_OK;return r;
+}
+// book:end show
+
+// book:begin episode
+nf4_episode :: (e:NostrEvent)->NF4Episode {
+  r:NF4Episode;if e.error!=NE_OK {return r;}
+  if e.kind!=NF4_KIND_EPISODE {return nf4_refuse_e(r,NF4_KIND,-1);}
+  has_title:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return nf4_refuse_e(r,NF4_LIMIT,i);}
+    if t.error!=NT_OK {return nf4_refuse_e(r,NF4_EVENT,i);}
+    tag:=t.v[0];
+    if n32_is(tag,"title") && !has_title {has_title=true;r.title=t.v[1];}
+    else if n32_is(tag,"audio") {
+      if t.v[1].n==0 {return nf4_refuse_e(r,NF4_EMPTY,i);}
+      // A media type: something, a slash, something.
+      m:=t.v[2];ms:=cast(string)m.b[0..<m.n];slash:=0;
+      while slash<ms.count && ms[slash]!='/' {slash+=1;}
+      if ms.count!=0 && (slash==0 || slash>=ms.count-1) {return nf4_refuse_e(r,NF4_MEDIA,i);}
+      if r.audios==0 {r.audio=t.v[1];r.has_type=ms.count!=0;r.type=m;}
+      r.audios+=1;
+    }
+    else if n32_is(tag,"image") {r.has_image=true;}
+    else if n32_is(tag,"description") {r.has_description=true;}
+    i+=1;
+  }
+  if !has_title || r.title.n==0 || r.audios==0 {return nf4_refuse_e(r,NF4_MISSING,-1);}
+  r.status=NF4_OK;return r;
+}
+// book:end episode
+
+nf4_authored :: (e:NostrEvent)->NF4Authored {
+  r:NF4Authored;if e.error!=NE_OK {return r;}
+  if e.kind!=NF4_KIND_AUTHORED {return nf4_refuse_a(r,NF4_KIND,-1);}
+  i:=0;
+  while true {
+    t:=nostr_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {return nf4_refuse_a(r,ifx t.type==NT_P then NF4_TAG else NF4_EVENT,i);}
+    if t.type==NT_P {
+      if r.n==NF4_MAX_SHOWS {return nf4_refuse_a(r,NF4_LIMIT,i);}
+      r.shows[r.n]=t.pubkey;r.n+=1;
+    }
+    i+=1;
+  }
+  r.status=NF4_OK;return r;
+}
+
+// The id order: does a come before b?
+nf4_before :: (a:[32]u8,b:[32]u8)->bool {
+  for i:0..<32 {
+    if a[i]<b[i] {return true;}
+    if a[i]>b[i] {return false;}
+  }
+  return false;
+}
+
+// book:begin credits
+// Which of a show's claimed authors confirm it: each claimed author's
+// newest kind 10164 list in lists (the lower id first at the same time)
+// must name the show's podcast key.
+nf4_credits :: (show:NostrEvent,lists:[]NostrEvent)->NF4Credits {
+  c:NF4Credits;
+  s:=nf4_show(show);if s.status!=NF4_OK {c.status=NF4_KIND;return c;}
+  for a:0..<s.author_n {
+    best:=-1;
+    for k:0..<lists.count {
+      e:=lists[k];
+      if e.error!=NE_OK {continue;}
+      if e.kind!=NF4_KIND_AUTHORED {continue;}
+      if !ns_equal32(e.public_key,s.authors[a].key) {continue;}
+      newer:=best== -1;
+      if !newer {
+        b:=lists[best];
+        newer=e.created_at>b.created_at || (e.created_at==b.created_at && nf4_before(e.id,b.id));
+      }
+      if newer {best=k;}
+    }
+    if best>=0 {
+      l:=nf4_authored(lists[best]);
+      for k:0..<l.n {if l.status==NF4_OK && ns_equal32(l.shows[k],show.public_key) {c.confirmed[a]=true;}}
+    }
+    if c.confirmed[a] {c.shown+=1;} else {c.unconfirmed+=1;}
+  }
+  c.status=NF4_OK;return c;
+}
+// book:end credits

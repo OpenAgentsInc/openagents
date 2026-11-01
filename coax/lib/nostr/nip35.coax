@@ -1,0 +1,188 @@
+// NIP-35 torrents read from a parsed event through tags.coax and nip32's
+// reader for tags of any name: kind 2003, an index entry with enough to
+// search for content and build a magnet link. No torrent file is on Nostr.
+//
+// The x tag is required: the V1 BitTorrent info hash, 40 hex digits, read
+// in either case and written lowercase. file tags name a path inside the
+// torrent and may give its size in bytes; tracker tags give trackers; i
+// tags carry prefixed references such as imdb:tt15239678 or
+// tmdb:movie:693134. A prefix the NIP doesn't list still reads and is
+// counted as unknown. Kind 2004 comments work like kind 1 and NIP-10
+// (chapter 23); nothing here reads them.
+//
+// The writer builds the magnet link from the info hash, the title and the
+// trackers, percent-encoding everything but RFC 3986's unreserved
+// characters.
+#load "nip32.coax";
+
+N35_OK :: 0; N35_EVENT :: 1; N35_KIND :: 2; N35_MISSING :: 3; N35_HASH :: 4;
+N35_FILE :: 5; N35_EMPTY :: 6; N35_PREFIX :: 7; N35_LIMIT :: 8; N35_REPEATED :: 9;
+N35_KIND_TORRENT :: 2003;
+N35_PREFIXES :: [7] string.["tcat", "newznab", "tmdb", "ttvdb", "imdb", "mal", "anilist"];
+N35_MAX_TRACKERS :: 4;
+N35_UPPER :: "0123456789ABCDEF"; N35_LOWER :: "0123456789abcdef";
+
+// book:begin record
+N35Torrent :: struct {
+  status:int=N35_EVENT; at:int=-1;          // the refusing tag
+  hash:[20]u8;                              // the info hash
+  has_title:bool; title:N32Text;
+  files:int; bytes:int;                     // file tags; their sizes summed
+  trackers:[N35_MAX_TRACKERS]N32Text; tracker_n:int; tracker_more:int;
+  refs:int; unknown:int;                    // i tags; those with unlisted prefixes
+  topics:int;                               // t tags
+}
+// book:end record
+
+#test "NIP-35's example, its placeholders filled" {
+  e:=n32_event(2003,"[[\"title\",\"Dune: Part Two\"],[\"x\",\"0123456789abcdef0123456789abcdef01234567\"],[\"file\",\"Dune/movie.mkv\",\"4000000000\"],[\"file\",\"Dune/subs.srt\",\"80000\"],[\"tracker\",\"udp://mytacker.com:1337\"],[\"tracker\",\"http://1337-tracker.net/announce\"],[\"i\",\"tcat:video,movie,4k\"],[\"i\",\"newznab:2045\"],[\"i\",\"imdb:tt15239678\"],[\"i\",\"tmdb:movie:693134\"],[\"i\",\"ttvdb:movie:290272\"],[\"t\",\"movie\"],[\"t\",\"4k\"]]");
+  t:=n35_read(e);
+  #assert t.status==N35_OK && t.at== -1 && t.has_title && n32_is(t.title,"Dune: Part Two") && t.hash[0]==0x01 && t.hash[19]==0x67;
+  #assert t.files==2 && t.bytes==4000080000 && t.tracker_n==2 && n32_is(t.trackers[1],"http://1337-tracker.net/announce") && t.tracker_more==0;
+  #assert t.refs==5 && t.unknown==0 && t.topics==2;
+}
+#test "hashes in either case, files without sizes, unknown prefixes, many trackers" {
+  t:=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"file\",\"a.txt\"],[\"i\",\"mal:anime:9253\"],[\"i\",\"anilist:1\"],[\"i\",\"isbn:1\"],[\"title\",\"T\"],[\"title\",\"U\"]]"));
+  #assert t.status==N35_OK && t.hash[7]==0xef && t.hash[8]==0x01 && t.files==1 && t.bytes==0 && t.refs==3 && t.unknown==1 && n32_is(t.title,"T") && t.tracker_n==0 && t.topics==0;
+  t=n35_read(n32_event(2003,"[[\"tracker\",\"udp://a\"],[\"tracker\",\"udp://b\"],[\"tracker\",\"udp://c\"],[\"tracker\",\"udp://d\"],[\"tracker\",\"udp://e\"],[\"tracker\",\"udp://f\"],[\"x\",\"ffffffffffffffffffffffffffffffffffffffff\"]]"));
+  #assert t.status==N35_OK && t.tracker_n==4 && t.tracker_more==2 && n32_is(t.trackers[3],"udp://d") && t.hash[19]==0xff && !t.has_title;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef01234567\"],[\"file\",\"b\",\"999999999999999999\"]]"));#assert t.status==N35_OK && t.bytes==999999999999999999;
+  t=n35_read(n32_event(2003,"[[\"x\",\"f0aAbBcCdDeEfF0123456789abcdef0123456789\"],[\"file\",\"b\",\"5\"],[\"file\",\"c\",\"0\"],[\"i\",\"a:1\"],[\"i\",\":x:y\"]]"));
+  #assert t.status==N35_PREFIX && t.at==4 && t.bytes==5 && t.files==2 && t.refs==1 && t.unknown==1 && t.hash[0]==0xf0 && t.hash[1]==0xaa && t.hash[6]==0xff;
+  #assert n35_prefix("tcat:x") && n35_prefix("anilist:1") && !n35_prefix("tcat") && !n35_prefix("TCAT:x") && !n35_prefix("tcatx:1") && !n35_prefix(":1");
+}
+#test "refusals" {
+  t:=n35_read(n32_event(2003,"[[\"title\",\"T\"]]"));#assert t.status==N35_MISSING && t.at== -1;
+  t=n35_read(n32_event(2003,"[[\"title\",\"T\"],[\"x\",\"0123\"]]"));#assert t.status==N35_HASH && t.at==1;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef0123456g\"]]"));#assert t.status==N35_HASH && t.at==0;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef012345670\"]]"));#assert t.status==N35_HASH;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef0123456:\"]]"));#assert t.status==N35_HASH;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef012345G7\"]]"));#assert t.status==N35_HASH;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"file\",\"a\",\"1:\"]]"));#assert t.status==N35_FILE;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"i\",\"imdb:\"]]"));#assert t.status==N35_PREFIX;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef01234567\"],[\"x\",\"0123456789abcdef0123456789abcdef01234567\"]]"));#assert t.status==N35_REPEATED && t.at==1;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"file\",\"\"]]"));#assert t.status==N35_EMPTY && t.at==1;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"file\",\"a\",\"12x\"]]"));#assert t.status==N35_FILE && t.at==1;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"file\",\"a\",\"\"]]"));#assert t.status==N35_FILE;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"file\",\"a\",\"9999999999999999999\"]]"));#assert t.status==N35_FILE;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"file\",\"a\",\"-1\"]]"));#assert t.status==N35_FILE;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"tracker\",\"\"]]"));#assert t.status==N35_EMPTY && t.at==1;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"t\",\"x\"],[\"i\",\"imdb\"]]"));#assert t.status==N35_PREFIX && t.at==2;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"i\",\":x\"]]"));#assert t.status==N35_PREFIX;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"i\"]]"));#assert t.status==N35_PREFIX;
+  t=n35_read(n32_event(2004,"[[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"]]"));#assert t.status==N35_KIND && t.at== -1;
+  none:NostrEvent;#assert n35_read(none).status==N35_EVENT;
+  b:=n32_event(2003,"[]");b.original="[[\"t\"],[\"x\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  t=n35_read(b);#assert t.status==N35_EVENT && t.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"t\"],[\"title\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  t=n35_read(n32_event(2003,cast(string)long[0..<n]));#assert t.status==N35_LIMIT && t.at==1;
+}
+#test "the magnet link" {
+  out:[512]u8;
+  t:=n35_read(n32_event(2003,"[[\"title\",\"Dune: Part Two\"],[\"x\",\"0123456789ABCDEF0123456789abcdef01234567\"],[\"tracker\",\"udp://mytacker.com:1337\"],[\"tracker\",\"http://1337-tracker.net/announce\"]]"));
+  n:=n35_magnet(t,out[..]);
+  #assert n>0 && cast(string)out[0..<n]=="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Dune%3A%20Part%20Two&tr=udp%3A%2F%2Fmytacker.com%3A1337&tr=http%3A%2F%2F1337-tracker.net%2Fannounce";
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef01234567\"],[\"title\",\"a-z_A~Z.09\\u00e9&\"]]"));
+  n=n35_magnet(t,out[..]);#assert cast(string)out[0..<n]=="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=a-z_A~Z.09%C3%A9%26";
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef01234567\"]]"));
+  n=n35_magnet(t,out[..]);#assert cast(string)out[0..<n]=="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567";
+  #assert n35_magnet(t,out[0..<60])==60 && n35_magnet(t,out[0..<59])== -1;
+  bad:N35Torrent;#assert n35_magnet(bad,out[..])== -1;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef01234567\"],[\"title\",\"a b\"]]"));
+  #assert n35_magnet(t,out[0..<69])==69 && n35_magnet(t,out[0..<68])== -1 && n35_magnet(t,out[0..<65])== -1 && n35_magnet(t,out[0..<64])== -1;
+  t=n35_read(n32_event(2003,"[[\"x\",\"0123456789abcdef0123456789abcdef01234567\"],[\"title\",\"[z{Z\"]]"));
+  n=n35_magnet(t,out[..]);#assert cast(string)out[0..<n]=="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=%5Bz%7BZ";
+}
+
+n35_refuse :: (t:N35Torrent,status:int,at:int)->N35Torrent {o:=t;o.status=status;o.at=at;return o;}
+n35_nibble :: (c:u8)->int {
+  if c>='0' && c<='9' {return cast(int)(c-'0');}
+  if c>='a' && c<='f' {return cast(int)(c-'a')+10;}
+  if c>='A' && c<='F' {return cast(int)(c-'A')+10;}
+  return -1;
+}
+// A listed prefix followed by a colon.
+n35_prefix :: (s:string)->bool {
+  for p:N35_PREFIXES {if s.count>p.count && s[0..<p.count]==p && s[p.count]==':' {return true;}}
+  return false;
+}
+// A size: 1 to 18 decimal digits.
+n35_size :: (t:N32Text)->int {
+  c:=t;if c.n<1 || c.n>18 {return -1;}
+  v:=0;for i:0..<c.n {if c.b[i]<'0' || c.b[i]>'9' {return -1;}v=v*10+cast(int)(c.b[i]-'0');}
+  return v;
+}
+
+// book:begin read
+n35_read :: (e:NostrEvent)->N35Torrent {
+  r:N35Torrent;if e.error!=NE_OK {return r;}
+  if e.kind!=N35_KIND_TORRENT {return n35_refuse(r,N35_KIND,-1);}
+  has_hash:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n35_refuse(r,N35_LIMIT,i);}
+    if t.error!=NT_OK {return n35_refuse(r,N35_EVENT,i);}
+    tag:=t.v[0];v:=t.v[1];
+    if n32_is(tag,"x") {
+      if has_hash {return n35_refuse(r,N35_REPEATED,i);}
+      if v.n!=40 {return n35_refuse(r,N35_HASH,i);}
+      for k:0..<20 {
+        hi:=n35_nibble(v.b[2*k]);lo:=n35_nibble(v.b[2*k+1]);
+        if hi<0 || lo<0 {return n35_refuse(r,N35_HASH,i);}
+        r.hash[k]=cast(u8)(hi*16+lo);
+      }
+      has_hash=true;
+    } else if n32_is(tag,"file") {
+      if v.n==0 {return n35_refuse(r,N35_EMPTY,i);}
+      if t.values>=3 {
+        size:=n35_size(t.v[2]);
+        if size<0 {return n35_refuse(r,N35_FILE,i);}
+        r.bytes+=size;
+      }
+      r.files+=1;
+    } else if n32_is(tag,"tracker") {
+      if v.n==0 {return n35_refuse(r,N35_EMPTY,i);}
+      if r.tracker_n<N35_MAX_TRACKERS {r.trackers[r.tracker_n]=v;r.tracker_n+=1;} else {r.tracker_more+=1;}
+    } else if n32_is(tag,"i") {
+      // prefix:value, the prefix one or more characters before a colon.
+      s:=cast(string)v.b[0..<v.n];colon:=0;
+      while colon<s.count && s[colon]!=':' {colon+=1;}
+      if colon<1 || colon+1>=s.count {return n35_refuse(r,N35_PREFIX,i);}
+      if !n35_prefix(cast(string)v.b[0..<v.n]) {r.unknown+=1;}
+      r.refs+=1;
+    } else if n32_is(tag,"title") && !r.has_title {r.has_title=true;r.title=v;}
+    else if n32_is(tag,"t") {r.topics+=1;}
+    i+=1;
+  }
+  if !has_hash {return n35_refuse(r,N35_MISSING,-1);}
+  r.status=N35_OK;return r;
+}
+// book:end read
+
+// book:begin magnet
+// Percent-encoding: RFC 3986's unreserved characters stay, every other
+// byte is %XX in uppercase hex.
+n35_escape :: (out:[]u8,at:int,s:N32Text)->int {
+  c:=s;n:=at;
+  for i:0..<c.n {
+    b:=c.b[i];
+    plain:=(b>='a' && b<='z') || (b>='A' && b<='Z') || (b>='0' && b<='9') || b=='-' || b=='_' || b=='.' || b=='~';
+    one:[3]u8;one[0]=b;one[1]=N35_UPPER[b>>4];one[2]=N35_UPPER[b&15];
+    if plain {n=json_raw(out,n,cast(string)one[0..<1]);}
+    else {one[0]='%';n=json_raw(out,n,cast(string)one[..]);}
+  }
+  return n;
+}
+// The magnet link: xt, then dn when there is a title, then a tr for each
+// tracker kept. The length written, or -1.
+n35_magnet :: (t:N35Torrent,out:[]u8)->int {
+  if t.status!=N35_OK {return -1;}
+  hex:[40]u8;
+  for k:0..<20 {hex[2*k]=N35_LOWER[t.hash[k]>>4];hex[2*k+1]=N35_LOWER[t.hash[k]&15];}
+  n:=json_raw(out,0,"magnet:?xt=urn:btih:");n=json_raw(out,n,cast(string)hex[..]);
+  if t.has_title {n=json_raw(out,n,"&dn=");n=n35_escape(out,n,t.title);}
+  for k:0..<t.tracker_n {n=json_raw(out,n,"&tr=");n=n35_escape(out,n,t.trackers[k]);}
+  return n;
+}
+// book:end magnet
