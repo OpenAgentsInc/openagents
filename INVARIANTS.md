@@ -2855,6 +2855,25 @@ and failing-check diagnostics; every line parses and every span is checked
 against its file; the parser fix applied makes the file check; `mutate`
 gives the same object; text recorded with 0.45.0 is unchanged).
 
+## A check's step budget is its own #steps or the file's, and a failure names it
+
+A check with `#steps N` runs under a budget of exactly N steps in `coax
+test`, in an `#authority` compile and as the base run of `coax mutate`;
+every other check runs under the file's budget (`--steps`, default
+20,000,000). `--steps` never changes a check's own budget. A mutant's budget
+is ten times the unmutated check's steps, at least 10,000, and never more
+than the check's own `#steps`. A check that runs out of steps fails with
+E0400, and its report names its steps, its budget and whether the budget is
+the check's own or the file's. `--profile steps` only reports: it changes no
+check's steps or outcome, and its rows' own steps add up to the check's
+steps.
+
+Check: `coax/tests/steps.coax` (a check whose own larger budget passes
+where the file's fails, one whose own smaller budget fails where the file's
+passes, `--steps` larger and smaller, a mutant killed only by its check's own
+budget, the profile's rows for a small fixture);
+`coax/tests/fail/steps_zero.coax` and `steps_name.coax` (E0220).
+
 ## Code queries answer from the checked graph and use a cache only while its inputs match
 
 `coax query FILE defines|uses|exports` answers from the checked program
