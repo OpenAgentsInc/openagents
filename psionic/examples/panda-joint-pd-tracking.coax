@@ -1,0 +1,28 @@
+#import "Basic";
+#load "../tests/robotics/panda-joint-pd-tracking.coax";
+
+#test "Panda tracking example rounds independently frozen reference and brake values" {
+ #assert pnt_example_micro(-0.295)== -295000 && pnt_example_micro(0.10416666666666667)==104167;
+ #assert pnt_example_micro(0.0015419353651608013)==1542 && pnt_example_micro(-39.99845806463484)== -39998458;
+}
+pnt_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("fixed four-case consumer; no SDK or robot effects\n");
+// book:begin pnt-tracking
+ // Public inputs choose one of the four frozen experiments, never new gains.
+ // q9/v9 are explicit mixed-coordinate raw boundaries; outputs retain units.
+ initial:[1]PntInitial;command:[1]PntCommand;
+ #assert pnt_ok(pnt_initial(1,initial[..]));q:=initial[0].q;v:=initial[0].v;
+ #assert pnt_ok(pnt_control(1,135,q[..],v[..],command[..]));
+ print("track midpoint: reference tick %/%; joint1 % urad; % urad/s\n",command[0].reference_tick,command[0].reference_steps,pnt_example_micro(command[0].reference.angle[0].value),pnt_example_micro(command[0].reference.rate[0].value));
+ #assert pnt_ok(pnt_control(2,200,q[..],v[..],command[..]));
+ print("pulse at tick 200: active %; joint2 external % micro-J/rad\n",command[0].pulse,pnt_example_micro(command[0].external[1]));
+ #assert pnt_ok(pnt_initial(3,initial[..]));q=initial[0].q;v=initial[0].v;
+ #assert pnt_ok(pnt_control(3,0,q[..],v[..],command[..]));c:=command[0].controller;
+ print("brake joint7 P/D/g0/requested/command (micro-J/rad): % % % % %\n",pnt_example_micro(c.proportional[6].value),pnt_example_micro(c.derivative[6].value),pnt_example_micro(c.gravity[6].value),pnt_example_micro(c.requested[6].value),pnt_example_micro(c.command[6].value));
+ print("controller clips %; actuator control/force clips %/%\n",c.clipped,command[0].actuator_control_clipped,command[0].actuator_force_clipped);
+ old:=command[0];status:=pnt_control(3,750,q[..],v[..],command[..]);#assert status.stage==2 && status.code==2;pnt_command_same(command[0],old);
+ print("tick 750: stage % code %; complete command unchanged\n",status.stage,status.code);
+// book:end pnt-tracking
+ print("trajectory parity and tracking quality are separate experiment results\n");
+}

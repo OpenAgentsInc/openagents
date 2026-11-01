@@ -1,0 +1,46 @@
+[
+  {
+    "case": 0,
+    "name": "gravity-hold",
+    "status": 0,
+    "steps": 0,
+    "ns": 0,
+    "duration": 0.0,
+    "estimate": 0.0,
+    "R": 0.0,
+    "zero": true
+  },
+  {
+    "case": 1,
+    "name": "quintic-track",
+    "status": 0,
+    "steps": 270,
+    "ns": 540000000,
+    "duration": 0.54,
+    "estimate": 0.5372849659117708,
+    "R": 268.6424829558854,
+    "zero": false
+  },
+  {
+    "case": 2,
+    "name": "quintic-track-pulse",
+    "status": 0,
+    "steps": 270,
+    "ns": 540000000,
+    "duration": 0.54,
+    "estimate": 0.5372849659117708,
+    "R": 268.6424829558854,
+    "zero": false
+  },
+  {
+    "case": 3,
+    "name": "saturated-brake-hold",
+    "status": 0,
+    "steps": 0,
+    "ns": 0,
+    "duration": 0.0,
+    "estimate": 0.0,
+    "R": 0.0,
+    "zero": true
+  }
+]

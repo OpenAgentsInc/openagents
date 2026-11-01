@@ -1,0 +1,29 @@
+// TEST-ONLY fixed schedule consumer: C owns SDK effects/I/O, never decisions.
+#load "panda-joint-pd-tracking-control.coax";
+#authority;
+#test "Panda tracking public initial fixed case index and shape guards are exact" {
+ out:[2]PntInitial;for i:0..<9 {out[0].q[i]=101+f64(i);out[0].v[i]=211+f64(i);out[1]=out[0];}before:=out[0];
+ #assert !pnt_case_valid(-1) && pnt_case_valid(0) && pnt_case_valid(3) && !pnt_case_valid(4) && !pnt_tick_valid(-1) && pnt_tick_valid(0) && pnt_tick_valid(749) && !pnt_tick_valid(750);
+ s:=pnt_initial(0,out[..]);#assert s.stage==1 && s.code==1;s=pnt_initial(-1,out[0..<1]);#assert s.stage==2 && s.code==1;s=pnt_initial(4,out[0..<1]);#assert s.stage==2 && s.code==1;for i:0..<9 {#assert out[0].q[i]==before.q[i] && out[0].v[i]==before.v[i] && out[1].q[i]==before.q[i] && out[1].v[i]==before.v[i];}
+ for c:0..<4 {#assert pnt_ok(pnt_initial(c,out[0..<1]));cfg:=pnt_case_owned(c);for i:0..<9 {#assert out[0].q[i]==cfg.initial.q[i] && out[0].v[i]==cfg.initial.v[i];}}
+}
+#test "Panda tracking public controller stages every failure and publishes only complete command" {
+ cfg:=pnt_case_owned(2);q:=cfg.initial.q;v:=cfg.initial.v;out:=[2]PntCommand.[pnt_command_poison(),pnt_command_poison()];old:=out[0];s:=pnt_control(2,200,q[0..<8],v[..],out[0..<1]);#assert s.stage==1 && s.code==1;s=pnt_control(2,200,q[..],v[0..<8],out[0..<1]);#assert s.stage==1 && s.code==1;s=pnt_control(2,200,q[..],v[..],out[..]);#assert s.stage==1 && s.code==1;
+ s=pnt_control(-1,0,q[..],v[..],out[0..<1]);#assert s.stage==2 && s.code==1;s=pnt_control(4,0,q[..],v[..],out[0..<1]);#assert s.stage==2 && s.code==1;s=pnt_control(2,-1,q[..],v[..],out[0..<1]);#assert s.stage==2 && s.code==2;s=pnt_control(2,750,q[..],v[..],out[0..<1]);#assert s.stage==2 && s.code==2;
+ q[0]=9;s=pnt_control(2,200,q[..],v[..],out[0..<1]);#assert s.stage==4 && s.code==cast(int)PjpStatus.limits;q=cfg.initial.q;v[7]=3;s=pnt_control(2,200,q[..],v[..],out[0..<1]);#assert s.stage==5 && s.code==cast(int)PfkStatus.range;v=cfg.initial.v;pnt_command_same(out[0],old);pnt_command_same(out[1],old);
+ #assert pnt_ok(pnt_control(2,200,q[..],v[..],out[0..<1]));expected:=pnt_control_owned(cfg,200,q,v);pnt_command_same(out[0],expected.command);#assert out[0].pulse==1 && out[0].external[1]==3;
+}
+#test "Panda tracking public step stages old primitives and all refusals atomically" {
+ cfg:=pnt_case_owned(0);q:=cfg.initial.q;v:=cfg.initial.v;out:=[2]PntStep.[pnt_step_poison(),pnt_step_poison()];old:=out[0];s:=pnt_step(0,0,q[0..<8],v[..],out[0..<1]);#assert s.stage==1 && s.code==1;s=pnt_step(0,0,q[..],v[0..<8],out[0..<1]);#assert s.stage==1 && s.code==1;s=pnt_step(0,0,q[..],v[..],out[..]);#assert s.stage==1 && s.code==1;s=pnt_step(4,0,q[..],v[..],out[0..<1]);#assert s.stage==2 && s.code==1;s=pnt_step(0,750,q[..],v[..],out[0..<1]);#assert s.stage==2 && s.code==2;q[0]=9;s=pnt_step(0,0,q[..],v[..],out[0..<1]);#assert s.stage==4 && s.code==cast(int)PjpStatus.limits;pnt_step_same(out[0],old);pnt_step_same(out[1],old);
+ q=cfg.initial.q;#assert pnt_ok(pnt_step(0,0,q[..],v[..],out[0..<1]));control:=pnt_control_owned(cfg,0,q,v);expected:=pnt_apply_owned(control.command,q,v);pnt_step_same(out[0],expected.output);
+}
+
+#test "Panda tracking public dense velocity snapshot preserves controller and whole plant result" {
+ cfg:=pnt_case_owned(0);q:=cfg.initial.q;v:=[9]f64.[0.11,-0.12,0.13,-0.14,0.15,-0.16,0.17,0.018,-0.019];out:[1]PntStep;#assert pnt_ok(pnt_step(0,0,q[..],v[..],out[..]));control:=pnt_control_owned(cfg,0,q,v);expected:=pnt_apply_owned(control.command,q,v);#assert pnt_ok(expected.status);pnt_step_same(out[0],expected.output);
+}
+
+pnt_case_valid :: (case_id:int)->bool {return case_id>=0 && case_id<=3;}
+pnt_tick_valid :: (tick:int)->bool {return tick>=0 && tick<750;}
+pnt_initial :: (case_id:int,output:[]PntInitial)->PntStatus #export_c {if output.count!=1 {return pnt_status(1,1);}if !pnt_case_valid(case_id) {return pnt_status(2,1);}output[0]=pnt_case_owned(case_id).initial;return pnt_status(0,0);}
+pnt_control :: (case_id:int,tick:int,q:[]f64,v:[]f64,output:[]PntCommand)->PntStatus #export_c {if q.count!=9 || v.count!=9 || output.count!=1 {return pnt_status(1,1);}if !pnt_case_valid(case_id) {return pnt_status(2,1);}if !pnt_tick_valid(tick) {return pnt_status(2,2);}coordinates:[9]f64;rates:[9]f64;for i:0..<9 {coordinates[i]=q[i];rates[i]=v[i];}result:=pnt_control_owned(pnt_case_owned(case_id),tick,coordinates,rates);if !pnt_ok(result.status) {return result.status;}output[0]=result.command;return pnt_status(0,0);}
+pnt_step :: (case_id:int,tick:int,q:[]f64,v:[]f64,output:[]PntStep)->PntStatus #export_c {if q.count!=9 || v.count!=9 || output.count!=1 {return pnt_status(1,1);}if !pnt_case_valid(case_id) {return pnt_status(2,1);}if !pnt_tick_valid(tick) {return pnt_status(2,2);}coordinates:[9]f64;rates:[9]f64;for i:0..<9 {coordinates[i]=q[i];rates[i]=v[i];}control:=pnt_control_owned(pnt_case_owned(case_id),tick,coordinates,rates);if !pnt_ok(control.status) {return control.status;}result:=pnt_apply_owned(control.command,coordinates,rates);if !pnt_ok(result.status) {return result.status;}output[0]=result.output;return pnt_status(0,0);}

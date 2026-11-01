@@ -1,0 +1,60 @@
+// New experimental composition only; all imported numerical primitives frozen.
+#load "panda-joint-pd-tracking-fixtures.coax";
+#authority;
+#test "Panda tracking case constants initialize all coordinates gains and brake rates" {
+ q:=[9]f64.[-0.31,0.22,-0.14,-1.91,0.36,1.47,-0.52,0.012,-0.026];delta:=[7]f64.[0.03,-0.025,0.02,-0.02,0.015,0.02,-0.025];kp:=[7]f64.[60,60,60,60,40,20,10];kd:=[7]f64.[8,8,8,8,5,3,2];
+ for case_id:0..<4 {x:=pnt_case_owned(case_id);for i:0..<9 {#assert x.initial.q[i]==q[i] && x.initial.v[i]==(ifx case_id==3 && i==6 then 2.0 else 0.0);}for i:0..<7 {#assert x.edge.q0[i].value==q[i] && x.edge.q1[i].value==(ifx case_id==1 || case_id==2 then q[i]+delta[i] else q[i]) && x.edge.vlim[i].value==0.12 && x.edge.alim[i].value==0.6 && x.kp[i].value==kp[i] && x.kd[i].value==(ifx case_id==3 && i==6 then 20.0 else kd[i]);}for i:0..<2 {#assert x.finger_target[i].value==q[7+i];}}
+ #assert pnt_ok(pnt_status(0,0)) && !pnt_ok(pnt_status(1,0)) && !pnt_ok(pnt_status(0,1));
+}
+#test "Panda tracking reference tick clamp hold endpoints and pulse boundaries are exact" {
+ for case_id:0..<4 {cfg:=pnt_case_owned(case_id);r:=pnt_reference_owned(cfg,0);#assert r.status==PqtStatus.ok && r.tick==0 && r.steps==(ifx case_id==1 || case_id==2 then 270 else 0);for i:0..<7 {#assert f64_bits(r.reference.angle[i].value)==f64_bits(cfg.edge.q0[i].value) && f64_bits(r.reference.rate[i].value)==0 && f64_bits(r.reference.acceleration[i].value)==0;}r=pnt_reference_owned(cfg,749);#assert r.status==PqtStatus.ok && r.tick==r.steps;for i:0..<7 {#assert f64_bits(r.reference.angle[i].value)==f64_bits(cfg.edge.q1[i].value) && f64_bits(r.reference.rate[i].value)==0 && f64_bits(r.reference.acceleration[i].value)==0;}}
+ for tick:[6]int.[0,199,200,249,250,749] {for case_id:0..<4 {#assert pnt_pulsed(case_id,tick)==(case_id==2 && tick>=200 && tick<250);}}
+ cfg:=pnt_case_owned(1);cfg.edge.vlim[0].value=0;#assert pnt_reference_owned(cfg,0).status==PqtStatus.range;cfg=pnt_case_owned(1);#assert pnt_reference_owned(cfg,-1).status==PqtStatus.range;
+}
+#test "Panda tracking staged control observes Pjp then Pa and preserves underlying refusals" {
+ cfg:=pnt_case_owned(0);r:=pnt_control_owned(cfg,0,cfg.initial.q,cfg.initial.v);#assert pnt_ok(r.status) && r.command.reference_steps==0 && r.command.reference_tick==0 && r.command.pulse==0 && r.command.controller.clipped==0 && r.command.actuator_control_clipped==0 && r.command.actuator_force_clipped==0;
+ for i:0..<7 {#assert r.command.reference.angle[i].value==cfg.edge.q0[i].value && r.command.reference.rate[i].value==0 && r.command.controller.proportional[i].value==0 && r.command.controller.derivative[i].value==0 && r.command.controller.requested[i].value==r.command.controller.gravity[i].value && r.command.controller.command[i].value==r.command.controls[i] && r.command.actuator.hinge[i].value==r.command.controls[i];}for i:0..<2 {#assert r.command.controls[7+i]==cfg.finger_target[i].value && r.command.actuator.slide[i].value==0;}for i:0..<9 {#assert r.command.external[i]==0;}
+ bad:=cfg;bad.edge.vlim[0].value=0;r=pnt_control_owned(bad,0,cfg.initial.q,cfg.initial.v);#assert r.status.stage==3 && r.status.code==cast(int)PqtStatus.range;q:=cfg.initial.q;q[0]=9;r=pnt_control_owned(cfg,0,q,cfg.initial.v);#assert r.status.stage==4 && r.status.code==cast(int)PjpStatus.limits;v:=cfg.initial.v;v[7]=3;r=pnt_control_owned(cfg,0,cfg.initial.q,v);#assert r.status.stage==5 && r.status.code==cast(int)PfkStatus.range;
+}
+#test "Panda tracking pulse and brake expose separate force and clipping stages" {
+ cfg:=pnt_case_owned(2);r:=pnt_control_owned(cfg,200,cfg.initial.q,cfg.initial.v);#assert pnt_ok(r.status) && r.command.pulse==1 && r.command.external[1]==3 && r.command.reference_tick==200 && r.command.reference_steps==270;for i:0..<9 {if i!=1 {#assert r.command.external[i]==0;}}
+ cfg=pnt_case_owned(3);r=pnt_control_owned(cfg,0,cfg.initial.q,cfg.initial.v);#assert pnt_ok(r.status) && r.command.controller.derivative[6].value== -40 && r.command.controller.requested[6].value< -12 && r.command.controller.command[6].value== -12 && r.command.controller.clipped==1 && r.command.actuator_control_clipped==0 && r.command.actuator_force_clipped==0 && r.command.actuator.hinge[6].value== -12;
+}
+#test "Panda tracking own plant stages command once and exposes a distinct plant refusal" {
+ cfg:=pnt_case_owned(0);control:=pnt_control_owned(cfg,0,cfg.initial.q,cfg.initial.v);#assert pnt_ok(control.status);r:=pnt_apply_owned(control.command,cfg.initial.q,cfg.initial.v);#assert pnt_ok(r.status);pnt_command_same(r.output.command,control.command);#assert r.output.plant.control_clipped==control.command.actuator_control_clipped && r.output.plant.force_clipped==control.command.actuator_force_clipped;
+ command:=control.command;command.external[0]=10001;r=pnt_apply_owned(command,cfg.initial.q,cfg.initial.v);#assert r.status.stage==6 && r.status.code==cast(int)PmsStatus.range;
+}
+
+#test "Panda tracking dense rates and independent mid reference expose complete controller transport" {
+ cfg:=pnt_case_owned(1);v:=[9]f64.[0.11,-0.12,0.13,-0.14,0.15,-0.16,0.17,0.018,-0.019];r:=pnt_control_owned(cfg,135,cfg.initial.q,v);#assert pnt_ok(r.status);reference:=[21]f64.[-0.29500000000000004,0.20750000000000002,-0.13,-1.92,0.3675,1.48,-0.5325,0.10416666666666656,-0.08680555555555554,0.06944444444444446,-0.0694444444444445,0.05208333333333338,0.0694444444444445,-0.08680555555555564,0.0,-0.0,0.0,-0.0,0.0,0.0,-0.0];gravity:=[7]f64.[0,-30.121776492457045,-0.5834539671108714,17.41441131614766,0.6490564396453131,0.3067158328336657,0.0015419353651608013];
+ for i:0..<7 {p:=cfg.kp[i].value*(reference[i]-cfg.initial.q[i]);d:=cfg.kd[i].value*(reference[7+i]-v[i]);want:=(p+d)+gravity[i];#assert abs(r.command.controller.proportional[i].value-p)<2e-11 && abs(r.command.controller.derivative[i].value-d)<2e-11 && abs(r.command.controller.gravity[i].value-gravity[i])<2e-11 && abs(r.command.controller.requested[i].value-want)<2e-11 && abs(r.command.controls[i]-want)<2e-11;}
+ cfg=pnt_case_owned(0);v=cfg.initial.v;v[8]=3;r=pnt_control_owned(cfg,0,cfg.initial.q,v);#assert r.status.stage==5 && r.status.code==cast(int)PfkStatus.range;
+}
+#test "Panda tracking unsealed actuation diagnostics expose both nonzero clip stages without changing experiment" {
+ cfg:=pnt_case_owned(0);cfg.finger_target[0].value=0.05;cfg.finger_target[1].value= -0.05;r:=pnt_control_owned(cfg,0,cfg.initial.q,cfg.initial.v);#assert pnt_ok(r.status) && r.command.actuator_control_clipped==2 && r.command.actuator_force_clipped==1 && r.command.actuator.slide[0].value==20 && abs(r.command.actuator.slide[1].value+14)<2e-12;
+}
+#test "Panda tracking new dense state plant forwarding observes every returned field" {
+ cfg:=pnt_case_owned(0);q:=cfg.initial.q;v:=[9]f64.[0.11,-0.12,0.13,-0.14,0.15,-0.16,0.17,0.018,-0.019];control:=pnt_control_owned(cfg,0,q,v);#assert pnt_ok(control.status);r:=pnt_apply_owned(control.command,q,v);#assert pnt_ok(r.status);command:=control.command;expected:[1]PeuOutput;#assert peu_step_raw(q[..],v[..],command.controls[..],command.external[..],expected[..])==PmsStatus.ok;peu_same(r.output.plant,expected[0]);
+}
+
+pnt_status :: (stage:int,code:int)->PntStatus {return PntStatus.{stage=stage,code=code};}
+pnt_ok :: (status:PntStatus)->bool {return status.stage==0 && status.code==0;}
+pnt_case_owned :: (case_id:int)->PntCase {
+ x:PntCase;q:=[9]f64.[-0.31,0.22,-0.14,-1.91,0.36,1.47,-0.52,0.012,-0.026];delta:=[7]f64.[0.03,-0.025,0.02,-0.02,0.015,0.02,-0.025];kp:=[7]f64.[60,60,60,60,40,20,10];kd:=[7]f64.[8,8,8,8,5,3,2];x.initial.q=q;x.case_id=case_id;
+ for i:0..<7 {x.edge.q0[i].value=q[i];x.edge.q1[i]=x.edge.q0[i];if case_id==1 || case_id==2 {x.edge.q1[i].value=q[i]+delta[i];}x.edge.vlim[i].value=0.12;x.edge.alim[i].value=0.6;x.kp[i].value=kp[i];x.kd[i].value=kd[i];}for i:0..<2 {x.finger_target[i].value=q[7+i];}if case_id==3 {x.initial.v[6]=2;x.kd[6].value=20;}return x;
+}
+pnt_reference_owned :: (config:PntCase,tick:int)->PntReference {
+ cfg:=config;out:PntReference;timing:[1]PqtTiming;status:=pqt_time(cfg.edge.q0[..],cfg.edge.q1[..],cfg.edge.vlim[..],cfg.edge.alim[..],timing[..]);out.status=status;if status!=PqtStatus.ok {return out;}out.steps=timing[0].steps;out.tick=ifx pik_greater(f64(tick),f64(out.steps)) then out.steps else tick;reference:[1]PqtSample;out.status=pqt_sample(cfg.edge.q0[..],cfg.edge.q1[..],cfg.edge.vlim[..],cfg.edge.alim[..],out.tick,reference[..]);if out.status!=PqtStatus.ok {return out;}out.reference=reference[0];return out;
+}
+pnt_pulsed :: (case_id:int,tick:int)->bool {return case_id==2 && tick>=200 && tick<250;}
+pnt_control_owned :: (config:PntCase,tick:int,coordinates:[9]f64,rates:[9]f64)->PntControlResult {
+ cfg:=config;result:PntControlResult;reference:=pnt_reference_owned(cfg,tick);if reference.status!=PqtStatus.ok {result.status=pnt_status(3,cast(int)reference.status);return result;}
+ x:PjpInput;sv:[2]pfku.Quantity(PidLinearRate,f64);for i:0..<7 {x.q[i].value=coordinates[i];x.rate[i].value=rates[i];x.target[i]=reference.reference.angle[i];x.target_rate[i]=convert_unit(PidAngularRate,reference.reference.rate[i]);x.kp[i]=cfg.kp[i];x.kd[i]=cfg.kd[i];}for i:0..<2 {x.slides[i].value=coordinates[7+i];sv[i].value=rates[7+i];}
+ pd:[1]PjpOutput;status:=pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],pd[..]);if status!=PjpStatus.ok {result.status=pnt_status(4,cast(int)status);return result;}
+ command:PntCommand;command.reference=reference.reference;command.controller=pd[0];command.reference_tick=reference.tick;command.reference_steps=reference.steps;command.pulse=ifx pnt_pulsed(cfg.case_id,tick) then 1 else 0;
+ for i:0..<7 {command.controls[i]=pd[0].command[i].value;}for i:0..<2 {command.controls[7+i]=cfg.finger_target[i].value;}
+ // Pulse identity is carried by the fixed case's descriptor below.
+ if command.pulse==1 {command.external[1]=3;}
+ actuator:[1]PaOutput;model:=pa_forward(x.q[..],x.slides[..],x.rate[..],sv[..],pd[0].command[..],cfg.finger_target[..],actuator[..]);if model!=PfkStatus.ok {result.status=pnt_status(5,cast(int)model);return result;}command.actuator_control_clipped=actuator[0].control_clipped;command.actuator_force_clipped=actuator[0].force_clipped;command.actuator=actuator[0].actuator;result.command=command;return result;
+}
+pnt_apply_owned :: (command:PntCommand,coordinates:[9]f64,rates:[9]f64)->PntStepResult {q:=coordinates;v:=rates;cmd:=command;plant:[1]PeuOutput;result:PntStepResult;status:=peu_step_raw(q[..],v[..],cmd.controls[..],cmd.external[..],plant[..]);if status!=PmsStatus.ok {result.status=pnt_status(6,cast(int)status);return result;}result.output.command=cmd;result.output.plant=plant[0];return result;}

@@ -1,0 +1,121 @@
+{
+  "schema": "psionic.panda-joint-pd-tracking.source-qualification.v1",
+  "passed": true,
+  "profile": "fixed-four-case test-only F64 consumer; unchanged qualified Pjp/Pqt/Pa/Peu arithmetic",
+  "compiler": {
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "bytes": 2886376
+  },
+  "source_files": {
+    "psionic/tests/robotics/panda-joint-pd-tracking-types.coax": {
+      "sha256": "d0af0c1b3ff5f6e2c39ad4720f3b5a86cf87f367e79f90353b0f1183eb34b3e0",
+      "bytes": 976
+    },
+    "psionic/tests/robotics/panda-joint-pd-tracking-fixtures.coax": {
+      "sha256": "e8ea3b93c51e8c56fa6b84abdcaef6f433b987394ea53e2111851dd6696c5a5e",
+      "bytes": 1154
+    },
+    "psionic/tests/robotics/panda-joint-pd-tracking-control.coax": {
+      "sha256": "cf406c2422bf663b8605ea321bd48ecb5a687bb685aa518bb044005de73f41b8",
+      "bytes": 10686
+    },
+    "psionic/tests/robotics/panda-joint-pd-tracking.coax": {
+      "sha256": "6048af9b718bebbcaa9f92f3af67df824e4222672ea3373a687a8af411999aef",
+      "bytes": 5139
+    }
+  },
+  "function_body_sha256": {
+    "pnt_command_poison": "cdbd586f6ff17704afc3f8def20094e7aa3f666d7bc134564affd6e468fefdaf",
+    "pnt_command_same": "90eba98f28b3cd5d507970d64f3d24e487f1facff6a1c1858c3fe8e66a4db9b4",
+    "pnt_step_poison": "51c93cfecdc3877e9aaf0500c691d2abc3f76c3f02337838a68735880a343b47",
+    "pnt_step_same": "e0a89a561aa4d4bee238bd141f8f4011b7a6c7dbe8da85d358a0ffac5cd1bb4f",
+    "pnt_status": "fba46a06f5104bc875a77cd82ad2a1c575efc7656e2a5a4b6ad3fe566535f877",
+    "pnt_ok": "b6e2b2438373d51aa5cb010dbea64e2550a074b44adf25808b97c11d9a7367ab",
+    "pnt_case_owned": "19be1f00c847b080e4ced40cb79cc5f254198d72d3d4792392ef9db95957c1e3",
+    "pnt_reference_owned": "528dd9953fcd553ab17fd3adc57e5b59b7f840a24552e0640e09f699618aecee",
+    "pnt_pulsed": "8495f62c563ddc817eb29f3498bdbcca6500f4f2c7986cc311140889358f610b",
+    "pnt_control_owned": "d39d6485134db510fcafb31674eb158c2d92601b626b3442215c22b68d4f958f",
+    "pnt_apply_owned": "7a9ffd7e922c99f6a2a079e2c0ba40ce65c1fdcf25e3f142627bd4b1963cef7e",
+    "pnt_case_valid": "274d5b227d2cc545558cc516446dee63fdfddabf6507284f8a62a64f07f64e25",
+    "pnt_tick_valid": "5f49d8702be51199e3c514a588a90481debc23a4b58da6d22a1e614508a96257",
+    "pnt_initial": "a5a8f137af8b6f84016be6d968f578f42bd3d5bfe02e38da56fc8bc9ca58f931",
+    "pnt_control": "e5eb4ef39c2091e9927cc68729cd214cb528dd8a9df52a33902252d5d516ae6a",
+    "pnt_step": "0612b9a4ea670f3b70464fbe39a322d2409b7f8fc56e21dd91b63f43963268d2"
+  },
+  "checks": {
+    "control_groups": 8,
+    "public_groups": 4,
+    "total_new_groups": 12,
+    "all_baseline_checks_passed_in_final_changed_root_mutation": true
+  },
+  "mutation": {
+    "scope": "actual emitted sites in the two new entry files, --root-only --jobs 4",
+    "runs": {
+      "control-first": {
+        "stdout": {
+          "sha256": "4ce6fd4d1e5be740048697cf83d7c4ac4e9f306b9ede65d1bee3b39d70a7f5d5",
+          "bytes": 4258
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "mutants": 119,
+        "killed": 113,
+        "survived": 6
+      },
+      "control-second": {
+        "stdout": {
+          "sha256": "514636baba07c6e813887f9d9aaa5e308eb0edea5b36fdba63fbf54a0393bb75",
+          "bytes": 116
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "mutants": 119,
+        "killed": 119,
+        "survived": 0
+      },
+      "public-first": {
+        "stdout": {
+          "sha256": "9672e9def47565a06481ba3f8f317078dc8c7da9e5af344543c5b6dcc6f2b642",
+          "bytes": 1190
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "mutants": 75,
+        "killed": 74,
+        "survived": 1
+      },
+      "public-second": {
+        "stdout": {
+          "sha256": "2a33b51dfba3daa9fac66597d058ae7409be3cc7315bc011183acf0837aa06f2",
+          "bytes": 114
+        },
+        "stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "mutants": 75,
+        "killed": 75,
+        "survived": 0
+      }
+    },
+    "final_mutants": 194,
+    "final_killed": 194,
+    "final_survived": 0,
+    "history": "Initial 6 control and 1 public observational survivors retained. Four new checks observe dense rates/mid-reference fields, slider role8, real nonzero Pa clipping in altered unsealed diagnostic configuration, and full Peu output transport. Production bodies were not changed to close these gaps. No mutant equivalence waiver."
+  },
+  "scope_limits": [
+    "No standalone inherited old gate was run; the new root mutation baseline retains imported dependency checks.",
+    "No SDK/native/NN/render acquisition; source checks call the owned Peu numerical step in new composition contexts.",
+    "No compiler #bounded or safety/stability guarantee",
+    "Quantity operator-token provenance remains the documented compiler gap; counts name actual emitted mutation sites only",
+    "Deliberately altered unsealed diagnostic configurations are source tests, not any of the four public experiment cases"
+  ],
+  "atomicity": "Complete 712-byte command and 944-byte own-step outputs publish only on stage0/code0; non-ok preserves output and spare entry. Raw current q/v are snapshotted first.",
+  "trusted_helpers": "pnt_case_owned requires case0..3; pnt_reference_owned and control require a valid fixed profile and tick0..749; pnt_apply_owned accepts only finite admitted state plus a complete admitted command. Returned PODs are unsealed, not admission certificates."
+}

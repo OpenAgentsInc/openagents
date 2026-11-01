@@ -1,0 +1,24 @@
+{
+  "schema": "psionic.panda-joint-pd-tracking.transport.v1",
+  "frozen_before_first_SDK_load_or_step": true,
+  "experiment_sha256": "cfe805220004838440a4ea92c258880597ca5de42b7360ca7102281e242b3612",
+  "source_profile": "Darwinarm64 binary64/FPCR0,MuJoCo3.3.1 fixedsourceXML+86assetdeclarations/85uniquepaths,flags17,Eulerimplicitjointdamping,h.002",
+  "input_header": "16B<4I>:0x31495450(PTI1),4cases,750steps,version1; then4x18F64 q9/v9, derived exactlyfromfirst18words of frozen64wordcases. No mutable controller configuration is admitted byCoax.",
+  "SDK_header": "16B<4I>:0x31525450(PTR1),4cases,750steps,1040recordbytes",
+  "own_header": "16B<4I>:0x314f5450(PTO1),4cases,750steps,1216recordbytes",
+  "SDK_record_bytes": 1040,
+  "own_record_bytes": 1216,
+  "SDK_F64_fields": {
+    "pre_q9": [0,9],"pre_v9": [9,18],"reference_angle7": [18,25],"reference_rate7": [25,32],"reference_acceleration7": [32,39],
+    "Pjp_proportional7": [39,46],"Pjp_derivative7": [46,53],"Pjp_gravity7": [53,60],"Pjp_requested7": [60,67],"Pjp_command7": [67,74],
+    "controls9": [74,83],"external_generalized9": [83,92],"actuator9": [92,101],"post_q9": [101,110],"post_v9": [110,119],"SDK_time": [119,120]
+  },
+  "SDK_I64_fields_after_120F64": ["case","tick","status_stage","status_code","Pjp_clipped","reference_tick","reference_steps","pulse","Pa_control_clipped","Pa_force_clipped"],
+  "own_append": "18F64 shadowq9/shadowv9 atbyte1040,then4I64 freshPeucontrol/freshPeuforce/shadowPeucontrol/shadowPeuforce atbyte1184",
+  "actuator_origin": "SDKrow records raw scalaractuator_force9 from PREintegration cache aftermj_step; independent localqfrc_actuator9 equality is asserted for every actuatorafter exact unitgear/one+1 sparseDOF mapping. Ownrow usesPa generalized prediction. Mapping makes these numericallycomparable, not arbitrarilyinterchangeable.",
+  "status_scope": "Both Coaxstatus stage andcode serialized. Completed successfulrecords require0/0; controlrefusal is logged withstage/code before anabort and no completed-successledger.",
+  "reset": "Eachcase freshmj_resetData atcompileddefaultqpos0;zeroallscenevelocities/applied/xfrc/control;override namedrobot9initialq/v. Oneexplicitinitialforward percase,noexplicitpertick/poststepforward. NotHDF/task-reset replay.",
+  "controller_alignment": "Referenceprestatetickk; newraw SDKpostcoordinates/rates feednextCoaxcontrol,notcachedgeometry. Postquality independentlyusesanalytictickk+1. First4forward+3000stepacquisitionseparatefromofflineown+recordedcommandshadow.",
+  "progress_ledger": "4x(before_initial_forward,after_initial_forward)at tick-1 plus3000x(before_step,after_step), eachwithcase,tick,statusstage/code. Exact6008events required; partialtraces/ledger/failures retained,neverautomaticcapture retry.",
+  "limits": "Shortunconstrainedfixedmodelexperimentonly;noNN/render/contact/collision/hardware/nonlinearstability/realtime/R13/R14 claim. Qualityhypotheses are outcomes separatefrom numericalparity."
+}

@@ -1,0 +1,37 @@
+{
+  "schema": "psionic.panda-joint-pd-tracking.offline-routing.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "C_compiler_calls": 0,
+  "native_calls": 0,
+  "simulation_steps": 0,
+  "source": {
+    "psionic/tests/robotics/check-panda-joint-pd-tracking.sh": {
+      "bytes": 696,
+      "sha256": "415d0bbce74858b6e6c3678a378823da694303d99c0fd640abb82bdff03a9aad"
+    },
+    "psionic/tests/robotics/panda_joint_pd_tracking_offline.py": {
+      "bytes": 6603,
+      "sha256": "c7aa24c9e600805b04b45d87280716523047027826745429bf7ffc8521749ba2"
+    }
+  },
+  "gate_forwarding_stub": {
+    "argv": [
+      "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_joint_pd_tracking_offline.py",
+      "--compiler",
+      "/tmp/stub-coax",
+      "--output",
+      "/tmp/panda-joint-pd-tracking-offline-routing-first/native",
+      "--reference",
+      "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/fixtures/robotics/panda-joint-pd-tracking"
+    ],
+    "exit": 0
+  },
+  "plan_only": {
+    "bytes": 1912,
+    "sha256": "4efad30ca39b3d9df544337c6d49ad85e1ede709a3dd62396cdd0f263b4f8522"
+  },
+  "numeric_path_executed": false,
+  "numerical_scope": "Original unchanged SDKcapture/native records carry; additiveofflineadapter numericpath is not newlyexecuted here."
+}

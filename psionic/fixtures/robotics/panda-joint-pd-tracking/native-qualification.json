@@ -1,0 +1,1320 @@
+{
+  "schema": "psionic.panda-joint-pd-tracking.native.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "old_gates_repeated": false,
+  "commands": [
+    {
+      "name": "compile-Coax-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-Wno-unused-parameter",
+        "-O0",
+        "-g",
+        "-c",
+        "/private/tmp/panda-joint-pd-tracking-first/debug/panda-joint-pd-tracking.c",
+        "-o",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-debug/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.5368522920180112,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-O0",
+        "-g",
+        "-I/private/tmp/panda-joint-pd-tracking-first/debug",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_joint_pd_tracking_native.c",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-debug/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.430585041991435,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-own-shadow-debug",
+      "argv": [
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-debug/native",
+        "/private/tmp/panda-joint-pd-tracking-first/input.bin",
+        "/private/tmp/panda-joint-pd-tracking-first/sdk-trace.bin",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-debug/own-trace.bin"
+      ],
+      "exit": 0,
+      "seconds": 3.1480961669585668,
+      "stdout": {
+        "bytes": 131,
+        "sha256": "5d107f77bf939d39c2d51ce41d868f56047569e86626453397de790b1f05be09"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-Coax-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-Wno-unused-parameter",
+        "-O2",
+        "-c",
+        "/private/tmp/panda-joint-pd-tracking-first/release/panda-joint-pd-tracking.c",
+        "-o",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-release/coax.o"
+      ],
+      "exit": 0,
+      "seconds": 0.8856935000512749,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "compile-effects-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-misleading-indentation",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-O2",
+        "-I/private/tmp/panda-joint-pd-tracking-first/release",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_joint_pd_tracking_native.c",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-release/coax.o",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.2303516250103712,
+      "stdout": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-own-shadow-release",
+      "argv": [
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-release/native",
+        "/private/tmp/panda-joint-pd-tracking-first/input.bin",
+        "/private/tmp/panda-joint-pd-tracking-first/sdk-trace.bin",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-release/own-trace.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.38937562494538724,
+      "stdout": {
+        "bytes": 131,
+        "sha256": "5d107f77bf939d39c2d51ce41d868f56047569e86626453397de790b1f05be09"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    {
+      "name": "run-own-shadow-sanitized",
+      "argv": [
+        "/private/tmp/panda-joint-pd-tracking-first/guard-native",
+        "/private/tmp/panda-joint-pd-tracking-first/input.bin",
+        "/private/tmp/panda-joint-pd-tracking-first/sdk-trace.bin",
+        "/private/tmp/panda-joint-pd-tracking-native-first/native-sanitized/own-trace.bin"
+      ],
+      "exit": 0,
+      "seconds": 1.175174416974187,
+      "stdout": {
+        "bytes": 131,
+        "sha256": "5d107f77bf939d39c2d51ce41d868f56047569e86626453397de790b1f05be09"
+      },
+      "stderr": {
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  ],
+  "capture_record": {
+    "bytes": 94039,
+    "sha256": "dde03524accbad921211a6e27f2b86858827b68aa83c8b0b03759db063aca21c"
+  },
+  "capture_trace": {
+    "bytes": 3120016,
+    "sha256": "1c8ece9acebc9cf5c87237044fa98ebc31a13b2376400a59667d5eb39e40a78a"
+  },
+  "experiment_sha256": "cfe805220004838440a4ea92c258880597ca5de42b7360ca7102281e242b3612",
+  "input": {
+    "bytes": 592,
+    "sha256": "28db0ac165c8cfe023f9a1a914f22b903e6dfa0bde9768028ebd4f12b3e25e5a"
+  },
+  "source": {
+    "psionic/tests/robotics/panda_joint_pd_tracking_native.c": {
+      "bytes": 7818,
+      "sha256": "9e6ae457572c36c0bd282003ff73f3a5fe0609a897c13b12d4f21c8813753fc1"
+    },
+    "psionic/tests/robotics/panda_joint_pd_tracking_native_reference.py": {
+      "bytes": 9209,
+      "sha256": "fafea4dbdb3df064e2ed88b2b65e6db184f7f78693e6e1f1fdc17748a09238ca"
+    },
+    "psionic/tests/robotics/panda_joint_pd_tracking_audit.py": {
+      "bytes": 18558,
+      "sha256": "4f1aca8f21dbef04d37bdbe4cd0e537f7bbd6e53801ab6f9779fdf3ff6df6045"
+    }
+  },
+  "emissions": {
+    "debug": {
+      "source": {
+        "bytes": 423531,
+        "sha256": "f342634257e4e57d439537231bdf6d89aaf12fb42f33399a22d58c8cbc9381a4"
+      },
+      "header": {
+        "bytes": 61906,
+        "sha256": "56aaf6edaa10a926bee31328b3b279d42806a7230b9e4237944ab665287c1cfe"
+      }
+    },
+    "release": {
+      "source": {
+        "bytes": 421217,
+        "sha256": "f9e50c216f2e9c6ce0b44698141557d33958136bbc27bbbf7ab1daac747f1804"
+      },
+      "header": {
+        "bytes": 61906,
+        "sha256": "56aaf6edaa10a926bee31328b3b279d42806a7230b9e4237944ab665287c1cfe"
+      }
+    }
+  },
+  "emissions_reused_without_repeating_codegen": true,
+  "ABI_guards_carried_without_repeat": {
+    "passed": true,
+    "SDK_calls": 0,
+    "guard_refusals": 89,
+    "alias_cases": 4,
+    "assertions": 386,
+    "fpcr": 0
+  },
+  "budgets": {
+    "hinge_position_atol_radians": 2e-08,
+    "slide_position_atol_metres": 2e-09,
+    "hinge_rate_atol_radians_per_second": 2e-07,
+    "slide_rate_atol_metres_per_second": 2e-08,
+    "controller_and_actuator_force_atol": 2e-08,
+    "target_angle_atol": 2e-12,
+    "target_derivative_atol": 2e-10,
+    "target_derivative_rtol": 2e-12,
+    "clock_atol_seconds": 1.4901161193847656e-08,
+    "rtol": 0,
+    "status": "exact",
+    "clipping_counts": "exact",
+    "mode_bytes": "exact",
+    "clip_distance_diagnostic": 2e-08
+  },
+  "modes": {
+    "debug": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "cases": 4,
+        "steps_per_branch": 3000,
+        "own_branches": 2,
+        "record_bytes": 1216,
+        "assertions": 1329240,
+        "fpcr": 0
+      },
+      "binary": {
+        "bytes": 187576,
+        "sha256": "94bca9b121c2a35c7a6203e33d2280be2a56fc8678911021c01f4590c2c5a7ee"
+      },
+      "output": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "metrics": {
+        "hinge_q": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 4.440892098500626e-16,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "shadow_hinge_q": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 3.3306690738754696e-15,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "slide_q": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.469446951953614e-18,
+          "atol": 2e-09,
+          "rtol": 0
+        },
+        "shadow_slide_q": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.469446951953614e-18,
+          "atol": 2e-09,
+          "rtol": 0
+        },
+        "hinge_v": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 1.5994150448506161e-15,
+          "atol": 2e-07,
+          "rtol": 0
+        },
+        "shadow_hinge_v": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 5.7484399185181445e-15,
+          "atol": 2e-07,
+          "rtol": 0
+        },
+        "slide_v": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.729655473350135e-17,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "shadow_slide_v": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 4.002061269187118e-17,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "all_controller_fields": {
+          "passed": true,
+          "values": 105000,
+          "max_abs_error": 4.618527782440651e-14,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "actuator_force": {
+          "passed": true,
+          "values": 27000,
+          "max_abs_error": 4.618527782440651e-14,
+          "atol": 2e-08,
+          "rtol": 0
+        }
+      },
+      "all_actual_finite_words": 414000,
+      "all_SDK_reference_finite_words": 360000
+    },
+    "release": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "cases": 4,
+        "steps_per_branch": 3000,
+        "own_branches": 2,
+        "record_bytes": 1216,
+        "assertions": 1329240,
+        "fpcr": 0
+      },
+      "binary": {
+        "bytes": 106696,
+        "sha256": "34e8debbc5d0c350c13644315cc87ec40200599d2068e32342b47d16559799c2"
+      },
+      "output": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "metrics": {
+        "hinge_q": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 4.440892098500626e-16,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "shadow_hinge_q": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 3.3306690738754696e-15,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "slide_q": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.469446951953614e-18,
+          "atol": 2e-09,
+          "rtol": 0
+        },
+        "shadow_slide_q": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.469446951953614e-18,
+          "atol": 2e-09,
+          "rtol": 0
+        },
+        "hinge_v": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 1.5994150448506161e-15,
+          "atol": 2e-07,
+          "rtol": 0
+        },
+        "shadow_hinge_v": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 5.7484399185181445e-15,
+          "atol": 2e-07,
+          "rtol": 0
+        },
+        "slide_v": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.729655473350135e-17,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "shadow_slide_v": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 4.002061269187118e-17,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "all_controller_fields": {
+          "passed": true,
+          "values": 105000,
+          "max_abs_error": 4.618527782440651e-14,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "actuator_force": {
+          "passed": true,
+          "values": 27000,
+          "max_abs_error": 4.618527782440651e-14,
+          "atol": 2e-08,
+          "rtol": 0
+        }
+      },
+      "all_actual_finite_words": 414000,
+      "all_SDK_reference_finite_words": 360000
+    },
+    "sanitized": {
+      "native": {
+        "passed": true,
+        "SDK_calls": 0,
+        "cases": 4,
+        "steps_per_branch": 3000,
+        "own_branches": 2,
+        "record_bytes": 1216,
+        "assertions": 1329240,
+        "fpcr": 0
+      },
+      "binary": {
+        "bytes": 237264,
+        "sha256": "ada40dfc22ffa9c4c94a8515abe7854ab49351f60e3ba48c46dbdc4f71cb97c0"
+      },
+      "output": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "metrics": {
+        "hinge_q": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 4.440892098500626e-16,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "shadow_hinge_q": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 3.3306690738754696e-15,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "slide_q": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.469446951953614e-18,
+          "atol": 2e-09,
+          "rtol": 0
+        },
+        "shadow_slide_q": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.469446951953614e-18,
+          "atol": 2e-09,
+          "rtol": 0
+        },
+        "hinge_v": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 1.5994150448506161e-15,
+          "atol": 2e-07,
+          "rtol": 0
+        },
+        "shadow_hinge_v": {
+          "passed": true,
+          "values": 21000,
+          "max_abs_error": 5.7484399185181445e-15,
+          "atol": 2e-07,
+          "rtol": 0
+        },
+        "slide_v": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 3.729655473350135e-17,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "shadow_slide_v": {
+          "passed": true,
+          "values": 6000,
+          "max_abs_error": 4.002061269187118e-17,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "all_controller_fields": {
+          "passed": true,
+          "values": 105000,
+          "max_abs_error": 4.618527782440651e-14,
+          "atol": 2e-08,
+          "rtol": 0
+        },
+        "actuator_force": {
+          "passed": true,
+          "values": 27000,
+          "max_abs_error": 4.618527782440651e-14,
+          "atol": 2e-08,
+          "rtol": 0
+        }
+      },
+      "all_actual_finite_words": 414000,
+      "all_SDK_reference_finite_words": 360000
+    }
+  },
+  "sanitized_binary_reused_without_recompilation": true,
+  "new_reader_guards": {
+    "passed": true,
+    "cases": 45,
+    "SDK_calls": 0
+  },
+  "quality_metrics": [
+    {
+      "case": 0,
+      "name": "gravity-hold",
+      "actual_plant_diagnostics": {
+        "gating": false,
+        "speed_state_ticks": [
+          0,
+          750
+        ],
+        "perjoint_peak_abs_hinge_speed_rad_per_second": [
+          1.3370681896184613e-05,
+          8.101718418517955e-05,
+          4.2093755730784686e-05,
+          2.8968867879332946e-05,
+          4.3195256388977935e-05,
+          0.00021014936294063693,
+          1.512729568836115e-05
+        ],
+        "perjoint_peak_abs_effective_step_acceleration_rad_per_second_squared": [
+          0.0012151048250877844,
+          0.0079250758879199,
+          0.004107639222527017,
+          0.002924558505077567,
+          0.004313410243498168,
+          0.02069049552951265,
+          0.0015251049341020637
+        ],
+        "effective_acceleration_recipe": "(post_v-pre_v)/0.002; effective implicit-step acceleration, not SDK qacc",
+        "poststate_soft_limit_grid": [
+          1,
+          750
+        ],
+        "perjoint_peak_soft_limit_excursion_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "perjoint_soft_limit_excursion_states": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "perjoint_first_soft_limit_excursion_state": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "reference_velocity_limits_rad_per_second": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "reference_acceleration_limits_rad_per_second_squared": [
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ],
+        "perjoint_speed_exceeds_reference_velocity_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "perjoint_effective_acceleration_exceeds_reference_acceleration_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "note": "Reference kinematic limits do not bound the actual feedback-controlled plant. No continuous-between-samples, collision, nonlinear-stability or hardware certificate."
+      },
+      "poststate_ticks": [
+        1,
+        750
+      ],
+      "samples": 750,
+      "global_position_RMS_rad": 3.58246612959247e-06,
+      "perjoint_position_RMS_rad": [
+        1.5747556630943168e-06,
+        3.2935067059552143e-06,
+        1.6606937968110995e-06,
+        1.1199975345096316e-06,
+        1.5123439742114234e-06,
+        8.343165249668424e-06,
+        7.768617144886785e-07
+      ],
+      "perjoint_position_IAE_rad_seconds": [
+        2.1501522522271444e-06,
+        4.13219980816959e-06,
+        2.074946055189375e-06,
+        1.48951939534836e-06,
+        1.8786787196862776e-06,
+        1.0520620085077148e-05,
+        1.0457946344215596e-06
+      ],
+      "peak_position_error_rad": 1.629241458989128e-05,
+      "peak_rate_error_rad_per_second": 0.00021014936294063693,
+      "final_position_error7_rad": [
+        -1.9091522578951192e-06,
+        -6.931411772881368e-07,
+        -3.789931365960619e-08,
+        -6.501975844397379e-07,
+        5.273464698252184e-07,
+        -4.261839161356917e-06,
+        9.459014347346084e-07
+      ],
+      "final_max_position_error_rad": 4.261839161356917e-06,
+      "final_rate_error7_rad_per_second": [
+        3.523735266828354e-06,
+        -4.48597923699704e-06,
+        1.25828290115629e-06,
+        2.688427761972532e-06,
+        -2.0873369503918865e-06,
+        -2.637509629765576e-06,
+        -2.2233480926942404e-07
+      ],
+      "final_max_rate_error_rad_per_second": 4.48597923699704e-06,
+      "final_window": {
+        "state_ticks": [
+          626,
+          750
+        ],
+        "samples": 125,
+        "global_position_RMS_rad": 1.5755325704244728e-06,
+        "peak_position_error_rad": 4.261839161356917e-06,
+        "peak_rate_error_rad_per_second": 2.429552253098751e-05
+      },
+      "peak_arm_drift_from_initial_rad": 1.629241458989128e-05,
+      "peak_finger_drift_metres": 0.0007083350169761436,
+      "peak_finger_rate_metres_per_second": 0.005787511364562492,
+      "ideal_stationary_position_baseline": {
+        "executed": false,
+        "global_position_RMS_rad": 0.0,
+        "better_than_baseline": false
+      },
+      "Pjp_clipped_ticks": 0,
+      "Pjp_clipped_coordinate_sum": 0,
+      "Pa_control_clipped_ticks": 0,
+      "Pa_force_clipped_ticks": 0,
+      "initial_Pjp_clipped_coordinates": 0,
+      "recovery": {
+        "applicable": false,
+        "eligible_first_state_tick": 1,
+        "consecutive_states": 25,
+        "recovered": true,
+        "entry_state_tick": 1,
+        "confirmation_state_tick": 25,
+        "entry_seconds": 0.002,
+        "confirmation_seconds": 0.05,
+        "entry_seconds_after_pulse_end_or_brake_start": 0.002,
+        "missing": null
+      }
+    },
+    {
+      "case": 1,
+      "name": "quintic-track",
+      "actual_plant_diagnostics": {
+        "gating": false,
+        "speed_state_ticks": [
+          0,
+          750
+        ],
+        "perjoint_peak_abs_hinge_speed_rad_per_second": [
+          0.062024289181594194,
+          0.06683160759818851,
+          0.0443634437297034,
+          0.08392847012675696,
+          0.052620768587094496,
+          0.06685868580560919,
+          0.042868295237304385
+        ],
+        "perjoint_peak_abs_effective_step_acceleration_rad_per_second_squared": [
+          0.1710621951785396,
+          0.25607357739354863,
+          0.16180616476967577,
+          0.36965469072782614,
+          0.21018449720475174,
+          0.2740702180497496,
+          0.17240053263276217
+        ],
+        "effective_acceleration_recipe": "(post_v-pre_v)/0.002; effective implicit-step acceleration, not SDK qacc",
+        "poststate_soft_limit_grid": [
+          1,
+          750
+        ],
+        "perjoint_peak_soft_limit_excursion_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "perjoint_soft_limit_excursion_states": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "perjoint_first_soft_limit_excursion_state": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "reference_velocity_limits_rad_per_second": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "reference_acceleration_limits_rad_per_second_squared": [
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ],
+        "perjoint_speed_exceeds_reference_velocity_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "perjoint_effective_acceleration_exceeds_reference_acceleration_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "note": "Reference kinematic limits do not bound the actual feedback-controlled plant. No continuous-between-samples, collision, nonlinear-stability or hardware certificate."
+      },
+      "poststate_ticks": [
+        1,
+        750
+      ],
+      "samples": 750,
+      "global_position_RMS_rad": 0.00725911595936422,
+      "perjoint_position_RMS_rad": [
+        0.013200365320254962,
+        0.006740992969229332,
+        0.006181801979081205,
+        0.004982009604668226,
+        0.0035013945036683073,
+        0.004098877107445263,
+        0.00755493668797091
+      ],
+      "perjoint_position_IAE_rad_seconds": [
+        0.017218285676659378,
+        0.008854809999867852,
+        0.007919333694169218,
+        0.00646167980274632,
+        0.004411541546496688,
+        0.004936238333793473,
+        0.008622145278694452
+      ],
+      "peak_position_error_rad": 0.021647964342986048,
+      "peak_rate_error_rad_per_second": 0.0877200627099472,
+      "final_position_error7_rad": [
+        0.015771015948334577,
+        -0.0034910998514694203,
+        0.005542485793697635,
+        0.0038701065474229246,
+        -0.002235779970520879,
+        -0.00047401216205478214,
+        -0.004134014919893514
+      ],
+      "final_max_position_error_rad": 0.015771015948334577,
+      "final_rate_error7_rad_per_second": [
+        -0.01531900036075276,
+        0.013013453976650519,
+        -0.004824410012621245,
+        -0.01416209047528722,
+        0.001120575075305673,
+        -0.001977536229313978,
+        -0.007192897370586432
+      ],
+      "final_max_rate_error_rad_per_second": 0.01531900036075276,
+      "final_window": {
+        "state_ticks": [
+          626,
+          750
+        ],
+        "samples": 125,
+        "global_position_RMS_rad": 0.0072919752960231045,
+        "peak_position_error_rad": 0.016881673810808018,
+        "peak_rate_error_rad_per_second": 0.01531900036075276
+      },
+      "peak_arm_drift_from_initial_rad": 0.04688167381080799,
+      "peak_finger_drift_metres": 0.0007109417138987141,
+      "peak_finger_rate_metres_per_second": 0.005788849962526455,
+      "ideal_stationary_position_baseline": {
+        "executed": false,
+        "global_position_RMS_rad": 0.019980696466508647,
+        "better_than_baseline": true
+      },
+      "Pjp_clipped_ticks": 0,
+      "Pjp_clipped_coordinate_sum": 0,
+      "Pa_control_clipped_ticks": 0,
+      "Pa_force_clipped_ticks": 0,
+      "initial_Pjp_clipped_coordinates": 0,
+      "recovery": {
+        "applicable": false,
+        "eligible_first_state_tick": 1,
+        "consecutive_states": 25,
+        "recovered": true,
+        "entry_state_tick": 1,
+        "confirmation_state_tick": 25,
+        "entry_seconds": 0.002,
+        "confirmation_seconds": 0.05,
+        "entry_seconds_after_pulse_end_or_brake_start": 0.002,
+        "missing": null
+      }
+    },
+    {
+      "case": 2,
+      "name": "quintic-track-pulse",
+      "actual_plant_diagnostics": {
+        "gating": false,
+        "speed_state_ticks": [
+          0,
+          750
+        ],
+        "perjoint_peak_abs_hinge_speed_rad_per_second": [
+          0.06205825472131031,
+          0.06289586984522035,
+          0.043820561487711324,
+          0.08368340707803502,
+          0.054090793173743365,
+          0.06880775043505132,
+          0.04495554685961527
+        ],
+        "perjoint_peak_abs_effective_step_acceleration_rad_per_second_squared": [
+          0.1710621951785396,
+          0.5479083050860499,
+          0.16180616476967577,
+          0.4386392911558574,
+          0.21018449720475174,
+          0.2740702180497496,
+          0.17240053263276217
+        ],
+        "effective_acceleration_recipe": "(post_v-pre_v)/0.002; effective implicit-step acceleration, not SDK qacc",
+        "poststate_soft_limit_grid": [
+          1,
+          750
+        ],
+        "perjoint_peak_soft_limit_excursion_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "perjoint_soft_limit_excursion_states": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "perjoint_first_soft_limit_excursion_state": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "reference_velocity_limits_rad_per_second": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "reference_acceleration_limits_rad_per_second_squared": [
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ],
+        "perjoint_speed_exceeds_reference_velocity_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "perjoint_effective_acceleration_exceeds_reference_acceleration_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "note": "Reference kinematic limits do not bound the actual feedback-controlled plant. No continuous-between-samples, collision, nonlinear-stability or hardware certificate."
+      },
+      "poststate_ticks": [
+        1,
+        750
+      ],
+      "samples": 750,
+      "global_position_RMS_rad": 0.007232282941598918,
+      "perjoint_position_RMS_rad": [
+        0.013245137088056781,
+        0.007068921358863186,
+        0.006247478582300301,
+        0.0038546448021986785,
+        0.003581421850811035,
+        0.004561247842720977,
+        0.007295016835386861
+      ],
+      "perjoint_position_IAE_rad_seconds": [
+        0.017277275356333006,
+        0.008643507234682185,
+        0.00803196148225991,
+        0.004890515813293625,
+        0.004541570966158893,
+        0.005734211808765137,
+        0.008008553581881126
+      ],
+      "peak_position_error_rad": 0.021648682880886283,
+      "peak_rate_error_rad_per_second": 0.0877200627099472,
+      "final_position_error7_rad": [
+        0.01594036645036917,
+        -0.004774800992940226,
+        0.0056723175203205745,
+        0.0029443584513308974,
+        -0.0024370644388552742,
+        -0.00278900181511732,
+        -0.0033969898970210854
+      ],
+      "final_max_position_error_rad": 0.01594036645036917,
+      "final_rate_error7_rad_per_second": [
+        -0.01517139979498369,
+        -0.0034834048285558553,
+        -0.00510739275480725,
+        -0.00127359531899295,
+        0.00246182791027519,
+        0.0004599986045790873,
+        -0.005129228559206296
+      ],
+      "final_max_rate_error_rad_per_second": 0.01517139979498369,
+      "final_window": {
+        "state_ticks": [
+          626,
+          750
+        ],
+        "samples": 125,
+        "global_position_RMS_rad": 0.007118035607158781,
+        "peak_position_error_rad": 0.017021594781990723,
+        "peak_rate_error_rad_per_second": 0.016466437855392518
+      },
+      "peak_arm_drift_from_initial_rad": 0.047021594781990694,
+      "peak_finger_drift_metres": 0.0007087566787866272,
+      "peak_finger_rate_metres_per_second": 0.005788849962526455,
+      "ideal_stationary_position_baseline": {
+        "executed": false,
+        "global_position_RMS_rad": 0.019980696466508647,
+        "better_than_baseline": true
+      },
+      "Pjp_clipped_ticks": 0,
+      "Pjp_clipped_coordinate_sum": 0,
+      "Pa_control_clipped_ticks": 0,
+      "Pa_force_clipped_ticks": 0,
+      "initial_Pjp_clipped_coordinates": 0,
+      "recovery": {
+        "applicable": true,
+        "eligible_first_state_tick": 250,
+        "consecutive_states": 25,
+        "recovered": true,
+        "entry_state_tick": 477,
+        "confirmation_state_tick": 501,
+        "entry_seconds": 0.954,
+        "confirmation_seconds": 1.002,
+        "entry_seconds_after_pulse_end_or_brake_start": 0.454,
+        "missing": null
+      }
+    },
+    {
+      "case": 3,
+      "name": "saturated-brake-hold",
+      "actual_plant_diagnostics": {
+        "gating": false,
+        "speed_state_ticks": [
+          0,
+          750
+        ],
+        "perjoint_peak_abs_hinge_speed_rad_per_second": [
+          0.015663926274398637,
+          0.015293715608826319,
+          0.06121067461051122,
+          0.02970452970719709,
+          0.02032728909753827,
+          0.0037934078241688937,
+          2.0
+        ],
+        "perjoint_peak_abs_effective_step_acceleration_rad_per_second_squared": [
+          0.7844770613852352,
+          0.9128130304483253,
+          3.974005150551828,
+          1.9651086094032164,
+          1.3619030852165548,
+          0.27909378215144787,
+          41.58735686700376
+        ],
+        "effective_acceleration_recipe": "(post_v-pre_v)/0.002; effective implicit-step acceleration, not SDK qacc",
+        "poststate_soft_limit_grid": [
+          1,
+          750
+        ],
+        "perjoint_peak_soft_limit_excursion_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "perjoint_soft_limit_excursion_states": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "perjoint_first_soft_limit_excursion_state": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "reference_velocity_limits_rad_per_second": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "reference_acceleration_limits_rad_per_second_squared": [
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ],
+        "perjoint_speed_exceeds_reference_velocity_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true
+        ],
+        "perjoint_effective_acceleration_exceeds_reference_acceleration_limit": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true
+        ],
+        "note": "Reference kinematic limits do not bound the actual feedback-controlled plant. No continuous-between-samples, collision, nonlinear-stability or hardware certificate."
+      },
+      "poststate_ticks": [
+        1,
+        750
+      ],
+      "samples": 750,
+      "global_position_RMS_rad": 0.025386789168582915,
+      "perjoint_position_RMS_rad": [
+        0.003935860132061038,
+        0.0022504044284463068,
+        0.003979981787556002,
+        0.001706367022364518,
+        0.0010343722822351612,
+        0.00025959039073724613,
+        0.06686537877202464
+      ],
+      "perjoint_position_IAE_rad_seconds": [
+        0.005115974865331937,
+        0.0029854508542988966,
+        0.004469372385798387,
+        0.0019565770560717537,
+        0.0012109993781413038,
+        0.0003475599829284124,
+        0.09800835903784241
+      ],
+      "peak_position_error_rad": 0.08763646481788528,
+      "peak_rate_error_rad_per_second": 1.9168252862659925,
+      "final_position_error7_rad": [
+        -0.003436965181130236,
+        0.0019566558298645953,
+        -0.0007920793618816091,
+        -0.0007132042782089787,
+        0.00030224903286985016,
+        -0.0004016476031287741,
+        0.04552023774387037
+      ],
+      "final_max_position_error_rad": 0.04552023774387037,
+      "final_rate_error7_rad_per_second": [
+        -0.006899698839012865,
+        -0.0017009006471662216,
+        0.0005233742592129416,
+        0.0002369217222036297,
+        0.0005680399122857206,
+        -0.00015559985764563997,
+        -0.022885795943181714
+      ],
+      "final_max_rate_error_rad_per_second": 0.022885795943181714,
+      "final_window": {
+        "state_ticks": [
+          626,
+          750
+        ],
+        "samples": 125,
+        "global_position_RMS_rad": 0.018379592242690326,
+        "peak_position_error_rad": 0.05157346201066809,
+        "peak_rate_error_rad_per_second": 0.02602232819873993
+      },
+      "peak_arm_drift_from_initial_rad": 0.08763646481788528,
+      "peak_finger_drift_metres": 0.0007159752947694421,
+      "peak_finger_rate_metres_per_second": 0.006181585096980738,
+      "ideal_stationary_position_baseline": {
+        "executed": false,
+        "global_position_RMS_rad": 0.0,
+        "better_than_baseline": false
+      },
+      "Pjp_clipped_ticks": 31,
+      "Pjp_clipped_coordinate_sum": 31,
+      "Pa_control_clipped_ticks": 0,
+      "Pa_force_clipped_ticks": 0,
+      "initial_Pjp_clipped_coordinates": 1,
+      "recovery": {
+        "applicable": true,
+        "eligible_first_state_tick": 1,
+        "consecutive_states": 25,
+        "recovered": false,
+        "entry_state_tick": null,
+        "confirmation_state_tick": null,
+        "entry_seconds": null,
+        "confirmation_seconds": null,
+        "entry_seconds_after_pulse_end_or_brake_start": null,
+        "missing": "not recovered"
+      }
+    }
+  ],
+  "quality_hypotheses": {
+    "hold_peak_arm_drift": true,
+    "nominal_final_position_error": false,
+    "nominal_RMS_beats_ideal_stationary": true,
+    "pulse_final_position_error": true,
+    "pulse_recovery_observed": true,
+    "brake_initial_Pjp_saturation": true,
+    "brake_recovery_observed": false
+  },
+  "quality_failure_does_not_change_parity_budget": true,
+  "modes_byte_identical": true,
+  "output_sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7",
+  "own_steps_per_profile": 6000,
+  "total_new_own_steps": 18000,
+  "partial_or_complete_outputs": {
+    "native-release/own-trace.bin": {
+      "identity": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "complete_records": 3000,
+      "trailing_bytes": 0
+    },
+    "native-debug/own-trace.bin": {
+      "identity": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "complete_records": 3000,
+      "trailing_bytes": 0
+    },
+    "native-sanitized/own-trace.bin": {
+      "identity": {
+        "bytes": 3648016,
+        "sha256": "2f4c1631b80479238761535526ab430232252e801fd778b4c180a8c2c443ffc7"
+      },
+      "complete_records": 3000,
+      "trailing_bytes": 0
+    }
+  }
+}

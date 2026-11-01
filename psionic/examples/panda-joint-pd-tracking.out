@@ -1,0 +1,7 @@
+fixed four-case consumer; no SDK or robot effects
+track midpoint: reference tick 135/270; joint1 -295000 urad; 104167 urad/s
+pulse at tick 200: active 1; joint2 external 3000000 micro-J/rad
+brake joint7 P/D/g0/requested/command (micro-J/rad): 0 -40000000 1542 -39998458 -12000000
+controller clips 1; actuator control/force clips 0/0
+tick 750: stage 2 code 2; complete command unchanged
+trajectory parity and tracking quality are separate experiment results

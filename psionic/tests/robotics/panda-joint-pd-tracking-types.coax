@@ -1,0 +1,12 @@
+// TEST-ONLY fixed-four-case experimental consumer, not a general controller API.
+#load "../../lib/robotics/panda-joint-pd.coax";
+#load "../../lib/robotics/panda-euler.coax";
+#load "../../lib/robotics/panda-quintic.coax";
+PntStatus :: struct {stage:int;code:int;}
+PntInitial :: struct {q:[9]f64;v:[9]f64;}
+PntCommand :: struct {reference:PqtSample;controller:PjpOutput;controls:[9]f64;external:[9]f64;reference_tick:int;reference_steps:int;pulse:int;actuator_control_clipped:int;actuator_force_clipped:int;actuator:PidOutput;}
+PntStep :: struct {command:PntCommand;plant:PeuOutput;}
+PntCase :: struct {case_id:int;initial:PntInitial;edge:PqtEdge;kp:[7]pfku.Quantity(PjpStiffness,f64);kd:[7]pfku.Quantity(PjpDamping,f64);finger_target:[2]pfku.Quantity(pfku.Metre,f64);}
+PntReference :: struct {status:PqtStatus;reference:PqtSample;steps:int;tick:int;}
+PntControlResult :: struct {status:PntStatus;command:PntCommand;}
+PntStepResult :: struct {status:PntStatus;output:PntStep;}

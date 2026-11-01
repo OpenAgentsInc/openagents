@@ -1,0 +1,5 @@
+#load "panda-joint-pd-tracking-types.coax";
+pnt_command_poison :: ()->PntCommand {x:PntCommand;x.reference=pqt_sample_poison();x.controller=pjp_poison();for i:0..<9 {x.controls[i]=101+f64(i);x.external[i]=211+f64(i);}for i:0..<7 {x.actuator.hinge[i].value=307+f64(i);}for i:0..<2 {x.actuator.slide[i].value=401+f64(i);}x.reference_tick=503;x.reference_steps=509;x.pulse=521;x.actuator_control_clipped=523;x.actuator_force_clipped=541;return x;}
+pnt_command_same :: (a:PntCommand,b:PntCommand) {pqt_sample_same(a.reference,b.reference);pjp_same(a.controller,b.controller);pid_same(a.actuator,b.actuator);for i:0..<9 {#assert f64_bits(a.controls[i])==f64_bits(b.controls[i]) && f64_bits(a.external[i])==f64_bits(b.external[i]);}#assert a.reference_tick==b.reference_tick && a.reference_steps==b.reference_steps && a.pulse==b.pulse && a.actuator_control_clipped==b.actuator_control_clipped && a.actuator_force_clipped==b.actuator_force_clipped;}
+pnt_step_poison :: ()->PntStep {x:PntStep;x.command=pnt_command_poison();x.plant=peu_poison();return x;}
+pnt_step_same :: (a:PntStep,b:PntStep) {pnt_command_same(a.command,b.command);peu_same(a.plant,b.plant);}

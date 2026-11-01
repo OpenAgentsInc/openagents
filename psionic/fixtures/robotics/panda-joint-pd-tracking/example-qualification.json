@@ -1,0 +1,314 @@
+{
+  "schema": "psionic.panda-joint-pd-tracking.example.v1",
+  "prewrite": {
+    "schema": "psionic.panda-joint-pd-tracking.example-prewrite.v1",
+    "source": {
+      "sha256": "289c0013a830b01abd306896b07a3ff896ed683a0b73035a3dfde55de352bcbc",
+      "bytes": 2249
+    },
+    "golden": {
+      "sha256": "c703f4c4460d0e82ffa2544de68a63c50122accf8d1885001ab7043edd0dd092",
+      "bytes": 457
+    },
+    "status": "prewritten before first example execution",
+    "independent_facts": "Frozen analytic reference case1/tick135, source pulse profile case2/tick200 and initial-brake-proof.json case3/tick0. No own trajectory was used to manufacture expected output."
+  },
+  "checks": [
+    {
+      "label": "check",
+      "exit": 0,
+      "seconds": 0.18157512502511963,
+      "stdout_sha256": "c050ca3c4fded998f75f8ad169f994e3b12f6ce5cd0b54810d813a001b5a9954",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "label": "debug",
+      "exit": 0,
+      "seconds": 2.3492967499769293,
+      "stdout_sha256": "c703f4c4460d0e82ffa2544de68a63c50122accf8d1885001ab7043edd0dd092",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0,
+      "exact_prewritten_golden": true
+    },
+    {
+      "label": "release",
+      "exit": 0,
+      "seconds": 2.468583417008631,
+      "stdout_sha256": "c703f4c4460d0e82ffa2544de68a63c50122accf8d1885001ab7043edd0dd092",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0,
+      "exact_prewritten_golden": true
+    }
+  ],
+  "passed": true,
+  "compiler": {
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "bytes": 2886376
+  },
+  "source_qualification": {
+    "sha256": "802d488b046130c402d509ba634ccf957728a75951a26b07d450f8341f9ab0d6",
+    "bytes": 5792
+  },
+  "dependencies": {
+    "coax/lib/quantity.coax": {
+      "sha256": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "bytes": 585
+    },
+    "psionic/examples/panda-joint-pd-tracking.coax": {
+      "sha256": "289c0013a830b01abd306896b07a3ff896ed683a0b73035a3dfde55de352bcbc",
+      "bytes": 2249
+    },
+    "psionic/lib/robotics/panda-actuation-fixtures.coax": {
+      "sha256": "a5c2735594b81a5eafcf7cdd18b6a38b9c08341ddbd2d3d2d332334dcfc04f95",
+      "bytes": 229
+    },
+    "psionic/lib/robotics/panda-actuation-math.coax": {
+      "sha256": "509d6f7dce0fc238700b9dfcbca31234203692397cf28dd130f67f2d2d09c106",
+      "bytes": 2909
+    },
+    "psionic/lib/robotics/panda-actuation-types.coax": {
+      "sha256": "09c5bfc3cee7afd518519e93894546143ca0523d4c9b3a9a77cd47ccfb6f9023",
+      "bytes": 540
+    },
+    "psionic/lib/robotics/panda-actuation.coax": {
+      "sha256": "dfccb6c0bd02d6e1294d3317d8108d7a780a25ea7d82a01c1e5ffd2b8a117111",
+      "bytes": 7444
+    },
+    "psionic/lib/robotics/panda-euler-fixtures.coax": {
+      "sha256": "d552e8bf57b85b9b435f1b90a388b9303acc0f18323173ed6f5907e3f77c64f6",
+      "bytes": 3545
+    },
+    "psionic/lib/robotics/panda-euler-math.coax": {
+      "sha256": "67a8ede88255fef0989481c67f2017fef885eb775898dec7873c91a9b40d3f40",
+      "bytes": 6298
+    },
+    "psionic/lib/robotics/panda-euler-types.coax": {
+      "sha256": "84e3caab18d7e9066b258f258defd500176de246038daa3cb4bf5602adf11feb",
+      "bytes": 429
+    },
+    "psionic/lib/robotics/panda-euler.coax": {
+      "sha256": "47a8df251ef5ff798eea61d087040411150f1f767c1cb502de2031a329be4893",
+      "bytes": 11702
+    },
+    "psionic/lib/robotics/panda-fingers-chain.coax": {
+      "sha256": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+      "bytes": 6288
+    },
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": {
+      "sha256": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+      "bytes": 383
+    },
+    "psionic/lib/robotics/panda-fingers-profile.coax": {
+      "sha256": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+      "bytes": 1449
+    },
+    "psionic/lib/robotics/panda-fingers-types.coax": {
+      "sha256": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+      "bytes": 260
+    },
+    "psionic/lib/robotics/panda-fk-chain.coax": {
+      "sha256": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+      "bytes": 4459
+    },
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": {
+      "sha256": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+      "bytes": 812
+    },
+    "psionic/lib/robotics/panda-fk-math.coax": {
+      "sha256": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+      "bytes": 5124
+    },
+    "psionic/lib/robotics/panda-fk-profile.coax": {
+      "sha256": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+      "bytes": 1984
+    },
+    "psionic/lib/robotics/panda-fk-types.coax": {
+      "sha256": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+      "bytes": 722
+    },
+    "psionic/lib/robotics/panda-fluid-body.coax": {
+      "sha256": "f0e29ce67269e08cdaf31a404622e33c397a0b40e3ebf29876b14be273d9b6f7",
+      "bytes": 5664
+    },
+    "psionic/lib/robotics/panda-fluid-check-fixtures.coax": {
+      "sha256": "4211371dd6d5ea584cf3b3f783ed77efd507b8a4d579f7b74045aa31838addda",
+      "bytes": 348
+    },
+    "psionic/lib/robotics/panda-fluid-math.coax": {
+      "sha256": "c1253ca63dc59844acd97477165c33d3ef8ba9174799428b44379330604e12cb",
+      "bytes": 6634
+    },
+    "psionic/lib/robotics/panda-fluid-types.coax": {
+      "sha256": "ef46794ed2297b0487e28506c3aa9b440b1c1cf527ae8f69ab48cf5b57fb90ea",
+      "bytes": 967
+    },
+    "psionic/lib/robotics/panda-fluid.coax": {
+      "sha256": "8f9054ea80d0ebeecebb80d7d7262fb82b6bb2c8a689c412eaf0a5ac4b76fa39",
+      "bytes": 7992
+    },
+    "psionic/lib/robotics/panda-forward-dynamics-net.coax": {
+      "sha256": "37cc3cdc321bba9e5a46f4570f4bddf26ff99b2abbe31123d030818e9b634365",
+      "bytes": 1527
+    },
+    "psionic/lib/robotics/panda-forward-dynamics.coax": {
+      "sha256": "c6fa01c7b366425bcf2dd8bfc985135e136411e08d29d15587652522820298d0",
+      "bytes": 8440
+    },
+    "psionic/lib/robotics/panda-ik-check-fixtures.coax": {
+      "sha256": "f54cadbfac0df67d2f83185a100c8ed2ed4972bb51c7010130cbaa3bad96b8d9",
+      "bytes": 742
+    },
+    "psionic/lib/robotics/panda-ik-math.coax": {
+      "sha256": "adb1cfee76c0d7d4bee84ff4abb24a7446222265a9ba4c19ab593b08fdbde6c7",
+      "bytes": 5810
+    },
+    "psionic/lib/robotics/panda-ik-types.coax": {
+      "sha256": "c0a6ecd30ef3bfcd54038c94442616a45bb76f1ae517e19fd64451b1f0d69f83",
+      "bytes": 392
+    },
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": {
+      "sha256": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+      "bytes": 1319
+    },
+    "psionic/lib/robotics/panda-inertia-math.coax": {
+      "sha256": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+      "bytes": 6118
+    },
+    "psionic/lib/robotics/panda-inertia-profile.coax": {
+      "sha256": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+      "bytes": 2648
+    },
+    "psionic/lib/robotics/panda-inertia-types.coax": {
+      "sha256": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+      "bytes": 1027
+    },
+    "psionic/lib/robotics/panda-inertia.coax": {
+      "sha256": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+      "bytes": 4822
+    },
+    "psionic/lib/robotics/panda-inverse-dynamics-check-fixtures.coax": {
+      "sha256": "08f5603db29e1a6fa6b04c8745c01bd5e0dedd6d44d1b97395daa02c03060618",
+      "bytes": 489
+    },
+    "psionic/lib/robotics/panda-inverse-dynamics-force.coax": {
+      "sha256": "99964a02044375639d1346174d9be37e71736c8e5ef67ce499b2baa846d69511",
+      "bytes": 5006
+    },
+    "psionic/lib/robotics/panda-inverse-dynamics-math.coax": {
+      "sha256": "3bcb40973b5c7ed020322bb76f11c836416021d199862d96d1b1cf55dbd10997",
+      "bytes": 3043
+    },
+    "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": {
+      "sha256": "a054399cb437fb4bfa88ab691e4f098f1bab8329af631134c8acd399c3212095",
+      "bytes": 3251
+    },
+    "psionic/lib/robotics/panda-inverse-dynamics-types.coax": {
+      "sha256": "635b534b622f63fd185a852198895b15c4940172f7c0f3740024ce36b4333d8a",
+      "bytes": 912
+    },
+    "psionic/lib/robotics/panda-inverse-dynamics.coax": {
+      "sha256": "7eb8047eb124653073ca6a7223f071e79f36d197a09370ce7b7c2e51c0bd0dff",
+      "bytes": 7962
+    },
+    "psionic/lib/robotics/panda-joint-pd-fixtures.coax": {
+      "sha256": "d179ed3cd55a1ec205e1948138d1af55134e516d2cc0e56bccdb2447bf627688",
+      "bytes": 1202
+    },
+    "psionic/lib/robotics/panda-joint-pd-math.coax": {
+      "sha256": "34ff88f6cd51b6d12cffeaadc62a6d15c25c178f8b6bde848a67e87873999e0e",
+      "bytes": 4664
+    },
+    "psionic/lib/robotics/panda-joint-pd-types.coax": {
+      "sha256": "bc86a3feaa97ef774aae5a03d669561db3ae3cda57b9f44fc07d7a17382dc1a5",
+      "bytes": 960
+    },
+    "psionic/lib/robotics/panda-joint-pd.coax": {
+      "sha256": "dcd2248ee1a008a62487d32d15d04af494969666b8db1700d6cd65768bb451b8",
+      "bytes": 5079
+    },
+    "psionic/lib/robotics/panda-mass-solve-basis.coax": {
+      "sha256": "1b13f3d784293110920ac3bd250dd08ba472e9105a2cc312781ab750eb54ce56",
+      "bytes": 3024
+    },
+    "psionic/lib/robotics/panda-mass-solve-captured-checks.coax": {
+      "sha256": "b198ffc969a86c8f86981c0899c2141ad0eedc7fbebfa44806e41f0c6996b2b4",
+      "bytes": 1277
+    },
+    "psionic/lib/robotics/panda-mass-solve-check-fixtures.coax": {
+      "sha256": "57299d5100b559e4aa64e29db9809458a2b25ce858afc4568cd71862c66d57d3",
+      "bytes": 630
+    },
+    "psionic/lib/robotics/panda-mass-solve-math.coax": {
+      "sha256": "6748aab83899698dba5cf400c07ca44c1e69869c49ea9eddcc236ce1a8c0af78",
+      "bytes": 5086
+    },
+    "psionic/lib/robotics/panda-mass-solve-types.coax": {
+      "sha256": "e9377ab6bdb6627bbcc47d071790f2bc2eeb9444711ea3cde6c80afa6c5c4a0e",
+      "bytes": 829
+    },
+    "psionic/lib/robotics/panda-mass-solve.coax": {
+      "sha256": "6d25a8837e7e3be1e922dd753a54f5dc40ab1f32697236069c8d00169c21221f",
+      "bytes": 5391
+    },
+    "psionic/lib/robotics/panda-matrix-types.coax": {
+      "sha256": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483",
+      "bytes": 203
+    },
+    "psionic/lib/robotics/panda-matrix.coax": {
+      "sha256": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f",
+      "bytes": 8993
+    },
+    "psionic/lib/robotics/panda-quintic-fixtures.coax": {
+      "sha256": "7cf0b3b8997c25d5ef8016b357784864bd870d10a9b5e738482445c4464664c1",
+      "bytes": 990
+    },
+    "psionic/lib/robotics/panda-quintic-math.coax": {
+      "sha256": "d7d834285ae9f415a35337fea21c478018c0b0500b38982ce8554fd7faf70fd9",
+      "bytes": 9105
+    },
+    "psionic/lib/robotics/panda-quintic-types.coax": {
+      "sha256": "181e9e03c4cb9f4e33fa514c2b3ca5d24f5bb73483928967c76bde1326a65eb4",
+      "bytes": 866
+    },
+    "psionic/lib/robotics/panda-quintic.coax": {
+      "sha256": "24c2071b031738094307cbfa1d08b86579c0db2299ab7d5f407f83944195882c",
+      "bytes": 8360
+    },
+    "psionic/lib/robotics/panda-smooth-fixtures.coax": {
+      "sha256": "578663cd2d716a9faef982e680c41974d17f3974385a16747d210320fed93935",
+      "bytes": 2089
+    },
+    "psionic/lib/robotics/panda-smooth-types.coax": {
+      "sha256": "faba3149108fd931971ff269670250ae64f2b564b414cc162364c7aa6f18eec1",
+      "bytes": 340
+    },
+    "psionic/lib/robotics/panda-smooth.coax": {
+      "sha256": "99715c0a724199e464b67f4f47db7a6e0cc002ada55166c898b43e01b41a1ca2",
+      "bytes": 7230
+    },
+    "psionic/tests/robotics/panda-joint-pd-tracking-control.coax": {
+      "sha256": "cf406c2422bf663b8605ea321bd48ecb5a687bb685aa518bb044005de73f41b8",
+      "bytes": 10686
+    },
+    "psionic/tests/robotics/panda-joint-pd-tracking-fixtures.coax": {
+      "sha256": "e8ea3b93c51e8c56fa6b84abdcaef6f433b987394ea53e2111851dd6696c5a5e",
+      "bytes": 1154
+    },
+    "psionic/tests/robotics/panda-joint-pd-tracking-types.coax": {
+      "sha256": "d0af0c1b3ff5f6e2c39ad4720f3b5a86cf87f367e79f90353b0f1183eb34b3e0",
+      "bytes": 976
+    },
+    "psionic/tests/robotics/panda-joint-pd-tracking.coax": {
+      "sha256": "6048af9b718bebbcaa9f92f3af67df824e4222672ea3373a687a8af411999aef",
+      "bytes": 5139
+    }
+  },
+  "metadata_followup": {
+    "kind": "post-execution read-only dependency binding; no numerical or display rerun",
+    "unchanged_dependency_overlap_with_first_frozen_SDK_context": 62,
+    "all_overlapping_identities_exact": true,
+    "source_and_golden_still_match_original_prewrite": true
+  },
+  "scope": "Pure controller/reference queries and formatting only, no SDK/NN or acquired trajectory; debug/release stdout matches independently prewritten coarse display."
+}

@@ -1,0 +1,888 @@
+{
+  "schema": "psionic.panda-joint-pd-tracking.independent-audit.v1",
+  "passed": true,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "NN_calls": 0,
+  "simulation_steps": 0,
+  "old_gates_repeated": false,
+  "experiment_sha256": "cfe805220004838440a4ea92c258880597ca5de42b7360ca7102281e242b3612",
+  "capture_receipt": {
+    "bytes": 94039,
+    "sha256": "dde03524accbad921211a6e27f2b86858827b68aa83c8b0b03759db063aca21c"
+  },
+  "capture_trace": {
+    "bytes": 3120016,
+    "sha256": "1c8ece9acebc9cf5c87237044fa98ebc31a13b2376400a59667d5eb39e40a78a"
+  },
+  "source_sha256": {
+    "psionic/tests/robotics/panda_quintic_reference.py": "95e349c67d1c851adf9f837e9c0101110c2c59b627a463b952dbf10b2e11a98d",
+    "psionic/tests/robotics/panda_joint_pd_reference.py": "3e6e5eb87fd3d2937486ae2d380ea1928844119aca10a1e27eaa496e5edcb1af",
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+    "psionic/fixtures/robotics/panda-fingers/source-profile.json": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e",
+    "psionic/fixtures/robotics/panda-fingers/sdk-model.json": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031",
+    "psionic/fixtures/robotics/panda-actuation/experiment.json": "4da210b559aed5f07ad4ab8d5ae5a7393c26fef0885d16dee19057ec605fbe5e",
+    "psionic/fixtures/robotics/panda-actuation/sdk-model.json": "3fa2d1e71f6c02319a3020fd5b22e2c48b9cd513d8352b2983183b4e10afdb01",
+    "psionic/tests/robotics/panda_joint_pd_tracking_reference.py": "f5023c40ad19094e312545e1253d78d234e90cea7e14b7105845c39b4cc00555",
+    "psionic/lib/robotics/panda-joint-pd.coax": "dcd2248ee1a008a62487d32d15d04af494969666b8db1700d6cd65768bb451b8",
+    "psionic/lib/robotics/panda-joint-pd-math.coax": "34ff88f6cd51b6d12cffeaadc62a6d15c25c178f8b6bde848a67e87873999e0e",
+    "psionic/lib/robotics/panda-joint-pd-types.coax": "bc86a3feaa97ef774aae5a03d669561db3ae3cda57b9f44fc07d7a17382dc1a5",
+    "psionic/lib/robotics/panda-actuation-math.coax": "509d6f7dce0fc238700b9dfcbca31234203692397cf28dd130f67f2d2d09c106",
+    "psionic/lib/robotics/panda-actuation-types.coax": "09c5bfc3cee7afd518519e93894546143ca0523d4c9b3a9a77cd47ccfb6f9023",
+    "psionic/lib/robotics/panda-inverse-dynamics.coax": "7eb8047eb124653073ca6a7223f071e79f36d197a09370ce7b7c2e51c0bd0dff",
+    "psionic/lib/robotics/panda-inverse-dynamics-force.coax": "99964a02044375639d1346174d9be37e71736c8e5ef67ce499b2baa846d69511",
+    "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": "a054399cb437fb4bfa88ab691e4f098f1bab8329af631134c8acd399c3212095",
+    "psionic/lib/robotics/panda-inverse-dynamics-math.coax": "3bcb40973b5c7ed020322bb76f11c836416021d199862d96d1b1cf55dbd10997",
+    "psionic/lib/robotics/panda-inverse-dynamics-types.coax": "635b534b622f63fd185a852198895b15c4940172f7c0f3740024ce36b4333d8a",
+    "psionic/lib/robotics/panda-inertia.coax": "608a5d547d29b123dc140190605e1aeaf6e2c2ad1e6790d4ba5e2b4336db26dc",
+    "psionic/lib/robotics/panda-inertia-profile.coax": "62a3f789187b412e6af24c3cdf305b401e08ec3cccdc3b869a13ee5a0fc51618",
+    "psionic/lib/robotics/panda-inertia-types.coax": "154f58941e7e653f5bbdfe1dc2f1da9a2cddb87ccf7aecdfb20ab0ad761be195",
+    "psionic/lib/robotics/panda-fingers-chain.coax": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+    "psionic/lib/robotics/panda-fingers-profile.coax": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+    "psionic/lib/robotics/panda-fingers-types.coax": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+    "psionic/lib/robotics/panda-inertia-math.coax": "f2aebeafeab9fb698760547ba7d5d45803e3c84a8816e669eea134c1994774c3",
+    "psionic/lib/robotics/panda-inertia-check-fixtures.coax": "575acb54d0e3dadd9a8dac4ad8865ef12664681cc0a1a4861111f00202771fad",
+    "psionic/lib/robotics/panda-inverse-dynamics-check-fixtures.coax": "08f5603db29e1a6fa6b04c8745c01bd5e0dedd6d44d1b97395daa02c03060618",
+    "psionic/lib/robotics/panda-ik-math.coax": "adb1cfee76c0d7d4bee84ff4abb24a7446222265a9ba4c19ab593b08fdbde6c7",
+    "psionic/lib/robotics/panda-ik-types.coax": "c0a6ecd30ef3bfcd54038c94442616a45bb76f1ae517e19fd64451b1f0d69f83",
+    "psionic/lib/robotics/panda-matrix.coax": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f",
+    "psionic/lib/robotics/panda-matrix-types.coax": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483",
+    "psionic/lib/robotics/panda-ik-check-fixtures.coax": "f54cadbfac0df67d2f83185a100c8ed2ed4972bb51c7010130cbaa3bad96b8d9",
+    "psionic/lib/robotics/panda-joint-pd-fixtures.coax": "d179ed3cd55a1ec205e1948138d1af55134e516d2cc0e56bccdb2447bf627688",
+    "psionic/lib/robotics/panda-euler.coax": "47a8df251ef5ff798eea61d087040411150f1f767c1cb502de2031a329be4893",
+    "psionic/lib/robotics/panda-euler-math.coax": "67a8ede88255fef0989481c67f2017fef885eb775898dec7873c91a9b40d3f40",
+    "psionic/lib/robotics/panda-euler-fixtures.coax": "d552e8bf57b85b9b435f1b90a388b9303acc0f18323173ed6f5907e3f77c64f6",
+    "psionic/lib/robotics/panda-euler-types.coax": "84e3caab18d7e9066b258f258defd500176de246038daa3cb4bf5602adf11feb",
+    "psionic/lib/robotics/panda-smooth.coax": "99715c0a724199e464b67f4f47db7a6e0cc002ada55166c898b43e01b41a1ca2",
+    "psionic/lib/robotics/panda-smooth-fixtures.coax": "578663cd2d716a9faef982e680c41974d17f3974385a16747d210320fed93935",
+    "psionic/lib/robotics/panda-smooth-types.coax": "faba3149108fd931971ff269670250ae64f2b564b414cc162364c7aa6f18eec1",
+    "psionic/lib/robotics/panda-fluid.coax": "8f9054ea80d0ebeecebb80d7d7262fb82b6bb2c8a689c412eaf0a5ac4b76fa39",
+    "psionic/lib/robotics/panda-fluid-body.coax": "f0e29ce67269e08cdaf31a404622e33c397a0b40e3ebf29876b14be273d9b6f7",
+    "psionic/lib/robotics/panda-fluid-math.coax": "c1253ca63dc59844acd97477165c33d3ef8ba9174799428b44379330604e12cb",
+    "psionic/lib/robotics/panda-fluid-types.coax": "ef46794ed2297b0487e28506c3aa9b440b1c1cf527ae8f69ab48cf5b57fb90ea",
+    "psionic/lib/robotics/panda-fluid-check-fixtures.coax": "4211371dd6d5ea584cf3b3f783ed77efd507b8a4d579f7b74045aa31838addda",
+    "psionic/lib/robotics/panda-actuation.coax": "dfccb6c0bd02d6e1294d3317d8108d7a780a25ea7d82a01c1e5ffd2b8a117111",
+    "psionic/lib/robotics/panda-actuation-fixtures.coax": "a5c2735594b81a5eafcf7cdd18b6a38b9c08341ddbd2d3d2d332334dcfc04f95",
+    "psionic/lib/robotics/panda-forward-dynamics.coax": "c6fa01c7b366425bcf2dd8bfc985135e136411e08d29d15587652522820298d0",
+    "psionic/lib/robotics/panda-forward-dynamics-net.coax": "37cc3cdc321bba9e5a46f4570f4bddf26ff99b2abbe31123d030818e9b634365",
+    "psionic/lib/robotics/panda-mass-solve.coax": "6d25a8837e7e3be1e922dd753a54f5dc40ab1f32697236069c8d00169c21221f",
+    "psionic/lib/robotics/panda-mass-solve-math.coax": "6748aab83899698dba5cf400c07ca44c1e69869c49ea9eddcc236ce1a8c0af78",
+    "psionic/lib/robotics/panda-mass-solve-check-fixtures.coax": "57299d5100b559e4aa64e29db9809458a2b25ce858afc4568cd71862c66d57d3",
+    "psionic/lib/robotics/panda-mass-solve-types.coax": "e9377ab6bdb6627bbcc47d071790f2bc2eeb9444711ea3cde6c80afa6c5c4a0e",
+    "psionic/lib/robotics/panda-mass-solve-basis.coax": "1b13f3d784293110920ac3bd250dd08ba472e9105a2cc312781ab750eb54ce56",
+    "psionic/lib/robotics/panda-mass-solve-captured-checks.coax": "b198ffc969a86c8f86981c0899c2141ad0eedc7fbebfa44806e41f0c6996b2b4",
+    "psionic/lib/robotics/panda-quintic.coax": "24c2071b031738094307cbfa1d08b86579c0db2299ab7d5f407f83944195882c",
+    "psionic/lib/robotics/panda-quintic-math.coax": "d7d834285ae9f415a35337fea21c478018c0b0500b38982ce8554fd7faf70fd9",
+    "psionic/lib/robotics/panda-quintic-fixtures.coax": "7cf0b3b8997c25d5ef8016b357784864bd870d10a9b5e738482445c4464664c1",
+    "psionic/lib/robotics/panda-quintic-types.coax": "181e9e03c4cb9f4e33fa514c2b3ca5d24f5bb73483928967c76bde1326a65eb4",
+    "psionic/tests/robotics/panda_joint_pd_tracking_audit.py": "4f1aca8f21dbef04d37bdbe4cd0e537f7bbd6e53801ab6f9779fdf3ff6df6045",
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/experiment.json": "cfe805220004838440a4ea92c258880597ca5de42b7360ca7102281e242b3612",
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/analytic-reference.json": "ded8453aa62076fcac37eff5e71d776fd666692b220472d10f8e75199eedffc3",
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/reference-states.f64": "9fd37cf888cb4d9cb73ecaa9e2e8279b1437e9564c5ba2117b89b7ecccf49af5",
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/external-forces.f64": "25803423e1bd98022622c6be4d4a07b120da11fa2963bd16a2444e9763647dbe"
+  },
+  "decoder_guards": {
+    "passed": true,
+    "refused_cases": 15,
+    "SDK_calls": 0,
+    "neural_calls": 0
+  },
+  "all_actual_fields_finite": 360000,
+  "all_reference_fields_finite": 63084,
+  "all_external_fields_finite": 27000,
+  "all_independent_PD_fields_finite": 105000,
+  "all_independent_actuator_fields_finite": 27000,
+  "numerical_gates": {
+    "controller": {
+      "passed": true,
+      "values": 105000,
+      "max_abs_error": 6.039613253960852e-14,
+      "maximum_fraction_of_frozen_budget": 3.019806626980426e-06,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "actuator": {
+      "passed": true,
+      "values": 27000,
+      "max_abs_error": 0.0,
+      "maximum_fraction_of_frozen_budget": 0.0,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "target_angles": {
+      "passed": true,
+      "values": 21000,
+      "max_abs_error": 5.551115123125783e-17,
+      "maximum_fraction_of_frozen_budget": 2.7755575615628914e-05,
+      "atol": 2e-12,
+      "rtol": 0
+    },
+    "target_derivatives": {
+      "passed": true,
+      "values": 42000,
+      "max_abs_error": 2.220446049250313e-16,
+      "maximum_fraction_of_frozen_budget": 1.104857995312957e-06,
+      "atol": 2e-10,
+      "rtol": 2e-12
+    }
+  },
+  "independent_clip_counts_exact": true,
+  "clip_diagnostics": {
+    "minimum_independent_prePjp_requested_cap_distance": 0.26136316942193183,
+    "ambiguous_requested_crossings": [],
+    "structurally_exact_Pjp_capped_transports": 31,
+    "exact_inclusive_Pa_control_boundaries": 31,
+    "cap_transport_is_not_an_ambiguous_requested_crossing": true
+  },
+  "SDK_quality_metrics": [
+    {
+      "case": 0,
+      "name": "gravity-hold",
+      "actual_plant_diagnostics": {
+        "gating": false,
+        "speed_state_ticks": [
+          0,
+          750
+        ],
+        "perjoint_peak_abs_hinge_speed_rad_per_second": [
+          1.337068189618012e-05,
+          8.101718418519429e-05,
+          4.209375573079979e-05,
+          2.896886787934447e-05,
+          4.319525638899083e-05,
+          0.00021014936294061663,
+          1.5127295688355427e-05
+        ],
+        "perjoint_peak_abs_effective_step_acceleration_rad_per_second_squared": [
+          0.0012151048250877983,
+          0.007925075887918399,
+          0.004107639222527056,
+          0.0029245585050794165,
+          0.0043134102434996035,
+          0.020690495529512496,
+          0.0015251049341019837
+        ],
+        "effective_acceleration_recipe": "(post_v-pre_v)/0.002; effective implicit-step acceleration, not SDK qacc",
+        "poststate_soft_limit_grid": [
+          1,
+          750
+        ],
+        "perjoint_peak_soft_limit_excursion_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "perjoint_soft_limit_excursion_states": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "perjoint_first_soft_limit_excursion_state": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "reference_velocity_limits_rad_per_second": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "reference_acceleration_limits_rad_per_second_squared": [
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ],
+        "perjoint_speed_exceeds_reference_velocity_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "perjoint_effective_acceleration_exceeds_reference_acceleration_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "note": "Reference kinematic limits do not bound the actual feedback-controlled plant. No continuous-between-samples, collision, nonlinear-stability or hardware certificate."
+      },
+      "poststate_ticks": [
+        1,
+        750
+      ],
+      "samples": 750,
+      "global_position_RMS_rad": 3.5824661296222493e-06,
+      "perjoint_position_RMS_rad": [
+        1.5747556630952179e-06,
+        3.293506705945319e-06,
+        1.660693796803414e-06,
+        1.1199975345946843e-06,
+        1.5123439742122321e-06,
+        8.343165249751635e-06,
+        7.768617144886785e-07
+      ],
+      "perjoint_position_IAE_rad_seconds": [
+        2.1501522522280325e-06,
+        4.13219980814622e-06,
+        2.0749460551651165e-06,
+        1.4895193955095643e-06,
+        1.8786787196901634e-06,
+        1.052062008524457e-05,
+        1.0457946344215596e-06
+      ],
+      "peak_position_error_rad": 1.629241458989128e-05,
+      "peak_rate_error_rad_per_second": 0.00021014936294061663,
+      "final_position_error7_rad": [
+        -1.9091522578951192e-06,
+        -6.931411770938478e-07,
+        -3.789931363185062e-08,
+        -6.501975846617825e-07,
+        5.273464698252184e-07,
+        -4.261839161578962e-06,
+        9.459014347346084e-07
+      ],
+      "final_max_position_error_rad": 4.261839161578962e-06,
+      "final_rate_error7_rad_per_second": [
+        3.5237352667068097e-06,
+        -4.485979236849252e-06,
+        1.2582829012264185e-06,
+        2.6884277630898096e-06,
+        -2.0873369503902665e-06,
+        -2.637509629404619e-06,
+        -2.2233480918173892e-07
+      ],
+      "final_max_rate_error_rad_per_second": 4.485979236849252e-06,
+      "final_window": {
+        "state_ticks": [
+          626,
+          750
+        ],
+        "samples": 125,
+        "global_position_RMS_rad": 1.5755325705084256e-06,
+        "peak_position_error_rad": 4.261839161578962e-06,
+        "peak_rate_error_rad_per_second": 2.42955225318221e-05
+      },
+      "peak_arm_drift_from_initial_rad": 1.629241458989128e-05,
+      "peak_finger_drift_metres": 0.0007083350169761436,
+      "peak_finger_rate_metres_per_second": 0.005787511364562492,
+      "ideal_stationary_position_baseline": {
+        "executed": false,
+        "global_position_RMS_rad": 0.0,
+        "better_than_baseline": false
+      },
+      "Pjp_clipped_ticks": 0,
+      "Pjp_clipped_coordinate_sum": 0,
+      "Pa_control_clipped_ticks": 0,
+      "Pa_force_clipped_ticks": 0,
+      "initial_Pjp_clipped_coordinates": 0,
+      "recovery": {
+        "applicable": false,
+        "eligible_first_state_tick": 1,
+        "consecutive_states": 25,
+        "recovered": true,
+        "entry_state_tick": 1,
+        "confirmation_state_tick": 25,
+        "entry_seconds": 0.002,
+        "confirmation_seconds": 0.05,
+        "entry_seconds_after_pulse_end_or_brake_start": 0.002,
+        "missing": null
+      }
+    },
+    {
+      "case": 1,
+      "name": "quintic-track",
+      "actual_plant_diagnostics": {
+        "gating": false,
+        "speed_state_ticks": [
+          0,
+          750
+        ],
+        "perjoint_peak_abs_hinge_speed_rad_per_second": [
+          0.06202428918159418,
+          0.06683160759818853,
+          0.04436344372970342,
+          0.08392847012675704,
+          0.05262076858709436,
+          0.0668586858056089,
+          0.04286829523730435
+        ],
+        "perjoint_peak_abs_effective_step_acceleration_rad_per_second_squared": [
+          0.1710621951785396,
+          0.25607357739354863,
+          0.16180616476967577,
+          0.3696546907278296,
+          0.21018449720475,
+          0.2740702180497496,
+          0.17240053263276045
+        ],
+        "effective_acceleration_recipe": "(post_v-pre_v)/0.002; effective implicit-step acceleration, not SDK qacc",
+        "poststate_soft_limit_grid": [
+          1,
+          750
+        ],
+        "perjoint_peak_soft_limit_excursion_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "perjoint_soft_limit_excursion_states": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "perjoint_first_soft_limit_excursion_state": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "reference_velocity_limits_rad_per_second": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "reference_acceleration_limits_rad_per_second_squared": [
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ],
+        "perjoint_speed_exceeds_reference_velocity_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "perjoint_effective_acceleration_exceeds_reference_acceleration_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "note": "Reference kinematic limits do not bound the actual feedback-controlled plant. No continuous-between-samples, collision, nonlinear-stability or hardware certificate."
+      },
+      "poststate_ticks": [
+        1,
+        750
+      ],
+      "samples": 750,
+      "global_position_RMS_rad": 0.007259115959364198,
+      "perjoint_position_RMS_rad": [
+        0.013200365320254955,
+        0.006740992969229341,
+        0.006181801979081203,
+        0.00498200960466817,
+        0.003501394503668289,
+        0.004098877107445086,
+        0.00755493668797091
+      ],
+      "perjoint_position_IAE_rad_seconds": [
+        0.01721828567665937,
+        0.00885480999986787,
+        0.007919333694169218,
+        0.006461679802746222,
+        0.004411541546496661,
+        0.004936238333793288,
+        0.008622145278694452
+      ],
+      "peak_position_error_rad": 0.021647964342986048,
+      "peak_rate_error_rad_per_second": 0.08772006270994721,
+      "final_position_error7_rad": [
+        0.01577101594833452,
+        -0.0034910998514693925,
+        0.005542485793697663,
+        0.0038701065474229246,
+        -0.0022357799705208237,
+        -0.0004740121620545601,
+        -0.004134014919893514
+      ],
+      "final_max_position_error_rad": 0.01577101594833452,
+      "final_rate_error7_rad_per_second": [
+        -0.015319000360752726,
+        0.01301345397665059,
+        -0.004824410012621254,
+        -0.014162090475286744,
+        0.0011205750753054793,
+        -0.001977536229314179,
+        -0.00719289737058643
+      ],
+      "final_max_rate_error_rad_per_second": 0.015319000360752726,
+      "final_window": {
+        "state_ticks": [
+          626,
+          750
+        ],
+        "samples": 125,
+        "global_position_RMS_rad": 0.007291975296023076,
+        "peak_position_error_rad": 0.016881673810807962,
+        "peak_rate_error_rad_per_second": 0.015319000360752726
+      },
+      "peak_arm_drift_from_initial_rad": 0.04688167381080793,
+      "peak_finger_drift_metres": 0.0007109417138987141,
+      "peak_finger_rate_metres_per_second": 0.005788849962526456,
+      "ideal_stationary_position_baseline": {
+        "executed": false,
+        "global_position_RMS_rad": 0.019980696466508647,
+        "better_than_baseline": true
+      },
+      "Pjp_clipped_ticks": 0,
+      "Pjp_clipped_coordinate_sum": 0,
+      "Pa_control_clipped_ticks": 0,
+      "Pa_force_clipped_ticks": 0,
+      "initial_Pjp_clipped_coordinates": 0,
+      "recovery": {
+        "applicable": false,
+        "eligible_first_state_tick": 1,
+        "consecutive_states": 25,
+        "recovered": true,
+        "entry_state_tick": 1,
+        "confirmation_state_tick": 25,
+        "entry_seconds": 0.002,
+        "confirmation_seconds": 0.05,
+        "entry_seconds_after_pulse_end_or_brake_start": 0.002,
+        "missing": null
+      }
+    },
+    {
+      "case": 2,
+      "name": "quintic-track-pulse",
+      "actual_plant_diagnostics": {
+        "gating": false,
+        "speed_state_ticks": [
+          0,
+          750
+        ],
+        "perjoint_peak_abs_hinge_speed_rad_per_second": [
+          0.0620582547213103,
+          0.06289586984522041,
+          0.04382056148771133,
+          0.08368340707803502,
+          0.05409079317374321,
+          0.06880775043505094,
+          0.04495554685961518
+        ],
+        "perjoint_peak_abs_effective_step_acceleration_rad_per_second_squared": [
+          0.1710621951785396,
+          0.5479083050860482,
+          0.16180616476967577,
+          0.4386392911558574,
+          0.21018449720475,
+          0.2740702180497496,
+          0.17240053263276045
+        ],
+        "effective_acceleration_recipe": "(post_v-pre_v)/0.002; effective implicit-step acceleration, not SDK qacc",
+        "poststate_soft_limit_grid": [
+          1,
+          750
+        ],
+        "perjoint_peak_soft_limit_excursion_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "perjoint_soft_limit_excursion_states": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "perjoint_first_soft_limit_excursion_state": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "reference_velocity_limits_rad_per_second": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "reference_acceleration_limits_rad_per_second_squared": [
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ],
+        "perjoint_speed_exceeds_reference_velocity_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "perjoint_effective_acceleration_exceeds_reference_acceleration_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "note": "Reference kinematic limits do not bound the actual feedback-controlled plant. No continuous-between-samples, collision, nonlinear-stability or hardware certificate."
+      },
+      "poststate_ticks": [
+        1,
+        750
+      ],
+      "samples": 750,
+      "global_position_RMS_rad": 0.00723228294159891,
+      "perjoint_position_RMS_rad": [
+        0.013245137088056781,
+        0.007068921358863184,
+        0.006247478582300306,
+        0.0038546448021986404,
+        0.0035814218508110193,
+        0.0045612478427209295,
+        0.007295016835386861
+      ],
+      "perjoint_position_IAE_rad_seconds": [
+        0.017277275356333006,
+        0.008643507234682178,
+        0.008031961482259927,
+        0.004890515813293547,
+        0.004541570966158874,
+        0.005734211808765083,
+        0.008008553581881126
+      ],
+      "peak_position_error_rad": 0.021648682880886283,
+      "peak_rate_error_rad_per_second": 0.08772006270994721,
+      "final_position_error7_rad": [
+        0.01594036645036917,
+        -0.004774800992940226,
+        0.005672317520320602,
+        0.0029443584513306753,
+        -0.0024370644388552742,
+        -0.00278900181511732,
+        -0.0033969898970210854
+      ],
+      "final_max_position_error_rad": 0.01594036645036917,
+      "final_rate_error7_rad_per_second": [
+        -0.015171399794983682,
+        -0.0034834048285555252,
+        -0.005107392754807281,
+        -0.0012735953189923928,
+        0.002461827910275252,
+        0.00045999860457921865,
+        -0.005129228559206304
+      ],
+      "final_max_rate_error_rad_per_second": 0.015171399794983682,
+      "final_window": {
+        "state_ticks": [
+          626,
+          750
+        ],
+        "samples": 125,
+        "global_position_RMS_rad": 0.007118035607158775,
+        "peak_position_error_rad": 0.017021594781990723,
+        "peak_rate_error_rad_per_second": 0.016466437855392646
+      },
+      "peak_arm_drift_from_initial_rad": 0.047021594781990694,
+      "peak_finger_drift_metres": 0.0007087566787866272,
+      "peak_finger_rate_metres_per_second": 0.005788849962526456,
+      "ideal_stationary_position_baseline": {
+        "executed": false,
+        "global_position_RMS_rad": 0.019980696466508647,
+        "better_than_baseline": true
+      },
+      "Pjp_clipped_ticks": 0,
+      "Pjp_clipped_coordinate_sum": 0,
+      "Pa_control_clipped_ticks": 0,
+      "Pa_force_clipped_ticks": 0,
+      "initial_Pjp_clipped_coordinates": 0,
+      "recovery": {
+        "applicable": true,
+        "eligible_first_state_tick": 250,
+        "consecutive_states": 25,
+        "recovered": true,
+        "entry_state_tick": 477,
+        "confirmation_state_tick": 501,
+        "entry_seconds": 0.954,
+        "confirmation_seconds": 1.002,
+        "entry_seconds_after_pulse_end_or_brake_start": 0.454,
+        "missing": null
+      }
+    },
+    {
+      "case": 3,
+      "name": "saturated-brake-hold",
+      "actual_plant_diagnostics": {
+        "gating": false,
+        "speed_state_ticks": [
+          0,
+          750
+        ],
+        "perjoint_peak_abs_hinge_speed_rad_per_second": [
+          0.01566392627439877,
+          0.015293715608826343,
+          0.06121067461051139,
+          0.02970452970719704,
+          0.02032728909753801,
+          0.003793407824169065,
+          2.0
+        ],
+        "perjoint_peak_abs_effective_step_acceleration_rad_per_second_squared": [
+          0.7844770613852389,
+          0.9128130304483267,
+          3.974005150551837,
+          1.965108609403222,
+          1.3619030852165503,
+          0.279093782151455,
+          41.58735686700388
+        ],
+        "effective_acceleration_recipe": "(post_v-pre_v)/0.002; effective implicit-step acceleration, not SDK qacc",
+        "poststate_soft_limit_grid": [
+          1,
+          750
+        ],
+        "perjoint_peak_soft_limit_excursion_rad": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "perjoint_soft_limit_excursion_states": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "perjoint_first_soft_limit_excursion_state": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "reference_velocity_limits_rad_per_second": [
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12,
+          0.12
+        ],
+        "reference_acceleration_limits_rad_per_second_squared": [
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6,
+          0.6
+        ],
+        "perjoint_speed_exceeds_reference_velocity_limit": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          true
+        ],
+        "perjoint_effective_acceleration_exceeds_reference_acceleration_limit": [
+          true,
+          true,
+          true,
+          true,
+          true,
+          false,
+          true
+        ],
+        "note": "Reference kinematic limits do not bound the actual feedback-controlled plant. No continuous-between-samples, collision, nonlinear-stability or hardware certificate."
+      },
+      "poststate_ticks": [
+        1,
+        750
+      ],
+      "samples": 750,
+      "global_position_RMS_rad": 0.025386789168582887,
+      "perjoint_position_RMS_rad": [
+        0.003935860132061061,
+        0.0022504044284463224,
+        0.0039799817875560235,
+        0.001706367022364521,
+        0.0010343722822351528,
+        0.000259590390737309,
+        0.06686537877202456
+      ],
+      "perjoint_position_IAE_rad_seconds": [
+        0.005115974865331959,
+        0.002985450854298932,
+        0.004469372385798387,
+        0.0019565770560717867,
+        0.0012109993781412773,
+        0.00034755998292848524,
+        0.0980083590378423
+      ],
+      "peak_position_error_rad": 0.08763646481788517,
+      "peak_rate_error_rad_per_second": 1.9168252862659922,
+      "final_position_error7_rad": [
+        -0.003436965181130236,
+        0.0019566558298645953,
+        -0.0007920793618815536,
+        -0.0007132042782089787,
+        0.00030224903286979465,
+        -0.0004016476031287741,
+        0.04552023774387032
+      ],
+      "final_max_position_error_rad": 0.04552023774387032,
+      "final_rate_error7_rad_per_second": [
+        -0.006899698839013066,
+        -0.0017009006471665968,
+        0.0005233742592129015,
+        0.0002369217222033768,
+        0.0005680399122857687,
+        -0.00015559985764529728,
+        -0.022885795943181693
+      ],
+      "final_max_rate_error_rad_per_second": 0.022885795943181693,
+      "final_window": {
+        "state_ticks": [
+          626,
+          750
+        ],
+        "samples": 125,
+        "global_position_RMS_rad": 0.018379592242690306,
+        "peak_position_error_rad": 0.051573462010668036,
+        "peak_rate_error_rad_per_second": 0.0260223281987399
+      },
+      "peak_arm_drift_from_initial_rad": 0.08763646481788517,
+      "peak_finger_drift_metres": 0.0007159752947694421,
+      "peak_finger_rate_metres_per_second": 0.006181585096980738,
+      "ideal_stationary_position_baseline": {
+        "executed": false,
+        "global_position_RMS_rad": 0.0,
+        "better_than_baseline": false
+      },
+      "Pjp_clipped_ticks": 31,
+      "Pjp_clipped_coordinate_sum": 31,
+      "Pa_control_clipped_ticks": 0,
+      "Pa_force_clipped_ticks": 0,
+      "initial_Pjp_clipped_coordinates": 1,
+      "recovery": {
+        "applicable": true,
+        "eligible_first_state_tick": 1,
+        "consecutive_states": 25,
+        "recovered": false,
+        "entry_state_tick": null,
+        "confirmation_state_tick": null,
+        "entry_seconds": null,
+        "confirmation_seconds": null,
+        "entry_seconds_after_pulse_end_or_brake_start": null,
+        "missing": "not recovered"
+      }
+    }
+  ],
+  "SDK_quality_hypotheses": {
+    "hold_peak_arm_drift": true,
+    "nominal_final_position_error": false,
+    "nominal_RMS_beats_ideal_stationary": true,
+    "pulse_final_position_error": true,
+    "pulse_recovery_observed": true,
+    "brake_initial_Pjp_saturation": true,
+    "brake_recovery_observed": false
+  },
+  "all_quality_hypotheses_met": false,
+  "quality_failures_do_not_invalidate_capture": true,
+  "own_quality_metrics": [],
+  "outputs": {
+    "expected-controller.f64": {
+      "bytes": 840000,
+      "sha256": "0b6b0e3dae547763f1308a45ec374796da26402a624306041fbfb7251fdcb36f"
+    },
+    "expected-actuator.f64": {
+      "bytes": 216000,
+      "sha256": "e7184902604fc024fa225b5719832a3ae39a2da0de1d2668851d5e5a90778a4d"
+    }
+  },
+  "scope": "Four short fixed-source unconstrained nonlinear holding/tracking measurements. No NN,contact,collision,hardware,global/nonlinear stability,task success or real-time claim.",
+  "seconds": 7.233494166051969
+}

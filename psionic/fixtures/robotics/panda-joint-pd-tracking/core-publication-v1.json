@@ -1,0 +1,134 @@
+{
+  "schema": "psionic.panda-joint-pd-tracking.core-publication.v1",
+  "passed": true,
+  "SDK_capture_receipt": {
+    "bytes": 94039,
+    "sha256": "dde03524accbad921211a6e27f2b86858827b68aa83c8b0b03759db063aca21c"
+  },
+  "native_receipt": {
+    "bytes": 38013,
+    "sha256": "86cc01d00e0f765b3bca61873d1cd38c16768440adbb13f2272fa999554f17dc"
+  },
+  "single_new_SDK_acquisition": true,
+  "SDK_steps": 3000,
+  "explicit_initial_forwards": 4,
+  "post_step_forwards": 0,
+  "SDK_resets": 4,
+  "SDK_control_field_origin": "Rawcurrentq/v\u2192Coaxfixedreference/Pjp/Pa,thenmj_step. StoredSDKactuator_forceisPREintegrationcache;oneunitgear/sparse+1DOFmappingand27000qfrc_actuator equalitiesadmitcomparisonwithPa generalizedprediction.",
+  "SDK_finite_words": 360000,
+  "native_finite_words_per_profile": 414000,
+  "native_assertions_each_profile": 1329240,
+  "native_profiles_byte_identical": true,
+  "own_steps_per_profile": 6000,
+  "total_main_own_steps": 18000,
+  "new_ABI_guard_once": {
+    "passed": true,
+    "SDK_calls": 0,
+    "guard_refusals": 89,
+    "alias_cases": 4,
+    "assertions": 386,
+    "fpcr": 0
+  },
+  "guard_note": "386assertions,89refusals/4aliases ontheSANbinary once beforemetadata;normalcorpusentry neverrepeatsthem. Two newguard-onlyownstepqueries areseparatefromthemain18000replaysteps.",
+  "reader_poison_cases": 45,
+  "metrics": {
+    "hinge_q": {
+      "passed": true,
+      "values": 21000,
+      "max_abs_error": 4.440892098500626e-16,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "shadow_hinge_q": {
+      "passed": true,
+      "values": 21000,
+      "max_abs_error": 3.3306690738754696e-15,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "slide_q": {
+      "passed": true,
+      "values": 6000,
+      "max_abs_error": 3.469446951953614e-18,
+      "atol": 2e-09,
+      "rtol": 0
+    },
+    "shadow_slide_q": {
+      "passed": true,
+      "values": 6000,
+      "max_abs_error": 3.469446951953614e-18,
+      "atol": 2e-09,
+      "rtol": 0
+    },
+    "hinge_v": {
+      "passed": true,
+      "values": 21000,
+      "max_abs_error": 1.5994150448506161e-15,
+      "atol": 2e-07,
+      "rtol": 0
+    },
+    "shadow_hinge_v": {
+      "passed": true,
+      "values": 21000,
+      "max_abs_error": 5.7484399185181445e-15,
+      "atol": 2e-07,
+      "rtol": 0
+    },
+    "slide_v": {
+      "passed": true,
+      "values": 6000,
+      "max_abs_error": 3.729655473350135e-17,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "shadow_slide_v": {
+      "passed": true,
+      "values": 6000,
+      "max_abs_error": 4.002061269187118e-17,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "all_controller_fields": {
+      "passed": true,
+      "values": 105000,
+      "max_abs_error": 4.618527782440651e-14,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "actuator_force": {
+      "passed": true,
+      "values": 27000,
+      "max_abs_error": 4.618527782440651e-14,
+      "atol": 2e-08,
+      "rtol": 0
+    }
+  },
+  "quality_hypotheses": {
+    "hold_peak_arm_drift": true,
+    "nominal_final_position_error": false,
+    "nominal_RMS_beats_ideal_stationary": true,
+    "pulse_final_position_error": true,
+    "pulse_recovery_observed": true,
+    "brake_initial_Pjp_saturation": true,
+    "brake_recovery_observed": false
+  },
+  "quality_scope": "Originalnominalfinal-errorandbrake-recoveryhypothesesMISS. No gains,inputs,horizon,budgets orcapture tuned/repeated. Pulseband477..501 means25states,notpermanentsettling; finalpulseerrorleaves .01bandyetpasses .02finalhypothesis.",
+  "partial_failure_history": "Originalstrictnativeguardbuildcaughtint64tick narrowing inCtesthelper BEFOREguard/SDKexecution. OldC/driver/receipt copiedverbatim;onlyfailedguardcompile/firstguard resumed. PassedCoaxemissions,SDKobject andSDKcollector build reused.",
+  "offline_adapter": {
+    "source": "psionic/tests/robotics/panda_joint_pd_tracking_offline.py",
+    "gate": "psionic/tests/robotics/check-panda-joint-pd-tracking.sh",
+    "SDK_required": false,
+    "private_tmp_or_binary_required": false,
+    "regenerates_current_C_and_headers": true,
+    "new_numeric_path_executed_here": false,
+    "qualification": "Syntax androuting/planstubs only;original measuredC/driver/capture/native records remainbyteexact. Adapter doesnot fabricateanewSDKcapture orcompilerrelease qualification.",
+    "routing_receipt": {
+      "bytes": 1361,
+      "sha256": "bf154b38061453eaa569a70614678ae53daef21b5e91af81c5ca0bb59326e7d7"
+    }
+  },
+  "no_old_gates_or_captures_repeated": true,
+  "NN_calls": 0,
+  "render_calls": 0,
+  "scope": "Fourshortfixed-modelunconstrainednonlinear tracking/holdingmeasurements,notstability/contact/collision/hardware/realtime/R13/R14 qualification."
+}

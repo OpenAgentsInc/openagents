@@ -1,0 +1,73 @@
+{
+  "schema": "psionic.panda-joint-pd-tracking.independent-publication.v1",
+  "passed": true,
+  "files": {
+    "experiment.json": {
+      "bytes": 31229,
+      "sha256": "cfe805220004838440a4ea92c258880597ca5de42b7360ca7102281e242b3612"
+    },
+    "cases.f64": {
+      "bytes": 2048,
+      "sha256": "31bde2768bad55d3a64b2ab5cce5d13f0f6efaaba38baa0f7d00f9737cd26400"
+    },
+    "input-freeze-v1.json": {
+      "bytes": 8811,
+      "sha256": "3260bc6a2de904df26e9453dc779833e62641b03f6e76d78a8563e6e4f02aa87"
+    },
+    "analytic-reference.json": {
+      "bytes": 9507,
+      "sha256": "ded8453aa62076fcac37eff5e71d776fd666692b220472d10f8e75199eedffc3"
+    },
+    "reference-states.f64": {
+      "bytes": 504672,
+      "sha256": "9fd37cf888cb4d9cb73ecaa9e2e8279b1437e9564c5ba2117b89b7ecccf49af5"
+    },
+    "external-forces.f64": {
+      "bytes": 216000,
+      "sha256": "25803423e1bd98022622c6be4d4a07b120da11fa2963bd16a2444e9763647dbe"
+    },
+    "reference-plans.json": {
+      "bytes": 785,
+      "sha256": "564e96eb10a34bfa5c57f7d8f86418ddea14bccb3fcc62ba93d6146bcfac9314"
+    },
+    "initial-brake-proof.json": {
+      "bytes": 949,
+      "sha256": "ea4c42bc2bb8eabe33de3ab906728082d03db780c9afed0d18518e625854d054"
+    },
+    "independent-controller-qualification.json": {
+      "bytes": 32561,
+      "sha256": "030f43dbf6b16333d8fc1ff39dd7cf92e2204067f6d79550fa9982484c2d778c"
+    },
+    "expected-controller.f64": {
+      "bytes": 840000,
+      "sha256": "0b6b0e3dae547763f1308a45ec374796da26402a624306041fbfb7251fdcb36f"
+    },
+    "expected-actuator.f64": {
+      "bytes": 216000,
+      "sha256": "e7184902604fc024fa225b5719832a3ae39a2da0de1d2668851d5e5a90778a4d"
+    }
+  },
+  "executed_source": {
+    "psionic/tests/robotics/panda_joint_pd_tracking_reference.py": {
+      "bytes": 12714,
+      "sha256": "f5023c40ad19094e312545e1253d78d234e90cea7e14b7105845c39b4cc00555"
+    },
+    "psionic/tests/robotics/panda_joint_pd_tracking_audit.py": {
+      "bytes": 18558,
+      "sha256": "4f1aca8f21dbef04d37bdbe4cd0e537f7bbd6e53801ab6f9779fdf3ff6df6045"
+    }
+  },
+  "first_original_reference": "/tmp/panda-joint-pd-tracking-reference-first/reference.json",
+  "first_original_audit": "/tmp/panda-joint-pd-tracking-audit-first/record.json",
+  "original_reference_and_audit_receipts_byte_exact": true,
+  "no_numerical_rerun_for_publication": true,
+  "SDK_calls_by_independent_tooling": 0,
+  "Coax_calls_by_independent_tooling": 0,
+  "no_old_gates_repeated": true,
+  "goals_and_budgets_unchanged": true,
+  "quality_misses_preserved": [
+    "nominal final max error exceeds0.01rad",
+    "saturated-brake recovery not observed within1.5s"
+  ],
+  "note": "Analytic references were generated once before SDK acquisition. The independent audit evaluates only the single new3000-step SDK trajectory; ownplant parity/quality is qualified separately."
+}
