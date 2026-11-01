@@ -1,0 +1,191 @@
+// Chapter 188: the decisions a peer mesh makes before any byte moves. Which
+// lane a message may travel on and who may send it, who may join a private
+// mesh, and which model group a buyer may route to, with the stages its head
+// connects to in layer order. Freshness is chapter 24's pb_fresh, unchanged;
+// a stale, future or expired beacon never produces a route. Nothing here
+// does cryptography: the caller says whether an invitation's MAC matched
+// (link.coax computes it), so these checks never mutate a hash.
+#load "../pylon/beacon.coax";
+#load "../../tests/peer-checks.coax";   // the checks' group fixtures
+#authority;
+
+// book:begin lanes
+// Two lanes per connection. The owner's commands travel on control, model
+// traffic on inference; a message whose kind belongs to the other lane is
+// refused, never rerouted.
+PpLane :: enum u8 {control;inference;}
+PpKind :: enum u8 {ping;pong;join;welcome;drain;resume;activation;tokens;}
+PP_KINDS :: 8;
+PpVerdict :: enum u8 {ok;kind;lane;owner;member;}
+
+pp_lane_of :: (kind:int)->int {if kind>=6 {return 1;}return 0;}
+// Drain and resume change what a peer serves: only its owner sends them.
+pp_owner_only :: (kind:int)->bool {return kind==4 || kind==5;}
+// A message as the receiver sees it: the lane byte from the frame header,
+// the kind byte from the opened plaintext, whether the sender's key is the
+// mesh owner's and whether the sender has joined.
+pp_admit :: (lane:int,kind:int,from_owner:bool,joined:bool)->PpVerdict #export_c {
+    if kind<0 || kind>=PP_KINDS {return PpVerdict.kind;}
+    if pp_lane_of(kind)!=lane {return PpVerdict.lane;}
+    if pp_owner_only(kind) && !from_owner {return PpVerdict.owner;}
+    if lane==1 && !joined {return PpVerdict.member;}
+    return PpVerdict.ok;
+}
+// book:end lanes
+
+#test "kinds belong to one lane each" {
+    want:=[8]int.[0,0,0,0,0,0,1,1];
+    for k:0..<8 {#assert pp_lane_of(k)==want[k];}
+    #assert cast(int)PpKind.activation==6 && cast(int)PpKind.tokens==7 && cast(int)PpKind.drain==4 && cast(int)PpKind.resume==5;
+}
+#forall "the lane verdict, against its table" lane: 0..<2, kind: -1..<9, owner: bool, joined: bool {
+    want:=PpVerdict.ok;
+    if kind<0 || kind>7 {want=PpVerdict.kind;}
+    else if (kind>=6)!=(lane==1) {want=PpVerdict.lane;}
+    else if (kind==4 || kind==5) && !owner {want=PpVerdict.owner;}
+    else if kind>=6 && !joined {want=PpVerdict.member;}
+    #assert pp_admit(lane,kind,owner,joined)==want;
+}
+#test "lane verdicts by hand" {
+    #assert pp_admit(0,4,true,false)==PpVerdict.ok;          // the owner drains a peer
+    #assert pp_admit(0,4,false,true)==PpVerdict.owner;       // a member may not
+    #assert pp_admit(1,4,true,true)==PpVerdict.lane;         // nor may the owner, on the inference lane
+    #assert pp_admit(0,6,true,true)==PpVerdict.lane;         // activations never ride control
+    #assert pp_admit(1,6,false,false)==PpVerdict.member;     // nor arrive before a join
+    #assert pp_admit(1,7,false,true)==PpVerdict.ok && pp_admit(0,0,false,false)==PpVerdict.ok;
+}
+
+// book:begin join
+// Joining a mesh. A public mesh admits any authenticated peer; a private
+// one only a peer holding an invitation for this mesh, for this peer's key,
+// unexpired, whose MAC the mesh's admitter recomputed and matched.
+PpJoin :: enum u8 {ok;invitation;mesh;invitee;expired;forged;}
+PpInvite :: struct {present:bool;mesh:string;invitee:string;expires:int;mac_ok:bool;}
+
+pp_join :: (private:bool,mesh:string,peer:string,inv:PpInvite,now:int)->PpJoin #export_c {
+    if !private {return PpJoin.ok;}
+    if !inv.present {return PpJoin.invitation;}
+    if inv.mesh!=mesh {return PpJoin.mesh;}
+    if inv.invitee!=peer {return PpJoin.invitee;}
+    if now>=inv.expires {return PpJoin.expired;}
+    if !inv.mac_ok {return PpJoin.forged;}
+    return PpJoin.ok;
+}
+// book:end join
+
+#test "joins by hand" {
+    good:=PpInvite.{present=true,mesh="lab",invitee="aa",expires=100,mac_ok=true};
+    #assert pp_join(true,"lab","aa",good,99)==PpJoin.ok;
+    #assert pp_join(true,"lab","aa",PpInvite.{},0)==PpJoin.invitation;
+    #assert pp_join(false,"lab","aa",PpInvite.{},0)==PpJoin.ok;      // public: no invitation needed
+    b:=good;b.mesh="lab2";#assert pp_join(true,"lab","aa",b,0)==PpJoin.mesh;
+    #assert pp_join(true,"lab","bb",good,0)==PpJoin.invitee;          // someone else's invitation
+    #assert pp_join(true,"lab","aa",good,100)==PpJoin.expired;
+    b=good;b.mac_ok=false;#assert pp_join(true,"lab","aa",b,0)==PpJoin.forged;
+}
+#forall "a private join needs every condition" present: bool, same_mesh: bool, same_key: bool, live: bool, mac: bool {
+    inv:=PpInvite.{present=present,mesh=ifx same_mesh then "m" else "n",invitee=ifx same_key then "k" else "j",expires=ifx live then 10 else 5,mac_ok=mac};
+    ok:=pp_join(true,"m","k",inv,5)==PpJoin.ok;
+    #assert ok==(present && same_mesh && same_key && live && mac);
+    #assert pp_join(false,"m","k",inv,5)==PpJoin.ok;
+}
+
+// book:begin group
+// What a buyer read from a v2 group beacon (NIP-PYLON "Model groups"): the
+// beacon's key, its NIP-OA owner, its clock fields and its group fields.
+PgRole :: enum u8 {head;stage;}
+PgReady :: enum u8 {starting;ready;recovering;}
+PgBeacon :: struct {key:string;owner:string;status:PbStatus;observed_at:int;valid_until:int;beacon_generation:int;
+    id:string;role:PgRole;generation:int;artifact:string;readiness:PgReady;free:int;from:int;to:int;}
+PgCode :: enum u8 {ok;head;stale;offline;not_ready;busy;model;stage_stale;stage_group;gap;stages;}
+PgRoute :: struct {code:PgCode;stages:int;bad:int=-1;}
+PG_STAGES :: 16;
+
+pg_fresh :: (b:PgBeacon,now:int)->bool {
+    r:=PbRead.{observed_at=b.observed_at,valid_until=b.valid_until,generation=b.beacon_generation};
+    return pb_fresh(r,now,PbHeld.{})==PbFresh.fresh;
+}
+// Whether a buyer may send this group a job for artifact now, and if so the
+// order of its stages: order[i] is the index in stages of the stage that
+// holds layers from order's running end. The stages must tile 0..layers
+// exactly, each fresh, in this group, on the head's generation and owner.
+pg_route :: (head:PgBeacon,stages:[]PgBeacon,artifact:string,layers:int,now:int,order:[]int)->PgRoute #export_c {
+    if head.role!=PgRole.head {return PgRoute.{code=PgCode.head};}
+    if !pg_fresh(head,now) {return PgRoute.{code=PgCode.stale};}
+    if head.status!=PbStatus.online {return PgRoute.{code=PgCode.offline};}
+    if head.readiness!=PgReady.ready {return PgRoute.{code=PgCode.not_ready};}
+    if head.free<1 {return PgRoute.{code=PgCode.busy};}
+    if head.artifact!=artifact {return PgRoute.{code=PgCode.model};}
+    if stages.count<1 || stages.count>PG_STAGES || order.count<stages.count || layers<1 {return PgRoute.{code=PgCode.stages};}
+    for i:0..<stages.count {
+        s:=stages[i];
+        if !pg_fresh(s,now) {return PgRoute.{code=PgCode.stage_stale,bad=i};}
+        if s.role!=PgRole.stage || s.id!=head.id || s.artifact!=head.artifact || s.generation!=head.generation || s.owner!=head.owner {return PgRoute.{code=PgCode.stage_group,bad=i};}
+    }
+    // Walk the layers: at each running end exactly one stage must start there.
+    at:=0;
+    for n:0..<stages.count {
+        hit:=-1;
+        for i:0..<stages.count {if stages[i].from==at && stages[i].to>at {if hit>=0 {return PgRoute.{code=PgCode.gap,bad=i};}hit=i;}}
+        if hit<0 {return PgRoute.{code=PgCode.gap,bad=n};}
+        order[n]=hit;at=stages[hit].to;
+    }
+    if at!=layers {return PgRoute.{code=PgCode.gap};}
+    return PgRoute.{code=PgCode.ok,stages=stages.count};
+}
+// book:end group
+
+#test "a three-stage group routes, stages in layer order" {
+    st:=[3]PgBeacon.[pg_stage("c",40,61),pg_stage("a",0,20),pg_stage("b",20,40)];order:[3]int;
+    r:=pg_route(pg_head(),st[..],"sha256:aa",61,PG_NOW,order[..]);
+    #assert r.code==PgCode.ok && r.stages==3 && r.bad==-1 && order[0]==1 && order[1]==2 && order[2]==0;
+}
+#test "the head's refusals, in order" {
+    st:=[1]PgBeacon.[pg_stage("a",0,8)];order:[1]int;h:=pg_head();
+    #assert pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.ok;
+    h.role=PgRole.stage;#assert pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.head;
+    h=pg_head();#assert pg_route(h,st[..],"sha256:aa",8,1791400301,order[..]).code==PgCode.stale;    // past valid_until
+    #assert pg_route(h,st[..],"sha256:aa",8,1791400300,order[..]).code==PgCode.ok;                    // at it
+    #assert pg_route(h,st[..],"sha256:aa",8,1791399969,order[..]).code==PgCode.stale;                 // from the future
+    h.status=PbStatus.draining;#assert pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.offline;
+    h=pg_head();h.readiness=PgReady.recovering;#assert pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.not_ready;
+    h=pg_head();h.free=0;#assert pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.busy;
+    h=pg_head();#assert pg_route(h,st[..],"sha256:bb",8,PG_NOW,order[..]).code==PgCode.model;
+    #assert pg_route(h,st[0..<0],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.stages;
+    #assert pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[0..<0]).code==PgCode.stages;
+    #assert pg_route(h,st[..],"sha256:aa",0,PG_NOW,order[..]).code==PgCode.stages;
+    one:=[1]PgBeacon.[pg_stage("a",0,1)];#assert pg_route(h,one[..],"sha256:aa",1,PG_NOW,order[..]).code==PgCode.ok;
+    many:[17]PgBeacon;big:[17]int;#assert pg_route(h,many[..],"sha256:aa",8,PG_NOW,big[..]).code==PgCode.stages;
+    for i:0..<16 {many[i]=pg_stage("s",i,i+1);}
+    #assert pg_route(h,many[0..<16],"sha256:aa",16,PG_NOW,big[..]).code==PgCode.ok && big[15]==15;
+}
+#test "every stage must be fresh and of this group" {
+    st:=[2]PgBeacon.[pg_stage("a",0,4),pg_stage("b",4,8)];order:[2]int;h:=pg_head();
+    st[0].valid_until=PG_NOW-1;r:=pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]);#assert r.code==PgCode.stage_stale && r.bad==0;
+    st[0]=pg_stage("a",0,4);st[0].owner="p";r=pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]);#assert r.code==PgCode.stage_group && r.bad==0;
+    st[0]=pg_stage("a",0,4);st[1].valid_until=PG_NOW-1;r=pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]);#assert r.code==PgCode.stage_stale && r.bad==1;
+    st[1]=pg_stage("b",4,8);st[1].observed_at=PG_NOW-301;st[1].valid_until=PG_NOW+5;   // older than the 300 s window
+    #assert pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.stage_stale;
+    fields:=0;
+    for f:0..<5 {
+        st[1]=pg_stage("b",4,8);
+        if f==0 {st[1].role=PgRole.head;} if f==1 {st[1].id="v41-b";} if f==2 {st[1].artifact="sha256:ab";}
+        if f==3 {st[1].generation=2;} if f==4 {st[1].owner="p";}
+        r=pg_route(h,st[..],"sha256:aa",8,PG_NOW,order[..]);
+        if r.code==PgCode.stage_group && r.bad==1 {fields+=1;}
+    }
+    #assert fields==5;
+}
+#test "the stages must tile the layers exactly" {
+    order:[3]int;h:=pg_head();
+    gap:=[2]PgBeacon.[pg_stage("a",0,4),pg_stage("b",5,8)];
+    #assert pg_route(h,gap[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.gap;
+    over:=[2]PgBeacon.[pg_stage("a",0,4),pg_stage("b",0,8)];r:=pg_route(h,over[..],"sha256:aa",8,PG_NOW,order[..]);
+    #assert r.code==PgCode.gap && r.bad==1;
+    short:=[2]PgBeacon.[pg_stage("a",0,4),pg_stage("b",4,7)];#assert pg_route(h,short[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.gap;
+    long:=[2]PgBeacon.[pg_stage("a",0,4),pg_stage("b",4,9)];#assert pg_route(h,long[..],"sha256:aa",8,PG_NOW,order[..]).code==PgCode.gap;
+    empty:=[2]PgBeacon.[pg_stage("a",0,4),pg_stage("b",4,4)];#assert pg_route(h,empty[..],"sha256:aa",4,PG_NOW,order[..]).code==PgCode.gap;
+    two:=[3]PgBeacon.[pg_stage("a",0,8),pg_stage("b",0,4),pg_stage("c",4,8)];r=pg_route(h,two[..],"sha256:aa",8,PG_NOW,order[..]);
+    #assert r.code==PgCode.gap && r.bad==1;     // the first claimant of layer 0 is stage 0, the second is refused
+    late:=[1]PgBeacon.[pg_stage("a",1,8)];r=pg_route(h,late[..],"sha256:aa",8,PG_NOW,order[..]);#assert r.code==PgCode.gap && r.bad==0;
+}

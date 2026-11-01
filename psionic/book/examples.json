@@ -1570,6 +1570,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/peer-mesh.coax",
+      "chapter": "psionic/book/ch188-peers-transport-and-discovery.md",
+      "stdout": "psionic/fixtures/peer-mesh.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

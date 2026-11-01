@@ -1,0 +1,136 @@
+// Chapter 188: peers, transport and discovery. A buyer reads a model
+// group's head and stages and finds the stages in layer order; the head
+// connects to one stage directly and to the other through a relay and
+// measures each round trip; peers join a private mesh by invitation; owner
+// commands and inference traffic travel on separate ex_lanes; and the frames a
+// relay may tamper with are refused. Every clock is simulated.
+#import "Basic";
+#load "../lib/peer/link.coax";
+#load "../../coax/lib/nostr/hex.coax";
+
+EX_HEAD :: 0; EX_A :: 1; EX_B :: 2; EX_OUT :: 3;
+EX_NOW :: 1791400100;                 // unix seconds, for beacons and invitations
+
+ExPeer :: struct {secret:[32]u8;pub:[32]u8;}
+// The first 4 bytes of a key in hex, written into out.
+ex_short :: (key:[]u8,out:[]u8)->string {
+    r:=hex_encode_checked(cast(string)key[0..<4],out,false);
+    return cast(string)out[0..<r.written];
+}
+ex_names :: [8]string.["ping","pong","join","welcome","drain","resume","activation","tokens"];
+ex_lanes :: [2]string.["control","inference"];
+// The receiver's seen_by of what each lane carried.
+ExLog :: struct {kinds:[2][8]int;count:[2]int;}
+
+// One message from s to t over route r in direction d: seal, carry, open,
+// then the lane policy. A message the policy admits is logged by lane.
+ex_send :: (s:[]PpSession,t:[]PpSession,r:[]PpRoute,d:int,lane:int,text:[]u8,owner:[]u8,joined:bool,seen_by:[]ExLog)->PpVerdict {
+    frame:[PP_FRAME_MAX]u8;got:[PP_FRAME_MAX]u8;plain:[PP_TEXT_MAX]u8;
+    n:=pp_seal(s,lane,text,frame[..]);#assert n>0 && pp_send(r,d,0,frame[0..<n]);
+    taken:=pp_deliver(r,d,got[..]);#assert taken.ok;
+    o:=pp_open(t,got[0..<taken.n],plain[..]);#assert o.code==PpOpenCode.ok;
+    from_owner:=true;for i:0..<32 {if t[0].peer[i]!=owner[i] {from_owner=false;}}
+    v:=pp_admit(o.lane,cast(int)plain[0],from_owner,joined);
+    if v==PpVerdict.ok {l:=o.lane;seen_by[0].kinds[l][seen_by[0].count[l]]=cast(int)plain[0];seen_by[0].count[l]+=1;}
+    return v;
+}
+// A join over route r: stage s sends its join text on the control lane and
+// the head, t, admits or refuses it.
+ex_join :: (s:[]PpSession,t:[]PpSession,r:[]PpRoute,text:[]u8,key:[]u8,now:int)->PpJoin {
+    frame:[PP_FRAME_MAX]u8;got:[PP_FRAME_MAX]u8;plain:[PP_TEXT_MAX]u8;
+    n:=pp_seal(s,0,text,frame[..]);#assert n>0 && pp_send(r,0,0,frame[0..<n]);
+    k:=pp_deliver(r,0,got[..]);o:=pp_open(t,got[0..<k.n],plain[..]);#assert o.code==PpOpenCode.ok;
+    return pp_check_join(true,"lab",key,t[0].peer[..],plain[0..<o.n],now);
+}
+
+// book:begin example
+main :: () {
+    p:[5]ExPeer;
+    for v:0..<4 {pp_vector_key(v,p[v].secret[..],p[v].pub[..]);}
+    p[4].secret[31]=7;#assert pp_public(p[4].secret[..],p[4].pub[..]);
+    owner:=p[4].pub;
+    mine:[32]u8;#assert pp_public(p[EX_HEAD].secret[..],mine[..]) && pp_same(mine[..],p[EX_HEAD].pub[..]);
+    hex:[5][8]u8;
+    print("peers: head %, stage A %, stage B %, outsider %, owner %\n",ex_short(p[0].pub[..],hex[0][..]),ex_short(p[1].pub[..],hex[1][..]),ex_short(p[2].pub[..],hex[2][..]),ex_short(p[3].pub[..],hex[3][..]),ex_short(p[4].pub[..],hex[4][..]));
+
+    // 1. Discovery: the head and two stages of group v41-a, read at EX_NOW.
+    head:=PgBeacon.{key=cast(string)hex[0][..],owner=cast(string)hex[4][..],status=PbStatus.online,observed_at=EX_NOW-100,valid_until=EX_NOW+200,beacon_generation=3,
+        id="v41-a",role=PgRole.head,generation=3,artifact="sha256:aa",readiness=PgReady.ready,free=1};
+    st:[2]PgBeacon;st[0]=head;st[1]=head;
+    st[0].key=cast(string)hex[2][..];st[0].role=PgRole.stage;st[0].free=0;st[0].from=30;st[0].to=61;
+    st[1].key=cast(string)hex[1][..];st[1].role=PgRole.stage;st[1].free=0;st[1].from=0;st[1].to=30;
+    order:[2]int;r:=pg_route(head,st[..],"sha256:aa",61,EX_NOW,order[..]);
+    print("route to v41-a for sha256:aa at %: %, stages in order:",EX_NOW,r.code);
+    for i:0..<r.stages {s:=st[order[i]];print(" % layers %..%",s.key,s.from,s.to);}
+    print("\n");
+    late:=st;late[0].valid_until=EX_NOW-10;r=pg_route(head,late[..],"sha256:aa",61,EX_NOW,order[..]);
+    print("stage B's beacon expired 10 s ago: % (stage %)\n",r.code,r.bad);
+    print("200 s later, past the head's valid_until: %\n",pg_route(head,st[..],"sha256:aa",61,EX_NOW+201,order[..]).code);
+    print("a request for sha256:bb: %\n",pg_route(head,st[..],"sha256:bb",61,EX_NOW,order[..]).code);
+
+    // 2. Connections from the head: stage A directly, stage B through a relay.
+    ha:[1]PpSession;ah:[1]PpSession;hb:[1]PpSession;bh:[1]PpSession;ho:[1]PpSession;oh:[1]PpSession;ob:[1]PpSession;bo:[1]PpSession;
+    ha[0]=pp_session(p[EX_HEAD].secret[..],p[EX_A].pub[..]);ah[0]=pp_session(p[EX_A].secret[..],p[EX_HEAD].pub[..]);
+    hb[0]=pp_session(p[EX_HEAD].secret[..],p[EX_B].pub[..]);bh[0]=pp_session(p[EX_B].secret[..],p[EX_HEAD].pub[..]);
+    ho[0]=pp_session(p[EX_HEAD].secret[..],p[EX_OUT].pub[..]);oh[0]=pp_session(p[EX_OUT].secret[..],p[EX_HEAD].pub[..]);
+    ob[0]=pp_session(p[4].secret[..],p[EX_B].pub[..]);bo[0]=pp_session(p[EX_B].secret[..],owner[..]);
+    #assert ha[0].ok && ah[0].ok && hb[0].ok && bh[0].ok && ho[0].ok && oh[0].ok && ob[0].ok && bo[0].ok;
+    ra:[1]PpRoute;rb:[1]PpRoute;ro:[1]PpRoute;rw:[1]PpRoute;
+    pp_route(ra[..],PpPath.direct,400,0);pp_route(rb[..],PpPath.relayed,9000,12000);
+    pp_route(ro[..],PpPath.direct,1500,0);pp_route(rw[..],PpPath.direct,700,0);
+    c:=pp_ping(ha[..],ah[..],ra[..],1000);print("head to stage A: %, round trip % us\n",c.path,c.rtt);
+    c=pp_ping(hb[..],bh[..],rb[..],1000);print("head to stage B: %, round trip % us; the relay forwarded % frames, % bytes\n",c.path,c.rtt,rb[0].relayed,rb[0].relay_bytes);
+
+    // 3. The private mesh "lab". The owner issued invitations under the mesh
+    // key the head holds; each join travels on its sender's control lane.
+    key:=[16]u8.[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16];
+    expires:=EX_NOW+3600;mac_a:[32]u8;mac_b:[32]u8;text:[200]u8;plain:[PP_TEXT_MAX]u8;frame:[PP_FRAME_MAX]u8;
+    #assert pp_invite_mac(key[..],"lab",p[EX_A].pub[..],expires,mac_a[..]) && pp_invite_mac(key[..],"lab",p[EX_B].pub[..],expires,mac_b[..]);
+    n:=pp_join_text("lab",p[EX_A].pub[..],expires,mac_a[..],text[..]);
+    print("join lab: stage A with its invitation: %\n",ex_join(ah[..],ha[..],ra[..],text[0..<n],key[..],EX_NOW));
+    m:=pp_join_text("lab",p[EX_B].pub[..],expires,mac_b[..],text[100..<200]);
+    print("join lab: stage B with its invitation, through the relay: %\n",ex_join(bh[..],hb[..],rb[..],text[100..<100+m],key[..],EX_NOW));
+    none:=[1]u8.[cast(u8)PpKind.join];
+    print("join lab: the outsider without one: %\n",ex_join(oh[..],ho[..],ro[..],none[0..<0],key[..],EX_NOW));
+    print("join lab: the outsider with stage A's invitation: %\n",ex_join(oh[..],ho[..],ro[..],text[0..<n],key[..],EX_NOW));
+    forged:[200]u8;for i:0..<n {forged[i]=text[i];}for i:0..<32 {forged[5+i]=p[EX_OUT].pub[i];}
+    print("join lab: the outsider's own key in stage A's invitation: %\n",ex_join(oh[..],ho[..],ro[..],forged[0..<n],key[..],EX_NOW));
+    print("join lab: stage A's invitation after it expired: %\n",ex_join(ah[..],ha[..],ra[..],text[0..<n],key[..],expires));
+
+    // 4. Lanes. The head sends an activation, the stage answers with tokens,
+    // the owner drains stage B; then three messages on the wrong terms.
+    la:[1]ExLog;lh:[1]ExLog;lb:[1]ExLog;
+    act:[17]u8;act[0]=cast(u8)PpKind.activation;for i:1..<17 {act[i]=cast(u8)(i*13);}
+    tok:=[3]u8.[cast(u8)PpKind.tokens,42,7];drain:=[1]u8.[cast(u8)PpKind.drain];
+    print("head -> stage A, activation (16 bytes) on inference: %\n",ex_send(ha[..],ah[..],ra[..],0,1,act[..],owner[..],true,la[..]));
+    print("stage A -> head, tokens on inference: %\n",ex_send(ah[..],ha[..],ra[..],1,1,tok[..],owner[..],true,lh[..]));
+    print("owner -> stage B, drain on control: %\n",ex_send(ob[..],bo[..],rw[..],0,0,drain[..],owner[..],true,lb[..]));
+    print("head -> stage B, drain on control: %\n",ex_send(hb[..],bh[..],rb[..],0,0,drain[..],owner[..],true,lb[..]));
+    print("owner -> stage B, drain on inference: %\n",ex_send(ob[..],bo[..],rw[..],0,1,drain[..],owner[..],true,lb[..]));
+    print("head -> stage A, activation on control: %\n",ex_send(ha[..],ah[..],ra[..],0,0,act[..],owner[..],true,la[..]));
+    print("outsider -> head, activation before joining: %\n",ex_send(oh[..],ho[..],ro[..],0,1,act[..],owner[..],false,lh[..]));
+    print("head -> stage B, activation through the relay: %\n",ex_send(hb[..],bh[..],rb[..],0,1,act[..],owner[..],true,lb[..]));
+    for who:0..<2 {
+        l:=ifx who==0 then la[0] else lb[0];
+        print("lanes at stage %:",ifx who==0 then "A" else "B");
+        for lane:0..<2 {print(" % [",ex_lanes[lane]);for i:0..<l.count[lane] {print("%",ifx i>0 then ", " else "");print("%",ex_names[l.kinds[lane][i]]);}print("]");}
+        print("\n");
+    }
+    seen:=rb[0].seen;
+    print("the relay carried % frames, % bytes; the activation's bytes in its last frame: %\n",rb[0].relayed,rb[0].relay_bytes,pp_contains(seen[0..<rb[0].seen_n],act[1..<17]));
+
+    // 5. Frames stage B refuses: cut short, claiming too much, altered in
+    // transit, and the same frame twice.
+    got:[PP_FRAME_MAX]u8;
+    f:=pp_seal(hb[..],1,act[..],frame[..]);
+    print("a frame cut by one byte: %\n",pp_open(bh[..],frame[0..<f-1],plain[..]).code);
+    big:[PP_HEADER]u8;for i:0..<PP_HEADER {big[i]=frame[i];}big[10]=0x13;big[11]=0x88;
+    print("a header claiming 5000 body bytes: %\n",pp_open(bh[..],big[..],plain[..]).code);
+    #assert pp_send(rb[..],0,0,frame[0..<f]);
+    rb[0].wires[0][0].slots[rb[0].wires[0][0].first].bytes[20]^=1;
+    k:=pp_deliver(rb[..],0,got[..]);
+    print("one bit of the ciphertext flipped on the way to the relay: %\n",pp_open(bh[..],got[0..<k.n],plain[..]).code);
+    print("the untouched frame: %\n",pp_open(bh[..],frame[0..<f],plain[..]).code);
+    print("the same frame again: %\n",pp_open(bh[..],frame[0..<f],plain[..]).code);
+}
+// book:end example

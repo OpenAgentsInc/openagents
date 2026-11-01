@@ -1,0 +1,10 @@
+// Chapter 188: fixtures for psionic/lib/peer/policy.coax's checks: a
+// ready head of group v41-a and its stages, read at PG_NOW.
+PG_NOW :: 1791400100;
+pg_head :: ()->PgBeacon {
+    return PgBeacon.{key="h",owner="o",status=PbStatus.online,observed_at=1791400000,valid_until=1791400300,beacon_generation=3,
+        id="v41-a",role=PgRole.head,generation=3,artifact="sha256:aa",readiness=PgReady.ready,free=1};
+}
+pg_stage :: (key:string,from:int,to:int)->PgBeacon {
+    s:=pg_head();s.key=key;s.role=PgRole.stage;s.free=0;s.readiness=PgReady.starting;s.from=from;s.to=to;return s;
+}

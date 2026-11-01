@@ -1,0 +1,36 @@
+// Chapter 188: fixtures for psionic/lib/peer/link.coax's checks and example.
+// The peers' keys are BIP-340's signing vectors 0-3, so each public key is
+// an independent reference for pp_public.
+#load "../../coax/tests/nostr/schnorr_sign_vectors.coax";
+
+// A peer's secret and public key: vector v's.
+pp_vector_key :: (v:int,secret:[]u8,public:[]u8) {
+    k:=SIGN_VECTORS[v].key;p:=SIGN_VECTORS[v].pub;
+    for i:0..<32 {secret[i]=k[i];public[i]=p[i];}
+}
+// HKDF-Expand to 32 bytes is one HMAC: HMAC(prk, info || 0x01).
+pp_hkdf32_oracle :: (prk:[]u8,info:[]u8,out:[]u8)->bool {
+    m:[128]u8;for i:0..<info.count {m[i]=info[i];}m[info.count]=1;
+    return hmac_sha256_checked(prk,m[0..<info.count+1],out,false)==SHA_OK;
+}
+pp_same :: (a:[]u8,b:[]u8)->bool {
+    if a.count!=b.count {return false;}
+    for i:0..<a.count {if a[i]!=b[i] {return false;}}
+    return true;
+}
+// Whether needle occurs anywhere in hay.
+pp_contains :: (hay:[]u8,needle:[]u8)->bool {
+    for i:0..<hay.count-needle.count+1 {if pp_same(hay[i..<i+needle.count],needle) {return true;}}
+    return false;
+}
+// The two ends of a connection between vector peers a and b.
+pp_pair :: (a:int,b:int,x:[]PpSession,y:[]PpSession) {
+    sa:[32]u8;pa:[32]u8;sb:[32]u8;pb:[32]u8;pp_vector_key(a,sa[..],pa[..]);pp_vector_key(b,sb[..],pb[..]);
+    x[0]=pp_session(sa[..],pb[..]);y[0]=pp_session(sb[..],pa[..]);
+}
+// Two ends from made-up public keys and conversation key: no curve work,
+// so the frame checks stay fast. pp_session's own checks use real keys.
+pp_fake :: (a:int,b:int,x:[]PpSession,y:[]PpSession) {
+    pa:[32]u8;pb:[32]u8;ck:[32]u8;for i:0..<32 {pa[i]=cast(u8)(a+i);pb[i]=cast(u8)(b+2*i);ck[i]=cast(u8)(a*b+i);}
+    x[0]=pp_keys(pa[..],pb[..],ck[..]);y[0]=pp_keys(pb[..],pa[..],ck[..]);
+}

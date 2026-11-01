@@ -1,0 +1,29 @@
+peers: head f9308a01, stage A dff1d77f, stage B dd308afe, outsider 25d1dff9, owner 5cbdf064
+route to v41-a for sha256:aa at 1791400100: ok, stages in order: dff1d77f layers 0..30 dd308afe layers 30..61
+stage B's beacon expired 10 s ago: stage_stale (stage 0)
+200 s later, past the head's valid_until: stale
+a request for sha256:bb: model
+head to stage A: direct, round trip 800 us
+head to stage B: relayed, round trip 42000 us; the relay forwarded 2 frames, 74 bytes
+join lab: stage A with its invitation: ok
+join lab: stage B with its invitation, through the relay: ok
+join lab: the outsider without one: invitation
+join lab: the outsider with stage A's invitation: invitee
+join lab: the outsider's own key in stage A's invitation: forged
+join lab: stage A's invitation after it expired: expired
+head -> stage A, activation (16 bytes) on inference: ok
+stage A -> head, tokens on inference: ok
+owner -> stage B, drain on control: ok
+head -> stage B, drain on control: owner
+owner -> stage B, drain on inference: lane
+head -> stage A, activation on control: lane
+outsider -> head, activation before joining: member
+head -> stage B, activation through the relay: ok
+lanes at stage A: control [] inference [activation]
+lanes at stage B: control [drain] inference [activation]
+the relay carried 5 frames, 253 bytes; the activation's bytes in its last frame: false
+a frame cut by one byte: length
+a header claiming 5000 body bytes: oversized
+one bit of the ciphertext flipped on the way to the relay: forged
+the untouched frame: ok
+the same frame again: replay

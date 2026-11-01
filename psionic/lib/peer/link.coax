@@ -1,0 +1,387 @@
+// Chapter 188: encrypted peer links, profile psionic-peer-loopback-v0. Two
+// peers derive one key per direction from their secp256k1 keys (ECDH and
+// NIP-44's conversation key, then HKDF-SHA256 with the two public keys in
+// order) and exchange frames sealed with XChaCha20-Poly1305 whose 12-byte
+// header is the associated data. Frames travel over simulated wires with a
+// fixed delay per hop, directly or through a relay that holds no key and
+// forwards bytes unchanged; a connection's round trip is measured by a ping
+// echoed on the control lane. The wire format is an in-process profile, not
+// a published contract: nothing here opens a socket. Lane, join and route
+// decisions are policy.coax's.
+#load "policy.coax";
+#load "../../../coax/lib/nostr/nip44-key.coax";
+#load "../../../coax/lib/crypto/xchacha20_poly1305.coax";
+
+// book:begin frame
+// A frame: "P" "M", version 0, the lane, a 32-bit sequence number and the
+// 32-bit length of the sealed body, all big-endian; then the body, the
+// ciphertext and its 16-byte Poly1305 tag.
+PP_HEADER :: 12;
+PP_TAG :: 16;
+PP_TEXT_MAX :: 4096;                          // XChaCha20-Poly1305's limit here
+PP_FRAME_MAX :: PP_HEADER+PP_TEXT_MAX+PP_TAG;  // 4124 bytes
+PP_SEQ_MAX :: 4294967295;
+PpOpenCode :: enum u8 {ok;short;magic;version;lane;oversized;length;replay;space;forged;}
+PpOpened :: struct {code:PpOpenCode;lane:int;seq:int;n:int;}
+// One end of a connection: its own and its peer's public key, a key for
+// each direction and, per lane, the next sequence number to send and to
+// accept.
+PpSession :: struct {ok:bool;me:[32]u8;peer:[32]u8;send:[32]u8;recv:[32]u8;sent:[2]int;seen:[2]int;}
+// book:end frame
+
+// ---- keys
+// The x-only public key of a secret: the x coordinate of secret times G.
+pp_public :: (secret:[]u8,out:[]u8)->bool {
+    work:[1]EcdhScratch;g:=NIP44_KEY_GENERATOR_X;
+    if out.count!=32 || ecdh_stage(secret,g[..],work[..])!=EC_OK {return false;}
+    for i:0..<32 {out[i]=work[0].staged[i];}
+    return true;
+}
+// book:begin session
+// The key for frames from `from` to `to`: HKDF-Expand of the conversation
+// key with info "psionic-peer-v0" || from || to.
+pp_direction :: (ck:[]u8,from:[]u8,to:[]u8,out:[]u8)->bool {
+    info:[79]u8;tag:="psionic-peer-v0";
+    for i:0..<15 {info[i]=tag[i];}
+    for i:0..<32 {info[15+i]=from[i];info[47+i]=to[i];}
+    return hkdf_expand_checked(ck,info[..],out,32,false)==SHA_OK;
+}
+// A session from its two public keys and their conversation key.
+pp_keys :: (me:[]u8,peer:[]u8,ck:[]u8)->PpSession {
+    s:PpSession;if me.count!=32 || peer.count!=32 {return s;}
+    for i:0..<32 {s.me[i]=me[i];s.peer[i]=peer[i];}
+    s.ok=pp_direction(ck,s.me[..],s.peer[..],s.send[..]) && pp_direction(ck,s.peer[..],s.me[..],s.recv[..]);
+    return s;
+}
+pp_session :: (secret:[]u8,peer:[]u8)->PpSession {
+    me:[32]u8;ck:[32]u8;work:[1]EcdhScratch;
+    if !pp_public(secret,me[..]) || nip44_conversation_key_from_keys_checked(secret,peer,work[..],ck[..],false)!=NIP44_OK {return PpSession.{};}
+    return pp_keys(me[..],peer,ck[..]);
+}
+// The nonce: the lane, 19 zero bytes and the sequence number. Each
+// direction has its own key, so a (key, nonce) pair never repeats while
+// sequence numbers only rise.
+pp_nonce :: (lane:int,seq:int)->[24]u8 {
+    out:[24]u8;out[0]=cast(u8)lane;stored:=cb_store_be32(out[..],20,cast(u32)seq);
+    return out;
+}
+// book:end session
+
+// book:begin seal
+// Seal text on a lane into out; the frame's length, or -1. Text longer
+// than PP_TEXT_MAX is refused by xcp_seal itself.
+pp_seal :: (s:[]PpSession,lane:int,text:[]u8,out:[]u8)->int {
+    if s.count!=1 || !s[0].ok || lane<0 || lane>1 {return -1;}
+    total:=PP_HEADER+text.count+PP_TAG;seq:=s[0].sent[lane];
+    if out.count<total || seq>=PP_SEQ_MAX {return -1;}
+    out[0]='P';out[1]='M';out[2]=0;out[3]=cast(u8)lane;
+    a:=cb_store_be32(out,4,cast(u32)seq);b:=cb_store_be32(out,8,cast(u32)(text.count+PP_TAG));
+    nonce:=pp_nonce(lane,seq);key:=s[0].send;
+    if !xcp_seal(key[..],nonce[..],out[0..<PP_HEADER],text,out[PP_HEADER..<total],false) {return -1;}
+    s[0].sent[lane]=seq+1;return total;
+}
+// Open one frame into out. Every refusal leaves the session unchanged.
+pp_open :: (s:[]PpSession,frame:[]u8,out:[]u8)->PpOpened {
+    if frame.count<PP_HEADER {return PpOpened.{code=PpOpenCode.short};}
+    if frame[0]!='P' || frame[1]!='M' {return PpOpened.{code=PpOpenCode.magic};}
+    if frame[2]!=0 {return PpOpened.{code=PpOpenCode.version};}
+    lane:=cast(int)frame[3];if lane>1 {return PpOpened.{code=PpOpenCode.lane};}
+    seq:=cast(int)cb_load_be32(frame,4).value;body:=cast(int)cb_load_be32(frame,8).value;
+    if body>PP_TEXT_MAX+PP_TAG {return PpOpened.{code=PpOpenCode.oversized,lane=lane,seq=seq};}
+    if body<PP_TAG || frame.count!=PP_HEADER+body {return PpOpened.{code=PpOpenCode.length,lane=lane,seq=seq};}
+    if s.count!=1 || !s[0].ok || seq!=s[0].seen[lane] {return PpOpened.{code=PpOpenCode.replay,lane=lane,seq=seq};}
+    n:=body-PP_TAG;if out.count<n {return PpOpened.{code=PpOpenCode.space,lane=lane,seq=seq};}
+    nonce:=pp_nonce(lane,seq);key:=s[0].recv;
+    if !xcp_open(key[..],nonce[..],frame[0..<PP_HEADER],frame[PP_HEADER..<frame.count],out[0..<n],false) {return PpOpened.{code=PpOpenCode.forged,lane=lane,seq=seq};}
+    s[0].seen[lane]=seq+1;
+    return PpOpened.{code=PpOpenCode.ok,lane=lane,seq=seq,n=n};
+}
+// book:end seal
+
+// book:begin wire
+// A simulated wire: frames arrive delay microseconds after they are sent,
+// in order. A route is one wire each way (direct) or two each way with a
+// relay between them. The relay is a procedure that takes no key: it moves
+// bytes from one wire to the next and keeps a copy of the last frame it saw.
+PP_SLOTS :: 4;
+PpPath :: enum u8 {direct;relayed;}
+PpSlot :: struct {at:int;n:int;bytes:[PP_FRAME_MAX]u8;}
+PpWire :: struct {delay:int;first:int;count:int;slots:[PP_SLOTS]PpSlot;}
+PpRoute :: struct {path:PpPath;wires:[2][2]PpWire;relayed:int;relay_bytes:int;seen_n:int;seen:[PP_FRAME_MAX]u8;}
+PpTaken :: struct {ok:bool;at:int;n:int;}
+
+pp_put :: (w:[]PpWire,now:int,bytes:[]u8)->bool {
+    if w.count!=1 || w[0].count>=PP_SLOTS || bytes.count>PP_FRAME_MAX {return false;}
+    i:=(w[0].first+w[0].count)%PP_SLOTS;w[0].slots[i].at=now+w[0].delay;w[0].slots[i].n=bytes.count;
+    for k:0..<bytes.count {w[0].slots[i].bytes[k]=bytes[k];}
+    w[0].count+=1;return true;
+}
+pp_take :: (w:[]PpWire,out:[]u8)->PpTaken {
+    if w.count!=1 || w[0].count==0 {return PpTaken.{};}
+    i:=w[0].first;n:=w[0].slots[i].n;if out.count<n {return PpTaken.{};}
+    for k:0..<n {out[k]=w[0].slots[i].bytes[k];}
+    w[0].first=(i+1)%PP_SLOTS;w[0].count-=1;
+    return PpTaken.{ok=true,at=w[0].slots[i].at,n=n};
+}
+// direct: hop is the one delay; relayed: hop and relay are the two legs.
+pp_route :: (r:[]PpRoute,path:PpPath,hop:int,relay:int) {
+    r[0]=PpRoute.{path=path};
+    for d:0..<2 {r[0].wires[d][0].delay=hop;r[0].wires[d][1].delay=relay;}
+}
+pp_relay :: (r:[]PpRoute,from:[]PpWire,to:[]PpWire)->bool {
+    t:=pp_take(from,r[0].seen[..]);if !t.ok {return false;}
+    r[0].seen_n=t.n;r[0].relayed+=1;r[0].relay_bytes+=t.n;
+    return pp_put(to,t.at,r[0].seen[0..<t.n]);
+}
+// Send on direction d (0 from the dialer, 1 back), then deliver.
+pp_send :: (r:[]PpRoute,d:int,now:int,bytes:[]u8)->bool {return pp_put(r[0].wires[d][0..<1],now,bytes);}
+pp_deliver :: (r:[]PpRoute,d:int,out:[]u8)->PpTaken {
+    if r[0].path==PpPath.relayed && !pp_relay(r,r[0].wires[d][0..<1],r[0].wires[d][1..<2]) {return PpTaken.{};}
+    leg:=ifx r[0].path==PpPath.relayed then 1 else 0;
+    return pp_take(r[0].wires[d][leg..<leg+1],out);
+}
+// book:end wire
+
+// book:begin ping
+// Measure a connection: a pings b on the control lane with its clock, b
+// echoes the 8 bytes in a pong, and the round trip is the pong's arrival
+// time less the echoed clock.
+PpConn :: struct {ok:bool;path:PpPath;rtt:int;}
+PP_PING :: PP_HEADER+9+PP_TAG;      // 37 bytes
+// b's side: open a ping and seal the pong into out; its length, or -1.
+pp_echo :: (b:[]PpSession,got:[]u8,out:[]u8)->int {
+    plain:[9]u8;o:=pp_open(b,got,plain[..]);
+    if o.code!=PpOpenCode.ok || o.lane!=0 || o.n!=9 || plain[0]!=cast(u8)PpKind.ping {return -1;}
+    plain[0]=cast(u8)PpKind.pong;return pp_seal(b,0,plain[..],out);
+}
+// a's side: open the pong that arrived at `at`; the round trip, or -1.
+pp_rtt :: (a:[]PpSession,got:[]u8,at:int)->int {
+    plain:[9]u8;o:=pp_open(a,got,plain[..]);
+    if o.code!=PpOpenCode.ok || o.lane!=0 || o.n!=9 || plain[0]!=cast(u8)PpKind.pong {return -1;}
+    return at-cast(int)cb_load_be64(plain[..],1).value;
+}
+pp_ping :: (a:[]PpSession,b:[]PpSession,r:[]PpRoute,now:int)->PpConn {
+    text:[9]u8;frame:[PP_PING]u8;got:[PP_PING]u8;   // text[0] is 0, PpKind.ping
+    s:=cb_store_be64(text[..],1,cast(u64)now);
+    if pp_seal(a,0,text[..],frame[..])!=PP_PING || !pp_send(r,0,now,frame[..]) {return PpConn.{};}
+    t:=pp_deliver(r,0,got[..]);
+    if !t.ok || pp_echo(b,got[0..<t.n],frame[..])!=PP_PING || !pp_send(r,1,t.at,frame[..]) {return PpConn.{};}
+    t=pp_deliver(r,1,got[..]);if !t.ok {return PpConn.{};}
+    rtt:=pp_rtt(a,got[0..<t.n],t.at);if rtt<0 {return PpConn.{};}
+    return PpConn.{ok=true,path=r[0].path,rtt=rtt};
+}
+// book:end ping
+
+// book:begin invite
+// An invitation to private mesh `mesh` for the peer with key invitee,
+// valid before expires: HMAC-SHA256 under the mesh's admission key of
+// "psionic-invite-v0" 0 mesh 0 invitee expires (8 bytes, big-endian).
+// The join message carries kind, the mesh's length and name, the invitee,
+// expires and the MAC; the admitter recomputes the MAC and compares it in
+// constant time, then asks policy.coax's pp_join.
+PP_MESH_MAX :: 64;
+pp_invite_mac :: (key:[]u8,mesh:string,invitee:[]u8,expires:int,out:[]u8)->bool {
+    msg:[17+1+PP_MESH_MAX+1+32+8]u8;tag:="psionic-invite-v0";
+    if mesh.count<1 || mesh.count>PP_MESH_MAX || invitee.count!=32 || expires<0 {return false;}
+    for i:0..<17 {msg[i]=tag[i];}
+    at:=18;for i:0..<mesh.count {msg[at+i]=mesh[i];}at+=mesh.count+1;
+    for i:0..<32 {msg[at+i]=invitee[i];}at+=32;
+    s:=cb_store_be64(msg[..],at,cast(u64)expires);at+=8;
+    return hmac_sha256_checked(key,msg[0..<at],out,false)==SHA_OK;
+}
+// The join message; its length, or -1.
+pp_join_text :: (mesh:string,invitee:[]u8,expires:int,mac:[]u8,out:[]u8)->int {
+    n:=2+mesh.count+32+8+32;
+    if mesh.count<1 || mesh.count>PP_MESH_MAX || invitee.count!=32 || mac.count!=32 || expires<0 || out.count<n {return -1;}
+    out[0]=cast(u8)PpKind.join;out[1]=cast(u8)mesh.count;
+    for i:0..<mesh.count {out[2+i]=mesh[i];}
+    at:=2+mesh.count;for i:0..<32 {out[at+i]=invitee[i];out[at+40+i]=mac[i];}
+    s:=cb_store_be64(out,at+32,cast(u64)expires);return n;
+}
+// Admit a join: text is the opened plaintext (empty for no invitation),
+// peer the session's authenticated key. Anything shorter than a join with a
+// one-byte mesh name, or not exactly as long as its name says, is no
+// invitation at all.
+pp_check_join :: (private:bool,mesh:string,key:[]u8,peer:[]u8,text:[]u8,now:int)->PpJoin {
+    if text.count<75 || text[0]!=cast(u8)PpKind.join || text.count!=74+cast(int)text[1] {return pp_join(private,mesh,cast(string)peer,PpInvite.{},now);}
+    at:=2+cast(int)text[1];expires:=cast(int)cb_load_be64(text,at+32).value;want:[32]u8;
+    ok:=pp_invite_mac(key,cast(string)text[2..<at],text[at..<at+32],expires,want[..]) && cb_ct_equal(want[..],text[at+40..<at+72])!=0;
+    inv:=PpInvite.{present=true,mesh=cast(string)text[2..<at],invitee=cast(string)text[at..<at+32],expires=expires,mac_ok=ok};
+    return pp_join(private,mesh,cast(string)peer,inv,now);
+}
+// book:end invite
+
+#load "../../tests/peer-link-checks.coax";
+
+#test "public keys match BIP-340's vectors" #steps 400000000 {
+    for v:0..<4 {sk:[32]u8;pk:[32]u8;out:[32]u8;pp_vector_key(v,sk[..],pk[..]);#assert pp_public(sk[..],out[..]) && pp_same(out[..],pk[..]);}
+    sk:[32]u8;out:[32]u8;#assert !pp_public(sk[..],out[..]);          // 0 is not a secret
+    sk[31]=1;#assert !pp_public(sk[..],out[0..<31]) && !pp_public(sk[0..<31],out[..]);
+}
+#test "both ends derive mirrored keys, as HKDF says, and no third key reads them" #steps 1000000000 {
+    x:[1]PpSession;y:[1]PpSession;pp_pair(0,1,x[..],y[..]);
+    #assert x[0].ok && y[0].ok && pp_same(x[0].send[..],y[0].recv[..]) && pp_same(x[0].recv[..],y[0].send[..]) && !pp_same(x[0].send[..],x[0].recv[..]);
+    // The oracle: NIP-44's conversation key, then one HMAC over info || 1.
+    sa:[32]u8;pa:[32]u8;sb:[32]u8;pb:[32]u8;pp_vector_key(0,sa[..],pa[..]);pp_vector_key(1,sb[..],pb[..]);
+    ck:[32]u8;work:[1]EcdhScratch;#assert nip44_conversation_key_from_keys_checked(sb[..],pa[..],work[..],ck[..],false)==NIP44_OK;
+    info:[79]u8;tag:="psionic-peer-v0";for i:0..<15 {info[i]=cast(u8)tag[i];}for i:0..<32 {info[15+i]=pa[i];info[47+i]=pb[i];}
+    want:[32]u8;#assert pp_hkdf32_oracle(ck[..],info[..],want[..]) && pp_same(x[0].send[..],want[..]);
+    #assert pp_same(x[0].me[..],pa[..]) && pp_same(x[0].peer[..],pb[..]) && x[0].sent[0]==0 && x[0].seen[1]==0;
+    #assert !pp_session(sa[..],pb[0..<31]).ok;
+    bad:[32]u8;for i:0..<32 {bad[i]=255;}#assert !pp_session(sa[..],bad[..]).ok;   // not a curve x coordinate
+    zero:[32]u8;#assert !pp_session(zero[..],pb[..]).ok;
+    #assert !pp_keys(pa[0..<31],pb[..],ck[..]).ok && !pp_keys(pa[..],pb[0..<31],ck[..]).ok && !pp_keys(pa[..],pb[..],ck[0..<0]).ok && pp_keys(pa[..],pb[..],ck[..]).ok;
+    // Vector 2 talks to vector 1 too; vector 1's session with 2 cannot open 0's frames.
+    s2:[32]u8;p2:[32]u8;pp_vector_key(2,s2[..],p2[..]);w:[1]PpSession;w[0]=pp_session(sb[..],p2[..]);#assert w[0].ok;
+    text:=[3]u8.[7,7,7];frame:[64]u8;out:[8]u8;f:=pp_seal(x[..],0,text[..],frame[..]);
+    #assert pp_open(w[..],frame[0..<f],out[..]).code==PpOpenCode.forged && pp_open(y[..],frame[0..<f],out[..]).code==PpOpenCode.ok;
+}
+#test "a frame by hand: header bytes, then the sealed body" #steps 400000000 {
+    x:[1]PpSession;y:[1]PpSession;pp_fake(0,1,x[..],y[..]);
+    text:=[2]u8.['h','i'];frame:[64]u8;for i:0..<64 {frame[i]=165;}
+    #assert pp_seal(x[..],1,text[..],frame[..])==30;
+    want:=[12]u8.[0x50,0x4d,0,1,0,0,0,0,0,0,0,18];#assert pp_same(frame[0..<12],want[..]);
+    nonce:[24]u8;nonce[0]=1;box:[18]u8;key:=x[0].send;#assert xcp_seal(key[..],nonce[..],want[..],text[..],box[..],false) && pp_same(frame[12..<30],box[..]);
+    #assert pp_seal(x[..],1,text[..],frame[..])==30 && frame[7]==1 && x[0].sent[1]==2 && x[0].sent[0]==0;
+    nonce[23]=1;want[7]=1;#assert xcp_seal(key[..],nonce[..],want[..],text[..],box[..],false) && pp_same(frame[12..<30],box[..]);
+    #assert pp_seal(x[..],0,text[0..<0],frame[..])==28 && frame[3]==0 && frame[11]==16 && frame[7]==0;
+    #assert pp_seal(x[..],2,text[..],frame[..])==-1 && pp_seal(x[..],-1,text[..],frame[..])==-1 && pp_seal(x[..],0,text[..],frame[0..<29])==-1;
+    #assert pp_seal(x[..],0,text[..],frame[0..<30])==30;
+    big:[PP_TEXT_MAX+1]u8;out:[PP_FRAME_MAX+1]u8;
+    #assert pp_seal(x[..],0,big[0..<PP_TEXT_MAX],out[..])==PP_FRAME_MAX && pp_seal(x[..],0,big[..],out[..])==-1;
+    none:[1]PpSession;#assert pp_seal(x[0..<0],0,text[..],frame[..])==-1 && pp_seal(none[..],0,text[..],frame[..])==-1;
+    x[0].sent[0]=PP_SEQ_MAX;#assert pp_seal(x[..],0,text[..],frame[..])==-1;x[0].sent[0]=PP_SEQ_MAX-1;#assert pp_seal(x[..],0,text[..],frame[..])==30;
+}
+#forall "frames round trip on both lanes, in order" lane: 0..<2, size: 0..<6 #steps 2000000000 {
+    x:[1]PpSession;y:[1]PpSession;pp_fake(2,3,x[..],y[..]);
+    text:[40]u8;frame:[80]u8;out:[40]u8;
+    for k:0..<3 {
+        n:=size*7+k;for i:0..<n {text[i]=cast(u8)((i*31+k+lane)%256);}
+        f:=pp_seal(x[..],lane,text[0..<n],frame[..]);#assert f==n+28;
+        o:=pp_open(y[..],frame[0..<f],out[..]);
+        #assert o.code==PpOpenCode.ok && o.lane==lane && o.seq==k && o.n==n && pp_same(out[0..<n],text[0..<n]) && y[0].seen[lane]==k+1 && y[0].seen[1-lane]==0;
+        // The same frame again is a replay.
+        #assert pp_open(y[..],frame[0..<f],out[..]).code==PpOpenCode.replay && y[0].seen[lane]==k+1;
+    }
+    back:=[3]u8.[9,8,7];f:=pp_seal(y[..],lane,back[..],frame[..]);o:=pp_open(x[..],frame[0..<f],out[..]);
+    #assert o.code==PpOpenCode.ok && o.n==3 && out[0]==9 && out[2]==7;
+}
+#test "truncated, oversized, malformed and forged frames are refused, the session unchanged" #steps 1000000000 {
+    x:[1]PpSession;y:[1]PpSession;pp_fake(0,1,x[..],y[..]);
+    text:=[4]u8.[1,2,3,4];frame:[64]u8;out:[8]u8;f:=pp_seal(x[..],1,text[..],frame[..]);#assert f==32;
+    #assert pp_open(y[..],frame[0..<11],out[..]).code==PpOpenCode.short && pp_open(y[..],frame[0..<12],out[..]).code==PpOpenCode.length;
+    o:=pp_open(y[..],frame[0..<31],out[..]);#assert o.code==PpOpenCode.length && o.lane==1 && o.seq==0;
+    #assert pp_open(y[..],frame[0..<33],out[..]).code==PpOpenCode.length;
+    c:[64]u8;for i:0..<64 {c[i]=frame[i];}
+    c[0]='Q';#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.magic;c[0]='P';
+    c[1]='N';#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.magic;c[1]='M';
+    c[2]=1;#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.version;c[2]=0;
+    c[3]=2;#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.lane;c[3]=1;
+    // A header that claims 4113 body bytes, then the most there may be.
+    c[10]=0x10;c[11]=0x11;#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.oversized;
+    c[11]=0x10;#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.length;
+    c[8]=1;c[10]=0;c[11]=20;#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.oversized;c[8]=0;
+    c[11]=15;#assert pp_open(y[..],c[0..<27],out[..]).code==PpOpenCode.length;c[11]=20;
+    c[7]=1;o=pp_open(y[..],c[0..<32],out[..]);#assert o.code==PpOpenCode.replay && o.seq==1;c[7]=0;   // skips ahead
+    #assert pp_open(y[..],frame[0..<32],out[0..<3]).code==PpOpenCode.space;
+    #assert pp_open(y[0..<0],frame[0..<32],out[..]).code==PpOpenCode.replay;
+    for at:0..<20 {for i:0..<32 {c[i]=frame[i];}c[12+at]^=1;#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.forged;}
+    for i:0..<32 {c[i]=frame[i];}c[3]=0;#assert pp_open(y[..],c[0..<32],out[..]).code==PpOpenCode.forged;   // moved to the other lane
+    #assert pp_open(x[..],frame[0..<32],out[..]).code==PpOpenCode.forged;         // its own frame, reflected
+    #assert y[0].seen[0]==0 && y[0].seen[1]==0;
+    o=pp_open(y[..],frame[0..<32],out[..]);#assert o.code==PpOpenCode.ok && o.n==4 && out[3]==4 && y[0].seen[1]==1;
+    #assert pp_open(y[..],frame[0..<32],out[0..<4]).code==PpOpenCode.replay;
+}
+#test "a pong answers only a 9-byte ping on the control lane" {
+    x:[1]PpSession;y:[1]PpSession;pp_fake(4,5,x[..],y[..]);frame:[64]u8;pong:[64]u8;
+    ping:[9]u8;ping[8]=100;
+    f:=pp_seal(x[..],0,ping[..],frame[..]);#assert pp_echo(y[..],frame[0..<f],pong[..])==PP_PING;
+    #assert pp_rtt(x[..],pong[0..<PP_PING],250)==150;
+    f=pp_seal(x[..],0,ping[..],frame[..]);#assert pp_rtt(y[..],frame[0..<f],250)== -1;       // a ping is no pong
+    f=pp_seal(x[..],0,ping[0..<8],frame[..]);#assert pp_echo(y[..],frame[0..<f],pong[..])== -1;
+    f=pp_seal(x[..],1,ping[..],frame[..]);#assert pp_echo(y[..],frame[0..<f],pong[..])== -1;
+    ping[0]=1;f=pp_seal(x[..],0,ping[..],frame[..]);#assert pp_echo(y[..],frame[0..<f],pong[..])== -1;
+    #assert pp_echo(y[..],frame[0..<f],pong[..])== -1 && pp_echo(y[..],frame[0..<f],pong[0..<36])== -1;   // a replay; then too small
+    ping[0]=0;f=pp_seal(x[..],0,ping[..],frame[..]);#assert pp_echo(y[..],frame[0..<f],pong[0..<36])== -1;
+    // The pong side refuses the same three ways.
+    q:[9]u8;q[0]=1;f=pp_seal(y[..],0,q[0..<8],frame[..]);#assert pp_rtt(x[..],frame[0..<f],0)== -1;
+    f=pp_seal(y[..],1,q[..],frame[..]);#assert pp_rtt(x[..],frame[0..<f],0)== -1;
+    f=pp_seal(y[..],0,q[..],frame[..]);#assert pp_rtt(x[..],frame[0..<f],9)==9;
+}
+#test "wires deliver in order after their delay, four frames at most" {
+    w:[1]PpWire;w[0].delay=5;a:=[2]u8.[1,2];b:=[1]u8.[3];out:[4]u8;
+    two:[2]PpWire;#assert !pp_put(two[..],0,a[..]) && !pp_put(two[0..<0],0,a[..]) && pp_put(two[0..<1],0,a[..]);
+    #assert !pp_take(two[..],out[..]).ok && pp_take(two[0..<1],out[..]).ok;
+    #assert !pp_take(w[..],out[..]).ok;
+    #assert pp_put(w[..],10,a[..]) && pp_put(w[..],11,b[..]) && pp_put(w[..],12,b[..]) && pp_put(w[..],13,b[..]) && !pp_put(w[..],14,b[..]);
+    t:=pp_take(w[..],out[0..<1]);#assert !t.ok && w[0].count==4;
+    t=pp_take(w[..],out[..]);#assert t.ok && t.at==15 && t.n==2 && out[0]==1 && out[1]==2 && w[0].count==3;
+    #assert pp_put(w[..],20,a[..]);
+    t=pp_take(w[..],out[..]);#assert t.at==16 && t.n==1 && out[0]==3;
+    t=pp_take(w[..],out[..]);#assert t.at==17;t=pp_take(w[..],out[..]);#assert t.at==18;
+    t=pp_take(w[..],out[..]);#assert t.ok && t.at==25 && t.n==2 && w[0].count==0 && !pp_take(w[..],out[..]).ok;
+    big:[PP_FRAME_MAX+1]u8;#assert !pp_put(w[..],0,big[..]) && pp_put(w[..],0,big[0..<PP_FRAME_MAX]);
+}
+#test "a relay forwards the same bytes and adds its leg" {
+    r:[1]PpRoute;pp_route(r[..],PpPath.relayed,9000,12000);out:[8]u8;a:=[3]u8.[4,5,6];
+    #assert r[0].wires[1][0].delay==9000 && r[0].wires[1][1].delay==12000 && r[0].wires[0][1].delay==12000;
+    #assert pp_send(r[..],1,100,a[..]);t:=pp_deliver(r[..],1,out[..]);
+    #assert t.ok && t.at==21100 && t.n==3 && out[2]==6 && r[0].relayed==1 && r[0].relay_bytes==3 && r[0].seen_n==3 && r[0].seen[0]==4;
+    #assert !pp_deliver(r[..],1,out[..]).ok && !pp_deliver(r[..],0,out[..]).ok;
+    pp_route(r[..],PpPath.direct,400,0);#assert r[0].relayed==0;
+    #assert pp_send(r[..],0,7,a[..]);t=pp_deliver(r[..],0,out[..]);#assert t.ok && t.at==407 && r[0].relayed==0;
+    pp_route(r[..],PpPath.relayed,1,1);
+    #assert !pp_relay(r[..],r[0].wires[0][0..<1],r[0].wires[0][1..<2]) && r[0].relayed==0;
+    for i:0..<4 {#assert pp_send(r[..],0,0,a[..]) && pp_relay(r[..],r[0].wires[0][0..<1],r[0].wires[0][1..<2]);}
+    #assert pp_send(r[..],0,0,a[..]) && !pp_relay(r[..],r[0].wires[0][0..<1],r[0].wires[0][1..<2]) && !pp_deliver(r[..],1,out[..]).ok;
+}
+#test "pings measure 2 x 400 us direct and 2 x (9000 + 12000) us relayed" #steps 1000000000 {
+    x:[1]PpSession;y:[1]PpSession;pp_fake(0,1,x[..],y[..]);r:[1]PpRoute;
+    pp_route(r[..],PpPath.direct,400,0);c:=pp_ping(x[..],y[..],r[..],1000);
+    #assert c.ok && c.path==PpPath.direct && c.rtt==800 && x[0].sent[0]==1 && y[0].seen[0]==1 && x[0].seen[0]==1 && y[0].sent[1]==0;
+    pp_route(r[..],PpPath.relayed,9000,12000);c=pp_ping(x[..],y[..],r[..],5000);
+    #assert c.ok && c.path==PpPath.relayed && c.rtt==42000 && r[0].relayed==2 && r[0].relay_bytes==74;
+    pp_route(r[..],PpPath.direct,3,0);#assert pp_ping(x[..],y[..],r[..],0).rtt==6;
+    pp_route(r[..],PpPath.direct,0,0);c=pp_ping(x[..],y[..],r[..],0);#assert c.ok && c.rtt==0;
+    // Every failure answers not ok: a full wire either way, a wrong peer.
+    pp_route(r[..],PpPath.relayed,3,4);r[0].wires[0][0].count=PP_SLOTS;#assert !pp_ping(x[..],y[..],r[..],0).ok;
+    pp_route(r[..],PpPath.relayed,3,4);r[0].wires[1][0].count=PP_SLOTS;#assert !pp_ping(x[..],y[..],r[..],0).ok;
+    pp_route(r[..],PpPath.direct,3,0);#assert !pp_ping(x[..],x[..],r[..],0).ok;
+    pp_route(r[..],PpPath.relayed,3,4);r[0].wires[1][1].count=PP_SLOTS;#assert !pp_ping(x[..],y[..],r[..],0).ok;
+    none:[1]PpSession;#assert !pp_ping(none[..],y[..],r[..],0).ok;
+}
+#test "invitations: MAC by hand, join text, and the admitter's verdicts" #steps 400000000 {
+    key:=[4]u8.[1,2,3,4];inv:[32]u8;other:[32]u8;for i:0..<32 {inv[i]=cast(u8)(i+1);other[i]=cast(u8)(i+2);}
+    mac:[32]u8;#assert pp_invite_mac(key[..],"lab",inv[..],500,mac[..]);
+    msg:[62]u8;t:="psionic-invite-v0";for i:0..<17 {msg[i]=cast(u8)t[i];}msg[18]='l';msg[19]='a';msg[20]='b';
+    for i:0..<32 {msg[22+i]=cast(u8)(i+1);}msg[60]=1;msg[61]=244;
+    want:[32]u8;#assert hmac_sha256_checked(key[..],msg[..],want[..],false)==SHA_OK && pp_same(mac[..],want[..]);
+    long:[65]u8;for i:0..<65 {long[i]='m';}
+    #assert pp_invite_mac(key[..],cast(string)long[0..<64],inv[..],0,mac[..]) && !pp_invite_mac(key[..],cast(string)long[..],inv[..],0,mac[..]);
+    #assert !pp_invite_mac(key[..],"",inv[..],0,mac[..]) && !pp_invite_mac(key[..],"lab",inv[0..<31],0,mac[..]) && !pp_invite_mac(key[..],"lab",inv[..],-1,mac[..]);
+    #assert pp_invite_mac(key[..],"a",inv[..],0,mac[..]);
+    #assert pp_invite_mac(key[..],"lab",inv[..],500,mac[..]);
+    text:[200]u8;n:=pp_join_text("lab",inv[..],500,mac[..],text[..]);
+    #assert n==77 && text[0]==2 && text[1]==3 && text[2]=='l' && text[5]==1 && text[36]==32 && text[43]==1 && text[44]==244 && text[45]==mac[0] && text[76]==mac[31];
+    #assert pp_join_text("",inv[..],500,mac[..],text[..])==-1 && pp_join_text(cast(string)long[..],inv[..],500,mac[..],text[..])==-1 && pp_join_text(cast(string)long[0..<64],inv[..],1,mac[..],text[..])==138;
+    #assert pp_join_text("lab",inv[0..<31],500,mac[..],text[..])==-1 && pp_join_text("lab",inv[..],500,mac[0..<31],text[..])==-1;
+    #assert pp_join_text("lab",inv[..],-1,mac[..],text[..])==-1 && pp_join_text("lab",inv[..],500,mac[..],text[0..<76])==-1;
+    #assert pp_join_text("lab",inv[..],0,mac[..],text[0..<77])==77;
+    one:[32]u8;#assert pp_invite_mac(key[..],"a",inv[..],9,one[..]);n=pp_join_text("a",inv[..],9,one[..],text[..]);
+    #assert n==75 && pp_check_join(true,"a",key[..],inv[..],text[0..<n],8)==PpJoin.ok;
+    text[1]=0;#assert pp_check_join(true,"",key[..],inv[..],text[0..<74],8)==PpJoin.invitation;
+    n=pp_join_text("lab",inv[..],500,mac[..],text[..]);
+    #assert pp_check_join(true,"lab",key[..],inv[..],text[0..<n],499)==PpJoin.ok;
+    #assert pp_check_join(true,"lab",key[..],inv[..],text[0..<n],500)==PpJoin.expired;
+    #assert pp_check_join(true,"lab",key[..],other[..],text[0..<n],0)==PpJoin.invitee;
+    #assert pp_check_join(true,"lan",key[..],inv[..],text[0..<n],0)==PpJoin.mesh;
+    #assert pp_check_join(true,"lab",key[..],inv[..],text[0..<0],0)==PpJoin.invitation;
+    #assert pp_check_join(false,"lab",key[..],inv[..],text[0..<0],0)==PpJoin.ok;
+    #assert pp_check_join(true,"lab",key[..],inv[..],text[0..<n-1],0)==PpJoin.invitation && pp_check_join(true,"lab",key[..],inv[..],text[0..<1],0)==PpJoin.invitation;
+    text[0]=4;#assert pp_check_join(true,"lab",key[..],inv[..],text[0..<n],0)==PpJoin.invitation;text[0]=2;
+    text[1]=0;#assert pp_check_join(true,"lab",key[..],inv[..],text[0..<n],0)==PpJoin.invitation;text[1]=3;
+    for at:45..<77 {text[at]^=128;#assert pp_check_join(true,"lab",key[..],inv[..],text[0..<n],0)==PpJoin.forged;text[at]^=128;}
+    text[44]=245;#assert pp_check_join(true,"lab",key[..],inv[..],text[0..<n],0)==PpJoin.forged;text[44]=244;   // a later expiry
+    k2:=[4]u8.[1,2,3,5];#assert pp_check_join(true,"lab",k2[..],inv[..],text[0..<n],0)==PpJoin.forged;
+    #assert pp_check_join(true,"lab",key[..],inv[..],text[0..<n],0)==PpJoin.ok;
+}
