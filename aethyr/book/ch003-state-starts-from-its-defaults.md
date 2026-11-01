@@ -190,14 +190,14 @@ bun test coax/web/state-defaults.test.ts
 | --- | --- |
 | Realm states matching native `coax_init`, byte for byte | 17 |
 | Of those, caught when left zeroed | 17 |
-| Face globals matching their type's defaults | 21 |
+| Face globals matching their type's defaults | 20 |
 | Run time | 68 s |
 
 The 17 states come from Belt, Dead Gears, Everglade, Fairy Forest, Garden,
 Ice Cream Man, Memorial, Orbit League, Hold the Stair, the villa, Water Lab,
 and the pages that declare state defaults. Realms with no declared defaults
-aren't included. The 21 globals are the player and thumbs of each walking
-realm, the haunted house's entities, people and house, and the homepage
+aren't included. The 20 globals are the player and thumbs of each walking
+realm, the Grid's session, the haunted house's entities, people and house, and the homepage
 reader's query.
 
 ## Still to do

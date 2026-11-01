@@ -60,7 +60,7 @@ each defaulted part with native `coax_init`, byte for byte. It is sharp: the
 same state left zeroed must differ, or the realm fails. 17 realm states pass
 (Belt, Dead Gears, Everglade, Fairy Forest, Garden, Ice Cream Man, Memorial,
 Orbit League, Hold the Stair, the villa, Water Lab and the pages with state
-defaults), and so do 21 face globals, compared natively after the face's
+defaults), and so do 20 face globals, compared natively after the face's
 constructors run;
 a realm with no defaults has nothing to apply. `aethyr/loop.coax`'s clock
 also takes its default step, frame clamp and step cap on its first frame if it was zeroed, so it never freezes.
