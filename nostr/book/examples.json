@@ -831,6 +831,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/data-vending.coax",
+      "chapter": "nostr/book/ch065-data-vending-machines.md",
+      "stdout": "nostr/fixtures/data-vending.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

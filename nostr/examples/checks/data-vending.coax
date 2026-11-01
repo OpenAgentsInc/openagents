@@ -1,0 +1,93 @@
+// The checks of data-vending.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/data-vending.coax --run-steps 250000000
+#load "../data-vending.coax";
+
+// book:begin check
+// From a Python script written from NIP-01, NIP-90 and BIP-340 (it shares
+// no code with Coax): the public keys of secret keys 1 and 2 by integer
+// secp256k1, R's and R2's BIP-340 signatures with 32 zero bytes of aux, each event's
+// tags built from NIP-90's field lists, and each id as hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False). S's and X's request tags hold
+// R's and R2's full event JSON, so their ids also fix those bytes.
+PY_ID :: [EVENTS] string.[
+  "ad0f9c450d87e512250122ef83b2f6ae0e5da9658770951880e7d65156a3a48a",
+  "6888825cb061c1395442807221b151a9b5619a93125190fea2a6ccf1f738d542",
+  "8a46f3ab994ead2718da9209b070c2c1f3160394342af93adc255944cb5131f0",
+  "bcfc219c49f14e84bd56ec8eecd146f124a44a3fcbcf74cad6af27127e35060c",
+  "e70694af0f43d813426ae5a4d7dfe404680015cfc4bc52def1cc102a42bf38a9"];
+PY_R_SIG :: "32f4c1651903b4d77753ddd8fe6c9eba14ab0ef6f4d8c59e291c9e2c701ba84c9946f11faf9be8264a71dd1b26affeb0286893b38f0ea4a10ab00b18e82907f0";
+PY_R2_SIG :: "1323e35789644aaeab550cebcde01c8bf33c9c36c7bfa23ec12daf3304ce3beb0f111a0834f522979e839cc34e4161b70c3a1370ceeef12f6bfb06ace9937bfa";
+PY_R_LENGTH :: 568;
+ZERO_SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+WHO :: [EVENTS] int.[ALICE, BOB, BOB, ALICE, BOB];
+AT :: [EVENTS] int.[0, 5, 10, 1, 10];
+KIND :: [EVENTS] int.[5050, 7000, 6050, 5050, 6050];
+CONTENT :: [EVENTS] string.["", "", "Paris", "", "Paris"];
+
+// An event with Python's id and the given signature, read with its id
+// recomputed; the signature is not checked here.
+py :: (k: int, tags: string, sig: string, out: [] u8, scratch: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[WHO[k]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, CONTENT[k]);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, sig); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+// The five events, with R and R2 carrying signatures so that the requests
+// the results embed are the signed events.
+World :: struct { ev: [EVENTS] NostrEvent; buf: [EVENTS][8192] u8; scratch: [EVENTS][8192] u8; }
+world :: (w: [] World) {
+  tags: [8192] u8;
+  w[0].ev[0] = py(0, request_tags(tags[..]), PY_R_SIG, w[0].buf[0][..], w[0].scratch[0][..]);
+  w[0].ev[1] = py(1, reply_tags(w[0].ev[0], N90_PAYMENT_REQUIRED, 5000, INVOICE, tags[..]), ZERO_SIG, w[0].buf[1][..], w[0].scratch[1][..]);
+  w[0].ev[2] = py(2, reply_tags(w[0].ev[0], -1, -1, "", tags[..]), ZERO_SIG, w[0].buf[2][..], w[0].scratch[2][..]);
+  w[0].ev[3] = py(3, request_tags(tags[..]), PY_R2_SIG, w[0].buf[3][..], w[0].scratch[3][..]);
+  w[0].ev[4] = py(4, swapped_tags(w[0].ev[0], w[0].ev[3], tags[..]), ZERO_SIG, w[0].buf[4][..], w[0].scratch[4][..]);
+}
+
+#test "the ids are Python's, and R's and R2's signatures verify" #steps 400000000 {
+  w: [1] World; world(w[..]);
+  for k: 0..<EVENTS { #assert w[0].ev[k].error == NE_OK && ns_equal32(w[0].ev[k].computed_id, w[0].ev[k].id); }
+  r := w[0].ev[0];
+  r2 := w[0].ev[3];
+  #assert r.original.count == PY_R_LENGTH && nostr_verify_vartime(r.id[..], r.public_key[..], r.signature[..]);
+  #assert nostr_verify_vartime(r2.id[..], r2.public_key[..], r2.signature[..]);
+}
+// By hand, from the chapter: 50n is 50 x 10^-9 bitcoin, 50 x 100 = 5000
+// millisats; a result for kind 5050 is kind 6050; the trace is sent, then
+// payment required owing 5000, then done.
+#test "the hand values: the invoice, the kinds and the trace" #steps 400000000 {
+  #assert n90_invoice(INVOICE) == 50 * 100 && 5050 + 1000 == 6050;
+  w: [1] World; world(w[..]); work: [16384] u8;
+  r := w[0].ev[0]; f := w[0].ev[1]; s := w[0].ev[2];
+  #assert n90_match(r, f, work[..]) == N90_OK && n90_match(r, s, work[..]) == N90_OK && n90_reply(s).kind == r.kind + 1000;
+  j := n90_job(r, WAIT); #assert j.state == N90_SENT && j.deadline == T0 + 600;
+  j = n90_step(j, r, f, T0 + 5, work[..]); #assert j.state == N90_PAY && j.owed == 5000;
+  j = n90_step(j, r, s, T0 + 12, work[..]); #assert j.state == N90_DONE && j.owed == 5000 && ns_equal32(j.result, s.id);
+  // The chapter's refusal: X names R in its e tag but embeds R2.
+  #assert n90_match(r, w[0].ev[4], work[..]) == N90_REQUEST && n90_match(w[0].ev[3], s, work[..]) == N90_E;
+}
+// NIP-90's own examples: the encrypted params tag list, and the five
+// feedback statuses of its table.
+#test "NIP-90's examples read" {
+  plain := "[[\"i\",\"what is the capital of France? \",\"text\"],[\"param\",\"model\",\"LLaMA-2\"],[\"param\",\"max_tokens\",\"512\"],[\"param\",\"temperature\",\"0.5\"],[\"param\",\"top-k\",\"50\"],[\"param\",\"top-p\",\"0.7\"],[\"param\",\"frequency_penalty\",\"1\"]]";
+  r := n90_request(n32_event(5050, plain));
+  #assert r.error == N90_OK && r.ni == 1 && r.inputs[0].type == N90_TEXT && r.np == 6 && n32_is(r.params[2].key, "temperature") && n32_is(r.params[2].value, "0.5");
+  names := [5] string.["payment-required", "processing", "error", "success", "partial"];
+  for k: 0..<5 {
+    t: [512] u8; n := json_raw(t[..], 0, "[[\"status\",\""); n = json_raw(t[..], n, names[k]);
+    n = json_raw(t[..], n, "\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]]");
+    #assert n90_reply(n32_event(7000, cast(string) t[0..<n])).status == k;
+  }
+  // The pinned text's encrypted request content is NIP-04 shaped only in
+  // name; this stack refuses a ?iv= payload under the encrypted tag.
+  e := n90_request(n32_event(5050, "[[\"p\",\"04f74530a6ede6b24731b976b8e78fb449ea61f40ff10e3d869a3030c4edc91f\"],[\"encrypted\"]]"));
+  #assert e.error == N90_OK && e.encrypted && e.providers[0][0] == 0x04;
+}
+// book:end check

@@ -1360,14 +1360,21 @@
    "number": 65,
    "title": "Data vending machines",
    "file": "ch065-data-vending-machines.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22,
     20
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip90.coax",
+    "coax/tests/nostr/nip90_fixtures.coax",
+    "nostr/examples/data-vending.coax",
+    "nostr/examples/checks/data-vending.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

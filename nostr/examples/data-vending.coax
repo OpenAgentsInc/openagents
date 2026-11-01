@@ -1,0 +1,192 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip90.coax";
+#load "../../coax/lib/nostr/nip44-key.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+E90 :: [25] string.["ok", "event", "kind", "bad input", "bad param", "bad bid", "bad tag", "bad encrypted request",
+  "NIP-04 content refused", "can't decrypt", "limit", "no e tag", "e names another request", "p names another customer",
+  "request tag does not match the request", "bad status", "bad amount", "invoice amount differs", "over the bid", "no bid",
+  "outside the clock", "stale feedback", "another provider", "job closed", "output"];
+STATE :: [7] string.["sent", "payment required", "working", "done", "failed", "too dear", "expired"];
+// The public keys of the secret keys 1 to 3: published test values.
+// Never sign with a real key in an example.
+PEOPLE :: [3] string.["Alice", "Bob", "Carol"];
+PUB :: [3] string.[
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"];
+ALICE :: 0; BOB :: 1; CAROL :: 2;
+T0 :: 1762000000;
+WAIT :: 600;                      // Alice waits ten minutes for an answer
+RELAY :: "wss://relay.example.com";
+QUESTION :: "What is the capital of France?";
+// An invoice's human-readable part with a placeholder data part: 50n is
+// 50 nano-bitcoin. Not a payable invoice; nothing here pays.
+INVOICE :: "lnbc50n1pexample";
+
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+
+// Sign an event with secret key who+1 and read it back with its ID and
+// signature checked.
+sign :: (signer: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; key[31] = cast(u8) (signer + 1);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [16384] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [16384] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified && ns_equal32(e.public_key, key_of(signer));
+  return e;
+}
+// The conversation key of secret key me+1 and peer's public key.
+conversation :: (me: int, peer: int) -> [32] u8 {
+  secret: [32] u8; secret[31] = cast(u8) (me + 1); pub := key_of(peer);
+  work: [1] EcdhScratch; ck: [32] u8;
+  #assert nip44_conversation_key_from_keys_checked(secret[..], pub[..], work[..], ck[..], false) == NIP44_OK;
+  return ck;
+}
+
+// The request's tags, the replies' tags, and a hand-written result that
+// embeds another request.
+request_tags :: (out: [] u8) -> string {
+  in := [1] N90In.[N90In.{data = QUESTION, type = N90_TEXT}];
+  params := [1] N90Pair.[N90Pair.{key = "model", value = "LLaMA-2"}];
+  relays := [1] string.[RELAY]; bob := [1][32] u8.[key_of(BOB)];
+  n := n90_request_tags(in[..], params[..], "text/plain", 10000, relays[..], bob[..], false, out);
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+reply_tags :: (request: NostrEvent, status: int, amount: int, bolt11: string, out: [] u8) -> string {
+  n := n90_reply_tags(request, status, "", ifx status < 0 then RELAY else "", amount, bolt11, out);
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+swapped_tags :: (request: NostrEvent, embedded: NostrEvent, out: [] u8) -> string {
+  hex: [64] u8;
+  n := json_raw(out, 0, "[[\"request\","); n = json_write_string(out, n, embedded.original);
+  n = json_raw(out, n, "],[\"e\",\""); n = json_raw(out, n, hex32(request.id, hex[..]));
+  n = json_raw(out, n, "\"],[\"p\",\""); n = json_raw(out, n, PUB[ALICE]); n = json_raw(out, n, "\"]]");
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// An unsigned event by Carol, parsed but not verified. Used for the
+// refusals, which no signer here would write.
+unsigned :: (kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[CAROL]); n = json_raw(out, n, "\",\"created_at\":1762000000,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, content);
+  n = json_raw(out, n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+show_step :: (what: string, s: N90Job) {
+  print("%: %, %", what, STATE[s.state], E90[s.error]);
+  if s.owed >= 0 { print(", owes % msats", s.owed); }
+  print("\n");
+}
+
+// The signed events: R the request, F the feedback, S the result, R2 a
+// second request and X a result for R that embeds R2.
+EVENTS :: 5;
+NAME :: [EVENTS] string.["R", "F", "S", "R2", "X"];
+
+main :: () {
+  ev: [EVENTS] NostrEvent; buf: [EVENTS][8192] u8; tags: [8192] u8;
+  ev[0] = sign(ALICE, T0, 5050, request_tags(tags[..]), "", buf[0][..]);
+  ev[1] = sign(BOB, T0 + 5, 7000, reply_tags(ev[0], N90_PAYMENT_REQUIRED, 5000, INVOICE, tags[..]), "", buf[1][..]);
+  ev[2] = sign(BOB, T0 + 10, 6050, reply_tags(ev[0], -1, -1, "", tags[..]), "Paris", buf[2][..]);
+  ev[3] = sign(ALICE, T0 + 1, 5050, request_tags(tags[..]), "", buf[3][..]);
+  ev[4] = sign(BOB, T0 + 10, 6050, swapped_tags(ev[0], ev[3], tags[..]), "Paris", buf[4][..]);
+  req := ev[0]; fb := ev[1]; res := ev[2];
+
+  print("== 1. The events (T0 = %)\n", T0);
+  for k: 0..<EVENTS { hex: [64] u8; print("%: kind %, by %, id %\n", NAME[k], ev[k].kind, PEOPLE[ifx k == 0 || k == 3 then ALICE else BOB], hex32(ev[k].id, hex[..])); }
+  print("R's tags: %\n", request_tags(tags[..]));
+  print("F's tags: %\n", reply_tags(req, N90_PAYMENT_REQUIRED, 5000, INVOICE, tags[..]));
+
+  print("\n== 2. Bob reads the request\n");
+  r := n90_request(req);
+  print("R: %, kind %, % input, % param, bid % msats, % relay, % provider\n", E90[r.error], r.kind, r.ni, r.np, r.bid, r.relays, r.nproviders);
+  print("  input: "); say(r.inputs[0].data); print(" (%)\n", N90_INPUT_NAMES[r.inputs[0].type]);
+  print("  param: "); say(r.params[0].key); print(" = "); say(r.params[0].value); print("; output "); say(r.output); print("\n");
+
+  print("\n== 3. Feedback and result, matched to the request\n");
+  work: [16384] u8;
+  f := n90_reply(fb);
+  print("F: %, status %, amount % msats, invoice %\n", E90[f.error], N90_STATUS_NAMES[f.status], f.amount, cast(string) f.bolt11[0..<f.bolt11_n]);
+  print("  invoice states % msats; match: %\n", n90_invoice(INVOICE), E90[n90_match(req, fb, work[..])]);
+  s := n90_reply(res);
+  print("S: %, kind % = % + 1000, request tag at %, match: %\n", E90[s.error], s.kind, req.kind, s.request_tag, E90[n90_match(req, res, work[..])]);
+  p := n90_price(r.bid, f.amount, cast(string) f.bolt11[0..<f.bolt11_n]);
+  print("pay % msats against a bid of %: %\n", p.msats, r.bid, E90[p.error]);
+
+  print("\n== 4. Alice's job, deadline T0+%\n", WAIT);
+  j := n90_job(req, WAIT);
+  show_step("start", j);
+  j = n90_step(j, req, fb, T0 + 5, work[..]); show_step("F at T0+5", j);
+  j = n90_step(j, req, res, T0 + 12, work[..]); show_step("S at T0+12", j);
+  j = n90_step(j, req, res, T0 + 13, work[..]); show_step("S again", j);
+
+  print("\n== 5. A request sealed with NIP-44\n");
+  plain := "[[\"i\",\"What is the capital of France?\",\"text\"],[\"param\",\"model\",\"LLaMA-2\"]]";
+  ck := conversation(ALICE, BOB);
+  // A fixed nonce for a reproducible example only: a client takes 32 fresh
+  // random bytes for every message.
+  nonce: [32] u8; for i: 0..<32 { nonce[i] = 7; }
+  pt: [256] u8; for i: 0..<plain.count { pt[i] = plain[i]; }
+  sealed: [1024] u8; nw: [1024] u8;
+  sr := nip44_encrypt_checked(NIP44_COMPAT, ck[..], nonce[..], pt[0..<plain.count], nw[0..<nip44_encrypt_work_size(NIP44_COMPAT, plain.count)], sealed[..], false);
+  #assert sr.error == NIP44_OK;
+  bob := [1][32] u8.[key_of(BOB)]; n0: [1] N90In; p0: [1] N90Pair; r0: [1] string;
+  et: [256] u8; en := n90_request_tags(n0[0..<0], p0[0..<0], "", 10000, r0[0..<0], bob[..], true, et[..]);
+  eb: [4096] u8; enc := sign(ALICE, T0 + 20, 5050, cast(string) et[0..<en], cast(string) sealed[0..<sr.written], eb[..]);
+  outer := n90_request(enc);
+  print("E's tags: %\n", cast(string) et[0..<en]);
+  print("E as anyone reads it: %, encrypted %, % inputs\n", E90[outer.error], outer.encrypted, outer.ni);
+  bk := conversation(BOB, ALICE); dw: [4096] u8; dout: [1024] u8;
+  o := n90_private(enc, outer, bk[..], dw[..], dout[..]);
+  print("E opened by Bob: %, % input, % param, input ", E90[o.error], o.ni, o.np); say(o.inputs[0].data); print("\n");
+  ck2 := conversation(CAROL, ALICE);
+  print("E opened by Carol: %\n", E90[n90_private(enc, outer, ck2[..], dw[..], dout[..]).error]);
+
+  print("\n== 6. Refusals\n");
+  bad: [8192] u8; bt: [8192] u8;
+  print("X, a result for R that embeds R2: %\n", E90[n90_match(req, ev[4], work[..])]);
+  print("S checked against R2: %\n", E90[n90_match(ev[3], res, work[..])]);
+  w := unsigned(6051, reply_tags(req, -1, -1, "", bt[..]), "Paris", bad[..]);
+  print("S's tags under kind 6051: %\n", E90[n90_match(req, w, work[..])]);
+  dear := unsigned(7000, reply_tags(req, N90_PAYMENT_REQUIRED, 20000, "", bt[..]), "", bad[..]);
+  d := n90_step(n90_job(req, WAIT), req, dear, T0 + 5, work[..]); show_step("payment-required for 20000 msats", d);
+  hex: [64] u8;
+  m := json_raw(bt[..], 0, "[[\"status\",\"payment-required\"],[\"amount\",\"5000\",\"lnbc100n1pexample\"],[\"e\",\"");
+  m = json_raw(bt[..], m, hex32(req.id, hex[..])); m = json_raw(bt[..], m, "\"],[\"p\",\""); m = json_raw(bt[..], m, PUB[ALICE]); m = json_raw(bt[..], m, "\"]]");
+  mis := unsigned(7000, cast(string) bt[0..<m], "", bad[..]);
+  d = n90_step(n90_job(req, WAIT), req, mis, T0 + 5, work[..]); show_step("5000 msats with a 100n invoice", d);
+  d = n90_step(n90_job(req, WAIT), req, res, T0 + WAIT + 1, work[..]); show_step("S taken after the deadline", d);
+  d = n90_step(n90_job(req, WAIT), req, res, T0 + 9, work[..]); show_step("S taken at T0+9, before it was made", d);
+  j = n90_step(n90_job(req, WAIT), req, fb, T0 + 5, work[..]);
+  carol := unsigned(7000, reply_tags(req, N90_PROCESSING, -1, "", bt[..]), "", bad[..]);
+  d = n90_step(j, req, carol, T0 + 6, work[..]); show_step("Carol's feedback after Bob's", d);
+  nip04 := unsigned(5050, "[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"encrypted\"]]", "zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktcbX6PkA==", bad[..]);
+  print("encrypted request with NIP-04 content: %\n", E90[n90_request(nip04).error]);
+  q := n90_request(unsigned(5050, "[[\"i\",\"/etc/passwd\",\"file\"]]", "", bad[..]));
+  print("input of type file: % at tag %\n", E90[q.error], q.at);
+  q = n90_request(unsigned(5050, "[[\"bid\",\"-5\"]]", "", bad[..]));
+  print("bid -5: % at tag %\n", E90[q.error], q.at);
+}
+// book:end example

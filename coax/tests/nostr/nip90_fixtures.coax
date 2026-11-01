@@ -1,0 +1,40 @@
+// Event records for nip90.coax's checks: events with a real id (the
+// NIP-01 hash of their fields) and a zero signature, so that the embedded
+// request of a result reads back through nostr_event_read. They live here so
+// that mutation of nip90.coax changes the library, not the checks.
+N90_T_ZERO_SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+// The event with these fields written into out with its id computed; read
+// back with the id checked, the signature not.
+n90_t_event :: (author:u8,created_at:int,kind:int,tags:string,content:string,out:[]u8)->NostrEvent {
+  pub:[32]u8;for i:0..<32 {pub[i]=author;}
+  ph:[64]u8;h:=hex_encode_checked(cast(string)pub[..],ph[..],false);
+  pre:[8192]u8;
+  n:=json_raw(pre[..],0,"[0,\"");n=json_raw(pre[..],n,cast(string)ph[..]);n=json_raw(pre[..],n,"\",");
+  n=json_write_int(pre[..],n,created_at);n=json_raw(pre[..],n,",");n=json_write_int(pre[..],n,kind);
+  n=json_raw(pre[..],n,",");n=json_raw(pre[..],n,tags);n=json_raw(pre[..],n,",");n=json_write_string(pre[..],n,content);n=json_raw(pre[..],n,"]");
+  id:[32]u8;ok:=sha256_hash_checked(pre[0..<n],id[..],false);
+  ih:[64]u8;g:=hex_encode_checked(cast(string)id[..],ih[..],false);
+  m:=json_raw(out,0,"{\"id\":\"");m=json_raw(out,m,cast(string)ih[..]);
+  m=json_raw(out,m,"\",\"pubkey\":\"");m=json_raw(out,m,cast(string)ph[..]);
+  m=json_raw(out,m,"\",\"created_at\":");m=json_write_int(out,m,created_at);
+  m=json_raw(out,m,",\"kind\":");m=json_write_int(out,m,kind);
+  m=json_raw(out,m,",\"tags\":");m=json_raw(out,m,tags);
+  m=json_raw(out,m,",\"content\":");m=json_write_string(out,m,content);
+  m=json_raw(out,m,",\"sig\":\"");m=json_raw(out,m,N90_T_ZERO_SIG);m=json_raw(out,m,"\"}");
+  scratch:[8192]u8;
+  return nostr_event_read(cast(string)out[0..<m],scratch[..],false);
+}
+n90_t_key :: (b:u8)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=b;}return k;}
+// plaintext encrypted as NIP-44 v2 with a conversation key of 32 bytes
+// equal to key and a nonce of 32 bytes equal to 7, into out: its length.
+n90_t_seal :: (key:u8,plaintext:string,out:[]u8)->int {
+  ck:=n90_t_key(key);nonce:=n90_t_key(7);
+  p:[2048]u8;for i:0..<plaintext.count {p[i]=plaintext[i];}
+  work:[8192]u8;
+  r:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],nonce[..],p[0..<plaintext.count],work[0..<nip44_encrypt_work_size(NIP44_COMPAT,plaintext.count)],out,false);
+  return r.written;
+}
+// The request the checks answer: customer 0x11 asks provider 0x22 for text
+// at created_at 1000.
+N90_T_P22 :: "2222222222222222222222222222222222222222222222222222222222222222";
+N90_T_REQ_TAGS :: "[[\"i\",\"What is the capital of France?\",\"text\"],[\"param\",\"model\",\"LLaMA-2\"],[\"output\",\"text/plain\"],[\"bid\",\"10000\"],[\"relays\",\"wss://relay.example.com\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]";

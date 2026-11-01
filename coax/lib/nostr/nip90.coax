@@ -1,0 +1,822 @@
+// NIP-90 data vending machines read and written from parsed events: job
+// requests (kinds 5000-5999) with i inputs, param, output, bid, relays, p
+// and encrypted tags; job results (the request kind + 1000) that carry the
+// request as stringified JSON; and job feedback (kind 7000) with a status.
+//
+// n90_match decides whether a result or feedback answers a request: the
+// result's kind is the request's + 1000, its e tag names the request's id,
+// its p tag the request's author, and the request it embeds hashes to the
+// same id, so it is the same event byte for byte in every signed field.
+//
+// n90_price decides whether a customer pays an amount: the amount tag in
+// millisats, the bolt11 invoice's own amount (which must be equal), and the
+// request's bid as the ceiling. n90_step is the customer's state machine
+// over the feedback and results of one request, driven by a caller-given
+// clock. Bitcoin only: an invoice's currency is Bitcoin mainnet, testnet,
+// signet or regtest.
+//
+// Encrypted requests: NIP-90 encrypts the i and param tags with NIP-04.
+// This stack reads NIP-04 only to migrate old messages (chapter 19), so an
+// encrypted request whose content is NIP-04 (it has the ?iv= suffix) is
+// refused, and n90_private opens a NIP-44 v2 payload instead.
+//
+// A reading of signed tags, not authority over them: nothing here fetches
+// an event, verifies a signature, decodes an invoice's signature or pays.
+#load "nip53.coax";
+#load "nip44.coax";
+#load "../../tests/nostr/nip90_fixtures.coax";
+#authority;
+
+N90_OK :: 0; N90_EVENT :: 1; N90_KIND :: 2; N90_INPUT :: 3; N90_PARAM :: 4;
+N90_BID :: 5; N90_TAG :: 6; N90_ENCRYPTED :: 7; N90_NIP04 :: 8; N90_DECRYPT :: 9;
+N90_LIMIT :: 10; N90_NO_E :: 11; N90_E :: 12; N90_P :: 13; N90_REQUEST :: 14;
+N90_STATUS :: 15; N90_AMOUNT :: 16; N90_INVOICE :: 17; N90_OVER_BID :: 18;
+N90_NO_BID :: 19; N90_TIME :: 20; N90_STALE :: 21; N90_PROVIDER :: 22;
+N90_CLOSED :: 23; N90_OUTPUT :: 24;
+N90_REQUEST_MIN :: 5000; N90_REQUEST_MAX :: 5999; N90_FEEDBACK :: 7000; N90_RESULT_OFFSET :: 1000;
+N90_MAX_I :: 8; N90_MAX_PARAM :: 8; N90_MAX_P :: 4; N90_MAX_BOLT11 :: 1024;
+N90_MAX_MSATS :: 2100000000000000000;  // 21 million bitcoin in millisats
+// Input types, feedback statuses and the customer's job states.
+N90_URL :: 0; N90_EVENT_ID :: 1; N90_JOB :: 2; N90_TEXT :: 3;
+N90_INPUT_NAMES :: [4] string.["url", "event", "job", "text"];
+N90_PAYMENT_REQUIRED :: 0; N90_PROCESSING :: 1; N90_ERROR :: 2; N90_SUCCESS :: 3; N90_PARTIAL :: 4;
+N90_STATUS_NAMES :: [5] string.["payment-required", "processing", "error", "success", "partial"];
+N90_SENT :: 0; N90_PAY :: 1; N90_WORKING :: 2; N90_DONE :: 3; N90_FAILED :: 4; N90_TOO_DEAR :: 5; N90_EXPIRED :: 6;
+N90_CURRENCIES :: [4] string.["lnbc", "lntb", "lntbs", "lnbcrt"];
+
+// book:begin record
+N90Input :: struct {
+  type:int=-1; data:N32Text; relay:N32Text; marker:N32Text;
+  id:[32]u8;                          // event and job: the event id
+}
+N90Param :: struct {key:N32Text; value:N32Text;}
+N90Request :: struct {
+  error:int=N90_EVENT; at:int=-1;     // the refusing tag
+  kind:int;
+  inputs:[N90_MAX_I]N90Input; ni:int;
+  params:[N90_MAX_PARAM]N90Param; np:int;
+  output:N32Text;
+  bid:int=-1;                         // millisats, -1 when absent
+  providers:[N90_MAX_P][32]u8; nproviders:int;
+  relays:int;                         // relay URLs in relays tags
+  encrypted:bool;
+}
+// A result (kind 6000-6999) or feedback (kind 7000).
+N90Reply :: struct {
+  error:int=N90_EVENT; at:int=-1;
+  kind:int; status:int=-1; extra:N32Text;
+  request:[32]u8;                     // the e tag
+  customer:[32]u8;                    // the p tag
+  amount:int=-1;                      // millisats, -1 when absent
+  bolt11:[N90_MAX_BOLT11]u8; bolt11_n:int;
+  request_tag:int=-1;                 // the request tag's index
+  encrypted:bool;
+}
+N90Price :: struct {error:int; msats:int;}
+// The customer's view of one request.
+N90Job :: struct {
+  state:int=N90_SENT; error:int;      // error: the last step's refusal
+  sent:int; deadline:int; bid:int=-1;
+  has_provider:bool; provider:[32]u8; // the first provider that answered
+  updated:int;                        // created_at of the last feedback taken
+  status:int=-1; owed:int=-1;         // the last status; the amount to pay
+  result:[32]u8;
+}
+// What the writers take.
+N90In :: struct {data:string; type:int; relay:string; marker:string;}
+N90Pair :: struct {key:string; value:string;}
+// book:end record
+
+n90_req_fail :: (r:N90Request,error:int,at:int)->N90Request {o:=r;o.error=error;o.at=at;return o;}
+n90_reply_fail :: (r:N90Reply,error:int,at:int)->N90Reply {o:=r;o.error=error;o.at=at;return o;}
+n90_job_fail :: (j:N90Job,error:int)->N90Job {o:=j;o.error=error;return o;}
+
+// book:begin msats
+// A decimal amount of millisats: digits, no sign, no leading zero, at most
+// 21 million bitcoin. -1 when it isn't one.
+n90_msats :: (s:string)->int {
+  if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
+  v:=0;
+  for c:s {
+    if c<'0' || c>'9' {return -1;}
+    d:=cast(int)(c-'0');
+    if v>(N90_MAX_MSATS-d)/10 {return -1;}
+    v=v*10+d;
+  }
+  return v;
+}
+// The amount a BOLT11 invoice's human-readable part states, in millisats:
+// ln, a Bitcoin currency, digits without a leading zero and an optional
+// multiplier m, u, n or p, at most 21 million bitcoin (a p amount must be
+// whole millisats). The part ends at the last 1. Or the refusal: -1 no 1
+// after the first byte, -2 no amount, -3 not a Bitcoin currency, -4 a
+// leading zero, -5 part of a millisat, -6 too large. The checksum and the
+// signature are the wallet's to check.
+n90_invoice :: (bolt11:string)->int {
+  sep:=-1;
+  for i:1..<bolt11.count {if bolt11[i]=='1' {sep=i;}}
+  if sep== -1 {return -1;}
+  h:=bolt11[0..<sep];
+  // Each multiplier's scale to millisats and the most it may count.
+  scale:=100000000000;most:=21000000;cut:=0;c:=h[h.count-1];
+  if c=='m' {scale=100000000;most=21000000000;cut=1;}
+  else if c=='u' {scale=100000;most=21000000000000;cut=1;}
+  else if c=='n' {scale=100;most=21000000000000000;cut=1;}
+  else if c=='p' {scale=0;most=N90_MAX_MSATS;cut=1;}
+  end:=h.count-cut;start:=end;
+  while start>0 && h[start-1]>='0' && h[start-1]<='9' {start-=1;}
+  if start==end {return -2;}
+  known:=false;
+  for x:N90_CURRENCIES {if h[0..<start]==x {known=true;}}
+  if !known {return -3;}
+  if h[start]=='0' {return -4;}
+  v:=0;
+  for i:start..<end {
+    d:=cast(int)(h[i]-'0');
+    if v>(most-d)/10 {return -6;}
+    v=v*10+d;
+  }
+  if scale==0 {
+    if v%10!=0 {return -5;}
+    return v/10;
+  }
+  return v*scale;
+}
+// book:end msats
+
+// book:begin request
+// The i tag at index: its type and data, and its relay and marker (the
+// third and fourth values). An event or job input names a 64-hex event id;
+// a relay, when given, is a ws:// or wss:// URL. type -1 when it isn't.
+n90_input :: (e:NostrEvent,index:int,t:N32Tag)->N90Input {
+  x:N90Input;bad:N90Input;
+  for k:0..<4 {if n32_is(t.v[2],N90_INPUT_NAMES[k]) {x.type=k;}}
+  x.data=t.v[1];
+  if x.type==N90_EVENT_ID || x.type==N90_JOB {
+    d:=t.v[1];if !ne_lower_hex(cast(string)d.b[0..<d.n],x.id[..]) {return bad;}
+  }
+  rn:=n53_value(e,index,3,x.relay.b[..]);mn:=n53_value(e,index,4,x.marker.b[..]);
+  if rn<0 || mn<0 {return bad;}
+  x.relay.n=rn;x.marker.n=mn;
+  if rn>0 && !nt_relay_ok(cast(string)x.relay.b[0..<rn]) {return bad;}
+  return x;
+}
+// Whether the content is a NIP-04 payload: NIP-04's ?iv= suffix. NIP-44's
+// base64 never holds a ?.
+n90_nip04 :: (e:NostrEvent)->bool {
+  for i:e.content_from..<e.content_to {if e.original[i]=='?' {return true;}}
+  return false;
+}
+// A job request (kind 5000-5999). An encrypted one names one provider and
+// carries no clear i or param tags.
+n90_request :: (e:NostrEvent)->N90Request {
+  r:N90Request;if e.error!=NE_OK {return r;}
+  if e.kind<N90_REQUEST_MIN || e.kind>N90_REQUEST_MAX {return n90_req_fail(r,N90_KIND,-1);}
+  r.kind=e.kind;i:=0;has_output:=false;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n90_req_fail(r,N90_LIMIT,i);}
+    if t.error!=NT_OK {return n90_req_fail(r,N90_EVENT,i);}
+    if n32_is(t.v[0],"i") {
+      x:=n90_input(e,i,t);
+      if x.type<0 {return n90_req_fail(r,N90_INPUT,i);}
+      if r.ni==N90_MAX_I {return n90_req_fail(r,N90_LIMIT,i);}
+      r.inputs[r.ni]=x;r.ni+=1;
+    } else if n32_is(t.v[0],"param") {
+      if t.values<3 || t.v[1].n==0 {return n90_req_fail(r,N90_PARAM,i);}
+      if r.np==N90_MAX_PARAM {return n90_req_fail(r,N90_LIMIT,i);}
+      r.params[r.np].key=t.v[1];r.params[r.np].value=t.v[2];r.np+=1;
+    } else if n32_is(t.v[0],"output") {
+      if t.v[1].n==0 || has_output {return n90_req_fail(r,N90_TAG,i);}
+      r.output=t.v[1];has_output=true;
+    } else if n32_is(t.v[0],"bid") {
+      c:=t.v[1];b:=n90_msats(cast(string)c.b[0..<c.n]);
+      if b<0 || r.bid>=0 {return n90_req_fail(r,N90_BID,i);}
+      r.bid=b;
+    } else if n32_is(t.v[0],"relays") {
+      r.relays+=t.values-1;
+    } else if n32_is(t.v[0],"p") {
+      p:=nostr_tag(e,i);
+      if p.error!=NT_OK {return n90_req_fail(r,N90_TAG,i);}
+      if r.nproviders==N90_MAX_P {return n90_req_fail(r,N90_LIMIT,i);}
+      r.providers[r.nproviders]=p.pubkey;r.nproviders+=1;
+    } else if n32_is(t.v[0],"encrypted") {
+      r.encrypted=true;
+    }
+    i+=1;
+  }
+  if r.encrypted {
+    if r.nproviders!=1 || r.ni>0 || r.np>0 {return n90_req_fail(r,N90_ENCRYPTED,-1);}
+    if n90_nip04(e) {return n90_req_fail(r,N90_NIP04,-1);}
+  }
+  return n90_req_fail(r,N90_OK,-1);
+}
+// book:end request
+
+// book:begin private
+// An encrypted request opened by its provider: the content decrypted as
+// NIP-44 v2 with the conversation key into out, read as a tag array, and
+// its i and param tags put in place of the request's. work holds the
+// decoded payload (nip44_decrypt_work_size).
+n90_private :: (e:NostrEvent,r:N90Request,conversation_key:[]u8,work:[]u8,out:[]u8)->N90Request {
+  if r.error!=N90_OK || !r.encrypted {return n90_req_fail(r,N90_ENCRYPTED,-1);}
+  d:=nip44_decrypt_checked(NIP44_COMPAT,conversation_key,e.original[e.content_from..<e.content_to],work,out,false);
+  if d.error!=NIP44_OK {return n90_req_fail(r,N90_DECRYPT,-1);}
+  inner:=nt_event(cast(string)out[0..<d.written]);inner.kind=e.kind;
+  q:=n90_request(inner);
+  if q.error!=N90_OK {return q;}
+  if q.encrypted {return n90_req_fail(r,N90_ENCRYPTED,-1);}
+  o:=r;o.inputs=q.inputs;o.ni=q.ni;o.params=q.params;o.np=q.np;
+  return o;
+}
+// book:end private
+
+// book:begin reply
+// Whether tag index is named name, read from its raw first value.
+n90_named :: (e:NostrEvent,index:int,name:string)->bool {
+  j:[1]Json;started:=nt_start(j[..],e);
+  tok:=json_next(j[..]);
+  for i:0..<index {skipped:=json_skip(j[..]);tok=json_next(j[..]);}
+  v:=json_next(j[..]);
+  return json_is(json_text(j[..]),name);
+}
+// A job result (kind 6000-6999) or feedback (kind 7000): one e tag naming
+// the request and one p tag naming the customer; a result has a request
+// tag and no status, feedback one known status.
+n90_reply :: (e:NostrEvent)->N90Reply {
+  r:N90Reply;if e.error!=NE_OK {return r;}
+  result:=e.kind>=N90_REQUEST_MIN+N90_RESULT_OFFSET && e.kind<=N90_REQUEST_MAX+N90_RESULT_OFFSET;
+  if !result && e.kind!=N90_FEEDBACK {return n90_reply_fail(r,N90_KIND,-1);}
+  r.kind=e.kind;i:=0;has_e:=false;has_p:=false;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    // A request tag holds a whole event and an amount tag an invoice:
+    // longer than n32_tag reads. Their values are read below.
+    long:=t.error==NT_LIMIT && (n90_named(e,i,"request") || n90_named(e,i,"amount"));
+    if t.error==NT_LIMIT && !long {return n90_reply_fail(r,N90_LIMIT,i);}
+    if t.error!=NT_OK && !long {return n90_reply_fail(r,N90_EVENT,i);}
+    if n32_is(t.v[0],"e") {
+      x:=nostr_tag(e,i);
+      if x.error!=NT_OK || has_e {return n90_reply_fail(r,N90_TAG,i);}
+      has_e=true;r.request=x.id;
+    } else if n32_is(t.v[0],"p") {
+      x:=nostr_tag(e,i);
+      if x.error!=NT_OK || has_p {return n90_reply_fail(r,N90_TAG,i);}
+      has_p=true;r.customer=x.pubkey;
+    } else if n32_is(t.v[0],"amount") {
+      c:=t.v[1];a:=n90_msats(cast(string)c.b[0..<c.n]);
+      if a<0 || r.amount>=0 {return n90_reply_fail(r,N90_AMOUNT,i);}
+      bn:=n53_value(e,i,2,r.bolt11[..]);
+      if bn<0 {return n90_reply_fail(r,N90_LIMIT,i);}
+      r.amount=a;r.bolt11_n=bn;
+    } else if n32_is(t.v[0],"status") {
+      s:=-1;
+      for k:0..<5 {if n32_is(t.v[1],N90_STATUS_NAMES[k]) {s=k;}}
+      if s<0 || r.status>=0 || result {return n90_reply_fail(r,N90_STATUS,i);}
+      r.status=s;r.extra=t.v[2];
+    } else if n32_is(t.v[0],"request") {
+      if r.request_tag>=0 {return n90_reply_fail(r,N90_REQUEST,i);}
+      r.request_tag=i;
+    } else if n32_is(t.v[0],"encrypted") {
+      r.encrypted=true;
+    }
+    i+=1;
+  }
+  if !has_e {return n90_reply_fail(r,N90_NO_E,-1);}
+  if !has_p {return n90_reply_fail(r,N90_P,-1);}
+  if !result && r.status<0 {return n90_reply_fail(r,N90_STATUS,-1);}
+  if result && r.request_tag<0 {return n90_reply_fail(r,N90_REQUEST,-1);}
+  return n90_reply_fail(r,N90_OK,-1);
+}
+// book:end reply
+
+// book:begin match
+// Whether reply answers request: N90_OK or the refusal. A result's kind is
+// the request's + 1000 and the request it embeds reads back, through the
+// id check, as an event with the request's id. work holds that embedded
+// request twice: decoded, then serialized for its hash; N90_LIMIT when it
+// doesn't fit.
+n90_match :: (request:NostrEvent,reply:NostrEvent,work:[]u8)->int {
+  r:=n90_reply(reply);
+  if r.error!=N90_OK {return r.error;}
+  if request.kind<N90_REQUEST_MIN || request.kind>N90_REQUEST_MAX {return N90_KIND;}
+  if r.kind!=N90_FEEDBACK && r.kind!=request.kind+N90_RESULT_OFFSET {return N90_KIND;}
+  if !ns_equal32(r.request,request.id) {return N90_E;}
+  if !ns_equal32(r.customer,request.public_key) {return N90_P;}
+  if r.kind==N90_FEEDBACK {return N90_OK;}
+  half:=work.count/2;
+  n:=n53_value(reply,r.request_tag,1,work[0..<half]);
+  if n<0 {return N90_LIMIT;}
+  embedded:=nostr_event_read(cast(string)work[0..<n],work[half..<work.count],false);
+  if embedded.error!=NE_OK || !ns_equal32(embedded.id,request.id) {return N90_REQUEST;}
+  return N90_OK;
+}
+// book:end match
+
+// book:begin price
+// Whether the customer pays amount millisats: an invoice, when given,
+// states the same amount; nothing is owed for 0; otherwise the request's
+// bid is the ceiling, and without a bid nothing is paid automatically.
+n90_price :: (bid:int,amount:int,bolt11:string)->N90Price {
+  p:N90Price;p.msats=amount;
+  if amount<0 {p.error=N90_AMOUNT;return p;}
+  if bolt11.count>0 && n90_invoice(bolt11)!=amount {p.error=N90_INVOICE;return p;}
+  if amount==0 {return p;}
+  if bid<0 {p.error=N90_NO_BID;return p;}
+  if amount>bid {p.error=N90_OVER_BID;}
+  return p;
+}
+// book:end price
+
+// book:begin job
+// A new job for a request the customer published: it waits for answers
+// until wait seconds after the request's created_at.
+n90_job :: (request:NostrEvent,wait:int)->N90Job {
+  j:N90Job;r:=n90_request(request);
+  if r.error!=N90_OK {j.state=N90_FAILED;j.error=r.error;return j;}
+  j.sent=request.created_at;j.deadline=request.created_at+wait;j.bid=r.bid;j.updated=request.created_at;
+  return j;
+}
+// The job at time now: an open job past its deadline has expired.
+n90_tick :: (j:N90Job,now:int)->N90Job {
+  s:=j;if s.state<N90_DONE && now>s.deadline {s.state=N90_EXPIRED;}
+  return s;
+}
+// One event (feedback or result) taken at time now. A refused event leaves
+// the state as it was and sets error. Feedback older than the last one
+// taken is stale; a result is final whenever it was made. An amount over
+// the bid, or with no bid, closes the job as too dear.
+n90_step :: (j:N90Job,request:NostrEvent,ev:NostrEvent,now:int,work:[]u8)->N90Job {
+  s:=n90_job_fail(n90_tick(j,now),N90_OK);
+  if s.state>=N90_DONE {return n90_job_fail(s,N90_CLOSED);}
+  if ev.created_at<s.sent || ev.created_at>now {return n90_job_fail(s,N90_TIME);}
+  if s.has_provider && !ns_equal32(ev.public_key,s.provider) {return n90_job_fail(s,N90_PROVIDER);}
+  m:=n90_match(request,ev,work);
+  if m!=N90_OK {return n90_job_fail(s,m);}
+  r:=n90_reply(ev);feedback:=r.kind==N90_FEEDBACK;
+  if feedback && ev.created_at<s.updated {return n90_job_fail(s,N90_STALE);}
+  if r.status==N90_PAYMENT_REQUIRED && r.amount<0 {return n90_job_fail(s,N90_AMOUNT);}
+  o:=s;
+  if r.amount>=0 {
+    p:=n90_price(s.bid,r.amount,cast(string)r.bolt11[0..<r.bolt11_n]);
+    if p.error==N90_OVER_BID || p.error==N90_NO_BID {o.state=N90_TOO_DEAR;return n90_job_fail(o,p.error);}
+    if p.error!=N90_OK {return n90_job_fail(s,p.error);}
+    o.owed=p.msats;
+  }
+  o.has_provider=true;o.provider=ev.public_key;
+  if !feedback {o.state=N90_DONE;o.result=ev.id;return o;}
+  o.updated=ev.created_at;o.status=r.status;
+  o.state=ifx r.status==N90_PAYMENT_REQUIRED then N90_PAY else ifx r.status==N90_ERROR then N90_FAILED else N90_WORKING;
+  return o;
+}
+// book:end job
+
+// book:begin write
+// ,[ after the array so far, or [ when it is still empty.
+n90_next :: (out:[]u8,n:int)->int {
+  if n==1 {return json_raw(out,n,"[");}
+  return json_raw(out,n,",[");
+}
+n90_write_input :: (out:[]u8,at:int,data:string,type:int,relay:string,marker:string)->int {
+  n:=n90_next(out,at);n=json_raw(out,n,"\"i\",");n=json_write_string(out,n,data);
+  n=json_raw(out,n,",\"");n=json_raw(out,n,N90_INPUT_NAMES[type]);n=json_raw(out,n,"\"");
+  if relay.count+marker.count>0 {n=json_raw(out,n,",");n=json_write_string(out,n,relay);}
+  if marker.count>0 {n=json_raw(out,n,",");n=json_write_string(out,n,marker);}
+  return json_raw(out,n,"]");
+}
+n90_write_amount :: (out:[]u8,at:int,amount:int,bolt11:string)->int {
+  if amount<0 {return at;}
+  n:=n90_next(out,at);n=json_raw(out,n,"\"amount\",\"");n=json_write_int(out,n,amount);n=json_raw(out,n,"\"");
+  if bolt11.count!=0 {n=json_raw(out,n,",");n=json_write_string(out,n,bolt11);}
+  return json_raw(out,n,"]");
+}
+// A job request's tags as a JSON array into out: its length, or minus the
+// refusal (N90_INPUT, N90_PARAM, N90_BID, N90_OUTPUT). bid -1 writes none.
+n90_request_tags :: (inputs:[]N90In,params:[]N90Pair,output:string,bid:int,relays:[]string,providers:[][32]u8,encrypted:bool,out:[]u8)->int {
+  n:=json_raw(out,0,"[");
+  for x:inputs {
+    id:[32]u8;
+    if x.type<0 || x.type>N90_TEXT {return -N90_INPUT;}
+    if (x.type==N90_EVENT_ID || x.type==N90_JOB) && !ne_lower_hex(x.data,id[..]) {return -N90_INPUT;}
+    if x.relay.count>0 && !nt_relay_ok(x.relay) {return -N90_INPUT;}
+    n=n90_write_input(out,n,x.data,x.type,x.relay,x.marker);
+  }
+  for p:params {
+    if p.key.count==0 {return -N90_PARAM;}
+    n=n90_next(out,n);n=json_raw(out,n,"\"param\",");n=json_write_string(out,n,p.key);
+    n=json_raw(out,n,",");n=json_write_string(out,n,p.value);n=json_raw(out,n,"]");
+  }
+  if output.count>0 {n=n90_next(out,n);n=json_raw(out,n,"\"output\",");n=json_write_string(out,n,output);n=json_raw(out,n,"]");}
+  if bid< -1 || bid>N90_MAX_MSATS {return -N90_BID;}
+  if bid>=0 {n=n90_next(out,n);n=json_raw(out,n,"\"bid\",\"");n=json_write_int(out,n,bid);n=json_raw(out,n,"\"]");}
+  if relays.count>0 {
+    n=n90_next(out,n);n=json_raw(out,n,"\"relays\"");
+    for r:relays {n=json_raw(out,n,",");n=json_write_string(out,n,r);}
+    n=json_raw(out,n,"]");
+  }
+  for p:providers {n=n90_next(out,n);n=json_raw(out,n,"\"p\",");n=n10_hex(out,n,p);n=json_raw(out,n,"]");}
+  if encrypted {n=n90_next(out,n);n=json_raw(out,n,"\"encrypted\"]");}
+  n=json_raw(out,n,"]");
+  if n== -1 {return -N90_OUTPUT;}
+  return n;
+}
+// The tags of a reply to request as a JSON array into out: a result when
+// status is -1 (the request, its e tag, its clear inputs, the customer,
+// the amount, and encrypted for an encrypted request), else feedback with
+// that status. Its length, or minus the refusal: the request's own, or
+// N90_STATUS, N90_TAG (a relay that isn't ws:// or wss://), N90_AMOUNT,
+// N90_INVOICE (an invoice whose amount differs) or N90_OUTPUT.
+n90_reply_tags :: (request:NostrEvent,status:int,extra:string,relay:string,amount:int,bolt11:string,out:[]u8)->int {
+  q:=n90_request(request);
+  if q.error!=N90_OK {return -q.error;}
+  if status< -1 || status>N90_PARTIAL {return -N90_STATUS;}
+  if relay.count>0 && !nt_relay_ok(relay) {return -N90_TAG;}
+  if amount< -1 || amount>N90_MAX_MSATS {return -N90_AMOUNT;}
+  if bolt11.count>0 && n90_invoice(bolt11)!=amount {return -N90_INVOICE;}
+  n:=json_raw(out,0,"[");
+  if status>=0 {
+    n=n90_next(out,n);n=json_raw(out,n,"\"status\",\"");n=json_raw(out,n,N90_STATUS_NAMES[status]);n=json_raw(out,n,"\"");
+    if extra.count>0 {n=json_raw(out,n,",");n=json_write_string(out,n,extra);}
+    n=json_raw(out,n,"]");
+  } else {
+    n=n90_next(out,n);n=json_raw(out,n,"\"request\",");
+    n=json_write_string(out,n,request.original);n=json_raw(out,n,"]");
+  }
+  n=n90_next(out,n);n=json_raw(out,n,"\"e\",");n=n10_hex(out,n,request.id);
+  if relay.count!=0 {n=json_raw(out,n,",");n=json_write_string(out,n,relay);}
+  n=json_raw(out,n,"]");
+  if status<0 {
+    for k:0..<q.ni {
+      x:=q.inputs[k];
+      n=n90_write_input(out,n,cast(string)x.data.b[0..<x.data.n],x.type,cast(string)x.relay.b[0..<x.relay.n],cast(string)x.marker.b[0..<x.marker.n]);
+    }
+  }
+  n=n90_next(out,n);n=json_raw(out,n,"\"p\",");n=n10_hex(out,n,request.public_key);n=json_raw(out,n,"]");
+  n=n90_write_amount(out,n,amount,bolt11);
+  if status<0 && q.encrypted {n=n90_next(out,n);n=json_raw(out,n,"\"encrypted\"]");}
+  n=json_raw(out,n,"]");
+  if n== -1 {return -N90_OUTPUT;}
+  return n;
+}
+// book:end write
+
+
+// ---- checks
+
+#test "millisats: decimal digits up to 21 million bitcoin" {
+  #assert n90_msats("0")==0 && n90_msats("1")==1 && n90_msats("9")==9 && n90_msats("10000")==10000;
+  #assert n90_msats("2100000000000000000")==N90_MAX_MSATS && n90_msats("2100000000000000001")== -1 && n90_msats("2099999999999999999")==N90_MAX_MSATS-1;
+  #assert n90_msats("")== -1 && n90_msats("00")== -1 && n90_msats("01")== -1 && n90_msats("-1")== -1 && n90_msats("1a")== -1;
+  #assert n90_msats("/")== -1 && n90_msats(":")== -1 && n90_msats("99999999999999999999")== -1 && n90_msats(" 1")== -1;
+}
+#test "invoice amounts: currency, digits and multiplier" {
+  #assert n90_invoice("lnbc50n1pxyz")==5000 && n90_invoice("lnbc2500u1qq")==250000000 && n90_invoice("lnbc1m1q")==100000000 && n90_invoice("lnbc9n1q")==900;
+  #assert n90_invoice("lnbc10p1q")==1 && n90_invoice("lnbc20p1q")==2 && n90_invoice("lnbc1p1q")== -5 && n90_invoice("lnbc15p1q")== -5;
+  #assert n90_invoice("lnbc31qq")==300000000000 && n90_invoice("lntb50n1q")==5000 && n90_invoice("lntbs50n1q")==5000 && n90_invoice("lnbcrt50n1q")==5000;
+  // The separator: the last 1, not the first byte.
+  #assert n90_invoice("nope")== -1 && n90_invoice("")== -1 && n90_invoice("1abc")== -1 && n90_invoice("lnbc50n")== -1 && n90_invoice("lnbc50n1")==5000;
+  #assert n90_invoice("x1q")== -2 && n90_invoice("51q")== -3 && n90_invoice("lnbc1q")== -2 && n90_invoice("lnbcn1q")== -2 && n90_invoice("lnbc50x1q")== -2 && n90_invoice("lnbc5/n1q")== -2 && n90_invoice("lnbc5:n1q")== -2;
+  #assert n90_invoice("lnltc50n1q")== -3 && n90_invoice("xlnbc50n1q")== -3 && n90_invoice("LNBC50N1Q")== -2 && n90_invoice("21qq")== -3 && n90_invoice("lnbcr50n1q")== -3;
+  #assert n90_invoice("lnbc050n1q")== -4 && n90_invoice("lnbc0n1q")== -4 && n90_invoice("lnbc01q")== -4;
+  // The largest amount for each multiplier, and one more.
+  #assert n90_invoice("lnbc210000001qq")==N90_MAX_MSATS && n90_invoice("lnbc210000011qq")== -6 && n90_invoice("lnbc210000021qq")== -6 && n90_invoice("lnbc2099999911qq")== -6;
+  #assert n90_invoice("lnbc21000000000m1q")==N90_MAX_MSATS && n90_invoice("lnbc21000000001m1q")== -6;
+  #assert n90_invoice("lnbc21000000000000u1q")==N90_MAX_MSATS && n90_invoice("lnbc21000000000001u1q")== -6;
+  #assert n90_invoice("lnbc21000000000000000n1q")==N90_MAX_MSATS && n90_invoice("lnbc21000000000000001n1q")== -6;
+  #assert n90_invoice("lnbc2100000000000000000p1q")==210000000000000000 && n90_invoice("lnbc2100000000000000001p1q")== -6 && n90_invoice("lnbc2099999999999999990p1q")==209999999999999999;
+}
+#test "the request: inputs, params, output, bid, relays and provider" {
+  b:[4096]u8;e:=n90_t_event(0x11,1000,5050,N90_T_REQ_TAGS,"",b[..]);#assert e.error==NE_OK;
+  r:=n90_request(e);
+  #assert r.error==N90_OK && r.at== -1 && r.kind==5050 && r.ni==1 && r.inputs[0].type==N90_TEXT && n32_is(r.inputs[0].data,"What is the capital of France?");
+  #assert r.inputs[0].relay.n==0 && r.inputs[0].marker.n==0 && r.np==1 && n32_is(r.params[0].key,"model") && n32_is(r.params[0].value,"LLaMA-2");
+  #assert n32_is(r.output,"text/plain") && r.bid==10000 && r.relays==1 && r.nproviders==1 && r.providers[0][0]==0x22 && r.providers[0][31]==0x22 && !r.encrypted;
+  // Every input type; an event input with a relay and a marker.
+  r=n90_request(n32_event(5000,"[[\"i\",\"https://x.example/a.mp3\",\"url\"],[\"i\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"event\",\"wss://r.example\",\"source\"],[\"i\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"job\"],[\"i\",\"hi\",\"text\",\"\",\"prompt\"],[\"relays\",\"wss://a\",\"wss://b\"],[\"relays\"]]"));
+  #assert r.error==N90_OK && r.kind==5000 && r.ni==4 && r.inputs[0].type==N90_URL && r.inputs[1].type==N90_EVENT_ID && r.inputs[2].type==N90_JOB && r.inputs[3].type==N90_TEXT;
+  #assert r.inputs[1].id[0]==0xaa && r.inputs[2].id[31]==0xbb && n32_is(r.inputs[1].relay,"wss://r.example") && n32_is(r.inputs[1].marker,"source");
+  #assert r.inputs[3].relay.n==0 && n32_is(r.inputs[3].marker,"prompt") && r.relays==2 && r.bid== -1 && r.np==0 && r.output.n==0 && r.nproviders==0;
+  #assert n90_request(n32_event(5999,"[]")).error==N90_OK;
+}
+#test "request refusals" {
+  #assert n90_request(n32_event(4999,"[]")).error==N90_KIND && n90_request(n32_event(6000,"[]")).error==N90_KIND && n90_request(n32_event(7000,"[]")).at== -1;
+  none:NostrEvent;#assert n90_request(none).error==N90_EVENT;
+  r:=n90_request(n32_event(5050,"[[\"t\",\"x\"],[\"i\",\"x\",\"file\"]]"));#assert r.error==N90_INPUT && r.at==1;
+  #assert n90_request(n32_event(5050,"[[\"i\",\"x\"]]")).error==N90_INPUT;
+  #assert n90_request(n32_event(5050,"[[\"i\",\"aaaa\",\"event\"]]")).error==N90_INPUT && n90_request(n32_event(5050,"[[\"i\",\"aaaa\",\"job\"]]")).error==N90_INPUT;
+  #assert n90_request(n32_event(5050,"[[\"i\",\"x\",\"text\",\"https://r.example\"]]")).error==N90_INPUT;
+  #assert n90_request(n32_event(5050,"[[\"i\",\"x\",\"text\",\"wss://r\"]]")).error==N90_OK && n90_request(n32_event(5050,"[[\"i\",\"x\",\"text\",\"x\"]]")).error==N90_INPUT;
+  long:[700]u8;n:=json_raw(long[..],0,"[[\"i\",\"x\",\"text\",\"wss://");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n90_request(n32_event(5050,cast(string)long[0..<n])).error==N90_INPUT;
+  n=json_raw(long[..],0,"[[\"i\",\"x\",\"text\",\"\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n90_request(n32_event(5050,cast(string)long[0..<n])).error==N90_INPUT;
+  n=json_raw(long[..],0,"[[\"i\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\",\"text\"]]");
+  r=n90_request(n32_event(5050,cast(string)long[0..<n]));#assert r.error==N90_LIMIT && r.at==0;
+  #assert n90_request(n32_event(5050,"[[\"t\",1]]")).error==N90_EVENT && n90_request(n32_event(5050,"[[\"t\"],[]]")).at==1;
+  many:[1024]u8;m:=json_raw(many[..],0,"[[\"t\",\"x\"]");
+  for k:0..<8 {m=json_raw(many[..],m,",[\"i\",\"x\",\"text\"]");}
+  full:=json_raw(many[..],m,"]");#assert n90_request(n32_event(5050,cast(string)many[0..<full])).ni==8;
+  m=json_raw(many[..],m,",[\"i\",\"x\",\"text\"]]");r=n90_request(n32_event(5050,cast(string)many[0..<m]));#assert r.error==N90_LIMIT && r.at==9 && r.ni==8;
+  m=json_raw(many[..],0,"[");
+  for k:0..<8 {m=json_raw(many[..],m,"[\"param\",\"k\",\"v\"],");}
+  full=json_raw(many[..],m,"[\"t\"]]");#assert n90_request(n32_event(5050,cast(string)many[0..<full])).np==8;
+  m=json_raw(many[..],m,"[\"param\",\"k\",\"v\"]]");r=n90_request(n32_event(5050,cast(string)many[0..<m]));#assert r.error==N90_LIMIT && r.at==8 && r.np==8;
+  r=n90_request(n32_event(5050,"[[\"param\",\"k\"]]"));#assert r.error==N90_PARAM && r.at==0;
+  #assert n90_request(n32_event(5050,"[[\"param\",\"\",\"v\"]]")).error==N90_PARAM;
+  r=n90_request(n32_event(5050,"[[\"param\",\"k\",\"\"]]"));#assert r.error==N90_OK && r.np==1 && r.params[0].value.n==0;
+  r=n90_request(n32_event(5050,"[[\"output\",\"\"]]"));#assert r.error==N90_TAG && r.at==0;
+  r=n90_request(n32_event(5050,"[[\"output\",\"a\"],[\"output\",\"b\"]]"));#assert r.error==N90_TAG && r.at==1;
+  r=n90_request(n32_event(5050,"[[\"bid\",\"5\"],[\"bid\",\"5\"]]"));#assert r.error==N90_BID && r.at==1;
+  r=n90_request(n32_event(5050,"[[\"bid\",\"0\"],[\"bid\",\"5\"]]"));#assert r.error==N90_BID && r.at==1;
+  #assert n90_request(n32_event(5050,"[[\"bid\",\"abc\"]]")).error==N90_BID && n90_request(n32_event(5050,"[[\"bid\"]]")).error==N90_BID;
+  #assert n90_request(n32_event(5050,"[[\"bid\",\"0\"]]")).bid==0;
+  r=n90_request(n32_event(5050,"[[\"t\"],[\"p\",\"22\"]]"));#assert r.error==N90_TAG && r.at==1;
+  m=json_raw(many[..],0,"[");
+  for k:0..<4 {m=json_raw(many[..],m,"[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],");}
+  full=json_raw(many[..],m,"[\"t\"]]");#assert n90_request(n32_event(5050,cast(string)many[0..<full])).nproviders==4;
+  m=json_raw(many[..],m,"[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]");
+  r=n90_request(n32_event(5050,cast(string)many[0..<m]));#assert r.error==N90_LIMIT && r.at==4;
+}
+#test "encrypted requests: one provider, no clear inputs, never NIP-04" {
+  b:[4096]u8;
+  e:=n90_t_event(0x11,1000,5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"encrypted\"]]","AgcHBwcH",b[..]);
+  r:=n90_request(e);#assert r.error==N90_OK && r.encrypted && r.nproviders==1;
+  e=n90_t_event(0x11,1000,5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"encrypted\"]]","zooMmtdlrlTCiIbfLqTqYrpCbTWrcVkP7RdcqCuM8TQ=?iv=obLD1OX2BxgpOktcbX6PkA==",b[..]);
+  r=n90_request(e);#assert r.error==N90_NIP04 && r.at== -1;
+  r=n90_request(n32_event(5050,"[[\"encrypted\"]]"));#assert r.error==N90_ENCRYPTED && r.at== -1;
+  #assert n90_request(n32_event(5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"p\",\"3333333333333333333333333333333333333333333333333333333333333333\"],[\"encrypted\"]]")).error==N90_ENCRYPTED;
+  #assert n90_request(n32_event(5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"encrypted\"],[\"i\",\"x\",\"text\"]]")).error==N90_ENCRYPTED;
+  #assert n90_request(n32_event(5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"encrypted\"],[\"param\",\"k\",\"v\"]]")).error==N90_ENCRYPTED;
+  // Without the encrypted tag a ? in the content is just content.
+  e=n90_t_event(0x11,1000,5050,"[]","why?",b[..]);#assert n90_request(e).error==N90_OK;
+}
+#test "NIP-90's encrypted params example reads as a tag list" {
+  plain:="[[\"i\",\"what is the capital of France? \",\"text\"],[\"param\",\"model\",\"LLaMA-2\"],[\"param\",\"max_tokens\",\"512\"],[\"param\",\"temperature\",\"0.5\"],[\"param\",\"top-k\",\"50\"],[\"param\",\"top-p\",\"0.7\"],[\"param\",\"frequency_penalty\",\"1\"]]";
+  r:=n90_request(n32_event(5050,plain));
+  #assert r.error==N90_OK && r.ni==1 && r.np==6 && n32_is(r.params[5].key,"frequency_penalty") && n32_is(r.params[1].value,"512");
+  // The same list sealed with NIP-44 and opened by the provider.
+  sealed:[4096]u8;sn:=n90_t_seal(0x5a,plain,sealed[..]);
+  b:[8192]u8;e:=n90_t_event(0x11,1000,5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"bid\",\"9\"],[\"encrypted\"]]",cast(string)sealed[0..<sn],b[..]);
+  outer:=n90_request(e);#assert outer.error==N90_OK && outer.encrypted && outer.ni==0;
+  ck:=n90_t_key(0x5a);work:[8192]u8;out:[4096]u8;
+  o:=n90_private(e,outer,ck[..],work[..],out[..]);
+  #assert o.error==N90_OK && o.encrypted && o.ni==1 && o.np==6 && o.bid==9 && o.nproviders==1 && n32_is(o.params[0].value,"LLaMA-2") && n32_is(o.inputs[0].data,"what is the capital of France? ");
+  wrong:=n90_t_key(0x5b);o=n90_private(e,outer,wrong[..],work[..],out[..]);#assert o.error==N90_DECRYPT && o.at== -1;
+  clear:=n90_request(n32_event(5050,"[[\"t\"]]"));o=n90_private(e,clear,ck[..],work[..],out[..]);#assert o.error==N90_ENCRYPTED && o.at== -1;
+  bad:N90Request;bad.encrypted=true;#assert n90_private(e,bad,ck[..],work[..],out[..]).error==N90_ENCRYPTED;
+  // The inner list must itself read, and not be encrypted again.
+  sn=n90_t_seal(0x5a,"[[\"i\",\"x\",\"file\"]]",sealed[..]);
+  e=n90_t_event(0x11,1000,5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"encrypted\"]]",cast(string)sealed[0..<sn],b[..]);
+  o=n90_private(e,n90_request(e),ck[..],work[..],out[..]);#assert o.error==N90_INPUT && o.at==0;
+  sn=n90_t_seal(0x5a,"[[\"encrypted\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"]]",sealed[..]);
+  e=n90_t_event(0x11,1000,5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"encrypted\"]]",cast(string)sealed[0..<sn],b[..]);
+  o=n90_private(e,n90_request(e),ck[..],work[..],out[..]);#assert o.error==N90_ENCRYPTED && o.at== -1;
+}
+#test "results and feedback: e, p, amount, status, request" {
+  r:=n90_reply(n32_event(6050,"[[\"request\",\"{}\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\"],[\"i\",\"x\",\"text\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"amount\",\"5000\",\"lnbc50n1pxyz\"]]"));
+  #assert r.error==N90_OK && r.at== -1 && r.kind==6050 && r.status== -1 && r.request[0]==0xaa && r.customer[31]==0x11 && r.amount==5000 && r.request_tag==0 && !r.encrypted;
+  #assert cast(string)r.bolt11[0..<r.bolt11_n]=="lnbc50n1pxyz";
+  f:=n90_reply(n32_event(7000,"[[\"status\",\"partial\",\"half done\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"encrypted\"]]"));
+  #assert f.error==N90_OK && f.kind==7000 && f.status==N90_PARTIAL && n32_is(f.extra,"half done") && f.amount== -1 && f.bolt11_n==0 && f.request_tag== -1 && f.encrypted;
+  for k:0..<5 {
+    buf:[512]u8;n:=json_raw(buf[..],0,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"status\",\"");
+    n=json_raw(buf[..],n,N90_STATUS_NAMES[k]);n=json_raw(buf[..],n,"\"],[\"amount\",\"0\"]]");
+    s:=n90_reply(n32_event(7000,cast(string)buf[0..<n]));#assert s.error==N90_OK && s.status==k && s.amount==0 && s.extra.n==0;
+  }
+  #assert n90_reply(n32_event(6000,"[[\"request\",\"\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]")).error==N90_OK;
+  #assert n90_reply(n32_event(6999,"[[\"request\",\"\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]")).error==N90_OK;
+}
+#test "reply refusals" {
+  E:="[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]";P:="[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]";
+  #assert n90_reply(n32_event(5999,"[]")).error==N90_KIND && n90_reply(n32_event(7001,"[]")).error==N90_KIND && n90_reply(n32_event(5050,"[]")).at== -1;
+  none:NostrEvent;#assert n90_reply(none).error==N90_EVENT;
+  b:[1600]u8;
+  r:=n90_reply(n32_event_in(7000,"[[\"status\",\"error\"],[\"e\",\"aaaa\"]]",b[..]));#assert r.error==N90_TAG && r.at==1;
+  t:=json_raw(b[..],0,"[[\"status\",\"error\"],");t=json_raw(b[..],t,E);t=json_raw(b[..],t,",");t=json_raw(b[..],t,E);t=json_raw(b[..],t,"]");
+  r=n90_reply(n32_event(7000,cast(string)b[0..<t]));#assert r.error==N90_TAG && r.at==2;
+  t=json_raw(b[..],0,"[[\"status\",\"error\"],");t=json_raw(b[..],t,E);t=json_raw(b[..],t,",");t=json_raw(b[..],t,P);t=json_raw(b[..],t,",");t=json_raw(b[..],t,P);t=json_raw(b[..],t,"]");
+  r=n90_reply(n32_event(7000,cast(string)b[0..<t]));#assert r.error==N90_TAG && r.at==3;
+  r=n90_reply(n32_event(7000,"[[\"status\",\"error\"],[\"p\",\"11\"]]"));#assert r.error==N90_TAG && r.at==1;
+  r=n90_reply(n32_event(7000,"[[\"status\",\"error\"],[\"amount\",\"x\"]]"));#assert r.error==N90_AMOUNT && r.at==1;
+  r=n90_reply(n32_event(7000,"[[\"amount\",\"0\"],[\"amount\",\"5\"]]"));#assert r.error==N90_AMOUNT && r.at==1;
+  t=json_raw(b[..],0,"[[\"amount\",\"5\",\"lnbc");for i:0..<1021 {b[t+i]='q';}t+=1021;t=json_raw(b[..],t,"\"]]");
+  r=n90_reply(n32_event(7000,cast(string)b[0..<t]));#assert r.error==N90_LIMIT && r.at==0;
+  t=json_raw(b[..],0,"[");t=json_raw(b[..],t,E);t=json_raw(b[..],t,",");t=json_raw(b[..],t,P);t=json_raw(b[..],t,",[\"amount\",\"5\",\"lnbc");for i:0..<1020 {b[t+i]='q';}t+=1020;t=json_raw(b[..],t,"\"],[\"status\",\"error\"]]");
+  r=n90_reply(n32_event(7000,cast(string)b[0..<t]));#assert r.error==N90_OK && r.bolt11_n==1024;
+  r=n90_reply(n32_event(7000,"[[\"t\"],[\"status\",\"done\"]]"));#assert r.error==N90_STATUS && r.at==1;
+  r=n90_reply(n32_event(7000,"[[\"status\",\"payment-required\"],[\"status\",\"error\"]]"));#assert r.error==N90_STATUS && r.at==1;
+  r=n90_reply(n32_event(6050,"[[\"status\",\"success\"]]"));#assert r.error==N90_STATUS && r.at==0;
+  t=json_raw(b[..],0,"[");t=json_raw(b[..],t,E);t=json_raw(b[..],t,",");t=json_raw(b[..],t,P);t=json_raw(b[..],t,"]");
+  r=n90_reply(n32_event(7000,cast(string)b[0..<t]));#assert r.error==N90_STATUS && r.at== -1;
+  r=n90_reply(n32_event(6050,cast(string)b[0..<t]));#assert r.error==N90_REQUEST && r.at== -1;
+  r=n90_reply(n32_event(6050,"[[\"request\",\"{}\"],[\"request\",\"{}\"]]"));#assert r.error==N90_REQUEST && r.at==1;
+  r=n90_reply(n32_event(7000,"[[\"status\",\"error\"]]"));#assert r.error==N90_NO_E && r.at== -1;
+  r=n90_reply(n32_event(7000,"[[\"amount\",1]]"));#assert r.error==N90_EVENT && r.at==0;
+  t=json_raw(b[..],0,"[[\"status\",\"error\"],");t=json_raw(b[..],t,E);t=json_raw(b[..],t,"]");
+  r=n90_reply(n32_event(7000,cast(string)b[0..<t]));#assert r.error==N90_P && r.at== -1;
+  #assert n90_reply(n32_event(7000,"[[\"t\",1]]")).error==N90_EVENT && n90_reply(n32_event(7000,"[[\"t\"],[]]")).at==1;
+  t=json_raw(b[..],0,"[[\"t\"],[\"status\",\"");for i:0..<257 {b[t+i]='x';}t+=257;t=json_raw(b[..],t,"\"]]");
+  r=n90_reply(n32_event(7000,cast(string)b[0..<t]));#assert r.error==N90_LIMIT && r.at==1;
+}
+
+// The request the checks answer and replies to it written by n90_reply_tags.
+#test "matching: kind + 1000, e, p and the embedded request" #steps 200000000 {
+  rb:[4096]u8;req:=n90_t_event(0x11,1000,5050,N90_T_REQ_TAGS,"",rb[..]);
+  ob:[4096]u8;other:=n90_t_event(0x11,1001,5050,N90_T_REQ_TAGS,"",ob[..]);
+  tb:[8192]u8;n:=n90_reply_tags(req,-1,"","wss://relay.example.com",5000,"lnbc50n1pxyz",tb[..]);#assert n>0;
+  eb:[8192]u8;res:=n90_t_event(0x22,1010,6050,cast(string)tb[0..<n],"Paris",eb[..]);#assert res.error==NE_OK;
+  work:[16384]u8;
+  #assert n90_match(req,res,work[..])==N90_OK;
+  // The same tags under kind 6051, and against a request of another kind.
+  wb:[8192]u8;w:=n90_t_event(0x22,1010,6051,cast(string)tb[0..<n],"Paris",wb[..]);#assert n90_match(req,w,work[..])==N90_KIND;
+  #assert n90_match(n32_event(4999,"[]"),res,work[..])==N90_KIND && n90_match(n32_event(6000,"[]"),res,work[..])==N90_KIND;
+  // A result for another request.
+  #assert n90_match(other,res,work[..])==N90_E;
+  // Feedback is matched by e and p alone.
+  fb:[4096]u8;m:=n90_reply_tags(req,N90_PROCESSING,"","",-1,"",fb[..]);
+  feb:[4096]u8;f:=n90_t_event(0x22,1005,7000,cast(string)fb[0..<m],"",feb[..]);#assert n90_match(req,f,work[..])==N90_OK;
+  #assert n90_match(other,f,work[..])==N90_E;
+  // Hand-written tags: the right e with another customer, the embedded
+  // request swapped for another, not an event, too long for work.
+  ih:[64]u8;id:=req.id;h:=hex_encode_checked(cast(string)id[..],ih[..],false);
+  t:[8192]u8;k:=json_raw(t[..],0,"[[\"request\",");k=json_write_string(t[..],k,req.original);k=json_raw(t[..],k,"],[\"e\",\"");
+  k=json_raw(t[..],k,cast(string)ih[..]);k=json_raw(t[..],k,"\"],[\"p\",\"3333333333333333333333333333333333333333333333333333333333333333\"]]");
+  pb:[8192]u8;p:=n90_t_event(0x22,1010,6050,cast(string)t[0..<k],"Paris",pb[..]);#assert n90_match(req,p,work[..])==N90_P;
+  k=json_raw(t[..],0,"[[\"request\",");k=json_write_string(t[..],k,other.original);k=json_raw(t[..],k,"],[\"e\",\"");
+  k=json_raw(t[..],k,cast(string)ih[..]);k=json_raw(t[..],k,"\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+  sb:[8192]u8;s:=n90_t_event(0x22,1010,6050,cast(string)t[0..<k],"Paris",sb[..]);#assert n90_match(req,s,work[..])==N90_REQUEST;
+  k=json_raw(t[..],0,"[[\"request\",\"\"],[\"e\",\"");
+  k=json_raw(t[..],k,cast(string)ih[..]);k=json_raw(t[..],k,"\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+  s=n90_t_event(0x22,1010,6050,cast(string)t[0..<k],"Paris",sb[..]);#assert n90_match(req,s,work[..])==N90_REQUEST;
+  L:=req.original.count;#assert n90_match(req,res,work[0..<2*L])==N90_OK && n90_match(req,res,work[0..<2*L-2])==N90_LIMIT;
+  // The embedded request with one byte changed no longer hashes to its id.
+  copy:[4096]u8;for i:0..<req.original.count {copy[i]=req.original[i];}
+  // created_at 1000 becomes 1001.
+  #assert cast(string)copy[162..<166]=="1000";copy[165]='1';
+  k=json_raw(t[..],0,"[[\"request\",");k=json_write_string(t[..],k,cast(string)copy[0..<req.original.count]);k=json_raw(t[..],k,"],[\"e\",\"");
+  k=json_raw(t[..],k,cast(string)ih[..]);k=json_raw(t[..],k,"\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+  s=n90_t_event(0x22,1010,6050,cast(string)t[0..<k],"Paris",sb[..]);#assert n90_match(req,s,work[..])==N90_REQUEST;
+  // A reply that doesn't read.
+  #assert n90_match(req,n32_event(7000,"[]"),work[..])==N90_NO_E;
+  // Feedback naming events of the kinds around the request range.
+  kinds:=[4]int.[4999,5000,5999,6000];want:=[4]int.[N90_KIND,N90_OK,N90_OK,N90_KIND];
+  for q:0..<4 {
+    qb:[1024]u8;qe:=n90_t_event(0x11,1000,kinds[q],"[]","",qb[..]);
+    qh:[64]u8;qid:=qe.id;g:=hex_encode_checked(cast(string)qid[..],qh[..],false);
+    k=json_raw(t[..],0,"[[\"status\",\"processing\"],[\"e\",\"");k=json_raw(t[..],k,cast(string)qh[..]);
+    k=json_raw(t[..],k,"\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+    fq:=n32_event(7000,cast(string)t[0..<k]);#assert n90_match(qe,fq,work[..])==want[q];
+  }
+}
+#test "price: invoice equal to the amount, bid as the ceiling" {
+  p:=n90_price(10000,5000,"lnbc50n1pxyz");#assert p.error==N90_OK && p.msats==5000;
+  #assert n90_price(10000,5000,"").error==N90_OK && n90_price(5000,5000,"").error==N90_OK && n90_price(4999,5000,"").error==N90_OVER_BID;
+  #assert n90_price(10000,5000,"lnbc51n1pxyz").error==N90_INVOICE && n90_price(10000,5000,"lnbc1pxyz").error==N90_INVOICE;
+  #assert n90_price(-1,0,"").error==N90_OK && n90_price(-1,1,"").error==N90_NO_BID && n90_price(0,1,"").error==N90_OVER_BID && n90_price(0,0,"").msats==0;
+  #assert n90_price(10000,-1,"").error==N90_AMOUNT && n90_price(10000,0,"lnbc1pxyz").error==N90_INVOICE && n90_price(10000,5,"x").error==N90_INVOICE;
+}
+#test "the customer's job: payment, work, result, and the clock" #steps 200000000 {
+  rb:[4096]u8;req:=n90_t_event(0x11,1000,5050,N90_T_REQ_TAGS,"",rb[..]);
+  work:[16384]u8;
+  j:=n90_job(req,60);
+  #assert j.state==N90_SENT && j.error==N90_OK && j.sent==1000 && j.deadline==1060 && j.bid==10000 && j.updated==1000 && !j.has_provider && j.owed== -1 && j.status== -1;
+  bad:=n90_job(n32_event(1,"[]"),60);#assert bad.state==N90_FAILED && bad.error==N90_KIND;
+  #assert n90_tick(j,1060).state==N90_SENT && n90_tick(j,1061).state==N90_EXPIRED;
+  tb:[8192]u8;eb:[8192]u8;
+  // payment-required for 5000 msats at 1005.
+  n:=n90_reply_tags(req,N90_PAYMENT_REQUIRED,"","",5000,"lnbc50n1pxyz",tb[..]);
+  pay:=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"",eb[..]);
+  s:=n90_step(j,req,pay,1005,work[..]);
+  #assert s.state==N90_PAY && s.error==N90_OK && s.owed==5000 && s.has_provider && s.provider[0]==0x22 && s.updated==1005 && s.status==N90_PAYMENT_REQUIRED;
+  #assert n90_step(j,req,pay,1004,work[..]).error==N90_TIME;
+  // processing at 1007, then a stale processing made at 1004.
+  b2:[8192]u8;t2:[4096]u8;n=n90_reply_tags(req,N90_PROCESSING,"","",-1,"",t2[..]);
+  work1:=n90_t_event(0x22,1007,7000,cast(string)t2[0..<n],"",b2[..]);
+  s2:=n90_step(s,req,work1,1007,work[..]);#assert s2.state==N90_WORKING && s2.owed==5000 && s2.status==N90_PROCESSING && s2.updated==1007 && s2.error==N90_OK;
+  b3:[8192]u8;old:=n90_t_event(0x22,1004,7000,cast(string)t2[0..<n],"",b3[..]);
+  st:=n90_step(s2,req,old,1008,work[..]);#assert st.error==N90_STALE && st.state==N90_WORKING && st.updated==1007;
+  same:=n90_t_event(0x22,1007,7000,cast(string)t2[0..<n],"",b3[..]);#assert n90_step(s2,req,same,1008,work[..]).error==N90_OK;
+  // Another provider's feedback once 0x22 answered.
+  b4:[8192]u8;intruder:=n90_t_event(0x33,1008,7000,cast(string)t2[0..<n],"",b4[..]);
+  #assert n90_step(s2,req,intruder,1008,work[..]).error==N90_PROVIDER && n90_step(j,req,intruder,1008,work[..]).error==N90_OK;
+  // The result at 1010 closes the job; nothing is taken after it.
+  b5:[8192]u8;t5:[8192]u8;n=n90_reply_tags(req,-1,"","wss://relay.example.com",5000,"lnbc50n1pxyz",t5[..]);
+  res:=n90_t_event(0x22,1010,6050,cast(string)t5[0..<n],"Paris",b5[..]);
+  d:=n90_step(s2,req,res,1010,work[..]);#assert d.state==N90_DONE && d.error==N90_OK && d.owed==5000 && ns_equal32(d.result,res.id) && d.updated==1007 && d.status==N90_PROCESSING;
+  #assert n90_step(d,req,work1,1011,work[..]).error==N90_CLOSED && n90_tick(d,5000).state==N90_DONE;
+  // A result made before the last feedback is still final.
+  b6:[8192]u8;early:=n90_t_event(0x22,1006,6050,cast(string)t5[0..<n],"Paris",b6[..]);#assert n90_step(s2,req,early,1011,work[..]).state==N90_DONE;
+  // Past the deadline the job has expired.
+  late:=n90_step(s,req,res,1061,work[..]);#assert late.state==N90_EXPIRED && late.error==N90_CLOSED;
+  #assert n90_step(s,req,res,1060,work[..]).state==N90_DONE;
+  // A result for the request before any feedback, made at the request's second.
+  b7:[8192]u8;first:=n90_t_event(0x22,1000,6050,cast(string)t5[0..<n],"Paris",b7[..]);
+  #assert n90_step(j,req,first,1000,work[..]).state==N90_DONE && n90_step(j,req,first,999,work[..]).error==N90_TIME;
+  b8:[8192]u8;before:=n90_t_event(0x22,999,6050,cast(string)t5[0..<n],"Paris",b8[..]);#assert n90_step(j,req,before,1000,work[..]).error==N90_TIME;
+  // A reply that doesn't match.
+  ob:[4096]u8;other:=n90_t_event(0x11,1001,5050,N90_T_REQ_TAGS,"",ob[..]);
+  #assert n90_step(j,req,res,1010,work[..]).state==N90_DONE && n90_step(j,other,res,1010,work[..]).error==N90_E;
+}
+#test "the customer's job: amounts it refuses" #steps 200000000 {
+  rb:[4096]u8;req:=n90_t_event(0x11,1000,5050,N90_T_REQ_TAGS,"",rb[..]);
+  work:[16384]u8;j:=n90_job(req,60);tb:[4096]u8;eb:[8192]u8;
+  // payment-required without an amount.
+  n:=n90_reply_tags(req,N90_PAYMENT_REQUIRED,"","",-1,"",tb[..]);
+  e:=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"",eb[..]);s:=n90_step(j,req,e,1005,work[..]);
+  #assert s.error==N90_AMOUNT && s.state==N90_SENT && !s.has_provider;
+  // Over the bid: too dear, and closed.
+  n=n90_reply_tags(req,N90_PAYMENT_REQUIRED,"","",20000,"",tb[..]);
+  e=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"",eb[..]);s=n90_step(j,req,e,1005,work[..]);
+  #assert s.state==N90_TOO_DEAR && s.error==N90_OVER_BID && s.owed== -1 && n90_step(s,req,e,1006,work[..]).error==N90_CLOSED;
+  n=n90_reply_tags(req,N90_PAYMENT_REQUIRED,"","",10000,"",tb[..]);
+  e=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"",eb[..]);#assert n90_step(j,req,e,1005,work[..]).state==N90_PAY;
+  n=n90_reply_tags(req,N90_PAYMENT_REQUIRED,"","",0,"",tb[..]);
+  e=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"",eb[..]);s=n90_step(j,req,e,1005,work[..]);#assert s.state==N90_PAY && s.owed==0 && s.error==N90_OK;
+  // An invoice for another amount: refused, the job stays open.
+  ih:[64]u8;id:=req.id;h:=hex_encode_checked(cast(string)id[..],ih[..],false);
+  t:[1024]u8;k:=json_raw(t[..],0,"[[\"status\",\"payment-required\"],[\"amount\",\"5000\",\"lnbc100n1pxyz\"],[\"e\",\"");
+  k=json_raw(t[..],k,cast(string)ih[..]);k=json_raw(t[..],k,"\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+  e=n90_t_event(0x22,1005,7000,cast(string)t[0..<k],"",eb[..]);s=n90_step(j,req,e,1005,work[..]);
+  #assert s.error==N90_INVOICE && s.state==N90_SENT && !s.has_provider;
+  // error, success and partial.
+  n=n90_reply_tags(req,N90_ERROR,"out of memory","",-1,"",tb[..]);
+  e=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"",eb[..]);s=n90_step(j,req,e,1005,work[..]);#assert s.state==N90_FAILED && s.status==N90_ERROR;
+  n=n90_reply_tags(req,N90_SUCCESS,"","",-1,"",tb[..]);
+  e=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"",eb[..]);s=n90_step(j,req,e,1005,work[..]);#assert s.state==N90_WORKING && s.status==N90_SUCCESS;
+  n=n90_reply_tags(req,N90_PARTIAL,"","",0,"",tb[..]);
+  e=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"Par",eb[..]);s=n90_step(j,req,e,1005,work[..]);#assert s.state==N90_WORKING && s.status==N90_PARTIAL && s.owed==0;
+  // A request without a bid pays nothing automatically.
+  nb:[4096]u8;free:=n90_t_event(0x11,1000,5050,"[[\"i\",\"x\",\"text\"]]","",nb[..]);fj:=n90_job(free,60);
+  n=n90_reply_tags(free,N90_PAYMENT_REQUIRED,"","",1,"",tb[..]);
+  e=n90_t_event(0x22,1005,7000,cast(string)tb[0..<n],"",eb[..]);s=n90_step(fj,free,e,1005,work[..]);#assert s.state==N90_TOO_DEAR && s.error==N90_NO_BID;
+}
+#test "writers: the request's tags" {
+  out:[1024]u8;
+  in:=[1]N90In.[N90In.{data="What is the capital of France?",type=N90_TEXT}];
+  pr:=[1]N90Pair.[N90Pair.{key="model",value="LLaMA-2"}];
+  relays:=[1]string.["wss://relay.example.com"];
+  pk:=[1][32]u8.[n90_t_key(0x22)];
+  n:=n90_request_tags(in[..],pr[..],"text/plain",10000,relays[..],pk[..],false,out[..]);
+  #assert n>0 && cast(string)out[0..<n]==N90_T_REQ_TAGS;
+  #assert n90_request_tags(in[..],pr[..],"text/plain",10000,relays[..],pk[..],false,out[0..<n])==n && n90_request_tags(in[..],pr[..],"text/plain",10000,relays[..],pk[..],false,out[0..<n-1])== -N90_OUTPUT;
+  n0:[1]N90In;p0:[1]N90Pair;r0:[1]string;k0:[1][32]u8;
+  n=n90_request_tags(n0[0..<0],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..]);#assert n==2 && cast(string)out[0..<n]=="[]";
+  n=n90_request_tags(n0[0..<0],p0[0..<0],"",0,r0[0..<0],pk[..],true,out[..]);
+  #assert cast(string)out[0..<n]=="[[\"bid\",\"0\"],[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"encrypted\"]]";
+  n=n90_request_tags(n0[0..<0],p0[0..<0],"",N90_MAX_MSATS,r0[0..<0],k0[0..<0],false,out[..]);#assert cast(string)out[0..<n]=="[[\"bid\",\"2100000000000000000\"]]";
+  #assert n90_request_tags(n0[0..<0],p0[0..<0],"",N90_MAX_MSATS+1,r0[0..<0],k0[0..<0],false,out[..])== -N90_BID && n90_request_tags(n0[0..<0],p0[0..<0],"",-2,r0[0..<0],k0[0..<0],false,out[..])== -N90_BID;
+  two:=[2]string.["wss://a","wss://b"];
+  n=n90_request_tags(n0[0..<0],p0[0..<0],"",-1,two[..],k0[0..<0],false,out[..]);#assert cast(string)out[0..<n]=="[[\"relays\",\"wss://a\",\"wss://b\"]]";
+  ev:=[3]N90In.[N90In.{data="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",type=N90_EVENT_ID,relay="wss://r",marker="source"},
+                N90In.{data="https://x/a",type=N90_URL},N90In.{data="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",type=N90_JOB,marker="m"}];
+  n=n90_request_tags(ev[..],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..]);
+  #assert cast(string)out[0..<n]=="[[\"i\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"event\",\"wss://r\",\"source\"],[\"i\",\"https://x/a\",\"url\"],[\"i\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"job\",\"\",\"m\"]]";
+  #assert n90_request(n32_event(5050,cast(string)out[0..<n])).ni==3;
+  bad:=[1]N90In.[N90In.{data="x",type=4}];#assert n90_request_tags(bad[..],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..])== -N90_INPUT;
+  bad[0].type= -1;#assert n90_request_tags(bad[..],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..])== -N90_INPUT;
+  bad[0].type=N90_EVENT_ID;#assert n90_request_tags(bad[..],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..])== -N90_INPUT;
+  bad[0].type=N90_JOB;#assert n90_request_tags(bad[..],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..])== -N90_INPUT;
+  bad[0].type=N90_TEXT;bad[0].relay="https://r";#assert n90_request_tags(bad[..],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..])== -N90_INPUT;
+  bad[0].relay="x";#assert n90_request_tags(bad[..],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..])== -N90_INPUT;
+  bad[0].relay="ws://r";n=n90_request_tags(bad[..],p0[0..<0],"",-1,r0[0..<0],k0[0..<0],false,out[..]);#assert cast(string)out[0..<n]=="[[\"i\",\"x\",\"text\",\"ws://r\"]]";
+  n=n90_request_tags(n0[0..<0],p0[0..<0],"x",-1,r0[0..<0],k0[0..<0],false,out[..]);#assert cast(string)out[0..<n]=="[[\"output\",\"x\"]]";
+  nokey:=[1]N90Pair.[N90Pair.{value="v"}];#assert n90_request_tags(n0[0..<0],nokey[..],"",-1,r0[0..<0],k0[0..<0],false,out[..])== -N90_PARAM;
+}
+#test "writers: results and feedback" {
+  rb:[4096]u8;req:=n90_t_event(0x11,1000,5050,N90_T_REQ_TAGS,"",rb[..]);
+  ih:[64]u8;id:=req.id;h:=hex_encode_checked(cast(string)id[..],ih[..],false);
+  out:[8192]u8;want:[8192]u8;
+  n:=n90_reply_tags(req,N90_PAYMENT_REQUIRED,"","",5000,"lnbc50n1pxyz",out[..]);
+  w:=json_raw(want[..],0,"[[\"status\",\"payment-required\"],[\"e\",\"");w=json_raw(want[..],w,cast(string)ih[..]);
+  w=json_raw(want[..],w,"\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"amount\",\"5000\",\"lnbc50n1pxyz\"]]");
+  #assert n==w && cast(string)out[0..<n]==cast(string)want[0..<w];
+  n=n90_reply_tags(req,N90_ERROR,"bad input","wss://r",-1,"",out[..]);
+  w=json_raw(want[..],0,"[[\"status\",\"error\",\"bad input\"],[\"e\",\"");w=json_raw(want[..],w,cast(string)ih[..]);
+  w=json_raw(want[..],w,"\",\"wss://r\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+  #assert cast(string)out[0..<n]==cast(string)want[0..<w];
+  n=n90_reply_tags(req,-1,"","wss://relay.example.com",5000,"",out[..]);
+  w=json_raw(want[..],0,"[[\"request\",");w=json_write_string(want[..],w,req.original);w=json_raw(want[..],w,"],[\"e\",\"");w=json_raw(want[..],w,cast(string)ih[..]);
+  w=json_raw(want[..],w,"\",\"wss://relay.example.com\"],[\"i\",\"What is the capital of France?\",\"text\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"amount\",\"5000\"]]");
+  #assert cast(string)out[0..<n]==cast(string)want[0..<w];
+  #assert n90_reply_tags(req,-1,"","wss://relay.example.com",5000,"",out[0..<n])==n && n90_reply_tags(req,-1,"","wss://relay.example.com",5000,"",out[0..<n-1])== -N90_OUTPUT;
+  // An encrypted request's result: encrypted, and no inputs.
+  eb:[4096]u8;enc:=n90_t_event(0x11,1000,5050,"[[\"p\",\"2222222222222222222222222222222222222222222222222222222222222222\"],[\"encrypted\"]]","AgcH",eb[..]);
+  eid:=enc.id;h=hex_encode_checked(cast(string)eid[..],ih[..],false);
+  n=n90_reply_tags(enc,-1,"","",-1,"",out[..]);
+  w=json_raw(want[..],0,"[[\"request\",");w=json_write_string(want[..],w,enc.original);w=json_raw(want[..],w,"],[\"e\",\"");w=json_raw(want[..],w,cast(string)ih[..]);
+  w=json_raw(want[..],w,"\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"encrypted\"]]");
+  #assert cast(string)out[0..<n]==cast(string)want[0..<w];
+  n=n90_reply_tags(enc,N90_PAYMENT_REQUIRED,"x","",-1,"",out[..]);
+  w=json_raw(want[..],0,"[[\"status\",\"payment-required\",\"x\"],[\"e\",\"");w=json_raw(want[..],w,cast(string)ih[..]);
+  w=json_raw(want[..],w,"\"],[\"p\",\"1111111111111111111111111111111111111111111111111111111111111111\"]]");
+  #assert cast(string)out[0..<n]==cast(string)want[0..<w];
+  // Refusals.
+  #assert n90_reply_tags(n32_event(1,"[]"),-1,"","",-1,"",out[..])== -N90_KIND;
+  #assert n90_reply_tags(req,5,"","",-1,"",out[..])== -N90_STATUS && n90_reply_tags(req,-2,"","",-1,"",out[..])== -N90_STATUS && n90_reply_tags(req,N90_PARTIAL,"","",-1,"",out[..])>0;
+  #assert n90_reply_tags(req,0,"","https://r",-1,"",out[..])== -N90_TAG && n90_reply_tags(req,0,"","x",-1,"",out[..])== -N90_TAG && n90_reply_tags(req,0,"","",5,"x",out[..])== -N90_INVOICE;
+  #assert n90_reply_tags(req,0,"","",-2,"",out[..])== -N90_AMOUNT && n90_reply_tags(req,0,"","",N90_MAX_MSATS+1,"",out[..])== -N90_AMOUNT && n90_reply_tags(req,0,"","",N90_MAX_MSATS,"",out[..])>0;
+  #assert n90_reply_tags(req,0,"","",5000,"lnbc100n1q",out[..])== -N90_INVOICE && n90_reply_tags(req,0,"","",-1,"lnbc50n1q",out[..])== -N90_INVOICE;
+  #assert n90_write_amount(out[..],7,-1,"x")==7;
+}

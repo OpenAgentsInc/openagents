@@ -1,0 +1,44 @@
+== 1. The events (T0 = 1762000000)
+R: kind 5050, by Alice, id ad0f9c450d87e512250122ef83b2f6ae0e5da9658770951880e7d65156a3a48a
+F: kind 7000, by Bob, id 6888825cb061c1395442807221b151a9b5619a93125190fea2a6ccf1f738d542
+S: kind 6050, by Bob, id 8a46f3ab994ead2718da9209b070c2c1f3160394342af93adc255944cb5131f0
+R2: kind 5050, by Alice, id bcfc219c49f14e84bd56ec8eecd146f124a44a3fcbcf74cad6af27127e35060c
+X: kind 6050, by Bob, id e70694af0f43d813426ae5a4d7dfe404680015cfc4bc52def1cc102a42bf38a9
+R's tags: [["i","What is the capital of France?","text"],["param","model","LLaMA-2"],["output","text/plain"],["bid","10000"],["relays","wss://relay.example.com"],["p","c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"]]
+F's tags: [["status","payment-required"],["e","ad0f9c450d87e512250122ef83b2f6ae0e5da9658770951880e7d65156a3a48a"],["p","79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],["amount","5000","lnbc50n1pexample"]]
+
+== 2. Bob reads the request
+R: ok, kind 5050, 1 input, 1 param, bid 10000 msats, 1 relay, 1 provider
+  input: What is the capital of France? (text)
+  param: model = LLaMA-2; output text/plain
+
+== 3. Feedback and result, matched to the request
+F: ok, status payment-required, amount 5000 msats, invoice lnbc50n1pexample
+  invoice states 5000 msats; match: ok
+S: ok, kind 6050 = 5050 + 1000, request tag at 0, match: ok
+pay 5000 msats against a bid of 10000: ok
+
+== 4. Alice's job, deadline T0+600
+start: sent, ok
+F at T0+5: payment required, ok, owes 5000 msats
+S at T0+12: done, ok, owes 5000 msats
+S again: done, job closed, owes 5000 msats
+
+== 5. A request sealed with NIP-44
+E's tags: [["bid","10000"],["p","c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"],["encrypted"]]
+E as anyone reads it: ok, encrypted true, 0 inputs
+E opened by Bob: ok, 1 input, 1 param, input What is the capital of France?
+E opened by Carol: can't decrypt
+
+== 6. Refusals
+X, a result for R that embeds R2: request tag does not match the request
+S checked against R2: e names another request
+S's tags under kind 6051: kind
+payment-required for 20000 msats: too dear, over the bid
+5000 msats with a 100n invoice: sent, invoice amount differs
+S taken after the deadline: expired, job closed
+S taken at T0+9, before it was made: sent, outside the clock
+Carol's feedback after Bob's: payment required, another provider, owes 5000 msats
+encrypted request with NIP-04 content: NIP-04 content refused
+input of type file: bad input at tag 0
+bid -5: bad bid at tag 0
