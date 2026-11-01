@@ -119,7 +119,10 @@ characters=$!
 # The capture is `openagents project landing` (apps/openagents-cli, Coax, built here in seconds).
 "$here/../openagents-cli/build.sh" > /dev/null
 oa="$here/../openagents-cli/build/openagents"
-"$oa" project landing || echo "home: keeping its last complete verified warm start" >&2
+# The project verbs find the checkout from the working folder, so run them from
+# this one: release.sh builds a separate tree and may start anywhere.
+oa_here() { (cd "$here" && "$oa" "$@"); }
+oa_here project landing || echo "home: keeping its last complete verified warm start" >&2
 "$here/../../coax/web/project/build-home.sh" "$here/build/newland.wasm" &
 newland=$!
 # /docs/connect-a-pylon: the Pylon quickstart on the homepage's Grid (connect-pylon.coax loads newland.coax).
@@ -139,15 +142,15 @@ verse_app=$!
 # project is data.
 fresh=(); [[ "${COAXIAL_MODE:-dev}" == release ]] || fresh=(--if-older 10)
 snaps=()
-for slug in $("$oa" project bake --list); do
-  "$oa" project snapshot --project "$slug" ${fresh[@]+"${fresh[@]}"} & snaps+=($!)
+for slug in $(oa_here project bake --list); do
+  oa_here project snapshot --project "$slug" ${fresh[@]+"${fresh[@]}"} & snaps+=($!)
 done
 # The /projects list: every project on the relay (kind 30621) into projects/list.coax.
-"$oa" project index ${fresh[@]+"${fresh[@]}"}
+oa_here project index ${fresh[@]+"${fresh[@]}"}
 "$here/../../coax/web/wasm.sh" "$here/projects.coax" "$here/projects-face.c" "$here/build/projects.wasm" &
 list=$!
 for pid in "${snaps[@]}"; do wait "$pid"; done
-"$oa" project bake
+oa_here project bake
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-names.coax" "$here/project-capacity.coax"
 wait "$list"
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
