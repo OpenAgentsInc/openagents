@@ -1,0 +1,268 @@
+// Chapter 82: original FP8 E4M3 weights with one scale per 128x128 block.
+// Profile fp8-e4m3-block128-f64-v1: exact decode into binary64, with either a
+// little-endian F32 scale or a UE8M0 power-of-two scale per block, at most
+// 1,048,576 values per window. Profile fp8-e4m3-dynamic-activation-v1 is the
+// separate approximate one: BF16 activations, per-128-value group scale amax/448, nearest code
+// with ties to even, error at most |x|/16 + scale/512 per value.
+#load "../fixtures/fp8-vectors.coax";
+#authority;
+
+FP8_BLOCK :: 128;
+FP8_BLOCKS_MAX :: 64;
+FP8_GROUPS_MAX :: 8192;
+FP8_SCALE_F32 :: 0;
+FP8_SCALE_UE8M0 :: 1;
+
+// book:begin types
+Fp8Status :: enum u8 {ok;shape;limit;storage;capacity;alias;scale;code;number;header;dtype;offsets;grid;missing;duplicate;}
+Fp8Plan :: struct {status:Fp8Status;blocks:int;scale_bytes:int;values:int;}
+Fp8Result :: struct {status:Fp8Status;written:int;}
+// book:end types
+
+// Checks precede the implementation. Expected values come from the hand table
+// below and from psionic/tests/fp8_oracle.py, which uses exact rationals.
+#test "hand table of E4M3 special values" {
+    #assert f64_bits(fp8_unit(0x00))==0 && f64_bits(fp8_unit(0x80))==0x8000000000000000;
+    #assert fp8_unit(0x01)==0.001953125 && fp8_unit(0x81)==-0.001953125;
+    #assert fp8_unit(0x07)==0.013671875 && fp8_unit(0x08)==0.015625;
+    #assert fp8_unit(0x38)==1 && fp8_unit(0x39)==1.125 && fp8_unit(0x3c)==1.5 && fp8_unit(0x40)==2;
+    #assert fp8_unit(0x7e)==448 && fp8_unit(0xfe)==-448 && fp8_unit(0x7d)==416 && fp8_unit(0x78)==256;
+    #assert fp8_nan(0x7f) && fp8_nan(0xff);
+    for code:0..<256 {#assert fp8_nan(cast(u8)code)==(code==0x7f || code==0xff);}
+}
+#test "all 254 finite E4M3 codes match the exact-rational oracle" {
+    for code:0..<256 {if !fp8_nan(cast(u8)code) {#assert f64_bits(fp8_unit(cast(u8)code))==FP8_E4M3_UNIT_BITS[code];}}
+    #assert FP8_E4M3_UNIT_BITS[0x7f]==0x7ff8000000000000 && FP8_E4M3_UNIT_BITS[0xff]==0x7ff8000000000000;
+}
+#test "every finite code at every UE8M0 scale moves only the binary64 exponent" {
+    for scale:0..<255 {
+        p:=fp8_power(cast(u8)scale);
+        #assert f64_bits(p)==(cast(u64)(scale+896))<<52;
+        for code:0..<256 {if !fp8_nan(cast(u8)code) {
+            expected:=FP8_E4M3_UNIT_BITS[code];
+            if (expected&0x7fffffffffffffff)!=0 {
+                if scale>=127 {expected+=cast(u64)(scale-127)<<52;}else {expected-=cast(u64)(127-scale)<<52;}
+            }
+            #assert f64_bits(fp8_unit(cast(u8)code)*p)==expected;
+        }}
+    }
+    #assert fp8_power(127)==1 && fp8_power(128)==2 && fp8_power(126)==0.5;
+}
+#test "128x128 blocks have exact bounded plans and refuse partial blocks" {
+    p:=fp8_plan(256,384,FP8_SCALE_F32);
+    #assert p.status==Fp8Status.ok && p.blocks==6 && p.scale_bytes==24 && p.values==98304;
+    p=fp8_plan(256,384,FP8_SCALE_UE8M0);#assert p.status==Fp8Status.ok && p.blocks==6 && p.scale_bytes==6;
+    p=fp8_plan(128,128,FP8_SCALE_F32);#assert p.status==Fp8Status.ok && p.blocks==1 && p.scale_bytes==4 && p.values==16384;
+    p=fp8_plan(128,8192,FP8_SCALE_UE8M0);#assert p.status==Fp8Status.ok && p.blocks==64 && p.values==1048576;
+    #assert fp8_plan(8192,128,FP8_SCALE_F32).status==Fp8Status.ok;
+    #assert fp8_plan(256,8192,FP8_SCALE_F32).status==Fp8Status.limit && fp8_plan(8320,128,FP8_SCALE_F32).status==Fp8Status.limit;
+    #assert fp8_plan(9223372036854775680,128,FP8_SCALE_F32).status==Fp8Status.limit;
+    #assert fp8_plan(128,9223372036854775680,FP8_SCALE_F32).status==Fp8Status.limit;
+    for bad:[6]int.[0,-128,127,129,64,1] {
+        #assert fp8_plan(bad,128,FP8_SCALE_F32).status==Fp8Status.shape && fp8_plan(128,bad,FP8_SCALE_F32).status==Fp8Status.shape;
+    }
+    #assert fp8_plan(128,128,2).status==Fp8Status.shape && fp8_plan(128,128,255).status==Fp8Status.shape;
+}
+#test "scale admission: positive finite F32, and every UE8M0 byte but 0xFF" {
+    for word:[6]u32.[1,0x00800000,0x3f800000,0x7f7fffff,0x3e000000,0x40400000] {#assert fp8_f32_scale_ok(word);}
+    for word:[7]u32.[0,0x80000000,0xbf800000,0x7f800000,0xff800000,0x7fc00000,0x80000001] {#assert !fp8_f32_scale_ok(word);}
+    bytes:=[8]u8.[0,0,0x80,0x3f,0,0,0,0x3e];
+    #assert fp8_scale(FP8_SCALE_F32,bytes[..],0)==1 && fp8_scale(FP8_SCALE_F32,bytes[..],1)==0.125;
+    #assert fp8_scale(FP8_SCALE_UE8M0,bytes[..],2)==f64_from_bits(1024<<52) && fp8_scale(FP8_SCALE_UE8M0,bytes[..],0)==f64_from_bits(896<<52);
+    #assert fp8_word(bytes[..],1)==0x3e000000;
+}
+#test "decode applies each block's own scale in row-major order" #steps 100000000 {
+    data:[65536]u8;scales:[16]u8;out:[65537]f64;
+    for i:0..<65536 {data[i]=cast(u8)(i%127);}
+    for b:0..<4 {scales[4*b+2]=cast(u8)(0x80+16*b);scales[4*b+3]=0x3f;}
+    data[0]=0x80;data[129]=0xfe;data[128*256+5]=0x38;data[128*256+200]=0x01;
+    for i:0..<65537 {out[i]=-7;}
+    r:=fp8_decode(256,256,FP8_SCALE_F32,data[..],scales[..],out[..],false);
+    #assert r.status==Fp8Status.ok && r.written==65536 && out[65536]==-7;
+    #assert f64_bits(out[0])==0x8000000000000000 && out[129]==-448*1.125;
+    #assert out[128*256+5]==1.25 && out[128*256+200]==0.001953125*1.375;
+    for i:0..<65536 {
+        row:=i/256;column:=i%256;block:=(row/128)*2+column/128;
+        factor:=f64(f32_from_bits(0x3f800000+cast(u32)(block*0x100000)));
+        #assert f64_bits(out[i])==f64_bits(f64_from_bits(FP8_E4M3_UNIT_BITS[data[i]])*factor);
+    }
+    for i:0..<65536 {data[i]=cast(u8)(i%127);}
+    for b:0..<4 {scales[b]=cast(u8)(120+b);}
+    u:=fp8_decode(256,256,FP8_SCALE_UE8M0,data[..],scales[0..<4],out[..],false);
+    #assert u.status==Fp8Status.ok && u.written==65536;
+    #assert out[1]==0.001953125*f64_from_bits((120+896)<<52) && out[128]==fp8_unit(1)*f64_from_bits((121+896)<<52);
+    #assert out[128*256+128]==fp8_unit(cast(u8)((128*256+128)%127))*f64_from_bits((123+896)<<52);
+    #assert out[128*256]==fp8_unit(cast(u8)((128*256)%127))*f64_from_bits((122+896)<<52);
+}
+#test "F32 scales keep the exact product, including subnormal and largest scales" {
+    data:[16384]u8;scales:[4]u8;out:[16384]f64;
+    for word:[4]u32.[1,0x007fffff,0x7f7fffff,0x3dcccccd] {
+        for i:0..<4 {scales[i]=cast(u8)((word>>(8*i))&255);}
+        for i:0..<16384 {data[i]=cast(u8)(i%256);if fp8_nan(data[i]) {data[i]=0x7e;}}
+        r:=fp8_decode(128,128,FP8_SCALE_F32,data[..],scales[..],out[..],false);#assert r.status==Fp8Status.ok;
+        s:=f64(f32_from_bits(word));
+        for i:0..<256 {#assert out[i]==f64_from_bits(FP8_E4M3_UNIT_BITS[data[i]])*s && out[i]/s==fp8_unit(data[i]);}
+    }
+    #assert out[0x7e]==448*f64(f32_from_bits(0x3dcccccd));
+}
+#test "refusals leave the whole destination unchanged" {
+    data:[32768]u8;scales:=[8]u8.[0,0,0x80,0x3f,0,0,0x80,0x3f];out:[32769]f64;
+    for i:0..<32769 {out[i]=-7;}
+    #assert fp8_decode(127,256,FP8_SCALE_F32,data[0..<32512],scales[..],out[..],false).status==Fp8Status.shape;
+    #assert fp8_decode(128,256,2,data[..],scales[..],out[..],false).status==Fp8Status.shape;
+    #assert fp8_decode(128,16384,FP8_SCALE_F32,data[..],scales[..],out[..],false).status==Fp8Status.limit;
+    #assert fp8_decode(128,256,FP8_SCALE_F32,data[0..<32767],scales[..],out[..],false).status==Fp8Status.storage;
+    #assert fp8_decode(128,256,FP8_SCALE_F32,data[..],scales[0..<7],out[..],false).status==Fp8Status.storage;
+    #assert fp8_decode(128,256,FP8_SCALE_UE8M0,data[..],scales[..],out[..],false).status==Fp8Status.storage;
+    #assert fp8_decode(128,256,FP8_SCALE_F32,data[..],scales[..],out[0..<32767],false).status==Fp8Status.capacity;
+    #assert fp8_decode(128,256,FP8_SCALE_F32,data[..],scales[..],out[..],true).status==Fp8Status.alias;
+    scales[7]=0xbf;#assert fp8_decode(128,256,FP8_SCALE_F32,data[..],scales[..],out[..],false).status==Fp8Status.scale;
+    scales[7]=0x3f;scales[0]=0;scales[2]=0;scales[3]=0;
+    #assert fp8_decode(128,256,FP8_SCALE_F32,data[..],scales[..],out[..],false).status==Fp8Status.scale;
+    scales[2]=0x80;scales[3]=0x3f;
+    u:=[2]u8.[127,255];#assert fp8_decode(128,256,FP8_SCALE_UE8M0,data[..],u[..],out[..],false).status==Fp8Status.scale;
+    u[0]=255;u[1]=0;#assert fp8_decode(128,256,FP8_SCALE_UE8M0,data[..],u[..],out[..],false).status==Fp8Status.scale;
+    data[32767]=0x7f;#assert fp8_decode(128,256,FP8_SCALE_F32,data[..],scales[..],out[..],false).status==Fp8Status.code;
+    data[32767]=0xff;r:=fp8_decode(128,256,FP8_SCALE_F32,data[..],scales[..],out[..],false);
+    #assert r.status==Fp8Status.code && r.written==0;
+    data[32767]=0;data[0]=0x7f;#assert fp8_decode(128,256,FP8_SCALE_F32,data[..],scales[..],out[..],false).status==Fp8Status.code;
+    for i:0..<32769 {#assert out[i]==-7;}
+    data[0]=0xfe;u[0]=254;
+    #assert fp8_decode(128,256,FP8_SCALE_UE8M0,data[..],u[..],out[..],false).status==Fp8Status.ok && out[0]==-448*f64_from_bits((254+896)<<52);
+}
+#test "activation rounding matches the oracle's nearest code with ties to even" {
+    for i:0..<FP8_ROUND_INPUT.count {#assert fp8_round(f64_from_bits(FP8_ROUND_INPUT[i]))==FP8_ROUND_CODE[i];}
+    #assert fp8_round(0)==0 && fp8_round(448)==126 && fp8_round(1.0625)==0x38 && fp8_round(1.1875)==0x3a;
+    #assert fp8_round(0.0009765625)==0 && fp8_round(0.0009765626)==1 && fp8_round(432)==126;
+}
+#test "dynamic activation: hand values, all-zero groups and refusals" {
+    // BF16 words: 896, 3, 2.09375, -0, -1; 1 in the second group.
+    x:[256]u16;codes:[257]u8;scales:[3]f64;
+    x[0]=0x4460;x[1]=0x4040;x[2]=0x4006;x[3]=0x8000;x[4]=0xbf80;x[200]=0x3f80;
+    #assert fp8_bf16(x[0])==896 && fp8_bf16(x[2])==2.09375 && f64_bits(fp8_bf16(x[3]))==0x8000000000000000;
+    r:=fp8_quantize(x[..],codes[0..<256],scales[0..<2],false);
+    #assert r.status==Fp8Status.ok && r.written==2;
+    #assert scales[0]==2 && codes[0]==0x7e && codes[1]==0x3c && codes[2]==0x38 && codes[3]==0x80 && codes[4]==0xb0;
+    #assert scales[1]==f64(1)/448 && codes[200]==0x7e && codes[201]==0;
+    x[200]=1;r=fp8_quantize(x[..],codes[0..<256],scales[0..<2],false);
+    #assert r.status==Fp8Status.ok && scales[1]==f64_from_bits(0x37a0000000000000)/448 && codes[200]==0x7e;
+    x[200]=0;r=fp8_quantize(x[..],codes[0..<256],scales[0..<2],false);#assert r.status==Fp8Status.ok && scales[1]==0 && codes[200]==0;
+    for i:0..<257 {codes[i]=9;}scales[0]=-7;
+    #assert fp8_quantize(x[0..<0],codes[..],scales[..],false).status==Fp8Status.shape;
+    #assert fp8_quantize(x[0..<200],codes[..],scales[..],false).status==Fp8Status.shape;
+    #assert fp8_quantize(x[..],codes[0..<255],scales[..],false).status==Fp8Status.capacity;
+    #assert fp8_quantize(x[..],codes[..],scales[0..<1],false).status==Fp8Status.capacity;
+    #assert fp8_quantize(x[..],codes[..],scales[..],true).status==Fp8Status.alias;
+    for word:[4]u16.[0x7f80,0xff80,0x7fc0,0xffff] {x[255]=word;#assert fp8_quantize(x[..],codes[..],scales[..],false).status==Fp8Status.number;}
+    for i:0..<257 {#assert codes[i]==9;}#assert scales[0]==-7;
+    #assert fp8_quantize_limit(1048576) && fp8_quantize_limit(128) && !fp8_quantize_limit(1048704) && !fp8_quantize_limit(0) && !fp8_quantize_limit(129) && !fp8_quantize_limit(-128);
+}
+#forall "dynamic activation error is at most |x|/16 + scale/512 for every value" seed:0..<24,spread:0..<5 #steps 200000000 {
+    x:[128]u16;codes:[128]u8;scales:[1]f64;state:=seed*7919+spread*97+1;
+    for i:0..<128 {
+        state=(state*1103515245+12345)%2147483648;
+        bits:=(state>>8)&0x7f;exponent:=127-(state>>15)%(1+spread*20);sign:=(state>>3)&1;
+        x[i]=cast(u16)((sign<<15)|(exponent<<7)|bits);
+        if spread==0 && i%9==0 {x[i]=cast(u16)(sign<<15);}
+    }
+    r:=fp8_quantize(x[..],codes[..],scales[..],false);#assert r.status==Fp8Status.ok;
+    amax:=0.0;for v:x {if abs(fp8_bf16(v))>amax {amax=abs(fp8_bf16(v));}}
+    #assert scales[0]==amax/448;
+    for i:0..<128 {
+        #assert !fp8_nan(codes[i]);
+        error:=abs(fp8_unit(codes[i])*scales[0]-fp8_bf16(x[i]));
+        #assert error<=abs(fp8_bf16(x[i]))/16+scales[0]/512;
+        #assert (codes[i]&128)==cast(u8)(x[i]>>8)&128;
+    }
+}
+
+// book:begin plan
+fp8_plan :: (rows:int,columns:int,kind:u8)->Fp8Plan #export_c {
+    if kind>FP8_SCALE_UE8M0 {return Fp8Plan.{status=Fp8Status.shape};}
+    if rows<FP8_BLOCK || columns<FP8_BLOCK || rows%FP8_BLOCK!=0 || columns%FP8_BLOCK!=0 {return Fp8Plan.{status=Fp8Status.shape};}
+    if rows/FP8_BLOCK>FP8_BLOCKS_MAX/(columns/FP8_BLOCK) {return Fp8Plan.{status=Fp8Status.limit};}
+    blocks:=(rows/FP8_BLOCK)*(columns/FP8_BLOCK);width:=4;
+    if kind==FP8_SCALE_UE8M0 {width=1;}
+    return Fp8Plan.{blocks=blocks,scale_bytes=blocks*width,values=rows*columns};
+}
+// book:end plan
+
+// book:begin unit
+fp8_nan :: (code:u8)->bool {return (code&127)==127;}
+fp8_unit :: (code:u8)->f64 {
+    exponent:=cast(u64)(code>>3)&15;fraction:=f64(code&7);
+    magnitude:=fraction*f64_from_bits(1014<<52);
+    if exponent!=0 {magnitude=(8+fraction)*f64_from_bits((exponent+1013)<<52);}
+    return f64_from_bits(f64_bits(magnitude)|((cast(u64)code&128)<<56));
+}
+// book:end unit
+
+// book:begin scale
+fp8_power :: (scale:u8)->f64 {return f64_from_bits((cast(u64)scale+896)<<52);}
+fp8_word :: (scales:[]u8,block:int)->u32 {
+    bits:u32=0;
+    for i:0..<4 {bits|=cast(u32)scales[4*block+i]<<(8*i);}
+    return bits;
+}
+fp8_f32_scale_ok :: (bits:u32)->bool {return bits!=0 && bits<0x7f800000;}
+fp8_scale_ok :: (kind:u8,scales:[]u8,block:int)->bool {
+    if kind==FP8_SCALE_UE8M0 {return scales[block]!=255;}
+    return fp8_f32_scale_ok(fp8_word(scales,block));
+}
+fp8_scale :: (kind:u8,scales:[]u8,block:int)->f64 {
+    if kind==FP8_SCALE_UE8M0 {return fp8_power(scales[block]);}
+    return f64(f32_from_bits(fp8_word(scales,block)));
+}
+// book:end scale
+
+// book:begin decode
+fp8_decode :: (rows:int,columns:int,kind:u8,data:[]u8,scales:[]u8,out:[]f64,overlap:bool)->Fp8Result #export_c {
+    p:=fp8_plan(rows,columns,kind);if p.status!=Fp8Status.ok {return Fp8Result.{status=p.status};}
+    if data.count!=p.values || scales.count!=p.scale_bytes {return Fp8Result.{status=Fp8Status.storage};}
+    if out.count<p.values {return Fp8Result.{status=Fp8Status.capacity};}
+    if overlap {return Fp8Result.{status=Fp8Status.alias};}
+    for b:0..<p.blocks {if !fp8_scale_ok(kind,scales,b) {return Fp8Result.{status=Fp8Status.scale};}}
+    for code:data {if fp8_nan(code) {return Fp8Result.{status=Fp8Status.code};}}
+    per_row:=columns/FP8_BLOCK;
+    for i:0..<p.values {
+        block:=(i/columns/FP8_BLOCK)*per_row+(i%columns)/FP8_BLOCK;
+        out[i]=fp8_unit(data[i])*fp8_scale(kind,scales,block);
+    }
+    return Fp8Result.{written=p.values};
+}
+// book:end decode
+
+// book:begin activation
+// Nearest finite non-negative code to 0 <= magnitude < 464, ties to the even
+// code. The walk stops at 126 (448): code 127's pattern would be 480.
+fp8_closer :: (magnitude:f64,code:int)->bool {
+    below:=magnitude-fp8_unit(cast(u8)code);above:=fp8_unit(cast(u8)(code+1))-magnitude;
+    return above<below || (above==below && code%2==1);
+}
+fp8_round :: (magnitude:f64)->u8 {
+    code:=0;
+    while fp8_closer(magnitude,code) {code+=1;}
+    return cast(u8)code;
+}
+fp8_quantize_limit :: (n:int)->bool {return n>=FP8_BLOCK && n/FP8_BLOCK<=FP8_GROUPS_MAX && n%FP8_BLOCK==0;}
+fp8_bf16 :: (word:u16)->f64 {return f64(f32_from_bits(cast(u32)word<<16));}
+fp8_quantize :: (x:[]u16,codes:[]u8,scales:[]f64,overlap:bool)->Fp8Result #export_c {
+    if !fp8_quantize_limit(x.count) {return Fp8Result.{status=Fp8Status.shape};}
+    groups:=x.count/FP8_BLOCK;
+    if codes.count<x.count || scales.count<groups {return Fp8Result.{status=Fp8Status.capacity};}
+    if overlap {return Fp8Result.{status=Fp8Status.alias};}
+    for v:x {if (v&0x7fff)>=0x7f80 {return Fp8Result.{status=Fp8Status.number};}}
+    for g:0..<groups {
+        // Largest magnitude word; positive BF16 words order like their values.
+        top:=0;
+        for j:0..<FP8_BLOCK {w:=cast(int)(x[g*FP8_BLOCK+j]&0x7fff);top=cast(int)((f64(top+w)+abs(f64(top-w)))/2);}
+        scale:=fp8_bf16(cast(u16)top)/448;scales[g]=scale;
+        for j:0..<FP8_BLOCK {
+            i:=g*FP8_BLOCK+j;q:=0.0;
+            if top!=0 {q=abs(fp8_bf16(x[i]))/scale;}
+            codes[i]=fp8_round(q)|cast(u8)(x[i]>>8)&128;
+        }
+    }
+    return Fp8Result.{written=groups};
+}
+// book:end activation

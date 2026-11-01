@@ -152,6 +152,16 @@
       ]
     },
     {
+      "source": "psionic/examples/original-fp8.coax",
+      "chapter": "psionic/book/ch082-original-fp8-weights.md",
+      "stdout": "psionic/fixtures/original-fp8.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/original-mxfp4.coax",
       "chapter": "psionic/book/ch060-original-mxfp4-weights.md",
       "stdout": "psionic/fixtures/original-mxfp4.out",

@@ -1,0 +1,283 @@
+// Chapter 82: admit one F8_E4M3 weight and its block-scale tensor from a
+// safetensors file. Profile fp8-e4m3-block128-f64-v1 (see fp8.coax). The
+// header is at most 65,535 bytes and may list at most 16 tensors with dtypes F8_E4M3, F8_E8M0, F32 or
+// BF16; their spans must tile the payload exactly.
+#load "fp8.coax";
+#load "../../coax/lib/nostr/json.coax";
+#authority;
+
+FP8_FILE_TENSORS :: 16;
+FP8_DTYPE_E4M3 :: 0;
+FP8_DTYPE_E8M0 :: 1;
+FP8_DTYPE_F32 :: 2;
+FP8_DTYPE_BF16 :: 3;
+
+// book:begin file-types
+Fp8Entry :: struct {name:string;dtype:u8;rank:int;dims:[4]int;begin:int;end:int;}
+Fp8Pair :: struct {status:Fp8Status;rows:int;columns:int;kind:u8;data_begin:int;data_end:int;scale_begin:int;scale_end:int;}
+// book:end file-types
+Fp8Parsed :: struct {status:Fp8Status;entry:Fp8Entry;}
+
+// A safetensors file: 8-byte little-endian header length, JSON, payload.
+fp8_build :: (buffer:[]u8,header:string,payload:int)->[]u8 {
+    for i:0..<8 {buffer[i]=cast(u8)((header.count>>(8*i))&255);}
+    for i:0..<header.count {buffer[8+i]=header[i];}
+    return buffer[0..<8+header.count+payload];
+}
+FP8_TEST_HEADER :: "{\"__metadata__\":{\"format\":\"pt\"},\"w.weight_scale_inv\":{\"dtype\":\"F32\",\"shape\":[1,2],\"data_offsets\":[32768,32776]},\"w.weight\":{\"dtype\":\"F8_E4M3\",\"shape\":[128,256],\"data_offsets\":[0,32768]},\"norm\":{\"dtype\":\"BF16\",\"shape\":[4],\"data_offsets\":[32776,32784]}}";
+fp8_admit_text :: (header:string,payload:int,weight:string,scale:string)->Fp8Pair {
+    buffer:[40000]u8;file:=fp8_build(buffer[..],header,payload);
+    return fp8_pair(file,weight,scale);
+}
+fp8_swap :: (text:string,from:string,to:string,buffer:[]u8)->string {
+    n:=0;i:=0;
+    while i<text.count {
+        if i+from.count<=text.count && text[i..<i+from.count]==from {for c:to {buffer[n]=c;n+=1;}i+=from.count;}
+        else {buffer[n]=text[i];n+=1;i+=1;}
+    }
+    return cast(string)buffer[0..<n];
+}
+fp8_case :: (from:string,to:string,payload:int)->Fp8Status {
+    edit:[1024]u8;header:=fp8_swap(FP8_TEST_HEADER,from,to,edit[..]);
+    return fp8_admit_text(header,payload,"w.weight","w.weight_scale_inv").status;
+}
+
+#test "a constructed F8_E4M3 file yields the weight and its F32 scale grid" {
+    p:=fp8_admit_text(FP8_TEST_HEADER,32784,"w.weight","w.weight_scale_inv");
+    base:=8+FP8_TEST_HEADER.count;
+    #assert p.status==Fp8Status.ok && p.rows==128 && p.columns==256 && p.kind==FP8_SCALE_F32;
+    #assert p.data_begin==base && p.data_end==base+32768 && p.scale_begin==base+32768 && p.scale_end==base+32776;
+    edit:[1024]u8;e8:=fp8_swap(FP8_TEST_HEADER,"\"F32\",\"shape\":[1,2],\"data_offsets\":[32768,32776]","\"F8_E8M0\",\"shape\":[1,2],\"data_offsets\":[32768,32770]",edit[..]);
+    edit2:[1024]u8;e8=fp8_swap(e8,"[32776,32784]","[32770,32778]",edit2[..]);
+    u:=fp8_admit_text(e8,32778,"w.weight","w.weight_scale_inv");
+    #assert u.status==Fp8Status.ok && u.kind==FP8_SCALE_UE8M0 && u.scale_end==u.scale_begin+2;
+    moved:=fp8_swap(fp8_swap(FP8_TEST_HEADER,"[32768,32776]","[0,8]",edit[..]),"[0,32768]","[8,32776]",edit2[..]);
+    m:=fp8_admit_text(moved,32784,"w.weight","w.weight_scale_inv");
+    at:=8+moved.count;
+    #assert m.status==Fp8Status.ok && m.data_begin==at+8 && m.data_end==at+32776 && m.scale_begin==at && m.scale_end==at+8;
+    #assert fp8_swap("abcb","b","xy",edit[..])=="axycxy" && fp8_swap("ab","abc","x",edit[..])=="ab";
+}
+#test "header, dtype, grid, span and name refusals are typed" {
+    #assert fp8_admit_text(FP8_TEST_HEADER,32784,"w.missing","w.weight_scale_inv").status==Fp8Status.missing;
+    #assert fp8_admit_text(FP8_TEST_HEADER,32784,"w.weight","w.missing").status==Fp8Status.missing;
+    #assert fp8_admit_text(FP8_TEST_HEADER,32784,"w.weight_scale_inv","w.weight").status==Fp8Status.dtype;
+    #assert fp8_admit_text(FP8_TEST_HEADER,32784,"w.weight","norm").status==Fp8Status.dtype;
+    #assert fp8_admit_text(FP8_TEST_HEADER,32784,"w.weight","w.weight").status==Fp8Status.dtype;
+    // Truncated data: the payload ends before the last span.
+    #assert fp8_admit_text(FP8_TEST_HEADER,32783,"w.weight","w.weight_scale_inv").status==Fp8Status.offsets;
+    #assert fp8_admit_text(FP8_TEST_HEADER,32785,"w.weight","w.weight_scale_inv").status==Fp8Status.offsets;
+    #assert fp8_case("\"F8_E4M3\"","\"F8_E5M2\"",32784)==Fp8Status.dtype;
+    #assert fp8_case("\"BF16\"","\"F16\"",32784)==Fp8Status.dtype;
+    #assert fp8_case("\"F32\"","\"BF16\"",32784)==Fp8Status.offsets;
+    #assert fp8_case("[1,2]","[2,1]",32784)==Fp8Status.grid;
+    #assert fp8_case("[1,2]","[2]",32780)==Fp8Status.offsets;
+    #assert fp8_case("[1,2],\"data_offsets\":[32768,32776]","[2],\"data_offsets\":[32768,32776]",32784)==Fp8Status.grid;
+    #assert fp8_case("[1,2],\"data_offsets\":[32768,32776]","[1,1,2],\"data_offsets\":[32768,32776]",32784)==Fp8Status.grid;
+    #assert fp8_case("[128,256],\"data_offsets\":[0,32768]","[100,256],\"data_offsets\":[0,25600]",26 +32768-32768+25616-26)==Fp8Status.offsets;
+    #assert fp8_case("[128,256],\"data_offsets\":[0,32768]","[32768],\"data_offsets\":[0,32768]",32784)==Fp8Status.shape;
+    #assert fp8_case("[128,256],\"data_offsets\":[0,32768]","[64,512],\"data_offsets\":[0,32768]",32784)==Fp8Status.shape;
+    #assert fp8_case("[128,256],\"data_offsets\":[0,32768]","[1,128,256],\"data_offsets\":[0,32768]",32784)==Fp8Status.shape;
+    #assert fp8_case("[0,32768]","[1,32769]",32784)==Fp8Status.offsets;
+    #assert fp8_case("[0,32768]","[0,0]",32784)==Fp8Status.offsets;
+    #assert fp8_case("[0,32768]","[0,99999999999999999999]",32784)==Fp8Status.header;
+    #assert fp8_case("[0,32768]","[99999999999999999999,32768]",32784)==Fp8Status.header;
+    #assert fp8_case("[32776,32784]","[32780,32788]",32784)==Fp8Status.offsets;
+    #assert fp8_case("\"shape\":[4],\"data_offsets\":[32776,32784]","\"shape\":[40000],\"data_offsets\":[32776,32776]",32776)==Fp8Status.offsets;
+    #assert fp8_case("\"shape\":[4],\"data_offsets\":[32776,32784]","\"shape\":[40000],\"data_offsets\":[32776,32777]",32777)==Fp8Status.offsets;
+    #assert fp8_case("\"shape\":[4],\"data_offsets\":[32776,32784]","\"shape\":[1],\"data_offsets\":[32776,32778]",32778)==Fp8Status.ok;
+    #assert fp8_case("[1,2]","[60000,60000,60000,60000]",32784)==Fp8Status.offsets;
+    #assert fp8_case("[1,2]","[1,2,1]",32784)==Fp8Status.grid;
+    // Same scale bytes, one grid dimension wrong at a time.
+    for grid:[2]string.["[1,4]","[2,2]"] {
+        edit:[1024]u8;header:=fp8_swap("{\"w\":{\"dtype\":\"F8_E4M3\",\"shape\":[128,256],\"data_offsets\":[0,32768]},\"s\":{\"dtype\":\"F32\",\"shape\":GRID,\"data_offsets\":[32768,32784]}}","GRID",grid,edit[..]);
+        #assert fp8_admit_text(header,32784,"w","s").status==Fp8Status.grid;
+    }
+    #assert fp8_case("[0,32768]","[-1,32767]",32784)==Fp8Status.header;
+    #assert fp8_case("[0,32768]","[0,32768,1]",32784)==Fp8Status.header;
+    #assert fp8_case("[0,32768]","[0]",32784)==Fp8Status.header;
+    #assert fp8_case("[0,32768]","[\"0\",32768]",32784)==Fp8Status.header;
+    #assert fp8_case("[0,32768]","[0,\"32768\"]",32784)==Fp8Status.header;
+    #assert fp8_case("[0,32768]","0",32784)==Fp8Status.header;
+    #assert fp8_case("[128,256]","[128,0]",32784)==Fp8Status.shape;
+    #assert fp8_case("[128,256]","[128,-256]",32784)==Fp8Status.header;
+    #assert fp8_case("[128,256]","[128,\"256\"]",32784)==Fp8Status.header;
+    #assert fp8_case("[128,256]","[1,1,1,1,1]",32784)==Fp8Status.shape;
+    #assert fp8_case("[128,256]","128",32784)==Fp8Status.header;
+    #assert fp8_case("[128,256]","[128,9007199254740993]",32784)==Fp8Status.header;
+    #assert fp8_case("[128,256]","[128,9007199254740992]",32784)==Fp8Status.offsets;
+    #assert fp8_case("{\"format\":\"pt\"}","{\"format\":{}}",32784)==Fp8Status.header;
+    #assert fp8_case("{\"format\":\"pt\"}","{\"format\":\"pt\",}",32784)==Fp8Status.header;
+    #assert fp8_case("\"dtype\":\"F8_E4M3\"","\"dtype\":7",32784)==Fp8Status.header;
+    #assert fp8_case("\"dtype\":\"F8_E4M3\",","",32784)==Fp8Status.header;
+    #assert fp8_case(",\"data_offsets\":[0,32768]","",32784)==Fp8Status.header;
+    #assert fp8_case("\"shape\":[128,256],","",32784)==Fp8Status.header;
+    #assert fp8_case("\"dtype\":\"F8_E4M3\"","\"dtype\":\"F8_E4M3\",\"dtype\":\"F8_E4M3\"",32784)==Fp8Status.duplicate;
+    #assert fp8_case("\"shape\":[128,256]","\"shape\":[128,256],\"shape\":[128,256]",32784)==Fp8Status.duplicate;
+    #assert fp8_case("\"data_offsets\":[0,32768]","\"data_offsets\":[0,32768],\"data_offsets\":[0,32768]",32784)==Fp8Status.duplicate;
+    #assert fp8_case("\"dtype\":\"F8_E4M3\"","\"dtype\":\"F8_E4M3\",\"extra\":1",32784)==Fp8Status.header;
+    #assert fp8_case("\"norm\"","\"w.weight\"",32784)==Fp8Status.duplicate;
+    #assert fp8_case("\"norm\":{","\"__metadata__\":{\"a\":\"b\"},\"norm\":{",32784)==Fp8Status.duplicate;
+    #assert fp8_case("{\"format\":\"pt\"}","{\"format\":1}",32784)==Fp8Status.header;
+    #assert fp8_case("{\"format\":\"pt\"}","{\"format\":\"pt\",\"format\":\"pt\"}",32784)==Fp8Status.ok;
+    #assert fp8_case("{\"format\":\"pt\"}","\"pt\"",32784)==Fp8Status.header;
+    #assert fp8_case("{\"format\":\"pt\"}","{}",32784)==Fp8Status.ok;
+    #assert fp8_case("\"norm\":{\"dtype\":\"BF16\"","\"norm\":[],\"x\":{\"dtype\":\"BF16\"",32784)==Fp8Status.header;
+    #assert fp8_case("\"dtype\":\"BF16\"","\"dtype\":\"BF16\",",32784)==Fp8Status.header;
+    #assert fp8_case("\"norm\"","\"\"",32784)==Fp8Status.ok;
+    #assert fp8_case("[32776,32784]","[32768,32776]",32784)==Fp8Status.offsets;
+    #assert fp8_case("[32776,32784]","[32770,32778]",32784)==Fp8Status.offsets;
+    #assert fp8_case("[0,32768]","[8,32776]",32784)==Fp8Status.offsets;
+}
+#test "the length prefix, JSON framing and tensor count are bounded" {
+    buffer:[40000]u8;file:=fp8_build(buffer[..],FP8_TEST_HEADER,32784);
+    for n:[3]int.[0,1,7] {#assert fp8_pair(file[0..<n],"w.weight","w.weight_scale_inv").status==Fp8Status.offsets;}
+    #assert fp8_pair(file[0..<8+FP8_TEST_HEADER.count-1],"w.weight","w.weight_scale_inv").status==Fp8Status.offsets;
+    #assert fp8_pair(file[0..<8+FP8_TEST_HEADER.count],"w.weight","w.weight_scale_inv").status==Fp8Status.offsets;
+    empty:=[8]u8.[0,0,0,0,0,0,0,0];#assert fp8_pair(empty[..],"a","b").status==Fp8Status.header;
+    file[8]=' ';#assert fp8_pair(file,"w.weight","w.weight_scale_inv").status==Fp8Status.header;file[8]='{';
+    for at:2..<8 {file[at]=1;#assert fp8_pair(file,"w.weight","w.weight_scale_inv").status==Fp8Status.header;file[at]=0;}
+    #assert fp8_pair(file,"w.weight","w.weight_scale_inv").status==Fp8Status.ok;
+    // The largest header, 65,535 bytes: "{}" and trailing spaces.
+    wide:[65545]u8;wide[0]=0xff;wide[1]=0xff;wide[8]='{';wide[9]='}';for i:10..<65543 {wide[i]=' ';}
+    #assert fp8_pair(wide[0..<65543],"a","b").status==Fp8Status.missing;
+    wide[65543]=' ';wide[0]=0;wide[2]=1;#assert fp8_pair(wide[0..<65544],"a","b").status==Fp8Status.header;
+    tiny:=fp8_build(buffer[..],"{}",0);#assert fp8_pair(tiny,"a","b").status==Fp8Status.missing;
+    tiny=fp8_build(buffer[..],"[]",0);#assert fp8_pair(tiny,"a","b").status==Fp8Status.header;
+    tiny=fp8_build(buffer[..],"{} ",0);#assert fp8_pair(tiny,"a","b").status==Fp8Status.missing;
+    tiny=fp8_build(buffer[..],"{}}",0);#assert fp8_pair(tiny,"a","b").status==Fp8Status.header;
+    tiny=fp8_build(buffer[..],"{1:2}",0);#assert fp8_pair(tiny,"a","b").status==Fp8Status.header;
+    many:[2048]u8;n:=1;many[0]='{';
+    for t:0..<17 {
+        if t>0 {many[n]=',';n+=1;}
+        n=fp8_put(many[..],n,"\"t");n=fp8_digits(many[..],n,t+10);
+        n=fp8_put(many[..],n,"\":{\"dtype\":\"F8_E4M3\",\"shape\":[1],\"data_offsets\":[");
+        n=fp8_digits(many[..],n,t);n=fp8_put(many[..],n,",");n=fp8_digits(many[..],n,t+1);n=fp8_put(many[..],n,"]}");
+        many[n]='}';
+        r:=fp8_pair(fp8_build(buffer[..],cast(string)many[0..<n+1],t+1),"t10","t11");
+        if t==0 {#assert r.status==Fp8Status.missing;}
+        else if t<16 {#assert r.status==Fp8Status.dtype;}
+        else {#assert r.status==Fp8Status.limit;}
+    }
+}
+fp8_put :: (buffer:[]u8,start:int,text:string)->int {at:=start;for c:text {buffer[at]=c;at+=1;}return at;}
+fp8_digits :: (buffer:[]u8,start:int,value:int)->int {at:=start;
+    if value>=10 {buffer[at]=cast(u8)('0'+value/10);at+=1;}
+    buffer[at]=cast(u8)('0'+value%10);return at+1;
+}
+
+fp8_dtype :: (s:string)->int {
+    if s=="F8_E4M3" {return FP8_DTYPE_E4M3;}
+    if s=="F8_E8M0" {return FP8_DTYPE_E8M0;}
+    if s=="F32" {return FP8_DTYPE_F32;}
+    if s=="BF16" {return FP8_DTYPE_BF16;}
+    return -1;
+}
+fp8_width :: (dtype:u8)->int {if dtype==FP8_DTYPE_F32 {return 4;}if dtype==FP8_DTYPE_BF16 {return 2;}return 1;}
+fp8_integer :: (j:[]Json)->int {
+    if json_next(j)!=JSON_NUMBER {return -1;}
+    n:=json_int(json_text(j));if !n.ok {return -1;}
+    return n.value;
+}
+fp8_parse :: (j:[]Json,name:string)->Fp8Parsed {
+    if json_next(j)!=JSON_OBJECT {return Fp8Parsed.{status=Fp8Status.header};}
+    e:=Fp8Entry.{name=name};d:=false;s:=false;o:=false;t:=json_next(j);
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return Fp8Parsed.{status=Fp8Status.header};}
+        key:=json_text(j);
+        if key=="dtype" {
+            if d {return Fp8Parsed.{status=Fp8Status.duplicate};}d=true;
+            if json_next(j)!=JSON_STRING {return Fp8Parsed.{status=Fp8Status.header};}
+            dtype:=fp8_dtype(json_text(j));if dtype<0 {return Fp8Parsed.{status=Fp8Status.dtype};}
+            e.dtype=cast(u8)dtype;
+        } else if key=="shape" {
+            if s {return Fp8Parsed.{status=Fp8Status.duplicate};}s=true;
+            if json_next(j)!=JSON_ARRAY {return Fp8Parsed.{status=Fp8Status.header};}
+            part:=json_next(j);
+            while part!=JSON_ARRAY_END {
+                if part!=JSON_NUMBER {return Fp8Parsed.{status=Fp8Status.header};}
+                if e.rank>=4 {return Fp8Parsed.{status=Fp8Status.shape};}
+                n:=json_int(json_text(j));if !n.ok || n.value<0 {return Fp8Parsed.{status=Fp8Status.header};}
+                if n.value==0 {return Fp8Parsed.{status=Fp8Status.shape};}
+                e.dims[e.rank]=n.value;e.rank+=1;part=json_next(j);
+            }
+        } else if key=="data_offsets" {
+            if o {return Fp8Parsed.{status=Fp8Status.duplicate};}o=true;
+            if json_next(j)!=JSON_ARRAY {return Fp8Parsed.{status=Fp8Status.header};}
+            e.begin=fp8_integer(j);e.end=fp8_integer(j);
+            if e.begin<0 || e.end<0 || json_next(j)!=JSON_ARRAY_END {return Fp8Parsed.{status=Fp8Status.header};}
+        } else {return Fp8Parsed.{status=Fp8Status.header};}
+        t=json_next(j);
+    }
+    if !d || !s || !o {return Fp8Parsed.{status=Fp8Status.header};}
+    return Fp8Parsed.{entry=e};
+}
+// Bytes of a tensor, or 0 when the product passes the payload.
+fp8_bytes :: (e:Fp8Entry,payload:int)->int {
+    bytes:=fp8_width(e.dtype);
+    for i:0..<e.rank {
+        if e.dims[i]>payload/bytes {return 0;}
+        bytes*=e.dims[i];
+    }
+    return bytes;
+}
+fp8_metadata :: (j:[]Json)->Fp8Status {
+    if json_next(j)!=JSON_OBJECT {return Fp8Status.header;}
+    t:=json_next(j);
+    while t!=JSON_OBJECT_END {
+        if json_next(j)!=JSON_STRING {return Fp8Status.header;}
+        t=json_next(j);
+    }
+    return Fp8Status.ok;
+}
+fp8_find :: (entries:[]Fp8Entry,name:string)->int {
+    for i:0..<entries.count {if entries[i].name==name {return i;}}
+    return -1;
+}
+
+// book:begin pair
+fp8_pair :: (file:[]u8,weight:string,scale:string)->Fp8Pair #export_c {
+    if file.count<8 {return Fp8Pair.{status=Fp8Status.offsets};}
+    for i:2..<8 {if file[i]!=0 {return Fp8Pair.{status=Fp8Status.header};}}
+    length:=cast(int)file[0]|cast(int)file[1]<<8;
+    if length>file.count-8 {return Fp8Pair.{status=Fp8Status.offsets};}
+    payload:=file.count-8-length;entries:[FP8_FILE_TENSORS]Fp8Entry;count:=0;covered:=0;meta:=false;
+    j:[1]Json;json_start_bounded(j[..],cast(string)file[8..<8+length],length,length);
+    if json_next(j[..])!=JSON_OBJECT {return Fp8Pair.{status=Fp8Status.header};}
+    t:=json_next(j[..]);
+    while t!=JSON_OBJECT_END {
+        if t!=JSON_STRING {return Fp8Pair.{status=Fp8Status.header};}
+        name:=json_text(j[..]);
+        if name=="__metadata__" {
+            if meta {return Fp8Pair.{status=Fp8Status.duplicate};}meta=true;
+            if fp8_metadata(j[..])!=Fp8Status.ok {return Fp8Pair.{status=Fp8Status.header};}
+        } else {
+            if count==FP8_FILE_TENSORS {return Fp8Pair.{status=Fp8Status.limit};}
+            parsed:=fp8_parse(j[..],name);if parsed.status!=Fp8Status.ok {return Fp8Pair.{status=parsed.status};}
+            e:=parsed.entry;size:=fp8_bytes(e,payload);
+            if size==0 || e.begin>payload-size || e.end!=e.begin+size {return Fp8Pair.{status=Fp8Status.offsets};}
+            for i:0..<count {
+                if entries[i].name==name {return Fp8Pair.{status=Fp8Status.duplicate};}
+                if e.begin<entries[i].end && entries[i].begin<e.end {return Fp8Pair.{status=Fp8Status.offsets};}
+            }
+            entries[count]=e;count+=1;covered+=size;
+        }
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return Fp8Pair.{status=Fp8Status.header};}
+    if covered!=payload {return Fp8Pair.{status=Fp8Status.offsets};}
+    w:=fp8_find(entries[0..<count],weight);s:=fp8_find(entries[0..<count],scale);
+    if w<0 || s<0 {return Fp8Pair.{status=Fp8Status.missing};}
+    if entries[w].dtype!=FP8_DTYPE_E4M3 {return Fp8Pair.{status=Fp8Status.dtype};}
+    kind:u8=FP8_SCALE_F32;
+    if entries[s].dtype==FP8_DTYPE_E8M0 {kind=FP8_SCALE_UE8M0;}
+    else if entries[s].dtype!=FP8_DTYPE_F32 {return Fp8Pair.{status=Fp8Status.dtype};}
+    if entries[w].rank!=2 {return Fp8Pair.{status=Fp8Status.shape};}
+    rows:=entries[w].dims[0];columns:=entries[w].dims[1];
+    p:=fp8_plan(rows,columns,kind);if p.status!=Fp8Status.ok {return Fp8Pair.{status=p.status};}
+    g:=entries[s];
+    if g.rank!=2 || g.dims[0]!=rows/FP8_BLOCK || g.dims[1]!=columns/FP8_BLOCK {return Fp8Pair.{status=Fp8Status.grid};}
+    base:=8+length;
+    return Fp8Pair.{rows=rows,columns=columns,kind=kind,data_begin=base+entries[w].begin,data_end=base+entries[w].end,
+        scale_begin=base+g.begin,scale_end=base+g.end};
+}
+// book:end pair

@@ -89,7 +89,7 @@
 - [80. Two models, one card](ch080-two-models-one-card.md)
 
 - [81. Execute Ministral 4](ch081-execute-ministral-4.md) — design draft
-- [82. Original FP8 weights](ch082-original-fp8-weights.md) — design draft
+- [82. Original FP8 weights](ch082-original-fp8-weights.md) — partly implemented
 - [83. A coding agent](ch083-a-coding-agent.md) — design draft
 - [84. Attention through a latent](ch084-attention-through-a-latent.md) — design draft
 - [85. Execute Mistral Small 7](ch085-execute-mistral-small-7.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103–112, 117, 120, 123, 124, 140, 142, 147, 151, 156–158, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 82, 88–98, 103–112, 117, 120, 123, 124, 140, 142, 147, 151, 156–158, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

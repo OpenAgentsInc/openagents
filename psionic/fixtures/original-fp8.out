@@ -1,0 +1,9 @@
+w.weight: 128 x 256 F8_E4M3, 2 blocks of 128 x 128, F32 scales
+block 0 x 0.5: 0.5, 0.75, -224.0, 0.0009765625
+block 1 x 3:   3.0, 4.5, -1344.0, 0.005859375
+UE8M0 126, 131: -224.0, -7168.0
+scale byte 0xFF: scale
+code 0x7F: code
+one byte short: offsets
+100 x 256, a partial block: shape
+activation scale 2.0, codes 0x7e 0x3c 0x38 0xb0 -> 896.0, 3.0, 2.0, -1.0

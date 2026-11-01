@@ -1,0 +1,72 @@
+#import "Basic";
+#load "../lib/fp8-file.coax";
+
+// A constructed safetensors file: one 128x256 F8_E4M3 weight (two blocks) and
+// its scale tensor. The bytes are owned test data, not checkpoint tensors.
+WEIGHT :: "\"w.weight\":{\"dtype\":\"F8_E4M3\",\"shape\":[128,256],\"data_offsets\":[0,32768]}";
+F32_SCALES :: "{\"w.weight_scale_inv\":{\"dtype\":\"F32\",\"shape\":[1,2],\"data_offsets\":[32768,32776]},";
+E8M0_SCALES :: "{\"w.weight_scale_inv\":{\"dtype\":\"F8_E8M0\",\"shape\":[1,2],\"data_offsets\":[32768,32770]},";
+
+join :: (buffer:[]u8,a:string,b:string)->string {
+    for i:0..<a.count {buffer[i]=a[i];}
+    for i:0..<b.count {buffer[a.count+i]=b[i];}
+    buffer[a.count+b.count]='}';
+    return cast(string)buffer[0..<a.count+b.count+1];
+}
+hex :: (code:u8) {
+    digits:="0123456789abcdef";hi:=cast(int)(code>>4);lo:=cast(int)(code&15);
+    print("0x");print("%",digits[hi..<hi+1]);print("%",digits[lo..<lo+1]);
+}
+// Row 0 of each block starts 1, 1.5, -448, 2^-9.
+put_codes :: (file:[]u8,base:int) {
+    for block:0..<2 {
+        at:=base+128*block;
+        file[at]=0x38;file[at+1]=0x3c;file[at+2]=0xfe;file[at+3]=0x01;
+    }
+}
+decode :: (file:[]u8,out:[]f64)->Fp8Result {
+    p:=fp8_pair(file,"w.weight","w.weight_scale_inv");
+    if p.status!=Fp8Status.ok {return Fp8Result.{status=p.status};}
+    return fp8_decode(p.rows,p.columns,p.kind,file[p.data_begin..<p.data_end],file[p.scale_begin..<p.scale_end],out,false);
+}
+
+// book:begin example
+main :: () {
+    text:[256]u8;buffer:[33100]u8;out:[32768]f64;
+    header:=join(text[..],F32_SCALES,WEIGHT);
+    file:=fp8_build(buffer[..],header,32776);base:=8+header.count;
+    put_codes(file,base);
+    // Scale 0.5 for block 0 and 3.0 for block 1, little-endian F32.
+    scales:=[8]u8.[0,0,0,0x3f,0,0,0x40,0x40];
+    for i:0..<8 {file[base+32768+i]=scales[i];}
+    p:=fp8_pair(file,"w.weight","w.weight_scale_inv");
+    print("w.weight: % x % F8_E4M3, % blocks of 128 x 128, F32 scales\n",p.rows,p.columns,(p.rows/128)*(p.columns/128));
+    r:=decode(file,out[..]);
+    #assert r.status==Fp8Status.ok && r.written==32768;
+    print("block 0 x 0.5: %, %, %, %\n",out[0],out[1],out[2],out[3]);
+    print("block 1 x 3:   %, %, %, %\n",out[128],out[129],out[130],out[131]);
+
+    header=join(text[..],E8M0_SCALES,WEIGHT);
+    file=fp8_build(buffer[..],header,32770);base=8+header.count;
+    put_codes(file,base);
+    // UE8M0 bytes 126 and 131: 2^-1 and 2^4.
+    file[base+32768]=126;file[base+32769]=131;
+    r=decode(file,out[..]);#assert r.status==Fp8Status.ok;
+    print("UE8M0 126, 131: %, %\n",out[2],out[130]);
+
+    out[0]=-7;
+    file[base+32768+1]=255;print("scale byte 0xFF: %\n",decode(file,out[..]).status);file[base+32768+1]=131;
+    file[base+5]=0x7f;print("code 0x7F: %\n",decode(file,out[..]).status);file[base+5]=0;
+    print("one byte short: %\n",decode(file[0..<file.count-1],out[..]).status);
+    print("100 x 256, a partial block: %\n",fp8_plan(100,256,FP8_SCALE_F32).status);
+    #assert out[0]==-7;
+
+    // Dynamic activation profile: BF16 words 896, 3, 2.09375, -1 in one group.
+    x:[128]u16;q:[128]u8;s:[1]f64;
+    x[0]=0x4460;x[1]=0x4040;x[2]=0x4006;x[3]=0xbf80;
+    a:=fp8_quantize(x[..],q[..],s[..],false);#assert a.status==Fp8Status.ok;
+    print("activation scale %, codes",s[0]);
+    for i:0..<4 {print(" ");hex(q[i]);}
+    print(" -> %, %, %, %\n",fp8_unit(q[0])*s[0],fp8_unit(q[1])*s[0],fp8_unit(q[2])*s[0],fp8_unit(q[3])*s[0]);
+}
+// book:end example
