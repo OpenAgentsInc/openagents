@@ -409,6 +409,18 @@
         "release"
       ],
       "timeout": 120
+    },
+    {
+      "source": "nostr/examples/store-events.coax",
+      "chapter": "nostr/book/ch035-store-events.md",
+      "stdout": "nostr/fixtures/store-events.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

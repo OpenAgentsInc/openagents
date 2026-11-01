@@ -1,0 +1,295 @@
+// book:begin example
+#load "../../coax/lib/nostr/store.coax";
+#load "../../coax/lib/nostr/store_file.coax";
+#load "../../coax/lib/nostr/store_recover.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The relay's clock for the whole run: 2026-11-01T00:00:00Z.
+NOW :: 1793491200;
+// BIP-340 vector 1's published test key and aux. Never sign with a real key
+// in an example.
+KEY_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";
+
+REASON :: [12] string.["accepted", "duplicate", "superseded", "bad event", "bad id", "bad signature",
+  "auth kind", "tags", "time", "expired", "auth required", "full"];
+
+// A store with room for six records, and its file. The file is a byte
+// buffer here: coax/relay/relay.coax keeps it on disk through
+// coax/platform/store-file-native.c, which `coax run` doesn't link.
+Store :: struct {
+  arena: [4096] u8; recs: [6] RsdRec;
+  s: [1] RsdStore;
+  file: [4096] u8; total: int;      // the append-only file and its size
+  scratch: [4096] u8;               // the id preimage and the verifier's work
+  text: [1024] u8;                  // one original read back from the file
+}
+store_init :: (st: [] Store) {
+  st[0].s[0] = RsdStore.{}; st[0].s[0].arena = st[0].arena[..]; st[0].s[0].recs = st[0].recs[..];
+}
+
+// book:begin save
+// store_saved.coax's rsd_save and rsd_admit_saved, with the file in memory:
+// decide, append the frame (4-byte big-endian length, then the exact
+// original) when the decision writes, and only then apply it.
+save :: (st: [] Store, text: string) -> bool {
+  head: [4] u8;
+  if !ns_file_header(text.count, head[..]) || st[0].total + 4 + text.count > st[0].file.count { return false; }
+  for i: 0..<4 { st[0].file[st[0].total + i] = head[i]; }
+  for i: 0..<text.count { st[0].file[st[0].total + 4 + i] = text[i]; }
+  st[0].total += 4 + text.count;   // the host's cxstore_commit: pwrite, then fsync
+  return true;
+}
+admit_saved :: (st: [] Store, r: RsAdmit, text: string) -> int {
+  c := rsd_rec(r);
+  p := ns_store_plan(st[0].s[..], c, text, rsd_verified(r, text));
+  if p.write != NS_W_NONE && !save(st, text) { return RS_FULL; }
+  return ns_store_apply(st[0].s[..], p, c, text);
+}
+// book:end save
+
+// One EVENT's text as relay.coax's ry_event handles it after the frame:
+// read, policy, signature, then the store.
+admit :: (st: [] Store, text: string) -> int {
+  r := rs_admit_read(text, NOW, false, false, st[0].scratch[..]);
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(text, st[0].scratch[..], false)); }
+  if r.reason != RS_ACCEPT { return r.reason; }
+  return admit_saved(st, r, text);
+}
+
+// book:begin replay
+// store_saved.coax's rsd_replay line for line, with cxstore_byte and
+// cxstore_truncate replaced by the buffer. Each frame's fate is
+// store_recover.coax's nsr_frame.
+Replay :: struct { ok: bool; frames: int; stored: int; kept: int; cut: bool; refused: bool; at: int; reason: int; }
+replay :: (st: [] Store) -> Replay {
+  out: Replay;
+  total := st[0].total; file := st[0].file[..];
+  at := 0;
+  while true {
+    head: [4] u8; k := 0;
+    while k < 4 && at + k < total { head[k] = file[at + k]; k += 1; }
+    f := ns_file_next(head[0..<k], at, total);
+    to := ifx f.status == NSF_OK then f.to else at;
+    p := nsr_region(f.status, at, f.from, to, total);
+    zero := p; while zero < total && file[zero] != 0 { zero += 1; }
+    nonzero := zero; while nonzero < total && file[nonzero] == 0 { nonzero += 1; }
+    d := nsr_frame(NsrFrame.{status = f.status, at = at, from = f.from, to = to, total = total, zero = zero, nonzero = nonzero});
+    if d == NSR_DONE { break; }
+    if d == NSR_CUT { out.cut = true; st[0].total = at; break; }
+    if d != NSR_NEXT || f.to - f.from > st[0].text.count { out.refused = true; out.at = at; out.reason = -1 - f.status; return out; }
+    for i: f.from..<f.to { st[0].text[i - f.from] = file[i]; }
+    t := cast(string) st[0].text[0..<f.to - f.from];
+    out.frames += 1;
+    // rsd_replay_read: admission's reading, but an event expired since it
+    // was saved is kept.
+    r := rs_admit_read(t, NOW, false, false, st[0].scratch[..]);
+    r.reason = ns_file_replay_reason(r.reason);
+    if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(t, st[0].scratch[..], false)); }
+    reason := r.reason;
+    if reason == RS_ACCEPT { reason = rsd_admit(st[0].s[..], r, t); }
+    if nsr_replayed(reason) != NSR_NEXT { out.refused = true; out.at = at; out.reason = reason; return out; }
+    if reason == RS_ACCEPT { out.stored += 1; } else { out.kept += 1; }
+    at = f.to;
+  }
+  out.ok = true;
+  return out;
+}
+// book:end replay
+
+// Sign one event with the test key into out; the event's text.
+sign :: (created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(KEY_HEX, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(AUX_HEX, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [8192] u8;
+  n := EVENT_MORE;
+  while n == EVENT_MORE { n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+text_of :: (n: int, out: [] u8) -> string {
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+// The same event with its "content" member moved first: other bytes, the
+// same id and signature.
+content_first :: (event: string, out: [] u8) -> string {
+  at := -1; key := ",\"content\":\"";
+  for i: 0..<event.count - key.count { if at < 0 && event[i..<i + key.count] == key { at = i; } }
+  #assert at > 0;
+  end := at + key.count;
+  while event[end] != '"' { end += 1; }
+  end += 1;   // the member is event[at + 1..<end]
+  n := json_raw(out, 0, "{"); n = json_raw(out, n, event[at + 1..<end]); n = json_raw(out, n, ",");
+  n = json_raw(out, n, event[1..<at]); n = json_raw(out, n, event[end..<event.count]);
+  return text_of(n, out);
+}
+// Prints the first 4 bytes of bytes in hex.
+print_hex4 :: (bytes: [] u8) {
+  digits := "0123456789abcdef";
+  out: [8] u8;
+  for i: 0..<4 { out[2 * i] = digits[bytes[i] >> 4]; out[2 * i + 1] = digits[bytes[i] & 15]; }
+  print("%", cast(string) out[..]);
+}
+show_time :: (t: int) {
+  if t == NOW { print("NOW"); } else if t < NOW { print("NOW-%", NOW - t); } else { print("NOW+%", t - NOW); }
+}
+show_store :: (st: [] Store) {
+  s := st[0].s[..];
+  print("    store: % records, % live, % arena bytes used, % live bytes\n", s[0].n, s[0].live, s[0].used, s[0].bytes);
+  for i: 0..<s[0].n {
+    r := s[0].recs[i];
+    print("      #% % kind % ", i, ifx r.live then "live   " else "retired", r.kind);
+    show_time(r.created);
+    if ns_class(r.kind) == NS_ADDRESSABLE { print(" d=%", cast(string) r.d[0..<r.d_n]); }
+    id := r.id; print(" id "); print_hex4(id[..]);
+    print(" %..% (% bytes) %...\n", r.from, r.to, r.to - r.from, rsd_text(s, i)[0..<12]);
+  }
+}
+insert :: (st: [] Store, label: string, text: string) {
+  before := st[0].total;
+  result := admit(st, text);
+  print("% -> %", label, REASON[result]);
+  if st[0].total == before { print(", file unchanged\n"); }
+  else { print(", file +% bytes: frame at % with header ", st[0].total - before, before); print_hex4(st[0].file[before..<before + 4]); print("\n"); }
+  show_store(st);
+}
+// The texts a full query returns, newest first, joined: what the store serves.
+served :: (st: [] Store, out: [] u8) -> string {
+  f: NostrFilter; idx: [8] int;
+  q := rsd_query(st[0].s[..], f, NOW, idx[..]);
+  n := 0;
+  for i: 0..<q { n = json_raw(out, n, rsd_text(st[0].s[..], idx[i])); n = json_raw(out, n, "\n"); }
+  return cast(string) out[0..<n];
+}
+// Whether a live record holds exactly text.
+holds :: (st: [] Store, text: string) -> bool {
+  for i: 0..<st[0].s[0].n { if st[0].s[0].recs[i].live && rsd_text(st[0].s[..], i) == text { return true; } }
+  return false;
+}
+// Copies a's file into b and replays it into b's empty store.
+reload :: (a: [] Store, b: [] Store, total: int) -> Replay {
+  store_init(b);
+  for i: 0..<total { b[0].file[i] = a[0].file[i]; }
+  b[0].total = total;
+  return replay(b);
+}
+show_replay :: (label: string, rp: Replay, st: [] Store, before: int) {
+  print("% -> ", label);
+  if rp.refused {
+    // an admission reason, or -1 - the frame's status (NSF_BAD is 3)
+    why := ifx rp.reason >= 0 then REASON[rp.reason] else "no frame has this length";
+    print("refused at byte %, reason % (%), file unchanged: %\n", rp.at, rp.reason, why, st[0].total == before);
+    return;
+  }
+  print("ok: % frames, % stored, % kept", rp.frames, rp.stored, rp.kept);
+  if rp.cut { print(", cut at byte % (was %)", st[0].total, before); }
+  print("\n");
+}
+
+main :: () {
+  a: [1] Store; store_init(a[..]);
+  b1: [1024] u8; note := sign(NOW, 1, "[]", "first note", b1[..]);
+  b2: [1024] u8; moved := content_first(note, b2[..]);
+  b3: [1024] u8; p10 := sign(NOW - 10, 0, "[]", "{\"name\":\"v1\"}", b3[..]);
+  b4: [1024] u8; p20 := sign(NOW - 20, 0, "[]", "{\"name\":\"v0\"}", b4[..]);
+  b5: [1024] u8; p0 := sign(NOW, 0, "[]", "{\"name\":\"v2\"}", b5[..]);
+  b6: [1024] u8; tie_a := sign(NOW, 0, "[]", "{\"name\":\"tie a\"}", b6[..]);
+  b7: [1024] u8; tie_h := sign(NOW, 0, "[]", "{\"name\":\"tie h\"}", b7[..]);
+  b8: [1024] u8; alpha5 := sign(NOW - 5, 30023, "[[\"d\",\"alpha\"]]", "alpha one", b8[..]);
+  b9: [1024] u8; beta5 := sign(NOW - 5, 30023, "[[\"d\",\"beta\"]]", "beta one", b9[..]);
+  b10: [1024] u8; alpha100 := sign(NOW - 100, 30023, "[[\"d\",\"alpha\"]]", "alpha zero", b10[..]);
+  b11: [1024] u8; alpha0 := sign(NOW, 30023, "[[\"d\",\"alpha\"]]", "alpha two", b11[..]);
+  b12: [1024] u8; typing := sign(NOW, 20001, "[]", "typing", b12[..]);
+  b13: [1024] u8; nb := sign(NOW, 1, "[]", "note b", b13[..]);
+  b14: [1024] u8; nc := sign(NOW, 1, "[]", "note c", b14[..]);
+  b15: [1024] u8; nd := sign(NOW, 1, "[]", "note d", b15[..]);
+
+  print("the events (the BIP-340 vector 1 test key), by the first 4 bytes of their ids\n");
+  scratch: [4096] u8;
+  names := [15] string.["note", "note, content first", "kind 0 v1 NOW-10", "kind 0 v0 NOW-20", "kind 0 v2 NOW",
+    "kind 0 tie a NOW", "kind 0 tie h NOW", "30023 alpha NOW-5", "30023 beta NOW-5", "30023 alpha NOW-100",
+    "30023 alpha NOW", "20001 typing", "note b", "note c", "note d"];
+  texts := [15] string.[note, moved, p10, p20, p0, tie_a, tie_h, alpha5, beta5, alpha100, alpha0, typing, nb, nc, nd];
+  for i: 0..<15 {
+    e := nostr_event_read(texts[i], scratch[..], false);
+    id := e.id; print("  %: id ", names[i]); print_hex4(id[..]); print(" (% bytes)\n", texts[i].count);
+  }
+  print("the note as signed:     %\n", note);
+  print("the note content first: %\n", moved);
+
+  print("\ninsertions, in order\n");
+  insert(a[..], "1. note", note);
+  insert(a[..], "2. note again", note);
+  insert(a[..], "3. note, content first (lower bytes)", moved);
+  insert(a[..], "4. note as signed again (higher bytes)", note);
+  insert(a[..], "5. kind 0 v1 at NOW-10", p10);
+  insert(a[..], "6. kind 0 v0 at NOW-20 (older)", p20);
+  insert(a[..], "7. kind 0 v2 at NOW (newer)", p0);
+  insert(a[..], "8. kind 0 v1 again (retired, not yet compacted)", p10);
+  insert(a[..], "9. kind 0 tie a at NOW", tie_a);
+  insert(a[..], "10. kind 0 tie h at NOW", tie_h);
+  insert(a[..], "11. 30023 d=alpha at NOW-5", alpha5);
+  insert(a[..], "12. 30023 d=beta at NOW-5", beta5);
+  insert(a[..], "13. 30023 d=alpha at NOW-100 (older)", alpha100);
+  insert(a[..], "14. 30023 d=alpha at NOW (newer; the table is full: compaction)", alpha0);
+  insert(a[..], "15. kind 0 v1 again (compacted away)", p10);
+  insert(a[..], "16. kind 20001 (ephemeral, never stored)", typing);
+  insert(a[..], "17. note b", nb);
+  insert(a[..], "18. note c (the table is full: compaction)", nc);
+  insert(a[..], "19. note d (the table is full, nothing to drop)", nd);
+
+  print("\nthe file: % bytes, each frame a 4-byte big-endian length and the original\n", a[0].total);
+  at := 0; k := 0;
+  while at < a[0].total {
+    n := ns_u32(a[0].file[..], at);
+    e := nostr_event_read(cast(string) a[0].file[at + 4..<at + 4 + n], scratch[..], false);
+    id := e.id; print("  frame % at %: header ", k, at); print_hex4(a[0].file[at..<at + 4]); print(", % bytes, kind %, id ", n, e.kind); print_hex4(id[..]); print("\n");
+    at += 4 + n; k += 1;
+  }
+
+  print("\nrestart: replay the file into an empty store\n");
+  live: [8192] u8; want := served(a[..], live[..]);
+  b: [1] Store;
+  rp := reload(a[..], b[..], a[0].total);
+  show_replay("whole file", rp, b[..], a[0].total);
+  got: [8192] u8;
+  print("serves what the live store served: %\n", served(b[..], got[..]) == want);
+  show_store(b[..]);
+
+  last := at - (4 + nc.count);   // where note c's frame starts
+  print("\ncrash damage at the end of the file (an append that never finished)\n");
+  rp = reload(a[..], b[..], last + 2);
+  show_replay("file ends 2 bytes into note c's header", rp, b[..], last + 2);
+  rp = reload(a[..], b[..], last + 4 + 100);
+  show_replay("file ends 100 bytes into note c's body", rp, b[..], last + 4 + 100);
+  store_init(b[..]);
+  for i: 0..<a[0].total { b[0].file[i] = a[0].file[i]; }
+  for i: a[0].total - 40..<a[0].total { b[0].file[i] = 0; }
+  b[0].total = a[0].total;
+  rp = replay(b[..]);
+  show_replay("note c's last 40 bytes are zeros", rp, b[..], a[0].total);
+  print("after the cut: % live records, note c held: %\n", b[0].s[0].live, holds(b[..], nc));
+
+  print("\ndamage to committed bytes: the relay refuses to start\n");
+  second := 4 + ns_u32(a[0].file[..], 0);     // frame 1 starts here
+  sig := second + 4 + moved.count - 3;        // the last hex digit of its signature
+  store_init(b[..]);
+  for i: 0..<a[0].total { b[0].file[i] = a[0].file[i]; }
+  b[0].total = a[0].total;
+  b[0].file[sig] = ifx b[0].file[sig] == '0' then '1' else '0';
+  rp = replay(b[..]);
+  show_replay("frame 1's last signature digit changed", rp, b[..], a[0].total);
+  b[0].file[sig] = a[0].file[sig];
+  third := second + 4 + moved.count;          // frame 2's header
+  b[0].file[third] = 0xff;
+  rp = replay(b[..]);
+  show_replay("frame 2's first length byte set to ff", rp, b[..], a[0].total);
+  b[0].file[third] = 0;
+  b[0].file[third + 3] += 1;
+  rp = replay(b[..]);
+  show_replay("frame 2's length one more (360 bytes)", rp, b[..], a[0].total);
+}
+// book:end example

@@ -721,7 +721,7 @@
    "number": 35,
    "title": "Store events",
    "file": "ch035-store-events.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     34,
@@ -734,7 +734,9 @@
     "coax/lib/nostr/store_dedup_rewrite.coax",
     "coax/lib/nostr/store_file.coax",
     "coax/lib/nostr/store_recover.coax",
-    "coax/lib/nostr/store_snapshot.coax"
+    "coax/lib/nostr/store_snapshot.coax",
+   "nostr/examples/store-events.coax",
+   "nostr/examples/checks/store-events.coax"
    ],
    "qualified_targets": [
     "cpu"

@@ -1,0 +1,123 @@
+// The checks of store-events.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/store-events.coax --run-steps 250000000
+#load "../store-events.coax";
+
+// The example's events, signed by coax/tests/nostr/nip59_reference.py's
+// pure-Python BIP-340 signer and event writer (hashlib and integers; it
+// shares no code with Coax) with the same key, aux and fields as the
+// example. PY_MOVED is PY_NOTE rewritten by Python's json with "content"
+// first.
+PY_NOTE :: "{\"id\":\"362a72d6c5af9e43bb399e4a1988c733cdbfcd98bb67448a1a4a79dc36a5d62a\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":1,\"tags\":[],\"content\":\"first note\",\"sig\":\"9868b858b6af66522ad998ea4366efa0aa1a4847c819ab163e0c2f0e2e3f5df9ba0dc19a1d8765b12e4ece098a1c4f3ec97941fd04ce178a470158b737c0ef75\"}";
+PY_MOVED :: "{\"content\":\"first note\",\"id\":\"362a72d6c5af9e43bb399e4a1988c733cdbfcd98bb67448a1a4a79dc36a5d62a\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":1,\"tags\":[],\"sig\":\"9868b858b6af66522ad998ea4366efa0aa1a4847c819ab163e0c2f0e2e3f5df9ba0dc19a1d8765b12e4ece098a1c4f3ec97941fd04ce178a470158b737c0ef75\"}";
+PY_P10 :: "{\"id\":\"08ed00f9d3c5cd63181b03343a8b422a0554029f4bafbae9e3126b56a339c8dd\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491190,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"v1\\\"}\",\"sig\":\"0e1c5d9c6ca052bbaf05e3b0d4c171458d1110e3ce5d37502315360dd481a46d97edbfda5a3be4fa57222a24df654ea612e11dda5be2381e54672fa94a23285a\"}";
+PY_P20 :: "{\"id\":\"5bba6c751df37def559dbecd6108fc65cf014d76448f9e9b7daa70f39815466d\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491180,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"v0\\\"}\",\"sig\":\"d1ee752468e4330c159e3ab7266c4fb35a437786c0b3deecce07aa57c36e44be9b96ed47b85056797bd7692e85a2388f9abe8370864e765ee0ff5bf85959cf5d\"}";
+PY_P0 :: "{\"id\":\"1cda1d894d0a6328c99394e67cab86b7ca8ae52a54c1204e6bb29d7da567c28d\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"v2\\\"}\",\"sig\":\"756bdbda2d210992b7c5973607f4b677ccc3b9d1e67e6481bea5a829b1627fa2cfb0436a0c8bae1f364cd6618309bf1077dabefe5218d2858c3623200d1d458a\"}";
+PY_TIE_A :: "{\"id\":\"a6e3321266984ce0c01d79f399e7eb2b8d8309482ca942b31df89d1bae80bf4a\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"tie a\\\"}\",\"sig\":\"de3a0404d1ed95b50435a8b29bce9c74d8e87aeaed9eecdcee410a2ce9a48064ca609aecda4aec85b8e9dc2b0ec2dcba484024724ef37e4fd463ece65b36a1b4\"}";
+PY_TIE_H :: "{\"id\":\"023de96f3b23d1ede92d5617f3f218f2e48b560d9373a966ebf6a3136631ba9c\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"tie h\\\"}\",\"sig\":\"f4bea1586b07366f1f94b0ccab1bd06fe099704dd18e7feae1b9a9a7fe92e2920b9af6a5f80ce0981b157de3e6a03db16aeebb4610eba68a49f5392160605efa\"}";
+PY_ALPHA5 :: "{\"id\":\"725dc10bd5f1a90cf7cead6515ce878767c0bde0c555ed47ab6678ca727a9ec3\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491195,\"kind\":30023,\"tags\":[[\"d\",\"alpha\"]],\"content\":\"alpha one\",\"sig\":\"09f180566e765f1e3f4577cd525b154695905f5bd6ce737b9de3ec354b42943b8c4340ab1fc0468e74e923aebc47ed108326b56a2635375d5669b37fd3488959\"}";
+PY_BETA5 :: "{\"id\":\"064435667e532e046a78610e57cac6c3a602f896ca17ba928d6ba1e129b38c55\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491195,\"kind\":30023,\"tags\":[[\"d\",\"beta\"]],\"content\":\"beta one\",\"sig\":\"4595f410d136ff134cc4700e7257fb834ddf4699bdbc95c764f36f641a2397da1489f53cf816f0efaf977b35409bd22202c0fe40ca70d3a5ad3da8c05e5ccde1\"}";
+PY_ALPHA100 :: "{\"id\":\"1623bf7be5f12f0dc77a9392ffff5c4d2884f7be610ea943939150b4a5894ede\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491100,\"kind\":30023,\"tags\":[[\"d\",\"alpha\"]],\"content\":\"alpha zero\",\"sig\":\"05b88e6c657d96295b5860988ca28c739ac9d41e988f78f522579fd32dc12a2ec24ecc912bc6475ee0219fd9f6545baa0b599c7bd2208638d83b03645297ed9c\"}";
+PY_ALPHA0 :: "{\"id\":\"fd2009e2e226fe1f01af751f8b1e9f90e05f0927b9518e980830108aeca76607\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":30023,\"tags\":[[\"d\",\"alpha\"]],\"content\":\"alpha two\",\"sig\":\"b0c5e19f328a5c2c895d9f2e6cbde211aabd9427f44b7dee776ff6553808a0979a86011943619f5674ab2491448895b8348dcfca8b31c6639ee74aa7075605f0\"}";
+PY_TYPING :: "{\"id\":\"f032419da3fccec2680604b493d9ea451bed31b941a51d169d34359510be5dde\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":20001,\"tags\":[],\"content\":\"typing\",\"sig\":\"807d46d4dd98fbd6b15826bc94b50d833ecee9c786a9fdaa803764740ef4db5ee5c94f201837e285f1a42cb8b55f29919b82f05378460c1c8f4a72bac609295d\"}";
+PY_NB :: "{\"id\":\"bc9ce755bcf4fce990ad9deecaada0c3d143743427cc970db4cab95620695354\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":1,\"tags\":[],\"content\":\"note b\",\"sig\":\"950ac9a64527dd9ed427932aba7423f8774391cebe69061c8bfc7044fca5df0b26195519b598c6a91825443724f0acc26f777e5b180cc02c268ba40a26b2d3b2\"}";
+PY_NC :: "{\"id\":\"1175dbd5ceef161b8c62d8d86ef86680049915625602b3d9d02eff62025be9e7\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":1,\"tags\":[],\"content\":\"note c\",\"sig\":\"9bdfa2148f93b043a9f7c6cd8f198db2836a369c71e09e83fb2b7b6edde60c864c1ca969655ce96d1217fcf36f4a46c92f73ffb6f8dd9751e3727ff61de8d88f\"}";
+PY_ND :: "{\"id\":\"a6fc2430f38fde93990a3c73413748eb231a70349a1bd21fa70d43ccb633d16a\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1793491200,\"kind\":1,\"tags\":[],\"content\":\"note d\",\"sig\":\"15d54250d733aea65b12e43251596382c2b0e1eac15290244507aa00fc3e6882b54b2910e439067ef2fbfd07086ed2b4bf37e8baa05d97551d0f6de9a8ffdd49\"}";
+
+// book:begin check
+// The 19 insertions of the example, as Python's events, and the verdict
+// worked out by hand for each from NIP-01 and Python's ids.
+SESSION :: [19] string.[PY_NOTE, PY_NOTE, PY_MOVED, PY_NOTE, PY_P10, PY_P20, PY_P0, PY_P10, PY_TIE_A, PY_TIE_H,
+  PY_ALPHA5, PY_BETA5, PY_ALPHA100, PY_ALPHA0, PY_P10, PY_TYPING, PY_NB, PY_NC, PY_ND];
+HAND :: [19] int.[RS_ACCEPT, RS_DUP, RS_DUP, RS_DUP, RS_ACCEPT, RS_SUPERSEDED, RS_ACCEPT, RS_DUP, RS_SUPERSEDED, RS_ACCEPT,
+  RS_ACCEPT, RS_ACCEPT, RS_SUPERSEDED, RS_ACCEPT, RS_SUPERSEDED, RS_ACCEPT, RS_ACCEPT, RS_ACCEPT, RS_FULL];
+// The originals that reach the file, in order, and what the store holds at the end.
+WRITTEN :: [10] string.[PY_NOTE, PY_MOVED, PY_P10, PY_P0, PY_TIE_H, PY_ALPHA5, PY_BETA5, PY_ALPHA0, PY_NB, PY_NC];
+HELD :: [6] string.[PY_MOVED, PY_TIE_H, PY_BETA5, PY_ALPHA0, PY_NB, PY_NC];
+// SHA-256 of the 3,622-byte file Python built from WRITTEN.
+PY_FILE_SHA256 :: "0c011d88f83ce61471b2d4002c3d438ff7352334e65a9c3af37cc9c55b03a0e3";
+
+// The file written by hand into st, a new Store whose bytes are all zero:
+// each original after its length in 4 big-endian bytes (every length is
+// below 65,536, so the first two are zero). Frames start at 0, 356, 712,
+// 1075, 1438, 1804, 2176, 2546, 2918 and 3270; the file is 3,622 bytes.
+hand_file :: (st: [] Store) {
+  store_init(st);
+  n := 0;
+  for t: WRITTEN {
+    st[0].file[n + 2] = cast,trunc(u8) (t.count >> 8); st[0].file[n + 3] = cast,trunc(u8) t.count;
+    for i: 0..<t.count { st[0].file[n + 4 + i] = t[i]; }
+    n += 4 + t.count;
+  }
+  st[0].total = n;
+}
+// Whether st holds exactly HELD, all live, in index order.
+holds_all :: (st: [] Store) -> bool {
+  if st[0].s[0].n != 6 || st[0].s[0].live != 6 { return false; }
+  for i: 0..<6 { if rsd_text(st[0].s[..], i) != HELD[i] { return false; } }
+  return true;
+}
+
+#test "holds_all refuses a record that is not live and a different first original" {
+  a: [1] Store; store_init(a[..]); c: RsdRec;
+  for t: HELD { ns_store_append(a[0].s[..], c, t); }
+  #assert holds_all(a[..]);
+  a[0].s[0].live = 5; #assert !holds_all(a[..]);
+  b: [1] Store; store_init(b[..]);
+  ns_store_append(b[0].s[..], c, PY_NOTE);
+  for i: 1..<6 { ns_store_append(b[0].s[..], c, HELD[i]); }
+  #assert !holds_all(b[..]);
+}
+#test "the example's events are Python's bytes" #steps 2000000000 {
+  b: [1024] u8; m: [1024] u8;
+  #assert sign(NOW, 1, "[]", "first note", b[..]) == PY_NOTE;
+  #assert content_first(PY_NOTE, m[..]) == PY_MOVED;
+  #assert sign(NOW, 0, "[]", "{\"name\":\"tie a\"}", b[..]) == PY_TIE_A;
+  #assert sign(NOW, 0, "[]", "{\"name\":\"tie h\"}", b[..]) == PY_TIE_H;
+}
+#test "Python's events get the hand verdicts and write the hand file" #steps 4000000000 {
+  a: [1] Store; store_init(a[..]);
+  for i: 0..<19 { #assert admit(a[..], SESSION[i]) == HAND[i]; }
+  #assert holds_all(a[..]);
+  h: [1] Store; hand_file(h[..]);
+  #assert a[0].total == 3622 && h[0].total == 3622 && cast(string) a[0].file[0..<3622] == cast(string) h[0].file[0..<3622];
+}
+#test "the hand file is Python's and replays to the same store" #steps 2000000000 {
+  h: [1] Store; hand_file(h[..]);
+  digest: [32] u8; text: [64] u8;
+  #assert sha256_hash_checked(h[0].file[0..<h[0].total], digest[..], false) == 0;
+  #assert hex_encode_checked(cast(string) digest[..], text[..], false).written == 64 && cast(string) text[..] == PY_FILE_SHA256;
+  r := replay(h[..]);
+  #assert r.ok && r.frames == 10 && r.stored == 9 && r.kept == 1 && !r.cut && !r.refused && holds_all(h[..]);
+}
+#test "a partial header at the end is cut" #steps 2000000000 {
+  h: [1] Store; hand_file(h[..]); h[0].total = 3272;
+  r := replay(h[..]);
+  #assert r.ok && r.cut && h[0].total == 3270 && r.frames == 9 && !holds(h[..], PY_NC) && holds(h[..], PY_NB);
+}
+#test "a partial body at the end is cut" #steps 2000000000 {
+  h: [1] Store; hand_file(h[..]); h[0].total = 3374;
+  r := replay(h[..]);
+  #assert r.ok && r.cut && h[0].total == 3270 && r.frames == 9;
+}
+#test "a last frame ending in zeros is cut" #steps 2000000000 {
+  h: [1] Store; hand_file(h[..]);
+  for i: 3582..<3622 { h[0].file[i] = 0; }
+  r := replay(h[..]);
+  #assert r.ok && r.cut && h[0].total == 3270 && r.frames == 9;
+}
+#test "damage to committed frames refuses and changes nothing" #steps 2000000000 {
+  h: [1] Store; hand_file(h[..]);
+  #assert h[0].file[0] == 0 && h[0].file[1] == 0 && h[0].file[2] == 1 && h[0].file[3] == 0x60;
+  // frame 1 ends at 712 with its last signature digit, a quote and a brace
+  digit := h[0].file[709]; h[0].file[709] = ifx digit == '0' then '1' else '0';
+  r := replay(h[..]);
+  #assert !r.ok && r.refused && r.at == 356 && r.reason == RS_BAD_SIG && h[0].total == 3622;
+  g: [1] Store; hand_file(g[..]); g[0].file[712] = 0xff;
+  r = replay(g[..]);
+  #assert !r.ok && r.refused && r.at == 712 && r.reason == -1 - NSF_BAD && g[0].total == 3622;
+  k: [1] Store; hand_file(k[..]); k[0].file[715] = 0x68;   // 359 becomes 360
+  r = replay(k[..]);
+  #assert !r.ok && r.refused && r.at == 712 && r.reason == RS_BAD_EVENT && k[0].total == 3622;
+}
+// book:end check
