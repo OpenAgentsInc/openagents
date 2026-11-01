@@ -23,6 +23,7 @@
 #load "store_saved.coax";
 #load "store_index.coax";
 #load "relay_route.coax";
+#load "nip45.coax";
 
 RD_TAGS :: RSD_MAX * RS_MAX_TAGS;
 RD_TOMBS :: 8192;             // tombstones the relay keeps
@@ -100,6 +101,13 @@ rd_query :: (d: [] RdStore, f: NostrFilter, now: int, out: [] int) -> int {
   return rsd_query(d[0].s[..], f, now, out);
 }
 
+// The reply to one COUNT frame (NIP-45, nip45.coax's n45_answer over a
+// current index) into out: its length, or -1.
+rd_count :: (d: [] RdStore, text: string, now: int, w: [] N45Work, out: [] u8) -> int {
+  built := rd_index(d);
+  return n45_answer(text, d[0].s[..], d[0].ix[..], now, w, out);
+}
+
 // ---- checks -------------------------------------------------------------------
 
 RdT :: struct { arena: [8192] u8; recs: [4] RsdRec; by_id: [4] int; by_ak: [4] int; by_time: [4] int; tag_key: [32] int; tag_rec: [32] int; tombs: [4] NsdTomb; work: [4] NsdTomb; d: [1] RdStore; }
@@ -145,6 +153,19 @@ rd_t_init :: (t: [] RdT) { rd_init(t[0].d[..], t[0].arena[..], t[0].recs[..], t[
 RD_T_DEL :: "{\"id\":\"08df718fe6f4fcf0794d3e1154204a3ad61ab675b63b1d216b08d3d7e77709f3\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1001,\"kind\":5,\"tags\":[[\"e\",\"18c059d7cc15e21c516db0807a502f8ab482a23b7e9d64c27ecf4af5b010bc53\"]],\"content\":\"\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
 RD_T_VANISH :: "{\"id\":\"f64c68b89efc1f2f80e46f16057cf6cd4d461b1dfd64fcaf5e720d6d1d1d5811\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1001,\"kind\":62,\"tags\":[[\"relay\",\"wss://r\"]],\"content\":\"\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
 RD_T_VANISH_OTHER :: "{\"id\":\"0c4de3267d0088f7cc5557615d5eccbfa20b918501354ce4afad69b23002c2fe\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1002,\"kind\":62,\"tags\":[[\"relay\",\"wss://other\"]],\"content\":\"\",\"sig\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"}";
+#test "COUNT counts what REQ would serve, without the limit, after a change to the store" {
+  t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
+  scratch: [4096] u8; w: [1] N45Work; out: [512] u8;
+  #assert rd_admit(d, rst_store_read(RST_PLAIN, scratch[..]), RST_PLAIN) == RS_ACCEPT;
+  #assert rd_admit(d, rst_store_read(RST_EDGE, scratch[..]), RST_EDGE) == RS_ACCEPT;
+  n := rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[1],\"limit\":1}]", 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"c\",{\"count\":2}]";
+  #assert rd_admit(d, rst_store_read(RD_T_DEL, scratch[..]), RD_T_DEL) == RS_ACCEPT;
+  n = rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[1]},{\"kinds\":[5]}]", 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"c\",{\"count\":2}]";
+  n = rd_count(d, "[\"COUNT\",\"c\",{\"kinds\":[]}]", 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"c\",\"invalid: filter arrays must not be empty\"]";
+}
 #test "a stored kind 5 retires its target, which can't come back; the index keeps up" {
   t: [1] RdT; rd_t_init(t[..]); d := t[0].d[..];
   scratch: [4096] u8; f: NostrFilter; idx: [8] int;

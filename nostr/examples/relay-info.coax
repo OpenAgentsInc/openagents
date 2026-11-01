@@ -204,6 +204,7 @@ req_reply :: (frame: string, out: [] u8) -> string {
   m := ms_read(frame);
   route := rr_message(m.error, m.type, m.has_sub);
   if route.action == RR_REQ { return "routed to REQ"; }
+  if route.action == RR_COUNT { return "routed to COUNT (nip45.coax)"; }
   sub := m.sub;
   n := ifx route.action == RR_NOTICE then ms_write_notice(rs_prefix(route.reason), rs_text(route.reason), out)
     else ms_write_closed(cast(string) sub[0..<m.sub_n], rs_prefix(route.reason), rs_text(route.reason), out);
@@ -336,7 +337,7 @@ main :: () {
   print("  REQ, no AUTH: %\n", req_reply("[\"REQ\",\"open\",{\"kinds\":[1]}]", out[..]));
   print("supported_nips:\n");
   print("  NIP-40, expiration 1000 at now 1000: %\n", policy_reply(RST_EXPIRED, true, out[..]));
-  print("  NIP-45 COUNT (not listed): %\n", req_reply("[\"COUNT\",\"c\",{}]", out[..]));
+  print("  NIP-45 COUNT: %\n", req_reply("[\"COUNT\",\"c\",{}]", out[..]));
   sr := "[\"REQ\",\"s\",{\"search\":\"relay\"}]";
   v := rs_req(ms_read(sr), sr);
   c = ms_write_closed("s", rs_prefix(v), rs_text(v), out[..]);

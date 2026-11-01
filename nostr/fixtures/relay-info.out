@@ -80,7 +80,7 @@ restricted_writes and auth_required:
   REQ, no AUTH: routed to REQ
 supported_nips:
   NIP-40, expiration 1000 at now 1000: ["OK","2428ab7235e4d5085e98c604a8bd041883da188674d85a63a2f808fd6b839c1b",false,"invalid: event has expired"]
-  NIP-45 COUNT (not listed): ["CLOSED","c","error: COUNT is not supported by this relay"]
+  NIP-45 COUNT: routed to COUNT (nip45.coax)
   NIP-50 search (not listed): ["CLOSED","s","invalid: malformed filter"]
 
 broken documents

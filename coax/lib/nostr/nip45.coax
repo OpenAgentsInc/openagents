@@ -24,10 +24,10 @@
 //
 // The HLL is written only for a COUNT with one filter that has a tag
 // filter: NIP-45 defines no offset otherwise, and the offset belongs to a
-// filter, not to an OR of several. Not built: wiring COUNT into
-// coax/relay/relay.coax (relay_route.coax still answers COUNT with CLOSED
-// "COUNT is not supported"), cached or precomputed sketches, and
-// approximate counts on the relay side (the reader accepts "approximate").
+// filter, not to an OR of several. coax/relay/relay.coax answers COUNT
+// with n45_answer (relay_store.coax's rd_count). Not built: cached or
+// precomputed sketches, and approximate counts on the relay side (the
+// reader accepts "approximate").
 //
 // Not #authority, like store_index.coax: loading the store brings the
 // relay's whole graph under every mutation run. Its checks are below and in

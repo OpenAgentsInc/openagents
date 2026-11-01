@@ -170,12 +170,12 @@ The list names what the relay does, not what its libraries could do:
 
 NIPs the relay doesn't list, and what it does instead:
 
-- NIP-45, `COUNT`: refused with `CLOSED` and `error: COUNT is not
-  supported by this relay`.
+- NIP-45, `COUNT`: answered by `nip45.coax` (chapter 40); listed once the
+  document is updated with the other wired NIPs.
 - NIP-50, `search`: a filter with `search` is refused with `CLOSED` and
   `invalid: malformed filter`.
-- NIP-09, deletion: a kind 5 event is stored as a regular event and
-  deletes nothing (chapter 39).
+- NIP-09, deletion: a kind 5 event retires what it names, and the deleted
+  event is refused afterwards (chapter 39); listed with the others.
 
 ### `limitation`
 
@@ -597,6 +597,7 @@ req_reply :: (frame: string, out: [] u8) -> string {
   m := ms_read(frame);
   route := rr_message(m.error, m.type, m.has_sub);
   if route.action == RR_REQ { return "routed to REQ"; }
+  if route.action == RR_COUNT { return "routed to COUNT (nip45.coax)"; }
   sub := m.sub;
   n := ifx route.action == RR_NOTICE then ms_write_notice(rs_prefix(route.reason), rs_text(route.reason), out)
     else ms_write_closed(cast(string) sub[0..<m.sub_n], rs_prefix(route.reason), rs_text(route.reason), out);
@@ -729,7 +730,7 @@ main :: () {
   print("  REQ, no AUTH: %\n", req_reply("[\"REQ\",\"open\",{\"kinds\":[1]}]", out[..]));
   print("supported_nips:\n");
   print("  NIP-40, expiration 1000 at now 1000: %\n", policy_reply(RST_EXPIRED, true, out[..]));
-  print("  NIP-45 COUNT (not listed): %\n", req_reply("[\"COUNT\",\"c\",{}]", out[..]));
+  print("  NIP-45 COUNT: %\n", req_reply("[\"COUNT\",\"c\",{}]", out[..]));
   sr := "[\"REQ\",\"s\",{\"search\":\"relay\"}]";
   v := rs_req(ms_read(sr), sr);
   c = ms_write_closed("s", rs_prefix(v), rs_text(v), out[..]);
@@ -844,7 +845,7 @@ restricted_writes and auth_required:
   REQ, no AUTH: routed to REQ
 supported_nips:
   NIP-40, expiration 1000 at now 1000: ["OK","2428ab7235e4d5085e98c604a8bd041883da188674d85a63a2f808fd6b839c1b",false,"invalid: event has expired"]
-  NIP-45 COUNT (not listed): ["CLOSED","c","error: COUNT is not supported by this relay"]
+  NIP-45 COUNT: routed to COUNT (nip45.coax)
   NIP-50 search (not listed): ["CLOSED","s","invalid: malformed filter"]
 
 broken documents

@@ -52,7 +52,7 @@ RR_N42_TIME :: 7; RR_N42_TAGS :: 8; RR_N42_RELAY :: 9; RR_N42_CHALLENGE :: 10;
 
 // ---- this unit's own codes --------------------------------------------------
 // What to do with one NIP-01 message.
-RR_NOTICE :: 0; RR_CLOSED :: 1; RR_EVENT :: 2; RR_REQ :: 3; RR_CLOSE :: 4; RR_AUTH :: 5;
+RR_NOTICE :: 0; RR_CLOSED :: 1; RR_EVENT :: 2; RR_REQ :: 3; RR_CLOSE :: 4; RR_AUTH :: 5; RR_COUNT :: 6;
 // What to do with one frame step.
 RR_F_WAIT :: 0; RR_F_CLOSE :: 1; RR_F_TEXT :: 2; RR_F_BINARY :: 3; RR_F_PONG :: 4; RR_F_NEXT :: 5; RR_F_ERROR :: 6;
 // What to do with the HTTP head.
@@ -87,7 +87,8 @@ RrAuth :: struct { keys: [256] u8; n: int; }    // RR_KEYS x 32 bytes
   r = rr_message(RR_MS_OK, RR_MS_EVENT, false); #assert r.action == RR_EVENT && r.reason == RR_RS_ACCEPT;
   r = rr_message(RR_MS_OK, RR_MS_REQ, true); #assert r.action == RR_REQ && r.reason == RR_RS_ACCEPT;
   r = rr_message(RR_MS_OK, RR_MS_CLOSE, true); #assert r.action == RR_CLOSE;
-  r = rr_message(RR_MS_OK, RR_MS_COUNT, true); #assert r.action == RR_CLOSED && r.reason == RR_RS_COUNT;
+  r = rr_message(RR_MS_OK, RR_MS_COUNT, true); #assert r.action == RR_COUNT && r.reason == RR_RS_ACCEPT;
+  r = rr_message(RR_MS_OK, RR_MS_COUNT, false); #assert r.action == RR_COUNT;
   r = rr_message(RR_MS_OK, RR_MS_AUTH, false); #assert r.action == RR_AUTH && r.reason == RR_RS_ACCEPT;
   r = rr_message(RR_MS_OK, 9, false); #assert r.action == RR_NOTICE && r.reason == RR_RS_VERB;
   r = rr_message(RR_MS_OK, 0, false); #assert r.action == RR_NOTICE && r.reason == RR_RS_VERB;
@@ -105,7 +106,8 @@ rr_message :: (error: int, type: int, has_sub: bool) -> RrRoute {
   if type == RR_MS_EVENT { return RrRoute.{action = RR_EVENT}; }
   if type == RR_MS_REQ { return RrRoute.{action = RR_REQ}; }
   if type == RR_MS_CLOSE { return RrRoute.{action = RR_CLOSE}; }
-  if type == RR_MS_COUNT { return RrRoute.{action = RR_CLOSED, reason = RR_RS_COUNT}; }
+  // NIP-45 (chapter 40): nip45.coax's n45_answer reads and answers it
+  if type == RR_MS_COUNT { return RrRoute.{action = RR_COUNT}; }
   if type == RR_MS_AUTH { return RrRoute.{action = RR_AUTH}; }
   return RrRoute.{action = RR_NOTICE, reason = RR_RS_VERB};
 }

@@ -101,6 +101,7 @@ RyWork :: struct {
   out: [RY_OUT] u8;               // one outgoing frame
   body: [RY_OUT] u8;              // one outgoing message
   scratch: [262144] u8;           // the event id preimage
+  count: [1] N45Work;             // one COUNT's filters and marks
   sent: [RY_SENT] int;
   n42: [1] Nip42;                 // the relay URL, copied into each connection
   gen: int;                       // the last connection generation
@@ -198,6 +199,17 @@ ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg
   }
   ok := ry_text(c, w, ms_write_eose(sub, w[0].body[..]));
 }
+// COUNT (NIP-45, chapter 40): charged as a REQ, then nip45.coax's
+// n45_answer over the store's index: the exact count of distinct visible
+// matches, CLOSED or NOTICE when refused.
+ry_count :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg) {
+  if m.has_sub {
+    mm := m;
+    rt := rt_req(c[0].rt[..], w[0].rate, cxsrv_now_s());
+    if rt != RT_OK { ok := ry_text(c, w, ms_write_closed(cast(string) mm.sub[0..<mm.sub_n], rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
+  }
+  ok := ry_text(c, w, rd_count(store, text, cxsrv_now_s(), w[0].count[..], w[0].body[..]));
+}
 // AUTH: the event's id first (for the OK), then nip42_admit (the signature
 // and nip42.coax's check), then relay_route.coax keeps the key and names
 // the answer. Nothing here reaches the store or the fan-out.
@@ -220,6 +232,7 @@ ry_message :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text:
   if r.action == RR_CLOSED { ok := ry_closed(c, w, cast(string) sub[0..<m.sub_n], r.reason); return; }
   if r.action == RR_EVENT { ry_event(conns, at, w, store, text, m); return; }
   if r.action == RR_REQ { ry_req(c, w, store, text, m); return; }
+  if r.action == RR_COUNT { ry_count(c, w, store, text, m); return; }
   if r.action == RR_CLOSE { closed := rs_sub_close(c[0].subs[..], cast(string) sub[0..<m.sub_n]); return; }
   ry_auth(c, w, text[m.event_from..<m.event_to]);
 }

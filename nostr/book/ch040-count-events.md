@@ -22,11 +22,12 @@ counts, and HyperLogLog with 256 registers whose offset comes from the filter.
 - The estimate: how many distinct pubkeys made a sketch.
 - `CLOSED` when the relay refuses to count, and `NOTICE` when the
   subscription ID is too bad to close.
-- What is not built: the relay process (`coax/relay/relay.coax`) does not
-  call this code yet. `relay_route.coax` still answers `COUNT` with `CLOSED`
-  "COUNT is not supported by this relay", as it does for other modules that
-  wait for the same wiring. Cached or precomputed sketches and relay-side
-  approximate counts are not built either.
+- The relay (`coax/relay/relay.coax`) answers `COUNT` with this code:
+  `relay_route.coax` routes it (`RR_COUNT`), the request is charged as a REQ
+  against the rate limit, and `relay_store.coax`'s `rd_count` calls
+  `n45_answer` over a current index.
+- What is not built: cached or precomputed sketches and relay-side
+  approximate counts.
 
 ## Where the code is
 
