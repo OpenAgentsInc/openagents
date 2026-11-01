@@ -94,14 +94,15 @@
    "number": 5,
    "title": "HMAC-SHA256",
    "file": "ch005-hmac-sha256.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     4
    ],
    "source": [
     "coax/lib/crypto/hmac.coax",
-    "coax/lib/crypto/hmac_workspace.coax"
+    "coax/lib/crypto/hmac_workspace.coax",
+    "nostr/examples/hmac-sha256.coax"
    ],
    "qualified_targets": [
     "cpu",

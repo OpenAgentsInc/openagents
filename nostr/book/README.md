@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 103 chapters, 4 are implemented, 52 are partly implemented and
+Of the 103 chapters, 5 are implemented, 51 are partly implemented and
 47 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -130,7 +130,7 @@ vectors.
 | Chapter | Status | Result |
 | --- | --- | --- |
 | [4. SHA-256](ch004-sha-256.md) | Runnable: native C and wasm | Streaming SHA-256 over caller-owned state, checked against every NIST CAVS ShortMsg and LongMsg vector, with split-stream and padding-boundary checks, plus BIP-340 tagged hashes. |
-| [5. HMAC-SHA256](ch005-hmac-sha256.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | HMAC-SHA256 with keys longer than a block hashed first, checked against RFC 4231 cases 1–7 including the truncated case. |
+| [5. HMAC-SHA256](ch005-hmac-sha256.md) | Runnable: native C and wasm | HMAC-SHA256 with keys longer than a block hashed first, checked against RFC 4231 cases 1–7 including the truncated case. |
 | [6. HKDF](ch006-hkdf.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | HKDF-SHA256 extract and expand with output bounds, checked against RFC 5869 cases 1–3, and the exact NIP-44 v2 use: extract with salt `nip44-v2`, expand to 76 bytes. |
 
 ### Part III. Elliptic curves (chapters 7–14)

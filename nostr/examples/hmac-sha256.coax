@@ -1,0 +1,124 @@
+// book:begin example
+#load "../../coax/lib/crypto/hmac.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+show :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Every call below this point must succeed; say so if one doesn't.
+must :: (status: u32) { if status != SHA_OK { print("unexpected status %\n", status); } }
+// Copy a string's bytes into a buffer and return the filled part.
+bytes_of :: (text: string, out: [] u8) -> [] u8 {
+  for i: 0..<text.count { out[i] = text[i]; }
+  return out[0..<text.count];
+}
+
+STATUS :: [8] string.["ok", "bad state", "bad input", "bad output",
+  "already final", "overlap", "too long", "bad tag"];
+
+main :: () {
+  // RFC 4231 test case 2: the key "Jefe" and a 28-byte message.
+  kb: [4] u8; mb: [28] u8;
+  key := bytes_of("Jefe", kb[..]);
+  message := bytes_of("what do ya want for nothing?", mb[..]);
+
+  // HMAC by hand, from SHA-256: pad the key to 64 bytes, then hash twice.
+  block: [64] u8;
+  for i: 0..<key.count { block[i] = key[i]; }
+  inner_pad: [64] u8; outer_pad: [64] u8;
+  for i: 0..<64 { inner_pad[i] = block[i] ^ 0x36; outer_pad[i] = block[i] ^ 0x5c; }
+  show("key ^ ipad, first 6 bytes", inner_pad[0..<6]);
+  show("key ^ opad, first 6 bytes", outer_pad[0..<6]);
+  state: [112] u8; inner: [32] u8; by_hand: [32] u8;
+  must(sha256_init(state[..]));
+  must(sha256_update_checked(state[..], inner_pad[..], false));
+  must(sha256_update_checked(state[..], message, false));
+  must(sha256_final_checked(state[..], inner[..], false));
+  show("inner hash", inner[..]);
+  must(sha256_init(state[..]));
+  must(sha256_update_checked(state[..], outer_pad[..], false));
+  must(sha256_update_checked(state[..], inner[..], false));
+  must(sha256_final_checked(state[..], by_hand[..], false));
+  show("outer hash", by_hand[..]);
+
+  // The library computes the same tag in one call.
+  tag: [32] u8;
+  print("hmac: %\n", STATUS[hmac_sha256_checked(key, message, tag[..], false)]);
+  show("HMAC-SHA256(\"Jefe\", message)", tag[..]);
+  print("same as by hand: %\n", cb_ct_equal(tag[..], by_hand[..]) != 0);
+
+  // The same tag again, streamed in two updates over a 224-byte state.
+  hs: [224] u8; streamed: [32] u8;
+  must(hmac_sha256_init_checked(hs[..], key, false));
+  must(hmac_sha256_update_checked(hs[..], message[0..<10], false));
+  must(hmac_sha256_update_checked(hs[..], message[10..<28], false));
+  must(hmac_sha256_final_checked(hs[..], streamed[..], false));
+  print("streamed in two updates, same tag: %\n", cb_ct_equal(tag[..], streamed[..]) != 0);
+
+  // RFC 4231 test case 6: a 131-byte key is hashed to 32 bytes first.
+  long_key: [131] u8;
+  for i: 0..<131 { long_key[i] = 0xaa; }
+  hashed: [32] u8;
+  must(sha256_hash_checked(long_key[..], hashed[..], false));
+  show("SHA-256 of the 131-byte key", hashed[..]);
+  lb: [54] u8;
+  long_message := bytes_of("Test Using Larger Than Block-Size Key - Hash Key First", lb[..]);
+  must(hmac_sha256_checked(long_key[..], long_message, tag[..], false));
+  show("HMAC-SHA256, case 6", tag[..]);
+
+  // RFC 4231 test case 5 publishes only the first 16 bytes of the tag.
+  short_key: [20] u8;
+  for i: 0..<20 { short_key[i] = 0x0c; }
+  tb: [20] u8;
+  must(hmac_sha256_checked(short_key[..], bytes_of("Test With Truncation", tb[..]), tag[..], false));
+  show("HMAC-SHA256, case 5, first 16 bytes", tag[0..<16]);
+
+  // A tag that differs in one bit is refused, with a comparison that reads
+  // every byte (chapter 3).
+  must(hmac_sha256_checked(key, message, tag[..], false));
+  forged := tag;
+  forged[31] ^= 1;
+  print("received tag, last bit flipped: accepted %\n", cb_ct_equal(tag[..], forged[..]) != 0);
+
+  // Refusals. Each one returns a status and leaves the state and output
+  // unchanged.
+  print("update after final: %\n", STATUS[hmac_sha256_update_checked(hs[..], message, false)]);
+  small: [31] u8;
+  print("31-byte output: %\n", STATUS[hmac_sha256_checked(key, message, small[..], false)]);
+  print("1 MiB + 1 byte key: %\n", STATUS[hmac_sha256_request(1048577, 0, 32, false)]);
+  print("a SHA-256 state as an HMAC state: %\n", STATUS[hmac_sha256_info(state[..]).error]);
+}
+// book:end example
+
+// book:begin check
+// The tag built by hand from SHA-256 equals the library's tag for key
+// lengths on both sides of 32 and 64 bytes: short keys are padded, and keys
+// over 64 bytes are hashed first.
+#forall "HMAC equals the two-hash construction around the key boundaries" which: 0..<12 {
+  lengths := [12] int.[0, 1, 31, 32, 33, 63, 64, 65, 66, 100, 128, 130];
+  n := lengths[which];
+  key: [130] u8;
+  for i: 0..<n { key[i] = cast(u8) ((i * 13 + 5) % 256); }
+  message := [3] u8.[97, 98, 99];
+  effective: [64] u8;
+  if n > 64 {
+    #assert sha256_hash_checked(key[0..<n], effective[0..<32], false) == SHA_OK;
+  } else {
+    for i: 0..<n { effective[i] = key[i]; }
+  }
+  ipad: [64] u8; opad: [64] u8;
+  for i: 0..<64 { ipad[i] = effective[i] ^ 0x36; opad[i] = effective[i] ^ 0x5c; }
+  s: [112] u8; inner: [32] u8; expected: [32] u8;
+  #assert sha256_init(s[..]) == SHA_OK && sha256_update_checked(s[..], ipad[..], false) == SHA_OK;
+  #assert sha256_update_checked(s[..], message[..], false) == SHA_OK && sha256_final_checked(s[..], inner[..], false) == SHA_OK;
+  #assert sha256_init(s[..]) == SHA_OK && sha256_update_checked(s[..], opad[..], false) == SHA_OK;
+  #assert sha256_update_checked(s[..], inner[..], false) == SHA_OK && sha256_final_checked(s[..], expected[..], false) == SHA_OK;
+  tag: [32] u8;
+  #assert hmac_sha256_checked(key[0..<n], message[..], tag[..], false) == SHA_OK;
+  #assert cb_ct_equal(tag[..], expected[..]) == CB_MAX64;
+}
+// book:end check

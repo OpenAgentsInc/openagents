@@ -1,0 +1,16 @@
+key ^ ipad, first 6 bytes: 7c5350533636
+key ^ opad, first 6 bytes: 16393a395c5c
+inner hash: a2e485863d27f9d864ac8d802432a1ed477d8c4c6f349d16d4e7e917c629cad7
+outer hash: 5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+hmac: ok
+HMAC-SHA256("Jefe", message): 5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+same as by hand: true
+streamed in two updates, same tag: true
+SHA-256 of the 131-byte key: 45ad4b37c6e2fc0a2cfcc1b5da524132ec707615c2cae1dbbc43c97aa521db81
+HMAC-SHA256, case 6: 60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54
+HMAC-SHA256, case 5, first 16 bytes: a3b6167473100ee06e0c796c2955552b
+received tag, last bit flipped: accepted false
+update after final: already final
+31-byte output: bad output
+1 MiB + 1 byte key: bad input
+a SHA-256 state as an HMAC state: bad state

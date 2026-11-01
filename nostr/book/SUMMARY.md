@@ -12,7 +12,7 @@
 **II. Hashes and MACs**
 
 - [4. SHA-256](ch004-sha-256.md) — implemented
-- [5. HMAC-SHA256](ch005-hmac-sha256.md) — partly implemented
+- [5. HMAC-SHA256](ch005-hmac-sha256.md) — implemented
 - [6. HKDF](ch006-hkdf.md) — partly implemented
 
 **III. Elliptic curves**

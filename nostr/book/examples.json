@@ -40,6 +40,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "nostr/examples/hmac-sha256.coax",
+      "chapter": "nostr/book/ch005-hmac-sha256.md",
+      "stdout": "nostr/fixtures/hmac-sha256.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
