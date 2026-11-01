@@ -162,11 +162,16 @@ gridwalk_touch :: (g: [] GridWalk, slot: int, phase: int, x: f32, y: f32) #expor
   if g.count < 1 { return; }
   g[0].thumbs = verse_sticks_world_touch(g[0].thumbs, slot, phase, x, y, g[0].width, g[0].height, g[0].dpr, g[0].now);
 }
-// The page lost focus: no finger is down and nothing is held.
+// The page lost focus: no finger is down and nothing is held. Letting go is not a frame in the
+// record, so a new record starts from the state it leaves, with the frames still waiting for a
+// step in that record's start, as when a record fills.
 gridwalk_blur :: (g: [] GridWalk) #export_c {
   if g.count < 1 { return; }
   g[0].thumbs = Sticks.{};
+  placed := g[0].records > 0;
+  if placed { gw_take(g, gw_session(g)); }
   g[0].input = input_blur(g[0].input);
+  if placed { gw_begin(g); }
 }
 // The pinch's zoom since the last frame, in wheel pixels (the page zooms with it as with the wheel).
 gridwalk_pinch :: (g: [] GridWalk) -> f32 #export_c { return ifx g.count < 1 then 0.0f32 else g[0].thumbs.zoom; }
@@ -440,6 +445,24 @@ gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 t
   gridwalk_place(e, 0, 0, 0, 1, 1); gridwalk_frame(e, 0, 0, false, false, 0, 0, 0, 1, 1, 1, 0.1, false);
   gridwalk_touch(e, 1, 0, 0, 0); gridwalk_blur(e);
   #assert n[0].records == 0 && n[0].width == 0 && !n[0].thumbs.move_on;
+}
+
+#test "a blur starts a new record from the state it leaves, and that one replays" {
+  g: [1] GridWalk; gw_new(g[..]);
+  for f: 0..<100 { gw_keys(g[..], 1, true, 0.01, 1.0 / 60.0); }   // Space held: one jump, landed
+  #assert g[0].you.jumps.taken == 1 && g[0].you.on_ground;
+  gw_keys(g[..], 1, true, 0.01, 0);                                // a frame waiting for a step
+  gridwalk_blur(g[..]);
+  #assert g[0].records == 2 && replay_events(gw_session(g[..])) == 0 && gridwalk_steps(g[..]) == 0;
+  #assert g[0].start_input.look_x != 0 && !g[0].start_input.jump.held && g[0].n[REPLAY_INITIAL] == gw_digest(g[0].start, g[0].start_input);
+  for f: 0..<100 { gw_keys(g[..], 1, true, 0.01, 1.0 / 60.0); }   // held again after focus: a new jump
+  #assert g[0].you.jumps.taken == 2;
+  again: [1] GridWalk;
+  #assert gridwalk_replay(g[..], again[..]) && gridwalk_digest(again[..]) == gridwalk_digest(g[..]);
+  // a session never placed has no record to start
+  n: [1] GridWalk;
+  gridwalk_blur(n[..]);
+  #assert n[0].records == 0;
 }
 
 #test "every part of the state is in the digest" {
