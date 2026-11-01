@@ -29,6 +29,10 @@
 // holds; a refusal is OK false "rate-limited: ...", a REQ's CLOSED. The
 // served NIP-11 document carries the same three limits (rt_nip11).
 //
+// NIP-70 (chapter 42, nip70.coax): an event with the "-" tag is accepted
+// only on a connection authenticated as its author (checked after the
+// signature and the rate limit); a repost embedding one is refused.
+//
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
 // NIP-42: every WebSocket gets a challenge after the 101 (nip42_issue, 32
@@ -42,6 +46,7 @@
 #load "../lib/nostr/nip42-event.coax";
 #load "../lib/nostr/relay_route.coax";
 #load "../lib/nostr/relay_rate.coax";
+#load "../lib/nostr/nip70.coax";
 // message_server.coax's frames agree with message.coax's (#6015).
 #load "../lib/nostr/message_agree.coax";
 
@@ -162,6 +167,8 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RdStore, text: s
     key := r.e.public_key;
     rt := rt_event(c[0].rt[..], w[0].keys[..], w[0].rate, key[..], cxsrv_now_s());
     if rt != RT_OK { ok := ry_text(c, w, ms_write_ok(id[..], false, rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
+    p := nip70_admit(event, true, c[0].auth[..], w[0].scratch[..]);
+    if p.decision != N70_ACCEPT { ok := ry_text(c, w, ms_write_ok(id[..], false, nip70_prefix(p.decision), nip70_text(p.decision), w[0].body[..])); return; }
   }
   reason := r.reason;
   if reason == RS_ACCEPT {

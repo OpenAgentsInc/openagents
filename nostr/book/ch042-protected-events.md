@@ -747,13 +747,11 @@ the fixture.
 
 ### What is not built
 
-- Wiring `nip70_admit` into the relay of
-  [chapter 34](ch034-admit-an-event.md) and `coax/relay/relay.coax`. That is
-  out of scope for this chapter. Today the Coax relay asks for any
-  authenticated key before a write (`rr_writes_need_auth`), not for the
-  author's key, and doesn't read the `-` tag. A relay that wires it in
-  should also send a fresh `["AUTH", challenge]` with an `auth-required:`
-  answer when the connection has none outstanding, as NIP-70's flow shows.
+- `coax/relay/relay.coax` calls `nip70_admit` with `accepts` true and the
+  connection's `RrAuth`, after the signature check and the rate limit. What
+  is not built there: a fresh `["AUTH", challenge]` with an
+  `auth-required:` answer. The relay already asks for a key before any
+  write, so a protected event never reaches `nip70_admit` without one.
 - A setting for `accepts`. The example passes it per connection; a relay
   would read it from its configuration and could advertise it in NIP-11
   ([chapter 37](ch037-nip-11-relay-information.md)).

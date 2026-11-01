@@ -446,6 +446,21 @@ def rate_limits(exe, log):
         p.terminate(); p.wait(10)
 
 
+def protected(port):
+    """NIP-70 (nip70.coax): a ["-"] event only from a connection authenticated as its author."""
+    now = int(time.time())
+    mine = sign([{"kind": 1, "created_at": now - 5, "tags": [["-"]], "content": "protected"}])[0]
+    theirs = sign([{"kind": 1, "created_at": now - 5, "tags": [["-"]], "content": "protected 2"}], 'coax relay r1 second test key')[0]
+    w = Ws(port)
+    check(w.auth()[2] is True, 'NIP-70: AUTH as the first key')
+    check(publish(w, theirs) == ['OK', theirs['id'], False, 'restricted: this event may only be published by its author'],
+          "NIP-70: another key's protected event is refused")
+    check(publish(w, mine) == ['OK', mine['id'], True, ''], 'NIP-70: its own protected event is accepted')
+    check(w.auth(w.auth_event(label='coax relay r1 second test key'))[2] is True and publish(w, theirs)[2] is True,
+          'NIP-70: after AUTH as the second key too, its protected event is accepted')
+    w.close()
+
+
 def info(port):
     s = connect(port)
     s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nAccept: application/nostr+json\r\n\r\n')
@@ -607,6 +622,7 @@ def main():
                 nip11(port)
                 session(port, int(time.time()))
                 deleted, kept = deletion(port)
+                protected(port)
                 w = Ws(port)
                 w.send(['REQ', 'before', {}])
                 before, _ = w.until_eose('before')

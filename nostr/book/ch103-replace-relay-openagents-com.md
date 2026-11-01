@@ -577,7 +577,7 @@ Part X are wired into it, and what the rest still need.
 | `relay_rate.coax` | 44 | Wired | An `RtConn` in each `RyConn` and one `RtKeys`: `rt_event` once an EVENT's signature holds, `rt_req` before a REQ's filters, refused "rate-limited:"; the served NIP-11 document is `rt_nip11(RR_NIP11, ...)`. Limits from `--rate EVENTS,REQS,KEY_EVENTS`, else 120, 120 and 60 |
 | `nip45.coax` | 40 | Wired | `rr_message` routes `COUNT` to `ry_count`, which charges it as a REQ and answers with `n45_answer` over a current index (`rd_count`) |
 | `nip50.coax` via `filter_read_search` | 41 | Not wired | Read filters with `filter_read_search` in `rs_filter`, build and update the word index (`n50_build`), answer search filters with `n50_query`, and advertise `50` |
-| `nip70.coax` | 42 | Not wired | Call `nip70_admit` with the connection's authenticated keys (`RrAuth`) before storing, so a `["-"]` event is accepted only from its author |
+| `nip70.coax` | 42 | Wired | `ry_event` calls `nip70_admit` (accepts true) with the connection's `RrAuth` after the signature and the rate limit, so a `["-"]` event is accepted only from its author |
 | `nip77.coax` | 43 | Not wired | Per-connection `NEG-OPEN`, `NEG-MSG` and `NEG-CLOSE` sessions over the store's items (`re_items` builds them), with `NEG-ERR` on limits and time outs; also step 9's remote check |
 | `nip13.coax` | 56 | Not wired | An optional minimum difficulty in admission (`nip13_admit`) and its NIP-11 `min_pow_difficulty` |
 | `nip86.coax` | 67 | Not wired | An HTTP POST branch in `ry_http` for `application/nostr+json+rpc` that calls `n86_serve` after NIP-98 auth, and `n86_admit` in admission for banned keys and allowed kinds |
