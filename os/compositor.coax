@@ -226,15 +226,28 @@ cx_sync :: (x: [] Cx) {
 // gaps_out 6, border_size 1): 6 from a screen edge, 3 from a neighbour, then a 1-pixel border inside
 // that. A fullscreen or monocle window takes the whole tile; a float keeps only its border.
 CX_GAP_IN :: 3; CX_GAP_OUT :: 6; CX_BORDER :: 1;
+// The screen showing desk (1..9), or the focused screen when none shows it.
+cx_screen_of :: (x: [] Cx, desk: int) -> int {
+  m := x[0].wm[..];
+  if desk >= 1 && desk <= 9 { for i: 0..<m[0].ns { if m[0].screens[i].desk == desk - 1 { return i; } } }
+  return m[0].screen;
+}
+// The screen under a point of the whole picture, or -1.
+cx_screen_at :: (x: [] Cx, px: int, py: int) -> int {
+  m := x[0].wm[..];
+  for i: 0..<m[0].ns { c := m[0].screens[i]; if px >= c.x && py >= c.y && px < c.x + c.w && py < c.y + c.h { return i; } }
+  return -1;
+}
 cx_frame :: (x: [] Cx, t: WmTile, full: bool, out: [] int) {
   s := ifx t.id > 0 && t.id < WM_WINS then x[0].win_surf[t.id] else -1;
   bare := full || (s >= 0 && x[0].surfs[s].noborder);
-  x0 := cx_px(x, t.rect.x, x[0].w); y0 := cx_px(x, t.rect.y, x[0].h);
-  x1 := cx_px(x, t.rect.x + t.rect.w, x[0].w); y1 := cx_px(x, t.rect.y + t.rect.h, x[0].h);
+  c := x[0].wm[0].screens[cx_screen_of(x, t.desk)];
+  x0 := c.x + cx_px(x, t.rect.x, c.w); y0 := c.y + cx_px(x, t.rect.y, c.h);
+  x1 := c.x + cx_px(x, t.rect.x + t.rect.w, c.w); y1 := c.y + cx_px(x, t.rect.y + t.rect.h, c.h);
   if !full {
     if !t.floating {
-      x0 += ifx x0 <= 0 then CX_GAP_OUT else CX_GAP_IN; y0 += ifx y0 <= 0 then CX_GAP_OUT else CX_GAP_IN;
-      x1 -= ifx x1 >= x[0].w then CX_GAP_OUT else CX_GAP_IN; y1 -= ifx y1 >= x[0].h then CX_GAP_OUT else CX_GAP_IN;
+      x0 += ifx x0 <= c.x then CX_GAP_OUT else CX_GAP_IN; y0 += ifx y0 <= c.y then CX_GAP_OUT else CX_GAP_IN;
+      x1 -= ifx x1 >= c.x + c.w then CX_GAP_OUT else CX_GAP_IN; y1 -= ifx y1 >= c.y + c.h then CX_GAP_OUT else CX_GAP_IN;
     }
     if !bare { x0 += CX_BORDER; y0 += CX_BORDER; x1 -= CX_BORDER; y1 -= CX_BORDER; }
   }
@@ -242,11 +255,14 @@ cx_frame :: (x: [] Cx, t: WmTile, full: bool, out: [] int) {
 }
 cx_place :: (x: [] Cx, id: int, out: [] int) -> bool {
   m := x[0].wm[..];
-  t: [WM_WINS] WmTile; n := wm_tiles_on(m, 0, t[..]);
-  for i: 0..<n {
-    if t[i].id != id { continue; }
-    cx_frame(x, t[i], wm_is_fullscreen(m, id), out);
-    return true;
+  for sc: 0..<m[0].ns {
+    t: [WM_WINS] WmTile; n := wm_tiles_on(m, sc, t[..]);
+    for i: 0..<n {
+      if t[i].id != id { continue; }
+      t[i].desk = m[0].screens[sc].desk + 1;
+      cx_frame(x, t[i], wm_is_fullscreen(m, id), out);
+      return true;
+    }
   }
   return false;
 }
@@ -663,10 +679,12 @@ cx_composite :: (x: [] Cx, o: [] CxFrame) {
   x[0].dmg[0] = 0; x[0].dmg[1] = 0; x[0].dmg[2] = 0; x[0].dmg[3] = 0;
   if x[0].clip[2] <= x[0].clip[0] { return; }
   for py: x[0].clip[1]..<x[0].clip[3] { for px: x[0].clip[0]..<x[0].clip[2] { at := 3 * (py * x[0].w + px); o[0].b[at] = 24; o[0].b[at + 1] = 26; o[0].b[at + 2] = 32; } }
-  t: [WM_WINS] WmTile; n := wm_tiles_on(x[0].wm[..], 0, t[..]);
+  for sc: 0..<x[0].wm[0].ns {
+  t: [WM_WINS] WmTile; n := wm_tiles_on(x[0].wm[..], sc, t[..]);
   for i: 0..<n {
+    t[i].desk = x[0].wm[0].screens[sc].desk + 1;
     s := x[0].win_surf[t[i].id]; if s < 0 { continue; }
-    r: [4] int; if !cx_place(x, t[i].id, r[..]) { continue; }
+    r: [4] int; cx_frame(x, t[i], wm_is_fullscreen(x[0].wm[..], t[i].id), r[..]);
     cx_draw_surf(x, o, s, r[0] - x[0].surfs[s].gx, r[1] - x[0].surfs[s].gy, r[0], r[1], r[0] + r[2], r[1] + r[3]);
     if !wm_is_fullscreen(x[0].wm[..], t[i].id) && !x[0].surfs[s].noborder {   // the border: white on the focused window, #4a4a4a on the rest
       v := cast,trunc(u8) (ifx t[i].id == wm_focus(x[0].wm[..]) then 255 else 74);
@@ -676,6 +694,7 @@ cx_composite :: (x: [] Cx, o: [] CxFrame) {
         for py: by0..<by1 + 1 { cx_dot(x, o, bx0, py, v); cx_dot(x, o, bx1, py, v); }
       }
     }
+  }
   }
   if x[0].show_pointer && x[0].cursor >= 0 && x[0].surfs[x[0].cursor].used {   // the client's pointer image
     cx_draw_surf(x, o, x[0].cursor, x[0].px - x[0].hot_x, x[0].py - x[0].hot_y, 0, 0, x[0].w, x[0].h);
@@ -940,7 +959,7 @@ cx_rules :: (x: [] Cx, s: int, w: int) {
     if x[0].surfs[s].gw > 0 { bw = x[0].surfs[s].gw; bh = x[0].surfs[s].gh; } else if b >= 0 { bw = x[0].bufs[b].w; bh = x[0].bufs[b].h; }
     if r.floats == 1 {
       y := wm_set_floating(m, w, true);
-      fw := cast(f32) bw / cast(f32) x[0].w; fh := cast(f32) bh / cast(f32) x[0].h;
+      c := m[0].screens[m[0].screen]; fw := cast(f32) bw / cast(f32) c.w; fh := cast(f32) bh / cast(f32) c.h;
       y = wm_place_float(m, w, WmRect.{x = (1.0 - fw) * 0.5, y = (1.0 - fh) * 0.5, w = fw, h = fh});
     } else if r.floats == 0 { y := wm_set_floating(m, w, false); }
     if r.pin { y := wm_set_pinned(m, w, true); }
@@ -982,7 +1001,12 @@ cx_char_key :: (c: u8, shift: [] bool) -> int {
 }
 cx_pointer :: (x: [] Cx, px: int, py: int) {
   m := x[0].wm[..];
-  id := wm_focus_at(m, cast(f32) px / cast(f32) x[0].w, cast(f32) py / cast(f32) x[0].h);
+  sc := cx_screen_at(x, px, py); id := 0;
+  if sc >= 0 {
+    if sc != m[0].screen { m[0].screen = sc; cx_damage_all(x); }   // the pointer carries focus to the screen it enters
+    c := m[0].screens[sc];
+    id = wm_focus_at(m, cast(f32) (px - c.x) / cast(f32) c.w, cast(f32) (py - c.y) / cast(f32) c.h);
+  }
   cx_sync(x);
   s := ifx id != 0 then x[0].win_surf[id] else -1;
   g := x[0].g[..];
@@ -1039,7 +1063,7 @@ cx_mouse_button :: (x: [] Cx, button: int, down: bool) {
 }
 // The pointer moved by dx, dy pixels during a Super drag.
 cx_drag :: (x: [] Cx, dx: int, dy: int) {
-  m := x[0].wm[..]; fx := cast(f32) dx / cast(f32) x[0].w; fy := cast(f32) dy / cast(f32) x[0].h;
+  m := x[0].wm[..]; c := m[0].screens[m[0].screen]; fx := cast(f32) dx / cast(f32) c.w; fy := cast(f32) dy / cast(f32) c.h;
   if x[0].drag == 272 { wm_drag_float(m, fx, fy); }
   else {
     wm_resize_grab(m, fx, fy, x[0].drag_left, x[0].drag_top);
@@ -1047,7 +1071,7 @@ cx_drag :: (x: [] Cx, dx: int, dy: int) {
     if s >= 0 && x[0].surfs[s].aspect > 0 {   // keep_aspect_ratio: the height follows the width, the grabbed corner moves
       r: [1] WmRect;
       if wm_rect_of(m, f, r[..]) {
-        h := r[0].w * cast(f32) x[0].w / x[0].surfs[s].aspect / cast(f32) x[0].h;
+        h := r[0].w * cast(f32) c.w / x[0].surfs[s].aspect / cast(f32) c.h;
         top := ifx x[0].drag_top then r[0].y + r[0].h - h else r[0].y;
         y := wm_place_float(m, f, WmRect.{x = r[0].x, y = top, w = r[0].w, h = h});
       }
@@ -1163,20 +1187,40 @@ cx_command :: (x: [] Cx, o: [] CxFrame, line: string) {
   else { cx_say("unknown command"); }
 }
 
+// "WxH,WxH": the count read into w and h, 0 for "", or -1.
+cx_screens_parse :: (text: string, w: [] int, h: [] int) -> int {
+  if text.count == 0 { return 0; }
+  n := 0; st := 0;
+  for e: 0..<text.count + 1 {
+    if e < text.count && text[e] != ',' { continue; }
+    p := text[st..<e]; st = e + 1; xat := -1;
+    for i: 0..<p.count { if p[i] == 'x' { xat = i; } else if p[i] < '0' || p[i] > '9' { return -1; } }
+    if xat <= 0 || xat == p.count - 1 || n >= w.count { return -1; }
+    w[n] = cx_num(p[0..<xat]); h[n] = cx_num(p[xat + 1..<p.count]);
+    if w[n] < 64 || h[n] < 64 { return -1; }
+    n += 1;
+  }
+  return n;
+}
 tool_main :: () -> int #export_c {
   a: [1] Args; ok := args_load(a[..]);
-  pos: [5] string; np := 0; want_screen := false; input := ""; ai := 0;
+  pos: [5] string; np := 0; want_screen := false; input := ""; screens := ""; ai := 0;
   while ok && ai < args_count(a[..]) {
     v := args_at(a[..], ai);
     if v == "--screen" { want_screen = true; }
     else if v == "--input" && ai + 1 < args_count(a[..]) { ai += 1; input = args_at(a[..], ai); }
+    else if v == "--screens" && ai + 1 < args_count(a[..]) { ai += 1; screens = args_at(a[..], ai); }
     else if np < 5 { pos[np] = v; np += 1; } else { ok = false; }
     ai += 1;
   }
-  if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screen] [--input FILE]"); return 2; }
+  if !ok || (np != 3 && np != 5) { tool_errln("usage: compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,WxH...] [--screen] [--input FILE]"); return 2; }
   cc: [1] Cx; x := cc[..]; ff: [1] CxFrame; fr := ff[..];
   x[0].w = 1280; x[0].h = 720;
   if np == 5 { x[0].w = cx_num(pos[3]); x[0].h = cx_num(pos[4]); }
+  // --screens: headless screens side by side, left to right, each WxH
+  sw: [8] int; sh: [8] int; ns := cx_screens_parse(screens, sw[..], sh[..]);
+  if ns < 0 { tool_errln("compositor: --screens is WxH,WxH... (up to 8)"); return 2; }
+  if ns > 0 { x[0].w = 0; x[0].h = 0; for i: 0..<ns { x[0].w += sw[i]; x[0].h = cx_max(x[0].h, sh[i]); } }
   if want_screen {
     r := cxscr_open();
     if r < 0 { tool_err("compositor: cannot take the screen (step "); tool_err(ifx r == -2 then "2: another program holds it; run from a free VT" else ifx r == -1 then "1: no display device" else "3-6: no usable screen or mode"); tool_errln(")"); return 1; }
@@ -1194,7 +1238,15 @@ tool_main :: () -> int #export_c {
   if n <= 0 { tool_errln("compositor: cannot read the keymap"); return 1; }
   x[0].nkeymap = n; x[0].keymap[n] = 0;
   wm_new(x[0].wm[..]);
-  wm_set_screen(x[0].wm[..], 0, wm_screen("headless", 0, 0, x[0].w, x[0].h));
+  if ns == 0 { wm_set_screen(x[0].wm[..], 0, wm_screen("headless", 0, 0, x[0].w, x[0].h)); }
+  else {
+    left := 0;
+    for i: 0..<ns {
+      if i == 0 { wm_set_screen(x[0].wm[..], 0, wm_screen("headless-1", 0, 0, sw[0], sh[0])); }
+      else if wm_add_screen(x[0].wm[..], wm_screen("headless", left, 0, sw[i], sh[i])) < 0 { tool_errln("compositor: too many screens"); return 2; }
+      left += sw[i];
+    }
+  }
   for i: 0..<WM_WINS { x[0].win_surf[i] = -1; }
   x[0].kfocus = -1; x[0].pfocus = -1; x[0].sel = -1; x[0].cursor = -1;
   sock := pos[0]; sp: [256] u8; sn := 0; for c: sock { if sn < 255 { sp[sn] = c; sn += 1; } }
@@ -1284,6 +1336,11 @@ tool_main :: () -> int #export_c {
   #assert cx_bind(57, S).verb == B_FLOAT && cx_bind(32, S).verb == B_FLOAT && cx_bind(36, S).verb == B_SPLIT && cx_program(cx_bind(20, S).arg) == "pane" && cx_program(cx_bind(30, S).arg) == "android";
   #assert cx_bind(30, 0).verb == B_NONE && cx_bind(30, CX_SHIFT).verb == B_NONE;
   #assert cx_program(cx_bind(46, S).arg) == "camera" && cx_bind(18, S | CX_SHIFT).verb == B_QUIT && cx_bind(14, CX_CTRL | CX_ALT).verb == B_QUIT;
+}
+#test "the --screens list" {
+  w: [8] int; h: [8] int;
+  #assert cx_screens_parse("", w[..], h[..]) == 0 && cx_screens_parse("800x600,640x480", w[..], h[..]) == 2 && w[1] == 640 && h[0] == 600;
+  #assert cx_screens_parse("800", w[..], h[..]) == -1 && cx_screens_parse("x600", w[..], h[..]) == -1 && cx_screens_parse("800x600,", w[..], h[..]) == -1 && cx_screens_parse("8x8", w[..], h[..]) == -1;
 }
 #test "window rules: patterns and the file format" {
   rs: [1] CxRules;

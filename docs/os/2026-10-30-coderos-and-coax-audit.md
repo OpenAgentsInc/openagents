@@ -549,6 +549,15 @@ compiler and the examples have not been run on Linux yet.
   for byte after every step. Typing in one of two terminals redrew only
   its 631x708 box.
 
+  More than one screen works in the layout: `--screens 800x600,640x480`
+  puts headless screens side by side, each showing its own desk, with
+  gaps measured from its own edges. The pointer carries focus to the
+  screen it enters, so a launch lands there. Headless, two terminals
+  tiled on the left screen and a third filled the right one as desk 2;
+  the 23-step damage check matched a full redraw on both layouts. With
+  `--screen` it still takes only the first connected KMS screen, and one
+  `wl_output` stands for the whole picture.
+
   Also left: and the protocols foot still reports missing
   (primary selection, fractional scale, activation, text input).
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
