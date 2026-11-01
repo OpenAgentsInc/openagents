@@ -44,8 +44,12 @@ case "${1:-} ${2:-}" in
   'status --porcelain') ;;
   'worktree add')
     [[ "${3:-}" == --detach ]] || exit 92
-    mkdir -p "$4/coax/web/api"
-    cp -R "$DEPLOY_FIXTURE_API"/. "$4/coax/web/api/" ;;
+    mkdir -p "$4/coax/web/api" "$4/coax/bin"
+    cp -R "$DEPLOY_FIXTURE_API"/. "$4/coax/web/api/"
+    # deploy.sh installs the compiler and emits the Coax modules as C: stand-ins that do nothing
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$4/coax/build.sh"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$4/coax/bin/coax"
+    chmod +x "$4/coax/build.sh" "$4/coax/bin/coax" ;;
   'worktree remove') ;;
   'ls-files -z') ;;
   *) exit 93 ;;
