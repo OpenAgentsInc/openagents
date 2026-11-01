@@ -22,6 +22,7 @@
 #load "project-publish.coax";
 #load "project-review.coax";
 #load "project-page.coax";
+#load "project-landing.coax";
 
 project_usage :: () {
   print("%\n", "Projects (the queue at openagents.com/projects/SLUG; --project SLUG, default coax):");
@@ -41,6 +42,7 @@ project_usage :: () {
   print("%\n", "  project snapshot [--if-older MIN] the page's work.coax, index.md and index.html from the relay");
   print("%\n", "  project index                    the projects list (projects/list.coax and index.md)");
   print("%\n", "  project bake [--list]            baked.coax and each project's commits.coax for the page");
+  print("%\n", "  project landing [--out FILE]     the homepage's warm start: newland-data.coax, its targets and seed");
   print("%\n", "  (--dir DIR the project's folder, --key FILE its key, --relay URL, --forget)");
   print("%\n", "");
 }
@@ -677,10 +679,11 @@ project_main :: (a: [] Args, r: [] Rep, verb: string) -> int {
   if verb == "snapshot" { return project_snapshot(a, r); }
   if verb == "index" { return project_index(a, r); }
   if verb == "bake" { return project_bake(a, r); }
+  if verb == "landing" { return project_landing(a, r); }
   known := [12] string.["list", "show", "plan", "claim", "release", "note", "done", "status", "move", "respread", "publish", "check"];
   ok := false;
   for k: known { if verb == k { ok = true; } }
-  if !ok { return fail(r, EXIT_USAGE, "project: list, show, plan, claim, release, note, done, status, move, respread, publish, check, review, snapshot, index, bake (openagents project help)"); }
+  if !ok { return fail(r, EXIT_USAGE, "project: list, show, plan, claim, release, note, done, status, move, respread, publish, check, review, snapshot, index, bake, landing (openagents project help)"); }
   what := positional(a, 2);
   needs_item := verb == "show" || verb == "plan" || verb == "claim" || verb == "release" || verb == "note" || verb == "done" || verb == "status" || verb == "move";
   if needs_item && what == "" { return fail(r, EXIT_USAGE, "which item? (openagents project help)"); }

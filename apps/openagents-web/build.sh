@@ -116,7 +116,10 @@ orbitleague=$!
 characters=$!
 # The public homepage and /new-land alias, and /realms/the-grid: the same module walked (data-page 1, newland-walk.coax). Warm start is real Coax-verified
 # public data; open pages independently watch and refresh Nostr in Coax.
-bun "$here/../../coax/web/project/landing.ts" || echo "home: keeping its last complete verified warm start" >&2
+# The capture is `openagents project landing` (apps/openagents-cli, Coax, built here in seconds).
+"$here/../openagents-cli/build.sh" > /dev/null
+oa="$here/../openagents-cli/build/openagents"
+"$oa" project landing || echo "home: keeping its last complete verified warm start" >&2
 "$here/../../coax/web/project/build-home.sh" "$here/build/newland.wasm" &
 newland=$!
 # /docs/connect-a-pylon: the Pylon quickstart on the homepage's Grid (connect-pylon.coax loads newland.coax).
@@ -133,9 +136,7 @@ verse_app=$!
 # afresh, a dev build when the snapshot is ten minutes old; an unreachable
 # relay keeps the last snapshot), then `openagents project bake` writes its
 # commits and the projects/baked.coax table project.coax draws from. Adding a
-# project is data. The CLI is Coax (apps/openagents-cli), built here in seconds.
-"$here/../openagents-cli/build.sh" > /dev/null
-oa="$here/../openagents-cli/build/openagents"
+# project is data.
 fresh=(); [[ "${COAXIAL_MODE:-dev}" == release ]] || fresh=(--if-older 10)
 snaps=()
 for slug in $("$oa" project bake --list); do

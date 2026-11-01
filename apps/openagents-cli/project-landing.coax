@@ -1,0 +1,995 @@
+// The public homepage's warm start (apps/openagents-web/newland-data.coax):
+// each featured project's tasks, folded from its relay, its recent commits
+// from git, and the Pylons on the relay.
+//
+//   openagents project landing [--out FILE] [--relay URL]
+//       apps/openagents-web/newland-data.coax      LAND_* tables the homepage draws
+//       apps/openagents-web/newland-targets.coax   the featured projects' public keys
+//       apps/openagents-web/build/home-seed/<captured>-<i>.txt   this capture's admitted
+//           events, as the page's cache entries (landing-cache.coax)
+//
+// With --out or --relay it writes that one file and no seed or targets.
+// Nothing here signs or uses a key. The page's own Coax units decide
+// everything about the relay: landing-nostr.coax admits each event (its id
+// hashed from its bytes, its signature verified), writes the filters, pages
+// and bounds the capture; landing-fold.coax folds a project's events with
+// project-fold.coax; landing-cache.coax writes the seed entries. This file
+// moves WebSocket bytes and writes the tables. It replaces
+// coax/web/project/landing.ts, landing-reader.ts and pylons.ts
+// (docs/verification/2026-11-01-project-page-coax.md).
+#load "../../coax/web/project/landing-browser.coax";
+#load "../../coax/web/project/landing-fold.coax";
+
+// ---- where the featured projects stand on the grid ---------------------------------
+
+// slug, cluster, x, z (grid units): the stack to the left, the worlds to the right, as seen from the south-east
+LD_N :: 6;
+LD_SLUGS :: [LD_N] string.["coax", "psionic", "openagents-desktop", "coder", "verse", "planetary-villa"];
+LD_CLUSTER :: [LD_N] int.[0, 0, 0, 0, 1, 1];
+LD_XS :: [LD_N] string.["-4.2", "-12.7", "-5.3", "4.9", "-0.4", "8.8"];
+LD_ZS :: [LD_N] string.["4.2", "3.5", "13.1", "6.4", "-10.3", "-10.3"];
+LD_X :: [LD_N] f64.[-4.2, -12.7, -5.3, 4.9, -0.4, 8.8];
+LD_Z :: [LD_N] f64.[4.2, 3.5, 13.1, 6.4, -10.3, -10.3];
+LD_PYLON_RELAY :: "wss://relay.openagents.com";
+LD_PAGE_MS :: 15000;    // a page of events must end this soon
+LD_PART :: 900000;      // a seed part's most bytes (the page's inbox holds 1 MiB with the status line)
+
+// ---- text the tables keep ------------------------------------------------------------
+
+// | newline backslash and quote become spaces, then only printable ASCII stays, trimmed.
+ld_clean :: (s: string, out: [] u8) -> string {
+  n := 0;
+  for c: s {
+    d := ifx c == '|' || c == 10 || c == '\\' || c == '"' then cast(u8) ' ' else c;
+    if d >= 32 && d <= 126 && n < out.count { out[n] = d; n += 1; }
+  }
+  a := 0; while a < n && out[a] == ' ' { a += 1; }
+  b := n; while b > a && out[b - 1] == ' ' { b -= 1; }
+  return cast(string) out[a..<b];
+}
+// At most n bytes: longer text keeps n-3, trimmed at the end, and "...".
+ld_cut :: (s: string, n: int, out: [] u8) -> string {
+  if s.count <= n { return s; }
+  e := n - 3; while e > 0 && s[e - 1] == ' ' { e -= 1; }
+  k := 0;
+  for i: 0..<e { if k < out.count { out[k] = s[i]; k += 1; } }
+  for i: 0..<3 { if k < out.count { out[k] = '.'; k += 1; } }
+  return cast(string) out[0..<k];
+}
+ld_clean_cut :: (s: string, n: int, out: [] u8) -> string {
+  c: [8192] u8; t: [8192] u8;
+  v := ld_cut(ld_clean(s, c[..]), n, t[..]);
+  k := copy(v, out);
+  return ifx k < 0 then "" else cast(string) out[0..<k];
+}
+// v padded with zeros to width (String(v).padStart(width, "0")).
+ld_pad :: (g: [] Pg, v: int, width: int) {
+  t: [24] u8; s := int_text(v, t[..]);
+  for i: s.count..<width { pg_c(g, '0'); }
+  pg_s(g, s);
+}
+// x.toFixed(2): grid positions are sums of tenths over two, so the nearest
+// hundredth is never a tie.
+ld_fixed2 :: (g: [] Pg, x: f64) {
+  neg := x < 0.0;
+  y := ifx neg then -x else x;
+  n := cast(int) floor(y * 100.0 + 0.5);
+  if neg { pg_c(g, '-'); }
+  pg_i(g, n / 100); pg_c(g, '.');
+  if n % 100 < 10 { pg_c(g, '0'); }
+  pg_i(g, n % 100);
+}
+// "YYYY-MM-DDTHH:MM" in UTC (new Date().toISOString().slice(0, 16)).
+ld_utc :: (g: [] Pg, t: int) {
+  days := t / 86400; s := t % 86400;
+  z := days + 719468; era := z / 146097; doe := z - era * 146097;
+  yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+  y := yoe + era * 400; doy := doe - (365 * yoe + yoe / 4 - yoe / 100); mp := (5 * doy + 2) / 153;
+  d := doy - (153 * mp + 2) / 5 + 1; m := ifx mp < 10 then mp + 3 else mp - 9;
+  if m <= 2 { y += 1; }
+  ld_pad(g, y, 4); pg_c(g, '-'); ld_pad(g, m, 2); pg_c(g, '-'); ld_pad(g, d, 2);
+  pg_c(g, 'T'); ld_pad(g, s / 3600, 2); pg_c(g, ':'); ld_pad(g, s % 3600 / 60, 2);
+}
+
+// ---- events, as the relay sent them -----------------------------------------------------
+
+LD_BYTES :: 9437184;
+LdEvents :: struct {
+  b: [LD_BYTES] u8; used: int; n: int;
+  from: [LR_EVENTS] int; size: [LR_EVENTS] int; at: [LR_EVENTS] int; kind: [LR_EVENTS] int;
+  id: [LR_EVENTS * 32] u8;
+}
+ld_text :: (v: [] LdEvents, i: int) -> string { return cast(string) v[0].b[v[0].from[i]..<v[0].from[i] + v[0].size[i]]; }
+ld_same :: (v: [] LdEvents, i: int, id: [] u8) -> bool {
+  for b: 0..<32 { if v[0].id[i * 32 + b] != id[b] { return false; } }
+  return true;
+}
+ld_find :: (v: [] LdEvents, id: [] u8, from: int, to: int) -> int {
+  for i: from..<to { if ld_same(v, i, id) { return i; } }
+  return -1;
+}
+// An event admitted by lr_frame; one copy per id from since on. False when it doesn't fit.
+ld_add :: (v: [] LdEvents, text: string, since: int) -> bool {
+  scratch: [NE_MAX_OUTPUT] u8;
+  e := nostr_event_read(text, scratch[..], false);
+  if e.error != NE_OK { return false; }
+  id := e.id;
+  if ld_find(v, id[..], since, v[0].n) >= 0 { return true; }
+  if v[0].n >= LR_EVENTS || v[0].used + text.count > LD_BYTES { return false; }
+  i := v[0].n;
+  for k: 0..<text.count { v[0].b[v[0].used + k] = text[k]; }
+  v[0].from[i] = v[0].used; v[0].size[i] = text.count; v[0].used += text.count;
+  v[0].at[i] = e.created_at; v[0].kind[i] = e.kind;
+  for b: 0..<32 { v[0].id[i * 32 + b] = id[b]; }
+  v[0].n += 1;
+  return true;
+}
+ld_hex_id :: (v: [] LdEvents, i: int, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for b: 0..<32 { x := v[0].id[i * 32 + b]; out[2 * b] = digits[cast(int) (x >> 4)]; out[2 * b + 1] = digits[cast(int) (x & 15)]; }
+  return cast(string) out[0..<64];
+}
+
+// ---- one public connection, one request at a time -----------------------------------
+
+LdRelay :: struct {
+  conn: [1] RelayConn; q: [1] LrQuery; open: bool;
+  observed: int; bytes: int;
+  why: [256] u8; why_n: int;
+}
+ld_why :: (c: [] LdRelay, s: string) -> bool { n := copy(s, c[0].why[..]); c[0].why_n = ifx n < 0 then 0 else n; return false; }
+ld_relay_why :: (c: [] LdRelay) -> string { return cast(string) c[0].why[0..<c[0].why_n]; }
+ld_open :: (c: [] LdRelay, url: string) -> bool {
+  if !((url.count > 6 && url[0..<6] == "wss://") || (url.count > 5 && url[0..<5] == "ws://")) { return ld_why(c, "relay URL must be ws:// or wss://"); }
+  c[0].observed = 0; c[0].bytes = 0;
+  c[0].open = relay_conn_open(c[0].conn[..], url);
+  return c[0].open || ld_why(c, "public relay unavailable");
+}
+ld_close :: (c: [] LdRelay) {
+  if c[0].open { ok := relay_conn_close(c[0].conn[..], WS_CLOSE_NORMAL); }
+  c[0].open = false;
+}
+// Every event the filters match, page by page, each admitted by lr_frame,
+// appended to v once per id for this call.
+ld_all :: (c: [] LdRelay, filters: [] string, v: [] LdEvents) -> bool {
+  since := v[0].n;
+  q := c[0].q[..];
+  frame: [RC_MSG_MAX] u8; req: [16384] u8;
+  for filter: filters {
+    if !lr_begin(q, filter) { return ld_why(c, "Coax refused query"); }
+    while q[0].state != 3 {
+      n := lr_request(q, req[..]);
+      if n < 0 { return ld_why(c, "Coax refused page request"); }
+      if !relay_conn_send(c[0].conn[..], cast(string) req[0..<n]) { return ld_why(c, "public relay connection closed"); }
+      deadline := cxsock_now_ms() + LD_PAGE_MS;
+      ended := false;
+      while !ended {
+        left := deadline - cxsock_now_ms();
+        if left <= 0 { return ld_why(c, "public relay page timed out"); }
+        got := relay_conn_poll(c[0].conn[..], ifx left < 250 then left else 250);
+        if got == RC_NONE { continue; }
+        if got != RC_TEXT { c[0].open = false; return ld_why(c, "public relay connection closed"); }
+        r := lr_frame(q, cast(string) c[0].conn[0].text[0..<c[0].conn[0].text_n], frame[..]);
+        if r < 0 { t: [24] u8; w: [128] u8; k := copy("Coax public read refused (", w[..]); k += copy(int_text(r, t[..]), w[k..<128]); k += copy(")", w[k..<128]); return ld_why(c, cast(string) w[0..<k]); }
+        if r >= 10 {
+          c[0].observed += 1; c[0].bytes += r - 10;
+          if !lr_capture_budget(c[0].observed, c[0].bytes) { return ld_why(c, "Coax public capture budget exceeded"); }
+          if !ld_add(v, cast(string) frame[0..<r - 10], since) { return ld_why(c, "public capture holds too many events"); }
+        }
+        if r == 2 {
+          m := lr_close(q, req[..]);
+          if m < 0 || !relay_conn_send(c[0].conn[..], cast(string) req[0..<m]) { return ld_why(c, "public relay connection closed"); }
+          ended = true;
+        }
+      }
+    }
+  }
+  return true;
+}
+// One filter by lr_filter's mode (landing-nostr.coax), into out.
+ld_filter :: (mode: int, key: string, value: string, out: [] u8) -> string {
+  n := lr_filter(mode, key, value, out);
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+// ---- a project's fold, as landing-fold.coax hands it up ------------------------------
+
+LdIssue :: struct { id: string; kind: string; status: string; title: string; parent: string; rank: string; claimed_by: string; commit: string; claimed_at: int; status_at: int; }
+LdFold :: struct { issues: [FOLD_ISSUES] LdIssue; n: int; text: [1048576] u8; used: int; }
+ld_keep :: (f: [] LdFold, d: Jv, at: int) -> string {
+  n := jv_str(d, at, f[0].text[f[0].used..<1048576]);
+  if n < 0 { return ""; }
+  s := cast(string) f[0].text[f[0].used..<f[0].used + n];
+  f[0].used += n;
+  return s;
+}
+ld_read_fold :: (f: [] LdFold, json: string) -> bool {
+  f[0].n = 0; f[0].used = 0;
+  nodes: [8192] JvNode; d_: [1] Jv;
+  if !jv_parse(d_[..], json, nodes[..]) { return false; }
+  d := d_[0];
+  list := jv_get(d, 0, "issues");
+  k := ifx jv_ok(d, list) then d.nodes[list].first else -1;
+  while k != -1 {
+    if f[0].n >= FOLD_ISSUES { return false; }
+    i := f[0].n;
+    f[0].issues[i] = LdIssue.{id = ld_keep(f, d, jv_get(d, k, "id")), kind = ld_keep(f, d, jv_get(d, k, "kind")),
+      status = ld_keep(f, d, jv_get(d, k, "status")), title = ld_keep(f, d, jv_get(d, k, "title")),
+      parent = ld_keep(f, d, jv_get(d, k, "parent")), rank = ld_keep(f, d, jv_get(d, k, "rank")),
+      claimed_by = ld_keep(f, d, jv_get(d, k, "claimed_by")), commit = ld_keep(f, d, jv_get(d, k, "commit")),
+      claimed_at = jv_int(d, jv_get(d, k, "claimed_at"), 0), status_at = jv_int(d, jv_get(d, k, "status_at"), 0)};
+    f[0].n += 1;
+    k = d.nodes[k].next;
+  }
+  return true;
+}
+ld_fin :: (s: string) -> bool { return s == "resolved" || s == "closed"; }
+ld_less :: (a: string, b: string) -> bool {
+  n := ifx a.count < b.count then a.count else b.count;
+  for i: 0..<n { if a[i] != b[i] { return a[i] < b[i]; } }
+  return a.count < b.count;
+}
+
+// ---- the recent commits, by the project owning most of each one's files ------------
+
+LD_COMMITS :: 4096;
+LD_GIT :: 16777216;
+LdGit :: struct {
+  b: [LD_GIT] u8; n: int; count: int;
+  hash: [LD_COMMITS] string; at: [LD_COMMITS] int; author: [LD_COMMITS] string; subject: [LD_COMMITS] string;
+  owner: [LD_COMMITS] int;        // the featured project owning most of its files, -1 none
+  recorded: [LD_COMMITS] int;     // the project whose task recorded it (done --commit), -1 none
+}
+// Which project a changed file belongs to, by the folders each owns (most specific first); -1 for none.
+// Commits are never matched by their message.
+ld_owner :: (file: string) -> int {
+  if starts(file, "verse/planetary-villa/") || starts(file, "apps/openagents-web/villa") { return 5; }
+  if starts(file, "coax/web/goldens/hecate") || starts(file, "coax/web/goldens/villa") { return 5; }
+  // the realms' goldens and docs are the worlds', though they sit in coax/web and docs/
+  worlds := [5] string.["everglade", "fairy-forest", "icecream", "deadgears", "haunt"];
+  for w: worlds { wb: [64] u8; k := copy("verse/", wb[..]); k += copy(w, wb[k..<64]); k += copy("/", wb[k..<64]); if starts(file, cast(string) wb[0..<k]) { return 4; } }
+  pages := [20] string.["realm", "realms/", "everglade", "fairy", "icecream", "deadgears", "garden", "thegrid", "waterlab", "characters",
+    "fixture", "droprealm", "myrealm", "builder", "verse", "room", "world", "place", "save", "socket"];
+  web := "apps/openagents-web/";
+  if starts(file, web) {
+    rest := file[web.count..<file.count];
+    for p: pages { if starts(rest, p) { return 4; } }
+    if starts(rest, "textkeys") { return 4; }
+  }
+  if starts(file, "coax/web/goldens/") || starts(file, "docs/verse/") { return 4; }
+  if starts(file, "coax/") || starts(file, "verse/") { return 0; }   // the language and the Verse engine
+  if starts(file, "psionic/") || starts(file, "crates/psionic/") || starts(file, "docs/psionic/") { return 1; }
+  if starts(file, "apps/openagents-desktop/") { return 2; }
+  if starts(file, "docs/coder/") { return 3; }
+  return -1;
+}
+ld_space :: (c: u8) -> bool { return c == ' ' || c == 10 || c == 13 || c == 9; }
+ld_trim :: (s: string) -> string {
+  a := 0; while a < s.count && ld_space(s[a]) { a += 1; }
+  b := s.count; while b > a && ld_space(s[b - 1]) { b -= 1; }
+  return s[a..<b];
+}
+// git log, newest first, split on its "@@" markers as landing.ts split it.
+ld_git :: (g: [] LdGit, root: string) -> bool {
+  g[0].count = 0;
+  err: [8192] u8;
+  argv := [7] string.["git", "-C", root, "log", "-n", "3000", "--name-only"];
+  all := [8] string.[argv[0], argv[1], argv[2], argv[3], argv[4], argv[5], argv[6], "--format=@@%H|%at|%an|%s"];
+  got := proc_run(all[..], 120000, g[0].b[..], err[..]);
+  if got.status != 0 || got.cut { return false; }
+  g[0].n = got.out_n;
+  text := cast(string) g[0].b[0..<g[0].n];
+  i := 0;
+  while i < text.count {
+    // the next block: from after "@@" to the next "@@"
+    e := i; while e + 1 < text.count && !(text[e] == '@' && text[e + 1] == '@') { e += 1; }
+    if e + 1 >= text.count { e = text.count; }
+    block := ld_trim(text[i..<e]);
+    i = e + 2;
+    if block.count == 0 { continue; }
+    if g[0].count >= LD_COMMITS { return false; }
+    c := g[0].count;
+    le := 0; while le < block.count && block[le] != 10 { le += 1; }
+    head := block[0..<le];
+    p1 := 0; while p1 < head.count && head[p1] != '|' { p1 += 1; }
+    p2 := p1 + 1; while p2 < head.count && head[p2] != '|' { p2 += 1; }
+    p3 := p2 + 1; while p3 < head.count && head[p3] != '|' { p3 += 1; }
+    g[0].hash[c] = head[0..<p1];
+    g[0].at[c] = ifx p2 <= head.count && p1 + 1 <= p2 then ld_int(head[p1 + 1..<p2]) else 0;
+    g[0].author[c] = ifx p3 <= head.count && p2 + 1 <= p3 then head[p2 + 1..<p3] else "";
+    g[0].subject[c] = ifx p3 + 1 <= head.count then head[p3 + 1..<head.count] else "";
+    // each file's owner, counted; the most, the first seen on a tie
+    counts: [LD_N] int; first: [LD_N] int; seen := 0;
+    for k: 0..<LD_N { counts[k] = 0; first[k] = -1; }
+    j := le + 1;
+    while j < block.count {
+      fe := j; while fe < block.count && block[fe] != 10 { fe += 1; }
+      o := ld_owner(ld_trim(block[j..<fe]));
+      if o >= 0 { if counts[o] == 0 { first[o] = seen; seen += 1; } counts[o] += 1; }
+      j = fe + 1;
+    }
+    best := -1;
+    for k: 0..<LD_N {
+      if counts[k] == 0 { continue; }
+      if best < 0 || counts[k] > counts[best] || (counts[k] == counts[best] && first[k] < first[best]) { best = k; }
+    }
+    g[0].owner[c] = best; g[0].recorded[c] = -1;
+    g[0].count += 1;
+  }
+  return true;
+}
+// A plain decimal of up to 18 digits, or 0 (Number() of a unix time).
+ld_int :: (s: string) -> int {
+  if s.count < 1 || s.count > 18 { return 0; }
+  v := 0;
+  for c: s { if c < '0' || c > '9' { return 0; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+ld_short :: (h: string) -> string { return ifx h.count > 10 then h[0..<10] else h; }
+
+// ---- the Pylons: their beacons on the relay ----------------------------------------------
+
+LD_PYLONS :: 256;
+LdPylon :: struct {
+  generation: int; valid_until: int; since: int; observed_at: int;
+  provider: string; pylon: string; label: string; status: string; family: string; tier: string;
+  memory_gb: string; total: string; free: string;
+  models: string; lanes: string; settlement: string; pools: string;
+  price: int; bay: int;
+  answers: int; statuses: int; average: int; last: int;
+}
+LdPylons :: struct { p: [LD_PYLONS] LdPylon; n: int; text: [1048576] u8; used: int; }
+ld_pkeep :: (s: [] LdPylons, t: string) -> string {
+  if s[0].used + t.count > 1048576 { return ""; }
+  for i: 0..<t.count { s[0].text[s[0].used + i] = t[i]; }
+  r := cast(string) s[0].text[s[0].used..<s[0].used + t.count];
+  s[0].used += t.count;
+  return r;
+}
+// A JSON string array's items, cleaned, each once, joined with ", ".
+ld_list :: (d: Jv, at: int, out: [] Pg) {
+  seen: [64] string; n := 0;
+  k := ifx jv_kind(d, at) == JV_ARRAY then d.nodes[at].first else -1;
+  while k != -1 {
+    raw: [1024] u8; m := jv_str(d, k, raw[..]);
+    if m >= 0 {
+      cb: [1024] u8; c := ld_clean(cast(string) raw[0..<m], cb[..]);
+      if n > 0 { pg_s(out, ", "); }
+      pg_s(out, c); n += 1;
+    }
+    k = d.nodes[k].next;
+  }
+}
+// One beacon lr_beacon admitted, as the page's row wants it (pylons.ts fromBeacon).
+ld_pylon :: (s: [] LdPylons, content: string, out: [] LdPylon) -> bool {
+  nodes: [4096] JvNode; d_: [1] Jv;
+  if !jv_parse(d_[..], content, nodes[..]) { return false; }
+  d := d_[0];
+  p := out;
+  b: [4096] u8;
+  p[0].generation = jv_int(d, jv_get(d, 0, "generation"), 0); p[0].valid_until = jv_int(d, jv_get(d, 0, "valid_until"), 0);
+  p[0].since = jv_int(d, jv_get(d, 0, "since"), 0); p[0].observed_at = jv_int(d, jv_get(d, 0, "observed_at"), 0);
+  n := jv_str(d, jv_get(d, 0, "provider"), b[..]); p[0].provider = ld_pkeep(s, ifx n < 0 then "" else cast(string) b[0..<n]);
+  n = jv_str(d, jv_get(d, 0, "pylon"), b[..]); p[0].pylon = ld_pkeep(s, ifx n < 0 then "" else cast(string) b[0..<n]);
+  n = jv_str(d, jv_get(d, 0, "label"), b[..]); p[0].label = ld_pkeep(s, ifx n < 0 then "" else cast(string) b[0..<n]);
+  n = jv_str(d, jv_get(d, 0, "status"), b[..]); p[0].status = ld_pkeep(s, ifx n < 0 then "" else cast(string) b[0..<n]);
+  class := jv_get(d, 0, "class");
+  n = jv_str(d, jv_get(d, class, "family"), b[..]); p[0].family = ld_pkeep(s, ifx n < 0 then "" else cast(string) b[0..<n]);
+  n = jv_str(d, jv_get(d, class, "tier"), b[..]); p[0].tier = ld_pkeep(s, ifx n < 0 then "" else cast(string) b[0..<n]);
+  p[0].memory_gb = ld_pkeep(s, jv_raw(d, jv_get(d, class, "memory_gb")));
+  slots := jv_get(d, 0, "slots");
+  p[0].total = ld_pkeep(s, jv_raw(d, jv_get(d, slots, "total"))); p[0].free = ld_pkeep(s, jv_raw(d, jv_get(d, slots, "free")));
+  // services: each model once (without its @digest), each lane once, the lowest price hint
+  models: [1] Pg; lanes: [1] Pg;
+  mseen: [64] string; mn := 0; lseen: [64] string; ln := 0; price := -1;
+  mb: [8192] u8; mu := 0;
+  services := jv_get(d, 0, "services");
+  k := ifx jv_kind(d, services) == JV_ARRAY then d.nodes[services].first else -1;
+  while k != -1 {
+    m := jv_str(d, jv_get(d, k, "model"), b[..]);
+    if m >= 0 {
+      e := 0; while e < m && b[e] != '@' { e += 1; }
+      name := cast(string) b[0..<e];
+      dup := false; for i: 0..<mn { if mseen[i] == name { dup = true; } }
+      if !dup && mn < 64 && mu + e <= 8192 {
+        for i: 0..<e { mb[mu + i] = b[i]; }
+        mseen[mn] = cast(string) mb[mu..<mu + e]; mu += e; mn += 1;
+        cb: [1024] u8; c := ld_clean(name, cb[..]);
+        if models[0].n > 0 { pg_s(models[..], ", "); }
+        pg_s(models[..], c);
+      }
+    }
+    ls := jv_get(d, k, "lanes");
+    l := ifx jv_kind(d, ls) == JV_ARRAY then d.nodes[ls].first else -1;
+    while l != -1 {
+      m2 := jv_str(d, l, b[..]);
+      if m2 >= 0 {
+        name := cast(string) b[0..<m2];
+        dup := false; for i: 0..<ln { if lseen[i] == name { dup = true; } }
+        if !dup && ln < 64 && mu + m2 <= 8192 {
+          for i: 0..<m2 { mb[mu + i] = b[i]; }
+          lseen[ln] = cast(string) mb[mu..<mu + m2]; mu += m2; ln += 1;
+          cb: [1024] u8; c := ld_clean(name, cb[..]);
+          if lanes[0].n > 0 { pg_s(lanes[..], ", "); }
+          pg_s(lanes[..], c);
+        }
+      }
+      l = d.nodes[l].next;
+    }
+    ph := jv_get(d, k, "price_hint_msat");
+    if jv_kind(d, ph) == JV_NUMBER { v := jv_int(d, ph, -1); if v >= 0 && (price < 0 || v < price) { price = v; } }
+    k = d.nodes[k].next;
+  }
+  p[0].models = ld_pkeep(s, pg_text(models[..])); p[0].lanes = ld_pkeep(s, pg_text(lanes[..]));
+  settlement: [1] Pg; pools: [1] Pg;
+  ld_list(d, jv_get(d, 0, "settlement"), settlement[..]); ld_list(d, jv_get(d, 0, "pools"), pools[..]);
+  p[0].settlement = ld_pkeep(s, pg_text(settlement[..])); p[0].pools = ld_pkeep(s, pg_text(pools[..]));
+  p[0].price = price;
+  // the bay it stands in, by its first pool (an exact name): coder, else Psionic's
+  pl := jv_get(d, 0, "pools");
+  n = jv_str(d, jv_at(d, pl, 0), b[..]);
+  p[0].bay = ifx n == 5 && cast(string) b[0..<5] == "coder" then 3 else 1;
+  return true;
+}
+// The request ids an answer's e tags name, each once, into ids (as a JSON array of strings).
+ld_answer_ids :: (text: string, ids: [] Ln, seen: [] Pg) {
+  nodes: [2048] JvNode; d_: [1] Jv;
+  if !jv_parse(d_[..], text, nodes[..]) { return; }
+  d := d_[0];
+  tags := jv_get(d, 0, "tags");
+  t := ifx jv_kind(d, tags) == JV_ARRAY then d.nodes[tags].first else -1;
+  while t != -1 {
+    b: [256] u8; n := jv_str(d, jv_at(d, t, 0), b[..]);
+    if n == 1 && b[0] == 'e' {
+      v: [256] u8; m := jv_str(d, jv_at(d, t, 1), v[..]);
+      if m >= 0 {
+        id := cast(string) v[0..<m];
+        // seen holds "\n<id>\n" for each one taken
+        nb: [260] u8; k := copy("\n", nb[..]); k += copy(id, nb[k..<260]); k += copy("\n", nb[k..<260]);
+        if !ld_contains(pg_text(seen), cast(string) nb[0..<k]) { pg_s(seen, cast(string) nb[0..<k]); ln_s(ids, id); ln_c(ids, 10); }
+      }
+    }
+    t = d.nodes[t].next;
+  }
+}
+ld_contains :: (hay: string, needle: string) -> bool {
+  if needle.count == 0 { return true; }
+  i := 0;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return true; } i += 1; }
+  return false;
+}
+// "[" + each event's original JSON, joined with "," + "]"
+ld_pack :: (v: [] LdEvents, out: [] Pg) {
+  out[0].n = 0; pg_c(out, '[');
+  for i: 0..<v[0].n { if i > 0 { pg_c(out, ','); } pg_s(out, ld_text(v, i)); }
+  pg_c(out, ']');
+}
+// Every Pylon with a live beacon on the relay, its newest generation, and its last day's signed work.
+ld_read_pylons :: (c: [] LdRelay, s: [] LdPylons, now: int) -> bool {
+  beacons_: [1] LdEvents; beacons := beacons_[..];
+  fb: [8192] u8;
+  filters := [1] string.[ld_filter(5, "", "", fb[..])];
+  if filters[0].count == 0 || !ld_all(c, filters[..], beacons) { return false; }
+  s[0].n = 0;
+  for i: 0..<beacons[0].n {
+    content: [NE_MAX_OUTPUT] u8;
+    n := lr_beacon(ld_text(beacons, i), now, content[..]);
+    if n < 0 { continue; }
+    one: [1] LdPylon;
+    if !ld_pylon(s, cast(string) content[0..<n], one[..]) { continue; }
+    held := -1;
+    for k: 0..<s[0].n { if s[0].p[k].provider == one[0].provider && s[0].p[k].pylon == one[0].pylon { held = k; } }
+    if held < 0 { if s[0].n < LD_PYLONS { s[0].p[s[0].n] = one[0]; s[0].n += 1; } }
+    else if lr_newer(one[0].generation, one[0].observed_at, s[0].p[held].generation, s[0].p[held].observed_at) { s[0].p[held] = one[0]; }
+  }
+  for k: 0..<s[0].n {
+    work_: [1] LdEvents; work := work_[..]; requests_: [1] LdEvents; requests := requests_[..];
+    tb: [24] u8; wb: [8192] u8;
+    wf := [1] string.[ld_filter(6, s[0].p[k].provider, int_text(now, tb[..]), wb[..])];
+    if wf[0].count == 0 || !ld_all(c, wf[..], work) { return false; }
+    ids: [1] Ln; seen: [1] Pg;
+    for i: 0..<work[0].n { if work[0].kind[i] == 26910 { ld_answer_ids(ld_text(work, i), ids[..], seen[..]); } }
+    // the requests, 50 ids a query
+    list := ln_text(ids[..]); at := 0;
+    while at < list.count {
+      chunk: [1] Pg; pg_c(chunk[..], '['); taken := 0;
+      while at < list.count && taken < 50 {
+        e := at; while e < list.count && list[e] != 10 { e += 1; }
+        if taken > 0 { pg_c(chunk[..], ','); }
+        pg_c(chunk[..], '"'); pg_s(chunk[..], list[at..<e]); pg_c(chunk[..], '"');
+        taken += 1; at = e + 1;
+      }
+      pg_c(chunk[..], ']');
+      rb: [16384] u8;
+      rf := [1] string.[ld_filter(7, "", pg_text(chunk[..]), rb[..])];
+      if rf[0].count == 0 || !ld_all(c, rf[..], requests) { return false; }
+    }
+    wp: [1] Pg; rp: [1] Pg; ld_pack(work, wp[..]); ld_pack(requests, rp[..]);
+    if wp[0].bad || rp[0].bad { return ld_why(c, "signed activity is too large"); }
+    st: [4096] u8;
+    n := lr_stats(pg_text(wp[..]), pg_text(rp[..]), s[0].p[k].provider, now, st[..]);
+    if n < 0 { return ld_why(c, "Coax refused signed activity"); }
+    nodes: [64] JvNode; d_: [1] Jv;
+    if !jv_parse(d_[..], cast(string) st[0..<n], nodes[..]) { return ld_why(c, "Coax refused signed activity"); }
+    d := d_[0];
+    s[0].p[k].answers = jv_int(d, jv_get(d, 0, "answers"), 0); s[0].p[k].statuses = jv_int(d, jv_get(d, 0, "statuses"), 0);
+    s[0].p[k].average = jv_int(d, jv_get(d, 0, "average"), -1); s[0].p[k].last = jv_int(d, jv_get(d, 0, "last"), 0);
+  }
+  return true;
+}
+ld_npub_short :: (hex: string, g: [] Pg) {
+  b: [128] u8; n := lr_npub(hex, b[..]);
+  if n < 13 { pg_s(g, "..."); return; }
+  pg_s(g, cast(string) b[0..<9]); pg_s(g, "..."); pg_s(g, cast(string) b[n - 4..<n]);
+}
+ld_age :: (now: int, t: int) -> int { return ifx now - t > 0 then now - t else 0; }
+// LAND_PYLONS rows: each bay (rows of three, back from the front corner,
+// offset from its project in the view's diagonals: u = x - z across the
+// screen, w = x + z toward the eye) fills in arrival order (since).
+ld_pylon_rows :: (s: [] LdPylons, now: int, g: [] Pg) -> int {
+  rows := 0;
+  // the bays in the order their first Pylon came
+  order: [LD_N] int; bays := 0;
+  for i: 0..<s[0].n {
+    b := s[0].p[i].bay; dup := false;
+    for k: 0..<bays { if order[k] == b { dup = true; } }
+    if !dup { order[bays] = b; bays += 1; }
+  }
+  for bi: 0..<bays {
+    b := order[bi];
+    du := ifx b == 1 then 4.4 else ifx b == 3 then 6.2 else 6.0;
+    dw := ifx b == 1 then -3.6 else ifx b == 3 then -0.6 else -5.0;
+    // this bay's Pylons, by since, then by name
+    ps: [LD_PYLONS] int; m := 0;
+    for i: 0..<s[0].n { if s[0].p[i].bay == b { ps[m] = i; m += 1; } }
+    for i: 1..<m {
+      j := i;
+      while j > 0 && (s[0].p[ps[j]].since < s[0].p[ps[j - 1]].since || (s[0].p[ps[j]].since == s[0].p[ps[j - 1]].since && ld_less(s[0].p[ps[j]].pylon, s[0].p[ps[j - 1]].pylon))) {
+        t := ps[j]; ps[j] = ps[j - 1]; ps[j - 1] = t; j -= 1;
+      }
+    }
+    for i: 0..<m {
+      p := s[0].p[ps[i]];
+      u := LD_X[b] - LD_Z[b] + du + cast(f64) (i % 3) * 1.9;
+      w := LD_X[b] + LD_Z[b] + dw - cast(f64) (i / 3) * 1.9;
+      cb: [8192] u8;
+      pg_s(g, "beacon|"); pg_i(g, b); pg_c(g, '|'); ld_fixed2(g, (u + w) / 2.0); pg_c(g, '|'); ld_fixed2(g, (w - u) / 2.0); pg_c(g, '|');
+      pg_s(g, ld_clean(p.pylon, cb[..])); pg_c(g, '|');
+      label := ld_clean(p.label, cb[..]); pg_s(g, ifx label.count > 40 then label[0..<40] else label); pg_c(g, '|');
+      ld_npub_short(p.provider, g); pg_c(g, '|');
+      pg_s(g, p.status); pg_c(g, '|'); pg_s(g, p.family); pg_c(g, '|'); pg_s(g, p.tier); pg_c(g, '|');
+      pg_s(g, p.memory_gb); pg_c(g, '|'); pg_s(g, p.total); pg_c(g, '|'); pg_s(g, p.free); pg_c(g, '|');
+      pg_s(g, p.models); pg_c(g, '|'); pg_s(g, p.lanes); pg_c(g, '|'); pg_s(g, p.settlement); pg_c(g, '|'); pg_s(g, p.pools); pg_c(g, '|');
+      pg_i(g, p.price); pg_c(g, '|'); pg_i(g, ld_age(now, p.since)); pg_c(g, '|'); pg_i(g, ld_age(now, p.observed_at)); pg_c(g, '|');
+      pg_i(g, p.answers); pg_c(g, '|'); pg_i(g, p.statuses); pg_c(g, '|'); pg_i(g, p.average); pg_c(g, '|');
+      pg_i(g, ifx p.last != 0 then ld_age(now, p.last) else -1); pg_c(g, '|');
+      pg_i(g, ld_age(p.valid_until, now));
+      pg_c(g, 10);
+      rows += 1;
+    }
+  }
+  return rows;
+}
+LD_PYLON_COLUMNS :: "source (demo or beacon)|project|x|z|pylon|label|npub|status|family|tier|memory_gb|slots|free|models|lanes|settlement|pools|price_hint_msat (-1 none)|online s|heard s|signed provider answers 24h|signed provider status updates 24h|mean reply delay s (-1 unknown)|last answer s (-1 none)|beacon valid for s (-1 demo)";
+
+// ---- the capture ---------------------------------------------------------------------
+
+// The seed's cache entries: the bytes, and where each starts.
+LD_SEED :: 25165824;
+LdSeed :: struct { b: [LD_SEED] u8; n: int; start: [65536] int; count: int; }
+ld_seed_text :: (r: [] LdSeed, i: int) -> string {
+  e := ifx i + 1 < r[0].count then r[0].start[i + 1] else r[0].n;
+  return cast(string) r[0].b[r[0].start[i]..<e];
+}
+// A list of rows: the bytes, and where each starts (rows end at the next one's start).
+LdRows :: struct { g: [1] Pg; start: [16384] int; at: [16384] int; n: int; }
+ld_row :: (r: [] LdRows, at: int) -> bool { if r[0].n >= 16384 { return false; } r[0].start[r[0].n] = r[0].g[0].n; r[0].at[r[0].n] = at; r[0].n += 1; return true; }
+ld_row_text :: (r: [] LdRows, i: int) -> string {
+  e := ifx i + 1 < r[0].n then r[0].start[i + 1] else r[0].g[0].n;
+  return cast(string) r[0].g[0].b[r[0].start[i]..<e];
+}
+// The previous capture's issue ids for slug (LAND_KNOWN_ISSUES), as a JSON array; key gets its project key.
+ld_previous :: (known: string, slug: string, key: [] Ln, ids: [] Pg) -> bool {
+  ids[0].n = 0; key[0].n = 0;
+  if known.count == 0 { pg_s(ids, "[]"); return true; }
+  nodes: [16384] JvNode; d_: [1] Jv;
+  if !jv_parse(d_[..], known, nodes[..]) { return false; }
+  d := d_[0];
+  o := jv_get(d, 0, slug);
+  if o < 0 { pg_s(ids, "[]"); return true; }
+  b: [128] u8; n := jv_str(d, jv_get(d, o, "key"), b[..]);
+  if n > 0 { ln_s(key, cast(string) b[0..<n]); }
+  pg_c(ids, '[');
+  l := jv_get(d, o, "ids");
+  k := ifx jv_kind(d, l) == JV_ARRAY then d.nodes[l].first else -1; first := true;
+  while k != -1 {
+    m := jv_str(d, k, b[..]);
+    if m >= 0 { if !first { pg_c(ids, ','); } pg_c(ids, '"'); pg_s(ids, cast(string) b[0..<m]); pg_c(ids, '"'); first = false; }
+    k = d.nodes[k].next;
+  }
+  pg_c(ids, ']');
+  return true;
+}
+// LAND_KNOWN_ISSUES from a previous capture, unescaped once ("" when there is none).
+ld_known_text :: (path: string, out: [] Pg) -> bool {
+  old: [1] Pg; out[0].n = 0;
+  n := fs_read(path, old[0].b[..]);
+  if n < 0 { return true; }
+  text := cast(string) old[0].b[0..<n];
+  name := "LAND_KNOWN_ISSUES :: \"";
+  i := 0;
+  while i < text.count {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    line := text[i..<e];
+    if starts(line, name) && line.count >= name.count + 2 && line[line.count - 2..<line.count] == "\";" {
+      m := json_unescape(line[name.count..<line.count - 2], out[0].b[..]);
+      if m < 0 { return false; }
+      out[0].n = m;
+      return true;
+    }
+    i = e + 1;
+  }
+  return true;
+}
+
+project_landing :: (a: [] Args, r: [] Rep) -> int {
+  p: [1] Proj;
+  if !pj_find_root(p[..]) { return fail(r, EXIT_USAGE, "run this inside the openagents checkout"); }
+  root := pj_root(p[..]);
+  db: [2048] u8; ob: [2048] u8;
+  usual := fs_join(root, "apps/openagents-web/newland-data.coax", db[..]);
+  out := args_value(a, "--out", usual);
+  override := args_value(a, "--relay", "");
+  whole := override.count == 0 && out == usual;   // the release's capture: also the seed and the targets
+  kt: [1] Pg;
+  if !ld_known_text(out, kt[..]) { return fail(r, EXIT_FAIL, "landing: the last capture's LAND_KNOWN_ISSUES is not a string"); }
+  known := pg_text(kt[..]);
+
+  git_: [1] LdGit; git := git_[..];
+  if !ld_git(git, root) { return fail(r, EXIT_FAIL, "landing: can't read git log"); }
+
+  c_: [1] LdRelay; c := c_[..];
+  ev_: [1] LdEvents; ev := ev_[..];
+  lf_: [1] LfState; lf := lf_[..];
+  fold_: [1] LdFold; folded := fold_[..];
+  fj_: [1] Pg; fj := fj_[..];
+  entries_: [1] LdSeed; entries := entries_[..];      // the seed: every admitted event as a cache entry
+  folds_: [1] LdRows; folds := folds_[..];            // and each project's fold, keyed as hc_key keys it
+  synced: [LD_N] int;
+  kn_: [1] Pg; kn := kn_[..]; pg_c(kn, '{');          // LAND_KNOWN_ISSUES, being written
+  working_: [1] LdRows; working := working_[..];
+  feed_: [1] LdRows; feed := feed_[..];
+  rows0_: [1] LdRows; rows0 := rows0_[..];
+  mine: [LD_N * 512] int; mine_n: [LD_N] int;         // each project's commits its tasks recorded
+  keys_: [1] Pg; keys := keys_[..]; repos_: [1] Pg; repos := repos_[..]; relays_: [1] Pg; relays := relays_[..];
+  same_relay := true; first_relay: [512] u8; first_relay_n := 0;
+
+  for k: 0..<LD_N {
+    slug := LD_SLUGS[k];
+    sb: [2048] u8; pb: [2048] u8; jb: [2048] u8;
+    cfg_text: [65536] u8;
+    dir := fs_join(fs_join(root, "apps/openagents-web/projects", sb[..]), slug, pb[..]);
+    cn := fs_read(fs_join(dir, "project.json", jb[..]), cfg_text[..]);
+    if cn < 0 { tool_err("landing: no project.json for "); tool_errln(slug); return EXIT_FAIL; }
+    nodes: [2048] JvNode; d_: [1] Jv;
+    if !jv_parse(d_[..], cast(string) cfg_text[0..<cn], nodes[..]) { tool_err("landing: project.json is not JSON: "); tool_errln(slug); return EXIT_FAIL; }
+    d := d_[0];
+    kb: [128] u8; rb: [512] u8; nb: [1024] u8; wb: [1024] u8; sl: [128] u8; rdb: [256] u8;
+    kl := jv_str(d, jv_get(d, 0, "pubkey"), kb[..]); rl := jv_str(d, jv_get(d, 0, "relay"), rb[..]);
+    nl := jv_str(d, jv_get(d, 0, "name"), nb[..]); wl := jv_str(d, jv_get(d, 0, "owner"), wb[..]);
+    cl := jv_str(d, jv_get(d, 0, "slug"), sl[..]); dl := jv_str(d, jv_get(d, jv_get(d, 0, "repo"), "d"), rdb[..]);
+    if kl != 64 || rl < 0 || cl < 0 || dl < 0 { tool_err("landing: project.json needs pubkey, relay, slug and repo.d: "); tool_errln(slug); return EXIT_FAIL; }
+    pubkey := cast(string) kb[0..<64]; relay := cast(string) rb[0..<rl];
+    cfg_slug := cast(string) sl[0..<cl]; repo_d := cast(string) rdb[0..<dl];
+    name := ifx nl < 0 then "" else cast(string) nb[0..<nl]; owner := ifx wl < 0 then "" else cast(string) wb[0..<wl];
+    // the targets' columns, from the same configuration
+    if k > 0 { pg_c(keys, ','); pg_c(repos, ','); }
+    pg_lit(keys, pubkey); pg_lit(repos, repo_d);
+    if k == 0 { first_relay_n = copy(relay, first_relay[..]); pg_lit(relays, relay); }
+    else if relay != cast(string) first_relay[0..<first_relay_n] { same_relay = false; }
+
+    ev[0].n = 0; ev[0].used = 0;
+    if !ld_open(c, ifx override.count > 0 then override else relay) { tool_err("landing: "); tool_err(slug); tool_err(": "); tool_errln(ld_relay_why(c)); return EXIT_FAIL; }
+    f0: [8192] u8; f1: [8192] u8; f2: [8192] u8;
+    filters := [3] string.[ld_filter(0, pubkey, repo_d, f0[..]), ld_filter(1, pubkey, cfg_slug, f1[..]), ld_filter(2, pubkey, cfg_slug, f2[..])];
+    ok := filters[0].count > 0 && filters[1].count > 0 && filters[2].count > 0 && ld_all(c, filters[..], ev);
+    prev_key: [1] Ln; prev_ids: [1] Pg;
+    if ok && !ld_previous(known, slug, prev_key[..], prev_ids[..]) { ld_close(c); return fail(r, EXIT_FAIL, "landing: the last capture's LAND_KNOWN_ISSUES is not JSON"); }
+    if ok && prev_key[0].n > 0 && ln_text(prev_key[..]) != pubkey {
+      ld_close(c); tool_err("landing: "); tool_err(slug); tool_errln(" changed identity; explicit capture migration is required"); return EXIT_FAIL;
+    }
+    // what the last capture held that this read didn't find, by id, 50 at a time
+    roots := ev[0].n;
+    if ok {
+      list := pg_text(prev_ids[..]);
+      chunk: [1] Pg; taken := 0; i := 1;
+      pg_c(chunk[..], '[');
+      while ok && i + 66 <= list.count {
+        id := list[i + 1..<i + 65];
+        raw: [32] u8;
+        for b: 0..<32 { raw[b] = cast(u8) (lr_hex(id[2 * b]) * 16 + lr_hex(id[2 * b + 1])); }
+        if ld_find(ev, raw[..], 0, roots) < 0 {
+          if taken > 0 { pg_c(chunk[..], ','); }
+          pg_c(chunk[..], '"'); pg_s(chunk[..], id); pg_c(chunk[..], '"'); taken += 1;
+        }
+        i += 67;
+        if taken == 50 || (i + 66 > list.count && taken > 0) {
+          pg_c(chunk[..], ']');
+          mb: [16384] u8;
+          mf := [1] string.[ld_filter(7, "", pg_text(chunk[..]), mb[..])];
+          ok = mf[0].count > 0 && ld_all(c, mf[..], ev);
+          chunk[0].n = 0; pg_c(chunk[..], '['); taken = 0;
+        }
+      }
+    }
+    // the issues' comments and statuses, 50 issues a query
+    firsts := ev[0].n;
+    if ok {
+      chunk: [1] Pg; taken := 0;
+      pg_c(chunk[..], '[');
+      for i: 0..<firsts {
+        if ev[0].kind[i] != 1621 { continue; }
+        hb: [64] u8;
+        if taken > 0 { pg_c(chunk[..], ','); }
+        pg_c(chunk[..], '"'); pg_s(chunk[..], ld_hex_id(ev, i, hb[..])); pg_c(chunk[..], '"'); taken += 1;
+        if taken == 50 {
+          pg_c(chunk[..], ']');
+          g3: [16384] u8; g4: [16384] u8;
+          ff := [2] string.[ld_filter(3, pubkey, pg_text(chunk[..]), g3[..]), ld_filter(4, pubkey, pg_text(chunk[..]), g4[..])];
+          ok = ok && ff[0].count > 0 && ff[1].count > 0 && ld_all(c, ff[..], ev);
+          chunk[0].n = 0; pg_c(chunk[..], '['); taken = 0;
+        }
+      }
+      if ok && taken > 0 {
+        pg_c(chunk[..], ']');
+        g3: [16384] u8; g4: [16384] u8;
+        ff := [2] string.[ld_filter(3, pubkey, pg_text(chunk[..]), g3[..]), ld_filter(4, pubkey, pg_text(chunk[..]), g4[..])];
+        ok = ff[0].count > 0 && ff[1].count > 0 && ld_all(c, ff[..], ev);
+      }
+    }
+    ld_close(c);
+    if !ok { tool_err("landing: "); tool_err(slug); tool_err(": "); tool_errln(ld_relay_why(c)); return EXIT_FAIL; }
+
+    // the fold: every event read, in order, each verified again at this boundary
+    if !lf_begin(lf, pubkey, cfg_slug, pg_text(prev_ids[..])) { tool_err("landing: Coax refused project identity: "); tool_errln(slug); return EXIT_FAIL; }
+    for i: 0..<ev[0].n {
+      t := ld_text(ev, i);
+      if !lf_feed(lf, t, lr_verify_public(t)) { tool_err("landing: Coax refused project event: "); tool_errln(slug); return EXIT_FAIL; }
+    }
+    fj[0].n = lf_result(lf, fj[0].b[..]);
+    if fj[0].n < 0 { fj[0].n = 0; tool_err("landing: Coax refused complete project fold: "); tool_errln(slug); return EXIT_FAIL; }
+    fold_json := pg_text(fj);
+    if !ld_read_fold(folded, fold_json) { tool_err("landing: the fold of "); tool_err(slug); tool_errln(" is not JSON"); return EXIT_FAIL; }
+    // the seed: each event once, as the page's cache entry, and the project's newest
+    held := 0; key := 0; newest := 0;
+    for i: 0..<ev[0].n {
+      ib := ev[0].id[i * 32..<i * 32 + 32];
+      if ld_find(ev, ib, 0, i) >= 0 { continue; }
+      held += 1;
+      if ev[0].at[i] > newest { newest = ev[0].at[i]; }
+      v := 0; for b: 0..<5 { v = v * 256 + cast(int) ib[b]; }
+      key = (key + v) % 999999999989;
+      if entries[0].count >= 65536 { return fail(r, EXIT_FAIL, "landing: the seed holds too many events"); }
+      e := entries[0].n;
+      n := hc_entry(ld_text(ev, i), k, entries[0].b[e..<LD_SEED]);
+      if n < 0 { tool_err("landing: Coax refused seed entry: "); tool_errln(slug); return EXIT_FAIL; }
+      entries[0].start[entries[0].count] = e; entries[0].count += 1; entries[0].n += n;
+    }
+    synced[k] = newest;
+    if !ld_row(folds, 0) { return fail(r, EXIT_FAIL, "landing: too many folds"); }
+    fg := folds[0].g[..];
+    pg_c(fg, 'P'); pg_i(fg, k); pg_c(fg, ' '); ld_pad(fg, held, 7); pg_c(fg, ' '); ld_pad(fg, key, 13); pg_c(fg, ' '); ld_pad(fg, fold_json.count, 7); pg_c(fg, 10);
+    pg_s(fg, fold_json); pg_c(fg, 10);
+    // LAND_KNOWN_ISSUES: this project's key and issue ids
+    if k > 0 { pg_c(kn, ','); }
+    pg_c(kn, '"'); pg_s(kn, slug); pg_s(kn, "\":{\"key\":\""); pg_s(kn, pubkey); pg_s(kn, "\",\"ids\":[");
+    for i: 0..<folded[0].n { if i > 0 { pg_c(kn, ','); } pg_c(kn, '"'); pg_s(kn, folded[0].issues[i].id); pg_c(kn, '"'); }
+    pg_s(kn, "]}");
+
+    is := folded[0].issues[..];
+    tasks := 0; done := 0;
+    for i: 0..<folded[0].n { if is[i].kind == "task" { tasks += 1; if ld_fin(is[i].status) { done += 1; } } }
+    // the milestone being worked now: the first unfinished one in rank order with work under it
+    ms: [FOLD_ISSUES] int; mn := 0;
+    for i: 0..<folded[0].n { if is[i].kind == "milestone" && !ld_fin(is[i].status) { ms[mn] = i; mn += 1; } }
+    for i: 1..<mn { j := i; while j > 0 && ld_less(is[ms[j]].rank, is[ms[j - 1]].rank) { t := ms[j]; ms[j] = ms[j - 1]; ms[j - 1] = t; j -= 1; } }
+    mname: [1024] u8; mname_n := 0; mdone := 0; mtotal := 0;
+    for x: 0..<mn {
+      m := is[ms[x]];
+      under := 0; fin := 0;
+      for i: 0..<folded[0].n { if is[i].kind == "task" && is[i].parent == m.id { under += 1; if ld_fin(is[i].status) { fin += 1; } } }
+      if under == 0 || fin == under { continue; }
+      cb: [8192] u8; mname_n = copy(ld_clean(m.title, cb[..]), mname[..]); if mname_n < 0 { mname_n = 0; }
+      mdone = fin; mtotal = under;
+      break;
+    }
+    // one agent per worker name, on its newest claim
+    on: [FOLD_ISSUES] int; onn := 0;
+    for i: 0..<folded[0].n { if is[i].kind == "task" && is[i].claimed_by.count > 0 && !ld_fin(is[i].status) { on[onn] = i; onn += 1; } }
+    for i: 1..<onn { j := i; while j > 0 && is[on[j]].claimed_at > is[on[j - 1]].claimed_at { t := on[j]; on[j] = on[j - 1]; on[j - 1] = t; j -= 1; } }
+    for x: 0..<onn {
+      t := is[on[x]];
+      dup := false; for y: 0..<x { if is[on[y]].claimed_by == t.claimed_by { dup = true; } }
+      if dup { continue; }
+      cb: [8192] u8; tb: [8192] u8;
+      who := ld_clean(t.claimed_by, cb[..]); what := ld_clean_cut(t.title, 60, tb[..]);
+      if !ld_row(working, 0) || !ld_row(feed, t.claimed_at) { return fail(r, EXIT_FAIL, "landing: too many rows"); }
+      wg := working[0].g[..]; pg_s(wg, who); pg_c(wg, '|'); pg_i(wg, k); pg_c(wg, '|'); pg_s(wg, what);
+      eg := feed[0].g[..]; pg_i(eg, k); pg_s(eg, "|WORKING|"); pg_s(eg, who); pg_c(eg, '|'); pg_s(eg, what);
+    }
+    fins: [FOLD_ISSUES] int; fn := 0;
+    for i: 0..<folded[0].n { if is[i].kind == "task" && ld_fin(is[i].status) { fins[fn] = i; fn += 1; } }
+    for i: 1..<fn { j := i; while j > 0 && is[fins[j]].status_at > is[fins[j - 1]].status_at { t := fins[j]; fins[j] = fins[j - 1]; fins[j - 1] = t; j -= 1; } }
+    for x: 0..<(ifx fn < 3 then fn else 3) {
+      t := is[fins[x]];
+      tb: [8192] u8;
+      if !ld_row(feed, t.status_at) { return fail(r, EXIT_FAIL, "landing: too many rows"); }
+      eg := feed[0].g[..]; pg_i(eg, k); pg_s(eg, "|DONE||"); pg_s(eg, ld_clean_cut(t.title, 60, tb[..]));
+    }
+    // its commits: the ones its tasks recorded when they were done
+    mine_n[k] = 0;
+    for i: 0..<folded[0].n {
+      t := is[i];
+      if t.kind != "task" || t.commit.count == 0 { continue; }
+      pre := ld_short(t.commit);
+      for h: 0..<git[0].count {
+        if starts(git[0].hash[h], pre) {
+          if mine_n[k] < 512 { mine[k * 512 + mine_n[k]] = h; mine_n[k] += 1; }
+          git[0].recorded[h] = k;
+          break;
+        }
+      }
+    }
+    on_n := onn;
+    if !ld_row(rows0, 0) { return fail(r, EXIT_FAIL, "landing: too many rows"); }
+    rg := rows0[0].g[..];
+    cb: [8192] u8; cut: [64] u8;
+    pg_s(rg, slug); pg_c(rg, '|'); pg_s(rg, ld_clean(name, cb[..])); pg_c(rg, '|'); pg_s(rg, ld_clean(owner, cb[..])); pg_c(rg, '|');
+    pg_i(rg, LD_CLUSTER[k]); pg_c(rg, '|'); pg_s(rg, LD_XS[k]); pg_c(rg, '|'); pg_s(rg, LD_ZS[k]); pg_c(rg, '|');
+    pg_i(rg, done); pg_c(rg, '|'); pg_i(rg, tasks); pg_c(rg, '|'); pg_s(rg, ld_cut(cast(string) mname[0..<mname_n], 48, cut[..])); pg_c(rg, '|');
+    pg_i(rg, mdone); pg_c(rg, '|'); pg_i(rg, mtotal); pg_c(rg, '|'); pg_i(rg, on_n);
+    tool_err("landing: "); tool_err(slug); tool_err(" ");
+    t1: [24] u8; tool_err(int_text(done, t1[..])); tool_err("/"); tool_err(int_text(tasks, t1[..])); tool_err(" done, "); tool_err(int_text(on_n, t1[..])); tool_errln(" working");
+  }
+
+  // With every project's recorded commits known, each project's history: its
+  // recorded ones, then the ones its folders own that no other project recorded.
+  projects_: [1] LdRows; projects := projects_[..];
+  commits_: [1] LdRows; commits := commits_[..];
+  for k: 0..<LD_N {
+    slug := LD_SLUGS[k];
+    list: [LD_COMMITS] int; n := 0;
+    for i: 0..<mine_n[k] { list[n] = mine[k * 512 + i]; n += 1; }
+    for h: 0..<git[0].count {
+      if git[0].owner[h] != k { continue; }
+      dup := false; for i: 0..<mine_n[k] { if mine[k * 512 + i] == h { dup = true; } }
+      if !dup && n < LD_COMMITS { list[n] = h; n += 1; }
+    }
+    keep: [LD_COMMITS] int; kn2 := 0;
+    for i: 0..<n { o := git[0].recorded[list[i]]; if o < 0 || o == k { keep[kn2] = list[i]; kn2 += 1; } }
+    for i: 1..<kn2 { j := i; while j > 0 && git[0].at[keep[j]] > git[0].at[keep[j - 1]] { t := keep[j]; keep[j] = keep[j - 1]; keep[j - 1] = t; j -= 1; } }
+    logn := ifx kn2 < 48 then kn2 else 48;
+    // oldest first
+    for x: 0..<logn {
+      h := keep[logn - 1 - x];
+      ab: [8192] u8; sb: [8192] u8;
+      if !ld_row(commits, 0) { return fail(r, EXIT_FAIL, "landing: too many rows"); }
+      cg := commits[0].g[..];
+      pg_i(cg, k); pg_c(cg, '|'); pg_s(cg, ld_short(git[0].hash[h])); pg_c(cg, '|'); pg_s(cg, ld_clean(git[0].author[h], ab[..])); pg_c(cg, '|');
+      pg_s(cg, ld_clean_cut(git[0].subject[h], 64, sb[..]));
+    }
+    for x: (ifx logn > 2 then logn - 2 else 0)..<logn {
+      h := keep[logn - 1 - x];
+      sb: [8192] u8;
+      if !ld_row(feed, git[0].at[h]) { return fail(r, EXIT_FAIL, "landing: too many rows"); }
+      eg := feed[0].g[..]; pg_i(eg, k); pg_s(eg, "|COMMIT|"); pg_s(eg, ld_short(git[0].hash[h])); pg_c(eg, '|'); pg_s(eg, ld_clean_cut(git[0].subject[h], 60, sb[..]));
+    }
+    if !ld_row(projects, 0) { return fail(r, EXIT_FAIL, "landing: too many rows"); }
+    pg_s(projects[0].g[..], ld_row_text(rows0, k)); pg_c(projects[0].g[..], '|'); pg_i(projects[0].g[..], logn);
+    tool_err("landing: "); tool_err(slug); tool_err(" ");
+    t1: [24] u8; tool_err(int_text(logn, t1[..])); tool_err(" commits ("); tool_err(int_text(mine_n[k], t1[..])); tool_errln(" recorded by its tasks)");
+  }
+  // the feed, newest first (stable)
+  order: [16384] int;
+  for i: 0..<feed[0].n { order[i] = i; }
+  for i: 1..<feed[0].n { j := i; while j > 0 && feed[0].at[order[j]] > feed[0].at[order[j - 1]] { t := order[j]; order[j] = order[j - 1]; order[j - 1] = t; j -= 1; } }
+
+  // The Pylons: the real beacons on the relay.
+  pylons_: [1] LdPylons; pylons := pylons_[..];
+  if !ld_open(c, ifx override.count > 0 then override else LD_PYLON_RELAY) { tool_err("landing: pylons: "); tool_errln(ld_relay_why(c)); return EXIT_FAIL; }
+  ok := ld_read_pylons(c, pylons, cxcli_now_s());
+  ld_close(c);
+  if !ok { tool_err("landing: pylons: "); tool_errln(ld_relay_why(c)); return EXIT_FAIL; }
+  pyl_: [1] Pg; pyl := pyl_[..];
+  prows := ld_pylon_rows(pylons, cxcli_now_s(), pyl);
+  t1: [24] u8;
+  tool_err("landing: "); tool_err(int_text(prows, t1[..])); tool_errln(" pylons (0 demo)");
+
+  captured := cxcli_now_s();
+  // Parts the page's inbox holds whole, the synced lines last.
+  sy_: [1] Pg; sy := sy_[..];
+  for k: 0..<LD_N { if synced[k] > 0 { pg_c(sy, 'S'); pg_i(sy, k); pg_c(sy, ' '); ld_pad(sy, synced[k], 10); pg_c(sy, 10); } }
+  cuts: [4096] int; parts := 0; size := 0; seed_bytes := 0;   // each part's [from, to) in the sequence entries, folds, synced
+  total := entries[0].count + folds[0].n + 1;
+  for x: 0..<total {
+    piece := ifx x < entries[0].count then ld_seed_text(entries, x) else ifx x < entries[0].count + folds[0].n then ld_row_text(folds, x - entries[0].count) else pg_text(sy);
+    if size > 0 && size + piece.count > LD_PART { cuts[parts] = x; parts += 1; size = 0; }
+    size += piece.count; seed_bytes += piece.count;
+  }
+  if size > 0 { cuts[parts] = total; parts += 1; }
+
+  o_: [1] Pg; o := o_[..];
+  pg_ln(o, "// Generated by `openagents project landing` (apps/openagents-cli/project-landing.coax): do not edit; run it.");
+  pg_s(o, "// Captured "); ld_utc(o, captured); pg_ln(o, "Z from each project's relay and git.");
+  pg_s(o, "LAND_CAPTURED :: "); pg_i(o, captured); pg_ln(o, ";");
+  pg_ln(o, "// LAND_SEED_PARTS: build/home-seed/<LAND_CAPTURED>-<i>.txt, this capture's admitted events (landing-cache.coax)");
+  pg_s(o, "LAND_SEED_PARTS :: "); pg_i(o, ifx whole then parts else 0); pg_ln(o, ";");
+  pg_c(kn, '}');
+  pg_s(o, "LAND_KNOWN_ISSUES :: "); pg_lit(o, pg_text(kn)); pg_ln(o, ";");
+  pg_ln(o, "// LAND_PROJECTS: slug|name|owner|cluster|x|z|done|tasks|milestone|milestone done|milestone tasks|working|commits");
+  pg_s(o, "LAND_PROJECTS :: "); ld_lit_rows(o, projects, 0, projects[0].n, false); pg_ln(o, ";");
+  pg_ln(o, "// LAND_WORKING: agent|project|task");
+  pg_s(o, "LAND_WORKING :: "); ld_lit_rows(o, working, 0, working[0].n, false); pg_ln(o, ";");
+  pg_ln(o, "// LAND_FEED, newest first: project|WORKING, DONE or COMMIT|who or hash|text");
+  pg_s(o, "LAND_FEED :: "); ld_lit_feed(o, feed, order[..], ifx feed[0].n < 24 then feed[0].n else 24); pg_ln(o, ";");
+  pg_ln(o, "// LAND_PEOPLE: empty; no simulated people");
+  pg_ln(o, "LAND_PEOPLE :: \"\";");
+  pg_ln(o, "// LAND_COMMITS, oldest first per project: project|hash|author|subject");
+  pg_s(o, "LAND_COMMITS :: "); ld_lit_rows(o, commits, 0, commits[0].n, false); pg_ln(o, ";");
+  pg_s(o, "// LAND_PYLONS, from apps/openagents-cli/project-landing.coax (a demo row says demo): "); pg_ln(o, LD_PYLON_COLUMNS);
+  pg_s(o, "LAND_PYLONS :: "); pg_lit(o, pg_text(pyl)); pg_ln(o, ";");
+  if o[0].bad { return fail(r, EXIT_FAIL, "landing: the capture is too big"); }
+
+  // Public identities for the runtime watcher, from the exact configuration captured.
+  if whole {
+    if !same_relay { return fail(r, EXIT_FAIL, "home: featured projects need an explicit relay routing migration"); }
+    tg_: [1] Pg; tg := tg_[..];
+    pg_ln(tg, "// Generated public homepage identities. No signing keys.");
+    pg_s(tg, "HOME_PROJECTS :: "); pg_i(tg, LD_N); pg_ln(tg, ";");
+    pg_s(tg, "HOME_SLUGS :: ["); pg_i(tg, LD_N); pg_s(tg, "]string.[");
+    for k: 0..<LD_N { if k > 0 { pg_c(tg, ','); } pg_lit(tg, LD_SLUGS[k]); }
+    pg_ln(tg, "];");
+    pg_s(tg, "HOME_KEYS :: ["); pg_i(tg, LD_N); pg_s(tg, "]string.["); pg_s(tg, pg_text(keys)); pg_ln(tg, "];");
+    pg_s(tg, "HOME_REPOS :: ["); pg_i(tg, LD_N); pg_s(tg, "]string.["); pg_s(tg, pg_text(repos)); pg_ln(tg, "];");
+    kj_: [1] Pg; kj := kj_[..]; pg_c(kj, '['); pg_s(kj, pg_text(keys)); pg_c(kj, ']');
+    pg_s(tg, "HOME_KEY_JSON :: "); pg_lit(tg, pg_text(kj)); pg_ln(tg, ";");
+    pg_s(tg, "HOME_RELAY :: "); pg_s(tg, pg_text(relays)); pg_ln(tg, ";");
+    tb: [2048] u8;
+    if !pg_write(fs_join(root, "apps/openagents-web/newland-targets.coax", tb[..]), pg_text(tg)) { return fail(r, EXIT_FAIL, "landing: can't write newland-targets.coax"); }
+    // the seed parts, named by this capture
+    sd: [2048] u8; seed := fs_join(root, "apps/openagents-web/build/home-seed", sd[..]);
+    err: [1024] u8; quiet: [16] u8;
+    rm := [3] string.["rm", "-rf", seed];
+    gone := proc_run(rm[..], 60000, quiet[..], err[..]);
+    if gone.status != 0 || !fs_mkdir_all(seed) { return fail(r, EXIT_FAIL, "landing: can't make build/home-seed"); }
+    from := 0;
+    for i: 0..<parts {
+      part_: [1] Pg; part := part_[..];
+      for x: from..<cuts[i] {
+        piece := ifx x < entries[0].count then ld_seed_text(entries, x) else ifx x < entries[0].count + folds[0].n then ld_row_text(folds, x - entries[0].count) else pg_text(sy);
+        pg_s(part, piece);
+      }
+      from = cuts[i];
+      nb: [256] u8; t2: [24] u8;
+      m := copy(int_text(captured, t2[..]), nb[..]); m += copy("-", nb[m..<256]); m += copy(int_text(i, t2[..]), nb[m..<256]); m += copy(".txt", nb[m..<256]);
+      pb2: [2048] u8;
+      if part[0].bad || !fs_write(fs_join(seed, cast(string) nb[0..<m], pb2[..]), pg_text(part)) { return fail(r, EXIT_FAIL, "landing: can't write a seed part"); }
+    }
+    tool_err("landing: seed "); tool_err(int_text(entries[0].count, t1[..])); tool_err(" events in "); tool_err(int_text(parts, t1[..]));
+    tool_err(" parts, "); tool_err(int_text(seed_bytes, t1[..])); tool_errln(" bytes");
+  }
+  if !pg_write(out, pg_text(o)) { return fail(r, EXIT_FAIL, "landing: can't write the capture"); }
+  tool_err("landing: wrote verified capture "); tool_errln(out);
+  return EXIT_OK;
+}
+// JSON.stringify(rows.map((r) => r + "\n").join(""))
+ld_lit_rows :: (o: [] Pg, rows: [] LdRows, from: int, to: int, unused: bool) {
+  all_: [1] Pg; all := all_[..];
+  for i: from..<to { pg_s(all, ld_row_text(rows, i)); pg_c(all, 10); }
+  pg_lit(o, pg_text(all));
+}
+ld_lit_feed :: (o: [] Pg, rows: [] LdRows, order: [] int, n: int) {
+  all_: [1] Pg; all := all_[..];
+  for i: 0..<n { pg_s(all, ld_row_text(rows, order[i])); pg_c(all, 10); }
+  pg_lit(o, pg_text(all));
+}
