@@ -538,12 +538,14 @@ wc_overflowed :: (t: [] Transcript) -> bool {
 
 // ---------------------------------------------------------------- the composer and the menu
 
-wc_catalog :: () -> PkCatalog {
+// The menu's catalog, written into the caller's (it holds 122 strings, more
+// than a returned value's borrow analysis follows: 64).
+wc_catalog :: (out: [] PkCatalog) {
   c := PkCatalog.{provider = "Claude", icon = ICON_CLAUDE_14, tint = WC_CLAUDE_TINT, levels = 0, default_level = 0, access = 0, full_access = 0, plan = false};
   ids := WC_MODELS; names := WC_MODEL_NAMES; descs := WC_MODEL_DESCS;
   c.n = 3;
   for k: 0..<3 { c.id[k] = ids[k]; c.label[k] = names[k]; c.desc[k] = descs[k]; c.ladder[k] = 0; }
-  return c;
+  out[0] = c;
 }
 wc_sel :: (s: [] WcState) -> PkSel { return PkSel.{model = wc_model(s), level = -1, access = 0, plan = false}; }
 wc_empty :: (s: [] WcState) -> bool { return !s[0].demo && s[0].pending_n == 0 && (!wc_showing(s) || wc_count(s, 'U') == 0); }
@@ -882,7 +884,7 @@ wc_init :: (s: [] WcState) {
   s[0].ready = true;
   c := s[0].composer[..];
   c[0].focused = true; c[0].clicked = -1; c[0].hover = -1; c[0].open = -1;
-  s[0].cat[0] = wc_catalog();
+  wc_catalog(s[0].cat[..]);
   s[0].status = -1; s[0].shown = -1; s[0].model = -1;
   s[0].ask_id = -1; s[0].post_id = -1; s[0].asked_at = -1000;
   s[0].hot = WH_NONE; s[0].press = WH_NONE;
@@ -1320,7 +1322,7 @@ coaxial_chat_cell_ready :: (s: [] WcState, cell: int) #export_c { if s.count > 0
 }
 #test "the menu offers the three models oa-api runs" {
   c: [1] PkCatalog;
-  c[0] = wc_catalog();
+  wc_catalog(c[..]);
   #assert c[0].n == 3 && c[0].id[0] == "claude-opus-5-5" && c[0].label[2] == "Haiku 5.5";
   #assert pk_level_for(c[..], 0, 0) == -1;
   #assert wc_model_index("claude-sonnet-5-5") == 1 && wc_model_name("claude-haiku-5-5") == "Haiku 5.5";

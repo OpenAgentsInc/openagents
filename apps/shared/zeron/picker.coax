@@ -749,7 +749,9 @@ paint_switch :: (out: [] f32, at: int, d: f32, x: f32, y: f32, on: bool, th: The
 
 // ---------------------------------------------------------------- checks
 
-test_catalog :: () -> PkCatalog {
+// Written into the caller's catalog: its strings outnumber the 64 a returned
+// value's borrow analysis follows.
+test_catalog :: (out: [] PkCatalog) {
   c := PkCatalog.{provider = "Claude", icon = ICON_CLAUDE_14, tint = hex(0xd97757, 1), n = 4, levels = 5, default_level = 2,
                   access = 3, full_access = 2, plan = true};
   c.id[0] = ""; c.label[0] = "Default (recommended)"; c.ladder[0] = 31;
@@ -762,11 +764,11 @@ test_catalog :: () -> PkCatalog {
   c.access_label[0] = "Supervised"; c.access_desc[0] = "Ask before commands and file changes.";
   c.access_label[1] = "Auto-accept edits"; c.access_desc[1] = "Apply edits, ask before other actions.";
   c.access_label[2] = "Full access"; c.access_desc[2] = "Run commands and edits without asking.";
-  return c;
+  out[0] = c;
 }
 
 #test "the panel's keys: Left/Right/Home/End step the effort along the model's ladder; Up/Down open the list beside it" {
-  cat: [1] PkCatalog; cat[0] = test_catalog();
+  cat: [1] PkCatalog; test_catalog(cat[..]);
   p: [1] Picker;
   sel := PkSel.{model = 0, level = 2, access = 2};
   pk_open(p[..], PK_MODEL, cat[..], sel, 600, 450, 200, 32, 880, true);
@@ -786,7 +788,7 @@ test_catalog :: () -> PkCatalog {
 }
 
 #test "typing filters the model list, Backspace widens it, Escape returns to the panel" {
-  cat: [1] PkCatalog; cat[0] = test_catalog();
+  cat: [1] PkCatalog; test_catalog(cat[..]);
   p: [1] Picker;
   sel := PkSel.{model = 0, level = 2, access = 2};
   pk_open(p[..], PK_MODEL, cat[..], sel, 600, 600, 200, 32, 880, false);
@@ -808,7 +810,7 @@ test_catalog :: () -> PkCatalog {
 }
 
 #test "the access menu: arrows move over the modes and Plan mode, Enter picks and closes, or flips Plan mode" {
-  cat: [1] PkCatalog; cat[0] = test_catalog();
+  cat: [1] PkCatalog; test_catalog(cat[..]);
   p: [1] Picker;
   sel := PkSel.{model = 0, level = 2, access = 2};
   pk_open(p[..], PK_ACCESS_MENU, cat[..], sel, 600, 450, 80, 32, 880, true);
@@ -821,7 +823,7 @@ test_catalog :: () -> PkCatalog {
 
 #test "the menus paint where Zeron puts them, and the pointer picks from them" {
   a: [1] Atlas; test_atlas(a[..]);
-  cat: [1] PkCatalog; cat[0] = test_catalog();
+  cat: [1] PkCatalog; test_catalog(cat[..]);
   p: [1] Picker;
   sel := PkSel.{model = 0, level = 2, access = 2};
   out: [60000] f32;
