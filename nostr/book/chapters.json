@@ -881,13 +881,20 @@
    "number": 42,
    "title": "Protected events",
    "file": "ch042-protected-events.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     38
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip70.coax",
+    "coax/tests/nostr/nip70_fixtures.coax",
+    "nostr/examples/protected-events.coax",
+    "nostr/examples/checks/protected-events.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -1,0 +1,285 @@
+// NIP-70 protected events: an event that carries the tag ["-"] may be
+// published to a relay only by its author. A relay enforces this with
+// NIP-42: it accepts a protected event only on a connection that has
+// authenticated as the event's pubkey (relay_route.coax's RrAuth, filled by
+// nip42.coax's nip42_admit through rr_auth).
+//
+// The rule (nip70_decide), in this order:
+// 1. An event without ["-"] is not this rule's business: accepted here, and
+//    the relay's other policies still apply.
+// 2. A relay that takes no protected events (NIP-70's required default)
+//    refuses it as restricted:, whatever the connection's keys.
+// 3. A connection with no authenticated key is asked to authenticate:
+//    auth-required: (NIP-70's example text).
+// 4. A connection authenticated only as other keys is refused: restricted:.
+//    It is not asked again; NIP-42 keeps auth-required: for a client that
+//    has not authenticated.
+// 5. A connection that has authenticated as the event's pubkey (among
+//    others, possibly) is accepted.
+//
+// nip70_admit reads the event first with nostr_event_read (the ID is
+// recomputed from the fields; an event that does not read is invalid:) and
+// verifies no signature: run it after the relay's signature check, or
+// before it as a cheap filter, never instead of it. A protected event's
+// pubkey is only worth comparing once its signature holds.
+//
+// The tag this file recognizes: any tag whose first element is "-" (escapes
+// allowed, as "\u002d"). NIP-70 defines the tag as exactly ["-"]; a tag
+// ["-", ...] with more values is treated as protected too, so a relay never
+// spreads an event whose author may have meant it to be protected.
+//
+// Reposts: NIP-70 says a repost of a protected event must not embed it and
+// that relays should summarily reject one that does. A kind 6 or 16 event
+// whose content reads as an event (ne_parse: its fields, not its ID) with
+// the "-" tag refuses as restricted:, even from the author.
+//
+// nip70_protect is the client's side: it appends ["-"] to a tags array
+// (unchanged when one is there) before the event is signed.
+#load "tags.coax";
+#load "relay_route.coax";
+#authority;
+
+// book:begin codes
+// nip70_tagged's answers.
+N70_PLAIN :: 0; N70_TAGGED :: 1; N70_EVENT :: 2;
+// Admission decisions.
+N70_ACCEPT :: 0;          // not protected, or authenticated as the author
+N70_AUTH_REQUIRED :: 1;   // protected, and the connection has no key
+N70_RESTRICTED :: 2;      // protected, and the connection's keys are others'
+N70_CLOSED :: 3;          // protected, and this relay takes none
+N70_REPOST :: 4;          // a repost that embeds a protected event
+N70_INVALID :: 5;         // the event doesn't read or its ID doesn't match
+N70_DECISIONS :: 6;
+// nip70_protect's errors.
+N70P_OK :: 0; N70P_TAGS :: 1; N70P_OUTPUT :: 2;
+
+N70Admit :: struct { decision:int=N70_INVALID; tagged:bool; id:[32]u8; author:[32]u8; }
+N70Tags :: struct { error:int=N70P_TAGS; n:int; }
+// book:end codes
+
+#load "../../tests/nostr/nip70_fixtures.coax";
+
+// ---- the tag ------------------------------------------------------------------
+#test "the tag: [\"-\"] anywhere among the tags, its name escaped or not" {
+  #assert n70_tagged_text("[]")==N70_PLAIN && n70_tagged_text("[[\"-\"]]")==N70_TAGGED;
+  #assert n70_tagged_text("[[\"p\",\"x\"],[\"-\"]]")==N70_TAGGED && n70_tagged_text("[[\"-\"],[\"p\",\"x\"]]")==N70_TAGGED;
+  #assert n70_tagged_text("[[\"\\u002d\"]]")==N70_TAGGED && n70_tagged_text("[[\"-\",\"x\"]]")==N70_TAGGED;
+  #assert n70_tagged_text("[[],[\"-\"]]")==N70_TAGGED && n70_tagged_text("[[\"-\"],[\"-\"]]")==N70_TAGGED;
+}
+#test "the tag: names and values that are not it" {
+  #assert n70_tagged_text("[[\"--\"]]")==N70_PLAIN && n70_tagged_text("[[\"\"]]")==N70_PLAIN && n70_tagged_text("[[\"+\"]]")==N70_PLAIN;
+  #assert n70_tagged_text("[[\"t\",\"-\"]]")==N70_PLAIN && n70_tagged_text("[[\"x\",\"-\",\"-\"]]")==N70_PLAIN;
+  #assert n70_tagged_text("[[]]")==N70_PLAIN && n70_tagged_text("[[\" -\"]]")==N70_PLAIN && n70_tagged_text("[[\"- \"]]")==N70_PLAIN;
+}
+#test "the tag: a forged record refuses" {
+  e:NostrEvent;#assert nip70_tagged(e)==N70_EVENT;
+  #assert n70_tagged_text("[[1]]")==N70_EVENT && n70_tagged_text("[[\"-\"],[1]]")==N70_EVENT && n70_tagged_text("[[\"a\"],{}]")==N70_EVENT;
+  #assert n70_tagged_text("[\"-\"]")==N70_EVENT && n70_tagged_text("[[\"-\"],\"x\"]")==N70_EVENT && n70_tagged_text("[[\"-\",1]]")==N70_EVENT;
+  #assert n70_tagged_text("[[\"a\",\"b\"")==N70_EVENT && n70_tagged_text("[[\"a\"]")==N70_EVENT;
+}
+
+// ---- the rule -------------------------------------------------------------------
+// The table by hand: protected, accepts, authed, as_author -> decision.
+N70_TABLE :: [16]int.[
+  N70_ACCEPT, N70_ACCEPT, N70_ACCEPT, N70_ACCEPT,             // not protected: anything
+  N70_ACCEPT, N70_ACCEPT, N70_ACCEPT, N70_ACCEPT,
+  N70_CLOSED, N70_CLOSED, N70_CLOSED, N70_CLOSED,             // protected, relay takes none
+  N70_AUTH_REQUIRED, N70_AUTH_REQUIRED, N70_RESTRICTED, N70_ACCEPT];
+#forall "the rule agrees with the table worked by hand" i: 0..<16 {
+  #assert nip70_decide((i&8)!=0,(i&4)!=0,(i&2)!=0,(i&1)!=0)==N70_TABLE[i];
+}
+#test "admission: a protected event by A on each connection" {
+  b:[1024]u8;p:=n70_event(N70_A,1,"[[\"-\"]]","hello members of the secret group",b[..]);
+  #assert n70_admitted(p,true,false,false)==N70_AUTH_REQUIRED;
+  #assert n70_admitted(p,true,false,true)==N70_RESTRICTED;
+  #assert n70_admitted(p,true,true,false)==N70_ACCEPT && n70_admitted(p,true,true,true)==N70_ACCEPT;
+  #assert n70_admitted(p,false,true,false)==N70_CLOSED && n70_admitted(p,false,false,false)==N70_CLOSED;
+  a:[1]RrAuth;n70_keys(a[..],true,true);s:[8192]u8;
+  r:=nip70_admit(p,true,a[..],s[..]);
+  #assert r.tagged && r.author[0]==0x79 && r.author[31]==0x98;
+  e:=nostr_event_read(p,s[..],false);#assert e.error==NE_OK && ns_equal32(r.id,e.id);
+}
+#test "admission: an unprotected event passes on every connection" {
+  b:[1024]u8;p:=n70_event(N70_A,1,"[[\"t\",\"-\"]]","hi",b[..]);
+  for i:0..<8 {#assert n70_admitted(p,(i&4)!=0,(i&2)!=0,(i&1)!=0)==N70_ACCEPT;}
+  a:[1]RrAuth;s:[8192]u8;r:=nip70_admit(p,false,a[..],s[..]);#assert !r.tagged && r.author[0]==0x79;
+}
+#test "admission: an event that does not read, or a bad ID, is invalid" {
+  b:[1024]u8;p:=n70_event(N70_A,1,"[[\"-\"]]","x",b[..]);
+  a:[1]RrAuth;n70_keys(a[..],true,false);s:[8192]u8;
+  #assert nip70_admit(p,true,a[..],s[..]).decision==N70_ACCEPT;
+  b[7]=ifx b[7]=='0' then cast(u8)'1' else cast(u8)'0';
+  r:=nip70_admit(cast(string)b[0..<p.count],true,a[..],s[..]);#assert r.decision==N70_INVALID && !r.tagged;
+  #assert nip70_admit("{}",true,a[..],s[..]).decision==N70_INVALID && nip70_admit("",false,a[..],s[..]).decision==N70_INVALID;
+  small:[8]u8;#assert nip70_admit(p,true,a[..],small[..]).decision==N70_INVALID;
+}
+#test "reposts: kind 6 or 16 embedding a protected event refuse, even from the author" {
+  b:[4096]u8;
+  r6:=n70_event(N70_A,6,N70_RT,N70_INNER,b[..]);
+  #assert n70_admitted(r6,true,true,false)==N70_REPOST && n70_admitted(r6,false,false,false)==N70_REPOST;
+  c:[4096]u8;r16:=n70_event(N70_B,16,N70_RT,N70_INNER,c[..]);#assert n70_admitted(r16,true,false,true)==N70_REPOST;
+  // The repost itself protected and embedding: still the repost refusal.
+  d:[4096]u8;both:=n70_event(N70_A,6,"[[\"-\"]]",N70_INNER,d[..]);#assert n70_admitted(both,true,true,false)==N70_REPOST;
+}
+#test "reposts: what is not an embedded protected event" {
+  b:[4096]u8;
+  #assert n70_admitted(n70_event(N70_B,6,N70_RT,N70_INNER_PLAIN,b[..]),false,false,false)==N70_ACCEPT;
+  #assert n70_admitted(n70_event(N70_B,6,N70_RT,"",b[..]),false,false,false)==N70_ACCEPT;
+  #assert n70_admitted(n70_event(N70_B,6,N70_RT,"[[\\\"-\\\"]]",b[..]),false,false,false)==N70_ACCEPT;
+  // A short id or sig: not an event, so nothing embedded.
+  #assert n70_admitted(n70_event(N70_B,16,N70_RT,N70_INNER_P,b[..]),false,false,false)==N70_ACCEPT;
+  // Kinds other than 6 and 16 may quote an event in their content.
+  for k:[4]int.[1,5,7,17] {#assert n70_admitted(n70_event(N70_B,k,N70_RT,N70_INNER,b[..]),false,false,false)==N70_ACCEPT;}
+  // A protected kind 6 embedding nothing is judged by the rule.
+  #assert n70_admitted(n70_event(N70_A,6,"[[\"-\"]]","",b[..]),true,false,false)==N70_AUTH_REQUIRED;
+}
+
+// ---- the reasons ----------------------------------------------------------------
+#test "every refusal has a prefix and a text; acceptance has neither" {
+  for d:0..<N70_DECISIONS {
+    #assert (d==N70_ACCEPT)==(nip70_prefix(d).count==0) && (d==N70_ACCEPT)==(nip70_text(d).count==0);
+  }
+  #assert nip70_prefix(N70_AUTH_REQUIRED)=="auth-required" && nip70_text(N70_AUTH_REQUIRED)=="this event may only be published by its author";
+  #assert nip70_prefix(N70_RESTRICTED)=="restricted" && nip70_text(N70_RESTRICTED)=="this event may only be published by its author";
+  #assert nip70_prefix(N70_CLOSED)=="restricted" && nip70_text(N70_CLOSED)=="this relay does not accept protected events";
+  #assert nip70_prefix(N70_REPOST)=="restricted" && nip70_text(N70_REPOST)=="a repost may not embed a protected event";
+  #assert nip70_prefix(N70_INVALID)=="invalid" && nip70_text(N70_INVALID)=="the event is malformed or its id does not match";
+  #assert nip70_prefix(-1)=="error" && nip70_prefix(N70_DECISIONS)=="error";
+  #assert nip70_text(-1)=="unknown decision" && nip70_text(N70_DECISIONS)=="unknown decision";
+}
+#test "the OK reason is prefix, colon, space and text" {
+  out:[128]u8;
+  n:=nip70_reason(N70_AUTH_REQUIRED,out[..]);
+  #assert cast(string)out[0..<n]=="auth-required: this event may only be published by its author";
+  #assert nip70_reason(N70_ACCEPT,out[..])==0;
+  n=nip70_reason(N70_REPOST,out[..]);#assert cast(string)out[0..<n]=="restricted: a repost may not embed a protected event";
+  small:[13]u8;#assert nip70_reason(N70_AUTH_REQUIRED,small[..])== -1 && nip70_reason(N70_ACCEPT,small[..])==0;
+  fit:[15]u8;#assert nip70_reason(N70_AUTH_REQUIRED,fit[..])== -1;
+}
+
+// ---- the client's side --------------------------------------------------------
+#test "protect: append [\"-\"], once" {
+  out:[256]u8;
+  #assert n70_protect_text("[]",out[..])=="[[\"-\"]]";
+  #assert n70_protect_text("[[\"p\",\"x\"]]",out[..])=="[[\"p\",\"x\"],[\"-\"]]";
+  #assert n70_protect_text("[[\"p\",\"x\"],[\"t\",\"y\"]]",out[..])=="[[\"p\",\"x\"],[\"t\",\"y\"],[\"-\"]]";
+  #assert n70_protect_text("[[\"-\"]]",out[..])=="[[\"-\"]]";
+  #assert n70_protect_text("[[\"-\"],[\"p\",\"x\"]]",out[..])=="[[\"-\"],[\"p\",\"x\"]]";
+  #assert n70_protect_text("[[\"\\u002d\"]]",out[..])=="[[\"\\u002d\"]]";
+  #assert n70_protect_text("[ ]",out[..])=="[[\"-\"]]";
+  #assert n70_protect_text(" [[\"p\",\"x\"]] ",out[..])=="[[\"p\",\"x\"],[\"-\"]]";
+  again:[256]u8;once:=n70_protect_text("[[\"t\",\"z\"]]",out[..]);
+  #assert n70_protect_text(once,again[..])==once && n70_tagged_text(once)==N70_TAGGED;
+}
+#test "protect: malformed tags and a short output refuse" {
+  out:[256]u8;
+  for bad:[9]string.["","{}","[","[\"-\"]","[[1]]","[[\"a\"],{}]","[[\"a\"]] x","[[\"a\"],]","\"x\""] {
+    t:=nip70_protect(bad,out[..]);#assert t.error==N70P_TAGS && t.n==0;
+  }
+  small:[6]u8;t:=nip70_protect("[]",small[..]);#assert t.error==N70P_OUTPUT && t.n==0;
+  fit:[7]u8;t=nip70_protect("[]",fit[..]);#assert t.error==N70P_OK && t.n==7;
+  have:[6]u8;t=nip70_protect("[[\"-\"]]",have[..]);#assert t.error==N70P_OUTPUT;
+  t=nip70_protect("[[\"p\",\"x\"]]",small[..]);#assert t.error==N70P_OUTPUT;
+}
+
+// book:begin tagged
+// Whether the event carries the "-" tag. Tags were checked by the event
+// reader as arrays of strings; a forged record that breaks that is
+// N70_EVENT.
+nip70_tagged :: (e:NostrEvent)->int {
+  j:[1]Json;if !nt_start(j[..],e) {return N70_EVENT;}
+  found:=false;tok:=json_next(j[..]);
+  while tok==JSON_ARRAY {
+    v:=json_next(j[..]);
+    if v==JSON_STRING && json_is(json_text(j[..]),"-") {found=true;}
+    while v==JSON_STRING {v=json_next(j[..]);}
+    if v!=JSON_ARRAY_END {return N70_EVENT;}
+    tok=json_next(j[..]);
+  }
+  if tok!=JSON_ARRAY_END {return N70_EVENT;}
+  return ifx found then N70_TAGGED else N70_PLAIN;
+}
+// book:end tagged
+
+// book:begin decide
+// The rule. tagged: the event has the "-" tag. accepts: this relay takes
+// protected events at all. authed: the connection has authenticated some
+// key. as_author: one of its keys is the event's pubkey.
+nip70_decide :: (tagged:bool,accepts:bool,authed:bool,as_author:bool)->int {
+  if !tagged {return N70_ACCEPT;}
+  if !accepts {return N70_CLOSED;}
+  if !authed {return N70_AUTH_REQUIRED;}
+  if !as_author {return N70_RESTRICTED;}
+  return N70_ACCEPT;
+}
+// book:end decide
+
+// book:begin admit
+// A relay's NIP-70 admission of one EVENT on a connection whose
+// authenticated keys are auth. scratch holds the event's serialization and
+// then a repost's unescaped content. The signature is not verified here.
+nip70_admit :: (text:string,accepts:bool,auth:[]RrAuth,scratch:[]u8)->N70Admit {
+  a:N70Admit;
+  e:=nostr_event_read(text,scratch,false);if e.error!=NE_OK {return a;}
+  // The reader checked the tags, so nip70_tagged can't answer N70_EVENT.
+  a.id=e.id;a.author=e.public_key;a.tagged=nip70_tagged(e)==N70_TAGGED;
+  if n70_embeds(e,scratch) {a.decision=N70_REPOST;return a;}
+  key:=e.public_key;
+  a.decision=nip70_decide(a.tagged,accepts,rr_authed(auth),rr_authed_as(auth,key[..]));
+  return a;
+}
+// A kind 6 or 16 repost whose content reads as a protected event. The
+// content is shorter unescaped than in the serialization, so it fits in
+// scratch.
+n70_embeds :: (e:NostrEvent,scratch:[]u8)->bool {
+  if e.kind!=6 && e.kind!=16 {return false;}
+  n:=json_unescape(e.original[e.content_from..<e.content_to],scratch);
+  #assert n>=0;
+  inner:=ne_parse(cast(string)scratch[0..<n]);
+  return inner.error==NE_OK && nip70_tagged(inner)==N70_TAGGED;
+}
+// book:end admit
+
+// book:begin reason
+// The OK message's machine-readable prefix and its text.
+nip70_prefix :: (d:int)->string {
+  if d==N70_ACCEPT {return "";}
+  if d==N70_AUTH_REQUIRED {return "auth-required";}
+  if d==N70_RESTRICTED || d==N70_CLOSED || d==N70_REPOST {return "restricted";}
+  if d==N70_INVALID {return "invalid";}
+  return "error";
+}
+nip70_text :: (d:int)->string {
+  if d==N70_ACCEPT {return "";}
+  if d==N70_AUTH_REQUIRED || d==N70_RESTRICTED {return "this event may only be published by its author";}
+  if d==N70_CLOSED {return "this relay does not accept protected events";}
+  if d==N70_REPOST {return "a repost may not embed a protected event";}
+  if d==N70_INVALID {return "the event is malformed or its id does not match";}
+  return "unknown decision";
+}
+// "prefix: text" into out: its length, 0 for an accepted event, or -1 when
+// out is too short.
+nip70_reason :: (d:int,out:[]u8)->int {
+  if d==N70_ACCEPT {return 0;}
+  n:=json_raw(out,0,nip70_prefix(d));n=json_raw(out,n,": ");
+  return json_raw(out,n,nip70_text(d));
+}
+// book:end reason
+
+// book:begin protect
+// The client's side: tags (a JSON array of arrays of strings) with ["-"]
+// appended, into out; unchanged, but for whitespace around it, when a "-"
+// tag is there.
+nip70_protect :: (tags:string,out:[]u8)->N70Tags {
+  r:N70Tags;j:[1]Json;json_start(j[..],tags);first:=json_next(j[..]);
+  span:=ne_tags(j[..]);
+  if !span.ok || json_next(j[..])!=JSON_END {return r;}
+  body:=tags[span.from..<span.to];
+  t:=nip70_tagged(nt_event(body));
+  n:=json_raw(out,0,"[[\"-\"]]");
+  if t==N70_TAGGED {n=json_raw(out,0,body);}
+  else if span.count>0 {n=json_raw(out,json_raw(out,0,body[0..<body.count-1]),",[\"-\"]]");}
+  if n== -1 {r.error=N70P_OUTPUT;return r;}
+  r.error=N70P_OK;r.n=n;return r;
+}
+// book:end protect

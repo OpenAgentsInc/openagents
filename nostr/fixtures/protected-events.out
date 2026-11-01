@@ -1,0 +1,52 @@
+== 1. The tag, added by the client
+  nip70_protect [] -> [["-"]]
+  nip70_protect [["t","club"]] -> [["t","club"],["-"]]
+  nip70_protect [["-"]] -> [["-"]]
+  nip70_protect [["t",1]] -> error 1 (N70P_TAGS is 1)
+
+== 2. NIP-70's example event
+  claimed id  cb8feca582979d91fe90455867b34dbf4d65e4b86e86b3c68c368ca9f9eef6f2
+  computed id f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6
+  nostr_event_read: 7 (NE_ID is 7)
+  nip70_admit: invalid: the event is malformed or its id does not match
+the same fields signed with test key 1:
+  {"id":"f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1707409439,"kind":1,"tags":[["-"]],"content":"hello members of the secret group","sig":"05a6cc87a4e03cd93efd843d45ec927b13dedcaf653518c0dc7e929f2cd3588587ea4402009afaa9d4dfff5c7e74a8e15aee9cd71c2aaadf04ff3e7e690a3e9d"}
+  verifies: yes, id f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6
+
+== 3. The rule, worked as a table (relay takes protected events)
+  protected  keys on the connection  decision
+  no         none                    accept
+  no         key 3 only              accept
+  no         key 1 only              accept
+  no         keys 1 and 3            accept
+  yes        none                    auth-required: this event may only be published by its author
+  yes        key 3 only              restricted: this event may only be published by its author
+  yes        key 1 only              accept
+  yes        keys 1 and 3            accept
+
+== 4. NIP-70's flow, with chapter 38's AUTH
+relay sends ["AUTH","challengestringhere"]
+client sends key 1's protected event
+relay answers ["OK","f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6",false,"auth-required: this event may only be published by its author"]
+client authenticates as key 1
+relay answers ["OK","1690e70a99b967a5c6d37c6465bc02086863a52b237e90fecd69d9ea0e4efe02",true,""]
+client sends the event again
+relay answers ["OK","f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6",true,""]
+
+== 5. A third party republishes it
+connection 2, not authenticated: ["OK","f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6",false,"auth-required: this event may only be published by its author"]
+connection 2 authenticates as key 3: ["OK","5bdb19ba2d89db06b83bb687e03d51c9693a0530b2c8945c25b1ea74ce6c2935",true,""]
+connection 2 (key 3) sends key 1's event: ["OK","f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6",false,"restricted: this event may only be published by its author"]
+connection 2 sends key 3's unprotected note: ["OK","9d53f10f4be635ebeca2a5724acd9a0e03709d6666cc086ce8917a27c014b333",true,""]
+connection 2 sends a kind 6 repost embedding it: ["OK","3ad060b2bb0993e92fba09b5a18893fa29cf99551869ea11a6d9e7be70083430",false,"restricted: a repost may not embed a protected event"]
+
+== 6. A relay that takes no protected events (NIP-70's default)
+not authenticated: ["OK","f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6",false,"restricted: this relay does not accept protected events"]
+authenticates as key 1: ["OK","1cfe1aa93fb441c3ca680be516ae8ca5d3e33f55f5bffdb5d72068acb3903764",true,""]
+key 1 sends its event: ["OK","f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6",false,"restricted: this relay does not accept protected events"]
+
+== 7. Broken events
+content edited after signing, on connection 1 (key 1): ["OK","f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6",false,"invalid: the event is malformed or its id does not match"]
+first signature digit changed: ["OK","f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6",false,"invalid: bad signature"]
+NIP-70's own example on connection 1: ["OK","cb8feca582979d91fe90455867b34dbf4d65e4b86e86b3c68c368ca9f9eef6f2",false,"invalid: the event is malformed or its id does not match"]
+keys on connections 1, 2, 3: 1, 1, 1

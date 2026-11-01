@@ -663,6 +663,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/protected-events.coax",
+      "chapter": "nostr/book/ch042-protected-events.md",
+      "stdout": "nostr/fixtures/protected-events.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
     }
   ]
 }

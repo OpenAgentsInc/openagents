@@ -1,0 +1,200 @@
+// book:begin example
+#load "../../coax/lib/nostr/relay_server.coax";
+#load "../../coax/lib/nostr/nip42-event.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nip70.coax";
+#import "Basic";
+
+// The relay's clock and the client's (2026-10-28T19:13:41Z), as in
+// chapter 38's example.
+NOW :: 1793214821;
+RELAY_URL :: "wss://relay.example.com/";
+CLIENT_URL :: "WSS://Relay.Example.COM:443";
+// NIP-70's example event, compacted. Its claimed id is not the id of its
+// fields (chapter 21), so a relay refuses it before NIP-70 is asked.
+NIP70 :: "{\"id\":\"cb8feca582979d91fe90455867b34dbf4d65e4b86e86b3c68c368ca9f9eef6f2\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1707409439,\"kind\":1,\"tags\":[[\"-\"]],\"content\":\"hello members of the secret group\",\"sig\":\"fa163f5cfb75d77d9b6269011872ee22b34fb48d23251e9879bb1e4ccbdd8aaaf4b6dc5f5084a65ef42c52fbcde8f3178bac3ba207de827ec513a6aa39fa684c\"}";
+NIP70_CREATED :: 1707409439;
+NIP70_CONTENT :: "hello members of the secret group";
+// Test keys, never real ones. Key 1 is the scalar 1, whose public key 79be..
+// is NIP-70's example author. Key 3 is BIP-340 test vector 0's.
+KEY_1 :: "0000000000000000000000000000000000000000000000000000000000000001";
+KEY_3 :: "0000000000000000000000000000000000000000000000000000000000000003";
+AUX :: "0000000000000000000000000000000000000000000000000000000000000000";
+
+text_of :: (n: int, out: [] u8) -> string { #assert n > 0; return cast(string) out[0..<n]; }
+hex_of :: (bytes: [32] u8, out: [] u8) -> string {
+  b := bytes; #assert hex_encode_checked(cast(string) b[..], out, false).error == NC_OK;
+  return cast(string) out[0..<64];
+}
+// Signs one event with a test key into out.
+sign :: (key_hex: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(key_hex, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(AUX, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [1024] u8; k := EVENT_MORE;
+  while k == EVENT_MORE {
+    k = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  return text_of(k, out);
+}
+// ["EVENT",<event>] or ["AUTH",<event>], the frame a client sends.
+frame_of :: (verb: string, event: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[\""); n = json_raw(out, n, verb); n = json_raw(out, n, "\",");
+  n = json_raw(out, n, event); return text_of(json_raw(out, n, "]"), out);
+}
+
+// What the relay holds for one connection.
+RelayConn :: struct {
+  gen: int;
+  accepts: bool;            // this relay takes protected events
+  n42: [1] Nip42;           // the relay URL and this connection's challenge
+  auth: [1] RrAuth;         // the keys admitted on this connection
+  scratch: [65536] u8;
+  out: [1024] u8;
+}
+// A new connection: the challenge frame it sends.
+relay_open :: (c: [] RelayConn, gen: int, accepts: bool, challenge: string) -> string {
+  c[0].gen = gen; c[0].accepts = accepts; rr_auth_reset(c[0].auth[..]);
+  #assert nip42_init(c[0].n42[..], RELAY_URL) == N42_OK;
+  f := nip42_issue(c[0].n42[..], gen, challenge, c[0].out[..]);
+  #assert f.error == N42_OK;
+  return text_of(f.written, c[0].out[..]);
+}
+// One AUTH frame, as chapter 38's relay_auth handles it: the OK it sends.
+relay_auth :: (c: [] RelayConn, frame: string) -> string {
+  out := c[0].out[..];
+  m := ms_read(frame); #assert m.error == MS_OK && m.type == MS_AUTH;
+  obj := frame[m.event_from..<m.event_to];
+  a := nip42_admit(c[0].n42[..], c[0].gen, NOW, obj, c[0].scratch[..], false);
+  key := a.public_key;
+  k := rr_auth(c[0].auth[..], a.error, key[..]);
+  e := nostr_event_read(obj, c[0].scratch[..], false); id := e.id;
+  return text_of(ms_write_ok(id[..], k == RR_A_OK, rr_auth_prefix(k), rr_auth_text(k), out), out);
+}
+
+// book:begin relay
+// One EVENT frame: the id and signature first, then NIP-70's rule against
+// this connection's authenticated keys. The OK the relay sends. (The store
+// and the relay's other policies are chapter 34's and are left out.)
+relay_event :: (c: [] RelayConn, frame: string) -> string {
+  out := c[0].out[..];
+  m := ms_read(frame); #assert m.error == MS_OK && m.type == MS_EVENT;
+  obj := frame[m.event_from..<m.event_to];
+  e := nostr_event_verify_vartime(obj, c[0].scratch[..], false); id := e.id;
+  if e.error == NE_SIGNATURE { return text_of(ms_write_ok(id[..], false, "invalid", "bad signature", out), out); }
+  if e.error != NE_OK {
+    return text_of(ms_write_ok(id[..], false, nip70_prefix(N70_INVALID), nip70_text(N70_INVALID), out), out);
+  }
+  a := nip70_admit(obj, c[0].accepts, c[0].auth[..], c[0].scratch[..]);
+  return text_of(ms_write_ok(id[..], a.decision == N70_ACCEPT, nip70_prefix(a.decision), nip70_text(a.decision), out), out);
+}
+// book:end relay
+
+// The client's side of chapter 38: read the challenge frame, sign the
+// kind 22242 answer with key_hex, and send it. The AUTH frame, in out.
+client_auth :: (challenge_frame: string, key_hex: string, out: [] u8) -> string {
+  r: [1] Relay; n: [1] Nip42;
+  g := rl_start(r[..], 0); opened := rl_opened(r[..], g, 0);
+  #assert nip42_init(n[..], CLIENT_URL) == N42_OK && nip42_input(r[..], n[..], g, challenge_frame) == RL_AUTH;
+  tb: [512] u8; t := nip42_template(n[..], g, NOW, tb[..]); #assert t.error == N42_OK;
+  eb: [1024] u8; event := sign(key_hex, t.created_at, t.kind, t.tags, t.content, eb[..]);
+  sb: [4096] u8;
+  f := nip42_send(r[..], n[..], g, NOW, event, sb[..], out, false); #assert f.error == N42_OK;
+  return text_of(f.written, out);
+}
+keys_of :: (c: [] RelayConn) -> int { return c[0].auth[0].n; }
+yes :: (b: bool) -> string { return ifx b then "yes" else "no"; }
+
+main :: () {
+  print("== 1. The tag, added by the client\n");
+  pb: [256] u8;
+  ins := [3] string.["[]", "[[\"t\",\"club\"]]", "[[\"-\"]]"];
+  for t: ins {
+    p := nip70_protect(t, pb[..]);
+    print("  nip70_protect % -> %\n", t, cast(string) pb[0..<p.n]);
+  }
+  print("  nip70_protect [[\"t\",1]] -> error % (N70P_TAGS is %)\n", nip70_protect("[[\"t\",1]]", pb[..]).error, N70P_TAGS);
+
+  print("\n== 2. NIP-70's example event\n");
+  sc: [4096] u8; hx: [64] u8;
+  pub := nostr_event_read(NIP70, sc[..], false);
+  print("  claimed id  cb8feca582979d91fe90455867b34dbf4d65e4b86e86b3c68c368ca9f9eef6f2\n");
+  print("  computed id %\n", hex_of(pub.computed_id, hx[..]));
+  print("  nostr_event_read: % (NE_ID is %)\n", pub.error, NE_ID);
+  rb: [128] u8; none: [1] RrAuth;
+  print("  nip70_admit: %\n", text_of(nip70_reason(nip70_admit(NIP70, true, none[..], sc[..]).decision, rb[..]), rb[..]));
+  tb: [64] u8; t := nip70_protect("[]", tb[..]);
+  eb: [1024] u8; event := sign(KEY_1, NIP70_CREATED, 1, cast(string) tb[0..<t.n], NIP70_CONTENT, eb[..]);
+  print("the same fields signed with test key 1:\n  %\n", event);
+  v := nostr_event_verify_vartime(event, sc[..], false);
+  print("  verifies: %, id %\n", yes(v.error == NE_OK && v.verified), hex_of(v.id, hx[..]));
+
+  print("\n== 3. The rule, worked as a table (relay takes protected events)\n");
+  print("  protected  keys on the connection  decision\n");
+  rows := [4] string.["none        ", "key 3 only  ", "key 1 only  ", "keys 1 and 3"];
+  for p: 0..<2 {
+    for r: 0..<4 {
+      d := nip70_decide(p == 1, true, r > 0, r >= 2);
+      print("  %        %            %\n", ifx p == 1 then "yes" else "no ", rows[r], ifx d == N70_ACCEPT then "accept" else text_of(nip70_reason(d, rb[..]), rb[..]));
+    }
+  }
+
+  print("\n== 4. NIP-70's flow, with chapter 38's AUTH\n");
+  c1: [1] RelayConn; cf: [128] u8; ef: [1200] u8; af: [1200] u8;
+  challenge := frame_of_copy(relay_open(c1[..], 1, true, "challengestringhere"), cf[..]);
+  ev := frame_of("EVENT", event, ef[..]);
+  print("relay sends %\n", challenge);
+  print("client sends key 1's protected event\nrelay answers %\n", relay_event(c1[..], ev));
+  print("client authenticates as key 1\nrelay answers %\n", relay_auth(c1[..], client_auth(challenge, KEY_1, af[..])));
+  print("client sends the event again\nrelay answers %\n", relay_event(c1[..], ev));
+
+  print("\n== 5. A third party republishes it\n");
+  c2: [1] RelayConn; cf2: [128] u8; af2: [1200] u8;
+  ch2 := frame_of_copy(relay_open(c2[..], 2, true, "second"), cf2[..]);
+  print("connection 2, not authenticated: %\n", relay_event(c2[..], ev));
+  print("connection 2 authenticates as key 3: %\n", relay_auth(c2[..], client_auth(ch2, KEY_3, af2[..])));
+  print("connection 2 (key 3) sends key 1's event: %\n", relay_event(c2[..], ev));
+  nb: [1024] u8; nf: [1200] u8;
+  note := sign(KEY_3, NOW, 1, "[]", "an unprotected note", nb[..]);
+  print("connection 2 sends key 3's unprotected note: %\n", relay_event(c2[..], frame_of("EVENT", note, nf[..])));
+  qb: [2048] u8; qf: [2200] u8;
+  rt := json_raw(qb[..], 0, "[[\"e\",\""); rt = json_raw(qb[..], rt, hex_of(v.id, hx[..])); rt = json_raw(qb[..], rt, "\",\"wss://relay.example.com\"]]");
+  rp := sign(KEY_3, NOW, 6, text_of(rt, qb[..]), event, qf[..]);
+  rf: [4096] u8;
+  print("connection 2 sends a kind 6 repost embedding it: %\n", relay_event(c2[..], frame_of("EVENT", rp, rf[..])));
+
+  print("\n== 6. A relay that takes no protected events (NIP-70's default)\n");
+  c3: [1] RelayConn; cf3: [128] u8; af3: [1200] u8;
+  ch3 := frame_of_copy(relay_open(c3[..], 3, false, "third"), cf3[..]);
+  print("not authenticated: %\n", relay_event(c3[..], ev));
+  print("authenticates as key 1: %\n", relay_auth(c3[..], client_auth(ch3, KEY_1, af3[..])));
+  print("key 1 sends its event: %\n", relay_event(c3[..], ev));
+
+  print("\n== 7. Broken events\n");
+  xb: [1024] u8; xf: [1200] u8;
+  at := find(event, "\"content\":\"");
+  bad := edited(event, at, 'j', xb[..]);
+  print("content edited after signing, on connection 1 (key 1): %\n", relay_event(c1[..], frame_of("EVENT", bad, xf[..])));
+  yb: [1024] u8; yf: [1200] u8;
+  s := find(event, "\"sig\":\"");
+  badsig := edited(event, s, ifx event[s] == '0' then cast(u8) '1' else cast(u8) '0', yb[..]);
+  print("first signature digit changed: %\n", relay_event(c1[..], frame_of("EVENT", badsig, yf[..])));
+  print("NIP-70's own example on connection 1: %\n", relay_event(c1[..], frame_of("EVENT", NIP70, yf[..])));
+  print("keys on connections 1, 2, 3: %, %, %\n", keys_of(c1[..]), keys_of(c2[..]), keys_of(c3[..]));
+}
+frame_of_copy :: (s: string, out: [] u8) -> string {
+  for i: 0..<s.count { out[i] = s[i]; }
+  return cast(string) out[0..<s.count];
+}
+// A copy of s with the byte at `at` replaced by b.
+edited :: (s: string, at: int, b: u8, out: [] u8) -> string {
+  for i: 0..<s.count { out[i] = s[i]; }
+  out[at] = b;
+  return cast(string) out[0..<s.count];
+}
+// The index just after the first occurrence of field in s.
+find :: (s: string, field: string) -> int {
+  for i: 0..<s.count - field.count + 1 { if s[i..<i + field.count] == field { return i + field.count; } }
+  return -1;
+}
+// book:end example

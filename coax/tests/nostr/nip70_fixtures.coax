@@ -1,0 +1,44 @@
+// Events and connections for nip70.coax's checks. n70_event writes an
+// unsigned event whose ID it computes with ne_serialize and SHA-256, so
+// nostr_event_read accepts it; its signature is 64 zero bytes, because
+// admission reads the ID and pubkey and never verifies a signature. Keys 1
+// and 2 are the secret scalars 1 and 2: their public keys are the x
+// coordinates of G and 2G. Nothing here signs.
+N70_A :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";   // key 1
+N70_B :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";   // key 2
+// An unsigned event by pub (hex) with these tags and this content (a JSON
+// string's raw text), its ID computed so nostr_event_read accepts it and
+// its signature zeros. It lives in out.
+n70_event :: (pub:string,kind:int,tags:string,content:string,out:[]u8)->string {
+  n:=json_raw(out,0,"{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n=json_raw(out,n,pub);n=json_raw(out,n,"\",\"created_at\":1707409439,\"kind\":");
+  n=json_write_int(out,n,kind);n=json_raw(out,n,",\"tags\":");n=json_raw(out,n,tags);
+  n=json_raw(out,n,",\"content\":\"");n=json_raw(out,n,content);
+  n=json_raw(out,n,"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  s:[8192]u8;e:=ne_parse(cast(string)out[0..<n]);#assert e.error==NE_OK;
+  m:=ne_serialize(e,s[..]);id:[32]u8;#assert m>0 && sha256_hash_checked(s[0..<m],id[..],false)==SHA_OK;
+  hx:[64]u8;#assert hex_encode_checked(cast(string)id[..],hx[..],false).error==NC_OK;
+  for i:0..<64 {out[7+i]=hx[i];}
+  return cast(string)out[0..<n];
+}
+// A connection's keys: none, A, B, or both.
+n70_keys :: (a:[]RrAuth,with_a:bool,with_b:bool) {
+  rr_auth_reset(a);k:[32]u8;
+  if with_b {#assert hex_decode_checked(N70_B,k[..],false).error==NC_OK && rr_auth(a,RR_N42_OK,k[..])==RR_A_OK;}
+  if with_a {#assert hex_decode_checked(N70_A,k[..],false).error==NC_OK && rr_auth(a,RR_N42_OK,k[..])==RR_A_OK;}
+}
+n70_admitted :: (text:string,accepts:bool,with_a:bool,with_b:bool)->int {
+  a:[1]RrAuth;n70_keys(a[..],with_a,with_b);s:[8192]u8;
+  return nip70_admit(text,accepts,a[..],s[..]).decision;
+}
+n70_tagged_text :: (tags:string)->int {return nip70_tagged(nt_event(tags));}
+n70_protect_text :: (tags:string,out:[]u8)->string {
+  t:=nip70_protect(tags,out);#assert t.error==N70P_OK;return cast(string)out[0..<t.n];
+}
+
+// A kind 1 note by A with ["-"], and one without, as JSON string contents.
+N70_INNER_P :: "{\\\"id\\\":\\\"00\\\",\\\"pubkey\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"created_at\\\":1,\\\"kind\\\":1,\\\"tags\\\":[[\\\"-\\\"]],\\\"content\\\":\\\"s\\\",\\\"sig\\\":\\\"00\\\"}";
+N70_INNER :: "{\\\"id\\\":\\\"0000000000000000000000000000000000000000000000000000000000000000\\\",\\\"pubkey\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"created_at\\\":1,\\\"kind\\\":1,\\\"tags\\\":[[\\\"-\\\"]],\\\"content\\\":\\\"s\\\",\\\"sig\\\":\\\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\\\"}";
+N70_INNER_PLAIN :: "{\\\"id\\\":\\\"0000000000000000000000000000000000000000000000000000000000000000\\\",\\\"pubkey\\\":\\\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\\\",\\\"created_at\\\":1,\\\"kind\\\":1,\\\"tags\\\":[],\\\"content\\\":\\\"s\\\",\\\"sig\\\":\\\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\\\"}";
+N70_RT :: "[[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\",\"wss://r.example\"]]";

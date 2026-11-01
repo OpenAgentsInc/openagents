@@ -1,0 +1,81 @@
+// The checks of protected-events.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/protected-events.coax --run-steps 250000000
+#load "../protected-events.coax";
+
+// book:begin check
+// IDs that Python's hashlib computed from
+// json.dumps([0, pubkey, created_at, kind, tags, content], separators=(",", ":"),
+// ensure_ascii=False). They share no code with Coax.
+PY_NIP70_ID :: "f017727ad7c6b4c872639506b75ad7c8f85e0896f71610fb491625e1c0b8b2e6";   // NIP-70's fields
+PY_EDITED_ID :: "245f78c85d0ccc8f00b3e457a22574d48df04ef0245860df77000bf68662be0d";  // "jello members ..."
+PY_PLAIN_ID :: "73eddcdd8eb8050a00786252d6c8dd8025682768b77e732ad08d42251e8f46d9";   // the same with tags []
+// NIP-70's claimed id, and the relay's answer in its example flow, copied
+// from nostr/nips/official/70.md.
+NIP70_CLAIMED :: "cb8feca582979d91fe90455867b34dbf4d65e4b86e86b3c68c368ca9f9eef6f2";
+NIP70_ANSWER :: "auth-required: this event may only be published by its author";
+// secp256k1's generator x coordinate (SEC 2, section 2.4.1): key 1's
+// public key.
+SEC2_GX :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+same_id :: (id: [32] u8, text: string) -> bool {
+  want: [32] u8; #assert hex_decode_checked(text, want[..], false).error == NC_OK;
+  for i: 0..<32 { if id[i] != want[i] { return false; } }
+  return true;
+}
+signed_note :: (tags: string, content: string, out: [] u8) -> string {
+  return sign(KEY_1, NIP70_CREATED, 1, tags, content, out);
+}
+
+#test "NIP-70's example: its fields hash to Python's id, not the one it claims" {
+  s: [4096] u8; e := nostr_event_read(NIP70, s[..], false);
+  #assert e.error == NE_ID && same_id(e.computed_id, PY_NIP70_ID) && same_id(e.id, NIP70_CLAIMED);
+  #assert !same_id(e.computed_id, NIP70_CLAIMED);
+}
+#test "key 1 re-signs NIP-70's fields: Python's id, G's x as pubkey, a valid signature" #steps 400000000 {
+  b: [1024] u8; s: [4096] u8;
+  e := nostr_event_verify_vartime(signed_note("[[\"-\"]]", NIP70_CONTENT, b[..]), s[..], false);
+  #assert e.error == NE_OK && e.verified && same_id(e.id, PY_NIP70_ID) && same_id(e.public_key, SEC2_GX);
+  p := nostr_event_read(signed_note("[]", NIP70_CONTENT, b[..]), s[..], false);
+  #assert p.error == NE_OK && same_id(p.id, PY_PLAIN_ID);
+  j := nostr_event_read(signed_note("[[\"-\"]]", "jello members of the secret group", b[..]), s[..], false);
+  #assert j.error == NE_OK && same_id(j.id, PY_EDITED_ID);
+}
+#test "the relay's first answer is NIP-70's text, byte for byte" {
+  out: [128] u8; n := nip70_reason(N70_AUTH_REQUIRED, out[..]);
+  #assert n == NIP70_ANSWER.count && cast(string) out[0..<n] == NIP70_ANSWER;
+}
+// The table worked by hand in the chapter: for each connection (no key,
+// key 3, key 1) the OK reason for key 1's protected note, then for its
+// unprotected note. "" is acceptance.
+HAND :: [6] string.[
+  "auth-required: this event may only be published by its author", "",
+  "restricted: this event may only be published by its author", "",
+  "", ""];
+// The reason text inside the OK frame the example's relay sends: the last
+// string, which ends just before the closing "].
+reason_of :: (frame: string) -> string {
+  at := frame.count - 2; #assert frame[at] == '"';
+  from := at - 1; while frame[from] != '"' { from -= 1; }
+  return frame[from + 1..<at];
+}
+#forall "the example's relay answers as the hand table says" i: 0..<3 #steps 2000000000 {
+  c: [1] RelayConn; cf: [128] u8; af: [1200] u8;
+  ch := frame_of_copy(relay_open(c[..], 10 + i, true, "x"), cf[..]);
+  if i == 1 { r := relay_auth(c[..], client_auth(ch, KEY_3, af[..])); }
+  if i == 2 { r := relay_auth(c[..], client_auth(ch, KEY_1, af[..])); }
+  #assert keys_of(c[..]) == ifx i == 0 then 0 else 1;
+  b: [1024] u8; f: [1200] u8;
+  #assert reason_of(relay_event(c[..], frame_of("EVENT", signed_note("[[\"-\"]]", NIP70_CONTENT, b[..]), f[..]))) == HAND[2 * i];
+  #assert reason_of(relay_event(c[..], frame_of("EVENT", signed_note("[]", NIP70_CONTENT, b[..]), f[..]))) == HAND[2 * i + 1];
+}
+#test "reason_of reads the last string of an OK frame" {
+  #assert reason_of("[\"OK\",\"ab\",false,\"x: y\"]") == "x: y" && reason_of("[\"OK\",\"ab\",true,\"\"]") == "";
+}
+#test "same_id notices a change in the first or last byte" {
+  id: [32] u8; zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert same_id(id, zero);
+  id[0] = 1; #assert !same_id(id, zero);
+  id[0] = 0; id[31] = 1; #assert !same_id(id, zero);
+}
+// book:end check
