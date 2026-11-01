@@ -175,9 +175,12 @@ are one `REPLAY_ACTIONS` event, and a fixed step applies only the events
 `replay_take` hands it, through the input buffer, so look and zoom change
 the state only on steps. When a record fills, a new one starts from the
 state the session has then, with the frames still waiting for a step in its
-start's input buffer, so no press or turn is lost. Checks:
+start's input buffer, so no press or turn is lost. A blur releases what is
+held outside any frame, so it also starts a new record from the state it
+leaves. Checks:
 `verse/gridwalk.coax` ("a recorded session replays to the same digest at
-every step", "a record full of frames starts a new one", "the keyboard and
+every step", "a record full of frames starts a new one", "a blur starts a
+new record from the state it leaves, and that one replays", "the keyboard and
 the touch stick drive the same session to the same digests"; mutation 0
 survivors) and `coax/web/replay-hosts.test.ts` (a recorded Grid session
 gives the same digest at every step natively and in wasm).

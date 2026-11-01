@@ -177,7 +177,8 @@ time or steps the player itself.
   the camera's turn and tilt are drawn between the last two steps.
 - A record holds 1,024 frames and 2,048 steps. When either is full, a new
   record starts from the state the session has then, with the frames still
-  waiting for a step in its input buffer.
+  waiting for a step in its input buffer. A blur, which releases the held
+  keys outside any frame, starts a new record the same way.
 
 Checks: `verse/gridwalk.coax` (the keyboard and the touch stick give the
 same digests; a tap in a frame with no step jumps on the next; look and zoom
