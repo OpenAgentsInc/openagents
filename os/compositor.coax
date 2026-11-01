@@ -52,6 +52,12 @@ cxwl_stdin :: (out: [] u8) -> int #foreign;
 cxwl_out :: (s: [] u8) -> int #foreign;
 cxwl_spawn :: (path: [] u8, display: [] u8) -> int #foreign;
 cxwl_fits :: (m: int, fd: int, end: int) -> int #foreign;
+cxwl_peer_pid :: (h: int) -> int #foreign;
+cxwl_tree :: (pid: int) -> int #foreign;
+cxwl_tree_at :: (i: int) -> int #foreign;
+cxwl_ask_start :: (args: [] u8) -> int #foreign;
+cxwl_ask_poll :: (out: [] u8) -> int #foreign;
+cxwl_ask_len :: () -> int #foreign;
 cxscr_open :: () -> int #foreign;
 cxscr_width :: () -> int #foreign;
 cxscr_height :: () -> int #foreign;
@@ -120,6 +126,7 @@ Cx :: struct {
   sock: [256] u8; nsock: int; launch: [512] u8; nlaunch: int;
   sources: [CX_SOURCES] CxSource; sel: int;   // the selection: a source, or -1
   cursor: int; hot_x: int; hot_y: int;   // the pointer image a client set (a surface), or -1 for the arrow
+  asking: int; armed: int; armed_until: int;   // Super+W: the window being asked about, the one a notice armed
   quit: bool; dirty: bool; screen: bool; show_pointer: bool;
 }
 
@@ -741,7 +748,7 @@ cx_binding :: (x: [] Cx, code: int, mods: int) -> bool {
   b := cx_bind(code, mods); m := x[0].wm[..]; v := b.verb;
   if v == B_NONE { return false; }
   if v == B_EXEC { cx_exec(x, cx_program(b.arg)); return true; }
-  if v == B_CLOSE { cx_close_focused(x); return true; }
+  if v == B_CLOSE { cx_close_key(x); return true; }
   if v == B_QUIT { x[0].quit = true; return true; }
   if v == B_FOCUS { wm_movefocus(m, b.arg); }
   else if v == B_DESK { wm_switch_workspace(m, b.arg); }
@@ -767,6 +774,47 @@ cx_input_key :: (x: [] Cx, code: int, down: bool) {
   if down && !cx_is_mod(code) && cx_binding(x, code, before) { x[0].swallowed[code] = true; return; }
   cx_key(x, code, down);
   if cx_is_mod(code) && cx_mask(x) != before { cx_mods(x, cx_mask(x)); }
+}
+// Super+W, as os/bin/coder-close decided it: a window with Coder work in flight (a streaming turn, a
+// delegation that has not reported) closes on a second press within 5 seconds, and the first press
+// says what is running. `coder activity --pid P...` over the window's processes owns that rule; a
+// window that cannot be asked about (no process, no coder, coder failing) closes on the first press.
+CX_CONFIRM_MS :: 5000;
+cx_close_key :: (x: [] Cx) {
+  f := wm_focus(x[0].wm[..]); if f == 0 { return; }
+  if x[0].armed == f && cxwl_ms() <= x[0].armed_until { x[0].armed = 0; cx_close_win(x, f); return; }
+  if x[0].asking != 0 { return; }   // the last press is still being asked about
+  s := x[0].win_surf[f]; pid := ifx s >= 0 then cxwl_peer_pid(x[0].clients[x[0].surfs[s].client].h) else -1;
+  if pid <= 0 { cx_close_win(x, f); return; }
+  args: [8192] u8; n := 0;
+  for c: "coder\0activity" { args[n] = c; n += 1; }
+  k := cxwl_tree(pid);
+  for i: 0..<k {
+    if n > 8100 { break; }
+    args[n] = 0; n += 1; for c: "--pid" { args[n] = c; n += 1; } args[n] = 0; n += 1;
+    n = cx_num_into(args[..], n, cxwl_tree_at(i));
+  }
+  if cxwl_ask_start(args[0..<n]) < 0 { cx_close_win(x, f); return; }
+  x[0].asking = f;
+}
+// What the question answered: 0 means work runs (arm and say so), anything else closes.
+cx_close_answer :: (x: [] Cx) {
+  if x[0].asking == 0 { return; }
+  out: [4096] u8; st := cxwl_ask_poll(out[..]);
+  if st == -1 { return; }
+  f := x[0].asking; x[0].asking = 0;
+  if st != 0 { cx_close_win(x, f); return; }
+  n := cxwl_ask_len(); while n > 0 && (out[n - 1] == '\n' || out[n - 1] == ' ') { n -= 1; }
+  x[0].armed = f; x[0].armed_until = cxwl_ms() + CX_CONFIRM_MS;
+  b: [4400] u8; k := 0;
+  for c: "notice Coder is working: " { b[k] = c; k += 1; }
+  for i: 0..<n { b[k] = ifx out[i] == '\n' then ' ' else out[i]; k += 1; }
+  for c: " Press the close key again within 5 seconds to close this window." { b[k] = c; k += 1; }
+  cx_say(cast(string) b[0..<k]);
+}
+cx_close_win :: (x: [] Cx, f: int) {
+  s := ifx f > 0 && f < WM_WINS then x[0].win_surf[f] else -1;
+  if s >= 0 { g := x[0].g[..]; mg_begin(g, x[0].surfs[s].top, 1); mg_end(g); mg_flush(x, x[0].surfs[s].client, -1); }
 }
 cx_close_focused :: (x: [] Cx) {
   f := wm_focus(x[0].wm[..]); s := ifx f != 0 then x[0].win_surf[f] else -1;
@@ -1004,6 +1052,7 @@ tool_main :: () -> int #export_c {
         if x[0].nline == 8192 { x[0].nline = 0; }
       }
     }
+    cx_close_answer(x);
     if input_open && !cx_input(x) { input_open = false; cx_say("input ended"); }
     now := cxwl_ms();
     if now - last >= 16 {

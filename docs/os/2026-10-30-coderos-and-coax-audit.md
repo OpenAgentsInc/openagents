@@ -464,9 +464,19 @@ compiler and the examples have not been run on Linux yet.
   half split top and bottom. Super+Left moved the focus, and Super+Shift+2
   took the window to desk 2 and followed it there. Super+F made it
   fullscreen. Super+1 then Super+W closed desk 1's focused window, and the
-  last one filled the screen. Super+W closes right away; the Rust
-  `coder-close` first warned about a Coder turn still running, and that
-  check is not ported yet.
+  last one filled the screen.
+
+  Super+W decides the way `os/bin/coder-close` did, now in Coax. It
+  collects the window's process (SO_PEERCRED) and every process under it,
+  then asks `coder activity --pid ...` without blocking the compositor. A
+  window with work in flight closes only on a second press within 5
+  seconds, and the first press says what is running. A window it can't
+  ask about closes on the first press. With a stand-in `coder` first on
+  PATH, a busy terminal warned and then closed on the second press, an
+  idle one closed on the first, and each question named the terminal's
+  process and its shell. The notice goes to the compositor's output, as
+  `coder-close` did when no notification daemon ran; it isn't drawn on
+  screen yet.
 
   The compositor's two faces to the machine are written, after
   `verse/kms`: `coax/platform/screen-native.c` takes one screen through

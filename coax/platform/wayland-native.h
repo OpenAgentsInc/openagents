@@ -40,6 +40,12 @@ int64_t cxwl_stdin(coax_v_u8 out);
 int64_t cxwl_out(coax_v_u8 s);
 int64_t cxwl_spawn(coax_v_u8 path, coax_v_u8 display);
 int64_t cxwl_fits(int64_t m, int64_t fd, int64_t end);
+int64_t cxwl_peer_pid(int64_t h);
+int64_t cxwl_tree(int64_t pid);
+int64_t cxwl_tree_at(int64_t i);
+int64_t cxwl_ask_start(coax_v_u8 args);
+int64_t cxwl_ask_poll(coax_v_u8 out);
+int64_t cxwl_ask_len(void);
 #ifdef __cplusplus
 }
 #endif

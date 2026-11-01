@@ -6,7 +6,10 @@
 #define _GNU_SOURCE
 #endif
 #include "wayland-native.h"
+#include <dirent.h>
 #include <errno.h>
+#include <stdio.h>
+#include <sys/wait.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
@@ -199,22 +202,30 @@ int64_t cxwl_out(coax_v_u8 s) {
   return 0;
 }
 /* Starts path detached, a client of the compositor at display (a full socket path): its pid, or
-   -errno. Children are reaped by the kernel (SIGCHLD is ignored once this has run). */
+   -errno. It runs as init's child, so the compositor never waits for it. */
 int64_t cxwl_spawn(coax_v_u8 path, coax_v_u8 display) {
   char p[1024], d[1024];
   if (path.count <= 0 || path.count >= 1024 || display.count <= 0 || display.count >= 1024) return -ENAMETOOLONG;
   memcpy(p, path.data, (size_t)path.count); p[path.count] = 0;
   memcpy(d, display.data, (size_t)display.count); d[display.count] = 0;
   if (access(p, X_OK) != 0) return -(int64_t)errno;
-  signal(SIGCHLD, SIG_IGN);
+  int link[2]; if (pipe(link) < 0) return -(int64_t)errno;
   pid_t pid = fork();
-  if (pid < 0) return -(int64_t)errno;
-  if (pid == 0) {
-    setsid(); setenv("WAYLAND_DISPLAY", d, 1); unsetenv("DISPLAY");
-    int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); }
-    execl(p, p, (char *)NULL); _exit(127);
+  if (pid < 0) { close(link[0]); close(link[1]); return -(int64_t)errno; }
+  if (pid == 0) {   // a second fork, so the program belongs to init and nothing here waits for it
+    close(link[0]);
+    pid_t g = fork();
+    if (g == 0) {
+      close(link[1]); setsid(); setenv("WAYLAND_DISPLAY", d, 1); unsetenv("DISPLAY");
+      int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); }
+      execl(p, p, (char *)NULL); _exit(127);
+    }
+    int64_t v = g; if (write(link[1], &v, sizeof v) < 0) {} _exit(0);
   }
-  return pid;
+  close(link[1]);
+  int64_t g = -1; if (read(link[0], &g, sizeof g) != (ssize_t)sizeof g) g = -1;
+  close(link[0]); waitpid(pid, NULL, 0);
+  return g > 0 ? g : -ECHILD;
 }
 /* Whether a pool's file still holds end bytes (a client may shrink it under the map): checked once
    per surface draw, so the row reads can pass fd -1 and skip the check. */
@@ -223,3 +234,79 @@ int64_t cxwl_fits(int64_t m, int64_t fd, int64_t end) {
   struct stat st;
   return (fd >= 0 && fstat((int)fd, &st) == 0 && st.st_size >= end) ? 1 : 0;
 }
+/* The pid of the process at the other end of client h (SO_PEERCRED), or -1. */
+int64_t cxwl_peer_pid(int64_t h) {
+#if defined(__linux__)
+  if (h < 0 || h >= WL_CLIENTS || !cl_used[h]) return -1;
+  struct ucred c; socklen_t n = sizeof c;
+  if (getsockopt(cl_fd[h], SOL_SOCKET, SO_PEERCRED, &c, &n) < 0) return -1;
+  return c.pid;
+#else
+  (void)h; return -1;
+#endif
+}
+/* pid and every process under it, from /proc: the count, read by cxwl_tree_at(i). */
+#define WL_TREE 512
+static int64_t tree[WL_TREE]; static int tree_n;
+int64_t cxwl_tree(int64_t pid) {
+  tree_n = 0; if (pid <= 0) return 0;
+  tree[tree_n++] = pid;
+  DIR *d = opendir("/proc"); if (!d) return tree_n;
+  int64_t pids[4096], par[4096]; int n = 0; struct dirent *e;
+  while ((e = readdir(d)) && n < 4096) {
+    char *end; long p = strtol(e->d_name, &end, 10); if (*end || p <= 0) continue;
+    char path[64], buf[512]; snprintf(path, sizeof path, "/proc/%ld/stat", p);
+    int fd = open(path, O_RDONLY | O_CLOEXEC); if (fd < 0) continue;
+    ssize_t k = read(fd, buf, sizeof buf - 1); close(fd); if (k <= 0) continue; buf[k] = 0;
+    char *rp = strrchr(buf, ')'); if (!rp) continue;
+    long pp = 0; char st; if (sscanf(rp + 1, " %c %ld", &st, &pp) != 2) continue;
+    pids[n] = p; par[n] = pp; n++;
+  }
+  closedir(d);
+  for (int grew = 1; grew;) {
+    grew = 0;
+    for (int i = 0; i < n && tree_n < WL_TREE; i++) {
+      int in = 0, under = 0;
+      for (int j = 0; j < tree_n; j++) { if (tree[j] == pids[i]) in = 1; if (tree[j] == par[i]) under = 1; }
+      if (!in && under) { tree[tree_n++] = pids[i]; grew = 1; }
+    }
+  }
+  return tree_n;
+}
+int64_t cxwl_tree_at(int64_t i) { return (i >= 0 && i < tree_n) ? tree[i] : -1; }
+/* One question to a program at a time, without blocking: cxwl_ask_start(args) runs it (args are
+   NUL-separated; the first is looked up on PATH) with its output on a pipe; cxwl_ask_poll(out)
+   says -1 while it runs, else its exit status (-2 when it could not start), with what it printed
+   in out (cxwl_ask_len bytes). */
+static pid_t ask_pid = -1; static int ask_fd = -1; static char ask_buf[4096]; static int ask_len;
+int64_t cxwl_ask_start(coax_v_u8 args) {
+  if (ask_pid > 0) return -EBUSY;
+  char buf[8192]; char *argv[130]; int argc = 0;
+  if (args.count <= 0 || args.count >= (int64_t)sizeof buf) return -EINVAL;
+  memcpy(buf, args.data, (size_t)args.count); buf[args.count] = 0;
+  for (int64_t i = 0; i < args.count && argc < 129;) { argv[argc++] = buf + i; i += (int64_t)strlen(buf + i) + 1; }
+  argv[argc] = NULL;
+  int p[2]; if (pipe(p) < 0) return -(int64_t)errno;
+  pid_t pid = fork();
+  if (pid < 0) { close(p[0]); close(p[1]); return -(int64_t)errno; }
+  if (pid == 0) {
+    signal(SIGCHLD, SIG_DFL);
+    dup2(p[1], 1); int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); dup2(nul, 2); }
+    close(p[0]); close(p[1]); execvp(argv[0], argv); _exit(127);
+  }
+  close(p[1]); fcntl(p[0], F_SETFL, fcntl(p[0], F_GETFL) | O_NONBLOCK);
+  ask_pid = pid; ask_fd = p[0]; ask_len = 0;
+  return 0;
+}
+int64_t cxwl_ask_poll(coax_v_u8 out) {
+  if (ask_pid <= 0) return -2;
+  for (;;) { ssize_t n = read(ask_fd, ask_buf + ask_len, sizeof ask_buf - 1 - (size_t)ask_len); if (n <= 0) break; ask_len += (int)n; if (ask_len >= (int)sizeof ask_buf - 1) break; }
+  int st; pid_t r = waitpid(ask_pid, &st, WNOHANG);
+  if (r == 0) return -1;
+  for (;;) { ssize_t n = read(ask_fd, ask_buf + ask_len, sizeof ask_buf - 1 - (size_t)ask_len); if (n <= 0) break; ask_len += (int)n; }
+  close(ask_fd); ask_fd = -1; ask_pid = -1;
+  int64_t k = ask_len < out.count ? ask_len : out.count; memcpy(out.data, ask_buf, (size_t)k); ask_len = (int)k;
+  if (r < 0) return -2;
+  return WIFEXITED(st) ? WEXITSTATUS(st) : 128;
+}
+int64_t cxwl_ask_len(void) { return ask_len; }
