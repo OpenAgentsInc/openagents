@@ -24,6 +24,10 @@ final class BuyViewController: WalletForm {
     /// Deposits already waiting when the page opened, so only a new one counts.
     private var before: Set<String> = []
     private var watching: Task<Void, Never>?
+    #if DEBUG
+    /// UI tests only (OPENAGENTS_BUY_KEEP_PAGE): pages kept instead of opened.
+    private var kept = 0
+    #endif
 
     init(host: SparkHost) { self.host = host; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError() }
@@ -102,6 +106,10 @@ final class BuyViewController: WalletForm {
             before = Set(((try? await host.deposits()) ?? []).map { "\($0.txid):\($0.vout)" })
             do {
                 let page = try await host.buy(p, amount: sats)
+                #if DEBUG
+                // UI tests only: hold the answer so a second tap lands while the page is being asked for.
+                if ProcessInfo.processInfo.environment["OPENAGENTS_BUY_KEEP_PAGE"] == "1" { try? await Task.sleep(for: .seconds(2)) }
+                #endif
                 let opens = verse_wallet_buy_opens(flow, BuyEvent.page)
                 flow = verse_wallet_buy_step(flow, BuyEvent.page)
                 guard opens else { return }
@@ -120,6 +128,7 @@ final class BuyViewController: WalletForm {
         // UI tests only: keep the page here instead of leaving the app.
         if ProcessInfo.processInfo.environment["OPENAGENTS_BUY_KEEP_PAGE"] == "1" {
             status.accessibilityValue = page.absoluteString
+            kept += 1; detail.accessibilityValue = "\(kept) pages"
             return
         }
         #endif

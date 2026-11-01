@@ -1,0 +1,1 @@
+Buy bitcoin is safer. Tapping MoonPay and then Cash App quickly opens only one page. A Cash App purchase only opens for a real (mainnet) invoice of exactly the amount you asked for. A MoonPay page can't carry a second currency. If we can't get today's network fees, a MoonPay purchase waits and the screen says so, instead of letting any amount through.

@@ -2287,7 +2287,9 @@ Model-boundary exception: Debug builds launched with
 from random words held in memory for that launch, in its own folder, never
 the Keychain. Release builds compile this path out. Debug builds launched with
 `OPENAGENTS_BUY_KEEP_PAGE=1` (the buy UI test only) keep the passed
-provider page on screen instead of opening it; Release builds compile it out.
+provider page on screen instead of opening it, count the pages kept, and hold
+each SDK answer for two seconds so a second tap lands while a page is being
+asked for; Release builds compile it out.
 
 Check: `apps/openagents-ios/tools/test-bip39.sh` (published BIP-39 vectors);
 `coax test` and `coax mutate verse/wallet.coax` (0 survivors); the iOS UI
@@ -2296,7 +2298,9 @@ tests (a phone with no wallet shows that and changes nothing, and
 request is made, sends are parsed and quoted, and an empty wallet's send is
 refused in words; `testBuyMakesTheProviderPagesForThisWallet`: MoonPay's page
 is for bitcoin to the address Receive then shows, Cash App's for a mainnet
-invoice of the amount, and too-small amounts are refused); and the owner's
+invoice of the amount, too-small amounts are refused, and Cash App tapped
+while MoonPay's page is being asked for starts nothing, so one page is kept);
+and the owner's
 device showing the existing balance.
 
 ## Inference credit is bought only with payments our own Spark wallet received

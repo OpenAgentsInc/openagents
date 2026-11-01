@@ -143,10 +143,21 @@ extension WalletUITests {
         // MoonPay: bitcoin, to this wallet's address.
         amount.tap(); amount.typeText("00000")
         XCTAssertTrue(app.staticTexts["buy.worth"].waitForExistence(timeout: 5))
-        app.buttons["buy.moonpay"].tap()
+        // Cash App tapped straight after, while MoonPay's page is being
+        // asked for, starts nothing: one page opens, MoonPay's.
+        let moonpay = app.buttons["buy.moonpay"]
+        moonpay.tap()
+        let cashApp = app.buttons["buy.cashapp"]
+        cashApp.tap()
+        XCTAssertFalse(moonpay.isEnabled, "MoonPay answered before the second tap")
+        XCTAssertTrue(cashApp.isEnabled, "the Cash App tap asked for a second page")
         let status = app.staticTexts["buy.status"]
+        let detail = app.staticTexts["buy.detail"]
         XCTAssertTrue(wait(60) { status.exists && status.label != "" }, status.label)
-        XCTAssertEqual(status.label, "Waiting for MoonPay", app.staticTexts["buy.detail"].label)
+        XCTAssertEqual(status.label, "Waiting for MoonPay", detail.label)
+        XCTAssertTrue(wait(30) { moonpay.isEnabled })
+        XCTAssertEqual(status.label, "Waiting for MoonPay", detail.label)
+        XCTAssertEqual("\(detail.value ?? "")", "1 pages")
         let page = "\(status.value ?? "")"
         shot(app, "Buy: MoonPay")
         XCTAssertTrue(page.hasPrefix("https://buy.moonpay.io"), page)
@@ -161,6 +172,7 @@ extension WalletUITests {
         XCTAssertTrue(wait(60) { status.label == "Waiting for Cash App" }, status.label + " " + app.staticTexts["buy.detail"].label)
         let cash = "\(status.value ?? "")"
         XCTAssertTrue(cash.hasPrefix("https://cash.app/launch/lightning/lnbc1m"), cash)
+        XCTAssertEqual("\(app.staticTexts["buy.detail"].value ?? "")", "2 pages")
         shot(app, "Buy: Cash App")
 
         app.navigationBars.buttons["Wallet"].tap()
