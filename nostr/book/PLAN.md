@@ -146,7 +146,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 | [41. Search](ch041-search.md) — design draft | 36 | Search results on a fixture corpus match the Rust relay's, or the difference is recorded. A filter with an unsupported extension still runs. | [NIP-50](../nips/official/50.md) |
 | [42. Protected events](ch042-protected-events.md) — design draft | 38 | A protected event from an unauthenticated connection refuses; after AUTH as the author it is accepted. A protected event from another authenticated key refuses. | [NIP-70](../nips/official/70.md) |
 | [43. Negentropy sync](ch043-negentropy-sync.md) — design draft | 36, 4 | The reconciliation of two random sets finds exactly the symmetric difference. Messages interoperate with an independent Negentropy implementation. | [NIP-77](../nips/official/77.md) |
-| [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) — partly implemented | 34, 36 | Every limit has a flood case that receives its refusal. Rate limits are configurable and shown in NIP-11. | [NIP-01](../nips/official/01.md), [NIP-11](../nips/official/11.md) |
+| [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) — implemented | 34, 36 | Every limit has a flood case that receives its refusal. Rate limits are configurable and shown in NIP-11. | [NIP-01](../nips/official/01.md), [NIP-11](../nips/official/11.md) |
 
 ### Part X. Every NIP
 

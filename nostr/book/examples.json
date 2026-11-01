@@ -471,6 +471,17 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/relay-limits.coax",
+      "chapter": "nostr/book/ch044-limits-policy-and-floods.md",
+      "stdout": "nostr/fixtures/relay-limits.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
+    },
+    {
       "source": "nostr/examples/hosts-reach.coax",
       "chapter": "nostr/book/ch075-hosts-and-reachability.md",
       "stdout": "nostr/fixtures/hosts-reach.out",

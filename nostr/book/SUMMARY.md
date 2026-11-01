@@ -72,7 +72,7 @@
 - [41. Search](ch041-search.md) — design draft
 - [42. Protected events](ch042-protected-events.md) — design draft
 - [43. Negentropy sync](ch043-negentropy-sync.md) — design draft
-- [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) — partly implemented
+- [44. Limits, policy and floods](ch044-limits-policy-and-floods.md) — implemented
 
 **X. Every NIP**
 

@@ -1,0 +1,67 @@
+== the worked budget: 3 EVENTs and 2 REQs per connection, 2 EVENTs per key, a minute each
+  1  t=1000  EVENT Alice: OK true   (connection 1 of 3 since 1000, Alice 1 of 2)
+  2  t=1000  EVENT Alice: OK true   (connection 2 of 3 since 1000, Alice 2 of 2)
+  3  t=1001  EVENT Alice: OK false "rate-limited: event rate exceeded for this key"   (connection 3 of 3 since 1000, Alice 2 of 2)
+  4  t=1002  EVENT Bob: OK false "rate-limited: event rate exceeded"   (connection 3 of 3 since 1000, Bob 0 of 2)
+  5  t=1002  REQ: passes to the REQ rules   (REQs 1 of 2 since 1002)
+  6  t=1003  REQ: passes to the REQ rules   (REQs 2 of 2 since 1002)
+  7  t=1004  REQ: CLOSED "rate-limited: REQ rate exceeded"   (REQs 2 of 2 since 1002)
+  8  t=1059  EVENT Bob: OK false "rate-limited: event rate exceeded"   (connection 3 of 3 since 1000, Bob 0 of 2)
+  9  t=1060  EVENT Bob: OK true   (connection 1 of 3 since 1060, Bob 1 of 2)
+  10  t=1060  EVENT Alice: OK true   (connection 2 of 3 since 1060, Alice 1 of 2)
+  11  t=1061  REQ: CLOSED "rate-limited: REQ rate exceeded"   (REQs 2 of 2 since 1002)
+  12  t=1062  REQ: passes to the REQ rules   (REQs 1 of 2 since 1062)
+
+== EVENT floods at the defaults: 120 per connection, 60 per key, 120 REQs, a minute each
+one connection, 130 EVENTs at t=1000 from 13 keys: 120 OK true, 10 refused, the first at #121
+  ["OK","1111111111111111111111111111111111111111111111111111111111111111",false,"rate-limited: event rate exceeded"]
+  at t=1059: OK false; at t=1060: OK true
+one key on 5 connections, 70 EVENTs at t=1000: 60 OK true, 10 refused, the first at #61
+  ["OK","1111111111111111111111111111111111111111111111111111111111111111",false,"rate-limited: event rate exceeded for this key"]
+connection A again: OK true; a fresh connection B, a new key: OK true
+64 new keys at t=1000 on one connection: 64 OK true; key 65 at t=1000: OK false
+  ["OK","1111111111111111111111111111111111111111111111111111111111111111",false,"rate-limited: too many keys are publishing; try again later"]
+  key 65 at t=1060, when the first windows ended: OK true
+
+== a REQ flood
+  #33: ["CLOSED","q33","restricted: too many active subscriptions"]
+  #121: ["CLOSED","q121","rate-limited: REQ rate exceeded"]
+one connection, 125 REQs at t=1000: 32 opened (EOSE), 88 CLOSED from #33 (32 subscriptions), 5 CLOSED from #121 (REQ rate)
+
+== huge REQs (on a connection with room)
+17 filters: ["CLOSED","h1","restricted: too many filters"]
+8 open filters: ["CLOSED","h2","restricted: query cost exceeds the configured limit"]
+7 open filters: opened
+two filters of 64 ids, 8595 bytes: ["CLOSED","h4","restricted: subscription filters exceed 8192 bytes"]
+one filter with an 8200-byte value: ["CLOSED","h5","invalid: malformed filter"]
+65-character sub id: ["NOTICE","invalid: subscription id must contain 1 to 64 characters"]
+
+== frames
+a text frame header claiming 131073 bytes: WS_FRAME_TOO_BIG, close 1009
+one claiming 131072 bytes: WS_FRAME_MORE: waits for the payload
+one claiming 2^40 bytes: WS_FRAME_TOO_BIG, close 1009
+
+== connections and slow clients
+16 connections hold every slot; the 17th: slot -1 (the relay closes it without a 101)
+deadlines, accepted or last frame at t=1000:
+  HTTP head unfinished:  t=1009: keep, t=1010: drop
+  part of a frame held:  t=1029: keep, t=1030: close 1008
+  idle WebSocket:        t=87400: keep
+
+== storage
+event 4: ["OK","0400000000000000000000000000000000000000000000000000000000000000",true,""]
+event 5: ["OK","0500000000000000000000000000000000000000000000000000000000000000",false,"error: relay storage is full"]
+the relay's store: 2048 records, 4194304 bytes
+
+== the client's poll budget
+  step 1: scan one frame
+  step 2: scan one frame
+  step 3: scan one frame
+  step 4: budget spent: close, RC_FAIL
+  step 5: budget spent: close, RC_FAIL
+
+== NIP-11
+583 bytes (RR_NIP11 is 506); its limitation object:
+  "limitation":{"max_message_length":131072,"max_subscriptions":32,"max_limit":127,"max_subid_length":64,"max_event_tags":256,"auth_required":false,"restricted_writes":true,"created_at_upper_limit":900,"default_limit":127,"events_per_minute":120,"reqs_per_minute":120,"events_per_minute_per_key":60}
+reqs_per_minute 0: rt_config_ok false, rt_nip11 -1
+events_per_minute 1000001: rt_config_ok false, rt_nip11 -1

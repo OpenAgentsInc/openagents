@@ -1,0 +1,85 @@
+// The checks of relay-limits.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/relay-limits.coax
+#load "../relay-limits.coax";
+
+// book:begin check
+// The Rust relay's counter (crates/nostr-relay at 0b401561a0^,
+// gateway/rate.rs), transliterated: a counter is created at a key's first
+// message (new_counter: started = now, count 0), and allow_counter resets it
+// when started.elapsed() >= window, refuses at count >= limit, else counts.
+RustCounter :: struct { exists: bool; started: int; count: int; }
+rust_allow :: (c: [] RustCounter, limit: int, window: int, now: int) -> bool {
+  if !c[0].exists { c[0] = RustCounter.{exists = true, started = now, count = 0}; }
+  if now - c[0].started >= window { c[0].started = now; c[0].count = 0; }
+  if c[0].count >= limit { return false; }
+  c[0].count += 1;
+  return true;
+}
+#test "rt_take gives the Rust relay's verdict on 4000 messages at irregular times" {
+  seed := 12345;
+  for limit: 1..<6 {
+    w: [1] RtWindow; r: [1] RustCounter; now := 10;    // before second 60: the creation time matters
+    for i: 0..<800 {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      now += (seed / 65536) % 9;           // 0 to 8 seconds apart, often the same second
+      #assert rt_take(w[..], limit, now) == rust_allow(r[..], limit, RT_WINDOW, now);
+    }
+  }
+}
+#test "the worked trace gives the hand verdicts" {
+  // Worked out in the chapter before the program ran: 1 OK, 2 OK, 3 key,
+  // 4 connection, 5 REQ ok, 6 REQ ok, 7 REQ refused, 8 connection, 9 OK,
+  // 10 OK, 11 REQ refused, 12 REQ ok.
+  cfg := RtConfig.{events = 3, reqs = 2, key_events = 2};
+  c: [1] RtConn; k: [1] RtKeys; alice := key_of(0xa1, 0); bob := key_of(0xb0, 0);
+  #assert rt_event(c[..], k[..], cfg, alice[..], 1000) == RT_OK && rt_event(c[..], k[..], cfg, alice[..], 1000) == RT_OK;
+  #assert rt_event(c[..], k[..], cfg, alice[..], 1001) == RT_KEY_RATE && rt_event(c[..], k[..], cfg, bob[..], 1002) == RT_EVENT_RATE;
+  #assert rt_req(c[..], cfg, 1002) == RT_OK && rt_req(c[..], cfg, 1003) == RT_OK && rt_req(c[..], cfg, 1004) == RT_REQ_RATE;
+  #assert rt_event(c[..], k[..], cfg, bob[..], 1059) == RT_EVENT_RATE;
+  #assert rt_event(c[..], k[..], cfg, bob[..], 1060) == RT_OK && rt_event(c[..], k[..], cfg, alice[..], 1060) == RT_OK;
+  #assert rt_req(c[..], cfg, 1061) == RT_REQ_RATE && rt_req(c[..], cfg, 1062) == RT_OK;
+  #assert c[0].events.started == 1060 && c[0].events.count == 2 && c[0].reqs.started == 1062;
+}
+#test "the floods give the hand counts" {
+  cfg := rt_default();
+  // 130 EVENTs from 13 keys: the connection's 120, then 10 refusals
+  a: [1] RtConn; k: [1] RtKeys;
+  for i: 0..<130 { r := send_event(a[..], k[..], cfg, 0xc0, i % 13, NOW); #assert (r == RT_OK) == (i < 120); #assert r == RT_OK || r == RT_EVENT_RATE; }
+  // one key on 5 connections of 14: the key's 60, then 10 refusals
+  k2: [1] RtKeys; conns: [5] RtConn;
+  for i: 0..<70 { r := send_event(conns[i / 14..<i / 14 + 1], k2[..], cfg, 0xd0, 0, NOW); #assert (r == RT_OK) == (i < 60); #assert r == RT_OK || r == RT_KEY_RATE; }
+  // RT_KEYS = 64 keys, then the 65th
+  k3: [1] RtKeys; c3: [1] RtConn;
+  for i: 0..<64 { #assert send_event(c3[..], k3[..], cfg, 0xf0, i, NOW) == RT_OK; }
+  #assert send_event(c3[..], k3[..], cfg, 0xf1, 0, NOW) == RT_KEYS_FULL && send_event(c3[..], k3[..], cfg, 0xf1, 0, NOW + 60) == RT_OK;
+  // 125 REQs: 32 open, 88 hit the subscription cap, 5 hit the REQ rate
+  subs: [RS_MAX_SUBS] RsSub; c: [1] RtConn; q: [64] u8; d: [8] u8;
+  open := 0; full := 0; rate := 0;
+  for i: 1..<126 {
+    sid: [8] u8; sid[0] = 'q'; s := num(i, d[..]); for ch, j: s { sid[1 + j] = ch; }
+    t := req_text(cast(string) sid[0..<1 + s.count], "{\"kinds\":[1]}", q[..]);
+    if rt_req(c[..], cfg, NOW) != RT_OK { rate += 1; continue; }
+    if rs_sub_open(subs[..], ms_read(t), t, RS_MAX_SUBS) >= 0 { open += 1; } else { full += 1; }
+  }
+  #assert open == 32 && full == 88 && rate == 5;
+}
+// relay-info's HAND_DOC (chapter 37) with the three rate fields written in
+// by hand before its closing "}}": 506 - 2 + 79 = 583 bytes.
+HAND_DOC :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,11,40,42],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127,\"events_per_minute\":120,\"reqs_per_minute\":120,\"events_per_minute_per_key\":60}}";
+#test "the NIP-11 document is the hand-written one, and JSON" {
+  doc: [1024] u8;
+  n := rt_nip11(RR_NIP11, rt_default(), doc[..]);
+  #assert HAND_DOC.count == 583 && n == 583 && cast(string) doc[0..<n] == HAND_DOC && json_valid(HAND_DOC);
+  // the Rust relay's defaults (gateway/config.rs: RATE_EVENTS_PER_MIN_IP 120,
+  // RATE_EVENTS_PER_MIN_PUBKEY 60, RATE_REQ_PER_MIN_IP 120)
+  #assert rt_default().events == 120 && rt_default().key_events == 60 && rt_default().reqs == 120;
+}
+#test "the R1 limits are the Rust relay's, as relay_server.coax's header states" {
+  #assert RS_MAX_MESSAGE == 131072 && RS_MAX_SUBS == 32 && RS_MAX_FILTERS == 16 && RS_MAX_LIMIT == 127;
+  #assert RS_MAX_COST == 100000 && RS_MAX_TAGS == 256 && RS_FUTURE == 900 && RS_SUB_TEXT == 8192;
+  #assert RR_HEAD_S == 10 && RR_FRAME_S == 30 && RR_CLOSE_SLOW == 1008 && RSD_MAX == 2048 && RSD_ARENA == 4194304;
+  // 8 open filters cost 8 x (127 + 0) x 100 = 101600 > 100000; 7 cost 88900
+  #assert 8 * 127 * 100 > RS_MAX_COST && 7 * 127 * 100 <= RS_MAX_COST;
+}
+// book:end check

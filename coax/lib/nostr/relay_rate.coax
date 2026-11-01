@@ -1,0 +1,273 @@
+// Rate limits for the Coax relay (Nostr From Scratch, chapter 44): how many
+// EVENTs and REQs one connection may send in a minute, and how many EVENTs
+// one key may publish in a minute across every connection.
+//
+// The rule is the Rust relay's (crates/nostr-relay at 0b401561a0^,
+// gateway/rate.rs allow_counter): fixed windows of RT_WINDOW seconds. A
+// window opens at the first message after the previous one ended; each
+// message in it counts one, and a message after `limit` of them is refused
+// with a "rate-limited:" reason until the window ends. The Rust relay's
+// defaults were 120 EVENTs and 120 REQs a minute per IP address and 60
+// EVENTs a minute per pubkey; they are this unit's defaults. The C host
+// gives the relay no peer address, so a connection stands in for an IP.
+// A key table that is full refuses a new key, as the Rust relay refuses
+// when MAX_RATE_KEYS keys are tracked.
+//
+// The limits are a value (RtConfig), and rt_nip11 writes that same value
+// into the NIP-11 document's limitation object, so what is advertised is
+// what is enforced. NIP-11 has no standard rate fields: events_per_minute,
+// reqs_per_minute and events_per_minute_per_key are this relay's names,
+// and NIP-11 clients ignore fields they don't know.
+//
+// This unit loads nothing and only decides. coax/relay/relay.coax (R1)
+// does not call it yet: the running relay has no rate limits.
+#authority;
+
+RT_WINDOW :: 60;            // seconds in one window
+RT_LIMIT_MAX :: 1000000;    // the largest limit a configuration may set
+RT_KEYS :: 64;              // keys tracked at once
+// Decisions. RT_OK lets the message through.
+RT_OK :: 0; RT_EVENT_RATE :: 1; RT_REQ_RATE :: 2; RT_KEY_RATE :: 3; RT_KEYS_FULL :: 4;
+RT_REASONS :: 5;
+
+RtConfig :: struct { events: int; reqs: int; key_events: int; }
+RtWindow :: struct { started: int; count: int; }    // count 0: no window open
+RtConn :: struct { events: RtWindow; reqs: RtWindow; }
+RtKeys :: struct { key: [2048] u8; w: [RT_KEYS] RtWindow; n: int; }   // RT_KEYS x 32 bytes
+
+#test "the defaults are the Rust relay's, and a configuration needs every limit in range" {
+  d := rt_default();
+  #assert d.events == 120 && d.reqs == 120 && d.key_events == 60 && rt_config_ok(d);
+  #assert RT_KEYS * 32 == 2048;
+  c := d; c.events = 0; #assert !rt_config_ok(c);
+  c = d; c.reqs = 0; #assert !rt_config_ok(c);
+  c = d; c.key_events = 0; #assert !rt_config_ok(c);
+  c = RtConfig.{events = 1, reqs = 1, key_events = 1}; #assert rt_config_ok(c);
+  c = RtConfig.{events = RT_LIMIT_MAX, reqs = RT_LIMIT_MAX, key_events = RT_LIMIT_MAX}; #assert rt_config_ok(c);
+  c.events = RT_LIMIT_MAX + 1; #assert !rt_config_ok(c);
+  c.events = 1; c.reqs = RT_LIMIT_MAX + 1; #assert !rt_config_ok(c);
+  c.reqs = 1; c.key_events = RT_LIMIT_MAX + 1; #assert !rt_config_ok(c);
+  c.key_events = -5; #assert !rt_config_ok(c);
+}
+rt_default :: () -> RtConfig { return RtConfig.{events = 120, reqs = 120, key_events = 60}; }
+rt_limit_ok :: (v: int) -> bool { return v >= 1 && v <= RT_LIMIT_MAX; }
+rt_config_ok :: (c: RtConfig) -> bool {
+  return rt_limit_ok(c.events) && rt_limit_ok(c.reqs) && rt_limit_ok(c.key_events);
+}
+
+#test "a window lets limit messages through, refuses the rest, and opens again after RT_WINDOW" {
+  w: [1] RtWindow;
+  // the first message opens a window at its own time, even before second 60
+  #assert rt_take(w[..], 3, 10) && w[0].started == 10 && w[0].count == 1;
+  #assert rt_take(w[..], 3, 11) && rt_take(w[..], 3, 12) && w[0].count == 3;
+  #assert !rt_take(w[..], 3, 13) && !rt_take(w[..], 3, 69) && w[0].count == 3 && w[0].started == 10;
+  #assert rt_take(w[..], 3, 70) && w[0].started == 70 && w[0].count == 1;
+  // a refused message is not counted
+  #assert rt_take(w[..], 3, 70) && rt_take(w[..], 3, 70) && !rt_take(w[..], 3, 70) && w[0].count == 3;
+  // a clock that went back opens a new window
+  #assert rt_take(w[..], 3, 50) && w[0].started == 50 && w[0].count == 1;
+  // a limit of 1
+  o: [1] RtWindow;
+  #assert rt_take(o[..], 1, 1000) && !rt_take(o[..], 1, 1059) && rt_take(o[..], 1, 1060);
+  #assert rt_window_ended(o[0], 1120) && !rt_window_ended(o[0], 1119) && rt_window_ended(o[0], 1059);
+  z: RtWindow; #assert rt_window_ended(z, 0) && rt_window_ended(z, 5);
+}
+// book:begin take
+// Whether w no longer counts at now: never opened, RT_WINDOW seconds old,
+// or opened after now (the clock went back).
+rt_window_ended :: (w: RtWindow, now: int) -> bool {
+  return w.count == 0 || now - w.started >= RT_WINDOW || now < w.started;
+}
+// One message at now against limit: true lets it through and counts it.
+rt_take :: (w: [] RtWindow, limit: int, now: int) -> bool {
+  if rt_window_ended(w[0], now) { w[0].started = now; w[0].count = 0; }
+  if w[0].count >= limit { return false; }
+  w[0].count += 1;
+  return true;
+}
+// book:end take
+
+#test "a key's window is found, reused when it ended, or refused when the table is full" {
+  k: [1] RtKeys; a: [32] u8; b: [32] u8; b[31] = 1;
+  #assert rt_key_slot(k[..], a[..], 100) == 0 && k[0].n == 1 && k[0].w[0].count == 0;
+  // a slot whose window never opened is free for the next key
+  #assert rt_key_slot(k[..], b[..], 100) == 0 && k[0].n == 1 && k[0].key[31] == 1;
+  k[0].w[0] = RtWindow.{started = 100, count = 1};
+  #assert rt_key_slot(k[..], b[..], 100) == 0 && k[0].w[0].count == 1;
+  #assert rt_key_slot(k[..], a[..], 100) == 1 && k[0].n == 2 && k[0].key[63] == 0;
+  k[0].w[1] = RtWindow.{started = 100, count = 1};
+  #assert rt_key_slot(k[..], a[0..<31], 100) == -1;
+  // fill the table; every window is open at 100
+  for i: 2..<RT_KEYS { c: [32] u8; c[0] = cast(u8) i; s := rt_key_slot(k[..], c[..], 100); #assert s == i; k[0].w[s] = RtWindow.{started = 100, count = 1}; }
+  #assert k[0].n == RT_KEYS;
+  n: [32] u8; n[5] = 9;
+  #assert rt_key_slot(k[..], n[..], 159) == -1 && k[0].n == RT_KEYS;
+  // a known key still finds its slot in a full table
+  #assert rt_key_slot(k[..], a[..], 159) == 1 && k[0].w[1].count == 1;
+  // once a window ended, a new key takes the first such slot, with a fresh window
+  #assert k[0].key[32 * 7] == 7 && k[0].key[32 * 9] == 9;
+  for i: 0..<RT_KEYS { k[0].w[i].started = 130; }
+  k[0].w[7].started = 100; k[0].w[9].started = 100;
+  #assert rt_key_slot(k[..], n[..], 160) == 7 && k[0].key[32 * 7 + 5] == 9 && k[0].key[32 * 7] == 0 && k[0].w[7].count == 0;
+  #assert k[0].n == RT_KEYS && rt_key_slot(k[..], n[..], 160) == 7;
+  // with slot 0 ended as well, slot 0 is the first
+  m: [32] u8; m[6] = 4; k[0].w[0].started = 100;
+  #assert rt_key_slot(k[..], m[..], 160) == 0;
+}
+// The slot for key: its own, else the first slot whose window ended, else
+// a new one; -1 when the table is full of open windows or key isn't 32 bytes.
+rt_key_slot :: (k: [] RtKeys, key: [] u8, now: int) -> int {
+  if key.count != 32 { return -1; }
+  for i: 0..<k[0].n {
+    same := true;
+    for b: 0..<32 { if k[0].key[32 * i + b] != key[b] { same = false; } }
+    if same { return i; }
+  }
+  at := -1;
+  for i: 0..<k[0].n { if at < 0 && rt_window_ended(k[0].w[i], now) { at = i; } }
+  if at < 0 {
+    if k[0].n >= RT_KEYS { return -1; }
+    at = k[0].n; k[0].n += 1;
+  }
+  for b: 0..<32 { k[0].key[32 * at + b] = key[b]; }
+  k[0].w[at] = RtWindow.{};
+  return at;
+}
+
+#test "EVENT: the connection's window first, then the key's" {
+  cfg := RtConfig.{events = 3, reqs = 2, key_events = 2};
+  c: [1] RtConn; k: [1] RtKeys; a: [32] u8; b: [32] u8; b[0] = 1;
+  #assert rt_event(c[..], k[..], cfg, a[..], 1000) == RT_OK && rt_event(c[..], k[..], cfg, a[..], 1000) == RT_OK;
+  #assert rt_event(c[..], k[..], cfg, a[..], 1001) == RT_KEY_RATE && c[0].events.count == 3;
+  #assert rt_event(c[..], k[..], cfg, b[..], 1002) == RT_EVENT_RATE && k[0].n == 1;
+  // another connection has its own window; the key's window is shared
+  d: [1] RtConn;
+  #assert rt_event(d[..], k[..], cfg, b[..], 1002) == RT_OK && rt_event(d[..], k[..], cfg, a[..], 1002) == RT_KEY_RATE;
+  #assert rt_event(c[..], k[..], cfg, a[..], 1060) == RT_OK;
+  // a full key table
+  f: [1] RtKeys; f[0].n = RT_KEYS;
+  for i: 0..<RT_KEYS { f[0].w[i] = RtWindow.{started = 1000, count = 1}; f[0].key[32 * i] = 200; }
+  e: [1] RtConn;
+  #assert rt_event(e[..], f[..], cfg, a[..], 1000) == RT_KEYS_FULL;
+}
+// One EVENT signed by key on connection c at now. The connection's window
+// is charged first; a refusal there doesn't charge the key.
+rt_event :: (c: [] RtConn, k: [] RtKeys, cfg: RtConfig, key: [] u8, now: int) -> int {
+  w: [1] RtWindow; w[0] = c[0].events;
+  ok := rt_take(w[..], cfg.events, now);
+  c[0].events = w[0];
+  if !ok { return RT_EVENT_RATE; }
+  at := rt_key_slot(k, key, now);
+  if at < 0 { return RT_KEYS_FULL; }
+  w[0] = k[0].w[at];
+  ok = rt_take(w[..], cfg.key_events, now);
+  k[0].w[at] = w[0];
+  if !ok { return RT_KEY_RATE; }
+  return RT_OK;
+}
+#test "REQ: the connection's own window" {
+  cfg := RtConfig.{events = 3, reqs = 2, key_events = 2};
+  c: [1] RtConn;
+  #assert rt_req(c[..], cfg, 5) == RT_OK && rt_req(c[..], cfg, 6) == RT_OK && rt_req(c[..], cfg, 7) == RT_REQ_RATE;
+  #assert c[0].events.count == 0 && rt_req(c[..], cfg, 65) == RT_OK;
+}
+rt_req :: (c: [] RtConn, cfg: RtConfig, now: int) -> int {
+  w: [1] RtWindow; w[0] = c[0].reqs;
+  ok := rt_take(w[..], cfg.reqs, now);
+  c[0].reqs = w[0];
+  return ifx ok then RT_OK else RT_REQ_RATE;
+}
+
+#test "every refusal is rate-limited, with its text" {
+  for r: 0..<RT_REASONS { #assert (rt_prefix(r).count == 0) == (r == RT_OK) && (rt_text(r).count == 0) == (r == RT_OK); }
+  #assert rt_prefix(RT_EVENT_RATE) == "rate-limited" && rt_prefix(RT_KEYS_FULL) == "rate-limited";
+  #assert rt_text(RT_EVENT_RATE) == "event rate exceeded" && rt_text(RT_REQ_RATE) == "REQ rate exceeded";
+  #assert rt_text(RT_KEY_RATE) == "event rate exceeded for this key";
+  #assert rt_text(RT_KEYS_FULL) == "too many keys are publishing; try again later";
+  #assert rt_prefix(-1) == "error" && rt_prefix(RT_REASONS) == "error" && rt_text(-1) == "unknown" && rt_text(RT_REASONS) == "unknown";
+}
+rt_prefix :: (r: int) -> string {
+  if r < 0 || r >= RT_REASONS { return "error"; }
+  if r == RT_OK { return ""; }
+  return "rate-limited";
+}
+rt_text :: (r: int) -> string {
+  t := [5] string.["", "event rate exceeded", "REQ rate exceeded", "event rate exceeded for this key",
+    "too many keys are publishing; try again later"];
+  if r < 0 || r >= RT_REASONS { return "unknown"; }
+  return t[r];
+}
+
+// ---- NIP-11 -----------------------------------------------------------------
+
+#test "the NIP-11 document carries the configured limits" {
+  out: [256] u8;
+  n := rt_nip11("{\"limitation\":{\"max_limit\":127}}", rt_default(), out[..]);
+  #assert cast(string) out[0..<n] == "{\"limitation\":{\"max_limit\":127,\"events_per_minute\":120,\"reqs_per_minute\":120,\"events_per_minute_per_key\":60}}";
+  n = rt_nip11("{\"limitation\":{}}", RtConfig.{events = 1, reqs = 1000000, key_events = 7}, out[..]);
+  #assert cast(string) out[0..<n] == "{\"limitation\":{\"events_per_minute\":1,\"reqs_per_minute\":1000000,\"events_per_minute_per_key\":7}}";
+  // refusals: a bad configuration, a document that doesn't end in its
+  // limitation object, and too little room
+  bad := rt_default(); bad.events = 0;
+  #assert rt_nip11("{\"limitation\":{}}", bad, out[..]) == -1;
+  #assert rt_nip11("{\"limitation\":{},\"x\":1}", rt_default(), out[..]) == -1;
+  #assert rt_nip11("}}", rt_default(), out[..]) == -1 && rt_nip11("", rt_default(), out[..]) == -1;
+  #assert rt_nip11("{\"limitation\":{\"a\":1}x}", rt_default(), out[..]) == -1;
+  #assert rt_nip11("{\"limitation\":{\"a\":{\"b\":1}}}", rt_default(), out[..]) == -1;
+  #assert rt_nip11("{\"x\":{\"limitation\":{\"a\":1}}}", rt_default(), out[..]) == -1;
+  #assert rt_nip11("{\"limitation\":{\"a\":1}", rt_default(), out[..]) == -1;
+  #assert rt_nip11("{\"limitation\":{\"a\":{}}", rt_default(), out[..]) == -1;
+  #assert rt_nip11("xxxxxxxxxxxxxxxxxx}}", rt_default(), out[..]) == -1;
+  #assert rt_ends("}}", "}}") && rt_ends("a}}", "}}") && !rt_ends("}", "}}") && !rt_ends("}a", "}}") && !rt_ends("a}", "}}");
+  // the last limitation object counts; one byte in it already needs the comma
+  n = rt_nip11("{\"limitation\":{},\"limitation\":{1}}", rt_default(), out[..]);
+  #assert cast(string) out[0..<n] == "{\"limitation\":{},\"limitation\":{1,\"events_per_minute\":120,\"reqs_per_minute\":120,\"events_per_minute_per_key\":60}}";
+  #assert rt_nip11("\"limitation\":{}}", rt_default(), out[..]) > 0 && rt_nip11("\"limitation\":{}", rt_default(), out[..]) == -1;
+  full := "{\"limitation\":{\"max_limit\":127}}";
+  want := 109;    // 32 bytes of base, minus the closing 2, plus 79 bytes of fields
+  #assert rt_nip11(full, rt_default(), out[0..<want]) == want && rt_nip11(full, rt_default(), out[0..<want - 1]) == -1;
+  #assert rt_nip11(full, rt_default(), out[0..<10]) == -1;
+  #assert rt_decimal(out[..], 0, 0) == 1 && out[0] == '0' && rt_decimal(out[..], 3, 905) == 6 && cast(string) out[3..<6] == "905";
+  #assert rt_decimal(out[0..<2], 0, 905) == -1 && rt_decimal(out[0..<3], 0, 905) == 3 && rt_decimal(out[..], -1, 5) == -1;
+}
+// Writes v in decimal at out[at..]: the end, or -1 when it doesn't fit.
+rt_decimal :: (out: [] u8, at: int, v: int) -> int {
+  digits: [20] u8; d := 0; p := v;
+  while d == 0 || p > 0 { digits[d] = cast(u8) ('0' + p % 10); p /= 10; d += 1; }
+  if at < 0 || at + d > out.count { return -1; }
+  k := at;
+  while d > 0 { d -= 1; out[k] = digits[d]; k += 1; }
+  return k;
+}
+rt_ends :: (s: string, suffix: string) -> bool {
+  return s.count >= suffix.count && s[s.count - suffix.count..<s.count] == suffix;
+}
+rt_raw :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+// book:begin nip11
+// The relay's document base with cfg's three limits added to its
+// limitation object: the length written, or -1. The limitation object must
+// be the document's last field and flat (numbers and booleans, as NIP-11's
+// are): base ends in "}}" and holds "\"limitation\":{" with no brace after
+// it but those two. An empty object gets no leading comma.
+RT_LIMITATION :: "\"limitation\":{";
+rt_nip11 :: (base: string, cfg: RtConfig, out: [] u8) -> int {
+  if !rt_config_ok(cfg) || !rt_ends(base, "}}") { return -1; }
+  body := base[0..<base.count - 2];
+  // the last "limitation":{ in the body
+  at := body.count - RT_LIMITATION.count;
+  while at >= 0 && body[at..<at + RT_LIMITATION.count] != RT_LIMITATION { at -= 1; }
+  if at < 0 { return -1; }
+  at += RT_LIMITATION.count;
+  for i: at..<body.count { if body[i] == '{' || body[i] == '}' { return -1; } }
+  k := rt_raw(out, 0, body);
+  if body.count > at { k = rt_raw(out, k, ","); }
+  k = rt_raw(out, k, "\"events_per_minute\":"); k = rt_decimal(out, k, cfg.events);
+  k = rt_raw(out, k, ",\"reqs_per_minute\":"); k = rt_decimal(out, k, cfg.reqs);
+  k = rt_raw(out, k, ",\"events_per_minute_per_key\":"); k = rt_decimal(out, k, cfg.key_events);
+  return rt_raw(out, k, "}}");
+}
+// book:end nip11

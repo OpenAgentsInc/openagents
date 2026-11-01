@@ -886,7 +886,7 @@
    "number": 44,
    "title": "Limits, policy and floods",
    "file": "ch044-limits-policy-and-floods.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     34,
@@ -894,7 +894,12 @@
    ],
    "source": [
     "coax/lib/net/relay_poll_budget.coax",
-    "coax/lib/nostr/relay_server.coax"
+    "coax/lib/nostr/relay_server.coax",
+    "coax/lib/nostr/relay_rate.coax",
+    "coax/lib/nostr/relay_route.coax",
+    "coax/lib/nostr/store_core.coax",
+    "nostr/examples/relay-limits.coax",
+    "nostr/examples/checks/relay-limits.coax"
    ],
    "qualified_targets": [
     "cpu"

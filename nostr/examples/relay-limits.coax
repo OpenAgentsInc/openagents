@@ -1,0 +1,320 @@
+// book:begin example
+#load "../../coax/lib/nostr/relay_server.coax";
+#load "../../coax/lib/nostr/relay_route.coax";
+#load "../../coax/lib/nostr/relay_rate.coax";
+#load "../../coax/lib/nostr/store_core.coax";
+#load "../../coax/lib/net/relay_poll_budget.coax";
+#import "Basic";
+
+// Every clock here is fixed: the floods happen at NOW, and windows are
+// moved by passing a later second.
+NOW :: 1000;
+
+// ---- small helpers ------------------------------------------------------------
+
+// A 32-byte key whose first byte is tag and second is n.
+key_of :: (tag: u8, n: int) -> [32] u8 { k: [32] u8; k[0] = tag; k[1] = cast(u8) n; return k; }
+// One EVENT signed by key_of(tag, n) on connection c.
+send_event :: (c: [] RtConn, k: [] RtKeys, cfg: RtConfig, tag: u8, n: int, now: int) -> int { key := key_of(tag, n); return rt_event(c, k, cfg, key[..], now); }
+rt_name :: (r: int) -> string {
+  if r == RT_OK { return "OK true"; }
+  return "OK false";
+}
+// The OK message the relay would send for a rate decision on an event whose
+// id is id.
+ok_line :: (id: [] u8, r: int, out: [] u8) -> string {
+  n := ms_write_ok(id, r == RT_OK, rt_prefix(r), rt_text(r), out);
+  return cast(string) out[0..<n];
+}
+// Writes ["REQ","<sub>",<filters>] into out.
+req_text :: (sub: string, filters: string, out: [] u8) -> string {
+  k := 0;
+  for c: "[\"REQ\",\"" { out[k] = c; k += 1; }
+  for c: sub { out[k] = c; k += 1; }
+  out[k] = '"'; out[k + 1] = ','; k += 2;
+  for c: filters { out[k] = c; k += 1; }
+  out[k] = ']'; k += 1;
+  return cast(string) out[0..<k];
+}
+// The decimal text of v into out.
+num :: (v: int, out: [] u8) -> string {
+  n := rt_decimal(out, 0, v);
+  return cast(string) out[0..<n];
+}
+
+// ---- 1. the worked budget -------------------------------------------------------
+
+// book:begin trace
+// The chapter's hand trace: a configuration of 3 EVENTs and 2 REQs per
+// connection and 2 EVENTs per key, a minute each, and eleven messages on
+// one connection from Alice and Bob.
+Step :: struct { t: int; verb: string; who: int; }   // who: 0 Alice, 1 Bob (EVENT only)
+st :: (t: int, verb: string, who: int) -> Step { return Step.{t = t, verb = verb, who = who}; }
+// The count in the window of the key whose first byte is Alice's (0xa1) or
+// Bob's (0xb0), without changing the table; 0 when it has no slot.
+key_count :: (k: [] RtKeys, who: int) -> int {
+  tag := ifx who == 0 then 0xa1 else 0xb0;
+  for i: 0..<k[0].n { if k[0].key[32 * i] == cast(u8) tag { return k[0].w[i].count; } }
+  return 0;
+}
+trace :: () {
+  cfg := RtConfig.{events = 3, reqs = 2, key_events = 2};
+  c: [1] RtConn; k: [1] RtKeys;
+  keys: [2] [32] u8; keys[0] = key_of(0xa1, 0); keys[1] = key_of(0xb0, 0);
+  names := [2] string.["Alice", "Bob"];
+  steps := [12] Step.[
+    st(1000, "EVENT", 0), st(1000, "EVENT", 0), st(1001, "EVENT", 0), st(1002, "EVENT", 1),
+    st(1002, "REQ", 0), st(1003, "REQ", 0), st(1004, "REQ", 0), st(1059, "EVENT", 1),
+    st(1060, "EVENT", 1), st(1060, "EVENT", 0), st(1061, "REQ", 0), st(1062, "REQ", 0)];
+  for s, i: steps {
+    if s.verb == "EVENT" {
+      r := rt_event(c[..], k[..], cfg, keys[s.who][..], s.t);
+      print("  %  t=%  EVENT %: %", i + 1, s.t, names[s.who], rt_name(r));
+      if r != RT_OK { print(" \"%: %\"", rt_prefix(r), rt_text(r)); }
+      print("   (connection % of 3 since %, % % of 2)\n", c[0].events.count, c[0].events.started, names[s.who], key_count(k[..], s.who));
+    } else {
+      r := rt_req(c[..], cfg, s.t);
+      print("  %  t=%  REQ: %", i + 1, s.t, ifx r == RT_OK then "passes to the REQ rules" else "CLOSED");
+      if r != RT_OK { print(" \"%: %\"", rt_prefix(r), rt_text(r)); }
+      print("   (REQs % of 2 since %)\n", c[0].reqs.count, c[0].reqs.started);
+    }
+  }
+}
+// book:end trace
+
+// ---- 2. floods --------------------------------------------------------------------
+
+// book:begin event_flood
+// EVENT floods at the relay's defaults (120 a minute per connection, 60 per
+// key). Each EVENT is charged before its signature is checked, so a flood
+// of bad signatures costs the same budget as good ones.
+event_flood :: () {
+  cfg := rt_default(); out: [256] u8; id: [32] u8;
+  for i: 0..<32 { id[i] = 0x11; }
+
+  // One connection, 130 EVENTs in one second from 13 keys, 10 each.
+  a: [1] RtConn; k: [1] RtKeys; ok := 0; first := -1; last := RT_OK;
+  for i: 0..<130 {
+    r := send_event(a[..], k[..], cfg, 0xc0, i % 13, NOW);
+    if r == RT_OK { ok += 1; } else if first < 0 { first = i + 1; last = r; }
+  }
+  print("one connection, 130 EVENTs at t=% from 13 keys: % OK true, % refused, the first at #%\n", NOW, ok, 130 - ok, first);
+  print("  %\n", ok_line(id[..], last, out[..]));
+
+  // The same connection at t=NOW+59 and t=NOW+60.
+  print("  at t=%: %; at t=%: %\n", NOW + 59, rt_name(send_event(a[..], k[..], cfg, 0xc0, 0, NOW + 59)),
+    NOW + 60, rt_name(send_event(a[..], k[..], cfg, 0xc0, 0, NOW + 60)));
+
+  // One key on five connections, 14 EVENTs each: the key's window is shared.
+  k2: [1] RtKeys; conns: [5] RtConn; ok = 0; first = -1;
+  for c: 0..<5 {
+    for e: 0..<14 {
+      r := send_event(conns[c..<c + 1], k2[..], cfg, 0xd0, 0, NOW);
+      if r == RT_OK { ok += 1; } else if first < 0 { first = c * 14 + e + 1; last = r; }
+    }
+  }
+  print("one key on 5 connections, 70 EVENTs at t=%: % OK true, % refused, the first at #%\n", NOW, ok, 70 - ok, first);
+  print("  %\n", ok_line(id[..], last, out[..]));
+
+  // Fairness: while connection A is refused, connection B is not.
+  b: [1] RtConn;
+  print("connection A again: %; a fresh connection B, a new key: %\n",
+    rt_name(send_event(a[..], k[..], cfg, 0xc0, 99, NOW + 60)), rt_name(send_event(b[..], k[..], cfg, 0xe0, 0, NOW + 60)));
+
+  // The key table: RT_KEYS keys with open windows, then one more.
+  k3: [1] RtKeys; c3: [1] RtConn; ok = 0;
+  for i: 0..<RT_KEYS { if send_event(c3[..], k3[..], cfg, 0xf0, i, NOW) == RT_OK { ok += 1; } }
+  r := send_event(c3[..], k3[..], cfg, 0xf1, 0, NOW);
+  print("% new keys at t=% on one connection: % OK true; key % at t=%: %\n", RT_KEYS, NOW, ok, RT_KEYS + 1, NOW, rt_name(r));
+  print("  %\n", ok_line(id[..], r, out[..]));
+  print("  key % at t=%, when the first windows ended: %\n", RT_KEYS + 1, NOW + 60, rt_name(send_event(c3[..], k3[..], cfg, 0xf1, 0, NOW + 60)));
+}
+// book:end event_flood
+
+// book:begin req_flood
+// 125 REQs in one second on one connection, each with a new subscription
+// id, through the relay's order: the REQ rate first, then rs_req's filter
+// rules, then rs_sub_open's 32 subscriptions.
+req_flood :: (subs: [] RsSub) {
+  cfg := rt_default(); c: [1] RtConn;
+  q: [256] u8; d: [8] u8; out: [256] u8;
+  open := 0; full := 0; rate := 0; first_full := -1; first_rate := -1;
+  last_full: string; last_rate: string;
+  for i: 1..<126 {
+    sid: [8] u8; sid[0] = 'q'; s := num(i, d[..]); for ch, j: s { sid[1 + j] = ch; }
+    sub := cast(string) sid[0..<1 + s.count];
+    t := req_text(sub, "{\"kinds\":[1]}", q[..]);
+    m := ms_read(t);
+    if rt_req(c[..], cfg, NOW) != RT_OK {
+      rate += 1; if first_rate < 0 { first_rate = i; }
+      n := ms_write_closed(sub, rt_prefix(RT_REQ_RATE), rt_text(RT_REQ_RATE), out[..]);
+      if i == 121 { print("  #121: %\n", cast(string) out[0..<n]); }
+      continue;
+    }
+    if rs_req(m, t) != RS_ACCEPT { continue; }
+    slot := rs_sub_open(subs, m, t, RS_MAX_SUBS);
+    if slot >= 0 { open += 1; continue; }
+    full += 1; if first_full < 0 { first_full = i; }
+    if i == 33 {
+      n := ms_write_closed(sub, rs_prefix(-slot), rs_text(-slot), out[..]);
+      print("  #33: %\n", cast(string) out[0..<n]);
+    }
+  }
+  print("one connection, 125 REQs at t=%: % opened (EOSE), % CLOSED from #% (32 subscriptions), % CLOSED from #% (REQ rate)\n",
+    NOW, open, full, first_full, rate, first_rate);
+}
+// book:end req_flood
+
+// book:begin huge
+// One REQ at each REQ limit, past it, as relay.coax's ry_message and ry_req
+// call them: rr_message for ms_read's verdict, then rs_req, then rs_sub_open.
+req_answer :: (t: string, subs: [] RsSub, out: [] u8) -> string {
+  m := ms_read(t);
+  sid := m.sub; sub := cast(string) sid[0..<m.sub_n];
+  r := rr_message(m.error, m.type, m.has_sub);
+  n := 0;
+  if r.action == RR_NOTICE { n = ms_write_notice(rs_prefix(r.reason), rs_text(r.reason), out); }
+  else if r.action == RR_CLOSED { n = ms_write_closed(sub, rs_prefix(r.reason), rs_text(r.reason), out); }
+  else {
+    v := rs_req(m, t);
+    if v == RS_ACCEPT { slot := rs_sub_open(subs, m, t, RS_MAX_SUBS); if slot >= 0 { return "opened"; } v = -slot; }
+    n = ms_write_closed(sub, rs_prefix(v), rs_text(v), out);
+  }
+  return cast(string) out[0..<n];
+}
+huge :: (subs: [] RsSub) {
+  big: [10000] u8; out: [512] u8; f: [9500] u8;
+  // 17 filters
+  k := 0; for i: 0..<17 { if i > 0 { f[k] = ','; k += 1; } f[k] = '{'; f[k + 1] = '}'; k += 2; }
+  print("17 filters: %\n", req_answer(req_text("h1", cast(string) f[0..<k], big[..]), subs, out[..]));
+  // 8 filters with no selector: 8 x 127 x 100 = 101600 > 100000
+  print("8 open filters: %\n", req_answer(req_text("h2", cast(string) f[0..<23], big[..]), subs, out[..]));
+  print("7 open filters: %\n", req_answer(req_text("h3", cast(string) f[0..<20], big[..]), subs, out[..]));
+  // two filters of 64 ids each: every filter reads, but together they are
+  // more than the RS_SUB_TEXT bytes a subscription keeps
+  k = 0;
+  for g: 0..<2 {
+    if g > 0 { f[k] = ','; k += 1; }
+    for c: "{\"ids\":[" { f[k] = c; k += 1; }
+    for i: 0..<64 {
+      if i > 0 { f[k] = ','; k += 1; }
+      f[k] = '"'; k += 1;
+      for h: 0..<64 { f[k] = "0123456789abcdef"[(g * 64 + i + h) % 16]; k += 1; }
+      f[k] = '"'; k += 1;
+    }
+    f[k] = ']'; f[k + 1] = '}'; k += 2;
+  }
+  print("two filters of 64 ids, % bytes: %\n", k, req_answer(req_text("h4", cast(string) f[0..<k], big[..]), subs, out[..]));
+  // one #t value of 8200 bytes: more than the filter reader's 8192 bytes of decoded text
+  k = 0; for c: "{\"#t\":[\"" { f[k] = c; k += 1; }
+  for i: 0..<8200 { f[k] = 'x'; k += 1; }
+  for c: "\"]}" { f[k] = c; k += 1; }
+  print("one filter with an 8200-byte value: %\n", req_answer(req_text("h5", cast(string) f[0..<k], big[..]), subs, out[..]));
+  // a 65-character subscription id
+  sid: [65] u8; for i: 0..<65 { sid[i] = 'a'; }
+  print("65-character sub id: %\n", req_answer(req_text(cast(string) sid[..], "{}", big[..]), subs, out[..]));
+}
+// book:end huge
+// The name of a wss_frame_read status (ws.coax's WS_FRAME_ codes).
+frame_name :: (s: int) -> string {
+  names := [8] string.["WS_FRAME_OK", "WS_FRAME_MORE", "WS_FRAME_RSV", "WS_FRAME_OPCODE", "WS_FRAME_MASKED", "WS_FRAME_CONTROL", "WS_FRAME_LENGTH", "WS_FRAME_TOO_BIG"];
+  return names[s];
+}
+
+// book:begin frames
+// Frame headers past the 131072-byte limit, read as relay.coax's ry_frames
+// reads them: the relay closes before any payload byte arrives.
+frames :: () {
+  hdr := [14] u8.[0x81, 0xff, 0, 0, 0, 0, 0, 2, 0, 1, 1, 2, 3, 4];   // 127-form length 131073, masked
+  f := wss_frame_read(cast(string) hdr[..], RS_MAX_MESSAGE);
+  a := rr_frame_read(f.status);
+  print("a text frame header claiming % bytes: %, close %\n", 131073, frame_name(f.status), a.code);
+  hdr[7] = 2; hdr[8] = 0; hdr[9] = 0;     // exactly 131072: admitted, waits for the payload
+  f = wss_frame_read(cast(string) hdr[..], RS_MAX_MESSAGE);
+  print("one claiming % bytes: %: %\n", 131072, frame_name(f.status), ifx rr_frame_read(f.status).action == RR_F_WAIT then "waits for the payload" else "close");
+  hdr[3] = 1; hdr[7] = 0;                 // 2^40 bytes
+  f = wss_frame_read(cast(string) hdr[..], RS_MAX_MESSAGE);
+  print("one claiming 2^40 bytes: %, close %\n", frame_name(f.status), rr_frame_read(f.status).code);
+}
+// book:end frames
+
+// book:begin slots
+// The 16 connection slots, then the deadlines that free them.
+slots :: () {
+  handles: [16] int;
+  for i: 0..<16 { handles[i] = -1; }
+  for i: 0..<16 { handles[rr_free_slot(handles[..])] = 100 + i; }
+  print("16 connections hold every slot; the 17th: slot % (the relay closes it without a 101)\n", rr_free_slot(handles[..]));
+  names := [3] string.["keep", "drop", "close 1008"];
+  print("deadlines, accepted or last frame at t=%:\n", NOW);
+  print("  HTTP head unfinished:  t=%: %, t=%: %\n", NOW + 9, names[rr_deadline(false, 40, NOW, NOW + 9)], NOW + 10, names[rr_deadline(false, 40, NOW, NOW + 10)]);
+  print("  part of a frame held:  t=%: %, t=%: %\n", NOW + 29, names[rr_deadline(true, 1, NOW, NOW + 29)], NOW + 30, names[rr_deadline(true, 1, NOW, NOW + 30)]);
+  print("  idle WebSocket:        t=%: %\n", NOW + 86400, names[rr_deadline(true, 0, NOW, NOW + 86400)]);
+}
+// book:end slots
+
+// book:begin storage
+// A store with room for four records takes four events and refuses the
+// fifth; relay.coax sizes it RSD_MAX records and RSD_ARENA bytes.
+storage :: () {
+  arena: [4096] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  out: [256] u8;
+  for i: 0..<5 {
+    c: RsdRec; c.id[0] = cast(u8) (i + 1); c.kind = 1; c.created = NOW; c.expiry = -1;
+    r := ns_store_admit(s[..], c, "{\"kind\":1}", true);
+    n := ms_write_ok(c.id[..], rs_accepted(r), rs_prefix(r), rs_text(r), out[..]);
+    if i >= 3 { print("event %: %\n", i + 1, cast(string) out[0..<n]); }
+  }
+  print("the relay's store: % records, % bytes\n", RSD_MAX, RSD_ARENA);
+}
+// book:end storage
+
+// book:begin client
+// The client's own work bound (relay_conn_poll_budget): one poll may take
+// at most max_steps frame scans and reads, here 3, over a burst of 5 frames.
+client :: () {
+  for used: 0..<5 { print("  step %: %\n", used + 1, ifx rcp_step(used, 3) then "scan one frame" else "budget spent: close, RC_FAIL"); }
+}
+// book:end client
+
+// ---- 3. NIP-11 ----------------------------------------------------------------------
+
+// book:begin nip11
+// The relay's document with the rate limits added from the same RtConfig
+// the decisions use, and a configuration that is refused.
+advertise :: () {
+  doc: [1024] u8;
+  n := rt_nip11(RR_NIP11, rt_default(), doc[..]);
+  at := 0;
+  while cast(string) doc[at..<at + RT_LIMITATION.count] != RT_LIMITATION { at += 1; }
+  print("% bytes (RR_NIP11 is %); its limitation object:\n  %\n", n, RR_NIP11.count, cast(string) doc[at..<n - 1]);
+  bad := rt_default(); bad.reqs = 0;
+  print("reqs_per_minute 0: rt_config_ok %, rt_nip11 %\n", rt_config_ok(bad), rt_nip11(RR_NIP11, bad, doc[..]));
+  bad = rt_default(); bad.events = RT_LIMIT_MAX + 1;
+  print("events_per_minute %: rt_config_ok %, rt_nip11 %\n", bad.events, rt_config_ok(bad), rt_nip11(RR_NIP11, bad, doc[..]));
+}
+// book:end nip11
+
+main :: () {
+  print("== the worked budget: 3 EVENTs and 2 REQs per connection, 2 EVENTs per key, a minute each\n");
+  trace();
+  print("\n== EVENT floods at the defaults: % per connection, % per key, % REQs, a minute each\n", rt_default().events, rt_default().key_events, rt_default().reqs);
+  event_flood();
+  subs: [RS_MAX_SUBS] RsSub;
+  print("\n== a REQ flood\n");
+  req_flood(subs[..]);
+  print("\n== huge REQs (on a connection with room)\n");
+  for i: 0..<RS_MAX_SUBS { subs[i].live = false; }
+  huge(subs[..]);
+  print("\n== frames\n");
+  frames();
+  print("\n== connections and slow clients\n");
+  slots();
+  print("\n== storage\n");
+  storage();
+  print("\n== the client's poll budget\n");
+  client();
+  print("\n== NIP-11\n");
+  advertise();
+}
+// book:end example
