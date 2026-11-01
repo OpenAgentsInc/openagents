@@ -1,0 +1,19 @@
+{
+  "schema": "psionic.panda-scheduled-pd-validation.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 116077,
+    "sha256": "32b5d8ae1cc6e07dba317677102681a831d5b94a19c5e7df78167b57f017f640"
+  },
+  "factory": {
+    "bytes": 4096,
+    "sha256": "f34f0fbb9846df482b4c7f538c487755647ef1625b083db03bae26950b454a1c"
+  },
+  "initial": {
+    "bytes": 1176,
+    "sha256": "d395e757d6782f61f760118ecea9e767f6d5193d2a64521f7d772a863ec08866"
+  },
+  "metadata_only": true,
+  "new_reference_generation_calls": 0,
+  "new_controller_or_plant_or_SDK_calls": 0
+}

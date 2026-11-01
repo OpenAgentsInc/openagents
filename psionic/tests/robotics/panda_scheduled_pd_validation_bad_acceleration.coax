@@ -1,0 +1,3 @@
+#load "panda-scheduled-pd-validation-control.coax";
+bad :: (x:PsvReference)->pfku.Quantity(PqtAcceleration,f64) {return x.reference.rate[0];}
+main :: () {x:PsvReference;wrong:=bad(x);}

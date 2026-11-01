@@ -1,0 +1,34 @@
+#load "panda-scheduled-pd.coax";
+#load "panda-scheduled-pd-validation-control.coax";
+#authority;
+#test "Validation begin uses actual new pose all nine initial speeds and initial source margins" {
+ x:=psv_case_owned(7);for i:0..<9 {x.initial.v[i]=0.01*f64(i+1);}s:=psv_begin_owned(1,3,x.initial);#assert s.profile==1 && s.case_id==3 && s.valid==1 && s.samples==0;b:=pgs_bounds();for i:0..<9 {#assert s.peak_speed[i]==abs(x.initial.v[i]) && s.minimum_margin[i]==pgs_min(x.initial.q[i]-b.lower[i],b.upper[i]-x.initial.q[i]);}
+ x=psv_case_owned(7);s=psv_begin_owned(1,3,x.initial);#assert s.peak_speed[6]==2;
+}
+#test "Validation metric adaptation preserves initial AND all post margins without changing old reducer" {
+ cfg:=psv_case_owned(0);b:=pgs_bounds();for i:0..<9 {cfg.initial.q[i]=b.lower[i]+0.001;}s:=psv_begin_owned(0,0,cfg.initial);o:PgsObservation;o.q=cfg.initial.q;for i:0..<9 {o.q[i]+=0.001;}r:=pnt_reference_owned(psv_case_owned(0),1);s=psv_add_owned(s,o,r.reference,cfg.initial.q);for i:0..<9 {#assert abs(s.minimum_margin[i]-0.001)<2e-15;}#assert s.samples==1;
+ for i:0..<9 {o.q[i]=b.lower[i]+0.0005;}s=psv_add_owned(s,o,r.reference,cfg.initial.q);for i:0..<9 {#assert abs(s.minimum_margin[i]-0.0005)<2e-15;}#assert s.samples==2;
+}
+#test "Validation score binds new signed brake lineage and new postreference independent of old wrappers" {
+ for context:[2]int.[3,7] {cfg:=psv_case_owned(context);o:[1]PgsObservation;o[0].q=cfg.initial.q;o[0].v=cfg.initial.v;o[0].previous_v=cfg.initial.v;out:[1]PgsCaseScore;#assert psv_score(context,o[..],out[..])==PgsStatus.ok && out[0].profile==context/4 && out[0].case_id==3 && out[0].samples==1 && out[0].reason==1 && out[0].peak_speed[6]==2;o[0].previous_v[6]= -o[0].previous_v[6];#assert psv_score(context,o[..],out[..])==PgsStatus.ok && out[0].samples==0 && out[0].reason==5;}
+ for context:[2]int.[1,5] {cfg:=psv_case_owned(context);o:[2]PgsObservation;for k:0..<2 {r:=pnt_reference_owned(cfg,k+1);o[k].q=cfg.initial.q;for i:0..<7 {o[k].q[i]=r.reference.angle[i].value;o[k].v[i]=r.reference.rate[i].value;}o[k].previous_v=ifx k==0 then cfg.initial.v else o[k-1].v;}out:[1]PgsCaseScore;#assert psv_score(context,o[..],out[..])==PgsStatus.ok && out[0].profile==context/4 && out[0].case_id==1 && out[0].samples==2 && out[0].position_square==0;}
+}
+#test "Validation zero partial shape and identity scores preserve complete output and pose labels" {
+ o:[751]PgsObservation;out:=[2]PgsCaseScore.[pgs_case_poison(),pgs_case_poison()];old:=out[0];#assert psv_score(0,o[..],out[0..<1])==PgsStatus.shape && psv_score(0,o[0..<0],out[..])==PgsStatus.shape && psv_score(-1,o[0..<0],out[0..<1])==PgsStatus.range && psv_score(8,o[0..<0],out[0..<1])==PgsStatus.range;pgs_case_same(out[0],old);pgs_case_same(out[1],old);
+ for context:0..<8 {cfg:=psv_case_owned(context);#assert psv_score(context,o[0..<0],out[0..<1])==PgsStatus.ok && out[0].profile==context/4 && out[0].case_id==context%4 && out[0].valid==0 && out[0].complete==0 && out[0].feasible==0 && out[0].reason==1;b:=pgs_bounds();for i:0..<9 {#assert out[0].minimum_margin[i]==pgs_min(cfg.initial.q[i]-b.lower[i],b.upper[i]-cfg.initial.q[i]);}}
+}
+#test "Validation full literal hold fixtures finish each new pose with its own identity without plant simulation" {
+ for context:[2]int.[0,4] {cfg:=psv_case_owned(context);o:[750]PgsObservation;for k:0..<750 {o[k].q=cfg.initial.q;o[k].previous_v=cfg.initial.v;}out:[1]PgsCaseScore;#assert psv_score(context,o[..],out[..])==PgsStatus.ok && out[0].profile==context/4 && out[0].case_id==0 && out[0].samples==750 && out[0].valid==1 && out[0].complete==1 && out[0].feasible==1 && out[0].terminal_ok==1 && out[0].hold_ok==1 && out[0].nominal_ok==1 && out[0].iae==0 && out[0].terminal==0;}
+}
+#test "Validation per-pose combination rejects cross-pose cards and preserves all four scenario goals" {
+ cards:[4]PgsCaseScore;for i:0..<4 {cards[i]=pgs_literal_card(1,i);}out:[2]PgsCandidate;out[0]=PgsCandidate.{terminal=101,iae=102,profile=103,valid=104,feasible=105,pjp_clipped=106,pa_control_clipped=107,pa_force_clipped=108,reason=109};out[1]=out[0];old:=out[0];#assert psv_combine(1,cards[0..<3],out[0..<1])==PgsStatus.shape && psv_combine(1,cards[..],out[..])==PgsStatus.shape && psv_combine(-1,cards[..],out[0..<1])==PgsStatus.range && psv_combine(2,cards[..],out[0..<1])==PgsStatus.range;pgs_candidate_same(out[0],old);pgs_candidate_same(out[1],old);
+ #assert psv_combine(1,cards[..],out[0..<1])==PgsStatus.ok && out[0].profile==1 && out[0].valid==1 && out[0].feasible==1;cards[2].feasible=0;#assert psv_combine(1,cards[..],out[0..<1])==PgsStatus.ok && out[0].valid==1 && out[0].feasible==0;cards[0].profile=0;#assert psv_combine(1,cards[..],out[0..<1])==PgsStatus.order;
+}
+
+#test "Validation shape takes precedence even when a pose label is invalid" {cards:[3]PgsCaseScore;out:[1]PgsCandidate;#assert psv_combine(-1,cards[..],out[..])==PgsStatus.shape;}
+
+// Parametric/unsealed initialization; finite admitted actual initial q/v required.
+psv_begin_owned :: (pose:int,scenario:int,initial:PntInitial)->PgsCaseScore {s:PgsCaseScore;s.profile=pose;s.case_id=scenario;s.valid=1;b:=pgs_bounds();for i:0..<9 {s.peak_speed[i]=abs(initial.v[i]);s.minimum_margin[i]=pgs_min(initial.q[i]-b.lower[i],b.upper[i]-initial.q[i]);}return s;}
+psv_add_owned :: (prior:PgsCaseScore,o:PgsObservation,reference:PqtSample,initial:[9]f64)->PgsCaseScore {s:=pgs_add_owned(prior,o,reference,initial);for i:0..<9 {s.minimum_margin[i]=pgs_min(prior.minimum_margin[i],s.minimum_margin[i]);}return s;}
+psv_score :: (context:int,observations:[]PgsObservation,output:[]PgsCaseScore)->PgsStatus #export_c {if observations.count<0 || observations.count>750 || output.count!=1 {return PgsStatus.shape;}if !psv_context_valid(context) {return PgsStatus.range;}cfg:=psv_case_owned(context);previous:=cfg.initial.v;s:=psv_begin_owned(context/4,context%4,cfg.initial);for k:0..<observations.count {o:=observations[k];reason:=pgs_check_owned(o,previous);if reason!=0 {s=pgs_bad_owned(s,reason);break;}r:=pnt_reference_owned(cfg,k+1);s=psv_add_owned(s,o,r.reference,cfg.initial.q);previous=o.v;}output[0]=pgs_finish_owned(s);return PgsStatus.ok;}
+psv_combine :: (pose:int,cases:[]PgsCaseScore,output:[]PgsCandidate)->PgsStatus #export_c {if cases.count!=4 || output.count!=1 {return PgsStatus.shape;}if !psv_pose_valid(pose) {return PgsStatus.range;}return pgs_combine(pose,cases,output);}

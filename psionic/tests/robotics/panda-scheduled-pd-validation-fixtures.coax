@@ -1,0 +1,3 @@
+#load "panda-scheduled-pd-validation-types.coax";
+psv_reference_same :: (a:PsvReference,b:PsvReference) {pqt_sample_same(a.reference,b.reference);#assert a.reference_tick==b.reference_tick && a.reference_steps==b.reference_steps;}
+psv_reference_poison :: ()->PsvReference {r:PsvReference;r.reference=pqt_sample_poison();r.reference_tick=101;r.reference_steps=102;return r;}

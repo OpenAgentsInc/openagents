@@ -1,0 +1,7 @@
+pure prospective C/D factory and reference; no controller or plant execution
+pose 0: reset q1 -440000 micro-rad; brake v7 2000000 micro-rad/s; pulse2 3000000 micro-J/rad
+midpoint: q1 -425000 micro-rad; v1 104167 micro-rad/s; tick 135/270
+pose 1: reset q1 530000 micro-rad; brake v7 -2000000 micro-rad/s; pulse2 -3000000 micro-J/rad
+midpoint: q1 545000 micro-rad; v1 104167 micro-rad/s; tick 135/270
+unknown context: refused; complete typed reference unchanged
+prospective contexts are separate from their measured validation receipts

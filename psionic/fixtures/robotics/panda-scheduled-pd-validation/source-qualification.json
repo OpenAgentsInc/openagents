@@ -1,0 +1,136 @@
+{
+  "schema": "psionic.panda-scheduled-pd-validation.source-qualification.v1",
+  "passed": true,
+  "compiler": {
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "bytes": 2886376
+  },
+  "source_files": {
+    "psionic/tests/robotics/panda-scheduled-pd-validation-types.coax": {
+      "sha256": "68c7922d743ce7fca7e7ede5eb50372c0a4622b5a7b2aa3069d8250fd8b8249e",
+      "bytes": 171
+    },
+    "psionic/tests/robotics/panda-scheduled-pd-validation-fixtures.coax": {
+      "sha256": "e5df9480c32a600c9e42316cdf3989398e6da5175af764331f83de283f412e1e",
+      "bytes": 374
+    },
+    "psionic/tests/robotics/panda-scheduled-pd-validation-control.coax": {
+      "sha256": "f386f219f6a276992047033ca44844f6c17640fd581d8b9ded655c8a9c4dd096",
+      "bytes": 6688
+    },
+    "psionic/tests/robotics/panda-scheduled-pd-validation-score.coax": {
+      "sha256": "675849e26fbd3259bfd44ee63d4ad74e9ead49d5b24984af7eb6ff7e19bbcf3d",
+      "bytes": 6388
+    },
+    "psionic/tests/robotics/panda-scheduled-pd-validation.coax": {
+      "sha256": "175e7f9f926b35f2892b24f452541b3ea3d1a5ef14a7351daa9e7063b73e17d4",
+      "bytes": 7138
+    }
+  },
+  "experiment": {
+    "sha256": "32b5d8ae1cc6e07dba317677102681a831d5b94a19c5e7df78167b57f017f640",
+    "bytes": 116077
+  },
+  "new_check_groups": 16,
+  "root_scopes": {
+    "panda-scheduled-pd-validation-control": 131,
+    "panda-scheduled-pd-validation-score": 45,
+    "panda-scheduled-pd-validation": 87
+  },
+  "actual_emitted_mutants": 263,
+  "killed": 263,
+  "survived": 0,
+  "runs": {
+    "control-first": {
+      "stdout": {
+        "sha256": "9287f34b608782c10aa5083ba6e650d3f1edfe580411a4475c27414d2dae0a3e",
+        "bytes": 2286
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 131,
+      "killed": 127,
+      "survived": 4
+    },
+    "control-second": {
+      "stdout": {
+        "sha256": "aa650f91016dab5dc83374809064774b0d3761cb93666b593302eee0455a5d9e",
+        "bytes": 116
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 131,
+      "killed": 131,
+      "survived": 0
+    },
+    "score-first": {
+      "stdout": {
+        "sha256": "ca4e4be1b83b6cbe527f690d122c42c13f61f24a7862943b7564cb11873d69cf",
+        "bytes": 578
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 45,
+      "killed": 44,
+      "survived": 1
+    },
+    "score-second": {
+      "stdout": {
+        "sha256": "f775eb8bcd72d9dee0ad5a8b86a19e6b8c3be183520a02684872f3f17bc87daf",
+        "bytes": 114
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 45,
+      "killed": 45,
+      "survived": 0
+    },
+    "public-first": {
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "0798f3ce8bb75e4f16a5e631fe37f9726d555aaec61dfb5da64b724f4b62944c",
+        "bytes": 5875
+      },
+      "phase": "compile-only tooling/type-name corrections before any mutation; preserved diagnostics"
+    },
+    "public-second": {
+      "stdout": {
+        "sha256": "aa55a2692d692cc3a85d7cb9631471b8f8f0102f37446204249a4344b4cf926a",
+        "bytes": 114
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 87,
+      "killed": 87,
+      "survived": 0
+    }
+  },
+  "units": {
+    "sha256": "4452d85919496eeeb5dc22cbba3f6863f154cd0a6e17822fe064debf3b52be3c",
+    "bytes": 1143
+  },
+  "history": "Control initial4 observational survivors closed with exact fixture status codes and helper pose-transition observation; score initial1 shape-precedence survivor closed with invalid-pose plus malformed-shape witness. Public first attempt stopped at compile-only fixture field names and PgsStatus-vs-bool usage; corrected before first 87-site run. All product bodies now frozen.",
+  "contract": [
+    "Fixed8 contexts C/D exact prospective descriptor; no parameter search or law change",
+    "Shape then context then tick; old numerical stage status preserved, complete output publication only on success",
+    "D pulse external index1=-3 replaces original +3 BEFORE publish/apply; C remains+3",
+    "Scoring uses actual initial all9 rates/previous lineage and initial AND all post source margins",
+    "Card profile=poseID0/1 in NEW namespace, scenario0..3; same controller/local candidate0, ordered two-pose AND verdict",
+    "Fixed factory/reference helpers and parametric score/PODs are trusted/unsealed, not provenance/admission certificates",
+    "Counts are actual emitted sites, not full Quantity token provenance or compiler bounded/wholeplant stability/hardware claims"
+  ],
+  "model_execution": "One isolated successful D-negative-pulse source/VM step witness in the NEW composition. No canonical native rollout, SDK, NN, rendering or old gate in this source record; imported arithmetic proofs remain carried."
+}

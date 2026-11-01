@@ -1,0 +1,42 @@
+{
+  "schema": "psionic.panda-scheduled-pd-validation.reference.v1",
+  "passed": true,
+  "plant_steps": 0,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "old_reference_regeneration_calls": 0,
+  "old_scalar_or_metric_gate_calls": 0,
+  "experiment": {
+    "bytes": 116077,
+    "sha256": "32b5d8ae1cc6e07dba317677102681a831d5b94a19c5e7df78167b57f017f640"
+  },
+  "source": {
+    "psionic/tests/robotics/panda_scheduled_pd_validation_reference.py": {
+      "bytes": 12286,
+      "sha256": "67d123f67cf10ed456791bb3745c8076da5506cdeff544d4d73a28165f5aaad4"
+    },
+    "psionic/tests/robotics/panda_quintic_reference.py": {
+      "bytes": 14484,
+      "sha256": "95e349c67d1c851adf9f837e9c0101110c2c59b627a463b952dbf10b2e11a98d"
+    }
+  },
+  "unique_new_curves": 4,
+  "contexts": 8,
+  "frames_per_context": 751,
+  "all_analytic_finite_words": 126168,
+  "outputs": {
+    "reference-states.f64": {
+      "bytes": 1009344,
+      "sha256": "3d9917e7834bd7390720894a89f0e1728e350b8a724ab498e6767b05dccba191"
+    },
+    "reference-samples.bin": {
+      "bytes": 1105472,
+      "sha256": "77ad03baa44d6689981416b15e71dc815e9b1dfc98bddad6ba9795d23923dc0c"
+    },
+    "reference-plans.json": {
+      "bytes": 1607,
+      "sha256": "e8a51afe6e0f3aa46e57c3dfe876f6c6b17d70d35d51bde4c4e37cae84f6c312"
+    }
+  },
+  "seconds": 0.037767832982353866
+}

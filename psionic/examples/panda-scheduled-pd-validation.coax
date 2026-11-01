@@ -1,0 +1,20 @@
+#import "Basic";
+#load "../tests/robotics/panda-scheduled-pd-validation-control.coax";
+psv_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("pure prospective C/D factory and reference; no controller or plant execution\n");
+// book:begin psv-prospective
+ for pose:0..<2 {
+  // Context = pose*4 + scenario; brake is3, pulse is2, nominal is1.
+  initial:[1]PntInitial;fixture:[64]f64;reference:[1]PsvReference;
+  #assert pnt_ok(psv_initial(pose*4+3,initial[..]));
+  #assert pnt_ok(psv_fixture(pose*4+2,fixture[..]));
+  #assert pnt_ok(psv_reference(pose*4+1,135,reference[..]));
+  print("pose %: reset q1 % micro-rad; brake v7 % micro-rad/s; pulse2 % micro-J/rad\n",pose,psv_example_micro(initial[0].q[0]),psv_example_micro(initial[0].v[6]),psv_example_micro(fixture[56]));
+  print("midpoint: q1 % micro-rad; v1 % micro-rad/s; tick %/%\n",psv_example_micro(reference[0].reference.angle[0].value),psv_example_micro(reference[0].reference.rate[0].value),reference[0].reference_tick,reference[0].reference_steps);
+ }
+ reference:=[1]PsvReference.[psv_reference_poison()];old:=reference[0];status:=psv_reference(8,135,reference[..]);#assert status.stage==2 && status.code==1;psv_reference_same(reference[0],old);
+ print("unknown context: refused; complete typed reference unchanged\n");
+// book:end psv-prospective
+ print("prospective contexts are separate from their measured validation receipts\n");
+}

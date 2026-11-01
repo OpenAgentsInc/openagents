@@ -1,0 +1,106 @@
+{
+  "schema": "psionic.panda-scheduled-pd-validation.independent-publication.v1",
+  "passed": true,
+  "byte_exact_original_receipt_copies": true,
+  "executed_reference_receipt": {
+    "bytes": 1321,
+    "sha256": "5d881d8540f2e46f7e2a21f451339d33fee2258acfa8239c3c8b4e46ce2f1442"
+  },
+  "executed_independent_receipt": {
+    "bytes": 49627,
+    "sha256": "fc0d1eac4adb52a9d3d766d071add2dc82ccfbb958fced0adfbe191dccc1c57f"
+  },
+  "new_contexts": 8,
+  "SDK_capture_steps_carried": 6000,
+  "OWN_collection_steps_carried": 6000,
+  "publication_new_SDK_or_plant_or_oracle_calls": 0,
+  "old_scalar62_regenerations": 0,
+  "old_original4_metric_recomputations": 0,
+  "SDK_and_OWN_goal_verdicts": [
+    true,
+    true
+  ],
+  "scope": "All effects belong to the separately qualified one-shot captures. Three host contexts compare/reduce cached data only. One common controller; pose labels are not gain candidates. Finite no-contact two-pose validation, not global stability, contact, hardware or task-success proof.",
+  "files": {
+    "psionic/tests/robotics/panda_scheduled_pd_validation_reference.py": {
+      "bytes": 12286,
+      "sha256": "67d123f67cf10ed456791bb3745c8076da5506cdeff544d4d73a28165f5aaad4"
+    },
+    "psionic/tests/robotics/panda_scheduled_pd_validation_audit.py": {
+      "bytes": 21298,
+      "sha256": "9e3aea31abcb0285b43b399bd4ea359bddd0986438fbd9b4a242804d86f5476a"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/experiment.json": {
+      "bytes": 116077,
+      "sha256": "32b5d8ae1cc6e07dba317677102681a831d5b94a19c5e7df78167b57f017f640"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/factory-cases.f64": {
+      "bytes": 4096,
+      "sha256": "f34f0fbb9846df482b4c7f538c487755647ef1625b083db03bae26950b454a1c"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/input.bin": {
+      "bytes": 1176,
+      "sha256": "d395e757d6782f61f760118ecea9e767f6d5193d2a64521f7d772a863ec08866"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/input-freeze.json": {
+      "bytes": 564,
+      "sha256": "8e242bafcc252777bbdef71bc3ab94ac02fd8ac9e925a6b225abb52dffa77013"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/reference-qualification.json": {
+      "bytes": 1321,
+      "sha256": "5d881d8540f2e46f7e2a21f451339d33fee2258acfa8239c3c8b4e46ce2f1442"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/reference-states.f64": {
+      "bytes": 1009344,
+      "sha256": "3d9917e7834bd7390720894a89f0e1728e350b8a724ab498e6767b05dccba191"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/reference-samples.bin": {
+      "bytes": 1105472,
+      "sha256": "77ad03baa44d6689981416b15e71dc815e9b1dfc98bddad6ba9795d23923dc0c"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/reference-plans.json": {
+      "bytes": 1607,
+      "sha256": "e8a51afe6e0f3aa46e57c3dfe876f6c6b17d70d35d51bde4c4e37cae84f6c312"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/independent-qualification.json": {
+      "bytes": 49627,
+      "sha256": "fc0d1eac4adb52a9d3d766d071add2dc82ccfbb958fced0adfbe191dccc1c57f"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/SDK-expected-controller.f64": {
+      "bytes": 1680000,
+      "sha256": "aaa0fb785223b2c235dfc66ef32856b2d90a10e3f8fbaa78472b6a6537f2181f"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/SDK-expected-actuator.f64": {
+      "bytes": 432000,
+      "sha256": "dce36d2ef216421654d9e99edf76b1e33567f5a411eb0d1333a643dc4d8720cb"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/independent-sdk-case-scores.bin": {
+      "bytes": 2880,
+      "sha256": "3caab050cd14843b2789d4592c0e4671825018e761496c7c36c04cd7b41c9c83"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/independent-sdk-pose-scores.bin": {
+      "bytes": 144,
+      "sha256": "2446d4b2d802e2da0d8e4f15f9375f1fbb29f3e6a1a2720a2bf1b7805cd3c6ee"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/independent-sdk-verdict.bin": {
+      "bytes": 16,
+      "sha256": "814dd7b9784d57c15b9c2972e9b4fd6cf7e164f8162a934bdb2452a413dab1f7"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/independent-own-case-scores.bin": {
+      "bytes": 2880,
+      "sha256": "3bd0e40303884452ab69a9da341c9dad148e148680fab252be9e6456fd26531c"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/independent-own-pose-scores.bin": {
+      "bytes": 144,
+      "sha256": "8981f64f9ff72e2157f3e389c3d103fdaa617111912fdd6bbfd57e0988816197"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/independent-own-verdict.bin": {
+      "bytes": 16,
+      "sha256": "814dd7b9784d57c15b9c2972e9b4fd6cf7e164f8162a934bdb2452a413dab1f7"
+    },
+    "psionic/fixtures/robotics/panda-scheduled-pd-validation/quality.json": {
+      "bytes": 38190,
+      "sha256": "4289652c361741c73bd6c4dd33800fd8880d7c93492829930388da1d10f1a5f7"
+    }
+  }
+}

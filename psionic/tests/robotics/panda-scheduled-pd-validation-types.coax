@@ -1,0 +1,3 @@
+#load "panda-scheduled-pd-types.coax";
+PsvReference :: struct {reference:PqtSample;reference_tick:int;reference_steps:int;}
+PsvVerdict :: struct {valid:int;feasible:int;}

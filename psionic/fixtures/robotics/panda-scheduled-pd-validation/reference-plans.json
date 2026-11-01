@@ -1,0 +1,98 @@
+[
+  {
+    "context": 0,
+    "pose": 0,
+    "scenario": 0,
+    "status": 0,
+    "steps": 0,
+    "ns": 0,
+    "duration": 0.0,
+    "estimate": 0.0,
+    "R": 0.0,
+    "zero": true
+  },
+  {
+    "context": 1,
+    "pose": 0,
+    "scenario": 1,
+    "status": 0,
+    "steps": 270,
+    "ns": 540000000,
+    "duration": 0.54,
+    "estimate": 0.5372849659117708,
+    "R": 268.6424829558854,
+    "zero": false
+  },
+  {
+    "context": 2,
+    "pose": 0,
+    "scenario": 2,
+    "status": 0,
+    "steps": 270,
+    "ns": 540000000,
+    "duration": 0.54,
+    "estimate": 0.5372849659117708,
+    "R": 268.6424829558854,
+    "zero": false
+  },
+  {
+    "context": 3,
+    "pose": 0,
+    "scenario": 3,
+    "status": 0,
+    "steps": 0,
+    "ns": 0,
+    "duration": 0.0,
+    "estimate": 0.0,
+    "R": 0.0,
+    "zero": true
+  },
+  {
+    "context": 4,
+    "pose": 1,
+    "scenario": 0,
+    "status": 0,
+    "steps": 0,
+    "ns": 0,
+    "duration": 0.0,
+    "estimate": 0.0,
+    "R": 0.0,
+    "zero": true
+  },
+  {
+    "context": 5,
+    "pose": 1,
+    "scenario": 1,
+    "status": 0,
+    "steps": 270,
+    "ns": 540000000,
+    "duration": 0.54,
+    "estimate": 0.5372849659117712,
+    "R": 268.6424829558856,
+    "zero": false
+  },
+  {
+    "context": 6,
+    "pose": 1,
+    "scenario": 2,
+    "status": 0,
+    "steps": 270,
+    "ns": 540000000,
+    "duration": 0.54,
+    "estimate": 0.5372849659117712,
+    "R": 268.6424829558856,
+    "zero": false
+  },
+  {
+    "context": 7,
+    "pose": 1,
+    "scenario": 3,
+    "status": 0,
+    "steps": 0,
+    "ns": 0,
+    "duration": 0.0,
+    "estimate": 0.0,
+    "R": 0.0,
+    "zero": true
+  }
+]

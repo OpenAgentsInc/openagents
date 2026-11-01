@@ -1,0 +1,28 @@
+{
+  "schema": "psionic.panda-scheduled-pd-validation.unit-refusals.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "checks": [
+    {
+      "name": "rate",
+      "source": "psionic/tests/robotics/panda_scheduled_pd_validation_bad_rate.coax",
+      "source_sha256": "d33b670bf4c4294742a0e0e2029a6fc96915a9169a78f645c6f327ad20367997",
+      "exit": 1,
+      "diagnostic": "E0330",
+      "refused": true,
+      "log": "unit-rate.log",
+      "log_sha256": "abb2aa805f21008afc1ba44c7ea17bc53943563bc213abc339212cc7014f95f1"
+    },
+    {
+      "name": "acceleration",
+      "source": "psionic/tests/robotics/panda_scheduled_pd_validation_bad_acceleration.coax",
+      "source_sha256": "0f889c4bd49d567ea5bf120c1d2026b3545651fae56393be15a05afa0b3eb5ab",
+      "exit": 1,
+      "diagnostic": "E0330",
+      "refused": true,
+      "log": "unit-acceleration.log",
+      "log_sha256": "76e72458b9be2aa12166d70021fb8212ea8737d098df7e660bb0f0c0af992274"
+    }
+  ],
+  "scope": "Two new typed reference field refusals, no controller/plant/SDK execution; raw q/v boundaries remain explicit."
+}

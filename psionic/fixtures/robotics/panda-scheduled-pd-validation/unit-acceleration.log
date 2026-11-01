@@ -1,0 +1,100 @@
+psionic/tests/robotics/panda_scheduled_pd_validation_bad_acceleration.coax:2:85: error[E0330]: 'bad' returns Quantity(PqtAcceleration, f64), given Quantity(PqtRate, f64)
+  bad :: (x:PsvReference)->pfku.Quantity(PqtAcceleration,f64) {return x.reference.rate[0];}
+                                                                                      ^
+psionic/tests/robotics/panda-joint-pd-tracking-control.coax:17:2: error[E0304]: 'bad' is already the name of a procedure
+   bad:=cfg;bad.edge.vlim[0].value=0;r=pnt_control_owned(bad,0,cfg.initial.q,cfg.initial.v);#assert r.status.stage==3 && r.status.code==cast(int)PqtStatus.range;q:=cfg.initial.q;q[0]=9;r=pnt_control_owned(cfg,0,q,cfg.initial.v);#assert r.status.stage==4 && r.status.code==cast(int)PjpStatus.limits;v:=cfg.initial.v;v[7]=3;r=pnt_control_owned(cfg,0,cfg.initial.q,v);#assert r.status.stage==5 && r.status.code==cast(int)PfkStatus.range;
+   ^
+  fix: pick another name
+psionic/tests/robotics/panda-joint-pd-tracking-control.coax:17:11: error[E0305]: procedures are not values in coax0
+   bad:=cfg;bad.edge.vlim[0].value=0;r=pnt_control_owned(bad,0,cfg.initial.q,cfg.initial.v);#assert r.status.stage==3 && r.status.code==cast(int)PqtStatus.range;q:=cfg.initial.q;q[0]=9;r=pnt_control_owned(cfg,0,q,cfg.initial.v);#assert r.status.stage==4 && r.status.code==cast(int)PjpStatus.limits;v:=cfg.initial.v;v[7]=3;r=pnt_control_owned(cfg,0,cfg.initial.q,v);#assert r.status.stage==5 && r.status.code==cast(int)PfkStatus.range;
+            ^
+  fix: call it: bad()
+psionic/tests/robotics/panda-joint-pd-tracking-control.coax:17:56: error[E0305]: procedures are not values in coax0
+   bad:=cfg;bad.edge.vlim[0].value=0;r=pnt_control_owned(bad,0,cfg.initial.q,cfg.initial.v);#assert r.status.stage==3 && r.status.code==cast(int)PqtStatus.range;q:=cfg.initial.q;q[0]=9;r=pnt_control_owned(cfg,0,q,cfg.initial.v);#assert r.status.stage==4 && r.status.code==cast(int)PjpStatus.limits;v:=cfg.initial.v;v[7]=3;r=pnt_control_owned(cfg,0,cfg.initial.q,v);#assert r.status.stage==5 && r.status.code==cast(int)PfkStatus.range;
+                                                         ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-inverse-dynamics.coax:15:2: error[E0304]: 'bad' is already the name of a procedure
+   for bad:[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff0000000000001,0x7ff8000000000001,0xfff8000000000001] {words[axis]=bad;#assert pid_admit(words,hinge,slide)==PfkStatus.number;}
+   ^
+  fix: pick another name
+psionic/lib/robotics/panda-inverse-dynamics.coax:15:127: error[E0305]: procedures are not values in coax0
+   for bad:[5]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff0000000000001,0x7ff8000000000001,0xfff8000000000001] {words[axis]=bad;#assert pid_admit(words,hinge,slide)==PfkStatus.number;}
+                                                                                                                                ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-fingers-chain.coax:19:2: error[E0304]: 'bad' is already the name of a procedure
+   for bad:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {words:[2]u64;words[axis]=bad;#assert pff_slides_admit(words)==PfkStatus.number;}
+   ^
+  fix: pick another name
+psionic/lib/robotics/panda-fingers-chain.coax:19:102: error[E0305]: procedures are not values in coax0
+   for bad:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {words:[2]u64;words[axis]=bad;#assert pff_slides_admit(words)==PfkStatus.number;}
+                                                                                                       ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-euler.coax:17:331: error[E0304]: 'bad' is already the name of a procedure
+   q:[9]f64;v:[9]f64;c:[9]f64;e:[9]f64;out:=[1]PeuOutput.[peu_poison()];old:=out[0];bound:=ifx role==0 then (ifx lane<7 then 100.0 else 1.0) else ifx role==1 then (ifx lane<7 then 20.0 else 2.0) else ifx role==2 then (ifx lane<7 then 10000.0 else 1.0) else 10000.0;bits:=f64_bits(bound)+1;if negative {bits=bits|0x8000000000000000;}bad:=f64_from_bits(bits);
+                                                                                                                                                                                                                                                                                                                                            ^
+  fix: pick another name
+psionic/lib/robotics/panda-euler.coax:18:22: error[E0305]: procedures are not values in coax0
+   if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+                       ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-euler.coax:18:47: error[E0305]: procedures are not values in coax0
+   if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+                                                ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-euler.coax:18:72: error[E0305]: procedures are not values in coax0
+   if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+                                                                         ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-euler.coax:18:97: error[E0305]: procedures are not values in coax0
+   if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+                                                                                                  ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-smooth.coax:17:264: error[E0304]: 'bad' is already the name of a procedure
+   q:[9]f64;v:[9]f64;c:[9]f64;e:[9]f64;out:=[1]PsfOutput.[psf_poison()];old:=out[0];bound:=ifx role==0 then (ifx lane<7 then 100.0 else 1.0) else ifx role==1 then (ifx lane<7 then 20.0 else 2.0) else ifx role==2 then (ifx lane<7 then 10000.0 else 1.0) else 10000.0;bad:=f64_from_bits(f64_bits(bound)+1);
+                                                                                                                                                                                                                                                                         ^
+  fix: pick another name
+psionic/lib/robotics/panda-smooth.coax:18:22: error[E0305]: procedures are not values in coax0
+   if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+                       ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-smooth.coax:18:47: error[E0305]: procedures are not values in coax0
+   if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+                                                ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-smooth.coax:18:72: error[E0305]: procedures are not values in coax0
+   if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+                                                                         ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-smooth.coax:18:97: error[E0305]: procedures are not values in coax0
+   if role==0 {q[lane]=bad;}if role==1 {v[lane]=bad;}if role==2 {c[lane]=bad;}if role==3 {e[lane]=bad;}
+                                                                                                  ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-mass-solve-math.coax:7:2: error[E0304]: 'bad' is already the name of a procedure
+   for bad:[3]u64.[0x7ff0000000000000,0x7ff0000000000001,0x7ff8000000000001] {m[lane]=bad|sign;#assert pms_admit_bits(m,f)==PmsStatus.number;}
+   ^
+  fix: pick another name
+psionic/lib/robotics/panda-mass-solve-math.coax:7:85: error[E0305]: procedures are not values in coax0
+   for bad:[3]u64.[0x7ff0000000000000,0x7ff0000000000001,0x7ff8000000000001] {m[lane]=bad|sign;#assert pms_admit_bits(m,f)==PmsStatus.number;}
+                                                                                      ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-mass-solve-math.coax:14:2: error[E0304]: 'bad' is already the name of a procedure
+   for bad:[3]u64.[0x7ff0000000000000,0x7ff0000000000001,0x7ff8000000000001] {f[lane]=bad|sign;#assert pms_forces_admit(f)==PmsStatus.number && pms_admit_bits(m,f)==PmsStatus.number;}
+   ^
+  fix: pick another name
+psionic/lib/robotics/panda-mass-solve-math.coax:14:85: error[E0305]: procedures are not values in coax0
+   for bad:[3]u64.[0x7ff0000000000000,0x7ff0000000000001,0x7ff8000000000001] {f[lane]=bad|sign;#assert pms_forces_admit(f)==PmsStatus.number && pms_admit_bits(m,f)==PmsStatus.number;}
+                                                                                      ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-mass-solve-math.coax:36:28: error[E0304]: 'bad' is already the name of a procedure
+   for i:0..<9 {for j:0..<i {bad:=m;bad[i*9+j]+=0.125;pms_failed_zero(pms_solve_raw(bad,f),PmsStatus.factor);}}
+                             ^
+  fix: pick another name
+psionic/lib/robotics/panda-mass-solve-math.coax:36:35: error[E0305]: procedures are not values in coax0
+   for i:0..<9 {for j:0..<i {bad:=m;bad[i*9+j]+=0.125;pms_failed_zero(pms_solve_raw(bad,f),PmsStatus.factor);}}
+                                    ^
+  fix: call it: bad()
+psionic/lib/robotics/panda-mass-solve-math.coax:36:83: error[E0305]: procedures are not values in coax0
+   for i:0..<9 {for j:0..<i {bad:=m;bad[i*9+j]+=0.125;pms_failed_zero(pms_solve_raw(bad,f),PmsStatus.factor);}}
+                                                                                    ^
+  fix: call it: bad()
+25 errors
