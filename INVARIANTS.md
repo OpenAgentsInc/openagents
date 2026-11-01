@@ -2257,16 +2257,30 @@ of the words and exit data are later work (`docs/lightning/`).
 Buying bitcoin (Wallet → Buy bitcoin, #12613) goes through the SDK's
 `buyBitcoin` with MoonPay's Bitcoin delivery or Cash App's Lightning invoice,
 never an asset other than bitcoin. `verse/wallet.coax` decides it:
-`verse_wallet_buy_amount` refuses a MoonPay amount at or below the most the
-SDK may pay to claim the deposit (`verse_wallet_claim_fee_max`: the fastest
-recommended rate plus 1 sat/vB, times its 99-vbyte claim);
-`verse_wallet_moonpay_page` passes only `https://buy.moonpay.io` with exactly
-one `currencyCode=btc` and exactly one `walletAddress` equal to the deposit
-address the wallet itself reports after the call;
-`verse_wallet_cashapp_page` passes only a `cash.app` link to a mainnet
-invoice whose amount, as the SDK parsed it, is the amount asked; and
-`verse_wallet_buy_step` opens the page only on the step from asking to open,
-so one SDK answer opens one page. A refused page is not opened.
+
+- `verse_wallet_buy_amount` passes a MoonPay amount only when it is more than
+  the most the SDK may pay to claim the deposit
+  (`verse_wallet_claim_fee_max`: the fastest recommended rate plus 1 sat/vB,
+  times its 99-vbyte claim). When the SDK can't give that rate, a MoonPay
+  purchase is refused.
+- `verse_wallet_moonpay_page` passes only `https://buy.moonpay.io` with
+  exactly one `currencyCode=btc` and exactly one `walletAddress` equal to the
+  deposit address the wallet itself reports after the call. Every query
+  parameter name is letters and digits, and the page has no `#` or `;`, so
+  no other currency or address can hide behind an encoded name or a
+  fragment.
+- `verse_wallet_cashapp_page` passes only a `https://cash.app/launch/lightning/`
+  link to a mainnet invoice (`lnbc` followed by the amount, not `lnbcrt`)
+  whose own stated amount is exactly the sats asked, to the millisatoshi,
+  and whose amount as the SDK parsed it is the same.
+- `verse_wallet_buy_step` moves the purchase, and the host acts only on what
+  `verse_wallet_buy_starts` and `verse_wallet_buy_opens` say from the state
+  before each event: it asks the SDK for a page only when no request is
+  already out, and opens a page only on the step from asking to open. One
+  SDK answer opens at most one page, and a second tap or a late answer opens
+  none.
+
+A refused page is not opened.
 
 Model-boundary exception: Debug builds launched with
 `OPENAGENTS_THROWAWAY_WALLET=1` (the wallet UI test only) open a fresh wallet
@@ -2282,7 +2296,8 @@ tests (a phone with no wallet shows that and changes nothing, and
 request is made, sends are parsed and quoted, and an empty wallet's send is
 refused in words; `testBuyMakesTheProviderPagesForThisWallet`: MoonPay's page
 is for bitcoin to the address Receive then shows, Cash App's for a mainnet
-invoice of the amount, and too-small amounts are refused); and the owner's device showing the existing balance.
+invoice of the amount, and too-small amounts are refused); and the owner's
+device showing the existing balance.
 
 ## Inference credit is bought only with payments our own Spark wallet received
 

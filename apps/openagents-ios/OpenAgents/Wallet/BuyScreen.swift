@@ -89,18 +89,22 @@ final class BuyViewController: WalletForm {
         switch verse_wallet_buy_amount(p.rawValue, Int64(clamping: sats), claimMax.map { Int64(clamping: $0) } ?? -1) {
         case BuyCheck.ok: break
         case BuyCheck.noAmount: return fail("Enter how many sats to buy.")
+        case BuyCheck.noFee: return fail("We couldn't get today's network fees, so a MoonPay purchase can't start yet. Try again in a moment.")
         case BuyCheck.tooSmall: return fail("Buy more than \(Money.text(claimMax ?? 0)). Adding an on-chain purchase can cost that much at today's network fees.")
         default: return fail("That amount can't be bought.")
         }
+        // A tap while a page is being asked for, on either button, starts nothing.
+        let starts = verse_wallet_buy_starts(flow, BuyEvent.ask)
         flow = verse_wallet_buy_step(flow, BuyEvent.ask)
-        guard flow == BuyState.asking else { return }
+        guard starts else { return }
         provider = p; asked = sats
         busy(p == .moonpay ? moonpay : cashApp) { [self] in
             before = Set(((try? await host.deposits()) ?? []).map { "\($0.txid):\($0.vout)" })
             do {
                 let page = try await host.buy(p, amount: sats)
+                let opens = verse_wallet_buy_opens(flow, BuyEvent.page)
                 flow = verse_wallet_buy_step(flow, BuyEvent.page)
-                guard flow == BuyState.open else { return }
+                guard opens else { return }
                 show(p == .moonpay ? "Waiting for MoonPay" : "Waiting for Cash App",
                      p == .moonpay ? "Finish paying on MoonPay's page. The bitcoin shows here once MoonPay sends it." : "Finish paying in Cash App. The bitcoin shows here once Cash App pays.")
                 openPage(page)

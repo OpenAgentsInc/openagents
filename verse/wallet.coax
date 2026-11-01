@@ -286,31 +286,38 @@ verse_wallet_claim_fee_max :: (fastest: int) -> int #export_c {
   #assert verse_wallet_claim_fee_max(0) == 99;
 }
 
-BuyCheck :: enum u8 { ok; no_provider; no_amount; too_small; too_large; }
+BuyCheck :: enum u8 { ok; no_provider; no_amount; too_small; too_large; no_fee; }
 
 // Whether `amount` sats may be bought from `provider`. A MoonPay purchase
 // arrives on-chain and pays the claim from itself, so it must be more than
-// `claim_max` (-1 when the SDK couldn't say; then only the amount is checked).
+// `claim_max`. When the SDK couldn't say (`claim_max` -1), a MoonPay
+// purchase is refused, since nothing shows it covers its claim.
 verse_wallet_buy_amount :: (provider: int, amount: int, claim_max: int) -> BuyCheck #export_c {
   if provider != BUY_MOONPAY && provider != BUY_CASHAPP { return BuyCheck.no_provider; }
   if amount <= 0 { return BuyCheck.no_amount; }
   if amount > MAX_SAT { return BuyCheck.too_large; }
+  if provider == BUY_MOONPAY && claim_max < 0 { return BuyCheck.no_fee; }
   if provider == BUY_MOONPAY && amount <= claim_max { return BuyCheck.too_small; }
   return BuyCheck.ok;
 }
 
-#forall "buy amounts" provider: -1..<3, amount: -1..<6, claim: -1..<5 {
+#forall "buy amounts" provider: -1..<3, amount: -1..<6, claim: -3..<5 {
   v := verse_wallet_buy_amount(provider, amount, claim);
   if provider < 0 || provider > 1 { #assert v == BuyCheck.no_provider; }
   else if amount <= 0 { #assert v == BuyCheck.no_amount; }
+  else if provider == 0 && claim < 0 { #assert v == BuyCheck.no_fee; }
   else if provider == 0 && amount <= claim { #assert v == BuyCheck.too_small; }
   else { #assert v == BuyCheck.ok; }
+  // A MoonPay purchase that passes is more than a ceiling the SDK gave.
+  if provider == 0 && v == BuyCheck.ok { #assert claim >= 0 && amount > claim; }
 }
 
 #test "buy amounts at the top" {
   #assert verse_wallet_buy_amount(BUY_CASHAPP, MAX_SAT, -1) == BuyCheck.ok;
   #assert verse_wallet_buy_amount(BUY_CASHAPP, MAX_SAT + 1, -1) == BuyCheck.too_large;
   #assert verse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT + 1, -1) == BuyCheck.too_large;
+  #assert verse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT, -1) == BuyCheck.no_fee;
+  #assert verse_wallet_buy_amount(BUY_MOONPAY, MAX_SAT, MAX_SAT - 1) == BuyCheck.ok;
   #assert verse_wallet_buy_amount(BUY_MOONPAY, 100, 99) == BuyCheck.ok;
   #assert verse_wallet_buy_amount(BUY_MOONPAY, 99, 99) == BuyCheck.too_small;
 }
@@ -322,6 +329,21 @@ bw_urlchar :: (c: u8) -> bool { return c > 32 && c < 127 && c != '"' && c != '\\
 bw_starts :: (text: string, at: int, word: string) -> bool {
   if at < 0 || at + word.count > text.count { return false; }
   return text[at..<at + word.count] == word;
+}
+
+// Whether every query parameter name (after ? or &, up to =) is letters and
+// digits, so no name is percent-encoded and none hides behind a fragment or
+// a ';'. Breez's form-encoded query never has a raw '#' or ';'.
+bw_names_plain :: (url: string) -> bool {
+  for c: url { if c == '#' || c == ';' { return false; } }
+  for k: 1..<url.count {
+    if url[k - 1] == '?' || url[k - 1] == '&' {
+      e := k;
+      while e < url.count && url[e] != '=' && url[e] != '&' { if !bw_alnum(url[e]) { return false; } e += 1; }
+      if e == k { return false; }
+    }
+  }
+  return true;
 }
 
 // Whether the URL has exactly one query parameter `name` (after ? or &),
@@ -338,7 +360,7 @@ bw_param_is :: (url: string, name: string, value: string) -> bool {
 }
 
 MOONPAY_PAGE :: "https://buy.moonpay.io";
-CASHAPP_PAGE :: "https://cash.app/launch/lightning/lnbc";
+CASHAPP_PAGE :: "https://cash.app/launch/lightning/";
 
 // Whether a MoonPay page the SDK returned may open: Breez's page for
 // bitcoin (currencyCode btc) to `address`, the deposit address the wallet
@@ -353,16 +375,52 @@ verse_wallet_moonpay_page :: (raw: [] u8, address: [] u8) -> bool #export_c {
   if !bw_starts(url, 0, MOONPAY_PAGE) { return false; }
   if bw_starts(url, p, "/?") { p += 1; }
   if !bw_starts(url, p, "?") { return false; }
+  if !bw_names_plain(url) { return false; }
   return bw_param_is(url, "currencyCode", "btc") && bw_param_is(url, "walletAddress", to);
 }
 
+BTC_MSAT :: 100_000_000_000;
+
+// Where `c` last appears in `text`; -1 when it doesn't.
+bw_last :: (text: string, c: u8) -> int {
+  at := -1;
+  for k: 0..<text.count { if text[k] == c { at = k; } }
+  return at;
+}
+
+// Whether a mainnet invoice states exactly `msat` in its human-readable
+// part: "lnbc", then the amount's digits (no leading zero) and multiplier,
+// up to the separator, the invoice's last "1" (BOLT 11). Another network
+// (lntb, lntbs, lnbcrt), no amount, or any other amount is refused.
+bw_invoice_is :: (inv: string, msat: int) -> bool {
+  if !bw_starts(inv, 0, "lnbc") { return false; }
+  sep := bw_last(inv, '1');
+  if sep < 5 || sep + 1 >= inv.count { return false; }
+  e := sep; unit := BTC_MSAT; pico := false;
+  m := inv[sep - 1];
+  if m == 'm' { unit = 100_000_000; e -= 1; }
+  else if m == 'u' { unit = 100_000; e -= 1; }
+  else if m == 'n' { unit = 100; e -= 1; }
+  else if m == 'p' { pico = true; e -= 1; }
+  if e == 4 || inv[4] == '0' { return false; }
+  v := 0;
+  for k: 4..<e {
+    if inv[k] < '0' || inv[k] > '9' || v > MAX_SAT * 100 { return false; }
+    v = v * 10 + cast(int) (inv[k] - '0');
+  }
+  if pico { return v % 10 == 0 && v / 10 == msat; }
+  return msat % unit == 0 && v == msat / unit;
+}
+
 // Whether a Cash App page may open: a mainnet Lightning invoice the wallet
-// made, for the amount asked (`invoice_sats`, read from it by the SDK).
+// made, for exactly the amount asked. Both the invoice's own stated amount
+// and `invoice_sats` (what the SDK read from it) must be that amount.
 verse_wallet_cashapp_page :: (raw: [] u8, amount: int, invoice_sats: int) -> bool #export_c {
   url := cast(string) raw;
-  if !bw_starts(url, 0, CASHAPP_PAGE) || url.count == CASHAPP_PAGE.count { return false; }
+  if !bw_starts(url, 0, CASHAPP_PAGE) { return false; }
   for k: CASHAPP_PAGE.count..<url.count { if !bw_alnum(url[k]) { return false; } }
-  return amount > 0 && invoice_sats == amount;
+  if amount < 1 || amount > MAX_SAT || invoice_sats != amount { return false; }
+  return bw_invoice_is(url[CASHAPP_PAGE.count..<url.count], amount * 1000);
 }
 
 // Test text: up to three pieces joined.
@@ -409,6 +467,18 @@ cashapp_ok :: (url: string, amount: int, invoice: int) -> bool {
   #assert !moonpay_ok(cast(string) space.b[0..<space.n], ADDR);
   fake := bw_text("https://buy.moonpay.io/?xcurrencyCode=btc&walletAddress=", ADDR, "");
   #assert !moonpay_ok(cast(string) fake.b[0..<fake.n], ADDR);
+  // a second currency hidden by percent-encoding, a fragment or a ';'
+  coded := bw_text("https://buy.moonpay.io/?currencyCode=btc&walletAddress=", ADDR, "&currencyCod%65=usdc_sol");
+  #assert !moonpay_ok(cast(string) coded.b[0..<coded.n], ADDR);
+  frag := bw_text("https://buy.moonpay.io/?theme=light#&currencyCode=btc&walletAddress=", ADDR, "");
+  #assert !moonpay_ok(cast(string) frag.b[0..<frag.n], ADDR);
+  semi := bw_text("https://buy.moonpay.io/?currencyCode=btc&walletAddress=", ADDR, "&theme=a;currencyCode=usdc_sol");
+  #assert !moonpay_ok(cast(string) semi.b[0..<semi.n], ADDR);
+  empty := bw_text("https://buy.moonpay.io/?currencyCode=btc&=x&walletAddress=", ADDR, "");
+  #assert !moonpay_ok(cast(string) empty.b[0..<empty.n], ADDR);
+  // Breez's own page: encoded values, every name plain
+  breez := bw_text("https://buy.moonpay.io/?apiKey=pk_live_x&currencyCode=btc&walletAddress=", ADDR, "&colorCode=%23055DEB&theme=light&quoteCurrencyAmount=0.00100000&lockAmount=true&redirectURL=https%3A%2F%2Fbuy.moonpay.io%2Ftransaction_receipt%3FaddFunds%3Dtrue&signature=a%2Bb%3D");
+  #assert moonpay_ok(cast(string) breez.b[0..<breez.n], ADDR);
   // the address itself must look like one
   short := bw_text("https://buy.moonpay.io/?currencyCode=btc&walletAddress=", "bc1q", "");
   #assert !moonpay_ok(cast(string) short.b[0..<short.n], "bc1q");
@@ -436,6 +506,46 @@ cashapp_ok :: (url: string, amount: int, invoice: int) -> bool {
   #assert !cashapp_ok("https://cash.app/launch/lightning/lnbc10u1p?x=1", 1000, 1000);
   #assert !cashapp_ok("http://cash.app/launch/lightning/lnbc10u1pabc", 1000, 1000);
   #assert !cashapp_ok("cashapp://launch/lightning/lnbc10u1pabc", 1000, 1000);
+  // mainnet only: regtest and signet start like it
+  #assert !cashapp_ok("https://cash.app/launch/lightning/lnbcrt10u1pabc", 1000, 1000);
+  #assert !cashapp_ok("https://cash.app/launch/lightning/lntbs10u1pabc", 1000, 1000);
+  // the invoice itself states exactly the amount: no rounding to whole sats
+  #assert !cashapp_ok("https://cash.app/launch/lightning/lnbc10001n1pabc", 1000, 1000);
+  #assert !cashapp_ok("https://cash.app/launch/lightning/lnbc20u1pabc", 1000, 1000);
+  #assert !cashapp_ok("https://cash.app/launch/lightning/lnbc1pabc", 1000, 1000);
+  #assert cashapp_ok("https://cash.app/launch/lightning/lnbc1m1pabc", 100000, 100000);
+  #assert cashapp_ok("https://cash.app/launch/lightning/lnbc21000000000000000n1pabc", MAX_SAT, MAX_SAT);
+  #assert !cashapp_ok("https://cash.app/launch/lightning/lnbc21000000000000010n1pabc", MAX_SAT + 1, MAX_SAT + 1);
+  #assert !cashapp_ok("https://cash.app/launch/lightning/", 1000, 1000);
+}
+
+#test "invoice amounts" {
+  #assert bw_invoice_is("lnbc10u1pabc", 1_000_000) && !bw_invoice_is("lnbc10u1pabc", 1_000_001);
+  #assert bw_invoice_is("lnbc10u1p", 1_000_000) && !bw_invoice_is("lnbc10u1", 1_000_000);
+  #assert bw_invoice_is("lnbc2500m1pabc", 250_000_000_000);
+  #assert bw_invoice_is("lnbc21pabc", 2 * BTC_MSAT);
+  #assert bw_invoice_is("lnbc7n1pabc", 700) && bw_invoice_is("lnbc9u1pabc", 900_000);
+  #assert bw_invoice_is("lnbc10p1pabc", 1) && !bw_invoice_is("lnbc15p1pabc", 1);
+  // a whole number of the multiplier, never a fraction of a millisatoshi
+  #assert !bw_invoice_is("lnbc1u1pabc", 100_001) && !bw_invoice_is("lnbc1m1pabc", 100_001_000);
+  #assert !bw_invoice_is("lnbc1n1pabc", 100_001) && !bw_invoice_is("lnbc11pabc", BTC_MSAT + 1000);
+  #assert !bw_invoice_is("lnbc010u1pabc", 1_000_000) && !bw_invoice_is("lnbcu1pabc", 0);
+  #assert !bw_invoice_is("lnbc1pabc", 0) && !bw_invoice_is("lnbc1pabc", BTC_MSAT);
+  #assert !bw_invoice_is("lnbc1:u1pabc", 2_000_000) && !bw_invoice_is("lnbc10x1pabc", 1_000_000);
+  #assert !bw_invoice_is("lntb10u1pabc", 1_000_000) && !bw_invoice_is("lnbcrt10u1pabc", 1_000_000);
+  // all the bitcoin there is, and in pico up to a tenth of it
+  #assert bw_invoice_is("lnbc210000001pabc", MAX_SAT * 1000);
+  #assert bw_invoice_is("lnbc21000000000000000n1pabc", MAX_SAT * 1000);
+  #assert bw_invoice_is("lnbc2100000000000000000p1pabc", 210000000000000000);
+  #assert !bw_invoice_is("lnbc2100000000000000010p1pabc", 210000000000000001);
+  #assert !bw_invoice_is("lnbc99999999999999999999u1pabc", 0);
+  #assert bw_last("1ab1", '1') == 3 && bw_last("1ab", '1') == 0 && bw_last("ab", '1') == -1;
+}
+
+#test "parameter names" {
+  #assert bw_names_plain("x?ab=1&cd=2") && bw_names_plain("x?ab") && bw_names_plain("x?ab&cd=1");
+  #assert !bw_names_plain("?%61=1") && !bw_names_plain("x?a%62=1") && !bw_names_plain("x?=1");
+  #assert !bw_names_plain("x?a=1#b") && !bw_names_plain("x?a=1;b=2") && !bw_names_plain("x?a=1&&b=2");
 }
 
 #forall "page bytes" c: 0..<256 {
@@ -480,6 +590,20 @@ verse_wallet_buy_step :: (b: Buy, e: BuyEvent) -> Buy #export_c {
   return b;
 }
 
+// What the host does on an event, from the state before it: ask the SDK for
+// a page only when a purchase isn't already asking (a second tap, on either
+// provider, starts nothing), and open a page only on the step from asking to
+// open. A second answer, or one that comes after the page opened, opens none.
+verse_wallet_buy_starts :: (b: Buy, e: BuyEvent) -> bool #export_c { return e == BuyEvent.ask && b != Buy.asking; }
+verse_wallet_buy_opens :: (b: Buy, e: BuyEvent) -> bool #export_c { return e == BuyEvent.page && b == Buy.asking; }
+
+#forall "what each step does" b: Buy, e: BuyEvent {
+  n := verse_wallet_buy_step(b, e);
+  #assert verse_wallet_buy_starts(b, e) == (e == BuyEvent.ask && b != Buy.asking);
+  #assert verse_wallet_buy_opens(b, e) == (n == Buy.open && b != Buy.open);
+  if verse_wallet_buy_starts(b, e) { #assert n == Buy.asking; }
+}
+
 #forall "each purchase step" b: Buy, e: BuyEvent {
   n := verse_wallet_buy_step(b, e);
   if e == BuyEvent.ask { #assert n == Buy.asking; }
@@ -491,13 +615,18 @@ verse_wallet_buy_step :: (b: Buy, e: BuyEvent) -> Buy #export_c {
 }
 
 // Every sequence of five events from idle: a page opens only straight after
-// an ask, at most once per ask, and nothing is received without a page.
+// an ask, at most once per ask, and nothing is received without a page. The
+// host's own counts agree: it opens at most one page per SDK call it starts.
 #forall "every five purchase events" a: BuyEvent, b: BuyEvent, c: BuyEvent, d: BuyEvent, e: BuyEvent {
   events := [5] BuyEvent.[a, b, c, d, e];
   s := Buy.idle;
   pages := 0;
+  calls := 0; opened := 0;
   for x: events {
     before := s;
+    if verse_wallet_buy_starts(before, x) { calls += 1; opened = 0; }
+    if verse_wallet_buy_opens(before, x) { opened += 1; #assert calls >= 1; }
+    #assert opened <= 1;
     s = verse_wallet_buy_step(s, x);
     if x == BuyEvent.ask { pages = 0; }
     if s == Buy.open && before != Buy.open {
