@@ -1,0 +1,9 @@
+#load "panda-scheduled-pd-types.coax";
+psd_schedule_same :: (a:PsdSchedule,b:PsdSchedule) {#assert f64_bits(a.signed_error.value)==f64_bits(b.signed_error.value) && f64_bits(a.absolute_error.value)==f64_bits(b.absolute_error.value) && f64_bits(a.damping.value)==f64_bits(b.damping.value) && a.regime==b.regime;}
+psd_schedule_poison :: ()->PsdSchedule {x:PsdSchedule;x.signed_error.value=101;x.absolute_error.value=102;x.damping.value=103;x.regime=104;return x;}
+psd_gains_same :: (a:PsdGains,b:PsdGains) {for i:0..<7 {#assert a.gains.kp[i].value==b.gains.kp[i].value && a.gains.kd[i].value==b.gains.kd[i].value;}psd_schedule_same(a.schedule,b.schedule);}
+psd_force_same :: (a:PsdForce,b:PsdForce) {pjp_same(a.controller,b.controller);psd_schedule_same(a.schedule,b.schedule);}
+psd_command_same :: (a:PsdCommand,b:PsdCommand) {pnt_command_same(a.base,b.base);psd_schedule_same(a.schedule,b.schedule);}
+psd_step_same :: (a:PsdStep,b:PsdStep) {psd_command_same(a.command,b.command);peu_same(a.plant,b.plant);}
+psd_command_poison :: ()->PsdCommand {x:PsdCommand;x.base=pnt_command_poison();x.schedule=psd_schedule_poison();return x;}
+psd_step_poison :: ()->PsdStep {x:PsdStep;x.command=psd_command_poison();x.plant=peu_poison();return x;}

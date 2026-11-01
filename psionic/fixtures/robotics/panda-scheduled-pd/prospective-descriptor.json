@@ -1,0 +1,441 @@
+{
+  "schema": "psionic.panda-common-rate-damping.prospective-descriptor.v1",
+  "status": "immutable prospective data only; NO execution GO",
+  "frozen_before_any_new_law_brake_result": true,
+  "Part_A": {
+    "result": "NONE; never a selected/promoted runner-up",
+    "experiment_sha256": "67c872e87b64041c9a0fde7014f828a345a0d48148d496fe087575d49fe38b31",
+    "closed_heldout_A_B_sha256": "ff5ff6e22688fc6211416f531f5b6e9f519f49ab41ec62822f4f9c9cb55f2e38",
+    "old_records_and_heldouts_unchanged": true
+  },
+  "one_common_controller": {
+    "no_case_conditioned_gains": true,
+    "Kp_J_per_radian_squared": [
+      240.0,
+      240.0,
+      240.0,
+      240.0,
+      160.0,
+      80.0,
+      40.0
+    ],
+    "Kp_F64_bits_u64_hex": [
+      "406e000000000000",
+      "406e000000000000",
+      "406e000000000000",
+      "406e000000000000",
+      "4064000000000000",
+      "4054000000000000",
+      "4044000000000000"
+    ],
+    "ordinary_Kd_J_second_per_radian_squared": [
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      10.0,
+      6.0,
+      4.0
+    ],
+    "Kd_F64_bits_u64_hex": [
+      "4030000000000000",
+      "4030000000000000",
+      "4030000000000000",
+      "4030000000000000",
+      "4024000000000000",
+      "4018000000000000",
+      "4010000000000000"
+    ],
+    "legacy_brake_Kd7_override_removed": true,
+    "source_of_gain_vectors": "ordinary defaults times4(Kp),times2(Kd); never scale the old case-specific brake20",
+    "schedule_applies_only_joint_index": 6,
+    "schedule_receives_no_case_ID": true,
+    "schedule_assigned_every_control_call": true
+  },
+  "law": {
+    "input": "reference_rate7 and actual_rate7, each Radian/Second",
+    "inherited_input_numeric_box_abs_radians_per_second": 20.0,
+    "output": "PjpDamping Quantity, Joule*Second/Radian^2",
+    "float_profile": "IEEE754 binary64, round-to-nearest-ties-to-even at EVERY listed operation, no FMA/no contraction/no-fast-math/reassociation; FPCR0 on the named Darwin-arm64 target",
+    "constants": {
+      "low_rate_radians_per_second": 0.1,
+      "high_rate_radians_per_second": 0.5,
+      "low_gain": 4.0,
+      "gain_increment": 16.0,
+      "high_gain": 20.0
+    },
+    "constant_F64_bits_u64_hex": {
+      "low_rate": "3fb999999999999a",
+      "high_rate": "3fe0000000000000",
+      "low_gain": "4010000000000000",
+      "gain_increment": "4030000000000000",
+      "high_gain": "4034000000000000"
+    },
+    "normative_operation_order": [
+      "e=RN64(reference_rate7-actual_rate7)",
+      "s=abs(e), clear sign bit (including negative zero)",
+      "if s<=F64(0.1), return exact F64(4)",
+      "if s>=F64(0.5), return exact F64(20)",
+      "numerator=RN64(s-F64(0.1))",
+      "denominator=RN64(F64(0.5)-F64(0.1))",
+      "fraction=RN64(numerator/denominator)",
+      "increment=RN64(F64(16)*fraction)",
+      "gain=RN64(F64(4)+increment)",
+      "return gain; use unchanged Pjp D7=RN64(gain*RN64(reference_rate7-actual_rate7))"
+    ],
+    "forbid_algebraic_replacement_by_40s": true,
+    "hard_gain_range_inclusive": [
+      4.0,
+      20.0
+    ],
+    "branch_labels": [
+      "low inclusive",
+      "interior",
+      "high inclusive"
+    ],
+    "interior_may_round_to_endpoint_gain": true,
+    "finite_invalid_policy": "refuse atomically; no minimum-gain or SDK fallback",
+    "law_state": "stateless memoryless; no hysteresis, filtering, per-case switch or hidden state"
+  },
+  "pipeline": {
+    "h_seconds": 0.002,
+    "ticks": 750,
+    "controller_hertz": 500,
+    "prestate_reference_frame": "k=0..749, use unchanged reference_k",
+    "poststate_metrics_frame": "n=k+1=1..750, compare unchanged reference_n",
+    "actuator_feedback_explicit_at_prestate": true,
+    "Peu_physical_implicit_joint_damping_unchanged": true,
+    "do_not_add_feedback_Kd_to_implicit_B": true,
+    "gravity_compensation": "unchanged source g0",
+    "torque_caps_J_per_radian": [
+      80.0,
+      80.0,
+      80.0,
+      80.0,
+      80.0,
+      12.0,
+      12.0
+    ],
+    "finger_controls": "unchanged initial-position targets and existing actuator model",
+    "all_existing_Pjp_Peu_Pqt_Pnt_PartA_sources_immutable": true
+  },
+  "owned_four_case_assessment": {
+    "same_original_geometry_reference_and_force_scenarios": true,
+    "source_experiment_sha256": "cfe805220004838440a4ea92c258880597ca5de42b7360ca7102281e242b3612",
+    "references": "reuse the exact already-generated4x751 analytic table; no reference regeneration",
+    "candidate_carry_cases": [
+      0,
+      1,
+      2
+    ],
+    "candidate_carry_origin": "PartA profile8 successful own trajectories; these are not a promoted gain-search winner",
+    "carry_not_yet_admitted": true,
+    "carry_conditions": [
+      "whole raw/source/gain/reference/numeric identities match",
+      "new common controller chooses exact gain4 at EVERY recorded prestate",
+      "all remaining controller and plant inputs/arithmetic unchanged",
+      "qualified exact control/path identity; no plant simulation in carry proof"
+    ],
+    "mandatory_new_brake_case": 3,
+    "mandatory_new_steps_if_carry_qualified": 750,
+    "baseline_or_old_plant_reruns": 0,
+    "if_carry_fails": "STOP and report; additional newly differing rollouts require Root authorization before execution"
+  },
+  "future_new_validation": {
+    "status": "frozen inputs only; no reference, controller, plant or SDK outcomes generated",
+    "poses": [
+      {
+        "name": "C",
+        "arm_q7_radians": [
+          -0.44,
+          -0.26,
+          0.33,
+          -2.24,
+          0.28,
+          1.66,
+          0.61
+        ],
+        "slides2_metres": [
+          0.015,
+          -0.024
+        ],
+        "pulse_J_per_radian": 3.0,
+        "brake_joint7_initial_rate_radians_per_second": 2.0,
+        "arm_q7_F64_bits_u64_hex": [
+          "bfdc28f5c28f5c29",
+          "bfd0a3d70a3d70a4",
+          "3fd51eb851eb851f",
+          "c001eb851eb851ec",
+          "3fd1eb851eb851ec",
+          "3ffa8f5c28f5c28f",
+          "3fe3851eb851eb85"
+        ],
+        "slides2_F64_bits_u64_hex": [
+          "3f8eb851eb851eb8",
+          "bf989374bc6a7efa"
+        ]
+      },
+      {
+        "name": "D",
+        "arm_q7_radians": [
+          0.53,
+          0.37,
+          -0.48,
+          -1.72,
+          -0.42,
+          2.06,
+          -0.35
+        ],
+        "slides2_metres": [
+          0.021,
+          -0.017
+        ],
+        "pulse_J_per_radian": -3.0,
+        "brake_joint7_initial_rate_radians_per_second": -2.0,
+        "arm_q7_F64_bits_u64_hex": [
+          "3fe0f5c28f5c28f6",
+          "3fd7ae147ae147ae",
+          "bfdeb851eb851eb8",
+          "bffb851eb851eb85",
+          "bfdae147ae147ae1",
+          "40007ae147ae147b",
+          "bfd6666666666666"
+        ],
+        "slides2_F64_bits_u64_hex": [
+          "3f95810624dd2f1b",
+          "bf916872b020c49c"
+        ]
+      }
+    ],
+    "scenarios_per_pose": [
+      "hold",
+      "nominal tracking",
+      "tracking with pulse",
+      "brake/hold"
+    ],
+    "initial_rates": "all zero except brake joint7 uses signed rate in pose descriptor",
+    "endpoints": "hold/brake=q0; tracking/pulse q1_j=RN64(q0_j+stored displacement_j)",
+    "relative_displacement7_radians": [
+      0.03,
+      -0.025,
+      0.02,
+      -0.02,
+      0.015,
+      0.02,
+      -0.025
+    ],
+    "relative_displacement_F64_bits_u64_hex": [
+      "3f9eb851eb851eb8",
+      "bf9999999999999a",
+      "3f947ae147ae147b",
+      "bf947ae147ae147b",
+      "3f8eb851eb851eb8",
+      "3f947ae147ae147b",
+      "bf9999999999999a"
+    ],
+    "reference_velocity_limits7_radians_per_second": [
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12
+    ],
+    "reference_acceleration_limits7_radians_per_second_squared": [
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6
+    ],
+    "pulse": {
+      "joint_index": 1,
+      "control_steps_start_inclusive": 200,
+      "control_steps_end_exclusive": 250,
+      "amplitude_from_pose": true
+    },
+    "finger_targets": "same as each pose initial slides",
+    "source_coordinate_ranges": [
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -1.7628,
+        1.7628
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -3.0718,
+        -0.0698
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -0.0175,
+        3.7525
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        0,
+        0.04
+      ],
+      [
+        -0.04,
+        0
+      ]
+    ],
+    "model_and_reset": "same exact source demo000 robot/world coefficients; compiled-default reset then named robot9 overrides; no historical HDF reset claim",
+    "future_SDK_profile": "MuJoCo3.3.1 Euler/implicit physical damping, h=.002,disableflags17,no contacts/render/NN; exact model/assets/flags must be admitted before effect",
+    "maximum_future_once_only_SDK_steps": 6000,
+    "Root_separate_SDK_GO_required": true,
+    "only_after_owned_all_goals_pass": true,
+    "no_threshold_tuning_after_results": true,
+    "A_B_not_used": true
+  },
+  "goals": {
+    "terminal_applies_all_four_cases": true,
+    "first_poststate": 626,
+    "last_poststate": 750,
+    "position_error_max_rad": 0.01,
+    "reference_rate_error_max_rad_per_second": 0.05,
+    "hold_full_trajectory_peak_drift_rad": 0.005,
+    "nominal_case": 1,
+    "nominal_SSE_less_than_analytic_stationary_SSE": true,
+    "temporary_25_state_recovery_does_not_count_as_terminal_success": true,
+    "observed_terminal_band_is_not_asymptotic_settling": true
+  },
+  "validity": {
+    "complete_observations": 750,
+    "source_limits_all_nine": [
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -1.7628,
+        1.7628
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -3.0718,
+        -0.0698
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -0.0175,
+        3.7525
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        0,
+        0.04
+      ],
+      [
+        -0.04,
+        0
+      ]
+    ],
+    "numerical_position_caps": [
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      1.0,
+      1.0
+    ],
+    "numerical_rate_caps": [
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      2.0,
+      2.0
+    ],
+    "previous_v_finite_and_exact_lineage": true,
+    "unexpected_source_status_invalid": true,
+    "all_floats_finite_before_reduction": true,
+    "no_infinity_sentinels": true,
+    "empty_partial": "finite invalid cards; goals0, valid0, complete0, reason1 unless an earlier concrete failure",
+    "first_failure_priority": [
+      "source status",
+      "clip counterdomain",
+      "all27floats finite",
+      "previous-v exact bits lineage",
+      "numericalstate ranges",
+      "all9 source coordinate limits"
+    ],
+    "reasons": {
+      "none": 0,
+      "incomplete": 1,
+      "source_status": 2,
+      "nonfinite": 3,
+      "source_limit": 4,
+      "lineage": 5,
+      "counter_domain": 6,
+      "numeric_state_range": 7
+    },
+    "clipping_allowed_but_all_stages_reported": true
+  },
+  "required_observations": [
+    "prestate actual/reference rates and signed error7",
+    "chosen Kd7 and low/interior/high branch",
+    "P,D,g0,requested and clipped actuator torque",
+    "all Pjp/Pa clipping stages",
+    "poststate position/rate errors against frame_k+1",
+    "actual peak rates/effective delta-v/h acceleration (not SDKqacc)",
+    "all9 source-limit margins",
+    "terminal125-state band; first25-state recovery remains only a separate observation"
+  ],
+  "scope_caveats": [
+    "new prospective hypothesis, not a grid winner or stability/passivity proof",
+    "relative requested damping power is nonpositive; moving reference and total P+D+g clipping prevent a whole-plant claim",
+    "interior D=40*abs(e)*e mathematically; incremental damping is80*abs(e), up to40 although Kd<=20",
+    "continuous piecewise law has derivative corners; no derivative-of-rounded-program claim",
+    "reference velocity/acceleration limits do not bound actual plant motion",
+    "not collision/contact/model-import/hardware/sensor-noise/real-time/#bounded qualification"
+  ],
+  "remaining_admission_decisions_before_GO": [
+    "Root/Flow final public scheduler/composite API, shape/status codes and exact failure precedence",
+    "Root admission of exact common-controller/control-path carry for cases0..2; no automatic carry on numerical closeness",
+    "Root explicit own execution GO for mandatory new750-step brake AFTER immutable source/descriptor and new-law unit/authority/native checks",
+    "If any carry is not provable, Root decides whether to authorize that newly differing case once or stop; no hidden extra rollouts",
+    "Root confirms unchanged physical/controller audit budgets and strict bit-exact scheduler recipe under the named IEEE profile",
+    "Future SDK acquisition requires separate descriptor/model/assets/flags/source admission and GO; no such authorization exists now"
+  ],
+  "no_execution_performed": {
+    "source_or_native_calls": 0,
+    "new_controller_calls": 0,
+    "new_plant_steps": 0,
+    "SDK_loads": 0,
+    "SDK_steps": 0,
+    "reference_generation_calls": 0,
+    "heldout_result_calls": 0
+  }
+}

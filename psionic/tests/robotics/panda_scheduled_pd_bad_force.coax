@@ -1,0 +1,2 @@
+#load "panda-scheduled-pd-control.coax";
+main :: () {x:=pjp_fixture();force:[7]pfku.Quantity(PmHingeGravity,f64);out:[1]PsdForce;status:=psd_force(x.q[..],x.slides[..],force[..],x.target[..],x.target_rate[..],out[..]);}

@@ -1,0 +1,169 @@
+{
+  "schema": "psionic.panda-scheduled-pd.independent.v1",
+  "passed": true,
+  "plant_steps": 0,
+  "SDK_calls": 0,
+  "Coax_calls": 0,
+  "old_reference_regeneration_calls": 0,
+  "old_gate_runs": 0,
+  "experiment": {
+    "bytes": 30185,
+    "sha256": "16f8fa543403fc92ec068908292f618a9b7f41593acd179d2586235deb387b74"
+  },
+  "trace": {
+    "bytes": 3216016,
+    "sha256": "b8b2be33fdc0cefaab9667591cdd89b6dff7e7299df4343a4767dcc08d832648"
+  },
+  "index": {
+    "bytes": 160,
+    "sha256": "69e34f677cbe7259ceaded1fcf33ee2a758129a09f96d0b0d99d9255b0a42d44"
+  },
+  "scalar_proof": {
+    "passed": true,
+    "cases": 62,
+    "all_words_bit_exact": true,
+    "expected_receipt": {
+      "bytes": 1799,
+      "sha256": "e1dbacd5418e598acec7af9fa9c5f8f84f907ff80b21af869e75a0a7134c5946"
+    },
+    "expected_table": {
+      "bytes": 2480,
+      "sha256": "3438cbd32bc2c98fd9985a0ba2dd1f1db85ed2cef6a258676004c39a2889f4f4"
+    },
+    "facts": {
+      "passed": true,
+      "cases": 62,
+      "valid": 46,
+      "refusals": 16,
+      "refused_rows_are_unavailable_transport_not_published_gain": true,
+      "regime_counts": [
+        18,
+        16,
+        12
+      ],
+      "requested_component_relative_power_nonpositive": true,
+      "gain_sector": [
+        4,
+        20
+      ],
+      "stored_denominator_F64_hex": "0x1.999999999999ap-2",
+      "stored_ramp_slope_exact": "144115188075855872/3602879701896397",
+      "stored_real_intercept_exact": "0",
+      "ideal_decimal_interior": "Kd=40*abs(e); D=40*abs(e)*e; incremental damping=80*abs(e), up to40",
+      "stored_literal_incremental_upper_bound": 40,
+      "not_a_derivative_of_rounded_code": true,
+      "not_clipped_total_torque_or_global_plant_passivity": true
+    },
+    "reference_generation_repeated": false
+  },
+  "metric_carry_input_binding": {
+    "bytes": 1710,
+    "sha256": "6ce37dadaa7db497a052dd15197485667f5152d1985fb0106495d51792f095cc"
+  },
+  "reader_guards": {
+    "passed": true,
+    "refused_cases": 23,
+    "plant_steps": 0,
+    "SDK_calls": 0
+  },
+  "schedule_counts_all_recorded": [
+    2714,
+    253,
+    33
+  ],
+  "exact_new_schedule_rows": 3000,
+  "exact_carried_command_queries": 2250,
+  "exact_carried_command_bytes": 1602000,
+  "old_metric_cases_carried": 3,
+  "old_metric_cases_recomputed": 0,
+  "new_brake_direct_metric": {
+    "passed": true,
+    "values": 32,
+    "max_abs_error": 4.218847493575595e-15,
+    "maximum_fraction_of_budget": 0.0010916735667549544,
+    "atol": 2e-12,
+    "rtol": 2e-12
+  },
+  "new_fourcase_combination": {
+    "passed": true,
+    "values": 2,
+    "max_abs_error": 6.938893903907228e-17,
+    "maximum_fraction_of_budget": 3.1398948888767683e-05,
+    "atol": 2e-12,
+    "rtol": 2e-12
+  },
+  "new_brake_PD": {
+    "passed": true,
+    "values": 26250,
+    "max_abs_error": 4.618527782440651e-14,
+    "maximum_fraction_of_budget": 2.3092638912203256e-06,
+    "atol": 2e-08,
+    "rtol": 0
+  },
+  "new_brake_committed_steps": 750,
+  "source": {
+    "psionic/tests/robotics/panda_scheduled_pd_reference.py": {
+      "bytes": 18752,
+      "sha256": "9c47d35beb03e4b7c7a72cbf4d80ff9d69faf5acaadca59b58a73bc73416663f"
+    },
+    "psionic/tests/robotics/panda_gain_search_objective.py": {
+      "bytes": 18880,
+      "sha256": "375c4d36c1e1b848a858f4ebdfde6b38866c8e119396389ecde2524b915ff6c6"
+    },
+    "psionic/tests/robotics/panda_joint_pd_reference.py": {
+      "bytes": 15899,
+      "sha256": "3e6e5eb87fd3d2937486ae2d380ea1928844119aca10a1e27eaa496e5edcb1af"
+    },
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": {
+      "bytes": 7723,
+      "sha256": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3"
+    },
+    "psionic/fixtures/robotics/panda-fingers/source-profile.json": {
+      "bytes": 4079,
+      "sha256": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e"
+    },
+    "psionic/fixtures/robotics/panda-fingers/sdk-model.json": {
+      "bytes": 9576,
+      "sha256": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031"
+    },
+    "psionic/tests/robotics/panda_inverse_dynamics_matrix.py": {
+      "bytes": 4618,
+      "sha256": "c0cc39cbce0e23b1087bb89061d8f95447202d04173cb95b81cecdbdcfd2177f"
+    }
+  },
+  "assessment": [
+    0.8379269322645729,
+    0.10495639973309306,
+    0,
+    1,
+    1,
+    34,
+    0,
+    0,
+    0
+  ],
+  "all_four_valid": true,
+  "all_four_goals_met": true,
+  "new_local_profile_ID": 0,
+  "not_old_grid_winner": true,
+  "C_D_not_executed": true,
+  "outputs": {
+    "independent-case-scores.bin": {
+      "bytes": 1440,
+      "sha256": "61d24a279989d55ff7dd6ef2716bcfa9df07dfd6b284c48c6486d053a701946b"
+    },
+    "independent-assessment.bin": {
+      "bytes": 72,
+      "sha256": "bd4abc0cec1e944a9a7af467e71ac9dca8cdd7bf16224c20abf85c30d5a345f4"
+    },
+    "new-brake-expected-PD.f64": {
+      "bytes": 210000,
+      "sha256": "3e02dd06e926d501ef7275c359e5edbea7c182514f9b83401e3f31da5ab5337c"
+    },
+    "metric-carry.json": {
+      "bytes": 1818,
+      "sha256": "97ac4ab3c8e933ec685ff3c00324a5f9069d52f0c725bdc3a526f37cfa248566"
+    }
+  },
+  "seconds": 2.1747987090493552
+}

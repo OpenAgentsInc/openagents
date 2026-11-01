@@ -1,0 +1,2 @@
+#load "panda-scheduled-pd-control.coax";
+main :: () {r:pfku.Quantity(PidLinearRate,f64);a:pfku.Quantity(PidAngularRate,f64);out:[1]PsdSchedule;status:=psd_schedule(r,a,out[..]);}

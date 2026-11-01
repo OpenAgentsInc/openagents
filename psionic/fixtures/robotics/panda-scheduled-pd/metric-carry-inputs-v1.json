@@ -1,0 +1,42 @@
+{
+  "schema": "psionic.panda-scheduled-pd.metric-carry-inputs.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 30185,
+    "sha256": "16f8fa543403fc92ec068908292f618a9b7f41593acd179d2586235deb387b74"
+  },
+  "frozen_before_new_brake_result": true,
+  "original_experiment_unchanged": true,
+  "reason": "Root approved exact reuse of three old streamed/direct-fsum cards after experiment seal. Add only their prior qualified identities; no metric recomputation or controller gain change.",
+  "inputs": {
+    "psionic/fixtures/robotics/panda-gain-search/case-scores.bin": {
+      "bytes": 12960,
+      "sha256": "cb7f5031db18b5993e01aa87430763d99e5392cc5b6853a28868b580bc181cb4"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/independent-case-scores.bin": {
+      "bytes": 12960,
+      "sha256": "9e34f0c72d243a43eb2e5efad23c8a12d8fa44a8b73dc0c25c02f46295b20349"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/independent-objective.json": {
+      "bytes": 72494,
+      "sha256": "a641a64aaff428f5504a6295749ce52499f58f1cc15d3adf88325c068472076e"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/independent-publication.json": {
+      "bytes": 2671,
+      "sha256": "38e45ff4b6a844d9bda3b8dcf6c3538e4ed60eb2118443ac2a29e583b21dfac3"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/native-qualification.json": {
+      "bytes": 34314,
+      "sha256": "101480a5223bc2dd2a18e703742ab51fd20e2d29932991b9a7f897e16af162d3"
+    }
+  },
+  "old_rows": [
+    32,
+    33,
+    34
+  ],
+  "new_scope_local_ID": 0,
+  "only_metric_payload_edit": "I64 profile field bytes256:264 set from8 to0; all other360Bcard bytes exact",
+  "old_metric_oracle_calls": 0,
+  "new_brake_results_observed": false
+}

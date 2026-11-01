@@ -1,0 +1,8 @@
+pure common damping schedule; no force or plant execution
+error (micro-rad/s): 50000; Kd7 (micro-J*s/rad^2): 4000000; regime 0
+error (micro-rad/s): 300000; Kd7 (micro-J*s/rad^2): 12000000; regime 1
+error (micro-rad/s): 2000000; Kd7 (micro-J*s/rad^2): 20000000; regime 2
+zero diagnostics: negative signed zero 1; absolute bits 0
+same law for every case: joint7 Kp/Kd 40/20
+rate outside numerical box: range; complete schedule unchanged
+scalar fixtures are separate from measured command carry and braking

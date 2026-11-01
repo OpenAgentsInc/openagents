@@ -1,0 +1,43 @@
+{
+  "schema": "psionic.panda-scheduled-pd.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 30185,
+    "sha256": "16f8fa543403fc92ec068908292f618a9b7f41593acd179d2586235deb387b74"
+  },
+  "prospective_descriptor": {
+    "bytes": 13233,
+    "sha256": "3755c009214762b5ee864a317a774be0dec6a3d3afd888efb5202b2d8276a37e"
+  },
+  "prospective_seal": {
+    "bytes": 399,
+    "sha256": "89642206df8b715b844ffd0b6a23a695cb121b6e22cc1a7987ca51dbf8074eb5"
+  },
+  "inputs": {
+    "common-base-cases.f64": {
+      "bytes": 2048,
+      "sha256": "1a86ae6c8add3961929d0c7a69e649a2a731563b15d9287dfb1a9c1342657193"
+    },
+    "scalar-inputs.f64": {
+      "bytes": 992,
+      "sha256": "f0a93168b2291179bb37bde0b1f2a4ccbdbd4389a41e4e478c9b67788a9b3528"
+    }
+  },
+  "carry_raw_identities": [
+    {
+      "bytes": 780040,
+      "sha256": "f5718536e8a4b3b42a0ab4fd273b953640ee323cb6a73619b7fe02ea3e6af73e"
+    },
+    {
+      "bytes": 780040,
+      "sha256": "1e40ed13651fece765f6fa6d5ccdcf58f2f93b6cea99260a1c14022f1e7486d7"
+    },
+    {
+      "bytes": 780040,
+      "sha256": "4c83f6fe38c5cca69119f215e4315ffc851f98eace57f2e88a681cabcea654f4"
+    }
+  ],
+  "metadata_only": true,
+  "new_brake_results_observed": false,
+  "native_controller_source_model_SDK_calls": 0
+}

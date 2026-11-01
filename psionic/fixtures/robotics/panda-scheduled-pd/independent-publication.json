@@ -1,0 +1,115 @@
+{
+  "schema": "psionic.panda-scheduled-pd.independent-publication.v1",
+  "passed": true,
+  "files": {
+    "prospective-descriptor.json": {
+      "bytes": 13233,
+      "sha256": "3755c009214762b5ee864a317a774be0dec6a3d3afd888efb5202b2d8276a37e"
+    },
+    "prospective-seal.json": {
+      "bytes": 399,
+      "sha256": "89642206df8b715b844ffd0b6a23a695cb121b6e22cc1a7987ca51dbf8074eb5"
+    },
+    "experiment.json": {
+      "bytes": 30185,
+      "sha256": "16f8fa543403fc92ec068908292f618a9b7f41593acd179d2586235deb387b74"
+    },
+    "common-base-cases.f64": {
+      "bytes": 2048,
+      "sha256": "1a86ae6c8add3961929d0c7a69e649a2a731563b15d9287dfb1a9c1342657193"
+    },
+    "scalar-inputs.f64": {
+      "bytes": 992,
+      "sha256": "f0a93168b2291179bb37bde0b1f2a4ccbdbd4389a41e4e478c9b67788a9b3528"
+    },
+    "input-freeze.json": {
+      "bytes": 1266,
+      "sha256": "94f1da51bbac46cdfa53ccaac86e84acacdaa4289d1d39761fabc591afee47be"
+    },
+    "metric-carry-inputs-v1.json": {
+      "bytes": 1710,
+      "sha256": "6ce37dadaa7db497a052dd15197485667f5152d1985fb0106495d51792f095cc"
+    },
+    "scalar-reference/record.json": {
+      "bytes": 1799,
+      "sha256": "e1dbacd5418e598acec7af9fa9c5f8f84f907ff80b21af869e75a0a7134c5946"
+    },
+    "scalar-reference/schedule-expected.bin": {
+      "bytes": 2480,
+      "sha256": "3438cbd32bc2c98fd9985a0ba2dd1f1db85ed2cef6a258676004c39a2889f4f4"
+    },
+    "scalar-reference/schedule-sector-facts.json": {
+      "bytes": 698,
+      "sha256": "a64119044a897bd995210d612e62dbd353e02d39d8e53d322d3f1ff9d31e11f4"
+    },
+    "scalar-reference.json": {
+      "bytes": 1799,
+      "sha256": "e1dbacd5418e598acec7af9fa9c5f8f84f907ff80b21af869e75a0a7134c5946"
+    },
+    "schedule-expected.bin": {
+      "bytes": 2480,
+      "sha256": "3438cbd32bc2c98fd9985a0ba2dd1f1db85ed2cef6a258676004c39a2889f4f4"
+    },
+    "schedule-sector-facts.json": {
+      "bytes": 698,
+      "sha256": "a64119044a897bd995210d612e62dbd353e02d39d8e53d322d3f1ff9d31e11f4"
+    },
+    "independent-qualification.json": {
+      "bytes": 5084,
+      "sha256": "0f3b19327e16866e08a2a299bccbf4a2c1020a6b196efa378cc3a3e414921e4b"
+    },
+    "independent-case-scores.bin": {
+      "bytes": 1440,
+      "sha256": "61d24a279989d55ff7dd6ef2716bcfa9df07dfd6b284c48c6486d053a701946b"
+    },
+    "independent-assessment.bin": {
+      "bytes": 72,
+      "sha256": "bd4abc0cec1e944a9a7af467e71ac9dca8cdd7bf16224c20abf85c30d5a345f4"
+    },
+    "new-brake-expected-PD.f64": {
+      "bytes": 210000,
+      "sha256": "3e02dd06e926d501ef7275c359e5edbea7c182514f9b83401e3f31da5ab5337c"
+    },
+    "metric-carry.json": {
+      "bytes": 1818,
+      "sha256": "97ac4ab3c8e933ec685ff3c00324a5f9069d52f0c725bdc3a526f37cfa248566"
+    },
+    "new-brake-observations.json": {
+      "bytes": 1458,
+      "sha256": "7173b9c53328a87c3dfbf2ed271e83e1aa15829cb868b0b8f6328bd996c2f239"
+    }
+  },
+  "executed_source": {
+    "psionic/tests/robotics/panda_scheduled_pd_reference.py": {
+      "bytes": 18752,
+      "sha256": "9c47d35beb03e4b7c7a72cbf4d80ff9d69faf5acaadca59b58a73bc73416663f"
+    }
+  },
+  "original_scalar_receipt": "/tmp/panda-scheduled-pd-scalar-first/record.json",
+  "original_independent_receipt": "/tmp/panda-scheduled-pd-independent-first/record.json",
+  "original_receipts_and_expected_tables_copied_byte_exact": true,
+  "new_work": {
+    "scalar_input_contexts": 62,
+    "runtime_schedule_rows": 3000,
+    "controller_command_carry_queries": 2250,
+    "independent_new_brake_PD_fields": 26250,
+    "independent_new_brake_metric_fields": 32,
+    "new_four_case_combined_metrics": 2,
+    "new_trajectory_plant_steps_by_Core": 750
+  },
+  "reused_work": {
+    "old_trajectory_states_cases": [
+      0,
+      1,
+      2
+    ],
+    "old_metric_proofs_carried": 3,
+    "old_independent_metric_recomputations": 0,
+    "metric_namespace_remap_only": "I64fieldbytes[256,264) fromoldprofile8 tonewlocal0; no other360Bcard edit",
+    "old_reference_regeneration_calls": 0,
+    "old_plant_steps": 0
+  },
+  "no_audit_or_physics_reruns_for_publication": true,
+  "scalar_top_level_files_are_byte_exact_path_aliases_not_new_executions": true,
+  "scope": "NEWcommon-law originalfour-case OWNqualification; PartA remainsNONE; noSDK,C/D oroldA/B validation,hardware,globalstability orplantpassivity claim."
+}

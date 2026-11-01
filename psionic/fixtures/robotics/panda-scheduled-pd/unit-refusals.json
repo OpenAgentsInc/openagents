@@ -1,0 +1,48 @@
+{
+  "schema": "psionic.panda-scheduled-pd.unit-refusals.v1",
+  "checks": [
+    {
+      "name": "rate",
+      "source": "psionic/tests/robotics/panda_scheduled_pd_bad_rate.coax",
+      "source_sha256": "8f07e308516e255e74bee793d001451d711315f5e595601a5cc890355d55f1fd",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "log_sha256": "4a0281a08a1ef8cc073da177fc9c079a6cfb549cd64ca73c3e185101bf3ef9e1",
+      "refused": true,
+      "log": "unit-rate.log"
+    },
+    {
+      "name": "damping",
+      "source": "psionic/tests/robotics/panda_scheduled_pd_bad_damping.coax",
+      "source_sha256": "5415e20d35c53b29e9cd303ca73fccddfd750489da4be791caa9a114d257a309",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "log_sha256": "8d076958cad551cbfc25f50c66ec0f1cf2eba7578bde15aef228ce27ff2e9968",
+      "refused": true,
+      "log": "unit-damping.log"
+    },
+    {
+      "name": "force",
+      "source": "psionic/tests/robotics/panda_scheduled_pd_bad_force.coax",
+      "source_sha256": "d6e26704ef06b2c65318036ae4ccbf34c259c6584b547e4fb9088ddf8ce0915f",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "log_sha256": "04a0186282fcc1b0527911a014548d4f184c76add4baf1c4474cc7992cd71126",
+      "refused": true,
+      "log": "unit-force.log"
+    },
+    {
+      "name": "error",
+      "source": "psionic/tests/robotics/panda_scheduled_pd_bad_error.coax",
+      "source_sha256": "39a8f617ba1d63c7a1c23b9d22580731fd1bf511aacec0007f6a1c2bbab4dfad",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "log_sha256": "8b85d8489dcb13f44d796db66b239019132f7c047bc06407e6e123bd9636027f",
+      "refused": true,
+      "log": "unit-error.log"
+    }
+  ],
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "passed": true,
+  "scope": "Four first-run new unit refusals; independent compiler-only witnesses, no model/SDK call."
+}

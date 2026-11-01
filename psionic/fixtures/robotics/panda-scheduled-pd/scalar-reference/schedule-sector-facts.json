@@ -1,0 +1,24 @@
+{
+  "passed": true,
+  "cases": 62,
+  "valid": 46,
+  "refusals": 16,
+  "refused_rows_are_unavailable_transport_not_published_gain": true,
+  "regime_counts": [
+    18,
+    16,
+    12
+  ],
+  "requested_component_relative_power_nonpositive": true,
+  "gain_sector": [
+    4,
+    20
+  ],
+  "stored_denominator_F64_hex": "0x1.999999999999ap-2",
+  "stored_ramp_slope_exact": "144115188075855872/3602879701896397",
+  "stored_real_intercept_exact": "0",
+  "ideal_decimal_interior": "Kd=40*abs(e); D=40*abs(e)*e; incremental damping=80*abs(e), up to40",
+  "stored_literal_incremental_upper_bound": 40,
+  "not_a_derivative_of_rounded_code": true,
+  "not_clipped_total_torque_or_global_plant_passivity": true
+}

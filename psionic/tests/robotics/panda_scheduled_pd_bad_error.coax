@@ -1,0 +1,3 @@
+#load "panda-scheduled-pd-control.coax";
+accept :: (x:pfku.Quantity(pfku.Metre,f64)) {}
+main :: () {x:PsdSchedule;accept(x.absolute_error);}

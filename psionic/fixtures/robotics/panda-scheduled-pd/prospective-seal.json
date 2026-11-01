@@ -1,0 +1,12 @@
+{
+  "schema": "psionic.private-prospective-descriptor-seal.v1",
+  "descriptor": {
+    "filename": "descriptor.json",
+    "bytes": 13233,
+    "sha256": "3755c009214762b5ee864a317a774be0dec6a3d3afd888efb5202b2d8276a37e"
+  },
+  "new_brake_result_observed": false,
+  "source_native_model_SDK_execution": false,
+  "repository_edits": false,
+  "only_data_serialization_bit_extraction_and_hashing": true
+}

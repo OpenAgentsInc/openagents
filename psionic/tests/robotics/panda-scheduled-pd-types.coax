@@ -1,0 +1,9 @@
+// NEW fixed common-gain/rate-error schedule experiment; imported models immutable.
+#load "panda-pd-gain-search-types.coax";
+PsdSchedule :: struct {signed_error:pfku.Quantity(PidAngularRate,f64);absolute_error:pfku.Quantity(PidAngularRate,f64);damping:pfku.Quantity(PjpDamping,f64);regime:int;}
+PsdGains :: struct {gains:PgsGains;schedule:PsdSchedule;}
+PsdForce :: struct {controller:PjpOutput;schedule:PsdSchedule;}
+PsdCommand :: struct {base:PntCommand;schedule:PsdSchedule;}
+PsdStep :: struct {command:PsdCommand;plant:PeuOutput;}
+PsdCommandResult :: struct {status:PntStatus;output:PsdCommand;}
+PsdStepResult :: struct {status:PntStatus;output:PsdStep;}

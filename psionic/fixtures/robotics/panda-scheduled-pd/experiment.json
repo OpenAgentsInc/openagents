@@ -1,0 +1,1140 @@
+{
+  "schema": "psionic.panda-scheduled-pd.experiment.v1",
+  "frozen_before_new_law_brake_result": true,
+  "prospective_descriptor": {
+    "bytes": 13233,
+    "sha256": "3755c009214762b5ee864a317a774be0dec6a3d3afd888efb5202b2d8276a37e"
+  },
+  "prospective_seal": {
+    "bytes": 399,
+    "sha256": "89642206df8b715b844ffd0b6a23a695cb121b6e22cc1a7987ca51dbf8074eb5"
+  },
+  "scope": "Only original four-case common-law OWN qualification. No SDK/C-D/A-B outcomes. PartA remains NONE.",
+  "local_profile_namespace": "psionic.panda-scheduled-pd.v1",
+  "local_profile_ID": 0,
+  "not_PartA_profile8": true,
+  "common_base_cases_f64": [
+    [
+      -0.31,
+      0.22,
+      -0.14,
+      -1.91,
+      0.36,
+      1.47,
+      -0.52,
+      0.012,
+      -0.026,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -0.31,
+      0.22,
+      -0.14,
+      -1.91,
+      0.36,
+      1.47,
+      -0.52,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      240.0,
+      240.0,
+      240.0,
+      240.0,
+      160.0,
+      80.0,
+      40.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      10.0,
+      6.0,
+      4.0,
+      0.012,
+      -0.026,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      -0.31,
+      0.22,
+      -0.14,
+      -1.91,
+      0.36,
+      1.47,
+      -0.52,
+      0.012,
+      -0.026,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -0.28,
+      0.195,
+      -0.12000000000000001,
+      -1.93,
+      0.375,
+      1.49,
+      -0.545,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      240.0,
+      240.0,
+      240.0,
+      240.0,
+      160.0,
+      80.0,
+      40.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      10.0,
+      6.0,
+      4.0,
+      0.012,
+      -0.026,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      -0.31,
+      0.22,
+      -0.14,
+      -1.91,
+      0.36,
+      1.47,
+      -0.52,
+      0.012,
+      -0.026,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      -0.28,
+      0.195,
+      -0.12000000000000001,
+      -1.93,
+      0.375,
+      1.49,
+      -0.545,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      240.0,
+      240.0,
+      240.0,
+      240.0,
+      160.0,
+      80.0,
+      40.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      10.0,
+      6.0,
+      4.0,
+      0.012,
+      -0.026,
+      0.0,
+      3.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    [
+      -0.31,
+      0.22,
+      -0.14,
+      -1.91,
+      0.36,
+      1.47,
+      -0.52,
+      0.012,
+      -0.026,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      2.0,
+      0.0,
+      0.0,
+      -0.31,
+      0.22,
+      -0.14,
+      -1.91,
+      0.36,
+      1.47,
+      -0.52,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.12,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      0.6,
+      240.0,
+      240.0,
+      240.0,
+      240.0,
+      160.0,
+      80.0,
+      40.0,
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      10.0,
+      6.0,
+      4.0,
+      0.012,
+      -0.026,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  ],
+  "common_base_cases_identity": {
+    "bytes": 2048,
+    "sha256": "1a86ae6c8add3961929d0c7a69e649a2a731563b15d9287dfb1a9c1342657193"
+  },
+  "law": {
+    "input": "reference_rate7 and actual_rate7, each Radian/Second",
+    "inherited_input_numeric_box_abs_radians_per_second": 20.0,
+    "output": "PjpDamping Quantity, Joule*Second/Radian^2",
+    "float_profile": "IEEE754 binary64, round-to-nearest-ties-to-even at EVERY listed operation, no FMA/no contraction/no-fast-math/reassociation; FPCR0 on the named Darwin-arm64 target",
+    "constants": {
+      "low_rate_radians_per_second": 0.1,
+      "high_rate_radians_per_second": 0.5,
+      "low_gain": 4.0,
+      "gain_increment": 16.0,
+      "high_gain": 20.0
+    },
+    "constant_F64_bits_u64_hex": {
+      "low_rate": "3fb999999999999a",
+      "high_rate": "3fe0000000000000",
+      "low_gain": "4010000000000000",
+      "gain_increment": "4030000000000000",
+      "high_gain": "4034000000000000"
+    },
+    "normative_operation_order": [
+      "e=RN64(reference_rate7-actual_rate7)",
+      "s=abs(e), clear sign bit (including negative zero)",
+      "if s<=F64(0.1), return exact F64(4)",
+      "if s>=F64(0.5), return exact F64(20)",
+      "numerator=RN64(s-F64(0.1))",
+      "denominator=RN64(F64(0.5)-F64(0.1))",
+      "fraction=RN64(numerator/denominator)",
+      "increment=RN64(F64(16)*fraction)",
+      "gain=RN64(F64(4)+increment)",
+      "return gain; use unchanged Pjp D7=RN64(gain*RN64(reference_rate7-actual_rate7))"
+    ],
+    "forbid_algebraic_replacement_by_40s": true,
+    "hard_gain_range_inclusive": [
+      4.0,
+      20.0
+    ],
+    "branch_labels": [
+      "low inclusive",
+      "interior",
+      "high inclusive"
+    ],
+    "interior_may_round_to_endpoint_gain": true,
+    "finite_invalid_policy": "refuse atomically; no minimum-gain or SDK fallback",
+    "law_state": "stateless memoryless; no hysteresis, filtering, per-case switch or hidden state"
+  },
+  "one_common_controller": {
+    "no_case_conditioned_gains": true,
+    "Kp_J_per_radian_squared": [
+      240.0,
+      240.0,
+      240.0,
+      240.0,
+      160.0,
+      80.0,
+      40.0
+    ],
+    "Kp_F64_bits_u64_hex": [
+      "406e000000000000",
+      "406e000000000000",
+      "406e000000000000",
+      "406e000000000000",
+      "4064000000000000",
+      "4054000000000000",
+      "4044000000000000"
+    ],
+    "ordinary_Kd_J_second_per_radian_squared": [
+      16.0,
+      16.0,
+      16.0,
+      16.0,
+      10.0,
+      6.0,
+      4.0
+    ],
+    "Kd_F64_bits_u64_hex": [
+      "4030000000000000",
+      "4030000000000000",
+      "4030000000000000",
+      "4030000000000000",
+      "4024000000000000",
+      "4018000000000000",
+      "4010000000000000"
+    ],
+    "legacy_brake_Kd7_override_removed": true,
+    "source_of_gain_vectors": "ordinary defaults times4(Kp),times2(Kd); never scale the old case-specific brake20",
+    "schedule_applies_only_joint_index": 6,
+    "schedule_receives_no_case_ID": true,
+    "schedule_assigned_every_control_call": true
+  },
+  "admission": {
+    "scalar_status": {
+      "ok": 0,
+      "shape": 1,
+      "number": 2,
+      "range": 3
+    },
+    "scalar_order": [
+      "outputspan shape1",
+      "BOTH reference and actual rates finite BEFORE EITHER bound",
+      "reference/actual eachabs<=20 inclusive",
+      "only then subtract and evaluate law"
+    ],
+    "force_order": "all input/output span shapes before index6; schedule admission before unchangedPjp admission",
+    "invalid_outputs": "fully preserved; numeric zeros in test transport are private UNAVAILABLE markers only after poison assertions",
+    "no_lowgain_or_SDK_fallback": true
+  },
+  "scalar_cases": [
+    {
+      "name": "direct-error-00-sign0",
+      "reference_bits_u64_hex": "0000000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-00-sign1",
+      "reference_bits_u64_hex": "8000000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-02-sign0",
+      "reference_bits_u64_hex": "3fb9999999999999",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-02-sign1",
+      "reference_bits_u64_hex": "bfb9999999999999",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-03-sign0",
+      "reference_bits_u64_hex": "3fb999999999999a",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-03-sign1",
+      "reference_bits_u64_hex": "bfb999999999999a",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-04-sign0",
+      "reference_bits_u64_hex": "3fb999999999999b",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-04-sign1",
+      "reference_bits_u64_hex": "bfb999999999999b",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-05-sign0",
+      "reference_bits_u64_hex": "3fdfffffffffffff",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-05-sign1",
+      "reference_bits_u64_hex": "bfdfffffffffffff",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-06-sign0",
+      "reference_bits_u64_hex": "3fe0000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-06-sign1",
+      "reference_bits_u64_hex": "bfe0000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-07-sign0",
+      "reference_bits_u64_hex": "3fe0000000000001",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-07-sign1",
+      "reference_bits_u64_hex": "bfe0000000000001",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-08-sign0",
+      "reference_bits_u64_hex": "3fc999999999999a",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-08-sign1",
+      "reference_bits_u64_hex": "bfc999999999999a",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-09-sign0",
+      "reference_bits_u64_hex": "3fd3333333333333",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-09-sign1",
+      "reference_bits_u64_hex": "bfd3333333333333",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-10-sign0",
+      "reference_bits_u64_hex": "3fd999999999999a",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-10-sign1",
+      "reference_bits_u64_hex": "bfd999999999999a",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-11-sign0",
+      "reference_bits_u64_hex": "4000000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-11-sign1",
+      "reference_bits_u64_hex": "c000000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-12-sign0",
+      "reference_bits_u64_hex": "4034000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "direct-error-12-sign1",
+      "reference_bits_u64_hex": "c034000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-00-sign0",
+      "reference_bits_u64_hex": "3fbeb851eb851eb8",
+      "actual_bits_u64_hex": "3fbeb851eb851eb8",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-00-sign1",
+      "reference_bits_u64_hex": "bfbeb851eb851eb8",
+      "actual_bits_u64_hex": "bfbeb851eb851eb8",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-01-sign0",
+      "reference_bits_u64_hex": "bfb47ae147ae147b",
+      "actual_bits_u64_hex": "3fb47ae147ae147b",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-01-sign1",
+      "reference_bits_u64_hex": "3fb47ae147ae147b",
+      "actual_bits_u64_hex": "bfb47ae147ae147b",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-02-sign0",
+      "reference_bits_u64_hex": "3fd999999999999a",
+      "actual_bits_u64_hex": "3fd3333333333333",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-02-sign1",
+      "reference_bits_u64_hex": "bfd999999999999a",
+      "actual_bits_u64_hex": "bfd3333333333333",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-03-sign0",
+      "reference_bits_u64_hex": "3fd3333333333333",
+      "actual_bits_u64_hex": "3fc999999999999a",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-03-sign1",
+      "reference_bits_u64_hex": "bfd3333333333333",
+      "actual_bits_u64_hex": "bfc999999999999a",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-04-sign0",
+      "reference_bits_u64_hex": "3fe3333333333333",
+      "actual_bits_u64_hex": "3fb999999999999a",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-04-sign1",
+      "reference_bits_u64_hex": "bfe3333333333333",
+      "actual_bits_u64_hex": "bfb999999999999a",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-05-sign0",
+      "reference_bits_u64_hex": "3fe6666666666666",
+      "actual_bits_u64_hex": "3fc999999999999a",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-05-sign1",
+      "reference_bits_u64_hex": "bfe6666666666666",
+      "actual_bits_u64_hex": "bfc999999999999a",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-06-sign0",
+      "reference_bits_u64_hex": "4034000000000000",
+      "actual_bits_u64_hex": "c034000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-06-sign1",
+      "reference_bits_u64_hex": "c034000000000000",
+      "actual_bits_u64_hex": "4034000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-07-sign0",
+      "reference_bits_u64_hex": "4034000000000000",
+      "actual_bits_u64_hex": "4034000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-07-sign1",
+      "reference_bits_u64_hex": "c034000000000000",
+      "actual_bits_u64_hex": "c034000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-09-sign0",
+      "reference_bits_u64_hex": "4033ffffffffffff",
+      "actual_bits_u64_hex": "4034000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-09-sign1",
+      "reference_bits_u64_hex": "c033ffffffffffff",
+      "actual_bits_u64_hex": "c034000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-10-sign0",
+      "reference_bits_u64_hex": "4034000000000000",
+      "actual_bits_u64_hex": "4033ffffffffffff",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-10-sign1",
+      "reference_bits_u64_hex": "c034000000000000",
+      "actual_bits_u64_hex": "c033ffffffffffff",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-11-sign0",
+      "reference_bits_u64_hex": "0000000000000000",
+      "actual_bits_u64_hex": "8000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "moving-13-sign0",
+      "reference_bits_u64_hex": "8000000000000000",
+      "actual_bits_u64_hex": "8000000000000000",
+      "expected_status": 0
+    },
+    {
+      "name": "refusal-00",
+      "reference_bits_u64_hex": "7ff8000000000001",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-01",
+      "reference_bits_u64_hex": "0000000000000000",
+      "actual_bits_u64_hex": "7ff8000000000001",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-02",
+      "reference_bits_u64_hex": "7ff0000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-03",
+      "reference_bits_u64_hex": "fff0000000000000",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-04",
+      "reference_bits_u64_hex": "0000000000000000",
+      "actual_bits_u64_hex": "7ff0000000000000",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-05",
+      "reference_bits_u64_hex": "0000000000000000",
+      "actual_bits_u64_hex": "fff0000000000000",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-06",
+      "reference_bits_u64_hex": "4034000000000001",
+      "actual_bits_u64_hex": "7ff8000000000001",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-07",
+      "reference_bits_u64_hex": "7ff8000000000001",
+      "actual_bits_u64_hex": "c034000000000001",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-08",
+      "reference_bits_u64_hex": "4034000000000001",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 3
+    },
+    {
+      "name": "refusal-09",
+      "reference_bits_u64_hex": "c034000000000001",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 3
+    },
+    {
+      "name": "refusal-10",
+      "reference_bits_u64_hex": "0000000000000000",
+      "actual_bits_u64_hex": "4034000000000001",
+      "expected_status": 3
+    },
+    {
+      "name": "refusal-11",
+      "reference_bits_u64_hex": "0000000000000000",
+      "actual_bits_u64_hex": "c034000000000001",
+      "expected_status": 3
+    },
+    {
+      "name": "refusal-12",
+      "reference_bits_u64_hex": "4034000000000001",
+      "actual_bits_u64_hex": "c034000000000001",
+      "expected_status": 3
+    },
+    {
+      "name": "refusal-13",
+      "reference_bits_u64_hex": "7ff0000000000001",
+      "actual_bits_u64_hex": "0000000000000000",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-14",
+      "reference_bits_u64_hex": "0000000000000000",
+      "actual_bits_u64_hex": "fff8000000000001",
+      "expected_status": 2
+    },
+    {
+      "name": "refusal-15",
+      "reference_bits_u64_hex": "7ff0000000000001",
+      "actual_bits_u64_hex": "7ff8000000000001",
+      "expected_status": 2
+    }
+  ],
+  "scalar_case_count": 62,
+  "scalar_input": {
+    "bytes": 992,
+    "sha256": "f0a93168b2291179bb37bde0b1f2a4ccbdbd4389a41e4e478c9b67788a9b3528"
+  },
+  "scalar_inputs_format": "rawN\u00d72F64 words, reference/actual; rawNaN payload bits preserved",
+  "scalar_actual_format": "N\u00d740B statusI64,signed_errorF64,absolute_errorF64,dampingF64,regimeI64",
+  "scalar_expected_recipe": "IndependentFraction exactbinary arithmetic withRN at every descriptor operation; special IEEE signed-zero subtraction; exact3diagnosticwords/regime/status under namednoFMAprofile. Not generated before native/source freeze.",
+  "carry_sources": [
+    {
+      "case_id": 0,
+      "source_profile": 8,
+      "source_experiment": "psionic/fixtures/robotics/panda-gain-search/experiment.json",
+      "raw": {
+        "bytes": 780040,
+        "sha256": "f5718536e8a4b3b42a0ab4fd273b953640ee323cb6a73619b7fe02ea3e6af73e"
+      },
+      "source_lineage_entry": {
+        "profile": 8,
+        "case_id": 0,
+        "offset_records": 24000,
+        "records": 750,
+        "stage": 0,
+        "code": 0,
+        "raw": {
+          "bytes": 780040,
+          "sha256": "f5718536e8a4b3b42a0ab4fd273b953640ee323cb6a73619b7fe02ea3e6af73e"
+        },
+        "origin": "newownedtrajectory"
+      },
+      "expected_controller_queries": 750,
+      "new_plant_steps": 0
+    },
+    {
+      "case_id": 1,
+      "source_profile": 8,
+      "source_experiment": "psionic/fixtures/robotics/panda-gain-search/experiment.json",
+      "raw": {
+        "bytes": 780040,
+        "sha256": "1e40ed13651fece765f6fa6d5ccdcf58f2f93b6cea99260a1c14022f1e7486d7"
+      },
+      "source_lineage_entry": {
+        "profile": 8,
+        "case_id": 1,
+        "offset_records": 24750,
+        "records": 750,
+        "stage": 0,
+        "code": 0,
+        "raw": {
+          "bytes": 780040,
+          "sha256": "1e40ed13651fece765f6fa6d5ccdcf58f2f93b6cea99260a1c14022f1e7486d7"
+        },
+        "origin": "newownedtrajectory"
+      },
+      "expected_controller_queries": 750,
+      "new_plant_steps": 0
+    },
+    {
+      "case_id": 2,
+      "source_profile": 8,
+      "source_experiment": "psionic/fixtures/robotics/panda-gain-search/experiment.json",
+      "raw": {
+        "bytes": 780040,
+        "sha256": "4c83f6fe38c5cca69119f215e4315ffc851f98eace57f2e88a681cabcea654f4"
+      },
+      "source_lineage_entry": {
+        "profile": 8,
+        "case_id": 2,
+        "offset_records": 25500,
+        "records": 750,
+        "stage": 0,
+        "code": 0,
+        "raw": {
+          "bytes": 780040,
+          "sha256": "4c83f6fe38c5cca69119f215e4315ffc851f98eace57f2e88a681cabcea654f4"
+        },
+        "origin": "newownedtrajectory"
+      },
+      "expected_controller_queries": 750,
+      "new_plant_steps": 0
+    }
+  ],
+  "carry_queries_required": 2250,
+  "carry_new_plant_steps": 0,
+  "carry_condition": "Every NEW full744Bcommand consists of BITIDENTICAL712B oldcommand plus newly independently checked32B schedule. Repacked1040B oldfresh records BITIDENTICAL. No closeness carry.",
+  "failed_carry_policy": "STOP; no fallback rollout",
+  "new_brake_case": 3,
+  "new_brake_steps_maximum": 750,
+  "new_brake_budget": "Exactly one new release/O2 trajectory, preserve refusal prefix; no rerun",
+  "controller_queries_and_source_checks_are_not_plant_steps": true,
+  "pipeline": {
+    "h_seconds": 0.002,
+    "ticks": 750,
+    "controller_hertz": 500,
+    "prestate_reference_frame": "k=0..749, use unchanged reference_k",
+    "poststate_metrics_frame": "n=k+1=1..750, compare unchanged reference_n",
+    "actuator_feedback_explicit_at_prestate": true,
+    "Peu_physical_implicit_joint_damping_unchanged": true,
+    "do_not_add_feedback_Kd_to_implicit_B": true,
+    "gravity_compensation": "unchanged source g0",
+    "torque_caps_J_per_radian": [
+      80.0,
+      80.0,
+      80.0,
+      80.0,
+      80.0,
+      12.0,
+      12.0
+    ],
+    "finger_controls": "unchanged initial-position targets and existing actuator model",
+    "all_existing_Pjp_Peu_Pqt_Pnt_PartA_sources_immutable": true
+  },
+  "goals": {
+    "terminal_applies_all_four_cases": true,
+    "first_poststate": 626,
+    "last_poststate": 750,
+    "position_error_max_rad": 0.01,
+    "reference_rate_error_max_rad_per_second": 0.05,
+    "hold_full_trajectory_peak_drift_rad": 0.005,
+    "nominal_case": 1,
+    "nominal_SSE_less_than_analytic_stationary_SSE": true,
+    "temporary_25_state_recovery_does_not_count_as_terminal_success": true,
+    "observed_terminal_band_is_not_asymptotic_settling": true
+  },
+  "validity": {
+    "complete_observations": 750,
+    "source_limits_all_nine": [
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -1.7628,
+        1.7628
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -3.0718,
+        -0.0698
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        -0.0175,
+        3.7525
+      ],
+      [
+        -2.8973,
+        2.8973
+      ],
+      [
+        0,
+        0.04
+      ],
+      [
+        -0.04,
+        0
+      ]
+    ],
+    "numerical_position_caps": [
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      1.0,
+      1.0
+    ],
+    "numerical_rate_caps": [
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      2.0,
+      2.0
+    ],
+    "previous_v_finite_and_exact_lineage": true,
+    "unexpected_source_status_invalid": true,
+    "all_floats_finite_before_reduction": true,
+    "no_infinity_sentinels": true,
+    "empty_partial": "finite invalid cards; goals0, valid0, complete0, reason1 unless an earlier concrete failure",
+    "first_failure_priority": [
+      "source status",
+      "clip counterdomain",
+      "all27floats finite",
+      "previous-v exact bits lineage",
+      "numericalstate ranges",
+      "all9 source coordinate limits"
+    ],
+    "reasons": {
+      "none": 0,
+      "incomplete": 1,
+      "source_status": 2,
+      "nonfinite": 3,
+      "source_limit": 4,
+      "lineage": 5,
+      "counter_domain": 6,
+      "numeric_state_range": 7
+    },
+    "clipping_allowed_but_all_stages_reported": true
+  },
+  "metadata_inputs": {
+    "psionic/fixtures/robotics/panda-gain-search/experiment.json": {
+      "bytes": 59450,
+      "sha256": "67c872e87b64041c9a0fde7014f828a345a0d48148d496fe087575d49fe38b31"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/lineage.json": {
+      "bytes": 22287,
+      "sha256": "603507044bd00c61670f986f3d37e6e889d88f1e35134912a9de0eb8826a5a18"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/native-qualification.json": {
+      "bytes": 34314,
+      "sha256": "101480a5223bc2dd2a18e703742ab51fd20e2d29932991b9a7f897e16af162d3"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/compact-cache.bin": {
+      "bytes": 5616024,
+      "sha256": "8f4cde2c22c60ad39f2029a5926b1f872cacb8adf69ca2018db9ab4631b3530f"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/compact-index.bin": {
+      "bytes": 1728,
+      "sha256": "bbe26f283bf9617da59e13e5fc911437cf33120a59e826312c62432d973d03ad"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/profiles.f64": {
+      "bytes": 18432,
+      "sha256": "31aa6183d98bc73e25d463e2fb2428b7a9270dbfa3916652df160730c4649b7a"
+    },
+    "psionic/fixtures/robotics/panda-gain-search/source-qualification.json": {
+      "bytes": 5704,
+      "sha256": "184000c11331980c066604f6b5c1c6b8cd380700ef8e83d38325387f3beafe0f"
+    },
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/experiment.json": {
+      "bytes": 31229,
+      "sha256": "cfe805220004838440a4ea92c258880597ca5de42b7360ca7102281e242b3612"
+    },
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/cases.f64": {
+      "bytes": 2048,
+      "sha256": "31bde2768bad55d3a64b2ab5cce5d13f0f6efaaba38baa0f7d00f9737cd26400"
+    },
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/reference-states.f64": {
+      "bytes": 504672,
+      "sha256": "9fd37cf888cb4d9cb73ecaa9e2e8279b1437e9564c5ba2117b89b7ecccf49af5"
+    },
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/external-forces.f64": {
+      "bytes": 216000,
+      "sha256": "25803423e1bd98022622c6be4d4a07b120da11fa2963bd16a2444e9763647dbe"
+    },
+    "psionic/fixtures/robotics/panda-joint-pd-tracking/analytic-reference.json": {
+      "bytes": 9507,
+      "sha256": "ded8453aa62076fcac37eff5e71d776fd666692b220472d10f8e75199eedffc3"
+    }
+  },
+  "numerical_budgets": {
+    "scheduler_diagnostic_words": "bit-exact against normativeRN64 recipe; noFMA",
+    "controller_force_atol": 2e-08,
+    "controller_force_rtol": 0,
+    "metric_atol": 2e-12,
+    "metric_rtol": 2e-12,
+    "flags_counts": "exact",
+    "mode_cached_output_bytes": "exact"
+  },
+  "ABI": {
+    "schedule32": "signed_error,absolute_error,damping:3F64;regimeI64",
+    "command744": "basePntCommand712,schedule32",
+    "step976": "command744,Peu232",
+    "gains144": "PgsGains112,schedule32",
+    "force320": "PjpOutput288,schedule32",
+    "PsrRecord1072": "unchangedPntfresh1040,schedule32",
+    "carry_header_4u32": [
+      826495824,
+      3,
+      750,
+      1072
+    ],
+    "combined_header_4u32": [
+      827478864,
+      4,
+      750,
+      1072
+    ],
+    "trace_index": "4x5I64 case,offset_records,count_records,failure_stage,failure_code; first3 counts750/status0,brake0..750; no syntheticfailedstate",
+    "brake_header_5i64": "case3,committed_count,attempted_count,failure_stage,failure_code",
+    "case_scores": "4x360B immutablePgsCaseScore layout, localprofile0",
+    "assessment": "one72B immutablePgsCandidate layout, localprofile0; NO nine-candidate selector"
+  },
+  "metrics_recipe": "Use unchanged PartA direct-arraymath.fsum metric definitions and exactgoal flags on newself-containedtrace; no oldreference/model generation.",
+  "sector_and_slope_facts": "Requested damping component D=Kd*e has relative power\u2212D*e<=0. Idealdecimal interiorKd=40|e|,D=40|e|e, incremental80|e| up to40, not merelyKd20. Storedliteral/RNrecipe checked separately; no derivative-ofrounded-code/globalpassivity/discretestability claim.",
+  "C_D_future_validation": {
+    "descriptor_frozen": true,
+    "execution_forbidden_in_this_component": true,
+    "poses": [
+      {
+        "name": "C",
+        "arm_q7_radians": [
+          -0.44,
+          -0.26,
+          0.33,
+          -2.24,
+          0.28,
+          1.66,
+          0.61
+        ],
+        "slides2_metres": [
+          0.015,
+          -0.024
+        ],
+        "pulse_J_per_radian": 3.0,
+        "brake_joint7_initial_rate_radians_per_second": 2.0,
+        "arm_q7_F64_bits_u64_hex": [
+          "bfdc28f5c28f5c29",
+          "bfd0a3d70a3d70a4",
+          "3fd51eb851eb851f",
+          "c001eb851eb851ec",
+          "3fd1eb851eb851ec",
+          "3ffa8f5c28f5c28f",
+          "3fe3851eb851eb85"
+        ],
+        "slides2_F64_bits_u64_hex": [
+          "3f8eb851eb851eb8",
+          "bf989374bc6a7efa"
+        ]
+      },
+      {
+        "name": "D",
+        "arm_q7_radians": [
+          0.53,
+          0.37,
+          -0.48,
+          -1.72,
+          -0.42,
+          2.06,
+          -0.35
+        ],
+        "slides2_metres": [
+          0.021,
+          -0.017
+        ],
+        "pulse_J_per_radian": -3.0,
+        "brake_joint7_initial_rate_radians_per_second": -2.0,
+        "arm_q7_F64_bits_u64_hex": [
+          "3fe0f5c28f5c28f6",
+          "3fd7ae147ae147ae",
+          "bfdeb851eb851eb8",
+          "bffb851eb851eb85",
+          "bfdae147ae147ae1",
+          "40007ae147ae147b",
+          "bfd6666666666666"
+        ],
+        "slides2_F64_bits_u64_hex": [
+          "3f95810624dd2f1b",
+          "bf916872b020c49c"
+        ]
+      }
+    ],
+    "future_separate_Root_GO_required": true
+  },
+  "forbid_old_A_B": true,
+  "initial_execution_counts": {
+    "new_plant_steps": 0,
+    "new_controller_queries": 0,
+    "scalar_oracle_calls": 0,
+    "source_native_calls": 0,
+    "SDK_loads": 0,
+    "reference_regeneration_calls": 0
+  }
+}

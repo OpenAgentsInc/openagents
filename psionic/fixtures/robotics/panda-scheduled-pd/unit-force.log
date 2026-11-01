@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_scheduled_pd_bad_force.coax:2:133: error[E0317]: argument 3 of 'psd_force' is [] Quantity(PidAngularRate, f64), given [] Quantity(PmHingeGravity, f64)
+  main :: () {x:=pjp_fixture();force:[7]pfku.Quantity(PmHingeGravity,f64);out:[1]PsdForce;status:=psd_force(x.q[..],x.slides[..],force[..],x.target[..],x.target_rate[..],out[..]);}
+                                                                                                                                      ^
+1 error

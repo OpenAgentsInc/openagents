@@ -1,0 +1,34 @@
+{
+  "schema": "psionic.panda-scheduled-pd.cached-brake-observations.v1",
+  "source_trace": {
+    "bytes": 3216016,
+    "sha256": "b8b2be33fdc0cefaab9667591cdd89b6dff7e7299df4343a4767dcc08d832648"
+  },
+  "source_index": {
+    "bytes": 160,
+    "sha256": "69e34f677cbe7259ceaded1fcf33ee2a758129a09f96d0b0d99d9255b0a42d44"
+  },
+  "source_independent_audit": {
+    "bytes": 5084,
+    "sha256": "0f3b19327e16866e08a2a299bccbf4a2c1020a6b196efa378cc3a3e414921e4b"
+  },
+  "scope": "Descriptive reductions of the first frozen NEW brake data only; no source/controller/model/plant/oracle rerun. Not a separate qualification gate.",
+  "case": 3,
+  "committed_states": 750,
+  "target": "constant initialq7,reference_rate0 from frozenhold case",
+  "final_state_tick": 750,
+  "final_max_position_error_rad": 0.0012646518364888282,
+  "final_max_rate_error_rad_per_second": 0.010649942197955778,
+  "terminal_window_states": [
+    626,
+    750
+  ],
+  "terminal_peak_position_error_rad": 0.00242451213510797,
+  "terminal_peak_rate_error_rad_per_second": 0.010692048656986584,
+  "first_25_state_band_entry": 363,
+  "first_25_state_band_confirmation": 387,
+  "band_recipe": "first n in1..726 with all statesn..n+24 maxjoint position error<=.01 and maxrate error<=.05; separate from terminal125-state criterion",
+  "final_recipe": "max_j abs(q750_j-q0_j);max_j abs(v750_j)",
+  "terminal_recipe": "same maxima over poststates626..750, all7joints",
+  "SDK_C_D_A_B_executions": 0
+}

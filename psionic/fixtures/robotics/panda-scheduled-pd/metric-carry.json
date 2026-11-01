@@ -1,0 +1,54 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "case_id": 0,
+      "old_profile": 8,
+      "new_local_ID": 0,
+      "only_changed_bytes": [
+        256,
+        264
+      ],
+      "old_actual_sha256": "546d086de33088935f1348b29f162f40fa00641a7ae81f5a3ebc9b790bc93226",
+      "new_actual_sha256": "833df0592141271aa5c79c6ea7c08b38c153a4d1b9fd1279be608bcdacf9bc29",
+      "independent_expected_sha256": "5140c4f5e15d2c79d1bfd592fe868d2aa5cac1df9a2d87c26c356632b048b79d"
+    },
+    {
+      "case_id": 1,
+      "old_profile": 8,
+      "new_local_ID": 0,
+      "only_changed_bytes": [
+        256,
+        264
+      ],
+      "old_actual_sha256": "65eab0ad60cd54f54ac9816cf234642a58cd13e11dfc50d94cfcec09f1839c2c",
+      "new_actual_sha256": "8603ddf83f2bfa971f27e328d710e1ce3f6d561f4e207b9dd2010bdc27ae02f1",
+      "independent_expected_sha256": "cbe9dab1849e7c5276272f0eb4d9e37039f1a2f57db12e5ec71d98a54a1376f8"
+    },
+    {
+      "case_id": 2,
+      "old_profile": 8,
+      "new_local_ID": 0,
+      "only_changed_bytes": [
+        256,
+        264
+      ],
+      "old_actual_sha256": "b574b234eaf0180403930830a7df244f6ff8215b81f11097b23524d54a020b81",
+      "new_actual_sha256": "c176faa8da1c5f8c32b57d17ae67797d7d041754af1a28e45d490e6053af4b81",
+      "independent_expected_sha256": "1b8d5826397d62b7d86cc2bc33483ec83cfeb28c955bd0dd4cb5550c9b7ee4d0"
+    }
+  ],
+  "old_independent_error_receipt": {
+    "bytes": 72494,
+    "sha256": "a641a64aaff428f5504a6295749ce52499f58f1cc15d3adf88325c068472076e"
+  },
+  "old_independent_expected_table": {
+    "bytes": 12960,
+    "sha256": "9e34f0c72d243a43eb2e5efad23c8a12d8fa44a8b73dc0c25c02f46295b20349"
+  },
+  "old_streamed_table": {
+    "bytes": 12960,
+    "sha256": "cb7f5031db18b5993e01aa87430763d99e5392cc5b6853a28868b580bc181cb4"
+  },
+  "old_metric_oracle_reexecuted": false
+}

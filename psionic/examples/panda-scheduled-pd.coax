@@ -1,0 +1,25 @@
+#import "Basic";
+#load "../tests/robotics/panda-scheduled-pd-control.coax";
+#test "Scheduled damping example display rounds independently specified scalar fixtures" {
+ #assert psd_example_micro(0.05)==50000 && psd_example_micro(0.3)==300000 && psd_example_micro(12)==12000000;
+}
+psd_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("pure common damping schedule; no force or plant execution\n");
+// book:begin psd-schedule
+ // Angular rates are rad/s; damping is J*s/rad^2. These are scalar fixtures.
+ schedule:[1]PsdSchedule;
+ for error:[3]f64.[0.05,0.3,2] {
+  #assert psd_schedule_raw(error,0,schedule[..])==PjpStatus.ok;
+  print("error (micro-rad/s): %; Kd7 (micro-J*s/rad^2): %; regime %\n",psd_example_micro(schedule[0].signed_error.value),psd_example_micro(schedule[0].damping.value),schedule[0].regime);
+ }
+ negative_zero:=f64_from_bits(0x8000000000000000);
+ #assert psd_schedule_raw(negative_zero,0,schedule[..])==PjpStatus.ok;
+ print("zero diagnostics: negative signed zero %; absolute bits %\n",(ifx f64_bits(schedule[0].signed_error.value)==0x8000000000000000 then 1 else 0),f64_bits(schedule[0].absolute_error.value));
+ gains:[1]PsdGains;#assert psd_gains_raw(2,0,gains[..])==PjpStatus.ok;
+ print("same law for every case: joint7 Kp/Kd %/%\n",cast(int)gains[0].gains.kp[6].value,cast(int)gains[0].gains.kd[6].value);
+ old:=schedule[0];status:=psd_schedule_raw(21,0,schedule[..]);#assert status==PjpStatus.range;psd_schedule_same(schedule[0],old);
+ print("rate outside numerical box: range; complete schedule unchanged\n");
+// book:end psd-schedule
+ print("scalar fixtures are separate from measured command carry and braking\n");
+}

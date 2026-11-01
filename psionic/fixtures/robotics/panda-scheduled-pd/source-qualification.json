@@ -1,0 +1,118 @@
+{
+  "schema": "psionic.panda-scheduled-pd.source-qualification.v1",
+  "passed": true,
+  "compiler": {
+    "sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+    "bytes": 2886376
+  },
+  "source_files": {
+    "psionic/tests/robotics/panda-scheduled-pd-types.coax": {
+      "sha256": "a21b3d80bd2cb29d6a6b482d9d27000535cb4fddf538ccc099cc703a17fb66ca",
+      "bytes": 658
+    },
+    "psionic/tests/robotics/panda-scheduled-pd-fixtures.coax": {
+      "sha256": "dfd70771fc5dca97482060b45d8b2da6de4803c64b2df8018bd78756b3d447f7",
+      "bytes": 1235
+    },
+    "psionic/tests/robotics/panda-scheduled-pd-control.coax": {
+      "sha256": "ed7c804a8ae8a3c226c0f2824d88528f71e2dffe3b51eb81ad278e6ef6c9a804",
+      "bytes": 10495
+    },
+    "psionic/tests/robotics/panda-scheduled-pd.coax": {
+      "sha256": "974e13dff7cfe7db0c48fd5bfda619482aa1e9c142e9525b1acebed4b26475bf",
+      "bytes": 10285
+    }
+  },
+  "experiment": {
+    "sha256": "16f8fa543403fc92ec068908292f618a9b7f41593acd179d2586235deb387b74",
+    "bytes": 30185
+  },
+  "new_check_groups": 11,
+  "actual_emitted_mutants": 233,
+  "killed": 233,
+  "survived": 0,
+  "root_scopes": {
+    "panda-scheduled-pd-control": 117,
+    "panda-scheduled-pd": 116
+  },
+  "runs": {
+    "control-first": {
+      "stdout": {
+        "sha256": "d06407092541314c1a6a971da43bb894a68c31c2d52432db49f99263f64b8770",
+        "bytes": 1789
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 117,
+      "killed": 115,
+      "survived": 2
+    },
+    "control-second": {
+      "stdout": {
+        "sha256": "acf224694b0c8b6b83d5af72a93b95f044965e6afebad5f01b6a9763aaa12d7f",
+        "bytes": 116
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 117,
+      "killed": 117,
+      "survived": 0
+    },
+    "main-first": {
+      "stdout": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "stderr": {
+        "sha256": "d933ed1debd0ab5e7ea17c817621579578696aa268e04f6f45c0587aa0a4e457",
+        "bytes": 167
+      },
+      "phase": "preserved compile-only source graph depth failure before mutation"
+    },
+    "main-second": {
+      "stdout": {
+        "sha256": "f8319f28f713ce524abf91478bb1030a09d638d01d0fbbfdf1e6b366d6bdef97",
+        "bytes": 3639
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 116,
+      "killed": 113,
+      "survived": 3
+    },
+    "main-third": {
+      "stdout": {
+        "sha256": "03efdc00ba1707c67296fa765775c298334066cde6c25a9df3cfef58de8f1957",
+        "bytes": 116
+      },
+      "stderr": {
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "mutants": 116,
+      "killed": 116,
+      "survived": 0
+    }
+  },
+  "units": {
+    "sha256": "3bed43d5b32a7de5086ffe4dce72cd96b1e51de8cb56d9136dc0f01ccba18e0d",
+    "bytes": 1854
+  },
+  "history": "Initial control2/public3 observational survivors closed by actual-rate raw transport, shape-before-schedule and independent reference/force/false-pulse observations. Existing depth budget was met by flattening ONLY new load placement; no compiler/old file change. No numerical model/carry/brake result observed during source closure.",
+  "contract": [
+    "One common Kp7 and fixed first6 Kd; dynamic7 ALWAYS overrides, legacy scenario gains never read",
+    "Both scalar rates finite before either bound, each\u00b120; shape-first, schedule-before-Pjp force admission",
+    "Sign-cleared absolute error including\u22120; regime determined from thresholds, not rounded gain",
+    "Four original cases/ticks0..749; newexperiment/local scoreID0, no old profile promotion or nine-way selector",
+    "All imported Pjp/Pnt/Pqt/Pa/Peu/Pgs code remains unchanged; no standalone old gate repeated",
+    "Counts describe actual emitted sites, not full quantity token provenance or compiler #bounded/wholeplantpassivity/stability/hardware guarantee",
+    "Raw helper/PODs unsealed; fixed reference and admitted finite-law preconditions are trusted"
+  ],
+  "model_execution": "No canonical carry or brake/native/SDK/NN execution in this source record; source checks use isolated old arithmetic calls in new wiring contexts."
+}
