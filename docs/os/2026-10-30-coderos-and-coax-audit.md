@@ -286,8 +286,15 @@ compiler and the examples have not been run on Linux yet.
   what the shell's awk printed. On 3,000 random ledgers and clock logs it
   matches the shell's own functions byte for byte. `record-place mux`
   builds the mux's ffmpeg command, and on 1,000 random takes it matches
-  `mux_recording`'s argument for argument. The capture supervisor is
-  next. Checking them means recording on the 4080, which
+  `mux_recording`'s argument for argument. `os/microphone.coax` picks the
+  microphone as `pick_microphone` does: the take's node, then the host's
+  pattern, then the default. It matches the shell's jq on 1,500 random
+  PipeWire graphs. The pattern is a regular expression, so it needed
+  `coax/lib/text/regex.coax`, a small search that refuses anything outside
+  its subset (`#authority`, 0 mutants survive, 2,780 pinned cases, and
+  4,000 random cases that agree with Python's `re`). The capture supervisor
+  is next. On 2026-10-31 the 4080's PipeWire graph had no microphone at
+  all, so the Blue microphone was not delivering then. Checking them means recording on the 4080, which
   needs an agreed time with the owner.
 - **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of

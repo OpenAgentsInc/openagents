@@ -1,0 +1,190 @@
+// A small regular-expression search for Coax tools: does a pattern match anywhere in a text, the
+// way jq's test(), grep -E and JavaScript's RegExp.test do for the patterns a config writes (a
+// device's node name, a window's class). It is a backtracking matcher over the pattern's text;
+// nothing is compiled or allocated.
+//   rx_test("alsa_input\\.usb-Generic_Blue_Microphones.*", name)   // RX_YES, RX_NO or RX_REFUSED
+// The subset: literal characters; `.` (any byte but a newline); escapes \. \\ \* \+ \? \[ \] \(
+// \) \{ \} \| \^ \$ \- \/ and the classes \d \D \w \W \s \S; bracket classes [abc] [a-z] [^...]
+// (with those escapes inside); the quantifiers * + ? (greedy) after an atom; ^ at the start and $
+// at the end. Anything else (groups, alternation, counted repeats {n,m}, lazy or possessive
+// quantifiers, lookaround, back-references, a dangling escape or an unclosed class) is refused
+// with RX_REFUSED rather than matched some other way, so a config written for a full engine
+// fails out loud. Matching is bytewise: UTF-8 is matched as its bytes, and . takes one byte.
+#authority;
+
+RX_NO :: 0; RX_YES :: 1; RX_REFUSED :: -1;
+RX_STEPS :: 20000;   // backtracking budget per search (a device name under the host's pattern takes under 200); past it the pattern is refused
+
+// Whether a pattern is inside the subset.
+rx_valid :: (p: string) -> bool {
+  i := ifx p.count > 0 && p[0] == '^' then 1 else 0;
+  while i < p.count {
+    if p[i] == '$' && i == p.count - 1 { return true; }
+    e := rx_atom_end(p, i);
+    if e == -1 { return false; }
+    // one quantifier; a second (a**, a*?) is an atom rx_atom_end refuses
+    if e < p.count && (p[e] == '*' || p[e] == '+' || p[e] == '?') { e += 1; }
+    i = e;
+  }
+  return true;
+}
+// The end of the atom at i, or -1 when it is outside the subset.
+rx_atom_end :: (p: string, i: int) -> int {
+  c := p[i];
+  if c == '(' || c == ')' || c == '|' || c == '{' || c == '}' || c == '*' || c == '+' || c == '?' || c == '^' || c == '$' { return -1; }
+  if c == '\\' { return ifx i + 1 < p.count && rx_escape_ok(p[i + 1]) then i + 2 else -1; }
+  if c == '[' {
+    j := i + 1;
+    if j < p.count && p[j] == '^' { j += 1; }
+    if j < p.count && p[j] == ']' { j += 1; }   // a leading ] is a literal
+    while j < p.count && p[j] != ']' {
+      if p[j] == '\\' { if j + 1 >= p.count || !rx_escape_ok(p[j + 1]) { return -1; } j += 2; }   // mutant: equivalent (j + 2 >= count leaves the class unclosed, refused either way)
+      else if p[j] == '[' { return -1; }   // [:class:] and nested sets
+      else { j += 1; }
+    }
+    return ifx j < p.count then j + 1 else -1;
+  }
+  return i + 1;
+}
+rx_escape_ok :: (c: u8) -> bool {
+  for x: ".\\*+?[](){}|^$-/dDwWsS" { if x == c { return true; } }
+  return false;
+}
+#test "the subset, and what is refused" {
+  #assert rx_valid("alsa_input\\.usb-Generic_Blue_Microphones.*") && rx_valid("^a+b?c*$") && rx_valid("[a-z0-9_]+\\d") && rx_valid("[]x]") && rx_valid("[^\\]]") && rx_valid("");
+  #assert !rx_valid("(a)") && !rx_valid("a|b") && !rx_valid("a{2}") && !rx_valid("a*?") && !rx_valid("a**") && !rx_valid("*a") && !rx_valid("a\\") && !rx_valid("\\q");
+  #assert !rx_valid("[a") && !rx_valid("[[:alpha:]]") && !rx_valid("a^") && !rx_valid("$a") && !rx_valid("a+{") && !rx_valid("[\\") && !rx_valid("[\\q]") && !rx_valid("?");
+}
+
+// Whether byte c matches the atom at p[i..<e].
+rx_one :: (p: string, i: int, e: int, c: u8) -> bool {
+  a := p[i];
+  if a == '.' { return c != '\n'; }
+  if a == '\\' { return rx_escaped(p[i + 1], c); }
+  if a == '[' {
+    j := i + 1; neg := false;
+    if p[j] == '^' { neg = true; j += 1; }
+    // members up to the closing ], at e - 1 (rx_atom_end found it; a leading ] is a member)
+    hit := false;
+    while j < e - 1 {
+      lo := p[j]; w := 1;
+      if lo == '\\' {
+        x := p[j + 1];
+        if x == 'd' || x == 'D' || x == 'w' || x == 'W' || x == 's' || x == 'S' { if rx_escaped(x, c) { hit = true; } j += 2; continue; }
+        lo = x; w = 2;
+      }
+      if j + w + 1 < e - 1 && p[j + w] == '-' {
+        hi := p[j + w + 1]; hw := 1;
+        if hi == '\\' { hi = p[j + w + 2]; hw = 2; }
+        if c >= lo && c <= hi { hit = true; }
+        j += w + 1 + hw;
+      } else {
+        if c == lo { hit = true; }
+        j += w;
+      }
+    }
+    return hit != neg;
+  }
+  return a == c;
+}
+rx_escaped :: (x: u8, c: u8) -> bool {
+  digit := c >= '0' && c <= '9';
+  word := digit || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+  space := c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 11 || c == 12;
+  if x == 'd' { return digit; }
+  if x == 'D' { return !digit; }
+  if x == 'w' { return word; }
+  if x == 'W' { return !word; }
+  if x == 's' { return space; }
+  if x == 'S' { return !space; }
+  return x == c;
+}
+#test "atoms" {
+  p := "[a-c_\\d]";
+  #assert rx_one(p, 0, p.count, 'b') && rx_one(p, 0, p.count, '_') && rx_one(p, 0, p.count, '7') && !rx_one(p, 0, p.count, 'd') && !rx_one(p, 0, p.count, '-');
+  q := "[^\\]x]";
+  #assert !rx_one(q, 0, q.count, ']') && !rx_one(q, 0, q.count, 'x') && rx_one(q, 0, q.count, 'y');
+  r := "[]a-]";
+  #assert rx_one(r, 0, r.count, ']') && rx_one(r, 0, r.count, 'a') && rx_one(r, 0, r.count, '-') && !rx_one(r, 0, r.count, 'b');
+  s := "[\\.-\\/]";
+  #assert rx_one(s, 0, s.count, '.') && rx_one(s, 0, s.count, '/') && !rx_one(s, 0, s.count, '0');
+  #assert rx_one(".", 0, 1, 'x') && !rx_one(".", 0, 1, '\n') && rx_one("\\.", 0, 2, '.') && !rx_one("\\.", 0, 2, 'x');
+  #assert rx_escaped('w', '_') && rx_escaped('W', '-') && rx_escaped('s', '\t') && rx_escaped('S', 'a') && rx_escaped('D', 'a') && !rx_escaped('d', 'a') && rx_escaped('s', 11) && rx_escaped('s', 12) && rx_escaped('s', '\r');
+}
+
+// Matching the pattern from pi against the text from ti: the text's end when it matches, -1
+// when it does not, -2 when the budget ran out.
+Rx :: struct { steps: int; budget: int; }
+rx_here :: (r: [] Rx, p: string, pi: int, t: string, ti: int) -> int {
+  r[0].steps += 1;
+  if r[0].steps > r[0].budget { return -2; }
+  if pi == p.count { return ti; }
+  if p[pi] == '$' && pi == p.count - 1 { return ifx ti == t.count then ti else -1; }
+  e := rx_atom_end(p, pi);
+  q := ifx e < p.count then p[e] else 0;   // mutant: equivalent (0 and 1 are neither quantifier)
+  if q == '*' || q == '+' || q == '?' {
+    n := 0;
+    while ti + n < t.count && (q != '?' || n < 1) && rx_one(p, pi, e, t[ti + n]) { n += 1; }
+    least := ifx q == '+' then 1 else 0;
+    while n >= least {
+      m := rx_here(r, p, e + 1, t, ti + n);
+      if m != -1 { return m; }
+      n -= 1;
+    }
+    return -1;
+  }
+  if ti < t.count && rx_one(p, pi, e, t[ti]) { return rx_here(r, p, e, t, ti + 1); }
+  return -1;
+}
+
+// Does the pattern match somewhere in the text: RX_YES, RX_NO, or RX_REFUSED (outside the subset,
+// or past the backtracking budget).
+rx_test :: (p: string, t: string) -> int { return rx_search(p, t, RX_STEPS); }
+// rx_test with a backtracking budget of its own.
+rx_search :: (p: string, t: string, budget: int) -> int {
+  if !rx_valid(p) { return RX_REFUSED; }
+  r: [1] Rx; r[0].budget = budget;
+  if p.count > 0 && p[0] == '^' {
+    m := rx_here(r[..], p, 1, t, 0);
+    return ifx m == -2 then RX_REFUSED else ifx m >= 0 then RX_YES else RX_NO;
+  }
+  for start: 0..<t.count + 1 {   // every start, the end of the text too (an empty match)
+    m := rx_here(r[..], p, 0, t, start);
+    if m == -2 { return RX_REFUSED; }
+    if m >= 0 { return RX_YES; }
+  }
+  return RX_NO;
+}
+#test "searches, as jq's test() answers them" {
+  blue := "alsa_input\\.usb-Generic_Blue_Microphones.*";
+  #assert rx_test(blue, "alsa_input.usb-Generic_Blue_Microphones_2120BAH05W08-00.mono-fallback") == RX_YES;
+  #assert rx_test(blue, "alsa_input.usb-Generic_Blue_Microphones") == RX_YES && rx_test(blue, "alsa_inputXusb-Generic_Blue_Microphones") == RX_NO;
+  #assert rx_test(blue, "alsa_input.pci-0000_00_1f.3.analog-stereo") == RX_NO && rx_test(blue, "") == RX_NO;
+  #assert rx_test("Blue", "x.Blue.y") == RX_YES && rx_test("^Blue", "x.Blue") == RX_NO && rx_test("^Blue", "Blue x") == RX_YES;
+  #assert rx_test("ue$", "Blue") == RX_YES && rx_test("ue$", "Blue ") == RX_NO && rx_test("^$", "") == RX_YES && rx_test("", "x") == RX_YES;
+  #assert rx_test("a+b", "caab") == RX_YES && rx_test("a+b", "cb") == RX_NO && rx_test("ab?c", "ac") == RX_YES && rx_test("ab?c", "abbc") == RX_NO;
+  #assert rx_test("x.*y.*z", "x123y45z") == RX_YES && rx_test("x.*y.*z", "x123z45y") == RX_NO && rx_test("a*a*a*b", "aaaa") == RX_NO;
+  #assert rx_test("\\d+\\.\\d", "v12.3") == RX_YES && rx_test("^[a-z]+$", "abc") == RX_YES && rx_test("^[a-z]+$", "abC") == RX_NO;
+  #assert rx_test("(a)", "a") == RX_REFUSED && rx_test("a|b", "a") == RX_REFUSED;
+  // a pattern that backtracks past the budget is refused, not answered
+  #assert rx_test(".*.*.*.*.*.*.*.*x", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") == RX_REFUSED;
+  #assert rx_test("^.*.*.*.*.*.*.*.*x", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") == RX_REFUSED;
+  #assert RX_STEPS == 20000;
+}
+#test "the budget counts each step once, and a search that needs all of it gets it" {
+  // "ab" in "xab": start 0 fails at once (1 step), start 1 takes a, b and the end (3 steps)
+  #assert rx_search("ab", "xab", 4) == RX_YES && rx_search("ab", "xab", 3) == RX_REFUSED;
+  #assert rx_search("^ab", "ab", 3) == RX_YES && rx_search("^ab", "ab", 2) == RX_REFUSED;
+  #assert rx_search("ab", "", 1) == RX_NO && rx_search("ab", "", 0) == RX_REFUSED;
+  // "a*b" over 51 c's then 197 a's takes exactly 20,001 steps: (197+2)(197+3)/2 - 1 for the a's
+  // and 2 for each c. rx_test's budget is 20,000, so it refuses; one more step answers.
+  b: [248] u8;
+  for i: 0..<248 { b[i] = ifx i < 51 then 'c' else 'a'; }
+  t := cast(string) b[..];
+  #assert rx_test("a*b", t) == RX_REFUSED && rx_search("a*b", t, 20001) == RX_NO;
+}
+
+#load "fixtures/regex_suite.coax";
+#test "the suite: Python's re (bytes) on every atom, class, escape and quantifier" {
+  for c: RX_SUITE { #assert rx_test(c.p, c.t) == c.want; }
+}

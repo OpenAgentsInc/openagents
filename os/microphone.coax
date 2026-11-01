@@ -1,0 +1,226 @@
+// CoderOS screen recording: which microphone a take reads (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// step 2 row 4), in place of screen-record's pick_microphone (openagents 2ca255550e). The sources are
+// PipeWire's Audio/Source nodes; the choice is, in order: the node a take was already reading
+// (`want`, by name, then by name without its trailing ".N", which PipeWire adds when it mints a
+// node again), the first whose name matches the host's pattern ($CODEROS_MICROPHONE_NODE, a
+// regular expression), and the default source. `preferred` says whether the choice is the
+// host's microphone (true when there is no pattern), which is what makes a take warn out loud
+// when it falls back to another one, as on 2026-09-07.
+//   coax/web/tool.sh os/microphone.coax pick [WANT] [--dump FILE] [--default ID]
+//   coax/web/tool.sh os/microphone.coax match PATTERN NAME      what the pattern says of NAME
+// It prints jq's compact object: {"id":..,"name":..,"description":..,"nick":..,"preferred":..}.
+// With no --dump it runs pw-dump, and with no --default it asks wpctl for the default source.
+// A pattern outside coax/lib/text/regex.coax's subset matches nothing, as an invalid one does in
+// jq, and stderr says so.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "../coax/lib/json/json.coax";
+#load "../coax/lib/text/regex.coax";
+
+MIC_MAX :: 256;   // sources considered
+
+// One Audio/Source node: its id and the indices of its strings in the dump (-1 when absent).
+Source :: struct { id: int; name: int; description: int; nick: int; }
+
+// The Audio/Source nodes in a pw-dump, in its order: how many.
+mic_sources :: (d: Jv, out: [] Source) -> int {
+  n := 0;
+  if jv_kind(d, 0) != JV_ARRAY { return 0; }
+  c := d.nodes[0].first;
+  while c >= 0 && n < out.count {
+    props := jv_path(d, c, "info.props");
+    if jv_raw(d, jv_get(d, c, "type")) == "PipeWire:Interface:Node" && jv_kind(d, jv_get(d, props, "media.class")) == JV_STRING && jv_raw(d, jv_get(d, props, "media.class")) == "Audio/Source" {
+      name := mic_string(d, jv_get(d, props, "node.name"));
+      desc := mic_string(d, jv_get(d, props, "node.description"));
+      nick := mic_string(d, jv_get(d, props, "node.nick"));
+      // jq's //: the first that is neither null nor false
+      out[n] = Source.{id = jv_int(d, jv_get(d, c, "id"), -1), name = name,
+                       description = ifx desc >= 0 then desc else name,
+                       nick = ifx nick >= 0 then nick else ifx desc >= 0 then desc else name};
+      n += 1;
+    }
+    c = d.nodes[c].next;
+  }
+  return n;
+}
+// A string value's node, or -1 for none (jq // treats null and false as absent; any other value
+// stands, but only strings are names).
+mic_string :: (d: Jv, at: int) -> int { return ifx jv_kind(d, at) == JV_STRING then at else -1; }
+
+// A name without a trailing ".N" (jq's sub("\\.[0-9]+$"; "")).
+mic_bare :: (name: string) -> string {
+  i := name.count;
+  while i > 0 && name[i - 1] >= '0' && name[i - 1] <= '9' { i -= 1; }
+  if i < name.count && i > 0 && name[i - 1] == '.' { return name[0..<i - 1]; }
+  return name;
+}
+#test "bare names" {
+  #assert mic_bare("alsa_input.usb-Blue.mono-fallback.2") == "alsa_input.usb-Blue.mono-fallback" && mic_bare("a.12") == "a";
+  #assert mic_bare("a.b") == "a.b" && mic_bare("a.") == "a." && mic_bare("12") == "12" && mic_bare(".5") == "" && mic_bare("") == "";
+}
+
+// The chosen source's index (or -1), and whether it is the host's microphone.
+Choice :: struct { at: int; preferred: bool; refused: bool; }
+mic_pick :: (d: Jv, s: [] Source, want: string, pattern: string, default_id: string) -> Choice {
+  nb: [4096] u8; wb: [4096] u8;
+  ch := Choice.{at = -1};
+  if want.count > 0 {
+    for i: 0..<s.count { if mic_name(d, s[i], nb[..]) == want && s[i].name >= 0 { ch.at = i; break; } }
+    bare := mic_bare(want);
+    if ch.at < 0 && bare.count > 0 {
+      for i: 0..<s.count { if mic_bare(mic_name(d, s[i], nb[..])) == bare { ch.at = i; break; } }
+    }
+  }
+  if ch.at < 0 && pattern.count > 0 {
+    for i: 0..<s.count {
+      m := mic_named(d, s[i], pattern, nb[..]);
+      if m == RX_REFUSED { ch.refused = true; break; }
+      if m == RX_YES { ch.at = i; break; }
+    }
+  }
+  if ch.at < 0 && default_id.count > 0 {
+    id := mic_id(default_id);
+    for i: 0..<s.count { if s[i].id == id && id >= 0 { ch.at = i; break; } }
+  }
+  if ch.at >= 0 { ch.preferred = pattern.count == 0 || mic_named(d, s[ch.at], pattern, wb[..]) == RX_YES; }
+  return ch;
+}
+// A source's name unescaped ("" when it has none).
+mic_name :: (d: Jv, s: Source, out: [] u8) -> string {
+  if s.name < 0 { return ""; }
+  n := jv_str(d, s.name, out);
+  return ifx n > 0 then cast(string) out[0..<n] else "";
+}
+// named($p): a name, and the pattern matches it.
+mic_named :: (d: Jv, s: Source, pattern: string, out: [] u8) -> int {
+  if s.name < 0 { return RX_NO; }
+  return rx_test(pattern, mic_name(d, s, out));
+}
+// The default source's id as jq's tonumber reads wpctl's: digits, or -1.
+mic_id :: (t: string) -> int {
+  if t.count == 0 || t.count > 18 { return -1; }
+  v := 0;
+  for c: t { if c < '0' || c > '9' { return -1; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+// The choice as jq -c writes it.
+mic_json :: (d: Jv, s: [] Source, ch: Choice, o: [] Jo) {
+  jo_obj(o);
+  if ch.at < 0 {
+    jo_key(o, "id"); jo_null(o); jo_key(o, "name"); jo_null(o); jo_key(o, "description"); jo_null(o); jo_key(o, "nick"); jo_null(o);
+  } else {
+    x := s[ch.at];
+    jo_key(o, "id"); jo_int(o, x.id);
+    keys := [3] string.["name", "description", "nick"]; at := [3] int.[x.name, x.description, x.nick];
+    for k: 0..<3 {
+      jo_key(o, keys[k]);
+      if at[k] < 0 { jo_null(o); } else { b: [4096] u8; m := jv_str(d, at[k], b[..]); jo_str(o, cast(string) b[0..<ifx m > 0 then m else 0]); }
+    }
+  }
+  jo_key(o, "preferred"); jo_bool(o, ch.preferred);
+  jo_end(o);
+}
+
+DUMP :: "[{\"id\":30,\"type\":\"PipeWire:Interface:Node\",\"info\":{\"props\":{\"media.class\":\"Audio/Sink\",\"node.name\":\"alsa_output.pci\"}}},{\"id\":41,\"type\":\"PipeWire:Interface:Node\",\"info\":{\"props\":{\"media.class\":\"Audio/Source\",\"node.name\":\"alsa_input.usb-Logitech_Webcam.mono\",\"node.description\":\"Webcam Mic\"}}},{\"id\":57,\"type\":\"PipeWire:Interface:Node\",\"info\":{\"props\":{\"media.class\":\"Audio/Source\",\"node.name\":\"alsa_input.usb-Generic_Blue_Microphones_2120-00.mono-fallback.3\",\"node.description\":\"Yeti\",\"node.nick\":\"Blue\"}}},{\"id\":60,\"type\":\"PipeWire:Interface:Device\"},{\"id\":61,\"type\":\"PipeWire:Interface:Node\",\"info\":{\"props\":{\"media.class\":\"Audio/Source\"}}}]";
+#test "the choice: the take's node, the host's pattern, the default" {
+  nodes: [256] JvNode; d: [1] Jv; s: [8] Source; b: [1024] u8; o: [1] Jo;
+  #assert jv_parse(d[..], DUMP, nodes[..]);
+  n := mic_sources(d[0], s[..]);
+  #assert n == 3 && s[0].id == 41 && s[1].id == 57 && s[2].id == 61 && s[2].name == -1;
+  blue := "alsa_input\\.usb-Generic_Blue_Microphones.*";
+  // the pattern over the default
+  c := mic_pick(d[0], s[0..<n], "", blue, "41");
+  jo_start(o[..], b[..]); mic_json(d[0], s[0..<n], c, o[..]);
+  #assert jo_text(o[..]) == "{\"id\":57,\"name\":\"alsa_input.usb-Generic_Blue_Microphones_2120-00.mono-fallback.3\",\"description\":\"Yeti\",\"nick\":\"Blue\",\"preferred\":true}";
+  // the node the take had, minted again with another suffix
+  c = mic_pick(d[0], s[0..<n], "alsa_input.usb-Generic_Blue_Microphones_2120-00.mono-fallback.1", "", "41");
+  #assert c.at == 1 && c.preferred;
+  // the take's node by its exact name, over the pattern
+  c = mic_pick(d[0], s[0..<n], "alsa_input.usb-Logitech_Webcam.mono", blue, "");
+  #assert c.at == 0 && !c.preferred;
+  // no Blue: the default, not preferred, and its nick falls back to its description
+  c = mic_pick(d[0], s[0..<1], "", blue, "41");
+  jo_start(o[..], b[..]); mic_json(d[0], s[0..<1], c, o[..]);
+  #assert jo_text(o[..]) == "{\"id\":41,\"name\":\"alsa_input.usb-Logitech_Webcam.mono\",\"description\":\"Webcam Mic\",\"nick\":\"Webcam Mic\",\"preferred\":false}";
+  // nothing: all null
+  c = mic_pick(d[0], s[0..<1], "", blue, "99");
+  jo_start(o[..], b[..]); mic_json(d[0], s[0..<1], c, o[..]);
+  #assert jo_text(o[..]) == "{\"id\":null,\"name\":null,\"description\":null,\"nick\":null,\"preferred\":false}";
+  // the nameless node by id
+  c = mic_pick(d[0], s[0..<n], "", "", "61");
+  jo_start(o[..], b[..]); mic_json(d[0], s[0..<n], c, o[..]);
+  #assert jo_text(o[..]) == "{\"id\":61,\"name\":null,\"description\":null,\"nick\":null,\"preferred\":true}";
+  // a pattern outside the subset matches nothing and says so
+  c = mic_pick(d[0], s[0..<n], "", "(Blue)", "41");
+  #assert c.at == 0 && c.refused && !c.preferred;
+  #assert mic_id("57") == 57 && mic_id("") == -1 && mic_id("5x") == -1;
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 1 { tool_errln("usage: microphone pick [WANT] [--dump FILE] [--default ID] | match PATTERN TEXT"); return 2; }
+  if args_at(a[..], 0) == "match" && args_count(a[..]) == 3 {
+    // what jq's test() says of one name, for checking a host's pattern: true, false or refused
+    m := rx_test(args_at(a[..], 1), args_at(a[..], 2));
+    print("%\n", ifx m == RX_YES then "true" else ifx m == RX_NO then "false" else "refused");
+    return ifx m == RX_REFUSED then 1 else 0;
+  }
+  if args_at(a[..], 0) != "pick" { tool_errln("usage: microphone pick [WANT] [--dump FILE] [--default ID] | match PATTERN TEXT"); return 2; }
+  want := ifx args_count(a[..]) > 1 then args_at(a[..], 1) else "";
+  dump: [4194304] u8; n := 0;
+  file := args_value(a[..], "--dump", "");
+  if file.count > 0 { n = fs_read(file, dump[..]); }
+  else { n = mic_run("pw-dump", "", dump[..]); }
+  db: [64] u8;
+  def := args_value(a[..], "--default", "");
+  if !args_has(a[..], "--default") {
+    w: [65536] u8;
+    m := mic_run("wpctl", "inspect", w[..]);
+    def = mic_default(ifx m > 0 then cast(string) w[0..<m] else "", db[..]);
+  }
+  pb: [4096] u8;
+  pattern := proc_getenv("CODEROS_MICROPHONE_NODE", pb[..]);
+  nodes: [262144] JvNode; d: [1] Jv;
+  ok := n > 0 && jv_parse(d[..], cast(string) dump[0..<n], nodes[..]);
+  s: [MIC_MAX] Source;
+  k := ifx ok then mic_sources(d[0], s[..]) else 0;
+  ch := mic_pick(d[0], s[0..<k], want, pattern, def);
+  if ch.refused { tool_errln("microphone: the pattern in CODEROS_MICROPHONE_NODE uses more than coax/lib/text/regex.coax's subset; it matches nothing"); }
+  ob: [65536] u8; o: [1] Jo; jo_start(o[..], ob[..]);
+  mic_json(d[0], s[0..<k], ch, o[..]);
+  print("%\n", jo_text(o[..]));
+  return 0;
+}
+// wpctl inspect's first line, "id N, ...": N, or "".
+mic_default :: (text: string, out: [] u8) -> string {
+  if text.count < 4 || text[0..<3] != "id " { return ""; }
+  i := 3; n := 0;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' && n < out.count { out[n] = text[i]; n += 1; i += 1; }
+  if i >= text.count || text[i] != ',' { return ""; }
+  return cast(string) out[0..<n];
+}
+#test "the default source from wpctl" {
+  b: [16] u8;
+  #assert mic_default("id 57, type PipeWire:Interface:Node\n  * node.name = x", b[..]) == "57" && mic_default("", b[..]) == "" && mic_default("id x,", b[..]) == "" && mic_default("id 57 type", b[..]) == "";
+}
+// A program's standard output (one argument, or none), into out: its bytes, or 0.
+mic_run :: (program: string, arg: string, out: [] u8) -> int {
+  h := proc_new();
+  if h < 0 || !proc_arg(h, program) { return 0; }
+  // wpctl inspect @DEFAULT_AUDIO_SOURCE@
+  if arg.count > 0 && (!proc_arg(h, arg) || !proc_arg(h, "@DEFAULT_AUDIO_SOURCE@")) { r := proc_release(h); return 0; }
+  if proc_start(h) < 0 { r := proc_release(h); return 0; }
+  n := 0;
+  while n < out.count {
+    m := cxproc_read_line(h, 5000);
+    if m < 0 { break; }
+    for i: 0..<m { if n < out.count { out[n] = cast,trunc(u8) cxproc_line_byte(h, i); n += 1; } }
+    if n < out.count { out[n] = '\n'; n += 1; }
+  }
+  w := proc_wait(h, 5000); r := proc_release(h);
+  return n;
+}
