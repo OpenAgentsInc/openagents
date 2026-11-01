@@ -159,7 +159,7 @@ capability of Genesis World 1.4.5 to a Part IV chapter.
 | [13. Light and shadow](ch013-light-and-shadow.md) | Unimplemented: design draft | One lighting record per frame: key light from the clock, hemisphere ambient, a texel-snapped shadow map that doesn't shimmer, height fog, tone mapping and bounded local lights. |
 | [14. Figures and animation](ch014-figures-and-animation.md) | Unimplemented: design draft | The Grid's cast, skinned rigs and rounded-bone figures share one pose pipeline: fades blend each joint locally, gaits advance by distance, motions that break joint limits are refused, and bone lengths stay constant. |
 | [15. UI and the HUD](ch015-ui-and-the-hud.md) | Unimplemented: design draft | Safe-area layout in screen space and a UI tree whose hit rectangles equal its drawn ones; text from a stroke font, and taps become the same typed actions as keys. |
-| [16. Budgets that refuse](ch016-budgets-that-refuse.md) | Unimplemented: design draft (`ec-budget`) | Content-hashed asset identity and declared per-realm budgets, taken whole or refused with a visible report, replacing today's silent slot clipping; an over-budget frame fails its test. |
+| [16. Budgets that refuse](ch016-budgets-that-refuse.md) | Partly implemented: native C (`ec-budget`; asset identity still to do) | Declared frame budgets (steps, vertices, draw records, bytes) in every realm, taken whole or refused, with a vertex limit below each buffer so a clipped frame fails; each realm's check draws three screens, and the first run found Hold the Stair's swarm clipping 3,318 vertices a frame. |
 
 ### IV. Physics
 

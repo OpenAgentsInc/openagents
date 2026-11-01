@@ -32,6 +32,7 @@
 #load "belt-lockstep.coax";
 #load "lockroom.coax";
 #load "belt-net.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 12;
 MAX_VERTICES :: 90000;
@@ -3689,4 +3690,30 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     #assert belt_pointer(s, cx, cy, 2, kind, 4) && s[0].action == ACT_NAVIGATE;
     #assert cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/belt-2200/tip";
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Belt 2200 may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+BELT_BUDGET :: FrameBudget.{steps = 8, vertices = 56000, draws = 0, bytes = 5373952};
+
+// Its opening: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "Belt 2200's frames fit its declared budget" {
+  #assert budget_declared(BELT_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(BELT_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Belt), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Belt;
+    belt_start(s[..]);
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := belt_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

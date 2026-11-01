@@ -55,6 +55,7 @@
 #load "fairypark.coax";    // the park drawn: lakes, trees, landmarks, signs
 #load "fairymap.coax";     // the map: the park from above with its names
 #load "fairyupgrade.coax"; // UPGRADE: fairies made by players, bought with sats or credit (ev-asset-upgrades)
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -2637,4 +2638,29 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   #assert e.x1 <= 1280 && e.x0 > 1000;
   #assert fairy_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && fairy_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
   #assert a[0].ed[0].pane == REDIT_BOARD;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Fairy Forest may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+FAIRY_BUDGET :: FrameBudget.{steps = 8, vertices = 11000, draws = DRAWS, bytes = 2752512};
+
+// A walk from the spawn: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "Fairy Forest's frames fit its declared budget" {
+  #assert budget_declared(FAIRY_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(FAIRY_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Fairy), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Fairy;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := fairy_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z) + f32(f) * 0.05, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+      budget_measure(m[..], n, fairy_draws(s[..]), bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

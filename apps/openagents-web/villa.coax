@@ -42,6 +42,7 @@
 #load "villahekate.coax";
 #load "place-orbit.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 48000;   // the HUD and an open pet panel with a full memorial reach ~16K at 1440 px
@@ -1866,4 +1867,30 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
   // a black swatch draws more (its outline) than a light one
   b := Box.{x0 = 0, y0 = 0, x1 = 40, y1 = 22};
   #assert dark_swatch(out[..], 0, b, 1, 0.02, 0.02, 0.02) > 0 && dark_swatch(out[..], 0, b, 1, 0.9, 0.9, 0.9) == 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Hecate's Cemetery may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+VILLA_BUDGET :: FrameBudget.{steps = 8, vertices = 1000, draws = DRAWS, bytes = 3801088};
+
+// A walk from the gate: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "Hecate's Cemetery's frames fit its declared budget" {
+  #assert budget_declared(VILLA_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(VILLA_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Villa), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Villa;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      villa_step(s[..], dt, 0, 0, f32(f) * 0.05, 0, 0, 0, 0);   // the face steps, then draws
+      n := villa_draw(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, false, 0, 0, 0, 0);
+      budget_measure(m[..], n, villa_draws(s[..]), bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

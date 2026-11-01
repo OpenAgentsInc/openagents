@@ -33,6 +33,7 @@
 #load "ui.coax";
 #load "analytics.coax";
 #load "access.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 30000;
@@ -1900,4 +1901,30 @@ access_answer :: (s: [] Builder, t: [] Track, text: string) { builder_access_sen
   builder_message(v[..], u[..], MSG_VOICE, "heard|a pond");
   answer(v[..], u[..], "0\n");
   #assert !v[0].typing && v[0].typed_n == 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the realm builder may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+BUILDER_BUDGET :: FrameBudget.{steps = 8, vertices = 3000, draws = 0, bytes = 2162688};
+
+// The empty board: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "The realm builder's frames fit its declared budget" {
+  #assert budget_declared(BUILDER_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(BUILDER_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Builder), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Builder;
+    t: [1] Track;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := builder_frame(s[..], t[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

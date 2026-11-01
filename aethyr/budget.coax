@@ -1,0 +1,275 @@
+// Aethyr's frame budgets (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md, book
+// chapter 16). A realm declares what one frame may use: fixed simulation steps, vertices, draw
+// records and the bytes its host holds for it. A `BudgetMeter` counts what each frame takes.
+// A take that doesn't fit is refused whole, never in part, and counted, and the frame is over
+// budget: the realm's budget check (a `#test` in each realm's file) fails on any such frame,
+// so a realm that outgrows its declaration fails its tests instead of clipping silently.
+//
+// A declaration is valid only when its vertex limit is below the realm's vertex buffer, so a
+// frame that fills the buffer, where the realm's writers stop, is always over budget.
+//   coax/bin/coax test aethyr/budget.coax --library
+//   coax/bin/coax mutate aethyr/budget.coax
+
+#module "aethyr.budget";
+
+// book:begin declare
+BUDGET_STEPS :: 0;      // fixed simulation steps one frame runs
+BUDGET_VERTICES :: 1;   // vertices one frame writes
+BUDGET_DRAWS :: 2;      // draw records one frame submits
+BUDGET_BYTES :: 3;      // bytes the host holds for the realm: its state and its buffers
+BUDGET_KINDS :: 4;
+BUDGET_NONE :: -1;
+
+// What a realm declares one frame may use.
+FrameBudget :: struct { steps: int; vertices: int; draws: int; bytes: int; }
+
+// The limit of one kind, or -1 for a kind that isn't one.
+budget_limit :: (b: FrameBudget, kind: int) -> int {
+  if kind == BUDGET_STEPS { return b.steps; }
+  if kind == BUDGET_VERTICES { return b.vertices; }
+  if kind == BUDGET_DRAWS { return b.draws; }
+  if kind == BUDGET_BYTES { return b.bytes; }
+  return -1;
+}
+// book:end declare
+
+budget_kind_name :: (kind: int) -> string {
+  if kind == BUDGET_STEPS { return "steps"; }
+  if kind == BUDGET_VERTICES { return "vertices"; }
+  if kind == BUDGET_DRAWS { return "draws"; }
+  if kind == BUDGET_BYTES { return "bytes"; }
+  return "none";
+}
+
+// The bytes a page host holds for a realm: its state, its vertex buffer and its uniforms
+// (coax/web/host.js's arena), with every float four bytes.
+budget_arena_bytes :: (state_bytes: int, max_vertices: int, vertex_floats: int, uniform_floats: int) -> int {
+  return state_bytes + (max_vertices * vertex_floats + uniform_floats) * 4;
+}
+
+// The first thing wrong with a declaration, or BUDGET_NONE: a limit below zero, or a vertex
+// limit that isn't below the realm's vertex buffer of `max_vertices`.
+budget_declared :: (b: FrameBudget, max_vertices: int) -> int {
+  for bk: 0..<BUDGET_KINDS { if budget_limit(b, bk) < 0 { return bk; } }
+  if b.vertices >= max_vertices { return BUDGET_VERTICES; }
+  return BUDGET_NONE;
+}
+
+// book:begin meter
+// The first take a meter refused: in which frame, of what kind (BUDGET_NONE for one that isn't
+// a kind), how much was asked, and how much of the limit that frame had used.
+BudgetRefusal :: struct { kind: int = BUDGET_NONE; frame: int; asked: int; used: int; limit: int; }
+
+BudgetMeter :: struct {
+  limit: FrameBudget;
+  used: [BUDGET_KINDS] int;         // this frame
+  peak: [BUDGET_KINDS] int;         // the most any frame has used
+  peak_frame: [BUDGET_KINDS] int;   // the first frame that used that much
+  frames: int;                      // frames begun
+  over_frames: int;                 // frames that refused something
+  refused: int;                     // takes refused, in every frame
+  over: bool;                       // this frame refused something
+  first: BudgetRefusal;             // the first take refused
+}
+
+budget_meter :: (limit: FrameBudget) -> BudgetMeter { return BudgetMeter.{limit = limit}; }
+
+// A new frame: nothing used yet. The peaks and the counts carry on.
+budget_frame :: (m: [] BudgetMeter) {
+  for bk: 0..<BUDGET_KINDS { m[0].used[bk] = 0; }
+  m[0].over = false;
+  m[0].frames += 1;
+}
+
+// Takes n of a kind for this frame, whole, or refuses all of it: when it would pass the
+// limit, when n is below zero, or when the kind isn't one. A refusal is counted, marks the
+// frame over budget, and the first one is kept for the report.
+budget_take :: (m: [] BudgetMeter, kind: int, n: int) -> bool {
+  bk := budget_kind_of(kind);
+  b_used := 0;
+  b_limit := -1;
+  if bk != BUDGET_NONE { b_used = m[0].used[bk]; b_limit = budget_limit(m[0].limit, bk); }
+  if bk != BUDGET_NONE && n >= 0 && n <= b_limit - b_used {
+    m[0].used[bk] = b_used + n;
+    if m[0].used[bk] > m[0].peak[bk] { m[0].peak[bk] = m[0].used[bk]; m[0].peak_frame[bk] = m[0].frames; }
+    return true;
+  }
+  m[0].refused += 1;
+  if !m[0].over { m[0].over = true; m[0].over_frames += 1; }
+  if m[0].refused == 1 { m[0].first = BudgetRefusal.{kind = bk, frame = m[0].frames, asked = n, used = b_used, limit = b_limit}; }
+  return false;
+}
+
+// Whether every frame so far fitted: what a realm's budget check asserts.
+budget_ok :: (m: BudgetMeter) -> bool { return m.refused == 0; }
+// book:end meter
+
+// book:begin measure
+// The screens a realm's budget check draws at: a laptop at 1440 by 900 CSS pixels, the same at
+// twice the density, and a phone at 390 by 844 at three times.
+BudgetScreen :: struct { width: f32; height: f32; dpr: f32; }
+BUDGET_SCREENS :: 3;
+budget_screen :: (i: int) -> BudgetScreen {
+  if i == 1 { return BudgetScreen.{width = 2880, height = 1800, dpr = 2}; }
+  if i == 2 { return BudgetScreen.{width = 1170, height = 2532, dpr = 3}; }
+  return BudgetScreen.{width = 1440, height = 900, dpr = 1};
+}
+
+// One measured frame: a new frame that takes the vertices it wrote, the draw records it
+// submitted and the bytes its host holds. The frame is over budget (m[0].over) when any of
+// them doesn't fit.
+budget_measure :: (m: [] BudgetMeter, vertices: int, draws: int, bytes: int) {
+  budget_frame(m);
+  if !budget_take(m, BUDGET_VERTICES, vertices) { m[0].used[BUDGET_VERTICES] = vertices; }
+  if !budget_take(m, BUDGET_DRAWS, draws) { m[0].used[BUDGET_DRAWS] = draws; }
+  if !budget_take(m, BUDGET_BYTES, bytes) { m[0].used[BUDGET_BYTES] = bytes; }
+}
+// book:end measure
+
+// A kind, or BUDGET_NONE for a number that isn't one.
+budget_kind_of :: (kind: int) -> int {
+  if kind >= 0 && kind < BUDGET_KINDS { return kind; }
+  return BUDGET_NONE;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Checks.
+
+budget_small :: () -> FrameBudget { return FrameBudget.{steps = 8, vertices = 100, draws = 4, bytes = 4096}; }
+
+#test "a declaration names each limit, and one is valid only below its vertex buffer" {
+  bb := budget_small();
+  #assert budget_limit(bb, BUDGET_STEPS) == 8 && budget_limit(bb, BUDGET_VERTICES) == 100;
+  #assert budget_limit(bb, BUDGET_DRAWS) == 4 && budget_limit(bb, BUDGET_BYTES) == 4096;
+  #assert budget_limit(bb, BUDGET_NONE) == -1 && budget_limit(bb, BUDGET_KINDS) == -1;
+  #assert budget_declared(bb, 101) == BUDGET_NONE;
+  #assert budget_declared(bb, 100) == BUDGET_VERTICES && budget_declared(bb, 99) == BUDGET_VERTICES;
+  for bkind: 0..<BUDGET_KINDS {
+    bc := bb;
+    if bkind == BUDGET_STEPS { bc.steps = -1; }
+    if bkind == BUDGET_VERTICES { bc.vertices = -1; }
+    if bkind == BUDGET_DRAWS { bc.draws = -1; }
+    if bkind == BUDGET_BYTES { bc.bytes = -1; }
+    #assert budget_declared(bc, 1000) == bkind;
+  }
+  bzero := FrameBudget.{};
+  #assert budget_declared(bzero, 1) == BUDGET_NONE && budget_declared(bzero, 0) == BUDGET_VERTICES;
+  #assert budget_kind_name(BUDGET_STEPS) == "steps" && budget_kind_name(BUDGET_VERTICES) == "vertices";
+  #assert budget_kind_name(BUDGET_DRAWS) == "draws" && budget_kind_name(BUDGET_BYTES) == "bytes";
+  #assert budget_kind_name(BUDGET_NONE) == "none" && budget_kind_name(BUDGET_KINDS) == "none";
+  #assert budget_kind_of(BUDGET_NONE) == BUDGET_NONE && budget_kind_of(BUDGET_BYTES) == BUDGET_BYTES;
+  #assert budget_kind_of(0) == 0 && budget_kind_of(BUDGET_KINDS) == BUDGET_NONE && budget_kind_of(-2) == BUDGET_NONE;
+}
+
+#test "the arena is the state and four bytes a float of the vertex and uniform buffers" {
+  #assert budget_arena_bytes(1000, 10, 7, 4) == 1000 + 296;
+  #assert budget_arena_bytes(0, 0, 7, 0) == 0 && budget_arena_bytes(5, 1, 1, 0) == 9;
+  #assert budget_arena_bytes(0, 2, 3, 1) == 28;
+}
+
+#test "takes that fit add up, and the peak keeps the most one frame used" {
+  bm := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_frame(bm[..]);
+  #assert bm[0].frames == 1 && !bm[0].over;
+  #assert budget_take(bm[..], BUDGET_VERTICES, 60) && budget_take(bm[..], BUDGET_VERTICES, 40);
+  #assert bm[0].used[BUDGET_VERTICES] == 100 && bm[0].peak[BUDGET_VERTICES] == 100;
+  #assert budget_take(bm[..], BUDGET_VERTICES, 0) && budget_take(bm[..], BUDGET_STEPS, 8);
+  #assert budget_take(bm[..], BUDGET_DRAWS, 4) && budget_take(bm[..], BUDGET_BYTES, 4096);
+  #assert budget_ok(bm[0]) && bm[0].first.kind == BUDGET_NONE;
+  budget_frame(bm[..]);
+  #assert bm[0].frames == 2 && bm[0].used[BUDGET_VERTICES] == 0 && bm[0].used[BUDGET_BYTES] == 0;
+  #assert bm[0].used[BUDGET_STEPS] == 0 && bm[0].used[BUDGET_DRAWS] == 0;
+  #assert budget_take(bm[..], BUDGET_VERTICES, 30);
+  #assert bm[0].peak[BUDGET_VERTICES] == 100 && bm[0].used[BUDGET_VERTICES] == 30;
+  #assert bm[0].peak[BUDGET_STEPS] == 8 && bm[0].peak[BUDGET_DRAWS] == 4 && bm[0].peak[BUDGET_BYTES] == 4096;
+  // The heaviest frame is the first that used that much: frame 3 ties frame 1 and doesn't move it.
+  #assert budget_take(bm[..], BUDGET_VERTICES, 70) && bm[0].peak_frame[BUDGET_VERTICES] == 1;
+  budget_frame(bm[..]);
+  #assert budget_take(bm[..], BUDGET_VERTICES, 100) && bm[0].peak_frame[BUDGET_VERTICES] == 1;
+  #assert budget_take(bm[..], BUDGET_STEPS, 0) && bm[0].peak_frame[BUDGET_STEPS] == 1;
+  #assert bm[0].peak_frame[BUDGET_DRAWS] == 1 && bm[0].peak_frame[BUDGET_BYTES] == 1;
+  #assert budget_ok(bm[0]) && bm[0].over_frames == 0;
+  // A limit of zero takes nothing, and nothing fits.
+  bz := [1] BudgetMeter.[budget_meter(FrameBudget.{})];
+  budget_frame(bz[..]);
+  #assert budget_take(bz[..], BUDGET_DRAWS, 0) && bz[0].peak_frame[BUDGET_DRAWS] == 0 && bz[0].peak[BUDGET_DRAWS] == 0;
+  #assert budget_ok(bz[0]) && !budget_take(bz[..], BUDGET_DRAWS, 1);
+  #assert bz[0].first.kind == BUDGET_DRAWS && bz[0].first.limit == 0 && bz[0].first.asked == 1 && bz[0].first.used == 0;
+  // One frame's takes raise its peak as they go.
+  bp := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_frame(bp[..]); budget_frame(bp[..]);
+  #assert budget_take(bp[..], BUDGET_BYTES, 1) && budget_take(bp[..], BUDGET_BYTES, 2);
+  #assert bp[0].peak[BUDGET_BYTES] == 3 && bp[0].peak_frame[BUDGET_BYTES] == 2 && bp[0].peak_frame[BUDGET_STEPS] == 0;
+}
+
+// book:begin planted
+#test "one vertex too many is refused whole, reported with its kind and counts, and fails the check" {
+  bm := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_frame(bm[..]);
+  #assert budget_take(bm[..], BUDGET_VERTICES, 94);
+  #assert !budget_take(bm[..], BUDGET_VERTICES, 7);       // 101 > 100: none of the 7 is taken
+  #assert bm[0].used[BUDGET_VERTICES] == 94 && bm[0].peak[BUDGET_VERTICES] == 94;
+  #assert bm[0].over && bm[0].over_frames == 1 && bm[0].refused == 1 && !budget_ok(bm[0]);
+  br := bm[0].first;
+  #assert br.kind == BUDGET_VERTICES && br.frame == 1 && br.asked == 7 && br.used == 94 && br.limit == 100;
+  #assert budget_take(bm[..], BUDGET_VERTICES, 6);        // what fits still fits
+  #assert bm[0].used[BUDGET_VERTICES] == 100;
+  // A second refusal in the same frame counts, but the frame is over once, and the first is kept.
+  #assert !budget_take(bm[..], BUDGET_DRAWS, 5);
+  #assert bm[0].refused == 2 && bm[0].over_frames == 1 && bm[0].first.kind == BUDGET_VERTICES;
+  // The next frame starts within budget; the session stays failed.
+  budget_frame(bm[..]);
+  #assert !bm[0].over && bm[0].over_frames == 1 && !budget_ok(bm[0]);
+  #assert !budget_take(bm[..], BUDGET_STEPS, 9);
+  #assert bm[0].over_frames == 2 && bm[0].refused == 3 && bm[0].first.frame == 1;
+}
+// book:end planted
+
+#test "a measured frame takes its vertices, draws and bytes, and fails when one doesn't fit" {
+  bm := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_measure(bm[..], 100, 4, 4096);
+  #assert !bm[0].over && bm[0].frames == 1 && budget_ok(bm[0]);
+  #assert bm[0].used[BUDGET_VERTICES] == 100 && bm[0].used[BUDGET_DRAWS] == 4 && bm[0].used[BUDGET_BYTES] == 4096;
+  budget_measure(bm[..], 10, 0, 0);
+  #assert !bm[0].over && bm[0].used[BUDGET_VERTICES] == 10 && bm[0].frames == 2;
+  // An over-budget frame shows what it used, and the peak stays what fitted.
+  budget_measure(bm[..], 101, 0, 0);
+  #assert bm[0].over && bm[0].first.kind == BUDGET_VERTICES && bm[0].first.frame == 3 && bm[0].first.asked == 101;
+  #assert bm[0].used[BUDGET_VERTICES] == 101 && bm[0].peak[BUDGET_VERTICES] == 100;
+  budget_measure(bm[..], 0, 5, 0);
+  #assert bm[0].over && bm[0].over_frames == 2 && bm[0].used[BUDGET_DRAWS] == 5 && bm[0].used[BUDGET_VERTICES] == 0;
+  budget_measure(bm[..], 0, 0, 4097);
+  #assert bm[0].over && bm[0].over_frames == 3 && bm[0].refused == 3 && bm[0].used[BUDGET_BYTES] == 4097;
+  #assert bm[0].used[BUDGET_DRAWS] == 0 && bm[0].peak[BUDGET_BYTES] == 4096;
+  ba := budget_screen(0); bb := budget_screen(1); bc := budget_screen(2);
+  #assert ba.width == 1440 && ba.height == 900 && ba.dpr == 1 && budget_screen(3).width == 1440;
+  #assert bb.width == 2880 && bb.height == 1800 && bb.dpr == 2;
+  #assert bc.width == 1170 && bc.height == 2532 && bc.dpr == 3 && BUDGET_SCREENS == 3;
+}
+
+#test "a count below zero, an unknown kind and a sum past the largest int are refused" {
+  bm := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_frame(bm[..]);
+  #assert !budget_take(bm[..], BUDGET_VERTICES, -1);
+  #assert bm[0].used[BUDGET_VERTICES] == 0 && bm[0].first.asked == -1 && bm[0].first.used == 0;
+  bn := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_frame(bn[..]);
+  #assert !budget_take(bn[..], BUDGET_KINDS, 1) && !budget_take(bn[..], BUDGET_NONE, 0);
+  #assert bn[0].first.kind == BUDGET_NONE && bn[0].first.limit == -1 && bn[0].first.used == 0 && bn[0].refused == 2;
+  #assert bn[0].first.asked == 1 && bn[0].first.frame == 1 && bn[0].over_frames == 1;
+  // An unknown kind is refused even after a kind has used some of its limit.
+  bu := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_frame(bu[..]);
+  #assert budget_take(bu[..], BUDGET_BYTES, 10) && !budget_take(bu[..], BUDGET_KINDS, 0);
+  #assert bu[0].first.kind == BUDGET_NONE && bu[0].first.used == 0 && bu[0].first.limit == -1;
+  bbig := [1] BudgetMeter.[budget_meter(FrameBudget.{bytes = 9223372036854775807})];
+  budget_frame(bbig[..]);
+  #assert budget_take(bbig[..], BUDGET_BYTES, 9223372036854775807);
+  #assert !budget_take(bbig[..], BUDGET_BYTES, 1);           // no wrap past the largest int
+  #assert bbig[0].used[BUDGET_BYTES] == 9223372036854775807 && bbig[0].first.used == 9223372036854775807;
+  bedge := [1] BudgetMeter.[budget_meter(budget_small())];
+  budget_frame(bedge[..]);
+  #assert budget_take(bedge[..], BUDGET_STEPS, 3) && !budget_take(bedge[..], BUDGET_STEPS, 6);
+  #assert bedge[0].first.used == 3 && bedge[0].first.asked == 6 && bedge[0].first.limit == 8;
+  #assert budget_take(bedge[..], BUDGET_STEPS, 5) && bedge[0].used[BUDGET_STEPS] == 8;
+}

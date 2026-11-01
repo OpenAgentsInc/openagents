@@ -150,6 +150,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/budget-a-frame.coax",
+      "chapter": "aethyr/book/ch016-budgets-that-refuse.md",
+      "stdout": "aethyr/fixtures/budget-a-frame.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

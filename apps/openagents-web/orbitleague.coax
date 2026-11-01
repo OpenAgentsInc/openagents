@@ -31,6 +31,7 @@
 #load "../../verse/sphere.coax";
 #load "../../aethyr/loop.coax";   // Aethyr's one clock: fixed 120 Hz steps
 #load "socket.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
@@ -3450,4 +3451,29 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   s[0].bodies[BALL].pos = d3(0.0, 6.0, 10.0); s[0].bodies[BALL].vel = D3_ZERO;
   run_for(s[..], 0.5);
   #assert s[0].bodies[BALL].pos.y < 5.0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Orbit League may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+ORBITLEAGUE_BUDGET :: FrameBudget.{steps = 8, vertices = 5000, draws = 0, bytes = 2031616};
+
+// A match from its kickoff: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "Orbit League's frames fit its declared budget" {
+  #assert budget_declared(ORBITLEAGUE_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(ORBITLEAGUE_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(OrbitLeague), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] OrbitLeague;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := game_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

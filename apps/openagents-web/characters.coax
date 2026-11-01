@@ -18,6 +18,7 @@
 #load "font.coax";
 #load "analytics.coax";
 #load "../../verse/motion.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
@@ -759,4 +760,29 @@ coaxial_chars_cursor :: (c: [] Chars) -> int #export_c { return ifx c[0].hover >
     #assert d > 0.45;
   }
   #assert RING - fox.radius > 0.45;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the characters realm may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+CHARS_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = 0, bytes = 1900544};
+
+// The cast walking: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "The characters realm's frames fit its declared budget" {
+  #assert budget_declared(CHARS_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(CHARS_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Chars), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Chars;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := coaxial_chars_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

@@ -218,6 +218,36 @@ than three times the bound). Mutation: 189 of 189 (`follow.coax`), 54 of 54
 Grid, Ice Cream Man's boom and `SpaceCam` move onto `CameraShot` with
 ec-migrate.
 
+## Budgets (`aethyr/budget.coax`)
+
+A realm declares what one frame may use, a `FrameBudget`: fixed steps (8,
+the clock's cap), vertices, draw records and the bytes the page host holds
+for it (its state, vertex buffer and uniforms, as `coax/web/host.js` sizes
+its arena). A `BudgetMeter` counts each frame. `budget_take` takes a request
+whole or refuses all of it, counts the refusal, marks the frame over budget
+and keeps the first refusal (frame, kind, request, used, limit) for the
+report; `budget_ok` is what a check asserts.
+
+- A declaration is valid only when its vertex limit is below the realm's
+  vertex buffer (`budget_declared`). The realms' quad writers stop at a full
+  buffer, so a clipped frame always passes the limit and fails the check.
+- Every realm's file declares one (`GARDEN_BUDGET`, `STAIR_BUDGET`, ...) and
+  has a check, "... frames fit its declared budget", that draws three frames
+  at each of three screens (1440 by 900 at 1x and 2x, a 390 by 844 phone at
+  3x). The limits are the native peaks of 120 frames a screen plus a
+  quarter (vertices) or a tenth (bytes); book chapter 16 has the table.
+- The first run found Hold the Stair's swarm stage drawing 39,318 vertices a
+  frame into a 36,000-vertex buffer: 3,318 clipped every frame. Its buffer
+  is now 52,000 and its budget 48,000, and with the old buffer its check
+  fails.
+
+Checks: the planted overflow (one vertex too many is refused whole and
+reported), takes, peaks and ties, measured frames over budget in each kind,
+counts below zero, unknown kinds and a sum past the largest `int`.
+Mutation: 139 of 139 killed. Content-hashed asset identity, steps measured
+per realm (the private clocks move with ec-migrate) and refusal inside the
+writers are still to do.
+
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 
 The Grid (`/realms/the-grid`) is the first realm whose simulation is one Coax

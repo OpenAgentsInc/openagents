@@ -18,9 +18,10 @@
 #load "stair-tables.coax";
 #load "stair-coop.coax";
 #load "lockroom.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;
-MAX_VERTICES :: 36000;
+MAX_VERTICES :: 52000;   // the swarm stage draws 39,318 at 1440 px; 36,000 clipped it (STAIR_BUDGET)
 PLATES :: 24;
 COLS :: 14; ROWS :: 9; CELLS :: 126;
 // The uniforms: size, time, fade; the map (origin x, y, tile, squash); info (screen cols, rows,
@@ -3371,4 +3372,30 @@ quiet_fight :: (s: [] Stair) { s[0].phase = FIGHT; s[0].wave = 1; for g: 0..<GRO
       #assert text_width(lab, label_cap(lab, r, k)) <= r.x1 - r.x0 - LABEL_PAD * k;
     }
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Hold the Stair may
+// use. Its heaviest frame is the swarm stage's tenth: 39,318 vertices at 1440 by 900, which the
+// 36,000-vertex buffer clipped before this check; the buffer is now 52,000.
+STAIR_BUDGET :: FrameBudget.{steps = 8, vertices = 48000, draws = 0, bytes = 3932160};
+
+// Ten frames of the opening and ten of the swarm stage, at every budget screen.
+#test "Hold the Stair's frames fit its declared budget" {
+  #assert budget_declared(STAIR_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 10;
+  m := [1] BudgetMeter.[budget_meter(STAIR_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Stair), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for stage: 0..<2 {
+    for i: 0..<BUDGET_SCREENS {
+      s: [1] Stair;
+      stair_start(s[..]);
+      if stage == 1 { stair_message(s[..], HOST_PAGE, "url=https://openagents.com/realms/hold-the-stair?stage=swarm"); }
+      sc := budget_screen(i);
+      for f: 0..<frames { n := stair_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, 0.05, false); budget_measure(m[..], n, 0, bytes); }
+    }
+  }
+  #assert budget_ok(m[0]) && m[0].peak[BUDGET_VERTICES] == 39318;
+  #assert MAX_VERTICES - STAIR_BUDGET.vertices == 4000;   // the buffer keeps 4,000 vertices past the budget
 }

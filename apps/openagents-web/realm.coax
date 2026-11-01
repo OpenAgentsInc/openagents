@@ -28,6 +28,7 @@
 #load "room.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "access.coax";                 // who may make a realm: BUILD YOUR OWN REALM hides on make 0
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, a HUD bar's press and flash, 0, 0
 MAX_VERTICES :: 36000;
@@ -1113,8 +1114,6 @@ chat_tail :: (text: string, cap: f32, width: f32) -> string {
 
 // The survey box, where the conversation goes.
 ask_box :: (r: [] Realm) -> Box { return talk_box(r); }
-
-
 
 // The move stick, where to put a thumb, and what it pushes.
 draw_stick :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
@@ -2575,4 +2574,31 @@ plated :: (u: [] f32, b: Box) -> f32 {
   v.quest = 1; v.quest_line = "Pick something from the hotbar";
   for i: 0..<600 { n = realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016); }
   #assert door_nudge(r[..], v) == 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the Haunted House may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+HOUSE_BUDGET :: FrameBudget.{steps = 8, vertices = 8000, draws = 0, bytes = 2621440};
+
+// Its foyer: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "The Haunted House's frames fit its declared budget" {
+  #assert budget_declared(HOUSE_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  v: RealmView; v.ready = true; v.title = "Foyer";   // what the face hands it once its room is open
+  m := [1] BudgetMeter.[budget_meter(HOUSE_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Realm), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Realm;
+    realm_reset(s[..]);
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := realm_draw(s[..], v, out[..], u[..], sc.width, sc.height, sc.dpr, dt);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

@@ -25,6 +25,7 @@
 #load "font.coax";
 #load "ui.coax";
 #load "../../verse/style-preset.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 24000;
@@ -928,4 +929,29 @@ CATALOG :: "pack fixture\nbudget 1500000\nbytes 1189356\nL 0 Quaternius Fantasy 
   for i: 0..<7200 { fixture_step(s[..], 0.1); }
   #assert fixture_frame(s[..], out[..], u[..], 2880, 1800, 2, 0.0, false) > 0;
   #assert abs(s[0].clock - 0.25) < 0.001 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.25) < 0.001;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the fixture realm may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+FIXTURE_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 1703936};
+
+// Its room: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "The fixture realm's frames fit its declared budget" {
+  #assert budget_declared(FIXTURE_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(FIXTURE_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Fixture), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Fixture;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := fixture_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

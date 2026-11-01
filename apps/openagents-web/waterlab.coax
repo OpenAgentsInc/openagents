@@ -32,6 +32,7 @@
 // the camera, the wheel or W/S zooms, Q dives and E rises.
 
 #load "../../verse/water-ocean.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 6;
@@ -423,3 +424,18 @@ coaxial_waterlab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
 waterlab_surface_vertices :: (s: [] Waterlab) -> int #export_c { return ifx s[0].started then s[0].mesh else 0; }
 coaxial_waterlab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_waterlab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the water lab may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+WATERLAB_BUDGET :: FrameBudget.{steps = 8, vertices = 0, draws = 0, bytes = 2228224};
+
+#test "The water lab's frames fit its declared budget" {
+  #assert budget_declared(WATERLAB_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  // Its frame packs the sea into its uniforms as float bits, which compile-time evaluation
+  // refuses (E0412), so the check takes the arena alone. Natively, 120 frames at each
+  // budget screen draw no vertices (book chapter 16).
+  bm := [1] BudgetMeter.[budget_meter(WATERLAB_BUDGET)];
+  budget_measure(bm[..], 0, 0, budget_arena_bytes(size_of(Waterlab), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS));
+  #assert budget_ok(bm[0]);
+}

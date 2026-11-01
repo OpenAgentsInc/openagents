@@ -35,6 +35,7 @@
 #load "../../verse/throw.coax";
 #load "../../verse/arrange.coax";
 #load "place-orbit.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex: x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 12000;
@@ -1333,3 +1334,30 @@ garden_store_cap :: (k: int) -> int #export_c {
   #assert !garden_vase_restore(g[0].vase, b[..], n, got[..]);
   #assert !garden_vase_restore(g[0].vase, b[..], n - 1, got[..]);
 }
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the Garden may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+// book:begin budget
+GARDEN_BUDGET :: FrameBudget.{steps = 8, vertices = 4000, draws = DRAWS, bytes = 917504};
+
+// A walk from the spawn: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "The Garden's frames fit its declared budget" {
+  #assert budget_declared(GARDEN_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(GARDEN_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Garden), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Garden;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := garden_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false, f32(SPAWN_X), 0, f32(SPAWN_Z) + f32(f) * 0.05, 0, 0, 0, 0, false, 0, 0, 0, 0);
+      budget_measure(m[..], n, garden_draws(s[..]), bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
+}
+// book:end budget

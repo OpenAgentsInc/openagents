@@ -45,6 +45,7 @@
 #load "myrealm-shapes.coax";   // the round things: figures and owls
 #load "../../aethyr/forge/edit.coax";   // the realm document's edits: a move, undo, the revision a save names
 #load "myrealm-things.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -3604,4 +3605,30 @@ answered :: (s: [] MyRealm, t: [] Track, id: int, text: string) {
   s[0].spec_due = true; m = frame_of(s[..], t[..], 2560, 1600);
   realm_requested(s[..], 6); realm_message(s[..], t[..], HTTP_ANSWER_KIND + 6, "200\nrealm forge-court\nname Forge Court\nstyle lowpoly\nground stone\ntime day\nowner 1\nfeature trees round 6\nrev 5\npublished 3\nlisted 0\nmoved trees:0 1.00 1.00\n");
   #assert forge_dirty(s[0].fd[..]) && s[0].fd[0].rev == 4 && s[0].server_rev == 5;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of a made realm may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+MYREALM_BUDGET :: FrameBudget.{steps = 8, vertices = 2000, draws = 0, bytes = 2490368};
+
+// An empty made realm: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "A made realm's frames fit its declared budget" {
+  #assert budget_declared(MYREALM_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(MYREALM_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(MyRealm), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] MyRealm;
+    t: [1] Track;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := realm_frame(s[..], t[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

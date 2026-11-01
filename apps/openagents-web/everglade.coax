@@ -85,6 +85,7 @@
 #load "everglade-stand.coax";   // what you stand on: roofs, rubble, the dome (verse/stand.coax)
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "../../verse/style-preset.coax";
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;
@@ -4640,4 +4641,29 @@ contains :: (text: string, part: string) -> bool {
   // the commons' ring of crossings sits on the commons: no torch there
   #assert lamp_at(1 + EG_BUILDINGS, l[..]) && l[0].kind == -1;
   #assert lamp_glow(0.8, false) == 0 && lamp_glow(0.0, false) == 1 && lamp_glow(0.8, true) == 1 && abs(lamp_glow(0.25, false) - 0.5) < 0.0001;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Everglade may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+EVERGLADE_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = DRAWS, bytes = 4325376};
+
+// A walk from the gate: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "Everglade's frames fit its declared budget" {
+  #assert budget_declared(EVERGLADE_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(EVERGLADE_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Everglade), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Everglade;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := everglade_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false, 0, 0, -84 + f32(f) * 0.05, 0, 0, 0, 0, false, 0, 0, 0, 0);
+      budget_measure(m[..], n, everglade_draws(s[..]), bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

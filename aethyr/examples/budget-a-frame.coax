@@ -1,0 +1,26 @@
+// book:begin example
+#load "../budget.coax";
+#import "Basic";
+
+// A realm with a vertex buffer of 36 vertices (six quads) declares 30, and draws 2, 5, 7 and
+// then 5 quads. Its writer stops at a full buffer, as the realms' quad writers do, so the
+// third frame shows only 6 of its 7 quads. The budget refuses that frame.
+BUFFER :: 36;
+main :: () {
+  declared := FrameBudget.{steps = 8, vertices = 30, draws = 0, bytes = 4096};
+  print("declared % of a % vertex buffer: %\n", declared.vertices, BUFFER, budget_kind_name(budget_declared(declared, BUFFER)));
+  same := declared; same.vertices = BUFFER;
+  print("declared % of a % vertex buffer: %\n", same.vertices, BUFFER, budget_kind_name(budget_declared(same, BUFFER)));
+  m := [1] BudgetMeter.[budget_meter(declared)];
+  quads := [4] int.[2, 5, 7, 5];
+  for f: 0..<4 {
+    written := 0;
+    for q: 0..<quads[f] { if written + 6 <= BUFFER { written += 6; } }   // the writer clips
+    budget_measure(m[..], written, 0, 1000);
+    print("frame %: % quads asked, % vertices written, over budget %\n", m[0].frames, quads[f], written, m[0].over);
+  }
+  r := m[0].first;
+  print("refused: % % in frame % (% used of %)\n", r.asked, budget_kind_name(r.kind), r.frame, r.used, r.limit);
+  print("peak % in frame %; frames over % of %; check passes %\n", m[0].peak[BUDGET_VERTICES], m[0].peak_frame[BUDGET_VERTICES], m[0].over_frames, m[0].frames, budget_ok(m[0]));
+}
+// book:end example

@@ -21,6 +21,7 @@
 #load "analytics.coax";
 #load "../../verse/deadgears/rules.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
+#load "../../aethyr/budget.coax";
 #load "../../verse/player.coax" as pc;   // the controller every walkable realm shares (#6d99)
 #load "../../verse/figure.coax" as fig;  // the creatures' bodies and gaits (#ea44)
 
@@ -2676,4 +2677,29 @@ won_through_the_controls :: (phone_size: bool) -> bool {
   #assert deadgears_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && deadgears_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
   n = frame_at(a[..], 1280, 800, 1, 1.0 / 60.0);
   #assert a[0].ed[0].pane == REDIT_BOARD && a[0].paused;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of Dead Gears may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+DEADGEARS_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 2490368};
+
+// Its opening: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "Dead Gears' frames fit its declared budget" {
+  #assert budget_declared(DEADGEARS_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(DEADGEARS_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(DeadGears), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] DeadGears;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := deadgears_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

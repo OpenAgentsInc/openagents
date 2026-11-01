@@ -20,6 +20,7 @@
 #load "../../verse/edit/edit.coax";   // the Grid's EDIT and its feature list (docs/verse/realm-edit.md)
 #load "newland-walkers.coax";
 #load "newland-walk.coax";   // the Grid, /realms/the-grid: this scene, walked (data-page 1)
+#load "../../aethyr/budget.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 400000;
@@ -2456,4 +2457,30 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
 
 #test "Grid-only pages have no hot project plots" {
   s:[1]LandState;#assert !on_plot(s[0..<0],0,0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The frame budget (aethyr/budget.coax, book chapter 16): what one frame of the Grid may use.
+// The vertex limit is under the vertex buffer, so a frame its writers clip fails the check.
+LAND_BUDGET :: FrameBudget.{steps = 8, vertices = 62000, draws = 0, bytes = 21889024};
+
+// The Grid at the spawn: three frames at each budget screen, the last one 0.1 s long. Book
+// chapter 16 gives the peaks of 120 frames at each screen, measured natively.
+#test "The Grid's frames fit its declared budget" {
+  #assert budget_declared(LAND_BUDGET, TEST_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(LAND_BUDGET)];
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(LandState), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] LandState;
+    s[0].time = 9;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := coaxial_land_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false);
+      budget_measure(m[..], n, 0, bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
 }

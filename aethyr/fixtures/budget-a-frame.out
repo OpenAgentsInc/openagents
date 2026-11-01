@@ -1,0 +1,8 @@
+declared 30 of a 36 vertex buffer: none
+declared 36 of a 36 vertex buffer: vertices
+frame 1: 2 quads asked, 12 vertices written, over budget false
+frame 2: 5 quads asked, 30 vertices written, over budget false
+frame 3: 7 quads asked, 36 vertices written, over budget true
+frame 4: 5 quads asked, 30 vertices written, over budget false
+refused: 36 vertices in frame 3 (0 used of 30)
+peak 30 in frame 2; frames over 1 of 4; check passes false
