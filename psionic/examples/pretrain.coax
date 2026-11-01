@@ -1,0 +1,8 @@
+#load "../tests/pretrain-drive.coax";
+// book:begin example
+// The short run: four windows a step for 24 steps, evaluated on the first
+// 16 frozen held-out windows, with a checkpoint after step 12.
+NP_DEMO :: NpPlan.{model=NP_MODEL,batch=4,steps=24,warmup=4,warmdown=8,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1281,budget=1e10};
+main :: () {np_drive(NP_DEMO,16,12,4,12,true);}
+// book:end example

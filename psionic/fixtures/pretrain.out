@@ -1,0 +1,22 @@
+corpus: 118 documents, 1243 paragraphs; held out: 17 documents (sources divisible by 8), shared paragraphs: 0
+tokenizer: 63 merges on 16 training samples, vocabulary 320 (BOS 319)
+train: 289292 bytes, 199039 tokens, 3109 windows of 64; held out: 49981 bytes, 34564 tokens, 16 frozen windows
+envelope: 48170 parameters, 24 steps x 4 windows x 63 targets, 1747992960.0 FLOPs estimated (6ND) of 10000000000.0 budgeted
+baselines, bits per byte: unigram 4.456933833293177, bigram 3.1062932989428584 (add-k, k = 0.03)
+step 0: held-out 5.773199928683723 bits per byte over 1008 targets, 1453 bytes
+step 4: loss 5.4614144186952025, gradient norm 0.6689967848387486, rate scale 1.0
+step 8: loss 4.663260642159237, gradient norm 0.4759126980122564, rate scale 1.0
+step 12: loss 4.547918215372782, gradient norm 0.39890044740763503, rate scale 1.0
+step 12: held-out 4.523625132160234 bits per byte
+step 12: checkpoint, 1156212 bytes, digest 0fcc5d728deb307e...
+step 16: loss 4.466083101037292, gradient norm 0.41770122519190284, rate scale 1.0
+step 20: loss 4.354102946996971, gradient norm 0.4123463332232608, rate scale 0.625
+step 24: loss 4.443679361036116, gradient norm 0.336281782618377, rate scale 0.125
+final: held-out 4.355480036494545 bits per byte; bigram 3.1062932989428584 - margin 0.1 = 3.0062932989428583
+acceptance (frozen before the run): failed
+resumed at step 12: 12 of 12 losses identical; parameters and moments identical: true
+checkpoint with one bit flipped: corrupt
+checkpoint resumed under a 25-step plan: plan
+checkpoint against other data: data
+the plan with half its FLOPs budgeted: budget
+a held-out document that repeats a training document: leak, 25 shared paragraphs

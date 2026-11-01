@@ -1,0 +1,68 @@
+// Chapter 128's driving loop, shared by the short example
+// (psionic/examples/pretrain.coax) and the recorded long run
+// (psionic/tests/pretrain-long.coax). Every decision is in
+// psionic/lib/nanochat/pretrain.coax; this file holds the buffers and prints.
+#import "Basic";
+#load "../lib/nanochat/pretrain.coax";
+#load "../fixtures/pretrain/corpus.coax";
+// The run's model: two blocks of width 32, 2 query heads over 1 key-value
+// head, windows of 64 over the 320-token vocabulary.
+NP_MODEL :: NcConfig.{sequence_len=64,vocab=320,layers=2,heads=2,kv_heads=1,width=32,pattern=0,pattern_len=1,context=64};
+NP_PARAMETERS :: 48170;
+NP_TRAIN_MAX :: 240000;
+NP_VAL_MAX :: 40000;
+NP_HEX :: [16]string.["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+np_hex :: (d:[32]u8) {for i:0..<8 {print("%",NP_HEX[cast(int)d[i]/16]);print("%",NP_HEX[cast(int)d[i]%16]);}}
+// book:begin drive
+// Tokenizer, split, baselines, the run with evaluations and a checkpoint
+// after step cut, then a resume from that checkpoint replayed to the end.
+np_drive :: (plan:NpPlan,windows:int,every:int,report:int,cut:int,refusals:bool) {
+    c:=plan.model;docs:=NP_CORPUS;sources:=NP_CORPUS_SOURCES;classes:=PT_TOY;packed:[65536]u8;scratch:[65536]u8;
+    t:=np_tokenizer(classes[..],docs[..],sources[..],NP_MERGES,packed[..],scratch[..]);#assert t.status==NpStatus.ok && t.vocab==c.vocab;
+    bos:=t.vocab-1;lengths:[320]int;#assert np_lengths(packed[0..<t.written],bos,lengths[..])==NpStatus.ok;
+    hashes:[NP_PARAGRAPHS]u64;train:[NP_TRAIN_MAX]int;val:[NP_VAL_MAX]int;
+    d:=np_data(packed[0..<t.written],docs[..],sources[..],bos,hashes[..],train[..],val[..]);#assert d.status==NpStatus.ok;
+    tr:=train[0..<d.train];va:=val[0..<d.val];L:=c.sequence_len;
+    // Chapter 127's oracle took its step-0 gradient over these first 16 tokens.
+    for i:0..<16 {#assert tr[i]==NP_ORACLE_TOKENS[i];}
+    print("corpus: % documents, % paragraphs; held out: % documents (sources divisible by %), shared paragraphs: %\n",docs.count,d.paragraphs,d.val_docs,NP_HOLDOUT,d.shared);
+    print("tokenizer: % merges on % training samples, vocabulary % (BOS %)\n",t.merges,NP_SAMPLES,t.vocab,bos);
+    print("train: % bytes, % tokens, % windows of %; held out: % bytes, % tokens, % frozen windows\n",d.train_bytes,d.train,d.train/L,L,d.val_bytes,d.val,windows);
+    #assert np_admit(plan,d.train/L)==NpStatus.ok;
+    n:=nc_parameter_count(c);#assert n==NP_PARAMETERS;
+    print("envelope: % parameters, % steps x % windows x % targets, % FLOPs estimated (6ND) of % budgeted\n",n,plan.steps,plan.batch,L-1,np_flops(plan),plan.budget);
+    counts:[103040]f64;base:=np_baselines(c,tr,va,lengths[..],windows,counts[..]);#assert base.status==NpStatus.ok;
+    print("baselines, bits per byte: unigram %, bigram % (add-k, k = %)\n",base.unigram,base.bigram,base.k);
+    w:[NP_PARAMETERS]f64;m:[NP_PARAMETERS]f64;v:[NP_PARAMETERS]f64;g:[NP_PARAMETERS]f64;total:[NP_PARAMETERS]f64;
+    tape:[101040]f64;logits:[20480]f64;cache:[4128]f64;work:[12544]f64;order:[NP_TRAIN_MAX/64+1]int;order[d.train/L]=-1;
+    np_init(c,plan.init,w[..]);
+    e:=np_eval(c,w[..],va,lengths[..],windows,cache[..],work[..],logits[..]);#assert e.status==NpStatus.ok;
+    print("step 0: held-out % bits per byte over % targets, % bytes\n",e.bpb,e.targets,e.bytes);
+    pid:=np_plan_id(plan);did:=np_data_id(tr,va);bytes:[1156212]u8;#assert np_size(n)==bytes.count;
+    run:=NpRun.{};losses:[1000]f64;
+    while run.step<plan.steps {
+        r:=np_step(plan,run,tr,order[0..<d.train/L+1],w[..],m[..],v[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;
+        losses[run.step]=r.loss;run=r.run;
+        if run.step%report==0 {print("step %: loss %, gradient norm %, rate scale %\n",run.step,r.loss,r.norm,r.scale);}
+        if run.step%every==0 && run.step<plan.steps {e=np_eval(c,w[..],va,lengths[..],windows,cache[..],work[..],logits[..]);print("step %: held-out % bits per byte\n",run.step,e.bpb);}
+        if run.step==cut {#assert np_save(pid,did,run,w[..],m[..],v[..],bytes[..])==NpCheck.ok;print("step %: checkpoint, % bytes, digest ",cut,bytes.count);np_hex(ck_get(bytes[..],bytes.count-32));print("...\n");}
+    }
+    e=np_eval(c,w[..],va,lengths[..],windows,cache[..],work[..],logits[..]);
+    print("final: held-out % bits per byte; bigram % - margin % = %\n",e.bpb,base.bigram,NP_MARGIN,base.bigram-NP_MARGIN);
+    print("acceptance (frozen before the run): %\n",ifx np_accept(e.bpb,base) then "passed" else "failed");
+    // A fresh set of buffers holds only the checkpoint.
+    x:[NP_PARAMETERS]f64;xm:[NP_PARAMETERS]f64;xv:[NP_PARAMETERS]f64;o2:[NP_TRAIN_MAX/64+1]int;o2[d.train/L]=-1;
+    rd:=np_resume(plan,pid,did,bytes[..],x[..],xm[..],xv[..]);#assert rd.status==NpCheck.ok;again:=rd.run;same:=0;
+    while again.step<plan.steps {r:=np_step(plan,again,tr,o2[0..<d.train/L+1],x[..],xm[..],xv[..],g[..],total[..],tape[..],logits[..]);#assert r.status==NpStatus.ok;
+        if f64_bits(r.loss)==f64_bits(losses[again.step]) {same+=1;}again=r.run;}
+    print("resumed at step %: % of % losses identical; parameters and moments identical: %\n",rd.run.step,same,plan.steps-rd.run.step,np_same(x[..],w[..]) && np_same(xm[..],m[..]) && np_same(xv[..],v[..]));
+    if !refusals {return;}
+    // Broken inputs, each refused before anything is written.
+    bytes[5000]^=1;print("checkpoint with one bit flipped: %\n",np_resume(plan,pid,did,bytes[..],x[..],xm[..],xv[..]).status);bytes[5000]^=1;
+    q:=plan;q.steps=plan.steps+1;print("checkpoint resumed under a %-step plan: %\n",q.steps,np_resume(q,np_plan_id(q),did,bytes[..],x[..],xm[..],xv[..]).status);
+    print("checkpoint against other data: %\n",np_resume(plan,pid,np_data_id(tr[0..<d.train-1],va),bytes[..],x[..],xm[..],xv[..]).status);
+    q=plan;q.budget=np_flops(plan)/2;print("the plan with half its FLOPs budgeted: %\n",np_admit(q,d.train/L));
+    leaky:=docs;for i:0..<docs.count {if np_holdout(sources[i]) {leaky[i]=docs[0];break;}}
+    print("a held-out document that repeats a training document: %, % shared paragraphs\n",np_audit(leaky[..],sources[..],hashes[..]).status,np_audit(leaky[..],sources[..],hashes[..]).shared);
+}
+// book:end drive

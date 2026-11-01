@@ -1,0 +1,24 @@
+corpus: 118 documents, 1243 paragraphs; held out: 17 documents (sources divisible by 8), shared paragraphs: 0
+tokenizer: 63 merges on 16 training samples, vocabulary 320 (BOS 319)
+train: 289292 bytes, 199039 tokens, 3109 windows of 64; held out: 49981 bytes, 34564 tokens, 256 frozen windows
+envelope: 48170 parameters, 1000 steps x 8 windows x 63 targets, 145666080000.0 FLOPs estimated (6ND) of 200000000000.0 budgeted
+baselines, bits per byte: unigram 4.46390609867792, bigram 3.292520570496483 (add-k, k = 0.1)
+step 0: held-out 5.781912815417212 bits per byte over 16121 targets, 23203 bytes
+step 100: loss 3.446071417071761, gradient norm 0.3175075938849577, rate scale 1.0
+step 200: loss 3.169007659595982, gradient norm 0.43116245776627504, rate scale 1.0
+step 200: held-out 3.1510515795058938 bits per byte
+step 300: loss 2.7822600753420876, gradient norm 0.4035268461584631, rate scale 1.0
+step 400: loss 2.75291023678843, gradient norm 0.45865091659973856, rate scale 1.0
+step 400: held-out 2.8748616326164655 bits per byte
+step 500: loss 2.523662105171549, gradient norm 0.4484257496031922, rate scale 1.0
+step 600: loss 2.4624008366734627, gradient norm 0.41631784183091153, rate scale 1.0
+step 600: held-out 2.731868292983047 bits per byte
+step 700: loss 2.613147751902321, gradient norm 0.4352549852372503, rate scale 1.0
+step 800: loss 2.3486906707705373, gradient norm 0.4697451180367985, rate scale 0.67
+step 800: held-out 2.623236897415898 bits per byte
+step 900: loss 2.2465191327990532, gradient norm 0.4508071789593838, rate scale 0.33666666666666667
+step 900: checkpoint, 1156212 bytes, digest 0b0f643fd36d293e...
+step 1000: loss 2.3011427639236044, gradient norm 0.4448154986461925, rate scale 0.0033333333333333335
+final: held-out 2.533604422311366 bits per byte; bigram 3.292520570496483 - margin 0.1 = 3.192520570496483
+acceptance (frozen before the run): passed
+resumed at step 900: 100 of 100 losses identical; parameters and moments identical: true

@@ -2034,6 +2034,18 @@
         "release"
       ],
       "timeout": 300
+    },
+    {
+      "source": "psionic/examples/pretrain.coax",
+      "chapter": "psionic/book/ch128-a-complete-pretraining-run.md",
+      "stdout": "psionic/fixtures/pretrain.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180,
+      "stack_kib": 65536
     }
   ]
 }

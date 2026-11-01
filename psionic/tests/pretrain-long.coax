@@ -1,0 +1,12 @@
+#load "pretrain-drive.coax";
+// Chapter 128's recorded run (release only; psionic/tests/check_pretrain.sh
+// compares its transcript with psionic/fixtures/pretrain/long.out): eight
+// windows a step for 1000 steps, 504,000 predicted tokens, about two and a
+// half passes over the training windows, evaluated on 256 frozen held-out
+// windows every 200 steps, with a checkpoint after step 900 that the resume
+// replays to the end.
+// book:begin long
+NP_RUN :: NpPlan.{model=NP_MODEL,batch=8,steps=1000,warmup=40,warmdown=300,final=0,
+    embed=0.03,matrix=0.01,head=0.01,scalar=0.01,beta1=0.8,beta2=0.95,eps=1e-10,clip=1,seed=7,init=1281,budget=2e11};
+main :: () {np_drive(NP_RUN,256,200,100,900,false);}
+// book:end long
