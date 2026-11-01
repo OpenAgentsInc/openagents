@@ -1,0 +1,5 @@
+// expect: trap index out of bounds
+#import "Basic";
+// The loop runs past the array, so the versioning guard fails and the
+// checked loop runs: it writes and prints a[0..<4], then traps at a[4].
+main :: () { a: [4] int; n := 6; for i: 0..<n { a[i] = i; print("%\n", a[i]); } }

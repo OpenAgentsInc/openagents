@@ -311,7 +311,7 @@ CK_builtin_type :: (name:string)->int {
   names:=[14] string.["int","s64","s8","s16","s32","u8","u16","u32","u64","uint","f32","f64","bool","string"];
   ids:=[14] int.[11,11,8,9,10,12,13,14,15,15,6,7,2,3];for x,i:names {if x==name {return ids[i];}}return CK_NONE;
 }
-CK_intrinsic :: (name:string)->u32 #export_c {names:=[9] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
+CK_intrinsic :: (name:string)->u32 #export_c {names:=[10] string.["sin","cos","tan","exp","log","sqrt","floor","abs","pow","fma"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
 CK_byte_intrinsic :: (name:string)->u32 #export_c {names:=[12] string.["bytes_overlap","f32_from_bits","f64_from_bits","f32_bits","f64_bits","value_barrier","add_wrap","sub_wrap","mul_wrap","rotl","rotr","mul_wide"];for x,i:names {if x==name {return cast(u32)(i+1);}}return CK_NONE;}
 #test "return borrow reused input rebuilds constant bindings actual call lists and procedure statuses" {
  nodes:[64]CK_Node;types:[64]CK_Type;locals:[64]CK_Local;errors:[16]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
@@ -1551,8 +1551,8 @@ CK_call_cast :: (c:CK_Context,id:int,name:string,operand:int)->int {
   ty:=CK_new(c,CK_Tag.type_named,c.nodes[id].loc);c.nodes[ty].name=name;c.nodes[id].kind=CK_Tag.expr_cast;c.nodes[id].d=ty;c.nodes[id].a=operand;c.nodes[id].head=0;c.nodes[id].tail=0;return CK_cast(c,id);
 }
 CK_math_call :: (c:CK_Context,id:int,intrinsic:u32,want:CK_Hint)->int {
-  e:=c.nodes[id];arity:=1;if intrinsic==9 {arity=2;}c.nodes[id].intrinsic=intrinsic;count:=CK_list_count(c,e.head);
-  if count!=arity {need:="one value";if arity==2 {need="two values";}parts:=[5] string.[e.name," takes ",need,", given ",CK_count(c,count)];CK_error(c,e.loc,"E0375",CK_text(c,parts[..]),"");a:=e.head;while a!=CK_NONE {ignored:=CK_value(c,a,CK_Hint.{});a=c.nodes[a].next;}return CK_NONE;}
+  e:=c.nodes[id];arity:=1;if intrinsic==9 {arity=2;}if intrinsic==10 {arity=3;}c.nodes[id].intrinsic=intrinsic;count:=CK_list_count(c,e.head);
+  if count!=arity {need:="one value";if arity==2 {need="two values";}if arity==3 {need="three values";}parts:=[5] string.[e.name," takes ",need,", given ",CK_count(c,count)];CK_error(c,e.loc,"E0375",CK_text(c,parts[..]),"");a:=e.head;while a!=CK_NONE {ignored:=CK_value(c,a,CK_Hint.{});a=c.nodes[a].next;}return CK_NONE;}
   hint:=CK_Hint.{};if CK_float(c,want.type) {hint=want;}bad:=false;a:=e.head;
   while a!=CK_NONE {t:=CK_expr(c,a,hint);bad=t==CK_NONE || bad;a=c.nodes[a].next;}if bad {return CK_NONE;}
   t:=0;for i:0..<arity {arg:=CK_at(c,e.head,i);if !CK_untyped(c,c.nodes[arg].type) {t=c.nodes[arg].type;break;}}
@@ -1560,7 +1560,7 @@ CK_math_call :: (c:CK_Context,id:int,intrinsic:u32,want:CK_Hint)->int {
   a=e.head;while a!=CK_NONE {if CK_untyped(c,c.nodes[a].type) {CK_coerce(c,a,t);}a=c.nodes[a].next;}
   a=e.head;while a!=CK_NONE {
     at:=c.nodes[a].type;if at==0 {return CK_NONE;}
-    if at!=t || !CK_float(c,t) {need:=" needs a float";if arity==2 {need=" needs two floats of one type";}fix:="";if CK_integer(c,at) {fix="convert it first: f64(x)";}parts:=[4] string.[e.name,need,", found ",c.types[at].name];CK_error(c,c.nodes[a].loc,"E0375",CK_text(c,parts[..]),fix);return CK_NONE;}a=c.nodes[a].next;
+    if at!=t || !CK_float(c,t) {need:=" needs a float";if arity==2 {need=" needs two floats of one type";}if arity==3 {need=" needs three floats of one type";}fix:="";if CK_integer(c,at) {fix="convert it first: f64(x)";}parts:=[4] string.[e.name,need,", found ",c.types[at].name];CK_error(c,c.nodes[a].loc,"E0375",CK_text(c,parts[..]),fix);return CK_NONE;}a=c.nodes[a].next;
   }return t;
 }
 // Schema 1 is target layout metadata, lowered to ordinary typed values. No
@@ -14262,12 +14262,44 @@ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[.
 #assert CK_intrinsic("floor")==7;
 #assert CK_intrinsic("abs")==8;
 #assert CK_intrinsic("pow")==9;
+#assert CK_intrinsic("fma")==10;
 #assert CK_intrinsic("")==0;
 #assert CK_intrinsic("missing")==0;
 #assert CK_intrinsic("_")==0;
 #assert CK_intrinsic("_member")==0;
 #assert CK_intrinsic("sinx")==0;
 
+}
+// fma(a, b, c) is a*b + c rounded once (IEEE 754 fusedMultiplyAdd): three
+// floats of one type, f64 when all three are untyped.
+// Source: "main :: () {x:=fma(); y:=fma(f32 1, f32 2, f64 3); z:=fma(1.0,2.0,3.0);}"
+#test "checker: fma takes three floats of one type" {
+  initial:=[16] CK_Node.[
+    CK_Node.{},
+    CK_Node.{kind=CK_Tag.file,head=2,tail=2},
+    CK_Node.{kind=CK_Tag.proc,loc=CK_Loc.{line=1,column=1,offset=0},name="main",b=3},
+    CK_Node.{kind=CK_Tag.stmt_block,loc=CK_Loc.{line=1,column=12,offset=11},head=4,tail=11},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=1,column=13,offset=12},name="x",a=5,next=6},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=1,column=16,offset=15},name="fma"},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=1,column=23,offset=22},name="y",a=7,next=11},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=1,column=26,offset=25},name="fma",head=8,tail=10},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=1,column=30,offset=29},next=9,floating=4607182418800017408,type=6},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=1,column=37,offset=36},next=10,floating=4611686018427387904,type=6},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=1,column=44,offset=43},floating=4613937818241073152,type=7},
+    CK_Node.{kind=CK_Tag.stmt_var,loc=CK_Loc.{line=1,column=52,offset=51},name="z",a=12},
+    CK_Node.{kind=CK_Tag.expr_call,loc=CK_Loc.{line=1,column=55,offset=54},name="fma",head=13,tail=15},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=1,column=59,offset=58},next=14,floating=4607182418800017408},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=1,column=63,offset=62},next=15,floating=4611686018427387904},
+    CK_Node.{kind=CK_Tag.expr_float,loc=CK_Loc.{line=1,column=67,offset=66},floating=4613937818241073152}];
+  nodes:[64] CK_Node;for v,i:initial {nodes[i]=v;}
+  types:[64] CK_Type;locals:[32] CK_Local;errors:[120] CK_Error;bytes:[12000] u8;state:[1] CK_State;
+  context:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};
+  ok:=CK_run(context,initial.count-1,CK_Options.{library=true,metal=false,authority=false});
+  #assert ok==false && state[0].error_count==2 && state[0].depth==0;
+  #assert errors[0].code=="E0375" && errors[0].loc.column==16 && errors[0].message=="fma takes three values, given 0" && errors[0].fix=="";
+  #assert errors[1].code=="E0375" && errors[1].loc.column==44 && errors[1].message=="fma needs three floats of one type, found f64" && errors[1].fix=="";
+  #assert nodes[12].intrinsic==10 && nodes[12].type==7 && nodes[13].type==7 && nodes[15].type==7;
+  #assert nodes[7].intrinsic==10 && nodes[5].intrinsic==10;
 }
 #test "CK_byte_intrinsic names" {
 nodes:[64] CK_Node;types:[32] CK_Type;locals:[16] CK_Local;errors:[8] CK_Error;bytes:[4096] u8;state:[1] CK_State;

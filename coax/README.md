@@ -168,7 +168,9 @@ squares :: () -> [8] u16 {
   keeps the low bits; `cast(string)` borrows a `[] u8` view. Runtime integer
   overflow is checked by default and wrapping under the legacy release preset,
   with an explicit arithmetic override available; floats are plain IEEE with
-  no fused operations in the C path.
+  no implicit fused operations in the C path. `fma(a, b, c)` is the one
+  explicit fused multiply-add: `a * b + c` rounded once, as IEEE 754's
+  fusedMultiplyAdd specifies, so it gives the same bits everywhere.
 - **Data.** `Name :: struct { field: T; field: T = default; }` with defaults,
   literals `Name.{field = value}`, field access and assignment, and value
   copies. `Name :: enum u8 { a; b = 4; }` with `Name.a`, equality, and checked

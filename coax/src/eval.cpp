@@ -461,11 +461,12 @@ struct Evaluator {
 
   // Built-in math. f32 uses the float functions, as the generated C does.
   Value math(const Expr *e, CtFrame &frame, bool allow_calls) {
-    double a = expr(e->args[0], frame, allow_calls).f, b = 0;
-    if (!failed && e->args.count == 2) b = expr(e->args[1], frame, allow_calls).f;
+    double a = expr(e->args[0], frame, allow_calls).f, b = 0, c = 0;
+    if (!failed && e->args.count >= 2) b = expr(e->args[1], frame, allow_calls).f;
+    if (!failed && e->args.count == 3) c = expr(e->args[2], frame, allow_calls).f;
     if (failed) return {};
     bool f32 = e->type == &T_F32;
-    float x = (float)a, y = (float)b;
+    float x = (float)a, y = (float)b, z = (float)c;
     double r = 0;
     switch (e->intrinsic) {
       case Intrinsic::sin: r = f32 ? ::sinf(x) : std::sin(a); break;
@@ -477,6 +478,7 @@ struct Evaluator {
       case Intrinsic::floor: r = f32 ? ::floorf(x) : std::floor(a); break;
       case Intrinsic::abs: r = f32 ? ::fabsf(x) : std::fabs(a); break;
       case Intrinsic::pow: r = f32 ? ::powf(x, y) : std::pow(a, b); break;
+      case Intrinsic::fma: r = f32 ? ::fmaf(x, y, z) : std::fma(a, b, c); break;
       case Intrinsic::none: break;
     }
     if (!std::isfinite(r)) {

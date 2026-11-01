@@ -24,6 +24,15 @@ headers and GPU source emission. Debugging options apply to native commands and
 `c`. Proto generation has no runtime profile. GPU source flags select existing
 lowering; they supply no new device qualification.
 
+Native optimization 1 or more also versions loops in the emitted C. When
+every index of a `for` loop is affine in the loop's counters (integer
+literals and constants, unchanged locals, `.count`, `+ - *` and division by
+a positive literal), the loop first checks each index's whole range once,
+in exact integer arithmetic. If every range is inside its array or view, a
+copy of the loop without per-element checks runs; otherwise the checked loop
+runs, so a trap happens at the same element as before. `-O0` output has no
+versioned loops, so the bootstrap seeds are unchanged.
+
 Runtime wrapping selects wrapping addition, subtraction, multiplication and
 negation. Bounds, casts, shifts and division retain their checks. Compile-time
 evaluation, `#run`, `#test` and `#forall` remain checked under every runtime

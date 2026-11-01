@@ -1,0 +1,67 @@
+#import "Basic";
+// The C emitter versions a for loop whose indexes it can bound: a guard
+// checks every index's range once, then a copy without per-element checks
+// runs; otherwise the checked loop runs. Either way the results are the
+// same, and these cases cover both copies.
+
+// A tiled product: every index is affine in the loop counters.
+product :: (x: [] int, w: [] int, rows: int, n: int, outs: int, y: [] int) {
+  for r: 0..<rows {
+    for o: 0..<outs {
+      a: [4] int;
+      for k: 0..<n / 4 {
+        for l: 0..<4 { a[l] += x[r * n + k * 4 + l] * w[o * n + k * 4 + l]; }
+      }
+      y[r * outs + o] = (a[0] + a[1]) + (a[2] + a[3]);
+    }
+  }
+}
+
+// i + 1 reaches v.count on the last step, so the guard fails and the checked
+// loop runs; the branch keeps it in range.
+neighbours :: (v: [] int) -> int {
+  s := 0;
+  for i: 0..<v.count { if i + 1 < v.count { s += v[i] * v[i + 1]; } }
+  return s;
+}
+
+// The view is replaced inside the loop: its indexes stay checked.
+switching :: (a: [] int, b: [] int) -> int {
+  v := a; s := 0;
+  for i: 0..<4 { s += v[i]; v = b; }
+  return s;
+}
+
+// Two sibling loops share the counter name j: its uses stay checked, and
+// the outer index still runs unchecked.
+siblings :: (v: [] int, at: int) -> int {
+  s := 0;
+  for i: 0..<2 {
+    s += v[at + i];
+    for j: 0..<3 { s += v[i + j]; }
+    for j: 0..<2 { s += v[j * 2]; }
+  }
+  return s;
+}
+
+// Counting down, and a bound that depends on an outer counter.
+triangle :: (v: [] int) -> int {
+  s := 0;
+  for i: 0..<v.count { for k: 0..<i + 1 { s += v[v.count - 1 - k]; } }
+  return s;
+}
+
+main :: () {
+  x: [32] int; w: [48] int; y: [12] int;
+  for i: 0..<32 { x[i] = i % 7 - 3; }
+  for i: 0..<48 { w[i] = i % 5 - 2; }
+  product(x[..], w[..], 4, 8, 3, y[..]);
+  print("product % % % % % %\n", y[0], y[1], y[2], y[5], y[9], y[11]);
+  n := [6] int.[1, 2, 3, 4, 5, 6];
+  print("neighbours %\n", neighbours(n[..]));
+  print("switching %\n", switching(n[0..<4], n[2..<6]));
+  print("siblings %\n", siblings(n[..], 3));
+  print("triangle %\n", triangle(n[..]));
+  // An empty range and a range past the end that never runs.
+  print("empty %\n", neighbours(n[0..<0]));
+}

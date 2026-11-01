@@ -1,0 +1,13 @@
+#import "Basic";
+// fma(a, b, c) is a * b + c rounded once. With x = 1 + 2^-30, x * x rounds
+// away its last term, 2^-60; fma(x, x, -(x * x)) recovers it exactly.
+main :: () {
+  print("%\n", fma(2.0, 3.0, 1.0));
+  x := 1.0 + pow(2.0, -30.0);
+  print("% %\n", fma(x, x, -(x * x)) == pow(2.0, -60.0), x * x - x * x == 0.0);
+  a: f32 = 1.5; b: f32 = 2.0; c: f32 = 0.25;
+  print("%\n", fma(a, b, c));
+  // The same at compile time.
+  #assert fma(2.0, 3.0, 1.0) == 7.0;
+  #assert fma(1.0 + pow(2.0, -30.0), 1.0 + pow(2.0, -30.0), -((1.0 + pow(2.0, -30.0)) * (1.0 + pow(2.0, -30.0)))) == pow(2.0, -60.0);
+}

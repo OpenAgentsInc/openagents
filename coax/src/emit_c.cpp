@@ -205,6 +205,30 @@ static inline uint32_t coax_value_barrier_u32(uint32_t x){__asm__("" : "+r"(x));
 #endif
 )COAXRT";
 
+/* Loop versioning (Emitter::versioned_for): a loop whose indexes are affine
+   in for-counters with invariant bounds first computes each index's
+   interval, and every subexpression's, in exact int64 endpoints. When every
+   endpoint fits and every index is inside its view or array, a copy of the
+   loop without those checks runs; otherwise the checked loop runs, so a trap
+   happens exactly where it would have. */
+static const char *IV_RUNTIME = R"COAXRT(
+typedef struct { int64_t lo, hi; } coax_iv;
+static inline __attribute__((unused)) int coax_iv_add(coax_iv a, coax_iv b, coax_iv *r) {
+  return !__builtin_add_overflow(a.lo, b.lo, &r->lo) && !__builtin_add_overflow(a.hi, b.hi, &r->hi);
+}
+static inline __attribute__((unused)) int coax_iv_sub(coax_iv a, coax_iv b, coax_iv *r) {
+  return !__builtin_sub_overflow(a.lo, b.hi, &r->lo) && !__builtin_sub_overflow(a.hi, b.lo, &r->hi);
+}
+static inline __attribute__((unused)) int coax_iv_mul(coax_iv a, coax_iv b, coax_iv *r) {
+  int64_t p[4];
+  if (__builtin_mul_overflow(a.lo, b.lo, &p[0]) || __builtin_mul_overflow(a.lo, b.hi, &p[1]) ||
+      __builtin_mul_overflow(a.hi, b.lo, &p[2]) || __builtin_mul_overflow(a.hi, b.hi, &p[3])) return 0;
+  r->lo = p[0]; r->hi = p[0];
+  for (int i = 1; i < 4; i++) { if (p[i] < r->lo) r->lo = p[i]; if (p[i] > r->hi) r->hi = p[i]; }
+  return 1;
+}
+)COAXRT";
+
 static const char *WRAP_RUNTIME = R"COAXRT(
 static uint32_t coax_add_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a+b);}
 static uint32_t coax_sub_wrap_u32(uint32_t a,uint32_t b){return (uint32_t)(a-b);}
@@ -552,6 +576,9 @@ struct Emitter {
   const File *file;
   EmitOptions opts;
   bool verification = false;
+  bool versioned = false;               // a loop was versioned: the output needs IV_RUNTIME
+  int version_depth = 0;                // inside either copy of a versioned loop: no nested versioning
+  std::set<const Expr *> unchecked;     // the fast copy's indexes, proven in range by its guard
   std::map<const ProcDecl *, std::string> verification_names;
   std::map<const Expr *, int32_t> verification_ct_ids;
   std::string out;          // the current function body
@@ -937,6 +964,11 @@ struct Emitter {
             return local_name(e->lhs->text) + "[(" + ex(e->rhs) + ") - l_lane * " + std::to_string(at->second) + "]";
         }
         Type lt = e->lhs->type;
+        if (!unchecked.empty() && unchecked.count(e)) {
+          std::string object = ex(e->lhs);
+          std::string at = plain_index(e->rhs);
+          return "(" + object + (lt->kind == TypeKind::view ? ").data[" : ").e[") + at + "]";
+        }
         if (lt == &T_STRING)
           return ordered({{e->lhs, false}, {e->rhs, false}}, [&](const std::vector<std::string> &t) {
             return "coax_byte(" + t[0] + ", " + t[1] + ", " + line + ")";
@@ -1324,8 +1356,11 @@ struct Emitter {
         };
         const Expr *lo = literal(s->expr), *hi = literal(s->expr2);
         if (device() && lo && hi && (int64_t)hi->int_value - (int64_t)lo->int_value <= 128) line("#pragma unroll");
-        line("for (" + t + " " + i + " = coax_lo" + n + "; " + i + " < coax_hi" + n + "; " + i + "++)");
-        loop(s->then_);
+        std::string head = "for (" + t + " " + i + " = coax_lo" + n + "; " + i + " < coax_hi" + n + "; " + i + "++)";
+        if (!versioned_for(s, n, head)) {
+          line(head);
+          loop(s->then_);
+        }
         indent--;
         line("}");
         break;
@@ -1359,6 +1394,200 @@ struct Emitter {
         break;
       }
     }
+  }
+
+  // ---- loop versioning ----
+  // A for loop L, outside any other versioned loop, in an optimized C
+  // product (native optimization 1 or more, as --release selects; not a
+  // device, Metal or verification build). -O0 output has no versioned loops. Its candidate indexes are v[x]
+  // where v is a local array (its length is its type's, wherever it is
+  // declared) or a view named by an identifier L never declares or assigns,
+  // and x is affine: integer literals and constants, identifiers L
+  // never declares or assigns, `.count` of such a view, L's counter, and the
+  // counters of for loops inside L (declared once, with affine bounds, used
+  // only inside their own loop), combined with + - * and / by a positive
+  // integer literal. The guard evaluates
+  // every subexpression's interval with exact endpoints (IV_RUNTIME); the
+  // fast copy runs only when all of them fit in int64 and every candidate
+  // index is inside its view or array.
+  struct VScan {
+    const Stmt *loop = nullptr;
+    std::map<std::string, int> declared;
+    std::set<std::string> assigned;
+    std::map<std::string, const Stmt *> counters;              // nested for loops, by counter name
+    std::map<const Stmt *, std::vector<const Stmt *>> outer;  // a nested for loop: the nested for loops around it
+    std::vector<std::pair<const Expr *, std::vector<const Stmt *>>> indexes;  // with the nested for loops around each
+    std::vector<const Stmt *> stack;
+  };
+  static std::string name_of(Str n) { return std::string(n.data, (size_t)n.count); }
+  void vscan_expr(const Expr *e, VScan &v) {
+    if (!e) return;
+    if (e->kind == ExprKind::index) v.indexes.push_back({e, v.stack});
+    vscan_expr(e->lhs, v); vscan_expr(e->rhs, v); vscan_expr(e->third, v);
+    for (int32_t k = 0; k < e->args.count; k++) vscan_expr(e->args[k], v);
+    for (int32_t k = 0; k < e->fields.count; k++) vscan_expr(e->fields[k].value, v);
+  }
+  void vscan_stmt(const Stmt *s, VScan &v) {
+    if (!s) return;
+    switch (s->kind) {
+      case StmtKind::block: for (int32_t k = 0; k < s->body.count; k++) vscan_stmt(s->body[k], v); break;
+      case StmtKind::var: v.declared[name_of(s->name)]++; vscan_expr(s->expr, v); break;
+      case StmtKind::assign:
+        if (s->target && s->target->kind == ExprKind::ident) v.assigned.insert(name_of(s->target->text));
+        vscan_expr(s->target, v); vscan_expr(s->expr, v); break;
+      case StmtKind::for_range:
+        v.declared[name_of(s->name)]++;
+        v.counters[name_of(s->name)] = s;
+        v.outer[s] = v.stack;
+        vscan_expr(s->expr, v); vscan_expr(s->expr2, v);
+        v.stack.push_back(s); vscan_stmt(s->then_, v); v.stack.pop_back();
+        break;
+      case StmtKind::for_each:
+        v.declared[name_of(s->name)]++;
+        if (s->name2.count) v.declared[name_of(s->name2)]++;
+        vscan_expr(s->expr, v); vscan_stmt(s->then_, v); break;
+      default:
+        vscan_expr(s->expr, v); vscan_expr(s->expr2, v); vscan_expr(s->target, v);
+        vscan_stmt(s->then_, v); vscan_stmt(s->else_, v); break;
+    }
+  }
+  bool invariant(const std::string &n, const VScan &v) const {
+    return !v.declared.count(n) && !v.assigned.count(n) && n != name_of(v.loop->name);
+  }
+  // A nested counter usable where the nested for loops `around` enclose the use.
+  const Stmt *counter(const std::string &n, const VScan &v, const std::vector<const Stmt *> &around) const {
+    auto c = v.counters.find(n);
+    if (c == v.counters.end() || v.declared.at(n) != 1 || v.assigned.count(n) || c->second->type != T_INT) return nullptr;
+    if (std::find(around.begin(), around.end(), c->second) == around.end()) return nullptr;
+    return c->second;
+  }
+  bool affine(const Expr *e, const VScan &v, const std::vector<const Stmt *> &around, int depth = 0) const {
+    if (!e || e->type != T_INT || depth > 64) return false;
+    switch (e->kind) {
+      case ExprKind::int_lit: return true;
+      case ExprKind::ident: {
+        if (e->constant) return e->constant->expr && e->constant->expr->kind == ExprKind::int_lit;
+        std::string n = name_of(e->text);
+        if (n == name_of(v.loop->name)) return v.loop->type == T_INT && !v.declared.count(n) && !v.assigned.count(n);
+        if (const Stmt *c = counter(n, v, around)) {
+          const std::vector<const Stmt *> &o = v.outer.at(c);
+          return affine(c->expr, v, o, depth + 1) && affine(c->expr2, v, o, depth + 1);
+        }
+        return invariant(n, v);
+      }
+      case ExprKind::binary:
+        if (e->op == Tok::slash)
+          return e->rhs->kind == ExprKind::int_lit && (int64_t)e->rhs->int_value > 0 && affine(e->lhs, v, around, depth + 1);
+        return (e->op == Tok::plus || e->op == Tok::minus || e->op == Tok::star) && affine(e->lhs, v, around, depth + 1) &&
+               affine(e->rhs, v, around, depth + 1);
+      case ExprKind::field:
+        return e->field_index == -2 && e->lhs->kind == ExprKind::ident && !e->lhs->constant &&
+               e->lhs->type->kind == TypeKind::view && invariant(name_of(e->lhs->text), v);
+      default: return false;
+    }
+  }
+  // The guard's interval for e, as a coax_iv temporary; ok is the guard flag.
+  std::string interval(const Expr *e, const VScan &v, const std::vector<const Stmt *> &around, const std::string &ok,
+                       const std::string &lo, const std::string &hi, std::map<const Stmt *, std::string> &done) {
+    std::string t = "coax_iv" + std::to_string(temp_count++);
+    switch (e->kind) {
+      case ExprKind::int_lit: case ExprKind::field: {
+        std::string x = ex(e);
+        line("coax_iv " + t + " = {" + x + ", " + x + "};");
+        return t;
+      }
+      case ExprKind::ident: {
+        std::string n = name_of(e->text);
+        if (!e->constant && n == name_of(v.loop->name)) {
+          line("coax_iv " + t + " = {" + lo + ", " + lo + "};");
+          line(ok + " = " + ok + " && " + lo + " < " + hi + ";");
+          line("if (" + ok + ") " + t + ".hi = " + hi + " - 1;");
+          return t;
+        }
+        if (const Stmt *c = e->constant ? nullptr : counter(n, v, around)) {
+          auto d = done.find(c);
+          if (d != done.end()) return d->second;
+          const std::vector<const Stmt *> &o = v.outer.at(c);
+          std::string a = interval(c->expr, v, o, ok, lo, hi, done), b = interval(c->expr2, v, o, ok, lo, hi, done);
+          line("coax_iv " + t + " = {" + a + ".lo, " + a + ".lo};");
+          line(ok + " = " + ok + " && " + a + ".lo < " + b + ".hi;");
+          line("if (" + ok + ") " + t + ".hi = " + b + ".hi - 1;");
+          done[c] = t;
+          return t;
+        }
+        std::string x = ex(e);
+        line("coax_iv " + t + " = {" + x + ", " + x + "};");
+        return t;
+      }
+      default: {
+        std::string a = interval(e->lhs, v, around, ok, lo, hi, done), b = interval(e->rhs, v, around, ok, lo, hi, done);
+        // Division by a positive literal truncates toward zero, which keeps the order.
+        if (e->op == Tok::slash) {
+          line("coax_iv " + t + " = {" + a + ".lo / " + b + ".lo, " + a + ".hi / " + b + ".lo};");
+          return t;
+        }
+        const char *f = e->op == Tok::plus ? "coax_iv_add" : e->op == Tok::minus ? "coax_iv_sub" : "coax_iv_mul";
+        line("coax_iv " + t + " = {0, 0};");
+        line(ok + " = " + ok + " && " + f + "(" + a + ", " + b + ", &" + t + ");");
+        return t;
+      }
+    }
+  }
+  // An affine index in plain C: the guard has shown no step overflows.
+  std::string plain_index(const Expr *e) {
+    if (e->kind == ExprKind::binary) {
+      std::string a = plain_index(e->lhs);
+      std::string b = plain_index(e->rhs);
+      return "(" + a + (e->op == Tok::plus ? " + " : e->op == Tok::minus ? " - " : e->op == Tok::slash ? " / " : " * ") + b + ")";
+    }
+    return "(int64_t)(" + ex(e) + ")";
+  }
+  bool versioned_for(const Stmt *s, const std::string &n, const std::string &head) {
+    if (opts.optimization < 1 || device() || opts.metal || verification || version_depth > 0 || s->type != T_INT) return false;
+    VScan v;
+    v.loop = s;
+    vscan_stmt(s->then_, v);
+    if (v.declared.count(name_of(s->name))) return false;  // L's counter shadowed inside L
+    std::vector<std::pair<const Expr *, std::vector<const Stmt *>>> picked;
+    for (auto &x : v.indexes) {
+      const Expr *e = x.first;
+      Type lt = e->lhs->type;
+      if (lt == &T_STRING || (lt->kind != TypeKind::view && lt->kind != TypeKind::array)) continue;
+      if (e->lhs->kind != ExprKind::ident || e->lhs->constant) continue;
+      if (lt->kind == TypeKind::view && !invariant(name_of(e->lhs->text), v)) continue;
+      if (!affine(e->rhs, v, x.second)) continue;
+      picked.push_back(x);
+    }
+    if (picked.empty()) return false;
+    std::string ok = "coax_ok" + n, lo = "coax_lo" + n, hi = "coax_hi" + n;
+    line("int " + ok + " = 1;");
+    std::map<const Stmt *, std::string> done;
+    for (auto &x : picked) {
+      const Expr *e = x.first;
+      std::string iv = interval(e->rhs, v, x.second, ok, lo, hi, done);
+      std::string count = e->lhs->type->kind == TypeKind::view ? "(" + ex(e->lhs) + ").count" : "INT64_C(" + std::to_string(e->lhs->type->length) + ")";
+      line(ok + " = " + ok + " && " + iv + ".lo >= 0 && " + iv + ".hi < " + count + ";");
+    }
+    versioned = true;
+    version_depth++;
+    line("if (" + ok + ")");
+    line("{");
+    indent++;
+    for (auto &x : picked) unchecked.insert(x.first);
+    line(head);
+    loop(s->then_);
+    unchecked.clear();
+    indent--;
+    line("}");
+    line("else");
+    line("{");
+    indent++;
+    line(head);
+    loop(s->then_);
+    indent--;
+    line("}");
+    version_depth--;
+    return true;
   }
 
   void loop(const Stmt *body, const std::vector<std::string> &prelude = {}) {
@@ -2457,6 +2686,7 @@ std::string emit_c(const File *file, const EmitOptions &opts) {
   s += source_runtime(file);
   if (em.barrier) s += BARRIER_RUNTIME;
   if (em.wrapping) s += WRAP_RUNTIME;
+  if (em.versioned) s += IV_RUNTIME;
   s += "#define COAX_LAYOUT(c, m) _Static_assert(c, m)\n";
   s += "\n/* Types */\n" + types.out;
   if (em.wide) s += WIDE_RUNTIME;

@@ -893,8 +893,10 @@ the question we're asking.
 ### Built-in math
 
 A handful of math procedures are built in, with no import needed:
-`sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `floor`, `abs` and `pow`.
-They take floats of one type and return that type. `len(s)` is a
+`sqrt`, `sin`, `cos`, `tan`, `exp`, `log`, `floor`, `abs`, `pow` and
+`fma`. They take floats of one type and return that type. `fma(a, b, c)`
+is `a * b + c` rounded once, which is both faster and more exact than the
+two operations, and gives the same bits on every machine. `len(s)` is a
 string's byte count.
 
 Filename: math.coax
