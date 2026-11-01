@@ -192,6 +192,16 @@
       ]
     },
     {
+      "source": "psionic/examples/delta-chunks.coax",
+      "chapter": "psionic/book/ch042-deltanet-in-chunks.md",
+      "stdout": "psionic/fixtures/delta-chunks.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/attention-sinks.coax",
       "chapter": "psionic/book/ch062-attention-with-sinks-and-a-window.md",
       "stdout": "psionic/fixtures/attention-sinks.out",

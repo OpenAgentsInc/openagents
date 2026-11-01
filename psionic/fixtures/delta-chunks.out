@@ -1,0 +1,25 @@
+profile delta-chunks-cpu-f64-v1, tolerance 0.00001 x (1 + largest |reference value|)
+decay through each token 0.5, 0.25; decay after token 0 through token 1 0.5
+solved updates u 1.0, 2.0; outputs 2.0, 3.0; carried state 3.0
+13 tokens, 3 key heads, 6 value heads, key and value width 2:
+  log A 0.0:
+    chunk 1: outputs 0.0, state 0.0, snapshots 0.0 (13 of them, histories equal true), bit for bit true
+    chunk 2: outputs 2.9802322387695312e-08, state 7.450580596923828e-09, snapshots 1.4901161193847656e-08 (7 of them, histories equal true), bit for bit false
+    chunk 3: outputs 4.6566128730773926e-08, state 1.4901161193847656e-08, snapshots 2.9802322387695312e-08 (5 of them, histories equal true), bit for bit false
+    chunk 4: outputs 2.9802322387695312e-08, state 1.4901161193847656e-08, snapshots 1.4901161193847656e-08 (4 of them, histories equal true), bit for bit false
+    chunk 5: outputs 5.9604644775390625e-08, state 1.4901161193847656e-08, snapshots 1.4901161193847656e-08 (3 of them, histories equal true), bit for bit false
+    chunk 8: outputs 5.9604644775390625e-08, state 1.4901161193847656e-08, snapshots 1.4901161193847656e-08 (2 of them, histories equal true), bit for bit false
+    chunk 64: outputs 5.9604644775390625e-08, state 1.4901161193847656e-08, snapshots 1.4901161193847656e-08 (1 of them, histories equal true), bit for bit false
+  log A -4.0:
+    chunk 1: outputs 0.0, state 0.0, snapshots 0.0 (13 of them, histories equal true), bit for bit true
+    chunk 2: outputs 5.9604644775390625e-08, state 1.4901161193847656e-08, snapshots 2.9802322387695312e-08 (7 of them, histories equal true), bit for bit false
+    chunk 3: outputs 4.563480615615845e-08, state 2.9802322387695312e-08, snapshots 2.9802322387695312e-08 (5 of them, histories equal true), bit for bit false
+    chunk 4: outputs 7.264316082000732e-08, state 2.9802322387695312e-08, snapshots 2.9802322387695312e-08 (4 of them, histories equal true), bit for bit false
+    chunk 5: outputs 7.35744833946228e-08, state 2.9802322387695312e-08, snapshots 2.9802322387695312e-08 (3 of them, histories equal true), bit for bit false
+    chunk 8: outputs 8.940696716308594e-08, state 2.9802322387695312e-08, snapshots 2.9802322387695312e-08 (2 of them, histories equal true), bit for bit false
+    chunk 64: outputs 7.450580596923828e-08, state 2.9802322387695312e-08, snapshots 2.9802322387695312e-08 (1 of them, histories equal true), bit for bit false
+resumed at token 8 from a snapshot: outputs, state and history bit for bit true
+Elephant's shape: work at chunk 64 1364288 f64 elements, one snapshot 548864 f32 elements
+refused: chunk 0: range, output -7.0
+refused: an infinite input at token 5: number, output -7.0, written 0
+refused: a convolution past f32 at token 9: arithmetic, tokens committed 8, snapshots 2, state equals snapshot 2 true

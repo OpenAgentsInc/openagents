@@ -1,0 +1,74 @@
+// Chapter 42's check oracle, loaded by psionic/lib/delta-chunks.coax. The
+// reference is chapter 11's token-by-token step, pd_step in
+// psionic/lib/delta.coax, unchanged: it runs every token, and its output,
+// recurrent state and convolution history are kept at every position.
+
+// Profile delta-chunks-cpu-f64-v1, frozen before any comparison: a chunked
+// output or carried state may differ from the token-by-token reference by at
+// most DK_TOLERANCE * (1 + the largest |reference value|).
+// book:begin tolerance
+DK_TOLERANCE :: 0.00001;
+// book:end tolerance
+
+// Three key heads, each shared by two of six value heads; key and value width 2.
+// Per token: 24 channels, 158 inputs, 12 outputs; 24 state values, 72 history.
+DKO_TOKENS :: 13;
+dko_shape :: ()->PdShape {return PdShape.{key_heads=3,value_heads=6,key_dim=2,value_dim=2,epsilon=0.000001f32};}
+// memory: the decay parameter log A. At -4 each token keeps more than 0.96 of
+// the state, so it remembers the whole prompt; at 0, between 0.15 and 0.85.
+dko_input :: (memory:f32)->[2054]f32 {
+    s:=dko_shape();m:=pd_input_count(s);c:=pd_channels(s);a:[2054]f32;
+    for t:0..<DKO_TOKENS {for i:0..<m {a[t*m+i]=f32((i*7+t*13+i*i%5)%17-8)/9;}}
+    for t:0..<DKO_TOKENS {for head:0..<6 {a[t*m+5*c+12+head]=memory;}}
+    return a;
+}
+DkoRun :: struct { out:[156]f32; state:[312]f32; history:[936]f32; }
+// Chapter 11's recurrence from the zero state over every token.
+dko_reference :: (input:[]f32)->DkoRun {
+    s:=dko_shape();m:=pd_input_count(s);r:DkoRun;
+    history:[72]f32;state:[24]f32;work:[132]f32;
+    #assert pd_work_count(s)==132;
+    for t:0..<DKO_TOKENS {
+        p:=pd_step(s,input[t*m..<(t+1)*m],history[..],state[..],r.out[t*12..<(t+1)*12],work[..],false);
+        #assert p.status==PdStatus.ok && p.written==12;
+        for i:0..<24 {r.state[t*24+i]=state[i];}
+        for i:0..<72 {r.history[t*72+i]=history[i];}
+    }
+    return r;
+}
+dko_largest :: (a:[]f32)->f64 {big:=0.0;for x:a {if abs(f64(x))>big {big=abs(f64(x));}}return big;}
+dko_deviation :: (a:[]f32,b:[]f32)->f64 {worst:=0.0;for i:0..<a.count {d:=abs(f64(a[i])-f64(b[i]));if d>worst {worst=d;}}return worst;}
+dko_same :: (a:[]f32,b:[]f32)->bool {for i:0..<a.count {if f32_bits(a[i])!=f32_bits(b[i]) {return false;}}return true;}
+// Chunked outputs and final state against the reference; also every
+// snapshot against the reference state and history at its boundary.
+DkoCheck :: struct { out:f64; state:f64; snapshot:f64; histories:bool; same:bool; snapshots:int; }
+dko_check :: (memory:f32,chunk:int)->DkoCheck {
+    s:=dko_shape();input:=dko_input(memory);ref:=dko_reference(input[..]);
+    history:[72]f32;state:[24]f32;out:[156]f32;snaps:[1248]f32;work:[16384]f64;
+    r:=dk_prefill(s,DKO_TOKENS,chunk,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    #assert r.status==DkStatus.ok && r.written==DKO_TOKENS && r.snapshots==dk_chunks(DKO_TOKENS,chunk);
+    k:DkoCheck;k.snapshots=r.snapshots;k.histories=true;
+    k.out=dko_deviation(out[..],ref.out[..]);k.state=dko_deviation(state[..],ref.state[288..<312]);
+    k.same=dko_same(out[..],ref.out[..]) && dko_same(state[..],ref.state[288..<312]) && dko_same(history[..],ref.history[864..<936]);
+    for b:0..<r.snapshots {
+        t:=ifx (b+1)*chunk<DKO_TOKENS then (b+1)*chunk-1 else DKO_TOKENS-1;
+        d:=dko_deviation(snaps[b*96+72..<b*96+96],ref.state[t*24..<(t+1)*24]);if d>k.snapshot {k.snapshot=d;}
+        if !dko_same(snaps[b*96..<b*96+72],ref.history[t*72..<(t+1)*72]) {k.histories=false;}
+    }
+    return k;
+}
+
+#test "chunks of one token are chapter 11's recurrence, bit for bit" {
+    for mi:0..<2 {k:=dko_check(f32(-4*mi),1);#assert k.same && k.out==0 && k.state==0 && k.snapshot==0 && k.histories && k.snapshots==13;}
+}
+#test "longer chunks stay within the frozen tolerance, outputs, state and snapshots" {
+    for mi:0..<2 {
+        memory:=f32(-4*mi);input:=dko_input(memory);ref:=dko_reference(input[..]);
+        limit_out:=DK_TOLERANCE*(1+dko_largest(ref.out[..]));limit_state:=DK_TOLERANCE*(1+dko_largest(ref.state[..]));
+        sizes:=[6]int.[2,3,4,5,8,64];
+        for si:0..<6 {
+            k:=dko_check(memory,sizes[si]);
+            #assert k.out<=limit_out && k.state<=limit_state && k.snapshot<=limit_state && k.histories;
+        }
+    }
+}

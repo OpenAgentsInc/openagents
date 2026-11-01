@@ -1,0 +1,325 @@
+// Chapter 42: Gated DeltaNet prefill in chunks. Inside a chunk the delta
+// updates form a unit lower-triangular system (the WY, or UT, form) that is
+// solved by forward substitution; between chunks the state is carried in f32.
+// Profile delta-chunks-cpu-f64-v1: f32 inputs, state and outputs; binary64
+// gates, products, dot products and the triangular solve; compensated sums;
+// the convolution, normalizations and output gate are chapter 11's, token by
+// token; the recurrent state is narrowed to f32 once per chunk, at its end,
+// and the chunk's last token reads that narrowed state, as chapter 11's step
+// reads its own.
+#load "delta.coax";
+#load "../tests/delta-chunks-oracle.coax";   // the checks' token-by-token oracle
+
+// book:begin types
+DkStatus :: enum u8 { ok; shape; range; capacity; alias; number; arithmetic; }
+// One head's chunk: tokens rows of stride convolved channels; q, k and v are
+// where this head's query, key and value start in a row.
+DkChunk :: struct { key_dim:int; value_dim:int; tokens:int; stride:int; q:int; k:int; v:int; }
+// written: tokens whose outputs, state and history were committed.
+// snapshots: chunk-boundary snapshots written.
+DkResult :: struct { status:DkStatus; written:int; snapshots:int; }
+// book:end types
+
+#test "a two-token chunk with gate decay, worked by hand" {
+    // One key and one value dimension. Rows are [q, k, v]; both norms are 1.
+    h:=DkChunk.{key_dim=1,value_dim=1,tokens=2,stride=3,q=0,k=1,v=2};
+    conv:=[6]f64.[1,1,3, 1,1,5];one:=[2]f64.[1,1];beta:=[2]f64.[0.5,0.5];decay:=[2]f64.[0.5,0.5];
+    start:=[1]f32.[2];draft:=[2]f64.[-7,-7];end:=[1]f64.[-7];scratch:[16]f64;
+    #assert dk_head(h,conv[..],one[..],one[..],beta[..],decay[..],start[..],draft[..],end[..],scratch[..]);
+    // ratio = [1, -; 0.5, 1], kk = qk = all ones, u = [1, 2], totals = [0.5, 0.25].
+    #assert scratch[0]==1 && scratch[2]==0.5 && scratch[3]==1;
+    #assert scratch[4]==1 && scratch[6]==1 && scratch[7]==1 && scratch[8]==1 && scratch[10]==1 && scratch[11]==1;
+    #assert scratch[12]==1 && scratch[13]==2 && scratch[14]==0.5 && scratch[15]==0.25;
+    #assert draft[0]==2 && draft[1]==3 && end[0]==3;
+    // A chunk of one token is chapter 11's step: u = (3 - 1) * 0.5, state 1 + 1.
+    h.tokens=1;#assert dk_head(h,conv[..],one[..],one[..],beta[..],decay[..],start[..],draft[..],end[..],scratch[..]);
+    #assert draft[0]==2 && end[0]==2 && start[0]==2;
+}
+#test "a state that cannot narrow to f32 refuses the chunk" {
+    h:=DkChunk.{key_dim=1,value_dim=1,tokens=1,stride=3,q=0,k=1,v=2};
+    big:=f64(f32_from_bits(0x7f7fffff));
+    // v = max and beta = 2: the new state is 2 max.
+    conv:=[3]f64.[0,1,big];one:=[1]f64.[1];beta:=[1]f64.[2];decay:=[1]f64.[1];
+    start:=[1]f32.[0];draft:=[1]f64.[-7];end:=[1]f64.[-7];scratch:[8]f64;
+    #assert !dk_head(h,conv[..],one[..],one[..],beta[..],decay[..],start[..],draft[..],end[..],scratch[..]);
+    #assert draft[0]==-7 && end[0]==-7;
+    // v = max / 2 gives exactly max, which fits; the output q = 0 is 0.
+    conv[2]=big/2;#assert dk_head(h,conv[..],one[..],one[..],beta[..],decay[..],start[..],draft[..],end[..],scratch[..]);
+    #assert end[0]==big && draft[0]==0;
+    // Two tokens: the first token's output is read through the WY form and overflows.
+    h.tokens=2;conv2:=[6]f64.[1,0,0, 0,0,0];two:=[2]f64.[1,1];start[0]=f32_from_bits(0x7f7fffff);
+    // q = 1, start = max, total 1: q . S = max fits; doubling it does not.
+    beta2:=[2]f64.[1,1];decay2:=[2]f64.[1,1];draft2:[2]f64;end2:[1]f64;scratch2:[16]f64;
+    #assert dk_head(h,conv2[..],two[..],two[..],beta2[..],decay2[..],start[..],draft2[..],end2[..],scratch2[..]);
+    conv2[0]=2;#assert !dk_head(h,conv2[..],two[..],two[..],beta2[..],decay2[..],start[..],draft2[..],end2[..],scratch2[..]);
+}
+
+// Solve one head's chunk. start is the head's f32 state at the chunk start
+// (key_dim x value_dim, row major). draft receives tokens x value_dim
+// outputs and end the state after the chunk, both as f64 copies of f32
+// values. Returns false when a state or output does not fit f32.
+// book:begin head
+dk_scratch_count :: (value_dim:int,chunk:int)->int {return 3*chunk*chunk+chunk*value_dim+chunk;}
+dk_head :: (h:DkChunk,conv:[]f64,qdiv:[]f64,kdiv:[]f64,beta:[]f64,decay:[]f64,start:[]f32,draft:[]f64,end:[]f64,scratch:[]f64)->bool {
+    n:=h.tokens;dk:=h.key_dim;dv:=h.value_dim;w:=h.stride;
+    a1:=n*n;a2:=a1+n*n;a3:=a2+n*n;a4:=a3+n*dv;
+    ratio:=scratch[0..<a1];kk:=scratch[a1..<a2];qk:=scratch[a2..<a3];u:=scratch[a3..<a4];total:=scratch[a4..<a4+n];
+    // total[t]: the decay from the chunk start through token t.
+    // ratio[t*n+i]: the decay after token i through token t (1 when i = t).
+    g:=1.0;
+    for t:0..<n {
+        g=g*decay[t];total[t]=g;ratio[t*n+t]=1;
+        for j:0..<t {i:=t-1-j;ratio[t*n+i]=ratio[t*n+i+1]*decay[i+1];}
+    }
+    // Normalized key-key and query-key dot products, for i <= t.
+    for t:0..<n {for i:0..<t+1 {
+        a:PsionicAccumulator;b:PsionicAccumulator;
+        for row:0..<dk {
+            key:=conv[i*w+h.k+row]/kdiv[i];
+            a=psionic_ops_accumulate(a,conv[t*w+h.k+row]/kdiv[t]*key);
+            b=psionic_ops_accumulate(b,conv[t*w+h.q+row]/qdiv[t]*key);
+        }
+        kk[t*n+i]=psionic_ops_total(a);qk[t*n+i]=psionic_ops_total(b);
+    }}
+    // Forward substitution: u[t] = beta[t] (v[t] - total[t] S0^T k[t]
+    //   - sum over i < t of ratio[t][i] (k[t] . k[i]) u[i]).
+    for col:0..<dv {for t:0..<n {
+        memory:PsionicAccumulator;
+        for row:0..<dk {memory=psionic_ops_accumulate(memory,f64(start[row*dv+col])*total[t]*conv[t*w+h.k+row]/kdiv[t]);}
+        for i:0..<t {memory=psionic_ops_accumulate(memory,ratio[t*n+i]*kk[t*n+i]*u[i*dv+col]);}
+        u[t*dv+col]=(conv[t*w+h.v+col]-psionic_ops_total(memory))*beta[t];
+    }}
+    // The state the chunk carries out, narrowed to f32.
+    for row:0..<dk {for col:0..<dv {
+        x:=f64(start[row*dv+col])*total[n-1];
+        for i:0..<n {x+=ratio[(n-1)*n+i]*(conv[i*w+h.k+row]/kdiv[i])*u[i*dv+col];}
+        if !psionic_ops_fits_f32(x) {return false;}
+        end[row*dv+col]=f64(f32(x));
+    }}
+    // Outputs: the last token reads the carried state; the others read
+    // total[t] S0^T q[t] + sum over i <= t of ratio[t][i] (q[t] . k[i]) u[i].
+    for t:0..<n {for col:0..<dv {
+        acc:PsionicAccumulator;
+        if t==n-1 {
+            for row:0..<dk {acc=psionic_ops_accumulate(acc,conv[t*w+h.q+row]/qdiv[t]*end[row*dv+col]);}
+        } else {
+            for row:0..<dk {acc=psionic_ops_accumulate(acc,conv[t*w+h.q+row]/qdiv[t]*f64(start[row*dv+col])*total[t]);}
+            for i:0..<t+1 {acc=psionic_ops_accumulate(acc,ratio[t*n+i]*qk[t*n+i]*u[i*dv+col]);}
+        }
+        x:=psionic_ops_total(acc);
+        if !psionic_ops_fits_f32(x) {return false;}
+        draft[t*dv+col]=f64(f32(x));
+    }}
+    return true;
+}
+// book:end head
+
+// book:begin plan
+dk_work_count :: (s:PdShape,chunk:int)->int {
+    c:=pd_channels(s);v:=s.value_heads*s.value_dim;
+    return chunk*c+3*c+pd_states(s)+chunk*v+chunk*s.value_dim+4*chunk+dk_scratch_count(s.value_dim,chunk);
+}
+dk_chunks :: (tokens:int,chunk:int)->int {return (tokens+chunk-1)/chunk;}
+// One snapshot is the convolution history (3 per channel) and then the state.
+dk_snapshot_size :: (s:PdShape)->int {return 3*pd_channels(s)+pd_states(s);}
+// book:end plan
+
+dk_admit :: (s:PdShape,tokens:int,chunk:int,input:[]f32,history:[]f32,state:[]f32,out:[]f32,snaps:[]f32,work:[]f64,overlap:bool)->DkStatus {
+    if !pd_valid(s) {return DkStatus.shape;}
+    if tokens<1 || tokens>4096 || chunk<1 || chunk>64 {return DkStatus.range;}
+    c:=pd_channels(s);m:=pd_input_count(s);v:=s.value_heads*s.value_dim;
+    if input.count!=tokens*m || history.count!=3*c || state.count!=pd_states(s) || out.count<tokens*v || work.count<dk_work_count(s,chunk) {return DkStatus.capacity;}
+    if snaps.count!=0 && snaps.count<dk_chunks(tokens,chunk)*dk_snapshot_size(s) {return DkStatus.capacity;}
+    if overlap {return DkStatus.alias;}
+    if pd_data_status(input)!=PdStatus.ok {return DkStatus.number;}
+    if pd_data_status(history)!=PdStatus.ok {return DkStatus.number;}
+    if pd_data_status(state)!=PdStatus.ok {return DkStatus.number;}
+    logoff:=5*c+2*s.value_heads;
+    for t:0..<tokens {for i:0..<s.value_heads {if input[t*m+logoff+i]>80 {return DkStatus.number;}}}
+    return DkStatus.ok;
+}
+
+// The convolution of one token, exactly chapter 11's, into conv (f64 copies
+// of f32 values); the history shifts in place. False on an f32 overflow.
+dk_convolve :: (c:int,row:[]f32,hist:[]f64,conv:[]f64)->bool {
+    for channel:0..<c {
+        acc:PsionicAccumulator;
+        for tap:0..<4 {
+            item:=f64(row[channel]);if tap<3 {item=hist[channel*3+tap];}
+            acc=psionic_ops_accumulate(acc,item*f64(row[c+channel*4+tap]));
+        }
+        x:=pd_silu(psionic_ops_total(acc));
+        if !psionic_ops_fits_f32(x) {return false;}
+        conv[channel]=f64(f32(x));
+        hist[channel*3]=hist[channel*3+1];hist[channel*3+1]=hist[channel*3+2];hist[channel*3+2]=f64(row[channel]);
+    }
+    return true;
+}
+
+// Prefill tokens in chunks of chunk tokens. input holds each token's packed
+// chapter-11 input; out receives each token's value_heads x value_dim
+// outputs. Each chunk commits its outputs, history and state together, then
+// writes its snapshot when snaps is not empty. A refusal before the first
+// chunk changes nothing; an f32 overflow inside a chunk stops before that
+// chunk commits, so the state is the previous boundary's.
+// book:begin prefill
+dk_prefill :: (s:PdShape,tokens:int,chunk:int,input:[]f32,history:[]f32,state:[]f32,out:[]f32,snaps:[]f32,work:[]f64,overlap:bool)->DkResult {
+    status:=dk_admit(s,tokens,chunk,input,history,state,out,snaps,work,overlap);
+    if status!=DkStatus.ok {return DkResult.{status=status};}
+    c:=pd_channels(s);m:=pd_input_count(s);n:=pd_states(s);h:=s.value_heads;dk:=s.key_dim;dv:=s.value_dim;v:=h*dv;
+    aoff:=5*c;boff:=aoff+h;logoff:=boff+h;dtoff:=logoff+h;zoff:=dtoff+h;gammaoff:=zoff+v;
+    w1:=chunk*c;w2:=w1+3*c;w3:=w2+n;w4:=w3+chunk*v;w5:=w4+chunk*dv;w6:=w5+chunk;w7:=w6+chunk;w8:=w7+chunk;w9:=w8+chunk;
+    conv:=work[0..<w1];hist:=work[w1..<w2];next:=work[w2..<w3];outs:=work[w3..<w4];draft:=work[w4..<w5];
+    qdiv:=work[w5..<w6];kdiv:=work[w6..<w7];beta:=work[w7..<w8];decay:=work[w8..<w9];
+    scratch:=work[w9..<w9+dk_scratch_count(dv,chunk)];
+    done:DkResult;last:=dk_chunks(tokens,chunk)-1;
+    for b:0..<last+1 {
+        lo:=b*chunk;size:=ifx b==last then tokens-lo else chunk;
+        for i:0..<3*c {hist[i]=f64(history[i]);}
+        for l:0..<size {
+            if !dk_convolve(c,input[(lo+l)*m..<(lo+l+1)*m],hist,conv[l*c..<(l+1)*c]) {done.status=DkStatus.arithmetic;return done;}
+        }
+        for head:0..<h {
+            key_head:=head/(h/s.key_heads);qbase:=key_head*dk;kbase:=pd_key_base(s.key_heads,dk,qbase);vbase:=2*s.key_heads*dk+head*dv;
+            for l:0..<size {
+                row:=input[(lo+l)*m..<(lo+l+1)*m];
+                qsq:PsionicAccumulator;ksq:PsionicAccumulator;
+                for i:0..<dk {x:=conv[l*c+qbase+i];y:=conv[l*c+kbase+i];qsq=psionic_ops_accumulate(qsq,x*x);ksq=psionic_ops_accumulate(ksq,y*y);}
+                qdiv[l]=sqrt(psionic_ops_total(qsq)+0.000001)*sqrt(f64(dk));kdiv[l]=sqrt(psionic_ops_total(ksq)+0.000001);
+                beta[l]=pd_sigmoid(f64(row[boff+head]));
+                decay[l]=exp(-exp(f64(row[logoff+head]))*pd_softplus(f64(row[aoff+head])+f64(row[dtoff+head])));
+            }
+            one:=DkChunk.{key_dim=dk,value_dim=dv,tokens=size,stride=c,q=qbase,k=kbase,v=vbase};
+            if !dk_head(one,conv,qdiv,kdiv,beta,decay,state[head*dk*dv..<(head+1)*dk*dv],draft,next[head*dk*dv..<(head+1)*dk*dv],scratch) {done.status=DkStatus.arithmetic;return done;}
+            // Chapter 11's gated RMS normalization, per token.
+            for l:0..<size {
+                row:=input[(lo+l)*m..<(lo+l+1)*m];
+                squares:PsionicAccumulator;
+                for col:0..<dv {x:=draft[l*dv+col];squares=psionic_ops_accumulate(squares,x*x);}
+                denom:=sqrt(psionic_ops_total(squares)/f64(dv)+f64(s.epsilon));
+                for col:0..<dv {
+                    idx:=head*dv+col;
+                    x:=draft[l*dv+col]/denom*f64(row[gammaoff+col])*pd_silu(f64(row[zoff+idx]));
+                    if !psionic_ops_fits_f32(x) {done.status=DkStatus.arithmetic;return done;}
+                    outs[l*v+idx]=f64(f32(x));
+                }
+            }
+        }
+        for i:0..<3*c {history[i]=f32(hist[i]);}
+        for i:0..<n {state[i]=f32(next[i]);}
+        for i:0..<size*v {out[lo*v+i]=f32(outs[i]);}
+        done.written=lo+size;
+        if snaps.count!=0 {
+            snap:=snaps[b*dk_snapshot_size(s)..<(b+1)*dk_snapshot_size(s)];
+            for i:0..<3*c {snap[i]=history[i];}
+            for i:0..<n {snap[3*c+i]=state[i];}
+            done.snapshots+=1;
+        }
+    }
+    return done;
+}
+// book:end prefill
+
+// The checks' shape (psionic/tests/delta-chunks-oracle.coax): per token 24
+// channels, 158 inputs and 12 outputs; 72 history and 24 state values, so one
+// snapshot is 96 values.
+#test "resuming from a boundary snapshot equals continuing, bit for bit" {
+    s:=dko_shape();input:=dko_input(-4);m:=pd_input_count(s);work:[4096]f64;
+    history:[72]f32;state:[24]f32;out:[156]f32;snaps:[384]f32;
+    r:=dk_prefill(s,13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    #assert r.status==DkStatus.ok && r.written==13 && r.snapshots==4;
+    // The second snapshot is the boundary after token 8: restart there.
+    h2:[72]f32;s2:[24]f32;for i:0..<72 {h2[i]=snaps[96+i];}for i:0..<24 {s2[i]=snaps[168+i];}
+    rest:[60]f32;none:=snaps[0..<0];
+    r=dk_prefill(s,5,4,input[8*m..<13*m],h2[..],s2[..],rest[..],none,work[..],false);
+    #assert r.status==DkStatus.ok && r.written==5 && r.snapshots==0;
+    #assert dko_same(rest[..],out[96..<156]) && dko_same(s2[..],state[..]) && dko_same(h2[..],history[..]);
+    // The last snapshot is the final history and state.
+    #assert dko_same(snaps[288..<360],history[..]) && dko_same(snaps[360..<384],state[..]);
+    // Splitting at a token that is not a boundary moves the chunk edges: the
+    // first chunk is the same, the rest is within tolerance.
+    h3:[72]f32;s3:[24]f32;o3:[156]f32;
+    #assert dk_prefill(s,6,4,input[0..<6*m],h3[..],s3[..],o3[0..<72],none,work[..],false).status==DkStatus.ok;
+    #assert dk_prefill(s,7,4,input[6*m..<13*m],h3[..],s3[..],o3[72..<156],none,work[..],false).status==DkStatus.ok;
+    #assert dko_same(o3[0..<48],out[0..<48]) && !dko_same(o3[..],out[..]);
+    #assert dko_deviation(o3[..],out[..])<=DK_TOLERANCE*(1+dko_largest(out[..]));
+    // One token, one chunk: chapter 11's step.
+    h4:[72]f32;s4:[24]f32;o4:[12]f32;
+    r=dk_prefill(s,1,8,input[0..<m],h4[..],s4[..],o4[..],snaps[0..<96],work[..],false);
+    #assert r.status==DkStatus.ok && r.written==1 && r.snapshots==1;
+    ref:=dko_reference(input[..]);
+    #assert dko_same(o4[..],ref.out[0..<12]) && dko_same(s4[..],ref.state[0..<24]) && dko_same(h4[..],ref.history[0..<72]);
+}
+#test "refusals name their cause and change nothing" {
+    s:=dko_shape();input:=dko_input(0);m:=pd_input_count(s);work:[4096]f64;
+    history:[72]f32;state:[24]f32;out:[156]f32;snaps:[384]f32;
+    for i:0..<156 {out[i]=-7;}for i:0..<24 {state[i]=0.5;}for i:0..<72 {history[i]=0.25;}
+    w:=dk_work_count(s,4);#assert w==4*24+72+24+4*12+4*2+4*4+(3*16+4*2+4) && w==324;
+    #assert dk_snapshot_size(s)==96 && dk_chunks(13,4)==4 && dk_chunks(12,4)==3 && dk_chunks(1,64)==1;
+    bad:=s;bad.value_heads=5;
+    #assert dk_prefill(bad,13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==DkStatus.shape;
+    #assert dk_prefill(s,13,0,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==DkStatus.range;
+    #assert dk_prefill(s,13,65,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==DkStatus.range;
+    #assert dk_prefill(s,0,4,input[0..<0],history[..],state[..],out[..],snaps[..],work[..],false).status==DkStatus.range;
+    #assert dk_prefill(s,4097,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==DkStatus.range;
+    // The largest prompt passes the range check and then needs its input.
+    #assert dk_prefill(s,4096,64,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==DkStatus.capacity;
+    #assert dk_prefill(s,13,4,input[0..<12*m],history[..],state[..],out[..],snaps[..],work[..],false).status==DkStatus.capacity;
+    #assert dk_prefill(s,13,4,input[..],history[0..<71],state[..],out[..],snaps[..],work[..],false).status==DkStatus.capacity;
+    #assert dk_prefill(s,13,4,input[..],history[..],state[0..<23],out[..],snaps[..],work[..],false).status==DkStatus.capacity;
+    #assert dk_prefill(s,13,4,input[..],history[..],state[..],out[0..<155],snaps[..],work[..],false).status==DkStatus.capacity;
+    #assert dk_prefill(s,13,4,input[..],history[..],state[..],out[..],snaps[0..<383],work[..],false).status==DkStatus.capacity;
+    #assert dk_prefill(s,13,4,input[..],history[..],state[..],out[..],snaps[..],work[0..<w-1],false).status==DkStatus.capacity;
+    #assert dk_prefill(s,13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],true).status==DkStatus.alias;
+    // log A is admitted up to 80, for every token and every head.
+    for k:0..<2 {
+        at:=ifx k==0 then 132 else 12*m+132+5;
+        input[at]=81;
+        #assert dk_prefill(s,13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false).status==DkStatus.number;
+        input[at]=80;
+    }
+    for x:out {#assert x==-7;}for x:state {#assert x==0.5;}for x:history {#assert x==0.25;}for x:snaps {#assert x==0;}
+    r:=dk_prefill(s,13,4,input[..],history[..],state[..],out[..],snaps[0..<0],work[0..<w],false);
+    #assert r.status==DkStatus.ok && r.written==13 && r.snapshots==0;
+    for x:snaps {#assert x==0;}
+    // Non-finite values cannot exist in a compile-time check; the example
+    // refuses an infinite input at run time.
+}
+#test "an overflow inside a chunk stops at the previous boundary" {
+    s:=dko_shape();input:=dko_input(0);m:=pd_input_count(s);work:[4096]f64;
+    history:[72]f32;state:[24]f32;out:[156]f32;snaps:[384]f32;for i:0..<156 {out[i]=-7;}
+    // Token 9's first channel and all its taps are 1e30: the convolution overflows f32.
+    input[9*m]=1e30;for tap:0..<4 {input[9*m+24+tap]=1e30;}
+    r:=dk_prefill(s,13,4,input[..],history[..],state[..],out[..],snaps[..],work[..],false);
+    #assert r.status==DkStatus.arithmetic && r.written==8 && r.snapshots==2;
+    #assert dko_same(state[..],snaps[168..<192]) && dko_same(history[..],snaps[96..<168]);
+    for i:96..<156 {#assert out[i]==-7;}
+    clean:=dko_input(0);ref:=dko_reference(clean[..]);
+    #assert dko_deviation(out[0..<96],ref.out[0..<96])<=DK_TOLERANCE*(1+dko_largest(ref.out[..]));
+    // A gate output too large for f32: z and gamma 1e20.
+    input=dko_input(0);hz:[72]f32;sz:[24]f32;
+    for i:0..<12 {input[2*m+144+i]=1e20;}input[2*m+156]=1e20;input[2*m+157]=1e20;
+    r=dk_prefill(s,13,4,input[..],hz[..],sz[..],out[..],snaps[..],work[..],false);
+    #assert r.status==DkStatus.arithmetic && r.written==0 && r.snapshots==0;
+    for x:sz {#assert x==0;}for x:hz {#assert x==0;}
+}
+#test "a carried state past f32 is refused here and by chapter 11's step" {
+    // One head, key width 3, value width 1: 7 channels, 41 inputs. Every
+    // channel is silu(1), decay 1, beta 0.5; the state column is
+    // (big, -big, -big), so row 0 grows by about a sixth.
+    s:=PdShape.{key_heads=1,value_heads=1,key_dim=3,value_dim=1,epsilon=0.000001f32};
+    input:[41]f32;for ch:0..<7 {input[ch]=1;input[7+ch*4+3]=1;}input[37]=-80;input[39]=1;input[40]=1;
+    max:=f32_from_bits(0x7f7fffff);history:[21]f32;out:=[1]f32.[-7];work:[64]f64;pwork:[32]f32;
+    for k:0..<2 {
+        big:=ifx k==0 then max else 1e38f32;
+        state:=[3]f32.[big,-big,-big];ps:=state;ph:=history;po:=out;
+        r:=dk_prefill(s,1,1,input[..],history[..],state[..],out[..],ps[0..<0],work[..],false);
+        p:=pd_step(s,input[..],ph[..],ps[..],po[..],pwork[..],false);
+        if k==0 {
+            #assert r.status==DkStatus.arithmetic && r.written==0 && p.status==PdStatus.arithmetic && out[0]==-7 && state[0]==max;
+        } else {
+            #assert r.status==DkStatus.ok && p.status==PdStatus.ok && state[0]>1e38f32;
+            #assert dko_same(state[..],ps[..]) && dko_same(out[..],po[..]) && dko_same(history[..],ph[..]);
+        }
+    }
+}
