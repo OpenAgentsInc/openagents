@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 31 are implemented, 25 are partly implemented and
+Of the 104 chapters, 32 are implemented, 24 are partly implemented and
 48 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
@@ -203,7 +203,7 @@ restarts.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [29. A relay connection](ch029-a-relay-connection.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | The pure client state machine: OPEN, CONNECTING, CLOSED and BACKOFF, connection generations that make stale reports harmless, and capped jittered backoff. |
+| [29. A relay connection](ch029-a-relay-connection.md) | Runnable: native C | The pure client state machine: OPEN, CONNECTING, CLOSED and BACKOFF, connection generations that make stale reports harmless, and capped jittered backoff. |
 | [30. Subscriptions and EOSE](ch030-subscriptions-and-eose.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Subscription IDs that name a slot and its serial, EOSE as the end of stored events and never a completeness claim, NIP-67 completeness hints, and paginated catch-up. |
 | [31. Publish and wait for OK](ch031-publish-and-wait-for-ok.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Publishing with acknowledgement deadlines, the distinction between published, acknowledged, refused and unknown, and requeue after AUTH. |
 | [32. Many relays and the outbox model](ch032-many-relays-and-the-outbox-model.md) | Unimplemented: design draft | NIP-65 relay lists (kind 10002 with `r` tags marked `read` or `write`), reading from an author's write relays, writing to your write relays and the tagged users' read relays. |

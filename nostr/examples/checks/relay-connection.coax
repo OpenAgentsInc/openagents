@@ -1,0 +1,51 @@
+// The checks of relay-connection.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/relay-connection.coax
+#load "../relay-connection.coax";
+
+// book:begin check
+// The session's trace, worked out by hand in the chapter before the program
+// ran. States: 0 IDLE, 1 CONNECTING, 2 OPEN, 3 BACKOFF, 4 SHUT. Decisions:
+// 'a' + the RL_ code (a DELIVER, b DUPLICATE, c STALE, d UNKNOWN, e FORGED,
+// f EOSE, g ACK, h CLOSED, i NOTICE, k NOT_OPEN, l BAD).
+HAND_STATES :: "013131231234";
+HAND_DECISIONS :: "kkcaebfidlbghd";
+#test "the scripted session follows the hand trace" #steps 2000000000 {
+  t := cx_session(false);
+  #assert cast(string) t.states[0..<t.steps] == HAND_STATES;
+  #assert cast(string) t.decisions[0..<t.nds] == HAND_DECISIONS;
+  // Each deadline from its own arithmetic: connect 5000 ms, backoff 500 ms
+  // doubled per attempt, jitter mod (half the delay + 1).
+  hand := [8] int.[0 + 5000, 30 + 500, 530 + 5000, 5530 + 1000 + 7 % 501, 6537 + 5000, 6700 + 500, 7200 + 5000, 7300 + 500];
+  #assert t.nd == 8;
+  for k: 0..<8 { #assert t.deadlines[k] == hand[k]; }
+}
+#test "the scripted 101 answer carries RFC 6455's published accept value" {
+  // RFC 6455, section 1.3: key dGhlIHNhbXBsZSBub25jZQ== gives
+  // s3pPLMBiTxaQ9kYGzzhZRbK+xOo=.
+  accept: [28] u8;
+  #assert ws_accept_of(CX_KEY, accept[..]) && cast(string) accept[..] == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+  #assert ws_response(CX_HELLO_101, CX_KEY).status == WS_HELLO_OK;
+  #assert ws_response(CX_HELLO_503, CX_KEY).status == WS_HELLO_STATUS;
+}
+#test "rl_backoff against the schedule computed here" {
+  r: [1] Relay;
+  jitters := [7] int.[0, 1, 7, 250, 251, 15000, 15001];
+  for a: 0..<20 {
+    d := 500; k := 0;
+    while k < a && d < 30000 { d *= 2; k += 1; }
+    if d > 30000 { d = 30000; }
+    for j: jitters { #assert rl_backoff(r[..], a, j) == d + j % (d / 2 + 1); }
+  }
+}
+#test "the host's message limit is exact" {
+  wire: [CX_MSG + 8] u8; text: [CX_MSG + 1] u8; rd: [1] WsReader; msg: [CX_MSG] u8;
+  for i: 0..<text.count { text[i] = ' '; }
+  w := cx_text(wire[..], 0, cast(string) text[0..<CX_MSG]);
+  #assert rc_scan(rd[..], cast(string) wire[0..<w], msg[..]).kind == RC_S_TEXT;
+  rd2: [1] WsReader;
+  w = cx_text(wire[..], 0, cast(string) text[..]);
+  v := rc_scan(rd2[..], cast(string) wire[0..<w], msg[..]);
+  #assert v.kind == RC_S_REFUSE && v.code == 1009;
+}
+// book:end check

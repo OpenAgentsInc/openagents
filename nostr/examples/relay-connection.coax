@@ -1,0 +1,237 @@
+// book:begin example
+#load "../../coax/lib/nostr/relay_read.coax";
+#load "../../coax/lib/net/relay_conn_rules.coax";
+#import "Basic";
+
+// The example host's message limit. relay_conn.coax takes 128 KiB; a small
+// limit lets the script carry a message that is too big.
+CX_MSG :: 2048;
+// The RFC 6455 sample key and its accept value (RFC 6455, section 1.3).
+CX_KEY :: "dGhlIHNhbXBsZSBub25jZQ==";
+CX_HELLO_101 :: "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n";
+CX_HELLO_503 :: "HTTP/1.1 503 Service Unavailable\r\nRetry-After: 30\r\n\r\n";
+
+cx_state_name :: (s: int) -> string {
+  names := [5] string.["IDLE", "CONNECTING", "OPEN", "BACKOFF", "SHUT"];
+  return names[s];
+}
+cx_input_name :: (d: int) -> string {
+  names := [12] string.["RL_DELIVER", "RL_DUPLICATE", "RL_STALE", "RL_UNKNOWN", "RL_FORGED", "RL_EOSE",
+                        "RL_ACK", "RL_CLOSED", "RL_NOTICE", "RL_AUTH", "RL_NOT_OPEN", "RL_BAD"];
+  return names[d];
+}
+cx_tick_name :: (t: int) -> string {
+  names := [3] string.["RL_DO_NONE", "RL_DO_CONNECT", "RL_DO_TIMEOUT"];
+  return names[t];
+}
+
+cx_out_name :: (k: int) -> string {
+  names := [5] string.["RL_OUT_NONE", "RL_OUT_REQ", "RL_OUT_CLOSE", "RL_OUT_EVENT", "RL_OUT_AUTH"];
+  return names[k];
+}
+cx_hello_name :: (h: int) -> string {
+  names := [9] string.["WS_HELLO_OK", "WS_HELLO_MORE", "WS_HELLO_TOO_BIG", "WS_HELLO_STATUS", "WS_HELLO_HEADER",
+                       "WS_HELLO_UPGRADE", "WS_HELLO_CONNECTION", "WS_HELLO_ACCEPT", "WS_HELLO_EXTENSION"];
+  return names[h];
+}
+
+// What one session went through: the connection state after each step, the
+// deadlines the machine set and the rl_input decisions, for the checks.
+CxTrace :: struct {
+  states: [32] u8; steps: int;
+  deadlines: [16] int; nd: int;
+  decisions: [32] u8; nds: int;
+}
+// Records (and, when loud, prints) the connection after one step.
+cx_step :: (t: [] CxTrace, r: [] Relay, now: int, what: string, loud: bool) {
+  t[0].states[t[0].steps] = cast(u8) ('0' + r[0].state); t[0].steps += 1;
+  if loud {
+    print("t=% %: % gen % attempt %", now, what, cx_state_name(r[0].state), r[0].gen, r[0].attempt);
+    if r[0].state == RL_CONNECTING || r[0].state == RL_BACKOFF { print(" deadline %", r[0].deadline); }
+    print("\n");
+  }
+  if (r[0].state == RL_CONNECTING || r[0].state == RL_BACKOFF) && (t[0].nd == 0 || t[0].deadlines[t[0].nd - 1] != r[0].deadline) {
+    t[0].deadlines[t[0].nd] = r[0].deadline; t[0].nd += 1;
+  }
+}
+cx_decided :: (t: [] CxTrace, d: int) { t[0].decisions[t[0].nds] = cast(u8) ('a' + d); t[0].nds += 1; }
+
+// One unmasked server frame appended at out[at..] (payloads up to 65535
+// bytes). Returns the new end.
+cx_frame :: (out: [] u8, at: int, op: int, payload: string) -> int {
+  out[at] = cast(u8) (op + 128);
+  h := 2;
+  if payload.count < 126 { out[at + 1] = cast(u8) payload.count; }
+  else { out[at + 1] = 126; out[at + 2] = cast(u8) (payload.count >> 8); out[at + 3] = cast(u8) (payload.count & 255); h = 4; }
+  for b, i: payload { out[at + h + i] = b; }
+  return at + h + payload.count;
+}
+cx_text :: (out: [] u8, at: int, payload: string) -> int { return cx_frame(out, at, WS_OP_TEXT, payload); }
+
+// Sends what the open connection asks for, until rl_next has nothing.
+cx_flush :: (r: [] Relay, now: int, loud: bool) {
+  while true {
+    o := rl_next(r, now);
+    if o.kind == RL_OUT_NONE { return; }
+    sb: [24] u8; out: [256] u8;
+    if o.kind == RL_OUT_EVENT {
+      if loud { print("  send [\"EVENT\",{\"id\":\"813d9fb0...}] (publish slot %, OK due by t=%)\n", o.slot, r[0].pubs[o.slot].deadline); }
+      continue;
+    }
+    id := rl_sub_text(o.slot, r[0].subs[o.slot].serial, sb[..]);
+    n := 0;
+    if o.kind == RL_OUT_REQ {
+      kinds := [1] int.[30617];
+      f: NostrFilter; f.has_kinds = true; f.kinds = kinds[..]; f.has_since = o.has_since; f.since = o.since;
+      filters := [1] NostrFilter.[f];
+      n = nostr_message_write_req(id, filters[..], out[..], false);
+    } else if o.kind == RL_OUT_CLOSE {
+      n = nostr_message_write_close(id, out[..], false);
+    }
+    if loud { print("  send %\n", cast(string) out[0..<n]); }
+  }
+}
+
+// The open connection's poll loop over a scripted wire: rc_scan takes each
+// frame, rl_read turns a text message into the machine's input, and
+// rl_input decides. Returns RC_CLOSED (the relay closed), RC_FAIL (a frame
+// was refused) or RC_NONE (the script ended).
+cx_feed :: (t: [] CxTrace, r: [] Relay, gen: int, wire: string, loud: bool) -> int {
+  rd: [1] WsReader; msg: [CX_MSG] u8; at := 0;
+  while true {
+    v := rc_scan(rd[..], wire[at..<wire.count], msg[..]);
+    if v.kind == RC_S_TEXT {
+      text := cast(string) msg[0..<rd[0].used];
+      scratch: [NE_MAX_OUTPUT] u8;
+      in := rl_read(text, scratch[..], false);
+      d := rl_input(r, gen, in);
+      cx_decided(t, d);
+      if loud {
+        if text.count > 44 { print("  recv %... (% bytes) -> %\n", text[0..<44], text.count, cx_input_name(d)); }
+        else { print("  recv % -> %\n", text, cx_input_name(d)); }
+      }
+      at += v.consumed; continue;
+    }
+    if v.kind == RC_S_CLOSE {
+      if loud { print("  recv close % -> echo close %, RC_CLOSED\n", v.code, rc_close_reply(v.code)); }
+      return RC_CLOSED;
+    }
+    if v.kind == RC_S_REFUSE {
+      if loud { print("  frame refused -> send close %, RC_FAIL\n", v.code); }
+      return RC_FAIL;
+    }
+    at += v.consumed;
+    if v.kind == RC_S_MORE { return RC_NONE; }
+  }
+  return RC_NONE;
+}
+
+// The handshake answer: the host opens the connection only on WS_HELLO_OK.
+cx_hello :: (r: [] Relay, gen: int, now: int, bytes: string, loud: bool) -> bool {
+  h := ws_response(bytes, CX_KEY);
+  first := bytes[0..<12];
+  ok := h.status == WS_HELLO_OK && rl_opened(r, gen, now);
+  if loud { print("t=% handshake answer \"%...\": % -> %\n", now, first, cx_hello_name(h.status), ifx ok then "rl_opened" else "close, rl_dropped"); }
+  return ok;
+}
+
+// One scripted session against one relay with a fixed clock. The relay
+// refuses the upgrade, then stalls, then serves a subscription until a
+// message too big for the host, then closes after one more connection.
+cx_session :: (loud: bool) -> CxTrace {
+  t: [1] CxTrace; r: [1] Relay; wire: [6144] u8;
+  // Before any connection: one subscription and one publish wait.
+  s := rl_subscribe(r[..]);
+  ev := rl_read(rlr_event_frame("s0.1", RLR_REAL, wire[..]), wire[2048..<6144], false);
+  p := rl_publish(r[..], ev.id[..]);
+  cx_step(t[..], r[..], 0, "subscribed slot 0, publish slot 0", loud);
+  d := rl_input(r[..], 0, RlIn.{kind = RL_IN_NOTICE}); cx_decided(t[..], d);
+  if loud { print("  a NOTICE before any connection -> %, rl_next %\n", cx_input_name(d), cx_out_name(rl_next(r[..], 0).kind)); }
+
+  // Connection 1: the relay answers the upgrade with 503.
+  g := rl_start(r[..], 0);
+  cx_step(t[..], r[..], 0, "rl_start", loud);
+  if !cx_hello(r[..], g, 30, CX_HELLO_503, loud) { ok := rl_dropped(r[..], g, 30, 0); }
+  cx_step(t[..], r[..], 30, "dropped", loud);
+  if loud { print("  rl_opened(gen 1) now: %\n", rl_opened(r[..], g, 40)); }
+
+  // Connection 2: the relay accepts the socket and never answers.
+  if loud { print("t=529 rl_tick: %\n", cx_tick_name(rl_tick(r[..], 529))); }
+  if loud { print("t=530 rl_tick: %\n", cx_tick_name(rl_tick(r[..], 530))); }
+  g = rl_start(r[..], 530);
+  cx_step(t[..], r[..], 530, "rl_start", loud);
+  d = rl_input(r[..], g, RlIn.{kind = RL_IN_NOTICE}); cx_decided(t[..], d);
+  if loud {
+    print("  a frame before the handshake -> %, rl_next %, rl_start again %\n", cx_input_name(d), cx_out_name(rl_next(r[..], 600).kind), rl_start(r[..], 600));
+    print("t=5529 rl_tick: %\n", cx_tick_name(rl_tick(r[..], 5529)));
+    print("t=5530 rl_tick: %\n", cx_tick_name(rl_tick(r[..], 5530)));
+  }
+  ok := rl_dropped(r[..], g, 5530, 7);
+  cx_step(t[..], r[..], 5530, "connect timed out, jitter 7", loud);
+
+  // Connection 3: open, subscribe, publish, read until a message is too big.
+  if loud { print("t=6537 rl_tick: %\n", cx_tick_name(rl_tick(r[..], 6537))); }
+  old := g;
+  g = rl_start(r[..], 6537);
+  cx_step(t[..], r[..], 6537, "rl_start", loud);
+  ok = cx_hello(r[..], g, 6600, CX_HELLO_101, loud);
+  cx_step(t[..], r[..], 6600, "opened", loud);
+  d = rl_input(r[..], old, RlIn.{kind = RL_IN_NOTICE}); cx_decided(t[..], d);
+  if loud { print("  a NOTICE reported for gen % -> %, rl_dropped(gen %) %\n", old, cx_input_name(d), old, rl_dropped(r[..], old, 6600, 0)); }
+  cx_flush(r[..], 6600, loud);
+  frame: [2048] u8; big: [CX_MSG + 1] u8;
+  w := cx_text(wire[..], 0, rlr_event_frame("s0.1", RLR_REAL, frame[..]));
+  w = cx_text(wire[..], w, rlr_event_frame("s0.1", RLR_BAD_SIG, frame[..]));
+  w = cx_text(wire[..], w, rlr_event_frame("s0.1", RLR_REAL, frame[..]));
+  w = cx_text(wire[..], w, "[\"EOSE\",\"s0.1\"]");
+  w = cx_text(wire[..], w, "[\"NOTICE\",\"rate limits apply\"]");
+  w = cx_text(wire[..], w, rlr_event_frame("s0.9", RLR_REAL, frame[..]));
+  w = cx_text(wire[..], w, "[\"EOSE\"]");
+  for i: 0..<big.count { big[i] = ' '; }
+  w = cx_text(wire[..], w, cast(string) big[..]);
+  if loud { print("t=6700 the relay sends % bytes:\n", w); }
+  if cx_feed(t[..], r[..], g, cast(string) wire[0..<w], loud) != RC_NONE { ok = rl_dropped(r[..], g, 6700, 0); }
+  cx_step(t[..], r[..], 6700, "dropped", loud);
+  if loud { print("  subscription 0: % event, newest created_at %; forged %, notices %\n", r[0].subs[0].events, r[0].subs[0].newest, r[0].forged, r[0].notices); }
+
+  // Connection 4: resubscribe with since, resend the publish, then the relay
+  // ends the subscription and closes.
+  if loud { print("t=7199 rl_tick: %\nt=7200 rl_tick: %\n", cx_tick_name(rl_tick(r[..], 7199)), cx_tick_name(rl_tick(r[..], 7200))); }
+  g = rl_start(r[..], 7200);
+  cx_step(t[..], r[..], 7200, "rl_start", loud);
+  ok = cx_hello(r[..], g, 7250, CX_HELLO_101, loud);
+  cx_step(t[..], r[..], 7250, "opened", loud);
+  cx_flush(r[..], 7250, loud);
+  w = cx_text(wire[..], 0, rlr_event_frame("s0.1", RLR_REAL, frame[..]));
+  w = cx_text(wire[..], w, "[\"OK\",\"813d9fb02bd78ce24200ba986b62ef727f0c032f712cff82241bd465f4bc9d21\",true,\"\"]");
+  w = cx_text(wire[..], w, "[\"CLOSED\",\"s0.1\",\"error: shutting down idle subscription\"]");
+  w = cx_text(wire[..], w, rlr_event_frame("s0.1", RLR_REAL, frame[..]));
+  cp: [2] u8; cp[0] = 0x03; cp[1] = 0xe9;    // close code 1001, going away
+  w = cx_frame(wire[..], w, WS_OP_CLOSE, cast(string) cp[..]);
+  if loud { print("t=7300 the relay sends % bytes:\n", w); }
+  if cx_feed(t[..], r[..], g, cast(string) wire[0..<w], loud) != RC_NONE { ok = rl_dropped(r[..], g, 7300, 0); }
+  cx_step(t[..], r[..], 7300, "dropped", loud);
+  if loud { print("  publish slot %: state % (3 is ACCEPTED); subscription 0: state % (5 is REFUSED)\n", p, r[0].pubs[p].state, r[0].subs[s].state); }
+  rl_shutdown(r[..]);
+  cx_step(t[..], r[..], 7300, "rl_shutdown", loud);
+  if loud { print("  rl_start %, rl_tick at t=99999 %\n", rl_start(r[..], 7400), cx_tick_name(rl_tick(r[..], 99999))); }
+  return t[0];
+}
+
+main :: () {
+  t := cx_session(true);
+  print("states: %\n", cast(string) t.states[0..<t.steps]);
+  print("decisions: %\n", cast(string) t.decisions[0..<t.nds]);
+  print("deadlines:");
+  for k: 0..<t.nd { print(" %", t.deadlines[k]); }
+  print("\n");
+
+  // The backoff schedule with the default base 500 ms and cap 30 s.
+  r: [1] Relay;
+  print("backoff, jitter 0:");
+  for a: 0..<8 { print(" %", rl_backoff(r[..], a, 0)); }
+  print("\n");
+  print("attempt 0, jitter 0, 250, 251, 252: % % % %\n", rl_backoff(r[..], 0, 0), rl_backoff(r[..], 0, 250), rl_backoff(r[..], 0, 251), rl_backoff(r[..], 0, 252));
+  print("attempt 6, jitter 15000 and 15001: % %\n", rl_backoff(r[..], 6, 15000), rl_backoff(r[..], 6, 15001));
+}
+// book:end example

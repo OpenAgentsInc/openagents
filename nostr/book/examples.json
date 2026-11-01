@@ -328,6 +328,17 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/relay-connection.coax",
+      "chapter": "nostr/book/ch029-a-relay-connection.md",
+      "stdout": "nostr/fixtures/relay-connection.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 120
     }
   ]
 }

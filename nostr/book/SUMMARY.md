@@ -54,7 +54,7 @@
 
 **VIII. A client**
 
-- [29. A relay connection](ch029-a-relay-connection.md) — partly implemented
+- [29. A relay connection](ch029-a-relay-connection.md) — implemented
 - [30. Subscriptions and EOSE](ch030-subscriptions-and-eose.md) — partly implemented
 - [31. Publish and wait for OK](ch031-publish-and-wait-for-ok.md) — partly implemented
 - [32. Many relays and the outbox model](ch032-many-relays-and-the-outbox-model.md) — design draft
