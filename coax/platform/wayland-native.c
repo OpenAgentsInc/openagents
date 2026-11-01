@@ -310,3 +310,25 @@ int64_t cxwl_ask_poll(coax_v_u8 out) {
   return WIFEXITED(st) ? WEXITSTATUS(st) : 128;
 }
 int64_t cxwl_ask_len(void) { return ask_len; }
+/* Runs args (NUL-separated; the first looked up on PATH) detached, as a client of display, and
+   forgets it: 0, or -errno. */
+int64_t cxwl_run(coax_v_u8 args, coax_v_u8 display) {
+  char buf[8192], d[1024]; char *argv[130]; int argc = 0;
+  if (args.count <= 0 || args.count >= (int64_t)sizeof buf || display.count <= 0 || display.count >= 1024) return -EINVAL;
+  memcpy(buf, args.data, (size_t)args.count); buf[args.count] = 0;
+  memcpy(d, display.data, (size_t)display.count); d[display.count] = 0;
+  for (int64_t i = 0; i < args.count && argc < 129;) { argv[argc++] = buf + i; i += (int64_t)strlen(buf + i) + 1; }
+  argv[argc] = NULL;
+  pid_t pid = fork();
+  if (pid < 0) return -(int64_t)errno;
+  if (pid == 0) {
+    if (fork() == 0) {
+      setsid(); setenv("WAYLAND_DISPLAY", d, 1); unsetenv("DISPLAY");
+      int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); dup2(nul, 2); }
+      execvp(argv[0], argv); _exit(127);
+    }
+    _exit(0);
+  }
+  waitpid(pid, NULL, 0);
+  return 0;
+}

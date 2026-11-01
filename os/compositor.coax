@@ -60,6 +60,7 @@ cxwl_tree_at :: (i: int) -> int #foreign;
 cxwl_ask_start :: (args: [] u8) -> int #foreign;
 cxwl_ask_poll :: (out: [] u8) -> int #foreign;
 cxwl_ask_len :: () -> int #foreign;
+cxwl_run :: (args: [] u8, display: [] u8) -> int #foreign;
 cxscr_open :: () -> int #foreign;
 cxscr_width :: () -> int #foreign;
 cxscr_height :: () -> int #foreign;
@@ -104,6 +105,7 @@ CxSurf :: struct {
   cw: int; ch: int; cstate: int;      // the last size and states sent
   title: [128] u8; nt: int; app: [128] u8; na: int;
   noborder: bool;   // a window rule took its border away
+  aspect: f32;      // width over height a resize keeps (keep_aspect_ratio), or 0
 }
 // A clipboard source: the client offering it and the types it offers.
 CxSource :: struct { used: bool; client: int; id: int; mimes: [8] [64] u8; ml: [8] int; nm: int; }
@@ -821,6 +823,11 @@ cx_close_answer :: (x: [] Cx) {
   for i: 0..<n { b[k] = ifx out[i] == '\n' then ' ' else out[i]; k += 1; }
   for c: " Press the close key again within 5 seconds to close this window." { b[k] = c; k += 1; }
   cx_say(cast(string) b[0..<k]);
+  // on screen too, through the notification daemon, as coder-close showed it
+  a: [4600] u8; an := 0;
+  for c: "notify-send\0--app-name=coder\0--urgency=critical\0--hint=string:x-canonical-private-synchronous:coder-close\0Coder is working\0" { a[an] = c; an += 1; }
+  for i: 25..<k { a[an] = b[i]; an += 1; }
+  r := cxwl_run(a[0..<an], x[0].sock[0..<x[0].nsock]);
 }
 cx_close_win :: (x: [] Cx, f: int) {
   s := ifx f > 0 && f < WM_WINS then x[0].win_surf[f] else -1;
@@ -840,6 +847,7 @@ cx_rules :: (x: [] Cx, s: int, w: int) {
   y = wm_place_float(m, w, WmRect.{x = (1.0 - fw) * 0.5, y = (1.0 - fh) * 0.5, w = fw, h = fh});
   y = wm_set_pinned(m, w, true);
   x[0].surfs[s].noborder = true;
+  if t == "selfie" { x[0].surfs[s].aspect = cast(f32) bw / cast(f32) bh; }   // keep_aspect_ratio on
 }
 cx_close_focused :: (x: [] Cx) {
   f := wm_focus(x[0].wm[..]); s := ifx f != 0 then x[0].win_surf[f] else -1;
@@ -932,7 +940,19 @@ cx_mouse_button :: (x: [] Cx, button: int, down: bool) {
 // The pointer moved by dx, dy pixels during a Super drag.
 cx_drag :: (x: [] Cx, dx: int, dy: int) {
   m := x[0].wm[..]; fx := cast(f32) dx / cast(f32) x[0].w; fy := cast(f32) dy / cast(f32) x[0].h;
-  if x[0].drag == 272 { wm_drag_float(m, fx, fy); } else { wm_resize_grab(m, fx, fy, x[0].drag_left, x[0].drag_top); }
+  if x[0].drag == 272 { wm_drag_float(m, fx, fy); }
+  else {
+    wm_resize_grab(m, fx, fy, x[0].drag_left, x[0].drag_top);
+    f := wm_focus(m); s := ifx f != 0 then x[0].win_surf[f] else -1;
+    if s >= 0 && x[0].surfs[s].aspect > 0 {   // keep_aspect_ratio: the height follows the width, the grabbed corner moves
+      r: [1] WmRect;
+      if wm_rect_of(m, f, r[..]) {
+        h := r[0].w * cast(f32) x[0].w / x[0].surfs[s].aspect / cast(f32) x[0].h;
+        top := ifx x[0].drag_top then r[0].y + r[0].h - h else r[0].y;
+        y := wm_place_float(m, f, WmRect.{x = r[0].x, y = top, w = r[0].w, h = h});
+      }
+    }
+  }
   x[0].px = cx_max(0, cx_min(x[0].w - 1, x[0].px + dx)); x[0].py = cx_max(0, cx_min(x[0].h - 1, x[0].py + dy));
   cx_sync(x);
 }

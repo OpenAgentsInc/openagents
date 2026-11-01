@@ -474,9 +474,8 @@ compiler and the examples have not been run on Linux yet.
   ask about closes on the first press. With a stand-in `coder` first on
   PATH, a busy terminal warned and then closed on the second press, an
   idle one closed on the first, and each question named the terminal's
-  process and its shell. The notice goes to the compositor's output, as
-  `coder-close` did when no notification daemon ran; it isn't drawn on
-  screen yet.
+  process and its shell. The notice goes to `notify-send` with
+  `coder-close`'s arguments, and to the compositor's output.
 
   The compositor's two faces to the machine are written, after
   `verse/kms`: `coax/platform/screen-native.c` takes one screen through
@@ -518,9 +517,10 @@ compiler and the examples have not been run on Linux yet.
   starts the camera program, and Super+Shift+E exits. Super + left drag
   moves a float, and Super + right drag resizes it from the nearest
   corner. Headless, a `selfie` window floated borderless, moved by the
-  drag (-300, -150), and followed to desk 2. Left: keep_aspect_ratio on a
-  resize, the floats' first size (320 px when the window hasn't drawn
-  yet), and host rules such as the Android emulator's class.
+  drag (-300, -150), and followed to desk 2. A Super + right drag on it
+  keeps its shape (keep_aspect_ratio): a 160 px wider drag gave 480x480.
+  Left: the floats' first size (320 px when the window hasn't drawn yet),
+  and host rules such as the Android emulator's class.
 
   The session's start list (Hyprland's `exec-once` rows) is
   `LAUNCH-DIR/start`, run once the socket is up. A start program that
