@@ -524,6 +524,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 240
+    },
+    {
+      "source": "nostr/examples/projects.coax",
+      "chapter": "nostr/book/ch098-projects-on-nostr.md",
+      "stdout": "nostr/fixtures/projects.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "stack_kib": 32768,
+      "timeout": 180
     }
   ]
 }

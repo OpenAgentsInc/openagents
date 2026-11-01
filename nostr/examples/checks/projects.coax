@@ -1,0 +1,86 @@
+// The checks of projects.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/projects.coax --steps 4000000000 (about a minute: each
+// BIP-340 verification is interpreted)
+#load "../projects.coax";
+
+// book:begin check
+// The ids from a Python script written from NIP-01 (it shares no code with
+// Coax): hashlib.sha256 of json.dumps([0, pubkey, created_at, kind, tags,
+// content], separators=(",", ":"), ensure_ascii=False) for each of EVENTS.
+PY_ID :: [13] string.[
+  "7d1c4fcbaed86a0d0ef849977fb5a7933e0202b9e677ff276dec2090a5dbb57d",
+  "8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e",
+  "d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199",
+  "43fc4473166737363330a5e9c63605080416d0ea884f36dede4131aefc0c53a9",
+  "a50773addfdd1b99a1ccd70d518c45fc7ab3742f4df99a73b018dd2e38eb0363",
+  "12b3ab9ed5c597c740777ed6f47f6b3bf362b5fd00b96634cf9c6c9abce8336b",
+  "24e5f8b7a34dcfd18c4b034a22b8e75ec6a801921131fe72eb13140e29644d27",
+  "e951a9517dd4c592c1e6bb28e197bef37760d397f1019d8d15f658bbb15b61b5",
+  "e3eae8f9732838cb705cee0709306557c8ae2ded7573864f21e86071a60028d9",
+  "edbb18aef2bf04a1854eb63f9d7096db3299e349f9635ce262569864799f6e18",
+  "4aeed7eb892dfc030f97d9ad67de00b7d0aa3c5ca680099a647b28c566ff94c8",
+  "302e3b6ddcf6c4b3504e0e7ab780572a434bf7be79820254f73dba20c7fd2397",
+  "641cca7bc53779930b57a8a673ce0c39a3112718701daf03e7df7792d8f3d7da"];
+T0 :: 1761686400;
+
+// Event k verified, its id the script's; then into the store as the example does.
+check_admit :: (s: [] Store, text: string) -> int {
+  scratch: [NE_MAX_OUTPUT] u8;
+  v := nostr_event_verify_vartime(text, scratch[..], false);
+  if v.error != NE_OK || !v.verified { return -2; }
+  j: [1] Json; json_start(j[..], text);
+  #assert json_next(j[..]) == JSON_OBJECT;
+  return store_event(s, j[..], OWNER);
+}
+
+#test "every event verifies and has the id the independent script computed" {
+  s: [1] Store; store_clear(s[..]);
+  for k: 0..<13 {
+    // the example only ever sends event 9 altered; here its id is checked, but it isn't stored
+    if k == 9 { #assert equal(EVENTS[k][7..<71], PY_ID[k]); continue; }
+    e := check_admit(s[..], EVENTS[k]);
+    #assert e != -2;
+    #assert equal(EVENTS[k][7..<71], PY_ID[k]);
+    if e >= 0 { #assert equal(event_id(s[..], e), PY_ID[k]); }
+  }
+  // the owner's eleven are kept; the other key's close is dropped
+  #assert s[0].n == 11 && s[0].dropped == 1;
+}
+
+#test "a changed signature or a changed kind is refused before the store sees it" {
+  buf: [4096] u8; scratch: [NE_MAX_OUTPUT] u8;
+  forged := EVENTS[9]; sig := forged.count - 3;
+  v := nostr_event_verify_vartime(altered(forged, sig, ifx forged[sig] == '0' then '1' else '0', buf[..]), scratch[..], false);
+  #assert v.error == NE_SIGNATURE && !v.verified;
+  v = nostr_event_verify_vartime(altered(forged, find(forged, "\"kind\":1632") + 10, '3', buf[..]), scratch[..], false);
+  #assert v.error == NE_ID && !v.verified;
+}
+
+#test "the fold of tea matches the values worked by hand" {
+  s: [1] Store; f: [1] Fold; t: [1] Tables; store_clear(s[..]);
+  for k: 0..<13 { if k != 9 { e := check_admit(s[..], EVENTS[k]); } }
+  fold(s[..], f[..], "tea");
+  #assert f[0].project == 0 && f[0].order == 3 && f[0].repo == -1 && f[0].n == 2;
+  timer := fold_issue_of(s[..], f[..], PY_ID[1]); scale := fold_issue_of(s[..], f[..], PY_ID[2]);
+  #assert timer == 0 && scale == 1 && f[0].alias[timer] == 4 && f[0].alias[scale] == 4;
+  // timer: resolved by the 1631 at T0+310; its claim is cleared; done in 4b825dc642; one of three steps done
+  #assert f[0].status[timer] == ST_RESOLVED && f[0].status_at[timer] == T0 + 310;
+  #assert f[0].claimed[timer].len == 0 && equal(str(s[..], f[0].commit[timer]), "4b825dc642");
+  #assert f[0].steps[timer] == 3 && f[0].steps_done[timer] == 1 && f[0].note_cnt[timer] == 1;
+  #assert equal(str(s[..], f[0].rank[timer]), "0b") && equal(str(s[..], f[0].rank[scale]), "0a");
+  // scale: open since T0+120; the forged and the other key's closes never reached it; the 1111-rooted claim hangs off nothing
+  #assert f[0].status[scale] == ST_OPEN && f[0].status_at[scale] == T0 + 120 && f[0].status_ev[scale] == -1;
+  #assert f[0].claimed[scale].len == 0 && f[0].note_cnt[scale] == 1 && f[0].under[10] == -1;
+  write_tables(s[..], f[..], t[..]);
+  #assert t[0].complete;
+  #assert equal(cast(string) t[0].items[0..<t[0].items_n],
+    "d060|task|open|Add a grams scale||M||||0a|scale||\n8427|task|resolved|Fix the 59-second timer||S||||0b|timer|4b825dc642|1761686710\n");
+  // the status line is hidden: the done comment is 10 s before it (under two minutes)
+  #assert count_lines(cast(string) t[0].log[0..<t[0].log_n]) == 4;
+  // coffee's issue is in the store but not in tea's fold
+  #assert fold_issue_of(s[..], f[..], PY_ID[11]) == -1;
+  fold(s[..], f[..], "coffee");
+  #assert f[0].n == 1 && f[0].project == -1 && fold_issue_of(s[..], f[..], PY_ID[11]) == 0;
+}
+// book:end check

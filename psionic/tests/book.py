@@ -12,6 +12,7 @@ import os
 import json
 from pathlib import Path
 import re
+import resource
 import subprocess
 from urllib.parse import unquote, urlparse
 
@@ -161,8 +162,11 @@ def run_one(compiler, item, mode):
     # A program whose compile-time tables need more than the default budget.
     if "run_steps" in item:
         cmd += ["--run-steps", str(item["run_steps"])]
+    # A program whose fixed state is larger than the default 8 MiB stack.
+    stack = item.get("stack_kib")
+    limit = (lambda: resource.setrlimit(resource.RLIMIT_STACK, (stack * 1024, resource.getrlimit(resource.RLIMIT_STACK)[1]))) if stack else None
     # A program that loads the whole signer compiles for longer than a minute.
-    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=item.get("timeout", 60))
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, timeout=item.get("timeout", 60), preexec_fn=limit)
     assert result.returncode == item["exit_status"], f"exit status: {cmd}\n{result.stderr.decode()}"
     assert not result.stderr, f"unexpected diagnostics: {cmd}\n{result.stderr.decode()}"
     assert result.stdout == path(item["stdout"]).read_bytes(), f"transcript drift: {cmd}\n{result.stdout.decode()}"

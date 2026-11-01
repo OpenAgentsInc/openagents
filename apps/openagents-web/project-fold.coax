@@ -412,6 +412,7 @@ plan_step :: (content: string, k: int) -> Step {
   return none;
 }
 
+// book:begin fold
 fold :: (s: [] Store, f: [] Fold, slug: string) {
   f[0].n = 0; f[0].log_n = 0; f[0].notes_n = 0; f[0].project = -1; f[0].repo = -1; f[0].order = -1; f[0].items_n = 0;
   // the project and its order: the latest of each whose address is the slug
@@ -503,6 +504,7 @@ fold :: (s: [] Store, f: [] Fold, slug: string) {
     f[0].alias[r] = n;
   }
 }
+// book:end fold
 
 is_coord :: (a: string, slug: string) -> bool {
   // 30621:<64 hex>:<slug>; the key is checked by the store (only the project's events are kept)

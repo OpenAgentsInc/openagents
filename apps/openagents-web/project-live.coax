@@ -204,6 +204,7 @@ live_query_send :: (l: [] Live, ids: bool) {
   n = live_text(buf[..], n, ",\"limit\":"); n = int_into(buf[..], n, CATCHUP_LIMIT, 1); n = live_text(buf[..], n, "}]");
   if n > REQ_CAP || !pipe_send(l[0].pipe[..], l[0].sock - 1, cast(string) buf[0..<n]) { live_incomplete(l, 3); }
 }
+// book:begin prepare
 live_prepare :: (l: [] Live) {
   l[0].dirty = false;
   if !live_collect_known(l) { live_incomplete(l, 5); return; }
@@ -219,6 +220,7 @@ live_prepare :: (l: [] Live) {
   l[0].state = LIVE_LIVE; l[0].dirty = true; l[0].backoff = BACKOFF_FIRST;
   if l[0].link_stage == LINK_IDLE { live_links_ask(l); }
 }
+// book:end prepare
 live_page_end :: (l: [] Live) {
   if !live_query_close(l) { live_incomplete(l, 3); return; }
   if l[0].query == 2 {

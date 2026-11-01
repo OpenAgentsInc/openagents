@@ -1766,7 +1766,7 @@
    "number": 98,
    "title": "Projects on Nostr",
    "file": "ch098-projects-on-nostr.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C and wasm",
    "depends_on": [
     63,
@@ -1775,7 +1775,10 @@
    ],
    "source": [
     "apps/openagents-web/project-fold.coax",
-    "apps/openagents-web/project-live.coax"
+    "apps/openagents-web/project-live.coax",
+    "coax/web/project/landing-fold.coax",
+    "nostr/examples/projects.coax",
+    "nostr/examples/checks/projects.coax"
    ],
    "qualified_targets": [
     "cpu",

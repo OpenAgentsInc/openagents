@@ -1,0 +1,49 @@
+a small project, event by event
+  project tea: kept as event 0
+  issue timer: kept as event 1
+  issue scale: kept as event 2
+  order: kept as event 3
+  claim timer (w1): kept as event 4
+  plan timer: kept as event 5
+  note scale (w2): kept as event 6
+  done timer: kept as event 7
+  status timer resolved: kept as event 8
+refusals
+  status scale closed, signature changed: refused, signature
+  status scale closed, kind changed to 1633: refused, id
+  status scale closed, another key: verified, dropped by the store (not the owner's)
+  issue grind under coffee: kept as event 9
+  claim scale, root kind 1111: kept as event 10
+  issue timer again: already kept as event 1
+kept 11, dropped 1
+the fold of project tea
+project event 0, order event 3, repository none
+  8427  timer: task, size S, rank 0b, status resolved at T0+310, worker none, commit 4b825dc642, notes 1, plan 1/3
+  d060  scale: task, size M, rank 0a, status open at T0+120, worker none, commit none, notes 1, plan 0/0
+WORK_ITEMS
+    d060|task|open|Add a grams scale||M||||0a|scale||
+    8427|task|resolved|Fix the 59-second timer||S||||0b|timer|4b825dc642|1761686710
+WORK_LOG
+    10-28 16:25|#8427 DONE IN 4b825dc642 BY w1 - Fix the 59-second timer
+    10-28 16:24|#d060 w2: Needs a load cell first. - Add a grams scale
+    10-28 16:23|#8427 W1 PLANNED 1 OF 3 DONE - Fix the 59-second timer
+    10-28 16:23|#8427 CLAIMED BY W1 - Fix the 59-second timer
+WORK_PLANS
+    8427|x|read the timer loop
+    8427|>|carry seconds into minutes
+    8427|o|test 1:30
+the fold of project coffee
+project event -1, order event -1, repository none
+  302e  grind: task, size none, rank none, status open at T0+420, worker none, commit none, notes 0, plan 0/0
+a captured relay: relay.openagents.com, project coax, 2026-10-28T20:33Z
+frames 243, events verified 237, kept 237, dropped 0
+issues 105, complete true
+  WORK_ITEMS: 11049 bytes, 105 lines, equal to the recorded table
+  WORK_LOG: 4635 bytes, 29 lines, equal to the recorded table
+  WORK_PLANS: 2325 bytes, 32 lines, equal to the recorded table
+  WORK_PLAN_INFO: 177 bytes, 2 lines, equal to the recorded table
+  WORK_DETAILS: 42185 bytes, 105 lines, equal to the recorded table
+  the first three items
+    65b7|initiative|open|Coax: the language and its toolchain, R0 to R12|coax compiler roadmap|||||0a|coax-roadmap||
+    6f40|milestone|open|R0: the adoption gate||||65b7||1A|r0||
+    d98b|milestone|open|R1: the compiler substrate||||65b7||1k|r1||

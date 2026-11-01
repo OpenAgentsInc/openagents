@@ -37,9 +37,9 @@ sv_prepare_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> SvP
   challenge := sv_challenge_vartime(message,public_key,signature[0..<32]); if !challenge.ok { return result; }
   return SvPrepared.{s=s.value,negative_e=sc_negate(challenge.value),point=point.value,r=r.value,ready=true};
 }
-sv_prepare_nostr_vartime :: (event_id: [] u8,public_key: [] u8,signature: [] u8) -> SvPrepared {
-  if event_id.count != 32 { return SvPrepared.{}; }
-  return sv_prepare_vartime(event_id,public_key,signature);
+sv_prepare_nostr_vartime :: (nostr_id: [] u8,public_key: [] u8,signature: [] u8) -> SvPrepared {
+  if nostr_id.count != 32 { return SvPrepared.{}; }
+  return sv_prepare_vartime(nostr_id,public_key,signature);
 }
 // Inputs come from the canonical affine conversion below. Refusals and
 // infinity have a nonzero infinity flag, so they cannot pass this comparison.
@@ -59,6 +59,6 @@ sv_prepared_matches_vartime :: (prepared: SvPrepared) -> bool {
 schnorr_verify_vartime :: (message: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c {
   return sv_prepared_matches_vartime(sv_prepare_vartime(message,public_key,signature));
 }
-nostr_verify_vartime :: (event_id: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c {
-  return sv_prepared_matches_vartime(sv_prepare_nostr_vartime(event_id,public_key,signature));
+nostr_verify_vartime :: (nostr_id: [] u8,public_key: [] u8,signature: [] u8) -> bool #export_c {
+  return sv_prepared_matches_vartime(sv_prepare_nostr_vartime(nostr_id,public_key,signature));
 }

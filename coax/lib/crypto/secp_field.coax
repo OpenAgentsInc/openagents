@@ -391,18 +391,18 @@ sf_multiply :: (a: SecpField, b: SecpField) -> SecpField #export_c {
   for i: 0..<10 { for j: 0..<10 { product[i + j] += x.limb[i] * y.limb[j]; } }
   #assert sf_radix_carry(product[..]);
   // Split at bit256 and fold the high part by c=2^32+977.
-  r: SecpField; fold: [12] u64;
-  for i: 0..<10 { fold[i] = product[i]; }
-  fold[9] &= SF_MASK22;
+  r: SecpField; reduced: [12] u64;
+  for i: 0..<10 { reduced[i] = product[i]; }
+  reduced[9] &= SF_MASK22;
   for i: 0..<10 {
     q := (product[i + 9] >> 22) | ((product[i + 10] & SF_MASK22) << 4);
-    fold[i] += q * 977; fold[i + 1] += q * 64;
+    reduced[i] += q * 977; reduced[i + 1] += q * 64;
   }
-  #assert sf_radix_carry(fold[..]);
-  for i: 0..<10 { r.limb[i] = fold[i]; }
+  #assert sf_radix_carry(reduced[..]);
+  for i: 0..<10 { r.limb[i] = reduced[i]; }
   r.limb[9] &= SF_MASK22;
-  q0 := (fold[9] >> 22) | ((fold[10] & SF_MASK22) << 4);
-  q1 := (fold[10] >> 22) | (fold[11] << 4);
+  q0 := (reduced[9] >> 22) | ((reduced[10] & SF_MASK22) << 4);
+  q1 := (reduced[10] >> 22) | (reduced[11] << 4);
   r.limb[0] += q0 * 977;
   r.limb[1] += q1 * 977 + q0 * 64;
   r.limb[2] += q1 * 64;

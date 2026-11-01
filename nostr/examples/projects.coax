@@ -1,0 +1,153 @@
+// Chapter 98: a project folded from its signed events, and a captured relay folded and compared.
+#load "../../apps/openagents-web/project-fold.coax";
+#load "../../coax/lib/nostr/event.coax";
+#import "Basic";
+
+// The project's owner signs with BIP-340 test vector 0's published secret
+// key, 3; "someone else" with vector 1's. Never sign with a real key in an
+// example. The events were signed once with coax/lib/nostr/event_sign.coax
+// and are copied here as a relay would send them.
+OWNER :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+EVENTS :: [13] string.[
+  "{\"id\":\"7d1c4fcbaed86a0d0ef849977fb5a7933e0202b9e677ff276dec2090a5dbb57d\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686400,\"kind\":30621,\"tags\":[[\"d\",\"tea\"],[\"name\",\"Tea tools\"]],\"content\":\"\",\"sig\":\"de8b99ae2d785617c54cff0a8db7cc2a3f625495fbb44cabe7129f18937f54f3e1fae60b92a5f61ecd384c55e58bea5cb9da38e48394a03ee833dad8ba2fab30\"}",
+  "{\"id\":\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686460,\"kind\":1621,\"tags\":[[\"a\",\"30621:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea\"],[\"slug\",\"timer\"],[\"subject\",\"Fix the 59-second timer\"],[\"size\",\"S\"]],\"content\":\"Set the timer to 1:30 and it stops at 0:59.\",\"sig\":\"cde9da603527301aedc4e8f2b20b5a296b7a2cb2c1129f71c584c5dfdd92dbc7cb80eab85070137f51420349b9632c332bd97ea35106a2fa436d27b7b67b66b8\"}",
+  "{\"id\":\"d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686520,\"kind\":1621,\"tags\":[[\"a\",\"30621:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea\"],[\"slug\",\"scale\"],[\"subject\",\"Add a grams scale\"],[\"size\",\"M\"]],\"content\":\"Weigh the leaves before brewing.\",\"sig\":\"a1adff66d04c997bd8122d919349cb5368587bfe66a1532eed1faa2a1d200e5aabfa4fccb97f2ed1893c69778ccfbf802bd9d28155356ef2616c9ff9a32166f6\"}",
+  "{\"id\":\"43fc4473166737363330a5e9c63605080416d0ea884f36dede4131aefc0c53a9\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686530,\"kind\":30623,\"tags\":[[\"d\",\"tea\"],[\"a\",\"30621:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:tea\"],[\"item\",\"d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199\",\"0a\"],[\"item\",\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\",\"0b\"]],\"content\":\"\",\"sig\":\"37fc2b2e02c5d32ed1a472d0b97b7279859ecf2daaa0ad333753c44fda9ca8dc8d5ac12560d1e3a9d4a36f20690df4abf6ab7542f04b41f5b31550d225938209\"}",
+  "{\"id\":\"a50773addfdd1b99a1ccd70d518c45fc7ab3742f4df99a73b018dd2e38eb0363\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686580,\"kind\":1111,\"tags\":[[\"E\",\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\"],[\"K\",\"1621\"],[\"e\",\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\"],[\"k\",\"1621\"],[\"claim\",\"w1\"]],\"content\":\"\",\"sig\":\"70cf4656bfb9413642e626eae0082c5f5de81b2a1f67df5ef182f83ad198e483102c1e55c8d7b6d99bc84693d8071d0fb4c90c8dd8bfad72aca80ba03593349e\"}",
+  "{\"id\":\"12b3ab9ed5c597c740777ed6f47f6b3bf362b5fd00b96634cf9c6c9abce8336b\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686600,\"kind\":1111,\"tags\":[[\"E\",\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\"],[\"K\",\"1621\"],[\"e\",\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\"],[\"k\",\"1621\"],[\"plan\",\"openagents.task-plan.v1\"],[\"by\",\"w1\"]],\"content\":\"- [x] read the timer loop\\n- [>] carry seconds into minutes\\n- [ ] test 1:30\",\"sig\":\"190bad9dff330ee1096c7040b46e5b7a9c11717eb8e1b2b478b136c8e4dea9421d7f092e8dcd003155e7cb01af509e6e99924a0d41f978f3c4611354acbbd30f\"}",
+  "{\"id\":\"24e5f8b7a34dcfd18c4b034a22b8e75ec6a801921131fe72eb13140e29644d27\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686640,\"kind\":1111,\"tags\":[[\"E\",\"d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199\"],[\"K\",\"1621\"],[\"e\",\"d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199\"],[\"k\",\"1621\"],[\"by\",\"w2\"]],\"content\":\"Needs a load cell first.\",\"sig\":\"4c99edc1f67aa587119bc1d2a68bb4bc17cbd48da5496369fb64a222fc8daae3017a722e9121deb2fc06ff0f8e198f5e26b3cd95efdc0b3152b7352f39c76f86\"}",
+  "{\"id\":\"e951a9517dd4c592c1e6bb28e197bef37760d397f1019d8d15f658bbb15b61b5\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686700,\"kind\":1111,\"tags\":[[\"E\",\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\"],[\"K\",\"1621\"],[\"e\",\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\"],[\"k\",\"1621\"],[\"commit\",\"4b825dc642\"],[\"by\",\"w1\"]],\"content\":\"Done in 4b825dc642.\",\"sig\":\"3adcf73384b4e0b2ce831cdaa21382395ad898c8b2f4671f091ab8c9d09954f6ca3b0705d85703e3955485e64eb21b0b8a16dfbd8b59101326fff4b7855e1daf\"}",
+  "{\"id\":\"e3eae8f9732838cb705cee0709306557c8ae2ded7573864f21e86071a60028d9\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686710,\"kind\":1631,\"tags\":[[\"e\",\"8427688078fc8b70441763e524ee10da7fd38f937fa48b9001ecb31fcaaa701e\",\"\",\"root\"]],\"content\":\"\",\"sig\":\"8acddedef6cadfd5645b2b223ff79f3b3ddde13fd68dc6ec944f76699ecfd9df0b436c3997b2380a802324270dc797c6cfeaf03bfac4977f1197c205b1a95cdc\"}",
+  "{\"id\":\"edbb18aef2bf04a1854eb63f9d7096db3299e349f9635ce262569864799f6e18\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686800,\"kind\":1632,\"tags\":[[\"e\",\"d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199\",\"\",\"root\"]],\"content\":\"\",\"sig\":\"5f02e73f9221f776e3c4cfe1efd631262b3c4e5a5719068433b45eca0e8f93facfef365b107c27073d8b13dd24440e9896e04ab0d58af3b910d0b8cf4d6c6857\"}",
+  "{\"id\":\"4aeed7eb892dfc030f97d9ad67de00b7d0aa3c5ca680099a647b28c566ff94c8\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686810,\"kind\":1632,\"tags\":[[\"e\",\"d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199\",\"\",\"root\"]],\"content\":\"\",\"sig\":\"d247c7c1f19adb5eb3518c92e314202db90215d8d9b4d86058696347aa00f232063683c07e9314e504c49b0eaf5089aee1522f141227178a062690afdcf72650\"}",
+  "{\"id\":\"302e3b6ddcf6c4b3504e0e7ab780572a434bf7be79820254f73dba20c7fd2397\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686820,\"kind\":1621,\"tags\":[[\"a\",\"30621:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:coffee\"],[\"slug\",\"grind\"],[\"subject\",\"Grind size\"]],\"content\":\"\",\"sig\":\"682bf0f5fcce59ed4fafa170890b6ea36201ff65b8066b5d7b13a82b3ca4c089d0e75ff3871f29dd1bc897ae88345be01a878c251d3fd32ad7b340c36b7384de\"}",
+  "{\"id\":\"641cca7bc53779930b57a8a673ce0c39a3112718701daf03e7df7792d8f3d7da\",\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1761686830,\"kind\":1111,\"tags\":[[\"E\",\"d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199\"],[\"K\",\"1111\"],[\"e\",\"d060b7aa83a751d98d6785df43ba8ae6074347e2c68bb9cc6e6a3054f3253199\"],[\"k\",\"1111\"],[\"claim\",\"w3\"]],\"content\":\"\",\"sig\":\"39ca6de22202623212031b7c77d8dc4d8fd30cb08a48ef0c28f1e2193f2559312c87e440dcd810efaad3dab457cbaed75e4a11446adc014e28b42a605d6cbcb6\"}"
+];
+// book:begin example
+LABEL :: [13] string.["project tea", "issue timer", "issue scale", "order", "claim timer (w1)", "plan timer",
+  "note scale (w2)", "done timer", "status timer resolved", "status scale closed", "status scale closed, another key",
+  "issue grind under coffee", "claim scale, root kind 1111"];
+NE_NAME :: [9] string.["ok", "json", "shape", "limit", "hex", "output", "alias", "id", "signature"];
+
+// The verified view's gate, as coax/web/project/landing-fold.coax keeps it:
+// the original bytes are verified first (id and BIP-340 signature), and only
+// then does the store read them, keeping the owner's events of the kinds the
+// fold reads. Returns the event's index, or -1.
+admit :: (s: [] Store, text: string, label: string) -> int {
+  scratch: [NE_MAX_OUTPUT] u8;
+  v := nostr_event_verify_vartime(text, scratch[..], false);
+  if v.error != NE_OK || !v.verified {
+    print("  %: refused, %\n", label, NE_NAME[v.error]);
+    return -1;
+  }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { print("  %: refused, not an object\n", label); return -1; }
+  dropped := s[0].dropped;
+  e := store_event(s, j[..], OWNER);
+  if e >= 0 { print("  %: kept as event %\n", label, e); }
+  else if s[0].last >= 0 { print("  %: already kept as event %\n", label, s[0].last); }
+  else if s[0].dropped > dropped { print("  %: verified, dropped by the store (not the owner's)\n", label); }
+  return e;
+}
+// Where needle first starts in text (it must be there).
+find :: (text: string, needle: string) -> int {
+  for i: 0..<text.count - needle.count + 1 { if equal(text[i..<i + needle.count], needle) { return i; } }
+  #assert false;
+  return -1;
+}
+// A copy of text with the character at i replaced by c.
+altered :: (text: string, i: int, c: u8, out: [] u8) -> string {
+  for k: 0..<text.count { out[k] = text[k]; }
+  out[i] = c;
+  return cast(string) out[0..<text.count];
+}
+
+show :: (s: [] Store, f: [] Fold) {
+  print("project event %, order event %, repository %\n", f[0].project, f[0].order, ifx f[0].repo >= 0 then "kept" else "none");
+  for r: 0..<f[0].n {
+    root := f[0].root[r];
+    print("  %  %: %, size %, rank %, status % at T0+%", event_id(s, root)[0..<f[0].alias[r]], str(s, f[0].slug[r]),
+      KIND_NAMES[f[0].kind[r]], ifx f[0].size[r].len > 0 then str(s, f[0].size[r]) else "none", ifx f[0].rank[r].len > 0 then str(s, f[0].rank[r]) else "none",
+      STATUS_NAME[f[0].status[r]], f[0].status_at[r] - s[0].at[0]);
+    print(", worker %, commit %, notes %, plan %/%\n", ifx f[0].claimed[r].len > 0 then str(s, f[0].claimed[r]) else "none",
+      ifx f[0].commit[r].len > 0 then str(s, f[0].commit[r]) else "none", f[0].note_cnt[r], f[0].steps_done[r], f[0].steps[r]);
+  }
+}
+
+// The captured relay: every EVENT frame's object verified in Coax, then read
+// as the page reads frames. The verified count, or -1 when one fails.
+read_verified :: (s: [] Store, text: string) -> int {
+  verified := 0; i := 0;
+  while i < text.count {
+    e := i;
+    while e < text.count && text[e] != 10 { e += 1; }
+    line := text[i..<e];
+    if frame_head(line).type == FRAME_EVENT {
+      j: [1] Json; json_start(j[..], line);
+      a := json_next(j[..]); b := json_next(j[..]); c := json_next(j[..]); o := json_next(j[..]);
+      if a != JSON_ARRAY || b != JSON_STRING || c != JSON_STRING || o != JSON_OBJECT { return -1; }
+      scratch: [NE_MAX_OUTPUT] u8;
+      v := nostr_event_verify_vartime(line[j[0].from..<line.count - 1], scratch[..], false);
+      if v.error != NE_OK || !v.verified { return -1; }
+      verified += 1;
+      fr := read_frame(s, line, FOLD_TEST_KEY);
+      if fr.event < 0 { return -1; }
+    }
+    i = e + 1;
+  }
+  return verified;
+}
+show_table :: (label: string, made: string, recorded: string) {
+  print("  %: % bytes, % lines, %\n", label, made.count, count_lines(made), ifx equal(made, recorded) then "equal to the recorded table" else "DIFFERENT");
+}
+count_lines :: (text: string) -> int { n := 0; for i: 0..<text.count { if text[i] == 10 { n += 1; } } return n; }
+first_lines :: (text: string, n: int) {
+  k := 0; i := 0;
+  while i < text.count && k < n {
+    e := i; while e < text.count && text[e] != 10 { e += 1; }
+    print("    %\n", text[i..<e]); k += 1; i = e + 1;
+  }
+}
+
+main :: () {
+  s: [1] Store; f: [1] Fold; t: [1] Tables; buf: [4096] u8;
+  store_clear(s[..]);
+  print("a small project, event by event\n");
+  for k: 0..<9 { e := admit(s[..], EVENTS[k], LABEL[k]); }
+  print("refusals\n");
+  // The owner's close of scale, with one signature digit changed: forged.
+  forged := EVENTS[9];
+  sig := forged.count - 3;
+  e9 := admit(s[..], altered(forged, sig, ifx forged[sig] == '0' then '1' else '0', buf[..]), "status scale closed, signature changed");
+  // The same close with its kind changed after signing: the id no longer matches.
+  e9 = admit(s[..], altered(forged, find(forged, "\"kind\":1632") + 10, '3', buf[..]), "status scale closed, kind changed to 1633");
+  for k: 10..<13 { e := admit(s[..], EVENTS[k], LABEL[k]); }
+  e1 := admit(s[..], EVENTS[1], "issue timer again");
+  print("kept %, dropped %\n", s[0].n, s[0].dropped);
+
+  print("the fold of project tea\n");
+  fold(s[..], f[..], "tea");
+  show(s[..], f[..]);
+  write_tables(s[..], f[..], t[..]);
+  print("WORK_ITEMS\n"); first_lines(cast(string) t[0].items[0..<t[0].items_n], 10);
+  print("WORK_LOG\n"); first_lines(cast(string) t[0].log[0..<t[0].log_n], 10);
+  print("WORK_PLANS\n"); first_lines(cast(string) t[0].plans[0..<t[0].plans_n], 10);
+  print("the fold of project coffee\n");
+  fold(s[..], f[..], "coffee");
+  show(s[..], f[..]);
+
+  print("a captured relay: relay.openagents.com, project coax, 2026-10-28T20:33Z\n");
+  store_clear(s[..]);
+  v := read_verified(s[..], COAX_RELAY);
+  print("frames %, events verified %, kept %, dropped %\n", COAX_RELAY_FRAMES, v, s[0].n, s[0].dropped);
+  fold(s[..], f[..], "coax");
+  write_tables(s[..], f[..], t[..]);
+  print("issues %, complete %\n", f[0].n, t[0].complete);
+  show_table("WORK_ITEMS", cast(string) t[0].items[0..<t[0].items_n], COAX_RELAY_ITEMS);
+  show_table("WORK_LOG", cast(string) t[0].log[0..<t[0].log_n], COAX_RELAY_LOG);
+  show_table("WORK_PLANS", cast(string) t[0].plans[0..<t[0].plans_n], COAX_RELAY_PLANS);
+  show_table("WORK_PLAN_INFO", cast(string) t[0].info[0..<t[0].info_n], COAX_RELAY_PLAN_INFO);
+  show_table("WORK_DETAILS", cast(string) t[0].details[0..<t[0].details_n], COAX_RELAY_DETAILS);
+  print("  the first three items\n"); first_lines(cast(string) t[0].items[0..<t[0].items_n], 3);
+}
+// book:end example

@@ -28,6 +28,7 @@ lf_begin :: (s:[]LfState,key:string,slug:string,known:string)->bool #export_c {
 }
 // The private C bridge calls lr_verify_public on this same immutable span
 // immediately before this function; no public export accepts a verified bit.
+// book:begin feed
 lf_feed :: (s:[]LfState,text:string,verified:bool)->bool #export_c {
   if !s[0].active || s[0].failed {return false;}
   if !json_valid(text) {s[0].failed=true;return false;}
@@ -39,6 +40,7 @@ lf_feed :: (s:[]LfState,text:string,verified:bool)->bool #export_c {
   if s[0].store[0].overflow || s[0].store[0].dropped!=previous {s[0].failed=true;return false;}
   return true;
 }
+// book:end feed
 lf_tag :: (s:[]Store,e:int,name:string)->string {v:=tag_value(s,e,name);return ifx v.ok then str(s,v.ref) else "";}
 lf_field :: (out:[]u8,at:int,name:string,value:string)->int {
   display:[4096]u8;size:=cell_into(display[..],0,value);if size<0 {return -1;}
