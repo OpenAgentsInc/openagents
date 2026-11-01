@@ -1,0 +1,208 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip52.coax";
+#load "../../coax/lib/nostr/nip88.coax";
+#load "../../coax/lib/nostr/nip84.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+CALENDAR :: [14] string.["ok", "event", "kind", "bad tag", "missing", "bad date", "bad time", "end not after start", "bad time zone", "bad day", "not a calendar event", "unknown status", "unknown fb", "limit"];
+POLL :: [10] string.["ok", "event", "kind", "bad option id", "repeated option id", "unknown poll type", "bad endsAt", "missing", "bad e tag", "limit"];
+HIGHLIGHT :: [6] string.["ok", "event", "kind", "bad tag", "empty value", "limit"];
+SOURCE :: [5] string.["none", "e", "a", "i", "r"];
+// BIP-340 test vectors 0 to 3's public keys, then the public keys of the
+// secret keys 1 and 2.
+PEOPLE :: [6] string.["Alice", "Bob", "Carol", "Mallory", "Dave", "Erin"];
+PUB :: [6] string.[
+  "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+  "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659",
+  "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8",
+  "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517",
+  "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"];
+// Their secret keys: published test values. Never sign with a real key in
+// an example.
+SECRET :: [6] string.[
+  "0000000000000000000000000000000000000000000000000000000000000003",
+  "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef",
+  "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9",
+  "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710",
+  "0000000000000000000000000000000000000000000000000000000000000001",
+  "0000000000000000000000000000000000000000000000000000000000000002"];
+ALICE :: 0; BOB :: 1; CAROL :: 2; MALLORY :: 3; DAVE :: 4; ERIN :: 5;
+T0 :: 1761686400;
+MEETUP :: "31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:meetup";
+
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+hex32 :: (id: [32] u8, out: [] u8) -> string {
+  own := id; r := hex_encode_checked(cast(string) own[..], out, false);
+  #assert r.error == NC_OK;
+  return cast(string) out[0..<64];
+}
+key_of :: (who: int) -> [32] u8 { k: [32] u8; decode_hex(PUB[who], k[..]); return k; }
+show_key :: (key: [32] u8) {
+  for k: 0..<PEOPLE.count { if ns_equal32(key_of(k), key) { print("%", PEOPLE[k]); return; } }
+  text: [64] u8; print("%...", hex32(key, text[..])[0..<8]);
+}
+say :: (t: N32Text) { own := t; print("%", cast(string) own.b[0..<own.n]); }
+
+// Sign an event into out and read it back with its ID and signature checked.
+sign :: (who: int, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  key: [32] u8; decode_hex(SECRET[who], key[..]);
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [8192] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [8192] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// The events: who signs, when (after T0), the kind, the tags and the
+// content. Tags written by the library's writers are empty here and filled
+// in by tags_of.
+EVENTS :: 11;
+NAME :: [EVENTS] string.["M", "T", "C", "R1", "R2", "P", "V1", "V2", "V3", "V4", "H"];
+WHO :: [EVENTS] int.[ALICE, ALICE, ALICE, BOB, CAROL, ALICE, BOB, CAROL, BOB, CAROL, ERIN];
+AT :: [EVENTS] int.[0, 10, 20, 30, 40, 50, 60, 120, 300, 7200, 100];
+KIND :: [EVENTS] int.[31922, 31923, 31924, 31925, 31925, 1068, 1018, 1018, 1018, 1018, 9802];
+TAGS :: [EVENTS] string.[
+  "[[\"d\",\"meetup\"],[\"title\",\"Nostr meetup\"],[\"start\",\"2026-11-20\"],[\"end\",\"2026-11-22\"],[\"location\",\"Austin\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"\",\"speaker\"]]",
+  "[[\"d\",\"call\"],[\"title\",\"Planning call\"],[\"start\",\"1795280400\"],[\"end\",\"1795291200\"],[\"D\",\"20778\"],[\"start_tzid\",\"America/Chicago\"]]",
+  "[[\"d\",\"meetups\"],[\"title\",\"Meetups\"],[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:meetup\"],[\"a\",\"31923:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:call\"]]",
+  "",
+  "[[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:meetup\"],[\"d\",\"rsvp-meetup\"],[\"status\",\"declined\"],[\"fb\",\"free\"]]",
+  "[[\"option\",\"qj518h583\",\"Yay\"],[\"option\",\"gga6cdnqj\",\"Nay\"],[\"relay\",\"wss://relay.example.com\"],[\"polltype\",\"singlechoice\"],[\"endsAt\",\"1761690000\"]]",
+  "", "", "", "",
+  "[[\"r\",\"https://example.com/protocol\",\"source\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"\",\"author\"],[\"context\",\"Nostr is the simplest open protocol that works. It does not rely on any trusted central server.\"]]"];
+CONTENT :: [EVENTS] string.["Two days of talks.", "", "", "", "Out of town.", "Pineapple on pizza", "", "", "", "", "Nostr is the simplest open protocol that works."];
+// The responses' choices: V1 Yay; V2 an unknown id, then Yay; V3 Nay; V4 Nay.
+CHOICE :: [8] string.["qj518h583", "zzz", "qj518h583", "gga6cdnqj", "gga6cdnqj", "", "", ""];
+CHOICE_AT :: [4] int.[0, 1, 3, 4];
+CHOICE_N :: [4] int.[1, 2, 1, 1];
+
+// The tags of event k: its template, or the RSVP and response writers'
+// output, which needs the poll's id.
+tags_of :: (k: int, poll: NostrEvent, out: [] u8) -> string {
+  n := 0;
+  if k == 3 { n = n52_rsvp_tags(MEETUP, "rsvp-meetup", N52_ACCEPTED, N52_BUSY, out); }
+  else if k >= 6 && k <= 9 {
+    pick: [2] string; at := CHOICE_AT[k - 6];
+    for c: 0..<CHOICE_N[k - 6] { pick[c] = CHOICE[at + c]; }
+    n = n88_response_tags(poll.id, pick[0..<CHOICE_N[k - 6]], out);
+  } else { n = json_raw(out, 0, TAGS[k]); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+
+show_event :: (label: string, e: NostrEvent) {
+  r := n52_read(e);
+  print("%: %", label, CALENDAR[r.status]);
+  if r.at >= 0 { print(" at tag %", r.at); }
+  if r.status == N52_MISSING { print(" %", N52_NEEDS[r.missing]); }
+  if r.status != N52_OK { print("\n"); return; }
+  print(", kind %, \"", r.kind); say(r.title); print("\", ");
+  if r.kind == N52_DATE_KIND { print("days % to %", r.start, r.end); }
+  else {
+    print("seconds % to %, ", r.start, r.end); say(r.start_tzid); print(" to "); say(r.end_tzid);
+    print(", D tags %", r.days);
+  }
+  print(", participants %, by ", r.participants); show_key(e.public_key); print("\n");
+}
+show_ref :: (x: N52Ref) { print("% ", x.kind); say(x.d); print(" by "); show_key(x.author); }
+show_rsvp :: (label: string, e: NostrEvent) {
+  r := n52_rsvp(e);
+  print("%: %", label, CALENDAR[r.status]);
+  if r.at >= 0 { print(" at tag %", r.at); }
+  if r.status != N52_OK { print("\n"); return; }
+  print(", %, fb ", N52_STATUSES[r.answer]);
+  if r.fb >= 0 { print("%", N52_FBS[r.fb]); } else { print("absent"); }
+  print(", to "); show_ref(r.to); print(", by "); show_key(e.public_key); print("\n");
+}
+show_poll :: (label: string, e: NostrEvent) {
+  p := n88_poll(e);
+  print("%: %", label, POLL[p.status]);
+  if p.at >= 0 { print(" at tag %", p.at); }
+  if p.status != N88_OK { print("\n"); return; }
+  print(", % choice", ifx p.single then "single" else "multiple");
+  for k: 0..<p.n { print(", "); say(p.options[k].id); print(" "); say(p.options[k].label); }
+  if p.has_end { print(", ends at %", p.ends_at); }
+  print("\n");
+}
+show_response :: (label: string, e: NostrEvent, poll: NostrEvent) {
+  r := n88_response(e);
+  print("%: %", label, POLL[r.status]);
+  if r.at >= 0 { print(" at tag %", r.at); }
+  if r.status != N88_OK { print("\n"); return; }
+  print(", by "); show_key(e.public_key); print(" at T0+%, chooses", e.created_at - T0);
+  for k: 0..<r.n { print(" "); say(r.choices[k]); }
+  print(", to %\n", ifx ns_equal32(r.poll, poll.id) then "P" else "another poll");
+}
+show_highlight :: (label: string, e: NostrEvent) {
+  h := n84_read(e);
+  print("%: %", label, HIGHLIGHT[h.status]);
+  if h.at >= 0 { print(" at tag %", h.at); }
+  if h.status != N84_OK { print("\n"); return; }
+  print(", source % ", SOURCE[h.source]); say(h.first);
+  print(", sources %, authors %, mentions %, context %, by ", h.sources, h.authors, h.mentions, h.has_context); show_key(e.public_key); print("\n");
+}
+
+// An unsigned event by Mallory with these tags, parsed but not verified:
+// its id and sig are zeros. Used for the refusals, which no signer here
+// would write.
+unsigned :: (kind: int, tags: string, out: [] u8) -> NostrEvent {
+  n := json_raw(out, 0, "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"");
+  n = json_raw(out, n, PUB[MALLORY]); n = json_raw(out, n, "\",\"created_at\":1761686400,\"kind\":");
+  n = json_write_int(out, n, kind); n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags);
+  n = json_raw(out, n, ",\"content\":\"\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  return ne_parse(cast(string) out[0..<n]);
+}
+
+main :: () {
+  all: [EVENTS] NostrEvent; buf: [EVENTS][8192] u8; tags: [4096] u8;
+  for k: 0..<EVENTS {
+    all[k] = sign(WHO[k], T0 + AT[k], KIND[k], tags_of(k, all[5], tags[..]), CONTENT[k], buf[k][..]);
+  }
+  print("each event's id\n");
+  for k: 0..<EVENTS { hex: [64] u8; print("%: %, verified %\n", NAME[k], hex32(all[k].id, hex[..]), all[k].verified); }
+
+  print("calendar events\n");
+  show_event("M", all[0]); show_event("T", all[1]);
+  c := n52_calendar(all[2]);
+  print("C: %, \"", CALENDAR[c.status]); say(c.title); print("\", % events:", c.n);
+  for k: 0..<c.n { print(" "); show_ref(c.events[k]); print(";"); }
+  print("\n");
+  print("RSVPs\n");
+  show_rsvp("R1", all[3]); show_rsvp("R2", all[4]);
+
+  print("the poll and its responses\n");
+  show_poll("P", all[5]);
+  for k: 6..<10 { show_response(NAME[k], all[k], all[5]); }
+  t := n88_tally(all[5], all[..]);
+  p := n88_poll(all[5]);
+  print("tally:");
+  for k: 0..<p.n { print(" "); say(p.options[k].label); print(" %,", t.counts[k]); }
+  print(" voters %, blank %, superseded %, late %, ignored %, repeated %, refused %\n", t.voters, t.blank, t.superseded, t.late, t.ignored, t.repeated, t.refused);
+
+  print("highlight\n");
+  show_highlight("H", all[10]);
+
+  print("refusals\n");
+  bad: [4096] u8;
+  show_event("date event ending before it starts", unsigned(31922, "[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-11-22\"],[\"end\",\"2026-11-20\"]]", bad[..]));
+  show_event("date event on 2026-02-30", unsigned(31922, "[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-02-30\"]]", bad[..]));
+  show_event("time event ending as it starts", unsigned(31923, "[[\"d\",\"c\"],[\"title\",\"T\"],[\"start\",\"1795280400\"],[\"end\",\"1795280400\"],[\"D\",\"20778\"]]", bad[..]));
+  show_event("time event without a D tag", unsigned(31923, "[[\"d\",\"c\"],[\"title\",\"T\"],[\"start\",\"1795280400\"]]", bad[..]));
+  show_rsvp("RSVP with status maybe", unsigned(31925, "[[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:meetup\"],[\"d\",\"r\"],[\"status\",\"maybe\"]]", bad[..]));
+  show_poll("poll of type ranked", unsigned(1068, "[[\"option\",\"a\",\"A\"],[\"option\",\"b\",\"B\"],[\"polltype\",\"ranked\"]]", bad[..]));
+  show_poll("poll with a repeated option id", unsigned(1068, "[[\"option\",\"a\",\"A\"],[\"option\",\"a\",\"B\"]]", bad[..]));
+  show_response("response without an e tag", unsigned(1018, "[[\"response\",\"qj518h583\"]]", bad[..]), all[5]);
+  show_highlight("highlight of a short event id", unsigned(9802, "[[\"e\",\"5c83da77\"]]", bad[..]));
+}
+// book:end example

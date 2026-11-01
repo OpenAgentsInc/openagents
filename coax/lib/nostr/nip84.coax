@@ -1,0 +1,128 @@
+// NIP-84 highlights read from a parsed event through tags.coax and nip32's
+// reader for tags of any name: kind 9802, whose content is the highlighted
+// text, with the source it came from, the authors it credits, and an
+// optional context and comment.
+//
+// Sources are e and a tags (Nostr events), i tags (NIP-73 identifiers) and
+// r tags (anything else). An r tag marked "mention" is a link in the
+// comment, not a source. A p tag credits an author; its role is its last
+// value, the fourth, and a p tag whose role is "mention" names someone the
+// comment mentions instead. NIP-84 says a highlight SHOULD tag its source,
+// so a highlight with none still reads, with source N84_NONE. Nothing here
+// fetches the source or checks that the content appears in it.
+#load "nip32.coax";
+
+N84_OK :: 0; N84_EVENT :: 1; N84_KIND :: 2; N84_TAG :: 3; N84_SHAPE :: 4; N84_LIMIT :: 5;
+N84_KIND_HIGHLIGHT :: 9802;
+N84_NONE :: 0; N84_E :: 1; N84_A :: 2; N84_I :: 3; N84_R :: 4;
+
+// book:begin record
+N84Highlight :: struct {
+  status:int=N84_EVENT; at:int=-1; tag_error:int;
+  source:int=N84_NONE; first:N32Text;   // the first source's tag and value
+  sources:int;                          // e, a, i and source r tags
+  authors:int;                          // p tags with any role but mention
+  mentions:int;                         // p and r tags marked mention
+  has_context:bool; context:N32Text;
+  has_comment:bool; comment:N32Text;
+}
+// book:end record
+
+#test "NIP-84's attribution example and a quote highlight" {
+  h:=n84_read(n32_event(9802,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"wss://r.example\",\"author\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://r.example\",\"author\"],[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\",\"wss://r.example\",\"editor\"]]"));
+  #assert h.status==N84_OK && h.authors==3 && h.mentions==0 && h.source==N84_NONE && h.sources==0 && !h.has_context && !h.has_comment && h.at== -1;
+  h=n84_read(n32_event(9802,"[[\"r\",\"https://example.com/a\",\"source\"],[\"comment\",\"See nostr:npub1x and https://example.com/b\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"\",\"mention\"],[\"r\",\"https://example.com/b\",\"mention\"],[\"context\",\"The whole paragraph.\"]]"));
+  #assert h.status==N84_OK && h.source==N84_R && n32_is(h.first,"https://example.com/a") && h.sources==1 && h.mentions==2 && h.authors==0;
+  #assert h.has_comment && n32_is(h.comment,"See nostr:npub1x and https://example.com/b") && h.has_context && n32_is(h.context,"The whole paragraph.");
+}
+#test "sources: e, a, i and r; the first names the source" {
+  h:=n84_read(n32_event(9802,"[[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:post\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\"],[\"i\",\"isbn:9780765382030\"],[\"r\",\"https://example.com\"],[\"t\",\"x\"]]"));
+  #assert h.status==N84_OK && h.source==N84_A && h.sources==4 && n32_is(h.first,"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:post");
+  h=n84_read(n32_event(9802,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"));#assert h.status==N84_OK && h.source==N84_E && h.sources==1;
+  h=n84_read(n32_event(9802,"[[\"r\",\"https://x\",\"mention\"],[\"i\",\"isbn:1\"]]"));#assert h.status==N84_OK && h.source==N84_I && n32_is(h.first,"isbn:1") && h.mentions==1;
+  // A p tag without a role, or with three values, is an author.
+  h=n84_read(n32_event(9802,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"\",\"x\",\"mention\"]]"));
+  #assert h.status==N84_OK && h.authors==2 && h.mentions==1;
+  // The first context and comment count.
+  h=n84_read(n32_event(9802,"[[\"context\",\"a\"],[\"context\",\"b\"],[\"comment\",\"c\"],[\"comment\",\"d\"]]"));
+  #assert n32_is(h.context,"a") && n32_is(h.comment,"c");
+}
+#test "the last value of a tag" {
+  e:=n32_event(9802,"[[\"p\",\"a\",\"b\",\"c\"],[\"p\"],[\"x\",\"caf\\u00e9\"]]");
+  #assert n32_is(n84_last(e,0),"c") && n32_is(n84_last(e,1),"p") && n84_last(e,2).n==5 && n84_last(e,3).n==0 && n84_last(e,-1).n==0;
+  none:NostrEvent;#assert n84_last(none,0).n==0;
+  b:=e;b.original="[[\"p\",\"a\",1]]";b.tags_from=0;b.tags_to=b.original.count;#assert n84_last(b,0).n==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"p\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n84_last(nt_event(cast(string)long[0..<n]),0).n==0;
+}
+#test "refusals" {
+  h:=n84_read(n32_event(9802,"[[\"e\",\"aaaa\"]]"));#assert h.status==N84_TAG && h.tag_error==NT_HEX && h.at==0;
+  h=n84_read(n32_event(9802,"[[\"r\",\"https://x\"],[\"a\",\"1:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:\"]]"));#assert h.status==N84_TAG && h.at==1;
+  h=n84_read(n32_event(9802,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"x\",\"author\"]]"));#assert h.status==N84_TAG && h.tag_error==NT_RELAY;
+  h=n84_read(n32_event(9802,"[[\"r\",\"\"]]"));#assert h.status==N84_SHAPE && h.at==0;
+  h=n84_read(n32_event(9802,"[[\"t\",\"x\"],[\"i\"]]"));#assert h.status==N84_SHAPE && h.at==1;
+  h=n84_read(n32_event(1,"[]"));#assert h.status==N84_KIND && h.at== -1;
+  none:NostrEvent;#assert n84_read(none).status==N84_EVENT;
+  b:=n32_event(9802,"[]");b.original="[[\"t\"],[\"r\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  h=n84_read(b);#assert h.status==N84_EVENT && h.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"t\"],[\"context\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  h=n84_read(n32_event(9802,cast(string)long[0..<n]));#assert h.status==N84_LIMIT && h.at==1;
+}
+
+n84_refuse :: (h:N84Highlight,status:int,at:int)->N84Highlight {o:=h;o.status=status;o.at=at;return o;}
+
+// book:begin last
+// The last value of the index'th tag, decoded, or empty when the tag is
+// missing, malformed or the value too long.
+n84_last :: (e:NostrEvent,index:int)->N32Text {
+  r:N32Text;none:N32Text;j:[1]Json;if index<0 || !nt_start(j[..],e) {return none;}
+  k:=0;tok:=json_next(j[..]);
+  while tok==JSON_ARRAY && k<index {skipped:=json_skip(j[..]);k+=1;tok=json_next(j[..]);}
+  if tok!=JSON_ARRAY {return none;}
+  v:=json_next(j[..]);
+  while v==JSON_STRING {
+    n:=json_unescape(json_text(j[..]),r.b[..]);
+    if n<0 {return none;}
+    r.n=n;v=json_next(j[..]);
+  }
+  if v!=JSON_ARRAY_END {return none;}
+  return r;
+}
+// book:end last
+
+// book:begin read
+// A highlight: its source, the authors it credits, its context and comment.
+n84_read :: (e:NostrEvent)->N84Highlight {
+  h:N84Highlight;if e.error!=NE_OK {return h;}
+  if e.kind!=N84_KIND_HIGHLIGHT {return n84_refuse(h,N84_KIND,-1);}
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n84_refuse(h,N84_LIMIT,i);}
+    if t.error!=NT_OK {return n84_refuse(h,N84_EVENT,i);}
+    tag:=t.v[0];kind:=N84_NONE;mention:=false;
+    if n32_is(tag,"e") || n32_is(tag,"a") || n32_is(tag,"p") {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {h.tag_error=s.error;return n84_refuse(h,N84_TAG,i);}
+      if s.type==NT_E {kind=N84_E;} else if s.type==NT_A {kind=N84_A;}
+      else {
+        mention=t.values>=4 && n32_is(n84_last(e,i),"mention");
+        if !mention {h.authors+=1;}
+      }
+    } else if n32_is(tag,"i") || n32_is(tag,"r") {
+      if t.v[1].n==0 {return n84_refuse(h,N84_SHAPE,i);}
+      mention=n32_is(tag,"r") && n32_is(t.v[2],"mention");
+      if !mention {kind=ifx n32_is(tag,"i") then N84_I else N84_R;}
+    } else if n32_is(tag,"context") && !h.has_context {h.has_context=true;h.context=t.v[1];}
+    else if n32_is(tag,"comment") && !h.has_comment {h.has_comment=true;h.comment=t.v[1];}
+    if mention {h.mentions+=1;}
+    if kind!=N84_NONE {
+      if h.source==N84_NONE {h.source=kind;h.first=t.v[1];}
+      h.sources+=1;
+    }
+    i+=1;
+  }
+  h.status=N84_OK;return h;
+}
+// book:end read

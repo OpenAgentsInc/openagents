@@ -1,0 +1,38 @@
+each event's id
+M: 35537e21cc60eff63bfc8172fa9275886b44a91400a773f0f2ca8f2fd20c8588, verified true
+T: a3af333a2ceac728c1b3040956fee0a5985f0130eebf258fb50cf384472aa59c, verified true
+C: 038e8315eb5b69d79cac822ac96c35625596ea129c64ca8e6efa3fc504d2ff10, verified true
+R1: 20469982e6bda3e424e1722fd059533cee76e907f696f71f15636c21b74ca30a, verified true
+R2: 38e4f7ba79c12ebc1cb0b4e72e775f9fabbdd66413b9cf760355a7624bd92647, verified true
+P: 84d2f2d793dc2d1b63c07b8d530cd70475d7643755fcbd16917affbb1fe2995f, verified true
+V1: e627ce2ca962ac1d905b784ee56bbd80bbe0b55299eca2bd44c1dcfcc9cb920e, verified true
+V2: bcffcedc092e6c6df827a25d9f78e2b597835b936dd186689b38aefacd7c36bc, verified true
+V3: 994ba18c847bcbde267a80eee88a948d1ccae9e2a1756e656a790014e006e8b2, verified true
+V4: e574ec313ae7284bb8180998207aa237f078efffd1bb0e24264a8ba32f446204, verified true
+H: 8cfe87ca81c18c1532a4ab7024b555b41ae9f93279cec13029b9135e337e4cb5, verified true
+calendar events
+M: ok, kind 31922, "Nostr meetup", days 20777 to 20779, participants 1, by Alice
+T: ok, kind 31923, "Planning call", seconds 1795280400 to 1795291200, America/Chicago to America/Chicago, D tags 1, participants 0, by Alice
+C: ok, "Meetups", 2 events: 31922 meetup by Alice; 31923 call by Alice;
+RSVPs
+R1: ok, accepted, fb busy, to 31922 meetup by Alice, by Bob
+R2: ok, declined, fb absent, to 31922 meetup by Alice, by Carol
+the poll and its responses
+P: ok, single choice, qj518h583 Yay, gga6cdnqj Nay, ends at 1761690000
+V1: ok, by Bob at T0+60, chooses qj518h583, to P
+V2: ok, by Carol at T0+120, chooses zzz qj518h583, to P
+V3: ok, by Bob at T0+300, chooses gga6cdnqj, to P
+V4: ok, by Carol at T0+7200, chooses gga6cdnqj, to P
+tally: Yay 1, Nay 1, voters 2, blank 0, superseded 1, late 1, ignored 1, repeated 0, refused 0
+highlight
+H: ok, source r https://example.com/protocol, sources 1, authors 1, mentions 0, context true, by Erin
+refusals
+date event ending before it starts: end not after start at tag 3
+date event on 2026-02-30: bad date at tag 2
+time event ending as it starts: end not after start at tag 3
+time event without a D tag: missing D
+RSVP with status maybe: unknown status at tag 2
+poll of type ranked: unknown poll type at tag 2
+poll with a repeated option id: repeated option id at tag 1
+response without an e tag: missing
+highlight of a short event id: bad tag at tag 0

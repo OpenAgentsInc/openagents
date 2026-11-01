@@ -1,0 +1,113 @@
+// The checks of calendars-polls.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/calendars-polls.coax --run-steps 250000000
+#load "../calendars-polls.coax";
+
+// book:begin check
+// The ids from a Python script written from NIP-01, NIP-52, NIP-88 and
+// NIP-84 (it shares no code with Coax): hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False), over the same events, with
+// the RSVP's and the responses' tags written by hand in Python.
+PY_ID :: [EVENTS] string.[
+  "35537e21cc60eff63bfc8172fa9275886b44a91400a773f0f2ca8f2fd20c8588",
+  "a3af333a2ceac728c1b3040956fee0a5985f0130eebf258fb50cf384472aa59c",
+  "038e8315eb5b69d79cac822ac96c35625596ea129c64ca8e6efa3fc504d2ff10",
+  "20469982e6bda3e424e1722fd059533cee76e907f696f71f15636c21b74ca30a",
+  "38e4f7ba79c12ebc1cb0b4e72e775f9fabbdd66413b9cf760355a7624bd92647",
+  "84d2f2d793dc2d1b63c07b8d530cd70475d7643755fcbd16917affbb1fe2995f",
+  "e627ce2ca962ac1d905b784ee56bbd80bbe0b55299eca2bd44c1dcfcc9cb920e",
+  "bcffcedc092e6c6df827a25d9f78e2b597835b936dd186689b38aefacd7c36bc",
+  "994ba18c847bcbde267a80eee88a948d1ccae9e2a1756e656a790014e006e8b2",
+  "e574ec313ae7284bb8180998207aa237f078efffd1bb0e24264a8ba32f446204",
+  "8cfe87ca81c18c1532a4ab7024b555b41ae9f93279cec13029b9135e337e4cb5"];
+SIG :: "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+// Event k with Python's id and a zero signature, read with its id
+// recomputed; the signature is not checked.
+py :: (k: int, poll: NostrEvent, out: [] u8, scratch: [] u8) -> NostrEvent {
+  tags: [1024] u8;
+  n := json_raw(out, 0, "{\"id\":\""); n = json_raw(out, n, PY_ID[k]);
+  n = json_raw(out, n, "\",\"pubkey\":\""); n = json_raw(out, n, PUB[WHO[k]]);
+  n = json_raw(out, n, "\",\"created_at\":"); n = json_write_int(out, n, T0 + AT[k]);
+  n = json_raw(out, n, ",\"kind\":"); n = json_write_int(out, n, KIND[k]);
+  n = json_raw(out, n, ",\"tags\":"); n = json_raw(out, n, tags_of(k, poll, tags[..]));
+  n = json_raw(out, n, ",\"content\":"); n = json_write_string(out, n, CONTENT[k]);
+  n = json_raw(out, n, ",\"sig\":\""); n = json_raw(out, n, SIG); n = json_raw(out, n, "\"}");
+  #assert n > 0;
+  return nostr_event_read(cast(string) out[0..<n], scratch, false);
+}
+read_all :: (ev: [] NostrEvent, buf: [][2048] u8) {
+  scratch: [4096] u8; none: NostrEvent;
+  ev[5] = py(5, none, buf[5][..], scratch[..]);   // the poll first: responses name it
+  for k: 0..<EVENTS { if k != 5 { ev[k] = py(k, ev[5], buf[k][..], scratch[..]); } }
+}
+
+#test "the ids are Python's" {
+  buf: [EVENTS][2048] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..]);
+  for k: 0..<EVENTS { #assert ev[k].error == NE_OK && ns_equal32(ev[k].computed_id, ev[k].id); }
+}
+
+// The tally by hand. P ends at T0+3600. V4 (Carol, T0+7200) is late and
+// is dropped first. Bob has V1 (T0+60, Yay) and V3 (T0+300, Nay): V3 is
+// newer, V1 is superseded. Carol has V2 (T0+120): "zzz" is no option and
+// is ignored, then Yay. Yay 1 (Carol), Nay 1 (Bob). Python's tally, written
+// from NIP-88's text, gives the same.
+#test "the poll tally matches the hand count, in any order" {
+  buf: [EVENTS][2048] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..]);
+  t := n88_tally(ev[5], ev[..]);
+  #assert t.status == N88_OK && t.counts[0] == 1 && t.counts[1] == 1 && t.voters == 2;
+  #assert t.superseded == 1 && t.late == 1 && t.ignored == 1 && t.blank == 0 && t.repeated == 0 && t.refused == 0;
+  rev: [EVENTS] NostrEvent; for k: 0..<EVENTS { rev[k] = ev[EVENTS - 1 - k]; }
+  t = n88_tally(ev[5], rev[..]); #assert t.counts[0] == 1 && t.counts[1] == 1 && t.superseded == 1 && t.late == 1;
+  // Without V3, Bob's Yay stands: Yay 2. Without V2, only Bob votes.
+  some: [3] NostrEvent; some[0] = ev[6]; some[1] = ev[7]; some[2] = ev[9];
+  t = n88_tally(ev[5], some[..]); #assert t.counts[0] == 2 && t.counts[1] == 0 && t.late == 1 && t.superseded == 0;
+  some[1] = ev[8]; t = n88_tally(ev[5], some[..]); #assert t.counts[0] == 0 && t.counts[1] == 1 && t.voters == 1;
+  // V4 twice is still one late vote each time it appears, never counted.
+  some[0] = ev[9]; some[1] = ev[9]; some[2] = ev[7];
+  t = n88_tally(ev[5], some[..]); #assert t.counts[0] == 1 && t.late == 2 && t.voters == 1;
+}
+
+// Dates by hand and by Python's datetime: 2026-11-20 is 20777 days after
+// 1970-01-01, 2026-11-22 is 20779. 1795280400 / 86400 = 20778.7, so the
+// call's day is 20778.
+#test "the calendar readings match the hand values" {
+  buf: [EVENTS][2048] u8; ev: [EVENTS] NostrEvent; read_all(ev[..], buf[..]);
+  m := n52_read(ev[0]); #assert m.status == N52_OK && m.start == 20777 && m.end == 20779 && m.end - m.start == 2;
+  c := n52_read(ev[1]); #assert c.status == N52_OK && c.end - c.start == 10800 && c.start / 86400 == 20778;
+  l := n52_calendar(ev[2]); #assert l.status == N52_OK && l.n == 2 && ns_equal32(l.events[0].author, key_of(ALICE));
+  r := n52_rsvp(ev[3]); #assert r.status == N52_OK && r.answer == N52_ACCEPTED && r.fb == N52_BUSY && n32_is(r.to.d, "meetup");
+  r = n52_rsvp(ev[4]); #assert r.status == N52_OK && r.answer == N52_DECLINED && r.fb == -1;
+  h := n84_read(ev[10]); #assert h.status == N84_OK && h.source == N84_R && h.authors == 1;
+}
+
+// NIP-88's example response, as published. Its id does not match its
+// content: Python computes b75ed405... for it, and so does Coax, which
+// refuses the event (NE_ID). Its tags still read as the NIP describes.
+#test "NIP-88's published response: the id doesn't recompute, the tags read" {
+  text := "{\"content\":\"\",\"created_at\":1720097117,\"id\":\"60a005e32e9596c3f544a841a9bc4e46d3020ca3650d6a739c95c1568e33f6d8\",\"kind\":1018,\"pubkey\":\"1bc70a0148b3f316da33fe7e89f23e3e71ac4ff998027ec712b905cd24f6a411\",\"sig\":\"30071a633c65db8f3a075c7a8de757fbd8ce65e3607f4ba287fe6d7fbf839a380f94ff4e826fbba593f6faaa13683b7ea9114ade140720ecf4927010ebf3e44f\",\"tags\":[[\"e\",\"1fc80cf813f1af33d5a435862b7ef7fb96b47e68a48f1abcadf8081f5a545550\"],[\"response\",\"gga6cdnqj\"],[\"response\",\"m3agjsdq1\"]]}";
+  scratch: [4096] u8; e := nostr_event_read(text, scratch[..], false);
+  python: [32] u8; decode_hex("b75ed405a7b6a5627234c69b321f6c418dbc28ba8a0a2a9d208c09a52790330b", python[..]);
+  #assert e.error == NE_ID && ns_equal32(e.computed_id, python);
+  p := ne_parse(text); r := n88_response(p);
+  #assert r.status == N88_OK && r.n == 2 && n32_is(r.choices[0], "gga6cdnqj") && r.poll[0] == 0x1f;
+  // Against the NIP's example poll, singlechoice: Nay; m3agjsdq1 ignored.
+  b: [1024] u8;
+  poll := unsigned(1068, "[[\"option\",\"qj518h583\",\"Yay\"],[\"option\",\"gga6cdnqj\",\"Nay\"],[\"polltype\",\"singlechoice\"]]", b[..]);
+  decode_hex("1fc80cf813f1af33d5a435862b7ef7fb96b47e68a48f1abcadf8081f5a545550", poll.id[..]);
+  set: [1] NostrEvent; set[0] = p;
+  t := n88_tally(poll, set[..]); #assert t.counts[1] == 1 && t.counts[0] == 0 && t.ignored == 1;
+}
+
+// NIP-52's and NIP-84's examples, placeholders filled in.
+#test "NIP-52's and NIP-84's examples read as the NIPs say" {
+  b: [2048] u8;
+  e := n52_read(unsigned(31923, "[[\"d\",\"x\"],[\"title\",\"t\"],[\"summary\",\"s\"],[\"image\",\"https://i\"],[\"start\",\"7132237200\"],[\"end\",\"7132240800\"],[\"D\",\"82549\"],[\"start_tzid\",\"America/Costa_Rica\"],[\"end_tzid\",\"America/Costa_Rica\"],[\"location\",\"l\"],[\"g\",\"9q8yy\"],[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"wss://relay.example.com\",\"host\"]]", b[..]));
+  #assert e.status == N52_OK && e.start / 86400 == 82549 && e.participants == 1 && n32_is(e.end_tzid, "America/Costa_Rica");
+  r := n52_rsvp(unsigned(31925, "[[\"e\",\"35537e21cc60eff63bfc8172fa9275886b44a91400a773f0f2ca8f2fd20c8588\",\"wss://relay.example.com\"],[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:meetup\",\"wss://relay.example.com\"],[\"d\",\"x\"],[\"status\",\"tentative\"],[\"fb\",\"free\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"wss://relay.example.com\"]]", b[..]));
+  #assert r.status == N52_OK && r.answer == N52_TENTATIVE && r.fb == N52_FREE && r.has_revision && r.has_author;
+  h := n84_read(unsigned(9802, "[[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"wss://relay.example.com\",\"author\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"wss://relay.example.com\",\"author\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"wss://relay.example.com\",\"editor\"]]", b[..]));
+  #assert h.status == N84_OK && h.authors == 3 && h.source == N84_NONE;
+}
+// book:end check

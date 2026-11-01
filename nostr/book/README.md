@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 69 are implemented and 35 are design drafts.
+Of the 104 chapters, 70 are implemented and 34 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -248,7 +248,7 @@ NIP and every Block (Buzz) NIP, grouped by subject and ordered by dependency.
 | [55. Labels, reports and trusted assertions](ch055-labels-reports-and-trusted-assertions.md) | Runnable: native C | NIP-32 kind 1985 labels in `L` namespaces, NIP-56 kind 1984 reports with report types, and NIP-85 kinds 30382–30385 assertions from declared providers (kind 10040). |
 | [56. Proof of work](ch056-proof-of-work.md) | Runnable: native C | NIP-13 difficulty as the number of leading zero bits of the event ID, the `nonce` tag with its target, and relay admission by `pow:` reason. |
 | [57. Media and files](ch057-media-and-files.md) | Unimplemented: design draft | `imeta` tags (NIP-92), kind 1063 file metadata (NIP-94), picture (20) and video (21, 22, 34235, 34236) events, voice messages (1222, 1244), Blossom servers (kind 10063) and the deprecated NIP-96. |
-| [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) | Unimplemented: design draft | NIP-52 date (31922) and time (31923) events, calendars (31924) and RSVPs (31925); NIP-88 polls (1068) and responses (1018); NIP-84 highlights (9802). |
+| [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) | Runnable: native C | NIP-52 date (31922) and time (31923) events, calendars (31924) and RSVPs (31925); NIP-88 polls (1068) and responses (1018); NIP-84 highlights (9802). |
 | [59. Groups and communities](ch059-groups-and-communities.md) | Unimplemented: design draft | NIP-29 relay-based groups with `h` tags, moderation kinds 9000–9022 and relay-signed metadata 39000–39005; NIP-7D forum threads (kind 11); NIP-C7 chats (kind 9); and the unrecommended NIP-72 and NIP-28. |
 | [60. Private messages](ch060-private-messages.md) | Unimplemented: design draft | NIP-17 kind 14 chat and kind 15 file messages sent as gift wraps, kind 10050 DM relay lists, NIP-A4 kind 24 public messages, and the unrecommended NIP-EE MLS groups. |
 | [61. Live activities](ch061-live-activities.md) | Runnable: native C | NIP-53 kind 30311 live events with `streaming`, `status` and participant roles, kind 1311 live chat, and kind 30312/30313 meeting spaces and rooms with kind 10312 presence. |

@@ -1,0 +1,330 @@
+// NIP-88 polls read from a parsed event through nip32's reader for tags of
+// any name: polls (kind 1068) with option tags, a poll type and an end
+// time, responses (kind 1018) that name the poll in an e tag and choose
+// options in response tags, a writer for a response's tags, and the tally.
+//
+// The tally follows NIP-88's counting rule. A response counts only when it
+// names the poll and, if the poll has endsAt, its created_at is at most
+// endsAt. Of the responses that count, each pubkey has one: the one with the
+// largest created_at. NIP-88's own example code keeps whichever of two
+// equal timestamps it saw first; this tally breaks the tie as NIP-01 does
+// for replaceable events, with the lowest id, so the result never depends
+// on the order events arrive in. A late response never replaces an earlier
+// one that counted.
+//
+// Inside the counted response, option ids the poll doesn't define are
+// ignored. A singlechoice poll counts the first response tag that names an
+// option the poll defines; a multiplechoice poll counts each option it
+// names, once. A counted response that names no option is blank: it still
+// replaces its author's earlier responses.
+//
+// Not checked here: signatures (the caller verifies the events it passes),
+// the relays a poll asks for, responses dated before the poll, and the
+// follow sets or web-of-trust curation NIP-88 suggests.
+#load "nip32.coax";
+#authority;
+
+N88_OK :: 0; N88_EVENT :: 1; N88_KIND :: 2; N88_OPTION :: 3; N88_DUPLICATE :: 4;
+N88_TYPE :: 5; N88_TIME :: 6; N88_MISSING :: 7; N88_TAG :: 8; N88_LIMIT :: 9;
+N88_KIND_POLL :: 1068; N88_KIND_RESPONSE :: 1018;
+N88_MAX_OPTIONS :: 8; N88_MAX_CHOICES :: 8;
+
+// book:begin record
+N88Option :: struct {id:N32Text; label:N32Text;}
+N88Poll :: struct {
+  status:int=N88_EVENT; at:int=-1;            // the refusing tag
+  options:[N88_MAX_OPTIONS]N88Option; n:int;
+  single:bool=true;                           // no polltype: singlechoice
+  has_end:bool; ends_at:int;                  // endsAt, Unix seconds
+  relays:int;                                 // relay tags
+}
+N88Response :: struct {
+  status:int=N88_EVENT; at:int=-1;
+  poll:[32]u8;                                // the first e tag
+  choices:[N88_MAX_CHOICES]N32Text; n:int;    // response tags, in order
+}
+N88Tally :: struct {
+  status:int=N88_OK;                          // the poll's, when it doesn't read
+  counts:[N88_MAX_OPTIONS]int;                // votes per option, in poll order
+  voters:int;                                 // pubkeys with a counted response
+  blank:int;                                  // counted responses naming no option
+  superseded:int;                             // older responses by the same pubkey
+  late:int;                                   // responses after endsAt
+  ignored:int;                                // option ids the poll doesn't define
+  repeated:int;                               // a response already in the set
+  refused:int;                                // kind 1018 events that don't read
+}
+// book:end record
+
+N88_T_POLL :: "[[\"option\",\"qj518h583\",\"Yay\"],[\"option\",\"gga6cdnqj\",\"Nay\"],[\"relay\",\"wss://relay.example.com\"],[\"polltype\",\"singlechoice\"],[\"endsAt\",\"1000\"]]";
+
+#test "NIP-88's example poll and response" {
+  p:=n88_poll(n32_event(1068,"[[\"option\",\"qj518h583\",\"Yay\"],[\"option\",\"gga6cdnqj\",\"Nay\"],[\"relay\",\"<relay url1>\"],[\"relay\",\"<relay url2>\"],[\"polltype\",\"singlechoice\"]]"));
+  #assert p.status==N88_OK && p.n==2 && n32_is(p.options[0].id,"qj518h583") && n32_is(p.options[0].label,"Yay") && n32_is(p.options[1].label,"Nay");
+  #assert p.single && !p.has_end && p.relays==2 && p.at== -1;
+  r:=n88_response(n32_event(1018,"[[\"e\",\"1fc80cf813f1af33d5a435862b7ef7fb96b47e68a48f1abcadf8081f5a545550\"],[\"response\",\"gga6cdnqj\"],[\"response\",\"m3agjsdq1\"]]"));
+  #assert r.status==N88_OK && r.poll[0]==0x1f && r.poll[31]==0x50 && r.n==2 && n32_is(r.choices[0],"gga6cdnqj") && n32_is(r.choices[1],"m3agjsdq1");
+}
+#test "polls: types, end time, options" {
+  p:=n88_poll(n32_event(1068,N88_T_POLL));#assert p.status==N88_OK && p.single && p.has_end && p.ends_at==1000;
+  p=n88_poll(n32_event(1068,"[[\"polltype\",\"multiplechoice\"],[\"option\",\"a\",\"A\"],[\"option\",\"B2\"],[\"endsAt\",\"0\"]]"));
+  #assert p.status==N88_OK && !p.single && p.has_end && p.ends_at==0 && p.n==2 && p.options[1].label.n==0 && p.relays==0;
+  // The first polltype and endsAt count.
+  p=n88_poll(n32_event(1068,"[[\"option\",\"a\"],[\"polltype\",\"singlechoice\"],[\"polltype\",\"multiplechoice\"],[\"endsAt\",\"5\"],[\"endsAt\",\"6\"]]"));
+  #assert p.status==N88_OK && p.single && p.ends_at==5;
+  p=n88_poll(n32_event(1068,"[[\"option\",\"a\"],[\"polltype\",\"multiplechoice\"],[\"polltype\",\"singlechoice\"]]"));#assert p.status==N88_OK && !p.single;
+  #assert n88_alnum("az09AZ") && !n88_alnum("") && !n88_alnum("a-b") && !n88_alnum("a b") && !n88_alnum("/") && !n88_alnum(":") && !n88_alnum("@") && !n88_alnum("[") && !n88_alnum("`") && !n88_alnum("{");
+}
+#test "poll refusals" {
+  p:=n88_poll(n32_event(1068,"[[\"option\",\"a\"],[\"polltype\",\"ranked\"]]"));#assert p.status==N88_TYPE && p.at==1;
+  p=n88_poll(n32_event(1068,"[[\"option\",\"a\"],[\"endsAt\",\"soon\"]]"));#assert p.status==N88_TIME && p.at==1;
+  p=n88_poll(n32_event(1068,"[[\"option\",\"a\"],[\"endsAt\",\"-1\"]]"));#assert p.status==N88_TIME;
+  p=n88_poll(n32_event(1068,"[[\"option\",\"a\"],[\"option\",\"a\",\"again\"]]"));#assert p.status==N88_DUPLICATE && p.at==1;
+  p=n88_poll(n32_event(1068,"[[\"option\",\"a-1\",\"A\"]]"));#assert p.status==N88_OPTION && p.at==0;
+  p=n88_poll(n32_event(1068,"[[\"option\"]]"));#assert p.status==N88_OPTION;
+  p=n88_poll(n32_event(1068,"[[\"polltype\",\"singlechoice\"]]"));#assert p.status==N88_MISSING && p.at== -1;
+  p=n88_poll(n32_event(1018,N88_T_POLL));#assert p.status==N88_KIND && p.at== -1;
+  none:NostrEvent;#assert n88_poll(none).status==N88_EVENT;
+  b:=n32_event(1068,"[]");b.original="[[\"option\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  p=n88_poll(b);#assert p.status==N88_EVENT && p.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"option\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  p=n88_poll(n32_event(1068,cast(string)long[0..<n]));#assert p.status==N88_LIMIT && p.at==0;
+  #assert n88_poll(n32_event(1068,"[[\"option\",\"1\"],[\"option\",\"2\"],[\"option\",\"3\"],[\"option\",\"4\"],[\"option\",\"5\"],[\"option\",\"6\"],[\"option\",\"7\"],[\"option\",\"8\"]]")).n==8;
+  p=n88_poll(n32_event(1068,"[[\"option\",\"1\"],[\"option\",\"2\"],[\"option\",\"3\"],[\"option\",\"4\"],[\"option\",\"5\"],[\"option\",\"6\"],[\"option\",\"7\"],[\"option\",\"8\"],[\"option\",\"9\"]]"));#assert p.status==N88_LIMIT && p.at==8;
+}
+#test "responses: the first e tag, response tags in order, refusals" {
+  r:=n88_response(n32_event(1018,"[[\"response\",\"b\"],[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\"],[\"e\",\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"],[\"response\",\"a\"]]"));
+  #assert r.status==N88_OK && r.poll[0]==0xaa && r.n==2 && n32_is(r.choices[0],"b") && n32_is(r.choices[1],"a");
+  r=n88_response(n32_event(1018,"[[\"response\",\"a\"]]"));#assert r.status==N88_MISSING && r.at== -1;
+  r=n88_response(n32_event(1018,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]]"));#assert r.status==N88_MISSING;
+  r=n88_response(n32_event(1018,"[[\"e\",\"aaaa\"],[\"response\",\"a\"]]"));#assert r.status==N88_TAG && r.at==0;
+  r=n88_response(n32_event(1018,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"],[\"e\",\"x\"],[\"response\",\"a\"]]"));#assert r.status==N88_OK;
+  #assert n88_response(n32_event(1068,"[]")).status==N88_KIND;
+  none:NostrEvent;#assert n88_response(none).status==N88_EVENT;
+  b:=n32_event(1018,"[]");b.original="[[\"response\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  r=n88_response(b);#assert r.status==N88_EVENT && r.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"response\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  r=n88_response(n32_event(1018,cast(string)long[0..<n]));#assert r.status==N88_LIMIT && r.at==0;
+  buf:[1024]u8;m:=json_raw(buf[..],0,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"]");
+  for i:0..<8 {m=json_raw(buf[..],m,",[\"response\",\"a\"]");}
+  #assert n88_response(n32_event(1018,cast(string)buf[0..<json_raw(buf[..],m,"]")])).n==8;
+  m=json_raw(buf[..],m,",[\"response\",\"a\"]]");
+  r=n88_response(n32_event(1018,cast(string)buf[0..<m]));#assert r.status==N88_LIMIT && r.at==9;
+}
+#test "the response writer" {
+  id:[32]u8;for i:0..<32 {id[i]=0xab;}
+  out:[256]u8;choices:=[2]string.["qj518h583","gga6cdnqj"];
+  n:=n88_response_tags(id,choices[..],out[..]);
+  #assert n>0 && cast(string)out[0..<n]=="[[\"e\",\"abababababababababababababababababababababababababababababababab\"],[\"response\",\"qj518h583\"],[\"response\",\"gga6cdnqj\"]]";
+  r:=n88_response(n32_event(1018,cast(string)out[0..<n]));#assert r.status==N88_OK && r.poll[0]==0xab && r.n==2;
+  #assert n88_response_tags(id,choices[0..<0],out[..])== -1;
+  #assert n88_response_tags(id,choices[..],out[0..<n-1])== -1 && n88_response_tags(id,choices[..],out[0..<n])==n;
+  many:[9]string;for i:0..<9 {many[i]="a";}
+  #assert n88_response_tags(id,many[0..<8],out[..])>0 && n88_response_tags(id,many[..],out[..])== -1;
+}
+#test "tally: latest per pubkey, ties by lowest id, late votes, invalid options" {
+  poll:=n88_at(n32_event(1068,N88_T_POLL),0x01,0x0f,0);
+  buf:[8][512]u8;set:[8]NostrEvent;
+  // Responses to the poll id 0f...0f.
+  set[0]=n88_vote("qj518h583",0x02,0x10,100,buf[0][..]);        // superseded by set[2]
+  set[1]=n88_vote("zzz\"],[\"response\",\"qj518h583",0x03,0x11,200,buf[1][..]);  // invalid then yay
+  set[2]=n88_vote("gga6cdnqj",0x02,0x12,300,buf[2][..]);        // latest for 02
+  set[3]=n88_vote("gga6cdnqj",0x03,0x13,1001,buf[3][..]);       // late: 03 keeps yay
+  set[4]=n88_vote("qj518h583",0x04,0x14,1000,buf[4][..]);       // exactly at endsAt: counts
+  set[5]=n88_at(n32_event_in(1018,"[[\"e\",\"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\"],[\"response\",\"gga6cdnqj\"]]",buf[5][..]),0x05,0x15,10);   // another poll
+  set[6]=n88_at(n32_event_in(1018,"[[\"response\",\"gga6cdnqj\"]]",buf[6][..]),0x05,0x16,10);   // refused
+  set[7]=n88_at(n32_event_in(1,"[]",buf[7][..]),0x05,0x17,10);  // not a response
+  t:=n88_tally(poll,set[..]);
+  #assert t.status==N88_OK && t.counts[0]==2 && t.counts[1]==1 && t.voters==3 && t.superseded==1 && t.late==1 && t.ignored==1 && t.refused==1 && t.blank==0;
+  rev:[8]NostrEvent;for k:0..<8 {rev[k]=set[7-k];}
+  t=n88_tally(poll,rev[..]);
+  #assert t.counts[0]==2 && t.counts[1]==1 && t.voters==3 && t.superseded==1 && t.late==1 && t.ignored==1 && t.refused==1;
+  // Equal timestamps: the lower id wins, in either order.
+  pair:[2]NostrEvent;
+  pair[0]=n88_vote("qj518h583",0x02,0x21,50,buf[0][..]);pair[1]=n88_vote("gga6cdnqj",0x02,0x20,50,buf[1][..]);
+  t=n88_tally(poll,pair[..]);#assert t.counts[1]==1 && t.counts[0]==0 && t.superseded==1 && t.voters==1;
+  swap:[2]NostrEvent;swap[0]=pair[1];swap[1]=pair[0];
+  t=n88_tally(poll,swap[..]);#assert t.counts[1]==1 && t.counts[0]==0 && t.superseded==1;
+  // A higher id at a later time still wins.
+  pair[0]=n88_vote("qj518h583",0x02,0x21,51,buf[0][..]);
+  t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.counts[1]==0;
+  // A blank latest response replaces a real vote.
+  pair[0]=n88_vote("qj518h583",0x02,0x20,50,buf[0][..]);pair[1]=n88_vote("nope",0x02,0x21,60,buf[1][..]);
+  t=n88_tally(poll,pair[..]);#assert t.counts[0]==0 && t.blank==1 && t.voters==1 && t.ignored==1 && t.superseded==1;
+  // Another pubkey at the same time is no rival; a late or refused one never is.
+  pair[1]=n88_vote("gga6cdnqj",0x03,0x10,50,buf[1][..]);t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.counts[1]==1 && t.superseded==0;
+  pair[1]=n88_vote("gga6cdnqj",0x02,0x10,2000,buf[1][..]);t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.late==1 && t.superseded==0;
+  pair[1]=n88_at(n32_event_in(1018,"[[\"e\",\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\"]]",buf[1][..]),0x02,0x10,60);
+  t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.refused==1 && t.superseded==0;
+  pair[1]=n88_at(n32_event_in(1018,"[[\"e\",\"0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e\"],[\"response\",\"gga6cdnqj\"]]",buf[1][..]),0x02,0x10,60);
+  t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.superseded==0;
+  pair[1]=n88_at(n32_event_in(1,"[[\"e\",\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\"],[\"response\",\"gga6cdnqj\"]]",buf[1][..]),0x02,0x10,60);
+  t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.superseded==0 && t.refused==0;
+  // A rival exactly at endsAt still replaces.
+  pair[0]=n88_vote("qj518h583",0x02,0x20,900,buf[0][..]);pair[1]=n88_vote("gga6cdnqj",0x02,0x21,1000,buf[1][..]);
+  t=n88_tally(poll,pair[..]);#assert t.counts[1]==1 && t.counts[0]==0 && t.superseded==1;
+  // The same response twice counts once.
+  pair[1]=pair[0];t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.voters==1 && t.repeated==1 && t.superseded==0;
+  // Ids that differ only in their first or only in their last byte.
+  pair[0]=n88_vote("qj518h583",0x02,0x20,50,buf[0][..]);pair[1]=n88_vote("gga6cdnqj",0x02,0x20,50,buf[1][..]);
+  pair[1].id[0]=0x1f;t=n88_tally(poll,pair[..]);#assert t.counts[1]==1 && t.counts[0]==0;
+  pair[1].id[0]=0x21;t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.counts[1]==0;
+  pair[1].id[0]=0x20;pair[1].id[31]=0x1f;t=n88_tally(poll,pair[..]);#assert t.counts[1]==1 && t.counts[0]==0;
+  pair[1].id[31]=0x21;t=n88_tally(poll,pair[..]);#assert t.counts[0]==1 && t.counts[1]==0 && t.superseded==1;
+  // A poll that doesn't read tallies nothing.
+  t=n88_tally(n88_at(n32_event(1068,"[]"),0x01,0x0f,0),set[..]);#assert t.status==N88_MISSING && t.voters==0;
+}
+#test "tally: singlechoice takes the first valid option; multiplechoice each once" {
+  buf:[4][512]u8;one:[1]NostrEvent;
+  single:=n88_at(n32_event(1068,"[[\"option\",\"a\"],[\"option\",\"b\"],[\"option\",\"c\"]]"),0x01,0x0f,0);
+  multi:=n88_at(n32_event(1068,"[[\"option\",\"a\"],[\"option\",\"b\"],[\"option\",\"c\"],[\"polltype\",\"multiplechoice\"]]"),0x01,0x0f,0);
+  one[0]=n88_vote("x\"],[\"response\",\"c\"],[\"response\",\"a\"],[\"response\",\"c",0x02,0x10,5,buf[0][..]);
+  t:=n88_tally(single,one[..]);#assert t.counts[2]==1 && t.counts[0]==0 && t.ignored==1 && t.voters==1;
+  t=n88_tally(multi,one[..]);#assert t.counts[2]==1 && t.counts[0]==1 && t.counts[1]==0 && t.ignored==1;
+  // No endsAt: any time counts.
+  one[0]=n88_vote("b",0x02,0x10,999999999,buf[0][..]);t=n88_tally(multi,one[..]);#assert t.counts[1]==1 && t.late==0;
+  sp:=n88_poll(single);#assert n88_index(sp,"c")==2 && n88_index(sp,"d")== -1 && n88_index(sp,"")== -1;
+}
+
+// ---- test events: a poll or response with this author, id and time.
+n88_at :: (e:NostrEvent,author:u8,id:u8,created_at:int)->NostrEvent {r:=n32_at(e,author,id);r.created_at=created_at;return r;}
+// A response to the poll 0f...0f choosing option, written into out.
+n88_vote :: (option:string,author:u8,id:u8,created_at:int,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,"[[\"e\",\"0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f\"],[\"response\",\"");
+  n=json_raw(out,n,option);n=json_raw(out,n,"\"]]");
+  e:=nt_event(cast(string)out[0..<n]);e.kind=N88_KIND_RESPONSE;return n88_at(e,author,id,created_at);
+}
+
+n88_refuse :: (p:N88Poll,status:int,at:int)->N88Poll {o:=p;o.status=status;o.at=at;return o;}
+n88_alnum :: (s:string)->bool {
+  if s.count==0 {return false;}
+  for c:s {if !((c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9')) {return false;}}
+  return true;
+}
+
+// book:begin poll
+// A poll: its options in order, its type and its end time.
+n88_poll :: (e:NostrEvent)->N88Poll {
+  p:N88Poll;if e.error!=NE_OK {return p;}
+  if e.kind!=N88_KIND_POLL {return n88_refuse(p,N88_KIND,-1);}
+  typed:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n88_refuse(p,N88_LIMIT,i);}
+    if t.error!=NT_OK {return n88_refuse(p,N88_EVENT,i);}
+    tag:=t.v[0];vt:=t.v[1];value:=cast(string)vt.b[0..<vt.n];
+    if n32_is(tag,"option") {
+      if !n88_alnum(value) {return n88_refuse(p,N88_OPTION,i);}
+      if n88_index(p,value)>=0 {return n88_refuse(p,N88_DUPLICATE,i);}
+      if p.n==N88_MAX_OPTIONS {return n88_refuse(p,N88_LIMIT,i);}
+      p.options[p.n].id=t.v[1];p.options[p.n].label=t.v[2];p.n+=1;
+    } else if n32_is(tag,"polltype") && !typed {
+      typed=true;
+      if value!="singlechoice" && value!="multiplechoice" {return n88_refuse(p,N88_TYPE,i);}
+      p.single=value=="singlechoice";
+    } else if n32_is(tag,"endsAt") && !p.has_end {
+      v:=json_int(value);
+      if !v.ok || v.value<0 {return n88_refuse(p,N88_TIME,i);}
+      p.has_end=true;p.ends_at=v.value;
+    } else if n32_is(tag,"relay") {p.relays+=1;}
+    i+=1;
+  }
+  if p.n==0 {return n88_refuse(p,N88_MISSING,-1);}
+  p.status=N88_OK;return p;
+}
+// The index of the option with this id, or -1.
+n88_index :: (p:N88Poll,id:string)->int {
+  for k:0..<p.n {if n32_is(p.options[k].id,id) {return k;}}
+  return -1;
+}
+// book:end poll
+
+// book:begin response
+// A response: the poll its first e tag names and the option ids it chooses.
+n88_response :: (e:NostrEvent)->N88Response {
+  r:N88Response;if e.error!=NE_OK {return r;}
+  if e.kind!=N88_KIND_RESPONSE {r.status=N88_KIND;return r;}
+  has_poll:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {r.status=ifx t.error==NT_LIMIT then N88_LIMIT else N88_EVENT;r.at=i;return r;}
+    if n32_is(t.v[0],"e") && !has_poll {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {r.status=N88_TAG;r.at=i;return r;}
+      has_poll=true;r.poll=s.id;
+    } else if n32_is(t.v[0],"response") {
+      if r.n==N88_MAX_CHOICES {r.status=N88_LIMIT;r.at=i;return r;}
+      r.choices[r.n]=t.v[1];r.n+=1;
+    }
+    i+=1;
+  }
+  if !has_poll || r.n==0 {r.status=N88_MISSING;return r;}
+  r.status=N88_OK;return r;
+}
+// book:end response
+
+// book:begin write
+// The tags of a response to the poll with this id choosing these option
+// ids, in order. The bytes written, or -1 for no choices, more than
+// N88_MAX_CHOICES, or too little room.
+n88_response_tags :: (poll:[32]u8,choices:[]string,out:[]u8)->int {
+  if choices.count==0 || choices.count>N88_MAX_CHOICES {return -1;}
+  hex:[64]u8;id:=poll;h:=hex_encode_checked(cast(string)id[..],hex[..],false);
+  n:=json_raw(out,0,"[[\"e\",\"");n=json_raw(out,n,cast(string)hex[..]);n=json_raw(out,n,"\"]");
+  for c:choices {n=json_raw(out,n,",[\"response\",");n=json_write_string(out,n,c);n=json_raw(out,n,"]");}
+  return json_raw(out,n,"]");
+}
+// book:end write
+
+// book:begin tally
+// Whether a response counts toward the poll: it reads, names the poll, and
+// is not after endsAt.
+n88_counts :: (e:NostrEvent,poll_id:[32]u8,p:N88Poll)->bool {
+  if e.kind!=N88_KIND_RESPONSE {return false;}
+  r:=n88_response(e);
+  return r.status==N88_OK && ns_equal32(r.poll,poll_id) && (!p.has_end || e.created_at<=p.ends_at);
+}
+// Whether b replaces a: later, or as late with a lower id.
+n88_newer :: (b:NostrEvent,a:NostrEvent)->bool {
+  if b.created_at>a.created_at {return true;}
+  if b.created_at<a.created_at {return false;}
+  for i:0..<32 {
+    if b.id[i]<a.id[i] {return true;}
+    if b.id[i]>a.id[i] {return false;}
+  }
+  return false;   // the same event
+}
+// The poll's result over the responses in set: one counted response per
+// pubkey, the newest before the end.
+n88_tally :: (poll:NostrEvent,set:[]NostrEvent)->N88Tally {
+  t:N88Tally;p:=n88_poll(poll);
+  if p.status!=N88_OK {t.status=p.status;return t;}
+  for i:0..<set.count {
+    if set[i].kind!=N88_KIND_RESPONSE {continue;}
+    r:=n88_response(set[i]);
+    if r.status!=N88_OK {t.refused+=1;continue;}
+    if !ns_equal32(r.poll,poll.id) {continue;}
+    if p.has_end && set[i].created_at>p.ends_at {t.late+=1;continue;}
+    repeat:=false;
+    for k:0..<i {if ns_equal32(set[k].id,set[i].id) {repeat=true;}}
+    if repeat {t.repeated+=1;continue;}
+    replaced:=false;
+    for k:0..<set.count {
+      if k!=i && ns_equal32(set[k].public_key,set[i].public_key) && n88_counts(set[k],poll.id,p) && n88_newer(set[k],set[i]) {replaced=true;}
+    }
+    if replaced {t.superseded+=1;continue;}
+    t.voters+=1;
+    chosen:[N88_MAX_OPTIONS]bool;any:=false;
+    for c:0..<r.n {
+      x:=r.choices[c];k:=n88_index(p,cast(string)x.b[0..<x.n]);
+      if k<0 {t.ignored+=1;continue;}
+      if chosen[k] || (p.single && any) {continue;}
+      chosen[k]=true;any=true;t.counts[k]+=1;
+    }
+    if !any {t.blank+=1;}
+  }
+  return t;
+}
+// book:end tally

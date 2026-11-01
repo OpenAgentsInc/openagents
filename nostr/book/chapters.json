@@ -1228,13 +1228,21 @@
    "number": 58,
    "title": "Calendars, polls and highlights",
    "file": "ch058-calendars-polls-and-highlights.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     22
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip52.coax",
+    "coax/lib/nostr/nip88.coax",
+    "coax/lib/nostr/nip84.coax",
+    "nostr/examples/calendars-polls.coax",
+    "nostr/examples/checks/calendars-polls.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

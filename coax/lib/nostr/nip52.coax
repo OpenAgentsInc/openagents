@@ -1,0 +1,446 @@
+// NIP-52 calendars read from a parsed event through tags.coax and nip32's
+// reader for tags of any name: date-based calendar events (kind 31922),
+// time-based calendar events (kind 31923), calendars (kind 31924) and RSVPs
+// (kind 31925), plus a writer for an RSVP's tags.
+//
+// A date is ISO 8601 YYYY-MM-DD, checked against the length of its month
+// in the Gregorian calendar, and read as a day number counted from
+// 1970-01-01. A time is a non-negative count of Unix seconds. Either way
+// start must be less than end when end is present: end is exclusive. With
+// no end, a date event covers its start date and a time event is an
+// instant.
+//
+// Readings where NIP-52 leaves room: the first start, end, title and d tag
+// count; a deprecated name tag is the title only when there is no title tag;
+// a time event's D tags must be day numbers and one of them must be the
+// start's day, floor(start / 86400); an RSVP's fb is read as absent when its
+// status is declined, as the NIP says it must be ignored. Nothing here
+// fetches the event an RSVP or calendar points at, verifies a signature, or
+// checks a time zone name against the IANA database: a tzid is only checked
+// for the characters such names use.
+#load "nip32.coax";
+
+N52_OK :: 0; N52_EVENT :: 1; N52_KIND :: 2; N52_TAG :: 3; N52_MISSING :: 4;
+N52_DATE :: 5; N52_TIME :: 6; N52_ORDER :: 7; N52_ZONE :: 8; N52_DAY :: 9;
+N52_REFERENCE :: 10; N52_STATUS :: 11; N52_FB :: 12; N52_LIMIT :: 13;
+N52_DATE_KIND :: 31922; N52_TIME_KIND :: 31923; N52_CALENDAR :: 31924; N52_RSVP :: 31925;
+N52_ACCEPTED :: 0; N52_DECLINED :: 1; N52_TENTATIVE :: 2;
+N52_FREE :: 0; N52_BUSY :: 1;
+N52_MAX_REFS :: 8;
+N52_DAY_SECONDS :: 86400;
+// The required tag a refusal with N52_MISSING names.
+N52_NEED_D :: 0; N52_NEED_TITLE :: 1; N52_NEED_START :: 2; N52_NEED_DAY :: 3;
+N52_NEED_A :: 4; N52_NEED_STATUS :: 5;
+N52_NEEDS :: [6] string.["d", "title", "start", "D", "a", "status"];
+N52_STATUSES :: [3] string.["accepted", "declined", "tentative"];
+N52_FBS :: [2] string.["free", "busy"];
+
+// book:begin record
+N52Date :: struct {ok:bool; day:int;}        // days since 1970-01-01
+// A calendar event, kind 31922 or 31923. start and end are day numbers for
+// 31922 and Unix seconds for 31923; end is exclusive.
+N52Event :: struct {
+  status:int=N52_EVENT; at:int=-1; tag_error:int; missing:int=-1;
+  kind:int; d:N32Text; title:N32Text;
+  start:int; end:int; has_end:bool;
+  start_tzid:N32Text; end_tzid:N32Text;      // end_tzid defaults to start_tzid
+  days:int;                                  // D tags (31923)
+  participants:int;                          // p tags
+  calendars:int;                             // a tags: requests to join a 31924
+}
+// An addressable event a calendar or an RSVP points at.
+N52Ref :: struct {kind:int; author:[32]u8; d:N32Text;}
+N52Calendar :: struct {
+  status:int=N52_EVENT; at:int=-1; tag_error:int; missing:int=-1;
+  d:N32Text; title:N32Text;
+  events:[N52_MAX_REFS]N52Ref; n:int;        // a tags to 31922 or 31923
+}
+N52Rsvp :: struct {
+  status:int=N52_EVENT; at:int=-1; tag_error:int; missing:int=-1;
+  d:N32Text; to:N52Ref;                      // the first a tag
+  has_revision:bool; revision:[32]u8;        // the e tag: one revision
+  answer:int=-1;                             // accepted, declined or tentative
+  fb:int=-1;                                 // free, busy or absent
+  has_author:bool; author:[32]u8;            // the p tag
+}
+// book:end record
+
+#test "ISO dates: shape, month lengths, leap years, day numbers" {
+  #assert n52_date("1970-01-01").ok && n52_date("1970-01-01").day==0;
+  #assert n52_date("1969-12-31").day== -1 && n52_date("2000-03-01").day==11017;
+  #assert n52_date("2024-02-29").day==19782 && n52_date("2000-02-29").day==11016;
+  #assert n52_date("2026-11-20").day==20777 && n52_date("9999-12-31").day==2932896;
+  #assert n52_date("0000-01-01").ok && n52_date("0000-01-01").day== -719528 && n52_date("0000-02-29").ok;
+  #assert n52_date("2026-01-31").ok && n52_date("2026-04-30").ok && n52_date("2026-12-31").ok;
+  #assert !n52_date("2026-02-29").ok && !n52_date("1900-02-29").ok && !n52_date("2026-04-31").ok;
+  #assert !n52_date("2026-13-01").ok && !n52_date("2026-00-10").ok && !n52_date("2026-01-00").ok && !n52_date("2026-01-32").ok;
+  #assert !n52_date("2026-1-01").ok && !n52_date("2026-01-1").ok && !n52_date("26-01-01").ok && !n52_date("2026-01-011").ok;
+  #assert !n52_date("2026/01/01").ok && !n52_date("2026-01/01").ok && !n52_date("2026-0a-01").ok && !n52_date("202a-01-01").ok;
+  #assert !n52_date("2026-01-0:").ok && !n52_date("2026-01-0a").ok && !n52_date("").ok && !n52_date("2026-01-01T00:00").ok;
+  // Each month's last day, across a leap year.
+  last:=[12]int.[31,29,31,30,31,30,31,31,30,31,30,31];
+  day:=n52_date("2024-01-01").day;
+  for m:0..<12 {
+    buf:[10]u8;n:=json_raw(buf[..],0,"2024-");buf[5]=cast(u8)('0'+(m+1)/10);buf[6]=cast(u8)('0'+(m+1)%10);buf[7]='-';
+    buf[8]=cast(u8)('0'+last[m]/10);buf[9]=cast(u8)('0'+last[m]%10);
+    d:=n52_date(cast(string)buf[..]);#assert d.ok;day+=last[m];#assert d.day==day-1;
+    buf[9]=cast(u8)(buf[9]+1);if buf[9]>'9' {buf[9]='0';buf[8]=cast(u8)(buf[8]+1);}
+    #assert !n52_date(cast(string)buf[..]).ok;
+  }
+  #assert n52_date("2025-01-01").day==day;
+}
+#test "Unix seconds and time zone names" {
+  #assert n52_seconds("0")==0 && n52_seconds("1795280400")==1795280400;
+  #assert n52_seconds("-1")== -1 && n52_seconds("01")== -1 && n52_seconds("")== -1 && n52_seconds("1.5")== -1 && n52_seconds("99999999999999999999")== -1;
+  #assert n52_zone("America/Costa_Rica") && n52_zone("Etc/GMT+5") && n52_zone("Etc/GMT-14") && n52_zone("UTC");
+  #assert !n52_zone("") && !n52_zone("Europe/Paris ") && !n52_zone("a:b") && !n52_zone("Mexico/BajaNorteé");
+  #assert n52_zone("az09AZ_/+-") && !n52_zone("@") && !n52_zone("[") && !n52_zone("`") && !n52_zone("{") && !n52_zone(".");
+}
+#test "a date event: start, end, title, the defaults" {
+  e:=n52_read(n32_event(31922,"[[\"d\",\"m1\"],[\"title\",\"Meetup\"],[\"start\",\"2026-11-20\"],[\"end\",\"2026-11-22\"],[\"location\",\"Austin\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"\",\"host\"],[\"a\",\"31924:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:cal\"],[\"start_tzid\",\"not checked here\"]]"));
+  #assert e.status==N52_OK && e.kind==31922 && n32_is(e.d,"m1") && n32_is(e.title,"Meetup") && e.start==20777 && e.end==20779 && e.has_end;
+  #assert e.participants==1 && e.calendars==1 && e.days==0 && e.start_tzid.n==0 && e.at== -1 && e.missing== -1;
+  // No end: the start date only. A name stands in for a missing title.
+  e=n52_read(n32_event(31922,"[[\"name\",\"Old\"],[\"d\",\"m1\"],[\"start\",\"2026-11-20\"],[\"start\",\"bad\"]]"));
+  #assert e.status==N52_OK && !e.has_end && e.end==20778 && n32_is(e.title,"Old");
+  e=n52_read(n32_event(31922,"[[\"title\",\"New\"],[\"name\",\"Old\"],[\"d\",\"\"],[\"start\",\"2026-11-20\"]]"));
+  #assert e.status==N52_OK && n32_is(e.title,"New") && e.d.n==0;
+  e=n52_read(n32_event(31922,"[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"],[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-11-20\"]]"));
+  #assert e.status==N52_OK && e.participants==2 && e.calendars==0;
+  e=n52_read(n32_event(31922,"[[\"d\",\"x\"],[\"title\",\"A\"],[\"title\",\"B\"],[\"start\",\"2026-11-20\"],[\"end\",\"2026-11-21\"]]"));
+  #assert e.status==N52_OK && n32_is(e.title,"A") && e.end==20778;
+}
+#test "a time event: seconds, D tags, time zones" {
+  e:=n52_read(n32_event(31923,"[[\"d\",\"t\"],[\"title\",\"Call\"],[\"start\",\"1795280400\"],[\"end\",\"1795291200\"],[\"D\",\"20778\"],[\"start_tzid\",\"America/Chicago\"]]"));
+  #assert e.status==N52_OK && e.start==1795280400 && e.end==1795291200 && e.has_end && e.days==1;
+  #assert n32_is(e.start_tzid,"America/Chicago") && n32_is(e.end_tzid,"America/Chicago");
+  e=n52_read(n32_event(31923,"[[\"d\",\"t\"],[\"title\",\"Call\"],[\"D\",\"20777\"],[\"start\",\"1795280400\"],[\"D\",\"20778\"],[\"end_tzid\",\"Europe/Paris\"],[\"start_tzid\",\"America/Chicago\"]]"));
+  #assert e.status==N52_OK && !e.has_end && e.end==e.start && e.days==2 && n32_is(e.end_tzid,"Europe/Paris");
+  // Time zero, a D tag first, D on a date event passed over.
+  #assert n52_read(n32_event(31923,"[[\"D\",\"0\"],[\"d\",\"t\"],[\"title\",\"C\"],[\"start\",\"0\"]]")).status==N52_OK;
+  #assert n52_read(n32_event(31922,"[[\"D\",\"x\"],[\"d\",\"t\"],[\"title\",\"C\"],[\"start\",\"2026-11-20\"]]")).status==N52_OK;
+  // The day boundary: 1795219200 is the first second of day 20778.
+  #assert n52_read(n32_event(31923,"[[\"d\",\"t\"],[\"title\",\"C\"],[\"start\",\"1795219200\"],[\"D\",\"20778\"]]")).status==N52_OK;
+  e=n52_read(n32_event(31923,"[[\"d\",\"t\"],[\"title\",\"C\"],[\"start\",\"1795219199\"],[\"D\",\"20778\"]]"));#assert e.status==N52_DAY && e.at== -1;
+  e=n52_read(n32_event(31923,"[[\"d\",\"t\"],[\"title\",\"C\"],[\"start\",\"1795219200\"],[\"D\",\"x\"]]"));#assert e.status==N52_DAY && e.at==3;
+  e=n52_read(n32_event(31923,"[[\"d\",\"t\"],[\"title\",\"C\"],[\"start\",\"1795219200\"]]"));#assert e.status==N52_MISSING && e.missing==N52_NEED_DAY;
+  e=n52_read(n32_event(31923,"[[\"d\",\"t\"],[\"title\",\"C\"],[\"start\",\"1795219200\"],[\"D\",\"20778\"],[\"start_tzid\",\"bad zone\"]]"));#assert e.status==N52_ZONE && e.at==4;
+  e=n52_read(n32_event(31923,"[[\"d\",\"t\"],[\"title\",\"C\"],[\"start\",\"1795219200\"],[\"D\",\"20778\"],[\"end_tzid\",\"\"]]"));#assert e.status==N52_ZONE && e.at==4;
+}
+#test "refusals: end not after start, bad dates and times, missing tags" {
+  e:=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-11-22\"],[\"end\",\"2026-11-20\"]]"));#assert e.status==N52_ORDER && e.at==3;
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"end\",\"2026-11-20\"],[\"start\",\"2026-11-20\"]]"));#assert e.status==N52_ORDER && e.at==2;
+  e=n52_read(n32_event(31923,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"100\"],[\"end\",\"100\"],[\"D\",\"0\"]]"));#assert e.status==N52_ORDER && e.at==3;
+  #assert n52_read(n32_event(31923,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"100\"],[\"end\",\"101\"],[\"D\",\"0\"]]")).status==N52_OK;
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-02-30\"]]"));#assert e.status==N52_DATE && e.at==2;
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-02-20\"],[\"end\",\"1795280400\"]]"));#assert e.status==N52_DATE && e.at==3;
+  e=n52_read(n32_event(31923,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-11-20\"]]"));#assert e.status==N52_TIME && e.at==2;
+  e=n52_read(n32_event(31923,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"10\"],[\"end\",\"x\"]]"));#assert e.status==N52_TIME && e.at==3;
+  e=n52_read(n32_event(31922,"[[\"title\",\"T\"],[\"start\",\"2026-11-20\"]]"));#assert e.status==N52_MISSING && e.missing==N52_NEED_D && e.at== -1;
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"start\",\"2026-11-20\"]]"));#assert e.status==N52_MISSING && e.missing==N52_NEED_TITLE;
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"\"],[\"start\",\"2026-11-20\"]]"));#assert e.status==N52_MISSING && e.missing==N52_NEED_TITLE;
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"T\"]]"));#assert e.status==N52_MISSING && e.missing==N52_NEED_START;
+  e=n52_read(n32_event(31924,"[]"));#assert e.status==N52_KIND && e.at== -1 && n52_read(n32_event(1,"[]")).status==N52_KIND;
+  // Bad p and a tags, an a tag to something other than a calendar.
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-11-20\"],[\"p\",\"F9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]"));#assert e.status==N52_TAG && e.tag_error==NT_HEX && e.at==3;
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-11-20\"],[\"a\",\"30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:x\"]]"));#assert e.status==N52_REFERENCE && e.at==3;
+  e=n52_read(n32_event(31922,"[[\"d\",\"m\"],[\"title\",\"T\"],[\"start\",\"2026-11-20\"],[\"a\",\"31924:f9308a\"]]"));#assert e.status==N52_TAG && e.at==3;
+  none:NostrEvent;#assert n52_read(none).status==N52_EVENT;
+  b:=n32_event(31922,"[]");b.original="[[\"d\",1]]";b.tags_from=0;b.tags_to=b.original.count;
+  e=n52_read(b);#assert e.status==N52_EVENT && e.at==0;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"title\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  e=n52_read(n32_event(31922,cast(string)long[0..<n]));#assert e.status==N52_LIMIT && e.at==0;
+}
+#test "a calendar: d, title and the events it lists" {
+  c:=n52_calendar(n32_event(31924,"[[\"d\",\"cal\"],[\"title\",\"Meetups\"],[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m1\",\"wss://r.example\"],[\"a\",\"31923:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:t\"]]"));
+  #assert c.status==N52_OK && n32_is(c.d,"cal") && n32_is(c.title,"Meetups") && c.n==2;
+  #assert c.events[0].kind==31922 && c.events[0].author[0]==0xf9 && n32_is(c.events[0].d,"m1") && c.events[1].kind==31923 && c.events[1].author[0]==0xdf && n32_is(c.events[1].d,"t");
+  c=n52_calendar(n32_event(31924,"[[\"title\",\"Empty\"],[\"d\",\"c\"],[\"title\",\"Other\"]]"));#assert c.status==N52_OK && c.n==0 && n32_is(c.title,"Empty");
+  c=n52_calendar(n32_event(31924,"[[\"d\",\"c\"],[\"title\",\"T\"],[\"a\",\"31924:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:x\"]]"));#assert c.status==N52_REFERENCE && c.at==2;
+  c=n52_calendar(n32_event(31924,"[[\"d\",\"c\"],[\"title\",\"T\"],[\"a\",\"x\"]]"));#assert c.status==N52_TAG && c.tag_error==NT_ADDRESS && c.at==2;
+  c=n52_calendar(n32_event(31924,"[[\"title\",\"T\"]]"));#assert c.status==N52_MISSING && c.missing==N52_NEED_D;
+  c=n52_calendar(n32_event(31924,"[[\"d\",\"c\"]]"));#assert c.status==N52_MISSING && c.missing==N52_NEED_TITLE;
+  #assert n52_calendar(n32_event(31922,"[]")).status==N52_KIND;
+  none:NostrEvent;#assert n52_calendar(none).status==N52_EVENT;
+  b:=n32_event(31924,"[]");b.original="[[\"t\"],[\"d\",1]]";b.tags_from=0;b.tags_to=b.original.count;c=n52_calendar(b);#assert c.status==N52_EVENT && c.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n52_calendar(n32_event(31924,cast(string)long[0..<n])).status==N52_LIMIT;
+  buf:[2048]u8;m:=json_raw(buf[..],0,"[[\"d\",\"c\"],[\"title\",\"T\"]");
+  for i:0..<8 {m=json_raw(buf[..],m,",[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m\"]");}
+  #assert n52_calendar(n32_event(31924,cast(string)buf[0..<json_raw(buf[..],m,"]")])).n==8;
+  m=json_raw(buf[..],m,",[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m\"]]");
+  c=n52_calendar(n32_event(31924,cast(string)buf[0..<m]));#assert c.status==N52_LIMIT && c.at==10;
+}
+#test "an RSVP: the event, the answer, fb ignored when declined" {
+  r:=n52_rsvp(n32_event(31925,"[[\"e\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"wss://r.example\"],[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m1\"],[\"d\",\"r1\"],[\"status\",\"accepted\"],[\"fb\",\"busy\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]"));
+  #assert r.status==N52_OK && r.answer==N52_ACCEPTED && r.fb==N52_BUSY && r.has_revision && r.revision[0]==0xaa && r.has_author && r.author[0]==0xf9;
+  #assert r.to.kind==31922 && n32_is(r.to.d,"m1") && n32_is(r.d,"r1");
+  r=n52_rsvp(n32_event(31925,"[[\"fb\",\"free\"],[\"status\",\"declined\"],[\"d\",\"r\"],[\"a\",\"31923:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:t\"]]"));
+  #assert r.status==N52_OK && r.answer==N52_DECLINED && r.fb== -1 && !r.has_revision && !r.has_author && r.to.kind==31923;
+  r=n52_rsvp(n32_event(31925,"[[\"status\",\"tentative\"],[\"status\",\"maybe\"],[\"fb\",\"free\"],[\"d\",\"r\"],[\"a\",\"31923:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:t\"],[\"a\",\"31922:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:z\"]]"));
+  #assert r.status==N52_OK && r.answer==N52_TENTATIVE && r.fb==N52_FREE && r.to.kind==31923;
+  // The first status and the first fb count, wherever they are.
+  r=n52_rsvp(n32_event(31925,"[[\"fb\",\"busy\"],[\"fb\",\"free\"],[\"x\",\"y\"],[\"status\",\"accepted\"],[\"status\",\"maybe\"],[\"d\",\"r\"],[\"a\",\"31923:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:t\"]]"));
+  #assert r.status==N52_OK && r.fb==N52_BUSY && r.answer==N52_ACCEPTED;
+  r=n52_rsvp(n32_event(31925,"[[\"status\",\"accepted\"],[\"status\",\"maybe\"],[\"d\",\"r\"],[\"a\",\"31923:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:t\"]]"));
+  #assert r.status==N52_OK && r.answer==N52_ACCEPTED && r.fb== -1;
+  // Even a bad fb is passed over when declined.
+  #assert n52_rsvp(n32_event(31925,"[[\"status\",\"declined\"],[\"fb\",\"maybe\"],[\"d\",\"r\"],[\"a\",\"31923:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:t\"]]")).status==N52_OK;
+}
+#test "RSVP refusals" {
+  a:="[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m1\"]";w:[1024]u8;
+  r:=n52_rsvp(n52_with(31925,"[[\"d\",\"r\"],[\"status\",\"maybe\"],",a,w[..]));#assert r.status==N52_STATUS && r.at==1;
+  r=n52_rsvp(n52_with(31925,"[[\"d\",\"r\"],[\"status\",\"accepted\"],[\"fb\",\"away\"],",a,w[..]));#assert r.status==N52_FB && r.at==2;
+  r=n52_rsvp(n52_with(31925,"[[\"d\",\"r\"],[\"fb\",\"away\"],[\"status\",\"accepted\"],",a,w[..]));#assert r.status==N52_FB && r.at==1;
+  r=n52_rsvp(n52_with(31925,"[[\"d\",\"r\"],",a,w[..]));#assert r.status==N52_MISSING && r.missing==N52_NEED_STATUS;
+  r=n52_rsvp(n32_event(31925,"[[\"d\",\"r\"],[\"status\",\"accepted\"]]"));#assert r.status==N52_MISSING && r.missing==N52_NEED_A;
+  r=n52_rsvp(n52_with(31925,"[[\"status\",\"accepted\"],",a,w[..]));#assert r.status==N52_MISSING && r.missing==N52_NEED_D;
+  r=n52_rsvp(n32_event(31925,"[[\"d\",\"r\"],[\"status\",\"accepted\"],[\"a\",\"31924:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:c\"]]"));#assert r.status==N52_REFERENCE && r.at==2;
+  r=n52_rsvp(n32_event(31925,"[[\"d\",\"r\"],[\"a\",\"x\"]]"));#assert r.status==N52_TAG && r.tag_error==NT_ADDRESS && r.at==1;
+  r=n52_rsvp(n52_with(31925,"[[\"d\",\"r\"],[\"status\",\"accepted\"],[\"e\",\"aa\"],",a,w[..]));#assert r.status==N52_TAG && r.tag_error==NT_HEX && r.at==2;
+  r=n52_rsvp(n52_with(31925,"[[\"d\",\"r\"],[\"status\",\"accepted\"],[\"p\",\"aa\"],",a,w[..]));#assert r.status==N52_TAG && r.at==2;
+  #assert n52_rsvp(n32_event(31922,"[]")).status==N52_KIND;
+  none:NostrEvent;#assert n52_rsvp(none).status==N52_EVENT;
+  b:=n32_event(31925,"[]");b.original="[[\"t\"],[\"d\",1]]";b.tags_from=0;b.tags_to=b.original.count;r=n52_rsvp(b);#assert r.status==N52_EVENT && r.at==1;
+  long:[300]u8;n:=json_raw(long[..],0,"[[\"d\",\"");for i:0..<257 {long[n+i]='x';}n+=257;n=json_raw(long[..],n,"\"]]");
+  #assert n52_rsvp(n32_event(31925,cast(string)long[0..<n])).status==N52_LIMIT;
+}
+#test "the RSVP writer: tags that read back" {
+  out:[512]u8;
+  addr:="31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m1";
+  n:=n52_rsvp_tags(addr,"r1",N52_ACCEPTED,N52_BUSY,out[..]);
+  #assert n>0 && cast(string)out[0..<n]=="[[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m1\"],[\"d\",\"r1\"],[\"status\",\"accepted\"],[\"fb\",\"busy\"]]";
+  r:=n52_rsvp(n32_event(31925,cast(string)out[0..<n]));#assert r.status==N52_OK && r.answer==N52_ACCEPTED && r.fb==N52_BUSY;
+  // Declined drops fb; no fb drops it too.
+  n=n52_rsvp_tags(addr,"r1",N52_DECLINED,N52_FREE,out[..]);
+  #assert cast(string)out[0..<n]=="[[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m1\"],[\"d\",\"r1\"],[\"status\",\"declined\"]]";
+  n=n52_rsvp_tags(addr,"r\"1",N52_TENTATIVE,-1,out[..]);
+  #assert cast(string)out[0..<n]=="[[\"a\",\"31922:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:m1\"],[\"d\",\"r\\\"1\"],[\"status\",\"tentative\"]]";
+  n=n52_rsvp_tags(addr,"r",N52_TENTATIVE,N52_FREE,out[..]);#assert n>0 && n52_rsvp(n32_event(31925,cast(string)out[0..<n])).fb==N52_FREE;
+  #assert n52_rsvp_tags(addr,"r",3,-1,out[..])== -1 && n52_rsvp_tags(addr,"r",-1,-1,out[..])== -1;
+  #assert n52_rsvp_tags(addr,"r",N52_ACCEPTED,2,out[..])== -1 && n52_rsvp_tags(addr,"r",N52_ACCEPTED,-2,out[..])== -1;
+  // A refused address, and too little room.
+  #assert n52_rsvp_tags("31924:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:c","r",N52_ACCEPTED,-1,out[..])== -1;
+  #assert n52_rsvp_tags("x","r",N52_ACCEPTED,-1,out[..])== -1;
+  #assert n52_rsvp_tags(addr,"r",N52_ACCEPTED,N52_BUSY,out[0..<100])== -1 && n52_rsvp_tags(addr,"r",N52_ACCEPTED,N52_BUSY,out[0..<128])== -1;
+  #assert n52_rsvp_tags(addr,"r",N52_ACCEPTED,N52_BUSY,out[0..<129])==129 && n52_rsvp_tags(addr,"r",N52_ACCEPTED,N52_BUSY,out[0..<120])== -1;
+}
+
+// An event of this kind whose tags are head followed by tail and "]",
+// written into out.
+n52_with :: (kind:int,head:string,tail:string,out:[]u8)->NostrEvent {
+  n:=json_raw(out,0,head);n=json_raw(out,n,tail);n=json_raw(out,n,"]");
+  e:=nt_event(cast(string)out[0..<n]);e.kind=kind;return e;
+}
+
+// book:begin date
+n52_digits :: (s:string,from:int,to:int)->int {
+  v:=0;
+  for i:from..<to {if s[i]<'0' || s[i]>'9' {return -1;}v=v*10+cast(int)(s[i]-'0');}
+  return v;
+}
+// YYYY-MM-DD as a day number counted from 1970-01-01, or ok false. The
+// month's length counts leap years: every fourth year, except centuries
+// not divisible by 400.
+n52_date :: (s:string)->N52Date {
+  r:N52Date;
+  if s.count!=10 || s[4]!='-' || s[7]!='-' {return r;}
+  y:=n52_digits(s,0,4);m:=n52_digits(s,5,7);d:=n52_digits(s,8,10);
+  if y<0 || m<1 || m>12 || d<1 {return r;}
+  leap:=y%4==0 && (y%100!=0 || y%400==0);
+  length:=ifx m==2 then (ifx leap then 29 else 28) else ifx m==4 || m==6 || m==9 || m==11 then 30 else 31;
+  if d>length {return r;}
+  // Count from 1 March so February, with its leap day, ends the year:
+  // March is month 0 and a year runs 365 days plus its leap rule.
+  yy:=ifx m<=2 then y-1+400 else y+400;   // shifted 400 years: never negative
+  mm:=ifx m<=2 then m+9 else m-3;
+  days_in_year:=(153*mm+2)/5+d-1;
+  days:=yy*365+yy/4-yy/100+yy/400+days_in_year;
+  r.ok=true;r.day=days-719468-146097;return r;
+}
+// book:end date
+// A Unix time: non-negative decimal seconds, or -1.
+n52_seconds :: (s:string)->int {v:=json_int(s);return ifx v.ok && v.value>=0 then v.value else -1;}
+// A time zone name uses letters, digits, '_', '/', '+' and '-'.
+n52_zone :: (s:string)->bool {
+  if s.count==0 {return false;}
+  for c:s {
+    ok:=(c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9') || c=='_' || c=='/' || c=='+' || c=='-';
+    if !ok {return false;}
+  }
+  return true;
+}
+
+n52_refuse :: (e:N52Event,status:int,at:int)->N52Event {o:=e;o.status=status;o.at=at;return o;}
+n52_need :: (e:N52Event,need:int)->N52Event {o:=e;o.status=N52_MISSING;o.missing=need;return o;}
+
+// book:begin read
+// A calendar event of kind 31922 (dates) or 31923 (times).
+n52_read :: (e:NostrEvent)->N52Event {
+  r:N52Event;if e.error!=NE_OK {return r;}
+  if e.kind!=N52_DATE_KIND && e.kind!=N52_TIME_KIND {return n52_refuse(r,N52_KIND,-1);}
+  r.kind=e.kind;dated:=e.kind==N52_DATE_KIND;
+  has_d:=false;has_title:=false;has_start:=false;end_at:int;
+  name:N32Text;day_tags:[1]int;   // where the D tags start
+  has_end_zone:=false;
+  i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error==NT_LIMIT {return n52_refuse(r,N52_LIMIT,i);}
+    if t.error!=NT_OK {return n52_refuse(r,N52_EVENT,i);}
+    tag:=t.v[0];vt:=t.v[1];value:=cast(string)vt.b[0..<vt.n];
+    if n32_is(tag,"d") && !has_d {has_d=true;r.d=t.v[1];}
+    else if n32_is(tag,"title") && !has_title {has_title=true;r.title=t.v[1];}
+    else if n32_is(tag,"name") && name.n==0 {name=t.v[1];}
+    else if (n32_is(tag,"start") && !has_start) || (n32_is(tag,"end") && !r.has_end) {
+      v:=ifx dated then n52_date(value).day else n52_seconds(value);
+      bad:=ifx dated then !n52_date(value).ok else v<0;
+      if bad {return n52_refuse(r,ifx dated then N52_DATE else N52_TIME,i);}
+      if n32_is(tag,"start") {has_start=true;r.start=v;} else {r.has_end=true;r.end=v;end_at=i;}
+    }
+    else if !dated && (n32_is(tag,"start_tzid") || n32_is(tag,"end_tzid")) {
+      if !n52_zone(value) {return n52_refuse(r,N52_ZONE,i);}
+      if n32_is(tag,"start_tzid") {r.start_tzid=t.v[1];} else {r.end_tzid=t.v[1];has_end_zone=true;}
+    }
+    else if !dated && n32_is(tag,"D") {
+      if n52_seconds(value)<0 {return n52_refuse(r,N52_DAY,i);}
+      r.days+=1;
+    }
+    else if n32_is(tag,"p") || n32_is(tag,"a") {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {r.tag_error=s.error;return n52_refuse(r,N52_TAG,i);}
+      if s.type==NT_A && s.address_kind!=N52_CALENDAR {return n52_refuse(r,N52_REFERENCE,i);}
+      if s.type==NT_A {r.calendars+=1;} else {r.participants+=1;}
+    }
+    i+=1;
+  }
+  if !has_d {return n52_need(r,N52_NEED_D);}
+  if r.title.n==0 {r.title=name;}
+  if r.title.n==0 {return n52_need(r,N52_NEED_TITLE);}
+  if !has_start {return n52_need(r,N52_NEED_START);}
+  if r.has_end && r.end<=r.start {return n52_refuse(r,N52_ORDER,end_at);}
+  if !r.has_end {r.end=ifx dated then r.start+1 else r.start;}
+  if !dated {
+    if r.days==0 {return n52_need(r,N52_NEED_DAY);}
+    if !n52_has_day(e,r.start/N52_DAY_SECONDS) {return n52_refuse(r,N52_DAY,-1);}
+    if !has_end_zone {r.end_tzid=r.start_tzid;}
+  }
+  r.status=N52_OK;return r;
+}
+// Whether one of the event's D tags is this day.
+n52_has_day :: (e:NostrEvent,day:int)->bool {
+  i:=0;t:=n32_tag(e,i);
+  while t.error==NT_OK {
+    vt:=t.v[1];
+    if n32_is(t.v[0],"D") && n52_seconds(cast(string)vt.b[0..<vt.n])==day {return true;}
+    i+=1;t=n32_tag(e,i);
+  }
+  return false;
+}
+// book:end read
+
+// An a tag read as a reference to a calendar event, kind 31922 or 31923.
+N52RefRead :: struct {status:int; tag_error:int; ref:N52Ref;}
+n52_ref :: (e:NostrEvent,i:int)->N52RefRead {
+  r:N52RefRead;s:=nostr_tag(e,i);
+  if s.error!=NT_OK {r.status=N52_TAG;r.tag_error=s.error;return r;}
+  if s.address_kind!=N52_DATE_KIND && s.address_kind!=N52_TIME_KIND {r.status=N52_REFERENCE;return r;}
+  r.ref.kind=s.address_kind;r.ref.author=s.pubkey;
+  for k:0..<s.d_n {r.ref.d.b[k]=s.d[k];}r.ref.d.n=s.d_n;
+  return r;
+}
+
+// book:begin calendar
+// A calendar, kind 31924: its d, its title and the events it lists.
+n52_calendar :: (e:NostrEvent)->N52Calendar {
+  c:N52Calendar;if e.error!=NE_OK {return c;}
+  if e.kind!=N52_CALENDAR {c.status=N52_KIND;return c;}
+  has_d:=false;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {c.status=ifx t.error==NT_LIMIT then N52_LIMIT else N52_EVENT;c.at=i;return c;}
+    if n32_is(t.v[0],"d") && !has_d {has_d=true;c.d=t.v[1];}
+    else if n32_is(t.v[0],"title") && c.title.n==0 {c.title=t.v[1];}
+    else if n32_is(t.v[0],"a") {
+      x:=n52_ref(e,i);
+      if x.status!=N52_OK {c.status=x.status;c.tag_error=x.tag_error;c.at=i;return c;}
+      if c.n==N52_MAX_REFS {c.status=N52_LIMIT;c.at=i;return c;}
+      c.events[c.n]=x.ref;c.n+=1;
+    }
+    i+=1;
+  }
+  if !has_d {c.status=N52_MISSING;c.missing=N52_NEED_D;return c;}
+  if c.title.n==0 {c.status=N52_MISSING;c.missing=N52_NEED_TITLE;return c;}
+  c.status=N52_OK;return c;
+}
+// book:end calendar
+
+// An RSVP's answer and its fb value, or -1: both sets are closed.
+n52_answer :: (s:string)->int {
+  for k:0..<N52_STATUSES.count {if s==N52_STATUSES[k] {return k;}}
+  return -1;
+}
+n52_fb :: (s:string)->int {
+  for k:0..<N52_FBS.count {if s==N52_FBS[k] {return k;}}
+  return -1;
+}
+
+// book:begin rsvp
+// An RSVP, kind 31925: the calendar event it answers, and the answer.
+n52_rsvp :: (e:NostrEvent)->N52Rsvp {
+  r:N52Rsvp;if e.error!=NE_OK {return r;}
+  if e.kind!=N52_RSVP {r.status=N52_KIND;return r;}
+  has_d:=false;has_a:=false;fb_at:= -1;fb:N32Text;i:=0;
+  while true {
+    t:=n32_tag(e,i);
+    if t.error==NT_INDEX {break;}
+    if t.error!=NT_OK {r.status=ifx t.error==NT_LIMIT then N52_LIMIT else N52_EVENT;r.at=i;return r;}
+    tag:=t.v[0];
+    if n32_is(tag,"d") && !has_d {has_d=true;r.d=t.v[1];}
+    else if n32_is(tag,"a") && !has_a {
+      x:=n52_ref(e,i);
+      if x.status!=N52_OK {r.status=x.status;r.tag_error=x.tag_error;r.at=i;return r;}
+      has_a=true;r.to=x.ref;
+    }
+    else if (n32_is(tag,"e") && !r.has_revision) || (n32_is(tag,"p") && !r.has_author) {
+      s:=nostr_tag(e,i);
+      if s.error!=NT_OK {r.status=N52_TAG;r.tag_error=s.error;r.at=i;return r;}
+      if s.type==NT_E {r.has_revision=true;r.revision=s.id;} else {r.has_author=true;r.author=s.pubkey;}
+    }
+    else if n32_is(tag,"status") && r.answer<0 {
+      vt:=t.v[1];r.answer=n52_answer(cast(string)vt.b[0..<vt.n]);
+      if r.answer<0 {r.status=N52_STATUS;r.at=i;return r;}
+    }
+    else if n32_is(tag,"fb") && fb_at<0 {fb_at=i;fb=t.v[1];}
+    i+=1;
+  }
+  if !has_d {r.status=N52_MISSING;r.missing=N52_NEED_D;return r;}
+  if !has_a {r.status=N52_MISSING;r.missing=N52_NEED_A;return r;}
+  if r.answer<0 {r.status=N52_MISSING;r.missing=N52_NEED_STATUS;return r;}
+  // fb is ignored when the answer is declined.
+  if fb_at>=0 && r.answer!=N52_DECLINED {
+    f:=fb;r.fb=n52_fb(cast(string)f.b[0..<f.n]);
+    if r.fb<0 {r.status=N52_FB;r.at=fb_at;return r;}
+  }
+  r.status=N52_OK;return r;
+}
+// book:end rsvp
+
+// book:begin write
+// The tags of an RSVP to the calendar event at address: its a, d, status
+// and, unless declined or fb is -1, fb. The bytes written, or -1 when the
+// address is not a calendar event's, an answer is out of range or out is
+// too small.
+n52_rsvp_tags :: (address:string,d:string,answer:int,fb:int,out:[]u8)->int {
+  if answer<0 || answer>2 || fb< -1 || fb>1 {return -1;}
+  probe:=nt_address(address);
+  if probe.error!=NT_OK || (probe.address_kind!=N52_DATE_KIND && probe.address_kind!=N52_TIME_KIND) {return -1;}
+  n:=json_raw(out,0,"[[\"a\",");n=json_write_string(out,n,address);
+  n=json_raw(out,n,"],[\"d\",");n=json_write_string(out,n,d);
+  n=json_raw(out,n,"],[\"status\",");n=json_write_string(out,n,N52_STATUSES[answer]);
+  if fb>=0 && answer!=N52_DECLINED {n=json_raw(out,n,"],[\"fb\",");n=json_write_string(out,n,N52_FBS[fb]);}
+  return json_raw(out,n,"]]");
+}
+// book:end write
