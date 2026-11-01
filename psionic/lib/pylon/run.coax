@@ -472,8 +472,10 @@ py_keep :: (p:[]Py,slot:int,jb:PdJob,body:string) {
     for i:0..<64 {p[0].slots[slot].id[i]=jb.id[i];p[0].slots[slot].caller[i]=jb.caller[i];}
     for i:0..<jb.request.count {p[0].slots[slot].request[i]=jb.request[i];}
     for i:0..<body.count {p[0].slots[slot].body[i]=body[i];}p[0].slots[slot].n=body.count;
-    j:=jb;j.id=cast(string)p[0].slots[slot].id[..];j.caller=cast(string)p[0].slots[slot].caller[..];
-    j.request=cast(string)p[0].slots[slot].request[0..<jb.request.count];j.target="";p[0].slots[slot].held=j;
+    // Every string the held job keeps points into the slot, never into the caller's buffers.
+    p[0].slots[slot].held=PdJob.{code=jb.code,type=jb.type,answerable=jb.answerable,id=cast(string)p[0].slots[slot].id[..],
+        caller=cast(string)p[0].slots[slot].caller[..],request=cast(string)p[0].slots[slot].request[0..<jb.request.count],
+        attempt=jb.attempt,deadline=jb.deadline,target="",body=jb.body};
 }
 // book:begin event
 // ev is verified (py_take) and relay.coax delivered it once.
