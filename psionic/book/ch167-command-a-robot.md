@@ -936,7 +936,6 @@ The tracking reference lasts 270 ticks, or 0.54 seconds. Control tick `k` uses r
 The [fixed test consumer](../tests/robotics/panda-joint-pd-tracking.coax) owns the case constants, gains, reference selection, pulse interval and composition in Coax. `pnt_control` returns the reference, all five controller vectors, the clipped controls, external forces, actuator prediction and separate clipping counts. It reads the current raw joint positions and rates and computes fresh owned gravity; it does not substitute cached SDK body geometry. `pnt_step` stages the same command with one owned Euler update. Observing the actuator forces for diagnostics does not add them a second time to the plant.
 
 <!-- source: psionic/examples/panda-joint-pd-tracking.coax pnt-tracking -->
-
 ```jai
  // Public inputs choose one of the four frozen experiments, never new gains.
  // q9/v9 are explicit mixed-coordinate raw boundaries; outputs retain units.
