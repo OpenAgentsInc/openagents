@@ -32,7 +32,7 @@ enum { TENSORS = 1024, SEGMENTS = 4096 };
 static int g_threads = 8;
 typedef struct { int kind; int64_t lo, hi; coax_v_f32 a, b, c, d, e; coax_v_f64 f, g; int64_t i0, i1, i2, i3, i4, i5; _Bool flag; } job;
 static void run_job(job *j) {
-    if (j->kind == 0) psionic_whisper_linear_part(j->a, j->i0, j->i1, j->b, j->c, j->i2, j->d, j->lo, j->hi);
+    if (j->kind == 0) psionic_whisper_linear_part(j->a, j->i0, j->i1, j->b, j->c, j->i2, j->d, j->lo, j->hi, j->i3);
     else if (j->kind == 1) psionic_whisper_attend_part(j->a, j->i0, j->b, j->c, j->i1, j->i2, j->i3, j->i4, j->flag, j->d, j->lo, j->hi);
     else if (j->kind == 3) psionic_whisper_mel_part(j->a, j->f, j->g, j->i0, j->b, j->lo, j->hi);
     else psionic_whisper_conv_part(j->a, j->i0, j->i1, j->b, j->c, j->i2, j->i3, j->i4, j->d, j->e, j->lo, j->hi);
@@ -47,6 +47,8 @@ static job g_jobs[64];
 static _Atomic long g_gen;
 static _Atomic int g_pending;
 static int g_workers;
+static int g_active;
+static void take(const job *base);
 static void *worker(void *arg) {
     int me = (int)(intptr_t)arg; long seen = 0;
     for (;;) {
@@ -59,7 +61,7 @@ static void *worker(void *arg) {
             pthread_mutex_unlock(&g_mu);
         }
         seen = gen;
-        if (g_jobs[me].kind >= 0) run_job(&g_jobs[me]);
+        if (me < g_active) take(&g_jobs[0]);
         if (--g_pending == 0) { pthread_mutex_lock(&g_mu); pthread_cond_signal(&g_done); pthread_mutex_unlock(&g_mu); }
     }
     return 0;
@@ -74,33 +76,49 @@ static void pool_start(void) {
 }
 static double g_prof[6]; static long g_calls[6]; static int g_small; static int g_profile;
 static double now_ms(void);
+/* Work is cut into chunks that every thread takes from one counter, so the
+ * efficiency cores, which run slower, take fewer chunks instead of holding
+ * up the rest. Each output element is still computed by the same code. */
+static int64_t g_n, g_chunk;
+static _Atomic int64_t g_next;
+static void take(const job *base) {
+    for (;;) {
+        int64_t c = g_next++;
+        int64_t lo = c * g_chunk;
+        if (lo >= g_n) return;
+        job j = *base; j.lo = lo; j.hi = lo + g_chunk < g_n ? lo + g_chunk : g_n;
+        run_job(&j);
+    }
+}
 static void split(job base, int64_t n, double work) {
     double t0 = g_profile ? now_ms() : 0;
     int t = g_workers + 1;
     if (work < 2e5 || t <= 1 || n < 2) { base.lo = 0; base.hi = n; run_job(&base); }
     else {
-        if (t > n) t = (int)n;
-        for (int i = 1; i <= g_workers; i++) {
-            g_jobs[i] = base;
-            if (i < t) { g_jobs[i].lo = n * i / t; g_jobs[i].hi = n * (i + 1) / t; } else g_jobs[i].kind = -1;
-        }
+        int64_t chunks = (int64_t)t * 6;
+        int64_t chunk = (n + chunks - 1) / chunks;
+        if (base.kind == 0) chunk = (chunk + 3) / 4 * 4;
+        if (chunk < 1) chunk = 1;
+        g_jobs[0] = base; g_n = n; g_chunk = chunk; g_next = 0;
+        int need = (int)((n + chunk - 1) / chunk) - 1;
+        g_active = need < g_workers ? need + 1 : g_workers + 1;
         g_pending = g_workers;
         pthread_mutex_lock(&g_mu); g_gen++; pthread_cond_broadcast(&g_go); pthread_mutex_unlock(&g_mu);
-        base.lo = 0; base.hi = n / t; run_job(&base);
+        take(&base);
         int spins = 0;
         while (g_pending > 0 && spins < 2000000) spins++;
         if (g_pending > 0) { pthread_mutex_lock(&g_mu); while (g_pending > 0) pthread_cond_wait(&g_done, &g_mu); pthread_mutex_unlock(&g_mu); }
     }
     if (g_profile) { int k = base.kind + (g_small && base.kind < 2 ? 4 : 0); g_prof[k] += now_ms() - t0; g_calls[k]++; }
 }
-int64_t cxwh_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, coax_v_f32 y) {
-    job j = {0}; j.kind = 0; j.a = x; j.i0 = rows; j.i1 = n_in; j.b = w; j.c = b; j.i2 = n_out; j.d = y;
+int64_t cxwh_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, coax_v_f32 y, int64_t act) {
+    job j = {0}; j.kind = 0; j.a = x; j.i0 = rows; j.i1 = n_in; j.b = w; j.c = b; j.i2 = n_out; j.d = y; j.i3 = act;
     g_small = rows < 256; split(j, n_out, (double)rows * n_in * n_out);
     return 0;
 }
 int64_t cxwh_attend(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, int64_t first, _Bool causal, coax_v_f32 out) {
     job j = {0}; j.kind = 1; j.a = q; j.i0 = nq; j.b = k; j.c = v; j.i1 = nk; j.i2 = d; j.i3 = heads; j.i4 = first; j.flag = causal; j.d = out;
-    g_small = nq < 256; split(j, heads * nq, (double)nq * nk * d * 2);
+    g_small = nq < 256; split(j, heads * ((nq + 3) / 4), (double)nq * nk * d * 2);
     return 0;
 }
 int64_t cxwh_mel(coax_v_f32 x, coax_v_f64 window, coax_v_f64 bank, int64_t mels, coax_v_f32 cache, int64_t frames) {

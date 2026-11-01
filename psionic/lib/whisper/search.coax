@@ -189,7 +189,8 @@ we_rules :: (net: WeNet, logits: [] f32, d: WeDec, temperature: f64, bias: WeBia
   if d.has_ts { for i: sp.beg..<sp.beg + d.seek_delta / 2 { lp[i] = WE_NEG; } }
   // log-softmax
   best := -1.0e300; for i: 0..<V { if !we_dead(lp[i]) && cast(f64) lp[i] > best { best = cast(f64) lp[i]; } }
-  z := 0.0; for i: 0..<V { if !we_dead(lp[i]) { z += exp(cast(f64) lp[i] - best); } }
+  bf := cast(f32) best;
+  z := 0.0; for i: 0..<V { if !we_dead(lp[i]) { z += cast(f64) we_expf(lp[i] - bf); } }
   lz := best + log(z);
   for i: 0..<V { if !we_dead(lp[i]) { lp[i] = cast(f32) (cast(f64) lp[i] - lz); } }
   // when the timestamps together are likelier than any text token, only a timestamp may follow

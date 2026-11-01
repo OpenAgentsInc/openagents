@@ -172,7 +172,7 @@ we_whole :: (f: [] WeFind, name: string, elements: int) -> int {
 // range. Every output element is computed by exactly one part, in the same
 // order whatever the split, so the result does not depend on the thread
 // count. A host without threads calls the part once over the whole range.
-cxwh_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) -> int #foreign;
+cxwh_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, act: int) -> int #foreign;
 cxwh_attend :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32) -> int #foreign;
 cxwh_mel :: (x: [] f32, window: [] f64, bank: [] f64, mels: int, cache: [] f32, frames: int) -> int #foreign;
 cxwh_conv :: (src: [] f32, n_in: int, t_in: int, w: [] f32, b: [] f32, n_out: int, t_out: int, stride: int, pos: [] f32, out: [] f32) -> int #foreign;
@@ -180,8 +180,8 @@ cxwh_conv :: (src: [] f32, n_in: int, t_in: int, w: [] f32, b: [] f32, n_out: in
 WE_KEYS_MAX :: 1500;
 
 // y[r][o] = b[o] + sum_i x[r][i] w[o][i] for every row and outputs o0..o1;
-// b may be empty.
-we_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, o0: int, o1: int) {
+// b may be empty. act 1 applies GELU to each output.
+we_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, o0: int, o1: int, act: int) {
   // Four outputs share each pass over an input row; each output keeps its
   // own four partial sums, combined as (s0 + s1) + (s2 + s3), so a value
   // does not depend on which block it fell in.
@@ -207,6 +207,7 @@ we_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out:
       y[r * n_out + o + 1] = ((b0 + b1) + (b2 + b3)) + (ifx b.count > 0 then b[o + 1] else 0);
       y[r * n_out + o + 2] = ((c0 + c1) + (c2 + c3)) + (ifx b.count > 0 then b[o + 2] else 0);
       y[r * n_out + o + 3] = ((d0 + d1) + (d2 + d3)) + (ifx b.count > 0 then b[o + 3] else 0);
+      if act == 1 { for u: 0..<4 { y[r * n_out + o + u] = we_gelu(y[r * n_out + o + u]); } }
     }
     o += 4;
   }
@@ -218,12 +219,14 @@ we_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out:
       while i + 4 <= n_in { s0 += xr[i] * wr[i]; s1 += xr[i + 1] * wr[i + 1]; s2 += xr[i + 2] * wr[i + 2]; s3 += xr[i + 3] * wr[i + 3]; i += 4; }
       while i < n_in { s0 += xr[i] * wr[i]; i += 1; }
       y[r * n_out + o] = ((s0 + s1) + (s2 + s3)) + (ifx b.count > 0 then b[o] else 0);
+      if act == 1 { y[r * n_out + o] = we_gelu(y[r * n_out + o]); }
     }
     o += 1;
   }
 }
-we_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { we_linear_part(x, rows, n_in, w, b, n_out, y, 0, n_out); }
-we_mm :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { r := cxwh_linear(x, rows, n_in, w, b, n_out, y); }
+we_linear :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { we_linear_part(x, rows, n_in, w, b, n_out, y, 0, n_out, 0); }
+we_mm :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { r := cxwh_linear(x, rows, n_in, w, b, n_out, y, 0); }
+we_mm_gelu :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32) { r := cxwh_linear(x, rows, n_in, w, b, n_out, y, 1); }
 // LayerNorm of each row: (x - mean) / sqrt(var + 1e-5) * g + b, population variance.
 we_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) {
   for r: 0..<rows {
@@ -235,45 +238,163 @@ we_norm :: (x: [] f32, rows: int, d: int, g: [] f32, b: [] f32, y: [] f32) {
     for i: 0..<d { y[r * d + i] = cast(f32) ((cast(f64) xr[i] - mean) * inv) * g[i] + b[i]; }
   }
 }
-// ggml's GELU: 0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3))).
-we_gelu :: (x: f32) -> f32 {
-  v := cast(f64) x;
-  u := 0.7978845608028654 * (v + 0.044715 * v * v * v);
-  t := 1 - 2 / (exp(2 * u) + 1);
-  if u > 20 { t = 1; } else if u < -20 { t = -1; }
-  return cast(f32) (0.5 * v * (1 + t));
+// e^x in f32: n = round(x log2(e)), r = x - n ln(2) in two parts (Cody and
+// Waite) so |r| <= ln(2)/2 stays exact, e^r from its degree-6 Taylor
+// polynomial (relative error under 2e-7) and 2^n from the exponent bits.
+// Below -87 the result is 0; above 88 it is clamped to e^88.
+we_expf :: (x: f32) -> f32 {
+  if x < -87 { return 0; }
+  y := ifx x > 88 then cast(f32) 88 else x;
+  t := y * 1.442695041;
+  n := cast(int) (ifx t >= 0 then t + 0.5 else t - 0.5);
+  fn := cast(f32) n;
+  r := (y - fn * 0.693145752) - fn * 0.00000142860677;
+  p := 1 + r * (1 + r * (0.5 + r * (0.1666666667 + r * (0.04166666667 + r * (0.008333333333 + r * 0.001388888889)))));
+  return p * f32_from_bits(cast(u32) (n + 127) << 23);
 }
-we_gelu_all :: (x: [] f32) { for i: 0..<x.count { x[i] = we_gelu(x[i]); } }
-// Attention for (head, query) pairs j0..j1 of heads * nq: out[t] =
-// softmax(q[t] k^T / sqrt(dh)) v over nk keys (at most 1,500). Causal:
-// query t sees keys 0..first+t.
+// ggml's GELU: 0.5 x (1 + tanh(sqrt(2/pi) (x + 0.044715 x^3))), tanh u as
+// 1 - 2 / (e^(2u) + 1).
+we_gelu :: (x: f32) -> f32 {
+  u := 0.7978845608 * (x + 0.044715 * x * x * x);
+  if u > 10 { return x; }
+  if u < -10 { return 0; }
+  t := 1 - 2 / (we_expf(2 * u) + 1);
+  return 0.5 * x * (1 + t);
+}
+// Attention for jobs j0..j1 of heads * ceil(nq / 4); job j is head
+// j / ceil(nq / 4) and the block of up to four queries starting at
+// 4 (j % ceil(nq / 4)): out[t] = softmax(q[t] k^T / sqrt(dh)) v over nk keys
+// (at most 1,500). Causal: query t sees keys 0..first+t. A block reads each
+// key once for its four queries; a score is one sum over the head's
+// dimensions in order, and the weighted sum of values adds four keys at a
+// time as (p0 v0 + p1 v1) + (p2 v2 + p3 v3), whatever block a query is in.
+WE_HEAD_MAX :: 128;
+we_attend_blocks :: (nq: int) -> int { return (nq + 3) / 4; }
+// One query of we_attend_part, in the same order, so its result does not
+// depend on how many queries share its block.
+we_attend_one :: (qa: [] f32, k: [] f32, v: [] f32, n: int, d: int, hd: int, dh: int, scale: f32, s: [] f32, o: [] f32) {
+  kj := 0;
+  while kj + 4 <= n {
+    o0 := kj * d + hd;
+    k0 := k[o0..<o0 + dh]; k1 := k[o0 + d..<o0 + d + dh]; k2 := k[o0 + 2 * d..<o0 + 2 * d + dh]; k3 := k[o0 + 3 * d..<o0 + 3 * d + dh];
+    a0: f32 = 0; a1: f32 = 0; a2: f32 = 0; a3: f32 = 0;
+    for i: 0..<dh { y0 := qa[i]; a0 += y0 * k0[i]; a1 += y0 * k1[i]; a2 += y0 * k2[i]; a3 += y0 * k3[i]; }
+    s[kj] = a0 * scale; s[kj + 1] = a1 * scale; s[kj + 2] = a2 * scale; s[kj + 3] = a3 * scale;
+    kj += 4;
+  }
+  while kj < n {
+    o0 := kj * d + hd; k0 := k[o0..<o0 + dh];
+    a0: f32 = 0; for i: 0..<dh { a0 += qa[i] * k0[i]; }
+    s[kj] = a0 * scale; kj += 1;
+  }
+  best: f32 = -3.0e38;
+  for kk: 0..<n { if s[kk] > best { best = s[kk]; } }
+  sum := 0.0;
+  for kk: 0..<n { e := we_expf(s[kk] - best); s[kk] = e; sum += cast(f64) e; }
+  acc: [WE_HEAD_MAX] f32;
+  kj = 0;
+  while kj + 4 <= n {
+    o0 := kj * d + hd;
+    v0 := v[o0..<o0 + dh]; v1 := v[o0 + d..<o0 + d + dh]; v2 := v[o0 + 2 * d..<o0 + 2 * d + dh]; v3 := v[o0 + 3 * d..<o0 + 3 * d + dh];
+    p0 := s[kj]; p1 := s[kj + 1]; p2 := s[kj + 2]; p3 := s[kj + 3];
+    for i: 0..<dh { acc[i] += (p0 * v0[i] + p1 * v1[i]) + (p2 * v2[i] + p3 * v3[i]); }
+    kj += 4;
+  }
+  while kj < n {
+    o0 := kj * d + hd; v0 := v[o0..<o0 + dh]; p0 := s[kj];
+    for i: 0..<dh { acc[i] += p0 * v0[i]; }
+    kj += 1;
+  }
+  inv := cast(f32) (1 / sum);
+  for i: 0..<dh { o[i] = acc[i] * inv; }
+}
 we_attend_part :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32, j0: int, j1: int) {
-  dh := d / heads; scale := 1 / sqrt(cast(f64) dh);
-  s: [WE_KEYS_MAX] f32;
+  dh := d / heads; scale := cast(f32) (1 / sqrt(cast(f64) dh));
+  nb := we_attend_blocks(nq);
+  s: [4 * WE_KEYS_MAX] f32;
+  acc: [4 * WE_HEAD_MAX] f32;
+  ns: [4] int;
   for j: j0..<j1 {
-    h := j / nq; t := j % nq;
-    qr := q[t * d + h * dh..<t * d + (h + 1) * dh];
-    n := ifx causal then first + t + 1 else nk;
-    best := -1.0e300;
-    for kj: 0..<n {
-      kr := k[kj * d + h * dh..<kj * d + (h + 1) * dh];
-      a: f32 = 0; for i: 0..<dh { a += qr[i] * kr[i]; }
-      e := cast(f64) a * scale; s[kj] = cast(f32) e;
-      if e > best { best = e; }
+    h := j / nb; t0 := 4 * (j % nb); hd := h * dh;
+    tq := ifx nq - t0 < 4 then nq - t0 else 4;
+    ta := t0; tb := ifx tq > 1 then t0 + 1 else t0; tc := ifx tq > 2 then t0 + 2 else t0; td := ifx tq > 3 then t0 + 3 else t0;
+    qa := q[ta * d + hd..<ta * d + hd + dh]; qb := q[tb * d + hd..<tb * d + hd + dh];
+    qc := q[tc * d + hd..<tc * d + hd + dh]; qd := q[td * d + hd..<td * d + hd + dh];
+    for t: 0..<4 { ns[t] = ifx causal then first + t0 + (ifx t < tq then t else 0) + 1 else nk; }
+    nmax := ifx causal then first + t0 + tq else nk;
+    if tq == 1 { we_attend_one(qa, k, v, ns[0], d, hd, dh, scale, s[0..<WE_KEYS_MAX], out[t0 * d + hd..<t0 * d + hd + dh]); continue; }
+    kj := 0;
+    while kj + 4 <= nmax {
+      o0 := kj * d + hd;
+      k0 := k[o0..<o0 + dh]; k1 := k[o0 + d..<o0 + d + dh]; k2 := k[o0 + 2 * d..<o0 + 2 * d + dh]; k3 := k[o0 + 3 * d..<o0 + 3 * d + dh];
+      a0: f32 = 0; a1: f32 = 0; a2: f32 = 0; a3: f32 = 0; b0: f32 = 0; b1: f32 = 0; b2: f32 = 0; b3: f32 = 0;
+      c0: f32 = 0; c1: f32 = 0; c2: f32 = 0; c3: f32 = 0; e0: f32 = 0; e1: f32 = 0; e2: f32 = 0; e3: f32 = 0;
+      for i: 0..<dh {
+        x0 := k0[i]; x1 := k1[i]; x2 := k2[i]; x3 := k3[i];
+        y0 := qa[i]; y1 := qb[i]; y2 := qc[i]; y3 := qd[i];
+        a0 += y0 * x0; a1 += y0 * x1; a2 += y0 * x2; a3 += y0 * x3;
+        b0 += y1 * x0; b1 += y1 * x1; b2 += y1 * x2; b3 += y1 * x3;
+        c0 += y2 * x0; c1 += y2 * x1; c2 += y2 * x2; c3 += y2 * x3;
+        e0 += y3 * x0; e1 += y3 * x1; e2 += y3 * x2; e3 += y3 * x3;
+      }
+      s[kj] = a0 * scale; s[kj + 1] = a1 * scale; s[kj + 2] = a2 * scale; s[kj + 3] = a3 * scale;
+      r1 := WE_KEYS_MAX + kj; s[r1] = b0 * scale; s[r1 + 1] = b1 * scale; s[r1 + 2] = b2 * scale; s[r1 + 3] = b3 * scale;
+      r2 := 2 * WE_KEYS_MAX + kj; s[r2] = c0 * scale; s[r2 + 1] = c1 * scale; s[r2 + 2] = c2 * scale; s[r2 + 3] = c3 * scale;
+      r3 := 3 * WE_KEYS_MAX + kj; s[r3] = e0 * scale; s[r3 + 1] = e1 * scale; s[r3 + 2] = e2 * scale; s[r3 + 3] = e3 * scale;
+      kj += 4;
     }
-    sum := 0.0;
-    for kj: 0..<n { e := exp(cast(f64) s[kj] - best); s[kj] = cast(f32) e; sum += e; }
-    o := out[t * d + h * dh..<t * d + (h + 1) * dh];
-    for i: 0..<dh { o[i] = 0; }
-    for kj: 0..<n {
-      pj := cast(f32) (cast(f64) s[kj] / sum);
-      vr := v[kj * d + h * dh..<kj * d + (h + 1) * dh];
-      for i: 0..<dh { o[i] += pj * vr[i]; }
+    while kj < nmax {
+      o0 := kj * d + hd; k0 := k[o0..<o0 + dh];
+      a0: f32 = 0; b0: f32 = 0; c0: f32 = 0; e0: f32 = 0;
+      for i: 0..<dh { x0 := k0[i]; a0 += qa[i] * x0; b0 += qb[i] * x0; c0 += qc[i] * x0; e0 += qd[i] * x0; }
+      s[kj] = a0 * scale; s[WE_KEYS_MAX + kj] = b0 * scale; s[2 * WE_KEYS_MAX + kj] = c0 * scale; s[3 * WE_KEYS_MAX + kj] = e0 * scale;
+      kj += 1;
+    }
+    // softmax of each query's own keys; keys past a query's last are 0
+    sums: [4] f64;
+    for t: 0..<4 {
+      r := t * WE_KEYS_MAX; n := ns[t];
+      best: f32 = -3.0e38;
+      for kk: 0..<n { if s[r + kk] > best { best = s[r + kk]; } }
+      sum := 0.0;
+      for kk: 0..<n { e := we_expf(s[r + kk] - best); s[r + kk] = e; sum += cast(f64) e; }
+      for kk: n..<nmax { s[r + kk] = 0; }
+      sums[t] = sum;
+    }
+    for t: 0..<4 { for i: 0..<dh { acc[t * WE_HEAD_MAX + i] = 0; } }
+    a1 := acc[0..<dh]; a2 := acc[WE_HEAD_MAX..<WE_HEAD_MAX + dh]; a3 := acc[2 * WE_HEAD_MAX..<2 * WE_HEAD_MAX + dh]; a4 := acc[3 * WE_HEAD_MAX..<3 * WE_HEAD_MAX + dh];
+    kj = 0;
+    while kj + 4 <= nmax {
+      o0 := kj * d + hd;
+      v0 := v[o0..<o0 + dh]; v1 := v[o0 + d..<o0 + d + dh]; v2 := v[o0 + 2 * d..<o0 + 2 * d + dh]; v3 := v[o0 + 3 * d..<o0 + 3 * d + dh];
+      p00 := s[kj]; p01 := s[kj + 1]; p02 := s[kj + 2]; p03 := s[kj + 3];
+      r1 := WE_KEYS_MAX + kj; p10 := s[r1]; p11 := s[r1 + 1]; p12 := s[r1 + 2]; p13 := s[r1 + 3];
+      r2 := 2 * WE_KEYS_MAX + kj; p20 := s[r2]; p21 := s[r2 + 1]; p22 := s[r2 + 2]; p23 := s[r2 + 3];
+      r3 := 3 * WE_KEYS_MAX + kj; p30 := s[r3]; p31 := s[r3 + 1]; p32 := s[r3 + 2]; p33 := s[r3 + 3];
+      for i: 0..<dh {
+        x0 := v0[i]; x1 := v1[i]; x2 := v2[i]; x3 := v3[i];
+        a1[i] += (p00 * x0 + p01 * x1) + (p02 * x2 + p03 * x3);
+        a2[i] += (p10 * x0 + p11 * x1) + (p12 * x2 + p13 * x3);
+        a3[i] += (p20 * x0 + p21 * x1) + (p22 * x2 + p23 * x3);
+        a4[i] += (p30 * x0 + p31 * x1) + (p32 * x2 + p33 * x3);
+      }
+      kj += 4;
+    }
+    while kj < nmax {
+      o0 := kj * d + hd; v0 := v[o0..<o0 + dh];
+      p0 := s[kj]; p1 := s[WE_KEYS_MAX + kj]; p2 := s[2 * WE_KEYS_MAX + kj]; p3 := s[3 * WE_KEYS_MAX + kj];
+      for i: 0..<dh { x0 := v0[i]; a1[i] += p0 * x0; a2[i] += p1 * x0; a3[i] += p2 * x0; a4[i] += p3 * x0; }
+      kj += 1;
+    }
+    for t: 0..<tq {
+      inv := cast(f32) (1 / sums[t]);
+      o := out[(t0 + t) * d + hd..<(t0 + t) * d + hd + dh];
+      for i: 0..<dh { o[i] = acc[t * WE_HEAD_MAX + i] * inv; }
     }
   }
 }
 we_attend :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32) {
-  we_attend_part(q, nq, k, v, nk, d, heads, first, causal, out, 0, heads * nq);
+  we_attend_part(q, nq, k, v, nk, d, heads, first, causal, out, 0, heads * we_attend_blocks(nq));
 }
 we_att :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32) {
   r := cxwh_attend(q, nq, k, v, nk, d, heads, first, causal, out);
@@ -328,8 +449,7 @@ we_encode :: (net: WeNet, W: [] f32, work: [] f32) {
     we_mm(a, T, d, W[bl.o_w..<bl.o_w + d * d], W[bl.o_b..<bl.o_b + d], d, h);
     for i: 0..<T * d { x[i] += h[i]; }
     we_norm(x, T, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
-    we_mm(h, T, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
-    we_gelu_all(mm);
+    we_mm_gelu(h, T, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
     we_mm(mm, T, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
     for i: 0..<T * d { x[i] += h[i]; }
   }
@@ -413,8 +533,7 @@ we_forward :: (net: WeNet, W: [] f32, work: [] f32, toks: [] int, rows: int, pos
     we_mm(a, rows, d, W[bl.xo_w..<bl.xo_w + d * d], W[bl.xo_b..<bl.xo_b + d], d, h);
     for i: 0..<rows * d { x[i] += h[i]; }
     we_norm(x, rows, d, W[bl.ln2_w..<bl.ln2_w + d], W[bl.ln2_b..<bl.ln2_b + d], h);
-    we_mm(h, rows, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
-    we_gelu_all(mm);
+    we_mm_gelu(h, rows, d, W[bl.fc1_w..<bl.fc1_w + 4 * d * d], W[bl.fc1_b..<bl.fc1_b + 4 * d], 4 * d, mm);
     we_mm(mm, rows, 4 * d, W[bl.fc2_w..<bl.fc2_w + 4 * d * d], W[bl.fc2_b..<bl.fc2_b + d], d, h);
     for i: 0..<rows * d { x[i] += h[i]; }
   }
@@ -507,8 +626,8 @@ psionic_whisper_wav :: (b: [] u8) -> WeWav #export_c {
   for i: 0..<21 { x[i] = cast(f32) (i % 5) * 0.37 - 0.6; }
   for i: 0..<42 { w[i] = cast(f32) (i % 7) * 0.11 - 0.3; }
   // 3 rows of 7 inputs, 6 outputs: one block of 4, then 2 alone
-  we_linear_part(x[..], 3, 7, w[..], bias[0..<0], 6, y[..], 0, 6);
-  for o: 0..<6 { we_linear_part(x[..], 3, 7, w[..], bias[0..<0], 6, z[..], o, o + 1); }
+  we_linear_part(x[..], 3, 7, w[..], bias[0..<0], 6, y[..], 0, 6, 0);
+  for o: 0..<6 { we_linear_part(x[..], 3, 7, w[..], bias[0..<0], 6, z[..], o, o + 1, 0); }
   for i: 0..<18 { #assert y[i] == z[i]; }
 }
 #test "kernels by hand" {
@@ -519,12 +638,45 @@ psionic_whisper_wav :: (b: [] u8) -> WeWav #export_c {
   we_norm(x[..], 1, 4, g[..], z[..], n[..]);
   #assert abs(n[0] + 1.3416355) < 0.00001 && abs(n[3] - 1.3416355) < 0.00001;
   #assert we_gelu(0) == 0 && abs(we_gelu(1) - 0.841192) < 0.00001 && abs(we_gelu(-3) + 0.003637) < 0.00001;
+  worst := 0.0;
+  for i: 0..<2001 {
+    xe := cast(f32) (-86.0 + cast(f64) i * 0.087);
+    r := abs(cast(f64) we_expf(xe) / exp(cast(f64) xe) - 1);
+    if r > worst { worst = r; }
+  }
+  #assert worst < 0.0000005;
+  #assert we_expf(-90) == 0 && we_expf(0) == 1;
   // one head, two keys: equal scores average the values
   q := [2] f32.[0, 0]; k := [4] f32.[1, 0, 0, 1]; v := [4] f32.[2, 4, 6, 8]; o: [2] f32;
   we_attend(q[..], 1, k[..], v[..], 2, 2, 1, 0, false, o[..]);
   #assert o[0] == 4 && o[1] == 6;
   we_attend(q[..], 1, k[..], v[..], 2, 2, 1, 0, true, o[..]);
   #assert o[0] == 2 && o[1] == 4;
+}
+#test "attention blocks match a direct softmax for every query count and mask" {
+  // 2 heads of 4 dimensions, up to 7 queries and 9 keys
+  d := 8; heads := 2; dh := 4;
+  q: [56] f32; k: [72] f32; v: [72] f32; o: [56] f32;
+  for i: 0..<56 { q[i] = cast(f32) ((i * 7) % 11) * 0.1 - 0.5; }
+  for i: 0..<72 { k[i] = cast(f32) ((i * 5) % 13) * 0.1 - 0.6; v[i] = cast(f32) ((i * 3) % 7) - 3; }
+  for nq: 1..<8 {
+    for mode: 0..<2 {
+      causal := mode == 1; first := ifx causal then 2 else 0; nk := ifx causal then first + nq else 9;
+      for i: 0..<56 { o[i] = -99; }
+      we_attend(q[..], nq, k[..], v[..], nk, d, heads, first, causal, o[..]);
+      for h: 0..<heads { for t: 0..<nq {
+        n := ifx causal then first + t + 1 else nk;
+        sc: [9] f64; best := -1.0e300;
+        for j: 0..<n { a := 0.0; for i: 0..<dh { a += cast(f64) q[t * d + h * dh + i] * cast(f64) k[j * d + h * dh + i]; } sc[j] = a / 2; if sc[j] > best { best = sc[j]; } }
+        z := 0.0; for j: 0..<n { sc[j] = exp(sc[j] - best); z += sc[j]; }
+        for i: 0..<dh {
+          r := 0.0; for j: 0..<n { r += sc[j] / z * cast(f64) v[j * d + h * dh + i]; }
+          #assert abs(cast(f64) o[t * d + h * dh + i] - r) < 0.00001;
+        }
+      } }
+      for t: nq..<7 { #assert o[t * d] == -99; }
+    }
+  }
 }
 #test "a WAV header" {
   h: [48] u8; w: [1] WgBuild; w[0].b = h[..];
@@ -536,8 +688,8 @@ psionic_whisper_wav :: (b: [] u8) -> WeWav #export_c {
   out: [2] f32; #assert psionic_whisper_pcm16(h[..], 44, 2, out[..]) == 2 && out[0] == -1 && out[1] == cast(f32) 32767 / 32768;
   h[24] = 0x44; #assert !psionic_whisper_wav(h[..]).ok;
 }
-psionic_whisper_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, o0: int, o1: int) #export_c {
-  we_linear_part(x, rows, n_in, w, b, n_out, y, o0, o1);
+psionic_whisper_linear_part :: (x: [] f32, rows: int, n_in: int, w: [] f32, b: [] f32, n_out: int, y: [] f32, o0: int, o1: int, act: int) #export_c {
+  we_linear_part(x, rows, n_in, w, b, n_out, y, o0, o1, act);
 }
 psionic_whisper_attend_part :: (q: [] f32, nq: int, k: [] f32, v: [] f32, nk: int, d: int, heads: int, first: int, causal: bool, out: [] f32, j0: int, j1: int) #export_c {
   we_attend_part(q, nq, k, v, nk, d, heads, first, causal, out, j0, j1);
