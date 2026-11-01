@@ -1,6 +1,7 @@
 // Bounded prompt chunks share coefficients across tokens; decoding keeps its
 // single-token program. The host only uploads IDs and executes these launches.
 #load "device-plan.coax";
+#load "../../tests/gptoss-prefill-checks.coax";  // the checks' view comparison
 #authority;
 #test "prompt plans validate every token before upload and bound each chunk" {
     ids:=[4]int.[1,2,3,4];#assert gd_prompt(GT_SHAPE,0,ids[..]).status==GStatus.ok;
@@ -35,6 +36,7 @@ gd_batch_bf :: (w:GDWriter,rows:int,cols:int,n:int,weight:GDRef,bias:GDRef,x:GDR
     r=gd_emit(r,28,n*rows,3,4,GDScalars.{a=rows,b=n,c=16},GDViews.{a=gd_all(p,40),b=bias,c=out,d=gd_all(p,37)});return gd_guard(r,n*rows);
 }
 gd_batch_mx :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+    if w.plan.mma>0 {return gd_batch_mma(w,rows,cols,n,e,z,slot_input,weight,scale,bias,x,out);}
     p:=w.plan;tiles:=(n*z+7)/8+e;r:=gd_emit(w,32,tiles*(rows/4)*16,7,6,GDScalars.{a=rows,b=cols,c=n,d=e,e=z,f=16,g=slot_input},GDViews.{a=weight,b=scale,c=gd_all(p,38),d=gd_all(p,39),e=x,f=gd_all(p,40)});
     r=gd_emit(r,8,n*z*rows,2,5,GDScalars.{a=rows,b=16},GDViews.{a=gd_all(p,45),b=gd_all(p,40),c=bias,d=out,e=gd_all(p,37)});return gd_guard(r,n*z*rows);
 }
@@ -76,4 +78,64 @@ gd_batch_program :: (s:GShape,p:GDPlan,params:[]GDParam,position:int,first:int,n
     w=gd_emit(w,41,items,0,11,GDScalars.{},GDViews.{a=control,b=gd_all(p,35),c=gd_all(p,17),d=gd_all(p,13),e=gd_all(p,14),f=gd_all(p,15),g=gd_all(p,16),h=gd_all(p,18),i=gd_all(p,19),j=gd_all(p,20),k=gd_all(p,21)});
     w=gd_emit(w,42,1,1,1,GDScalars.{a=n},GDViews.{a=control});
     if choose {w=gd_emit(w,22,p.counts[27],0,2,GDScalars.{},GDViews.{a=gd_all(p,18),b=gd_all(p,27)});w=gd_emit(w,23,1,1,3,GDScalars.{a=limit},GDViews.{a=gd_all(p,18),b=gd_all(p,27),c=control});}return w.result;
+}
+
+// book:begin batch-mma
+// Chapter 71: the same grouped products on the tensor cores (kinds 45 to
+// 47), when the session turned MXFP4-BF16-MMA-v1 on. The packed weights are
+// read as bytes; grouped rows, limbs and partials live in plan buffers 47,
+// 48, 40 and 49.
+gd_batch_mma :: (w:GDWriter,rows:int,cols:int,n:int,e:int,z:int,slot_input:int,weight:GDRef,scale:GDRef,bias:GDRef,x:GDRef,out:GDRef)->GDWriter {
+    p:=w.plan;s:=GShape.{experts=e,selected=z};grouped:=gd_grouped(n,s);quads:=(n*z+31)/32+e;
+    bytes:=GDRef.{buffer=weight.buffer,offset=weight.offset,count=weight.count*weight.elem,elem=1};
+    r:=gd_emit(w,45,grouped*(cols/2),5,5,GDScalars.{a=cols,b=n,c=e,d=z,e=slot_input},GDViews.{a=gd_all(p,38),b=gd_all(p,39),c=x,d=gd_all(p,47),e=gd_all(p,48)});
+    r=gd_emit(r,46,quads*(rows/16)*p.mma,5,7,GDScalars.{a=rows,b=cols,c=e,d=p.mma,e=grouped},GDViews.{a=bytes,b=scale,c=gd_all(p,39),d=gd_all(p,47),e=gd_all(p,48),f=gd_all(p,40),g=gd_all(p,49)});
+    r=gd_emit(r,47,grouped*rows,5,7,GDScalars.{a=rows,b=n,c=e,d=p.mma,e=grouped},GDViews.{a=gd_all(p,38),b=gd_all(p,39),c=gd_all(p,40),d=gd_all(p,49),e=bias,f=out,g=gd_all(p,37)});
+    return gd_guard(r,n*z*rows);
+}
+// book:end batch-mma
+#test "a session with tensor-core products emits the grouped split, warp products and finish" {
+    pins:=GOWN_ARTIFACTS;specs:=GOWN_SPECS;profile:=GProfile.{shape=GT_SHAPE,pins=pins[..],specs=specs[..]};params:[33]GDParam;#assert gd_params(profile,params[..]).status==GStatus.ok;
+    p:=gd_with_mma(gd_plan(GT_SHAPE,pins[..],1000000000,1000000000),GT_SHAPE,2);ops:[192]GDOp;args:[4608]GDArg;
+    r:=gd_batch_program(GT_SHAPE,p,params[..],1,1,3,true,4,ops[..],args[..]);#assert r.status==GStatus.ok && r.ops<=p.max_ops;
+    // Three tokens, two of four experts: 40 grouped rows, 5 warp groups.
+    seen:[48]int;items:[48]int;
+    for i:0..<r.ops {o:=ops[i];seen[o.kind]+=1;if seen[o.kind]<=2 {items[o.kind]+=o.items;}#assert o.block==gd_block(o.kind);
+        for j:0..<o.count {a:=args[o.first+j];if a.view {#assert gd_ref_fits(p,a.ref);}}}
+    #assert seen[32]==0 && seen[8]==0 && seen[45]==4 && seen[46]==4 && seen[47]==4;
+    // Per layer: split 40*16 + 40*16, part 5*4*2 + 5*2*2, finish 40*64 + 40*32.
+    #assert items[45]==1280 && items[46]==60 && items[47]==3840;
+    // The packed weights are read as bytes.
+    for i:0..<r.ops {if ops[i].kind==46 {a:=args[ops[i].first+5];#assert a.view && a.ref.elem==1 && a.ref.buffer==0 && a.ref.count==params[3+11].bytes;break;}}
+    off:=gd_batch_program(GT_SHAPE,gd_with_mma(p,GT_SHAPE,0),params[..],1,1,3,true,4,ops[..],args[..]);#assert off.status==GStatus.ok && off.ops==r.ops-4;
+    one:=gd_batch_program(GT_SHAPE,gd_with_mma(p,GT_SHAPE,1),params[..],1,1,3,true,4,ops[..],args[..]);#assert one.status==GStatus.ok && one.ops==r.ops;
+}
+#test "the original first projection's tensor-core launches, worked by hand" {
+    // 121 tokens, 4 of 32 experts, 5,760 rows by 2,880 columns, 4 slices.
+    // Pairs 484: grouped rows 8 * ((484 + 7) / 8 + 32) = 744; warp groups
+    // (484 + 31) / 32 + 32 = 48 (15 full groups of 32 at most, plus one
+    // ragged group per expert).
+    o:=g_original_shape(0,2048);large:=G20_ARTIFACTS;p:=gd_with_mma(gd_plan(o,large[..],17179869184,17179869184),o,4);
+    ops:[8]GDOp;args:[64]GDArg;w:=GDWriter.{plan=p,ops=ops[..],args=args[..]};
+    weight:=GDRef.{buffer=0,offset=4096,count=1000,elem=8};scale:=GDRef.{buffer=0,offset=16,count=7,elem=1};bias:=GDRef.{buffer=0,offset=64,count=9,elem=2};
+    x:=gd_slice(p,29,0,121*2880);out:=gd_slice(p,41,0,484*5760);
+    r:=gd_batch_mma(w,5760,2880,121,32,4,0,weight,scale,bias,x,out).result;
+    #assert r.status==GStatus.ok && r.ops==5;
+    #assert ops[0].kind==45 && ops[0].items==744*1440 && ops[1].kind==46 && ops[1].items==48*360*4 && ops[2].kind==47 && ops[2].items==744*5760;
+    // Five scalars each; five, seven and seven views.
+    #assert ops[0].count==10 && ops[1].count==12 && ops[2].count==12;
+    // The guard covers the 484 * 5,760 outputs.
+    #assert ops[3].kind==18 && ops[3].items==(484*5760+255)/256 && ops[4].kind==19;
+    want:=[17]int.[2880,121,32,4,0,5760,2880,32,4,744,5760,121,32,4,744,0,0];
+    for i:0..<5 {#assert args[ops[0].first+i].value==want[i] && args[ops[1].first+i].value==want[5+i] && args[ops[2].first+i].value==want[10+i];}
+    split:=[5]int.[38,39,-1,47,48];part:=[7]int.[-1,-1,39,47,48,40,49];finish:=[7]int.[38,39,40,49,-1,-1,37];
+    for i:0..<5 {a:=args[ops[0].first+5+i].ref;if split[i]>=0 {#assert gd_same_ref(a,gd_all(p,split[i]));}}
+    for i:0..<7 {a:=args[ops[1].first+5+i].ref;if part[i]>=0 {#assert gd_same_ref(a,gd_all(p,part[i]));}}
+    for i:0..<7 {a:=args[ops[2].first+5+i].ref;if finish[i]>=0 {#assert gd_same_ref(a,gd_all(p,finish[i]));}}
+    #assert gd_same_ref(args[ops[0].first+7].ref,x) && gd_same_ref(args[ops[2].first+9].ref,bias) && gd_same_ref(args[ops[2].first+10].ref,out) && gd_same_ref(args[ops[1].first+6].ref,scale);
+    // The packed weights as 8,000 bytes from the same offset.
+    #assert gd_same_ref(args[ops[1].first+5].ref,GDRef.{buffer=0,offset=4096,count=8000,elem=1});
+    // 120 tokens: 480 pairs fill exactly 15 groups, so (480 + 31) / 32 + 32 = 47.
+    w2:=GDWriter.{plan=p,ops=ops[..],args=args[..]};r=gd_batch_mma(w2,5760,2880,120,32,4,0,weight,scale,bias,x,out).result;
+    #assert r.status==GStatus.ok && ops[0].items==736*1440 && ops[1].items==47*360*4;
 }

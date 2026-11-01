@@ -1,0 +1,36 @@
+// Chapter 71 on the CPU: the frozen workload's first IDs and identity words,
+// the hand-worked case from the chapter, then the gate applied to the two
+// receipts recorded on the RTX 4080: f32 prefill, then tensor-core prefill.
+#import "Basic";
+#load "../lib/throughput-gate.coax";
+#load "../fixtures/throughput-gate/rtx4080-f32.coax";
+#load "../fixtures/throughput-gate/rtx4080-mma.coax";
+
+show :: (name:string,part:string,g:TgGoal) {
+    print("% % goal: n=% mean=% ns sd=% ns se=% ns limit=% ns: % (%)\n",name,part,g.stats.n,g.stats.mean,g.stats.sd,g.se,g.limit,
+        tg_verdict_name(g.verdict),tg_reason_name(g.reason));
+}
+receipt :: (name:string,build:string,commit:string,machine:string,device:string,p:[]int,d:[]int) {
+    b:=TgBind.{build=tg_word(build),commit=tg_word(commit),machine=tg_word(machine),device=tg_word(device),warmup=1};
+    g:=tg_decide(tg_work(),b,true,p,d);
+    show(name,"prefill",g.prefill);
+    show(name,"decode",g.decode);
+    print("% decode rate at the mean: % tokens/s\n",name,128.0*1000000000.0/g.decode.stats.mean);
+    print("% gate: % (%)\n",name,tg_verdict_name(g.verdict),tg_reason_name(g.reason));
+}
+// book:begin example
+main :: () {
+    w:=tg_work();
+    print("profile %: % input IDs, % forced output IDs, context %, concurrency %\n",TG_PROFILE,w.input,w.output,w.context,w.concurrency);
+    print("first IDs % % % %; output ID 0 is %; ID 1152 is %\n",tg_id(0),tg_id(1),tg_id(2),tg_id(24),tg_id(1024),tg_id(1152));
+    print("model word %; corpus word %\n",w.model,w.corpus);
+    // The hand-worked case: five prefill runs from 1.90 s to 1.98 s.
+    hand:=[5]int.[1900000000,1920000000,1940000000,1960000000,1980000000];
+    show("hand","prefill",tg_goal(hand[..],TG_PREFILL_LIMIT));
+    // The RTX 4080 receipts.
+    p:=TG_R1_PREFILL;d:=TG_R1_DECODE;
+    receipt("RTX 4080, f32 prefill:",TG_R1_BUILD,TG_R1_COMMIT,TG_R1_MACHINE,TG_R1_DEVICE,p[..],d[..]);
+    q:=TG_R2_PREFILL;e:=TG_R2_DECODE;
+    receipt("RTX 4080, tensor-core prefill:",TG_R2_BUILD,TG_R2_COMMIT,TG_R2_MACHINE,TG_R2_DEVICE,q[..],e[..]);
+}
+// book:end example

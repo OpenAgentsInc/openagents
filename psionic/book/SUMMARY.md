@@ -77,7 +77,7 @@
 - [68. Coax kernels cooperate](ch068-coax-kernels-cooperate.md) — partly implemented
 - [69. Original MXFP4 products use matrix hardware](ch069-original-mxfp4-products-use-matrix-hardware.md) — partly implemented
 - [70. Replay the device program](ch070-replay-the-device-program.md)
-- [71. Throughput is a gate](ch071-throughput-is-a-gate.md) — design draft
+- [71. Throughput is a gate](ch071-throughput-is-a-gate.md) — partly implemented
 - [72. gpt-oss-20b on Metal](ch072-gpt-oss-on-metal.md)
 - [73. Execute gpt-oss-120b](ch073-execute-gpt-oss-120b.md)
 - [74. Fit 120b on the right device](ch074-fit-120b-on-the-right-device.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 180, 188, 195, 215–221, 224–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 180, 188, 195, 215–221, 224–237, 239–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

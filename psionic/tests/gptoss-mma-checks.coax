@@ -1,0 +1,18 @@
+// Chapter 71's check helpers for psionic/lib/gptoss/device-mma.coax: fixed
+// routes and a CPU run of the three grouped kernels. Only checks call these.
+// Routes for `tokens` tokens: slot s of token t picks expert (t*5+s*3+t/3)%experts,
+// distinct within a token while selected <= 3 and experts >= 4 ... checked below.
+gk_mma_routes :: (tokens:int,selected:int,experts:int,ids:[]int) {
+    for t:0..<tokens {for s:0..<selected {ids[t*selected+s]=(t*5+s*3+t/3)%experts;}}
+}
+// The grouped kernels on the CPU in reverse item order; returns the number
+// of grouped rows used for the partial layout.
+gk_mma_run :: (rows:int,cols:int,tokens:int,experts:int,selected:int,slices:int,slot_input:int,map:[]int,counts:[]int,packed:[]u8,scales:[]u8,bias:[]u16,x:[]f32,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8,out:[]f32,flags:[]u8)->int {
+    tiles:=(tokens*selected+7)/8+experts;grouped:=8*tiles;quads:=(tokens*selected+31)/32+experts;
+    split:=grouped*cols/2;part:=quads*rows/16*slices;finish:=grouped*rows;
+    for i:0..<split {gk_mma_split(split-1-i,cols,tokens,experts,selected,slot_input,map,counts,x,hi,lo);}
+    for i:0..<part {gk_mma_part(part-1-i,rows,cols,experts,slices,grouped,packed,scales,counts,hi,lo,partial,marks);}
+    for i:0..<finish {gk_mma_finish(finish-1-i,rows,tokens,experts,slices,grouped,map,counts,partial,marks,bias,out,flags);}
+    return grouped;
+}
+

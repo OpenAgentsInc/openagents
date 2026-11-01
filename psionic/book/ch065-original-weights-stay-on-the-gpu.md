@@ -43,7 +43,7 @@ Its exact output is:
 
 ```jai
 original 20b packed weight bytes: 13761300984
-resident workspace bytes: 527933440; reserve bytes: 134217728
+resident workspace bytes: 592814080; reserve bytes: 134217728
 prefill chunk: 128 tokens; generated kernel entry points: 43
 1024 prompt tokens: 8 full chunks; final tail at 1023: 1
 120b on 16 GiB: refused before allocation

@@ -1,0 +1,15 @@
+// Chapter 71's second receipt: psionic/tests/check_throughput_gate.sh on
+// coderos-4080, 2026-11-01, chapter 66's decoder with chapter 70's replay and
+// chapter 67's grouped prefill whose expert products run under
+// MXFP4-BF16-MMA-v1 (gptoss/device-mma.coax, 4 slices). One warm-up and five
+// timed runs; greedy outputs equal the f32 path's on both fixture prompts.
+// Copied from the harness log in
+// docs/verification/psionic-ch071-throughput-gate-2026-11-01.md.
+TG_R2_BUILD :: "coax-18b90dec5d4e-cuda-72df8e2ef7ee4f53-mma-858d3a0112b4f54f-host-c3cd797e1230584e";
+TG_R2_COMMIT :: "fd72815cfa+uncommitted";
+TG_R2_MACHINE :: "coderos-4080 Linux 6.18.49 driver 595.71.05";
+TG_R2_DEVICE :: "NVIDIA GeForce RTX 4080 sm_89 16711352320 bytes";
+TG_R2_PREFILL :: [5]int.[1509731025,1508299997,1509091290,1513465083,1512092657];
+TG_R2_DECODE :: [5]int.[2273655612,2274044147,2279963061,2279978867,2279540283];
+// One-minute load average when each timed run began, times 100.
+TG_R2_LOAD :: [5]int.[1499,1499,1507,1554,1622];

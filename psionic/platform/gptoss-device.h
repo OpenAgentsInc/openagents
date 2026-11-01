@@ -10,6 +10,10 @@ typedef struct PgSession PgSession;
    `coax cuda` or `coax metal-compute` output of device-kernels.coax. */
 PcStatus pg_open(coax_t_GProfile profile,coax_v_t_GFile files,const char *cuda,size_t cuda_bytes,size_t budget,PgSession **out,coax_t_GResult *why);
 PcStatus pg_reset(PgSession *session);
+/* Chapter 71: turn chapter 69's tensor-core expert products on for prefill
+   (slices > 0, admitted by Coax gd_with_mma; `cuda` is `coax cuda` output of
+   gptoss/device-mma.coax) or off (0). A refusal leaves the session as it was. */
+PcStatus pg_mma(PgSession *session,const char *cuda,size_t cuda_bytes,int64_t slices,coax_t_GResult *why);
 PcStatus pg_step(PgSession *session,int64_t token,int64_t position,int choose,int64_t limit,int wait,int64_t control[8]);
 /* IDs validated before upload. Each bounded chunk commits atomically;
    control carries logical failures, separate from a platform failure. */

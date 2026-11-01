@@ -1,0 +1,27 @@
+// Chapter 71: runs the gate refuses, each with its typed reason, before any
+// goal is decided.
+#import "Basic";
+#load "../lib/throughput-gate.coax";
+
+judge :: (label:string,w:TgWork,b:TgBind,same:bool,p:[]int,d:[]int) {
+    g:=tg_decide(w,b,same,p,d);
+    print("%: % (%)\n",label,tg_verdict_name(g.verdict),tg_reason_name(g.reason));
+}
+// book:begin refuse
+main :: () {
+    w:=tg_work();
+    b:=TgBind.{build=tg_word("build"),commit=tg_word("commit"),machine=tg_word("machine"),device=tg_word("device"),warmup=1};
+    p:=[5]int.[1900000000,1920000000,1940000000,1960000000,1980000000];
+    d:=[5]int.[4000000000,4010000000,4020000000,4030000000,4040000000];
+    judge("the frozen workload",w,b,true,p[..],d[..]);
+    x:=w;x.input=1023;judge("1,023 input IDs",x,b,true,p[..],d[..]);
+    x=w;x.corpus=tg_word("other IDs");judge("other input IDs",x,b,true,p[..],d[..]);
+    x=w;x.concurrency=4;judge("four requests at once",x,b,true,p[..],d[..]);
+    y:=b;y.commit=0;judge("no commit recorded",w,y,true,p[..],d[..]);
+    y=b;y.warmup=0;judge("no warm-up run",w,y,true,p[..],d[..]);
+    judge("greedy outputs changed",w,b,false,p[..],d[..]);
+    judge("five prefill runs, four decode runs",w,b,true,p[..],d[0..<4]);
+    judge("four runs",w,b,true,p[0..<4],d[0..<4]);
+    z:=d;z[2]=0;judge("a decode run of 0 ns",w,b,true,p[..],z[..]);
+}
+// book:end refuse

@@ -1,0 +1,4 @@
+// Chapter 71: the GPT-OSS device host plus the throughput gate, as one native
+// library for psionic/tests/gptoss_gate.c.
+#load "../lib/gptoss/device-host.coax";
+#load "../lib/throughput-gate.coax";

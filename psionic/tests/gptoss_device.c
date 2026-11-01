@@ -42,6 +42,16 @@ static void tiny(int cpu,const char *source,size_t source_bytes,const char *file
     TRY(pg_read(s,24,control,64));TRY(pg_read(s,16,after,cache_bytes));assert(control[2]==4 && !memcmp(before,after,cache_bytes));
     puts("cancelled prefill returns before the next chunk and preserves committed state");
     puts("batched prefill splits 1/3, 2/2, 3/1 and 4 preserve all serial cache bytes");
+    if(cpu){/* Chapter 71: prefill expert products under MXFP4-BF16-MMA-v1. */
+        coax_t_GResult mma;TRY(pg_mma(s,NULL,0,2,&mma));assert(!mma.status && pg_plan(s).mma==2);
+        TRY(pg_reset(s));TRY(pg_prefill(s,tiny_tokens,4,0,0,4,control));assert(!control[0] && control[2]==4);
+        TRY(pg_read(s,18,logits,sizeof logits));TRY(pg_read(s,19,trace,sizeof trace));TRY(pg_read(s,20,ids,sizeof ids));TRY(pg_read(s,21,weights,sizeof weights));
+        compare(logits,tiny_logits[3],16,"tensor-core batch logits");compare(trace,tiny_trace[3],128,"tensor-core batch trace");compare(weights,tiny_weights[3],4,"tensor-core batch mixture");assert(!memcmp(ids,tiny_routes[3],sizeof ids));
+        TRY(pg_mma(s,NULL,0,3,&mma));assert(mma.status==COAX_GStatus_shape && pg_plan(s).mma==2);
+        TRY(pg_mma(s,NULL,0,0,&mma));assert(!mma.status && pg_plan(s).mma==0);
+        TRY(pg_reset(s));TRY(pg_prefill(s,tiny_tokens,4,0,0,4,control));assert(!control[0]);TRY(pg_read(s,16,after,cache_bytes));assert(!memcmp(before,after,cache_bytes));
+        puts("tensor-core prefill expert products (2 slices) match the tiny reference; 3 slices refused; off restores f32 bytes");
+    }
     int64_t bad_tokens[]={1,16};assert(pg_prefill(s,bad_tokens,2,4,0,4,control)==PC_ARGUMENT);
     TRY(pg_read(s,24,control,64));assert(!control[0] && control[2]==4);
     int64_t valid_tokens[]={1,2};TRY(pg_prefill(s,valid_tokens,2,2,0,4,control));assert(control[0]==COAX_GStatus_state && control[2]==4);

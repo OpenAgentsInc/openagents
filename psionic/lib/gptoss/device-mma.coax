@@ -1,0 +1,185 @@
+// Chapter 71: chapter 67's grouped prefill expert products on the tensor
+// cores, under chapter 69's MXFP4-BF16-MMA-v1. After gk_group and
+// gk_group_prefix, expert e owns the grouped rows from 8*counts[E+e]: row
+// 8*counts[E+e]+o holds pair map[e*tokens+o] while o<counts[e] and zeros
+// after it, up to the expert's last 8-row tile. Three kernels replace
+// gk_batch_mx_part and gk_mx_finish when a session turns the profile on:
+// split the grouped inputs into BF16 limbs, multiply 32 grouped rows of one
+// expert per warp, and add the slices into each pair's output.
+#load "device-kernels.coax";
+#load "../device/mxfp4-mma.coax";
+#load "../../tests/gptoss-mma-checks.coax";  // the checks' routes and CPU runs
+#authority;
+
+// book:begin mma-split
+// Item g*(cols/2)+p: columns 2p and 2p+1 of grouped row g. Pair i reads
+// token i/selected (the first projection, slot_input 0) or row i of x (the
+// second projection, slot_input 1). Rows past an expert's pairs, and past
+// the last tile (gk_expert_tile gives `experts`, which owns no pairs), are
+// left as they are: they reach only accumulator columns that gk_mma_part
+// never stores.
+gk_mma_split :: (item:int,cols:int,tokens:int,experts:int,selected:int,slot_input:int,map:[]int,counts:[]int,x:[]f32,hi:[]u32,lo:[]u32) #export_c {
+    half:=cols/2;p:=item%half;g:=item/half;
+    e:=gk_expert_tile(g/8,experts,counts);o:=g-8*counts[experts+e];
+    if o>=counts[e] {return;}
+    i:=map[e*tokens+o];t:=i/selected;if slot_input!=0 {t=i;}
+    at:=t*cols+2*p;a:=x[at];b:=x[at+1];
+    ha:=dw_bf16(a);hb:=dw_bf16(b);
+    la:=dw_bf16(a-f32_from_bits(ha<<16));lb:=dw_bf16(b-f32_from_bits(hb<<16));
+    hi[item]=ha|(hb<<16);lo[item]=la|(lb<<16);
+}
+// book:end mma-split
+
+// book:begin mma-part
+// The expert and group of one warp's 32 grouped rows, as
+// expert*65536+group, or -1 past the last group: expert e owns
+// ceil(counts[e] / 32) groups, in expert order.
+gk_mma_group :: (quad:int,experts:int,counts:[]int)->int {
+    r:=-1;seen:=0;
+    for e:0..<experts {q:=(counts[e]+31)/32;if r<0 && quad<seen+q {r=e*65536+quad-seen;}seen+=q;}
+    return r;
+}
+// One warp: rows r0..r0+15 of one expert times up to 32 of its grouped rows,
+// over one slice of the columns. Work item (quad*blocks+block)*slices+slice.
+// Writes partial[(slice*grouped+g)*rows+row] for each valid grouped row g,
+// and marks there 1 when the lane read a scale above 252 (gk_mma_finish then
+// flags the output, as gk_batch_mx_part's non-finite partials do).
+gk_mma_part :: (item:int,rows:int,cols:int,experts:int,slices:int,grouped:int,packed:[]u8,scales:[]u8,counts:[]int,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8) #export_c {
+    slice:=item%slices;rest:=item/slices;blocks:=rows/16;block:=rest%blocks;quad:=rest/blocks;
+    q:=gk_mma_group(quad,experts,counts);
+    if q<0 {return;}
+    expert:=q/65536;group:=q%65536;r0:=block*16;g0:=8*counts[experts+expert]+32*group;valid:=counts[expert]-32*group;
+    nb:=cols/32;half:=cols/2;per:=cols/16/slices;used:=(valid+7)/8;
+    fa:[128]u32;fb:[64]u32;fl:[64]u32;fc:[128]f32;acc:[512]f32;bad:[32]u8;
+    for s:0..<per {
+        c0:=(slice*per+s)*16;
+        for lane:0..<32 {
+            g:=lane/4;t:=lane%4;flag:=bad[lane*1];
+            for h:0..<2 {
+                blk:=(expert*rows+r0+g+8*h)*nb+c0/32;scale:=scales[blk];
+                if scale>252 {flag=1;}
+                power:=gk_power(scale);at:=blk*16+c0%32/2+t;
+                fa[lane*4+h]=mm_pair(packed[at],power);fa[lane*4+2+h]=mm_pair(packed[at+4],power);
+            }
+            bad[lane*1]=flag;
+        }
+        for tile:0..<MM_TILES {
+            for lane:0..<32 {for j:0..<4 {fc[lane*4+j]=acc[lane*16+tile*4+j];}}
+            if tile<used {
+                for lane:0..<32 {
+                    xb:=(g0+tile*8+lane/4)*half+c0/2+lane%4;
+                    fb[lane*2]=hi[xb];fb[lane*2+1]=hi[xb+4];fl[lane*2]=lo[xb];fl[lane*2+1]=lo[xb+4];
+                }
+                cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);
+                cu_mma_bf16_16x8x16(fa[..],fl[..],fc[..]);
+                for lane:0..<32 {for j:0..<4 {acc[lane*16+tile*4+j]=fc[lane*4+j];}}
+            }
+        }
+    }
+    for lane:0..<32 {
+        for tile:0..<MM_TILES {
+            for j:0..<4 {
+                row:=r0+lane/4+8*(j/2);k:=tile*8+2*(lane%4)+j%2;
+                v:=acc[lane*16+tile*4+j];
+                if k<valid {at:=(slice*grouped+g0+k)*rows+row;partial[at]=v;marks[at]=bad[lane*1];}
+            }
+        }
+    }
+}
+// book:end mma-part
+
+// book:begin mma-finish
+// Item g*rows+row: the slices added in f64 in slice order, rounded to f32,
+// plus the expert's BF16 bias, stored at pair map[...]'s output row, as
+// gk_mx_finish stores it. A marked slice flags the output.
+gk_mma_finish :: (item:int,rows:int,tokens:int,experts:int,slices:int,grouped:int,map:[]int,counts:[]int,partial:[]f32,marks:[]u8,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
+    row:=item%rows;g:=item/rows;
+    e:=gk_expert_tile(g/8,experts,counts);o:=g-8*counts[experts+e];
+    if o>=counts[e] {return;}
+    i:=map[e*tokens+o];sum:f64=0;bad:u8=0;
+    for s:0..<slices {at:=(s*grouped+g)*rows+row;sum+=f64(partial[at]);bad|=marks[at];}
+    value:=f32(sum)+gk_bf(bias[e*rows+row]);out[i*rows+row]=value;flags[i*rows+row]=gk_bad(value)|bad;
+}
+// book:end mma-finish
+
+// ---- Checks.
+#test "grouped rows find their expert and group" {
+    // Experts hold 0, 33, 1 and 64 pairs: groups 0, 2, 1 and 2.
+    counts:=[9]int.[0,33,1,64,0,0,0,0,0];
+    #assert gk_mma_group(0,4,counts[..])==65536 && gk_mma_group(1,4,counts[..])==65537;
+    #assert gk_mma_group(2,4,counts[..])==2*65536 && gk_mma_group(3,4,counts[..])==3*65536 && gk_mma_group(4,4,counts[..])==3*65536+1;
+    #assert gk_mma_group(5,4,counts[..])== -1 && gk_mma_group(0,0,counts[..])== -1;
+}
+#test "integer products are exact and land at each pair's output row" #steps 200000000 {
+    // Four experts of 16 rows by 32 columns, every byte 0x22 (1.0, 1.0) at
+    // scale 127, so each output is the sum of its 32 inputs plus the bias.
+    rows:=16;cols:=32;tokens:=5;experts:=4;selected:=2;
+    ids:[10]int;gk_mma_routes(tokens,selected,experts,ids[..]);map:[20]int;counts:[9]int;
+    // Unused map entries hold an ID no input has: reading one traps.
+    for i:0..<20 {map[i]=1<<40;}
+    for e:0..<experts {gk_group(e,experts,selected,tokens,ids[..],map[..],counts[..]);}gk_group_prefix(0,experts,counts[..]);
+    packed:[1024]u8;scales:[64]u8;bias:[64]u16;for i:0..<1024 {packed[i]=0x22;}for i:0..<64 {scales[i]=127;}bias[2*16+5]=0x3f80;
+    x:[160]f32;for i:0..<160 {x[i]=f32(i%32+i/32);}
+    hi:[1024]u32;lo:[1024]u32;partial:[2048]f32;marks:[2048]u8;out:[160]f32;flags:[160]u8;
+    grouped:=gk_mma_run(rows,cols,tokens,experts,selected,1,0,map[..],counts[..],packed[..],scales[..],bias[..],x[..],hi[..],lo[..],partial[..],marks[..],out[..],flags[..]);
+    #assert grouped==8*((10+7)/8+4);
+    for i:0..<10 {t:=i/selected;for r:0..<rows {
+        b:=ifx ids[i]==2 && r==5 then 1 else 0;
+        #assert out[i*rows+r]==f32(496+32*t+b) && flags[i*rows+r]==0;
+    }}
+}
+#test "grouped products meet the frozen bound and chapter 66's rule against the f32 path" #steps 400000000 {
+    // Four experts of 32 rows by 64 columns, two selected, 37 tokens. Slot 0
+    // always picks expert 0 (37 pairs: a full group of 32 and a group of 5);
+    // slot 1 picks expert 1 for tokens 0 to 15, expert 3 for 16 to 31 and
+    // expert 2 after (16, 16 and 5 pairs). Experts 1 and 3 end exactly on a
+    // tile, so a write or read one row too far reaches the next expert's
+    // rows or the end of the limbs. Both projections' input kinds.
+    rows:=32;cols:=64;tokens:=37;experts:=4;selected:=2;n:=tokens*selected;
+    ids:[74]int;for t:0..<tokens {ids[2*t]=0;ids[2*t+1]=ifx t<16 then 1 else ifx t<32 then 3 else 2;}
+    map:[148]int;counts:[9]int;for i:0..<148 {map[i]=1<<40;}
+    for e:0..<experts {gk_group(e,experts,selected,tokens,ids[..],map[..],counts[..]);}gk_group_prefix(0,experts,counts[..]);
+    #assert counts[0]==37 && counts[1]==16 && counts[2]==5 && counts[3]==16 && counts[8]==5+2+1+2;
+    // The limbs hold exactly the 80 rows of the 10 tiles: a read past the
+    // last expert's tiles traps.
+    used:=8*counts[8]*cols/2;
+    packed:[4096]u8;scales:[256]u8;bias:[128]u16;mm_fill(packed[..],scales[..],bias[..]);
+    words:[512]u64;for i:0..<512 {w:u64=0;for b:0..<8 {w|=cast(u64)packed[i*8+b]<<cast(u64)(8*b);}words[i]=w;}
+    x:[4736]f32;mm_inputs(x[..]);
+    hi:[3712]u32;lo:[3712]u32;partial:[13824]f32;marks:[13824]u8;out:[2368]f32;flags:[2368]u8;
+    fpart:[37888]f32;fout:[2368]f32;fflags:[2368]u8;
+    for slot_input:0..<2 {for slices:1..<3 {
+        grouped:=gk_mma_run(rows,cols,tokens,experts,selected,slices,slot_input,map[..],counts[..],packed[..],scales[..],bias[..],x[..],hi[0..<used],lo[0..<used],partial[..],marks[..],out[..],flags[..]);
+        // Chapter 67's f32 kernels for the same grouped products.
+        tiles:=(n+7)/8+experts;items:=tiles*(rows/4)*16;
+        for i:0..<items {gk_batch_mx_part(i,rows,cols,tokens,experts,selected,16,slot_input,words[..],scales[..],map[..],counts[..],x[..],fpart[..]);}
+        for i:0..<n*rows {gk_mx_finish(i,rows,16,ids[..],fpart[..],bias[..],fout[..],fflags[..]);}
+        instructions:=mm_instructions(cols,slices);
+        for i:0..<n {for r:0..<rows {
+            t:=i/selected;stride:=0;token:=t;if slot_input!=0 {token=i;}
+            ref:=mm_reference(rows,cols,0,ids[i],r,0,token,packed[..],scales[..],bias[..],x[..]);
+            got:=out[i*rows+r];
+            #assert flags[i*rows+r]==0 && abs(f64(got)-ref.value)<=mm_bound(instructions,ref.magnitude);
+            #assert mm_rule_66(got,fout[i*rows+r]);
+        }}
+        #assert grouped==8*tiles;
+    }}
+}
+#test "a scale above 252 flags the outputs of the lane that read it" #steps 200000000 {
+    rows:=16;cols:=32;tokens:=3;experts:=4;selected:=2;
+    ids:[6]int;gk_mma_routes(tokens,selected,experts,ids[..]);map:[12]int;counts:[9]int;
+    for e:0..<experts {gk_group(e,experts,selected,tokens,ids[..],map[..],counts[..]);}gk_group_prefix(0,experts,counts[..]);
+    packed:[1024]u8;scales:[64]u8;bias:[64]u16;for i:0..<1024 {packed[i]=0x22;}for i:0..<64 {scales[i]=127;}
+    // Expert ids[0], row 9: scale 253. Expert ids[1], row 3: 252, admitted.
+    scales[ids[0]*16+9]=253;scales[ids[1]*16+3]=252;#assert ids[1]!=ids[0];
+    // Zero inputs keep the emulated products finite; the mark alone must flag.
+    x:[96]f32;
+    hi:[512]u32;lo:[512]u32;partial:[1024]f32;marks:[1024]u8;out:[96]f32;flags:[96]u8;
+    grouped:=gk_mma_run(rows,cols,tokens,experts,selected,1,0,map[..],counts[..],packed[..],scales[..],bias[..],x[..],hi[..],lo[..],partial[..],marks[..],out[..],flags[..]);#assert grouped==8*((6+7)/8+4);
+    for i:0..<6 {for r:0..<rows {
+        // The lane that reads row 9 also holds row 1 (rows g and g+8).
+        bad:=ids[i]==ids[0] && (r==9 || r==1);
+        #assert (flags[i*rows+r]==1)==bad;
+        if !bad {#assert out[i*rows+r]==0;}
+    }}
+}

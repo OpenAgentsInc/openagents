@@ -1,0 +1,12 @@
+// Chapter 71's first receipt: psionic/tests/gptoss_gate.c on coderos-4080,
+// 2026-11-01, chapter 66's decoder and chapter 67's f32 prefill
+// (gpt-oss-cuda-f32-v1), one warm-up and five timed runs. Copied from the
+// harness log in docs/verification/psionic-ch071-throughput-gate-2026-11-01.md.
+TG_R1_BUILD :: "coax-18b90dec5d4e-cuda-72df8e2ef7ee4f53-host-8047c5dc9facccfb";
+TG_R1_COMMIT :: "fd72815cfa";
+TG_R1_MACHINE :: "coderos-4080 Linux 6.18.49 driver 595.71.05";
+TG_R1_DEVICE :: "NVIDIA GeForce RTX 4080 sm_89 16711352320 bytes";
+TG_R1_PREFILL :: [5]int.[3103625482,3112139217,3105208106,3107413133,3109107931];
+TG_R1_DECODE :: [5]int.[2274467422,2275193802,2276227004,2281197384,2277115570];
+// One-minute load average when each timed run began, times 100.
+TG_R1_LOAD :: [5]int.[3474,3484,3485,3486,3481];

@@ -1,0 +1,224 @@
+// Chapter 71: throughput is a gate. One fixed gpt-oss-20b workload (1,024
+// input IDs, 128 forced output IDs, 2,048 context positions, one request at a
+// time), at least one untimed warm-up and 5 to 1,024 timed runs, and two
+// frozen goals: 1,024-token prefill in at most 2 s, and decode of at least 25
+// tokens/s (128 tokens in at most 5.12 s). Each goal is decided from chapter
+// 34's cm-warm-v1 statistics: pass, fail or too noisy. A verdict is refused
+// unless the workload is the frozen one, the build, commit, machine and
+// device are named, a warm-up ran, and the greedy outputs on the fixture
+// prompts equal the reference path's.
+// Profile tg-gptoss20b-v1: run times as positive integer nanoseconds.
+#authority;
+#load "comparator.coax";
+#load "../tests/throughput-gate-checks.coax";  // the checks' helpers and oracle words
+
+TG_PROFILE :: "tg-gptoss20b-v1";
+// The model the workload is frozen to: name and revision of the original file.
+TG_MODEL :: "gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee";
+TG_INPUT :: 1024;
+TG_OUTPUT :: 128;
+TG_CONTEXT :: 2048;
+// book:begin goals
+// The goals, frozen before any measurement, in nanoseconds per run.
+TG_PREFILL_LIMIT :: 2000000000;  // 1,024 input IDs in at most 2 s
+TG_DECODE_LIMIT :: 5120000000;   // 128 output IDs at 25 tokens/s or faster
+// book:end goals
+
+// What ran: identity words for the model and for the IDs actually fed in,
+// the lengths, the context capacity and the number of concurrent requests.
+TgWork :: struct {model:u64;corpus:u64;input:int;output:int;context:int;concurrency:int;}
+// Where and from what it ran: identity words for the build (compiler and
+// generated sources), the commit, the machine and the device, and how many
+// untimed warm-up runs came first.
+TgBind :: struct {build:u64;commit:u64;machine:u64;device:u64;warmup:int;}
+TgVerdict :: enum u8 {refused;pass;fail;noisy;}
+TgReason :: enum u8 {none;workload;unbound;warmup;outputs;pairs;stats;spread;close;}
+// One goal: its verdict and why, the warm-run statistics, the limit and the
+// standard error of the mean.
+TgGoal :: struct {verdict:TgVerdict;reason:TgReason;stats:CmStats;limit:int;se:f64;}
+TgGate :: struct {verdict:TgVerdict;reason:TgReason;prefill:TgGoal;decode:TgGoal;}
+
+#test "the frozen corpus and identity words" {
+    // FNV-1a 64: the empty string is the offset basis; "a" is the published vector.
+    #assert tg_word("")==0xcbf29ce484222325 && tg_word("a")==0xaf63dc4c8601ec8c;
+    #assert tg_id(0)==1000 && tg_id(1)==8919 && tg_id(23)==1000+(23*7919)%190000 && tg_id(24)==1000+(24*7919)%190000;
+    // 24 * 7919 = 190056 wraps to 56.
+    #assert tg_id(24)==1056 && tg_id(1023)==1000+(1023*7919)%190000;
+    // The continuation repeats the first 128 inputs.
+    #assert tg_id(1024)==tg_id(0) && tg_id(1151)==tg_id(127) && tg_id(-1)== -1 && tg_id(1152)== -1;
+    w:=tg_work();#assert w.model==tg_word(TG_MODEL) && w.input==1024 && w.output==128 && w.context==2048 && w.concurrency==1;
+    // The corpus word changes when any one ID changes.
+    #assert w.corpus==tg_corpus_word() && w.corpus!=0;
+    #assert tg_ids_word(0,1152)==w.corpus && tg_ids_word(0,1151)!=w.corpus && tg_ids_word(1,1152)!=w.corpus;
+    // Words computed independently (psionic/tests/throughput-gate-checks.coax).
+    #assert w.corpus==TG_ORACLE_CORPUS && w.model==TG_ORACLE_MODEL;
+}
+
+// book:begin one-goal
+// Pass when the mean plus two standard errors is within the limit; fail when
+// the mean minus two standard errors is beyond it; otherwise too close to
+// call. A spread over a tenth of the mean decides nothing (chapter 34's rule).
+tg_goal :: (runs:[]int,limit:int)->TgGoal #export_c {
+    g:=TgGoal.{verdict=TgVerdict.refused,reason=TgReason.stats,stats=cm_welford(runs),limit=limit};
+    if g.stats.status!=CmStatus.ok {return g;}
+    g.se=g.stats.sd/sqrt(cast(f64)g.stats.n);
+    g.verdict=TgVerdict.noisy;g.reason=TgReason.spread;
+    if g.stats.sd*10>g.stats.mean {return g;}
+    g.reason=TgReason.close;
+    if g.stats.mean+2*g.se<=cast(f64)limit {g.verdict=TgVerdict.pass;g.reason=TgReason.none;}
+    if g.stats.mean-2*g.se>cast(f64)limit {g.verdict=TgVerdict.fail;g.reason=TgReason.none;}
+    return g;
+}
+// book:end one-goal
+
+#test "one goal by hand: pass, fail, too close and too noisy" {
+    // Runs 1.90, 1.92, 1.94, 1.96, 1.98 s: mean 1.94 s, sd sqrt(0.001) s
+    // = 0.0316 s, se 0.01414 s, so mean + 2 se = 1.968 s <= 2 s.
+    a:=[5]int.[1900000000,1920000000,1940000000,1960000000,1980000000];
+    g:=tg_goal(a[..],TG_PREFILL_LIMIT);
+    #assert g.verdict==TgVerdict.pass && g.reason==TgReason.none && g.stats.mean==1940000000 && cm_close(g.se,sqrt(1000000000000000.0)/sqrt(5.0)) && g.limit==TG_PREFILL_LIMIT;
+    // Shifted by 0.05 s: mean 1.99 s, mean + 2 se = 2.018 s > 2 s and
+    // mean - 2 se = 1.962 s: too close to call.
+    for i:0..<5 {a[i]+=50000000;}
+    g=tg_goal(a[..],TG_PREFILL_LIMIT);#assert g.verdict==TgVerdict.noisy && g.reason==TgReason.close;
+    // Shifted to a mean of 2.04 s: mean - 2 se = 2.0117 s > 2 s.
+    for i:0..<5 {a[i]+=50000000;}
+    g=tg_goal(a[..],TG_PREFILL_LIMIT);#assert g.verdict==TgVerdict.fail && g.reason==TgReason.none;
+    // Equal runs exactly at the limit pass; one nanosecond over fails.
+    e:=[5]int.[2000000000,2000000000,2000000000,2000000000,2000000000];
+    #assert tg_goal(e[..],TG_PREFILL_LIMIT).verdict==TgVerdict.pass && tg_goal(e[..],TG_PREFILL_LIMIT).se==0;
+    for i:0..<5 {e[i]=2000000001;}#assert tg_goal(e[..],TG_PREFILL_LIMIT).verdict==TgVerdict.fail;
+    // sd = mean / 10 still decides; more does not. Runs 90, 100, 110, 100, 100
+    // have sd sqrt(200/4) = 7.07, under 10; runs 70, 130, 100, 100, 100 have
+    // sd sqrt(1800/4) = 21.2.
+    b:=[5]int.[90,110,100,100,100];#assert tg_goal(b[..],200).verdict==TgVerdict.pass && tg_goal(b[..],50).verdict==TgVerdict.fail;
+    c:=[5]int.[70,130,100,100,100];g=tg_goal(c[..],200);#assert g.verdict==TgVerdict.noisy && g.reason==TgReason.spread && g.se>0;
+    // sd exactly a tenth of the mean: 10 * sd == mean is not "over".
+    // Deviations 0, -10, 10, -10, 10: squares sum to 400, variance 100, sd 10;
+    // in this order every Welford step is exact.
+    d:=[5]int.[100,90,110,90,110];g=tg_goal(d[..],200);#assert g.stats.sd==10 && g.verdict==TgVerdict.pass;
+    // Refused statistics: four runs, or a run that is not positive.
+    g=tg_goal(a[0..<4],TG_PREFILL_LIMIT);#assert g.verdict==TgVerdict.refused && g.reason==TgReason.stats && g.stats.status==CmStatus.few && g.se==0;
+    z:=a;z[1]=0;#assert tg_goal(z[..],TG_PREFILL_LIMIT).stats.status==CmStatus.sample && tg_goal(z[..],TG_PREFILL_LIMIT).verdict==TgVerdict.refused;
+}
+#forall "a goal agrees with the exact integer variance at every limit" n:5..<12,seed:0..<10 {
+    x:[12]int;h:=(seed*2654435761+n)%2147483648;
+    for i:0..<n {h=(h*1103515245+12345)%2147483648;x[i]=1000000+h%60000;}
+    s:=0;for i:0..<n {s+=x[i];}mean:=cast(f64)s/cast(f64)n;se:=sqrt(cm_exact_var(x[0..<n])/cast(f64)n);
+    for k:0..<9 {
+        limit:=900000+k*30000;g:=tg_goal(x[0..<n],limit);
+        // Spread is at most 30,000 / 1,000,000, under a tenth: never noisy for spread.
+        #assert g.reason!=TgReason.spread && g.verdict!=TgVerdict.refused;
+        if mean+2*se<cast(f64)limit-0.001 {#assert g.verdict==TgVerdict.pass;}
+        if mean-2*se>cast(f64)limit+0.001 {#assert g.verdict==TgVerdict.fail;}
+        if mean+2*se>cast(f64)limit+0.001 && mean-2*se<cast(f64)limit-0.001 {#assert g.verdict==TgVerdict.noisy && g.reason==TgReason.close;}
+    }
+}
+
+// book:begin decide
+// The whole gate. Refusals come first, in this order; then both goals.
+// A goal that fails decides the gate even when the other is too noisy.
+tg_decide :: (work:TgWork,bind:TgBind,same_outputs:bool,prefill:[]int,decode:[]int)->TgGate #export_c {
+    gate:=TgGate.{verdict=TgVerdict.refused};f:=tg_work();
+    if work.model!=f.model || work.corpus!=f.corpus || work.input!=f.input || work.output!=f.output || work.context!=f.context || work.concurrency!=f.concurrency {gate.reason=TgReason.workload;return gate;}
+    if bind.build==0 || bind.commit==0 || bind.machine==0 || bind.device==0 {gate.reason=TgReason.unbound;return gate;}
+    if bind.warmup<1 {gate.reason=TgReason.warmup;return gate;}
+    if !same_outputs {gate.reason=TgReason.outputs;return gate;}
+    if prefill.count!=decode.count {gate.reason=TgReason.pairs;return gate;}
+    gate.prefill=tg_goal(prefill,TG_PREFILL_LIMIT);gate.decode=tg_goal(decode,TG_DECODE_LIMIT);
+    a:=gate.prefill.verdict;b:=gate.decode.verdict;
+    if a==TgVerdict.refused || b==TgVerdict.refused {gate.reason=TgReason.stats;return gate;}
+    gate.verdict=TgVerdict.noisy;
+    if a==TgVerdict.pass && b==TgVerdict.pass {gate.verdict=TgVerdict.pass;}
+    if a==TgVerdict.fail || b==TgVerdict.fail {gate.verdict=TgVerdict.fail;}
+    return gate;
+}
+// book:end decide
+
+#test "the gate refuses anything but the frozen workload, bound and checked" {
+    w:=tg_work();b:=tg_check_bind();runs:=[5]int.[1900000000,1920000000,1940000000,1960000000,1980000000];dec:=[5]int.[4000000000,4010000000,4020000000,4030000000,4040000000];
+    g:=tg_decide(w,b,true,runs[..],dec[..]);#assert g.verdict==TgVerdict.pass && g.reason==TgReason.none && g.prefill.verdict==TgVerdict.pass && g.decode.verdict==TgVerdict.pass;
+    #assert g.decode.limit==TG_DECODE_LIMIT && g.prefill.limit==TG_PREFILL_LIMIT;
+    x:=w;x.model=1;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
+    x=w;x.corpus=tg_ids_word(0,1151);#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
+    x=w;x.input=1023;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
+    x=w;x.output=127;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
+    x=w;x.context=4096;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
+    x=w;x.concurrency=4;#assert tg_refused(x,b,true,runs[..],dec[..],TgReason.workload);
+    y:=b;y.build=0;#assert tg_refused(w,y,true,runs[..],dec[..],TgReason.unbound);
+    y=b;y.commit=0;#assert tg_refused(w,y,true,runs[..],dec[..],TgReason.unbound);
+    y=b;y.machine=0;#assert tg_refused(w,y,true,runs[..],dec[..],TgReason.unbound);
+    y=b;y.device=0;#assert tg_refused(w,y,true,runs[..],dec[..],TgReason.unbound);
+    y=b;y.warmup=0;#assert tg_refused(w,y,true,runs[..],dec[..],TgReason.warmup);
+    y=b;y.warmup=1;#assert tg_decide(w,y,true,runs[..],dec[..]).verdict==TgVerdict.pass;
+    #assert tg_refused(w,b,false,runs[..],dec[..],TgReason.outputs);
+    #assert tg_refused(w,b,true,runs[..],dec[0..<4],TgReason.pairs);
+    #assert tg_refused(w,b,true,runs[0..<4],dec[0..<4],TgReason.stats);
+    // The first problem found is the one reported.
+    x=w;x.input=1;y=b;y.build=0;#assert tg_refused(x,y,false,runs[..],dec[0..<4],TgReason.workload);
+    y.warmup=0;#assert tg_refused(w,y,false,runs[..],dec[0..<4],TgReason.unbound);
+    y=b;y.warmup=0;#assert tg_refused(w,y,false,runs[..],dec[0..<4],TgReason.warmup);
+    #assert tg_refused(w,b,false,runs[..],dec[0..<4],TgReason.outputs);
+    // A refused decode with a passing prefill is still refused.
+    z:=dec;z[3]=0;g=tg_decide(w,b,true,runs[..],z[..]);#assert g.verdict==TgVerdict.refused && g.reason==TgReason.stats && g.prefill.verdict==TgVerdict.pass;
+}
+#test "the two goals combine: a failure decides, noise holds back a pass" {
+    w:=tg_work();b:=tg_check_bind();
+    pass:=[5]int.[1900000000,1920000000,1940000000,1960000000,1980000000];
+    slow:=[5]int.[3210000000,3220000000,3230000000,3240000000,3250000000];
+    close:=[5]int.[1990000000,2000000000,2010000000,1980000000,2020000000];
+    noisy:=[5]int.[1000000000,3000000000,2000000000,2000000000,2000000000];
+    dpass:=[5]int.[3260000000,3270000000,3280000000,3290000000,3300000000];
+    dslow:=[5]int.[6000000000,6010000000,6020000000,6030000000,6040000000];
+    #assert tg_decide(w,b,true,slow[..],dpass[..]).verdict==TgVerdict.fail;
+    #assert tg_decide(w,b,true,pass[..],dslow[..]).verdict==TgVerdict.fail;
+    #assert tg_decide(w,b,true,noisy[..],dslow[..]).verdict==TgVerdict.fail;
+    #assert tg_decide(w,b,true,slow[..],dslow[..]).verdict==TgVerdict.fail;
+    g:=tg_decide(w,b,true,close[..],dpass[..]);#assert g.verdict==TgVerdict.noisy && g.reason==TgReason.none && g.prefill.reason==TgReason.close;
+    g=tg_decide(w,b,true,noisy[..],dpass[..]);#assert g.verdict==TgVerdict.noisy && g.prefill.reason==TgReason.spread;
+    g=tg_decide(w,b,true,pass[..],close[..]);#assert g.verdict==TgVerdict.pass;
+    #assert tg_verdict_name(TgVerdict.refused)=="refused" && tg_verdict_name(TgVerdict.pass)=="pass" && tg_verdict_name(TgVerdict.fail)=="fail" && tg_verdict_name(TgVerdict.noisy)=="too noisy";
+    #assert tg_reason_name(TgReason.none)=="none" && tg_reason_name(TgReason.workload)=="not the frozen workload";
+    #assert tg_reason_name(TgReason.unbound)=="a build, commit, machine or device is not recorded" && tg_reason_name(TgReason.warmup)=="no warm-up run";
+    #assert tg_reason_name(TgReason.outputs)=="greedy outputs differ from the reference path" && tg_reason_name(TgReason.pairs)=="prefill and decode run counts differ";
+    #assert tg_reason_name(TgReason.stats)=="the timings were refused" && tg_reason_name(TgReason.spread)=="a spread over a tenth of the mean";
+    #assert tg_reason_name(TgReason.close)=="within two standard errors of the limit";
+}
+
+// book:begin workload
+// Input ID i is 1000 + (i * 7919) mod 190000; the 128 forced output IDs
+// repeat inputs 0 to 127. Any other index has no ID.
+tg_id :: (i:int)->int #export_c {
+    if i<0 || i>=TG_INPUT+TG_OUTPUT {return -1;}
+    j:=i;if j>=TG_INPUT {j-=TG_INPUT;}
+    return 1000+(j*7919)%190000;
+}
+TG_FNV_BASIS :: cast(u64)0xcbf29ce484222325;
+// FNV-1a over bytes, and over the IDs first..<last as 8 little-endian bytes each.
+tg_word :: (s:string)->u64 #export_c {
+    h:=TG_FNV_BASIS;
+    for i:0..<s.count {h=mul_wrap(h^cast(u64)s[i],cast(u64)0x100000001b3);}
+    return h;
+}
+tg_ids_word :: (first:int,last:int)->u64 {
+    h:=TG_FNV_BASIS;
+    for i:first..<last {v:=cast(u64)tg_id(i);for b:0..<8 {h=mul_wrap(h^((v>>cast(u64)(8*b))&255),cast(u64)0x100000001b3);}}
+    return h;
+}
+tg_corpus_word :: ()->u64 #export_c {return tg_ids_word(0,TG_INPUT+TG_OUTPUT);}
+tg_work :: ()->TgWork #export_c {
+    return TgWork.{model=tg_word(TG_MODEL),corpus=tg_corpus_word(),input=TG_INPUT,output=TG_OUTPUT,context=TG_CONTEXT,concurrency=1};
+}
+// book:end workload
+
+tg_verdict_name :: (v:TgVerdict)->string #export_c {
+    names:=[4]string.["refused","pass","fail","too noisy"];
+    return names[cast(int)v];
+}
+tg_reason_name :: (r:TgReason)->string #export_c {
+    names:=[9]string.["none","not the frozen workload","a build, commit, machine or device is not recorded","no warm-up run",
+        "greedy outputs differ from the reference path","prefill and decode run counts differ","the timings were refused",
+        "a spread over a tenth of the mean","within two standard errors of the limit"];
+    return names[cast(int)r];
+}
+

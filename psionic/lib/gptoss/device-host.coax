@@ -3,6 +3,7 @@
 #load "device-prefill.coax";
 #load "device-replay.coax";
 #load "device-kernels.coax";
+#load "device-mma.coax";
 #load "../gptoss-math.coax";
 #load "../harmony.coax";
 #load "tools.coax";

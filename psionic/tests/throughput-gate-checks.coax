@@ -1,0 +1,14 @@
+// Chapter 71's check helpers: a bound side and a refusal test, plus the
+// identity words of the frozen workload computed outside Coax (FNV-1a 64 by a
+// separate Python one-liner over the same bytes). Loaded by
+// psionic/lib/throughput-gate.coax and owned by its checks.
+
+// FNV-1a 64 of "gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee".
+TG_ORACLE_MODEL :: cast(u64)0x65a9dd2191394d40;
+// FNV-1a 64 of the 1,152 workload IDs, each as 8 little-endian bytes.
+TG_ORACLE_CORPUS :: cast(u64)0xfddb0726d56ca5de;
+tg_check_bind :: ()->TgBind {return TgBind.{build=1,commit=2,machine=3,device=4,warmup=1};}
+tg_refused :: (w:TgWork,b:TgBind,same:bool,p:[]int,d:[]int,r:TgReason)->bool {
+    g:=tg_decide(w,b,same,p,d);
+    return g.verdict==TgVerdict.refused && g.reason==r;
+}

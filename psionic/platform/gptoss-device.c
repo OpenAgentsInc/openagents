@@ -8,6 +8,7 @@ struct PgSession {
     coax_t_GShape shape;coax_t_GDPlan plan;coax_t_GDParam *params;int64_t param_count;
     coax_t_GDOp *ops;coax_t_GDArg *args;PcBuffer *buffers;PcModule module;PcKernel *kernels;
     PcStream stream;int cpu,poisoned;char error[256];
+    PcModule mma_module;PcKernel mma_kernels[3];
     PcProgram replay;coax_t_GDOp *recorded_ops;coax_t_GDArg *recorded_args;int64_t *changes;
     int64_t recorded_count,recorded_arg_count;
 #ifdef PSIONIC_DEVICE_TEST
@@ -39,7 +40,7 @@ static PcStatus pg_create(coax_t_GProfile profile,coax_v_t_GFile files,const cha
     s->buffers=calloc((size_t)(16+gd_buffer_count()),sizeof *s->buffers);
     s->param_count=profile.specs.count;s->params=calloc((size_t)s->param_count,sizeof *s->params);s->ops=calloc((size_t)s->plan.max_ops,sizeof *s->ops);s->args=calloc((size_t)s->plan.max_args,sizeof *s->args);s->kernels=calloc((size_t)gd_kernel_count(),sizeof *s->kernels);
 #ifdef PSIONIC_DEVICE_TEST
-    s->seconds=calloc((size_t)gd_kernel_count(),sizeof *s->seconds);s->launches=calloc((size_t)gd_kernel_count(),sizeof *s->launches);if(!s->seconds || !s->launches){code=PC_MEMORY;goto failed;}
+    s->seconds=calloc((size_t)gd_kinds(),sizeof *s->seconds);s->launches=calloc((size_t)gd_kinds(),sizeof *s->launches);if(!s->seconds || !s->launches){code=PC_MEMORY;goto failed;}
 #endif
     if(!s->buffers || !s->params || !s->ops || !s->args || !s->kernels){code=PC_MEMORY;goto failed;}
     *why=gd_params(profile,(coax_v_t_GDParam){s->params,s->param_count});if(why->status)goto refused;
@@ -78,7 +79,9 @@ static PcStatus pg_execute(PgSession *s,coax_t_GDProgram p){
 #ifdef PSIONIC_DEVICE_TEST
         PcEvent begin=NULL,end=NULL;if(s->profile){PcStatus z=pc_event(&begin);if(z)return z;z=pc_event(&end);if(z)return z;z=pc_record(begin,s->stream);if(z)return z;}
 #endif
-        PcStatus code=pc_launch(s->kernels[op.kind],op.items,(int)op.block,arguments,(int)op.count,s->stream);if(code){s->poisoned=1;return code;}
+        /* Kinds past gd_kernel_count() come from the tensor-core module (pg_mma). */
+        PcKernel kernel=op.kind<gd_kernel_count()?s->kernels[op.kind]:s->mma_kernels[op.kind-gd_kernel_count()];
+        PcStatus code=gd_warp(op.kind)?pc_launch_warps(kernel,op.items,(int)op.block,arguments,(int)op.count,s->stream):pc_launch(kernel,op.items,(int)op.block,arguments,(int)op.count,s->stream);if(code){s->poisoned=1;return code;}
 #ifdef PSIONIC_DEVICE_TEST
         if(s->profile){double elapsed;code=pc_record(end,s->stream);if(!code)code=pc_sync_stream(s->stream);if(!code)code=pc_event_seconds(begin,end,&elapsed);pc_destroy_event(begin);pc_destroy_event(end);if(code)return code;s->seconds[op.kind]+=elapsed;s->launches[op.kind]++;}
 #endif
@@ -149,11 +152,20 @@ void pg_close(PgSession *s){if(!s)return;
 #ifdef PSIONIC_DEVICE_TEST
     if(s->cpu){if(s->buffers)for(int i=0;i<16+gd_buffer_count();i++)free((void*)(uintptr_t)s->buffers[i]);}else
 #endif
-    {if(s->stream)pc_sync_stream(s->stream);if(s->replay)pc_program_free(s->replay);if(s->buffers)for(int i=0;i<16+gd_buffer_count();i++)if(s->buffers[i])pc_free(s->buffers[i]);if(s->module)pc_unload(s->module);if(s->stream)pc_destroy_stream(s->stream);}
+    {if(s->stream)pc_sync_stream(s->stream);if(s->replay)pc_program_free(s->replay);if(s->buffers)for(int i=0;i<16+gd_buffer_count();i++)if(s->buffers[i])pc_free(s->buffers[i]);if(s->module)pc_unload(s->module);if(s->mma_module)pc_unload(s->mma_module);if(s->stream)pc_destroy_stream(s->stream);}
 #ifdef PSIONIC_DEVICE_TEST
     free(s->seconds);free(s->launches);
 #endif
     free(s->recorded_ops);free(s->recorded_args);free(s->changes);free(s->buffers);free(s->params);free(s->ops);free(s->args);free(s->kernels);free(s);
+}
+/* Chapter 71: Coax admits the slices (gd_with_mma); this loads the second
+   module once and swaps the plan. Prefill expert products then run on the
+   tensor cores; decode is unchanged. 0 slices turns them off again. */
+PcStatus pg_mma(PgSession *s,const char *source,size_t bytes,int64_t slices,coax_t_GResult *why){
+    if(s->poisoned)return PC_DRIVER;coax_t_GDPlan p=gd_with_mma(s->plan,s->shape,slices);*why=(coax_t_GResult){.status=p.status};if(p.status)return PC_OK;
+    if(!s->cpu && slices>0 && !s->mma_module){double seconds;PcStatus code=pc_compile(source,bytes,"gptoss-mma.cu",&s->mma_module,&seconds);if(code)return code;
+        for(int64_t i=gd_kernel_count();i<gd_kinds();i++){coax_string name=gd_kernel_name(i);char label[128];if(name.count<1 || name.count>=127)return PC_ARGUMENT;memcpy(label,name.data,(size_t)name.count);label[name.count]=0;code=pc_kernel(s->mma_module,label,&s->mma_kernels[i-gd_kernel_count()]);if(code)return code;}}
+    s->plan=p;return PC_OK;
 }
 coax_t_GDPlan pg_plan(const PgSession *s){return s->plan;}
 coax_t_GShape pg_shape(const PgSession *s){return s->shape;}
@@ -161,8 +173,8 @@ const char *pg_error(const PgSession *s){return s->error;}
 
 #ifdef PSIONIC_DEVICE_TEST
 void pg_profile(PgSession *s,int enable){
-    if(enable){memset(s->seconds,0,(size_t)gd_kernel_count()*sizeof *s->seconds);memset(s->launches,0,(size_t)gd_kernel_count()*sizeof *s->launches);}
-    else {for(int64_t i=0;i<gd_kernel_count();i++)if(s->launches[i]){coax_string name=gd_kernel_name(i);printf("kernel %.*s launches=%d device_seconds=%.9f\n",(int)name.count,name.data,s->launches[i],s->seconds[i]);}}
+    if(enable){memset(s->seconds,0,(size_t)gd_kinds()*sizeof *s->seconds);memset(s->launches,0,(size_t)gd_kinds()*sizeof *s->launches);}
+    else {for(int64_t i=0;i<gd_kinds();i++)if(s->launches[i]){coax_string name=gd_kernel_name(i);printf("kernel %.*s launches=%d device_seconds=%.9f\n",(int)name.count,name.data,s->launches[i],s->seconds[i]);}}
     s->profile=enable;
 }
 #endif

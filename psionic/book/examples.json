@@ -1962,6 +1962,26 @@
       ]
     },
     {
+      "source": "psionic/examples/throughput-gate.coax",
+      "chapter": "psionic/book/ch071-throughput-is-a-gate.md",
+      "stdout": "psionic/fixtures/throughput-gate/throughput-gate.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/throughput-gate-refuse.coax",
+      "chapter": "psionic/book/ch071-throughput-is-a-gate.md",
+      "stdout": "psionic/fixtures/throughput-gate/throughput-gate-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/tiny-train.coax",
       "chapter": "psionic/book/ch115-train-the-whole-tiny-decoder.md",
       "stdout": "psionic/fixtures/tiny-train.out",

@@ -1,0 +1,12 @@
+profile tg-gptoss20b-v1: 1024 input IDs, 128 forced output IDs, context 2048, concurrency 1
+first IDs 1000 8919 16838 1056; output ID 0 is 1000; ID 1152 is -1
+model word 7325629405134933312; corpus word 18292222174866220510
+hand prefill goal: n=5 mean=1940000000.0 ns sd=31622776.60168379 ns se=14142135.623730948 ns limit=2000000000 ns: pass (none)
+RTX 4080, f32 prefill: prefill goal: n=5 mean=3107498773.8 ns sd=3330915.139690083 ns se=1489630.5359260465 ns limit=2000000000 ns: fail (none)
+RTX 4080, f32 prefill: decode goal: n=5 mean=2276840236.4 ns sd=2635222.580079108 ns se=1178507.3649798536 ns limit=5120000000 ns: pass (none)
+RTX 4080, f32 prefill: decode rate at the mean: 56.21826158623485 tokens/s
+RTX 4080, f32 prefill: gate: fail (none)
+RTX 4080, tensor-core prefill: prefill goal: n=5 mean=1510536010.4 ns sd=2164346.863763451 ns se=967925.3428527105 ns limit=2000000000 ns: pass (none)
+RTX 4080, tensor-core prefill: decode goal: n=5 mean=2277436394.0 ns sd=3281623.692986197 ns se=1467586.7308182071 ns limit=5120000000 ns: pass (none)
+RTX 4080, tensor-core prefill: decode rate at the mean: 56.20354550283875 tokens/s
+RTX 4080, tensor-core prefill: gate: pass (none)
