@@ -63,7 +63,7 @@ own dependencies; most need only Part VI, and the encrypted ones need Part V.
 
 | Chapter | Depends on | Done means | Spec |
 | --- | --- | --- | --- |
-| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) — partly implemented | coax:5, coax:6 | Every RFC 4648 test vector for base64 passes, and every non-canonical form refuses. Hex and base64 round trips hold for every length up to the profile limit in a `#forall` check. `coax mutate` leaves zero survivors on the codec files. | — |
+| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) — implemented | coax:5, coax:6 | Every RFC 4648 test vector for base64 passes, and every non-canonical form refuses. Hex and base64 round trips hold for every length up to the profile limit in a `#forall` check. `coax mutate` leaves zero survivors on the codec files. | — |
 | [2. Big integers in fixed limbs](ch002-big-integers-in-fixed-limbs.md) — partly implemented | 1, coax:13 | Limb operations match the big-integer oracle on edge values: 0, 1, `p - 1`, `2^256 - 1` and values at each magnitude bound. A `#forall` check confirms no intermediate exceeds its declared bound. Native and wasm builds give the same bytes. | — |
 | [3. Constant-time rules and secrets](ch003-constant-time-rules.md) — partly implemented | 1, 2, coax:23 | A leaky branch fixture and a leaky index fixture are each detected by the timing harness. The constant-time checker refuses a seeded secret-dependent branch with its diagnostic. Every secret buffer in Parts II–V is erased on success and on every failure path. | — |
 

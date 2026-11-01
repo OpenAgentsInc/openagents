@@ -41,8 +41,8 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 103 chapters, 56 are partly implemented and
-47 are design drafts. No chapter is fully written yet.
+Of the 103 chapters, 1 is implemented, 55 are partly implemented and
+47 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -118,7 +118,7 @@ constant-time rules every later chapter follows.
 
 | Chapter | Status | Result |
 | --- | --- | --- |
-| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) | Partly implemented: native C (code and checks exist; the teaching text is not written) | Caller-owned byte views, big- and little-endian loads and stores, strict lowercase hex and canonical padded base64, with every decoder refusing bad input instead of guessing. |
+| [1. Bytes, hex and base64](ch001-bytes-hex-and-base64.md) | Runnable: native C | Caller-owned byte views, big- and little-endian loads and stores, strict lowercase hex and canonical padded base64, with every decoder refusing bad input instead of guessing. |
 | [2. Big integers in fixed limbs](ch002-big-integers-in-fixed-limbs.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | 256-bit numbers as ten 26-bit limbs in `u64` and as eight 32-bit limbs, with carry schedules that never overflow and an independent big-integer oracle. |
 | [3. Constant-time rules and secrets](ch003-constant-time-rules.md) | Partly implemented: native C and wasm (code and checks exist; the teaching text is not written) | The rules for secret data: no branch, index or variable-time call on a secret, explicit erasure, value barriers, and timing measurements that are evidence, not proof. |
 

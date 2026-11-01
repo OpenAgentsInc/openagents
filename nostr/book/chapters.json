@@ -6,7 +6,7 @@
    "number": 1,
    "title": "Bytes, hex and base64",
    "file": "ch001-bytes-hex-and-base64.md",
-   "status": "partly implemented",
+   "status": "implemented",
    "profile": "native C",
    "depends_on": [
     "coax:5",
@@ -16,7 +16,8 @@
     "coax/lib/crypto/bytes.coax",
     "coax/lib/nostr/base64.coax",
     "coax/lib/nostr/codecs-common.coax",
-    "coax/lib/nostr/hex.coax"
+    "coax/lib/nostr/hex.coax",
+    "nostr/examples/bytes-hex-base64.coax"
    ],
    "qualified_targets": [
     "cpu"

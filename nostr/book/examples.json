@@ -1,4 +1,15 @@
 {
   "schema": 1,
-  "examples": []
+  "examples": [
+    {
+      "source": "nostr/examples/bytes-hex-base64.coax",
+      "chapter": "nostr/book/ch001-bytes-hex-and-base64.md",
+      "stdout": "nostr/fixtures/bytes-hex-base64.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    }
+  ]
 }

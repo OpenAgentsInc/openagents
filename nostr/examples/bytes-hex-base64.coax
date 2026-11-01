@@ -1,0 +1,72 @@
+// book:begin example
+#load "../../coax/lib/crypto/bytes.coax";
+#load "../../coax/lib/nostr/hex.coax";
+#load "../../coax/lib/nostr/base64.coax";
+#import "Basic";
+
+// Nostr IDs, public keys and signatures are lowercase hex of a fixed size.
+// The RFC 4648 decoder accepts both cases, so check the case first.
+// Every lowercase hex digit has ASCII bit 5 set; uppercase digits don't.
+nostr_hex :: (text: string, out: [] u8) -> u32 {
+  if text.count != out.count * 2 { return NC_INVALID; }
+  for c: text { if (c & 32) == 0 { return NC_INVALID; } }
+  return hex_decode_checked(text, out, false).error;
+}
+
+ERRORS :: [5] string.["ok", "invalid", "no room", "over the limit", "overlaps"];
+
+main :: () {
+  // The x coordinate of the secp256k1 generator, a valid 32-byte public key.
+  key := "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  raw: [32] u8;
+  print("decode the key: %\n", ERRORS[nostr_hex(key, raw[..])]);
+  print("first byte %, last byte %\n", raw[0], raw[31]);
+  print("first 4 bytes as big-endian u32: %\n", cb_load_be32(raw[..], 0).value);
+  print("first 4 bytes as little-endian u32: %\n", cb_load_le32(raw[..], 0).value);
+  text: [64] u8;
+  r := hex_encode_checked(cast(string) raw[..], text[..], false);
+  print("encode it again: % characters, same text %\n", r.written, cast(string) text[..] == key);
+
+  // Refusals. Each one writes nothing to the output.
+  upper := "79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798";
+  print("uppercase key: %\n", ERRORS[nostr_hex(upper, raw[..])]);
+  print("63 characters: %\n", ERRORS[nostr_hex(key[0..<63], raw[..])]);
+  print("a g in the key: %\n", ERRORS[nostr_hex("g9be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", raw[..])]);
+  small: [16] u8;
+  print("a 16-byte output: %\n", ERRORS[hex_decode_checked(key, small[..], false).error]);
+
+  // RFC 4648 section 10 test vectors.
+  plain := [7] string.["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+  for p: plain {
+    out: [8] u8;
+    e := base64_encode_checked(p, out[..], false);
+    print("base64(\"%\") = \"%\"\n", p, cast(string) out[0..<e.written]);
+  }
+  // Non-canonical base64 is refused.
+  bad := [4] string.["Zg", "Zg=", "Zh==", "Z g="];
+  for s: bad {
+    out: [4] u8;
+    print("decode \"%\": %\n", s, ERRORS[base64_decode_checked(s, out[..], false).error]);
+  }
+}
+// book:end example
+
+// book:begin roundtrip
+// Round trips for every length from 0 to 256 bytes. Each byte depends on the
+// length and its position, so no two lengths share a pattern.
+#forall "hex and base64 round-trip every length up to 256 bytes" n: 0..<257 {
+  raw: [256] u8;
+  for i: 0..<n { raw[i] = cast(u8) ((i * 151 + n * 7) % 256); }
+  hex: [512] u8; back: [256] u8;
+  h := hex_encode_checked(cast(string) raw[0..<n], hex[..], false);
+  #assert h.error == NC_OK && h.written == n * 2;
+  #assert nostr_hex(cast(string) hex[0..<h.written], back[0..<n]) == NC_OK;
+  for i: 0..<n { #assert back[i] == raw[i]; }
+  b64: [344] u8;
+  e := base64_encode_checked(cast(string) raw[0..<n], b64[..], false);
+  #assert e.error == NC_OK && e.written == (n + 2) / 3 * 4;
+  d := base64_decode_checked(cast(string) b64[0..<e.written], back[..], false);
+  #assert d.error == NC_OK && d.written == n;
+  for i: 0..<n { #assert back[i] == raw[i]; }
+}
+// book:end roundtrip

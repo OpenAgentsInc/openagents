@@ -1,0 +1,20 @@
+decode the key: ok
+first byte 121, last byte 152
+first 4 bytes as big-endian u32: 2042521214
+first 4 bytes as little-endian u32: 2120662649
+encode it again: 64 characters, same text true
+uppercase key: invalid
+63 characters: invalid
+a g in the key: invalid
+a 16-byte output: no room
+base64("") = ""
+base64("f") = "Zg=="
+base64("fo") = "Zm8="
+base64("foo") = "Zm9v"
+base64("foob") = "Zm9vYg=="
+base64("fooba") = "Zm9vYmE="
+base64("foobar") = "Zm9vYmFy"
+decode "Zg": invalid
+decode "Zg=": invalid
+decode "Zh==": invalid
+decode "Z g=": invalid
