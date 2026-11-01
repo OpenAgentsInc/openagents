@@ -1,0 +1,32 @@
+// Chapter 33: count the work and plan the memory of Elephant, Mammoth and
+// gpt-oss-20b. Every number here is exact arithmetic on the pinned shapes;
+// nothing is timed, so the transcript is the same on every machine.
+#import "Basic";
+#load "../lib/residency.coax";
+
+show :: (name:string,m:RpModel) {
+    w:=rp_weights(m);d:=rp_decode(m,86);p:=rp_prefill(m,86);
+    print("%: weights % bytes (vectors %, slot %), state for 86 tokens % bytes, scratch % bytes\n",name,w.total,w.vectors,w.slot,rp_state(m,86),rp_scratch(m,86,86));
+    print("  decode at 86: % FLOPs, % bytes, % mFLOP/byte\n",d.flops,d.bytes,d.milli);
+    print("  prefill of 86: % FLOPs, % bytes, % mFLOP/byte\n",p.flops,p.bytes,p.milli);
+}
+plan :: (name:string,m:RpModel,capacity:int,stream:bool,budget:int) {
+    p:=rp_plan(m,RpRequest.{capacity=capacity,chunk=rp_min(capacity,512),stream=stream},budget);
+    print("% at % tokens, budget % bytes, streaming %: % (%), need % bytes",name,capacity,budget,ifx stream then "on" else "off",rp_mode_name(p.mode),rp_status_name(p.status),p.need);
+    if p.mode==RpMode.streamed {print(", % resident and % streamed",p.resident,p.streamed);}
+    print("\n");
+}
+// book:begin example
+main :: () {
+    show("elephant-1",rp_elephant());
+    show("mammoth-1",rp_mammoth());
+    show("gpt-oss-20b",rp_gptoss_20b());
+    gib:=1<<30;
+    plan("elephant-1",rp_elephant(),86,true,64*gib);
+    plan("elephant-1",rp_elephant(),86,true,16*gib);
+    plan("mammoth-1",rp_mammoth(),86,false,48*gib);
+    plan("gpt-oss-20b",rp_gptoss_20b(),4096,false,16000000000);
+    plan("gpt-oss-20b",rp_gptoss_20b(),131072,false,16000000000);
+    plan("gpt-oss-20b",rp_gptoss_20b(),131072,true,16000000000);
+}
+// book:end example

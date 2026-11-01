@@ -1480,6 +1480,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/residency-plan.coax",
+      "chapter": "psionic/book/ch033-measure-the-work-and-plan-the-memory.md",
+      "stdout": "psionic/fixtures/residency/residency-plan.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/residency-refuse.coax",
+      "chapter": "psionic/book/ch033-measure-the-work-and-plan-the-memory.md",
+      "stdout": "psionic/fixtures/residency/residency-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

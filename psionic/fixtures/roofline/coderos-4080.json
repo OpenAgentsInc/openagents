@@ -1,0 +1,24 @@
+{
+  "schema": "psionic.roofline.v1",
+  "profile": "rf-host-v1",
+  "host": "coderos-4080",
+  "cpu": "Intel(R) Core(TM) i7-14700K",
+  "kernel": "Linux 6.18.49 x86_64",
+  "date": "2026-11-01",
+  "loadavg": "12.47 13.91 13.43 13/1181 2846446",
+  "compiler": "gcc (GCC) 15.2.0",
+  "flags": "coax c --release; -std=c11 -g -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-parameter -Wno-unknown-pragmas -O2",
+  "threads": 1,
+  "triad": {"elements": 16777216, "bytes_per_run": 201326592, "runs": 7, "best_ns": 8617889, "median_ns": 9578560, "worst_ns": 10370694, "best_mbytes_per_s": 23361, "median_mbytes_per_s": 21018},
+  "madd": {"values": 4096, "rounds": 100000, "flops_per_run": 819200000, "runs": 7, "best_ns": 22813128, "median_ns": 23325247, "worst_ns": 23762226, "best_mflops": 35909, "median_mflops": 35120},
+  "ridge_milli_flops_per_byte": 1537,
+  "phases": [
+    {"model": "elephant-1", "phase": "decode", "tokens": 86, "flops": 15959588864, "bytes": 15984460800, "milli_flops_per_byte": 998, "bound": "memory", "attainable_mflops": 23314, "least_ns": 684549578},
+    {"model": "elephant-1", "phase": "prefill", "tokens": 86, "flops": 1199135391744, "bytes": 15932400640, "milli_flops_per_byte": 75263, "bound": "compute", "attainable_mflops": 35909, "least_ns": 33393728361},
+    {"model": "elephant-1", "phase": "prefill", "tokens": 2048, "flops": 28773080629248, "bytes": 16077054976, "milli_flops_per_byte": 1789698, "bound": "compute", "attainable_mflops": 35909, "least_ns": 801277691644},
+    {"model": "mammoth-1", "phase": "decode", "tokens": 86, "flops": 51508150272, "bytes": 51574400000, "milli_flops_per_byte": 998, "bound": "memory", "attainable_mflops": 23314, "least_ns": 2209322736},
+    {"model": "mammoth-1", "phase": "prefill", "tokens": 86, "flops": 4212125990912, "bytes": 51418246144, "milli_flops_per_byte": 81918, "bound": "compute", "attainable_mflops": 35909, "least_ns": 117300008101},
+    {"model": "gpt-oss-20b", "phase": "decode", "tokens": 86, "flops": 7248101376, "bytes": 3716641536, "milli_flops_per_byte": 1950, "bound": "compute", "attainable_mflops": 35909, "least_ns": 201846372},
+    {"model": "gpt-oss-20b", "phase": "prefill", "tokens": 86, "flops": 523446829056, "bytes": 12611947392, "milli_flops_per_byte": 41504, "bound": "compute", "attainable_mflops": 35909, "least_ns": 14577037206}
+  ]
+}

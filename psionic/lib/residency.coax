@@ -1,0 +1,440 @@
+// Chapter 33: measure the work and plan the memory. Exact integer accounting
+// of one model's weights, state and scratch, the arithmetic and the bytes of
+// a prefill and a decode step, and a residency plan that admits a request as
+// resident, admits it with streamed weights, or refuses it with a typed
+// reason before anything is allocated.
+// Profile rp-plan-v1: weights as stored (BF16, and MXFP4 blocks with one
+// scale byte per 32 values for gpt-oss experts); state and scratch as f32.
+// A FLOP is half a multiply-add. Counted: every multiply-add in a weight
+// product, the depthwise convolution, attention scores and values, and the
+// delta-rule state (three per state entry: read, update, readout). Not
+// counted: norms, activations, gates, softmax, rotary and routing choices.
+// Bytes are the ideal-reuse traffic: each weight read once per step, live
+// state read and the new state written once; activations stay in cache.
+#authority;
+
+RpArch :: enum u8 {hybrid;moe;}
+RpStatus :: enum u8 {ok;model;request;budget;weights;state;stream;}
+RpMode :: enum u8 {refused;resident;streamed;}
+// One model's shape. A hybrid model (Elephant, Mammoth) has linear (delta
+// rule) and full attention layers; a mixture-of-experts model (gpt-oss) has
+// full and sliding-window attention layers. Fields a model does not use are 0.
+RpModel :: struct {
+    arch:RpArch;linear:int;full:int;sliding:int;
+    width:int;ffn:int;heads:int;kv_heads:int;head_dim:int;vocab:int;max_tokens:int;
+    key_heads:int;value_heads:int;delta_dim:int;conv:int;       // hybrid only
+    experts:int;selected:int;window:int;                         // moe only
+}
+// Weight bytes: the total, the vectors that never stream, the largest
+// streamable unit (one stream slot), the embedding table, and one expert.
+RpWeights :: struct {total:int;vectors:int;slot:int;embedding:int;expert:int;}
+// One phase: FLOPs, bytes moved, and FLOPs per byte times 1,000, rounded down.
+RpWork :: struct {status:RpStatus;flops:int;bytes:int;milli:int;}
+// A request: the token capacity to reserve, the tokens processed together
+// in one step, and whether weights may stream from a slower tier.
+RpRequest :: struct {capacity:int;chunk:int;stream:bool;}
+// need is the smallest budget that would admit this request; resident and
+// streamed split the weight bytes; slot is the size of each of two slots.
+RpPlan :: struct {status:RpStatus;mode:RpMode;weights:int;state:int;scratch:int;slot:int;resident:int;streamed:int;need:int;}
+
+RP_LAYERS :: 128;RP_WIDTH :: 8192;RP_FFN :: 32768;RP_HEADS :: 128;RP_HEAD_DIM :: 256;RP_VOCAB :: 524288;RP_TOKENS :: 262144;
+RP_DELTA_HEADS :: 128;RP_DELTA_DIM :: 256;RP_CONV :: 8;RP_EXPERTS :: 256;RP_SELECTED :: 16;
+
+// The pinned shapes: chapter 15's model pins and chapter 64's original
+// gpt-oss profiles.
+rp_elephant :: ()->RpModel #export_c {
+    return RpModel.{arch=RpArch.hybrid,linear=24,full=8,width=4096,ffn=12288,heads=16,kv_heads=4,head_dim=256,vocab=248320,max_tokens=16384,
+        key_heads=16,value_heads=32,delta_dim=128,conv=4};
+}
+rp_mammoth :: ()->RpModel #export_c {
+    return RpModel.{arch=RpArch.hybrid,linear=48,full=16,width=5120,ffn=17408,heads=24,kv_heads=4,head_dim=256,vocab=248320,max_tokens=16384,
+        key_heads=16,value_heads=48,delta_dim=128,conv=4};
+}
+rp_gptoss :: (experts:int,layers:int)->RpModel {
+    return RpModel.{arch=RpArch.moe,full=layers/2,sliding=layers-layers/2,width=2880,ffn=2880,heads=64,kv_heads=8,head_dim=64,vocab=201088,max_tokens=131072,
+        experts=experts,selected=4,window=128};
+}
+rp_gptoss_20b :: ()->RpModel #export_c {return rp_gptoss(32,24);}
+rp_gptoss_120b :: ()->RpModel #export_c {return rp_gptoss(128,36);}
+
+// Independent counts: the sums of every text tensor's bytes in the pinned
+// manifests (psionic/fixtures/models/*/manifest.json, without the 333
+// vision tensors) and in the original gpt-oss descriptor tables.
+#test "weight bytes equal the pinned tensor inventories" {
+    e:=rp_weights(rp_elephant());m:=rp_weights(rp_mammoth());a:=rp_weights(rp_gptoss_20b());b:=rp_weights(rp_gptoss_120b());
+    #assert e.total==17907606528 && m.total==53791996928 && a.total==13761264768 && b.total==65248815744;
+    // Convolution and norm vectors: 1,061,376 and 2,645,504 values.
+    #assert e.vectors==2122752 && m.vectors==5291008 && a.vectors==670848;
+    #assert e.embedding==2034237440 && m.embedding==2542796800 && a.embedding==1158266880 && b.embedding==1158266880;
+    // One feed-forward matrix: chapter 45's 96 MiB and 170 MiB slots.
+    #assert e.slot==100663296 && m.slot==178257920 && a.slot==29491200;
+    // The 20b experts: 10,165,616,640 bytes over 24 layers of 32.
+    #assert a.expert==13236480 && 24*32*a.expert==10165616640 && e.expert==0;
+}
+#test "the largest unit is whichever matrix is widest" {
+    // Feed-forward rows, then Qwen's gated q (2 * heads * head_dim), then the convolved channels.
+    x:=rp_elephant();x.ffn=1;x.key_heads=1;x.value_heads=1;#assert rp_weights(x).slot==2*4096*(2*16*256);
+    x.ffn=8193;#assert rp_weights(x).slot==2*4096*8193;
+    x=rp_elephant();x.ffn=1;x.heads=1;x.kv_heads=1;#assert rp_weights(x).slot==2*4096*(2*16*128+32*128);
+    // gpt-oss: q, k and v rows, then one expert, then the router.
+    y:=rp_gptoss_20b();#assert rp_weights(y).slot==2*2880*5120;
+    y.heads=8;y.kv_heads=1;y.head_dim=1;#assert rp_weights(y).slot==rp_weights(y).expert && rp_weights(y).slot==13236480;
+    y.ffn=32;y.experts=256;#assert rp_weights(y).slot==2*2880*256 && rp_weights(y).expert<2*2880*256;
+}
+// Chapter 15's ps_plan reports Elephant's state at capacity 86 as
+// 14,581,760 values and Mammoth's as 42,041,344; each 42 more tokens add
+// 16*2*42*4*256 Mammoth values.
+#test "state bytes equal chapter 15's recorded state" {
+    #assert rp_state(rp_elephant(),86)==4*14581760 && rp_state(rp_mammoth(),86)==4*42041344;
+    #assert rp_state(rp_mammoth(),128)==4*(42041344+16*2*42*4*256);
+    // gpt-oss: 12 full layers keep every position, 12 sliding layers at most 128.
+    #assert rp_state(rp_gptoss_20b(),100)==4*2*8*64*(12*100+12*100);
+    #assert rp_state(rp_gptoss_20b(),128)==4*2*8*64*(12*128+12*128);
+    #assert rp_state(rp_gptoss_20b(),129)==4*2*8*64*(12*129+12*128);
+    #assert rp_state(rp_gptoss_20b(),131072)==4*2*8*64*(12*131072+12*128);
+    x:=rp_elephant();x.conv=1;#assert rp_state(x,1)==4*(24*32*128*128+8*2*4*256);
+}
+#test "scratch holds a chunk's activations, one score row per head and the logits" {
+    // Elephant: the widest intermediate is gate and up, 2 * 12,288.
+    #assert rp_scratch(rp_elephant(),86,86)==4*(86*(2*4096+24576)+16*86+248320);
+    #assert rp_scratch(rp_elephant(),1,16384)==4*(2*4096+24576+16*16384+248320);
+    // gpt-oss-20b: the router and one expert (32 + 5,760) are wider than q, k and v (5,120).
+    #assert rp_scratch(rp_gptoss_20b(),1,1)==4*(2*2880+5792+64+201088);
+    y:=rp_gptoss_20b();y.experts=256;#assert rp_scratch(y,1,1)==4*(2*2880+256+5760+64+201088);
+    y.heads=128;#assert rp_scratch(y,1,1)==4*(2*2880+144*64+128+201088);
+    x:=rp_elephant();x.ffn=1;#assert rp_scratch(x,1,1)==4*(2*4096+2*16*128+32*128+32*128+64+16+248320);
+    x.value_heads=1;x.key_heads=1;#assert rp_scratch(x,1,1)==4*(2*4096+2*16*256+2*4*256+16+248320);
+}
+// The hand count of chapter 33: Elephant's 7,935,623,168 matrix values
+// (every rank-2 text tensor but the embedding table) are one multiply-add
+// each; the convolution adds 24 * 8,192 * 4, the delta rule 24 * 3 * 32 *
+// 128 * 128, and attention over n positions 8 * 2 * 16 * 256 * n.
+#test "a decode step's FLOPs are twice its multiply-adds" {
+    d:=rp_decode(rp_elephant(),86);
+    #assert d.status==RpStatus.ok && d.flops==2*(7935623168+786432+37748736+65536*86) && d.flops==15959588864;
+    #assert rp_decode(rp_elephant(),1).flops==2*(7974158336+65536);
+    #assert rp_decode(rp_mammoth(),1).flops==2*(25621954560+1966080+48*3*48*128*128+16*2*24*256);
+    // gpt-oss-20b: 1,218,355,200 dense values and 4 of 32 experts'
+    // 19,110,297,600 values: 3,607,142,400, upstream's "3.6B active".
+    g:=rp_decode(rp_gptoss_20b(),128);#assert g.flops==2*(1218355200+19110297600/8+8192*(12*128+12*128));
+    #assert rp_decode(rp_gptoss_20b(),129).flops==g.flops+2*8192*12;
+    #assert rp_decode(rp_gptoss_20b(),1).flops==2*(3607142400+8192*24);
+}
+// A decode step reads every weight but the embedding table, one embedding
+// row, the live state, and writes the new token's state.
+#test "a decode step moves its weights and its state" {
+    d:=rp_decode(rp_elephant(),86);kv:=2*4*256*4;rec:=4*(3*8192+32*128*128);
+    #assert d.bytes==17907606528-2034237440+2*4096+24*2*rec+8*(86*kv+kv);
+    #assert d.milli==d.flops*1000/d.bytes && d.milli==998;
+    g:=rp_decode(rp_gptoss_20b(),200);kv=2*8*64*4;
+    #assert g.bytes==13761264768-1158266880+2*2880-24*28*13236480+12*(200*kv+kv)+12*(128*kv+kv);
+}
+// Prefill of t tokens: the matrices once per token, the head once (only the
+// last token's logits are read), attention over 1, 2, ... t positions. The
+// weights are read once; the state is written once.
+#test "prefill reuses each weight read across the chunk" {
+    p:=rp_prefill(rp_elephant(),86);
+    #assert p.flops==2*(86*(7935623168-1017118720+786432+37748736)+1017118720+65536*86*87/2);
+    #assert p.bytes==17907606528-2034237440+86*2*4096+24*4*(3*8192+32*128*128)+8*86*2*4*256*4;
+    #assert p.milli==p.flops*1000/p.bytes;
+    #assert rp_prefill(rp_elephant(),1).flops==rp_decode(rp_elephant(),1).flops;
+    #assert rp_prefill(rp_gptoss_20b(),1).flops==rp_decode(rp_gptoss_20b(),1).flops;
+    #assert rp_prefill(rp_gptoss_20b(),100).flops==2*(100*(3607142400-579133440)+579133440+8192*24*(100*101/2));
+    #assert rp_prefill(rp_gptoss_20b(),128).flops==2*(128*(3607142400-579133440)+579133440+8192*24*(128*129/2));
+    // Sliding layers attend to at most 128 positions: 1+...+128, then 128 each.
+    g:=rp_prefill(rp_gptoss_20b(),130);
+    #assert g.flops==2*(130*(3607142400-579133440)+579133440+8192*12*(130*131/2)+8192*12*(128*129/2+2*128));
+    // Each layer reads min(experts, tokens * 4) experts: 8 for two tokens, all 32 from eight on.
+    base:=13761264768-1158266880-24*32*13236480;
+    #assert rp_prefill(rp_gptoss_20b(),2).bytes==base+2*2*2880+24*8*13236480+24*2*2*8*64*4;
+    #assert rp_prefill(rp_gptoss_20b(),8).bytes==base+8*2*2880+24*32*13236480+24*8*2*8*64*4;
+    #assert rp_prefill(rp_gptoss_20b(),9).bytes==base+9*2*2880+24*32*13236480+24*9*2*8*64*4;
+}
+#test "intensity is FLOPs per byte times 1,000, without overflow" {
+    #assert rp_milli(7,2)==3500 && rp_milli(1,3)==333 && rp_milli(2,3)==666 && rp_milli(5,0)==0 && rp_milli(5,-1)==0 && rp_milli(5,1)==5000;
+    #assert rp_milli(1,1000)==1 && rp_milli(1,1001)==0 && rp_milli(1999,1000)==1999;
+    // flops * 1,000 would overflow; the quotient and remainder do not.
+    #assert rp_milli(9000000000000000000,9000000000000)==1000000000 && rp_milli(8999999999999999999,9000000000000)==999999999;
+}
+#test "work refuses positions outside the model and invalid models" {
+    #assert rp_decode(rp_elephant(),0).status==RpStatus.request && rp_decode(rp_elephant(),0).flops==0;
+    #assert rp_decode(rp_elephant(),16385).status==RpStatus.request && rp_decode(rp_elephant(),16384).status==RpStatus.ok;
+    #assert rp_prefill(rp_elephant(),0).status==RpStatus.request && rp_prefill(rp_elephant(),16385).status==RpStatus.request;
+    #assert rp_prefill(rp_elephant(),16384).status==RpStatus.ok && rp_decode(rp_mammoth(),16385).status==RpStatus.request && rp_decode(rp_mammoth(),16384).status==RpStatus.ok;
+    x:=rp_elephant();x.width=0;
+    #assert rp_decode(x,1).status==RpStatus.model && rp_prefill(x,1).status==RpStatus.model && rp_prefill(x,1).bytes==0;
+}
+#test "valid shapes stay inside the bounds that keep every count exact" {
+    #assert rp_valid(rp_elephant()) && rp_valid(rp_mammoth()) && rp_valid(rp_gptoss_20b()) && rp_valid(rp_gptoss_120b());
+    // The largest admitted shapes: every count fits a 64-bit integer.
+    h:=RpModel.{arch=RpArch.hybrid,linear=64,full=64,width=8192,ffn=32768,heads=128,kv_heads=128,head_dim=256,vocab=524288,max_tokens=262144,
+        key_heads=128,value_heads=128,delta_dim=256,conv=8};
+    #assert rp_valid(h) && rp_prefill(h,262144).flops>0 && rp_decode(h,262144).bytes>0 && rp_state(h,262144)>0;
+    #assert rp_plan(h,RpRequest.{capacity=262144,chunk=262144,stream=true},9223372036854775807).mode==RpMode.resident;
+    g:=RpModel.{arch=RpArch.moe,full=64,sliding=64,width=8192,ffn=32768,heads=128,kv_heads=128,head_dim=256,vocab=524288,max_tokens=262144,
+        experts=256,selected=16,window=262144};
+    #assert rp_valid(g) && rp_prefill(g,262144).flops>0 && rp_decode(g,262144).bytes>0;
+    #assert rp_plan(g,RpRequest.{capacity=262144,chunk=262144,stream=true},9223372036854775807).mode==RpMode.resident;
+}
+#test "every shape field has a bound" {
+    for f:0..<20 {
+        x:=rp_elephant();y:=rp_gptoss_20b();
+        if f==0 {x.linear=-1;y.full=0;y.sliding=0;}
+        if f==1 {x.full=-1;y.sliding=-1;}
+        if f==2 {x.linear=0;x.full=0;y.full=65;y.sliding=64;}
+        if f==3 {x.width=8193;y.width=2880+16;}
+        if f==4 {x.ffn=32769;y.ffn=2880+16;}
+        if f==5 {x.heads=129;x.kv_heads=3;y.heads=0;}
+        if f==6 {x.kv_heads=0;y.kv_heads=65;}
+        if f==7 {x.kv_heads=3;y.kv_heads=6;}
+        if f==8 {x.head_dim=0;y.head_dim=257;}
+        if f==9 {x.vocab=0;y.vocab=524289;}
+        if f==10 {x.max_tokens=0;y.max_tokens=262145;}
+        if f==11 {x.key_heads=0;y.key_heads=1;}
+        if f==18 {x.key_heads=129;y.full=1;y.sliding=-1;}
+        if f==19 {x.width=0;y.ffn=0;}
+        if f==12 {x.value_heads=129;y.value_heads=1;}
+        if f==13 {x.delta_dim=257;y.delta_dim=1;}
+        if f==14 {x.conv=9;y.conv=1;}
+        if f==15 {x.sliding=1;y.experts=257;}
+        if f==16 {x.experts=1;y.selected=33;}
+        if f==17 {x.window=1;y.window=0;}
+        #assert !rp_valid(x) && !rp_valid(y);
+    }
+    for f:0..<13 {
+        x:=rp_elephant();y:=rp_gptoss_20b();
+        if f==0 {x.linear=0;y.full=0;}
+        if f==1 {x.full=0;y.sliding=0;y.window=0;}
+        if f==2 {x.width=8192;x.ffn=32768;y.width=32;y.ffn=32;}
+        if f==12 {x.width=1;x.ffn=1;y.head_dim=1;}
+        if f==3 {x.heads=128;x.kv_heads=1;y.heads=1;y.kv_heads=1;}
+        if f==4 {x.head_dim=1;y.head_dim=256;}
+        if f==5 {x.vocab=1;y.vocab=524288;}
+        if f==6 {x.max_tokens=1;y.max_tokens=262144;y.window=262144;}
+        if f==7 {x.key_heads=128;x.value_heads=1;y.experts=1;y.selected=1;}
+        if f==8 {x.delta_dim=1;x.conv=1;y.experts=256;y.selected=16;}
+        if f==9 {x.key_heads=1;x.value_heads=128;x.delta_dim=256;x.conv=8;y.window=1;}
+        if f==10 {x.linear=64;x.full=64;y.full=64;y.sliding=64;}
+        if f==11 {x.arch=RpArch.moe;y.arch=RpArch.hybrid;}
+        #assert rp_valid(x)==(f!=11) && rp_valid(y)==(f!=11);
+    }
+    x:=rp_elephant();x.selected=1;#assert !rp_valid(x);
+    y:=rp_gptoss_20b();y.selected=0;#assert !rp_valid(y);
+    y.selected=17;y.experts=64;#assert !rp_valid(y);y.selected=16;#assert rp_valid(y);
+    y.selected=5;y.experts=4;#assert !rp_valid(y);y.selected=4;#assert rp_valid(y);
+    y=rp_gptoss_20b();y.window=131073;#assert !rp_valid(y);
+    y=rp_gptoss_20b();y.width=8224;y.ffn=8224;#assert !rp_valid(y);
+    y=rp_gptoss_20b();y.ffn=32800;#assert !rp_valid(y);
+    y=rp_gptoss_20b();y.linear=1;#assert !rp_valid(y);
+    x=rp_elephant();x.width=-1;#assert !rp_valid(x);
+}
+
+// The plan. 86 tokens is chapter 14's recorded Elephant request.
+#test "a budget that holds everything keeps the model resident" {
+    e:=rp_elephant();r:=RpRequest.{capacity=86,chunk=86,stream=true};need:=17907606528+4*14581760+rp_scratch(e,86,86);
+    least:=2122752+58327040+rp_scratch(e,86,86)+2*100663296;
+    p:=rp_plan(e,r,need);
+    #assert p.status==RpStatus.ok && p.mode==RpMode.resident && p.weights==17907606528 && p.state==58327040 && p.scratch==rp_scratch(e,86,86);
+    #assert p.resident==17907606528 && p.streamed==0 && p.need==least && p.slot==100663296;
+    r.stream=false;#assert rp_plan(e,r,need).need==need && rp_plan(e,r,need).mode==RpMode.resident;r.stream=true;
+    q:=rp_plan(e,r,need-1);
+    #assert q.status==RpStatus.ok && q.mode==RpMode.streamed && q.need==2122752+58327040+rp_scratch(e,86,86)+2*100663296;
+    #assert q.resident==need-1-58327040-rp_scratch(e,86,86)-2*100663296 && q.streamed==17907606528-q.resident && q.resident+q.streamed==q.weights;
+}
+#test "streaming needs room for the vectors, the state, the scratch and two slots" {
+    e:=rp_elephant();r:=RpRequest.{capacity=86,chunk=86,stream=true};least:=2122752+58327040+rp_scratch(e,86,86)+2*100663296;
+    p:=rp_plan(e,r,least);#assert p.mode==RpMode.streamed && p.resident==2122752 && p.streamed==17907606528-2122752 && p.need==least;
+    q:=rp_plan(e,r,least-1);
+    #assert q.status==RpStatus.stream && q.mode==RpMode.refused && q.need==least && q.resident==0 && q.streamed==0 && q.state==58327040 && q.weights==17907606528;
+    // Without streaming the same budget refuses for the weights.
+    r.stream=false;w:=rp_plan(e,r,least);#assert w.status==RpStatus.weights && w.mode==RpMode.refused && w.need==17907606528+58327040+rp_scratch(e,86,86) && w.resident==0;
+}
+#test "a request whose state and scratch alone exceed the budget is refused for its state" {
+    e:=rp_elephant();r:=RpRequest.{capacity=16384,chunk=512,stream=true};s:=rp_state(e,16384)+rp_scratch(e,512,16384);
+    p:=rp_plan(e,r,s-1);#assert p.status==RpStatus.state && p.mode==RpMode.refused && p.need==2122752+s+2*100663296 && p.resident==0;
+    r.stream=false;q:=rp_plan(e,r,s-1);#assert q.status==RpStatus.state && q.need==17907606528+s;
+    q=rp_plan(e,r,s);#assert q.status==RpStatus.weights;
+    // A model whose two slots outweigh its weights never streams.
+    t:=RpModel.{arch=RpArch.moe,full=1,width=32,ffn=32768,heads=1,kv_heads=1,head_dim=1,vocab=1,max_tokens=4,experts=1,selected=1};
+    tr:=RpRequest.{capacity=1,chunk=1,stream=true};w:=rp_weights(t);all:=w.total+rp_state(t,1)+rp_scratch(t,1,1);
+    #assert w.vectors+2*w.slot>w.total && rp_plan(t,tr,all).mode==RpMode.resident && rp_plan(t,tr,all-1).status==RpStatus.stream && rp_plan(t,tr,all-1).need==all;
+}
+#test "malformed requests, budgets and models are refused before any sizing" {
+    e:=rp_elephant();
+    for k:0..<5 {
+        r:=RpRequest.{capacity=86,chunk=86,stream=true};
+        if k==0 {r.capacity=0;r.chunk=0;}if k==1 {r.capacity=16385;}if k==2 {r.chunk=0;}if k==3 {r.chunk=87;}if k==4 {r.capacity=-1;r.chunk=-1;}
+        p:=rp_plan(e,r,1<<40);#assert p.status==RpStatus.request && p.mode==RpMode.refused && p.weights==0 && p.need==0;
+    }
+    #assert rp_plan(e,RpRequest.{capacity=16384,chunk=1},1<<40).status==RpStatus.ok;
+    p:=rp_plan(e,RpRequest.{capacity=86,chunk=86},-1);#assert p.status==RpStatus.budget && p.state==0;
+    #assert rp_plan(e,RpRequest.{capacity=86,chunk=86},0).status==RpStatus.state;
+    x:=e;x.vocab=0;#assert rp_plan(x,RpRequest.{capacity=86,chunk=86},1<<40).status==RpStatus.model;
+    #assert rp_status_name(RpStatus.ok)=="ok" && rp_status_name(RpStatus.stream)=="stream: the vectors, state, scratch and two stream slots exceed the budget";
+    #assert rp_mode_name(RpMode.refused)=="refused" && rp_mode_name(RpMode.resident)=="resident" && rp_mode_name(RpMode.streamed)=="streamed";
+}
+#forall "a plan admits exactly the budgets at or above its need, and its bytes fit" b:0..<40 {
+    g:=rp_gptoss_20b();r:=RpRequest.{capacity=4096,chunk=256,stream=b%2==0};
+    need:=rp_plan(g,r,0).need;budget:=need-20+b;p:=rp_plan(g,r,budget);
+    #assert (p.status==RpStatus.ok)==(budget>=need) && p.need==need;
+    if p.mode==RpMode.resident {#assert p.weights+p.state+p.scratch<=budget && p.streamed==0;}
+    if p.mode==RpMode.streamed {#assert p.resident+p.state+p.scratch+2*p.slot==budget && p.resident+p.streamed==p.weights && p.resident>=670848;}
+}
+
+// Exact while |a - b| < 2^53, which every bounded count is.
+rp_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+rp_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+rp_in :: (x:int,lo:int,hi:int)->bool {return x>=lo && x<=hi;}
+rp_layers :: (m:RpModel)->int {return m.linear+m.full+m.sliding;}
+
+// book:begin valid
+// A shape is valid when every field lies inside the bounds that keep every
+// count below 2^63, and the fields of the other architecture are 0.
+rp_valid :: (m:RpModel)->bool #export_c {
+    if m.linear<0 || m.full<0 || m.sliding<0 || !rp_in(rp_layers(m),1,RP_LAYERS) {return false;}
+    if !rp_in(m.width,1,RP_WIDTH) || !rp_in(m.ffn,1,RP_FFN) || !rp_in(m.head_dim,1,RP_HEAD_DIM) {return false;}
+    if !rp_in(m.heads,1,RP_HEADS) || !rp_in(m.kv_heads,1,m.heads) || m.heads%m.kv_heads!=0 {return false;}
+    if !rp_in(m.vocab,1,RP_VOCAB) || !rp_in(m.max_tokens,1,RP_TOKENS) {return false;}
+    if m.arch==RpArch.hybrid {
+        if m.sliding!=0 || m.experts!=0 || m.selected!=0 || m.window!=0 {return false;}
+        return rp_in(m.key_heads,1,RP_DELTA_HEADS) && rp_in(m.value_heads,1,RP_DELTA_HEADS) && rp_in(m.delta_dim,1,RP_DELTA_DIM) && rp_in(m.conv,1,RP_CONV);
+    }
+    if m.linear!=0 || m.key_heads!=0 || m.value_heads!=0 || m.delta_dim!=0 || m.conv!=0 {return false;}
+    if m.width%32!=0 || m.ffn%32!=0 || !rp_in(m.experts,1,RP_EXPERTS) || !rp_in(m.selected,1,rp_min(m.experts,RP_SELECTED)) {return false;}
+    return m.sliding==0 || rp_in(m.window,1,m.max_tokens);
+}
+// book:end valid
+
+// Hybrid widths: the convolved q, k and v channels, and the delta values.
+rp_channels :: (m:RpModel)->int {return (2*m.key_heads+m.value_heads)*m.delta_dim;}
+rp_values :: (m:RpModel)->int {return m.value_heads*m.delta_dim;}
+// One gpt-oss expert's bytes: up-and-gate and down MXFP4 blocks (half a
+// byte a value) and scales (a byte per 32), and their BF16 bias rows.
+rp_expert :: (m:RpModel)->int {
+    if m.arch!=RpArch.moe {return 0;}
+    up:=2*m.ffn*m.width;down:=m.width*m.ffn;
+    return up/2+up/32+down/2+down/32+2*(2*m.ffn+m.width);
+}
+// Weight values of one layer's matrices that every token multiplies: a
+// gpt-oss layer's attention and router, a hybrid layer's mixer and
+// feed-forward matrices.
+rp_moe_dense :: (m:RpModel)->int {return m.width*((m.heads+2*m.kv_heads)*m.head_dim+m.heads*m.head_dim+m.experts);}
+rp_dense :: (m:RpModel,linear:bool)->int {
+    w:=m.width;qkv:=(m.heads+2*m.kv_heads)*m.head_dim;out:=m.heads*m.head_dim;
+    if linear {return w*(rp_channels(m)+2*rp_values(m)+2*m.value_heads+3*m.ffn);}
+    return w*(qkv+2*out+3*m.ffn);   // Qwen's q carries its gate: 2 * heads * head_dim.
+}
+
+// book:begin weights
+rp_weights :: (m:RpModel)->RpWeights #export_c {
+    if !rp_valid(m) {return RpWeights.{};}
+    w:=m.width;table:=2*m.vocab*w;x:=RpWeights.{embedding=table,expert=rp_expert(m)};
+    qkv:=(m.heads+2*m.kv_heads)*m.head_dim;out:=m.heads*m.head_dim;
+    if m.arch==RpArch.hybrid {
+        lin:=rp_channels(m)*m.conv+2*m.value_heads+m.delta_dim+2*w;full:=2*m.head_dim+2*w;
+        x.vectors=2*(m.linear*lin+m.full*full+w);
+        x.total=2*(m.linear*rp_dense(m,true)+m.full*rp_dense(m,false))+x.vectors+2*table;
+        x.slot=2*w*rp_max(m.ffn,rp_max(rp_channels(m),2*out));
+    } else {
+        layer:=qkv+3*w+m.heads+m.experts;   // q, k, v and out biases, two norms, sinks, router bias
+        x.vectors=2*(rp_layers(m)*layer+w);
+        x.total=rp_layers(m)*(2*rp_moe_dense(m)+m.experts*x.expert)+x.vectors+2*table;
+        x.slot=rp_max(2*w*qkv,rp_max(2*w*m.experts,x.expert));
+    }
+    return x;
+}
+// book:end weights
+
+// book:begin state
+// f32 state for capacity tokens: each linear layer's convolution history
+// (conv - 1 inputs) and delta state (value_heads matrices of delta_dim
+// squared), each full layer's keys and values for every position, each
+// sliding layer's for at most window positions.
+rp_state :: (m:RpModel,capacity:int)->int #export_c {
+    kv:=2*m.kv_heads*m.head_dim;
+    return rp_recurrent(m)+4*(m.full*capacity*kv+m.sliding*rp_min(capacity,m.window)*kv);
+}
+rp_recurrent :: (m:RpModel)->int {return 4*m.linear*((m.conv-1)*rp_channels(m)+rp_values(m)*m.delta_dim);}
+// f32 scratch for chunk tokens at once: the residual and its normed copy,
+// the widest intermediate, one attention score row per head over the
+// capacity, and the last token's logits.
+rp_scratch :: (m:RpModel,chunk:int,capacity:int)->int #export_c {
+    widest:=rp_max((m.heads+2*m.kv_heads)*m.head_dim,m.experts+2*m.ffn);
+    if m.arch==RpArch.hybrid {widest=rp_max(rp_max(2*m.ffn,2*(m.heads+m.kv_heads)*m.head_dim),rp_channels(m)+rp_values(m)+2*m.value_heads);}
+    return 4*(chunk*(2*m.width+widest)+m.heads*capacity+m.vocab);
+}
+// book:end state
+
+// book:begin work
+// Multiply-adds per token outside attention over positions: every layer's
+// dense matrices, the selected experts, the convolution and the delta rule.
+rp_token_macs :: (m:RpModel)->int {
+    if m.arch==RpArch.moe {return rp_layers(m)*(rp_moe_dense(m)+m.selected*3*m.ffn*m.width);}
+    delta:=rp_channels(m)*m.conv+3*rp_values(m)*m.delta_dim;
+    return m.linear*(rp_dense(m,true)+delta)+m.full*rp_dense(m,false);
+}
+// Attention multiply-adds for one query over n positions (scores, values).
+rp_attention_macs :: (m:RpModel,n:int)->int {
+    return 2*m.heads*m.head_dim*(m.full*n+m.sliding*rp_min(n,m.window));
+}
+rp_milli :: (flops:int,bytes:int)->int {
+    if bytes<=0 {return 0;}
+    return flops/bytes*1000+flops%bytes*1000/bytes;
+}
+rp_check :: (m:RpModel,n:int)->RpStatus {
+    if !rp_valid(m) {return RpStatus.model;}
+    if n<1 || n>m.max_tokens {return RpStatus.request;}
+    return RpStatus.ok;
+}
+// One decode step at position n (n positions including its own).
+rp_decode :: (m:RpModel,n:int)->RpWork #export_c {
+    s:=rp_check(m,n);if s!=RpStatus.ok {return RpWork.{status=s};}
+    w:=rp_weights(m);head:=m.vocab*m.width;
+    flops:=2*(rp_token_macs(m)+head+rp_attention_macs(m,n));
+    kv:=4*2*m.kv_heads*m.head_dim;
+    unused:=rp_layers(m)*(m.experts-m.selected)*w.expert;
+    state:=2*rp_recurrent(m)+m.full*(n*kv+kv)+m.sliding*(rp_min(n,m.window)*kv+kv);
+    bytes:=w.total-w.embedding+2*m.width-unused+state;
+    return RpWork.{flops=flops,bytes=bytes,milli=rp_milli(flops,bytes)};
+}
+// Prefill of t tokens from an empty state, logits for the last token only.
+rp_prefill :: (m:RpModel,t:int)->RpWork #export_c {
+    s:=rp_check(m,t);if s!=RpStatus.ok {return RpWork.{status=s};}
+    w:=rp_weights(m);head:=m.vocab*m.width;
+    k:=rp_min(t,m.window);sliding:=k*(k+1)/2+(t-k)*m.window;   // 1 + 2 + ... + k, then the window
+    attention:=2*m.heads*m.head_dim*(m.full*(t*(t+1)/2)+m.sliding*sliding);
+    flops:=2*(t*rp_token_macs(m)+head+attention);
+    unused:=rp_layers(m)*rp_max(0,m.experts-t*m.selected)*w.expert;
+    bytes:=w.total-w.embedding+t*2*m.width-unused+rp_recurrent(m)+(m.full+m.sliding)*t*4*2*m.kv_heads*m.head_dim;
+    return RpWork.{flops=flops,bytes=bytes,milli=rp_milli(flops,bytes)};
+}
+// book:end work
+
+// book:begin plan
+// Admit a request as resident, as resident with streamed weights, or refuse
+// it with the first reason that applies. Nothing is allocated here: the
+// caller allocates the plan's bytes only after status ok.
+rp_plan :: (m:RpModel,r:RpRequest,budget:int)->RpPlan #export_c {
+    if !rp_valid(m) {return RpPlan.{status=RpStatus.model};}
+    if r.capacity<1 || r.capacity>m.max_tokens || r.chunk<1 || r.chunk>r.capacity {return RpPlan.{status=RpStatus.request};}
+    if budget<0 {return RpPlan.{status=RpStatus.budget};}
+    w:=rp_weights(m);
+    p:=RpPlan.{weights=w.total,state=rp_state(m,r.capacity),scratch=rp_scratch(m,r.chunk,r.capacity),slot=w.slot};
+    live:=p.state+p.scratch;all:=w.total+live;least:=w.vectors+live+2*w.slot;
+    p.need=ifx r.stream then rp_min(all,least) else all;
+    if all<=budget {p.mode=RpMode.resident;p.resident=w.total;return p;}
+    if live>budget {p.status=RpStatus.state;return p;}
+    if !r.stream {p.status=RpStatus.weights;return p;}
+    if least>budget {p.status=RpStatus.stream;return p;}
+    p.mode=RpMode.streamed;p.resident=budget-live-2*w.slot;p.streamed=w.total-p.resident;
+    return p;
+}
+// book:end plan
+
+rp_status_name :: (s:RpStatus)->string {
+    names:=[7]string.["ok","model: the shape is outside the planner's bounds","request: capacity or chunk outside 1..max tokens",
+        "budget: a budget is never negative","weights: the weights, state and scratch exceed the budget and streaming is off",
+        "state: the state and scratch alone exceed the budget","stream: the vectors, state, scratch and two stream slots exceed the budget"];
+    return names[cast(int)s];
+}
+rp_mode_name :: (m:RpMode)->string {names:=[3]string.["refused","resident","streamed"];return names[cast(int)m];}

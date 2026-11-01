@@ -1,0 +1,25 @@
+// Chapter 33: requests the residency plan refuses, each with its typed
+// reason, before any byte is allocated.
+#import "Basic";
+#load "../lib/residency.coax";
+
+say :: (label:string,p:RpPlan) {
+    print("%: % (%), need % bytes\n",label,rp_mode_name(p.mode),rp_status_name(p.status),p.need);
+}
+// book:begin refuse
+main :: () {
+    e:=rp_elephant();r:=RpRequest.{capacity=86,chunk=86,stream=true};
+    say("capacity 16385 for a 16384-token model",rp_plan(e,RpRequest.{capacity=16385,chunk=86,stream=true},1<<40));
+    say("a chunk of 87 in a capacity of 86",rp_plan(e,RpRequest.{capacity=86,chunk=87,stream=true},1<<40));
+    say("a budget of -1 bytes",rp_plan(e,r,-1));
+    x:=e;x.kv_heads=3;
+    say("16 heads over 3 key-value heads",rp_plan(x,r,1<<40));
+    least:=rp_plan(e,r,0).need;
+    say("Elephant at the least budget that streams",rp_plan(e,r,least));
+    say("one byte less",rp_plan(e,r,least-1));
+    r.stream=false;
+    say("the same budget with streaming off",rp_plan(e,r,least));
+    long:=RpRequest.{capacity=16384,chunk=512,stream=true};
+    say("16384 tokens in 1 GiB",rp_plan(e,long,1<<30));
+}
+// book:end refuse

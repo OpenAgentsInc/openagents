@@ -1,0 +1,89 @@
+// Chapter 33: the host roofline. Two Coax kernels the native harness times
+// (psionic/platform/roofline.c): a streaming triad that measures memory
+// bandwidth and an in-cache multiply-add loop that measures arithmetic
+// throughput. The arithmetic here turns measured times into rates and places
+// a phase of chapter 33's accounting against the measured roofline.
+// Profile rf-host-v1: one thread, f32, rates as integer millions per second
+// (MFLOP/s, MB/s with 1 MB = 10^6 bytes), intensities in milli-FLOPs per byte.
+#load "residency.coax";
+
+RfBound :: enum u8 {invalid;memory;compute;}
+// A measured host: peak arithmetic and memory bandwidth.
+RfHost :: struct {mflops:int;mbytes:int;}
+// Where a phase sits: which roof bounds it, the attainable rate, the ridge
+// intensity (milli-FLOPs per byte) where the two roofs meet, and the
+// shortest time the phase can take on this host.
+RfPlace :: struct {bound:RfBound;attainable:int;ridge:int;ns:int;}
+
+#test "the triad writes b + s * c and counts its elements" {
+    a:=[4]f32.[9,9,9,9];b:=[4]f32.[1,2,3,4];c:=[4]f32.[1,1,2,2];
+    #assert rf_triad(a[..],b[..],c[..],3)==4 && a[0]==4 && a[1]==5 && a[2]==9 && a[3]==10;
+    #assert rf_triad(a[0..<3],b[..],c[..],3)==-1 && rf_triad(a[..],b[0..<3],c[..],3)==-1 && rf_triad(a[..],b[..],c[0..<3],3)==-1;
+    #assert a[0]==4;
+    #assert rf_triad_bytes(4)==48 && rf_triad_bytes(1<<20)==12*(1<<20);
+}
+#test "the multiply-add loop applies x * m + k to every value each round" {
+    x:=[3]f32.[1,2,3];
+    #assert rf_madd(x[..],2,2,1)==12 && x[0]==7 && x[1]==11 && x[2]==15;
+    #assert rf_madd(x[..],0,2,1)==0 && x[0]==7;
+    #assert rf_madd(x[..],-1,2,1)==-1 && x[0]==7;
+}
+#test "a rate is units per nanosecond times 1,000: millions per second" {
+    #assert rf_rate(12000000,1000000)==12000 && rf_rate(1,1)==1000 && rf_rate(1,3)==333 && rf_rate(2,3)==666 && rf_rate(7,0)==0 && rf_rate(7,-1)==0;
+    #assert rf_rate(0,5)==0;
+    // 12 GB in one second without overflow.
+    #assert rf_rate(12000000000,1000000000)==12000;
+}
+#test "a phase below the ridge is bound by memory" {
+    h:=RfHost.{mflops=20000,mbytes=10000};   // ridge: 2 FLOPs per byte
+    p:=rf_place(h,998,15959588864);
+    #assert p.bound==RfBound.memory && p.ridge==2000 && p.attainable==9980;
+    // 15,959,588,864 FLOPs at 9,980 MFLOP/s: 1.599 s.
+    #assert p.ns==15959588864*1000/9980;
+    q:=rf_place(h,2000,10);#assert q.bound==RfBound.compute && q.attainable==20000 && q.ns==0;
+    q=rf_place(h,1999,20000);#assert q.bound==RfBound.memory && q.attainable==19990 && q.ns==1000;
+    q=rf_place(h,86000,20000000);#assert q.bound==RfBound.compute && q.attainable==20000 && q.ns==1000000;
+    #assert rf_place(RfHost.{mflops=0,mbytes=1},1,1).bound==RfBound.invalid && rf_place(RfHost.{mflops=1,mbytes=0},1,1).bound==RfBound.invalid;
+    #assert rf_place(h,-1,1).bound==RfBound.invalid && rf_place(h,1,-1).bound==RfBound.invalid && rf_place(h,0,0).bound==RfBound.memory;
+    #assert rf_place(h,0,5).attainable==0 && rf_place(h,0,5).ns==0;
+    one:=rf_place(RfHost.{mflops=1,mbytes=1},1000,5);#assert one.bound==RfBound.compute && one.ridge==1000 && one.attainable==1 && one.ns==5000;
+    #assert rf_bound_name(RfBound.memory)=="memory" && rf_bound_name(RfBound.compute)=="compute" && rf_bound_name(RfBound.invalid)=="invalid";
+}
+
+// book:begin kernels
+// a = b + s * c: reads 8 bytes and writes 4 per element, two FLOPs.
+rf_triad :: (a:[]f32,b:[]f32,c:[]f32,s:f32)->int #export_c {
+    if b.count!=a.count || c.count!=a.count {return -1;}
+    for i:0..<a.count {a[i]=b[i]+s*c[i];}
+    return a.count;
+}
+rf_triad_bytes :: (n:int)->int #export_c {return 12*n;}
+// x = x * m + k, rounds times over a buffer small enough to stay in cache:
+// two FLOPs per value per round, and the values are independent, so the
+// compiler may keep several in flight at once.
+rf_madd :: (x:[]f32,rounds:int,m:f32,k:f32)->int #export_c {
+    if rounds<0 {return -1;}
+    for r:0..<rounds {for i:0..<x.count {x[i]=x[i]*m+k;}}
+    return 2*rounds*x.count;
+}
+// book:end kernels
+
+// book:begin place
+// Millions of units per second from units (at least 0) done in ns nanoseconds.
+rf_rate :: (units:int,ns:int)->int #export_c {
+    if ns<=0 {return 0;}
+    return units/ns*1000+units%ns*1000/ns;
+}
+// Place a phase with intensity milli (chapter 33's rp_* accounting) and
+// flops FLOPs against the host's two roofs.
+rf_place :: (h:RfHost,milli:int,flops:int)->RfPlace #export_c {
+    if h.mflops<=0 || h.mbytes<=0 || milli<0 || flops<0 {return RfPlace.{};}
+    p:=RfPlace.{ridge=h.mflops*1000/h.mbytes};
+    memory:=h.mbytes*milli/1000;
+    if milli<p.ridge {p.bound=RfBound.memory;p.attainable=memory;}
+    else {p.bound=RfBound.compute;p.attainable=h.mflops;}
+    if p.attainable>0 {p.ns=flops*1000/p.attainable;}
+    return p;
+}
+// book:end place
+rf_bound_name :: (b:RfBound)->string {names:=[3]string.["invalid","memory","compute"];return names[cast(int)b];}

@@ -1,0 +1,15 @@
+elephant-1: weights 17907606528 bytes (vectors 2122752, slot 100663296), state for 86 tokens 58327040 bytes, scratch 12270976 bytes
+  decode at 86: 15959588864 FLOPs, 15984460800 bytes, 998 mFLOP/byte
+  prefill of 86: 1199135391744 FLOPs, 15932400640 bytes, 75263 mFLOP/byte
+mammoth-1: weights 53791996928 bytes (vectors 5291008, slot 178257920), state for 86 tokens 168165376 bytes, scratch 16500800 bytes
+  decode at 86: 51508150272 FLOPs, 51574400000 bytes, 998 mFLOP/byte
+  prefill of 86: 4212125990912 FLOPs, 51418246144 bytes, 81918 mFLOP/byte
+gpt-oss-20b: weights 13761264768 bytes (vectors 670848, slot 29491200), state for 86 tokens 8454144 bytes, scratch 4800256 bytes
+  decode at 86: 7248101376 FLOPs, 3716641536 bytes, 1950 mFLOP/byte
+  prefill of 86: 523446829056 FLOPs, 12611947392 bytes, 41504 mFLOP/byte
+elephant-1 at 86 tokens, budget 68719476736 bytes, streaming on: resident (ok), need 274047360 bytes
+elephant-1 at 86 tokens, budget 17179869184 bytes, streaming on: streamed (ok), need 274047360 bytes, 16907944576 resident and 999661952 streamed
+mammoth-1 at 86 tokens, budget 51539607552 bytes, streaming off: refused (weights: the weights, state and scratch exceed the budget and streaming is off), need 53976663104 bytes
+gpt-oss-20b at 4096 tokens, budget 16000000000 bytes, streaming off: resident (ok), need 13994394240 bytes
+gpt-oss-20b at 131072 tokens, budget 16000000000 bytes, streaming off: refused (weights: the weights, state and scratch exceed the budget and streaming is off), need 20268024448 bytes
+gpt-oss-20b at 131072 tokens, budget 16000000000 bytes, streaming on: streamed (ok), need 6566412928 bytes, 9434257920 resident and 4327006848 streamed

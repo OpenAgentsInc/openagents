@@ -1,0 +1,8 @@
+capacity 16385 for a 16384-token model: refused (request: capacity or chunk outside 1..max tokens), need 0 bytes
+a chunk of 87 in a capacity of 86: refused (request: capacity or chunk outside 1..max tokens), need 0 bytes
+a budget of -1 bytes: refused (budget: a budget is never negative), need 0 bytes
+16 heads over 3 key-value heads: refused (model: the shape is outside the planner's bounds), need 0 bytes
+Elephant at the least budget that streams: streamed (ok), need 274047360 bytes
+one byte less: refused (stream: the vectors, state, scratch and two stream slots exceed the budget), need 274047360 bytes
+the same budget with streaming off: refused (weights: the weights, state and scratch exceed the budget and streaming is off), need 17978204544 bytes
+16384 tokens in 1 GiB: refused (state: the state and scratch alone exceed the budget), need 1399032832 bytes
