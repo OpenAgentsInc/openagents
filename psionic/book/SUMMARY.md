@@ -194,7 +194,7 @@
 - [173. Serve a model with an honest capability](ch173-serve-a-model-with-an-honest-capability.md) — partly implemented
 - [174. Clients, streams and background jobs](ch174-clients-streams-and-background-jobs.md) — design draft
 - [175. Continuous batching and a fair scheduler](ch175-continuous-batching-and-a-fair-scheduler.md) — partly implemented
-- [176. Paged state and a tiered prefix cache](ch176-paged-state-and-a-tiered-prefix-cache.md) — design draft
+- [176. Paged state and a tiered prefix cache](ch176-paged-state-and-a-tiered-prefix-cache.md) — partly implemented
 - [177. Route, queue and scale replicas](ch177-route-queue-and-scale-replicas.md) — design draft
 - [178. Start fast](ch178-start-fast.md) — partly implemented
 - [179. Ship without downtime](ch179-ship-without-downtime.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–53, 55, 56, 60–73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175, 178, 180, 188, 195, 215–222, 224–237, 239–249 have runnable code; the [introduction](README.md)
+Chapters 1–53, 55, 56, 60–73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114–121, 123, 124, 126–140, 142, 145–148, 151, 152, 156–159, 162, 165, 167–173, 175, 176, 178, 180, 188, 195, 215–222, 224–237, 239–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

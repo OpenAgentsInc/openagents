@@ -1,0 +1,69 @@
+// Chapter 176: the hand trace step by step, then a shared-prefix workload
+// with three tier sizes: hit rates, moves, prefill saved and modeled time to
+// first token, with every request's tokens checked against a cold run.
+#import "Basic";
+#load "../lib/serve-pages.coax";
+
+NAMES :: "ABCDE";
+where :: (f:int)->string {
+    names:=[3]string.["device","host","disk"];
+    return names[pg_tier(f)];
+}
+show :: (s:PgState,i:int,t:PgTable) {
+    print("step %: % (model %) on frames",s.cb.step-1,NAMES[i..<i+1],s.model[i]);
+    for k:0..<t.n {print(" %",t.page[k]);}
+    print("; reused so far: device %, host %, disk %; computed %; moved down % and %; dropped %\n",
+        s.hit[0],s.hit[1],s.hit[2],s.miss,s.st.down[0],s.st.down[1],s.st.drop);
+}
+trie :: (s:PgState) {
+    for n:0..<PG_NODES {
+        d:=s.st.node[n];
+        if d.frame<0 {continue;}
+        a:=d.parent;while a>=0 {a=s.st.node[a].parent;}
+        print("  node %: model %, ",n,-1-a);
+        if d.parent<0 {print("first block");} else {print("under node %",d.parent);}
+        print(", tokens [%,%], hash %, frame % (%), last used at step %\n",d.tok[0],d.tok[1],d.hash,d.frame,where(d.frame),d.stamp);
+    }
+}
+// Nanoseconds as milliseconds with one decimal.
+ms :: (ns:int) {print("%.% ms",ns/1000000,ns/100000%10);}
+
+// book:begin main
+main :: () {
+    mem:[1728]f64;s:=pgx_hand_start();
+    for i:0..<5 {
+        s=pg_step(s,mem[..]);r:=s.cb.run[0];t:=s.st.table[r];s=pg_finish(s);show(s,r,t);
+        if i==1 || i==4 {trie(s);}
+    }
+    // 16 requests, one every 8 steps, served one at a time. Each starts with
+    // one of 4 shared prefixes of 16 tokens, taken in turn, then has 8 tokens
+    // of its own and 4 output tokens: 7 pages of 4 positions on a device of 12.
+    q:[16]CbRequest;model:[16]int;tok:[512]int;
+    for i:0..<16 {
+        q[i]=CbRequest.{arrive=i*8,prompt=24,output=4};
+        for p:0..<16 {tok[i*32+p]=i%4*100+p;}
+        for p:16..<24 {tok[i*32+p]=i*100+50+p;}
+    }
+    b:=CbConfig.{slots=1,tokens=16,clients=1,steps=CB_STEPS};b.weight[0]=1;
+    print("16 requests, 4 shared prefixes of 4 blocks in turn, 6 prompt blocks each (%):\n",PG_PROFILE);
+    caps:=[12]int.[12,0,0,12,8,0,12,8,16,12,16,16];
+    for c:0..<4 {
+        cfg:=PgConfig.{page=4,dim=4};for t:0..<3 {cfg.cap[t]=caps[c*3+t];}
+        r:=pg_start(cfg,b,q[..],model[..],tok[..]);out:[128]int;
+        while r.cb.done<r.cb.n {r=pg_step(r,mem[..]);pgx_rows(r,mem[..],out[..]);r=pg_finish(r);}
+        same:=0;
+        for i:0..<16 {a:[8]int;pgx_alone(r,i,a[..]);ok:=true;for k:0..<8 {if out[i*8+k]!=a[k] {ok=false;}}if ok {same+=1;}}
+        hits:=r.hit[0]+r.hit[1]+r.hit[2];
+        hitfirst:[16]int;cold:[16]int;nh:=0;nc:=0;
+        for i:0..<16 {
+            f:=r.cb.fate[i];
+            if r.reused[i]>0 {hitfirst[nh]=f.first_ns-f.start_ns;nh+=1;} else {cold[nc]=f.first_ns-f.start_ns;nc+=1;}
+        }
+        print("device %, host %, disk %: reused % of 96 prompt blocks (hit rate %.%; device %, host %, disk %), computed %\n",
+            cfg.cap[0],cfg.cap[1],cfg.cap[2],hits,hits*100/96,hits*1000/96%10,r.hit[0],r.hit[1],r.hit[2],r.miss);
+        print("  moved down % (device) and % (host), dropped %; % prompt positions run of 384\n",r.st.down[0],r.st.down[1],r.st.drop,384-4*hits);
+        print("  first token P50: ");ms(cb_rank(hitfirst[0..<nh],50));print(" for % requests that reused blocks, ",nh);
+        ms(cb_rank(cold[0..<nc],50));print(" for %; tokens equal to a cold run: % of 16\n",nc,same);
+    }
+}
+// book:end main

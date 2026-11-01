@@ -1,0 +1,45 @@
+// Chapter 176: what the paged scheduler refuses, and what never hits. A
+// page configuration or request outside the bounds refuses the whole run; a
+// request whose pages can never fit the device is refused at arrival; a
+// prompt under another model identity, or a different prefix with the same
+// hash, is a miss.
+#import "Basic";
+#load "../lib/serve-pages.coax";
+
+whole :: (label:string,cfg:PgConfig,b:CbConfig,q:[]CbRequest,m:[]int,tok:[]int) {
+    s:=pg_start(cfg,b,q,m,tok);
+    print("%: %",label,pg_status_name(s.status));
+    if s.status==PgStatus.batch {print(" (%)",cb_status_name(s.cb.status));}
+    print("\n");
+}
+// book:begin refuse
+main :: () {
+    cfg:=PgConfig.{page=2,dim=1};cfg.cap[0]=4;cfg.cap[1]=1;cfg.cap[2]=1;
+    b:=CbConfig.{slots=1,tokens=8,clients=1,steps=100};b.weight[0]=1;
+    q:=[3]CbRequest.[CbRequest.{prompt=5,output=1},CbRequest.{prompt=5,output=1},CbRequest.{prompt=7,output=2}];
+    m:=[3]int.[0,1,0];tok:[96]int;
+    for i:0..<3 {for p:0..<7 {tok[i*32+p]=p+1;}}
+    whole("the configuration of the hand trace",cfg,b,q[..],m[..],tok[..]);
+    x:=cfg;x.page=9;whole("pages of 9 positions",x,b,q[..],m[..],tok[..]);
+    x=cfg;x.cap[1]=17;whole("17 host frames",x,b,q[..],m[..],tok[..]);
+    x=cfg;x.cap[0]=0;whole("no device frames",x,b,q[..],m[..],tok[..]);
+    y:=q;y[2].output=26;whole("7 + 26 positions in 16 pages of 2",cfg,b,y[..],m[..],tok[..]);
+    n:=m;n[1]=-1;whole("model identity -1",cfg,b,q[..],n[..],tok[..]);
+    x=cfg;x.hybrid=true;x.cap[0]=1;whole("a hybrid model on 1 device frame",x,b,q[..],m[..],tok[..]);
+    // At arrival: 7 + 2 positions need 5 pages, and the device has 4.
+    mem:[1728]f64;s:=pg_run(cfg,b,q[..],m[..],tok[..],mem[..]);
+    for i:0..<3 {
+        f:=s.cb.fate[i];
+        print("request % (model %, prompt %, output %): ",i,m[i],q[i].prompt,q[i].output);
+        if f.status==CbStatus.ok {print("finished at step %, reused % blocks\n",f.finish,s.reused[i]);}
+        else {print("refused (%)\n",cb_status_name(f.status));}
+    }
+    // Model 2 asks for a prompt cached under models 0 and 1; [1,0] asks where [0,31] is cached, with the same hash.
+    t:=tok;
+    print("model 0, its own prompt: reuses % blocks\n",pg_match(s.st,0,t[0..<32],5).n);
+    print("model 2, the prompt models 0 and 1 cached: reuses % blocks\n",pg_match(s.st,2,t[0..<32],5).n);
+    t[0]=0;t[1]=31;c:=[2]int.[1,0];
+    s=pg_run(cfg,b,q[0..<1],m[..],t[..],mem[..]);
+    print("[1,0] after [0,31] (hashes % and %): reuses % blocks\n",pg_hash(0,t[0..<2]),pg_hash(0,c[..]),pg_match(s.st,0,c[..],3).n);
+}
+// book:end refuse

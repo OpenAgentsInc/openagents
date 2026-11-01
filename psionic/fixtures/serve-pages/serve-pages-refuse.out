@@ -1,0 +1,13 @@
+the configuration of the hand trace: ok
+pages of 9 positions: page configuration out of bounds
+17 host frames: page configuration out of bounds
+no device frames: page configuration out of bounds
+7 + 26 positions in 16 pages of 2: a request outside the page table, prompt or model bounds
+model identity -1: a request outside the page table, prompt or model bounds
+a hybrid model on 1 device frame: refused by the scheduler (configuration out of bounds)
+request 0 (model 0, prompt 5, output 1): finished at step 0, reused 0 blocks
+request 1 (model 1, prompt 5, output 1): finished at step 1, reused 0 blocks
+request 2 (model 0, prompt 7, output 2): refused (state never fits the budget)
+model 0, its own prompt: reuses 2 blocks
+model 2, the prompt models 0 and 1 cached: reuses 0 blocks
+[1,0] after [0,31] (hashes 63 and 63): reuses 0 blocks

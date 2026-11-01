@@ -1,0 +1,27 @@
+step 0: A (model 0) on frames 0 1 2; reused so far: device 0, host 0, disk 0; computed 3; moved down 0 and 0; dropped 0
+step 1: B (model 1) on frames 2 3 1; reused so far: device 0, host 0, disk 0; computed 6; moved down 1 and 0; dropped 0
+  node 0: model 0, first block, tokens [1,2], hash 65, frame 0 (device), last used at step 0
+  node 1: model 0, under node 0, tokens [3,4], hash 62594, frame 16 (host), last used at step 0
+  node 2: model 1, first block, tokens [1,2], hash 1026, frame 2 (device), last used at step 1
+  node 3: model 1, under node 2, tokens [3,4], hash 986115, frame 3 (device), last used at step 1
+step 2: C (model 0) on frames 0 1 3 2; reused so far: device 1, host 1, disk 0; computed 7; moved down 3 and 1; dropped 0
+step 3: D (model 1) on frames 2 3 1; reused so far: device 1, host 2, disk 1; computed 8; moved down 5 and 2; dropped 0
+step 4: E (model 0) on frames 0 1 3 2; reused so far: device 2, host 3, disk 1; computed 9; moved down 7 and 3; dropped 1
+  node 0: model 0, first block, tokens [1,2], hash 65, frame 0 (device), last used at step 4
+  node 1: model 0, under node 0, tokens [3,4], hash 62594, frame 1 (device), last used at step 4
+  node 2: model 1, first block, tokens [1,2], hash 1026, frame 16 (host), last used at step 3
+  node 3: model 1, under node 2, tokens [3,4], hash 986115, frame 32 (disk), last used at step 3
+  node 4: model 0, under node 1, tokens [6,7], hash 60153059, frame 3 (device), last used at step 4
+16 requests, 4 shared prefixes of 4 blocks in turn, 6 prompt blocks each (pg-pages-v1):
+device 12, host 0, disk 0: reused 0 of 96 prompt blocks (hit rate 0.0; device 0, host 0, disk 0), computed 96
+  moved down 0 (device) and 0 (host), dropped 85; 384 prompt positions run of 384
+  first token P50: 0.0 ms for 0 requests that reused blocks, 67.6 ms for 16; tokens equal to a cold run: 16 of 16
+device 12, host 8, disk 0: reused 12 of 96 prompt blocks (hit rate 12.5; device 0, host 12, disk 0), computed 84
+  moved down 85 (device) and 0 (host), dropped 65; 336 prompt positions run of 384
+  first token P50: 61.8 ms for 12 requests that reused blocks, 67.6 ms for 4; tokens equal to a cold run: 16 of 16
+device 12, host 8, disk 16: reused 48 of 96 prompt blocks (hit rate 50.0; device 0, host 12, disk 36), computed 48
+  moved down 85 (device) and 65 (host), dropped 13; 192 prompt positions run of 384
+  first token P50: 28.0 ms for 12 requests that reused blocks, 67.6 ms for 4; tokens equal to a cold run: 16 of 16
+device 12, host 16, disk 16: reused 48 of 96 prompt blocks (hit rate 50.0; device 0, host 48, disk 0), computed 48
+  moved down 85 (device) and 21 (host), dropped 5; 192 prompt positions run of 384
+  first token P50: 28.0 ms for 12 requests that reused blocks, 67.6 ms for 4; tokens equal to a cold run: 16 of 16

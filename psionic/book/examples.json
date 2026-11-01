@@ -1852,6 +1852,26 @@
       ]
     },
     {
+      "source": "psionic/examples/serve-pages.coax",
+      "chapter": "psionic/book/ch176-paged-state-and-a-tiered-prefix-cache.md",
+      "stdout": "psionic/fixtures/serve-pages/serve-pages.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-pages-refuse.coax",
+      "chapter": "psionic/book/ch176-paged-state-and-a-tiered-prefix-cache.md",
+      "stdout": "psionic/fixtures/serve-pages/serve-pages-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-meter.coax",
       "chapter": "psionic/book/ch180-observe-meter-and-price.md",
       "stdout": "psionic/fixtures/serve-meter/serve-meter.out",
