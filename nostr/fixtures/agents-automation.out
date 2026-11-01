@@ -1,0 +1,38 @@
+AGENT: the host opens the owner's 3188
+status: ok, event c1700e5f0f810af2…, signer 79be667ef9dcbbac…, mailbox 108ab669f200b0ce…
+definition 68b32644f8a9097e…, revision 3, deleted false
+name "Triage", runtime codex, model null, access read_only
+instructions "Label each new issue: bug, feature or question."
+digest sha256:eb391bd808c5b1feed374f3bf5594a858e7e9bf206227108405a6ddde50f3a72
+AGENT: Coax seals the same payload and opens it
+sealed 1457 bytes; opened: ok, same digest: true, same instructions: true
+AUTO: authority for the agent's definition
+grant g-auto: dispatch; the same grant revoked: revoked
+AUTO: the hourly check ran slot 0 at T0 and settled
+hourly at T0: admit, occurrence #1 for slot 0 due T0 + 0
+#1 settled: true; the machine sleeps until T0 + 4 h + 100 s
+AUTO: two events and one tick, now = T0 + 14500
+event 1, issues revision r-118 observed at T0 + 14450: admit, occurrence #1 for revision r-118
+event 2, the same revision redelivered at T0 + 14490: duplicate, occurrence #1
+tick, hourly: admit, skipped slots 1..3 (due T0 + 3600 .. T0 + 10800, missed), occurrence #2 for slot 4 due T0 + 14400
+tick, report: admit, occurrence #1 for slot 0 due T0 + 14400
+AUTO: the same tick delivered again
+tick, hourly: idle
+tick, report: idle
+hourly: 2 occurrences, 1 skipped range, next slot 5; watch: 1; report: 1
+AUTO: a new revision while #1 runs, then after it settles
+event 3, r-119 at T0 + 14520: busy, occurrence #1
+#1 settles: true
+event 3 again after #1 settles: admit, occurrence #2 for revision r-119
+broken inputs
+3188 with its created_at changed: event id
+3188 for another host: not for this recipient
+3188 encrypted to another key: decrypt
+3188 whose digest names revision 4's bytes: envelope
+3188 whose payload adds grants: definition: shape
+revision 4 under the revision 3 pin: selection: revision
+issues observed at T0 + 14100, 400 s old: stale
+an observation of repo:pulls: malformed
+report with the grant revoked: blocked
+then: 0 occurrences, status blocked: true
+report first ticked at T0 + 5 h: expired, skipped slots 0..0 (due T0 + 14400 .. T0 + 14400, expired)

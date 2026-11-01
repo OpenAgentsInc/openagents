@@ -1,0 +1,467 @@
+// NIP-AGENT saved agents: the definition payload reader and the consumer's
+// pinned selection. NIP-AGENT "Definition payload" and "Private carriage and
+// selection".
+//
+// A payload is {schema, definition, forked_from?}: schema
+// openagents.agent.definition.v1, a definition {id, revision, spec, deleted},
+// and, only for a fork, {published, revision}. The reader admits exactly
+// those fields with the spec's bounds: a nonblank name of at most 80 bytes,
+// a description of at most 512, nonblank instructions of at most 65,536
+// with no NUL, a runtime of 1-128 ASCII letters, digits, '.', '_', ':' or
+// '-', a null model or 1-256 bytes, one of three access values, at most 4
+// distinct fallbacks, and an autonomy object whose known numbers are in
+// range. Unknown fields, schemas and access values refuse.
+//
+// Selection is the consumer's decision: an explicitly chosen signer,
+// definition id, revision and digest, all four exact. A newer revision does
+// not silently replace the pinned one, and a deleted definition takes no new
+// assignment. It grants nothing: the host still checks account, project and
+// access before dispatch.
+//
+// Strings are unescaped into the caller's arena. JSON strings are read up
+// to the parser's 64 KiB raw limit, so instructions near 65,536 bytes that
+// need escapes refuse rather than truncate.
+//
+// Not here: the encrypted carriage (agent/carriage.coax), public agents
+// (kind 0 and 30187, NIP-OA attestation, runtime evidence, 3204 receipts),
+// assignments and sessions.
+//   coax/bin/coax test coax/lib/nostr/agent/definition.coax --library
+#load "../json.coax";
+#load "../../../tests/nostr/agent_definition_fixtures.coax";
+#authority;
+
+// book:begin codes
+AG_OK :: cast(u32)0;
+AG_SHAPE :: cast(u32)1;     // not the payload's shape: a missing, repeated, unknown or mistyped field
+AG_SCHEMA :: cast(u32)2;    // not openagents.agent.definition.v1
+AG_FIELD :: cast(u32)3;     // a field breaks its contract (bounds, grammar, enum)
+AG_SIGNER :: cast(u32)4;    // selection: not the chosen signer
+AG_ID :: cast(u32)5;        // selection: another definition
+AG_REVISION :: cast(u32)6;  // selection: another revision, newer or older
+AG_DIGEST :: cast(u32)7;    // selection: other bytes under the pinned revision
+AG_DELETED :: cast(u32)8;   // selection: the pinned revision is a deletion
+
+AG_SCHEMA_ID :: "openagents.agent.definition.v1";
+AG_HOST_DEFAULT :: 0; AG_READ_ONLY :: 1; AG_WORKSPACE_WRITE :: 2;
+// book:end codes
+
+// book:begin record
+AgText :: struct {buf:[]u8;at:int;}
+AgentDefinition :: struct {
+  error:u32=AG_SHAPE;
+  id:string; revision:int; deleted:bool;
+  name:string; description:string; instructions:string;
+  runtime:string; model:string; has_model:bool; access:int;
+  fallbacks:int; forked:bool; forked_from:string; forked_revision:int;
+}
+AgentPin :: struct {signer:string;id:string;revision:int;digest:string;}
+// book:end record
+
+ag_hex64 :: (s:string)->bool {
+  if s.count!=64 {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+// No byte below 0x20 and no DEL; nul_only checks NUL alone.
+ag_clean :: (s:string,nul_only:bool)->bool {
+  for c:s {
+    if c==0 {return false;}
+    if !nul_only && (c<0x20 || c==0x7f) {return false;}
+  }
+  return true;
+}
+ag_nonblank :: (s:string)->bool {
+  for c:s {if c!=' ' && c!='\t' && c!='\n' && c!='\r' {return true;}}
+  return false;
+}
+ag_runtime_ok :: (s:string)->bool {
+  if s.count<1 || s.count>128 {return false;}
+  for c:s {
+    // '0'..':' is the digits and the colon.
+    ok:=(c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<=':') || c=='.' || c=='_' || c=='-';
+    if !ok {return false;}
+  }
+  return true;
+}
+ag_model_ok :: (s:string)->bool {return s.count>=1 && s.count<=256 && ag_clean(s,false);}
+ag_access :: (s:string)->int {
+  if s=="host_default" {return AG_HOST_DEFAULT;}
+  if s=="read_only" {return AG_READ_ONLY;}
+  if s=="workspace_write" {return AG_WORKSPACE_WRITE;}
+  return -1;
+}
+// A string token unescaped into the arena; ok false when it doesn't fit.
+AgString :: struct {ok:bool;s:string;}
+ag_string :: (j:[]Json,a:[]AgText)->AgString {
+  r:AgString;
+  n:=json_unescape(json_text(j),a[0].buf[a[0].at..<a[0].buf.count]);
+  if n<0 {return r;}
+  r.s=cast(string)a[0].buf[a[0].at..<a[0].at+n];a[0].at+=n;r.ok=true;return r;
+}
+// An integer token in [low, high], or -1.
+ag_int :: (j:[]Json,low:int,high:int)->int {
+  v:=json_int(json_text(j));
+  if !v.ok || v.value<low || v.value>high {return -1;}
+  return v.value;
+}
+
+// book:begin autonomy
+// The autonomy object: known fields in range, unknown fields and wakes ignored.
+ag_autonomy :: (j:[]Json)->u32 {
+  t:=json_next(j);
+  while t==JSON_STRING {
+    k:=json_text(j);v:=json_next(j);
+    if k=="check_ins" || k=="authority" {if v!=JSON_TRUE && v!=JSON_FALSE {return AG_SHAPE;}}
+    else if k=="every_minutes" || k=="stall_minutes" || k=="shell_timeout_secs" || k=="coalesce_secs" {
+      if v!=JSON_NUMBER {return AG_SHAPE;}
+      low:=ifx k=="coalesce_secs" then 0 else ifx k=="shell_timeout_secs" then 10 else 5;
+      high:=ifx k=="every_minutes" then 1440 else ifx k=="stall_minutes" then 240 else ifx k=="shell_timeout_secs" then 3600 else 1800;
+      if ag_int(j,low,high)<0 {return AG_FIELD;}
+    } else if k=="wakes" {
+      if v!=JSON_ARRAY {return AG_SHAPE;}
+      n:=0;w:=json_next(j);
+      while w==JSON_STRING {n+=1;w=json_next(j);}
+      if w!=JSON_ARRAY_END {return AG_SHAPE;}
+      if n>16 {return AG_FIELD;}
+    } else if !json_skip(j) {return AG_SHAPE;}
+    t=json_next(j);
+  }
+  if t!=JSON_OBJECT_END {return AG_SHAPE;}
+  return AG_OK;
+}
+// book:end autonomy
+
+// book:begin fallbacks
+// At most 4 {runtime, model?}: each runtime valid, distinct, not the
+// primary, not sdk or any.
+ag_fallbacks :: (j:[]Json,d:[]AgentDefinition,seen:[]string,a:[]AgText)->u32 {
+  n:=0;t:=json_next(j);
+  while t==JSON_OBJECT {
+    has_runtime:=false;rt:string;u:=json_next(j);
+    while u==JSON_STRING {
+      k:=json_text(j);v:=json_next(j);
+      if k=="runtime" && v==JSON_STRING && !has_runtime {
+        s:=ag_string(j,a);if !s.ok {return AG_SHAPE;}
+        rt=s.s;has_runtime=true;
+      } else if k=="model" && (v==JSON_STRING || v==JSON_NULL) {
+        if v==JSON_STRING {s:=ag_string(j,a);if !s.ok || !ag_model_ok(s.s) {return AG_FIELD;}}
+      } else {return AG_SHAPE;}
+      u=json_next(j);
+    }
+    if u!=JSON_OBJECT_END || !has_runtime {return AG_SHAPE;}
+    if n>=4 {return AG_FIELD;}
+    if !ag_runtime_ok(rt) || rt=="sdk" || rt=="any" {return AG_FIELD;}
+    for i:0..<n {if seen[i]==rt {return AG_FIELD;}}
+    seen[n]=rt;n+=1;t=json_next(j);
+  }
+  if t!=JSON_ARRAY_END {return AG_SHAPE;}
+  d[0].fallbacks=n;return AG_OK;
+}
+// book:end fallbacks
+
+// book:begin spec
+AG_SPEC :: [8]string.["name","description","instructions","runtime","model","access","fallbacks","autonomy"];
+ag_spec :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
+  seen:=0;fb:[4]string;
+  t:=json_next(j);
+  while t==JSON_STRING {
+    f:=-1;k:=json_text(j);for i:0..<8 {if k==AG_SPEC[i] {f=i;}}
+    if f<0 || (seen&(1<<f))!=0 {return AG_SHAPE;}
+    seen|=1<<f;v:=json_next(j);
+    if f==6 {if v!=JSON_ARRAY {return AG_SHAPE;}e:=ag_fallbacks(j,d,fb[..],a);if e!=AG_OK {return e;}}
+    else if f==7 {if v!=JSON_OBJECT {return AG_SHAPE;}e:=ag_autonomy(j);if e!=AG_OK {return e;}}
+    else if !(f==4 && v==JSON_NULL) {
+      if v!=JSON_STRING {return AG_SHAPE;}
+      s:=ag_string(j,a);if !s.ok {return AG_SHAPE;}
+      if f==0 {if !ag_nonblank(s.s) || s.s.count>80 || !ag_clean(s.s,false) {return AG_FIELD;}d[0].name=s.s;}
+      if f==1 {if s.s.count>512 || !ag_clean(s.s,false) {return AG_FIELD;}d[0].description=s.s;}
+      // At most 65,536 bytes: the JSON reader refuses a longer raw string.
+      if f==2 {if !ag_nonblank(s.s) || !ag_clean(s.s,true) {return AG_FIELD;}d[0].instructions=s.s;}
+      if f==3 {if !ag_runtime_ok(s.s) {return AG_FIELD;}d[0].runtime=s.s;}
+      if f==4 {if !ag_model_ok(s.s) {return AG_FIELD;}d[0].model=s.s;d[0].has_model=true;}
+      if f==5 {d[0].access=ag_access(s.s);if d[0].access<0 {return AG_FIELD;}}
+    }
+    t=json_next(j);
+  }
+  if t!=JSON_OBJECT_END || (seen&63)!=63 {return AG_SHAPE;}
+  // runtime any leaves the choice to the host: its model is null.
+  if d[0].runtime=="any" && d[0].has_model {return AG_FIELD;}
+  for i:0..<d[0].fallbacks {if fb[i]==d[0].runtime {return AG_FIELD;}}
+  return AG_OK;
+}
+// book:end spec
+
+// book:begin read
+// The payload JSON (the artifact's inline JCS bytes) into a definition.
+agent_read :: (payload:string,a:[]AgText)->AgentDefinition {
+  d:=[1]AgentDefinition.[AgentDefinition.{}];
+  e:=ag_payload(payload,d[..],a);
+  if e!=AG_OK {r:AgentDefinition;r.error=e;return r;}
+  d[0].error=AG_OK;return d[0];
+}
+ag_payload :: (payload:string,d:[]AgentDefinition,a:[]AgText)->u32 {
+  j:[1]Json;json_start(j[..],payload);
+  if json_next(j[..])!=JSON_OBJECT {return AG_SHAPE;}
+  seen:=0;t:=json_next(j[..]);
+  while t==JSON_STRING {
+    k:=json_text(j[..]);f:=ifx k=="schema" then 0 else ifx k=="definition" then 1 else ifx k=="forked_from" then 2 else -1;
+    if f<0 || (seen&(1<<f))!=0 {return AG_SHAPE;}
+    seen|=1<<f;v:=json_next(j[..]);
+    if f==0 {
+      if v!=JSON_STRING {return AG_SHAPE;}
+      if !json_is(json_text(j[..]),AG_SCHEMA_ID) {return AG_SCHEMA;}
+    } else if f==1 {
+      if v!=JSON_OBJECT {return AG_SHAPE;}
+      e:=ag_definition(j[..],d,a);if e!=AG_OK {return e;}
+    } else {
+      if v!=JSON_OBJECT {return AG_SHAPE;}
+      e:=ag_fork(j[..],d,a);if e!=AG_OK {return e;}
+    }
+    t=json_next(j[..]);
+  }
+  if t!=JSON_OBJECT_END || (seen!=3 && seen!=7) {return AG_SHAPE;}
+  if json_next(j[..])!=JSON_END {return AG_SHAPE;}
+  return AG_OK;
+}
+ag_definition :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
+  seen:=0;t:=json_next(j);
+  while t==JSON_STRING {
+    k:=json_text(j);f:=ifx k=="id" then 0 else ifx k=="revision" then 1 else ifx k=="spec" then 2 else ifx k=="deleted" then 3 else -1;
+    if f<0 || (seen&(1<<f))!=0 {return AG_SHAPE;}
+    seen|=1<<f;v:=json_next(j);
+    if f==0 {
+      if v!=JSON_STRING {return AG_SHAPE;}
+      s:=ag_string(j,a);if !s.ok || !ag_hex64(s.s) {return AG_FIELD;}d[0].id=s.s;
+    } else if f==1 {
+      if v!=JSON_NUMBER {return AG_SHAPE;}
+      d[0].revision=ag_int(j,1,9007199254740991);if d[0].revision==-1 {return AG_FIELD;}
+    } else if f==2 {
+      if v!=JSON_OBJECT {return AG_SHAPE;}
+      e:=ag_spec(j,d,a);if e!=AG_OK {return e;}
+    } else {
+      if v!=JSON_TRUE && v!=JSON_FALSE {return AG_SHAPE;}
+      d[0].deleted=v==JSON_TRUE;
+    }
+    t=json_next(j);
+  }
+  if t!=JSON_OBJECT_END || seen!=15 {return AG_SHAPE;}
+  return AG_OK;
+}
+// forked_from: the published agent id and the positive revision copied.
+ag_fork :: (j:[]Json,d:[]AgentDefinition,a:[]AgText)->u32 {
+  seen:=0;t:=json_next(j);
+  while t==JSON_STRING {
+    k:=json_text(j);f:=ifx k=="published" then 0 else ifx k=="revision" then 1 else -1;
+    if f<0 || (seen&(1<<f))!=0 {return AG_SHAPE;}
+    seen|=1<<f;v:=json_next(j);
+    if f==0 {
+      if v!=JSON_STRING {return AG_SHAPE;}
+      s:=ag_string(j,a);if !s.ok || !ag_hex64(s.s) {return AG_FIELD;}d[0].forked_from=s.s;
+    } else {
+      if v!=JSON_NUMBER {return AG_SHAPE;}
+      d[0].forked_revision=ag_int(j,1,9007199254740991);if d[0].forked_revision==-1 {return AG_FIELD;}
+    }
+    t=json_next(j);
+  }
+  if t!=JSON_OBJECT_END || seen!=3 {return AG_SHAPE;}
+  d[0].forked=true;return AG_OK;
+}
+// book:end read
+
+// book:begin select
+// The consumer's pinned selection. signer is the verified 3188 signer and
+// digest the artifact digest the envelope checked.
+agent_select :: (pin:AgentPin,signer:string,digest:string,d:AgentDefinition)->u32 {
+  if d.error!=AG_OK {return d.error;}
+  if signer!=pin.signer {return AG_SIGNER;}
+  if d.id!=pin.id {return AG_ID;}
+  if d.revision!=pin.revision {return AG_REVISION;}
+  if digest!=pin.digest {return AG_DIGEST;}
+  if d.deleted {return AG_DELETED;}
+  return AG_OK;
+}
+// book:end select
+
+#test "the codes are distinct and the access values in order" {
+  #assert AG_OK==0 && AG_SHAPE==1 && AG_SCHEMA==2 && AG_FIELD==3 && AG_SIGNER==4 && AG_ID==5 && AG_REVISION==6 && AG_DIGEST==7 && AG_DELETED==8;
+  #assert ag_access("host_default")==0 && ag_access("read_only")==1 && ag_access("workspace_write")==2 && ag_access("admin")==-1;
+}
+#test "a definition reads with every field" {
+  store:[4096]u8;a:=[1]AgText.[AgText.{buf=store[..]}];pb:[2048]u8;
+  d:=agent_read(at_payload(AT_SPEC,pb[..]),a[..]);
+  #assert d.error==AG_OK && d.id==AT_ID && d.revision==3 && !d.deleted && d.name=="Triage" && d.description=="Sorts new issues";
+  #assert d.instructions=="Label each new issue." && d.runtime=="codex" && !d.has_model && d.access==AG_READ_ONLY && d.fallbacks==0 && !d.forked;
+  e:=at_spec_read("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"codex\",\"model\":\"gpt-6\",\"access\":\"workspace_write\",\"fallbacks\":[{\"runtime\":\"claude\"},{\"runtime\":\"luna\",\"model\":\"m\"}],\"autonomy\":{\"check_ins\":true,\"every_minutes\":5,\"wakes\":[\"chat_finished\",\"later\"],\"future\":{\"x\":1}}}");
+  #assert e.error==AG_OK && e.has_model && e.model=="gpt-6" && e.access==AG_WORKSPACE_WRITE && e.fallbacks==2 && e.description=="";
+  // The escaped name unescapes into the arena.
+  f:=at_spec_read("{\"name\":\"Tri\\u0061ge\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"any\",\"model\":null,\"access\":\"host_default\"}");
+  #assert f.error==AG_OK && f.name=="Triage" && f.runtime=="any" && f.access==AG_HOST_DEFAULT;
+}
+#test "the payload's fields: schema, definition and a fork" {
+  pb:[2048]u8;p:=at_payload(AT_SPEC,pb[..]);
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v2\",\"definition\":{}}").error==AG_SCHEMA;
+  #assert at_read("{\"schema\":1}").error==AG_SHAPE && at_read("[]").error==AG_SHAPE && at_read("").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\"}").error==AG_SHAPE;
+  q:[2200]u8;n:=json_raw(q[..],0,p[0..<p.count-1]);
+  m:=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\",\"revision\":2}}");
+  d:=at_read(cast(string)q[0..<m]);#assert d.error==AG_OK && d.forked && d.forked_from==AT_ID && d.forked_revision==2;
+  m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"ab\",\"revision\":2}}");#assert at_read(cast(string)q[0..<m]).error==AG_FIELD;
+  m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\",\"revision\":0}}");
+  #assert at_read(cast(string)q[0..<m]).error==AG_FIELD;
+  m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\"}}");
+  #assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\",\"revision\":2,\"revision\":2}}");
+  #assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  m=json_raw(q[..],n,",\"forked_from\":{\"published\":1,\"revision\":2}}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  m=json_raw(q[..],n,",\"forked_from\":{\"published\":\"");m=json_raw(q[..],m,AT_ID);m=json_raw(q[..],m,"\",\"revision\":\"2\"}}");
+  #assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  m=json_raw(q[..],n,",\"forked_from\":[]}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  m=json_raw(q[..],n,",\"grants\":[]}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  m=json_raw(q[..],n,",\"schema\":\"openagents.agent.definition.v1\"}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  m=json_raw(q[..],0,p);m=json_raw(q[..],m," 1");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+  m=json_raw(q[..],0,"{\"schema\":\"openagents.agent.definition.v1\",\"definition\":[]}");#assert at_read(cast(string)q[0..<m]).error==AG_SHAPE;
+}
+#test "the definition's id, revision and deleted flag" {
+  ok:="{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":true}}";
+  d:=at_read(ok);#assert d.error==AG_OK && d.deleted && d.revision==9;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"4F1C6C3A2B0E5D7F8A9B0C1D2E3F405162738495A6B7C8D9E0F1A2B3C4D5E6F7\"}}").error==AG_FIELD;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":7}}").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":0}}").error==AG_FIELD;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":\"1\"}}").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1,\"revision\":1}}").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"spec\":[]}}").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"deleted\":0}}").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"owner\":0}}").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1}}").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"revision\":1,\"deleted\":false]}").error==AG_SHAPE;
+}
+#test "name, description and instructions bounds" {
+  long:[600]u8;for i:0..<600 {long[i]='n';}
+  nm:[100]u8;n:=json_raw(nm[..],0,"\"");n=json_raw(nm[..],n,cast(string)long[0..<80]);n=json_raw(nm[..],n,"\"");
+  #assert at_field("\"Triage\"",cast(string)nm[0..<n])==AG_OK;
+  n=json_raw(nm[..],0,"\"");n=json_raw(nm[..],n,cast(string)long[0..<81]);n=json_raw(nm[..],n,"\"");
+  #assert at_field("\"Triage\"",cast(string)nm[0..<n])==AG_FIELD;
+  #assert at_field("\"Triage\"","\" \\t\"")==AG_FIELD && at_field("\"Triage\"","\"\"")==AG_FIELD;
+  #assert at_field("\"Triage\"","\"a\\u0007\"")==AG_FIELD && at_field("\"Triage\"","\"a\\u007f\"")==AG_FIELD;
+  #assert at_field("\"Triage\"","\"\\r\\na\"")==AG_FIELD && at_field("\"Triage\"","\" a \"")==AG_OK;
+  ds:[600]u8;n=json_raw(ds[..],0,"\"");n=json_raw(ds[..],n,cast(string)long[0..<512]);n=json_raw(ds[..],n,"\"");
+  #assert at_field("\"Sorts new issues\"",cast(string)ds[0..<n])==AG_OK;
+  n=json_raw(ds[..],0,"\"");n=json_raw(ds[..],n,cast(string)long[0..<512]);n=json_raw(ds[..],n,"n\"");
+  #assert at_field("\"Sorts new issues\"",cast(string)ds[0..<n])==AG_FIELD;
+  #assert at_field("\"Sorts new issues\"","\"a\\nb\"")==AG_FIELD && at_field("\"Sorts new issues\"","\"\\u001f\"")==AG_FIELD;
+  // Instructions may hold newlines and tabs, never NUL, never only blanks.
+  #assert at_field("\"Label each new issue.\"","\"a\\n\\tb\"")==AG_OK && at_field("\"Label each new issue.\"","\"a\\u0000\"")==AG_FIELD;
+  #assert at_field("\"Label each new issue.\"","\"\\n \"")==AG_FIELD && at_field("\"Label each new issue.\"","1")==AG_SHAPE;
+  #assert ag_nonblank("\r a") && !ag_nonblank("\r\n\t ") && ag_clean("a\tb",true) && !ag_clean("a\tb",false);
+}
+#test "instructions up to 65,536 bytes, not one more" {
+  big:[66000]u8;
+  store:[70000]u8;out:[66000]u8;
+  a:=[1]AgText.[AgText.{buf=store[..]}];sp:=at_build(65536,big[..]);
+  pb:[66300]u8;n:=json_raw(pb[..],0,"{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"");
+  n=json_raw(pb[..],n,AT_ID);n=json_raw(pb[..],n,"\",\"revision\":1,\"spec\":");n=json_raw(pb[..],n,sp);n=json_raw(pb[..],n,",\"deleted\":false}}");
+  #assert agent_read(cast(string)pb[0..<n],a[..]).error==AG_OK;
+  d:AgentDefinition;dd:=[1]AgentDefinition.[d];
+  j:[1]Json;json_start(j[..],at_build(65536,big[..]));#assert json_next(j[..])==JSON_OBJECT;a[0].at=0;
+  #assert ag_spec(j[..],dd[..],a[..])==AG_OK;
+  // 65,537 raw bytes are over the JSON reader's string limit: refused, never truncated.
+  json_start(j[..],at_build(65537,big[..]));#assert json_next(j[..])==JSON_OBJECT;a[0].at=0;
+  #assert ag_spec(j[..],dd[..],a[..])!=AG_OK;
+  #assert out.count==66000;
+}
+#test "runtime, model and access" {
+  #assert at_field("\"codex\"","\"a.b_c:d-E9\"")==AG_OK && at_field("\"codex\"","\"a b\"")==AG_FIELD && at_field("\"codex\"","\"\"")==AG_FIELD;
+  #assert at_field("\"codex\"","\"/bin/sh\"")==AG_FIELD && at_field("\"codex\"","\"https://x\"")==AG_FIELD;
+  #assert ag_runtime_ok("zZ09") && !ag_runtime_ok("a/") && !ag_runtime_ok("@") && !ag_runtime_ok("[") && !ag_runtime_ok("`") && !ag_runtime_ok("{");
+  r:[130]u8;for i:0..<130 {r[i]='r';}
+  #assert ag_runtime_ok(cast(string)r[0..<128]) && !ag_runtime_ok(cast(string)r[0..<129]);
+  #assert at_field("null","\"gpt\"")==AG_OK && at_field("null","\"\"")==AG_FIELD && at_field("null","\"a\\u0001\"")==AG_FIELD && at_field("null","1")==AG_SHAPE;
+  m:[260]u8;for i:0..<260 {m[i]='m';}
+  #assert ag_model_ok(cast(string)m[0..<256]) && !ag_model_ok(cast(string)m[0..<257]);
+  #assert at_field("\"read_only\"","\"admin\"")==AG_FIELD && at_field("\"read_only\"","\"host_default\"")==AG_OK && at_field("\"read_only\"","0")==AG_SHAPE;
+  // runtime any takes a null model.
+  #assert at_spec_read("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"any\",\"model\":\"m\",\"access\":\"read_only\"}").error==AG_FIELD;
+  #assert at_field("\"codex\"","\"codex\",\"executable\":\"/bin/sh\"")==AG_SHAPE;
+  #assert at_field("\"codex\"","\"codex\",\"runtime\":\"codex\"")==AG_SHAPE;
+  #assert at_field(",\"access\":\"read_only\"","")==AG_SHAPE;
+  #assert at_spec_read("{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"]").error==AG_SHAPE;
+}
+#test "fallbacks: at most four, distinct, not the primary, sdk or any" {
+  #assert at_fb("[]")==AG_OK && at_fb("[{\"runtime\":\"a\"},{\"runtime\":\"b\"},{\"runtime\":\"c\",\"model\":null},{\"runtime\":\"d\"}]")==AG_OK;
+  #assert at_fb("[{\"runtime\":\"a\"},{\"runtime\":\"b\"},{\"runtime\":\"c\"},{\"runtime\":\"d\"},{\"runtime\":\"e\"}]")==AG_FIELD;
+  #assert at_fb("[{\"runtime\":\"a\"},{\"runtime\":\"a\"}]")==AG_FIELD && at_fb("[{\"runtime\":\"codex\"}]")==AG_FIELD;
+  #assert at_fb("[{\"runtime\":\"sdk\"}]")==AG_FIELD && at_fb("[{\"runtime\":\"any\"}]")==AG_FIELD && at_fb("[{\"runtime\":\"a b\"}]")==AG_FIELD;
+  #assert at_fb("[{\"model\":\"m\"}]")==AG_SHAPE && at_fb("[{\"runtime\":\"a\",\"runtime\":\"b\"}]")==AG_SHAPE && at_fb("[{\"runtime\":1}]")==AG_SHAPE;
+  #assert at_fb("[{\"runtime\":\"a\",\"cmd\":\"x\"}]")==AG_SHAPE && at_fb("[{\"runtime\":\"a\",\"model\":\"\"}]")==AG_FIELD && at_fb("[{\"runtime\":\"a\",\"model\":2}]")==AG_SHAPE;
+  #assert at_fb("[\"a\"]")==AG_SHAPE && at_fb("{}")==AG_SHAPE && at_fb("[{\"runtime\":\"a\"]")==AG_SHAPE;
+  #assert at_fb("[{\"runtime\":\"a\"}],\"fallbacks\":[]")==AG_SHAPE;
+}
+#test "autonomy: known numbers in range, unknown fields ignored" {
+  #assert at_au("{}")==AG_OK && at_au("{\"check_ins\":false,\"authority\":true}")==AG_OK && at_au("{\"check_ins\":1}")==AG_SHAPE && at_au("{\"authority\":null}")==AG_SHAPE;
+  lows:=[4]string.["every_minutes","stall_minutes","shell_timeout_secs","coalesce_secs"];
+  low:=[4]int.[5,5,10,0];high:=[4]int.[1440,240,3600,1800];
+  for i:0..<4 {
+    s:[128]u8;
+    n:=json_raw(s[..],0,"{\"");n=json_raw(s[..],n,lows[i]);n=json_raw(s[..],n,"\":");n=json_write_int(s[..],n,low[i]);n=json_raw(s[..],n,"}");
+    #assert at_au(cast(string)s[0..<n])==AG_OK;
+    n=json_raw(s[..],0,"{\"");n=json_raw(s[..],n,lows[i]);n=json_raw(s[..],n,"\":");n=json_write_int(s[..],n,low[i]-1);n=json_raw(s[..],n,"}");
+    #assert at_au(cast(string)s[0..<n])==AG_FIELD;
+    n=json_raw(s[..],0,"{\"");n=json_raw(s[..],n,lows[i]);n=json_raw(s[..],n,"\":");n=json_write_int(s[..],n,high[i]);n=json_raw(s[..],n,"}");
+    #assert at_au(cast(string)s[0..<n])==AG_OK;
+    n=json_raw(s[..],0,"{\"");n=json_raw(s[..],n,lows[i]);n=json_raw(s[..],n,"\":");n=json_write_int(s[..],n,high[i]+1);n=json_raw(s[..],n,"}");
+    #assert at_au(cast(string)s[0..<n])==AG_FIELD;
+    n=json_raw(s[..],0,"{\"");n=json_raw(s[..],n,lows[i]);n=json_raw(s[..],n,"\":\"5\"}");
+    #assert at_au(cast(string)s[0..<n])==AG_SHAPE;
+  }
+  #assert at_au("{\"every_minutes\":5.5}")==AG_FIELD;
+  #assert at_au("{\"wakes\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\"]}")==AG_OK;
+  #assert at_au("{\"wakes\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\",\"q\"]}")==AG_FIELD;
+  #assert at_au("{\"wakes\":\"a\"}")==AG_SHAPE && at_au("{\"wakes\":[1]}")==AG_SHAPE && at_au("[]")==AG_SHAPE && at_au("{\"later\":[1,{\"x\":2}],\"check_ins\":true}")==AG_OK;
+  #assert at_au("{\"check_ins\":true]")==AG_SHAPE;
+}
+#test "selection pins signer, id, revision and digest" {
+  pb:[2048]u8;d:=at_read(at_payload(AT_SPEC,pb[..]));
+  pin:AgentPin;pin.signer="s1";pin.id=AT_ID;pin.revision=3;pin.digest="sha256:aa";
+  #assert agent_select(pin,"s1","sha256:aa",d)==AG_OK;
+  #assert agent_select(pin,"s2","sha256:aa",d)==AG_SIGNER;
+  #assert agent_select(pin,"s1","sha256:ab",d)==AG_DIGEST;
+  p2:=pin;p2.revision=2;#assert agent_select(p2,"s1","sha256:aa",d)==AG_REVISION;
+  p2=pin;p2.revision=4;#assert agent_select(p2,"s1","sha256:aa",d)==AG_REVISION;
+  p2=pin;p2.id="ff";#assert agent_select(p2,"s1","sha256:aa",d)==AG_ID;
+  gone:=d;gone.deleted=true;#assert agent_select(pin,"s1","sha256:aa",gone)==AG_DELETED;
+  bad:AgentDefinition;bad.error=AG_FIELD;#assert agent_select(pin,"s1","sha256:aa",bad)==AG_FIELD;
+}
+#test "the arena refuses what does not fit" {
+  small:[4]u8;a:=[1]AgText.[AgText.{buf=small[..]}];pb:[2048]u8;
+  #assert agent_read(at_payload(AT_SPEC,pb[..]),a[..]).error!=AG_OK;
+  #assert ag_hex64(AT_ID) && !ag_hex64("") && !ag_hex64("g") ;
+}
+#test "hex ids, runtimes and the arena at their edges" {
+  #assert !ag_hex64("4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f:") && !ag_hex64("4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6fg");
+  #assert ag_hex64("0000000000000000000000000000000000000000000000000000000000000009") && ag_hex64("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+  #assert ag_runtime_ok("A") && ag_runtime_ok("Z") && ag_runtime_ok("0") && ag_runtime_ok("9") && ag_runtime_ok(":") && !ag_runtime_ok(";") && !ag_runtime_ok("/");
+  store:[16]u8;a:=[1]AgText.[AgText.{buf=store[..]}];j:[1]Json;json_start(j[..],"[\"ab\",\"cd\"]");
+  #assert json_next(j[..])==JSON_ARRAY && json_next(j[..])==JSON_STRING;
+  x:=ag_string(j[..],a[..]);#assert x.ok && x.s=="ab" && a[0].at==2;
+  #assert json_next(j[..])==JSON_STRING;y:=ag_string(j[..],a[..]);#assert y.ok && y.s=="cd" && a[0].at==4 && x.s=="ab";
+}
+#test "an unknown key never stands in for a required one" {
+  #assert at_field("\"name\":\"Triage\"","\"title\":\"Triage\"")==AG_SHAPE;
+  q:[1024]u8;
+  #assert at_read(at_join("{\"schemas\":\"openagents.agent.definition.v1\",\"definition\":",true,"","}",q[..])).error==AG_SHAPE;
+  #assert at_read(at_join(AT_HEAD,true,"","}",q[..])).error==AG_OK;
+  // Every key repeated in an otherwise valid payload refuses.
+  #assert at_read(at_join("{\"schema\":\"openagents.agent.definition.v1\",\"schema\":\"openagents.agent.definition.v1\",\"definition\":",true,"","}",q[..])).error==AG_SHAPE;
+  r:[1024]u8;second:=at_join(",\"definition\":",true,"","}",r[..]);
+  #assert at_read(at_join(AT_HEAD,true,"",second,q[..])).error==AG_SHAPE;
+  d:=at_read(at_join(AT_HEAD,true,AT_FORK,"}",q[..]));#assert d.error==AG_OK && d.forked_revision==1;
+  f2:[512]u8;n:=json_raw(f2[..],0,AT_FORK);n=json_raw(f2[..],n,AT_FORK);n=json_raw(f2[..],n,"}");
+  #assert at_read(at_join(AT_HEAD,true,"",cast(string)f2[0..<n],q[..])).error==AG_SHAPE;
+  #assert at_read(at_join(AT_HEAD,true,",\"forked_from\":{\"source\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":1}","}",q[..])).error==AG_SHAPE;
+  #assert at_read(at_join(AT_HEAD,true,",\"forked_from\":{\"published\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740992}","}",q[..])).error==AG_FIELD;
+  #assert at_read(at_join(AT_HEAD,true,",\"forked_from\":{\"published\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740991}","}",q[..])).error==AG_OK;
+  // The definition's own keys: repeated or unknown, and the revision's ceiling.
+  for k:0..<5 {#assert at_read(at_join(AT_HEAD,false,AT_DUP[k],"}",q[..])).error==AG_SHAPE;}
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"identity\":\"x\",\"revision\":1,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":false}}").error==AG_SHAPE;
+  #assert at_read("{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"4f1c6c3a2b0e5d7f8a9b0c1d2e3f405162738495a6b7c8d9e0f1a2b3c4d5e6f7\",\"revision\":9007199254740992,\"spec\":{\"name\":\"T\",\"description\":\"\",\"instructions\":\"x\",\"runtime\":\"r\",\"model\":null,\"access\":\"read_only\"},\"deleted\":false}}").error==AG_FIELD;
+}

@@ -1,0 +1,447 @@
+// AUTO scheduling: the controller's decision, under its trusted clock, of
+// which occurrence a plan admits now and which slots it records as skipped.
+// NIP-AUTO "Immutable plan", "Observations, occurrences, and exact input"
+// and "Controls, journal, and recovery".
+//
+// A once trigger has one slot at `at`; an interval trigger has slot n at
+// first_at + n * every (checked for overflow); a source trigger admits work
+// for an available, fresh observation of its configured resource, one
+// occurrence per revision. Only one occurrence is active per plan. When the
+// controller ticks after missing slots it never runs a backlog: the slots
+// before the latest due one are recorded as one skipped range (`missed`),
+// and only the latest due slot can run. While an occurrence is active a
+// `skip` plan records the newly due slots as `occupied`, and a `latest` plan
+// waits and later runs only the latest slot. A paused plan records due slots
+// as `paused`. Expiry records the rest as `expired`; reaching
+// max_occurrences records them as `bound`. Each slot is handled once:
+// next_slot only grows, so a second tick at the same time, or a duplicate
+// timer delivery, records nothing again and admits nothing again.
+//
+// Every occurrence needs current authority: the caller passes the code of
+// the host's own check (cap_dispatch's error, or pol_admit's, 0 meaning
+// admitted). Any refusal blocks the plan and consumes no slot; only an
+// explicit resume with authority admitted again unblocks it. Controls
+// compare-and-swap the state's revision.
+//
+// It trusts what it is given: the controller's clock, the host's authority
+// code, observations whose source signature and binding the host verified.
+// Times are Unix seconds. Records are the caller's arrays; counts in state.
+//
+// Not here: plans' wire records and signatures, budgets and reservations,
+// COORD proposals and claims, CJ dispatch, RUN journals, source polls and
+// revalidation, continuation and checkers, and recovery and takeover.
+//   coax/bin/coax test coax/lib/nostr/auto/schedule.coax --library
+#load "../../../tests/nostr/auto_schedule_fixtures.coax";
+#authority;
+
+// book:begin codes
+AU_OK :: cast(u32)0;          // an occurrence admitted (a missed range may be recorded first)
+AU_IDLE :: cast(u32)1;        // nothing new is due
+AU_BUSY :: cast(u32)2;        // an occurrence is active: latest waits, a source revision waits
+AU_SKIPPED :: cast(u32)3;     // due slots recorded as occupied or paused, nothing admitted
+AU_BLOCKED :: cast(u32)4;     // authority refused: the plan is blocked, no slot consumed
+AU_EXPIRED :: cast(u32)5;     // the plan expired: no new dispatch
+AU_EXHAUSTED :: cast(u32)6;   // max_occurrences reached
+AU_CLOSED :: cast(u32)7;      // the plan is not active
+AU_DUPLICATE :: cast(u32)8;   // this source revision already has its occurrence
+AU_STALE :: cast(u32)9;       // the observation is older than max_age, or from the future
+AU_UNAVAILABLE :: cast(u32)10;// the source reported no revision
+AU_MALFORMED :: cast(u32)11;  // a bad plan, the wrong call for the trigger, another source or resource
+AU_LIMIT :: cast(u32)12;      // no room left in the record
+AU_CONFLICT :: cast(u32)13;   // a control's expected revision is not current
+
+AU_ONCE :: 0; AU_INTERVAL :: 1; AU_SOURCE :: 2;               // trigger
+AU_SKIP :: 0; AU_LATEST :: 1;                                  // missed-slot handling
+AUS_ACTIVE :: 0; AUS_PAUSED :: 1; AUS_BLOCKED :: 2; AUS_EXHAUSTED :: 3;
+AUS_COMPLETE :: 4; AUS_CANCELLED :: 5; AUS_EXPIRED :: 6;       // status
+AUR_MISSED :: 0; AUR_OCCUPIED :: 1; AUR_PAUSED :: 2; AUR_EXPIRED :: 3; AUR_BOUND :: 4; // skip reason
+AU_PAUSE :: 0; AU_RESUME :: 1; AU_CANCEL :: 2;                 // control
+AU_MAX_SAFE :: 9007199254740991;
+// book:end codes
+
+// book:begin record
+AutoPlan :: struct {
+  trigger:int; at:int; first_at:int; every:int; missed:int;
+  starts_at:int; expires_at:int; max_occurrences:int;
+  source:string; resource:string; max_age:int;
+}
+AutoState :: struct {status:int;revision:int;next_slot:int;occurrences:int;skips:int;active:int;}
+AutoSkip :: struct {first_slot:int;last_slot:int;first_due:int;last_due:int;reason:int;}
+AutoOccurrence :: struct {ordinal:int;slot:int;due_at:int;revision:string;settled:bool;}
+AutoObservation :: struct {source:string;resource:string;revision:string;available:bool;observed_at:int;}
+AutoResult :: struct {code:u32;ordinal:int;skipped:int;}
+// book:end record
+
+// book:begin due
+// Slot n's due time, or -1 when there is no such slot or it overflows.
+auto_due :: (p:AutoPlan,slot:int)->int {
+  if slot<0 {return -1;}
+  if p.trigger==AU_ONCE {return ifx slot==0 then p.at else -1;}
+  if p.every<=0 || p.first_at<0 {return -1;}
+  if slot>(AU_MAX_SAFE-p.first_at)/p.every {return -1;}
+  return p.first_at+slot*p.every;
+}
+// The latest slot due at t (t at or after the first slot), and the last
+// slot before expiry.
+auto_slot_at :: (p:AutoPlan,t:int)->int {
+  if p.trigger==AU_ONCE {return 0;}
+  return (t-p.first_at)/p.every;
+}
+auto_plan_ok :: (p:AutoPlan)->bool {
+  if p.starts_at<0 || p.starts_at>=p.expires_at || p.expires_at>AU_MAX_SAFE || p.max_occurrences<=0 {return false;}
+  if p.trigger==AU_ONCE {return p.at>=p.starts_at && p.at<p.expires_at;}
+  if p.trigger==AU_INTERVAL {return p.every>0 && p.first_at>=p.starts_at && p.first_at<p.expires_at && (p.missed==AU_SKIP || p.missed==AU_LATEST);}
+  if p.trigger==AU_SOURCE {return p.source!="" && p.resource!="" && p.max_age>0;}
+  return false;
+}
+// book:end due
+
+au_terminal :: (status:int)->bool {return status==AUS_EXHAUSTED || status==AUS_COMPLETE || status==AUS_CANCELLED || status==AUS_EXPIRED;}
+au_code :: (code:u32)->AutoResult {r:AutoResult;r.code=code;return r;}
+// Records slots first..last (first <= last, room already checked).
+au_skip :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,first:int,last:int,reason:int) {
+  k:AutoSkip;k.first_slot=first;k.last_slot=last;k.first_due=auto_due(p,first);k.last_due=auto_due(p,last);k.reason=reason;
+  skips[s[0].skips]=k;s[0].skips+=1;
+}
+au_admit :: (s:[]AutoState,occ:[]AutoOccurrence,slot:int,due:int,revision:string)->AutoResult {
+  o:AutoOccurrence;o.ordinal=s[0].occurrences+1;o.slot=slot;o.due_at=due;o.revision=revision;
+  occ[s[0].occurrences]=o;s[0].occurrences+=1;s[0].active=o.ordinal;s[0].revision+=1;
+  r:=au_code(AU_OK);r.ordinal=o.ordinal;return r;
+}
+
+// book:begin tick
+// A timer tick at now for a once or interval plan.
+auto_tick :: (p:AutoPlan,s:[]AutoState,skips:[]AutoSkip,occ:[]AutoOccurrence,now:int,authority:u32)->AutoResult {
+  if !auto_plan_ok(p) || p.trigger==AU_SOURCE {return au_code(AU_MALFORMED);}
+  status:=s[0].status;
+  if au_terminal(status) || status==AUS_BLOCKED {return au_code(AU_CLOSED);}
+  next:=s[0].next_slot;
+  if now<auto_due(p,0) {return au_code(AU_IDLE);}
+  last:=auto_slot_at(p,p.expires_at-1);
+  if now>=p.expires_at {
+    // No new dispatch after expiry: the slots still unhandled are recorded once.
+    room:=next>last || s[0].skips<skips.count;
+    if !room {return au_code(AU_LIMIT);}
+    n:=0;if next<=last {au_skip(p,s,skips,next,last,AUR_EXPIRED);s[0].next_slot=last+1;n=1;}
+    s[0].status=AUS_EXPIRED;s[0].revision+=1;r:=au_code(AU_EXPIRED);r.skipped=n;return r;
+  }
+  due:=auto_slot_at(p,now);
+  if next>due {return au_code(AU_IDLE);}
+  if status==AUS_PAUSED || (s[0].active!=0 && p.missed==AU_SKIP) {
+    if s[0].skips>=skips.count {return au_code(AU_LIMIT);}
+    au_skip(p,s,skips,next,due,ifx status==AUS_PAUSED then AUR_PAUSED else AUR_OCCUPIED);
+    s[0].next_slot=due+1;s[0].revision+=1;r:=au_code(AU_SKIPPED);r.skipped=1;return r;
+  }
+  if s[0].active!=0 {r:=au_code(AU_BUSY);r.ordinal=s[0].active;return r;}
+  if authority!=AU_OK {s[0].status=AUS_BLOCKED;s[0].revision+=1;return au_code(AU_BLOCKED);}
+  if s[0].occurrences>=p.max_occurrences {
+    if s[0].skips>=skips.count {return au_code(AU_LIMIT);}
+    au_skip(p,s,skips,next,last,AUR_BOUND);s[0].next_slot=last+1;
+    s[0].status=AUS_EXHAUSTED;s[0].revision+=1;r:=au_code(AU_EXHAUSTED);r.skipped=1;return r;
+  }
+  missed:=ifx next<due then 1 else 0;
+  if s[0].skips+missed>skips.count || s[0].occurrences>=occ.count {return au_code(AU_LIMIT);}
+  if missed==1 {au_skip(p,s,skips,next,due-1,AUR_MISSED);}
+  s[0].next_slot=due+1;
+  r:=au_admit(s,occ,due,auto_due(p,due),"");r.skipped=missed;return r;
+}
+// book:end tick
+
+// book:begin observe
+// An observation event for a source plan.
+auto_observe :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,obs:AutoObservation,now:int,authority:u32)->AutoResult {
+  if !auto_plan_ok(p) || p.trigger!=AU_SOURCE {return au_code(AU_MALFORMED);}
+  if s[0].status!=AUS_ACTIVE {return au_code(AU_CLOSED);}
+  if obs.source!=p.source || obs.resource!=p.resource {return au_code(AU_MALFORMED);}
+  if !obs.available || obs.revision=="" {return au_code(AU_UNAVAILABLE);}
+  if obs.observed_at>now || now-obs.observed_at>p.max_age {return au_code(AU_STALE);}
+  // One occurrence per (source, resource, revision): a redelivery is the same one.
+  for i:0..<s[0].occurrences {if occ[i].revision==obs.revision {r:=au_code(AU_DUPLICATE);r.ordinal=occ[i].ordinal;return r;}}
+  if now>=p.expires_at {s[0].status=AUS_EXPIRED;s[0].revision+=1;return au_code(AU_EXPIRED);}
+  if now<p.starts_at {return au_code(AU_IDLE);}
+  if s[0].active!=0 {r:=au_code(AU_BUSY);r.ordinal=s[0].active;return r;}
+  if authority!=AU_OK {s[0].status=AUS_BLOCKED;s[0].revision+=1;return au_code(AU_BLOCKED);}
+  if s[0].occurrences>=p.max_occurrences {s[0].status=AUS_EXHAUSTED;s[0].revision+=1;return au_code(AU_EXHAUSTED);}
+  if s[0].occurrences>=occ.count {return au_code(AU_LIMIT);}
+  return au_admit(s,occ,-1,now,obs.revision);
+}
+// book:end observe
+
+// book:begin settle
+// The active occurrence settled (its RUN terminal record is the caller's).
+// A once plan, or an interval plan with no slot left, is then complete.
+auto_settle :: (p:AutoPlan,s:[]AutoState,occ:[]AutoOccurrence,ordinal:int)->u32 {
+  if ordinal<=0 || s[0].active!=ordinal {return AU_MALFORMED;}
+  occ[ordinal-1].settled=true;s[0].active=0;s[0].revision+=1;
+  if s[0].status==AUS_ACTIVE && p.trigger!=AU_SOURCE && s[0].next_slot>auto_slot_at(p,p.expires_at-1) {s[0].status=AUS_COMPLETE;}
+  return AU_OK;
+}
+// Pause, resume or cancel, compared against the current revision.
+auto_control :: (s:[]AutoState,action:int,expected_revision:int,authority:u32)->u32 {
+  if expected_revision!=s[0].revision {return AU_CONFLICT;}
+  status:=s[0].status;
+  if action==AU_PAUSE {
+    if status!=AUS_ACTIVE {return AU_CLOSED;}
+    s[0].status=AUS_PAUSED;
+  } else if action==AU_RESUME {
+    if status!=AUS_PAUSED && status!=AUS_BLOCKED {return AU_CLOSED;}
+    if authority!=AU_OK {return AU_BLOCKED;}
+    if s[0].active!=0 {return AU_BUSY;} // a prior occurrence is not reconciled
+    s[0].status=AUS_ACTIVE;
+  } else if action==AU_CANCEL {
+    if au_terminal(status) {return AU_CLOSED;}
+    s[0].status=AUS_CANCELLED;
+  } else {return AU_MALFORMED;}
+  s[0].revision+=1;return AU_OK;
+}
+// book:end settle
+
+#test "the codes, statuses and reasons are distinct" {
+  #assert AU_OK==0 && AU_IDLE==1 && AU_BUSY==2 && AU_SKIPPED==3 && AU_BLOCKED==4 && AU_EXPIRED==5 && AU_EXHAUSTED==6;
+  #assert AU_CLOSED==7 && AU_DUPLICATE==8 && AU_STALE==9 && AU_UNAVAILABLE==10 && AU_MALFORMED==11 && AU_LIMIT==12 && AU_CONFLICT==13;
+  #assert AUS_ACTIVE==0 && AUS_PAUSED==1 && AUS_BLOCKED==2 && AUS_EXHAUSTED==3 && AUS_COMPLETE==4 && AUS_CANCELLED==5 && AUS_EXPIRED==6;
+  #assert AUR_MISSED==0 && AUR_OCCUPIED==1 && AUR_PAUSED==2 && AUR_EXPIRED==3 && AUR_BOUND==4;
+}
+#test "due times follow the formula and refuse overflow" {
+  p:=at_interval(AU_SKIP);
+  #assert auto_due(p,0)==AT_T0 && auto_due(p,4)==AT_T0+4*AT_HOUR && auto_due(p,-1)==-1;
+  big:=p;big.first_at=0;big.every=AU_MAX_SAFE;#assert auto_due(big,1)==AU_MAX_SAFE && auto_due(big,2)==-1;
+  big.first_at=1;#assert auto_due(big,1)==-1 && auto_due(big,0)==1;
+  neg:=p;neg.first_at=-1;#assert auto_due(neg,0)==-1;
+  zero:=p;zero.every=0;#assert auto_due(zero,0)==-1;
+  o:=at_once();#assert auto_due(o,0)==AT_T0+600 && auto_due(o,1)==-1 && auto_slot_at(o,AT_T0+9999)==0;
+  #assert auto_slot_at(p,AT_T0+AT_HOUR-1)==0 && auto_slot_at(p,AT_T0+AT_HOUR)==1;
+}
+#test "a plan's bounds" {
+  #assert auto_plan_ok(at_interval(AU_SKIP)) && auto_plan_ok(at_interval(AU_LATEST)) && auto_plan_ok(at_once()) && auto_plan_ok(at_source());
+  p:=at_interval(2);#assert !auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.every=0;#assert !auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.first_at=AT_T0-1;#assert !auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.first_at=p.expires_at;#assert !auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.first_at=p.expires_at-1;#assert auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.expires_at=p.starts_at;#assert !auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.starts_at=-1;#assert !auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.expires_at=AU_MAX_SAFE+1;#assert !auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.expires_at=AU_MAX_SAFE;#assert auto_plan_ok(p);
+  p=at_interval(AU_SKIP);p.max_occurrences=0;#assert !auto_plan_ok(p);
+  o:=at_once();o.at=AT_T0-1;#assert !auto_plan_ok(o);
+  o=at_once();o.at=o.expires_at;#assert !auto_plan_ok(o);
+  o=at_once();o.at=o.starts_at;#assert auto_plan_ok(o);
+  s:=at_source();s.source="";#assert !auto_plan_ok(s);
+  s=at_source();s.resource="";#assert !auto_plan_ok(s);
+  s=at_source();s.max_age=0;#assert !auto_plan_ok(s);
+  s=at_source();s.trigger=3;#assert !auto_plan_ok(s);
+}
+#test "a missed occurrence is recorded once, not run twice" {
+  p:=at_interval(AU_SKIP);s:[1]AutoState;k:[4]AutoSkip;o:[4]AutoOccurrence;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0-1,AU_OK).code==AU_IDLE;
+  r:=auto_tick(p,s[..],k[..],o[..],AT_T0,AU_OK);
+  #assert r.code==AU_OK && r.ordinal==1 && r.skipped==0 && o[0].slot==0 && o[0].due_at==AT_T0 && s[0].next_slot==1 && s[0].revision==1;
+  #assert auto_settle(p,s[..],o[..],1)==AU_OK && o[0].settled && s[0].active==0 && s[0].status==AUS_ACTIVE && s[0].revision==2;
+  // The machine sleeps through slots 1, 2 and 3 and wakes at T0 + 4 h + 100 s.
+  r=auto_tick(p,s[..],k[..],o[..],AT_T0+4*AT_HOUR+100,AU_OK);
+  #assert r.code==AU_OK && r.ordinal==2 && r.skipped==1 && s[0].skips==1 && s[0].occurrences==2 && s[0].revision==3;
+  #assert k[0].first_slot==1 && k[0].last_slot==3 && k[0].first_due==AT_T0+AT_HOUR && k[0].last_due==AT_T0+3*AT_HOUR && k[0].reason==AUR_MISSED;
+  #assert o[1].ordinal==2 && o[1].slot==4 && o[1].due_at==AT_T0+4*AT_HOUR && s[0].next_slot==5 && s[0].active==2;
+  // The same tick again, and once more after settling: nothing is recorded or run twice.
+  r=auto_tick(p,s[..],k[..],o[..],AT_T0+4*AT_HOUR+100,AU_OK);#assert r.code==AU_IDLE && s[0].skips==1 && s[0].occurrences==2 && s[0].revision==3;
+  #assert auto_settle(p,s[..],o[..],2)==AU_OK;
+  r=auto_tick(p,s[..],k[..],o[..],AT_T0+5*AT_HOUR-1,AU_OK);#assert r.code==AU_IDLE && s[0].skips==1 && s[0].occurrences==2;
+  r=auto_tick(p,s[..],k[..],o[..],AT_T0+5*AT_HOUR,AU_OK);#assert r.code==AU_OK && r.skipped==0 && o[2].slot==5 && s[0].skips==1;
+}
+#test "while an occurrence runs: skip records occupied, latest waits and coalesces" {
+  p:=at_interval(AU_SKIP);s:[1]AutoState;k:[4]AutoSkip;o:[4]AutoOccurrence;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0,AU_OK).code==AU_OK;
+  r:=auto_tick(p,s[..],k[..],o[..],AT_T0+2*AT_HOUR,AU_OK);
+  #assert r.code==AU_SKIPPED && r.skipped==1 && k[0].first_slot==1 && k[0].last_slot==2 && k[0].reason==AUR_OCCUPIED && s[0].next_slot==3 && s[0].revision==2;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+2*AT_HOUR,AU_OK).code==AU_IDLE && s[0].skips==1;
+  #assert auto_settle(p,s[..],o[..],1)==AU_OK && auto_tick(p,s[..],k[..],o[..],AT_T0+2*AT_HOUR+5,AU_OK).code==AU_IDLE;
+  l:=at_interval(AU_LATEST);t:[1]AutoState;kk:[4]AutoSkip;oo:[4]AutoOccurrence;
+  #assert auto_tick(l,t[..],kk[..],oo[..],AT_T0,AU_OK).code==AU_OK;
+  r=auto_tick(l,t[..],kk[..],oo[..],AT_T0+2*AT_HOUR,AU_OK);#assert r.code==AU_BUSY && r.ordinal==1 && t[0].skips==0 && t[0].next_slot==1 && t[0].revision==1;
+  #assert auto_settle(l,t[..],oo[..],1)==AU_OK;
+  r=auto_tick(l,t[..],kk[..],oo[..],AT_T0+2*AT_HOUR+5,AU_OK);
+  #assert r.code==AU_OK && r.skipped==1 && kk[0].first_slot==1 && kk[0].last_slot==1 && kk[0].reason==AUR_MISSED && oo[1].slot==2;
+}
+#test "authority refused blocks the plan and consumes nothing" {
+  p:=at_interval(AU_SKIP);s:[1]AutoState;k:[4]AutoSkip;o:[4]AutoOccurrence;
+  r:=auto_tick(p,s[..],k[..],o[..],AT_T0+AT_HOUR,8);
+  #assert r.code==AU_BLOCKED && s[0].status==AUS_BLOCKED && s[0].next_slot==0 && s[0].occurrences==0 && s[0].skips==0 && s[0].revision==1;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+AT_HOUR,AU_OK).code==AU_CLOSED;
+  // No automatic resume: an explicit one, with authority admitted again.
+  #assert auto_control(s[..],AU_RESUME,1,8)==AU_BLOCKED && s[0].status==AUS_BLOCKED && s[0].revision==1;
+  #assert auto_control(s[..],AU_RESUME,0,AU_OK)==AU_CONFLICT;
+  #assert auto_control(s[..],AU_RESUME,1,AU_OK)==AU_OK && s[0].status==AUS_ACTIVE && s[0].revision==2;
+  r=auto_tick(p,s[..],k[..],o[..],AT_T0+AT_HOUR,AU_OK);#assert r.code==AU_OK && r.skipped==1 && k[0].last_slot==0 && o[0].slot==1;
+}
+#test "pause records due slots as paused; resume never replays them" {
+  p:=at_interval(AU_LATEST);s:[1]AutoState;k:[4]AutoSkip;o:[4]AutoOccurrence;
+  #assert auto_control(s[..],AU_PAUSE,0,AU_OK)==AU_OK && s[0].status==AUS_PAUSED;
+  #assert auto_control(s[..],AU_PAUSE,1,AU_OK)==AU_CLOSED;
+  r:=auto_tick(p,s[..],k[..],o[..],AT_T0+3*AT_HOUR,AU_OK);
+  #assert r.code==AU_SKIPPED && k[0].first_slot==0 && k[0].last_slot==3 && k[0].reason==AUR_PAUSED && s[0].next_slot==4;
+  #assert auto_control(s[..],AU_RESUME,2,AU_OK)==AU_OK;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+3*AT_HOUR+1,AU_OK).code==AU_IDLE && s[0].occurrences==0;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+4*AT_HOUR,AU_OK).code==AU_OK && o[0].slot==4;
+  // A resume with an unsettled occurrence waits for reconciliation.
+  #assert auto_control(s[..],AU_PAUSE,s[0].revision,AU_OK)==AU_OK && auto_control(s[..],AU_RESUME,s[0].revision,AU_OK)==AU_BUSY;
+  #assert auto_control(s[..],AU_CANCEL,s[0].revision,AU_OK)==AU_OK && s[0].status==AUS_CANCELLED;
+  #assert auto_control(s[..],AU_CANCEL,s[0].revision,AU_OK)==AU_CLOSED && auto_control(s[..],AU_RESUME,s[0].revision,AU_OK)==AU_CLOSED;
+  #assert auto_control(s[..],7,s[0].revision,AU_OK)==AU_MALFORMED;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+5*AT_HOUR,AU_OK).code==AU_CLOSED;
+}
+#test "expiry and the occurrence bound record the rest once" {
+  p:=at_interval(AU_SKIP);p.expires_at=AT_T0+3*AT_HOUR+1;s:[1]AutoState;k:[4]AutoSkip;o:[4]AutoOccurrence;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0,AU_OK).code==AU_OK && auto_settle(p,s[..],o[..],1)==AU_OK;
+  r:=auto_tick(p,s[..],k[..],o[..],AT_T0+3*AT_HOUR+1,AU_OK);
+  #assert r.code==AU_EXPIRED && r.skipped==1 && k[0].first_slot==1 && k[0].last_slot==3 && k[0].reason==AUR_EXPIRED && s[0].status==AUS_EXPIRED;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+3*AT_HOUR+2,AU_OK).code==AU_CLOSED && s[0].skips==1;
+  // Every slot already handled: expiry records nothing.
+  q:=at_interval(AU_SKIP);q.expires_at=AT_T0+1;t:[1]AutoState;
+  #assert auto_tick(q,t[..],k[..],o[..],AT_T0,AU_OK).code==AU_OK && t[0].status==AUS_ACTIVE && auto_settle(q,t[..],o[..],1)==AU_OK && t[0].status==AUS_COMPLETE;
+  t[0].status=AUS_ACTIVE;r=auto_tick(q,t[..],k[..],o[..],AT_T0+1,AU_OK);#assert r.code==AU_EXPIRED && r.skipped==0 && t[0].skips==0;
+  b:=at_interval(AU_SKIP);b.max_occurrences=1;u:[1]AutoState;kb:[4]AutoSkip;ob:[4]AutoOccurrence;
+  #assert auto_tick(b,u[..],kb[..],ob[..],AT_T0,AU_OK).code==AU_OK && auto_settle(b,u[..],ob[..],1)==AU_OK;
+  r=auto_tick(b,u[..],kb[..],ob[..],AT_T0+AT_HOUR,AU_OK);
+  #assert r.code==AU_EXHAUSTED && kb[0].first_slot==1 && kb[0].last_slot==23 && kb[0].reason==AUR_BOUND && u[0].status==AUS_EXHAUSTED && u[0].next_slot==24;
+}
+#test "a once plan runs once, late only before expiry" {
+  p:=at_once();s:[1]AutoState;k:[2]AutoSkip;o:[2]AutoOccurrence;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+599,AU_OK).code==AU_IDLE;
+  r:=auto_tick(p,s[..],k[..],o[..],AT_T0+1800,AU_OK);#assert r.code==AU_OK && o[0].slot==0 && o[0].due_at==AT_T0+600 && r.skipped==0;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+1801,AU_OK).code==AU_IDLE;
+  #assert auto_settle(p,s[..],o[..],1)==AU_OK && s[0].status==AUS_COMPLETE && auto_tick(p,s[..],k[..],o[..],AT_T0+1802,AU_OK).code==AU_CLOSED;
+  t:[1]AutoState;r=auto_tick(p,t[..],k[..],o[..],AT_T0+AT_HOUR,AU_OK);
+  #assert r.code==AU_EXPIRED && r.skipped==1 && k[0].first_slot==0 && k[0].last_slot==0 && k[0].first_due==AT_T0+600 && t[0].occurrences==0;
+  #assert auto_tick(at_source(),t[..],k[..],o[..],AT_T0,AU_OK).code==AU_MALFORMED;
+  bad:=p;bad.max_occurrences=0;#assert auto_tick(bad,t[..],k[..],o[..],AT_T0,AU_OK).code==AU_MALFORMED;
+}
+#test "settle names the active occurrence" {
+  p:=at_interval(AU_SKIP);s:[1]AutoState;k:[2]AutoSkip;o:[2]AutoOccurrence;
+  #assert auto_settle(p,s[..],o[..],0)==AU_MALFORMED && auto_settle(p,s[..],o[..],1)==AU_MALFORMED;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0,AU_OK).code==AU_OK && auto_settle(p,s[..],o[..],2)==AU_MALFORMED && auto_settle(p,s[..],o[..],-1)==AU_MALFORMED;
+  #assert auto_settle(p,s[..],o[..],1)==AU_OK && auto_settle(p,s[..],o[..],1)==AU_MALFORMED;
+  // Settling while paused keeps the plan paused.
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+AT_HOUR,AU_OK).code==AU_OK && auto_control(s[..],AU_PAUSE,s[0].revision,AU_OK)==AU_OK;
+  q:=p;q.expires_at=AT_T0+AT_HOUR+1;#assert auto_settle(q,s[..],o[..],2)==AU_OK && s[0].status==AUS_PAUSED;
+}
+#test "the record's room is checked before any change" {
+  p:=at_interval(AU_SKIP);s:[1]AutoState;k:[1]AutoSkip;o:[1]AutoOccurrence;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0,AU_OK).code==AU_OK && auto_settle(p,s[..],o[..],1)==AU_OK;
+  #assert auto_tick(p,s[..],k[..],o[..],AT_T0+AT_HOUR,AU_OK).code==AU_LIMIT && s[0].next_slot==1 && s[0].revision==2;
+  #assert auto_tick(p,s[..],k[0..<0],o[..],AT_T0+2*AT_HOUR,AU_OK).code==AU_LIMIT && s[0].next_slot==1;
+  t:[1]AutoState;t[0].active=1;#assert auto_tick(p,t[..],k[0..<0],o[..],AT_T0,AU_OK).code==AU_LIMIT && t[0].next_slot==0;
+  u:[1]AutoState;u[0].status=AUS_PAUSED;#assert auto_tick(p,u[..],k[0..<0],o[..],AT_T0,AU_OK).code==AU_LIMIT;
+  v:[1]AutoState;#assert auto_tick(p,v[..],k[0..<0],o[..],p.expires_at,AU_OK).code==AU_LIMIT && v[0].status==AUS_ACTIVE;
+  w:[1]AutoState;w[0].occurrences=10;#assert auto_tick(p,w[..],k[0..<0],o[..],AT_T0,AU_OK).code==AU_LIMIT && w[0].status==AUS_ACTIVE;
+  x:[1]AutoState;#assert auto_tick(p,x[..],k[..],o[0..<0],AT_T0,AU_OK).code==AU_LIMIT && x[0].next_slot==0;
+  y:[1]AutoState;#assert auto_tick(p,y[..],k[0..<0],o[..],AT_T0+AT_HOUR,AU_OK).code==AU_LIMIT && y[0].next_slot==0;
+  z:[1]AutoState;#assert auto_tick(p,z[..],k[0..<0],o[..],AT_T0,AU_OK).code==AU_OK;
+}
+#test "a source revision runs once; redelivery is the same occurrence" {
+  p:=at_source();s:[1]AutoState;o:[4]AutoOccurrence;
+  r:=auto_observe(p,s[..],o[..],at_obs("rev-a",AT_T0+10),AT_T0+20,AU_OK);
+  #assert r.code==AU_OK && r.ordinal==1 && o[0].revision=="rev-a" && o[0].slot==-1 && o[0].due_at==AT_T0+20 && s[0].active==1;
+  #assert auto_observe(p,s[..],o[..],at_obs("rev-a",AT_T0+25),AT_T0+30,AU_OK).ordinal==1;
+  #assert auto_observe(p,s[..],o[..],at_obs("rev-a",AT_T0+25),AT_T0+30,AU_OK).code==AU_DUPLICATE;
+  r=auto_observe(p,s[..],o[..],at_obs("rev-b",AT_T0+25),AT_T0+30,AU_OK);#assert r.code==AU_BUSY && r.ordinal==1 && s[0].occurrences==1;
+  #assert auto_settle(p,s[..],o[..],1)==AU_OK && s[0].status==AUS_ACTIVE;
+  r=auto_observe(p,s[..],o[..],at_obs("rev-b",AT_T0+25),AT_T0+30,AU_OK);#assert r.code==AU_OK && r.ordinal==2;
+  #assert auto_observe(p,s[..],o[..],at_obs("rev-a",AT_T0+40),AT_T0+40,AU_OK).code==AU_DUPLICATE;
+}
+#test "a source observation must be the configured resource, available and fresh" {
+  p:=at_source();s:[1]AutoState;o:[4]AutoOccurrence;
+  x:=at_obs("r",AT_T0);x.resource="other";#assert auto_observe(p,s[..],o[..],x,AT_T0,AU_OK).code==AU_MALFORMED;
+  x=at_obs("r",AT_T0);x.source="sha256:51";#assert auto_observe(p,s[..],o[..],x,AT_T0,AU_OK).code==AU_MALFORMED;
+  x=at_obs("r",AT_T0);x.available=false;#assert auto_observe(p,s[..],o[..],x,AT_T0,AU_OK).code==AU_UNAVAILABLE;
+  x=at_obs("",AT_T0);#assert auto_observe(p,s[..],o[..],x,AT_T0,AU_OK).code==AU_UNAVAILABLE;
+  #assert auto_observe(p,s[..],o[..],at_obs("r",AT_T0+1),AT_T0,AU_OK).code==AU_STALE;
+  #assert auto_observe(p,s[..],o[..],at_obs("r",AT_T0),AT_T0+301,AU_OK).code==AU_STALE;
+  #assert auto_observe(p,s[..],o[..],at_obs("r",AT_T0+1),AT_T0+301,AU_OK).code==AU_OK;
+  #assert auto_observe(at_once(),s[..],o[..],at_obs("r",AT_T0),AT_T0,AU_OK).code==AU_MALFORMED;
+  #assert s[0].occurrences==1 && s[0].revision==1;
+}
+#test "a source plan: before start, authority, the bound, expiry and room" {
+  p:=at_source();p.starts_at=AT_T0+100;s:[1]AutoState;o:[4]AutoOccurrence;
+  #assert auto_observe(p,s[..],o[..],at_obs("r",AT_T0),AT_T0,AU_OK).code==AU_IDLE;
+  #assert auto_observe(p,s[..],o[..],at_obs("r",AT_T0+100),AT_T0+100,AU_OK).code==AU_OK;
+  b:=at_source();t:[1]AutoState;
+  #assert auto_observe(b,t[..],o[..],at_obs("r",AT_T0),AT_T0,8).code==AU_BLOCKED && t[0].status==AUS_BLOCKED && t[0].occurrences==0;
+  #assert auto_observe(b,t[..],o[..],at_obs("r",AT_T0),AT_T0,AU_OK).code==AU_CLOSED;
+  u:[1]AutoState;u[0].occurrences=3;
+  #assert auto_observe(b,u[..],o[..],at_obs("z",AT_T0),AT_T0,AU_OK).code==AU_EXHAUSTED && u[0].status==AUS_EXHAUSTED;
+  v:[1]AutoState;e:=b;e.expires_at=AT_T0+50;
+  #assert auto_observe(e,v[..],o[..],at_obs("r",AT_T0+50),AT_T0+50,AU_OK).code==AU_EXPIRED && v[0].status==AUS_EXPIRED;
+  w:[1]AutoState;#assert auto_observe(b,w[..],o[0..<0],at_obs("r",AT_T0),AT_T0,AU_OK).code==AU_LIMIT && w[0].revision==0;
+  y:[1]AutoState;#assert auto_observe(b,y[..],o[..],at_obs("r",AT_T0),AT_T0,AU_OK).code==AU_OK && auto_settle(b,y[..],o[..],1)==AU_OK && y[0].status==AUS_ACTIVE;
+}
+#test "plan bounds at their edges" {
+  p:=at_interval(AU_SKIP);p.every=1;#assert auto_plan_ok(p) && auto_due(p,3)==AT_T0+3;
+  p=at_interval(AU_SKIP);p.starts_at=0;p.first_at=0;#assert auto_plan_ok(p) && auto_due(p,0)==0;
+  s:=at_source();s.expires_at=s.starts_at;#assert !auto_plan_ok(s);
+  s=at_source();s.expires_at=s.starts_at+1;#assert auto_plan_ok(s);
+  s=at_source();s.max_age=1;#assert auto_plan_ok(s);
+  o:=at_once();o.at=0;o.starts_at=0;#assert auto_plan_ok(o);
+}
+#test "refusals carry no ordinal and no skipped range" {
+  p:=at_interval(AU_SKIP);s:[1]AutoState;k:[2]AutoSkip;o:[2]AutoOccurrence;
+  for code:[3]u32.[auto_tick(p,s[..],k[..],o[..],AT_T0-1,AU_OK).code,auto_tick(at_source(),s[..],k[..],o[..],AT_T0,AU_OK).code,AU_IDLE] {#assert code==AU_IDLE || code==AU_MALFORMED;}
+  r:=auto_tick(p,s[..],k[..],o[..],AT_T0-1,AU_OK);#assert r.ordinal==0 && r.skipped==0;
+  r=auto_tick(at_source(),s[..],k[..],o[..],AT_T0,AU_OK);#assert r.code==AU_MALFORMED && r.ordinal==0 && r.skipped==0;
+  r=auto_tick(p,s[..],k[..],o[..],AT_T0,AU_OK);#assert r.code==AU_OK && r.ordinal==1 && r.skipped==0;
+  r=auto_tick(p,s[..],k[..],o[..],AT_T0+1,AU_OK);#assert r.code==AU_IDLE && r.ordinal==0 && r.skipped==0;
+  // Every terminal status, and blocked, closes the plan to ticks and events.
+  for st:[5]int.[AUS_BLOCKED,AUS_EXHAUSTED,AUS_COMPLETE,AUS_CANCELLED,AUS_EXPIRED] {
+    t:[1]AutoState;t[0].status=st;r=auto_tick(p,t[..],k[..],o[..],AT_T0,AU_OK);
+    #assert r.code==AU_CLOSED && r.ordinal==0 && t[0].revision==0;
+    r=auto_observe(at_source(),t[..],o[..],at_obs("q",AT_T0),AT_T0,AU_OK);#assert r.code==AU_CLOSED && r.ordinal==0;
+    #assert auto_control(t[..],AU_PAUSE,0,AU_OK)==AU_CLOSED;
+  }
+  bad:=at_source();bad.max_age=0;t:[1]AutoState;
+  r=auto_observe(bad,t[..],o[..],at_obs("q",AT_T0),AT_T0,AU_OK);#assert r.code==AU_MALFORMED && r.ordinal==0;
+}
+#test "each state change moves the revision once" {
+  p:=at_interval(AU_SKIP);p.expires_at=AT_T0+3*AT_HOUR;k:[4]AutoSkip;o:[4]AutoOccurrence;
+  // Expiry: the unhandled slots 1..2 (slot 3 would be due at expiry), next past them.
+  s:[1]AutoState;s[0].next_slot=1;r:=auto_tick(p,s[..],k[..],o[..],AT_T0+3*AT_HOUR,AU_OK);
+  #assert r.code==AU_EXPIRED && r.skipped==1 && r.ordinal==0 && k[0].last_slot==2 && s[0].next_slot==3 && s[0].revision==1;
+  // Slot 2 alone is left, and no room: refused, nothing changed.
+  t:[1]AutoState;t[0].next_slot=2;#assert auto_tick(p,t[..],k[0..<0],o[..],AT_T0+3*AT_HOUR,AU_OK).code==AU_LIMIT && t[0].status==AUS_ACTIVE;
+  // The last slot run and settled: complete; one slot short: still active.
+  u:[1]AutoState;u[0].next_slot=2;#assert auto_tick(p,u[..],k[..],o[..],AT_T0+2*AT_HOUR,AU_OK).code==AU_OK;
+  #assert auto_settle(p,u[..],o[..],1)==AU_OK && u[0].status==AUS_COMPLETE;
+  v:[1]AutoState;v[0].next_slot=1;#assert auto_tick(p,v[..],k[..],o[..],AT_T0+AT_HOUR,AU_OK).code==AU_OK;
+  #assert auto_settle(p,v[..],o[..],1)==AU_OK && v[0].status==AUS_ACTIVE;
+  // Expiry one second after slot 3 is due: slot 3 is still to come after slot 2.
+  p2:=p;p2.expires_at=AT_T0+3*AT_HOUR+1;w2:[1]AutoState;w2[0].next_slot=2;
+  #assert auto_tick(p2,w2[..],k[..],o[..],AT_T0+2*AT_HOUR,AU_OK).code==AU_OK && auto_settle(p2,w2[..],o[..],1)==AU_OK && w2[0].status==AUS_ACTIVE;
+  // Exhausted and blocked on a tick.
+  b:=at_interval(AU_SKIP);b.max_occurrences=1;w:[1]AutoState;w[0].occurrences=1;
+  r=auto_tick(b,w[..],k[..],o[..],AT_T0,AU_OK);#assert r.code==AU_EXHAUSTED && r.skipped==1 && r.ordinal==0 && w[0].revision==1;
+  x:[1]AutoState;r=auto_tick(b,x[..],k[..],o[..],AT_T0,3);#assert r.code==AU_BLOCKED && r.ordinal==0 && r.skipped==0 && x[0].revision==1;
+  // Source: expired, blocked and exhausted each move the revision once.
+  e:=at_source();e.expires_at=AT_T0+50;y:[1]AutoState;
+  r=auto_observe(e,y[..],o[..],at_obs("r",AT_T0+50),AT_T0+50,AU_OK);#assert r.code==AU_EXPIRED && r.ordinal==0 && y[0].revision==1;
+  z:[1]AutoState;r=auto_observe(at_source(),z[..],o[..],at_obs("r",AT_T0),AT_T0,5);#assert r.code==AU_BLOCKED && r.ordinal==0 && z[0].revision==1;
+  q:[1]AutoState;q[0].occurrences=3;oo:[4]AutoOccurrence;
+  r=auto_observe(at_source(),q[..],oo[..],at_obs("r",AT_T0),AT_T0,AU_OK);#assert r.code==AU_EXHAUSTED && r.ordinal==0 && q[0].revision==1;
+  // Every source refusal is plain.
+  m:[1]AutoState;x2:=at_obs("r",AT_T0);x2.resource="x";
+  for c:[5]AutoResult.[auto_observe(at_source(),m[..],oo[0..<0],x2,AT_T0,AU_OK),
+                       auto_observe(at_source(),m[..],oo[0..<0],at_obs("",AT_T0),AT_T0,AU_OK),
+                       auto_observe(at_source(),m[..],oo[0..<0],at_obs("r",AT_T0+1),AT_T0,AU_OK),
+                       auto_observe(at_source(),m[..],oo[0..<0],at_obs("r",AT_T0),AT_T0,AU_OK),
+                       auto_observe(e,m[..],oo[0..<0],at_obs("r",AT_T0),AT_T0-1,AU_OK)] {
+    #assert c.ordinal==0 && c.skipped==0 && c.code!=AU_OK;
+  }
+  n:=at_source();n.starts_at=AT_T0+10;
+  r=auto_observe(n,m[..],oo[..],at_obs("r",AT_T0),AT_T0,AU_OK);#assert r.code==AU_IDLE && r.ordinal==0;
+  #assert m[0].revision==0;
+}
+#test "skip and limit refusals change nothing" {
+  p:=at_interval(AU_SKIP);k:[1]AutoSkip;o:[1]AutoOccurrence;
+  s:[1]AutoState;s[0].active=1;r:=auto_tick(p,s[..],k[0..<0],o[..],AT_T0,AU_OK);#assert r.code==AU_LIMIT && r.skipped==0 && s[0].revision==0;
+  b:=p;b.max_occurrences=1;t:[1]AutoState;t[0].occurrences=1;r=auto_tick(b,t[..],k[0..<0],o[..],AT_T0,AU_OK);#assert r.code==AU_LIMIT && r.skipped==0;
+  u:[1]AutoState;r=auto_tick(p,u[..],k[0..<0],o[..],AT_T0+AT_HOUR,AU_OK);#assert r.code==AU_LIMIT && r.ordinal==0;
+  l:=at_interval(AU_LATEST);v:[1]AutoState;v[0].active=4;r=auto_tick(l,v[..],k[..],o[..],AT_T0,AU_OK);#assert r.code==AU_BUSY && r.ordinal==4 && r.skipped==0;
+}

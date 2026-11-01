@@ -1033,6 +1033,18 @@
       ],
       "run_steps": 250000000,
       "timeout": 300
+    },
+    {
+      "source": "nostr/examples/agents-automation.coax",
+      "chapter": "nostr/book/ch079-agents-skills-and-automation.md",
+      "stdout": "nostr/fixtures/agents-automation.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 600
     }
   ]
 }

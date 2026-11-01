@@ -1698,14 +1698,26 @@
    "number": 79,
    "title": "Agents, skills and automation",
    "file": "ch079-agents-skills-and-automation.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     76,
     77
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/agent/definition.coax",
+    "coax/lib/nostr/agent/carriage.coax",
+    "coax/lib/nostr/auto/schedule.coax",
+    "coax/tests/nostr/agent_carriage_vectors.coax",
+    "coax/tests/nostr/agent_definition_fixtures.coax",
+    "coax/tests/nostr/agent_carriage_fixtures.coax",
+    "coax/tests/nostr/auto_schedule_fixtures.coax",
+    "nostr/examples/agents-automation.coax",
+    "nostr/examples/checks/agents-automation.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

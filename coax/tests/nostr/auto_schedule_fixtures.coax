@@ -1,0 +1,19 @@
+// Plans and observations for the checks of coax/lib/nostr/auto/schedule.coax,
+// kept apart so root-only mutation mutates the scheduler, not these.
+AT_T0 :: 1790000000;
+AT_HOUR :: 3600;
+at_interval :: (missed:int)->AutoPlan {
+  p:AutoPlan;p.trigger=AU_INTERVAL;p.first_at=AT_T0;p.every=AT_HOUR;p.missed=missed;
+  p.starts_at=AT_T0;p.expires_at=AT_T0+24*AT_HOUR;p.max_occurrences=10;return p;
+}
+at_once :: ()->AutoPlan {
+  p:AutoPlan;p.trigger=AU_ONCE;p.at=AT_T0+600;p.starts_at=AT_T0;p.expires_at=AT_T0+AT_HOUR;p.max_occurrences=1;return p;
+}
+at_source :: ()->AutoPlan {
+  p:AutoPlan;p.trigger=AU_SOURCE;p.source="sha256:50";p.resource="issues";p.max_age=300;
+  p.starts_at=AT_T0;p.expires_at=AT_T0+24*AT_HOUR;p.max_occurrences=3;return p;
+}
+at_obs :: (revision:string,at:int)->AutoObservation {
+  o:AutoObservation;o.source="sha256:50";o.resource="issues";o.revision=revision;o.available=true;o.observed_at=at;return o;
+}
+

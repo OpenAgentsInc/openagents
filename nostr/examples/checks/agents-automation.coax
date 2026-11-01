@@ -1,0 +1,52 @@
+// The checks of agents-automation.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test nostr/examples/checks/agents-automation.coax --run-steps 250000000
+#load "../agents-automation.coax";
+
+// book:begin check
+// From coax/tests/nostr/agent_carriage_vectors.py, which seals with
+// nip59_reference.py's integer secp256k1, BIP-340 and NIP-44 v2 (no code
+// shared with Coax): the 3188's id as hashlib.sha256 of json.dumps([0,
+// pubkey, created_at, kind, tags, content], separators=(",", ":")), and the
+// artifact digest as hashlib.sha256 of json.dumps(payload, sort_keys=True,
+// separators=(",", ":")), RFC 8785 JCS for this payload.
+PY_SEALED_ID :: "c1700e5f0f810af232d5a5ea81a6ccb3ed40ffdeae28a418bfa6e212f9afb309";
+PY_DIGEST :: "sha256:eb391bd808c5b1feed374f3bf5594a858e7e9bf206227108405a6ddde50f3a72";
+PY_R4_ID :: "a60a0df3982dade89941117468d9c858568202d31286bf28704a01330882dc0d";
+
+#test "the 3188's id and the artifact digest are the Python reference's" #steps 400000000 {
+  work:[1]AgentWork;store:[8192]u8;a:=[1]AgText.[AgText.{buf=store[..]}];
+  sk:=key_of(ACV_RECIPIENT_SECRET);x:=key_of(ACV_RECIPIENT_X);
+  r:=agent_open(ACV_SEALED,sk[..],x[..],host_pin(),work[..],a[..]);
+  #assert r.error==AC_OK && r.id==PY_SEALED_ID && r.digest==PY_DIGEST && ACV_DIGEST==PY_DIGEST;
+  // Revision 4 opens as far as the pin and is its own event.
+  b:=[1]AgText.[AgText.{buf=store[..]}];
+  q:=agent_open(ACV_SEALED_R4,sk[..],x[..],host_pin(),work[..],b[..]);
+  #assert q.error==AC_SELECTION && q.selection==AG_REVISION && q.id==PY_R4_ID && q.definition.revision==4;
+}
+#test "the digest is SHA-256 over the payload's canonical bytes" {
+  // The payload's keys sorted (JCS) and hashed here with Coax's SHA-256:
+  // the same digest the envelope builder writes.
+  scratch:[4096]u8;out:[8192]u8;
+  e:=envelope_build_checked(ACV_PAYLOAD,AG_SCHEMA_ID,T0,T0+86400,scratch[..],out[..],false);
+  #assert e.error==AE_OK && ac_digest(cast(string)out[0..<e.written])==PY_DIGEST;
+}
+
+// By hand: slot n of the hourly plan is due at T0 + 3600 n. At T0 + 14500
+// the latest due slot is floor(14500 / 3600) = 4; slot 0 ran, so 1, 2 and 3
+// (due T0 + 3600, 7200, 10800) are one missed range and slot 4 runs.
+#test "the worked example's values, by hand" {
+  ph:=hourly();sh:[1]AutoState;kh:[4]AutoSkip;oh:[4]AutoOccurrence;
+  #assert auto_tick(ph,sh[..],kh[..],oh[..],T0,AU_OK).code==AU_OK && auto_settle(ph,sh[..],oh[..],1)==AU_OK;
+  r:=auto_tick(ph,sh[..],kh[..],oh[..],T0+14500,AU_OK);
+  #assert r.code==AU_OK && kh[0].first_slot==1 && kh[0].last_slot==3 && kh[0].first_due==T0+3600 && kh[0].last_due==T0+10800;
+  #assert oh[1].slot==4 && oh[1].due_at==T0+14400;
+  #assert auto_tick(ph,sh[..],kh[..],oh[..],T0+14500,AU_OK).code==AU_IDLE && sh[0].skips==1 && sh[0].occurrences==2;
+  // 14500 - 14450 = 50 s old, within 300; 14500 - 14100 = 400 s, not.
+  pw:=watch();sw:[1]AutoState;ow:[4]AutoOccurrence;
+  #assert auto_observe(pw,sw[..],ow[..],observation("r-118",T0+14450),T0+14500,AU_OK).code==AU_OK;
+  #assert auto_observe(pw,sw[..],ow[..],observation("r-118",T0+14490),T0+14500,AU_OK).code==AU_DUPLICATE;
+  #assert auto_observe(pw,sw[..],ow[..],observation("r-120",T0+14100),T0+14500,AU_OK).code==AU_STALE;
+  #assert host_authority(false,T0+14500)==CAP_OK && host_authority(true,T0+14500)==CAP_REVOKED;
+}
+// book:end check

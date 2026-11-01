@@ -1,0 +1,286 @@
+// NIP-AGENT private carriage: a saved agent sealed into a kind 3188 private
+// artifact for one recipient, and opened again. NIP-AGENT "Private carriage
+// and selection"; the envelope: nostr/nips/openagents/contracts.md "Private
+// artifact envelope".
+//
+// Sealing builds the artifact envelope around the definition payload (its
+// digest covers the payload's JCS bytes, its size their length), encrypts
+// it with NIP-44 v2 from the sender's key to the recipient's, and signs a
+// kind 3188 event with exactly one p (the recipient), one h (the mailbox)
+// and t oa:artifact:v1.
+//
+// Opening does every check the consumer owes, in order: the NIP-01 id and
+// BIP-340 signature; kind 3188 for exactly this recipient with one 64-hex
+// mailbox and the topic; NIP-44 v2 decryption with the recipient's key and
+// the signer's; the envelope (schema openagents.agent.definition.v1, inline
+// JCS bytes matching digest and size); the payload (agent/definition.coax);
+// and last the explicitly selected signer, id, revision and digest.
+//
+// AC_OK grants nothing: sharing the envelope gives no execution right, and
+// the host still checks account, project and access before dispatch.
+//
+// Plaintext must fit NIP-44's compatible 65,535 bytes after the envelope's
+// own fields, and the event reader's content limit; a larger definition
+// needs a separately admitted artifact reference (not built).
+//
+// The AgentWork holds the decrypted envelope and the conversation key and
+// is cleared before every return. Plain stores, as in nip44-key.coax.
+//
+// Checks: coax test coax/lib/nostr/agent/carriage.coax --library --run-steps 250000000
+#load "definition.coax";
+#load "../nip44-key.coax";
+#load "../event.coax";
+#load "../event_sign.coax";
+#load "../../crypto/schnorr_fast.coax";
+#load "../envelope.coax";
+#load "../../../tests/nostr/agent_carriage_vectors.coax";
+#load "../../../tests/nostr/agent_carriage_fixtures.coax";
+#authority;
+
+// book:begin codes
+AC_OK :: cast(u32)0;
+AC_INPUT :: cast(u32)1;      // a key or the work view is not admitted
+AC_EVENT :: cast(u32)2;      // not a NIP-01 event with its own id
+AC_SIGNATURE :: cast(u32)3;
+AC_ARTIFACT :: cast(u32)4;   // not a 3188 private artifact for exactly this recipient
+AC_KEY :: cast(u32)5;        // the recipient secret is refused
+AC_DECRYPT :: cast(u32)6;    // the content does not decrypt for this recipient
+AC_ENVELOPE :: cast(u32)7;   // not an artifact envelope of an agent definition, or its digest or size differ
+AC_DEFINITION :: cast(u32)8; // the payload is refused: definition.error says why
+AC_SELECTION :: cast(u32)9;  // not the pinned signer, id, revision or digest: selection says which
+
+AC_REGION :: 131072;
+AC_TOPIC :: "oa:artifact:v1";
+// book:end codes
+
+// book:begin record
+// The private workspace: every plaintext byte and the conversation key live
+// here, and both seal and open leave it all zero.
+AgentWork :: struct {pre:[AC_REGION]u8;body:[AC_REGION]u8;cipher:[2*AC_REGION]u8;scratch:[AC_REGION]u8;ck:[32]u8;}
+AgentOpened :: struct {
+  error:u32=AC_INPUT; selection:u32;
+  definition:AgentDefinition;
+  signer:string; digest:string; mailbox:string; id:string;
+}
+// book:end record
+
+// Field by field, in place: no second workspace-sized value.
+ac_zero :: (b:[]u8) {for i:0..<b.count {b[i]=0;}}
+ac_clear :: (w:[]AgentWork) {ac_zero(w[0].pre[..]);ac_zero(w[0].body[..]);ac_zero(w[0].cipher[..]);ac_zero(w[0].scratch[..]);ac_zero(w[0].ck[..]);}
+ac_keep :: (a:[]AgText,s:string)->string {
+  from:=a[0].at;if from+s.count>a[0].buf.count {return "";}
+  for i:0..<s.count {a[0].buf[from+i]=s[i];}a[0].at+=s.count;return cast(string)a[0].buf[from..<a[0].at];
+}
+ac_hex :: (a:[]AgText,bytes:[]u8)->string {
+  h:[64]u8;r:=hex_encode_checked(cast(string)bytes,h[..],false);return ac_keep(a,cast(string)h[0..<r.written]);
+}
+ac_done :: (r:AgentOpened,error:u32,w:[]AgentWork)->AgentOpened {
+  ac_clear(w);out:=r;out.error=error;return out;
+}
+
+// book:begin tags
+// Exactly one ["p", recipient], one ["h", <64-hex>] (copied to mailbox) and
+// a ["t", "oa:artifact:v1"].
+ac_tags :: (tags:string,recipient_hex:string,mailbox:[]u8)->bool {
+  decoded:[256]u8;j:[1]Json;json_start(j[..],tags);
+  if json_next(j[..])!=JSON_ARRAY {return false;}
+  ps:=0;hs:=0;topic:=false;
+  t:=json_next(j[..]);
+  while t==JSON_ARRAY {
+    k:=0;name:="";v:=json_next(j[..]);
+    while v==JSON_STRING {
+      n:=json_unescape(json_text(j[..]),decoded[..]);if n<0 {return false;}
+      value:=cast(string)decoded[0..<n];
+      if k==0 {name=ifx value=="p" then "p" else ifx value=="h" then "h" else ifx value=="t" then "t" else "-";}
+      if k==1 {
+        if name=="p" {ps+=1;if value!=recipient_hex {return false;}}
+        if name=="h" {hs+=1;if !ag_hex64(value) {return false;}for i:0..<64 {mailbox[i]=decoded[i];}}
+        if name=="t" && value==AC_TOPIC {topic=true;}
+      }
+      k+=1;v=json_next(j[..]);
+    }
+    if v!=JSON_ARRAY_END {return false;}
+    t=json_next(j[..]);
+  }
+  return t==JSON_ARRAY_END && ps==1 && hs==1 && topic;
+}
+// book:end tags
+
+// book:begin seal
+// Seals payload from sender to recipient_x under mailbox (64 hex). nonce
+// and aux are 32 fresh random bytes each from the host. The signed event
+// JSON goes to out; returns its length, or -1.
+agent_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int {
+  if sender.count!=32 || recipient_x.count!=32 || nonce.count!=32 || aux.count!=32 || w.count!=1 || !ag_hex64(mailbox) {return -1;}
+  n:=ac_seal(payload,sender,recipient_x,mailbox,nonce,aux,created_at,issued_at,retain_until,w,out);
+  ac_clear(w);return n;
+}
+ac_seal :: (payload:string,sender:[]u8,recipient_x:[]u8,mailbox:string,nonce:[]u8,aux:[]u8,created_at:int,issued_at:int,retain_until:int,w:[]AgentWork,out:[]u8)->int {
+  b:=envelope_build_checked(payload,AG_SCHEMA_ID,issued_at,retain_until,w[0].scratch[..],w[0].body[..],false);
+  if b.error!=AE_OK {return -1;}
+  ew:[1]EcdhScratch;
+  if nip44_conversation_key_from_keys_checked(sender,recipient_x,ew[..],w[0].ck[..],false)!=NIP44_OK {return -1;}
+  e:=nip44_encrypt_checked(NIP44_COMPAT,w[0].ck[..],nonce,w[0].body[0..<b.written],w[0].cipher[..],w[0].pre[..],false);
+  if e.error!=NIP44_OK {return -1;}
+  rhex:[64]u8;r:=hex_encode_checked(cast(string)recipient_x,rhex[..],false);
+  tags:[256]u8;
+  n:=json_raw(tags[..],0,"[[\"p\",\"");n=json_raw(tags[..],n,cast(string)rhex[..]);n=json_raw(tags[..],n,"\"],[\"h\",\"");
+  n=json_raw(tags[..],n,mailbox);n=json_raw(tags[..],n,"\"],[\"t\",\"oa:artifact:v1\"]]");
+  sw:[1]NostrSignWork;k:=EVENT_MORE;
+  while k==EVENT_MORE {k=nostr_event_sign_step(sender,aux,created_at,3188,cast(string)tags[0..<n],cast(string)w[0].pre[0..<e.written],sw[..],w[0].scratch[..],out,false);}
+  return k;
+}
+// book:end seal
+
+// book:begin open
+// Opens a 3188 for the recipient whose secret and x-only key are given,
+// then applies the pin. Strings of the result live in the arena.
+agent_open :: (text:string,recipient:[]u8,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened {
+  r:AgentOpened;
+  if recipient.count!=32 || recipient_x.count!=32 || w.count!=1 {return r;}
+  e:=nostr_event_read(text,w[0].pre[..],false);
+  if e.error!=NE_OK {return ac_done(r,AC_EVENT,w);}
+  if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return ac_done(r,AC_SIGNATURE,w);}
+  ew:[1]EcdhScratch;peer:=e.public_key;
+  c:=nip44_conversation_key_from_keys_checked(recipient,peer[..],ew[..],w[0].ck[..],false);
+  if c!=NIP44_OK {return ac_done(r,ifx c==NIP44_SECRET then AC_KEY else AC_DECRYPT,w);}
+  return ac_open(text,e,recipient_x,pin,w,a);
+}
+// After the signature and the conversation key: recipient, decryption,
+// envelope, payload and pin.
+ac_open :: (text:string,e:NostrEvent,recipient_x:[]u8,pin:AgentPin,w:[]AgentWork,a:[]AgText)->AgentOpened {
+  r:AgentOpened;
+  rhex:[64]u8;mail:[64]u8;peer:=e.public_key;eid:=e.id;
+  hr:=hex_encode_checked(cast(string)recipient_x,rhex[..],false);
+  if e.kind!=3188 || !ac_tags(text[e.tags_from..<e.tags_to],cast(string)rhex[..],mail[..]) {return ac_done(r,AC_ARTIFACT,w);}
+  n:=json_unescape(text[e.content_from..<e.content_to],w[0].scratch[..]);
+  d:=nip44_decrypt_checked(NIP44_COMPAT,w[0].ck[..],cast(string)w[0].scratch[0..<n],w[0].cipher[..],w[0].body[..],false);
+  if d.error!=NIP44_OK {return ac_done(r,AC_DECRYPT,w);}
+  envelope:=cast(string)w[0].body[0..<d.written];
+  info:=envelope_check_body_checked(envelope,AG_SCHEMA_ID,w[0].scratch[..],false);
+  if info.error!=AE_OK {return ac_done(r,AC_ENVELOPE,w);}
+  r.definition=agent_read(envelope[info.inline_from..<info.inline_to],a);
+  if r.definition.error!=AG_OK {return ac_done(r,AC_DEFINITION,w);}
+  r.signer=ac_hex(a,peer[..]);r.id=ac_hex(a,eid[..]);r.mailbox=ac_keep(a,cast(string)mail[..]);
+  r.digest=ac_keep(a,ac_digest(envelope));
+  r.selection=agent_select(pin,r.signer,r.digest,r.definition);
+  if r.selection!=AG_OK {return ac_done(r,AC_SELECTION,w);}
+  return ac_done(r,AC_OK,w);
+}
+// The artifact's digest: the string after the first "digest" two levels
+// down, inside "artifact". The envelope check has already compared it with
+// the inline payload's JCS bytes, and no other string at that depth can be
+// "digest" in an admitted agent envelope. It is ASCII: the raw token is it.
+ac_digest :: (envelope:string)->string {
+  j:[1]Json;json_start(j[..],envelope);t:=json_next(j[..]);
+  while t!=JSON_END && t!=JSON_ERROR {
+    if t==JSON_STRING && j[0].depth==2 && json_text(j[..])=="digest" {t=json_next(j[..]);return json_text(j[..]);}
+    t=json_next(j[..]);
+  }
+  return "";
+}
+// book:end open
+
+#test "the codes are distinct" {
+  #assert AC_OK==0 && AC_INPUT==1 && AC_EVENT==2 && AC_SIGNATURE==3 && AC_ARTIFACT==4 && AC_KEY==5 && AC_DECRYPT==6;
+  #assert AC_ENVELOPE==7 && AC_DEFINITION==8 && AC_SELECTION==9 && AC_REGION==131072;
+}
+#test "an independently sealed definition opens under its pin, and work is cleared" #steps 400000000 {
+  w:[1]AgentWork;act_dirty(w[..]);st:[8192]u8;
+  r:=act_open(ACV_SEALED,ACT_PIN(),w[..],st[..]);
+  #assert r.error==AC_OK && r.selection==AG_OK && r.signer==ACV_SENDER_X && r.digest==ACV_DIGEST && r.mailbox==ACV_MAILBOX && r.id==ACV_SEALED_ID;
+  #assert r.definition.name=="Triage" && r.definition.revision==3 && r.definition.access==AG_READ_ONLY && act_zeroed(w[..]);
+}
+#test "the pin is the last check" #steps 400000000 {
+  w:[1]AgentWork;act_dirty(w[..]);st:[8192]u8;p:=ACT_PIN();p.revision=4;
+  r:=act_open(ACV_SEALED,p,w[..],st[..]);#assert r.error==AC_SELECTION && r.selection==AG_REVISION && r.definition.error==AG_OK && act_zeroed(w[..]);
+  p=ACT_PIN();p.signer=ACV_RECIPIENT_X;#assert act_open(ACV_SEALED,p,w[..],st[..]).selection==AG_SIGNER;
+}
+#test "another recipient's artifact is refused before decryption" #steps 400000000 {
+  w:[1]AgentWork;act_dirty(w[..]);st:[8192]u8;#assert act_open(ACV_FOR_OTHER,ACT_PIN(),w[..],st[..]).error==AC_ARTIFACT && act_zeroed(w[..]);
+}
+#test "an artifact of another kind is refused" #steps 400000000 {
+  w:[1]AgentWork;st:[8192]u8;#assert act_open(ACV_KIND1,ACT_PIN(),w[..],st[..]).error==AC_ARTIFACT;
+}
+#test "a payload under a wrong digest is refused" #steps 400000000 {
+  w:[1]AgentWork;act_dirty(w[..]);st:[8192]u8;#assert act_open(ACV_BAD_DIGEST,ACT_PIN(),w[..],st[..]).error==AC_ENVELOPE && act_zeroed(w[..]);
+}
+#test "a payload with an unknown field is refused" #steps 400000000 {
+  w:[1]AgentWork;act_dirty(w[..]);st:[8192]u8;r:=act_open(ACV_GRANTS,ACT_PIN(),w[..],st[..]);
+  #assert r.error==AC_DEFINITION && r.definition.error==AG_SHAPE && act_zeroed(w[..]);
+}
+#test "content encrypted to another key does not decrypt" #steps 400000000 {
+  w:[1]AgentWork;act_dirty(w[..]);st:[8192]u8;#assert act_open(ACV_WRONG_KEY,ACT_PIN(),w[..],st[..]).error==AC_DECRYPT && act_zeroed(w[..]);
+}
+#test "a changed byte breaks the id, a changed signature the signature" #steps 400000000 {
+  w:[1]AgentWork;st:[8192]u8;
+  t:[8192]u8;s:=ACV_SEALED;for i:0..<s.count {t[i]=s[i];}
+  at:=-1;for i:0..<s.count-12 {if at<0 && s[i..<i+12]=="\"created_at\"" {at=i+13;}}
+  t[at]=ifx t[at]=='1' then '2' else '1';
+  act_dirty(w[..]);#assert act_open(cast(string)t[0..<s.count],ACT_PIN(),w[..],st[..]).error==AC_EVENT && act_zeroed(w[..]);
+  t[at]=s[at];sig:=0;for i:0..<s.count-6 {if sig==0 && s[i..<i+6]=="\"sig\":" {sig=i+7;}}
+  t[sig]=ifx t[sig]=='0' then '1' else '0';
+  act_dirty(w[..]);#assert act_open(cast(string)t[0..<s.count],ACT_PIN(),w[..],st[..]).error==AC_SIGNATURE && act_zeroed(w[..]);
+}
+#test "views are admitted before any work" #steps 400000000 {
+  w:[1]AgentWork;act_dirty(w[..]);store:[64]u8;a:=[1]AgText.[AgText.{buf=store[..]}];
+  sk:=act_key(ACV_RECIPIENT_SECRET);x:=act_key(ACV_RECIPIENT_X);
+  #assert agent_open(ACV_SEALED,sk[0..<31],x[..],ACT_PIN(),w[0..<1],a[..]).error==AC_INPUT;
+  #assert agent_open(ACV_SEALED,sk[..],x[0..<31],ACT_PIN(),w[0..<1],a[..]).error==AC_INPUT;
+  #assert agent_open(ACV_SEALED,sk[..],x[..],ACT_PIN(),w[0..<0],a[..]).error==AC_INPUT && w[0].ck[9]==1;
+  zero:[32]u8;#assert agent_open(ACV_SEALED,zero[..],x[..],ACT_PIN(),w[0..<1],a[..]).error==AC_KEY && act_zeroed(w[0..<1]);
+}
+#test "the arena refuses what does not fit, and the digest is found where it is" {
+  b:[4]u8;a:=[1]AgText.[AgText.{buf=b[..]}];
+  #assert ac_keep(a[..],"abc")=="abc" && ac_keep(a[..],"de")=="" && a[0].at==3 && ac_keep(a[..],"d")=="d" && a[0].at==4;
+  #assert ac_digest("{\"v\":1,\"artifact\":{\"size\":3,\"digest\":\"sha256:x\"},\"inline\":{}}")=="sha256:x";
+  #assert ac_digest("{\"digest\":\"no\",\"artifact\":{\"media\":{\"digest\":\"no\"},\"digest\":\"yes\"}}")=="yes";
+  #assert ac_digest("{\"artifact\":{\"size\":3}}")=="" && ac_digest("{\"artifact\":")=="";
+}
+#test "the tags name exactly one recipient, one mailbox and the topic" {
+  m:[64]u8;r:=ACV_RECIPIENT_X;ok:[512]u8;
+  #assert ac_tags(act_list(ACT_P,ACT_H,ACT_T,"",ok[..]),r,m[..]) && cast(string)m[..]=="1111111111111111111111111111111111111111111111111111111111111111";
+  #assert !ac_tags(act_list(ACT_H,ACT_T,"","",ok[..]),r,m[..]);
+  #assert !ac_tags(act_list(ACT_P,ACT_P,ACT_H,ACT_T,ok[..]),r,m[..]);
+  #assert !ac_tags(act_list(ACT_P,ACT_H,ACT_H,ACT_T,ok[..]),r,m[..]);
+  #assert !ac_tags(act_list(ACT_P,ACT_T,"","",ok[..]),r,m[..]);
+  #assert !ac_tags(act_list(ACT_P,ACT_H,"","",ok[..]),r,m[..]);
+  #assert !ac_tags(act_list(ACT_P,ACT_H,"[\"t\",\"oa:other\"]","",ok[..]),r,m[..]);
+  #assert !ac_tags(act_list("[\"p\",\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\"]",ACT_H,ACT_T,"",ok[..]),r,m[..]);
+  #assert !ac_tags(act_list(ACT_P,"[\"h\",\"11\"]",ACT_T,"",ok[..]),r,m[..]);
+  #assert ac_tags(act_list("[\"x\",\"p\"],[\"px\",\"0\"],[\"\"]",ACT_P,ACT_H,ACT_T,ok[..]),r,m[..]);
+  long:[700]u8;n:=json_raw(long[..],0,"[[\"x\",\"");for i:0..<300 {long[n+i]='a';}n+=300;
+  n=json_raw(long[..],n,"\"],");n=json_raw(long[..],n,ACT_P);n=json_raw(long[..],n,",");n=json_raw(long[..],n,ACT_H);
+  n=json_raw(long[..],n,",");n=json_raw(long[..],n,ACT_T);n=json_raw(long[..],n,"]");
+  #assert !ac_tags(cast(string)long[0..<n],r,m[..]);
+  #assert !ac_tags("{}",r,m[..]) && !ac_tags("[[\"p\",1]]",r,m[..]) && !ac_tags("[\"p\"]",r,m[..]);
+}
+#test "Coax seals, Coax opens: the round trip" #steps 1500000000 {
+  w:[1]AgentWork;act_dirty(w[..]);out:[8192]u8;st:[8192]u8;
+  sender:=act_key(ACV_SENDER_SECRET);x:=act_key(ACV_RECIPIENT_X);nonce:[32]u8;aux:[32]u8;
+  for i:0..<32 {nonce[i]=0x5a;aux[i]=0xa5;}
+  n:=agent_seal(ACV_PAYLOAD,sender[..],x[..],ACV_MAILBOX,nonce[..],aux[..],1790000000,1790000000,1790086400,w[..],out[..]);
+  #assert n>0 && act_zeroed(w[..]);
+  r:=act_open(cast(string)out[0..<n],ACT_PIN(),w[..],st[..]);
+  #assert r.error==AC_OK && r.digest==ACV_DIGEST && r.mailbox==ACV_MAILBOX && r.definition.instructions=="Label each new issue: bug, feature or question.";
+}
+#test "sealing refuses bad views and inputs, and clears the work" #steps 400000000 {
+  w:[1]AgentWork;out:[8192]u8;
+  sender:=act_key(ACV_SENDER_SECRET);x:=act_key(ACV_RECIPIENT_X);nonce:[32]u8;aux:[32]u8;
+  one:=w[0..<1];
+  act_dirty(one);#assert agent_seal(ACV_PAYLOAD,sender[..],x[..],"11",nonce[..],aux[..],1,1,2,one,out[..])==-1 && one[0].ck[9]==1;
+  act_dirty(one);#assert agent_seal(ACV_PAYLOAD,sender[0..<31],x[..],ACV_MAILBOX,nonce[..],aux[..],1,1,2,one,out[..])==-1 && one[0].ck[9]==1;
+  act_dirty(one);#assert agent_seal(ACV_PAYLOAD,sender[..],x[0..<31],ACV_MAILBOX,nonce[..],aux[..],1,1,2,one,out[..])==-1 && one[0].ck[9]==1;
+  act_dirty(one);#assert agent_seal(ACV_PAYLOAD,sender[..],x[..],ACV_MAILBOX,nonce[0..<31],aux[..],1,1,2,one,out[..])==-1 && one[0].ck[9]==1;
+  act_dirty(one);#assert agent_seal(ACV_PAYLOAD,sender[..],x[..],ACV_MAILBOX,nonce[..],aux[0..<31],1,1,2,one,out[..])==-1 && one[0].ck[9]==1;
+  act_dirty(w[..]);#assert agent_seal(ACV_PAYLOAD,sender[..],x[..],ACV_MAILBOX,nonce[..],aux[..],1,1,2,w[0..<0],out[..])==-1 && w[0].ck[9]==1;
+  // A payload that is not an object, an inverted retention, a zero key, an oversized payload, a short output.
+  act_dirty(one);#assert agent_seal("[]",sender[..],x[..],ACV_MAILBOX,nonce[..],aux[..],1,1,2,one,out[..])==-1 && act_zeroed(one);
+  act_dirty(one);#assert agent_seal(ACV_PAYLOAD,sender[..],x[..],ACV_MAILBOX,nonce[..],aux[..],1,2,1,one,out[..])==-1 && act_zeroed(one);
+  zero:[32]u8;act_dirty(one);#assert agent_seal(ACV_PAYLOAD,zero[..],x[..],ACV_MAILBOX,nonce[..],aux[..],1,1,2,one,out[..])==-1 && act_zeroed(one);
+  big:[66000]u8;pb:[66300]u8;
+  m:=json_raw(pb[..],0,"{\"schema\":\"openagents.agent.definition.v1\",\"definition\":{\"id\":\"");m=json_raw(pb[..],m,ACV_AGENT_ID);
+  m=json_raw(pb[..],m,"\",\"revision\":1,\"spec\":");m=json_raw(pb[..],m,at_build(65400,big[..]));m=json_raw(pb[..],m,",\"deleted\":false}}");
+  act_dirty(one);#assert agent_seal(cast(string)pb[0..<m],sender[..],x[..],ACV_MAILBOX,nonce[..],aux[..],1,1,2,one,out[..])==-1 && act_zeroed(one);
+  act_dirty(one);#assert agent_seal(ACV_PAYLOAD,sender[..],x[..],ACV_MAILBOX,nonce[..],aux[..],1,1,2,one,out[0..<100])==-1 && act_zeroed(one);
+}

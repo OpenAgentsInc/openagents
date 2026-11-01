@@ -1,0 +1,160 @@
+// Chapter 79: a saved agent through its private carriage, and the
+// automations that run it. The host opens a 3188 artifact sealed by an
+// independent NIP-44 v2 and BIP-340 in Python
+// (coax/tests/nostr/agent_carriage_vectors.coax), seals the same definition
+// itself and opens that too, then decides which of three automations fire
+// for two incoming events and one tick, each occurrence checked against the
+// host's capability grant (chapter 77). Keys are the scalars 1 (the owner's
+// signer and the controller) and 3 (the host): TEST ONLY.
+#load "../../coax/lib/nostr/agent/carriage.coax";
+#load "../../coax/lib/nostr/auto/schedule.coax";
+#load "../../coax/lib/nostr/cap/dispatch.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+HOUR :: 3600;
+CONTROLLER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+
+AC_WORDS :: [10]string.["ok","input","event id","signature","not for this recipient","key","decrypt","envelope","definition","selection"];
+AG_WORDS :: [9]string.["ok","shape","schema","field","signer","id","revision","digest","deleted"];
+AU_WORDS :: [14]string.["admit","idle","busy","skipped","blocked","expired","exhausted","closed","duplicate","stale","unavailable","malformed","limit","conflict"];
+REASON_WORDS :: [5]string.["missed","occupied","paused","expired","bound"];
+CAP_WORDS :: [12]string.["dispatch","malformed","denied","no definition","no binding","no invocation contract",
+  "unavailable","not_admitted","revoked","expired","limit_exceeded","cannot_enforce"];
+ACCESS_WORDS :: [3]string.["host_default","read_only","workspace_write"];
+
+key_of :: (hex:string)->[32]u8 {
+  k:[32]u8;
+  for i:0..<32 {k[i]=cast(u8)(nibble(hex[2*i])*16+nibble(hex[2*i+1]));}
+  return k;
+}
+nibble :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+
+// book:begin open
+// The host's side: its own secret, and the pin it chose when the owner
+// assigned the agent: signer, definition id, revision 3 and that digest.
+host_pin :: ()->AgentPin {
+  p:AgentPin;p.signer=ACV_SENDER_X;p.id=ACV_AGENT_ID;p.revision=3;p.digest=ACV_DIGEST;return p;
+}
+show_open :: (label:string,text:string,work:[]AgentWork,store:[]u8) {
+  a:=[1]AgText.[AgText.{buf=store}];
+  sk:=key_of(ACV_RECIPIENT_SECRET);x:=key_of(ACV_RECIPIENT_X);
+  r:=agent_open(text,sk[..],x[..],host_pin(),work,a[..]);
+  if r.error==AC_SELECTION {print("%: selection: %\n",label,AG_WORDS[r.selection]);}
+  else if r.error==AC_DEFINITION {print("%: definition: %\n",label,AG_WORDS[r.definition.error]);}
+  else {print("%: %\n",label,AC_WORDS[r.error]);}
+}
+// book:end open
+
+// book:begin plans
+// Three automations of the saved agent, all admitted at T0.
+hourly :: ()->AutoPlan {
+  p:AutoPlan;p.trigger=AU_INTERVAL;p.first_at=T0;p.every=HOUR;p.missed=AU_SKIP;
+  p.starts_at=T0;p.expires_at=T0+24*HOUR;p.max_occurrences=24;return p;
+}
+watch :: ()->AutoPlan {
+  p:AutoPlan;p.trigger=AU_SOURCE;p.source="sha256:5017";p.resource="repo:issues";p.max_age=300;
+  p.starts_at=T0;p.expires_at=T0+24*HOUR;p.max_occurrences=10;return p;
+}
+report :: ()->AutoPlan {
+  p:AutoPlan;p.trigger=AU_ONCE;p.at=T0+4*HOUR;p.starts_at=T0;p.expires_at=T0+5*HOUR;p.max_occurrences=1;return p;
+}
+observation :: (revision:string,at:int)->AutoObservation {
+  o:AutoObservation;o.source="sha256:5017";o.resource="repo:issues";o.revision=revision;o.available=true;o.observed_at=at;return o;
+}
+// The host's capability record (chapter 77): the agent's definition by its
+// exact digest, one binding, and the controller's grant.
+host_authority :: (revoked:bool,now:int)->u32 {
+  d:=[1]CapDefinition.[CapDefinition.{id="agent:triage",digest=ACV_DIGEST,profile=CAP_EXECUTOR,effects=CAP_READS,minimum_wall_ms=1000}];
+  b:=[1]CapBinding.[CapBinding.{binding="b-triage",definition=ACV_DIGEST,profile=CAP_EXECUTOR,invoke=true,presence=CAP_PRESENT,host=CAP_WALL_MS}];
+  g:=[1]CapGrant.[CapGrant.{grant="g-auto",issuer=CONTROLLER,principal=CONTROLLER,binding="b-triage",effects=CAP_READS,wall_ms=600000,expires_at=T0+24*HOUR,revoked=revoked}];
+  deny:[1]string;p:CapPolicy;p.owner=CONTROLLER;p.deny=deny[0..<0];p.assurance=CAP_HOST_ENFORCED;p.wall_ms=600000;
+  q:CapRequest;q.principal=CONTROLLER;q.definition="agent:triage";q.effects=CAP_READS;q.required=CAP_WALL_MS;q.wall_ms=300000;
+  return cap_dispatch(d[..],b[..],g[..],p,q,now).error;
+}
+// book:end plans
+
+show :: (label:string,r:AutoResult,skips:[]AutoSkip,s:AutoState,occ:[]AutoOccurrence) {
+  print("%: %",label,AU_WORDS[r.code]);
+  if r.skipped>0 {
+    k:=skips[s.skips-1];
+    print(", skipped slots %..% (due T0 + % .. T0 + %, %)",k.first_slot,k.last_slot,k.first_due-T0,k.last_due-T0,REASON_WORDS[k.reason]);
+  }
+  if r.code==AU_OK {
+    o:=occ[r.ordinal-1];
+    if o.slot>=0 {print(", occurrence #% for slot % due T0 + %",o.ordinal,o.slot,o.due_at-T0);}
+    else {print(", occurrence #% for revision %",o.ordinal,o.revision);}
+  }
+  if r.code==AU_DUPLICATE || r.code==AU_BUSY {print(", occurrence #%",r.ordinal);}
+  print("\n");
+}
+
+// book:begin main
+main :: () {
+  work:[1]AgentWork;store:[8192]u8;
+  print("AGENT: the host opens the owner's 3188\n");
+  a:=[1]AgText.[AgText.{buf=store[..]}];
+  sk:=key_of(ACV_RECIPIENT_SECRET);x:=key_of(ACV_RECIPIENT_X);
+  r:=agent_open(ACV_SEALED,sk[..],x[..],host_pin(),work[..],a[..]);
+  d:=r.definition;
+  print("status: %, event %…, signer %…, mailbox %…\n",AC_WORDS[r.error],r.id[0..<16],r.signer[0..<16],r.mailbox[0..<16]);
+  print("definition %…, revision %, deleted %\n",d.id[0..<16],d.revision,d.deleted);
+  print("name \"%\", runtime %, model %, access %\n",d.name,d.runtime,ifx d.has_model then d.model else "null",ACCESS_WORDS[d.access]);
+  print("instructions \"%\"\n",d.instructions);
+  print("digest %\n",r.digest);
+
+  print("AGENT: Coax seals the same payload and opens it\n");
+  sender:=key_of(ACV_SENDER_SECRET);nonce:[32]u8;aux:[32]u8;for i:0..<32 {nonce[i]=0x5a;aux[i]=0xa5;}
+  sealed:[8192]u8;
+  n:=agent_seal(ACV_PAYLOAD,sender[..],x[..],ACV_MAILBOX,nonce[..],aux[..],T0,T0,T0+86400,work[..],sealed[..]);
+  store2:[8192]u8;b:=[1]AgText.[AgText.{buf=store2[..]}];
+  back:=agent_open(cast(string)sealed[0..<n],sk[..],x[..],host_pin(),work[..],b[..]);
+  print("sealed % bytes; opened: %, same digest: %, same instructions: %\n",n,AC_WORDS[back.error],back.digest==r.digest,back.definition.instructions==d.instructions);
+
+  print("AUTO: authority for the agent's definition\n");
+  print("grant g-auto: %; the same grant revoked: %\n",CAP_WORDS[host_authority(false,T0+4*HOUR+100)],CAP_WORDS[host_authority(true,T0+4*HOUR+100)]);
+
+  print("AUTO: the hourly check ran slot 0 at T0 and settled\n");
+  ph:=hourly();sh:[1]AutoState;kh:[8]AutoSkip;oh:[8]AutoOccurrence;
+  show("hourly at T0",auto_tick(ph,sh[..],kh[..],oh[..],T0,host_authority(false,T0)),kh[..],sh[0],oh[..]);
+  settled:=auto_settle(ph,sh[..],oh[..],1);
+  print("#1 settled: %; the machine sleeps until T0 + 4 h + 100 s\n",settled==AU_OK);
+
+  print("AUTO: two events and one tick, now = T0 + 14500\n");
+  now:=T0+4*HOUR+100;cap:=host_authority(false,now);
+  pw:=watch();sw:[1]AutoState;ow:[8]AutoOccurrence;
+  pr:=report();sr:[1]AutoState;kr:[2]AutoSkip;orr:[2]AutoOccurrence;
+  show("event 1, issues revision r-118 observed at T0 + 14450",auto_observe(pw,sw[..],ow[..],observation("r-118",T0+14450),now,cap),kh[0..<0],sw[0],ow[..]);
+  show("event 2, the same revision redelivered at T0 + 14490",auto_observe(pw,sw[..],ow[..],observation("r-118",T0+14490),now,cap),kh[0..<0],sw[0],ow[..]);
+  show("tick, hourly",auto_tick(ph,sh[..],kh[..],oh[..],now,cap),kh[..],sh[0],oh[..]);
+  show("tick, report",auto_tick(pr,sr[..],kr[..],orr[..],now,cap),kr[..],sr[0],orr[..]);
+  print("AUTO: the same tick delivered again\n");
+  show("tick, hourly",auto_tick(ph,sh[..],kh[..],oh[..],now,cap),kh[..],sh[0],oh[..]);
+  show("tick, report",auto_tick(pr,sr[..],kr[..],orr[..],now,cap),kr[..],sr[0],orr[..]);
+  print("hourly: % occurrences, % skipped range, next slot %; watch: %; report: %\n",sh[0].occurrences,sh[0].skips,sh[0].next_slot,sw[0].occurrences,sr[0].occurrences);
+  print("AUTO: a new revision while #1 runs, then after it settles\n");
+  show("event 3, r-119 at T0 + 14520",auto_observe(pw,sw[..],ow[..],observation("r-119",T0+14520),T0+14530,cap),kh[0..<0],sw[0],ow[..]);
+  print("#1 settles: %\n",auto_settle(pw,sw[..],ow[..],1)==AU_OK);
+  show("event 3 again after #1 settles",auto_observe(pw,sw[..],ow[..],observation("r-119",T0+14520),T0+14540,cap),kh[0..<0],sw[0],ow[..]);
+
+  print("broken inputs\n");
+  t:[8192]u8;s:=ACV_SEALED;for i:0..<s.count {t[i]=s[i];}
+  at:=-1;for i:0..<s.count-12 {if at<0 && s[i..<i+12]=="\"created_at\"" {at=i+13;}}
+  t[at]='2';
+  show_open("3188 with its created_at changed",cast(string)t[0..<s.count],work[..],store2[..]);
+  show_open("3188 for another host",ACV_FOR_OTHER,work[..],store2[..]);
+  show_open("3188 encrypted to another key",ACV_WRONG_KEY,work[..],store2[..]);
+  show_open("3188 whose digest names revision 4's bytes",ACV_BAD_DIGEST,work[..],store2[..]);
+  show_open("3188 whose payload adds grants",ACV_GRANTS,work[..],store2[..]);
+  show_open("revision 4 under the revision 3 pin",ACV_SEALED_R4,work[..],store2[..]);
+  stale:[1]AutoState;so:[2]AutoOccurrence;
+  show("issues observed at T0 + 14100, 400 s old",auto_observe(pw,stale[..],so[..],observation("r-120",T0+14100),now,cap),kh[0..<0],stale[0],so[..]);
+  other:=observation("r-120",now);other.resource="repo:pulls";
+  show("an observation of repo:pulls",auto_observe(pw,stale[..],so[..],other,now,cap),kh[0..<0],stale[0],so[..]);
+  blocked:[1]AutoState;bk:[2]AutoSkip;bo:[2]AutoOccurrence;
+  show("report with the grant revoked",auto_tick(pr,blocked[..],bk[..],bo[..],now,host_authority(true,now)),bk[..],blocked[0],bo[..]);
+  print("then: % occurrences, status blocked: %\n",blocked[0].occurrences,blocked[0].status==AUS_BLOCKED);
+  late:[1]AutoState;lk:[2]AutoSkip;lo:[2]AutoOccurrence;
+  show("report first ticked at T0 + 5 h",auto_tick(pr,late[..],lk[..],lo[..],T0+5*HOUR,cap),lk[..],late[0],lo[..]);
+}
+// book:end main

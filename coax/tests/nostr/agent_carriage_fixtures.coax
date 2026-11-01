@@ -1,0 +1,32 @@
+// Helpers for the checks of coax/lib/nostr/agent/carriage.coax, kept apart
+// so root-only mutation mutates the carriage, not these.
+ACT_PIN :: ()->AgentPin {
+  p:AgentPin;p.signer=ACV_SENDER_X;p.id=ACV_AGENT_ID;p.revision=3;p.digest=ACV_DIGEST;return p;
+}
+act_key :: (hex:string)->[32]u8 {k:[32]u8;for i:0..<32 {k[i]=cast(u8)(act_nib(hex[2*i])*16+act_nib(hex[2*i+1]));}return k;}
+act_nib :: (c:u8)->int {return ifx c>='a' then cast(int)(c-'a')+10 else cast(int)(c-'0');}
+act_open :: (text:string,pin:AgentPin,w:[]AgentWork,store:[]u8)->AgentOpened {
+  a:=[1]AgText.[AgText.{buf=store}];
+  sk:=act_key(ACV_RECIPIENT_SECRET);x:=act_key(ACV_RECIPIENT_X);
+  return agent_open(text,sk[..],x[..],pin,w,a[..]);
+}
+act_zero :: (b:[]u8)->bool {for c:b {if c!=0 {return false;}}return true;}
+act_zeroed :: (w:[]AgentWork)->bool {
+  return act_zero(w[0].pre[..]) && act_zero(w[0].body[..]) && act_zero(w[0].cipher[..]) && act_zero(w[0].scratch[..]) && act_zero(w[0].ck[..]);
+}
+// Every field written, so a missing clear shows.
+act_dirty :: (w:[]AgentWork) {
+  w[0].pre[0]=1;w[0].body[0]=1;w[0].cipher[0]=1;w[0].scratch[0]=1;w[0].ck[0]=1;
+  w[0].pre[AC_REGION-1]=1;w[0].body[AC_REGION-1]=1;w[0].cipher[2*AC_REGION-1]=1;w[0].scratch[AC_REGION-1]=1;w[0].ck[31]=1;
+  w[0].ck[9]=1;
+}
+
+ACT_P :: "[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]";
+ACT_H :: "[\"h\",\"1111111111111111111111111111111111111111111111111111111111111111\"]";
+ACT_T :: "[\"t\",\"oa:artifact:v1\"]";
+// A tag list of up to four tags; empty strings are left out.
+act_list :: (a:string,b:string,c:string,d:string,out:[]u8)->string {
+  parts:=[4]string.[a,b,c,d];n:=json_raw(out,0,"[");first:=true;
+  for p:parts {if p.count>0 {if !first {n=json_raw(out,n,",");}n=json_raw(out,n,p);first=false;}}
+  n=json_raw(out,n,"]");return cast(string)out[0..<n];
+}
