@@ -1,0 +1,312 @@
+// CoderOS's update agent (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 2): the Coax program
+// in place of os/bin/coder-update (openagents 2ca255550e~1). It builds the machine's Coax programs from a
+// branch, checks them, tries each one, switches them in together, and switches them back when one fails
+// after the switch. The policy (os/coax-update-policy.coax, #authority) decides; this does the work.
+//   coax-update [--root DIR] [--checkout DIR] [--coax PATH] [--repository URL] [--branch NAME]
+//               [--floor_gb-gb N] [--keep N]
+// Under --root (default ~/.openagents/coax-update):
+//   programs           what to build, written by the system, one line each:
+//                        program NAME SOURCE [NATIVE.c | +entropy]... [-- CC-ARG...]
+//                        trial NAME ARG...     ({tmp} is a fresh empty directory)
+//                      paths are in the checkout; tool-native.c is always linked
+//   openagents/        the checkout: every commit, without old file contents (unless --checkout names one)
+//   versions/COMMIT/   each build's programs; bin/NAME links to the one in use
+//   installed, rejected   the commit in use, and the one a trial turned away
+//   lock/              one run at a time
+// The compiler is the checkout's own, built with coax/build.sh, unless --coax names one.
+#import "Basic";
+#load "../coax/lib/sys/tool.coax";
+#load "../coax/lib/sys/fs.coax";
+#load "../coax/lib/sys/args.coax";
+#load "../coax/lib/sys/proc.coax";
+#load "coax-update-policy.coax";
+
+cxproc_self_pid :: () -> int #foreign;
+
+UP_PROGS :: 16;
+UpProg :: struct {
+  name: string; src: string;
+  natives: [16] string; nn: int; entropy: bool;
+  cc: [32] string; ncc: int;
+  trial: [24] string; nt: int;
+}
+UpOut :: struct { b: [8388608] u8; }
+
+// Builds a path or text from parts into a buffer.
+up_cat :: (out: [] u8, a: string, b: string) -> string {
+  n := 0; for c: a { if n < out.count { out[n] = c; n += 1; } } for c: b { if n < out.count { out[n] = c; n += 1; } }
+  return cast(string) out[0..<n];
+}
+up_cat3 :: (out: [] u8, a: string, b: string, c: string) -> string {
+  t: [4096] u8; return up_cat(out, up_cat(t[..], a, b), c);
+}
+up_trim :: (s: string) -> string { e := s.count; while e > 0 && (s[e - 1] == '\n' || s[e - 1] == ' ') { e -= 1; } return s[0..<e]; }
+up_num :: (n: int, out: [] u8) -> string {
+  d: [24] u8; k := 0; v := n;
+  while true { d[k] = cast,trunc(u8) ('0' + v % 10); k += 1; v = v / 10; if v == 0 { break; } }
+  for i: 0..<k { out[i] = d[k - 1 - i]; }
+  return cast(string) out[0..<k];
+}
+up_parse_num :: (s: string, fallback: int) -> int {
+  if s.count == 0 { return fallback; }
+  v := 0; for c: s { if c < '0' || c > '9' { return fallback; } v = v * 10 + cast(int) (c - '0'); }
+  return v;
+}
+
+// Runs argv (in dir when given) with stdin closed, to its end or a timeout: its exit status, or -1
+// when it could not start or ran out of time. Its stdout goes into out (out_n), and stderr's end to
+// the agent's stderr when it fails.
+up_run :: (argv: [] string, dir: string, timeout_ms: int, out: [] u8, out_n: [] int) -> int {
+  out_n[0] = 0;
+  h := proc_new(); if h < 0 { return -1; }
+  ok := true; for a: argv { ok = ok && proc_arg(h, a); }
+  if dir.count > 0 { ok = ok && proc_cwd(h, dir); }
+  if !ok || proc_start(h) != 0 { done := proc_release(h); return -1; }
+  c := proc_close_stdin(h);
+  deadline := proc_deadline(timeout_ms, proc_now_ms()); line: [65536] u8; late := false; cut := false;
+  while true {
+    n := proc_line(h, proc_left(deadline, proc_now_ms()), line[..]);
+    if n == PROC_EOF || n == PROC_ERROR { break; }
+    if n == PROC_TIMEOUT { late = true; break; }
+    if n == PROC_TOO_LONG { cut = true; continue; }
+    if out_n[0] + n + 1 > out.count { cut = true; continue; }
+    for i: 0..<n { out[out_n[0]] = line[i]; out_n[0] += 1; }
+    out[out_n[0]] = '\n'; out_n[0] += 1;
+  }
+  if late { k := proc_kill(h, PROC_SIGKILL); }
+  status := proc_wait(h, ifx late then 2000 else proc_left(deadline, proc_now_ms()));
+  if status == PROC_RUNNING { late = true; k := proc_kill(h, PROC_SIGKILL); status = proc_wait(h, 2000); }
+  if status != 0 || late { e: [2048] u8; t := proc_stderr(h, e[..]); if t.count > 0 { tool_err(t); if t[t.count - 1] != '\n' { tool_errln(""); } } }
+  done := proc_release(h);
+  if late || cut { return -1; }
+  return status;
+}
+up_run_ok :: (argv: [] string, dir: string, timeout_ms: int) -> bool { o: [65536] u8; n: [1] int; return up_run(argv, dir, timeout_ms, o[..], n[..]) == 0; }
+
+// The programs file into p: the count, or -1 (naming the bad line) when a line cannot be read.
+up_programs :: (text: string, p: [] UpProg) -> int {
+  np := 0; st := 0; ln := 0;
+  for e: 0..<text.count + 1 {
+    if e < text.count && text[e] != '\n' { continue; }
+    line := text[st..<e]; st = e + 1; ln += 1;
+    w: [64] string; nw := 0; ws := 0;
+    for i: 0..<line.count + 1 { if i == line.count || line[i] == ' ' { if i > ws && nw < 64 { w[nw] = line[ws..<i]; nw += 1; } ws = i + 1; } }
+    if nw == 0 || w[0][0] == '#' { continue; }
+    if w[0] == "program" && nw >= 3 && np < p.count {
+      p[np] = UpProg.{name = w[1], src = w[2]};
+      after := false;
+      for i: 3..<nw {
+        if w[i] == "--" { after = true; }
+        else if after { if p[np].ncc < 32 { p[np].cc[p[np].ncc] = w[i]; p[np].ncc += 1; } }
+        else if w[i] == "+entropy" { p[np].entropy = true; }
+        else if p[np].nn < 16 { p[np].natives[p[np].nn] = w[i]; p[np].nn += 1; }
+      }
+      np += 1;
+    } else if w[0] == "trial" && nw >= 2 {
+      k := -1; for i: 0..<np { if p[i].name == w[1] { k = i; } }
+      if k < 0 { tool_errln("coax-update: a trial line names a program no line above it builds"); return -1; }
+      for i: 2..<nw { if p[k].nt < 24 { p[k].trial[p[k].nt] = w[i]; p[k].nt += 1; } }
+    } else { nb: [24] u8; tool_err("coax-update: line "); tool_err(up_num(ln, nb[..])); tool_errln(" of the programs file cannot be read"); return -1; }
+  }
+  return np;
+}
+
+// Compiles one program from the checkout into dest: whether it built.
+up_build :: (co: string, coax: string, q: UpProg, work: string, dest: string, big: [] UpOut) -> bool {
+  b: [8] [4096] u8; n: [1] int;
+  src := up_cat3(b[0][..], co, "/", q.src);
+  a: [8] string; a[0] = coax; a[1] = "c"; a[2] = src; a[3] = "--library";
+  if up_run(a[0..<4], co, 600000, big[0].b[..], n[..]) != 0 { tool_errln("coax-update: Coax would not compile it"); return false; }
+  csrc := up_cat3(b[1][..], work, "/", up_cat(b[7][..], q.name, ".c"));
+  if !fs_write(csrc, cast(string) big[0].b[0..<n[0]]) { return false; }
+  cc: [96] string; k := 0;
+  e: [128] u8; ccname := proc_getenv("CC", e[..]); if ccname.count == 0 { ccname = "cc"; }
+  plat := up_cat(b[2][..], co, "/coax/platform");
+  inc1 := up_cat(b[3][..], "-I", work); inc2 := up_cat(b[4][..], "-I", plat);
+  cc[0] = ccname; cc[1] = "-std=c11"; cc[2] = "-O2"; cc[3] = ifx tool_os() == 1 then "-D_DARWIN_C_SOURCE" else "-D_DEFAULT_SOURCE"; cc[4] = inc1; cc[5] = inc2; cc[6] = "-o"; cc[7] = dest; cc[8] = csrc; k = 9;
+  nb: [16] [4096] u8;
+  cc[k] = up_cat(nb[0][..], plat, "/tool-native.c"); k += 1;
+  for i: 0..<q.nn { cc[k] = up_cat3(nb[i % 15 + 1][..], co, "/", q.natives[i]); k += 1; }
+  ent: [3] [4096] u8;
+  if q.entropy {
+    eh := up_cat(ent[0][..], work, "/entropy-policy.h"); es := up_cat(b[5][..], co, "/coax/lib/crypto/entropy.coax");
+    a[0] = coax; a[1] = "c"; a[2] = es; a[3] = "--library"; a[4] = "--header"; a[5] = eh;
+    if up_run(a[0..<6], co, 600000, big[0].b[..], n[..]) != 0 { tool_errln("coax-update: the entropy policy would not compile"); return false; }
+    ec := up_cat(ent[1][..], work, "/entropy.c"); if !fs_write(ec, cast(string) big[0].b[0..<n[0]]) { return false; }
+    cc[k] = ec; k += 1;
+    cc[k] = up_cat(b[6][..], plat, "/entropy-native.c"); k += 1; cc[k] = up_cat(ent[2][..], plat, "/entropy-foreign.c"); k += 1;
+  }
+  for i: 0..<q.ncc { cc[k] = q.cc[i]; k += 1; }
+  cc[k] = ifx tool_os() == 1 then "-lm" else "-lpthread"; k += 1; cc[k] = "-lm"; k += 1;
+  if up_run(cc[0..<k], co, 600000, big[0].b[..], n[..]) != 0 { tool_errln("coax-update: the C compiler failed"); return false; }
+  return true;
+}
+
+// Runs a program's trial with bin as the program: whether it passed. No trial line passes.
+up_trial :: (q: UpProg, bin: string) -> bool {
+  if q.nt == 0 { return true; }
+  tb: [4096] u8; tmp := fs_temp("coax-update-trial", tb[..]); if tmp.count == 0 { return false; }
+  a: [25] string; a[0] = bin; sb: [24] [4096] u8;
+  for i: 0..<q.nt {
+    t := q.trial[i]; at := -1;
+    for j: 0..<t.count - 4 { if t[j..<j + 5] == "{tmp}" { at = j; break; } }
+    a[i + 1] = ifx at < 0 then t else up_cat3(sb[i][..], t[0..<at], tmp, t[at + 5..<t.count]);
+  }
+  ok := up_run_ok(a[0..<q.nt + 1], "", 30000);
+  rm: [3] string; rm[0] = "rm"; rm[1] = "-rf"; rm[2] = tmp; r := up_run_ok(rm[..], "", 10000);
+  return ok;
+}
+
+// Points bin/NAME at target through NAME.next and a rename, so a reader sees one or the other.
+up_link :: (bindir: string, name: string, target: string) -> bool {
+  b: [2] [4096] u8;
+  next := up_cat3(b[0][..], bindir, "/", up_cat(b[1][..], name, ".next"));
+  a: [4] string; a[0] = "ln"; a[1] = "-sfn"; a[2] = target; a[3] = next;
+  if !up_run_ok(a[..], "", 10000) { return false; }
+  c: [4096] u8; return fs_rename(next, up_cat3(c[..], bindir, "/", name));
+}
+
+up_lock_take :: (lock: string) -> bool {
+  pb: [4096] u8; pidfile := up_cat(pb[..], lock, "/pid");
+  if !fs_mkdir(lock) {
+    t: [64] u8; n := fs_read(pidfile, t[..]); pid := ifx n > 0 then up_parse_num(up_trim(cast(string) t[0..<n]), 0) else 0;
+    pr: [64] u8; nb: [24] u8;
+    if pid > 0 && fs_exists(up_cat(pr[..], "/proc/", up_num(pid, nb[..]))) { return false; }   // its holder still runs
+    r := fs_remove(pidfile); r = fs_remove(lock);   // a holder that died left it
+    if !fs_mkdir(lock) { return false; }
+  }
+  nb2: [24] u8; tx: [64] u8; w := fs_write(pidfile, up_cat(tx[..], up_num(cxproc_self_pid(), nb2[..]), "\n"));
+  return true;
+}
+up_lock_drop :: (lock: string) { pb: [4096] u8; r := fs_remove(up_cat(pb[..], lock, "/pid")); r = fs_remove(lock); }
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("usage: coax-update [--root DIR] [--checkout DIR] [--coax PATH] [--repository URL] [--branch NAME] [--floor_gb-gb N] [--keep N]"); return 2; }
+  hb: [1024] u8; home := proc_getenv("HOME", hb[..]);
+  rb: [4096] u8; root := args_value(a[..], "--root", up_cat(rb[..], home, "/.openagents/coax-update"));
+  b: [16] [4096] u8;
+  r := fs_mkdir(root);
+  lock := up_cat(b[0][..], root, "/lock");
+  if !up_lock_take(lock) { print("Another update holds the lock. This run is skipped.\n"); return 0; }
+  code := up_once(a[..], root);
+  up_lock_drop(lock);
+  return code;
+}
+
+up_once :: (a: [] Args, root: string) -> int {
+  b: [24] [4096] u8; n: [1] int; o: [65536] u8;
+  repo := args_value(a, "--repository", "https://github.com/OpenAgentsInc/openagents.git");
+  branch := args_value(a, "--branch", "main");
+  floor_gb := up_parse_num(args_value(a, "--floor_gb-gb", "40"), 40);
+  keep := up_parse_num(args_value(a, "--keep", "5"), 5);
+  given := args_value(a, "--checkout", "");
+  // the free-space floor_gb, before anything is fetched or built
+  df: [4] string; df[0] = "df"; df[1] = "-BG"; df[2] = "--output=avail"; df[3] = root;
+  free := ifx up_run(df[..], "", 10000, o[..], n[..]) == 0 then up_free_gb(cast(string) o[0..<n[0]]) else -1;
+  if free < 0 { print("Could not read the free space under %. Not building.\n", root); return 1; }
+  if up_start(false, free, floor_gb, "", "", "", false) == UP_REFUSE_SPACE { print("Only % GB is free under %, and the floor_gb is % GB. Not building.\n", free, root, floor_gb); return 1; }
+  // the checkout
+  co := given;
+  if co.count == 0 {
+    co = up_cat(b[0][..], root, "/openagents");
+    g: [12] string;
+    if fs_exists(up_cat(b[1][..], co, "/.git")) {
+      g[0] = "git"; g[1] = "-C"; g[2] = co; g[3] = "remote"; g[4] = "set-url"; g[5] = "origin"; g[6] = repo;
+      ok := up_run_ok(g[0..<7], "", 30000);
+      g[3] = "fetch"; g[4] = "--quiet"; g[5] = "origin"; g[6] = branch;
+      if !up_run_ok(g[0..<7], "", 600000) { print("Could not fetch % from %.\n", branch, repo); return 1; }
+      g[3] = "checkout"; g[4] = "--quiet"; g[5] = "--detach"; g[6] = "FETCH_HEAD";
+      if !up_run_ok(g[0..<7], "", 120000) { print("Could not check out what was fetched.\n"); return 1; }
+    } else {
+      // every commit, without old file contents: the compiler's build checks the commits its changelog names
+      g[0] = "git"; g[1] = "clone"; g[2] = "--quiet"; g[3] = "--filter=blob:none"; g[4] = "--branch"; g[5] = branch; g[6] = "--"; g[7] = repo; g[8] = co;
+      if !up_run_ok(g[0..<9], "", 1800000) { print("Could not clone % from %.\n", branch, repo); return 1; }
+    }
+  }
+  rp: [5] string; rp[0] = "git"; rp[1] = "-C"; rp[2] = co; rp[3] = "rev-parse"; rp[4] = "HEAD";
+  cm: [256] u8; commit := "";
+  if up_run(rp[..], "", 30000, o[..], n[..]) == 0 { m := up_trim(cast(string) o[0..<n[0]]); for i: 0..<m.count { cm[i] = m[i]; } commit = cast(string) cm[0..<m.count]; }
+  if commit.count == 0 { print("% is not a git checkout with a commit.\n", co); return 1; }
+  short := commit[0..<ifx commit.count > 10 then 10 else commit.count];
+  // what to build
+  pt: [65536] u8; pn := fs_read(up_cat(b[2][..], root, "/programs"), pt[..]);
+  if pn <= 0 { print("There is no programs file at %/programs. Nothing to build.\n", root); return 1; }
+  p: [UP_PROGS] UpProg; np := up_programs(cast(string) pt[0..<pn], p[..]);
+  if np <= 0 { return 1; }
+  ib: [256] u8; k := fs_read(up_cat(b[3][..], root, "/installed"), ib[..]); installed := ifx k > 0 then up_trim(cast(string) ib[0..<k]) else "";
+  jb: [256] u8; k = fs_read(up_cat(b[4][..], root, "/rejected"), jb[..]); rejected := ifx k > 0 then up_trim(cast(string) jb[0..<k]) else "";
+  bindir := up_cat(b[5][..], root, "/bin"); r := fs_mkdir(bindir);
+  present := true; for i: 0..<np { if !fs_exists(up_cat3(b[6][..], bindir, "/", p[i].name)) { present = false; } }
+  step := up_start(false, free, floor_gb, commit, installed, rejected, present);
+  if step == UP_SKIP_INSTALLED { print("Commit % is already installed. Nothing to build.\n", short); return 0; }
+  if step == UP_SKIP_REJECTED { print("A trial rejected commit %. Waiting for a new commit on %.\n", short, branch); return 0; }
+  // the compiler
+  coax := args_value(a, "--coax", "");
+  if coax.count == 0 {
+    bs: [1] string; bs[0] = up_cat(b[7][..], co, "/coax/build.sh");
+    print("Building the Coax compiler of %.\n", short);
+    if !up_run_ok(bs[..], co, 3600000) { print("The Coax compiler of % did not build. What is installed is unchanged.\n", short); return 1; }
+    coax = up_cat(b[8][..], co, "/coax/bin/coax");
+  }
+  // build and check each program
+  vers := up_cat(b[9][..], root, "/versions"); r = fs_mkdir(vers);
+  here := up_cat3(b[10][..], vers, "/", commit); r = fs_mkdir(here);
+  work := up_cat(b[11][..], root, "/work"); r = fs_mkdir(work);
+  big: [1] UpOut; st: [UP_PROGS] UpProgram;
+  for i: 0..<np {
+    print("Building % from %.\n", p[i].name, p[i].src);
+    dest := up_cat3(b[12][..], here, "/", p[i].name);
+    st[i].built = up_build(co, coax, p[i], work, dest, big[..]);
+    if !st[i].built { continue; }
+    t: [3] string; t[0] = coax; t[1] = "test"; t[2] = up_cat3(b[13][..], co, "/", p[i].src);
+    st[i].checked = up_run(t[..], co, 1800000, big[0].b[..], n[..]) == 0;
+    if !st[i].checked { print("The Coax checks of % failed.\n", p[i].name); continue; }
+    st[i].trial = up_trial(p[i], dest);
+    if !st[i].trial { print("% failed its trial.\n", p[i].name); }
+  }
+  // switch in together, check again, and switch back if one fails
+  if up_switches(st[0..<np]) {
+    for i: 0..<np { ok := up_link(bindir, p[i].name, up_cat3(b[14][..], here, "/", p[i].name)); }
+    for i: 0..<np { st[i].after = up_trial(p[i], up_cat3(b[15][..], bindir, "/", p[i].name)); }
+  }
+  v := up_verdict(st[0..<np]);
+  if v == UP_COMMIT {
+    w := fs_write(up_cat(b[16][..], root, "/installed"), up_cat(b[17][..], commit, "\n")); w = fs_remove(up_cat(b[18][..], root, "/rejected"));
+    up_prune_builds(vers, keep, commit, installed);
+    print("The programs are now %.\n", short); return 0;
+  }
+  if v == UP_ROLLBACK {
+    for i: 0..<np {
+      before := ifx installed.count > 0 then up_cat(b[19][..], up_cat3(b[20][..], vers, "/", installed), up_cat(b[21][..], "/", p[i].name)) else "";
+      if before.count > 0 && fs_exists(before) { ok := up_link(bindir, p[i].name, before); } else { ok := fs_remove(up_cat3(b[22][..], bindir, "/", p[i].name)); }
+    }
+  }
+  if up_rejects(v) {
+    w := fs_write(up_cat(b[23][..], root, "/rejected"), up_cat(b[17][..], commit, "\n"));
+    if v == UP_ROLLBACK { print("A program failed after the switch, so every program went back to what ran before. Commit % is rejected.\n", short); }
+    else { print("A trial failed, so nothing was switched in. Commit % is rejected.\n", short); }
+    return 1;
+  }
+  print("A build or check failed for %. What is installed is unchanged.\n", short);
+  return 1;
+}
+
+// Removes old builds: keeps the newest `keep` and the two a record names.
+up_prune_builds :: (vers: string, keep: int, commit: string, before: string) {
+  l: [1] FsList; n := fs_list(vers, l[..]); if n <= 0 { return; }
+  bs: [64] UpBuild; k := 0;
+  for i: 0..<n {
+    if k >= 64 { break; }
+    e := fs_entry(l[..], i); if e.count > 64 { continue; }
+    pb: [4096] u8; full := up_cat3(pb[..], vers, "/", e);
+    for j: 0..<e.count { bs[k].name[j] = e[j]; } bs[k].nn = e.count; bs[k].time = fs_mtime_ns(full); k += 1;
+  }
+  named: [2] string; named[0] = commit; named[1] = before;
+  out: [64] bool; m := up_prune(bs[0..<k], keep, named[..], out[..]);
+  for i: 0..<k {
+    if !out[i] { continue; }
+    pb: [4096] u8; dir := up_cat3(pb[..], vers, "/", cast(string) bs[i].name[0..<bs[i].nn]);
+    a: [3] string; a[0] = "rm"; a[1] = "-rf"; a[2] = dir; ok := up_run_ok(a[..], "", 60000);
+  }
+}

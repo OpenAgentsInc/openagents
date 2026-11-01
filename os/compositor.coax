@@ -1,4 +1,4 @@
-// `compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,...] [--xwayland] [--screen] [--input FILE]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
+// `compositor SOCKET KEYMAP LAUNCH-DIR [W H] [--screens WxH,...] [--xwayland] [--screen] [--input FILE] [--check]`: a Wayland compositor in Coax (docs/os/2026-10-30-coderos-and-coax-audit.md,
 // step 2 row 6). It serves real Wayland clients on SOCKET (WAYLAND_DISPLAY may name it as a full path):
 // wl_compositor, wl_subcompositor, wl_shm, wl_seat, wl_output, wl_data_device_manager (the clipboard),
 // zxdg_decoration_manager_v1 (server-side: the compositor draws the borders) and xdg_wm_base, and it places every
@@ -1455,13 +1455,14 @@ cx_screens_parse :: (text: string, w: [] int, h: [] int) -> int {
 }
 tool_main :: () -> int #export_c {
   a: [1] Args; ok := args_load(a[..]);
-  pos: [5] string; np := 0; want_screen := false; input := ""; screens := ""; want_x := false; ai := 0;
+  pos: [5] string; np := 0; want_screen := false; input := ""; screens := ""; want_x := false; check := false; ai := 0;
   while ok && ai < args_count(a[..]) {
     v := args_at(a[..], ai);
     if v == "--screen" { want_screen = true; }
     else if v == "--input" && ai + 1 < args_count(a[..]) { ai += 1; input = args_at(a[..], ai); }
     else if v == "--screens" && ai + 1 < args_count(a[..]) { ai += 1; screens = args_at(a[..], ai); }
     else if v == "--xwayland" { want_x = true; }
+    else if v == "--check" { check = true; }   // start up (socket, keymap, rules), say ready, and leave: the update agent's trial
     else if np < 5 { pos[np] = v; np += 1; } else { ok = false; }
     ai += 1;
   }
@@ -1517,9 +1518,10 @@ tool_main :: () -> int #export_c {
   if rl > 0 && cx_rules_parse(x[0].rules[..], cast(string) rt[0..<rl]) < 0 { tool_errln("compositor: a line of the rules file cannot be read"); return 2; }
   cx_damage_all(x);
   cx_say("ready");
+  if check { x[0].quit = true; }
   // the session's start list (Hyprland's exec-once rows), as one program the system writes
   sp2: [1024] u8; stn := 0; for i: 0..<x[0].nlaunch { sp2[stn] = x[0].launch[i]; stn += 1; } for c: "/start" { sp2[stn] = c; stn += 1; }
-  if cxwl_spawn(sp2[0..<stn], sp[0..<sn]) > 0 { cx_say("exec start"); }
+  if !check && cxwl_spawn(sp2[0..<stn], sp[0..<sn]) > 0 { cx_say("exec start"); }
   last := cxwl_ms(); stdin_open := true; input_open := want_screen || input.count > 0;
   while !x[0].quit {
     p := cxwl_poll(8, ifx stdin_open then 1 else 0);

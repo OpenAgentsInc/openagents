@@ -1,0 +1,104 @@
+// CoderOS's update agent, the policy (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 2): what
+// a run does, in place of the branches of os/bin/coder-update (openagents 2ca255550e~1) and the trial
+// verdict coder-service gave it. Each rule came from a failure a CoderOS host had, as that script
+// tells them, and they hold here:
+//   - one run at a time: a second run is skipped, never queued (a queue of builds is how a machine
+//     falls behind itself);
+//   - no build under the free-space floor (a build on a nearly full disk fails as linker errors in
+//     code the change never touched);
+//   - a commit already installed, or one a trial rejected, is not built again;
+//   - a program whose Coax checks fail, or that will not build, is not staged, and what is installed
+//     stays: that is not a rejection, since the next run may have a fixed toolchain;
+//   - a staged program that fails its trial is never switched in, and its commit is rejected;
+//   - a program that fails its check after the switch is switched back to the build before it, and
+//     the commit is rejected;
+//   - old builds are pruned to the newest few, but never one a record still names.
+// It decides what runs on the machine, so it is #authority.
+#authority;
+
+UP_SKIP_LOCKED :: 1; UP_REFUSE_SPACE :: 2; UP_SKIP_INSTALLED :: 3; UP_SKIP_REJECTED :: 4; UP_BUILD :: 5;
+// Before building: what the run does.
+up_start :: (locked: bool, free_gb: int, floor_gb: int, commit: string, installed: string, rejected: string, all_present: bool) -> int {
+  if locked { return UP_SKIP_LOCKED; }
+  if free_gb < floor_gb { return UP_REFUSE_SPACE; }
+  if commit.count > 0 && commit == installed && all_present { return UP_SKIP_INSTALLED; }
+  if commit.count > 0 && commit == rejected { return UP_SKIP_REJECTED; }
+  return UP_BUILD;
+}
+
+// One program's way through a run, as far as it got.
+UpProgram :: struct { built: bool; checked: bool; trial: bool; after: bool; }
+UP_KEEP :: 1;      // nothing changes: a build or check failed (not a rejection)
+UP_REJECT :: 2;    // the trial failed before the switch: nothing changes, the commit is rejected
+UP_COMMIT :: 3;    // every program switched in and passed
+UP_ROLLBACK :: 4;  // a check after the switch failed: every switched program goes back, the commit is rejected
+// The verdict for the whole commit: its programs go in together or not at all, since one checkout
+// built them.
+up_verdict :: (p: [] UpProgram) -> int {
+  for q: p { if !q.built || !q.checked { return UP_KEEP; } }
+  for q: p { if !q.trial { return UP_REJECT; } }
+  for q: p { if !q.after { return UP_ROLLBACK; } }
+  return UP_COMMIT;
+}
+up_rejects :: (verdict: int) -> bool { return verdict == UP_REJECT || verdict == UP_ROLLBACK; }
+// Whether the programs are switched in before the after-switch check: only when every trial passed.
+up_switches :: (p: [] UpProgram) -> bool {
+  for q: p { if !q.built || !q.checked || !q.trial { return false; } }
+  return true;
+}
+
+// Which builds to remove: given each build's name and time (any order), keep the newest `keep` and
+// every name in `named`; marks the ones to remove in out and returns their count.
+UpBuild :: struct { name: [64] u8; nn: int; time: int; }
+up_prune :: (b: [] UpBuild, keep: int, named: [] string, out: [] bool) -> int {
+  n := 0;
+  for i: 0..<b.count {
+    newer := 0;
+    for j: 0..<b.count { if b[j].time > b[i].time || (b[j].time == b[i].time && j < i) { newer += 1; } }
+    nm := b[i];
+    held := false; for s: named { if s.count == nm.nn && up_eq(s, b, i) { held = true; } }
+    out[i] = newer >= keep && !held;
+    if out[i] { n += 1; }
+  }
+  return n;
+}
+up_eq :: (s: string, b: [] UpBuild, i: int) -> bool { for k: 0..<s.count { if s[k] != b[i].name[k] { return false; } } return true; }
+
+// "df -BG --output=avail" prints a header line and then "  123G": the gigabytes, or -1.
+up_free_gb :: (df: string) -> int {
+  line := 0; v := 0; seen := false;
+  for c: df {
+    if c == '\n' { line += 1; continue; }
+    if line == 1 && c >= '0' && c <= '9' { v = v * 10 + cast(int) (c - '0'); seen = true; }
+  }
+  return ifx seen then v else -1;
+}
+
+#test "a run starts only when it may" {
+  #assert up_start(true, 100, 40, "a", "", "", true) == UP_SKIP_LOCKED;
+  #assert up_start(false, 39, 40, "a", "", "", true) == UP_REFUSE_SPACE && up_start(false, 40, 40, "a", "", "", true) == UP_BUILD;
+  #assert up_start(false, 99, 40, "a", "a", "", true) == UP_SKIP_INSTALLED && up_start(false, 99, 40, "a", "a", "", false) == UP_BUILD;
+  #assert up_start(false, 99, 40, "b", "a", "b", true) == UP_SKIP_REJECTED && up_start(false, 99, 40, "", "", "", true) == UP_BUILD;
+}
+#test "the verdict for a commit's programs" {
+  p: [2] UpProgram; p[0] = UpProgram.{built = true, checked = true, trial = true, after = true}; p[1] = p[0];
+  #assert up_verdict(p[..]) == UP_COMMIT && up_switches(p[..]) && !up_rejects(UP_COMMIT);
+  p[1].after = false; #assert up_verdict(p[..]) == UP_ROLLBACK && up_switches(p[..]) && up_rejects(UP_ROLLBACK);
+  p[1].trial = false; #assert up_verdict(p[..]) == UP_REJECT && !up_switches(p[..]) && up_rejects(UP_REJECT);
+  p[1].trial = true; p[0].checked = false; #assert up_verdict(p[..]) == UP_KEEP && !up_switches(p[..]) && !up_rejects(UP_KEEP);
+  p[0].checked = true; p[0].built = false; #assert !up_switches(p[..]);
+  p[0].checked = true; p[0].built = false; p[1] = p[0]; p[1].built = true; #assert up_verdict(p[..]) == UP_KEEP;
+}
+#test "pruning keeps the newest and the named" {
+  b: [4] UpBuild; for i: 0..<4 { b[i].name[0] = cast,trunc(u8) ('a' + i); b[i].nn = 1; b[i].time = 10 * i; }   // d newest
+  out: [4] bool; named: [1] string; named[0] = "a";
+  #assert up_prune(b[..], 2, named[..], out[..]) == 1 && !out[0] && out[1] && !out[2] && !out[3];
+  #assert up_prune(b[..], 1, named[0..<0], out[..]) == 3 && out[0] && !out[3];
+  #assert up_prune(b[..], 9, named[0..<0], out[..]) == 0;
+  b[0].time = 99; #assert up_prune(b[..], 1, named[0..<0], out[..]) == 3 && !out[0] && out[3];   // the first is newest
+  b[1].time = 99; #assert up_prune(b[..], 1, named[0..<0], out[..]) == 3 && !out[0] && out[1];   // a tie keeps the earlier
+}
+#test "free space from df" {
+  #assert up_free_gb("Avail\n  123G\n") == 123 && up_free_gb("Avail\n   7G") == 7 && up_free_gb("Avail\n") == -1 && up_free_gb("") == -1;
+  #assert up_free_gb("Avail\n 0G") == 0 && up_free_gb("Avail\n 9G") == 9 && up_free_gb("Avail\n/5:G") == 5 && up_free_gb("Av4il\n 2G\n3") == 2;
+}
