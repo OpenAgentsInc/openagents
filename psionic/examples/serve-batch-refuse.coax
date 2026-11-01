@@ -1,0 +1,30 @@
+// Chapter 175: what the scheduler refuses. A configuration or arrival list
+// outside the bounds refuses the whole run; a request that can never run is
+// refused at arrival with its reason, and the others still run.
+#import "Basic";
+#load "../lib/serve-batch.coax";
+
+whole :: (label:string,cfg:CbConfig,q:[]CbRequest) {
+    print("%: %\n",label,cb_status_name(cb_run(cfg,q).status));
+}
+// book:begin refuse
+main :: () {
+    c:=cb_hand_config();q:=cb_hand();
+    whole("the hand-traced run",c,q[..]);
+    x:=c;x.tokens=1;whole("1 token per step for 2 slots",x,q[..]);
+    x=c;x.state=14;whole("state charge equal to the budget",x,q[..]);
+    x=c;x.weight[1]=9;whole("a weight of 9",x,q[..]);
+    y:=q;y[1].arrive=1;whole("arrivals out of order",c,y[..]);
+    whole("no requests",c,q[0..<0]);
+    x=c;x.steps=4;whole("a 4-step limit",x,q[..]);
+    bad:=[4]CbRequest.[CbRequest.{client=0,prompt=0,output=4},CbRequest.{client=2,prompt=1,output=1},
+        CbRequest.{client=1,prompt=7,output=8},CbRequest.{client=1,prompt=7,output=7}];
+    r:=cb_run(c,bad[..]);
+    for i:0..<4 {
+        f:=r.fate[i];b:=bad[i];
+        print("request % (client %, prompt %, output %): ",i,b.client,b.prompt,b.output);
+        if f.status==CbStatus.ok {print("finished at step %\n",f.finish);}
+        else {print("refused (%)\n",cb_status_name(f.status));}
+    }
+}
+// book:end refuse

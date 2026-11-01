@@ -1,0 +1,11 @@
+the hand-traced run: ok
+1 token per step for 2 slots: configuration out of bounds
+state charge equal to the budget: configuration out of bounds
+a weight of 9: configuration out of bounds
+arrivals out of order: arrival list out of bounds or out of order
+no requests: arrival list out of bounds or out of order
+a 4-step limit: step limit reached
+request 0 (client 0, prompt 0, output 4): refused (empty prompt or output)
+request 1 (client 2, prompt 1, output 1): refused (unknown client)
+request 2 (client 1, prompt 7, output 8): refused (state never fits the budget)
+request 3 (client 1, prompt 7, output 7): finished at step 7

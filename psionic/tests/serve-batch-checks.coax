@@ -1,0 +1,117 @@
+// Chapter 175's check helpers, loaded by psionic/lib/serve-batch.coax and
+// owned by its checks: random small workloads, a brute-force simulator of
+// the same policy written by rescanning every request at every step, and a
+// stand-in model (a four-wide attention over each request's own cache) that
+// runs a schedule's rows and runs each request alone.
+
+cbx_next :: (h:int)->int {return (h*1103515245+12345)%2147483648;}
+// A workload from a seed: 1 to 12 requests from 1 to 3 clients, some
+// refused (an empty prompt, an unknown client, too large for the budget).
+CbxWork :: struct {cfg:CbConfig;n:int;req:[12]CbRequest;}
+cbx_work :: (seed:int)->CbxWork {
+    w:CbxWork;h:=cbx_next(seed*7919+17);
+    w.cfg.slots=1+h%4;h=cbx_next(h);w.cfg.tokens=w.cfg.slots+h%6;h=cbx_next(h);
+    w.cfg.clients=1+h%3;h=cbx_next(h);w.cfg.state=h%3;h=cbx_next(h);w.cfg.kv=8+h%24;h=cbx_next(h);w.cfg.steps=400;
+    for c:0..<3 {w.cfg.weight[c]=1+h%3;h=cbx_next(h);}
+    w.n=1+h%12;h=cbx_next(h);at:=0;
+    for i:0..<w.n {
+        at+=h%3/2*(h%5);h=cbx_next(h);
+        r:=CbRequest.{arrive=at,client=h%(w.cfg.clients*8+1)/8};h=cbx_next(h);
+        r.prompt=h%11;h=cbx_next(h);r.output=1+h%6;h=cbx_next(h);
+        w.req[i]=r;
+    }
+    return w;
+}
+cbx_charge :: (cfg:CbConfig,r:CbRequest)->int {return (r.prompt+r.output+cfg.state)*840/cfg.weight[r.client];}
+
+// The brute-force simulator: textbook start-time fair queueing. Running,
+// waiting and memory in use are recounted from every request's record at
+// every step; a client's virtual time is reset only when it goes from
+// nothing waiting to something waiting.
+CbxFate :: struct {status:CbStatus;admit:int;first:int;finish:int;order:int;}
+cbx_simulate :: (w:CbxWork)->[12]CbxFate {
+    f:[12]CbxFate;filled:[12]int;emitted:[12]int;vt:[3]int;now:=0;admitted:=0;
+    for i:0..<w.n {f[i].admit=-1;f[i].first=-1;f[i].finish=-1;f[i].order=-1;}
+    resolved:=0;t:=0;
+    while resolved<w.n {
+        for i:0..<w.n {
+            r:=w.req[i];
+            if r.arrive!=t {continue;}
+            if r.prompt==0 {f[i].status=CbStatus.shape;resolved+=1;continue;}
+            if r.client>=w.cfg.clients {f[i].status=CbStatus.client;resolved+=1;continue;}
+            if r.prompt+r.output+w.cfg.state>w.cfg.kv {f[i].status=CbStatus.budget;resolved+=1;continue;}
+            idle:=true;for j:0..<i {if w.req[j].client==r.client && f[j].status==CbStatus.ok && f[j].admit<0 && w.req[j].arrive<=t {idle=false;}}
+            if idle && vt[r.client]<now {vt[r.client]=now;}
+        }
+        while true {
+            running:=0;used:=0;
+            for i:0..<w.n {if f[i].admit>=0 && f[i].finish<0 {running+=1;used+=w.req[i].prompt+w.req[i].output+w.cfg.state;}}
+            if running==w.cfg.slots {break;}
+            best:=-1;head:=-1;
+            for c:0..<w.cfg.clients {
+                first:=-1;
+                for i:0..<w.n {if first<0 && w.req[i].client==c && w.req[i].arrive<=t && f[i].status==CbStatus.ok && f[i].admit<0 {first=i;}}
+                if first>=0 && (best<0 || vt[c]<vt[best]) {best=c;head=first;}
+            }
+            if best<0 {break;}
+            if used+w.req[head].prompt+w.req[head].output+w.cfg.state>w.cfg.kv {break;}
+            f[head].admit=t;f[head].order=admitted;admitted+=1;now=vt[best];vt[best]+=cbx_charge(w.cfg,w.req[head]);
+        }
+        // Running requests in admission order.
+        order:[12]int;m:=0;
+        for k:0..<admitted {for i:0..<w.n {if f[i].order==k && f[i].finish<0 {order[m]=i;m+=1;}}}
+        budget:=w.cfg.tokens;
+        for k:0..<m {i:=order[k];if filled[i]==w.req[i].prompt {emitted[i]+=1;budget-=1;}}
+        for k:0..<m {
+            i:=order[k];
+            while filled[i]<w.req[i].prompt && budget>0 {filled[i]+=1;budget-=1;if filled[i]==w.req[i].prompt {emitted[i]=1;f[i].first=t;}}
+        }
+        for k:0..<m {i:=order[k];if emitted[i]==w.req[i].output {f[i].finish=t;resolved+=1;}}
+        t+=1;
+    }
+    return f;
+}
+
+// The stand-in model: token t's key and value are its embedding; position p
+// attends to positions 0 to p of its own request; the next token is the
+// highest-scoring of 16 (the lowest on a tie). Fixed order everywhere.
+CBX_DIM :: 4;
+CBX_VOCAB :: 16;
+CBX_POSITIONS :: 32;
+cbx_embed :: (tok:int,j:int)->f64 {return cast(f64)((tok*5+j*3)%7-3)*0.25;}
+cbx_prompt :: (seed:int,i:int,p:int)->int {return (seed+7*i+3*p+p*p)%CBX_VOCAB;}
+cbx_row :: (cache:[]f64,p:int,tok:int)->int {
+    for j:0..<CBX_DIM {cache[p*CBX_DIM+j]=cbx_embed(tok,j);}
+    score:[32]f64;m:=-1000000.0;
+    for i:0..<p+1 {s:=0.0;for j:0..<CBX_DIM {s+=cache[p*CBX_DIM+j]*cache[i*CBX_DIM+j]*cast(f64)(1+i%3);}score[i]=s;if s>m {m=s;}}
+    out:[4]f64;den:=0.0;
+    for i:0..<p+1 {e:=exp(score[i]-m);den+=e;for j:0..<CBX_DIM {out[j]+=e*cache[i*CBX_DIM+j];}}
+    best:=0;top:=-1000000.0;
+    for v:0..<CBX_VOCAB {
+        l:=0.0;for j:0..<CBX_DIM {l+=out[j]/den*cbx_embed(v,j)*cast(f64)(1+(v+j+p)%3);}
+        if l>top {top=l;best=v;}
+    }
+    return best;
+}
+// Request i run alone: its prompt in one pass, then one token at a time.
+cbx_alone :: (seed:int,i:int,r:CbRequest,out:[]int) {
+    cache:[128]f64;
+    for p:0..<r.prompt+r.output-1 {
+        tok:=ifx p<r.prompt then cbx_prompt(seed,i,p) else out[p-r.prompt];
+        nxt:=cbx_row(cache[..],p,tok);
+        if p>=r.prompt-1 {out[p-r.prompt+1]=nxt;}
+    }
+}
+
+// The hand-traced workload of chapter 175.
+cb_hand_config :: ()->CbConfig {
+    c:=CbConfig.{slots=2,tokens=4,kv=14,state=0,clients=2,steps=100};c.weight[0]=1;c.weight[1]=1;return c;
+}
+cb_hand :: ()->[5]CbRequest {
+    return [5]CbRequest.[CbRequest.{client=0,arrive=0,prompt=5,output=2},CbRequest.{client=0,arrive=0,prompt=2,output=2},
+        CbRequest.{client=1,arrive=0,prompt=3,output=1},CbRequest.{client=1,arrive=1,prompt=20,output=1},
+        CbRequest.{client=1,arrive=2,prompt=2,output=3}];
+}
+cb_row_is :: (s:CbState,k:int,req:int,at:int,count:int,emit:bool)->bool {
+    r:=s.rows[k];return r.req==req && r.at==at && r.count==count && r.emit==emit;
+}

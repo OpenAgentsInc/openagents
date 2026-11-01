@@ -1,0 +1,49 @@
+// Chapter 175: the hand-traced schedule step by step, then one workload at
+// concurrency 1, 4 and 8 against the modeled step time.
+#import "Basic";
+#load "../lib/serve-batch.coax";
+
+NAMES :: "ABCDE";
+show_step :: (s:CbState) {
+    print("step %:",s.step-1);
+    for k:0..<s.nrows {
+        r:=s.rows[k];print(" % ",NAMES[r.req..<r.req+1]);
+        if r.count==1 {print("%",r.at);} else {print("%-%",r.at,r.at+r.count-1);}
+        if r.emit {print(" emits");}
+        if k+1<s.nrows {print(",");}
+    }
+    print("; then kv %/%, % running\n",s.kv,s.cfg.kv,s.nrun);
+}
+// Nanoseconds as seconds with three decimals.
+secs :: (label:string,ns:int) {
+    m:=(ns+500000)/1000000;f:=m%1000;
+    pad:=ifx f<10 then "00" else ifx f<100 then "0" else "";
+    print("%", label);print("%.", m/1000);print("%", pad);print("% s", f);
+}
+// book:begin main
+main :: () {
+    q:=cb_hand();s:=cb_start(cb_hand_config(),q[..]);
+    while s.done<s.n {s=cb_step(s);show_step(s);}
+    for i:0..<s.n {
+        f:=s.fate[i];
+        if f.status==CbStatus.ok {print("%: admitted at step % (order %), first token %, finished %\n",NAMES[i..<i+1],f.admit,f.order,f.first,f.finish);}
+        else {print("%: refused (%)\n",NAMES[i..<i+1],cb_status_name(f.status));}
+    }
+    print("virtual time: client 0 %, client 1 %\n",s.vt[0],s.vt[1]);
+    // 16 requests from 4 clients in chapter 71's shape: 1,024 prompt
+    // positions and 128 output tokens each, 512 positions per step.
+    work:[16]CbRequest;
+    for i:0..<16 {work[i]=CbRequest.{client=i%4,prompt=1024,output=128};}
+    print("modeled (%), 16 requests of 1,024 + 128:\n",CB_PROFILE);
+    for c:0..<3 {
+        n:=ifx c==0 then 1 else 4*c;
+        cfg:=CbConfig.{slots=n,tokens=512,kv=2048*n,clients=4,steps=CB_STEPS};
+        for k:0..<4 {cfg.weight[k]=1;}
+        p:=cb_report(cb_run(cfg,work[..]));
+        tenths:=cast(int)(p.tok_s*10+0.5);
+        print("concurrency %: % steps",n,p.steps);secs(", ",p.ns);print(", %.% tokens/s\n",tenths/10,tenths%10);
+        secs("  latency P50 ",p.latency50);secs(", P95 ",p.latency95);
+        secs("; first token P50 ",p.first50);secs(", P95 ",p.first95);print("\n");
+    }
+}
+// book:end main

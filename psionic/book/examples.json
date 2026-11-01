@@ -1812,6 +1812,26 @@
       ]
     },
     {
+      "source": "psionic/examples/serve-batch.coax",
+      "chapter": "psionic/book/ch175-continuous-batching-and-a-fair-scheduler.md",
+      "stdout": "psionic/fixtures/serve-batch/serve-batch.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-batch-refuse.coax",
+      "chapter": "psionic/book/ch175-continuous-batching-and-a-fair-scheduler.md",
+      "stdout": "psionic/fixtures/serve-batch/serve-batch-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/serve-meter.coax",
       "chapter": "psionic/book/ch180-observe-meter-and-price.md",
       "stdout": "psionic/fixtures/serve-meter/serve-meter.out",

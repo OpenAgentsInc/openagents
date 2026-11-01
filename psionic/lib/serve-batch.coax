@@ -1,0 +1,459 @@
+// Chapter 175: continuous batching and a fair scheduler. An iteration-level
+// scheduler: at every step it takes arrivals, admits requests while a batch
+// slot is free and the head request's whole state fits the memory budget,
+// gives every decoding request one token, spends the rest of the step's
+// token budget on prompt chunks, and retires finished requests. Which client
+// goes next is decided by virtual time (start-time fair queueing): the
+// backlogged client with the smallest virtual time, charged need * 840 /
+// weight per admission. A request is refused at arrival when its prompt or
+// output is empty, its client is unknown, or its state can never fit.
+// Profile cb-iteration-v1: integer steps and positions; the timing model is
+// a straight line through chapter 71's two gpt-oss-20b receipts.
+#authority;
+#load "../tests/serve-batch-checks.coax";  // the checks' brute-force simulator and stand-in model
+
+CB_PROFILE :: "cb-iteration-v1";
+CB_REQUESTS :: 64;
+CB_CLIENTS :: 8;
+CB_SLOTS :: 16;
+CB_TOKENS :: 4096;
+CB_KV :: 1048576;
+CB_STEPS :: 8192;
+CB_WEIGHT :: 8;
+// Divisible by every weight 1 to 8, so every charge is an exact integer.
+CB_SCALE :: 840;
+// book:begin timing
+// Modeled step time: 17,792,472 ns for one row (chapter 71's decode, 2.277436 s
+// for 128 tokens) plus 1,459,182 ns per further row (its tensor-core prefill,
+// 1.510536 s for 1,024 rows, on the same line). A model, not a measurement.
+CB_STEP_NS :: 17792472;
+CB_ROW_NS :: 1459182;
+// book:end timing
+
+CbStatus :: enum u8 {ok;config;order;shape;client;budget;steps;}
+// book:begin types
+// slots: most requests running at once. tokens: most positions processed in
+// one step. kv: the state budget in positions. state: positions charged per
+// request for state that is not KV (recurrent or convolution state).
+// steps: the most steps a run may take; every arrival comes before it.
+CbConfig :: struct {slots:int;tokens:int;kv:int;state:int;clients:int;steps:int;weight:[8]int;}
+CbRequest :: struct {client:int;arrive:int;prompt:int;output:int;}
+// Steps at which a request was admitted, produced its first token and
+// finished; its place in the admission order; modeled clock readings.
+CbFate :: struct {status:CbStatus;admit:int;first:int;finish:int;order:int;start_ns:int;first_ns:int;finish_ns:int;}
+// One running request's work in one step: positions at..<at+count; emit
+// when the last of them yields an output token.
+CbRow :: struct {req:int;at:int;count:int;emit:bool;}
+// book:end types
+CbState :: struct {
+    status:CbStatus;cfg:CbConfig;n:int;req:[64]CbRequest;fate:[64]CbFate;
+    step:int;admitted:int;done:int;clock:int;
+    vt:[8]int;now:int;queued:[8]int;
+    run:[16]int;nrun:int;kv:int;
+    filled:[64]int;emitted:[64]int;
+    rows:[16]CbRow;nrows:int;used:int;
+}
+CbReport :: struct {status:CbStatus;steps:int;tokens:int;ns:int;tok_s:f64;latency50:int;latency95:int;first50:int;first95:int;}
+
+// Checks come first. The hand trace is derived in chapter 175; its
+// workload is in psionic/tests/serve-batch-checks.coax.
+// book:begin check-hand
+#test "the hand trace, step by step" {
+    q:=cb_hand();s:=cb_start(cb_hand_config(),q[..]);#assert s.status==CbStatus.ok && s.n==5 && s.step==0;
+    // Step 0: A, then C (client 1's virtual time 0 is below client 0's 5,880); A takes all 4 tokens.
+    s=cb_step(s);#assert s.nrun==2 && s.run[0]==0 && s.run[1]==2 && s.kv==11 && s.nrows==1 && cb_row_is(s,0,0,0,4,false) && s.used==4;
+    #assert s.vt[0]==5880 && s.vt[1]==3360 && s.now==0 && s.queued[0]==1 && s.queued[1]==0;
+    // Step 1: D can never fit; A finishes its prompt, C prefills and finishes.
+    s=cb_step(s);#assert s.fate[3].status==CbStatus.budget && s.done==2 && s.nrows==2 && cb_row_is(s,0,0,4,1,true) && cb_row_is(s,1,2,0,3,true);
+    #assert s.fate[2].finish==1 && s.nrun==1 && s.kv==7 && s.used==4;
+    // Step 2: E arrives at virtual time 3,360 < 5,880 and goes before B.
+    s=cb_step(s);#assert s.fate[4].admit==2 && s.now==3360 && s.vt[1]==7560 && cb_row_is(s,0,0,5,1,true) && cb_row_is(s,1,4,0,2,true) && s.used==3;
+    #assert s.fate[0].finish==2 && s.kv==5;
+    s=cb_step(s);#assert s.fate[1].admit==3 && s.now==5880 && s.vt[0]==9240 && cb_row_is(s,0,4,2,1,true) && cb_row_is(s,1,1,0,2,true) && s.kv==9;
+    s=cb_step(s);#assert s.nrows==2 && cb_row_is(s,0,4,3,1,true) && cb_row_is(s,1,1,2,1,true) && s.done==5 && s.nrun==0 && s.kv==0 && s.step==5;
+    want:=[5]CbFate.[CbFate.{admit=0,first=1,finish=2,order=0},CbFate.{admit=3,first=3,finish=4,order=3},CbFate.{admit=0,first=1,finish=1,order=1},
+        CbFate.{status=CbStatus.budget,admit=-1,first=-1,finish=-1,order=-1},CbFate.{admit=2,first=2,finish=4,order=2}];
+    r:=cb_run(cb_hand_config(),q[..]);#assert r.status==CbStatus.ok && r.step==5;
+    for i:0..<5 {f:=r.fate[i];w:=want[i];#assert f.status==w.status && f.admit==w.admit && f.first==w.first && f.finish==w.finish && f.order==w.order;}
+}
+// book:end check-hand
+#test "the hand trace's clock: one row, then a row more per token" {
+    q:=cb_hand();r:=cb_run(cb_hand_config(),q[..]);
+    // Steps of 4, 4, 3, 3 and 2 tokens.
+    t:=[5]int.[cb_step_ns(4),cb_step_ns(4),cb_step_ns(3),cb_step_ns(3),cb_step_ns(2)];
+    #assert cb_step_ns(1)==CB_STEP_NS && cb_step_ns(2)==CB_STEP_NS+CB_ROW_NS && cb_step_ns(0)==0 && cb_step_ns(1024)==1510535658;
+    #assert r.clock==t[0]+t[1]+t[2]+t[3]+t[4] && r.fate[4].start_ns==t[0]+t[1] && r.fate[4].first_ns==t[0]+t[1]+t[2];
+    #assert r.fate[0].start_ns==0 && r.fate[0].first_ns==t[0]+t[1] && r.fate[0].finish_ns==t[0]+t[1]+t[2] && r.fate[1].finish_ns==r.clock;
+    #assert r.fate[3].start_ns==t[0] && r.fate[3].finish_ns==0;
+    p:=cb_report(r);#assert p.status==CbStatus.ok && p.steps==5 && p.tokens==8 && p.ns==r.clock && p.tok_s==8.0*1000000000.0/cast(f64)r.clock;
+    // Latencies A, B, C, E sorted: C, E, A, B; ranks ceil(0.5 * 4) = 2 and ceil(0.95 * 4) = 4.
+    #assert p.latency50==r.fate[4].finish_ns-r.fate[4].start_ns && p.latency95==r.clock;
+    #assert p.first50==t[0]+t[1] && p.first95==t[0]+t[1]+t[2]+t[3];
+}
+#test "configurations and arrival orders that are refused" {
+    q:=cb_hand();c:=cb_hand_config();
+    #assert cb_start(c,q[..]).status==CbStatus.ok;
+    x:=c;x.slots=0;#assert cb_start(x,q[..]).status==CbStatus.config;
+    x=c;x.slots=16;x.tokens=16;#assert cb_start(x,q[..]).status==CbStatus.ok;x.slots=17;x.tokens=17;#assert cb_start(x,q[..]).status==CbStatus.config;
+    x=c;x.tokens=1;#assert cb_start(x,q[..]).status==CbStatus.config;x.tokens=2;#assert cb_start(x,q[..]).status==CbStatus.ok;
+    x=c;x.tokens=4096;#assert cb_start(x,q[..]).status==CbStatus.ok;x.tokens=4097;#assert cb_start(x,q[..]).status==CbStatus.config;
+    // A budget of 0 fails the state rule 0 <= state < kv.
+    x=c;x.kv=0;#assert cb_start(x,q[..]).status==CbStatus.config;
+    x=c;x.kv=1;#assert cb_start(x,q[..]).status==CbStatus.ok;x.kv=CB_KV;#assert cb_start(x,q[..]).status==CbStatus.ok;x.kv=CB_KV+1;#assert cb_start(x,q[..]).status==CbStatus.config;
+    x=c;x.state=-1;#assert cb_start(x,q[..]).status==CbStatus.config;x.state=13;#assert cb_start(x,q[..]).status==CbStatus.ok;x.state=14;#assert cb_start(x,q[..]).status==CbStatus.config;
+    x=c;x.clients=0;#assert cb_start(x,q[..]).status==CbStatus.config;
+    x=c;x.clients=8;for k:0..<8 {x.weight[k]=8;}#assert cb_start(x,q[..]).status==CbStatus.ok;x.clients=9;#assert cb_start(x,q[..]).status==CbStatus.config;
+    x=c;x.weight[0]=0;#assert cb_start(x,q[..]).status==CbStatus.config;
+    x=c;x.weight[1]=0;#assert cb_start(x,q[..]).status==CbStatus.config;x.weight[1]=9;#assert cb_start(x,q[..]).status==CbStatus.config;
+    // Weights past the last client are not read.
+    x=c;x.weight[2]=0;#assert cb_start(x,q[..]).status==CbStatus.ok;
+    #assert cb_start(c,q[0..<0]).status==CbStatus.order && cb_start(c,q[0..<1]).status==CbStatus.ok;
+    many:[65]CbRequest;for i:0..<65 {many[i]=q[0];}
+    #assert cb_start(c,many[0..<64]).status==CbStatus.ok && cb_start(c,many[..]).status==CbStatus.order;
+    y:=q;y[2].arrive=-1;#assert cb_start(c,y[..]).status==CbStatus.order;
+    y=q;y[4].arrive=99;#assert cb_start(c,y[..]).status==CbStatus.ok;y[4].arrive=100;#assert cb_start(c,y[..]).status==CbStatus.order;
+    y=q;y[0].arrive=-1;#assert cb_start(c,y[..]).status==CbStatus.order;
+    // Arrivals must not go backwards.
+    y=q;y[3].arrive=0;#assert cb_start(c,y[..]).status==CbStatus.ok;y[4].arrive=0;#assert cb_start(c,y[..]).status==CbStatus.ok;
+    y=q;y[1].arrive=1;#assert cb_start(c,y[..]).status==CbStatus.order;
+    y=q;y[0].arrive=1;#assert cb_start(c,y[..]).status==CbStatus.order;
+    #assert cb_run(x,q[..]).status==CbStatus.ok;x.slots=0;#assert cb_run(x,q[..]).status==CbStatus.config && cb_run(x,q[..]).step==0;
+}
+#test "requests refused at arrival, each with its reason" {
+    c:=cb_hand_config();
+    q:=[6]CbRequest.[CbRequest.{client=0,prompt=0,output=1},CbRequest.{client=0,prompt=1,output=0},CbRequest.{client=-1,prompt=1,output=1},
+        CbRequest.{client=2,prompt=1,output=1},CbRequest.{client=1,prompt=7,output=7},CbRequest.{client=1,prompt=7,output=8}];
+    r:=cb_run(c,q[..]);#assert r.status==CbStatus.ok && r.done==6;
+    #assert r.fate[0].status==CbStatus.shape && r.fate[1].status==CbStatus.shape && r.fate[2].status==CbStatus.client && r.fate[3].status==CbStatus.client;
+    #assert r.fate[4].status==CbStatus.ok && r.fate[4].finish>=0 && r.fate[5].status==CbStatus.budget && r.fate[5].admit== -1;
+    // The state charge counts: 14 positions with state 1 is one too many.
+    c.state=1;r=cb_run(c,q[4..<5]);#assert r.fate[0].status==CbStatus.budget;
+    q[4].prompt=6;r=cb_run(c,q[4..<5]);#assert r.fate[0].status==CbStatus.ok && r.kv==0;
+    // A refused prompt that would overflow the sum.
+    q[5].prompt=4611686018427387904;q[5].output=4611686018427387904;r=cb_run(c,q[5..<6]);#assert r.fate[0].status==CbStatus.budget;
+    p:=cb_report(r);#assert p.tokens==0 && p.ns==0 && p.tok_s==0 && p.latency50==0 && p.first95==0;
+    // Nothing to report from a refused run.
+    c.slots=0;#assert cb_report(cb_run(c,q[..])).status==CbStatus.config;
+}
+#test "the step limit: 10 steps run, 11 do not" {
+    c:=cb_hand_config();c.steps=10;c.kv=100;
+    q:=[1]CbRequest.[CbRequest.{prompt=1,output=10}];
+    r:=cb_run(c,q[..]);#assert r.status==CbStatus.ok && r.step==10 && r.fate[0].finish==9;
+    // One finished request: its own latency is every rank.
+    p:=cb_report(r);#assert p.latency50==r.clock && p.latency95==r.clock && p.first50==CB_STEP_NS && p.first95==CB_STEP_NS && p.tokens==10;
+    q[0].output=1;p=cb_report(cb_run(c,q[..]));#assert p.tok_s==1000000000.0/cast(f64)CB_STEP_NS && p.tokens==1 && p.ns==CB_STEP_NS;
+    q[0].output=11;r=cb_run(c,q[..]);#assert r.status==CbStatus.steps && r.step==10 && cb_report(r).status==CbStatus.steps;
+    c.steps=0;#assert cb_start(c,q[..]).status==CbStatus.config;c.steps=1;#assert cb_start(c,q[..]).status==CbStatus.ok;
+    c.steps=CB_STEPS;#assert cb_start(c,q[..]).status==CbStatus.ok;c.steps=CB_STEPS+1;#assert cb_start(c,q[..]).status==CbStatus.config;
+}
+#test "a client that returns keeps its own virtual time; a new one starts at the current one" {
+    c:=cb_hand_config();c.slots=1;c.tokens=16;c.kv=100;c.clients=3;c.weight[2]=1;
+    one:=CbRequest.{prompt=1,output=1};
+    q:=[8]CbRequest.[one,one,one,one,CbRequest.{client=1,prompt=9,output=1},
+        CbRequest.{client=1,arrive=3,prompt=1,output=1},CbRequest.{client=2,arrive=3,prompt=1,output=1},CbRequest.{client=2,arrive=3,prompt=1,output=1}];
+    // Charges: 1,680 for a 2-position request, 8,400 for client 1's first.
+    // Steps 0 to 2 admit client 0 (tie), client 1 (0 < 1,680), client 0: current time 1,680.
+    // Step 3: client 1 returns at its own 8,400; client 2 starts at 1,680, not 0.
+    r:=cb_run(c,q[..]);
+    want:=[8]int.[0,2,4,6,1,7,3,5];
+    for i:0..<8 {#assert r.fate[i].order==want[i] && r.fate[i].admit==want[i];}
+    #assert r.vt[0]==6720 && r.vt[1]==10080 && r.vt[2]==5040 && r.now==8400;
+}
+#test "ties go to the lowest client; a heavier weight is charged less" {
+    c:=cb_hand_config();c.slots=1;c.tokens=1;c.kv=100;c.weight[1]=2;
+    q:=[6]CbRequest.[CbRequest.{client=1,prompt=1,output=1},CbRequest.{client=0,prompt=1,output=1},CbRequest.{client=0,prompt=1,output=1},
+        CbRequest.{client=1,prompt=1,output=1},CbRequest.{client=1,prompt=1,output=1},CbRequest.{client=1,prompt=1,output=1}];
+    r:=cb_run(c,q[..]);
+    // Charges: 2 * 840 / 1 = 1,680 for client 0, 840 for client 1. Order: 0 (tie at 0, client 0), then client 1 at 0,
+    // client 1 at 840, a tie at 1,680 to client 0, then client 1 at 1,680 and 2,520.
+    #assert r.fate[1].order==0 && r.fate[0].order==1 && r.fate[3].order==2 && r.fate[2].order==3 && r.fate[4].order==4 && r.fate[5].order==5;
+    #assert r.vt[0]==3360 && r.vt[1]==3360;
+}
+#test "the head of the line waits for room; nothing passes it" {
+    c:=cb_hand_config();c.kv=10;c.slots=3;c.tokens=8;
+    // Client 0's 8-position request runs; client 1's 6-position request waits although client 0's 2-position one would fit.
+    q:=[3]CbRequest.[CbRequest.{client=0,prompt=4,output=4},CbRequest.{client=1,prompt=3,output=3},CbRequest.{client=0,prompt=1,output=1}];
+    r:=cb_run(c,q[..]);
+    #assert r.fate[0].admit==0 && r.fate[1].admit==r.fate[0].finish+1 && r.fate[2].admit==r.fate[1].admit && r.fate[1].order==1;
+    // Exactly at the budget fits.
+    c.kv=10;q[1].prompt=1;q[1].output=2;s:=cb_step(cb_start(c,q[0..<2]));#assert s.nrun==1 && s.kv==8;
+    c.kv=11;s=cb_step(cb_start(c,q[0..<2]));#assert s.nrun==2 && s.kv==11;
+}
+#test "decode before prefill: a running stream is never starved by a long prompt" {
+    c:=cb_hand_config();c.slots=2;c.tokens=2;c.kv=100;
+    q:=[2]CbRequest.[CbRequest.{client=0,prompt=1,output=5},CbRequest.{client=1,arrive=1,prompt=9,output=1}];
+    s:=cb_start(c,q[..]);s=cb_step(s);#assert s.nrows==1 && cb_row_is(s,0,0,0,1,true);
+    // Steps 1 to 4: one decode row, then one prompt position.
+    for k:1..<5 {s=cb_step(s);#assert s.nrows==2 && cb_row_is(s,0,0,k,1,true) && cb_row_is(s,1,1,k-1,1,false) && s.used==2;}
+    s=cb_step(s);#assert s.nrows==1 && cb_row_is(s,0,1,4,2,false);
+    // Budget left over with nothing to prefill is not spent.
+    c.tokens=5;s=cb_step(cb_start(c,q[0..<1]));s=cb_step(s);#assert s.nrows==1 && s.used==1;
+}
+
+// Independent checks on random small workloads (psionic/tests/serve-batch-checks.coax).
+#forall "the scheduler equals a brute-force simulator of the same policy" seed:0..<150 {
+    w:=cbx_work(seed);r:=cb_run(w.cfg,w.req[0..<w.n]);b:=cbx_simulate(w);
+    #assert r.status==CbStatus.ok && r.done==w.n;
+    for i:0..<w.n {f:=r.fate[i];g:=b[i];#assert f.status==g.status && f.admit==g.admit && f.first==g.first && f.finish==g.finish && f.order==g.order;}
+}
+#forall "every step keeps its budgets, and a decoding request gets a token every step" seed:0..<150 {
+    w:=cbx_work(seed);s:=cb_start(w.cfg,w.req[0..<w.n]);
+    while s.done<s.n {
+        s=cb_step(s);
+        kv:=0;for k:0..<s.nrun {kv+=cb_need(s,s.run[k]);}
+        rows:=0;for k:0..<s.nrows {rows+=s.rows[k].count;#assert s.rows[k].count>0;for j:0..<k {#assert s.rows[j].req!=s.rows[k].req;}}
+        #assert s.kv==kv && kv<=s.cfg.kv && s.nrun<=s.cfg.slots && s.used==rows && rows<=s.cfg.tokens;
+    }
+    for i:0..<s.n {
+        f:=s.fate[i];
+        if f.status==CbStatus.ok {#assert f.admit>=s.req[i].arrive && f.first>=f.admit && f.finish-f.first==s.req[i].output-1;}
+        else {#assert f.admit== -1 && f.order== -1;}
+    }
+}
+// From the moment a request heads its client's queue until it is admitted,
+// another client d is admitted at most floor(C / c_d) + 1 times, where C is
+// the largest charge in the workload and c_d is d's smallest.
+#forall "no request waits past its starvation bound" seed:0..<150 {
+    w:=cbx_work(seed);r:=cb_run(w.cfg,w.req[0..<w.n]);
+    most:=0;least:[3]int;
+    for i:0..<w.n {
+        if r.fate[i].status!=CbStatus.ok {continue;}
+        q:=cbx_charge(w.cfg,w.req[i]);c:=w.req[i].client;
+        if q>most {most=q;}
+        if least[c]==0 || q<least[c] {least[c]=q;}
+    }
+    for i:0..<w.n {
+        if r.fate[i].status!=CbStatus.ok {continue;}
+        c:=w.req[i].client;head:=0;
+        for j:0..<w.n {if r.fate[j].status==CbStatus.ok && r.fate[j].admit<w.req[i].arrive {head+=1;}}
+        for j:0..<i {if w.req[j].client==c && r.fate[j].status==CbStatus.ok && r.fate[j].order+1>head {head=r.fate[j].order+1;}}
+        for d:0..<w.cfg.clients {
+            if d==c {continue;}
+            passed:=0;
+            for j:0..<w.n {if w.req[j].client==d && r.fate[j].order>=head && r.fate[j].order<r.fate[i].order {passed+=1;}}
+            if passed>0 {#assert passed<=most/least[d]+1;}
+        }
+    }
+}
+// With every client backlogged from step 0, service per unit of weight
+// (positions * 840 / weight) differs between clients by at most the largest
+// charge, after every admission until the first client runs dry.
+#forall "each client's share follows its weight within one charge" seed:0..<100 {
+    w:=cbx_work(seed);w.cfg.clients=3;w.cfg.kv=31;w.n=12;h:=seed*31+7;
+    for i:0..<12 {h=cbx_next(h);w.req[i]=CbRequest.{client=i%3,prompt=1+h%5,output=1+h/8%3};}
+    r:=cb_run(w.cfg,w.req[..]);most:=0;
+    for i:0..<12 {q:=cbx_charge(w.cfg,w.req[i]);if q>most {most=q;}}
+    served:[3]int;left:=[3]int.[4,4,4];
+    for k:0..<12 {
+        for i:0..<12 {if r.fate[i].order==k {served[w.req[i].client]+=cbx_charge(w.cfg,w.req[i]);left[w.req[i].client]-=1;}}
+        if left[0]==0 || left[1]==0 || left[2]==0 {break;}
+        for a:0..<3 {for b:0..<3 {#assert served[a]-served[b]<=most;}}
+    }
+}
+// Batch invariance: running the schedule's rows through the stand-in model
+// gives every request the tokens it gets when run alone.
+#forall "each request's tokens equal its solo run" seed:0..<100 #steps 100000000 {
+    w:=cbx_work(seed);s:=cb_start(w.cfg,w.req[0..<w.n]);
+    cache:[1536]f64;out:[72]int;got:[12]int;
+    while s.done<s.n {
+        s=cb_step(s);
+        for k:0..<s.nrows {
+            row:=s.rows[k];i:=row.req;r:=s.req[i];
+            for p:row.at..<row.at+row.count {
+                tok:=ifx p<r.prompt then cbx_prompt(seed,i,p) else out[i*6+p-r.prompt];
+                nxt:=cbx_row(cache[i*128..<(i+1)*128],p,tok);
+                if p==row.at+row.count-1 && row.emit {out[i*6+got[i]]=nxt;got[i]+=1;}
+            }
+        }
+    }
+    for i:0..<s.n {
+        r:=s.req[i];
+        if s.fate[i].status!=CbStatus.ok {#assert got[i]==0;continue;}
+        alone:[6]int;cbx_alone(seed,i,r,alone[..]);
+        #assert got[i]==r.output;
+        for t:0..<r.output {#assert out[i*6+t]==alone[t];}
+    }
+}
+
+// book:begin start
+// Refuse a configuration or arrival list outside the bounds; otherwise an
+// empty schedule at step 0.
+cb_start :: (cfg:CbConfig,reqs:[]CbRequest)->CbState {
+    s:CbState;s.cfg=cfg;s.status=CbStatus.config;
+    if cfg.slots<1 || cfg.slots>CB_SLOTS || cfg.tokens<cfg.slots || cfg.tokens>CB_TOKENS || cfg.kv>CB_KV {return s;}
+    if cfg.state<0 || cfg.state>=cfg.kv || cfg.clients<1 || cfg.clients>CB_CLIENTS || cfg.steps<1 || cfg.steps>CB_STEPS {return s;}
+    for c:0..<cfg.clients {if cfg.weight[c]<1 || cfg.weight[c]>CB_WEIGHT {return s;}}
+    s.status=CbStatus.order;
+    if reqs.count<1 || reqs.count>CB_REQUESTS {return s;}
+    for i:0..<reqs.count {
+        a:=reqs[i].arrive;
+        if a<0 || a>=cfg.steps || (i>0 && a<reqs[i-1].arrive) {return s;}
+        s.req[i]=reqs[i];s.fate[i]=CbFate.{admit=-1,first=-1,finish=-1,order=-1};
+    }
+    s.n=reqs.count;s.status=CbStatus.ok;
+    return s;
+}
+// book:end start
+
+cb_need :: (s:CbState,i:int)->int {return s.req[i].prompt+s.req[i].output+s.cfg.state;}
+// Branch-free, as chapter 33's rp_min: exact for every value here, far below 2^53.
+cb_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+cb_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+
+// book:begin arrive
+// Arrivals at this step: refuse what can never run; queue the rest. The
+// client's virtual time becomes the current one if it was behind it, so a
+// client that idled earns no credit. (A client with requests queued is never
+// behind: the current virtual time is the smallest queued client's.)
+cb_arrive :: (from:CbState)->CbState {
+    s:=from;
+    for i:0..<s.n {
+        r:=s.req[i];
+        if r.arrive==s.step {
+            s.fate[i].start_ns=s.clock;
+            f:=CbStatus.ok;
+            if r.prompt<1 || r.output<1 {f=CbStatus.shape;}
+            else if r.client<0 || r.client>=s.cfg.clients {f=CbStatus.client;}
+            else if r.prompt>s.cfg.kv-s.cfg.state-r.output {f=CbStatus.budget;}
+            s.fate[i].status=f;
+            if f!=CbStatus.ok {s.done+=1;}
+            else {
+                s.vt[r.client]=cb_max(s.vt[r.client],s.now);
+                s.queued[r.client]+=1;
+            }
+        }
+    }
+    return s;
+}
+// book:end arrive
+
+// book:begin admit
+// Admit while a slot is free: the backlogged client with the smallest
+// virtual time (the lowest index on a tie) offers its oldest request; if that
+// request's state does not fit, admission stops for this step.
+cb_admit :: (from:CbState)->CbState {
+    s:=from;
+    while s.nrun<s.cfg.slots {
+        c:=-1;
+        for d:0..<s.cfg.clients {if s.queued[d]>0 && (c<0 || s.vt[d]<s.vt[c]) {c=d;}}
+        if c<0 {return s;}
+        h:=0;
+        while s.req[h].client!=c || s.fate[h].status!=CbStatus.ok || s.fate[h].admit>=0 {h+=1;}
+        need:=cb_need(s,h);
+        if s.kv+need>s.cfg.kv {return s;}
+        s.fate[h].admit=s.step;s.fate[h].order=s.admitted;s.admitted+=1;
+        s.now=s.vt[c];s.vt[c]+=need*CB_SCALE/s.cfg.weight[c];s.queued[c]-=1;
+        s.run[s.nrun]=h;s.nrun+=1;s.kv+=need;
+    }
+    return s;
+}
+// book:end admit
+
+// book:begin tokens
+// Every decoding request gets one position; the rest of the step's budget
+// goes to prompt chunks in admission order. The chunk that ends a prompt
+// yields the first output token.
+cb_tokens :: (from:CbState)->CbState {
+    s:=from;
+    budget:=s.cfg.tokens;s.nrows=0;
+    for k:0..<s.nrun {
+        i:=s.run[k];
+        if s.filled[i]==s.req[i].prompt {
+            s.rows[s.nrows]=CbRow.{req=i,at=s.req[i].prompt+s.emitted[i]-1,count=1,emit=true};
+            s.nrows+=1;s.emitted[i]+=1;budget-=1;
+        }
+    }
+    for k:0..<s.nrun {
+        i:=s.run[k];left:=s.req[i].prompt-s.filled[i];
+        if left>0 && budget>0 {
+            n:=cb_min(left,budget);
+            s.rows[s.nrows]=CbRow.{req=i,at=s.filled[i],count=n,emit=n==left};
+            s.nrows+=1;s.filled[i]+=n;budget-=n;
+            if n==left {s.emitted[i]=1;s.fate[i].first=s.step;}
+        }
+    }
+    s.used=s.cfg.tokens-budget;
+    return s;
+}
+// book:end tokens
+
+// book:begin step
+// One iteration: arrivals, admission, tokens, then retire every request
+// whose last output token came out, freeing its slot and its state.
+cb_step :: (from:CbState)->CbState {
+    s:=cb_tokens(cb_admit(cb_arrive(from)));
+    s.clock+=cb_step_ns(s.used);
+    m:=0;
+    for k:0..<s.nrun {
+        i:=s.run[k];
+        if s.fate[i].first==s.step {s.fate[i].first_ns=s.clock;}
+        if s.emitted[i]==s.req[i].output {s.fate[i].finish=s.step;s.fate[i].finish_ns=s.clock;s.kv-=cb_need(s,i);s.done+=1;}
+        else {s.run[m]=i;m+=1;}
+    }
+    s.nrun=m;s.step+=1;
+    return s;
+}
+cb_run :: (cfg:CbConfig,reqs:[]CbRequest)->CbState {
+    s:=cb_start(cfg,reqs);
+    if s.status!=CbStatus.ok {return s;}
+    while s.done<s.n && s.step<s.cfg.steps {s=cb_step(s);}
+    if s.done<s.n {s.status=CbStatus.steps;}
+    return s;
+}
+// book:end step
+
+cb_step_ns :: (rows:int)->int #export_c {
+    if rows<1 {return 0;}
+    return CB_STEP_NS+(rows-1)*CB_ROW_NS;
+}
+// Nearest rank: the value at rank k = ceil(p * n / 100) in sorted order, the
+// one with fewer than k values below it and at least k at or below it; 0
+// when there are no values.
+cb_rank :: (x:[]int,p:int)->int {
+    k:=(p*x.count+99)/100;
+    for v:x {
+        below:=0;atmost:=0;
+        for w:x {if w<v {below+=1;}if w<=v {atmost+=1;}}
+        if below<k && k<=atmost {return v;}
+    }
+    return 0;
+}
+// book:begin report
+// Aggregate output tokens per modeled second, and nearest-rank P50 and P95
+// of each finished request's latency and time to first token.
+cb_report :: (s:CbState)->CbReport {
+    p:=CbReport.{status=s.status,steps=s.step,ns=s.clock};
+    if s.status!=CbStatus.ok {return p;}
+    lat:[64]int;first:[64]int;n:=0;
+    for i:0..<s.n {
+        f:=s.fate[i];
+        if f.status==CbStatus.ok {lat[n]=f.finish_ns-f.start_ns;first[n]=f.first_ns-f.start_ns;p.tokens+=s.req[i].output;n+=1;}
+    }
+    p.latency50=cb_rank(lat[0..<n],50);p.latency95=cb_rank(lat[0..<n],95);
+    p.first50=cb_rank(first[0..<n],50);p.first95=cb_rank(first[0..<n],95);
+    if p.tokens>0 {p.tok_s=cast(f64)p.tokens*1000000000.0/cast(f64)s.clock;}
+    return p;
+}
+// book:end report
+
+cb_status_name :: (s:CbStatus)->string {
+    names:=[7]string.["ok","configuration out of bounds","arrival list out of bounds or out of order","empty prompt or output",
+        "unknown client","state never fits the budget","step limit reached"];
+    return names[cast(int)s];
+}
+#test "P50 and P95 of twenty requests served one at a time" {
+    c:=cb_hand_config();c.slots=1;c.kv=100;q:[20]CbRequest;
+    for i:0..<20 {q[i]=CbRequest.{prompt=1,output=1};}
+    // Request k finishes after k + 1 one-row steps: rank 10 of 20, and rank 19.
+    p:=cb_report(cb_run(c,q[..]));
+    #assert p.latency50==10*CB_STEP_NS && p.first50==10*CB_STEP_NS && p.latency95==19*CB_STEP_NS && p.first95==19*CB_STEP_NS && p.ns==20*CB_STEP_NS;
+}
+#test "names" {
+    #assert cb_status_name(CbStatus.ok)=="ok" && cb_status_name(CbStatus.config)=="configuration out of bounds" && cb_status_name(CbStatus.steps)=="step limit reached";
+    #assert cb_status_name(CbStatus.order)=="arrival list out of bounds or out of order" && cb_status_name(CbStatus.shape)=="empty prompt or output";
+    #assert cb_status_name(CbStatus.client)=="unknown client" && cb_status_name(CbStatus.budget)=="state never fits the budget";
+    // Sorted: 1, 1, 3, 4, 5.
+    x:=[5]int.[5,1,4,1,3];
+    #assert cb_rank(x[..],50)==3 && cb_rank(x[..],95)==5 && cb_rank(x[..],100)==5 && cb_rank(x[..],20)==1 && cb_rank(x[..],21)==1 && cb_rank(x[..],40)==1 && cb_rank(x[..],41)==3;
+    #assert cb_rank(x[..],1)==1 && cb_rank(x[..],0)==0 && cb_rank(x[0..<0],50)==0 && cb_rank(x[2..<3],1)==4;
+}
