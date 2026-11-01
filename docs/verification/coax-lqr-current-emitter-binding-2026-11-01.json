@@ -1,0 +1,388 @@
+{
+  "schema": "coax.locomotion-lqr.current-emitter-publication.v1",
+  "passed": true,
+  "original_record": {
+    "bytes": 12868,
+    "sha256": "af3aa1e6ccc65e64e80c15a6b284bb3fbe996e153779fa3fcc83ef735c0ec9cd"
+  },
+  "record": {
+    "schema": "coax.locomotion-lqr.current-emitter-binding.v1",
+    "passed": true,
+    "commands": [
+      {
+        "label": "source-head",
+        "argv": [
+          "git",
+          "rev-parse",
+          "HEAD"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.023856124957092106,
+        "stdout": {
+          "bytes": 41,
+          "sha256": "bcf52fa18979354c374123734e3506456a6dc8ce4970215f452082a2be2d57f2"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "current-fingerprint",
+        "argv": [
+          "bash",
+          "coax/provenance.sh",
+          "fingerprint",
+          "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 1.935130207973998,
+        "stdout": {
+          "bytes": 65,
+          "sha256": "8e5afac16c9abf07a6c2819eede39cfb3a096a1b0dcc7a6849efbbdc5e3fff05"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "metadata-provenance",
+        "argv": [
+          "bash",
+          "coax/provenance.sh",
+          "verify",
+          "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/coax",
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/provenance-check",
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/provenance.record"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 1.995628750009928,
+        "stdout": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "emit-math-debug",
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/coax",
+          "c",
+          "psionic/tests/robotics/locomotion-lqr-native.coax",
+          "--library",
+          "--header",
+          "/private/tmp/locomotion-lqr-current-emitter-binding-first/debug/locomotion-lqr.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.6590513749979436,
+        "stdout": {
+          "bytes": 340815,
+          "sha256": "f3ab70913e287808277133db20060555b14087eb836d3e63b5a222e497a93b70"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "emit-example-debug",
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/coax",
+          "c",
+          "psionic/examples/locomotion-lqr.coax"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.6687738749897107,
+        "stdout": {
+          "bytes": 340342,
+          "sha256": "1767085e9562492a92e162d7aa9e8b60c716f3c74008f7a183ab2edf117ce7e2"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "header-example-debug",
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/coax",
+          "header",
+          "psionic/examples/locomotion-lqr.coax"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.6405936250230297,
+        "stdout": {
+          "bytes": 97443,
+          "sha256": "c459cea49f8379f9dc825b2bf9cfbc2aaf05c716bb844deb378547bcea1449ee"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "emit-math-release",
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/coax",
+          "c",
+          "psionic/tests/robotics/locomotion-lqr-native.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/private/tmp/locomotion-lqr-current-emitter-binding-first/release/locomotion-lqr.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.6700324160046875,
+        "stdout": {
+          "bytes": 338330,
+          "sha256": "118234848c8a5cd67e7722c5a7aa37892a6ad96a306c9c274682527fdbbbbb87"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "emit-example-release",
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/coax",
+          "c",
+          "psionic/examples/locomotion-lqr.coax",
+          "--release"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.6782595419790596,
+        "stdout": {
+          "bytes": 337858,
+          "sha256": "abab3b5907aab61ea49ce51b383ecd06d7c9a1425e34c13eb400ad185a129f4f"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "header-example-release",
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/coax",
+          "header",
+          "psionic/examples/locomotion-lqr.coax",
+          "--release"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 0.6642167079844512,
+        "stdout": {
+          "bytes": 97443,
+          "sha256": "c459cea49f8379f9dc825b2bf9cfbc2aaf05c716bb844deb378547bcea1449ee"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      {
+        "label": "final-fingerprint",
+        "argv": [
+          "bash",
+          "coax/provenance.sh",
+          "fingerprint",
+          "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+        "timeout_seconds": 180,
+        "exit": 0,
+        "seconds": 1.9517906659748405,
+        "stdout": {
+          "bytes": 65,
+          "sha256": "8e5afac16c9abf07a6c2819eede39cfb3a096a1b0dcc7a6849efbbdc5e3fff05"
+        },
+        "stderr": {
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      }
+    ],
+    "compiler_builds": 0,
+    "numeric_math_native_learning_model_reruns": 0,
+    "repository_cache_writes": false,
+    "source_commit": "65a0abd75202038428dafc33ac0fc80537dcdeca",
+    "source_fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+    "carried_peer_proofs": {
+      "docs/verification/coax-return-borrow-summaries-2026-11-01/integration.json": {
+        "bytes": 12639,
+        "sha256": "7f96fc9f427454d47b3daa1c3f76c3af6a4adb19fe1780452970d9e1851dd1b6"
+      },
+      "docs/verification/coax-return-borrow-summaries-2026-11-01/record.json": {
+        "bytes": 1446,
+        "sha256": "532cf76d1e302df8fa69026f41a79f306e6868ae4e9e8c9c20ec2aeeac2d59f1"
+      }
+    },
+    "current_compiler": {
+      "path": "/Users/christopherdavid/.cache/coax-release/7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d/coax",
+      "bytes": 3128424,
+      "sha256": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9"
+    },
+    "current_provenance": {
+      "provenance-check": {
+        "bytes": 34320,
+        "sha256": "af5c8b19c176278bc61cebdff04f871a75fb53c1be0b23528106de31d6ab1869"
+      },
+      "provenance.record": {
+        "bytes": 214,
+        "sha256": "fb567685597ed6d252427e77a0bdd6e6764e17b42c7fbc6ca239fad84fd52d90"
+      }
+    },
+    "original_math_receipt": {
+      "bytes": 35485,
+      "sha256": "a27896408ffbc78e6d88b1a76fb55bae6d89ff7eedf4e62c70293c202bb1cad7"
+    },
+    "original_learning_receipt": {
+      "bytes": 139098,
+      "sha256": "ff76cad74d27c1f37a549a669c191e9b9d0a97af143fe222d76d3e132288f606"
+    },
+    "historical_source_bindings": {
+      "files": 28,
+      "changed": []
+    },
+    "historical_carried_helpers": {
+      "files": 7,
+      "changed": []
+    },
+    "historical_frozen_math_inputs": {
+      "files": 39,
+      "changed": []
+    },
+    "original_example_receipt": {
+      "bytes": 5391,
+      "sha256": "e5ed62bf03796e2898cb76a0cb59fe5765365907bb73e1bbe4ebcc4607d62ab3"
+    },
+    "comparisons": {
+      "math-debug-C": {
+        "current": {
+          "bytes": 340815,
+          "sha256": "f3ab70913e287808277133db20060555b14087eb836d3e63b5a222e497a93b70"
+        },
+        "original": {
+          "bytes": 340815,
+          "sha256": "f3ab70913e287808277133db20060555b14087eb836d3e63b5a222e497a93b70"
+        },
+        "byte_exact": true
+      },
+      "math-debug-header": {
+        "current": {
+          "bytes": 99459,
+          "sha256": "f533ff3d44e75bcc4d1fc80ab1b849d219b2f2e0345e5fa8e754e042c91b6ce0"
+        },
+        "original": {
+          "bytes": 99459,
+          "sha256": "f533ff3d44e75bcc4d1fc80ab1b849d219b2f2e0345e5fa8e754e042c91b6ce0"
+        },
+        "byte_exact": true
+      },
+      "example-debug-C": {
+        "current": {
+          "bytes": 340342,
+          "sha256": "1767085e9562492a92e162d7aa9e8b60c716f3c74008f7a183ab2edf117ce7e2"
+        },
+        "original": {
+          "bytes": 340342,
+          "sha256": "1767085e9562492a92e162d7aa9e8b60c716f3c74008f7a183ab2edf117ce7e2"
+        },
+        "byte_exact": true
+      },
+      "example-debug-header": {
+        "current": {
+          "bytes": 97443,
+          "sha256": "c459cea49f8379f9dc825b2bf9cfbc2aaf05c716bb844deb378547bcea1449ee"
+        },
+        "original": {
+          "bytes": 97443,
+          "sha256": "c459cea49f8379f9dc825b2bf9cfbc2aaf05c716bb844deb378547bcea1449ee"
+        },
+        "byte_exact": true
+      },
+      "math-release-C": {
+        "current": {
+          "bytes": 338330,
+          "sha256": "118234848c8a5cd67e7722c5a7aa37892a6ad96a306c9c274682527fdbbbbb87"
+        },
+        "original": {
+          "bytes": 338330,
+          "sha256": "118234848c8a5cd67e7722c5a7aa37892a6ad96a306c9c274682527fdbbbbb87"
+        },
+        "byte_exact": true
+      },
+      "math-release-header": {
+        "current": {
+          "bytes": 99459,
+          "sha256": "f533ff3d44e75bcc4d1fc80ab1b849d219b2f2e0345e5fa8e754e042c91b6ce0"
+        },
+        "original": {
+          "bytes": 99459,
+          "sha256": "f533ff3d44e75bcc4d1fc80ab1b849d219b2f2e0345e5fa8e754e042c91b6ce0"
+        },
+        "byte_exact": true
+      },
+      "example-release-C": {
+        "current": {
+          "bytes": 337858,
+          "sha256": "abab3b5907aab61ea49ce51b383ecd06d7c9a1425e34c13eb400ad185a129f4f"
+        },
+        "original": {
+          "bytes": 337858,
+          "sha256": "abab3b5907aab61ea49ce51b383ecd06d7c9a1425e34c13eb400ad185a129f4f"
+        },
+        "byte_exact": true
+      },
+      "example-release-header": {
+        "current": {
+          "bytes": 97443,
+          "sha256": "c459cea49f8379f9dc825b2bf9cfbc2aaf05c716bb844deb378547bcea1449ee"
+        },
+        "original": {
+          "bytes": 97443,
+          "sha256": "c459cea49f8379f9dc825b2bf9cfbc2aaf05c716bb844deb378547bcea1449ee"
+        },
+        "byte_exact": true
+      }
+    },
+    "all_four_context_C_H_pairs_byte_exact": true,
+    "scope": "Existing fully peer-qualified current7c image reused with exact current provenance. Only four LQR math/example debug/release C/H contexts emitted; all eight artifacts byte-exact to original908 qualification. Original math/learning/example/source tests carried without rerun. No compiler build or full bootstrap/release qualification performed here.",
+    "seconds": 9.918850708054379,
+    "binding_tool": {
+      "bytes": 6100,
+      "sha256": "4d986f5c7d25295766bd61c5da0a74d118a6909dc2aefb8731db2d516600b42e"
+    }
+  },
+  "executed_binding_tool": {
+    "identity": {
+      "bytes": 6100,
+      "sha256": "4d986f5c7d25295766bd61c5da0a74d118a6909dc2aefb8731db2d516600b42e"
+    },
+    "source": "from pathlib import Path\nimport json,hashlib,subprocess,time,difflib\nROOT=Path('/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents');OUT=Path(__file__).resolve().parent\nFP='7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d';CACHE=Path.home()/'.cache/coax-release'/FP;BINARY=CACHE/'coax';F=ROOT/'psionic/fixtures/robotics/locomotion-lqr'\nr={'schema':'coax.locomotion-lqr.current-emitter-binding.v1','passed':False,'commands':[],'compiler_builds':0,'numeric_math_native_learning_model_reruns':0,'repository_cache_writes':False};began=time.monotonic()\ndef h(p):b=Path(p).read_bytes();return {'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}\ndef need(c,t):\n if not c:raise RuntimeError(t)\ndef save():(OUT/'record.json').write_text(json.dumps(r,indent=2)+'\\n')\ndef cmd(label,args):\n x={'label':label,'argv':list(map(str,args)),'cwd':str(ROOT),'timeout_seconds':180};r['commands'].append(x);t=time.monotonic()\n try:\n  q=subprocess.run(x['argv'],cwd=ROOT,capture_output=True,timeout=180);(OUT/(label+'.stdout')).write_bytes(q.stdout);(OUT/(label+'.stderr')).write_bytes(q.stderr);x.update(exit=q.returncode,seconds=time.monotonic()-t,stdout=h(OUT/(label+'.stdout')),stderr=h(OUT/(label+'.stderr')));need(q.returncode==0 and not q.stderr,label+' pass/empty stderr');return q.stdout\n finally:save()\ndef verify(mapping,base=ROOT):\n changed=[n for n,v in mapping.items() if h(base/n)!=v];need(not changed,'changed historical inputs '+repr(changed));return {'files':len(mapping),'changed':changed}\ntry:\n r['source_commit']=cmd('source-head',['git','rev-parse','HEAD']).decode().strip();r['source_fingerprint']=cmd('current-fingerprint',['bash','coax/provenance.sh','fingerprint',ROOT]).decode().strip();need(r['source_fingerprint']==FP,'exact available current cache fingerprint')\n peer=ROOT/'docs/verification/coax-return-borrow-summaries-2026-11-01/integration.json';archive=ROOT/'docs/verification/coax-return-borrow-summaries-2026-11-01/record.json';p=json.loads(peer.read_text());a=json.loads(archive.read_text());r['carried_peer_proofs']={str(x.relative_to(ROOT)):h(x) for x in [peer,archive]};need(p['compiler_input_fingerprint']==a['fingerprint']==FP and p['compiler_image_sha256']==a['image_sha256']==h(BINARY)['sha256'],'qualified peer source/image');need(p['checker_survivors']==0 and a['outcome']=='validated-archive','completed peer qualification carried, not repeated')\n r['current_compiler']={'path':str(BINARY),**h(BINARY)};r['current_provenance']={n:h(CACHE/n) for n in ['provenance-check','provenance.record']};cmd('metadata-provenance',['bash','coax/provenance.sh','verify',ROOT,BINARY,CACHE/'provenance-check',CACHE/'provenance.record'])\n q=json.loads((F/'native-qualification.json').read_text());e=json.loads((F/'experiment.json').read_text());r['original_math_receipt']=h(F/'native-qualification.json');r['original_learning_receipt']=h(F/'learning-execution/record.json');r['historical_source_bindings']=verify(q['source']);r['historical_carried_helpers']=verify(e['carried']);r['historical_frozen_math_inputs']=verify(q['frozen'],Path('/'));r['original_example_receipt']=h(F/'example-qualification.json');example=json.loads((F/'example-qualification.json').read_text());need(example['passed'],'original example passed')\n r['comparisons']={}\n for mode,extra in [('debug',[]),('release',['--release'])]:\n  d=OUT/mode;d.mkdir();c=d/'locomotion-lqr.c';head=d/'locomotion-lqr.h';c.write_bytes(cmd('emit-math-'+mode,[BINARY,'c','psionic/tests/robotics/locomotion-lqr-native.coax','--library',*extra,'--header',head]));old=Path('/tmp/locomotion-lqr-native-first')/mode\n  for role,file in [('C',c),('header',head)]:\n   source=old/file.name;need(h(source)==q['emissions'][mode][role],'original qualified math '+role);exact=file.read_bytes()==source.read_bytes();r['comparisons']['math-'+mode+'-'+role]={'current':h(file),'original':h(source),'byte_exact':exact}\n   if not exact:(OUT/('math-'+mode+'-'+role+'.diff')).write_text(''.join(difflib.unified_diff(source.read_text().splitlines(True),file.read_text().splitlines(True),fromfile=str(source),tofile=str(file))))\n  c=d/'example.c';head=d/'example.h';c.write_bytes(cmd('emit-example-'+mode,[BINARY,'c','psionic/examples/locomotion-lqr.coax',*extra]));head.write_bytes(cmd('header-example-'+mode,[BINARY,'header','psionic/examples/locomotion-lqr.coax',*extra]));old=Path('/tmp/lqr-example-first')/mode\n  for role,file in [('C',c),('header',head)]:\n   source=old/file.name;need(h(source)==example['modes'][mode][role],'original qualified example '+role);exact=file.read_bytes()==source.read_bytes();r['comparisons']['example-'+mode+'-'+role]={'current':h(file),'original':h(source),'byte_exact':exact}\n   if not exact:(OUT/('example-'+mode+'-'+role+'.diff')).write_text(''.join(difflib.unified_diff(source.read_text().splitlines(True),file.read_text().splitlines(True),fromfile=str(source),tofile=str(file))))\n r['all_four_context_C_H_pairs_byte_exact']=all(x['byte_exact'] for x in r['comparisons'].values());need(r['all_four_context_C_H_pairs_byte_exact'],'changed current emission; inspect retained diffs without numeric rerun')\n verify(q['source']);verify(e['carried']);verify(q['frozen'],Path('/'));need(h(BINARY)=={k:r['current_compiler'][k] for k in ['bytes','sha256']},'current image unchanged');need(cmd('final-fingerprint',['bash','coax/provenance.sh','fingerprint',ROOT]).decode().strip()==FP,'source context unchanged');r.update(passed=True,scope='Existing fully peer-qualified current7c image reused with exact current provenance. Only four LQR math/example debug/release C/H contexts emitted; all eight artifacts byte-exact to original908 qualification. Original math/learning/example/source tests carried without rerun. No compiler build or full bootstrap/release qualification performed here.')\nexcept BaseException as x:r['error']=repr(x);raise\nfinally:r['seconds']=time.monotonic()-began;r['binding_tool']=h(__file__);save()\nprint(json.dumps({'passed':r['passed'],'record':h(OUT/'record.json'),'seconds':r['seconds'],'all_exact':r.get('all_four_context_C_H_pairs_byte_exact')}))\n"
+  },
+  "scope": "Current-emitter source/artifact binding only. Existing peer compiler qualification is carried within its original stated scope; provenance is consistency rather than authentication. No compiler build, new full bootstrap/release qualification, numeric/math/native/example execution, learning or model rerun."
+}

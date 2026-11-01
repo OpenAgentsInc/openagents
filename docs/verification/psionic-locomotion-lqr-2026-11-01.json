@@ -87,6 +87,10 @@
     "psionic/fixtures/robotics/locomotion-lqr/book-compact-registry-qualification.json": {
       "bytes": 1786,
       "sha256": "763128178460c3e4ff80300ee424d6da611d7e79197cae636ca39e104c32ba10"
+    },
+    "docs/verification/coax-lqr-current-emitter-binding-2026-11-01.json": {
+      "bytes": 20477,
+      "sha256": "172011918352e78815eb6855837ac50de51b3cc4db7841570299f8122bc9a592"
     }
   },
   "source_proofs": {
@@ -742,7 +746,13 @@
       "maximum_nominal_relative_cost_gap": 0.01
     },
     "all_three_miss_both_goals": true,
-    "tuning_retries_extra_training_best_seed_selection": 0
+    "tuning_retries_extra_training_best_seed_selection": 0,
+    "timing_components_from_existing_receipt": {
+      "native_child_seconds_including_file_effects": 1.1894567889394239,
+      "independent_audit_child_seconds": 206.20955287583638,
+      "child_calls": 62,
+      "new_executions_for_this_summary": 0
+    }
   },
   "registration": {
     "original_receipt": {
@@ -763,18 +773,29 @@
     "format_followup_context": "Preserve original compact registry format and every non171 line; parsed registry JSON equals prior successful input. Original first receipt retained."
   },
   "current_emitter": {
-    "used_directly_for_first_native_math_and_pure_example": true,
-    "compiler": {
-      "bytes": 3012376,
-      "sha256": "edcfc624f8313dde3a53786e2f91dfbb8ab072f74a7d9e48cdbe1635b90912d1"
+    "original_measured_emitter": {
+      "used_directly_for_first_native_math_and_pure_example": true,
+      "compiler": {
+        "bytes": 3012376,
+        "sha256": "edcfc624f8313dde3a53786e2f91dfbb8ab072f74a7d9e48cdbe1635b90912d1"
+      },
+      "original_input_binding": {
+        "bytes": 18912,
+        "sha256": "37e56bd73c8ae7e87d4b276b6e7c53ccf0c4151629e44edf88644065cb810694"
+      }
     },
-    "carried_input_binding": {
-      "bytes": 18912,
-      "sha256": "37e56bd73c8ae7e87d4b276b6e7c53ccf0c4151629e44edf88644065cb810694"
+    "after_main_rebase": {
+      "qualified_current_FP": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+      "qualified_current_image_SHA256": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+      "binding_record": {
+        "bytes": 20477,
+        "sha256": "172011918352e78815eb6855837ac50de51b3cc4db7841570299f8122bc9a592"
+      },
+      "8_C_and_header_artifacts_byte_exact_to_original": true,
+      "math_source28_and_carried_helpers7_and_frozen_inputs39_unchanged": true,
+      "builds_numerical_model_SDK_learning_reruns": 0
     },
-    "unchanged_current_compiler_input_files": 77,
-    "numeric_or_emission_reruns_for_publication": 0,
-    "full_bootstrap_release_qualification_claimed": false
+    "full_bootstrap_release_qualification_claimed_by_this_task": false
   },
   "publication_checks": "Identity/extent/receipt composition only. No product, model, SDK, optimizer, environment, old gate or numerical proof rerun.",
   "limits": [
@@ -1824,6 +1845,10 @@
     "psionic/fixtures/robotics/locomotion-lqr/book-compact-registry-qualification.json": {
       "bytes": 1786,
       "sha256": "763128178460c3e4ff80300ee424d6da611d7e79197cae636ca39e104c32ba10"
+    },
+    "docs/verification/coax-lqr-current-emitter-binding-2026-11-01.json": {
+      "bytes": 20477,
+      "sha256": "172011918352e78815eb6855837ac50de51b3cc4db7841570299f8122bc9a592"
     }
   },
   "publication_hygiene": {
@@ -1838,5 +1863,11 @@
       "--cached",
       "--check"
     ]
+  },
+  "rebase": {
+    "source_commit_after_rebase": "65a0abd75202038428dafc33ac0fc80537dcdeca",
+    "main_parent": "3d39563bc3ef54a231fdedde565d71b853e7dd90",
+    "all_preexisting_published_identities_unchanged": true,
+    "compiler_context_advanced_and_qualified_by_additive_C_header_binding": true
   }
 }
