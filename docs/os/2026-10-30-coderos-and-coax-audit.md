@@ -582,7 +582,42 @@ compiler and the examples have not been run on Linux yet.
 
   Also left: and the protocols foot still reports missing
   (primary selection, fractional scale, activation, text input).
-- **Step 2 row 2: not started.** It waits on a Coax `coder` to update.
+- **Step 2 row 2, the update agent: written and run on `coderos-4080`,
+  not installed.** It didn't need a Coax `coder`. `os/coax-update.coax`
+  updates the machine's Coax programs, and `coder` becomes one more line
+  of its programs file when it is written in Coax. The decisions are in
+  `os/coax-update-policy.coax` (`#authority`, 0 surviving mutants):
+  - one run at a time;
+  - the free-space floor;
+  - skipping an installed or rejected commit;
+  - a commit's programs switch in together or not at all;
+  - a failed trial rejects the commit with nothing switched;
+  - a failed check after the switch puts every program back;
+  - pruning keeps the newest few and any build a record names.
+
+  A run clones `main` (every commit, no old file contents: the compiler's
+  build checks the commits its changelog names, which a shallow clone
+  lacks) and builds the checkout's own compiler with `coax/build.sh`
+  (about 16 minutes). It then compiles each program, runs its Coax
+  checks and its trial (the compositor's is `--check`: it starts, says
+  `ready`, and leaves), and switches `bin/NAME` links.
+
+  On the 4080, in `~/.cache/coax-update-test`:
+  - Two real runs from GitHub installed the compositor and CPU limits at
+    5426f4af89, then at the newer `main`.
+  - A run with the commit installed skipped.
+  - A run while a live process held the lock skipped, and a dead
+    holder's lock was taken over. A first version took the lock with
+    `fs_mkdir`, which succeeds when the directory is there, and two runs
+    overlapped. It now uses `mkdir` without `-p`.
+  - A commit whose compositor failed `--check` was rejected with nothing
+    switched, and its rerun skipped.
+  - A Coax compile error changed nothing and rejected nothing.
+  - `--keep 1` pruned to the new build and the one before it.
+
+  Not run end to end: a check that fails only after the switch (the
+  policy tests cover it). Installing it as a timer, in place of
+  `coder-update.nix`, waits on the same owner yes as the other installs.
 - **Rows 4 to 6 and the compiler.** `#foreign` already passes views of
   integers and floats (a pointer and a length), so a C face can fill a Coax
   buffer, and opaque handles are integers. Capture (row 4) and V4L2

@@ -166,14 +166,17 @@ up_link :: (bindir: string, name: string, target: string) -> bool {
   c: [4096] u8; return fs_rename(next, up_cat3(c[..], bindir, "/", name));
 }
 
+// mkdir(1) without -p, which fails when the directory is there: taking the lock is one atomic step.
+// (fs_mkdir succeeds on a directory that exists, so it cannot be a lock.)
+up_mkdir_new :: (dir: string) -> bool { a: [2] string; a[0] = "mkdir"; a[1] = dir; o: [256] u8; n: [1] int; return up_run(a[..], "", 10000, o[..], n[..]) == 0; }
 up_lock_take :: (lock: string) -> bool {
   pb: [4096] u8; pidfile := up_cat(pb[..], lock, "/pid");
-  if !fs_mkdir(lock) {
+  if !up_mkdir_new(lock) {
     t: [64] u8; n := fs_read(pidfile, t[..]); pid := ifx n > 0 then up_parse_num(up_trim(cast(string) t[0..<n]), 0) else 0;
     pr: [64] u8; nb: [24] u8;
     if pid > 0 && fs_exists(up_cat(pr[..], "/proc/", up_num(pid, nb[..]))) { return false; }   // its holder still runs
     r := fs_remove(pidfile); r = fs_remove(lock);   // a holder that died left it
-    if !fs_mkdir(lock) { return false; }
+    if !up_mkdir_new(lock) { return false; }
   }
   nb2: [24] u8; tx: [64] u8; w := fs_write(pidfile, up_cat(tx[..], up_num(cxproc_self_pid(), nb2[..]), "\n"));
   return true;
