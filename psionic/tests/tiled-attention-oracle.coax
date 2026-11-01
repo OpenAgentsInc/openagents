@@ -1,0 +1,153 @@
+// Chapter 41's check oracles, loaded by psionic/lib/tiled-attention.coax.
+// The dense references are earlier chapters' code, unchanged: chapter 12's
+// qf_attend (one query row against a full mask row, scores narrowed to f32)
+// and chapter 62's ga_step (sinks, a ring-buffer window, YaRN-rotated Q/K).
+// The mask rule here is written separately from ta_allowed.
+#load "../lib/qwen-attention.coax";
+#load "../lib/gptoss-attention.coax";
+
+// Profile tiled-attention-cpu-f64-v1, frozen before any comparison: a tiled
+// output may differ from a dense reference by at most
+// TA_TOLERANCE * (1 + the largest |value|).
+// book:begin tolerance
+TA_TOLERANCE :: 0.00001;
+// book:end tolerance
+to_value :: (i:int)->f32 {return f32((i*37+11)%23-11)/8;}
+// 0 causal, 1 window w, 2 decision block b of 10 keys: a query sees every
+// key before the end of its own block (chapter 12's rule).
+to_allowed :: (kind:int,w:int,b:int,query:int,key:int)->bool {
+    if kind==2 {end:=ifx query<b then b else 10;return key<end;}
+    if kind==1 {return key<=query && query-key<w;}
+    return key<=query;
+}
+to_mask :: (kind:int)->TaMask {
+    if kind==1 {return TaMask.{kind=TaMaskKind.window,window=3};}
+    if kind==2 {return TaMask.{kind=TaMaskKind.decision,block=6};}
+    return TaMask.{};
+}
+// The largest |tiled - dense| over every mask, against chapter 12's qf_attend.
+to_qwen_deviation :: ()->f64 {
+    s:=TaShape.{heads=4,kv_heads=2,head_dim=4,tile=3};f:=QfShape.{heads=4,kv_heads=2,head_dim=4,rotary_dim=0,epsilon=1};
+    q:[160]f32;k:[80]f32;v:[80]f32;for i:0..<160 {q[i]=to_value(i+3);}for i:0..<80 {k[i]=to_value(2*i+1);v[i]=to_value(5*i+2);}
+    out:[160]f32;work:[4096]f64;worst:=0.0;
+    for kind:0..<3 {
+        r:=ta_attend(s,to_mask(kind),0,10,10,q[..],k[..],v[..],q[0..<0],out[..],work[..],false);
+        #assert r.status==TaStatus.ok && r.written==160 && r.loads==8;
+        for p:0..<10 {
+            input:[192]f32;mask:[10]u8;dense:[16]f32;scratch:[16]f32;
+            for h:0..<4 {for i:0..<4 {input[h*4+i]=q[p*16+h*4+i];input[16+h*4+i]=40;}}
+            for i:0..<80 {input[32+i]=k[i];input[112+i]=v[i];}
+            for t:0..<10 {mask[t]=ifx to_allowed(kind,3,6,p,t) then 1 else 0;}
+            #assert qf_attend(f,10,input[..],mask[..],dense[..],scratch[..],false).status==QfStatus.ok;
+            for i:0..<16 {d:=abs(f64(out[p*16+i])-f64(dense[i]));if d>worst {worst=d;}}
+        }
+    }
+    return worst;
+}
+// gpt-oss: run chapter 62's ga_step over eight positions, keep its rotated
+// queries and keys, and compare each row of the tiled kernel with its output.
+ToGpt :: struct {q:[1024]f32;k:[512]f32;v:[512]f32;dense:[1024]f32;sinks:[2]f32;}
+to_gpt :: (window:int)->ToGpt {
+    g:ToGpt;g.sinks[0]=0.5;g.sinks[1]=-1;
+    shape:=GaShape.{heads=2,kv_heads=1,window=window,capacity=ifx window==0 then 8 else window};
+    cache:[1024]f32;work:[512]f32;
+    for p:0..<8 {
+        q:[128]f32;k:[64]f32;v:[64]f32;out:[128]f32;
+        for i:0..<128 {q[i]=to_value(p*128+i)/2;}for i:0..<64 {k[i]=to_value(p*64+3*i)/2;v[i]=to_value(p*64+7*i+1);}
+        r:=ga_step(shape,p,q[..],k[..],v[..],g.sinks[..],cache[..],out[..],work[..],false);
+        #assert r.status==GoStatus.ok;
+        for i:0..<128 {g.q[p*128+i]=work[i];g.dense[p*128+i]=out[i];}
+        for i:0..<64 {g.k[p*64+i]=work[128+i];g.v[p*64+i]=v[i];}
+    }
+    return g;
+}
+to_gpt_mask :: (window:int)->TaMask {return ifx window==0 then TaMask.{} else TaMask.{kind=TaMaskKind.window,window=window};}
+to_gpt_deviation :: ()->f64 {
+    s:=TaShape.{heads=2,kv_heads=1,head_dim=64,tile=3};worst:=0.0;work:[4096]f64;
+    for wi:0..<2 {window:=wi*4;
+        g:=to_gpt(window);
+        for p:0..<8 {
+            out:[128]f32;
+            r:=ta_attend(s,to_gpt_mask(window),p,1,p+1,g.q[p*128..<(p+1)*128],g.k[0..<(p+1)*64],g.v[0..<(p+1)*64],g.sinks[..],out[..],work[..],false);
+            #assert r.status==TaStatus.ok;
+            for i:0..<128 {d:=abs(f64(out[i])-f64(g.dense[p*128+i]));if d>worst {worst=d;}}
+        }
+    }
+    return worst;
+}
+to_same :: (a:[]f32,b:[]f32)->bool {for i:0..<a.count {if f32_bits(a[i])!=f32_bits(b[i]) {return false;}}return true;}
+
+#test "tiled attention matches chapter 12's dense attention for all three masks" {
+    #assert to_qwen_deviation()<=TA_TOLERANCE*(1+1.375);
+}
+#test "tiled attention matches chapter 62's sinks and window" {
+    #assert to_gpt_deviation()<=TA_TOLERANCE*(1+1.375);
+}
+#test "keys a mask hides change nothing, bit for bit" {
+    s:=TaShape.{heads=4,kv_heads=2,head_dim=4,tile=3};
+    q:[16]f32;k:[80]f32;v:[80]f32;for i:0..<16 {q[i]=to_value(i);}for i:0..<80 {k[i]=to_value(2*i+1);v[i]=to_value(5*i+2);}
+    work:[1024]f64;
+    for kind:0..<3 {
+        a:[16]f32;b:[16]f32;p:=ifx kind==2 then 4 else 7;
+        #assert ta_attend(s,to_mask(kind),p,1,10,q[..],k[..],v[..],q[0..<0],a[..],work[..],false).status==TaStatus.ok;
+        hidden:=0;
+        for t:0..<10 {if !to_allowed(kind,3,6,p,t) {hidden+=1;for i:0..<8 {k[t*8+i]=1000;v[t*8+i]=-1000;}}}
+        #assert hidden>0;
+        #assert ta_attend(s,to_mask(kind),p,1,10,q[..],k[..],v[..],q[0..<0],b[..],work[..],false).status==TaStatus.ok;
+        #assert to_same(a[..],b[..]);
+        for i:0..<80 {k[i]=to_value(2*i+1);v[i]=to_value(5*i+2);}
+    }
+}
+#test "chunked prefill equals whole prefill, bit for bit" {
+    s:=TaShape.{heads=2,kv_heads=1,head_dim=64,tile=3};work:[4096]f64;
+    for wi:0..<2 {window:=wi*4;
+        g:=to_gpt(window);m:=to_gpt_mask(window);whole:[1024]f32;chunked:[1024]f32;
+        r:=ta_attend(s,m,0,8,8,g.q[..],g.k[..],g.v[..],g.sinks[..],whole[..],work[..],false);
+        #assert r.status==TaStatus.ok && r.written==1024 && r.loads==3;
+        cuts:=[4]int.[0,3,6,8];
+        for c:0..<3 {
+            a:=cuts[c];b:=cuts[c+1];
+            r=ta_attend(s,m,a,b-a,b,g.q[a*128..<b*128],g.k[0..<b*64],g.v[0..<b*64],g.sinks[..],chunked[a*128..<b*128],work[..],false);
+            #assert r.status==TaStatus.ok;
+        }
+        #assert to_same(whole[..],chunked[..]);
+    }
+    // Chapter 12's decision block: the prefix in two chunks that each see the
+    // whole prefix, then the block, which sees everything.
+    t:=TaShape.{heads=4,kv_heads=2,head_dim=4,tile=3};
+    q:[160]f32;k:[80]f32;v:[80]f32;for i:0..<160 {q[i]=to_value(i+3);}for i:0..<80 {k[i]=to_value(2*i+1);v[i]=to_value(5*i+2);}
+    d:=TaMask.{kind=TaMaskKind.decision,block=6};whole:[160]f32;parts:[160]f32;
+    #assert ta_attend(t,d,0,10,10,q[..],k[..],v[..],q[0..<0],whole[..],work[..],false).status==TaStatus.ok;
+    #assert ta_attend(t,d,0,4,6,q[0..<64],k[0..<48],v[0..<48],q[0..<0],parts[0..<64],work[..],false).status==TaStatus.ok;
+    #assert ta_attend(t,d,4,2,6,q[64..<96],k[0..<48],v[0..<48],q[0..<0],parts[64..<96],work[..],false).status==TaStatus.ok;
+    #assert ta_attend(t,d,6,4,10,q[96..<160],k[..],v[..],q[0..<0],parts[96..<160],work[..],false).status==TaStatus.ok;
+    #assert to_same(whole[..],parts[..]);
+}
+#test "split-K decode: one tile per split is bit for bit, coarser splits are within tolerance" {
+    s:=TaShape.{heads=2,kv_heads=1,head_dim=64,tile=1};work:[4096]f64;
+    for wi:0..<2 {window:=wi*4;
+        g:=to_gpt(window);m:=to_gpt_mask(window);one:[128]f32;split:[128]f32;
+        r:=ta_attend(s,m,7,1,8,g.q[896..<1024],g.k[..],g.v[..],g.sinks[..],one[..],work[..],false);
+        #assert r.status==TaStatus.ok && r.loads==8-window;
+        r=ta_decode_split(s,m,8,8,g.q[896..<1024],g.k[..],g.v[..],g.sinks[..],split[..],work[..],false);
+        #assert r.status==TaStatus.ok && r.written==128 && r.loads==8-window && to_same(one[..],split[..]);
+        for si:0..<3 {splits:=2*si+1;
+            r=ta_decode_split(s,m,8,splits,g.q[896..<1024],g.k[..],g.v[..],g.sinks[..],split[..],work[..],false);
+            #assert r.status==TaStatus.ok;
+            for i:0..<128 {#assert abs(f64(split[i])-f64(one[i]))<=TA_TOLERANCE*(1+1.375);}
+            for i:0..<128 {#assert abs(f64(split[i])-f64(g.dense[896+i]))<=TA_TOLERANCE*(1+1.375);}
+        }
+    }
+}
+#test "each key/value head's tile is loaded once for its whole query group" {
+    q:[256]f32;k:[256]f32;v:[256]f32;out:[256]f32;work:[8192]f64;
+    for gi:0..<3 {group:=1<<gi;
+        s:=TaShape.{heads=2*group,kv_heads=2,head_dim=2,tile=4};
+        r:=ta_attend(s,TaMask.{},0,16,16,q[0..<64*group],k[0..<64],v[0..<64],q[0..<0],out[0..<64*group],work[..],false);
+        #assert r.status==TaStatus.ok && r.loads==8;
+    }
+    // A window skips tiles no row can see: rows 12..15, window 2, keep keys 11..15.
+    s:=TaShape.{heads=2,kv_heads=2,head_dim=2,tile=4};
+    r:=ta_attend(s,TaMask.{kind=TaMaskKind.window,window=2},12,4,16,q[0..<16],k[0..<64],v[0..<64],q[0..<0],out[0..<16],work[..],false);
+    #assert r.status==TaStatus.ok && r.loads==4;
+}

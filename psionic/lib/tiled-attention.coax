@@ -1,0 +1,308 @@
+// Chapter 41: attention in tiles. Online-softmax attention over projected
+// Q/K/V, one key/value tile at a time, so no query-by-key score matrix exists.
+// Profile tiled-attention-cpu-f64-v1: f32 inputs and outputs; binary64
+// scores, exponentials and sums; compensated sums inside a tile; tiles folded
+// in key order, each as a partial (maximum, denominator, value sums) merged
+// into the running state; a sink is the first partial; every output narrowed
+// once to f32 at the end.
+#load "ops.coax";
+#load "../tests/tiled-attention-oracle.coax";   // the checks' dense oracles
+
+// book:begin types
+TaShape :: struct { heads:int; kv_heads:int; head_dim:int; tile:int; }
+TaMaskKind :: enum u8 { causal; window; decision; }
+// window: keys kept, the current one included. block: where chapter 12's
+// decision block starts. Rows before it (the prefix) see the whole prefix;
+// rows from it on see every key.
+TaMask :: struct { kind:TaMaskKind; window:int; block:int; }
+TaStatus :: enum u8 { ok; shape; mask; range; capacity; alias; number; arithmetic; }
+TaPlan :: struct { status:TaStatus; q:int; kv:int; state:int; scratch:int; work:int; }
+// loads: key/value tiles copied; rescales: merges that moved a running maximum.
+TaResult :: struct { status:TaStatus; written:int; loads:int; rescales:int; }
+// book:end types
+
+#test "two tiles: the running maximum moves and the old sums are rescaled" {
+    // One head, head width 1, query 1: scores equal the keys 1, 0 | 3, 3.
+    s:=TaShape.{heads=1,kv_heads=1,head_dim=1,tile=2};
+    q:=[1]f32.[1];k:=[4]f32.[1,0,3,3];v:=[4]f32.[2,4,6,8];
+    tk:=[2]f64.[1,0];tv:=[2]f64.[2,4];scores:[2]f64;first:[3]f64;
+    #assert ta_partial(1,q[..],tk[..],tv[..],0,2,TaMask.{},3,scores[..],first[..])==0;
+    e:=exp(-1.0);
+    #assert first[0]==1 && first[1]==1+e && first[2]==2+4*e;
+    tk[0]=3;tk[1]=3;tv[0]=6;tv[1]=8;second:[3]f64;
+    // A tie keeps the first key as the maximum.
+    #assert ta_partial(1,q[..],tk[..],tv[..],2,2,TaMask.{},3,scores[..],second[..])==0;
+    #assert second[0]==3 && second[1]==2 && second[2]==14;
+    running:[3]f64;#assert !ta_merge(running[..],first[..]);
+    #assert running[0]==1 && running[1]==first[1] && running[2]==first[2];
+    #assert ta_merge(running[..],second[..]);r:=exp(-2.0);
+    #assert running[0]==3 && running[1]==first[1]*r+2 && running[2]==first[2]*r+14;
+    out:=[1]f32.[-7];work:[16]f64;for i:0..<16 {work[i]=7;}
+    res:=ta_attend(s,TaMask.{},3,1,4,q[..],k[..],v[..],q[0..<0],out[..],work[..],false);
+    #assert res.status==TaStatus.ok && res.written==1 && res.loads==2 && res.rescales==1;
+    #assert out[0]==f32(running[2]/running[1]);
+    dense:=(2*exp(1.0)+4+6*exp(3.0)+8*exp(3.0))/(exp(1.0)+1+2*exp(3.0));
+    #assert abs(f64(out[0])-dense)<=0.000001;
+    // A window of one, from a tile it hides entirely, sees nothing.
+    #assert ta_partial(1,q[..],tk[..],tv[..],0,2,TaMask.{kind=TaMaskKind.window,window=1},3,scores[..],second[..])==-1;
+    #assert ta_partial(1,q[..],tk[..],tv[..],1,2,TaMask.{kind=TaMaskKind.window,window=1},2,scores[..],second[..])==1;
+    // Chapter 62's single sink: equal logits halve the one value.
+    sink:=[1]f32.[0];one:=[1]f32.[0];three:=[1]f32.[3];
+    #assert ta_attend(s,TaMask.{},0,1,1,one[..],one[..],three[..],sink[..],out[..],work[..],false).status==TaStatus.ok && out[0]==1.5f32;
+}
+#test "masks: causal, a window that keeps the current key, and the decision block" {
+    c:=TaMask.{};w:=TaMask.{kind=TaMaskKind.window,window=2};d:=TaMask.{kind=TaMaskKind.decision,block=2};
+    #assert ta_allowed(c,3,0) && ta_allowed(c,3,3) && !ta_allowed(c,3,4);
+    #assert !ta_allowed(w,3,1) && ta_allowed(w,3,2) && ta_allowed(w,3,3) && !ta_allowed(w,3,4);
+    #assert ta_allowed(d,0,1) && ta_allowed(d,1,1) && !ta_allowed(d,1,2) && ta_allowed(d,2,3) && ta_allowed(d,2,0) && ta_allowed(d,3,3);
+}
+#test "the plan counts no query-by-key matrix" {
+    s:=TaShape.{heads=8,kv_heads=2,head_dim=64,tile=32};
+    a:=ta_plan(s,64,256,0);b:=ta_plan(s,64,4096,0);
+    #assert a.status==TaStatus.ok && a.q==32768 && a.kv==32768 && a.state==33792 && a.scratch==4194;
+    #assert a.work==37986 && b.work==a.work && b.kv==524288;
+    sp:=ta_plan(s,1,4096,4);#assert sp.status==TaStatus.ok && sp.state==1056 && sp.work==5250;
+}
+
+// book:begin allowed
+ta_allowed :: (m:TaMask,query:int,key:int)->bool {
+    if m.kind==TaMaskKind.decision {return query>=m.block || key<m.block;}
+    if key>query {return false;}
+    return m.kind!=TaMaskKind.window || key>query-m.window;
+}
+// book:end allowed
+
+// book:begin plan
+ta_shape_valid :: (s:TaShape)->bool {
+    if s.heads<1 || s.heads>64 || s.kv_heads<1 || s.kv_heads>8 || s.heads%s.kv_heads!=0 {return false;}
+    return s.head_dim>=1 && s.head_dim<=256 && s.tile>=1 && s.tile<=64;
+}
+// rows: query rows per call (at most 64); tokens: keys (at most 4096);
+// splits: 0 for one pass, or the key splits of a one-row decode.
+ta_plan :: (s:TaShape,rows:int,tokens:int,splits:int)->TaPlan {
+    if !ta_shape_valid(s) {return TaPlan.{status=TaStatus.shape};}
+    if rows<1 || rows>64 || tokens<1 || tokens>4096 || splits<0 || splits>16 {return TaPlan.{status=TaStatus.range};}
+    if splits>0 && (rows!=1 || splits>ta_tiles(s,tokens)) {return TaPlan.{status=TaStatus.range};}
+    one:=s.head_dim+2;state:=rows*s.heads*one*(ifx splits>0 then 2 else 1);scratch:=2*s.tile*s.head_dim+s.tile+one;
+    return TaPlan.{q=rows*s.heads*s.head_dim,kv=tokens*s.kv_heads*s.head_dim,state=state,scratch=scratch,work=state+scratch};
+}
+// book:end plan
+ta_tiles :: (s:TaShape,tokens:int)->int {return (tokens+s.tile-1)/s.tile;}
+ta_mask_valid :: (m:TaMask,tokens:int)->bool {
+    if m.kind==TaMaskKind.causal {return m.window==0 && m.block==0;}
+    if m.kind==TaMaskKind.window {return m.window>=1 && m.block==0;}
+    return m.window==0 && m.block>=0 && m.block<=tokens;
+}
+ta_data :: (a:[]f32)->TaStatus {for x:a {if !psionic_tensor_finite_bits(f32_bits(x)) {return TaStatus.number;}}return TaStatus.ok;}
+ta_slot :: (a:[]f64,index:int,size:int)->[]f64 {return a[index*size..<(index+1)*size];}
+
+// One state or partial is [maximum, denominator, value sums...]; a zero
+// denominator means empty, since any real key contributes exp(0) = 1.
+// Returns whether the running maximum moved.
+// book:begin merge
+ta_merge :: (a:[]f64,b:[]f64)->bool {
+    if b[1]==0 {return false;}
+    if a[1]==0 {for i:0..<a.count {a[i]=b[i];}return false;}
+    moved:=b[0]>a[0];m:=ifx moved then b[0] else a[0];
+    ra:=exp(a[0]-m);rb:=exp(b[0]-m);
+    a[0]=m;
+    for i:1..<a.count {a[i]=a[i]*ra+b[i]*rb;}
+    return moved;
+}
+// book:end merge
+
+// The partial of one query row and head over one loaded tile. Returns the
+// tile offset of its first largest score, or -1 when the mask hides every key.
+// book:begin partial
+ta_partial :: (d:int,q:[]f32,tk:[]f64,tv:[]f64,lo:int,n:int,m:TaMask,query:int,scores:[]f64,part:[]f64)->int {
+    best:=-1;
+    for j:0..<n {
+        if !ta_allowed(m,query,lo+j) {continue;}
+        dot:PsionicAccumulator;
+        for i:0..<d {dot=psionic_ops_accumulate(dot,f64(q[i])*tk[j*d+i]);}
+        scores[j]=psionic_ops_total(dot)/sqrt(f64(d));
+        if best<0 || scores[j]>scores[best] {best=j;}
+    }
+    if best<0 {return -1;}
+    maximum:=scores[best];total:PsionicAccumulator;
+    for j:0..<n {if ta_allowed(m,query,lo+j) {scores[j]=exp(scores[j]-maximum);total=psionic_ops_accumulate(total,scores[j]);}}
+    part[0]=maximum;part[1]=psionic_ops_total(total);
+    for i:0..<d {
+        sum:PsionicAccumulator;
+        for j:0..<n {if ta_allowed(m,query,lo+j) {sum=psionic_ops_accumulate(sum,scores[j]*tv[j*d+i]);}}
+        part[2+i]=psionic_ops_total(sum);
+    }
+    return best;
+}
+// book:end partial
+
+ta_needed :: (m:TaMask,start:int,count:int,lo:int,n:int)->bool {
+    for r:0..<count {for j:0..<n {if ta_allowed(m,start+r,lo+j) {return true;}}}
+    return false;
+}
+// Fold tiles [first, end) into the states of rows start..start+count-1. Each
+// key/value head's tile is copied once and then used by every query row and
+// every query head in its group. Counts loads and rescales.
+// book:begin fold
+ta_fold :: (s:TaShape,m:TaMask,start:int,rows:int,tokens:int,q:[]f32,keys:[]f32,values:[]f32,first:int,end:int,state:[]f64,scratch:[]f64)->TaResult {
+    d:=s.head_dim;kv:=s.kv_heads*d;group:=s.heads/s.kv_heads;one:=d+2;
+    tk:=scratch[0..<s.tile*d];tv:=scratch[s.tile*d..<2*s.tile*d];
+    scores:=scratch[2*s.tile*d..<2*s.tile*d+s.tile];part:=scratch[2*s.tile*d+s.tile..<2*s.tile*d+s.tile+one];
+    count:TaResult;last:=ta_tiles(s,tokens)-1;
+    for g:0..<s.kv_heads {
+        for t:first..<end {
+            lo:=t*s.tile;n:=ifx t==last then tokens-lo else s.tile;
+            if !ta_needed(m,start,rows,lo,n) {continue;}
+            for j:0..<n {for i:0..<d {tk[j*d+i]=f64(keys[(lo+j)*kv+g*d+i]);tv[j*d+i]=f64(values[(lo+j)*kv+g*d+i]);}}
+            count.loads+=1;
+            for r:0..<rows {
+                for h:g*group..<(g+1)*group {
+                    row:=r*s.heads+h;
+                    if ta_partial(d,q[row*d..<(row+1)*d],tk,tv,lo,n,m,start+r,scores,part)>=0 {if ta_merge(ta_slot(state,row,one),part) {count.rescales+=1;}}
+                }
+            }
+        }
+    }
+    return count;
+}
+// book:end fold
+
+// Every state starts empty, or, with sinks, as the sink's partial: its logit
+// as maximum, denominator 1 and no value.
+ta_begin :: (s:TaShape,rows:int,sinks:[]f32,state:[]f64) {
+    one:=s.head_dim+2;
+    for r:0..<rows {for h:0..<s.heads {
+        a:=ta_slot(state,r*s.heads+h,one);
+        if sinks.count==0 {a[1]=0;continue;}
+        a[0]=f64(sinks[h]);a[1]=1;for i:2..<one {a[i]=0;}
+    }}
+}
+// Divide, check every result fits f32, and only then publish.
+ta_finish :: (s:TaShape,rows:int,state:[]f64,out:[]f32)->TaResult {
+    one:=s.head_dim+2;d:=s.head_dim;
+    for row:0..<rows*s.heads {for i:0..<d {if !psionic_ops_fits_f32(state[row*one+2+i]/state[row*one+1]) {return TaResult.{status=TaStatus.arithmetic};}}}
+    for row:0..<rows*s.heads {for i:0..<d {out[row*d+i]=f32(state[row*one+2+i]/state[row*one+1]);}}
+    return TaResult.{written=rows*d*s.heads};
+}
+ta_admit :: (p:TaPlan,s:TaShape,m:TaMask,tokens:int,q:[]f32,keys:[]f32,values:[]f32,sinks:[]f32,out:[]f32,work:[]f64,overlap:bool)->TaStatus {
+    if p.status!=TaStatus.ok {return p.status;}
+    if !ta_mask_valid(m,tokens) {return TaStatus.mask;}
+    if q.count!=p.q || keys.count!=p.kv || values.count!=p.kv || out.count<p.q || work.count<p.work {return TaStatus.capacity;}
+    if sinks.count!=0 && sinks.count!=s.heads {return TaStatus.capacity;}
+    if overlap {return TaStatus.alias;}
+    if ta_data(q)!=TaStatus.ok {return TaStatus.number;}
+    if ta_data(keys)!=TaStatus.ok {return TaStatus.number;}
+    if ta_data(values)!=TaStatus.ok {return TaStatus.number;}
+    return ta_data(sinks);
+}
+
+// Rows start..start+count-1 against keys 0..tokens-1. Chunked prefill calls
+// this once per chunk with tokens = start + count.
+// book:begin attend
+ta_attend :: (s:TaShape,m:TaMask,start:int,count:int,tokens:int,q:[]f32,keys:[]f32,values:[]f32,sinks:[]f32,out:[]f32,work:[]f64,overlap:bool)->TaResult {
+    p:=ta_plan(s,count,tokens,0);
+    if p.status==TaStatus.ok && (start<0 || start+count>tokens) {p.status=TaStatus.range;}
+    status:=ta_admit(p,s,m,tokens,q,keys,values,sinks,out,work,overlap);
+    if status!=TaStatus.ok {return TaResult.{status=status};}
+    state:=work[0..<p.state];ta_begin(s,count,sinks,state);
+    c:=ta_fold(s,m,start,count,tokens,q,keys,values,0,ta_tiles(s,tokens),state,work[p.state..<p.work]);
+    r:=ta_finish(s,count,state,out);r.loads=c.loads;r.rescales=c.rescales;return r;
+}
+// book:end attend
+
+// One decode row at position tokens-1, its tiles cut into contiguous splits
+// that each fold from empty into one partial state; each split's state then
+// merges into the result in key order, after the sink.
+// book:begin split
+ta_decode_split :: (s:TaShape,m:TaMask,tokens:int,splits:int,q:[]f32,keys:[]f32,values:[]f32,sinks:[]f32,out:[]f32,work:[]f64,overlap:bool)->TaResult {
+    p:=ta_plan(s,1,tokens,splits);
+    if p.status==TaStatus.ok && splits<1 {p.status=TaStatus.range;}
+    status:=ta_admit(p,s,m,tokens,q,keys,values,sinks,out,work,overlap);
+    if status!=TaStatus.ok {return TaResult.{status=status};}
+    one:=s.head_dim+2;block:=s.heads*one;tiles:=ta_tiles(s,tokens);c:TaResult;
+    final:=ta_slot(work,0,block);part:=ta_slot(work,1,block);ta_begin(s,1,sinks,final);
+    for j:0..<splits {
+        ta_begin(s,1,sinks[0..<0],part);
+        f:=ta_fold(s,m,tokens-1,1,tokens,q,keys,values,j*tiles/splits,(j+1)*tiles/splits,part,work[p.state..<p.work]);
+        c.loads+=f.loads;c.rescales+=f.rescales;
+        for h:0..<s.heads {if ta_merge(ta_slot(final,h,one),ta_slot(part,h,one)) {c.rescales+=1;}}
+    }
+    r:=ta_finish(s,1,final,out);r.loads=c.loads;r.rescales=c.rescales;return r;
+}
+// book:end split
+
+#test "refusals name their cause and publish nothing" {
+    s:=TaShape.{heads=2,kv_heads=1,head_dim=2,tile=2};q:[4]f32;k:[6]f32;v:[6]f32;sinks:[2]f32;out:=[4]f32.[-7,-7,-7,-7];work:[64]f64;
+    m:=TaMask.{};
+    #assert ta_attend(s,m,2,1,3,q[..],k[..],v[..],sinks[..],out[..],work[..],false).status==TaStatus.ok;
+    for i:0..<4 {out[i]=-7;}
+    #assert ta_attend(TaShape.{heads=3,kv_heads=2,head_dim=2,tile=2},m,2,1,3,q[..],k[..],v[..],sinks[..],out[..],work[..],false).status==TaStatus.shape;
+    #assert ta_attend(s,TaMask.{kind=TaMaskKind.window},2,1,3,q[..],k[..],v[..],sinks[..],out[..],work[..],false).status==TaStatus.mask;
+    #assert ta_attend(s,TaMask.{kind=TaMaskKind.decision,block=4},2,1,3,q[..],k[..],v[..],sinks[..],out[..],work[..],false).status==TaStatus.mask;
+    #assert ta_attend(s,m,3,1,3,q[..],k[..],v[..],sinks[..],out[..],work[..],false).status==TaStatus.range;
+    #assert ta_attend(s,m,-1,1,3,q[..],k[..],v[..],sinks[..],out[..],work[..],false).status==TaStatus.range;
+    #assert ta_attend(s,m,2,0,3,q[..],k[..],v[..],sinks[..],out[..],work[..],false).status==TaStatus.range;
+    #assert ta_attend(s,m,2,1,3,q[0..<3],k[..],v[..],sinks[..],out[..],work[..],false).status==TaStatus.capacity;
+    #assert ta_attend(s,m,2,1,3,q[..],k[0..<5],v[..],sinks[..],out[..],work[..],false).status==TaStatus.capacity;
+    #assert ta_attend(s,m,2,1,3,q[..],k[..],v[0..<5],sinks[..],out[..],work[..],false).status==TaStatus.capacity;
+    #assert ta_attend(s,m,2,1,3,q[..],k[..],v[..],sinks[..],out[0..<3],work[..],false).status==TaStatus.capacity;
+    #assert ta_attend(s,m,2,1,3,q[..],k[..],v[..],sinks[0..<1],out[..],work[..],false).status==TaStatus.capacity;
+    w:=ta_plan(s,1,3,0).work;#assert w==22;
+    #assert ta_attend(s,m,2,1,3,q[..],k[..],v[..],sinks[..],out[..],work[0..<w-1],false).status==TaStatus.capacity;
+    #assert ta_attend(s,m,2,1,3,q[..],k[..],v[..],sinks[..],out[..],work[0..<w],false).status==TaStatus.ok;
+    for i:0..<4 {out[i]=-7;}
+    #assert ta_attend(s,m,2,1,3,q[..],k[..],v[..],sinks[..],out[..],work[..],true).status==TaStatus.alias;
+    for x:out {#assert x==-7;}
+}
+#test "an output that cannot narrow to f32 refuses the whole call" {
+    s:=TaShape.{heads=1,kv_heads=1,head_dim=1,tile=1};max:=f32_from_bits(0x7f7fffff);
+    q:=[2]f32.[0,0];k:=[2]f32.[0,0];v:=[2]f32.[1,max];out:=[2]f32.[-7,-7];work:[16]f64;
+    #assert ta_attend(s,TaMask.{},0,2,2,q[..],k[..],v[..],q[0..<0],out[..],work[..],false).status==TaStatus.ok;
+    #assert out[0]==1 && out[1]==f32(f64(max)/2+0.5);
+    out[0]=-7;out[1]=-7;v[0]=max;
+    // Two equal maxima: (max + max) / 2 overflows nothing; a third row is not needed.
+    #assert ta_attend(s,TaMask.{},0,2,2,q[..],k[..],v[..],q[0..<0],out[..],work[..],false).status==TaStatus.ok && out[1]==max;
+    state:=[3]f64.[0,0.5,f64(max)];o:=[1]f32.[-7];
+    #assert ta_finish(s,1,state[..],o[..]).status==TaStatus.arithmetic && o[0]==-7;
+    state[1]=1;r:=ta_finish(s,1,state[..],o[..]);#assert r.status==TaStatus.ok && r.written==1 && o[0]==max;
+}
+#test "plan and mask limits include their endpoints" {
+    s:=TaShape.{heads=64,kv_heads=8,head_dim=256,tile=64};#assert ta_shape_valid(s);
+    s.heads=65;#assert !ta_shape_valid(s);s.heads=0;#assert !ta_shape_valid(s);s.heads=64;
+    s.kv_heads=9;#assert !ta_shape_valid(s);s.kv_heads=0;#assert !ta_shape_valid(s);s.kv_heads=8;
+    s.head_dim=257;#assert !ta_shape_valid(s);s.head_dim=0;#assert !ta_shape_valid(s);s.head_dim=256;
+    s.tile=65;#assert !ta_shape_valid(s);s.tile=0;#assert !ta_shape_valid(s);s.tile=1;
+    s.heads=12;#assert !ta_shape_valid(s);s.heads=64;
+    #assert !ta_shape_valid(TaShape.{heads=65,kv_heads=5,head_dim=1,tile=1}) && !ta_shape_valid(TaShape.{heads=9,kv_heads=9,head_dim=1,tile=1});
+    #assert ta_plan(s,64,4096,0).status==TaStatus.ok && ta_plan(s,1,1,0).status==TaStatus.ok;
+    #assert ta_plan(s,65,4096,0).status==TaStatus.range && ta_plan(s,0,4096,0).status==TaStatus.range;
+    #assert ta_plan(s,1,4097,0).status==TaStatus.range && ta_plan(s,1,0,0).status==TaStatus.range;
+    #assert ta_plan(s,1,4096,-1).status==TaStatus.range && ta_plan(s,1,4096,17).status==TaStatus.range;
+    #assert ta_plan(s,1,4096,16).status==TaStatus.ok && ta_plan(s,2,4096,1).status==TaStatus.range;
+    #assert ta_plan(s,1,16,16).status==TaStatus.ok && ta_plan(s,1,15,16).status==TaStatus.range;
+    s.tile=4;#assert ta_tiles(s,8)==2 && ta_tiles(s,9)==3 && ta_tiles(s,1)==1;
+    #assert ta_mask_valid(TaMask.{},4) && !ta_mask_valid(TaMask.{window=1},4) && !ta_mask_valid(TaMask.{block=1},4);
+    w:=TaMask.{kind=TaMaskKind.window,window=1};#assert ta_mask_valid(w,4);w.block=1;#assert !ta_mask_valid(w,4);
+    d:=TaMask.{kind=TaMaskKind.decision,block=4};#assert ta_mask_valid(d,4) && !ta_mask_valid(d,3);
+    d.block=0;#assert ta_mask_valid(d,4);d.block=-1;#assert !ta_mask_valid(d,4);d.block=0;d.window=1;#assert !ta_mask_valid(d,4);
+}
+#test "split decode refuses splits it cannot fill" {
+    s:=TaShape.{heads=1,kv_heads=1,head_dim=1,tile=2};q:=[1]f32.[1];k:=[4]f32.[1,0,3,3];v:=[4]f32.[2,4,6,8];out:=[1]f32.[-7];work:[64]f64;
+    #assert ta_decode_split(s,TaMask.{},4,0,q[..],k[..],v[..],q[0..<0],out[..],work[..],false).status==TaStatus.range;
+    #assert ta_decode_split(s,TaMask.{},4,3,q[..],k[..],v[..],q[0..<0],out[..],work[..],false).status==TaStatus.range;
+    #assert ta_decode_split(s,TaMask.{},4,2,q[..],k[..],v[..],q[0..<0],out[..],work[..],true).status==TaStatus.alias && out[0]==-7;
+    r:=ta_decode_split(s,TaMask.{},4,2,q[..],k[..],v[..],q[0..<0],out[..],work[..],false);
+    #assert r.status==TaStatus.ok && r.written==1 && r.loads==2 && out[0]==6.62197208404541f32;
+    // Tiles of one key: only key 2 moves the maximum, in one pass or in any split.
+    s.tile=1;
+    r=ta_attend(s,TaMask.{},3,1,4,q[..],k[..],v[..],q[0..<0],out[..],work[..],false);#assert r.loads==4 && r.rescales==1;
+    for splits:1..<5 {r=ta_decode_split(s,TaMask.{},4,splits,q[..],k[..],v[..],q[0..<0],out[..],work[..],false);#assert r.status==TaStatus.ok && r.loads==4 && r.rescales==1;}
+}
+#test "merging with an empty side copies the other exactly" {
+    a:=[3]f64.[0,0,0];b:=[3]f64.[-5,2,3];#assert !ta_merge(a[..],b[..]);#assert a[0]==-5 && a[1]==2 && a[2]==3;
+    e:=[3]f64.[9,0,9];#assert !ta_merge(a[..],e[..]);#assert a[0]==-5 && a[1]==2 && a[2]==3;
+    c:=[3]f64.[-5,2,1];#assert !ta_merge(a[..],c[..]);#assert a[0]==-5 && a[1]==4 && a[2]==4;
+    lo:=[3]f64.[-6,1,1];#assert !ta_merge(a[..],lo[..]);r:=exp(-1.0);#assert a[0]==-5 && a[1]==4+r && a[2]==4+r;
+    x:=[3]f64.[0,1,1];y:=[3]f64.[0.5,1,2];#assert ta_merge(x[..],y[..]);
+    #assert x[0]==0.5 && x[1]==exp(-0.5)+1 && x[2]==exp(-0.5)+2;
+}

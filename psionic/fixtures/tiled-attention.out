@@ -1,0 +1,28 @@
+profile tiled-attention-cpu-f64-v1, tolerance 0.00001 x (1 + largest |value|)
+tile 1: maximum 1.0, denominator 1.3678794411714423, value sum 3.4715177646857693
+tile 2: maximum 3.0, denominator 2.0, value sum 14.0
+merged: maximum moved true, rescale 0.1353352832366127, denominator 2.185122351604477, value sum 14.469818839944681
+output 6.621972, tile loads 2, rescales 1
+chapter 12 dense attention, causal, window 3 and decision block 6: largest difference 0.0
+chapter 62 sinks, full and window 4: largest difference 0.0
+chunked prefill 3 + 3 + 2 equals whole prefill bit for bit: true
+split-K decode, causal, at position 7 in 8 tiles of one key:
+  1 splits: bit for bit true, largest difference 0.0, rescales 2
+  2 splits: bit for bit true, largest difference 0.0, rescales 4
+  3 splits: bit for bit true, largest difference 0.0, rescales 5
+  4 splits: bit for bit true, largest difference 0.0, rescales 3
+  5 splits: bit for bit true, largest difference 0.0, rescales 3
+  6 splits: bit for bit true, largest difference 0.0, rescales 3
+  7 splits: bit for bit true, largest difference 0.0, rescales 1
+  8 splits: bit for bit true, largest difference 0.0, rescales 1
+tile loads, 16 rows, 2 key/value heads, 16 keys in tiles of 4:
+  2 query heads: 8 loads; one copy per query head would be 8
+  4 query heads: 8 loads; one copy per query head would be 16
+  8 query heads: 8 loads; one copy per query head would be 32
+work for 64-row chunks, 8 heads over 2 key/value heads, width 64, tiles of 32 (f64 elements):
+  512 tokens: tiled work 37986; a full score matrix would hold 2097152
+  1024 tokens: tiled work 37986; a full score matrix would hold 8388608
+  2048 tokens: tiled work 37986; a full score matrix would hold 33554432
+  4096 tokens: tiled work 37986; a full score matrix would hold 134217728
+refused: decision block 5 past 4 keys: mask, output -7.0
+refused: an infinite key: number, output -7.0

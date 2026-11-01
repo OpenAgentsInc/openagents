@@ -182,6 +182,16 @@
       ]
     },
     {
+      "source": "psionic/examples/tiled-attention.coax",
+      "chapter": "psionic/book/ch041-attention-in-tiles.md",
+      "stdout": "psionic/fixtures/tiled-attention.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/attention-sinks.coax",
       "chapter": "psionic/book/ch062-attention-with-sinks-and-a-window.md",
       "stdout": "psionic/fixtures/attention-sinks.out",
