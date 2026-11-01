@@ -38,6 +38,12 @@
 // committing to at least as many, checked before the signature; the NIP-11
 // document then says min_pow_difficulty.
 //
+// NIP-50 (chapter 41, nip50.coax through relay_store.coax): a REQ filter
+// may carry "search" (rd_req); it is answered best match first by n50_scan
+// over the store, and a live event reaches a search subscription only when
+// its content holds every term (rd_sub_matches). Ciphertext kinds (4, 1059,
+// 21059) never match a search.
+//
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
 // NIP-42: every WebSocket gets a challenge after the 101 (nip42_issue, 32
@@ -113,6 +119,7 @@ RyWork :: struct {
   body: [RY_OUT] u8;              // one outgoing message
   scratch: [262144] u8;           // the event id preimage
   count: [1] N45Work;             // one COUNT's filters and marks
+  search: [1] RdSearch;           // one search's terms, scores and decoded content
   sent: [RY_SENT] int;
   n42: [1] Nip42;                 // the relay URL, copied into each connection
   gen: int;                       // the last connection generation
@@ -156,7 +163,7 @@ ry_closed :: (c: [] RyConn, w: [] RyWork, sub: string, reason: int) -> bool {
 ry_fanout :: (conns: [] RyConn, w: [] RyWork, e: NostrEvent) {
   for i: 0..<conns.count {
     for k: 0..<RS_MAX_SUBS {
-      if !rr_deliver(conns[i].h >= 0, conns[i].ws, rs_sub_matches(conns[i].subs[..], k, e)) { continue; }
+      if !rr_deliver(conns[i].h >= 0, conns[i].ws, rd_sub_matches(conns[i].subs[..], k, e, w[0].search[..])) { continue; }
       sid := conns[i].subs[k].id;
       n := ms_write_event(cast(string) sid[0..<conns[i].subs[k].id_n], e.original, w[0].body[..]);
       if !ry_text(conns[i..<i + 1], w, n) { ry_shut(conns[i..<i + 1]); break; }
@@ -201,17 +208,14 @@ ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RdStore, text: string, m: MsMsg
   rt := rt_req(c[0].rt[..], w[0].rate, cxsrv_now_s());
   if rt != RT_OK { ok := ry_text(c, w, ms_write_closed(sub, rt_prefix(rt), rt_text(rt), w[0].body[..])); return; }
   v := rr_req_filters(m.filters);
-  if v == RS_ACCEPT { v = rs_req(m, text); }
+  if v == RS_ACCEPT { v = rd_req(m, text, w[0].search[..]); }
   if v != RS_ACCEPT { ok := ry_closed(c, w, sub, v); return; }
   slot := rs_sub_open(c[0].subs[..], m, text, RS_MAX_SUBS);
   if slot < 0 { ok := ry_closed(c, w, sub, -slot); return; }
   now := cxsrv_now_s(); sent := 0;
   for k: 0..<m.filters {
-    strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
-    sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
-    f: [1] NostrFilter; idx: [RS_MAX_LIMIT] int;
-    if rs_filter(text, m, k, f[..], sp[..]) != FR_OK { continue; }
-    n := rd_query(store, f[0], now, idx[..]);
+    idx: [RS_MAX_LIMIT] int;
+    n := rd_req_filter(store, text, m, k, now, w[0].search[..], idx[..]);
     for q: 0..<n {
       t := rr_take(w[0].sent[..], sent, idx[q]);
       if t == -1 { continue; }

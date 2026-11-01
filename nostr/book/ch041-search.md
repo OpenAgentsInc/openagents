@@ -32,11 +32,17 @@ other `key:value` extension ignored.
   ignored, and the filter still runs.
 - How the answers differ from the Rust relay's: it matched substrings and
   ordered by time.
-- What is not built: the relay process doesn't call this code yet.
-  `relay_server.coax` still reads every `REQ` filter with `filter_read`,
-  which refuses `search` (chapter 37 shows the `CLOSED` it sends). Tag
-  search, the `language:`, `domain:`, `sentiment:` and `nsfw:` extensions,
-  stemming and Unicode case folding are not built either.
+- How the relay uses it: `coax/relay/relay.coax` reads `REQ` filters with
+  `rs_req_search` and answers a filter with `search` through
+  `relay_store.coax`'s `rd_req_filter`, which calls `n50_scan`: the same
+  answer as `n50_query`, with every record a candidate instead of one
+  term's entries. A live event reaches a search subscription only when its
+  content holds every term (`rd_sub_matches`).
+- What is not built: a word index the relay keeps up to date as events
+  arrive. The index here is built whole and goes stale on every write, so
+  the relay doesn't use it. Tag search, the `language:`, `domain:`,
+  `sentiment:` and `nsfw:` extensions, stemming and Unicode case folding
+  are not built either.
 
 ## Where the code is
 
@@ -47,6 +53,8 @@ other `key:value` extension ignored.
 | [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_parse` | new: a search string into terms and extensions |
 | [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_build` | new: the word index over the store |
 | [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_query`, `n50_score`, `n50_insert` | new: the answer, best first |
+| [nip50.coax](../../coax/lib/nostr/nip50.coax) | `n50_scan` | the same answer without the word index, which the relay uses |
+| [relay_store.coax](../../coax/lib/nostr/relay_store.coax) | `rd_req`, `rd_req_filter`, `rd_sub_matches` | the relay's search: `REQ` admission, the stored answer and live delivery |
 | [store_index.coax](../../coax/lib/nostr/store_index.coax) | `nsi_query_limit` | chapter 36's query, used when a search has no words |
 
 `nip50.coax` is new. Its checks were written first, and `coax mutate
@@ -764,6 +772,17 @@ a note with `\n` and `\t` escapes, and a kind 30023 article that mentions
 
 ### The library's own checks
 
+Added when the relay was wired (2026-11-01): `n50_scan` answers what
+`n50_query` answers for ten searches under seven filters, without the word
+index, and `relay_store.coax` checks the relay's search end to end on four
+signed events (best first, the limit after the order, kind 4 never, 17
+terms refused, live delivery only with every term). `relay_session.py`
+does the same against the running relay under ASan and UBSan. With
+`n50_scan` added, `coax mutate coax/lib/nostr/nip50.coax --root-only`
+killed 502 of 502 mutants (the first run left 13 survivors, in the scan's
+no-term path, its limit and buffer checks and the comparison helper,
+which became asserts in the check itself).
+
 `nip50.coax` has 6 checks: word boundaries at every byte class edge,
 folding, non-ASCII words, whole-word counts and the key's value; the search
 string's terms, extensions, the bytes that split fields, 16 terms and the
@@ -798,8 +817,8 @@ the graph did not change, and their records were not rerun:
 
 ## Summary
 
-- NIP-50 adds `"search"` to filters. `filter_read_search` reads it;
-  `filter_read`, which the relay uses today, still refuses it.
+- NIP-50 adds `"search"` to filters. `filter_read_search` reads it, and
+  the relay's `REQ` path uses it; `filter_read` still refuses it.
 - Words are runs of ASCII letters, digits and non-ASCII bytes, with `A`–`Z`
   folded. A field with a `:` is an extension; `include:spam` changes
   nothing here, and the others are ignored.

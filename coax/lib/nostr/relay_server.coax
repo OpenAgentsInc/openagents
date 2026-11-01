@@ -309,7 +309,7 @@ rs_replace :: (r: RsAdmit, found: bool, old_created: int, old_id: [] u8) -> int 
   t = "[\"REQ\",\"s\",{\"ids\":[]}]"; #assert rs_req(ms_read(t), t) == RS_EMPTY;
   t = "[\"REQ\",\"s\",{\"authors\":[]}]"; #assert rs_req(ms_read(t), t) == RS_EMPTY;
   t = "[\"REQ\",\"s\",{\"#t\":[\"a\"],\"#q\":[]}]"; #assert rs_req(ms_read(t), t) == RS_EMPTY;
-  t = "[\"REQ\",\"s\",{\"search\":\"x\"}]"; #assert rs_req(ms_read(t), t) == RS_FILTER;
+  t = "[\"REQ\",\"s\",{\"search\":\"x\"}]"; #assert rs_req(ms_read(t), t) == RS_FILTER && rs_req_search(ms_read(t), t) == RS_ACCEPT;
   t = "[\"REQ\",\"s\",{\"kinds\":[1],\"#E\":[\"x\"],\"#a\":[\"30617:x:y\"]},{\"#d\":[\"coax\"]}]"; #assert rs_req(ms_read(t), t) == RS_ACCEPT;
   t = "[\"REQ\",\"s\"]"; #assert rs_req(ms_read(t), t) == RS_ACCEPT;
   // cost: 127 * 100 per open filter; eight are 101600 > 100000
@@ -344,6 +344,30 @@ rs_replace :: (r: RsAdmit, found: bool, old_created: int, old_id: [] u8) -> int 
   tags[0].values = values[0..<0]; #assert rs_empty(f);
 }
 
+#test "NIP-50: rs_req_search reads search and keeps every other rule" {
+  t := "[\"REQ\",\"s\",{\"kinds\":[1],\"search\":\"coax nostr\"},{\"search\":\"\"}]";
+  #assert rs_req(ms_read(t), t) == RS_FILTER && rs_req_search(ms_read(t), t) == RS_ACCEPT;
+  t = "[\"REQ\",\"s\",{\"search\":5}]"; #assert rs_req_search(ms_read(t), t) == RS_FILTER;
+  t = "[\"REQ\",\"s\",{\"search\":\"a\",\"search\":\"b\"}]"; #assert rs_req_search(ms_read(t), t) == RS_FILTER;
+  t = "[\"REQ\",\"s\",{\"search\":\"a\",\"kinds\":[]}]"; #assert rs_req_search(ms_read(t), t) == RS_EMPTY;
+  t = "[\"REQ\",\"s\",{\"search\":\"a\",\"#e\":[\"00\"]}]"; #assert rs_req_search(ms_read(t), t) == RS_HEX_E;
+  t = "[\"REQ\",\"s\",{\"search\":\"a\",\"#p\":[\"00\"]}]"; #assert rs_req_search(ms_read(t), t) == RS_HEX_P;
+  t = "[\"REQ\",\"s\",{\"search\":\"a\",\"x\":1}]"; #assert rs_req_search(ms_read(t), t) == RS_FILTER;
+  // the cost: seven open filters with search cost 7 x 12700, an eighth passes 100000
+  b: [512] u8; n := json_raw(b[..], 0, "[\"REQ\",\"s\"");
+  for i: 0..<7 { n = json_raw(b[..], n, ",{\"search\":\"a\"}"); }
+  n = json_raw(b[..], n, "]");
+  #assert rs_req_search(ms_read(cast(string) b[0..<n]), cast(string) b[0..<n]) == RS_ACCEPT;
+  n -= 1; n = json_raw(b[..], n, ",{\"search\":\"a\"}]");
+  #assert rs_req_search(ms_read(cast(string) b[0..<n]), cast(string) b[0..<n]) == RS_COST;
+  // the search string is read into q, decoded
+  m := ms_read(t); strs: [8] string; ints: [8] int; tags: [4] NostrTagFilter; bytes: [64] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter; q: [1] FrSearch;
+  t = "[\"REQ\",\"s\",{\"search\":\"\\u0041b\"}]"; m = ms_read(t);
+  #assert rs_filter_search(t, m, 0, f[..], sp[..], q[..], true) == FR_OK && q[0].has && q[0].text == "Ab";
+  #assert rs_filter_search(t, m, 0, f[..], sp[..], q[..], false) == FR_FIELD;
+}
 rs_limit :: (f: NostrFilter) -> int {
   // stated as "below 128" so that every boundary mutant is observable
   if f.has_limit && f.limit < RS_MAX_LIMIT + 1 { return f.limit; }
@@ -375,15 +399,26 @@ rs_bad_hex :: (f: NostrFilter, name: u8) -> bool {
 rs_filter :: (text: string, m: MsMsg, k: int, f: [] NostrFilter, sp: [] FrSpace) -> int {
   return filter_read(text[m.filter_from[k]..<m.filter_to[k]], f, sp);
 }
+// The same, with NIP-50's "search" read into q[0] when search is true
+// (filter_read_search), refused as filter_read refuses it when false.
+rs_filter_search :: (text: string, m: MsMsg, k: int, f: [] NostrFilter, sp: [] FrSpace, q: [] FrSearch, search: bool) -> int {
+  if search { return filter_read_search(text[m.filter_from[k]..<m.filter_to[k]], f, sp, q); }
+  return rs_filter(text, m, k, f, sp);
+}
 // The REQ's filters against the relay's rules; RS_ACCEPT or a CLOSED reason.
 // The frame reader already refused bad sub ids and more than 16 filters.
-rs_req :: (m: MsMsg, text: string) -> int {
+// A filter with "search" is refused (RS_FILTER); rs_req_search takes it.
+rs_req :: (m: MsMsg, text: string) -> int { return rs_req_mode(m, text, false); }
+// The same rules with NIP-50's "search" key read (a string); its cost is
+// the filter's cost without it.
+rs_req_search :: (m: MsMsg, text: string) -> int { return rs_req_mode(m, text, true); }
+rs_req_mode :: (m: MsMsg, text: string, search: bool) -> int {
   total := 0;
   for k: 0..<m.filters {
     strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
     sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
-    f: [1] NostrFilter;
-    r := rs_filter(text, m, k, f[..], sp[..]);
+    f: [1] NostrFilter; q: [1] FrSearch;
+    r := rs_filter_search(text, m, k, f[..], sp[..], q[..], search);
     if r == FR_INVALID && rs_bad_hex(f[0], 'e') { return RS_HEX_E; }
     if r == FR_INVALID && rs_bad_hex(f[0], 'p') { return RS_HEX_P; }
     if r != FR_OK { return RS_FILTER; }
@@ -510,7 +545,7 @@ rs_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent) -> bool {
 
 // The same bytes as relay_route.coax's RR_NIP11, which coax/relay/relay.coax
 // serves (nostr/examples/checks/relay-info.coax checks that they agree).
-RS_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,62,70],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+RS_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,9,11,40,42,45,50,62,70],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
 #test "the NIP-11 document is JSON and states the limits in force" {
   #assert json_valid(RS_NIP11);
   #assert RS_MAX_MESSAGE == 131072 && RS_MAX_SUBS == 32 && RS_MAX_LIMIT == 127 && MS_SUB_MAX == 64 && RS_MAX_TAGS == 256 && RS_FUTURE == 900;

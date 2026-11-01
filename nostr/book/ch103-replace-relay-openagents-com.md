@@ -576,7 +576,7 @@ Part X are wired into it, and what the rest still need.
 | `store_delete.coax` | 39 | Wired | Every admission goes through `nsd_plan` and `nsd_apply_plan` (`rsd_admit_deleting`), saving to the `--store` file between them; a covered event is refused "blocked:"; replay (`rsd_replay_deleting`) rebuilds the tombstones from the saved requests. A kind 62 must name the relay's URL (the NIP-42 one) or `ALL_RELAYS` |
 | `relay_rate.coax` | 44 | Wired | An `RtConn` in each `RyConn` and one `RtKeys`: `rt_event` once an EVENT's signature holds, `rt_req` before a REQ's filters, refused "rate-limited:"; the served NIP-11 document is `rt_nip11(RR_NIP11, ...)`. Limits from `--rate EVENTS,REQS,KEY_EVENTS`, else 120, 120 and 60 |
 | `nip45.coax` | 40 | Wired | `rr_message` routes `COUNT` to `ry_count`, which charges it as a REQ and answers with `n45_answer` over a current index (`rd_count`) |
-| `nip50.coax` via `filter_read_search` | 41 | Not wired | Read filters with `filter_read_search` in `rs_filter`, build and update the word index (`n50_build`), answer search filters with `n50_query`, and advertise `50` |
+| `nip50.coax` via `filter_read_search` | 41 | Wired | `ry_req` admits a REQ with `rd_req` (`rs_req_search`, and each search string through `n50_parse`), answers a search filter with `rd_req_filter` (`n50_scan`, best first, without the word index), and fans out with `rd_sub_matches` (every term in the content, never kinds 4, 1059, 21059); NIP-11 lists `50` |
 | `nip70.coax` | 42 | Wired | `ry_event` calls `nip70_admit` (accepts true) with the connection's `RrAuth` after the signature and the rate limit, so a `["-"]` event is accepted only from its author |
 | `nip77.coax` | 43 | Not wired | Per-connection `NEG-OPEN`, `NEG-MSG` and `NEG-CLOSE` sessions over the store's items (`re_items` builds them), with `NEG-ERR` on limits and time outs; also step 9's remote check |
 | `nip13.coax` | 56 | Wired | `--pow BITS` (default 0, off; `rr_pow`): `nip13_admit` before the signature, refused "pow: ..."; NIP-11 then carries `min_pow_difficulty` and lists 13 (`rr_nip11_pow`) |
@@ -585,7 +585,7 @@ Part X are wired into it, and what the rest still need.
 | `nip29.coax` | 59 | Not wired | Group state per `h` tag, `g29_admit` for events with an `h` tag, and the relay-signed metadata, admins and members events (`g29_write_*`) |
 
 The served NIP-11 document lists what is wired: `supported_nips` is
-`[1,9,11,40,42,45,62,70]` in `RR_NIP11` (and its copy `RS_NIP11`), and
+`[1,9,11,40,42,45,50,62,70]` in `RR_NIP11` (and its copy `RS_NIP11`), and
 `rr_nip11_pow` adds 13 when `--pow` is above 0 (chapter 37).
 
 ## How the code is checked

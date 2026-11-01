@@ -81,7 +81,11 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
    - The served NIP-11 `supported_nips` lists them: `[1,9,11,40,42,45,62,70]`,
      and 13 with `--pow` (`rr_nip11_pow`). Root-only mutation:
      `relay_route.coax` 438 of 438, `relay_server.coax` 344 of 344.
-   - Still not wired: `nip50`, `nip77`, `nip86`, `nip43`, `nip29`.
+   - `nip50` wired: `rs_req_search` (relay_server.coax, root-only 347 of
+     347), `rd_req`/`rd_req_filter`/`rd_sub_matches` in `relay_store.coax`
+     over `n50_scan`; NIP-11 then lists 50. Searches scan the store; the
+     word index is not used (it is rebuilt whole after any write).
+   - Still not wired: `nip77`, `nip86`, `nip43`, `nip29`.
    - The Coax store holds at most 2,048 events, which blocks a cutover of
      the production data.
    - Not rerun: the Rust differential (`relay_rust_differential.py`) needs

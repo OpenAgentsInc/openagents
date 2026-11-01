@@ -461,6 +461,38 @@ def protected(port):
     w.close()
 
 
+def search(port):
+    """NIP-50 (nip50.coax via relay_store.coax): stored matches best first, live ones by term, never kind 4."""
+    now = int(time.time())
+    ev = sign([{"kind": 1, "created_at": now - 30, "tags": [], "content": "zyxwv search once"},
+               {"kind": 1, "created_at": now - 31, "tags": [], "content": "Zyxwv search: zyxwv twice"},
+               {"kind": 4, "created_at": now - 29, "tags": [], "content": "zyxwv ciphertext"},
+               {"kind": 1, "created_at": now - 28, "tags": [], "content": "zyxwvu is another word"}])
+    w = Ws(port)
+    check(w.auth()[2] is True and all(publish(w, e)[2] is True for e in ev), 'NIP-50: four events stored')
+    w.send(['REQ', 'q', {'search': 'zyxwv'}])
+    got, end = w.until_eose('q')
+    check(end == ['EOSE', 'q'] and [e['id'] for e in got] == [ev[1]['id'], ev[0]['id']],
+          'NIP-50: two whole-word matches, the one with two first; kind 4 and "zyxwvu" left out')
+    w.send(['REQ', 'q2', {'search': 'ZYXWV once'}, {'search': 'zyxwv', 'limit': 1}])
+    got, _ = w.until_eose('q2')
+    check([e['id'] for e in got] == [ev[0]['id'], ev[1]['id']], 'NIP-50: every term must match; the limit keeps the best')
+    w.send(['REQ', 'bad', {'search': 7}])
+    check(w.recv() == ['CLOSED', 'bad', 'invalid: malformed filter'], 'NIP-50: a search that is not a string is CLOSED')
+    w.send(['REQ', 'live', {'search': 'qwerty live'}])
+    check(w.until_eose('live')[0] == [], 'NIP-50: a live search subscription opens empty')
+    w2 = Ws(port)
+    check(w2.auth()[2] is True, 'NIP-50: a second connection authenticates')
+    later = sign([{"kind": 1, "created_at": now - 5, "tags": [], "content": "qwerty only"},
+                  {"kind": 4, "created_at": now - 4, "tags": [], "content": "qwerty live"},
+                  {"kind": 1, "created_at": now - 3, "tags": [], "content": "Live: QWERTY"}])
+    for e in later:
+        check(publish(w2, e)[2] is True, 'NIP-50: a later event is stored')
+    check(w.recv() == ['EVENT', 'live', later[2]], 'NIP-50: only the kind 1 event with both terms is delivered live')
+    w.send(['CLOSE', 'live'])
+    w.close(); w2.close()
+
+
 def proof_of_work(exe, log):
     """NIP-13 (nip13.coax): --pow 8 asks for 8 leading zero bits and a nonce committing to 8."""
     refused_start(exe, ['--pow', '257'], 'a difficulty over 256', '0 to 256')
@@ -474,7 +506,7 @@ def proof_of_work(exe, log):
     try:
         port = int(p.stdout.readline().split()[-1])
         check(info(port)['limitation'].get('min_pow_difficulty') == 8, 'pow: --pow 8 is advertised as min_pow_difficulty')
-        check(info(port)['supported_nips'] == [1, 9, 11, 13, 40, 42, 45, 62, 70], 'pow: --pow 8 lists NIP-13')
+        check(info(port)['supported_nips'] == [1, 9, 11, 13, 40, 42, 45, 50, 62, 70], 'pow: --pow 8 lists NIP-13')
         w = Ws(port)
         check(w.auth()[2] is True, 'pow: AUTH')
         now = int(time.time())
@@ -523,7 +555,7 @@ def nip11(port):
     check(head.startswith(b'HTTP/1.1 200') and b'Access-Control-Allow-Origin: *' in head, 'NIP-11: 200 with CORS')
     lim = doc['limitation']
     check(lim['max_message_length'] == 131072 and lim['max_subscriptions'] == 32 and lim['max_limit'] == 127
-          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 9, 11, 40, 42, 45, 62, 70], 'NIP-11: the Rust relay\'s limits, NIPs 1, 9, 11, 40, 42, 45, 62, 70')
+          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 9, 11, 40, 42, 45, 50, 62, 70], 'NIP-11: the Rust relay\'s limits, NIPs 1, 9, 11, 40, 42, 45, 50, 62, 70')
     check(lim['auth_required'] is False and lim['restricted_writes'] is True, 'NIP-11: reads open, writes need AUTH')
 
 
@@ -659,6 +691,7 @@ def main():
                 session(port, int(time.time()))
                 deleted, kept = deletion(port)
                 protected(port)
+                search(port)
                 w = Ws(port)
                 w.send(['REQ', 'before', {}])
                 before, _ = w.until_eose('before')

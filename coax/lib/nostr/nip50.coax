@@ -29,9 +29,15 @@
 //   computed exactly, so a hash collision adds work, never a result. Like
 //   chapter 36's index it is built whole and refused once the store changes.
 //
-// Not built: wiring search into coax/relay/relay.coax (relay_server.coax's
-// REQ path still reads filters with filter_read, which refuses "search"),
-// tag search, the language:, domain:, sentiment: and nsfw: extensions, and
+// - The relay (coax/relay/relay.coax, through relay_store.coax) answers
+//   searches with n50_scan: the same answer as n50_query, with every
+//   record a candidate instead of one term's entries. The word index is
+//   built whole and goes stale on every write, and n50_build's sorted
+//   inserts are quadratic, so a relay that takes writes would rebuild it
+//   before nearly every search.
+//
+// Not built: an index the relay keeps up to date as events arrive, tag
+// search, the language:, domain:, sentiment: and nsfw: extensions, and
 // stemming or Unicode case folding. Not #authority, like store_index.coax.
 #load "store_index.coax";
 
@@ -39,7 +45,7 @@ N50_MAX_TERMS :: 16;
 // n50_parse's results.
 N50_OK :: 0; N50_TERMS :: 1; N50_SPACE :: 2;
 // How a query was answered.
-N50_REFUSED :: -1; N50_NONE :: 0; N50_TERM :: 1; N50_FILTER :: 2;
+N50_REFUSED :: -1; N50_NONE :: 0; N50_TERM :: 1; N50_FILTER :: 2; N50_SCAN :: 3;
 
 N50Query :: struct {
   error: int;
@@ -484,3 +490,109 @@ n50_query :: (s: [] RsdStore, ix: [] NsiIndex, x: [] N50Index, f: NostrFilter, q
   return res;
 }
 // book:end query
+
+// ---- without the word index ---------------------------------------------------------------
+
+// The same answer as n50_query, read without the word index: with terms,
+// every record not of a ciphertext kind is a candidate (plan N50_SCAN);
+// with none, chapter 36's query as in n50_query. Refused only when chapter
+// 36's index is out of date and there are no terms.
+n50_scan :: (s: [] RsdStore, ix: [] NsiIndex, f: NostrFilter, q: N50Query, now: int, buf: [] u8, out: [] int, score: [] int) -> N50Result {
+  if q.n == 0 {
+    r := nsi_query_limit(s, ix, f, now, out.count, out);
+    if r.n < 0 { return N50Result.{n = -1, plan = N50_REFUSED}; }
+    limit := rs_limit(f); n := 0;
+    for k: 0..<r.n { if n < limit && !n50_excluded(s[0].recs[out[k]].kind) { out[n] = out[k]; score[n] = 0; n += 1; } }
+    return N50Result.{n = n, plan = ifx r.plan == NSI_NONE then N50_NONE else N50_FILTER, scanned = r.scanned};
+  }
+  later := ns_store_seen(s, now);
+  limit := rs_limit(f);
+  if !nf_valid(f) || limit == 0 || out.count == 0 || (f.has_since && f.has_until && f.since > f.until) { return N50Result.{}; }
+  res := N50Result.{plan = N50_SCAN}; n := 0;
+  for i: 0..<s[0].n {
+    if n50_excluded(s[0].recs[i].kind) { continue; }
+    res.scanned += 1;
+    if !ns_store_visible(s, i, now) || !nf_match(f, rsd_event(s, i)) { continue; }
+    k := json_unescape(n50_content(rsd_text(s, i)), buf);
+    if k < 0 { res.unread += 1; continue; }
+    sc := n50_score(cast(string) buf[0..<k], q);
+    if sc > 0 { n = n50_insert(s, i, sc, n, limit, out, score); }
+  }
+  res.n = n;
+  return res;
+}
+n50_t_scan :: (t: [] N50T, f: NostrFilter) -> N50Result {
+  return n50_scan(t[0].t[0].s[..], t[0].t[0].ix[..], f, t[0].q[0], 1000, t[0].buf[..], t[0].out[..], t[0].score[..]);
+}
+#test "n50_scan answers what n50_query answers, reading every record" {
+  t: [1] N50T; n50_t_init(t[..]);
+  #assert n50_t_add(t[..], 0x31, 1, 100, "Coax compiles Coax.") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x32, 1, 200, "Nostr relays, written in Coax") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x33, 1, 300, "nostr relay, nostr client, in COAX") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x52, 1, 300, "b a coax") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x51, 1, 300, "a b \\n a\\u0042 A coax") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x53, 1059, 900, "a a a coax") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x54, 4, 900, "a coax") == NSS_ACCEPT;
+  #assert n50_t_add(t[..], 0x56, 1060, 400, "a") == NSS_ACCEPT;
+  #assert nsi_build(t[0].t[0].s[..], t[0].t[0].ix[..]) && n50_build(t[0].t[0].s[..], t[0].x[..], t[0].buf[..]);
+  // seven filters: none, limit 2, limit 0, since, since after until, one second, two kinds
+  fs: [7] NostrFilter; kinds := [2] int.[1060, 4];
+  fs[1].has_limit = true; fs[1].limit = 2; fs[2].has_limit = true; fs[2].limit = 0;
+  fs[3].has_since = true; fs[3].since = 250;
+  fs[4].has_since = true; fs[4].since = 250; fs[4].has_until = true; fs[4].until = 200;
+  fs[5].has_since = true; fs[5].since = 300; fs[5].has_until = true; fs[5].until = 300;
+  fs[6].has_kinds = true; fs[6].kinds = kinds[..];
+  searches := [10] string.["coax", "coax nostr", "a", "b a", "ab", "relay", "zebra", "", "nsfw:false", "A COAX include:spam"];
+  ao: [16] int; as: [16] int;
+  for f: fs {
+    for q: searches {
+      #assert n50_t_parse(t[..], q) == N50_OK;
+      a := n50_t_query(t[..], f);
+      for i: 0..<16 { ao[i] = t[0].out[i]; as[i] = t[0].score[i]; }
+      b := n50_t_scan(t[..], f);
+      #assert a.n == b.n && a.unread == b.unread;
+      for i: 0..<a.n { #assert ao[i] == t[0].out[i] && as[i] == t[0].score[i]; }
+    }
+  }
+  // every record but the two ciphertext ones is read; one term is enough
+  #assert n50_t_parse(t[..], "coax") == N50_OK;
+  r := n50_t_scan(t[..], NostrFilter.{});
+  #assert r.n == 5 && r.plan == N50_SCAN && r.scanned == 6 && t[0].out[0] == 0 && t[0].score[0] == 2;
+  r = n50_t_scan(t[..], NostrFilter.{}); #assert r.term == 0 && r.unread == 0;
+  // the word index is not read: stale or empty, the answer is the same
+  t[0].x[0].ok = false; t[0].x[0].count = 0;
+  r = n50_t_scan(t[..], NostrFilter.{}); #assert r.n == 5 && t[0].out[0] == 0;
+  // no terms: chapter 36's index must be current, as in n50_query
+  #assert n50_t_parse(t[..], "") == N50_OK;
+  t[0].score[0] = 9; r = n50_t_scan(t[..], NostrFilter.{}); #assert r.n == 6 && r.plan == N50_FILTER && t[0].out[0] == 7 && t[0].score[0] == 0;
+  ids := [1] string.["3200000000000000000000000000000000000000000000000000000000000000"]; g: NostrFilter; g.has_ids = true; g.ids = ids[..];
+  r = n50_t_scan(t[..], g); #assert r.n == 1 && t[0].out[0] == 1 && r.plan == N50_FILTER;
+  g = NostrFilter.{}; g.has_since = true; g.since = 301; g.has_until = true; g.until = 300;
+  r = n50_t_scan(t[..], g); #assert r.n == 0 && r.plan == N50_NONE;
+  t[0].t[0].ix[0].ok = false; r = n50_t_scan(t[..], NostrFilter.{}); #assert r.n == -1 && r.plan == N50_REFUSED;
+  // with terms it isn't needed either
+  #assert n50_t_parse(t[..], "nostr") == N50_OK;
+  r = n50_t_scan(t[..], NostrFilter.{}); #assert r.n == 2 && t[0].out[0] == 2 && t[0].score[0] == 2 && t[0].out[1] == 1;
+  // a filter that isn't valid, out empty, since after until: nothing, nothing read
+  bad := [1] string.["x"]; g = NostrFilter.{}; g.has_ids = true; g.ids = bad[..];
+  r = n50_t_scan(t[..], g); #assert r.n == 0 && r.scanned == 0 && r.plan == N50_NONE;
+  r = n50_scan(t[0].t[0].s[..], t[0].t[0].ix[..], NostrFilter.{}, t[0].q[0], 1000, t[0].buf[..], t[0].out[0..<0], t[0].score[0..<0]);
+  #assert r.n == 0 && r.scanned == 0;
+  g = NostrFilter.{}; g.has_since = true; g.since = 301; g.has_until = true; g.until = 300;
+  r = n50_t_scan(t[..], g); #assert r.n == 0 && r.scanned == 0;
+  // limit 0 reads nothing; limit 1 keeps the best
+  g = NostrFilter.{}; g.has_limit = true; g.limit = 0; r = n50_t_scan(t[..], g); #assert r.n == 0 && r.scanned == 0;
+  g.limit = 1; r = n50_t_scan(t[..], g); #assert r.n == 1 && t[0].out[0] == 2;
+  // a record past its expiry is read, not answered
+  t[0].t[0].s[0].recs[2].expiry = 1001;
+  r = n50_t_scan(t[..], NostrFilter.{}); #assert r.n == 2;
+  t[0].t[0].s[0].recs[2].expiry = 1000;
+  r = n50_t_scan(t[..], NostrFilter.{}); #assert r.n == 1 && t[0].out[0] == 1 && r.scanned == 6;
+  // content that doesn't fit the buffer is counted, not read
+  #assert n50_t_parse(t[..], "coax") == N50_OK;
+  r = n50_scan(t[0].t[0].s[..], t[0].t[0].ix[..], NostrFilter.{}, t[0].q[0], 1000, t[0].buf[0..<20], t[0].out[..], t[0].score[..]);
+  #assert r.n == 3 && r.unread == 1 && r.scanned == 6;
+  // empty content is read (as nothing), not counted as unread
+  #assert n50_t_add(t[..], 0x5a, 1, 100, "") == NSS_ACCEPT;
+  r = n50_t_scan(t[..], NostrFilter.{}); #assert r.n == 4 && r.unread == 0 && r.scanned == 7;
+}
