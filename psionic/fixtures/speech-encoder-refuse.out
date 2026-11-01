@@ -1,0 +1,17 @@
+width 8 in 3 heads: shape
+an even kernel: shape
+129 mels: limit
+2,049 frames: limit
+9 items: limit
+64 channels on 2,048 frames of 128 mels: limit
+143 features for 16 mels x 9 frames: shape
+a length of 10 in 9 frames: length
+a length of 0: length
+room for 15 of 16 outputs: capacity
+work one value short of 496: capacity
+a NaN feature: number
+a feature of 10,001: number
+a negative batch norm variance: number
+a bias of 1,001: number
+outputs still -7: -7.0 -7.0, length still -7
+greedy over 10 frames of an 8-value row: shape

@@ -1,0 +1,211 @@
+// Chapter 152's check references, loaded by psionic/lib/conformer.coax.
+// Nothing here calls the encoder or chapter 142's convolution. Everything is
+// binary64 with plain sums in index order. Convolutions copy their input into
+// an explicitly zero-padded array first; attention fills the whole score
+// matrix with the sinusoid of position i - j computed for that pair, with no
+// position table and no shift; the depthwise convolution reads an explicitly
+// zero-padded sequence.
+cf_worst :: (a:[]f32,b:[]f64)->f64 {worst:=0.0;for i:0..<a.count {e:=abs(f64(a[i])-b[i]);if !(e<=worst) {worst=e;}}return worst;}
+// A splitmix64 stream in [0, 1), apart from the encoder's weight seeds.
+cf_draw :: (g:[]u64)->f64 {g[0]+=1;return f64(cr_bits(1520,g[0])>>11)/9007199254740992.0;}
+// batch items of mels x frames features in [-2, 2).
+cf_fixture_features :: (x:[]f32,mels:int,frames:int,batch:int) {
+    g:=[1]u64.[cast(u64)(mels*1000+frames)];for i:0..<batch*mels*frames {x[i]=f32(cf_draw(g[..])*4-2);}
+}
+
+// The total probability of one row of log-probabilities.
+cf_probability :: (logp:[]f32)->f64 {sum:=0.0;for v:logp {sum+=exp(f64(v));}return sum;}
+cf_ref_silu ::(v:f64)->f64 {return v/(1+exp(-v));}
+// y = W x + b for W (rows, cols) at w[at] with its bias after it.
+cf_ref_linear :: (w:[]f32,at:int,rows:int,cols:int,bias:bool,x:[]f64,y:[]f64) {
+    for r:0..<rows {
+        sum:=0.0;for c:0..<cols {sum+=f64(w[at+r*cols+c])*x[c];}
+        if bias {sum+=f64(w[at+rows*cols+r]);}
+        y[r]=sum;
+    }
+}
+cf_ref_norm :: (w:[]f32,at:int,d:int,x:[]f64,y:[]f64) {
+    mean:=0.0;for i:0..<d {mean+=x[i];}mean/=f64(d);
+    var:=0.0;for i:0..<d {var+=(x[i]-mean)*(x[i]-mean);}var/=f64(d);
+    for i:0..<d {y[i]=(x[i]-mean)/sqrt(var+0.00001)*f64(w[at+i])+f64(w[at+d+i]);}
+}
+
+// One convolution of a (cin, h, wd) image: copy into a zero-padded image
+// first, then every window is in range. Returns the output (height, width).
+cf_ref_conv :: (inp:[]f64,cin:int,h:int,wd:int,w:[]f32,at:int,cout:int,groups:int,k:int,stride:int,pad:int,padded:[]f64,out:[]f64)->[2]int {
+    ph:=h+2*pad;pw:=wd+2*pad;
+    for i:0..<cin*ph*pw {padded[i]=0;}
+    for c:0..<cin {for r:0..<h {for x:0..<wd {padded[(c*ph+r+pad)*pw+x+pad]=inp[(c*h+r)*wd+x];}}}
+    oh:=(ph-k)/stride+1;ow:=(pw-k)/stride+1;per:=cin/groups;each:=cout/groups;
+    for f:0..<cout {for y:0..<oh {for x:0..<ow {
+        sum:=0.0;g:=f/each;
+        for c:0..<per {for a:0..<k {for b:0..<k {
+            sum+=f64(w[at+((f*per+c)*k+a)*k+b])*padded[((g*per+c)*ph+y*stride+a)*pw+x*stride+b];
+        }}}
+        out[(f*oh+y)*ow+x]=sum+f64(w[at+cout*per*k*k+f]);
+    }}}
+    return [2]int.[oh,ow];
+}
+cf_ref_relu :: (x:[]f64) {for i:0..<x.count {if x[i]<0 {x[i]=0;}}}
+// One item's first count frames of (mels, frames) features, alone: the three
+// stages, then the linear map. Returns the encoded length.
+cf_ref_subsample :: (s:CfShape,w:[]f32,x:[]f32,count:int,frames:int,out:[]f64,rw:[]f64)->int {
+    third:=rw.count/3;a:=rw[0..<third];b:=rw[third..<2*third];pad:=rw[2*third..<3*third];
+    m:=s.mels;c:=s.channels;d:=s.dim;sub:=cf_sub_at(s);
+    for t:0..<count {for f:0..<m {a[t*m+f]=f64(x[f*frames+t]);}}
+    o:=cf_ref_conv(a,1,count,m,w,sub.conv0,c,1,3,2,1,pad,b);cf_ref_relu(b[0..<c*o[0]*o[1]]);
+    o2:=cf_ref_conv(b,c,o[0],o[1],w,sub.dw1,c,c,3,2,1,pad,a);
+    o2=cf_ref_conv(a,c,o2[0],o2[1],w,sub.pw1,c,1,1,1,0,pad,b);cf_ref_relu(b[0..<c*o2[0]*o2[1]]);
+    o3:=cf_ref_conv(b,c,o2[0],o2[1],w,sub.dw2,c,c,3,2,1,pad,a);
+    o3=cf_ref_conv(a,c,o3[0],o3[1],w,sub.pw2,c,1,1,1,0,pad,b);cf_ref_relu(b[0..<c*o3[0]*o3[1]]);
+    t3:=o3[0];f3:=o3[1];feature:[1024]f64;y:[128]f64;
+    scale:=1.0;if s.xscale {scale=sqrt(f64(d));}
+    for t:0..<t3 {
+        for ch:0..<c {for f:0..<f3 {feature[ch*f3+f]=b[(ch*t3+t)*f3+f];}}
+        cf_ref_linear(w,sub.out,d,c*f3,true,feature[0..<c*f3],y[0..<d]);
+        for e:0..<d {out[t*d+e]=y[e]*scale;}
+    }
+    return t3;
+}
+
+cf_ref_feed_forward :: (s:CfShape,w:[]f32,a:CfFf,h:[]f64) {
+    d:=s.dim;n:[128]f64;z:[512]f64;y:[128]f64;
+    cf_ref_norm(w,a.norm,d,h,n[0..<d]);cf_ref_linear(w,a.w1,s.hidden,d,true,n[0..<d],z[0..<s.hidden]);
+    for i:0..<s.hidden {z[i]=cf_ref_silu(z[i]);}
+    cf_ref_linear(w,a.w2,d,s.hidden,true,z[0..<s.hidden],y[0..<d]);
+    for i:0..<d {h[i]+=0.5*y[i];}
+}
+// The sinusoid at relative position pos, element e, by its definition.
+cf_ref_pe :: (pos:int,e:int,d:int)->f64 {
+    f:=pow(10000.0,-f64(e-e%2)/f64(d));
+    if e%2==0 {return sin(f64(pos)*f);}
+    return cos(f64(pos)*f);
+}
+// rw holds q, k, v (count x dim each), the score matrix (count x count) and
+// the context (count x dim).
+cf_ref_attention :: (s:CfShape,w:[]f32,a:CfAtt,h:[]f64,count:int,rw:[]f64) {
+    d:=s.dim;dk:=d/s.heads;n:=count*d;q:=rw[0..<n];k:=rw[n..<2*n];v:=rw[2*n..<3*n];
+    score:=rw[3*n..<3*n+count*count];ctx:=rw[3*n+count*count..<4*n+count*count];
+    x:[128]f64;
+    for t:0..<count {
+        cf_ref_norm(w,a.norm,d,h[t*d..<(t+1)*d],x[0..<d]);
+        cf_ref_linear(w,a.q,d,d,true,x[0..<d],q[t*d..<(t+1)*d]);
+        cf_ref_linear(w,a.k,d,d,true,x[0..<d],k[t*d..<(t+1)*d]);
+        cf_ref_linear(w,a.v,d,d,true,x[0..<d],v[t*d..<(t+1)*d]);
+    }
+    pe:[128]f64;p:[128]f64;
+    for hd:0..<s.heads {
+        for i:0..<count {for j:0..<count {
+            for e:0..<d {pe[e]=cf_ref_pe(i-j,e,d);}
+            cf_ref_linear(w,a.pos,d,d,false,pe[0..<d],p[0..<d]);
+            content:=0.0;position:=0.0;
+            for m:hd*dk..<(hd+1)*dk {
+                content+=(q[i*d+m]+f64(w[a.u+m]))*k[j*d+m];
+                position+=(q[i*d+m]+f64(w[a.bias_v+m]))*p[m];
+            }
+            score[i*count+j]=(content+position)/sqrt(f64(dk));
+        }}
+        for i:0..<count {
+            top:=score[i*count];for j:1..<count {if score[i*count+j]>top {top=score[i*count+j];}}
+            z:=0.0;for j:0..<count {z+=exp(score[i*count+j]-top);}
+            for m:hd*dk..<(hd+1)*dk {
+                sum:=0.0;for j:0..<count {sum+=exp(score[i*count+j]-top)/z*v[j*d+m];}
+                ctx[i*d+m]=sum;
+            }
+        }
+    }
+    y:[128]f64;
+    for t:0..<count {cf_ref_linear(w,a.o,d,d,true,ctx[t*d..<(t+1)*d],y[0..<d]);for e:0..<d {h[t*d+e]+=y[e];}}
+}
+// rw holds the gated sequence with kernel - 1 zero frames split around it.
+cf_ref_convolution :: (s:CfShape,w:[]f32,a:CfConv,h:[]f64,count:int,rw:[]f64) {
+    d:=s.dim;kk:=s.kernel;half:=(kk-1)/2;g:=rw[0..<(count+kk-1)*d];
+    for i:0..<g.count {g[i]=0;}
+    n:[128]f64;two:[256]f64;
+    for t:0..<count {
+        cf_ref_norm(w,a.norm,d,h[t*d..<(t+1)*d],n[0..<d]);cf_ref_linear(w,a.pw1,2*d,d,true,n[0..<d],two[0..<2*d]);
+        for c:0..<d {g[(t+half)*d+c]=two[c]/(1+exp(-two[d+c]));}
+    }
+    y:[128]f64;
+    for t:0..<count {
+        for c:0..<d {
+            sum:=f64(w[a.dw+d*kk+c]);for j:0..<kk {sum+=f64(w[a.dw+c*kk+j])*g[(t+j)*d+c];}
+            mean:=f64(w[a.bn+c]);var:=f64(w[a.bn+d+c]);gain:=f64(w[a.bn+2*d+c]);shift:=f64(w[a.bn+3*d+c]);
+            n[c]=cf_ref_silu((sum-mean)/sqrt(var+0.00001)*gain+shift);
+        }
+        cf_ref_linear(w,a.pw2,d,d,true,n[0..<d],y[0..<d]);
+        for c:0..<d {h[t*d+c]+=y[c];}
+    }
+}
+cf_ref_layer :: (s:CfShape,w:[]f32,l:CfLayer,h:[]f64,count:int,rw:[]f64) {
+    d:=s.dim;
+    for t:0..<count {cf_ref_feed_forward(s,w,l.ff1,h[t*d..<(t+1)*d]);}
+    cf_ref_attention(s,w,l.att,h,count,rw);cf_ref_convolution(s,w,l.conv,h,count,rw);
+    n:[128]f64;
+    for t:0..<count {
+        cf_ref_feed_forward(s,w,l.ff2,h[t*d..<(t+1)*d]);cf_ref_norm(w,l.out,d,h[t*d..<(t+1)*d],n[0..<d]);
+        for c:0..<d {h[t*d+c]=n[c];}
+    }
+}
+cf_ref_encode :: (s:CfShape,w:[]f32,x:[]f32,count:int,frames:int,out:[]f64,rw:[]f64)->int {
+    t3:=cf_ref_subsample(s,w,x,count,frames,out,rw);
+    for k:0..<s.layers {cf_ref_layer(s,w,cf_layer_at(s,cf_layer_base(s,k)),out[0..<t3*s.dim],t3,rw);}
+    return t3;
+}
+
+// Every weight cf_init writes, by its own list of regions in layout order:
+// (start, count, centre, spread). The regions must tile the array, and weight
+// i must be centre + spread (2u - 1) for draw i of the seed's counter stream.
+CfRegion :: struct {at:int;n:int;center:f64;spread:f64;}
+cf_ref_regions :: (s:CfShape,out:[]CfRegion)->int {
+    c:=s.channels;d:=s.dim;h:=s.hidden;f3:=cf_length(s.mels);n:=0;sub:=cf_sub_at(s);
+    starts:=[5]int.[sub.conv0,sub.dw1,sub.pw1,sub.dw2,sub.pw2];fans:=[5]int.[9,9,c,9,c];
+    for i:0..<5 {
+        out[n]=CfRegion.{at=starts[i],n=c*fans[i],spread=1/sqrt(f64(fans[i]))};n+=1;
+        out[n]=CfRegion.{at=starts[i]+c*fans[i],n=c,spread=0.1};n+=1;
+    }
+    out[n]=CfRegion.{at=sub.out,n=d*c*f3,spread=1/sqrt(f64(c*f3))};n+=1;
+    out[n]=CfRegion.{at=sub.out+d*c*f3,n=d,spread=0.1};n+=1;
+    for k:0..<s.layers {
+        l:=cf_layer_at(s,cf_layer_base(s,k));
+        ffs:=[2]CfFf.[l.ff1,l.ff2];
+        for i:0..<2 {
+            f:=ffs[i];at:=f.norm;
+            if i==1 {at=l.conv.end;}
+            out[n]=CfRegion.{at=at,n=d,center=1,spread=0.1};n+=1;out[n]=CfRegion.{at=at+d,n=d,spread=0.1};n+=1;
+            out[n]=CfRegion.{at=f.w1,n=h*d,spread=1/sqrt(f64(d))};n+=1;out[n]=CfRegion.{at=f.w1+h*d,n=h,spread=0.1};n+=1;
+            out[n]=CfRegion.{at=f.w2,n=d*h,spread=1/sqrt(f64(h))};n+=1;out[n]=CfRegion.{at=f.w2+d*h,n=d,spread=0.1};n+=1;
+            if i==0 {
+                a:=l.att;
+                out[n]=CfRegion.{at=a.norm,n=d,center=1,spread=0.1};n+=1;out[n]=CfRegion.{at=a.norm+d,n=d,spread=0.1};n+=1;
+                maps:=[4]int.[a.q,a.k,a.v,a.o];
+                for m:maps {out[n]=CfRegion.{at=m,n=d*d,spread=1/sqrt(f64(d))};n+=1;out[n]=CfRegion.{at=m+d*d,n=d,spread=0.1};n+=1;}
+                out[n]=CfRegion.{at=a.pos,n=d*d,spread=1/sqrt(f64(d))};n+=1;
+                out[n]=CfRegion.{at=a.u,n=d,spread=0.1};n+=1;out[n]=CfRegion.{at=a.bias_v,n=d,spread=0.1};n+=1;
+                v:=l.conv;
+                out[n]=CfRegion.{at=v.norm,n=d,center=1,spread=0.1};n+=1;out[n]=CfRegion.{at=v.norm+d,n=d,spread=0.1};n+=1;
+                out[n]=CfRegion.{at=v.pw1,n=2*d*d,spread=1/sqrt(f64(d))};n+=1;out[n]=CfRegion.{at=v.pw1+2*d*d,n=2*d,spread=0.1};n+=1;
+                out[n]=CfRegion.{at=v.dw,n=d*s.kernel,spread=1/sqrt(f64(s.kernel))};n+=1;out[n]=CfRegion.{at=v.dw+d*s.kernel,n=d,spread=0.1};n+=1;
+                out[n]=CfRegion.{at=v.bn,n=d,spread=0.1};n+=1;out[n]=CfRegion.{at=v.bn+d,n=d,center=1,spread=0.5};n+=1;
+                out[n]=CfRegion.{at=v.bn+2*d,n=d,center=1,spread=0.1};n+=1;out[n]=CfRegion.{at=v.bn+3*d,n=d,spread=0.1};n+=1;
+                out[n]=CfRegion.{at=v.pw2,n=d*d,spread=1/sqrt(f64(d))};n+=1;out[n]=CfRegion.{at=v.pw2+d*d,n=d,spread=0.1};n+=1;
+            }
+        }
+        out[n]=CfRegion.{at=l.out,n=d,center=1,spread=0.1};n+=1;out[n]=CfRegion.{at=l.out+d,n=d,spread=0.1};n+=1;
+    }
+    at:=cf_head_at(s);k:=s.vocab+1;
+    out[n]=CfRegion.{at=at,n=k*d,spread=1/sqrt(f64(d))};n+=1;out[n]=CfRegion.{at=at+k*d,n=k,spread=0.1};n+=1;
+    return n;
+}
+cf_ref_init_ok :: (s:CfShape,w:[]f32,seed:u64)->bool {
+    regions:[512]CfRegion;n:=cf_ref_regions(s,regions[..]);next:=0;
+    for r:0..<n {
+        g:=regions[r];if g.at!=next {return false;}
+        for i:g.at..<g.at+g.n {
+            u:=cr_draw(CrSeed.{seed=seed,counter=cast(u64)i}).value;
+            if w[i]!=f32(g.center+g.spread*(2*u-1)) {return false;}
+        }
+        next=g.at+g.n;
+    }
+    return next==w.count;
+}

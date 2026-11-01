@@ -1,0 +1,32 @@
+// Chapter 152: broken shapes, lengths, buffers and numbers, each refused
+// with its status before anything is written.
+#import "Basic";
+#load "../lib/conformer.coax";
+
+// book:begin refuse
+main :: () {
+    s:=cf_tiny();w:[1494]f32;#assert cf_init(s,w[..],1)==CfStatus.ok;
+    b:=s;b.heads=3;print("width 8 in 3 heads: %\n",cf_shape_check(b));
+    b=s;b.kernel=4;print("an even kernel: %\n",cf_shape_check(b));
+    b=s;b.mels=129;print("129 mels: %\n",cf_shape_check(b));
+    print("2,049 frames: %\n",cf_plan(s,1,2049).status);
+    print("9 items: %\n",cf_plan(s,9,20).status);
+    big:=s;big.mels=128;big.channels=64;print("64 channels on 2,048 frames of 128 mels: %\n",cf_plan(big,1,2048).status);
+
+    T:=9;x:[144]f32;cf_fixture_features(x[..],16,T,1);work:[496]f32;out:[16]f32;n:=[1]int.[-7];lens:=[1]int.[9];
+    for i:0..<16 {out[i]=-7;}
+    print("143 features for 16 mels x 9 frames: %\n",cf_encode(s,w[..],x[0..<143],lens[..],1,T,work[..],out[..],n[..],false).status);
+    lens[0]=10;print("a length of 10 in 9 frames: %\n",cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status);
+    lens[0]=0;print("a length of 0: %\n",cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status);
+    lens[0]=9;print("room for 15 of 16 outputs: %\n",cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[0..<15],n[..],false).status);
+    p:=cf_plan(s,1,T);print("work one value short of %: %\n",p.work,cf_encode(s,w[..],x[..],lens[..],1,T,work[0..<p.work-1],out[..],n[..],false).status);
+    x[8]=cf_nan();print("a NaN feature: %\n",cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status);
+    x[8]=10001;print("a feature of 10,001: %\n",cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status);
+    x[8]=0;l:=cf_layer_at(s,cf_layer_base(s,0));w[l.conv.bn+8]=-1;
+    print("a negative batch norm variance: %\n",cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status);
+    w[l.conv.bn+8]=1;w[cf_sub_at(s).out+48]=1001;
+    print("a bias of 1,001: %\n",cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status);
+    print("outputs still -7: % %, length still %\n",out[0],out[15],n[0]);
+    logp:[8]f32;print("greedy over 10 frames of an 8-value row: %\n",cf_greedy(logp[..],10,4,lens[..]).status);
+}
+// book:end refuse

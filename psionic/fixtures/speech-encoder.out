@@ -1,0 +1,17 @@
+1 frames -> 1 -> 1 -> 1 encoded
+8 frames -> 4 -> 2 -> 1 encoded
+9 frames -> 5 -> 3 -> 2 encoded
+101 frames -> 51 -> 26 -> 13 encoded
+1000 frames -> 500 -> 250 -> 125 encoded
+2048 frames -> 1024 -> 512 -> 256 encoded
+positions 1 0 -1 per row: 10.0 11.0 12.0 / 20.0 21.0 22.0; shifted: 11.0 12.0 / 20.0 21.0
+features: 101 and 61 frames of 128 mels, padded to 101
+plan: 15017 weights; time 101 -> 51 -> 26 -> 13, mels 128 -> 64 -> 32 -> 16; work 79744 values
+batch: ok, 416 values, encoded lengths 13 and 8
+item 0: alone equals the batch bit for bit: true; padded frames zero: true; within 1e-4 of the binary64 reference: true
+item 1: alone equals the batch bit for bit: true; padded frames zero: true; within 1e-4 of the binary64 reference: true
+item 0, frame 0, first 4 of 16: -0.5567 -0.4468 -0.6538 2.353
+head: ok, 234 values; item 0 frame 0 log-probabilities sum to 1: true
+item 0 greedy: 1 tokens: 5
+item 1 greedy: 1 tokens: 5
+best per frame a a _ a b b _ _ c: 4 tokens: 0 0 1 2

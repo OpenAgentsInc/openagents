@@ -1,0 +1,69 @@
+// Chapter 152: frame counts through the subsampling, the relative shift by
+// hand, two utterances' chapter 151 features through a small seeded
+// FastConformer as one padded batch and alone, against the binary64
+// reference, then the CTC head and greedy decoding.
+#import "Basic";
+#load "../lib/spectral.coax";
+#load "../lib/conformer.coax";
+
+round4 :: (v:f32)->f64 {return floor(f64(v)*10000+0.5)/10000;}
+
+main :: () {
+    // book:begin lengths
+    sizes:=[6]int.[1,8,9,101,1000,2048];
+    for n:sizes {print("% frames -> % -> % -> % encoded\n",n,cf_stage(n),cf_stage(cf_stage(n)),cf_length(n));}
+    // book:end lengths
+
+    // book:begin shift
+    full:=[6]f64.[10,11,12, 20,21,22];shifted:[4]f64;cf_shift(2,full[..],shifted[..]);
+    print("positions 1 0 -1 per row: % % % / % % %; shifted: % % / % %\n",full[0],full[1],full[2],full[3],full[4],full[5],
+        shifted[0],shifted[1],shifted[2],shifted[3]);
+    // book:end shift
+
+    // book:begin features
+    // One second of chapter 151's test signal and the first 0.6 s of it.
+    spec:=sf_nemo_spec();bank:[128*257]f64;#assert sf_mel_bank(spec,bank[..]).status==SfStatus.ok;
+    wave:[16000]f64;sf_test_signal(wave[..]);
+    lengths:=[2]int.[0,0];feats:[128*101]f64;T:=101;x:[2*128*101]f32;
+    cuts:=[2]int.[16000,9600];
+    for b:0..<2 {
+        r:=sf_features(SfAudio.{rate=16000,channels=1,samples=wave[0..<cuts[b]]},spec,bank[..],feats[..]);
+        lengths[b]=r.frames;
+        for m:0..<128 {for t:0..<r.frames {x[(b*128+m)*T+t]=f32(feats[m*r.frames+t]);}}
+    }
+    print("features: % and % frames of 128 mels, padded to %\n",lengths[0],lengths[1],T);
+    // book:end features
+
+    // book:begin encode
+    s:=CfShape.{mels=128,channels=4,dim=16,heads=2,hidden=64,kernel=9,layers=2,vocab=8,xscale=true};
+    p:=cf_plan(s,2,T);w:[16384]f32;work:[81920]f32;out:[2*13*16]f32;got:[2]int;
+    print("plan: % weights; time 101 -> % -> % -> %, mels 128 -> % -> % -> %; work % values\n",p.weights,p.t1,p.t2,p.t3,p.f1,p.f2,p.f3,p.work);
+    #assert cf_init(s,w[0..<p.weights],152)==CfStatus.ok;
+    r:=cf_encode(s,w[0..<p.weights],x[..],lengths[..],2,T,work[..],out[..],got[..],false);
+    print("batch: %, % values, encoded lengths % and %\n",r.status,r.written,got[0],got[1]);
+    for b:0..<2 {
+        L:=lengths[b];one:[128*101]f32;for m:0..<128 {for t:0..<L {one[m*L+t]=x[(b*128+m)*T+t];}}
+        alone:[13*16]f32;n:[1]int;only:=[1]int.[L];
+        a:=cf_encode(s,w[0..<p.weights],one[0..<128*L],only[..],1,L,work[..],alone[..],n[..],false);
+        same:=a.status==CfStatus.ok && px_same(out[b*208..<b*208+n[0]*16],alone[0..<n[0]*16]);
+        zero:=true;for i:n[0]*16..<208 {if out[b*208+i]!=0 {zero=false;}}
+        ref:[13*16]f64;rw:[48000]f64;k:=cf_ref_encode(s,w[0..<p.weights],one[0..<128*L],L,L,ref[..],rw[..]);
+        worst:=cf_worst(alone[0..<k*16],ref[0..<k*16]);
+        print("item %: alone equals the batch bit for bit: %; padded frames zero: %; within 1e-4 of the binary64 reference: %\n",b,same,zero,k==n[0] && worst<=0.0001);
+    }
+    print("item 0, frame 0, first 4 of 16: % % % %\n",round4(out[0]),round4(out[1]),round4(out[2]),round4(out[3]));
+    // book:end encode
+
+    // book:begin decode
+    logp:[2*13*9]f32;h:=cf_head(s,w[0..<p.weights],out[..],got[..],2,13,logp[..],false);
+    print("head: %, % values; item 0 frame 0 log-probabilities sum to 1: %\n",h.status,h.written,cf_close(cf_probability(logp[0..<9]),1,0.000001));
+    for b:0..<2 {
+        tokens:[13]int;g:=cf_greedy(logp[b*117..<b*117+got[b]*9],got[b],9,tokens[..]);
+        print("item % greedy: % tokens:",b,g.written);for i:0..<g.written {print(" %",tokens[i]);}print("\n");
+    }
+    best:=[9]int.[0,0,3,0,1,1,3,3,2];hand:[36]f32;
+    for t:0..<9 {for c:0..<4 {hand[t*4+c]=-2;}hand[t*4+best[t]]=-0.5;}
+    tokens:[9]int;g:=cf_greedy(hand[..],9,4,tokens[..]);
+    print("best per frame a a _ a b b _ _ c: % tokens: % % % %\n",g.written,tokens[0],tokens[1],tokens[2],tokens[3]);
+    // book:end decode
+}

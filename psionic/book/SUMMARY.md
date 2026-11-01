@@ -166,7 +166,7 @@
 - [150. Put generated motion in Verse](ch150-put-generated-motion-in-verse.md) — design draft
 
 - [151. Waveforms and spectral features](ch151-waveforms-and-spectral-features.md) — partly implemented
-- [152. A speech encoder](ch152-a-speech-encoder.md) — design draft
+- [152. A speech encoder](ch152-a-speech-encoder.md) — partly implemented
 - [153. Transcribe with Parakeet](ch153-transcribe-with-parakeet.md) — design draft
 - [154. Transcribe while someone speaks](ch154-transcribe-while-someone-speaks.md) — design draft
 - [155. Speak the answer](ch155-speak-the-answer.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–47, 49, 52, 53, 55, 56, 60–68, 70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114, 117, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–47, 49, 52, 53, 55, 56, 60–68, 70, 72, 73, 75, 77, 79, 80, 82, 84, 88–98, 103–112, 114, 117, 120, 121, 123, 124, 140, 142, 145, 147, 148, 151, 152, 156–159, 162, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

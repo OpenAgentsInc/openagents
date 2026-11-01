@@ -1,0 +1,769 @@
+// Chapter 152: a speech encoder. NeMo's FastConformer as Parakeet uses it:
+// three stride-2 convolutions over time and frequency that cut the frame
+// rate by eight (a full convolution, then two depthwise-separable ones, each
+// followed by ReLU), a linear map to the model width, then Conformer layers
+// (half a feed-forward module, self-attention with relative positions, a
+// convolution module, the other half feed-forward module, a layer norm), and
+// a CTC head with greedy decoding. Every batch item carries its valid length,
+// and no frame past an item's length is read.
+// Profile psionic-conformer-v1: f32 storage, binary64 compensated sums
+// (chapter 4's accumulator), one rounding to f32 per stored value; at most
+// 8 items, 2,048 input frames, 128 mels, 64 channels, width 128, 512 hidden,
+// 8 layers, 31 taps and 1,024 tokens.
+#load "pixels.coax";
+#load "counter-rng.coax";
+#load "../tests/conformer-checks.coax";   // the checks' references
+
+// book:begin types
+CfStatus :: enum u8 {ok;shape;limit;length;capacity;alias;number;}
+// mels features a frame; channels in the subsampling convolutions; dim the
+// model width, split evenly into heads; hidden the feed-forward width; kernel
+// the depthwise convolution's taps (odd); vocab tokens, and the blank after
+// them. xscale multiplies the subsampled frames by sqrt(dim).
+CfShape :: struct {mels:int;channels:int;dim:int;heads:int;hidden:int;kernel:int;layers:int;vocab:int;xscale:bool;}
+// Sizes for a batch padded to a frame count: t1..t3 and f1..f3 are time and
+// frequency after each stride-2 stage. Counts are f32 values. The work array
+// holds the masked input, chapter 142's scratch, the convolution stages, one
+// item's layer work and the encoded frames, at the offsets given.
+CfPlan :: struct {status:CfStatus;t1:int;t2:int;t3:int;f1:int;f2:int;f3:int;weights:int;input:int;output:int;logits:int;
+    conv:int;layer:int;at_scratch:int;at_conv:int;at_layer:int;at_output:int;work:int;}
+CfResult :: struct {status:CfStatus;written:int;}
+// book:end types
+
+// book:begin bounds
+CF_MELS_MAX :: 128;
+CF_CHANNELS_MAX :: 64;
+CF_DIM_MAX :: 128;
+CF_HIDDEN_MAX :: 512;
+CF_KERNEL_MAX :: 31;
+CF_LAYERS_MAX :: 8;
+CF_VOCAB_MAX :: 1024;
+CF_FRAMES_MAX :: 2048;
+CF_BATCH_MAX :: 8;
+CF_TOKENS_MAX :: 256;      // CF_FRAMES_MAX / 8
+CF_FEATURES_MAX :: 1024;   // CF_CHANNELS_MAX * 16, the width of 128 mels after three halvings
+CF_EPSILON :: 0.00001;     // layer and batch norm
+// Admitted magnitudes. With them no stored value can pass f32: the largest,
+// after the subsampling, is under 4e32 at every bound above.
+CF_FEATURE_MAX :: 10000.0;
+CF_WEIGHT_MAX :: 1000.0;   // batch norm variances: any finite value >= 0
+CF_FRAME_MAX :: 100000.0;  // what the CTC head reads; a layer norm gives at most 12,300
+// book:end bounds
+
+// book:begin layout
+// Where each weight starts in the flat f32 array. A linear map's matrix is
+// (out, in), row by row, and its bias follows it.
+// Feed-forward: layer norm gain and shift, (hidden, dim), (dim, hidden).
+CfFf :: struct {norm:int;w1:int;w2:int;end:int;}
+// Attention: norm; query, key, value, output maps with biases; the position
+// map without a bias; the per-head biases u and v added to the query.
+CfAtt :: struct {norm:int;q:int;k:int;v:int;o:int;pos:int;u:int;bias_v:int;end:int;}
+// Convolution module: norm; pointwise (2 dim, dim); depthwise (dim, kernel)
+// and bias; batch norm mean, variance, gain and shift; pointwise (dim, dim).
+CfConv :: struct {norm:int;pw1:int;dw:int;bn:int;pw2:int;end:int;}
+CfLayer :: struct {ff1:CfFf;att:CfAtt;conv:CfConv;ff2:CfFf;out:int;end:int;}
+// Subsampling: 3 x 3 convolution from one channel; depthwise 3 x 3 and
+// pointwise 1 x 1 twice; (dim, channels x f3). Each kernel is followed by its bias.
+CfSub :: struct {conv0:int;dw1:int;pw1:int;dw2:int;pw2:int;out:int;end:int;}
+cf_ff_at :: (s:CfShape,base:int)->CfFf {
+    d:=s.dim;h:=s.hidden;a:=CfFf.{norm=base,w1=base+2*d};a.w2=a.w1+h*d+h;a.end=a.w2+d*h+d;return a;
+}
+cf_att_at :: (s:CfShape,base:int)->CfAtt {
+    d:=s.dim;a:=CfAtt.{norm=base,q=base+2*d};
+    a.k=a.q+d*d+d;a.v=a.k+d*d+d;a.o=a.v+d*d+d;a.pos=a.o+d*d+d;a.u=a.pos+d*d;a.bias_v=a.u+d;a.end=a.bias_v+d;return a;
+}
+cf_conv_at :: (s:CfShape,base:int)->CfConv {
+    d:=s.dim;a:=CfConv.{norm=base,pw1=base+2*d};a.dw=a.pw1+2*d*d+2*d;a.bn=a.dw+d*s.kernel+d;a.pw2=a.bn+4*d;a.end=a.pw2+d*d+d;return a;
+}
+cf_layer_at :: (s:CfShape,base:int)->CfLayer {
+    l:CfLayer;l.ff1=cf_ff_at(s,base);l.att=cf_att_at(s,l.ff1.end);l.conv=cf_conv_at(s,l.att.end);
+    l.ff2=cf_ff_at(s,l.conv.end);l.out=l.ff2.end;l.end=l.out+2*s.dim;return l;
+}
+cf_sub_at :: (s:CfShape)->CfSub {
+    c:=s.channels;a:CfSub;a.dw1=10*c;a.pw1=a.dw1+10*c;a.dw2=a.pw1+c*c+c;a.pw2=a.dw2+10*c;a.out=a.pw2+c*c+c;
+    a.end=a.out+s.dim*c*cf_length(s.mels)+s.dim;return a;
+}
+cf_layer_size :: (s:CfShape)->int {return cf_layer_at(s,0).end;}
+cf_layer_base :: (s:CfShape,layer:int)->int {return cf_sub_at(s).end+layer*cf_layer_size(s);}
+cf_head_at :: (s:CfShape)->int {return cf_layer_base(s,s.layers);}
+cf_weight_count :: (s:CfShape)->int {return cf_head_at(s)+(s.vocab+1)*(s.dim+1);}
+// book:end layout
+
+// Checks precede the implementation. Expected values are worked by hand in
+// chapter 152, or come from the references in psionic/tests/conformer-checks.coax.
+cf_tiny :: ()->CfShape {return CfShape.{mels=16,channels=3,dim=8,heads=2,hidden=16,kernel=3,layers=1,vocab=3,xscale=true};}
+
+#test "lengths by hand" {
+    #assert cf_stage(1)==1 && cf_stage(2)==1 && cf_stage(3)==2 && cf_stage(101)==51 && cf_stage(51)==26 && cf_stage(26)==13;
+    #assert cf_length(1)==1 && cf_length(8)==1 && cf_length(9)==2 && cf_length(101)==13 && cf_length(1000)==125 && cf_length(2048)==256;
+    #assert cf_length(128)==16 && cf_length(80)==10 && cf_length(16)==2;
+}
+#forall "eight input frames make one output frame, rounding up, as the convolutions say" frames:1..<2049 #steps 200000000 {
+    #assert cf_length(frames)==(frames+7)/8;
+    p:=cf_plan(cf_tiny(),1,frames);
+    #assert p.status==CfStatus.ok && p.t1==cf_stage(frames) && p.t2==cf_stage(p.t1) && p.t3==cf_length(frames) && p.f3==2;
+}
+#test "the relative shift by hand" {
+    // Rows of positions 1, 0, -1 for queries 0 and 1: pad a zero column, read
+    // as 4 rows of 2, drop the first, read as 2 rows of 3, keep 2 columns.
+    full:=[6]f64.[10,11,12, 20,21,22];out:[4]f64;cf_shift(2,full[..],out[..]);
+    #assert out[0]==11 && out[1]==12 && out[2]==20 && out[3]==21;
+    one:=[1]f64.[5];o1:[1]f64;cf_shift(1,one[..],o1[..]);#assert o1[0]==5;
+    c:=cf_shift_source(3,0,2);#assert c.row==0 && c.column==4;
+    c=cf_shift_source(3,2,0);#assert c.row==2 && c.column==0;
+}
+#forall "the shift reads position i - j and never the padding" tokens:1..<33 #steps 100000000 {
+    full:[32*63]f64;out:[32*32]f64;w:=2*tokens-1;
+    for i:0..<tokens {for k:0..<w {full[i*w+k]=f64(100*i+k);}}
+    cf_shift(tokens,full[0..<tokens*w],out[0..<tokens*tokens]);
+    for i:0..<tokens {for j:0..<tokens {
+        c:=cf_shift_source(tokens,i,j);#assert c.row==i && c.column==tokens-1-i+j;
+        // Column k holds position tokens - 1 - k: here, i - j.
+        #assert out[i*tokens+j]==f64(100*i+tokens-1-i+j);
+    }}
+}
+#test "positions by hand" {
+    p:[4]f32;cf_position(0,4,p[..]);#assert p[0]==0 && p[1]==1 && p[2]==0 && p[3]==1;
+    // dim 4: frequencies 1 and 10000^(-2/4) = 0.01.
+    cf_position(1,4,p[..]);
+    #assert p[0]==f32(sin(1.0)) && p[1]==f32(cos(1.0)) && cf_close(f64(p[2]),sin(0.01),0.0000001) && cf_close(f64(p[3]),cos(0.01),0.0000001);
+    cf_position(-2,4,p[..]);#assert p[0]==f32(sin(-2.0)) && p[1]==f32(cos(2.0));
+}
+#test "small helpers by hand" {
+    #assert cf_fmax(3,-7)==3 && cf_fmax(-7,3)==3 && cf_fmax(2.5,2.5)==2.5 && cf_fmax(-1,0)==0 && cf_fmax(0.1,0.3)==0.3;
+    #assert cf_close(1,1.5,0.5) && !cf_close(1,1.5,0.25);
+    // Softmax by hand: the largest score wherever it sits, so exp never overflows.
+    a1:=[3]f64.[1000,0,-1000];cf_softmax(a1[..]);#assert a1[0]==1 && a1[1]==exp(-1000.0) && a1[2]==0;
+    a2:=[3]f64.[0,1000,5];cf_softmax(a2[..]);#assert a2[0]==0 && a2[1]==1 && a2[2]==exp(-995.0);
+    a3:=[3]f64.[0,5,1000];cf_softmax(a3[..]);#assert a3[2]==1;
+    a4:=[2]f64.[0,log(3.0)];cf_softmax(a4[..]);#assert cf_close(a4[0],0.25,1e-15) && cf_close(a4[1],0.75,1e-15);
+    #assert cf_tiny().xscale;
+    // Below -700 the logistic function holds exp's argument at 700.
+    #assert cf_sigmoid(0)==0.5 && cf_sigmoid(-700)==1/(1+exp(700.0)) && cf_sigmoid(-800)==cf_sigmoid(-700) && cf_sigmoid(-699)!=cf_sigmoid(-700);
+    #assert cf_silu(2)==2/(1+exp(-2.0)) && cf_silu(-1000)==-1000*cf_sigmoid(-700);
+    a:=[6]f32.[1,2,3,4,5,6];#assert cf_part(a[..],1,2)[0]==3 && cf_part(a[..],2,2)[1]==6 && cf_part(a[..],0,3).count==3;
+}
+#test "the weight layout by hand" {
+    s:=cf_tiny();
+    // Subsampling: 30 + 30 + 12 + 30 + 12, then (8, 3 x 2) and 8 = 170.
+    sub:=cf_sub_at(s);#assert sub.conv0==0 && sub.dw1==30 && sub.pw1==60 && sub.dw2==72 && sub.pw2==102 && sub.out==114 && sub.end==170;
+    // Feed-forward 16 + 144 + 136 = 296; attention 16 + 4 x 72 + 64 + 16 = 384;
+    // convolution 16 + 144 + 32 + 32 + 72 = 296; out norm 16: 1,288.
+    l:=cf_layer_at(s,170);
+    #assert l.ff1.norm==170 && l.ff1.w1==186 && l.ff1.w2==330 && l.ff1.end==466;
+    #assert l.att.q==482 && l.att.k==554 && l.att.v==626 && l.att.o==698 && l.att.pos==770 && l.att.u==834 && l.att.bias_v==842 && l.att.end==850;
+    #assert l.conv.pw1==866 && l.conv.dw==1010 && l.conv.bn==1042 && l.conv.pw2==1074 && l.conv.end==1146;
+    #assert l.ff2.end==1442 && l.out==1442 && l.end==1458 && cf_layer_size(s)==1288;
+    // Head: (4, 8) and 4.
+    #assert cf_head_at(s)==1458 && cf_weight_count(s)==1494;
+    s.layers=2;#assert cf_weight_count(s)==2782;
+    s.kernel=5;#assert cf_conv_at(s,0).bn==2*8+144+48;
+}
+#test "shape admission" {
+    s:=cf_tiny();#assert cf_shape_check(s)==CfStatus.ok;
+    b:=s;b.mels=0;#assert cf_shape_check(b)==CfStatus.shape;b=s;b.channels=0;#assert cf_shape_check(b)==CfStatus.shape;
+    b=s;b.dim=0;#assert cf_shape_check(b)==CfStatus.shape;b=s;b.heads=0;#assert cf_shape_check(b)==CfStatus.shape;
+    b=s;b.hidden=0;#assert cf_shape_check(b)==CfStatus.shape;b=s;b.kernel=0;#assert cf_shape_check(b)==CfStatus.shape;
+    b=s;b.layers=0;#assert cf_shape_check(b)==CfStatus.shape;b=s;b.vocab=0;#assert cf_shape_check(b)==CfStatus.shape;
+    b=s;b.mels=128;#assert cf_shape_check(b)==CfStatus.ok;b.mels=129;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.channels=64;#assert cf_shape_check(b)==CfStatus.ok;b.channels=65;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.dim=128;#assert cf_shape_check(b)==CfStatus.ok;b.dim=129;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.hidden=512;#assert cf_shape_check(b)==CfStatus.ok;b.hidden=513;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.kernel=31;#assert cf_shape_check(b)==CfStatus.ok;b.kernel=32;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.layers=8;#assert cf_shape_check(b)==CfStatus.ok;b.layers=9;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.vocab=1024;#assert cf_shape_check(b)==CfStatus.ok;b.vocab=1025;#assert cf_shape_check(b)==CfStatus.limit;
+    b=s;b.heads=3;#assert cf_shape_check(b)==CfStatus.shape;b=s;b.heads=8;#assert cf_shape_check(b)==CfStatus.ok;
+    b=s;b.dim=6;b.heads=6;#assert cf_shape_check(b)==CfStatus.ok;b.dim=5;b.heads=5;#assert cf_shape_check(b)==CfStatus.shape;
+    b=s;b.kernel=4;#assert cf_shape_check(b)==CfStatus.shape;b.kernel=1;#assert cf_shape_check(b)==CfStatus.ok;
+}
+#test "plans by hand" {
+    s:=cf_tiny();p:=cf_plan(s,2,20);
+    // 20 frames, 16 mels: 10 x 8, 5 x 4, 3 x 2.
+    #assert p.status==CfStatus.ok && p.t1==10 && p.f1==8 && p.t2==5 && p.f2==4 && p.t3==3 && p.f3==2;
+    #assert p.weights==1494 && p.input==640 && p.output==48 && p.logits==24;
+    // Input 2 x 20 x 16; scratch and stages 2 x 3 x 10 x 8; a layer 6 x 3 x 8.
+    #assert p.conv==480 && p.layer==144 && p.at_scratch==640 && p.at_conv==1120 && p.at_layer==1600 && p.at_output==1744 && p.work==1792;
+    q:=cf_plan(s,1,1);#assert q.status==CfStatus.ok && q.t3==1 && q.input==16 && q.conv==24 && q.work==16+48+48+8;
+    #assert cf_plan(s,0,20).status==CfStatus.shape && cf_plan(s,9,20).status==CfStatus.limit && cf_plan(s,8,20).status==CfStatus.ok;
+    #assert cf_plan(s,1,0).status==CfStatus.shape && cf_plan(s,1,2049).status==CfStatus.limit && cf_plan(s,1,2048).status==CfStatus.ok;
+    b:=s;b.heads=3;#assert cf_plan(b,1,20).status==CfStatus.shape;
+    // 64 channels on 2,048 frames of 128 mels is more than chapter 142 admits.
+    big:=s;big.mels=128;big.channels=64;#assert cf_plan(big,1,2048).status==CfStatus.limit;
+}
+#test "weights are seeded, pinned and in range" #steps 40000000 {
+    s:=cf_tiny();w:[1494]f32;v:[1494]f32;for i:0..<1494 {w[i]=-9;}
+    #assert cf_init(s,w[..],7)==CfStatus.ok && cf_ref_init_ok(s,w[..],7);
+    #assert cf_init(s,v[..],8)==CfStatus.ok && !px_same(w[..],v[..]) && cf_ref_init_ok(s,v[..],8);
+    #assert cf_init(s,w[0..<1493],7)==CfStatus.shape;
+    b:=s;b.heads=3;#assert cf_init(b,w[..],7)==CfStatus.shape;
+    s.layers=2;u:[2782]f32;#assert cf_init(s,u[..],7)==CfStatus.ok && cf_ref_init_ok(s,u[..],7);
+    l:=cf_layer_at(s,cf_layer_base(s,1));
+    // Variances: any finite value from 0; every other weight within 1,000.
+    #assert cf_weights_ok(s,u[..]);
+    keep:=u;bn:=l.conv.bn;u[bn+8]=0;u[bn+15]=5000;#assert cf_weights_ok(s,u[..]);
+    u[bn+15]=-0.5;#assert !cf_weights_ok(s,u[..]);
+    u=keep;u[bn+7]=5000;#assert !cf_weights_ok(s,u[..]);u=keep;u[bn+16]=5000;#assert !cf_weights_ok(s,u[..]);
+    u=keep;f:=cf_layer_at(s,cf_layer_base(s,0)).conv.bn;u[f+8]=5000;#assert cf_weights_ok(s,u[..]);
+    u=keep;u[169]=5000;#assert !cf_weights_ok(s,u[..]);u=keep;u[cf_head_at(s)]=5000;#assert !cf_weights_ok(s,u[..]);
+    u=keep;u[0]=1000;u[1]=-1000;#assert cf_weights_ok(s,u[..]);u[1]=-1000.0625;#assert !cf_weights_ok(s,u[..]);
+    u=keep;u[2]=1000.0625;#assert !cf_weights_ok(s,u[..]);u=keep;u[2781]=cf_nan();#assert !cf_weights_ok(s,u[..]);
+    u=keep;u[0]=cf_nan();#assert !cf_weights_ok(s,u[..]);u=keep;u[0]=-1000.0625;#assert !cf_weights_ok(s,u[..]);
+    u=keep;u[2781]=1000.0625;#assert !cf_weights_ok(s,u[..]);
+    u=keep;u[bn+9]=cf_nan();#assert !cf_weights_ok(s,u[..]);
+}
+#test "one convolution through chapter 142" {
+    s:=cf_tiny();c:=cf_conv0(s,1,2);x:[32]f32;w:[30]f32;y:[24]f32;scratch:[24]f32;
+    x[3]=cf_nan();#assert cf_conv(c,x[..],w[..],0,y[..],scratch[..])==PxStatus.number;
+    // One weight 1 at the centre tap of filter 1, its bias 0.5: output (1, 0, j) reads x[0][2j].
+    x[3]=0;x[0]=2;x[2]=3;w[13]=1;w[28]=0.5;#assert cf_conv(c,x[..],w[..],0,y[..],scratch[..])==PxStatus.ok;
+    #assert y[0]==0 && y[8]==2.5 && y[9]==3.5 && y[10]==0.5 && y[16]==0;
+}
+#test "each piece against its reference" #steps 400000000 {
+    s:=cf_tiny();w:[1494]f32;#assert cf_init(s,w[..],3)==CfStatus.ok;l:=cf_layer_at(s,cf_layer_base(s,0));
+    L:=5;h:[40]f32;g:=[1]u64.[11];for i:0..<40 {h[i]=f32(cf_draw(g[..])*4-2);}
+    work:[240]f32;ref:[40]f64;rw:[512]f64;
+    // Feed-forward, one frame.
+    a:=h;cf_feed_forward(s,w[..],l.ff1,a[0..<8]);
+    for i:0..<8 {ref[i]=f64(h[i]);}cf_ref_feed_forward(s,w[..],l.ff1,ref[0..<8]);
+    #assert cf_worst(a[0..<8],ref[0..<8])<=0.00001 && cf_worst(h[0..<8],ref[0..<8])>0.01;
+    // Attention over 5 frames: explicit score matrix with position i - j.
+    a=h;cf_attention(s,w[..],l.att,a[..],L,work[..]);
+    for i:0..<40 {ref[i]=f64(h[i]);}cf_ref_attention(s,w[..],l.att,ref[..],L,rw[..]);
+    #assert cf_worst(a[..],ref[..])<=0.00001 && cf_worst(h[..],ref[..])>0.01;
+    // The intermediate tensors too: biases on keys and positions cancel in the
+    // softmax, so only q, k, v and the position table show them.
+    #assert cf_worst(work[0..<120],rw[0..<120])<=0.00001;
+    pe:[8]f64;pr:[8]f64;
+    for r:0..<9 {for e:0..<8 {pe[e]=cf_ref_pe(4-r,e,8);}cf_ref_linear(w[..],l.att.pos,8,8,false,pe[..],pr[..]);#assert cf_worst(work[160+8*r..<168+8*r],pr[..])<=0.000001;}
+    // Convolution module: explicitly zero-padded taps.
+    a=h;cf_convolution(s,w[..],l.conv,a[..],L,work[..]);
+    for i:0..<40 {ref[i]=f64(h[i]);}cf_ref_convolution(s,w[..],l.conv,ref[..],L,rw[..]);
+    #assert cf_worst(a[..],ref[..])<=0.00001 && cf_worst(h[..],ref[..])>0.01;
+    // Variances of 0: the epsilon inside the square root is all that remains.
+    flat:=w;for c:0..<8 {flat[l.conv.bn+8+c]=0;}
+    a=h;cf_convolution(s,flat[..],l.conv,a[..],L,work[..]);
+    for i:0..<40 {ref[i]=f64(h[i]);}cf_ref_convolution(s,flat[..],l.conv,ref[..],L,rw[..]);
+    #assert cf_worst(a[..],ref[..])<=0.001;
+    // A whole layer.
+    a=h;cf_layer(s,w[..],l,a[..],L,work[..]);
+    for i:0..<40 {ref[i]=f64(h[i]);}cf_ref_layer(s,w[..],l,ref[..],L,rw[..]);
+    #assert cf_worst(a[..],ref[..])<=0.00001;
+    // A frame past the valid length is never read.
+    b:=h;b[39]=1000;b[33]=-1000;a=h;
+    cf_layer(s,w[..],l,a[..],4,work[0..<192]);cf_layer(s,w[..],l,b[..],4,work[0..<192]);#assert px_same(a[0..<32],b[0..<32]);
+    // Large scores: the softmax subtracts its largest score first.
+    big:=w;for m:0..<8 {big[l.att.u+m]=100;big[l.att.k+64+m]=10;}
+    a=h;cf_attention(s,big[..],l.att,a[..],L,work[..]);
+    for i:0..<40 {ref[i]=f64(h[i]);}cf_ref_attention(s,big[..],l.att,ref[..],L,rw[..]);
+    #assert px_finite(a[..]) && cf_worst(a[..],ref[..])<=0.01;
+}
+#test "the encoder against its reference, one item" #steps 800000000 {
+    s:=cf_tiny();s.layers=2;w:[2782]f32;#assert cf_init(s,w[..],5)==CfStatus.ok;
+    T:=20;x:[320]f32;cf_fixture_features(x[..],16,T,1);
+    p:=cf_plan(s,1,T);work:[968]f32;out:[24]f32;lens:[1]int;
+    whole:=[1]int.[T];r:=cf_encode(s,w[..],x[..],whole[..],1,T,work[..],out[..],lens[..],false);
+    #assert r.status==CfStatus.ok && r.written==24 && lens[0]==3 && p.work==968;
+    ref:[24]f64;rw:[2048]f64;#assert cf_ref_encode(s,w[..],x[..],T,T,ref[..],rw[..])==3;
+    #assert cf_worst(out[..],ref[..])<=0.0001;
+    // The subsampling alone.
+    sub:[24]f32;cf_subsample(s,w[..],x[..],whole[..],1,T,work[..],sub[..]);
+    #assert cf_ref_subsample(s,w[..],x[..],T,T,ref[..],rw[..])==3;
+    #assert cf_worst(sub[..],ref[..])<=0.00001;
+    // Without the sqrt(dim) scale the subsampled frames shrink by that much.
+    s.xscale=false;cf_subsample(s,w[..],x[..],whole[..],1,T,work[..],sub[..]);
+    #assert cf_ref_subsample(s,w[..],x[..],T,T,ref[..],rw[..])==3 && cf_worst(sub[..],ref[..])<=0.00001;
+}
+#test "a padded batch gives each item's result alone" #steps 2000000000 {
+    s:=cf_tiny();w:[1494]f32;#assert cf_init(s,w[..],9)==CfStatus.ok;
+    T:=20;lens:=[3]int.[20,13,1];x:[960]f32;cf_fixture_features(x[..],16,T,3);
+    // Padding holds garbage, even NaN: none of it is read.
+    for b:0..<3 {for m:0..<16 {for t:lens[b]..<T {x[(b*16+m)*T+t]=cf_nan();}}}
+    work:[2616]f32;for i:0..<2616 {work[i]=5;}out:[72]f32;got:[3]int;
+    r:=cf_encode(s,w[..],x[..],lens[..],3,T,work[..],out[..],got[..],false);
+    #assert r.status==CfStatus.ok && r.written==72 && got[0]==3 && got[1]==2 && got[2]==1;
+    for b:0..<3 {
+        L:=lens[b];one:[320]f32;for m:0..<16 {for t:0..<L {one[m*L+t]=x[(b*16+m)*T+t];}}
+        alone:[24]f32;n:[1]int;only:=[1]int.[L];
+        #assert cf_encode(s,w[..],one[0..<16*L],only[..],1,L,work[..],alone[..],n[..],false).status==CfStatus.ok;
+        #assert n[0]==got[b] && px_same(out[b*24..<b*24+n[0]*8],alone[0..<n[0]*8]);
+        for i:n[0]*8..<24 {#assert out[b*24+i]==0;}
+    }
+}
+#test "the head and greedy decoding by hand" #steps 20000000 {
+    // Frames' best classes a a _ a b b _ _ c, with blank _ = 3: a a b c.
+    best:=[9]int.[0,0,3,0,1,1,3,3,2];logp:[36]f32;
+    for t:0..<9 {for k:0..<4 {logp[t*4+k]=-2;}logp[t*4+best[t]]=-0.5;}
+    tokens:[9]int;r:=cf_greedy(logp[..],9,4,tokens[..]);
+    #assert r.status==CfStatus.ok && r.written==4 && tokens[0]==0 && tokens[1]==0 && tokens[2]==1 && tokens[3]==2;
+    // Uneven rows: blank, 0, 1, 1, 2 give 0 1 2.
+    rows:=[20]f32.[-3,-1,-2,-0.5, -0.1,-1,-2,-3, -2,-0.2,-1,-3, -2,-0.2,-1,-3, -3,-2,-0.3,-1];
+    r=cf_greedy(rows[..],5,4,tokens[..]);#assert r.written==3 && tokens[0]==0 && tokens[1]==1 && tokens[2]==2;
+    // Two classes: one token and the blank.
+    pairs:=[4]f32.[-0.1,-2, -2,-0.1];r=cf_greedy(pairs[..],2,2,tokens[..]);#assert r.status==CfStatus.ok && r.written==1 && tokens[0]==0;
+    // A tie goes to the lower class; all blanks give nothing.
+    logp[0]=-0.5;logp[1]=-0.5;logp[2]=-0.5;logp[3]=-0.5;r=cf_greedy(logp[0..<4],1,4,tokens[..]);#assert r.written==1 && tokens[0]==0;
+    for i:0..<36 {logp[i]=-1;}for t:0..<9 {logp[t*4+3]=0;}#assert cf_greedy(logp[..],9,4,tokens[..]).written==0;
+    #assert cf_greedy(logp[..],9,4,tokens[0..<8]).status==CfStatus.capacity && cf_greedy(logp[..],10,4,tokens[..]).status==CfStatus.shape;
+    #assert cf_greedy(logp[..],9,1,tokens[..]).status==CfStatus.shape && cf_greedy(logp[..],0,4,tokens[..]).status==CfStatus.shape;
+    // Log-softmax: logits 0 and log 3 give probabilities 1/4 and 3/4.
+    s:=cf_tiny();s.vocab=1;s.dim=2;s.heads=1;w:[1494]f32;
+    at:=cf_head_at(s);w[at]=1;w[at+1]=0;w[at+2]=0;w[at+3]=0;w[at+4]=0;w[at+5]=f32(log(3.0));
+    h:=[4]f32.[0,5,7,7];lp:=[4]f32.[-7,-7,-7,-7];
+    first:=[1]int.[1];r=cf_head(s,w[0..<cf_weight_count(s)],h[..],first[..],1,2,lp[..],false);
+    #assert r.status==CfStatus.ok && r.written==4 && cf_close(f64(lp[0]),log(0.25),0.0000001) && cf_close(f64(lp[1]),log(0.75),0.0000001);
+    #assert lp[2]==0 && lp[3]==0;
+    // Logits 1000, 0, -1000 and 500: the largest is subtracted before exp.
+    t:=cf_tiny();t.dim=2;t.heads=1;v:[1494]f32;at=cf_head_at(t);
+    v[at+8]=1000;v[at+9]=0;v[at+10]=-1000;v[at+11]=500;lq:[4]f32;one:=[1]int.[1];h2:=[2]f32.[3,4];
+    r=cf_head(t,v[0..<cf_weight_count(t)],h2[..],one[..],1,1,lq[..],false);
+    #assert r.status==CfStatus.ok && lq[0]==0 && lq[1]==-1000 && lq[2]==-2000 && lq[3]==-500;
+    v[at+8]=0;v[at+9]=1000;v[at+10]=-1000;v[at+11]=0;r=cf_head(t,v[0..<cf_weight_count(t)],h2[..],one[..],1,1,lq[..],false);
+    #assert r.status==CfStatus.ok && lq[0]==-1000 && lq[1]==0;
+    v[at+9]=0;v[at+10]=1000;r=cf_head(t,v[0..<cf_weight_count(t)],h2[..],one[..],1,1,lq[..],false);#assert lq[2]==0 && lq[0]==-1000;
+    // Two items, the second one frame long.
+    h4:=[8]f32.[0,5, 0,9, 0,5, 1,1];two:=[2]int.[2,1];l8:[8]f32;
+    r=cf_head(s,w[0..<cf_weight_count(s)],h4[..],two[..],2,2,l8[..],false);
+    #assert r.status==CfStatus.ok && r.written==8 && l8[2]==l8[0] && l8[3]==l8[1] && l8[4]==l8[0] && l8[5]==l8[1] && l8[6]==0 && l8[7]==0 && l8[2]!=0;
+}
+#test "refusals leave the output alone" #steps 100000000 {
+    s:=cf_tiny();w:[1494]f32;#assert cf_init(s,w[..],1)==CfStatus.ok;
+    T:=9;x:[144]f32;cf_fixture_features(x[..],16,T,1);work:[496]f32;out:[16]f32;n:[1]int;lens:=[1]int.[9];
+    p:=cf_plan(s,1,T);#assert p.work==496;
+    #assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.ok;
+    for i:0..<16 {out[i]=-7;}n[0]=-7;
+    #assert cf_encode(s,w[..],x[0..<143],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.shape;
+    #assert cf_encode(s,w[0..<1493],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.shape;
+    two:=[2]int.[9,9];#assert cf_encode(s,w[..],x[..],two[..],1,T,work[..],out[..],n[..],false).status==CfStatus.shape;
+    lens[0]=0;#assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.length;
+    lens[0]=10;#assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.length;
+    lens[0]=9;
+    #assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[0..<15],n[..],false).status==CfStatus.capacity;
+    #assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[0..<0],false).status==CfStatus.capacity;
+    #assert cf_encode(s,w[..],x[..],lens[..],1,T,work[0..<495],out[..],n[..],false).status==CfStatus.capacity;
+    #assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],true).status==CfStatus.alias;
+    x[8]=cf_nan();#assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.number;
+    x[8]=0;w[5]=cf_nan();#assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.number;
+    w[5]=0;l:=cf_layer_at(s,cf_layer_base(s,0));w[l.conv.bn+8]=-1;
+    #assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.number;
+    w[l.conv.bn+8]=1;bias:=cf_sub_at(s).out+48;w[bias]=3e38;
+    #assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.number;
+    w[bias]=0;keep:=x;x[0]=10000.0625;
+    #assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.number;
+    x=keep;x[143]=-10000.0625;#assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.number;
+    b:=s;b.heads=3;#assert cf_encode(b,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.shape;
+    for v:out {#assert v==-7;}#assert n[0]==-7;
+    // At the bounds, and past a length, values are admitted.
+    x[0]=10000;x[1]=-10000;lens[0]=8;#assert cf_encode(s,w[..],x[..],lens[..],1,T,work[..],out[..],n[..],false).status==CfStatus.ok;
+    x=keep;lens[0]=9;
+    // The head refuses the same ways.
+    h:[8]f32;lp:=[4]f32.[-7,-7,-7,-7];one:=[1]int.[1];
+    #assert cf_head(s,w[..],h[0..<7],one[..],1,1,lp[..],false).status==CfStatus.shape;
+    #assert cf_head(s,w[0..<1493],h[..],one[..],1,1,lp[..],false).status==CfStatus.shape;
+    #assert cf_head(s,w[..],h[..],one[..],1,1,lp[0..<3],false).status==CfStatus.capacity;
+    #assert cf_head(s,w[..],h[..],one[..],1,1,lp[..],true).status==CfStatus.alias;
+    many:=[1]int.[2];#assert cf_head(s,w[..],h[..],many[..],1,1,lp[..],false).status==CfStatus.length;
+    none:=[1]int.[0];#assert cf_head(s,w[..],h[..],none[..],1,1,lp[..],false).status==CfStatus.length;
+    pair:=[2]int.[1,1];#assert cf_head(s,w[..],h[..],pair[..],1,1,lp[..],false).status==CfStatus.shape;
+    #assert cf_head(s,w[..],h[..],one[..],0,1,lp[..],false).status==CfStatus.shape;
+    #assert cf_head(s,w[..],h[..],one[..],1,0,lp[..],false).status==CfStatus.shape;
+    // An empty batch, and frames of 0, even with matching empty arrays.
+    #assert cf_head(s,w[..],h[0..<0],one[0..<0],0,1,lp[..],false).status==CfStatus.shape;
+    #assert cf_head(s,w[..],h[0..<0],one[..],1,0,lp[..],false).status==CfStatus.shape;
+    #assert cf_head(b,w[..],h[..],one[..],1,1,lp[..],false).status==CfStatus.shape;
+    h[3]=cf_nan();#assert cf_head(s,w[..],h[..],one[..],1,1,lp[..],false).status==CfStatus.number;
+    h[3]=0;at:=cf_head_at(s);w[at]=cf_nan();#assert cf_head(s,w[..],h[..],one[..],1,1,lp[..],false).status==CfStatus.number;
+    w[at]=3e38;#assert cf_head(s,w[..],h[..],one[..],1,1,lp[..],false).status==CfStatus.number;
+    w[at]=0;h[0]=100000.0625;#assert cf_head(s,w[..],h[..],one[..],1,1,lp[..],false).status==CfStatus.number;
+    h[0]=0;h[7]=-100000.0625;#assert cf_head(s,w[..],h[..],one[..],1,1,lp[..],false).status==CfStatus.number;
+    for v:lp {#assert v==-7;}
+    h[0]=100000;h[7]=-100000;#assert cf_head(s,w[..],h[..],one[..],1,1,lp[..],false).status==CfStatus.ok;
+    // A padded frame may hold anything.
+    h2:[16]f32;h2[8]=cf_nan();l2:[8]f32;#assert cf_head(s,w[..],h2[..],one[..],1,2,l2[..],false).status==CfStatus.ok;
+}
+
+// book:begin lengths
+// One stride-2 stage: kernel 3, one frame of zeros on each side.
+// (n + 2 - 3) / 2 + 1, rounded down, which is n/2 rounded up.
+cf_stage :: (n:int)->int {return (n-1)/2+1;}
+cf_length :: (frames:int)->int {return cf_stage(cf_stage(cf_stage(frames)));}
+// book:end lengths
+
+cf_shape_check :: (s:CfShape)->CfStatus {
+    sizes:=[8]int.[s.mels,s.channels,s.dim,s.heads,s.hidden,s.kernel,s.layers,s.vocab];
+    for e:sizes {if e<1 {return CfStatus.shape;}}
+    if s.mels>CF_MELS_MAX || s.channels>CF_CHANNELS_MAX || s.dim>CF_DIM_MAX || s.hidden>CF_HIDDEN_MAX {return CfStatus.limit;}
+    if s.kernel>CF_KERNEL_MAX || s.layers>CF_LAYERS_MAX || s.vocab>CF_VOCAB_MAX {return CfStatus.limit;}
+    if s.dim%s.heads!=0 || s.dim%2!=0 || s.kernel%2==0 {return CfStatus.shape;}
+    return CfStatus.ok;
+}
+
+// book:begin plan
+// The subsampling convolutions in chapter 142's terms: time is the image's
+// height and frequency its width.
+cf_conv0 :: (s:CfShape,batch:int,frames:int)->PxConv {
+    return PxConv.{batch=batch,channels=1,height=frames,width=s.mels,filters=s.channels,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1};
+}
+cf_depthwise :: (s:CfShape,batch:int,t:int,f:int)->PxConv {
+    c:=s.channels;
+    return PxConv.{batch=batch,channels=c,height=t,width=f,filters=c,kernel_h=3,kernel_w=3,stride_h=2,stride_w=2,pad_h=1,pad_w=1,groups=c};
+}
+cf_pointwise :: (s:CfShape,batch:int,t:int,f:int)->PxConv {
+    return PxConv.{batch=batch,channels=s.channels,height=t,width=f,filters=s.channels,kernel_h=1,kernel_w=1};
+}
+cf_plan :: (s:CfShape,batch:int,frames:int)->CfPlan {
+    status:=cf_shape_check(s);if status!=CfStatus.ok {return CfPlan.{status=status};}
+    if batch>CF_BATCH_MAX || frames>CF_FRAMES_MAX {return CfPlan.{status=CfStatus.limit};}
+    // Chapter 142 refuses a batch or frame count below 1, and work past its bounds.
+    c0:=px_conv_plan(cf_conv0(s,batch,frames));
+    if c0.status==PxStatus.limit {return CfPlan.{status=CfStatus.limit};}
+    if c0.status!=PxStatus.ok {return CfPlan.{status=CfStatus.shape};}
+    d1:=px_conv_plan(cf_depthwise(s,batch,c0.out_h,c0.out_w));
+    d2:=px_conv_plan(cf_depthwise(s,batch,d1.out_h,d1.out_w));
+    p:=CfPlan.{t1=c0.out_h,f1=c0.out_w,t2=d1.out_h,f2=d1.out_w,t3=d2.out_h,f3=d2.out_w};
+    p.weights=cf_weight_count(s);
+    p.input=batch*s.mels*frames;p.output=batch*p.t3*s.dim;p.logits=batch*p.t3*(s.vocab+1);
+    // The first convolution's output is the largest; later stages reuse it.
+    p.conv=c0.y;p.layer=6*p.t3*s.dim;
+    p.at_scratch=p.input;p.at_conv=p.at_scratch+p.conv;p.at_layer=p.at_conv+p.conv;p.at_output=p.at_layer+p.layer;
+    p.work=p.at_output+p.output;
+    return p;
+}
+// book:end plan
+
+cf_close :: (a:f64,b:f64,tolerance:f64)->bool {return abs(a-b)<=tolerance;}
+cf_nan :: ()->f32 {z:f32=0;return z/z;}
+// The larger of a and b with no comparison (chapter 158's form): the sign of
+// b - a, which rounding never flips, becomes a weight of 0 or 1.
+cf_fmax :: (a:f64,b:f64)->f64 {d:=b-a;s:=ifx d==0 then 0.0 else (d+abs(d))/(2*abs(d));return a*(1-s)+b*s;}
+// The logistic function, with exp's argument held at 700 so it stays finite;
+// below -700 the f32 result is 0 either way.
+cf_sigmoid :: (v:f64)->f64 {return 1/(1+exp(-cf_fmax(v,-700)));}
+cf_silu :: (v:f64)->f64 {return v*cf_sigmoid(v);}
+// Block k of size n.
+cf_part :: (a:[]f32,k:int,n:int)->[]f32 {return a[k*n..<k*n+n];}
+
+// book:begin init
+// Seeded weights: matrices uniform in +-1/sqrt(fan in); biases in +-0.1;
+// norm gains in 1 +- 0.1; batch norm variances in 1 +- 0.5. Weight i takes
+// draw i of the seed's counter stream, so it does not depend on fill order.
+cf_fill :: (w:[]f32,at:int,n:int,center:f64,spread:f64,seed:u64) {
+    for i:at..<at+n {u:=f64(cr_bits(seed,cast(u64)i)>>11)/9007199254740992.0;w[i]=f32(center+spread*(2*u-1));}
+}
+cf_fill_linear :: (w:[]f32,at:int,rows:int,cols:int,seed:u64) {
+    cf_fill(w,at,rows*cols,0,1/sqrt(f64(cols)),seed);cf_fill(w,at+rows*cols,rows,0,0.1,seed);
+}
+cf_fill_norm :: (w:[]f32,at:int,d:int,seed:u64) {cf_fill(w,at,d,1,0.1,seed);cf_fill(w,at+d,d,0,0.1,seed);}
+cf_fill_ff :: (s:CfShape,w:[]f32,a:CfFf,seed:u64) {
+    cf_fill_norm(w,a.norm,s.dim,seed);cf_fill_linear(w,a.w1,s.hidden,s.dim,seed);cf_fill_linear(w,a.w2,s.dim,s.hidden,seed);
+}
+cf_init :: (s:CfShape,w:[]f32,seed:u64)->CfStatus {
+    status:=cf_shape_check(s);if status!=CfStatus.ok {return status;}
+    if w.count!=cf_weight_count(s) {return CfStatus.shape;}
+    c:=s.channels;d:=s.dim;sub:=cf_sub_at(s);
+    cf_fill_linear(w,sub.conv0,c,9,seed);cf_fill_linear(w,sub.dw1,c,9,seed);cf_fill_linear(w,sub.pw1,c,c,seed);
+    cf_fill_linear(w,sub.dw2,c,9,seed);cf_fill_linear(w,sub.pw2,c,c,seed);cf_fill_linear(w,sub.out,d,c*cf_length(s.mels),seed);
+    for k:0..<s.layers {
+        l:=cf_layer_at(s,cf_layer_base(s,k));
+        cf_fill_ff(s,w,l.ff1,seed);cf_fill_ff(s,w,l.ff2,seed);cf_fill_norm(w,l.out,d,seed);
+        a:=l.att;cf_fill_norm(w,a.norm,d,seed);
+        maps:=[4]int.[a.q,a.k,a.v,a.o];for m:maps {cf_fill_linear(w,m,d,d,seed);}
+        cf_fill(w,a.pos,d*d,0,1/sqrt(f64(d)),seed);cf_fill(w,a.u,d,0,0.1,seed);cf_fill(w,a.bias_v,d,0,0.1,seed);
+        v:=l.conv;cf_fill_norm(w,v.norm,d,seed);cf_fill_linear(w,v.pw1,2*d,d,seed);cf_fill_linear(w,v.dw,d,s.kernel,seed);
+        cf_fill(w,v.bn,d,0,0.1,seed);cf_fill(w,v.bn+d,d,1,0.5,seed);cf_fill_norm(w,v.bn+2*d,d,seed);cf_fill_linear(w,v.pw2,d,d,seed);
+    }
+    cf_fill_linear(w,cf_head_at(s),s.vocab+1,d,seed);
+    return CfStatus.ok;
+}
+// book:end init
+// book:begin admit
+// Every weight finite and within CF_WEIGHT_MAX, except batch norm variances,
+// which only need to be finite and not negative.
+cf_weights_ok :: (s:CfShape,w:[]f32)->bool {
+    for v:w {if !psionic_tensor_finite_bits(f32_bits(v)) {return false;}}
+    from:=0;d:=s.dim;
+    for k:0..<s.layers {
+        var:=cf_layer_at(s,cf_layer_base(s,k)).conv.bn+d;
+        for i:from..<var {if abs(w[i])>CF_WEIGHT_MAX {return false;}}
+        for i:var..<var+d {if w[i]<0 {return false;}}
+        from=var+d;
+    }
+    for i:from..<w.count {if abs(w[i])>CF_WEIGHT_MAX {return false;}}
+    return true;
+}
+// Every feature of every valid frame finite and within CF_FEATURE_MAX.
+cf_features_ok :: (x:[]f32,lengths:[]int,mels:int,frames:int)->bool {
+    for b:0..<lengths.count {for m:0..<mels {for t:0..<lengths[b] {
+        v:=x[(b*mels+m)*frames+t];if !psionic_tensor_finite_bits(f32_bits(v)) || abs(v)>CF_FEATURE_MAX {return false;}
+    }}}
+    return true;
+}
+// Every value of every valid encoded frame finite and within CF_FRAME_MAX.
+cf_frames_ok :: (enc:[]f32,lengths:[]int,frames:int,dim:int)->bool {
+    for b:0..<lengths.count {for i:b*frames*dim..<(b*frames+lengths[b])*dim {
+        if !psionic_tensor_finite_bits(f32_bits(enc[i])) || abs(enc[i])>CF_FRAME_MAX {return false;}
+    }}
+    return true;
+}
+// book:end admit
+
+// book:begin linear
+// out[r] = bias[r] + sum over c of W[r][c] x[c], scaled by k; W is (rows,
+// cols) at w[at] and the bias follows it unless bias is false.
+cf_linear :: (w:[]f32,at:int,rows:int,cols:int,bias:bool,x:[]f32,k:f64,out:[]f32) {
+    for r:0..<rows {
+        t:PsionicAccumulator;if bias {t=psionic_ops_accumulate(t,f64(w[at+rows*cols+r]));}
+        for c:0..<cols {t=psionic_ops_accumulate(t,f64(w[at+r*cols+c])*f64(x[c]));}
+        out[r]=f32(psionic_ops_total(t)*k);
+    }
+}
+// Layer norm over one frame: gain at w[at], shift after it.
+cf_norm :: (w:[]f32,at:int,d:int,x:[]f32,out:[]f32) {
+    m:PsionicAccumulator;for i:0..<d {m=psionic_ops_accumulate(m,f64(x[i]));}
+    mean:=psionic_ops_total(m)/f64(d);
+    v:PsionicAccumulator;for i:0..<d {e:=f64(x[i])-mean;v=psionic_ops_accumulate(v,e*e);}
+    inv:=1/sqrt(psionic_ops_total(v)/f64(d)+CF_EPSILON);
+    for i:0..<d {out[i]=f32((f64(x[i])-mean)*inv*f64(w[at+i])+f64(w[at+d+i]));}
+}
+// book:end linear
+
+// book:begin feed-forward
+// Norm, widen, swish, narrow; half of the result joins the residual.
+cf_feed_forward :: (s:CfShape,w:[]f32,a:CfFf,h:[]f32) {
+    d:=s.dim;n:[CF_DIM_MAX]f32;z:[CF_HIDDEN_MAX]f32;y:[CF_DIM_MAX]f32;
+    cf_norm(w,a.norm,d,h,n[..]);cf_linear(w,a.w1,s.hidden,d,true,n[..],1,z[..]);
+    for i:0..<s.hidden {z[i]=f32(cf_silu(f64(z[i])));}
+    cf_linear(w,a.w2,d,s.hidden,true,z[..],1,y[..]);
+    for i:0..<d {h[i]=f32(f64(h[i])+0.5*f64(y[i]));}
+}
+// book:end feed-forward
+
+// book:begin positions
+// The sinusoid of relative position pos: entry 2m is sin(pos f_m) and 2m + 1
+// is cos(pos f_m), with f_m = 10000^(-2m/dim).
+cf_position :: (pos:int,d:int,out:[]f32) {
+    for m:0..<d/2 {
+        f:=exp(f64(2*m)*-(log(10000.0)/f64(d)));
+        out[2*m]=f32(sin(f64(pos)*f));out[2*m+1]=f32(cos(f64(pos)*f));
+    }
+}
+// book:end positions
+
+// book:begin shift
+// Row k of the position table holds position tokens - 1 - k, so one query's
+// position scores run from tokens - 1 down to -(tokens - 1). The shift pads a
+// zero column on the left of the (tokens, 2 tokens - 1) score matrix, reads
+// the result as 2 tokens rows of tokens, drops the first row, reads the rest
+// as tokens rows of 2 tokens - 1, and keeps the first tokens columns. This
+// gives the cell of that matrix an output (i, j) reads; column -1 is the pad.
+CfCell :: struct {row:int;column:int;}
+cf_shift_source :: (tokens:int,i:int,j:int)->CfCell {
+    flat:=tokens+i*(2*tokens-1)+j;   // in the padded (tokens, 2 tokens) matrix
+    return CfCell.{row=flat/(2*tokens),column=flat%(2*tokens)-1};
+}
+cf_shift :: (tokens:int,full:[]f64,out:[]f64) {
+    for i:0..<tokens {for j:0..<tokens {
+        c:=cf_shift_source(tokens,i,j);v:=0.0;if c.column>=0 {v=full[c.row*(2*tokens-1)+c.column];}
+        out[i*tokens+j]=v;
+    }}
+}
+// book:end shift
+
+// book:begin softmax
+// Scores to probabilities in place, the largest subtracted before exp.
+cf_softmax :: (score:[]f64) {
+    top:=score[0];for j:1..<score.count {top=cf_fmax(top,score[j]);}
+    z:PsionicAccumulator;for j:0..<score.count {score[j]=exp(score[j]-top);z=psionic_ops_accumulate(z,score[j]);}
+    total:=psionic_ops_total(z);for j:0..<score.count {score[j]/=total;}
+}
+// book:end softmax
+
+// book:begin attention
+// Multi-head self-attention over an item's first count frames of h (tokens by
+// dim, f32), with Transformer-XL relative positions: the score of query i
+// and key j is ((q_i + u) . k_j + (q_i + v) . p_(i - j)) / sqrt(head width),
+// where p is the position map applied to the sinusoid table. The position
+// term goes through the shift above, as NeMo computes it. Keys past count
+// are never read. work holds 6 x count x dim values.
+cf_attention :: (s:CfShape,w:[]f32,a:CfAtt,h:[]f32,count:int,work:[]f32) {
+    d:=s.dim;dk:=d/s.heads;n:=count*d;
+    q:=cf_part(work,0,n);k:=cf_part(work,1,n);v:=cf_part(work,2,n);ctx:=cf_part(work,3,n);p:=work[4*n..<6*n-d];
+    x:[CF_DIM_MAX]f32;
+    for t:0..<count {
+        cf_norm(w,a.norm,d,cf_part(h,t,d),x[..]);
+        cf_linear(w,a.q,d,d,true,x[..],1,cf_part(q,t,d));cf_linear(w,a.k,d,d,true,x[..],1,cf_part(k,t,d));
+        cf_linear(w,a.v,d,d,true,x[..],1,cf_part(v,t,d));
+    }
+    for r:0..<2*count-1 {cf_position(count-1-r,d,x[..]);cf_linear(w,a.pos,d,d,false,x[..],1,cf_part(p,r,d));}
+    scale:=1/sqrt(f64(dk));score:[CF_TOKENS_MAX]f64;
+    for hd:0..<s.heads {for i:0..<count {
+        for j:0..<count {
+            ac:PsionicAccumulator;bd:PsionicAccumulator;c:=cf_shift_source(count,i,j);
+            for m:hd*dk..<(hd+1)*dk {
+                ac=psionic_ops_accumulate(ac,(f64(q[i*d+m])+f64(w[a.u+m]))*f64(k[j*d+m]));
+                if c.column>=0 {bd=psionic_ops_accumulate(bd,(f64(q[c.row*d+m])+f64(w[a.bias_v+m]))*f64(p[c.column*d+m]));}
+            }
+            score[j]=(psionic_ops_total(ac)+psionic_ops_total(bd))*scale;
+        }
+        cf_softmax(score[0..<count]);
+        for m:hd*dk..<(hd+1)*dk {
+            o:PsionicAccumulator;for j:0..<count {o=psionic_ops_accumulate(o,score[j]*f64(v[j*d+m]));}
+            ctx[i*d+m]=f32(psionic_ops_total(o));
+        }
+    }}
+    y:[CF_DIM_MAX]f32;
+    for t:0..<count {
+        cf_linear(w,a.o,d,d,true,cf_part(ctx,t,d),1,y[..]);
+        for m:0..<d {h[t*d+m]=f32(f64(h[t*d+m])+f64(y[m]));}
+    }
+}
+// book:end attention
+
+// book:begin convolution
+// Norm, pointwise to twice the width, a gated linear unit (first half times
+// the sigmoid of the second), a depthwise convolution over time whose taps
+// past either end of the item read nothing, batch norm with stored
+// statistics, swish, pointwise back; the result joins the residual.
+cf_convolution :: (s:CfShape,w:[]f32,a:CfConv,h:[]f32,count:int,work:[]f32) {
+    d:=s.dim;g:=work[0..<count*d];n:[CF_DIM_MAX]f32;two:[2*CF_DIM_MAX]f32;
+    for t:0..<count {
+        cf_norm(w,a.norm,d,cf_part(h,t,d),n[..]);cf_linear(w,a.pw1,2*d,d,true,n[..],1,two[..]);
+        for c:0..<d {g[t*d+c]=f32(f64(two[c])*cf_sigmoid(f64(two[d+c])));}
+    }
+    half:=(s.kernel-1)/2;y:[CF_DIM_MAX]f32;
+    for t:0..<count {
+        for c:0..<d {
+            acc:PsionicAccumulator;acc=psionic_ops_accumulate(acc,f64(w[a.dw+d*s.kernel+c]));
+            for j:0..<s.kernel {u:=t+j-half;if u<0 || u>=count {continue;}acc=psionic_ops_accumulate(acc,f64(w[a.dw+c*s.kernel+j])*f64(g[u*d+c]));}
+            b:=(psionic_ops_total(acc)-f64(w[a.bn+c]))/sqrt(f64(w[a.bn+d+c])+CF_EPSILON)*f64(w[a.bn+2*d+c])+f64(w[a.bn+3*d+c]);
+            n[c]=f32(cf_silu(b));
+        }
+        cf_linear(w,a.pw2,d,d,true,n[..],1,y[..]);
+        for c:0..<d {h[t*d+c]=f32(f64(h[t*d+c])+f64(y[c]));}
+    }
+}
+// book:end convolution
+
+// book:begin layer
+// Macaron order: half feed-forward, attention, convolution, half
+// feed-forward, then a layer norm. Each piece adds to the running frames.
+cf_layer :: (s:CfShape,w:[]f32,l:CfLayer,h:[]f32,count:int,work:[]f32) {
+    d:=s.dim;
+    for t:0..<count {cf_feed_forward(s,w,l.ff1,cf_part(h,t,d));}
+    cf_attention(s,w,l.att,h,count,work);cf_convolution(s,w,l.conv,h,count,work);
+    n:[CF_DIM_MAX]f32;
+    for t:0..<count {
+        cf_feed_forward(s,w,l.ff2,cf_part(h,t,d));cf_norm(w,l.out,d,cf_part(h,t,d),n[..]);
+        for c:0..<d {h[t*d+c]=n[c];}
+    }
+}
+// book:end layer
+
+// book:begin subsample
+// One convolution through chapter 142 with the kernel at w[at] and its bias
+// after it. y may be x: chapter 142 finishes every output in scratch before
+// it copies. Admission (cf_encode) rules out every refusal.
+cf_conv :: (c:PxConv,x:[]f32,w:[]f32,at:int,y:[]f32,scratch:[]f32)->PxStatus {
+    k:=c.filters*c.channels/c.groups*c.kernel_h*c.kernel_w;
+    return px_conv_direct(c,x,w[at..<at+k],w[at+k..<at+k+c.filters],y,scratch,false).status;
+}
+// ReLU, and zero every frame of a (batch, channels, time, freq) tensor at or
+// past each item's valid length after the given number of stages.
+cf_mask :: (buf:[]f32,batch:int,channels:int,t:int,f:int,lengths:[]int,stages:int) {
+    for b:0..<batch {
+        valid:=lengths[b];for k:0..<stages {valid=cf_stage(valid);}
+        for c:0..<channels {for r:0..<t {for x:0..<f {
+            i:=((b*channels+c)*t+r)*f+x;v:=cf_fmax(f64(buf[i]),0);if r>=valid {v=0;}buf[i]=f32(v);
+        }}}
+    }
+}
+// Features (batch, mels, frames) to (batch, t3, dim): stride-2 convolutions,
+// masked after each stage so a padded frame never reaches a valid one, then
+// the linear map (and sqrt(dim) when xscale). work is the plan's.
+cf_subsample :: (s:CfShape,w:[]f32,x:[]f32,lengths:[]int,batch:int,frames:int,work:[]f32,out:[]f32) {
+    p:=cf_plan(s,batch,frames);m:=s.mels;c:=s.channels;sub:=cf_sub_at(s);
+    a:=work[0..<p.input];scratch:=work[p.at_scratch..<p.at_conv];y:=work[p.at_conv..<p.at_layer];
+    for i:0..<batch {for t:0..<frames {for f:0..<m {
+        v:f32=0;if t<lengths[i] {v=x[(i*m+f)*frames+t];}a[(i*frames+t)*m+f]=v;
+    }}}
+    n2:=batch*c*p.t2*p.f2;n3:=batch*c*p.t3*p.f3;
+    #assert cf_conv(cf_conv0(s,batch,frames),a,w,sub.conv0,y,scratch)==PxStatus.ok;cf_mask(y,batch,c,p.t1,p.f1,lengths,1);
+    #assert cf_conv(cf_depthwise(s,batch,p.t1,p.f1),y,w,sub.dw1,y[0..<n2],scratch[0..<n2])==PxStatus.ok;
+    #assert cf_conv(cf_pointwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.pw1,y[0..<n2],scratch[0..<n2])==PxStatus.ok;
+    cf_mask(y,batch,c,p.t2,p.f2,lengths,2);
+    #assert cf_conv(cf_depthwise(s,batch,p.t2,p.f2),y[0..<n2],w,sub.dw2,y[0..<n3],scratch[0..<n3])==PxStatus.ok;
+    #assert cf_conv(cf_pointwise(s,batch,p.t3,p.f3),y[0..<n3],w,sub.pw2,y[0..<n3],scratch[0..<n3])==PxStatus.ok;
+    cf_mask(y,batch,c,p.t3,p.f3,lengths,3);
+    // Each frame's channels and frequencies, channel-major, map to the width.
+    k:=1.0;if s.xscale {k=sqrt(f64(s.dim));}
+    wide:=c*p.f3;feature:[CF_FEATURES_MAX]f32;d:=s.dim;
+    for i:0..<batch {for t:0..<p.t3 {
+        row:=cf_part(out,i*p.t3+t,d);
+        if t>=cf_length(lengths[i]) {for e:0..<d {row[e]=0;}continue;}
+        for ch:0..<c {for f:0..<p.f3 {feature[ch*p.f3+f]=y[((i*c+ch)*p.t3+t)*p.f3+f];}}
+        cf_linear(w,sub.out,d,wide,true,feature[..],k,row);
+    }}
+}
+// book:end subsample
+
+// book:begin encode
+// Features (batch, mels, frames), each item valid for its first lengths[b]
+// frames; out (batch, t3, dim) with frames past an item's encoded length
+// zero; out_lengths[b] the encoded length. Nothing is written on refusal.
+cf_encode :: (s:CfShape,w:[]f32,x:[]f32,lengths:[]int,batch:int,frames:int,work:[]f32,out:[]f32,out_lengths:[]int,overlap:bool)->CfResult {
+    p:=cf_plan(s,batch,frames);if p.status!=CfStatus.ok {return CfResult.{status=p.status};}
+    if lengths.count!=batch || x.count!=p.input || w.count!=p.weights {return CfResult.{status=CfStatus.shape};}
+    for n:lengths {if n<1 || n>frames {return CfResult.{status=CfStatus.length};}}
+    if out.count<p.output || out_lengths.count<batch || work.count<p.work {return CfResult.{status=CfStatus.capacity};}
+    if overlap {return CfResult.{status=CfStatus.alias};}
+    if !cf_weights_ok(s,w) || !cf_features_ok(x,lengths,s.mels,frames) {return CfResult.{status=CfStatus.number};}
+    h:=work[p.at_output..<p.work];layer:=work[p.at_layer..<p.at_output];each:=p.t3*s.dim;
+    cf_subsample(s,w,x,lengths,batch,frames,work,h);
+    for b:0..<batch {for k:0..<s.layers {
+        cf_layer(s,w,cf_layer_at(s,cf_layer_base(s,k)),cf_part(h,b,each),cf_length(lengths[b]),layer);
+    }}
+    for i:0..<p.output {out[i]=h[i];}
+    for b:0..<batch {out_lengths[b]=cf_length(lengths[b]);}
+    return CfResult.{written=p.output};
+}
+// book:end encode
+
+// book:begin head
+// One frame's vocab + 1 log-probabilities: the linear map, then log-softmax
+// with the largest score subtracted first.
+cf_head_row :: (s:CfShape,w:[]f32,frame:[]f32,out:[]f32) {
+    k:=s.vocab+1;z:[CF_VOCAB_MAX+1]f32;cf_linear(w,cf_head_at(s),k,s.dim,true,frame,1,z[..]);
+    top:=f64(z[0]);for c:1..<k {top=cf_fmax(top,f64(z[c]));}
+    sum:PsionicAccumulator;for c:0..<k {sum=psionic_ops_accumulate(sum,exp(f64(z[c])-top));}
+    lse:=top+log(psionic_ops_total(sum));
+    for c:0..<k {out[c]=f32(f64(z[c])-lse);}
+}
+// The CTC head over encoded frames (batch, frames, dim). Frames past an
+// item's encoded length get zeros and are not read.
+cf_head :: (s:CfShape,w:[]f32,enc:[]f32,lengths:[]int,batch:int,frames:int,logp:[]f32,overlap:bool)->CfResult {
+    status:=cf_shape_check(s);if status!=CfStatus.ok {return CfResult.{status=status};}
+    if batch<1 || frames<1 || lengths.count!=batch || enc.count!=batch*frames*s.dim || w.count!=cf_weight_count(s) {return CfResult.{status=CfStatus.shape};}
+    for n:lengths {if n<1 || n>frames {return CfResult.{status=CfStatus.length};}}
+    k:=s.vocab+1;if logp.count<batch*frames*k {return CfResult.{status=CfStatus.capacity};}
+    if overlap {return CfResult.{status=CfStatus.alias};}
+    if !cf_weights_ok(s,w) || !cf_frames_ok(enc,lengths,frames,s.dim) {return CfResult.{status=CfStatus.number};}
+    for b:0..<batch {for t:0..<frames {
+        out:=cf_part(logp,b*frames+t,k);
+        if t>=lengths[b] {for c:0..<k {out[c]=0;}continue;}
+        cf_head_row(s,w,cf_part(enc,b*frames+t,s.dim),out);
+    }}
+    return CfResult.{written=batch*frames*k};
+}
+// Greedy CTC: each frame's best class (the lowest on a tie); drop a class
+// equal to the frame before's, then drop blanks. The blank is the last class.
+cf_greedy :: (logp:[]f32,frames:int,classes:int,tokens:[]int)->CfResult {
+    if frames<1 || classes<2 || logp.count<frames*classes {return CfResult.{status=CfStatus.shape};}
+    if tokens.count<frames {return CfResult.{status=CfStatus.capacity};}
+    prev:=-1;n:=0;
+    for t:0..<frames {
+        best:=0;for c:1..<classes {if logp[t*classes+c]>logp[t*classes+best] {best=c;}}
+        if best!=classes-1 && best!=prev {tokens[n]=best;n+=1;}
+        prev=best;
+    }
+    return CfResult.{written=n};
+}
+// book:end head
