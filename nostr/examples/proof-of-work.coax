@@ -1,0 +1,127 @@
+// book:begin example
+#load "../../coax/lib/nostr/event_sign.coax";
+#load "../../coax/lib/nostr/nip13.coax";
+#import "Basic";
+
+// Print a label and bytes as lowercase hex.
+print_hex :: (label: string, bytes: [] u8) {
+  text: [128] u8;
+  r := hex_encode_checked(cast(string) bytes, text[..], false);
+  print("%: %\n", label, cast(string) text[0..<r.written]);
+}
+// Decode hex that the program itself supplies; it must be valid.
+decode_hex :: (text: string, out: [] u8) {
+  r := hex_decode_checked(text, out, false);
+  #assert r.error == NC_OK && r.written == out.count;
+}
+
+// BIP-340 vector 1's published test key and aux, as in chapter 21. Never
+// mine or sign with a real key in an example.
+KEY_HEX :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_HEX :: "0000000000000000000000000000000000000000000000000000000000000001";
+PUB_HEX :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+CREATED :: 1761686400;
+CONTENT :: "It's just me mining my own business";
+
+// Sign a kind-1 note with the test key; its length in out.
+sign :: (created_at: int, tags: string, out: [] u8) -> int {
+  key: [32] u8; aux: [32] u8; work: [1] NostrSignWork; scratch: [1024] u8;
+  decode_hex(KEY_HEX, key[..]); decode_hex(AUX_HEX, aux[..]);
+  result := EVENT_MORE;
+  while result == EVENT_MORE {
+    result = nostr_event_sign_step(key[..], aux[..], created_at, 1, tags, CONTENT,
+                                   work[..], scratch[..], out, false);
+  }
+  #assert result > 0;
+  return result;
+}
+// Mine from nonce 0 and report the run.
+mine :: (target: int, tags: [] u8) -> N13Mine {
+  pub: [32] u8; decode_hex(PUB_HEX, pub[..]);
+  m := nip13_mine(pub, CREATED, 1, "[]", CONTENT, target, 0, 100000, tags);
+  print("target %: nonce %, tries %, expected about %, difficulty %\n",
+        target, m.nonce, m.tries, 1 << target, m.difficulty);
+  print_hex("  id", m.id[..]);
+  return m;
+}
+// What a relay requiring `required` bits answers: the OK frame it sends.
+relay :: (label: string, text: string, required: int) {
+  scratch: [1024] u8; reason: [128] u8;
+  a := nip13_admit(text, required, scratch[..], false);
+  n := nip13_reason(a, reason[..]);
+  #assert n >= 0;
+  print("%: difficulty %, target %, need % -> [\"OK\",\"%...\",%,\"%\"]\n",
+        label, a.difficulty, a.target, required, ID_PREFIX(text),
+        a.error == N13_OK, cast(string) reason[0..<n]);
+}
+// The first 8 hex digits of the event's id field, for the printed frame.
+ID_PREFIX :: (text: string) -> string { return text[7..<15]; }
+
+main :: () {
+  print("difficulty by hand\n");
+  id: [32] u8;
+  decode_hex("000000000e9d97a1ab09fc381030b346cdd7a142ad57e6df0b46dc9bef6c7e2d", id[..]);
+  print("NIP-13 prose 000000000e9d...: %\n", nip13_difficulty(id));
+  decode_hex("002fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", id[..]);
+  print("NIP-13 prose 002f...: %\n", nip13_difficulty(id));
+  decode_hex("000006d8c378af1779d2feebc7603a125d99eca0ccf1085959b307f64e5dd358", id[..]);
+  print("NIP-13 example 000006d8...: %\n", nip13_difficulty(id));
+
+  print("mine with the test key, created_at %\n", CREATED);
+  tags8: [256] u8; tags16: [256] u8;
+  m8 := mine(8, tags8[..]);
+  m16 := mine(16, tags16[..]);
+  #assert m8.error == N13_MINE_OK && m16.error == N13_MINE_OK;
+  print("tags: %\n", cast(string) tags8[0..<m8.tags_n]);
+  short: [256] u8; pub: [32] u8; decode_hex(PUB_HEX, pub[..]);
+  m := nip13_mine(pub, CREATED, 1, "[]", CONTENT, 8, 0, 50, short[..]);
+  print("target 8 with 50 tries: %, last nonce %\n",
+        ifx m.error == N13_MINE_LIMIT then "limit" else "found", m.nonce);
+
+  print("sign the mined notes\n");
+  e8: [1024] u8; e16: [1024] u8;
+  n8 := sign(CREATED, cast(string) tags8[0..<m8.tags_n], e8[..]);
+  n16 := sign(CREATED, cast(string) tags16[0..<m16.tags_n], e16[..]);
+  print("event: %\n", cast(string) e8[0..<n8]);
+  scratch: [1024] u8;
+  v := nostr_event_verify_vartime(cast(string) e8[0..<n8], scratch[..], false);
+  print("signature verified: %\n", v.verified);
+
+  print("other notes, signed the same way\n");
+  e0: [1024] u8; lucky: [1024] u8; bare: [1024] u8; none: [1024] u8; bad: [1024] u8;
+  n0 := sign(CREATED, "[[\"nonce\",\"0\",\"8\"]]", e0[..]);
+  nl := sign(CREATED, "[[\"nonce\",\"26\",\"4\"]]", lucky[..]);
+  nb := sign(CREATED, "[[\"nonce\",\"269\"]]", bare[..]);
+  nn := sign(1761686513, "[]", none[..]);
+  nx := sign(CREATED, "[[\"nonce\",\"72\",\"eight\"]]", bad[..]);
+
+  print("a relay that requires 8 bits\n");
+  relay("mined to 8", cast(string) e8[0..<n8], 8);
+  relay("mined to 16", cast(string) e16[0..<n16], 8);
+  relay("NIP-13 example", NIP13, 8);
+  print("refusals\n");
+  relay("nonce 0, unmined", cast(string) e0[0..<n0], 8);
+  relay("target 4, lucky", cast(string) lucky[0..<nl], 8);
+  relay("no target", cast(string) bare[0..<nb], 8);
+  relay("no nonce tag", cast(string) none[0..<nn], 8);
+  relay("target eight", cast(string) bad[0..<nx], 8);
+  print("NIP-13's example at other requirements\n");
+  relay("NIP-13 example", NIP13, 20);
+  relay("NIP-13 example", NIP13, 21);
+  relay("NIP-13 example", NIP13, 22);
+  a := nip13_admit(NIP13, 300, scratch[..], false);
+  reason: [128] u8; r := nip13_reason(a, reason[..]);
+  print("require 300: %\n", cast(string) reason[0..<r]);
+  edited: [1024] u8;
+  for i: 0..<NIP13.count { edited[i] = NIP13[i]; }
+  edited[NIP13.count - 167] = 'S';
+  a = nip13_admit(cast(string) edited[0..<NIP13.count], 8, scratch[..], false);
+  r = nip13_reason(a, reason[..]);
+  print("content edited: %\n", cast(string) reason[0..<r]);
+  s := nostr_event_verify_vartime(NIP13, scratch[..], false);
+  print("NIP-13 example signature verified: %\n", s.verified);
+}
+// book:end example
+
+// The example mined note in nostr/nips/official/13.md, compacted.
+NIP13 :: "{\"id\":\"000006d8c378af1779d2feebc7603a125d99eca0ccf1085959b307f64e5dd358\",\"pubkey\":\"a48380f4cfcc1ad5378294fcac36439770f9c878dd880ffa94bb74ea54a6f243\",\"created_at\":1651794653,\"kind\":1,\"tags\":[[\"nonce\",\"776797\",\"20\"]],\"content\":\"It's just me mining my own business\",\"sig\":\"284622fc0a3f4f1303455d5175f7ba962a3300d136085b9566801bc2e0699de0c7e31e44c81fb40ad9049173742e904713c3594a1da0fc5d2382a25c11aba977\"}";

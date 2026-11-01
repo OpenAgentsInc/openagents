@@ -1,0 +1,329 @@
+// NIP-13 proof of work: an event's difficulty is the number of leading zero
+// bits of its 32-byte ID; a ["nonce", counter, target] tag lets a miner
+// change the ID and commit to the difficulty it aimed for.
+//
+// nip13_admit is a relay's admission policy. It reads the event with
+// nostr_event_read, so the ID it measures is the one recomputed from the
+// event's fields, and it verifies no signature: run it before the (more
+// expensive) signature check, not instead of it. With a required difficulty
+// above 0 it refuses an event whose ID has less work, whose nonce tag is
+// malformed, that commits to no target, or whose committed target is below
+// the requirement even when its ID has more work (NIP-13's defence against
+// bulk spammers who aim low and get lucky).
+//
+// The nonce tag this file accepts: exactly one tag named "nonce", with a
+// counter of 1 to 20 decimal digits and an optional target of 0 to 256
+// written without leading zeros, both in plain digits (no JSON escapes); no
+// fourth value. The tag's name may be escaped.
+#load "tags.coax";
+#authority;
+
+N13_OK :: 0; N13_EVENT :: 1; N13_NONCE :: 2; N13_DIFFICULTY :: 3;
+N13_NO_TARGET :: 4; N13_TARGET :: 5; N13_POLICY :: 6;
+N13_MINE_OK :: 0; N13_MINE_INPUT :: 1; N13_MINE_LIMIT :: 2; N13_MINE_OUTPUT :: 3;
+N13_MAX_BITS :: 256; N13_MAX_COUNTER :: 20; N13_MAX_PREIMAGE :: 8192;
+
+// book:begin record
+N13Nonce :: struct {error:int; found:bool; target:int=-1;}
+N13Admit :: struct {
+  error:int=N13_EVENT; required:int;
+  difficulty:int=-1;                 // leading zero bits of the recomputed ID
+  has_nonce:bool; target:int=-1;     // the committed target, or -1
+  id:[32]u8;
+}
+N13Mine :: struct {error:int=N13_MINE_INPUT; nonce:int; tries:int; difficulty:int; id:[32]u8; tags_n:int;}
+// book:end record
+
+#load "../../tests/nostr/nip13_fixtures.coax";
+
+#test "leading zero bits: whole zero bytes, then the first set bit" {
+  id:[32]u8;#assert nip13_difficulty(id)==256;
+  id[0]=0x80;#assert nip13_difficulty(id)==0;
+  id[0]=0x7f;#assert nip13_difficulty(id)==1;
+  id[0]=0x01;#assert nip13_difficulty(id)==7;
+  id[0]=0;id[1]=0x2f;#assert nip13_difficulty(id)==10;
+  id[1]=0;id[2]=0x40;id[3]=0xff;#assert nip13_difficulty(id)==17;
+  id[2]=0;id[3]=0;id[31]=1;#assert nip13_difficulty(id)==255;
+  id[31]=0xff;#assert nip13_difficulty(id)==248;
+  id[30]=0x10;#assert nip13_difficulty(id)==243;
+}
+#test "NIP-13's two prose IDs and its example event" {
+  id:[32]u8;
+  #assert hex_decode_checked("000000000e9d97a1ab09fc381030b346cdd7a142ad57e6df0b46dc9bef6c7e2d",id[..],false).error==NC_OK;
+  #assert nip13_difficulty(id)==36;
+  #assert hex_decode_checked("002fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",id[..],false).error==NC_OK;
+  #assert nip13_difficulty(id)==10;
+  s:[1024]u8;
+  a:=nip13_admit(N13_T_NIP13,20,s[..],false);
+  #assert a.error==N13_OK && a.difficulty==21 && a.has_nonce && a.target==20 && a.required==20 && a.id[2]==0x06;
+  // Its ID has 21 bits but it committed to 20: a relay asking 21 refuses.
+  a=nip13_admit(N13_T_NIP13,21,s[..],false);
+  #assert a.error==N13_TARGET && a.difficulty==21 && a.target==20;
+  a=nip13_admit(N13_T_NIP13,22,s[..],false);
+  #assert a.error==N13_DIFFICULTY && a.difficulty==21 && a.target==20;
+}
+#test "admission: required range, unreadable events and required 0" {
+  s:[1024]u8;
+  #assert nip13_admit(N13_T_NIP13,-1,s[..],false).error==N13_POLICY;
+  #assert nip13_admit(N13_T_NIP13,257,s[..],false).error==N13_POLICY;
+  a:=nip13_admit(N13_T_NIP13,256,s[..],false);#assert a.error==N13_DIFFICULTY && a.required==256;
+  #assert nip13_admit(N13_T_NIP13,20,s[..],true).error==N13_EVENT;
+  a=nip13_admit(N13_T_EDITED,20,s[..],false);#assert a.error==N13_EVENT && a.difficulty== -1;
+  // Required 0: any readable event, its nonce tag unread.
+  a=nip13_admit(N13_T_BAD_TARGET,0,s[..],false);#assert a.error==N13_OK && a.difficulty==8 && !a.has_nonce;
+  a=nip13_admit(N13_T_NIP13,0,s[..],false);#assert a.error==N13_OK && a.difficulty==21 && a.target== -1;
+}
+#test "admission refuses each way the nonce tag can fail" {
+  s:[1024]u8;
+  a:=nip13_admit(N13_T_LUCKY,8,s[..],false);#assert a.error==N13_TARGET && a.difficulty==8 && a.target==4;
+  a=nip13_admit(N13_T_LUCKY,4,s[..],false);#assert a.error==N13_OK;
+  a=nip13_admit(N13_T_LUCKY,5,s[..],false);#assert a.error==N13_TARGET;
+  a=nip13_admit(N13_T_LUCKY,9,s[..],false);#assert a.error==N13_DIFFICULTY;
+  a=nip13_admit(N13_T_NO_TARGET,8,s[..],false);#assert a.error==N13_NO_TARGET && a.has_nonce && a.difficulty==8;
+  a=nip13_admit(N13_T_NO_NONCE,8,s[..],false);#assert a.error==N13_NO_TARGET && !a.has_nonce && a.difficulty==8;
+  a=nip13_admit(N13_T_NO_NONCE,9,s[..],false);#assert a.error==N13_DIFFICULTY;
+  a=nip13_admit(N13_T_BAD_TARGET,8,s[..],false);#assert a.error==N13_NONCE && a.has_nonce && a.difficulty==8;
+  a=nip13_admit(N13_T_BAD_TARGET,9,s[..],false);#assert a.error==N13_NONCE;
+  a=nip13_admit(N13_T_ZERO,1,s[..],false);#assert a.error==N13_TARGET && a.target==0 && a.difficulty==8;
+}
+#test "the nonce tag: counter, target and count rules" {
+  ok:=n13_nonce(nt_event("[[\"nonce\",\"0\",\"0\"]]"));#assert ok.error==N13_OK && ok.found && ok.target==0;
+  ok=n13_nonce(nt_event("[[\"t\",\"x\"],[\"nonce\",\"12345678901234567890\",\"256\"],[\"p\"]]"));#assert ok.error==N13_OK && ok.found && ok.target==256;
+  ok=n13_nonce(nt_event("[[\"nonce\",\"7\"]]"));#assert ok.error==N13_OK && ok.found && ok.target== -1;
+  ok=n13_nonce(nt_event("[[\"nonce\",\"7\",\"19\"]]"));#assert ok.error==N13_OK && ok.target==19;
+  ok=n13_nonce(nt_event("[[\"t\"],[\"nonc\",\"x\"],[\"nonces\",\"x\"]]"));#assert ok.error==N13_OK && !ok.found && ok.target== -1;
+  ok=n13_nonce(nt_event("[]"));#assert ok.error==N13_OK && !ok.found;
+  ok=n13_nonce(nt_event("[[],[\"nonce\",\"1\",\"2\"],[]]"));#assert ok.error==N13_OK && ok.found && ok.target==2;
+  // An escaped name still says nonce.
+  ok=n13_nonce(nt_event("[[\"n\\u006fnce\",\"1\",\"2\"]]"));#assert ok.error==N13_OK && ok.found && ok.target==2;
+  bad:=[21]string.[
+    "[[\"nonce\",\"1\",\"00\"]]", "[[\"nonce\",\"1\",\"01\"]]", "[[\"nonce\",\"\\u0031\"]]", "[[\"nonce\",\"1\",\"\\u0031\"]]",
+    "[[\"nonce\"]]", "[[\"nonce\",\"\"]]", "[[\"nonce\",\"1a\"]]", "[[\"nonce\",\"/\"]]", "[[\"nonce\",\":\"]]",
+    "[[\"nonce\",\"123456789012345678901\"]]", "[[\"nonce\",\"1\",\"\"]]", "[[\"nonce\",\"1\",\"257\"]]",
+    "[[\"nonce\",\"1\",\"020\"]]", "[[\"nonce\",\"1\",\"2x\"]]", "[[\"nonce\",\"1\",\"1000\"]]",
+    "[[\"nonce\",\"1\",\"2\",\"3\"]]", "[[\"nonce\",\"1\",\"2\"],[\"nonce\",\"1\",\"2\"]]", "[[\"nonce\",\"1\",\"-1\"]]",
+    "[[\"nonce\",\"1\",\"/\"]]", "[[\"nonce\",\"1\",\":\"]]", "[[\"nonce\",\"1\",\"2\"],[\"x\"],[\"nonce\",\"3\"]]"];
+  for i:0..<21 {r:=n13_nonce(nt_event(bad[i]));#assert r.error==N13_NONCE && r.found;}
+  // A target too long to unescape into the value buffer is malformed.
+  long:[400]u8;n:=json_raw(long[..],0,"[[\"nonce\",\"1\",\"");
+  for k:0..<300 {long[n+k]='1';}n=json_raw(long[..],n+300,"\"]]");
+  #assert n13_nonce(nt_event(cast(string)long[0..<n])).error==N13_NONCE;
+  // A long tag name is not nonce, and a long value elsewhere is not read.
+  n=json_raw(long[..],0,"[[\"");for k:0..<300 {long[n+k]='n';}n=json_raw(long[..],n+300,"\",\"x\"],[\"nonce\",\"1\",\"3\"]]");
+  r:=n13_nonce(nt_event(cast(string)long[0..<n]));#assert r.error==N13_OK && r.found && r.target==3;
+}
+#test "the nonce reader refuses forged records and non-string values" {
+  e:=nt_event("[[\"nonce\",\"1\",\"2\"]]");e.error=NE_ID;#assert n13_nonce(e).error==N13_EVENT;
+  #assert n13_nonce(nt_event("[[\"nonce\",1]]")).error==N13_EVENT;
+  #assert n13_nonce(nt_event("[[\"x\",1]]")).error==N13_EVENT;
+  #assert n13_nonce(nt_event("[[\"nonce\",\"1\"],1]")).error==N13_EVENT;
+  #assert n13_nonce(nt_event("[1]")).error==N13_EVENT;
+}
+#test "reasons: the pow: prefix with the numbers" {
+  out:[128]u8;a:N13Admit;a.required=8;a.difficulty=3;a.target=4;
+  a.error=N13_DIFFICULTY;n:=nip13_reason(a,out[..]);#assert cast(string)out[0..<n]=="pow: difficulty 3 is less than 8";
+  a.error=N13_TARGET;n=nip13_reason(a,out[..]);#assert cast(string)out[0..<n]=="pow: committed target 4 is less than 8";
+  a.error=N13_NO_TARGET;n=nip13_reason(a,out[..]);#assert cast(string)out[0..<n]=="pow: no committed target, need 8";
+  a.error=N13_NONCE;n=nip13_reason(a,out[..]);#assert cast(string)out[0..<n]=="pow: malformed nonce tag";
+  a.error=N13_EVENT;n=nip13_reason(a,out[..]);#assert cast(string)out[0..<n]=="invalid: event id does not match its fields";
+  a.error=N13_POLICY;n=nip13_reason(a,out[..]);#assert cast(string)out[0..<n]=="error: required difficulty is not 0 to 256";
+  a.error=N13_OK;#assert nip13_reason(a,out[..])==0;
+  a.error=N13_DIFFICULTY;#assert nip13_reason(a,out[0..<10])== -1;
+  a.error=99;#assert nip13_reason(a,out[..])== -1;
+}
+#test "the miner finds Python's nonces and writes the tags" {
+  pub:[32]u8;#assert hex_decode_checked(N13_T_PUB,pub[..],false).error==NC_OK;
+  tags:[256]u8;
+  m:=nip13_mine(pub,1761686400,1,"[]",N13_T_CONTENT,8,0,1000,tags[..]);
+  #assert m.error==N13_MINE_OK && m.nonce==69 && m.tries==70 && m.difficulty==8 && m.id[0]==0 && m.id[1]==0xf0;
+  #assert cast(string)tags[0..<m.tags_n]=="[[\"nonce\",\"69\",\"8\"]]";
+  m=nip13_mine(pub,1761686400,1,"[]",N13_T_CONTENT,10,0,1000,tags[..]);
+  #assert m.error==N13_MINE_OK && m.nonce==7 && m.tries==8 && m.difficulty==10 && m.id[1]==0x30;
+  // Starting at the answer takes one try; starting past it finds a later one.
+  m=nip13_mine(pub,1761686400,1,"[]",N13_T_CONTENT,8,69,1,tags[..]);#assert m.error==N13_MINE_OK && m.tries==1 && m.nonce==69;
+  m=nip13_mine(pub,1761686400,1,"[]",N13_T_CONTENT,8,0,69,tags[..]);#assert m.error==N13_MINE_LIMIT && m.tries==69 && m.nonce==68;
+  // Other tags stay in front of the nonce tag.
+  m=nip13_mine(pub,1761686400,1,"[[\"t\",\"pow\"]]",N13_T_CONTENT,1,0,100,tags[..]);
+  #assert m.error==N13_MINE_OK && tags[m.tags_n-1]==']' && cast(string)tags[0..<14]=="[[\"t\",\"pow\"],[";
+  #assert m.difficulty>=1 && nip13_difficulty(m.id)==m.difficulty;
+}
+#test "the miner refuses bad inputs and short buffers" {
+  pub:[32]u8;tags:[256]u8;
+  #assert nip13_mine(pub,0,1,"[]","",0,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"[]","",256,0,1,tags[..]).error==N13_MINE_LIMIT;
+  #assert nip13_mine(pub,0,0,"[]","",256,0,1,tags[..]).error==N13_MINE_LIMIT;
+  #assert nip13_mine(pub,0,65535,"[]","",256,0,1,tags[..]).error==N13_MINE_LIMIT;
+  #assert nip13_mine(pub,0,1,"[]","",257,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"[]","",1,-1,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"[]","",1,0,0,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,-1,1,"[]","",1,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,-1,"[]","",1,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,65536,"[]","",1,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"{}","",1,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"[","",1,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"[1]","",1,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"[[\"t\"]","",1,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"[[\"t\"]]x","",1,0,1,tags[..]).error==N13_MINE_INPUT;
+  #assert nip13_mine(pub,0,1,"[]","",1,0,1,tags[0..<18]).error==N13_MINE_OUTPUT;
+  m:=nip13_mine(pub,0,1,"[]","",1,0,1,tags[0..<19]);#assert m.error!=N13_MINE_OUTPUT && m.tags_n==19;
+  big:[9000]u8;for i:0..<9000 {big[i]='a';}
+  #assert nip13_mine(pub,0,1,"[]",cast(string)big[..],1,0,1,tags[..]).error==N13_MINE_OUTPUT;
+  #assert nip13_mine(pub,0,1,"[]",cast(string)big[0..<8000],1,0,1,tags[..]).error!=N13_MINE_OUTPUT;
+}
+
+// book:begin difficulty
+// NIP-13 difficulty: whole zero bytes count 8 each; the first nonzero byte
+// adds the zeros above its highest set bit, and counting stops there.
+nip13_difficulty :: (id:[32]u8)->int {
+  n:=0;
+  for i:0..<32 {
+    b:=cast(int)id[i];
+    if b!=0 {
+      while b<128 {n+=1;b=b*2;}
+      return n;
+    }
+    n+=8;
+  }
+  return n;
+}
+// book:end difficulty
+
+// Decimal digits only, 1 to max of them.
+n13_digits :: (s:string,max:int)->bool {
+  if s.count==0 || s.count>max {return false;}
+  for c:s {if c<'0' || c>'9' {return false;}}
+  return true;
+}
+// A target: 0 to 256 in plain digits without leading zeros; the value, or -1.
+n13_target :: (s:string)->int {
+  if s.count==0 || (s[0]=='0' && s.count>1) {return -1;}
+  v:=0;
+  for c:s {
+    if c<'0' || c>'9' {return -1;}
+    v=v*10+cast(int)(c-'0');if v>N13_MAX_BITS {return -1;}
+  }
+  return v;
+}
+n13_bad :: (r:N13Nonce,error:int)->N13Nonce {x:=r;x.error=error;return x;}
+
+// book:begin nonce
+// The event's nonce tag. Tags were checked by the event reader as arrays
+// of strings; a forged record that breaks that refuses as N13_EVENT.
+n13_nonce :: (e:NostrEvent)->N13Nonce {
+  r:N13Nonce;j:[1]Json;if !nt_start(j[..],e) {return n13_bad(r,N13_EVENT);}
+  tok:=json_next(j[..]);
+  while tok==JSON_ARRAY {
+    at:=0;nonce:=false;
+    v:=json_next(j[..]);
+    while v==JSON_STRING {
+      // The name may be escaped; the counter and target are plain digits.
+      raw:=json_text(j[..]);
+      if at==0 {
+        nonce=json_is(raw,"nonce");
+        if nonce && r.found {return n13_bad(r,N13_NONCE);}
+        if nonce {r.found=true;}
+      } else if nonce {
+        if at>2 {return n13_bad(r,N13_NONCE);}
+        if at==1 && !n13_digits(raw,N13_MAX_COUNTER) {return n13_bad(r,N13_NONCE);}
+        if at==2 {r.target=n13_target(raw);if r.target<0 {return n13_bad(r,N13_NONCE);}}
+      }
+      at+=1;v=json_next(j[..]);
+    }
+    if v!=JSON_ARRAY_END {return n13_bad(r,N13_EVENT);}
+    if nonce && at<2 {return n13_bad(r,N13_NONCE);}
+    tok=json_next(j[..]);
+  }
+  if tok!=JSON_ARRAY_END {return n13_bad(r,N13_EVENT);}
+  return r;
+}
+// book:end nonce
+
+// book:begin admit
+// A relay's NIP-13 admission. required is 0 (no proof of work asked) to
+// 256. The event's ID is recomputed from its fields before it is measured.
+nip13_admit :: (text:string,required:int,scratch:[]u8,overlap:bool)->N13Admit {
+  a:N13Admit;a.required=required;
+  if required<0 || required>N13_MAX_BITS {a.error=N13_POLICY;return a;}
+  e:=nostr_event_read(text,scratch,overlap);if e.error!=NE_OK {return a;}
+  a.id=e.id;a.difficulty=nip13_difficulty(e.id);
+  if required==0 {a.error=N13_OK;return a;}
+  nonce:=n13_nonce(e);a.has_nonce=nonce.found;a.target=nonce.target;
+  if nonce.error!=N13_OK {a.error=nonce.error;return a;}
+  if a.difficulty<required {a.error=N13_DIFFICULTY;return a;}
+  // Without a commitment a lucky low-target miner can't be told apart.
+  if a.target<0 {a.error=N13_NO_TARGET;return a;}
+  if a.target<required {a.error=N13_TARGET;return a;}
+  a.error=N13_OK;return a;
+}
+// book:end admit
+
+// book:begin reason
+// The OK message's reason for a refusal: its length in out, 0 for an
+// admitted event, or -1 when out is too short.
+nip13_reason :: (a:N13Admit,out:[]u8)->int {
+  if a.error==N13_OK {return 0;}
+  if a.error==N13_DIFFICULTY {
+    n:=json_raw(out,0,"pow: difficulty ");n=json_write_int(out,n,a.difficulty);
+    n=json_raw(out,n," is less than ");return json_write_int(out,n,a.required);
+  }
+  if a.error==N13_TARGET {
+    n:=json_raw(out,0,"pow: committed target ");n=json_write_int(out,n,a.target);
+    n=json_raw(out,n," is less than ");return json_write_int(out,n,a.required);
+  }
+  if a.error==N13_NO_TARGET {n:=json_raw(out,0,"pow: no committed target, need ");return json_write_int(out,n,a.required);}
+  if a.error==N13_NONCE {return json_raw(out,0,"pow: malformed nonce tag");}
+  if a.error==N13_EVENT {return json_raw(out,0,"invalid: event id does not match its fields");}
+  if a.error==N13_POLICY {return json_raw(out,0,"error: required difficulty is not 0 to 256");}
+  return -1;
+}
+// book:end reason
+
+// A tags array as the event reader admits one: arrays of strings.
+n13_tags_ok :: (tags:string)->bool {
+  j:[1]Json;json_start(j[..],tags);first:=json_next(j[..]);
+  return ne_tags(j[..]).ok && json_next(j[..])==JSON_END;
+}
+// The tags with ["nonce","<nonce>","<target>"] appended, into out.
+n13_tags :: (tags:string,nonce:int,target:int,out:[]u8)->int {
+  n:=json_raw(out,0,tags[0..<tags.count-1]);
+  if tags!="[]" {n=json_raw(out,n,",");}
+  n=json_raw(out,n,"[\"nonce\",\"");n=json_write_int(out,n,nonce);
+  n=json_raw(out,n,"\",\"");n=json_write_int(out,n,target);
+  return json_raw(out,n,"\"]]");
+}
+// [0,pubkey,created_at,kind,tags,content] as ne_serialize writes it; the
+// tests compare the IDs it gives with nostr_event_read's.
+n13_preimage :: (pub:[32]u8,created_at:int,kind:int,tags:string,content:string,out:[]u8)->int {
+  decoded:[N13_MAX_PREIMAGE]u8;text:[64]u8;key:=pub;
+  h:=hex_encode_checked(cast(string)key[..],text[..],false);
+  n:=json_raw(out,ne_writer_start(h.error),"[0,");n=json_write_string(out,n,cast(string)text[..]);
+  n=json_raw(out,n,",");n=json_write_int(out,n,created_at);
+  n=json_raw(out,n,",");n=json_write_int(out,n,kind);n=json_raw(out,n,",");
+  n=ne_write_tags(tags,out,n,decoded[..]);n=json_raw(out,n,",");
+  n=json_write_string(out,n,content);return json_raw(out,n,"]");
+}
+
+// book:begin mine
+// Try nonces start, start + 1, ... until the ID has target leading zero
+// bits or limit tries are spent. created_at stays fixed, so the run is
+// deterministic; NIP-13 suggests a live miner also update it. The final
+// tags (tags plus the nonce tag) are left in out[0..<tags_n].
+nip13_mine :: (pub:[32]u8,created_at:int,kind:int,tags:string,content:string,
+               target:int,start:int,limit:int,out:[]u8)->N13Mine {
+  m:N13Mine;preimage:[N13_MAX_PREIMAGE]u8;
+  if target<1 || target>N13_MAX_BITS || start<0 || limit<1 {return m;}
+  if created_at<0 || kind<0 || kind>65535 {return m;}
+  if !n13_tags_ok(tags) {return m;}
+  while m.tries<limit {
+    m.nonce=start+m.tries;m.tries+=1;
+    m.tags_n=n13_tags(tags,m.nonce,target,out);
+    if m.tags_n==NE_WRITE_FAILED {m.error=N13_MINE_OUTPUT;return m;}
+    n:=n13_preimage(pub,created_at,kind,cast(string)out[0..<m.tags_n],content,preimage[..]);
+    if n==NE_WRITE_FAILED {m.error=N13_MINE_OUTPUT;return m;}
+    hashed:=sha256_hash_checked(preimage[0..<n],m.id[..],false);
+    m.difficulty=nip13_difficulty(m.id);
+    if m.difficulty>=target {m.error=N13_MINE_OK;return m;}
+  }
+  m.error=N13_MINE_LIMIT;return m;
+}
+// book:end mine

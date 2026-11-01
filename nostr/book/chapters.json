@@ -1125,13 +1125,19 @@
    "number": 56,
    "title": "Proof of work",
    "file": "ch056-proof-of-work.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     21
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip13.coax",
+    "nostr/examples/proof-of-work.coax",
+    "nostr/examples/checks/proof-of-work.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

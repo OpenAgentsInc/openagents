@@ -1,0 +1,83 @@
+// The checks of proof-of-work.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/proof-of-work.coax --run-steps 250000000
+#load "../proof-of-work.coax";
+
+// book:begin check
+// IDs that Python's hashlib computed from
+// json.dumps([0, pubkey, created_at, 1, tags, content], separators=(",", ":"),
+// ensure_ascii=False) for the test key's notes, and the first nonce from 0
+// that reaches each target. They share no code with Coax.
+PY_MINED :: [9] string.[
+  "8",  "69",   "00f042eafd86699df69326bc25498d0ca79e1cc91cfe49b55afda1e116b74624",
+  "10", "7",    "00308b8dc0d6231b2fab46b86f29dd2f4e29ea8276a7fe7569c5beda2fcb06bc",
+  "16", "1803", "0000b2d007cdba8c9c973727e78367d168b9a1197f029f99bf89d7616df0c46f"];
+PY_TAGGED :: [12] string.[
+  "[[\"nonce\",\"0\",\"8\"]]",       "931ed0097191c96897fb23bbe557a6cfe117506773a59e5eef85360ab3f2d380", "1761686400", "0",
+  "[[\"nonce\",\"26\",\"4\"]]",      "00de4fbbf1b46be04a87fda01290d3ab7c0ab7d92752332377b6c8db53795c70", "1761686400", "8",
+  "[]",                              "00be4241ccc40052dd2f80d48ea1db0a6f13a0c60a04736efd28129832defdce", "1761686513", "8"];
+// NIP-13's example note: Python's ID from its fields, which is the
+// published one.
+PY_NIP13_ID :: "000006d8c378af1779d2feebc7603a125d99eca0ccf1085959b307f64e5dd358";
+
+number :: (s: string) -> int { v := 0; for c: s { v = v * 10 + cast(int) (c - '0'); } return v; }
+same_id :: (id: [32] u8, text: string) -> bool {
+  want: [32] u8; decode_hex(text, want[..]);
+  for i: 0..<32 { if id[i] != want[i] { return false; } }
+  return true;
+}
+
+#forall "the miner stops at Python's first nonce with Python's ID" i: 0..<3 #steps 400000000 {
+  pub: [32] u8; decode_hex(PUB_HEX, pub[..]); tags: [256] u8;
+  m := nip13_mine(pub, CREATED, 1, "[]", CONTENT, number(PY_MINED[3 * i]), 0, 5000, tags[..]);
+  #assert m.error == N13_MINE_OK && m.nonce == number(PY_MINED[3 * i + 1]);
+  #assert m.tries == m.nonce + 1 && same_id(m.id, PY_MINED[3 * i + 2]);
+}
+#forall "the refused notes' IDs are Python's" i: 0..<3 {
+  pub: [32] u8; decode_hex(PUB_HEX, pub[..]); pre: [1024] u8; id: [32] u8;
+  n := n13_preimage(pub, number(PY_TAGGED[4 * i + 2]), 1, PY_TAGGED[4 * i], CONTENT, pre[..]);
+  #assert n > 0 && sha256_hash_checked(pre[0..<n], id[..], false) == SHA_OK;
+  #assert same_id(id, PY_TAGGED[4 * i + 1]) && nip13_difficulty(id) == number(PY_TAGGED[4 * i + 3]);
+}
+#test "NIP-13's example: Python's ID, 21 bits, a valid signature" #steps 400000000 {
+  scratch: [1024] u8;
+  e := nostr_event_verify_vartime(NIP13, scratch[..], false);
+  #assert e.error == NE_OK && e.verified && same_id(e.computed_id, PY_NIP13_ID);
+  #assert nip13_difficulty(e.id) == 21;
+}
+
+// NIP-13's JavaScript countLeadingZeroes, transcribed: 4 per zero hex
+// digit, then clz32(nibble) - 28 for the first nonzero one.
+nibble_zeros :: (hex: string) -> int {
+  count := 0;
+  for c: hex {
+    nibble := 0;
+    while "0123456789abcdef"[nibble] != c { nibble += 1; }
+    if nibble == 0 { count += 4; continue; }
+    clz := 32; x := nibble; while x > 0 { clz -= 1; x = x / 2; }
+    return count + clz - 28;
+  }
+  return count;
+}
+IDS :: [9] string.[
+  "f000000000000000000000000000000000000000000000000000000000000000",
+  "000000000e9d97a1ab09fc381030b346cdd7a142ad57e6df0b46dc9bef6c7e2d",
+  "002fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "000006d8c378af1779d2feebc7603a125d99eca0ccf1085959b307f64e5dd358",
+  "931ed0097191c96897fb23bbe557a6cfe117506773a59e5eef85360ab3f2d380",
+  "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "0000000000000000000000000000000000000000000000000000000000000000",
+  "0000000000000000000000000000000000000000000000000000000000000001",
+  "0000b2d007cdba8c9c973727e78367d168b9a1197f029f99bf89d7616df0c46f"];
+IDS_BITS :: [9] int.[0, 36, 10, 21, 0, 1, 256, 255, 16];
+#forall "byte counting agrees with NIP-13's nibble counting and the hand values" i: 0..<9 {
+  id: [32] u8; decode_hex(IDS[i], id[..]);
+  #assert nip13_difficulty(id) == nibble_zeros(IDS[i]) && nibble_zeros(IDS[i]) == IDS_BITS[i];
+}
+#test "same_id notices a change in the first or last byte" {
+  id: [32] u8; zero := "0000000000000000000000000000000000000000000000000000000000000000";
+  #assert same_id(id, zero);
+  id[0] = 1; #assert !same_id(id, zero);
+  id[0] = 0; id[31] = 1; #assert !same_id(id, zero);
+}
+// book:end check

@@ -1,0 +1,24 @@
+// Events for nip13.coax's checks. N13_T_NIP13 is the example mined note in
+// nostr/nips/official/13.md, compacted; Python's hashlib gives its ID
+// 000006d8c378af1779d2feebc7603a125d99eca0ccf1085959b307f64e5dd358 from its
+// fields, as published. The others are kind-1 notes by BIP-340 vector 1's
+// test public key whose IDs Python's hashlib computed from
+// json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":"), ensure_ascii=False); each ID has exactly 8 leading
+// zero bits. Their signatures are 64 zero bytes: admission reads the ID and
+// never verifies a signature.
+N13_T_PUB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+N13_T_CONTENT :: "It's just me mining my own business";
+N13_T_NIP13 :: "{\"id\":\"000006d8c378af1779d2feebc7603a125d99eca0ccf1085959b307f64e5dd358\",\"pubkey\":\"a48380f4cfcc1ad5378294fcac36439770f9c878dd880ffa94bb74ea54a6f243\",\"created_at\":1651794653,\"kind\":1,\"tags\":[[\"nonce\",\"776797\",\"20\"]],\"content\":\"It's just me mining my own business\",\"sig\":\"284622fc0a3f4f1303455d5175f7ba962a3300d136085b9566801bc2e0699de0c7e31e44c81fb40ad9049173742e904713c3594a1da0fc5d2382a25c11aba977\"}";
+// The same with the content's last letter changed: the ID no longer matches.
+N13_T_EDITED :: "{\"id\":\"000006d8c378af1779d2feebc7603a125d99eca0ccf1085959b307f64e5dd358\",\"pubkey\":\"a48380f4cfcc1ad5378294fcac36439770f9c878dd880ffa94bb74ea54a6f243\",\"created_at\":1651794653,\"kind\":1,\"tags\":[[\"nonce\",\"776797\",\"20\"]],\"content\":\"It's just me mining my own businesS\",\"sig\":\"284622fc0a3f4f1303455d5175f7ba962a3300d136085b9566801bc2e0699de0c7e31e44c81fb40ad9049173742e904713c3594a1da0fc5d2382a25c11aba977\"}";
+// Target 4 committed, 8 bits reached at nonce 26 (27 tries from 0).
+N13_T_LUCKY :: "{\"id\":\"00de4fbbf1b46be04a87fda01290d3ab7c0ab7d92752332377b6c8db53795c70\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686400,\"kind\":1,\"tags\":[[\"nonce\",\"26\",\"4\"]],\"content\":\"It's just me mining my own business\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+// A nonce tag with no target; 8 bits at nonce 269.
+N13_T_NO_TARGET :: "{\"id\":\"00c67325847f7e43885ed493baa242b38c943e7bbeedf3908633f1694cc59973\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686400,\"kind\":1,\"tags\":[[\"nonce\",\"269\"]],\"content\":\"It's just me mining my own business\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+// No nonce tag: created_at was stepped from 1761686400 until 8 bits.
+N13_T_NO_NONCE :: "{\"id\":\"00be4241ccc40052dd2f80d48ea1db0a6f13a0c60a04736efd28129832defdce\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686513,\"kind\":1,\"tags\":[],\"content\":\"It's just me mining my own business\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+// The target "eight"; 8 bits at nonce 72.
+N13_T_BAD_TARGET :: "{\"id\":\"00e93335bf9fce9572af2afa277c43f1936d66832edb4f95eadc9fb007b86cf4\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686400,\"kind\":1,\"tags\":[[\"nonce\",\"72\",\"eight\"]],\"content\":\"It's just me mining my own business\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+// Target 0 committed; 8 bits at nonce 218.
+N13_T_ZERO :: "{\"id\":\"00f68cffcebea8da5f3231879f53ecd5dc139c374d5c00d2387cb63a1b593bac\",\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"created_at\":1761686400,\"kind\":1,\"tags\":[[\"nonce\",\"218\",\"0\"]],\"content\":\"It's just me mining my own business\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";

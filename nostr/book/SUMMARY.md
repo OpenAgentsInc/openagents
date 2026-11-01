@@ -87,7 +87,7 @@
 - [53. Long-form, drafts and wiki](ch053-long-form-drafts-and-wiki.md) — design draft
 - [54. Lists, sets and bookmarks](ch054-lists-sets-and-bookmarks.md) — design draft
 - [55. Labels, reports and trusted assertions](ch055-labels-reports-and-trusted-assertions.md) — design draft
-- [56. Proof of work](ch056-proof-of-work.md) — design draft
+- [56. Proof of work](ch056-proof-of-work.md) — implemented
 - [57. Media and files](ch057-media-and-files.md) — design draft
 - [58. Calendars, polls and highlights](ch058-calendars-polls-and-highlights.md) — design draft
 - [59. Groups and communities](ch059-groups-and-communities.md) — design draft

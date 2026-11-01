@@ -1,0 +1,32 @@
+difficulty by hand
+NIP-13 prose 000000000e9d...: 36
+NIP-13 prose 002f...: 10
+NIP-13 example 000006d8...: 21
+mine with the test key, created_at 1761686400
+target 8: nonce 69, tries 70, expected about 256, difficulty 8
+  id: 00f042eafd86699df69326bc25498d0ca79e1cc91cfe49b55afda1e116b74624
+target 16: nonce 1803, tries 1804, expected about 65536, difficulty 16
+  id: 0000b2d007cdba8c9c973727e78367d168b9a1197f029f99bf89d7616df0c46f
+tags: [["nonce","69","8"]]
+target 8 with 50 tries: limit, last nonce 49
+sign the mined notes
+event: {"id":"00f042eafd86699df69326bc25498d0ca79e1cc91cfe49b55afda1e116b74624","pubkey":"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659","created_at":1761686400,"kind":1,"tags":[["nonce","69","8"]],"content":"It's just me mining my own business","sig":"747ccf20a9d61d7bd9acd3b2605e8c0a19d5b1d415f071e8c7615563fdf517766a6accf216f81ced06540f343fd15a06e86a71dc7dbb3f541da3c09943189c18"}
+signature verified: true
+other notes, signed the same way
+a relay that requires 8 bits
+mined to 8: difficulty 8, target 8, need 8 -> ["OK","00f042ea...",true,""]
+mined to 16: difficulty 16, target 16, need 8 -> ["OK","0000b2d0...",true,""]
+NIP-13 example: difficulty 21, target 20, need 8 -> ["OK","000006d8...",true,""]
+refusals
+nonce 0, unmined: difficulty 0, target 8, need 8 -> ["OK","931ed009...",false,"pow: difficulty 0 is less than 8"]
+target 4, lucky: difficulty 8, target 4, need 8 -> ["OK","00de4fbb...",false,"pow: committed target 4 is less than 8"]
+no target: difficulty 8, target -1, need 8 -> ["OK","00c67325...",false,"pow: no committed target, need 8"]
+no nonce tag: difficulty 8, target -1, need 8 -> ["OK","00be4241...",false,"pow: no committed target, need 8"]
+target eight: difficulty 8, target -1, need 8 -> ["OK","00e93335...",false,"pow: malformed nonce tag"]
+NIP-13's example at other requirements
+NIP-13 example: difficulty 21, target 20, need 20 -> ["OK","000006d8...",true,""]
+NIP-13 example: difficulty 21, target 20, need 21 -> ["OK","000006d8...",false,"pow: committed target 20 is less than 21"]
+NIP-13 example: difficulty 21, target 20, need 22 -> ["OK","000006d8...",false,"pow: difficulty 21 is less than 22"]
+require 300: error: required difficulty is not 0 to 256
+content edited: invalid: event id does not match its fields
+NIP-13 example signature verified: true
