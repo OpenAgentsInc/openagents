@@ -1,7 +1,9 @@
 # 3. State starts from its defaults
 
-> Engine-core task: `ec-state` (#12609), done in `c5fb95a184`. The browser
-> path is [coax/web/defaults.py](../../coax/web/defaults.py), its check is
+> Engine-core task: `ec-state` (#12609), done in `c5fb95a184`. Since
+> `ax-state-construction` (#12611), the compiler writes the browser path:
+> each library header declares `coax_default_T`, and each page's C face
+> calls it. The check is
 > [coax/web/state-defaults.test.ts](../../coax/web/state-defaults.test.ts),
 > and [aethyr/loop.coax](../loop.coax)'s clock is safe when it was never
 > constructed.
@@ -87,21 +89,21 @@ Player :: struct {
 In the browser, the host allocates the state in the module's memory. That
 memory starts as zeros, so every default reads as zero: the player starts in
 the air, the camera sits on its target, and the clock has no step. To fix
-this, the browser host also runs the compiler's initializers:
+this, the browser host runs the compiler's initializers too:
 
-1. The build runs `coax/web/defaults.py` over the generated C. The script
-   exports two functions:
-   - `coaxial_state_init(state)` writes every defaulted field of a new state.
-   - `coaxial_state_default(i)` returns the location of the `i`-th defaulted
-     field. The check uses it.
-
-   A constructor that `_initialize` runs also sets the defaults of the
-   module's Coax globals, such as the player and the thumb controls.
-2. [`coax/web/host.js`](../../coax/web/host.js) calls `coaxial_state_init` on
+1. For each type in a library's header that has a declared default, the
+   compiler defines and declares `void coax_default_T(T *p)`. It writes
+   zeros and then every default into `*p`, in place, so a state larger than
+   the stack is safe.
+2. Each page's C face exports `coaxial_state_init(state)`, which calls
+   `coax_default_T` on a new state. A constructor that `_initialize` runs
+   calls it for the face's own globals, such as the player and the thumb
+   controls.
+3. [`coax/web/host.js`](../../coax/web/host.js) calls `coaxial_state_init` on
    the new state before the first frame.
 
-Both hosts run the same compiler-generated code. No default is copied by
-hand.
+Both hosts run code the compiler generates from the same declarations. No
+default is copied by hand, and no build step edits the generated C.
 
 ## Keep the clock running with zeroed fields
 
@@ -162,16 +164,22 @@ a 3 s stall on the zeroed clock: steps 8, overlong 1
 `coax/web/state-defaults.test.ts` starts every engine that
 `apps/openagents-web/build.sh` builds, plus the Grid, the same way the
 browser does. It allocates a zeroed state and calls `coaxial_state_init`.
-Then, for each defaulted field, it compares the bytes with the output of the
+Then, for each defaulted state, it compares the bytes with the output of the
 native `coax_init` for that type, compiled as a separate C program. If the
 bytes differ, the test reports the realm, type, field, and first differing
 byte.
 
+It also builds each face natively with its units, so the face's
+constructors run, and compares every face global of a defaulted type, each
+element of an array, with that type's `coax_default_T`.
+`coax/tests/state_defaults.py` checks that `coax_default_T` writes the bytes
+native `coax_init` gives.
+
 The test also confirms that the comparison can fail. It starts each engine a
 second time without calling `coaxial_state_init`. The zeroed state must
 differ from the native state; if it doesn't, the test fails with "a zeroed
-state passes the comparison". Every state with defaults has at least one
-non-zero default, so a realm that skips its defaults fails.
+state passes the comparison". Every defaulted type must have a non-zero
+default, so a realm or a global that skips its defaults fails.
 
 ```shell
 apps/openagents-web/build.sh
@@ -180,17 +188,17 @@ bun test coax/web/state-defaults.test.ts
 
 | What | Result (2026-10-31) |
 | --- | --- |
-| Realm states matching native `coax_init`, byte for byte | 16 |
-| Of those, caught when left zeroed | 16 |
-| Run time | 202 s |
+| Realm states matching native `coax_init`, byte for byte | 17 |
+| Of those, caught when left zeroed | 17 |
+| Face globals matching their type's defaults | 21 |
+| Run time | 68 s |
 
-The 16 states come from Belt, Dead Gears, Everglade, Fairy Forest, Garden,
-Ice Cream Man, Memorial, Orbit League, Hold the Stair, the villa, and the
-pages that declare state defaults. Realms with no declared defaults aren't
-included.
-
-The constructor sets the defaults of the module's globals, but the test
-doesn't compare them byte for byte yet.
+The 17 states come from Belt, Dead Gears, Everglade, Fairy Forest, Garden,
+Ice Cream Man, Memorial, Orbit League, Hold the Stair, the villa, Water Lab,
+and the pages that declare state defaults. Realms with no declared defaults
+aren't included. The 21 globals are the player and thumbs of each walking
+realm, the haunted house's entities, people and house, and the homepage
+reader's query.
 
 ## Still to do
 

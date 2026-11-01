@@ -344,9 +344,10 @@ Each kind of type has its own spelling.
 A struct named `Point` becomes `coax_t_Point`. The `coax_t_` prefix keeps
 Coax's type names out of the way of the host's own `Point`, which a
 graphics app very likely has. Field names don't get a prefix: C code
-writes `p.x`, as you'd hope. Struct defaults don't cross, though. C has no
-field defaults, so a `coax_t_Point` made in C starts as whatever C puts in
-it.
+writes `p.x`, as you'd hope. C has no field defaults, so a `coax_t_Point`
+made in C starts as whatever C puts in it. `Point` declares no defaults, so
+zero is its starting value anyway. For a struct that declares defaults, see
+"Starting a struct from its defaults" below.
 
 A view `[] Point` becomes `coax_v_t_Point`, a struct with `data` and
 `count`. C passes a view by building one of these.
@@ -401,6 +402,45 @@ a pointer to it and its length. Coax reads through that pointer for the
 duration of the call and keeps nothing afterward. That's the only lifetime
 rule a view has today, and it's on you to follow it: a view must not
 outlive the memory it points into.
+
+### Starting a struct from its defaults
+
+When a struct in the header declares a default, directly or in a field, the
+header also declares a function that writes those defaults. Suppose
+`path.coax` had a camera with defaults:
+
+```jai
+Camera :: struct { at: Point; fov: f32 = 60; mode: Mode = Mode.follow; }
+camera_fov :: (c: Camera) -> f32 #export_c { return c.fov; }
+```
+
+The header then declares `coax_default_t_Camera`:
+
+```c
+void coax_default_t_Camera(coax_t_Camera *p);
+```
+
+It writes zeros and then every default into `*p`, so `p->fov` is 60 and
+`p->mode` is `COAX_Mode_follow`, the same bytes that `c: Camera;` gives in
+Coax. It writes in place, so it works on any memory the host owns, even
+state too large for the stack. Call it on every value of the type that C
+creates:
+
+```c
+static coax_t_Camera camera;            // zeros, as C starts a global
+
+int main(void) {
+  coax_default_t_Camera(&camera);       // now fov is 60
+  printf("%g\n", camera_fov(camera));
+  return 0;
+}
+```
+
+The browser host works the same way. WebAssembly memory starts as zeros,
+so a page's C face exports `coaxial_state_init`, which calls
+`coax_default_T` on the new state, and the host calls it before the first
+frame. Each unit that uses a type defines this function, so the definition
+is weak, and the linker keeps one.
 
 Because field names cross unchanged, a field can't be named something C or
 C++ has reserved. The compiler stops you early, even in a file that never

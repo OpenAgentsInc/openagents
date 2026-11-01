@@ -438,8 +438,8 @@ tasks (native-gpu.json) come after the port.
     realm's game linked natively as Everglade's is, and a navigation to
     another realm followed.
   - Hold the Stair runs natively (`REALM=stair verse/gpu/realm.sh HOST
-    check|screen`): no pack, the face built through coax/web/defaults.py's
-    wrapper as wasm.sh builds it (Everglade's now too), the host's optional
+    check|screen`): no pack, the face built with the compiler's struct
+    defaults (`coax_default_T`) as wasm.sh builds it (Everglade's now too), the host's optional
     exports and sockets as host.js has them. verse/native/check.sh HOST stair
     matches the wasm frame for frame while it plays; verse/gpu/flat-pass.coax
     (bg, then the strokes blended max, as host.js draws a realm with no scene)

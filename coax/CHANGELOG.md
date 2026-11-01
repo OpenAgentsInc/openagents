@@ -51,6 +51,14 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   `coax/bin/source-digest`. A failing command run from `ROOT/coax/bin/coax`
   whose checkout's sources differ from that digest adds a note that the
   compiler is out of date and that `ROOT/coax/build.sh` rebuilds it.
+- Follow-up (`ax-state-construction`): a `--library` unit defines, and its
+  header declares, `void coax_default_T(T *p)` for each header struct or fixed
+  array with a declared default. It writes zeros and then the defaults in
+  place, so a host's state gets the same bytes as `s: [1] T` natively. The
+  definition is weak, because every unit that uses the type defines it.
+  Browser faces call it from `coaxial_state_init` and for their globals, and
+  `coax/web/defaults.py`, which patched the generated C, is deleted. Library
+  C and headers gain only these functions; programs emit identical C.
 
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 

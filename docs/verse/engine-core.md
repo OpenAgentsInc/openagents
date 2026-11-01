@@ -47,18 +47,21 @@ a world one, E0325 a local point stored as a world one, E0822 metres plus
 grid units), against a control that must compile. Mutation: 78 of 78 killed
 (`space.coax`), 47 of 47 (`refusals.coax`).
 
-## State (`coax/web/defaults.py`, `coax/web/state-defaults.test.ts`)
+## State (`coax_default_T`, `coax/web/state-defaults.test.ts`)
 
 Every realm's state gets its declared field defaults by construction, natively
 (`s: [1] T`) and in the browser, where the host hands an engine zeroed memory:
-the build runs `defaults.py` over the generated C, which exports
-`coaxial_state_init` for the host to call on a fresh state and defaults the
-face's globals (the player, the thumbs) in a constructor. The check boots
+each library header declares the compiler's `coax_default_T` for its types
+with defaults, and the realm's face exports `coaxial_state_init`, which calls
+it on a fresh state, and calls it for the face's globals (the player, the
+thumbs) in a constructor. The check boots
 every engine `build.sh` makes, and the Grid, from zeroed memory and compares
 each defaulted part with native `coax_init`, byte for byte. It is sharp: the
-same state left zeroed must differ, or the realm fails. 16 realm states pass
+same state left zeroed must differ, or the realm fails. 17 realm states pass
 (Belt, Dead Gears, Everglade, Fairy Forest, Garden, Ice Cream Man, Memorial,
-Orbit League, Hold the Stair, the villa and the pages with state defaults);
+Orbit League, Hold the Stair, the villa, Water Lab and the pages with state
+defaults), and so do 21 face globals, compared natively after the face's
+constructors run;
 a realm with no defaults has nothing to apply. `aethyr/loop.coax`'s clock
 also takes its default step, frame clamp and step cap on its first frame if it was zeroed, so it never freezes.
 

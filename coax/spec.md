@@ -1619,6 +1619,17 @@ names cross unchanged, so C and C++ keywords are refused as field names
 `examples/pulse` links a Coax kernel into a C host and checks it against a C
 reference every frame.
 
+A `--library` unit also defines, and its header declares,
+`void coax_default_T(T *p)` for each struct or fixed array in the header that
+has a declared default, directly or in a field or element. It writes zeros
+and then every declared default into `*p`, in place, so the result has the
+same bytes as `s: [1] T` in a native program, whatever `*p` held before. A
+host calls it for state it allocates, such as a browser engine's state in
+WebAssembly memory, which starts as zeros, and for its own C globals of that
+type. The definition is weak, because every unit that uses the type defines
+it, and all of the definitions are the same. A program compiled without
+`--library` emits no `coax_default_T`.
+
 Use fixed-width C ABI data, explicit lengths, opaque handles and named release
 functions. `int` is s64, not C `int`. A counted Coax string is not `char *`.
 Generated headers must record size, alignment, calling convention, ownership,
