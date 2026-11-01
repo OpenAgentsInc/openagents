@@ -247,6 +247,7 @@ diagnostic is one JSON object per line on stderr, with the fields `file`,
 | `E0703` | Metal compute module has no kernel | coax metal-compute compiles the #export_c procedures of a file as kernels, with what they call. Mark at least one procedure #export_c. |
 | `E0704` | outside the SPIR-V lowering | coax spirv lowers what coax metal accepts (f32 and bool, if/else and acyclic calls) to SPIR-V 1.3 for Vulkan. --kernel NAME wraps one procedure of f32 parameters, returning f32 or bool, in a GLCompute entry point; without it the module is a library. A module has at most 256 procedures, 1024 locals in one procedure, 1024 constants and 32 arguments in one call. |
 | `E0705` | shader entry point not found | coax spirv --vertex NAME and --fragment NAME make entry points of procedures declared in the file or the units it loads. Name one of them, spelled as declared. |
+| `E0706` | outside the WGSL writer | coax wgsl writes a whole module the way lib/compiler/wgsl.coax does. The construct named in the message is one that writer doesn't accept; rewrite it with what coax spirv lowers, or keep it in the C library. |
 
 ## E08xx: generic structs
 

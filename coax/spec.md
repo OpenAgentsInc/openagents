@@ -1666,7 +1666,18 @@ compiler runs from `ROOT/coax/bin/coax`, it compares the digest with `ROOT`'s
 sources and, when they differ, prints that the compiler is out of date and
 that `ROOT/coax/build.sh` rebuilds it. A successful command does not compare.
 `--keep-c` retains generated source for inspection; `--json` prints
-diagnostics as JSON lines for tools and agents. Errors have stable codes,
+diagnostics as JSON lines for tools and agents. `--diagnostics json` prints
+each diagnostic on stderr as one `coax.diagnostic.v1` object with the keys
+`schema`, `severity` (`error`, or `note` for the stale-compiler message),
+`code`, `message`, `span`, `notes` and `fixes`. A span is `file`, 1-based
+`line` and `column`, the byte `offset` into that file and the `length` of the
+name, number or string that starts there (one byte otherwise, zero at a
+line's end). A note has a `message` and a span or `null`; a failing check's
+note names it (`in #test NAME`), and its counterexample is a note without a
+span. A fix has a `message` and `edits`, each a span and its `replacement`;
+"add 'X'" and "add 'X' before the end of the line" fixes carry their
+insertion, and other fixes carry no edits. `--diagnostics text` is the
+default and leaves the text output unchanged. Errors have stable codes,
 source locations and fix text where available; compile-time failures add call
 site notes. Version 0.13.0 adds `--debug-info` line directives and
 `--source-map FILE` for original locations, source hashes and procedure/local

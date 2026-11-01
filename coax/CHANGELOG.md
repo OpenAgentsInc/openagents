@@ -59,6 +59,13 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   Browser faces call it from `coaxial_state_init` and for their globals, and
   `coax/web/defaults.py`, which patched the generated C, is deleted. Library
   C and headers gain only these functions; programs emit identical C.
+- Follow-up (`ax-diagnostics-json`): `--diagnostics json` prints each
+  diagnostic as one `coax.diagnostic.v1` JSON object a line on stderr, with
+  its code, severity, message, span (file, line, column, byte offset and
+  length), notes (a failing check's name and counterexample) and fixes, with
+  replacement edits for "add 'X'" fixes. `coax c`, `check`, `test` and
+  `mutate` take it. Without it the text output is byte-identical. `coax
+  explain` now explains E0706.
 
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 

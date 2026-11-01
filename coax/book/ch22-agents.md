@@ -139,6 +139,41 @@ E0306 line 6:
 `coax test`. One exception today: `coax mutate` prints its survivors as
 text even with `--json`, in the format we'll see shortly.
 
+### Spans, notes and fixes
+
+`--json` gives a line and a column. A tool that edits the file needs more:
+where the problem ends, what else the compiler noted, and the exact text of
+a fix. `--diagnostics json` gives those, as one `coax.diagnostic.v1` object
+a line:
+
+```shell
+$ coax check two.coax --diagnostics json
+{"schema":"coax.diagnostic.v1","severity":"error","code":"E0325","message":"'tip' is s32 but is initialized with int","span":{"file":"two.coax","line":5,"column":20,"offset":65,"length":1},"notes":[],"fixes":[{"message":"convert it: cast(s32) x","edits":[]}]}
+{"schema":"coax.diagnostic.v1","severity":"error","code":"E0306","message":"'tipp' is not declared","span":{"file":"two.coax","line":6,"column":20,"offset":89,"length":4},"notes":[],"fixes":[]}
+```
+
+Every object has the same seven fields, in this order:
+
+- `schema` is always `coax.diagnostic.v1`. A change to the shape gets a new
+  name.
+- `severity` is `error`, or `note` for a message that isn't an error, such as
+  the one that says the compiler is out of date.
+- `code` is the error code, the same one `coax explain` takes.
+- `span` is the file, the 1-based line and column, the byte offset into the
+  file, and the length: the name, number or string that starts there, one
+  byte, or zero at the end of a line. `tipp` above is 4 bytes long.
+- `notes` holds the compiler's other messages about the error, each with a
+  span or `null`. A failing check has the note `in #test NAME`, whose span is
+  the check, and a `#forall` counterexample is a note too.
+- `fixes` holds each suggestion's text. When the fix inserts text, as
+  "add ';'" does, `edits` gives the span to replace (length 0 for an
+  insertion) and the replacement, so a tool can apply it without reading the
+  wording.
+
+The flag works with `coax c`, `coax check`, `coax test` and `coax mutate`.
+Without it, or with `--diagnostics text`, the output is the text above,
+byte for byte.
+
 ## Codes, not messages
 
 The `code` field is the part a tool should match on. Messages get
