@@ -1,9 +1,108 @@
 {
   "schema": "psionic.panda-pose-solve.publication.v1",
   "passed": true,
-  "component_commit": "eaea5af289",
+  "component_commit": "b2e180d674f71637de8aca0c92b5debef68ec23d",
   "original_component_commit": "1a3d6ef604",
-  "compiler_binding": {
+  "receipts": {
+    "psionic/fixtures/robotics/panda-pose-solve/checks-qualification.json": "1eb1ab2bc6902bf71fed79111c2f1a1fbfc5d43e360def1644537bcf245aedef",
+    "psionic/fixtures/robotics/panda-pose-solve/unit-refusals.json": "6a631403a9ece1cce0aa9df4b7b7d94ca43b319f364489fc65ff7343a00a9d2b",
+    "psionic/fixtures/robotics/panda-pose-solve/input-freeze-v1.json": "35ada605983a5b77a6a4ce9bd71fc4543e3dc4c8ccdc2b328b26c08d039ccb05",
+    "psionic/fixtures/robotics/panda-pose-solve/reference.json": "5f3d3afb6a4c856a394c7b6729d06378f7bdb3234101b8a993273a842601107d",
+    "psionic/fixtures/robotics/panda-pose-solve/reference-publication-v1.json": "9e0fb05f9985570bde48de7b80f149fbbf1e0ed90bf40c728cae0d4fbf593d5b",
+    "psionic/fixtures/robotics/panda-pose-solve/terminal-binding-v1.json": "b51a2d3bbe02c0a64fd74f4c276be477771740bd0a1df04fc07bd05ba745d4c5",
+    "psionic/fixtures/robotics/panda-pose-solve/native-plan-v1.json": "3cac8b26c681d6658573c7b37121475b27e975f56934d522ecddfd0360b31c60",
+    "psionic/fixtures/robotics/panda-pose-solve/native-contract-v1.json": "49de31e4c2e9b5b7d7498e8d86429c6fdc526d9ff9799f57155eea2ba1e128c3",
+    "psionic/fixtures/robotics/panda-pose-solve/native-qualification.json": "27df617954734751b19b26ffde225ba22776358d8c59de7dcafd4fe8e19654b8",
+    "psionic/fixtures/robotics/panda-pose-solve/native-publication-v1.json": "4dd7c8847b8f0ae7bafa2b168ff7d68ab0ed9bfb51f5f8231873b47a34650879",
+    "psionic/fixtures/robotics/panda-pose-solve/example-qualification.json": "22b9e46a28a750153ffed6c3b4df16fcc7d7b43a7497e9a3644fae277a20f2bd"
+  },
+  "new_source_groups": 9,
+  "root_mutation": {
+    "emitted": 111,
+    "killed": 111,
+    "survivors": 0,
+    "equivalence_waivers": false,
+    "first_six_survivors_preserved": true
+  },
+  "new_numerical_work": {
+    "independent_physical_trajectories": 14,
+    "converged_physical_contexts": 12,
+    "budget_exhausted_physical_contexts": 2,
+    "public_query_cases": 112,
+    "public_successes": 54,
+    "public_nonconvergences": 58,
+    "external_Ppo_transitions": 279,
+    "external_terminal_seed_Pps_zero_budget_queries": 14,
+    "terminal_zero_work_successes": 12,
+    "terminal_refusals": 2,
+    "events_per_profile": 405,
+    "event_bytes": 184,
+    "success_payloads": 345,
+    "unavailable_transport_markers": 60,
+    "assertions_per_profile": 23665,
+    "profiles": [
+      "debug",
+      "release",
+      "sanitized"
+    ],
+    "all_complete_bytes_identical": true
+  },
+  "metrics_scope": "Whole Pps endpoints/status/counts plus external Ppo replay states; no internal solver iteration instrumentation. Failed caller output is unchanged; the recorded zero payload is a private unavailable-result marker.",
+  "registration": {
+    "passed": true,
+    "shell_syntax_passed": true,
+    "command": [
+      "bash",
+      "psionic/check.sh",
+      "--jobs",
+      "2",
+      "--only",
+      "robotics/panda-pose-solve"
+    ],
+    "stubbed": true,
+    "routed_Coax_commands": 3,
+    "routed_native_commands": 1,
+    "log_sha256": "c0b146ed000521c22e8a57bf7bcb0a48f3f67a3f51b8d69975594206b7912b61",
+    "Coax_calls": 0,
+    "SDK_calls": 0,
+    "NN_calls": 0
+  },
+  "manifest_claim_review": {
+    "scope": "Own167 contents and whole-pose CPU example inventory only; dated model/device/serving claims remain unchanged.",
+    "updates": [
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "7a9ba1e67be57bd0a5ac06f127cf4828c1c05022403c0193977c130b295c9a28",
+        "new": "95e7886d02c870452bc85569f4fd9c3b101daef61cbb8a42f9be79b317c114a2"
+      },
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/examples.json",
+        "old": "7291da3b5ed3e97745bfb8f21a5ccbac1a55ebe13bcbe474e95461dd30d18eea",
+        "new": "6e2680e348c3fc0c8c926751bdda82e41fd2849d5c81b39889681458f9b74517"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "7a9ba1e67be57bd0a5ac06f127cf4828c1c05022403c0193977c130b295c9a28",
+        "new": "95e7886d02c870452bc85569f4fd9c3b101daef61cbb8a42f9be79b317c114a2"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/examples.json",
+        "old": "7291da3b5ed3e97745bfb8f21a5ccbac1a55ebe13bcbe474e95461dd30d18eea",
+        "new": "6e2680e348c3fc0c8c926751bdda82e41fd2849d5c81b39889681458f9b74517"
+      }
+    ]
+  },
+  "scope": "Source-limited local geometric whole-pose query, both inclusive1e-6m/1e-6rad criteria, zero-work and atomic typed nonconvergence, maximum96updates. No nullspace, collision, motor command, global reachability, compiler R14 or hardware qualification.",
+  "publication_numerical_reruns": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "simulation_steps": 0,
+  "quantity_operator_token_gap_retained": true,
+  "pre_rebase_compiler_binding": {
     "passed": true,
     "input_fingerprint": "a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5",
     "compiler_sha256": "910f0ba5f991e94b49df044f9fd8ca9099d00679c86640db8abe4988b96e00a1",
@@ -69,59 +168,94 @@
     "new_source_inventory_exact": true,
     "numerical_reruns": 0
   },
-  "compiler_provenance_carried": {
+  "compiler_binding": {
+    "passed": true,
+    "input_fingerprint": "fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3",
+    "compiler_sha256": "ac8e535598afff1f13b56c6e9b2f065238b1f2e8563e9488a0183be9c8455ba6",
+    "provenance_record_sha256": "4dc9acf8c0c869b63b65c78a5dd9a828ddf595f1f3f910fab3b9a8be3e619167",
+    "commands": [
+      {
+        "argv": [
+          "bash",
+          "coax/provenance.sh",
+          "verify",
+          "/Users/christopherdavid/.codex/worktrees/robotics-foundation-release/openagents",
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/provenance-check",
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/provenance.record"
+        ],
+        "exit": 0,
+        "stderr_bytes": 0
+      },
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "c",
+          "psionic/lib/robotics/panda-pose-solve.coax",
+          "--library",
+          "--header",
+          "/tmp/panda-pose-solve-rebase-binding-first/debug/panda-pose-solve.h"
+        ],
+        "exit": 0,
+        "seconds": 0.31698991695884615,
+        "stderr_bytes": 0
+      },
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/fc26f7fe96837aa7b99ea565f599db732a0211510c98fd1a9884a91c761ce8f3/coax",
+          "c",
+          "psionic/lib/robotics/panda-pose-solve.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/panda-pose-solve-rebase-binding-first/release/panda-pose-solve.h"
+        ],
+        "exit": 0,
+        "seconds": 0.12280354095855728,
+        "stderr_bytes": 0
+      }
+    ],
+    "emissions": [
+      {
+        "mode": "debug",
+        "artifact": "panda-pose-solve.c",
+        "bytes": 165192,
+        "sha256": "7832ee654892fe67dcd2a0128b4a40627822ccc8c5fb86c34442598baa7a62a2",
+        "exact_original_native_match": true
+      },
+      {
+        "mode": "debug",
+        "artifact": "panda-pose-solve.h",
+        "bytes": 31689,
+        "sha256": "3452027851d1629a81fd22f69ab9cab10d50d9be6cd20a4e0b95ccd234c12b83",
+        "exact_original_native_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-pose-solve.c",
+        "bytes": 163875,
+        "sha256": "a22ad56d9a78e483296bf1f39b49c66323618793c3329d451733be758d65699b",
+        "exact_original_native_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-pose-solve.h",
+        "bytes": 31689,
+        "sha256": "3452027851d1629a81fd22f69ab9cab10d50d9be6cd20a4e0b95ccd234c12b83",
+        "exact_original_native_match": true
+      }
+    ],
+    "numerical_reruns": 0,
+    "delta_review": "Emitter adds in-place host constructors only for exported/foreign types with declared defaults, plus header type collection refactor. No arithmetic algorithm change; exact emitted component C/H is required here."
+  },
+  "pre_rebase_compiler_provenance_carried": {
     "record": "docs/verification/psionic-panda-pose-ik-2026-11-01.json",
     "sha256": "561ddd236416795b1ddf4094672dd1d7f9029667c396980e09d2e14a09e1fa9d",
     "same_input_fingerprint": true,
     "same_compiler_artifact": true,
     "old_verification_not_repeated": true
   },
-  "receipts": {
-    "psionic/fixtures/robotics/panda-pose-solve/checks-qualification.json": "1eb1ab2bc6902bf71fed79111c2f1a1fbfc5d43e360def1644537bcf245aedef",
-    "psionic/fixtures/robotics/panda-pose-solve/unit-refusals.json": "6a631403a9ece1cce0aa9df4b7b7d94ca43b319f364489fc65ff7343a00a9d2b",
-    "psionic/fixtures/robotics/panda-pose-solve/input-freeze-v1.json": "35ada605983a5b77a6a4ce9bd71fc4543e3dc4c8ccdc2b328b26c08d039ccb05",
-    "psionic/fixtures/robotics/panda-pose-solve/reference.json": "5f3d3afb6a4c856a394c7b6729d06378f7bdb3234101b8a993273a842601107d",
-    "psionic/fixtures/robotics/panda-pose-solve/reference-publication-v1.json": "9e0fb05f9985570bde48de7b80f149fbbf1e0ed90bf40c728cae0d4fbf593d5b",
-    "psionic/fixtures/robotics/panda-pose-solve/terminal-binding-v1.json": "b51a2d3bbe02c0a64fd74f4c276be477771740bd0a1df04fc07bd05ba745d4c5",
-    "psionic/fixtures/robotics/panda-pose-solve/native-plan-v1.json": "3cac8b26c681d6658573c7b37121475b27e975f56934d522ecddfd0360b31c60",
-    "psionic/fixtures/robotics/panda-pose-solve/native-contract-v1.json": "49de31e4c2e9b5b7d7498e8d86429c6fdc526d9ff9799f57155eea2ba1e128c3",
-    "psionic/fixtures/robotics/panda-pose-solve/native-qualification.json": "27df617954734751b19b26ffde225ba22776358d8c59de7dcafd4fe8e19654b8",
-    "psionic/fixtures/robotics/panda-pose-solve/native-publication-v1.json": "4dd7c8847b8f0ae7bafa2b168ff7d68ab0ed9bfb51f5f8231873b47a34650879",
-    "psionic/fixtures/robotics/panda-pose-solve/example-qualification.json": "22b9e46a28a750153ffed6c3b4df16fcc7d7b43a7497e9a3644fae277a20f2bd"
-  },
-  "new_source_groups": 9,
-  "root_mutation": {
-    "emitted": 111,
-    "killed": 111,
-    "survivors": 0,
-    "equivalence_waivers": false,
-    "first_six_survivors_preserved": true
-  },
-  "new_numerical_work": {
-    "independent_physical_trajectories": 14,
-    "converged_physical_contexts": 12,
-    "budget_exhausted_physical_contexts": 2,
-    "public_query_cases": 112,
-    "public_successes": 54,
-    "public_nonconvergences": 58,
-    "external_Ppo_transitions": 279,
-    "external_terminal_seed_Pps_zero_budget_queries": 14,
-    "terminal_zero_work_successes": 12,
-    "terminal_refusals": 2,
-    "events_per_profile": 405,
-    "event_bytes": 184,
-    "success_payloads": 345,
-    "unavailable_transport_markers": 60,
-    "assertions_per_profile": 23665,
-    "profiles": [
-      "debug",
-      "release",
-      "sanitized"
-    ],
-    "all_complete_bytes_identical": true
-  },
-  "metrics_scope": "Whole Pps endpoints/status/counts plus external Ppo replay states; no internal solver iteration instrumentation. Failed caller output is unchanged; the recorded zero payload is a private unavailable-result marker.",
-  "book": {
+  "pre_rebase_book": {
     "passed": true,
     "exit": 0,
     "seconds": 0.2535716249840334,
@@ -130,58 +264,21 @@
     "programs": 127,
     "source_linked_listings": 474
   },
-  "registration": {
+  "book": {
     "passed": true,
-    "shell_syntax_passed": true,
-    "command": [
-      "bash",
-      "psionic/check.sh",
-      "--jobs",
-      "2",
-      "--only",
-      "robotics/panda-pose-solve"
-    ],
-    "stubbed": true,
-    "routed_Coax_commands": 3,
-    "routed_native_commands": 1,
-    "log_sha256": "c0b146ed000521c22e8a57bf7bcb0a48f3f67a3f51b8d69975594206b7912b61",
-    "Coax_calls": 0,
-    "SDK_calls": 0,
-    "NN_calls": 0
+    "exit": 0,
+    "seconds": 0.21401895803865045,
+    "stdout_sha256": "95e536841eb1e2b726948a882901246d5813f12f80622c24305993de2d3d8ff8",
+    "stderr_bytes": 0,
+    "reason": "Book checker/registry and capability claims changed on rebased main; only the new context is checked.",
+    "programs": 127,
+    "source_linked_listings": 474
   },
-  "manifest_claim_review": {
-    "scope": "Own167 contents and whole-pose CPU example inventory only; dated model/device/serving claims remain unchanged.",
-    "updates": [
-      {
-        "claim": "psionic.execution.current",
-        "path": "psionic/book/SUMMARY.md",
-        "old": "7a9ba1e67be57bd0a5ac06f127cf4828c1c05022403c0193977c130b295c9a28",
-        "new": "95e7886d02c870452bc85569f4fd9c3b101daef61cbb8a42f9be79b317c114a2"
-      },
-      {
-        "claim": "psionic.execution.current",
-        "path": "psionic/book/examples.json",
-        "old": "7291da3b5ed3e97745bfb8f21a5ccbac1a55ebe13bcbe474e95461dd30d18eea",
-        "new": "6e2680e348c3fc0c8c926751bdda82e41fd2849d5c81b39889681458f9b74517"
-      },
-      {
-        "claim": "psionic.gpu.current",
-        "path": "psionic/book/SUMMARY.md",
-        "old": "7a9ba1e67be57bd0a5ac06f127cf4828c1c05022403c0193977c130b295c9a28",
-        "new": "95e7886d02c870452bc85569f4fd9c3b101daef61cbb8a42f9be79b317c114a2"
-      },
-      {
-        "claim": "psionic.gpu.current",
-        "path": "psionic/book/examples.json",
-        "old": "7291da3b5ed3e97745bfb8f21a5ccbac1a55ebe13bcbe474e95461dd30d18eea",
-        "new": "6e2680e348c3fc0c8c926751bdda82e41fd2849d5c81b39889681458f9b74517"
-      }
-    ]
-  },
-  "scope": "Source-limited local geometric whole-pose query, both inclusive1e-6m/1e-6rad criteria, zero-work and atomic typed nonconvergence, maximum96updates. No nullspace, collision, motor command, global reachability, compiler R14 or hardware qualification.",
-  "publication_numerical_reruns": 0,
-  "SDK_calls": 0,
-  "NN_calls": 0,
-  "simulation_steps": 0,
-  "quantity_operator_token_gap_retained": true
+  "rebase_review": {
+    "upstream_commit": "02bb8b0e8c1a60fe004eed25ceedc7bf5c5abc49",
+    "compiler_change": "In-place host default constructors and header type collection refactor; reviewed emit_c.cpp and the new state-default invariant. Current fc26 cache verified; both complete component C/header emissions exactly match original native artifacts, so numerical results are retained.",
+    "book_change": "New Nostr book/registry/checker and capability-claim reconciliation retained. New127/474 book context passes. Unchanged routing stubs are not repeated.",
+    "all_numerical_results_retained": true,
+    "numerical_reruns": 0
+  }
 }
