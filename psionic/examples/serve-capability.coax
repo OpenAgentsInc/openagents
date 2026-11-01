@@ -1,0 +1,63 @@
+// Chapter 173: derive the published capability from its records, serve it at
+// GET /v1/capability, and admit chapter 20's toy request against it.
+#import "Basic";
+#load "../lib/serve-capability.coax";
+#load "../lib/serve-run.coax";
+#load "../lib/residency.coax";
+
+// book:begin example
+ELEPHANT_SHA :: "682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
+PROFILE :: "serve-cpu-bf16-v1";
+ASK :: "POST /v1/systemone HTTP/1.1\r\nContent-Length: 193\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"The kettle has boiled.\",\"questions\":{\"hot\":{\"type\":\"noul\",\"instructions\":\"Is the water hot?\"},\"drink\":{\"type\":\"choice\",\"criteria\":{\"tea\":null,\"soup\":\"a meal\"}}}}";
+THREE :: "POST /v1/systemone HTTP/1.1\r\nContent-Length: 130\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"The kettle has boiled.\",\"questions\":{\"a\":{\"type\":\"noul\"},\"b\":{\"type\":\"noul\"},\"c\":{\"type\":\"noul\"}}}";
+
+main :: () {
+    toy:[1]SvToy;engine:=sv_test_toy(toy[..],400);
+    budget:=16*1073741824;
+    // The record: chapter 20's checked transcript answered 2 questions of at
+    // most 2 options about 22 bytes of state, inside a 30000 ms deadline.
+    records:=[1]CpEvidence.[CpEvidence.{digest=SV_TOY_SHA,backend=CpBackend.cpu,profile=PROFILE,
+        record="psionic/fixtures/serve-decision.out",verdict=QyVerdict.qualified,
+        covered=CpLimits.{questions=2,options=2,state=22,deadline_ms=30000}}];
+    // The claims ask for NIP-DEC's whole range; memory comes from each residency plan.
+    asked:=CpLimits.{questions=64,options=255,state=131072,deadline_ms=10000};
+    toy_bytes:=ls_memory(engine,budget).bytes;
+    elephant_bytes:=rp_plan(rp_elephant(),RpRequest.{capacity=128,chunk=128},budget).need;
+    claims:=[3]CpClaim.[
+        CpClaim.{model="psionic-toy",digest=SV_TOY_SHA,backend=CpBackend.cpu,profile=PROFILE,limits=asked,memory=toy_bytes},
+        CpClaim.{model="psionic-toy",digest=SV_TOY_SHA,backend=CpBackend.cuda,profile=PROFILE,limits=asked,memory=toy_bytes},
+        CpClaim.{model="elephant-1",alias="baselabs/elephant-1",digest=ELEPHANT_SHA,backend=CpBackend.cpu,profile=PROFILE,limits=asked,memory=elephant_bytes}];
+    print("memory: toy % bytes, elephant-1 % bytes, budget % bytes\n",toy_bytes,elephant_bytes,budget);
+    doc:[3]CpEntry;n:=cp_derive(claims[..],records[..],budget,doc[..]);
+    for i:0..<n {
+        e:=doc[i];
+        if e.qualified {print("% %: qualified by %\n",e.claim.model,cp_backend_name(e.claim.backend),e.record);}
+        else {print("% %: unknown (%)\n",e.claim.model,cp_backend_name(e.claim.backend),cp_cause_name(e.cause));}
+    }
+    fault:=cp_honest(doc[..],records[..],budget);print("honest: %\n",cp_cause_name(fault.cause));
+    out:[4096]u8;
+    if cp_probe("GET /v1/capability HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n") {m:=cp_response(doc[..],out[..]);print("%\n",cast(string)out[0..<m]);}
+    // Chapter 20's request is inside the qualified entry: admitted, with the published deadline.
+    storage:[1]ExamplePools;pools:=example_pools(storage[..]);limits:=SvLimits.{read_ms=10000,decide_ms=30000};
+    slot:=sv_accept(SvSlot.{},limits,0).slot;
+    step:=cp_bytes(slot,limits,engine,doc[..],pools,ASK,3);
+    print("ask: action %, deadline at % ms, serves entry: %\n",step.action,step.slot.deadline,cp_serves(doc[0],engine));
+    prep:[1]PrScratch;work:=sv_scratch(prep[..],engine);answers:[16320]f64;
+    code:=sv_answers(engine,step.request,pools,work,answers[..]);
+    span:=sv_render(engine,step.request,pools,answers[..],0,out[..]);if code!=SvCode.none {print("decision: %\n",sv_code_name(code));}
+    body:=cast(string)out[span.from..<span.to];
+    print("answer: %\nidentity matches the entry: %\n",cast(string)out[sv_body_start(body)+span.from..<span.to],sv_index(body,"\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\"")>0);
+    // Three questions are outside it: refused before any model work.
+    over:=cp_bytes(slot,limits,engine,doc[..],pools,THREE,3);m:=sv_refusal(out[..],over.code);
+    print("three questions: action %\n%\n",over.action,cast(string)out[0..<m]);
+}
+// book:end example
+
+ExamplePools :: struct {questions:[64]SvQuestion;options:[16320]PtOption;raw:[16320]string;arena:[1024]u8;}
+example_pools :: (p:[]ExamplePools)->SvPools {return SvPools.{questions=p[0].questions[..],options=p[0].options[..],raw=p[0].raw[..],arena=p[0].arena[..]};}
+PrScratch :: struct {prompt:[4096]u8;render:[4096]u8;candidate:[2048]int;full:[2048]int;stage:[2048]int;normal:[8192]u8;scalars:[8192]int;symbols:[1024]int;tokens:[2048]int;state:[51230]f32;work:[583952]f32;prob:[510]f64;}
+sv_scratch :: (w:[]PrScratch,engine:SvEngine)->SvWork {
+    plan:=sv_plan(engine);
+    prep:=PrWorkspace.{prompt=w[0].prompt[..],render_work=w[0].render[..],candidate=w[0].candidate[..],full=w[0].full[..],token_stage=w[0].stage[..],normal=w[0].normal[..],scalars=w[0].scalars[..],symbols=w[0].symbols[..]};
+    return SvWork.{prep=prep,tokens=w[0].tokens[..],state=w[0].state[0..<plan.state],work=w[0].work[0..<plan.work],prob=w[0].prob[..]};
+}

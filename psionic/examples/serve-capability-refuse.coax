@@ -1,0 +1,40 @@
+// Chapter 173: documents and requests the capability check refuses, each with
+// its typed cause, before any model work.
+#import "Basic";
+#load "../lib/serve-capability.coax";
+
+say :: (label:string,f:CpFault) {print("%: % at entry %\n",label,cp_cause_name(f.cause),f.entry);}
+admit :: (label:string,doc:[]CpEntry,body:string) {
+    storage:[1]RefusePools;p:=SvPools.{questions=storage[0].questions[..],options=storage[0].options[..],raw=storage[0].raw[..],arena=storage[0].arena[..]};
+    a:=cp_admit(doc,sv_decode(body,p),p);
+    print("%: % %\n",label,sv_status(a.code),ifx a.code==SvCode.none then "admitted" else sv_code_name(a.code));
+}
+// book:begin refuse
+main :: () {
+    record:=CpEvidence.{digest=SV_TOY_SHA,backend=CpBackend.cpu,profile="serve-cpu-bf16-v1",
+        record="psionic/fixtures/serve-decision.out",verdict=QyVerdict.qualified,
+        covered=CpLimits.{questions=2,options=2,state=22,deadline_ms=30000}};
+    claim:=CpClaim.{model="psionic-toy",digest=SV_TOY_SHA,backend=CpBackend.cpu,profile="serve-cpu-bf16-v1",
+        limits=CpLimits.{questions=64,options=255,state=131072,deadline_ms=10000},memory=6034208};
+    records:=[1]CpEvidence.[record];claims:=[1]CpClaim.[claim];doc:[1]CpEntry;
+    n:=cp_derive(claims[..],records[..],1<<30,doc[..]);
+    say("derived",cp_honest(doc[..],records[..],1<<30));
+    forged:=doc;forged[0].limits.questions=64;say("64 questions where the record covered 2",cp_honest(forged[..],records[..],1<<30));
+    forged=doc;forged[0].limits.deadline_ms=10000;say("a 10000 ms deadline where the run needed 30000",cp_honest(forged[..],records[..],1<<30));
+    forged=doc;forged[0].record="psionic/fixtures/other.out";say("a record name nobody holds",cp_honest(forged[..],records[..],1<<30));
+    say("the same document on a 1 MiB budget",cp_honest(doc[..],records[..],1<<20));
+    // The record removed, or only agreeing: the entry reads unknown and admits nothing.
+    gone:[1]CpEntry;n=cp_derive(claims[..],records[0..<0],1<<30,gone[..]);
+    print("record removed: qualified %, cause %\n",gone[0].qualified,cp_cause_name(gone[0].cause));
+    weak:=records;weak[0].verdict=QyVerdict.agrees;n=cp_derive(claims[..],weak[..],1<<30,gone[..]);
+    print("record only agrees: qualified %, cause %\n",gone[0].qualified,cp_cause_name(gone[0].cause));
+    one:="{\"model\":\"psionic-toy\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"noul\"}}}";
+    admit("toy request, record removed",gone[..],one);
+    admit("toy request, record present",doc[..],one);
+    admit("23 bytes of state",doc[..],"{\"model\":\"psionic-toy\",\"state\":\"The kettle has boiled!!\",\"questions\":{\"q\":{\"type\":\"noul\"}}}");
+    admit("a choice of 3 options",doc[..],"{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{\"a\":null,\"b\":null,\"c\":null}}}}");
+    admit("elephant-1",doc[..],"{\"model\":\"elephant-1\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"noul\"}}}");
+    admit("no questions",doc[..],"{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{}}");
+}
+// book:end refuse
+RefusePools :: struct {questions:[64]SvQuestion;options:[16320]PtOption;raw:[16320]string;arena:[1024]u8;}

@@ -191,7 +191,7 @@
 - [171. Learn a gait in many worlds](ch171-learn-a-gait-in-many-worlds.md) — runnable GAE/Gaussian and scalar-LQR PPO; all three 512-batch continuations meet fixed goals, gait planned
 
 - [172. Benchmark a service, not a kernel](ch172-benchmark-a-service-not-a-kernel.md) — first production-hosting chapter
-- [173. Serve a model with an honest capability](ch173-serve-a-model-with-an-honest-capability.md) — design draft
+- [173. Serve a model with an honest capability](ch173-serve-a-model-with-an-honest-capability.md) — partly implemented
 - [174. Clients, streams and background jobs](ch174-clients-streams-and-background-jobs.md) — design draft
 - [175. Continuous batching and a fair scheduler](ch175-continuous-batching-and-a-fair-scheduler.md) — design draft
 - [176. Paged state and a tiered prefix cache](ch176-paged-state-and-a-tiered-prefix-cache.md) — design draft
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103–109, 111, 112, 117, 120, 123, 124, 140, 142, 147, 151, 156–158, 167–172, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–40, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 88–98, 103–109, 111, 112, 117, 120, 123, 124, 140, 142, 147, 151, 156–158, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

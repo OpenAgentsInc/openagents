@@ -1,0 +1,13 @@
+derived: none at entry -1
+64 questions where the record covered 2: over at entry 0
+a 10000 ms deadline where the run needed 30000: over at entry 0
+a record name nobody holds: no_record at entry 0
+the same document on a 1 MiB budget: memory at entry 0
+record removed: qualified false, cause no_record
+record only agrees: qualified false, cause not_qualified
+toy request, record removed: 403 not_admitted
+toy request, record present: 200 admitted
+23 bytes of state: 413 limit_exceeded
+a choice of 3 options: 422 unsupported_input
+elephant-1: 403 not_admitted
+no questions: 400 invalid_request

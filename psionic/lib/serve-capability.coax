@@ -1,0 +1,431 @@
+// Chapter 173: the capability a server publishes, and admission against it.
+// An entry names one model, checkpoint digest, backend and numerical profile.
+// It is qualified only when a chapter-17 record with a qualified verdict names
+// the same digest, backend and profile, and its limits are the operator's
+// claim narrowed to the largest request that record covered. Admission
+// refuses a request outside every qualified entry before any model work, and
+// a separate check refuses a published document that claims more than its
+// records. The document is the in-process profile psionic-capability-v1,
+// served as JSON at GET /v1/capability; it is not yet a schema in proto/.
+#load "serve-engine.coax";
+#load "qualify.coax";
+#authority;
+// book:begin types
+CpBackend :: enum u8 {none;cpu;cuda;metal;}
+// The largest request an entry admits, and the decision deadline it keeps.
+CpLimits :: struct {questions:int;options:int;state:int;deadline_ms:int;}
+// One recorded run: which checkpoint ran where under which profile, its
+// chapter-17 verdict, and the largest request and slowest deadline it covered.
+CpEvidence :: struct {digest:string;backend:CpBackend;profile:string;record:string;verdict:QyVerdict;covered:CpLimits;}
+// What the operator asks to publish, and the bytes its residency plan needs.
+CpClaim :: struct {model:string;alias:string;digest:string;backend:CpBackend;profile:string;limits:CpLimits;memory:int;}
+CpCause :: enum u8 {none;claim;memory;no_record;not_qualified;over;duplicate;}
+CpEntry :: struct {claim:CpClaim;qualified:bool;cause:CpCause;record:string;limits:CpLimits;}
+CpFault :: struct {cause:CpCause;entry:int;}
+CpAdmit :: struct {code:SvCode;entry:int;}
+// book:end types
+CP_SCHEMA :: "psionic-capability-v1";
+CP_PROBE :: "GET /v1/capability HTTP/1.1\r\n";
+CP_ENTRIES_MAX :: 16;
+CP_NAME_MAX :: 128;
+CP_DEADLINE_MOST :: 86400000;
+CP_DOCUMENT_MAX :: 32768;
+
+// Checks come first. The values in them are derived by hand in chapter 173.
+CP_D1 :: "1111111111111111111111111111111111111111111111111111111111111111";
+CP_D2 :: "2222222222222222222222222222222222222222222222222222222222222222";
+cp_test_claim :: ()->CpClaim {
+    return CpClaim.{model="toy",alias="",digest=CP_D1,backend=CpBackend.cpu,profile="p",limits=CpLimits.{questions=64,options=255,state=131072,deadline_ms=10000},memory=100};
+}
+cp_test_record :: ()->CpEvidence {
+    return CpEvidence.{digest=CP_D1,backend=CpBackend.cpu,profile="p",record="r1",verdict=QyVerdict.qualified,covered=CpLimits.{questions=2,options=2,state=64,deadline_ms=30000}};
+}
+CpTestRequest :: struct {questions:[8]SvQuestion;state:[256]u8;}
+cp_test_request :: (t:[]CpTestRequest,model:string,options:[]int,state:int)->SvRequest {
+    for i:0..<options.count {t[0].questions[i]=SvQuestion.{count=options[i]};}
+    return SvRequest.{model=model,questions=options.count,state=PtEntry.{value=cast(string)t[0].state[0..<state]}};
+}
+CP_POST_ONE :: "POST /v1/systemone HTTP/1.1\r\nContent-Length: 69\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"a\":{\"type\":\"noul\"}}}";
+CP_POST_THREE :: "POST /v1/systemone HTTP/1.1\r\nContent-Length: 109\r\n\r\n{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"a\":{\"type\":\"noul\"},\"b\":{\"type\":\"noul\"},\"c\":{\"type\":\"noul\"}}}";
+cp_test_pools :: (t:[]CpTestRequest)->SvPools {return SvPools.{questions=t[0].questions[..]};}
+
+#test "a claim needs a name, a digest, a backend, a profile and limits inside NIP-DEC" {
+    c:=cp_test_claim();#assert cp_claim_valid(c) && c.limits.deadline_ms==10000;
+    #assert cp_hex64(CP_D1) && cp_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !cp_hex64(CP_D1[0..<63]) && !cp_hex64("A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !cp_hex64("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !cp_hex64("/123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !cp_hex64(":123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !cp_hex64("`123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert cp_text("a",1) && !cp_text("",1) && !cp_text("ab",1) && !cp_text("a b",3);
+    bad:=c;bad.model="";#assert !cp_claim_valid(bad);
+    bad=c;bad.alias="a b";#assert !cp_claim_valid(bad);bad.alias="org/toy";#assert cp_claim_valid(bad);
+    bad=c;bad.digest=CP_D1[1..<64];#assert !cp_claim_valid(bad);
+    bad=c;bad.backend=CpBackend.none;#assert !cp_claim_valid(bad);
+    bad=c;bad.profile="";#assert !cp_claim_valid(bad);
+    bad=c;bad.memory=-1;#assert !cp_claim_valid(bad);bad.memory=0;#assert cp_claim_valid(bad);
+    l:=CpLimits.{questions=1,options=1,state=1,deadline_ms=1};#assert cp_limits_valid(l);
+    top:=CpLimits.{questions=64,options=255,state=131072,deadline_ms=86400000};#assert cp_limits_valid(top);
+    x:=l;x.questions=0;#assert !cp_limits_valid(x);x=top;x.questions=65;#assert !cp_limits_valid(x);
+    x=l;x.options=0;#assert !cp_limits_valid(x);x=top;x.options=256;#assert !cp_limits_valid(x);
+    x=l;x.state=0;#assert !cp_limits_valid(x);x=top;x.state=131073;#assert !cp_limits_valid(x);
+    x=l;x.deadline_ms=0;#assert !cp_limits_valid(x);x=top;x.deadline_ms=86400001;#assert !cp_limits_valid(x);
+    bad=c;bad.limits=x;#assert !cp_claim_valid(bad);
+    long:[129]u8;for i:0..<129 {long[i]='m';}
+    bad=c;bad.model=cast(string)long[0..<128];#assert cp_claim_valid(bad);bad.model=cast(string)long[..];#assert !cp_claim_valid(bad);
+    bad=c;bad.profile=cast(string)long[0..<64];#assert cp_claim_valid(bad);bad.profile=cast(string)long[0..<65];#assert !cp_claim_valid(bad);
+    bad=c;bad.alias=cast(string)long[0..<128];#assert cp_claim_valid(bad);bad.alias=cast(string)long[..];#assert !cp_claim_valid(bad);
+    e:=cp_test_record();#assert cp_evidence_valid(e);
+    f:=e;f.digest="x";#assert !cp_evidence_valid(f);f=e;f.backend=CpBackend.none;#assert !cp_evidence_valid(f);
+    f=e;f.profile="";#assert !cp_evidence_valid(f);f=e;f.record="";#assert !cp_evidence_valid(f);
+    f=e;f.covered=x;#assert !cp_evidence_valid(f);
+    f=e;f.profile=cast(string)long[0..<64];#assert cp_evidence_valid(f);f.profile=cast(string)long[0..<65];#assert !cp_evidence_valid(f);
+    f=e;f.record=cast(string)long[0..<128];#assert cp_evidence_valid(f);f.record=cast(string)long[..];#assert !cp_evidence_valid(f);
+}
+// book:begin check-entry
+#test "an entry is qualified only by a matching qualified record, narrowed to it" {
+    c:=cp_test_claim();r:=cp_test_record();
+    one:=[1]CpEvidence.[r];e:=cp_entry(c,one[..],1000);
+    #assert e.qualified && e.cause==CpCause.none && e.record=="r1";
+    // 64 questions narrow to the record's 2, 255 options to 2, 131072 state
+    // bytes to 64; the 10000 ms deadline widens to the 30000 ms the run needed.
+    #assert e.limits.questions==2 && e.limits.options==2 && e.limits.state==64 && e.limits.deadline_ms==30000;
+    // Remove the record and the same claim reads unknown.
+    none:=one;e=cp_entry(c,none[0..<0],1000);
+    #assert !e.qualified && e.cause==CpCause.no_record && e.record=="" && cp_zero(e.limits);
+// book:end check-entry
+    small:=c;small.limits=CpLimits.{questions=1,options=1,state=10,deadline_ms=40000};
+    e=cp_entry(small,one[..],1000);#assert e.qualified && e.limits.questions==1 && e.limits.options==1 && e.limits.state==10 && e.limits.deadline_ms==40000;
+    for k:0..<4 {
+        m:=r;if k==0 {m.digest=CP_D2;}if k==1 {m.backend=CpBackend.cuda;}if k==2 {m.profile="q";}if k==3 {m.record="";}
+        x:=[1]CpEvidence.[m];e=cp_entry(c,x[..],1000);#assert !e.qualified && e.cause==CpCause.no_record;
+    }
+    for v:0..<3 {
+        m:=r;m.verdict=cast(QyVerdict)v;x:=[1]CpEvidence.[m];e=cp_entry(c,x[..],1000);
+        #assert !e.qualified && e.cause==CpCause.not_qualified && cp_zero(e.limits);
+    }
+    // A failed record does not hide a later qualified one; the first qualified record wins.
+    later:=r;later.record="r2";later.covered.questions=3;failed:=r;failed.verdict=QyVerdict.failed;
+    two:=[3]CpEvidence.[failed,later,r];e=cp_entry(c,two[..],1000);#assert e.qualified && e.record=="r2" && e.limits.questions==3;
+    e=cp_entry(c,one[..],100);#assert e.qualified;
+    e=cp_entry(c,one[..],99);#assert !e.qualified && e.cause==CpCause.memory;
+    e=cp_entry(c,one[..],-1);#assert e.cause==CpCause.memory;
+    bad:=c;bad.profile="";e=cp_entry(bad,one[..],1000);#assert !e.qualified && e.cause==CpCause.claim && e.claim.profile=="";
+    #assert cp_zero(CpLimits.{}) && !cp_zero(CpLimits.{questions=1}) && !cp_zero(CpLimits.{options=1}) && !cp_zero(CpLimits.{state=1}) && !cp_zero(CpLimits.{deadline_ms=1});
+    #assert cp_min(3,4)==3 && cp_min(4,3)==3 && cp_max(3,4)==4 && cp_max(4,3)==4;
+}
+#test "a document holds at most 16 entries, and a second qualified name is a duplicate" {
+    c:=cp_test_claim();r:=cp_test_record();ev:=[1]CpEvidence.[r];out:[17]CpEntry;
+    cuda:=c;cuda.backend=CpBackend.cuda;again:=c;aliased:=c;aliased.model="other";aliased.alias="toy";
+    claims:=[4]CpClaim.[c,cuda,again,aliased];
+    #assert cp_derive(claims[..],ev[..],1000,out[..])==4;
+    #assert out[0].qualified && !out[1].qualified && out[1].cause==CpCause.no_record;
+    #assert !out[2].qualified && out[2].cause==CpCause.duplicate && cp_zero(out[2].limits) && out[2].record=="";
+    #assert !out[3].qualified && out[3].cause==CpCause.duplicate;
+    #assert cp_derive(claims[..],ev[..],1000,out[0..<3])==-1 && cp_derive(claims[..],ev[..],1000,out[0..<4])==4;
+    many:[17]CpClaim;for i:0..<17 {many[i]=c;}
+    #assert cp_derive(many[0..<16],ev[..],1000,out[..])==16 && cp_derive(many[..],ev[..],1000,out[..])==-1;
+    #assert cp_clash(c,again) && cp_clash(c,aliased) && cp_clash(aliased,c);
+    two:=aliased;two.model="b";#assert cp_clash(aliased,two);
+    other:=c;other.model="x";#assert !cp_clash(c,other) && !cp_clash(other,c);
+    blank:=other;#assert !cp_clash(c,blank);blank.alias="";other.alias="";#assert !cp_clash(blank,c);
+    short:=other;short.alias="t";tee:=c;tee.model="t";#assert cp_clash(short,tee) && cp_clash(tee,short);
+    tee.alias="t";tee.model="u";#assert cp_clash(short,tee);
+}
+// book:begin check-honest
+#test "a published document never claims more than its records" {
+    c:=cp_test_claim();r:=cp_test_record();ev:=[1]CpEvidence.[r];doc:[2]CpEntry;
+    cuda:=c;cuda.backend=CpBackend.cuda;claims:=[2]CpClaim.[c,cuda];
+    #assert cp_derive(claims[..],ev[..],1000,doc[..])==2;
+    f:=cp_honest(doc[..],ev[..],1000);#assert f.cause==CpCause.none && f.entry==-1;
+    // A hand-edited entry that claims 64 questions where the record covered 2.
+    forged:=doc;forged[0].limits.questions=64;
+    f=cp_honest(forged[..],ev[..],1000);#assert f.cause==CpCause.over && f.entry==0;
+// book:end check-honest
+    forged=doc;forged[0].limits.options=3;#assert cp_honest(forged[..],ev[..],1000).cause==CpCause.over;
+    forged=doc;forged[0].limits.state=65;#assert cp_honest(forged[..],ev[..],1000).cause==CpCause.over;
+    forged=doc;forged[0].limits.deadline_ms=29999;#assert cp_honest(forged[..],ev[..],1000).cause==CpCause.over;
+    forged=doc;forged[0].limits.deadline_ms=30001;forged[0].limits.state=63;forged[0].limits.options=1;forged[0].limits.questions=1;#assert cp_honest(forged[..],ev[..],1000).cause==CpCause.none;
+    forged=doc;forged[0].limits.questions=0;#assert cp_honest(forged[..],ev[..],1000).cause==CpCause.over;
+    forged=doc;forged[0].record="r9";#assert cp_honest(forged[..],ev[..],1000).cause==CpCause.no_record;
+    forged=doc;forged[0].claim.profile="";f=cp_honest(forged[..],ev[..],1000);#assert f.cause==CpCause.claim && f.entry==0;
+    #assert cp_honest(doc[..],ev[..],99).cause==CpCause.memory;
+    f=cp_honest(doc[..],ev[0..<0],1000);#assert f.cause==CpCause.no_record && f.entry==0;
+    failed:=r;failed.verdict=QyVerdict.agrees;bad:=[1]CpEvidence.[failed];#assert cp_honest(doc[..],bad[..],1000).cause==CpCause.no_record;
+    // An unknown entry may not publish limits or a record.
+    forged=doc;forged[1].limits.questions=1;f=cp_honest(forged[..],ev[..],1000);#assert f.cause==CpCause.over && f.entry==1;
+    forged=doc;forged[1].record="x";#assert cp_honest(forged[..],ev[..],1000).cause==CpCause.over;
+    #assert cp_honest(doc[..],ev[..],100).cause==CpCause.none;
+    // An unknown entry before a qualified one under the same name is not a duplicate.
+    swapped:=[2]CpEntry.[doc[1],doc[0]];#assert cp_honest(swapped[..],ev[..],1000).cause==CpCause.none;
+    // The record that backs an entry is the first qualified one with its name.
+    wide:=ev[0];wide.covered.questions=64;narrow:=ev[0];narrow.covered.questions=1;
+    order:=[2]CpEvidence.[wide,narrow];big:=doc;big[0].limits.questions=64;
+    #assert cp_honest(big[..],order[..],1000).cause==CpCause.none;order[0]=narrow;order[1]=wide;#assert cp_honest(big[..],order[..],1000).cause==CpCause.over;
+    forged=doc;forged[1].qualified=true;forged[1].record="r1";forged[1].limits=doc[0].limits;
+    f=cp_honest(forged[..],ev[..],1000);#assert f.cause==CpCause.no_record && f.entry==1;
+    // Two qualified entries under one name are ambiguous.
+    twice:=[2]CpEntry.[doc[0],doc[0]];f=cp_honest(twice[..],ev[..],1000);#assert f.cause==CpCause.duplicate && f.entry==1;
+    many:[17]CpEntry;for i:0..<17 {many[i]=doc[1];}
+    #assert cp_honest(many[0..<16],ev[..],1000).cause==CpCause.none;
+    f=cp_honest(many[..],ev[..],1000);#assert f.cause==CpCause.claim && f.entry==-1;
+}
+#test "admission refuses a request outside the published entry before model work" {
+    c:=cp_test_claim();c.alias="org/toy";ev:=[1]CpEvidence.[cp_test_record()];doc:[1]CpEntry;
+    one:=[1]CpClaim.[c];#assert cp_derive(one[..],ev[..],1000,doc[..])==1;
+    t:[1]CpTestRequest;pools:=cp_test_pools(t[..]);
+    two:=[2]int.[2,2];three:=[3]int.[2,2,2];wide:=[2]int.[2,3];
+    a:=cp_admit(doc[..],cp_test_request(t[..],"toy",two[..],64),pools);#assert a.code==SvCode.none && a.entry==0;
+    a=cp_admit(doc[..],cp_test_request(t[..],"org/toy",two[..],64),pools);#assert a.code==SvCode.none && a.entry==0;
+    a=cp_admit(doc[..],cp_test_request(t[..],"toy",three[..],64),pools);#assert a.code==SvCode.unsupported_input && a.entry==0;
+    a=cp_admit(doc[..],cp_test_request(t[..],"toy",wide[..],64),pools);#assert a.code==SvCode.unsupported_input;
+    a=cp_admit(doc[..],cp_test_request(t[..],"toy",two[..],65),pools);#assert a.code==SvCode.limit_exceeded;
+    a=cp_admit(doc[..],cp_test_request(t[..],"elephant-1",two[..],64),pools);#assert a.code==SvCode.not_admitted && a.entry==-1;
+    a=cp_admit(doc[..],cp_test_request(t[..],"",two[..],1),pools);#assert a.code==SvCode.not_admitted;
+    unknown:=doc;unknown[0].qualified=false;
+    a=cp_admit(unknown[..],cp_test_request(t[..],"toy",two[..],1),pools);#assert a.code==SvCode.not_admitted;
+    r:=cp_test_request(t[..],"toy",two[..],1);r.code=SvCode.malformed;a=cp_admit(doc[..],r,pools);#assert a.code==SvCode.malformed && a.entry==-1;
+    plain:=doc;plain[0].claim.alias="";a=cp_admit(plain[..],cp_test_request(t[..],"",two[..],1),pools);#assert a.code==SvCode.not_admitted;
+    #assert cp_find(doc[..],"toy")==0 && cp_find(doc[..],"org/toy")==0 && cp_find(doc[..],"org")==-1;
+    t1:=doc;t1[0].claim.alias="t";#assert cp_find(t1[..],"t")==0;
+}
+#test "the slot keeps the published deadline and refuses outside the entry" {
+    toy:[1]SvToy;engine:=sv_test_toy(toy[..],64);
+    c:=cp_test_claim();c.model="psionic-toy";c.digest=SV_TOY_SHA;ev:=[1]CpEvidence.[cp_test_record()];ev[0].digest=SV_TOY_SHA;doc:[1]CpEntry;
+    one:=[1]CpClaim.[c];#assert cp_derive(one[..],ev[..],1000,doc[..])==1 && doc[0].qualified;
+    #assert cp_serves(doc[0],engine);
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);limits:=SvLimits.{read_ms=100,decide_ms=5};
+    ok:=CP_POST_ONE;
+    slot:=sv_accept(SvSlot.{},limits,0).slot;s:=cp_bytes(slot,limits,engine,doc[..],pools,ok,3);
+    #assert s.action==SvAction.decide && s.slot.phase==SvPhase.deciding && s.slot.deadline==30003 && s.slot.epoch==1;
+    over:=CP_POST_THREE;
+    s=cp_bytes(slot,limits,engine,doc[..],pools,over,3);
+    #assert s.action==SvAction.refuse && s.code==SvCode.unsupported_input && s.slot.phase==SvPhase.idle && s.slot.epoch==1;
+    s=cp_bytes(slot,limits,engine,doc[..],pools,"POST /v1/systemone HTTP/1.1\r\n",3);#assert s.action==SvAction.read && s.slot.phase==SvPhase.reading;
+    // The engine must be the checkpoint the entry advertises.
+    other:=engine;other.digest=CP_D2;
+    s=cp_bytes(slot,limits,other,doc[..],pools,ok,3);#assert s.action==SvAction.refuse && s.code==SvCode.internal;
+    #assert !cp_serves(doc[0],other);
+    x:=engine;x.ok=false;#assert !cp_serves(doc[0],x);
+    x=engine;x.name="psionic-toyx";#assert !cp_serves(doc[0],x);
+    x=engine;x.alias="a";#assert !cp_serves(doc[0],x);
+    x=engine;x.sealed=false;#assert !cp_serves(doc[0],x);
+    x=engine;x.options=1;#assert !cp_serves(doc[0],x);x.options=2;#assert cp_serves(doc[0],x);
+    u:=doc[0];u.qualified=false;#assert !cp_serves(u,engine);
+}
+#test "the document is exact JSON, and an unknown entry publishes only its cause" {
+    c:=cp_test_claim();ev:=[1]CpEvidence.[cp_test_record()];doc:[2]CpEntry;
+    cuda:=c;cuda.backend=CpBackend.cuda;cuda.alias="org/toy";
+    two:=[2]CpClaim.[c,cuda];#assert cp_derive(two[..],ev[..],1000,doc[..])==2;
+    out:[1024]u8;n:=cp_render(doc[..],out[..]);
+    expect:="{\"schema\":\"psionic-capability-v1\",\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"entries\":[{\"model\":\"toy\",\"alias\":\"\",\"identity\":\"toy@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"backend\":\"cpu\",\"profile\":\"p\",\"state\":\"qualified\",\"record\":\"r1\",\"limits\":{\"questions\":2,\"options\":2,\"state_bytes\":64,\"deadline_ms\":30000}},{\"model\":\"toy\",\"alias\":\"org/toy\",\"identity\":\"toy@sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"backend\":\"cuda\",\"profile\":\"p\",\"state\":\"unknown\",\"cause\":\"no_record\"}]}";
+    #assert n==expect.count && cast(string)out[0..<n]==expect && json_valid(cast(string)out[0..<n]);
+    #assert cp_render(doc[..],out[0..<n-1])==-1 && cp_render(doc[..],out[0..<n])==n;
+    n=cp_render(doc[0..<0],out[..]);
+    #assert cast(string)out[0..<n]=="{\"schema\":\"psionic-capability-v1\",\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"entries\":[]}";
+    names:=[4]string.["none","cpu","cuda","metal"];for b:0..<4 {#assert cp_backend_name(cast(CpBackend)b)==names[b];}
+    causes:=[7]string.["none","claim","memory","no_record","not_qualified","over","duplicate"];for k:0..<7 {#assert cp_cause_name(cast(CpCause)k)==causes[k];}
+    http:[2048]u8;n=cp_response(doc[0..<1],http[..]);
+    body:=sv_body_start(cast(string)http[0..<n]);
+    #assert n>0 && cast(string)http[0..<17]=="HTTP/1.1 200 OK\r\n" && body>0 && json_valid(cast(string)http[body..<n]) && cp_response(doc[0..<1],http[0..<n-1])==-1;
+    // The largest valid document fits: 16 entries of the longest names, every byte a quote to escape.
+    quotes:[128]u8;for i:0..<128 {quotes[i]='"';}worst:=doc[0];
+    worst.claim.model=cast(string)quotes[..];worst.claim.alias=worst.claim.model;worst.claim.profile=cast(string)quotes[0..<64];worst.record=worst.claim.model;
+    full:[17]CpEntry;for i:0..<17 {full[i]=worst;}page:[40000]u8;
+    n=cp_response(full[0..<16],page[..]);body=sv_body_start(cast(string)page[0..<n]);#assert n>20000 && json_valid(cast(string)page[body..<n]);
+    #assert cp_response(full[..],page[..])==-1;
+    // A forged entry with an oversized name cannot be published at all.
+    huge:[16400]u8;for i:0..<16400 {huge[i]='m';}big:=doc[0];big.claim.model=cast(string)huge[..];
+    bigs:=[1]CpEntry.[big];#assert cp_response(bigs[..],page[..])==-1;
+    // An escaped name stays one JSON string inside the identity; a refused claim publishes no text.
+    q:=doc[0];q.claim.model="a\"b";qs:=[2]CpEntry.[q,doc[1]];qs[1].cause=CpCause.claim;n=cp_render(qs[..],out[..]);
+    #assert json_valid(cast(string)out[0..<n]) && sv_index(cast(string)out[0..<n],"\"identity\":\"a\\\"b@sha256:1111")>0;
+    #assert sv_index(cast(string)out[0..<n],"},{\"state\":\"unknown\",\"cause\":\"claim\"}]}")>0;
+    #assert cp_probe("GET /v1/capability HTTP/1.1\r\nHost: x\r\n\r\n") && !cp_probe("GET /v1/capability HTTP/1.1\r\n") && !cp_probe("POST /v1/capability HTTP/1.1\r\n\r\n") && !cp_probe("GET /v1/capabilityx HTTP/1.1\r\n\r\n");
+    #assert cp_probe("GET /v1/capability HTTP/1.1\r\n\r\n");
+}
+// An independent oracle: for every small mix of records, the derived entry
+// equals a brute-force reading of the rules, every derived document passes
+// the honesty check, and admission takes a request at the limits but not one past them.
+#forall "derived entries match the brute-force rules and never claim more than a record" seed:0..<243 {
+    ev:[3]CpEvidence;k:=seed;names:=[3]string.["a","b","c"];
+    for i:0..<3 {
+        e:=cp_test_record();pick:=k%3;k/=3;
+        if pick==1 {e.verdict=QyVerdict.agrees;}if pick==2 {e.backend=CpBackend.cuda;}
+        e.covered.questions=1+i;e.covered.options=3-i;e.covered.state=10*(i+1);e.covered.deadline_ms=100*(3-i);e.record=names[i];
+        ev[i]=e;
+    }
+    c:=cp_test_claim();c.limits=CpLimits.{questions=1+k%3,options=2,state=15,deadline_ms=150};
+    e:=cp_entry(c,ev[..],1000);
+    // Brute force: the lowest index with a qualified cpu record; else not_qualified if any cpu record, else no_record.
+    first:=-1;seen:=false;
+    for i:0..<3 {j:=2-i;if ev[j].backend==CpBackend.cpu {seen=true;if ev[j].verdict==QyVerdict.qualified {first=j;}}}
+    if first<0 {#assert !e.qualified && cp_zero(e.limits) && e.cause==(ifx seen then CpCause.not_qualified else CpCause.no_record);}
+    else {
+        cov:=ev[first].covered;
+        #assert e.qualified && e.record==ev[first].record;
+        #assert e.limits.questions==(ifx c.limits.questions<cov.questions then c.limits.questions else cov.questions);
+        #assert e.limits.options==(ifx 2<cov.options then 2 else cov.options) && e.limits.state==(ifx 15<cov.state then 15 else cov.state);
+        #assert e.limits.deadline_ms==(ifx 150>cov.deadline_ms then 150 else cov.deadline_ms);
+        doc:=[1]CpEntry.[e];#assert cp_honest(doc[..],ev[..],1000).cause==CpCause.none;
+        t:[1]CpTestRequest;pools:=cp_test_pools(t[..]);opts:[4]int;
+        for q:0..<e.limits.questions {opts[q]=e.limits.options;}
+        #assert cp_admit(doc[..],cp_test_request(t[..],"toy",opts[0..<e.limits.questions],e.limits.state),pools).code==SvCode.none;
+        opts[e.limits.questions]=1;
+        #assert cp_admit(doc[..],cp_test_request(t[..],"toy",opts[0..<e.limits.questions+1],1),pools).code==SvCode.unsupported_input;
+        opts[0]=e.limits.options+1;
+        #assert cp_admit(doc[..],cp_test_request(t[..],"toy",opts[0..<1],1),pools).code==SvCode.unsupported_input;
+        #assert cp_admit(doc[..],cp_test_request(t[..],"toy",opts[1..<2],e.limits.state+1),pools).code==SvCode.limit_exceeded;
+        wide:=doc;wide[0].limits.questions=cov.questions+1;#assert cp_honest(wide[..],ev[..],1000).cause==CpCause.over;
+    }
+}
+
+// Branch-free, as chapter 33's rp_min: exact for every bound here, far below 2^53.
+cp_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+cp_max :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+cp_hex64 :: (s:string)->bool {
+    if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;
+}
+cp_text :: (s:string,most:int)->bool {return s.count>=1 && s.count<=most && sv_visible(s);}
+cp_zero :: (l:CpLimits)->bool {return l.questions==0 && l.options==0 && l.state==0 && l.deadline_ms==0;}
+// book:begin valid
+cp_limits_valid :: (l:CpLimits)->bool {
+    return l.questions>=1 && l.questions<=SV_QUESTIONS_MAX && l.options>=1 && l.options<=SV_OPTIONS_MAX
+        && l.state>=1 && l.state<=sv_nip().state && l.deadline_ms>=1 && l.deadline_ms<=CP_DEADLINE_MOST;
+}
+cp_claim_valid :: (c:CpClaim)->bool {
+    return cp_text(c.model,CP_NAME_MAX) && (c.alias.count==0 || cp_text(c.alias,CP_NAME_MAX)) && cp_hex64(c.digest)
+        && c.backend!=CpBackend.none && cp_text(c.profile,64) && cp_limits_valid(c.limits) && c.memory>=0;
+}
+cp_evidence_valid :: (e:CpEvidence)->bool {
+    return cp_hex64(e.digest) && e.backend!=CpBackend.none && cp_text(e.profile,64) && cp_text(e.record,CP_NAME_MAX) && cp_limits_valid(e.covered);
+}
+// book:end valid
+// book:begin narrow
+cp_matches :: (c:CpClaim,e:CpEvidence)->bool {return cp_evidence_valid(e) && e.digest==c.digest && e.backend==c.backend && e.profile==c.profile;}
+// Sizes shrink to what the record covered; the deadline grows to what it needed.
+cp_narrow :: (claim:CpLimits,covered:CpLimits)->CpLimits {
+    return CpLimits.{questions=cp_min(claim.questions,covered.questions),options=cp_min(claim.options,covered.options),
+        state=cp_min(claim.state,covered.state),deadline_ms=cp_max(claim.deadline_ms,covered.deadline_ms)};
+}
+cp_covers :: (published:CpLimits,covered:CpLimits)->bool {
+    return cp_limits_valid(published) && published.questions<=covered.questions && published.options<=covered.options
+        && published.state<=covered.state && published.deadline_ms>=covered.deadline_ms;
+}
+// book:end narrow
+// book:begin entry
+cp_entry :: (c:CpClaim,evidence:[]CpEvidence,budget:int)->CpEntry {
+    e:=CpEntry.{claim=c,cause=CpCause.no_record};
+    if !cp_claim_valid(c) {e.cause=CpCause.claim;return e;}
+    if budget<c.memory {e.cause=CpCause.memory;return e;}
+    for r:evidence {
+        if cp_matches(c,r) {
+            if r.verdict==QyVerdict.qualified {return CpEntry.{claim=c,qualified=true,record=r.record,limits=cp_narrow(c.limits,r.covered)};}
+            e.cause=CpCause.not_qualified;
+        }
+    }
+    return e;
+}
+// book:end entry
+// Two claims clash when a client could name both with one string.
+cp_clash :: (a:CpClaim,b:CpClaim)->bool {
+    // A valid claim's model is never empty, so it never equals an absent alias.
+    if a.model==b.model || a.model==b.alias {return true;}
+    return a.alias.count>0 && (a.alias==b.model || a.alias==b.alias);
+}
+// book:begin derive
+cp_derive :: (claims:[]CpClaim,evidence:[]CpEvidence,budget:int,out:[]CpEntry)->int {
+    if claims.count>CP_ENTRIES_MAX || out.count<claims.count {return -1;}
+    for i:0..<claims.count {
+        e:=cp_entry(claims[i],evidence,budget);
+        for k:0..<i {if e.qualified && out[k].qualified && cp_clash(out[k].claim,e.claim) {e=CpEntry.{claim=e.claim,cause=CpCause.duplicate};}}
+        out[i]=e;
+    }
+    return claims.count;
+}
+// book:end derive
+// book:begin honest
+cp_honest :: (entries:[]CpEntry,evidence:[]CpEvidence,budget:int)->CpFault {
+    if entries.count>CP_ENTRIES_MAX {return CpFault.{cause=CpCause.claim,entry=-1};}
+    for i:0..<entries.count {
+        e:=entries[i];
+        if !e.qualified {
+            if !cp_zero(e.limits) || e.record.count>0 {return CpFault.{cause=CpCause.over,entry=i};}
+            continue;
+        }
+        if !cp_claim_valid(e.claim) {return CpFault.{cause=CpCause.claim,entry=i};}
+        if budget<e.claim.memory {return CpFault.{cause=CpCause.memory,entry=i};}
+        found:=-1;
+        for k:0..<evidence.count {r:=evidence[k];if cp_matches(e.claim,r) && r.verdict==QyVerdict.qualified && r.record==e.record {found=k;break;}}
+        if found<0 {return CpFault.{cause=CpCause.no_record,entry=i};}
+        if !cp_covers(e.limits,evidence[found].covered) {return CpFault.{cause=CpCause.over,entry=i};}
+        for k:0..<i {if entries[k].qualified && cp_clash(entries[k].claim,e.claim) {return CpFault.{cause=CpCause.duplicate,entry=i};}}
+    }
+    return CpFault.{entry=-1};
+}
+// book:end honest
+// book:begin admit
+cp_find :: (entries:[]CpEntry,model:string)->int {
+    for i:0..<entries.count {
+        e:=entries[i];if e.qualified && (e.claim.model==model || (e.claim.alias.count>0 && e.claim.alias==model)) {return i;}
+    }
+    return -1;
+}
+cp_admit :: (entries:[]CpEntry,request:SvRequest,pools:SvPools)->CpAdmit {
+    if request.code!=SvCode.none {return CpAdmit.{code=request.code,entry=-1};}
+    i:=cp_find(entries,request.model);if i<0 {return CpAdmit.{code=SvCode.not_admitted,entry=-1};}
+    l:=entries[i].limits;
+    if request.questions>l.questions {return CpAdmit.{code=SvCode.unsupported_input,entry=i};}
+    for q:0..<request.questions {if pools.questions[q].count>l.options {return CpAdmit.{code=SvCode.unsupported_input,entry=i};}}
+    if request.state.value.count>l.state {return CpAdmit.{code=SvCode.limit_exceeded,entry=i};}
+    return CpAdmit.{entry=i};
+}
+// book:end admit
+// book:begin bytes
+// The engine that answers must be the checkpoint the entry advertises, and
+// able to answer as many options as the entry publishes.
+cp_serves :: (e:CpEntry,engine:SvEngine)->bool {
+    return e.qualified && engine.ok && engine.sealed && engine.name==e.claim.model && engine.alias==e.claim.alias
+        && engine.digest==e.claim.digest && e.limits.options<=engine.options;
+}
+cp_bytes :: (slot:SvSlot,limits:SvLimits,engine:SvEngine,entries:[]CpEntry,pools:SvPools,text:string,now:int)->SvStep {
+    step:=sv_bytes(slot,limits,engine,pools,text,now);
+    if step.action!=SvAction.decide {return step;}
+    a:=cp_admit(entries,step.request,pools);
+    if a.code==SvCode.none && !cp_serves(entries[a.entry],engine) {a.code=SvCode.internal;}
+    if a.code!=SvCode.none {return SvStep.{slot=sv_idle(step.slot),action=SvAction.refuse,code=a.code};}
+    s:=step;s.slot.deadline=now+entries[a.entry].limits.deadline_ms;return s;
+}
+// book:end bytes
+cp_backend_name :: (b:CpBackend)->string {names:=[4]string.["none","cpu","cuda","metal"];return names[cast(int)b];}
+cp_cause_name :: (c:CpCause)->string {names:=[7]string.["none","claim","memory","no_record","not_qualified","over","duplicate"];return names[cast(int)c];}
+cp_int :: (out:[]u8,at:int,key:string,v:int)->int {return json_write_int(out,json_raw(out,at,key),v);}
+// book:begin render
+cp_render :: (entries:[]CpEntry,out:[]u8)->int {
+    at:=json_raw(out,0,"{\"schema\":\"");at=json_raw(out,at,CP_SCHEMA);at=json_raw(out,at,"\",\"door\":\"");at=json_raw(out,at,SV_DOOR);
+    at=json_raw(out,at,"\",\"version\":\"");at=json_raw(out,at,SV_VERSION);at=json_raw(out,at,"\",\"entries\":[");
+    for i:0..<entries.count {
+        e:=entries[i];if i>0 {at=json_raw(out,at,",");}
+        // A claim that failed validation publishes none of its text.
+        if e.cause==CpCause.claim {at=json_raw(out,at,"{\"state\":\"unknown\",\"cause\":\"claim\"}");continue;}
+        at=json_raw(out,at,"{\"model\":");at=json_write_string(out,at,e.claim.model);
+        at=json_raw(out,at,",\"alias\":");at=json_write_string(out,at,e.claim.alias);
+        // The identity is the escaped name, then @sha256: and the hex digest, in one string.
+        at=json_raw(out,at,",\"identity\":");at=json_write_string(out,at,e.claim.model)-1;
+        at=json_raw(out,at,"@sha256:");at=json_raw(out,at,e.claim.digest);at=json_raw(out,at,"\",\"backend\":\"");at=json_raw(out,at,cp_backend_name(e.claim.backend));
+        at=json_raw(out,at,"\",\"profile\":");at=json_write_string(out,at,e.claim.profile);
+        if e.qualified {
+            at=json_raw(out,at,",\"state\":\"qualified\",\"record\":");at=json_write_string(out,at,e.record);
+            at=cp_int(out,at,",\"limits\":{\"questions\":",e.limits.questions);at=cp_int(out,at,",\"options\":",e.limits.options);
+            at=cp_int(out,at,",\"state_bytes\":",e.limits.state);at=cp_int(out,at,",\"deadline_ms\":",e.limits.deadline_ms);at=json_raw(out,at,"}}");
+        } else {
+            at=json_raw(out,at,",\"state\":\"unknown\",\"cause\":\"");at=json_raw(out,at,cp_cause_name(e.cause));at=json_raw(out,at,"\"}");
+        }
+    }
+    return json_raw(out,at,"]}");
+}
+// book:end render
+cp_probe :: (text:string)->bool {return sv_index(text,CP_PROBE)==0 && sv_index(text,"\r\n\r\n")!=-1;}
+cp_response :: (entries:[]CpEntry,out:[]u8)->int {
+    if entries.count>CP_ENTRIES_MAX {return -1;}
+    body:[CP_DOCUMENT_MAX]u8;n:=cp_render(entries,body[..]);if n==-1 {return -1;}
+    return sv_response(out,200,cast(string)body[0..<n]);
+}

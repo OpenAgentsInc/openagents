@@ -1,0 +1,21 @@
+memory: toy 6034208 bytes, elephant-1 17986464768 bytes, budget 17179869184 bytes
+psionic-toy cpu: qualified by psionic/fixtures/serve-decision.out
+psionic-toy cuda: unknown (no_record)
+elephant-1 cpu: unknown (memory)
+honest: none
+HTTP/1.1 200 OK
+Content-Type: application/json
+Content-Length: 858
+Connection: close
+
+{"schema":"psionic-capability-v1","door":"psionic","version":"psionic-serve-v1","entries":[{"model":"psionic-toy","alias":"","identity":"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573","backend":"cpu","profile":"serve-cpu-bf16-v1","state":"qualified","record":"psionic/fixtures/serve-decision.out","limits":{"questions":2,"options":2,"state_bytes":22,"deadline_ms":30000}},{"model":"psionic-toy","alias":"","identity":"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573","backend":"cuda","profile":"serve-cpu-bf16-v1","state":"unknown","cause":"no_record"},{"model":"elephant-1","alias":"baselabs/elephant-1","identity":"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba","backend":"cpu","profile":"serve-cpu-bf16-v1","state":"unknown","cause":"memory"}]}
+ask: action decide, deadline at 30003 ms, serves entry: true
+answer: {"model":"psionic-toy","answers":{"hot":{"type":"noul","noul":0.437308645},"drink":{"type":"choice","choice":"soup","confidence":0.562514618,"probabilities":{"tea":0.437485382,"soup":0.562514618}}},"usage":null,"service":{"door":"psionic","version":"psionic-serve-v1","identity":"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573"},"latency_ms":0}
+identity matches the entry: true
+three questions: action refuse
+HTTP/1.1 422 Unprocessable Content
+Content-Type: application/json
+Content-Length: 109
+Connection: close
+
+{"error":{"code":"unsupported_input","message":"the request is valid but outside this model's text profile"}}

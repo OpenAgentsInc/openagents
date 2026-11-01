@@ -1580,6 +1580,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/serve-capability.coax",
+      "chapter": "psionic/book/ch173-serve-a-model-with-an-honest-capability.md",
+      "stdout": "psionic/fixtures/serve-capability/serve-capability.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/serve-capability-refuse.coax",
+      "chapter": "psionic/book/ch173-serve-a-model-with-an-honest-capability.md",
+      "stdout": "psionic/fixtures/serve-capability/serve-capability-refuse.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
