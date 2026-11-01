@@ -15,7 +15,7 @@ versions. [`STATUS.md`](STATUS.md) describes current support;
 
 ## 0.46.0 — Returned Borrow Summaries — 2026-10-31
 
-Commit: [`a5f42ce52a1939f997f49454231ce4f872f0c6ff`](https://github.com/OpenAgentsInc/openagents/commit/a5f42ce52a1939f997f49454231ce4f872f0c6ff)
+Commit: [`84a3d138f903bd2f85fe080301729c78a1377c07`](https://github.com/OpenAgentsInc/openagents/commit/84a3d138f903bd2f85fe080301729c78a1377c07)
 
 - Extend local-borrow diagnostics through resolved helper calls and aggregate return projections, preserving caller-owned descriptors and explicit manual scope for recursive/helper-store paths; qualify real caller-buffer return APIs.
 
