@@ -1,0 +1,8 @@
+{
+  "schema": "coax.b1.raw-evidence.archive-validation.v1",
+  "outcome": "passed",
+  "archive_sha256": "c3b20d120ce7c9b4c18c5630527cbe5642b40d840ae0eec5eeb3d8be2ba30566",
+  "members": 1991,
+  "uncompressed_bytes": 190537093,
+  "scope": "Readback of all exact selected regular members and manifest hashes; no extraction or execution."
+}

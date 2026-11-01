@@ -1,0 +1,17 @@
+{
+  "archive": {
+    "path": "/Users/christopherdavid/.codex/worktrees/coax-audit-stopping-point/openagents/docs/verification/coax-audit-stopping-point-2026-11-01/evidence-package/raw-proof.tar.gz",
+    "sha256": "c3b20d120ce7c9b4c18c5630527cbe5642b40d840ae0eec5eeb3d8be2ba30566",
+    "size": 22579389
+  },
+  "excluded_entries": 26,
+  "inventory_after_sha256": "522ab2d96ab039ee353920b57eae7c72456ecd63142726e47805cbd38529b353",
+  "inventory_before_sha256": "522ab2d96ab039ee353920b57eae7c72456ecd63142726e47805cbd38529b353",
+  "inventory_unchanged": true,
+  "outcome": "collected",
+  "retention": "Every regular file is hashed, including omitted images/objects/opaque containers. No symlinks or special files are followed/archived; source controllers remain text. Tar members are regular0644 with normalized ownership/time. No old result is relabelled.",
+  "schema": "coax.b1.raw-evidence.collection.v1",
+  "scope": "Raw evidence collection only; compiler qualification and original-eight assessment are separate Root records.",
+  "selected_regular_files": 1990,
+  "source": "/private/tmp/coax-retained-borrows-B1"
+}

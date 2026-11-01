@@ -1,0 +1,142 @@
+{
+  "schema": "coax.cross-book-audit.stopping-progress.v1",
+  "observed_utc": "2026-11-01T06:33:44.568020+00:00",
+  "outcome": "B1_incomplete",
+  "original_eight": {
+    "complete": 3,
+    "open": 5,
+    "live_queue_snapshot": "eight-item-assessment/assessment.json"
+  },
+  "current_issue": {
+    "slug": "r3a-retain-store-checks",
+    "short_id": "6401",
+    "status": "open",
+    "done_event_sent": false,
+    "compiler_code_pushed": false
+  },
+  "source": {
+    "local_checkpoint": "46d5d61536ec8f443f1f29c9071d51d629d0b008",
+    "base_main": "c0f4534b76f8bf20958472594eada5f12a22c152",
+    "unqualified_input_fingerprint": "edc710c7111b439176897145e9a0f72a1a817f1dd01a157101a316ee37ae4f0e",
+    "checker_sha256": "d7cf7034b61e532f3328a1f9f88583d451fa100e310c5ec808eaab553766d90d",
+    "python_carrier_sha256": "9704c2b1e6b7108ff0c38e23802aae3b9aa41473d02949534b1f8d3f8d60c2ab",
+    "checkout": "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents",
+    "clean": true
+  },
+  "observed_passes": {
+    "trusted_program_baseline": {
+      "passed": 925,
+      "failed": 0,
+      "producer_image_sha256": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+      "scope": "Old qualified producer evaluates new Coax program. Not current-compiler qualification."
+    },
+    "source_smoke": {
+      "cases": 30,
+      "passed": 30,
+      "producer_image_sha256": "58bc5c01d6cdf5937947427ee55b00085b9f8aaef216848db99a023f22939330",
+      "scope": "Earlier intermediate source/producer; all17expected diagnostic cases match frozen physical locations. Not final d7cf source qualification."
+    }
+  },
+  "remaining_blocker": {
+    "producer_image_sha256": "abc3c11fdc40375375d8ba660ab37e5050ef9ae3d31151884aa6ae9e33159ba3",
+    "self_input": "coax/lib/compiler/checker.coax",
+    "diagnostic": {
+      "code": "E0381",
+      "line": 835,
+      "column": 2,
+      "text": "CK_collisions(c,false);"
+    },
+    "first_resource_call": "CB_tick -> CR_apply pending-effect traversal -> CR_summary -> CR_walk",
+    "counters": {
+      "work": 1048577,
+      "work_limit": 1048576,
+      "queries": 3407,
+      "query_capacity": 16384,
+      "origins": 2015,
+      "origin_capacity": 65536,
+      "depth": 0
+    },
+    "attribution": "This is the first exhausted tick after seeding, not a measured attribution of total work to call application. No budget increase or mutation-equivalence waiver."
+  },
+  "not_completed": [
+    "Current-source compiler self-input acceptance and deterministic current-main C/header seed regeneration",
+    "Fresh complete165 strict normal gates, all8fullchecker mutation shards plusmerge atzero, bothcompilerfixedpoints and17packageartifacts",
+    "Latest21-type195-field independent ctypes/header guard",
+    "Final native19sourcecases plusdisabled/shortreportcontrols atO0/O2/ASan+UBSan",
+    "Actual final-producer30sourcecases, whole current A1source inventory (44 at cd28), wholelegacychecker10 andrealSystemOne/independent-call regressions"
+  ],
+  "scope_limits": {
+    "B2_started": false,
+    "B3_started": false,
+    "production_publication_verified": false,
+    "final_native_executed": false,
+    "prepared_controllers_are_observations": false,
+    "owner_action_required_for_blocker": false
+  },
+  "evidence": {
+    "baseline-presence/record.json": {
+      "sha256": "c03673c39f98fdceb6b257880cb4d4c82a57a2448bb7661b0829e5139c6717c9",
+      "bytes": 12455
+    },
+    "baseline-presence/evidence.json": {
+      "sha256": "b1069cbeb7f087665021be17ffc44dc81b422144130f5bbcb51c60bb6e97d46d",
+      "bytes": 232822
+    },
+    "emit-trusted-presence/record.json": {
+      "sha256": "c2f36dde614e00f0f10222936534b35619f25cbeb9926c7a1f83f658d14597fb",
+      "bytes": 12786
+    },
+    "stage0-source-smoke/qualification.json": {
+      "sha256": "2e46d3872f648264940b1908cf0a880ca9592c9a122b6b21f592e5e968bf436d",
+      "bytes": 115606
+    },
+    "normal165/qualification.json": {
+      "sha256": "e09ce4c11372a1bdf3436691efa18d124f3a34a04605806841a7dcb98780c6ee",
+      "bytes": 18196
+    },
+    "normal165/line-216.json": {
+      "sha256": "7ef97034f5db7fa3b118006353b448f556e8cf1e89278b77d3607fb9320caf5a",
+      "bytes": 156549
+    },
+    "preseed-c0f-prefix/qualification.json": {
+      "sha256": "1a6eb03f6c618148ce620fb71839765f5bbd43635e40fb805b1df12ff9b74991",
+      "bytes": 6548
+    },
+    "new-emitter-final-d7cf/record.json": {
+      "sha256": "c10c26572a19be40a1862a7238065913e2f1b2f738f211d9e2154fc9459698f8",
+      "bytes": 47909
+    },
+    "self-input-final-resource-debug/blocker.json": {
+      "sha256": "5ec11d2599230e5282b5cce50349e9dd869c45401c0869765c3892d51f5f1c47",
+      "bytes": 2616
+    },
+    "unpublished-checkpoint/checkpoint.json": {
+      "sha256": "49497c92eee9e90fdfbaf3dae84509dc3af48acfb035ab727f7c17234c6e9d42",
+      "bytes": 12306
+    },
+    "native-transport-stopped-handoff.json": {
+      "sha256": "b57f407faa9696d6dd46c9a11c886a57898bed5212c03bfccaf09b45dda1d45c",
+      "bytes": 7418
+    },
+    "eight-item-assessment/assessment.json": {
+      "sha256": "4d8d17787d0516a6d20f4c10130fe07635d869f0e168f69d68ac351852a81591",
+      "bytes": 13746
+    }
+  },
+  "retention": "Raw package accompanies this record; earlier failed/incomplete epochs and oracle corrections retain their actual input/producer identities. Published language files remain main; the implementation stays isolated. Archive includes reviewable unpublished-source snapshot and patch, not a release.",
+  "raw_package": {
+    "relative_path": "evidence-package/raw-proof.tar.gz",
+    "sha256": "c3b20d120ce7c9b4c18c5630527cbe5642b40d840ae0eec5eeb3d8be2ba30566",
+    "bytes": 22579389,
+    "selected_regular_files": 1990,
+    "excluded_entries": 26,
+    "inventory_sha256": "522ab2d96ab039ee353920b57eae7c72456ecd63142726e47805cbd38529b353",
+    "readback_validation_sha256": "86d55dfe60139aa00b97962b1954082d4a687bc06502ead00257685b6e6d4e84",
+    "retention": "Every regular file is hashed, including omitted images/objects/opaque containers. No symlinks or special files are followed/archived; source controllers remain text. Tar members are regular0644 with normalized ownership/time. No old result is relabelled."
+  },
+  "main_after_checkpoint": {
+    "observed_ref": "cd28b116a3cc5e42903d5ef734f1149b00deefd7",
+    "returned_storage_fix": "629a66626efdd93334fbc8388c247051475be94b",
+    "scope": "Main subsequently changed returned-borrow storage projection through view parameters and static-origin overflow handling, with five more original-source fixtures. The isolated checkpoint is still based on c0f; it must merge those changes and reassess overlapping source/address logic before qualification. None of the existing B1 receipts is relabelled against this later source."
+  }
+}
