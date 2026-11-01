@@ -1,0 +1,27 @@
+{
+  "schema": "psionic.panda-nullspace.native-contract.v1",
+  "frozen_before_first_native_product_emission_or_comparison": true,
+  "experiment_sha256": "76c0e1cf3621e7990cc91d1f7dbbc986017c81d22c4b360fc9e4f1945f35a8d6",
+  "profile": "Darwin-arm64 scalar-libm binary64 FPCR0; no fastmath/contraction",
+  "input": "PNS1 magic0x31534e50,48physical,24synthetic,version1 as4u32;48x14F64(q7/rest7);24x49F64(A42/d7);lower7/upper7F64;physicalalias22,syntheticalias1 as2I64.",
+  "output": "Separate48public and24math records,224B statusI64+27F64: n7UnitOne,projecteddelta7Radian,An6UnitOne,weightedphysicalAp6Metre,restoredvolume1UnitOne.",
+  "scope": "Pure local projected delta, never clamped/applied candidate, joint-safe step, finite-pose-preserving move, collision/RRT permission or hardware command.",
+  "primary_oracle": "Original cached independent matrix-tangent A,exactFraction Gram determinant andDecimal80 Gaussian projector. No cofactor target generator or old geometry/SDK gate is invoked.",
+  "properties": "Compare n*nT toGaussianN anddelta at2e-8absolute. Independently recomputeAn andphysical A*actualdelta fromcachedA/d; properties2e-10 withposturegate scaledmax(1,EuclideanNorm(d)). SQUAREDnormerror abs(dot(n,n)-1)<=2e-12. No projected-component<=6 or candidate limit check.",
+  "thresholds": "Precheck the frozen near-parallel triangular matrices: row0=S*e0,row1=e0+t*e1,remainingrows2..5identity. Firstrow scales1/2/.5; rowmaxproducts1/2/.5 andactualglobal normalizers1/2/1. ExactFraction diagonalproduct S*t equalsgamma2^-24 andIEEEneighbors beforeproductcalls; exactstatuses andabove-gate restoredvolumebits. No diagonal/orthogonal-matrix assumption. Pure basis andfirst-largest canonicaltie signs/zero rules observed separately fromgauge-invariant projector.",
+  "canonical": "First largestabsolute direction component positive on measuredoutputs; declaredsynthetic exacttie haspositiveindex0,negativeindices1/6 andequalmagnitudes. Every exactzero n/projectedcoefficient must bepositivezero.",
+  "failed_transport": "Canonicalzero unavailablepayload only after full actual output/spare/canary/input atomicity checks. Not a published zero result or usable rank/residual-refused direction.",
+  "guard_cases": {
+    "public_q_rest_endpoint_admission_observations": 28,
+    "math_endpoint_admission_observations": 4,
+    "public_IEEE_patterns": 70,
+    "math_IEEE_patterns": 245,
+    "residual_probe_queries": 53,
+    "input_output_alias_cases": 13,
+    "actual_expected_property_reader_poison_cases": 26
+  },
+  "endpoint_scope": "Inclusive endpoint admissions may legitimately return rank/residual refusal; they are not all successful directions. Outside source/entry bounds must produce the precise range/limits refusal.",
+  "residual_helper": "4u64 roles squarednormerrorabs,nullmax,projectedmax,restNorm. Shapesfirst,per-rolefinite/nonnegative,restNorm<=16,thenpolicygates. Exactgatepoints/outwardULPs atrestNorm0/2/16 are newobservations.",
+  "warning_scope": "Only generated C suppresses unused empty-tag printer parameters; authored effects/ABI C staysstrict.",
+  "omissions": "No SDK/NN/oldFK/pose/rotor gates, numericalrank/SVD equivalence beyondthedeclaredvolumeprofile, compilerR14, collision/contact/dynamics/clock or hardware qualification."
+}

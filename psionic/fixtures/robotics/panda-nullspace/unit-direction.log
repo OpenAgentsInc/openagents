@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_nullspace_bad_direction.coax:3:54: error[E0317]: argument 1 of 'consume_angle' is Quantity(Radian, f64), given Quantity(UnitOne, f64)
+  main :: () {out:PnsOutput;consume_angle(out.direction[0]);}
+                                                       ^
+1 error

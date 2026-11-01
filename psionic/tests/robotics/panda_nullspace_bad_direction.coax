@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-nullspace.coax";
+consume_angle :: (angle:pfku.Quantity(pfku.Radian,f64)) {}
+main :: () {out:PnsOutput;consume_angle(out.direction[0]);}

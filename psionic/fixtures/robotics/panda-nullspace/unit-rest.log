@@ -1,0 +1,4 @@
+psionic/tests/robotics/panda_nullspace_bad_rest.coax:2:129: error[E0317]: argument 2 of 'pns_query' is [] Quantity(Radian, f64), given [] Quantity(UnitOne, f64)
+  main :: () {q:[7]pfku.Quantity(pfku.Radian,f64);rest:[7]pfku.Quantity(UnitOne,f64);out:[1]PnsOutput;status:=pns_query(q[..],rest[..],out[..]);}
+                                                                                                                                  ^
+1 error

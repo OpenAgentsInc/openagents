@@ -1,0 +1,141 @@
+{
+  "schema": "psionic.panda-nullspace.native-publication.v1",
+  "passed": true,
+  "original_native_receipt": {
+    "bytes": 30814,
+    "sha256": "e43569c49b0b7fdde206e8f9052163bc95a566f1deb35e2e91eb53dc1a243723"
+  },
+  "original_independent_reference": {
+    "bytes": 2565,
+    "sha256": "6a351cea3e2c481b6218e33341d9a4f5b960f53ca743a692ee80c60e5f42ea5d"
+  },
+  "native_or_oracle_or_old_gate_repeated": false,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "physical_cases": 48,
+  "synthetic_cases": 24,
+  "successful_payloads": 62,
+  "unavailable_rank_refusal_markers": 10,
+  "all_actual_and_expected_serialized_finite_words_each": 1944,
+  "assertions_each_profile": 9760,
+  "complete_mode_bytes_exact": true,
+  "independent_reference": "Matrix tangents plus exactFraction Gram determinant andDecimal80 Gaussian projector; no cofactor target generator.",
+  "threshold_fixture_scope": {
+    "first_row_scales": [
+      1,
+      2,
+      0.5
+    ],
+    "actual_global_normalizers": [
+      1,
+      2,
+      1
+    ],
+    "family": "near-parallel triangular",
+    "strict_above_volume_bits": true,
+    "preflight_checked_before_product_emission": true
+  },
+  "property_metrics": {
+    "projector": {
+      "passed": true,
+      "values": 3038,
+      "max_abs_error": 2.0816681711721685e-15,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "delta": {
+      "passed": true,
+      "values": 434,
+      "max_abs_error": 9.880984919163893e-15,
+      "atol": 2e-08,
+      "rtol": 0
+    },
+    "reported_null": {
+      "passed": true,
+      "values": 372,
+      "max_abs_error": 3.9536113373527648e-16,
+      "atol": 2e-10,
+      "rtol": 0
+    },
+    "reported_leak": {
+      "passed": true,
+      "values": 372,
+      "max_abs_error": 3.3873540909894133e-16,
+      "atol": 2e-10,
+      "rtol": 0
+    },
+    "unit_squarednorm": {
+      "passed": true,
+      "values": 62,
+      "max_abs_error": 4.440892098500626e-16,
+      "atol": 2e-12,
+      "rtol": 0
+    },
+    "computed_null": {
+      "passed": true,
+      "values": 372,
+      "max_abs_error": 3.9189168678332286e-16,
+      "atol": 2e-10,
+      "rtol": 0
+    },
+    "computed_leak": {
+      "passed": true,
+      "values": 372,
+      "max_abs_error": 3.368535659031235e-16,
+      "atol": 2e-10,
+      "rtol": 0
+    },
+    "projector_symmetry": {
+      "passed": true,
+      "values": 3038,
+      "max_abs_error": 0.0,
+      "atol": 2e-10,
+      "rtol": 0
+    },
+    "projector_idempotence": {
+      "passed": true,
+      "values": 3038,
+      "max_abs_error": 2.220446049250313e-16,
+      "atol": 2e-10,
+      "rtol": 0
+    },
+    "projector_trace": {
+      "passed": true,
+      "values": 62,
+      "max_abs_error": 4.440892098500626e-16,
+      "atol": 2e-10,
+      "rtol": 0
+    },
+    "delta_from_actual_projector": {
+      "passed": true,
+      "values": 434,
+      "max_abs_error": 1.017384182748462e-16,
+      "atol": 2e-10,
+      "rtol": 0
+    }
+  },
+  "guards": {
+    "passed": true,
+    "SDK_calls": 0,
+    "physical_cases": 48,
+    "synthetic_cases": 24,
+    "record_bytes": 224,
+    "successful_payloads": 62,
+    "unavailable_payloads": 10,
+    "assertions": 9760,
+    "alias_cases": 13,
+    "public_q_rest_endpoints": 28,
+    "math_endpoints": 4,
+    "residual_probe_queries": 53,
+    "public_IEEE_patterns": 70,
+    "math_IEEE_patterns": 245,
+    "fpcr": 0
+  },
+  "reader_poison_cases": 26,
+  "unavailable_scope": "Failure transport is canonicalzero only after actual full-output/spare/canary/input refusal atomicity checks; status is mandatory. These are unavailable results, never published zero directions.",
+  "endpoint_scope": "Source-domain q/rest and matrix/delta endpoints are admission observations; downstream rank/residual refusals are allowed and not labelled successful projections.",
+  "direction_scope": "Only local projected delta. No candidate addition, clamping, finite pose-preservation, joint-range guarantee, collision/RRT clearance, dynamics, R13/R14 or hardware command.",
+  "source_scope": "The public query constructs its fixed-source FK/J. Test-only checked matrix/residual probes qualify helper numerical boundaries; source-visible low-level helpers/PODs remain unsealed and trusted.",
+  "reused_tooling_scope": "Only authored Run/source-inventory utility definitions are imported from an earlier native driver; no earlier model, numerical gate or expected-data generator is invoked.",
+  "post_execution_packaging": "Native receipt copied byte-exact; thin shell gate checked syntax only. Publication metadata/gate added after execution without modifying measured Coax/C/driver/reference inputs."
+}

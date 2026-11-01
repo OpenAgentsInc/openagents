@@ -1,0 +1,8 @@
+linearized posture query: fresh fixed-grip Jacobian
+unit null direction (ppm): -88799 -259343 -516617 83072 759125 -193902 -192858
+projected preference (urad): 72875 212835 423973 -68175 -622992 159130 158273
+normalized volume (ppm): 444; singular-value product
+this query's weighted task leakage is below 1 nm
+self-rest: complete projected delta is +0
+outside source rest limit: refusal; complete old query unchanged
+linearized delta only; no finite-pose, collision or command certificate

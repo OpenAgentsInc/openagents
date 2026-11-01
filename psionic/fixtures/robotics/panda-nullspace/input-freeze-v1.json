@@ -1,0 +1,18 @@
+{
+  "schema": "psionic.panda-nullspace.input-freeze.v1",
+  "passed": true,
+  "experiment": {
+    "bytes": 83927,
+    "sha256": "76c0e1cf3621e7990cc91d1f7dbbc986017c81d22c4b360fc9e4f1945f35a8d6"
+  },
+  "physical": {
+    "bytes": 5376,
+    "sha256": "eafefeefb134038353618f0ed305a40b19742e19416a7081604e1047cce2c1b3"
+  },
+  "synthetic": {
+    "bytes": 9408,
+    "sha256": "b648f6213764ab2aeb6b8b2eaf6994c7dfe9fb5a5b02422eea0acebe398b3afa"
+  },
+  "expected_generated": false,
+  "product_comparisons": 0
+}

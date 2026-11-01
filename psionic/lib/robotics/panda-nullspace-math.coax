@@ -1,0 +1,71 @@
+// Coefficient boundary: A is dimensionless6x7; d is delta-radians / one-radian.
+// Owned helpers trust finite |A|<=4, |d|<=6; their POD is not admission authority.
+#load "panda-nullspace-fixtures.coax";
+#authority;
+#test "Panda nullspace determinant diagonal permutation and zero pivots have literal signs" {
+ m:[36]f64;for i:0..<6 {m[i*6+i]=f64(i+1);}#assert pns_det6(m)==720;for col:0..<6 {x:=m[col];m[col]=m[6+col];m[6+col]=x;}#assert pns_det6(m)== -720;for col:0..<6 {m[12+col]=0;}#assert pns_det6(m)==0;
+}
+#test "Panda nullspace analytic identity append column is genuine projector and canonical line" {
+ a:=pns_identity();v:=[6]f64.[1,-2,3,-4,0.5,-0.25];for i:0..<6 {a[i*7+6]=v[i];}d:=[7]f64.[1,2,-1,0.5,-0.25,0.75,-1];c:=[7]f64.[-1,2,-3,4,-0.5,0.25,1];norm2:f64=0;dot:f64=0;for i:0..<7 {norm2+=c[i]*c[i];dot+=c[i]*d[i];}r:=pns_project_owned(a,d);#assert r.status==PnsStatus.ok;for i:0..<7 {#assert abs(r.value.direction[i].value-c[i]/sqrt(norm2))<2e-12 && abs(r.value.projected_delta[i].value-c[i]*dot/norm2)<2e-12;}#assert abs(r.value.normalized_volume.value-sqrt(norm2))<2e-12;for i:0..<6 {#assert abs(r.value.null_residual[i].value)<2e-12 && abs(r.value.task_leak[i].value)<2e-12;}
+ p:[7]f64;orth:f64=0;for i:0..<7 {p[i]=r.value.projected_delta[i].value;orth+=(d[i]-p[i])*p[i];}#assert abs(orth)<2e-12;again:=pns_project_owned(a,p);#assert again.status==PnsStatus.ok;for i:0..<7 {#assert abs(again.value.projected_delta[i].value-p[i])<2e-12;}
+}
+#test "Panda nullspace earliest peak sign and positive zero are independently observable" {
+ a:=pns_identity();a[6]=1;d:[7]f64;r:=pns_project_owned(a,d);#assert r.status==PnsStatus.ok && r.value.direction[0].value>0 && r.value.direction[6].value<0;for i:1..<6 {#assert f64_bits(r.value.direction[i].value)==0;}for i:0..<7 {#assert f64_bits(r.value.projected_delta[i].value)==0;}
+ a[6]= -1;r=pns_project_owned(a,d);#assert r.status==PnsStatus.ok && r.value.direction[0].value>0 && r.value.direction[6].value>0;
+}
+#test "Panda nullspace restores physical row volume and refuses exact rank floor" {
+ a:=pns_identity();d:[7]f64;a[0]=0;#assert pns_project_owned(a,d).status==PnsStatus.rank;a=pns_identity();a[0]=5.960464477539063e-8;#assert pns_project_owned(a,d).status==PnsStatus.rank;a[0]=1.1920928955078125e-7;r:=pns_project_owned(a,d);#assert r.status==PnsStatus.ok && r.value.normalized_volume.value==a[0];
+ a=pns_identity();for col:0..<7 {a[7+col]=a[col];}#assert pns_project_owned(a,d).status==PnsStatus.rank;
+}
+#test "Panda nullspace residual admission independently observes squared norm and scaled task leak" {
+ w:=[4]u64.[f64_bits(0.0),f64_bits(0.0),f64_bits(0.0),f64_bits(0.0)];#assert pns_residual_bits(w)==PnsStatus.ok;
+ caps:=[3]f64.[2e-12,2e-10,2e-10];for i:0..<3 {w=[4]u64.[0,0,0,0];w[i]=f64_bits(caps[i]);#assert pns_residual_bits(w)==PnsStatus.ok;w[i]=f64_bits(caps[i]*1.01);#assert pns_residual_bits(w)==PnsStatus.residual;w[i]=0x7ff8000000000001;#assert pns_residual_bits(w)==PnsStatus.number;w[i]=f64_bits(-1.0);#assert pns_residual_bits(w)==PnsStatus.range;}
+ w=[4]u64.[0,0,f64_bits(4e-10),f64_bits(2.0)];#assert pns_residual_bits(w)==PnsStatus.ok;w[2]=f64_bits(4.01e-10);#assert pns_residual_bits(w)==PnsStatus.residual;w=[4]u64.[0,0,0,f64_bits(17.0)];#assert pns_residual_bits(w)==PnsStatus.range;
+}
+
+#test "Panda nullspace dense elimination and oriented cofactors have independent literal values" {
+ m:[36]f64;for i:0..<6 {m[i*6+i]=2;if i<5 {m[i*6+i+1]=1;m[(i+1)*6+i]=1;}}#assert abs(pns_det6(m)-7)<2e-12;
+ a:=pns_identity();v:=[6]f64.[1,-2,3,-4,0.5,-0.25];for i:0..<6 {a[i*7+6]=v[i];}c:=pns_cofactors(a);for i:0..<6 {#assert abs(c[i]+v[i])<2e-12;}#assert abs(c[6]-1)<2e-12;
+}
+#test "Panda nullspace separate residual measurement exposes bad vectors and every physical leak row" {
+ a:[42]f64;for row:0..<6 {for col:0..<7 {a[row*7+col]=f64(row+1)/2;}}n:[7]f64;n[0]=1;p:=[7]f64.[1,-2,3,-4,0.5,-0.25,1];d:[7]f64;r:=pns_measure(a,n,p,d,2);#assert r.status==PnsStatus.residual && r.value.normalized_volume.value==2;for row:0..<6 {#assert r.value.null_residual[row].value==f64(row+1)/2 && r.value.task_leak[row].value== -0.375*f64(row+1);}for i:0..<7 {#assert r.value.direction[i].value==n[i] && r.value.projected_delta[i].value==p[i];}
+ a=pns_identity();p=[7]f64.[0,0,0,0,0,0,0];#assert pns_measure(a,n,p,d,1).status==PnsStatus.residual;n=[7]f64.[0,0,0,0,0,0,1];p[0]=1;#assert pns_measure(a,n,p,d,1).status==PnsStatus.residual;
+ p[0]=5.5e-10;d[0]=3;#assert pns_measure(a,n,p,d,1).status==PnsStatus.ok;n[6]=2;p[0]=0;#assert pns_measure(a,n,p,d,1).status==PnsStatus.residual;
+ words:=[4]u64.[0,0,0,f64_bits(16.0)];#assert pns_residual_bits(words)==PnsStatus.ok;
+}
+
+pns_det6 :: (matrix:[36]f64)->f64 {
+ a:=matrix;det:f64=1;
+ for k:0..<6 {
+  best:=k;largest:=abs(a[k*6+k]);for row:(k+1)..<6 {if pik_greater(abs(a[row*6+k]),largest) {largest=abs(a[row*6+k]);best=row;}}
+  if largest==0 {return 0;}if best!=k {for col:0..<6 {x:=a[k*6+col];a[k*6+col]=a[best*6+col];a[best*6+col]=x;}det= -det;}
+  pivot:=a[k*6+k];det*=pivot;for row:(k+1)..<6 {factor:=a[row*6+k]/pivot;for col:(k+1)..<6 {a[row*6+col]-=factor*a[k*6+col];}}
+ }
+ return det;
+}
+pns_residual_bits :: (words:[4]u64)->PnsStatus {
+ values:[4]f64;for i:0..<4 {if !pfk_finite(words[i]) {return PnsStatus.number;}values[i]=f64_from_bits(words[i]);if values[i]<0 {return PnsStatus.range;}}
+ if values[3]>16 {return PnsStatus.range;}if values[0]>2e-12 || values[1]>2e-10 {return PnsStatus.residual;}scale:=ifx pik_greater(values[3],1) then values[3] else 1.0;if values[2]>2e-10*scale {return PnsStatus.residual;}return PnsStatus.ok;
+}
+pns_project_owned :: (matrix:[42]f64,delta:[7]f64)->PnsProjection {
+ out:PnsProjection;out.status=PnsStatus.rank;scaled:[42]f64;volume_scale:f64=1;
+ for row:0..<6 {largest:f64=0;for col:0..<7 {if pik_greater(abs(matrix[row*7+col]),largest) {largest=abs(matrix[row*7+col]);}}if largest==0 {return out;}volume_scale*=largest;for col:0..<7 {scaled[row*7+col]=matrix[row*7+col]/largest;}}
+ c:=pns_cofactors(scaled);
+ largest:f64=0;peak:int;for i:0..<7 {if pik_greater(abs(c[i]),largest) {largest=abs(c[i]);peak=i;}}if largest==0 {return out;}square:f64=0;for i:0..<7 {x:=c[i]/largest;square+=x*x;}length:=sqrt(square);volume:=volume_scale*largest*length;if volume<=5.960464477539063e-8 {return out;}
+ flip:=pik_greater(0,c[peak]);n:[7]f64;for i:0..<7 {n[i]=(c[i]/largest)/length;if flip {n[i]= -n[i];}if n[i]==0 {n[i]=0;}}
+ dot:f64=0;for i:0..<7 {dot+=n[i]*delta[i];}projected:[7]f64;for i:0..<7 {projected[i]=n[i]*dot;if projected[i]==0 {projected[i]=0;}}
+ return pns_measure(matrix,n,projected,delta,volume);
+}
+pns_cofactors :: (matrix:[42]f64)->[7]f64 {
+ c:[7]f64;for omitted:0..<7 {minor:[36]f64;for row:0..<6 {for col:0..<6 {source:=col;if col>=omitted {source+=1;}minor[row*6+col]=matrix[row*7+source];}}det:=pns_det6(minor);c[omitted]=ifx omitted%2==0 then det else -det;}
+ return c;
+}
+// Trusted diagnostic arithmetic accepts bounded non-null vectors intentionally;
+// the checked residual gate decides whether those diagnostics are admissible.
+pns_measure :: (matrix:[42]f64,n:[7]f64,projected:[7]f64,delta:[7]f64,volume:f64)->PnsProjection {
+ out:PnsProjection;rest_square:f64=0;norm_square:f64=0;basis:pfku.Quantity(pfku.Radian,f64);basis.value=1;
+ for i:0..<7 {out.value.direction[i].value=n[i];rest_square+=delta[i]*delta[i];norm_square+=n[i]*n[i];coefficient:pfku.Quantity(UnitOne,f64);coefficient.value=projected[i];out.value.projected_delta[i]=convert_unit(pfku.Radian,coefficient*basis);}
+ null_max:f64=0;task_max:f64=0;metre:pfku.Quantity(pfku.Metre,f64);metre.value=1;
+ for row:0..<6 {null_value:f64=0;task:f64=0;for col:0..<7 {null_value+=matrix[row*7+col]*n[col];task+=matrix[row*7+col]*projected[col];}out.value.null_residual[row].value=null_value;coefficient:pfku.Quantity(UnitOne,f64);coefficient.value=task;out.value.task_leak[row]=convert_unit(pfku.Metre,coefficient*metre);if pik_greater(abs(null_value),null_max) {null_max=abs(null_value);}if pik_greater(abs(task),task_max) {task_max=abs(task);}}
+ out.value.normalized_volume.value=volume;out.status=pns_residual_bits([4]u64.[f64_bits(abs(norm_square-1)),f64_bits(null_max),f64_bits(task_max),f64_bits(sqrt(rest_square))]);return out;
+}

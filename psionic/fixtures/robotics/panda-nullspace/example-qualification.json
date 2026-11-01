@@ -1,0 +1,27 @@
+{
+  "schema": "psionic.panda-nullspace.example-qualification.v1",
+  "passed": true,
+  "source_sha256": "1717751b3a29d135df11600d993d6ce7a7669438fa12ea9a24cfc8bb21c7ff2f",
+  "golden_sha256": "69a929efcbb3d70a8fbd8d82999fd77ee7b1bf76ae76aea1f0f676bf503c9739",
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "profiles": [
+    {
+      "profile": "debug",
+      "passed": true,
+      "stdout_sha256": "69a929efcbb3d70a8fbd8d82999fd77ee7b1bf76ae76aea1f0f676bf503c9739",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "profile": "release",
+      "passed": true,
+      "stdout_sha256": "69a929efcbb3d70a8fbd8d82999fd77ee7b1bf76ae76aea1f0f676bf503c9739",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "display_check": {
+    "groups": 1,
+    "passed": true,
+    "stdout_sha256": "0ad617991868e6ad5ad5ce5204e15db5b269c512673b406e6206757e08613d92"
+  },
+  "expected_before_execution_sha256": "9d0f90e95fb3c61f6a91a855aa7ebf642e6cd0875b9979763be3f6ed981c09a5"
+}

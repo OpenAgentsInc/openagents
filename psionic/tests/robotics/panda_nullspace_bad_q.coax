@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-nullspace.coax";
+main :: () {q:[7]pfku.Quantity(pfku.Metre,f64);rest:[7]pfku.Quantity(pfku.Radian,f64);out:[1]PnsOutput;status:=pns_query(q[..],rest[..],out[..]);}

@@ -1,0 +1,29 @@
+#import "Basic";
+#load "../lib/robotics/panda-nullspace.coax";
+
+#test "Panda nullspace example display rounds signed independent direction and posture coefficients" {
+ #assert pns_example_micro(-0.259342502598368)== -259343 && pns_example_micro(0.07287496397021574)==72875;
+ #assert pns_example_micro(-0.6229924924002351)== -622992 && pns_example_micro(0)==0;
+}
+pns_example_micro :: (value:f64)->int {return cast(int)floor(value*1000000+0.5);}
+main :: () {
+ print("linearized posture query: fresh fixed-grip Jacobian\n");
+// book:begin pns-query
+ // Both source-limited vectors are radians. The result is a projected delta;
+ // it is never applied here as a finite pose, trajectory or motor command.
+ words:=[14]f64.[0.5916784815654972,-1.1314303950772526,1.3723101939314204,-0.7863450971120733,0.9193678441656266,2.7243916210477472,-1.0067594805156277,0.0,0.19634954084936207,0.0,-2.617993877991494,0.0,2.941592653589793,0.7853981633974483];q:[7]pfku.Quantity(pfku.Radian,f64);rest:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=words[i];rest[i].value=words[7+i];}
+ out:[1]PnsOutput;#assert pns_query(q[..],rest[..],out[..])==PnsStatus.ok;
+ n:=out[0].direction;d:=out[0].projected_delta;
+ print("unit null direction (ppm): % % % % % % %\n",pns_example_micro(n[0].value),pns_example_micro(n[1].value),pns_example_micro(n[2].value),pns_example_micro(n[3].value),pns_example_micro(n[4].value),pns_example_micro(n[5].value),pns_example_micro(n[6].value));
+ print("projected preference (urad): % % % % % % %\n",pns_example_micro(d[0].value),pns_example_micro(d[1].value),pns_example_micro(d[2].value),pns_example_micro(d[3].value),pns_example_micro(d[4].value),pns_example_micro(d[5].value),pns_example_micro(d[6].value));
+ print("normalized volume (ppm): %; singular-value product\n",pns_example_micro(out[0].normalized_volume.value));
+ for i:0..<6 {#assert abs(out[0].task_leak[i].value)<1e-9;}
+ print("this query's weighted task leakage is below 1 nm\n");
+ // Self-rest has exactly zero projected preference, with canonical positive zero.
+ zero:[1]PnsOutput;#assert pns_query(q[..],q[..],zero[..])==PnsStatus.ok;for i:0..<7 {#assert f64_bits(zero[0].projected_delta[i].value)==0;}
+ print("self-rest: complete projected delta is +0\n");
+ before:=out[0];rest[0].value=3;#assert pns_query(q[..],rest[..],out[..])==PnsStatus.limits;pns_same(out[0],before);
+ print("outside source rest limit: refusal; complete old query unchanged\n");
+// book:end pns-query
+ print("linearized delta only; no finite-pose, collision or command certificate\n");
+}

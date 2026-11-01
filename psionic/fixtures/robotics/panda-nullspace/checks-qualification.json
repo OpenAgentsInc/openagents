@@ -1,0 +1,80 @@
+{
+  "schema": "psionic.panda-nullspace.source-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "source_inventory": {
+    "psionic/lib/robotics/panda-nullspace-types.coax": "2929a770ba1a45fb1aa08f03fae4df484753b7103276d895a1067a994d8b4a0f",
+    "psionic/lib/robotics/panda-nullspace-fixtures.coax": "f5ee135a614ed4cda0fba18730e51d4bfc981c13c633b79b6f4d40191d5f52a0",
+    "psionic/lib/robotics/panda-nullspace-math.coax": "f64b076655095d748c3df31a0aae2ecf3adcf14d96e5e76237acd2f63042a246",
+    "psionic/lib/robotics/panda-nullspace.coax": "4266282328249fb02d1e8ee9026989f524c98357da54078c09485f94c6d9d51d",
+    "psionic/tests/robotics/panda-nullspace-native.coax": "d43f40417da1d4b14dc4b84c56ae317156e19ef992dab812ef3dd4887a5239a9"
+  },
+  "checks": {
+    "new_unique_groups": 13,
+    "new_unique_cases": 13,
+    "first_math_seven_qualified_in_third_mutation_baseline": true,
+    "public_context_stdout_sha256": "3adfb98f2397a37e3e94a1e42009373fcb603f59454fda832314b12acdeaf449",
+    "bridge_first_group_stdout_sha256": "513b4fbee9ba730a7440331d6e4225627c429534eb2982ceeb497d63ef45bfd8",
+    "bridge_second_group_qualified_in_changed_root_baseline": true
+  },
+  "mutations": [
+    {
+      "root": "psionic/lib/robotics/panda-nullspace-math.coax",
+      "root_only": true,
+      "emitted_sites": 209,
+      "killed": 209,
+      "survivors": 0,
+      "stdout_sha256": "7f2499fab7161a629dd1ccc8d927bdce9aa6c9380e775073e89b022b190df84a"
+    },
+    {
+      "root": "psionic/lib/robotics/panda-nullspace.coax",
+      "root_only": true,
+      "emitted_sites": 65,
+      "killed": 65,
+      "survivors": 0,
+      "stdout_sha256": "521b7ae6419cba8917c7f606714886aafc4ab7a42033c4cea3ffe1428de826fd"
+    },
+    {
+      "root": "psionic/tests/robotics/panda-nullspace-native.coax",
+      "root_only": true,
+      "emitted_sites": 42,
+      "killed": 42,
+      "survivors": 0,
+      "stdout_sha256": "9673552a998ed6aa0d23e3a707349e053e29a3e837db5f4819e1b4660f6994f7"
+    }
+  ],
+  "history": {
+    "first_math_compile": {
+      "diagnostic": "E0204",
+      "stderr_sha256": "eb993a3de58efe6c0d24657b07a9917535faf4b17b2b28b13b77557dfe5ebace",
+      "fix": "Rename reserved local null to null_value; no arithmetic change."
+    },
+    "first_math": {
+      "emitted_sites": 209,
+      "killed": 180,
+      "survivors": 29,
+      "stdout_sha256": "e5f629fe873743fbd51d73b5ff3468a1a450b8ec1e806bba74b8ca6eac64cf6d"
+    },
+    "second_math": {
+      "emitted_sites": 210,
+      "killed": 209,
+      "survivors": 1,
+      "stdout_sha256": "6027e1f64dd7cf5b1dc5b1b7ff122092d43eb5b5a7f6dd1ab1270c02e025c868"
+    },
+    "math_closure": "Observable signed cofactor primitive, dense LU and separate deliberately non-null diagnostic operator; checked independent residual gate and exact rest-norm boundary; remove redundant overwritten direction copy. No equivalence waivers or profile changes.",
+    "first_bridge": {
+      "emitted_sites": 42,
+      "killed": 35,
+      "survivors": 7,
+      "stdout_sha256": "1680da585665b5969dfaa6a8b9d9413382fed7ba885dad474fc49bb00561333e"
+    },
+    "bridge_closure": "Exact A/d coefficient endpoints and nonzero dense copies expose role boundaries; nonzero residual probe word exposes transport."
+  },
+  "unit_refusals": {
+    "file": "unit-refusals.json",
+    "sha256": "5cd5d6a51a7995461a0b7c7dfbada812d55b4441da285cf7588401a5e1c583ce",
+    "count": 4,
+    "passed": true
+  },
+  "scope": "Only new nullspace3roots; public model has freshFK/J. No SDK/NN/old numeric or mutation gates. Counts describe actual emitted sites, not full authored Quantity-token mutation coverage."
+}

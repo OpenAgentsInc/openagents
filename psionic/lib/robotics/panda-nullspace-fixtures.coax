@@ -1,0 +1,4 @@
+#load "panda-nullspace-types.coax";
+pns_identity :: ()->[42]f64 {a:[42]f64;for i:0..<6 {a[i*7+i]=1;}return a;}
+pns_poison :: ()->PnsOutput {x:PnsOutput;for i:0..<7 {x.direction[i].value=101+f64(i);x.projected_delta[i].value=211+f64(i);}for i:0..<6 {x.null_residual[i].value=307+f64(i);x.task_leak[i].value=401+f64(i);}x.normalized_volume.value=503;return x;}
+pns_same :: (a:PnsOutput,b:PnsOutput) {for i:0..<7 {#assert f64_bits(a.direction[i].value)==f64_bits(b.direction[i].value) && f64_bits(a.projected_delta[i].value)==f64_bits(b.projected_delta[i].value);}for i:0..<6 {#assert f64_bits(a.null_residual[i].value)==f64_bits(b.null_residual[i].value) && f64_bits(a.task_leak[i].value)==f64_bits(b.task_leak[i].value);}#assert f64_bits(a.normalized_volume.value)==f64_bits(b.normalized_volume.value);}

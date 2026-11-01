@@ -1,0 +1,7 @@
+// Source-bound, linearized seven-hinge posture query; no applied candidate.
+#load "panda-jacobian.coax";
+#load "panda-ik-math.coax";
+PnsAngularWeight :: struct @unit(mass=0,length=1,time=0,angle=-1,numerator=1,denominator=1) {}
+PnsStatus :: enum u8 {ok;shape;number;range;limits;rank;residual;}
+PnsOutput :: struct {direction:[7]pfku.Quantity(UnitOne,f64);projected_delta:[7]pfku.Quantity(pfku.Radian,f64);null_residual:[6]pfku.Quantity(UnitOne,f64);task_leak:[6]pfku.Quantity(pfku.Metre,f64);normalized_volume:pfku.Quantity(UnitOne,f64);}
+PnsProjection :: struct {status:PnsStatus;value:PnsOutput;}

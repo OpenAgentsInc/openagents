@@ -1,0 +1,43 @@
+{
+  "schema": "psionic.panda-nullspace.unit-refusals.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "checks": [
+    {
+      "name": "q",
+      "source_sha256": "4388e01b43d4c3d02d2f10a48c46514771852ecd7c354291964483cde4d61b20",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "493407ff63f0da1f0019160804c8b974c230838a00b21a6a0fbbdf114ba52ef1"
+    },
+    {
+      "name": "rest",
+      "source_sha256": "592b21bf89e09ca496e4bf9a7bf1c93c0ff283f149de6a17d20e95da3008568e",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "3b94b476f330dcee9877032666da3c64604355bb5891e3ba830049063141792b"
+    },
+    {
+      "name": "direction",
+      "source_sha256": "c40c907ffa38f2091f1f2f4c5260e6b7133bf52b060d2e901c0aef4737fbedad",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "1d87e14a33dbf5d319c7d941266e8920a4f4ef7cb02d372f515c976b0981305d"
+    },
+    {
+      "name": "leak",
+      "source_sha256": "b84ef67b9a3d3f379f19a427972e6f92e7a0a18fdf547241e5bd2d6cb90ce7f1",
+      "exit": 1,
+      "diagnostic": "E0317",
+      "expected_diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "355431a834304415900051b6969ffe4c4c45776c36737828b967181fdab140af"
+    }
+  ]
+}
