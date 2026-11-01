@@ -112,6 +112,11 @@ their body (payload tag) and are good once.
 | `POST /api/admin/access/creators {who}`, `.../creators/<who>/remove` | admin | a pubkey or an account id |
 | `POST /api/admin/access/grandfather` | admin | `{approved: N}` |
 | `GET /api/auth/v2/me` | logged in, or NIP-98 signed | `account ID`, `id\|nostr\|npub…`, `id\|workos\|email`; answers with the flags off too |
+| `POST /api/auth/v2/device/start {machine}` | the new key's NIP-98 | `{id, code, expires_ms}`; 400, 401, 429 (five open a key) |
+| `GET /api/auth/v2/device/<id>` | that key's NIP-98 | `state waiting\|approved\|expired`, `account ID` when approved; 404 for another key |
+| `POST /api/auth/v2/device/look {code}` | anyone (same site) | `{machine, state}`; 404 |
+| `POST /api/auth/v2/device/approve {code}` | logged in | the key joins the account as `cli:MACHINE`; 401, 404, 409 approved or another account's, 410 expired |
+| `POST /api/auth/v2/unlink {pubkey}` | a key of the account | 404 not this account's, 409 the account's own key |
 | `POST /api/auth/v2/link/nostr {"kind":"link"}` | session + the new key's NIP-98 | 401, 409 |
 | `GET /api/auth/v2/workos/start` | anyone | 302 to AuthKit (`provider=GoogleOAuth`); 503 without `OA_WORKOS_CLIENT_ID` |
 | `GET /api/auth/v2/workos/callback?code&state` | WorkOS | state spent once; the code exchange answers 501 (not built) |

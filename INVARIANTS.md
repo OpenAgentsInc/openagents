@@ -33,6 +33,14 @@ it. The Origin check still runs first. Checks:
 another site's Origin 403, the player key as before), run by `test.sh` and by
 `coax/web/api/cli-auth-test.sh` on staging.
 
+A key joins an account in two ways only: `link/nostr` (the session and the
+key's own signature) and device login (`migrations/0098_cli_callers.sql`):
+the key's signed `device/start`, then APPROVE pressed on `/login/device` by a
+logged-in session. The code is 128 bits, kept as SHA-256 only, good for ten
+minutes and approved once; only the starting key's signature reads the
+answer. A key that is another account's, or owns realms, players or creator
+rows of its own, is refused. Checks: the `device` part of `cli_auth.coax`;
+`apps/openagents-web/private.coax` (page 7 approves only on the press).
 
 ## A made realm's document changes only from the revision it was read at
 

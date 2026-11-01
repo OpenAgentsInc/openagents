@@ -7,6 +7,10 @@
 //           X-Verse-Player key works as before
 //   mine    GET /api/playtest/realms/mine: an owner with realms, one with none,
 //           a guest key, nobody
+//   device  device login: start (signed by the new key), poll (that key only),
+//           look, approve with a site session (once; refused for a key with
+//           realms of its own), the key then is the account (me, a realm save,
+//           mine), unlink, and expiry where codes last seconds
 // Every key is made for the run and never printed.
 //   coax/web/api/cli-auth-test.sh http://127.0.0.1:PORT        (test.sh runs it on its API)
 //   coax/web/api/cli-auth-test.sh https://staging.openagents.com
@@ -191,6 +195,122 @@ text_int_of :: (s: string) -> int {
   return ifx s.count == 0 then -1 else n;
 }
 
+// The value of "KEY": "..." in the last JSON body (no escapes), into out.
+ca_json_value :: (t: [] CaT, key: string, out: [] u8) -> string {
+  s := ca_body(t); want: [80] u8;
+  w := ca_put(want[..], 0, "\""); w = ca_put(want[..], w, key); w = ca_put(want[..], w, "\": \"");
+  if w < 0 { return ""; }
+  k := cast(string) want[0..<w];
+  for i: 0..<s.count - k.count + 1 {
+    if i >= 0 && s[i..<i + k.count] == k {
+      e := i + k.count; n := 0;
+      while e < s.count && s[e] != '"' && n < out.count { out[n] = s[e]; n += 1; e += 1; }
+      return cast(string) out[0..<n];
+    }
+  }
+  return "";
+}
+// Starts a device login signed by k: its id and code into the buffers; the HTTP status.
+ca_start :: (t: [] CaT, k: [] CaKey, machine: string, id: [] u8, code: [] u8, id_n: [] int, code_n: [] int) -> int {
+  b: [200] u8;
+  n := ca_put(b[..], 0, "{\"machine\":\""); n = ca_put(b[..], n, machine); n = ca_put(b[..], n, "\"}");
+  st := ca_signed(t, k, "POST", "/api/auth/v2/device/start?as=lines", cast(string) b[0..<n]);
+  id_n[0] = ca_line_value(t, "id", id).count; code_n[0] = ca_line_value(t, "code", code).count;
+  return st;
+}
+ca_code_body :: (code: string, out: [] u8) -> string {
+  n := ca_put(out, 0, "{\"code\":\""); n = ca_put(out, n, code); n = ca_put(out, n, "\"}");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+ca_poll_path :: (id: string, out: [] u8) -> string {
+  n := ca_put(out, 0, "/api/auth/v2/device/"); n = ca_put(out, n, id); n = ca_put(out, n, "?as=lines");
+  return ifx n < 0 then "" else cast(string) out[0..<n];
+}
+
+ca_device_checks :: (t: [] CaT, a: [] CaKey, b: [] CaKey, slug: string) {
+  c: [1] CaKey; e: [1] CaKey;
+  if !ca_new_key(c[..]) || !ca_new_key(e[..]) { ca_check(t, "device: keys", false); return; }
+  origin := ca_api(t);
+  idb: [32] u8; codeb: [64] u8; idn: [1] int; coden: [1] int;
+  ca_check(t, "device: an unsigned start is 401", ca_call(t, "POST", "/api/auth/v2/device/start", "{\"machine\":\"x\"}", false, "", "") == 401);
+  ca_check(t, "device: a start names its machine", ca_start(t, c[..], "", idb[..], codeb[..], idn[..], coden[..]) == 400);
+  ca_check(t, "device: a signed start answers an id and a code", ca_start(t, c[..], "ci-box", idb[..], codeb[..], idn[..], coden[..]) == 200 && idn[0] == 16 && coden[0] == 32);
+  id := cast(string) idb[0..<idn[0]]; code := cast(string) codeb[0..<coden[0]];
+  pp: [80] u8; cb: [80] u8;
+  poll := ca_poll_path(id, pp[..]); cbody := ca_code_body(code, cb[..]);
+  ca_check(t, "device: the key's poll is waiting", ca_signed(t, c[..], "GET", poll, "") == 200 && ca_body(t) == "state waiting\n");
+  ca_check(t, "device: another key's poll is 404", ca_signed(t, b[..], "GET", poll, "") == 404);
+  ca_check(t, "device: an unsigned poll is 401", ca_call(t, "GET", poll, "", false, "", "") == 401);
+  ca_check(t, "device: look from another site is 403", ca_call(t, "POST", "/api/auth/v2/device/look", cbody, false, "", "https://evil.example") == 403);
+  mb: [80] u8;
+  ca_check(t, "device: look shows the machine", ca_call(t, "POST", "/api/auth/v2/device/look", cbody, false, "", origin) == 200 &&
+           ca_json_value(t, "machine", mb[..]) == "ci-box" && ca_has(ca_body(t), "\"state\": \"waiting\""));
+  ca_check(t, "device: look with a bad code is 404", ca_call(t, "POST", "/api/auth/v2/device/look", "{\"code\":\"00000000000000000000000000000000\"}", false, "", origin) == 404);
+  ca_check(t, "device: approving logged out is 401", ca_call(t, "POST", "/api/auth/v2/device/approve", cbody, false, "", origin) == 401);
+
+  // Log in as a's key the way /login does (POST /api/auth/key, signed): a site session cookie.
+  st := ca_signed_here(t, a, "POST", "/api/auth/key", "{\"kind\":\"login\"}");
+  sc := http_header(cast(string) t[0].w[0].head[0..<t[0].w[0].head_n], "Set-Cookie");
+  semi := 0;
+  while semi < sc.count && sc[semi] != ';' { semi += 1; }
+  t[0].cookie_n = ca_put(t[0].cookie[..], 0, sc[0..<semi]);
+  ca_check(t, "device: a's key logs in with a session cookie", st == 200 && semi > 11 && sc[0..<11] == "oa_session=");
+  t[0].cookie_on = true;
+  acct: [80] u8;
+  an := ca_put(acct[..], 0, "account n-"); an = ca_put(acct[..], an, ca_pub_of(a));
+  want := cast(string) acct[0..<an];
+  ca_check(t, "device: the session approves it", ca_call(t, "POST", "/api/auth/v2/device/approve?as=lines", cbody, false, "", origin) == 200 && ca_body(t) == "approved ci-box\n");
+  ca_check(t, "device: approved once", ca_call(t, "POST", "/api/auth/v2/device/approve", cbody, false, "", origin) == 409);
+  ca_check(t, "device: look says approved", ca_call(t, "POST", "/api/auth/v2/device/look", cbody, false, "", origin) == 200 && ca_has(ca_body(t), "\"state\": \"approved\""));
+  t[0].cookie_on = false;
+  ca_check(t, "device: the key's poll says approved, and the account", ca_signed(t, c[..], "GET", poll, "") == 200 &&
+           ca_has(ca_body(t), "state approved\n") && ca_has(ca_body(t), want));
+  ca_check(t, "device: the key is the account now", ca_signed(t, c[..], "GET", "/api/auth/v2/me", "") == 200 &&
+           ca_has(ca_body(t), want) && ca_has(ca_body(t), "|cli:ci-box\n"));
+  p: [200] u8;
+  ca_check(t, "device: the key saves the account's realm", ca_signed(t, c[..], "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 200);
+  ra: [80] u8;
+  rn := ca_put(ra[..], 0, "realm "); rn = ca_put(ra[..], rn, slug); rn = ca_put(ra[..], rn, "|");
+  ca_check(t, "device: and lists it as its own", ca_signed(t, c[..], "GET", "/api/playtest/realms/mine?as=lines", "") == 200 && ca_has(ca_body(t), cast(string) ra[0..<rn]));
+
+  // A key that owns a realm of its own can't join another account.
+  nb: [80] u8; sb: [64] u8;
+  bslug := ca_make(t, b, "", ca_name_of(t, "b", nb[..]), sb[..]);
+  ib: [32] u8; kb: [64] u8; ibn: [1] int; kbn: [1] int; cb2: [80] u8;
+  ok := bslug.count > 0 && ca_start(t, b, "b-box", ib[..], kb[..], ibn[..], kbn[..]) == 200;
+  t[0].cookie_on = true;
+  ca_check(t, "device: a key with realms of its own is refused", ok &&
+           ca_call(t, "POST", "/api/auth/v2/device/approve", ca_code_body(cast(string) kb[0..<kbn[0]], cb2[..]), false, "", origin) == 409);
+  t[0].cookie_on = false;
+
+  // Unlink: the account's own key stays; the device's key leaves, and is its own account again.
+  ub: [120] u8; un := ca_put(ub[..], 0, "{\"pubkey\":\""); un = ca_put(ub[..], un, ca_pub_of(a)); un = ca_put(ub[..], un, "\"}");
+  ca_check(t, "unlink: the account's own key stays", ca_signed(t, c[..], "POST", "/api/auth/v2/unlink", cast(string) ub[0..<un]) == 409);
+  un = ca_put(ub[..], 0, "{\"pubkey\":\""); un = ca_put(ub[..], un, ca_pub_of(e[..])); un = ca_put(ub[..], un, "\"}");
+  ca_check(t, "unlink: a key not the account's is 404", ca_signed(t, c[..], "POST", "/api/auth/v2/unlink", cast(string) ub[0..<un]) == 404);
+  ca_check(t, "unlink: logged out is 401", ca_call(t, "POST", "/api/auth/v2/unlink", cast(string) ub[0..<un], false, "", origin) == 401);
+  un = ca_put(ub[..], 0, "{\"pubkey\":\""); un = ca_put(ub[..], un, ca_pub_of(c[..])); un = ca_put(ub[..], un, "\"}");
+  ca_check(t, "unlink: the device's key unlinks itself", ca_signed(t, c[..], "POST", "/api/auth/v2/unlink", cast(string) ub[0..<un]) == 200);
+  own: [80] u8;
+  on := ca_put(own[..], 0, "account n-"); on = ca_put(own[..], on, ca_pub_of(c[..]));
+  ca_check(t, "unlink: and is its own account again", ca_signed(t, c[..], "GET", "/api/auth/v2/me", "") == 200 && ca_has(ca_body(t), cast(string) own[0..<on]));
+  ca_check(t, "unlink: so it can't save the account's realm", ca_signed(t, c[..], "POST", ca_path_of(slug, "/save", p[..]), "{\"rev\":1,\"moved\":[]}") == 403);
+
+  // Expiry: only where codes last seconds (test.sh sets OA_DEVICE_TTL_MS); ten minutes elsewhere.
+  ie: [32] u8; ke: [64] u8; ien: [1] int; ken: [1] int;
+  if ca_start(t, e[..], "slow-box", ie[..], ke[..], ien[..], ken[..]) != 200 { ca_check(t, "expiry: a start", false); return; }
+  eb: [40] u8;
+  left := text_int_of(ca_line_value(t, "expires_ms", eb[..])) - cxproc_wall_us() / 1000;
+  if left > 15000 { print("skip expiry: codes last % s here\n", left / 1000); return; }
+  sleep_ms := left + 1500;
+  if sleep_ms > 0 { gone := cxproc_sleep_ms(sleep_ms); }
+  pe: [80] u8; ce: [80] u8;
+  ca_check(t, "expiry: the poll says expired", ca_signed(t, e[..], "GET", ca_poll_path(cast(string) ie[0..<ien[0]], pe[..]), "") == 200 && ca_body(t) == "state expired\n");
+  t[0].cookie_on = true;
+  ca_check(t, "expiry: an expired code isn't approved", ca_call(t, "POST", "/api/auth/v2/device/approve", ca_code_body(cast(string) ke[0..<ken[0]], ce[..]), false, "", origin) == 410);
+  t[0].cookie_on = false;
+}
+
 tool_main :: () -> int #export_c {
   t: [1] CaT;
   e: [256] u8;
@@ -206,6 +326,7 @@ tool_main :: () -> int #export_c {
   only := proc_getenv("ONLY", e[..]);
   kept: [64] u8;
   kn := ca_nip98_checks(t[..], a[..], b[..], kept[..]);
+  if (only == "" || only == "device") && kn > 0 { ca_device_checks(t[..], a[..], b[..], cast(string) kept[0..<kn]); }
   print("% checks, % passed, % failed\n", t[0].pass + t[0].fail, t[0].pass, t[0].fail);
   return ifx t[0].fail == 0 then 0 else 1;
 }

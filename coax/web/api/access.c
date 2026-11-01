@@ -18,6 +18,12 @@
 //   POST /api/admin/access/grandfather        everyone who owns a made realm becomes a creator
 //   GET  /api/auth/v2/me                      account ID, then id|nostr|npub..., id|workos|email (with the flags
 //                                             off too; a NIP-98 signature is good once, caller-policy.coax)
+//   Device login (0098), with the flags off too; codes 128 bits, SHA-256 only, ten minutes, once:
+//   POST /api/auth/v2/device/start {machine}  signed by the new key -> {id, code, expires_ms}
+//   GET  /api/auth/v2/device/<id>             signed by that key -> waiting | approved + account | expired
+//   POST /api/auth/v2/device/look {code}      what /login/device shows: {machine, state}
+//   POST /api/auth/v2/device/approve {code}   logged in: the key joins the account as cli:MACHINE
+//   POST /api/auth/v2/unlink {pubkey}         a key of the account (session or signature): that key leaves it
 //   POST /api/auth/v2/link/nostr {"kind":"link"}   the session's account takes the NIP-98 signer's key
 //   GET  /api/auth/v2/workos/start            302 to AuthKit (OA_WORKOS_CLIENT_ID); 503 while it isn't set
 //   GET  /api/auth/v2/workos/callback?code&state   the state spent; the code exchange is not built (501)
@@ -369,6 +375,48 @@ static bool auth_v2(const request *q, PGconn *db, const char *rest) {
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
     else { api_log("auth: me: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
     PQclear(r);
+    return true;
+  }
+  // Device login (0098), flags or not: a CLI's new key asks, a logged-in person approves it.
+  bool start = !strcmp(rest, "device/start"), look = !strcmp(rest, "device/look"), approve = !strcmp(rest, "device/approve");
+  bool poll = !strncmp(rest, "device/", 7) && !start && !look && !approve, unlink = !strcmp(rest, "unlink");
+  if (start || look || approve || poll || unlink) {
+    if (poll ? post : !post) { api_json(q->fd, 405, poll ? "{\"error\":\"GET it\"}" : "{\"error\":\"POST it\"}"); return true; }
+    if (!poll && !start && !same_site(q)) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
+    if (q->body_len > 4096) { api_json(q->fd, 413, "{\"error\":\"too large\"}"); return true; }
+    char ip[128]; visitor(q, ip);
+    if (!allowed(rest[0] == 'u' ? "unlink" : start ? "dstart" : poll ? "dpoll" : "dcode", ip, poll ? 60 : 10)) {
+      if (as_lines(q)) api_respond(q->fd, 429, "text/plain; charset=utf-8", "Retry-After: 60\r\n", "slow down", 9);
+      else api_respond(q->fd, 429, "application/json", "Retry-After: 60\r\n", "{\"error\":\"slow down\"}", 21);
+      return true;
+    }
+    if (start || poll) {   // the new key's own signature, nothing else
+      int sig = access_signed(q, db, pk);
+      if (sig < 0) return true;
+      if (sig == 0) { api_json(q->fd, 401, "{\"error\":\"sign it with the new key\"}"); return true; }
+    } else if (!look) {
+      logged_in(q, db, pk);
+    }
+    if (poll) {
+      const char *id = rest + 7;
+      bool ok = strlen(id) == 16;
+      for (const char *c = id; ok && *c; c++) ok = (*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f');
+      if (!ok) { api_json(q->fd, 404, "{\"error\":\"no such request\"}"); return true; }
+      const char *v[2] = {pk, id};
+      answer(q, db, RESULT "auth.device_poll($1, $2) x", 2, v, "device poll");
+      return true;
+    }
+    char *body = body_of(q);
+    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    char ttl[24]; snprintf(ttl, sizeof ttl, "%lld", atoll(env_or("OA_DEVICE_TTL_MS", "600000")));
+    const char *v[3] = {pk, body, ttl};
+    const char *v1[1] = {body};
+    if (start) answer(q, db, RESULT "auth.device_start($1, $2::jsonb, $3::bigint) x", 3, v, "device start");
+    else if (look) answer(q, db, RESULT "auth.device_look($1::jsonb) x", 1, v1, "device look");
+    else if (approve) answer(q, db, RESULT "auth.device_approve(nullif($1, ''), $2::jsonb) x", 2, v, "device approve");
+    else answer(q, db, RESULT "auth.unlink(nullif($1, ''), $2::jsonb) x", 2, v, "unlink");
+    free(body);
+    if (pk[0] && !look) api_log("auth %s by %.8s", rest, pk);
     return true;
   }
   if (!flag(db, "auth_v2")) return false;   // off: the rest of /api/auth/* is private.c's, as before

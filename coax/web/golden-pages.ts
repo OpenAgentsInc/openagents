@@ -51,6 +51,9 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   byAddress["coax-changelog-phone"] = {path:"/coax/changelog",lit:0.004,settle:1200,blocks:4,module:"changelog",size:[390,844]}
   byAddress["pylon"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon"}
   byAddress["pylon-phone"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon",size:[390,844]}
+  // /login/device with no code: what it says, and no account made (private.coax page 7).
+  byAddress["login-device"] = {path:"/login/device",lit:0.004,settle:1500,blocks:4,module:"private"}
+  byAddress["login-device-phone"] = {path:"/login/device",lit:0.004,settle:1500,blocks:4,module:"private",size:[390,844]}
   byAddress["home"] = {path:"/",lit:0.004,settle:3000,blocks:4,module:"newland"}
   byAddress["home-phone"] = {path:"/",lit:0.004,settle:3000,blocks:4,module:"newland",size:[390,844]}
   // NIP guides are public Coaxial pages too. Every route must start and draw
