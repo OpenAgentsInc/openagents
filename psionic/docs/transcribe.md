@@ -1,12 +1,14 @@
 # Transcription: Whisper in Psionic
 
-Status, 2026-11-01: Psionic's Whisper transcribes end to end on the CPU
-(`openagents transcribe FILE --backend psionic`). With greedy decoding it
-writes the same text and timestamps as whisper.cpp on our fixtures, and it
-runs about 2× slower than whisper.cpp. Beam search, language detection and
-the oracle harness come next. The default backend is still the interim
-whisper.cpp one, because whisper.cpp's default beam search hears names
-better. Tracking issue:
+Status, 2026-11-01: Psionic's Whisper transcribes end to end
+(`openagents transcribe FILE --backend psionic`), with beam search,
+temperature fallback, language detection and a vocabulary bias
+(`--words`). On the comparison corpus its word error rate is at or below
+whisper.cpp's in total for `tiny.en` and `base.en`. On the CPU it takes
+1.2 to 1.3× whisper.cpp's time; with the encoder on the GPU it takes 2.5 to
+2.8× whisper.cpp's Metal time. The in-game voice host uses it
+(`voice-host --provider psionic`). The default CLI backend stays
+whisper.cpp until Psionic is also faster (#12623). Tracking issue:
 [#12614](https://github.com/OpenAgentsInc/openagents/issues/12614).
 
 Speech to text is a primitive of the stack. You call it the same way
@@ -62,10 +64,13 @@ file ──decode──▶ 16 kHz mono f32 ──log-mel──▶ 80 × 3000 per
       ──segments──▶ text | SRT | WebVTT | JSON
 ```
 
-1. **Decode.** Any container to 16 kHz mono samples in [-1, 1]. Today
-   ffmpeg does this as one program call. Its firm reason is 6 (no Coax
-   decoder for compressed containers yet). A Coax WAV reader and
-   resampler replace it for WAV input. The engine already has 16 kHz
+1. **Decode.** Any container to 16 kHz mono samples in [-1, 1]. WAV
+   files are read in Coax (`wav.coax`): PCM 8, 16, 24 and 32-bit and float
+   32 and 64-bit, any channel count, mixed to mono, and resampled with a
+   Kaiser-windowed sinc (beta 9, 16 zero crossings, cutoff 0.97 of
+   Nyquist). That is within 2.6e-5 RMS of ffmpeg's default resampler.
+   Other containers go through ffmpeg as one program call. Its firm reason
+   is 6 (no Coax decoder for compressed containers yet). The engine already has 16 kHz
    audio, because `verse/voice.coax` resamples the microphone.
 2. **Log-mel** (`front.coax`). 30 s of zeros are appended to the audio. Each
    frame is a periodic Hann window of 400 samples with hop 160, centred with
@@ -75,21 +80,26 @@ file ──decode──▶ 16 kHz mono f32 ──log-mel──▶ 80 × 3000 per
    `(v + 4) / 4`. The last frame is dropped. The maximum is over the whole
    file, so `wf_max` makes a first pass and `wf_window` writes any 30 s
    window of 3,000 frames. Memory stays bounded for long files.
-3. **Encoder** (`encoder.coax`, next). Two 1-D convolutions of width 3, the
+3. **Encoder** (`engine.coax`). Two 1-D convolutions of width 3, the
    second with stride 2 (3,000 frames become 1,500), GELU after each, plus
    the stored sinusoidal positions. Then `n_audio_layer` pre-norm
    Transformer blocks: LayerNorm (epsilon 1e-5), multi-head self-attention
    with biases on the query, value and output (none on the key), a residual,
    LayerNorm, an MLP of width 4d with exact (erf) GELU, a residual, and a
    final LayerNorm.
-4. **Decoder** (`decoder.coax`, next). Token embedding plus learned
+4. **Decoder** (`engine.coax`). Token embedding plus learned
    positions (448), `n_text_layer` blocks of causal self-attention with a key
    and value cache, cross-attention to the encoder output (its keys and
    values computed once per window), and the MLP. Logits are the final
    LayerNorm times the token embedding transposed.
-5. **Search** (`search.coax`, next). Greedy first, then beam search (size 5)
-   and the temperature fallback (0.0, 0.2, … 1.0 on a compression-ratio or
-   log-probability failure), as whisper.cpp's `whisper_full` does.
+5. **Search** (`search.coax`). Beam search (size 5) and the temperature
+   fallback (0.0, 0.2, … 1.0, best of 5 when sampling), as whisper.cpp's
+   `whisper_full` does. A window fails on low average log-probability or
+   on low token entropy, which is whisper.cpp's stand-in for the
+   compression-ratio check. `--language auto` scores the language tokens
+   after the start token. `--words A,B` adds a bonus to the first token of
+   each name (2.0) and to its next tokens (3.0); a larger bonus made the
+   models split ordinary words into names.
    whisper.cpp's logit rules are part of the search and must be matched
    exactly: suppress blank and the non-speech tokens at the start, keep
    timestamps paired, keep timestamps non-decreasing, cap the first timestamp
@@ -111,7 +121,9 @@ then each tensor's rank, name, type, sizes and data with no padding. The
 reader checks every length against the mapped bytes and refuses anything
 else with a typed status. The host maps the file; Coax only reads views.
 f16 is decoded exactly to f32 once, at load, into the host's weight arena.
-The decoder is checked on all 65,536 bit patterns. q8_0 and q5 come next.
+The decoder is checked on all 65,536 bit patterns. q8_0, q5_0, q5_1, q4_0
+and q4_1 blocks are dequantized at load exactly as ggml's
+`dequantize_row_*` does.
 
 ## Coax module layout
 
@@ -121,19 +133,24 @@ The decoder is checked on all 65,536 bit patterns. q8_0 and q5 come next.
 | `psionic/lib/whisper/ggml.coax` | the model file reader: hyperparameters, filters, vocabulary, tensors | done, checked |
 | `psionic/lib/whisper/tokens.coax` | special ids, languages, timestamps, window prompts | done, checked |
 | `psionic/lib/whisper/front.coax` | Whisper's log-mel on `spectral.coax`; a frame cache, or two passes in bounded memory | done, checked |
-| `psionic/lib/whisper/engine.coax` | f16 weights, tensor names and sizes, the encoder, the decoder and its caches, greedy search with whisper.cpp's logit rules, seek and segments, and the `#export_c` entry points | runs end to end; greedy only |
-| `psionic/platform/whisper-face.c` | the host: maps files, owns memory and threads, calls the exports (`psionic-whisper info`, `filters`, `transcribe`) | done |
-| `psionic/platform/whisper-build.sh` | builds `psionic-whisper` into `psionic/build/whisper` | done |
-| `psionic/lib/whisper/wav.coax` | WAV (PCM 16, float 32, extensible) to mono f32; a resampler | next (#12615) |
-| `psionic/lib/whisper/search.coax` | beam search, temperature fallback, language detection, the previous-text prompt | next (#12619, #12620) |
-| `psionic/tests/whisper_oracle.c` | the oracle: links libwhisper, writes reference logits and transcripts | next (#12621) |
+| `psionic/lib/whisper/engine.coax` | f16 and quantized weights, tensor names and sizes, the encoder, the decoder and its caches, whisper.cpp's logit rules, seek and segments, and the `#export_c` entry points | done, checked |
+| `psionic/lib/whisper/search.coax` | beam search, temperature fallback, language detection, the prompt and the word bias | done, checked |
+| `psionic/lib/whisper/score.coax` | word error rate and timestamp drift for the harness | done, checked |
+| `psionic/lib/whisper/wav.coax` | WAV to mono f32; the resampler | done, checked |
+| `psionic/lib/whisper/device.coax` | the encoder's projections and attention as Metal kernels (`coax metal-compute`) | done, checked |
+| `psionic/platform/whisper-face.c` | the host: maps files, owns memory, threads and the GPU, calls the exports (`psionic-whisper info`, `filters`, `pcm`, `transcribe`); with `-DPSIONIC_WHISPER_LIBRARY`, the library `psionic-stt.h` declares | done |
+| `psionic/platform/whisper-build.sh` | builds `psionic-whisper` and `libpsionic-whisper.a` into `psionic/build/whisper` | done |
 
 Coax has no threads yet. The host owns them, as chapter 35's `cores.coax`
-does. Each heavy kernel (products, attention, the convolution stem, mel
-frames) is a foreign `cxwh_*` call. The host splits it into fixed ranges and
-calls the matching `psionic_whisper_*_part` export once per range. Each
-output element belongs to one range, so the transcript is byte-identical
-for 1, 8 and 16 threads.
+does. Each heavy kernel (products, attention, mel frames) is a foreign
+`cxwh_*` call. The convolutions are products over unrolled frames. The
+host cuts the call into chunks that every thread takes from one counter
+and calls the matching `psionic_whisper_*_part` export once per chunk.
+Each output element is computed by the same code whichever thread takes
+it, so the transcript is byte-identical for 1, 8 and 16 threads. With
+`--gpu`, the encoder's products and attention (calls of at least 64 rows)
+run `device.coax`'s kernels on the shared weight and work buffers instead;
+the decoder stays on the CPU, where a launch costs more than its work.
 
 ## Command line
 
@@ -162,12 +179,14 @@ openagents transcribe fetch MODEL
 **Backends.** Both read the same cached ggml file.
 
 - `--backend psionic` runs `psionic-whisper`, which the CLI builds from its
-  checkout on first use, and again when a source is newer. It decodes
-  greedily, so `--language auto` is refused until language detection lands.
+  checkout on first use, and again when a source is newer. It reads WAV
+  files itself and other files through ffmpeg, runs the encoder on the GPU
+  when there is one, and takes `--language auto`, `--prompt TEXT` and
+  `--words A,B,C`.
 - `--backend whispercpp` is the interim default. It runs whisper.cpp's
   `whisper-cli`, and is labelled interim in the status line and the JSON.
-  It is removed in the change that makes Psionic the default, once beam
-  search matches (issue
+  It is removed in the change that makes Psionic the default, once Psionic
+  is also faster (issue
   [#12623](https://github.com/OpenAgentsInc/openagents/issues/12623)).
 
 ## Engine API for in-game voice
@@ -175,37 +194,35 @@ openagents transcribe fetch MODEL
 The engine already turns microphone audio into turns. `verse/voice.coax`
 resamples it to 16 kHz, detects speech and ends a turn. The voice host
 (`verse/voice-host/speech.c`) then sends the turn's audio to
-`speech_recognize`. Today that is Google's Chirp 3, or a stand-in
-`PROVIDER_LOCAL` sentence.
-
-Psionic becomes a third provider, `PROVIDER_PSIONIC` (#12622):
+`speech_recognize`. With `voice-host --provider psionic` that runs
+Psionic's Whisper in the same process (#12622):
 
 ```c
-// verse/voice-host/speech.c
-bool speech_recognize(speech_provider p, const int16_t *pcm, size_t n, char *out, size_t cap, char *err, size_t errcap);
-//   p == PROVIDER_PSIONIC: the turn's samples as f32, then psionic_whisper_transcribe,
-//   with the model mapped and its weights loaded once at startup.
+// psionic/platform/psionic-stt.h, linked as libpsionic-whisper.a
+psionic_stt *psionic_stt_open(const char *path, int threads, int gpu, char *err, size_t errcap);
+int psionic_stt_text(psionic_stt *s, const float *samples, int64_t n, const char *words,
+                     char *out, size_t cap, char *err, size_t errcap);
 ```
 
-Exported from `psionic/lib/whisper/engine.coax` (all views; the host owns
-memory):
+- The host maps the model once at startup (`--whisper-model`, default
+  `~/.cache/openagents/models/whisper/ggml-base.en.bin`) and passes a word
+  list (`--words`, default `Psionic,Verse,OpenAgents,Coax,Coder`).
+- Calls run one at a time; the host's workers may call from any thread.
+- The voice host re-recognizes a turn every second while it is spoken, so
+  the final is usually ready when the turn ends. On base.en with the
+  encoder on the GPU, each recognition of up to 4.3 s of audio takes
+  184 to 240 ms, and the final adds 0 ms after the end of the turn. On 8
+  CPU threads one recognition takes about 600 ms.
+- Replies use the offline tone: Psionic does speech to text only.
+- `verse/voice-host/test.sh --offline` runs three psionic cases headless
+  when the model is cached: a committed fixture, a `say` clip naming
+  Psionic and the Verse, and talking over the reply.
 
-```text
-psionic_whisper_read(file: []u8, tensors: []WgTensor) -> WgModel                 // the file's directory
-psionic_whisper_net(file, model, tensors, offsets: []int, ctx: int) -> WeNet     // names, sizes, the work layout
-psionic_whisper_load(file, tensors, count, offsets, W: []f32) -> WeStatus        // weights as f32
-psionic_whisper_transcribe(net, W, work, file, model, bank, audio: []f32, cache: []f32,
-                           language: int, segs: []WsSegment, text: []u8) -> WeRun
-psionic_whisper_format(segs, format, model, language, out: []u8) -> int
-```
-
-- Turns are at most 30 s, the voice engine's maximum turn length, so a turn
-  is one window and needs no seek.
-- For latency, a short turn encodes only the frames it has. This is
-  whisper.cpp's `audio_ctx`: a 5 s turn uses 250 of the 1,500 positions. The
-  parity tests cover both the full and the shortened context.
-- Aethyr programs see the same thing as a Coax procedure. They do not call
-  the C host.
+The engine exports the same steps to Coax programs, all on views the host
+owns: `psionic_whisper_read`, `psionic_whisper_net`, `psionic_whisper_load`,
+`psionic_whisper_transcribe` and `psionic_whisper_format` in
+`psionic/lib/whisper/engine.coax`. Aethyr programs see them as Coax
+procedures and do not call the C host.
 
 ## Targets and how we measure them
 
@@ -220,7 +237,7 @@ on the CPU (`-ng`) for speed.
 | Encoder and decoder | first-token logits within 1e-2 of whisper.cpp's (`whisper_get_logits`) on every fixture | `whisper_oracle.c` writes them |
 | Transcript | greedy tokens identical to whisper.cpp's on the fixture set; WER no more than 0.5 points above whisper.cpp at the same size | `openagents transcribe --backend psionic` against `--backend whispercpp` |
 | Speed, CPU | within 2× of whisper.cpp's CPU time at the same thread count for `tiny.en` and `base.en`; real-time factor under 0.1 for `base.en` | the face's timer |
-| Speed, in game | under 300 ms for a 5 s turn with `base.en` on the CPU | the voice host's turn log |
+| Speed, in game | under 300 ms for a 5 s turn with `base.en` | the voice host's turn log |
 
 whisper.cpp baseline on an Apple M5 Max (18 cores), 8 threads, CPU only
 (`-ng`), measured 2026-11-01 on an 8.4 s clip of `say` speech:
@@ -298,8 +315,8 @@ The corpus:
   against a hand-corrected transcript. It is private: only its numbers are
   published here.
 
-Before beam search, 2026-11-01, Apple M5 Max, 8 threads, CPU only. Psionic
-decodes greedily:
+Before beam search, 2026-11-01, Apple M5 Max, 8 threads. Psionic decoded
+greedily on the CPU, and whisper.cpp ran on its default device, the GPU:
 
 | File | Model | Words | Psionic WER | whisper.cpp WER | Between | Drift (mean / max) | Psionic | whisper.cpp | Psionic peak | whisper.cpp peak |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -322,6 +339,87 @@ decodes greedily:
 | cut.wav | base.en | 395 | 6.84% | 7.09% | 4.67% | 1319 / 3420 ms | 8693 ms | 1226 ms | 517 MB | 421 MB |
 | **all** | base.en | 1300 | 4.31% | 4.46% |  |  | 25878 ms | 4547 ms | | |
 
+After, 2026-11-01, Apple M5 Max, 8 threads, both on the CPU
+(`--device cpu`, which runs `whisper-cli -ng`):
+
+| File | Model | Words | Psionic WER | whisper.cpp WER | Between | Drift (mean / max) | Psionic | whisper.cpp | Psionic peak | whisper.cpp peak |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| gettysburg-loud-noise.wav | tiny.en | 268 | 6.72% | 6.72% | 0.75% | 140 / 800 ms | 2706 ms | 2191 ms | 308 MB | 406 MB |
+| gettysburg-noise.wav | tiny.en | 268 | 4.48% | 5.22% | 3.69% | 391 / 1240 ms | 2507 ms | 1850 ms | 306 MB | 406 MB |
+| gettysburg.wav | tiny.en | 268 | 1.12% | 0.75% | 0.37% | 39 / 200 ms | 2173 ms | 1833 ms | 307 MB | 406 MB |
+| jfk.wav | tiny.en | 22 | 0.00% | 0.00% | 0.00% | 4000 / 8000 ms | 412 ms | 403 ms | 278 MB | 224 MB |
+| say-fox.wav | tiny.en | 23 | 4.35% | 4.35% | 0.00% | 0 / 0 ms | 417 ms | 398 ms | 278 MB | 225 MB |
+| say-names-fast.wav | tiny.en | 28 | 39.29% | 42.86% | 13.33% | 330 / 660 ms | 479 ms | 445 ms | 279 MB | 225 MB |
+| say-names.wav | tiny.en | 28 | 32.14% | 32.14% | 6.67% | 10 / 20 ms | 486 ms | 454 ms | 279 MB | 225 MB |
+| cut.wav | tiny.en | 395 | 6.58% | 6.58% | 4.19% | 457 / 3640 ms | 5061 ms | 3726 ms | 319 MB | 426 MB |
+| **all** | tiny.en | 1300 | 6.15% | 6.31% |  |  | 14241 ms | 11300 ms | | |
+| gettysburg-loud-noise.wav | base.en | 268 | 3.36% | 2.99% | 0.74% | 96 / 1720 ms | 3804 ms | 3251 ms | 557 MB | 542 MB |
+| gettysburg-noise.wav | base.en | 268 | 1.12% | 1.49% | 0.37% | 445 / 3680 ms | 3783 ms | 3162 ms | 556 MB | 541 MB |
+| gettysburg.wav | base.en | 268 | 0.75% | 0.75% | 0.00% | 7 / 120 ms | 3793 ms | 3179 ms | 554 MB | 541 MB |
+| jfk.wav | base.en | 22 | 0.00% | 0.00% | 0.00% | 0 / 0 ms | 810 ms | 651 ms | 507 MB | 337 MB |
+| say-fox.wav | base.en | 23 | 0.00% | 0.00% | 0.00% | 0 / 0 ms | 834 ms | 681 ms | 506 MB | 335 MB |
+| say-names-fast.wav | base.en | 28 | 28.57% | 32.14% | 3.33% | 100 / 200 ms | 895 ms | 720 ms | 508 MB | 338 MB |
+| say-names.wav | base.en | 28 | 28.57% | 28.57% | 0.00% | 7 / 20 ms | 915 ms | 767 ms | 509 MB | 335 MB |
+| cut.wav | base.en | 395 | 6.08% | 6.33% | 4.20% | 1432 / 3720 ms | 7585 ms | 5964 ms | 567 MB | 560 MB |
+| **all** | base.en | 1300 | 4.15% | 4.31% |  |  | 22419 ms | 18375 ms | | |
+
+After, both on the GPU (`--device gpu`: Psionic's encoder on Metal,
+whisper.cpp's default Metal build):
+
+| File | Model | Words | Psionic WER | whisper.cpp WER | Between | Drift (mean / max) | Psionic | whisper.cpp | Psionic peak | whisper.cpp peak |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| gettysburg-loud-noise.wav | tiny.en | 268 | 6.72% | 6.72% | 0.75% | 140 / 800 ms | 1695 ms | 678 ms | 377 MB | 295 MB |
+| gettysburg-noise.wav | tiny.en | 268 | 4.48% | 4.10% | 2.21% | 1771 / 10240 ms | 1836 ms | 662 ms | 377 MB | 290 MB |
+| gettysburg.wav | tiny.en | 268 | 1.12% | 1.12% | 0.00% | 12 / 120 ms | 1654 ms | 649 ms | 377 MB | 296 MB |
+| jfk.wav | tiny.en | 22 | 0.00% | 0.00% | 0.00% | 20 / 40 ms | 251 ms | 198 ms | 369 MB | 238 MB |
+| say-fox.wav | tiny.en | 23 | 4.35% | 4.35% | 0.00% | 0 / 0 ms | 268 ms | 211 ms | 368 MB | 243 MB |
+| say-names-fast.wav | tiny.en | 28 | 39.29% | 32.14% | 13.33% | 190 / 380 ms | 325 ms | 214 ms | 368 MB | 238 MB |
+| say-names.wav | tiny.en | 28 | 32.14% | 32.14% | 6.67% | 10 / 20 ms | 338 ms | 221 ms | 369 MB | 237 MB |
+| cut.wav | tiny.en | 395 | 6.58% | 7.09% | 4.46% | 2435 / 8360 ms | 3798 ms | 1176 ms | 389 MB | 316 MB |
+| **all** | tiny.en | 1300 | 6.15% | 6.08% |  |  | 10165 ms | 4009 ms | | |
+| gettysburg-loud-noise.wav | base.en | 268 | 3.36% | 2.99% | 0.74% | 96 / 1720 ms | 2347 ms | 831 ms | 648 MB | 408 MB |
+| gettysburg-noise.wav | base.en | 268 | 1.12% | 1.49% | 0.37% | 445 / 3680 ms | 2326 ms | 781 ms | 648 MB | 407 MB |
+| gettysburg.wav | base.en | 268 | 0.75% | 0.75% | 0.00% | 323 / 1320 ms | 2317 ms | 786 ms | 648 MB | 407 MB |
+| jfk.wav | base.en | 22 | 0.00% | 0.00% | 0.00% | 0 / 0 ms | 381 ms | 220 ms | 639 MB | 347 MB |
+| say-fox.wav | base.en | 23 | 0.00% | 0.00% | 0.00% | 10 / 20 ms | 379 ms | 219 ms | 639 MB | 346 MB |
+| say-names-fast.wav | base.en | 28 | 28.57% | 28.57% | 0.00% | 2040 / 4080 ms | 441 ms | 236 ms | 639 MB | 346 MB |
+| say-names.wav | base.en | 28 | 28.57% | 28.57% | 0.00% | 7 / 20 ms | 485 ms | 251 ms | 639 MB | 346 MB |
+| cut.wav | base.en | 395 | 6.08% | 7.09% | 4.42% | 1246 / 3840 ms | 4043 ms | 1171 ms | 660 MB | 421 MB |
+| **all** | base.en | 1300 | 4.15% | 4.46% |  |  | 12719 ms | 4495 ms | | |
+
+What the numbers say:
+
+- Accuracy. In total, Psionic's word error rate is below whisper.cpp's in
+  three of the four runs: 6.15% against 6.31% (`tiny.en`, CPU), 4.15%
+  against 4.31% (`base.en`, CPU) and 4.15% against 4.46% (`base.en`,
+  GPU). On `tiny.en` on the GPU it is 6.15% against 6.08%. Psionic gives
+  the same transcript on both devices; whisper.cpp's Metal run scores
+  differently from its own CPU run. Per file, Psionic is behind by one
+  word on `gettysburg.wav` (`tiny.en`, CPU) and on
+  `gettysburg-loud-noise.wav` (`base.en`, both devices), and on
+  `gettysburg-noise.wav` and `say-names-fast.wav` against whisper.cpp's
+  Metal run with `tiny.en`. It ties or wins on every other file.
+- Names. The names clips score 28 to 39% for both backends because the
+  models do not know Psionic, Coax, Nostr or OpenAgents. With
+  `--words Psionic,Coax,Nostr,OpenAgents,Coder`, Psionic spells every
+  name right on `tiny.en` and `base.en`. `base.en` hears "Psionic" right
+  with beam search even without the list.
+- Speed on the CPU. Psionic takes 1.26× whisper.cpp's time on `tiny.en`
+  and 1.22× on `base.en` (it was 2 to 2.5× before). Its products run at
+  about 8 billion multiply-adds a second per core, the limit for Coax's
+  scalar code: bounds checks are always on and the language forbids fused
+  multiply-add, so the compiler does not vectorize them. whisper.cpp uses
+  Accelerate's matrix units.
+- Speed on the GPU. Psionic takes 2.5× whisper.cpp's time on `tiny.en` and
+  2.8× on `base.en`. Psionic runs only the encoder there. The decoder
+  makes about 100 small calls a token, and each Metal launch costs 60 to
+  70 µs, so the decoder needs fused kernels before it gains from the GPU.
+- Memory. On the CPU, for files longer than one window, Psionic's peak is
+  about 100 MB below whisper.cpp's on `tiny.en` and within 15 MB on
+  `base.en`. On short files it is 50 to 170 MB higher, because Psionic
+  keeps its weights as f32. On the GPU, Psionic's peak is 80 to 290 MB
+  higher, because the attention scores also get a buffer of their own.
+
 
 ## Checks
 
@@ -332,11 +430,15 @@ coax/bin/coax test psionic/lib/whisper/tokens.coax --library
 coax/bin/coax test psionic/lib/whisper/front.coax --library
 coax/bin/coax test psionic/lib/whisper/engine.coax --library
 coax/bin/coax test psionic/lib/whisper/score.coax --library
+coax/bin/coax test psionic/lib/whisper/search.coax --library
+coax/bin/coax test psionic/lib/whisper/wav.coax --library
+coax/bin/coax test psionic/lib/whisper/device.coax --library
 coax/bin/coax test apps/openagents-cli/transcribe-rules.coax --library
 psionic/platform/whisper-build.sh            # psionic/build/whisper/psionic-whisper
 psionic/build/whisper/psionic-whisper filters ~/.cache/openagents/models/whisper/ggml-base.en.bin
 psionic/build/whisper/psionic-whisper transcribe ~/.cache/openagents/models/whisper/ggml-base.en.bin \
   /opt/homebrew/share/whisper-cpp/jfk.wav --srt
+verse/voice-host/test.sh --offline           # includes the psionic provider
 ```
 
 ## Issues
