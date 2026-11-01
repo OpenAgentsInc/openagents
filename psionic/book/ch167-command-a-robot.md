@@ -11,8 +11,9 @@ Numerical agreement passes; the original baseline misses its nominal final-error
 and brake-recovery goals. A separately frozen nine-profile owned-plant gain
 study finds no feasible family and selects no winner. A new common damping law
 then qualifies all four original owned cases using exact command carry and one
-new brake trajectory. Prospective C/D assessment and SDK validation have not
-run. General stability and the broader planning tools remain work.
+new brake trajectory. A separate prospective validation at two frozen C/D
+poses now meets all eight fixed goal sets with no-contact SDK/own parity.
+General stability and the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
 runs operational-space control against MuJoCo. Meeting broader tracking and
@@ -1138,17 +1139,77 @@ committed cached observations only; it performs no brake collection or SDK
 execution. Its wrapper/adapter is syntax/plan/stub-routing checked here while
 the first measured numerical evidence is carried unchanged.
 
+## Test the frozen law on prospective C and D
+
+The common scheduled law qualified the four original cases. Two new reset poses were sealed before that experiment's brake result: C and D. This separate validation keeps the gains, interpolation knots, F64 operation order, step, reference displacement and goals fixed. It does not expand the nine-pair search or select a different controller. Part A still has no feasible candidate.
+
+The eight contexts are `context = pose*4 + scenario`: pose 0 is C, pose 1 is D; scenarios 0..3 are hold, nominal tracking, pulse and braking. C starts its brake with joint 7 at +2 rad/s; D uses −2 rad/s. The pulse is +3 J/rad on C and −3 on D, on joint 2 during control ticks 200..249. Every reset coordinate, reference endpoint and finger target comes from the sealed prospective descriptor. The common law always replaces joint 7 damping; no legacy brake-specific gain survives.
+
+<!-- source: psionic/examples/panda-scheduled-pd-validation.coax psv-prospective -->
+```jai
+ for pose:0..<2 {
+  // Context = pose*4 + scenario; brake is3, pulse is2, nominal is1.
+  initial:[1]PntInitial;fixture:[64]f64;reference:[1]PsvReference;
+  #assert pnt_ok(psv_initial(pose*4+3,initial[..]));
+  #assert pnt_ok(psv_fixture(pose*4+2,fixture[..]));
+  #assert pnt_ok(psv_reference(pose*4+1,135,reference[..]));
+  print("pose %: reset q1 % micro-rad; brake v7 % micro-rad/s; pulse2 % micro-J/rad\n",pose,psv_example_micro(initial[0].q[0]),psv_example_micro(initial[0].v[6]),psv_example_micro(fixture[56]));
+  print("midpoint: q1 % micro-rad; v1 % micro-rad/s; tick %/%\n",psv_example_micro(reference[0].reference.angle[0].value),psv_example_micro(reference[0].reference.rate[0].value),reference[0].reference_tick,reference[0].reference_steps);
+ }
+ reference:=[1]PsvReference.[psv_reference_poison()];old:=reference[0];status:=psv_reference(8,135,reference[..]);#assert status.stage==2 && status.code==1;psv_reference_same(reference[0],old);
+ print("unknown context: refused; complete typed reference unchanged\n");
+```
+
+This pure example queries reset/reference metadata and an atomic refusal. It executes no controller, plant, SDK, rendering or neural model. Its transcript was written from the sealed factory and independent midpoint reference table before the first debug/release executions.
+
+```shell
+coax/bin/coax run psionic/examples/panda-scheduled-pd-validation.coax
+COAX=coax/bin/coax psionic/tests/robotics/check-panda-scheduled-pd-validation.sh /tmp/new-panda-cd-cached
+```
+
+The new test-only Coax consumer owns the C/D factory, signed pulse replacement, command/step composition and score adaptation. It first checks every view shape, then context, then tick. The command snapshots all nine positions and rates, calls the unchanged common controller, and replaces D's external pulse **before** either publication or plant application. The owned plant applies each actuator force once; Pa's predicted force is a diagnostic, not another added force. Complete command and plant outputs publish together only after success; underlying stage and status remain distinct.
+
+Scoring uses the current control reference at tick `k` and the post-state reference at `k+1`. Initial peak speeds and previous-velocity lineage come from each actual new reset, including D's negative brake velocity. Source margins include the initial state and every admitted post-state across all nine coordinates. The shared reduction helpers remain unchanged; the wrappers that embed the original pose are not used. Each four-case card carries its pose ID 0 or 1 in this new validation namespace. Those labels are not gain candidates. The ordered two-pose verdict requires both valid and feasible.
+
+The goals remain fixed: every scenario must meet both position error ≤0.01 rad and rate error ≤0.05 rad/s throughout post-states 626..750. Hold also requires full-run peak position drift ≤0.005 rad. Nominal tracking must beat the stationary-reference comparator in SSE. Feasibility is separate from numerical parity, with no tolerance or goal relaxation after results.
+
+The first canonical SDK capture and own fresh-feedback run each completed exactly 6,000 steps (eight resets × 750), once each. There is no shadow plant. Every fixed case is valid and feasible in both datasets; the ordered two-pose verdict is `[1,1]`. The terminal ratio is the maximum of `abs(q_error)/0.01` and `abs(rate_error)/0.05` over the frozen final 125 post-states; a ratio ≤1 passes.
+
+| Pose | Scenario | SDK terminal ratio | Own terminal ratio | Controller-clipped coordinates | Goals |
+| --- | --- | ---: | ---: | ---: | --- |
+| C | hold | 0.0000868377 | 0.0000868377 | 0 | pass in both |
+| C | nominal | 0.7936766163 | 0.7936766163 | 0 | pass in both |
+| C | pulse | 0.7798300623 | 0.7798300623 | 0 | pass in both |
+| C | brake | 0.2356208390 | 0.2356208390 | 34 | pass in both |
+| D | hold | 0.0000424217 | 0.0000424217 | 0 | pass in both |
+| D | nominal | 0.9710715211 | 0.9710715211 | 0 | pass in both |
+| D | pulse | 0.9483775273 | 0.9483775273 | 0 | pass in both |
+| D | brake | 0.2478364627 | 0.2478364627 | 35 | pass in both |
+
+The closest case is D nominal: SDK ratio 0.9710715211, leaving 0.0289284789 normalized margin. This is a measured pass at two fixed poses and a fixed horizon, not a global stability certificate. All actuator-stage control/force clipping counters are zero; the brake has 34 controller-clipped coordinates on C and 35 on D. The nominal stationary-SSE comparator and hold-drift goals pass separately. No acceptance goal was changed after measurement.
+
+Three cached host profiles agree byte for byte without repeating the plant runs. Status, clipping, reference and pulse metadata match exactly; all 12,000 schedule records match the independent law and there are zero cross-stream regime differences. SDK-versus-own differences are at most 4.441e−16 rad in arm position, 4.111e−15 rad/s in arm velocity and 6.040e−14 J/rad in control. The independent audit observes 210,000 SDK PD fields (maximum error 4.619e−14) and 54,000 actuator fields (numerically exact). Case metrics differ by at most 6.040e−14 within the frozen mixed budget; 27 trace and 11 score reader poisons are refused.
+
+The C/D brake peak arm effective accelerations are 41.6233 and 41.0303 rad/s², measured as state `Δv/0.002`, not SDK `qacc`. Reference rate/acceleration caps do not bound those actual plant quantities. A terminal-window pass does not assert permanent settling, collision protection, or hardware behavior.
+
+
+Sixteen new check groups close 263 actual emitted authority sites: 131 control, 45 score and 87 public composition/verdict, all killed. Two new compiler witnesses refuse returning a reference angle as a rate or a rate as acceleration. The first observational and compile-only failures are retained. One isolated successful D-negative-pulse VM step qualifies new wiring; it is separate from the canonical native experiment counters. The unchanged scalar law and older arithmetic gates are carried, not repeated. These counts do not claim full Quantity-token mutation coverage or compiler-enforced bounded control.
+
+The raw state, fixed factory/reference and parametric metric helpers remain source-visible and unsealed. Their preconditions require admitted context/tick, finite source-profile state, coherent initial/reference data and the documented metric domains. Case/candidate PODs are observations, not trajectory or control-authority certificates. This component concerns the fixed unconstrained control/physics profile. It adds no contacts, collision protection, generic simulator, NN policy, hardware result or nonlinear stability proof.
+
+Detailed inputs and evidence: [validation fixture](../fixtures/robotics/panda-scheduled-pd-validation/README.md).
+
 ## The remaining control and planning layers
 
 The following sections are design work; the position and force queries above
 do not qualify these complete control and planning tools.
 
 
-- Prospective C/D assessment and broader nonlinear gain, disturbance and
-  saturation acceptance beyond the four original cases. The baseline misses
-  and nine-pair no-winner result remain historical evidence; the separate
-  common schedule passes the original-case goals without qualifying unseen
-  geometry, SDK parity, stability or hardware.
+- Broader nonlinear gain, disturbance and saturation acceptance beyond the
+  original cases and the two frozen C/D poses. Those prospective cases now
+  pass the fixed no-contact SDK/own profile; the baseline misses and nine-pair
+  no-winner result remain historical evidence. This does not qualify arbitrary
+  geometry, contacts, stability or hardware.
 - Finite, range-preserving nullspace steps and their integration with pose IK,
   beyond the delivered linearized posture projection.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
@@ -1162,8 +1223,8 @@ The typed PD query supplies this force equation. The isolated rotor above
 qualifies its sampled constant-inertia response. The four nonlinear cases use
 the owned coupled dynamics at a declared 0.002-second step. The bounded gain
 study above reports no feasible family, while the separate common schedule
-passes the original-case goal set. Prospective assessment and broader gain/
-tracking acceptance remain work:
+passes the original-case goal set and a separate two-pose C/D validation with
+no-contact SDK/own parity. Broader gain/tracking acceptance remains work:
 
 ```jai
 τ = K_p (q_ref − q) + K_d (q̇_ref − q̇) + g(q)
@@ -1208,8 +1269,9 @@ goals remain planned.
   and saturation profiles. The measured four-case hold passes its drift goal,
   while its baseline nominal final error and brake recovery miss their goals.
   The fixed nine-profile study still has no feasible family. The separate common
-  schedule passes all four original cases; prospective C/D and SDK validation
-  remain unexecuted. The isolated rotor/Jury result remains separate evidence.
+  schedule passes all four original cases and all eight fixed C/D cases, with
+  no-contact SDK/own parity. Broader geometry, contact and fault acceptance
+  remain work. The isolated rotor/Jury result remains separate evidence.
 - Finite nullspace-step policy and pose-IK integration, plus broader behavior
   near singularities and the principal cut. The delivered posture query has
   explicit numerical rank/residual refusal; it does not qualify a finite motion.

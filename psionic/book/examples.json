@@ -1182,6 +1182,16 @@
       ]
     },
     {
+      "source": "psionic/examples/panda-scheduled-pd-validation.coax",
+      "chapter": "psionic/book/ch167-command-a-robot.md",
+      "stdout": "psionic/examples/panda-scheduled-pd-validation.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/panda-kinematics.coax",
       "chapter": "psionic/book/ch170-close-the-simulated-control-loop.md",
       "stdout": "psionic/fixtures/panda-kinematics.out",
