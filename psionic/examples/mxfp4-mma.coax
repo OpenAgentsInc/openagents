@@ -1,0 +1,57 @@
+#import "Basic";
+#load "../lib/device/mxfp4-mma-plan.coax";
+
+// book:begin example
+// Chapter 69 on the CPU: stage one packed byte, split one activation, run a
+// small expert product through the three MXFP4-BF16-MMA-v1 kernels and
+// chapter 66's f32 kernels, compare both with the binary64 reference, then
+// plan launches at gpt-oss-20b's shape.
+main :: () {
+    word:=mm_pair(0xa3,gk_power(128));
+    print("byte 0xa3 at scale 128: fragment word 0x");
+    digits:="0123456789abcdef";
+    for i:0..<8 {d:=cast(int)((word>>cast(u32)(28-4*i))&15);print("%",digits[d..<d+1]);}
+    print(", columns % and %\n",f32_from_bits(word<<16),f32_from_bits((word>>16)<<16));
+    x:=[2]f32.[1.1,0];hi:[1]u32;lo:[1]u32;
+    mm_split(0,2,1,1,0,x[..],hi[..],lo[..]);
+    h:=f32_from_bits(hi[0]<<16);l:=f32_from_bits(lo[0]<<16);
+    print("f32 1.1 splits into % + %, % from it\n",h,l,f64(x[0])-f64(h)-f64(l));
+
+    // One expert of 16 rows by 32 columns from a fixed byte pattern, one
+    // token: 4 tensor-core instructions per output.
+    rows:=16;cols:=32;
+    packed:[256]u8;scales:[16]u8;bias:[16]u16;ids:=[1]int.[0];input:[32]f32;
+    mm_fill(packed[..],scales[..],bias[..]);mm_inputs(input[..]);
+    limbs_hi:[128]u32;limbs_lo:[128]u32;partial:[16]f32;marks:[16]u8;out:[16]f32;flags:[16]u8;
+    n:=mm_run(rows,cols,1,1,1,0,packed[..],scales[..],ids[..],bias[..],input[..],limbs_hi[..],limbs_lo[..],partial[..],marks[..],out[..],flags[..]);
+    words:[32]u64;for i:0..<32 {w:u64=0;for b:0..<8 {w|=cast(u64)packed[i*8+b]<<cast(u64)(8*b);}words[i]=w;}
+    gp:[256]f32;f32_out:[16]f32;f32_flags:[16]u8;
+    for i:0..<rows*16 {gk_mx_part(i,rows,cols,16,0,words[..],scales[..],ids[..],input[..],gp[..]);}
+    for i:0..<rows {gk_mx_finish(i,rows,16,ids[..],gp[..],bias[..],f32_out[..],f32_flags[..]);}
+    worst:f64=0;worst_f32:f64=0;within:=0;agree:=0;
+    for r:0..<rows {
+        ref:=mm_reference(rows,cols,0,0,r,0,0,packed[..],scales[..],bias[..],input[..]);
+        e:=abs(f64(out[r])-ref.value)/ref.magnitude;if e>worst {worst=e;}
+        g:=abs(f64(f32_out[r])-ref.value)/ref.magnitude;if g>worst_f32 {worst_f32=g;}
+        if abs(f64(out[r])-ref.value)<=mm_bound(n,ref.magnitude) {within+=1;}
+        if mm_rule_66(out[r],f32_out[r]) {agree+=1;}
+    }
+    print("row 0: MMA %, f32 %, binary64 %\n",out[0],f32_out[0],mm_reference(rows,cols,0,0,0,0,0,packed[..],scales[..],bias[..],input[..]).value);
+    print("% of % rows within the frozen bound (% of sum |w x| for % instructions); worst MMA error %, worst f32 error %\n",
+        within,rows,mm_bound(n,1),n,worst,worst_f32);
+    print("chapter 66's rule holds for % of % rows\n",agree,rows);
+
+    print("profile %\n",MM_PROFILE);
+    rtx4080:=DaDevice.{major=8,minor=9,max_threads=1024,max_shared=49152};
+    sm75:=DaDevice.{major=7,minor=5,max_threads=1024,max_shared=49152};
+    p:=mm_plan(5760,2880,1,4,4,rtx4080);
+    print("first expert projection, 1 token, 4 slots, 4 slices on compute capability 8.9: %, % warps, % instructions per accumulator\n",
+        mm_text(p),p.part_items,p.instructions);
+    p=mm_plan(2880,2880,32,4,1,rtx4080);
+    print("second expert projection, 32 tokens per slot, 1 slice: %, % warps, % instructions per accumulator\n",
+        mm_text(p),p.part_items,p.instructions);
+    print("compute capability 7.5: %\n",mm_text(mm_plan(5760,2880,1,4,4,sm75)));
+    print("2880 columns in 7 slices: %\n",mm_text(mm_plan(5760,2880,1,4,7,rtx4080)));
+    print("5761 rows: %\n",mm_text(mm_plan(5761,2880,1,4,4,rtx4080)));
+}
+// book:end example

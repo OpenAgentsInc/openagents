@@ -1,0 +1,286 @@
+// Chapter 69: original MXFP4 expert products on the tensor cores, under the
+// named profile MXFP4-BF16-MMA-v1. Coefficients are decoded exactly into BF16
+// fragments, activations are split into two BF16 limbs, and
+// cu_mma_bf16_16x8x16 accumulates in f32. Chapter 66's gpt-oss-cuda-f32-v1
+// kernels (gk_mx_part, gk_mx_finish) stay as they are: this file loads them
+// as the reference profile and never replaces them. The launch plan and
+// device admission are in mxfp4-mma-plan.coax: a kernel file holds only
+// what `coax cuda` accepts.
+#load "../gptoss/device-kernels.coax";
+#load "warp.coax";
+#load "../../fixtures/mxfp4-vectors.coax";
+#load "../../tests/mxfp4-mma-helpers.coax";
+#authority;
+
+// book:begin profile
+MM_PROFILE :: "MXFP4-BF16-MMA-v1";
+// The bound, frozen before any comparison: with n tensor-core
+// instructions adding into one f32 accumulator, every output y satisfies
+//   |y - y64| <= (2^-16 + (n+2) * 2^-20) * (sum |w x| + |bias|)
+// where y64 is the binary64 sum of the exactly decoded coefficients times
+// the f32 activations, plus the bias. 2^-17 covers the two-limb split of x
+// (chapter 37), 2^-20 per instruction covers the tensor core's own f32
+// accumulation (chapter 37's frozen conformance bound), and the rest covers
+// the f64 slice sum, the final f32 rounding and the bias add.
+mm_bound :: (instructions:int,magnitude:f64)->f64 {
+    return (1.0/65536.0+f64(instructions+2)/1048576.0)*magnitude;
+}
+// Two instructions (high and low limb) per 16-column step of one slice.
+mm_instructions :: (cols:int,slices:int)->int {return 2*(cols/16/slices);}
+// book:end profile
+
+// book:begin decode
+// One original coefficient as BF16 bits. The f32 product of an E2M1 value
+// (at most two significant bits) and a power of two is exact, and its low 16
+// bits are zero, so dropping them loses nothing.
+mm_coefficient :: (code:u8,power:f32)->u32 {
+    return f32_bits(gk_fp4(cast(u64)code)*power)>>16;
+}
+// One packed byte, two columns: the low nibble is the even column and goes
+// in the low half of the fragment word, as cu_mma_bf16_16x8x16 expects.
+mm_pair :: (byte:u8,power:f32)->u32 {
+    return mm_coefficient(byte&15,power)|(mm_coefficient(byte>>4,power)<<16);
+}
+// book:end decode
+
+// book:begin split
+// Item (slot*padded+token)*(cols/2)+p: columns 2p and 2p+1 of one token's
+// input as high and low BF16 limbs. Slot s reads x from s*stride (stride 0:
+// every slot shares one input, as the first expert projection does).
+// `padded` is tokens rounded up to 8; tokens from `tokens` to `padded` are
+// zero.
+mm_split :: (item:int,cols:int,tokens:int,padded:int,stride:int,x:[]f32,hi:[]u32,lo:[]u32) #export_c {
+    half:=cols/2;p:=item%half;row:=item/half;token:=row%padded;slot:=row/padded;h:u32=0;l:u32=0;
+    if token<tokens {
+        at:=slot*stride+token*cols+2*p;a:=x[at];b:=x[at+1];
+        ha:=dw_bf16(a);hb:=dw_bf16(b);
+        la:=dw_bf16(a-f32_from_bits(ha<<16));lb:=dw_bf16(b-f32_from_bits(hb<<16));
+        h=ha|(hb<<16);l=la|(lb<<16);
+    }
+    hi[item]=h;lo[item]=l;
+}
+// book:end split
+
+MM_TILES :: 4;   // token tiles of 8 per warp
+MM_TOKENS :: 32; // tokens per warp
+// book:begin part
+// One warp: rows r0..r0+15 of expert ids[slot] times tokens t0..t0+31 of that
+// slot, over one slice of the columns. Work item
+// ((slot*groups+group)*blocks+block)*slices+slice. Each 16-column step
+// decodes a 16x16 coefficient fragment from the packed bytes and adds A hi
+// and A lo into f32 fragments. Writes
+// partial[((slice*slots+slot)*tokens+token)*rows+row] for mm_finish, and
+// marks there 1 when the lane read a scale above 252 (chapter 60 refuses
+// them; chapter 66's kernels make such outputs non-finite instead).
+mm_part :: (item:int,rows:int,cols:int,tokens:int,slots:int,slices:int,packed:[]u8,scales:[]u8,ids:[]int,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8) #export_c {
+    slice:=item%slices;rest:=item/slices;blocks:=rows/16;block:=rest%blocks;rest=rest/blocks;
+    groups:=(tokens+MM_TOKENS-1)/MM_TOKENS;group:=rest%groups;slot:=rest/groups;
+    expert:=ids[slot];r0:=block*16;t0:=group*MM_TOKENS;nb:=cols/32;half:=cols/2;per:=cols/16/slices;
+    padded:=(tokens+7)/8*8;used:=(tokens-t0+7)/8;
+    fa:[128]u32;fb:[64]u32;fl:[64]u32;fc:[128]f32;acc:[512]f32;bad:[32]u8;
+    for s:0..<per {
+        c0:=(slice*per+s)*16;
+        for lane:0..<32 {
+            g:=lane/4;t:=lane%4;flag:=bad[lane*1];
+            for h:0..<2 {
+                blk:=(expert*rows+r0+g+8*h)*nb+c0/32;scale:=scales[blk];
+                if scale>252 {flag=1;}
+                power:=gk_power(scale);at:=blk*16+c0%32/2+t;
+                fa[lane*4+h]=mm_pair(packed[at],power);fa[lane*4+2+h]=mm_pair(packed[at+4],power);
+            }
+            bad[lane*1]=flag;
+        }
+        for tile:0..<MM_TILES {
+            if tile<used {
+                for lane:0..<32 {
+                    xb:=(slot*padded+t0+tile*8+lane/4)*half+c0/2+lane%4;
+                    fb[lane*2]=hi[xb];fb[lane*2+1]=hi[xb+4];fl[lane*2]=lo[xb];fl[lane*2+1]=lo[xb+4];
+                    for j:0..<4 {fc[lane*4+j]=acc[lane*16+tile*4+j];}
+                }
+                cu_mma_bf16_16x8x16(fa[..],fb[..],fc[..]);
+                cu_mma_bf16_16x8x16(fa[..],fl[..],fc[..]);
+                for lane:0..<32 {for j:0..<4 {acc[lane*16+tile*4+j]=fc[lane*4+j];}}
+            }
+        }
+    }
+    for lane:0..<32 {
+        for tile:0..<MM_TILES {
+            for j:0..<4 {
+                row:=r0+lane/4+8*(j/2);token:=t0+tile*8+2*(lane%4)+j%2;
+                if token<tokens {
+                    at:=((slice*slots+slot)*tokens+token)*rows+row;partial[at]=acc[lane*16+tile*4+j];marks[at]=bad[lane*1];
+                }
+            }
+        }
+    }
+}
+// book:end part
+
+// book:begin finish
+// Item (slot*tokens+token)*rows+row: the slice partials added in f64 in
+// slice order, rounded to f32, plus the expert's BF16 bias, as gk_mx_finish.
+// A slice that read a scale above 252 marks the output bad.
+mm_finish :: (item:int,rows:int,tokens:int,slots:int,slices:int,ids:[]int,partial:[]f32,marks:[]u8,bias:[]u16,out:[]f32,flags:[]u8) #export_c {
+    row:=item%rows;slot:=item/rows/tokens;sum:f64=0;
+    bad:u8=0;
+    for s:0..<slices {at:=s*slots*tokens*rows+item;sum+=f64(partial[at]);bad|=marks[at];}
+    value:=f32(sum)+gk_bf(bias[ids[slot]*rows+row]);out[item]=value;flags[item]=gk_bad(value)|bad;
+}
+// book:end finish
+
+// The independent reference for one output: the binary64 sum of the
+// chapter 60 gold coefficient bits times the f32 activations, plus the bias,
+// and the magnitude sum |w x| + |bias| that scales the bound. Slot s reads
+// its input from s*stride, token t at t*cols past that.
+MmReference :: struct {value:f64;magnitude:f64;}
+mm_reference :: (rows:int,cols:int,stride:int,expert:int,row:int,slot:int,token:int,packed:[]u8,scales:[]u8,bias:[]u16,x:[]f32)->MmReference {
+    nb:=cols/32;sum:f64=0;mag:f64=0;
+    for c:0..<cols {
+        blk:=(expert*rows+row)*nb+c/32;byte:=packed[blk*16+c%32/2];
+        code:=byte&15;if c%2==1 {code=byte>>4;}
+        w:=f64(f32_from_bits(MX_GOLD_BITS[cast(int)scales[blk]*16+cast(int)code]));
+        v:=w*f64(x[slot*stride+token*cols+c]);sum+=v;mag+=abs(v);
+    }
+    b:=f64(gk_bf(bias[expert*rows+row]));
+    return MmReference.{value=sum+b,magnitude=mag+abs(b)};
+}
+// Chapter 66's frozen comparison rule between two profiles' outputs.
+mm_rule_66 :: (candidate:f32,reference:f32)->bool {
+    return abs(f64(candidate)-f64(reference))/(1+abs(f64(reference)))<0.0005;
+}
+
+// ---- Checks.
+#test "every code and admitted scale stages as the chapter 60 gold bits, exactly" {
+    for scale:0..<253 {for code:0..<16 {
+        gold:=MX_GOLD_BITS[scale*16+code];
+        #assert gold&0xffff==0;
+        #assert mm_coefficient(cast(u8)code,gk_power(cast(u8)scale))==gold>>16;
+    }}
+    // 0xA3 at scale 128: low nibble 3 is 1.5*2 = 3, high nibble 0xA is -1*2.
+    #assert mm_pair(0xa3,gk_power(128))==0xc0004040;
+    #assert mm_pair(0x10,gk_power(0))==0x00200000;
+}
+#test "the split limbs carry each activation and pad with zero" {
+    x:=[4]f32.[1.1,-3,0.1,2.5];hi:[8]u32;lo:[8]u32;
+    for i:0..<8 {hi[i]=7;lo[i]=7;}
+    // Two slots sharing one input (stride 0), one token padded to two.
+    for i:0..<8 {mm_split(i,4,1,2,0,x[..],hi[..],lo[..]);}
+    #assert hi[0]==(0x3f8d|(0xc040<<16)) && lo[0]==dw_bf16(1.1-f32_from_bits(0x3f8d0000));
+    #assert hi[1]==(dw_bf16(0.1)|(0x4020<<16)) && lo[1]>>16==0;
+    #assert hi[2]==0 && lo[2]==0 && hi[3]==0 && lo[3]==0;
+    #assert hi[4]==hi[0] && lo[5]==lo[1] && hi[6]==0 && lo[7]==0;
+    // A stride moves the second slot's input.
+    for i:0..<2 {mm_split(i,2,1,1,2,x[..],hi[..],lo[..]);}
+    #assert hi[1]==(dw_bf16(0.1)|(0x4020<<16)) && hi[0]==(0x3f8d|(0xc040<<16));
+}
+
+#test "one 16x8x16 step with integer values is exact" {
+    // One expert, 16 rows by 32 columns, every byte 0x22 (both nibbles 1.0)
+    // at scale 127 (power 1), inputs 0..31 for token 0.
+    packed:[256]u8;scales:[16]u8;bias:[16]u16;ids:=[1]int.[0];x:[32]f32;
+    hi:[512]u32;lo:[512]u32;partial:[16]f32;marks:[16]u8;out:[16]f32;flags:[16]u8;
+    for i:0..<256 {packed[i]=0x22;}for i:0..<16 {scales[i]=127;}
+    bias[3]=0x3f80;for c:0..<32 {x[c]=f32(c);}
+    n:=mm_run(16,32,1,1,1,0,packed[..],scales[..],ids[..],bias[..],x[..],hi[..],lo[..],partial[..],marks[..],out[..],flags[..]);
+    #assert n==4;
+    // 0 + 1 + ... + 31 = 496, and row 3 has a bias of 1.
+    for r:0..<16 {#assert partial[r]==496 && flags[r]==0;}
+    #assert out[3]==497 && out[4]==496;
+}
+#test "slots, token groups, row blocks and slices meet the frozen bound and chapter 66's rule" #steps 200000000 {
+    // Three experts of 32 rows by 64 columns, two selected, 37 tokens per
+    // slot (two token groups, the second ragged), two slices.
+    rows:=32;cols:=64;tokens:=37;slots:=2;slices:=2;stride:=tokens*cols;
+    packed:[3072]u8;scales:[192]u8;bias:[96]u16;ids:=[2]int.[2,0];x:[4736]f32;
+    hi:[4096]u32;lo:[4096]u32;partial:[4736]f32;marks:[4736]u8;out:[2368]f32;flags:[2368]u8;
+    mm_fill(packed[..],scales[..],bias[..]);mm_inputs(x[..]);
+    n:=mm_run(rows,cols,tokens,slots,slices,stride,packed[..],scales[..],ids[..],bias[..],x[..],hi[..],lo[..],partial[..],marks[..],out[..],flags[..]);
+    #assert n==4;
+    // Chapter 66's f32 path for the same products, one token at a time.
+    words:[384]u64;for i:0..<384 {w:u64=0;for b:0..<8 {w|=cast(u64)packed[i*8+b]<<cast(u64)(8*b);}words[i]=w;}
+    gp:[1024]f32;gout:[64]f32;gflags:[64]u8;
+    for token:0..<tokens {
+        // Inputs for this token: slot s at s*stride+token*cols.
+        for i:0..<slots*rows*16 {gk_mx_part(i,rows,cols,16,stride,words[..],scales[..],ids[..],x[token*cols..<x.count],gp[..]);}
+        for i:0..<slots*rows {gk_mx_finish(i,rows,16,ids[..],gp[..],bias[..],gout[..],gflags[..]);}
+        for slot:0..<slots {for row:0..<rows {
+            got:=out[(slot*tokens+token)*rows+row];
+            r:=mm_reference(rows,cols,stride,ids[slot],row,slot,token,packed[..],scales[..],bias[..],x[..]);
+            #assert abs(f64(got)-r.value)<=mm_bound(n,r.magnitude);
+            #assert mm_rule_66(got,gout[slot*rows+row]);
+            #assert flags[(slot*tokens+token)*rows+row]==0;
+        }}
+    }
+}
+#test "dropping the low limb breaks the frozen bound" {
+    rows:=16;cols:=32;tokens:=8;
+    packed:[256]u8;scales:[16]u8;bias:[16]u16;ids:=[1]int.[0];x:[256]f32;
+    // Exactly 8 tokens of limbs: a ninth token would be out of bounds.
+    hi:[128]u32;lo:[128]u32;partial:[128]f32;marks:[128]u8;out:[128]f32;flags:[128]u8;
+    for i:0..<256 {packed[i]=0x22;}for i:0..<16 {scales[i]=127;}
+    // 1 + 3/1024 rounds down to BF16 1, so every low limb is 3/1024.
+    for i:0..<256 {x[i]=1.0029296875;}
+    n:=mm_run(rows,cols,tokens,1,1,cols*tokens,packed[..],scales[..],ids[..],bias[..],x[..],hi[..],lo[..],partial[..],marks[..],out[..],flags[..]);
+    r:=mm_reference(rows,cols,cols*tokens,0,0,0,5,packed[..],scales[..],bias[..],x[..]);
+    #assert abs(f64(out[5*rows])-r.value)<=mm_bound(n,r.magnitude);
+    for i:0..<128 {lo[i]=0;}
+    mm_part(0,rows,cols,tokens,1,1,packed[..],scales[..],ids[..],hi[..],lo[..],partial[..],marks[..]);
+    mm_finish(5*rows,rows,tokens,1,1,ids[..],partial[..],marks[..],bias[..],out[..],flags[..]);
+    #assert abs(f64(out[5*rows])-r.value)>mm_bound(n,r.magnitude);
+}
+#test "a scale above 252 poisons only the lanes that read it" {
+    packed:[256]u8;scales:[16]u8;bias:[16]u16;ids:=[1]int.[0];x:[32]f32;
+    hi:[512]u32;lo:[512]u32;partial:[16]f32;marks:[16]u8;out:[16]f32;flags:[16]u8;
+    for i:0..<256 {packed[i]=0x22;}for i:0..<16 {scales[i]=127;}for c:0..<32 {x[c]=1;}
+    // Row 9's only block decodes to zeros, so 2^126 cannot overflow.
+    scales[9]=253;for i:144..<160 {packed[i]=0;}
+    first:=mm_run(16,32,1,1,1,0,packed[..],scales[..],ids[..],bias[..],x[..],hi[..],lo[..],partial[..],marks[..],out[..],flags[..]);
+    #assert first==4;
+    for r:0..<16 {
+        if r==1 || r==9 {#assert flags[r]==1 && marks[r]==1;}
+        else {#assert flags[r]==0 && marks[r]==0 && out[r]==32;}
+    }
+    scales[9]=252;
+    second:=mm_run(16,32,1,1,1,0,packed[..],scales[..],ids[..],bias[..],x[..],hi[..],lo[..],partial[..],marks[..],out[..],flags[..]);
+    #assert second==4;
+    #assert flags[9]==0 && flags[1]==0 && marks[1]==0 && out[1]==32 && out[9]==0;
+}
+#test "the bound, the reference and chapter 66's rule at their edges" {
+    #assert mm_instructions(2880,4)==90 && mm_instructions(2880,1)==360 && mm_instructions(32,1)==4 && mm_instructions(64,2)==4;
+    #assert mm_bound(0,1048576)==18 && mm_bound(14,65536)==2;
+    #assert mm_rule_66(1.0004,1) && !mm_rule_66(1.0012,1) && mm_rule_66(0,0.0004) && !mm_rule_66(0,0.0006);
+    #assert !mm_rule_66(2.0016,2) && mm_rule_66(2.0014,2.0001) && !mm_rule_66(-2.0016,-2);
+    // The ratio of this pair is exactly 0.0005 in binary64: the rule is strict.
+    #assert !mm_rule_66(0.09918212890625,0.0986328125) && mm_rule_66(0.0991821,0.0986328125);
+    packed:[48]u8;scales:=[3]u8.[127,128,126];bias:=[3]u16.[0,0x3f80,0x4000];x:[64]f32;
+    for i:0..<48 {packed[i]=0x22;}for c:0..<64 {x[c]=1;}
+    // One row of 32 coefficients 1 times ones is 32.
+    r:=mm_reference(1,32,0,0,0,0,0,packed[..],scales[..],bias[..],x[..]);#assert r.value==32 && r.magnitude==32;
+    bias[0]=0xbf80;x[1]=-1;
+    r=mm_reference(1,32,0,0,0,0,0,packed[..],scales[..],bias[..],x[..]);#assert r.value==29 && r.magnitude==33;
+    // Expert 1 (scale 2, bias 1) and expert 2 (scale 1/2, bias 2); the
+    // second token starts 32 values on, the second slot at the stride.
+    for c:0..<64 {x[c]=f32(c%4);}
+    r=mm_reference(1,32,0,1,0,0,1,packed[..],scales[..],bias[..],x[..]);#assert r.value==97 && r.magnitude==97;
+    r=mm_reference(1,32,32,2,0,1,0,packed[..],scales[..],bias[..],x[..]);#assert r.value==26 && r.magnitude==26;
+    packed[33]=0x2a;r=mm_reference(1,32,0,2,0,0,0,packed[..],scales[..],bias[..],x[..]);#assert r.value==24 && r.magnitude==26;
+}
+#test "31, 32 and 33 tokens per slot fill token groups exactly, for every slot and expert" #steps 400000000 {
+    // Three experts of 16 rows by 32 columns, every coefficient one code
+    // (1.0) at scales 1, 2 and 1/2. Slot 0 uses expert 2 and slot 1 expert 1.
+    // Every input of token t in slot s is 64s + t, so each output is exact.
+    packed:[768]u8;scales:[48]u8;bias:[48]u16;ids:=[2]int.[2,1];
+    for i:0..<768 {packed[i]=0x22;}
+    for i:0..<48 {scales[i]=cast,trunc(u8)(127+(i/16+1)%3-1);}
+    x:[2112]f32;hi:[1280]u32;lo:[1280]u32;partial:[2112]f32;marks:[2112]u8;out:[1056]f32;flags:[1056]u8;
+    for tokens:31..<34 {for slices:1..<3 {
+        padded:=(tokens+7)/8*8;
+        for slot:0..<2 {for t:0..<tokens {for c:0..<32 {x[(slot*tokens+t)*32+c]=f32(64*slot+t);}}}
+        n:=mm_run(16,32,tokens,2,slices,tokens*32,packed[..],scales[..],ids[..],bias[..],x[0..<2*tokens*32],
+            hi[0..<2*padded*16],lo[0..<2*padded*16],partial[0..<slices*2*tokens*16],marks[0..<slices*2*tokens*16],out[0..<2*tokens*16],flags[0..<2*tokens*16]);
+        #assert n==4/slices;
+        for t:0..<tokens {for r:0..<16 {
+            #assert out[t*16+r]==f32(16*t) && out[(tokens+t)*16+r]==f32(64*(64+t)) && flags[t*16+r]==0;
+        }}
+    }}
+}

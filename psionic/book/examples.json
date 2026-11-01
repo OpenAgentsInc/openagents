@@ -1810,6 +1810,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/mxfp4-mma.coax",
+      "chapter": "psionic/book/ch069-original-mxfp4-products-use-matrix-hardware.md",
+      "stdout": "psionic/fixtures/mxfp4-mma.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,23 @@
+// Helpers for the checks of psionic/lib/device/mxfp4-mma.coax and
+// mxfp4-mma-plan.coax: fixed expert tensors and inputs, and a CPU run of the
+// three kernels in reverse item order. Only checks call these.
+
+// A small expert tensor: codes from a fixed byte pattern, scales 118 to 126
+// (the range of original gpt-oss weights), BF16 biases from -3/8 to 3/8.
+mm_fill :: (packed:[]u8,scales:[]u8,bias:[]u16) {
+    for i:0..<packed.count {packed[i]=cast,trunc(u8)((i*37+11)%256);}
+    for i:0..<scales.count {scales[i]=cast,trunc(u8)(118+(i*5)%9);}
+    for i:0..<bias.count {bias[i]=cast,trunc(u16)(dw_bf16(f32(i%7-3)*0.125));}
+}
+// Activations whose low BF16 limbs are not zero.
+mm_inputs :: (x:[]f32) {for i:0..<x.count {x[i]=f32((i*13)%23-11)*0.0625+f32(i%5)*0.0013;}}
+// Runs mm_split, mm_part and mm_finish on the CPU, each in reverse item
+// order, and returns the instructions per accumulator.
+mm_run :: (rows:int,cols:int,tokens:int,slots:int,slices:int,stride:int,packed:[]u8,scales:[]u8,ids:[]int,bias:[]u16,x:[]f32,hi:[]u32,lo:[]u32,partial:[]f32,marks:[]u8,out:[]f32,flags:[]u8)->int {
+    padded:=(tokens+7)/8*8;groups:=(tokens+31)/32;
+    split:=slots*padded*cols/2;part:=slots*groups*rows/16*slices;finish:=slots*tokens*rows;
+    for i:0..<split {mm_split(split-1-i,cols,tokens,padded,stride,x,hi,lo);}
+    for i:0..<part {mm_part(part-1-i,rows,cols,tokens,slots,slices,packed,scales,ids,hi,lo,partial,marks);}
+    for i:0..<finish {mm_finish(finish-1-i,rows,tokens,slots,slices,ids,partial,marks,bias,out,flags);}
+    return mm_instructions(cols,slices);
+}

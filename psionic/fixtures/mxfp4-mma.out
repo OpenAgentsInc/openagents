@@ -1,0 +1,11 @@
+byte 0xa3 at scale 128: fragment word 0xc0004040, columns 3.0 and -2.0
+f32 1.1 splits into 1.1015625 + -0.0015640259, 1.5497207641601562e-06 from it
+row 0: MMA -0.3434628, f32 -0.3434627, binary64 -0.3434626960006426
+16 of 16 rows within the frozen bound (0.0000209808349609375 of sum |w x| for 4 instructions); worst MMA error 1.7906476621127123e-06, worst f32 error 7.077312477137007e-08
+chapter 66's rule holds for 16 of 16 rows
+profile MXFP4-BF16-MMA-v1
+first expert projection, 1 token, 4 slots, 4 slices on compute capability 8.9: admitted, 5760 warps, 90 instructions per accumulator
+second expert projection, 32 tokens per slot, 1 slice: admitted, 720 warps, 360 instructions per accumulator
+compute capability 7.5: refused: cu_mma_bf16_16x8x16 needs compute capability 8.0 or later
+2880 columns in 7 slices: refused: the slices must divide the 16-column steps
+5761 rows: refused: rows must be a multiple of 16 and columns a multiple of 32
