@@ -60,11 +60,18 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
    (`filter_read_search`), `nip70`, `nip77`, `nip13`, `nip86`, `nip43`,
    `nip29`. Chapter 103 lists the wiring each needs. The Coax store also
    holds at most 2,048 events, which blocks a cutover of the production data.
-7. **Hashing and phrase limits.**
-   - The one-shot SHA-256 stops at 1 MiB, so `nip94.coax` refuses larger
-     files.
-   - `nip06_key` derives a key from a phrase with a bad checksum.
-   - `bip39_entropy` reads 12-word phrases only.
+7. **Hashing and phrase limits. Fixed.**
+   - Fixed in `ad37e4eb61`: the one-shot SHA-256 stopped at 1 MiB, so
+     `nip94.coax` refused larger files. `n94_check` now streams through
+     `sha256_init`/`update`/`final` in 1 MiB pieces (root-only mutation:
+     343 of 343 killed).
+   - Fixed in `8cf39a8851`: `nip06_key` derived a key from a phrase with a
+     bad checksum. It now refuses and zeroes the key.
+   - Fixed in `8cf39a8851`: `bip39_entropy` read 12-word phrases only. It
+     now reads 12, 15, 18, 21 and 24 words (`bip39_entropy_len` returns
+     the byte count), checked against the Trezor 18- and 24-word vectors.
+     No BIP-39 vectors are pinned under `coax/tests/vectors`, so the
+     vectors are in the test itself.
 8. **Website checks not run.** `apps/openagents-web/project-checks.coax`
    loads `nip22.coax`, which gained the `N22_KINDS` refusal (chapter 52).
    It wasn't run, because it needs the generated `projects/baked.coax`.
@@ -72,6 +79,16 @@ All 102 examples on `origin/main` at `784cbdb9bf` ran in debug and release:
    which changed the OpenAgents NIP folder digest. `profiles.py`'s pin test
    now fails (now `fb7563e7…`, pinned `2fb1f51f…`). The new text needs a
    review before it is re-pinned.
+
+## Fixed after this record
+
+- **`rs_sub_open`** (chapter 96) opened a subscription from a REQ array with
+  no closing bracket. It now refuses any message `ms_read` refused as
+  `-RS_FRAME` (`62880c1cbf`; root-only mutation: 344 of 344 killed).
+- **Example timeouts:** `scalar-mult.coax` (chapter 10) and `ecdh.coax`
+  (chapter 14) timed out at the default 60 s under parallel load. Both now
+  have a 240 s timeout (`e306f403b4`).
+- Finding 7 above, the hashing and phrase limits.
 
 ## Library changes the chapters made to existing code
 
