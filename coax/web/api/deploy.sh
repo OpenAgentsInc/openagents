@@ -45,22 +45,19 @@ export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
 stage="$work/context"
 mkdir -p "$stage/src"
 cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Dockerfile" "$stage/"
-# The Coax compiler's sources and the API's Coax modules, tracked files only
-# (the Dockerfile builds the compiler and the modules' C from them).
-git -C "$work/source" ls-files -z -- coax/src coax/bootstrap coax/lib coax/book coax/generated scripts/coax-release.sh \
-   ':(glob)coax/*' ':(glob)coax/tests/**/*.coax' ':(glob)coax/web/api/*.coax' ':(glob)coax/web/api/*.generated.*' | rsync -a --from0 --files-from=- "$work/source/" "$stage/"
-# The lines the image's compiler build gates its mutants on (Dockerfile): those
-# changed since origin/main, as in a checkout of main.
-if [[ -x "$work/source/coax/mutation-gate.sh" ]]; then
-  : > "$stage/coax/mutation-changed"
-  base="$(git -C "$work/source" merge-base HEAD origin/main 2> /dev/null || true)"
-  [[ -z "$base" ]] || (cd "$work/source/coax" && ./mutation-gate.sh changed "$work/source" "$base") > "$stage/coax/mutation-changed"
-fi
+# The API's Coax modules become C here, with this commit's checked compiler:
+# coax/build.sh installs the release-cached build for these compiler sources
+# (seconds) or bootstraps and gates it. The image used to bootstrap the whole
+# compiler with every mutant to emit three files, about 35 minutes of every
+# deploy; release.sh already gates the compiler before it ships.
+(cd "$work/source" && coax/build.sh) > "$work/coax-build.log" 2>&1 || { tail -30 "$work/coax-build.log"; exit 1; }
+mkdir -p "$stage/gen"
+for m in nip98 mesh-policy caller-policy; do
+  "$work/source/coax/bin/coax" c "$here/$m.coax" --run-steps 250000000 --library --header "$stage/gen/$m.generated.h" > "$stage/gen/$m.generated.c"
+done
 tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
 # Capture the authenticated build result, not the mutable tag's later value.
-# The compiler bootstrap is parallel on a 32-core builder, but the image has no
-# gate cache, so it mutates every compiler file: the checker alone took over
-# 44 minutes on 2026-11-01. The limit is two hours.
+# The image compiles C only (the Coax modules arrive as C in gen/).
 gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$tag" --format=json --suppress-logs --quiet \
   --machine-type e2-highcpu-32 --timeout 7200s \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
