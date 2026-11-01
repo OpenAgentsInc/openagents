@@ -81221,7 +81221,7 @@ CK_spatial_fixture :: (c:CK_Context) {
 // Return-origin lower bounds and a separate sticky incompleteness bit. This
 // diagnostic pass grants no lifetime/retention permission to incomplete paths.
 CB_Result :: struct {count:int;incomplete:bool;}
-CB_State :: struct {queries:int;origins:int;work:int;depth:int;loc:CK_Loc;}
+CB_State :: struct {queries:int;origins:int;work:int;depth:int;loc:CK_Loc;field_type:int;field_block:int;field_head:int;field_row:int;}
 CB_Context :: struct {c:CK_Context;queries:[]CK_BorrowQuery;origins:[]BS_Origin;state:[]CB_State;retain_classes:bool;retain_fields:bool;}
 CB_Place :: struct {decl:int;path:BS_Path;}
 CK_borrow_caps :: (nodes:int)->CK_BorrowCaps #export_c {
@@ -81259,18 +81259,42 @@ CB_field :: (b:CB_Context,type:int,index:int)->int {
  if type<16 || type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}
  if b.c.types[type].kind!=CK_Kind.struct_ || index<0 || b.state[0].queries<0 || b.state[0].queries>b.queries.count {CK_resource(b.c,b.state[0].loc);return 0;}
  head:=CB_fields(b,type);if head<2 || head>b.c.state[0].used || b.c.nodes[head].kind!=CK_Tag.field {CK_resource(b.c,b.state[0].loc);return 0;}link:=b.c.types[type].retain_fields;block:=index/8;offset:=index%8;row:=0;field:=0;
+ if link<0 || link>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return 0;}
+ // The hint selects a previously validated row, never a result or an origin
+ // query. Its immutable keys and observed nonzero Type head must still match;
+ // the common loop charges and revalidates the selected row and its payload.
+ // CR_run's existing Type-head reset invalidates every prior successful hint.
+ hinted:=link!=0 && b.state[0].field_type==type && b.state[0].field_block==block && b.state[0].field_head==link;
+ if hinted {link=b.state[0].field_row;if link==0 {CK_resource(b.c,b.state[0].loc);return 0;}}
  while link!=0 {
   if link<1 || link>b.state[0].queries {CK_resource(b.c,b.state[0].loc);return 0;}if !CB_tick(b,b.state[0].loc) {return 0;}q:=b.queries[link-1];
   if q.kind!=4 || q.decl!=type || q.type!=b.c.types[type].decl || q.status!=2 || q.count!=head || q.retain_classes || q.start<0 || q.path.count!=0 || q.next<0 || q.next>=link {CK_resource(b.c,b.state[0].loc);return 0;}
   for i:0..<8 {if q.path.steps[i].kind!=0 {CK_resource(b.c,b.state[0].loc);return 0;}}
-  if q.start==block {row=link;field=q.path.steps[offset].index;break;}link=q.next;
+  if q.start==block {row=link;field=q.path.steps[offset].index;break;}if hinted {CK_resource(b.c,b.state[0].loc);return 0;}link=q.next;
  }
  if field==0 {
-  if row==0 && b.state[0].queries>=b.queries.count {CK_resource(b.c,b.state[0].loc);return 0;}field=CB_at(b,head,index);if field==0 {return 0;}
+  if row==0 && b.state[0].queries>=b.queries.count {CK_resource(b.c,b.state[0].loc);return 0;}
+  walk_head:=head;walk_index:=index;
+  // A filled lower slot names this frozen layout's exact earlier ordinal.
+  // Validate that cached field before following its links; the original walk
+  // still charges and validates every node that remains to be traversed.
+  if row!=0 {
+   prior:=offset;
+   while prior>0 {
+    prior-=1;cached:=b.queries[row-1].path.steps[prior].index;
+    if cached!=0 {
+     if cached<2 || cached>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return 0;}
+     predecessor:=b.c.nodes[cached];if predecessor.kind!=CK_Tag.field || predecessor.type<=CK_NONE || predecessor.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}
+     walk_head=cached;walk_index=offset-prior;break;
+    }
+   }
+  }
+  field=CB_at(b,walk_head,walk_index);if field==0 {return 0;}
  }else {if field<2 || field>b.c.state[0].used {CK_resource(b.c,b.state[0].loc);return 0;}}
  f:=b.c.nodes[field];if f.kind!=CK_Tag.field || f.type<=CK_NONE || f.type>=b.c.state[0].type_count {CK_resource(b.c,b.state[0].loc);return 0;}
- if row==0 {slot:=b.state[0].queries;value:=CK_BorrowQuery.{kind=4,decl=type,type=b.c.types[type].decl,status=2,start=block,count=head,next=b.c.types[type].retain_fields};value.path.steps[offset].index=field;b.queries[slot]=value;b.state[0].queries+=1;b.c.types[type].retain_fields=slot+1;}
+ if row==0 {slot:=b.state[0].queries;value:=CK_BorrowQuery.{kind=4,decl=type,type=b.c.types[type].decl,status=2,start=block,count=head,next=b.c.types[type].retain_fields};value.path.steps[offset].index=field;b.queries[slot]=value;b.state[0].queries+=1;b.c.types[type].retain_fields=slot+1;row=slot+1;}
  else if b.queries[row-1].path.steps[offset].index==0 {b.queries[row-1].path.steps[offset].index=field;}
+ b.state[0].field_type=type;b.state[0].field_block=block;b.state[0].field_head=b.c.types[type].retain_fields;b.state[0].field_row=row;
  return field;
 }
 CB_type :: (b:CB_Context,type:int,path:BS_Path)->int {
@@ -84937,4 +84961,130 @@ CR_run :: (b:CB_Context) {
  raw.retain_fields=true;
  if b.c.retain_effects.count==0 {effects:[128]CK_RetainEffect;CR_execute(raw,effects[..]);}
  else {CR_execute(raw,b.c.retain_effects);}
+}
+
+// Preauthored resource-admission contract: 64 ascending lookups have 512 work
+// left (eight per requested field). Raw full-list walks need at least 2080.
+#forall "field predecessor ascending admission preserves both source modes and raw A1" mode:0..<4 {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=40};
+ ids:=[64]int.[40,57,74,91,44,61,78,95,48,65,82,99,52,69,86,103,56,73,90,43,60,77,94,47,64,81,98,51,68,85,102,55,72,89,42,59,76,93,46,63,80,97,50,67,84,101,54,71,88,41,58,75,92,45,62,79,96,49,66,83,100,53,70,87];for i:0..<64 {nodes[ids[i]]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else ids[i+1]};}
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=211,column=9,offset=21109};
+ b.retain_fields=mode<2;b.retain_classes=mode%2==1;work[0].work=1048064;seen:=0;
+ for i:0..<64 {field:=CB_field(b,16,i);if state[0].fatal {break;}#assert field==ids[i];seen+=1;}
+ if mode<2 {#assert seen==64 && !state[0].fatal && state[0].error_count==0;}
+ else {#assert seen<64 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==211 && errors[0].loc.column==9;}
+}
+
+// Nonmonotonic node IDs prevent ordinal arithmetic from inventing field IDs.
+#forall "field predecessor sparse descending and block endpoints return literal ordinals" mode:0..<4 {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=40};
+ ids:=[64]int.[40,57,74,91,44,61,78,95,48,65,82,99,52,69,86,103,56,73,90,43,60,77,94,47,64,81,98,51,68,85,102,55,72,89,42,59,76,93,46,63,80,97,50,67,84,101,54,71,88,41,58,75,92,45,62,79,96,49,66,83,100,53,70,87];for i:0..<64 {nodes[ids[i]]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else ids[i+1]};}
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=211,column=9,offset=21109};
+ b.retain_fields=mode<2;b.retain_classes=mode%2==1;
+ for i:0..<64 {index:=ifx mode%2==0 then (i*17)%64 else 63-i;#assert CB_field(b,16,index)==ids[index] && !state[0].fatal;}
+ #assert CB_field(b,16,7)==ids[7] && CB_field(b,16,8)==ids[8] && CB_field(b,16,63)==ids[63] && CB_field(b,16,0)==ids[0] && state[0].error_count==0;
+}
+
+// The nearest cached ordinal6 reaches ordinal7 with three admitted ticks:
+// one existing-row probe and a two-node CB_at walk. The pool is actually full.
+#forall "field predecessor fills an existing full-pool slot from the nearest lower ordinal" classes:bool {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=40};
+ ids:=[64]int.[40,57,74,91,44,61,78,95,48,65,82,99,52,69,86,103,56,73,90,43,60,77,94,47,64,81,98,51,68,85,102,55,72,89,42,59,76,93,46,63,80,97,50,67,84,101,54,71,88,41,58,75,92,45,62,79,96,49,66,83,100,53,70,87];for i:0..<64 {nodes[ids[i]]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else ids[i+1]};}
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=211,column=9,offset=21109};
+ b.retain_classes=classes;nodes[120]=nodes[ids[6]];nodes[ids[5]].next=120;ids[6]=120;nodes[120].type=1;work[0].queries=127;#assert CB_field(b,16,0)==ids[0] && CB_field(b,16,6)==ids[6] && work[0].queries==128 && !state[0].fatal;head:=types[16].retain_fields;
+ work[0].work=1048573;#assert CB_field(b,16,7)==ids[7] && !state[0].fatal && state[0].error_count==0 && work[0].queries==128 && types[16].retain_fields==head;
+ #assert queries[127].path.steps[0].index==ids[0] && queries[127].path.steps[6].index==ids[6] && queries[127].path.steps[7].index==ids[7];
+}
+
+// Only selected predecessor metadata is newly trusted. Bad preceding IDs,
+// kind/type, dangling next, row links and fuel must refuse before slot7 commits.
+#forall "field predecessor validates selected cached metadata and fails atomically" mode:0..<14 {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=40};
+ ids:=[64]int.[40,57,74,91,44,61,78,95,48,65,82,99,52,69,86,103,56,73,90,43,60,77,94,47,64,81,98,51,68,85,102,55,72,89,42,59,76,93,46,63,80,97,50,67,84,101,54,71,88,41,58,75,92,45,62,79,96,49,66,83,100,53,70,87];for i:0..<64 {nodes[ids[i]]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else ids[i+1]};}
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=211,column=9,offset=21109};
+ #assert CB_field(b,16,0)==ids[0] && CB_field(b,16,4)==ids[4] && !state[0].fatal;head:=types[16].retain_fields;
+ if mode==0 {queries[0].path.steps[4].index=-1;}
+ if mode==1 {queries[0].path.steps[4].index=1;nodes[1]=CK_Node.{kind=CK_Tag.field,type=11};}
+ if mode==2 {queries[0].path.steps[4].index=121;nodes[121]=CK_Node.{kind=CK_Tag.field,type=11};}
+ if mode==3 {nodes[ids[4]].kind=CK_Tag.param;}
+ if mode==4 {nodes[ids[4]].type=0;}
+ if mode==5 {nodes[ids[4]].type=-1;}
+ if mode==6 {nodes[ids[4]].type=20;}
+ if mode==7 {nodes[ids[4]].next=0;}
+ if mode==8 {nodes[ids[4]].next=1;nodes[1]=CK_Node.{kind=CK_Tag.field,type=11};}
+ if mode==9 {nodes[ids[4]].next=121;nodes[121]=CK_Node.{kind=CK_Tag.field,type=11};}
+ if mode==10 {work[0].work=1048575;}
+ if mode==11 {queries[0].next=1;}
+ if mode==12 {queries[0].kind=3;}
+ if mode==13 {work[0].queries=0;}
+ prior:=work[0].queries;old0:=queries[0].path.steps[0].index;old4:=queries[0].path.steps[4].index;got:=CB_field(b,16,7);
+ #assert got==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==211 && errors[0].loc.column==9 && errors[0].loc.offset==21109;
+ #assert work[0].queries==prior && types[16].retain_fields==head && queries[0].path.steps[0].index==old0 && queries[0].path.steps[4].index==old4 && queries[0].path.steps[7].index==0;
+}
+
+#forall "field row hint admits one validated nonhead row in both source modes" mode:0..<6 {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else 21+i};}types[17]=CK_Type.{kind=CK_Kind.struct_,decl=90};nodes[90]=CK_Node.{kind=CK_Tag.struct_,head=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=11,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=221,column=7,offset=22107};#assert CB_field(b,16,0)==20 && CB_field(b,16,63)==83 && CB_field(b,16,0)==20 && !state[0].fatal;
+ if mode>=4 {#assert CB_field(b,16,8)==28 && CB_field(b,16,16)==36 && CB_field(b,16,8)==28 && !state[0].fatal;}
+ b.retain_classes=mode%2==1;b.retain_fields=mode<2 || mode>=4;if mode>=2 && mode<4 {work[0].field_row=-1;}work[0].work=1048575;
+ #assert CB_field(b,16,ifx mode>=4 then 8 else 0)==(ifx mode>=4 then 28 else 20) && !state[0].fatal && state[0].error_count==0 && work[0].queries==(ifx mode>=4 then 4 else 2);
+}
+
+#forall "field row hint type block and observed head misses retain the original walk" mode:0..<5 {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else 21+i};}types[17]=CK_Type.{kind=CK_Kind.struct_,decl=90};nodes[90]=CK_Node.{kind=CK_Tag.struct_,head=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=11,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=221,column=7,offset=22107};#assert CB_field(b,16,0)==20 && CB_field(b,16,63)==83 && CB_field(b,16,0)==20 && !state[0].fatal;
+ if mode==0 {work[0].work=1048575;#assert CB_field(b,17,0)==2 && !state[0].fatal && state[0].error_count==0;}
+ else if mode==1 {#assert CB_field(b,16,8)==28 && !state[0].fatal && state[0].error_count==0;}
+ else if mode==2 {#assert CB_field(b,16,63)==83 && !state[0].fatal;work[0].work=1048575;#assert CB_field(b,16,63)==83 && !state[0].fatal && state[0].error_count==0;}
+ else {if mode==3 {work[0].field_head=1;}else {work[0].field_block=1;}work[0].work=1048575;#assert CB_field(b,16,0)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==221 && errors[0].loc.column==7;}
+}
+
+#forall "field row hint validates the selected published row and refuses malformed metadata" mode:0..<25 {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else 21+i};}types[17]=CK_Type.{kind=CK_Kind.struct_,decl=90};nodes[90]=CK_Node.{kind=CK_Tag.struct_,head=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=11,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=221,column=7,offset=22107};#assert CB_field(b,16,0)==20 && CB_field(b,16,63)==83 && CB_field(b,16,0)==20 && !state[0].fatal;
+ work[0].field_type=16;work[0].field_block=0;work[0].field_head=types[16].retain_fields;work[0].field_row=1;
+ if mode==0 {work[0].field_row=-1;}if mode==1 {work[0].field_row=0;}if mode==2 {work[0].field_row=3;}if mode==3 {work[0].field_row=2;}
+ if mode==4 {queries[0].kind=3;}if mode==5 {queries[0].decl=17;}if mode==6 {queries[0].type=90;}if mode==7 {queries[0].status=1;}if mode==8 {queries[0].status=3;}if mode==9 {queries[0].count=21;}if mode==10 {queries[0].next=1;}if mode==11 {queries[0].next=-1;}if mode==12 {queries[0].path.count=1;}if mode==13 {queries[0].path.steps[7].kind=BS_FIELD;}if mode==14 {queries[0].retain_classes=true;}if mode==15 {queries[0].start=-1;}
+ if mode==16 {queries[0].path.steps[0].index=-1;}if mode==17 {queries[0].path.steps[0].index=1;nodes[1]=CK_Node.{kind=CK_Tag.field,type=11};}if mode==18 {queries[0].path.steps[0].index=121;nodes[121]=CK_Node.{kind=CK_Tag.field,type=11};}if mode==19 {nodes[20].kind=CK_Tag.param;}if mode==20 {nodes[20].type=0;}if mode==21 {nodes[20].type=20;}if mode==22 {work[0].work=1048576;}if mode==23 {b.queries=queries[0..<0];}if mode==24 {types[16].retain_fields=0;work[0].field_head=0;work[0].queries=128;}
+ prior:=work[0].queries;head:=types[16].retain_fields;before_type:=work[0].field_type;before_block:=work[0].field_block;before_head:=work[0].field_head;before_row:=work[0].field_row;
+ #assert CB_field(b,16,0)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==221 && errors[0].loc.column==7 && errors[0].loc.offset==22107;
+ #assert work[0].queries==prior && types[16].retain_fields==head && work[0].field_type==before_type && work[0].field_block==before_block && work[0].field_head==before_head && work[0].field_row==before_row;
+}
+
+#forall "field row hint publishes only after requested field success" mode:0..<3 {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else 21+i};}types[17]=CK_Type.{kind=CK_Kind.struct_,decl=90};nodes[90]=CK_Node.{kind=CK_Tag.struct_,head=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=11,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=221,column=7,offset=22107};#assert CB_field(b,16,0)==20 && CB_field(b,16,63)==83 && CB_field(b,16,0)==20 && !state[0].fatal;
+ if mode==1 {work[0].queries=128;}if mode==2 {nodes[21].kind=CK_Tag.param;}prior:=work[0].queries;head:=types[16].retain_fields;
+ #assert CB_field(b,16,ifx mode==0 then -1 else ifx mode==1 then 8 else 1)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && work[0].queries==prior && types[16].retain_fields==head && queries[0].path.steps[1].index==0;
+ state[0].fatal=false;state[0].error_count=0;nodes[21].kind=CK_Tag.field;work[0].work=1048575;
+ #assert CB_field(b,16,0)==20 && !state[0].fatal && state[0].error_count==0;
+}
+
+#test "field row hint is invalidated by the existing public retained phase type-head reset" {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else 21+i};}types[17]=CK_Type.{kind=CK_Kind.struct_,decl=90};nodes[90]=CK_Node.{kind=CK_Tag.struct_,head=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=11,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=221,column=7,offset=22107};#assert CB_field(b,16,0)==20 && CB_field(b,16,63)==83 && CB_field(b,16,0)==20 && !state[0].fatal;
+ nodes[18].head=2;CR_run(b);#assert !state[0].fatal && state[0].error_count==0 && CB_field(b,16,0)==2 && CB_field(b,16,1)==3 && !state[0].fatal;
+}
+
+#test "field row hint keeps the original Type head inside the committed query prefix" {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else 21+i};}types[17]=CK_Type.{kind=CK_Kind.struct_,decl=90};nodes[90]=CK_Node.{kind=CK_Tag.struct_,head=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=11,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=221,column=7,offset=22107};#assert CB_field(b,16,0)==20 && CB_field(b,16,63)==83 && CB_field(b,16,0)==20 && !state[0].fatal;
+ work[0].queries=1;#assert CB_field(b,16,0)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==221 && errors[0].loc.column==7;
+}
+
+#test "field row hint keeps the original negative Type head refusal" {
+ nodes:[128]CK_Node;types:[20]CK_Type;errors:[4]CK_Error;bytes:[512]u8;state:[1]CK_State;queries:[128]CK_BorrowQuery;origins:[1024]BS_Origin;work:[1]CB_State;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],errors=errors[..],bytes=bytes[..],state=state[..]};state[0]=CK_State.{used=120,type_count=20};for i:0..<16 {types[i]=CK_builtin(i);}nodes[1]=CK_Node.{kind=CK_Tag.file};types[16]=CK_Type.{kind=CK_Kind.struct_,decl=18};nodes[18]=CK_Node.{kind=CK_Tag.struct_,head=20};for i:0..<64 {nodes[20+i]=CK_Node.{kind=CK_Tag.field,type=ifx i==63 then 3 else 11,next=ifx i==63 then 0 else 21+i};}types[17]=CK_Type.{kind=CK_Kind.struct_,decl=90};nodes[90]=CK_Node.{kind=CK_Tag.struct_,head=2};nodes[2]=CK_Node.{kind=CK_Tag.field,type=11,next=3};nodes[3]=CK_Node.{kind=CK_Tag.field,type=3};
+ b:=CB_Context.{c=c,queries=queries[..],origins=origins[..],state=work[..],retain_fields=true};work[0].loc=CK_Loc.{line=221,column=7,offset=22107};#assert CB_field(b,16,0)==20 && CB_field(b,16,63)==83 && CB_field(b,16,0)==20 && !state[0].fatal;
+ types[16].retain_fields=-1;work[0].field_head=-1;#assert CB_field(b,16,0)==0 && state[0].fatal && state[0].error_count==1 && errors[0].code=="E0381" && errors[0].loc.line==221 && errors[0].loc.column==7;
 }
