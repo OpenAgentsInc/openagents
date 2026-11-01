@@ -1,0 +1,79 @@
+// The checks of references.coax. They live apart so that running the example
+// doesn't also run them.
+// Checks: coax test nostr/examples/checks/references.coax --run-steps 250000000
+#load "../references.coax";
+
+// book:begin check
+// Byte ranges, tags and an id from a Python script written from NIP-19
+// (its own BIP-173 bech32 decoder), NIP-27, NIP-18, NIP-30 and the chapter's
+// edge rule; it shares no code with Coax. The scanner is one regular
+// expression, (?<![A-Za-z0-9/]) then nostr:[A-Za-z0-9]+, #\[[0-9]{1,4}\],
+// #[A-Za-z0-9_\x80-\xff]+ (not all digits, at most 64) or :[A-Za-z0-9_-]+:
+// (at most 64), over the UTF-8 bytes. The id is hashlib.sha256 of
+// json.dumps([0, pubkey, created_at, 1, tags, content],
+// separators=(",", ":"), ensure_ascii=False).
+PY_WORKED :: [9] int.[N27_URI, 9, 85, N27_EMOJI, 86, 95, N27_HASHTAG, 104, 113];
+PY_NIP27 :: [3] int.[N27_URI, 6, 82];
+PY_NIP30 :: [9] int.[N27_EMOJI, 6, 19, N27_EMOJI, 25, 42, N27_EMOJI, 43, 53];
+PY_MIX_RANGES :: [15] int.[N27_URI, 3, 140, N27_URI, 146, 317, N27_URI, 322, 451, N27_HASHTAG, 452, 458, N27_HASHTAG, 459, 465];
+PY_WORKED_TAGS :: "[[\"p\",\"2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc\"],[\"emoji\",\"soapbox\",\"https://gleasonator.com/emoji/Gleasonator/soapbox.png\"],[\"t\",\"greentea\"]]";
+PY_WORKED_ID :: "9eaf79f6302af203371f8cf748e1b99dfe1175da232a535acb67e9c3a1bbf268";
+MIX :: "Hi nostr:nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p, see nostr:nevent1qqstna2yrezu5wghjvswqqculvvwxsrcvu7uc0f78gan4xqhvz49d9spr3mhxue69uhkummnw3ez6un9d3shjtn4de6x2argwghx6egpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5nxnepm and nostr:naddr1qqyrzwrxvc6ngvfkqyghwumn8ghj7enfv96x5ctx9e3k7mgzyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6qcyqqq823cph95ag #Nostr #nostr";
+PY_MIX_TAGS :: "[[\"p\",\"3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d\",\"wss://r.x.com\"],[\"q\",\"b9f5441e45ca39179320e0031cfb18e34078673dcc3d3e3a3b3a981760aa5696\",\"wss://nostr-relay.untethr.me\"],[\"q\",\"30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:18ff5416\",\"wss://fiatjaf.com\"],[\"t\",\"nostr\"]]";
+// BIP-340 test vector 0's published public key, the worked note's author.
+PY_PUB :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+
+// want holds form, from and to for each reference in turn.
+same_ranges :: (content: string, want: [] int) -> bool {
+  refs: [N27_MAX_REFS] N27Ref;
+  s := n27_scan(content, refs[..]);
+  if s.status != N27_OK || s.n * 3 != want.count { return false; }
+  for k: 0..<s.n {
+    if refs[k].type != want[3 * k] || refs[k].from != want[3 * k + 1] || refs[k].to != want[3 * k + 2] { return false; }
+  }
+  return true;
+}
+same_tags :: (content: string, set: [] N27Emoji, want: string) -> bool {
+  out: [2048] u8; t := n27_tags(content, set, out[..]);
+  return t.status == N27_OK && cast(string) out[0..<t.n] == want;
+}
+
+#test "every reference's byte range is Python's" {
+  worked := PY_WORKED; nip27 := PY_NIP27; nip30 := PY_NIP30; mix := PY_MIX_RANGES;
+  #assert same_ranges(WORKED, worked[..]);
+  #assert same_ranges("hello nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh", nip27[..]);
+  #assert same_ranges(NIP30_CONTENT, nip30[..]);
+  #assert same_ranges(MIX, mix[..]);
+}
+#test "the tags are Python's, and so is the worked note's id" {
+  set := [1] N27Emoji.[N27Emoji.{shortcode = "soapbox", url = SOAPBOX}];
+  none: [1] N27Emoji;
+  #assert same_tags(WORKED, set[..], PY_WORKED_TAGS);
+  #assert same_tags(MIX, none[0..<0], PY_MIX_TAGS);
+  text: [2048] u8; scratch: [4096] u8; out: [2048] u8;
+  n := json_raw(text[..], 0, "{\"id\":\"");
+  n = json_raw(text[..], n, PY_WORKED_ID);
+  n = json_raw(text[..], n, "\",\"pubkey\":\"");
+  n = json_raw(text[..], n, PY_PUB);
+  n = json_raw(text[..], n, "\",\"created_at\":");
+  n = json_write_int(text[..], n, T0);
+  n = json_raw(text[..], n, ",\"kind\":1,\"tags\":");
+  n = json_raw(text[..], n, PY_WORKED_TAGS);
+  n = json_raw(text[..], n, ",\"content\":");
+  n = json_write_string(text[..], n, WORKED);
+  n = json_raw(text[..], n, ",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}");
+  #assert n > 0;
+  e := nostr_event_read(cast(string) text[0..<n], out[..], false);
+  #assert e.error == NE_OK && ns_equal32(e.computed_id, e.id);
+  refs: [N27_MAX_REFS] N27Ref; content: [256] u8;
+  c := n27_check(e, content[..], refs[..]);
+  #assert c.status == N27_OK && c.matched == 3 && c.missing == 0;
+}
+#test "the NIP-27 example's own p tag is the pubkey its nprofile decodes to" {
+  refs: [N27_MAX_REFS] N27Ref; content: [256] u8;
+  c := n27_check(ne_parse(NIP27_EVENT), content[..], refs[..]);
+  #assert c.status == N27_OK && c.n == 1 && c.matched == 1 && refs[0].tag_at == 0 && refs[0].entity == N19_PROFILE;
+  hex: [64] u8; key := refs[0].key; r := hex_encode_checked(cast(string) key[..], hex[..], false);
+  #assert cast(string) hex[..] == "2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc";
+}
+// book:end check

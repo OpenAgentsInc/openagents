@@ -1,0 +1,140 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip27.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+STATUS :: [7] string.["ok", "event", "nsec", "bech32", "limit", "shortcode", "output"];
+TYPE :: [5] string.["", "nostr", "#[n]", "hashtag", "emoji"];
+ENTITY :: [7] string.["", "npub", "nsec", "note", "nprofile", "nevent", "naddr"];
+
+// Print the first 4 bytes of a key or id in hex.
+show_short :: (bytes: [32] u8) {
+  own := bytes; text: [8] u8;
+  r := hex_encode_checked(cast(string) own[0..<4], text[..], false);
+  #assert r.error == NC_OK;
+  print("%", cast(string) text[..]);
+}
+// Print each reference: its byte range, form and text, what a URI decodes
+// to, and, after n27_check, the index of the tag that names it.
+show_refs :: (content: string, refs: [] N27Ref, n: int, checked: bool) {
+  for k: 0..<n {
+    r := refs[k];
+    print("  [%, %) % \"%\"", r.from, r.to, TYPE[r.type], content[r.from..<r.to]);
+    if r.type == N27_URI {
+      if r.status != N27_OK { print(", refused: %", STATUS[r.status]); }
+      else { print(", % ", ENTITY[r.entity]); show_short(r.key); print("..."); }
+      if r.relay_n > 0 { print(", relay %", cast(string) r.relay[0..<r.relay_n]); }
+    }
+    if r.type == N27_LEGACY { print(", index %", r.index); }
+    if checked { if r.tag_at >= 0 { print(", tag %", r.tag_at); } else { print(", no tag"); } }
+    print("\n");
+  }
+}
+// The content as a reader shows it: a reference with its tag becomes a
+// link, an image or a mention; one without stays the text it is.
+render :: (content: string, refs: [] N27Ref, n: int) {
+  print("  shown: ");
+  at := 0;
+  for k: 0..<n {
+    r := refs[k];
+    if r.tag_at < 0 { continue; }
+    print("%", content[at..<r.from]);
+    if r.type == N27_URI && (r.entity == N19_NPUB || r.entity == N19_PROFILE) { print("@"); show_short(r.key); }
+    else if r.type == N27_URI { print("[% ", ENTITY[r.entity]); show_short(r.key); print("]"); }
+    else if r.type == N27_LEGACY { print("[tag %]", r.index); }
+    else if r.type == N27_EMOJI { print("<img %>", content[r.from + 1..<r.to - 1]); }
+    else { print("<a %>", content[r.from..<r.to]); }
+    at = r.to;
+  }
+  print("%\n", content[at..<content.count]);
+}
+// Read e's references, match them to its tags, print them and the result.
+show_check :: (label: string, e: NostrEvent) {
+  text: [2048] u8; refs: [N27_MAX_REFS] N27Ref;
+  c := n27_check(e, text[..], refs[..]);
+  print("%: %, % references, % matched, % missing, % refused\n", label, STATUS[c.status], c.n, c.matched, c.missing, c.refused);
+  if c.status != N27_OK { return; }
+  n := json_unescape(e.original[e.content_from..<e.content_to], text[..]);
+  content := cast(string) text[0..<n];
+  show_refs(content, refs[..], c.n, true);
+  render(content, refs[..], c.n);
+}
+// The tags n27_tags writes for content, or its refusal.
+build :: (label: string, content: string, set: [] N27Emoji, out: [] u8) -> string {
+  t := n27_tags(content, set, out);
+  print("%: %", label, STATUS[t.status]);
+  if t.status != N27_OK { if t.at >= 0 { print(" at %", t.at); } print("\n"); return ""; }
+  print(", % tags\n  %\n", t.tags, cast(string) out[0..<t.n]);
+  return cast(string) out[0..<t.n];
+}
+
+// Sign a kind 1 note into out and read it back verified.
+sign_note :: (key: [] u8, created_at: int, tags: string, content: string, out: [] u8) -> NostrEvent {
+  aux: [32] u8; work: [1] NostrSignWork; scratch: [4096] u8; n := EVENT_MORE;
+  while n == EVENT_MORE {
+    n = nostr_event_sign_step(key, aux[..], created_at, 1, tags, content, work[..], scratch[..], out, false);
+  }
+  #assert n > 0;
+  check: [4096] u8;
+  e := nostr_event_verify_vartime(cast(string) out[0..<n], check[..], false);
+  #assert e.error == NE_OK && e.verified;
+  return e;
+}
+
+// The worked example: two lines, a profile, a shortcode and a hashtag.
+WORKED :: "Tea with nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh :soapbox:\nBrewing #GreenTea now.";
+SOAPBOX :: "https://gleasonator.com/emoji/Gleasonator/soapbox.png";
+// The NIP-27 example event exactly as the NIP prints it.
+NIP27_EVENT :: "{\"content\":\"hello nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh\",\"created_at\":1679790774,\"id\":\"f39e9b451a73d62abc5016cffdd294b1a904e2f34536a208874fe5e22bbd47cf\",\"kind\":1,\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"sig\":\"f8c8bab1b90cc3d2ae1ad999e6af8af449ad8bb4edf64807386493163e29162b5852a796a8f474d6b1001cddbaac0de4392838574f5366f03cc94cf5dfb43f4d\",\"tags\":[[\"p\",\"2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc\"]]}";
+// The NIP-30 kind 1 example's tags and content.
+NIP30_TAGS :: "[[\"emoji\",\"ablobcatrainbow\",\"https://gleasonator.com/emoji/blobcat/ablobcatrainbow.png\",\"30030:79c2cae114ea28a981e7559b4fe7854a473521a8d22a66bbab9fa248eb820ff6:blobcats\"],[\"emoji\",\"disputed\",\"https://gleasonator.com/emoji/Fun/disputed.png\"],[\"emoji\",\"gleasonator\",\"https://gleasonator.com/emoji/Gleasonator/gleasonator.png\"]]";
+NIP30_CONTENT :: "Hello :gleasonator: 😂 :ablobcatrainbow: :disputed: yolo";
+// BIP-340 test vector 0's published secret key. Never sign with a real key
+// in an example.
+ALICE :: "0000000000000000000000000000000000000000000000000000000000000003";
+T0 :: 1761686400;
+
+main :: () {
+  refs: [N27_MAX_REFS] N27Ref;
+  print("the worked note, % bytes\n", WORKED.count);
+  s := n27_scan(WORKED, refs[..]);
+  print("scan: %, % references\n", STATUS[s.status], s.n);
+  show_refs(WORKED, refs[..], s.n, false);
+
+  set := [1] N27Emoji.[N27Emoji.{shortcode = "soapbox", url = SOAPBOX}];
+  buf: [2048] u8;
+  tags := build("its tags", WORKED, set[..], buf[..]);
+  alice: [32] u8; r := hex_decode_checked(ALICE, alice[..], false); #assert r.error == NC_OK;
+  note: [4096] u8;
+  e := sign_note(alice[..], T0, tags, WORKED, note[..]);
+  id: [64] u8; own := e.id; h := hex_encode_checked(cast(string) own[..], id[..], false);
+  print("signed: id %, verified %\n", cast(string) id[..], e.verified);
+  show_check("read back", e);
+
+  print("the pinned examples\n");
+  scratch: [4096] u8;
+  nip27 := nostr_event_read(NIP27_EVENT, scratch[..], false);
+  print("NIP-27: published id "); show_short(nip27.id); print("..., recomputed "); show_short(nip27.computed_id); print("...\n");
+  // The published id is not the hash of these fields, so the event is
+  // parsed without the id check: a reading for display needs no signature.
+  show_check("NIP-27", ne_parse(NIP27_EVENT));
+  ev: [4096] u8;
+  show_check("NIP-30 kind 1", n18_event(1, NIP30_TAGS, NIP30_CONTENT, ev[..]));
+
+  print("missing tags\n");
+  show_check("the worked note, no tags", n18_event(1, "[]", "Tea with nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh :soapbox:\\nBrewing #GreenTea now.", ev[..]));
+  show_check("an invalid shortcode", n18_event(1, "[[\"emoji\",\"bad.name\",\"https://e.example/b.png\"],[\"emoji\",\"good\",\"https://e.example/g.png\"]]", ":bad.name: and :good:", ev[..]));
+  show_check("NIP-08 #[n]", n18_event(1, "[[\"p\",\"2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc\"],[\"t\",\"tea\"]]", "#[0] likes #[1]", ev[..]));
+  show_check("URLs, times and words", n18_event(1, "[]", "https://njump.me/nostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj6 at 12:30:45, page#part, issue #12", ev[..]));
+
+  print("refusals\n");
+  show_check("an nsec in content", n18_event(1, "[]", "my key nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5", ev[..]));
+  b1 := build("tags for an nsec", "#tea and nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5", set[..], buf[..]);
+  b2 := build("tags for a bad checksum", "nostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj7", set[..], buf[..]);
+  bad := [1] N27Emoji.[N27Emoji.{shortcode = "bad.name", url = "https://e.example/b.png"}];
+  b3 := build("tags with shortcode bad.name", ":bad.name:", bad[..], buf[..]);
+  out: [64] u8;
+  t := n27_tags(WORKED, set[..], out[..]);
+  print("tags into 64 bytes: %\n", STATUS[t.status]);
+}
+// book:end example

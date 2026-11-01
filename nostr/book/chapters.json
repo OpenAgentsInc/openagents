@@ -1099,14 +1099,21 @@
    "number": 51,
    "title": "References inside content",
    "file": "ch051-references-inside-content.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     16,
     50
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip19-core.coax",
+    "coax/lib/nostr/nip27.coax",
+    "nostr/examples/references.coax",
+    "nostr/examples/checks/references.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

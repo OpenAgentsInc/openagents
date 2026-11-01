@@ -1,0 +1,463 @@
+// NIP-27 references inside content, NIP-08's deprecated #[index] mentions,
+// NIP-30 custom emoji and hashtags: found by byte range in the content,
+// written as the tags they name, and matched against an event's tags.
+//
+// A reading for display, not authority. A reference is what the content
+// says; n27_check fetches nothing and verifies no signature, and a matching
+// tag is a tag that names the same thing, not evidence that it exists.
+//
+// One edge rule finds all four forms: a reference starts at the start of the
+// content or after a byte that is not an ASCII letter, digit or "/". That
+// keeps "https://site/nostr:npub1...", "page#part", "12:30:45" and
+// "xnostr:..." plain text. NIP-27 defines no code spans, so text between
+// backticks is scanned like any other.
+//   nostr:  "nostr:" in any case, then the longest run of letters and digits,
+//           decoded by chapter 16's nip21_decode_checked. nsec never decodes.
+//   #[n]    NIP-08: "#[" one to four digits "]"; read only.
+//   #tag    "#" then letters, digits, "_" or bytes 0x80 and over, at most
+//           N27_MAX_NAME bytes, not all digits.
+//   :name:  NIP-30: ":" one to N27_MAX_NAME letters, digits, "-" or "_" ":".
+//           A name with any other byte is no shortcode and is never replaced.
+#load "nip19-core.coax";
+#load "nip18.coax";
+
+N27_OK :: 0; N27_EVENT :: 1; N27_NSEC :: 2; N27_BECH32 :: 3; N27_LIMIT :: 4;
+N27_SHORTCODE :: 5; N27_OUTPUT :: 6;
+N27_URI :: 1; N27_LEGACY :: 2; N27_HASHTAG :: 3; N27_EMOJI :: 4;
+N27_MAX_REFS :: 32; N27_MAX_NAME :: 64; N27_MAX_VALUE :: 400;
+
+// book:begin record
+N27Ref :: struct {
+  type:int; from:int; to:int;            // the bytes content[from..<to]
+  status:int;                            // a URI's decoding: ok, nsec or bech32
+  entity:u32;                            // N19_NPUB .. N19_ADDR
+  key:[32]u8;                            // the pubkey, the event id, or naddr's author
+  has_author:bool; author:[32]u8;        // nevent's author
+  kind:int=-1;                           // nevent's or naddr's kind
+  d:[256]u8; d_n:int;                    // naddr's identifier
+  relay:[NT_MAX_VALUE]u8; relay_n:int;   // the first ws:// or wss:// hint
+  index:int;                             // #[index]
+  tag_at:int=-1;                         // the matching tag, set by n27_check
+}
+// book:end record
+N27Scan :: struct {status:int=N27_OK; n:int;}
+N27Emoji :: struct {shortcode:string; url:string;}
+N27Tags :: struct {status:int=N27_OK; at:int=-1; n:int; tags:int;}
+N27Check :: struct {status:int=N27_EVENT; n:int; matched:int; missing:int; refused:int;}
+// The tag a reference asks for: its name (or "" for none), another name that
+// also matches, and its first value, in the caller's buffer.
+N27Want :: struct {name:string; alt:string; n:int;}
+
+N27_T_NPROFILE :: "nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh";
+N27_T_NPUB :: "nostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj6";
+N27_T_RELAYS :: "nostr:nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpp4mhxue69uhhytnc9e3k7mgpz4mhxue69uhkg6nzv9ejuumpv34kytnrdaksjlyr9p";
+N27_T_NEVENT :: "nostr:nevent1qqstna2yrezu5wghjvswqqculvvwxsrcvu7uc0f78gan4xqhvz49d9spr3mhxue69uhkummnw3ez6un9d3shjtn4de6x2argwghx6egpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5nxnepm";
+N27_T_NADDR :: "nostr:naddr1qqyrzwrxvc6ngvfkqyghwumn8ghj7enfv96x5ctx9e3k7mgzyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6qcyqqq823cph95ag";
+N27_T_NSEC :: "nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+N27_T_MATTN :: "2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc";
+
+#test "the NIP-27 example: one nprofile from byte 6 to 82, its pubkey, no relay" {
+  refs:[4]N27Ref;
+  s:=n27_scan("hello nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh",refs[..]);
+  #assert s.status==N27_OK && s.n==1;
+  r:=refs[0];#assert r.type==N27_URI && r.from==6 && r.to==82 && r.status==N27_OK && r.entity==N19_PROFILE;
+  #assert r.key[0]==0x2c && r.key[31]==0xdc && r.relay_n==0 && !r.has_author && r.kind== -1 && r.tag_at== -1;
+  s=n27_scan("NOSTR:NPUB1937VV2NF06360QN9Y8EL6D8SEVNNDY7TUH5NZRE4GJ05XC32TNWQAUHAJ6.",refs[..]);
+  #assert s.n==1 && refs[0].from==0 && refs[0].to==69 && refs[0].entity==N19_NPUB && refs[0].key[0]==0x2c;
+}
+#test "the NIP-30 kind 1 example: three shortcodes around a four-byte emoji" {
+  refs:[8]N27Ref;
+  s:=n27_scan("Hello :gleasonator: 😂 :ablobcatrainbow: :disputed: yolo",refs[..]);
+  #assert s.status==N27_OK && s.n==3;
+  #assert refs[0].type==N27_EMOJI && refs[0].from==6 && refs[0].to==19;
+  #assert refs[1].type==N27_EMOJI && refs[1].from==25 && refs[1].to==42;
+  #assert refs[2].type==N27_EMOJI && refs[2].from==43 && refs[2].to==53;
+}
+#test "nevent and naddr: id, relay hint, kind, author and identifier" {
+  refs:[4]N27Ref;
+  s:=n27_scan(N27_T_NEVENT,refs[..]);#assert s.n==1 && refs[0].entity==N19_EVENT && refs[0].key[0]==0xb9 && refs[0].key[31]==0x96;
+  #assert cast(string)refs[0].relay[0..<refs[0].relay_n]=="wss://nostr-relay.untethr.me" && !refs[0].has_author && refs[0].kind== -1;
+  s=n27_scan(N27_T_NADDR,refs[..]);r:=refs[0];
+  #assert s.n==1 && r.entity==N19_ADDR && r.kind==30023 && r.key[0]==0x3b && r.key[31]==0x9d && cast(string)r.d[0..<r.d_n]=="18ff5416";
+  #assert cast(string)r.relay[0..<r.relay_n]=="wss://fiatjaf.com";
+  s=n27_scan(N27_T_RELAYS,refs[..]);#assert s.n==1 && cast(string)refs[0].relay[0..<refs[0].relay_n]=="wss://r.x.com";
+}
+#test "the edge rule: URLs, words, times, fragments and numbers are plain text" {
+  refs:[8]N27Ref;
+  plain:=[14]string.["https://njump.me/nostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj6",
+    "xnostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj6","at 12:30:45","page#part","site/#x","issue #12",
+    ":bad.name:","::",":","#","nostr:","nostr: npub","a:b:","#[12345]"];
+  for p:plain {#assert n27_scan(p,refs[..]).n==0;}
+  s:=n27_scan("#[0] #[9999] #tea2 #_ #Teeé :a-b_c: (#x) ::y:",refs[..]);
+  #assert s.n==8 && refs[0].type==N27_LEGACY && refs[0].index==0 && refs[0].to==4 && refs[1].index==9999 && refs[1].to==12;
+  #assert refs[2].type==N27_HASHTAG && refs[2].from==13 && refs[2].to==18 && refs[3].to==21 && refs[4].from==22 && refs[4].to==28;
+  #assert refs[5].type==N27_EMOJI && refs[5].from==29 && refs[5].to==36 && refs[6].type==N27_HASHTAG && refs[6].from==38 && refs[6].to==40;
+  #assert refs[7].type==N27_EMOJI && refs[7].from==43 && refs[7].to==46;
+  long:[80]u8;long[0]=':';for i:1..<66 {long[i]='a';}long[66]=':';
+  #assert n27_scan(cast(string)long[0..<67],refs[..]).n==0 && n27_scan(cast(string)long[0..<66],refs[..]).n==0;
+  long[65]=':';s=n27_scan(cast(string)long[0..<66],refs[..]);#assert s.n==1 && refs[0].to==66;
+  long[0]='#';s=n27_scan(cast(string)long[0..<65],refs[..]);#assert s.n==1 && refs[0].to==65;
+  s=n27_scan(cast(string)long[0..<66],refs[..]);#assert s.n==1 && refs[0].to==65;
+  long[65]='a';#assert n27_scan(cast(string)long[0..<66],refs[..]).n==0;
+}
+#test "refusals: an nsec URI is never decoded, malformed bech32, too many references" {
+  refs:[2]N27Ref;
+  s:=n27_scan(N27_T_NSEC,refs[..]);#assert s.status==N27_OK && s.n==1 && refs[0].status==N27_NSEC && refs[0].entity==0 && refs[0].key[0]==0;
+  s=n27_scan("NOSTR:NSEC1x",refs[..]);#assert s.n==1 && refs[0].status==N27_NSEC;
+  s=n27_scan("nostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj7",refs[..]);#assert s.n==1 && refs[0].status==N27_BECH32;
+  s=n27_scan("nostr:nrelay1qq",refs[..]);#assert refs[0].status==N27_BECH32 && refs[0].to==15;
+  s=n27_scan("#a #b #c",refs[..]);#assert s.status==N27_LIMIT && s.n==2;
+  #assert n27_scan("#a #b",refs[..]).status==N27_OK;
+}
+#test "tags: p once per pubkey, q with relay and address, t lowercase once, emoji from the set" {
+  out:[2048]u8;set:=[2]N27Emoji.[N27Emoji.{shortcode="soapbox",url="https://e.example/soapbox.png"},N27Emoji.{shortcode="unused",url="https://e.example/u.png"}];
+  text:[1024]u8;n:=json_raw(text[..],0,"Hi ");n=json_raw(text[..],n,N27_T_NPROFILE);n=json_raw(text[..],n," and ");
+  n=json_raw(text[..],n,N27_T_NPUB);n=json_raw(text[..],n," :soapbox: :other: #Tea #tea\n");n=json_raw(text[..],n,N27_T_NEVENT);
+  n=json_raw(text[..],n," ");n=json_raw(text[..],n,N27_T_NADDR);n=json_raw(text[..],n," #[0] :soapbox:");
+  t:=n27_tags(cast(string)text[0..<n],set[..],out[..]);
+  #assert t.status==N27_OK && t.tags==5;
+  #assert cast(string)out[0..<t.n]=="[[\"p\",\"2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc\"],[\"emoji\",\"soapbox\",\"https://e.example/soapbox.png\"],[\"t\",\"tea\"],[\"q\",\"b9f5441e45ca39179320e0031cfb18e34078673dcc3d3e3a3b3a981760aa5696\",\"wss://nostr-relay.untethr.me\"],[\"q\",\"30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:18ff5416\",\"wss://fiatjaf.com\"]]";
+  t=n27_tags(N27_T_RELAYS,set[0..<0],out[..]);
+  #assert t.status==N27_OK && t.tags==1 && cast(string)out[0..<t.n]=="[[\"p\",\"3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d\",\"wss://r.x.com\"]]";
+  t=n27_tags("no references",set[..],out[..]);#assert t.status==N27_OK && t.tags==0 && cast(string)out[0..<t.n]=="[]";
+}
+#test "tags: a nevent with an author but no relay keeps the relay's place" {
+  data:[70]u8;data[0]=0;data[1]=32;for i:0..<32 {data[2+i]=0xab;}data[34]=2;data[35]=32;for i:0..<32 {data[36+i]=0xcd;}
+  text:[200]u8;e:=nip19_encode_checked(N19_EVENT,cast(string)data[0..<68],text[6..<200],false);#assert e.error==NC_OK;
+  for i:0..<6 {text[i]="nostr:"[i];}
+  none:[1]N27Emoji;out:[512]u8;t:=n27_tags(cast(string)text[0..<6+e.written],none[0..<0],out[..]);
+  #assert t.status==N27_OK && cast(string)out[0..<t.n]=="[[\"q\",\"abababababababababababababababababababababababababababababababab\",\"\",\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\"]]";
+  // A relay hint that is no ws:// or wss:// URL is left out.
+  data[34]=1;data[35]=8;for i:0..<8 {data[36+i]="https://"[i];}
+  e=nip19_encode_checked(N19_PROFILE,cast(string)data[0..<44],text[6..<200],false);#assert e.error==NC_OK;
+  t=n27_tags(cast(string)text[0..<6+e.written],none[0..<0],out[..]);
+  #assert t.status==N27_OK && cast(string)out[0..<t.n]=="[[\"p\",\"abababababababababababababababababababababababababababababababab\"]]";
+}
+#test "tags refuse: nsec, malformed bech32, a bad shortcode or URL in the set, a small buffer" {
+  out:[512]u8;good:=[1]N27Emoji.[N27Emoji.{shortcode="ok",url="https://e.example/ok.png"}];
+  t:=n27_tags("#a and #b and see nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5",good[..],out[..]);
+  #assert t.status==N27_NSEC && t.at==2 && t.n==0;
+  t=n27_tags("nostr:npub1qq",good[..],out[..]);#assert t.status==N27_BECH32 && t.at==0;
+  bad:=[2]N27Emoji.[N27Emoji.{shortcode="ok",url="https://e.example/ok.png"},N27Emoji.{shortcode="bad.name",url="https://e.example/b.png"}];
+  t=n27_tags(":ok:",bad[..],out[..]);#assert t.status==N27_SHORTCODE && t.at==1;
+  bad[1]=N27Emoji.{shortcode="fine",url=""};t=n27_tags(":ok:",bad[..],out[..]);#assert t.status==N27_SHORTCODE && t.at==1;
+  bad[1]=N27Emoji.{shortcode="",url="https://x"};#assert n27_tags(":ok:",bad[..],out[..]).status==N27_SHORTCODE;
+  #assert n27_tags(":ok:",good[..],out[0..<20]).status==N27_OUTPUT && n27_tags(":ok:",good[..],out[0..<43]).status==N27_OK;
+  #assert n27_tags(":ok:",good[..],out[0..<42]).status==N27_OUTPUT;
+  many:[200]u8;for i:0..<33 {many[3*i]='#';many[3*i+1]='a';many[3*i+2]=' ';}
+  #assert n27_tags(cast(string)many[0..<99],good[..],out[..]).status==N27_LIMIT && n27_tags(cast(string)many[0..<96],good[..],out[..]).status==N27_OK;
+}
+#test "check: the NIP-27 and NIP-30 examples match every reference to its tag" {
+  ev:[4096]u8;text:[1024]u8;refs:[8]N27Ref;
+  e:=n18_event(1,"[[\"p\",\"2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc\"]]","hello nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh",ev[..]);
+  c:=n27_check(e,text[..],refs[..]);#assert c.status==N27_OK && c.n==1 && c.matched==1 && c.missing==0 && refs[0].tag_at==0;
+  e=n18_event(1,"[[\"emoji\",\"ablobcatrainbow\",\"https://gleasonator.com/emoji/blobcat/ablobcatrainbow.png\",\"30030:79c2cae114ea28a981e7559b4fe7854a473521a8d22a66bbab9fa248eb820ff6:blobcats\"],[\"emoji\",\"disputed\",\"https://gleasonator.com/emoji/Fun/disputed.png\"],[\"emoji\",\"gleasonator\",\"https://gleasonator.com/emoji/Gleasonator/gleasonator.png\"]]","Hello :gleasonator: \\ud83d\\ude02 :ablobcatrainbow: :disputed: yolo",ev[..]);
+  c=n27_check(e,text[..],refs[..]);#assert c.status==N27_OK && c.n==3 && c.matched==3 && refs[0].tag_at==2 && refs[1].tag_at==0 && refs[2].tag_at==1;
+  #assert refs[1].from==25;
+}
+#test "check: a mention without its tag, an emoji without its tag, q or e, a, t, #[n]" {
+  ev:[4096]u8;text:[1024]u8;refs:[8]N27Ref;
+  e:=n18_event(1,"[]","hello nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh :x: #Tea",ev[..]);
+  c:=n27_check(e,text[..],refs[..]);#assert c.status==N27_OK && c.n==3 && c.matched==0 && c.missing==3 && refs[0].tag_at== -1;
+  e=n18_event(1,"[[\"t\",\"Tea\"],[\"emoji\",\"x\",\"\"],[\"emoji\",\"x\"],[\"t\",\"tea\"],[\"emoji\",\"x\",\"u\"]]",":x: #Tea",ev[..]);
+  c=n27_check(e,text[..],refs[..]);#assert c.matched==2 && refs[0].tag_at==4 && refs[1].tag_at==3;
+  // An emoji tag for a name with an invalid byte: the content has no shortcode to replace.
+  e=n18_event(1,"[[\"emoji\",\"bad.name\",\"https://e.example/b.png\"]]",":bad.name:",ev[..]);
+  c=n27_check(e,text[..],refs[..]);#assert c.status==N27_OK && c.n==0;
+  e=n18_event(1,"[[\"e\",\"b9f5441e45ca39179320e0031cfb18e34078673dcc3d3e3a3b3a981760aa5696\"],[\"a\",\"30023:3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d:18ff5416\"]]","nostr:nevent1qqstna2yrezu5wghjvswqqculvvwxsrcvu7uc0f78gan4xqhvz49d9spr3mhxue69uhkummnw3ez6un9d3shjtn4de6x2argwghx6egpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5nxnepm nostr:naddr1qqyrzwrxvc6ngvfkqyghwumn8ghj7enfv96x5ctx9e3k7mgzyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6qcyqqq823cph95ag",ev[..]);
+  c=n27_check(e,text[..],refs[..]);#assert c.matched==2 && refs[0].tag_at==0 && refs[1].tag_at==1;
+  e=n18_event(1,"[[\"p\",\"2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc\"],[\"t\",\"x\"]]","#[0] #[1] #[2] nostr:nsec1x nostr:npub1x",ev[..]);
+  c=n27_check(e,text[..],refs[..]);#assert c.n==5 && c.matched==1 && c.missing==2 && c.refused==2 && refs[0].tag_at==0 && refs[1].tag_at== -1 && refs[2].tag_at== -1;
+  bad:NostrEvent;#assert n27_check(bad,text[..],refs[..]).status==N27_EVENT;
+  f:=e;f.content_to=f.original.count+1;#assert n27_check(f,text[..],refs[..]).status==N27_EVENT;
+  f=e;f.content_from= -1;#assert n27_check(f,text[..],refs[..]).status==N27_EVENT;
+  f=e;f.content_from=f.content_to+1;#assert n27_check(f,text[..],refs[..]).status==N27_EVENT;
+  #assert n27_check(e,text[0..<10],refs[..]).status==N27_LIMIT && n27_check(e,text[..],refs[0..<4]).status==N27_LIMIT;
+  #assert n27_check(e,text[0..<40],refs[..]).status==N27_OK && n27_check(e,text[0..<39],refs[..]).status==N27_LIMIT;
+}
+#test "boundaries: byte classes, truncated forms, name lengths, nsec prefixes" {
+  #assert n27_alnum('z') && !n27_alnum('{') && n27_alnum('Z') && !n27_alnum('[') && n27_digit('9') && !n27_digit(':');
+  #assert n27_tag_byte(0x80) && !n27_tag_byte(0x7f) && n27_name_byte('-') && !n27_tag_byte('-');
+  long:[70]u8;for i:0..<70 {long[i]='a';}
+  #assert n27_shortcode_ok(cast(string)long[0..<64]) && !n27_shortcode_ok(cast(string)long[0..<65]) && !n27_shortcode_ok("");
+  refs:[4]N27Ref;
+  plain:=[14]string.["nos","nostr","bostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj6",
+    "#[","#[1","#[12","#[]","#[]]","#[1:]","#0","#9",":abc","x #","#[x"];
+  for p:plain {#assert n27_scan(p,refs[..]).n==0;}
+  s:=n27_scan("#[0:]",refs[..]);#assert s.n==0;
+  s=n27_scan("x #[1]",refs[..]);#assert s.n==1 && refs[0].type==N27_LEGACY && refs[0].index==1 && refs[0].to==6;
+  s=n27_scan("nostr:nsec1",refs[..]);#assert s.n==1 && refs[0].status==N27_NSEC;
+  s=n27_scan("nostr:nsec",refs[..]);#assert s.n==1 && refs[0].status==N27_BECH32;
+  s=n27_scan("nostr:xsec1aaaa",refs[..]);#assert s.n==1 && refs[0].status==N27_BECH32;
+  s=n27_scan("nostr:nseca",refs[..]);#assert s.n==1 && refs[0].status==N27_BECH32;
+  // A profile whose key bytes read as a relay field if the walk started one
+  // byte late: the hint comes only from the real fields.
+  data:[40]u8;data[1]=32;data[2]=0;data[3]=1;data[4]=7;for i:0..<7 {data[5+i]="wss://x"[i];}
+  text:[200]u8;e:=nip19_encode_checked(N19_PROFILE,cast(string)data[0..<34],text[6..<200],false);#assert e.error==NC_OK;
+  for i:0..<6 {text[i]="nostr:"[i];}
+  s=n27_scan(cast(string)text[0..<6+e.written],refs[..]);#assert s.n==1 && refs[0].status==N27_OK && refs[0].relay_n==0;
+}
+#test "tags: every buffer short of the whole output refuses, and an e tag at #[n]" #steps 200000000 {
+  data:[80]u8;data[1]=32;for i:0..<32 {data[2+i]=0xab;}data[34]=1;data[35]=7;for i:0..<7 {data[36+i]="wss://r"[i];}
+  data[43]=2;data[44]=32;for i:0..<32 {data[45+i]=0xcd;}
+  text:[300]u8;e:=nip19_encode_checked(N19_EVENT,cast(string)data[0..<77],text[6..<300],false);#assert e.error==NC_OK;
+  for i:0..<6 {text[i]="nostr:"[i];}
+  none:[1]N27Emoji;out:[512]u8;content:=cast(string)text[0..<6+e.written];
+  full:=n27_tags(content,none[0..<0],out[..]);
+  #assert full.status==N27_OK && cast(string)out[0..<full.n]=="[[\"q\",\"abababababababababababababababababababababababababababababababab\",\"wss://r\",\"cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd\"]]";
+  for size:0..<full.n {t:=n27_tags(content,none[0..<0],out[0..<size]);#assert t.status==N27_OUTPUT && t.tags==0 && t.n==0;}
+  ev:[4096]u8;tx:[256]u8;refs:[4]N27Ref;
+  ee:=n18_event(1,"[[\"e\",\"b9f5441e45ca39179320e0031cfb18e34078673dcc3d3e3a3b3a981760aa5696\"]]","#[0]",ev[..]);
+  c:=n27_check(ee,tx[..],refs[..]);#assert c.matched==1 && refs[0].tag_at==0;
+  bad:=[1]N27Emoji.[N27Emoji.{shortcode="bad.name",url="https://e.example/b.png"}];
+  t:=n27_tags(":a:",bad[..],out[..]);#assert t.status==N27_SHORTCODE && t.at==0;
+}
+#test "check: names must match, forged spans, empty content, broken tags" {
+  ev:[4096]u8;tx:[256]u8;refs:[4]N27Ref;
+  // A tag with the right value under another name, or no name, is no match.
+  e:=n18_event(1,"[[\"p\",\"b9f5441e45ca39179320e0031cfb18e34078673dcc3d3e3a3b3a981760aa5696\"],[\"\",\"2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc\"]]","nostr:nevent1qqstna2yrezu5wghjvswqqculvvwxsrcvu7uc0f78gan4xqhvz49d9spr3mhxue69uhkummnw3ez6un9d3shjtn4de6x2argwghx6egpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5nxnepm nostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj6",ev[..]);
+  c:=n27_check(e,tx[..],refs[..]);#assert c.status==N27_OK && c.n==2 && c.matched==0 && c.missing==2;
+  // Content spans at the edges of the original: from 0, to its end, empty.
+  f:=nt_event("[]");f.original="#a";f.tags_from=0;f.tags_to=0;f.content_from=0;f.content_to=2;
+  c=n27_check(f,tx[..],refs[..]);#assert c.status==N27_OK && c.n==1 && c.missing==1 && refs[0].tag_at== -1;
+  f.content_from=2;c=n27_check(f,tx[..],refs[..]);#assert c.status==N27_OK && c.n==0;
+  // A tag with a value that is no string: the tags are unreadable, nothing matches.
+  g:=nt_event("[[\"x\",1],[\"t\",\"a\"]]#a");g.tags_to=19;g.content_from=19;g.content_to=21;
+  c=n27_check(g,tx[..],refs[..]);#assert c.status==N27_OK && c.n==1 && c.missing==1 && refs[0].tag_at== -1;
+  g=nt_event("[[\"t\",\"a\"]]#a");g.tags_to=11;g.content_from=11;g.content_to=13;
+  c=n27_check(g,tx[..],refs[..]);#assert c.matched==1 && refs[0].tag_at==0;
+}
+
+// ---- bytes
+n27_digit :: (c:u8)->bool {return c>='0' && c<='9';}
+n27_alnum :: (c:u8)->bool {return n27_digit(c) || (c>='a' && c<='z') || (c>='A' && c<='Z');}
+n27_name_byte :: (c:u8)->bool {return n27_alnum(c) || c=='_' || c=='-';}
+n27_tag_byte :: (c:u8)->bool {return n27_alnum(c) || c=='_' || c>=0x80;}
+// book:begin edge
+// A reference starts at the start or after a byte that can't end a word or
+// a URL path: not an ASCII letter, digit or "/".
+n27_edge :: (s:string,i:int)->bool {
+  if i==0 {return true;}
+  c:=s[i-1];return !n27_alnum(c) && c!='/';
+}
+// book:end edge
+// Whether s is a NIP-30 shortcode: 1 to N27_MAX_NAME letters, digits, - or _.
+n27_shortcode_ok :: (s:string)->bool {
+  if s.count==0 || s.count>N27_MAX_NAME {return false;}
+  for c:s {if !n27_name_byte(c) {return false;}}
+  return true;
+}
+
+// ---- the four forms: each returns the end of the reference starting at i, or -1
+// book:begin forms
+n27_uri_end :: (s:string,i:int)->int {
+  scheme:="nostr:";
+  for k:0..<scheme.count {if i+k>=s.count || b32_lower(s[i+k])!=scheme[k] {return -1;}}
+  j:=i+scheme.count;while j<s.count && n27_alnum(s[j]) {j+=1;}
+  return ifx j>i+scheme.count then j else -1;
+}
+n27_legacy_end :: (s:string,i:int)->int {
+  if i+4>s.count || s[i]!='#' || s[i+1]!='[' {return -1;}
+  j:=i+2;while j<s.count && j<i+6 && n27_digit(s[j]) {j+=1;}
+  if j==i+2 || j>=s.count || s[j]!=']' {return -1;}
+  return j+1;
+}
+n27_hashtag_end :: (s:string,i:int)->int {
+  if s[i]!='#' {return -1;}
+  j:=i+1;letters:=false;
+  while j<s.count && n27_tag_byte(s[j]) {if !n27_digit(s[j]) {letters=true;}j+=1;}
+  if !letters || j-i-1>N27_MAX_NAME {return -1;}
+  return j;
+}
+n27_emoji_end :: (s:string,i:int)->int {
+  if s[i]!=':' {return -1;}
+  j:=i+1;while j<s.count && n27_name_byte(s[j]) {j+=1;}
+  if j==i+1 || j-i-1>N27_MAX_NAME || j>=s.count || s[j]!=':' {return -1;}
+  return j+1;
+}
+// book:end forms
+
+// A nostr: URI's entity, read through chapter 16's decoder. nsec is named by
+// its prefix and never decoded.
+n27_decode :: (ref:N27Ref,text:string)->N27Ref {
+  r:=ref;buf:[N19_MAX_BYTES]u8;
+  d:=nip21_decode_checked(text,buf[..],false);
+  if d.error!=NC_OK {
+    nsec:=text.count>=11;
+    for k:0..<5 {if nsec && b32_lower(text[6+k])!="nsec1"[k] {nsec=false;}}
+    r.status=ifx nsec then N27_NSEC else N27_BECH32;return r;
+  }
+  r.entity=d.type;
+  if d.has_kind {r.kind=cast(int)d.kind;}
+  if d.type==N19_ADDR {
+    for k:0..<32 {r.key[k]=buf[d.author_at+k];}
+    for k:0..<d.special_length {r.d[k]=buf[d.special_at+k];}r.d_n=d.special_length;
+  } else {
+    for k:0..<32 {r.key[k]=buf[d.special_at+k];}
+    if d.has_author {r.has_author=true;for k:0..<32 {r.author[k]=buf[d.author_at+k];}}
+  }
+  // The first relay hint a tag could carry; nprofile, nevent and naddr only.
+  source:=N19_Source.{input=cast(string)buf[0..<d.written],count=d.written};at:=0;
+  while d.type>=N19_PROFILE && at<d.written && r.relay_n==0 {
+    f:=n19_field(source,at);
+    if f.tag==1 && nt_relay_ok(cast(string)buf[f.value..<f.value+f.length]) {
+      for k:0..<f.length {r.relay[k]=buf[f.value+k];}r.relay_n=f.length;
+    }
+    at=f.next;
+  }
+  return r;
+}
+
+// book:begin scan
+// Every reference in content, in order, with its byte range.
+n27_scan :: (content:string,refs:[]N27Ref)->N27Scan {
+  r:N27Scan;i:=0;
+  while i<content.count {
+    type:=N27_URI;to:= -1;
+    if n27_edge(content,i) {
+      to=n27_uri_end(content,i);
+      if to== -1 {to=n27_legacy_end(content,i);type=N27_LEGACY;}
+      if to== -1 {to=n27_hashtag_end(content,i);type=N27_HASHTAG;}
+      if to== -1 {to=n27_emoji_end(content,i);type=N27_EMOJI;}
+    }
+    if to== -1 {i+=1;continue;}
+    if r.n==refs.count {r.status=N27_LIMIT;return r;}
+    ref:N27Ref;ref.type=type;ref.from=i;ref.to=to;
+    if type==N27_URI {ref=n27_decode(ref,content[i..<to]);}
+    if type==N27_LEGACY {for k:i+2..<to-1 {ref.index=ref.index*10+cast(int)(content[k]-'0');}}
+    refs[r.n]=ref;r.n+=1;i=to;
+  }
+  return r;
+}
+// book:end scan
+
+n27_hex :: (out:[]u8,at:int,bytes:[32]u8)->int {
+  text:[64]u8;digits:="0123456789abcdef";
+  for k:0..<32 {text[2*k]=digits[bytes[k]>>4];text[2*k+1]=digits[bytes[k]&15];}
+  return json_raw(out,at,cast(string)text[..]);
+}
+// book:begin want
+// The tag a reference asks for and its first value, written into value.
+n27_want :: (content:string,ref:N27Ref,value:[]u8)->N27Want {
+  w:N27Want;
+  if ref.type==N27_URI && ref.status==N27_OK {
+    if ref.entity==N19_NPUB || ref.entity==N19_PROFILE {w.name="p";w.n=n27_hex(value,0,ref.key);}
+    else if ref.entity==N19_ADDR {
+      w.name="q";w.alt="a";
+      n:=json_write_int(value,0,ref.kind);n=json_raw(value,n,":");n=n27_hex(value,n,ref.key);n=json_raw(value,n,":");
+      own:=ref;w.n=json_raw(value,n,cast(string)own.d[0..<own.d_n]);
+    } else {w.name="q";w.alt="e";w.n=n27_hex(value,0,ref.key);}
+  } else if ref.type==N27_EMOJI {
+    w.name="emoji";w.n=json_raw(value,0,content[ref.from+1..<ref.to-1]);
+  } else if ref.type==N27_HASHTAG {
+    w.name="t";w.n=json_raw(value,0,content[ref.from+1..<ref.to]);
+    for k:0..<w.n {value[k]=b32_lower(value[k]);}
+  }
+  return w;
+}
+// book:end want
+n27_emoji_url :: (set:[]N27Emoji,name:string)->int {
+  for k:0..<set.count {if set[k].shortcode==name {return k;}}
+  return -1;
+}
+
+// book:begin tags
+// The tags a new event's content asks for, in the order of first mention,
+// each once: p for a profile, q for an event or an address (NIP-18), t for
+// a hashtag in lowercase, emoji for a shortcode the set has. #[n] adds
+// nothing. nsec or a malformed URI refuses, at the reference's index.
+n27_tags :: (content:string,set:[]N27Emoji,out:[]u8)->N27Tags {
+  r:N27Tags;
+  for k:0..<set.count {
+    if !n27_shortcode_ok(set[k].shortcode) || set[k].url.count==0 {r.status=N27_SHORTCODE;r.at=k;return r;}
+  }
+  refs:[N27_MAX_REFS]N27Ref;s:=n27_scan(content,refs[..]);
+  if s.status!=N27_OK {r.status=s.status;return r;}
+  for k:0..<s.n {if refs[k].type==N27_URI && refs[k].status!=N27_OK {r.status=refs[k].status;r.at=k;return r;}}
+  n:=json_raw(out,0,"[");
+  for k:0..<s.n {
+    value:[N27_MAX_VALUE]u8;w:=n27_want(content,refs[k],value[..]);
+    v:=cast(string)value[0..<w.n];url:= -1;
+    if w.name=="emoji" {url=n27_emoji_url(set,v);if url<0 {continue;}}
+    if w.name.count==0 || n27_seen(content,refs[..],k,w,v) {continue;}
+    if r.tags>0 {n=json_raw(out,n,",");}
+    n=json_raw(out,n,"[");n=json_write_string(out,n,w.name);n=json_raw(out,n,",");n=json_write_string(out,n,v);
+    ref:=refs[k];
+    if url>=0 {n=json_raw(out,n,",");n=json_write_string(out,n,set[url].url);}
+    if w.name!="t" && (ref.relay_n!=0 || ref.has_author) {
+      n=json_raw(out,n,",");n=json_write_string(out,n,cast(string)ref.relay[0..<ref.relay_n]);
+    }
+    if ref.has_author {n=json_raw(out,n,",\"");n=n27_hex(out,n,ref.author);n=json_raw(out,n,"\"");}
+    n=json_raw(out,n,"]");r.tags+=1;
+  }
+  n=json_raw(out,n,"]");
+  if n== -1 {r.status=N27_OUTPUT;r.tags=0;return r;}
+  r.n=n;return r;
+}
+// book:end tags
+// Whether a reference before k asks for the same tag and value.
+n27_seen :: (content:string,refs:[]N27Ref,k:int,w:N27Want,v:string)->bool {
+  for j:0..<k {
+    value:[N27_MAX_VALUE]u8;o:=n27_want(content,refs[j],value[..]);
+    if o.name==w.name && cast(string)value[0..<o.n]==v {return true;}
+  }
+  return false;
+}
+
+// book:begin find
+// The index of the first tag named name (or alt) whose first value is value;
+// an emoji tag also needs a URL. -1 when there is none.
+n27_find :: (e:NostrEvent,w:N27Want,value:string)->int {
+  j:[1]Json;if !nt_start(j[..],e) {return -1;}
+  k:=0;tok:=json_next(j[..]);
+  while tok==JSON_ARRAY {
+    buf:[N27_MAX_VALUE]u8;hit:=false;v:=json_next(j[..]);
+    if v==JSON_STRING {
+      name:=json_text(j[..]);
+      if json_is(name,w.name) || (w.alt.count>0 && json_is(name,w.alt)) {
+        v=json_next(j[..]);
+        if v==JSON_STRING {
+          n:=json_unescape(json_text(j[..]),buf[..]);
+          hit=n==value.count && cast(string)buf[0..<n]==value;
+          v=json_next(j[..]);
+          if w.name=="emoji" {hit=hit && v==JSON_STRING && json_text(j[..]).count>0;}
+        }
+      }
+    }
+    if hit {return k;}
+    while v==JSON_STRING {v=json_next(j[..]);}
+    if v!=JSON_ARRAY_END {return -1;}
+    k+=1;tok=json_next(j[..]);
+  }
+  return -1;
+}
+// book:end find
+
+// book:begin check
+// The references in e's content, each with the tag that names it: a
+// mention without its p, q, e or a tag, a hashtag without its t tag or a
+// shortcode without its emoji tag is missing; #[n] matches only an e or p
+// tag at index n (NIP-08); an nsec or malformed URI is refused.
+n27_check :: (e:NostrEvent,text:[]u8,refs:[]N27Ref)->N27Check {
+  c:N27Check;
+  if e.error!=NE_OK || e.content_from<0 || e.content_to>e.original.count || e.content_from>e.content_to {return c;}
+  n:=json_unescape(e.original[e.content_from..<e.content_to],text);
+  if n<0 {c.status=N27_LIMIT;return c;}
+  content:=cast(string)text[0..<n];
+  s:=n27_scan(content,refs);c.status=s.status;c.n=s.n;
+  if s.status!=N27_OK {return c;}
+  for k:0..<s.n {
+    ref:=refs[k];
+    if ref.type==N27_URI && ref.status!=N27_OK {c.refused+=1;continue;}
+    if ref.type==N27_LEGACY {
+      t:=nostr_tag(e,ref.index);
+      if t.error==NT_OK && (t.type==NT_E || t.type==NT_P) {refs[k].tag_at=ref.index;}
+    } else {
+      value:[N27_MAX_VALUE]u8;w:=n27_want(content,ref,value[..]);
+      refs[k].tag_at=n27_find(e,w,cast(string)value[0..<w.n]);
+    }
+    if refs[k].tag_at>=0 {c.matched+=1;} else {c.missing+=1;}
+  }
+  return c;
+}
+// book:end check

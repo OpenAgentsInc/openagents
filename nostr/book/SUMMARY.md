@@ -82,7 +82,7 @@
 - [48. Signers outside the app](ch048-signers-outside-the-app.md) — implemented
 - [49. HTTP auth](ch049-http-auth.md) — implemented
 - [50. Notes, threads and subjects](ch050-notes-threads-and-subjects.md) — implemented
-- [51. References inside content](ch051-references-inside-content.md) — design draft
+- [51. References inside content](ch051-references-inside-content.md) — implemented
 - [52. Reposts, reactions and comments](ch052-reposts-reactions-and-comments.md) — implemented
 - [53. Long-form, drafts and wiki](ch053-long-form-drafts-and-wiki.md) — implemented
 - [54. Lists, sets and bookmarks](ch054-lists-sets-and-bookmarks.md) — implemented

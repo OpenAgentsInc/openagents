@@ -1,0 +1,48 @@
+the worked note, 118 bytes
+scan: ok, 3 references
+  [9, 85) nostr "nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh", nprofile 2c7cc62a...
+  [86, 95) emoji ":soapbox:"
+  [104, 113) hashtag "#GreenTea"
+its tags: ok, 3 tags
+  [["p","2c7cc62a697ea3a7826521f3fd34f0cb273693cbe5e9310f35449f43622a5cdc"],["emoji","soapbox","https://gleasonator.com/emoji/Gleasonator/soapbox.png"],["t","greentea"]]
+signed: id 9eaf79f6302af203371f8cf748e1b99dfe1175da232a535acb67e9c3a1bbf268, verified true
+read back: ok, 3 references, 3 matched, 0 missing, 0 refused
+  [9, 85) nostr "nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh", nprofile 2c7cc62a..., tag 0
+  [86, 95) emoji ":soapbox:", tag 1
+  [104, 113) hashtag "#GreenTea", tag 2
+  shown: Tea with @2c7cc62a <img soapbox>
+Brewing <a #GreenTea> now.
+the pinned examples
+NIP-27: published id f39e9b45..., recomputed 8bf8afab...
+NIP-27: ok, 1 references, 1 matched, 0 missing, 0 refused
+  [6, 82) nostr "nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh", nprofile 2c7cc62a..., tag 0
+  shown: hello @2c7cc62a
+NIP-30 kind 1: ok, 3 references, 3 matched, 0 missing, 0 refused
+  [6, 19) emoji ":gleasonator:", tag 2
+  [25, 42) emoji ":ablobcatrainbow:", tag 0
+  [43, 53) emoji ":disputed:", tag 1
+  shown: Hello <img gleasonator> 😂 <img ablobcatrainbow> <img disputed> yolo
+missing tags
+the worked note, no tags: ok, 3 references, 0 matched, 3 missing, 0 refused
+  [9, 85) nostr "nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh", nprofile 2c7cc62a..., no tag
+  [86, 95) emoji ":soapbox:", no tag
+  [104, 113) hashtag "#GreenTea", no tag
+  shown: Tea with nostr:nprofile1qqszclxx9f5haga8sfjjrulaxncvkfekj097t6f3pu65f86rvg49ehqj6f9dh :soapbox:
+Brewing #GreenTea now.
+an invalid shortcode: ok, 1 references, 1 matched, 0 missing, 0 refused
+  [15, 21) emoji ":good:", tag 1
+  shown: :bad.name: and <img good>
+NIP-08 #[n]: ok, 2 references, 1 matched, 1 missing, 0 refused
+  [0, 4) #[n] "#[0]", index 0, tag 0
+  [11, 15) #[n] "#[1]", index 1, no tag
+  shown: [tag 0] likes #[1]
+URLs, times and words: ok, 0 references, 0 matched, 0 missing, 0 refused
+  shown: https://njump.me/nostr:npub1937vv2nf06360qn9y8el6d8sevnndy7tuh5nzre4gj05xc32tnwqauhaj6 at 12:30:45, page#part, issue #12
+refusals
+an nsec in content: ok, 1 references, 0 matched, 0 missing, 1 refused
+  [7, 76) nostr "nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5", refused: nsec, no tag
+  shown: my key nostr:nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5
+tags for an nsec: nsec at 1
+tags for a bad checksum: bech32 at 0
+tags with shortcode bad.name: shortcode at 0
+tags into 64 bytes: output
