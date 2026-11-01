@@ -1,7 +1,8 @@
 # 167. Command a robot
 
-This chapter builds position-only inverse kinematics, seven-joint PD with
-gravity compensation, and a short coupled run on our owned Panda dynamics.
+This chapter builds position-only inverse kinematics, principal orientation
+error and one pose update, seven-joint PD with gravity compensation, and a
+short coupled run on our owned Panda dynamics.
 The queries return source-limited coordinates or explicit force terms. The
 250-step experiment then recomputes the PD command on every owned state and
 compares that trajectory with one MuJoCo reference. General stability and
@@ -9,7 +10,7 @@ the broader planning tools remain work.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
 runs operational-space control against MuJoCo. Holding/tracking experiments,
-orientation/nullspace IK, collision-free planning, trajectory timing and
+complete pose/nullspace IK, collision-free planning, trajectory timing and
 compiler-enforced bounded control retain their separate acceptance criteria.
 
 ## A source-bound position IK query
@@ -135,6 +136,128 @@ bit identity remains a separate determinism requirement. This chapter still
 needs orientation and nullspace IK, PD and gravity-control rollout, collision
 queries, RRT-Connect, trajectory timing and compiler-enforced bounded control.
 This position candidate is useful before any of those claims are made.
+
+## One update that includes orientation
+
+The position-only query cannot choose a grip attitude. Add an orientation error
+without changing that solver: `ppo_rotation_raw` computes a principal SO(3)
+logarithm, and `ppo_step` uses it to propose exactly one geometric DLS update.
+An `ok` result says that this candidate was admitted and computed. It makes no
+convergence or command-permission claim.
+
+The target position is a `Point3(PfkWorld, Metre, f64)`. The second target field
+is a raw Hamilton **wxyz world-from-grip** quaternion, so attitude conventions
+remain a caller boundary rather than a compiler-proven transform chain. The
+relative rotation is WORLD-left: target times conjugate(current), corresponding
+to `R_target * transpose(R_current)`.
+
+The checked boundary admits four finite quaternion coefficients of magnitude
+at most two, with squared norm within **2e-12** of one, before normalization.
+Target position components must be within **10 metres** and the seven seed
+angles within the pinned source joint ranges. Shape errors precede numerical
+admission; ordinary refusals preserve complete caller output.
+
+The principal logarithm handles a case the older cross-axis error misses: that
+error is proportional to
+sine(theta), so it vanishes at a half-turn. This helper retains the principal
+angle through pi. It normalizes and canonicalizes both inputs, uses a scaled
+vector norm for very small angles, and evaluates a fixed quarter-angle atan
+series. Exact pi chooses the first nonzero positive axis; either sign of the
+same quaternion produces identical complete output bytes. The principal vector
+has a cut at pi, so the corpus tests physical rotation and magnitude there,
+rather than claiming continuity across that cut.
+The comparison band was frozen as **|relative.w| <= 2e-14** before any
+product comparison. Outside it, all logarithm components are compared.
+
+For a unit relative quaternion, `s = norm(xyz)` and `x = s/(1+w)` give the
+angle `4 atan(x)`. A reduction keeps the series argument within sqrt(2)-1;
+24 fixed Horner terms implement the [alternating arctangent series](https://dlmf.nist.gov/4.24.E3).
+The truncation bound precedes floating rounding; the measured 2e-12-radian
+budget remains the qualification. The canonical sign convention follows the
+[positive-w, then first-nonzero-axis rule](https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Rotation.as_quat.html);
+SciPy is a documentation reference, with no product or tooling dependency.
+
+Give the six task rows compatible dimensions before solving. The angular task
+weight is **0.25 metre/radian** and the damping **0.05 metre**. An explicit
+one-radian basis turns position Jacobian rows and weighted angular Jacobian rows
+into metre coefficients. Solve `(J J^T + lambda^2 I) y = e`, then `dq = J^T y`,
+restore typed radians, cap the largest coordinate change at **0.1 radian**, and
+project onto the pinned source joint limits. The angular matrix is the WORLD
+geometric **rate** Jacobian, not the exact derivative of the finite logarithmic
+residual. Recompute the candidate's pose and all three residual diagnostics
+before atomic publication.
+
+The [example](../examples/panda-pose-ik.coax) uses independent matrix/Gaussian
+corpus row 28; its expected output
+was written before execution. It also shows quaternion-sign equality, a true
+half-turn, and refusal of a zero quaternion without overwriting the candidate.
+
+<!-- source: psionic/examples/panda-pose-ik.coax ppo-step -->
+```jai
+ // The target is an independently frozen matrix pose. Angles are radians;
+ // position is a world/metre Point3. Hamilton wxyz stays an explicit raw boundary.
+ words:=[14]f64.[-0.26070335378293363,0.4197829540218629,-0.17224976514367665,-2.7864034195561564,-0.17538875316188446,2.740753613038838,0.7788488675752366,-0.5250789228078325,-0.11265799954996873,0.8947516665468195,-0.16060863355553037,0.7705457766950156,0.5952945116922437,-0.16151940191194944];
+ seed:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {seed[i].value=words[i];}
+ target:[1]PpoTarget;target[0].position.x=words[7];target[0].position.y=words[8];target[0].position.z=words[9];for i:0..<4 {target[0].world_from_grip_wxyz[i]=words[10+i];}
+ candidate:[1]PpoOutput;
+ #assert ppo_step(seed[..],target[..],candidate[..])==PpoStatus.ok;
+ q:=candidate[0].angles;p:=candidate[0].position;
+ print("candidate joints (urad): % % % % % % %\n",ppo_example_micro(q[0].value),ppo_example_micro(q[1].value),ppo_example_micro(q[2].value),ppo_example_micro(q[3].value),ppo_example_micro(q[4].value),ppo_example_micro(q[5].value),ppo_example_micro(q[6].value));
+ print("grip xyz (um): % % %\n",ppo_example_micro(p.x),ppo_example_micro(p.y),ppo_example_micro(p.z));
+ print("fresh errors: % um position; % urad orientation; % um weighted\n",ppo_example_micro(candidate[0].position_error_metres),ppo_example_micro(candidate[0].orientation_error.value),ppo_example_micro(candidate[0].weighted_error_metres));
+ print("updates: %; projected coordinates: %\n",candidate[0].updates,candidate[0].projected_coordinates);
+ // The same physical attitude has two quaternion representations.
+ opposite:[1]PpoOutput;for i:0..<4 {target[0].world_from_grip_wxyz[i]= -target[0].world_from_grip_wxyz[i];}
+ #assert ppo_step(seed[..],target[..],opposite[..])==PpoStatus.ok;ppo_same(candidate[0],opposite[0]);
+ print("q/-q target: complete output identical\n");
+ identity:=[4]f64.[1,0,0,0];half_turn:=[4]f64.[0,0,0,-1];rotation:[1]PpoRotation;
+ #assert ppo_rotation_raw(identity[..],half_turn[..],rotation[..])==PpoStatus.ok;
+ print("principal +Z half-turn (urad): %\n",ppo_example_micro(rotation[0].vector[2].value));
+ before:=candidate[0];for i:0..<4 {target[0].world_from_grip_wxyz[i]=0;}
+ #assert ppo_step(seed[..],target[..],candidate[..])==PpoStatus.rotation;ppo_same(candidate[0],before);
+ print("zero quaternion: rotation refusal; complete candidate unchanged\n");
+```
+
+Run it with:
+
+```shell
+coax/bin/coax run psionic/examples/panda-pose-ik.coax
+COAX=coax/bin/coax psionic/tests/robotics/check-panda-pose-ik-native.sh /tmp/new-panda-pose-proof
+```
+
+The new source evidence is 15 focused groups, four meaningful static unit/frame
+refusals, and 132/65/123 emitted mutation sites across the rotation, solve helper
+and public query roots, all killed. The count describes actual emitted sites;
+quantity lowering still loses some authored operator-token provenance. The
+first rotation attempt's eight survivors are retained, followed by changed
+checks and an observable Horner trace that closes them without equivalence
+waivers. Existing kinematic and physics gates are reused.
+
+Before any numerical comparison, the corpus received a versioned correction:
+only four signed seeds at exact source limits moved 0.01 radian inward. This
+avoids making an exact projection count depend on ulp-sized matching-pose
+residuals. The original files, unchanged SDK targets, other 50 rows, all 4,200
+rotation cases and all budgets remain preserved. The independent oracle uses
+4-by-4 matrix product-rule tangents, a separate matrix-to-quaternion conversion,
+`math.atan2` and pivoted Gaussian elimination. Twenty-four new target poses
+come from that independent recipe; cached fresh SITE references supply the
+other target families. No new SDK or neural execution is involved.
+
+The standalone corpus includes 3,192 ordinary and 1,008 cut-band cases, of which
+112 exercise exact canonical half-turn ties. The frozen absolute budgets are
+2e-12 radians for standalone principal errors, 2e-12 per reconstructed rotation
+entry, and 2e-10 in the named pose coordinate/diagnostic units. Counts, statuses
+and cross-profile byte criteria are exact. The original debug run completed all 4,200/54 numerical records and sign/ABI probes before an independently constructed norm-shell guard failed. Its numerical outputs were retained. A corrected guard-only debug continuation passes 37,246 assertions; first full release and fail-fast ASan/UBSan runs pass 231,306 assertions each. The complete numerical streams match byte for byte across these three profiles. Maximum standalone vector/angle errors are 8.88e-16/1.11e-15 radian, with cut-band rotation-entry error 1.06e-15; pose joint/position/rotation errors are 2.23e-15 radian, 1.12e-15 metre and 1.45e-15 per entry. Reader guards pair only actual sign-paired rows; the 24 independent matrix rows are not invented sign pairs. These tooling corrections preserve the product, expected data and numerical budgets.
+
+These are source-bound Darwin scalar-libm/F64 query observations. They do not
+establish general cross-target reproducibility. A complete pose solve,
+nullspace behavior, collision admission, RRT and compiler `#bounded` control
+remain separate work.
+
+The [component record](../fixtures/robotics/panda-pose-ik/README.md) links
+the unchanged targets, pre-comparison correction, independent named-grid check,
+source-restore note and separate numerical/native contexts.
+
 
 ## Joint errors become forces
 

@@ -1,0 +1,184 @@
+{
+  "schema": "psionic.panda-pose-ik.publication.v1",
+  "passed": true,
+  "component_commit": "837da5992e",
+  "original_component_commit": "5635494d29",
+  "compiler_binding": {
+    "passed": true,
+    "input_fingerprint": "a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5",
+    "compiler_sha256": "910f0ba5f991e94b49df044f9fd8ca9099d00679c86640db8abe4988b96e00a1",
+    "emissions": [
+      {
+        "mode": "debug",
+        "artifact": "panda-pose-ik.c",
+        "bytes": 142714,
+        "sha256": "55d31ada56a371ff0388f5cc9f49408564003f07f5f57dbef8392730c8458d7a",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "debug",
+        "artifact": "panda-pose-ik.h",
+        "bytes": 26667,
+        "sha256": "400d6ab2e01b80adcf3317d8281eb19be4be9b028702ebfc3d484fe4f9d7e0d1",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-pose-ik.c",
+        "bytes": 141521,
+        "sha256": "4512402b8b5340b803d877ea3fb7709fa54f8a3a49ae0f62642678e65ed6e1d3",
+        "exact_native_context_match": true
+      },
+      {
+        "mode": "release",
+        "artifact": "panda-pose-ik.h",
+        "bytes": 26667,
+        "sha256": "400d6ab2e01b80adcf3317d8281eb19be4be9b028702ebfc3d484fe4f9d7e0d1",
+        "exact_native_context_match": true
+      }
+    ],
+    "commands": [
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5/coax",
+          "c",
+          "psionic/lib/robotics/panda-pose-ik.coax",
+          "--library",
+          "--header",
+          "/tmp/panda-pose-ik-main-binding-first/debug/panda-pose-ik.h"
+        ],
+        "exit": 0,
+        "seconds": 0.05427550000604242,
+        "stderr_bytes": 0
+      },
+      {
+        "argv": [
+          "/Users/christopherdavid/.cache/coax-release/a1e267b94da95ef372ad8488d5680135cd69d30c75cd68b950068b4a65f6dce5/coax",
+          "c",
+          "psionic/lib/robotics/panda-pose-ik.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/panda-pose-ik-main-binding-first/release/panda-pose-ik.h"
+        ],
+        "exit": 0,
+        "seconds": 0.051219583954662085,
+        "stderr_bytes": 0
+      }
+    ],
+    "new_source_inventory_exact": true,
+    "numerical_reruns": 0
+  },
+  "compiler_provenance_carried": {
+    "record": "docs/verification/psionic-panda-joint-pd-prefix-2026-11-01.json",
+    "sha256": "8f8835150f415fd50a31cf59d183b2bec45a323c1141cf7bcda3547d22b77e68",
+    "same_input_fingerprint": true,
+    "same_compiler_artifact": true,
+    "old_verification_not_repeated": true
+  },
+  "receipts": {
+    "psionic/fixtures/robotics/panda-pose-ik/checks-qualification.json": "ec366533f9c4ff6890cac6f62d205da9f9eeed283de185fe17fe6f9806a2f0d1",
+    "psionic/fixtures/robotics/panda-pose-ik/unit-refusals.json": "4c09cd8904d5ccd7071fddb251f22d799da72496ebed22f3277f6a277d297cda",
+    "psionic/fixtures/robotics/panda-pose-ik/reference.json": "d9e0da0a2f03874f277e8389c4741baf4930af2f1eee946bd7797f5b6f737e43",
+    "psionic/fixtures/robotics/panda-pose-ik/reference-publication-v1.json": "e8098211438a01114595f853b55b75e6a159e132b081883e0331bd727e08e818",
+    "psionic/fixtures/robotics/panda-pose-ik/rotation-grid-qualification.json": "73fcbbb1c6c2064db7d9a39abd0ecb465035bd044657c420ebe5e7682e222270",
+    "psionic/fixtures/robotics/panda-pose-ik/oracle-source-restore-v1.json": "bfa3b23bb496e3f07076a5c388d87ef097e31cc1a2a3a6efde6fb1395b0fd126",
+    "psionic/fixtures/robotics/panda-pose-ik/precomparison-input-addendum-v1.json": "2acc58ffe264cbafe1b2014a1bb5f0fe738e01d7271cce51875937b6c03d2e64",
+    "psionic/fixtures/robotics/panda-pose-ik/native-contract-v1.json": "907a51b129a2b8c360f6c85dc22ef7b42c50828e998a9249fa5e45e6e433481c",
+    "psionic/fixtures/robotics/panda-pose-ik/native-qualification.json": "245fb6a520f927565fbc96da59e27b7282199b855551f17a3d3f6d5f671e7859",
+    "psionic/fixtures/robotics/panda-pose-ik/native-publication-v1.json": "8b82c7c7fc4016ede3a624bed99c3c6c0ddc00f435104b4445858156c2d21ec8",
+    "psionic/fixtures/robotics/panda-pose-ik/native-guard-followup-v1.json": "afb1cd71e1986b5ad780a430480fdb39ce92074e9725c204f88c05518d901c06",
+    "psionic/fixtures/robotics/panda-pose-ik/example-qualification.json": "a71db0dc15a273b1a4bdbe4befc289fb9badcb4ab36abce41f63196c1b0aaf7f"
+  },
+  "source_mutation_scopes": [
+    {
+      "root": "rotation",
+      "emitted": 132,
+      "killed": 132,
+      "survivors": 0
+    },
+    {
+      "root": "six-row helper",
+      "emitted": 65,
+      "killed": 65,
+      "survivors": 0
+    },
+    {
+      "root": "public step",
+      "emitted": 123,
+      "killed": 123,
+      "survivors": 0
+    }
+  ],
+  "native_contexts": {
+    "original_debug": "All4200rotation/54pose numerical records,sign/ABI checks completed before a norm-shell fixture assertion. Saved outputs compared once against the independent reference.",
+    "debug_followup": "Corrected guard-only continuation:37246assertions; no corpus/codegen repeat.",
+    "release": "First full profile:231306assertions.",
+    "sanitized": "First full fail-fastASan/UBSan profile:231306assertions.",
+    "all_complete_numerical_files_byte_identical": true
+  },
+  "book": {
+    "passed": true,
+    "exit": 0,
+    "seconds": 0.2752181669929996,
+    "stdout_sha256": "d7fd7910a86a707134d12312c218f8883f9a917b546a3e080ffc4384469d32dd",
+    "stderr_bytes": 0,
+    "programs": 126,
+    "source_linked_listings": 473
+  },
+  "registration": {
+    "passed": true,
+    "shell_syntax_passed": true,
+    "command": [
+      "bash",
+      "psionic/check.sh",
+      "--jobs",
+      "2",
+      "--only",
+      "robotics/panda-pose-ik"
+    ],
+    "stubbed": true,
+    "routed_Coax_commands": 9,
+    "routed_native_commands": 1,
+    "log_sha256": "0392265d941931845dc036780396b4130da23f7916a20d082a6ea6ffc20b48a4",
+    "Coax_calls": 0,
+    "SDK_calls": 0,
+    "NN_calls": 0
+  },
+  "manifest_claim_review": {
+    "scope": "Only own167 contents and new CPU query example inventory; recorded model/device/serving claim scopes remain unchanged.",
+    "updates": [
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "836bfe7f79b8dabbbde2cc288a6d7002abd1fd1d61e3c2c0307e635602ea1cb4",
+        "new": "7a9ba1e67be57bd0a5ac06f127cf4828c1c05022403c0193977c130b295c9a28"
+      },
+      {
+        "claim": "psionic.execution.current",
+        "path": "psionic/book/examples.json",
+        "old": "e21a0c9fd93c96eb1715c23bba73600a6581df6a2f10fbe412b938dbd6b03f30",
+        "new": "7291da3b5ed3e97745bfb8f21a5ccbac1a55ebe13bcbe474e95461dd30d18eea"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/SUMMARY.md",
+        "old": "836bfe7f79b8dabbbde2cc288a6d7002abd1fd1d61e3c2c0307e635602ea1cb4",
+        "new": "7a9ba1e67be57bd0a5ac06f127cf4828c1c05022403c0193977c130b295c9a28"
+      },
+      {
+        "claim": "psionic.gpu.current",
+        "path": "psionic/book/examples.json",
+        "old": "e21a0c9fd93c96eb1715c23bba73600a6581df6a2f10fbe412b938dbd6b03f30",
+        "new": "7291da3b5ed3e97745bfb8f21a5ccbac1a55ebe13bcbe474e95461dd30d18eea"
+      }
+    ]
+  },
+  "scope": "Owned principal rotation error and exactly one source-limited geometric6D DLS candidate; raw attitude convention remains explicit. No full pose convergence,finite-log derivative,collision,hardware or compilerR14 claim.",
+  "failure_history": "Keep the original eight rotation survivors and changed-check/math closure, precomparison boundary-input revision, unit-diagnostic expectation mismatch, exact recovered oracle source, and native shell/pair fixture corrections in their original receipts. No equivalence waivers or numerical budget changes.",
+  "publication_numerical_reruns": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "simulation_steps": 0,
+  "quantity_operator_token_gap_retained": true
+}
