@@ -6,7 +6,7 @@
  *   OUT/psionic-whisper info MODEL
  *   OUT/psionic-whisper filters MODEL
  *   OUT/psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json|--lines] [--language CODE|auto]
- *       [--threads N] [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C]
+ *       [--threads N] [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C] [--gpu]
  * WAV is 16 kHz mono 16-bit PCM (`ffmpeg -i IN -ar 16000 -ac 1 OUT.wav`).
  * Design: psionic/docs/transcribe.md. */
 #include "whisper.h"
@@ -111,12 +111,102 @@ static void split(job base, int64_t n, double work) {
     }
     if (g_profile) { int k = base.kind + (g_small && base.kind < 2 ? 4 : 0); g_prof[k] += now_ms() - t0; g_calls[k]++; }
 }
+/* ---- the GPU (--gpu, Apple Metal) ----------------------------------------
+ * With --gpu the weights and the engine's work arena live in shared Metal
+ * buffers, and the encoder's projections and attention (the calls with at
+ * least 64 rows) run psionic/lib/whisper/device.coax's kernels there; the
+ * decoder's small calls stay on the CPU, where a launch would cost more than
+ * the work. The CPU and GPU see the same bytes, so nothing is copied. */
+#ifdef PSIONIC_WHISPER_METAL
+#include "metal-host.h"
+#include "whisper-metal.h"
+static int g_gpu;
+static PmBuffer g_buf[3]; static char *g_base[3]; static size_t g_size[3];
+static PmKernel g_klinear, g_krows, g_kscores, g_ksoftmax, g_kvalues;
+static double g_gpu_ms;
+static int gpu_view(coax_v_f32 v, PmArg *a) {
+    for (int i = 0; i < 2; i++) {
+        char *p = (char *)v.data;
+        if (g_base[i] && p >= g_base[i] && p + v.count * sizeof(float) <= g_base[i] + g_size[i]) {
+            *a = (PmArg){PM_ARG_VIEW, 0, 0, g_buf[i], (int64_t)(p - g_base[i]), v.count};
+            return 1;
+        }
+    }
+    return 0;
+}
+static PmArg gpu_int(int64_t i) { return (PmArg){PM_ARG_INT, i, 0, 0, 0, 0}; }
+static int gpu_run(PmKernel k, int64_t items, int lanes, int block, const PmArg *a, int n) {
+    PmBatch b; double t = 0;
+    if (pm_begin(&b) != PM_OK || pm_launch(b, k, items, lanes, block, a, n) != PM_OK) return 0;
+    PmStatus st = pm_wait(b, &t);
+    if (st != PM_OK) { fprintf(stderr, "psionic-whisper: GPU launch failed (%d): %s\n", (int)st, pm_log()); exit(1); }
+    g_gpu_ms += t * 1e3;
+    return 1;
+}
+static int gpu_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, coax_v_f32 y, int64_t act) {
+    if (!g_gpu || rows < 64) return 0;
+    PmArg a[9];
+    a[0] = gpu_int(rows); a[1] = gpu_int(n_in); a[2] = gpu_int(n_out); a[3] = gpu_int(act); a[4] = gpu_int(b.count > 0);
+    if (!gpu_view(x, &a[5]) || !gpu_view(w, &a[6]) || !gpu_view(y, &a[8])) return 0;
+    if (b.count > 0) { if (!gpu_view(b, &a[7])) return 0; } else a[7] = a[8];
+    if (rows <= 8 && act == 0) {
+        PmArg r[8] = {a[0], a[1], a[2], a[4], a[5], a[6], a[7], a[8]};
+        return gpu_run(g_krows, n_out, 32, 32, r, 8);
+    }
+    if (rows < 64) return 0;
+    return gpu_run(g_klinear, ((rows + 63) / 64) * ((n_out + 31) / 32), 128, 128, a, 9);
+}
+static int gpu_attend(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, _Bool causal, coax_v_f32 out) {
+    if (!g_gpu || causal || nq < 64 || d != heads * 64 || (size_t)(heads * nq * nk) * sizeof(float) > g_size[2]) return 0;
+    PmArg a[8], m[2], c[8], sv = {PM_ARG_VIEW, 0, 0, g_buf[2], 0, heads * nq * nk};
+    a[0] = gpu_int(nq); a[1] = gpu_int(nk); a[2] = gpu_int(d); a[3] = gpu_int(heads);
+    if (!gpu_view(q, &a[4]) || !gpu_view(k, &a[5]) || !gpu_view(v, &c[5]) || !gpu_view(out, &c[6])) return 0;
+    a[6] = sv; m[0] = gpu_int(nk); m[1] = sv;
+    c[0] = a[0]; c[1] = a[1]; c[2] = a[2]; c[3] = a[3]; c[4] = sv;
+    PmBatch b; double t = 0;
+    if (pm_begin(&b) != PM_OK) return 0;
+    int64_t qt = (nq + 63) / 64;
+    if (pm_launch(b, g_kscores, heads * qt * ((nk + 31) / 32), 128, 128, a, 7) != PM_OK ||
+        pm_launch(b, g_ksoftmax, heads * nq, 128, 128, m, 2) != PM_OK ||
+        pm_launch(b, g_kvalues, heads * qt * 2, 128, 128, c, 7) != PM_OK) return 0;
+    PmStatus st = pm_wait(b, &t);
+    if (st != PM_OK) { fprintf(stderr, "psionic-whisper: GPU launch failed (%d): %s\n", (int)st, pm_log()); exit(1); }
+    g_gpu_ms += t * 1e3;
+    return 1;
+}
+/* Opens the GPU and compiles the kernels; 0 when there is no Metal device. */
+static int gpu_open(void) {
+    PmDeviceInfo info; PmModule mod; double secs;
+    if (pm_open(&info) != PM_OK) return 0;
+    if (pm_compile(whisper_metal_source, sizeof whisper_metal_source - 1, "whisper", &mod, &secs) != PM_OK) { fprintf(stderr, "psionic-whisper: %s\n", pm_log()); return 0; }
+    if (pm_kernel(mod, "wd_linear", &g_klinear) != PM_OK || pm_kernel(mod, "wd_rows", &g_krows) != PM_OK || pm_kernel(mod, "wd_scores", &g_kscores) != PM_OK ||
+        pm_kernel(mod, "wd_softmax", &g_ksoftmax) != PM_OK || pm_kernel(mod, "wd_values", &g_kvalues) != PM_OK) return 0;
+    return 1;
+}
+static float *gpu_alloc(int i, size_t count) {
+    if (pm_alloc(count * sizeof(float), &g_buf[i]) != PM_OK) return 0;
+    g_base[i] = pm_contents(g_buf[i]); g_size[i] = count * sizeof(float);
+    memset(g_base[i], 0, g_size[i]);
+    return (float *)g_base[i];
+}
+#else
+static int g_gpu;
+static double g_gpu_ms;
+static int gpu_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, coax_v_f32 y, int64_t act) { (void)x; (void)rows; (void)n_in; (void)w; (void)b; (void)n_out; (void)y; (void)act; return 0; }
+static int gpu_attend(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, _Bool causal, coax_v_f32 out) { (void)q; (void)nq; (void)k; (void)v; (void)nk; (void)d; (void)heads; (void)causal; (void)out; return 0; }
+static int gpu_open(void) { return 0; }
+static float *gpu_alloc(int i, size_t count) { (void)i; (void)count; return 0; }
+#endif
 int64_t cxwh_linear(coax_v_f32 x, int64_t rows, int64_t n_in, coax_v_f32 w, coax_v_f32 b, int64_t n_out, coax_v_f32 y, int64_t act) {
+    double t0 = g_profile ? now_ms() : 0;
+    if (gpu_linear(x, rows, n_in, w, b, n_out, y, act)) { if (g_profile) { g_prof[0] += now_ms() - t0; g_calls[0]++; } return 0; }
     job j = {0}; j.kind = 0; j.a = x; j.i0 = rows; j.i1 = n_in; j.b = w; j.c = b; j.i2 = n_out; j.d = y; j.i3 = act;
     g_small = rows < 256; split(j, n_out, (double)rows * n_in * n_out);
     return 0;
 }
 int64_t cxwh_attend(coax_v_f32 q, int64_t nq, coax_v_f32 k, coax_v_f32 v, int64_t nk, int64_t d, int64_t heads, int64_t first, _Bool causal, coax_v_f32 out) {
+    double t0 = g_profile ? now_ms() : 0;
+    if (gpu_attend(q, nq, k, v, nk, d, heads, causal, out)) { if (g_profile) { g_prof[1] += now_ms() - t0; g_calls[1]++; } return 0; }
     job j = {0}; j.kind = 1; j.a = q; j.i0 = nq; j.b = k; j.c = v; j.i1 = nk; j.i2 = d; j.i3 = heads; j.i4 = first; j.flag = causal; j.d = out;
     g_small = nq < 256; split(j, heads * ((nq + 3) / 4), (double)nq * nk * d * 2);
     return 0;
@@ -151,7 +241,7 @@ static coax_v_u8 map(const char *path) {
 static int usage(void) {
     fputs("usage: psionic-whisper info|filters MODEL\n"
           "       psionic-whisper transcribe MODEL WAV [--text|--srt|--vtt|--json|--lines] [--language CODE|auto] [--threads N]\n"
-          "                       [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C]\n", stderr);
+          "                       [--name NAME] [--beam N] [--best-of N] [--no-fallback] [--prompt TEXT] [--words A,B,C] [--gpu]\n", stderr);
     return 64;
 }
 
@@ -197,6 +287,7 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--no-fallback") == 0) opt.fallback = 0;
         else if (strcmp(argv[i], "--prompt") == 0 && i + 1 < argc) prompt = argv[++i];
         else if (strcmp(argv[i], "--words") == 0 && i + 1 < argc) words = argv[++i];
+        else if (strcmp(argv[i], "--gpu") == 0) g_gpu = 1;
         else return usage();
     }
     pool_start();
@@ -205,7 +296,13 @@ int main(int argc, char **argv) {
     if (!net) return 1;
     *net = psionic_whisper_net(file, m, tv, (coax_v_s64){offsets, TENSORS}, ctx);
     if (net->status != COAX_WeStatus_ok) { fprintf(stderr, "psionic-whisper: model tensors (status %d)\n", (int)net->status); return 1; }
-    float *W = malloc((size_t)net->weights * sizeof *W), *work = calloc((size_t)net->work.total, sizeof *work);
+    if (g_gpu && !gpu_open()) { fputs("psionic-whisper: --gpu needs an Apple GPU (Metal) build; running on the CPU\n", stderr); g_gpu = 0; }
+    float *W, *work;
+    if (g_gpu) {
+        W = gpu_alloc(0, (size_t)net->weights); work = gpu_alloc(1, (size_t)net->work.total);
+        if (!gpu_alloc(2, (size_t)(p.n_audio_head * p.n_audio_ctx * p.n_audio_ctx))) { fputs("psionic-whisper: out of GPU memory\n", stderr); return 1; }
+    }
+    else { W = malloc((size_t)net->weights * sizeof *W); work = calloc((size_t)net->work.total, sizeof *work); }
     if (!W || !work) { fputs("psionic-whisper: out of memory\n", stderr); return 1; }
     coax_t_WeStatus ls = psionic_whisper_load(file, tv, m.tensor_count, (coax_v_s64){offsets, TENSORS}, (coax_v_f32){W, net->weights});
     if (ls != COAX_WeStatus_ok) { fprintf(stderr, "psionic-whisper: weights (status %d)\n", (int)ls); return 1; }
@@ -242,11 +339,12 @@ int main(int argc, char **argv) {
                                        (coax_string){lang, lang_n}, (coax_v_u8){out, (int64_t)text_cap * 2});
     if (n < 0) { fputs("psionic-whisper: output too long\n", stderr); return 1; }
     fwrite(out, 1, (size_t)n, stdout);
-    fprintf(stderr, "psionic-whisper: %.0f ms load, %.0f ms transcribe (%d threads, %lld windows, %lld tokens, %lld fallbacks, %.*s, %.1f s audio)\n",
-            t_load - t0, t_end - t_load, g_threads, (long long)run.windows, (long long)run.tokens, (long long)run.fallbacks, (int)lang_n, lang,
+    fprintf(stderr, "psionic-whisper: %.0f ms load, %.0f ms transcribe (%s%d threads, %lld windows, %lld tokens, %lld fallbacks, %.*s, %.1f s audio)\n",
+            t_load - t0, t_end - t_load, g_gpu ? "GPU and " : "", g_threads, (long long)run.windows, (long long)run.tokens, (long long)run.fallbacks, (int)lang_n, lang,
             wh.samples / 16000.0);
+    if (g_profile) fprintf(stderr, "psionic-whisper profile: GPU %.0f ms; ", g_gpu_ms);
     if (g_profile)
-        fprintf(stderr, "psionic-whisper profile: decoder linear %.0f ms (%ld), attend %.0f ms (%ld); encoder linear %.0f ms (%ld), attend %.0f ms (%ld), conv %.0f ms (%ld), mel %.0f ms (%ld), other %.0f ms\n",
+        fprintf(stderr, "decoder linear %.0f ms (%ld), attend %.0f ms (%ld); encoder linear %.0f ms (%ld), attend %.0f ms (%ld), conv %.0f ms (%ld), mel %.0f ms (%ld), other %.0f ms\n",
                 g_prof[4], g_calls[4], g_prof[5], g_calls[5], g_prof[0], g_calls[0], g_prof[1], g_calls[1], g_prof[2], g_calls[2], g_prof[3], g_calls[3],
                 (t_end - t_load) - g_prof[0] - g_prof[1] - g_prof[2] - g_prof[3] - g_prof[4] - g_prof[5]);
     return 0;

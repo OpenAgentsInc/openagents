@@ -1,0 +1,270 @@
+// Psionic Whisper's encoder kernels for an Apple GPU (coax metal-compute).
+// The host (psionic/platform/whisper-face.c with --gpu) runs the encoder's
+// projections and attention here and everything else on the CPU, on the
+// same shared buffers. The C build of this file is the CPU meaning the
+// tests check; the device adds each 32-wide slice of a product in an order
+// the hardware chooses, so device results match within a tolerance, not bit
+// for bit (see coax/lib/compute/apple.coax).
+//
+// Checks: coax test psionic/lib/whisper/device.coax --library
+#load "../../../coax/lib/compute/apple.coax";
+
+WD_THREADS :: 128;
+WD_HEAD :: 64;
+
+// e^x in f32, as engine.coax's we_expf: n = round(x log2(e)), the remainder
+// in two parts, a degree-6 polynomial and 2^n from the exponent bits.
+wd_expf :: (x: f32) -> f32 {
+  if x < -87 { return 0; }
+  y := x; if y > 88 { y = 88; }
+  t := y * 1.442695041;
+  n := 0; if t >= 0 { n = cast(int) (t + 0.5); } else { n = cast(int) (t - 0.5); }
+  fn := cast(f32) n;
+  r := (y - fn * 0.693145752) - fn * 0.00000142860677;
+  p := 1 + r * (1 + r * (0.5 + r * (0.1666666667 + r * (0.04166666667 + r * (0.008333333333 + r * 0.001388888889)))));
+  return p * f32_from_bits(cast(u32) (n + 127) << 23);
+}
+// GELU as engine.coax's we_gelu.
+wd_gelu :: (x: f32) -> f32 {
+  u := 0.7978845608 * (x + 0.044715 * x * x * x);
+  if u > 10 { return x; }
+  if u < -10 { return 0; }
+  return 0.5 * x * (2 - 2 / (wd_expf(2 * u) + 1));
+}
+// The number of work items of wd_linear: 64-row by 32-output tiles.
+wd_linear_items :: (rows: int, n_out: int) -> int { return ((rows + 63) / 64) * ((n_out + 31) / 32); }
+// y[r][o] = b[o] + sum_i x[r][i] w[o][i], GELU when act is 1; b is unused
+// when bias is 0. Item i is the tile of rows 64 (i / tiles) and outputs
+// 32 (i % tiles), tiles = ceil(n_out / 32): the simdgroups multiply 32-wide
+// slices of x and w staged in threadgroup memory, zero past the edges.
+wd_linear :: (item: int, rows: int, n_in: int, n_out: int, act: int, bias: int, x: [] f32, w: [] f32, b: [] f32, y: [] f32) #export_c {
+  tiles := (n_out + 31) / 32; r0 := item / tiles * 64; o0 := item % tiles * 32;
+  a: [2048] f32; bt: [1024] f32; acc: [2048] f32;
+  for s: 0..<(n_in + 31) / 32 {
+    k0 := s * 32;
+    for thread: 0..<WD_THREADS {
+      for i: 0..<16 {
+        e := thread + WD_THREADS * i; r := e / 32; q := e % 32;
+        v: f32 = 0; if r0 + r < rows && k0 + q < n_in { v = x[(r0 + r) * n_in + k0 + q]; }
+        a[thread + WD_THREADS * i] = v;
+      }
+      for i: 0..<8 {
+        e := thread + WD_THREADS * i; c := e / 32; q := e % 32;
+        v: f32 = 0; if o0 + c < n_out && k0 + q < n_in { v = w[(o0 + c) * n_in + k0 + q]; }
+        bt[thread + WD_THREADS * i] = v;
+      }
+    }
+    am_sg_mma_64x32x32(acc[..], a[..], bt[..]);
+  }
+  am_sg_spill_64x32(acc[..], a[..]);
+  for thread: 0..<WD_THREADS {
+    for i: 0..<16 {
+      e := thread + WD_THREADS * i; r := e / 32; c := e % 32;
+      if r0 + r < rows && o0 + c < n_out {
+        v := a[e];
+        if bias == 1 { v += b[o0 + c]; }
+        if act == 1 { v = wd_gelu(v); }
+        y[(r0 + r) * n_out + o0 + c] = v;
+      }
+    }
+  }
+}
+// Attention without a mask, one work item per (head, query): item i is head
+// i / nq and query i % nq. One pass over the keys with a running maximum
+// (the scores are rescaled when it grows), so no score array is kept.
+// Heads have 64 dimensions, as in every Whisper model.
+wd_attend :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, v: [] f32, out: [] f32) #export_c {
+  h := item / nq; t := item % nq; hd := h * WD_HEAD;
+  qr: [64] f32; acc: [64] f32;
+  for i: 0..<WD_HEAD { qr[i] = q[t * d + hd + i] * 0.125; }
+  best: f32 = -3.0e38; sum: f32 = 0;
+  for j: 0..<nk {
+    o := j * d + hd;
+    s: f32 = 0;
+    for i: 0..<WD_HEAD { s += qr[i] * k[o + i]; }
+    if s > best {
+      c := wd_expf(best - s);
+      sum = sum * c;
+      for i: 0..<WD_HEAD { acc[i] = acc[i] * c; }
+      best = s;
+    }
+    p := wd_expf(s - best);
+    sum += p;
+    for i: 0..<WD_HEAD { acc[i] += p * v[o + i]; }
+  }
+  for i: 0..<WD_HEAD { out[t * d + hd + i] = acc[i] / sum; }
+}
+
+// The same product for at most 8 rows (the decoder's beams): item o is one
+// output, read once by a group of 32 threads that each take every 32nd
+// input; thread r then adds the 32 partial sums of row r.
+wd_rows :: (item: int, rows: int, n_in: int, n_out: int, bias: int, x: [] f32, w: [] f32, b: [] f32, y: [] f32) #export_c {
+  part: [256] f32;
+  o := item;
+  for thread: 0..<32 {
+    a0: f32 = 0; a1: f32 = 0; a2: f32 = 0; a3: f32 = 0; a4: f32 = 0; a5: f32 = 0; a6: f32 = 0; a7: f32 = 0;
+    for u: 0..<(n_in + 31) / 32 {
+      i := thread + 32 * u;
+      if i < n_in {
+        wv := w[o * n_in + i];
+        a0 += wv * x[i];
+        if rows > 1 { a1 += wv * x[n_in + i]; } if rows > 2 { a2 += wv * x[2 * n_in + i]; } if rows > 3 { a3 += wv * x[3 * n_in + i]; }
+        if rows > 4 { a4 += wv * x[4 * n_in + i]; } if rows > 5 { a5 += wv * x[5 * n_in + i]; } if rows > 6 { a6 += wv * x[6 * n_in + i]; } if rows > 7 { a7 += wv * x[7 * n_in + i]; }
+      }
+    }
+    part[thread * 8] = a0; part[thread * 8 + 1] = a1; part[thread * 8 + 2] = a2; part[thread * 8 + 3] = a3;
+    part[thread * 8 + 4] = a4; part[thread * 8 + 5] = a5; part[thread * 8 + 6] = a6; part[thread * 8 + 7] = a7;
+  }
+  for thread: 0..<32 {
+    if thread < rows {
+      v: f32 = 0;
+      for t: 0..<32 { v += part[t * 8 + thread]; }
+      if bias == 1 { v += b[o]; }
+      y[thread * n_out + o] = v;
+    }
+  }
+}
+// Attention as three launches over every head at once, through a score
+// buffer s of heads * nq * nk values. wd_scores: item i is head i / (qt kt)
+// and the 64-query by 32-key tile i % (qt kt) (qt = ceil(nq / 64), kt =
+// ceil(nk / 32)) of s = q k^T / 8.
+wd_scores_items :: (nq: int, nk: int, heads: int) -> int { return heads * ((nq + 63) / 64) * ((nk + 31) / 32); }
+wd_scores :: (item: int, nq: int, nk: int, d: int, heads: int, q: [] f32, k: [] f32, s: [] f32) #export_c {
+  kt := (nk + 31) / 32; per := ((nq + 63) / 64) * kt;
+  h := item / per; tile := item % per; t0 := tile / kt * 64; j0 := tile % kt * 32; hd := h * WD_HEAD;
+  a: [2048] f32; bt: [1024] f32; acc: [2048] f32;
+  for st: 0..<2 {
+    k0 := hd + st * 32;
+    for thread: 0..<WD_THREADS {
+      for i: 0..<16 {
+        e := thread + WD_THREADS * i; r := e / 32; c := e % 32;
+        x: f32 = 0; if t0 + r < nq { x = q[(t0 + r) * d + k0 + c]; }
+        a[thread + WD_THREADS * i] = x;
+      }
+      for i: 0..<8 {
+        e := thread + WD_THREADS * i; r := e / 32; c := e % 32;
+        x: f32 = 0; if j0 + r < nk { x = k[(j0 + r) * d + k0 + c]; }
+        bt[thread + WD_THREADS * i] = x;
+      }
+    }
+    am_sg_mma_64x32x32(acc[..], a[..], bt[..]);
+  }
+  am_sg_spill_64x32(acc[..], a[..]);
+  for thread: 0..<WD_THREADS {
+    for i: 0..<16 {
+      e := thread + WD_THREADS * i; r := e / 32; c := e % 32;
+      if t0 + r < nq && j0 + c < nk { s[(h * nq + t0 + r) * nk + j0 + c] = a[e] * 0.125; }
+    }
+  }
+}
+// Each row of s (item i is row i) becomes its softmax, by a group of 128
+// threads: each reduces its own strided values, then all read the parts.
+wd_softmax :: (item: int, nk: int, s: [] f32) #export_c {
+  part: [128] f32;
+  base := item * nk;
+  for thread: 0..<WD_THREADS {
+    m: f32 = -3.0e38;
+    for u: 0..<(nk + WD_THREADS - 1) / WD_THREADS { j := thread + WD_THREADS * u; if j < nk && s[base + j] > m { m = s[base + j]; } }
+    part[thread] = m;
+  }
+  best: f32 = -3.0e38;
+  for i: 0..<WD_THREADS { if part[i] > best { best = part[i]; } }
+  for thread: 0..<WD_THREADS {
+    z: f32 = 0;
+    for u: 0..<(nk + WD_THREADS - 1) / WD_THREADS { j := thread + WD_THREADS * u; if j < nk { e := wd_expf(s[base + j] - best); s[base + j] = e; z += e; } }
+    part[thread] = z;
+  }
+  total: f32 = 0;
+  for i: 0..<WD_THREADS { total += part[i]; }
+  inv := 1 / total;
+  for thread: 0..<WD_THREADS {
+    for u: 0..<(nk + WD_THREADS - 1) / WD_THREADS { j := thread + WD_THREADS * u; if j < nk { s[base + j] = s[base + j] * inv; } }
+  }
+}
+// out = s v: item i is head i / (qt 2) and the 64-query by 32-dimension tile
+// i % (qt 2); the keys are the product's inner dimension.
+wd_values_items :: (nq: int, heads: int) -> int { return heads * ((nq + 63) / 64) * 2; }
+wd_values :: (item: int, nq: int, nk: int, d: int, heads: int, s: [] f32, v: [] f32, out: [] f32) #export_c {
+  per := ((nq + 63) / 64) * 2;
+  h := item / per; tile := item % per; t0 := tile / 2 * 64; c0 := tile % 2 * 32; hd := h * WD_HEAD;
+  a: [2048] f32; bt: [1024] f32; acc: [2048] f32;
+  for st: 0..<(nk + 31) / 32 {
+    j0 := st * 32;
+    for thread: 0..<WD_THREADS {
+      for i: 0..<16 {
+        e := thread + WD_THREADS * i; r := e / 32; c := e % 32;
+        x: f32 = 0; if t0 + r < nq && j0 + c < nk { x = s[(h * nq + t0 + r) * nk + j0 + c]; }
+        a[thread + WD_THREADS * i] = x;
+      }
+      for i: 0..<8 {
+        e := thread + WD_THREADS * i; r := e / 32; c := e % 32;
+        x: f32 = 0; if j0 + c < nk { x = v[(j0 + c) * d + hd + c0 + r]; }
+        bt[thread + WD_THREADS * i] = x;
+      }
+    }
+    am_sg_mma_64x32x32(acc[..], a[..], bt[..]);
+  }
+  am_sg_spill_64x32(acc[..], a[..]);
+  for thread: 0..<WD_THREADS {
+    for i: 0..<16 {
+      e := thread + WD_THREADS * i; r := e / 32; c := e % 32;
+      if t0 + r < nq { out[(t0 + r) * d + hd + c0 + c] = a[e]; }
+    }
+  }
+}
+
+#test "a tiled projection matches the plain sum, with bias and GELU" #steps 200000000 {
+  rows := 70; n_in := 40; n_out := 37;
+  x: [2800] f32; w: [1480] f32; b: [37] f32; y: [2590] f32;
+  for i: 0..<2800 { x[i] = cast(f32) ((i * 7) % 11) * 0.1 - 0.5; }
+  for i: 0..<1480 { w[i] = cast(f32) ((i * 5) % 13) * 0.05 - 0.3; }
+  for i: 0..<37 { b[i] = cast(f32) i * 0.01; }
+  for act: 0..<2 {
+    for i: 0..<wd_linear_items(rows, n_out) { wd_linear(i, rows, n_in, n_out, act, 1, x[..], w[..], b[..], y[..]); }
+    for r: 0..<rows { for o: 0..<n_out {
+      s := 0.0; for i: 0..<n_in { s += cast(f64) x[r * n_in + i] * cast(f64) w[o * n_in + i]; }
+      want := cast(f32) s + b[o];
+      if act == 1 { want = wd_gelu(want); }
+      #assert abs(cast(f64) (y[r * n_out + o] - want)) < 0.00001;
+    } }
+  }
+}
+#test "one-pass attention matches a direct softmax" {
+  d := 128; heads := 2; nq := 3; nk := 9;
+  q: [384] f32; k: [1152] f32; v: [1152] f32; o: [384] f32;
+  for i: 0..<384 { q[i] = cast(f32) ((i * 7) % 11) * 0.1 - 0.5; }
+  for i: 0..<1152 { k[i] = cast(f32) ((i * 5) % 13) * 0.1 - 0.6; v[i] = cast(f32) ((i * 3) % 7) - 3; }
+  for i: 0..<heads * nq { wd_attend(i, nq, nk, d, heads, q[..], k[..], v[..], o[..]); }
+  for h: 0..<heads { for t: 0..<nq {
+    sc: [9] f64; best := -1.0e300;
+    for j: 0..<nk { a := 0.0; for i: 0..<64 { a += cast(f64) q[t * d + h * 64 + i] * cast(f64) k[j * d + h * 64 + i]; } sc[j] = a / 8; if sc[j] > best { best = sc[j]; } }
+    z := 0.0; for j: 0..<nk { sc[j] = exp(sc[j] - best); z += sc[j]; }
+    for i: 0..<64 {
+      r := 0.0; for j: 0..<nk { r += sc[j] / z * cast(f64) v[j * d + h * 64 + i]; }
+      #assert abs(cast(f64) o[t * d + h * 64 + i] - r) < 0.00001;
+    }
+  } }
+}
+#test "attention in three launches matches the one-pass kernel" #steps 400000000 {
+  d := 128; heads := 2; nq := 70; nk := 40;
+  q: [8960] f32; k: [5120] f32; v: [5120] f32; o: [8960] f32; r: [8960] f32; sc: [5600] f32;
+  for i: 0..<8960 { q[i] = cast(f32) ((i * 7) % 11) * 0.1 - 0.5; }
+  for i: 0..<5120 { k[i] = cast(f32) ((i * 5) % 13) * 0.1 - 0.6; v[i] = cast(f32) ((i * 3) % 7) - 3; }
+  for i: 0..<wd_scores_items(nq, nk, heads) { wd_scores(i, nq, nk, d, heads, q[..], k[..], sc[..]); }
+  for i: 0..<heads * nq { wd_softmax(i, nk, sc[..]); }
+  for i: 0..<wd_values_items(nq, heads) { wd_values(i, nq, nk, d, heads, sc[..], v[..], o[..]); }
+  for i: 0..<heads * nq { wd_attend(i, nq, nk, d, heads, q[..], k[..], v[..], r[..]); }
+  for i: 0..<8960 { #assert abs(cast(f64) (o[i] - r[i])) < 0.0001; }
+}
+#test "the beam product matches the plain sum" {
+  rows := 5; n_in := 70; n_out := 9;
+  x: [350] f32; w: [630] f32; b: [9] f32; y: [45] f32;
+  for i: 0..<350 { x[i] = cast(f32) ((i * 7) % 11) * 0.1 - 0.5; }
+  for i: 0..<630 { w[i] = cast(f32) ((i * 5) % 13) * 0.05 - 0.3; }
+  for i: 0..<9 { b[i] = cast(f32) i * 0.01; }
+  for o: 0..<n_out { wd_rows(o, rows, n_in, n_out, 1, x[..], w[..], b[..], y[..]); }
+  for r: 0..<rows { for o: 0..<n_out {
+    s := 0.0; for i: 0..<n_in { s += cast(f64) x[r * n_in + i] * cast(f64) w[o * n_in + i]; }
+    #assert abs(cast(f64) y[r * n_out + o] - (s + cast(f64) b[o])) < 0.00001;
+  } }
+}
