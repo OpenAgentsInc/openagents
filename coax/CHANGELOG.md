@@ -74,6 +74,17 @@ Commit: [`1f9d64a193fcd45d08ff775fbc7f034d2ead84ba`](https://github.com/OpenAgen
   never a comment or a string. The index is cached in `~/.cache/coax-query/`
   and used only while every source unit's SHA-256 matches: a warm query over
   the compiler's sources takes under 0.1 s, a cold one about 6 s.
+- Follow-up (`ax-step-budgets`): `#steps N` after a check's name or
+  bindings gives that check its own step budget, which replaces the file's
+  in `coax test`, `#authority` compiles and `coax mutate` (a mutant never
+  gets more than its check's own budget). A check out of steps says so on
+  its `FAIL` line with its steps and budget, and its E0400 message names the
+  budget and whether it is the check's own or the file's. `coax test FILE
+  --profile steps` lists, after each check, the eight procedures that used
+  the most of its steps, with own steps, share, steps with calls and calls.
+  The Fairy Forest page's 36 checks that ran out of steps each rebuild the
+  whole world (about 114 million steps in `fairy_start`); they now carry
+  their own budgets, and all 156 of its checks pass.
 
 ## 0.44.0 — Native Semantic Checks — 2026-10-31
 

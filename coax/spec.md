@@ -959,6 +959,19 @@ refund_ok :: (paid: int, refund: int) -> bool {
 - `coax test FILE [--steps N]` runs every check, each with its own budget of
   20,000,000 steps unless `--steps` says otherwise. The same rules hold as in
   `#run`: no output, no host calls, overflow and bounds checked.
+- `#steps N` after a check's name (`#test`) or bindings (`#forall`) gives
+  that check its own budget of N steps, which replaces the file's budget
+  (`--steps` or the default) for that check in `coax test`, in `#authority`
+  compiles and in `coax mutate`. N is a positive integer literal (E0220). A
+  mutant's budget is ten times the unmutated check's steps (at least 10,000),
+  but never more than the check's own `#steps`. A check that runs out of
+  steps fails with E0400; the message names the budget and whether it is the
+  check's own or the file's.
+- `coax test FILE --profile steps` prints, after each check's line, the
+  eight procedures that used most of its steps: the steps charged while each
+  was the innermost call (its own steps), their share of the check's steps,
+  its steps including the calls it makes (a recursive procedure is counted
+  once per outermost call), and its calls. The check's own body is one row.
 - `#authority;` marks a file whose rules guard money, signatures or grants.
   Every procedure authored in that physical source unit except `main` and `#foreign` imports must actually execute
   in a check, directly or through calls (E0380). Dead references, short-circuited

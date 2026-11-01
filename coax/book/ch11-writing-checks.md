@@ -459,7 +459,7 @@ state the property you need, not the steps that get you there.
 
 ## Controlling how checks run
 
-`coax test` has one option and a few behaviors worth knowing.
+`coax test` has a few options and behaviors worth knowing.
 
 ### The step budget
 
@@ -497,6 +497,93 @@ The budget is also what keeps a check from hanging. If you write a loop
 that never ends, the check fails when it runs out of steps instead of
 spinning forever. `--steps` must be a positive whole number; `--steps 0`
 is refused.
+
+### A check's own budget
+
+Most checks fit the file's budget easily, but a few need far more steps,
+such as a check that builds a whole game world before it asserts anything.
+Raising `--steps` for the whole file lets every check run that long. To
+raise the budget for one check only, write `#steps N` after its name, or
+after a `#forall`'s bindings:
+
+```coax
+spin :: (n: int) -> int {
+  s := 0;
+  for i: 0..<n { s += i % 7; }
+  return s;
+}
+
+#test "a long loop under its own larger budget" #steps 100000000 {
+  #assert spin(4000000) == 11999994;
+}
+
+#test "a short loop under its own smaller budget" #steps 1000 {
+  #assert spin(10000) == 29994;
+}
+
+#test "a long loop under the file's budget" {
+  #assert spin(4000000) == 11999994;
+}
+
+#forall "a range check with its own budget" n: 0..<4 #steps 500 {
+  #assert spin(n) >= 0;
+}
+```
+
+A check's own budget replaces the file's, whether it is larger or
+smaller. A small `#steps` keeps a check cheap: it fails as soon as a change
+makes it slower than you meant it to be.
+
+```shell
+$ coax test budgets.coax --lib
+ok   #test a long loop under its own larger budget (1 case, 24000014 steps)
+FAIL #test a short loop under its own smaller budget (out of steps: 1000 used, its budget is 1000)
+budgets.coax:4:27: error[E0400]: compile-time evaluation exceeded 1000 steps, the check's budget (its own #steps)
+    for i: 0..<n { s += i % 7; }
+                            ^
+  note: in #test a short loop under its own smaller budget
+FAIL #test a long loop under the file's budget (out of steps: 20000000 used, its budget is 20000000)
+budgets.coax:4:25: error[E0400]: compile-time evaluation exceeded 20000000 steps, the check's budget (the file's: coax test --steps N, or #steps N on the check for its own)
+    for i: 0..<n { s += i % 7; }
+                          ^
+  note: in #test a long loop under the file's budget
+ok   #forall a range check with its own budget (4 cases, 94 steps)
+4 checks, 2 passed, 2 failed
+```
+
+A check that runs out of steps says which budget it ran out of: its own,
+or the file's. `--steps` changes only the checks without `#steps`. The
+same budgets apply when an `#authority` file compiles, and `coax mutate`
+never gives a mutant more steps than its check's own `#steps`.
+
+### Where the steps go
+
+When a check needs more steps than you expect, `--profile steps` shows
+where they go. After each check's line, it lists the eight procedures that
+used the most:
+
+```shell
+$ coax test fairy.coax --only "trees keep off" --profile steps
+ok   #test trees keep off the trails, the stream and the glades (1 case, 136279918 steps)
+        own steps  share   with calls     calls  procedure
+         20906514  15.3%     31837809     28755  shaped  verse/terrain.coax:114
+         16723986  12.3%     18290298     15356  ffp_lake_near  verse/fairy-forest/park.coax:32
+         15105764  11.1%     20123292         1  path_planes  apps/openagents-web/fairy.coax:291
+         13859453  10.2%     15855558      3041  ff_stream_near_some  verse/fairy-forest/forest.coax:496
+         13223648   9.7%     14257179      1016  verse_path_nearest  verse/terrain.coax:88
+         10778886   7.9%     13093768      1707  ffpk_path_gap  apps/openagents-web/fairypark.coax:15
+          8000610   5.9%      8001730     28755  ffp_rock_lift  verse/fairy-forest/park.coax:91
+          6713210   4.9%      6713210    897270  lo  verse/space.coax:27
+     ... 68 more procedures
+```
+
+*Own steps* are the steps spent while the procedure is the innermost
+call, so the own steps of all rows add up to the check's steps. *With
+calls* adds the steps of the calls it makes. A procedure with few own steps
+but many steps with calls is where the work starts; one with many own steps
+is where it's done. `shaped` runs once for each of the terrain's 28,755
+height samples, so the cost here is the size of the world, not one slow
+loop. The check's own body has a row of its own, `(the check's own body)`.
 
 ### Exit status and JSON
 

@@ -50,8 +50,9 @@ enum = identifier, "::", "enum", type, "{", { member }, "}" ;
 member = identifier, [ "=", expression ], ";" ;
 assertion = "#assert", expression, ";" ;
 authority = "#authority", ";" ;
-check = "#test", string, block
-      | "#forall", [ string ], binding, { ",", binding }, block ;
+check = "#test", string, [ budget ], block
+      | "#forall", [ string ], binding, { ",", binding }, [ budget ], block ;
+budget = "#steps", integer ;  (* positive: the check's own step budget *)
 binding = identifier, ":", ( type | expression, "..<", expression ) ;
 
 type = named-type
