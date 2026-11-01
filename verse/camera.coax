@@ -16,6 +16,8 @@
 //   coax/bin/coax test verse/camera.coax
 
 #load "space.coax";
+#load "../aethyr/shot.coax" as ash;   // the free orbit's shot is Aethyr's (book chapter 10)
+#load "../aethyr/space.coax" as asp;
 
 CENTER_X :: 0.0;          // what the overview circles: the spawn and its terminal
 CENTER_Z :: 3.0;
@@ -118,11 +120,11 @@ verse_camera_dolly_hurry :: (d: Dolly, now: f64, to: Shot) -> Dolly #export_c {
 //   along verse_orbit_ray (and the host's ground along the same ray),
 //   verse_orbit_limit with the room left, verse_orbit_shot to draw.
 
-FREE_DIST :: 5.2;            // metres back, to start
+FREE_DIST :: ash.SHOT_ORBIT_DIST;   // metres back, to start
 FREE_NEAR :: 1.5;            // the closest a zoom comes in
 FREE_FAR :: 12.0;            // the furthest it goes out
-FREE_HEIGHT :: 1.45;         // the pivot, above your feet
-FREE_SHOULDER :: 0.55;       // metres right of you the view is centred
+FREE_HEIGHT :: ash.SHOT_ORBIT_HEIGHT;       // the pivot, above your feet
+FREE_SHOULDER :: ash.SHOT_ORBIT_SHOULDER;   // metres right of you the view is centred
 FREE_PITCH :: 0.3;           // radians down: where it rests
 FREE_PITCH_MIN :: -0.55;     // looking up past the horizon
 FREE_PITCH_MAX :: 1.3;       // nearly straight down
@@ -137,8 +139,8 @@ FREE_CLEAR :: 0.25;          // how far the eye keeps from scenery
 FREE_MIN_ROOM :: 0.3;        // the closest scenery pushes it to the pivot
 FREE_KEY_TURN :: 2.2;        // radians a second for a held arrow key
 FREE_PUSH :: 0.6;            // metres of zoom past FREE_NEAR that take it into your head
-FREE_EYE :: 1.62;            // first person: your eyes, above your feet
-FREE_FACE :: 0.12;           // and this far in front of the pivot, clear of your face
+FREE_EYE :: ash.SHOT_ORBIT_EYE;    // first person: your eyes, above your feet
+FREE_FACE :: ash.SHOT_ORBIT_FACE;  // and this far in front of the pivot, clear of your face
 FREE_INSIDE :: 0.6;          // past this share of the way in your body is out of the shot
 FREE_FIRST_PITCH :: 1.45;    // first person: radians up or down it can look
 SPHERE :: 4;                 // numbers per sphere: centre x, y, z, radius
@@ -169,10 +171,11 @@ verse_orbit_start :: (feet: Point, facing: f32) -> Orbit #export_c {
 }
 
 // Where it looks, and its right hand (level).
-verse_orbit_forward :: (o: Orbit) -> Point #export_c {
-  return v3(sin(o.yaw) * cos(o.pitch), -sin(o.pitch), cos(o.yaw) * cos(o.pitch));
-}
-verse_orbit_right :: (o: Orbit) -> Point #export_c { return v3(-cos(o.yaw), 0, sin(o.yaw)); }
+verse_orbit_forward :: (o: Orbit) -> Point #export_c { return orbit_pt(ash.shot_orbit_forward(o.yaw, o.pitch)); }
+verse_orbit_right :: (o: Orbit) -> Point #export_c { return orbit_pt(ash.shot_orbit_right(o.yaw)); }
+// Between this file's points and Aethyr's world points: the same metres.
+orbit_pt :: (w: asp.WorldPoint) -> Point { return v3(w.x, w.y, w.z); }
+orbit_wpt :: (p: Point) -> asp.WorldPoint { return asp.world_point(p.x, p.y, p.z); }
 
 // How far into first person it is: 0 out at FREE_NEAR or further, 1 with
 // the eye in your head. It follows the eased zoom, so it changes smoothly.
@@ -255,17 +258,10 @@ verse_orbit_follow :: (o: Orbit, feet: Point, heading: f32, moving: bool, dt: f3
 }
 
 // Going in, the shoulder offset closes and the line's start rises from the
-// pivot to your eyes, a little in front of your face.
+// pivot to your eyes, a little in front of your face (aethyr/follow.coax).
 verse_orbit_ray :: (o: Orbit) -> OrbitRay #export_c {
-  k := verse_orbit_first(o);
-  back := times(verse_orbit_forward(o), -o.zoom);
-  want := add(back, times(verse_orbit_right(o), f32(FREE_SHOULDER) * (1 - k)));
-  ahead := v3(sin(o.yaw), 0, cos(o.yaw));
-  r: OrbitRay;
-  r.from = add(o.pivot, times(add(v3(0, f32(FREE_EYE - FREE_HEIGHT), 0), times(ahead, f32(FREE_FACE))), k));
-  r.far = length(want);
-  r.dir = unit_or(want, v3(0, 0, -1));
-  return r;
+  a := ash.shot_orbit_ray(orbit_wpt(o.pivot), o.yaw, o.pitch, o.zoom, verse_orbit_first(o));
+  return OrbitRay.{from = orbit_pt(a.from), dir = orbit_pt(a.dir), far = a.far};
 }
 
 // How far along the ray the eye may go before scenery, keeping
@@ -325,11 +321,8 @@ verse_orbit_limit :: (o: Orbit, room: f32, dt: f32) -> Orbit #export_c {
 
 // What to draw: the eye on the ray, looking forward.
 verse_orbit_shot :: (o: Orbit) -> Shot #export_c {
-  r := verse_orbit_ray(o);
-  s: Shot;
-  s.eye = add(r.from, times(r.dir, o.shown));
-  s.at = add(s.eye, times(verse_orbit_forward(o), f32(FREE_DIST)));
-  return s;
+  a := ash.shot_orbit(ash.shot_orbit_ray(orbit_wpt(o.pivot), o.yaw, o.pitch, o.zoom, verse_orbit_first(o)), o.shown, o.yaw, o.pitch);
+  return Shot.{eye = orbit_pt(a.eye), at = orbit_pt(a.at)};
 }
 
 // Turns to look the way a shot does: how another camera (a cinematic, a

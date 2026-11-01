@@ -1,0 +1,38 @@
+// book:begin example
+#load "../../verse/player.coax";
+#import "Basic";
+
+// The cameras read the walker and never move it. One walk into a wall and a jump, with the
+// camera stepped after every step, never, or twice a step; the shots each camera makes of the
+// last frame; a dive down to the follow camera; and a dive whose time isn't a number.
+main :: () {
+  walls := [6] f32.[-3, 0, 4, 3, 2.5, 4.5];              // a wall 4 m ahead
+  w: World; w.walls = walls[..];
+  p: [3] Player;
+  for c: 0..<3 { p[c] = verse_player_place(0, 0, 0, 0); }
+  for f: 0..<120 {
+    for c: 0..<3 { p[c] = frame_with(w, verse_player_input(p[c], 0, 1, 0, 0, f > 20, f == 60, 0, 0), 1.0f32 / 60, c); }
+  }
+  for c: 0..<3 {
+    print("camera steps % a step: feet at (%, %, %); the camera looks at z = %\n", c, p[c].pos.x, p[c].pos.y, p[c].pos.z, p[c].target.z);
+  }
+  print("the same player each way: %\n", walker_same(p[0], p[1]) && walker_same(p[2], p[1]));
+  names := [3] string.["first person", "follow", "top down"];
+  for m: 0..<3 {
+    s := verse_player_view(p[1], m);
+    print("%: eye (%, %, %), looking at (%, %, %)\n", names[m], s.eye.x, s.eye.y, s.eye.z, s.at.x, s.at.y, s.at.z);
+  }
+  high := CameraShot.{eye = world_point(0, 38, -62), at = world_point(0, 0, 3)};
+  d := shot_dive_start(high, 0.75);
+  for k: 0..<49 {
+    if k % 12 == 0 {
+      s := shot_dive(d, verse_player_view(p[1], 1));
+      print("dive % of 48: share %, eye (%, %, %)\n", k, shot_dive_share(d), s.eye.x, s.eye.y, s.eye.z);
+    }
+    d = shot_dive_advance(d, 0.015625);
+  }
+  print("halfway, the point it looks at is % of the way\n", shot_ease(0.5 * f32(SHOT_DIVE_LEAD)));
+  bad := shot_dive_start(high, f32(0.0 / 0.0));
+  print("a dive of NaN seconds: length %, landed at once: %\n", bad.length, shot_dive_done(bad));
+}
+// book:end example

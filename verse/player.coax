@@ -384,7 +384,8 @@ verse_player_place :: (x: f32, y: f32, z: f32, yaw: f32) -> Player #export_c {
 // deltas in radians (positive turns left and looks up). A jump is a press, not a hold:
 // it is counted here and taken by the first fixed step after it (aethyr/input.coax), so a
 // frame that runs no step keeps it and a frame that runs two jumps once. The look turns the
-// camera at once (the realms' cameras read theta and phi each frame; ec-camera moves it).
+// camera at once (the realms' cameras read theta and phi each frame); the Grid's session splits
+// it over the steps (verse/gridwalk.coax), and the other realms follow with ec-migrate.
 verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #export_c {
   next := p;
@@ -518,11 +519,6 @@ step :: (w: World, given: Player, dt: f32) -> Player {
     next.face = wrap_angle(next.face + wrap_angle(want - next.face) * lo(1, f32(TURN_RATE) * dt));
   }
 
-  // Follow on the spring, and pull in at once where something is in the
-  // way; back out gently.
-  cam := follow_track(follow_of(next), colliders(w), w.room, wp(look_at(next)), dt);
-  next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
-
   if !next.on_ground { next.act = Act.airborne; }
   else if !dir.on { next.act = Act.idle; }
   else if speed > f32(WALK) + 0.25 { next.act = Act.running; }   // shown running only at a run's speed
@@ -530,6 +526,22 @@ step :: (w: World, given: Player, dt: f32) -> Player {
   return next;
 }
 // book:end move
+
+// book:begin camera
+// The camera's step, after the player's (aethyr/follow.coax): its target follows you on the
+// spring, and it pulls in at once where something is in the way and backs out gently. It reads
+// the step's result and the colliders and changes only the camera's fields, so the player's step
+// is the same with the camera or without it. The player keeps those fields because the realms'
+// C faces read them.
+camera_step :: (w: World, p: Player, dt: f32) -> Player {
+  next := p;
+  cam := follow_track(follow_of(p), colliders(w), w.room, wp(look_at(p)), dt);
+  next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
+  return next;
+}
+// One fixed step of the player, then of its camera: what steps_in runs each step.
+step_once :: (w: World, p: Player, dt: f32) -> Player { return camera_step(w, step(w, p, dt), dt); }
+// book:end camera
 
 // book:begin advance
 // Advances by a frame's time in fixed steps, on the player's clock (aethyr/loop.coax):
@@ -551,7 +563,7 @@ steps_in :: (w: World, p: Player, n: int) -> Player {
     next.prev_target = next.target;
     next.prev_face = next.face;
     next.prev_dist = next.dist;
-    next = step(w, next, STEP);
+    next = step_once(w, next, STEP);
   }
   return next;
 }
@@ -589,12 +601,11 @@ verse_player_feet :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_pos, p.p
 verse_player_face :: (p: Player) -> f32 #export_c {
   return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
 }
-// The camera this frame: what it looks at, and where it is. A wall pulls the
-// camera in at once, so it is never shown further out than the last step.
-verse_player_at :: (p: Player) -> Vec3 #export_c { return vp(follow_at(wp(p.prev_target), wp(p.target), alpha(p))); }
-verse_player_eye :: (p: Player) -> Vec3 #export_c {
-  return vp(follow_eye(wp(verse_player_at(p)), follow_offset(follow_of(p)), p.prev_dist, p.dist, alpha(p)));
-}
+// The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
+// pulls the camera in at once, so it is never shown further out than the last step.
+verse_player_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+verse_player_at :: (p: Player) -> Vec3 #export_c { return vp(verse_player_shot(p).at); }
+verse_player_eye :: (p: Player) -> Vec3 #export_c { return vp(verse_player_shot(p).eye); }
 // book:end drawn
 verse_player_act :: (p: Player) -> int #export_c { return cast(int) cast(u8) p.act; }
 
@@ -820,8 +831,8 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   q = verse_player_input(q, 0, 0, 0, 0, false, true, 0, 0);
   q = advance_in(w, q, 0.032);                    // two steps
   #assert q.clock.ticks == 2 && q.jumps.taken == 1 && q.jumps.waiting == 0;
-  one := step(w, step(w, verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
-  #assert same_step(q, one) && !same_step(q, step(w, q, STEP)) && !same_step(q, verse_player_place(0, 0, 0, 0));
+  one := step_once(w, step_once(w, verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
+  #assert same_step(q, one) && !same_step(q, step_once(w, q, STEP)) && !same_step(q, verse_player_place(0, 0, 0, 0));
   // The step that jumps already counts as in the air: on ice, it pushes you with full grip.
   ice := verse_player_place(0, 0, 0, 0); ice.grip = 0.5;
   dry := verse_player_place(0, 0, 0, 0);
@@ -929,30 +940,101 @@ held :: (p: Player, key_x: f32, key_y: f32, run: bool) -> Player {
   w: World;
   w.room = 2;
   p := verse_player_place(0, 0, 0, 0);
-  q := step(w, p, STEP);
+  q := step_once(w, p, STEP);
   #assert q.dist == 2;
   // A wall closer than CAM_WALL_MIN still leaves that much.
   w.room = 0.1;
-  #assert step(w, p, STEP).dist == f32(CAM_WALL_MIN);
+  #assert step_once(w, p, STEP).dist == f32(CAM_WALL_MIN);
   // Room again: out by CAM_LERP of the gap per 1/60 s.
   w.room = 1000;
-  r := step(w, q, STEP);
+  r := step_once(w, q, STEP);
   gap := f32(CAM_MAX) - 2;
   #assert near(r.dist, 2 + gap * (1 - pow(f32(1 - CAM_LERP), f32(STEP * 60))), 0.00001);
   #assert r.dist > 2 && r.dist < f32(CAM_MAX);
   // Exactly the room it has: it stays.
   w.room = 2;
-  #assert step(w, q, STEP).dist == 2;
+  #assert step_once(w, q, STEP).dist == 2;
 }
+
+// book:begin readonly
+// The camera only reads the player (aethyr/follow.coax, book chapter 10). Through a walk and a
+// run into a wall and round it, past a body, two jumps and a steady turn, at 60 FPS, the player is the same,
+// bit for bit, whether its camera steps after every step, never, or twice a step. Only the
+// camera's own fields differ, and the camera did meet the wall.
+walker_same :: (a: Player, b: Player) -> bool {
+  return a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z && a.vel.x == b.vel.x && a.vel.y == b.vel.y
+    && a.vel.z == b.vel.z && a.face == b.face && a.on_ground == b.on_ground && a.act == b.act && a.theta == b.theta
+    && a.phi == b.phi && a.max_dist == b.max_dist && a.prev_pos.x == b.prev_pos.x && a.prev_pos.y == b.prev_pos.y
+    && a.prev_pos.z == b.prev_pos.z && a.prev_face == b.prev_face && a.sliding == b.sliding
+    && a.jumps.waiting == b.jumps.waiting && a.jumps.taken == b.jumps.taken && a.clock.ticks == b.clock.ticks
+    && a.clock.carry_ns == b.clock.carry_ns;
+}
+// A frame as advance_in runs it, with the camera stepped `cams` times after each player step.
+frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player {
+  next := p;
+  next.clock = loop_accept(p.clock, cast(f64) frame);
+  for i: 0..<loop_due(next.clock) {
+    next.prev_pos = next.pos; next.prev_target = next.target; next.prev_face = next.face; next.prev_dist = next.dist;
+    next = step(w, next, STEP);
+    for c: 0..<cams { next = camera_step(w, next, STEP); }
+  }
+  next.clock = loop_ran(next.clock);
+  return next;
+}
+#test "the player is the same whether its camera steps every step, never, or twice a step" {
+  walls := [6] f32.[-3, 0, 4, 3, 2.5, 4.5];                    // a wall across your path, 4 m ahead
+  bodies := [7] f32.[1.2, 0, 1.5, 1.2, 1.8, 1.5, 0.35];         // a robot beside it
+  w: World; w.walls = walls[..]; w.bodies = bodies[..];
+  start := verse_player_place(0, 0, 0, 0);
+  runs: [3] Player;
+  for c: 0..<3 { runs[c] = start; }
+  frame := 1.0f32 / 60.0;
+  pulled := false; stopped := false; parted := 0;
+  for f: 0..<240 {
+    for c: 0..<3 {
+      runs[c] = verse_player_input(runs[c], ifx f > 120 then 1.0f32 else 0, 1, 0, 0, f > 40, f == 30 || f == 150, 0.01, 0);
+      runs[c] = frame_with(w, runs[c], frame, c);
+    }
+    #assert walker_same(runs[0], runs[1]) && walker_same(runs[2], runs[1]);
+    if runs[1].dist < f32(CAM_MAX) - 0.5 { pulled = true; }
+    if runs[1].pos.z == 3.7 { stopped = true; }               // the wall's face, less your radius
+    if runs[0].target.z != runs[1].target.z && runs[2].target.z != runs[1].target.z { parted += 1; }
+  }
+  // It walked into the wall, round it and jumped twice, and the three cameras really differed.
+  #assert stopped && runs[1].pos.z > 10 && runs[1].clock.ticks == 256 && runs[1].jumps.taken == 2;
+  #assert pulled && parted > 200;
+  // The same run with steps_in's own camera gives the same player too.
+  q := start;
+  for f: 0..<240 {
+    q = advance_in(w, verse_player_input(q, ifx f > 120 then 1.0f32 else 0, 1, 0, 0, f > 40, f == 30 || f == 150, 0.01, 0), frame);
+  }
+  #assert walker_same(q, runs[1]) && q.target.z == runs[1].target.z && q.dist == runs[1].dist;
+  #assert q.prev_target.z == runs[1].prev_target.z && q.prev_dist == runs[1].prev_dist;
+}
+#forall "walker_same compares every field it names" k: 0..<21 {
+  a := verse_player_input(verse_player_advance(verse_player_place(1, 0.5, 2, 0.3), 0.04), 0, 1, 0, 0, false, true, 0, 0);
+  #assert walker_same(a, a);
+  b := a;
+  if k == 0 { b.pos.x += 1; } else if k == 1 { b.pos.y += 1; } else if k == 2 { b.pos.z += 1; } else if k == 3 { b.vel.x += 1; }
+  else if k == 4 { b.vel.y += 1; } else if k == 5 { b.vel.z += 1; } else if k == 6 { b.face += 1; } else if k == 7 { b.on_ground = !b.on_ground; }
+  else if k == 8 { b.act = Act.running; } else if k == 9 { b.theta += 1; } else if k == 10 { b.phi += 1; } else if k == 11 { b.max_dist += 1; }
+  else if k == 12 { b.prev_pos.x += 1; } else if k == 13 { b.prev_pos.y += 1; } else if k == 14 { b.prev_pos.z += 1; }
+  else if k == 15 { b.prev_face += 1; } else if k == 16 { b.sliding = !b.sliding; } else if k == 17 { b.jumps.waiting += 1; }
+  else if k == 18 { b.jumps.taken += 1; } else if k == 19 { b.clock.ticks += 1; } else { b.clock.carry_ns += 1; }
+  #assert !walker_same(a, b) && !walker_same(b, a);
+  c := a; c.target.x += 1; c.dist += 1; c.spring_vel.y += 1; c.prev_target.z += 1; c.prev_dist += 1;
+  #assert walker_same(a, c);    // the camera's fields are not the player's
+}
+// book:end readonly
 
 #test "the camera's target follows you on the spring" {
   w: World;
   p := held(verse_player_place(0, 0, 0, 0), 0, 1, false);
-  for i: 0..<64 { p = step(w, p, STEP); }
+  for i: 0..<64 { p = step_once(w, p, STEP); }
   // It trails while you walk, never runs ahead, and settles once you stop.
   #assert p.target.z < p.pos.z && p.target.z > p.pos.z - 1;
   p = held(p, 0, 0, false);
-  for i: 0..<128 { p = step(w, p, STEP); }
+  for i: 0..<128 { p = step_once(w, p, STEP); }
   t := look_at(p);
   #assert near(p.target.x, t.x, 0.001) && near(p.target.y, t.y, 0.001) && near(p.target.z, t.z, 0.001);
 }
@@ -1106,7 +1188,7 @@ same_step :: (a: Player, b: Player) -> bool {
   // The reference: one step at a time, the input held as it is through the run.
   ref: [160] Player;
   q := verse_player_input(verse_player_place(0, 0, 0, 0), 0.6, 1, 0, 0, true, true, 0, 0);
-  for i: 0..<160 { q = step(w, q, STEP); ref[i] = q; }
+  for i: 0..<160 { q = step_once(w, q, STEP); ref[i] = q; }
   #assert ref[20].pos.y > 0.5 && ref[159].on_ground;   // it jumped, and landed
   p := verse_player_input(verse_player_place(0, 0, 0, 0), 0.6, 1, 0, 0, true, true, 0, 0);
   last := 0;
@@ -1265,7 +1347,7 @@ post :: (out: [] f32, x: f32, z: f32, r: f32) {
   #assert camera_room(w, v3(0, 1, 0), v3(0, 0, 1), 4) == 4;
   // Too close for any room: none, and the step keeps CAM_WALL_MIN.
   #assert camera_room(w, v3(0, 1, -1.6), v3(0, 0, -1), 4) == 0;
-  q := step(w, p, STEP);
+  q := step_once(w, p, STEP);
   #assert q.dist < f32(CAM_MAX);
 }
 
@@ -1437,16 +1519,27 @@ desk :: (out: [] f32) {
  #assert near(e.x,7,0.001) && near(e.y,1.6,0.001) && near(e.z,2,0.001);
  #assert a.z>e.z && near(a.x,e.x,0.001);
 }
-verse_player_view_eye :: (p:Player,mode:int)->Vec3 #export_c {
- feet:=verse_player_feet(p);
- if mode==0 {return Vec3.{x=feet.x,y=feet.y+1.6,z=feet.z};}
- if mode==2 {return Vec3.{x=feet.x,y=feet.y+22,z=feet.z-0.01};}
- return verse_player_eye(p);
+#test "each view mode is its own shot of the frame drawn" {
+  p := verse_player_advance(verse_player_input(verse_player_place(7, 0.5, 2, 0), 0, 1, 0, 0, false, false, 0, 0), 0.04);
+  feet := verse_player_feet(p);
+  top := verse_player_view_eye(p, 2); down := verse_player_view_at(p, 2);
+  #assert top.x == feet.x && top.y == feet.y + 22 && top.z == feet.z - 0.01 && down.x == feet.x && down.y == feet.y && down.z == feet.z;
+  e := verse_player_view_eye(p, 1); a := verse_player_view_at(p, 1);
+  f := verse_player_eye(p); g := verse_player_at(p);
+  #assert e.x == f.x && e.y == f.y && e.z == f.z && a.x == g.x && a.y == g.y && a.z == g.z && e.y > feet.y + 2;
+  #assert verse_player_view_eye(p, 3).y == f.y;    // any other mode is the follow
 }
-verse_player_view_at :: (p:Player,mode:int)->Vec3 #export_c {
- if mode==0 {eye:=verse_player_view_eye(p,0);o:=orbit_offset(p);return Vec3.{x=eye.x-o.x,y=eye.y-o.y,z=eye.z-o.z};}
- if mode==2{return verse_player_feet(p);}return verse_player_at(p);
+// book:begin views
+// The camera a mode shows, as one of Aethyr's shots (aethyr/follow.coax): first person, the
+// follow behind you, or top down. Each reads only what is drawn this frame.
+verse_player_view :: (p: Player, mode: int) -> CameraShot {
+  if mode == 0 { return follow_first_shot(follow_of(p), wp(verse_player_feet(p))); }
+  if mode == 2 { return shot_top(wp(verse_player_feet(p))); }
+  return verse_player_shot(p);
 }
+verse_player_view_eye :: (p: Player, mode: int) -> Vec3 #export_c { return vp(verse_player_view(p, mode).eye); }
+verse_player_view_at :: (p: Player, mode: int) -> Vec3 #export_c { return vp(verse_player_view(p, mode).at); }
+// book:end views
 verse_player_zoom :: (p:Player,delta:f32)->Player #export_c {next:=p;next.max_dist=follow_zoom(follow_of(p),delta).max_dist;return next;}
 // Zooming crosses between first and third person. Out from first person
 // past ZOOM_OUT starts third person at its closest; in past the closest

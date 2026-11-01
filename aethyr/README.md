@@ -21,7 +21,8 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | `space.coax` | Typed spaces (world, local, view, screen, grid) and units (metres, grid units), converted only by name |
 | `entity.coax` | Entities: handles (slot and generation) inside a step, `EntityId`s for saves, the network and edits, and spawns and despawns that apply at the step's flush |
 | `query.coax` | One set of colliders a realm (ground, boxes, capsules, floors) and four queries over it: ground, ray, overlap and sweep; the step height, steep slope and floor pad defined once |
-| `follow.coax` | The follow camera: look and zoom, a spring on the point it looks at, room from the colliders (pulled in at once, backed out gently), and the eye drawn between steps |
+| `follow.coax` | The follow camera: look and zoom, a spring on the point it looks at, room from the colliders (pulled in at once, backed out gently), the eye drawn between steps, and its third- and first-person shots; it steps after the player and only reads it |
+| `shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
 | `replay.coax` | Recording and replay: one envelope for every accepted external event, a gate that refuses duplicate, stale and unknown events, a digest every step, and replays that make no remote calls |
 | `rand.coax` | Random streams: a draw is a pure function of seed, stream and counter |
 | `math.coax` | Sine, cosine and powers with the same bits natively and in the browser, for simulation steps |
@@ -49,7 +50,7 @@ coax/bin/coax mutate aethyr/audio/score.coax --library --root-only
 coax/web/tool.sh aethyr/tools/score.coax promo-epic OUT.wav [--seconds S] [--home S] ...
 ```
 
-The older engine modules (`verse/player.coax`, the overview and dolly in `camera.coax`, `figure.coax`,
+The older engine modules (`verse/player.coax`, the overview, dolly and orbit easing in `camera.coax`, `figure.coax`,
 `contact.coax`, `terrain.coax` and the rest) move here with the realm
 migration (ec-migrate).
 

@@ -316,7 +316,8 @@ controls. It records a jump as a press with `input_level`:
 // deltas in radians (positive turns left and looks up). A jump is a press, not a hold:
 // it is counted here and taken by the first fixed step after it (aethyr/input.coax), so a
 // frame that runs no step keeps it and a frame that runs two jumps once. The look turns the
-// camera at once (the realms' cameras read theta and phi each frame; ec-camera moves it).
+// camera at once (the realms' cameras read theta and phi each frame); the Grid's session splits
+// it over the steps (verse/gridwalk.coax), and the other realms follow with ec-migrate.
 verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
                           run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #export_c {
   next := p;
@@ -434,8 +435,8 @@ The controller's checks cover these cases:
   q = verse_player_input(q, 0, 0, 0, 0, false, true, 0, 0);
   q = advance_in(w, q, 0.032);                    // two steps
   #assert q.clock.ticks == 2 && q.jumps.taken == 1 && q.jumps.waiting == 0;
-  one := step(w, step(w, verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
-  #assert same_step(q, one) && !same_step(q, step(w, q, STEP)) && !same_step(q, verse_player_place(0, 0, 0, 0));
+  one := step_once(w, step_once(w, verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
+  #assert same_step(q, one) && !same_step(q, step_once(w, q, STEP)) && !same_step(q, verse_player_place(0, 0, 0, 0));
   // The step that jumps already counts as in the air: on ice, it pushes you with full grip.
   ice := verse_player_place(0, 0, 0, 0); ice.grip = 0.5;
   dry := verse_player_place(0, 0, 0, 0);

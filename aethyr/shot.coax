@@ -1,0 +1,215 @@
+// Aethyr's camera shots (the Aethyr engine core, GitHub #12609, docs/verse/engine-core.md, book
+// chapter 10). Every camera makes one `CameraShot`, an eye and the point it looks at, from state
+// that is already drawn between steps, so a realm can cut or blend from one camera to another and
+// no camera steps physics:
+// - the follow camera behind a walker and first person (aethyr/follow.coax, which loads this);
+// - top down, high over the drawn feet;
+// - the free orbit an open realm uses (verse/camera.coax's Orbit holds its look, zoom and easing);
+// - the dive, from a shot far off down to a live camera's shot.
+//
+// It loads only aethyr/space.coax, so a realm with its own cameras (verse/camera.coax) can load it.
+//   coax/bin/coax test aethyr/shot.coax --library
+//   coax/bin/coax mutate aethyr/shot.coax
+
+#module "aethyr.shot";
+#load "space.coax";
+
+// book:begin shot
+// What a camera shows: the eye, and the point it looks at.
+CameraShot :: struct { eye: WorldPoint; at: WorldPoint; }
+
+SHOT_TOP_UP :: 22.0;       // top down: the eye, above the feet
+SHOT_TOP_BACK :: 0.01;     // and this far toward -Z, so the view has a forward direction
+
+// Top down: high over the drawn feet, looking down at them.
+shot_top :: (feet: WorldPoint) -> CameraShot {
+  return CameraShot.{eye = world_point(feet.x, feet.y + f32(SHOT_TOP_UP), feet.z - f32(SHOT_TOP_BACK)), at = feet};
+}
+// book:end shot
+
+shot_lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+shot_clamp :: (a: f32, low: f32, high: f32) -> f32 { if a < low { return low; } if a > high { return high; } return a; }
+shot_finite :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
+// The point `share` of the way from a to b.
+shot_mix :: (a: WorldPoint, b: WorldPoint, share: f32) -> WorldPoint {
+  return world_point(a.x + (b.x - a.x) * share, a.y + (b.y - a.y) * share, a.z + (b.z - a.z) * share);
+}
+
+// book:begin orbit
+// The free orbit: it circles a pivot at your shoulder and, zoomed in past its closest, goes on
+// into your head. `first` is how far in it is, from 0 (outside) to 1 (your eyes). It draws only,
+// and it uses the C library's sine and cosine as it did in verse/camera.coax, so its shots are
+// the same bits as before.
+SHOT_ORBIT_DIST :: 5.2;      // how far ahead of the eye the point it looks at is
+SHOT_ORBIT_HEIGHT :: 1.45;   // the pivot, above the feet
+SHOT_ORBIT_SHOULDER :: 0.55; // how far right of you the view is centred
+SHOT_ORBIT_EYE :: 1.62;      // first person: the eyes, above the feet
+SHOT_ORBIT_FACE :: 0.12;     // and this far in front of the pivot, clear of your face
+
+// The line the eye sits on: from `from`, along the unit `dir`, `far` metres long.
+ShotRay :: struct { from: WorldPoint; dir: WorldPoint; far: f32; }
+
+// Where the free orbit looks (yaw 0 faces +Z; pitch is down), and its level right hand.
+shot_orbit_forward :: (yaw: f32, pitch: f32) -> WorldPoint {
+  return world_point(sin(yaw) * cos(pitch), -sin(pitch), cos(yaw) * cos(pitch));
+}
+shot_orbit_right :: (yaw: f32) -> WorldPoint { return world_point(-cos(yaw), 0, sin(yaw)); }
+// The unit vector along v, or `otherwise` when v has no length.
+shot_unit_or :: (v: WorldPoint, otherwise: WorldPoint) -> WorldPoint {
+  size := sqrt(world_dot(v, v));
+  if !(size > 0.000001) || !shot_finite(size) { return otherwise; }
+  return world_scale(v, 1 / size);
+}
+// The eye's line: `zoom` back from the pivot and right by the shoulder. Going in, the shoulder
+// closes and the line's start rises from the pivot to your eyes, a little in front of your face.
+shot_orbit_ray :: (pivot: WorldPoint, yaw: f32, pitch: f32, zoom: f32, first: f32) -> ShotRay {
+  out_back := world_scale(shot_orbit_forward(yaw, pitch), -zoom);
+  out_want := world_add(out_back, world_scale(shot_orbit_right(yaw), f32(SHOT_ORBIT_SHOULDER) * (1 - first)));
+  facing := world_point(sin(yaw), 0, cos(yaw));
+  ray: ShotRay;
+  ray.from = world_add(pivot, world_scale(world_add(world_point(0, f32(SHOT_ORBIT_EYE - SHOT_ORBIT_HEIGHT), 0), world_scale(facing, f32(SHOT_ORBIT_FACE))), first));
+  ray.far = sqrt(world_dot(out_want, out_want));
+  ray.dir = shot_unit_or(out_want, world_point(0, 0, -1));
+  return ray;
+}
+// The shot: the eye `shown` metres along the line, looking forward.
+shot_orbit :: (ray: ShotRay, shown: f32, yaw: f32, pitch: f32) -> CameraShot {
+  seen := world_add(ray.from, world_scale(ray.dir, shown));
+  return CameraShot.{eye = seen, at = world_add(seen, world_scale(shot_orbit_forward(yaw, pitch), f32(SHOT_ORBIT_DIST)))};
+}
+// book:end orbit
+
+// book:begin dive
+// The dive: from a shot far off (the overview, a page's own view) down to a live camera's shot
+// in `length` seconds, eased at both ends. The point it looks at arrives SHOT_DIVE_LEAD times
+// sooner than the eye, so the view turns to you before the eye lands. It takes the frame's time,
+// as drawing does, and reads the shot it ends on each frame, so it lands on a moving camera.
+SHOT_DIVE :: 0.75;          // seconds, unless the realm gives its own
+SHOT_DIVE_LEAD :: 1.3;
+SHOT_DIVE_FRAME :: 0.25;    // the most one frame advances it, as the loop's frame clamp
+
+ShotDive :: struct { from: CameraShot; elapsed: f32; length: f32 = SHOT_DIVE; }
+
+// A dive from `from` taking `took` seconds. A time that is zero, negative or not a number is a cut.
+shot_dive_start :: (from: CameraShot, took: f32) -> ShotDive {
+  dive: ShotDive;
+  dive.from = from;
+  dive.length = ifx shot_finite(took) && took > 0 then took else 0.0f32;
+  return dive;
+}
+// The dive a frame of `seconds` later. A frame that isn't a number, or is negative, counts as
+// none; a long one counts as SHOT_DIVE_FRAME.
+shot_dive_advance :: (dive: ShotDive, seconds: f32) -> ShotDive {
+  dive_next := dive;
+  if shot_finite(seconds) { dive_next.elapsed = shot_lo(dive.elapsed + shot_clamp(seconds, 0, f32(SHOT_DIVE_FRAME)), 1000000); }
+  return dive_next;
+}
+// How far through it is, from 0 to 1, and whether it has landed.
+shot_dive_share :: (dive: ShotDive) -> f32 {
+  if !(dive.length > 0) { return 1; }
+  return shot_clamp(dive.elapsed / dive.length, 0, 1);
+}
+shot_dive_done :: (dive: ShotDive) -> bool { return shot_dive_share(dive) >= 1; }
+// Smootherstep: 0 and 1 at the ends, with no speed there.
+shot_ease :: (x: f32) -> f32 { u := shot_clamp(x, 0, 1); return u * u * u * (u * (u * 6 - 15) + 10); }
+// The shot this frame, on the way to `to`.
+shot_dive :: (dive: ShotDive, to: CameraShot) -> CameraShot {
+  share := shot_dive_share(dive);
+  return CameraShot.{eye = shot_mix(dive.from.eye, to.eye, shot_ease(share)), at = shot_mix(dive.from.at, to.at, shot_ease(share * f32(SHOT_DIVE_LEAD)))};
+}
+// book:end dive
+
+// ---- Checks ----
+
+shot_near :: (a: f32, b: f32, tolerance: f32) -> bool { return abs(a - b) <= tolerance; }
+
+#test "top down looks down at the feet from 22 m" {
+  t := shot_top(world_point(7, 0.5, 2));
+  #assert t.eye.x == 7 && t.eye.y == 22.5 && t.eye.z == 1.99 && t.at.x == 7 && t.at.y == 0.5 && t.at.z == 2;
+}
+
+#test "the free orbit sits back and right of the pivot outside, and starts at the eyes inside" {
+  pivot := world_point(1, 1.45, 2);
+  out := shot_orbit_ray(pivot, 0, 0, 5.2, 0);       // yaw 0 faces +Z, level
+  #assert out.from.x == 1 && out.from.y == 1.45 && out.from.z == 2;
+  #assert shot_near(out.far, sqrt(5.2 * 5.2 + 0.55 * 0.55), 0.00001);
+  #assert shot_near(out.dir.x * out.far, -0.55, 0.00001) && shot_near(out.dir.z * out.far, -5.2, 0.00001) && out.dir.y == 0;
+  s := shot_orbit(out, 2, 0, 0);
+  #assert shot_near(s.eye.z, 2 - 2 * 5.2 / out.far, 0.00001) && shot_near(s.at.z - s.eye.z, 5.2, 0.00001) && s.at.x == s.eye.x;
+  half := shot_orbit_ray(pivot, 0, 0, 1, 0.5);
+  #assert shot_near(half.from.y, 1.45 + 0.17 * 0.5, 0.000001) && shot_near(half.from.z, 2 + 0.06, 0.000001);
+  #assert shot_near(half.far, sqrt(1 + 0.275 * 0.275), 0.00001);
+  inside := shot_orbit_ray(pivot, 0, 0, 0, 1);
+  #assert inside.far == 0 && inside.dir.x == 0 && inside.dir.y == 0 && inside.dir.z == -1;   // no line: straight back
+  #assert shot_near(inside.from.y, 1.62, 0.000001) && shot_near(inside.from.z, 2.12, 0.000001);
+  down := shot_orbit_forward(0.5, 0.3);
+  #assert shot_near(world_dot(down, down), 1, 0.00001) && down.y < 0;
+  r := shot_orbit_right(1.0);
+  #assert r.y == 0 && shot_near(world_dot(r, shot_orbit_forward(1.0, 0)), 0, 0.000001) && r.x < 0;
+  #assert shot_unit_or(world_point(0, 3, 4), world_point(1, 1, 1)).y == 0.6;
+  #assert shot_unit_or(world_point(0, 0.0000005, 0), world_point(1, 1, 1)).x == 1;
+  #assert shot_unit_or(world_point(2000000, 0, 0), world_point(0, 0, 9)).z == 9;
+  #assert shot_unit_or(world_point(0, 0.000002, 0), world_point(0, 0, 9)).y == 1;
+}
+
+#test "a dive starts on its first shot, lands on the live one, and moves smoothly frame to frame" {
+  high := CameraShot.{eye = world_point(0, 60, -60), at = world_point(0, 0, 0)};
+  to := CameraShot.{eye = world_point(10, 3, 6), at = world_point(10, 1.5, 10)};
+  d := shot_dive_start(high, 0.75);
+  first := shot_dive(d, to);
+  #assert first.eye.y == 60 && first.eye.z == -60 && first.at.x == 0 && !shot_dive_done(d);
+  was := first.eye; was_move := 0.0f32; frames := 0; most := 0.0f32;
+  while !shot_dive_done(d) {
+    d = shot_dive_advance(d, 0.015625);            // 64 frames a second: 48 frames, exactly
+    s := shot_dive(d, to);
+    moved := sqrt(world_dot(world_sub(s.eye, was), world_sub(s.eye, was)));
+    // smootherstep's fastest is 1.875 times the mean speed: 1.875 * 87.78 m / 48 frames = 3.43 m
+    #assert moved <= 3.43;
+    most = (ifx moved > most then moved else most);
+    // the point it looks at is never behind the eye (to within a rounding near the end)
+    #assert shot_ease(shot_dive_share(d) * f32(SHOT_DIVE_LEAD)) >= shot_ease(shot_dive_share(d)) - 0.000001;
+    was = s.eye; was_move = moved; frames += 1;
+  }
+  #assert frames == 48 && most > 3.42 && was_move < 0.008;   // the last frame moves 0.0077 m
+  end := shot_dive(d, to);
+  #assert end.eye.x == 10 && end.eye.y == 3 && end.eye.z == 6 && end.at.x == 10 && end.at.y == 1.5 && end.at.z == 10;
+  // halfway: the eye is halfway, the point it looks at further on
+  h := shot_dive_advance(shot_dive_advance(shot_dive_start(high, 1), 0.25), 0.25);
+  hs := shot_dive(h, to);
+  #assert hs.eye.x == 5 && hs.at.x > 5 && hs.at.x < 10 && shot_dive_share(h) == 0.5;
+}
+
+#test "a dive of no length is a cut, and frames that aren't time don't move it" {
+  high := CameraShot.{eye = world_point(0, 60, -60), at = world_point(0, 0, 0)};
+  to := CameraShot.{eye = world_point(10, 3, 6), at = world_point(10, 1.5, 10)};
+  for bad: [3] f32.[0, -1, f32(0.0 / 0.0)] {
+    c := shot_dive_start(high, bad);
+    #assert c.length == 0 && shot_dive_done(c) && shot_dive(c, to).eye.x == 10;
+  }
+  d := shot_dive_start(high, 2);
+  #assert d.length == 2 && d.elapsed == 0 && d.from.eye.y == 60;
+  #assert shot_dive_advance(d, f32(0.0 / 0.0)).elapsed == 0 && shot_dive_advance(d, -1).elapsed == 0 && shot_dive_advance(d, 0).elapsed == 0;
+  #assert shot_dive_advance(d, 5).elapsed == 0.25 && shot_dive_advance(d, 0.25).elapsed == 0.25 && shot_dive_advance(d, 0.1).elapsed == 0.1;
+  long := d; long.elapsed = 999999.9;
+  #assert shot_dive_advance(long, 0.25).elapsed == 1000000 && shot_dive_done(long);
+  #assert shot_dive_share(shot_dive_advance(d, 0.25)) == 0.125;
+  e: ShotDive;
+  #assert e.length == f32(SHOT_DIVE) && e.elapsed == 0;
+  #assert shot_ease(0) == 0 && shot_ease(1) == 1 && shot_ease(-1) == 0 && shot_ease(2) == 1 && shot_ease(0.5) == 0.5;
+  #assert shot_near(shot_ease(0.25), 0.103515625, 0.0000001);
+}
+
+// Ties and edges, each worked by hand: which of two equal values comes back shows only in the
+// sign of a zero, so these use 1 / x to see it.
+#test "the helpers' edges: signed zeros, the finite range, a line just long enough, and mixing" {
+  #assert 1 / shot_lo(0.0, -0.0) < 0 && 1 / shot_lo(-0.0, 0.0) > 0;
+  #assert 1 / shot_clamp(-0.0, 0, 1) < 0 && 1 / shot_clamp(-0.0, -1, 0) < 0 && shot_clamp(-2, -1, 0) == -1 && shot_clamp(3, 0, 1) == 1;
+  #assert !shot_finite(1000000) && !shot_finite(-1000000) && shot_finite(999999.94) && shot_finite(-999999.94) && !shot_finite(f32(0.0 / 0.0));
+  // a line exactly 0.000001 m long is too short to have a direction
+  #assert shot_unit_or(world_point(0.000001, 0, 0), world_point(0, 0, -1)).z == -1;
+  m := shot_mix(world_point(2, -4, 8), world_point(6, 4, 0), 0.25);
+  #assert m.x == 3 && m.y == -2 && m.z == 6;
+  #assert 1 / shot_dive_start(CameraShot.{}, -0.0).length > 0;
+  #assert 1 / shot_dive_advance(shot_dive_start(CameraShot.{}, 1), -0.0).elapsed > 0;
+  #assert shot_near(1, 1.5, 0.5) && !shot_near(1, 1.5, 0.4999);
+}

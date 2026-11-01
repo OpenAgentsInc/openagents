@@ -14,6 +14,7 @@
 #load "space.coax";
 #load "query.coax";
 #load "math.coax";
+#load "shot.coax";   // the shot every camera makes, and the cameras that need no Follow
 
 // book:begin follow
 FOLLOW_PI :: 3.14159265;
@@ -218,6 +219,22 @@ follow_eye :: (at: WorldPoint, offset: WorldPoint, prev_dist: f32, dist: f32, sh
   return world_point(at.x + offset.x * d, at.y + offset.y * d, at.z + offset.z * d);
 }
 // book:end eye
+
+// book:begin shot
+// The follow camera's shots (aethyr/shot.coax holds the shot type and the cameras that need no
+// Follow): third person, between its last two steps (`share` is the loop's alpha), and first
+// person, the eyes above the drawn feet looking the way the follow camera looks.
+FOLLOW_FIRST_EYE :: 1.6;     // first person: the eyes, above the feet
+
+follow_shot :: (f: Follow, prev_target: WorldPoint, prev_dist: f32, share: f32) -> CameraShot {
+  at := follow_at(prev_target, f.target, share);
+  return CameraShot.{eye = follow_eye(at, follow_offset(f), prev_dist, f.dist, share), at = at};
+}
+follow_first_shot :: (f: Follow, feet: WorldPoint) -> CameraShot {
+  eye := world_point(feet.x, feet.y + f32(FOLLOW_FIRST_EYE), feet.z);
+  return CameraShot.{eye = eye, at = world_sub(eye, follow_offset(f))};
+}
+// book:end shot
 
 // ---- Checks ----
 
@@ -473,4 +490,27 @@ follow_near :: (a: f32, b: f32, t: f32) -> bool { return abs(a - b) <= t; }
   // the eye's mix is from the previous point
   a := follow_at(world_point(2, 0, -2), world_point(4, 0, -4), 0.5);
   #assert a.x == 3 && a.z == -3;
+}
+
+
+// ---- The follow camera's shots ----
+
+#test "the third-person shot is the follow drawn between its last two steps" {
+  f: Follow; f.target = world_point(2, 3, -4); f.dist = 4;
+  s := follow_shot(f, world_point(0, 1, 0), 2, 0.25);
+  #assert s.at.x == 0.5 && s.at.y == 1.5 && s.at.z == -1;
+  e := follow_eye(s.at, follow_offset(f), 2, 4, 0.25);
+  #assert s.eye.x == e.x && s.eye.y == e.y && s.eye.z == e.z;
+  #assert follow_near(sqrt(world_dot(world_sub(s.eye, s.at), world_sub(s.eye, s.at))), 2.5, 0.00001);
+  last := follow_shot(f, world_point(0, 1, 0), 2, 1);
+  #assert last.at.x == 2 && last.at.y == 3 && last.at.z == -4;
+}
+
+#test "first person looks out of the eyes along the follow's direction" {
+  f: Follow; f.phi = f32(FOLLOW_PI) / 2;          // level, theta pi: the camera is out along -Z
+  s := follow_first_shot(f, world_point(7, 0.5, 2));
+  #assert s.eye.x == 7 && s.eye.y == 2.1 && s.eye.z == 2;
+  o := follow_offset(f);
+  #assert s.at.x == s.eye.x - o.x && s.at.y == s.eye.y - o.y && s.at.z == s.eye.z - o.z;
+  #assert follow_near(s.at.z - s.eye.z, 1, 0.000001) && follow_near(s.at.x, 7, 0.000001);   // ahead, toward +Z
 }

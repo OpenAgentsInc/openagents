@@ -17,7 +17,7 @@
 - [7. Ask the world where things are](ch007-ask-the-world-where-things-are.md)
 - [8. Ground and collision](ch008-ground-and-collision.md) — partly implemented
 - [9. A character moves](ch009-a-character-moves.md) — partly implemented
-- [10. The camera follows](ch010-the-camera-follows.md) — partly implemented
+- [10. The camera follows](ch010-the-camera-follows.md)
 
 **III. Seeing it**
 

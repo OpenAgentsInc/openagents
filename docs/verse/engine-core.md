@@ -83,8 +83,9 @@ zone (0.2). The steps read it through an `InputBuffer`:
   clamped and counted (`mended`). `input_blur` releases every level at once.
 
 The walking controller (`verse/player.coax`) takes its jump from the first
-step after the press; its look still turns the camera at once until the
-camera moves to the steps (ec-camera). Checks: every press goes to the step a
+step after the press. In the realms that call `verse_player_input` once a
+frame, its look still turns the camera at once; the Grid's session splits
+the look over the steps, and the other realms follow with ec-migrate. Checks: every press goes to the step a
 separate model names, over 64 random runs of 200 frames with frames of zero
 to eight steps; a keyboard session and the same touch session give the same
 `Intent` and the same player states; a press in a frame with no step jumps
@@ -117,7 +118,7 @@ floors. Mutation: 312 of 312 killed; an independent review found the float32
 inputs that kill the last five (the capsule rim, roots at exactly `t = 0`,
 and a face-edge tie). Heightfields, rays against floors and the
 realms' own `ground_at` copies move with ec-migrate; the camera's
-`camera_room` moves with ec-camera.
+`camera_room` is one `follow_room` call (Camera, below).
 
 ## Entities (`aethyr/entity.coax`)
 
@@ -182,19 +183,40 @@ velocity, and how far out it is shown.
 - `follow_offset` uses `aethyr/math.coax`, so a step that reads the camera's
   direction (the walker steers by it) has the same bits on every host.
 
+Every camera answers with one `CameraShot`, an eye and the point it looks
+at (`aethyr/shot.coax`, which loads only `aethyr/space.coax`): the follow
+camera in third person (`follow_shot`) and first person
+(`follow_first_shot`), top down (`shot_top`), the free orbit
+(`shot_orbit_ray`, `shot_orbit`) and the dive (`shot_dive`: from a far shot
+down to a live one in 0.75 s by default, eased at both ends, the look-at
+arriving 1.3 times sooner; a time that isn't a number is a cut). Each reads
+state already drawn between steps; none steps physics.
+
 The walking controller (`verse/player.coax`) keeps its camera fields, which
-the realms' C faces read, and moves them only through these calls; its
-`camera_room` is one `follow_room` call, so Dead Gears asks the same room
-question. The arithmetic is the same as before, so the Grid's pinned session
-digest and its recorded host session are unchanged. Checks:
+the realms' C faces read. Its step no longer moves them: `camera_step` runs
+`follow_track` after each player step (`step_once`), and its view modes are
+the three shots. `verse/camera.coax`'s free orbit draws its shot through
+`aethyr/shot.coax`. The arithmetic is the same as before (200,000 random
+orbits and 100,000 random walkers gave the same bits), so the Grid's pinned
+session digest and its recorded host session are unchanged. Checks:
 `aethyr/follow.coax` (the spring against its closed form, room against hand
 calculations for boxes, capsules, slants and the wall band, pull-in and
-back-out at any step size, tracking leaves the colliders as they were) and
-`verse/gridwalk.coax` ("the Grid's camera follows a walk, a run and a jump
-at 60 FPS without a jump": the eye drawn each frame moves at most 0.177 m,
-its move changes by at most 0.016 m between frames (measured 0.013 m), it
-rises every frame of a jump's rising arc, and drawing the last step instead
-changes its move by more than three times the bound).
+back-out at any step size, tracking leaves the colliders as they were, the
+third- and first-person shots), `aethyr/shot.coax` (top down, the orbit's
+line outside, halfway and inside, a dive that lands exactly and moves at most
+3.43 m a frame over 87.78 m in 48 frames, cuts), `verse/player.coax` ("the
+player is the same whether its camera steps every step, never, or twice a
+step": a walk into a wall, round it and past a body with two jumps and a
+turn at 60 FPS, comparing 21 fields every frame) and `verse/gridwalk.coax`
+("the Grid's camera follows a walk, a run and a jump at 60 FPS without a
+jump": the eye drawn each frame moves at most 0.177 m, its move changes by at
+most 0.016 m between frames (measured 0.013 m), it rises every frame of a
+jump's rising arc, and drawing the last step instead changes its move by more
+than three times the bound). Mutation: 189 of 189 (`follow.coax`), 54 of 54
+(`shot.coax`), none surviving on the changed lines of `player.coax` and
+`camera.coax`. `verse/space.coax`'s `Shot`, the homepage's dive into the
+Grid, Ice Cream Man's boom and `SpaceCam` move onto `CameraShot` with
+ec-migrate.
 
 ## The Grid on the engine core (`verse/gridwalk.coax`)
 

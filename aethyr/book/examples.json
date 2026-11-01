@@ -140,6 +140,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/one-camera-at-a-time.coax",
+      "chapter": "aethyr/book/ch010-the-camera-follows.md",
+      "stdout": "aethyr/fixtures/one-camera-at-a-time.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

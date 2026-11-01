@@ -1,0 +1,14 @@
+camera steps 0 a step: feet at (-1.1754262e-06, 0.0, 3.7); the camera looks at z = 0.0
+camera steps 1 a step: feet at (-1.1754262e-06, 0.0, 3.7); the camera looks at z = 3.6999998
+camera steps 2 a step: feet at (-1.1754262e-06, 0.0, 3.7); the camera looks at z = 3.6999998
+the same player each way: true
+first person: eye (-1.1651814e-06, 1.6, 3.7), looking at (-1.2433748e-06, 1.1527865, 4.594427)
+follow: eye (-7.6061826e-07, 3.489109, -0.23548007), looking at (-1.1046689e-06, 1.5213693, 3.6999998)
+top down: eye (-1.1651814e-06, 22.0, 3.69), looking at (-1.1651814e-06, 0.0, 3.7)
+dive 0 of 48: share 0.0, eye (0.0, 38.0, -62.0)
+dive 12 of 48: share 0.25, eye (-7.873587e-08, 34.42758, -55.606407)
+dive 24 of 48: share 0.5, eye (-3.8030913e-07, 20.744555, -31.11774)
+dive 36 of 48: share 0.75, eye (-6.818824e-07, 7.0615253, -6.629074)
+dive 48 of 48: share 1.0, eye (-7.6061826e-07, 3.489109, -0.23548126)
+halfway, the point it looks at is 0.7648305 of the way
+a dive of NaN seconds: length 0.0, landed at once: true

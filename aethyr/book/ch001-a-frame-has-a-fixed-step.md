@@ -164,7 +164,8 @@ The walking controller uses the clock as follows:
 
 1. `advance_in` passes the frame's time to `loop_accept`.
 2. It runs the number of steps that `loop_due` returns, and saves the
-   position, target, facing, and camera distance before each step.
+   position, target, facing, and camera distance before each step. Each step
+   is the player's step and then the camera's (`step_once`, chapter 10).
 3. It calls `loop_ran`.
 
 No other code in the controller reads the frame's time.
@@ -190,15 +191,15 @@ steps_in :: (w: World, p: Player, n: int) -> Player {
     next.prev_target = next.target;
     next.prev_face = next.face;
     next.prev_dist = next.dist;
-    next = step(w, next, STEP);
+    next = step_once(w, next, STEP);
   }
   return next;
 }
 ```
 
 Drawing reads only the last two steps and `α`. This applies to the feet, the
-facing, and the camera, whose mix is `aethyr/follow.coax`'s `follow_at` and
-`follow_eye` (chapter 10).
+facing, and the camera, whose mix is `aethyr/follow.coax`'s `follow_shot`
+(chapter 10).
 
 <!-- source: verse/player.coax drawn -->
 ```jai
@@ -207,12 +208,11 @@ verse_player_feet :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_pos, p.p
 verse_player_face :: (p: Player) -> f32 #export_c {
   return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
 }
-// The camera this frame: what it looks at, and where it is. A wall pulls the
-// camera in at once, so it is never shown further out than the last step.
-verse_player_at :: (p: Player) -> Vec3 #export_c { return vp(follow_at(wp(p.prev_target), wp(p.target), alpha(p))); }
-verse_player_eye :: (p: Player) -> Vec3 #export_c {
-  return vp(follow_eye(wp(verse_player_at(p)), follow_offset(follow_of(p)), p.prev_dist, p.dist, alpha(p)));
-}
+// The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
+// pulls the camera in at once, so it is never shown further out than the last step.
+verse_player_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+verse_player_at :: (p: Player) -> Vec3 #export_c { return vp(verse_player_shot(p).at); }
+verse_player_eye :: (p: Player) -> Vec3 #export_c { return vp(verse_player_shot(p).eye); }
 ```
 
 ## Steps are the same at any frame rate

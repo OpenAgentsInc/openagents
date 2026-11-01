@@ -157,11 +157,6 @@ The rest of the step runs in this order:
     next.face = wrap_angle(next.face + wrap_angle(want - next.face) * lo(1, f32(TURN_RATE) * dt));
   }
 
-  // Follow on the spring, and pull in at once where something is in the
-  // way; back out gently.
-  cam := follow_track(follow_of(next), colliders(w), w.room, wp(look_at(next)), dt);
-  next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
-
   if !next.on_ground { next.act = Act.airborne; }
   else if !dir.on { next.act = Act.idle; }
   else if speed > f32(WALK) + 0.25 { next.act = Act.running; }   // shown running only at a run's speed
@@ -288,7 +283,8 @@ The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)) adds:
 - The realms that keep their own feet: Everglade's `s[0].feet` with
   `ground_at`, and Dead Gears' `pl.on_ground`.
 
-The camera's fields and its spring leave the step in chapter 10.
+The step no longer moves the camera. The camera steps after it, in
+`camera_step` (chapter 10).
 
 ## Dependencies
 
