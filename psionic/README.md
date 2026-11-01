@@ -343,8 +343,14 @@ queries preserve output. The [example](examples/panda-ik.coax) and
 `psionic/check.sh --only robotics/panda-ik` expose the two new authority roots
 and one offline Darwin-arm64 native gate. Fifty independent/native contexts
 retain 47 solutions and three nonconvergences, with no SDK calls or physics.
-Orientation/nullspace, PD rollout, collision planning/timing and R14 remain
-pending; a kinematic candidate is not command admission.
+The [joint PD/gravity query](fixtures/robotics/panda-joint-pd/README.md) now adds
+explicit physical gains, individual P/D/g0/requested/command fields and source
+saturation counts, with a [runnable example](examples/panda-joint-pd.coax).
+`psionic/check.sh --only robotics/panda-joint-pd` selects its two new roots
+and one offline native gate. Forty-four independent/cached-gravity contexts
+pass all three native profiles. Measured holding/tracking, orientation/nullspace,
+collision planning/timing and R14 remain pending; neither a kinematic candidate
+nor a force query is command admission.
 
 The [owned moving-finger query](fixtures/robotics/panda-fingers/README.md) adds
 four BODY poses from two metre-valued slides while preserving the published

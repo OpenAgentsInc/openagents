@@ -1,14 +1,15 @@
 # 167. Command a robot
 
-This chapter's first runnable profile is **position-only Panda inverse
-kinematics**: seven source-limited hinge coordinates place the fixed grip SITE
-near a typed world target. Its owned geometry and independent numerical
-reference need no simulator step or learned policy.
+This chapter has two runnable fixed-source Panda profiles: position-only
+inverse kinematics and seven-joint PD with gravity compensation. The first
+returns source-limited coordinates near a typed world target; the second
+returns explicit force terms and reported saturation. Neither query advances
+a plant or qualifies a closed-loop stability result.
 
 The separate [chapter 170](ch170-close-the-simulated-control-loop.md) already
-runs operational-space control against MuJoCo. Joint PD and gravity-control
-rollout, orientation/nullspace IK, collision-free planning, trajectory timing
-and compiler-enforced bounded control remain the next layers of this chapter.
+runs operational-space control against MuJoCo. Holding/tracking experiments,
+orientation/nullspace IK, collision-free planning, trajectory timing and
+compiler-enforced bounded control retain their separate acceptance criteria.
 
 ## A source-bound position IK query
 
@@ -134,13 +135,142 @@ needs orientation and nullspace IK, PD and gravity-control rollout, collision
 queries, RRT-Connect, trajectory timing and compiler-enforced bounded control.
 This position candidate is useful before any of those claims are made.
 
+## Joint errors become forces
+
+The next runnable profile is a fixed-source seven-arm-joint PD query with
+gravity compensation. It returns a force calculation; it does not advance a
+plant or qualify a controller's closed-loop stability. For each hinge, the
+requested force is:
+
+```jai
+P = Kp * (target_q - current_q);
+D = Kd * (target_rate - current_rate);
+requested = (P + D) + gravity_g0(current_q, finger_positions);
+command = source_arm_clip(requested);
+```
+
+Seven positions and targets are typed radians, both inside the pinned source
+joint ranges. Current and target rates are radians/second, bounded to ±20.
+The two supplied finger positions are typed metres within the existing ±1 m
+**numerical geometry** box. Their masses affect gravity, even though this
+query returns arm forces only. That finger box does not admit finger actuator
+commands or certify physical travel.
+
+Radian remains a physical dimension. `PjpStiffness` is joules/radian², and
+`PjpDamping` is joule·second/radian². Their products with angle and angular-rate
+errors each become `PmHingeGravity`, joules/radian, through explicit unit
+conversion. The default Kp coefficients are `[60,60,60,60,40,20,10]`; default
+Kd is `[8,8,8,8,5,3,2]`. The numerical gain boxes are inclusive
+`[1e-6,500]` and `[1e-6,100]`, respectively. All gains must be finite and
+positive. These values define the query profile, not a stable-gain recipe for
+arbitrary plants or timesteps.
+
+`gravity` is the same owned sixteen-body potential-gradient contribution used
+by the metric query, evaluated at the **current** arm and finger geometry.
+It is independent of current velocity. It does not substitute the inverse
+query's velocity-dependent bias, cancel fluid/joint passive force, or supply
+a desired-acceleration feedforward term.
+
+The 288-byte output publishes five seven-element force vectors:
+`proportional`, `derivative`, `gravity`, `requested`, and `command`, followed
+by the clipped-coordinate count. The command cap is the source arm actuator
+profile: five ±80 and two ±12 joules/radian. Requested force remains visible;
+there is no hidden saturation. Feed `command` into the existing Pa arm-control
+channel once. Its equal cap is idempotent, and gravity must not be added a
+second time. Keep controller and actuator clipping counters as separate stage
+observations rather than summing them as unique events.
+
+All span shapes precede numerical admission. The exact coefficient order is
+current q, finger positions, current rates, target q, target rates, Kp, Kd;
+each coefficient checks finite representation before its own range. Every
+non-OK result preserves complete output and spare storage, including overlap
+with input storage. Consumers must check status; preserved output is not a
+new command. Joint coordinates have the fixed source index order rather than
+a generic spatial-frame parameter. Wider frame/clock/supervision migration
+remains separate.
+
+The example prints the individual terms from a predeclared dense query. It
+then exercises an existing numerical stress fixture with seven saturated
+coordinates, and demonstrates atomic refusal of zero damping. Its rounded
+transcript was written from literal scalar PD and a retained SDK gravity row
+before either native example mode was executed.
+
+<!-- source: psionic/examples/panda-joint-pd.coax pjp-query -->
+```jai
+ // All q/target entries are radians, rates rad/s, Kp J/rad² and Kd J*s/rad².
+ // Fingers affect owned gravity; they are positions here, not control outputs.
+ x:=pjp_fixture();delta:=[7]f64.[0.1,-0.12,0.13,-0.14,0.15,-0.16,0.17];
+ v:=[7]f64.[0.7,-0.4,0.3,-0.6,0.5,-0.2,0.1];tv:=[7]f64.[-0.2,0.3,-0.4,0.5,-0.6,0.7,-0.8];
+ for i:0..<7 {x.target[i].value=x.q[i].value+delta[i];x.rate[i].value=v[i];x.target_rate[i].value=tv[i];}
+ out:[1]PjpOutput;
+ #assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[..])==PjpStatus.ok;
+ for i:0..<7 {print("hinge % P/D/g0/requested/command (micro-J/rad): % % % % %\n",i+1,pjp_example_micro(out[0].proportional[i].value),pjp_example_micro(out[0].derivative[i].value),pjp_example_micro(out[0].gravity[i].value),pjp_example_micro(out[0].requested[i].value),pjp_example_micro(out[0].command[i].value));}
+ print("controller clipped coordinates: %\n",out[0].clipped);
+ // A predeclared numerical stress fixture, not a stable-gain recommendation.
+ lo:=pik_lower();hi:=pik_upper();
+ for i:0..<7 {positive:=i%2==0;x.target[i].value=ifx positive then hi[i] else lo[i];x.rate[i].value=ifx positive then -20.0 else 20.0;x.target_rate[i].value= -x.rate[i].value;x.kp[i].value=500;x.kd[i].value=100;}
+ #assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[..])==PjpStatus.ok && out[0].clipped==7;
+ print("stress query clipped coordinates: %; source limits reported\n",out[0].clipped);
+ before:=out[0];x.kd[0].value=0;
+ #assert pjp_forward(x.q[..],x.slides[..],x.rate[..],x.target[..],x.target_rate[..],x.kp[..],x.kd[..],out[..])==PjpStatus.range;
+ pjp_same(out[0],before);
+ print("zero Kd: range refusal; complete output unchanged\n");
+ print("feed command to Pa once; keep clipping stages separate\n");
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-joint-pd.coax
+COAX=coax/bin/coax psionic/tests/robotics/panda_joint_pd_check.sh /tmp/new-panda-joint-pd-proof
+```
+
+The frozen corpus has **44 admitted contexts**. Twenty reuse five explicitly
+named zero-rate SDK gravity tuples with four different control regimes each;
+all five selected arm tuples are the valid home configuration from the
+`panda-fingers` capture. They are not the older zero-angle FK/M9 states whose
+joint4 zero lies outside this controller's source range. The record verifies
+binary/profile coordinate identity and the SDK's recorded zero-rate contract
+before using those gravity facts. Twenty-four additional configurations,
+targets, rates and gains use independently authored matrix potential-gradient
+gravity. No source SDK or neural calls are repeated.
+
+Eight new Coax groups cover **101 meaningful cases**. Two authority roots kill
+**54/54** and **91/91** actually emitted sites, with zero survivors and no
+equivalence waivers. The initial missing public-copy observations and fixture
+setup error remain recorded. Quantity operator-token mutation provenance is
+still incomplete; literal typed arithmetic checks and the independent native
+field comparisons supplement the stated emitted-site scopes. Four E0317
+refusals distinguish angle/length, angular/linear rate, stiffness/force and
+damping/stiffness units. The debug/release example matches its independently
+prewritten golden exactly.
+
+The native receipt is
+[`native-qualification.json`](../fixtures/robotics/panda-joint-pd/native-qualification.json).
+Its absolute force budget is **5e-10 joules/radian**, with zero relative
+tolerance and exact clipping/status fields. Debug, release and fail-fast ASan/UBSan each pass **6,420 assertions** over
+all 44×35 force fields and clipping counters. Proportional and derivative
+fields agree exactly; maximum errors are `2.14e-14` in gravity, `1.14e-13` in
+requested force and `1.43e-14` in clipped command. The independent matrix
+potential derivative differs from the 35 retained SDK gravity values by at
+most `7.11e-15`. All three owned status/force/count streams are byte-identical.
+The native proof covers 220 IEEE payloads, 88 inclusive scalar boundaries,
+86 adjacent-field precedence cases, four overlapping-input/output cases and
+complete input/output/spare snapshots. The initial metadata-only case-label
+preflight failure is retained; it occurred before any numerical reference or
+native execution. No budget, gain or corpus was tuned after comparison.
+
+This query does not yet establish measured holding/tracking performance,
+closed-loop stability, collision behavior, nullspace/orientation control,
+planning, compiler `#bounded`, timed command permission or hardware operation.
+An isolated no-contact behavior experiment requires its own frozen plant,
+timestep, initial state, target, gains and comparison contract.
+
 ## The remaining control and planning layers
 
-The following sections are design work; the position-only profile above does
-not qualify these tools.
+The following sections are design work; the position and force queries above
+do not qualify these complete control and planning tools.
 
 
-- Joint-space PD control with gravity compensation, and choosing gains.
+- Measured joint-space PD holding/tracking, gain analysis and saturation behavior.
 - Inverse kinematics by damped least squares, with joint limits and
   null-space objectives.
 - Sampling-based motion planning with RRT-Connect, and path shortcutting.
@@ -148,7 +278,8 @@ not qualify these tools.
 
 ## Planned control and planning math
 
-PD with gravity compensation, using Aethyr chapter 19's dynamics:
+The typed PD query above supplies this force equation. Its remaining response
+and gain analysis needs the dynamics and a declared timestep:
 
 ```jai
 τ = K_p (q_ref − q) + K_d (q̇_ref − q̇) + g(q)
@@ -177,7 +308,7 @@ plan is reproducible; shortcutting and time parameterization follow.
 
 ## Planned additional modules
 
-- `psionic/lib/robotics/control.coax` (PD and broader IK), `plan.coax` (RRT-Connect,
+- `psionic/lib/robotics/control.coax` (broader control profiles and IK), `plan.coax` (RRT-Connect,
   shortcutting, timing).
 
 ## Remaining acceptance checks and oracles
@@ -204,8 +335,8 @@ and reproducible planning.
 
 ## Dependencies
 
-The runnable position profile depends on the owned fixed Panda FK and grip
-Jacobian, the checked small matrix algebra, native F64 and the initial typed
-quantity/point profile. The remaining control/planning design depends on
+The runnable profiles depend on the owned fixed Panda FK/grip Jacobian and
+sixteen-body gravity, checked small matrix algebra, native F64 and the initial
+typed quantity/point profile. The remaining control/planning design depends on
 Aethyr chapters 19 to 22 and 35, full frame transforms and compiler R14
 bounded control. Those requirements are not waived by fixed arrays.

@@ -290,6 +290,25 @@ retain their identities. Trusted coefficient helpers stay source-visible,
 with no orientation/collision/physical command/dynamics or compiler-bounded
 control claim. Existing FK/Jacobian proofs are carried, not broadened.
 
+## Joint PD keeps active feedback, gravity and actuator saturation explicit
+
+The seven-arm query uses source-range radian current/target coordinates,
+rad/s rates and positive typed J/rad² and J*s/rad² gains. Matching current
+finger metre geometry participates in owned sixteen-body g0. Requested force
+is exactly `(P + D) + g0`, with D using target-minus-current rate. Gravity is
+independent of rates and must not be replaced by velocity-dependent bias or
+added again downstream. Five force vectors retain individual terms, requested
+force and source-clipped command; the controller's clipping count is explicit.
+Pa receives command once, with its same cap idempotent and stage counters kept
+separate. Physical source limits and numerical boxes remain distinct.
+
+Every shape precedes coefficient admission and refusals preserve complete
+output. Independent potential-gradient/scalar references retain all44frozen
+contexts, including the specifically named valid-home SDK tuples. Actual emitted
+mutation scopes and Quantity-token limitations remain separate. This pure
+query supplies no measured holding/tracking, stability, collision behavior,
+clock admission, compiler bounded proof or hardware permission.
+
 ## Panda finger coordinates preserve the arm contract and rigid branch order
 
 The separate `PffOutput` embeds the unchanged twelve-body `PfkOutput` and four

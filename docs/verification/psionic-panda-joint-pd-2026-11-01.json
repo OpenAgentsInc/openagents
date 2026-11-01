@@ -1,0 +1,95 @@
+{
+  "schema": "psionic.panda-joint-pd.publication-binding.v1",
+  "passed": true,
+  "input_fingerprint": "d6c0e6e364379757a25221beb63b1b581aa9a87adf3a40918654d4594cf660e6",
+  "compiler_sha256": "3483fd2cd7d48335274d342b4f34494236dbec56b8c76fea87fbe1b746511b60",
+  "prior_current_compiler_record_sha256": "6c8a5cf81fb192cc9fdcac6354a045088d3f3b0f1af8aea329a94941f721012f",
+  "compiler_delta_review": "Reviewed main.cpp source-digest/stale-failure diagnostics and build.sh digest writing; no arithmetic,checker or codegen changes. NewPD C/H exact comparisons qualify the changed compiler context.",
+  "numerical_reruns": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "emissions": [
+    {
+      "mode": "debug",
+      "artifact": "panda-joint-pd.c",
+      "sha256": "a31ea35c81b26cac5550ad736c81a6fa006b1e2a8354ee5ffecd7b86e9c7d03a",
+      "bytes": 209308,
+      "exact_prior_match": true
+    },
+    {
+      "mode": "debug",
+      "artifact": "panda-joint-pd.h",
+      "sha256": "974061a8947def0a1599a0a3f2ebaf417048b6cdc20637c1269d76e9104dd328",
+      "bytes": 34132,
+      "exact_prior_match": true
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-joint-pd.c",
+      "sha256": "37179e2c26c661aefd5a2606f659772b06d51c70e9eeafa0fd4c4890d14e6863",
+      "bytes": 207792,
+      "exact_prior_match": true
+    },
+    {
+      "mode": "release",
+      "artifact": "panda-joint-pd.h",
+      "sha256": "974061a8947def0a1599a0a3f2ebaf417048b6cdc20637c1269d76e9104dd328",
+      "bytes": 34132,
+      "exact_prior_match": true
+    }
+  ],
+  "component_commit": "51f008b001",
+  "original_component_commit": "764f095f1e",
+  "native_qualification_sha256": "6385d4517db9af849631cf26faff6fe41d4100a85cf4d173977d4b2ffdc9122e",
+  "source_qualification_sha256": "a81e142f2acb17dce2182728b7834c3f5b5b80d1d05f875568b5ab09ab155f17",
+  "unit_qualification_sha256": "14797b975fd46406065db731e4ecb251bed07533ef9a41ec68085a7b800079f1",
+  "example_qualification_sha256": "98701b2fe4790e9aa8c5963db0b5e0a3c135c0389c165c1668aadde02429f4f0",
+  "book": {
+    "passed": true,
+    "programs": 124,
+    "source_linked_listings": 471,
+    "stdout_sha256": "60b7898ebe6efaaf33718aa6d66abf061bb8f3d1f8a7874c4d736fc8857e0854",
+    "stderr_bytes": 0
+  },
+  "registration": {
+    "authority_roots": [
+      "panda-joint-pd-math",
+      "panda-joint-pd"
+    ],
+    "native_gate_count": 1,
+    "native_target": "Darwin-arm64",
+    "listing_sha256": "f018ebd5df60583d7abcd01f13086d6af275413a91a43b659a75d42535d2e366",
+    "shell_syntax_passed": true
+  },
+  "proof_scope": {
+    "source_groups": 8,
+    "source_cases": 101,
+    "new_emitted_roots": [
+      {
+        "name": "math",
+        "mutants": 54,
+        "killed": 54,
+        "survived": 0
+      },
+      {
+        "name": "public",
+        "mutants": 91,
+        "killed": 91,
+        "survived": 0
+      }
+    ],
+    "unit_refusals": 4,
+    "cases": 44,
+    "retained_source_states": 5,
+    "retained_based_queries": 20,
+    "new_matrix_queries": 24,
+    "native_assertions_per_profile": 6420,
+    "SDK_calls": 0,
+    "NN_calls": 0,
+    "integration_steps": 0,
+    "readiness": "Pure joint PD+g0 query; no holding/tracking or closed-loop stability outcome"
+  },
+  "compiler_context_review": "Stale-compiler source-digest diagnostics/build driver reviewed; exact new-model C/H carry existing checks/native/example results without rerun.",
+  "manifest_claim_review": "Only new example inventory and own167 SUMMARY status changed; reviewed both execution/GPU claim scopes as unchanged before rebinding their four documentary evidence hashes.",
+  "separate_root_experiment": "The separate panda-joint-pd-prefix contract/SDK/ownplant evidence is excluded from this component and makes no claim here."
+}
