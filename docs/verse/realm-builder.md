@@ -154,21 +154,37 @@ phone tier under 600 CSS pixels wide; `myrealm.wgsl` carries `verse/style.coax`'
 
 A made realm is a versioned document (`aethyr.realm`, version 1; `migrations/0093_realm_documents.sql`).
 `GET .../<slug>/doc` answers `{doc, sha256}`; the spec carries `rev N`, `published N`, `listed 0|1`,
-`from SLUG REV|NAME` for a fork, and `moved ENTITY X Z` per moved entity. In the realm, the owner
-gets a row over the tools, each control shown only when it applies: MOVE A TREE (the nearest; a tap
-picks another), PUT IT HERE (2.5 m in front of you), UNDO, SAVE and PUBLISH; anyone who may make
-realms gets FORK. Edits are `aethyr/forge/edit.coax`'s typed operations with undo in the page.
+`from SLUG REV|NAME` for a fork, `moved ENTITY X Z` per moved entity and, for the owner, `undo N`.
+
+Visitors see the revision published, not the latest save (`migrations/0094_realm_live_and_undo.sql`).
+Making or forking a realm publishes its first revision. After that the owner's edits (saves, rows
+switched, things placed, cards settled, revisions by talking) make new revisions that only the owner
+and site admins see until PUBLISH. A visitor's spec, `/doc` and fork are all of the revision
+published. Under the realm's name the owner reads which version is live and whether theirs differs:
+"LIVE: VERSION 3", "LIVE: VERSION 3. NOT PUBLISHED: 5" or "LIVE: VERSION 3. NOT SAVED".
+
+In the realm, the owner gets a row over the tools, each control shown only when it applies: MOVE
+(the nearest thing: a tree, a rock, a prop, a building, a lantern, a house or a thing placed; a tap
+picks another), PUT IT HERE (in front of you, further for a big thing; refused where any of it would
+be in a rock or another thing, in the water or off the ground), UNDO, SAVE and PUBLISH; anyone who
+may make realms gets FORK. Moves are `aethyr/forge/edit.coax`'s typed operations with undo in the
+page, and this browser keeps unsaved moves across a reload of the same revision. Every edit the
+server keeps is one undo step too: with no unsaved moves left, UNDO asks `POST .../<slug>/undo`,
+which puts back the revision before the newest step (64 steps kept).
 
 | | |
 | --- | --- |
 | `POST .../<slug>/save {rev, moved}` | the owner; 200 `{rev, sha256}` the next revision; 409 `{error: "changed since", rev}` when the realm changed since `rev`; 400 a bad move (at most 64, `feature:index`, within 40 m) |
 | `POST .../<slug>/publish {rev, listed?}` | the owner; 200 `{published, rev, sha256, listed}`; 409 a stale `rev` |
+| `POST .../<slug>/undo {rev}` | the owner; 200 `{rev, undo}` the revision before the newest step, kept as the next revision; 409 a stale `rev` or nothing to undo |
 | `POST .../<slug>/fork {name?}` | a copy at this revision, owned by you, `forked_from {slug, rev}`, named "NAME Fork"; `?as=lines` answers `slug`, `path`, `page` |
 
-Each saved, published, forked or made revision is kept in `verse.realm_revisions` with its hash.
+Each revision is kept in `verse.realm_revisions` with its hash.
 A realm made or forked by a tool (the `verse-automation` cookie or `X-Verse-Automation`) is
 unlisted: `noindex` and off `/og`'s rows. `coax/web/tool.sh forge-journey URL [--phone]` walks
-the whole maker journey (make, move, undo, play, save, reload, publish, fork, the original unchanged).
+the whole maker journey (make, move, undo, play, reload before saving, move a thing that isn't a
+tree, save, reload, build and undo, publish, fork, the original unchanged), and checks that a visitor
+gets the revision published.
 
 ## Limits
 

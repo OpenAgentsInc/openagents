@@ -178,8 +178,8 @@ def realm_fork_checks():
     check("a made realm's document: revision 1, its setup and features, and a hash", st == 200 and d0["doc"]["rev"] == 1 and d0["doc"]["doc"] == "aethyr.realm"
           and d0["doc"]["setup"]["ground"] == "stone" and d0["doc"]["moved"] == [] and len(d0["sha256"]) == 64, (st, d0))
     spec = line_map(b_call("GET", R + "forge-court", key=maker)[1])
-    check("its spec says its revision, never published, listed, and nothing moved", spec.get("rev") == ["1"] and spec.get("published") == ["0"]
-          and spec.get("listed") == ["1"] and "moved" not in spec, spec)
+    check("its spec says its revision, published as it was made (0094), listed, nothing moved and nothing to undo", spec.get("rev") == ["1"] and spec.get("published") == ["1"]
+          and spec.get("listed") == ["1"] and "moved" not in spec and spec.get("undo") == ["0"], spec)
     mv = [{"entity": "trees:2", "x": 3.256, "z": -4.5}]
     check("only its owner saves", b_call("POST", R + "forge-court/save", {"rev": 1, "moved": mv}, rival)[0] == 403)
     check("a save names a revision and holds its moves", b_call("POST", R + "forge-court/save", {"moved": mv}, maker)[0] == 400
@@ -188,12 +188,17 @@ def realm_fork_checks():
           and b_call("POST", R + "forge-court/save", {"rev": 1, "moved": [{"entity": "trees:2", "x": 0, "z": 0}] * 65}, maker)[0] == 400)
     st, sv = b_call("POST", R + "forge-court/save", {"rev": 1, "moved": mv}, maker)
     check("a save from the revision there now is kept as the next revision, rounded to the centimetre", st == 200 and sv["rev"] == 2 and len(sv["sha256"]) == 64
-          and "moved trees:2 3.26 -4.50" in b_call("GET", R + "forge-court", key=rival)[1], (st, sv))
+          and "moved trees:2 3.26 -4.50" in b_call("GET", R + "forge-court", key=maker)[1], (st, sv))
+    vis = line_map(b_call("GET", R + "forge-court", key=rival)[1])
+    check("a visitor sees the revision published, not the owner's save (0094)", vis.get("rev") == ["1"] and vis.get("published") == ["1"] and "moved" not in vis
+          and vis.get("role") == ["visitor"] and vis.get("owner") == ["0"] and "undo" not in vis and vis.get("row") == ["trees 1 Six round trees"], vis)
+    check("and so does the visitor's document; its owner's is the save", b_call("GET", R + "forge-court/doc", key=rival)[1] == d0
+          and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["rev"] == 2)
     st, stale = b_call("POST", R + "forge-court/save", {"rev": 1, "moved": []}, maker)
     check("a save from an older revision is refused with the revision there now: newer never just wins", st == 409 and stale == {"error": "changed since", "rev": 2}
-          and "moved trees:2 3.26 -4.50" in b_call("GET", R + "forge-court")[1], (st, stale))
+          and "moved trees:2 3.26 -4.50" in b_call("GET", R + "forge-court", key=maker)[1], (st, stale))
     check("any change to what it is makes a new revision (a row switched off)", b_call("POST", R + "forge-court/switch", {"row": "trees", "on": False}, maker)[0] == 200
-          and line_map(b_call("GET", R + "forge-court")[1]).get("rev") == ["3"])
+          and line_map(b_call("GET", R + "forge-court", key=maker)[1]).get("rev") == ["3"])
     b_call("POST", R + "forge-court/switch", {"row": "trees", "on": True}, maker)
     check("so a save read before it is refused too", b_call("POST", R + "forge-court/save", {"rev": 2, "moved": []}, maker) == (409, {"error": "changed since", "rev": 4}))
     check("a publish names its revision", b_call("POST", R + "forge-court/publish", {"rev": 3}, maker) == (409, {"error": "changed since", "rev": 4})
@@ -202,6 +207,7 @@ def realm_fork_checks():
     d4 = b_call("GET", R + "forge-court/doc")[1]
     check("publishing keeps the revision and its document's hash; unlisted, it is off /og's rows", st == 200 and pb["rev"] == 4 and pb["listed"] is False
           and pb["sha256"] == d4["sha256"] and line_map(b_call("GET", R + "forge-court")[1]).get("published") == ["4"]
+          and line_map(b_call("GET", R + "forge-court")[1]).get("rev") == ["4"]
           and "/realms/forge-court|" not in b_call("GET", R + "made")[1]
           and sql("select doc->>'rev' from verse.realm_revisions where slug = 'forge-court' and why = 'publish'") == "4", (st, pb))
     st, fk = b_call("POST", R + "forge-court/fork", {"name": "Forge Court Copy"}, rival)
@@ -235,6 +241,56 @@ def realm_fork_checks():
             break
         time.sleep(0.1)
     check("and its page says noindex", '<meta name="robots" content="noindex">' in page4, page4[:400])
+
+    # visitors see the revision published; every edit is one undo step (0094)
+    mv5 = [{"entity": "trees:2", "x": 1, "z": 1}, {"entity": "rocks:0", "x": -2, "z": 3}]
+    st, sv5 = b_call("POST", R + "forge-court/save", {"rev": 4, "moved": mv5}, maker)
+    om, vm = line_map(b_call("GET", R + "forge-court", key=maker)[1]), line_map(b_call("GET", R + "forge-court", key=rival)[1])
+    check("after a save its owner sees it and a visitor still sees the revision published", st == 200 and sv5["rev"] == 5
+          and om.get("rev") == ["5"] and om.get("moved") == ["trees:2 1.00 1.00", "rocks:0 -2.00 3.00"] and om.get("published") == ["4"]
+          and vm.get("rev") == ["4"] and vm.get("moved") == ["trees:2 3.26 -4.50"], (st, sv5, om, vm))
+    check("a visitor's document is the one published, its hash the publish's", b_call("GET", R + "forge-court/doc")[1] == d4
+          and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["rev"] == 5)
+    third = b_player()
+    st, f3 = b_call("POST", R + "forge-court/fork", {"name": "Forge Court Live"}, third)
+    fdoc = b_call("GET", R + "forge-court-live/doc", key=third)[1]["doc"]
+    check("a visitor's fork copies the revision published", st == 200 and f3["rev"] == 4 and fdoc["moved"] == d4["doc"]["moved"]
+          and fdoc["forked_from"] == {"slug": "forge-court", "rev": 4} and line_map(b_call("GET", R + "forge-court-live", key=third)[1]).get("published") == ["1"], (st, f3, fdoc))
+    check("only its owner undoes, from the revision there now", b_call("POST", R + "forge-court/undo", {"rev": 5}, rival)[0] == 403
+          and b_call("POST", R + "forge-court/undo", {"rev": 4}, maker) == (409, {"error": "changed since", "rev": 5})
+          and b_call("POST", R + "forge-court/undo", {}, maker)[0] == 400)
+    steps = int(line_map(b_call("GET", R + "forge-court", key=maker)[1])["undo"][0])
+    st, u = b_call("POST", R + "forge-court/undo", {"rev": 5}, maker)
+    check("UNDO takes the save back as a new revision, with the moves before it", st == 200 and u == {"rev": 6, "undo": steps - 1}
+          and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["moved"] == d4["doc"]["moved"], (st, u, steps))
+    st, pl = b_call("POST", R + "forge-court/place", {"thing": "crate", "x": 2, "z": -3, "yaw": 0}, maker)
+    placed = b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["placed"]
+    st2, u = b_call("POST", R + "forge-court/undo", {"rev": 7}, maker)
+    check("a thing placed is one step: UNDO takes it out", st == 200 and len(placed) == 1 and st2 == 200 and u["rev"] == 8
+          and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["placed"] == [], (st, pl, placed, st2, u))
+    b_call("POST", R + "forge-court/switch", {"row": "trees", "on": False}, maker)
+    off = line_map(b_call("GET", R + "forge-court", key=maker)[1]).get("row")
+    st, u = b_call("POST", R + "forge-court/undo", {"rev": 9}, maker)
+    check("a row switched is one step: UNDO switches it back", off == ["trees 0 Six round trees"] and st == 200
+          and line_map(b_call("GET", R + "forge-court", key=maker)[1]).get("row") == ["trees 1 Six round trees"], (off, st, u))
+    b_call("POST", R + "forge-court/settings", {"tools": {"build": True}}, maker)
+    rev = int(line_map(b_call("GET", R + "forge-court", key=maker)[1])["rev"][0])
+    pid = b_call("POST", R + "forge-court/place", {"thing": "barrel", "x": 1, "z": 1, "yaw": 0}, rival)[1].get("proposed")
+    st, dec = b_call("POST", R + "forge-court/proposals/" + str(pid) + "/accept", {}, maker)
+    acc = b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]
+    st2, u = b_call("POST", R + "forge-court/undo", {"rev": rev + 1}, maker)
+    cards = b_call("GET", R + "forge-court/proposals", key=maker)[1]
+    check("a card accepted is one step: UNDO takes its thing out and the card waits again", st == 200 and acc["rev"] == rev + 1 and len(acc["placed"]) == 1
+          and st2 == 200 and b_call("GET", R + "forge-court/doc", key=maker)[1]["doc"]["placed"] == [] and ("P " + str(pid) + "|") in cards, (st, dec, acc, st2, u, cards))
+    rev = u["rev"]
+    st, dec = b_call("POST", R + "forge-court/proposals/" + str(pid) + "/decline", {}, maker)
+    gone = b_call("GET", R + "forge-court/proposals", key=maker)[1]
+    st2, u = b_call("POST", R + "forge-court/undo", {"rev": rev}, maker)
+    check("a card declined is a step too, though nothing in the realm changes", st == 200 and ("P " + str(pid) + "|") not in gone and st2 == 200
+          and u["rev"] == rev and ("P " + str(pid) + "|") in b_call("GET", R + "forge-court/proposals", key=maker)[1], (st, dec, st2, u))
+    check("every revision is kept, an edit's and an undo's too", int(sql("select count(*) from verse.realm_revisions where slug = 'forge-court' and why in ('edit', 'undo')")) >= 6
+          and sql("select why from verse.realm_revisions where slug = 'forge-court' and rev = 6") == "undo")
+    check("a visitor still sees revision 4 through all of it", line_map(b_call("GET", R + "forge-court")[1]).get("rev") == ["4"])
 
     sql("delete from verse.published where world = 'everglade' and published_by = 'test'")
     model.shutdown()

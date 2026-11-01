@@ -223,14 +223,16 @@ def realm_builder_checks():
     check("anyone else sees no cards", b_call("GET", "/api/playtest/realms/moonlit-marsh/proposals", key=visitor)[1] == "")
     check("a visitor can't accept", b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/accept" % p["proposed"], {}, visitor)[0] == 403)
     st, d = b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/accept" % p["proposed"], {}, owner)
-    check("ACCEPT places it", st == 200 and d["state"] == "accepted" and "placed barrel 3 -4 0.5" in b_call("GET", "/api/playtest/realms/moonlit-marsh")[1], d)
+    check("ACCEPT places it: its owner sees it at once, visitors once it is published (0094)", st == 200 and d["state"] == "accepted"
+          and "placed barrel 3 -4 0.5" in b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)[1]
+          and "placed barrel" not in b_call("GET", "/api/playtest/realms/moonlit-marsh")[1], d)
     check("a card is decided once", b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/decline" % p["proposed"], {}, owner)[0] == 409)
     st, p2 = b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "rock", "x": -2, "z": 1}, visitor)
     st, d = b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/%d/decline" % p2["proposed"], {}, owner)
     check("DECLINE changes nothing", st == 200 and d["state"] == "declined" and "placed rock" not in b_call("GET", "/api/playtest/realms/moonlit-marsh")[1], d)
     check("an unknown card is a 404", b_call("POST", "/api/playtest/realms/moonlit-marsh/proposals/999999/accept", {}, owner)[0] == 404)
     st, o = b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "lantern", "x": 0.5, "z": -3, "yaw": 0}, owner)
-    check("the owner's own thing goes in at once", st == 200 and o.get("placed") is True and "placed lantern 0.5 -3" in b_call("GET", "/api/playtest/realms/moonlit-marsh")[1], o)
+    check("the owner's own thing goes in at once", st == 200 and o.get("placed") is True and "placed lantern 0.5 -3" in b_call("GET", "/api/playtest/realms/moonlit-marsh", key=owner)[1], o)
     st, _ = b_call("POST", "/api/playtest/realms/moonlit-marsh/settings", {"tools": {"build": False}}, owner)
     check("build switched off again stops visitors at once", b_call("POST", "/api/playtest/realms/moonlit-marsh/place", {"thing": "crate", "x": 1, "z": 1}, visitor)[0] == 403)
     check("a GET of the make route is a 405", b_call("GET", "/api/playtest/realms")[0] == 405)

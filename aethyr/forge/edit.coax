@@ -143,6 +143,17 @@ forge_redo :: (d: [] ForgeDoc) -> bool {
 forge_dirty :: (d: [] ForgeDoc) -> bool { return d[0].done != d[0].saved; }
 // The server kept it as revision rev.
 forge_saved :: (d: [] ForgeDoc, rev: int) { d[0].rev = rev; d[0].saved = d[0].done; }
+// The server kept it as revision rev, and its undo list now holds the save as one step: the page's
+// own steps are done with (the moves stay).
+forge_commit :: (d: [] ForgeDoc, rev: int) { d[0].rev = rev; d[0].op_n = 0; d[0].done = 0; d[0].saved = 0; }
+// The same moves, in the same order: the server's document didn't move anything since.
+forge_same_moves :: (a: [] ForgeDoc, b: [] ForgeDoc) -> bool {
+  if a[0].move_n != b[0].move_n { return false; }
+  for i: 0..<a[0].move_n {
+    if forge_move_key(a, i) != forge_move_key(b, i) || a[0].moves[i].x != b[0].moves[i].x || a[0].moves[i].z != b[0].moves[i].z { return false; }
+  }
+  return true;
+}
 
 // ---- the save's body: {"rev":N,"moved":[{"entity":"trees:3","x":1.25,"z":-2.5}]}, positions in metres
 forge_put :: (buf: [] u8, at: int, text: string) -> int {
@@ -247,6 +258,23 @@ forge_save_body :: (d: [] ForgeDoc, buf: [] u8) -> int {
   #assert forge_undo(d[..]) && forge_dirty(d[..]) && forge_redo(d[..]) && !forge_dirty(d[..]);
   #assert forge_undo(d[..]) && forge_move(d[..], "trees:0", 2, 2) && forge_dirty(d[..]) && d[0].saved == -1;
   #assert forge_undo(d[..]) && forge_dirty(d[..]);   // the saved state is gone for good
+}
+
+#test "a save committed ends the page's own steps and keeps the moves" {
+  d: [1] ForgeDoc; forge_reset(d[..], 4);
+  #assert forge_move(d[..], "rocks:1", 50, -50) && forge_move(d[..], "props:0", 1, 2);
+  forge_commit(d[..], 5);
+  #assert d[0].rev == 5 && !forge_dirty(d[..]) && !forge_can_undo(d[..]) && !forge_can_redo(d[..]) && d[0].move_n == 2;
+  #assert forge_where(d[..], "props:0").z == 2 && forge_move(d[..], "props:0", 3, 3) && forge_dirty(d[..]) && forge_undo(d[..]) && !forge_dirty(d[..]);
+}
+
+#test "the same moves are the same keys, places and order" {
+  a: [1] ForgeDoc; b: [1] ForgeDoc; forge_reset(a[..], 1); forge_reset(b[..], 9);
+  #assert forge_same_moves(a[..], b[..]);
+  #assert forge_read_move(a[..], "trees:1", 5, 6) && !forge_same_moves(a[..], b[..]);
+  #assert forge_read_move(b[..], "trees:1", 5, 6) && forge_same_moves(a[..], b[..]);
+  #assert forge_read_move(b[..], "trees:1", 5, 7) && !forge_same_moves(a[..], b[..]);
+  #assert forge_read_move(b[..], "trees:1", 5, 6) && forge_read_move(a[..], "rocks:0", 0, 0) && forge_read_move(b[..], "rocks:1", 0, 0) && !forge_same_moves(a[..], b[..]);
 }
 
 #test "the log keeps its last FORGE_OPS steps" {

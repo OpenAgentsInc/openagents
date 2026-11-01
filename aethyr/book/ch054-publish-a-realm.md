@@ -1,11 +1,11 @@
 # 54. Publish a realm
 
-> **Status: unimplemented — design draft.** The frozen publish record below
-> (document, module build and assets by hash, gated by checks) is not built.
-> What runs today: hand-built realms are published from one table
-> (`apps/openagents-web/realms.json`), and the owner of a made realm
-> publishes a named revision, which records that revision and its document's
-> hash. Visitors still see the latest saved revision, not a frozen one.
+> **Status: partly implemented.** Visitors of a made realm see the revision
+> its owner published, not the latest save, and the owner reads which
+> version is live. The frozen publish record below (document, module build
+> and assets by hash, gated by checks) is not built: what is published is a
+> document revision, played by the current engine build. Hand-built realms
+> are published from one table (`apps/openagents-web/realms.json`).
 
 Publishing turns a realm someone is working on into one other people visit.
 That needs three promises: what visitors get is a fixed version (a document,
@@ -68,6 +68,13 @@ another environment's realms.
   `listed: false` keeps the page `noindex` and off `/og`'s rows. In the
   realm, PUBLISH is shown to the owner only when the saved revision is not
   yet the published one.
+- Visitors get the revision published
+  ([0094_realm_live_and_undo.sql](../../coax/web/api/migrations/0094_realm_live_and_undo.sql)).
+  Making or forking a realm publishes its first revision. The spec, `/doc`
+  and a fork by anyone but the owner are of the published revision; the
+  owner and site admins get the latest. Under the realm's name the owner
+  reads "LIVE: VERSION 3", "LIVE: VERSION 3. NOT PUBLISHED: 5" (saved, not
+  published) or "LIVE: VERSION 3. NOT SAVED".
 - Realms made or forked by a tool (the `verse-automation` cookie or the
   `X-Verse-Automation` header) are unlisted from the start.
 - Forks stay `noindex` until their owner publishes
@@ -82,8 +89,15 @@ another environment's realms.
   [verse/realm-template/](../../verse/realm-template/index.md).
 
 The made-realm write and the hand-built table are separate code paths with
-separate checks. A published made realm's page still plays the latest saved
-revision; serving the published revision, by hash, is still to do.
+separate checks. A published made realm's page plays the published
+document with today's engine; pinning the module build and assets by hash is
+still to do.
+
+Checks: `test_realm_fork.py` (a save leaves visitors on the revision
+published, their `/doc` is its document, a visitor's fork copies it) and
+`coax/web/tool.sh forge-journey URL` (after SAVE the owner reads "not
+published" and a visitor's spec has the published revision; after PUBLISH,
+"live", and the visitor gets it).
 
 ## What it builds
 

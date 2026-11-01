@@ -4,9 +4,11 @@
 > invertible edit with undo and redo:
 > [aethyr/forge/edit.coax](../forge/edit.coax), used by a made realm's page
 > ([apps/openagents-web/myrealm.coax](../../apps/openagents-web/myrealm.coax))
-> for MOVE A TREE, UNDO and SAVE. Switches, placements, proposals and the
-> asks ledger still use the older edit layer and are not yet operations of
-> this kind; see [Still to do](#still-to-do).
+> for MOVE, UNDO and SAVE; MOVE shifts trees, rocks, props, buildings,
+> houses, lanterns and placed things. Switches, placements, proposals and
+> revisions by talking are undoable as server revisions
+> (`coax/web/api/migrations/0094_realm_live_and_undo.sql`), not yet as
+> operations of this kind; see [Still to do](#still-to-do).
 
 Editing a realm while people walk in it is the same problem as replaying it.
 Each change must be a recorded, ordered operation over the state. It must be
@@ -130,13 +132,23 @@ is shown only when it applies:
 
 | Control | Shown when | What it does |
 | --- | --- | --- |
-| MOVE A TREE | the realm has trees | Picks the tree nearest you. A tap on another tree picks that one. |
-| PUT IT HERE | a tree is picked | Stands it 2.5 m in front of you, as one undo step. Where something already stands, or off the ground or in the water, it says so and keeps the tree picked. Esc lets it go. |
-| UNDO | there is a step to undo | Takes the last move back. |
+| MOVE | the realm has something to move | Picks the thing nearest you: a tree, a rock, a prop, a building, a house, a lantern or a thing placed. A tap on another picks that one. |
+| PUT IT HERE | a thing is picked | Stands it in front of you (2.5 m, further for a big thing), as one undo step. Where any of it would be in a rock or another thing, off the ground or in the water, it says so and keeps the thing picked. Esc lets it go. |
+| UNDO | there is a step to undo | Takes the last unsaved move back. With none left, takes back the server's newest step: a save, a row switched, a thing placed or a card settled. |
 | SAVE | there are unsaved changes | Saves from the revision read. |
 
-On a 390 px phone the row spans the screen width and its labels are
-shortened (MOVE TREE, PUT HERE).
+A thing's pieces, solids, lights, fires and turning parts move with it, and
+nothing else does. This browser keeps the unsaved moves (host action 4), so
+a reload of the same revision brings them back, still undoable. A save
+becomes one server step.
+
+The server keeps the undo steps (`made_realms.undo`, at most 64): each edit
+that makes a revision pushes the revision before it. `POST .../undo {rev}`
+restores the fields of that revision as the next revision, so history is
+never rewritten, and a card settled goes back to waiting.
+
+On a 390 px phone the row spans the screen width and PUT IT HERE is
+shortened to PUT HERE.
 
 ## Checks
 
@@ -145,16 +157,22 @@ shortened (MOVE TREE, PUT HERE).
   moved since is refused; apply then inverse restores the document; saved is
   a state of the log; the log and the document keep their limits; the save's
   body.
-- `coax/bin/coax test apps/openagents-web/myrealm.coax`: MOVE A TREE moves
-  only that tree's pieces and UNDO restores every piece; SAVE names the
+- `coax/bin/coax test apps/openagents-web/myrealm.coax`: MOVE moves only
+  the picked thing's pieces and UNDO restores every piece; a rock, a prop, a
+  building and a lantern each move with their solids and lights; a big thing
+  is refused where any of it would stand in a rock or off the ground; unsaved
+  moves come back after a reload of the same revision and not another; UNDO
+  with nothing unsaved asks the server; SAVE names the
   revision it was read at; a 409 keeps the changes unsaved, and reading the
   spec again does not drop them; a visitor gets none of the owner's
   controls; the row fits a 390 px phone.
 - `coax/web/api/test.sh` (`test_realm_fork.py`): only the owner saves; a save
   from an older revision is refused with the revision there now; moves are
-  validated and rounded to the centimetre.
+  validated and rounded to the centimetre; a save, a placement, a row switch,
+  an accepted and a declined card are each undone as one step.
 - `coax/web/tool.sh forge-journey URL [--phone]`: the whole maker journey in
-  headless Chrome, steps 2 to 6.
+  headless Chrome, steps 2 to 9 (move, undo, reload before saving, move a
+  thing that isn't a tree, save, reload, build and undo).
 
 ## Still to do
 
@@ -162,15 +180,15 @@ shortened (MOVE TREE, PUT HERE).
 
 - Row switches, revisions by voice, placements and visitor proposals as
   operations of the same kind, so that one log replays to the current
-  document (chapter 5's rule, over edits instead of inputs).
-- Undo and redo kept across reloads. Today the log lives in the page; a
-  reload starts it empty at the saved revision.
+  document (chapter 5's rule, over edits instead of inputs). Today they are
+  undone as whole revisions.
+- Redo across reloads, and redo of a server step.
 - The asks ledger's revert rule as a Coax function the server's SQL is
   checked against: for each row an ask changed, put back `before` only if
   the row still holds the ask's `after`.
 - Everglade's own edit mode
   (`apps/openagents-web/everglade-edit.coax`) on the same log.
-- Moving entities other than trees, and turning or removing them.
+- Turning or removing entities, and moving figures and animals.
 
 The older edit layer is documented in
 [docs/verse/realm-edit.md](../../docs/verse/realm-edit.md): who may edit

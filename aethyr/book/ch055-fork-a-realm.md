@@ -5,7 +5,9 @@
 > today: Everglade forks with its own rules
 > (`0075_realm_forks.sql`), and any made realm forks as a copy of its
 > document that records its parent and the revision it came from
-> (`0093_realm_documents.sql`).
+> (`0093_realm_documents.sql`). Anyone but the owner forks the revision
+> published, not the owner's unpublished saves
+> (`0094_realm_live_and_undo.sql`).
 
 A fork is your own copy of someone's realm with your own rules: always
 night, the watch in waves, nothing breakable, a third of the gravity. The

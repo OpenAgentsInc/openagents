@@ -22,9 +22,11 @@
 //   POST /api/playtest/realms/<slug>/fork {rules, name?}   -> 200 {slug, path, name, base, from, rules, page}; 400, 401, 404, 429
 //   POST /api/playtest/realms/<fork>/publish {published?, description?}   -> 200 {published, description}; 403, 404
 // A made realm is a document with revisions (migrations/0093_realm_documents.sql, Aethyr book chapters 51-55, 82):
-//   GET  /api/playtest/realms/<slug>/doc               -> 200 {doc, sha256}; 404
+//   GET  /api/playtest/realms/<slug>/doc               -> 200 {doc, sha256}; 404 (a visitor's: the revision published)
 //   POST /api/playtest/realms/<slug>/save {rev, moved} -> 200 {rev, sha256}; 400, 403, 404, 409 {error, rev} (changed since)
 //   POST /api/playtest/realms/<slug>/publish {rev, listed?}   -> 200 {published, rev, sha256, listed}; 400, 403, 404, 409
+//   POST /api/playtest/realms/<slug>/undo {rev}        -> 200 {rev, undo}; 400, 403, 404, 409 {error, rev} (0094: every edit is a step)
+//   (a visitor's spec, document and fork are the revision published; its owner's are the realm now)
 //   POST /api/playtest/realms/<slug>/fork {name?}      -> 200 {slug, path, name, from, rev}: its document copied, parent and revision kept
 // A realm made or forked by a request with an automation mark (X-Verse-Automation, or the cookie
 // verse-automation) is unlisted: off /og's rows and noindex.
@@ -739,8 +741,8 @@ bool realms_route(const request *q) {
   }
   if (!strcmp(what, "doc")) {   // the document now and its hash (0093)
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the document\"}"); return true; }
-    const char *v[1] = {slug};
-    sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_doc_of($1) x", 1, v, "doc");
+    const char *v[3] = {slug, key, admin};   // the owner's now, anyone else's the revision published (0094)
+    sql_json(q, db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_doc_of($1, $2, $3::boolean) x", 3, v, "doc");
     return true;
   }
   if (!strcmp(what, "panes")) {
@@ -817,11 +819,12 @@ bool realms_route(const request *q) {
     PQclear(r);
     return true;
   }
-  if (!strcmp(what, "save")) {   // only from the revision there now (0093)
+  if (!strcmp(what, "save") || !strcmp(what, "undo")) {   // only from the revision there now (0093, 0094)
     char *body = body_of(q);
     if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
     const char *v[4] = {slug, body, key, admin};
-    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_save($1, $2::jsonb, $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
+    PGresult *r = PQexecParams(db, !strcmp(what, "save") ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_save($1, $2::jsonb, $3, $4::boolean) x"
+                                                         : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.realm_undo($1, $2::jsonb, $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
     free(body);
     if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
       api_json(q->fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));
@@ -829,7 +832,7 @@ bool realms_route(const request *q) {
     else {
       const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
       bool theirs = state && !strncmp(state, "22", 2);
-      if (!theirs) api_log("realms: save: %s", PQerrorMessage(db));
+      if (!theirs) api_log("realms: %s: %s", what, PQerrorMessage(db));
       api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
     }
     PQclear(r);

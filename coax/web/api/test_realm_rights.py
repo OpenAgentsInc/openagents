@@ -116,18 +116,20 @@ def realm_rights_checks():
     check("a made realm's spec has its role and its board's rows", "role owner\n" in spec and "row water 1 Small pond\n" in spec and "row props:wagon 1 Wagons\n" in spec, spec)
     check("a visitor can't switch a made realm's row", b_call("POST", "/api/playtest/realms/" + slug + "/switch", {"row": "rocks", "on": False}, visitor)[0] == 403)
     check("its owner switches one off", b_call("POST", "/api/playtest/realms/" + slug + "/switch", {"row": "rocks", "on": False}, maker)[0] == 200)
+    st, spec = b_call("GET", "/api/playtest/realms/" + slug, key=maker)
+    check("off, it is gone from the realm and kept on the board", "feature rocks" not in spec and "row rocks 0 4 rocks\n" in spec and "role owner" in spec, spec)
     st, spec = b_call("GET", "/api/playtest/realms/" + slug)
-    check("off, it is gone from the realm and kept on the board", "feature rocks" not in spec and "row rocks 0 4 rocks\n" in spec and "role visitor" in spec, spec)
+    check("a visitor still gets the revision published, rocks and all (0094)", "feature rocks 4" in spec and "role visitor" in spec and "rev 1\n" in spec, spec)
     adm = {"Content-Type": "application/json"}
     body = json.dumps({"row": "rocks", "on": True}).encode()
     st, raw, _ = call("POST", "/api/playtest/realms/" + slug + "/switch", body, dict(adm, Authorization=nip98(os.environ["ADMIN_KEY"], "POST", "realms/" + slug + "/switch", body)))
-    st2, spec = b_call("GET", "/api/playtest/realms/" + slug)
+    st2, spec = b_call("GET", "/api/playtest/realms/" + slug, key=maker)
     check("a site admin switches it back on", st == 200 and "feature rocks 4" in spec, (st, raw, spec))
     builder_mode["text"] = json.dumps({"name": "ignored", "style": "painterly", "ground": "snow", "time": "night", "features": [
         {"feature": "water", "on": False, "size": "small"}, {"feature": "lanterns", "on": True, "colour": "blue", "count": 6}]})
     time.sleep(2.1)
     st, got = b_call("POST", "/api/playtest/realms/" + slug + "/revise", {"prompt": "night, snow, blue lanterns, no pond"}, maker)
-    st2, spec = b_call("GET", "/api/playtest/realms/" + slug)
+    st2, spec = b_call("GET", "/api/playtest/realms/" + slug, key=maker)
     check("talking revises a made realm: its ground, time and features, its name and style kept",
           st == 200 and "ground snow" in spec and "time night" in spec and "feature lanterns blue 6" in spec and "row water 0" in spec
           and "name Rights Glade" in spec and "style lowpoly" in spec, (got, spec))

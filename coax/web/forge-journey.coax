@@ -1,13 +1,17 @@
 // One Aethyrforge maker journey, end to end, in headless Chrome (#12610; aethyr/book chapters 51-55):
 //   1 GENERATE  /realms/new: skip the setup, TYPE a sentence, Enter, MAKE IT; the realm opens
-//   2 MOVE      MOVE A TREE, walk, PUT IT HERE (twice: two moves)
+//   2 MOVE      MOVE (the nearest thing), walk, PUT IT HERE (twice: two moves)
 //   3 UNDO      UNDO takes the second back; the first stays
 //   4 PLAY      walk; nothing unsaved is lost
-//   5 SAVE      SAVE names the revision it was read at; the server keeps the next one
-//   6 RELOAD    the page again: the moved tree stands where it was saved
-//   7 PUBLISH   PUBLISH that revision
-//   8 FORK      FORK: the fork opens, records its parent and the revision; it is moved and saved
-//   9 ORIGINAL  the original's document is byte for byte what it was before the fork
+//   5 KEPT      the page again before saving: the unsaved move is back, and UNDO still takes it back
+//   6 THING     MOVE, a tap on something that isn't a tree (a rock, a fountain, a building), walk, PUT IT HERE
+//   7 SAVE      SAVE names the revision it was read at; the server keeps the next one; the owner reads
+//               "not published" and a visitor still gets the revision published
+//   8 RELOAD    the page again: the moved tree stands where it was saved, and UNDO is still there
+//   9 UNDO ALL  BUILD a crate (a step the server keeps), then UNDO takes it out again
+//  10 PUBLISH   PUBLISH that revision: the owner reads "live", a visitor gets it
+//  11 FORK      FORK: the fork opens, records its parent and the revision; it is moved and saved
+//  12 ORIGINAL  the original's document is byte for byte what it was before the fork
 //
 //   coax/web/tool.sh forge-journey https://staging.openagents.com [--phone] [--shots PREFIX] [--board-only]
 //
@@ -26,20 +30,26 @@ FJ_SHOT :: 25165824;
 // the pages' buttons (builder.coax, myrealm.coax)
 B_TYPE :: 1; B_MAKE :: 2; B_SKIP :: 5;
 PH_ASK :: 0; PH_BOARD :: 2; PH_SETUP :: 5;
-R_MOVE :: 13; R_UNDO :: 14; R_SAVE :: 15; R_PUBLISH :: 16; R_FORK :: 17;
+R_BUILD :: 3; R_MOVE :: 13; R_UNDO :: 14; R_SAVE :: 15; R_PUBLISH :: 16; R_FORK :: 17;
+// myrealm.coax realm_probe: what the owner reads of the version live
+LIVE_SAME :: 1; LIVE_SAVED :: 2; LIVE_UNSAVED :: 3;
+STEPS :: 12;
 NONE :: -99999;
 
-Step :: enum u8 { GENERATE; MOVE; UNDO; PLAY; SAVE; RELOAD; PUBLISH; FORK; ORIGINAL; }
+Step :: enum u8 { GENERATE; MOVE; UNDO; PLAY; KEPT; THING; SAVE; RELOAD; UNDO_ALL; PUBLISH; FORK; ORIGINAL; }
 step_name :: (s: Step) -> string {
   if s == Step.GENERATE { return "1 generate a courtyard from a sentence"; }
   if s == Step.MOVE { return "2 move a tree"; }
   if s == Step.UNDO { return "3 undo"; }
   if s == Step.PLAY { return "4 play it"; }
-  if s == Step.SAVE { return "5 save"; }
-  if s == Step.RELOAD { return "6 reload: the edit is still there"; }
-  if s == Step.PUBLISH { return "7 publish"; }
-  if s == Step.FORK { return "8 fork it (and edit the fork)"; }
-  return "9 the original is unchanged";
+  if s == Step.KEPT { return "5 reload before saving: the unsaved move is kept"; }
+  if s == Step.THING { return "6 move something that isn't a tree"; }
+  if s == Step.SAVE { return "7 save: visitors still see the version published"; }
+  if s == Step.RELOAD { return "8 reload: the edit is still there, and undoable"; }
+  if s == Step.UNDO_ALL { return "9 build a thing, then undo it"; }
+  if s == Step.PUBLISH { return "10 publish: visitors see it"; }
+  if s == Step.FORK { return "11 fork it (and edit the fork)"; }
+  return "12 the original is unchanged";
 }
 
 Buf :: struct { b: [8192] u8; n: int; bad: bool; }
@@ -78,7 +88,7 @@ origin_of :: (url: string) -> string {
   #assert origin_of("https://staging.openagents.com/realms/new") == "https://staging.openagents.com" && origin_of("nope") == "";
   #assert slug_ok("aethyrforge-journey-test-1a2b") && !slug_ok("x'y") && !slug_ok("");
   #assert starts("Aethyrforge Journey Test 1a Fork", "Aethyrforge Journey Test") && ends("Aethyrforge Journey Test 1a Fork", " Fork");
-  #assert step_name(Step.ORIGINAL) == "9 the original is unchanged";
+  #assert step_name(Step.ORIGINAL) == "12 the original is unchanged" && cast(int) Step.ORIGINAL == STEPS - 1;
   b: [1] Buf; bput(b[..], "p("); bint(b[..], -120); bput(b[..], ")");
   #assert btext(b[..]) == "p(-120)";
 }
@@ -91,6 +101,7 @@ Run :: struct {
   slug: [80] u8; slug_n: int; fork: [80] u8; fork_n: int;
   name: [80] u8; name_n: int;
   rev: int; tree: int; tx: int; tz: int;   // the revision saved, the tree moved and where it was saved
+  thing: int; hx: int; hz: int;            // the thing that isn't a tree, moved, and where
   sha: [80] u8; sha_n: int;               // the original's document hash before the fork
   fail: [400] u8; fail_n: int;
 }
@@ -132,6 +143,10 @@ tap :: (r: [] Run, c: [] Cdp, b: int) -> bool {
   if x0 < 0 || x1 <= x0 || y1 <= y0 { return why_n(r, "the button isn't shown", b); }
   x := (x0 + x1) / 2; y := (y0 + y1) / 2;
   if x < 0 || y < 0 || x > r[0].w || y > r[0].h { return why_n(r, "the button is off the screen", b); }
+  return tap_at(r, c, x, y);
+}
+// A tap at (x, y) in CSS pixels: a touch on a phone, a click otherwise.
+tap_at :: (r: [] Run, c: [] Cdp, x: int, y: int) -> bool {
   p: [1] Buf;
   for k: 0..<2 {
     p[0].n = 0;
@@ -171,11 +186,23 @@ type_text :: (c: [] Cdp, text: string) -> bool {
 
 // ---- the server's state, read in the page (its player key, its automation mark)
 
-// GET R/slug/doc: one field of {doc, sha256} as text ("" when it isn't there).
-doc_field :: (r: [] Run, c: [] Cdp, slug: string, expr: string, out: [] u8) -> string {
+// GET R/slug/doc as the page's player (its owner gets the document now): one field of {doc, sha256}
+// as text ("" when it isn't there). As a visitor (no player): the revision published.
+doc_field :: (r: [] Run, c: [] Cdp, slug: string, expr: string, out: [] u8) -> string { return doc_as(c, slug, expr, true, out); }
+doc_visitor :: (c: [] Cdp, slug: string, expr: string, out: [] u8) -> string { return doc_as(c, slug, expr, false, out); }
+doc_as :: (c: [] Cdp, slug: string, expr: string, mine: bool, out: [] u8) -> string {
   b: [1] Buf;
-  bput(b[..], "fetch('/api/playtest/realms/"); bput(b[..], slug); bput(b[..], "/doc').then(a => a.json()).then(j => String(");
-  bput(b[..], expr); bput(b[..], ")).catch(e => 'error ' + e)");
+  bput(b[..], "(async () => { let k = ''; try { k = JSON.parse(localStorage.getItem('verse.player')).key; } catch {}\n");
+  bput(b[..], "  const h = "); bput(b[..], ifx mine then "k ? {'X-Verse-Player': k} : {}" else "{}"); bput(b[..], ";\n");
+  bput(b[..], "  const j = await (await fetch('/api/playtest/realms/"); bput(b[..], slug); bput(b[..], "/doc', {headers: h, credentials: 'omit'})).json();\n");
+  bput(b[..], "  return String("); bput(b[..], expr); bput(b[..], "); })().catch(e => 'error ' + e)");
+  return js_str(c, btext(b[..]), out);
+}
+// GET R/slug (the spec) as a visitor: the line that starts with head, or "".
+visitor_line :: (c: [] Cdp, slug: string, head: string, out: [] u8) -> string {
+  b: [1] Buf;
+  bput(b[..], "(async () => { const t = await (await fetch('/api/playtest/realms/"); bput(b[..], slug); bput(b[..], "', {credentials: 'omit'})).text();\n");
+  bput(b[..], "  return t.split('\\n').find(l => l.startsWith('"); bput(b[..], head); bput(b[..], " ')) || ''; })()");
   return js_str(c, btext(b[..]), out);
 }
 // GET R/slug (the spec) as the page's player: the line that starts with head, or "".
@@ -249,8 +276,8 @@ move_once :: (r: [] Run, c: [] Cdp) -> bool {
   moves := probe(c, 9);
   if !tap(r, c, R_MOVE) { return false; }
   t := probe(c, 8);
-  if t < 0 { return why(r, "MOVE A TREE picked no tree"); }
-  x0 := probe(c, 20 + 2 * t); z0 := probe(c, 21 + 2 * t);
+  if t < 0 { return why(r, "MOVE picked nothing"); }
+  x0 := probe(c, 1000 + 2 * t); z0 := probe(c, 1001 + 2 * t);
   // walk, then PUT IT HERE; where something already stands the page says so and keeps the tree
   // picked, so walk on (a little to the side) and try again, as a person would
   for k: 0..<6 {
@@ -261,8 +288,8 @@ move_once :: (r: [] Run, c: [] Cdp) -> bool {
     if probe(c, 8) == -1 { break; }
   }
   if probe(c, 8) != -1 { return why(r, "PUT IT HERE never found a clear spot"); }
-  x1 := probe(c, 20 + 2 * t); z1 := probe(c, 21 + 2 * t);
-  if x1 == x0 && z1 == z0 { return why(r, "the tree didn't move"); }
+  x1 := probe(c, 1000 + 2 * t); z1 := probe(c, 1001 + 2 * t);
+  if x1 == x0 && z1 == z0 { return why(r, "what was picked didn't move"); }
   if probe(c, 4) != 1 || probe(c, 5) != 1 { return why(r, "a move isn't unsaved and undoable"); }
   r[0].tree = t; r[0].tx = x1; r[0].tz = z1;
   return moves >= 0;
@@ -279,7 +306,7 @@ undo :: (r: [] Run, c: [] Cdp) -> bool {
   if !tap(r, c, R_UNDO) { return false; }
   t := r[0].tree;
   // the tree the second move took is back where the first put it (or, another tree, where it was laid)
-  if probe(c, 20 + 2 * t) != r[0].tx || probe(c, 21 + 2 * t) != r[0].tz { return why(r, "UNDO didn't put the first move back"); }
+  if probe(c, 1000 + 2 * t) != r[0].tx || probe(c, 1001 + 2 * t) != r[0].tz { return why(r, "UNDO didn't put the first move back"); }
   if probe(c, 4) != 1 || probe(c, 5) != 1 { return why(r, "after one UNDO the first move should still be unsaved and undoable"); }
   return true;
 }
@@ -288,7 +315,7 @@ play :: (r: [] Run, c: [] Cdp) -> bool {
   if !hold(c, "w", "KeyW", 87, 1200) || !hold(c, "d", "KeyD", 68, 700) || !hold(c, "s", "KeyS", 83, 900) { return why(r, "the keys weren't taken"); }
   proc_sleep(300);
   if probe(c, 10) == x0 && probe(c, 11) == z0 { return why(r, "walking didn't move you"); }
-  if probe(c, 20 + 2 * r[0].tree) != r[0].tx || probe(c, 4) != 1 { return why(r, "walking lost the unsaved move"); }
+  if probe(c, 1000 + 2 * r[0].tree) != r[0].tx || probe(c, 4) != 1 { return why(r, "walking lost the unsaved move"); }
   return true;
 }
 save :: (r: [] Run, c: [] Cdp) -> bool {
@@ -305,14 +332,86 @@ save :: (r: [] Run, c: [] Cdp) -> bool {
   bput(k[..], "' && Math.round(m.x * 100) === "); bint(k[..], r[0].tx); bput(k[..], " && Math.round(m.z * 100) === "); bint(k[..], r[0].tz); bput(k[..], ")");
   want: [1] Buf; bint(want[..], r[0].rev); bput(want[..], " true");
   if doc_field(r, c, slug_text(r), btext(k[..]), o[..]) != btext(want[..]) { return why(r, "the server's document isn't the saved revision with the move"); }
+  if r[0].slug_n > 0 && probe(c, 6) > 0 && probe(c, 6) != r[0].rev {
+    // saved, not published: the owner reads so; a visitor gets the revision published, without the move
+    if probe(c, 62) != LIVE_SAVED { return why_n(r, "the owner doesn't read 'not published'", probe(c, 62)); }
+    pv: [1] Buf; bput(pv[..], "rev "); bint(pv[..], probe(c, 6));
+    if visitor_line(c, slug_text(r), "rev", o[..]) != btext(pv[..]) { return why(r, "a visitor doesn't get the revision published"); }
+    if doc_visitor(c, slug_text(r), btext(k[..]), o[..]) == btext(want[..]) { return why(r, "a visitor's document has the unpublished move"); }
+  }
+  return true;
+}
+// BUILD a crate (the server keeps it at once, as a step), then UNDO takes it out.
+undo_all :: (r: [] Run, c: [] Cdp) -> bool {
+  placed := probe(c, 60); steps := probe(c, 61); rev := probe(c, 2);
+  if !tap(r, c, R_BUILD) { return false; }
+  until := proc_now_ms() + 8000;
+  while proc_now_ms() < until && probe(c, 1500) < 0 { proc_sleep(150); }
+  if probe(c, 1500) < 0 { return why(r, "BUILD shows nothing to place"); }
+  if !tap_at(r, c, (probe(c, 1500) + probe(c, 1502)) / 2, (probe(c, 1501) + probe(c, 1503)) / 2) { return false; }
+  until = proc_now_ms() + 20000;
+  while proc_now_ms() < until && (probe(c, 60) != placed + 1 || probe(c, 61) != steps + 1) { proc_sleep(200); }
+  if probe(c, 60) != placed + 1 || probe(c, 2) != rev + 1 { return why_n(r, "the thing built isn't in the realm", probe(c, 60)); }
+  if !tap(r, c, R_BUILD) { return false; }   // the pane closed again
+  if !tap(r, c, R_UNDO) { return false; }
+  until = proc_now_ms() + 20000;
+  while proc_now_ms() < until && (probe(c, 60) != placed || probe(c, 2) != rev + 2) { proc_sleep(200); }
+  if probe(c, 60) != placed || probe(c, 61) != steps { return why_n(r, "UNDO didn't take the thing out", probe(c, 60)); }
+  if probe(c, 1000 + 2 * r[0].thing) != r[0].hx || probe(c, 1000 + 2 * r[0].tree) != r[0].tx { return why(r, "UNDO took more than the thing"); }
+  r[0].rev = probe(c, 2);
+  return true;
+}
+reload_page :: (r: [] Run, c: [] Cdp) -> bool {
+  if cdp_call(c, "Page.reload", "{\"ignoreCache\":true}", CDP_CALL_MS) < 0 { return why(r, "the page didn't reload"); }
+  proc_sleep(1500);
+  return realm_ready(r, c);
+}
+// The page again before saving: the move not saved is back, still undoable.
+kept :: (r: [] Run, c: [] Cdp) -> bool {
+  proc_sleep(600);   // this browser keeps it (IndexedDB) a frame after the move
+  if !reload_page(r, c) { return false; }
+  until := proc_now_ms() + 5000;
+  while proc_now_ms() < until && probe(c, 4) != 1 { proc_sleep(150); }
+  if probe(c, 4) != 1 || probe(c, 5) != 1 || probe(c, 62) != LIVE_UNSAVED { return why(r, "the unsaved move didn't come back after a reload"); }
+  if probe(c, 1000 + 2 * r[0].tree) != r[0].tx || probe(c, 1001 + 2 * r[0].tree) != r[0].tz { return why(r, "the kept move isn't where it was put"); }
+  return true;
+}
+// MOVE, then a tap on something that isn't a tree, walk, PUT IT HERE.
+thing :: (r: [] Run, c: [] Cdp) -> bool {
+  if !tap(r, c, R_MOVE) { return false; }
+  e := -1;
+  for turn: 0..<12 {
+    n := probe(c, 63);
+    for k: 20..<96 {
+      kind := probe(c, 1400 + k);
+      if kind > 0 && k != r[0].tree && probe(c, 1200 + 2 * k) > 20 && probe(c, 1201 + 2 * k) > 120 && probe(c, 1200 + 2 * k) < r[0].w - 20 && probe(c, 1201 + 2 * k) < r[0].h - 200 { e = k; break; }
+    }
+    if e >= 0 || n <= 0 { break; }
+    if !hold(c, "a", "KeyA", 65, 400) { return why(r, "the keys weren't taken"); }
+    proc_sleep(200);
+  }
+  if e < 0 { return why(r, "nothing but trees is in view"); }
+  if !tap_at(r, c, probe(c, 1200 + 2 * e), probe(c, 1201 + 2 * e)) { return false; }
+  if probe(c, 8) != e { return why_n(r, "a tap on it didn't pick it", probe(c, 8)); }
+  x0 := probe(c, 1000 + 2 * e); z0 := probe(c, 1001 + 2 * e);
+  for k: 0..<8 {
+    if !hold(c, "d", "KeyD", 68, 450) || !hold(c, "w", "KeyW", 87, 1100) { return why(r, "the keys weren't taken"); }
+    proc_sleep(300);
+    if !tap(r, c, R_MOVE) { return false; }
+    if probe(c, 8) == -1 { break; }
+  }
+  if probe(c, 8) != -1 { return why(r, "PUT IT HERE never found a clear spot for it"); }
+  r[0].thing = e; r[0].hx = probe(c, 1000 + 2 * e); r[0].hz = probe(c, 1001 + 2 * e);
+  if r[0].hx == x0 && r[0].hz == z0 { return why(r, "it didn't move"); }
+  if probe(c, 4) != 1 { return why(r, "the move isn't unsaved"); }
   return true;
 }
 reload :: (r: [] Run, c: [] Cdp) -> bool {
-  if cdp_call(c, "Page.reload", "{\"ignoreCache\":true}", CDP_CALL_MS) < 0 { return why(r, "the page didn't reload"); }
-  proc_sleep(1500);
-  if !realm_ready(r, c) { return false; }
-  if probe(c, 3) != r[0].rev || probe(c, 4) != 0 || probe(c, 5) != 0 { return why_n(r, "the reloaded page isn't the saved revision", probe(c, 3)); }
-  if probe(c, 20 + 2 * r[0].tree) != r[0].tx || probe(c, 21 + 2 * r[0].tree) != r[0].tz { return why(r, "the moved tree isn't where it was saved"); }
+  if !reload_page(r, c) { return false; }
+  if probe(c, 3) != r[0].rev || probe(c, 4) != 0 { return why_n(r, "the reloaded page isn't the saved revision", probe(c, 3)); }
+  if probe(c, 5) != 1 || probe(c, 61) < 1 { return why(r, "after a reload the save can't be undone"); }
+  if probe(c, 1000 + 2 * r[0].thing) != r[0].hx { return why(r, "the moved thing isn't where it was saved"); }
+  if probe(c, 1000 + 2 * r[0].tree) != r[0].tx || probe(c, 1001 + 2 * r[0].tree) != r[0].tz { return why(r, "the moved tree isn't where it was saved"); }
   return true;
 }
 publish :: (r: [] Run, c: [] Cdp) -> bool {
@@ -323,6 +422,9 @@ publish :: (r: [] Run, c: [] Cdp) -> bool {
   o: [200] u8; want: [1] Buf; bput(want[..], "published "); bint(want[..], r[0].rev);
   if spec_line(c, slug_text(r), "published", o[..]) != btext(want[..]) { return why(r, "the server doesn't have that revision published"); }
   if spec_line(c, slug_text(r), "listed", o[..]) != "listed 0" { return why(r, "publishing listed a test realm"); }
+  if probe(c, 62) != LIVE_SAME { return why_n(r, "the owner doesn't read 'live'", probe(c, 62)); }
+  pv: [1] Buf; bput(pv[..], "rev "); bint(pv[..], r[0].rev);
+  if visitor_line(c, slug_text(r), "rev", o[..]) != btext(pv[..]) { return why(r, "a visitor doesn't get the revision published"); }
   sha := doc_field(r, c, slug_text(r), "j.sha256", o[..]);
   if sha.count != 64 { return why(r, "no document hash"); }
   r[0].sha_n = 0; for ch: sha { r[0].sha[r[0].sha_n] = ch; r[0].sha_n += 1; }
@@ -340,7 +442,7 @@ fork :: (r: [] Run, c: [] Cdp) -> bool {
   if !ends(doc_field(r, c, fork_text(r), "j.doc.name", o[..]), " Fork") { return why(r, "the fork isn't named after the original"); }
   if spec_line(c, fork_text(r), "listed", o[..]) != "listed 0" { return why(r, "a fork made by this tool isn't unlisted"); }
   // its own moves came with it; then it is edited and saved as its own
-  if probe(c, 20 + 2 * r[0].tree) != r[0].tx { return why(r, "the fork lost the original's move"); }
+  if probe(c, 1000 + 2 * r[0].tree) != r[0].tx { return why(r, "the fork lost the original's move"); }
   keep := r[0].rev; ks := r[0].slug_n; kslug: [80] u8; for i: 0..<ks { kslug[i] = r[0].slug[i]; }
   for i: 0..<r[0].fork_n { r[0].slug[i] = r[0].fork[i]; } r[0].slug_n = r[0].fork_n;
   ok := move_once(r, c) && save(r, c);
@@ -360,7 +462,10 @@ run_step :: (r: [] Run, c: [] Cdp, s: Step, stamp: string) -> bool {
   if s == Step.MOVE { return move_tree(r, c); }
   if s == Step.UNDO { return undo(r, c); }
   if s == Step.PLAY { return play(r, c); }
+  if s == Step.KEPT { return kept(r, c); }
+  if s == Step.THING { return thing(r, c); }
   if s == Step.SAVE { return save(r, c); }
+  if s == Step.UNDO_ALL { return undo_all(r, c); }
   if s == Step.RELOAD { return reload(r, c); }
   if s == Step.PUBLISH { return publish(r, c); }
   if s == Step.FORK { return fork(r, c); }
@@ -412,7 +517,7 @@ tool_main :: () -> int #export_c {
   if !open_page(r[..], c[..], btext(u[..])) { tool_err("forge-journey: opening /realms/new: "); tool_errln(cdp_error(c[..])); status = 1; }
   png: [FJ_SHOT] u8;
   i := 0;
-  while status == 0 && i < 9 {
+  while status == 0 && i < STEPS {
     s := cast(Step) cast(u8) i; t0 := proc_now_ms();
     good := run_step(r[..], c[..], s, stamp);
     print("% %: % (% ms)\n", ifx good then "ok  " else "FAIL", step_name(s), ifx good then "" else cast(string) r[0].fail[0..<r[0].fail_n], proc_now_ms() - t0);
@@ -427,7 +532,7 @@ tool_main :: () -> int #export_c {
     if !good { status = 1; }
     i += 1;
   }
-  if status == 0 { print("journey: all 9 steps passed\n"); }
+  if status == 0 { print("journey: all % steps passed\n", STEPS); }
   cdp_close(c[..]);
   return status;
 }

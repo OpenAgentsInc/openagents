@@ -24,11 +24,16 @@ made from, and the server refuses a stale one with 409 and the revision there
 now: the newer write never simply wins, and the page keeps its changes
 unsaved. Only the owner saves or publishes. A fork of a made realm copies the
 document at one revision and records `forked_from {slug, rev}`; nothing done
-to the fork changes the original's document or hash. A realm made or forked
+to the fork changes the original's document or hash. Visitors read only the
+revision published (`0094_realm_live_and_undo.sql`): the spec, `/doc` and a
+fork by anyone but the owner are of that revision, and nothing but PUBLISH
+changes it. Every revision the owner's edits make is kept, and `POST
+.../<slug>/undo` restores an earlier one as a new revision, never rewriting
+history. A realm made or forked
 by a tool (`verse-automation` cookie, `X-Verse-Automation` header) is
 unlisted. Checks: `coax/web/api/test_realm_fork.py` (stale save and publish
 refused, the original byte-identical after the fork is saved, tool-made realms
-unlisted); `aethyr/forge/edit.coax` (an edit is refused when its entity moved
+unlisted, visitors on the revision published, each edit undone as one step); `aethyr/forge/edit.coax` (an edit is refused when its entity moved
 since; apply then inverse is the identity); `apps/openagents-web/myrealm.coax`
 (a 409 keeps the changes); `coax/web/tool.sh forge-journey` end to end.
 

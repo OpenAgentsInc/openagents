@@ -46,7 +46,7 @@ def guest_claim_checks():
     st, cards = b_call("GET", "/api/playtest/realms/" + slug + "/proposals", key=other)
     check("the account sees the card", isinstance(cards, str) and cards.startswith("P %s|" % p.get("proposed")), cards)
     st, d = b_call("POST", "/api/playtest/realms/%s/proposals/%s/accept" % (slug, p.get("proposed")), {}, other)
-    check("the account accepts it", st == 200 and d["state"] == "accepted" and "placed barrel 2 1" in b_call("GET", "/api/playtest/realms/" + slug)[1], d)
+    check("the account accepts it", st == 200 and d["state"] == "accepted" and "placed barrel 2 1" in b_call("GET", "/api/playtest/realms/" + slug, key=other)[1], d)
     st, p2 = b_call("POST", "/api/playtest/realms/" + slug + "/place", {"thing": "crate", "x": -2, "z": 1}, visitor)
     st, d = b_call("POST", "/api/playtest/realms/%s/proposals/%s/decline" % (slug, p2.get("proposed")), {}, guest)
     check("and declines one from the first browser", st == 200 and d["state"] == "declined", d)
