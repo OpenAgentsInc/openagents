@@ -123,7 +123,7 @@
 - [111. Recover the physics from the motion](ch111-recover-the-physics-from-the-motion.md) — exact-solver gradients and identifiable motion
 - [112. Bytes and a small language model](ch112-bytes-and-a-small-language-model.md)
 - [113. Differentiate a decoder](ch113-differentiate-a-decoder.md)
-- [114. Compile the backward pass](ch114-compile-the-backward-pass.md) — design draft
+- [114. Compile the backward pass](ch114-compile-the-backward-pass.md) — partly implemented
 - [115. Train the whole tiny decoder](ch115-train-the-whole-tiny-decoder.md) — design draft
 - [116. Train within a memory budget](ch116-train-within-a-memory-budget.md) — design draft
 - [117. Models are compositions of modules](ch117-models-are-compositions-of-modules.md) — partly implemented
@@ -280,7 +280,7 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production
 hosting and inference across a mesh.
-Chapters 1–33, 35–42, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 82, 88–98, 103–112, 117, 120, 123, 124, 140, 142, 147, 148, 151, 156–158, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
+Chapters 1–33, 35–42, 44–47, 49, 52, 53, 55, 60–67, 70, 72, 73, 75, 77, 79, 80, 82, 88–98, 103–112, 114, 117, 120, 123, 124, 140, 142, 147, 148, 151, 156–158, 167–173, 188, 215–221, 224–237, 239–244 and 247–249 have runnable code; the [introduction](README.md)
 table gives each one's exact status. Planned chapters without runnable code
 are design drafts. The physics engine and spacecraft chapters
 are in the [Aethyr book](../../aethyr/book/README.md).

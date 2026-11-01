@@ -1,0 +1,70 @@
+#import "Basic";
+#load "../lib/compiled-backward.coax";
+
+KIND_NAMES :: [6]string.["forward","recompute","clear","seed","backward","update"];
+r6 :: (v:f64)->f64 {return floor(v*1e6+0.5)/1e6;}
+show :: (c:CbProgram) {
+    for k:0..<c.count {print(" % %;",KIND_NAMES[cast(int)cast(u8)c.instrs[k].kind],c.instrs[k].node);if k%9==8 && k+1<c.count {print("\n ");}}
+    print("\n");
+}
+list :: (label:string,flags:[32]bool,count:int) {print("%:",label);for i:0..<count {if flags[i] {print(" %",i);}}print("\n");}
+
+// book:begin example
+main :: () {
+    // The two-layer network planned by hand in the chapter.
+    p:=cb_test_mlp();mode:=cb_test_mode(1,2,-1);
+    c:=cb_compile(p,mode,OrRegistry.{},CbChoice.{});t:=ad_tape(p,mode,OrRegistry.{});
+    print("hand-planned network: %, % instructions, % launches\n ",c.status,c.count,c.launches);show(c);
+    list("saved for the backward pass",c.saved,p.count);
+    print("values arena % floats (the tape's: %), gradient arena % doubles\n",c.values.top,t.values.top,c.grads.top);
+    h:=CbChoice.{};h.recompute[4]=true;d:=cb_compile(p,mode,OrRegistry.{},h);
+    print("recomputing h: % instructions, values arena % floats\n ",d.count,d.values.top);show(d);
+
+    // Chapter 117's residual block, one training step per run.
+    m:=mdl_test_block(128);bmode:=mdl_mode(m);
+    plain:=cb_compile(m.program,bmode,OrRegistry.{},CbChoice.{update=true});
+    small:=cb_choose(m.program,bmode,OrRegistry.{},127,true);
+    tight:=cb_choose(m.program,bmode,OrRegistry.{},112,true);
+    tape:=ad_tape(m.program,bmode,OrRegistry.{});
+    print("\nchapter 117's block: % nodes, % parameters\n",m.program.count,mdl_parameters(m));
+    print("  tape: % steps, values % floats, gradients % doubles\n",tape.count,tape.values.top,tape.grads.top);
+    print("  compiled: % instructions, % launches, % updates, values % floats, gradients % doubles, % bytes\n",
+        plain.count,plain.launches,plain.updates,plain.values.top,plain.grads.top,4*plain.values.top+8*plain.grads.top);
+    list("  saved",plain.saved,m.program.count);
+    print("  goal 127 floats: %, % launches, values % floats, % bytes\n",small.status,small.launches,small.values.top,4*small.values.top+8*small.grads.top);
+    list("  recomputed",small.choice.recompute,m.program.count);
+    list("  saved",small.saved,m.program.count);
+    print("  goal 112 floats: %, the best plan found holds % floats\n",tight.status,tight.values.top);
+
+    // Five steps three ways from the same start: the tape with mdl_sgd,
+    // the compiled program, and the compiled program that recomputes.
+    eager:[160]f32;if mdl_init(m,7,eager[..])!=MdlStatus.ok {print("no init\n");return;}
+    for j:0..<16 {eager[j]=mdl_test_value(1,j);eager[16+j]=mdl_test_value(2,j);}
+    one:=eager;two:=eager;
+    tv:[1024]f32;tg:[1024]f64;g:[84]f32;values:[512]f32;grads:[512]f64;flags:[64]u8;
+    print("\ntraining, learning rate 0.05, dropout refreshed each step:\n");
+    for step:0..<5 {
+        s:=cast(u64)step;
+        if mdl_refresh(m,s,eager[..])!=MdlStatus.ok || mdl_refresh(m,s,one[..])!=MdlStatus.ok || mdl_refresh(m,s,two[..])!=MdlStatus.ok {print("no refresh\n");return;}
+        run:=ad_run(tape,AdCursor.{},eager[..],tv[..],tg[..],flags[..]);l:[1]f32;
+        if run.status!=AdStatus.ok || ad_value(tape,run.cursor,26,eager[..],tv[..],l[..])!=AdStatus.ok {print("tape failed\n");return;}
+        if mdl_sgd(m,tape,run.cursor,tg[..],g[..],eager[..],0.05)!=MdlStatus.ok {print("no update\n");return;}
+        a:=cb_run(plain,0.05,one[..],values[..],grads[..],flags[..]);la:[1]f32;
+        if a!=CbStatus.ok || cb_output(plain,one[..],values[..],la[..])!=CbStatus.ok {print("compiled: %\n",a);return;}
+        b:=cb_run(small,0.05,two[..],values[..],grads[..],flags[..]);lb:[1]f32;
+        if b!=CbStatus.ok || cb_output(small,two[..],values[..],lb[..])!=CbStatus.ok {print("recomputing: %\n",b);return;}
+        same:=f32_bits(l[0])==f32_bits(la[0]) && f32_bits(l[0])==f32_bits(lb[0]);
+        for j:0..<160 {if f32_bits(eager[j])!=f32_bits(one[j]) || f32_bits(eager[j])!=f32_bits(two[j]) {same=false;}}
+        print("  step %: loss % (tape), % (compiled), % (recomputing); losses and parameters bit for bit: %\n",step,r6(f64(l[0])),r6(f64(la[0])),r6(f64(lb[0])),ifx same then "equal" else "DIFFERENT");
+    }
+
+    // Programs the compiler refuses.
+    q:=p;q.nodes[4]=or_node(0,3,3,false,0.5);registry:=OrRegistry.{count=1};registry.schemas[0].backward=false;
+    print("\nrefusals:\n  registered operator with no VJP: %\n",cb_compile(q,mode,registry,CbChoice.{}).status);
+    registry.schemas[0].backward=true;
+    print("  registered operator with a VJP (the caller's kernel): %\n",cb_compile(q,mode,registry,CbChoice.{}).status);
+    bad:=CbChoice.{};bad.recompute[5]=true;
+    print("  recomputing a matrix product: %\n",cb_compile(p,mode,OrRegistry.{},bad).status);
+    print("  a values goal of 27 floats for the network: %\n",cb_choose(p,mode,OrRegistry.{},27,false).status);
+}
+// book:end example

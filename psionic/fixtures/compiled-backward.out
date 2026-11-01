@@ -1,0 +1,31 @@
+hand-planned network: ok, 18 instructions, 10 launches
+  forward 3; forward 4; forward 5; forward 6; forward 7; clear 7; seed 7; clear 6; backward 7;
+  clear 5; backward 6; clear 4; clear 2; backward 5; clear 3; backward 4; clear 1; backward 3;
+saved for the backward pass: 3 4
+values arena 29 floats (the tape's: 29), gradient arena 33 doubles
+recomputing h: 19 instructions, values arena 28 floats
+  forward 3; forward 4; forward 5; forward 6; forward 7; clear 7; seed 7; clear 6; backward 7;
+  clear 5; backward 6; recompute 4; clear 4; clear 2; backward 5; clear 3; backward 4; clear 1;
+  backward 3;
+
+chapter 117's block: 27 nodes, 84 parameters
+  tape: 30 steps, values 144 floats, gradients 148 doubles
+  compiled: 57 instructions, 30 launches, 6 updates, values 144 floats, gradients 140 doubles, 1696 bytes
+  saved: 2 6 10 13 23
+  goal 127 floats: ok, 34 launches, values 113 floats, 1572 bytes
+  recomputed: 4 6 11 13
+  saved: 2 10 23
+  goal 112 floats: goal, the best plan found holds 113 floats
+
+training, learning rate 0.05, dropout refreshed each step:
+  step 0: loss 5.965327 (tape), 5.965327 (compiled), 5.965327 (recomputing); losses and parameters bit for bit: equal
+  step 1: loss 3.124088 (tape), 3.124088 (compiled), 3.124088 (recomputing); losses and parameters bit for bit: equal
+  step 2: loss 2.803049 (tape), 2.803049 (compiled), 2.803049 (recomputing); losses and parameters bit for bit: equal
+  step 3: loss 2.791902 (tape), 2.791902 (compiled), 2.791902 (recomputing); losses and parameters bit for bit: equal
+  step 4: loss 2.53129 (tape), 2.53129 (compiled), 2.53129 (recomputing); losses and parameters bit for bit: equal
+
+refusals:
+  registered operator with no VJP: operation
+  registered operator with a VJP (the caller's kernel): external
+  recomputing a matrix product: choice
+  a values goal of 27 floats for the network: goal

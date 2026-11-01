@@ -1,0 +1,595 @@
+// Chapter 114: compile the backward pass, profile compiled-backward-f32-v1.
+// A tensor program from chapter 38 and a gradient mode from chapter 106
+// become one straight-line program of instructions: the forward commands,
+// the backward rules, any recomputed values and a plain gradient-descent
+// update. Every operand address is resolved when the program is compiled;
+// running it is a loop over instructions with no planning left to do.
+//
+// The numerical profile is chapter 106's: forward values are f32 from
+// chapter 38's command kernel, gradients accumulate in f64 in the tape's
+// order, and a gradient is rounded once to f32 when it is published or
+// applied. So a compiled program's gradients equal the tape's bit for bit.
+// Recomputation runs the same kernel on the same bits, so it changes memory
+// and work, never results.
+//
+// Bounds: chapter 38's 32 nodes, at most 192 instructions. Only built-in
+// operators compile: a registered operator or a custom derivative runs the
+// caller's kernel, which a compiled program cannot call.
+#load "autodiff.coax";
+#load "module.coax";
+
+CB_INSTRS :: 192;
+
+// book:begin types
+CbStatus :: enum u8 {ok;program;operation;external;mode;choice;goal;capacity;number;unused;state;}
+// forward runs one node's command; recompute runs it again in the backward
+// phase into a fresh buffer; clear zeroes a gradient; seed adds the output's
+// ones; backward applies one node's rule; update moves one parameter.
+CbKind :: enum u8 {forward;recompute;clear;seed;backward;update;}
+// Where an operand lives: the caller's inputs or an arena, read through a view.
+CbRef :: struct {input:bool;base:int;view:TvView;}
+CbInstr :: struct {
+    kind:CbKind;node:int;op:TiOp;items:int;meta:[64]int;epsilon:f32;
+    shape:TvShape;axis:int;indices:[16]int;dy:int;a:CbRef;b:CbRef;ga:CbRef;gb:CbRef;need_a:bool;need_b:bool;
+}
+// Which values to recompute instead of saving, and whether to append the update.
+CbChoice :: struct {recompute:[32]bool;update:bool;}
+// What the compiler keeps from chapter 106's tape, by node: each node's
+// root and view, whether it wants a gradient, whether the output reaches it,
+// and its input buffer offset when it is an input.
+CbFacts :: struct {
+    root:[32]int;input:[32]bool;input_base:[32]int;views:[32]TvView;storage:[32]int;
+    wants:[32]bool;reaches:[32]bool;
+}
+CbProgram :: struct {
+    status:CbStatus=CbStatus.state;program:TiProgram;mode:AdMode;choice:CbChoice;facts:CbFacts;input_elements:int;
+    order:[32]int;rules:int;
+    instrs:[CB_INSTRS]CbInstr;count:int;launches:int;updates:int;flag_items:int;
+    saved:[32]bool;value_at:[32]int;copy_at:[32]int;grad_at:[32]int;
+    born:[32]int;dies:[32]int;copy_born:[32]int;copy_dies:[32]int;grad_born:[32]int;grad_dies:[32]int;
+    values:AdArena;grads:AdArena;
+}
+// book:end types
+
+// Checks first. A two-layer network small enough to plan by hand:
+// z = X @ W1 (4x3), h = relu(z), y = h @ W2 (4x1), loss = sum(sum(y)).
+cb_test_mlp :: ()->TiProgram {
+    p:TiProgram;p.count=8;p.output=7;
+    p.nodes[0]=ti_input(TvShape.{rank=2,dims=[4]int.[4,2,0,0]},0);
+    p.nodes[1]=ti_input(TvShape.{rank=2,dims=[4]int.[2,3,0,0]},8);
+    p.nodes[2]=ti_input(TvShape.{rank=2,dims=[4]int.[3,1,0,0]},14);
+    p.nodes[3]=TiNode.{op=TiOp.matmul,a=0,b=1};p.nodes[4]=TiNode.{op=TiOp.relu,a=3};
+    p.nodes[5]=TiNode.{op=TiOp.matmul,a=4,b=2};p.nodes[6]=TiNode.{op=TiOp.sum,a=5,axis=0};p.nodes[7]=TiNode.{op=TiOp.sum,a=6,axis=0};
+    return p;
+}
+cb_test_mlp_inputs :: ()->[17]f32 {return [17]f32.[1,-2, 0.5,1, -1,0.25, 2,0, 1,-1,0.5, 0.25,2,-0.75, 1,-2,0.5];}
+cb_test_mode :: (a:int,b:int,c:int)->AdMode {m:AdMode;for i:0..<32 {m.grad[i]=i==a || i==b || i==c;}return m;}
+// Run the tape to the end; built-in programs never hand back a call.
+cb_test_tape :: (t:AdTape,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {return ad_run(t,AdCursor.{},inputs,values,grads,flags);}
+
+#test "the hand-planned network: schedule, saved values and both arenas" {
+    p:=cb_test_mlp();mode:=cb_test_mode(1,2,-1);c:=cb_compile(p,mode,OrRegistry.{},CbChoice.{});
+    #assert c.status==CbStatus.ok && c.count==18 && c.launches==10 && c.updates==0;
+    F:=CbKind.forward;C:=CbKind.clear;B:=CbKind.backward;
+    kinds:=[18]CbKind.[F,F,F,F,F,C,CbKind.seed,C,B,C,B,C,C,B,C,B,C,B];
+    nodes:=[18]int.[3,4,5,6,7,7,7,6,7,5,6,4,2,5,3,4,1,3];
+    for k:0..<18 {#assert c.instrs[k].kind==kinds[k] && c.instrs[k].node==nodes[k];}
+    // z is read by ReLU's rule, h by y's; X is data, so z's own rule reads nothing.
+    #assert c.saved[3] && c.saved[4] && !c.saved[5] && !c.saved[6] && !c.saved[7];
+    #assert c.born[3]==0 && c.dies[3]==15 && c.born[4]==1 && c.dies[4]==13 && c.dies[5]==3 && c.dies[6]==4 && c.dies[7]==18;
+    #assert c.value_at[3]==0 && c.value_at[4]==12 && c.value_at[5]==24 && c.value_at[6]==28 && c.value_at[7]==24 && c.values.top==29;
+    // Gradients, first fit in clear order; W1's and W2's live to the end.
+    #assert c.grad_born[4]==11 && c.grad_dies[4]==15 && c.grad_born[2]==12 && c.grad_dies[2]==18 && c.grad_born[3]==14 && c.grad_dies[3]==17 && c.grad_born[1]==16;
+    #assert c.grad_at[7]==0 && c.grad_at[6]==1 && c.grad_at[5]==2 && c.grad_at[4]==6 && c.grad_at[2]==18 && c.grad_at[3]==21 && c.grad_at[1]==0 && c.grads.top==33;
+    // The tape plans the same values arena.
+    t:=ad_tape(p,mode,OrRegistry.{});#assert t.values.top==c.values.top;
+    // Recomputing h frees its 12 floats between y's forward step and its rule.
+    r:=CbChoice.{};r.recompute[4]=true;d:=cb_compile(p,mode,OrRegistry.{},r);
+    #assert d.status==CbStatus.ok && d.count==19 && d.launches==11 && d.instrs[11].kind==CbKind.recompute && d.instrs[11].node==4;
+    #assert !d.saved[4] && d.saved[3] && d.dies[4]==2 && d.copy_born[4]==11 && d.copy_dies[4]==14 && d.dies[3]==16;
+    #assert d.value_at[4]==12 && d.value_at[5]==24 && d.value_at[6]==12 && d.value_at[7]==13 && d.copy_at[4]==14 && d.values.top==28;
+}
+#test "compiled gradients equal the tape's bit for bit, with and without recomputation" {
+    p:=cb_test_mlp();inputs:=cb_test_mlp_inputs();
+    for trial:0..<3 {
+        mode:=cb_test_mode(1,2,-1);if trial==2 {mode=cb_test_mode(0,1,2);}
+        choice:=CbChoice.{};if trial>0 {choice.recompute[4]=true;}
+        c:=cb_compile(p,mode,OrRegistry.{},choice);t:=ad_tape(p,mode,OrRegistry.{});
+        values:[64]f32;grads:[64]f64;flags:[16]u8;tv:[64]f32;tg:[64]f64;
+        #assert cb_run(c,0,inputs[..],values[..],grads[..],flags[..])==CbStatus.ok;
+        run:=cb_test_tape(t,inputs[..],tv[..],tg[..],flags[..]);#assert run.status==AdStatus.ok;
+        for x:0..<3 {
+            a:[8]f32;b:[8]f32;sa:=cb_gradient(c,x,grads[..],a[..]);sb:=ad_gradient(t,run.cursor,x,tg[..],b[..]);
+            #assert (sa==CbStatus.ok)==(sb==AdStatus.ok) && (sa==CbStatus.state)==(sb==AdStatus.state);
+            if sa==CbStatus.ok {for j:0..<8 {#assert f32_bits(a[j])==f32_bits(b[j]);}}
+        }
+        y:[1]f32;l:[1]f32;#assert cb_output(c,inputs[..],values[..],y[..])==CbStatus.ok && ad_value(t,run.cursor,7,inputs[..],tv[..],l[..])==AdStatus.ok && f32_bits(y[0])==f32_bits(l[0]);
+    }
+}
+#test "chapter 106's views, gathers, sums and layer norm compile to the tape's bits" {
+    // The forward pass of chapter 106's metadata check, without its registered node.
+    p:TiProgram;p.count=10;p.output=9;
+    p.nodes[0]=ti_input(TvShape.{rank=2,dims=[4]int.[3,4,0,0]},0);p.nodes[1]=ti_input(TvShape.{rank=2,dims=[4]int.[4,2,0,0]},12);
+    p.nodes[2]=TiNode.{op=TiOp.view,a=0,shape=TvShape.{rank=2,dims=[4]int.[2,3,0,0]},strides=[4]int.[1,4,0,0],offset=1};
+    p.nodes[3]=TiNode.{op=TiOp.matmul,a=0,b=1};p.nodes[4]=TiNode.{op=TiOp.reshape,a=3,shape=TvShape.{rank=2,dims=[4]int.[2,3,0,0]}};
+    p.nodes[5]=TiNode.{op=TiOp.add,a=2,b=4};p.nodes[6]=TiNode.{op=TiOp.sum,a=5,axis=1};
+    p.nodes[7]=TiNode.{op=TiOp.layernorm,a=5,epsilon=0.5};
+    p.nodes[8]=TiNode.{op=TiOp.gather,a=7,axis=1,index_count=2};p.nodes[8].indices[0]=2;
+    p.nodes[9]=TiNode.{op=TiOp.multiply,a=8,b=6};
+    inputs:=[20]f32.[0.5,1,-1,2, 1.5,-0.5,0.25,1, -2,0.75,1,0.5, 1,-1,0.5,2, -0.5,1,1.5,-1];
+    mode:=cb_test_mode(0,1,-1);c:=cb_compile(p,mode,OrRegistry.{},CbChoice.{});t:=ad_tape(p,mode,OrRegistry.{});
+    #assert c.status==CbStatus.ok && t.status==AdStatus.ok;
+    values:[64]f32;grads:[64]f64;flags:[16]u8;tv:[64]f32;tg:[64]f64;
+    #assert cb_run(c,0,inputs[..],values[..],grads[..],flags[..])==CbStatus.ok;run:=cb_test_tape(t,inputs[..],tv[..],tg[..],flags[..]);
+    a:[12]f32;b:[12]f32;nonzero:=0;
+    for x:0..<2 {
+        #assert cb_gradient(c,x,grads[..],a[..])==CbStatus.ok && ad_gradient(t,run.cursor,x,tg[..],b[..])==AdStatus.ok;
+        for j:0..<12 {#assert f32_bits(a[j])==f32_bits(b[j]);if a[j]!=0 {nonzero+=1;}}
+    }
+    #assert nonzero>12;
+    // Node 5, an add of a strided view and a reshape, is saved for layer
+    // norm's rule; recomputing it reads both through their views again.
+    r:=CbChoice.{};r.recompute[5]=true;d:=cb_compile(p,mode,OrRegistry.{},r);#assert d.status==CbStatus.ok;
+    #assert cb_run(d,0,inputs[..],values[..],grads[..],flags[..])==CbStatus.ok;
+    for x:0..<2 {#assert cb_gradient(d,x,grads[..],a[..])==CbStatus.ok && ad_gradient(t,run.cursor,x,tg[..],b[..])==AdStatus.ok;for j:0..<12 {#assert f32_bits(a[j])==f32_bits(b[j]);}}
+}
+#test "chapter 117's block: gradients and five training steps equal the tape and mdl_sgd" {
+    m:=mdl_test_block(128);#assert m.status==MdlStatus.ok;
+    inputs:[160]f32;#assert mdl_init(m,7,inputs[..])==MdlStatus.ok;
+    for j:0..<16 {inputs[j]=mdl_test_value(1,j);inputs[16+j]=mdl_test_value(2,j);}
+    eager:=inputs;mode:=mdl_mode(m);t:=ad_tape(m.program,mode,OrRegistry.{});
+    choice:=CbChoice.{update=true};c:=cb_compile(m.program,mode,OrRegistry.{},choice);
+    #assert c.status==CbStatus.ok && c.updates==6;
+    // Recomputing the affine norm output and the dropped hidden layer, each from its saved source.
+    small:=cb_choose(m.program,mode,OrRegistry.{},127,true);t0:=ad_tape(m.program,mode,OrRegistry.{});
+    #assert small.status==CbStatus.ok && c.values.top==144 && t0.values.top==144 && small.values.top==113 && c.launches==30 && small.launches==34;
+    for i:0..<32 {#assert small.choice.recompute[i]==(i==4 || i==6 || i==11 || i==13);}
+    #assert cb_choose(m.program,mode,OrRegistry.{},112,true).status==CbStatus.goal;
+    values:[512]f32;grads:[512]f64;flags:[64]u8;tv:[1024]f32;tg:[1024]f64;g:[84]f32;compact:=inputs;cv:[512]f32;cg:[512]f64;
+    for step:0..<5 {
+        #assert mdl_refresh(m,cast(u64)step,inputs[..])==MdlStatus.ok && mdl_refresh(m,cast(u64)step,eager[..])==MdlStatus.ok && mdl_refresh(m,cast(u64)step,compact[..])==MdlStatus.ok;
+        run:=cb_test_tape(t,eager[..],tv[..],tg[..],flags[..]);#assert run.status==AdStatus.ok;
+        l:[1]f32;#assert ad_value(t,run.cursor,26,eager[..],tv[..],l[..])==AdStatus.ok;
+        #assert mdl_sgd(m,t,run.cursor,tg[..],g[..],eager[..],0.05)==MdlStatus.ok;
+        #assert cb_run(c,0.05,inputs[..],values[..],grads[..],flags[..])==CbStatus.ok;
+        y:[1]f32;#assert cb_output(c,inputs[..],values[..],y[..])==CbStatus.ok && f32_bits(y[0])==f32_bits(l[0]);
+        #assert cb_run(small,0.05,compact[..],cv[..],cg[..],flags[..])==CbStatus.ok;
+        for j:0..<160 {#assert f32_bits(inputs[j])==f32_bits(eager[j]) && f32_bits(compact[j])==f32_bits(eager[j]);}
+    }
+    #assert inputs[40]!=0;
+}
+#test "compiled gradients match central differences of the forward program" {
+    p:=cb_test_mlp();inputs:=cb_test_mlp_inputs();mode:=cb_test_mode(1,2,-1);
+    choice:=CbChoice.{};choice.recompute[4]=true;c:=cb_compile(p,mode,OrRegistry.{},choice);
+    values:[64]f32;grads:[64]f64;flags:[16]u8;g1:[6]f32;g2:[3]f32;
+    #assert cb_run(c,0,inputs[..],values[..],grads[..],flags[..])==CbStatus.ok;
+    #assert cb_gradient(c,1,grads[..],g1[..])==CbStatus.ok && cb_gradient(c,2,grads[..],g2[..])==CbStatus.ok;
+    // An f64 loss written out by hand: sum over rows of relu(X W1) W2.
+    for k:8..<17 {
+        loss:[2]f64;
+        for side:0..<2 {
+            v:[17]f64;for j:0..<17 {v[j]=f64(inputs[j]);}
+            v[k]+=ifx side==0 then 1e-6 else -1e-6;
+            for row:0..<4 {for col:0..<3 {z:=v[2*row]*v[8+col]+v[2*row+1]*v[11+col];if z>0 {loss[side]+=z*v[14+col];}}}
+        }
+        g:=ifx k<14 then f64(g1[k-8]) else f64(g2[k-14]);
+        d:=(loss[0]-loss[1])/2e-6-g;#assert d<1e-5 && d> -1e-5;
+    }
+}
+#test "programs the compiler cannot run are refused before anything runs" {
+    p:=cb_test_mlp();mode:=cb_test_mode(1,2,-1);
+    // A registered operator with no VJP on the gradient's path.
+    q:=p;q.nodes[4]=or_node(0,3,3,false,0.5);registry:=OrRegistry.{count=1};registry.schemas[0].backward=false;
+    #assert cb_compile(q,mode,registry,CbChoice.{}).status==CbStatus.operation;
+    // With a VJP it is still the caller's kernel, which a compiled program cannot call.
+    registry.schemas[0].backward=true;#assert cb_compile(q,mode,registry,CbChoice.{}).status==CbStatus.external;
+    #assert cb_compile(q,mode,OrRegistry.{},CbChoice.{}).status==CbStatus.operation;
+    custom:=mode;custom.custom[5]=true;#assert cb_compile(p,custom,OrRegistry.{},CbChoice.{}).status==CbStatus.external;
+    bad:=p;bad.nodes[5].a=6;#assert cb_compile(bad,mode,OrRegistry.{},CbChoice.{}).status==CbStatus.program;
+    detach:=mode;detach.detach[0]=true;#assert cb_compile(p,detach,OrRegistry.{},CbChoice.{}).status==CbStatus.mode;
+    // Recomputing needs a cheap elementwise node that backward reads and that is not the output.
+    for x:0..<8 {
+        r:=CbChoice.{};r.recompute[x]=true;s:=cb_compile(p,mode,OrRegistry.{},r).status;
+        #assert (s==CbStatus.ok)==(x==4) && (s==CbStatus.choice)==(x!=4);
+    }
+    // A recomputed value may read another: the second relu recomputes the first.
+    chain:=p;chain.count=9;chain.output=8;chain.nodes[5]=TiNode.{op=TiOp.relu,a=4};chain.nodes[6]=TiNode.{op=TiOp.matmul,a=5,b=2};chain.nodes[7]=TiNode.{op=TiOp.sum,a=6,axis=0};chain.nodes[8]=TiNode.{op=TiOp.sum,a=7,axis=0};
+    two:=CbChoice.{};two.recompute[4]=true;two.recompute[5]=true;d2:=cb_compile(chain,mode,OrRegistry.{},two);
+    #assert d2.status==CbStatus.ok && d2.instrs[12].kind==CbKind.recompute && d2.instrs[12].node==4 && d2.instrs[13].kind==CbKind.recompute && d2.instrs[13].node==5 && d2.instrs[14].kind==CbKind.clear && !d2.saved[4] && !d2.saved[5] && d2.saved[3];
+    one:=CbChoice.{};one.recompute[5]=true;#assert cb_compile(chain,mode,OrRegistry.{},one).status==CbStatus.ok;
+    // A goal no choice can meet is refused; one the plain plan meets keeps it.
+    #assert cb_choose(p,mode,OrRegistry.{},27,false).status==CbStatus.goal;
+    #assert cb_choose(p,mode,OrRegistry.{},28,false).values.top==28 && cb_choose(p,mode,OrRegistry.{},29,false).count==18;
+}
+#test "exact buffers run, a ReLU at zero passes nothing, and a rank-3 sum routes each gradient" {
+    p:=cb_test_mlp();inputs:=cb_test_mlp_inputs();mode:=cb_test_mode(1,2,8);
+    // Row 3 of X is (3, 2), so z[3,2] = 3 * 0.5 + 2 * -0.75 = 0 exactly.
+    inputs[6]=3;inputs[7]=2;
+    c:=cb_compile(p,mode,OrRegistry.{},CbChoice.{});t:=ad_tape(p,mode,OrRegistry.{});
+    values:[29]f32;grads:[33]f64;flags:[12]u8;tv:[64]f32;tg:[64]f64;tf:[16]u8;a:[6]f32;b:[6]f32;
+    #assert cb_run(c,0,inputs[0..<17],values[..],grads[..],flags[..])==CbStatus.ok;
+    run:=cb_test_tape(t,inputs[..],tv[..],tg[..],tf[..]);
+    #assert cb_gradient(c,1,grads[..],a[..])==CbStatus.ok && ad_gradient(t,run.cursor,1,tg[..],b[..])==AdStatus.ok;
+    for j:0..<6 {#assert f32_bits(a[j])==f32_bits(b[j]);}
+    // Node 8 is past the program, even though the mode asks for its gradient.
+    #assert cb_gradient(c,8,grads[..],a[..])==CbStatus.state;
+    // y = sum(sum(sum(x, 1) * w, 0), 0) with x 2x3x2: dy/dx[i,j,k] = w[i,k].
+    q:TiProgram;q.count=6;q.output=5;
+    q.nodes[0]=ti_input(TvShape.{rank=3,dims=[4]int.[2,3,2,0]},0);q.nodes[1]=ti_input(TvShape.{rank=2,dims=[4]int.[2,2,0,0]},12);
+    q.nodes[2]=TiNode.{op=TiOp.sum,a=0,axis=1};q.nodes[3]=TiNode.{op=TiOp.multiply,a=2,b=1};
+    q.nodes[4]=TiNode.{op=TiOp.sum,a=3,axis=0};q.nodes[5]=TiNode.{op=TiOp.sum,a=4,axis=0};
+    d:=cb_compile(q,cb_test_mode(0,-1,-1),OrRegistry.{},CbChoice.{});
+    x:=[16]f32.[1,2,3,4,5,6,7,8,9,10,11,12, 2,3,5,7];g:[12]f32;v:[64]f32;gr:[64]f64;fl:[16]u8;
+    #assert cb_run(d,0,x[..],v[..],gr[..],fl[..])==CbStatus.ok && cb_gradient(d,0,gr[..],g[..])==CbStatus.ok;
+    for i:0..<2 {for j:0..<3 {for k:0..<2 {#assert g[i*6+j*2+k]==x[12+i*2+k];}}}
+    // A ReLU's flag at item 0 alone fails the step.
+    r:TiProgram;r.count=3;r.output=2;r.nodes[0]=ti_input(TvShape.{rank=1,dims=[4]int.[2,0,0,0]},0);
+    r.nodes[1]=TiNode.{op=TiOp.relu,a=0};r.nodes[2]=TiNode.{op=TiOp.sum,a=1,axis=0};
+    e:=cb_compile(r,AdMode.{},OrRegistry.{},CbChoice.{});huge:f32=3e38;w:=[2]f32.[huge*huge,1];
+    #assert cb_run(e,0,w[..],v[..],gr[..],fl[..])==CbStatus.number;
+    // One update is enough to need a rate.
+    u:=cb_compile(q,cb_test_mode(1,-1,-1),OrRegistry.{},CbChoice.{update=true});
+    #assert u.updates==1 && cb_run(u,0,x[..],v[..],gr[..],fl[..])==CbStatus.number && cb_run(u,0.5,x[..],v[..],gr[..],fl[..])==CbStatus.ok;
+}
+#test "running refuses small buffers, bad rates and overflow without moving a parameter" {
+    p:=cb_test_mlp();inputs:=cb_test_mlp_inputs();mode:=cb_test_mode(1,2,-1);
+    c:=cb_compile(p,mode,OrRegistry.{},CbChoice.{update=true});#assert c.updates==2 && c.instrs[c.count-1].kind==CbKind.update && c.flag_items==12;
+    values:[64]f32;grads:[64]f64;flags:[16]u8;before:=inputs;
+    #assert cb_run(c,0.1,inputs[0..<16],values[..],grads[..],flags[..])==CbStatus.capacity;
+    #assert cb_run(c,0.1,inputs[..],values[0..<28],grads[..],flags[..])==CbStatus.capacity;
+    #assert cb_run(c,0.1,inputs[..],values[..],grads[0..<32],flags[..])==CbStatus.capacity;
+    #assert cb_run(c,0.1,inputs[..],values[..],grads[..],flags[0..<11])==CbStatus.capacity;
+    huge:f32=3e38;inf:=huge*huge;
+    #assert cb_run(c,0,inputs[..],values[..],grads[..],flags[..])==CbStatus.number && cb_run(c,inf,inputs[..],values[..],grads[..],flags[..])==CbStatus.number;
+    #assert cb_run(CbProgram.{},0.1,inputs[..],values[..],grads[..],flags[..])==CbStatus.state;
+    // An overflowing forward value fails its step.
+    inputs[0]=3e38;inputs[1]=3e38;#assert cb_run(c,0.1,inputs[..],values[..],grads[..],flags[..])==CbStatus.number;inputs=before;
+    // A gradient too large for f32 is refused before any parameter changes:
+    // y = (a * b) * c with a = 1e-30 and b = c = 1e30 is 1e30, but dy/da is 1e60.
+    q:TiProgram;q.count=6;q.output=5;one:=TvShape.{rank=1,dims=[4]int.[1,0,0,0]};
+    q.nodes[0]=ti_input(one,0);q.nodes[1]=ti_input(one,1);q.nodes[2]=ti_input(one,2);
+    q.nodes[3]=TiNode.{op=TiOp.multiply,a=0,b=1};q.nodes[4]=TiNode.{op=TiOp.multiply,a=3,b=2};q.nodes[5]=TiNode.{op=TiOp.sum,a=4,axis=0};
+    big:=cb_compile(q,cb_test_mode(0,1,-1),OrRegistry.{},CbChoice.{update=true});abc:=[3]f32.[1e-30,1e30,1e30];
+    #assert big.updates==2 && cb_run(big,0.5,abc[..],values[..],grads[..],flags[..])==CbStatus.number && abc[0]==1e-30 && abc[1]==1e30;
+    abc[2]=1;#assert cb_run(big,0.5,abc[..],values[..],grads[..],flags[..])==CbStatus.ok && abc[0]==f32(f64(1e-30f32)-0.5*f64(1e30f32)) && abc[1]==f32(f64(1e30f32)-0.5*f64(1e-30f32));
+    inputs=before;#assert cb_run(c,0.1,inputs[..],values[..],grads[..],flags[..])==CbStatus.ok;
+    g:[6]f32;#assert cb_gradient(c,1,grads[..],g[..])==CbStatus.ok;
+    for j:0..<6 {#assert inputs[8+j]==f32(f64(before[8+j])-f64(0.1f32)*f64(g[j]));}
+    #assert cb_gradient(c,0,grads[..],g[..])==CbStatus.state && cb_gradient(c,5,grads[..],g[..])==CbStatus.state && cb_gradient(c,-1,grads[..],g[..])==CbStatus.state;
+    grads[c.grad_at[1]]=1e300;#assert cb_gradient(c,1,grads[..],g[..])==CbStatus.number;
+    off:AdMode;off.enabled=false;off.grad[1]=true;e:=cb_compile(p,off,OrRegistry.{},CbChoice.{update=true});
+    #assert e.status==CbStatus.ok && e.count==5 && e.updates==0 && e.grads.top==0 && cb_gradient(e,1,grads[..],g[..])==CbStatus.mode;
+    #assert cb_run(e,0,inputs[..],values[..],grads[..],flags[..])==CbStatus.ok;
+    unused:=p;unused.count=9;unused.nodes[8]=ti_input(TvShape.{rank=1,dims=[4]int.[2,0,0,0]},17);m2:=cb_test_mode(1,8,-1);
+    u:=cb_compile(unused,m2,OrRegistry.{},CbChoice.{update=true});#assert u.status==CbStatus.ok && u.updates==1 && cb_gradient(u,8,grads[..],g[..])==CbStatus.unused;
+    #assert cb_output(CbProgram.{},inputs[..],values[..],g[..])==CbStatus.state && cb_gradient(CbProgram.{},1,grads[..],g[..])==CbStatus.state;
+}
+
+cb_material :: (op:TiOp)->bool {return op!=TiOp.input && op!=TiOp.view && op!=TiOp.reshape;}
+cb_fail :: (c:CbProgram,s:CbStatus)->CbProgram {r:=c;r.status=s;return r;}
+cb_instr :: (kind:CbKind,node:int)->CbInstr {return CbInstr.{kind=kind,node=node};}
+
+// book:begin recomputable
+// A value may be recomputed when it is a cheap elementwise node and not the
+// output. Its operands come from inputs, from saved values, or from other
+// recomputed values, which are made first.
+cb_recomputable :: (n:TiNode,i:int,output_root:int)->bool {
+    return (n.op==TiOp.relu || n.op==TiOp.add || n.op==TiOp.multiply) && i!=output_root;
+}
+// book:end recomputable
+
+// Make the copy of r, after the copies its operands need, in node order.
+cb_make :: (program:CbProgram,r:int,made:[32]bool)->CbProgram {
+    c:=program;need:[32]bool;need[r]=true;
+    for k:0..<r+1 {
+        j:=r-k;n:=c.program.nodes[j];
+        if !need[j] {continue;}
+        for o:0..<2 {
+            if o==1 && !ti_binary(n.op) {continue;}
+            x:=ifx o==0 then n.a else n.b;q:=c.facts.root[x];
+            if !c.facts.input[x] && c.choice.recompute[q] && !made[q] {need[q]=true;}
+        }
+    }
+    for j:0..<r+1 {if need[j] {c.instrs[c.count]=cb_instr(CbKind.recompute,j);c.count+=1;}}
+    return c;
+}
+
+// book:begin schedule
+// The instructions, in order: every forward command; then, if any gradient
+// is wanted, the output's seed and each backward rule in reverse node order,
+// with each gradient cleared just before its first contribution and each
+// recomputed value made just before its first backward reader; then the
+// updates.
+cb_schedule :: (program:CbProgram)->CbProgram {
+    c:=program;p:=c.program;f:=c.facts;made:[32]bool;born:[32]bool;
+    for i:1..<p.count {if cb_material(p.nodes[i].op) {c.instrs[c.count]=cb_instr(CbKind.forward,i);c.count+=1;}}
+    if c.rules>0 {
+        out:=f.root[p.output];born[out]=true;
+        c.instrs[c.count]=cb_instr(CbKind.clear,out);c.instrs[c.count+1]=cb_instr(CbKind.seed,p.output);c.count+=2;
+        for s:0..<c.rules {
+            i:=c.order[s];n:=p.nodes[i];binary:=ti_binary(n.op);
+            reads:=ad_reads(n,false,f.wants[n.a],binary && f.wants[n.b]);
+            for o:0..<2 {
+                if !reads[o] {continue;}
+                x:=ifx o==0 then n.a else n.b;r:=f.root[x];
+                if !f.input[x] && c.choice.recompute[r] && !made[r] {
+                    from:=c.count;c=cb_make(c,r,made);for k:from..<c.count {made[c.instrs[k].node]=true;}
+                }
+            }
+            for o:0..<2 {
+                if o==1 && !binary {continue;}
+                x:=ifx o==0 then n.a else n.b;r:=f.root[x];
+                if f.wants[x] && !born[r] {c.instrs[c.count]=cb_instr(CbKind.clear,r);c.count+=1;born[r]=true;}
+            }
+            c.instrs[c.count]=cb_instr(CbKind.backward,i);c.count+=1;
+        }
+        if c.choice.update {
+            for i:0..<p.count {if p.nodes[i].op==TiOp.input && c.mode.grad[i] && f.reaches[i] {c.instrs[c.count]=cb_instr(CbKind.update,i);c.count+=1;c.updates+=1;}}
+        }
+    }
+    return c;
+}
+// book:end schedule
+
+// book:begin lifetimes
+// Lifetimes are instruction indices, inclusive. A value lives from its
+// forward command to its last reader. A recomputed value's forward copy
+// stops at its last forward reader, and the copy covers the readers after
+// the forward pass. A value read after the forward pass from its original
+// is saved.
+cb_lifetimes :: (program:CbProgram)->CbProgram {
+    c:=program;p:=c.program;f:=c.facts;
+    for i:0..<32 {c.born[i]=-1;c.copy_born[i]=-1;c.grad_born[i]=-1;}
+    for k:0..<c.count {
+        ins:=c.instrs[k];i:=ins.node;n:=p.nodes[i];binary:=ti_binary(n.op);reads:=[2]bool.[true,binary];
+        if ins.kind==CbKind.forward {c.born[i]=k;c.dies[i]=k;}
+        else if ins.kind==CbKind.recompute {c.copy_born[i]=k;c.copy_dies[i]=k;}
+        else if ins.kind==CbKind.backward {reads=ad_reads(n,false,f.wants[n.a],binary && f.wants[n.b]);}
+        if ins.kind==CbKind.forward || ins.kind==CbKind.recompute || ins.kind==CbKind.backward {
+            for o:0..<2 {
+                if !reads[o] {continue;}
+                x:=ifx o==0 then n.a else n.b;r:=f.root[x];
+                if f.input[x] {continue;}
+                late:=ins.kind!=CbKind.forward;
+                if late && c.choice.recompute[r] {c.copy_dies[r]=k;}
+                else {c.dies[r]=k;if late {c.saved[r]=true;}}
+            }
+        }
+        // A gradient is born at its clear and lives through every write and read.
+        if ins.kind==CbKind.clear {c.grad_born[i]=k;}
+        if ins.kind==CbKind.backward {
+            c.grad_dies[i]=k;
+            for o:0..<2 {
+                if o==1 && !binary {continue;}
+                x:=ifx o==0 then n.a else n.b;if f.wants[x] {c.grad_dies[f.root[x]]=k;}
+            }
+        }
+    }
+    c.dies[f.root[p.output]]=c.count;
+    for i:0..<p.count {if p.nodes[i].op==TiOp.input && c.grad_born[i]>=0 {c.grad_dies[i]=c.count;}}
+    return c;
+}
+// book:end lifetimes
+
+// Place values and copies in instruction order, then gradients in clear
+// order, each with chapter 106's first fit.
+cb_place :: (program:CbProgram)->CbProgram {
+    c:=program;
+    for k:0..<c.count {
+        ins:=c.instrs[k];i:=ins.node;size:=c.facts.storage[i];
+        if ins.kind==CbKind.forward {c.values=ad_place(c.values,size,c.born[i],c.dies[i]);c.value_at[i]=ad_last(c.values);}
+        if ins.kind==CbKind.recompute {c.values=ad_place(c.values,size,c.copy_born[i],c.copy_dies[i]);c.copy_at[i]=ad_last(c.values);}
+    }
+    for k:0..<c.count {
+        ins:=c.instrs[k];i:=ins.node;
+        if ins.kind==CbKind.clear {c.grads=ad_place(c.grads,c.facts.storage[i],c.grad_born[i],c.grad_dies[i]);c.grad_at[i]=ad_last(c.grads);}
+    }
+    return c;
+}
+
+cb_value_ref :: (f:CbFacts,at:[32]int,x:int)->CbRef {
+    r:=f.root[x];if f.input[x] {return CbRef.{input=true,base=f.input_base[r],view=f.views[x]};}
+    return CbRef.{base=at[r],view=f.views[x]};
+}
+cb_grad_ref :: (f:CbFacts,at:[32]int,x:int)->CbRef {return CbRef.{base=at[f.root[x]],view=f.views[x]};}
+cb_describe :: (r:CbRef,at:int,meta:[]int) {
+    meta[at]=1;if r.input {meta[at]=0;}meta[at+1]=r.base+r.view.offset;meta[at+2]=r.view.shape.rank;
+    for j:0..<4 {meta[at+3+j]=r.view.shape.dims[j];meta[at+7+j]=r.view.strides[j];}
+}
+// book:begin resolve
+// Fill each instruction's addresses from the placement. A forward or
+// recomputing command gets chapter 38's kernel metadata; a rule gets its
+// operands' values and gradients as references.
+cb_resolve :: (program:CbProgram)->CbProgram {
+    c:=program;p:=c.program;f:=c.facts;
+    // Where the backward phase reads each value: the copy when it is recomputed.
+    late:=c.value_at;for i:0..<32 {if c.choice.recompute[i] {late[i]=c.copy_at[i];}}
+    for k:0..<c.count {
+        ins:=c.instrs[k];i:=ins.node;n:=p.nodes[i];binary:=ti_binary(n.op);
+        ins.items=f.storage[i];ins.epsilon=n.epsilon;
+        if ins.kind==CbKind.forward || ins.kind==CbKind.recompute {
+            s:=f.views[i].shape;a:=f.views[n.a].shape;m:=ins.meta;
+            m[0]=int(cast(u8)n.op);m[1]=ifx ins.kind==CbKind.forward then c.value_at[i] else c.copy_at[i];m[3]=s.rank;
+            for j:0..<4 {m[4+j]=s.dims[j];}
+            from:=ifx ins.kind==CbKind.forward then c.value_at else late;
+            cb_describe(cb_value_ref(f,from,n.a),8,m[..]);if binary {cb_describe(cb_value_ref(f,from,n.b),19,m[..]);}
+            if n.op==TiOp.matmul {m[30]=a.dims[1];} else if n.op==TiOp.sum {m[30]=a.dims[n.axis];} else if n.op==TiOp.layernorm {m[30]=a.dims[a.rank-1];}
+            m[31]=n.axis;m[48]=n.index_count;for j:0..<16 {m[32+j]=n.indices[j];}
+            ins.meta=m;if ins.items>c.flag_items {c.flag_items=ins.items;}
+        } else if ins.kind==CbKind.clear {ins.ga=cb_grad_ref(f,c.grad_at,i);}
+        else if ins.kind==CbKind.seed {ins.ga=cb_grad_ref(f,c.grad_at,i);ins.items=ad_count(f.views[i].shape);}
+        else if ins.kind==CbKind.backward {
+            ins.op=n.op;ins.axis=n.axis;ins.indices=n.indices;ins.shape=f.views[i].shape;ins.items=ad_count(ins.shape);
+            ins.dy=c.grad_at[i];ins.need_a=f.wants[n.a];ins.need_b=binary && f.wants[n.b];
+            ins.a=cb_value_ref(f,late,n.a);ins.ga=cb_grad_ref(f,c.grad_at,n.a);
+            if binary {ins.b=cb_value_ref(f,late,n.b);ins.gb=cb_grad_ref(f,c.grad_at,n.b);}
+        } else {ins.a=cb_value_ref(f,c.value_at,i);ins.ga=cb_grad_ref(f,c.grad_at,i);ins.items=ad_count(f.views[i].shape);}
+        c.instrs[k]=ins;
+        if ins.kind==CbKind.forward || ins.kind==CbKind.recompute || ins.kind==CbKind.backward {c.launches+=1;}
+    }
+    return c;
+}
+// book:end resolve
+
+// book:begin compile
+// Chapter 106's tape decides which nodes want a gradient, which rules run
+// and in what order; the compiler keeps those facts and drops the tape.
+cb_compile :: (p:TiProgram,mode:AdMode,registry:OrRegistry,choice:CbChoice)->CbProgram {
+    c:=CbProgram.{status=CbStatus.ok,program=p,mode=mode,choice=choice};
+    t:=ad_tape(p,mode,registry);
+    if t.status==AdStatus.program {return cb_fail(c,CbStatus.program);}
+    if t.status==AdStatus.operation {return cb_fail(c,CbStatus.operation);}
+    if t.status!=AdStatus.ok {return cb_fail(c,CbStatus.mode);}
+    // Chapter 106 admitted it; a compiled program also runs every kernel itself.
+    for i:0..<p.count {if p.nodes[i].op==TiOp.registered || mode.custom[i] {return cb_fail(c,CbStatus.external);}}
+    c.input_elements=t.plan.input_elements;
+    for i:0..<p.count {
+        r:=t.root[i];c.facts.root[i]=r;c.facts.input[i]=p.nodes[r].op==TiOp.input;c.facts.input_base[i]=p.nodes[i].input_base;
+        c.facts.views[i]=t.plan.values[i].view;c.facts.storage[i]=t.plan.values[i].storage;
+        c.facts.wants[i]=t.wants[i];c.facts.reaches[i]=t.reaches[i];
+    }
+    for s:t.forward..<t.count {c.order[c.rules]=t.steps[s].node;c.rules+=1;}
+    for i:0..<32 {if choice.recompute[i] && (i>=p.count || !cb_recomputable(p.nodes[i],i,c.facts.root[p.output])) {return cb_fail(c,CbStatus.choice);}}
+    c=cb_schedule(c);c=cb_lifetimes(c);c=cb_place(c);return cb_resolve(c);
+}
+// book:end compile
+
+// book:begin choose
+// Recomputing i alone would keep its operands alive instead, so a candidate
+// is i with every cheap ancestor that nothing else saves: the chain back to
+// saved values and inputs.
+cb_chain :: (c:CbProgram,i:int)->CbChoice {
+    next:=c.choice;next.recompute[i]=true;
+    for k:0..<i+1 {
+        j:=i-k;n:=c.program.nodes[j];
+        if !next.recompute[j] || c.choice.recompute[j] {continue;}
+        for o:0..<2 {
+            if o==1 && !ti_binary(n.op) {continue;}
+            x:=ifx o==0 then n.a else n.b;q:=c.facts.root[x];
+            if !c.facts.input[x] && !c.saved[q] && cb_recomputable(c.program.nodes[q],q,c.facts.root[c.program.output]) {next.recompute[q]=true;}
+        }
+    }
+    return next;
+}
+// Meet a values-arena goal in floats: while the plan is over it, add the
+// chain that lowers the arena most (the lowest node on a tie).
+cb_choose :: (p:TiProgram,mode:AdMode,registry:OrRegistry,goal:int,update:bool)->CbProgram {
+    c:=cb_compile(p,mode,registry,CbChoice.{update=update});
+    while c.status==CbStatus.ok && c.values.top>goal {
+        best:=c;
+        for i:0..<p.count {
+            if c.choice.recompute[i] || !cb_recomputable(p.nodes[i],i,c.facts.root[p.output]) {continue;}
+            d:=cb_compile(p,mode,registry,cb_chain(c,i));
+            if d.status==CbStatus.ok && d.values.top<best.values.top {best=d;}
+        }
+        if best.values.top==c.values.top {return cb_fail(c,CbStatus.goal);}
+        c=best;
+    }
+    return c;
+}
+// book:end choose
+
+cb_read :: (r:CbRef,j:int,inputs:[]f32,values:[]f32)->f64 {
+    if r.input {return f64(inputs[r.base+tv_offset(r.view,j)]);}
+    return f64(values[r.base+tv_offset(r.view,j)]);
+}
+cb_add :: (r:CbRef,j:int,g:f64,grads:[]f64) {k:=r.base+tv_offset(r.view,j);grads[k]+=g;}
+
+// book:begin rule
+// One node's vector-Jacobian product, from resolved references alone. The
+// loops and the order of every f64 addition are chapter 106's.
+cb_rule :: (ins:CbInstr,inputs:[]f32,values:[]f32,grads:[]f64) {
+    op:=ins.op;axis:=ins.axis;s:=ins.shape;a:=ins.a.view.shape;b:=ins.b.view.shape;
+    for j:0..<ins.items {
+        g:=grads[ins.dy+j];c:=to_coords(s,j);
+        if op==TiOp.add || op==TiOp.multiply {
+            ja:=to_broadcast_index(a,s,j);jb:=to_broadcast_index(b,s,j);ga:=g;gb:=g;
+            if op==TiOp.multiply {
+                if ins.need_a {ga=g*cb_read(ins.b,jb,inputs,values);}
+                if ins.need_b {gb=g*cb_read(ins.a,ja,inputs,values);}
+            }
+            if ins.need_a {cb_add(ins.ga,ja,ga,grads);}
+            if ins.need_b {cb_add(ins.gb,jb,gb,grads);}
+        } else if op==TiOp.matmul {
+            for k:0..<a.dims[1] {
+                ja:=c[0]*a.dims[1]+k;jb:=k*b.dims[1]+c[1];
+                if ins.need_a {cb_add(ins.ga,ja,g*cb_read(ins.b,jb,inputs,values),grads);}
+                if ins.need_b {cb_add(ins.gb,jb,g*cb_read(ins.a,ja,inputs,values),grads);}
+            }
+        } else if op==TiOp.relu {
+            if cb_read(ins.a,j,inputs,values)>0 {cb_add(ins.ga,j,g,grads);}
+        } else if op==TiOp.sum {
+            point:[4]int;cursor:=0;
+            for d:0..<a.rank {if d!=axis {point[d]=c[cursor];cursor+=1;}}
+            for k:0..<a.dims[axis] {point[axis]=k;cb_add(ins.ga,to_flat(a,point),g,grads);}
+        } else if op==TiOp.gather {
+            point:=c;point[axis]=ins.indices[c[axis]];cb_add(ins.ga,to_flat(a,point),g,grads);
+        }
+    }
+    if op==TiOp.layernorm {
+        width:=a.dims[a.rank-1];
+        for row:0..<ad_count(a)/width {
+            base:=row*width;mean:f64=0;
+            for k:0..<width {mean+=cb_read(ins.a,base+k,inputs,values);}
+            mean/=f64(width);variance:f64=0;
+            for k:0..<width {d:=cb_read(ins.a,base+k,inputs,values)-mean;variance+=d*d;}
+            sigma:=sqrt(variance/f64(width)+f64(ins.epsilon));m1:f64=0;m2:f64=0;
+            for k:0..<width {g:=grads[ins.dy+base+k];m1+=g;m2+=g*(cb_read(ins.a,base+k,inputs,values)-mean)/sigma;}
+            m1/=f64(width);m2/=f64(width);
+            for k:0..<width {
+                xhat:=(cb_read(ins.a,base+k,inputs,values)-mean)/sigma;
+                cb_add(ins.ga,base+k,(grads[ins.dy+base+k]-m1-xhat*m2)/sigma,grads);
+            }
+        }
+    }
+}
+// book:end rule
+
+// book:begin run
+// Run every instruction. Updates come last: every parameter's gradient is
+// checked before any parameter moves, then each moves by rate times its
+// gradient rounded to f32, exactly as chapter 117's mdl_sgd does.
+cb_run :: (c:CbProgram,rate:f32,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->CbStatus {
+    if c.status!=CbStatus.ok || c.count<1 {return CbStatus.state;}
+    if inputs.count<c.input_elements || values.count<c.values.top || grads.count<c.grads.top || flags.count<c.flag_items {return CbStatus.capacity;}
+    if c.updates>0 && (!(rate>0) || !tv_finite(rate)) {return CbStatus.number;}
+    first:=c.count-c.updates;
+    for k:0..<first {
+        ins:=c.instrs[k];
+        if ins.kind==CbKind.forward || ins.kind==CbKind.recompute {
+            for item:0..<ins.items {tik_run(item,ins.meta[..],ins.epsilon,inputs,values,values,flags);}
+            for item:0..<ins.items {if flags[item]!=0 {return CbStatus.number;}}
+        } else if ins.kind==CbKind.clear {for j:0..<ins.items {grads[ins.ga.base+j]=0;}}
+        else if ins.kind==CbKind.seed {for j:0..<ins.items {cb_add(ins.ga,j,1,grads);}}
+        else {cb_rule(ins,inputs,values,grads);}
+    }
+    for k:first..<c.count {ins:=c.instrs[k];for j:0..<ins.items {if !to_fits(grads[ins.ga.base+tv_offset(ins.ga.view,j)]) {return CbStatus.number;}}}
+    for k:first..<c.count {
+        ins:=c.instrs[k];
+        for j:0..<ins.items {
+            g:=f32(grads[ins.ga.base+tv_offset(ins.ga.view,j)]);at:=ins.a.base+tv_offset(ins.a.view,j);
+            inputs[at]=f32(f64(inputs[at])-f64(rate)*f64(g));
+        }
+    }
+    return CbStatus.ok;
+}
+// book:end run
+
+// book:begin publish
+// The output's value and an input's gradient, after a run. A program with
+// updates has already moved its parameters, but not its gradients.
+cb_output :: (c:CbProgram,inputs:[]f32,values:[]f32,out:[]f32)->CbStatus {
+    if c.status!=CbStatus.ok {return CbStatus.state;}
+    r:=cb_value_ref(c.facts,c.value_at,c.program.output);
+    for j:0..<ad_count(r.view.shape) {out[j]=f32(cb_read(r,j,inputs,values));}
+    return CbStatus.ok;
+}
+cb_gradient :: (c:CbProgram,x:int,grads:[]f64,out:[]f32)->CbStatus {
+    if c.status!=CbStatus.ok || x<0 || x>=c.program.count || c.program.nodes[x].op!=TiOp.input || !c.mode.grad[x] {return CbStatus.state;}
+    if !c.mode.enabled {return CbStatus.mode;}
+    if !c.facts.reaches[x] {return CbStatus.unused;}
+    r:=cb_grad_ref(c.facts,c.grad_at,x);
+    for j:0..<ad_count(r.view.shape) {g:=grads[r.base+tv_offset(r.view,j)];if !to_fits(g) {return CbStatus.number;}out[j]=f32(g);}
+    return CbStatus.ok;
+}
+// book:end publish
