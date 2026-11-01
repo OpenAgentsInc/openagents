@@ -1,0 +1,54 @@
+{
+  "argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/wrapping.py",
+    "Wrapping.test_native_matches_independent_integer_oracle_in_both_modes"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+    "--",
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/wrapping.py",
+    "Wrapping.test_native_matches_independent_integer_oracle_in_both_modes"
+  ],
+  "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+  "started": true,
+  "pid": 63847,
+  "returncode": 0,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 0.9041774169891141,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 0,
+  "observed_stderr_bytes": 98,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 8388608,
+    "stderr": 8388608,
+    "total": 8388608
+  },
+  "timeout_s": 840,
+  "deadline": 446218.393764,
+  "stdout": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/main11/wrapping-operand-order.stdout",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stderr": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/main11/wrapping-operand-order.stderr",
+    "bytes": 98,
+    "sha256": "31a4c15fd545487088f4748b85cebb5dbf030cc3f795c5a92dfcbe21657224a3"
+  },
+  "compiler_sha256_before": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "compiler_sha256_after": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d"
+}

@@ -1,0 +1,72 @@
+{
+  "argv": [
+    "python3",
+    "/tmp/coax-return-borrows-A1/final-native-plan/kernel.py",
+    "--compiler",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+    "--sha256",
+    "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+    "--fingerprint",
+    "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+    "--normal-receipt",
+    "/tmp/coax-return-borrows-A1/normal046-shared-sha-v12-current309-184/qualification.json",
+    "--record-dir",
+    "/tmp/coax-return-borrows-A1/final-v12/native9"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+    "--",
+    "python3",
+    "/tmp/coax-return-borrows-A1/final-native-plan/kernel.py",
+    "--compiler",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+    "--sha256",
+    "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+    "--fingerprint",
+    "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+    "--normal-receipt",
+    "/tmp/coax-return-borrows-A1/normal046-shared-sha-v12-current309-184/qualification.json",
+    "--record-dir",
+    "/tmp/coax-return-borrows-A1/final-v12/native9"
+  ],
+  "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+  "started": true,
+  "pid": 60004,
+  "returncode": 0,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 18.02392454101937,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 0,
+  "observed_stderr_bytes": 1129,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 8388608,
+    "stderr": 8388608,
+    "total": 8388608
+  },
+  "timeout_s": 840,
+  "deadline": 446193.05116475,
+  "stdout": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/transports/native9.stdout",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stderr": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/transports/native9.stderr",
+    "bytes": 1129,
+    "sha256": "4bffb76a0365f07e874fdcdc14c9c62a16416ec028b9933579f48a92ee402db7"
+  },
+  "compiler_sha256_before": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "compiler_sha256_after": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d"
+}

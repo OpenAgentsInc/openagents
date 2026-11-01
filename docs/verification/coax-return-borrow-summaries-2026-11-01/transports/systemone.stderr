@@ -1,0 +1,8 @@
+test_checked_O0 (borrow_summary_systemone.SystemOneReturnedBuffers.test_checked_O0) ... ok
+test_checked_O2 (borrow_summary_systemone.SystemOneReturnedBuffers.test_checked_O2) ... ok
+test_checked_sanitizers (borrow_summary_systemone.SystemOneReturnedBuffers.test_checked_sanitizers) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 2.006s
+
+OK

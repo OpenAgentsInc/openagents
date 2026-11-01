@@ -1,0 +1,288 @@
+{
+  "schema": "coax.return-borrow.integration.v1",
+  "outcome": "qualified-runtime; changelog-render/publication remain",
+  "qualified_source_revision": "44b25a4b3e83797ed8d6d3ffd9ca885aab8c1449",
+  "admitted_base": "6225954fae6e81935dae3d19d9024b3c24cda218",
+  "compiler_input_fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+  "compiler_image_sha256": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "normal_qualification_sha256": "cfd90bb0b29e59417478a69c69cb25bf46bb39416fbe6e87f8db9b2575e2aef8",
+  "normal_statements": 165,
+  "checker_mutants": 8147,
+  "checker_killed": 8147,
+  "checker_survivors": 0,
+  "normal_archive_record_sha256": "a7e6e18da1dc558fa203e96ab38aa0690763a04d899abfc3af9cb5ae410b05cc",
+  "final_archive_record_sha256": "532cf76d1e302df8fa69026f41a79f306e6868ae4e9e8c9c20ec2aeeac2d59f1",
+  "proof_archive_sha256": "4ac3b12455bc59fb64a7c6dfccdc168891188572dd1f53da48d7b253f5ad5489",
+  "outer_transports": [
+    {
+      "name": "source39",
+      "path": "transports/source39.json",
+      "sha256": "6349bbfa26e4b15d7116e291970978cdadc005c8455951bc3706c357eab2bc1b",
+      "actual_exit": 0,
+      "elapsed_s": 3.3304373749997467,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/source39.stdout",
+          "sha256": "f13e46fbe2e5311d1f573696ad3fb23baaa31cafbb8f1f745ca5dd2ea18ae884",
+          "bytes": 125
+        },
+        "stderr": {
+          "path": "transports/source39.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "native9",
+      "path": "transports/native9.json",
+      "sha256": "707fd74db0828a840e7ffef826a818db197137bf235c46555676b3a1a850bc1d",
+      "actual_exit": 0,
+      "elapsed_s": 18.02392454101937,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/native9.stdout",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "transports/native9.stderr",
+          "sha256": "4bffb76a0365f07e874fdcdc14c9c62a16416ec028b9933579f48a92ee402db7",
+          "bytes": 1129
+        }
+      }
+    },
+    {
+      "name": "systemone",
+      "path": "transports/systemone.json",
+      "sha256": "5504e162471357e4ba6e0aba50fce39ab4eaec897519bac071d7e952b739c12e",
+      "actual_exit": 0,
+      "elapsed_s": 4.3126960410154425,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/systemone.stdout",
+          "sha256": "5c5f556a5706283ce79d1201099b1010d789162bb79eab297468372aca4e2e92",
+          "bytes": 135
+        },
+        "stderr": {
+          "path": "transports/systemone.stderr",
+          "sha256": "84dc4e7ad6d4652c1b177104ba10ad250847f280a51c64ade7106ce6cb45531a",
+          "bytes": 387
+        }
+      }
+    },
+    {
+      "name": "independent1000",
+      "path": "transports/independent1000.json",
+      "sha256": "82414c87e32a88ba72e5af46cf1e6e469f3090a283b5ee13366fb215e569862d",
+      "actual_exit": 0,
+      "elapsed_s": 0.2374047499615699,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/independent1000.stdout",
+          "sha256": "da67a40169393d3bf29eb749483716ff19566e33d083f3335356eb8e973bc2b5",
+          "bytes": 150
+        },
+        "stderr": {
+          "path": "transports/independent1000.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "tools-common",
+      "path": "transports/tools-common.json",
+      "sha256": "475bb7b0347af646004d40de3078ae2c315499b542d94ac544882f04afa9f679",
+      "actual_exit": 0,
+      "elapsed_s": 3.246045416977722,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/tools-common.stdout",
+          "sha256": "cf4404744e789ac8ab34a143f447d906b0b03f6762cedc7ce5ac07de9c5f2c1b",
+          "bytes": 210
+        },
+        "stderr": {
+          "path": "transports/tools-common.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "tools-query",
+      "path": "transports/tools-query.json",
+      "sha256": "7b516ad7c18b978c80de98e60faa4a906d5a740528e4d1386b782a020ee557ee",
+      "actual_exit": 0,
+      "elapsed_s": 25.496033834002446,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/tools-query.stdout",
+          "sha256": "2f06ecc40336dd084469bdcfc471610cd287e9bc172896d1fe918c8725250db1",
+          "bytes": 208
+        },
+        "stderr": {
+          "path": "transports/tools-query.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "tools-steps",
+      "path": "transports/tools-steps.json",
+      "sha256": "075cf5dda562e00f6bab1fd32420857296b86c0e889d9981c31702e1dc4c4fb3",
+      "actual_exit": 0,
+      "elapsed_s": 4.246171417005826,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/tools-steps.stdout",
+          "sha256": "9500bb331a6df13c7fa393911b2dd17f0cc61a1e25e83cf25651dc36c512f345",
+          "bytes": 208
+        },
+        "stderr": {
+          "path": "transports/tools-steps.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "defaults4-continuation",
+      "path": "transports/defaults4-continuation.json",
+      "sha256": "8e11a435a581f037a67541678112a277b59b5673fb6d2b4c2d6b4b4fe2b1ca4a",
+      "actual_exit": 0,
+      "elapsed_s": 7.596803374995943,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/defaults4-continuation.stdout",
+          "sha256": "8a05d42b946bef690890262b9e185d7b42add3d0faaa22fe32607bcc7af14773",
+          "bytes": 222
+        },
+        "stderr": {
+          "path": "transports/defaults4-continuation.stderr",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      }
+    },
+    {
+      "name": "defaults4-initial-failed",
+      "path": "transports/defaults4-initial-failed.json",
+      "sha256": "2ea573159776a8f470cb52fead407359e8a89dc3883f43d6e23307b508935057",
+      "actual_exit": 1,
+      "elapsed_s": 6.04564287501853,
+      "scope": "retained failed setup only; zero default test methods ran",
+      "streams": {
+        "stdout": {
+          "path": "transports/defaults4-initial-failed.stdout",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "transports/defaults4-initial-failed.stderr",
+          "sha256": "deb3d6f1bf623da703613bdb8d8b5b2f781395151c3cac45a9952a1ba83abd9f",
+          "bytes": 1270
+        }
+      }
+    },
+    {
+      "name": "release",
+      "path": "transports/release.json",
+      "sha256": "d487bf7861f6f4f26485de7e86d2cc83a30436ccd39921b1575e8ee7ab0df88e",
+      "actual_exit": 0,
+      "elapsed_s": 98.12570549995871,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/release.stdout",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "transports/release.stderr",
+          "sha256": "97e4ac6cbb606e651faeaf7c2e35d5ec2c000cef3d9fec28ff521ff2ce363633",
+          "bytes": 118
+        }
+      }
+    },
+    {
+      "name": "main11-diagnostics",
+      "path": "transports/main11-diagnostics.json",
+      "sha256": "74dd9898034cc8863f1c71b311c69875269bc344a8444d43ff6df9bc3793fe32",
+      "actual_exit": 0,
+      "elapsed_s": 1.3429917080211453,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/main11-diagnostics.stdout",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "transports/main11-diagnostics.stderr",
+          "sha256": "ab3c74f347628ef964baf1e3fd1437472c68ed9eeac973363ea775eddc28bc9b",
+          "bytes": 105
+        }
+      }
+    },
+    {
+      "name": "main11-ordered-lowering",
+      "path": "transports/main11-ordered-lowering.json",
+      "sha256": "c795ef285a298a48870bc02dbc39bacdd06b09f51a4ac2bb0109100811a04940",
+      "actual_exit": 0,
+      "elapsed_s": 11.204037457995582,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/main11-ordered-lowering.stdout",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "transports/main11-ordered-lowering.stderr",
+          "sha256": "fe2d1c2702186efce4431d2fb1976eb307bd2fd3b7bb4ed452908208808e201e",
+          "bytes": 102
+        }
+      }
+    },
+    {
+      "name": "main11-wrapping-operand-order",
+      "path": "transports/main11-wrapping-operand-order.json",
+      "sha256": "5c4e164a7fe50fba0516df1747ae1502f9c2e24ddf43c972edc0f7275bf1e805",
+      "actual_exit": 0,
+      "elapsed_s": 0.9041774169891141,
+      "scope": "actual outer bounded phase; all10 flags clear and both streams reached EOF",
+      "streams": {
+        "stdout": {
+          "path": "transports/main11-wrapping-operand-order.stdout",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        "stderr": {
+          "path": "transports/main11-wrapping-operand-order.stderr",
+          "sha256": "31a4c15fd545487088f4748b85cebb5dbf030cc3f795c5a92dfcbe21657224a3",
+          "bytes": 98
+        }
+      }
+    }
+  ],
+  "defaults_continuation": {
+    "qualified_receipt_sha256": "028946f495d80bdabbd4183f99798c554bd24744f6f99d9bc7ff606ffaf658d2",
+    "original_failure_preserved": true,
+    "six_probes_reused_explicitly": true,
+    "test_methods_executed_once": 4,
+    "actual_emission_profiles": 9,
+    "skipped": 0
+  },
+  "current_tree_integration": "Rebase/provenance/source comparison is retained separately before push. Qualification remains attributed to44b; no future source epoch is relabelled.",
+  "limits": "Named normal/final gate evidence only; no visual, publication, credentials, retained async request lifetime, generic alternate-target or whole-model qualification. Source fixtures prove admission, not manual-summary completeness; that is a separate native9 scope."
+}

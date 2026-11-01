@@ -1,0 +1,68 @@
+{
+  "argv": [
+    "python3",
+    "/tmp/coax-return-borrows-A1/final-native-plan/systemone.py",
+    "--compiler",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+    "--sha256",
+    "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+    "--fingerprint",
+    "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+    "--record-dir",
+    "/tmp/coax-return-borrows-A1/final-v12/systemone"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+    "--",
+    "python3",
+    "/tmp/coax-return-borrows-A1/final-native-plan/systemone.py",
+    "--compiler",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/bin/coax",
+    "--sha256",
+    "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+    "--fingerprint",
+    "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+    "--record-dir",
+    "/tmp/coax-return-borrows-A1/final-v12/systemone"
+  ],
+  "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+  "started": true,
+  "pid": 60006,
+  "returncode": 0,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 4.3126960410154425,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 135,
+  "observed_stderr_bytes": 387,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 8388608,
+    "stderr": 8388608,
+    "total": 8388608
+  },
+  "timeout_s": 840,
+  "deadline": 446193.052483916,
+  "stdout": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/transports/systemone.stdout",
+    "bytes": 135,
+    "sha256": "5c5f556a5706283ce79d1201099b1010d789162bb79eab297468372aca4e2e92"
+  },
+  "stderr": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/transports/systemone.stderr",
+    "bytes": 387,
+    "sha256": "84dc4e7ad6d4652c1b177104ba10ad250847f280a51c64ade7106ce6cb45531a"
+  },
+  "compiler_sha256_before": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "compiler_sha256_after": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d"
+}

@@ -1,0 +1,14 @@
+test_generated_seed_headers_match_ctypes (checker.TransportABI.test_generated_seed_headers_match_ctypes) ... ok
+test_independent_layout_and_constant_typing (checker.Checker.test_independent_layout_and_constant_typing) ... ok
+test_quantity_graph_transport_and_device_option (checker.Checker.test_quantity_graph_transport_and_device_option) ... ok
+test_spatial_graph_transport_and_device_option (checker.Checker.test_spatial_graph_transport_and_device_option) ... ok
+test_independent_policy_errors (checker.Checker.test_independent_policy_errors) ... ok
+test_local_backed_borrow_returns (checker.Checker.test_local_backed_borrow_returns) ... ok
+test_borrowed_parameter_returns_remain_valid (checker.Checker.test_borrowed_parameter_returns_remain_valid) ... ok
+test_return_borrow_completeness_is_observed_not_assumed (checker.Checker.test_return_borrow_completeness_is_observed_not_assumed) ... ok
+test_actual_kernel_capacity_and_types_under_sanitizers (checker.Checker.test_actual_kernel_capacity_and_types_under_sanitizers) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 16.007s
+
+OK

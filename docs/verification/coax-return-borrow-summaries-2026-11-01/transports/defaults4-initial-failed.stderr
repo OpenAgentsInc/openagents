@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/tmp/coax-return-borrows-A1/final-state-defaults-v12/run.py", line 39, in <module>
+    for name,program in [('native-cc',env.get('COAX_CC','cc')),('bun',bun),('wasm-clang',env['COAXIAL_CLANG']),('wasm-ld',str(ld))]:invoke(name+'-version',[program,'--version'],10)
+                                                                                                                                    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/coax-return-borrows-A1/final-state-defaults-v12/run.py", line 35, in invoke
+    clean=r['started']and r['returncode']==0 and r['stdout_eof']and r['stderr_eof']and not any(r.get(n)for n in FLAGS);commands.append({'label':label,'argv':list(map(str,argv)),'cwd':str(R),'observation':r,'passed':clean});save();assert clean,(label,raw['stderr'][-1800:]);guard();return raw
+                                                                                                                                                                                                                                             ^^^^^
+AssertionError: ('wasm-ld-version', b'lld is a generic driver.\nInvoke ld.lld (Unix), ld64.lld (macOS), lld-link (Windows), wasm-ld (WebAssembly) instead\n')

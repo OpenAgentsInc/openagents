@@ -1,0 +1,52 @@
+{
+  "argv": [
+    "python3",
+    "/tmp/coax-return-borrows-A1/final-state-defaults-v12-continued/run.py"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+    "--",
+    "python3",
+    "/tmp/coax-return-borrows-A1/final-state-defaults-v12-continued/run.py"
+  ],
+  "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+  "started": true,
+  "pid": 75167,
+  "returncode": 0,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 7.596803374995943,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 222,
+  "observed_stderr_bytes": 0,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 8388608,
+    "stderr": 8388608,
+    "total": 8388608
+  },
+  "timeout_s": 840,
+  "deadline": 446443.730091291,
+  "stdout": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/transports/defaults4-continuation.stdout",
+    "bytes": 222,
+    "sha256": "8a05d42b946bef690890262b9e185d7b42add3d0faaa22fe32607bcc7af14773"
+  },
+  "stderr": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/transports/defaults4-continuation.stderr",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "compiler_sha256_before": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "compiler_sha256_after": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d"
+}

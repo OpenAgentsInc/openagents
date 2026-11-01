@@ -1,0 +1,27 @@
+{
+  "schema": "coax.a1.v12.validated-proof-archive.v1",
+  "outcome": "validated-archive",
+  "phase": "all-ten-listed-final-gates",
+  "source_revision": "44b25a4b3e83797ed8d6d3ffd9ca885aab8c1449",
+  "base": "6225954fae6e81935dae3d19d9024b3c24cda218",
+  "fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d",
+  "image_sha256": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "normal_sha256": "cfd90bb0b29e59417478a69c69cb25bf46bb39416fbe6e87f8db9b2575e2aef8",
+  "archive": {
+    "path": "/private/tmp/coax-return-borrows-A1/v12-final-proof/proof.tar.gz",
+    "sha256": "4ac3b12455bc59fb64a7c6dfccdc168891188572dd1f53da48d7b253f5ad5489",
+    "bytes": 11592048,
+    "members": 373,
+    "all_member_hashes_verified": true
+  },
+  "manifest": {
+    "path": "/private/tmp/coax-return-borrows-A1/v12-final-proof/manifest.json",
+    "sha256": "315b8095b782a97aa35c5bd633f04624bdf94ce47a848c7ac696d62ebd99b55f"
+  },
+  "scope": {
+    "path": "/private/tmp/coax-return-borrows-A1/v12-final-proof/scope.json",
+    "sha256": "98ed486d424a2a3edafba366ec7582f0f0ef7175b2de7eaab26861b4debf8aeb"
+  },
+  "limits": "Named normal/final gate evidence only; no visual, publication, credentials, retained async request lifetime, generic alternate-target or whole-model qualification. Source fixtures prove admission, not manual-summary completeness; that is a separate native9 scope.",
+  "elapsed_s": 1.100381916970946
+}

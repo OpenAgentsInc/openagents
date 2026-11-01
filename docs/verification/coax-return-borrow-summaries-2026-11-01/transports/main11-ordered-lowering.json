@@ -1,0 +1,58 @@
+{
+  "argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/lowering.py",
+    "OrderedLowering.test_evaluator_and_native_agree_with_the_written_expectations",
+    "OrderedLowering.test_trapping_operands_never_rely_on_c_operand_order",
+    "OrderedLowering.test_a_reversed_operand_order_defect_is_caught"
+  ],
+  "launched_argv": [
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/quiet_crash.py",
+    "--",
+    "/opt/homebrew/opt/python@3.15/bin/python3.15",
+    "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents/coax/tests/lowering.py",
+    "OrderedLowering.test_evaluator_and_native_agree_with_the_written_expectations",
+    "OrderedLowering.test_trapping_operands_never_rely_on_c_operand_order",
+    "OrderedLowering.test_a_reversed_operand_order_defect_is_caught"
+  ],
+  "cwd": "/Users/christopherdavid/.codex/worktrees/coax-audit-issues/openagents",
+  "started": true,
+  "pid": 63848,
+  "returncode": 0,
+  "launch_errno": null,
+  "launch_error": null,
+  "elapsed_s": 11.204037457995582,
+  "timeout": false,
+  "deadline_exhausted": false,
+  "stdout_limit": false,
+  "stderr_limit": false,
+  "output_limit": false,
+  "observed_stdout_bytes": 0,
+  "observed_stderr_bytes": 102,
+  "group_killed": false,
+  "kill_errno": null,
+  "read_errno": null,
+  "stdout_eof": true,
+  "stderr_eof": true,
+  "limits": {
+    "stdout": 8388608,
+    "stderr": 8388608,
+    "total": 8388608
+  },
+  "timeout_s": 840,
+  "deadline": 446218.394125708,
+  "stdout": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/main11/ordered-lowering.stdout",
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "stderr": {
+    "path": "/tmp/coax-return-borrows-A1/final-v12/main11/ordered-lowering.stderr",
+    "bytes": 102,
+    "sha256": "fe2d1c2702186efce4431d2fb1976eb307bd2fd3b7bb4ed452908208808e201e"
+  },
+  "compiler_sha256_before": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "compiler_sha256_after": "5c37377a72fbba0a4e11a6ffdba2bfa37c223f8490b158aa23bc1a75488c53d9",
+  "fingerprint": "7c749e9b2c4f487d74a0b506393d104104cafcbe058ec6c39d4af1fb7e956f2d"
+}

@@ -12,6 +12,17 @@ ordered language work continue independently.
 Diagnostic receipt: `/tmp/coax-return-borrows-A1/publication-v2-credential-diagnostic/diagnostic.json`,
 SHA-256 `674f1704ea8cd4aa0d09a1c6e5f13949ffd42cfd9325a3cfc28f351a66c87a9f`.
 
+Resolved: the owner confirmed local reauthentication. A fresh GET-only
+preflight completed 17 requests with HTTP 200 across production and staging,
+including a generation-pinned release marker whose size and MD5 match its
+metadata. No credentials, headers or authentication error bodies were
+retained, and no site bytes changed. The cloud preflight is restored.
+Publication will use the compiler and site package after their required checks
+pass.
+
+Receipt: `/tmp/coax-return-borrows-A1/publication-v2-readonly-api-preflight-after-reauth/observation.json`,
+SHA-256 `db0ecdf266d4a76218a7d93bb7a795aa83ce27329dfd1794c7ea0dfcdbad5582`.
+
 ## GR00T chapter168: gated backbone tokenizer/processor (2026-10-31)
 
 The selected robotics artifact is NVIDIA

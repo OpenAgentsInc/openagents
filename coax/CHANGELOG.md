@@ -22,6 +22,8 @@ Commit: [`84da8f01e780e7e9a2a90c75d5a6592bc7db8cf5`](https://github.com/OpenAgen
   cached indexes to their complete payload and front-end profile/library mode.
   Damaged or old private indexes rebuild; the public `coax.query.v1` schema
   stays unchanged.
+- Apply each check's `#steps` during ABI2 domain preparation; insufficient
+  fuel refuses before emitting verification C.
 
 ## 0.45.0 — Bounded Storage Library — 2026-10-31
 
