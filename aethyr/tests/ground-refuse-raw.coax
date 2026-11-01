@@ -1,0 +1,9 @@
+// Must not compile: raw C numbers need an explicit unit assertion at their boundary.
+#load "../ground.coax";
+#load "../../coax/lib/quantity.coax" as units;
+main :: () {
+  g: Ground;
+  h: [4] f32;
+  z: units.Quantity(units.Metre, f32) = units.Quantity.{value = 0};
+  q := ground_sample(g, h[..], 1.0f32, z);
+}

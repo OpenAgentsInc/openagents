@@ -420,7 +420,7 @@ folk_wrap_r :: (a: f32) -> f32 {
 
 routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); }
 
-#test "every day is sorted, starts and ends at a real stop, and each walk ends before the next row begins" {
+#test "every day is sorted, starts and ends at a real stop, and each walk ends before the next row begins" #steps 50000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   r: [1] Route;
@@ -451,7 +451,7 @@ routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); 
   #assert walkers >= 12;
 }
 
-#test "every walk and every beat keeps to open ground: the streets, the squares, the clearings, never a wall or the woods" {
+#test "every walk and every beat keeps to open ground: the streets, the squares, the clearings, never a wall or the woods" #steps 146000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   solids: [EG_SOLIDS * EG_BOX] f32;
@@ -480,7 +480,7 @@ routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); 
   }
 }
 
-#test "the stable hand wades into the Reed Pond and swims its middle at half pace, by the player's rules" {
+#test "the stable hand wades into the Reed Pond and swims its middle at half pace, by the player's rules" #steps 36000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   levels: [EG_PONDS] f32;
@@ -509,7 +509,7 @@ routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); 
   #assert !q.walking && !q.indoors && near(q.x, EG_SPOT[pip * 3], 0.001) && near(q.z, EG_SPOT[pip * 3 + 1], 0.001);
 }
 
-#test "a day: at work by day, walking home at dusk, indoors at night, out again in the morning" {
+#test "a day: at work by day, walking home at dusk, indoors at night, out again in the morning" #steps 35000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   r: [1] Route;
@@ -537,7 +537,7 @@ routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); 
   #assert !folk_moves(3) && !p.walking && p.x == EG_SPOT[9] && p.z == EG_SPOT[10];
 }
 
-#test "two people reading the same clock put a person in the same place; a guard walks the beat all day" {
+#test "two people reading the same clock put a person in the same place; a guard walks the beat all day" #steps 543000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   a: [1] Route; b: [1] Route;

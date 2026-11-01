@@ -671,133 +671,15 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   #assert shout_baseline(far, 8) == 200;   // apart from the rest: where it was
 }
 
-#test "watch: a meteor on the inn is a crime the watch hear and hunt you for; R stands the fallen up" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  inn := EG_INN * EG_BOX;
-  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
-  #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  w := watch_w(g[..]);
-  #assert w[0].on && !w[0].wanted && w[0].hp == SRD_RANGER_5.hp;
-  g[0].sp.aim = v3(ix, ground_at(g[..], ix, EG_BUILDING[inn + 1]) + 2, EG_BUILDING[inn + 1]); g[0].sp.aim_ok = true; g[0].sp.far = false;
-  sp_cast(g[..]);
-  for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert sp_broken(g[..]) && w[0].crimes > 0 && w[0].wanted;
-  hunting := 0;
-  for i: 0..<WATCH_ACTORS { if watch_is_guard(i) && w[0].actors[i].mode == WM_CHASE { hunting += 1; } }
-  #assert hunting >= 2;
-  // townsfolk struck down: the Rebuild stands them up with the town
-  you := v3(ix - 4, 0, iz - 30);
-  fallen := -1;
-  for i: 0..<EG_SPOTS { if fallen < 0 && watch_hurtable(i) && !watch_is_guard(i) && w[0].actors[i].mode != WM_DEAD { fallen = i; } }
-  #assert fallen >= 0;
-  watch_harm(w, fallen, 99, you);
-  #assert w[0].actors[fallen].mode == WM_DEAD;
-  #assert everglade_key(g[..], 'r', 0) && !sp_broken(g[..]);
-  #assert w[0].actors[fallen].mode == WM_CALM && w[0].actors[fallen].hp == w[0].actors[fallen].max;
-  // with nothing broken, R stands the fallen up too
-  watch_harm(w, fallen, 99, you);
-  #assert everglade_key(g[..], 'r', 0) && w[0].actors[fallen].mode == WM_CALM;
-  for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_DEAD; }
-}
+// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
-#test "watch: your own Thunderbolt at your feet hurts you and throws you; a Meteor Swarm on you kills you and you fall" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  x := 0.0f32; z := -30.0f32;
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  w := watch_w(g[..]);
-  #assert w[0].on && w[0].hp == SRD_RANGER_5.hp;
-  #assert everglade_key(g[..], '2', 0) && g[0].sp.armed == SP_BOLT;
-  g[0].sp.aim = v3(x, ground_at(g[..], x, z), z); g[0].sp.aim_ok = true; g[0].sp.far = false;
-  sp_cast(g[..]);
-  for f: 0..<30 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert w[0].hp < SRD_RANGER_5.hp || w[0].dead;
-  k := everglade_knock(g[..]);
-  #assert w[0].dead || k.y > 0;
-  // the meteors on you: 20d6 + 20d6, at least half of 40 even on a save, past your 44 HP
-  w[0].hp = w[0].max; w[0].dead = false;
-  #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
-  g[0].sp.aim = v3(x, ground_at(g[..], x, z), z); g[0].sp.aim_ok = true; g[0].sp.far = false;
-  sp_cast(g[..]);
-  dead_at := -1;
-  for f: 0..<40 {
-    _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
-    if w[0].dead && dead_at < 0 { dead_at = f; }
-    if dead_at >= 0 && f >= dead_at + 20 { break; }
-  }
-  #assert dead_at >= 0;
-  // your body is down, not standing: its up (the rows' second column) lies over
-  o := RANGER_AT * OBJECT_FLOATS;
-  #assert w[0].dead && abs(g[0].objects[o + 5]) < 0.5;
-}
+// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
-#test "watch: you die levitating 10 m up and stand again at the Road In on the ground, Levitate ended" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  x := 0.0f32; z := -30.0f32;
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  ab_press(g[..], AB_LEVITATE);
-  a := ab_of(g[..]);
-  #assert a[0].lev_on;
-  a[0].lev_up = false; a[0].lev_hold = walk_at(g[..], x, z) + 10;
-  w := watch_w(g[..]);
-  watch_hurt_you(w, 999);
-  #assert w[0].dead;
-  for f: 0..<8 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  // toppled, lying: not standing
-  o := RANGER_AT * OBJECT_FLOATS;
-  #assert abs(g[0].objects[o + 5]) < 0.3;
-  for f: 0..<40 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert !w[0].dead && !a[0].lev_on && !a[0].ff_on && !a[0].rg_on;
-  #assert everglade_warp(g[..]);
-  sp := everglade_spawn(g[..]);
-  #assert sp.y == 0 && sp.x == f32(EG_SPAWN_X) && sp.z == f32(EG_SPAWN_Z);
-  // standing there on the ground nothing lifts you
-  lift := everglade_lift(g[..], sp.x, sp.z, 0, 0, 0, 0, 1.0 / 60.0);
-  #assert !lift.on;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "watch: WANTED 5 calls the company in at the gate; they are drawn in their ranks' colours, casters bare-handed, with five stars lit" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  yx := 1.6f32; yz := -40.0f32;
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, yx, 0, yz, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  w := watch_w(g[..]);
-  nob: [6] f32;
-  _ = watch_crime(w, v3(yx, 0, yz), 100, v3(yx, 0, yz), nob[..], 0, g[0].heights[..]);
-  w[0].heat = 60; w[0].hp = 100000; w[0].max = 100000;
-  // walking south (the camera turns to follow, looking at the South Gate)
-  for f: 0..<14 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, yx, 0, yz, f32(PI), 0, 0, -3, false, 0, 0, 0, 0); }
-  #assert w[0].level == 5 && watch_hunters(w) <= HUNTERS_MAX;
-  shown := 0; caster := -1;
-  for k: 0..<g[0].shown_n { if watch_is_rein(g[0].shown[k]) { shown += 1; if watch_caster(w, g[0].shown[k]) { caster = g[0].shown[k]; } } }
-  #assert shown >= 2;
-  // the casters cast at you: their spells are in the air or have caught you
-  for i: WATCH_FIRST_REIN..<WATCH_ACTORS { w[0].actors[i].cast_cool = 0; }
-  for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, yx, 0, yz, f32(PI), 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert w[0].spell_hits + w[0].spell_misses > 0;
-  // Ray of Frost on you: the face slows you
-  w[0].slow_t = 3;
-  #assert everglade_slow(g[..]) < 1;
-  w[0].held_t = 2;
-  #assert everglade_held(g[..]);
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "watch: the Priest's Spiritual Weapon is one lit mace by you, its head on its haft's end, nothing drawn as flat glow" {
+#test "watch: the Priest's Spiritual Weapon is one lit mace by you, its head on its haft's end, nothing drawn as flat glow" #steps 337000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   boxes := g[0].counts[SHAPE_BOX]; balls := g[0].counts[SHAPE_SPHERE];

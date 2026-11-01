@@ -6,8 +6,9 @@
 > order, takes typed actions (chapter 4) and asks chapter 7's queries for the
 > ground. The Grid drives it from a recorded session in
 > [verse/gridwalk.coax](../../verse/gridwalk.coax). Still to do: the module
-> `aethyr/walk.coax`, a per-realm profile of its constants, followers on the
-> same step, and the realms that keep their own feet. They land with the realm
+> `aethyr/walk.coax`, a declared locomotion-tuning profile, followers on the
+> realm's same due steps and interpolation, and completing the realm adapters.
+> They land with the realm
 > migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)).
 
 A character controller turns input into motion. It speeds up and stops at a
@@ -104,18 +105,26 @@ The rest of the step runs in this order:
   dz := dir.z * speed - next.vel.z;
   diff := sqrt(dx * dx + dz * dz);
   if diff > 0 {
-    grip := ifx finite(p.grip) && p.grip > 0 && p.grip < 1 && p.on_ground then p.grip else 1.0f32;
+    grip := ifx finite(p.grip) && p.grip > 0 && p.on_ground then lo(p.grip, 1.0f32) else 1.0f32;
     if p.sliding { grip = f32(SLIDE_GRIP); }
     applied := lo(diff, f32(ACCEL) * grip * dt);
     next.vel.x += dx / diff * applied;
     next.vel.z += dz / diff * applied;
   }
-  before := next;
-  next = move_across(w, next, next.vel.x * dt, next.vel.z * dt);
-  next = off_floors(w, before, next);
+  contact := collide_move(colliders(w), w.collision, collision_state(next), next.vel.x * dt, next.vel.z * dt);
+  // A refused step keeps the input Player, including its queued jump. The
+  // outer FrameClock consumes the assigned step; only diagnostics change.
+  if contact.status != CollideStatus.ok { return collision_report(given, contact); }
+  next = collision_report(collision_apply(next, contact.state), contact);
 
   // Gravity and the floor.
-  under := floor_under(w, next.pos.x, next.pos.z, next.pos.y);
+  surface := query_ground_checked(colliders(w), next.pos.x, next.pos.z, next.pos.y + w.collision.step_up, w.collision.radius);
+  if surface.status != QueryStatus.ok {
+    refused := collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_state});
+    refused.query_status = surface.status;
+    return refused;
+  }
+  under := StandHit.{y = surface.y, gx = surface.gx, gz = surface.gz};
   ground := under.y;
   above := next.pos.y - ground;
   falls := true;
@@ -280,8 +289,11 @@ The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)) adds:
 - Followers on the same step. Today `verse/terrain.coax`'s followers use
   their own constants (`FOLLOW_WALK`, `FOLLOW_ACCEL`, `FOLLOW_TURN`) and
   their own ground rules.
-- The realms that keep their own feet: Everglade's `s[0].feet` with
-  `ground_at`, and Dead Gears' `pl.on_ground`.
+- Complete the realm adapters. Everglade's `s[0].feet` is a rendering and
+  controller handoff field; Dead Gears already uses `pc.Player`. Those fields
+  do not establish separate movement integrators. Followers should consume
+  the realm clock's due steps and drawing alpha, with a previous pose for
+  interpolation; their animation time can remain separately counted.
 
 The step no longer moves the camera. The camera steps after it, in
 `camera_step` (chapter 10).

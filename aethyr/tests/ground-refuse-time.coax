@@ -1,0 +1,10 @@
+// Must not compile: a time value is not an x coordinate in metres.
+#load "../ground.coax";
+#load "../../coax/lib/quantity.coax" as units;
+main :: () {
+  g: Ground;
+  h: [4] f32;
+  seconds: units.Quantity(units.Second, f32) = units.Quantity.{value = 1};
+  z: units.Quantity(units.Metre, f32) = units.Quantity.{value = 0};
+  q := ground_sample(g, h[..], seconds, z);
+}

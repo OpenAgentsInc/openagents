@@ -626,7 +626,7 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   return n;
 }
 
-#test "reply: a line goes up on the house, is smashed, and is sent once with its seed, escaped" {
+#test "reply: a line goes up on the house, is smashed, and is sent once with its seed, escaped" #steps 337000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   everglade_message(g[..], MSG_FACTS, "url=https://openagents.com/realms/everglade#reply\nnow=1730000000123\nplayer=p-1\n");
@@ -671,24 +671,4 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   #assert g[0].rp.phase == RP_SENDING && everglade_reply_post(g[..]).count == n;
 }
 
-#test "reply: the reply page takes its words and seed, stands you facing the house and waits for the town" {
-  g: [1] Everglade;
-  everglade_start(g[..]);
-  #assert rp_message(g[..], RP_LINES, "id=0a1b2c3d4e5f\nrealm=everglade\nhouse=12\nseed=424242\nkind=text\ntext=Ship it <b>now</b>\n");
-  #assert g[0].rp.replay && g[0].rp.seed == 424242 && rp_words(g[..]) == "Ship it <b>now</b>" && g[0].rp.waiting && everglade_warp(g[..]);
-  #assert g[0].rp.phase == RP_UP && !rp_typing(g[..]);
-  // no REPLY of its own on the reply page, and Esc doesn't drop the reply
-  rp_open(g[..]);
-  _ := everglade_key(g[..], KEY_ESCAPE, 0);
-  #assert g[0].rp.phase == RP_UP;
-  // without the town in, it waits
-  rp_frame(g[..], 5);
-  #assert g[0].rp.waiting && g[0].rp.t == 0;
-  // a malformed reply is ignored
-  h: [1] Everglade;
-  everglade_start(h[..]);
-  #assert rp_message(h[..], RP_LINES, "id=short\nseed=1\ntext=x\n") && !h[0].rp.replay;
-  // the words wrap onto three lines at most
-  lines: [8] int;
-  #assert rp_wrap("one two three four five six seven eight nine ten", 10, 120, lines[..]) >= 2;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).

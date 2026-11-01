@@ -1767,7 +1767,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
 
 // ---- checks
 
-#test "abilities: Reverse Gravity lifts you and the town's loose props to hover under its top, and lets them fall" {
+#test "abilities: Reverse Gravity lifts you and the town's loose props to hover under its top, and lets them fall" #steps 808000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1799,7 +1799,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 { #assert f32(demo_pos(w, b).y) < a[0].rg_at.y + 6; } }
 }
 
-#test "abilities: a Wind Wall rises 4 m ahead across your way, throws you up when you walk in, and lifts a splinter" {
+#test "abilities: a Wind Wall rises 4 m ahead across your way, throws you up when you walk in, and lifts a splinter" #steps 442000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1823,7 +1823,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert !a[0].walls[0].live;
 }
 
-#test "abilities: Levitate rises while 7 is held and hovers when let go; X sinks to the ground and ends it; Feather Fall slows a fall and ends on landing" {
+#test "abilities: Levitate rises while 7 is held and hovers when let go; X sinks to the ground and ends it; Feather Fall slows a fall and ends on landing" #steps 559000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1855,7 +1855,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert !a[0].ff_on;
 }
 
-#test "abilities: Gust of Wind pushes along its line; Thunderwave frees a prop in its cube and throws it 10 feet's worth away" {
+#test "abilities: Gust of Wind pushes along its line; Thunderwave frees a prop in its cube and throws it 10 feet's worth away" #steps 441000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1882,7 +1882,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert demo_body(w, b).vel.x > 4.0;
 }
 
-#test "abilities: a Wall of Stone's two panels stand 4 m ahead across your way as two of your bodies, for ten minutes" {
+#test "abilities: a Wall of Stone's two panels stand 4 m ahead across your way as two of your bodies, for ten minutes" #steps 455000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1905,7 +1905,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert everglade_bodies_on(g[..], false) == BODIES;
 }
 
-#test "abilities: Telekinesis takes a prop, lifts it 20 feet, moves it 30 feet at most a click, and lets it fall" {
+#test "abilities: Telekinesis takes a prop, lifts it 20 feet, moves it 30 feet at most a click, and lets it fall" #steps 486000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -1935,89 +1935,11 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert f32(demo_pos(w, b).y) < p.cy + 2.0 || w[0].meta[b].kind == 0;
 }
 
-#test "abilities: Black Tentacles rise in a 20-foot square, seize the props in reach and hold them up, and restrain who fails" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  w := sp_dm(g[..]);
-  a := ab_of(g[..]);
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  // a townsperson out of doors, and the props
-  who := -1;
-  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
-  #assert who >= 0;
-  // a hardy one, who lives through 3d6 (a commoner's 4 hit points would not)
-  wh := watch_w(g[..]); wh[0].actors[who].max = 40; wh[0].actors[who].hp = 40;
-  pl := person_place(g[..], who);
-  g[0].feet = v3(pl.x - 8, 0, pl.z); g[0].face = atan2(1, 0);
-  g[0].feet.y = 0;
-  #assert spells_key(g[..], '#', 1) && g[0].sp.armed == SP_SLOTS + AB_TENTACLES;
-  up := spells_key_up(g[..], '#', 1);
-  g[0].sp.aim = v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
-  sp_cast(g[..]);
-  #assert a[0].bt_on && g[0].sp.armed == -1 && ab_in_square(a, pl.x, pl.z);
-  // within a few rounds they fail a save: hurt, Restrained, held where they stood, a crime
-  caught := false;
-  for k: 0..<240 {
-    ab_frame(g[..], 0.1); demo_step(w, everglade_ground(), g[0].heights[..], 0.1);
-    if a[0].bt_held[who] { caught = true; break; }
-  }
-  ww := watch_w(g[..]);
-  #assert caught && ww[0].actors[who].hp < ww[0].actors[who].max && ww[0].actors[who].mode == WM_DOWN && ww[0].crimes > 0;
-  for k: 0..<20 { ab_frame(g[..], 0.1); }
-  #assert ab_bt_holder(a, who) >= 0 && near(ww[0].actors[who].x, a[0].bt_x[who], 0.001);
-  // the tentacles stand their length from the root, the tips within reach
-  for j: 0..<AB_BT_N { #assert length(sub(a[0].bt_tip[j], ab_bt_root(g[..], j))) <= f32(AB_BT_REACH) + 0.01; }
-  // Shift+3 while they stand ends them, and lets go
-  #assert spells_key(g[..], '#', 1) && !a[0].bt_on && !a[0].bt_held[who];
-  // on the market's props: they come loose and are held up off the ground
-  prop := -1;
-  for i: 0..<w[0].n { if ab_prop(w[0].pieces[i].mesh) && w[0].pieces[i].state == DP_STANDING { prop = i; break; } }
-  p := w[0].pieces[prop];
-  g[0].feet = v3(p.cx - 8, 0, p.cz);
-  ab_press(g[..], AB_TENTACLES);
-  g[0].sp.aim = v3(p.cx, ground_at(g[..], p.cx, p.cz), p.cz); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
-  sp_cast(g[..]);
-  for k: 0..<360 { ab_frame(g[..], 1.0 / 60); demo_step(w, everglade_ground(), g[0].heights[..], 1.0 / 60); }
-  #assert w[0].pieces[prop].state == DP_LOOSE;
-  b := w[0].pieces[prop].body;
-  #assert ab_bt_holder(a, AB_BT_BODY + b) >= 0 && f32(demo_pos(w, b).y) > p.y0 + 0.6;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "abilities: a guard hunting you on a Wall of Stone's far side runs round it, never through it; when it falls, straight on" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  g[0].feet = v3(0, 0, -30); g[0].face = 0;
-  #assert spells_key(g[..], '!', 1);
-  ab_frame(g[..], 0.5);
-  w := watch_w(g[..]);
-  #assert w[0].on && w[0].fence_n == 2;   // its two panels
-  i := EG_SPOTS;   // the first of the new watch
-  #assert watch_is_guard(i);
-  you := ab_you(g[..]);
-  w[0].wanted = true;
-  a := w[0].actors[i..<i + 1];
-  a[0].mode = WM_CHASE; a[0].t = 0; a[0].x = 0.4; a[0].z = -21; a[0].swing = -1;
-  caught := false;
-  for k: 0..<600 {
-    ab_frame(g[..], 0.05);
-    watch_step(w, i, 0.05, you, g[0].boxes[..], g[0].box_n, g[0].heights[..]);
-    #assert watch_fence_gap(w, 0, a[0].x, a[0].z) >= f32(EG_RADIUS) - 0.02 && watch_fence_gap(w, 1, a[0].x, a[0].z) >= f32(EG_RADIUS) - 0.02;
-    if flat_gap(v3(a[0].x, 0, a[0].z), you) < f32(REACH) + 0.3 { caught = true; break; }
-  }
-  #assert caught;
-  // the wall gone, the way is straight again
-  ab_frame(g[..], 700);
-  #assert w[0].fence_n == 0 && near(watch_way(w, 0, -21, 0, -30), atan2(0, -9), 0.001);
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "abilities: Earthbound (the watch's Earthbind), Levitate can't rise and sinks you 60 feet a round to the ground, where it ends; it can't be cast again" {
+#test "abilities: Earthbound (the watch's Earthbind), Levitate can't rise and sinks you 60 feet a round to the ground, where it ends; it can't be cast again" #steps 441000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);

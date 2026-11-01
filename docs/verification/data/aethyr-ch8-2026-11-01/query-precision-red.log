@@ -1,0 +1,7 @@
+FAIL #test heightfield hit selection retains f64 order and the selected surface point (0 ms)
+aethyr/tests/query-heightfield.coax:12:3: error[E0406]: assertion failed
+    #assert close_ray.status == QueryStatus.ok && close_ray.hit && close_ray.index == 1 && close_ray.t == 1;
+    ^
+  note: in #test heightfield hit selection retains f64 order and the selected surface point
+1 of 95 checks (--only 'heightfield hit selection'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -1,0 +1,1422 @@
+{
+  "schema": "aethyr.native-gameplay-programs-execution.v1",
+  "mode": "release",
+  "realm": "everglade",
+  "entry": "aethyr/tests/everglade-spells-integration.coax",
+  "sources": {
+    "aethyr/budget.coax": "4b188127c8fa9a250d3a3ec7a2065611e90ea309a941c387a24c4ba478275036",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+    "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/check_native_gameplay.py": "3925a91bbd3bd327ad64ea9e59962774448cd29ae8e9f5444a6b8bfba2b4cd50",
+    "aethyr/tests/everglade-spells-integration.coax": "ccba4761cb7808b6a17a68c90b0fce023433e101149970ab9c84e549cc3b4695",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/native-gameplay-checks.json": "7956bb74509cd85a6489cffa42d229a03445e9594b4de46aa7ce87435e00ade7",
+    "aethyr/tests/native-gameplay-driver.c": "c7c5154757af43e263cf3b20ceb0fd132e1d0252e7be3290059a325d32b2a530",
+    "apps/openagents-web/analytics.coax": "4d4f4d0a3a3dbbd6bfcf844d95750dc3bafec305a598b769f5d7b7cf3469fd00",
+    "apps/openagents-web/everglade-abilities.coax": "45da27adf9a36902f3f26f03f86d00147566add8a0cee0fe44c5e63d5bb6683c",
+    "apps/openagents-web/everglade-arrange.coax": "cd96ca5dc026b897fb6f58fcfcf7fdca4816518c408485bb30501932898ac630",
+    "apps/openagents-web/everglade-audit.coax": "ffbacbac2e7d1f60514bdcb7be166e8779db9bac46b212dcc75ddbafdd17fe45",
+    "apps/openagents-web/everglade-circle.coax": "b371bc3c218f3f018856bb8d0f85fae2e7e1582129c39b916eeac48b2aabd446",
+    "apps/openagents-web/everglade-dress.coax": "ed45263830ba0e691cbbe2b516bb5283ec395900f0a914b999220d462274e901",
+    "apps/openagents-web/everglade-edit.coax": "ed807d382ca8752568d73dfbb17c96b89079e0c1a406ea20dc29fb5e056d75c5",
+    "apps/openagents-web/everglade-fire.coax": "09be27127f529d601751cfb1a969545b1f54544b28ca7e0b56c86b571cd3547a",
+    "apps/openagents-web/everglade-forest.coax": "3b8e5dfd5db90c3d85cae2e26604ad71b9e218d5b9fe3f07aca961920578af22",
+    "apps/openagents-web/everglade-fork.coax": "b70d25bb4b222689a41ae77f8aa7b6948014bd1ea7d3001bb4f0d3baa2c7bba2",
+    "apps/openagents-web/everglade-frost.coax": "f4e10d6dd44fddaca965762f52081fa308d5b2ff33e8f3d83a02af4611c0432e",
+    "apps/openagents-web/everglade-grove.coax": "cbe547639c793dc8547e65224e55f16248647b7904c266ee84407f24d5e0bb43",
+    "apps/openagents-web/everglade-guard-ai.coax": "0bb68d17431da547b46940a7d68d1aedc32dfac7ceab49625ded4bd9a03b7256",
+    "apps/openagents-web/everglade-guide.coax": "bbd7d695848922f36cd3de6f909b7b967d699ae80f7b72b64c2a36cccf9ad2b4",
+    "apps/openagents-web/everglade-hammer.coax": "494e780679364c5942d7e9e25d892f4e526b0d0b5b0afbf705a2770fbdbc7803",
+    "apps/openagents-web/everglade-hotbar.coax": "578279a166c3dabbe93f00697d9aede4d68d788f8177d2224c05161407df90ba",
+    "apps/openagents-web/everglade-interiors.coax": "fa11b66cdcabd15703e8d8fd0db018e42ec2707ddf5f2424957854b7ce7a32d6",
+    "apps/openagents-web/everglade-items.coax": "a8355b6b7a6d264e8e6ce5b895b79df6a3e8ebdff613332aa0a7dbd1958e69e3",
+    "apps/openagents-web/everglade-lod.coax": "fc7e57b5e6ae2a14acbe2e6dd7f36141f43da8d5950deb23dff872a49fce8501",
+    "apps/openagents-web/everglade-marks.coax": "f2ee92e849e9f1b3b6e9c65620e2abf400730b9387dad06ac4079d68f6169f7d",
+    "apps/openagents-web/everglade-place.coax": "1303307c7487d0e3dee396df50822a76d9ceca9961e1ca519d63c638a30a11f2",
+    "apps/openagents-web/everglade-polar.coax": "b463bcdd97ea99ca9bd30814d1bfb02b7490653961a92864910096824f0b1817",
+    "apps/openagents-web/everglade-reply.coax": "5ddd53666f8642b7690ea3088d09c8d51d582999c10830ca60b292bf7b3dbfd5",
+    "apps/openagents-web/everglade-room.coax": "213db4b16f794b71267e962f8266107454d01e5ea1173c73ae085c3366aba062",
+    "apps/openagents-web/everglade-rubble.coax": "671399c74613ad432101d5aa9ba1d22dc687f1b8bd40454265955b1901278b2b",
+    "apps/openagents-web/everglade-sky.coax": "54ab47c088018854e1b4181344744eb8ad060c9321713d02e3570e1486f3d78a",
+    "apps/openagents-web/everglade-spells.coax": "0aca0144bf27d2c274257600037d94d6635ed9b0ca2ecc62319f8814c7e7f0f4",
+    "apps/openagents-web/everglade-stand.coax": "13274d2021c54b995ffe56e703273a23140db2a8410430d95ca445598c013ebd",
+    "apps/openagents-web/everglade-storm.coax": "f87dec052162a21bbe365724b1dfa6922a4be8b6310dea8eb3a505096f83a4cd",
+    "apps/openagents-web/everglade-tide.coax": "5e55f3f02f81e9bc4d3bcebeb8b5543e363a9bb180b1945c972b643b5981a68f",
+    "apps/openagents-web/everglade-track.coax": "29cbdf81d72bd56c5263dcfbf8eb534d0d019edc8f844b67f38d3e6ae5d8ca2b",
+    "apps/openagents-web/everglade-voice.coax": "c0754eb5bb40272998587ed10a9dcdcd451d02a152fb06f018d1e1cc924ce1ef",
+    "apps/openagents-web/everglade-watch.coax": "1b40ee9e6264ac191431950061b85c112eb7d8b35e9eafbc80bf8cacc47ba80f",
+    "apps/openagents-web/everglade-wild.coax": "b0489d204ec3413222ba09bdb22a2306bdf6356c3261b93a2a68da7fbac339b9",
+    "apps/openagents-web/everglade.coax": "2dd168f37cb52c5cc5bc6d2c81bf2812fd68970f5a5d50f50cb32399335a23fb",
+    "apps/openagents-web/font.coax": "ebfde251362f5fe02e86536132bd6556f730130e0874e157e2790c2a8e894414",
+    "apps/openagents-web/place-orbit.coax": "ac4432d626b377dcb0ffac025446264ad2346863e3217022a61f14f5becb7d46",
+    "apps/openagents-web/place.coax": "1399235910cc331506baf27830418e5cdd60873f1eaa1cbb6f55919c5a72fce9",
+    "apps/openagents-web/room.coax": "abd6988d8a8dc37490d91e0b330d029c7b1456daf3698c2ebc40308f70e62d57",
+    "apps/openagents-web/save.coax": "187524b26998e581219fab3604a1e1d9ec586c3a1abfbfcb4742d3360169ddc6",
+    "apps/openagents-web/world.coax": "601bec3da0379d041561084e27aa96a35871ae1eda56c74623a55e2886d7b946",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/camera.coax": "184e5c0557e51a5fe09d729aebdad4530a929a93fc3bc7255cdbc9c7be8eb26b",
+    "verse/demolish.coax": "a4805c987417d71391bc9fbd1521e4ff0871b63062b43cfa24d687526aaccce1",
+    "verse/edit/edit.coax": "516871d19eeb287c27f4bdf1fb1cfe1bd726ae13bb040d1037f6be2a55f89f82",
+    "verse/everglade/captain.coax": "cc1531304a7208a379aa1874161936b1303e5c64ab17fbb1f15d6ecb7d9e5451",
+    "verse/everglade/edits.coax": "eef5034d315126e3a65ceefb2c49aca7d93dea9a85d66805f0136f9dd578659c",
+    "verse/everglade/folk.coax": "b28f21bc7eccb3edeb636975bc5d189c16160a842634991a034ee8fee8175137",
+    "verse/everglade/guard-guide-game-types.coax": "735b2986230700d5acf9d995338b1a1497a37e7d42574917b4762ce52468c58e",
+    "verse/everglade/guard-guide-session-types.coax": "dd0d49eba3ed380e6f57459d9b6f92ec568875930e432a47ab15453bec27e770",
+    "verse/everglade/guard-guide-types.coax": "7217edcc6f1305f949b2868982d271091e7f076ceac5d48176d31f3f274233dc",
+    "verse/everglade/guard-types.coax": "cdcf76b5596b6ef1b6107632e4afc840d833be5fd9a37ff65bb311e4e0c45d33",
+    "verse/everglade/guide-route.coax": "a2ad0541b1cec5656a6bbdfa3b8746e50b4a02d3f38747520c0b361de7657ac7",
+    "verse/everglade/people-rig.coax": "6476b5eb7ce62f4600c7fbefc802f6033eea14ef95f6a7574394dcd7d0fe4d8c",
+    "verse/everglade/people.coax": "d7c614d2aaa811a42e811848b6a1c669091be300affd34c2703dddca8378cef7",
+    "verse/everglade/plan.coax": "1b75a0650e134df8beb811ca1ffa79d12afcc5eebfb0f8a4628fc7d8427128a2",
+    "verse/everglade/quests.coax": "d0752d0bc07b46a0f894e2205ca58c5a9af46380d559e6257d38cfcec5506c60",
+    "verse/everglade/ranger.coax": "eda71ac1ea4a0ca3a2f6d4cd03bc3faee5f2a438c36d3740105a52343f42bcaa",
+    "verse/everglade/routines.coax": "37ad336af63ab63927ac4559920b19580a3c6b19e325f99ed2d29ef80e00fd23",
+    "verse/everglade/rumours.coax": "d9fdb2d77b7a0b32cda1dbf1099ff77e474320823b5110337ee460b3cdbdd6b6",
+    "verse/everglade/watch.coax": "f7a23ab6dc196907cf805beef5f39ba9dc196fb0ae8ea3a0d9d45a9a42b73210",
+    "verse/flock.coax": "65786358bb260f4a15cc80301fdf71ed6a1803831a6574f5a15275062bd26d94",
+    "verse/rigid.coax": "0443f449a6f1cf6b43e1e42d22bb3410202ab8b668ed2e8eafc801741948afa2",
+    "verse/rules/srd5-combat.coax": "9809d480cb3a558410a9975bd05eb3d3e20071a1081d9b600f40de654e93b57e",
+    "verse/rules/srd5.coax": "90f0849db920e074353c3df4c4f3da43d9d6228e303b2c21dc7312a6600bb834",
+    "verse/skin.coax": "651b263f8378f0dd31f0227f289a79643a4b50a70edf8eb59bc2d84b23e99065",
+    "verse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "verse/style-preset.coax": "075c003bc47b7a86ca5a1ef5c7a97752378467fdafafc663bb384d6832c8e675",
+    "verse/style.coax": "a32a940e0fe61e02919c31e2231a34ba3d17dba5408c002f6b6b550024cd1e3b",
+    "verse/terrain.coax": "b454422a7b00a7571f0c373400b9385592b6e645d4ab5397555cf2551260b8c7",
+    "verse/water-spells.coax": "3d8ffbba1dd08d2f2aa1d8498defc830156bc554f8ddd1279d84353f37570775",
+    "verse/water-wade.coax": "8ea5ea4ec4f6501def2c45f991601200fbdf6600e3ae2ae4909cb50cded2acdd",
+    "verse/water-weather.coax": "f0f18084e12949a46b9dc065d83e7d74d9ee66712a59954c58ee1287479fc48a"
+  },
+  "compiler": "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "native_compiler": "/usr/bin/cc",
+  "native_compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "native_stack_bytes": 134217728,
+  "scope": "Ordinary Coax integration procedures with original bodies/#assert statements. Normal authority checks remain enabled. No native-check ABI, evaluator-parity, Wasm-execution or raster claim.",
+  "binary_sha256": "e54ac8e626914886ad711ac631d9eac839e4c9d606b5e5be6ed92ccb1b7f51aa",
+  "status": "passed",
+  "source_changes": [],
+  "commands": [
+    {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "aethyr/tests/everglade-spells-integration.coax",
+        "--library",
+        "--release"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 350.120475291973,
+      "timeout_seconds": 810,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/emit.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-pthread",
+        "-I/private/tmp/aethyr-program-rebased-everglade-release",
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/native-gameplay-driver.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 7.531177500030026,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/compile.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "--assert-probe"
+      ],
+      "exit_code": -6,
+      "expected_assertion_trap": true,
+      "elapsed_seconds": 0.16306029196130112,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/assert-probe.log",
+      "log_sha256": "f145588dd86b73a0a7e802f7b96e65397283759e122672180018030b76288d25"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_0"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.04020408296491951,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-0.log",
+      "log_sha256": "5abc2fc82e4fbcda3b04cda2d5e18bda0b4199cfb02dcefec1e67d20bc4e124f"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_1"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.03157383401412517,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-1.log",
+      "log_sha256": "86f90956a8012c53e111502f99faea1dace2158e4a1dedd75b8f8131858a0a2a"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_2"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.030403958982788026,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-2.log",
+      "log_sha256": "e0bd826b231b0a9b50c1ef4885fb05e165e2f1eff6d865e43d20b9bae52961c9"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_3"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.038588082999922335,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-3.log",
+      "log_sha256": "1a81d03034e34e5f4c03be13c70cf195b9f80d9501e30b9de9db7a2aed1e2a21"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_4"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.023628875031135976,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-4.log",
+      "log_sha256": "914196a76b787b5dc31e40e1ace623714eda3edd1dc02bbb5a65ad4f901db1e6"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_5"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.0075630840146914124,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-5.log",
+      "log_sha256": "f80a9c6b098ee4d33f90afb66bbfa225bbaee060c00aa792d821d9173882b2be"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_6"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.01162737503182143,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-6.log",
+      "log_sha256": "b21df751ea5d4fe2336877e03407f040138f9a5767e55f4f699b7956a816134c"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_7"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.007292459020391107,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-7.log",
+      "log_sha256": "ce9b6065278db7aa2c7b21d2009ee2aed9ead13c88bd7d0753d9416be6893128"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_8"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.01714870799332857,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-8.log",
+      "log_sha256": "7bb270876eec12b2f663e425a431987f80a35ac98d94e652a272b315882b2f16"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_9"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011637291987426579,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-9.log",
+      "log_sha256": "6008500f9e121a45722fdb90fabe50f629e769d3ad505c0a6e8f5d14dd8b3f6e"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_10"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.00710483401780948,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-10.log",
+      "log_sha256": "884098194c2d4d834b8e8e4d13c233828b6ca1a121c43346a0f6c37150dbe582"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_11"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.00986074999673292,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-11.log",
+      "log_sha256": "aa4e9580399611e6c20412cb8aef2a1db0a6f030e052d6253838a9a2ae709088"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_12"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.016415582969784737,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-12.log",
+      "log_sha256": "1bff5be54ad10cb11a24c20e97a8db876316bd7585c565c59bae4ed03b0d05e0"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_13"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010811000014655292,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-13.log",
+      "log_sha256": "d763001ae18b18f85179104c9670b93658dd10854b1639726240e159955a2bde"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_14"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.014270792016759515,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-14.log",
+      "log_sha256": "3a5a85c08e3dd076be0981bd8439c48dfbd41f4a6e93a2d3232becc21f918727"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_15"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.012209292035549879,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-15.log",
+      "log_sha256": "d144d8d91cbc115e7e7648c781510785d94d9be6aad9294f9e83d3db8280c6e0"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_16"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.014305624994449317,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-16.log",
+      "log_sha256": "3e6c2be8d985651c63a406f96bb4ed52b5c7df6499413a8fd2cfa86c5e09e525"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_17"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.01983991701854393,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-17.log",
+      "log_sha256": "8891a45d1df3365ef38b236f7548baceac48dafb23f583fd3aef73eb976b9ed7"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_18"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010448874963913113,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-18.log",
+      "log_sha256": "957e97bbf1e61a8df1ef75eaad56e9b22885fdb2aeeb3fcac82c6c6cda331dc7"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_19"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010918541986029595,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-19.log",
+      "log_sha256": "cea1bf159923c80f606a3ec5c39ac17910eec8f684feade8e80f5db552748a17"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_20"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.002820833004079759,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-20.log",
+      "log_sha256": "dbd954d2c17bacae6bd60ec4de054766798715f41d6662a69fcbae72381e9000"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_21"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.02203245903365314,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-21.log",
+      "log_sha256": "ee31193c5d5b395ffd7e3d5ffdb2b11bbc9d8a255e6b2edc64226b81c47ec73c"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_22"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.020647540979553014,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-22.log",
+      "log_sha256": "d9c9d1f821f7be8b63f4596c27d60ed5aacc06c4939cf449a102ed5e57d61c32"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_23"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011206874973140657,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-23.log",
+      "log_sha256": "54f1ac7679941388a0b5cde90a1a35b0bdd87bbab37a90fd37e69611938e6a8f"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_24"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.013650999986566603,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-24.log",
+      "log_sha256": "022d80020e8f58b19a50be38ed616ae75c103bab3f28bb5630af944134120d9e"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_25"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.01053891598712653,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-25.log",
+      "log_sha256": "aa5327c73db2e5f5c9168a246fab1782c18da9c36c3504f8ddfcfb033a4127e1"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_26"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010673374985344708,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-26.log",
+      "log_sha256": "d2cb5793bc74bc2272b207e48039f04eee2a362ce2873069bfe2d02afec3ed1d"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_27"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.01097687502624467,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-27.log",
+      "log_sha256": "5d05f47b5daaa2bd5e6004e8fa49d3baba7f0a5af45dd2363b9fe546f68a014f"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_28"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.00999741698615253,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-28.log",
+      "log_sha256": "5051aade2bbc1ce54d20b19b92407e68de7da8e99a4d20970d266562496ba29f"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_29"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.013680708012543619,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-29.log",
+      "log_sha256": "7c89ab89e6e73289beac1967e855d9d1bedbc9c222d0b3a2cfcf65f6c9b95a46"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_30"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010441208025440574,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-30.log",
+      "log_sha256": "e4fbef09c62186b873637cac3831ea24e9a2afd29174c21e04c7f76fd8106acd"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_31"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010471124958712608,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-31.log",
+      "log_sha256": "118b897ec72d6f58a7673b5fca838d03f00c7911db2bf5fe1e0f83dc5312b7a7"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_32"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.012235791946295649,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-32.log",
+      "log_sha256": "412fa1ed974b9afde5eb3dec3163c2695a79a464616646a4d366bd775425cdab"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_33"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011393374996259809,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-33.log",
+      "log_sha256": "86a18dfea333cd46bbad6348a2b8f700f15fa710631b720b570285035af11b9b"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_34"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011833042022772133,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-34.log",
+      "log_sha256": "212886f0838afff096014e650ad24403f311a835af9ee667bfce04abfc789edb"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_35"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.013442917028442025,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-35.log",
+      "log_sha256": "5d64d5ba8b163f956c109002009367bcd51cefd58de806d8eb831224a52a986e"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_36"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009986124990973622,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-36.log",
+      "log_sha256": "60a66c73741928f5cd77bf4d3b141a2fd23b5c264cda65e56bcd69480b849b21"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_37"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010031584009993821,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-37.log",
+      "log_sha256": "468f026c00a76014b5fad72dd76c4f03082ca4febe426197eca553cb7a0ed679"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_38"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010404540982563049,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-38.log",
+      "log_sha256": "fca7d9b27f297c0a364cc0cb4c34c5fc1b7d7074b1f3cebd11647412b79e9c15"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_39"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.01004095800453797,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-39.log",
+      "log_sha256": "af1891ec218d221c5b759fe620215e19e535f578fdebb9d05ed468290041d0f5"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_40"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011464749986771494,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-40.log",
+      "log_sha256": "7da482514d16f20a85b1743f536f841e117536d7cbdf74916e73c4249e56acec"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_41"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010624666989315301,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-41.log",
+      "log_sha256": "110d629888b4d1aff330c95ce2ef54e42ead61c3b021a3f930c5432b2579aa8e"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_42"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.0102199999964796,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-42.log",
+      "log_sha256": "2bca282dc8013e7be930e84c746bc3c977d259209d0a5a0d7c9d5824fb5d27d2"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_43"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011361584009137005,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-43.log",
+      "log_sha256": "76f81370b9556b2f4215128aa02b11760ac97ce3a7f2a680b33af11b8a0b2de8"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_44"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010549291037023067,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-44.log",
+      "log_sha256": "762255134098ba22ef630b008956a3971a6c497d1dadf5cec54fb8d3d755774c"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_45"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010256042005494237,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-45.log",
+      "log_sha256": "ace3af69b6ffcec09ed2e647c98290676853b11582d66bd5cf2451f7a2258a51"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_46"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009859250043518841,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-46.log",
+      "log_sha256": "c83459577ae45346c37ebc2a67c2ea7531c9b478ea87314f2adc45cb83510e08"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_47"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.01012712501687929,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-47.log",
+      "log_sha256": "35a4cc338685b5d54ed6938390e798b6d550d459a8f9821161df6ec76972d261"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_48"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009820125007536262,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-48.log",
+      "log_sha256": "908be482ff802c6df03a36114aa55f89c71eb3a64ec294ed6480a5cd1ba37adc"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_49"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009714332991279662,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-49.log",
+      "log_sha256": "ad29e4815c1d70593ed54d46718eee7f523b9f95543b0523fcd9f0485b105247"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_50"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009845000051427633,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-50.log",
+      "log_sha256": "08136983449de090ce9356b3da215fd0c31d65da3f4d8c4c29ba0671b87ba92e"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_51"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009887457999866456,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-51.log",
+      "log_sha256": "efd325c75af222ecf5bf1238437d1adbfdeb9d092059b4c8b7caf2930f8093bb"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_52"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.00981008296366781,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-52.log",
+      "log_sha256": "f03f1401059cbd4812e1596b79b03babb4461e12c76b21a14a93a6c625d69c81"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_53"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010003166971728206,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-53.log",
+      "log_sha256": "5178a272b92c22273f3952852f2b51d9b85f95eb0b198b5f3f1ab11cecbcfc1d"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_54"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011115833010990173,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-54.log",
+      "log_sha256": "898f7db935ffd19ac074a64bf213657fdb585dfeece8b9f2fc94f05c756f25cc"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_55"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011238250008318573,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-55.log",
+      "log_sha256": "4fe6c1872bf85a6334b2cdb836bf0350255e0fb229c1dcdc9d27d3b72e26a6d3"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_56"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.010007166012655944,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-56.log",
+      "log_sha256": "16c85570b70bdc6c0f820df6e33f517fbfe9d0e98c35f0a6d94718f05dff7853"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_57"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009972125000786036,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-57.log",
+      "log_sha256": "b9cd017f988b1e1ddfaa51635e67adf2f341be492e40fa46f1b0489a2f01b29f"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_58"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009732708043884486,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-58.log",
+      "log_sha256": "05220aa87ff4131995d46b0e60409193e4ba70d38c7eef15ba984ea5a7823da3"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_59"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.009752665995620191,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-59.log",
+      "log_sha256": "7862dbbbe2abd0007b4255ed519702213b77967803447b8cea8be303d534c5a3"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_60"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.018373875005636364,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-60.log",
+      "log_sha256": "97b99e5107d8d7f661eb1beac3e47d717a634cc651606ffa888b80e1d2baed83"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_61"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.022577500029001385,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-61.log",
+      "log_sha256": "a1cd4b538ef700a0daac861faae6e8dddb2c5dcdc5930a43b559ffb511f1ae01"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_62"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.01776762498775497,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-62.log",
+      "log_sha256": "62bd22e5ec1c0001eafc162226a344e0f33a5fa740a03f3ed3c21ca1f335f296"
+    },
+    {
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_63"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 0.011635125032626092,
+      "timeout_seconds": 180,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/scenario-63.log",
+      "log_sha256": "da3916cec807a427033c25302cd7c4c6453be4a41ae7b6f7bc5f2c4b47021e23"
+    }
+  ],
+  "outcomes": [
+    {
+      "procedure": "aethyr_native_everglade_0",
+      "original_name": "spells: 1 picks Meteor Swarm, a click casts it at the inn, and the inn breaks; R stands it again",
+      "original_body_calls": 1,
+      "body_sha256": "cac93df42943777ecfdff281547bb7da92e65d5d084ee18c7e30d156bec83b07"
+    },
+    {
+      "procedure": "aethyr_native_everglade_1",
+      "original_name": "spells: casting leaves the camera where the player has it: no lift, no pull, no pan; a blast only shakes it, and it settles back",
+      "original_body_calls": 1,
+      "body_sha256": "395c341d3349d30bc003f82ccd5358413277e285809daa762351babf6e266998"
+    },
+    {
+      "procedure": "aethyr_native_everglade_2",
+      "original_name": "from the road in past the boulder by it: round the rock and on into the trees",
+      "original_body_calls": 1,
+      "body_sha256": "ad377707039102e1e3e535e02dc116e7e3af9288938eb082058a282c3dcf7934"
+    },
+    {
+      "procedure": "aethyr_native_everglade_3",
+      "original_name": "watch: a meteor on the inn is a crime the watch hear and hunt you for; R stands the fallen up",
+      "original_body_calls": 1,
+      "body_sha256": "50ee8e9546f982e935f721152e6efb7c6f718bd99e605f65522247c21951c308"
+    },
+    {
+      "procedure": "aethyr_native_everglade_4",
+      "original_name": "watch: your own Thunderbolt at your feet hurts you and throws you; a Meteor Swarm on you kills you and you fall",
+      "original_body_calls": 1,
+      "body_sha256": "bbee2d3b6d943364b6f082bc927ff95fd6ac0c4f93f487d4a1374e012d1b4bdd"
+    },
+    {
+      "procedure": "aethyr_native_everglade_5",
+      "original_name": "no C line, no Ranger: nothing drawn for it, the rest draws",
+      "original_body_calls": 1,
+      "body_sha256": "a7ad4fd3cf3c91f9536f07a0ecb8fa5da0f0ead3913c067462edcbdfe308fb84"
+    },
+    {
+      "procedure": "aethyr_native_everglade_6",
+      "original_name": "a quest save comes back for its player only",
+      "original_body_calls": 1,
+      "body_sha256": "437c770ca2eeda43e3cae943312d9d2a21def0256b6af7790d5eb60ade9e04f6"
+    },
+    {
+      "procedure": "aethyr_native_everglade_7",
+      "original_name": "the painterly day: a cycling clock on a still page shows noon",
+      "original_body_calls": 1,
+      "body_sha256": "041e80300f7bee83b1c98383d5bc3decdbdae92489bd5846ca89f1ab5f68d1c3"
+    },
+    {
+      "procedure": "aethyr_native_everglade_8",
+      "original_name": "Everglade's frames fit its declared budget",
+      "original_body_calls": 1,
+      "body_sha256": "9b3108608f48dc5dda52da44608fbb0ce52c60afdfb4149be391cef2f6e5b7bd"
+    },
+    {
+      "procedure": "aethyr_native_everglade_9",
+      "original_name": "voice edits: the heard words go to the server as they are; its typed answer places, removes and undoes",
+      "original_body_calls": 1,
+      "body_sha256": "f57dda3cf9497e5dd3a7a512d9bd7136429cfc52ee2af22a6f29ec69e6af84f7"
+    },
+    {
+      "procedure": "aethyr_native_everglade_10",
+      "original_name": "the shared layer: a realm admin's EDIT opens edit mode and the board; an accepted card is placed; DONE closes it",
+      "original_body_calls": 1,
+      "body_sha256": "f3f193c607d04ba1c346c95971e12f1f7973790bb55e9b1d82fc39d2552cb6c5"
+    },
+    {
+      "procedure": "aethyr_native_everglade_11",
+      "original_name": "spells: no ruleset, no bar; srd5 gives the four spells, and the town's pieces their SRD stats",
+      "original_body_calls": 1,
+      "body_sha256": "5d5a399e23b9b02e6559ceba325134e139bbbf86066df3401ab578882fab49a1"
+    },
+    {
+      "procedure": "aethyr_native_everglade_12",
+      "original_name": "spells: the Thunderbolt's bolt comes down and blasts a hole; a phone taps a slot, then the target",
+      "original_body_calls": 1,
+      "body_sha256": "1695fefdaaa1a3584caf77c9fcda476aafc6ae1f8fd3e8e794aca597752a1bda"
+    },
+    {
+      "procedure": "aethyr_native_everglade_13",
+      "original_name": "spells: a broken building stays broken, however long you are away, until R or a long rest",
+      "original_body_calls": 1,
+      "body_sha256": "8d400dc67449c449725c56aaf9fd702e890b894ae68d13aed218cf797ef616d7"
+    },
+    {
+      "procedure": "aethyr_native_everglade_14",
+      "original_name": "spells: aimed at a wall the aim takes the wall's face and the meteors burst on it; on the ground they fall from all but straight above",
+      "original_body_calls": 1,
+      "body_sha256": "bf91e13ccce33276140f7c384503f87e6e78444096993a8c8f169995feef3a0a"
+    },
+    {
+      "procedure": "aethyr_native_everglade_15",
+      "original_name": "spells: nothing a spell leaves stays up in the air: the observatory's dome falls when its tower breaks, lies still, and stands again with it",
+      "original_body_calls": 1,
+      "body_sha256": "0e81a2d47be2ec3ede7b0dd439c073dfa0e087b7419e036f6e8a512379708614"
+    },
+    {
+      "procedure": "aethyr_native_everglade_16",
+      "original_name": "spells: the Water Orb is water: cast at the inn every piece stands whole, and by a barrel the splash sends it rolling",
+      "original_body_calls": 1,
+      "body_sha256": "d6942cc6a5f5152d8ee4c8f238c17ed0630116cac68e806405de89c696177d35"
+    },
+    {
+      "procedure": "aethyr_native_everglade_17",
+      "original_name": "spells: the bar is a compact tray: 26-unit icons 29 apart, 8 over the bottom, each slot's picture; a held finger shows its card and doesn't cast",
+      "original_body_calls": 1,
+      "body_sha256": "e27c73f6a1ba6a559a42265ca23c480dc6d14921dee17801147cf4e1620a6850"
+    },
+    {
+      "procedure": "aethyr_native_everglade_18",
+      "original_name": "spells: the bar's rows: Shift reaches the second, over the first on a wide screen, Ctrl's beside them; a phone shows one row and a switcher",
+      "original_body_calls": 1,
+      "body_sha256": "6f89fa0cf78a388c517e613cc4eaa90969feb6255b0b7b02b244ceea8380fdb5"
+    },
+    {
+      "procedure": "aethyr_native_everglade_19",
+      "original_name": "spells: on a phone the bar is one row low on the screen, the rest a tap away in the tray, every slot reachable",
+      "original_body_calls": 1,
+      "body_sha256": "316952a82eb16f5ea73f34ab88833f82aaa81303384b8b6b868c843da102a379"
+    },
+    {
+      "procedure": "aethyr_native_everglade_20",
+      "original_name": "the bar: a swap moves the spells, not the keys; its text round-trips; a bad or older text is refused",
+      "original_body_calls": 1,
+      "body_sha256": "1567dfacdb8940f142db1869c0d8c25f3f67200bbd0c51aaff3e76b455f87cd1"
+    },
+    {
+      "procedure": "aethyr_native_everglade_21",
+      "original_name": "the bar: Shift and a drag swaps two slots and casts nothing; let go off the bar, nothing moves; a phone holds and drags",
+      "original_body_calls": 1,
+      "body_sha256": "de8dd4703eb2a98312caa476ad11007310fdc48986fff41556f6e0b9f3de04b5"
+    },
+    {
+      "procedure": "aethyr_native_everglade_22",
+      "original_name": "abilities: Black Tentacles rise in a 20-foot square, seize the props in reach and hold them up, and restrain who fails",
+      "original_body_calls": 1,
+      "body_sha256": "853b53dec52fb5a002f2d0fed3b368680b9c609db38c14965d3e832b1b74f928"
+    },
+    {
+      "procedure": "aethyr_native_everglade_23",
+      "original_name": "abilities: a guard hunting you on a Wall of Stone's far side runs round it, never through it; when it falls, straight on",
+      "original_body_calls": 1,
+      "body_sha256": "c066af2ea93396f4846c38f87355c15f8bceadc60845f44c0c7ba05191006edc"
+    },
+    {
+      "procedure": "aethyr_native_everglade_24",
+      "original_name": "frost: an Ice Storm hurts who stands in it (you too), leaves walkable ice on a pond that holds you over it, then thin ice that breaks",
+      "original_body_calls": 1,
+      "body_sha256": "4916ddf9d51b2c7572ebfd48e8801bde6d8f95fd13f62c7c92367baf1357ed10"
+    },
+    {
+      "procedure": "aethyr_native_everglade_25",
+      "original_name": "frost: a Sleet Storm knocks down who fails its save, puts out a fire, hides what is behind it, and Shift+6 ends it",
+      "original_body_calls": 1,
+      "body_sha256": "90f60f42e7baff1396747563fb2f6891ea19052c86fd2321f7544f3911240f3a"
+    },
+    {
+      "procedure": "aethyr_native_everglade_26",
+      "original_name": "frost: you slip on the ice and lie Prone for a moment, unable to move; in the sleet a fall ends your Concentration",
+      "original_body_calls": 1,
+      "body_sha256": "da1d36501e9212167c9f369071378663f911b605097031015834b8438bf640d4"
+    },
+    {
+      "procedure": "aethyr_native_everglade_27",
+      "original_name": "tide: Control Water floods, parts a dry trench to walk, turns the current and whirls; Shift+8 steps through them and ends it",
+      "original_body_calls": 1,
+      "body_sha256": "cbbccf6a7268ecb8c8df49aedf7d8832e154e2133b20e160e9dcaa19b62c783c"
+    },
+    {
+      "procedure": "aethyr_native_everglade_28",
+      "original_name": "grove: Moonbeam shines where you click, its radiance falls on who stands in it (you too), a click moves it, and Shift+- ends it",
+      "original_body_calls": 1,
+      "body_sha256": "470ae1b6086fc82baaa2b76eedd0e12ef4eb409bf129c08882019cd869e1bdd1"
+    },
+    {
+      "procedure": "aethyr_native_everglade_29",
+      "original_name": "grove: Ctrl+1 lights Produce Flame in your hand (a light on the town); hurled, it strikes, scorches and sets debris burning; Starry Wisp leaves its mark starlit; Poison Spray's mist hangs",
+      "original_body_calls": 1,
+      "body_sha256": "ca0f84e2515a036b7d5e6f1b592abcc254ffe6a3448f69f27226b9da823e3227"
+    },
+    {
+      "procedure": "aethyr_native_everglade_30",
+      "original_name": "grove: Shillelagh's staff strikes in reach for 1d10 + 3 force; Elementalism beckons each element in turn; Entangle restrains who fails, slows you in it, and a lost Concentration ends it",
+      "original_body_calls": 1,
+      "body_sha256": "471a7f90f419d3521875880451bc38f93ce3f3297f9a5ad9ce0a12fdd9625a64"
+    },
+    {
+      "procedure": "aethyr_native_everglade_31",
+      "original_name": "wild: Ctrl+7 Faerie Fire outlines who fails in its cube (attacks at them have Advantage; outlined, the town's at you have it), Ctrl+8 Healing Word heals them or you, never the dead",
+      "original_body_calls": 1,
+      "body_sha256": "4849a92757118d51578ade6a69e70f31eeee7c7f2da7cc4ecf108f0649775e4b"
+    },
+    {
+      "procedure": "aethyr_native_everglade_32",
+      "original_name": "wild: Spike Growth's thorns tear whoever walks in them (you too) 2d4 a 5 feet; Call Lightning's cloud gathers over you and its bolt strikes 3d10 where you click under it",
+      "original_body_calls": 1,
+      "body_sha256": "cdb96bce6f04acd128f60617686cf49676e451164a0bfb891a74608f948ca064"
+    },
+    {
+      "procedure": "aethyr_native_everglade_33",
+      "original_name": "wild: Wall of Fire rises across your view (5d8 to who is in it, its far side burns), the town walks round it; fire on the grass spreads, burns who stands in it, and water puts it out",
+      "original_body_calls": 1,
+      "body_sha256": "c932cea5f999d6472724b1e6807729d4e3a8a784026b7963eb4c5f315413672c"
+    },
+    {
+      "procedure": "aethyr_native_everglade_34",
+      "original_name": "fire: Fire Storm sets a house burning; a bolt catches wood about half the time; fire spreads along a fence, burns it to collapse, and frost puts it out",
+      "original_body_calls": 1,
+      "body_sha256": "4d58a65c4a5c12d891ec6c09cdc2c078cd30b2f91eb75bce46d9bd81e630e1cb"
+    },
+    {
+      "procedure": "aethyr_native_everglade_35",
+      "original_name": "fire: the observatory's dome breaks under a Meteor Swarm into slabs that fall to the ground; R stands it again",
+      "original_body_calls": 1,
+      "body_sha256": "6c2615dba7bb81a10cee4e1832ae8ee6893a29f460b2a30d9b709ef49ec7de96"
+    },
+    {
+      "procedure": "aethyr_native_everglade_36",
+      "original_name": "trees: a meteor beside the tree line fells the trees away from the blast; they lie where they fell, near and far; R stands them again",
+      "original_body_calls": 1,
+      "body_sha256": "7f123645c528c76475551807eb86657bc7aecbfc870632784bbc39e29fa48162"
+    },
+    {
+      "procedure": "aethyr_native_everglade_37",
+      "original_name": "trees: flame lights a tree; it burns black, its leaves go, it spreads to the crowns by it; water puts it out; nothing grows back",
+      "original_body_calls": 1,
+      "body_sha256": "9044a050cc9ca05ba6fda07fc8da3bf7ac34fdfe2f3e7fb4debe5b01a4eec611"
+    },
+    {
+      "procedure": "aethyr_native_everglade_38",
+      "original_name": "trees: a bolt by a tree strikes it and splits it; fire deep in the woods is no crime, by the palisade the watch hears it",
+      "original_body_calls": 1,
+      "body_sha256": "d333cfa8f2ef7e142ac940621d9f0be119bc62e26252b0747af70997f6954bcb"
+    },
+    {
+      "procedure": "aethyr_native_everglade_39",
+      "original_name": "circle: Conjure Animals' pack tears whoever comes within 10 feet (you too), Polymorph makes a frog of them or a bear of you, Mass Cure Wounds heals six",
+      "original_body_calls": 1,
+      "body_sha256": "81e6981f6cb46eefecf3373f44999ba34fd560819c5a70264ad9632a717cd2de"
+    },
+    {
+      "procedure": "aethyr_native_everglade_40",
+      "original_name": "circle: Sunbeam blinds or burns down its line (Blinded, their blows at you have Disadvantage), Wall of Thorns tears who is in it (you too) and the town walks round it, Fire Storm's ten cubes burn and catch the grass",
+      "original_body_calls": 1,
+      "body_sha256": "69653ac83e105b9779e3af6eafcd2c3c2883c22d85fc7f53b6f0039852fbd439"
+    },
+    {
+      "procedure": "aethyr_native_everglade_41",
+      "original_name": "storm: Sunburst burns and blinds in 60 feet (you too, your attacks then at Disadvantage), Storm of Vengeance's rounds fall on whoever is under it (you too)",
+      "original_body_calls": 1,
+      "body_sha256": "40c987b0597db66580671d174965d1e4cd9c77978cdf2c0edc8ea4ec73d6fdef"
+    },
+    {
+      "procedure": "aethyr_native_everglade_42",
+      "original_name": "storm: Shapechange's mammoth (126 Temporary Hit Points, gores, no spells) turns bear, wolf, then you; Wild Resurgence makes a wolf of you; Speak with Animals; R is a Long Rest",
+      "original_body_calls": 1,
+      "body_sha256": "2d138b174c70016341f9824d8ccd4fae4daee1e8d78a2f42ecfc6c5d0da5dc97"
+    },
+    {
+      "procedure": "aethyr_native_everglade_43",
+      "original_name": "polar: Ray of Frost hits for 2d8 and slows, Fog Cloud hides who is in it, Hold Person paralyzes (your blows at Advantage) until a save, Cone of Cold freezes the 60-foot cone and never you",
+      "original_body_calls": 1,
+      "body_sha256": "54aa27fc01f4855436d066512d8fc6d4532d845c4ef49f5518685e10fd1e75fb"
+    },
+    {
+      "procedure": "aethyr_native_everglade_44",
+      "original_name": "rubble: a falling chunk strikes the guard under it, a slow one doesn't; the blocks of a crumbled panel strike you",
+      "original_body_calls": 1,
+      "body_sha256": "31cbfab00c5786096251fae744f14feaa3b1654acf65377270fe4eaef7068d4a"
+    },
+    {
+      "procedure": "aethyr_native_everglade_45",
+      "original_name": "audit: Meteor Swarm, the Thunderbolt and the Mega Thunderbolt blast the guard they strike; the Water Orb's splash too",
+      "original_body_calls": 1,
+      "body_sha256": "f29ef4e33775a5ab7925819f5e31c12edc09b08a00ab1d9237e63e64cfa49af1"
+    },
+    {
+      "procedure": "aethyr_native_everglade_46",
+      "original_name": "audit: Wind Wall's rising, Gust of Wind's push and Thunderwave's boom reach the guard in front of you",
+      "original_body_calls": 1,
+      "body_sha256": "f16d039f1ae455bca85411383ef248cbd8195b0e460f590d9dc539ed68e5be3c"
+    },
+    {
+      "procedure": "aethyr_native_everglade_47",
+      "original_name": "audit: Black Tentacles crush and restrain the guard in their square, and the one who walks in",
+      "original_body_calls": 1,
+      "body_sha256": "94bd3e9fed52c0b2852b7eb034c244a5f2025738dfd1f09ffdf8cdfdfe463b1d"
+    },
+    {
+      "procedure": "aethyr_native_everglade_48",
+      "original_name": "audit: Ice Storm's hail hurts the guard under it; Sleet Storm knocks down the one who walks in",
+      "original_body_calls": 1,
+      "body_sha256": "72ef28801d545067b1077ce626bd7df9a1855da1e89a9ec31461df6856db01bf"
+    },
+    {
+      "procedure": "aethyr_native_everglade_49",
+      "original_name": "audit: Moonbeam sears the guard who walks into it; Produce Flame, Starry Wisp and Poison Spray strike a guard",
+      "original_body_calls": 1,
+      "body_sha256": "79c74138a8eb5b8eafbee9155cb7922a408002c0eed5298cc18dab21d72008a6"
+    },
+    {
+      "procedure": "aethyr_native_everglade_50",
+      "original_name": "audit: Shillelagh's staff and Ray of Frost strike a guard; Hold Person paralyzes one; Entangle restrains one",
+      "original_body_calls": 1,
+      "body_sha256": "d69f21e9e149080af6d20d28af09d7ffce332409b8a3cd7b2b4c0d2040e3047d"
+    },
+    {
+      "procedure": "aethyr_native_everglade_51",
+      "original_name": "audit: Faerie Fire outlines a guard; Spike Growth tears the one who walks in it; Call Lightning's bolt strikes one",
+      "original_body_calls": 1,
+      "body_sha256": "b4c0fbd9b1f2dc7d56b1846c425a26b4fc80034579930efd52c7d4d3aad5290f"
+    },
+    {
+      "procedure": "aethyr_native_everglade_52",
+      "original_name": "audit: Wall of Fire and Wall of Thorns burn and tear the guard who walks into them after they rise",
+      "original_body_calls": 1,
+      "body_sha256": "2fb15a78f520ac01810a425579825aceefc40a076dad51d1b54660aee34d4d23"
+    },
+    {
+      "procedure": "aethyr_native_everglade_53",
+      "original_name": "audit: Fire Storm burns the guard in its cubes and the one who runs into them while they roar; each shows its number",
+      "original_body_calls": 1,
+      "body_sha256": "a4e33d05deb1aaef6cdd4640a67fc90ec2f5ed64962ca2413d33abe0e6fa208d"
+    },
+    {
+      "procedure": "aethyr_native_everglade_54",
+      "original_name": "audit: Conjure Animals' pack, Sunbeam, Sunburst, Storm of Vengeance and Cone of Cold hurt a guard; Polymorph makes one a frog",
+      "original_body_calls": 1,
+      "body_sha256": "b59916fa7f39646e610c7ced097a530d73eb5f2b27482c5528a5e2cc62db56a5"
+    },
+    {
+      "procedure": "aethyr_native_everglade_55",
+      "original_name": "audit: an Ice Knife bursts on a guard, Polymorph makes one a frog, Reverse Gravity lifts one or makes them hold on",
+      "original_body_calls": 1,
+      "body_sha256": "c3a3e3716fcef187af232625fc554bdc0b5fc58d6a3a92e0e126210937edd026"
+    },
+    {
+      "procedure": "aethyr_native_everglade_56",
+      "original_name": "audit: the grass afire burns the guard who walks into it",
+      "original_body_calls": 1,
+      "body_sha256": "73b1714801340a6baec7a5320afff3949da475ebb8068386d392e9b554431e0d"
+    },
+    {
+      "procedure": "aethyr_native_everglade_57",
+      "original_name": "audit: Produce Flame hurled at a guard turns them on you, hit or miss",
+      "original_body_calls": 1,
+      "body_sha256": "eb55fb202aca7ad109b78d57cd4004d21762ee66c1cfe6e46f38c0f65dd1b10b"
+    },
+    {
+      "procedure": "aethyr_native_everglade_58",
+      "original_name": "audit: Produce Flame hurled at a building turns the guard who sees or hears it",
+      "original_body_calls": 1,
+      "body_sha256": "0e3b43df37509bf9c230535b76d65a59416328d1494e54ab64eb0b979c7bdd93"
+    },
+    {
+      "procedure": "aethyr_native_everglade_59",
+      "original_name": "audit: a Produce Flame landing beside a guard turns them",
+      "original_body_calls": 1,
+      "body_sha256": "384493a46402396514111a01dc503c716dcfae18ba548f95378d489b392ffefe"
+    },
+    {
+      "procedure": "aethyr_native_everglade_60",
+      "original_name": "watch: you die levitating 10 m up and stand again at the Road In on the ground, Levitate ended",
+      "original_body_calls": 1,
+      "body_sha256": "dcc1e36074e11918030f474bce29a1b58ed37ffab3d3a3cddd6693ec04ab8bde"
+    },
+    {
+      "procedure": "aethyr_native_everglade_61",
+      "original_name": "watch: WANTED 5 calls the company in at the gate; they are drawn in their ranks' colours, casters bare-handed, with five stars lit",
+      "original_body_calls": 1,
+      "body_sha256": "f0ec6ab7e83073cd8ece4499a8c3fb2c98f7fea51476766f58e61d256fd4f00d"
+    },
+    {
+      "procedure": "aethyr_native_everglade_62",
+      "original_name": "first goal: a fresh save draws its goal line in the first frame, Bram marked; each step done moves it on, and a quest taken ends it",
+      "original_body_calls": 1,
+      "body_sha256": "0e6b6154eb3f400106eca69b223d27eea138e5c6202eb3ec4fbd1c8e2408cf32"
+    },
+    {
+      "procedure": "aethyr_native_everglade_63",
+      "original_name": "reply: the reply page takes its words and seed, stands you facing the house and waits for the town",
+      "original_body_calls": 1,
+      "body_sha256": "76100828db758a4d2778fda2570751229859d2a912c7aa85c4bcf0db5f334c48"
+    }
+  ],
+  "emission": {
+    "kind": "normal Coax C library emission; authority enabled",
+    "entry": "aethyr/tests/everglade-spells-integration.coax",
+    "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+    "coax_flags": [
+      "--release"
+    ],
+    "sources": {
+      "aethyr/budget.coax": "4b188127c8fa9a250d3a3ec7a2065611e90ea309a941c387a24c4ba478275036",
+      "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+      "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+      "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+      "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+      "aethyr/tests/everglade-spells-integration.coax": "ccba4761cb7808b6a17a68c90b0fce023433e101149970ab9c84e549cc3b4695",
+      "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+      "apps/openagents-web/analytics.coax": "4d4f4d0a3a3dbbd6bfcf844d95750dc3bafec305a598b769f5d7b7cf3469fd00",
+      "apps/openagents-web/everglade-abilities.coax": "45da27adf9a36902f3f26f03f86d00147566add8a0cee0fe44c5e63d5bb6683c",
+      "apps/openagents-web/everglade-arrange.coax": "cd96ca5dc026b897fb6f58fcfcf7fdca4816518c408485bb30501932898ac630",
+      "apps/openagents-web/everglade-audit.coax": "ffbacbac2e7d1f60514bdcb7be166e8779db9bac46b212dcc75ddbafdd17fe45",
+      "apps/openagents-web/everglade-circle.coax": "b371bc3c218f3f018856bb8d0f85fae2e7e1582129c39b916eeac48b2aabd446",
+      "apps/openagents-web/everglade-dress.coax": "ed45263830ba0e691cbbe2b516bb5283ec395900f0a914b999220d462274e901",
+      "apps/openagents-web/everglade-edit.coax": "ed807d382ca8752568d73dfbb17c96b89079e0c1a406ea20dc29fb5e056d75c5",
+      "apps/openagents-web/everglade-fire.coax": "09be27127f529d601751cfb1a969545b1f54544b28ca7e0b56c86b571cd3547a",
+      "apps/openagents-web/everglade-forest.coax": "3b8e5dfd5db90c3d85cae2e26604ad71b9e218d5b9fe3f07aca961920578af22",
+      "apps/openagents-web/everglade-fork.coax": "b70d25bb4b222689a41ae77f8aa7b6948014bd1ea7d3001bb4f0d3baa2c7bba2",
+      "apps/openagents-web/everglade-frost.coax": "f4e10d6dd44fddaca965762f52081fa308d5b2ff33e8f3d83a02af4611c0432e",
+      "apps/openagents-web/everglade-grove.coax": "cbe547639c793dc8547e65224e55f16248647b7904c266ee84407f24d5e0bb43",
+      "apps/openagents-web/everglade-guard-ai.coax": "0bb68d17431da547b46940a7d68d1aedc32dfac7ceab49625ded4bd9a03b7256",
+      "apps/openagents-web/everglade-guide.coax": "bbd7d695848922f36cd3de6f909b7b967d699ae80f7b72b64c2a36cccf9ad2b4",
+      "apps/openagents-web/everglade-hammer.coax": "494e780679364c5942d7e9e25d892f4e526b0d0b5b0afbf705a2770fbdbc7803",
+      "apps/openagents-web/everglade-hotbar.coax": "578279a166c3dabbe93f00697d9aede4d68d788f8177d2224c05161407df90ba",
+      "apps/openagents-web/everglade-interiors.coax": "fa11b66cdcabd15703e8d8fd0db018e42ec2707ddf5f2424957854b7ce7a32d6",
+      "apps/openagents-web/everglade-items.coax": "a8355b6b7a6d264e8e6ce5b895b79df6a3e8ebdff613332aa0a7dbd1958e69e3",
+      "apps/openagents-web/everglade-lod.coax": "fc7e57b5e6ae2a14acbe2e6dd7f36141f43da8d5950deb23dff872a49fce8501",
+      "apps/openagents-web/everglade-marks.coax": "f2ee92e849e9f1b3b6e9c65620e2abf400730b9387dad06ac4079d68f6169f7d",
+      "apps/openagents-web/everglade-place.coax": "1303307c7487d0e3dee396df50822a76d9ceca9961e1ca519d63c638a30a11f2",
+      "apps/openagents-web/everglade-polar.coax": "b463bcdd97ea99ca9bd30814d1bfb02b7490653961a92864910096824f0b1817",
+      "apps/openagents-web/everglade-reply.coax": "5ddd53666f8642b7690ea3088d09c8d51d582999c10830ca60b292bf7b3dbfd5",
+      "apps/openagents-web/everglade-room.coax": "213db4b16f794b71267e962f8266107454d01e5ea1173c73ae085c3366aba062",
+      "apps/openagents-web/everglade-rubble.coax": "671399c74613ad432101d5aa9ba1d22dc687f1b8bd40454265955b1901278b2b",
+      "apps/openagents-web/everglade-sky.coax": "54ab47c088018854e1b4181344744eb8ad060c9321713d02e3570e1486f3d78a",
+      "apps/openagents-web/everglade-spells.coax": "0aca0144bf27d2c274257600037d94d6635ed9b0ca2ecc62319f8814c7e7f0f4",
+      "apps/openagents-web/everglade-stand.coax": "13274d2021c54b995ffe56e703273a23140db2a8410430d95ca445598c013ebd",
+      "apps/openagents-web/everglade-storm.coax": "f87dec052162a21bbe365724b1dfa6922a4be8b6310dea8eb3a505096f83a4cd",
+      "apps/openagents-web/everglade-tide.coax": "5e55f3f02f81e9bc4d3bcebeb8b5543e363a9bb180b1945c972b643b5981a68f",
+      "apps/openagents-web/everglade-track.coax": "29cbdf81d72bd56c5263dcfbf8eb534d0d019edc8f844b67f38d3e6ae5d8ca2b",
+      "apps/openagents-web/everglade-voice.coax": "c0754eb5bb40272998587ed10a9dcdcd451d02a152fb06f018d1e1cc924ce1ef",
+      "apps/openagents-web/everglade-watch.coax": "1b40ee9e6264ac191431950061b85c112eb7d8b35e9eafbc80bf8cacc47ba80f",
+      "apps/openagents-web/everglade-wild.coax": "b0489d204ec3413222ba09bdb22a2306bdf6356c3261b93a2a68da7fbac339b9",
+      "apps/openagents-web/everglade.coax": "2dd168f37cb52c5cc5bc6d2c81bf2812fd68970f5a5d50f50cb32399335a23fb",
+      "apps/openagents-web/font.coax": "ebfde251362f5fe02e86536132bd6556f730130e0874e157e2790c2a8e894414",
+      "apps/openagents-web/place-orbit.coax": "ac4432d626b377dcb0ffac025446264ad2346863e3217022a61f14f5becb7d46",
+      "apps/openagents-web/place.coax": "1399235910cc331506baf27830418e5cdd60873f1eaa1cbb6f55919c5a72fce9",
+      "apps/openagents-web/room.coax": "abd6988d8a8dc37490d91e0b330d029c7b1456daf3698c2ebc40308f70e62d57",
+      "apps/openagents-web/save.coax": "187524b26998e581219fab3604a1e1d9ec586c3a1abfbfcb4742d3360169ddc6",
+      "apps/openagents-web/world.coax": "601bec3da0379d041561084e27aa96a35871ae1eda56c74623a55e2886d7b946",
+      "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+      "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+      "coax/lib/nostr/json.coax": "57f5a39897d323b8afa3681414f6725dc78d4685f5be804f61072960698d3b47",
+      "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "verse/camera.coax": "184e5c0557e51a5fe09d729aebdad4530a929a93fc3bc7255cdbc9c7be8eb26b",
+      "verse/demolish.coax": "a4805c987417d71391bc9fbd1521e4ff0871b63062b43cfa24d687526aaccce1",
+      "verse/edit/edit.coax": "516871d19eeb287c27f4bdf1fb1cfe1bd726ae13bb040d1037f6be2a55f89f82",
+      "verse/everglade/captain.coax": "cc1531304a7208a379aa1874161936b1303e5c64ab17fbb1f15d6ecb7d9e5451",
+      "verse/everglade/edits.coax": "eef5034d315126e3a65ceefb2c49aca7d93dea9a85d66805f0136f9dd578659c",
+      "verse/everglade/folk.coax": "b28f21bc7eccb3edeb636975bc5d189c16160a842634991a034ee8fee8175137",
+      "verse/everglade/guard-guide-game-types.coax": "735b2986230700d5acf9d995338b1a1497a37e7d42574917b4762ce52468c58e",
+      "verse/everglade/guard-guide-session-types.coax": "dd0d49eba3ed380e6f57459d9b6f92ec568875930e432a47ab15453bec27e770",
+      "verse/everglade/guard-guide-types.coax": "7217edcc6f1305f949b2868982d271091e7f076ceac5d48176d31f3f274233dc",
+      "verse/everglade/guard-types.coax": "cdcf76b5596b6ef1b6107632e4afc840d833be5fd9a37ff65bb311e4e0c45d33",
+      "verse/everglade/guide-route.coax": "a2ad0541b1cec5656a6bbdfa3b8746e50b4a02d3f38747520c0b361de7657ac7",
+      "verse/everglade/people-rig.coax": "6476b5eb7ce62f4600c7fbefc802f6033eea14ef95f6a7574394dcd7d0fe4d8c",
+      "verse/everglade/people.coax": "d7c614d2aaa811a42e811848b6a1c669091be300affd34c2703dddca8378cef7",
+      "verse/everglade/plan.coax": "1b75a0650e134df8beb811ca1ffa79d12afcc5eebfb0f8a4628fc7d8427128a2",
+      "verse/everglade/quests.coax": "d0752d0bc07b46a0f894e2205ca58c5a9af46380d559e6257d38cfcec5506c60",
+      "verse/everglade/ranger.coax": "eda71ac1ea4a0ca3a2f6d4cd03bc3faee5f2a438c36d3740105a52343f42bcaa",
+      "verse/everglade/routines.coax": "37ad336af63ab63927ac4559920b19580a3c6b19e325f99ed2d29ef80e00fd23",
+      "verse/everglade/rumours.coax": "d9fdb2d77b7a0b32cda1dbf1099ff77e474320823b5110337ee460b3cdbdd6b6",
+      "verse/everglade/watch.coax": "f7a23ab6dc196907cf805beef5f39ba9dc196fb0ae8ea3a0d9d45a9a42b73210",
+      "verse/flock.coax": "65786358bb260f4a15cc80301fdf71ed6a1803831a6574f5a15275062bd26d94",
+      "verse/rigid.coax": "0443f449a6f1cf6b43e1e42d22bb3410202ab8b668ed2e8eafc801741948afa2",
+      "verse/rules/srd5-combat.coax": "9809d480cb3a558410a9975bd05eb3d3e20071a1081d9b600f40de654e93b57e",
+      "verse/rules/srd5.coax": "90f0849db920e074353c3df4c4f3da43d9d6228e303b2c21dc7312a6600bb834",
+      "verse/skin.coax": "651b263f8378f0dd31f0227f289a79643a4b50a70edf8eb59bc2d84b23e99065",
+      "verse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
+      "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+      "verse/style-preset.coax": "075c003bc47b7a86ca5a1ef5c7a97752378467fdafafc663bb384d6832c8e675",
+      "verse/style.coax": "a32a940e0fe61e02919c31e2231a34ba3d17dba5408c002f6b6b550024cd1e3b",
+      "verse/terrain.coax": "b454422a7b00a7571f0c373400b9385592b6e645d4ab5397555cf2551260b8c7",
+      "verse/water-spells.coax": "3d8ffbba1dd08d2f2aa1d8498defc830156bc554f8ddd1279d84353f37570775",
+      "verse/water-wade.coax": "8ea5ea4ec4f6501def2c45f991601200fbdf6600e3ae2ae4909cb50cded2acdd",
+      "verse/water-weather.coax": "f0f18084e12949a46b9dc065d83e7d74d9ee66712a59954c58ee1287479fc48a"
+    },
+    "c_file": "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release.c",
+    "c_sha256": "46cfda286ac30da3cab592bd601286684e3d9fb322919ebb59e66c5fe4782cbb",
+    "command": {
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "aethyr/tests/everglade-spells-integration.coax",
+        "--library",
+        "--release"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "elapsed_seconds": 350.120475291973,
+      "timeout_seconds": 810,
+      "log": "/private/tmp/aethyr-program-rebased-everglade-release/emit.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "elapsed_seconds": 358.71823141601635
+}

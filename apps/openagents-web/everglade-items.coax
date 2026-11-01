@@ -304,7 +304,7 @@ edit_in_hidden :: (s: [] Everglade, solids: [] f32, k: int) -> bool {
 
 // ---- checks
 
-#test "items: every thing of the catalogue draws within its groups, a patch of flowers is hundreds of plants" {
+#test "items: every thing of the catalogue draws within its groups, a patch of flowers is hundreds of plants" #steps 490000000 {
   #assert EG_EDIT_NAME.count == EG_EDIT_ITEMS && EG_EDIT_LABEL.count == EG_EDIT_ITEMS && EG_EDIT_LABELS.count == EG_EDIT_ITEMS;
   #assert EG_EDIT_HALF.count == EG_EDIT_ITEMS * 3 && EG_EDIT_TOP.count == EG_EDIT_ITEMS && EDIT_PIECE.count == EG_EDIT_ITEMS;
   total := 0;
@@ -350,7 +350,7 @@ edit_in_hidden :: (s: [] Everglade, solids: [] f32, k: int) -> bool {
   #assert s[0].objects[fo + 12] == -EDIT_TINT[3] && s[0].objects[fo + 13] == -EDIT_TINT[4] && s[0].objects[fo + 14] == -EDIT_TINT[5];
 }
 
-#test "items: a hidden building is laid without, and its walls go" {
+#test "items: a hidden building is laid without, and its walls go" #steps 375000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   walls := s[0].wall_n; roofs := s[0].kit_used[group_of(M_ROOF)];

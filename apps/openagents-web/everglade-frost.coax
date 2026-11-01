@@ -816,7 +816,7 @@ fr_fall_seen :: (at: Point, eye: Point) -> f32 {
 
 // ---- checks
 
-#test "frost: an Ice Knife bursts on the ground, throws its shards out to fall and lie, and leaves slippery frost that makes you slide" {
+#test "frost: an Ice Knife bursts on the ground, throws its shards out to fall and lie, and leaves slippery frost that makes you slide" #steps 446000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -847,127 +847,8 @@ fr_fall_seen :: (at: Point, eye: Point) -> f32 {
   #assert !fr_foot(g[..], at.x, at.z).slip;
 }
 
-#test "frost: an Ice Storm hurts who stands in it (you too), leaves walkable ice on a pond that holds you over it, then thin ice that breaks" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  f := fr_of(g[..]);
-  w := watch_w(g[..]);
-  #assert w[0].on;
-  // on yourself: you take some of 2d10 + 4d6 (half on a save)
-  g[0].feet = v3(0, 0, -30);
-  you := ab_you(g[..]);
-  #assert spells_key(g[..], '%', 1) && g[0].sp.armed == SP_SLOTS + AB_STORM;
-  up0 := spells_key_up(g[..], '%', 1);
-  g[0].sp.aim = you; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
-  sp_cast(g[..]);
-  #assert f[0].storm_on;
-  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
-  #assert f[0].storm_hit && w[0].hp < w[0].max;
-  hail := 0;
-  for k: 0..<FR_SHARDS { if f[0].shards[k].live && f[0].shards[k].hail { hail += 1; } }
-  #assert hail > 40;
-  // its ground is Difficult Terrain for a round, then slippery
-  #assert everglade_footing(g[..], you.x, you.z, 0).pace == f32(FR_SLOW);
-  for k: 0..<7 { ab_frame(g[..], 1.0); }
-  #assert everglade_footing(g[..], you.x, you.z, 0).grip == f32(FR_GRIP);
-  // on a pond: walkable ice you stand on over the water for 30 s, then thin, then gone
-  px := EG_POND[0]; pz := EG_POND[1];
-  #assert fr_wet(g[..], px, pz);
-  g[0].sp.aim = v3(px, water_at(g[..], px, pz), pz); g[0].sp.aim_ok = true;
-  g[0].feet = v3(px - 20, 0, pz);
-  w[0].hp = w[0].max;
-  #assert spells_key(g[..], '%', 1) && g[0].sp.armed == SP_SLOTS + AB_STORM;
-  sp_cast(g[..]);
-  #assert f[0].storm_on;
-  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
-  #assert fr_ice_at(g[..], px, pz).state == FR_WALK;
-  #assert near(walk_at(g[..], px, pz), water_at(g[..], px, pz) + 0.04, 0.001) && everglade_ice_lift(g[..], px, pz) > 0;
-  for k: 0..<31 { ab_frame(g[..], 1.0); }
-  #assert fr_ice_at(g[..], px, pz).state == FR_THIN;
-  // you, 90 kg with your pack, on its thin ice: a square that bears less gives way under you
-  broke := false;
-  for q: 0..<9 {
-    x := px + (f32(q % 3) - 1) * f32(FR_CELL); z := pz + (f32(q / 3) - 1) * f32(FR_CELL);
-    if !fr_wet(g[..], x, z) || fr_ice_at(g[..], x, z).state != FR_THIN { continue; }
-    g[0].feet = v3(x, 0, z);
-    fr_people(g[..]);
-    if fr_ice_at(g[..], x, z).state != FR_THIN { broke = true; }
-  }
-  #assert broke;
-  for k: 0..<20 { ab_frame(g[..], 1.0); }
-  #assert fr_ice_at(g[..], px, pz).state == FR_NONE && walk_at(g[..], px, pz) < water_at(g[..], px, pz);
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "frost: a Sleet Storm knocks down who fails its save, puts out a fire, hides what is behind it, and Shift+6 ends it" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  f := fr_of(g[..]);
-  who := -1;
-  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
-  #assert who >= 0;
-  pl := person_place(g[..], who);
-  g[0].feet = v3(pl.x - 20, 0, pl.z);
-  g[0].sp.blasts[0] = SpBlast.{live = true, at = v3(pl.x + 1, ground_at(g[..], pl.x + 1, pl.z), pl.z), t = 0, radius = 2, kind = 0, seed = 0};
-  #assert spells_key(g[..], '^', 1) && g[0].sp.armed == SP_SLOTS + AB_SLEET;
-  up0 := spells_key_up(g[..], '^', 1);
-  g[0].sp.aim = v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
-  sp_cast(g[..]);
-  #assert f[0].sleet_on && ab_active(g[..], AB_SLEET);
-  ab_frame(g[..], 1.0 / 30);
-  #assert !g[0].sp.blasts[0].live;
-  // a save each round: within a few rounds they fall (DC 15 against +0)
-  ww := watch_w(g[..]);
-  fell := false;
-  for k: 0..<40 {
-    ab_frame(g[..], 0.5);
-    if ww[0].actors[who].mode == WM_DOWN { fell = true; break; }
-  }
-  #assert fell && ww[0].crimes > 0;
-  // its ground slows you and takes your grip; a line through it is hidden
-  c := f[0].sleet_at;
-  foot := everglade_footing(g[..], c.x, c.z, 0);
-  #assert foot.pace == f32(FR_SLOW) && foot.grip == f32(FR_GRIP);
-  #assert fr_hides(g[..], v3(c.x - 10, c.y + 1.6, c.z), v3(c.x + 10, c.y + 1.6, c.z)) && !fr_hides(g[..], v3(c.x - 10, c.y + 1.6, c.z + 9), v3(c.x + 10, c.y + 1.6, c.z + 9));
-  // Shift+6 again ends it; its slush and glaze thaw after
-  #assert spells_key(g[..], '^', 1) && !f[0].sleet_on;
-  for k: 0..<12 { ab_frame(g[..], 1.0); }
-  #assert !fr_foot(g[..], c.x, c.z).slip;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "frost: you slip on the ice and lie Prone for a moment, unable to move; in the sleet a fall ends your Concentration" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  f := fr_of(g[..]);
-  k0 := fr_add_patch(g[..], FR_STORM, 0, -30, f32(FR_STORM_R));
-  f[0].patches[k0].t = 10;
-  g[0].feet = v3(0, 0, -30); g[0].act = 2;
-  slipped := false;
-  for k: 0..<60 {
-    fr_people(g[..]);
-    if f[0].prone > 0 { slipped = true; break; }
-    f[0].time += f32(FR_ROUND);
-  }
-  #assert slipped && everglade_footing(g[..], 0, -30, 0).still && fr_prone_pitch(g[..]) <= 0;
-  for k: 0..<20 { ab_frame(g[..], 0.1); }
-  #assert f[0].prone == 0 && !everglade_footing(g[..], 0, -30, 0).still;
-  // Prone in the sleet: the Black Tentacles you hold and the sleet end
-  ab_press(g[..], AB_TENTACLES);
-  g[0].sp.aim = v3(10, ground_at(g[..], 10, -30), -30); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
-  sp_cast(g[..]);
-  #assert ab_of(g[..])[0].bt_on;
-  f[0].sleet_on = true; f[0].sleet_at = ab_you(g[..]);
-  fr_you_prone(g[..], true);
-  #assert !ab_of(g[..])[0].bt_on && !f[0].sleet_on;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).

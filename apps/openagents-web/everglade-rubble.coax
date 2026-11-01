@@ -253,40 +253,4 @@ rb_panel_reach :: (s: [] Everglade, most: f32) -> int {
   return best;
 }
 
-#test "rubble: a falling chunk strikes the guard under it, a slow one doesn't; the blocks of a crumbled panel strike you" {
-  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
-  who := au_ready(g[..], dm[..], out[..], u[..]);
-  #assert who >= 0;
-  w := sp_dm(g[..]);
-  ww := watch_w(g[..]);
-  p := wd_feet(g[..], who);
-  g[0].feet = v3(p.x, 0, p.z - 20);
-  b := demo_free_body(w, DEMO_CHUNK);
-  #assert b >= 0;
-  w[0].meta[b].kind = DEMO_CHUNK; w[0].meta[b].hx = 0.3; w[0].meta[b].hy = 0.3; w[0].meta[b].hz = 0.3;
-  k := b * DB_FLOATS;
-  for q: 0..<DB_FLOATS { w[0].state[k + q] = 0; }
-  w[0].state[k] = 300; w[0].state[k + 4] = f64(p.x); w[0].state[k + 5] = f64(p.y + 1.6); w[0].state[k + 6] = f64(p.z);
-  w[0].state[k + 8] = 1;   // rising slowly: nothing
-  hp := ww[0].actors[who].hp;
-  rb_frame(g[..], 1.0 / 60);
-  #assert ww[0].actors[who].hp == hp;
-  w[0].state[k + 8] = -9;  // falling: 12 kJ, 2d10
-  rb_frame(g[..], 1.0 / 60);
-  #assert ww[0].actors[who].hp < hp;
-  // a panel crumbles over you
-  g[0].feet = v3(0, 0, -30); g[0].face = 0;
-  #assert spells_key(g[..], '!', 1);
-  ab_frame(g[..], 0.5);
-  a := ab_of(g[..]);
-  st := ab_panel(a[0].stones[0], 0);
-  mid := mix(v3(st.ax, st.base, st.az), v3(st.bx, st.base, st.bz), 0.5);
-  #assert rb_panel_hurt(g[..], 0, 999, mid) && !ab_panel(a[0].stones[0], 0).live && ab_panel(a[0].stones[0], 1).live;
-  #assert everglade_bodies_on(g[..], false) == BODIES + AB_ST_BODIES;
-  rv := rb_of(g[..]);
-  for q: 0..<RB_BLOCKS { rv[0].blocks[q].vel.x = 0; rv[0].blocks[q].vel.z = 0; }
-  g[0].feet = v3(mid.x, 0, mid.z);
-  you := ww[0].hp;
-  for q: 0..<60 { rb_frame(g[..], 1.0 / 60); }
-  #assert ww[0].hp < you;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).

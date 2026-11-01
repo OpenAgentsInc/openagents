@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "source_inputs_sha256": {
+    "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+    "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+    "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+    "aethyr/follow.coax": "fb8fb68388ac873deaba8ae262f4d999dfee121167a547eb4ca8ab721b699587",
+    "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+    "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+    "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+    "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+    "aethyr/tests/player-collision-checks.coax": "2aa561cf964eb6ca78887945f4782704ff046fe774698f59aad5b41cf78bd201"
+  },
+  "full_checks": {
+    "count": 259,
+    "gate": "mutation baseline executes all checks and authority coverage",
+    "passed": 259,
+    "failed": 0,
+    "authority_coverage": "passed"
+  },
+  "command": [
+    "coax/bin/coax",
+    "mutate",
+    "verse/player.coax",
+    "--library",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "timeout_seconds": 840,
+  "passed": true,
+  "exit_status": 0,
+  "duration_seconds": 183.95677008398343,
+  "inputs_unchanged": true,
+  "profile": "native-f32-legacy-epsilon-1e-6",
+  "scope": "Player entry-source procedures; every check in the frozen transitive closure and authority coverage retained. Per-realm native/WebAssembly consumers have separate qualification.",
+  "mutation_result": {
+    "total": 475,
+    "killed": 475,
+    "survived": 0,
+    "equivalent_waivers": 0
+  },
+  "primitive_receipt": "aethyr/tests/collide-qualification.json",
+  "new_behavior": [
+    "Actual fixed steps use the checked shared capsule resolver; refused physical steps preserve incoming Player/control state and queued jumps while the outer clock consumes its scheduled step.",
+    "World heightfields feed checked world-height ground receipts; ground refusals expose QueryStatus and preserve physical state.",
+    "Named realm admission refuses unknown names before accepting frame time; legacy C entry signatures and trusted large-move adapters remain available.",
+    "Camera query refusals preserve camera state and have a separate observable diagnostic."
+  ],
+  "behavior_preserving_refactors": [
+    "Positive finite grounded grip is capped with lo(grip,1); the original fallback at 1, above 1, nonfinite values and signed zero is unchanged.",
+    "A shared strict-negative predicate preserves the original comparison, including NaN and both signed zeros, for quadrant and zoom direction decisions."
+  ],
+  "limits": [
+    "Player record layout grew; C consumers must use regenerated headers from this source closure.",
+    "This receipt covers the current scalar profile, not f64 consolidation, GPU physics or cross-build replay compatibility.",
+    "Final native contact parity with the pinned historical Player is recorded separately by collide-qualification.json."
+  ],
+  "subsequent_composition": {
+    "dependency": "aethyr/follow.coax",
+    "tested_dependency_sha256": "fb8fb68388ac873deaba8ae262f4d999dfee121167a547eb4ca8ab721b699587",
+    "current_dependency_sha256": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+    "reason": "Follow corrected its combined box/heightfield minimum-distance probe after this root-only gate. Player production and its original baseline cases are unchanged; its heightfield-camera fixtures use no boxes, and the legacy camera fixtures have no heightfields.",
+    "follow_proof": "aethyr/tests/follow-qualification.json",
+    "current_composed_authority_execution": "The final changed-closure book examples execute the current complete imported authority baseline in debug/release; aethyr/tests/book-chapter8-qualification.json.",
+    "retention": "The original tested closure hashes above remain historical; they are not relabeled current."
+  }
+}

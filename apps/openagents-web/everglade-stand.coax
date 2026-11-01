@@ -175,7 +175,7 @@ eg_roof_at :: (r: EgRoof, x: f32) -> f32 { return r.eave + (r.ridge - r.eave) * 
 
 // ---- checks
 
-#test "stand: Levitate ends on the temple's roof, and you stay on it" {
+#test "stand: Levitate ends on the temple's roof, and you stay on it" #steps 446000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -206,7 +206,7 @@ eg_roof_at :: (r: EgRoof, x: f32) -> f32 { return r.eave + (r.ridge - r.eave) * 
   #assert everglade_stand(g[..], x, z, base + 1).y < base + 0.2;
 }
 
-#test "stand: a gable roof holds you at its eave and its ridge, at their heights, following its slope" {
+#test "stand: a gable roof holds you at its eave and its ridge, at their heights, following its slope" #steps 441000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -231,7 +231,7 @@ eg_roof_at :: (r: EgRoof, x: f32) -> f32 { return r.eave + (r.ridge - r.eave) * 
   #assert everglade_stand(g[..], px, pz, 99).y > walk_at(g[..], px, pz) + pal - 0.5;
 }
 
-#test "stand: the temple's roof blown away no longer holds you" {
+#test "stand: the temple's roof blown away no longer holds you" #steps 441000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -245,7 +245,7 @@ eg_roof_at :: (r: EgRoof, x: f32) -> f32 { return r.eave + (r.ridge - r.eave) * 
   #assert stand_top(g[0].floors[..], n, x, z, 99, f32(EG_STAND_PAD)).y < r.eave - 5 - walk_at(g[..], x, z);
 }
 
-#test "stand: one thrown onto the temple's roof comes down on it and stays there; off its edge they fall" {
+#test "stand: one thrown onto the temple's roof comes down on it and stays there; off its edge they fall" #steps 471000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -278,7 +278,7 @@ eg_roof_at :: (r: EgRoof, x: f32) -> f32 { return r.eave + (r.ridge - r.eave) * 
   #assert a[0].up[i] && a[0].air[i] > 5;
 }
 
-#test "stand: ?stage=roof starts you over the temple's roof, to come down on it" {
+#test "stand: ?stage=roof starts you over the temple's roof, to come down on it" #steps 441000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);

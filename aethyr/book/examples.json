@@ -170,6 +170,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/ground-and-contacts.coax",
+      "chapter": "aethyr/book/ch008-ground-and-collision.md",
+      "stdout": "aethyr/fixtures/ground-and-contacts.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -346,7 +346,7 @@ cap_answer :: (out: [] u8, roles: [] int) -> int {
   return json_raw(out, b, "\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}");
 }
 
-#test "the request names the four nearest hunting guards and asks each a choice over the six roles" {
+#test "the request names the four nearest hunting guards and asks each a choice over the six roles" #steps 41000000 {
   heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
   w: [1] Watch; you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);
   cap_test_hunt(w[..], heights[..], you);
@@ -397,7 +397,7 @@ cap_answer :: (out: [] u8, roles: [] int) -> int {
   for k: 0..<4 { #assert r.roles[k] == CAP_STAGED[k]; }
 }
 
-#test "with a fake decision the guards take the assigned roles: they flank you, one calls for help, one waits under you" {
+#test "with a fake decision the guards take the assigned roles: they flank you, one calls for help, one waits under you" #steps 98000000 {
   cap_buf: [CAP_BODY] u8;
   heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
   w: [1] Watch; nob: [6] f32;
@@ -432,7 +432,7 @@ cap_answer :: (out: [] u8, roles: [] int) -> int {
   for k: 0..<4 { #assert w[0].actors[asked[k]].role == ROLE_PRESS; }
 }
 
-#test "a cutter stands between you and the gate nearest you" {
+#test "a cutter stands between you and the gate nearest you" #steps 58000000 {
   heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
   w: [1] Watch; nob: [6] f32;
   you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);
@@ -448,7 +448,7 @@ cap_answer :: (out: [] u8, roles: [] int) -> int {
   #assert flat_gap(at, gate) < flat_gap(you, gate) && abs(flat_gap(at, you) - lo(f32(CUT_OUT), flat_gap(you, gate))) < 1.0;
 }
 
-#test "with no decision, a late one, a refusal or a malformed one, the current escalation runs unchanged" {
+#test "with no decision, a late one, a refusal or a malformed one, the current escalation runs unchanged" #steps 174000000 {
   cap_buf: [CAP_BODY] u8;
   heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
   nob: [6] f32;
@@ -486,7 +486,7 @@ cap_answer :: (out: [] u8, roles: [] int) -> int {
   }
 }
 
-#test "requests are bounded: one out, every CAP_EVERY at most, CAP_HUNT a hunt; 401 stops them; a new hunt fences an old answer" {
+#test "requests are bounded: one out, every CAP_EVERY at most, CAP_HUNT a hunt; 401 stops them; a new hunt fences an old answer" #steps 42000000 {
   cap_buf: [CAP_BODY] u8;
   heights: [EG_GROUND_POINTS] f32; watch_ground(heights[..]);
   w: [1] Watch; you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);

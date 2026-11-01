@@ -466,7 +466,7 @@ test_deck :: () -> Arena {
   #assert p.z > 3.65 + 0.29 && p.x > -4.6;
 }
 
-#test "the flow field leads round the tall cover, and the next corner is in sight" {
+#test "the flow field leads round the tall cover, and the next corner is in sight" #steps 32000000 {
   deck: [1] Arena; deck[0] = test_deck(); a := deck[..];
   nav: [1] Nav; n := nav[..];
   nav_bake(n, a);

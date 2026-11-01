@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "scope": "Read-only current source/artifact integrity audit. Full Wasm links only; no raster or general browser-execution claim.",
+  "records": [
+    {
+      "realm": "garden",
+      "artifact_sha256": "eb0811a8314f14d7e08dd43594b9ad72ff51cbdba5b8fa79cd0b47dbdc9948cf",
+      "artifact_bytes": 204928,
+      "elapsed_seconds": 4.959560124960262,
+      "source_changes": []
+    },
+    {
+      "realm": "fairy",
+      "artifact_sha256": "c01b11a6d77e9308aab4a074cb935c1ac68a2981d5cf1209372b75191ad20db3",
+      "artifact_bytes": 727588,
+      "elapsed_seconds": 66.00502641597996,
+      "source_changes": []
+    },
+    {
+      "realm": "villa",
+      "artifact_sha256": "7e5d6f722990db35738da680139ee5e012a6447bb6f9c6ec3a07dd6bf36e45d0",
+      "artifact_bytes": 508681,
+      "elapsed_seconds": 10.268057374982163,
+      "source_changes": []
+    },
+    {
+      "realm": "everglade",
+      "artifact_sha256": "b2f43025f0f63086a847f9939c301bc0a48575ad2f336b8d534ad8d4195b57da",
+      "artifact_bytes": 1984104,
+      "elapsed_seconds": 352.5275939590065,
+      "source_changes": []
+    },
+    {
+      "realm": "realm",
+      "artifact_sha256": "dd07e5417089f4e3d1af0cfc35991c741ac8241d91d71c5698bf8a242004c94a",
+      "artifact_bytes": 535125,
+      "elapsed_seconds": 5.772770083043724,
+      "source_changes": []
+    },
+    {
+      "realm": "grid",
+      "artifact_sha256": "2bc8de9337dd29c59cede32ad2ea6bdd9f3d8a1e7e8b210a88e26757f3777ce4",
+      "artifact_bytes": 821300,
+      "elapsed_seconds": 13.671901541994885,
+      "source_changes": []
+    },
+    {
+      "realm": "deadgears",
+      "artifact_sha256": "f9d4e9cff09787095a3bd6c0456bbda14539cd6e0f0279fc2ba4e8acd89ae8eb",
+      "artifact_bytes": 375512,
+      "elapsed_seconds": 47.72784541704459,
+      "source_changes": []
+    }
+  ]
+}

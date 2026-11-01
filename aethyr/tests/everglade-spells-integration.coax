@@ -1,0 +1,2390 @@
+// Ordinary native integration programs, not #test/native-check ABI entries.
+// Original bodies and #assert statements are unchanged; finite bindings become
+// Coax for loops. Run check_native_gameplay.py; no compiler/authority bypass.
+#load "../../apps/openagents-web/everglade.coax";
+
+// spells: 1 picks Meteor Swarm, a click casts it at the inn, and the inn breaks; R stands it again
+aethyr_native_everglade_0 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  // aim at the middle of the inn's front (south) wall from the street, as a click there would
+  g[0].sp.aim = v3(ix, ground_at(g[..], ix, EG_BUILDING[inn + 1]) + 2, EG_BUILDING[inn + 1]); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  kept: [WALLS * 6] f32;
+  for k: 0..<WALLS * 6 { kept[k] = g[0].walls[k]; }
+  sp_cast(g[..]);
+  #assert g[0].sp.casting == SP_METEOR && g[0].sp.armed == -1;
+  w := sp_dm(g[..]);
+  // the cast bar (2.5 s), the meteors' fall, the debris: a tenth of a second a frame (the debris steps 0.1 s at most a frame)
+  for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert w[0].broken_n > 20 && g[0].sp.broke > 20 && g[0].sp.news_n > 0;
+  #assert demo_chunks(w) > 50 && demo_chunks(w) <= w[0].chunk_cap;
+  // the debris draws as the pieces' own meshes, cut: a run per mesh at SHARD_AT, each cut by its cell
+  debris := 0;
+  for m: 0..<KIT_MESHES {
+    #assert g[0].sp.shard_first[m] + g[0].sp.shard_n[m] <= SHARD_OBJECTS;
+    for j: 0..<g[0].sp.shard_n[m] {
+      o := (SHARD_AT + g[0].sp.shard_first[m] + j) * OBJECT_FLOATS;
+      w15 := cast(int) g[0].objects[o + 15];
+      #assert w15 % 8 == SHAPE_MESH && (w15 / 8) % 32 == LOOK_SHARD && w15 / 256 >= CELL_AT && w15 / 256 < ALL_OBJECTS;
+    }
+    debris += g[0].sp.shard_n[m];
+  }
+  #assert debris > 30 && g[0].sp.shard_n[M_ROOF] + g[0].sp.shard_n[M_PLASTER] + g[0].sp.shard_n[M_BRICK] > 0;
+  #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] <= SLOTS[SHAPE_SPHERE];
+  // what stood on the inn's broken front came down with it
+  upper_down := false;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if !p.anchored && p.group == EG_INN && p.state != DP_STANDING { upper_down = true; } }
+  #assert upper_down;
+  // its broken walls no longer stand in your way: you walk in
+  // (a broken ground piece's middle that stood in a wall, clear of every wall now, is a way in)
+  ways := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if !p.anchored || p.state == DP_STANDING { continue; }
+    walled := false;
+    for k: 0..<g[0].sp.keep_n {
+      if p.cx > kept[k * 6] && p.cx < kept[k * 6 + 3] && p.cz > kept[k * 6 + 2] && p.cz < kept[k * 6 + 5] { walled = true; }
+    }
+    if !walled { continue; }
+    clear := true;
+    for k: 0..<g[0].wall_n {
+      if p.cx > g[0].walls[k * 6] && p.cx < g[0].walls[k * 6 + 3] && p.cz > g[0].walls[k * 6 + 2] && p.cz < g[0].walls[k * 6 + 5] { clear = false; }
+    }
+    if clear { ways += 1; }
+  }
+  #assert ways >= 3;
+  // a broken piece draws nothing
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state == DP_BROKEN { #assert g[0].objects[p.object * OBJECT_FLOATS] == 0 && g[0].objects[p.object * OBJECT_FLOATS + 5] == 0; break; }
+  }
+  // a hurt piece still standing is darker than its own tint
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state == DP_STANDING && p.hp < p.max_hp && w[0].tint[i * 3] > 0.05 { #assert g[0].objects[p.object * OBJECT_FLOATS + 12] < w[0].tint[i * 3]; }
+  }
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].sp.boxes[SP_REBUILD].x1 > 0;
+  #assert everglade_key(g[..], 'r', 0) && w[0].broken_n == 0 && demo_chunks(w) == 0;
+  #assert g[0].wall_n == g[0].sp.keep_n;
+  for k: 0..<(g[0].wall_n + 2) * 6 { #assert g[0].walls[k] == kept[k]; }
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  for i: 0..<w[0].n { p := w[0].pieces[i]; #assert p.state == DP_STANDING && g[0].objects[p.object * OBJECT_FLOATS + 3] == w[0].rest[i * 12 + 3] && g[0].objects[p.object * OBJECT_FLOATS + 12] == w[0].tint[i * 3]; }
+}
+
+// spells: casting leaves the camera where the player has it: no lift, no pull, no pan; a blast only shakes it, and it settles back
+aethyr_native_everglade_1 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  // the first goal's line (everglade-guide.coax) is drawn every frame otherwise: this walk of 56
+  // frames is the camera's check, and the line's text took it past compile-time traversal
+  g[0].guide.first_done = (1 << EG_FIRST_STEPS) - 1;
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  // standing still, the camera settles where the player left it
+  _ := 0;
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  still := g[0].sp.shot;
+  shook := false;
+  for slot: 0..<4 {
+    ground := v3(ix - 4, ground_at(g[..], ix - 4, iz - 14), iz - 14);
+    g[0].sp.armed = slot; g[0].sp.aim = ground; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true; g[0].sp.far = false;
+    sp_cast(g[..]);
+    #assert g[0].sp.casting == slot;
+    g[0].sp.cast_t = srd_spell(SP_SPELL[slot]).bar - 0.05;
+    // the cast, the fall and the blasts: the camera looks the same way throughout and stays within a shake of where it was
+    for f: 0..<8 {
+      _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+      #assert length(sub(sub(g[0].sp.shot.at, g[0].sp.shot.eye), sub(still.at, still.eye))) < 0.001;
+      #assert length(sub(g[0].sp.shot.eye, still.eye)) < 0.5;
+      shook = shook || g[0].sp.shake > 0;
+    }
+  }
+  #assert shook;
+  // settled, it is back exactly where the player has it
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert length(sub(g[0].sp.shot.eye, still.eye)) < 0.001 && length(sub(g[0].sp.shot.at, still.at)) < 0.001;
+}
+
+// from the road in past the boulder by it: round the rock and on into the trees
+aethyr_native_everglade_2 :: () #export_c {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  everglade_catalog(g[..], CATALOG);
+  // The mossy boulder west of the road below the stables (the owner's screenshot, 2026-10-30): the
+  // undergrowth's Rock_Medium_1 at (-4.76, -75.37). Find it, and its girth.
+  rock := -1;
+  for t: 0..<g[0].small_n {
+    o := t * TREE_FLOATS;
+    if abs(g[0].smalls[o] + 4.76) < 0.05 && abs(g[0].smalls[o + 1] + 75.37) < 0.05 { rock = t; }
+  }
+  #assert rock >= 0;
+  stone := tree_girth(g[..], g[0].smalls[..], rock);
+  #assert stone.r > 1.4 && stone.r < 1.7;
+  // It stands in your way where it is drawn: walking at its middle you stop at its face.
+  face := walk_toward(g[..], v3(0, 0, stone.z), v3(stone.x, 0, stone.z), 400);
+  gap := sqrt((face.x - stone.x) * (face.x - stone.x) + (face.z - stone.z) * (face.z - stone.z));
+  #assert gap > stone.r && gap < stone.r + f32(EG_RADIUS) + 0.05;
+  // From the spawn up the road, then round the pine on its north side (its trunk touches the
+  // rock) and on west and south into the woods behind it.
+  a := walk_toward(g[..], everglade_spawn(g[..]), v3(0, 0, -72), 2000);
+  #assert abs(a.x) < 0.01 && abs(a.z + 72) < 0.01;
+  b := walk_toward(g[..], a, v3(-5.2, 0, -72.2), 2000);
+  b = walk_toward(g[..], b, v3(-8, 0, -72.6), 2000);
+  #assert abs(b.x + 8) < 0.01 && abs(b.z + 72.6) < 0.01;
+  c := walk_toward(g[..], b, v3(-12, 0, -78), 2000);
+  #assert abs(c.x + 12) < 0.01 && abs(c.z + 78) < 0.01;
+  // and on to the woods' far corner, the thicket at the edge
+  e := walk_toward(g[..], c, v3(-99.5, 0, -99.5), 30000);
+  #assert abs(e.x + 99.5) < 0.01 && abs(e.z + 99.5) < 0.01;
+}
+
+// watch: a meteor on the inn is a crime the watch hear and hunt you for; R stands the fallen up
+aethyr_native_everglade_3 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := watch_w(g[..]);
+  #assert w[0].on && !w[0].wanted && w[0].hp == SRD_RANGER_5.hp;
+  g[0].sp.aim = v3(ix, ground_at(g[..], ix, EG_BUILDING[inn + 1]) + 2, EG_BUILDING[inn + 1]); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert sp_broken(g[..]) && w[0].crimes > 0 && w[0].wanted;
+  hunting := 0;
+  for i: 0..<WATCH_ACTORS { if watch_is_guard(i) && w[0].actors[i].mode == WM_CHASE { hunting += 1; } }
+  #assert hunting >= 2;
+  // townsfolk struck down: the Rebuild stands them up with the town
+  you := v3(ix - 4, 0, iz - 30);
+  fallen := -1;
+  for i: 0..<EG_SPOTS { if fallen < 0 && watch_hurtable(i) && !watch_is_guard(i) && w[0].actors[i].mode != WM_DEAD { fallen = i; } }
+  #assert fallen >= 0;
+  watch_harm(w, fallen, 99, you);
+  #assert w[0].actors[fallen].mode == WM_DEAD;
+  #assert everglade_key(g[..], 'r', 0) && !sp_broken(g[..]);
+  #assert w[0].actors[fallen].mode == WM_CALM && w[0].actors[fallen].hp == w[0].actors[fallen].max;
+  // with nothing broken, R stands the fallen up too
+  watch_harm(w, fallen, 99, you);
+  #assert everglade_key(g[..], 'r', 0) && w[0].actors[fallen].mode == WM_CALM;
+  for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_DEAD; }
+}
+
+// watch: your own Thunderbolt at your feet hurts you and throws you; a Meteor Swarm on you kills you and you fall
+aethyr_native_everglade_4 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  x := 0.0f32; z := -30.0f32;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := watch_w(g[..]);
+  #assert w[0].on && w[0].hp == SRD_RANGER_5.hp;
+  #assert everglade_key(g[..], '2', 0) && g[0].sp.armed == SP_BOLT;
+  g[0].sp.aim = v3(x, ground_at(g[..], x, z), z); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  for f: 0..<30 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert w[0].hp < SRD_RANGER_5.hp || w[0].dead;
+  k := everglade_knock(g[..]);
+  #assert w[0].dead || k.y > 0;
+  // the meteors on you: 20d6 + 20d6, at least half of 40 even on a save, past your 44 HP
+  w[0].hp = w[0].max; w[0].dead = false;
+  #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
+  g[0].sp.aim = v3(x, ground_at(g[..], x, z), z); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  dead_at := -1;
+  for f: 0..<40 {
+    _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    if w[0].dead && dead_at < 0 { dead_at = f; }
+    if dead_at >= 0 && f >= dead_at + 20 { break; }
+  }
+  #assert dead_at >= 0;
+  // your body is down, not standing: its up (the rows' second column) lies over
+  o := RANGER_AT * OBJECT_FLOATS;
+  #assert w[0].dead && abs(g[0].objects[o + 5]) < 0.5;
+}
+
+// no C line, no Ranger: nothing drawn for it, the rest draws
+aethyr_native_everglade_5 :: () #export_c {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  d := RANGER_DRAW * 4;
+  h: [1] Everglade;
+  everglade_start(h[..]);
+  everglade_catalog(h[..], "pack everglade\nI 43083 1024\n");
+  n := everglade_frame(h[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert h[0].pack_ready && h[0].draws[d + 3] == 0;
+}
+
+// a quest save comes back for its player only
+aethyr_native_everglade_6 :: () #export_c {
+  // a save given back before the facts; then the facts say whose browser it is
+  h: [1] Everglade;
+  everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
+  #assert h[0].stages[0] == EG_QUEST_DONE && h[0].stages[1] == 2 && h[0].flock;
+  everglade_message(h[..], MSG_FACTS, "now=1\nplayer=p-1\n");
+  #assert h[0].stages[1] == 2 && h[0].flock;
+  o: [1] Everglade;
+  everglade_message(o[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
+  everglade_message(o[..], MSG_FACTS, "now=1\nplayer=p-2\n");
+  #assert o[0].stages[0] == 0 && o[0].stages[1] == 0 && !o[0].flock;
+}
+
+// the painterly day: a cycling clock on a still page shows noon
+aethyr_native_everglade_7 :: () #export_c {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  c: [1] Everglade;
+  everglade_message(c[..], MSG_FACTS, "realm=everglade\nclock=cycle\nnow=1000000");
+  #assert c[0].day.mode == STYLE_CLOCK_CYCLE;
+  n := everglade_frame(c[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && c[0].clock == 0.5 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.5) < 0.001;
+}
+
+// Everglade's frames fit its declared budget
+aethyr_native_everglade_8 :: () #export_c {
+  #assert budget_declared(EVERGLADE_BUDGET, MAX_VERTICES) == BUDGET_NONE;
+  frames := 3;
+  m := [1] BudgetMeter.[budget_meter(EVERGLADE_BUDGET)];
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  bytes := budget_arena_bytes(size_of(Everglade), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
+  for i: 0..<BUDGET_SCREENS {
+    s: [1] Everglade;
+    sc := budget_screen(i);
+    for f: 0..<frames {
+      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
+      n := everglade_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false, 0, 0, -84 + f32(f) * 0.05, 0, 0, 0, 0, false, 0, 0, 0, 0);
+      budget_measure(m[..], n, everglade_draws(s[..]), bytes);
+    }
+  }
+  #assert budget_ok(m[0]);
+}
+
+// voice edits: the heard words go to the server as they are; its typed answer places, removes and undoes
+aethyr_native_everglade_9 :: () #export_c {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_FACTS, "voice=haunted-house");
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  everglade_message(s[..], MSG_VOICE, "heard|Put two \"barrels\" here");
+  #assert everglade_edit_ask(s[..]) > 0 && cast(string) s[0].ev.ask[0..<s[0].ev.ask_n] == "{\"sentence\":\"Put two barrels here\"}";
+  // standing on the commons, facing south
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  walls := s[0].wall_n;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"barrel\", \"count\": 2, \"model\": \"m\"}");
+  #assert s[0].ev.edits.n == 2 && s[0].ev.edits.things[0].kind == 1 && s[0].ev.edits.things[0].z < -9;
+  #assert s[0].wall_n == walls + 2 && s[0].ev.post_n > 0;
+  #assert cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "PLACED 2 BARRELS";
+  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Placed 2 barrels.";
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"remove\", \"model\": \"m\"}");
+  #assert s[0].ev.edits.n == 1 && s[0].wall_n == walls + 1;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"undo\", \"model\": \"m\"}");
+  #assert s[0].ev.edits.n == 2;
+  everglade_message(s[..], MSG_VOICE, "heard|what time is it");
+  shown := ev_text(s[..]);   // the heard words while the server answers, after the last result
+  #assert shown.count > 17 && shown[shown.count - 17..<shown.count] == "'what time is it'";
+  // a question is answered, shown and spoken; nothing is edited
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"chat\", \"reply\": \"It is 8:58 PM, Central time.\", \"model\": \"m\"}");
+  #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "It is 8:58 PM, Central time.";
+  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "It is 8:58 PM, Central time." && ev_text(s[..]) == "It is 8:58 PM, Central time.";
+  s[0].ev.say_n = 0;
+  everglade_message(s[..], MSG_VOICE, "heard|what time is it");
+  #assert everglade_edit_ask(s[..]) > 0;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"chat\", \"reply\": \"\"}");
+  #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "THAT DIDN'T WORK · TRY AGAIN" && s[0].ev.say_n == 0;
+  // no edit and no answer: what was heard
+  everglade_message(s[..], MSG_VOICE, "heard|what time is it");
+  #assert everglade_edit_ask(s[..]) > 0;
+  everglade_edit_answer(s[..], "422\n{\"error\": \"none fit\"}");
+  #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "DIDN'T CATCH THAT: 'what time is it'";
+  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Sorry, I didn't catch that.";
+  // what was published is what everyone's page lays over the plan
+  t: [1] Everglade;
+  everglade_start(t[..]);
+  body := cast(string) s[0].ev.post[0..<s[0].ev.post_n];
+  #assert body.count > 40;
+  everglade_world(t[..], "200\n{\"doc\": {\"edits\": \"eg-edit 1\\nt 1 600 -1200 0 100\\n\", \"everglade\": 1}, \"version\": 4}");
+  #assert t[0].ev.edits.n == 1 && t[0].wall_n == walls + 1 && !voice_on(t[..]);
+}
+
+// the shared layer: a realm admin's EDIT opens edit mode and the board; an accepted card is placed; DONE closes it
+aethyr_native_everglade_10 :: () #export_c {
+  u: [UNIFORM_FLOATS] f32;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  // a realm admin: the layer's EDIT stands where Everglade's was, and opens edit mode with the board
+  a: [1] Everglade;
+  everglade_start(a[..]);
+  a[0].width = 1440; a[0].height = 900; a[0].dpr = 1;
+  a[0].map_button = Box.{x0 = 1360, y0 = 16, x1 = 1424, y1 = 54};
+  f := a[0].ev.ed[..];
+  edit_layer(a[..]);
+  redit_requested(f, 3);
+  #assert everglade_voice_message(a[..], HTTP_KIND + 3, "200\nrealm everglade\nrole admin\nowner 0\ntool build 1\nrow flock 0 The bird flock\nwaiting 1\n");
+  edit_layer(a[..]);
+  n := everglade_edit_hud(a[..], out[..], u[..], 0, 840);
+  b := f[0].boxes[RB_EDIT];
+  #assert a[0].ev.admin && f[0].shown[RB_EDIT] && b.x1 < 1360 && !redit_row_on(f, "flock");
+  #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
+  edit_layer(a[..]);
+  #assert a[0].ev.editing && redit_open(f);
+  // the visitor's card accepted here: the barrel goes into the city and out to everyone
+  f[0].took = true; f[0].decided_thing_n = redit_copy(f[0].decided_thing[..], "barrel"); f[0].decided_x = 6; f[0].decided_z = -12;
+  edit_layer(a[..]);
+  #assert a[0].ev.edits.n == 1 && a[0].ev.edits.things[0].kind == 1 && a[0].ev.edits.things[0].x == 6 && a[0].ev.due > 0;
+  // DONE on the layer closes edit mode too
+  n = everglade_edit_hud(a[..], out[..], u[..], 0, 840);
+  b = f[0].boxes[RB_EDIT];
+  #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
+  edit_layer(a[..]);
+  #assert !a[0].ev.editing && !redit_open(f);
+}
+
+// spells: no ruleset, no bar; srd5 gives the four spells, and the town's pieces their SRD stats
+aethyr_native_everglade_11 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  everglade_start(g[..]);
+  dm: [1] DemoWorld;
+  everglade_attach_demolish(g[..], dm[..]);
+  everglade_catalog(g[..], CATALOG);
+  spells_catalog(g[..], SP_TEST_BOUNDS);
+  #assert g[0].sp.ready && !sp_on(g[..]) && !everglade_key(g[..], '1', 0);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].sp.boxes[0].x1 == 0;
+  everglade_message(g[..], MSG_FACTS, "now=1\nruleset=srd5");
+  #assert sp_on(g[..]);
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  for b: 0..<SP_SLOTS { #assert g[0].sp.boxes[b].x1 > g[0].sp.boxes[b].x0; }
+  #assert g[0].sp.boxes[SP_REBUILD].x1 > 0;    // Rebuild and Long Rest, broken or not
+  w := sp_dm(g[..]);
+  #assert w[0].n > 2000 && w[0].n <= DEMO_PIECES && w[0].linked;
+  walls := 0; glass := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.mesh == M_PLASTER { walls += 1; #assert p.ac == 15 && p.max_hp == 27 && p.hy > 1.5; }
+    if p.mesh == M_WINDOW { glass += 1; #assert p.ac == 13 && p.max_hp == 3; }
+    if p.mesh == M_ROOF { #assert !p.anchored && p.sup_n >= 4; }
+  }
+  #assert walls > 50 && glass > 20;
+}
+
+// spells: the Thunderbolt's bolt comes down and blasts a hole; a phone taps a slot, then the target
+aethyr_native_everglade_12 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].touch = true;
+  _ := everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  b := g[0].sp.boxes[SP_BOLT];
+  #assert b.x1 > b.x0 && b.x1 <= 780;
+  // a tap picks the spell at once, as its key does (a held finger shows its card too)
+  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 3) && g[0].sp.armed == SP_BOLT;
+  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 3) && g[0].sp.armed == SP_BOLT;
+  // a tap in the middle of the screen casts there
+  #assert everglade_pointer(g[..], 390, 1200, 0, 1, 4);
+  #assert everglade_pointer(g[..], 390, 1200, 2, 1, 4);
+  #assert g[0].sp.casting == SP_BOLT;
+  for f: 0..<40 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 0.05, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert !g[0].sp.bolt.live && g[0].sp.news_n > 0 && g[0].sp.dmg.amount >= 20 && g[0].sp.dmg.amount <= 200;
+}
+
+// spells: a broken building stays broken, however long you are away, until R or a long rest
+aethyr_native_everglade_13 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  g[0].sp.dmg = SrdDamage.{amount = 200, kind = DMG_FIRE, amount2 = 0, kind2 = DMG_NONE};
+  sp_blast(g[..], v3(ix, ground_at(g[..], ix, iz) + 1, iz), SP_MEGA);
+  #assert demo_hurt(w, EG_INN);
+  g[0].feet = v3(ix, 0, iz - 60);
+  w[0].clock += 600;
+  for f: 0..<3 { _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.5, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert demo_hurt(w, EG_INN);
+  _ := sp_restore(g[..], -1);
+  #assert !demo_hurt(w, EG_INN);
+}
+
+// spells: aimed at a wall the aim takes the wall's face and the meteors burst on it; on the ground they fall from all but straight above
+aethyr_native_everglade_14 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  // a plaster wall running east-west, a ray at it from the south, and one down onto its top
+  k := -1;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if k < 0 && p.mesh == M_PLASTER && p.anchored && p.z1 - p.z0 < 0.6 && p.x1 - p.x0 > 1.5 { k = i; } }
+  #assert k >= 0;
+  p := w[0].pieces[k];
+  o := v3(p.cx, p.y0 + 1.5, p.z0 - 10);
+  h := sp_ray_box(o, v3(0, 0, 1), p);
+  #assert h.ok && h.n.z == -1 && sp_wall(h.n);
+  top := sp_ray_box(v3(p.cx, p.y1 + 10, p.cz), v3(0, -1, 0), p);
+  #assert top.ok && top.n.y == 1 && !sp_wall(top.n);
+  #assert sp_ring_r(SP_METEOR, h.n) == f32(SP_WALL_RING) && sp_ring_r(SP_METEOR, top.n) == SP_RING[SP_METEOR];
+  at := add(o, times(v3(0, 0, 1), h.t));
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  g[0].sp.armed = SP_METEOR; g[0].sp.aim = at; g[0].sp.aim_n = h.n; g[0].sp.aim_ok = true; g[0].sp.far = false; g[0].sp.seen = false;
+  sp_cast(g[..]);
+  #assert g[0].sp.casting == SP_METEOR && g[0].sp.cast_n.z == -1;
+  // (the cast bar run all but out, so the test stays inside the compile-time budget)
+  g[0].sp.cast_t = srd_spell(SPELL_METEOR_SWARM).bar - 0.05;
+  for f: 0..<1 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  for m: 0..<SP_METEORS {
+    me := g[0].sp.meteors[m];
+    #assert me.live && abs(dot(sub(me.to, at), h.n)) < 0.01;                   // on the wall's face
+    #assert flat_gap(me.to, at) < f32(SP_WALL_RING) + 0.01 || me.to.y > at.y; // within its ring
+    #assert abs(me.from.y - me.to.y - f32(SP_HEIGHT)) < 0.01 && dot(sub(me.from, me.to), h.n) > 3;   // down from out in front of it
+  }
+  // the ground: each meteor from straight above, leaning a few metres at most
+  ground := v3(ix, ground_at(g[..], ix, iz - 22), iz - 22);
+  g[0].sp.armed = SP_METEOR; g[0].sp.aim = ground; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  g[0].sp.cast_t = srd_spell(SPELL_METEOR_SWARM).bar - 0.05;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  for m: 0..<SP_METEORS {
+    me := g[0].sp.meteors[m];
+    #assert me.live && abs(me.from.y - me.to.y - f32(SP_HEIGHT)) < 0.01 && flat_gap(me.from, me.to) <= f32(SP_TILT) * 1.35 + 0.01;
+  }
+  for f: 0..<14 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  // nothing it drew took the town's last slots
+  #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] < SLOTS[SHAPE_SPHERE];
+}
+
+// spells: nothing a spell leaves stays up in the air: the observatory's dome falls when its tower breaks, lies still, and stands again with it
+aethyr_native_everglade_15 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  at := sp_dome_spot(g[..]);
+  _ := 0;
+  for f: 0..<3 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, at.x - 4, 0, at.z - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  // whole, it sits on its tower as built
+  #assert g[0].sp.dome_on && abs(g[0].sp.dome_y - at.y) < 0.01 && g[0].sp.dome_vy == 0;
+  // the tower broken under it
+  broke := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state == DP_STANDING && p.cy < at.y && abs(p.cx - at.x) < 6 && abs(p.cz - at.z) < 6 { demo_break(w, i, v3(at.x, p.cy, at.z - 6), 4); broke += 1; }
+  }
+  #assert broke > 0 && sp_dome_storeys(g[..]) == 0;
+  ground := ground_at(g[..], at.x, at.z);
+  fell := false;
+  // (the dome's own fall stepped alone, so the test stays inside the compile-time budget)
+  for f: 0..<110 {
+    sp_dome(g[..], 1.0 / 40.0);
+    if g[0].sp.dome_vy < -1 { fell = true; }
+  }
+  // it fell under gravity and lies at rest on what is left, low: not hanging where the tower's top was
+  #assert fell;
+  #assert g[0].sp.dome_vy == 0 && abs(g[0].sp.dome_y - sp_dome_rest(g[..])) < 0.001;
+  #assert g[0].sp.dome_y < at.y - 3 && g[0].sp.dome_y >= ground;
+  // stood up again, it is back on its tower
+  _ = sp_restore(g[..], -1);
+  sp_dome(g[..], 1.0 / 60.0);
+  #assert abs(g[0].sp.dome_y - at.y) < 0.01;
+}
+
+// spells: the Water Orb is water: cast at the inn every piece stands whole, and by a barrel the splash sends it rolling
+aethyr_native_everglade_16 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  // the numbers: 2.1 t of water at 12 m/s presses 72 kPa, under every material's strength
+  #assert !srd_object_crushed(sp_object(M_PLASTER), 0.5 * f32(SP_WATER) * f32(SP_ORB_SPEED) * f32(SP_ORB_SPEED));
+  // full force on the middle of the inn's front wall
+  g[0].sp.armed = SP_ORB; g[0].sp.aim = v3(ix, ground_at(g[..], ix, EG_BUILDING[inn + 1]) + 2, EG_BUILDING[inn + 1]);
+  g[0].sp.aim_n = v3(0, 0, -1); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  #assert g[0].sp.casting == SP_ORB;
+  g[0].sp.cast_t = srd_spell(SPELL_WATER_ORB).bar - 0.05;
+  for f: 0..<10 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert !g[0].sp.orb_live && g[0].sp.broke == 0;
+  met := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if sp_object(p.mesh).size == SIZE_LARGE { #assert p.state == DP_STANDING && p.hp == p.max_hp; }
+    #assert p.state != DP_BROKEN;
+    if flat_gap(v3(p.cx, p.cy, p.cz), g[0].sp.aim) < 3 && sp_object(p.mesh).size == SIZE_LARGE { met += 1; }
+  }
+  #assert met > 0;   // it met the inn
+  // the barrel standing nearest the inn, splashed a metre off
+  k := -1; best := 1.0e9f32;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.mesh != M_BARREL || p.state != DP_STANDING { continue; }
+    d := flat_gap(v3(p.cx, 0, p.cz), v3(ix, 0, iz));
+    if d < best { best = d; k = i; }
+  }
+  #assert k >= 0;
+  b := w[0].pieces[k];
+  side := unit_or(v3(ix - b.cx, 0, iz - b.cz), v3(1, 0, 0));
+  hit := v3(b.cx + side.x * (b.hx + 0.6), ground_at(g[..], b.cx, b.cz), b.cz + side.z * (b.hz + 0.6));
+  g[0].sp.armed = SP_ORB; g[0].sp.aim = hit; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  g[0].sp.cast_t = srd_spell(SPELL_WATER_ORB).bar - 0.05;
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].sp.pushed > 0 && g[0].sp.broke == 0;
+  moved := w[0].pieces[k];
+  #assert moved.state == DP_LOOSE && moved.hp == moved.max_hp;
+  pos := demo_body(w, moved.body).pos;
+  #assert flat_gap(v3(f32(pos.x), 0, f32(pos.z)), v3(b.cx, 0, b.cz)) > 0.3;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if sp_object(p.mesh).size == SIZE_LARGE { #assert p.state == DP_STANDING && p.hp == p.max_hp; } }
+}
+
+// spells: the bar is a compact tray: 26-unit icons 29 apart, 8 over the bottom, each slot's picture; a held finger shows its card and doesn't cast
+aethyr_native_everglade_17 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  // a desktop window: a unit is 800 / 768 of a pixel, the tray along the bottom with the hint over it
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  un := 800.0f32 / 768;
+  b0 := g[0].sp.boxes[0]; b1 := g[0].sp.boxes[1];
+  #assert abs(b0.x1 - b0.x0 - 26 * un) < 1 && abs(b1.x0 - b0.x0 - 29 * un) < 1;
+  #assert abs(800 - b0.y1 - (4 + 8) * un) < 1.5;               // the slot's padding and the tray's margin
+  #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS + AB_WALLFIRE].x1) / 2 - 640) < 2;   // centred: from 1 on the left block to Wall of Fire's Ctrl+= on the right
+  media := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
+  #assert contains(media, "image /realms/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && contains(media, "rebuild-48.jpg") && !contains(media, "over ");   // Rebuild and Long Rest always there
+  // the mouse resting on Thunderbolt's slot shows its card after 0.35 s
+  if everglade_pointer(g[..], (b1.x0 + b1.x1) / 2, (b1.y0 + b1.y1) / 2, 1, 0, 1) {}
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert !contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over ");
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/thunderbolt-card-1x.jpg ") && g[0].sp.tip_on;
+  // a phone: the tray stands over the sticks, 136 points up, at 2 pixels a point
+  g[0].touch = true; g[0].sp.px = 0; g[0].sp.py = 0;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  p1 := g[0].sp.boxes[SP_BOLT];
+  pu := 2 * 844.0f32 / 768;
+  // one row over the thumbs: Thunderbolt's beside Meteor Swarm's, a step on, its bottom the tray's padding over the sticks
+  #assert abs(p1.y0 - g[0].sp.boxes[0].y0) < 1 && abs(p1.x0 - g[0].sp.boxes[0].x0 - 42 * pu) < 1.5;
+  #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
+  // a finger held on the slot picks it and shows the card (at 2x) until it lifts
+  #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 0, 1, 7);
+  for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/thunderbolt-card-2x.jpg ");
+  #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 2, 1, 7) && g[0].sp.armed == SP_BOLT && g[0].sp.slot_held == -1;
+  // picked, its frame is the gold one, two pixels, over the icon's edge: the icon draws a pixel in
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  on := false;
+  for k: 0..<g[0].plate_n { if u[U_PLATE + k * 8 + 5] == PLATE_SLOT_ON && u[U_PLATE + k * 8 + 7] == 4 { on = true; } }
+  #assert on;
+}
+
+// spells: the bar's rows: Shift reaches the second, over the first on a wide screen, Ctrl's beside them; a phone shows one row and a switcher
+aethyr_native_everglade_18 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  #assert sp_key_place('1', 0) == 0 && sp_key_place('!', 1) == 12 && sp_key_place('1', 1) == 12 && sp_key_place('1', 2) == 24 && sp_key_place(0xA1, 4) == 36 && sp_key_place('=', 0) == 11 && sp_key_place('1', 8) == -1;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  stone := g[0].sp.boxes[SP_SLOTS + AB_STONE]; meteor := g[0].sp.boxes[SP_METEOR];
+  un := 800.0f32 / 768;
+  #assert abs(stone.x0 - meteor.x0) < 1 && abs(meteor.y0 - stone.y0 - 29 * un) < 1.5 && g[0].sp.boxes[SP_SWITCH].x1 == 0;
+  // Ctrl's row on the right of the plain keys' row, level with it; a narrow window stacks all four
+  flame := g[0].sp.boxes[SP_SLOTS + AB_FLAME];
+  #assert abs(flame.y0 - meteor.y0) < 1 && flame.x0 > meteor.x0 + 12 * 29 * un;
+  _ = everglade_frame(g[..], out[..], u[..], 760, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert abs(g[0].sp.boxes[SP_SLOTS + AB_FLAME].x0 - g[0].sp.boxes[SP_METEOR].x0) < 1 && g[0].sp.boxes[SP_SLOTS + AB_FLAME].y0 < g[0].sp.boxes[SP_SLOTS + AB_STONE].y0;
+  // - and = hold nothing on the first row: they still zoom
+  #assert !spells_key(g[..], '-', 0);
+  // Shift+1 casts the second row's first; its key up, Shift let go first, is still its column's
+  #assert spells_key(g[..], '1', 1) && ab_active(g[..], AB_STONE);
+  #assert spells_key_up(g[..], '1', 0) && !g[0].sp.ab[0].keys[AB_STONE];
+  // a phone: one row and the switcher; tapped, the tray opens over it
+  g[0].touch = true;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  sw := g[0].sp.boxes[SP_SWITCH];
+  // the second row's slots are in the tray, but Wall of Stone, still on, keeps the row's last place in sight
+  st := g[0].sp.boxes[SP_SLOTS + AB_STONE];
+  #assert sw.x1 > 0 && g[0].sp.boxes[SP_SLOTS + AB_TK].x1 == 0 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "next-row-96.jpg");
+  #assert sp_slot_on(g[..], SP_SLOTS + AB_STONE) && st.x1 > 0 && abs(st.y0 - sw.y0) < 1 && st.x1 < sw.x0;
+  #assert everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 0, 1, 4);
+  #assert everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 2, 1, 4) && g[0].sp.open;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].sp.boxes[SP_SLOTS + AB_TK].x1 > 0 && g[0].sp.boxes[SP_METEOR].x1 > 0 && g[0].sp.boxes[SP_SLOTS + AB_TK].y0 < g[0].sp.boxes[SP_METEOR].y0;
+}
+
+// spells: on a phone the bar is one row low on the screen, the rest a tap away in the tray, every slot reachable
+aethyr_native_everglade_19 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].touch = true;
+  sizes := [2] f32.[844, 568]; widths := [2] f32.[390, 320];
+  for z: 0..<2 {
+    W := widths[z] * 2; H := sizes[z] * 2;
+    g[0].sp.open = false;
+    _ := everglade_frame(g[..], out[..], u[..], W, H, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    // shut: one row, every shown slot on one line, inside the screen, the tray's top low on it (at 390x844 below 70%)
+    top := H; y := -1.0f32; shown := 0;
+    for b: 0..<SP_BAR + 1 {
+      bx := g[0].sp.boxes[b];
+      if bx.x1 <= 0 { continue; }
+      shown += 1; top = lo(top, bx.y0);
+      #assert bx.x0 >= 0 && bx.x1 <= W;
+      if y < 0 { y = bx.y0; } else { #assert abs(bx.y0 - y) < 1; }
+    }
+    #assert shown == sp_phone_per(g[..]) && shown >= 6 && g[0].sp.boxes[SP_SWITCH].x1 > 0;
+    if z == 0 { #assert top > 0.7 * H; }
+    #assert top > 0.6 * H;
+    // open: every slot has a place on screen, and a tap on one picks it and shuts the tray
+    sw := g[0].sp.boxes[SP_SWITCH];
+    #assert everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 0, 1, 4) && everglade_pointer(g[..], (sw.x0 + sw.x1) / 2, (sw.y0 + sw.y1) / 2, 2, 1, 4);
+    _ = everglade_frame(g[..], out[..], u[..], W, H, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    list: [SP_BAR] int; ln := sp_phone_list(g[..], list[..]);
+    #assert ln == SP_BAR;
+    for i: 0..<ln { bx := g[0].sp.boxes[list[i]]; #assert bx.x1 > bx.x0 && bx.x0 >= 0 && bx.x1 <= W && bx.y0 >= f32(HB_PHONE_TOP) * 2 && bx.y1 <= H; }
+    last := list[ln - 1]; lb := g[0].sp.boxes[last];
+    #assert everglade_pointer(g[..], (lb.x0 + lb.x1) / 2, (lb.y0 + lb.y1) / 2, 0, 1, 5) && !g[0].sp.open;
+    #assert everglade_pointer(g[..], (lb.x0 + lb.x1) / 2, (lb.y0 + lb.y1) / 2, 2, 1, 5);
+    _ = everglade_frame(g[..], out[..], u[..], W, H, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    // a spell picked from the tray stays in sight on the one row
+    if last < SP_SLOTS || sp_slot_on(g[..], last) { #assert g[0].sp.boxes[last].x1 > 0 && abs(g[0].sp.boxes[last].y0 - y) < 1; }
+    g[0].sp.armed = -1; ab_cancel(g[..]);
+  }
+}
+
+// the bar: a swap moves the spells, not the keys; its text round-trips; a bad or older text is refused
+aethyr_native_everglade_20 :: () #export_c {
+  g: [1] Everglade;
+  #assert sp_place(g[..], SP_METEOR) == 0 && sp_place(g[..], SP_SLOTS + AB_STONE) == 12 && sp_at_place(g[..], 10) == SP_REBUILD;
+  g[0].now_s = 1793000000; g[0].sp.ar.account = true;
+  ar_swap(g[..], SP_METEOR, SP_SLOTS + AB_STONE);
+  #assert sp_at_place(g[..], 0) == SP_SLOTS + AB_STONE && sp_at_place(g[..], 12) == SP_METEOR && sp_place(g[..], SP_BOLT) == 1;
+  // Shift+1 is still place 12, now Meteor Swarm's; 1 is Wall of Stone's
+  #assert sp_at_place(g[..], sp_key_place('!', 1)) == SP_METEOR && sp_at_place(g[..], sp_key_place('1', 0)) == SP_SLOTS + AB_STONE;
+  #assert g[0].sp.ar.keep && g[0].sp.ar.send && g[0].sp.ar.at == 1793000000000;
+  out: [AR_TEXT] u8;
+  n := everglade_bar_keep(g[..], out[..]);
+  text := cast(string) out[0..<n];
+  #assert n > 0 && !g[0].sp.ar.keep && everglade_bar_keep(g[..], out[..]) == 0;
+  #assert text[0..<35] == "eg-bar 1\nat=1793000000000\nplaces=12" && contains(text, ",1,2,3,4,");
+  h: [1] Everglade;
+  #assert ar_take(h[..], text) && sp_at_place(h[..], 12) == SP_METEOR && sp_at_place(h[..], 0) == SP_SLOTS + AB_STONE;
+  #assert !ar_take(h[..], text);                                   // no newer
+  #assert !ar_take(h[..], "eg-bar 1\nat=1793000000001\nplaces=0,0\n");   // not every slot
+  #assert !ar_take(h[..], "eg-bar 2\nat=1793000000001\nplaces=12\n");
+  // the server's copy goes as an AESV container
+  body: [1024] u8;
+  #assert everglade_bar_send(g[..], body[..]) > 0 && everglade_bar_send(g[..], body[..]) == 0;
+  g[0].sp.ar.slot_n = 0; ar_facts(g[..], "slot=everglade\naccount=e-1\n");
+  #assert cast(string) out[0..<everglade_bar_url(g[..], out[..])] == "/api/playtest/progress/everglade/hotbar" && everglade_bar_ask(g[..]) && !everglade_bar_ask(g[..]);
+}
+
+// the bar: Shift and a drag swaps two slots and casts nothing; let go off the bar, nothing moves; a phone holds and drags
+aethyr_native_everglade_21 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  a := g[0].sp.boxes[SP_METEOR]; b := g[0].sp.boxes[SP_ORB];
+  #assert everglade_key(g[..], KEY_SHIFT, 1);
+  #assert everglade_pointer(g[..], a.x0 + 5, a.y0 + 5, 0, 0, 1) && g[0].sp.armed == -1 && !g[0].drag_on;
+  #assert everglade_pointer(g[..], b.x0 + 5, b.y0 + 5, 1, 0, 1) && ar_target(g[..]) == SP_ORB;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/meteor-swarm-bare-");
+  #assert everglade_pointer(g[..], b.x0 + 5, b.y0 + 5, 2, 0, 1) && sp_place(g[..], SP_ORB) == 0 && sp_place(g[..], SP_METEOR) == 3 && g[0].sp.armed == -1;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  m := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
+  #assert contains(m, "water-orb-bare-48.jpg") && contains(m, "key-0-0-48.jpg") && contains(m, "key-0-3-48.jpg") && !contains(m, "over ");
+  // let go off the bar: nothing moves; Shift let go, 4 casts Meteor Swarm where it now is
+  #assert everglade_pointer(g[..], a.x0 + 5, a.y0 + 5, 0, 0, 1) && everglade_pointer(g[..], 640, 300, 1, 0, 1) && everglade_pointer(g[..], 640, 300, 2, 0, 1);
+  #assert sp_place(g[..], SP_ORB) == 0 && !g[0].sp.ar.held;
+  #assert everglade_key_up(g[..], KEY_SHIFT, 0) && everglade_key(g[..], '4', 0) && g[0].sp.armed == SP_METEOR;
+  // a phone: hold Thunderbolt until its card shows, drag it onto Mega Thunderbolt; held and let go in place, nothing moves
+  g[0].sp.armed = -1; g[0].touch = true;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  p := g[0].sp.boxes[SP_BOLT]; q := g[0].sp.boxes[SP_MEGA];
+  #assert everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 0, 1, 7);
+  for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].sp.ar.held && g[0].sp.tip_on && everglade_pointer(g[..], q.x0 + 5, q.y0 + 5, 1, 1, 7) && ar_target(g[..]) == SP_MEGA;
+  #assert everglade_pointer(g[..], q.x0 + 5, q.y0 + 5, 2, 1, 7) && sp_place(g[..], SP_BOLT) == 2 && sp_place(g[..], SP_MEGA) == 1 && !g[0].sp.ar.held;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 0, 1, 8);
+  for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].sp.ar.held && g[0].sp.ar.from == SP_MEGA && everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 2, 1, 8) && !g[0].sp.ar.held && g[0].sp.slot_held == -1 && sp_place(g[..], SP_MEGA) == 1;
+}
+
+// abilities: Black Tentacles rise in a 20-foot square, seize the props in reach and hold them up, and restrain who fails
+aethyr_native_everglade_22 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  a := ab_of(g[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  // a townsperson out of doors, and the props
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  // a hardy one, who lives through 3d6 (a commoner's 4 hit points would not)
+  wh := watch_w(g[..]); wh[0].actors[who].max = 40; wh[0].actors[who].hp = 40;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x - 8, 0, pl.z); g[0].face = atan2(1, 0);
+  g[0].feet.y = 0;
+  #assert spells_key(g[..], '#', 1) && g[0].sp.armed == SP_SLOTS + AB_TENTACLES;
+  up := spells_key_up(g[..], '#', 1);
+  g[0].sp.aim = v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert a[0].bt_on && g[0].sp.armed == -1 && ab_in_square(a, pl.x, pl.z);
+  // within a few rounds they fail a save: hurt, Restrained, held where they stood, a crime
+  caught := false;
+  for k: 0..<240 {
+    ab_frame(g[..], 0.1); demo_step(w, everglade_ground(), g[0].heights[..], 0.1);
+    if a[0].bt_held[who] { caught = true; break; }
+  }
+  ww := watch_w(g[..]);
+  #assert caught && ww[0].actors[who].hp < ww[0].actors[who].max && ww[0].actors[who].mode == WM_DOWN && ww[0].crimes > 0;
+  for k: 0..<20 { ab_frame(g[..], 0.1); }
+  #assert ab_bt_holder(a, who) >= 0 && near(ww[0].actors[who].x, a[0].bt_x[who], 0.001);
+  // the tentacles stand their length from the root, the tips within reach
+  for j: 0..<AB_BT_N { #assert length(sub(a[0].bt_tip[j], ab_bt_root(g[..], j))) <= f32(AB_BT_REACH) + 0.01; }
+  // Shift+3 while they stand ends them, and lets go
+  #assert spells_key(g[..], '#', 1) && !a[0].bt_on && !a[0].bt_held[who];
+  // on the market's props: they come loose and are held up off the ground
+  prop := -1;
+  for i: 0..<w[0].n { if ab_prop(w[0].pieces[i].mesh) && w[0].pieces[i].state == DP_STANDING { prop = i; break; } }
+  p := w[0].pieces[prop];
+  g[0].feet = v3(p.cx - 8, 0, p.cz);
+  ab_press(g[..], AB_TENTACLES);
+  g[0].sp.aim = v3(p.cx, ground_at(g[..], p.cx, p.cz), p.cz); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  for k: 0..<360 { ab_frame(g[..], 1.0 / 60); demo_step(w, everglade_ground(), g[0].heights[..], 1.0 / 60); }
+  #assert w[0].pieces[prop].state == DP_LOOSE;
+  b := w[0].pieces[prop].body;
+  #assert ab_bt_holder(a, AB_BT_BODY + b) >= 0 && f32(demo_pos(w, b).y) > p.y0 + 0.6;
+}
+
+// abilities: a guard hunting you on a Wall of Stone's far side runs round it, never through it; when it falls, straight on
+aethyr_native_everglade_23 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  g[0].feet = v3(0, 0, -30); g[0].face = 0;
+  #assert spells_key(g[..], '!', 1);
+  ab_frame(g[..], 0.5);
+  w := watch_w(g[..]);
+  #assert w[0].on && w[0].fence_n == 2;   // its two panels
+  i := EG_SPOTS;   // the first of the new watch
+  #assert watch_is_guard(i);
+  you := ab_you(g[..]);
+  w[0].wanted = true;
+  a := w[0].actors[i..<i + 1];
+  a[0].mode = WM_CHASE; a[0].t = 0; a[0].x = 0.4; a[0].z = -21; a[0].swing = -1;
+  caught := false;
+  for k: 0..<600 {
+    ab_frame(g[..], 0.05);
+    watch_step(w, i, 0.05, you, g[0].boxes[..], g[0].box_n, g[0].heights[..]);
+    #assert watch_fence_gap(w, 0, a[0].x, a[0].z) >= f32(EG_RADIUS) - 0.02 && watch_fence_gap(w, 1, a[0].x, a[0].z) >= f32(EG_RADIUS) - 0.02;
+    if flat_gap(v3(a[0].x, 0, a[0].z), you) < f32(REACH) + 0.3 { caught = true; break; }
+  }
+  #assert caught;
+  // the wall gone, the way is straight again
+  ab_frame(g[..], 700);
+  #assert w[0].fence_n == 0 && near(watch_way(w, 0, -21, 0, -30), atan2(0, -9), 0.001);
+}
+
+// frost: an Ice Storm hurts who stands in it (you too), leaves walkable ice on a pond that holds you over it, then thin ice that breaks
+aethyr_native_everglade_24 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  f := fr_of(g[..]);
+  w := watch_w(g[..]);
+  #assert w[0].on;
+  // on yourself: you take some of 2d10 + 4d6 (half on a save)
+  g[0].feet = v3(0, 0, -30);
+  you := ab_you(g[..]);
+  #assert spells_key(g[..], '%', 1) && g[0].sp.armed == SP_SLOTS + AB_STORM;
+  up0 := spells_key_up(g[..], '%', 1);
+  g[0].sp.aim = you; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert f[0].storm_on;
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  #assert f[0].storm_hit && w[0].hp < w[0].max;
+  hail := 0;
+  for k: 0..<FR_SHARDS { if f[0].shards[k].live && f[0].shards[k].hail { hail += 1; } }
+  #assert hail > 40;
+  // its ground is Difficult Terrain for a round, then slippery
+  #assert everglade_footing(g[..], you.x, you.z, 0).pace == f32(FR_SLOW);
+  for k: 0..<7 { ab_frame(g[..], 1.0); }
+  #assert everglade_footing(g[..], you.x, you.z, 0).grip == f32(FR_GRIP);
+  // on a pond: walkable ice you stand on over the water for 30 s, then thin, then gone
+  px := EG_POND[0]; pz := EG_POND[1];
+  #assert fr_wet(g[..], px, pz);
+  g[0].sp.aim = v3(px, water_at(g[..], px, pz), pz); g[0].sp.aim_ok = true;
+  g[0].feet = v3(px - 20, 0, pz);
+  w[0].hp = w[0].max;
+  #assert spells_key(g[..], '%', 1) && g[0].sp.armed == SP_SLOTS + AB_STORM;
+  sp_cast(g[..]);
+  #assert f[0].storm_on;
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  #assert fr_ice_at(g[..], px, pz).state == FR_WALK;
+  #assert near(walk_at(g[..], px, pz), water_at(g[..], px, pz) + 0.04, 0.001) && everglade_ice_lift(g[..], px, pz) > 0;
+  for k: 0..<31 { ab_frame(g[..], 1.0); }
+  #assert fr_ice_at(g[..], px, pz).state == FR_THIN;
+  // you, 90 kg with your pack, on its thin ice: a square that bears less gives way under you
+  broke := false;
+  for q: 0..<9 {
+    x := px + (f32(q % 3) - 1) * f32(FR_CELL); z := pz + (f32(q / 3) - 1) * f32(FR_CELL);
+    if !fr_wet(g[..], x, z) || fr_ice_at(g[..], x, z).state != FR_THIN { continue; }
+    g[0].feet = v3(x, 0, z);
+    fr_people(g[..]);
+    if fr_ice_at(g[..], x, z).state != FR_THIN { broke = true; }
+  }
+  #assert broke;
+  for k: 0..<20 { ab_frame(g[..], 1.0); }
+  #assert fr_ice_at(g[..], px, pz).state == FR_NONE && walk_at(g[..], px, pz) < water_at(g[..], px, pz);
+}
+
+// frost: a Sleet Storm knocks down who fails its save, puts out a fire, hides what is behind it, and Shift+6 ends it
+aethyr_native_everglade_25 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  f := fr_of(g[..]);
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x - 20, 0, pl.z);
+  g[0].sp.blasts[0] = SpBlast.{live = true, at = v3(pl.x + 1, ground_at(g[..], pl.x + 1, pl.z), pl.z), t = 0, radius = 2, kind = 0, seed = 0};
+  #assert spells_key(g[..], '^', 1) && g[0].sp.armed == SP_SLOTS + AB_SLEET;
+  up0 := spells_key_up(g[..], '^', 1);
+  g[0].sp.aim = v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert f[0].sleet_on && ab_active(g[..], AB_SLEET);
+  ab_frame(g[..], 1.0 / 30);
+  #assert !g[0].sp.blasts[0].live;
+  // a save each round: within a few rounds they fall (DC 15 against +0)
+  ww := watch_w(g[..]);
+  fell := false;
+  for k: 0..<40 {
+    ab_frame(g[..], 0.5);
+    if ww[0].actors[who].mode == WM_DOWN { fell = true; break; }
+  }
+  #assert fell && ww[0].crimes > 0;
+  // its ground slows you and takes your grip; a line through it is hidden
+  c := f[0].sleet_at;
+  foot := everglade_footing(g[..], c.x, c.z, 0);
+  #assert foot.pace == f32(FR_SLOW) && foot.grip == f32(FR_GRIP);
+  #assert fr_hides(g[..], v3(c.x - 10, c.y + 1.6, c.z), v3(c.x + 10, c.y + 1.6, c.z)) && !fr_hides(g[..], v3(c.x - 10, c.y + 1.6, c.z + 9), v3(c.x + 10, c.y + 1.6, c.z + 9));
+  // Shift+6 again ends it; its slush and glaze thaw after
+  #assert spells_key(g[..], '^', 1) && !f[0].sleet_on;
+  for k: 0..<12 { ab_frame(g[..], 1.0); }
+  #assert !fr_foot(g[..], c.x, c.z).slip;
+}
+
+// frost: you slip on the ice and lie Prone for a moment, unable to move; in the sleet a fall ends your Concentration
+aethyr_native_everglade_26 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  f := fr_of(g[..]);
+  k0 := fr_add_patch(g[..], FR_STORM, 0, -30, f32(FR_STORM_R));
+  f[0].patches[k0].t = 10;
+  g[0].feet = v3(0, 0, -30); g[0].act = 2;
+  slipped := false;
+  for k: 0..<60 {
+    fr_people(g[..]);
+    if f[0].prone > 0 { slipped = true; break; }
+    f[0].time += f32(FR_ROUND);
+  }
+  #assert slipped && everglade_footing(g[..], 0, -30, 0).still && fr_prone_pitch(g[..]) <= 0;
+  for k: 0..<20 { ab_frame(g[..], 0.1); }
+  #assert f[0].prone == 0 && !everglade_footing(g[..], 0, -30, 0).still;
+  // Prone in the sleet: the Black Tentacles you hold and the sleet end
+  ab_press(g[..], AB_TENTACLES);
+  g[0].sp.aim = v3(10, ground_at(g[..], 10, -30), -30); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert ab_of(g[..])[0].bt_on;
+  f[0].sleet_on = true; f[0].sleet_at = ab_you(g[..]);
+  fr_you_prone(g[..], true);
+  #assert !ab_of(g[..])[0].bt_on && !f[0].sleet_on;
+}
+
+// tide: Control Water floods, parts a dry trench to walk, turns the current and whirls; Shift+8 steps through them and ends it
+aethyr_native_everglade_27 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  d := td_of(g[..]);
+  // on the river, facing north along it
+  rx := f32(EG_RIVER_X); rz := 40.0f32;
+  #assert fr_wet(g[..], rx, rz);
+  g[0].feet = v3(rx - 12, 0, rz); g[0].face = 0;
+  #assert spells_key(g[..], '*', 1) && g[0].sp.armed == SP_SLOTS + AB_CONTROL;
+  up0 := spells_key_up(g[..], '*', 1);
+  g[0].sp.aim = v3(rx, water_at(g[..], rx, rz), rz); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert d[0].on && d[0].mode == TD_FLOOD && d[0].pond < 0 && d[0].dir.z == 1;
+  fl: [16 * AB_FIELD_FLOATS] f32;
+  ab_frame(g[..], 1.0);
+  #assert td_wave(d) > 0 && td_fields(g[..], fl[..], 0, AB_FIELD_FLOATS) == 1 && fl[0] == 9;
+  // a swimmer near the crest is carried with it
+  c := td_crest(d, td_wave(d));
+  #assert everglade_tide_flow(g[..], c.x, c.z, WATER_SWIMMING).z > 4 && everglade_tide_flow(g[..], c.x, c.z, WATER_GROUND).z == 0;
+  // Part Water: its middle is dry to walk, and the water is not drawn there
+  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_PART;
+  up1 := spells_key_up(g[..], '*', 1);
+  ab_frame(g[..], 1.0);
+  #assert everglade_parted(g[..], rx, rz) && !everglade_parted(g[..], rx + 3, rz);
+  td_uniforms(g[..], u[..], U_TIDE);
+  #assert u[U_TIDE + 4] > 1;
+  // Redirect Flow: the current runs your way
+  g[0].face = f32(PI) * 0.5;
+  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_REDIRECT;
+  up2 := spells_key_up(g[..], '*', 1);
+  #assert everglade_tide_flow(g[..], rx, rz, WATER_SWIMMING).x > 1;
+  // the trench refills
+  for k: 0..<7 { ab_frame(g[..], 1.0); }
+  #assert !everglade_parted(g[..], rx, rz);
+  // Whirlpool: pulls you in and hurts you swimming in it
+  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_WHIRL;
+  up3 := spells_key_up(g[..], '*', 1);
+  flow := everglade_tide_flow(g[..], rx + 3, rz, WATER_SWIMMING);
+  #assert flow.x < 0;
+  w := watch_w(g[..]);
+  hp := w[0].hp;
+  g[0].feet = v3(rx + 2, 0, rz); g[0].water = WATER_SWIMMING;
+  ab_frame(g[..], 0.1);
+  #assert w[0].hp < hp && d[0].whirl_in;
+  g[0].water = WATER_GROUND;
+  #assert spells_key(g[..], '*', 1) && !d[0].on;
+}
+
+// grove: Moonbeam shines where you click, its radiance falls on who stands in it (you too), a click moves it, and Shift+- ends it
+aethyr_native_everglade_28 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := gv_of(g[..]);
+  w := watch_w(g[..]);
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x - 10, 0, pl.z);
+  #assert spells_key(g[..], '_', 1) && g[0].sp.armed == SP_SLOTS + AB_MOON;
+  up0 := spells_key_up(g[..], '_', 1);
+  g[0].sp.aim = v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert v[0].mb_on && ab_active(g[..], AB_MOON);
+  ab_frame(g[..], 1.0 / 30);
+  #assert w[0].crimes > 0 && v[0].mb_in[who];
+  // moved onto you: you take it
+  hp := w[0].hp;
+  #assert spells_key(g[..], '_', 1) && g[0].sp.armed == SP_SLOTS + AB_MOON;
+  up1 := spells_key_up(g[..], '_', 1);
+  g[0].sp.aim = ab_you(g[..]); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert v[0].mb_on && flat_gap(v[0].mb_at, ab_you(g[..])) < 0.1;
+  ab_frame(g[..], 1.0 / 30);
+  #assert w[0].hp < hp;
+  // picked while it shines, again: it ends
+  #assert spells_key(g[..], '_', 1);
+  up2 := spells_key_up(g[..], '_', 1);
+  #assert spells_key(g[..], '_', 1) && !v[0].mb_on;
+}
+
+// grove: Ctrl+1 lights Produce Flame in your hand (a light on the town); hurled, it strikes, scorches and sets debris burning; Starry Wisp leaves its mark starlit; Poison Spray's mist hangs
+aethyr_native_everglade_29 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := gv_of(g[..]);
+  w := watch_w(g[..]);
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  // Ctrl+1 and Ctrl+Shift+1 both reach the third row
+  #assert sp_key_place('1', 2) == 24 && sp_key_place('!', 3) == 24 && sp_key_place('6', 2) == 29;
+  #assert spells_key(g[..], '1', 2) && g[0].sp.armed == SP_SLOTS + AB_FLAME && v[0].pf_on && ab_active(g[..], AB_FLAME);
+  ku := spells_key_up(g[..], '1', 2);
+  lights := cast(int) u[U_LIGHT_INFO];
+  gv_frame(g[..], 1.0 / 30);
+  #assert gv_lamps(g[..], u[..], 0, LIGHTS) == 1 && u[U_LIGHTS + 3] > 12 && lights >= 0;
+  // on the ground: it scorches it
+  at := add(ab_you(g[..]), v3(0, 0, 8)); at.y = ground_at(g[..], at.x, at.z);
+  gv_bolt_at(g[..], GV_BOLT_FLAME, -1, -1, at);
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  scorched := false;
+  for i: 0..<SP_SCORCHES { if g[0].sp.scorches[i].live && flat_gap(g[0].sp.scorches[i].at, at) < 0.1 { scorched = true; } }
+  #assert scorched && v[0].pf_on;
+  // at a person: a crime, and with a few throws a hit
+  crimes := w[0].crimes;
+  hp := w[0].actors[who].hp;
+  for k: 0..<6 {
+    if w[0].actors[who].hp < hp || !ab_person_ok(g[..], who) { break; }
+    gv_bolt_at(g[..], GV_BOLT_FLAME, who, -1, ab_person_at(g[..], who));
+    for q: 0..<40 { ab_frame(g[..], 1.0 / 30); }
+  }
+  #assert w[0].crimes > crimes && w[0].actors[who].hp < hp;
+  // Ctrl+1 with it picked puts it out
+  #assert spells_key(g[..], '1', 2) && g[0].sp.armed == SP_SLOTS + AB_FLAME;
+  ku = spells_key_up(g[..], '1', 2);
+  #assert spells_key(g[..], '1', 2) && !v[0].pf_on && g[0].sp.armed == -1;
+  ku = spells_key_up(g[..], '1', 2);
+  // Starry Wisp: whom it hits is starlit for a round, and sheds its light
+  other := -1;
+  for i: 0..<WATCH_ACTORS { if other < 0 && i != who && ab_person_ok(g[..], i) { other = i; } }
+  #assert other >= 0;
+  for k: 0..<8 {
+    if v[0].starlit[other] > 0 || !ab_person_ok(g[..], other) { break; }
+    gv_bolt_at(g[..], GV_BOLT_WISP, other, -1, ab_person_at(g[..], other));
+    for q: 0..<40 { gv_frame(g[..], 1.0 / 30); }
+  }
+  #assert v[0].starlit[other] > 0 && gv_lamps(g[..], u[..], 0, LIGHTS) >= 1;
+  for q: 0..<8 { gv_frame(g[..], 1.0); }
+  #assert v[0].starlit[other] == 0;
+  // Poison Spray: its mist hangs where it lands, then thins away
+  gv_bolt_at(g[..], GV_BOLT_POISON, -1, -1, at);
+  for q: 0..<30 { gv_frame(g[..], 1.0 / 30); }
+  mist := 0;
+  for q: 0..<GV_MISTS { if v[0].mists[q].live && length(sub(v[0].mists[q].at, at)) < 2.5 { mist += 1; } }
+  #assert mist >= 4;
+  for q: 0..<10 { gv_frame(g[..], 1.0); }
+  mist = 0;
+  for q: 0..<GV_MISTS { if v[0].mists[q].live { mist += 1; } }
+  #assert mist == 0;
+}
+
+// grove: Shillelagh's staff strikes in reach for 1d10 + 3 force; Elementalism beckons each element in turn; Entangle restrains who fails, slows you in it, and a lost Concentration ends it
+aethyr_native_everglade_30 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := gv_of(g[..]);
+  w := watch_w(g[..]);
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  // Shillelagh: the staff swings, its blow lands, it ends with Ctrl+3 picked
+  #assert spells_key(g[..], '3', 2) && v[0].sh_on && g[0].sp.armed == SP_SLOTS + AB_SHILLELAGH;
+  ku := spells_key_up(g[..], '3', 2);
+  hp := w[0].actors[who].hp;
+  for k: 0..<8 {
+    if w[0].actors[who].hp < hp || !ab_person_ok(g[..], who) { break; }
+    gv_sh_swing_at(g[..], who, -1);
+    #assert gv_sh_lean(0.04) < 0 && gv_sh_lean(f32(GV_SH_STRIKE)) > 1.5;
+    for q: 0..<20 { gv_frame(g[..], 1.0 / 30); }
+    #assert v[0].sh_swing < 0;
+  }
+  #assert w[0].actors[who].hp < hp && hp - w[0].actors[who].hp <= 23 && w[0].crimes > 0;
+  #assert spells_key(g[..], '3', 2) && g[0].sp.armed == SP_SLOTS + AB_SHILLELAGH;
+  ku = spells_key_up(g[..], '3', 2);
+  #assert spells_key(g[..], '3', 2) && !v[0].sh_on;
+  ku = spells_key_up(g[..], '3', 2);
+  // Elementalism: Air, Earth, Fire, Water, then put away
+  #assert spells_key(g[..], '5', 2) && v[0].el_mode == GV_EL_AIR;
+  ku = spells_key_up(g[..], '5', 2);
+  for m: 1..<4 { #assert spells_key(g[..], '5', 2) && v[0].el_mode == m && g[0].sp.armed == SP_SLOTS + AB_ELEMENTS; ku = spells_key_up(g[..], '5', 2); }
+  #assert spells_key(g[..], '5', 2) && g[0].sp.armed == -1;
+  ku = spells_key_up(g[..], '5', 2);
+  spot := add(ab_you(g[..]), v3(0, 0, 4)); spot.y = ground_at(g[..], spot.x, spot.z);
+  gv_el_at(g[..], GV_EL_EARTH, spot);
+  dusty := false;
+  for q: 0..<GV_DUSTS { if v[0].dusts[q].live { dusty = true; } }
+  #assert dusty;
+  gv_el_at(g[..], GV_EL_WATER, ab_you(g[..]));
+  #assert contains(cast(string) g[0].sp.news[0..<g[0].sp.news_n], "DAMPENS YOU");
+  // Entangle on the one: Restrained till a check tears them free, or it ends; you are slowed in it, not held
+  // (on one the staff left standing)
+  held_one := -1;
+  for i: 0..<WATCH_ACTORS { if held_one < 0 && i != who && ab_person_ok(g[..], i) && !watch_is_guard(i) && ab_air(g[..], i) < 0.5 { held_one = i; } }
+  #assert held_one >= 0;
+  pl := person_place(g[..], held_one);
+  held := false;
+  for k: 0..<12 {
+    gv_en_at(g[..], v3(pl.x, 0, pl.z));
+    if v[0].en_held[held_one] { held = true; break; }
+  }
+  #assert held && v[0].en_on && ab_active(g[..], AB_ENTANGLE);
+  x0 := v[0].en_x[held_one];
+  ab_frame(g[..], 1.0 / 30);
+  #assert near(person_place(g[..], held_one).x, x0, 0.01);
+  #assert everglade_footing(g[..], pl.x, pl.z, 0).pace < 1 && !everglade_footing(g[..], pl.x, pl.z, 0).still;
+  #assert everglade_footing(g[..], pl.x + 20, pl.z, 0).pace == 1;
+  fr_you_prone(g[..], true);
+  #assert !v[0].en_on && !v[0].en_held[held_one];
+}
+
+// wild: Ctrl+7 Faerie Fire outlines who fails in its cube (attacks at them have Advantage; outlined, the town's at you have it), Ctrl+8 Healing Word heals them or you, never the dead
+aethyr_native_everglade_31 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := wd_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  #assert sp_key_place('7', 2) == 30 && sp_key_place('0', 2) == 33 && sp_key_place('=', 2) == 35;
+  #assert spells_key(g[..], '7', 2) && g[0].sp.armed == SP_SLOTS + AB_FAERIE;
+  ku := spells_key_up(g[..], '7', 2);
+  pl := person_place(g[..], who);
+  for k: 0..<16 { if v[0].lit[who] { break; } wd_ff_at(g[..], v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z)); }
+  #assert v[0].lit[who] && v[0].ff_on && ab_active(g[..], AB_FAERIE) && w[0].crimes > 0;
+  sum := 0;
+  for k: 0..<400 { sum += wd_d20(g[..], who); }
+  #assert sum > 400 * 12;   // the higher of two d20s: 13.8 on average, one alone 10.5
+  #assert wd_lamps(g[..], u[..], 0, LIGHTS) >= 1;
+  g[0].feet = v3(pl.x + 30, 0, pl.z);
+  you := ab_you(g[..]);
+  for k: 0..<16 { if v[0].you_lit { break; } wd_ff_at(g[..], you); }
+  #assert v[0].you_lit;
+  w[0].marked = false;
+  gv_frame(g[..], 1.0 / 30);
+  #assert w[0].marked;
+  // Ctrl+7 with it picked ends it
+  g[0].sp.armed = -1;
+  #assert spells_key(g[..], '7', 2) && g[0].sp.armed == SP_SLOTS + AB_FAERIE;
+  ku = spells_key_up(g[..], '7', 2);
+  #assert spells_key(g[..], '7', 2) && !v[0].ff_on && !v[0].lit[who] && !v[0].you_lit;
+  ku = spells_key_up(g[..], '7', 2);
+  // Healing Word: a hurt one is whole again (a commoner's 4 Hit Points, 2d4 + 3 at least 5)
+  crimes := w[0].crimes;
+  watch_harm(w, who, 2, ab_you(g[..]));
+  #assert w[0].actors[who].hp < w[0].actors[who].max;
+  wd_hw_on(g[..], who);
+  #assert w[0].actors[who].hp == w[0].actors[who].max && w[0].crimes == crimes && v[0].hw_t == 0;
+  w[0].hp = w[0].max - 6;
+  wd_hw_on(g[..], -1);
+  #assert w[0].hp == w[0].max;
+  other := wd_test_one(g[..], who);
+  #assert other >= 0;
+  watch_harm(w, other, 100, ab_you(g[..]));
+  wd_hw_on(g[..], other);
+  #assert w[0].actors[other].hp == 0;
+}
+
+// wild: Spike Growth's thorns tear whoever walks in them (you too) 2d4 a 5 feet; Call Lightning's cloud gathers over you and its bolt strikes 3d10 where you click under it
+aethyr_native_everglade_32 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := wd_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  x := pl.x; z := pl.z;
+  wd_sg_at(g[..], v3(x, 0, z));
+  #assert v[0].sg_on && ab_active(g[..], AB_SPIKE) && gv_rough(g[..], x + 3, z) && !gv_rough(g[..], x + 8, z);
+  #assert everglade_footing(g[..], x + 3, z, 0).pace < 1;
+  hp := w[0].actors[who].hp;
+  for k: 0..<3 { wd_test_put(g[..], who, x + f32(k), z); wd_sg_frame(g[..], 1.0 / 30); }
+  #assert w[0].actors[who].hp < hp && w[0].crimes > 0;
+  // you, walking through
+  g[0].feet = v3(x - 4, 0, z + 1);
+  wd_sg_frame(g[..], 1.0 / 30);
+  hp = w[0].hp;
+  for k: 1..<4 { g[0].feet = v3(x - 4 + f32(k), 0, z + 1); wd_sg_frame(g[..], 1.0 / 30); }
+  #assert w[0].hp < hp;
+  // standing still in it is no harm
+  hp = w[0].hp;
+  for k: 0..<30 { wd_sg_frame(g[..], 1.0 / 30); }
+  #assert w[0].hp == hp;
+  // Call Lightning: picked, a click under the cloud calls the bolt
+  other := wd_test_one(g[..], who);
+  #assert other >= 0;
+  op := person_place(g[..], other);
+  g[0].feet = v3(op.x + 6, 0, op.z);
+  #assert spells_key(g[..], '0', 2) && g[0].sp.armed == SP_SLOTS + AB_CALL;
+  ku := spells_key_up(g[..], '0', 2);
+  g[0].sp.aim = wd_feet(g[..], other); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  hp = w[0].actors[other].hp;
+  crimes := w[0].crimes;
+  sp_cast(g[..]);
+  #assert v[0].cl_on && g[0].sp.bolt.live && g[0].sp.bolt.call && v[0].cl_at.y > ab_you(g[..]).y + 25;
+  for k: 0..<12 { ku2 := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert w[0].actors[other].hp < hp && w[0].crimes > crimes;
+  // under it, on you
+  hp = w[0].hp;
+  wd_cl_strike(g[..], ab_you(g[..]));
+  #assert w[0].hp < hp;
+  // too far from the cloud
+  g[0].sp.aim = add(v[0].cl_at, v3(40, 0, 0)); g[0].sp.aim.y = 0;
+  g[0].sp.armed = SP_SLOTS + AB_CALL;
+  v[0].cl_cool = 0;
+  g[0].sp.bolt.live = false;
+  sp_cast(g[..]);
+  #assert !g[0].sp.bolt.live;
+  // Ctrl+0 with it picked ends it
+  #assert spells_key(g[..], '0', 2) && !v[0].cl_on;
+}
+
+// wild: Wall of Fire rises across your view (5d8 to who is in it, its far side burns), the town walks round it; fire on the grass spreads, burns who stands in it, and water puts it out
+aethyr_native_everglade_33 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := wd_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  at := v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z);
+  g[0].feet = v3(pl.x, 0, pl.z - 8);
+  hp := w[0].actors[who].hp;
+  wd_wf_at(g[..], at, v3(0, 0, 1));
+  #assert v[0].wf_on && ab_active(g[..], AB_WALLFIRE) && w[0].actors[who].hp < hp && w[0].crimes > 0;
+  #assert wd_wf_where(g[..], at) == 1 && wd_wf_where(g[..], add(at, v3(0, 0, 2))) == 2 && wd_wf_where(g[..], sub(at, v3(0, 0, 2))) == 0;
+  ab_frame(g[..], 1.0 / 30);
+  #assert w[0].fence_n >= 1;
+  // you by its burning side as a round ends
+  g[0].feet = v3(pl.x + 3, 0, pl.z + 2);
+  hp = w[0].hp;
+  for k: 0..<70 { wd_wf_frame(g[..], 0.1); v[0].time += 0.1; }
+  #assert w[0].hp < hp;
+  g[0].sp.armed = -1;
+  #assert spells_key(g[..], '=', 2) && g[0].sp.armed == SP_SLOTS + AB_WALLFIRE;
+  ku := spells_key_up(g[..], '=', 2);
+  #assert spells_key(g[..], '=', 2) && !v[0].wf_on;
+  ku = spells_key_up(g[..], '=', 2);
+  for q: 0..<WD_FIRES { v[0].fires[q].live = false; }
+  v[0].burnt_n = 0;
+  // fire on the grass: find some, light it, and it spreads
+  spot := v3(0, 0, 0); found := false;
+  for k: 0..<400 {
+    x := pl.x + f32(k % 20) * 2 - 20; z := pl.z + f32(k / 20) * 2 - 20;
+    if !found && wd_grass(g[..], x, z) && wd_grass(g[..], x + 3, z) && wd_grass(g[..], x - 3, z) && wd_grass(g[..], x, z + 3) && wd_grass(g[..], x, z - 3) { spot = v3(x, ground_at(g[..], x, z), z); found = true; }
+  }
+  #assert found;
+  #assert wd_ignite(g[..], spot, 0) && !wd_ignite(g[..], spot, 0);
+  for k: 0..<60 { wd_frame(g[..], 0.1); }
+  n := 0;
+  for q: 0..<WD_FIRES { if v[0].fires[q].live { n += 1; } }
+  #assert n >= 2;
+  // you in it burn
+  g[0].feet = v3(spot.x, 0, spot.z);
+  v[0].you_fire_next = 0;
+  hp = w[0].hp;
+  stood := false;
+  for q: 0..<WD_FIRES { if !stood && v[0].fires[q].live { g[0].feet = v3(v[0].fires[q].at.x, 0, v[0].fires[q].at.z); stood = true; } }
+  wd_fires_frame(g[..], 1.0 / 30);
+  #assert w[0].hp < hp;
+  // water: out, and black where it burnt, which does not catch again
+  #assert wd_douse(g[..], spot, 40) >= 2 && v[0].burnt_n >= 2;
+  n = 0;
+  for q: 0..<WD_FIRES { if v[0].fires[q].live { n += 1; } }
+  #assert n == 0 && !wd_ignite(g[..], spot, 0);
+}
+
+// fire: Fire Storm sets a house burning; a bolt catches wood about half the time; fire spreads along a fence, burns it to collapse, and frost puts it out
+aethyr_native_everglade_34 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := sp_dm(g[..]);
+  v := fi_of(g[..]);
+  // Fire Storm at the inn: its walls and timbers catch
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  ci_fs_at(g[..], v3(ix, ground_at(g[..], ix, iz), iz), v3(0, 0, 1));
+  #assert v[0].n >= 4;
+  for k: 0..<v[0].n { #assert w[0].pieces[v[0].burn[k].piece].group == EG_INN && fi_fuel(w[0].pieces[v[0].burn[k].piece]) > 0; }
+  // brick and glass never catch
+  for k: 0..<v[0].n { m := w[0].pieces[v[0].burn[k].piece].mesh; #assert m != M_BRICK && m != M_WINDOW; }
+  fi_restore(g[..], -1);
+  #assert v[0].n == 0;
+  // a bolt: about half the time, on one fence section
+  f := fi_test_piece(g[..], M_FENCE, 0, 0);
+  #assert f >= 0;
+  p := w[0].pieces[f];
+  at := v3(p.cx, p.y1, p.cz);
+  caught := 0;
+  for k: 0..<40 {
+    if fi_catch(g[..], at, 0.1, FI_BOLT) > 0 { caught += 1; }
+    fi_restore(g[..], -1);
+  }
+  #assert caught >= 8 && caught <= 32;
+  // lit, it spreads to the fence beside it
+  #assert fi_ignite(g[..], f) && !fi_ignite(g[..], f);
+  next := -1;
+  for j: 0..<w[0].n { if j != f && w[0].pieces[j].mesh == M_FENCE && fi_box_gap(w[0].pieces[f], w[0].pieces[j]) <= f32(FI_NEAR) { next = j; } }
+  #assert next >= 0;
+  spread := false;
+  for k: 0..<60 { fi_frame(g[..], 0.25); if fi_burning(g[..], next) || w[0].pieces[next].state != DP_STANDING { spread = true; } }
+  #assert spread;
+  // and burns down: a fence section (Medium wood, 4 hp fragile, as its SRD stats) breaks in a few seconds
+  #assert w[0].pieces[f].state != DP_STANDING && v[0].soot[f] > 0;
+  // frost: Cone of Cold over a burning piece puts it out
+  fi_restore(g[..], -1);
+  _ = sp_restore(g[..], -1);
+  #assert w[0].pieces[f].state == DP_STANDING && fi_ignite(g[..], f);
+  from := v3(p.cx - 6, ground_at(g[..], p.cx, p.cz), p.cz);
+  po_cc_at(g[..], from, v3(1, 0, 0));
+  #assert !fi_burning(g[..], f);
+  // water too
+  #assert fi_ignite(g[..], f) && fi_douse(g[..], at, 1) == 1 && v[0].n == 0;
+}
+
+// fire: the observatory's dome breaks under a Meteor Swarm into slabs that fall to the ground; R stands it again
+aethyr_native_everglade_35 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := fi_of(g[..]);
+  c := fi_dome_centre(g[..]);
+  #assert !fi_dome_gone(g[..]) && fi_dome_gap(g[..], c) == 0;
+  // a hammer's blow or two only wears it
+  fi_dome_hurt(g[..], 30, add(c, v3(0, 0, 5)));
+  #assert !fi_dome_gone(g[..]) && v[0].dome_dmg == 30;
+  // a meteor bursting on it: 20d6 fire (halved, stone) and 20d6 bludgeoning
+  g[0].sp.dmg = SrdDamage.{amount = 70, kind = DMG_FIRE, amount2 = 70, kind2 = DMG_BLUDGEONING};
+  fi_blast(g[..], add(c, v3(0, 0, f32(SP_DOME_R) + 0.5)), 4, 0, false);
+  #assert fi_dome_gone(g[..]) && fi_dome_gap(g[..], c) > 1000;
+  high := 0.0f32;
+  for q: 0..<FI_SHARDS { #assert v[0].shards[q].live; high = hi(high, v[0].shards[q].at.y); }
+  #assert high > ground_at(g[..], c.x, c.z) + 8;
+  for k: 0..<80 { fi_dome_frame(g[..], 0.05); }
+  low := 0;
+  for q: 0..<FI_SHARDS { if v[0].shards[q].at.y < c.y - 4 { low += 1; } }
+  #assert low >= FI_SHARDS / 2;
+  _ = sp_restore(g[..], -1);
+  #assert !fi_dome_gone(g[..]) && v[0].dome_dmg == 0 && !v[0].shards[0].live;
+}
+
+// trees: a meteor beside the tree line fells the trees away from the blast; they lie where they fell, near and far; R stands them again
+aethyr_native_everglade_36 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := tf_of(g[..]);
+  // a meteor bursting on the ground among the trees west of the palisade
+  t := tf_test_tree(g[..], -78, 0);
+  #assert t >= 0;
+  o := t * TREE_FLOATS;
+  tx := g[0].trees[o]; tz := g[0].trees[o + 1];
+  at := v3(tx + 1.0, ground_at(g[..], tx + 1.0, tz), tz);
+  g[0].sp.dmg = SrdDamage.{amount = 70, kind = DMG_FIRE, amount2 = 70, kind2 = DMG_BLUDGEONING};
+  felled := tf_blast(g[..], at, SP_METEOR);
+  #assert felled >= 1;
+  #assert v[0].mode[tf_k(g[..], t)] != TF_UP;
+  #assert felled >= 2;
+  // each that fell falls away from the blast
+  for k: 0..<g[0].tree_n {
+    if v[0].mode[tf_k(g[..], k)] == TF_UP { continue; }
+    q := k * TREE_FLOATS;
+    away := v3(g[0].trees[q] - at.x, 0, g[0].trees[q + 1] - at.z);
+    w := tf_way(g[..], k);
+    #assert w.x * away.x + w.z * away.z > 0;
+  }
+  // far from it, the trees still stand, untouched
+  far := tf_test_tree(g[..], 80, -80);
+  #assert far >= 0 && tf_angle(g[..], far) == 0;
+  // they come down over a few seconds: under gravity, a bounce, and lie still
+  half := 0.0f32;
+  for k: 0..<240 {
+    tf_frame(g[..], 1.0 / 60.0);
+    if k == 6 { half = tf_angle(g[..], t); #assert v[0].mode[tf_k(g[..], t)] == TF_FALL; }
+  }
+  #assert half > 0.03 && half < 1.0;
+  for k: 0..<g[0].tree_n {
+    if v[0].mode[tf_k(g[..], k)] == TF_UP { continue; }
+    #assert v[0].mode[tf_k(g[..], k)] == TF_DOWN && tf_angle(g[..], k) > 1.0 && tf_angle(g[..], k) < 1.8;
+  }
+  // and stay down: a minute on, nothing has stood back up
+  for k: 0..<60 { tf_frame(g[..], 1.0); }
+  #assert v[0].mode[tf_k(g[..], t)] == TF_DOWN && tf_angle(g[..], t) > 1.0;
+  // a lying trunk is in your way: a body along it
+  f := tf_foot(g[..], t);
+  bodies: [FOREST_BODIES * 7 + TF_BODIES * 7] f32;
+  #assert tf_bodies(g[..], bodies[..], 0, f.x, f.z) >= 1;
+  // the far trees draw it lying too: from far off, its cone is turned over
+  g[0].counts[SHAPE_CONE] = 0;
+  tf_far(g[..], t, ground_at(g[..], tx, tz));
+  c := (SLOT_AT[SHAPE_CONE]) * OBJECT_FLOATS;
+  #assert g[0].counts[SHAPE_CONE] == 1;
+  // its up axis (the second column) lies near the ground
+  #assert abs(g[0].objects[c + 5]) < 0.5 * hi(abs(g[0].objects[c + 1]) + abs(g[0].objects[c + 9]), 0.01) + 0.01;
+  // and the kit's mesh the same, its up axis lying
+  g[0].kit_used[group_of(tf_kind(g[..], t) * 2)] = 0;
+  tf_kit(g[..], t, ground_at(g[..], tx, tz));
+  ko := (g[0].group_at[group_of(tf_kind(g[..], t) * 2)]) * OBJECT_FLOATS;
+  #assert abs(g[0].objects[ko + 5]) < 0.6 * tf_size(g[..], t);
+  // R: the forest stands again as it was
+  _ = sp_restore(g[..], -1);
+  #assert !v[0].touched && v[0].mode[tf_k(g[..], t)] == TF_UP && tf_angle(g[..], t) == 0;
+}
+
+// trees: flame lights a tree; it burns black, its leaves go, it spreads to the crowns by it; water puts it out; nothing grows back
+aethyr_native_everglade_37 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := tf_of(g[..]);
+  // a tree out in the woods whose crown touches another's
+  t := -1;
+  for k: 0..<g[0].tree_n {
+    if t >= 0 { break; }
+    o := k * TREE_FLOATS;
+    if tf_city_gap(g[0].trees[o], g[0].trees[o + 1]) < 10 || g[0].trees[o + 2] < 0.9 { continue; }
+    top := add(tf_foot(g[..], k), v3(0, tf_tall(g[..], k) * 0.6, 0));
+    for j: 0..<g[0].tree_n {
+      q := j * TREE_FLOATS;
+      if j == k || t >= 0 || abs(g[0].trees[q] - top.x) > 6 || abs(g[0].trees[q + 1] - top.z) > 6 { continue; }
+      if tf_gap(g[..], j, top) < tf_crown(g[..], k) * 0.5 { t = k; }
+    }
+  }
+  #assert t >= 0;
+  f := tf_foot(g[..], t);
+  // Produce Flame's flame on its trunk: it catches (spell fire, at green wood's odds: a few tries)
+  caught := false;
+  for k: 0..<12 { if !caught && fi_catch(g[..], add(f, v3(0.3, 1.2, 0)), 0.6, FI_SPELL) > 0 { caught = tf_burning(g[..], t); } }
+  #assert caught;
+  // it burns: black, its leaves gone, and the fire reaches the trees whose crowns touch it
+  for k: 0..<160 { tf_frame(g[..], 0.25); }
+  #assert v[0].soot[tf_k(g[..], t)] > 0.95 && v[0].bare[tf_k(g[..], t)] > 0.95;
+  #assert v[0].lit >= 2;
+  // the far trees draw it black and bare
+  g[0].counts[SHAPE_CONE] = 0;
+  tf_far(g[..], t, ground_at(g[..], f.x, f.z));
+  c := SLOT_AT[SHAPE_CONE] * OBJECT_FLOATS;
+  #assert g[0].objects[c + 12] < 0.15 && g[0].objects[c + 13] < 0.15;
+  // water over the fires: they go out
+  if v[0].n > 0 {
+    e := v[0].burn[0].tree;
+    ef := tf_foot(g[..], e);
+    #assert tf_douse(g[..], add(ef, v3(0, 2, 0)), 3, 0) >= 1 && !tf_burning(g[..], e);
+  }
+  // nothing grows back by itself: ten minutes on, still black
+  for k: 0..<600 { tf_frame(g[..], 1.0); }
+  #assert v[0].soot[tf_k(g[..], t)] > 0.95 && v[0].bare[tf_k(g[..], t)] > 0.95;
+  // cold rimes the trees and puts fire out
+  w := tf_test_tree(g[..], -80, 80);
+  #assert tf_ignite(g[..], w);
+  wf := tf_foot(g[..], w);
+  #assert tf_douse(g[..], add(wf, v3(0, 2, 0)), 2, 1) == 1 && v[0].frost[tf_k(g[..], w)] > 0.9;
+  // R: green again
+  _ = sp_restore(g[..], -1);
+  #assert v[0].soot[tf_k(g[..], t)] == 0 && v[0].bare[tf_k(g[..], t)] == 0 && v[0].n == 0;
+}
+
+// trees: a bolt by a tree strikes it and splits it; fire deep in the woods is no crime, by the palisade the watch hears it
+aethyr_native_everglade_38 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := tf_of(g[..]);
+  // a tree deep in the woods, well clear of the palisade
+  t := -1;
+  for k: 0..<g[0].tree_n {
+    o := k * TREE_FLOATS;
+    if t < 0 && tf_city_gap(g[0].trees[o], g[0].trees[o + 1]) > f32(TF_CITY) + 15 { t = k; }
+  }
+  #assert t >= 0;
+  f := tf_foot(g[..], t);
+  #assert tf_bolt(g[..], v3(f.x + 1.2, f.y, f.z), 1.0);
+  // the tallest by it took the bolt: split high on its trunk, going over
+  t = -1;
+  for k: 0..<g[0].tree_n { if v[0].mode[tf_k(g[..], k)] != TF_UP { t = k; } }
+  #assert v[0].split == 1 && t >= 0 && v[0].mode[tf_k(g[..], t)] == TF_FALL && v[0].pivot[tf_k(g[..], t)] > 1.5;
+  // its stump stands in your way still, to where it broke
+  girth := tf_girth(g[..], t, tree_girth(g[..], g[0].trees[..], t));
+  #assert girth.r > 0 && girth.top > 1.5;
+  #assert tf_city_gap(f.x, f.z) > f32(TF_CITY);
+  #assert tf_city_gap(-70, 0) < f32(TF_CITY);
+}
+
+// circle: Conjure Animals' pack tears whoever comes within 10 feet (you too), Polymorph makes a frog of them or a bear of you, Mass Cure Wounds heals six
+aethyr_native_everglade_39 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := ci_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  #assert sp_key_place('-', 2) == 34 && sp_key_place('1', 4) == 36 && sp_key_place(0xA3, 0) == 38;
+  #assert spells_key(g[..], '-', 2) && g[0].sp.armed == SP_SLOTS + AB_CONJURE;
+  ku := spells_key_up(g[..], '-', 2);
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x + 30, 0, pl.z);
+  hp := w[0].actors[who].hp;
+  for k: 0..<20 {
+    if w[0].actors[who].hp < hp { break; }
+    w[0].actors[who].hp = hp; w[0].actors[who].mode = WM_CALM;
+    ci_ca_at(g[..], v3(pl.x + 2, 0, pl.z));
+    ci_ca_frame(g[..], 1.0 / 30);
+  }
+  #assert v[0].ca_on && ab_active(g[..], AB_CONJURE) && w[0].actors[who].hp < hp && w[0].crimes > 0;
+  // you, beside it
+  you := ab_you(g[..]);
+  hp = w[0].hp;
+  for k: 0..<20 { if w[0].hp < hp { break; } v[0].you_ca_next = 0; ci_ca_at(g[..], add(you, v3(1, 0, 0))); ci_ca_frame(g[..], 1.0 / 30); }
+  #assert w[0].hp < hp;
+  // it runs where it is sent, 30 feet at most
+  g[0].sp.armed = SP_SLOTS + AB_CONJURE;
+  g[0].sp.aim = add(v[0].ca_at, v3(6, 0, 0)); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  for k: 0..<60 { ci_ca_frame(g[..], 1.0 / 30); }
+  #assert flat_gap(v[0].ca_at, g[0].sp.aim) < 0.2;
+  g[0].sp.armed = SP_SLOTS + AB_CONJURE;
+  #assert spells_key(g[..], '-', 2) && !v[0].ca_on;
+  ku = spells_key_up(g[..], '-', 2);
+  // Polymorph: a frog who fails (the frog's 1 Hit Point first), back when it is gone
+  other := wd_test_one(g[..], who);
+  #assert other >= 0;
+  w[0].actors[other].mode = WM_CALM; w[0].actors[other].hp = w[0].actors[other].max;
+  for k: 0..<20 { if v[0].pm_on { break; } ci_pm_on(g[..], other); }
+  #assert v[0].pm_on && v[0].pm_who == other && w[0].actors[other].temp == 1 && !ci_person_shown(g[..], other);
+  hp = w[0].actors[other].hp;
+  watch_harm(w, other, 1, ab_you(g[..]));
+  #assert w[0].actors[other].hp == hp && w[0].actors[other].temp == 0;
+  ci_pm_frame(g[..], 1.0 / 30);
+  #assert !v[0].pm_on && ci_person_shown(g[..], other);
+  // on you: a bear, 22 Temporary Hit Points spent first, no spells but its bite
+  ci_pm_on(g[..], -1);
+  #assert v[0].form == CI_FORM_BEAR && w[0].temp == 22 && !ci_you_shown(g[..]) && ci_pace(g[..]) > 1;
+  hp = w[0].hp;
+  watch_hurt_you(w, 5);
+  #assert w[0].hp == hp && w[0].temp == 17;
+  g[0].sp.armed = -1;
+  #assert spells_key(g[..], '1', 0) && g[0].sp.armed == -1;   // Meteor Swarm: a bear casts no spells
+  watch_hurt_you(w, 20);
+  #assert w[0].hp == hp - 3;
+  ci_form_frame(g[..], 1.0 / 30);
+  #assert v[0].form == CI_FORM_NONE && ci_you_shown(g[..]) && !v[0].pm_on;
+  // Mass Cure Wounds: them and you
+  watch_harm(w, other, 2, ab_you(g[..]));
+  w[0].hp = w[0].max - 8;
+  op := wd_feet(g[..], other);
+  g[0].feet = v3(op.x + 2, 0, op.z);
+  ci_mc_at(g[..], op);
+  #assert w[0].actors[other].hp == w[0].actors[other].max && w[0].hp == w[0].max && v[0].mc_n >= 2 && v[0].mc_n <= 6;
+}
+
+// circle: Sunbeam blinds or burns down its line (Blinded, their blows at you have Disadvantage), Wall of Thorns tears who is in it (you too) and the town walks round it, Fire Storm's ten cubes burn and catch the grass
+aethyr_native_everglade_40 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := ci_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x, 0, pl.z - 8);
+  hp := w[0].actors[who].hp;
+  blinded := false;
+  for k: 0..<20 {
+    if v[0].blind[who] > 0 { blinded = true; break; }
+    w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM;   // they live through it, to be Blinded
+    v[0].sb_cool = 0;
+    ci_sb_line(g[..], add(ab_you(g[..]), v3(0, 1.2, 0)), add(wd_feet(g[..], who), v3(0, 1, 0)));
+  }
+  #assert blinded && w[0].crimes > 0;
+  ci_sb_frame(g[..], 1.0 / 30);
+  #assert w[0].actors[who].blind;
+  // Disadvantage: the lower of two d20s, about 7.2 to hit against one's 10.5
+  sum := 0;
+  for k: 0..<400 { sum += watch_roll_at_you(w, who, 0, SRD_GUARD).roll; }
+  #assert sum < 400 * 9;
+  for k: 0..<80 { ci_sb_frame(g[..], 0.1); }
+  #assert !w[0].actors[who].blind;
+  // Wall of Thorns
+  w[0].actors[who].hp = w[0].actors[who].max; w[0].actors[who].mode = WM_CALM;
+  hp = w[0].actors[who].hp;
+  at := v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z);
+  ci_wt_at(g[..], at, v3(0, 0, 1));
+  #assert v[0].wt_on && ab_active(g[..], AB_THORNS) && ci_wt_where(g[..], at) == 1 && ci_wt_where(g[..], add(at, v3(0, 0, 3))) == 0;
+  #assert gv_rough(g[..], at.x + 2, at.z) && !gv_rough(g[..], at.x + 2, at.z + 3);
+  ab_frame(g[..], 1.0 / 30);
+  #assert w[0].fence_n >= 1;
+  g[0].feet = v3(at.x + 3, 0, at.z);
+  hp = w[0].hp;
+  v[0].you_wt_next = 0;
+  ci_wt_frame(g[..], 1.0 / 30);
+  #assert w[0].hp < hp;
+  g[0].sp.armed = -1;
+  #assert spells_key(g[..], 0xA2, 0) && g[0].sp.armed == SP_SLOTS + AB_THORNS;
+  ku := spells_key_up(g[..], 0xA2, 0);
+  #assert spells_key(g[..], 0xA2, 0) && !v[0].wt_on;
+  ku = spells_key_up(g[..], 0xA2, 0);
+  // Fire Storm: two rows of five across the way, 7d10 to who is in them, you too
+  other := wd_test_one(g[..], who);
+  #assert other >= 0;
+  w[0].actors[other].hp = w[0].actors[other].max; w[0].actors[other].mode = WM_CALM;
+  op := wd_feet(g[..], other);
+  g[0].feet = v3(op.x + f32(CI_FS_CUBE), 0, op.z);
+  hp = w[0].hp;
+  ohp := w[0].actors[other].hp;
+  ci_fs_at(g[..], op, v3(0, 0, 1));
+  #assert w[0].actors[other].hp < ohp && w[0].hp < hp && ab_active(g[..], AB_FIRESTORM);
+  #assert flat_gap(ci_fs_cube(op, v3(0, 0, 1), 0), ci_fs_cube(op, v3(0, 0, 1), 4)) > 12 && flat_gap(ci_fs_cube(op, v3(0, 0, 1), 0), ci_fs_cube(op, v3(0, 0, 1), 5)) < 3.1;
+}
+
+// storm: Sunburst burns and blinds in 60 feet (you too, your attacks then at Disadvantage), Storm of Vengeance's rounds fall on whoever is under it (you too)
+aethyr_native_everglade_41 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := st_of(g[..]);
+  c := ci_of(g[..]);
+  w := watch_w(g[..]);
+  #assert sp_key_place('6', 4) == 41 && sp_key_place('0', 4) == 45;
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  at := wd_feet(g[..], who);
+  g[0].feet = v3(pl.x + 6, 0, pl.z);
+  // they live through it, to be Blinded; you as well
+  blinded := false;
+  for k: 0..<30 {
+    if c[0].blind[who] > 0 && v[0].you_blind > 0 { blinded = true; break; }
+    w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM; w[0].hp = 500; w[0].dead = false;
+    st_su_at(g[..], at);
+  }
+  #assert blinded && w[0].crimes > 0 && v[0].su_save[who] && st_you_blind(g[..]);
+  // your attack at them: the lower of two d20s
+  sum := 0;
+  for k: 0..<400 { sum += wd_d20(g[..], who); }
+  #assert sum < 400 * 9;
+  // a save each round ends it, sooner or later
+  for k: 0..<200 { st_frame(g[..], 0.5); ci_sb_frame(g[..], 0.5); }
+  #assert c[0].blind[who] <= 0 && !st_you_blind(g[..]);
+  // Storm of Vengeance over you both: the thunder, the acid, the bolts, the hail, the freezing rain
+  w[0].actors[who].hp = 500; w[0].hp = 500;
+  hp := w[0].actors[who].hp; mine := w[0].hp;
+  st_sv_at(g[..], at);
+  #assert v[0].sv_on && v[0].sv_round == 1 && ab_active(g[..], AB_VENGEANCE);
+  for k: 0..<285 { st_frame(g[..], 0.2); }   // 57 s: the tenth round at 54
+  #assert v[0].sv_round == 10 && w[0].actors[who].hp < hp && w[0].hp < mine;
+  #assert st_rough(g[..], at.x + 3, at.z) && st_hides(g[..], add(at, v3(-5, 1.6, 0)), add(at, v3(5, 1.6, 0)));
+  for k: 0..<20 { st_frame(g[..], 0.5); }
+  #assert !v[0].sv_on && !st_rough(g[..], at.x + 3, at.z);
+}
+
+// storm: Shapechange's mammoth (126 Temporary Hit Points, gores, no spells) turns bear, wolf, then you; Wild Resurgence makes a wolf of you; Speak with Animals; R is a Long Rest
+aethyr_native_everglade_42 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := st_of(g[..]);
+  c := ci_of(g[..]);
+  w := watch_w(g[..]);
+  g[0].sp.armed = SP_SLOTS + AB_SHAPECHANGE;
+  st_cast(g[..], AB_SHAPECHANGE);
+  #assert v[0].sc_on && c[0].form == CI_FORM_MAMMOTH && w[0].temp == 126 && ci_pace(g[..]) > 1.6 && g[0].sp.armed == SP_SLOTS + AB_SHAPECHANGE;
+  #assert ci_no_casting(g[..], SP_METEOR) && !ci_no_casting(g[..], SP_SLOTS + AB_SHAPECHANGE);
+  // its Temporary Hit Points spent, the shape holds (it is not Polymorph)
+  watch_hurt_you(w, 130);
+  ci_form_frame(g[..], 1.0 / 30);
+  #assert c[0].form == CI_FORM_MAMMOTH && w[0].temp == 0;
+  st_press(g[..], AB_SHAPECHANGE);
+  #assert c[0].form == CI_FORM_BEAR && w[0].temp == 0;
+  st_press(g[..], AB_SHAPECHANGE);
+  #assert c[0].form == CI_FORM_WOLF;
+  st_press(g[..], AB_SHAPECHANGE);
+  #assert c[0].form == CI_FORM_NONE && !v[0].sc_on;
+  // Wild Resurgence: a wolf, 9 Temporary Hit Points
+  st_press(g[..], AB_RESURGENCE);
+  #assert c[0].form == CI_FORM_WOLF && c[0].form_by == AB_RESURGENCE && w[0].temp == ST_DRUID && ab_active(g[..], AB_RESURGENCE);
+  st_press(g[..], AB_RESURGENCE);
+  #assert c[0].form == CI_FORM_NONE;
+  // Speak with Animals
+  st_press(g[..], AB_SPEAK);
+  #assert v[0].sa_on;
+  st_press(g[..], AB_SPEAK);
+  #assert !v[0].sa_on;
+  // R: a Long Rest with the Rebuild, the heat untouched
+  w[0].hp = 3; w[0].slow_t = 2; w[0].marked = true; v[0].you_blind = 30; w[0].heat = 7;
+  st_press(g[..], AB_RESURGENCE);
+  #assert everglade_key(g[..], 'r', 0);
+  #assert w[0].hp == w[0].max && w[0].slow_t == 0 && !w[0].marked && !st_you_blind(g[..]) && c[0].form == CI_FORM_NONE && w[0].temp == 0 && w[0].heat == 7;
+}
+
+// polar: Ray of Frost hits for 2d8 and slows, Fog Cloud hides who is in it, Hold Person paralyzes (your blows at Advantage) until a save, Cone of Cold freezes the 60-foot cone and never you
+aethyr_native_everglade_43 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := po_of(g[..]);
+  w := watch_w(g[..]);
+  #assert sp_key_place('-', 4) == 46 && sp_key_place('=', 4) == 47 && sp_key_place('=', 0) == 11 && sp_key_place('+', 1) == 23;
+  #assert spells_key(g[..], '=', 0) && g[0].sp.armed == SP_SLOTS + AB_HOLD;
+  ku := spells_key_up(g[..], '=', 0);
+  g[0].sp.armed = -1;
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x + 6, 0, pl.z);
+  // Ray of Frost: in time a hit, and they are slowed
+  for k: 0..<40 {
+    if v[0].slow[who] > 0 { break; }
+    w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM;
+    po_rf_at(g[..], who);
+  }
+  #assert v[0].slow[who] > 0 && w[0].actors[who].hp < 500 && w[0].crimes > 0;
+  x0 := w[0].actors[who].x;
+  w[0].actors[who].x = x0 + 3;
+  po_frame(g[..], 1.0 / 30);
+  #assert abs(w[0].actors[who].x - (x0 + 2.0)) < 0.05;   // two thirds of the step
+  // Fog Cloud: a line through it is hidden, one past it is not
+  at := wd_feet(g[..], who);
+  po_fog_at(g[..], at);
+  #assert v[0].fog_on && po_hides(g[..], add(at, v3(-12, 1.5, 0)), add(at, v3(12, 1.5, 0))) && !po_hides(g[..], add(at, v3(-12, 1.5, 20)), add(at, v3(12, 1.5, 20)));
+  #assert ab_stone_hides(g[..], add(at, v3(-12, 1.5, 0)), add(at, v3(12, 1.5, 0)));
+  // Hold Person: Paralyzed, still, your d20 the higher of two
+  v[0].slow[who] = 0;
+  for k: 0..<30 { if v[0].held[who] { break; } po_hp_on(g[..], who); }
+  #assert v[0].hp_on && v[0].held[who] && po_held(g[..], who);
+  hx := v[0].held_x[who];
+  w[0].actors[who].x = hx + 4;
+  po_frame(g[..], 1.0 / 30);
+  #assert w[0].actors[who].x == hx && w[0].actors[who].swing < 0;
+  sum := 0;
+  for k: 0..<400 { sum += wd_d20(g[..], who); }
+  #assert sum > 400 * 12;
+  for k: 0..<200 { po_frame(g[..], 0.5); }
+  #assert !v[0].held[who] && !v[0].hp_on;
+  // Cone of Cold: them in it, you never
+  w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM;
+  hp := w[0].actors[who].hp; mine := w[0].hp;
+  you := ab_you(g[..]);
+  po_cc_at(g[..], you, sub(wd_feet(g[..], who), you));
+  #assert w[0].actors[who].hp < hp && w[0].hp == mine && ab_active(g[..], AB_CONE);
+  #assert !po_in_cone(you, v3(1, 0, 0), add(you, v3(-5, 0, 0))) && po_in_cone(you, v3(1, 0, 0), add(you, v3(10, 0, 3)));
+}
+
+// rubble: a falling chunk strikes the guard under it, a slow one doesn't; the blocks of a crumbled panel strike you
+aethyr_native_everglade_44 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  who := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert who >= 0;
+  w := sp_dm(g[..]);
+  ww := watch_w(g[..]);
+  p := wd_feet(g[..], who);
+  g[0].feet = v3(p.x, 0, p.z - 20);
+  b := demo_free_body(w, DEMO_CHUNK);
+  #assert b >= 0;
+  w[0].meta[b].kind = DEMO_CHUNK; w[0].meta[b].hx = 0.3; w[0].meta[b].hy = 0.3; w[0].meta[b].hz = 0.3;
+  k := b * DB_FLOATS;
+  for q: 0..<DB_FLOATS { w[0].state[k + q] = 0; }
+  w[0].state[k] = 300; w[0].state[k + 4] = f64(p.x); w[0].state[k + 5] = f64(p.y + 1.6); w[0].state[k + 6] = f64(p.z);
+  w[0].state[k + 8] = 1;   // rising slowly: nothing
+  hp := ww[0].actors[who].hp;
+  rb_frame(g[..], 1.0 / 60);
+  #assert ww[0].actors[who].hp == hp;
+  w[0].state[k + 8] = -9;  // falling: 12 kJ, 2d10
+  rb_frame(g[..], 1.0 / 60);
+  #assert ww[0].actors[who].hp < hp;
+  // a panel crumbles over you
+  g[0].feet = v3(0, 0, -30); g[0].face = 0;
+  #assert spells_key(g[..], '!', 1);
+  ab_frame(g[..], 0.5);
+  a := ab_of(g[..]);
+  st := ab_panel(a[0].stones[0], 0);
+  mid := mix(v3(st.ax, st.base, st.az), v3(st.bx, st.base, st.bz), 0.5);
+  #assert rb_panel_hurt(g[..], 0, 999, mid) && !ab_panel(a[0].stones[0], 0).live && ab_panel(a[0].stones[0], 1).live;
+  #assert everglade_bodies_on(g[..], false) == BODIES + AB_ST_BODIES;
+  rv := rb_of(g[..]);
+  for q: 0..<RB_BLOCKS { rv[0].blocks[q].vel.x = 0; rv[0].blocks[q].vel.z = 0; }
+  g[0].feet = v3(mid.x, 0, mid.z);
+  you := ww[0].hp;
+  for q: 0..<60 { rb_frame(g[..], 1.0 / 60); }
+  #assert ww[0].hp < you;
+}
+
+// audit: Meteor Swarm, the Thunderbolt and the Mega Thunderbolt blast the guard they strike; the Water Orb's splash too
+aethyr_native_everglade_45 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  au_face(g[..], i, 30);
+  for slot: 0..<SP_SLOTS {
+    au_whole(g[..], i);
+    g[0].sp.dmg = srd_roll_damage(g[0].sp.dice[..], srd_spell(SP_SPELL[slot]));
+    sp_blast(g[..], wd_feet(g[..], i), slot);
+    #assert au_hp(g[..], i) < 500;
+  }
+}
+
+// audit: Wind Wall's rising, Gust of Wind's push and Thunderwave's boom reach the guard in front of you
+aethyr_native_everglade_46 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  // Thunderwave: the guard 2 m ahead, 2d8 (half on a save)
+  au_face(g[..], i, 2);
+  ab_press(g[..], AB_THUNDER);
+  #assert au_hp(g[..], i) < 500;
+  // Wind Wall rises 4 m ahead: 4d8 bludgeoning, half on a save
+  au_whole(g[..], i);
+  au_face(g[..], i, f32(AB_WW_AHEAD));
+  ab_press(g[..], AB_WIND);
+  #assert au_hp(g[..], i) < 500 || !ab_active(g[..], AB_WIND);
+  // Gust of Wind: a failed save pushes them 15 feet along it
+  au_whole(g[..], i);
+  au_face(g[..], i, 4);
+  pushed := false;
+  for k: 0..<20 {
+    ab_press(g[..], AB_GUST);
+    if watch_w(g[..])[0].actors[i].body.on { pushed = true; break; }
+    ab_press(g[..], AB_GUST);
+  }
+  #assert pushed;
+}
+
+// audit: Black Tentacles crush and restrain the guard in their square, and the one who walks in
+aethyr_native_everglade_47 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  a := ab_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 10);
+  // cast 12 m off, then they walk in: each round's save until they fail
+  g[0].sp.aim = v3(p.x + 12, ground_at(g[..], p.x + 12, p.z), p.z);
+  ab_bt_cast(g[..]);
+  #assert a[0].bt_on && au_hp(g[..], i) == 500;
+  au_put(g[..], i, p.x + 12, p.z);
+  for k: 0..<40 { if a[0].bt_held[i] { break; } a[0].bt_next[i] = 0; _ := ab_bt_saves(g[..]); }
+  #assert a[0].bt_held[i] && au_hp(g[..], i) < 500;
+}
+
+// audit: Ice Storm's hail hurts the guard under it; Sleet Storm knocks down the one who walks in
+aethyr_native_everglade_48 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  f := fr_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 20);
+  f[0].storm_at = v3(p.x, ground_at(g[..], p.x, p.z), p.z);
+  fr_storm_hit(g[..]);
+  #assert au_hp(g[..], i) < 500;
+  // Sleet 15 m off; they walk in and, in a round or so, fall
+  au_whole(g[..], i);
+  g[0].sp.aim = v3(p.x + 15, ground_at(g[..], p.x + 15, p.z), p.z);
+  au_face(g[..], i, 20);
+  g[0].sp.aim = v3(p.x + 15, ground_at(g[..], p.x + 15, p.z), p.z);
+  fr_sleet_cast(g[..]);
+  #assert f[0].sleet_on;
+  au_put(g[..], i, p.x + 15, p.z);
+  down := false;
+  for k: 0..<40 { fr_frame(g[..], 0.5); if watch_w(g[..])[0].actors[i].mode == WM_DOWN { down = true; break; } au_whole(g[..], i); }
+  #assert down;
+}
+
+// audit: Moonbeam sears the guard who walks into it; Produce Flame, Starry Wisp and Poison Spray strike a guard
+aethyr_native_everglade_49 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 6);
+  g[0].sp.aim = v3(p.x + 10, ground_at(g[..], p.x + 10, p.z), p.z);
+  gv_mb_cast(g[..]);
+  #assert v[0].mb_on && au_hp(g[..], i) == 500;
+  au_put(g[..], i, p.x + 10, p.z);
+  gv_mb_frame(g[..], 1.0 / 30);
+  #assert au_hp(g[..], i) < 500;
+  gv_mb_end(g[..]);
+  au_put(g[..], i, p.x, p.z);
+  for kind: 0..<3 {
+    hit := false;
+    for k: 0..<30 {
+      au_whole(g[..], i);
+      v[0].pf_cool = 0;
+      gv_bolt_at(g[..], kind, i, -1, ab_person_at(g[..], i));
+      for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+      if au_hp(g[..], i) < 500 { hit = true; break; }
+    }
+    #assert hit;
+  }
+}
+
+// audit: Shillelagh's staff and Ray of Frost strike a guard; Hold Person paralyzes one; Entangle restrains one
+aethyr_native_everglade_50 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  au_face(g[..], i, 1.2);
+  hit := false;
+  for k: 0..<30 {
+    au_whole(g[..], i);
+    v[0].sh_on = true; v[0].sh_swing = -1;
+    gv_sh_swing_at(g[..], i, -1);
+    for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+    if au_hp(g[..], i) < 500 { hit = true; break; }
+  }
+  #assert hit;
+  au_face(g[..], i, 6);
+  hit = false;
+  for k: 0..<40 { au_whole(g[..], i); po_rf_at(g[..], i); if au_hp(g[..], i) < 500 { hit = true; break; } }
+  #assert hit;
+  po := po_of(g[..]);
+  for k: 0..<30 { if po[0].held[i] { break; } au_whole(g[..], i); po_hp_on(g[..], i); }
+  #assert po[0].held[i];
+  po[0].held[i] = false; po[0].hp_on = false;
+  au_whole(g[..], i);
+  for k: 0..<30 { if v[0].en_held[i] { break; } gv_en_at(g[..], wd_feet(g[..], i)); }
+  #assert v[0].en_held[i];
+}
+
+// audit: Faerie Fire outlines a guard; Spike Growth tears the one who walks in it; Call Lightning's bolt strikes one
+aethyr_native_everglade_51 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := wd_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 8);
+  for k: 0..<30 { if v[0].lit[i] { break; } wd_ff_at(g[..], p); }
+  #assert v[0].lit[i];
+  // Spike Growth beside them; they walk 3 m in it
+  wd_sg_at(g[..], v3(p.x + 14, ground_at(g[..], p.x + 14, p.z), p.z));
+  au_put(g[..], i, p.x + 12, p.z);
+  wd_sg_frame(g[..], 1.0 / 30);
+  for k: 0..<6 { au_put(g[..], i, p.x + 12 + f32(k + 1) * 0.6, p.z); wd_sg_frame(g[..], 1.0 / 30); }
+  #assert au_hp(g[..], i) < 500;
+  au_whole(g[..], i);
+  au_put(g[..], i, p.x, p.z);
+  wd_cl_strike(g[..], p);
+  #assert au_hp(g[..], i) < 500;
+}
+
+// audit: Wall of Fire and Wall of Thorns burn and tear the guard who walks into them after they rise
+aethyr_native_everglade_52 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 10);
+  at := v3(p.x, ground_at(g[..], p.x, p.z + 5), p.z + 5);
+  wd_wf_at(g[..], at, v3(0, 0, 1));
+  #assert au_hp(g[..], i) == 500;
+  au_put(g[..], i, at.x, at.z);
+  wd_wf_frame(g[..], 1.0 / 30);
+  #assert au_hp(g[..], i) < 500;
+  // a second later it waits out their round
+  hp := au_hp(g[..], i);
+  for k: 0..<30 { wd_wf_frame(g[..], 1.0 / 30); }
+  #assert au_hp(g[..], i) == hp;
+  wd_of(g[..])[0].wf_on = false;
+  au_whole(g[..], i);
+  au_put(g[..], i, p.x, p.z);
+  ci_wt_at(g[..], at, v3(0, 0, 1));
+  #assert au_hp(g[..], i) == 500;
+  au_put(g[..], i, at.x, at.z);
+  ci_wt_frame(g[..], 1.0 / 30);
+  #assert au_hp(g[..], i) < 500;
+}
+
+// audit: Fire Storm burns the guard in its cubes and the one who runs into them while they roar; each shows its number
+aethyr_native_everglade_53 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  w := watch_w(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 25);
+  watch_pops_frame(g[..], 1.0 / 60);
+  ci_fs_at(g[..], p, v3(0, 0, 1));
+  #assert au_hp(g[..], i) < 500;
+  watch_pops_frame(g[..], 1.0 / 60);
+  shown := 0;
+  for q: 0..<WATCH_POPS { if g[0].wv.pops[q].live { shown = g[0].wv.pops[q].amount; } }
+  #assert shown == 500 - au_hp(g[..], i);
+  // a second guard 30 m off runs in a second later: the flames still roar, and burn them
+  j := -1;
+  for k: EG_SPOTS..<WATCH_ACTORS { if k != i && watch_is_guard(k) && ab_person_ok(g[..], k) { j = k; break; } }
+  #assert j >= 0;
+  au_whole(g[..], j);
+  au_put(g[..], j, p.x + 30, p.z);
+  ci_frame(g[..], 0.5);
+  #assert au_hp(g[..], j) == 500;
+  au_put(g[..], j, p.x + f32(CI_FS_CUBE), p.z);
+  ci_frame(g[..], 0.5);
+  #assert au_hp(g[..], j) < 500 && w[0].actors[j].mode == WM_DOWN;
+  // once the flames are out, no more
+  au_whole(g[..], j);
+  for k: 0..<10 { ci_frame(g[..], 0.5); }
+  au_put(g[..], j, p.x, p.z);
+  ci_frame(g[..], 0.1);
+  #assert au_hp(g[..], j) == 500;
+}
+
+// audit: Conjure Animals' pack, Sunbeam, Sunburst, Storm of Vengeance and Cone of Cold hurt a guard; Polymorph makes one a frog
+aethyr_native_everglade_54 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  c := ci_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 8);
+  ci_ca_at(g[..], p);
+  for k: 0..<40 { ci_frame(g[..], 0.5); if au_hp(g[..], i) < 500 { break; } }
+  #assert au_hp(g[..], i) < 500;
+  c[0].ca_on = false;
+  au_whole(g[..], i);
+  hit := false;
+  for k: 0..<20 { au_whole(g[..], i); c[0].sb_cool = 0; ci_sb_line(g[..], add(ab_you(g[..]), v3(0, 1.2, 0)), add(p, v3(0, 1, 0))); if au_hp(g[..], i) < 500 { hit = true; break; } }
+  #assert hit;
+  au_whole(g[..], i);
+  st_su_at(g[..], p);
+  #assert au_hp(g[..], i) < 500;
+  au_whole(g[..], i);
+  au_face(g[..], i, 40);
+  st_sv_at(g[..], p);
+  for k: 0..<30 { if au_hp(g[..], i) < 500 { break; } st_frame(g[..], 1); }
+  #assert au_hp(g[..], i) < 500;
+  st_sv_end(g[..]);
+  au_whole(g[..], i);
+  au_face(g[..], i, 6);
+  po_cc_at(g[..], ab_you(g[..]), v3(0, 0, 1));
+  #assert au_hp(g[..], i) < 500;
+}
+
+// audit: an Ice Knife bursts on a guard, Polymorph makes one a frog, Reverse Gravity lifts one or makes them hold on
+aethyr_native_everglade_55 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  au_face(g[..], i, 8);
+  hit := false;
+  for k: 0..<20 {
+    au_whole(g[..], i);
+    au_face(g[..], i, 8);
+    g[0].sp.armed = SP_SLOTS + AB_KNIFE;
+    sp_cast(g[..]);
+    for q: 0..<30 { fr_frame(g[..], 1.0 / 30); }
+    if au_hp(g[..], i) < 500 { hit = true; break; }
+  }
+  #assert hit;
+  c := ci_of(g[..]);
+  for k: 0..<30 { if c[0].pm_on && c[0].pm_who == i { break; } au_whole(g[..], i); ci_pm_on(g[..], i); }
+  #assert c[0].pm_on && c[0].pm_who == i && watch_w(g[..])[0].actors[i].temp > 0;
+  c[0].pm_on = false; au_whole(g[..], i);
+  a := ab_of(g[..]);
+  au_face(g[..], i, 4);
+  ab_press(g[..], AB_REVERSE);
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  #assert a[0].rg_on && (ab_air(g[..], i) > 0.3 || a[0].held[i]);
+}
+
+// audit: the grass afire burns the guard who walks into it
+aethyr_native_everglade_56 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  p := wd_feet(g[..], i);
+  found := false; at := p;
+  for k: 0..<400 {
+    x := p.x + f32(k % 20 - 10) * 2; z := p.z + f32(k / 20 - 10) * 2;
+    if wd_grass(g[..], x, z) { at = v3(x, ground_at(g[..], x, z), z); found = true; break; }
+  }
+  #assert found && wd_ignite(g[..], at, 0);
+  au_face(g[..], i, 30);
+  au_put(g[..], i, at.x, at.z);
+  wd_fires_frame(g[..], 1.0 / 30);
+  #assert au_hp(g[..], i) < 500;
+}
+
+// audit: Produce Flame hurled at a guard turns them on you, hit or miss
+aethyr_native_everglade_57 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  au_face(g[..], i, 6);
+  for k: 0..<8 {
+    au_whole(g[..], i);
+    #assert !au_turned(g[..], i);
+    v[0].pf_cool = 0;
+    gv_bolt_at(g[..], GV_BOLT_FLAME, i, -1, ab_person_at(g[..], i));
+    for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+    #assert au_turned(g[..], i);
+  }
+}
+
+// audit: Produce Flame hurled at a building turns the guard who sees or hears it
+aethyr_native_everglade_58 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  w := sp_dm(g[..]);
+  // a wooden wall to strike, standing clear of the ground
+  pc := -1;
+  for k: 0..<w[0].n {
+    p := w[0].pieces[k];
+    if p.state == DP_STANDING && fi_fuel(p) >= 1 && p.y1 - p.y0 > 1.5 { pc = k; break; }
+  }
+  #assert pc >= 0;
+  p := w[0].pieces[pc];
+  at := v3(p.cx, (p.y0 + p.y1) / 2, p.cz);
+  g[0].feet = v3(p.cx, 0, p.cz - 6); g[0].face = 0;
+  au_put(g[..], i, p.cx + 12, p.cz);
+  au_whole(g[..], i);
+  v[0].pf_cool = 0;
+  gv_bolt_at(g[..], GV_BOLT_FLAME, -1, -1, at);
+  for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+  #assert au_turned(g[..], i);
+}
+
+// audit: a Produce Flame landing beside a guard turns them
+aethyr_native_everglade_59 :: () #export_c {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  au_face(g[..], i, 6);
+  au_whole(g[..], i);
+  v[0].pf_cool = 0;
+  p := wd_feet(g[..], i);
+  gv_bolt_at(g[..], GV_BOLT_FLAME, -1, -1, v3(p.x + 1, ground_at(g[..], p.x + 1, p.z), p.z));
+  for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+  #assert au_turned(g[..], i);
+}
+
+// watch: you die levitating 10 m up and stand again at the Road In on the ground, Levitate ended
+aethyr_native_everglade_60 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  x := 0.0f32; z := -30.0f32;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  ab_press(g[..], AB_LEVITATE);
+  a := ab_of(g[..]);
+  #assert a[0].lev_on;
+  a[0].lev_up = false; a[0].lev_hold = walk_at(g[..], x, z) + 10;
+  w := watch_w(g[..]);
+  watch_hurt_you(w, 999);
+  #assert w[0].dead;
+  for f: 0..<8 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  // toppled, lying: not standing
+  o := RANGER_AT * OBJECT_FLOATS;
+  #assert abs(g[0].objects[o + 5]) < 0.3;
+  for f: 0..<40 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert !w[0].dead && !a[0].lev_on && !a[0].ff_on && !a[0].rg_on;
+  #assert everglade_warp(g[..]);
+  sp := everglade_spawn(g[..]);
+  #assert sp.y == 0 && sp.x == f32(EG_SPAWN_X) && sp.z == f32(EG_SPAWN_Z);
+  // standing there on the ground nothing lifts you
+  lift := everglade_lift(g[..], sp.x, sp.z, 0, 0, 0, 0, 1.0 / 60.0);
+  #assert !lift.on;
+}
+
+// watch: WANTED 5 calls the company in at the gate; they are drawn in their ranks' colours, casters bare-handed, with five stars lit
+aethyr_native_everglade_61 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  yx := 1.6f32; yz := -40.0f32;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, yx, 0, yz, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := watch_w(g[..]);
+  nob: [6] f32;
+  _ = watch_crime(w, v3(yx, 0, yz), 100, v3(yx, 0, yz), nob[..], 0, g[0].heights[..]);
+  w[0].heat = 60; w[0].hp = 100000; w[0].max = 100000;
+  // walking south (the camera turns to follow, looking at the South Gate)
+  for f: 0..<14 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, yx, 0, yz, f32(PI), 0, 0, -3, false, 0, 0, 0, 0); }
+  #assert w[0].level == 5 && watch_hunters(w) <= HUNTERS_MAX;
+  shown := 0; caster := -1;
+  for k: 0..<g[0].shown_n { if watch_is_rein(g[0].shown[k]) { shown += 1; if watch_caster(w, g[0].shown[k]) { caster = g[0].shown[k]; } } }
+  #assert shown >= 2;
+  // the casters cast at you: their spells are in the air or have caught you
+  for i: WATCH_FIRST_REIN..<WATCH_ACTORS { w[0].actors[i].cast_cool = 0; }
+  for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, yx, 0, yz, f32(PI), 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert w[0].spell_hits + w[0].spell_misses > 0;
+  // Ray of Frost on you: the face slows you
+  w[0].slow_t = 3;
+  #assert everglade_slow(g[..]) < 1;
+  w[0].held_t = 2;
+  #assert everglade_held(g[..]);
+}
+
+// first goal: a fresh save draws its goal line in the first frame, Bram marked; each step done moves it on, and a quest taken ends it
+aethyr_native_everglade_62 :: () #export_c {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  sp := everglade_spawn(g[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert eg_first_step(g[..]) == EG_FIRST_TALK && g[0].guide.first_shown == EG_FIRST_TALK;
+  m := eg_first_mark(g[..], EG_FIRST_TALK);
+  mark := cast(string) g[0].guide.first_mark[0..<g[0].guide.first_mark.count];
+  #assert m.ok && flat_gap(v3(m.x, 0, m.z), sp) < 40 && contains(mark, "BRAM · ");
+  // Bram is the gate guard, and he is near the road in
+  #assert EG_PERSON[EG_FIRST_GUARD] == "Bram";
+  // talking to him: the next step, the spell, with no mark
+  talk_to(g[..], EG_FIRST_GUARD); end_talk(g[..]);
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].guide.first_shown == EG_FIRST_CAST && !eg_first_mark(g[..], EG_FIRST_CAST).ok;
+  // on a phone it says how to with a finger, and its plate sits under the chat line and REPLY
+  #assert EG_FIRST_HOW_PHONE[EG_FIRST_CAST] != EG_FIRST_HOW[EG_FIRST_CAST];
+  g[0].touch = true;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].guide.first_shown == EG_FIRST_CAST;
+  goal := -1;
+  for i: 0..<g[0].plate_n { if abs(u[U_PLATE + i * 8 + 4] - 0.82) < 0.001 && u[U_PLATE + i * 8] < 40 && u[U_PLATE + i * 8 + 1] > 150 { goal = i; } }
+  #assert goal >= 0 && u[U_PLATE + goal * 8 + 1] >= g[0].chat.box.y1 && u[U_PLATE + goal * 8 + 1] >= g[0].rp.boxes[RP_B_OPEN].y1;
+  g[0].touch = false;
+  // a cast: the board next, marked over it
+  g[0].sp.casting = SP_METEOR;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  g[0].sp.casting = -1;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].guide.first_shown == EG_FIRST_BOARD && eg_first_mark(g[..], EG_FIRST_BOARD).ok;
+  // done things are never asked again: a fresh visitor who reads the board first still has Bram and the spell to do
+  h: [1] Everglade;
+  dh: [1] DemoWorld;
+  sp_ready_city(h[..], dh[..]);
+  h[0].board = true; eg_first_note(h[..]); h[0].board = false;
+  #assert eg_first_step(h[..]) == EG_FIRST_TALK;
+  h[0].guide.first_done |= 1 << EG_FIRST_TALK;
+  #assert eg_first_step(h[..]) == EG_FIRST_CAST;
+  h[0].guide.first_done |= 1 << EG_FIRST_CAST;
+  #assert eg_first_step(h[..]) == -1;
+  // a quest taken: its own line takes over, and the first goal is gone
+  g[0].stages[0] = 1;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, sp.x, 0, sp.z, everglade_spawn_face(g[..]), 0, 0, 0, false, 0, 0, 0, 0);
+  #assert eg_first_step(g[..]) == -1 && g[0].guide.first_shown == -1;
+}
+
+// reply: the reply page takes its words and seed, stands you facing the house and waits for the town
+aethyr_native_everglade_63 :: () #export_c {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  #assert rp_message(g[..], RP_LINES, "id=0a1b2c3d4e5f\nrealm=everglade\nhouse=12\nseed=424242\nkind=text\ntext=Ship it <b>now</b>\n");
+  #assert g[0].rp.replay && g[0].rp.seed == 424242 && rp_words(g[..]) == "Ship it <b>now</b>" && g[0].rp.waiting && everglade_warp(g[..]);
+  #assert g[0].rp.phase == RP_UP && !rp_typing(g[..]);
+  // no REPLY of its own on the reply page, and Esc doesn't drop the reply
+  rp_open(g[..]);
+  _ := everglade_key(g[..], KEY_ESCAPE, 0);
+  #assert g[0].rp.phase == RP_UP;
+  // without the town in, it waits
+  rp_frame(g[..], 5);
+  #assert g[0].rp.waiting && g[0].rp.t == 0;
+  // a malformed reply is ignored
+  h: [1] Everglade;
+  everglade_start(h[..]);
+  #assert rp_message(h[..], RP_LINES, "id=short\nseed=1\ntext=x\n") && !h[0].rp.replay;
+  // the words wrap onto three lines at most
+  lines: [8] int;
+  #assert rp_wrap("one two three four five six seven eight nine ten", 10, 120, lines[..]) >= 2;
+}
+
+// Negative control: an ordinary #assert must trap in every native build.
+aethyr_native_assert_probe :: () #export_c { #assert false; }

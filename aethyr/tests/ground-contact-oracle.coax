@@ -1,0 +1,78 @@
+// Independent constrained-distance oracle. It compares the three segment minima and an
+// admitted orthogonal plane projection, instead of the production Voronoi-region solve.
+gc_oracle_edge :: (a: GCVec, b: GCVec, p: GCVec) -> f64 {
+  x := b.x - a.x; y := b.y - a.y; z := b.z - a.z;
+  t := ((p.x - a.x) * x + (p.y - a.y) * y + (p.z - a.z) * z) / (x * x + y * y + z * z);
+  if t < 0 { t = 0; } else if t > 1 { t = 1; }
+  dx := p.x - (a.x + t * x); dy := p.y - (a.y + t * y); dz := p.z - (a.z + t * z);
+  return dx * dx + dy * dy + dz * dz;
+}
+gc_oracle_distance :: (a: GCVec, b: GCVec, c: GCVec, p: GCVec) -> f64 {
+  ax := b.x - a.x; ay := b.y - a.y; az := b.z - a.z;
+  bx := c.x - a.x; by := c.y - a.y; bz := c.z - a.z;
+  nx := ay * bz - az * by; ny := az * bx - ax * bz; nz := ax * by - ay * bx;
+  size := nx * nx + ny * ny + nz * nz;
+  signed := ((p.x - a.x) * nx + (p.y - a.y) * ny + (p.z - a.z) * nz) / size;
+  qx := p.x - signed * nx - a.x; qy := p.y - signed * ny - a.y; qz := p.z - signed * nz - a.z;
+  aa := ax * ax + ay * ay + az * az; ab := ax * bx + ay * by + az * bz; bb := bx * bx + by * by + bz * bz;
+  qa := qx * ax + qy * ay + qz * az; qb := qx * bx + qy * by + qz * bz;
+  det := aa * bb - ab * ab;
+  u := (qa * bb - qb * ab) / det; v := (qb * aa - qa * ab) / det;
+  best := gc_oracle_edge(a, b, p); bc := gc_oracle_edge(b, c, p); ca := gc_oracle_edge(c, a, p);
+  if bc < best { best = bc; } if ca < best { best = ca; }
+  if u >= 0 && v >= 0 && u + v <= 1 {
+    plane := signed * signed * size; if plane < best { best = plane; }
+  }
+  return best;
+}
+
+ground_contact_oracle_case :: (seed: int) {
+  a := GCVec.{x = 1.2, y = -0.3, z = -2.1};
+  b := GCVec.{x = 1.3, y = 2.4, z = -1.9};
+  c := GCVec.{x = 2.2, y = 0.4, z = -2.3};
+  p := GCVec.{x = f64((seed * 7) % 19) * 0.2 - 0.5, y = f64((seed * 11) % 23) * 0.2 - 1,
+    z = f64((seed * 13) % 17) * 0.2 - 3.5};
+  expected := gc_oracle_distance(a, b, c, p);
+  actual := gc_closest_triangle(a, b, c, p).point;
+  dx := p.x - actual.x; dy := p.y - actual.y; dz := p.z - actual.z;
+  #assert abs(dx * dx + dy * dy + dz * dz - expected) < 0.0000000001 * (1 + expected);
+  reversed := gc_closest_triangle(c, b, a, p).point;
+  #assert abs(actual.x - reversed.x) < 0.000000001 && abs(actual.y - reversed.y) < 0.000000001 && abs(actual.z - reversed.z) < 0.000000001;
+  gc_oracle_mesh_case(seed);
+}
+
+gc_oracle_index :: (i: int, last: int) -> int { return ifx i < 0 then 0 else ifx i > last then last else i; }
+gc_oracle_mesh_case :: (seed: int) {
+  g := Ground.{n = 2, rows = 3, cell = 0.1, west = 100.1, south = -12.3};
+  h: [12] f32;
+  for k: 0..<12 { h[k] = f32((k * 7 + seed * 11) % 13 - 6) * 0.1; }
+  x: [5] f64; z: [6] f64;
+  x[0] = f64(g.west) - 1; x[4] = f64(g.west + 2.0f32 * g.cell) + 1;
+  z[0] = f64(g.south) - 1; z[5] = f64(g.south + 3.0f32 * g.cell) + 1;
+  for k: 0..<3 { x[k + 1] = f64(g.west + f32(k) * g.cell); }
+  for k: 0..<4 { z[k + 1] = f64(g.south + f32(k) * g.cell); }
+  oracle_world_point := world_point(g.west - 0.15 + f32((seed * 17) % 19) * 0.03, -0.5 + f32((seed * 13) % 23) * 0.05,
+    g.south - 0.15 + f32((seed * 23) % 19) * 0.035);
+  p := GCVec.{x = f64(oracle_world_point.x), y = f64(oracle_world_point.y), z = f64(oracle_world_point.z)};
+  radius := 0.04f32 + f32(seed % 3) * 0.02;
+  best := 1.0e300; below := false;
+  for j: 0..<5 { for i: 0..<4 {
+    i0 := gc_oracle_index(i - 1, 2); i1 := gc_oracle_index(i, 2);
+    j0 := gc_oracle_index(j - 1, 3); j1 := gc_oracle_index(j, 3);
+    aa := GCVec.{x = x[i], y = f64(h[j0 * 3 + i0]), z = z[j]};
+    cc := GCVec.{x = x[i + 1], y = f64(h[j1 * 3 + i1]), z = z[j + 1]};
+    for ti: 0..<2 {
+      bb := GCVec.{x = x[i + 1], y = f64(h[j0 * 3 + i1]), z = z[j]};
+      if ti == 1 { bb = GCVec.{x = x[i], y = f64(h[j1 * 3 + i0]), z = z[j + 1]}; }
+      squared := gc_oracle_distance(aa, bb, cc, p); if squared < best { best = squared; }
+      ax := bb.x - aa.x; az := bb.z - aa.z; bx := cc.x - aa.x; bz := cc.z - aa.z;
+      determinant := ax * bz - az * bx;
+      u := ((p.x - aa.x) * bz - (p.z - aa.z) * bx) / determinant;
+      v := (ax * (p.z - aa.z) - az * (p.x - aa.x)) / determinant;
+      if u >= 0 && v >= 0 && u + v <= 1 && p.y <= aa.y + u * (bb.y - aa.y) + v * (cc.y - aa.y) { below = true; }
+    }
+  } }
+  q := ground_overlap(g, h[..], oracle_world_point, radius, 64);
+  #assert q.status == GroundRayStatus.ok && q.hit == (below || best < f64(radius) * f64(radius));
+  if q.hit { #assert q.t == 0 && q.point.x == oracle_world_point.x && q.point.y == oracle_world_point.y && q.point.z == oracle_world_point.z; }
+}

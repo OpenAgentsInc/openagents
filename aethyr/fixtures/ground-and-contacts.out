@@ -1,0 +1,5 @@
+drawn triangle: height 1.5 m, slopes (1.0, 3.0)
+wall: ok, feet z 0.7, speed into it 0.0, passes 1
+too far: travel_limit, original feet z 0.75
+terrain jump: above 2.5 m = true, query ok
+terrain landing: feet y 2.5, grounded true

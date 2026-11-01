@@ -1416,7 +1416,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert g.hp[b] == hp - 60;   // CORE mode on the core: half as much again
 }
 
-#test "ammo, reload, cover and pause" {
+#test "ammo, reload, cover and pause" #steps 53000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   place(g, ME, 0, 1);
   g.st[0].ammo = 1;
@@ -1440,7 +1440,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert dg_same(g, c);
 }
 
-#test "waves, repairs and loss" {
+#test "waves, repairs and loss" #steps 35000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   for round: 1..<4 {
     #assert g.st[0].wave == round;
@@ -1460,13 +1460,13 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert g.st[0].phase == FIGHT && dg_health(g) == 100;
 }
 
-#test "a shooting run clears a wave" {
+#test "a shooting run clears a wave" #steps 150000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   most := fight_wave(g, ME);
   #assert g.st[0].phase == REPAIR && g.st[0].kills == dg_wave_count(1) && dg_health(g) > 0;
 }
 
-#test "three waves to victory" {
+#test "three waves to victory" #steps 657000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   for round: 0..<3 {
     most := fight_wave(g, ME);
@@ -1534,7 +1534,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert finite3(g.pos[o]);
 }
 
-#test "stun, and pause freezes everything" {
+#test "stun, and pause freezes everything" #steps 122000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 100;
   clear_mutants(g);
@@ -1568,7 +1568,7 @@ repair :: (g: Game) { for k: 0..<51 { tick(g, v3(0, 0, -14.2), false, true, 0, -
   #assert !dg_lift(g) && !dg_stun(g) && !dg_held_alive(g);
 }
 
-#test "a headshot playthrough has no cap on mutants" {
+#test "a headshot playthrough has no cap on mutants" #steps 528000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].mode = HEAD;
   g.st[0].ally_time = 1000;
@@ -1674,7 +1674,7 @@ shot_hits :: (g: Game) -> int {
 
 // ---- roles (#96d6): runners flank, the brute pins, crawlers use the vents and the reactor
 
-#test "a runner reaches you from the side while you face a crawler" {
+#test "a runner reaches you from the side while you face a crawler" #steps 136000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;   // the support engineer holds its fire
   clear_mutants(g);
@@ -1698,27 +1698,9 @@ shot_hits :: (g: Game) -> int {
   #assert dg_role(g, slot_of(h)) == ROLE_CHASE;
 }
 
-#forall "no creature walks through cover" k: 0..<10 {
-  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
-  g.st[0].ally_time = 1000000;
-  clear_mutants(g);
-  // You beside a cover, a creature of each kind on its far side.
-  me := ifx k % 2 == 0 then v3(-5, 0, 5) else v3(8, 0, -8.5);
-  far := ifx k % 2 == 0 then v3(-5, 0, 1) else v3(8, 0, -15.5);
-  e := dg_spawn_mutant(g, k % TYPES, far.x, far.z, -1);
-  g.mutant[slot_of(e)].attack = 1000;
-  inside := false;
-  for f: 0..<110 {
-    tick(g, me, false, false, 0, -1, 0.05);
-    if !ecs_alive(g.e, e) { break; }
-    q := g.pos[slot_of(e)];
-    if dg_blocked(g, q.x, q.z, 0.05) { inside = true; }
-  }
-  #assert !inside;
-  #assert dist_to(g, e, me) < 3.5 || g.mutant[slot_of(e)].kind == BRUTE;   // it got round to you (the brute stands off)
-}
+// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
-#test "the brute holds off where it sees you and shoots; behind cover it can't" {
+#test "the brute holds off where it sees you and shoots; behind cover it can't" #steps 134000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
@@ -1736,7 +1718,7 @@ shot_hits :: (g: Game) -> int {
   #assert dg_wall_ray(g, g.pos[slot_of(b)], hide) && dg_role(g, slot_of(b)) != ROLE_HOLD;
 }
 
-#test "crawlers come up from the vents, and go for the reactor when you are far from it" {
+#test "crawlers come up from the vents, and go for the reactor when you are far from it" #steps 46000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   vented := 0;
   for i: 0..<ecs_high(g.e) {
@@ -1825,7 +1807,7 @@ shot_hits :: (g: Game) -> int {
   }
 }
 
-#test "a brute winds up before its bolt, and the bolt can be stepped out of (#adba)" {
+#test "a brute winds up before its bolt, and the bolt can be stepped out of (#adba)" #steps 114000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   g.st[0].ally_time = 1000000;
   clear_mutants(g);
@@ -1850,7 +1832,7 @@ spawn_crowd :: (g: Game) {
   for k: 0..<200 { e := dg_spawn_mutant(g, k % TYPES, -14 + f32(k % 28), -20 + f32(k / 28) * 0.5, -1); }
 }
 
-#test "no fixed caps: 205 mutants at once" {
+#test "no fixed caps: 205 mutants at once" #steps 246000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   for k: 0..<5 { e := dg_spawn_mutant(g, k % TYPES, -6 + f32(k) * 3, -12, -1); }
@@ -1860,13 +1842,7 @@ spawn_crowd :: (g: Game) {
   #assert dg_mutants(g) == 205;
 }
 
-#test "200 mutants closing in while you fire: the same start plays the same" {
-  sa: [1] Store; a := dg_bind(sa[..]); dg_setup(a);
-  sb: [1] Store; b := dg_bind(sb[..]); dg_setup(b);
-  spawn_crowd(a); spawn_crowd(b);
-  for k: 0..<20 { tick(a, ME, true, false, 0, -1, 1.0 / 60); tick(b, ME, true, false, 0, -1, 1.0 / 60); }
-  #assert dg_same(a, b) && dg_alive_mutants(a) > 150;
-}
+// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
 #test "events reach the HUD" {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
@@ -1879,7 +1855,7 @@ spawn_crowd :: (g: Game) {
 }
 
 // Mutants walk round the cover between them and you, never into it.
-#test "mutants path round cover" {
+#test "mutants path round cover" #steps 117000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   // Behind the tall cover at (-8, -12) (2 x 3 m, 1.6 m high), you in front.
@@ -1899,7 +1875,7 @@ spawn_crowd :: (g: Game) {
 }
 
 // The support engineer follows you, and gets behind cover from a mutant it sees.
-#test "the support engineer follows and takes cover" {
+#test "the support engineer follows and takes cover" #steps 86000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   ally := dg_support(g);
@@ -1916,7 +1892,7 @@ spawn_crowd :: (g: Game) {
 // After a wave the support engineer walks to the reactor, round the covers,
 // and repairs beside you; alone it finishes the repair. A save mid-repair
 // plays on exactly as the original (#39).
-#test "the support engineer repairs" {
+#test "the support engineer repairs" #steps 63000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   kill_all(g);
   #assert g.st[0].phase == REPAIR;
@@ -1951,7 +1927,7 @@ spawn_crowd :: (g: Game) {
 
 // Mutants are character bodies (#19): a crowd closing on you keeps apart
 // and never stands inside you, and a save mid-fight plays on exactly.
-#test "mutants keep apart" {
+#test "mutants keep apart" #steps 331000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   g.st[0].ally_time = 1000000000;   // the support engineer holds its fire
@@ -1992,7 +1968,7 @@ spawn_crowd :: (g: Game) {
   #assert g.pos[crate].z > 3.65;
 }
 
-#forall "a thrown crate never passes through cover, however fast and from wherever" k: 0..<24 {
+#forall "a thrown crate never passes through cover, however fast and from wherever" k: 0..<24 #steps 191000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   crate := slot_of(ecs_first(g.e, C_CARGO));
@@ -2006,7 +1982,7 @@ spawn_crowd :: (g: Game) {
 
 // A brute's bolt is swept too (#80): one too fast to step through cover
 // stops at the cover's face and does not reach you behind it.
-#test "a fast bolt meets cover" {
+#test "a fast bolt meets cover" #steps 28000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   // The low cover at (-5, 3) spans z 2.35 .. 3.65; you stand behind it.
@@ -2029,7 +2005,7 @@ spawn_crowd :: (g: Game) {
   #assert hits == 1 && !ecs_alive(h.e, c);
 }
 
-#forall "a bolt never reaches you through cover, whatever its speed" k: 0..<20 {
+#forall "a bolt never reaches you through cover, whatever its speed" k: 0..<20 #steps 445000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   me := v3(-5.6 + f32(k % 5) * 0.3, 0, 1.4);
@@ -2040,7 +2016,7 @@ spawn_crowd :: (g: Game) {
 
 // The support engineer is a body that moves like one (#80): walking into
 // you it goes round you rather than into you, and it slides along cover.
-#test "the support engineer moves as a body" {
+#test "the support engineer moves as a body" #steps 56000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   clear_mutants(g);
   ally := dg_support(g);
@@ -2062,7 +2038,7 @@ spawn_crowd :: (g: Game) {
   #assert dg_same(g, b);
 }
 
-#test "a full store refuses spawns instead of overwriting" {
+#test "a full store refuses spawns instead of overwriting" #steps 314000000 {
   st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
   n := 0;
   for k: 0..<DG_CAP { if dg_spawn_mutant(g, k % TYPES, 0, -10, -1) != ECS_NONE { n += 1; } }

@@ -1689,7 +1689,7 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
   #assert e.x1 < 1280 - 16 - text_width("BRING YOUR DOG", 9) - 36 && e.x0 > 600;   // left of the pet's button
 }
 
-#test "a placed pet's panel draws to its last button at desktop and phone, and its tabs switch" {
+#test "a placed pet's panel draws to its last button at desktop and phone, and its tabs switch" #steps 51000000 {
   s: [1] Villa;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1794,7 +1794,7 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
   #assert dog_name(s[..], out[..], u[..], 0) == 0;
 }
 
-#test "a dog's details (markings, ears, tail, chest, collar and tag) are kept with it and drawn" {
+#test "a dog's details (markings, ears, tail, chest, collar and tag) are kept with it and drawn" #steps 43000000 {
   s: [1] Villa;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -1887,7 +1887,7 @@ VILLA_BUDGET :: FrameBudget.{steps = 8, vertices = 1000, draws = DRAWS, bytes = 
 
 // A walk from the gate: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
-#test "Hecate's Cemetery's frames fit its declared budget" {
+#test "Hecate's Cemetery's frames fit its declared budget" #steps 28000000 {
   #assert budget_declared(VILLA_BUDGET, MAX_VERTICES) == BUDGET_NONE;
   frames := 3;
   m := [1] BudgetMeter.[budget_meter(VILLA_BUDGET)];

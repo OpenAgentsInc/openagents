@@ -1,0 +1,67 @@
+// Independent F64 distance references for chapter 8. The vertical capsule's
+// axis is an interval. Along the other segment, squared distance is a convex
+// quadratic between the two crossings of that interval's end planes.
+// This enumerates those pieces; it does not use the production closest-pair
+// calculation or its F32 degeneracy thresholds.
+#module "aethyr.collide.oracle";
+
+CollideOraclePoint :: struct { x: f64; y: f64; z: f64; }
+collide_oracle_point :: (x: f64, y: f64, z: f64) -> CollideOraclePoint {
+  return CollideOraclePoint.{x = x, y = y, z = z};
+}
+collide_oracle_axis_squared :: (feet: CollideOraclePoint, radius: f64, height: f64,
+                                 a: CollideOraclePoint, b: CollideOraclePoint) -> f64 {
+  lower := feet.y + radius; upper := feet.y + height - radius;
+  dx := b.x - a.x; dy := b.y - a.y; dz := b.z - a.z;
+  cuts: [4] f64; cuts[0] = 0; cuts[1] = 1; count := 2;
+  if dy != 0 {
+    low_cross := (lower - a.y) / dy; high_cross := (upper - a.y) / dy;
+    if low_cross > 0 && low_cross < 1 { cuts[count] = low_cross; count += 1; }
+    if high_cross > 0 && high_cross < 1 { cuts[count] = high_cross; count += 1; }
+  }
+  for i: 0..<count { for j: i + 1..<count {
+    if cuts[j] < cuts[i] { swap := cuts[i]; cuts[i] = cuts[j]; cuts[j] = swap; }
+  } }
+  best := 1.0e100;
+  for i: 0..<count - 1 {
+    left := cuts[i]; right := cuts[i + 1]; middle := (left + right) / 2;
+    here := a.y + dy * middle;
+    vy := 0.0; base := 0.0;
+    if here < lower { vy = dy; base = a.y - lower; }
+    else if here > upper { vy = dy; base = a.y - upper; }
+    ax := a.x - feet.x; az := a.z - feet.z;
+    aa := dx * dx + dz * dz + vy * vy;
+    bb := dx * ax + dz * az + vy * base;
+    t := left;
+    if aa > 0 { t = -bb / aa; }
+    if t < left { t = left; }
+    if t > right { t = right; }
+    x := ax + dx * t; z := az + dz * t; y := base + vy * t;
+    squared := x * x + y * y + z * z;
+    if squared < best { best = squared; }
+  }
+  return best;
+}
+
+// Distance to the footprint's closed rectangle, including zero inside it.
+collide_oracle_box_squared :: (x: f64, z: f64, low: CollideOraclePoint, high: CollideOraclePoint) -> f64 {
+  dx := 0.0; dz := 0.0;
+  if x < low.x { dx = low.x - x; } else if x > high.x { dx = x - high.x; }
+  if z < low.z { dz = low.z - z; } else if z > high.z { dz = z - high.z; }
+  return dx * dx + dz * dz;
+}
+
+#test "the independent collision oracle has analytic box and segment answers" {
+  p := collide_oracle_point(0, 0, 0);
+  #assert collide_oracle_axis_squared(p, 0.25, 2,
+    collide_oracle_point(-2, 1, 0), collide_oracle_point(2, 1, 0)) == 0;
+  #assert collide_oracle_axis_squared(p, 0.25, 2,
+    collide_oracle_point(1, 1, 0), collide_oracle_point(1, 1, 0)) == 1;
+  #assert collide_oracle_axis_squared(p, 0.25, 2,
+    collide_oracle_point(0, -2, 0), collide_oracle_point(0, 3, 0)) == 0;
+  #assert collide_oracle_axis_squared(p, 0.25, 2,
+    collide_oracle_point(3, 2.75, 4), collide_oracle_point(3, 4, 4)) == 26;
+  low := collide_oracle_point(-1, 0, -2); high := collide_oracle_point(1, 4, 2);
+  #assert collide_oracle_box_squared(0, 0, low, high) == 0;
+  #assert collide_oracle_box_squared(4, 6, low, high) == 25;
+}

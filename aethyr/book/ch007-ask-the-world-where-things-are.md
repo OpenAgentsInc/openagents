@@ -69,8 +69,13 @@ QUERY_FLOOR_PAD :: 0.15;         // how far past a floor's edge your middle may 
 QUERY_BOX :: 6;                  // numbers a box: min x, y, z, max x, y, z
 QUERY_CAPSULE :: 7;              // numbers a capsule: one end, the other, the radius
 QUERY_TOO_BIG :: 1000000.0;      // a coordinate this large is not one
+QUERY_HEIGHTFIELDS_MAX :: 16;
 
-QueryShape :: enum u8 { none; ground; box; capsule; floor; }
+QueryShape :: enum u8 { none; ground; box; capsule; floor; heightfield; }
+QueryStatus :: enum u8 { ok; invalid; terrain; exhausted; capacity; }
+
+// A borrowed, read-only mesh. Its ground queries use the same drawn triangles as terrain.
+QueryHeightfield :: struct { ground: terrain.Ground; heights: [] f32; }
 
 // One realm's colliders. The arrays are the realm's own; a partial last entry is ignored.
 Colliders :: struct {
@@ -78,16 +83,21 @@ Colliders :: struct {
   boxes: [] f32;
   capsules: [] f32;
   floors: [] f32;      // STAND_FLOATS numbers each (verse/stand.coax)
+  heightfields: [] QueryHeightfield;
+  heightfield_budget: int = height_rays.GROUND_RAY_CELLS;
 }
 ```
 
 Floors use the formats in `verse/stand.coax`: quads, cones, domes, and rings.
-Floors answer `query_ground`. Rays, overlaps, and sweeps cover the ground,
-the boxes, and the capsules.
+Floors answer `query_ground`. Rays, overlaps, and sweeps cover flat ground,
+heightfield triangles, boxes and capsules. Chapter 8 supplies the heightfield
+implementation and checked work budgets.
 
 ## The ground
 
-`query_ground` starts from the flat ground. A box's top replaces it if the
+`query_ground` starts from the flat fallback, or the highest valid supplied
+heightfield. A heightfield replaces the fallback even in a valley below it.
+A box's top replaces that surface if the
 top is no higher than `below`, is higher than the surface found so far, and
 its footprint is less than `reach` away. For the walker, `reach` is the
 capsule's radius, 0.3 m. A floor replaces the result if it is higher. The
@@ -97,17 +107,33 @@ result says whether the surface is too steep to stand on.
 ```jai
 // The surface under (x, z): its height, its slope (dy/dx, dy/dz), whether it is too steep to
 // stand on, and which collider it is.
-QueryGround :: struct { y: f32; gx: f32; gz: f32; steep: bool; shape: QueryShape = QueryShape.ground; index: int; }
+QueryGround :: struct { y: f32; gx: f32; gz: f32; steep: bool; shape: QueryShape = QueryShape.ground; index: int; status: QueryStatus; }
+
+// The flat height is a fallback, not a second floor hiding a mesh's valleys. Each admitted
+// mesh continues its nearest edge outside its rectangle. A clamped axis has zero slope.
+query_base_ground :: (c: Colliders, x: f32, z: f32) -> QueryGround {
+  out := QueryGround.{y = c.ground};
+  found := false;
+  for i: 0..<c.heightfields.count {
+    field := c.heightfields[i];
+    q := terrain.ground_sample(field.ground, field.heights, quantities.Quantity.{value = x}, quantities.Quantity.{value = z});
+    if !q.ok || (found && q.height.value <= out.y) { continue; }
+    out = QueryGround.{y = q.height.value, gx = ifx q.clamped_x then 0.0f32 else q.gx,
+      gz = ifx q.clamped_z then 0.0f32 else q.gz, shape = QueryShape.heightfield, index = i};
+    found = true;
+  }
+  return out;
+}
 
 // The highest surface at (x, z) at or below `below`: the ground, a box's top whose footprint is
 // less than `reach` away (a walker's radius), or a floor (within QUERY_FLOOR_PAD of its edge).
 // A surface only as high as one already found doesn't replace it.
 query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround {
-  out := QueryGround.{y = c.ground};
+  out := query_base_ground(c, x, z);
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
     if !b.ok || b.high.y > below || b.high.y <= out.y { continue; }
-    if query_footprint(b, x, z) < reach { out.y = b.high.y; out.shape = QueryShape.box; out.index = i; }
+    if query_footprint(b, x, z) < reach { out = QueryGround.{y = b.high.y, shape = QueryShape.box, index = i}; }
   }
   h := stand_top(c.floors, c.floors.count / STAND_FLOATS, x, z, below, f32(QUERY_FLOOR_PAD));
   if h.y > out.y && query_finite(h.y) {
@@ -120,6 +146,25 @@ query_ground :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryG
 query_stand :: (c: Colliders, x: f32, z: f32, feet: f32, reach: f32) -> QueryGround {
   return query_ground(c, x, z, feet + f32(QUERY_STEP_UP), reach);
 }
+
+// Runtime consumers refuse an incomplete scene instead of standing on a skipped mesh.
+// The legacy query_ground above retains its permissive malformed-shape behavior.
+query_ground_checked :: (c: Colliders, x: f32, z: f32, below: f32, reach: f32) -> QueryGround {
+  if !query_finite(x) || !query_finite(z) || !query_finite(below) || !query_finite(reach) || reach < 0 {
+    return QueryGround.{status = QueryStatus.invalid};
+  }
+  if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryGround.{status = QueryStatus.capacity}; }
+  if c.heightfields.count == 0 && !query_finite(c.ground) { return QueryGround.{status = QueryStatus.invalid}; }
+  for i: 0..<c.heightfields.count {
+    field := c.heightfields[i];
+    sample := terrain.ground_sample(field.ground, field.heights, quantities.Quantity.{value = x}, quantities.Quantity.{value = z});
+    if !sample.ok { return QueryGround.{status = QueryStatus.terrain}; }
+  }
+  return query_ground(c, x, z, below, reach);
+}
+query_stand_checked :: (c: Colliders, x: f32, z: f32, feet: f32, reach: f32) -> QueryGround {
+  return query_ground_checked(c, x, z, feet + f32(QUERY_STEP_UP), reach);
+}
 ```
 
 The walker's `floor_under` is now one call to `query_stand`. Every walking
@@ -129,7 +174,7 @@ realm host, and Dead Gears) reaches the ground through it:
 <!-- source: verse/player.coax ground -->
 ```jai
 floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit {
-  g := query_stand(colliders(w), x, z, feet, f32(RADIUS));
+  g := query_ground(colliders(w), x, z, feet + w.collision.step_up, w.collision.radius);
   return StandHit.{y = g.y, gx = g.gx, gz = g.gz};
 }
 ```
@@ -153,7 +198,14 @@ smallest `t`:
 // Where a ray first reaches a collider: t along the direction (in its lengths), the point, the
 // outward normal there, and which collider. A ray that starts inside one hits it at t = 0,
 // with the normal facing back along the ray.
-QueryHit :: struct { hit: bool; t: f32; point: WorldPoint; normal: WorldPoint; shape: QueryShape; index: int = -1; }
+QueryHit :: struct { hit: bool; t: f32; point: WorldPoint; normal: WorldPoint; shape: QueryShape; index: int = -1; status: QueryStatus; }
+
+query_height_status :: (status: height_rays.GroundRayStatus) -> QueryStatus {
+  if status == height_rays.GroundRayStatus.invalid { return QueryStatus.invalid; }
+  if status == height_rays.GroundRayStatus.terrain { return QueryStatus.terrain; }
+  if status == height_rays.GroundRayStatus.exhausted { return QueryStatus.exhausted; }
+  return QueryStatus.ok;
+}
 
 // The first t in [0, far] at which o + t d enters box low-high (slabs), and the face it enters by.
 QueryEntry :: struct { hit: bool; t: f32; normal: WorldPoint; }
@@ -228,25 +280,41 @@ query_enter_ground :: (y: f32, o: WorldPoint, d: WorldPoint, far: f32) -> QueryE
   out.hit = true; out.t = t; out.normal = world_point(0, 1, 0);
   return out;
 }
-query_keep :: (best: QueryHit, e: QueryEntry, shape: QueryShape, index: int) -> QueryHit {
-  if !e.hit || (best.hit && e.t >= best.t) { return best; }
-  return QueryHit.{hit = true, t = e.t, normal = e.normal, shape = shape, index = index};
+// Compare terrain times before narrowing them to the public f32 distance. Keep its
+// independently rounded surface point rather than reconstructing it from that distance.
+QuerySelection :: struct { hit: QueryHit; time: f64; }
+query_select :: (prior: QuerySelection, candidate: QueryHit, time: f64) -> QuerySelection {
+  if !candidate.hit || (prior.hit.hit && time >= prior.time) { return prior; }
+  return QuerySelection.{hit = candidate, time = time};
+}
+query_select_entry :: (prior: QuerySelection, e: QueryEntry, shape: QueryShape, index: int) -> QuerySelection {
+  return query_select(prior, QueryHit.{hit = e.hit, t = e.t, normal = e.normal, shape = shape, index = index}, f64(e.t));
 }
 query_ray :: (c: Colliders, o: WorldPoint, d: WorldPoint, far: f32) -> QueryHit {
-  best: QueryHit;
-  if !query_point_finite(o) || !query_point_finite(d) || !query_finite(far) || !(world_dot(d, d) > 0) { return best; }
+  best: QuerySelection;
+  if !query_point_finite(o) || !query_point_finite(d) || !query_finite(far) || !(world_dot(d, d) > 0) { return QueryHit.{status = QueryStatus.invalid}; }
+  if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }
   reach := stand_hi(far, 0);
-  best = query_keep(best, query_enter_ground(c.ground, o, d, reach), QueryShape.ground, 0);
+  if c.heightfields.count == 0 { best = query_select_entry(best, query_enter_ground(c.ground, o, d, reach), QueryShape.ground, 0); }
+  for i: 0..<c.heightfields.count {
+    field := c.heightfields[i];
+    h := height_rays.ground_ray(field.ground, field.heights, o, d, f64(reach), c.heightfield_budget);
+    if h.status == height_rays.GroundRayStatus.invalid { return QueryHit.{status = QueryStatus.invalid}; }
+    if h.status == height_rays.GroundRayStatus.terrain { return QueryHit.{status = QueryStatus.terrain}; }
+    if h.status == height_rays.GroundRayStatus.exhausted { return QueryHit.{status = QueryStatus.exhausted}; }
+    candidate := QueryHit.{hit = h.hit, t = f32(h.t), point = h.point, normal = world_point(h.normal.x, h.normal.y, h.normal.z), shape = QueryShape.heightfield, index = i};
+    best = query_select(best, candidate, h.t);
+  }
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
-    if b.ok { best = query_keep(best, query_enter_box(b.low, b.high, o, d, reach), QueryShape.box, i); }
+    if b.ok { best = query_select_entry(best, query_enter_box(b.low, b.high, o, d, reach), QueryShape.box, i); }
   }
   for i: 0..<query_capsules(c) {
     k := query_capsule(c, i);
-    if k.ok { best = query_keep(best, query_enter_capsule(k.a, k.b, k.r, o, d, reach), QueryShape.capsule, i); }
+    if k.ok { best = query_select_entry(best, query_enter_capsule(k.a, k.b, k.r, o, d, reach), QueryShape.capsule, i); }
   }
-  if best.hit { best.point = world_add(o, world_scale(d, best.t)); }
-  return best;
+  if best.hit.hit && best.hit.shape != QueryShape.heightfield { best.hit.point = world_add(o, world_scale(d, best.hit.t)); }
+  return best.hit;
 }
 ```
 
@@ -260,14 +328,26 @@ it.
 <!-- source: aethyr/query.coax overlap -->
 ```jai
 QueryId :: struct { shape: QueryShape; index: int; }
+QueryOverlapResult :: struct { status: QueryStatus; count: int; }
 
 // The colliders a sphere overlaps (closer than its radius), in collider order: the ground,
 // then boxes, then capsules, each by index. It writes as many as fit in `out` and returns how
 // many there are.
-query_overlap :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> int {
+query_overlap_checked :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> QueryOverlapResult {
   n := 0;
-  if !query_point_finite(centre) || !query_finite(r) || !(r > 0) { return 0; }
-  if centre.y - r < c.ground { n = query_put(out, n, QueryShape.ground, 0); }
+  if !query_point_finite(centre) || !query_finite(r) || !(r > 0) { return QueryOverlapResult.{status = QueryStatus.invalid}; }
+  if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryOverlapResult.{status = QueryStatus.capacity}; }
+  // Preflight every heightfield before the first write to caller storage.
+  touching: [QUERY_HEIGHTFIELDS_MAX] bool;
+  for i: 0..<c.heightfields.count {
+    field := c.heightfields[i];
+    h := height_contacts.ground_overlap(field.ground, field.heights, centre, r, c.heightfield_budget);
+    status := query_height_status(h.status);
+    if status != QueryStatus.ok { return QueryOverlapResult.{status = status}; }
+    touching[i] = h.hit;
+  }
+  if c.heightfields.count == 0 && centre.y - r < c.ground { n = query_put(out, n, QueryShape.ground, 0); }
+  for i: 0..<c.heightfields.count { if touching[i] { n = query_put(out, n, QueryShape.heightfield, i); } }
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
     if !b.ok { continue; }
@@ -281,7 +361,14 @@ query_overlap :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> 
     g := world_sub(centre, query_nearest(k.a, k.b, centre));
     if world_dot(g, g) < (r + k.r) * (r + k.r) { n = query_put(out, n, QueryShape.capsule, i); }
   }
-  return n;
+  return QueryOverlapResult.{count = n};
+}
+// The legacy count API returns -1 on heightfield refusal. New consumers use the
+// checked result so an exhausted traversal can never be mistaken for a clear scene.
+query_overlap :: (c: Colliders, centre: WorldPoint, r: f32, out: [] QueryId) -> int {
+  q := query_overlap_checked(c, centre, r, out);
+  if q.status != QueryStatus.ok && c.heightfields.count > 0 { return -1; }
+  return q.count;
 }
 query_put :: (out: [] QueryId, n: int, shape: QueryShape, index: int) -> int {
   if n < out.count { out[n] = QueryId.{shape = shape, index = index}; }
@@ -335,25 +422,36 @@ query_sooner :: (a: QueryEntry, b: QueryEntry) -> QueryEntry {
   return b;
 }
 query_sweep :: (c: Colliders, from: WorldPoint, r: f32, by: WorldPoint) -> QueryHit {
-  best: QueryHit;
-  if !query_point_finite(from) || !query_point_finite(by) || !query_finite(r) || !(r > 0) { return best; }
+  best: QuerySelection;
+  if !query_point_finite(from) || !query_point_finite(by) || !query_finite(r) || !(r > 0) { return QueryHit.{status = QueryStatus.invalid}; }
+  if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }
   if !(world_dot(by, by) > 0) {
     // not moving: a touch at 0, or none
     hits: [1] QueryId;
-    if query_overlap(c, from, r, hits[..]) == 0 { return best; }
+    q := query_overlap_checked(c, from, r, hits[..]);
+    if q.status != QueryStatus.ok { return QueryHit.{status = q.status}; }
+    if q.count == 0 { return best.hit; }
     return QueryHit.{hit = true, point = from, normal = world_point(0, 1, 0), shape = hits[0].shape, index = hits[0].index};
   }
-  best = query_keep(best, query_enter_ground(c.ground + r, from, by, 1), QueryShape.ground, 0);
+  if c.heightfields.count == 0 { best = query_select_entry(best, query_enter_ground(c.ground + r, from, by, 1), QueryShape.ground, 0); }
+  for i: 0..<c.heightfields.count {
+    field := c.heightfields[i];
+    h := height_contacts.ground_sweep(field.ground, field.heights, from, r, by, c.heightfield_budget);
+    status := query_height_status(h.status);
+    if status != QueryStatus.ok { return QueryHit.{status = status}; }
+    candidate := QueryHit.{hit = h.hit, t = f32(h.t), point = h.point, normal = world_point(h.normal.x, h.normal.y, h.normal.z), shape = QueryShape.heightfield, index = i};
+    best = query_select(best, candidate, h.t);
+  }
   for i: 0..<query_boxes(c) {
     b := query_box(c, i);
-    if b.ok { best = query_keep(best, query_enter_grown_box(b.low, b.high, r, from, by, 1), QueryShape.box, i); }
+    if b.ok { best = query_select_entry(best, query_enter_grown_box(b.low, b.high, r, from, by, 1), QueryShape.box, i); }
   }
   for i: 0..<query_capsules(c) {
     k := query_capsule(c, i);
-    if k.ok { best = query_keep(best, query_enter_capsule(k.a, k.b, k.r + r, from, by, 1), QueryShape.capsule, i); }
+    if k.ok { best = query_select_entry(best, query_enter_capsule(k.a, k.b, k.r + r, from, by, 1), QueryShape.capsule, i); }
   }
-  if best.hit { best.point = world_add(from, world_scale(by, best.t)); }
-  return best;
+  if best.hit.hit && best.hit.shape != QueryShape.heightfield { best.hit.point = world_add(from, world_scale(by, best.hit.t)); }
+  return best.hit;
 }
 ```
 
@@ -504,7 +602,7 @@ coax/bin/coax mutate aethyr/query.coax --library --root-only
 coax/bin/coax test verse/player.coax --library
 ```
 
-`aethyr/query.coax` has fourteen checks. They cover:
+The original scene checks and the heightfield suites cover:
 
 - the ground: step height, footprint reach, ties, and broken boxes;
 - floors: height, slope, steepness, the floor pad, and floors against boxes;
@@ -518,25 +616,33 @@ coax/bin/coax test verse/player.coax --library
 - sweeps into each of a box's six faces and twelve edges;
 - the ray, sweep, and overlap oracles over random scenes.
 
-`coax mutate` makes 312 mutants of `aethyr/query.coax`, and the checks kill all 312. The last five were boundary mutants that looked equivalent. An independent review found float32 inputs that reach each one: an origin the inside test calls outside, whose side or end root is exactly 0; a ray that enters the side at exactly `s = 0` or `s = 1`, a few ulps from the end sphere's root; and a sweep where a face and an edge give exactly the same `t`. The last check in the file pins those inputs. On `verse/player.coax`, no mutant survives on the lines this task changed.
+The current root-only mutation gate kills all 388 mutants in the query
+module. Its scope is separate from the ground, ray and sphere-contact gates
+recorded in [chapter 8](ch008-ground-and-collision.md). The boundary checks
+include f32 inputs that distinguish a side root at exactly zero, a capsule
+axis endpoint and equal face/edge times; they also distinguish terrain hits
+whose full times differ although their public f32 distances are equal.
 
-## Still to do
+New runtime consumers use `query_ground_checked`, `query_stand_checked` and
+`query_overlap_checked`. `QueryStatus` distinguishes bad input, malformed
+terrain, exhausted work and excessive capacity from a successful miss.
+Every heightfield is checked before an overlap writes any IDs. Ground's
+legacy permissive query continues to skip malformed shapes for trusted callers.
 
-The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
-moves the remaining copies onto this module:
+## Further realm migration
 
-- Heightfield ground. `verse_terrain_height` and `verse_terrain_ray` in
-  `verse/terrain.coax`, and each realm's `ground_at` (Everglade, Fairy Forest,
-  the garden, and the villa) become a heightfield collider with exact ray
-  marching by cell.
-- Rays against floors, for picking on roofs and rubble.
-- Everglade's own copies of the 0.55 m step height in its wall filters.
-- `verse/stand.coax` moves into `aethyr/` with the other engine modules.
+[Chapter 8](ch008-ground-and-collision.md) adds heightfield ground to all four
+queries and moves the legacy terrain sampler onto the shared implementation.
+The remaining realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md))
+includes the four terrain realms' floor-relative adapters, their older ray
+helpers, Everglade's wall-filter step constants and moving `verse/stand.coax`
+into the engine. Rays against floor shapes for roof and rubble picking remain
+outside this query profile.
 
-The camera ([chapter 10](ch010-the-camera-follows.md)) moves `camera_room`
-in `verse/player.coax` and `verse_orbit_room` in `verse/camera.coax` onto
-`query_ray`. A grid index, like `StandGrid` for floors, can come later; a
-query with and without it must give the same answer.
+The shared follow camera already reads these colliders. It retains its
+published box/body clearance rules and uses a checked sphere sweep for
+heightfields. A grid index can come later; indexed and unindexed queries must
+give the same answer.
 
 ## Dependencies
 

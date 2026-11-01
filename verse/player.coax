@@ -36,6 +36,10 @@
 #load "../aethyr/query.coax";   // the ground under you: one query for every walking realm
 #load "../aethyr/math.coax";    // sine, cosine and powers with the same bits natively and in the browser
 #load "../aethyr/follow.coax";  // the camera: Aethyr's follow, which every realm shares
+#load "../aethyr/collide.coax"; // checked capsule resolution and the trusted legacy adapters
+#load "../aethyr/collision-profiles.coax" as realm_collision;
+#load "../aethyr/tests/player-collision-checks.coax";
+#authority;
 
 PI :: 3.14159265;
 TAU :: 6.2831853;
@@ -84,6 +88,8 @@ World :: struct {
   bodies: [] f32;
   walls: [] f32;
   floors: [] f32;       // STAND_FLOATS numbers each (verse/stand.coax), on the same floor as the walls
+  heightfields: [] QueryHeightfield;
+  collision: CollideProfile;
 }
 
 // What the character is doing, for the animation that comes later. The
@@ -126,6 +132,13 @@ Player :: struct {
   pace: f32 = 1;
   grip: f32 = 1;       // the share of your feet's grip on the ground (a realm's ice: everglade-frost.coax); less slides you
   sliding: bool;       // on a floor too steep to stand on, sliding down it
+  collision_status: CollideStatus;
+  collision_refusals: u64;
+  collision_residual: f32;
+  collision_passes: int;
+  collision_floor_cut: bool;
+  query_status: QueryStatus;         // a refused ground receipt on the last physical step
+  camera_query_status: QueryStatus;  // the last camera receipt, retained when its step is skipped
 }
 // book:end state
 
@@ -137,6 +150,9 @@ mix3 :: (a: Vec3, b: Vec3, t: f32) -> Vec3 {
   return Vec3.{x = mix(a.x, b.x, t), y = mix(a.y, b.y, t), z = mix(a.z, b.z, t)};
 }
 finite :: (a: f32) -> bool { return a == a && a < 1000000.0 && a > -1000000.0; }
+// Strict sign decisions are shared by quadrant selection and view changes;
+// neither signed zero is negative, and an unordered value is not negative.
+player_negative :: (value: f32) -> bool { return value < 0; }
 
 // An angle in [-PI, PI).
 wrap_angle :: (a: f32) -> f32 { return a - f32(TAU) * floor((a + f32(PI)) / f32(TAU)); }
@@ -152,37 +168,17 @@ atan2 :: (y: f32, x: f32) -> f32 {
   ax := abs(x); ay := abs(y);
   if ax == 0 && ay == 0 { return 0; }
   a := ifx ay > ax then f32(PI / 2) - atan_unit(ax / ay) else atan_unit(ay / ax);
-  if x < 0 { a = f32(PI) - a; }
+  if player_negative(x) { a = f32(PI) - a; }
   if y < 0 { a = -a; }
   return a;
 }
 
 // ---- The world ----
 
-// Wall i, if it is whole, finite and not inside out.
-Box :: struct { lo: Vec3; hi: Vec3; ok: bool; }
-wall :: (w: World, i: int) -> Box {
-  out: Box;
-  k := i * WALL;
-  for j: 0..<WALL { if !finite(w.walls[k + j]) { return out; } }
-  out.lo = Vec3.{x = w.walls[k], y = w.walls[k + 1], z = w.walls[k + 2]};
-  out.hi = Vec3.{x = w.walls[k + 3], y = w.walls[k + 4], z = w.walls[k + 5]};
-  out.ok = out.lo.x <= out.hi.x && out.lo.y <= out.hi.y && out.lo.z <= out.hi.z;
-  return out;
-}
-// How far (x, z) is outside the box's footprint, and the nearest point on it.
-Edge :: struct { x: f32; z: f32; d: f32; }
-edge :: (b: Box, x: f32, z: f32) -> Edge {
-  e: Edge;
-  e.x = clamp(x, b.lo.x, b.hi.x); e.z = clamp(z, b.lo.z, b.hi.z);
-  e.d = sqrt((x - e.x) * (x - e.x) + (z - e.z) * (z - e.z));
-  return e;
-}
-
 // The world as Aethyr's colliders: the ground, the walls as boxes, the bodies as capsules and
 // the floors (aethyr/query.coax).
 colliders :: (w: World) -> Colliders {
-  return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors};
+  return Colliders.{ground = w.ground, boxes = w.walls, capsules = w.bodies, floors = w.floors, heightfields = w.heightfields};
 }
 // The floor under feet at (x, z): what they stand on (query_stand), the ground or the highest
 // wall top your capsule is over or floor you are over that is no more than STEP_UP above them.
@@ -190,55 +186,35 @@ floor_at :: (w: World, x: f32, z: f32, feet: f32) -> f32 { return floor_under(w,
 // The same with its slope (a wall's top and the ground are level).
 // book:begin ground
 floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit {
-  g := query_stand(colliders(w), x, z, feet, f32(RADIUS));
+  g := query_ground(colliders(w), x, z, feet + w.collision.step_up, w.collision.radius);
   return StandHit.{y = g.y, gx = g.gx, gz = g.gz};
 }
 // book:end ground
-// Whether a floor's surface at (x, z) would cut through you with your feet at `feet`: over a step
-// and under your head.
-floor_cuts :: (w: World, x: f32, z: f32, feet: f32) -> bool {
-  n := w.floors.count / STAND_FLOATS;
-  if n == 0 { return false; }
-  return stand_cuts(w.floors, n, x, z, feet + f32(STEP_UP), feet + f32(HEIGHT) - 0.1);
+// The trusted adapters retain the old direct-helper contract, including large
+// moves used by tools and checks. The real fixed step uses collide_move below.
+collision_state :: (p: Player) -> CollideState { return CollideState.{feet = wp(p.pos), velocity = wp(p.vel)}; }
+collision_apply :: (p: Player, s: CollideState) -> Player {
+  next := p; next.pos = vp(s.feet); next.vel = vp(s.velocity); return next;
 }
-// p moved from `from`: if it walked into a floor's side (a roof's slope cutting through it where it
-// was clear before), back along whichever way stays clear, its speed that way stopped.
-off_floors :: (w: World, from: Player, p: Player) -> Player {
-  if w.floors.count < STAND_FLOATS || !floor_cuts(w, p.pos.x, p.pos.z, p.pos.y) || floor_cuts(w, from.pos.x, from.pos.z, from.pos.y) { return p; }
+collision_report :: (p: Player, r: CollideResult) -> Player {
   next := p;
-  if !floor_cuts(w, p.pos.x, from.pos.z, p.pos.y) { next.pos.z = from.pos.z; next.vel.z = 0; return next; }
-  if !floor_cuts(w, from.pos.x, p.pos.z, p.pos.y) { next.pos.x = from.pos.x; next.vel.x = 0; return next; }
-  next.pos.x = from.pos.x; next.pos.z = from.pos.z; next.vel.x = 0; next.vel.z = 0;
+  next.query_status = QueryStatus.ok;
+  next.collision_status = r.status; next.collision_residual = r.residual;
+  next.collision_passes = r.passes; next.collision_floor_cut = r.floor_cut;
+  if r.status != CollideStatus.ok && next.collision_refusals < 18446744073709551615 { next.collision_refusals += 1; }
   return next;
+}
+floor_cuts :: (w: World, x: f32, z: f32, feet: f32) -> bool {
+  return collide_floor_cuts(colliders(w), w.collision, world_point(x, feet, z));
+}
+off_floors :: (w: World, from: Player, p: Player) -> Player {
+  return collision_apply(p, collide_floor_sides(colliders(w), w.collision, collision_state(from), collision_state(p)));
+}
+// book:begin walls
+out_of_walls :: (w: World, p: Player) -> Player {
+  return collision_apply(p, collide_walls(colliders(w), w.collision, collision_state(p)));
 }
 
-// book:begin walls
-// Pushes p sideways out of every wall too high to stand on, zeroing the
-// speed that went into it; from inside a footprint, out the nearest side.
-out_of_walls :: (w: World, p: Player) -> Player {
-  next := p;
-  for i: 0..<w.walls.count / WALL {
-    b := wall(w, i);
-    if !b.ok || b.hi.y <= next.pos.y + f32(STEP_UP) || b.lo.y >= next.pos.y + f32(HEIGHT) { continue; }
-    e := edge(b, next.pos.x, next.pos.z);
-    if e.d >= f32(RADIUS) { continue; }
-    ux := 0.0f32; uz := 0.0f32; push := 0.0f32;
-    if e.d > 0.0001 {
-      ux = (next.pos.x - e.x) / e.d; uz = (next.pos.z - e.z) / e.d; push = f32(RADIUS) - e.d;
-    } else {
-      // Inside: the side you are nearest.
-      west := next.pos.x - b.lo.x; east := b.hi.x - next.pos.x;
-      south := next.pos.z - b.lo.z; north := b.hi.z - next.pos.z;
-      least := lo(lo(west, east), lo(south, north));
-      if least == west { ux = -1; } else if least == east { ux = 1; } else if least == south { uz = -1; } else { uz = 1; }
-      push = least + f32(RADIUS);
-    }
-    next.pos.x += ux * push; next.pos.z += uz * push;
-    into := next.vel.x * ux + next.vel.z * uz;
-    if into < 0 { next.vel.x -= ux * into; next.vel.z -= uz * into; }
-  }
-  return next;
-}
 // book:end walls
 
 v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
@@ -247,93 +223,31 @@ sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); 
 times :: (a: Vec3, k: f32) -> Vec3 { return v3(a.x * k, a.y * k, a.z * k); }
 dot :: (a: Vec3, b: Vec3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
-// Body i, if it is whole and finite.
-Body :: struct { a: Vec3; b: Vec3; r: f32; ok: bool; }
-body :: (w: World, i: int) -> Body {
-  out: Body;
-  k := i * BODY;
-  for j: 0..<BODY { if !finite(w.bodies[k + j]) { return out; } }
-  out.a = v3(w.bodies[k], w.bodies[k + 1], w.bodies[k + 2]);
-  out.b = v3(w.bodies[k + 3], w.bodies[k + 4], w.bodies[k + 5]);
-  out.r = w.bodies[k + 6];
-  out.ok = out.r > 0;
-  return out;
-}
-
-// The closest points of segments p0-p1 and q0-p1 (either may be a point):
-// how far along each (0 to 1), and the points (Ericson, Real-Time Collision
-// Detection, 5.1.9).
+// Compatibility for callers inspecting segment parameters. The actual closest
+// pair comes from Aethyr; recovering its parameters does not resolve contacts.
 Closest :: struct { s: f32; t: f32; p: Vec3; q: Vec3; }
 closest :: (p0: Vec3, p1: Vec3, q0: Vec3, q1: Vec3) -> Closest {
-  d1 := sub(p1, p0); d2 := sub(q1, q0); r := sub(p0, q0);
-  a := dot(d1, d1); e := dot(d2, d2); f := dot(d2, r);
-  out: Closest;
-  tiny := 0.000001f32;
-  if a <= tiny && e <= tiny {
-  } else if a <= tiny {
-    out.t = clamp(f / e, 0, 1);
-  } else {
-    c := dot(d1, r);
-    if e <= tiny {
-      out.s = clamp(-c / a, 0, 1);
-    } else {
-      b := dot(d1, d2);
-      denom := a * e - b * b;
-      if denom > tiny * a * e { out.s = clamp((b * f - c * e) / denom, 0, 1); }
-      out.t = (b * out.s + f) / e;
-      if out.t < 0 { out.t = 0; out.s = clamp(-c / a, 0, 1); }
-      else if out.t > 1 { out.t = 1; out.s = clamp((b - c) / a, 0, 1); }
-    }
-  }
-  out.p = add(p0, times(d1, out.s));
-  out.q = add(q0, times(d2, out.t));
+  pair := collide_closest(wp(p0), wp(p1), wp(q0), wp(q1), 0.000001);
+  out := Closest.{p = vp(pair.p), q = vp(pair.q)};
+  first := sub(p1, p0); second := sub(q1, q0);
+  aa := dot(first, first); bb := dot(second, second);
+  if aa > 0 { out.s = clamp(dot(sub(out.p, p0), first) / aa, 0, 1); }
+  if bb > 0 { out.t = clamp(dot(sub(out.q, q0), second) / bb, 0, 1); }
   return out;
 }
 
-// Your capsule's axis, feet at `feet`.
-shin :: (feet: Vec3) -> Vec3 { return v3(feet.x, feet.y + f32(RADIUS), feet.z); }
-crown :: (feet: Vec3) -> Vec3 { return v3(feet.x, feet.y + f32(HEIGHT - RADIUS), feet.z); }
-
 // book:begin across
-// Moves p horizontally by (dx, dz), then out of every body it overlaps,
-// sideways, and zeroes the part of its velocity going into one. Standing
-// right under or on a body's axis, you go back the way you came (or to -Z).
+// A trusted direct move, deliberately not the bounded fixed-step entry.
 move_across :: (w: World, p: Player, dx: f32, dz: f32) -> Player {
-  next := p;
-  next.pos.x += dx;
-  next.pos.z += dz;
-  n := w.bodies.count / BODY;
-  for pass: 0..<PASSES {
-    pushed := false;
-    for i: 0..<n {
-      bd := body(w, i);
-      if !bd.ok { continue; }
-      c := closest(shin(next.pos), crown(next.pos), bd.a, bd.b);
-      need := bd.r + f32(RADIUS);
-      dy := c.p.y - c.q.y;
-      if abs(dy) >= need { continue; }
-      hx := c.p.x - c.q.x; hz := c.p.z - c.q.z;
-      h := sqrt(hx * hx + hz * hz);
-      reach := sqrt(need * need - dy * dy);
-      if h >= reach { continue; }
-      if h < 0.0001 {
-        hx = -dx; hz = -dz;
-        h = sqrt(hx * hx + hz * hz);
-        if h < 0.0001 { hx = 0; hz = -1; h = 1; }
-        hx = hx / h * 0.0001; hz = hz / h * 0.0001; h = 0.0001;
-      }
-      ux := hx / h; uz := hz / h;
-      next.pos.x += ux * (reach - h);
-      next.pos.z += uz * (reach - h);
-      into := next.vel.x * ux + next.vel.z * uz;
-      if into < 0 { next.vel.x -= ux * into; next.vel.z -= uz * into; }
-      pushed = true;
-    }
-    next = out_of_walls(w, next);
-    if !pushed { break; }
+  next := collision_state(p); next.feet.x += dx; next.feet.z += dz;
+  for pass: 0..<w.collision.max_passes {
+    bodies := collide_bodies(colliders(w), w.collision, next, dx, dz);
+    next = collide_walls(colliders(w), w.collision, bodies.state);
+    if !bodies.pushed { break; }
   }
-  return next;
+  return collision_apply(p, next);
 }
+
 // book:end across
 
 // How far the camera may sit from target along offset (a unit direction)
@@ -466,18 +380,26 @@ step :: (w: World, given: Player, dt: f32) -> Player {
   dz := dir.z * speed - next.vel.z;
   diff := sqrt(dx * dx + dz * dz);
   if diff > 0 {
-    grip := ifx finite(p.grip) && p.grip > 0 && p.grip < 1 && p.on_ground then p.grip else 1.0f32;
+    grip := ifx finite(p.grip) && p.grip > 0 && p.on_ground then lo(p.grip, 1.0f32) else 1.0f32;
     if p.sliding { grip = f32(SLIDE_GRIP); }
     applied := lo(diff, f32(ACCEL) * grip * dt);
     next.vel.x += dx / diff * applied;
     next.vel.z += dz / diff * applied;
   }
-  before := next;
-  next = move_across(w, next, next.vel.x * dt, next.vel.z * dt);
-  next = off_floors(w, before, next);
+  contact := collide_move(colliders(w), w.collision, collision_state(next), next.vel.x * dt, next.vel.z * dt);
+  // A refused step keeps the input Player, including its queued jump. The
+  // outer FrameClock consumes the assigned step; only diagnostics change.
+  if contact.status != CollideStatus.ok { return collision_report(given, contact); }
+  next = collision_report(collision_apply(next, contact.state), contact);
 
   // Gravity and the floor.
-  under := floor_under(w, next.pos.x, next.pos.z, next.pos.y);
+  surface := query_ground_checked(colliders(w), next.pos.x, next.pos.z, next.pos.y + w.collision.step_up, w.collision.radius);
+  if surface.status != QueryStatus.ok {
+    refused := collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_state});
+    refused.query_status = surface.status;
+    return refused;
+  }
+  under := StandHit.{y = surface.y, gx = surface.gx, gz = surface.gz};
   ground := under.y;
   above := next.pos.y - ground;
   falls := true;
@@ -537,10 +459,15 @@ camera_step :: (w: World, p: Player, dt: f32) -> Player {
   next := p;
   cam := follow_track(follow_of(p), colliders(w), w.room, wp(look_at(p)), dt);
   next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
+  next.camera_query_status = cam.status;
   return next;
 }
 // One fixed step of the player, then of its camera: what steps_in runs each step.
-step_once :: (w: World, p: Player, dt: f32) -> Player { return camera_step(w, step(w, p, dt), dt); }
+step_once :: (w: World, p: Player, dt: f32) -> Player {
+  next := step(w, p, dt);
+  if next.collision_status != CollideStatus.ok { return next; }
+  return camera_step(w, next, dt);
+}
 // book:end camera
 
 // book:begin advance
@@ -591,6 +518,25 @@ verse_player_advance_on :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32
   w.floors = floors;
   return advance_in(w, p, frame);
 }
+
+// A shipped walking realm uses its declared profile. An unknown renderer
+// refuses before accepting time or consuming a waiting input press.
+verse_player_advance_in_realm :: (p: Player, frame: f32, bodies: [] f32, walls: [] f32, floors: [] f32, realm: string) -> Player #export_c {
+  declaration := realm_collision.collision_profile_lookup(realm);
+  if declaration.status != realm_collision.CollisionProfileStatus.ok {
+    return collision_report(p, CollideResult.{state = collision_state(p), status = CollideStatus.bad_profile});
+  }
+  w := World.{bodies = bodies, walls = walls, floors = floors, collision = declaration.profile};
+  return advance_in(w, p, frame);
+}
+
+verse_player_collision_status :: (p: Player) -> int #export_c { return cast(int) cast(u8) p.collision_status; }
+verse_player_collision_refusals :: (p: Player) -> u64 #export_c { return p.collision_refusals; }
+verse_player_collision_residual :: (p: Player) -> f32 #export_c { return p.collision_residual; }
+verse_player_collision_passes :: (p: Player) -> int #export_c { return p.collision_passes; }
+verse_player_collision_floor_cut :: (p: Player) -> bool #export_c { return p.collision_floor_cut; }
+verse_player_query_status :: (p: Player) -> int #export_c { return cast(int) cast(u8) p.query_status; }
+verse_player_camera_query_status :: (p: Player) -> int #export_c { return cast(int) cast(u8) p.camera_query_status; }
 
 // The seconds a frame of `frame` counts for on the player's clock, before it advances: what a
 // page face moves the rest of its realm by (its animation, its room's timing), so the realm
@@ -1581,12 +1527,12 @@ verse_player_zoom_view :: (p:Player,mode:int,delta:f32)->PlayerZoom #export_c {
  z:PlayerZoom;z.player=p;z.mode=mode;if !finite(delta) || delta==0 {return z;}
  if mode==2 {z.player=verse_player_zoom(p,delta);return z;}
  if mode==0 {
-  if delta<0 {z.player.zoom_push=0;return z;}
+  if player_negative(delta) {z.player.zoom_push=0;return z;}
   z.player.zoom_push=p.zoom_push+delta;
   if z.player.zoom_push>=f32(ZOOM_OUT) {z.mode=1;z.player.max_dist=1;z.player.dist=1;z.player.prev_dist=1;z.player.phi=f32(BEHIND_PHI);z.player.zoom_push=0;}
   return z;
  }
- if delta>0 {z.player=verse_player_zoom(p,delta);z.player.zoom_push=0;return z;}
+ if !player_negative(delta) {z.player=verse_player_zoom(p,delta);z.player.zoom_push=0;return z;}
  z.player=verse_player_zoom(p,delta);
  if p.max_dist+delta>=1 {z.player.zoom_push=0;return z;}
  z.player.zoom_push=p.zoom_push+(1-(p.max_dist+delta));

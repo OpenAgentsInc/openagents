@@ -1,0 +1,17 @@
+// Native-test boundary only. Raw C metres are explicitly reconstructed as quantities.
+#load "../ground.coax";
+#load "../../coax/lib/quantity.coax" as units;
+
+GroundNativeSample :: struct {
+  ok: bool; height: f32; gx: f32; gz: f32;
+  clamped_x: bool; clamped_z: bool;
+}
+ground_native_points :: (g: Ground) -> int #export_c { return ground_points(g); }
+ground_native_sample :: (g: Ground, heights: [] f32, x: f32, z: f32) -> GroundNativeSample #export_c {
+  q := ground_sample(g, heights, units.Quantity.{value = x}, units.Quantity.{value = z});
+  return GroundNativeSample.{ok = q.ok, height = q.height.value, gx = q.gx, gz = q.gz,
+    clamped_x = q.clamped_x, clamped_z = q.clamped_z};
+}
+ground_native_normal :: (ok: bool, gx: f32, gz: f32) -> GroundNormal #export_c {
+  return ground_normal(GroundSample.{ok = ok, gx = gx, gz = gz});
+}

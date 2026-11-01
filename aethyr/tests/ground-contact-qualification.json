@@ -1,0 +1,75 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-01T07:17:21.518970+00:00",
+  "status": "qualified pure heightfield sphere-contact helper; query and Player integration are qualified separately",
+  "compiler": {
+    "path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+    "version": "coax0 0.46.0",
+    "source_fingerprint": "da79e8559f07565ee5e050bfb1dbc4f532f29e5b7c6262fc42e280f901f185d3",
+    "sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905"
+  },
+  "source_sha256": {
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/ground-contact-native.coax": "f3fa2312e5edc78a3e043e2b94328056da34ff07eccd57391ed69bee0b303a77",
+    "aethyr/tests/ground-contact-native.c": "edec545d912cb9d113fc1513532be86654f56e6f8885622f0a30c63bebbdc800",
+    "aethyr/tests/check_ground_contact.sh": "54f924b2b16f29e1e36b04cf5d72159df99627ed13b2854dbc61f60eeb968d38"
+  },
+  "dependency_sha256": {
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698"
+  },
+  "commands": [
+    {
+      "argv": [
+        "coax/bin/coax",
+        "mutate",
+        "aethyr/ground-contact.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "4"
+      ],
+      "exit_status": 0,
+      "root_check_groups": 23,
+      "stdout": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n359 mutants, 359 killed, 0 survived\n",
+      "waivers": []
+    },
+    {
+      "argv": [
+        "bash",
+        "aethyr/tests/check_ground_contact.sh"
+      ],
+      "exit_status": 0,
+      "stdout": "ground contact native: 256 independent overlaps and convex-distance sweeps, ridge/touch and atomic refusals pass\nground contact native: 256 independent overlaps and convex-distance sweeps, ridge/touch and atomic refusals pass\nground contact native: 256 independent overlaps and convex-distance sweeps, ridge/touch and atomic refusals pass\n",
+      "profiles": [
+        "debug -O0",
+        "release -O2",
+        "ASan/UBSan -O1"
+      ],
+      "native_overlap_cases_per_profile": 256,
+      "native_sweep_cases_per_profile": 256,
+      "native_tolerance": "abs(t-reference) <= 2e-7; exact named ridge/touch fixtures use 1e-12 or exact t=0",
+      "oracle": "independent full extended-mesh enumeration; plane projection plus three segment distances; convex distance minimization for 72 iterations then first-crossing bisection for 64 iterations; no production traversal, Voronoi partition, or analytic face/capsule roots reused"
+    }
+  ],
+  "scope": [
+    "sphere overlap and analytic sphere sweep on both actual rounded f32 triangles per candidate cell",
+    "closed face/edge/vertex sweep contacts; strict stationary overlap",
+    "solid on/below starts hit at t=0; moving starts face opposite complete motion",
+    "nearest-edge continuation has zero slope on its clamped axis",
+    "candidate rectangle budget checked before publishing any hit or miss; explicit invalid/terrain/exhausted refusal",
+    "all enumerated tiles admit their raw physical triangle gradients even when an earlier hit exists",
+    "stable row-major rectangle, triangle, and feature tie order; point reports sphere centre at contact; triangles reports geometry work"
+  ],
+  "limits": [
+    "does not itself edit query/terrain/player or complete chapter 8",
+    "caller owns an immutable readable height view",
+    "only the initial solid probe and enumerated candidate tiles are admitted; an initial solid hit may return before neighbour admission",
+    "maximum 4096 candidate rectangles including outside continuation strips; each rectangle has two triangles",
+    "ground descriptor and finite coordinate/height/gradient profile inherited from ground and ground-query; swept sphere start and final extents must remain strictly inside +/-1000000",
+    "numerical candidate bounds must have representably positive f64 widths; tiny radii that collapse them are refused",
+    "geometry is computed in f64; returned WorldPoint and normal round to f32; t remains f64",
+    "tests establish the named finite fixtures and tolerances, not a uniform exact-arithmetic error guarantee over every admitted input"
+  ]
+}

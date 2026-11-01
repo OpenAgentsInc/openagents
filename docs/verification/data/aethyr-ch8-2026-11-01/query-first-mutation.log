@@ -1,0 +1,20 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+aethyr/query.coax:148:100: mutant survived: '<' became '<='
+    if !query_finite(x) || !query_finite(z) || !query_finite(below) || !query_finite(reach) || reach < 0 {
+                                                                                                     ^
+aethyr/query.coax:153:10: mutant survived: 0 became 1
+    for i: 0..<c.heightfields.count {
+           ^
+aethyr/query.coax:161:45: mutant survived: '+' became '-'
+    return query_ground_checked(c, x, z, feet + f32(QUERY_STEP_UP), reach);
+                                              ^
+aethyr/query.coax:334:59: mutant survived: 0 became 1
+    if q.status != QueryStatus.ok && c.heightfields.count > 0 { return -1; }
+                                                            ^
+aethyr/query.coax:378:27: mutant survived: '>' became '>='
+    if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }
+                            ^
+aethyr/query.coax:378:29: mutant survived: 16 became 17
+    if c.heightfields.count > QUERY_HEIGHTFIELDS_MAX { return QueryHit.{status = QueryStatus.capacity}; }
+                              ^
+388 mutants, 382 killed, 6 survived

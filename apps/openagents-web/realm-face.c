@@ -884,7 +884,8 @@ static void step(float frame, float dt) {
                                  sticks.dyaw + realm.dyaw, sticks.dpitch + realm.dpitch);
   realm.dyaw = 0; realm.dpitch = 0;
   sticks = verse_sticks_used(sticks);
-  player = verse_player_advance_among(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6});
+  player = verse_player_advance_in_realm(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){walls, wall_count * 6},
+                                         (coax_v_f32){0, 0}, house.world_id);
   coax_t_HauntPoint kept = verse_haunt_constrain(house, point(was), point(player.pos));
   player = verse_player_constrain(player, kept.x, kept.z);
   coax_t_Vec3 feet = verse_player_feet(player);

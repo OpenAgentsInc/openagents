@@ -1,0 +1,554 @@
+// Kinematic walking-capsule resolution, chapter 8. The caller supplies valid,
+// immutable collider views. Malformed complete entries and partial tails keep
+// chapter 7's skip rule; capacity, profile, movement and publication are checked.
+#module "aethyr.collide";
+#authority;
+#load "query.coax";
+#load "tests/collide-oracle.coax";
+
+COLLIDE_MAX_PASSES :: 16;
+COLLIDE_MAX_SHAPES :: 4096;
+COLLIDE_EPS :: 0.00001;
+
+CollideProfile :: struct {
+  radius: f32 = 0.3;
+  height: f32 = 1.8;
+  step_up: f32 = QUERY_STEP_UP;
+  max_passes: int = 3;
+  max_travel: f32 = 0.15;
+  // The published walker's axis/parallel degeneracy decision profile.
+  epsilon: f32 = 0.000001;
+}
+CollideState :: struct { feet: WorldPoint; velocity: WorldPoint; }
+CollideStatus :: enum u8 { ok; bad_profile; bad_state; capacity; travel_limit; unresolved; }
+// Every non-ok result preserves the incoming state. residual and passes are
+// diagnostics about the attempted resolution, never permission to publish it.
+CollideResult :: struct { state: CollideState; status: CollideStatus; passes: int; residual: f32; floor_cut: bool; }
+CollideClosest :: struct { p: WorldPoint; q: WorldPoint; }
+CollideBodyPass :: struct { state: CollideState; pushed: bool; }
+
+collide_profile_ok :: (p: CollideProfile) -> bool {
+  // A positive max_travel bounded by radius/2 already proves radius positive;
+  // finite height >= 2*radius and that travel bound reject nonfinite radii.
+  return query_finite(p.height) && p.height >= 2 * p.radius &&
+    query_finite(p.step_up) && p.step_up >= 0 && p.step_up < p.height &&
+    p.max_passes >= 1 && p.max_passes <= COLLIDE_MAX_PASSES &&
+    query_finite(p.max_travel) && p.max_travel > 0 && p.max_travel <= p.radius / 2 && p.epsilon == 0.000001;
+}
+collide_state_ok :: (p: CollideProfile, s: CollideState) -> bool {
+  return query_point_finite(s.feet) && query_point_finite(s.velocity) && query_finite(s.feet.y + p.height);
+}
+
+// Ericson's segment pair with the published epsilon profile. Short axes are
+// points; nearly parallel axes retain the first endpoint until the other
+// segment's end requires a correction. The F64
+// test oracle instead enumerates quadratic pieces of a vertical-axis distance.
+collide_closest :: (p0: WorldPoint, p1: WorldPoint, q0: WorldPoint, q1: WorldPoint, epsilon: f32) -> CollideClosest {
+  d1 := world_sub(p1, p0); d2 := world_sub(q1, q0); r := world_sub(p0, q0);
+  a := world_dot(d1, d1); e := world_dot(d2, d2); f := world_dot(d2, r);
+  s := 0.0f32; t := 0.0f32;
+  if a <= epsilon && e <= epsilon {
+  } else if a <= epsilon { t = stand_clamp(f / e, 0, 1); }
+  else {
+    c := world_dot(d1, r);
+    if e <= epsilon { s = stand_clamp(-c / a, 0, 1); }
+    else {
+      b := world_dot(d1, d2); denominator := a * e - b * b;
+      if denominator > epsilon * a * e { s = stand_clamp((b * f - c * e) / denominator, 0, 1); }
+      raw_t := (b * s + f) / e;
+      t = stand_clamp(raw_t, 0, 1);
+      if t != raw_t {
+        if t == 0 { s = stand_clamp(-c / a, 0, 1); }
+        else { s = stand_clamp((b - c) / a, 0, 1); }
+      }
+    }
+  }
+  return CollideClosest.{p = world_add(p0, world_scale(d1, s)), q = world_add(q0, world_scale(d2, t))};
+}
+collide_axis :: (p: CollideProfile, s: CollideState, b: QueryCapsule) -> CollideClosest {
+  lower := world_point(s.feet.x, s.feet.y + p.radius, s.feet.z);
+  upper := world_point(s.feet.x, s.feet.y + (p.height - p.radius), s.feet.z);
+  return collide_closest(lower, upper, b.a, b.b, p.epsilon);
+}
+// Side contact uses an open vertical interval: touching at a cap's height
+// is distinct from a nonzero horizontal reach.
+collide_vertical_overlap :: (dy: f32, need: f32) -> bool { return abs(dy) < need; }
+collide_wall_blocks :: (p: CollideProfile, s: CollideState, b: QueryBox) -> bool {
+  return b.ok && b.high.y > s.feet.y + p.step_up && b.low.y < s.feet.y + p.height;
+}
+collide_walls :: (c: Colliders, p: CollideProfile, given: CollideState) -> CollideState {
+  next := given;
+  for i: 0..<query_boxes(c) {
+    b := query_box(c, i);
+    if !collide_wall_blocks(p, next, b) { continue; }
+    x := stand_clamp(next.feet.x, b.low.x, b.high.x); z := stand_clamp(next.feet.z, b.low.z, b.high.z);
+    dx := next.feet.x - x; dz := next.feet.z - z; distance := sqrt(dx * dx + dz * dz);
+    if distance >= p.radius { continue; }
+    ux := 0.0f32; uz := 0.0f32; push := 0.0f32;
+    if distance > 0.0001 {
+      ux = dx / distance; uz = dz / distance; push = p.radius - distance;
+    } else {
+      west := next.feet.x - b.low.x; east := b.high.x - next.feet.x;
+      south := next.feet.z - b.low.z; north := b.high.z - next.feet.z;
+      least := stand_lo(stand_lo(west, east), stand_lo(south, north));
+      if least == west { ux = -1; } else if least == east { ux = 1; } else if least == south { uz = -1; } else { uz = 1; }
+      push = least + p.radius;
+    }
+    next.feet.x += ux * push; next.feet.z += uz * push;
+    into := next.velocity.x * ux + next.velocity.z * uz;
+    if into < 0 { next.velocity.x -= ux * into; next.velocity.z -= uz * into; }
+  }
+  return next;
+}
+collide_bodies :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32, dz: f32) -> CollideBodyPass {
+  next := given; pushed := false;
+  for i: 0..<query_capsules(c) {
+    b := query_capsule(c, i); if !b.ok { continue; }
+    pair := collide_axis(p, next, b); need := b.r + p.radius; dy := pair.p.y - pair.q.y;
+    if !collide_vertical_overlap(dy, need) { continue; }
+    hx := pair.p.x - pair.q.x; hz := pair.p.z - pair.q.z;
+    horizontal_squared := hx * hx + hz * hz;
+    h := sqrt(horizontal_squared); reach := sqrt(need * need - dy * dy);
+    if h >= reach { continue; }
+    if h < 0.0001 {
+      hx = -dx; hz = -dz; h = sqrt(hx * hx + hz * hz);
+      if h < 0.0001 { hx = 0; hz = -1; h = 1; }
+      hx = hx / h * 0.0001; hz = hz / h * 0.0001; h = 0.0001;
+    }
+    ux := hx / h; uz := hz / h;
+    next.feet.x += ux * (reach - h); next.feet.z += uz * (reach - h);
+    into := next.velocity.x * ux + next.velocity.z * uz;
+    if into < 0 { next.velocity.x -= ux * into; next.velocity.z -= uz * into; }
+    pushed = true;
+  }
+  return CollideBodyPass.{state = next, pushed = pushed};
+}
+collide_floor_cuts :: (c: Colliders, p: CollideProfile, feet: WorldPoint) -> bool {
+  count := c.floors.count / STAND_FLOATS;
+  whole := c.floors[0..<count * STAND_FLOATS];
+  return stand_cuts(whole, count, feet.x, feet.z, feet.y + p.step_up, feet.y + p.height - 0.1);
+}
+collide_floor_sides :: (c: Colliders, p: CollideProfile, before: CollideState, given: CollideState) -> CollideState {
+  if !collide_floor_cuts(c, p, given.feet) || collide_floor_cuts(c, p, before.feet) { return given; }
+  next := given;
+  if !collide_floor_cuts(c, p, world_point(given.feet.x, given.feet.y, before.feet.z)) {
+    next.feet.z = before.feet.z; next.velocity.z = 0;
+  } else if !collide_floor_cuts(c, p, world_point(before.feet.x, given.feet.y, given.feet.z)) {
+    next.feet.x = before.feet.x; next.velocity.x = 0;
+  } else {
+    next.feet.x = before.feet.x; next.feet.z = before.feet.z; next.velocity.x = 0; next.velocity.z = 0;
+  }
+  return next;
+}
+// Maximum remaining overlap of valid solid shapes. Floors have their own
+// explicit cut flag: a surface is not a solid with a penetration depth.
+collide_residual :: (c: Colliders, p: CollideProfile, s: CollideState) -> f32 {
+  worst := 0.0f32;
+  for i: 0..<query_boxes(c) {
+    b := query_box(c, i);
+    if collide_wall_blocks(p, s, b) { worst = stand_hi(worst, p.radius - query_footprint(b, s.feet.x, s.feet.z)); }
+  }
+  for i: 0..<query_capsules(c) {
+    b := query_capsule(c, i); if !b.ok { continue; }
+    pair := collide_axis(p, s, b); delta := world_sub(pair.p, pair.q);
+    worst = stand_hi(worst, p.radius + b.r - sqrt(world_dot(delta, delta)));
+  }
+  return worst;
+}
+collide_publish :: (given: CollideState, candidate: CollideState, passes: int, residual: f32, floor_cut: bool) -> CollideResult {
+  out := CollideResult.{state = given, passes = passes, residual = residual, floor_cut = floor_cut};
+  if residual > COLLIDE_EPS || floor_cut { out.status = CollideStatus.unresolved; return out; }
+  out.state = candidate;
+  return out;
+}
+collide_move :: (c: Colliders, p: CollideProfile, given: CollideState, dx: f32, dz: f32) -> CollideResult {
+  out := CollideResult.{state = given};
+  if !collide_profile_ok(p) { out.status = CollideStatus.bad_profile; return out; }
+  if !collide_state_ok(p, given) {
+    out.status = CollideStatus.bad_state; return out;
+  }
+  if query_boxes(c) > COLLIDE_MAX_SHAPES || query_capsules(c) > COLLIDE_MAX_SHAPES || c.floors.count / STAND_FLOATS > COLLIDE_MAX_SHAPES {
+    out.status = CollideStatus.capacity; return out;
+  }
+  next := given; next.feet.x += dx; next.feet.z += dz;
+  if !collide_state_ok(p, next) { out.status = CollideStatus.bad_state; return out; }
+  if dx * dx + dz * dz > p.max_travel * p.max_travel { out.status = CollideStatus.travel_limit; return out; }
+  for pass: 0..<p.max_passes {
+    bodies := collide_bodies(c, p, next, dx, dz);
+    next = collide_walls(c, p, bodies.state);
+    out.passes = pass + 1;
+    if !bodies.pushed { break; }
+  }
+  next = collide_floor_sides(c, p, given, next);
+  if !collide_state_ok(p, next) { out.status = CollideStatus.bad_state; return out; }
+  return collide_publish(given, next, out.passes, collide_residual(c, p, next), collide_floor_cuts(c, p, next.feet));
+}
+
+collide_test_state :: (x: f32, y: f32, z: f32, vx: f32, vy: f32, vz: f32) -> CollideState {
+  return CollideState.{feet = world_point(x, y, z), velocity = world_point(vx, vy, vz)};
+}
+collide_test_same :: (a: CollideState, b: CollideState) -> bool {
+  return a.feet.x == b.feet.x && a.feet.y == b.feet.y && a.feet.z == b.feet.z &&
+    a.velocity.x == b.velocity.x && a.velocity.y == b.velocity.y && a.velocity.z == b.velocity.z;
+}
+
+#test "collision defaults admit the published walk and refuse an excessive thin-wall move" {
+  c: Colliders; profile: CollideProfile;
+  #assert profile.radius == 0.3 && profile.height == 1.8 && profile.step_up == 0.55 && profile.max_passes == 3 && profile.max_travel == 0.15;
+  s := collide_test_state(1, 2, -3, 4, 5, 6);
+  r := collide_move(c, profile, s, 0.1171875, 0);
+  #assert r.status == CollideStatus.ok && r.state.feet.x == 1.1171875 && r.state.feet.y == 2 && r.state.feet.z == -3;
+  #assert r.state.velocity.x == 4 && r.state.velocity.y == 5 && r.state.velocity.z == 6 && r.passes == 1 && r.residual == 0 && !r.floor_cut;
+  refused := collide_move(c, profile, s, 0.15001, 0);
+  #assert refused.status == CollideStatus.travel_limit && collide_test_same(refused.state, s);
+  #assert collide_move(c, profile, s, 0.15, 0).status == CollideStatus.ok;
+  #assert collide_move(c, profile, s, 0.11, 0.11).status == CollideStatus.travel_limit;
+}
+
+#test "a collision profile is finite, physical and bounded before any state changes" {
+  c: Colliders; base: CollideProfile; s := collide_test_state(0, 0, 0, 1, 2, 3);
+  for kind: 0..<12 {
+    p := base;
+    if kind == 0 { p.radius = 0; }
+    else if kind == 1 { p.radius = -1; }
+    else if kind == 2 { p.height = 0.59; }
+    else if kind == 3 { p.height = 1000000; }
+    else if kind == 4 { p.step_up = -0.01; }
+    else if kind == 5 { p.step_up = p.height; }
+    else if kind == 6 { p.max_passes = 0; }
+    else if kind == 7 { p.max_passes = 17; }
+    else if kind == 8 { p.max_travel = 0; }
+    else if kind == 9 { p.max_travel = 0.151; }
+    else if kind == 10 { p.radius = 1000000; }
+    else { p.step_up = 1000000; }
+    r := collide_move(c, p, s, 0.1, 0);
+    #assert r.status == CollideStatus.bad_profile && collide_test_same(r.state, s) && r.passes == 0;
+  }
+  base.height = 0.6; base.step_up = 0; base.max_passes = 16;
+  #assert collide_move(c, base, s, 0, 0).status == CollideStatus.ok;
+}
+
+#test "collision admission checks all coordinates, velocity, target and shape capacities" {
+  c: Colliders; p: CollideProfile;
+  for field: 0..<6 {
+    s := collide_test_state(0, 0, 0, 1, 2, 3);
+    if field == 0 { s.feet.x = 1000000; } else if field == 1 { s.feet.y = -1000000; }
+    else if field == 2 { s.feet.z = 1000000; } else if field == 3 { s.velocity.x = -1000000; }
+    else if field == 4 { s.velocity.y = 1000000; } else { s.velocity.z = -1000000; }
+    r := collide_move(c, p, s, 0, 0);
+    #assert r.status == CollideStatus.bad_state && collide_test_same(r.state, s);
+  }
+  s := collide_test_state(0, 999999, 0, 0, 0, 0);
+  #assert collide_move(c, p, s, 0, 0).status == CollideStatus.bad_state;
+  s = collide_test_state(999999.875, 0, 0, 0, 0, 0);
+  #assert collide_move(c, p, s, 0.15, 0).status == CollideStatus.bad_state;
+  #assert collide_move(c, p, s, 1000000, 0).status == CollideStatus.bad_state;
+  #assert collide_move(c, p, s, 0, -1000000).status == CollideStatus.bad_state;
+  boxes: [(COLLIDE_MAX_SHAPES + 1) * QUERY_BOX] f32; c.boxes = boxes[..];
+  s = collide_test_state(0, 0, 0, 0, 0, 0);
+  #assert collide_move(c, p, s, 0, 0).status == CollideStatus.capacity;
+  c.boxes = boxes[0..<COLLIDE_MAX_SHAPES * QUERY_BOX + QUERY_BOX - 1];
+  #assert collide_move(c, p, s, 0, 0).status == CollideStatus.ok;
+  c.boxes = boxes[0..<0];
+  capsules: [(COLLIDE_MAX_SHAPES + 1) * QUERY_CAPSULE] f32; c.capsules = capsules[..];
+  #assert collide_move(c, p, s, 0, 0).status == CollideStatus.capacity;
+  c.capsules = capsules[0..<COLLIDE_MAX_SHAPES * QUERY_CAPSULE + QUERY_CAPSULE - 1];
+  #assert collide_move(c, p, s, 0, 0).status == CollideStatus.ok;
+  c.capsules = capsules[0..<0];
+  floors: [(COLLIDE_MAX_SHAPES + 1) * STAND_FLOATS] f32; c.floors = floors[..];
+  #assert collide_move(c, p, s, 0, 0).status == CollideStatus.capacity;
+  c.floors = floors[0..<COLLIDE_MAX_SHAPES * STAND_FLOATS + STAND_FLOATS - 1];
+  #assert collide_move(c, p, s, 0, 0).status == CollideStatus.ok;
+}
+
+#test "a thin wall stops the admitted move and removes only inward velocity" {
+  boxes := [6] f32.[-2, 0, 1, 2, 2, 1.01]; c: Colliders; c.boxes = boxes[..]; p: CollideProfile;
+  s := collide_test_state(0, 0, 0.65, 2, 3, 4);
+  r := collide_move(c, p, s, 0, 0.1);
+  #assert r.status == CollideStatus.ok && abs(r.state.feet.z - 0.7) < 0.000001;
+  #assert r.state.velocity.x == 2 && r.state.velocity.y == 3 && r.state.velocity.z == 0;
+  s.velocity.z = -4;
+  #assert collide_move(c, p, s, 0, 0.1).state.velocity.z == -4;
+  s.feet.y = 2;
+  #assert collide_move(c, p, s, 0, 0.1).state.feet.z == 0.75;
+  s.feet.y = -1.8;
+  #assert collide_move(c, p, s, 0, 0.1).state.feet.z == 0.75;
+}
+
+#test "box tops at the step threshold pass and a higher top blocks" {
+  boxes := [6] f32.[-2, 0, 1, 2, 0.55, 2]; c: Colliders; c.boxes = boxes[..]; p: CollideProfile;
+  s := collide_test_state(0, 0, 0.65, 0, 0, 4);
+  #assert collide_move(c, p, s, 0, 0.1).state.feet.z == 0.75;
+  boxes[4] = 0.56;
+  #assert abs(collide_move(c, p, s, 0, 0.1).state.feet.z - 0.7) < 0.000001;
+}
+
+#test "inside a box the nearest side wins with a stable tie order" {
+  boxes := [6] f32.[-1, 0, -2, 1, 2, 2]; c: Colliders; c.boxes = boxes[..]; p: CollideProfile;
+  s := collide_test_state(0, 0, 0, 3, 0, 4);
+  r := collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok && r.state.feet.x == -1.3 && r.state.feet.z == 0 && r.state.velocity.x == 0 && r.state.velocity.z == 4;
+  s.feet.x = 0.9; #assert abs(collide_move(c, p, s, 0, 0).state.feet.x - 1.3) < 0.000001;
+  s.feet = world_point(0, 0, -1.9); #assert abs(collide_move(c, p, s, 0, 0).state.feet.z + 2.3) < 0.000001;
+  s.feet.z = 1.9; #assert abs(collide_move(c, p, s, 0, 0).state.feet.z - 2.3) < 0.000001;
+}
+
+#test "capsule contact matches the independent distance and keeps tangential velocity" {
+  bodies := [7] f32.[0, 0, 1, 0, 2, 1, 0.4]; c: Colliders; c.capsules = bodies[..]; p: CollideProfile;
+  s := collide_test_state(0, 0, 0.25, 2, 3, 4);
+  r := collide_move(c, p, s, 0, 0.1);
+  #assert r.status == CollideStatus.ok && abs(r.state.feet.z - 0.3) < 0.000001;
+  #assert r.state.velocity.x == 2 && r.state.velocity.y == 3 && abs(r.state.velocity.z) < 0.000001;
+  d := collide_oracle_axis_squared(collide_oracle_point(f64(r.state.feet.x), f64(r.state.feet.y), f64(r.state.feet.z)),
+    f64(p.radius), f64(p.height), collide_oracle_point(0, 0, 1), collide_oracle_point(0, 2, 1));
+  #assert abs(sqrt(d) - 0.7) < 0.000001;
+  s.feet = world_point(0, 0, 1);
+  #assert collide_move(c, p, s, 0, 0).state.feet.z < 0.301;
+  s.feet = world_point(0, 0, 0.9);
+  #assert collide_move(c, p, s, 0, 0.1).state.feet.z < 0.301;
+  s.feet.y = 3;
+  #assert collide_move(c, p, s, 0, 0.1).state.feet.z == 1;
+}
+
+#test "floor sides undo only the blocked movement axis" {
+  floors: [STAND_FLOATS] f32; stand_put_box(floors[..], 0, -1, 1, 1, 3, 1);
+  c: Colliders; c.floors = floors[..]; p: CollideProfile;
+  s := collide_test_state(0, 0, 0.95, 2, 3, 4);
+  r := collide_move(c, p, s, 0.05, 0.1);
+  #assert r.status == CollideStatus.ok && r.state.feet.x == 0.05 && r.state.feet.z == 0.95;
+  #assert r.state.velocity.x == 2 && r.state.velocity.z == 0;
+  s.feet = world_point(-1.05, 0, 2);
+  r = collide_move(c, p, s, 0.1, 0.05);
+  #assert r.status == CollideStatus.ok && r.state.feet.x == -1.05 && r.state.feet.z == 2.05;
+  #assert r.state.velocity.x == 0 && r.state.velocity.z == 4;
+  both: [2 * STAND_FLOATS] f32;
+  stand_put_box(both[..], 0, -1, 0.9, 1, 3, 1);
+  stand_put_box(both[..], 1, -1.1, 1, 1, 3, 1);
+  c.floors = both[..]; s.feet = world_point(-1.05, 0, 0.95);
+  r = collide_move(c, p, s, 0.1, 0.1);
+  #assert r.status == CollideStatus.ok && r.state.feet.x == -1.05 && r.state.feet.z == 0.95 && r.state.velocity.x == 0 && r.state.velocity.z == 0;
+  s.feet = world_point(0, 0, 2);
+  r = collide_move(c, p, s, 0.1, 0);
+  #assert r.status == CollideStatus.unresolved && r.floor_cut && collide_test_same(r.state, s);
+}
+
+#test "unresolved crowded walls refuse atomically instead of promising separation" {
+  boxes := [12] f32.[-2, 0, -2, -0.2, 2, 2, 0.2, 0, -2, 2, 2, 2];
+  c: Colliders; c.boxes = boxes[..]; p: CollideProfile; s := collide_test_state(0, 0, 0, 3, 0, 4);
+  r := collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.unresolved && collide_test_same(r.state, s) && r.residual > 0.1 && r.passes == 1;
+  p.max_passes = 1;
+  #assert collide_move(c, p, s, 0, 0).passes == 1;
+}
+
+#forall "capsule distances match the independent F64 piecewise oracle" sample: 0..<25, kind: 0..<6 {
+  radius := 0.25f32; height := ifx kind >= 4 then 0.5f32 else 2.0f32;
+  feet := world_point(0.1, -0.25, -0.15);
+  a := world_point(f32(sample % 5 - 2) * 0.4, f32(kind) * 0.5 - 1, f32(sample / 5 - 2) * 0.4);
+  b := world_point(-a.x + 0.1, a.y + 0.75, a.z + 0.3);
+  if kind == 1 || kind == 5 { b = a; }
+  if kind == 2 { b.x = a.x; b.z = a.z; }
+  if kind == 3 { swap := a; a = b; b = swap; }
+  p0 := world_point(feet.x, feet.y + radius, feet.z);
+  p1 := world_point(feet.x, feet.y + height - radius, feet.z);
+  pair := collide_closest(p0, p1, a, b, 0.000001); delta := world_sub(pair.p, pair.q);
+  reference := collide_oracle_axis_squared(collide_oracle_point(f64(feet.x), f64(feet.y), f64(feet.z)), f64(radius), f64(height),
+    collide_oracle_point(f64(a.x), f64(a.y), f64(a.z)), collide_oracle_point(f64(b.x), f64(b.y), f64(b.z)));
+  #assert abs(f64(world_dot(delta, delta)) - reference) < 0.000002;
+}
+
+#forall "box contact resolves against the independent F64 footprint oracle" sample: 0..<25 {
+  boxes := [6] f32.[0, 0, 0, 2, 2, 2]; c: Colliders; c.boxes = boxes[..]; p: CollideProfile;
+  s := collide_test_state(f32(sample % 5) * 0.1 - 0.4, 0, f32(sample / 5) * 0.1 - 0.4, 2, 3, 4);
+  before := collide_oracle_box_squared(f64(s.feet.x), f64(s.feet.z), collide_oracle_point(0, 0, 0), collide_oracle_point(2, 2, 2));
+  r := collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok;
+  distance := sqrt(collide_oracle_box_squared(f64(r.state.feet.x), f64(r.state.feet.z),
+    collide_oracle_point(0, 0, 0), collide_oracle_point(2, 2, 2)));
+  if before < f64(p.radius) * f64(p.radius) { #assert abs(distance - f64(p.radius)) < 0.000002; }
+  else { #assert collide_test_same(r.state, s); }
+}
+
+#test "invalid collider entries and partial tails keep the published skip rule" {
+  boxes := [6] f32.[1, 0, -1, -1, 2, 1];
+  bodies := [7] f32.[0, 0, 0, 0, 2, 0, 0]; c: Colliders; p: CollideProfile;
+  c.boxes = boxes[..]; c.capsules = bodies[..]; s := collide_test_state(0, 0, 0, 0, 0, 0);
+  r := collide_move(c, p, s, 0.1, 0);
+  #assert r.status == CollideStatus.ok && r.state.feet.x == 0.1;
+  boxes[0] = -1; bodies[6] = 0.4;
+  c.boxes = boxes[0..<5]; c.capsules = bodies[0..<6];
+  #assert collide_move(c, p, s, 0.1, 0).state.feet.x == 0.1;
+  c.capsules = bodies[..]; bodies[0] = 0.0f32 / 0.0f32;
+  #assert collide_move(c, p, s, 0.1, 0).status == CollideStatus.ok;
+}
+
+#test "nonfinite profiles and a resolution outside the coordinate budget refuse atomically" {
+  c: Colliders; p: CollideProfile; s := collide_test_state(0, 0, 0, 0, 0, 0);
+  nan := 0.0f32 / 0.0f32; inf := 1.0f32 / 0.0f32;
+  for kind: 0..<4 {
+    profile := p;
+    if kind == 0 { profile.radius = nan; } else if kind == 1 { profile.height = inf; }
+    else if kind == 2 { profile.step_up = nan; } else { profile.max_travel = inf; }
+    #assert collide_move(c, profile, s, 0, 0).status == CollideStatus.bad_profile;
+  }
+  #assert collide_move(c, p, s, nan, 0).status == CollideStatus.bad_state;
+  #assert collide_move(c, p, s, 0, nan).status == CollideStatus.bad_state;
+  boxes := [6] f32.[-999999.9, 0, -999999.9, 999999.9, 2, 999999.9]; c.boxes = boxes[..];
+  r := collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.bad_state && collide_test_same(r.state, s);
+}
+
+#test "the collision state comparator observes every coordinate and velocity" {
+  s := collide_test_state(1, 2, 3, 4, 5, 6);
+  for field: 0..<6 {
+    other := s;
+    if field == 0 { other.feet.x = 0; } else if field == 1 { other.feet.y = 0; }
+    else if field == 2 { other.feet.z = 0; } else if field == 3 { other.velocity.x = 0; }
+    else if field == 4 { other.velocity.y = 0; } else { other.velocity.z = 0; }
+    #assert !collide_test_same(s, other);
+  }
+}
+
+#test "capsule caps and an exactly near-axis contact keep the vertical distance" {
+  bodies := [7] f32.[0, 0.2, 1, 0, 0.2, 1, 0.2]; c: Colliders; c.capsules = bodies[..]; p: CollideProfile;
+  s := collide_test_state(0, 0, 1, 0, 2, 3);
+  r := collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok && abs(r.state.feet.z - (1 - sqrt(0.24f32))) < 0.00001;
+  bodies[1] = 1.9; bodies[4] = 1.9;
+  r = collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok;
+  reference := collide_oracle_axis_squared(collide_oracle_point(f64(r.state.feet.x), 0, f64(r.state.feet.z)),
+    f64(p.radius), f64(p.height), collide_oracle_point(0, f64(bodies[1]), 1), collide_oracle_point(0, f64(bodies[4]), 1));
+  #assert abs(sqrt(reference) - 0.5) < 0.00001;
+  bodies[1] = 0; bodies[4] = 2;
+  s.feet = world_point(0.0001, 0, 1);
+  r = collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok && abs(r.state.feet.x - 0.5) < 0.00001 && r.state.feet.z == 1;
+}
+
+#forall "floor-side thresholds remain relative to the feet's height" level: -2..<3 {
+  floors: [STAND_FLOATS] f32; c: Colliders; c.floors = floors[..]; p: CollideProfile;
+  y := f32(level); s := collide_test_state(0, y, 0.95, 0, 0, 4);
+  stand_put_box(floors[..], 0, -1, 1, 1, 3, y + 1);
+  r := collide_move(c, p, s, 0, 0.1);
+  #assert r.status == CollideStatus.ok && r.state.feet.z == 0.95 && r.state.feet.y == y && r.state.velocity.z == 0;
+  stand_put_box(floors[..], 0, -1, 1, 1, 3, y + p.step_up);
+  #assert collide_move(c, p, s, 0, 0.1).state.feet.z == 1.05;
+  stand_put_box(floors[..], 0, -1, 1, 1, 3, y + p.height - 0.1);
+  #assert collide_move(c, p, s, 0, 0.1).state.feet.z == 1.05;
+}
+
+#test "collision publication admits its exact residual bound and preserves refused state" {
+  s := collide_test_state(1, 2, 3, 4, 5, 6); next := collide_test_state(2, 3, 4, 5, 6, 7);
+  r := collide_publish(s, next, 3, f32(COLLIDE_EPS), false);
+  #assert r.status == CollideStatus.ok && collide_test_same(r.state, next) && r.passes == 3 && r.residual == f32(COLLIDE_EPS) && !r.floor_cut;
+  r = collide_publish(s, next, 2, f32(COLLIDE_EPS) * 2, false);
+  #assert r.status == CollideStatus.unresolved && collide_test_same(r.state, s) && r.passes == 2 && r.residual == f32(COLLIDE_EPS) * 2;
+  r = collide_publish(s, next, 1, 0, true);
+  #assert r.status == CollideStatus.unresolved && collide_test_same(r.state, s) && r.floor_cut;
+}
+
+#test "capsule resolution checks off-axis velocity and movement-derived separation" {
+  bodies := [7] f32.[2, 0, 1, 2, 2, 1, 0.2]; c: Colliders; c.capsules = bodies[..]; p: CollideProfile;
+  s := collide_test_state(1.75, 0, 1, 3, 4, 5);
+  r := collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok && abs(r.state.feet.x - 1.5) < 0.000001 && r.state.feet.z == 1;
+  #assert r.state.velocity.x == 0 && r.state.velocity.y == 4 && r.state.velocity.z == 5;
+  s = collide_test_state(1.92, 0, 0.94, 3, 4, 5);
+  r = collide_move(c, p, s, 0.08, 0.06);
+  #assert r.status == CollideStatus.ok && abs(r.state.feet.x - 1.6) < 0.00001 && abs(r.state.feet.z - 0.7) < 0.00001;
+  s = collide_test_state(2 - 0.00006, 0, 1 - 0.00008, 3, 4, 5);
+  r = collide_move(c, p, s, 0.00006, 0.00008);
+  #assert r.status == CollideStatus.ok && r.state.feet.x < 1.8 && r.state.feet.z < 0.8;
+  // A tiny nonzero move still uses the declared -Z fallback. In particular,
+  // its nonzero dx must not leak into the chosen normal.
+  s = collide_test_state(2 - 0.00005, 0, 1 - 0.00003, 3, 4, 5);
+  r = collide_move(c, p, s, 0.00005, 0.00003);
+  #assert r.status == CollideStatus.ok && r.state.feet.x == 2 && abs(r.state.feet.z - 0.5) < 0.00001;
+  s = collide_test_state(1.5, 0, 1, 3, 4, 5);
+  r = collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok && r.state.velocity.x == 3;
+}
+
+#test "a crowded capsule pair reports its remaining overlap and refuses atomically" {
+  bodies := [14] f32.[0, 0, 0, 0, 2, 0, 0.4, 0.8, 0, 0, 0.8, 2, 0, 0.4];
+  c: Colliders; c.capsules = bodies[..]; p: CollideProfile; p.max_passes = 1;
+  s := collide_test_state(0.4, 0, 0, 2, 3, 4);
+  r := collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.unresolved && r.residual > 0.5 && collide_test_same(r.state, s);
+}
+
+#test "the closest-pair point and parallel cases preserve their projected endpoint" {
+  a := world_point(0, 0, 0); b := world_point(0, 3, 0); q := world_point(1, 2, 0);
+  pair := collide_closest(a, b, q, q, 0.000001);
+  #assert pair.p.y == 2 && pair.q.y == 2;
+}
+
+#test "a near-corner wall retains the published small-distance side rule" {
+  boxes := [6] f32.[0, 0, 0, 2, 2, 2]; c: Colliders; c.boxes = boxes[..]; p: CollideProfile;
+  x := -0.00006f32; z := -0.00008f32;
+  #assert sqrt(x * x + z * z) == 0.0001;
+  s := collide_test_state(x, 0, z, 1, 2, 3);
+  r := collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok && r.state.feet.x == x && abs(r.state.feet.z + 0.3) < 0.000001;
+}
+
+#test "the collision numerical profile keeps the legacy epsilon and rejects unsupported guards" {
+  c: Colliders; p: CollideProfile; s := collide_test_state(0, 0, 0, 0, 0, 0);
+  #assert p.epsilon == 0.000001;
+  p.epsilon = 0; #assert collide_move(c, p, s, 0, 0).status == CollideStatus.bad_profile;
+  p.epsilon = -0.000001; #assert collide_move(c, p, s, 0, 0).status == CollideStatus.bad_profile;
+  p.epsilon = 0.000002; #assert collide_move(c, p, s, 0, 0).status == CollideStatus.bad_profile;
+  p.epsilon = 0.0f32 / 0.0f32; #assert collide_move(c, p, s, 0, 0).status == CollideStatus.bad_profile;
+}
+
+#test "short-axis decisions are sharp at the declared squared-length threshold" {
+  zero := world_point(0, 0, 0); small := 0.0005f32; threshold := small * small;
+  // Both short: the first endpoint of each is retained, even when another
+  // point on the short second segment is geometrically nearer.
+  a := world_point(0, small, 0); q0 := world_point(1, small, 0); q1 := world_point(1, small / 2, 0);
+  r := collide_closest(zero, a, q0, q1, threshold);
+  #assert r.p.y == 0 && r.q.y == small;
+  a.y = small / 2; q1.y = 0;
+  r = collide_closest(zero, a, q0, q1, threshold);
+  #assert r.p.y == 0 && r.q.y == small;
+  // Only the first is short. At exactly the same threshold, its endpoint
+  // must not become a projected point on that first segment.
+  a.y = small; q1.y = small * 3;
+  r = collide_closest(zero, a, q0, q1, threshold);
+  #assert r.p.y == 0;
+  // Only the second is short; the true finite segment would shift q.x.
+  a.y = 1; q0 = world_point(small, 0.5, 0); q1 = world_point(0, 0.5, 0);
+  r = collide_closest(zero, a, q0, q1, threshold);
+  #assert r.p.y == 0.5 && r.q.x == small;
+}
+
+#test "the near-parallel guard retains the legacy endpoint at its exact ratio" {
+  p0 := world_point(0, 0, 0); p1 := world_point(0, 1, 0);
+  q0 := world_point(-0.000375, -0.5, 0); q1 := world_point(0.000125, 0.5, 0);
+  d1 := world_sub(p1, p0); d2 := world_sub(q1, q0);
+  a := world_dot(d1, d1); e := world_dot(d2, d2); b := world_dot(d1, d2);
+  denominator := a * e - b * b; threshold := denominator / (a * e);
+  #assert threshold > 0 && threshold < 0.000001 && denominator == threshold * a * e;
+  r := collide_closest(p0, p1, q0, q1, threshold);
+  #assert r.p.y == 0;
+  exact := collide_closest(p0, p1, q0, q1, 0);
+  #assert exact.p.y > 0.1;
+}
+
+#test "cap-height touching is outside the open side-contact interval" {
+  #assert !collide_vertical_overlap(0.5, 0.5) && !collide_vertical_overlap(-0.5, 0.5);
+  #assert collide_vertical_overlap(0.499, 0.5) && collide_vertical_overlap(-0.499, 0.5);
+}
+
+#test "a contact with zero inward speed preserves signed zero exactly" {
+  zero := -0.0f32; inf := 1.0f32 / 0.0f32;
+  boxes := [6] f32.[-2, 0, 1, 2, 2, 1.01]; c: Colliders; c.boxes = boxes[..]; p: CollideProfile;
+  s := collide_test_state(0, 0, 0.65, zero, 0, 0);
+  r := collide_move(c, p, s, 0, 0.1);
+  #assert r.status == CollideStatus.ok && 1.0f32 / r.state.velocity.x == -inf;
+  bodies := [7] f32.[0, 0, 1, 0, 2, 1, 0.4]; c.boxes = boxes[0..<0]; c.capsules = bodies[..];
+  s.feet = world_point(0.25, 0, 1); s.velocity.z = zero;
+  r = collide_move(c, p, s, 0, 0);
+  #assert r.status == CollideStatus.ok && 1.0f32 / r.state.velocity.x == -inf;
+}

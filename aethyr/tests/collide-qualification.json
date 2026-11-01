@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "profile": "native-f32-legacy-epsilon-1e-6",
+  "target": "Darwin-arm64",
+  "scope": "standalone checked capsule resolver against final Query implementation; Player adoption has a separate qualification receipt",
+  "base_commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "inputs": {
+    "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/collide-native.coax": "3ed686ee4c101f532cc72b752bd30904b8e5b93f034ce8b03272c9d9c5a09d83",
+    "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "aethyr/tests/collide-legacy.coax": "a9f5f712ab2329f5e1446926129fcdb227ece09e1007ec083ec80cd70da8d9f8",
+    "aethyr/tests/collide-native.c": "410b39604a4e225a03759925692050ef0a951a4b6b3aec0cf88a518f70d80f6b",
+    "aethyr/tests/check_collide.py": "a387fea86480e28b542fa77dce7cd2901d39fbd6be3b6592171633c1d3de67af",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a"
+  },
+  "legacy_reference": {
+    "commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc",
+    "strategy": "git show materializes only the pinned transitive Player closure into a temporary directory; never loads the adopted live Player",
+    "inputs": {
+      "verse/player.coax": "10e1fe1faf200bf812ec3db84e77ea1d1ac5f00b3b13650ace709be574192425",
+      "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+      "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+      "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+      "aethyr/query.coax": "14b83f3a6869bb1a9f0f4dc73a1bb5bd2310b0a7342fa35edc262724351ee565",
+      "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+      "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+      "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+      "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+      "aethyr/follow.coax": "cedeb963849dcad1cd30046720a39616ef31b73a663d99db41426e880887ed48",
+      "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42"
+    }
+  },
+  "checks": [
+    {
+      "command": "coax/bin/coax test aethyr/collide.coax --library",
+      "result": "123 passed, 0 failed, authority coverage passed"
+    },
+    {
+      "command": "coax/bin/coax mutate aethyr/collide.coax --library --root-only --jobs 4",
+      "result": "264 mutants, 264 killed, 0 survived",
+      "scope": "entry-source procedures; all dependency checks retained"
+    },
+    {
+      "command": "python3 aethyr/tests/check_collide.py --sanitize",
+      "result": "14 published contacts match bit for bit; travel/unresolved refusals preserve state; ASan/UBSan clean",
+      "native_mode": "C -O0, no fast math or FMA contraction; ASan/UBSan abort on every finding"
+    },
+    {
+      "command": "python3 aethyr/tests/check_collide.py --release --sanitize",
+      "result": "14 published contacts match bit for bit; travel/unresolved refusals preserve state; ASan/UBSan clean",
+      "native_mode": "C -O2, Coax --release, no fast math or FMA contraction; ASan/UBSan abort on every finding"
+    }
+  ],
+  "limits": [
+    "Endpoint resolution with bounded admitted horizontal travel is not a general continuous collision detector.",
+    "Initial penetration and moving collider history are not covered by the thin-wall travel envelope.",
+    "Every non-ok result preserves the incoming public state; unresolved overlap and floor cuts remain explicit.",
+    "This primitive record does not by itself prove Player adoption or every realm consumer; use the separate Player and realm receipts.",
+    "F64 distance reference uses a separate piecewise-quadratic algorithm; native compatibility uses the frozen published Player implementation."
+  ],
+  "final_query_receipt": "aethyr/tests/collide-final-query-qualification.json",
+  "player_adoption_receipt": "aethyr/tests/player-collision-qualification.json",
+  "requalification_reason": "The shared Query implementation changed after the original primitive gate: checked ground receipts and f64 hit selection. The final closure was qualified again."
+}

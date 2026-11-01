@@ -1,0 +1,6 @@
+// Test-only C boundary; ray arithmetic and admission stay in Coax.
+#load "../ground-query.coax";
+ground_ray_native :: (g: Ground, heights: [] f32, origin: WorldPoint, direction: WorldPoint,
+    far: f64, cells: int) -> GroundRay #export_c {
+  return ground_ray(g, heights, origin, direction, far, cells);
+}

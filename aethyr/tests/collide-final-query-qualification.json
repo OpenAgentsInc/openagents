@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "source_inputs_sha256": {
+    "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042"
+  },
+  "command": [
+    "coax/bin/coax",
+    "mutate",
+    "aethyr/collide.coax",
+    "--library",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "timeout_seconds": 840,
+  "passed": true,
+  "exit_status": 0,
+  "duration_seconds": 6.313693209027406,
+  "inputs_unchanged": true
+}

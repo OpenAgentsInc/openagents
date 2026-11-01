@@ -8,8 +8,8 @@
     "partly_implemented": 6,
     "design_draft": 70
   },
-  "current_chapter": 8,
-  "status": "chapter 2 complete; chapter 8 implementation in progress",
+  "current_chapter": 9,
+  "status": "chapters 2 and 8 qualified; book incomplete, next chapter 9",
   "deliveries": [
     {
       "chapter": 2,
@@ -17,11 +17,18 @@
       "profile": "native f32 spatial boundaries",
       "result": "Typed production floor-to-world/Grid conversions, remote Grid jump height, nine native renderer probes, worked example, synchronized registry and teaching text.",
       "evidence_directory": "docs/verification/data/aethyr-ch2-2026-11-01",
-      "commit": "recorded by the accompanying Git commit"
+      "commit": "3c3b4c3a39189e6b61e92307e2501e7a26c007bc"
+    },
+    {
+      "chapter": 8,
+      "title": "Ground and collision",
+      "profile": "native f32 meshes and capsule contacts",
+      "result": "Admitted terrain sampling/rays/sphere contacts, checked real-controller publication and per-realm profiles, exact teaching examples, independent native oracles, all69 preserved gameplay scenarios and7 complete Wasm links.",
+      "evidence_directory": "docs/verification/data/aethyr-ch8-2026-11-01",
+      "commit": "the accompanying chapter 8 implementation commit"
     }
   ],
   "next_incomplete_chapters": [
-    8,
     9,
     11,
     12,
@@ -155,5 +162,120 @@
     "implemented": 11,
     "partly_implemented": 5,
     "design_draft": 70
-  }
+  },
+  "deadline_utc": "2026-11-01 08:40 UTC (owner two-hour task limit)",
+  "chapter_8": {
+    "status": "qualified",
+    "profile": "native f32 meshes and capsule contacts",
+    "root_mutation_results": {
+      "ground": 160,
+      "ground-query": 314,
+      "ground-contact": 359,
+      "query": 388,
+      "collide": 264,
+      "collision-profiles": 25,
+      "follow": 202,
+      "player": 475,
+      "gridwalk-profile2": 234
+    },
+    "survivors": 0,
+    "waivers": 0,
+    "book": "18 examples, 105 source-linked listings; 18 changed-closure runs freshly passed, 18 identical runs retained from chapter 2",
+    "evidence": [
+      "aethyr/tests/ground-baseline-qualification.json",
+      "aethyr/tests/ground-ray-qualification.json",
+      "aethyr/tests/ground-contact-qualification.json",
+      "aethyr/tests/query-qualification.json",
+      "aethyr/tests/collide-qualification.json",
+      "aethyr/tests/collide-final-query-qualification.json",
+      "aethyr/tests/follow-qualification.json",
+      "aethyr/tests/player-collision-qualification.json",
+      "aethyr/tests/grid-profile2-qualification.json",
+      "aethyr/tests/book-chapter8-qualification.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-deadgears-debug.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-deadgears-release.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-deadgears-sanitized.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-debug.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-release.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-sanitized.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-runner-hardening.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/legacy-budget-calibration.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/legacy-budget-calibration.raw.json.gz",
+      "docs/verification/data/aethyr-ch8-2026-11-01/source-inventory-audit.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-runner-tooling.log",
+      "docs/verification/data/aethyr-ch8-2026-11-01/collision-profiles-qualification.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-artifact-audit.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-deadgears.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-everglade.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-fairy.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-garden.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-grid.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-realm.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-realms-qualification.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/wasm-villa.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-artifact-audit.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-observations.json",
+      "docs/verification/data/aethyr-ch8-2026-11-01/native-runner-positive-profile.py.txt",
+      "docs/verification/data/aethyr-ch8-2026-11-01/terrain-native.log"
+    ],
+    "remaining": [],
+    "qualification_rule": "Retain exact historical hashes for a reused root-only proof. Additive checks and unchanged execution branches are identified explicitly; no stale closure is relabeled current.",
+    "native_programs": {
+      "realms": {
+        "everglade": 64,
+        "deadgears": 5
+      },
+      "original_body_calls_per_profile": 78,
+      "assert_occurrences": 551,
+      "profiles": [
+        "debug",
+        "release",
+        "ASan+UBSan"
+      ],
+      "status": "all passed",
+      "retained_runner_note": "Five stable positive receipts used historical runner3925a91b, preserved in the data directory; Everglade sanitizer used hardened runner4d1cc583. Coax/driver/manifest inputs and emitted artifacts remain identical; hardening fixes failure handling only. No passing bodies were rerun.",
+      "retained_historical_runner_source": "docs/verification/data/aethyr-ch8-2026-11-01/native-runner-positive-profile.py.txt",
+      "current_tooling_regression_source": "aethyr/tests/test_native_gameplay_runner.py"
+    },
+    "root_mutants_killed": 2421,
+    "wasm_links": {
+      "status": "7/7 passed",
+      "targets": [
+        "Garden",
+        "Fairy Forest",
+        "Hecate's Cemetery/Villa",
+        "Everglade",
+        "Haunted House/Sandbox",
+        "Grid/Newland",
+        "Dead Gears"
+      ],
+      "scope": "Actual complete module links, source/artifact SHA and Wasm1 format checked; CPU profile remains the chapter qualification. Grid has separately recorded native/Wasm replay execution."
+    },
+    "verification_counts": {
+      "root_mutants": 2421,
+      "survivors": 0,
+      "native_gameplay_programs": 69,
+      "native_gameplay_original_body_calls": 234,
+      "native_assert_occurrences": 551,
+      "wasm_links": 7,
+      "book_examples": 18,
+      "book_source_linked_listings": 105,
+      "fresh_book_runs": 18,
+      "retained_identical_book_runs": 18
+    }
+  },
+  "full_book_complete": false,
+  "current_status_counts": {
+    "implemented": 12,
+    "partly_implemented": 4,
+    "design_draft": 70
+  },
+  "next_chapter_9": [
+    "Extract aethyr/walk.coax with the existing verse/player C facade and byte-compatible movement.",
+    "Declare locomotion tuning separately from the completed collision profiles.",
+    "Drive followers from the same realm clock's due steps and drawing alpha; preserve counted animation time and previous poses.",
+    "Qualify the changed source closures with the existing native gameplay and realm gates; preserve current passing results where inputs match."
+  ],
+  "last_qualified_utc": "2026-11-01T08:08:22.650781+00:00",
+  "stop_rule": "The owner limits one task to two hours and requires pushing the passing finished part and reporting the rest when the whole objective cannot finish within that bound. The entire 86-chapter book is not complete."
 }

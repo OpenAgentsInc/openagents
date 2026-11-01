@@ -1,0 +1,66 @@
+{
+  "module": "aethyr/collision-profiles.coax",
+  "module_sha256": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+  "renderer_keys": {
+    "grid": [
+      "the-grid",
+      "newland"
+    ],
+    "haunt": [
+      "haunted-house",
+      "sandbox",
+      "realm"
+    ],
+    "garden": [
+      "garden"
+    ],
+    "fairy": [
+      "fairy-forest",
+      "fairy"
+    ],
+    "everglade": [
+      "everglade"
+    ],
+    "cemetery": [
+      "hecates-cemetery",
+      "villa"
+    ],
+    "dead_gears": [
+      "dead-gears",
+      "deadgears"
+    ]
+  },
+  "profile": {
+    "radius": 0.3,
+    "height": 1.8,
+    "step_up": 0.55,
+    "max_passes": 3,
+    "max_travel": 0.15,
+    "epsilon": 1e-06
+  },
+  "unknown": "status unknown; renderer none; all profile fields zero and collide_profile_ok false",
+  "checks": {
+    "debug": "74/74",
+    "release": "74/74",
+    "mutation": "root-only, 25 mutants, 25 killed, 0 survivors; all dependency checks retained; no waivers"
+  },
+  "logs": {
+    "/tmp/aethyr-collision-profiles-red.log": "703ceb2ec6dfb37f137c70f93c1b79d100a31fe1b36c22ccf380a55ae8a07acc",
+    "/tmp/aethyr-collision-profiles-debug.log": "17c68f56e3dc46fdda9c4a500aecdfdf1a97f5ced0cc7db40f111928c54d0dd3",
+    "/tmp/aethyr-collision-profiles-release.log": "3099aa6604723ab87d60351a289216601aa2c4667991042d7c41fc0bb16de9c5",
+    "/tmp/aethyr-collision-profiles-mutation.log": "db4b08c10566073099ef76ae06f029d0121a7b2b77d3c0308cdfe24f82419e2d"
+  },
+  "runtime_identity_sources": {
+    "apps/openagents-web/realms/the-grid/index.html": "9a66001fb7b69600c3caa1301d0002f656af75b1c1bb3716073a5d10a1e76116",
+    "apps/openagents-web/realms/haunted-house/index.html": "875d1f77d2811d33b998b42f997123138543874e813875096facdaad230d54df",
+    "apps/openagents-web/realms/sandbox/index.html": "5cb9464fdb9157bd2c75a4bde9710449f1d9dc52e47f7c686939529246b72630",
+    "apps/openagents-web/realms/garden/index.html": "f4cab56c7c6db3c929a7291a5d0720793c6d5e66bdb2565336c98a58a4fdb4c6",
+    "apps/openagents-web/realms/fairy-forest/index.html": "2088e88d17f55c9f1770a54debaca04fddeee6c7fb8b385c92521e797fd336ca",
+    "apps/openagents-web/realms/everglade/index.html": "f4000deba702238fbe3c5593ff905e2bcf60620fa4b2be3364467aae4c2dec25",
+    "apps/openagents-web/realms/hecates-cemetery/index.html": "12bf01627fb88b5233777c8f46a28a09cd9d06d03f6ce34caa42e7935801d801",
+    "apps/openagents-web/realms/dead-gears/index.html": "dc88ae5199f12509db8cb9271bab9d07b4063763590bb9a0fc2b167a5a8b18b3"
+  },
+  "exports": [],
+  "integration": "declaration only; Player and C faces unchanged by this agent",
+  "retention_note": "Historical root-only lookup proof: collision-profiles.coax and its profile-admission implementation remain unchanged. Later query additions have separate qualification. Current composed authority execution is recorded by the final book/native/realm gates; original input hashes remain as tested."
+}

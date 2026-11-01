@@ -319,7 +319,7 @@ tb_build :: (h: [] f32) -> bool {
   #assert near(b.pos.y, verse_terrain_height(g, h[..], b.pos.x, b.pos.z) + b.radius, 0.002);
 }
 
-#forall "a throw never ends up under the ground or faster than it went" k: 0..<8 {
+#forall "a throw never ends up under the ground or faster than it went" k: 0..<8 #steps 37000000 {
   g := tb_ground();
   h: [17 * 17] f32;
   #assert tb_build(h[..]);

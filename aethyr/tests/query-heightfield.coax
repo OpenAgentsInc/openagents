@@ -1,0 +1,210 @@
+// A heightfield is the realm's ground, including valleys below its flat fallback.
+// Its slopes come from the same actual triangles the renderer uses.
+#load "../ground.coax" as mesh;
+
+#test "checked ground and sweep boundaries include zero reach and exactly the admitted table" {
+  boundary_heights := [4] f32.[0, 0, 0, 0];
+  boundary_fields: [QUERY_HEIGHTFIELDS_MAX + 1] QueryHeightfield;
+  for boundary_i: 0..<QUERY_HEIGHTFIELDS_MAX + 1 {
+    boundary_fields[boundary_i] = QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 10, west = -5, south = -5}, heights = boundary_heights[..]};
+  }
+  boundary_scene := Colliders.{heightfields = boundary_fields[0..<QUERY_HEIGHTFIELDS_MAX]};
+  #assert query_sweep(boundary_scene, world_point(0, 1, 0), 0.25, world_point(0, -2, 0)).status == QueryStatus.ok;
+  boundary_scene.heightfields = boundary_fields[..];
+  #assert query_sweep(boundary_scene, world_point(0, 1, 0), 0.25, world_point(0, -2, 0)).status == QueryStatus.capacity;
+  boundary_scene.heightfields = boundary_fields[0..<1];
+  boundary_fields[0].heights = boundary_heights[0..<3];
+  #assert query_ground_checked(boundary_scene, 0, 0, 1, 0.3).status == QueryStatus.terrain;
+  boundary_fields[0].heights = boundary_heights[..]; boundary_scene.heightfield_budget = 0;
+  boundary_ids: [1] QueryId;
+  #assert query_overlap(boundary_scene, world_point(0, 0.2, 0), 0.3, boundary_ids[..]) == -1;
+  boundary_boxes := [6] f32.[-1, 0, -1, 1, 0.5, 1];
+  boundary_scene = Colliders.{boxes = boundary_boxes[..]};
+  #assert query_ground_checked(boundary_scene, 0, 0, 1, 0).status == QueryStatus.ok;
+  boundary_stand := query_stand_checked(boundary_scene, 0, 0, 0, 0.3);
+  #assert boundary_stand.y == 0.5 && boundary_stand.shape == QueryShape.box;
+}
+
+#test "heightfield hit selection retains f64 order and the selected surface point" {
+  lower_heights := [4] f32.[0.00000001, 0.00000001, 0.00000001, 0.00000001];
+  upper_heights := [4] f32.[0.00000002, 0.00000002, 0.00000002, 0.00000002];
+  close_ground := mesh.Ground.{n = 1, cell = 10, west = -5, south = -5};
+  close_fields := [2] QueryHeightfield.[QueryHeightfield.{ground = close_ground, heights = lower_heights[..]}, QueryHeightfield.{ground = close_ground, heights = upper_heights[..]}];
+  close_scene := Colliders.{heightfields = close_fields[..]};
+  close_ray := query_ray(close_scene, world_point(0, 1, 0), world_point(0, -1, 0), 2);
+  #assert close_ray.status == QueryStatus.ok && close_ray.hit && close_ray.index == 1 && close_ray.t == 1;
+  #assert close_ray.point.y == upper_heights[0];
+  close_sweep := query_sweep(close_scene, world_point(0, 1, 0), 0.25, world_point(0, -1, 0));
+  #assert close_sweep.status == QueryStatus.ok && close_sweep.hit && close_sweep.index == 1 && close_sweep.t == 0.75;
+  #assert close_sweep.point.y == f32(f64(0.25f32) + f64(upper_heights[0]));
+}
+
+#test "heightfield failures after a valid hit are atomic and exactly sixteen fields are admitted" {
+  atomic_heights: [16] f32;
+  atomic_fields := [2] QueryHeightfield.[
+    QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 200, west = -100, south = -100}, heights = atomic_heights[0..<4]},
+    QueryHeightfield.{ground = mesh.Ground.{n = 3, cell = 0.1, west = 0, south = 0}, heights = atomic_heights[..]}];
+  atomic_scene := Colliders.{heightfields = atomic_fields[..], heightfield_budget = 1};
+  atomic_ids := [1] QueryId.[QueryId.{index = 77}];
+  atomic_overlap := query_overlap_checked(atomic_scene, world_point(0.15, 0.2, 0.15), 0.3, atomic_ids[..]);
+  #assert atomic_overlap.status == QueryStatus.exhausted && atomic_overlap.count == 0 && atomic_ids[0].index == 77;
+  atomic_fields[1].heights = atomic_heights[0..<3];
+  #assert query_ray(atomic_scene, world_point(0.15, 1, 0.15), world_point(0, -1, 0), 2).status == QueryStatus.terrain;
+  #assert query_sweep(atomic_scene, world_point(0.15, 1, 0.15), 0.25, world_point(0, -2, 0)).status == QueryStatus.terrain;
+  limit_fields: [QUERY_HEIGHTFIELDS_MAX] QueryHeightfield;
+  for limit_index: 0..<QUERY_HEIGHTFIELDS_MAX { limit_fields[limit_index] = atomic_fields[0]; }
+  atomic_scene.heightfields = limit_fields[..];
+  atomic_overlap = query_overlap_checked(atomic_scene, world_point(0.15, 0.2, 0.15), 0.3, atomic_ids[..]);
+  #assert atomic_overlap.status == QueryStatus.ok && atomic_overlap.count == QUERY_HEIGHTFIELDS_MAX && atomic_ids[0].index == 0;
+  #assert query_ray(atomic_scene, world_point(0.15, 1, 0.15), world_point(0, -1, 0), 2).status == QueryStatus.ok;
+  #assert query_stand_checked(atomic_scene, 0.15, 0.15, 0, 0.3).status == QueryStatus.ok;
+}
+
+#test "checked ground refuses every malformed field, capacity and invalid coordinates" {
+  checked_heights := [4] f32.[2, 2, 2, 2];
+  checked_fields := [2] QueryHeightfield.[
+    QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 1, west = 0, south = 0}, heights = checked_heights[..]},
+    QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 1, west = 0, south = 0}, heights = checked_heights[0..<3]}];
+  checked_scene := Colliders.{ground = 50, heightfields = checked_fields[..]};
+  checked_surface := query_ground_checked(checked_scene, 0.5, 0.5, 5, 0.3);
+  #assert checked_surface.status == QueryStatus.terrain && checked_surface.y == 0;
+  checked_scene.heightfields = checked_fields[0..<1];
+  checked_surface = query_stand_checked(checked_scene, 0.5, 0.5, 2, 0.3);
+  #assert checked_surface.status == QueryStatus.ok && checked_surface.y == 2 && checked_surface.shape == QueryShape.heightfield;
+  oversized_fields: [QUERY_HEIGHTFIELDS_MAX + 1] QueryHeightfield;
+  checked_scene.heightfields = oversized_fields[..];
+  #assert query_ground_checked(checked_scene, 0.5, 0.5, 5, 0.3).status == QueryStatus.capacity;
+  checked_scene = Colliders.{};
+  #assert query_ground_checked(checked_scene, 0.0f32 / 0.0f32, 0, 5, 0.3).status == QueryStatus.invalid;
+  #assert query_ground_checked(checked_scene, 0, 0, 1.0f32 / 0.0f32, 0.3).status == QueryStatus.invalid;
+  #assert query_ground_checked(checked_scene, 0, 0, 5, -0.3).status == QueryStatus.invalid;
+  checked_scene.ground = 1.0f32 / 0.0f32;
+  #assert query_ground_checked(checked_scene, 0, 0, 5, 0.3).status == QueryStatus.invalid;
+  checked_scene.heightfields = checked_fields[0..<1];
+  #assert query_ground_checked(checked_scene, 0.5, 0.5, 5, 0.3).status == QueryStatus.ok;
+}
+
+#test "heightfields replace the flat fallback and return their drawn triangle slopes" {
+  heights := [4] f32.[0, 1, 2, 4];
+  fields := [1] QueryHeightfield.[QueryHeightfield.{
+    ground = mesh.Ground.{n = 1, cell = 1, west = 0, south = 0}, heights = heights[..]}];
+  c := Colliders.{ground = 50, heightfields = fields[..]};
+  a := query_ground(c, 0.75, 0.25, 100, 0.3);
+  b := query_ground(c, 0.25, 0.75, 100, 0.3);
+  #assert a.y == 1.5 && a.gx == 1 && a.gz == 3 && a.shape == QueryShape.heightfield && a.index == 0 && a.steep;
+  #assert b.y == 2 && b.gx == 2 && b.gz == 2 && b.shape == QueryShape.heightfield;
+  heights = [4] f32.[-4, -4, -4, -4];
+  a = query_stand(c, 0.5, 0.5, -4, 0.3);
+  #assert a.y == -4 && !a.steep;
+}
+
+#test "the highest heightfield wins, its edge continues flat, and boxes still form steps" {
+  low := [4] f32.[0, 1, 2, 4];
+  high := [4] f32.[2, 2, 2, 2];
+  g := mesh.Ground.{n = 1, cell = 1, west = 0, south = 0};
+  fields := [2] QueryHeightfield.[QueryHeightfield.{ground = g, heights = low[..]}, QueryHeightfield.{ground = g, heights = high[..]}];
+  c := Colliders.{ground = -20, heightfields = fields[..]};
+  a := query_ground(c, 0.75, 0.25, 100, 0.3);
+  #assert a.y == 2 && a.index == 1;
+  a = query_ground(c, 0.25, 0.75, 100, 0.3);
+  #assert a.y == 2 && a.index == 0;
+  c.heightfields = fields[0..<1];
+  a = query_ground(c, 3, 4, 100, 0.3);
+  #assert a.y == 4 && a.gx == 0 && a.gz == 0 && !a.steep;
+  boxes := [6] f32.[0, 0, 0, 1, 2, 1];
+  c.boxes = boxes[..];
+  a = query_ground(c, 0.75, 0.25, 2, 0.3);
+  #assert a.y == 2 && a.gx == 0 && a.gz == 0 && a.shape == QueryShape.box;
+  a = query_ground(c, 0.75, 0.25, 1.9, 0.3);
+  #assert a.y == 1.5 && a.shape == QueryShape.heightfield;
+}
+
+#test "a malformed heightfield is skipped without reading its missing heights" {
+  heights := [4] f32.[0, 1, 2, 4];
+  fields := [2] QueryHeightfield.[
+    QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 1}, heights = heights[0..<3]},
+    QueryHeightfield.{ground = mesh.Ground.{n = 0}, heights = heights[..]}];
+  c := Colliders.{ground = -3, heightfields = fields[..]};
+  a := query_ground(c, 0.5, 0.5, 100, 0.3);
+  #assert a.y == -3 && a.shape == QueryShape.ground && a.gx == 0 && a.gz == 0;
+  fields[1].ground = mesh.Ground.{n = 1, cell = 1, west = 0, south = 0};
+  a = query_ground(c, 0.75, 0.25, 100, 0.3);
+  #assert a.y == 1.5 && a.shape == QueryShape.heightfield && a.index == 1;
+}
+
+#test "heightfield rays find a narrow crest and report exhausted work as refusal" {
+  heights := [8] f32.[0, 0, 4, 0, 0, 0, 4, 0];
+  fields := [1] QueryHeightfield.[QueryHeightfield.{
+    ground = mesh.Ground.{n = 3, rows = 1, cell = 0.1, west = 0, south = 0}, heights = heights[..]}];
+  c := Colliders.{ground = 100, heightfields = fields[..]};
+  a := query_ray(c, world_point(0.01, 2, 0.05), world_point(1, 0, 0), 0.3);
+  #assert a.status == QueryStatus.ok && a.hit && a.shape == QueryShape.heightfield;
+  #assert abs(a.t - 0.14) < 0.000001 && abs(a.point.x - 0.15) < 0.000001 && a.point.y == 2;
+  c.heightfield_budget = 1;
+  a = query_ray(c, world_point(0.01, 5, 0.05), world_point(1, 0, 0), 0.3);
+  #assert a.status == QueryStatus.exhausted && !a.hit && a.t == 0;
+  c.heightfield_budget = 4096;
+  fields[0].heights = heights[0..<3];
+  a = query_ray(c, world_point(0.01, 2, 0.05), world_point(1, 0, 0), 0.3);
+  #assert a.status == QueryStatus.terrain && !a.hit;
+}
+
+#test "heightfield rays keep stable shape ties and reject an oversized field table" {
+  heights := [4] f32.[0, 0, 0, 0];
+  fields := [2] QueryHeightfield.[
+    QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 1, west = 0, south = 0}, heights = heights[..]},
+    QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 1, west = 0, south = 0}, heights = heights[..]}];
+  boxes := [6] f32.[0, -1, 0, 1, 0, 1];
+  c := Colliders.{ground = -20, heightfields = fields[..], boxes = boxes[..]};
+  a := query_ray(c, world_point(0.5, 1, 0.5), world_point(0, -1, 0), 2);
+  #assert a.status == QueryStatus.ok && a.hit && a.t == 1 && a.shape == QueryShape.heightfield && a.index == 0;
+  too_many: [QUERY_HEIGHTFIELDS_MAX + 1] QueryHeightfield;
+  c.heightfields = too_many[..];
+  a = query_ray(c, world_point(0.5, 1, 0.5), world_point(0, -1, 0), 2);
+  #assert a.status == QueryStatus.capacity && !a.hit;
+  a = query_ray(c, world_point(0.5, 1, 0.5), world_point(0, 0, 0), 2);
+  #assert a.status == QueryStatus.invalid && !a.hit;
+}
+
+#test "heightfield overlap reports stable IDs and refuses before writing a partial answer" {
+  heights := [4] f32.[0, 0, 0, 0];
+  g := mesh.Ground.{n = 1, cell = 1, west = 0, south = 0};
+  fields := [2] QueryHeightfield.[QueryHeightfield.{ground = g, heights = heights[..]}, QueryHeightfield.{ground = g, heights = heights[..]}];
+  boxes := [6] f32.[0, -1, 0, 1, 0, 1];
+  c := Colliders.{ground = -20, heightfields = fields[..], boxes = boxes[..]};
+  ids := [3] QueryId.[QueryId.{index = 77}, QueryId.{index = 88}, QueryId.{index = 99}];
+  a := query_overlap_checked(c, world_point(0.5, 0.2, 0.5), 0.3, ids[0..<1]);
+  #assert a.status == QueryStatus.ok && a.count == 3;
+  #assert ids[0].shape == QueryShape.heightfield && ids[0].index == 0 && ids[1].index == 88;
+  a = query_overlap_checked(c, world_point(0.5, 0.2, 0.5), 0.3, ids[..]);
+  #assert a.count == 3 && ids[1].shape == QueryShape.heightfield && ids[1].index == 1 && ids[2].shape == QueryShape.box;
+  c.heightfield_budget = 0;
+  a = query_overlap_checked(c, world_point(0.5, 0.2, 0.5), 0.3, ids[..]);
+  #assert a.status == QueryStatus.invalid && a.count == 0;
+  #assert ids[0].shape == QueryShape.heightfield && ids[1].index == 1 && ids[2].shape == QueryShape.box;
+  #assert query_overlap(c, world_point(0.5, 0.2, 0.5), 0.3, ids[..]) == -1;
+  many: [QUERY_HEIGHTFIELDS_MAX + 1] QueryHeightfield;
+  c.heightfields = many[..];
+  a = query_overlap_checked(c, world_point(0.5, 0.2, 0.5), 0.3, ids[..]);
+  #assert a.status == QueryStatus.capacity && a.count == 0;
+}
+
+#test "heightfield sphere sweeps keep touching, stationary overlap and refusal distinct" {
+  heights := [4] f32.[0, 0, 0, 0];
+  fields := [1] QueryHeightfield.[QueryHeightfield.{ground = mesh.Ground.{n = 1, cell = 1, west = 0, south = 0}, heights = heights[..]}];
+  c := Colliders.{ground = -20, heightfields = fields[..]};
+  a := query_sweep(c, world_point(0.5, 2, 0.5), 0.25, world_point(0, -3, 0));
+  #assert a.status == QueryStatus.ok && a.hit && a.shape == QueryShape.heightfield && a.index == 0;
+  #assert abs(a.t - 7.0 / 12.0) < 0.000001 && abs(a.point.y - 0.25) < 0.000001 && a.normal.y == 1;
+  a = query_sweep(c, world_point(0.5, 0.25, 0.5), 0.25, world_point(0, 0, 0));
+  #assert a.status == QueryStatus.ok && !a.hit;
+  a = query_sweep(c, world_point(0.5, 0.25, 0.5), 0.25, world_point(0, -1, 0));
+  #assert a.status == QueryStatus.ok && a.hit && a.t == 0;
+  a = query_sweep(c, world_point(0.5, 0.2, 0.5), 0.25, world_point(0, 0, 0));
+  #assert a.status == QueryStatus.ok && a.hit && a.t == 0;
+  c.heightfield_budget = 0;
+  a = query_sweep(c, world_point(0.5, 2, 0.5), 0.25, world_point(0, -3, 0));
+  #assert a.status == QueryStatus.invalid && !a.hit;
+  a = query_sweep(c, world_point(0.5, 0.2, 0.5), 0.25, world_point(0, 0, 0));
+  #assert a.status == QueryStatus.invalid && !a.hit;
+}

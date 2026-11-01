@@ -201,16 +201,54 @@ fails them.
 
 The walking controller's floor comes from `aethyr/query.coax`:
 `floor_under` in `verse/player.coax` is one `query_stand` call over the
-realm's colliders (a flat ground, walls as boxes, bodies as capsules, and
-floors). The step height (`QUERY_STEP_UP`, 0.55 m), the steepest slope you
+realm's colliders (flat or heightfield ground, walls as boxes, bodies as
+capsules, and floors). The actual fixed step consumes `query_ground_checked`;
+the trusted `floor_under` adapter retains the permissive query. The step height
+(`QUERY_STEP_UP`, 0.55 m), the steepest slope you
 can stand on (`QUERY_STEEP`, 55 degrees) and the floor pad
 (`QUERY_FLOOR_PAD`, 0.15 m) are defined there once; the walker reads them
 from it. Every shape is solid, so a ray or sweep that starts inside one hits
 it at t = 0, and ties go to the earlier collider (the ground, then boxes,
 then capsules, by index). Checks: `aethyr/query.coax` (rays, sweeps and
 overlaps against the containment oracle in `aethyr/tests/query-oracle.coax`;
-mutation 0 survivors) and `verse/player.coax` ("jumping onto, landing on
+root-only mutation 388/388 killed, with separate ground/ray/contact receipts)
+and `verse/player.coax` ("jumping onto, landing on
 and walking off a ledge is the same in every realm").
+
+## Terrain and capsule publication carry checked receipts
+
+`aethyr/ground.coax` samples the actual rounded f32 mesh vertices, split on
+the south-west/north-east diagonal. Exact stored vertices retain their bits.
+Its metre-quantity boundary refuses invalid dimensions, spacing, coordinates,
+sampled heights and gradients. Beyond the mesh, consumers zero the gradient
+on each clamped axis before forming the constant continuation's normal.
+`verse/terrain.coax` retains its Ground C layout and delegates sampling to it.
+
+`query.coax` admits at most 16 heightfields. The exact ray and sphere-contact
+helpers have explicit cell budgets; exhaustion is a refusal, never a miss.
+Terrain selection retains f64 hit order and the selected helper point before
+narrowing the public distance. Checked overlap validates every field before
+writing IDs. Legacy permissive ground queries remain explicit trusted APIs.
+
+`collide.coax` bounds profile passes to 1–16, each shape table to 4,096 entries
+and admitted horizontal travel to at most half the capsule radius. The real
+Player step publishes only an accepted collision and ground result. Refusal
+preserves its incoming physical/control state and queued jump; its scheduler
+still consumes the assigned time. Diagnostics report the refusal and a
+saturating count. Realm identity admission comes from
+`aethyr/collision-profiles.coax`; unknown identities preserve the Player before
+advancing its clock. Trusted direct large-move helpers retain their separate
+contract. These endpoint contacts do not imply general CCD or two-way rigid
+impulses. Evidence and independent native scopes are recorded in
+`docs/verification/aethyr-book-implementation-2026-11-01.json`.
+
+The Grid's execution/digest profile is now 2. It includes all seven collision
+and query diagnostics, both refusal-counter halves and residual float bits.
+Replay rejects any other full profile value before writing its destination;
+the `ReplayEvent` envelope is unchanged. The historical profile-1 initial pin
+is 3864885271; profile 2's independently calculated pin is 1068547055. The
+current recorded session agrees at every step natively and in Wasm. Evidence:
+`aethyr/tests/grid-profile2-qualification.json`.
 
 ## One follow camera eases the walker's view
 

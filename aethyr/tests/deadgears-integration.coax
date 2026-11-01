@@ -1,0 +1,65 @@
+// Ordinary native integration programs, not #test/native-check ABI entries.
+// Original bodies and #assert statements are unchanged; finite bindings become
+// Coax for loops. Run check_native_gameplay.py; no compiler/authority bypass.
+#load "../../apps/openagents-web/deadgears.coax";
+
+// ?hour= holds the hour; otherwise each wave is later in the day
+aethyr_native_deadgears_0 :: () #export_c {
+  s: [1] DeadGears;
+  started(s[..]);
+  n := frame_at(s[..], 1280, 800, 1, 0.016);
+  #assert abs(s[0].deck_hour - 15.5) < 0.01;
+  g := game(s[..]);
+  g.st[0].wave = 3;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  for i: 0..<400 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.05); }
+  #assert s[0].deck_hour > 18;
+  #assert query_number("https://openagents.com/realms/dead-gears?hour=17.25&spawn=200", "hour") == 17.25;
+  #assert query_number("https://openagents.com/realms/dead-gears?hour=17.25&spawn=200", "spawn") == 200;
+  #assert query_number("https://openagents.com/realms/dead-gears?xhour=3", "hour") < 0;
+  p: [1] DeadGears;
+  deadgears_message(p[..], HOST_PAGE, "tab=1\nurl=https://openagents.com/realms/dead-gears?hour=18.4");
+  n = frame_at(p[..], 1280, 800, 1, 0.016);
+  #assert abs(p[0].deck_hour - 18.4) < 0.01 && night_level(18.4) > night_level(15.5);
+}
+
+// a full game is won on a laptop
+aethyr_native_deadgears_1 :: () #export_c { #assert won_through_the_controls(false); }
+
+// a full game is won on a phone
+aethyr_native_deadgears_2 :: () #export_c { #assert won_through_the_controls(true); }
+
+// 200 mutants closing in while you fire: the same start plays the same
+aethyr_native_deadgears_3 :: () #export_c {
+  sa: [1] Store; a := dg_bind(sa[..]); dg_setup(a);
+  sb: [1] Store; b := dg_bind(sb[..]); dg_setup(b);
+  spawn_crowd(a); spawn_crowd(b);
+  for k: 0..<20 { tick(a, ME, true, false, 0, -1, 1.0 / 60); tick(b, ME, true, false, 0, -1, 1.0 / 60); }
+  #assert dg_same(a, b) && dg_alive_mutants(a) > 150;
+}
+
+// no creature walks through cover
+aethyr_native_deadgears_4 :: () #export_c {
+  for k: 0..<10 {
+  st: [1] Store; g := dg_bind(st[..]); dg_setup(g);
+  g.st[0].ally_time = 1000000;
+  clear_mutants(g);
+  // You beside a cover, a creature of each kind on its far side.
+  me := ifx k % 2 == 0 then v3(-5, 0, 5) else v3(8, 0, -8.5);
+  far := ifx k % 2 == 0 then v3(-5, 0, 1) else v3(8, 0, -15.5);
+  e := dg_spawn_mutant(g, k % TYPES, far.x, far.z, -1);
+  g.mutant[slot_of(e)].attack = 1000;
+  inside := false;
+  for f: 0..<110 {
+    tick(g, me, false, false, 0, -1, 0.05);
+    if !ecs_alive(g.e, e) { break; }
+    q := g.pos[slot_of(e)];
+    if dg_blocked(g, q.x, q.z, 0.05) { inside = true; }
+  }
+  #assert !inside;
+  #assert dist_to(g, e, me) < 3.5 || g.mutant[slot_of(e)].kind == BRUTE;   // it got round to you (the brute stands off)
+}
+}
+
+// Negative control: an ordinary #assert must trap in every native build.
+aethyr_native_assert_probe :: () #export_c { #assert false; }

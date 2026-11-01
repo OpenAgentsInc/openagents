@@ -30,6 +30,14 @@ draws it between the last two steps.
 - Stepping the camera after the player, so the player is the same with any
   camera.
 
+Heightfields use the checked sphere contact from chapter 8. A refused query
+retains the incoming tracking state and reports `Follow.status`; a later
+successful query clears that status. A terrain contact can pull closer than
+the legacy 0.35 m minimum so that minimum cannot place the eye inside a mesh.
+The terrain probe covers the distance that the minimum-distance rule could
+publish, even when a box first reduces the room below that minimum.
+The Player exposes camera-query status independently of physical-step status.
+
 ## The state
 
 <!-- source: aethyr/follow.coax follow -->
@@ -57,6 +65,7 @@ Follow :: struct {
   max_dist: f32 = FOLLOW_DIST;
   target: WorldPoint = WorldPoint.{x = 0, y = FOLLOW_HEIGHT, z = 0};
   vel: WorldPoint;
+  status: QueryStatus;
 }
 ```
 
@@ -116,11 +125,26 @@ itself. This keeps a camera that backs away from a wall out of the wall
 // the camera stops where the line enters one. A box the target is already beside (inside its
 // FOLLOW_CLEAR band) holds the camera in only if the line runs into the box itself, so backing
 // away from a wall never puts the camera in it. It reads the colliders and changes nothing.
-follow_room :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+FollowRoom :: struct { room: f32; terrain_room: f32; status: QueryStatus; }
+follow_room_checked :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> FollowRoom {
   room := follow_lo(limit, max);
   if c.boxes.count >= QUERY_BOX { room = follow_room_boxes(c, room, target, offset, max); }
   if c.capsules.count >= QUERY_CAPSULE { room = follow_room_capsules(c, room, target, offset, max); }
-  return room;
+  terrain_room := max;
+  if c.heightfields.count > 0 {
+    // Keep the existing wall/body bands; only the mesh uses the exact sphere sweep.
+    // Probe the distance the closest-distance rule could publish, even when a wall's band
+    // reduced `room` below that minimum. The terrain cap is applied after the legacy rule.
+    prospective := follow_lo(max, follow_hi(f32(FOLLOW_CLOSEST), room));
+    terrain_scene := Colliders.{heightfields = c.heightfields, heightfield_budget = c.heightfield_budget};
+    surface := query_sweep(terrain_scene, target, f32(FOLLOW_CLEAR), world_scale(offset, prospective));
+    if surface.status != QueryStatus.ok { return FollowRoom.{status = surface.status}; }
+    if surface.hit { terrain_room = prospective * surface.t; room = follow_lo(room, terrain_room); }
+  }
+  return FollowRoom.{room = room, terrain_room = terrain_room};
+}
+follow_room :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+  return follow_room_checked(c, limit, target, offset, max).room;
 }
 follow_room_boxes :: (c: Colliders, start: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
   room := start;
@@ -192,12 +216,15 @@ back out as far as one step of `dt`:
 <!-- source: aethyr/follow.coax track -->
 ```jai
 // One step of the camera: the target follows `dest` on the spring, then the camera pulls in at
-// once to the room it has (never nearer than FOLLOW_CLOSEST), or backs out toward it by
-// FOLLOW_EASE each 1/60 s, a closed form in dt.
+// once to the room it has, or backs out toward it by FOLLOW_EASE each 1/60 s.
+// A mesh contact may be nearer than FOLLOW_CLOSEST; a refused query preserves state.
 follow_track :: (f: Follow, c: Colliders, limit: f32, dest: WorldPoint, dt: f32) -> Follow {
   next := follow_spring(f, dest, dt);
-  room := follow_hi(f32(FOLLOW_CLOSEST), follow_room(c, limit, next.target, follow_offset(next), next.max_dist));
+  available := follow_room_checked(c, limit, next.target, follow_offset(next), next.max_dist);
+  if available.status != QueryStatus.ok { refused := f; refused.status = available.status; return refused; }
+  room := follow_lo(available.terrain_room, follow_hi(f32(FOLLOW_CLOSEST), available.room));
   next.dist = follow_lo(room, next.dist + (room - next.dist) * (1 - math_pow(f32(1 - FOLLOW_EASE), dt * 60)));
+  next.status = QueryStatus.ok;
   return next;
 }
 ```
@@ -427,10 +454,15 @@ camera_step :: (w: World, p: Player, dt: f32) -> Player {
   next := p;
   cam := follow_track(follow_of(p), colliders(w), w.room, wp(look_at(p)), dt);
   next.target = vp(cam.target); next.spring_vel = vp(cam.vel); next.dist = cam.dist;
+  next.camera_query_status = cam.status;
   return next;
 }
 // One fixed step of the player, then of its camera: what steps_in runs each step.
-step_once :: (w: World, p: Player, dt: f32) -> Player { return camera_step(w, step(w, p, dt), dt); }
+step_once :: (w: World, p: Player, dt: f32) -> Player {
+  next := step(w, p, dt);
+  if next.collision_status != CollideStatus.ok { return next; }
+  return camera_step(w, next, dt);
+}
 ```
 
 The walker steers by the camera's turn, `theta`. The look input sets it

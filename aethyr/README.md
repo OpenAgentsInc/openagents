@@ -20,7 +20,12 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | `input.coax` | Keys, touch and pads to one `Intent` a frame; levels, presses each taken by exactly one fixed step, and look and zoom split over a frame's steps |
 | `space.coax` | Typed spaces (world, local, view, screen, grid) and units (metres, grid units), converted only by name |
 | `entity.coax` | Entities: handles (slot and generation) inside a step, `EntityId`s for saves, the network and edits, and spawns and despawns that apply at the step's flush |
-| `query.coax` | One set of colliders a realm (ground, boxes, capsules, floors) and four queries over it: ground, ray, overlap and sweep; the step height, steep slope and floor pad defined once |
+| `query.coax` | One set of colliders a realm (flat/heightfield ground, boxes, capsules, floors) and four queries over it: ground, ray, overlap and sweep; the step height, steep slope and floor pad defined once |
+| `ground.coax` | Checked sampling of actual rounded mesh triangles, metre inputs and exact stored vertices; shared with legacy terrain |
+| `ground-query.coax` | Bounded exact cell traversal for terrain rays, with explicit exhausted-work refusal |
+| `ground-contact.coax` | Sphere overlap and continuous sphere contact against triangle faces, edges, vertices and constant edge continuation |
+| `collide.coax` | Checked kinematic capsule resolution, declared passes/travel and atomic refusal diagnostics |
+| `collision-profiles.coax` | Explicit supported realm identities and their collision profiles; unknown identities refuse |
 | `follow.coax` | The follow camera: look and zoom, a spring on the point it looks at, room from the colliders (pulled in at once, backed out gently), the eye drawn between steps, and its third- and first-person shots; it steps after the player and only reads it |
 | `shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
 | `budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
@@ -64,3 +69,14 @@ python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax   # the book an
 
 The book's runnable programs are in `examples/`, with their exact output in
 `fixtures/`.
+
+The ground/collision consumer gate also includes the preserved native gameplay
+programs in `tests/everglade-spells-integration.coax` and
+`tests/deadgears-integration.coax`. They keep their original assertions and
+finite cases while avoiding the interpreter's resource limits. Run
+`python3 aethyr/tests/check_native_gameplay.py --realm REALM --mode MODE`
+separately for each realm (`everglade`, `deadgears`) and mode (`debug`,
+`release`, `sanitized`). The [chapter 8 commands](book/ch008-ground-and-collision.md#check-the-implementation)
+show how sanitizer builds reuse admitted debug C. These are required companion
+checks when their source closures change; ordinary imported authority checks
+still run before emission.

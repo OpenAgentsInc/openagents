@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-01T07:18:51.646305+00:00",
+  "status": "qualified ray helper; integration and sphere contacts are separate",
+  "compiler": {
+    "path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+    "version": "coax0 0.46.0",
+    "source_fingerprint": "da79e8559f07565ee5e050bfb1dbc4f532f29e5b7c6262fc42e280f901f185d3",
+    "sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905"
+  },
+  "source_sha256": {
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/tests/ground-ray-native.coax": "472754d317d36e092dbf84323770c6d81e0f6e95b8c319d381441cfb04fe47f3",
+    "aethyr/tests/ground-ray-native.c": "167fea55296eafe66799ddcc243d33fc91cf80f4220c69e58d00e1e917f36f6a",
+    "aethyr/tests/check_ground_ray.sh": "65fd8a808ac6619237f0a9e886624cccd401ee4d354a55ba7397787bba76959c"
+  },
+  "commands": [
+    {
+      "argv": [
+        "coax/bin/coax",
+        "mutate",
+        "aethyr/ground-query.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "4"
+      ],
+      "exit_status": 0,
+      "root_check_groups": 21,
+      "stdout": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n314 mutants, 314 killed, 0 survived\n",
+      "waivers": []
+    },
+    {
+      "argv": [
+        "bash",
+        "aethyr/tests/check_ground_ray.sh"
+      ],
+      "exit_status": 0,
+      "stdout": "ground ray native: 4096 independent extended-mesh rays, narrow peak, shallow hit and atomic refusals pass\nground ray native: 4096 independent extended-mesh rays, narrow peak, shallow hit and atomic refusals pass\nground ray native: 4096 independent extended-mesh rays, narrow peak, shallow hit and atomic refusals pass\n",
+      "profiles": [
+        "debug -O0",
+        "release -O2",
+        "ASan/UBSan -O1"
+      ],
+      "native_ray_cases_per_profile": 4096,
+      "native_tolerance": "abs(t-reference) <= 2e-9*(1+abs(reference))"
+    }
+  ],
+  "scope": [
+    "DDA through actual separately rounded f32 mesh vertices",
+    "analytic f64 affine intersections split at each SW-NE diagonal",
+    "nearest-edge continuation with zero physical slope on clamped axes",
+    "starts on/below solid hit t=0 with normal opposite ray",
+    "declared cell budget; invalid terrain and exhaustion are refusals, never misses",
+    "earliest traversal piece breaks internal geometric ties; boundary report carries all simultaneous axes"
+  ],
+  "limits": [
+    "does not implement sphere overlap or sweep",
+    "does not alter query/terrain/player or complete chapter 8",
+    "caller owns an immutable correctly sized readable height view",
+    "only visited tiles are admitted",
+    "WorldPoint output and normal are rounded f32; parameter t remains f64",
+    "coordinated shared-ground identifier renames and integration have their own qualification record"
+  ],
+  "prior_exact_compiler_receipt": {
+    "recorded_at_utc": "2026-11-01T07:03:43.587275+00:00",
+    "source_sha256": {
+      "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+      "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+      "aethyr/tests/ground-ray-native.coax": "472754d317d36e092dbf84323770c6d81e0f6e95b8c319d381441cfb04fe47f3",
+      "aethyr/tests/ground-ray-native.c": "167fea55296eafe66799ddcc243d33fc91cf80f4220c69e58d00e1e917f36f6a",
+      "aethyr/tests/check_ground_ray.sh": "65fd8a808ac6619237f0a9e886624cccd401ee4d354a55ba7397787bba76959c"
+    },
+    "result": "same mutation and native profiles passed before coordinated identifier-only composition renames"
+  },
+  "dependency_sha256": {
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+  },
+  "requalification_reason": "Ground and its oracle had coordinated identifier-only renames after the retained exact-compiler pass; dependency closure changed, so the affected mutation and native gates were run once on the final composition sources."
+}

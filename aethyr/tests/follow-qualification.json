@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-01T07:43:16.150175+00:00",
+  "status": "Follow qualified with checked heightfield sphere contacts and atomic refusal; consumer integration qualified separately",
+  "compiler": {
+    "path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+    "version": "coax0 0.46.0",
+    "source_fingerprint": "da79e8559f07565ee5e050bfb1dbc4f532f29e5b7c6262fc42e280f901f185d3",
+    "sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905"
+  },
+  "source_sha256": {
+    "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886"
+  },
+  "source_closure_sha256": {
+    "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+  },
+  "commands": [
+    {
+      "argv": [
+        "coax/bin/coax",
+        "test",
+        "aethyr/follow.coax",
+        "--library"
+      ],
+      "exit_status": 0,
+      "checks": 124,
+      "passed": 124,
+      "failed": 0,
+      "stdout": "ok   #test the look turns, wraps and tilts within its limits, and ignores what isn't a number (1 case, 693 steps, 0 ms)\nok   #test the zoom keeps the distance from 1 to 20 m and ignores what isn't a number (1 case, 279 steps, 0 ms)\nok   #test the camera's direction is a unit vector behind and above at the start (1 case, 982 steps, 0 ms)\nok   #test the spring closes on its target without overshooting, as the closed form does (1 case, 4501 steps, 0 ms)\nok   #test the closest points of two segments, a segment and a point, and two points (1 case, 3961 steps, 0 ms)\nok   #test room stops at the first widened box or capsule along the line (1 case, 12549 steps, 0 ms)\nok   #test beside a wall, the camera backs away from it but never into it (1 case, 5730 steps, 0 ms)\nok   #test the camera pulls in at once and backs out at the same rate for any step (1 case, 11199 steps, 0 ms)\nok   #test the eye mixes the last two steps and is never shown further than the last (1 case, 406 steps, 0 ms)\nok   #test tracking reads the colliders and leaves them as they were (1 case, 166985 steps, 2 ms)\nok   #test ties: lo and hi keep the second of two equal values, and a million is not finite (1 case, 292 steps, 0 ms)\nok   #test closest points: skew and nearly parallel segments, ends past the other, and point-like ones (1 case, 2504 steps, 0 ms)\nok   #test room: entering through a near face, grazing an edge, and lines that only just miss or meet (1 case, 11852 steps, 0 ms)\nok   #test the third-person shot is the follow drawn between its last two steps (1 case, 1750 steps, 0 ms)\nok   #test heightfields hold the camera above the mesh even nearer than the legacy closest distance (1 case, 20273 steps, 0 ms)\nok   #test a nearby box cannot shorten the terrain probe below the distance the camera publishes (1 case, 13140 steps, 0 ms)\nok   #test a refused heightfield camera query preserves the incoming camera and reports its reason (1 case, 14678 steps, 0 ms)\nok   #test first person looks out of the eyes along the follow's direction (1 case, 1015 steps, 0 ms)\nok   #test world arithmetic (1 case, 1081 steps, 0 ms)\nok   #test distances keep their units, and grid units convert exactly (1 case, 143 steps, 0 ms)\nok   #forall a local point goes to the world and back (16 cases, 2674 steps, 0 ms)\nok   #test a placement turns with its yaw: a quarter turn takes local +Z to world +X (1 case, 369 steps, 0 ms)\nok   #test the Grid draws a metre as half a unit, heights too (1 case, 335 steps, 0 ms)\nok   #test the lens sees ahead, right, up, and nothing behind its near plane (1 case, 2009 steps, 0 ms)\nok   #test the ground is the highest surface you can step onto, and only a higher one replaces it (1 case, 10371 steps, 0 ms)\nok   #test floors: their height, slope and steepness, and they replace a q_box only when higher (1 case, 7896 steps, 0 ms)\nok   #forall rays: the first hit is where marching by containment first finds a collider (1 of 3) (16 cases, 15686732 steps, 297 ms)\nok   #forall rays: the first hit is where marching by containment first finds a collider (2 of 3) (16 cases, 14246785 steps, 265 ms)\nok   #forall rays: the first hit is where marching by containment first finds a collider (3 of 3) (16 cases, 15337075 steps, 284 ms)\nok   #forall sweeps: the first touch is where marching the sphere first finds a collider (1 of 3) (16 cases, 9877777 steps, 177 ms)\nok   #forall sweeps: the first touch is where marching the sphere first finds a collider (2 of 3) (16 cases, 8822321 steps, 208 ms)\nok   #forall sweeps: the first touch is where marching the sphere first finds a collider (3 of 3) (16 cases, 9389569 steps, 175 ms)\nok   #forall an overlap lists exactly the colliders the sphere is closer to than its radius, in order (32 cases, 1162217 steps, 19 ms)\nok   #test rays: closed forms, starts inside, ties, and inputs that aren't a ray (1 case, 76826 steps, 1 ms)\nok   #test overlaps and sweeps: closed forms, touching at the start, standing still, and bad input (1 case, 220437 steps, 4 ms)\nok   #test exact boundaries: what is a number, a q_box, a touch and a tie (1 case, 45790 steps, 0 ms)\nok   #test sweeps into every face and every edge of a q_box (1 case, 289067 steps, 5 ms)\nok   #test rounding at the boundaries: roots at exactly 0, the rim, and a face-edge tie (1 case, 23028 steps, 0 ms)\nok   #test ground descriptor keeps the existing terrain defaults and a bounded point count (1 case, 1127 steps, 0 ms)\nok   #forall ground refuses malformed descriptors before indexing (15 cases, 4736 steps, 0 ms)\nok   #test ground samples both drawn triangles and chooses the south-west diagonal (1 case, 2119 steps, 0 ms)\nok   #forall ground samples every boundary vertex exactly, including the north-east corner (12 cases, 9425 steps, 0 ms)\nok   #test ground extends the exact edge beyond its rectangle and reads no extra height words (1 case, 6726 steps, 0 ms)\nok   #forall ground refuses each malformed sampled word and every short height view (8 cases, 3658 steps, 0 ms)\nok   #forall ground refuses nonfinite and out-of-range coordinates, heights and slopes (12 cases, 6509 steps, 0 ms)\nok   #test ground normals reject fabricated samples and keep a level normal on refusal (1 case, 216 steps, 0 ms)\nok   #forall ground equals independent f64 barycentric triangles inside rectangular cells (96 cases, 115434 steps, 1 ms)\nok   #test ground rejects collapsed boundary cells separately on each axis and refuses its exact extent limit (1 case, 1651 steps, 0 ms)\nok   #forall ground vertex heights retain their stored f32 words, including signed zero (16 cases, 11412 steps, 0 ms)\nok   #test ground refusals publish no partial clamping metadata (1 case, 1293 steps, 0 ms)\nok   #forall ground matches actual nonbinary drawn vertex coordinates without epsilon snapping (42 cases, 55917 steps, 0 ms)\nok   #test ground keeps the adjacent representable positions on either side of a drawn vertex (1 case, 2155 steps, 0 ms)\nok   #test ground gives an interior vertex to the next cell, including its triangle's slope (1 case, 718 steps, 0 ms)\nok   #test ground requires four rendering ulps of cell width and refuses an interior collapse (1 case, 756 steps, 0 ms)\nok   #test ground ray sees either drawn triangle and keeps t in the direction's units (1 case, 2896 steps, 0 ms)\nok   #test ground ray starts on and below the solid at zero, facing back along the ray (1 case, 2936 steps, 0 ms)\nok   #test ground ray cannot step over a narrow peak, including its tangent crest (1 case, 6105 steps, 0 ms)\nok   #test ground ray extends edges as constant height in the clamped axis (1 case, 4351 steps, 0 ms)\nok   #test ground ray valid misses, far-end touches and zero range stay distinct (1 case, 5818 steps, 0 ms)\nok   #test ground ray exhausted traversal refuses instead of promising a miss (1 case, 4623 steps, 0 ms)\nok   #forall ground ray refuses malformed input without publishing a hit (12 cases, 2342 steps, 0 ms)\nok   #test ground ray refuses a bad descriptor, short view and later malformed cell (1 case, 2527 steps, 0 ms)\nok   #forall ground ray matches independent f64 triangle enumeration on a nonbinary mesh (48 cases, 266845 steps, 3 ms)\nok   #test ground ray records tied cell and range boundaries without choosing an arbitrary axis (1 case, 240 steps, 0 ms)\nok   #test ground ray boundary starts belong to the side the ray enters, with a stationary axis kept inside (1 case, 1381 steps, 0 ms)\nok   #test ground ray outside entry traverses the edge and preserves its nonclamped rate (1 case, 3560 steps, 0 ms)\nok   #test ground ray coplanar starts are finite, and diagonal equality names triangle zero (1 case, 2939 steps, 0 ms)\nok   #forall ground ray refuses each malformed corner before testing a partial tile (4 cases, 4142 steps, 0 ms)\nok   #forall ground ray refuses an excessive slope on either axis (2 cases, 4888 steps, 0 ms)\nok   #forall ground ray endpoint bounds use the actual directed range on every axis (6 cases, 9923 steps, 0 ms)\nok   #test ground ray admits its exact maximum traversal budget (1 case, 1310 steps, 0 ms)\nok   #test ground ray tests both affine patches when the hit follows the diagonal crossing (1 case, 3361 steps, 0 ms)\nok   #forall ground ray diagonal endpoint touches do not create a zero-length extra patch (4 cases, 5489 steps, 0 ms)\nok   #test ground ray never tests a later descending cell before it enters that cell (1 case, 3458 steps, 0 ms)\nok   #forall ground ray locates a diagonal hit after entering a later cell at positive time (2 cases, 6233 steps, 0 ms)\nok   #forall ground contact closest points classify all face, edge and vertex regions (7 cases, 2619 steps, 0 ms)\nok   #test ground contact overlap uses perpendicular distance and keeps touching separate (1 case, 15513 steps, 0 ms)\nok   #test ground contact sweep reaches a triangle face and treats moving initial touch at zero (1 case, 33743 steps, 0 ms)\nok   #test ground contact swept edge capsules include endpoint spheres and tangent contacts (1 case, 2803 steps, 0 ms)\nok   #test ground contact does not sample past a narrow hill and extends the boundary plane (1 case, 39497 steps, 0 ms)\nok   #test ground contact refuses an over-budget candidate rectangle before claiming a miss (1 case, 6566 steps, 0 ms)\nok   #forall ground contact refuses malformed inputs and publishes no partial result (12 cases, 3829 steps, 0 ms)\nok   #forall ground contact agrees with independent constrained triangle distances (128 cases, 4575959 steps, 65 ms)\nok   #test ground contact interval predicates distinguish closed touching from positive separation (1 case, 111 steps, 0 ms)\nok   #test ground contact vector products preserve all three signed components (1 case, 93 steps, 0 ms)\nok   #test ground contact point-sphere roots include tangencies and both range endpoints (1 case, 1184 steps, 0 ms)\nok   #test ground contact capsule sides own their endpoint ties and track motion along the axis (1 case, 6447 steps, 0 ms)\nok   #forall ground contact face roots include their edges and reject every exterior half-plane (3 cases, 8627 steps, 0 ms)\nok   #test ground contact regions own exact vertices and the rectangle counts both moving axes (1 case, 1317 steps, 0 ms)\nok   #test ground contact admits its maximum budget and refuses zero-radius moving or collapsed numerical bounds (1 case, 6946 steps, 0 ms)\nok   #test ground contact refuses bad descriptors and short arrays before reading a triangle (1 case, 1059 steps, 0 ms)\nok   #test ground contact solid-inside sweeps face back along the complete motion (1 case, 2162 steps, 0 ms)\nok   #forall ground contact vertical sphere bounds admit neither start nor final extent past the profile (4 cases, 7341 steps, 0 ms)\nok   #test ground contact ridge features win before neighbouring faces and retain deterministic ties (1 case, 23505 steps, 0 ms)\nok   #test ground contact a face normal is geometric while an initial parallel touch faces back (1 case, 71990 steps, 1 ms)\nok   #forall ground contact admits all four original triangle slopes before extending a cell (4 cases, 537 steps, 0 ms)\nok   #test ground contact uses physical nonbinary cell widths for raw slope admission (1 case, 508 steps, 0 ms)\nok   #test ground contact refuses a later inadmissible tile even after an earlier hit (1 case, 16399 steps, 0 ms)\nok   #test stand: a box's top holds you over it, a step past its edge with a pad, and not from under it (1 case, 4242 steps, 0 ms)\nok   #test stand: a gable roof's two slopes rise from its eaves to its ridge, the slope telling the way down (1 case, 4321 steps, 0 ms)\nok   #test stand: a tower's cone and a dome are steep at their rims, a ring holds you only on its band (1 case, 1933 steps, 0 ms)\nok   #test stand: a tilted slab's top face holds you on its slope (1 case, 1482 steps, 0 ms)\nok   #test stand: the grid finds the same highest floor as reading them all, over a town's worth (1 case, 5804516 steps, 76 ms)\nok   #test checked ground and sweep boundaries include zero reach and exactly the admitted table (1 case, 146115 steps, 3 ms)\nok   #test heightfield hit selection retains f64 order and the selected surface point (1 case, 21440 steps, 0 ms)\nok   #test heightfield failures after a valid hit are atomic and exactly sixteen fields are admitted (1 case, 118384 steps, 1 ms)\nok   #test checked ground refuses every malformed field, capacity and invalid coordinates (1 case, 4648 steps, 0 ms)\nok   #test heightfields replace the flat fallback and return their drawn triangle slopes (1 case, 2434 steps, 0 ms)\nok   #test the highest heightfield wins, its edge continues flat, and boxes still form steps (1 case, 6005 steps, 0 ms)\nok   #test a malformed heightfield is skipped without reading its missing heights (1 case, 1587 steps, 0 ms)\nok   #test heightfield rays find a narrow crest and report exhausted work as refusal (1 case, 5174 steps, 0 ms)\nok   #test heightfield rays keep stable shape ties and reject an oversized field table (1 case, 4172 steps, 0 ms)\nok   #test heightfield overlap reports stable IDs and refuses before writing a partial answer (1 case, 15708 steps, 0 ms)\nok   #test heightfield sphere sweeps keep touching, stationary overlap and refusal distinct (1 case, 21234 steps, 0 ms)\nok   #test sine and cosine match the correctly rounded values (1 case, 2192 steps, 0 ms)\nok   #forall sine and cosine: within 2 ulps of the C library over a turn, and sin^2 + cos^2 = 1 (64 cases, 59812 steps, 0 ms)\nok   #test powers and their edges (1 case, 2913 steps, 0 ms)\nok   #forall powers: within 2 ulps of the C library (48 cases, 13970 steps, 0 ms)\nok   #test the f64 kernels match Python's math at the ends of their ranges (1 case, 2521 steps, 0 ms)\nok   #test top down looks down at the feet from 22 m (1 case, 70 steps, 0 ms)\nok   #test the free orbit sits back and right of the pivot outside, and starts at the eyes inside (1 case, 1922 steps, 0 ms)\nok   #test a dive starts on its first shot, lands on the live one, and moves smoothly frame to frame (1 case, 26248 steps, 0 ms)\nok   #test a dive of no length is a cut, and frames that aren't time don't move it (1 case, 1593 steps, 0 ms)\nok   #test the helpers' edges: signed zeros, the finite range, a line just long enough, and mixing (1 case, 479 steps, 0 ms)\n124 checks, 124 passed, 0 failed\n"
+    },
+    {
+      "argv": [
+        "coax/bin/coax",
+        "mutate",
+        "aethyr/follow.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "4"
+      ],
+      "exit_status": 0,
+      "mutants": 202,
+      "killed": 202,
+      "survived": 0,
+      "stdout": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n202 mutants, 202 killed, 0 survived\n",
+      "waivers": []
+    }
+  ],
+  "changes": [
+    "#authority marks publication of camera state as an admission decision",
+    "heightfield room uses checked sphere-sweep contacts and preserves terrain status",
+    "terrain can pull camera nearer than the legacy wall/body closest distance",
+    "a refused room query preserves all incoming camera state except the refusal status",
+    "a successful query clears a prior refusal; new recovery assertion kills removal of status publication",
+    "combined wall/body+terrain queries probe min(max,max(FOLLOW_CLOSEST,room)) before applying the terrain cap; the legacy minimum cannot expand the final camera beyond the terrain-tested range"
+  ],
+  "limits": [
+    "legacy box/capsule room algorithms, spring, look, zoom, and draw interpolation retain their existing contracts",
+    "no real-time timing guarantee follows from the bounded check-step and mutation evidence",
+    "this receipt does not qualify realm publication or complete chapter 8 on its own"
+  ],
+  "prior_qualification": {
+    "recorded_at_utc": "2026-11-01T07:22:46.012186+00:00",
+    "source_sha256": {
+      "aethyr/follow.coax": "fb8fb68388ac873deaba8ae262f4d999dfee121167a547eb4ca8ab721b699587"
+    },
+    "full_checks": "122/122",
+    "mutation": "202/202 killed, no survivors",
+    "source_closure_sha256": {
+      "aethyr/follow.coax": "fb8fb68388ac873deaba8ae262f4d999dfee121167a547eb4ca8ab721b699587",
+      "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+      "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+      "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+      "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+      "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+      "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+      "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+      "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+      "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+      "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+      "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+      "aethyr/tests/query-heightfield.coax": "e5c0fbee5b540926f2b4eebc9df928527e8662e8c801baab57040295c7aa76cc",
+      "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+      "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+      "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+    }
+  },
+  "requalification_reason": "A combined box+heightfield red regression showed that the legacy minimum could publish a distance beyond the shortened terrain probe. The nonempty-heightfield branch now probes precisely the prospective distance that the final minimum/max rule can publish.",
+  "check_first": {
+    "argv": [
+      "coax/bin/coax",
+      "test",
+      "aethyr/follow.coax",
+      "--library",
+      "--only",
+      "a nearby box cannot shorten"
+    ],
+    "exit_status": 1,
+    "stdout": "FAIL #test a nearby box cannot shorten the terrain probe below the distance the camera publishes (0 ms)\naethyr/follow.coax:548:3: error[E0406]: assertion failed\n    #assert combined_next.status == QueryStatus.ok && combined_next.dist < f32(FOLLOW_CLOSEST);\n    ^\n  note: in #test a nearby box cannot shorten the terrain probe below the distance the camera publishes\n1 of 124 checks (--only 'a nearby box cannot shorten'), 0 passed, 1 failed\nauthority execution coverage not checked: it needs every check (run coax test without --only)\n"
+  },
+  "retained_grid_replay": {
+    "receipt": "aethyr/tests/grid-profile2-qualification.json",
+    "reason": "Grid gw_world constructs a World with empty heightfields. This fix changes only the nonempty-heightfield branch of follow_room_checked; Grid production camera arithmetic, input semantics, execution profile and canonical digest remain unchanged. The passing native/Wasm replay was retained, not rerun."
+  }
+}

@@ -1,0 +1,7 @@
+FAIL #test the terrain normal follows constant edge continuation outside the mesh (0 ms)
+verse/terrain.coax:199:3: error[E0406]: assertion failed
+    #assert western_normal.x == 0 && near(western_normal.y, 0.4472136, 0.000001) && near(western_normal.z, -0.8944272, 0.000001);
+    ^
+  note: in #test the terrain normal follows constant edge continuation outside the mesh
+1 of 51 checks (--only 'constant edge continuation'), 0 passed, 1 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

@@ -87,7 +87,7 @@ sky_at :: (s: [] Everglade, x: f32, z: f32) -> f32 {
   return s[0].ground_store[EG_GROUND_POINTS + sky_cell(z) * (EG_CELLS + 1) + sky_cell(x)];
 }
 
-#test "sky: open ground sees it all, the woods and the streets' corners less, a room under its roof least" {
+#test "sky: open ground sees it all, the woods and the streets' corners less, a room under its roof least" #steps 337000000 {
   #assert sky_wall(8, 10, 0.3) > 0.4 && sky_wall(8, 10, 12) < 0.1 && sky_ball(3, 5, 0) > 0.3 && sky_ball(3, 5, 10) < 0.1;
   g: [1] Everglade;
   everglade_start(g[..]);

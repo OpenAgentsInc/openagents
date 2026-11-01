@@ -1,0 +1,72 @@
+// Collision declarations for the shared walking renderers, chapter 8.
+// Runtime realm names come from the pages' data-realm/world IDs; aliases
+// are their actual data-app renderer names, not guessed display names.
+// A fork selects its renderer's profile, rather than inventing a slug rule.
+#module "aethyr.collision.profiles";
+#load "collide.coax" as capsule;
+#authority;
+
+CollisionProfileStatus :: enum u8 { unknown; ok; }
+CollisionRenderer :: enum u8 { none; grid; haunt; garden; fairy; everglade; cemetery; dead_gears; }
+CollisionDeclaration :: struct {
+  status: CollisionProfileStatus;
+  renderer: CollisionRenderer;
+  // Unknown input carries no usable collision profile. A caller that
+  // ignores status still gets collide's bad_profile refusal.
+  profile: capsule.CollideProfile = capsule.CollideProfile.{radius = 0, height = 0, step_up = 0, max_passes = 0, max_travel = 0, epsilon = 0};
+}
+
+// ---- checks, authored before the lookup
+
+#forall "every declared walking realm and renderer alias has its published collision profile" which: 0..<13 {
+  names := [13] string.["the-grid", "newland", "haunted-house", "sandbox", "realm", "garden",
+    "fairy-forest", "fairy", "everglade", "hecates-cemetery", "villa", "dead-gears", "deadgears"];
+  renderers := [13] CollisionRenderer.[CollisionRenderer.grid, CollisionRenderer.grid,
+    CollisionRenderer.haunt, CollisionRenderer.haunt, CollisionRenderer.haunt, CollisionRenderer.garden,
+    CollisionRenderer.fairy, CollisionRenderer.fairy, CollisionRenderer.everglade,
+    CollisionRenderer.cemetery, CollisionRenderer.cemetery, CollisionRenderer.dead_gears, CollisionRenderer.dead_gears];
+  answer := collision_profile_lookup(names[which]);
+  #assert answer.status == CollisionProfileStatus.ok && answer.renderer == renderers[which];
+  p := answer.profile;
+  #assert p.radius == 0.3 && p.height == 1.8 && p.step_up == 0.55 && p.max_passes == 3;
+  #assert p.max_travel == 0.15 && p.epsilon == 0.000001 && capsule.collide_profile_ok(p);
+}
+
+#forall "unknown realm names refuse without a usable profile or a guessed alias" which: 0..<14 {
+  names := [14] string.["", "unknown", "THE-GRID", "garden ", " garden", "/realms/garden", "garden/other",
+    "hauntedhouse", "planetary-villa", "cemetery", "ice-cream-man", "myrealm", "made-123", "everglade-made-123"];
+  answer := collision_profile_lookup(names[which]);
+  #assert answer.status == CollisionProfileStatus.unknown && answer.renderer == CollisionRenderer.none;
+  p := answer.profile;
+  #assert p.radius == 0 && p.height == 0 && p.step_up == 0 && p.max_passes == 0 && p.max_travel == 0 && p.epsilon == 0;
+  #assert !capsule.collide_profile_ok(p);
+}
+
+#test "a renderer name is an exact string rather than a NUL-terminated prefix" {
+  bytes := [7] u8.[103, 97, 114, 100, 101, 110, 0];
+  answer := collision_profile_lookup(cast(string) bytes[..]);
+  #assert answer.status == CollisionProfileStatus.unknown && answer.renderer == CollisionRenderer.none;
+  #assert !capsule.collide_profile_ok(answer.profile);
+}
+
+// ---- implementation
+
+collision_profile_lookup :: (name: string) -> CollisionDeclaration {
+  answer: CollisionDeclaration;
+  // newland's WK_ROOM and its page's data-app.
+  if name == "the-grid" || name == "newland" { answer.renderer = CollisionRenderer.grid; }
+  // realm-face.c reads the document world_id for these two worlds; the
+  // two pages share the actual data-app="realm" renderer.
+  if name == "haunted-house" || name == "sandbox" || name == "realm" { answer.renderer = CollisionRenderer.haunt; }
+  if name == "garden" { answer.renderer = CollisionRenderer.garden; }
+  if name == "fairy-forest" || name == "fairy" { answer.renderer = CollisionRenderer.fairy; }
+  if name == "everglade" { answer.renderer = CollisionRenderer.everglade; }
+  // Hecate's current URL/world ID and its actual data-app="villa" name.
+  if name == "hecates-cemetery" || name == "villa" { answer.renderer = CollisionRenderer.cemetery; }
+  if name == "dead-gears" || name == "deadgears" { answer.renderer = CollisionRenderer.dead_gears; }
+  if answer.renderer == CollisionRenderer.none { return answer; }
+  answer.status = CollisionProfileStatus.ok;
+  answer.profile = capsule.CollideProfile.{radius = 0.3, height = 1.8, step_up = 0.55,
+    max_passes = 3, max_travel = 0.15, epsilon = 0.000001};
+  return answer;
+}

@@ -1,0 +1,63 @@
+{
+  "tooling_test_command": [
+    "python3",
+    "aethyr/tests/test_native_gameplay_runner.py"
+  ],
+  "tooling_test_exit": 0,
+  "tooling_log": "/tmp/aethyr-native-runner-tooling.log",
+  "tooling_log_sha256": "138b62f60af517529eb61839c3ca570142b0ea590a8b53ab1a33e91124fdcba6",
+  "runner_sha256": "4d1cc5830a6bb47bae3475612973d6e56793dd1f08d601e3123694da820a08fb",
+  "tests_sha256": "d2e0c0b84feff4c01063465382bfb40a0504e985986665226653169dfe16a6af",
+  "historical_positive_runner_source": "/tmp/aethyr-native-runner-positive-profile.py.txt",
+  "stable_positive_native_artifact_audit": [
+    {
+      "realm": "deadgears",
+      "mode": "debug",
+      "receipt": "/tmp/aethyr-program-deadgears-debug.json",
+      "c_hash_matches": true,
+      "native_binary_hash_matches": true,
+      "compiler_hash_matches": true
+    },
+    {
+      "realm": "deadgears",
+      "mode": "release",
+      "receipt": "/tmp/aethyr-program-deadgears-release.json",
+      "c_hash_matches": true,
+      "native_binary_hash_matches": true,
+      "compiler_hash_matches": true
+    },
+    {
+      "realm": "deadgears",
+      "mode": "sanitized",
+      "receipt": "/tmp/aethyr-program-deadgears-sanitized.json",
+      "c_hash_matches": true,
+      "native_binary_hash_matches": true,
+      "compiler_hash_matches": true
+    },
+    {
+      "realm": "everglade",
+      "mode": "debug",
+      "receipt": "/tmp/aethyr-program-rebased-everglade-debug.json",
+      "c_hash_matches": true,
+      "native_binary_hash_matches": true,
+      "compiler_hash_matches": true
+    },
+    {
+      "realm": "everglade",
+      "mode": "release",
+      "receipt": "/tmp/aethyr-program-rebased-everglade-release.json",
+      "c_hash_matches": true,
+      "native_binary_hash_matches": true,
+      "compiler_hash_matches": true
+    },
+    {
+      "realm": "everglade",
+      "mode": "sanitized",
+      "receipt": "/tmp/aethyr-program-rebased-everglade-sanitized.json",
+      "c_hash_matches": true,
+      "native_binary_hash_matches": true,
+      "compiler_hash_matches": true
+    }
+  ],
+  "scope": "Receipt drift/source/artifact identity; exact finite wrapper; successful emission reuse; actual isolated process-group timeout/SIGINT/SIGTERM cleanup including grandchild. Gameplay and C emission were not repeated for metadata-only fixes."
+}

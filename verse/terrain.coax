@@ -18,14 +18,16 @@
 //   coax/bin/coax test --library verse/terrain.coax
 
 #load "space.coax";
+#load "../aethyr/ground.coax";
+#load "../coax/lib/quantity.coax" as terrain_units;
 
 // rim_from and rim shape the bowl's edge: a city wider than a garden
 // moves it out and eases it (verse/everglade/plan.coax).
 // rows, when set, makes the ground a rectangle: n cells west to east and
 // rows south to north ((n + 1) * (rows + 1) heights, still by rows from the
 // south); 0 keeps it square.
-Ground :: struct { n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48; rim_from: f32 = 32; rim: f32 = 0.022; rows: int = 0; }
-ground_rows :: (g: Ground) -> int { return ifx g.rows > 0 then g.rows else g.n; }
+// Ground's one declaration now belongs to aethyr/ground.coax. Its field
+// order/defaults and C spelling are unchanged for every legacy caller.
 
 HILL :: 1.6;           // metres: the rolling hills' height
 RIM_FROM :: 32.0;      // metres from the middle where the ground starts rising
@@ -46,8 +48,6 @@ FOLLOW_ACCEL :: 14.0;  // m/s^2
 FOLLOW_TURN :: 9.0;    // per second: turning to face its way
 FOLLOW_BLOCK :: 6;     // numbers per block of scenery: min x, y, z, max x, y, z
 RAY_STEP :: 0.35;      // metres between the ray's samples
-
-ground_points :: (g: Ground) -> int { return (g.n + 1) * (ground_rows(g) + 1); }
 
 // The hills the ground would have with no paths or flats: rolling, and
 // rising toward the edge so a realm sits in a shallow bowl.
@@ -144,7 +144,8 @@ shaped :: (g: Ground, nodes: [] f32, links: [] int, close: [] int, half: f32, fl
 // span comes within reach of it.
 TERRAIN_LINKS :: 256;
 verse_terrain_build :: (g: Ground, heights: [] f32, nodes: [] f32, links: [] int, half: f32, flats: [] f32) -> bool #export_c {
-  if g.n < 1 || heights.count < ground_points(g) || links.count / LINK > TERRAIN_LINKS { return false; }
+  needed := ground_points(g);
+  if needed == 0 || heights.count < needed || links.count / LINK > TERRAIN_LINKS { return false; }
   reach := half + 0.2 + f32(PATH_BLEND);
   close: [TERRAIN_LINKS] int;
   for j: 0..<ground_rows(g) + 1 {
@@ -175,37 +176,37 @@ ground_point :: (g: Ground, heights: [] f32, i: int, j: int) -> f32 {
 // Where x, z falls: its cell and how far across it (0 to 1 each way).
 Spot :: struct { i: int; j: int; fx: f32; fz: f32; }
 ground_spot :: (g: Ground, x: f32, z: f32) -> Spot {
-  s: Spot;
-  gx := clamp((x - g.west) / g.cell, 0, f32(g.n) - 0.0001);
-  gz := clamp((z - g.south) / g.cell, 0, f32(ground_rows(g)) - 0.0001);
-  if !finite(gx) { gx = 0; }
-  if !finite(gz) { gz = 0; }
-  s.i = cast(int) floor(gx); s.j = cast(int) floor(gz);
-  s.fx = gx - f32(s.i); s.fz = gz - f32(s.j);
-  return s;
+  if !ground_valid(g) || !ground_finite(x) || !ground_finite(z) { return Spot.{}; }
+  ax := ground_axis(g.west, g.cell, g.n, x);
+  az := ground_axis(g.south, g.cell, ground_rows(g), z);
+  return Spot.{i = ax.i, j = az.i, fx = f32(ax.fraction), fz = f32(az.fraction)};
 }
 
 // book:begin height
 // The height of the drawn surface at x, z (the edge's beyond it).
 verse_terrain_height :: (g: Ground, heights: [] f32, x: f32, z: f32) -> f32 #export_c {
-  if g.n < 1 || g.cell <= 0 { return 0; }
-  s := ground_spot(g, x, z);
-  h00 := ground_point(g, heights, s.i, s.j); h10 := ground_point(g, heights, s.i + 1, s.j);
-  h01 := ground_point(g, heights, s.i, s.j + 1); h11 := ground_point(g, heights, s.i + 1, s.j + 1);
-  if s.fx >= s.fz { return h00 + (h10 - h00) * s.fx + (h11 - h10) * s.fz; }
-  return h00 + (h11 - h01) * s.fx + (h01 - h00) * s.fz;
-}// book:end height
+  q := ground_sample(g, heights, terrain_units.Quantity.{value = x}, terrain_units.Quantity.{value = z});
+  return q.height.value;   // an invalid sample publishes the legacy zero height
+}
+// book:end height
 
+
+#test "the terrain normal follows constant edge continuation outside the mesh" {
+  descriptor := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  values := [4] f32.[0, 1, 2, 4];
+  western_normal := verse_terrain_normal(descriptor, values[..], -2, 0.5);
+  corner_normal := verse_terrain_normal(descriptor, values[..], 3, 4);
+  #assert western_normal.x == 0 && near(western_normal.y, 0.4472136, 0.000001) && near(western_normal.z, -0.8944272, 0.000001);
+  #assert corner_normal.x == 0 && corner_normal.y == 1 && corner_normal.z == 0;
+}
 
 // The surface's upward normal at x, z.
 verse_terrain_normal :: (g: Ground, heights: [] f32, x: f32, z: f32) -> Point #export_c {
-  if g.n < 1 || g.cell <= 0 { return v3(0, 1, 0); }
-  s := ground_spot(g, x, z);
-  h00 := ground_point(g, heights, s.i, s.j); h10 := ground_point(g, heights, s.i + 1, s.j);
-  h01 := ground_point(g, heights, s.i, s.j + 1); h11 := ground_point(g, heights, s.i + 1, s.j + 1);
-  sx := 0.0f32; sz := 0.0f32;
-  if s.fx >= s.fz { sx = h10 - h00; sz = h11 - h10; } else { sx = h11 - h01; sz = h01 - h00; }
-  return unit_or(v3(-sx / g.cell, 1, -sz / g.cell), v3(0, 1, 0));
+  q := ground_sample(g, heights, terrain_units.Quantity.{value = x}, terrain_units.Quantity.{value = z});
+  if q.clamped_x { q.gx = 0; }
+  if q.clamped_z { q.gz = 0; }
+  normal := ground_normal(q);
+  return v3(normal.x, normal.y, normal.z);
 }
 
 // The painterly ground's normal (docs/verse/art-styles.md, 1): the height
@@ -525,6 +526,77 @@ verse_lane_target :: (points: [] f32, along: [] f32, dist: [] f32, hp: [] f32, x
 }
 
 // ---- Checks
+
+#forall "legacy terrain keeps every nonbinary drawn vertex exact including its far edges" i: 0..<14, j: 0..<3 {
+  g := Ground.{n = 13, rows = 2, cell = 0.1, west = 100.1, south = -12.3};
+  h: [42] f32;
+  for k: 0..<42 { h[k] = f32(k % 14) * 17 + f32(k / 14) * 0.3; }
+  x := g.west + f32(i) * g.cell; z := g.south + f32(j) * g.cell;
+  #assert f32_bits(verse_terrain_height(g, h[..], x, z)) == f32_bits(h[j * 14 + i]);
+}
+
+#forall "legacy terrain copies stored corner words without cancelling away signed zero" corner: 0..<4 {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[-93.68108367919922, -72.09828186035156, -0.0, 5.823012351989746];
+  #assert f32_bits(verse_terrain_height(g, h[..], f32(corner % 2), f32(corner / 2))) == f32_bits(h[corner]);
+}
+
+#test "legacy terrain keeps adjacent f32 samples on their actual drawn side of a vertex" {
+  g := Ground.{n = 13, rows = 2, cell = 0.1, west = 100.1, south = -12.3};
+  h: [42] f32;
+  for k: 0..<42 { h[k] = f32(k % 14) * 17; }
+  x := g.west + 7.0f32 * g.cell;
+  before := f32_from_bits(f32_bits(x) - 1); after := f32_from_bits(f32_bits(x) + 1);
+  left := g.west + 6.0f32 * g.cell; right := g.west + 8.0f32 * g.cell;
+  expected_before := 102.0 + (f64(before) - f64(left)) / (f64(x) - f64(left)) * 17;
+  expected_after := 119.0 + (f64(after) - f64(x)) / (f64(right) - f64(x)) * 17;
+  a := verse_terrain_height(g, h[..], before, g.south);
+  b := verse_terrain_height(g, h[..], after, g.south);
+  #assert a < 119 && b > 119;
+  #assert abs(f64(a) - expected_before) < 0.00001 && abs(f64(b) - expected_after) < 0.00001;
+  at := ground_spot(g, x, g.south);
+  far := ground_spot(g, g.west + f32(g.n) * g.cell, g.south + f32(g.rows) * g.cell);
+  #assert at.i == 7 && at.fx == 0 && far.i == 12 && far.j == 1 && far.fx == 1 && far.fz == 1;
+}
+
+#test "legacy terrain height and normal share the qualified ground triangles" {
+  g := Ground.{n = 1, rows = 1, cell = 2, west = -3, south = 5};
+  h := [4] f32.[0, 1, 2, 4];
+  a := verse_terrain_normal(g, h[..], -1.5, 5.5);
+  b := verse_terrain_normal(g, h[..], -2.5, 6.5);
+  #assert verse_terrain_height(g, h[..], -1.5, 5.5) == 1.5;
+  #assert verse_terrain_height(g, h[..], -2.5, 6.5) == 2;
+  #assert near(a.x, -0.5 / sqrt(3.5), 0.000001) && near(a.y, 1 / sqrt(3.5), 0.000001) && near(a.z, -1.5 / sqrt(3.5), 0.000001);
+  #assert near(b.x, -1 / sqrt(3.0), 0.000001) && near(b.y, 1 / sqrt(3.0), 0.000001) && near(b.z, -1 / sqrt(3.0), 0.000001);
+}
+
+#forall "legacy terrain refusal gives zero height and an upward normal" which: 0..<7 {
+  g := Ground.{n = 1, rows = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[0, 1, 2, 4]; count := 4; x := 0.75f32; z := 0.25f32;
+  if which == 0 { g.rows = -1; }
+  if which == 1 { g.n = 0; }
+  if which == 2 { g.cell = 0; }
+  if which == 3 { count = 3; }
+  if which == 4 { x = 0.0f32 / 0.0f32; }
+  if which == 5 { z = 1000000; }
+  if which == 6 { h[3] = 1000000; }
+  n := verse_terrain_normal(g, h[0..<count], x, z);
+  #assert verse_terrain_height(g, h[0..<count], x, z) == 0;
+  #assert n.x == 0 && n.y == 1 && n.z == 0;
+}
+
+#forall "legacy terrain build refuses a rejected descriptor before publishing heights" which: 0..<5 {
+  g := Ground.{n = 1, rows = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[11, 12, 13, 14];
+  if which == 0 { g.rows = -1; }
+  if which == 1 { g.cell = 0; }
+  if which == 2 { g.cell = 0.0f32 / 0.0f32; }
+  if which == 3 { g.west = 1000000; }
+  if which == 4 { g.n = GROUND_MAX_AXIS + 1; }
+  floats: [1] f32; integers: [1] int;
+  #assert !verse_terrain_build(g, h[..], floats[0..<0], integers[0..<0], 0, floats[0..<0]);
+  for i: 0..<4 { #assert h[i] == f32(11 + i); }
+}
 
 // A small garden: a square of paths with a tail to the south.
 TEST_NODES :: [10] f32.[-10, -10, 10, -10, 10, 10, -10, 10, 0, -25];

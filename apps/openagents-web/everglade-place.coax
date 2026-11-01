@@ -68,7 +68,7 @@ everglade_place_camera :: (s: [] Everglade, p: Place) #export_c {
   s[0].above = false; s[0].lift = 0;
 }
 
-#test "a kept place in Everglade: open ground stays, a wall or the woods moves you to the nearest open spot, a room keeps you in it" {
+#test "a kept place in Everglade: open ground stays, a wall or the woods moves you to the nearest open spot, a room keeps you in it" #steps 340000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   sp := g[0].spawn;

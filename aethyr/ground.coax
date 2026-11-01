@@ -1,0 +1,317 @@
+// Aethyr's sampled ground: the same south-west to north-east triangles that are drawn.
+// Coordinates and returned heights are metres. The caller owns the read-only height view.
+// Invalid descriptors, coordinates or sampled corners return an empty (ok false) answer.
+// The descriptor retains verse/terrain.coax's field order and defaults for its C boundary.
+
+#module "aethyr.ground";
+#load "../coax/lib/quantity.coax" as units;
+#load "tests/ground-oracle.coax";
+#authority;
+
+GROUND_LIMIT :: 1000000.0;
+GROUND_MAX_AXIS :: 1048576;
+
+// book:begin types
+Ground :: struct {
+  n: int = 64; cell: f32 = 1.5; west: f32 = -48; south: f32 = -48;
+  rim_from: f32 = 32; rim: f32 = 0.022; rows: int = 0;
+}
+GroundSample :: struct {
+  ok: bool;
+  height: units.Quantity(units.Metre, f32);
+  gx: f32; gz: f32;   // dy/dx and dy/dz of the selected drawn triangle
+  clamped_x: bool; clamped_z: bool;   // strictly beyond the mesh, not on its edge
+}
+GroundNormal :: struct { x: f32; y: f32 = 1; z: f32; }
+// book:end types
+
+// ---- checks, authored before the implementation
+
+#test "ground descriptor keeps the existing terrain defaults and a bounded point count" {
+  g: Ground;
+  #assert g.n == 64 && g.cell == 1.5 && g.west == -48 && g.south == -48;
+  #assert g.rim_from == 32 && g.rim == 0.022 && g.rows == 0;
+  #assert ground_rows(g) == 64 && ground_points(g) == 4225;
+  g.n = 2; g.rows = 3;
+  #assert ground_rows(g) == 3 && ground_points(g) == 12;
+  g.rows = 1;
+  #assert ground_rows(g) == 1 && ground_points(g) == 6;
+  g.n = GROUND_MAX_AXIS; g.rows = GROUND_MAX_AXIS; g.cell = 0.125;
+  #assert ground_points(g) == 1099513724929;
+}
+
+#forall "ground refuses malformed descriptors before indexing" which: 0..<15 {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  nan := 0.0f32; nan = nan / nan;
+  if which == 0 { g.n = 0; }
+  if which == 1 { g.n = -1; }
+  if which == 2 { g.n = GROUND_MAX_AXIS + 1; g.cell = 0.125; }
+  if which == 3 { g.rows = -1; }
+  if which == 4 { g.rows = GROUND_MAX_AXIS + 1; g.cell = 0.125; }
+  if which == 5 { g.cell = 0; }
+  if which == 6 { g.cell = -1; }
+  if which == 7 { g.cell = nan; }
+  if which == 8 { g.west = nan; }
+  if which == 9 { g.south = nan; }
+  if which == 10 { g.west = -1000000; }
+  if which == 11 { g.south = 1000000; }
+  if which == 12 { g.west = 999999; g.cell = 2; }
+  if which == 13 { g.south = 999999; g.cell = 2; }
+  if which == 14 { g.cell = 1.0e-40; g.west = 100; }
+  h := [4] f32.[0, 1, 2, 4];
+  #assert ground_points(g) == 0;
+  q := ground_sample(g, h[..], units.Quantity.{value = 0}, units.Quantity.{value = 0});
+  #assert !q.ok && q.height.value == 0 && q.gx == 0 && q.gz == 0;
+}
+
+#test "ground samples both drawn triangles and chooses the south-west diagonal" {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[0, 1, 2, 4];
+  a := ground_sample(g, h[..], units.Quantity.{value = 0.75}, units.Quantity.{value = 0.25});
+  b := ground_sample(g, h[..], units.Quantity.{value = 0.25}, units.Quantity.{value = 0.75});
+  d := ground_sample(g, h[..], units.Quantity.{value = 0.5}, units.Quantity.{value = 0.5});
+  #assert a.ok && a.height.value == 1.5 && a.gx == 1 && a.gz == 3;
+  #assert b.ok && b.height.value == 2 && b.gx == 2 && b.gz == 2;
+  #assert d.ok && d.height.value == 2 && d.gx == 1 && d.gz == 3;
+  n := ground_normal(a);
+  #assert abs(n.x + 0.30151135) < 0.000001 && abs(n.y - 0.30151135) < 0.000001 && abs(n.z + 0.904534) < 0.000001;
+}
+
+#forall "ground samples every boundary vertex exactly, including the north-east corner" i: 0..<3, j: 0..<4 {
+  g := Ground.{n = 2, rows = 3, cell = 2, west = -3, south = 5};
+  h := [12] f32.[0, 1, 3, 2, 4, 8, -2, 9, 5, 7, 6, 11];
+  q := ground_sample(g, h[..], units.Quantity.{value = -3 + 2 * f32(i)}, units.Quantity.{value = 5 + 2 * f32(j)});
+  #assert q.ok && q.height.value == h[j * 3 + i] && !q.clamped_x && !q.clamped_z;
+}
+
+#test "ground extends the exact edge beyond its rectangle and reads no extra height words" {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  h := [5] f32.[0, 1, 2, 4, 999];
+  #assert ground_sample(g, h[..], units.Quantity.{value = -2}, units.Quantity.{value = -3}).height.value == 0;
+  #assert ground_sample(g, h[..], units.Quantity.{value = 2}, units.Quantity.{value = -3}).height.value == 1;
+  #assert ground_sample(g, h[..], units.Quantity.{value = -2}, units.Quantity.{value = 3}).height.value == 2;
+  q := ground_sample(g, h[..], units.Quantity.{value = 2}, units.Quantity.{value = 3});
+  #assert q.ok && q.height.value == 4 && q.clamped_x && q.clamped_z;
+  edge_sample := ground_sample(g, h[..], units.Quantity.{value = 0}, units.Quantity.{value = 0.5});
+  low := ground_sample(g, h[..], units.Quantity.{value = -1}, units.Quantity.{value = 0.5});
+  north := ground_sample(g, h[..], units.Quantity.{value = 0.5}, units.Quantity.{value = 3});
+  south := ground_sample(g, h[..], units.Quantity.{value = 0.5}, units.Quantity.{value = -3});
+  #assert !edge_sample.clamped_x && !edge_sample.clamped_z && low.clamped_x && !low.clamped_z;
+  #assert !north.clamped_x && north.clamped_z && !south.clamped_x && south.clamped_z;
+  #assert ground_sample(g, h[..], units.Quantity.{value = -1}, units.Quantity.{value = 0.5}).height.value == 1;
+  #assert ground_sample(g, h[..], units.Quantity.{value = 0.5}, units.Quantity.{value = 3}).height.value == 3;
+}
+
+#forall "ground refuses each malformed sampled word and every short height view" which: 0..<8 {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[0, 1, 2, 4];
+  if which < 4 { h[which] = 1000000; }
+  count := ifx which < 4 then 4 else which - 4;
+  q := ground_sample(g, h[0..<count], units.Quantity.{value = 0.75}, units.Quantity.{value = 0.25});
+  #assert !q.ok && q.height.value == 0 && q.gx == 0 && q.gz == 0;
+}
+
+#forall "ground refuses nonfinite and out-of-range coordinates, heights and slopes" which: 0..<12 {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[0, 1, 2, 4];
+  x := 0.75f32; z := 0.25f32;
+  nan := 0.0f32; nan = nan / nan;
+  inf := 1.0f32; inf = inf / 0.0f32;
+  if which == 0 { x = nan; }
+  if which == 1 { z = nan; }
+  if which == 2 { x = inf; }
+  if which == 3 { z = -inf; }
+  if which == 4 { x = 1000000; }
+  if which == 5 { z = -1000000; }
+  if which == 6 { h[0] = nan; }
+  if which == 7 { h[1] = inf; }
+  if which == 8 { h[2] = -1000000; }
+  if which == 9 { h[3] = -inf; }
+  if which == 10 { g.cell = 0.000001; h = [4] f32.[0, 3, 0, 3]; }
+  if which == 11 { g.cell = 0.000001; h = [4] f32.[0, 0, 3, 3]; }
+  q := ground_sample(g, h[..], units.Quantity.{value = x}, units.Quantity.{value = z});
+  #assert !q.ok && q.height.value == 0 && q.gx == 0 && q.gz == 0;
+}
+
+#test "ground normals reject fabricated samples and keep a level normal on refusal" {
+  n := ground_normal(GroundSample.{});
+  #assert n.x == 0 && n.y == 1 && n.z == 0;
+  nan := 0.0f32; nan = nan / nan;
+  a := ground_normal(GroundSample.{ok = true, gx = nan});
+  b := ground_normal(GroundSample.{ok = true, gz = 1000000});
+  #assert a.x == 0 && a.y == 1 && a.z == 0 && b.x == 0 && b.y == 1 && b.z == 0;
+  c := ground_normal(GroundSample.{ok = true, gx = 0, gz = 0});
+  #assert c.x == 0 && c.y == 1 && c.z == 0;
+}
+
+#forall "ground equals independent f64 barycentric triangles inside rectangular cells" k: 0..<96 {
+  ground_oracle_case(k);
+}
+
+#test "ground rejects collapsed boundary cells separately on each axis and refuses its exact extent limit" {
+  xstart := Ground.{n = 200000, rows = 1, cell = 0.000001, west = -32.1, south = 0};
+  xend := Ground.{n = 200000, rows = 1, cell = 0.000001, west = 31.9, south = 0};
+  zstart := Ground.{n = 1, rows = 200000, cell = 0.000001, west = 0, south = -32.1};
+  zend := Ground.{n = 1, rows = 200000, cell = 0.000001, west = 0, south = 31.9};
+  #assert !ground_valid(xstart) && !ground_valid(xend) && !ground_valid(zstart) && !ground_valid(zend);
+  east := Ground.{n = 1, cell = 1, west = 999999, south = 0};
+  north := Ground.{n = 1, cell = 1, west = 0, south = 999999};
+  #assert !ground_valid(east) && !ground_valid(north);
+  xtail := Ground.{n = 2, rows = 1, cell = 0.000001, west = 31.99995994567871, south = 0};
+  ztail := Ground.{n = 1, rows = 2, cell = 0.000001, west = 0, south = 31.99995994567871};
+  #assert !ground_valid(xtail) && !ground_valid(ztail);
+}
+
+#forall "ground vertex heights retain their stored f32 words, including signed zero" corner: 0..<4, profile: 0..<4 {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  h := [4] f32.[-93.68108367919922, -72.09828186035156, -0.0, 5.823012351989746];
+  if profile == 1 { h = [4] f32.[-0.0, 0.1, 1, 4]; }
+  if profile == 2 { h = [4] f32.[-77.64520263671875, 21.671192169189453, 3, 4]; }
+  if profile == 3 { h = [4] f32.[1, 1.0e-20, -1.0e-20, -2.0e-20]; }
+  q := ground_sample(g, h[..], units.Quantity.{value = f32(corner % 2)}, units.Quantity.{value = f32(corner / 2)});
+  #assert q.ok && f32_bits(q.height.value) == f32_bits(h[corner]);
+}
+
+#test "ground refusals publish no partial clamping metadata" {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  bad := [4] f32.[0, 1, 2, 1000000];
+  a := ground_sample(g, bad[..], units.Quantity.{value = -2}, units.Quantity.{value = 4});
+  steep := [4] f32.[0, 1, 2, 4]; g.cell = 0.000001;
+  b := ground_sample(g, steep[..], units.Quantity.{value = -2}, units.Quantity.{value = 4});
+  #assert !a.ok && a.height.value == 0 && a.gx == 0 && a.gz == 0 && !a.clamped_x && !a.clamped_z;
+  #assert !b.ok && b.height.value == 0 && b.gx == 0 && b.gz == 0 && !b.clamped_x && !b.clamped_z;
+}
+
+#forall "ground matches actual nonbinary drawn vertex coordinates without epsilon snapping" i: 0..<14, j: 0..<3 {
+  g := Ground.{n = 13, rows = 2, cell = 0.1, west = 100.1, south = -12.3};
+  h: [42] f32;
+  for k: 0..<42 { h[k] = f32(k % 14) * 17; }
+  x := g.west + f32(i) * g.cell; z := g.south + f32(j) * g.cell;
+  q := ground_sample(g, h[..], units.Quantity.{value = x}, units.Quantity.{value = z});
+  #assert q.ok && f32_bits(q.height.value) == f32_bits(h[j * 14 + i]);
+}
+
+#test "ground keeps the adjacent representable positions on either side of a drawn vertex" {
+  g := Ground.{n = 13, rows = 2, cell = 0.1, west = 100.1, south = -12.3};
+  h: [42] f32;
+  for k: 0..<42 { h[k] = f32(k % 14) * 17; }
+  x := g.west + 7.0f32 * g.cell;
+  before := f32_from_bits(f32_bits(x) - 1); after := f32_from_bits(f32_bits(x) + 1);
+  a := ground_sample(g, h[..], units.Quantity.{value = before}, units.Quantity.{value = g.south});
+  b := ground_sample(g, h[..], units.Quantity.{value = after}, units.Quantity.{value = g.south});
+  left := g.west + 6.0f32 * g.cell; right := g.west + 8.0f32 * g.cell;
+  ya := 102.0 + (f64(before) - f64(left)) / (f64(x) - f64(left)) * 17;
+  yb := 119.0 + (f64(after) - f64(x)) / (f64(right) - f64(x)) * 17;
+  #assert a.ok && b.ok && a.height.value < 119 && b.height.value > 119;
+  #assert abs(f64(a.height.value) - ya) < 0.00001 && abs(f64(b.height.value) - yb) < 0.00001;
+}
+
+#test "ground gives an interior vertex to the next cell, including its triangle's slope" {
+  g := Ground.{n = 2, rows = 1, cell = 1, west = 0, south = 0};
+  h := [6] f32.[0, 1, 4, 0, 1, 4];
+  q := ground_sample(g, h[..], units.Quantity.{value = 1}, units.Quantity.{value = 0.25});
+  #assert q.ok && q.height.value == 1 && q.gx == 3 && q.gz == 0;
+}
+
+#test "ground requires four rendering ulps of cell width and refuses an interior collapse" {
+  cell_step := 0.000000476837158203125f32;   // four f32 ulps at one metre
+  g := Ground.{n = 1, rows = 1, cell = cell_step, west = 1, south = 0};
+  #assert ground_valid(g);
+  g.cell = f32_from_bits(f32_bits(cell_step) - 1);
+  #assert !ground_valid(g);
+  collapsed := Ground.{n = 3, rows = 1, cell = 0.000001, west = 31.99995994567871, south = 0};
+  #assert collapsed.west + collapsed.cell > collapsed.west;
+  #assert collapsed.west + 2.0f32 * collapsed.cell == collapsed.west + collapsed.cell;
+  #assert collapsed.west + 3.0f32 * collapsed.cell > collapsed.west + 2.0f32 * collapsed.cell;
+  #assert !ground_valid(collapsed);
+}
+
+// ---- implementation
+
+ground_rows :: (g: Ground) -> int { return ifx g.rows > 0 then g.rows else g.n; }
+ground_finite :: (v: f32) -> bool { return v > -GROUND_LIMIT && v < GROUND_LIMIT; }
+ground_larger :: (a: f64, b: f64) -> f64 { return (a + b + abs(a - b)) / 2; }
+
+// A finite, nonempty mesh with representable boundary cells. Integer bounds precede the
+// point-count product, and the bounded axes keep f32 extent arithmetic below overflow.
+ground_valid :: (g: Ground) -> bool {
+  if g.n < 1 || g.n > GROUND_MAX_AXIS || g.rows < 0 || g.rows > GROUND_MAX_AXIS { return false; }
+  if !ground_finite(g.west) || !ground_finite(g.south) { return false; }
+  east := g.west + f32(g.n) * g.cell;
+  north := g.south + f32(ground_rows(g)) * g.cell;
+  if !ground_finite(east) || !ground_finite(north) { return false; }
+  // A conservative precision profile: each rendered multiply/add has at most one ulp of
+  // error at this largest intermediate. Four ulps of nominal separation keep all adjacent
+  // vertices strictly ordered, without scanning every cell for each sample.
+  largest := ground_larger(ground_larger(abs(f64(g.west)), abs(f64(g.south))),
+    ground_larger(ground_larger(abs(f64(f32(g.n) * g.cell)), abs(f64(f32(ground_rows(g)) * g.cell))),
+      ground_larger(abs(f64(east)), abs(f64(north)))));
+  magnitude := f32(largest);
+  ulp := f32_from_bits(f32_bits(magnitude) + 1) - magnitude;
+  return g.cell >= 4 * ulp;
+}
+ground_points :: (g: Ground) -> int {
+  if !ground_valid(g) { return 0; }
+  return (g.n + 1) * (ground_rows(g) + 1);
+}
+
+// Select the interval between actual f32 mesh vertices, not a nominal real-valued lattice.
+// Binary search takes at most 21 iterations under GROUND_MAX_AXIS. The admitted precision
+// profile keeps each selected cell's width positive, including both boundary cells.
+GroundAxis :: struct { i: int; fraction: f64; width: f64; clamped: bool; }
+ground_axis :: (origin: f32, cell: f32, n: int, coordinate: f32) -> GroundAxis {
+  at := coordinate; clamped := false;
+  last := origin + f32(n) * cell;
+  if at < origin { at = origin; clamped = true; }
+  else if at > last { at = last; clamped = true; }
+  low := 0; high := n;
+  while high - low > 1 {
+    middle := (low + high) / 2;
+    if at < origin + f32(middle) * cell { high = middle; } else { low = middle; }
+  }
+  a := origin + f32(low) * cell; b := origin + f32(high) * cell;
+  width := f64(b) - f64(a);
+  return GroundAxis.{i = low, fraction = (f64(at) - f64(a)) / width, width = width, clamped = clamped};
+}
+
+// book:begin sample
+// A point beyond the rectangle reads its nearest edge. At the exact north/east edge the
+// last cell has fraction 1, not an epsilon below it, so every stored vertex is exact.
+ground_sample :: (g: Ground, heights: [] f32,
+    x: units.Quantity(units.Metre, f32), z: units.Quantity(units.Metre, f32)) -> GroundSample {
+  out: GroundSample;
+  count := ground_points(g);
+  if count == 0 || heights.count < count || !ground_finite(x.value) || !ground_finite(z.value) { return out; }
+  ax := ground_axis(g.west, g.cell, g.n, x.value);
+  az := ground_axis(g.south, g.cell, ground_rows(g), z.value);
+  fx := ax.fraction; fz := az.fraction;
+  k := az.i * (g.n + 1) + ax.i;
+  h00 := heights[k]; h10 := heights[k + 1];
+  h01 := heights[k + g.n + 1]; h11 := heights[k + g.n + 2];
+  if !ground_finite(h00) || !ground_finite(h10) || !ground_finite(h01) || !ground_finite(h11) { return out; }
+  y := 0.0; gx := 0.0; gz := 0.0;
+  if fx >= fz {
+    y = f64(h00) + (f64(h10) - f64(h00)) * fx + (f64(h11) - f64(h10)) * fz;
+    gx = (f64(h10) - f64(h00)) / ax.width; gz = (f64(h11) - f64(h10)) / az.width;
+  } else {
+    y = f64(h00) + (f64(h11) - f64(h01)) * fx + (f64(h01) - f64(h00)) * fz;
+    gx = (f64(h11) - f64(h01)) / ax.width; gz = (f64(h01) - f64(h00)) / az.width;
+  }
+  // Copy a stored vertex instead of reconstructing it through rounded differences.
+  if fx == 0 {
+    if fz == 0 { y = f64(h00); } else if fz == 1 { y = f64(h01); }
+  } else if fx == 1 {
+    if fz == 0 { y = f64(h10); } else if fz == 1 { y = f64(h11); }
+  }
+  if !ground_finite(f32(gx)) || !ground_finite(f32(gz)) { return GroundSample.{}; }
+  return GroundSample.{ok = true, height = units.Quantity.{value = f32(y)}, gx = f32(gx), gz = f32(gz),
+    clamped_x = ax.clamped, clamped_z = az.clamped};
+}
+// book:end sample
+
+ground_normal :: (q: GroundSample) -> GroundNormal {
+  if !q.ok || !ground_finite(q.gx) || !ground_finite(q.gz) { return GroundNormal.{}; }
+  magnitude := sqrt(q.gx * q.gx + 1 + q.gz * q.gz);
+  return GroundNormal.{x = -q.gx / magnitude, y = 1 / magnitude, z = -q.gz / magnitude};
+}
+

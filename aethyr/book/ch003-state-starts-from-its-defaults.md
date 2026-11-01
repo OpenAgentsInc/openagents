@@ -83,6 +83,13 @@ Player :: struct {
   pace: f32 = 1;
   grip: f32 = 1;       // the share of your feet's grip on the ground (a realm's ice: everglade-frost.coax); less slides you
   sliding: bool;       // on a floor too steep to stand on, sliding down it
+  collision_status: CollideStatus;
+  collision_refusals: u64;
+  collision_residual: f32;
+  collision_passes: int;
+  collision_floor_cut: bool;
+  query_status: QueryStatus;         // a refused ground receipt on the last physical step
+  camera_query_status: QueryStatus;  // the last camera receipt, retained when its step is skipped
 }
 ```
 

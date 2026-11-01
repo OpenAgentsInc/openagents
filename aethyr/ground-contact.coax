@@ -1,0 +1,461 @@
+// Sphere overlap and sweep against the exact drawn heightfield and its constant-edge
+// continuation. Candidate cells are admitted as a bounded query before geometry is read.
+#module "aethyr.ground.contact";
+#load "ground-query.coax";
+#load "tests/ground-contact-oracle.coax";
+#authority;
+
+GROUND_CONTACT_CELLS :: 4096;
+GroundContact :: struct {
+  status: GroundRayStatus = GroundRayStatus.invalid;
+  hit: bool; t: f64; point: WorldPoint; normal: GroundNormal;
+  cells: int; x: int = -1; z: int = -1; triangle: int = -1; feature: int = -1;
+  triangles: int;
+}
+GCVec :: struct { x: f64; y: f64; z: f64; }
+GCClosest :: struct { point: GCVec; feature: int; }
+GCFeature :: struct { hit: bool; t: f64; normal: GCVec; feature: int; }
+GCBounds :: struct { lx: f64; hx: f64; lz: f64; hz: f64; x0: int; x1: int; z0: int; z1: int; cells: int; }
+GCTriangle :: struct { a: GCVec; b: GCVec; c: GCVec; }
+
+#forall "ground contact closest points classify all face, edge and vertex regions" which: 0..<7 {
+  a := GCVec.{}; b := GCVec.{z = 2}; c := GCVec.{x = 2};
+  p := GCVec.{x = 0.5, y = 1, z = 0.5}; expected := GCVec.{x = 0.5, z = 0.5};
+  if which == 1 { p.x = 0; p.z = 1; expected.x = 0; expected.z = 1; }
+  if which == 2 { p.x = 1; p.z = 1; expected.x = 1; expected.z = 1; }
+  if which == 3 { p.x = 1; p.z = 0; expected.x = 1; expected.z = 0; }
+  if which == 4 { p.x = 0; p.z = 0; expected.x = 0; expected.z = 0; }
+  if which == 5 { p.x = 0; p.z = 2; expected.x = 0; expected.z = 2; }
+  if which == 6 { p.x = 2; p.z = 0; expected.x = 2; expected.z = 0; }
+  q := gc_closest_triangle(a, b, c, p);
+  #assert q.feature == which && q.point.x == expected.x && q.point.y == 0 && q.point.z == expected.z;
+}
+
+#test "ground contact overlap uses perpendicular distance and keeps touching separate" {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0}; h: [4] f32;
+  a := ground_overlap(g, h[..], world_point(0.5, 0.1, 0.5), 0.2, 4);
+  b := ground_overlap(g, h[..], world_point(0.5, 0.2, 0.5), 0.2, 4);
+  c := ground_overlap(g, h[..], world_point(0.5, -3, 0.5), 0.2, 4);
+  #assert a.status == GroundRayStatus.ok && a.hit && a.t == 0;
+  #assert b.status == GroundRayStatus.ok && !b.hit && c.status == GroundRayStatus.ok && c.hit;
+  sloped := [4] f32.[0, 1, 0, 1];
+  near_contact := ground_overlap(g, sloped[..], world_point(0.5, 0.8, 0.5), 0.22, 4);
+  far_contact := ground_overlap(g, sloped[..], world_point(0.5, 0.8, 0.5), 0.2, 4);
+  #assert near_contact.status == GroundRayStatus.ok && near_contact.hit && far_contact.status == GroundRayStatus.ok && !far_contact.hit;
+}
+
+#test "ground contact sweep reaches a triangle face and treats moving initial touch at zero" {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0}; h: [4] f32;
+  q := ground_sweep(g, h[..], world_point(0.4, 2, 0.2), 0.25, world_point(0, -3, 0), 8);
+  #assert q.status == GroundRayStatus.ok && q.hit && abs(q.t - 7.0 / 12) < 0.0000000001;
+  #assert q.point.y == 0.25 && q.normal.x == 0 && q.normal.y == 1 && q.normal.z == 0;
+  touch := ground_sweep(g, h[..], world_point(0.4, 0.25, 0.2), 0.25, world_point(0, 1, 0), 8);
+  still := ground_sweep(g, h[..], world_point(0.4, 0.25, 0.2), 0.25, world_point(0, 0, 0), 8);
+  #assert touch.status == GroundRayStatus.ok && touch.hit && touch.t == 0 && touch.normal.y == -1;
+  #assert still.status == GroundRayStatus.ok && !still.hit;
+}
+
+#test "ground contact swept edge capsules include endpoint spheres and tangent contacts" {
+  a := GCVec.{}; b := GCVec.{z = 2};
+  side := gc_edge_sweep(a, b, GCVec.{x = -3, z = 1}, GCVec.{x = 4}, 1);
+  end := gc_edge_sweep(a, b, GCVec.{x = -3, z = -0.5}, GCVec.{x = 4}, 1);
+  tangent := gc_edge_sweep(a, b, GCVec.{x = -3, y = 1, z = 1}, GCVec.{x = 6}, 1);
+  #assert side.hit && side.t == 0.5 && side.normal.x == -1 && side.normal.y == 0 && side.normal.z == 0;
+  #assert end.hit && abs(end.t - (3 - sqrt(0.75)) / 4) < 0.0000000001;
+  #assert tangent.hit && tangent.t == 0.5 && tangent.normal.x == 0 && tangent.normal.y == 1;
+}
+
+#test "ground contact does not sample past a narrow hill and extends the boundary plane" {
+  g := Ground.{n = 3, rows = 1, cell = 0.1, west = 0, south = 0};
+  h := [8] f32.[0, 0, 4, 0, 0, 0, 4, 0];
+  q := ground_sweep(g, h[..], world_point(0.01, 0.5, 0.05), 0.025, world_point(0.3, 0, 0), 32);
+  #assert q.status == GroundRayStatus.ok && q.hit && q.t > 0.25 && q.t < 0.27;
+  flat_contact := [8] f32.[1, 1, 1, 1, 1, 1, 1, 1];
+  outside := ground_sweep(g, flat_contact[..], world_point(-2, 2, -2), 0.25, world_point(0, -2, 0), 4);
+  #assert outside.status == GroundRayStatus.ok && outside.hit && outside.t == 0.375 && outside.normal.y == 1;
+}
+
+#test "ground contact refuses an over-budget candidate rectangle before claiming a miss" {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0}; h: [4] f32;
+  q := ground_overlap(g, h[..], world_point(1.2, 4, 0.5), 0.3, 1);
+  #assert q.status == GroundRayStatus.exhausted && !q.hit && q.t == 0 && q.cells == 2;
+  enough := ground_overlap(g, h[..], world_point(1.2, 4, 0.5), 0.3, 2);
+  #assert enough.status == GroundRayStatus.ok && !enough.hit && enough.cells == 2;
+}
+
+#forall "ground contact refuses malformed inputs and publishes no partial result" which: 0..<12 {
+  g := Ground.{n = 1, cell = 1, west = 0, south = 0}; h: [4] f32;
+  p := world_point(0.5, 2, 0.5); by := world_point(0, -1, 0); r := 0.2f32; budget := 8;
+  nan := 0.0f32; nan = nan / nan;
+  if which == 0 { p.x = nan; } if which == 1 { p.y = nan; } if which == 2 { p.z = nan; }
+  if which == 3 { by.x = nan; } if which == 4 { by.y = nan; } if which == 5 { by.z = nan; }
+  if which == 6 { r = 0; } if which == 7 { r = -1; } if which == 8 { r = nan; }
+  if which == 9 { budget = 0; } if which == 10 { budget = GROUND_CONTACT_CELLS + 1; }
+  if which == 11 { p.x = 999999; r = 2; }
+  q := ground_sweep(g, h[..], p, r, by, budget);
+  #assert q.status == GroundRayStatus.invalid && !q.hit && q.t == 0;
+}
+
+#forall "ground contact agrees with independent constrained triangle distances" seed: 0..<128 {
+  ground_contact_oracle_case(seed);
+}
+
+#test "ground contact interval predicates distinguish closed touching from positive separation" {
+  nan := 0.0; nan = nan / nan;
+  #assert gc_positive(1) && !gc_positive(0) && !gc_positive(-1) && !gc_positive(nan);
+  #assert gc_nonnegative(1) && gc_nonnegative(0) && !gc_nonnegative(-1) && !gc_nonnegative(nan);
+  #assert gc_nonpositive(-1) && gc_nonpositive(0) && !gc_nonpositive(1) && !gc_nonpositive(nan);
+}
+
+#test "ground contact vector products preserve all three signed components" {
+  gc_product := gc_cross(GCVec.{x = 1, y = 2, z = 3}, GCVec.{x = 4, y = 5, z = 6});
+  #assert gc_product.x == -3 && gc_product.y == 6 && gc_product.z == -3;
+  gc_earlier := gc_keep(GCFeature.{hit = true, t = 0.5, feature = 3}, GCFeature.{hit = true, t = 0.5, feature = 4});
+  #assert gc_earlier.feature == 3;
+}
+
+#test "ground contact point-sphere roots include tangencies and both range endpoints" {
+  gc_a := gc_sphere_sweep(GCVec.{}, GCVec.{x = -1}, GCVec.{x = 1}, 1, 8);
+  gc_b := gc_sphere_sweep(GCVec.{}, GCVec.{x = -2}, GCVec.{x = 1}, 1, 9);
+  gc_c := gc_sphere_sweep(GCVec.{}, GCVec.{x = -2, y = 1}, GCVec.{x = 4}, 1, 7);
+  gc_away := gc_sphere_sweep(GCVec.{}, GCVec.{x = -2}, GCVec.{x = -1}, 1, 0);
+  gc_short := gc_sphere_sweep(GCVec.{}, GCVec.{x = -3}, GCVec.{x = 1}, 1, 0);
+  #assert gc_a.hit && gc_a.t == 0 && gc_a.feature == 8 && gc_b.hit && gc_b.t == 1 && gc_b.feature == 9;
+  #assert gc_c.hit && gc_c.t == 0.5 && gc_c.feature == 7 && !gc_away.hit && !gc_short.hit;
+}
+
+#test "ground contact capsule sides own their endpoint ties and track motion along the axis" {
+  gc_a := GCVec.{}; gc_b := GCVec.{z = 2};
+  gc_start := gc_edge_sweep(gc_a, gc_b, GCVec.{x = -1, z = 1}, GCVec.{x = 1}, 1);
+  gc_finish := gc_edge_sweep(gc_a, gc_b, GCVec.{x = -2, z = 1}, GCVec.{x = 1}, 1);
+  gc_low := gc_edge_sweep(gc_a, gc_b, GCVec.{x = -2}, GCVec.{x = 2}, 1);
+  gc_high := gc_edge_sweep(gc_a, gc_b, GCVec.{x = -2, z = 2}, GCVec.{x = 2}, 1);
+  gc_along := gc_edge_sweep(gc_a, gc_b, GCVec.{x = -3}, GCVec.{x = 4, z = 1}, 1);
+  gc_end_a := gc_edge_sweep(gc_a, gc_b, GCVec.{x = -0.6, z = -2}, GCVec.{z = 4}, 1);
+  gc_end_b := gc_edge_sweep(gc_a, gc_b, GCVec.{x = -0.6, z = 4}, GCVec.{z = -4}, 1);
+  #assert gc_start.hit && gc_start.t == 0 && gc_start.feature == 0 && gc_finish.hit && gc_finish.t == 1 && gc_finish.feature == 0;
+  #assert gc_low.hit && gc_low.feature == 0 && gc_high.hit && gc_high.feature == 0;
+  #assert gc_along.hit && gc_along.t == 0.5 && gc_along.feature == 0;
+  #assert gc_end_a.hit && abs(gc_end_a.t - 0.3) < 0.000000001 && gc_end_a.feature == 1;
+  #assert gc_end_b.hit && abs(gc_end_b.t - 0.3) < 0.000000001 && gc_end_b.feature == 2;
+}
+
+#forall "ground contact face roots include their edges and reject every exterior half-plane" gc_side: 0..<3 {
+  gc_tri := GCTriangle.{a = GCVec.{}, b = GCVec.{z = 2}, c = GCVec.{x = 2}};
+  gc_p := GCVec.{x = 0, y = 1, z = 1}; gc_bad_p := GCVec.{x = -0.5, y = 1, z = 0.5};
+  if gc_side == 1 { gc_p.x = 1; gc_bad_p.x = 1.5; gc_bad_p.z = 1.5; }
+  if gc_side == 2 { gc_p.x = 1; gc_p.z = 0; gc_bad_p.x = 0.5; gc_bad_p.z = -0.5; }
+  gc_q := gc_face_sweep(gc_tri, gc_p, GCVec.{y = -1}, 0.5);
+  #assert gc_q.hit && gc_q.t == 0.5 && gc_q.feature == 0 && gc_q.normal.y == 1;
+  #assert !gc_face_sweep(gc_tri, gc_bad_p, GCVec.{y = -1}, 0.5).hit;
+  gc_p.y = 0.5; gc_at_start := gc_face_sweep(gc_tri, gc_p, GCVec.{y = -1}, 0.5);
+  #assert gc_at_start.hit && gc_at_start.t == 0;
+  gc_p.y = 1.5; #assert gc_face_sweep(gc_tri, gc_p, GCVec.{y = -1}, 0.5).t == 1;
+  gc_p.y = 3; #assert !gc_face_sweep(gc_tri, gc_p, GCVec.{y = -1}, 0.5).hit;
+  gc_p.y = 1; #assert !gc_face_sweep(gc_tri, gc_p, GCVec.{y = 1}, 0.5).hit;
+}
+
+#test "ground contact regions own exact vertices and the rectangle counts both moving axes" {
+  #assert gc_region(2, 0.5, 3, 1.9) == -1 && gc_region(2, 0.5, 3, 2) == 0;
+  #assert gc_region(2, 0.5, 3, 2.49) == 0 && gc_region(2, 0.5, 3, 2.5) == 1;
+  #assert gc_region(2, 0.5, 3, 3) == 2 && gc_region(2, 0.5, 3, 3.5) == 2 && gc_region(2, 0.5, 3, 3.6) == 3;
+  gc_g := Ground.{n = 2, rows = 3, cell = 0.5, west = 2, south = -3};
+  gc_b := gc_bounds(gc_g, world_point(2.75, 0, -1.75), world_point(-1, 0, -1), 0.1);
+  #assert gc_b.x0 == -1 && gc_b.x1 == 1 && gc_b.z0 == 0 && gc_b.z1 == 2 && gc_b.cells == 9;
+  #assert abs(gc_b.lx - 1.65) < 0.00000001 && abs(gc_b.hx - 2.85) < 0.00000001;
+  #assert abs(gc_b.lz + 2.85) < 0.00000001 && abs(gc_b.hz + 1.65) < 0.00000001;
+  gc_one := gc_bounds(gc_g, world_point(2.75, 0, -2.25), world_point(0, 0, 0), 0.1);
+  #assert gc_one.x0 == 1 && gc_one.x1 == 1 && gc_one.z0 == 1 && gc_one.z1 == 1 && gc_one.cells == 1;
+}
+
+#test "ground contact admits its maximum budget and refuses zero-radius moving or collapsed numerical bounds" {
+  gc_g := Ground.{n = 1, cell = 1, west = 0, south = 0}; gc_h: [4] f32;
+  gc_q := ground_overlap(gc_g, gc_h[..], world_point(0.5, 2, 0.5), 0.2, GROUND_CONTACT_CELLS);
+  #assert gc_q.status == GroundRayStatus.ok && !gc_q.hit && gc_q.triangles == 2;
+  #assert ground_sweep(gc_g, gc_h[..], world_point(0.5, 2, 0.5), 0, world_point(0.5, -1, 0.5), 8).status == GroundRayStatus.invalid;
+  #assert ground_overlap(gc_g, gc_h[..], world_point(100, 2, 0), 1.0e-40, 8).status == GroundRayStatus.invalid;
+  #assert ground_overlap(gc_g, gc_h[..], world_point(0, 2, 100), 1.0e-40, 8).status == GroundRayStatus.invalid;
+}
+
+#test "ground contact refuses bad descriptors and short arrays before reading a triangle" {
+  gc_g := Ground.{n = 1, cell = 1, west = 0, south = 0}; gc_h: [4] f32;
+  #assert ground_overlap(gc_g, gc_h[0..<3], world_point(0.5, 2, 0.5), 0.2, 8).status == GroundRayStatus.terrain;
+  gc_g.n = 0;
+  #assert ground_overlap(gc_g, gc_h[..], world_point(0.5, 2, 0.5), 0.2, 8).status == GroundRayStatus.terrain;
+}
+
+#test "ground contact solid-inside sweeps face back along the complete motion" {
+  gc_g := Ground.{n = 1, cell = 1, west = 0, south = 0}; gc_h: [4] f32;
+  gc_q := ground_sweep(gc_g, gc_h[..], world_point(0.5, -3, 0.5), 0.2, world_point(3, 4, 0), 8);
+  #assert gc_q.status == GroundRayStatus.ok && gc_q.hit && gc_q.t == 0 && gc_q.feature == 7;
+  #assert gc_q.normal.x == -0.6 && gc_q.normal.y == -0.8 && gc_q.normal.z == 0;
+}
+
+#forall "ground contact vertical sphere bounds admit neither start nor final extent past the profile" gc_side: 0..<4 {
+  gc_g := Ground.{n = 1, cell = 1, west = 0, south = 0}; gc_h: [4] f32;
+  gc_p := world_point(0.5, 999999, 0.5); gc_by := world_point(0, -2, 0);
+  if gc_side == 1 { gc_p.y = -999999; gc_by.y = 2; }
+  if gc_side == 2 { gc_p.y = 999997; gc_by.y = 2; }
+  if gc_side == 3 { gc_p.y = -999997; gc_by.y = -2; }
+  #assert ground_sweep(gc_g, gc_h[..], gc_p, 1, gc_by, 16).status == GroundRayStatus.invalid;
+}
+
+#test "ground contact ridge features win before neighbouring faces and retain deterministic ties" {
+  gc_g := Ground.{n = 1, cell = 1, west = 0, south = 0};
+  gc_diagonal := [4] f32.[1, 0, 0, 1];
+  gc_d := ground_sweep(gc_g, gc_diagonal[..], world_point(0.5, 3, 0.5), 0.25, world_point(0, -3, 0), 8);
+  #assert gc_d.status == GroundRayStatus.ok && gc_d.hit && abs(gc_d.t - 7.0 / 12) < 0.000000001;
+  #assert gc_d.x == 0 && gc_d.z == 0 && gc_d.triangle == 0 && gc_d.feature == 10 && gc_d.normal.y == 1;
+  gc_g.n = 2; gc_g.rows = 1;
+  gc_ridge := [6] f32.[0, 1, 0, 0, 1, 0];
+  gc_r := ground_sweep(gc_g, gc_ridge[..], world_point(1, 3, 0.5), 0.25, world_point(0, -3, 0), 8);
+  #assert gc_r.status == GroundRayStatus.ok && gc_r.hit && abs(gc_r.t - 7.0 / 12) < 0.000000001;
+  #assert gc_r.x == 0 && gc_r.z == 0 && gc_r.triangle == 0 && gc_r.feature == 13;
+}
+
+#test "ground contact a face normal is geometric while an initial parallel touch faces back" {
+  gc_g := Ground.{n = 1, cell = 1, west = 0, south = 0}; gc_h: [4] f32;
+  gc_q := ground_sweep(gc_g, gc_h[..], world_point(0.2, 2, 0.2), 0.25, world_point(1, -3, 1), 16);
+  #assert gc_q.status == GroundRayStatus.ok && gc_q.hit && gc_q.normal.x == 0 && gc_q.normal.y == 1 && gc_q.normal.z == 0;
+  gc_touch := ground_sweep(gc_g, gc_h[..], world_point(0.4, 0.25, 0.2), 0.25, world_point(0.1, 0, 0), 8);
+  #assert gc_touch.status == GroundRayStatus.ok && gc_touch.hit && gc_touch.t == 0 && gc_touch.normal.x == -1 && gc_touch.normal.y == 0;
+}
+
+#forall "ground contact admits all four original triangle slopes before extending a cell" gc_slope: 0..<4 {
+  gc_g := Ground.{n = 1, cell = 0.5, west = 0, south = 0};
+  gc_tile := GroundRayTile.{ok = true, a = 0, b = 500000, c = 125000, d = 250000};
+  if gc_slope == 1 { gc_tile = GroundRayTile.{ok = true, a = 0, b = 125000, c = 250000, d = 625000}; }
+  if gc_slope == 2 { gc_tile = GroundRayTile.{ok = true, a = 0, b = 125000, c = -125000, d = 375000}; }
+  if gc_slope == 3 { gc_tile = GroundRayTile.{ok = true, a = 0, b = 125000, c = 500000, d = 375000}; }
+  #assert !gc_tile_profile(gc_g, gc_tile, 0, 0);
+}
+
+#test "ground contact uses physical nonbinary cell widths for raw slope admission" {
+  gc_g := Ground.{n = 13, rows = 13, cell = 0.1, west = 100.1, south = -12.3};
+  // The actual f32 vertex differences at index 2, independently recorded.
+  gc_dx: f64 = 0.100006103515625;
+  gc_dz: f64 = 0.10000038146972656;
+  gc_valid := GroundRayTile.{ok = true, a = 100000, b = 100001, c = 100000.5, d = 100001.5};
+  #assert gc_tile_profile(gc_g, gc_valid, 2, 2);
+  gc_limit := GroundRayTile.{ok = true, a = 0, b = gc_dx * 999999, c = gc_dz * 999999, d = (gc_dx + gc_dz) * 999999};
+  #assert gc_tile_profile(gc_g, gc_limit, 2, 2);
+  gc_limit.b = gc_dx * 1000000;
+  #assert !gc_tile_profile(gc_g, gc_limit, 2, 2);
+  gc_limit.b = gc_dx * 999999;
+  gc_limit.c = gc_dz * 1000000;
+  #assert !gc_tile_profile(gc_g, gc_limit, 2, 2);
+}
+
+#test "ground contact refuses a later inadmissible tile even after an earlier hit" {
+  gc_g := Ground.{n = 2, rows = 1, cell = 1, west = 0, south = 0};
+  gc_h := [6] f32.[0, 999999, 1000000, 0, 999999, 1000000];
+  gc_result := ground_sweep(gc_g, gc_h[..], world_point(0.1, 800000, 0.5), 0.1, world_point(1.2, 0, 0), 4);
+  #assert gc_result.status == GroundRayStatus.terrain && !gc_result.hit;
+  gc_steep := [6] f32.[0, 0, 500000, 0, 0, 0];
+  gc_g.cell = 0.5;
+  gc_result = ground_sweep(gc_g, gc_steep[..], world_point(0.1, 2, 0.25), 0.1, world_point(0.8, 0, 0), 8);
+  #assert gc_result.status == GroundRayStatus.terrain && !gc_result.hit;
+}
+
+gc_positive :: (v: f64) -> bool { return v > 0; }
+gc_nonnegative :: (v: f64) -> bool { return v >= 0; }
+gc_nonpositive :: (v: f64) -> bool { return v <= 0; }
+
+gc_vec :: (p: WorldPoint) -> GCVec { return GCVec.{x = f64(p.x), y = f64(p.y), z = f64(p.z)}; }
+gc_add :: (a: GCVec, b: GCVec) -> GCVec { return GCVec.{x = a.x + b.x, y = a.y + b.y, z = a.z + b.z}; }
+gc_sub :: (a: GCVec, b: GCVec) -> GCVec { return GCVec.{x = a.x - b.x, y = a.y - b.y, z = a.z - b.z}; }
+gc_scale :: (a: GCVec, s: f64) -> GCVec { return GCVec.{x = a.x * s, y = a.y * s, z = a.z * s}; }
+gc_dot :: (a: GCVec, b: GCVec) -> f64 { return a.x * b.x + a.y * b.y + a.z * b.z; }
+gc_cross :: (a: GCVec, b: GCVec) -> GCVec {
+  return GCVec.{x = a.y * b.z - a.z * b.y, y = a.z * b.x - a.x * b.z, z = a.x * b.y - a.y * b.x};
+}
+gc_unit :: (a: GCVec) -> GCVec {
+  gc_size := sqrt(gc_dot(a, a));
+  if gc_size == 0 { return GCVec.{y = 1}; }
+  return gc_scale(a, 1 / gc_size);
+}
+
+// Ericson's Voronoi-region solve. Feature order is face0, edges AB/BC/CA1..3,
+// vertices A/B/C4..6; vertices own their boundaries before edges, then the face.
+gc_closest_triangle :: (a: GCVec, b: GCVec, c: GCVec, p: GCVec) -> GCClosest {
+  ab := gc_sub(b, a); ac := gc_sub(c, a); ap := gc_sub(p, a);
+  d1 := gc_dot(ab, ap); d2 := gc_dot(ac, ap);
+  if d1 <= 0 && d2 <= 0 { return GCClosest.{point = a, feature = 4}; }
+  bp := gc_sub(p, b); d3 := gc_dot(ab, bp); d4 := gc_dot(ac, bp);
+  if d3 >= 0 && d4 <= d3 { return GCClosest.{point = b, feature = 5}; }
+  vc := d1 * d4 - d3 * d2;
+  if vc <= 0 && gc_nonnegative(d1) && gc_nonpositive(d3) { return GCClosest.{point = gc_add(a, gc_scale(ab, d1 / (d1 - d3))), feature = 1}; }
+  cp := gc_sub(p, c); d5 := gc_dot(ab, cp); d6 := gc_dot(ac, cp);
+  if d6 >= 0 && d5 <= d6 { return GCClosest.{point = c, feature = 6}; }
+  vb := d5 * d2 - d1 * d6;
+  if vb <= 0 && gc_nonnegative(d2) && gc_nonpositive(d6) { return GCClosest.{point = gc_add(a, gc_scale(ac, d2 / (d2 - d6))), feature = 3}; }
+  va := d3 * d6 - d5 * d4;
+  // The previously refused vertex/AB/AC regions leave only the BC edge or the face.
+  if va <= 0 {
+    return GCClosest.{point = gc_add(b, gc_scale(gc_sub(c, b), (d4 - d3) / ((d4 - d3) + (d5 - d6)))), feature = 2};
+  }
+  gc_inverse := 1 / (va + vb + vc);
+  return GCClosest.{point = gc_add(a, gc_add(gc_scale(ab, vb * gc_inverse), gc_scale(ac, vc * gc_inverse))), feature = 0};
+}
+
+gc_keep :: (a: GCFeature, b: GCFeature) -> GCFeature {
+  if b.hit && (!a.hit || b.t < a.t) { return b; }
+  return a;
+}
+
+// The closest point on the complete infinite ray supplies a stable quadratic root.
+// Testing the closest distance avoids subtracting two large nearly equal discriminants.
+gc_sphere_sweep :: (gc_centre_pos: GCVec, o: GCVec, by: GCVec, r: f64, feature: int) -> GCFeature {
+  dd := gc_dot(by, by);
+  if dd == 0 { return GCFeature.{}; }
+  m := gc_sub(o, gc_centre_pos); middle := -gc_dot(m, by) / dd;
+  q := gc_add(m, gc_scale(by, middle)); gap := r * r - gc_dot(q, q);
+  if gap < 0 { return GCFeature.{}; }
+  t := middle - sqrt(gap / dd);
+  if t < 0 || t > 1 { return GCFeature.{}; }
+  return GCFeature.{hit = true, t = t, normal = gc_unit(gc_add(m, gc_scale(by, t))), feature = feature};
+}
+
+gc_edge_sweep :: (a: GCVec, b: GCVec, o: GCVec, by: GCVec, r: f64) -> GCFeature {
+  ab := gc_sub(b, a); m := gc_sub(o, a); size := gc_dot(ab, ab);
+  dc := gc_cross(by, ab); mc := gc_cross(m, ab); qa := gc_dot(dc, dc);
+  gc_best: GCFeature;
+  if gc_positive(qa) {
+    middle := -gc_dot(mc, dc) / qa;
+    q := gc_add(mc, gc_scale(dc, middle)); gap := r * r * size - gc_dot(q, q);
+    if gap >= 0 {
+      t := middle - sqrt(gap / qa);
+      fraction := (gc_dot(m, ab) + t * gc_dot(by, ab)) / size;
+      if t >= 0 && t <= 1 && fraction >= 0 && fraction <= 1 {
+        gc_centre_pos := gc_add(o, gc_scale(by, t)); gc_axis_point := gc_add(a, gc_scale(ab, fraction));
+        gc_best = GCFeature.{hit = true, t = t, normal = gc_unit(gc_sub(gc_centre_pos, gc_axis_point)), feature = 0};
+      }
+    }
+  }
+  gc_best = gc_keep(gc_best, gc_sphere_sweep(a, o, by, r, 1));
+  return gc_keep(gc_best, gc_sphere_sweep(b, o, by, r, 2));
+}
+
+gc_face_sweep :: (tri: GCTriangle, o: GCVec, by: GCVec, r: f64) -> GCFeature {
+  ab := gc_sub(tri.b, tri.a); ac := gc_sub(tri.c, tri.a); n := gc_unit(gc_cross(ab, ac));
+  change := gc_dot(n, by);
+  if change == 0 { return GCFeature.{}; }
+  t := (r - gc_dot(n, gc_sub(o, tri.a))) / change;
+  if t < 0 || t > 1 { return GCFeature.{}; }
+  p := gc_sub(gc_add(o, gc_scale(by, t)), gc_scale(n, r));
+  if gc_dot(gc_cross(ab, gc_sub(p, tri.a)), n) < 0
+    || gc_dot(gc_cross(gc_sub(tri.c, tri.b), gc_sub(p, tri.b)), n) < 0
+    || gc_dot(gc_cross(gc_sub(tri.a, tri.c), gc_sub(p, tri.c)), n) < 0 { return GCFeature.{}; }
+  return GCFeature.{hit = true, t = t, normal = n, feature = 0};
+}
+
+gc_region :: (origin: f32, gc_cell_size: f32, n: int, p: f64) -> int {
+  if p < f64(origin) { return -1; }
+  if p > f64(origin + f32(n) * gc_cell_size) { return n; }
+  gc_low := 0; gc_high := n;
+  while gc_high - gc_low > 1 {
+    gc_middle := (gc_low + gc_high) / 2;
+    if p < f64(origin + f32(gc_middle) * gc_cell_size) { gc_high = gc_middle; } else { gc_low = gc_middle; }
+  }
+  return gc_low;
+}
+
+gc_bounds :: (g: Ground, p: WorldPoint, by: WorldPoint, r: f32) -> GCBounds {
+  mx := f64(p.x) + f64(by.x) / 2; mz := f64(p.z) + f64(by.z) / 2;
+  ex := abs(f64(by.x)) / 2 + f64(r); ez := abs(f64(by.z)) / 2 + f64(r);
+  gc_box := GCBounds.{lx = mx - ex, hx = mx + ex, lz = mz - ez, hz = mz + ez};
+  gc_box.x0 = gc_region(g.west, g.cell, g.n, gc_box.lx); gc_box.x1 = gc_region(g.west, g.cell, g.n, gc_box.hx);
+  gc_box.z0 = gc_region(g.south, g.cell, ground_rows(g), gc_box.lz); gc_box.z1 = gc_region(g.south, g.cell, ground_rows(g), gc_box.hz);
+  gc_box.cells = (gc_box.x1 - gc_box.x0 + 1) * (gc_box.z1 - gc_box.z0 + 1);
+  return gc_box;
+}
+
+// Caller has admitted the descriptor and view. A virtual edge cell repeats its edge's
+// heights, so its triangles have zero gradient along the extended gc_axis_point.
+gc_triangle :: (g: Ground, tile: GroundRayTile, gc_bounds_arg: GCBounds, x: int, z: int, triangle: int) -> GCTriangle {
+  x0 := f64(g.west + f32(x) * g.cell); x1 := f64(g.west + f32(x + 1) * g.cell);
+  z0 := f64(g.south + f32(z) * g.cell); z1 := f64(g.south + f32(z + 1) * g.cell);
+  ha := tile.a; hb := tile.b; hc := tile.c; hd := tile.d;
+  if x == -1 { x0 = gc_bounds_arg.lx; hb = ha; hd = hc; }
+  else if x == g.n { x1 = gc_bounds_arg.hx; ha = hb; hc = hd; }
+  if z == -1 { z0 = gc_bounds_arg.lz; hc = ha; hd = hb; }
+  else if z == ground_rows(g) { z1 = gc_bounds_arg.hz; ha = hc; hb = hd; }
+  a := GCVec.{x = x0, y = ha, z = z0}; ne := GCVec.{x = x1, y = hd, z = z1};
+  if triangle == 0 { return GCTriangle.{a = a, b = ne, c = GCVec.{x = x1, y = hb, z = z0}}; }
+  return GCTriangle.{a = a, b = GCVec.{x = x0, y = hc, z = z1}, c = ne};
+}
+
+gc_tile_profile :: (g: Ground, tile: GroundRayTile, x: int, z: int) -> bool {
+  dx := f64(g.west + f32(x + 1) * g.cell) - f64(g.west + f32(x) * g.cell);
+  dz := f64(g.south + f32(z + 1) * g.cell) - f64(g.south + f32(z) * g.cell);
+  return ground_finite(f32((tile.b - tile.a) / dx)) && ground_finite(f32((tile.d - tile.b) / dz))
+    && ground_finite(f32((tile.d - tile.c) / dx)) && ground_finite(f32((tile.c - tile.a) / dz));
+}
+
+ground_contact :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldPoint, cells: int) -> GroundContact {
+  if cells < 1 || cells > GROUND_CONTACT_CELLS || !ground_finite(r) || !(r > 0)
+    || !ground_finite(p.x) || !ground_finite(p.y) || !ground_finite(p.z)
+    || !ground_finite(by.x) || !ground_finite(by.y) || !ground_finite(by.z) { return GroundContact.{}; }
+  // This bounded zero-range probe also admits the descriptor, complete view and local
+  // triangle before the rectangle search can use them. It visits exactly one cell.
+  gc_inside_probe := ground_ray(g, heights, p, world_point(0, -1, 0), 0, GROUND_RAY_CELLS);
+  if gc_inside_probe.status != GroundRayStatus.ok { return GroundContact.{status = gc_inside_probe.status}; }
+  gc_box := gc_bounds(g, p, by, r);
+  if !ground_ray_finite(gc_box.lx) || !ground_ray_finite(gc_box.hx) || !ground_ray_finite(gc_box.lz) || !ground_ray_finite(gc_box.hz)
+    || !ground_ray_finite(f64(p.y) - f64(r)) || !ground_ray_finite(f64(p.y) + f64(r))
+    || !ground_ray_finite(f64(p.y) + f64(by.y) - f64(r)) || !ground_ray_finite(f64(p.y) + f64(by.y) + f64(r))
+    || !(gc_box.hx > gc_box.lx) || !(gc_box.hz > gc_box.lz) { return GroundContact.{}; }
+  if gc_box.cells > cells { return GroundContact.{status = GroundRayStatus.exhausted, cells = gc_box.cells}; }
+  start := gc_vec(p); motion := gc_vec(by); moving := gc_dot(motion, motion) > 0;
+  if gc_inside_probe.hit {
+    normal := GCVec.{y = 1}; if moving { normal = gc_scale(gc_unit(motion), -1); }
+    return GroundContact.{status = GroundRayStatus.ok, hit = true, point = p,
+      normal = GroundNormal.{x = f32(normal.x), y = f32(normal.y), z = f32(normal.z)}, cells = gc_box.cells,
+      x = gc_inside_probe.x, z = gc_inside_probe.z, triangle = gc_inside_probe.triangle, feature = 7};
+  }
+  gc_result := GroundContact.{status = GroundRayStatus.ok, cells = gc_box.cells};
+  gc_tested := 0;
+  for zi: gc_box.z0..<gc_box.z1 + 1 { for xi: gc_box.x0..<gc_box.x1 + 1 {
+    original_x := xi; original_z := zi;
+    if xi == -1 { original_x = 0; } else if xi == g.n { original_x = g.n - 1; }
+    if zi == -1 { original_z = 0; } else if zi == ground_rows(g) { original_z = ground_rows(g) - 1; }
+    tile := ground_ray_tile(g, heights, original_x, original_z);
+    if !tile.ok || !gc_tile_profile(g, tile, original_x, original_z) { return GroundContact.{status = GroundRayStatus.terrain, cells = gc_box.cells}; }
+    for ti: 0..<2 {
+      gc_tested += 1;
+      tri := gc_triangle(g, tile, gc_box, xi, zi, ti);
+      gc_near := gc_closest_triangle(tri.a, tri.b, tri.c, start);
+      delta := gc_sub(start, gc_near.point); gap := gc_dot(delta, delta);
+      gc_candidate: GCFeature;
+      if gap < f64(r) * f64(r) || (moving && gap == f64(r) * f64(r)) {
+        gc_candidate = GCFeature.{hit = true, normal = gc_unit(delta), feature = gc_near.feature};
+      } else if moving {
+        gc_candidate = gc_face_sweep(tri, start, motion, f64(r));
+        ends := [3] GCVec.[tri.a, tri.b, tri.c];
+        for ei: 0..<3 {
+          gc_edge := gc_edge_sweep(ends[ei], ends[(ei + 1) % 3], start, motion, f64(r));
+          gc_edge.feature += 10 + ei * 3;
+          gc_candidate = gc_keep(gc_candidate, gc_edge);
+        }
+      }
+      if gc_candidate.hit && (!gc_result.hit || gc_candidate.t < gc_result.t) {
+        normal := gc_candidate.normal;
+        if gc_candidate.t == 0 && moving { normal = gc_scale(gc_unit(motion), -1); }
+        gc_centre_pos := gc_add(start, gc_scale(motion, gc_candidate.t));
+        gc_result = GroundContact.{status = GroundRayStatus.ok, hit = true, t = gc_candidate.t,
+          point = world_point(f32(gc_centre_pos.x), f32(gc_centre_pos.y), f32(gc_centre_pos.z)),
+          normal = GroundNormal.{x = f32(normal.x), y = f32(normal.y), z = f32(normal.z)},
+          cells = gc_box.cells, x = xi, z = zi, triangle = ti, feature = gc_candidate.feature};
+      }
+    }
+  } }
+  gc_result.triangles = gc_tested;
+  return gc_result;
+}
+
+ground_overlap :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, cells: int) -> GroundContact {
+  return ground_contact(g, heights, p, r, world_point(0, 0, 0), cells);
+}
+ground_sweep :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldPoint, cells: int) -> GroundContact {
+  return ground_contact(g, heights, p, r, by, cells);
+}

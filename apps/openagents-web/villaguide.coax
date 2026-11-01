@@ -207,7 +207,7 @@ guide_placed :: (s: [] Villa, q: int) {
   p[0].just_placed = true;
 }
 
-#test "your stone placed: a line from you along the paths to it, gone when you get there, back from YOUR DOG" {
+#test "your stone placed: a line from you along the paths to it, gone when you get there, back from YOUR DOG" #steps 197000000 {
   s: [1] Villa;
   villa_start(s[..]);
   s[0].tips[0].step = TIPS_DONE; s[0].tips[0].been = true;

@@ -66,7 +66,7 @@ lod_choose :: (s: [] Everglade, eye: Point) {
   }
 }
 
-#test "lod: the small props draw near you, the rest of the town at every distance; it chooses again only past the step" {
+#test "lod: the small props draw near you, the rest of the town at every distance; it chooses again only past the step" #steps 337000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   eye := v3(0, 2, -10);

@@ -3885,7 +3885,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 // ---- checks
 
-#test "the uniforms and shape slots line up with everglade.wgsl's" {
+#test "the uniforms and shape slots line up with everglade.wgsl's" #steps 337000000 {
   #assert UNIFORM_FLOATS % 4 == 0;
   #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 760 && STYLE_AT == 1084 && U_SOLID == 1212 && U_LIGHT_INFO == 1340 && U_LIGHTS == 1344 && U_WEATHER == 1472 && U_PONDS == 1484 && U_FX == 1500 && U_TIDE == 1500 + 149 * 4 && U_MARKS == U_TIDE + 8 && UNIFORM_FLOATS == U_MARKS + MK_FLOATS;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
@@ -3900,7 +3900,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert EG_LINKS <= PATHS && EG_SQUARES <= SQUARES;
 }
 
-#test "a frame draws the whole city within its slots, and you in front of the camera" {
+#test "a frame draws the whole city within its slots, and you in front of the camera" #steps 350000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -3925,7 +3925,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert cw > 0 && abs(cx / cw) < 1 && abs(cy / cw) < 1;
 }
 
-#test "the trees fill the woods: off the trails and out of the city, a metre clear of the open ground" {
+#test "the trees fill the woods: off the trails and out of the city, a metre clear of the open ground" #steps 438000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
@@ -3963,7 +3963,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 3474 0 0 0 0 1 8 1\nM Pine_4 4938 6480 0 0 0 0 1 9 1\nM Pine_4_Leaves 11418 3630 0 0 0 0 1 9 1 canopy ellipsoid 33 98 0\nM CommonTree_3 15048 5115 0 0 0 0 1 8 1\nM CommonTree_3_Leaves 20163 5400 0 0 0 0 1 9 1 canopy sphere 97 198 0\nM CommonTree_4 25563 9840 0 0 0 0 1 8 1\nM CommonTree_4_Leaves 35403 2358 0 0 0 0 1 9 1\nM Bush_Common_Flowers 37761 4104 0 0 0 0 1 1 1\nM Fern_1 40461 864 0 0 0 0 1 1 1\nM Rock_Medium_1 41325 1026 0 0 0 0 1 2 1\nM Rock_Medium_2 42351 732 0 0 0 0 1 2 1\nI 43083 1024\nC player/male-ranger 44107 94188 3 692676 27402 75\nC people/male-peasant 246666 20058 4 911892 5751 65\nC people/male-ranger 266724 32610 4 946398 10887 65\nC people/male-hood 299334 3204 4 1011720 706 65\nC people/female-peasant 302538 19422 4 1015956 6185 65\nC people/female-ranger 321960 34032 4 1053066 11408 65\nC people/female-hood 355992 3204 4 1121514 706 65\nC people/male-head 359196 8268 4 1125750 1837 65\nC people/female-head 367464 9480 4 1136772 2058 65\nC people/hair-parted 376944 2337 4 1149120 496 65\nC people/hair-buzzed 379281 1494 4 1152096 300 65\nC people/hair-beard 380775 1860 4 1153896 389 65\nC people/hair-long 382635 8598 4 1156230 3060 65\nC people/hair-buns 391233 9732 4 1174590 3481 65\nC people/hair-buzzed-female 400965 1494 4 1195476 300 65\nC people/male-robe 402459 1920 5 1197276 360 65\nC people/female-robe 404379 1920 5 1199436 360 65\nT 0 layer29.jpg 0\n";
 
-#test "the pack's catalog: the kit's meshes by name and the shapes' identity indices; nothing draws before it" {
+#test "the pack's catalog: the kit's meshes by name and the shapes' identity indices; nothing draws before it" #steps 351000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -3997,14 +3997,14 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert !g[0].pack_failed;
 }
 // (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
-#test "the pack's catalog: a pack that fails before its catalog draws nothing" {
+#test "the pack's catalog: a pack that fails before its catalog draws nothing" #steps 337000000 {
   h: [1] Everglade;
   everglade_start(h[..]);
   everglade_pack_failed(h[..]);
   #assert h[0].pack_failed && everglade_draws(h[..]) == 0;
 }
 
-#test "you are the old Everglade's Ranger: one skinned draw, standing on the ground, facing your way" {
+#test "you are the old Everglade's Ranger: one skinned draw, standing on the ground, facing your way" #steps 352000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4033,22 +4033,13 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert RANGER_TRIANGLES == 31396 && g[0].kit_triangles >= RANGER_TRIANGLES;
 }
 // (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
-#test "no C line, no Ranger: nothing drawn for it, the rest draws" {
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  d := RANGER_DRAW * 4;
-  h: [1] Everglade;
-  everglade_start(h[..]);
-  everglade_catalog(h[..], "pack everglade\nI 43083 1024\n");
-  n := everglade_frame(h[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert h[0].pack_ready && h[0].draws[d + 3] == 0;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
 moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   n := everglade_frame(g, out, u, 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, act, 0, vz, false, 0, 0, 0, 0);
 }
 
-#test "on a still page the Ranger standing idle holds one pose, however long the page has run" {
+#test "on a still page the Ranger standing idle holds one pose, however long the page has run" #steps 813000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4062,7 +4053,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   for i: 0..<12 * 8 { #assert g[0].palette[i] == a[i]; }
 }
 
-#test "the controller's state picks the clip: idle, walk, run, and jump in the air" {
+#test "the controller's state picks the clip: idle, walk, run, and jump in the air" #steps 382000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4082,7 +4073,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert g[0].skin[0].clip == SKIN_IDLE;
 }
 
-#test "the Ranger's pose is the old engine's: its joints and what they skin, part way into every clip" {
+#test "the Ranger's pose is the old engine's: its joints and what they skin, part way into every clip" #steps 32000000 {
   d: [1] Ranger;
   ranger_load(d[..]);
   rig := ranger_rig(d[..]);
@@ -4110,7 +4101,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert worst < 0.001;
 }
 
-#test "the people: the catalog names their parts, and the nearest in view are drawn a part an instance, posed" {
+#test "the people: the catalog names their parts, and the nearest in view are drawn a part an instance, posed" #steps 367000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4140,7 +4131,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert WATER_DRAW == DRAWS - 1;
 }
 
-#test "a phone draws at most its cap of kit trees, however you look" {
+#test "a phone draws at most its cap of kit trees, however you look" #steps 429000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4172,7 +4163,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert g[0].water_triangles == 5760 && whole + g[0].water_triangles < 700000;
 }
 
-#test "the camera stays out of the trees: among them it pulls in before a trunk" {
+#test "the camera stays out of the trees: among them it pulls in before a trunk" #steps 459000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4191,7 +4182,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   }
 }
 
-#test "the woods are open and the world's edge is the thicket: a step stops only at EG_BOUND" {
+#test "the woods are open and the world's edge is the thicket: a step stops only at EG_BOUND" #steps 490000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   // Straight out from the south wall, west of the gate, into the trees: nothing stops you.
@@ -4227,39 +4218,9 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   }
 }
 
-#test "from the road in past the boulder by it: round the rock and on into the trees" {
-  g: [1] Everglade;
-  everglade_start(g[..]);
-  everglade_catalog(g[..], CATALOG);
-  // The mossy boulder west of the road below the stables (the owner's screenshot, 2026-10-30): the
-  // undergrowth's Rock_Medium_1 at (-4.76, -75.37). Find it, and its girth.
-  rock := -1;
-  for t: 0..<g[0].small_n {
-    o := t * TREE_FLOATS;
-    if abs(g[0].smalls[o] + 4.76) < 0.05 && abs(g[0].smalls[o + 1] + 75.37) < 0.05 { rock = t; }
-  }
-  #assert rock >= 0;
-  stone := tree_girth(g[..], g[0].smalls[..], rock);
-  #assert stone.r > 1.4 && stone.r < 1.7;
-  // It stands in your way where it is drawn: walking at its middle you stop at its face.
-  face := walk_toward(g[..], v3(0, 0, stone.z), v3(stone.x, 0, stone.z), 400);
-  gap := sqrt((face.x - stone.x) * (face.x - stone.x) + (face.z - stone.z) * (face.z - stone.z));
-  #assert gap > stone.r && gap < stone.r + f32(EG_RADIUS) + 0.05;
-  // From the spawn up the road, then round the pine on its north side (its trunk touches the
-  // rock) and on west and south into the woods behind it.
-  a := walk_toward(g[..], everglade_spawn(g[..]), v3(0, 0, -72), 2000);
-  #assert abs(a.x) < 0.01 && abs(a.z + 72) < 0.01;
-  b := walk_toward(g[..], a, v3(-5.2, 0, -72.2), 2000);
-  b = walk_toward(g[..], b, v3(-8, 0, -72.6), 2000);
-  #assert abs(b.x + 8) < 0.01 && abs(b.z + 72.6) < 0.01;
-  c := walk_toward(g[..], b, v3(-12, 0, -78), 2000);
-  #assert abs(c.x + 12) < 0.01 && abs(c.z + 78) < 0.01;
-  // and on to the woods' far corner, the thicket at the edge
-  e := walk_toward(g[..], c, v3(-99.5, 0, -99.5), 30000);
-  #assert abs(e.x + 99.5) < 0.01 && abs(e.z + 99.5) < 0.01;
-}
+// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
-#test "the reach check: every open spot inside the edge is one you walk to" {
+#test "the reach check: every open spot inside the edge is one you walk to" #steps 359000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   everglade_catalog(g[..], CATALOG);
@@ -4273,7 +4234,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert reached(grid[..], 22, 95) && reached(grid[..], 66, 89.5) && reached(grid[..], 96, -16) && reached(grid[..], 95, 40);
 }
 
-#test "M lifts the camera over the city and back; you stand still meanwhile" {
+#test "M lifts the camera over the city and back; you stand still meanwhile" #steps 467000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4296,7 +4257,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   house_tint(g[..], PLASTER_TINTS, 2, 0);
   #assert a != g[0].kit_tint[1] && g[0].kit_tint[0] > 0.9;
 }
-#test "a hash names a place: you start on the street nearest it, facing it" {
+#test "a hash names a place: you start on the street nearest it, facing it" #steps 337000000 {
   g: [1] Everglade;
   everglade_hash(g[..], "market");
   #assert everglade_warp(g[..]) && !everglade_warp(g[..]);
@@ -4338,7 +4299,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   }
 }
 
-#test "a click on MAP lifts the camera; a drag elsewhere turns it" {
+#test "a click on MAP lifts the camera; a drag elsewhere turns it" #steps 350000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4359,7 +4320,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert where(v3(33, 0, 1)) == "THE MARKET" && where(v3(0, 0, -86)) == "THE ROAD IN";
 }
 
-#test "walk up to someone and press E: you type, they answer through the character chat, and E ends nothing else" {
+#test "walk up to someone and press E: you type, they answer through the character chat, and E ends nothing else" #steps 369000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4400,7 +4361,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_key(g[..], KEY_ESCAPE, 0) && g[0].talk == -1 && !everglade_busy(g[..]);
 }
 
-#test "what the keyboard field types reaches the conversation and is drawn in a box with a caret (host.js MSG_TEXT)" {
+#test "what the keyboard field types reaches the conversation and is drawn in a box with a caret (host.js MSG_TEXT)" #steps 370000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4437,7 +4398,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   }
 }
 
-#test "#quest-board starts you at the board, near enough to read it" {
+#test "#quest-board starts you at the board, near enough to read it" #steps 350000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4450,7 +4411,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert !everglade_key(g[..], 'b', 0) && !everglade_key(g[..], 'B', 0);
 }
 
-#test "a phone taps TALK and BYE; a cat answers as a cat when the server can't; an unanswered question is given up" {
+#test "a phone taps TALK and BYE; a cat answers as a cat when the server can't; an unanswered question is given up" #steps 364000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4482,7 +4443,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_action(g[..]) == ACT_PLAYER && cast(string) g[0].outbox[0..<g[0].out_n] == "{\"key\":\"k\",\"id\":\"p-2\"}";
 }
 
-#test "the quest board: take a quest, go out to the deep wood, talk to Moss, hand it in; it's kept for this player" {
+#test "the quest board: take a quest, go out to the deep wood, talk to Moss, hand it in; it's kept for this player" #steps 392000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4542,7 +4503,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_pointer(g[..], cb.x0 + 2, cb.y0 + 2, 0, 1, 5) && everglade_pointer(g[..], cb.x0 + 2, cb.y0 + 2, 2, 1, 5) && !g[0].board;
 }
 
-#test "the river quest earns the flock, handed in to the crier; a save comes back for its player only" {
+#test "the river quest earns the flock, handed in to the crier; a save comes back for its player only" #steps 538000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4576,20 +4537,9 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
 }
 
 // (its own test: three Everglades in one test outgrow the compile-time store)
-#test "a quest save comes back for its player only" {
-  // a save given back before the facts; then the facts say whose browser it is
-  h: [1] Everglade;
-  everglade_message(h[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
-  #assert h[0].stages[0] == EG_QUEST_DONE && h[0].stages[1] == 2 && h[0].flock;
-  everglade_message(h[..], MSG_FACTS, "now=1\nplayer=p-1\n");
-  #assert h[0].stages[1] == 2 && h[0].flock;
-  o: [1] Everglade;
-  everglade_message(o[..], MSG_KEPT, "eg-quests 1\nplayer=p-1\nq=9,2,9\n");
-  everglade_message(o[..], MSG_FACTS, "now=1\nplayer=p-2\n");
-  #assert o[0].stages[0] == 0 && o[0].stages[1] == 0 && !o[0].flock;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "a conversation keeps its last lines, oldest dropped" {
+#test "a conversation keeps its last lines, oldest dropped" #steps 337000000 {
   g: [1] Everglade;
   everglade_start(g[..]);
   talk_to(g[..], 11);
@@ -4602,7 +4552,7 @@ contains :: (text: string, part: string) -> bool {
   for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
   return false;
 }
-#test "the painterly day: the page's clock picks the preset, its key lights the realm, a still page shows noon" {
+#test "the painterly day: the page's clock picks the preset, its key lights the realm, a still page shows noon" #steps 350000000 {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -4617,15 +4567,7 @@ contains :: (text: string, part: string) -> bool {
   #assert m > 0;
 }
 // (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
-#test "the painterly day: a cycling clock on a still page shows noon" {
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  c: [1] Everglade;
-  everglade_message(c[..], MSG_FACTS, "realm=everglade\nclock=cycle\nnow=1000000");
-  #assert c[0].day.mode == STYLE_CLOCK_CYCLE;
-  n := everglade_frame(c[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert n > 0 && c[0].clock == 0.5 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.5) < 0.001;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
 #test "every look has its own number (everglade.wgsl's LOOK_*)" {
   looks := [11] int.[LOOK_MATTE, LOOK_LEAVES, LOOK_STONE, LOOK_SKIN, LOOK_WATER, LOOK_KIT, LOOK_CARVED, LOOK_ROCK, LOOK_PLANKS, LOOK_WOOD, LOOK_FLAME];
@@ -4669,20 +4611,4 @@ EVERGLADE_BUDGET :: FrameBudget.{steps = 8, vertices = 6000, draws = DRAWS, byte
 
 // A walk from the gate: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
-#test "Everglade's frames fit its declared budget" {
-  #assert budget_declared(EVERGLADE_BUDGET, MAX_VERTICES) == BUDGET_NONE;
-  frames := 3;
-  m := [1] BudgetMeter.[budget_meter(EVERGLADE_BUDGET)];
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  bytes := budget_arena_bytes(size_of(Everglade), MAX_VERTICES, VERTEX_FLOATS, UNIFORM_FLOATS);
-  for i: 0..<BUDGET_SCREENS {
-    s: [1] Everglade;
-    sc := budget_screen(i);
-    for f: 0..<frames {
-      dt := ifx f < frames - 1 then 1.0f32 / 60.0 else 0.1f32;
-      n := everglade_frame(s[..], out[..], u[..], sc.width, sc.height, sc.dpr, dt, false, 0, 0, -84 + f32(f) * 0.05, 0, 0, 0, 0, false, 0, 0, 0, 0);
-      budget_measure(m[..], n, everglade_draws(s[..]), bytes);
-    }
-  }
-  #assert budget_ok(m[0]);
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).

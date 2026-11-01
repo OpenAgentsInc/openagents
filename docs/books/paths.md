@@ -75,9 +75,12 @@ coax/build.sh
 python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax
 ```
 
-It ends with `book execution: 34 runs match output and exit status`. This
-gate was checked again on 2026-11-01 with `coax0 0.46.0`; the other commands
-on this page retain their original qualification above.
+It ends with `book execution: 36 runs match output and exit status`. The
+2026-11-01 qualification uses `coax0 0.46.0`: 18 changed-closure runs pass
+freshly, and 18 identical runs retain their passing result from `3c3b4c3a39`.
+The [record](../../aethyr/tests/book-chapter8-qualification.json) binds their
+source closures, fixtures and compiler. Other commands on this page retain
+their original qualification above.
 
 To play a realm in the browser:
 

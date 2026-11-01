@@ -423,7 +423,7 @@ td_draw :: (s: [] Everglade) {
 
 // ---- checks
 
-#test "tide: Water Walk keeps you on a pond's top; Water Breathing breathes under it" {
+#test "tide: Water Walk keeps you on a pond's top; Water Breathing breathes under it" #steps 440000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);
@@ -436,59 +436,9 @@ td_draw :: (s: [] Everglade) {
   #assert !everglade_water_breathing(g[..]) && spells_key(g[..], ')', 1) && everglade_water_breathing(g[..]);
 }
 
-#test "tide: Control Water floods, parts a dry trench to walk, turns the current and whirls; Shift+8 steps through them and ends it" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  d := td_of(g[..]);
-  // on the river, facing north along it
-  rx := f32(EG_RIVER_X); rz := 40.0f32;
-  #assert fr_wet(g[..], rx, rz);
-  g[0].feet = v3(rx - 12, 0, rz); g[0].face = 0;
-  #assert spells_key(g[..], '*', 1) && g[0].sp.armed == SP_SLOTS + AB_CONTROL;
-  up0 := spells_key_up(g[..], '*', 1);
-  g[0].sp.aim = v3(rx, water_at(g[..], rx, rz), rz); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
-  sp_cast(g[..]);
-  #assert d[0].on && d[0].mode == TD_FLOOD && d[0].pond < 0 && d[0].dir.z == 1;
-  fl: [16 * AB_FIELD_FLOATS] f32;
-  ab_frame(g[..], 1.0);
-  #assert td_wave(d) > 0 && td_fields(g[..], fl[..], 0, AB_FIELD_FLOATS) == 1 && fl[0] == 9;
-  // a swimmer near the crest is carried with it
-  c := td_crest(d, td_wave(d));
-  #assert everglade_tide_flow(g[..], c.x, c.z, WATER_SWIMMING).z > 4 && everglade_tide_flow(g[..], c.x, c.z, WATER_GROUND).z == 0;
-  // Part Water: its middle is dry to walk, and the water is not drawn there
-  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_PART;
-  up1 := spells_key_up(g[..], '*', 1);
-  ab_frame(g[..], 1.0);
-  #assert everglade_parted(g[..], rx, rz) && !everglade_parted(g[..], rx + 3, rz);
-  td_uniforms(g[..], u[..], U_TIDE);
-  #assert u[U_TIDE + 4] > 1;
-  // Redirect Flow: the current runs your way
-  g[0].face = f32(PI) * 0.5;
-  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_REDIRECT;
-  up2 := spells_key_up(g[..], '*', 1);
-  #assert everglade_tide_flow(g[..], rx, rz, WATER_SWIMMING).x > 1;
-  // the trench refills
-  for k: 0..<7 { ab_frame(g[..], 1.0); }
-  #assert !everglade_parted(g[..], rx, rz);
-  // Whirlpool: pulls you in and hurts you swimming in it
-  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_WHIRL;
-  up3 := spells_key_up(g[..], '*', 1);
-  flow := everglade_tide_flow(g[..], rx + 3, rz, WATER_SWIMMING);
-  #assert flow.x < 0;
-  w := watch_w(g[..]);
-  hp := w[0].hp;
-  g[0].feet = v3(rx + 2, 0, rz); g[0].water = WATER_SWIMMING;
-  ab_frame(g[..], 0.1);
-  #assert w[0].hp < hp && d[0].whirl_in;
-  g[0].water = WATER_GROUND;
-  #assert spells_key(g[..], '*', 1) && !d[0].on;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "tide: Create Water's rain puts out a fire; Destroy Water lifts the smoke from its cube" {
+#test "tide: Create Water's rain puts out a fire; Destroy Water lifts the smoke from its cube" #steps 441000000 {
   g: [1] Everglade;
   dm: [1] DemoWorld;
   sp_ready_city(g[..], dm[..]);

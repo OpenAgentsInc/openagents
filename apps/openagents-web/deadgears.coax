@@ -23,6 +23,8 @@
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../aethyr/budget.coax";
 #load "../../verse/player.coax" as pc;   // the controller every walkable realm shares (#6d99)
+#load "../../aethyr/collision-profiles.coax" as walk_profiles;
+#load "../../aethyr/collide.coax" as walk_capsule;
 #load "../../verse/figure.coax" as fig;  // the creatures' bodies and gaits (#ea44)
 
 VERTEX_FLOATS :: 16;
@@ -705,6 +707,7 @@ put_wall :: (s: [] DeadGears, i: int, lo_: Point, hi_: Point) {
 }
 the_world :: (s: [] DeadGears) -> pc.World {
   w: pc.World;
+  w.collision = walk_profiles.collision_profile_lookup("dead-gears").profile;
   w.walls = s[0].walls[0..<s[0].wall_n * 6];
   w.bodies = s[0].bodies[0..<s[0].body_n * 7];
   return w;
@@ -2041,7 +2044,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   #assert U_SHADOW == 380 && U_OCC == 476 && U_PLATE == 556 && UNIFORM_FLOATS == 684;
 }
 
-#test "you walk without sliding: the foot on the deck stays put while you go (#4d39)" {
+#test "you walk without sliding: the foot on the deck stays put while you go (#4d39)" #steps 70000000 {
   s: [1] DeadGears;
   started(s[..]);
   for pace: 0..<2 {
@@ -2129,7 +2132,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   #assert u[U_INFO] >= 24 && u[U_INFO + 2] == 8;
 }
 
-#test "every creature type and the severed parts draw, and 200 more fit" {
+#test "every creature type and the severed parts draw, and 200 more fit" #steps 123000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2144,7 +2147,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   #assert dg_alive_mutants(g) >= 200 && s[0].dropped == 0 && s[0].obj_n > base + 200 * 8;
 }
 
-#test "keys: fire holds, the actions press, Escape pauses and the fight stops" {
+#test "keys: fire holds, the actions press, Escape pauses and the fight stops" #steps 120000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2163,7 +2166,26 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   #assert s[0].paused;
 }
 
-#test "walking: forward goes where the camera looks, and the cover stops you" {
+#test "Dead Gears applies its declared collision passes to real trapped contacts" {
+  s: [1] DeadGears;
+  bodies := [7] f32.[0, 0.3, 0, 0, 1.5, 0, 0.4];
+  walls := [6] f32.[0.6, 0, -2, 2, 2, 2];
+  for k: 0..<7 { s[0].bodies[k] = bodies[k]; }
+  for k: 0..<6 { s[0].walls[k] = walls[k]; }
+  s[0].body_n = 1; s[0].wall_n = 1;
+  w := the_world(s[..]);
+  #assert w.bodies.count == 7 && w.walls.count == 6;
+  #assert w.collision.max_passes == 3 && walk_capsule.collide_profile_ok(w.collision);
+  p := pc.verse_player_place(0.4, 0, 0, 0);
+  q := pc.step(w, p, pc.STEP);
+  #assert q.collision_status == walk_capsule.CollideStatus.unresolved && q.collision_passes == 3;
+  #assert q.pos.x == p.pos.x && q.pos.y == p.pos.y && q.pos.z == p.pos.z;
+  w.collision.max_passes = 1;
+  limited := pc.step(w, p, pc.STEP);
+  #assert limited.collision_status == walk_capsule.CollideStatus.unresolved && limited.collision_passes == 1;
+}
+
+#test "walking: forward goes where the camera looks, and the cover stops you" #steps 468000000 {
   s: [1] DeadGears;
   started(s[..]);
   #assert deadgears_key(s[..], 'w', 0);
@@ -2175,7 +2197,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   #assert s[0].feet.x > 5 + 1.6 + 0.29;
 }
 
-#test "the shot's ray runs through the crosshair, and tilting the view moves it (#84a2)" {
+#test "the shot's ray runs through the crosshair, and tilting the view moves it (#84a2)" #steps 48000000 {
   for size: 0..<2 {
     w: f32 = ifx size == 0 then 1280.0f32 else 390.0f32; h: f32 = ifx size == 0 then 800.0f32 else 844.0f32;
     s: [1] DeadGears;
@@ -2201,7 +2223,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
 
 feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel.x + s[0].pl.vel.z * s[0].pl.vel.z); }
 
-#test "walking starts and stops with acceleration, not at once" {
+#test "walking starts and stops with acceleration, not at once" #steps 69000000 {
   s: [1] DeadGears;
   started(s[..]);
   clear_mutants(game(s[..]));
@@ -2218,7 +2240,7 @@ feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel
   #assert feet_speed(s[..]) == 0;
 }
 
-#test "you jump onto a low crate and step off it" {
+#test "you jump onto a low crate and step off it" #steps 255000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2243,7 +2265,7 @@ feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel
   #assert s[0].feet.y < 0.01 && s[0].feet.z < 5.2;
 }
 
-#test "the low cover is a ledge you can jump onto" {
+#test "the low cover is a ledge you can jump onto" #steps 63000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2258,7 +2280,7 @@ feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel
   #assert on_top;
 }
 
-#forall "the camera never ends up inside a wall, cover or the deck" k: 0..<48 {
+#forall "the camera never ends up inside a wall, cover or the deck" k: 0..<48 #steps 964000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2277,7 +2299,7 @@ feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel
   #assert !inside_wall(s[..], g.input[0].from, 0);
 }
 
-#test "with the cutter up you strafe facing the crosshair; with it down you face your way" {
+#test "with the cutter up you strafe facing the crosshair; with it down you face your way" #steps 190000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2314,7 +2336,7 @@ feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel
   #assert deadgears_pointer(s[..], (st.x0 + st.x1) / 2, (st.y0 + st.y1) / 2, 2, 1, 4) && game(s[..]).st[0].mode == HEAD;
 }
 
-#test "a save opens where it was kept, and another's doesn't open" {
+#test "a save opens where it was kept, and another's doesn't open" #steps 31000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2339,7 +2361,7 @@ feet_speed :: (s: [] DeadGears) -> f32 { return sqrt(s[0].pl.vel.x * s[0].pl.vel
 }
 tag_end :: () -> int { return SAVE_TAG.count + 1; }
 
-#test "leaving mid-wave 1 and coming back resumes the wave" {
+#test "leaving mid-wave 1 and coming back resumes the wave" #steps 61000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2383,24 +2405,7 @@ tag_end :: () -> int { return SAVE_TAG.count + 1; }
   #assert deadgears_key(s[..], KEY_ENTER, 0) && g.st[0].phase == FIGHT && g.st[0].wave == 1;
 }
 
-#test "?hour= holds the hour; otherwise each wave is later in the day" {
-  s: [1] DeadGears;
-  started(s[..]);
-  n := frame_at(s[..], 1280, 800, 1, 0.016);
-  #assert abs(s[0].deck_hour - 15.5) < 0.01;
-  g := game(s[..]);
-  g.st[0].wave = 3;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  for i: 0..<400 { n = frame_in(out[..], u[..], s[..], 1280, 800, 1, 0.05); }
-  #assert s[0].deck_hour > 18;
-  #assert query_number("https://openagents.com/realms/dead-gears?hour=17.25&spawn=200", "hour") == 17.25;
-  #assert query_number("https://openagents.com/realms/dead-gears?hour=17.25&spawn=200", "spawn") == 200;
-  #assert query_number("https://openagents.com/realms/dead-gears?xhour=3", "hour") < 0;
-  p: [1] DeadGears;
-  deadgears_message(p[..], HOST_PAGE, "tab=1\nurl=https://openagents.com/realms/dead-gears?hour=18.4");
-  n = frame_at(p[..], 1280, 800, 1, 0.016);
-  #assert abs(p[0].deck_hour - 18.4) < 0.01 && night_level(18.4) > night_level(15.5);
-}
+// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
 
 // A player that aims at the nearest creature and holds fire, and between
 // waves walks to the reactor and holds repair: through the keys on a laptop
@@ -2426,7 +2431,7 @@ limb_at :: (f: Fx) -> Point {
   return v3(f.at.x + away.x * t * 1.2, y, f.at.z + away.z * t * 1.2);
 }
 
-#test "each kind is its own silhouette, and a severed dropped falls from where it was hit (#ea44)" {
+#test "each kind is its own silhouette, and a severed dropped falls from where it was hit (#ea44)" #steps 111000000 {
   // Height, length and width of each kind standing, from its joints.
   dims: [3 * 4] f32;
   kinds := [4] int.[CRAWLER, REAVER, BRUTE, HOUND];
@@ -2483,7 +2488,7 @@ reticle_over :: (s: [] DeadGears) -> bool {
   return dg_aimed(g).who != ECS_NONE;
 }
 
-#test "the crosshair brightens over a creature, and every hit leaves a mark where it landed (#55e7)" {
+#test "the crosshair brightens over a creature, and every hit leaves a mark where it landed (#55e7)" #steps 30000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2511,7 +2516,7 @@ reticle_over :: (s: [] DeadGears) -> bool {
   n = deadgears_frame(s[..], out[..], u[..], 1280, 800, 1, 0.016, false);
   #assert s[0].kill_flash > 0;
 }
-#test "a kill holds the action under 80 ms, and a shot kicks the view (#3f12)" {
+#test "a kill holds the action under 80 ms, and a shot kicks the view (#3f12)" #steps 44000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2540,7 +2545,7 @@ reticle_over :: (s: [] DeadGears) -> bool {
   #assert fluid;
 }
 
-#test "V dodges a short way, then waits; running into cover crouches you behind it (#cf81)" {
+#test "V dodges a short way, then waits; running into cover crouches you behind it (#cf81)" #steps 63000000 {
   s: [1] DeadGears;
   started(s[..]);
   g := game(s[..]);
@@ -2567,7 +2572,7 @@ reticle_over :: (s: [] DeadGears) -> bool {
   #assert g.st[0].cover && s[0].feet.z > 3;
 }
 
-#test "each mode's shot flies from the muzzle its own way, and its hit shows when it lands (#adba)" {
+#test "each mode's shot flies from the muzzle its own way, and its hit shows when it lands (#adba)" #steps 74000000 {
   speeds: [3] f32;
   for mode: 0..<3 {
     s: [1] DeadGears;
@@ -2652,16 +2657,16 @@ won_through_the_controls :: (phone_size: bool) -> bool {
   g := game(s[..]);
   return g.st[0].phase == WON && g.st[0].repairs == 3 && s[0].shown[BTN_AGAIN];
 }
-#test "a full game is won on a laptop" { #assert won_through_the_controls(false); }
-#test "a full game is won on a phone" { #assert won_through_the_controls(true); }
-#test "a full game is lost by standing still" {
+// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
+// Full native integration scenario: aethyr/tests/check_native_gameplay.py.
+#test "a full game is lost by standing still" #steps 533000000 {
   s: [1] DeadGears;
   started(s[..]);
   f := play_out(s[..], false, false, 6000);
   #assert game(s[..]).st[0].phase == LOST && s[0].shown[BTN_AGAIN];
 }
 
-#test "EDIT for its owner and admins only; the board switches the alarms and the radar off, and opening it pauses the fight" {
+#test "EDIT for its owner and admins only; the board switches the alarms and the radar off, and opening it pauses the fight" #steps 54000000 {
   s: [1] DeadGears;
   n := frame_at(s[..], 1280, 800, 1, 1.0 / 60.0);
   #assert s[0].ed[0].req_ready && cast(string) s[0].ed[0].req_url[0..<s[0].ed[0].req_url_n] == "/api/playtest/realms/dead-gears";
@@ -2690,7 +2695,7 @@ DEADGEARS_BUDGET :: FrameBudget.{steps = 8, vertices = 7000, draws = 0, bytes = 
 
 // Its opening: three frames at each budget screen, the last one 0.1 s long. Book
 // chapter 16 gives the peaks of 120 frames at each screen, measured natively.
-#test "Dead Gears' frames fit its declared budget" {
+#test "Dead Gears' frames fit its declared budget" #steps 80000000 {
   #assert budget_declared(DEADGEARS_BUDGET, MAX_VERTICES) == BUDGET_NONE;
   frames := 3;
   m := [1] BudgetMeter.[budget_meter(DEADGEARS_BUDGET)];

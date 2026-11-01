@@ -2088,7 +2088,7 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   #assert w[0].steps.ran == 0 && w[0].tick == 9 && w[0].steps.refused == 1;
 }
 
-#test "demolish: the wall over a broken one comes loose, falls and breaks on the ground; the roof holds" {
+#test "demolish: the wall over a broken one comes loose, falls and breaks on the ground; the roof holds" #steps 118000000 {
   w: [1] DemoWorld;
   g := Ground.{n = 8, cell = 40, west = -160, south = -160};
   heights: [81] f32;
@@ -2105,7 +2105,7 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_CHUNK { #assert demo_pos(w[..], b).y > -0.05 && demo_pos(w[..], b).y < 2.0; } }
 }
 
-#test "demolish: knock out the upper walls and the roof falls; restore stands it all back" {
+#test "demolish: knock out the upper walls and the roof falls; restore stands it all back" #steps 1138000000 {
   w: [1] DemoWorld;
   g := Ground.{n = 8, cell = 40, west = -160, south = -160};
   heights: [81] f32;
@@ -2137,7 +2137,7 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   #assert w[0].pieces[32].state != DP_STANDING;
 }
 
-#test "demolish: the chunk budget holds; a phone's is half" {
+#test "demolish: the chunk budget holds; a phone's is half" #steps 259000000 {
   w: [1] DemoWorld;
   g := Ground.{n = 8, cell = 40, west = -160, south = -160};
   heights: [81] f32;
@@ -2168,7 +2168,7 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   #assert abs(rows[5] * 1.56 + rows[7] - f32(demo_pos(w[..], b).y)) < 0.01;
 }
 
-#test "demolish: a wall broken over water splashes in, its wood floats off on the current, stone sinks" {
+#test "demolish: a wall broken over water splashes in, its wood floats off on the current, stone sinks" #steps 344000000 {
   g := Ground.{n = 8, cell = 40, west = -160, south = -160};
   heights: [81] f32;
   // water a metre deep everywhere, running east at 0.4 m/s
@@ -2270,7 +2270,7 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   for k: 0..<DEMO_BITS { #assert !w[0].bits[k].live; }
 }
 
-#test "demolish: rubble is the same on every client: the same blows give the same bodies" {
+#test "demolish: rubble is the same on every client: the same blows give the same bodies" #steps 189000000 {
   g := Ground.{n = 8, cell = 40, west = -160, south = -160};
   heights: [81] f32;
   w: [2] DemoWorld;
@@ -2306,7 +2306,7 @@ demo_dressed :: (w: [] DemoWorld) -> int {
   }
 }
 
-#test "demolish: a wall left with nothing beside it topples; one with a neighbour stands" {
+#test "demolish: a wall left with nothing beside it topples; one with a neighbour stands" #steps 28000000 {
   w: [1] DemoWorld;
   g := Ground.{n = 8, cell = 40, west = -160, south = -160};
   heights: [81] f32;
@@ -2387,7 +2387,7 @@ demo_tower :: (w: [] DemoWorld) {
   } }
 }
 
-#test "demolish: a roof broken away no longer holds you; the rubble lying still does" {
+#test "demolish: a roof broken away no longer holds you; the rubble lying still does" #steps 139000000 {
   w: [1] DemoWorld;
   g := Ground.{n = 8, cell = 40, west = -160, south = -160};
   heights: [81] f32;

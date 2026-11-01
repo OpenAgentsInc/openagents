@@ -1,0 +1,8 @@
+// Test-only C boundary; geometry and admission remain in Coax.
+#load "../ground-contact.coax";
+ground_overlap_native :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, cells: int) -> GroundContact #export_c {
+  return ground_overlap(g, heights, p, r, cells);
+}
+ground_sweep_native :: (g: Ground, heights: [] f32, p: WorldPoint, r: f32, by: WorldPoint, cells: int) -> GroundContact #export_c {
+  return ground_sweep(g, heights, p, r, by, cells);
+}

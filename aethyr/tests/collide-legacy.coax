@@ -1,0 +1,12 @@
+#load "../../verse/player.coax";
+
+// The published controller's actual functions, compiled separately, rather
+// than a copy of its arithmetic in the new library's tests.
+collision_legacy :: (boxes: [] f32, bodies: [] f32, floors: [] f32, input: [] f32,
+                      dx: f32, dz: f32, output: [] f32) #export_c {
+  w := World.{walls = boxes, bodies = bodies, floors = floors};
+  p: Player; p.pos = v3(input[0], input[1], input[2]); p.vel = v3(input[3], input[4], input[5]);
+  next := off_floors(w, p, move_across(w, p, dx, dz));
+  output[0] = next.pos.x; output[1] = next.pos.y; output[2] = next.pos.z;
+  output[3] = next.vel.x; output[4] = next.vel.y; output[5] = next.vel.z;
+}

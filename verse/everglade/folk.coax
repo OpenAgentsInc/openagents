@@ -449,7 +449,7 @@ FOLK_AWAY :: Point.{x = 0, y = 0, z = 900};
   #assert nose.x > ahead.x + 0.03;
 }
 
-#test "on a turning day they walk their routine; talking stops them and turns them to you; let go, they catch up" {
+#test "on a turning day they walk their routine; talking stops them and turns them to you; let go, they catch up" #steps 35000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   f: [1] Folk;
@@ -484,7 +484,7 @@ FOLK_AWAY :: Point.{x = 0, y = 0, z = 900};
   #assert !f[0].indoors && f[0].x == EG_SPOT[i * 3] && f[0].z == EG_SPOT[i * 3 + 1];
 }
 
-#test "someone walking stops for you in their way, and walks on once you step aside" {
+#test "someone walking stops for you in their way, and walks on once you step aside" #steps 34000000 {
   heights: [EG_GROUND_POINTS] f32;
   routines_ground(heights[..]);
   f: [1] Folk;

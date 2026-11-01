@@ -652,7 +652,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "the streets and trails keep clear of everything in the way" {
+#test "the streets and trails keep clear of everything in the way" #steps 47000000 {
   solids: [EG_SOLIDS * EG_BOX] f32;
   n := everglade_solids(solids[..]);
   #assert n == EG_SOLIDS;
@@ -692,7 +692,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "everything is reachable on foot from the road in" {
+#test "everything is reachable on foot from the road in" #steps 454000000 {
   bld := EG_BUILDING;
   grid: [EG_REACH_N * EG_REACH_N] u8;
   queue: [EG_REACH_N * EG_REACH_N] u32;
@@ -720,7 +720,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   #assert reached(grid[..], -88, 22) && reached(grid[..], 22, 95) && reached(grid[..], 66, 89.5) && reached(grid[..], 96, -16);
 }
 
-#test "the open ground: past the apron only a trail or a clearing is, where the people walk and an admin places" {
+#test "the open ground: past the apron only a trail or a clearing is, where the people walk and an admin places" #steps 893000000 {
   grid: [EG_REACH_N * EG_REACH_N] u8;
   queue: [EG_REACH_N * EG_REACH_N] u32;
   count := everglade_reach(grid[..], queue[..]);
@@ -749,7 +749,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   #assert reached(grid[..], -80, 4) && reached(grid[..], 44, 74) && reached(grid[..], 80, -4) && reached(grid[..], 0, -98);
 }
 
-#test "the palisade keeps you in but for its gates" {
+#test "the palisade keeps you in but for its gates" #steps 444000000 {
   grid: [EG_REACH_N * EG_REACH_N] u8;
   everglade_open(grid[..]);
   // Walk the walls' line: open only in a gate.
@@ -771,7 +771,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "the ground is built: flat where the city stands, rising into the forest" {
+#test "the ground is built: flat where the city stands, rising into the forest" #steps 35000000 {
   heights: [EG_GROUND_POINTS] f32;
   #assert everglade_build_ground(heights[..]);
   g := everglade_ground();
@@ -805,7 +805,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "the river runs in its carved bed, falling south, with the deck over it" {
+#test "the river runs in its carved bed, falling south, with the deck over it" #steps 34000000 {
   heights: [EG_GROUND_POINTS] f32;
   #assert everglade_build_ground(heights[..]);
   levels: [EG_CELLS + 1] f32;
@@ -858,7 +858,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   }
 }
 
-#test "the ponds: off the trails and the river, clear of the walls, each in a clearing that meets its trail, carved to their depths" {
+#test "the ponds: off the trails and the river, clear of the walls, each in a clearing that meets its trail, carved to their depths" #steps 66000000 {
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
   heights: [EG_GROUND_POINTS] f32;
   #assert everglade_build_ground(heights[..]);

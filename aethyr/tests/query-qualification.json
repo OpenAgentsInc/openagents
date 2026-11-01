@@ -1,0 +1,46 @@
+{
+  "schema": 1,
+  "profile": "native mesh query adapters, f64 terrain hit selection and checked publication",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "inputs": {
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+  },
+  "checks": [
+    {
+      "command": "coax/bin/coax test aethyr/query.coax --library",
+      "result": "95/95 passed before the final additive boundary check"
+    },
+    {
+      "command": "coax/bin/coax test aethyr/query.coax --library --only 'checked ground and sweep boundaries'",
+      "result": "new boundary check passed"
+    },
+    {
+      "command": "coax/bin/coax mutate aethyr/query.coax --root-only --library --jobs 4",
+      "result": "388 mutants, 388 killed, 0 survived; complete 96-check baseline and authority coverage retained",
+      "seconds": 93.047,
+      "log": "docs/verification/data/aethyr-ch8-2026-11-01/query-mutate.log"
+    }
+  ],
+  "red_green": [
+    "Nearer flat field2e-8 chosen over1e-8 even when both public times round to1; preserves helper point instead of recomputing y=0.",
+    "Malformed/exhausted later field refuses atomically after an earlier valid hit, before overlap output writes.",
+    "Six first-gate survivors became boundary witnesses: zero reach, first invalid field, stand-step addition, singleton overlap refusal, sweep capacity16/17. No equivalent waivers."
+  ],
+  "scope": "Entry-source mutation only. Ground160, ray314 and contact359 mutation/native oracle scopes have separate receipts; this record does not claim their mutation coverage.",
+  "limits": [
+    "Legacy ground remains permissive; runtime checked ground refuses malformed fields.",
+    "Public t is f32; selection among terrain hits retains f64 times and the selected helper point.",
+    "Floor shapes answer ground only; other queries cover flat/heightfield ground, boxes and capsules."
+  ]
+}

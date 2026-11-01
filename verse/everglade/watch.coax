@@ -1654,7 +1654,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   }
 }
 
-#test "the watch: eight guards, each beat on open ground, there and back on the shared clock" {
+#test "the watch: eight guards, each beat on open ground, there and back on the shared clock" #steps 52000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1694,7 +1694,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   }
 }
 
-#test "a crime makes a guard who sees it hostile and you wanted; one who can't see or hear it stays calm" {
+#test "a crime makes a guard who sees it hostile and you wanted; one who can't see or hear it stays calm" #steps 46000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1724,7 +1724,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert watch_crime(w3[..], at, 100, you, nob[..], 0, heights[..]) == 0 && !w3[0].wanted;
 }
 
-#test "a hostile guard runs to you and its blows resolve under the SRD: d20 + 3 against your AC 15, 1d6 + 1" {
+#test "a hostile guard runs to you and its blows resolve under the SRD: d20 + 3 against your AC 15, 1d6 + 1" #steps 272000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1755,7 +1755,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert w[0].hits * 100 / blows > 30 && w[0].hits * 100 / blows < 62;
 }
 
-#test "you die at 0 HP: the view fades, YOU DIED, then you stand at the Road In whole and wanted no more" {
+#test "you die at 0 HP: the view fades, YOU DIED, then you stand at the Road In whole and wanted no more" #steps 39000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1782,7 +1782,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert watch_dark(w[..]) == 0;
 }
 
-#test "a blast hurts or kills the townsfolk and the watch; R or the dawn stands them up; a fallen guard is replaced" {
+#test "a blast hurts or kills the townsfolk and the watch; R or the dawn stands them up; a fallen guard is replaced" #steps 44000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1822,7 +1822,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert w[0].actors[g].mode == WM_CHASE && w[0].actors[g].hp == SRD_GUARD.hp;
 }
 
-#test "out of every hunter's sight for a while, you are wanted no more and the watch walk back" {
+#test "out of every hunter's sight for a while, you are wanted no more and the watch walk back" #steps 66000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1842,7 +1842,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert w[0].actors[0].mode == WM_CALM;
 }
 
-#test "a guard chasing you over the river runs on the bridge's deck, at its height, the whole way" {
+#test "a guard chasing you over the river runs on the bridge's deck, at its height, the whole way" #steps 92000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1880,7 +1880,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert watch_feet_y(w[..], heights[..], 88, -11.5) == w[0].deck && w[0].deck > watch_feet_y(w[..], heights[..], 88, br[1] - 3) + 0.5;
 }
 
-#test "out of a sword's reach above them (levitating 6 m up), no blow lands; a guard below throws spears; on the ground they cut" {
+#test "out of a sword's reach above them (levitating 6 m up), no blow lands; a guard below throws spears; on the ground they cut" #steps 557000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1908,7 +1908,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert watch_span_gap(0, 6) > 4 && watch_span_gap(0, 1.0) == 0 && watch_span_gap(5, 0) > 3;
 }
 
-#test "a blast throws a guard out from it and up: they tumble, land, lie on their backs, and get up where they came down" {
+#test "a blast throws a guard out from it and up: they tumble, land, lie on their backs, and get up where they came down" #steps 146000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1967,7 +1967,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   for f: 0..<60 * 8 { watch_tick(w3[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); #assert w3[0].actors[g].body.x < gx + 1.5; }
 }
 
-#test "you die: you topple and lie there through YOU DIED; a blast that kills you throws your body" {
+#test "you die: you topple and lie there through YOU DIED; a blast that kills you throws your body" #steps 63000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -1993,7 +1993,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert w2[0].you_body.pitch == -f32(PI) * 0.5;
 }
 
-#test "the heat: crimes and fallen hunters raise WANTED 1 to 5; each level's wave comes in at the gate nearest you; never over 12 hunting" {
+#test "the heat: crimes and fallen hunters raise WANTED 1 to 5; each level's wave comes in at the gate nearest you; never over 12 hunting" #steps 47000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -2056,7 +2056,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert w2[0].level == 2 && flat_gap(v3(w2[0].actors[WATCH_FIRST_REIN].x, 0, w2[0].actors[WATCH_FIRST_REIN].z), v3(59, 0, 0)) < 3;
 }
 
-#test "the heat clears out of sight (longer the higher it is) or when you die; the reinforcements walk back out of their gate" {
+#test "the heat clears out of sight (longer the higher it is) or when you die; the reinforcements walk back out of their gate" #steps 115000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -2102,7 +2102,7 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   return i;
 }
 
-#test "the casters: a Mage's Fire Bolt and Ray of Frost, Hold Person, and a Fireball that throws you; dodged bolts miss" {
+#test "the casters: a Mage's Fire Bolt and Ray of Frost, Hold Person, and a Fireball that throws you; dodged bolts miss" #steps 43000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -2147,7 +2147,7 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   #assert !watch_held(w[..]);
 }
 
-#test "the casters: a Priest heals the watch and marks you with Guiding Bolt; an Archmage's Lightning Bolt and Cone of Cold" {
+#test "the casters: a Priest heals the watch and marks you with Guiding Bolt; an Archmage's Lightning Bolt and Cone of Cold" #steps 42000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;
@@ -2187,7 +2187,7 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   #assert w2[0].hp == before;
 }
 
-#test "WANTED 5, you levitating 18 m up out of reach: the Archmage's Magic Missile darts turn after you and strike; Earthbind pulls you down" {
+#test "WANTED 5, you levitating 18 m up out of reach: the Archmage's Magic Missile darts turn after you and strike; Earthbind pulls you down" #steps 39000000 {
   heights: [EG_GROUND_POINTS] f32;
   watch_ground(heights[..]);
   w: [1] Watch;

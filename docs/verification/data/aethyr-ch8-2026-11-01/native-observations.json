@@ -1,0 +1,2534 @@
+{
+  "schema": 1,
+  "observations": [
+    {
+      "receipt": "native-deadgears-debug.json",
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "aethyr/tests/deadgears-integration.coax",
+        "--library"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-deadgears-debug.json",
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-pthread",
+        "-I/private/tmp/aethyr-program-deadgears-debug",
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/native-gameplay-driver.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-deadgears-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug",
+        "--assert-probe"
+      ],
+      "exit_code": -6,
+      "expected_assertion_trap": true,
+      "log_sha256": "19243dcedc1f3aa3adc7eaf8e786c12901c7e686c61d3c4708f915c7b12dc033",
+      "output": "aethyr/tests/deadgears-integration.coax:65: assertion failed\n"
+    },
+    {
+      "receipt": "native-deadgears-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug",
+        "aethyr_native_deadgears_0"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ddb90e428c6f4c21da67ef10d81f93eab7e0c0f56901fc759b21639a24516823",
+      "output": "ok aethyr_native_deadgears_0 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug",
+        "aethyr_native_deadgears_1"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "926ba9f1b89157fa292498acfadef9517d98877df481ef83b59dc441a2c3d816",
+      "output": "ok aethyr_native_deadgears_1 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug",
+        "aethyr_native_deadgears_2"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "9b02c3f5ec35f65dcec7d0400cf430df4d9e4e19cf346a141d66bb7d2f5073cb",
+      "output": "ok aethyr_native_deadgears_2 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug",
+        "aethyr_native_deadgears_3"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "bcf8c5accdf238fab29c5759200751fc19b32aa425a0a584c92cc49df98d9a4d",
+      "output": "ok aethyr_native_deadgears_3 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug",
+        "aethyr_native_deadgears_4"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "da780767cb63fa2ff1a192a8b974c57ee0e8d758e8ae713c7915a3997383bc17",
+      "output": "ok aethyr_native_deadgears_4 (10 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-release.json",
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "aethyr/tests/deadgears-integration.coax",
+        "--library",
+        "--release"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-deadgears-release.json",
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-pthread",
+        "-I/private/tmp/aethyr-program-deadgears-release",
+        "/private/tmp/aethyr-program-deadgears-release/deadgears-release.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/native-gameplay-driver.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-program-deadgears-release/deadgears-release"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-deadgears-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-release/deadgears-release",
+        "--assert-probe"
+      ],
+      "exit_code": -6,
+      "expected_assertion_trap": true,
+      "log_sha256": "19243dcedc1f3aa3adc7eaf8e786c12901c7e686c61d3c4708f915c7b12dc033",
+      "output": "aethyr/tests/deadgears-integration.coax:65: assertion failed\n"
+    },
+    {
+      "receipt": "native-deadgears-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-release/deadgears-release",
+        "aethyr_native_deadgears_0"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ddb90e428c6f4c21da67ef10d81f93eab7e0c0f56901fc759b21639a24516823",
+      "output": "ok aethyr_native_deadgears_0 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-release/deadgears-release",
+        "aethyr_native_deadgears_1"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "926ba9f1b89157fa292498acfadef9517d98877df481ef83b59dc441a2c3d816",
+      "output": "ok aethyr_native_deadgears_1 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-release/deadgears-release",
+        "aethyr_native_deadgears_2"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "9b02c3f5ec35f65dcec7d0400cf430df4d9e4e19cf346a141d66bb7d2f5073cb",
+      "output": "ok aethyr_native_deadgears_2 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-release/deadgears-release",
+        "aethyr_native_deadgears_3"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "bcf8c5accdf238fab29c5759200751fc19b32aa425a0a584c92cc49df98d9a4d",
+      "output": "ok aethyr_native_deadgears_3 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-release/deadgears-release",
+        "aethyr_native_deadgears_4"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "da780767cb63fa2ff1a192a8b974c57ee0e8d758e8ae713c7915a3997383bc17",
+      "output": "ok aethyr_native_deadgears_4 (10 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-sanitized.json",
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-pthread",
+        "-I/private/tmp/aethyr-program-deadgears-sanitized",
+        "/private/tmp/aethyr-program-deadgears-debug/deadgears-debug.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/native-gameplay-driver.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-program-deadgears-sanitized/deadgears-sanitized"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-deadgears-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-sanitized/deadgears-sanitized",
+        "--assert-probe"
+      ],
+      "exit_code": -6,
+      "expected_assertion_trap": true,
+      "log_sha256": "19243dcedc1f3aa3adc7eaf8e786c12901c7e686c61d3c4708f915c7b12dc033",
+      "output": "aethyr/tests/deadgears-integration.coax:65: assertion failed\n"
+    },
+    {
+      "receipt": "native-deadgears-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-sanitized/deadgears-sanitized",
+        "aethyr_native_deadgears_0"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ddb90e428c6f4c21da67ef10d81f93eab7e0c0f56901fc759b21639a24516823",
+      "output": "ok aethyr_native_deadgears_0 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-sanitized/deadgears-sanitized",
+        "aethyr_native_deadgears_1"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "926ba9f1b89157fa292498acfadef9517d98877df481ef83b59dc441a2c3d816",
+      "output": "ok aethyr_native_deadgears_1 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-sanitized/deadgears-sanitized",
+        "aethyr_native_deadgears_2"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "9b02c3f5ec35f65dcec7d0400cf430df4d9e4e19cf346a141d66bb7d2f5073cb",
+      "output": "ok aethyr_native_deadgears_2 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-sanitized/deadgears-sanitized",
+        "aethyr_native_deadgears_3"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "bcf8c5accdf238fab29c5759200751fc19b32aa425a0a584c92cc49df98d9a4d",
+      "output": "ok aethyr_native_deadgears_3 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-deadgears-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-deadgears-sanitized/deadgears-sanitized",
+        "aethyr_native_deadgears_4"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "da780767cb63fa2ff1a192a8b974c57ee0e8d758e8ae713c7915a3997383bc17",
+      "output": "ok aethyr_native_deadgears_4 (10 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "aethyr/tests/everglade-spells-integration.coax",
+        "--library"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-pthread",
+        "-I/private/tmp/aethyr-program-rebased-everglade-debug",
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/native-gameplay-driver.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "--assert-probe"
+      ],
+      "exit_code": -6,
+      "expected_assertion_trap": true,
+      "log_sha256": "f145588dd86b73a0a7e802f7b96e65397283759e122672180018030b76288d25",
+      "output": "aethyr/tests/everglade-spells-integration.coax:2390: assertion failed\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_0"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5abc2fc82e4fbcda3b04cda2d5e18bda0b4199cfb02dcefec1e67d20bc4e124f",
+      "output": "ok aethyr_native_everglade_0 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_1"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "86f90956a8012c53e111502f99faea1dace2158e4a1dedd75b8f8131858a0a2a",
+      "output": "ok aethyr_native_everglade_1 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_2"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e0bd826b231b0a9b50c1ef4885fb05e165e2f1eff6d865e43d20b9bae52961c9",
+      "output": "ok aethyr_native_everglade_2 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_3"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "1a81d03034e34e5f4c03be13c70cf195b9f80d9501e30b9de9db7a2aed1e2a21",
+      "output": "ok aethyr_native_everglade_3 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_4"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "914196a76b787b5dc31e40e1ace623714eda3edd1dc02bbb5a65ad4f901db1e6",
+      "output": "ok aethyr_native_everglade_4 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_5"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "f80a9c6b098ee4d33f90afb66bbfa225bbaee060c00aa792d821d9173882b2be",
+      "output": "ok aethyr_native_everglade_5 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_6"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "b21df751ea5d4fe2336877e03407f040138f9a5767e55f4f699b7956a816134c",
+      "output": "ok aethyr_native_everglade_6 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_7"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ce9b6065278db7aa2c7b21d2009ee2aed9ead13c88bd7d0753d9416be6893128",
+      "output": "ok aethyr_native_everglade_7 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_8"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7bb270876eec12b2f663e425a431987f80a35ac98d94e652a272b315882b2f16",
+      "output": "ok aethyr_native_everglade_8 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_9"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "6008500f9e121a45722fdb90fabe50f629e769d3ad505c0a6e8f5d14dd8b3f6e",
+      "output": "ok aethyr_native_everglade_9 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_10"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "884098194c2d4d834b8e8e4d13c233828b6ca1a121c43346a0f6c37150dbe582",
+      "output": "ok aethyr_native_everglade_10 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_11"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "aa4e9580399611e6c20412cb8aef2a1db0a6f030e052d6253838a9a2ae709088",
+      "output": "ok aethyr_native_everglade_11 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_12"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "1bff5be54ad10cb11a24c20e97a8db876316bd7585c565c59bae4ed03b0d05e0",
+      "output": "ok aethyr_native_everglade_12 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_13"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d763001ae18b18f85179104c9670b93658dd10854b1639726240e159955a2bde",
+      "output": "ok aethyr_native_everglade_13 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_14"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "3a5a85c08e3dd076be0981bd8439c48dfbd41f4a6e93a2d3232becc21f918727",
+      "output": "ok aethyr_native_everglade_14 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_15"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d144d8d91cbc115e7e7648c781510785d94d9be6aad9294f9e83d3db8280c6e0",
+      "output": "ok aethyr_native_everglade_15 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_16"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "3e6c2be8d985651c63a406f96bb4ed52b5c7df6499413a8fd2cfa86c5e09e525",
+      "output": "ok aethyr_native_everglade_16 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_17"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "8891a45d1df3365ef38b236f7548baceac48dafb23f583fd3aef73eb976b9ed7",
+      "output": "ok aethyr_native_everglade_17 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_18"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "957e97bbf1e61a8df1ef75eaad56e9b22885fdb2aeeb3fcac82c6c6cda331dc7",
+      "output": "ok aethyr_native_everglade_18 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_19"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "cea1bf159923c80f606a3ec5c39ac17910eec8f684feade8e80f5db552748a17",
+      "output": "ok aethyr_native_everglade_19 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_20"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "dbd954d2c17bacae6bd60ec4de054766798715f41d6662a69fcbae72381e9000",
+      "output": "ok aethyr_native_everglade_20 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_21"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ee31193c5d5b395ffd7e3d5ffdb2b11bbc9d8a255e6b2edc64226b81c47ec73c",
+      "output": "ok aethyr_native_everglade_21 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_22"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d9c9d1f821f7be8b63f4596c27d60ed5aacc06c4939cf449a102ed5e57d61c32",
+      "output": "ok aethyr_native_everglade_22 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_23"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "54f1ac7679941388a0b5cde90a1a35b0bdd87bbab37a90fd37e69611938e6a8f",
+      "output": "ok aethyr_native_everglade_23 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_24"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "022d80020e8f58b19a50be38ed616ae75c103bab3f28bb5630af944134120d9e",
+      "output": "ok aethyr_native_everglade_24 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_25"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "aa5327c73db2e5f5c9168a246fab1782c18da9c36c3504f8ddfcfb033a4127e1",
+      "output": "ok aethyr_native_everglade_25 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_26"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d2cb5793bc74bc2272b207e48039f04eee2a362ce2873069bfe2d02afec3ed1d",
+      "output": "ok aethyr_native_everglade_26 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_27"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5d05f47b5daaa2bd5e6004e8fa49d3baba7f0a5af45dd2363b9fe546f68a014f",
+      "output": "ok aethyr_native_everglade_27 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_28"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5051aade2bbc1ce54d20b19b92407e68de7da8e99a4d20970d266562496ba29f",
+      "output": "ok aethyr_native_everglade_28 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_29"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7c89ab89e6e73289beac1967e855d9d1bedbc9c222d0b3a2cfcf65f6c9b95a46",
+      "output": "ok aethyr_native_everglade_29 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_30"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e4fbef09c62186b873637cac3831ea24e9a2afd29174c21e04c7f76fd8106acd",
+      "output": "ok aethyr_native_everglade_30 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_31"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "118b897ec72d6f58a7673b5fca838d03f00c7911db2bf5fe1e0f83dc5312b7a7",
+      "output": "ok aethyr_native_everglade_31 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_32"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "412fa1ed974b9afde5eb3dec3163c2695a79a464616646a4d366bd775425cdab",
+      "output": "ok aethyr_native_everglade_32 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_33"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "86a18dfea333cd46bbad6348a2b8f700f15fa710631b720b570285035af11b9b",
+      "output": "ok aethyr_native_everglade_33 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_34"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "212886f0838afff096014e650ad24403f311a835af9ee667bfce04abfc789edb",
+      "output": "ok aethyr_native_everglade_34 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_35"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5d64d5ba8b163f956c109002009367bcd51cefd58de806d8eb831224a52a986e",
+      "output": "ok aethyr_native_everglade_35 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_36"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "60a66c73741928f5cd77bf4d3b141a2fd23b5c264cda65e56bcd69480b849b21",
+      "output": "ok aethyr_native_everglade_36 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_37"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "468f026c00a76014b5fad72dd76c4f03082ca4febe426197eca553cb7a0ed679",
+      "output": "ok aethyr_native_everglade_37 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_38"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "fca7d9b27f297c0a364cc0cb4c34c5fc1b7d7074b1f3cebd11647412b79e9c15",
+      "output": "ok aethyr_native_everglade_38 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_39"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "af1891ec218d221c5b759fe620215e19e535f578fdebb9d05ed468290041d0f5",
+      "output": "ok aethyr_native_everglade_39 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_40"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7da482514d16f20a85b1743f536f841e117536d7cbdf74916e73c4249e56acec",
+      "output": "ok aethyr_native_everglade_40 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_41"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "110d629888b4d1aff330c95ce2ef54e42ead61c3b021a3f930c5432b2579aa8e",
+      "output": "ok aethyr_native_everglade_41 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_42"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "2bca282dc8013e7be930e84c746bc3c977d259209d0a5a0d7c9d5824fb5d27d2",
+      "output": "ok aethyr_native_everglade_42 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_43"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "76f81370b9556b2f4215128aa02b11760ac97ce3a7f2a680b33af11b8a0b2de8",
+      "output": "ok aethyr_native_everglade_43 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_44"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "762255134098ba22ef630b008956a3971a6c497d1dadf5cec54fb8d3d755774c",
+      "output": "ok aethyr_native_everglade_44 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_45"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ace3af69b6ffcec09ed2e647c98290676853b11582d66bd5cf2451f7a2258a51",
+      "output": "ok aethyr_native_everglade_45 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_46"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "c83459577ae45346c37ebc2a67c2ea7531c9b478ea87314f2adc45cb83510e08",
+      "output": "ok aethyr_native_everglade_46 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_47"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "35a4cc338685b5d54ed6938390e798b6d550d459a8f9821161df6ec76972d261",
+      "output": "ok aethyr_native_everglade_47 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_48"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "908be482ff802c6df03a36114aa55f89c71eb3a64ec294ed6480a5cd1ba37adc",
+      "output": "ok aethyr_native_everglade_48 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_49"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ad29e4815c1d70593ed54d46718eee7f523b9f95543b0523fcd9f0485b105247",
+      "output": "ok aethyr_native_everglade_49 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_50"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "08136983449de090ce9356b3da215fd0c31d65da3f4d8c4c29ba0671b87ba92e",
+      "output": "ok aethyr_native_everglade_50 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_51"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "efd325c75af222ecf5bf1238437d1adbfdeb9d092059b4c8b7caf2930f8093bb",
+      "output": "ok aethyr_native_everglade_51 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_52"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "f03f1401059cbd4812e1596b79b03babb4461e12c76b21a14a93a6c625d69c81",
+      "output": "ok aethyr_native_everglade_52 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_53"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5178a272b92c22273f3952852f2b51d9b85f95eb0b198b5f3f1ab11cecbcfc1d",
+      "output": "ok aethyr_native_everglade_53 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_54"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "898f7db935ffd19ac074a64bf213657fdb585dfeece8b9f2fc94f05c756f25cc",
+      "output": "ok aethyr_native_everglade_54 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_55"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "4fe6c1872bf85a6334b2cdb836bf0350255e0fb229c1dcdc9d27d3b72e26a6d3",
+      "output": "ok aethyr_native_everglade_55 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_56"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "16c85570b70bdc6c0f820df6e33f517fbfe9d0e98c35f0a6d94718f05dff7853",
+      "output": "ok aethyr_native_everglade_56 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_57"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "b9cd017f988b1e1ddfaa51635e67adf2f341be492e40fa46f1b0489a2f01b29f",
+      "output": "ok aethyr_native_everglade_57 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_58"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "05220aa87ff4131995d46b0e60409193e4ba70d38c7eef15ba984ea5a7823da3",
+      "output": "ok aethyr_native_everglade_58 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_59"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7862dbbbe2abd0007b4255ed519702213b77967803447b8cea8be303d534c5a3",
+      "output": "ok aethyr_native_everglade_59 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_60"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "97b99e5107d8d7f661eb1beac3e47d717a634cc651606ffa888b80e1d2baed83",
+      "output": "ok aethyr_native_everglade_60 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_61"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "a1cd4b538ef700a0daac861faae6e8dddb2c5dcdc5930a43b559ffb511f1ae01",
+      "output": "ok aethyr_native_everglade_61 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_62"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "62bd22e5ec1c0001eafc162226a344e0f33a5fa740a03f3ed3c21ca1f335f296",
+      "output": "ok aethyr_native_everglade_62 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-debug.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug",
+        "aethyr_native_everglade_63"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "da3916cec807a427033c25302cd7c4c6453be4a41ae7b6f7bc5f2c4b47021e23",
+      "output": "ok aethyr_native_everglade_63 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "aethyr/tests/everglade-spells-integration.coax",
+        "--library",
+        "--release"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-pthread",
+        "-I/private/tmp/aethyr-program-rebased-everglade-release",
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/native-gameplay-driver.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "--assert-probe"
+      ],
+      "exit_code": -6,
+      "expected_assertion_trap": true,
+      "log_sha256": "f145588dd86b73a0a7e802f7b96e65397283759e122672180018030b76288d25",
+      "output": "aethyr/tests/everglade-spells-integration.coax:2390: assertion failed\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_0"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5abc2fc82e4fbcda3b04cda2d5e18bda0b4199cfb02dcefec1e67d20bc4e124f",
+      "output": "ok aethyr_native_everglade_0 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_1"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "86f90956a8012c53e111502f99faea1dace2158e4a1dedd75b8f8131858a0a2a",
+      "output": "ok aethyr_native_everglade_1 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_2"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e0bd826b231b0a9b50c1ef4885fb05e165e2f1eff6d865e43d20b9bae52961c9",
+      "output": "ok aethyr_native_everglade_2 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_3"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "1a81d03034e34e5f4c03be13c70cf195b9f80d9501e30b9de9db7a2aed1e2a21",
+      "output": "ok aethyr_native_everglade_3 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_4"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "914196a76b787b5dc31e40e1ace623714eda3edd1dc02bbb5a65ad4f901db1e6",
+      "output": "ok aethyr_native_everglade_4 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_5"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "f80a9c6b098ee4d33f90afb66bbfa225bbaee060c00aa792d821d9173882b2be",
+      "output": "ok aethyr_native_everglade_5 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_6"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "b21df751ea5d4fe2336877e03407f040138f9a5767e55f4f699b7956a816134c",
+      "output": "ok aethyr_native_everglade_6 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_7"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ce9b6065278db7aa2c7b21d2009ee2aed9ead13c88bd7d0753d9416be6893128",
+      "output": "ok aethyr_native_everglade_7 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_8"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7bb270876eec12b2f663e425a431987f80a35ac98d94e652a272b315882b2f16",
+      "output": "ok aethyr_native_everglade_8 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_9"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "6008500f9e121a45722fdb90fabe50f629e769d3ad505c0a6e8f5d14dd8b3f6e",
+      "output": "ok aethyr_native_everglade_9 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_10"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "884098194c2d4d834b8e8e4d13c233828b6ca1a121c43346a0f6c37150dbe582",
+      "output": "ok aethyr_native_everglade_10 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_11"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "aa4e9580399611e6c20412cb8aef2a1db0a6f030e052d6253838a9a2ae709088",
+      "output": "ok aethyr_native_everglade_11 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_12"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "1bff5be54ad10cb11a24c20e97a8db876316bd7585c565c59bae4ed03b0d05e0",
+      "output": "ok aethyr_native_everglade_12 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_13"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d763001ae18b18f85179104c9670b93658dd10854b1639726240e159955a2bde",
+      "output": "ok aethyr_native_everglade_13 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_14"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "3a5a85c08e3dd076be0981bd8439c48dfbd41f4a6e93a2d3232becc21f918727",
+      "output": "ok aethyr_native_everglade_14 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_15"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d144d8d91cbc115e7e7648c781510785d94d9be6aad9294f9e83d3db8280c6e0",
+      "output": "ok aethyr_native_everglade_15 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_16"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "3e6c2be8d985651c63a406f96bb4ed52b5c7df6499413a8fd2cfa86c5e09e525",
+      "output": "ok aethyr_native_everglade_16 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_17"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "8891a45d1df3365ef38b236f7548baceac48dafb23f583fd3aef73eb976b9ed7",
+      "output": "ok aethyr_native_everglade_17 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_18"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "957e97bbf1e61a8df1ef75eaad56e9b22885fdb2aeeb3fcac82c6c6cda331dc7",
+      "output": "ok aethyr_native_everglade_18 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_19"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "cea1bf159923c80f606a3ec5c39ac17910eec8f684feade8e80f5db552748a17",
+      "output": "ok aethyr_native_everglade_19 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_20"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "dbd954d2c17bacae6bd60ec4de054766798715f41d6662a69fcbae72381e9000",
+      "output": "ok aethyr_native_everglade_20 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_21"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ee31193c5d5b395ffd7e3d5ffdb2b11bbc9d8a255e6b2edc64226b81c47ec73c",
+      "output": "ok aethyr_native_everglade_21 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_22"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d9c9d1f821f7be8b63f4596c27d60ed5aacc06c4939cf449a102ed5e57d61c32",
+      "output": "ok aethyr_native_everglade_22 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_23"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "54f1ac7679941388a0b5cde90a1a35b0bdd87bbab37a90fd37e69611938e6a8f",
+      "output": "ok aethyr_native_everglade_23 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_24"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "022d80020e8f58b19a50be38ed616ae75c103bab3f28bb5630af944134120d9e",
+      "output": "ok aethyr_native_everglade_24 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_25"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "aa5327c73db2e5f5c9168a246fab1782c18da9c36c3504f8ddfcfb033a4127e1",
+      "output": "ok aethyr_native_everglade_25 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_26"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d2cb5793bc74bc2272b207e48039f04eee2a362ce2873069bfe2d02afec3ed1d",
+      "output": "ok aethyr_native_everglade_26 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_27"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5d05f47b5daaa2bd5e6004e8fa49d3baba7f0a5af45dd2363b9fe546f68a014f",
+      "output": "ok aethyr_native_everglade_27 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_28"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5051aade2bbc1ce54d20b19b92407e68de7da8e99a4d20970d266562496ba29f",
+      "output": "ok aethyr_native_everglade_28 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_29"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7c89ab89e6e73289beac1967e855d9d1bedbc9c222d0b3a2cfcf65f6c9b95a46",
+      "output": "ok aethyr_native_everglade_29 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_30"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e4fbef09c62186b873637cac3831ea24e9a2afd29174c21e04c7f76fd8106acd",
+      "output": "ok aethyr_native_everglade_30 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_31"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "118b897ec72d6f58a7673b5fca838d03f00c7911db2bf5fe1e0f83dc5312b7a7",
+      "output": "ok aethyr_native_everglade_31 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_32"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "412fa1ed974b9afde5eb3dec3163c2695a79a464616646a4d366bd775425cdab",
+      "output": "ok aethyr_native_everglade_32 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_33"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "86a18dfea333cd46bbad6348a2b8f700f15fa710631b720b570285035af11b9b",
+      "output": "ok aethyr_native_everglade_33 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_34"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "212886f0838afff096014e650ad24403f311a835af9ee667bfce04abfc789edb",
+      "output": "ok aethyr_native_everglade_34 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_35"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5d64d5ba8b163f956c109002009367bcd51cefd58de806d8eb831224a52a986e",
+      "output": "ok aethyr_native_everglade_35 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_36"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "60a66c73741928f5cd77bf4d3b141a2fd23b5c264cda65e56bcd69480b849b21",
+      "output": "ok aethyr_native_everglade_36 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_37"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "468f026c00a76014b5fad72dd76c4f03082ca4febe426197eca553cb7a0ed679",
+      "output": "ok aethyr_native_everglade_37 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_38"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "fca7d9b27f297c0a364cc0cb4c34c5fc1b7d7074b1f3cebd11647412b79e9c15",
+      "output": "ok aethyr_native_everglade_38 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_39"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "af1891ec218d221c5b759fe620215e19e535f578fdebb9d05ed468290041d0f5",
+      "output": "ok aethyr_native_everglade_39 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_40"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7da482514d16f20a85b1743f536f841e117536d7cbdf74916e73c4249e56acec",
+      "output": "ok aethyr_native_everglade_40 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_41"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "110d629888b4d1aff330c95ce2ef54e42ead61c3b021a3f930c5432b2579aa8e",
+      "output": "ok aethyr_native_everglade_41 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_42"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "2bca282dc8013e7be930e84c746bc3c977d259209d0a5a0d7c9d5824fb5d27d2",
+      "output": "ok aethyr_native_everglade_42 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_43"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "76f81370b9556b2f4215128aa02b11760ac97ce3a7f2a680b33af11b8a0b2de8",
+      "output": "ok aethyr_native_everglade_43 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_44"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "762255134098ba22ef630b008956a3971a6c497d1dadf5cec54fb8d3d755774c",
+      "output": "ok aethyr_native_everglade_44 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_45"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ace3af69b6ffcec09ed2e647c98290676853b11582d66bd5cf2451f7a2258a51",
+      "output": "ok aethyr_native_everglade_45 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_46"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "c83459577ae45346c37ebc2a67c2ea7531c9b478ea87314f2adc45cb83510e08",
+      "output": "ok aethyr_native_everglade_46 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_47"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "35a4cc338685b5d54ed6938390e798b6d550d459a8f9821161df6ec76972d261",
+      "output": "ok aethyr_native_everglade_47 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_48"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "908be482ff802c6df03a36114aa55f89c71eb3a64ec294ed6480a5cd1ba37adc",
+      "output": "ok aethyr_native_everglade_48 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_49"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ad29e4815c1d70593ed54d46718eee7f523b9f95543b0523fcd9f0485b105247",
+      "output": "ok aethyr_native_everglade_49 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_50"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "08136983449de090ce9356b3da215fd0c31d65da3f4d8c4c29ba0671b87ba92e",
+      "output": "ok aethyr_native_everglade_50 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_51"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "efd325c75af222ecf5bf1238437d1adbfdeb9d092059b4c8b7caf2930f8093bb",
+      "output": "ok aethyr_native_everglade_51 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_52"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "f03f1401059cbd4812e1596b79b03babb4461e12c76b21a14a93a6c625d69c81",
+      "output": "ok aethyr_native_everglade_52 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_53"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5178a272b92c22273f3952852f2b51d9b85f95eb0b198b5f3f1ab11cecbcfc1d",
+      "output": "ok aethyr_native_everglade_53 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_54"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "898f7db935ffd19ac074a64bf213657fdb585dfeece8b9f2fc94f05c756f25cc",
+      "output": "ok aethyr_native_everglade_54 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_55"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "4fe6c1872bf85a6334b2cdb836bf0350255e0fb229c1dcdc9d27d3b72e26a6d3",
+      "output": "ok aethyr_native_everglade_55 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_56"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "16c85570b70bdc6c0f820df6e33f517fbfe9d0e98c35f0a6d94718f05dff7853",
+      "output": "ok aethyr_native_everglade_56 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_57"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "b9cd017f988b1e1ddfaa51635e67adf2f341be492e40fa46f1b0489a2f01b29f",
+      "output": "ok aethyr_native_everglade_57 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_58"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "05220aa87ff4131995d46b0e60409193e4ba70d38c7eef15ba984ea5a7823da3",
+      "output": "ok aethyr_native_everglade_58 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_59"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7862dbbbe2abd0007b4255ed519702213b77967803447b8cea8be303d534c5a3",
+      "output": "ok aethyr_native_everglade_59 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_60"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "97b99e5107d8d7f661eb1beac3e47d717a634cc651606ffa888b80e1d2baed83",
+      "output": "ok aethyr_native_everglade_60 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_61"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "a1cd4b538ef700a0daac861faae6e8dddb2c5dcdc5930a43b559ffb511f1ae01",
+      "output": "ok aethyr_native_everglade_61 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_62"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "62bd22e5ec1c0001eafc162226a344e0f33a5fa740a03f3ed3c21ca1f335f296",
+      "output": "ok aethyr_native_everglade_62 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-release.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-release/everglade-release",
+        "aethyr_native_everglade_63"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "da3916cec807a427033c25302cd7c4c6453be4a41ae7b6f7bc5f2c4b47021e23",
+      "output": "ok aethyr_native_everglade_63 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-pthread",
+        "-I/private/tmp/aethyr-program-rebased-everglade-sanitized",
+        "/private/tmp/aethyr-program-rebased-everglade-debug/everglade-debug.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/native-gameplay-driver.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": ""
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "--assert-probe"
+      ],
+      "exit_code": -6,
+      "expected_assertion_trap": true,
+      "log_sha256": "f145588dd86b73a0a7e802f7b96e65397283759e122672180018030b76288d25",
+      "output": "aethyr/tests/everglade-spells-integration.coax:2390: assertion failed\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_0"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5abc2fc82e4fbcda3b04cda2d5e18bda0b4199cfb02dcefec1e67d20bc4e124f",
+      "output": "ok aethyr_native_everglade_0 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_1"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "86f90956a8012c53e111502f99faea1dace2158e4a1dedd75b8f8131858a0a2a",
+      "output": "ok aethyr_native_everglade_1 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_2"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e0bd826b231b0a9b50c1ef4885fb05e165e2f1eff6d865e43d20b9bae52961c9",
+      "output": "ok aethyr_native_everglade_2 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_3"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "1a81d03034e34e5f4c03be13c70cf195b9f80d9501e30b9de9db7a2aed1e2a21",
+      "output": "ok aethyr_native_everglade_3 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_4"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "914196a76b787b5dc31e40e1ace623714eda3edd1dc02bbb5a65ad4f901db1e6",
+      "output": "ok aethyr_native_everglade_4 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_5"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "f80a9c6b098ee4d33f90afb66bbfa225bbaee060c00aa792d821d9173882b2be",
+      "output": "ok aethyr_native_everglade_5 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_6"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "b21df751ea5d4fe2336877e03407f040138f9a5767e55f4f699b7956a816134c",
+      "output": "ok aethyr_native_everglade_6 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_7"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ce9b6065278db7aa2c7b21d2009ee2aed9ead13c88bd7d0753d9416be6893128",
+      "output": "ok aethyr_native_everglade_7 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_8"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7bb270876eec12b2f663e425a431987f80a35ac98d94e652a272b315882b2f16",
+      "output": "ok aethyr_native_everglade_8 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_9"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "6008500f9e121a45722fdb90fabe50f629e769d3ad505c0a6e8f5d14dd8b3f6e",
+      "output": "ok aethyr_native_everglade_9 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_10"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "884098194c2d4d834b8e8e4d13c233828b6ca1a121c43346a0f6c37150dbe582",
+      "output": "ok aethyr_native_everglade_10 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_11"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "aa4e9580399611e6c20412cb8aef2a1db0a6f030e052d6253838a9a2ae709088",
+      "output": "ok aethyr_native_everglade_11 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_12"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "1bff5be54ad10cb11a24c20e97a8db876316bd7585c565c59bae4ed03b0d05e0",
+      "output": "ok aethyr_native_everglade_12 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_13"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d763001ae18b18f85179104c9670b93658dd10854b1639726240e159955a2bde",
+      "output": "ok aethyr_native_everglade_13 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_14"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "3a5a85c08e3dd076be0981bd8439c48dfbd41f4a6e93a2d3232becc21f918727",
+      "output": "ok aethyr_native_everglade_14 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_15"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d144d8d91cbc115e7e7648c781510785d94d9be6aad9294f9e83d3db8280c6e0",
+      "output": "ok aethyr_native_everglade_15 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_16"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "3e6c2be8d985651c63a406f96bb4ed52b5c7df6499413a8fd2cfa86c5e09e525",
+      "output": "ok aethyr_native_everglade_16 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_17"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "8891a45d1df3365ef38b236f7548baceac48dafb23f583fd3aef73eb976b9ed7",
+      "output": "ok aethyr_native_everglade_17 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_18"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "957e97bbf1e61a8df1ef75eaad56e9b22885fdb2aeeb3fcac82c6c6cda331dc7",
+      "output": "ok aethyr_native_everglade_18 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_19"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "cea1bf159923c80f606a3ec5c39ac17910eec8f684feade8e80f5db552748a17",
+      "output": "ok aethyr_native_everglade_19 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_20"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "dbd954d2c17bacae6bd60ec4de054766798715f41d6662a69fcbae72381e9000",
+      "output": "ok aethyr_native_everglade_20 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_21"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ee31193c5d5b395ffd7e3d5ffdb2b11bbc9d8a255e6b2edc64226b81c47ec73c",
+      "output": "ok aethyr_native_everglade_21 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_22"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d9c9d1f821f7be8b63f4596c27d60ed5aacc06c4939cf449a102ed5e57d61c32",
+      "output": "ok aethyr_native_everglade_22 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_23"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "54f1ac7679941388a0b5cde90a1a35b0bdd87bbab37a90fd37e69611938e6a8f",
+      "output": "ok aethyr_native_everglade_23 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_24"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "022d80020e8f58b19a50be38ed616ae75c103bab3f28bb5630af944134120d9e",
+      "output": "ok aethyr_native_everglade_24 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_25"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "aa5327c73db2e5f5c9168a246fab1782c18da9c36c3504f8ddfcfb033a4127e1",
+      "output": "ok aethyr_native_everglade_25 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_26"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "d2cb5793bc74bc2272b207e48039f04eee2a362ce2873069bfe2d02afec3ed1d",
+      "output": "ok aethyr_native_everglade_26 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_27"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5d05f47b5daaa2bd5e6004e8fa49d3baba7f0a5af45dd2363b9fe546f68a014f",
+      "output": "ok aethyr_native_everglade_27 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_28"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5051aade2bbc1ce54d20b19b92407e68de7da8e99a4d20970d266562496ba29f",
+      "output": "ok aethyr_native_everglade_28 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_29"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7c89ab89e6e73289beac1967e855d9d1bedbc9c222d0b3a2cfcf65f6c9b95a46",
+      "output": "ok aethyr_native_everglade_29 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_30"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "e4fbef09c62186b873637cac3831ea24e9a2afd29174c21e04c7f76fd8106acd",
+      "output": "ok aethyr_native_everglade_30 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_31"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "118b897ec72d6f58a7673b5fca838d03f00c7911db2bf5fe1e0f83dc5312b7a7",
+      "output": "ok aethyr_native_everglade_31 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_32"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "412fa1ed974b9afde5eb3dec3163c2695a79a464616646a4d366bd775425cdab",
+      "output": "ok aethyr_native_everglade_32 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_33"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "86a18dfea333cd46bbad6348a2b8f700f15fa710631b720b570285035af11b9b",
+      "output": "ok aethyr_native_everglade_33 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_34"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "212886f0838afff096014e650ad24403f311a835af9ee667bfce04abfc789edb",
+      "output": "ok aethyr_native_everglade_34 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_35"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5d64d5ba8b163f956c109002009367bcd51cefd58de806d8eb831224a52a986e",
+      "output": "ok aethyr_native_everglade_35 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_36"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "60a66c73741928f5cd77bf4d3b141a2fd23b5c264cda65e56bcd69480b849b21",
+      "output": "ok aethyr_native_everglade_36 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_37"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "468f026c00a76014b5fad72dd76c4f03082ca4febe426197eca553cb7a0ed679",
+      "output": "ok aethyr_native_everglade_37 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_38"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "fca7d9b27f297c0a364cc0cb4c34c5fc1b7d7074b1f3cebd11647412b79e9c15",
+      "output": "ok aethyr_native_everglade_38 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_39"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "af1891ec218d221c5b759fe620215e19e535f578fdebb9d05ed468290041d0f5",
+      "output": "ok aethyr_native_everglade_39 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_40"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7da482514d16f20a85b1743f536f841e117536d7cbdf74916e73c4249e56acec",
+      "output": "ok aethyr_native_everglade_40 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_41"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "110d629888b4d1aff330c95ce2ef54e42ead61c3b021a3f930c5432b2579aa8e",
+      "output": "ok aethyr_native_everglade_41 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_42"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "2bca282dc8013e7be930e84c746bc3c977d259209d0a5a0d7c9d5824fb5d27d2",
+      "output": "ok aethyr_native_everglade_42 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_43"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "76f81370b9556b2f4215128aa02b11760ac97ce3a7f2a680b33af11b8a0b2de8",
+      "output": "ok aethyr_native_everglade_43 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_44"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "762255134098ba22ef630b008956a3971a6c497d1dadf5cec54fb8d3d755774c",
+      "output": "ok aethyr_native_everglade_44 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_45"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ace3af69b6ffcec09ed2e647c98290676853b11582d66bd5cf2451f7a2258a51",
+      "output": "ok aethyr_native_everglade_45 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_46"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "c83459577ae45346c37ebc2a67c2ea7531c9b478ea87314f2adc45cb83510e08",
+      "output": "ok aethyr_native_everglade_46 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_47"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "35a4cc338685b5d54ed6938390e798b6d550d459a8f9821161df6ec76972d261",
+      "output": "ok aethyr_native_everglade_47 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_48"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "908be482ff802c6df03a36114aa55f89c71eb3a64ec294ed6480a5cd1ba37adc",
+      "output": "ok aethyr_native_everglade_48 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_49"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "ad29e4815c1d70593ed54d46718eee7f523b9f95543b0523fcd9f0485b105247",
+      "output": "ok aethyr_native_everglade_49 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_50"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "08136983449de090ce9356b3da215fd0c31d65da3f4d8c4c29ba0671b87ba92e",
+      "output": "ok aethyr_native_everglade_50 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_51"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "efd325c75af222ecf5bf1238437d1adbfdeb9d092059b4c8b7caf2930f8093bb",
+      "output": "ok aethyr_native_everglade_51 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_52"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "f03f1401059cbd4812e1596b79b03babb4461e12c76b21a14a93a6c625d69c81",
+      "output": "ok aethyr_native_everglade_52 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_53"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "5178a272b92c22273f3952852f2b51d9b85f95eb0b198b5f3f1ab11cecbcfc1d",
+      "output": "ok aethyr_native_everglade_53 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_54"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "898f7db935ffd19ac074a64bf213657fdb585dfeece8b9f2fc94f05c756f25cc",
+      "output": "ok aethyr_native_everglade_54 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_55"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "4fe6c1872bf85a6334b2cdb836bf0350255e0fb229c1dcdc9d27d3b72e26a6d3",
+      "output": "ok aethyr_native_everglade_55 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_56"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "16c85570b70bdc6c0f820df6e33f517fbfe9d0e98c35f0a6d94718f05dff7853",
+      "output": "ok aethyr_native_everglade_56 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_57"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "b9cd017f988b1e1ddfaa51635e67adf2f341be492e40fa46f1b0489a2f01b29f",
+      "output": "ok aethyr_native_everglade_57 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_58"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "05220aa87ff4131995d46b0e60409193e4ba70d38c7eef15ba984ea5a7823da3",
+      "output": "ok aethyr_native_everglade_58 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_59"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "7862dbbbe2abd0007b4255ed519702213b77967803447b8cea8be303d534c5a3",
+      "output": "ok aethyr_native_everglade_59 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_60"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "97b99e5107d8d7f661eb1beac3e47d717a634cc651606ffa888b80e1d2baed83",
+      "output": "ok aethyr_native_everglade_60 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_61"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "a1cd4b538ef700a0daac861faae6e8dddb2c5dcdc5930a43b559ffb511f1ae01",
+      "output": "ok aethyr_native_everglade_61 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_62"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "62bd22e5ec1c0001eafc162226a344e0f33a5fa740a03f3ed3c21ca1f335f296",
+      "output": "ok aethyr_native_everglade_62 (1 original body calls)\n"
+    },
+    {
+      "receipt": "native-everglade-sanitized.json",
+      "command": [
+        "/private/tmp/aethyr-program-rebased-everglade-sanitized/everglade-sanitized",
+        "aethyr_native_everglade_63"
+      ],
+      "exit_code": 0,
+      "expected_assertion_trap": false,
+      "log_sha256": "da3916cec807a427033c25302cd7c4c6453be4a41ae7b6f7bc5f2c4b47021e23",
+      "output": "ok aethyr_native_everglade_63 (1 original body calls)\n"
+    }
+  ]
+}

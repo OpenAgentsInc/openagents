@@ -352,6 +352,13 @@ replay_copy :: (from: ReplaySession, to: ReplaySession) -> bool {
 The digest is 32-bit FNV-1a. Equal digests don't prove equal states, but a
 difference always means the states differ.
 
+The Grid now declares execution/digest profile 2. Its canonical digest includes
+the collision and query diagnostics from chapter 8, both halves of the refusal
+counter and the residual's float bits. Replay refuses other profiles before
+writing its destination. The independently calculated initial pin is
+`1068547055`; `3864885271` remains the historical profile-1 pin. This versions
+the Grid's execution contract while retaining the `ReplayEvent` envelope.
+
 ## The host's math library
 
 The first host check of this module failed. A recorded walk gave different

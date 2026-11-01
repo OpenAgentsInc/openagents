@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "scope": "Read-only final artifact and current semantic-input integrity audit; no native programs or compiler emissions repeated. Historical helper hashes remain explicit.",
+  "records": [
+    {
+      "receipt": "docs/verification/data/aethyr-ch8-2026-11-01/native-deadgears-debug.json",
+      "programs": 5,
+      "body_calls": 14,
+      "all_current_coax_driver_manifest_compiler_C_binary_hashes_match": true,
+      "historical_runner_hash": "3925a91bbd3bd327ad64ea9e59962774448cd29ae8e9f5444a6b8bfba2b4cd50"
+    },
+    {
+      "receipt": "docs/verification/data/aethyr-ch8-2026-11-01/native-deadgears-release.json",
+      "programs": 5,
+      "body_calls": 14,
+      "all_current_coax_driver_manifest_compiler_C_binary_hashes_match": true,
+      "historical_runner_hash": "3925a91bbd3bd327ad64ea9e59962774448cd29ae8e9f5444a6b8bfba2b4cd50"
+    },
+    {
+      "receipt": "docs/verification/data/aethyr-ch8-2026-11-01/native-deadgears-sanitized.json",
+      "programs": 5,
+      "body_calls": 14,
+      "all_current_coax_driver_manifest_compiler_C_binary_hashes_match": true,
+      "historical_runner_hash": "3925a91bbd3bd327ad64ea9e59962774448cd29ae8e9f5444a6b8bfba2b4cd50"
+    },
+    {
+      "receipt": "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-debug.json",
+      "programs": 64,
+      "body_calls": 64,
+      "all_current_coax_driver_manifest_compiler_C_binary_hashes_match": true,
+      "historical_runner_hash": "3925a91bbd3bd327ad64ea9e59962774448cd29ae8e9f5444a6b8bfba2b4cd50"
+    },
+    {
+      "receipt": "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-release.json",
+      "programs": 64,
+      "body_calls": 64,
+      "all_current_coax_driver_manifest_compiler_C_binary_hashes_match": true,
+      "historical_runner_hash": "3925a91bbd3bd327ad64ea9e59962774448cd29ae8e9f5444a6b8bfba2b4cd50"
+    },
+    {
+      "receipt": "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-sanitized.json",
+      "programs": 64,
+      "body_calls": 64,
+      "all_current_coax_driver_manifest_compiler_C_binary_hashes_match": true,
+      "historical_runner_hash": "4d1cc5830a6bb47bae3475612973d6e56793dd1f08d601e3123694da820a08fb"
+    }
+  ]
+}

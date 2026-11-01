@@ -453,7 +453,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
 
 // ---- checks
 
-#test "edit mode: only an admin gets EDIT; B goes in and out; the hotbar places and picks" {
+#test "edit mode: only an admin gets EDIT; B goes in and out; the hotbar places and picks" #steps 337000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   #assert !everglade_key(s[..], 'b', 0) && !s[0].ev.editing;
@@ -482,7 +482,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   #assert everglade_key(s[..], KEY_ESCAPE, 0) && !s[0].ev.editing && s[0].ev.post_n > 0;
 }
 
-#test "edit mode: a thing is refused where it can't stand; ORIGINAL takes two presses and UNDO brings the list back" {
+#test "edit mode: a thing is refused where it can't stand; ORIGINAL takes two presses and UNDO brings the list back" #steps 345000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
@@ -507,7 +507,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   #assert s[0].ev.post_n > 0;
 }
 
-#test "edit mode: the HUD draws EDIT for an admin only, and the hotbar and the row within the plates" {
+#test "edit mode: the HUD draws EDIT for an admin only, and the hotbar and the row within the plates" #steps 339000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   u: [UNIFORM_FLOATS] f32;
@@ -531,7 +531,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   #assert everglade_edit_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 1) && !s[0].ev.editing;
 }
 
-#test "the shared layer: a visitor with BUILD gets EDIT, the things only, each sent as a card; no UNDO or ORIGINAL" {
+#test "the shared layer: a visitor with BUILD gets EDIT, the things only, each sent as a card; no UNDO or ORIGINAL" #steps 338000000 {
   s: [1] Everglade;
   everglade_start(s[..]);
   u: [UNIFORM_FLOATS] f32;
@@ -556,33 +556,4 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   #assert s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_UNDO].x1 == 0 && s[0].ev.boxes[EB_ORIGINAL].x1 == 0;   // no UNDO or ORIGINAL for a visitor
 }
 // (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
-#test "the shared layer: a realm admin's EDIT opens edit mode and the board; an accepted card is placed; DONE closes it" {
-  u: [UNIFORM_FLOATS] f32;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  // a realm admin: the layer's EDIT stands where Everglade's was, and opens edit mode with the board
-  a: [1] Everglade;
-  everglade_start(a[..]);
-  a[0].width = 1440; a[0].height = 900; a[0].dpr = 1;
-  a[0].map_button = Box.{x0 = 1360, y0 = 16, x1 = 1424, y1 = 54};
-  f := a[0].ev.ed[..];
-  edit_layer(a[..]);
-  redit_requested(f, 3);
-  #assert everglade_voice_message(a[..], HTTP_KIND + 3, "200\nrealm everglade\nrole admin\nowner 0\ntool build 1\nrow flock 0 The bird flock\nwaiting 1\n");
-  edit_layer(a[..]);
-  n := everglade_edit_hud(a[..], out[..], u[..], 0, 840);
-  b := f[0].boxes[RB_EDIT];
-  #assert a[0].ev.admin && f[0].shown[RB_EDIT] && b.x1 < 1360 && !redit_row_on(f, "flock");
-  #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
-  edit_layer(a[..]);
-  #assert a[0].ev.editing && redit_open(f);
-  // the visitor's card accepted here: the barrel goes into the city and out to everyone
-  f[0].took = true; f[0].decided_thing_n = redit_copy(f[0].decided_thing[..], "barrel"); f[0].decided_x = 6; f[0].decided_z = -12;
-  edit_layer(a[..]);
-  #assert a[0].ev.edits.n == 1 && a[0].ev.edits.things[0].kind == 1 && a[0].ev.edits.things[0].x == 6 && a[0].ev.due > 0;
-  // DONE on the layer closes edit mode too
-  n = everglade_edit_hud(a[..], out[..], u[..], 0, 840);
-  b = f[0].boxes[RB_EDIT];
-  #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
-  edit_layer(a[..]);
-  #assert !a[0].ev.editing && !redit_open(f);
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).

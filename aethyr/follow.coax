@@ -15,6 +15,8 @@
 #load "query.coax";
 #load "math.coax";
 #load "shot.coax";   // the shot every camera makes, and the cameras that need no Follow
+#load "ground.coax" as follow_mesh;
+#authority;
 
 // book:begin follow
 FOLLOW_PI :: 3.14159265;
@@ -40,6 +42,7 @@ Follow :: struct {
   max_dist: f32 = FOLLOW_DIST;
   target: WorldPoint = WorldPoint.{x = 0, y = FOLLOW_HEIGHT, z = 0};
   vel: WorldPoint;
+  status: QueryStatus;
 }
 // book:end follow
 
@@ -131,11 +134,26 @@ follow_closest :: (p0: WorldPoint, p1: WorldPoint, q0: WorldPoint, q1: WorldPoin
 // the camera stops where the line enters one. A box the target is already beside (inside its
 // FOLLOW_CLEAR band) holds the camera in only if the line runs into the box itself, so backing
 // away from a wall never puts the camera in it. It reads the colliders and changes nothing.
-follow_room :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+FollowRoom :: struct { room: f32; terrain_room: f32; status: QueryStatus; }
+follow_room_checked :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> FollowRoom {
   room := follow_lo(limit, max);
   if c.boxes.count >= QUERY_BOX { room = follow_room_boxes(c, room, target, offset, max); }
   if c.capsules.count >= QUERY_CAPSULE { room = follow_room_capsules(c, room, target, offset, max); }
-  return room;
+  terrain_room := max;
+  if c.heightfields.count > 0 {
+    // Keep the existing wall/body bands; only the mesh uses the exact sphere sweep.
+    // Probe the distance the closest-distance rule could publish, even when a wall's band
+    // reduced `room` below that minimum. The terrain cap is applied after the legacy rule.
+    prospective := follow_lo(max, follow_hi(f32(FOLLOW_CLOSEST), room));
+    terrain_scene := Colliders.{heightfields = c.heightfields, heightfield_budget = c.heightfield_budget};
+    surface := query_sweep(terrain_scene, target, f32(FOLLOW_CLEAR), world_scale(offset, prospective));
+    if surface.status != QueryStatus.ok { return FollowRoom.{status = surface.status}; }
+    if surface.hit { terrain_room = prospective * surface.t; room = follow_lo(room, terrain_room); }
+  }
+  return FollowRoom.{room = room, terrain_room = terrain_room};
+}
+follow_room :: (c: Colliders, limit: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
+  return follow_room_checked(c, limit, target, offset, max).room;
 }
 follow_room_boxes :: (c: Colliders, start: f32, target: WorldPoint, offset: WorldPoint, max: f32) -> f32 {
   room := start;
@@ -197,12 +215,15 @@ follow_room_capsules :: (c: Colliders, start: f32, target: WorldPoint, offset: W
 
 // book:begin track
 // One step of the camera: the target follows `dest` on the spring, then the camera pulls in at
-// once to the room it has (never nearer than FOLLOW_CLOSEST), or backs out toward it by
-// FOLLOW_EASE each 1/60 s, a closed form in dt.
+// once to the room it has, or backs out toward it by FOLLOW_EASE each 1/60 s.
+// A mesh contact may be nearer than FOLLOW_CLOSEST; a refused query preserves state.
 follow_track :: (f: Follow, c: Colliders, limit: f32, dest: WorldPoint, dt: f32) -> Follow {
   next := follow_spring(f, dest, dt);
-  room := follow_hi(f32(FOLLOW_CLOSEST), follow_room(c, limit, next.target, follow_offset(next), next.max_dist));
+  available := follow_room_checked(c, limit, next.target, follow_offset(next), next.max_dist);
+  if available.status != QueryStatus.ok { refused := f; refused.status = available.status; return refused; }
+  room := follow_lo(available.terrain_room, follow_hi(f32(FOLLOW_CLOSEST), available.room));
   next.dist = follow_lo(room, next.dist + (room - next.dist) * (1 - math_pow(f32(1 - FOLLOW_EASE), dt * 60)));
+  next.status = QueryStatus.ok;
   return next;
 }
 // book:end track
@@ -504,6 +525,54 @@ follow_near :: (a: f32, b: f32, t: f32) -> bool { return abs(a - b) <= t; }
   #assert follow_near(sqrt(world_dot(world_sub(s.eye, s.at), world_sub(s.eye, s.at))), 2.5, 0.00001);
   last := follow_shot(f, world_point(0, 1, 0), 2, 1);
   #assert last.at.x == 2 && last.at.y == 3 && last.at.z == -4;
+}
+
+#test "heightfields hold the camera above the mesh even nearer than the legacy closest distance" {
+  camera_heights := [4] f32.[0, 0, 0, 0];
+  camera_fields := [1] QueryHeightfield.[QueryHeightfield.{ground = follow_mesh.Ground.{n = 1, cell = 10, west = -5, south = -5}, heights = camera_heights[..]}];
+  camera_scene := Colliders.{heightfields = camera_fields[..]};
+  mesh_camera_receipt := follow_room_checked(camera_scene, 1000, world_point(0, 1, 0), world_point(0, -1, 0), 4);
+  #assert mesh_camera_receipt.status == QueryStatus.ok && follow_near(mesh_camera_receipt.room, 0.8, 0.000001);
+  camera_state: Follow; camera_state.target = world_point(0, 0.21, 0); camera_state.phi = f32(FOLLOW_PHI_MAX);
+  camera_next := follow_track(camera_state, camera_scene, 1000, camera_state.target, 1.0 / 64.0);
+  camera_eye := follow_eye(camera_next.target, follow_offset(camera_next), camera_state.dist, camera_next.dist, 1);
+  #assert camera_next.status == QueryStatus.ok && camera_next.dist < f32(FOLLOW_CLOSEST);
+  #assert camera_eye.y >= 0.199999 && camera_eye.y <= 0.200001;
+}
+
+#test "a nearby box cannot shorten the terrain probe below the distance the camera publishes" {
+  combined_heights := [4] f32.[0, 0, 0, 0];
+  combined_fields := [1] QueryHeightfield.[QueryHeightfield.{ground = follow_mesh.Ground.{n = 1, cell = 10, west = -5, south = -5}, heights = combined_heights[..]}];
+  combined_boxes := [6] f32.[-5, -1, -5, 5, 0.05, 5];
+  combined_scene := Colliders.{heightfields = combined_fields[..], boxes = combined_boxes[..]};
+  combined_camera: Follow; combined_camera.target = world_point(0, 0.3, 0); combined_camera.phi = f32(FOLLOW_PHI_MAX);
+  combined_next := follow_track(combined_camera, combined_scene, 1000, combined_camera.target, 1.0 / 64.0);
+  combined_eye := follow_eye(combined_next.target, follow_offset(combined_next), combined_camera.dist, combined_next.dist, 1);
+  #assert combined_next.status == QueryStatus.ok && combined_next.dist < f32(FOLLOW_CLOSEST);
+  #assert combined_eye.y >= 0.199999 && combined_eye.y <= 0.200001;
+  // The mesh cap is specific to a supplied mesh; the wall/body clearance rule is retained.
+  combined_scene.heightfields = combined_fields[0..<0];
+  combined_legacy := follow_track(combined_camera, combined_scene, 1000, combined_camera.target, 1.0 / 64.0);
+  #assert combined_legacy.dist == f32(FOLLOW_CLOSEST);
+}
+
+#test "a refused heightfield camera query preserves the incoming camera and reports its reason" {
+  refused_heights := [4] f32.[0, 0, 0, 0];
+  refused_fields := [1] QueryHeightfield.[QueryHeightfield.{ground = follow_mesh.Ground.{n = 1, cell = 10, west = -5, south = -5}, heights = refused_heights[0..<3]}];
+  refused_scene := Colliders.{heightfields = refused_fields[..]};
+  refused_camera: Follow; refused_camera.target = world_point(1, 2, 3); refused_camera.vel = world_point(0.1, 0.2, 0.3); refused_camera.dist = 3;
+  refused_room := follow_room_checked(refused_scene, 1000, refused_camera.target, follow_offset(refused_camera), 4);
+  #assert refused_room.status == QueryStatus.terrain && refused_room.room == 0;
+  #assert follow_room(refused_scene, 1000, refused_camera.target, follow_offset(refused_camera), 4) == 0;
+  refused_next := follow_track(refused_camera, refused_scene, 1000, world_point(10, 20, 30), 1.0 / 64.0);
+  #assert refused_next.status == QueryStatus.terrain && refused_next.dist == refused_camera.dist;
+  #assert refused_next.target.x == 1 && refused_next.target.y == 2 && refused_next.target.z == 3;
+  #assert refused_next.vel.x == 0.1 && refused_next.vel.y == 0.2 && refused_next.vel.z == 0.3;
+  refused_fields[0].heights = refused_heights[..]; refused_scene.heightfield_budget = 0;
+  #assert follow_track(refused_camera, refused_scene, 1000, world_point(10, 20, 30), 1.0 / 64.0).status == QueryStatus.invalid;
+  refused_scene.heightfield_budget = 4096;
+  recovered_camera := follow_track(refused_next, refused_scene, 1000, refused_next.target, 1.0 / 64.0);
+  #assert recovered_camera.status == QueryStatus.ok;
 }
 
 #test "first person looks out of the eyes along the follow's direction" {

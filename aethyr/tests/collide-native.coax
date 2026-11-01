@@ -1,0 +1,15 @@
+#load "../collide.coax";
+
+// Native-only verification adapter. Its arrays are fixed by the C harness.
+collision_checked :: (boxes: [] f32, bodies: [] f32, floors: [] f32, input: [] f32,
+                       dx: f32, dz: f32, output: [] f32) -> int #export_c {
+  if input.count != 6 || output.count != 8 { return -1; }
+  c := Colliders.{boxes = boxes, capsules = bodies, floors = floors};
+  p: CollideProfile;
+  s := CollideState.{feet = world_point(input[0], input[1], input[2]), velocity = world_point(input[3], input[4], input[5])};
+  r := collide_move(c, p, s, dx, dz);
+  output[0] = r.state.feet.x; output[1] = r.state.feet.y; output[2] = r.state.feet.z;
+  output[3] = r.state.velocity.x; output[4] = r.state.velocity.y; output[5] = r.state.velocity.z;
+  output[6] = r.residual; output[7] = f32(r.passes);
+  return cast(int) cast(u8) r.status;
+}

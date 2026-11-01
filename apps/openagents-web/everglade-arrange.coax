@@ -252,63 +252,6 @@ ar_carried :: (s: [] Everglade, icon: f32) {
   sp_media(s, "over", HB_NAME[b], cast(string) tail[0..<n], Box.{x0 = x, y0 = y, x1 = x + side, y1 = y + side});
 }
 
-#test "the bar: a swap moves the spells, not the keys; its text round-trips; a bad or older text is refused" {
-  g: [1] Everglade;
-  #assert sp_place(g[..], SP_METEOR) == 0 && sp_place(g[..], SP_SLOTS + AB_STONE) == 12 && sp_at_place(g[..], 10) == SP_REBUILD;
-  g[0].now_s = 1793000000; g[0].sp.ar.account = true;
-  ar_swap(g[..], SP_METEOR, SP_SLOTS + AB_STONE);
-  #assert sp_at_place(g[..], 0) == SP_SLOTS + AB_STONE && sp_at_place(g[..], 12) == SP_METEOR && sp_place(g[..], SP_BOLT) == 1;
-  // Shift+1 is still place 12, now Meteor Swarm's; 1 is Wall of Stone's
-  #assert sp_at_place(g[..], sp_key_place('!', 1)) == SP_METEOR && sp_at_place(g[..], sp_key_place('1', 0)) == SP_SLOTS + AB_STONE;
-  #assert g[0].sp.ar.keep && g[0].sp.ar.send && g[0].sp.ar.at == 1793000000000;
-  out: [AR_TEXT] u8;
-  n := everglade_bar_keep(g[..], out[..]);
-  text := cast(string) out[0..<n];
-  #assert n > 0 && !g[0].sp.ar.keep && everglade_bar_keep(g[..], out[..]) == 0;
-  #assert text[0..<35] == "eg-bar 1\nat=1793000000000\nplaces=12" && contains(text, ",1,2,3,4,");
-  h: [1] Everglade;
-  #assert ar_take(h[..], text) && sp_at_place(h[..], 12) == SP_METEOR && sp_at_place(h[..], 0) == SP_SLOTS + AB_STONE;
-  #assert !ar_take(h[..], text);                                   // no newer
-  #assert !ar_take(h[..], "eg-bar 1\nat=1793000000001\nplaces=0,0\n");   // not every slot
-  #assert !ar_take(h[..], "eg-bar 2\nat=1793000000001\nplaces=12\n");
-  // the server's copy goes as an AESV container
-  body: [1024] u8;
-  #assert everglade_bar_send(g[..], body[..]) > 0 && everglade_bar_send(g[..], body[..]) == 0;
-  g[0].sp.ar.slot_n = 0; ar_facts(g[..], "slot=everglade\naccount=e-1\n");
-  #assert cast(string) out[0..<everglade_bar_url(g[..], out[..])] == "/api/playtest/progress/everglade/hotbar" && everglade_bar_ask(g[..]) && !everglade_bar_ask(g[..]);
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).
 
-#test "the bar: Shift and a drag swaps two slots and casts nothing; let go off the bar, nothing moves; a phone holds and drags" {
-  g: [1] Everglade;
-  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
-  u: [UNIFORM_FLOATS] f32;
-  dm: [1] DemoWorld;
-  sp_ready_city(g[..], dm[..]);
-  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  a := g[0].sp.boxes[SP_METEOR]; b := g[0].sp.boxes[SP_ORB];
-  #assert everglade_key(g[..], KEY_SHIFT, 1);
-  #assert everglade_pointer(g[..], a.x0 + 5, a.y0 + 5, 0, 0, 1) && g[0].sp.armed == -1 && !g[0].drag_on;
-  #assert everglade_pointer(g[..], b.x0 + 5, b.y0 + 5, 1, 0, 1) && ar_target(g[..]) == SP_ORB;
-  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/meteor-swarm-bare-");
-  #assert everglade_pointer(g[..], b.x0 + 5, b.y0 + 5, 2, 0, 1) && sp_place(g[..], SP_ORB) == 0 && sp_place(g[..], SP_METEOR) == 3 && g[0].sp.armed == -1;
-  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  m := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
-  #assert contains(m, "water-orb-bare-48.jpg") && contains(m, "key-0-0-48.jpg") && contains(m, "key-0-3-48.jpg") && !contains(m, "over ");
-  // let go off the bar: nothing moves; Shift let go, 4 casts Meteor Swarm where it now is
-  #assert everglade_pointer(g[..], a.x0 + 5, a.y0 + 5, 0, 0, 1) && everglade_pointer(g[..], 640, 300, 1, 0, 1) && everglade_pointer(g[..], 640, 300, 2, 0, 1);
-  #assert sp_place(g[..], SP_ORB) == 0 && !g[0].sp.ar.held;
-  #assert everglade_key_up(g[..], KEY_SHIFT, 0) && everglade_key(g[..], '4', 0) && g[0].sp.armed == SP_METEOR;
-  // a phone: hold Thunderbolt until its card shows, drag it onto Mega Thunderbolt; held and let go in place, nothing moves
-  g[0].sp.armed = -1; g[0].touch = true;
-  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  p := g[0].sp.boxes[SP_BOLT]; q := g[0].sp.boxes[SP_MEGA];
-  #assert everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 0, 1, 7);
-  for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert g[0].sp.ar.held && g[0].sp.tip_on && everglade_pointer(g[..], q.x0 + 5, q.y0 + 5, 1, 1, 7) && ar_target(g[..]) == SP_MEGA;
-  #assert everglade_pointer(g[..], q.x0 + 5, q.y0 + 5, 2, 1, 7) && sp_place(g[..], SP_BOLT) == 2 && sp_place(g[..], SP_MEGA) == 1 && !g[0].sp.ar.held;
-  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 0, 1, 8);
-  for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  #assert g[0].sp.ar.held && g[0].sp.ar.from == SP_MEGA && everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 2, 1, 8) && !g[0].sp.ar.held && g[0].sp.slot_held == -1 && sp_place(g[..], SP_MEGA) == 1;
-}
+// Native integration program: aethyr/tests/check_native_gameplay.py (compiler storage limit).

@@ -1,0 +1,11 @@
+ok   #test heightfield hit selection retains f64 order and the selected surface point (1 case, 21440 steps, 0 ms)
+ok   #test heightfield failures after a valid hit are atomic and exactly sixteen fields are admitted (1 case, 118384 steps, 2 ms)
+ok   #test heightfields replace the flat fallback and return their drawn triangle slopes (1 case, 2434 steps, 0 ms)
+ok   #test the highest heightfield wins, its edge continues flat, and boxes still form steps (1 case, 6005 steps, 0 ms)
+ok   #test a malformed heightfield is skipped without reading its missing heights (1 case, 1587 steps, 0 ms)
+ok   #test heightfield rays find a narrow crest and report exhausted work as refusal (1 case, 5174 steps, 0 ms)
+ok   #test heightfield rays keep stable shape ties and reject an oversized field table (1 case, 4172 steps, 0 ms)
+ok   #test heightfield overlap reports stable IDs and refuses before writing a partial answer (1 case, 15708 steps, 0 ms)
+ok   #test heightfield sphere sweeps keep touching, stationary overlap and refusal distinct (1 case, 21234 steps, 0 ms)
+9 of 95 checks (--only 'heightfield'), 9 passed, 0 failed
+authority execution coverage not checked: it needs every check (run coax test without --only)

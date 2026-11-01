@@ -1,0 +1,95 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-01T07:18:51.645301+00:00",
+  "status": "pure ground module qualified after composed-scope identifier renames; engine integration is qualified separately",
+  "base_commit": "7bc7ec0c77c682fa8dd572396922956ef105a8c7",
+  "compiler": {
+    "path": "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+    "version": "coax0 0.46.0",
+    "sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+    "source_fingerprint": "da79e8559f07565ee5e050bfb1dbc4f532f29e5b7c6262fc42e280f901f185d3"
+  },
+  "source_sha256": {
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/ground-native.coax": "97f7779142583fe672d750b711480652051c62c0a8418a8c031848a2c13a5a78",
+    "aethyr/tests/ground-native.c": "4079c6f50846be22bc4e09cca925f0e40849431febe8c2aa5be286ad2ce9c893",
+    "aethyr/tests/check_ground.sh": "0891153fdbf74531acbf820cccfa53c147146d64dab37c731066934d11b7500e",
+    "aethyr/tests/ground-refuse-time.coax": "8e1d33c5e8dd3f32076df839bcd909360cbea78851781c17aac6fd94b2133887",
+    "aethyr/tests/ground-refuse-raw.coax": "ffbfd4c108d0d7a5f45851c3cec477964cd9d389ae6b536b955e52b5c476846a",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+  },
+  "commands": [
+    {
+      "argv": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "mutate",
+        "aethyr/ground.coax",
+        "--library",
+        "--root-only",
+        "--jobs",
+        "4"
+      ],
+      "exit_status": 0,
+      "stdout": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n160 mutants, 160 killed, 0 survived\n",
+      "baseline_check_groups": 16,
+      "waivers": []
+    },
+    {
+      "argv": [
+        "env",
+        "COAX_TEST_COMPILER=/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "bash",
+        "aethyr/tests/check_ground.sh"
+      ],
+      "exit_status": 0,
+      "stdout": "ground native: 110976 triangle samples, exact vertices, unchanged input and malformed views pass\nground native: 110976 triangle samples, exact vertices, unchanged input and malformed views pass\nground native: 110976 triangle samples, exact vertices, unchanged input and malformed views pass\nground units: time and raw coordinates are refused with E0317\n",
+      "profiles": [
+        "debug -O0",
+        "release -O2",
+        "ASan/UBSan -O1"
+      ],
+      "samples_per_profile": 110976,
+      "unit_refusal_code": "E0317"
+    }
+  ],
+  "scope": [
+    "pure read-only heightfield sampler and surface normal",
+    "unchanged Ground field order/defaults and generated LP64 layout assertions",
+    "actual separately rounded f32 mesh vertices, south-west to north-east triangles",
+    "f64 cell fractions and selected-triangle slopes",
+    "four-ulp conservative descriptor admission; logarithmic axis search",
+    "exact stored vertex words, including signed zero",
+    "atomic refusal and checked metre-coordinate arguments"
+  ],
+  "limits": [
+    "this receipt qualifies the pure ground module; engine query/controller integration has its own checks",
+    "only the four sampled heights are admitted; caller owns a complete immutable readable view",
+    "normal and slopes belong to the selected boundary triangle beyond a clamped edge; clamped flags report the extension"
+  ],
+  "prior_baseline": {
+    "compiler_sha256": "74be15259dc664c9d835bf0816a8c0ce178c85ade14c289c9c26f47dedf8cb75",
+    "result": "same frozen source passed the same mutation and native gates before the exact-current-source artifact became available"
+  },
+  "prior_exact_compiler_receipt": {
+    "recorded_at_utc": "2026-11-01T06:53:14.265623+00:00",
+    "source_sha256": {
+      "aethyr/ground.coax": "9a7b8a678bf736394fe347b6867a1473542ea5df74d81b083f3e91b5bc76c74f",
+      "aethyr/tests/ground-oracle.coax": "0277346f348cd4c40d893f1a0d513f7296662ffcc026ff8480f640d83350134a",
+      "aethyr/tests/ground-native.coax": "97f7779142583fe672d750b711480652051c62c0a8418a8c031848a2c13a5a78",
+      "aethyr/tests/ground-native.c": "4079c6f50846be22bc4e09cca925f0e40849431febe8c2aa5be286ad2ce9c893",
+      "aethyr/tests/check_ground.sh": "0891153fdbf74531acbf820cccfa53c147146d64dab37c731066934d11b7500e",
+      "aethyr/tests/ground-refuse-time.coax": "8e1d33c5e8dd3f32076df839bcd909360cbea78851781c17aac6fd94b2133887",
+      "aethyr/tests/ground-refuse-raw.coax": "ffbfd4c108d0d7a5f45851c3cec477964cd9d389ae6b536b955e52b5c476846a",
+      "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+    },
+    "result": "same mutation and native profiles passed before coordinated identifier-only composition renames"
+  },
+  "dependency_sha256": {
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583"
+  },
+  "requalification_reason": "Ground and its oracle had coordinated identifier-only renames after the retained exact-compiler pass; dependency closure changed, so the affected mutation and native gates were run once on the final composition sources."
+}

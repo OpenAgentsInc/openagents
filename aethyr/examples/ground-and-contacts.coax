@@ -1,0 +1,34 @@
+// book:begin example
+#load "../ground.coax" as ground;
+#load "../collide.coax" as contact;
+#load "../query.coax" as queries;
+#load "../space.coax" as world;
+#load "../../coax/lib/quantity.coax" as units;
+#load "../../verse/player.coax" as walker;
+#import "Basic";
+
+main :: () {
+  mesh := ground.Ground.{n = 1, cell = 1, west = 0, south = 0};
+  heights := [4] f32.[0, 1, 2, 4];
+  sampled := ground.ground_sample(mesh, heights[..], units.Quantity.{value = 0.75}, units.Quantity.{value = 0.25});
+  print("drawn triangle: height % m, slopes (%, %)\n", sampled.height.value, sampled.gx, sampled.gz);
+  walls := [6] f32.[-2, 0, 1, 2, 2, 1.1];
+  contact_scene := queries.Colliders.{boxes = walls[..]};
+  profile: contact.CollideProfile;
+  initial := contact.CollideState.{feet = world.world_point(0, 0, 0.75), velocity = world.world_point(0, 0, 4)};
+  moved := contact.collide_move(contact_scene, profile, initial, 0, 0.1);
+  print("wall: %, feet z %, speed into it %, passes %\n", moved.status, moved.state.feet.z, moved.state.velocity.z, moved.passes);
+  refused := contact.collide_move(contact_scene, profile, initial, 0, 0.16);
+  print("too far: %, original feet z %\n", refused.status, refused.state.feet.z);
+  walk_heights := [4] f32.[2.5, 2.5, 2.5, 2.5];
+  fields := [1] queries.QueryHeightfield.[queries.QueryHeightfield.{
+    ground = ground.Ground.{n = 1, cell = 4, west = -2, south = -2}, heights = walk_heights[..]}];
+  walk_world := walker.World.{heightfields = fields[..]};
+  person := walker.place_in(walk_world, 0, 2.5, 0, 0);
+  person = walker.verse_player_input(person, 0, 1, 0, 0, false, true, 0, 0);
+  person = walker.step(walk_world, person, walker.STEP);
+  print("terrain jump: above 2.5 m = %, query %\n", person.pos.y > 2.5, person.query_status);
+  for tick: 0..<48 { person = walker.step(walk_world, person, walker.STEP); }
+  print("terrain landing: feet y %, grounded %\n", person.pos.y, person.on_ground);
+}
+// book:end example
