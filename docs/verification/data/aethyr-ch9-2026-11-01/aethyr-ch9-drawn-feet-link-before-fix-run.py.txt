@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Bounded DeadGears-only chapter9 probe gate; reuse identical debug C for ASan."""
+import hashlib, importlib.util, json, os, platform, re, shutil, signal, subprocess, sys, time
+from pathlib import Path
+ROOT=Path('/Users/christopherdavid/work/openagents-aethyr-book')
+os.chdir(ROOT)
+DATA=ROOT/'docs/verification/data/aethyr-ch9-2026-11-01'
+WORK=Path('/tmp/aethyr-ch9-drawn-feet-artifacts')
+WORK.mkdir(exist_ok=True)
+START=time.monotonic(); DEADLINE=START+840
+sha=lambda p: hashlib.sha256(Path(p).read_bytes()).hexdigest()
+def closure(entries):
+    found={}
+    def visit(p):
+        p=p.resolve(); name=str(p.relative_to(ROOT))
+        if name in found:return
+        data=p.read_bytes(); found[name]=hashlib.sha256(data).hexdigest()
+        for name in re.findall(rb'^\s*#load\s+"([^"\n]+)"', data, re.M):visit(p.parent/name.decode())
+    for entry in entries:visit(ROOT/entry)
+    found['aethyr/tests/check_drawn_feet.py']=sha(ROOT/'aethyr/tests/check_drawn_feet.py')
+    return dict(sorted(found.items()))
+ENTRIES=['aethyr/tests/feet-deadgears.coax','verse/player.coax']
+BEFORE=closure(ENTRIES)
+COMPILER=ROOT/'coax/bin/coax'; COMPILER_HASH=sha(COMPILER)
+script=DATA/'aethyr-ch9-drawn-feet-run.py.txt'
+script.write_bytes(Path(__file__).read_bytes())
+spec=importlib.util.spec_from_file_location('drawn_feet',ROOT/'aethyr/tests/check_drawn_feet.py')
+mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+commands=[]; cache={}; mode=''; log=[]
+def run(cmd,*,stdout=subprocess.PIPE):
+    cmd=list(map(str,cmd)); started=time.monotonic()
+    record={'profile':mode,'command':cmd,'timeout_seconds':min(180,max(0,DEADLINE-started))}
+    emit=len(cmd)>2 and cmd[0]==str(COMPILER) and cmd[1]=='c'
+    key=tuple(cmd) if emit else None
+    if emit and key in cache:
+        prior=cache[key]; stdout.write(prior['c']); stdout.flush()
+        Path(cmd[cmd.index('--header')+1]).write_bytes(prior['h'])
+        record.update(exit_code=0,reused_successful_command=prior['index'],generated_c_sha256=hashlib.sha256(prior['c']).hexdigest(),generated_header_sha256=hashlib.sha256(prior['h']).hexdigest(),elapsed_seconds=0)
+        commands.append(record); return None
+    if record['timeout_seconds']<=0:raise TimeoutError('840-second overall gate budget exhausted')
+    proc=subprocess.Popen(cmd,cwd=ROOT,stdout=stdout,stderr=subprocess.PIPE,start_new_session=True)
+    try: out,err=proc.communicate(timeout=record['timeout_seconds'])
+    except BaseException:
+        try:os.killpg(proc.pid,signal.SIGKILL)
+        except ProcessLookupError:pass
+        proc.communicate();raise
+    if stdout is not subprocess.PIPE:stdout.flush()
+    record.update(exit_code=proc.returncode,elapsed_seconds=time.monotonic()-started,stderr=err.decode(errors='replace'))
+    if out is not None:record['stdout']=out.decode(errors='replace')
+    if emit and proc.returncode==0:
+        c=Path(stdout.name).read_bytes(); h=Path(cmd[cmd.index('--header')+1]).read_bytes()
+        record.update(generated_c_sha256=hashlib.sha256(c).hexdigest(),generated_header_sha256=hashlib.sha256(h).hexdigest())
+        cache[key]={'c':c,'h':h,'index':len(commands)}
+    if cmd[0]=='cc' and proc.returncode==0:
+        record['binary_sha256']=sha(cmd[cmd.index('-o')+1])
+        record['native_inputs']={str(Path(p).relative_to(WORK)):sha(p) for p in cmd if p.endswith('.c') and Path(p).is_file()}
+    commands.append(record)
+    if proc.returncode:raise RuntimeError(' '.join(cmd)+'\n'+err.decode(errors='replace')[-3000:])
+    return out
+mod.run=run
+status='failed';error=None;profiles=[]
+try:
+    for mode,release,sanitize in [('debug',False,False),('debug+ASan/UBSan',False,True),('release',True,False)]:
+        directory=WORK/('release' if release else 'debug');directory.mkdir(exist_ok=True)
+        mod.check('deadgears',str(COMPILER),directory,'cc',release,sanitize)
+        profiles.append({'profile':mode,'status':'passed','positive_actual_root':True,'negative_controls_detected':['dropped-height','double-height','last-step-pose','spurious-floor-offset']})
+    status='passed'
+except BaseException as exc:error=repr(exc)
+AFTER=closure(ENTRIES)
+changes=[name for name in sorted(set(BEFORE)|set(AFTER)) if BEFORE.get(name)!=AFTER.get(name)]
+if changes or sha(COMPILER)!=COMPILER_HASH:status='failed'
+record={'schema':'aethyr.drawn-feet.native.v1','chapter':9,'realm':'deadgears','status':status,'elapsed_seconds':time.monotonic()-START,'timeout_seconds':840,'scope':'Actual production engineer object-root translation from independently interpolated player feet. Four broken-producer controls per native profile. No Wasm/raster/f64 claim. Only DeadGears was executed.','compiler':str(COMPILER),'compiler_sha256':COMPILER_HASH,'native_compiler':shutil.which('cc'),'native_compiler_version':subprocess.check_output(['cc','--version'],timeout=10,text=True),'platform':platform.platform(),'sources':BEFORE,'source_changes':changes,'compiler_unchanged':sha(COMPILER)==COMPILER_HASH,'profiles':profiles,'commands':commands,'runner':str(script.relative_to(ROOT)),'runner_sha256':sha(script),'sanitizer_reuse':'Exact successful debug Coax C/header bytes reused for the sanitizer profile; C compilation and all five executions/oracle comparisons run with ASan/UBSan flags. Release Coax C is emitted separately.','error':error}
+receipt=DATA/'drawn-feet-deadgears.json';receipt.write_text(json.dumps(record,indent=2)+'\n')
+print(json.dumps({'status':status,'profiles':profiles,'elapsed_seconds':record['elapsed_seconds'],'receipt':str(receipt.relative_to(ROOT)),'source_changes':changes,'error':error},indent=2))
+if status!='passed':sys.exit(1)

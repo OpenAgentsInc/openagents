@@ -252,18 +252,18 @@ follow_eye :: (at: WorldPoint, offset: WorldPoint, prev_dist: f32, dist: f32, sh
 
 The walker draws its camera with these two calls:
 
-<!-- source: verse/player.coax drawn -->
+<!-- source: aethyr/walk.coax drawn -->
 ```jai
 // The feet and facing to draw this frame.
-verse_player_feet :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_pos, p.pos, alpha(p)); }
-verse_player_face :: (p: Player) -> f32 #export_c {
+walk_feet :: (p: Player) -> Vec3 { return mix3(p.prev_pos, p.pos, alpha(p)); }
+walk_face :: (p: Player) -> f32 {
   return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
 }
 // The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
-verse_player_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
-verse_player_at :: (p: Player) -> Vec3 #export_c { return vp(verse_player_shot(p).at); }
-verse_player_eye :: (p: Player) -> Vec3 #export_c { return vp(verse_player_shot(p).eye); }
+walk_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+walk_at :: (p: Player) -> Vec3 { return vp(walk_shot(p).at); }
+walk_eye :: (p: Player) -> Vec3 { return vp(walk_shot(p).eye); }
 ```
 
 ## One shot for every camera
@@ -313,17 +313,17 @@ follow_first_shot :: (f: Follow, feet: WorldPoint) -> CameraShot {
 The walker's view modes are these three shots. Each one reads only what is
 drawn this frame:
 
-<!-- source: verse/player.coax views -->
+<!-- source: aethyr/walk.coax views -->
 ```jai
 // The camera a mode shows, as one of Aethyr's shots (aethyr/follow.coax): first person, the
 // follow behind you, or top down. Each reads only what is drawn this frame.
-verse_player_view :: (p: Player, mode: int) -> CameraShot {
-  if mode == 0 { return follow_first_shot(follow_of(p), wp(verse_player_feet(p))); }
-  if mode == 2 { return shot_top(wp(verse_player_feet(p))); }
-  return verse_player_shot(p);
+walk_view :: (p: Player, mode: int) -> CameraShot {
+  if mode == 0 { return follow_first_shot(follow_of(p), wp(walk_feet(p))); }
+  if mode == 2 { return shot_top(wp(walk_feet(p))); }
+  return walk_shot(p);
 }
-verse_player_view_eye :: (p: Player, mode: int) -> Vec3 #export_c { return vp(verse_player_view(p, mode).eye); }
-verse_player_view_at :: (p: Player, mode: int) -> Vec3 #export_c { return vp(verse_player_view(p, mode).at); }
+walk_view_eye :: (p: Player, mode: int) -> Vec3 { return vp(walk_view(p, mode).eye); }
+walk_view_at :: (p: Player, mode: int) -> Vec3 { return vp(walk_view(p, mode).at); }
 ```
 
 ### The free orbit
@@ -443,7 +443,7 @@ realms' C faces read them. `steps_in` (chapter 1) runs `step_once`, the
 player's step and then the camera's, so every realm that advances through
 `verse_player_advance` gets the same camera as before, bit for bit.
 
-<!-- source: verse/player.coax camera -->
+<!-- source: aethyr/walk.coax camera -->
 ```jai
 // The camera's step, after the player's (aethyr/follow.coax): its target follows you on the
 // spring, and it pulls in at once where something is in the way and backs out gently. It reads
@@ -473,7 +473,7 @@ steady turn, at 60 FPS. It compares every field the player's step owns after
 every frame, and it confirms that the three cameras differ and that the
 wall pulled the camera in:
 
-<!-- source: verse/player.coax readonly -->
+<!-- source: aethyr/walk.coax readonly -->
 ```jai
 // The camera only reads the player (aethyr/follow.coax, book chapter 10). Through a walk and a
 // run into a wall and round it, past a body, two jumps and a steady turn, at 60 FPS, the player is the same,
@@ -503,14 +503,14 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player {
   walls := [6] f32.[-3, 0, 4, 3, 2.5, 4.5];                    // a wall across your path, 4 m ahead
   bodies := [7] f32.[1.2, 0, 1.5, 1.2, 1.8, 1.5, 0.35];         // a robot beside it
   w: World; w.walls = walls[..]; w.bodies = bodies[..];
-  start := verse_player_place(0, 0, 0, 0);
+  start := walk_place(0, 0, 0, 0);
   runs: [3] Player;
   for c: 0..<3 { runs[c] = start; }
   frame := 1.0f32 / 60.0;
   pulled := false; stopped := false; parted := 0;
   for f: 0..<240 {
     for c: 0..<3 {
-      runs[c] = verse_player_input(runs[c], ifx f > 120 then 1.0f32 else 0, 1, 0, 0, f > 40, f == 30 || f == 150, 0.01, 0);
+      runs[c] = walk_input(runs[c], ifx f > 120 then 1.0f32 else 0, 1, 0, 0, f > 40, f == 30 || f == 150, 0.01, 0);
       runs[c] = frame_with(w, runs[c], frame, c);
     }
     #assert walker_same(runs[0], runs[1]) && walker_same(runs[2], runs[1]);
@@ -524,13 +524,13 @@ frame_with :: (w: World, p: Player, frame: f32, cams: int) -> Player {
   // The same run with steps_in's own camera gives the same player too.
   q := start;
   for f: 0..<240 {
-    q = advance_in(w, verse_player_input(q, ifx f > 120 then 1.0f32 else 0, 1, 0, 0, f > 40, f == 30 || f == 150, 0.01, 0), frame);
+    q = advance_in(w, walk_input(q, ifx f > 120 then 1.0f32 else 0, 1, 0, 0, f > 40, f == 30 || f == 150, 0.01, 0), frame);
   }
   #assert walker_same(q, runs[1]) && q.target.z == runs[1].target.z && q.dist == runs[1].dist;
   #assert q.prev_target.z == runs[1].prev_target.z && q.prev_dist == runs[1].prev_dist;
 }
 #forall "walker_same compares every field it names" k: 0..<21 {
-  a := verse_player_input(verse_player_advance(verse_player_place(1, 0.5, 2, 0.3), 0.04), 0, 1, 0, 0, false, true, 0, 0);
+  a := walk_input(walk_advance(walk_place(1, 0.5, 2, 0.3), 0.04), 0, 1, 0, 0, false, true, 0, 0);
   #assert walker_same(a, a);
   b := a;
   if k == 0 { b.pos.x += 1; } else if k == 1 { b.pos.y += 1; } else if k == 2 { b.pos.z += 1; } else if k == 3 { b.vel.x += 1; }

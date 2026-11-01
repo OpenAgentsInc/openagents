@@ -62,7 +62,7 @@ tested Mac.
 
 | What you need | |
 | --- | --- |
-| Revision | `main` with compiler `coax0 0.45.0` or later. |
+| Revision | `main`, qualified with compiler `coax0 0.46.0`. |
 | Hardware | A Mac with Apple silicon and Chrome, or another browser with WebGPU. |
 | Downloads | LLVM for the WebAssembly build: `brew install llvm lld wasi-libc wasi-runtimes`. |
 | Time | The dev server's first build takes about 2 minutes. |
@@ -75,12 +75,14 @@ coax/build.sh
 python3 psionic/tests/book.py --book aethyr --coax coax/bin/coax
 ```
 
-It ends with `book execution: 36 runs match output and exit status`. The
-2026-11-01 qualification uses `coax0 0.46.0`: 18 changed-closure runs pass
-freshly, and 18 identical runs retain their passing result from `3c3b4c3a39`.
-The [record](../../aethyr/tests/book-chapter8-qualification.json) binds their
-source closures, fixtures and compiler. Other commands on this page retain
-their original qualification above.
+It ends with `book execution: 38 runs match output and exit status`. The
+2026-11-01 chapter 9 qualification uses `coax0 0.46.0`: 16 changed-closure
+runs pass freshly, and 22 identical runs retain their passing evidence from
+`bd73544a7e`. The [record](../../aethyr/tests/book-chapter9-qualification.json)
+binds the compiler's source inventories, fixtures and run options. The new
+example calculates an overridden run and jump, shows a carried fixed step,
+and refuses zero gravity without losing the queued jump. Other commands on
+this page retain their original qualification above.
 
 To play a realm in the browser:
 

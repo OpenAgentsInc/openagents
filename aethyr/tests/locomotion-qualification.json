@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "profile": "native-f32-fixed-walk-tuning",
+  "scope": "Locomotion admission only; Walk integration and C facade have separate receipts",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "sources": {
+    "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+    "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028"
+  },
+  "checks": {
+    "count": 3,
+    "passed": 3,
+    "cases": 46
+  },
+  "mutation": {
+    "command": [
+      "coax/bin/coax",
+      "mutate",
+      "aethyr/locomotion.coax",
+      "--library",
+      "--root-only",
+      "--jobs",
+      "4"
+    ],
+    "total": 18,
+    "killed": 18,
+    "survived": 0,
+    "waivers": 0
+  },
+  "units": "metres, seconds and their speed/acceleration/rate ratios; scalar f32 profile, not a new unit-typed ABI",
+  "bounds": "Every field finite, nonnegative and below 1000; gravity and acceleration strictly positive; run>=walk; slide_grip<=1. Runtime Walk also admits configured run travel against CollideProfile."
+}

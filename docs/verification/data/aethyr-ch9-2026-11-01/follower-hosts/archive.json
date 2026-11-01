@@ -1,0 +1,333 @@
+{
+  "scope": "The actual Player facade and Garden/Villa scene adapters, as separate production C units. Height samples and initial poses are identical supplied fixtures; this does not qualify procedural terrain generation, browser rasterization, all realm animation, or Coax --release.",
+  "codegen": "Normal admitted Coax C, reused from passing actual page links; native O0/O2/ASan+UBSan and Wasm O2.",
+  "cadences": "30/60/120/144 nominal FPS; tiny final fractional records close the 30/60 schedules at exactly one second. All observed physical states match at their paid ticks; the144cadence observes everytick0through64.",
+  "physical_columns": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39
+  ],
+  "columns": [
+    "player.pos.x",
+    "player.pos.y",
+    "player.pos.z",
+    "player.vel.x",
+    "player.vel.y",
+    "player.vel.z",
+    "player.face",
+    "player.on_ground",
+    "player.act",
+    "fetch.mode",
+    "dog.pos.x",
+    "dog.pos.y",
+    "dog.pos.z",
+    "dog.vel.x",
+    "dog.vel.y",
+    "dog.vel.z",
+    "dog.face",
+    "dog.walking",
+    "ball.pos.x",
+    "ball.pos.y",
+    "ball.pos.z",
+    "ball.vel.x",
+    "ball.vel.y",
+    "ball.vel.z",
+    "ball.radius",
+    "ball.held",
+    "ball.thrown",
+    "ball.resting",
+    "ball.spin",
+    "previous.ready",
+    "previous.dog.x",
+    "previous.dog.y",
+    "previous.dog.z",
+    "previous.face",
+    "previous.ball.x",
+    "previous.ball.y",
+    "previous.ball.z",
+    "previous.spin",
+    "garden.dog_stride_or_zero",
+    "garden.previous_stride_or_zero",
+    "player.clock.ticks",
+    "player.clock.frames",
+    "player.clock.ran",
+    "player.clock.carry_ns",
+    "player.clock.counted_ns",
+    "player.clock.refused",
+    "player.clock.overlong",
+    "player.clock.stalls",
+    "player.clock.dropped_ns",
+    "follower.cursor.ticks",
+    "follower.cursor.frames",
+    "follower.steps",
+    "follower.status",
+    "follower.alpha",
+    "queued_throw",
+    "villa.pet_events_or_zero",
+    "player.collision_status",
+    "drawn.dog.x",
+    "drawn.dog.y",
+    "drawn.dog.z",
+    "drawn.hud_vertices"
+  ],
+  "encoding": "Float fields are their raw IEEE754 binary32 unsigned words; booleans/enums/counters are unsigned32. The forty physical columns include previous drawing poses and Garden stride; other room/UI/camera/animation state is outside this profile.",
+  "draw_observation": "Garden reads the first golden-coat dog body sphere from actual GPU object records (x/z check, bodyy includes bob). Villa reads villa_draw_dog, the actual face pose consumer. Independent previous/current/clockalpha coordinates have a0.00002m tolerance; native/Wasm complete streams happened to match every word.",
+  "producer_controls": [
+    "Repeat only the final target for all frame ticks",
+    "Feed the old variable-time realm adapter",
+    "Drop2.5m from producer targets"
+  ],
+  "special_scenarios": [
+    "10ms carry plus6ms frame owes one tick",
+    "Drawing twice without stepping",
+    "Zero frame",
+    "Two contemporaneous targets",
+    "Eight-step stall with125ms dropped",
+    "NaN and negative frame refusals",
+    "Refused Player movement still assigns follower ticks",
+    "Fresh Player clock after a place restore",
+    "Queued throw rollback and one successful retry"
+  ],
+  "sanitizers": "ASan+UBSan active; detect_leaks=0 because Apple ASan does not support leak detection.",
+  "support_versions": "Historical normal-native receipts retain the exact matching runner texts. The earliest Garden-debug runner wrote an overbroad temporary environment log; that stdout was removed without inspection, and is not archived. Current runner logs only four named toolchain paths. Final sanitizer receipts bind the current hardened runner.",
+  "tooling": "Four final failure-handling tests pass: exact cadence closure, strict page admission, source/header/compiler/command/output cache binding, and four-path-only toolchain logging.",
+  "archive": {
+    "/tmp/aethyr-ch9-follower-qualification.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/qualification.json",
+      "sha256": "12f9424de862d6b475bd1f1c829a9c423cdf1d2452496a14ee779b8ce694aea9"
+    },
+    "/tmp/aethyr-ch9-follower-tooling.log": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/tooling.log",
+      "sha256": "4a160235c0add54f7a5997815d0e01a072210439de4899c702c94dd3cd814662"
+    },
+    "/tmp/aethyr-ch9-follower-runner-debug-before-hardening.py.txt": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/runner-garden-debug-historical.py.txt",
+      "sha256": "44b9801db6d8c3ed25d2cb9d6ff66d7f416d464fcfa1081dbf8baeb6db869d03"
+    },
+    "/tmp/aethyr-ch9-follower-runner-positive-native.py.txt": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/runner-native-historical.py.txt",
+      "sha256": "66adbce90b10eaf8e0eada3210ddb5878670800d00c4ae2cbd232a6af16e7bcd"
+    },
+    "/tmp/aethyr-ch9-follower-garden-debug.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-debug.json",
+      "sha256": "e4240f1412f5e4e113bbc7c9bdae98eb6b9842ffe8011dc4f99aee80eab97470"
+    },
+    "/tmp/aethyr-ch9-follower-garden-optimized.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-optimized.json",
+      "sha256": "b69a60f49b1336d00a8f16b59847c91cda6117154e7d84086275c0e85203b9a6"
+    },
+    "/tmp/aethyr-ch9-follower-garden-sanitized.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-sanitized.json",
+      "sha256": "76628f8ae4a200931b263fde834a6e2eaf20ae43be9129d144655ba05afb6f89"
+    },
+    "/tmp/aethyr-ch9-follower-garden/native-emission-debug.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-native-debug-emission.json",
+      "sha256": "c60fbc88f4b522540518343987f0aceb6767dd853aaf3e3a7f396429cb7fafbb"
+    },
+    "/tmp/aethyr-ch9-follower-garden/native-emission-optimized.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-native-optimized-emission.json",
+      "sha256": "e3ad93558f77d3cf1b038aa10b13d693e4271c06d6f1e829a9d585267a7d8c87"
+    },
+    "/tmp/aethyr-ch9-follower-garden/native-emission-sanitized.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-native-sanitized-emission.json",
+      "sha256": "b75346c087bdf9a743ac3f2c25b603d511ef4ddc878fac949efaadbdac616f71"
+    },
+    "/tmp/aethyr-ch9-follower-garden/wasm-emission.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-wasm-emission.json",
+      "sha256": "081eb5634e4658a34c9b10fb356c68384881b3425d5adfe92b62f41f7b0050e6"
+    },
+    "/tmp/aethyr-ch9-follower-garden/fps-30-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-fps-30-trace.json",
+      "sha256": "54ffc8fb420d2fd1f711337a8f7b3e0af64b4c1cb0b506767174af17027857de",
+      "identical_for_native_modes": [
+        "debug",
+        "optimized",
+        "sanitized"
+      ]
+    },
+    "/tmp/aethyr-ch9-follower-garden/fps-60-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-fps-60-trace.json",
+      "sha256": "69fc6fa5f0671fdaa89c39429c22134c39ff2de940399a24899e8d6ea0c5bb8d",
+      "identical_for_native_modes": [
+        "debug",
+        "optimized",
+        "sanitized"
+      ]
+    },
+    "/tmp/aethyr-ch9-follower-garden/fps-120-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-fps-120-trace.json",
+      "sha256": "b6a977fe238b6f69223f3d02f21d71965b4fd4a9b61f25712c66efa88e75012b",
+      "identical_for_native_modes": [
+        "debug",
+        "optimized",
+        "sanitized"
+      ]
+    },
+    "/tmp/aethyr-ch9-follower-garden/fps-144-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-fps-144-trace.json",
+      "sha256": "31e98c3edd21ba9643e084c5d2bfa7a8af477d413e19153c5da5755951ebf91c",
+      "identical_for_native_modes": [
+        "debug",
+        "optimized",
+        "sanitized"
+      ]
+    },
+    "/tmp/aethyr-ch9-follower-garden/fault-1-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-fault-1-trace.json",
+      "sha256": "4839f400dc72ebd05701182ffededf14972c9e3d157602faf5d27ae99c149f17"
+    },
+    "/tmp/aethyr-ch9-follower-garden/fault-2-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-fault-2-trace.json",
+      "sha256": "45e941ce824786b0e77c3bcdcc6147f8845613acee3a75e29503acd202c7b2f7"
+    },
+    "/tmp/aethyr-ch9-follower-garden/fault-3-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-fault-3-trace.json",
+      "sha256": "4951f38f322bf0af639afb4b5eae199b972bb24348d715a77ed3dd004d5a8c58"
+    },
+    "/tmp/aethyr-ch9-follower-garden/carry-multi-stall-refusal-reset-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-carry-multi-stall-refusal-reset-trace.json",
+      "sha256": "80f32f7b9b0a213cee73ec70e9f7023e5f39048cbefa56e941499a8d34dba9fd"
+    },
+    "/tmp/aethyr-ch9-follower-garden/queued-action-refusal-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-queued-action-refusal-trace.json",
+      "sha256": "7dd126089891cdbfe9ac1358e35390ff9ece6ff4ad1d7ebf88299ef14187f7f6"
+    },
+    "/tmp/aethyr-ch9-follower-garden/native-compile.stderr.log": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-native-compile.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/tmp/aethyr-ch9-follower-garden/wasm-compile.stderr.log": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/garden-wasm-compile.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/tmp/aethyr-ch9-follower-villa-debug.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-debug.json",
+      "sha256": "8322f62447ff91af4e66c3d8bd12654088f9eb7e94529eb2dd409f5bccf16429"
+    },
+    "/tmp/aethyr-ch9-follower-villa-optimized.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-optimized.json",
+      "sha256": "458af1be4adbac97d093461820a79ec30c8be5b6be31bb7b77a2e29a5ebf2776"
+    },
+    "/tmp/aethyr-ch9-follower-villa-sanitized.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-sanitized.json",
+      "sha256": "c3716af08a885741bf79b539f77cebb4391169d099b0e6da6eea2d6e0a95f6e0"
+    },
+    "/tmp/aethyr-ch9-follower-villa/native-emission-debug.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-native-debug-emission.json",
+      "sha256": "b25c6b59030d8420abb2abb9dcf108f430a4a35707c59ba18417840b673760fb"
+    },
+    "/tmp/aethyr-ch9-follower-villa/native-emission-optimized.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-native-optimized-emission.json",
+      "sha256": "4566b3244270f20d64887927ecd4222a850d66afe6898ad8de3c5ffacb127ba2"
+    },
+    "/tmp/aethyr-ch9-follower-villa/native-emission-sanitized.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-native-sanitized-emission.json",
+      "sha256": "6bb1749768153e63cf2deab8a7ab46828fdac020f7dd303e0c1c64e9648104f5"
+    },
+    "/tmp/aethyr-ch9-follower-villa/wasm-emission.json": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-wasm-emission.json",
+      "sha256": "0f6f85b49ff37e0843eab59963949f9a99a11c0a65bfb6f369e7e365a643504b"
+    },
+    "/tmp/aethyr-ch9-follower-villa/fps-30-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-fps-30-trace.json",
+      "sha256": "be3a9f59710bd8694101ed120a0392506c7fd0ddad89fbcbc1428819016d6db1",
+      "identical_for_native_modes": [
+        "debug",
+        "optimized",
+        "sanitized"
+      ]
+    },
+    "/tmp/aethyr-ch9-follower-villa/fps-60-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-fps-60-trace.json",
+      "sha256": "c68f10a60c4b7e26e3c0284848919eb4b7513e7d8eff8fb0ae986a576bfb46cc",
+      "identical_for_native_modes": [
+        "debug",
+        "optimized",
+        "sanitized"
+      ]
+    },
+    "/tmp/aethyr-ch9-follower-villa/fps-120-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-fps-120-trace.json",
+      "sha256": "63b3be671e257171bfc0772bc82facac8a885c6fc54ad313c75e74761c52b7f4",
+      "identical_for_native_modes": [
+        "debug",
+        "optimized",
+        "sanitized"
+      ]
+    },
+    "/tmp/aethyr-ch9-follower-villa/fps-144-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-fps-144-trace.json",
+      "sha256": "596fabc72fba703922f7426fed48b06452e640c33c028a35ea74d664d39b650e",
+      "identical_for_native_modes": [
+        "debug",
+        "optimized",
+        "sanitized"
+      ]
+    },
+    "/tmp/aethyr-ch9-follower-villa/fault-1-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-fault-1-trace.json",
+      "sha256": "d7485e46f66549c266d0f8927509bb81d1e21c80a2064cd11822054a798e815e"
+    },
+    "/tmp/aethyr-ch9-follower-villa/fault-2-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-fault-2-trace.json",
+      "sha256": "4fff7ffd21212598bd4e7bcca84a781f26775a1f471424be9497d82957fa4a31"
+    },
+    "/tmp/aethyr-ch9-follower-villa/fault-3-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-fault-3-trace.json",
+      "sha256": "0357a9cb1c0a909834023b3281338b47b9cb2467f8eaaecb4e7ee820588b9673"
+    },
+    "/tmp/aethyr-ch9-follower-villa/carry-multi-stall-refusal-reset-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-carry-multi-stall-refusal-reset-trace.json",
+      "sha256": "3779a3f764e56aacc4be2752fa40736e875cdeba41da9d824540119a4c1f6136"
+    },
+    "/tmp/aethyr-ch9-follower-villa/queued-action-refusal-native.stdout": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-queued-action-refusal-trace.json",
+      "sha256": "6a481aedde964db89073277a6b7a1086cfe00bff4ed54ef261190d8e39a5933f"
+    },
+    "/tmp/aethyr-ch9-follower-villa/native-compile.stderr.log": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-native-compile.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "/tmp/aethyr-ch9-follower-villa/wasm-compile.stderr.log": {
+      "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/villa-wasm-compile.stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

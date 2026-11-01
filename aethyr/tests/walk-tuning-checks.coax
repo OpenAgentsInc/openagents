@@ -1,0 +1,109 @@
+// Loaded by aethyr.walk: test real integration and the one-clock trace.
+#test "walk tuning changes acceleration speed gravity and jump at the real step" {
+  w: World; w.locomotion.walk_speed = 2; w.locomotion.run_speed = 4; w.locomotion.acceleration = 32;
+  p := held(walk_place(0, 0, 0, 0), 0, 1, true);
+  q := step(w, p, STEP);
+  #assert q.vel.z == 0.5 && q.pos.z == 0.0078125;
+  for k: 0..<12 { q = step(w, q, STEP); }
+  #assert flat_speed(q) == 4 && q.act == Act.running;
+  p.run = false;
+  for k: 0..<12 { p = step(w, p, STEP); }
+  #assert flat_speed(p) == 2 && p.act == Act.walking;
+  w.locomotion.gravity = 8; w.locomotion.jump_speed = 4;
+  p = walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
+  q = step(w, p, STEP);
+  #assert q.vel.y == 3.875 && q.pos.y == 0.060546875 && !q.on_ground;
+}
+
+#test "walk tuning controls turn ride easing sliding sink and animation" {
+  w: World; p := held(walk_place(0, 0, 0, 0), 1, 0, false); p.theta = 0;
+  w.locomotion.turn_rate = 0; #assert step(w, p, STEP).face == 0;
+  w.locomotion.turn_rate = 4;
+  #assert abs(step(w, p, STEP).face - 0.09817477) < 0.0000001;
+  w = World.{}; w.locomotion.ride_height = 0.1;
+  p = walk_place(0, 0.2, 0, 0); p.on_ground = true;
+  #assert step(w, p, STEP).vel.y == -0.375;
+  w = World.{}; w.locomotion.step_smooth = 2;
+  p = walk_place(0, 0.04, 0, 0);
+  #assert abs(step(w, p, STEP).pos.y - 0.03875) < 0.0000001;
+  w = World.{}; w.locomotion.slide_grip = 0.5;
+  p = held(walk_place(0, 0, 0, 0), 0, 1, false); p.sliding = true;
+  #assert step(w, p, STEP).vel.z == 0.46875;
+  w = World.{}; w.locomotion.sink_limit = 0.1;
+  p = walk_place(0, 1, 0, 0); p.vel.y = -100;
+  #assert step(w, p, STEP).pos.y == -0.1;
+  w = World.{}; w.locomotion.run_speed = 4; w.locomotion.run_animation_margin = 1;
+  p = held(walk_place(0, 0, 0, 0), 0, 1, true);
+  #assert step(w, p, STEP).act == Act.walking;
+}
+
+#test "walk tuning refuses invalid values and speeds outside the collision envelope atomically" {
+  w: World; p := walk_input(walk_place(2, 0, 3, 0), 0, 1, 0, 0, true, true, 0, 0);
+  w.locomotion.gravity = 0;
+  q := step(w, p, STEP);
+  #assert q.collision_status == CollideStatus.bad_profile && q.collision_refusals == 1 && same_step(q, p);
+  #assert q.jumps.waiting == 1 && q.jumps.taken == 0;
+  w = World.{}; w.locomotion.run_speed = 9.6;
+  #assert step(w, walk_place(0, 0, 0, 0), STEP).collision_status == CollideStatus.ok;
+  w.locomotion.run_speed = 9.61;
+  #assert step(w, p, STEP).collision_status == CollideStatus.bad_profile;
+}
+
+#test "walk trace shares the accepted carry and chronological physical targets" {
+  w: World; p := held(walk_place(0, 0, 0, 0), 0, 1, true);
+  none := advance_traced(w, p, 0.010);
+  #assert none.count == 0 && none.player.clock.ticks == 0 && none.player.clock.carry_ns == 10000000;
+  one := advance_traced(w, none.player, 0.006);
+  #assert one.count == 1 && one.player.clock.ticks == 1 && one.player.clock.carry_ns == 375000;
+  #assert one.targets[0].feet.z == one.player.pos.z && one.targets[0].velocity.z == one.player.vel.z;
+  two := advance_traced(w, p, 2 * f32(STEP));
+  #assert two.count == 2 && two.player.clock.ticks == 2 && two.player.clock.ran == 2;
+  #assert two.targets[0].feet.z == 0.0146484375 && two.targets[1].feet.z == 0.0439453125;
+  #assert two.targets[0].velocity.z == 0.9375 && two.targets[1].velocity.z == 1.875;
+  trusted := steps_in(w, p, 2);
+  #assert same_step(trusted, two.player) && trusted.prev_pos.z == two.player.prev_pos.z;
+  stall := advance_traced(w, p, 0.25);
+  #assert stall.count == LOOP_MAX_STEPS && stall.player.clock.ticks == 8 && stall.player.clock.dropped_ns == 125000000;
+}
+
+#test "walk trace records refused poses and rejects unsupported schedules before time" {
+  w: World; w.collision.max_passes = 0;
+  p := walk_place(2, 3, 4, 0.5); p.vel = v3(1, 2, 3); p.act = Act.running;
+  trace := advance_traced(w, p, 2 * f32(STEP));
+  #assert trace.count == 2 && trace.player.collision_refusals == 2 && trace.player.clock.ticks == 2;
+  for k: 0..<2 {
+    target := trace.targets[k];
+    #assert target.feet.x == 2 && target.feet.y == 3 && target.feet.z == 4;
+    #assert target.velocity.x == 1 && target.velocity.y == 2 && target.velocity.z == 3;
+    #assert target.face == 0.5 && target.act == cast(u8) Act.running && target.collision_status == cast(u8) CollideStatus.bad_profile;
+  }
+  p.clock.step_ns = 20000000;
+  invalid := advance_traced(World.{}, p, 0.1);
+  #assert invalid.count == 0 && invalid.player.clock.frames == p.clock.frames && invalid.player.clock.ticks == p.clock.ticks;
+  #assert invalid.player.collision_status == CollideStatus.bad_profile && walk_counts(p, 0.1) == 0;
+  p.clock.step_ns = LOOP_STEP_NS; p.clock.max_steps = 16;
+  invalid = advance_traced(World.{}, p, 0.25);
+  #assert invalid.count == 0 && invalid.player.clock.frames == p.clock.frames;
+  p.clock.max_steps = LOOP_MAX_STEPS; p.clock.carry_ns = -2 * LOOP_STEP_NS;
+  #assert advance_traced(World.{}, p, 0).count == 0;
+  p.clock.carry_ns = LOOP_STEP_NS;
+  #assert advance_traced(World.{}, p, 0).player.collision_status == CollideStatus.bad_profile;
+  p.clock.carry_ns = 0; p.clock.due = 1;
+  #assert advance_traced(World.{}, p, 0).player.collision_status == CollideStatus.bad_profile;
+  p.clock.due = 0; p.clock.step_ns = 0;
+  normalized := advance_traced(World.{}, p, STEP);
+  #assert normalized.count == 1 && normalized.player.clock.step_ns == LOOP_STEP_NS;
+  p.clock.step_ns = -1;
+  #assert advance_traced(World.{}, p, STEP).count == 1;
+}
+
+#test "walk schedule rejects the first unsupported period and step cap even on a zero frame" {
+  p := walk_place(2, 0, 3, 0); p.clock.step_ns = 1;
+  period := advance_traced(World.{}, p, 0);
+  #assert period.count == 0 && period.player.collision_status == CollideStatus.bad_profile;
+  #assert period.player.clock.frames == p.clock.frames && period.player.clock.step_ns == 1;
+  p.clock.step_ns = LOOP_STEP_NS; p.clock.max_steps = LOOP_MAX_STEPS + 1;
+  cap := advance_traced(World.{}, p, 0);
+  #assert cap.count == 0 && cap.player.collision_status == CollideStatus.bad_profile;
+  #assert cap.player.clock.frames == p.clock.frames && cap.player.clock.max_steps == LOOP_MAX_STEPS + 1;
+}

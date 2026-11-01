@@ -1,0 +1,34 @@
+{
+  "identity": {
+    "command": [
+      "cc",
+      "-std=c11",
+      "-O1",
+      "-g",
+      "-fsanitize=address,undefined",
+      "-fno-sanitize-recover=all",
+      "-fno-omit-frame-pointer",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-I/tmp/aethyr-ch9-consumers/villa-admitted",
+      "/tmp/aethyr-ch9-consumers/villa-admitted/villa.c",
+      "/tmp/aethyr-ch9-consumers/villa-admitted/Player.c",
+      "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c",
+      "-lm",
+      "-o",
+      "/private/tmp/aethyr-ch9-follower-villa/native-sanitized"
+    ],
+    "cc_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "units": {
+      "/tmp/aethyr-ch9-consumers/villa-admitted/villa.c": "08b7e968ac755055c9d37b418811cc9d8527ab6b82dd662ab7d21bb08482bee7",
+      "/tmp/aethyr-ch9-consumers/villa-admitted/Player.c": "c65456946b1f025733174365c3b9544cf2674f8e589ac5cce191a5f9b769ff07",
+      "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c": "6e0e10cf743addc2ff4b29c33ff02d8b09fdc3ea4f0fc929ecbfcb7c08577fc8"
+    },
+    "headers": {
+      "villa.h": "f5b316a20d9ee09859e6c549cac5bc83d9530d51ebefbf72128b54a41d5955e5",
+      "Player.h": "0bf3f4738969a787a188018eba1d7d58b642f48ddebd6782069a52fdb3550d02"
+    }
+  },
+  "sha256": "43c0cefda2a7faa5d8cfa72bae563fd6988de75d3f2beaa246f9995ae9ae1905",
+  "exit_code": 0
+}

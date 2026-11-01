@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-01T12:46:03.153079+00:00",
+  "status": "qualified grounded route/fetch core; actual scene schedule and draw adoption qualified separately",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "source_sha256": {
+    "aethyr/follower.coax": "edcb6cb71ba432293885d6dbf4712026bad54a16af8f4820ab5787426b05a8d4",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+    "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+    "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/follower-oracle.coax": "696df20673c65eba2c128225b8ddfbf600d4956f9166321264527f94337f1f22",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+    "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
+    "verse/terrain.coax": "b454422a7b00a7571f0c373400b9385592b6e645d4ab5397555cf2551260b8c7",
+    "verse/throw.coax": "b7b0c4beaad204cade66602ffabb0eeaa49f3dd640699fd612620f4ca6ee4a33"
+  },
+  "command": [
+    "coax/bin/coax",
+    "mutate",
+    "aethyr/follower.coax",
+    "--library",
+    "--root-only",
+    "--jobs",
+    "4"
+  ],
+  "exit_status": 0,
+  "mutation": {
+    "total": 296,
+    "killed": 296,
+    "survived": 0,
+    "waivers": []
+  },
+  "complete_check_groups": 93,
+  "baseline": "complete imported check closure and authority coverage retained by normal mutation gate",
+  "stdout": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n296 mutants, 296 killed, 0 survived\n",
+  "scope": [
+    "one already-paid clock receipt, no independent accumulator; checked canonical started cursor before counter arithmetic",
+    "finite grounded route inputs, fixed1/64 step, original state preserved on refusal",
+    "complete block entries require positive radius and actual resolved travel <=radius/2",
+    "96-case independent legacy mode/ownership reference plus explicit exact touching/catching/bringing, finite-state, ground, speed, turning, pose and publication boundaries",
+    "pure previous-pose drawing and checked pre-command fetch publication"
+  ],
+  "changes": [
+    "fetch_publish(before,stepped) binds previous pose to the original published state and rolls back the whole input command on refusal",
+    "transition normalization now visits the incoming mode once; removes an immediately undone transition for held-by-player balls",
+    "empty route borrows the caller endpoint instead of a dummy one-element array with an ignored partial link",
+    "velocity limiting scales only a nonzero change; handles zero effective acceleration without0/0"
+  ],
+  "limits": [
+    "grounded projected route follower, not jump/gravity capsule dynamics",
+    "only complete block geometry gets the bounded-travel admission; no-block/radius0 point motion retains its separate projection contract",
+    "legacy Ball bounce/roll kernel is trusted and fed one fixed tick; no new mesh CCD or free-body solver claim",
+    "legacy route/block geometry helpers and caller-owned views remain borrowed trusted scene data",
+    "this core receipt does not establish Garden/Villa adapters or native/Wasm consumer output by itself"
+  ]
+}

@@ -180,6 +180,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "aethyr/examples/tune-a-walk.coax",
+      "chapter": "aethyr/book/ch009-a-character-moves.md",
+      "stdout": "aethyr/fixtures/tune-a-walk.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

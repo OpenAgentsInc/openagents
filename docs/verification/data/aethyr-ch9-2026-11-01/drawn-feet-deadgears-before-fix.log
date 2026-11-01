@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_drawn_feet.py", line 169, in <module>
+    main()
+    ~~~~^^
+  File "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_drawn_feet.py", line 165, in main
+    check(case, compiler, Path(work), args.cc, args.release, args.sanitize)
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_drawn_feet.py", line 50, in check
+    run([compiler, "c", str(source), "--library", "--header", str(header), *codegen], stdout=output)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/check_drawn_feet.py", line 41, in run
+    raise RuntimeError(f"{' '.join(map(str, cmd))}\n{result.stderr.decode(errors='replace')[-3000:]}")
+RuntimeError: /Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax c /Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/feet-deadgears.coax --library --header /var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/aethyr-drawn-feet-yr66wnjk/deadgears.h
+/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/feet-deadgears.coax:8:13: error[E0385]: module 'aethyr.walk' has no procedure 'verse_player_place'
+    s[0].pl = pc.verse_player_place(fx, fy, fz, 0);
+              ^
+1 error
+

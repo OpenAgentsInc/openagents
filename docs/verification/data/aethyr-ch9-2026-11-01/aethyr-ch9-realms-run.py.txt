@@ -1,0 +1,79 @@
+import hashlib,json,os,pathlib,re,signal,subprocess,sys,time
+root=pathlib.Path('/Users/christopherdavid/work/openagents-aethyr-book')
+coax=root/'coax/bin/coax'
+case=sys.argv[1]
+out=pathlib.Path('/tmp/aethyr-ch9-consumers')
+out.mkdir(exist_ok=True)
+pages={
+'garden':['verse/player.coax','verse/grid.coax'],
+'fairy':['verse/player.coax','verse/grid.coax','verse/fairy-forest/stream.coax','coax/lib/qr/qr-memory.coax'],
+'villa':['verse/player.coax','verse/grid.coax','apps/openagents-web/villafig.coax'],
+'everglade':['verse/player.coax','verse/grid.coax','verse/everglade/river.coax','verse/everglade/guard-guide-policy.coax'],
+'realm':['verse/haunt.coax','verse/haunt-buffer.coax','verse/player.coax','verse/grid.coax','verse/particles.coax','verse/cinematic.coax','verse/setpiece.coax'],
+'deadgears':[],
+}
+if case.startswith('check-'):
+    _,name,mode=case.split('-')
+    entry='verse/gridwalk.coax' if name=='grid' else 'apps/openagents-web/deadgears.coax'
+    pattern='V dodges' if mode=='dodge' else 'applies its declared collision passes'
+    command=[str(coax),'test',entry,'--library','--only',pattern]
+    if mode=='release': command.append('--release')
+    if mode=='dodge': command.extend(['--steps','2000000000'])
+    roots=[entry]
+elif case=='build-grid':
+    command=['bash','coax/web/project/build-home.sh',str(out/'grid.wasm')]
+    roots=['apps/openagents-web/newland.coax','coax/web/project/landing-browser.coax','coax/web/project/landing-fold.coax','verse/gridwalk.coax','coax/web/project/build-home.sh']
+    roots+=['apps/openagents-web/newland-face.c']+[f'coax/web/project/landing-{n}-face.c' for n in ['reader','fold','cache']]
+else:
+    name=case.removeprefix('build-')
+    libs=pages[name]
+    entry=f'apps/openagents-web/{name}.coax'
+    face=f'apps/openagents-web/{name}-face.c'
+    command=['bash','coax/web/wasm.sh',entry,face,str(out/f'{name}.wasm'),*libs]
+    roots=[entry,face,*libs]
+roots+=['coax/web/wasm.sh','coax/web/toolchain.sh']
+
+def snapshot():
+    seen={}
+    def visit(p):
+        p=p.resolve()
+        if not p.is_file() or p in seen: return
+        data=p.read_bytes()
+        seen[p]=hashlib.sha256(data).hexdigest()
+        if p.suffix=='.coax':
+            for dep in re.findall(rb'^\s*#(?:load|import_proto)\s+"([^"\n]+)"',data,re.M): visit(p.parent/dep.decode())
+        elif p.suffix in ['.c','.h']:
+            for dep in re.findall(rb'^\s*#include\s+"([^"\n]+)"',data,re.M): visit(p.parent/dep.decode())
+    for r in roots: visit(root/r)
+    return {str(k.relative_to(root)):v for k,v in sorted(seen.items())}
+
+before=snapshot()
+log=out/f'{case}.log'
+record={'case':case,'command':command,'cwd':str(root),'compiler_sha256':hashlib.sha256(coax.read_bytes()).hexdigest(),'timeout_seconds':840,'wrapper_sha256':hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),'sources':before,'started_unix':time.time()}
+env=dict(os.environ,COAX=str(coax))
+started=time.monotonic()
+print(f'{case}: start ({len(before)} source files)',flush=True)
+with log.open('w') as stream:
+    process=subprocess.Popen(command,cwd=root,env=env,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
+    def interrupted(number, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, interrupted)
+    try: code=process.wait(timeout=840)
+    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+        os.killpg(process.pid,signal.SIGKILL)
+        process.wait(timeout=5)
+        code=124
+if code:
+    try: os.killpg(process.pid,signal.SIGKILL)
+    except ProcessLookupError: pass
+after=snapshot()
+record['compiler_unchanged']=hashlib.sha256(coax.read_bytes()).hexdigest()==record['compiler_sha256']
+record['wrapper_unchanged']=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()==record['wrapper_sha256']
+record.update(exit_code=code,elapsed_seconds=time.monotonic()-started,source_changes=[p for p in sorted(set(before)|set(after)) if before.get(p)!=after.get(p)],log=str(log),log_sha256=hashlib.sha256(log.read_bytes()).hexdigest())
+artifact=out/('grid.wasm' if case=='build-grid' else case.removeprefix('build-')+'.wasm')
+if case.startswith('build-') and artifact.is_file(): record.update(artifact=str(artifact),artifact_sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),artifact_bytes=artifact.stat().st_size)
+(out/f'{case}.json').write_text(json.dumps(record,indent=2)+'\n')
+print(json.dumps({k:record[k] for k in ['case','exit_code','elapsed_seconds','source_changes','log']}),flush=True)
+if code: print(log.read_text()[-6000:])
+else: print(log.read_text()[-1600:])
+sys.exit(code)

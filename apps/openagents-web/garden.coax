@@ -33,6 +33,10 @@
 #load "save.coax";
 #load "../../verse/camera.coax";
 #load "../../verse/throw.coax";
+#load "../../aethyr/follower.coax" as follow;
+#load "../../aethyr/locomotion.coax" as route_tuning;
+#load "../../aethyr/walk-frame.coax" as walk_frame;
+#load "../../aethyr/loop.coax" as realm_loop;
 #load "../../verse/arrange.coax";
 #load "place-orbit.coax";
 #load "../../aethyr/budget.coax";
@@ -103,7 +107,11 @@ Garden :: struct {
   // You, as the player last drew you.
   feet: Point; face: f32; act: int; stride: f32;
   fetch: Fetch;             // the dog and the ball (throw.coax)
-  dog_stride: f32;
+  follower_tuning: route_tuning.LocomotionProfile;
+  follower_cursor: follow.FrameCursor; follower_previous: follow.FetchPose;
+  follower_alpha: f32; follower_steps: int; follower_clocked: bool;
+  follower_status: follow.FollowerStatus;
+  dog_stride: f32; dog_previous_stride: f32;
   use: bool;                // E, a click or the button asked to pick up or throw
   drag_travel: f32;         // CSS pixels a mouse press has moved: a click when small
   button: Box;              // the phone's PICK UP or THROW, when it shows (x1 > x0)
@@ -245,6 +253,8 @@ garden_start :: (s: [] Garden) {
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
   s[0].fetch.dog = verse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
   s[0].fetch.ball = verse_ball_place(ground(), s[0].heights[..], f32(BALL_X), f32(BALL_Z), 0.12);
+  s[0].follower_tuning = follow.follower_profile();
+  s[0].follower_previous = follow.fetch_pose(s[0].fetch);
   s[0].button_finger = -1;
   s[0].finger = -1;
   vase_start(s);
@@ -425,6 +435,10 @@ garden_place_camera :: (s: [] Garden, p: Place) #export_c {
   if !s[0].started { garden_start(s); }
   s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
   s[0].orbit = verse_place_orbit(p, s[0].feet);
+  s[0].follower_cursor = follow.FrameCursor.{};
+  s[0].follower_previous = follow.fetch_pose(s[0].fetch);
+  s[0].follower_alpha = 0; s[0].follower_steps = 0;
+  s[0].dog_previous_stride = s[0].dog_stride;
 }
 
 // ---- the controls
@@ -750,7 +764,15 @@ throw_lift :: (o: Orbit) -> f32 { return clamp(0.42 - o.pitch * 0.7, 0.12, 1.0);
 // it's in reach and throws it when you hold it; the ball flies and rolls;
 // the dog follows you, or fetches.
 play :: (s: [] Garden, you: Point, face: f32, vx: f32, vz: f32, dt: f32) {
+  garden_play_in(s, you, face, vx, vz, dt, false);
+}
+
+garden_play_in :: (s: [] Garden, you: Point, face: f32, vx: f32, vz: f32, dt: f32, fixed: bool) {
   nodes := NODE_XZ; links := LINK_AB;
+  stride_dt := dt;
+  before := s[0].fetch;
+  if fixed { s[0].dog_previous_stride = s[0].dog_stride; }
+  hand := ifx fixed then follow.fixed_hand(you, face, 0.42, 1.25, 0.3) else your_hand(you, face);
   b := s[0].fetch.ball;
   if s[0].use && verse_arrange_active(s[0].vase) {
     if s[0].vase.open { s[0].vase = verse_arrange_close(s[0].vase); } else { s[0].vase = verse_arrange_open(s[0].vase, s[0].orbit.yaw); }
@@ -760,27 +782,39 @@ play :: (s: [] Garden, you: Point, face: f32, vx: f32, vz: f32, dt: f32) {
     s[0].vase = verse_arrange_open(s[0].vase, s[0].orbit.yaw);
     s[0].use = false;
   }
+  ball_use := s[0].use;
   if s[0].use {
     if b.held == 0 {
-      b = verse_ball_throw(b, your_hand(you, face), s[0].orbit.yaw, throw_lift(s[0].orbit), v3(vx, 0, vz));
+      b = ifx fixed then follow.fixed_ball_throw(b, hand, s[0].orbit.yaw, throw_lift(s[0].orbit), v3(vx, 0, vz))
+          else verse_ball_throw(b, hand, s[0].orbit.yaw, throw_lift(s[0].orbit), v3(vx, 0, vz));
     } else {
-      b = verse_ball_pick(b, 0, you, your_hand(you, face));
+      b = verse_ball_pick(b, 0, you, hand);
     }
     s[0].use = false;
   }
-  if b.held == 0 { b = verse_ball_carry(b, your_hand(you, face)); }
-  b = verse_ball_step(b, ground(), s[0].heights[..], s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], dt);
-  s[0].fetch.ball = b;
   // the dog goes round the trees, the hedges and the pedestal (the first walls); the pond it may wade
   blocks := TREES + HEDGES + 1;
   if blocks > s[0].wall_n { blocks = s[0].wall_n; }
-  s[0].fetch = verse_fetch_step_among(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), you, dt, s[0].walls[0..<blocks * 6]);
-  s[0].dog_stride += flat_length(s[0].fetch.dog.vel) * dt / 0.9;
+  if fixed {
+    s[0].fetch.ball = b;
+    stepped := follow.fetch_step(s[0].fetch, s[0].follower_tuning, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), you, hand,
+      s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], s[0].walls[0..<blocks * 6], true, false);
+    published := follow.fetch_publish(before, stepped);
+    s[0].fetch = published.fetch; s[0].follower_previous = published.previous; s[0].follower_status = published.status;
+    if published.status != follow.FollowerStatus.ok { s[0].use = ball_use; stride_dt = 0; }
+  } else {
+    if b.held == 0 { b = verse_ball_carry(b, hand); }
+    s[0].fetch.ball = verse_ball_step(b, ground(), s[0].heights[..], s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6], dt);
+    s[0].fetch = verse_fetch_step_among(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), you, dt, s[0].walls[0..<blocks * 6]);
+  }
+  s[0].dog_stride += flat_length(s[0].fetch.dog.vel) * stride_dt / 0.9;
 }
 
 // The ball, its shadow, and while you hold it the arc it would fly.
 ball :: (s: [] Garden, u: [] f32, you: Point, face: f32) {
-  b := s[0].fetch.ball;
+  drawn := garden_fetch_draw(s);
+  b := drawn.ball;
+  if s[0].follower_clocked && b.held == 0 { b.pos = your_hand(you, face); }
   shape(s, SHAPE_SPHERE, LOOK_MATTE, b.pos, b.spin, 0, b.radius * 2, b.radius * 2, b.radius * 2, 0.92, 0.32, 0.18);
   shape(s, SHAPE_CYLINDER, LOOK_MATTE, b.pos, b.spin, f32(PI) / 2, b.radius * 2.04, b.radius * 0.5, b.radius * 2.04, 0.95, 0.92, 0.85);
   g := ground_at(s, b.pos.x, b.pos.z);
@@ -1021,12 +1055,42 @@ close_up :: (s: [] Garden, live: Shot, t: f32, still: bool) -> Shot {
 // (player.coax Act), with that flat velocity. A thumb on the move stick is
 // drawn from move_on, ox, oy and the pad. Fills the HUD's vertices and the
 // uniforms, lays out the scene, and returns the vertex count.
+// Trusted variable-time entry retained for existing callers and examples.
 garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
                  fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
                  move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+  no_clock: realm_loop.FrameClock; no_targets: [1] walk_frame.StepTarget;
+  return garden_frame_in(s, out, u, width, height, dpr, dt, still, fx, fy, fz, face, act, vx, vz,
+    move_on, ox, oy, pad_x, pad_y, false, no_clock, no_targets[0..<0]);
+}
+
+garden_frame_on_clock :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32,
+    paid: realm_loop.FrameClock, targets: [] walk_frame.StepTarget, still: bool,
+    fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
+    move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32) -> int #export_c {
+  return garden_frame_in(s, out, u, width, height, dpr, 0, still, fx, fy, fz, face, act, vx, vz,
+    move_on, ox, oy, pad_x, pad_y, true, paid, targets);
+}
+
+garden_fetch_draw :: (s: [] Garden) -> Fetch {
+  return ifx s[0].follower_clocked then follow.fetch_draw(s[0].fetch, s[0].follower_previous, s[0].follower_alpha) else s[0].fetch;
+}
+
+garden_frame_in :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool,
+    fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
+    move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32,
+    fixed: bool, paid: realm_loop.FrameClock, targets: [] walk_frame.StepTarget) -> int {
   if !s[0].started { garden_start(s); }
   if u.count < UNIFORM_FLOATS { return 0; }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  s[0].follower_clocked = fixed; s[0].follower_steps = 0;
+  if fixed {
+    receipt := follow.follower_frame(s[0].follower_cursor, paid, targets);
+    t = receipt.counted;
+    if receipt.accepted {
+      s[0].follower_cursor = receipt.cursor; s[0].follower_alpha = receipt.alpha; s[0].follower_steps = receipt.steps;
+    }
+  }
   s[0].time += f64(t);
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
   feet := v3(fx, fy, fz);
@@ -1044,14 +1108,22 @@ garden_frame :: (s: [] Garden, out: [] f32, u: [] f32, width: f32, height: f32, 
   s[0].shadow_n = 0; s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   scenery(s, u);
-  play(s, shown, face, vx, vz, t);
+  if fixed {
+    for step_index: 0..<s[0].follower_steps {
+      actual := targets[step_index];
+      flat := v3(actual.feet.x, actual.feet.y, actual.feet.z);
+      target_world := feet_in_world(flat, ground_at(s, flat.x, flat.z));
+      garden_play_in(s, target_world, actual.face, actual.velocity.x, actual.velocity.z, follow.follower_step_seconds(), true);
+    }
+  } else { play(s, shown, face, vx, vz, t); }
   vase(s);
   // nor zoomed into your head (first person, verse/camera.coax)
   if !(s[0].vase.blend > 0.6 && flat_length(v3(shown.x, 0, shown.z)) < 1.3) && !(verse_orbit_inside(s[0].orbit) && s[0].vase.blend < 0.5) {
     figure(s, u, shown, face, s[0].stride, act, s[0].fetch.ball.held == 0);
   }
-  pup := s[0].fetch.dog;
-  dog(s, u, pup.pos, pup.face, s[0].dog_stride, pup.walking);
+  pup := garden_fetch_draw(s).dog;
+  dog_stride := ifx fixed then s[0].dog_previous_stride + (s[0].dog_stride - s[0].dog_previous_stride) * s[0].follower_alpha else s[0].dog_stride;
+  dog(s, u, pup.pos, pup.face, dog_stride, pup.walking);
   ball(s, u, shown, face);
   for kind: 0..<5 {
     d := kind * 4;
@@ -1381,3 +1453,58 @@ GARDEN_BUDGET :: FrameBudget.{steps = 8, vertices = 4000, draws = DRAWS, bytes =
   #assert budget_ok(m[0]);
 }
 // book:end budget
+
+#test "the Garden consumes actual carried and multi-step targets and resets with a fresh player clock" {
+  gf_s: [1] Garden; garden_start(gf_s[..]);
+  for gf_i: 0..<GROUND_POINTS { gf_s[0].heights[gf_i] = 2.5; }
+  gf_s[0].fetch.dog = verse_follower_place(ground(), gf_s[0].heights[..], -30, -30, 0);
+  gf_s[0].fetch.ball.held = 0;
+  gf_out: [3000 * VERTEX_FLOATS] f32; gf_u: [UNIFORM_FLOATS] f32;
+  gf_clock: realm_loop.FrameClock; gf_targets: [8] walk_frame.StepTarget;
+  gf_clock = realm_loop.loop_frame(gf_clock, 0.010).clock;
+  gf_s[0].use = true;
+  gf_n := garden_frame_on_clock(gf_s[..], gf_out[..], gf_u[..], 1280, 800, 1, gf_clock, gf_targets[0..<0], true,
+    7, 0, -3, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert gf_n > 0 && gf_s[0].use && gf_s[0].fetch.dog.pos.x == -30 && gf_s[0].follower_steps == 0;
+  gf_s[0].use = false;
+  gf_clock = realm_loop.loop_frame(gf_clock, 0.006).clock;
+  gf_targets[0].feet.x = -34; gf_targets[0].feet.y = 1.25; gf_targets[0].feet.z = -30;
+  gf_n = garden_frame_on_clock(gf_s[..], gf_out[..], gf_u[..], 1280, 800, 1, gf_clock, gf_targets[0..<1], true,
+    7, 0, -3, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert gf_s[0].follower_steps == 1 && gf_s[0].fetch.dog.vel.x == -0.21875 && gf_s[0].follower_alpha == 0.024;
+  #assert gf_s[0].fetch.ball.pos.y == 5 && gf_s[0].fetch.ball.pos.x == -34.3;
+  gf_x := gf_s[0].fetch.dog.pos.x; gf_time := gf_s[0].time;
+  gf_n = garden_frame_on_clock(gf_s[..], gf_out[..], gf_u[..], 1280, 800, 1, gf_clock, gf_targets[0..<1], true,
+    7, 0, -3, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert gf_s[0].fetch.dog.pos.x == gf_x && gf_s[0].time == gf_time && gf_s[0].follower_steps == 0;
+  garden_place_camera(gf_s[..], verse_place(-30, 0, -30, 0, 0, 0.3, 5, 0, -1, 1000));
+  gf_s[0].fetch.dog = verse_follower_place(ground(), gf_s[0].heights[..], -30, -30, 0);
+  gf_clock = realm_loop.FrameClock.{}; gf_clock = realm_loop.loop_frame(gf_clock, 0.03125).clock;
+  gf_targets[1] = gf_targets[0]; gf_targets[1].feet.x = -26;
+  gf_n = garden_frame_on_clock(gf_s[..], gf_out[..], gf_u[..], 1280, 800, 1, gf_clock, gf_targets[0..<2], true,
+    7, 0, -3, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert gf_s[0].follower_steps == 2 && gf_s[0].follower_cursor.frames == 1;
+  #assert gf_s[0].fetch.dog.pos.x == -30.00341796875 && gf_s[0].fetch.dog.vel.x == 0;
+  #assert gf_s[0].fetch.ball.pos.x == -26.3 && gf_s[0].fetch.ball.pos.y == 5;
+}
+
+#test "the Garden keeps a queued throw and its physical state when follower admission refuses" {
+  ga_s: [1] Garden; garden_start(ga_s[..]);
+  ga_s[0].fetch.ball.held = 0; ga_s[0].fetch.ball.pos = v3(4, 5, 6); ga_s[0].use = true;
+  ga_before := ga_s[0].fetch; ga_s[0].follower_tuning.acceleration = 0;
+  ga_clock: realm_loop.FrameClock; ga_targets: [1] walk_frame.StepTarget;
+  ga_clock = realm_loop.loop_frame(ga_clock, 0.015625).clock;
+  ga_targets[0].feet.x = -30; ga_targets[0].feet.z = -30;
+  ga_out: [3000 * VERTEX_FLOATS] f32; ga_u: [UNIFORM_FLOATS] f32;
+  ga_n := garden_frame_on_clock(ga_s[..], ga_out[..], ga_u[..], 1280, 800, 1, ga_clock, ga_targets[..], true,
+    -30, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert ga_n > 0 && ga_s[0].follower_status == follow.FollowerStatus.bad_profile && ga_s[0].use;
+  #assert ga_s[0].fetch.ball.held == 0 && !ga_s[0].fetch.ball.thrown && ga_s[0].fetch.ball.pos.x == 4 && ga_s[0].fetch.ball.pos.y == 5 && ga_s[0].fetch.ball.pos.z == 6;
+  #assert ga_s[0].fetch.dog.pos.x == ga_before.dog.pos.x && ga_s[0].fetch.dog.face == ga_before.dog.face && ga_s[0].fetch.dog.vel.z == ga_before.dog.vel.z;
+  #assert ga_s[0].follower_cursor.ticks == 1;
+  ga_s[0].follower_tuning = follow.follower_profile();
+  ga_clock = realm_loop.loop_frame(ga_clock, 0.015625).clock;
+  ga_n = garden_frame_on_clock(ga_s[..], ga_out[..], ga_u[..], 1280, 800, 1, ga_clock, ga_targets[..], true,
+    -30, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert !ga_s[0].use && ga_s[0].fetch.ball.held == -1 && ga_s[0].fetch.ball.thrown;
+}

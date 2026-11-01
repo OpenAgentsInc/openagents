@@ -8,8 +8,8 @@
     "partly_implemented": 6,
     "design_draft": 70
   },
-  "current_chapter": 9,
-  "status": "chapters 2 and 8 qualified; book incomplete, next chapter 9",
+  "current_chapter": 11,
+  "status": "chapters 2, 8 and 9 qualified; chapter 9 delivery ready, next chapter 11; whole book incomplete",
   "deliveries": [
     {
       "chapter": 2,
@@ -25,17 +25,25 @@
       "profile": "native f32 meshes and capsule contacts",
       "result": "Admitted terrain sampling/rays/sphere contacts, checked real-controller publication and per-realm profiles, exact teaching examples, independent native oracles, all69 preserved gameplay scenarios and7 complete Wasm links.",
       "evidence_directory": "docs/verification/data/aethyr-ch8-2026-11-01",
-      "commit": "the accompanying chapter 8 implementation commit"
+      "commit": "bd73544a7ed576c935f53f95876fc418605b082a"
+    },
+    {
+      "chapter": 9,
+      "title": "A character moves",
+      "profile": "native and Wasm fixed-step walking",
+      "result": "Real Walk core and compatible C facade, declared admitted locomotion, actual Garden/Villa same-clock followers, previous-pose interpolation, atomic queued-action refusal, native/Wasm cadence traces, frozen C ABI/state parity, and worked teaching text.",
+      "evidence_directory": "docs/verification/data/aethyr-ch9-2026-11-01",
+      "commit": "the accompanying chapter 9 implementation commit"
     }
   ],
   "next_incomplete_chapters": [
-    9,
     11,
     12,
     13,
     14,
     15,
-    16
+    16,
+    17
   ],
   "scope_rule": "Keep design status until its declared acceptance is supported; preserve existing evidence and test only changed inputs.",
   "worktree": "/Users/christopherdavid/work/openagents-aethyr-book",
@@ -266,16 +274,80 @@
   },
   "full_book_complete": false,
   "current_status_counts": {
-    "implemented": 12,
-    "partly_implemented": 4,
+    "implemented": 13,
+    "partly_implemented": 3,
     "design_draft": 70
   },
-  "next_chapter_9": [
+  "last_qualified_utc": "2026-11-01T13:07:34.411954+00:00",
+  "chapter_9_started_utc": "2026-11-01T12:23:00Z",
+  "chapter_9_base_commit": "47acfa1409",
+  "chapter_9_work": {
+    "controller": "Extract the actual controller into aethyr/walk.coax; preserve the C facade and declare admitted locomotion overrides.",
+    "followers": "Consume the player clock's bounded per-step trace, preserve previous follower poses, and interpolate with the same alpha; keep animation on counted frame time.",
+    "verification": "Qualify changed closures, preserve original evidence and its hashes, and update the worked chapter and registry only when acceptance is supported.",
+    "status": "complete"
+  },
+  "chapter_9": {
+    "status": "qualified",
+    "requirements": "docs/verification/data/aethyr-ch9-2026-11-01/requirements.json",
+    "root_mutants": {
+      "locomotion": 18,
+      "walk": 505,
+      "follower": 296,
+      "gridwalk": 234
+    },
+    "survivors": 0,
+    "waivers": 0,
+    "native_player_parity": {
+      "states": 777,
+      "scalar_fields": 62,
+      "modes": [
+        "debug",
+        "release",
+        "sanitized"
+      ],
+      "producer_loss_controls": 7
+    },
+    "actual_follower_hosts": {
+      "realms": [
+        "garden",
+        "villa"
+      ],
+      "fps": [
+        30,
+        60,
+        120,
+        144
+      ],
+      "native_modes": [
+        "O0",
+        "O2",
+        "ASan/UBSan"
+      ],
+      "wasm": "O2 from the same normal admitted Coax C",
+      "producer_controls": 3,
+      "schedule_scenarios": 9
+    },
+    "complete_wasm_links": 7,
+    "book_examples": 19,
+    "book_listings": 107,
+    "fresh_book_runs": 16,
+    "retained_book_runs": 22,
+    "native_gameplay": "Five changed-closure DeadGears programs freshly pass debug/release/ASan+UBSan; 64 unchanged Everglade programs retain original passing evidence with its declared runner-version scope."
+  },
+  "chapter_9_original_work": [
     "Extract aethyr/walk.coax with the existing verse/player C facade and byte-compatible movement.",
     "Declare locomotion tuning separately from the completed collision profiles.",
     "Drive followers from the same realm clock's due steps and drawing alpha; preserve counted animation time and previous poses.",
     "Qualify the changed source closures with the existing native gameplay and realm gates; preserve current passing results where inputs match."
   ],
-  "last_qualified_utc": "2026-11-01T08:08:22.650781+00:00",
-  "stop_rule": "The owner limits one task to two hours and requires pushing the passing finished part and reporting the rest when the whole objective cannot finish within that bound. The entire 86-chapter book is not complete."
+  "next_chapter_11": [
+    "Replace stale shader-port claims with the actual G6 baseline; preserve the four-u32 draw ABI.",
+    "Implement shared Coax frame/pass/binding admission and move both hosts to admitted plans across the full realm catalog.",
+    "Implement the CPU quad/reference path for derivatives, discarded helpers, texture levels/filtering, raster/depth/blend and target rounding; a derivative-free intermediary stays partial.",
+    "Qualify live Coax shader profiles on CPU, WGSL and SPIR-V with explicit backend mappings, integer noise, validation and affected goldens; retain bounded per-command gates."
+  ],
+  "chapter_9_ready_to_push_utc": "2026-11-01T13:08:21.594115+00:00",
+  "continuation_rule": "Continue the active whole-book objective chapter by chapter and push each qualified chapter to main. Keep each command under fifteen minutes and retain unchanged passing evidence. The updated AGENTS.md on current main removes the earlier per-task two-hour cap.",
+  "chapter_9_rebased_on": "2c18d4ccdf6bc786447b40be976ceff6bf542c4b"
 }

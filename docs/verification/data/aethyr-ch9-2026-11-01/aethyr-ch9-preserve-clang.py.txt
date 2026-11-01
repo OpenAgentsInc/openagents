@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""Preserve admitted generated Coax C/headers, then run the real LLVM unchanged."""
+import hashlib,json,os
+from pathlib import Path
+import sys
+real=Path(os.environ['AETHYR_REAL_CLANG']).resolve()
+destination=Path(os.environ['AETHYR_ADMITTED_DIR']).resolve()
+source_root=Path('/tmp/aethyr-ch9-consumers/.c').resolve()
+destination.mkdir(parents=True,exist_ok=True)
+directories=set()
+for arg in sys.argv[1:]:
+    candidate=Path(arg[2:] if arg.startswith('-I') else arg)
+    if not candidate.is_absolute():continue
+    try:candidate.resolve().relative_to(source_root)
+    except ValueError:continue
+    if candidate.is_dir():directories.add(candidate)
+    elif candidate.suffix=='.c':directories.add(candidate.parent)
+files={}
+for directory in directories:
+    for source in sorted([*directory.glob('*.c'),*directory.glob('*.h')]):
+        data=source.read_bytes();files[source.name]=hashlib.sha256(data).hexdigest()
+        temporary=destination/(source.name+'.'+str(os.getpid())+'.tmp')
+        temporary.write_bytes(data);os.replace(temporary,destination/source.name)
+invocations=destination/'invocations';invocations.mkdir(exist_ok=True)
+(invocations/(str(os.getpid())+'.json')).write_text(json.dumps({'compiler':str(real),'argv':sys.argv[1:],'preserved':files},indent=2)+'\n')
+os.execv(str(real),[str(real),*sys.argv[1:]])

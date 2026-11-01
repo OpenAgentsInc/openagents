@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "scope": "The 64 preserved Everglade integration programs have unchanged Coax/descriptor inputs, fixtures, compiler and execution flags. Keep their published passing results. Debug/release retain the historical runner as already documented in chapter8; sanitizer evidence uses the current hardened runner with all inputs unchanged. The runner difference only strengthens failure/timeout/source-drift handling, and is not relabelled as a fresh run.",
+  "records": [
+    {
+      "mode": "debug",
+      "retained_evidence": "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-debug.json",
+      "evidence_sha256": "803d16443236005dcaa9e34503bf4cb2d8c45566691387e0846d4800f7abdbc5",
+      "unchanged_coax_programs": 64,
+      "unchanged_original_body_calls": 64,
+      "support_differences": [
+        "aethyr/tests/check_native_gameplay.py"
+      ],
+      "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+      "execution_not_repeated": true
+    },
+    {
+      "mode": "release",
+      "retained_evidence": "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-release.json",
+      "evidence_sha256": "0c2340fdb67b6a4621fe4f32e0703295b9b605df4f44afbdc221c8e8677157f5",
+      "unchanged_coax_programs": 64,
+      "unchanged_original_body_calls": 64,
+      "support_differences": [
+        "aethyr/tests/check_native_gameplay.py"
+      ],
+      "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+      "execution_not_repeated": true
+    },
+    {
+      "mode": "sanitized",
+      "retained_evidence": "docs/verification/data/aethyr-ch8-2026-11-01/native-everglade-sanitized.json",
+      "evidence_sha256": "be0ff3bd48c766c44d98b940d5778f2f363e63fb423052287de0791407e270f6",
+      "unchanged_coax_programs": 64,
+      "unchanged_original_body_calls": 64,
+      "support_differences": [],
+      "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+      "execution_not_repeated": true
+    }
+  ],
+  "current_runner_sha256": "4d1cc5830a6bb47bae3475612973d6e56793dd1f08d601e3123694da820a08fb"
+}

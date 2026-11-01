@@ -1,0 +1,70 @@
+{
+  "status": "passed",
+  "scope": "Actual Garden/Villa Coax C adapters plus facade, supplied identical constant2.5m terrain. NormalCoax C, nativeO0/O2/ASan+UBSan and WasmO2; noCoax--releaseclaim, browserraster or proceduralterrain-generationclaim.",
+  "records": {
+    "garden-debug": {
+      "path": "/tmp/aethyr-ch9-follower-garden-debug.json",
+      "sha256": "e4240f1412f5e4e113bbc7c9bdae98eb6b9842ffe8011dc4f99aee80eab97470",
+      "status": "passed",
+      "seconds": 0.9631378750200383,
+      "runner_sha256": "44b9801db6d8c3ed25d2cb9d6ff66d7f416d464fcfa1081dbf8baeb6db869d03"
+    },
+    "garden-optimized": {
+      "path": "/tmp/aethyr-ch9-follower-garden-optimized.json",
+      "sha256": "b69a60f49b1336d00a8f16b59847c91cda6117154e7d84086275c0e85203b9a6",
+      "status": "passed",
+      "seconds": 3.1728688330040313,
+      "runner_sha256": "66adbce90b10eaf8e0eada3210ddb5878670800d00c4ae2cbd232a6af16e7bcd"
+    },
+    "garden-sanitized": {
+      "path": "/tmp/aethyr-ch9-follower-garden-sanitized.json",
+      "sha256": "76628f8ae4a200931b263fde834a6e2eaf20ae43be9129d144655ba05afb6f89",
+      "status": "passed",
+      "seconds": 0.7621574999648146,
+      "runner_sha256": "4a7ebba257263f616f3837a40c9f90969543fd6ae340b09385efe08b9513d772"
+    },
+    "villa-debug": {
+      "path": "/tmp/aethyr-ch9-follower-villa-debug.json",
+      "sha256": "8322f62447ff91af4e66c3d8bd12654088f9eb7e94529eb2dd409f5bccf16429",
+      "status": "passed",
+      "seconds": 4.652803874982055,
+      "runner_sha256": "66adbce90b10eaf8e0eada3210ddb5878670800d00c4ae2cbd232a6af16e7bcd"
+    },
+    "villa-optimized": {
+      "path": "/tmp/aethyr-ch9-follower-villa-optimized.json",
+      "sha256": "458af1be4adbac97d093461820a79ec30c8be5b6be31bb7b77a2e29a5ebf2776",
+      "status": "passed",
+      "seconds": 3.0889813330140896,
+      "runner_sha256": "66adbce90b10eaf8e0eada3210ddb5878670800d00c4ae2cbd232a6af16e7bcd"
+    },
+    "villa-sanitized": {
+      "path": "/tmp/aethyr-ch9-follower-villa-sanitized.json",
+      "sha256": "c3716af08a885741bf79b539f77cebb4391169d099b0e6da6eea2d6e0a95f6e0",
+      "status": "passed",
+      "seconds": 5.137839374947362,
+      "runner_sha256": "4a7ebba257263f616f3837a40c9f90969543fd6ae340b09385efe08b9513d772"
+    }
+  },
+  "final_sources": {
+    "aethyr/tests/check_follower_hosts.py": "4a7ebba257263f616f3837a40c9f90969543fd6ae340b09385efe08b9513d772",
+    "aethyr/tests/follower-host.c": "6e0e10cf743addc2ff4b29c33ff02d8b09fdc3ea4f0fc929ecbfcb7c08577fc8",
+    "aethyr/tests/follower-host.js": "d65b2c7ca96fbf6784583c183ee56ebd8d255fbc9023cea4cec0b342cfabbb47",
+    "aethyr/tests/test_follower_hosts_tooling.py": "ea74b1cac5e63ad4f6656514457f507e5d27260fc4dc97cab28e93123c1e9fd1"
+  },
+  "tooling_command": [
+    "python3",
+    "aethyr/tests/test_follower_hosts_tooling.py"
+  ],
+  "tooling_log": "/tmp/aethyr-ch9-follower-tooling.log",
+  "historical_runner_texts": [
+    "/tmp/aethyr-ch9-follower-runner-debug-before-hardening.py.txt",
+    "/tmp/aethyr-ch9-follower-runner-positive-native.py.txt"
+  ],
+  "notes": [
+    "Two finalfractionalframe tails close30/60FPS records at exactlyone second;120/144neednone.",
+    "Historical Garden-debug runner used broad envcapture; temporarystdout wasremoved withoutinspection, finalrunnerlogs onlyfourtoolchain paths.",
+    "Native optimized/debug proofs reuse actualpassingPageC admission; finalsanitizerproofs bind currenthardenedrunner.",
+    "Fourtoolingfailuretests rerun onlybecauseRunnerchanged metadata-sourcebinding/runtimeASan options afterinitialtoolingpass.",
+    "Passing Coax admissions were reused; no unchanged full Coax or mutation gate was repeated."
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "identity": {
+    "c": {
+      "garden.c": "29b27cae91989b8577a0859612577a04ad30b19ca23a295e8771508ca49e7de7",
+      "Player.c": "c65456946b1f025733174365c3b9544cf2674f8e589ac5cce191a5f9b769ff07",
+      "follower-host.c": "6e0e10cf743addc2ff4b29c33ff02d8b09fdc3ea4f0fc929ecbfcb7c08577fc8"
+    },
+    "headers": {
+      "garden.h": "d527f04bf05620edf7168f10ec8fb3ddfa4793aad124e7e7c5830c14e91603c9",
+      "Player.h": "0bf3f4738969a787a188018eba1d7d58b642f48ddebd6782069a52fdb3550d02"
+    },
+    "clang": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a",
+    "command": [
+      "/opt/homebrew/Cellar/llvm/23.1.4/bin/clang-23",
+      "--target=wasm32-wasip1",
+      "--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot",
+      "-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes",
+      "-std=c11",
+      "-O2",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-DFOLLOWER_GARDEN",
+      "-I/tmp/aethyr-ch9-consumers/garden-admitted",
+      "/tmp/aethyr-ch9-consumers/garden-admitted/garden.c",
+      "/tmp/aethyr-ch9-consumers/garden-admitted/Player.c",
+      "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c",
+      "-mexec-model=reactor",
+      "-Wl,--import-memory,--max-memory=67108864,-z,stack-size=1048576,--export=__heap_base,--gc-sections,--strip-debug",
+      "-o",
+      "/private/tmp/aethyr-ch9-follower-garden/follower.wasm"
+    ]
+  },
+  "sha256": "ce7c24e79a55c6b15ade206a1b9a441a7726276cf807f2686c2f9985b79e26ee",
+  "exit_code": 0
+}

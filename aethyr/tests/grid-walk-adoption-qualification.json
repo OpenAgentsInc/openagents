@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-01T12:46:03.153079+00:00",
+  "status": "Grid directly adopts the shared Walk core with unchanged execution/digest profile2",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "checks": {
+    "command": "coax/bin/coax test verse/gridwalk.coax --library",
+    "result": "326/326 passed",
+    "log_sha256": "42b89693ef8e4880a8476a57c6d8c6b009e06cb191171567d5f62ee9f333c3e5"
+  },
+  "mutation": {
+    "command": "coax/bin/coax mutate verse/gridwalk.coax --library --root-only --jobs 4",
+    "result": "234/234 killed,0 survivors,no waivers",
+    "stdout": "mutation scope: root-only (entry-source procedures; dependency checks retained)\n234 mutants, 234 killed, 0 survived\n"
+  },
+  "actual_hosts": {
+    "argv": [
+      "bun",
+      "test",
+      "coax/web/replay-hosts.test.ts",
+      "--test-name-pattern",
+      "recorded Grid session"
+    ],
+    "exit_status": 0,
+    "assertions": 10,
+    "stdout": "bun test v1.4.0 (34cbb9a40)\n\ncoax/web/replay-hosts.test.ts:\n(pass) a recorded Grid session gives the same digest at every step natively and in wasm [11164.11ms]\n\n 1 pass\n 1 filtered out\n 0 fail\n 10 expect() calls\nRan 1 test across 1 file. [11.25s]\n",
+    "scope": "actual native and Wasm1000-frame Grid executions; every step mark and session digest match; replay succeeds; unrelated generic-walk case filtered out; no UI or audio"
+  },
+  "retained_source_scope": "Two later additive Walk tuning boundary cases are test-only changes; production module, Grid import/calls, profile2 digest stream and historical pin1068547055 are unchanged. Original native receipt source hashes remain in walk-parity-*.json. Final complete authority baseline is separately qualified by Walk owner.",
+  "limits": [
+    "ephemeral target trace is derived per-frame outside persistent Player state; no digest/profile migration",
+    "this is runtime scalar replay evidence, not browser raster output or final realm-page link qualification"
+  ],
+  "current_source_sha256": {
+    "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+    "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+    "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+    "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+    "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+    "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/rand.coax": "1310b9ab2b93af376bf4ce5b567aa51c866d05d72f858fa00da0a61759f26ce3",
+    "aethyr/replay.coax": "312ef9e9eacdf2a28c8f838b0ae79e9ec39b617f526018f91478a3c6eba24dcf",
+    "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+    "aethyr/tests/player-collision-checks.coax": "c46a9ec337d624a6158e6852de4490a6e8e431c2f0cfcaa8255923c22e67e8c9",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "aethyr/tests/replay-oracle.coax": "718c9bbfb571c5cd41a130f567d3e5a89afda2d985674ce9ead7b57dba645f38",
+    "aethyr/tests/walk-tuning-checks.coax": "6dfc14aeadde94c4f650c54bf98808ece32c9fe626f7ff9db4312656cca48f39",
+    "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+    "aethyr/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/gridwalk.coax": "f2ef5fee8b0fbbe4db4244e68255afb1b6e5ca26c7d8048b5344d2bf56d1a610",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "verse/sticks.coax": "c2a45fcccc415e7b551366c76ad99683dd19c2e9e110843dbc0465800d858acb",
+    "verse/tests/gridwalk-checks.coax": "16dfb2a0f2e7e3666783f3c5f5e66fbab969949db3fa69e22a21c2884220765b"
+  },
+  "source_snapshot_limit": "The hashes identify the current production closure. Grid log captures did not separately snapshot the test-only walk-tuning dependency before execution; only that dependency changed by additive clock-boundary cases. This receipt makes no claim that those later test cases ran in the earlier Grid baseline. Production Walk/Grid hashes are final and unchanged; final Walk authority coverage is recorded separately."
+}

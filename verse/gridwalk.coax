@@ -19,7 +19,7 @@
 //   coax/bin/coax mutate verse/gridwalk.coax --root-only
 
 #module "verse.gridwalk";
-#load "player.coax" as pc;   // the walking controller every walking realm uses
+#load "../aethyr/walk.coax" as pc; // the engine walking controller; C exports stay in the facade
 #load "../aethyr/collision-profiles.coax" as walk_profiles;
 #load "../aethyr/collide.coax" as walk_capsule;
 #load "../aethyr/query.coax" as grid_queries;
@@ -96,7 +96,7 @@ gw_begin :: (g: [] GridWalk) {
 gridwalk_place :: (g: [] GridWalk, x: f32, z: f32, face: f32, phi: f32, dist: f32) #export_c {
   if g.count < 1 { return; }
   g[0].profile = GW_PROFILE;
-  p := pc.verse_player_place(x, 0, z, face);
+  p := pc.walk_place(x, 0, z, face);
   p.phi = phi;
   p.max_dist = dist; p.dist = dist; p.prev_dist = dist;
   g[0].you = p;
@@ -127,9 +127,9 @@ gw_step :: (g: [] GridWalk) {
   sm := input_sample(g[0].input);
   g[0].input = sm.buffer;
   a := sm.actions;
-  p := pc.verse_player_input(g[0].you, 0, 0, a.move_x, a.move_y, a.run, false, a.look_x, a.look_y);
+  p := pc.walk_input(g[0].you, 0, 0, a.move_x, a.move_y, a.run, false, a.look_x, a.look_y);
   if a.jump { p.jumps = input_press(p.jumps); }
-  p = pc.verse_player_zoom(p, a.zoom);
+  p = pc.walk_zoom(p, a.zoom);
   g[0].prev_theta = g[0].you.theta; g[0].prev_phi = g[0].you.phi;
   w := gw_world();
   g[0].you = pc.steps_in(w, p, 1);
@@ -200,16 +200,16 @@ gridwalk_pinch :: (g: [] GridWalk) -> f32 #export_c { return ifx g.count < 1 the
 // book:begin gridwalk-drawn
 // Where to draw: between the last two steps, the camera's turn included.
 gw_alpha :: (g: [] GridWalk) -> f32 { return loop_alpha(g[0].you.clock); }
-gridwalk_feet :: (g: [] GridWalk) -> pc.Vec3 #export_c { return pc.verse_player_feet(g[0].you); }
-gridwalk_face :: (g: [] GridWalk) -> f32 #export_c { return pc.verse_player_face(g[0].you); }
-gridwalk_act :: (g: [] GridWalk) -> int #export_c { return pc.verse_player_act(g[0].you); }
-gridwalk_at :: (g: [] GridWalk) -> pc.Vec3 #export_c { return pc.verse_player_at(g[0].you); }
+gridwalk_feet :: (g: [] GridWalk) -> pc.Vec3 #export_c { return pc.walk_feet(g[0].you); }
+gridwalk_face :: (g: [] GridWalk) -> f32 #export_c { return pc.walk_face(g[0].you); }
+gridwalk_act :: (g: [] GridWalk) -> int #export_c { return pc.walk_act(g[0].you); }
+gridwalk_at :: (g: [] GridWalk) -> pc.Vec3 #export_c { return pc.walk_at(g[0].you); }
 gridwalk_eye :: (g: [] GridWalk) -> pc.Vec3 #export_c {
   p := g[0].you;
   a := gw_alpha(g);
   p.theta = pc.wrap_angle(g[0].prev_theta + pc.wrap_angle(p.theta - g[0].prev_theta) * a);
   p.phi = g[0].prev_phi + (p.phi - g[0].prev_phi) * a;
-  return pc.verse_player_eye(p);
+  return pc.walk_eye(p);
 }
 // book:end gridwalk-drawn
 gridwalk_thumbs :: (g: [] GridWalk) -> Sticks #export_c { return g[0].thumbs; }
@@ -248,7 +248,7 @@ gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 t
   bodies := [7] f32.[0, 0.3, 0, 0, 1.5, 0, 0.4];
   walls := [6] f32.[0.6, 0, -2, 2, 2, 2];
   w.bodies = bodies[..]; w.walls = walls[..];
-  p := pc.verse_player_place(0.4, 0, 0, 0);
+  p := pc.walk_place(0.4, 0, 0, 0);
   q := pc.step(w, p, pc.STEP);
   #assert q.collision_status == walk_capsule.CollideStatus.unresolved && q.collision_passes == 3;
   #assert q.pos.x == p.pos.x && q.pos.y == p.pos.y && q.pos.z == p.pos.z;
@@ -338,7 +338,7 @@ gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 t
   p := g[0].you;
   gw_keys(g[..], 1, true, 0.25, 1.0 / 64.0);
   w: pc.World;
-  q := pc.verse_player_input(p, 0, 0, 0, 1, true, false, 0.25, 0);
+  q := pc.walk_input(p, 0, 0, 0, 1, true, false, 0.25, 0);
   q.jumps = input_press(q.jumps);
   q = pc.steps_in(w, q, 1);
   #assert gridwalk_steps(g[..]) == 1 && g[0].you.pos.x == q.pos.x && g[0].you.pos.y == q.pos.y && g[0].you.pos.z == q.pos.z;
@@ -392,11 +392,11 @@ gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 t
   gw_still(g[..], 1.0 / 128.0);                          // half a step on: still drawn between them
   e := gridwalk_eye(g[..]);
   p := g[0].you; p.theta = pc.wrap_angle(g[0].prev_theta + 0.1); p.phi = g[0].prev_phi;
-  m := pc.verse_player_eye(p);
+  m := pc.walk_eye(p);
   #assert gw_near(gw_alpha(g[..]), 0.5, 0.0001) && gw_near(e.x, m.x, 0.0005) && gw_near(e.z, m.z, 0.0005) && gw_near(e.y, m.y, 0.0005);
   q := g[0].you; q.phi = g[0].prev_phi + (q.phi - g[0].prev_phi) * 0.5; q.theta = p.theta;
-  #assert gw_near(e.y, pc.verse_player_eye(q).y, 0.0005);
-  a := gridwalk_at(g[..]); b := pc.verse_player_at(g[0].you);
+  #assert gw_near(e.y, pc.walk_eye(q).y, 0.0005);
+  a := gridwalk_at(g[..]); b := pc.walk_at(g[0].you);
   #assert a.x == b.x && a.y == b.y && a.z == b.z;
 }
 
@@ -408,7 +408,7 @@ gridwalk_session :: (g: [] GridWalk) -> int #export_c { return ifx g.count < 1 t
   gw_still(g[..], 1.0 / 128.0);
   e := gridwalk_eye(g[..]);
   p := g[0].you; p.phi = g[0].prev_phi - 0.2; p.theta = g[0].prev_theta;
-  m := pc.verse_player_eye(p);
+  m := pc.walk_eye(p);
   #assert gw_near(e.y, m.y, 0.0005) && gw_near(e.x, m.x, 0.0005);
 }
 

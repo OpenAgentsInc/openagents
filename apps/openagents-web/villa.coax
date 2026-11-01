@@ -32,6 +32,10 @@
 #load "analytics.coax";
 #load "../../verse/camera.coax";
 #load "../../verse/throw.coax";
+#load "../../aethyr/follower.coax" as follow;
+#load "../../aethyr/locomotion.coax" as route_tuning;
+#load "../../aethyr/walk-frame.coax" as walk_frame;
+#load "../../aethyr/loop.coax" as realm_loop;
 #load "../../verse/cinematic.coax";
 #load "../../verse/particles.coax";
 #load "villapet.coax";
@@ -129,6 +133,10 @@ Villa :: struct {
   shot: Shot;
   // Your dog.
   fetch: Fetch;
+  follower_tuning: route_tuning.LocomotionProfile;
+  follower_cursor: follow.FrameCursor; follower_previous: follow.FetchPose;
+  follower_alpha: f32; follower_steps: int; follower_clocked: bool;
+  follower_status: follow.FollowerStatus;
   pet_still: bool;          // the face says it plays a motion that keeps it where it is
   // The flight in (verse/cinematic.coax), and where it is this frame.
   flight: Flight;
@@ -326,6 +334,8 @@ villa_start :: (s: [] Villa) {
   s[0].fetch.dog = verse_follower_place(ground(), s[0].heights[..], f32(DOG_X), f32(DOG_Z), 0);
   s[0].fetch.ball = verse_ball_place(ground(), s[0].heights[..], f32(SPAWN_X) + 1.2, f32(SPAWN_Z) + 3, 0.12);
   s[0].fetch.ball.held = 99;   // put away until fetch is played (a skill, later)
+  s[0].follower_tuning = follow.follower_profile();
+  s[0].follower_previous = follow.fetch_pose(s[0].fetch);
   build_scenery(s);
   pet_start(s[0].pet[..]);
 }
@@ -392,6 +402,11 @@ build_scenery :: (s: [] Villa) {
 }
 
 villa_walls :: (s: [] Villa) -> int #export_c { if !s[0].started { villa_start(s); } return s[0].wall_n; }
+// The actual page selects the clocked adapter before accepting keys.
+villa_on_realm_clock :: (s: [] Villa) #export_c {
+  if !s[0].started { villa_start(s); }
+  s[0].follower_clocked = true;
+}
 
 // ---- where you are, kept so a reload puts you back (eg-pos, place.coax)
 
@@ -421,6 +436,9 @@ villa_place_camera :: (s: [] Villa, p: Place) #export_c {
   s[0].flight_begun = true;
   s[0].flight = verse_flight_start(flight_keys(), s[0].time, true);
   s[0].fetch.dog.pos = v3(p.x - sin(p.face) * 1.5, s[0].feet.y, p.z - cos(p.face) * 1.5);
+  s[0].follower_cursor = follow.FrameCursor.{};
+  s[0].follower_previous = follow.fetch_pose(s[0].fetch);
+  s[0].follower_alpha = 0; s[0].follower_steps = 0;
 }
 villa_spawn :: (s: [] Villa) -> Point #export_c { return v3(f32(SPAWN_X), 0, f32(SPAWN_Z)); }
 
@@ -567,10 +585,28 @@ villa_live :: (s: [] Villa) -> Shot #export_c { return s[0].live; }
 
 // After the player moved: you are at feet (on its flat floor) facing face,
 // doing act, moving vx, vz.
+// Trusted variable-time entry retained for existing callers and examples.
 villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32) #export_c {
+  no_clock: realm_loop.FrameClock; no_targets: [1] walk_frame.StepTarget;
+  villa_step_in(s, dt, fx, fy, fz, face, act, vx, vz, false, no_clock, no_targets[0..<0]);
+}
+villa_step_on_clock :: (s: [] Villa, paid: realm_loop.FrameClock, targets: [] walk_frame.StepTarget,
+    fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32) #export_c {
+  villa_step_in(s, 0, fx, fy, fz, face, act, vx, vz, true, paid, targets);
+}
+villa_step_in :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: int, vx: f32, vz: f32,
+    fixed: bool, paid: realm_loop.FrameClock, targets: [] walk_frame.StepTarget) {
   if !s[0].started { villa_start(s); }
   if s[0].golden { golden_alone(s); }
   t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  s[0].follower_clocked = fixed; s[0].follower_steps = 0;
+  if fixed {
+    receipt := follow.follower_frame(s[0].follower_cursor, paid, targets);
+    t = receipt.counted;
+    if receipt.accepted {
+      s[0].follower_cursor = receipt.cursor; s[0].follower_alpha = receipt.alpha; s[0].follower_steps = receipt.steps;
+    }
+  }
   s[0].time += f64(t);
   redit_start(s[0].ed[..], "hecates-cemetery");
   redit_step(s[0].ed[..], f32(s[0].time), s[0].width, s[0].height, s[0].dpr);
@@ -597,17 +633,40 @@ villa_step :: (s: [] Villa, dt: f32, fx: f32, fy: f32, fz: f32, face: f32, act: 
   // it has played (or was skipped): the browser keeps that with the tips (villatips.coax)
   if !s[0].golden && !s[0].fl_flying && !s[0].tips[0].flown { s[0].tips[0].flown = true; }
   // the dog keeps by you, going round the scenery; it stays put while it sits or digs
-  if !s[0].pet_still && !s[0].play[0].stay {
+  if !fixed && !s[0].pet_still && !s[0].play[0].stay {
     nodes := NODE_XZ; links := LINK_AB;
     s[0].fetch = verse_fetch_step_among(s[0].fetch, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF), shown, t, s[0].walls[0..<s[0].block_n * 6]);
-  } else {
+  } else if !fixed {
     s[0].fetch.dog.vel = v3(0, 0, 0); s[0].fetch.dog.walking = false;
   }
   pet_tick(s[0].pet[..], t);
   near_stone(s);
-  play_step(s, t);
+  if fixed {
+    for step_index: 0..<s[0].follower_steps {
+      actual := targets[step_index];
+      flat := v3(actual.feet.x, actual.feet.y, actual.feet.z);
+      s[0].feet = feet_in_world(flat, ground_at(s, flat.x, flat.z));
+      s[0].face = actual.face;
+      s[0].speed = flat_length(v3(actual.velocity.x, 0, actual.velocity.z));
+      villa_play_tick(s);
+    }
+    s[0].feet = shown; s[0].face = face; s[0].speed = ifx finite(speed) then speed else 0.0f32;
+    play_counted(s, t);
+  } else { play_step(s, t); }
   guide_step(s, t);
   tips_step(s, t);
+}
+
+villa_play_tick :: (s: [] Villa) {
+  before := s[0].fetch; before_pet := s[0].pet[0]; before_play := s[0].play[0];
+  play_actions(s);
+  nodes := NODE_XZ; links := LINK_AB;
+  stepped := follow.fetch_step(s[0].fetch, s[0].follower_tuning, ground(), s[0].heights[..], nodes[..], links[..], f32(PATH_HALF),
+    s[0].feet, hand_of(s), s[0].spheres[0..<s[0].sphere_n * 4], s[0].boxes[0..<s[0].box_n * 6],
+    s[0].walls[0..<s[0].block_n * 6], !s[0].pet_still && !s[0].play[0].stay, true);
+  published := follow.fetch_publish(before, stepped);
+  s[0].fetch = published.fetch; s[0].follower_previous = published.previous; s[0].follower_status = published.status;
+  if published.status != follow.FollowerStatus.ok { s[0].pet[0] = before_pet; s[0].play[0] = before_play; }
 }
 
 // The tombstone you stand at (within two metres of it), for its card.
@@ -655,6 +714,10 @@ camera_frame :: (s: [] Villa, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
 
 // Where the face poses the figures: 0 you, 1 your dog.
 villa_dog :: (s: [] Villa) -> Follower #export_c { return s[0].fetch.dog; }
+villa_fetch_draw :: (s: [] Villa) -> Fetch {
+  return ifx s[0].follower_clocked then follow.fetch_draw(s[0].fetch, s[0].follower_previous, s[0].follower_alpha) else s[0].fetch;
+}
+villa_draw_dog :: (s: [] Villa) -> Follower #export_c { return villa_fetch_draw(s).dog; }
 villa_you_speed :: (s: [] Villa) -> f32 #export_c { return ifx villa_busy(s) then 0.0f32 else s[0].speed; }
 villa_set_pet_still :: (s: [] Villa, still: bool) #export_c { s[0].pet_still = still; }
 // The face's posed bones for figure i: n of them, and their bound.
@@ -1395,7 +1458,7 @@ villa_store_cap :: (k: int) -> int #export_c {
 
 // ---- checks
 
-frame :: (s: [] Villa, out: [] f32, u: [] f32, dt: f32, x: f32, z: f32, face: f32) -> int {
+villa_test_frame :: (s: [] Villa, out: [] f32, u: [] f32, dt: f32, x: f32, z: f32, face: f32) -> int {
   villa_step(s, dt, x, 0, z, face, 0, 0, 0);
   return villa_draw(s, out, u, 1280, 800, 1, false, 0, 0, 0, 0);
 }
@@ -1607,7 +1670,7 @@ shapes :: (s: [] Villa) -> int { n := 0; for k: 0..<KINDS { n += s[0].counts[k];
     }
     villa_set_bones(s[..], f, 30);
   }
-  n := frame(s[..], out[..], u[..], 1.0 / 60.0, f32(SPAWN_X), f32(SPAWN_Z), 0);
+  n := villa_test_frame(s[..], out[..], u[..], 1.0 / 60.0, f32(SPAWN_X), f32(SPAWN_Z), 0);
   #assert n > 0;
   for k: 1..<KINDS { #assert s[0].counts[k] < SLOTS[k]; }
   #assert s[0].counts[SHAPE_BALL] >= 120 && s[0].counts[SHAPE_CYLINDER] > 60;
@@ -1904,4 +1967,55 @@ VILLA_BUDGET :: FrameBudget.{steps = 8, vertices = 1000, draws = DRAWS, bytes = 
     }
   }
   #assert budget_ok(m[0]);
+}
+
+#test "the villa consumes one realm trace with previous poses elevated targets and a reset clock" {
+  vf_s: [1] Villa; villa_start(vf_s[..]); villa_on_realm_clock(vf_s[..]);
+  for vf_i: 0..<GROUND_POINTS { vf_s[0].heights[vf_i] = 2.5; }
+  vf_s[0].fetch.dog = verse_follower_place(ground(), vf_s[0].heights[..], 30, 30, 0);
+  vf_s[0].fetch.ball.held = 0;
+  vf_clock: realm_loop.FrameClock; vf_targets: [8] walk_frame.StepTarget;
+  vf_clock = realm_loop.loop_frame(vf_clock, 0.010).clock;
+  #assert play_key(vf_s[..], 'f') && vf_s[0].pet[0].doing == DO_THROW && vf_s[0].fetch.ball.held == 0;
+  villa_step_on_clock(vf_s[..], vf_clock, vf_targets[0..<0], 7, 0, -3, 0, 0, 0, 0);
+  #assert vf_s[0].pet[0].doing == DO_THROW && vf_s[0].fetch.dog.pos.x == 30 && vf_s[0].follower_steps == 0;
+  vf_s[0].pet[0].doing = -1;
+  vf_clock = realm_loop.loop_frame(vf_clock, 0.006).clock;
+  vf_targets[0].feet.x = 26; vf_targets[0].feet.y = 1.25; vf_targets[0].feet.z = 30;
+  villa_step_on_clock(vf_s[..], vf_clock, vf_targets[0..<1], 7, 0, -3, 0, 0, 0, 0);
+  #assert vf_s[0].follower_steps == 1 && vf_s[0].fetch.dog.vel.x == -0.21875 && vf_s[0].follower_alpha == 0.024;
+  #assert vf_s[0].fetch.ball.pos.y == 4.9 && vf_s[0].fetch.ball.pos.x == 25.75;
+  vf_x := vf_s[0].fetch.dog.pos.x; vf_time := vf_s[0].time;
+  vf_draw := villa_draw_dog(vf_s[..]);
+  #assert vf_draw.pos.x > vf_x && vf_draw.pos.x < 30;
+  #assert villa_draw_dog(vf_s[..]).pos.x == vf_draw.pos.x && vf_s[0].fetch.dog.pos.x == vf_x;
+  villa_step_on_clock(vf_s[..], vf_clock, vf_targets[0..<1], 7, 0, -3, 0, 0, 0, 0);
+  #assert vf_s[0].fetch.dog.pos.x == vf_x && vf_s[0].time == vf_time;
+  villa_place_camera(vf_s[..], verse_place(30, 0, 30, 0, 0, 0.3, 5, 0, -1, 1000));
+  vf_s[0].fetch.dog = verse_follower_place(ground(), vf_s[0].heights[..], 30, 30, 0);
+  vf_clock = realm_loop.FrameClock.{}; vf_clock = realm_loop.loop_frame(vf_clock, 0.03125).clock;
+  vf_targets[1] = vf_targets[0]; vf_targets[1].feet.x = 34;
+  villa_step_on_clock(vf_s[..], vf_clock, vf_targets[0..<2], 7, 0, -3, 0, 0, 0, 0);
+  #assert vf_s[0].follower_steps == 2 && vf_s[0].follower_cursor.frames == 1;
+  #assert vf_s[0].fetch.dog.pos.x == 29.99658203125 && vf_s[0].fetch.dog.vel.x == 0;
+  #assert vf_s[0].fetch.ball.pos.x == 33.75 && vf_s[0].fetch.ball.pos.y == 4.9;
+}
+
+#test "the villa keeps its queued throw and action effects when follower admission refuses" {
+  va_s: [1] Villa; villa_start(va_s[..]); villa_on_realm_clock(va_s[..]);
+  va_s[0].fetch.ball.held = 0; va_s[0].fetch.ball.pos = v3(4, 5, 6); va_s[0].pet[0].doing = DO_THROW;
+  va_s[0].play[0].stay = true; va_before := va_s[0].fetch; va_events := va_s[0].pet[0].ev_n;
+  va_s[0].follower_tuning.acceleration = 0;
+  va_clock: realm_loop.FrameClock; va_targets: [1] walk_frame.StepTarget;
+  va_clock = realm_loop.loop_frame(va_clock, 0.015625).clock;
+  va_targets[0].feet.x = 30; va_targets[0].feet.z = 30;
+  villa_step_on_clock(va_s[..], va_clock, va_targets[..], 30, 0, 30, 0, 0, 0, 0);
+  #assert va_s[0].follower_status == follow.FollowerStatus.bad_profile && va_s[0].pet[0].doing == DO_THROW;
+  #assert va_s[0].fetch.ball.held == 0 && !va_s[0].fetch.ball.thrown && va_s[0].fetch.ball.pos.x == 4 && va_s[0].fetch.ball.pos.y == 5 && va_s[0].fetch.ball.pos.z == 6;
+  #assert va_s[0].fetch.dog.pos.x == va_before.dog.pos.x && va_s[0].fetch.dog.face == va_before.dog.face && va_s[0].fetch.dog.vel.z == va_before.dog.vel.z;
+  #assert va_s[0].play[0].stay && va_s[0].pet[0].ev_n == va_events && va_s[0].follower_cursor.ticks == 1;
+  va_s[0].follower_tuning = follow.follower_profile();
+  va_clock = realm_loop.loop_frame(va_clock, 0.015625).clock;
+  villa_step_on_clock(va_s[..], va_clock, va_targets[..], 30, 0, 30, 0, 0, 0, 0);
+  #assert va_s[0].pet[0].doing == -1 && va_s[0].fetch.ball.held == -1 && va_s[0].fetch.ball.thrown && va_s[0].pet[0].ev_n == va_events + 1;
 }

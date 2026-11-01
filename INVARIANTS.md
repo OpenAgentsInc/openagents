@@ -66,7 +66,7 @@ memory, takes its declared default, so a clock never freezes.
 Drawing mixes the last two steps by `loop_alpha` and never steps physics. So
 the same per-step inputs give the same states, bit for bit, at any frame rate.
 Checks: `aethyr/loop.coax` (step count follows the time fed at 30, 60, 120 and
-144 FPS; mutation 0 survivors) and `verse/player.coax` ("a run and jump has the
+144 FPS; mutation 0 survivors) and `aethyr/walk.coax` ("a run and jump has the
 same states at 30, 60, 120 and 144 FPS", "a jump drawn at 60 FPS has no stutter").
 
 ## A realm's frame time is what its clock counts, and no frame runs past 8 steps
@@ -83,7 +83,7 @@ cap is dropped and counted on the clock, never run later. `aethyr/loop.coax`
 declares no `#export_c` procedure, because realms' libraries load it more
 than once (Everglade's player, debris and river).
 Checks: `aethyr/loop.coax` ("a frame counts for its time, refused, clamped
-and dropped as the steps are"), `verse/player.coax` ("a face's frame time is
+and dropped as the steps are"), `aethyr/walk.coax` ("a face's frame time is
 what the player's clock counts, and runs at most 8 steps"),
 `verse/deadgears/ecs.coax`, `verse/demolish.coax` ("the steps are Aethyr's
 clock's ..."), Hold the Stair ("frames run at most its budget's steps,
@@ -144,7 +144,7 @@ several gives it to one. At most `INPUT_MAX_WAITING` presses wait; more are
 counted as lost, never kept. Values that aren't numbers, and axes past full
 travel, are refused or clamped and counted. Checks: `aethyr/input.coax`
 ("every press is taken by exactly one step, the one the model names";
-mutation 0 survivors) and `verse/player.coax` ("a press in a frame with no
+mutation 0 survivors) and `aethyr/walk.coax` ("a press in a frame with no
 step jumps on the next one, and a frame of two jumps once", "the keyboard
 and the touch stick drive the same session to the same states").
 
@@ -200,7 +200,7 @@ fails them.
 ## Every walking realm asks one ground question
 
 The walking controller's floor comes from `aethyr/query.coax`:
-`floor_under` in `verse/player.coax` is one `query_stand` call over the
+`floor_under` in `aethyr/walk.coax` is one `query_stand` call over the
 realm's colliders (flat or heightfield ground, walls as boxes, bodies as
 capsules, and floors). The actual fixed step consumes `query_ground_checked`;
 the trusted `floor_under` adapter retains the permissive query. The step height
@@ -212,7 +212,7 @@ it at t = 0, and ties go to the earlier collider (the ground, then boxes,
 then capsules, by index). Checks: `aethyr/query.coax` (rays, sweeps and
 overlaps against the containment oracle in `aethyr/tests/query-oracle.coax`;
 root-only mutation 388/388 killed, with separate ground/ray/contact receipts)
-and `verse/player.coax` ("jumping onto, landing on
+and `aethyr/walk.coax` ("jumping onto, landing on
 and walking off a ledge is the same in every realm").
 
 ## Terrain and capsule publication carry checked receipts
@@ -250,9 +250,41 @@ is 3864885271; profile 2's independently calculated pin is 1068547055. The
 current recorded session agrees at every step natively and in Wasm. Evidence:
 `aethyr/tests/grid-profile2-qualification.json`.
 
+## Walking profiles and route followers share the realm's paid steps
+
+`aethyr/walk.coax` owns the walking controller; `verse/player.coax` retains
+its published C signatures as thin adapters. Input's legacy `input_runs` C
+export remains; production pages reach one copy. The coupled Dead Gears and
+Player boundary probe explicitly prefixes one duplicate helper copy in a
+test-only include wrapper. `World.locomotion` declares
+finite bounded tuning separately from capsule geometry. Invalid tuning
+preserves the physical state and queued jump while a scheduled tick is paid.
+Walking admits only the 1/64 s period and at most eight steps. A different
+positive period, an excessive cap, an unpaid due count or a carry outside
+the paid step interval refuses before accepting new frame time. Nonpositive clock settings retain Loop's defaults.
+
+`advance_traced` returns temporary chronological post-step targets, including
+unchanged poses on refused physical steps. It adds no persistent Player field
+or Grid digest word. `aethyr/follower.coax` consumes the paid clock and those
+targets once, checking cursor continuity before integer arithmetic. It owns
+no timer. The Garden and villa's actual faces use this path; restoring a
+Player resets the realm's cursor. These floor-relative adapters apply the
+terrain origin once to each target. The grounded route mode projects onto the
+canonical mesh and uses strict turn/hand/throw arithmetic; it does not claim
+the walking capsule's gravity, jump or contact behavior. With complete scenery
+blocks, actual travel is bounded by half the route body's radius.
+
+A refused fetch step restores the pre-command Fetch and leaves its action
+queued. Drawing reads previous/current dog and ball poses at the same clock's
+alpha without stepping either; counted frame time still drives room and
+visual animation. The legacy variable-time APIs remain explicit compatibility
+surfaces. Chapter 64 owns the remaining special realm adapters, including
+flight and boat/warp paths. Evidence: `aethyr/tests/walk-qualification.json`,
+`aethyr/tests/follower-qualification.json` and the chapter 9 verification data.
+
 ## One follow camera eases the walker's view
 
-The walking controller's camera (`verse/player.coax`, every walking realm and
+The walking controller's camera (`aethyr/walk.coax`, every walking realm and
 Dead Gears' `camera_room`) moves only through `aethyr/follow.coax`: the look
 and zoom (`follow_look`, `follow_zoom`), one step of the spring and the room
 (`follow_track`), and the eye drawn between the last two steps (`follow_at`,
@@ -265,7 +297,7 @@ jump").
 
 ## The camera only reads the player, and every camera makes one shot
 
-The player's step (`step` in `verse/player.coax`) never moves the camera.
+The player's step (`step` in `aethyr/walk.coax`) never moves the camera.
 The camera steps after it (`camera_step`, run by `step_once` in
 `steps_in`) and changes only the camera's fields (`target`, `spring_vel`,
 `dist`), so the player is the same, bit for bit, whether the camera steps
@@ -274,7 +306,7 @@ every step, never, or twice a step. Every camera answers with one
 steps: third and first person (`follow_shot`, `follow_first_shot`), top down
 (`shot_top`), the free orbit (`shot_orbit`, which `verse/camera.coax` draws
 through) and the dive (`shot_dive`, where a time that isn't a number is a
-cut). No camera steps physics. Checks: `verse/player.coax` ("the player is
+cut). No camera steps physics. Checks: `aethyr/walk.coax` ("the player is
 the same whether its camera steps every step, never, or twice a step", "each
 view mode is its own shot of the frame drawn"), `aethyr/shot.coax` and
 `aethyr/follow.coax` (mutation 0 survivors).
@@ -2304,8 +2336,7 @@ reduced motion; a tap hurries it). Controls, the hotbar and the balance appear
 only once it lands. The balance sits top right as whole sats with no grouping
 (`₿1234`, or `₿–` with the reason spoken while there is none) and opens the wallet.
 `verse/grid.coax` owns its projection and line art,
-`verse/sticks.coax` the move/look/jump touch policy; `verse/player.coax` owns walking and the
-camera; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
+`verse/sticks.coax` the move/look/jump touch policy; `aethyr/walk.coax` owns walking and camera state behind the `verse/player.coax` C facade; `verse/cast.coax` admits the bundled `Cast.bin`, blends your
 character's clips and poses you and the robots. The native adapter only routes
 the Start invocation there, passes numbers between the libraries each frame
 and binds the buffers Coax admitted. A cast whose offsets, indices, joints or

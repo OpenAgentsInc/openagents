@@ -1,15 +1,11 @@
 # 9. A character moves
 
-> **Status: partly implemented.** The walking controller runs in
-> [verse/player.coax](../../verse/player.coax): it steers at a fixed
-> acceleration, jumps, stands, lands, falls, slides and turns in a fixed
-> order, takes typed actions (chapter 4) and asks chapter 7's queries for the
-> ground. The Grid drives it from a recorded session in
-> [verse/gridwalk.coax](../../verse/gridwalk.coax). Still to do: the module
-> `aethyr/walk.coax`, a declared locomotion-tuning profile, followers on the
-> realm's same due steps and interpolation, and completing the realm adapters.
-> They land with the realm
-> migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)).
+> **Status: runnable — native and Wasm fixed-step walking.**
+> `aethyr/walk.coax` owns the controller and declared locomotion tuning;
+> `verse/player.coax` retains its C facade. The Garden and villa's fetching
+> dogs consume the same paid steps and drawing alpha. The core, facade,
+> replay and actual scene adapters have separate qualification records.
+> Complete special realm adapters remain chapter 64's migration.
 
 A character controller turns input into motion. It speeds up and stops at a
 fixed rate, turns to face where it goes, jumps to a fixed height, lands
@@ -25,24 +21,29 @@ order, and the numbers it gives on the 1/64 s step.
 - Turning to face the direction of travel.
 - What the controller reads and what it writes.
 
-## The constants
+## The declared tuning
 
-<!-- source: verse/player.coax tuning -->
+<!-- source: aethyr/locomotion.coax profile -->
 ```jai
-WALK :: 3.5;            // m/s
-RUN :: 7.5;
-// The one setting for how you move (the owner's, 2026-10-29; meant to become
-// a player's setting): true, moving runs (RUN) and holding Shift walks
-// (WALK); false, moving walks and Shift runs. On a phone the stick decides
-// either way: a full push runs, a light one walks (verse/grid.coax RUN_PAST).
-RUN_BY_DEFAULT :: INPUT_RUN_BY_DEFAULT;   // aethyr/input.coax holds the rule
-GRAVITY :: 24.0;        // m/s^2
-JUMP :: 7.5;            // m/s up: a 1.17 m peak
-ACCEL :: 60.0;          // m/s^2, speeding up and slowing down alike
-TURN_RATE :: 10.0;      // how fast the character turns to face its way
-RIDE_HEIGHT :: 0.4;     // higher than this above the floor is falling
-STEP_SMOOTH :: 10.0;
+LocomotionProfile :: struct {
+  walk_speed: f32 = 3.5; run_speed: f32 = 7.5;
+  gravity: f32 = 24; jump_speed: f32 = 7.5;
+  acceleration: f32 = 60; turn_rate: f32 = 10;
+  ride_height: f32 = 0.4; step_smooth: f32 = 10;
+  slide_grip: f32 = 0.1; sink_limit: f32 = 0.05;
+  run_animation_margin: f32 = 0.25;
+}
 ```
+
+The default `LocomotionProfile` keeps these numbers. A realm supplies its
+own profile through `World.locomotion`; it changes no process-wide constant.
+Every field is finite, nonnegative and below 1,000; gravity and acceleration
+are positive, run speed is at least walk speed, and slide grip is at most one.
+Run speed times the fixed period must fit the collision profile's travel
+limit. Invalid tuning is refused before a step takes a waiting press. The default profile preserves the existing
+controller's results. Walking uses the 1/64 s period; a different positive
+clock period or a cap above eight is refused before accepting frame time,
+rather than paying one duration and integrating another.
 
 `SLIDE_GRIP` (0.1) is the share of your push you keep on a slope too steep
 to stand on. `STEP_UP`, the steep slope and the floor pad come from
@@ -58,19 +59,22 @@ world with the camera's turn, `theta`, using `math_sin` and `math_cos`
 
 ## One step
 
-A step first takes a waiting jump press. Chapter 4's input buffer makes sure
+An admitted step first takes a waiting jump press. Chapter 4's input buffer makes sure
 each press is taken by exactly one step. From the ground, the press sets the
 vertical speed to `JUMP`:
 
-<!-- source: verse/player.coax take -->
+<!-- source: aethyr/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
 step :: (w: World, given: Player, dt: f32) -> Player {
+  if !locomotion_profile_ok(w.locomotion) || w.locomotion.run_speed * f32(STEP) > w.collision.max_travel {
+    return collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_profile});
+  }
   p := given;
   t := input_take(given.jumps);
   p.jumps = t.edge;
   if t.pressed && p.on_ground {
-    p.vel.y = JUMP;
+    p.vel.y = w.locomotion.jump_speed;
     p.on_ground = false;
   }
 ```
@@ -88,17 +92,18 @@ The rest of the step runs in this order:
    `STEP_SMOOTH`. Falling and reaching the floor this step, you land on it.
    Otherwise you fall, and gravity takes `GRAVITY × dt` off your vertical
    speed.
-5. Move vertically, never more than 5 cm below the ground.
+5. Move vertically, with the default profile allowing at most 5 cm below the ground.
 6. Turn toward the wish, at `TURN_RATE`, the short way round.
-7. Track the camera (chapter 10).
-8. Set `act` (idle, walking, running or airborne) from this step's motion.
-   It is never set anywhere else, so it can't disagree with the motion.
+7. Set `act` (idle, walking, running or airborne) from this step's motion.
+8. After an accepted physical step, `step_once` tracks the camera
+   (chapter 10). A refused step leaves the physical state and queued press
+   intact and skips camera tracking; the scheduler still pays its time.
 
-<!-- source: verse/player.coax move -->
+<!-- source: aethyr/walk.coax move -->
 ```jai
   next := p;
   dir := wish(p);
-  speed := (ifx p.run then f32(RUN) else f32(WALK)) * clamp(ifx finite(p.pace) then p.pace else 1.0f32, 0, 1);
+  speed := (ifx p.run then w.locomotion.run_speed else w.locomotion.walk_speed) * clamp(ifx finite(p.pace) then p.pace else 1.0f32, 0, 1);
 
   // Horizontal velocity steps toward the wish at a fixed rate.
   dx := dir.x * speed - next.vel.x;
@@ -106,8 +111,8 @@ The rest of the step runs in this order:
   diff := sqrt(dx * dx + dz * dz);
   if diff > 0 {
     grip := ifx finite(p.grip) && p.grip > 0 && p.on_ground then lo(p.grip, 1.0f32) else 1.0f32;
-    if p.sliding { grip = f32(SLIDE_GRIP); }
-    applied := lo(diff, f32(ACCEL) * grip * dt);
+    if p.sliding { grip = w.locomotion.slide_grip; }
+    applied := lo(diff, w.locomotion.acceleration * grip * dt);
     next.vel.x += dx / diff * applied;
     next.vel.z += dz / diff * applied;
   }
@@ -129,22 +134,22 @@ The rest of the step runs in this order:
   above := next.pos.y - ground;
   falls := true;
   next.sliding = false;
-  if above <= f32(RIDE_HEIGHT) && next.vel.y <= 0 && stand_steep(under) {
+  if above <= w.locomotion.ride_height && next.vel.y <= 0 && stand_steep(under) {
     // Too steep to stand on: it holds you as you slide down it, gravity's pull along it speeding
     // you toward its low edge, and over that you fall.
     gl := sqrt(under.gx * under.gx + under.gz * under.gz);
-    pull := f32(GRAVITY) * gl / (1 + gl * gl) * dt;
+    pull := w.locomotion.gravity * gl / (1 + gl * gl) * dt;
     next.vel.x -= under.gx / gl * pull; next.vel.z -= under.gz / gl * pull;
     next.vel.y = 0;
     next.pos.y = ground;
     next.on_ground = false;
     next.sliding = true;
     falls = false;
-  } else if above <= f32(RIDE_HEIGHT) && next.vel.y <= 0 {
+  } else if above <= w.locomotion.ride_height && next.vel.y <= 0 {
     if next.on_ground {
       // Standing: ease onto the floor.
       next.vel.y = 0;
-      next.pos.y += (ground - next.pos.y) * lo(1, f32(STEP_SMOOTH) * dt);
+      next.pos.y += (ground - next.pos.y) * lo(1, w.locomotion.step_smooth * dt);
       falls = false;
     } else if above + next.vel.y * dt <= 0 {
       // Lands this step.
@@ -155,20 +160,20 @@ The rest of the step runs in this order:
     }
   }
   if falls {
-    next.vel.y -= f32(GRAVITY) * dt;
+    next.vel.y -= w.locomotion.gravity * dt;
     next.on_ground = false;
   }
-  next.pos.y = hi(next.pos.y + next.vel.y * dt, ground - 0.05);
+  next.pos.y = hi(next.pos.y + next.vel.y * dt, ground - w.locomotion.sink_limit);
 
   // Turn toward where you are going.
   if dir.on {
     want := atan2(dir.x, dir.z);
-    next.face = wrap_angle(next.face + wrap_angle(want - next.face) * lo(1, f32(TURN_RATE) * dt));
+    next.face = wrap_angle(next.face + wrap_angle(want - next.face) * lo(1, w.locomotion.turn_rate * dt));
   }
 
   if !next.on_ground { next.act = Act.airborne; }
   else if !dir.on { next.act = Act.idle; }
-  else if speed > f32(WALK) + 0.25 { next.act = Act.running; }   // shown running only at a run's speed
+  else if speed > w.locomotion.walk_speed + w.locomotion.run_animation_margin { next.act = Act.running; }   // shown running only at a run's speed
   else { next.act = Act.walking; }
   return next;
 }
@@ -252,9 +257,96 @@ Every number matches the hand calculation. On the 50 degree slope you stay at
 its middle, 2.38 m up. On the 60 degree slope you end 0.14 m past its low
 edge, on the ground.
 
+## Change a realm's tuning
+
+The second example, [tune-a-walk.coax](../examples/tune-a-walk.coax), declares
+a slower run, gentler acceleration and a different jump:
+
+<!-- source: aethyr/examples/tune-a-walk.coax profile -->
+```jai
+tuned_walk_world :: () -> World {
+  world: World;
+  world.locomotion.walk_speed = 2;
+  world.locomotion.run_speed = 4;
+  world.locomotion.acceleration = 16;
+  world.locomotion.gravity = 16;
+  world.locomotion.jump_speed = 6;
+  return world;
+}
+```
+
+At 16 m/s², each step adds 0.25 m/s, so 4 m/s takes 16 steps. A 6 m/s jump
+under 16 m/s² gravity loses 0.25 m/s each step. Its last rising step is 23:
+`(6 × 23 − 0.25 × 276) / 64 = 69/64 = 1.078125` m. The following step
+has zero vertical speed; the controller lands on step 48.
+
+```shell
+coax/bin/coax run aethyr/examples/tune-a-walk.coax
+```
+
+```text
+declared run: 16 steps, 0.25 s to 4 m/s
+declared jump: 1.078125 m after 23 steps; landed after 48
+10 ms then 6 ms: 0 then 1 targets, 1 paid tick
+step target: z 0.00390625, drawn z 0.00009375
+gravity 0: status 1 (bad_profile), jump waiting 1, paid ticks 1
+```
+
+The last line deliberately supplies zero gravity. The receipt reports
+`CollideStatus.bad_profile` (1), leaves the jump waiting, and pays the assigned
+tick without publishing a new physical pose. These are runtime profile
+checks; they do not claim Coax's future static bounded-control proof.
+
+## Followers consume the same steps
+
+Counted frame time is for animation; it does not say how many simulation
+steps ran. A clock with 10 ms carried into a 6 ms frame owes one 15.625 ms
+step. Dividing the new frame's duration by the step would lose it.
+
+`advance_traced` returns the resulting Player and at most eight actual
+post-step targets. The trace is temporary caller-owned data, outside Player
+and the Grid's persistent digest. A refused physical step still has a target:
+the unchanged pose for that paid tick. Drawing consumes the resulting clock's
+alpha and never adds another follower accumulator.
+
+<!-- source: aethyr/examples/tune-a-walk.coax trace -->
+```jai
+main :: () {
+  measured := tuned_walk_measure();
+  print("declared run: % steps, % s to 4 m/s\n", measured.acceleration_steps, f32(measured.acceleration_steps) * f32(STEP));
+  print("declared jump: % m after % steps; landed after %\n", measured.peak, measured.peak_step, measured.landing_step);
+
+  world := tuned_walk_world();
+  walker := held(walk_place(0, 0, 0, 0), 0, 1, true);
+  first := advance_traced(world, walker, 0.010);
+  second := advance_traced(world, first.player, 0.006);
+  // A follower consumes the actual targets. Dividing this frame's 6 ms by
+  // 1/64 s would miss the step owed by the clock's earlier 10 ms carry.
+  print("10 ms then 6 ms: % then % targets, % paid tick\n", first.count, second.count, second.player.clock.ticks);
+  print("step target: z %, drawn z %\n", second.targets[0].feet.z, walk_feet(second.player).z);
+
+  invalid := world;
+  invalid.locomotion.gravity = 0;
+  waiting := walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
+  refused := advance_traced(invalid, waiting, STEP);
+  print("gravity 0: status % (bad_profile), jump waiting %, paid ticks %\n",
+        cast(int) cast(u8) refused.player.collision_status, refused.player.jumps.waiting, refused.player.clock.ticks);
+}
+```
+
+The Garden and villa are the two current consumers of `terrain.Follower`.
+Their facades still walk on a floor-relative world. Their scheduled adapters
+advance the ball and fetching dog together for each actual target, apply
+that realm's terrain origin once, and keep the dog's previous pose. A
+controller already stepping on world-height terrain needs no such addition. They draw the same previous/current pair at the player's alpha. A frame
+with no tick changes neither physical pose; animation still receives the
+clock's counted frame time. Fairy Forest's lantern moths are analytic visual
+animation, rather than instances of this follower controller.
+
 ## Checks
 
 ```shell
+coax/bin/coax test aethyr/walk.coax --library
 coax/bin/coax test verse/player.coax --library
 coax/bin/coax test verse/gridwalk.coax --library
 ```
@@ -280,23 +372,51 @@ step, so 30, 60, 120 and 144 FPS give the same states. Replay is chapter 5's:
 the Grid's recorded session replays to the same digest at every step,
 natively and in wasm.
 
-## Still to do
+The coupled scene checks supply the same 2.5 m terrain to native and Wasm
+and record 30, 60, 120 and 144 FPS cadences. Physics matches at every observed
+paid tick; the actual Garden body records and villa draw getter match the
+independent previous/current interpolation. Controls that repeat only the
+last target, use variable frame time, or drop the terrain origin all fail.
+This qualifies the supplied-height walking/fetch profile. Procedural terrain
+generation, raster images and special movement remain separate checks.
 
-The realm migration ([chapter 64](ch064-every-realm-runs-on-aethyr.md)) adds:
+The [Walk gate](../tests/walk-qualification.json),
+[profile gate](../tests/locomotion-qualification.json),
+[follower gate](../tests/follower-qualification.json) and
+[Grid adoption](../tests/grid-walk-adoption-qualification.json) record 1,053
+root mutants killed with no survivors or waivers. Dependency gates retain
+their own scope. The [chapter evidence](../../docs/verification/data/aethyr-ch9-2026-11-01/requirements.json)
+records the C facade parity, actual scene checks and complete Wasm links.
 
-- `aethyr/walk.coax`: the step above, moved from `verse/player.coax`, with
-  its constants as a declared profile a realm can override.
-- Followers on the same step. Today `verse/terrain.coax`'s followers use
-  their own constants (`FOLLOW_WALK`, `FOLLOW_ACCEL`, `FOLLOW_TURN`) and
-  their own ground rules.
-- Complete the realm adapters. Everglade's `s[0].feet` is a rendering and
-  controller handoff field; Dead Gears already uses `pc.Player`. Those fields
-  do not establish separate movement integrators. Followers should consume
-  the realm clock's due steps and drawing alpha, with a previous pose for
-  interpolation; their animation time can remain separately counted.
+## The module and the realm boundary
 
-The step no longer moves the camera. The camera steps after it, in
-`camera_step` (chapter 10).
+`aethyr/walk.coax` owns Player, World, physical stepping and interpolation.
+The Walk unit declares no C exports of its own. `verse/player.coax` retains
+the published `verse_player_*` C signatures as thin adapters to `walk_*`.
+Coax consumers that qualify names load Walk directly; an alias cannot
+re-export a different module's types. Related generated C headers must still
+be rebuilt together.
+
+The Input dependency still has the legacy `input_runs` C export. Each
+production page reaches one copy. The Dead Gears boundary probe links its
+engine and the Player facade together and prefixes that duplicate helper in
+a test-only C include wrapper. The Coax arithmetic and facade symbols stay
+intact. Consolidating that remaining Input C surface belongs to chapter 64;
+Walk's lack of direct exports does not guarantee arbitrary graphs can be
+linked as separate C libraries.
+
+The native parity harness compiles the published controller from a pinned
+commit separately, then compares every old Player field. It also compiles a
+driver against the old header while linking the new facade. This checks the
+compatibility claim against an independent frozen implementation.
+
+Chapter [64](ch064-every-realm-runs-on-aethyr.md) still owns every realm's
+complete coordinate and movement adapter migration, including Fairy Forest
+flight and Everglade's boat, warp and other special movement. Everglade's
+`s[0].feet` is a rendering and controller handoff field; Dead Gears already
+uses the shared Player. Those fields do not establish separate movement
+integrators. This chapter's fixed-step walking and the two current fetching
+dogs do not establish whole-realm equivalence for those special paths.
 
 ## Dependencies
 

@@ -22,7 +22,7 @@
 #load "../../verse/deadgears/rules.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 #load "../../aethyr/budget.coax";
-#load "../../verse/player.coax" as pc;   // the controller every walkable realm shares (#6d99)
+#load "../../aethyr/walk.coax" as pc;   // the controller every walkable realm shares (#6d99)
 #load "../../aethyr/collision-profiles.coax" as walk_profiles;
 #load "../../aethyr/collide.coax" as walk_capsule;
 #load "../../verse/figure.coax" as fig;  // the creatures' bodies and gaits (#ea44)
@@ -658,7 +658,7 @@ aim :: (s: [] DeadGears) {
 stand_at :: (s: [] DeadGears, p: Point, yaw: f32) {
   g := game(s);
   s[0].yaw = yaw; s[0].face = yaw;
-  s[0].pl = pc.verse_player_place(p.x, p.y, p.z, yaw);
+  s[0].pl = pc.walk_place(p.x, p.y, p.z, yaw);
   s[0].feet = p;
   g.pos[me_slot(g)] = p; g.yaw[me_slot(g)] = yaw;
 }
@@ -726,13 +726,13 @@ walk :: (s: [] DeadGears, dt: f32) {
   cover := g.st[0].cover;
   dodging := s[0].dodge > 0;
   pad := sqrt(s[0].pad_x * s[0].pad_x + s[0].pad_y * s[0].pad_y);
-  run := (pc.verse_runs(h & HOLD_RUN != 0, pad > 0.8, s[0].pad_x, s[0].pad_y) && !cover) || dodging;
+  run := (pc.walk_runs(h & HOLD_RUN != 0, pad > 0.8, s[0].pad_x, s[0].pad_y) && !cover) || dodging;
   jump := (h & HOLD_JUMP != 0 || s[0].jump_tap) && !cover && !dodging;
   s[0].jump_tap = false;
   if dodging {
-    s[0].pl = pc.verse_player_input(s[0].pl, s[0].dodge_x, s[0].dodge_y, 0, 0, true, false, 0, 0);
+    s[0].pl = pc.walk_input(s[0].pl, s[0].dodge_x, s[0].dodge_y, 0, 0, true, false, 0, 0);
   } else {
-    s[0].pl = pc.verse_player_input(s[0].pl, hold_axis(h, HOLD_RIGHT, HOLD_LEFT), hold_axis(h, HOLD_FORWARD, HOLD_BACK),
+    s[0].pl = pc.walk_input(s[0].pl, hold_axis(h, HOLD_RIGHT, HOLD_LEFT), hold_axis(h, HOLD_FORWARD, HOLD_BACK),
                                     s[0].pad_x, s[0].pad_y, run, jump, 0, 0);
   }
   s[0].pl.theta = wrap_angle(s[0].yaw + f32(PI));   // it walks by the camera
@@ -741,10 +741,10 @@ walk :: (s: [] DeadGears, dt: f32) {
   from := s[0].feet;
   going := s[0].pl.vel;
   s[0].pl = pc.advance_in(the_world(s), s[0].pl, dt);
-  f := pc.verse_player_feet(s[0].pl);
+  f := pc.walk_feet(s[0].pl);
   if finite(f.x) && finite(f.y) && finite(f.z) { s[0].feet = v3(f.x, f.y, f.z); }
   if raised(s) { s[0].pl.face = s[0].yaw; s[0].pl.prev_face = s[0].yaw; }
-  s[0].face = pc.verse_player_face(s[0].pl);
+  s[0].face = pc.walk_face(s[0].pl);
   moved := flat(from, s[0].feet);
   s[0].walking = ifx dt > 0 then moved / dt else 0.0f32;
   // Run into cover and you crouch behind it (#cf81).
@@ -2176,7 +2176,7 @@ frame_in :: (out: [] f32, u: [] f32, s: [] DeadGears, w: f32, h: f32, dpr: f32, 
   w := the_world(s[..]);
   #assert w.bodies.count == 7 && w.walls.count == 6;
   #assert w.collision.max_passes == 3 && walk_capsule.collide_profile_ok(w.collision);
-  p := pc.verse_player_place(0.4, 0, 0, 0);
+  p := pc.walk_place(0.4, 0, 0, 0);
   q := pc.step(w, p, pc.STEP);
   #assert q.collision_status == walk_capsule.CollideStatus.unresolved && q.collision_passes == 3;
   #assert q.pos.x == p.pos.x && q.pos.y == p.pos.y && q.pos.z == p.pos.z;

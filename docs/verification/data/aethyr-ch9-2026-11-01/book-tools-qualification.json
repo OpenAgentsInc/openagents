@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "command": [
+    "python3",
+    "aethyr/tests/test_qualify_book.py"
+  ],
+  "exit_status": 0,
+  "tests": 5,
+  "scope": "Exact complete evidence-cache reuse; changed options/fixture/compiler/failed or missing mode refuse reuse; unpublished legacy proof refuses; transcript/exit/diagnostic gates; timeout cleanup of a real child and grandchild.",
+  "sources": {
+    "aethyr/tests/qualify_book.py": "e708b9c7d26786ae0a1b4823e9aae5721fdb93b5691ee01527bd8f6eeb3cfef9",
+    "aethyr/tests/test_qualify_book.py": "3893a5d23adf43985281d2e4189b6d529014a3e4a72e018f3267da7bcab307b1"
+  },
+  "stdout": "book-tools-tests.log"
+}

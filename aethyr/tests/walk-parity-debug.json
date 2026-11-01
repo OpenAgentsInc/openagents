@@ -1,0 +1,658 @@
+{
+  "schema": "aethyr.walk-extraction-native-parity.v1",
+  "mode": "debug",
+  "compiler": "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "frozen_commit": "bd73544a7ed576c935f53f95876fc418605b082a",
+  "frozen_source_sha256": {
+    "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+    "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+    "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+    "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+    "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+    "aethyr/tests/player-collision-checks.coax": "2aa561cf964eb6ca78887945f4782704ff046fe774698f59aad5b41cf78bd201",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "aethyr/tests/walk-native-fixtures.coax": "f5e9cfc10d07f7da4930cff2c72f52f7c11f8b97e4a2d0ecbdadd817746145d4",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+  },
+  "source_sha256": {
+    "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+    "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+    "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+    "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+    "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+    "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+    "aethyr/tests/player-collision-checks.coax": "c46a9ec337d624a6158e6852de4490a6e8e431c2f0cfcaa8255923c22e67e8c9",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "aethyr/tests/walk-native-fixtures.coax": "f5e9cfc10d07f7da4930cff2c72f52f7c11f8b97e4a2d0ecbdadd817746145d4",
+    "aethyr/tests/walk-tuning-checks.coax": "ea80f4c7b1ba99da1d90e5b6e9b285c9d011914663f139f9aa167cc5ea580087",
+    "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+    "aethyr/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+  },
+  "tuned_source_sha256": {
+    "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+    "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+    "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+    "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+    "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+    "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+    "aethyr/tests/player-collision-checks.coax": "c46a9ec337d624a6158e6852de4490a6e8e431c2f0cfcaa8255923c22e67e8c9",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "aethyr/tests/walk-tuned-native.coax": "8889244c3ccd9ba03449b99d9c2366ab34302416992080364c2c563f8f735ab4",
+    "aethyr/tests/walk-tuning-checks.coax": "ea80f4c7b1ba99da1d90e5b6e9b285c9d011914663f139f9aa167cc5ea580087",
+    "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+    "aethyr/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+  },
+  "support_sha256": {
+    "aethyr/tests/walk-native.c": "f47f8ef6ad461b10e1c2fe70c5ebe8a2a9e200cfa9a4804056c28424bc78b608",
+    "aethyr/tests/walk-tuned-native.c": "e7e4c49c110a3af1a06baa02d807a22758f52204470e98479e2606e1fa309114",
+    "aethyr/tests/check_walk.py": "eb6b0bbfe90af9eeead42bc359c86f1af44f88273ba048a0899dfb9691b30871"
+  },
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "commands": [
+    {
+      "argv": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/walk-native-fixtures.coax",
+        "--library",
+        "--header",
+        "/private/tmp/aethyr-ch9-walk-parity/current-debug/player-native.h"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 9.494142125011422,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/Users/christopherdavid/work/openagents-aethyr-book/coax/bin/coax",
+        "c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/walk-tuned-native.coax",
+        "--library",
+        "--header",
+        "/private/tmp/aethyr-ch9-walk-parity/tuned-debug/player-native.h"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 9.648310917022172,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/aethyr-ch9-walk-parity/frozen-debug",
+        "/private/tmp/aethyr-ch9-walk-parity/frozen-debug/player-native.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/walk-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch9-walk-parity/debug-frozen"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.29876920802053064,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/aethyr-ch9-walk-parity/current-debug",
+        "/private/tmp/aethyr-ch9-walk-parity/current-debug/player-native.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/walk-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.2698758749756962,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/aethyr-ch9-walk-parity/frozen-debug",
+        "/private/tmp/aethyr-ch9-walk-parity/current-debug/player-native.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/walk-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch9-walk-parity/debug-old-header-current"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.2547787920339033,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/private/tmp/aethyr-ch9-walk-parity/tuned-debug",
+        "/private/tmp/aethyr-ch9-walk-parity/tuned-debug/player-native.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/walk-tuned-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch9-walk-parity/debug-tuned"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.23193762503797188,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-frozen"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.1956556660006754,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.20530037500429899,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-old-header-current"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.1923867089790292,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current",
+        "--assert-probe"
+      ],
+      "exit_status": -6,
+      "duration_seconds": 0.020689832977950573,
+      "stderr_sha256": "44e546ff2d1f44455d9717859c84f9a3f9d2068b8827831c4895c10b634a5c33",
+      "assertion_probe": true
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-tuned"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.25784616702003404,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current",
+        "queued-jump"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.010471333051100373,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current",
+        "clock-carry"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.0095887909992598,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current",
+        "counter-high"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.009178249980323017,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current",
+        "previous-pose"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.01068262499757111,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current",
+        "residual"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.010189458029344678,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current",
+        "query-status"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.009206874994561076,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current",
+        "camera-status"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.009432332997675985,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    },
+    {
+      "argv": [
+        "nm",
+        "-g",
+        "/private/tmp/aethyr-ch9-walk-parity/debug-current"
+      ],
+      "exit_status": 0,
+      "duration_seconds": 0.03879195800982416,
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "assertion_probe": false
+    }
+  ],
+  "scope": "Default-profile native Player arithmetic and all old observable scalar fields; independent pinned implementation and old generated-header/current-library ABI client. Normal Coax authority checks remain enabled.",
+  "observable_scalar_fields": 62,
+  "observable_field_names": [
+    "pos.x",
+    "pos.y",
+    "pos.z",
+    "vel.x",
+    "vel.y",
+    "vel.z",
+    "face",
+    "theta",
+    "phi",
+    "dist",
+    "max_dist",
+    "zoom_push",
+    "target.x",
+    "target.y",
+    "target.z",
+    "spring_vel.x",
+    "spring_vel.y",
+    "spring_vel.z",
+    "key_x",
+    "key_y",
+    "pad_x",
+    "pad_y",
+    "prev_pos.x",
+    "prev_pos.y",
+    "prev_pos.z",
+    "prev_target.x",
+    "prev_target.y",
+    "prev_target.z",
+    "prev_face",
+    "prev_dist",
+    "pace",
+    "grip",
+    "collision_residual",
+    "on_ground",
+    "act",
+    "run",
+    "jump_held",
+    "jumps.held",
+    "jumps.waiting",
+    "jumps.pressed",
+    "jumps.taken",
+    "jumps.lost",
+    "clock.step_ns",
+    "clock.max_frame_ns",
+    "clock.max_steps",
+    "clock.carry_ns",
+    "clock.due",
+    "clock.ticks",
+    "clock.frames",
+    "clock.refused",
+    "clock.overlong",
+    "clock.stalls",
+    "clock.dropped_ns",
+    "clock.counted_ns",
+    "clock.ran",
+    "sliding",
+    "collision_status",
+    "collision_refusals",
+    "collision_passes",
+    "collision_floor_cut",
+    "query_status",
+    "camera_query_status"
+  ],
+  "independent_old_declared_leaf_fields": [
+    "pos.x",
+    "pos.y",
+    "pos.z",
+    "vel.x",
+    "vel.y",
+    "vel.z",
+    "face",
+    "on_ground",
+    "act",
+    "theta",
+    "phi",
+    "dist",
+    "max_dist",
+    "zoom_push",
+    "target.x",
+    "target.y",
+    "target.z",
+    "spring_vel.x",
+    "spring_vel.y",
+    "spring_vel.z",
+    "key_x",
+    "key_y",
+    "pad_x",
+    "pad_y",
+    "run",
+    "jump_held",
+    "jumps.held",
+    "jumps.waiting",
+    "jumps.pressed",
+    "jumps.taken",
+    "jumps.lost",
+    "clock.step_ns",
+    "clock.max_frame_ns",
+    "clock.max_steps",
+    "clock.carry_ns",
+    "clock.due",
+    "clock.ticks",
+    "clock.frames",
+    "clock.refused",
+    "clock.overlong",
+    "clock.stalls",
+    "clock.dropped_ns",
+    "clock.counted_ns",
+    "clock.ran",
+    "prev_pos.x",
+    "prev_pos.y",
+    "prev_pos.z",
+    "prev_target.x",
+    "prev_target.y",
+    "prev_target.z",
+    "prev_face",
+    "prev_dist",
+    "pace",
+    "grip",
+    "sliding",
+    "collision_status",
+    "collision_refusals",
+    "collision_residual",
+    "collision_passes",
+    "collision_floor_cut",
+    "query_status",
+    "camera_query_status"
+  ],
+  "compared_states": 777,
+  "trace_sha256": "da18da6260a8f68ebd161583fced4d84d055eacf5954eacc9d1705af568b20bf",
+  "legacy_c_symbols": [
+    "coax_default_t_FrameClock",
+    "coax_default_t_Player",
+    "coax_default_t_PlayerZoom",
+    "verse_player_act",
+    "verse_player_advance",
+    "verse_player_advance_among",
+    "verse_player_advance_in_realm",
+    "verse_player_advance_on",
+    "verse_player_at",
+    "verse_player_camera_query_status",
+    "verse_player_collision_floor_cut",
+    "verse_player_collision_passes",
+    "verse_player_collision_refusals",
+    "verse_player_collision_residual",
+    "verse_player_collision_status",
+    "verse_player_constrain",
+    "verse_player_counts",
+    "verse_player_eye",
+    "verse_player_face",
+    "verse_player_feet",
+    "verse_player_input",
+    "verse_player_place",
+    "verse_player_query_status",
+    "verse_player_ran",
+    "verse_player_view_at",
+    "verse_player_view_eye",
+    "verse_player_zoom",
+    "verse_player_zoom_view",
+    "verse_runs"
+  ],
+  "additional_c_symbols": [
+    "coax_default_t_AdvanceTrace",
+    "verse_player_advance_in_realm_traced"
+  ],
+  "c_header_abi": "frozen header/current implementation output, every field offset, size and alignment match frozen binary",
+  "emissions": {
+    "frozen": {
+      "code": "/private/tmp/aethyr-ch9-walk-parity/frozen-debug/player-native.c",
+      "header": "/private/tmp/aethyr-ch9-walk-parity/frozen-debug/player-native.h",
+      "proof": {
+        "identity": {
+          "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+          "source_sha256": {
+            "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+            "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+            "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+            "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+            "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+            "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+            "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+            "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+            "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+            "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+            "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+            "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+            "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+            "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+            "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+            "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+            "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+            "aethyr/tests/player-collision-checks.coax": "2aa561cf964eb6ca78887945f4782704ff046fe774698f59aad5b41cf78bd201",
+            "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+            "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+            "aethyr/tests/walk-native-fixtures.coax": "f5e9cfc10d07f7da4930cff2c72f52f7c11f8b97e4a2d0ecbdadd817746145d4",
+            "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+            "verse/player.coax": "4bf3005da0dc4fc4d445cfe55ac8ff3e39d542cdf2b0b2889af1dfa573b56528",
+            "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+          },
+          "coax_flags": []
+        },
+        "c_sha256": "5017a8471a3dbbe6cd9bbc30abac71921a155a577c6fcbe46db8230fa82c5b86",
+        "header_sha256": "6ff543085b6b3a6b99ff370e3c2edf9ef6aebf792f466ed501575a0eaad9ab80"
+      },
+      "reused_emission": true
+    },
+    "current": {
+      "code": "/private/tmp/aethyr-ch9-walk-parity/current-debug/player-native.c",
+      "header": "/private/tmp/aethyr-ch9-walk-parity/current-debug/player-native.h",
+      "proof": {
+        "identity": {
+          "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+          "source_sha256": {
+            "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+            "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+            "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+            "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+            "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+            "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+            "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+            "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+            "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+            "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+            "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+            "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+            "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+            "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+            "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+            "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+            "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+            "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+            "aethyr/tests/player-collision-checks.coax": "c46a9ec337d624a6158e6852de4490a6e8e431c2f0cfcaa8255923c22e67e8c9",
+            "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+            "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+            "aethyr/tests/walk-native-fixtures.coax": "f5e9cfc10d07f7da4930cff2c72f52f7c11f8b97e4a2d0ecbdadd817746145d4",
+            "aethyr/tests/walk-tuning-checks.coax": "ea80f4c7b1ba99da1d90e5b6e9b285c9d011914663f139f9aa167cc5ea580087",
+            "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+            "aethyr/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
+            "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+            "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+            "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+          },
+          "coax_flags": []
+        },
+        "c_sha256": "b81180588ec58caa6e3219acbf7aba5bed2d1d7bddf5ba3d649797212c9f8dc5",
+        "header_sha256": "c16b8774960f8ba3744e1b4445e69f1f2389e795ec1b8c0703b72f904e750630"
+      },
+      "reused_emission": false
+    },
+    "tuned": {
+      "code": "/private/tmp/aethyr-ch9-walk-parity/tuned-debug/player-native.c",
+      "header": "/private/tmp/aethyr-ch9-walk-parity/tuned-debug/player-native.h",
+      "proof": {
+        "identity": {
+          "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+          "source_sha256": {
+            "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+            "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+            "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+            "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+            "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+            "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+            "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+            "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+            "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+            "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+            "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+            "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+            "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+            "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+            "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+            "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+            "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+            "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+            "aethyr/tests/player-collision-checks.coax": "c46a9ec337d624a6158e6852de4490a6e8e431c2f0cfcaa8255923c22e67e8c9",
+            "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+            "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+            "aethyr/tests/walk-tuned-native.coax": "8889244c3ccd9ba03449b99d9c2366ab34302416992080364c2c563f8f735ab4",
+            "aethyr/tests/walk-tuning-checks.coax": "ea80f4c7b1ba99da1d90e5b6e9b285c9d011914663f139f9aa167cc5ea580087",
+            "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+            "aethyr/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
+            "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+            "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+            "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b"
+          },
+          "coax_flags": []
+        },
+        "c_sha256": "2d66a417585e543a44c4d4aee6a276d02af3f6b5bb9db553de6cfe342ba3f25b",
+        "header_sha256": "7d3dbd568b70e8c7a98df6924a7d5fef54a6c0937f1d65845c392807c8781c0c"
+      },
+      "reused_emission": false
+    }
+  },
+  "producer_loss_controls_detected": [
+    "queued-jump",
+    "clock-carry",
+    "counter-high",
+    "previous-pose",
+    "residual",
+    "query-status",
+    "camera-status"
+  ],
+  "runtime_coax_assertion": "observed native trap",
+  "custom_tuning_and_trace": "custom tuning and independent fixed-step trace assertions pass",
+  "limits": [
+    "Native scalar profile on the recorded host; no Wasm or raster qualification.",
+    "Default tuning parity plus hand-derived nondefault acceleration/jump and fixed-schedule trace witnesses; not every admitted tuning combination.",
+    "Every old scalar Player field is serialized; object padding and nominal type IDs are excluded."
+  ],
+  "status": "passed",
+  "elapsed_seconds": 21.800872458028607,
+  "retained_after_additive_test_cases": {
+    "changes": {
+      "aethyr/tests/walk-tuning-checks.coax": {
+        "tested_sha256": "ea80f4c7b1ba99da1d90e5b6e9b285c9d011914663f139f9aa167cc5ea580087",
+        "current_sha256": "6dfc14aeadde94c4f650c54bf98808ece32c9fe626f7ff9db4312656cca48f39"
+      }
+    },
+    "reason": "The Walk owner subsequently added boundary cases for unsupported clock period1ns and max_steps9. Production Walk, profile, math, default tuning, generated Player layout and facade code are unchanged. This retains the recorded native execution; it does not claim those later checks ran in the earlier C emission. Final authority/mutation baseline is qualified separately."
+  }
+}

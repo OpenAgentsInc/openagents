@@ -250,7 +250,7 @@ terrain:
 #load "../query.coax" as queries;
 #load "../space.coax" as world;
 #load "../../coax/lib/quantity.coax" as units;
-#load "../../verse/player.coax" as walker;
+#load "../../aethyr/walk.coax" as walker;
 #import "Basic";
 
 main :: () {
@@ -271,7 +271,7 @@ main :: () {
     ground = ground.Ground.{n = 1, cell = 4, west = -2, south = -2}, heights = walk_heights[..]}];
   walk_world := walker.World.{heightfields = fields[..]};
   person := walker.place_in(walk_world, 0, 2.5, 0, 0);
-  person = walker.verse_player_input(person, 0, 1, 0, 0, false, true, 0, 0);
+  person = walker.walk_input(person, 0, 1, 0, 0, false, true, 0, 0);
   person = walker.step(walk_world, person, walker.STEP);
   print("terrain jump: above 2.5 m = %, query %\n", person.pos.y > 2.5, person.query_status);
   for tick: 0..<48 { person = walker.step(walk_world, person, walker.STEP); }

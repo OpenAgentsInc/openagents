@@ -80,12 +80,14 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (sticks.zoom != 0) garden_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = garden_walls(at(state));
-  player = verse_player_advance_in_realm(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
+  coax_t_AdvanceTrace walked = verse_player_advance_in_realm_traced(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){g->walls.e, walls * 6},
                                          (coax_v_f32){0, 0}, (coax_string){"garden", sizeof "garden" - 1});
+  player = walked.player;
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_garden_max_vertices() * coaxial_garden_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_garden_uniform_floats()};
-  int64_t n = garden_frame(at(state), out, u, w, h, scale, dt, still != 0, feet.x, feet.y, feet.z, verse_player_face(player),
+  int64_t n = garden_frame_on_clock(at(state), out, u, w, h, scale, player.clock,
+                           (coax_v_t_StepTarget){walked.targets.e, walked.count}, still != 0, feet.x, feet.y, feet.z, verse_player_face(player),
                            verse_player_act(player), player.vel.x, player.vel.z,
                            sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   place_frame(state);

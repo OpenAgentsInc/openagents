@@ -32,7 +32,10 @@ flower_x :: (i: int) -> f32 { return FLOWER_AT[i * 3]; }
 flower_z :: (i: int) -> f32 { return FLOWER_AT[i * 3 + 1]; }
 flower_kind :: (i: int) -> int { return cast(int) FLOWER_AT[i * 3 + 2]; }
 in_garden :: (x: f32, z: f32) -> bool { return x > f32(GARDEN_X0) && x < f32(GARDEN_X1) && z > f32(GARDEN_Z0) && z < f32(GARDEN_Z1); }
-hand_of :: (s: [] Villa) -> Point { return verse_hand(s[0].feet, s[0].face, f32(HAND_AHEAD), f32(HAND_UP), f32(HAND_RIGHT)); }
+hand_of :: (s: [] Villa) -> Point {
+  return ifx s[0].follower_clocked then follow.fixed_hand(s[0].feet, s[0].face, f32(HAND_AHEAD), f32(HAND_UP), f32(HAND_RIGHT))
+    else verse_hand(s[0].feet, s[0].face, f32(HAND_AHEAD), f32(HAND_UP), f32(HAND_RIGHT));
+}
 
 play_has :: (s: [] Villa, skill: int, word: string) -> bool {
   if s[0].pet[0].skills & skill != 0 { return true; }
@@ -56,8 +59,10 @@ play_do :: (s: [] Villa, what: int) {
       s[0].fetch.ball.held = 0;
       return;
     }
-    vel := v3(sin(s[0].face) * s[0].speed, 0, cos(s[0].face) * s[0].speed);   // a face's ahead is (sin, cos)
-    s[0].fetch.ball = verse_ball_throw(b, hand_of(s), s[0].face, 0.5, vel);
+    vel := ifx s[0].follower_clocked then follow.fixed_throw_velocity(s[0].face, 0, s[0].speed, v3(0, 0, 0))
+      else v3(sin(s[0].face) * s[0].speed, 0, cos(s[0].face) * s[0].speed);
+    s[0].fetch.ball = ifx s[0].follower_clocked then follow.fixed_ball_throw(b, hand_of(s), s[0].face, 0.5, vel)
+      else verse_ball_throw(b, hand_of(s), s[0].face, 0.5, vel);
     pet_ev(p, EV_FETCH, 0);
     q[0].stay = false; q[0].stop_ask = true;
     return;
@@ -121,14 +126,22 @@ play_key :: (s: [] Villa, key: int) -> bool {
   what := ifx c == 'f' then DO_THROW else ifx c == '1' then DO_SIT else ifx c == '2' then DO_STAY else ifx c == '3' then DO_COME
           else ifx c == 'g' then DO_DIG else ifx c == 'e' then DO_PICK else ifx c == 'v' then DO_VASE else -1;
   if what < 0 { return false; }
-  play_do(s, what);
+  if s[0].follower_clocked && what == DO_THROW { p[0].doing = what; }
+  else { play_do(s, what); }
   return true;
 }
 
 // Once a frame, after the dog's step: the ball, the flowers, the holes, what's in reach.
 play_step :: (s: [] Villa, dt: f32) {
-  p := s[0].pet[..]; q := s[0].play[..];
+  play_actions(s);
+  play_ball(s, dt);
+  play_counted(s, dt);
+}
+play_actions :: (s: [] Villa) {
+  p := s[0].pet[..];
   if p[0].doing >= 0 { what := p[0].doing; p[0].doing = -1; play_do(s, what); }
+}
+play_ball :: (s: [] Villa, dt: f32) {
   b := s[0].fetch.ball;
   if b.held == 0 { s[0].fetch.ball = verse_ball_carry(b, hand_of(s)); }
   else if b.held < 0 {
@@ -137,6 +150,11 @@ play_step :: (s: [] Villa, dt: f32) {
     nb := s[0].fetch.ball;
     if !nb.thrown && s[0].fetch.mode == FETCH_FOLLOW && verse_ball_can_pick(nb, s[0].feet) { s[0].fetch.ball = verse_ball_pick(nb, 0, s[0].feet, hand_of(s)); s[0].fetch.ball.held = 0; }
   }
+}
+
+// Nonphysical room/UI timers use the clock's counted animation time.
+play_counted :: (s: [] Villa, dt: f32) {
+  p := s[0].pet[..]; q := s[0].play[..];
   for i: 0..<FLOWERS { if q[0].regrow[i] > 0 { q[0].regrow[i] = hi(q[0].regrow[i] - dt, 0); } }
   q[0].near_flower = -1;
   best := f32(PICK_REACH);
@@ -175,7 +193,9 @@ play_draw :: (s: [] Villa) {
     // a little clump of leaves at its foot, so it grows out of something
     tuft(s, flower_x(i) + 0.15, flower_z(i) - 0.1, 1.2, C_LEAF_LIGHT);
   }
-  b := s[0].fetch.ball;
+  drawn_fetch := villa_fetch_draw(s);
+  b := drawn_fetch.ball;
+  if s[0].follower_clocked && b.held == 0 { b.pos = hand_of(s); }
   if b.held != BALL_PUT_AWAY { ball(s, LOOK_GLOW, b.pos, b.radius, 0.95, 0.9, 0.7); }
   for h: 0..<q[0].hole_n {
     x := q[0].holes[h * 3]; z := q[0].holes[h * 3 + 1];

@@ -1,0 +1,33 @@
+{
+  "identity": {
+    "command": [
+      "cc",
+      "-std=c11",
+      "-O0",
+      "-g",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-DFOLLOWER_GARDEN",
+      "-I/tmp/aethyr-ch9-consumers/garden-admitted",
+      "/tmp/aethyr-ch9-consumers/garden-admitted/garden.c",
+      "/tmp/aethyr-ch9-consumers/garden-admitted/Player.c",
+      "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c",
+      "-lm",
+      "-o",
+      "/private/tmp/aethyr-ch9-follower-garden/native-debug"
+    ],
+    "cc_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+    "units": {
+      "/tmp/aethyr-ch9-consumers/garden-admitted/garden.c": "29b27cae91989b8577a0859612577a04ad30b19ca23a295e8771508ca49e7de7",
+      "/tmp/aethyr-ch9-consumers/garden-admitted/Player.c": "c65456946b1f025733174365c3b9544cf2674f8e589ac5cce191a5f9b769ff07",
+      "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c": "6e0e10cf743addc2ff4b29c33ff02d8b09fdc3ea4f0fc929ecbfcb7c08577fc8"
+    },
+    "headers": {
+      "garden.h": "d527f04bf05620edf7168f10ec8fb3ddfa4793aad124e7e7c5830c14e91603c9",
+      "Player.h": "0bf3f4738969a787a188018eba1d7d58b642f48ddebd6782069a52fdb3550d02"
+    }
+  },
+  "sha256": "10dd270e40ac186345b76849d039cdcfab1feaa8f43a2def87ce1e735d098f95",
+  "exit_code": 0,
+  "prior_compile_receipt": "/tmp/aethyr-ch9-follower-garden-debug.json"
+}

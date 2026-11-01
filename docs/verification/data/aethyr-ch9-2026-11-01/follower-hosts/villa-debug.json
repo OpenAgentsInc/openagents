@@ -1,0 +1,444 @@
+{
+  "status": "passed",
+  "realm": "villa",
+  "native_mode": "debug",
+  "coax_codegen": "normal C, no --release",
+  "compiler_sha256": "d7bb42979103435a0adfd543368fc2e915dad697fe0b877a0296d62fe08a1905",
+  "sources": {
+    "aethyr/budget.coax": "4b188127c8fa9a250d3a3ec7a2065611e90ea309a941c387a24c4ba478275036",
+    "aethyr/collide.coax": "b19bc1b5161eda4ce9393958ac4c396c0a495c6f849ba479ca1aaf979b716688",
+    "aethyr/collision-profiles.coax": "e96a6dcf3c130ca1ac70f1254c9accf61b81ce9ab7810965d25b090e232bd7d8",
+    "aethyr/follow.coax": "296f9b99649f4e409e7690d9ba18ffb64aeaae43606112127ca31d4fd78fe886",
+    "aethyr/follower.coax": "edcb6cb71ba432293885d6dbf4712026bad54a16af8f4820ab5787426b05a8d4",
+    "aethyr/ground-contact.coax": "b2255da119965895e86a975699777bd56a125d70f284622e6de5a033178e6391",
+    "aethyr/ground-query.coax": "3d9b42cad283ccb21c78afbdd191253b186984356928a1d50d7d9c226987d698",
+    "aethyr/ground.coax": "0ec8ae0c7ab27103de70677ff6d5a4a1cabc97b23ca9701378bda9ce6782aafb",
+    "aethyr/input.coax": "385291bb7460cc68813294756ca534d9a76bd85adc6829edbc6bd8b1bd68f974",
+    "aethyr/locomotion.coax": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a",
+    "aethyr/loop.coax": "6dbb01f91a5cbee7338b71e18ce3577a9b56d7320432697eba034df94c16eb7b",
+    "aethyr/math.coax": "ab11cde7a46fc7822eb526cb75dd18989fafcda2e7a55939d6627c91572fffcb",
+    "aethyr/query.coax": "e040eb7558a706da6251edaf691fae1eee344c3d20a8ebbab4a0e580fa2a2efa",
+    "aethyr/shot.coax": "091cd39deb32628c30d2c0cefa35afb61f13e1e854b3ecd2214c60c516789a42",
+    "aethyr/space.coax": "bffd2f5cc1a1e879b33c029bd94bdae81db8391ea61508bd066cd485710b0b15",
+    "aethyr/tests/check_follower_hosts.py": "66adbce90b10eaf8e0eada3210ddb5878670800d00c4ae2cbd232a6af16e7bcd",
+    "aethyr/tests/check_native_gameplay.py": "4d1cc5830a6bb47bae3475612973d6e56793dd1f08d601e3123694da820a08fb",
+    "aethyr/tests/collide-oracle.coax": "12d24a26149fda48dd5b06e092ae6fc0746a86d69e12bcc2e7887248a94de042",
+    "aethyr/tests/follower-host.c": "6e0e10cf743addc2ff4b29c33ff02d8b09fdc3ea4f0fc929ecbfcb7c08577fc8",
+    "aethyr/tests/follower-host.js": "d65b2c7ca96fbf6784583c183ee56ebd8d255fbc9023cea4cec0b342cfabbb47",
+    "aethyr/tests/follower-oracle.coax": "696df20673c65eba2c128225b8ddfbf600d4956f9166321264527f94337f1f22",
+    "aethyr/tests/ground-contact-oracle.coax": "8d8ffe92c8e6ac1c33006f388e9a1c1cd254250121b69fd19df24d3d13b8603a",
+    "aethyr/tests/ground-oracle.coax": "c92d2306e67ebaa19a5923ed7096242fc320f9b7196dbf443300448ff12a8f01",
+    "aethyr/tests/ground-ray-oracle.coax": "aa4c10b56f91daff668ac73d535e5d000a127f688543fb0e5ae2f27e6c71342c",
+    "aethyr/tests/math-oracle.coax": "ae7605651c27cedb34c4585aebc3d5df778d844a3b1fb7cf328be26bcd1d0305",
+    "aethyr/tests/player-collision-checks.coax": "c46a9ec337d624a6158e6852de4490a6e8e431c2f0cfcaa8255923c22e67e8c9",
+    "aethyr/tests/query-heightfield.coax": "89116124a89c073af84ec10298345bbb5039d5c8b85db0ac125581ab080aa510",
+    "aethyr/tests/query-oracle.coax": "e088ba9b7be06e2a19d263e5b45859fddeae1f22523c3fdb45948abd895e3cb8",
+    "aethyr/tests/test_follower_hosts_tooling.py": "ea74b1cac5e63ad4f6656514457f507e5d27260fc4dc97cab28e93123c1e9fd1",
+    "aethyr/tests/walk-tuning-checks.coax": "6dfc14aeadde94c4f650c54bf98808ece32c9fe626f7ff9db4312656cca48f39",
+    "aethyr/walk-frame.coax": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028",
+    "aethyr/walk.coax": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608",
+    "apps/openagents-web/analytics.coax": "4d4f4d0a3a3dbbd6bfcf844d95750dc3bafec305a598b769f5d7b7cf3469fd00",
+    "apps/openagents-web/font.coax": "ebfde251362f5fe02e86536132bd6556f730130e0874e157e2790c2a8e894414",
+    "apps/openagents-web/place-orbit.coax": "ac4432d626b377dcb0ffac025446264ad2346863e3217022a61f14f5becb7d46",
+    "apps/openagents-web/place.coax": "1399235910cc331506baf27830418e5cdd60873f1eaa1cbb6f55919c5a72fce9",
+    "apps/openagents-web/room.coax": "abd6988d8a8dc37490d91e0b330d029c7b1456daf3698c2ebc40308f70e62d57",
+    "apps/openagents-web/save.coax": "187524b26998e581219fab3604a1e1d9ec586c3a1abfbfcb4742d3360169ddc6",
+    "apps/openagents-web/villa.coax": "39dacf5bf4fa9ba3612265a18092ed7a3b1be7e54df32ffaa58b3c050833faec",
+    "apps/openagents-web/villaguide.coax": "8061812d223435fa792c75323efc49e694ffa539fe7c7b2d3b590cb3db6a6d87",
+    "apps/openagents-web/villahekate.coax": "ae669f9fcb128dce270661a39b786b71fff796aca408720a85155c8c82ea8a25",
+    "apps/openagents-web/villapet.coax": "ed53126550485c72104d059ad14820f99b9537e2b3b85b4f593c1c05bf2a8651",
+    "apps/openagents-web/villaplay.coax": "d02ff714733c2221f111042faacf155792a12727e8ca437e29f5fcd070ad6bb7",
+    "apps/openagents-web/villaroom.coax": "2963cfd03ce77a5f8536564a17a58b02f4d9a5fc6ba2a937a8cacc4d3a67edc1",
+    "apps/openagents-web/villatips.coax": "3716def23ccf46e5aa4fc5419d6548c353a79f9bed529a3bbfb071e55dae9c6d",
+    "apps/openagents-web/world.coax": "601bec3da0379d041561084e27aa96a35871ae1eda56c74623a55e2886d7b946",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "verse/camera.coax": "184e5c0557e51a5fe09d729aebdad4530a929a93fc3bc7255cdbc9c7be8eb26b",
+    "verse/cinematic.coax": "3978f0b5603d6259df6f1c8373820f3abec9bf9658288e1e3a59c363d85d430d",
+    "verse/edit/edit.coax": "516871d19eeb287c27f4bdf1fb1cfe1bd726ae13bb040d1037f6be2a55f89f82",
+    "verse/particles.coax": "2a3da1130c16107c20f8ad862e4b0ae0f2ec68eaca1500f804912307780cfd4c",
+    "verse/player.coax": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9",
+    "verse/space.coax": "735c5646da9dcf8387fecb909bfae2aec483161dbee6837923dc9ae8c3a3df77",
+    "verse/stand.coax": "a6c5d351b77cf14313a7cb97232894ad10525f148aa499ab87c01fc908e4f35b",
+    "verse/terrain.coax": "b454422a7b00a7571f0c373400b9385592b6e645d4ab5397555cf2551260b8c7",
+    "verse/throw.coax": "b7b0c4beaad204cade66602ffabb0eeaa49f3dd640699fd612620f4ca6ee4a33"
+  },
+  "commands": [
+    {
+      "label": "native-compile",
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/tmp/aethyr-ch9-consumers/villa-admitted",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/villa.c",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/Player.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug"
+      ],
+      "exit_code": 0,
+      "seconds": 0.8389214579947293,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/native-compile.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/native-compile.stdout"
+    },
+    {
+      "label": "wasm-toolchain",
+      "command": [
+        "bash",
+        "-c",
+        "source coax/web/toolchain.sh; printf \"%s\\0\" \"$COAXIAL_CLANG\" \"$COAXIAL_SYSROOT\" \"$COAXIAL_RESOURCES\" \"$PATH\""
+      ],
+      "exit_code": 0,
+      "seconds": 0.025843082985375077,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/wasm-toolchain.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/wasm-toolchain.stdout"
+    },
+    {
+      "label": "wasm-compile",
+      "command": [
+        "/opt/homebrew/Cellar/llvm/23.1.4/bin/clang-23",
+        "--target=wasm32-wasip1",
+        "--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot",
+        "-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes",
+        "-std=c11",
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/tmp/aethyr-ch9-consumers/villa-admitted",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/villa.c",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/Player.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c",
+        "-mexec-model=reactor",
+        "-Wl,--import-memory,--max-memory=67108864,-z,stack-size=1048576,--export=__heap_base,--gc-sections,--strip-debug",
+        "-o",
+        "/private/tmp/aethyr-ch9-follower-villa/follower.wasm"
+      ],
+      "exit_code": 0,
+      "seconds": 2.540894290956203,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/wasm-compile.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/wasm-compile.stdout"
+    },
+    {
+      "label": "fps-30-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/fps-30.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.2895757910446264,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fps-30-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fps-30-native.stdout"
+    },
+    {
+      "label": "fps-30-wasm",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.js",
+        "/private/tmp/aethyr-ch9-follower-villa/follower.wasm",
+        "/private/tmp/aethyr-ch9-follower-villa/fps-30.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.07806654198793694,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fps-30-wasm.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fps-30-wasm.stdout"
+    },
+    {
+      "label": "fps-60-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/fps-60.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.0717571250279434,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fps-60-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fps-60-native.stdout"
+    },
+    {
+      "label": "fps-60-wasm",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.js",
+        "/private/tmp/aethyr-ch9-follower-villa/follower.wasm",
+        "/private/tmp/aethyr-ch9-follower-villa/fps-60.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.07928891596384346,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fps-60-wasm.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fps-60-wasm.stdout"
+    },
+    {
+      "label": "fps-120-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/fps-120.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.1391815830138512,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fps-120-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fps-120-native.stdout"
+    },
+    {
+      "label": "fps-120-wasm",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.js",
+        "/private/tmp/aethyr-ch9-follower-villa/follower.wasm",
+        "/private/tmp/aethyr-ch9-follower-villa/fps-120.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.07807208405574784,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fps-120-wasm.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fps-120-wasm.stdout"
+    },
+    {
+      "label": "fps-144-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/fps-144.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.15681137499632314,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fps-144-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fps-144-native.stdout"
+    },
+    {
+      "label": "fps-144-wasm",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.js",
+        "/private/tmp/aethyr-ch9-follower-villa/follower.wasm",
+        "/private/tmp/aethyr-ch9-follower-villa/fps-144.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.07469199999468401,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fps-144-wasm.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fps-144-wasm.stdout"
+    },
+    {
+      "label": "fault-1-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/fault-1.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.03950891603017226,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fault-1-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fault-1-native.stdout"
+    },
+    {
+      "label": "fault-2-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/fault-2.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.039187957998365164,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fault-2-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fault-2-native.stdout"
+    },
+    {
+      "label": "fault-3-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/fault-3.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.039247042033821344,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/fault-3-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/fault-3-native.stdout"
+    },
+    {
+      "label": "carry-multi-stall-refusal-reset-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/carry-multi-stall-refusal-reset.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.015275417012162507,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/carry-multi-stall-refusal-reset-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/carry-multi-stall-refusal-reset-native.stdout"
+    },
+    {
+      "label": "carry-multi-stall-refusal-reset-wasm",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.js",
+        "/private/tmp/aethyr-ch9-follower-villa/follower.wasm",
+        "/private/tmp/aethyr-ch9-follower-villa/carry-multi-stall-refusal-reset.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.07421637501101941,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/carry-multi-stall-refusal-reset-wasm.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/carry-multi-stall-refusal-reset-wasm.stdout"
+    },
+    {
+      "label": "queued-action-refusal-native",
+      "command": [
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug",
+        "/private/tmp/aethyr-ch9-follower-villa/queued-action-refusal.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.007762750028632581,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/queued-action-refusal-native.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/queued-action-refusal-native.stdout"
+    },
+    {
+      "label": "queued-action-refusal-wasm",
+      "command": [
+        "/opt/homebrew/bin/node",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.js",
+        "/private/tmp/aethyr-ch9-follower-villa/follower.wasm",
+        "/private/tmp/aethyr-ch9-follower-villa/queued-action-refusal.operations"
+      ],
+      "exit_code": 0,
+      "seconds": 0.04195237497333437,
+      "stderr": "/private/tmp/aethyr-ch9-follower-villa/queued-action-refusal-wasm.stderr.log",
+      "stdout": "/private/tmp/aethyr-ch9-follower-villa/queued-action-refusal-wasm.stdout"
+    }
+  ],
+  "profiles": [
+    {
+      "fps": 30,
+      "frames": 31,
+      "frame_ns_sum": 1000000000,
+      "paid_ticks": 64,
+      "physical_word_count": 40,
+      "trace_sha256": "be3a9f59710bd8694101ed120a0392506c7fd0ddad89fbcbc1428819016d6db1"
+    },
+    {
+      "fps": 60,
+      "frames": 61,
+      "frame_ns_sum": 1000000000,
+      "paid_ticks": 64,
+      "physical_word_count": 40,
+      "trace_sha256": "c68f10a60c4b7e26e3c0284848919eb4b7513e7d8eff8fb0ae986a576bfb46cc"
+    },
+    {
+      "fps": 120,
+      "frames": 120,
+      "frame_ns_sum": 1000000000,
+      "paid_ticks": 64,
+      "physical_word_count": 40,
+      "trace_sha256": "63b3be671e257171bfc0772bc82facac8a885c6fc54ad313c75e74761c52b7f4"
+    },
+    {
+      "fps": 144,
+      "frames": 144,
+      "frame_ns_sum": 1000000000,
+      "paid_ticks": 64,
+      "physical_word_count": 40,
+      "trace_sha256": "596fabc72fba703922f7426fed48b06452e640c33c028a35ea74d664d39b650e"
+    }
+  ],
+  "negative_controls": [
+    "repeat final target",
+    "legacy variable-time stepping",
+    "drop floor origin in producer"
+  ],
+  "reused_page_admission": "/private/tmp/aethyr-ch9-consumers/build-villa.json",
+  "native_emission": {
+    "identity": {
+      "command": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/tmp/aethyr-ch9-consumers/villa-admitted",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/villa.c",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/Player.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c",
+        "-lm",
+        "-o",
+        "/private/tmp/aethyr-ch9-follower-villa/native-debug"
+      ],
+      "cc_sha256": "12bed4523661307059b879b9b54e77a73176e9d27d27a0e40363271d8f0668ba",
+      "units": {
+        "/tmp/aethyr-ch9-consumers/villa-admitted/villa.c": "08b7e968ac755055c9d37b418811cc9d8527ab6b82dd662ab7d21bb08482bee7",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/Player.c": "c65456946b1f025733174365c3b9544cf2674f8e589ac5cce191a5f9b769ff07",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c": "6e0e10cf743addc2ff4b29c33ff02d8b09fdc3ea4f0fc929ecbfcb7c08577fc8"
+      },
+      "headers": {
+        "villa.h": "f5b316a20d9ee09859e6c549cac5bc83d9530d51ebefbf72128b54a41d5955e5",
+        "Player.h": "0bf3f4738969a787a188018eba1d7d58b642f48ddebd6782069a52fdb3550d02"
+      }
+    },
+    "sha256": "d117de22353138b69cc0c3244544ffa3952cfb4a6cd50bede6edd7bdc2fde36a",
+    "exit_code": 0
+  },
+  "wasm_emission": {
+    "identity": {
+      "c": {
+        "villa.c": "08b7e968ac755055c9d37b418811cc9d8527ab6b82dd662ab7d21bb08482bee7",
+        "Player.c": "c65456946b1f025733174365c3b9544cf2674f8e589ac5cce191a5f9b769ff07",
+        "follower-host.c": "6e0e10cf743addc2ff4b29c33ff02d8b09fdc3ea4f0fc929ecbfcb7c08577fc8"
+      },
+      "headers": {
+        "villa.h": "f5b316a20d9ee09859e6c549cac5bc83d9530d51ebefbf72128b54a41d5955e5",
+        "Player.h": "0bf3f4738969a787a188018eba1d7d58b642f48ddebd6782069a52fdb3550d02"
+      },
+      "clang": "5c51770b83a5407e507ad19fcfe1ec141deeb15f0d86312568915f3637f31f5a",
+      "command": [
+        "/opt/homebrew/Cellar/llvm/23.1.4/bin/clang-23",
+        "--target=wasm32-wasip1",
+        "--sysroot=/opt/homebrew/opt/wasi-libc/share/wasi-sysroot",
+        "-resource-dir=/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes",
+        "-std=c11",
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-I/tmp/aethyr-ch9-consumers/villa-admitted",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/villa.c",
+        "/tmp/aethyr-ch9-consumers/villa-admitted/Player.c",
+        "/Users/christopherdavid/work/openagents-aethyr-book/aethyr/tests/follower-host.c",
+        "-mexec-model=reactor",
+        "-Wl,--import-memory,--max-memory=67108864,-z,stack-size=1048576,--export=__heap_base,--gc-sections,--strip-debug",
+        "-o",
+        "/private/tmp/aethyr-ch9-follower-villa/follower.wasm"
+      ]
+    },
+    "sha256": "7fcb925f7c4656f1dd54b9da21ffa2d44ee340b0dbb5c4977a618dd4b38e6dad",
+    "exit_code": 0
+  },
+  "wasm_imports": [
+    {
+      "module": "env",
+      "name": "memory",
+      "kind": "memory"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_fdstat_get",
+      "kind": "function"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_seek",
+      "kind": "function"
+    },
+    {
+      "module": "wasi_snapshot_preview1",
+      "name": "fd_write",
+      "kind": "function"
+    }
+  ],
+  "special_scenarios": [
+    "carry10ms+6ms",
+    "redraw",
+    "zero frame",
+    "two targets",
+    "eight-step stall/drop",
+    "NaN/negative frame",
+    "refused physical Player step",
+    "fresh clock after place",
+    "queued throw rollback/retry"
+  ],
+  "seconds": 4.652803874982055,
+  "source_changes": [],
+  "artifact_changes": []
+}

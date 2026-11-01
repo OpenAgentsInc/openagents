@@ -171,7 +171,7 @@ The walker's `floor_under` is now one call to `query_stand`. Every walking
 realm (the Grid, Everglade, Fairy Forest, the garden, Hecate's Cemetery, the
 realm host, and Dead Gears) reaches the ground through it:
 
-<!-- source: verse/player.coax ground -->
+<!-- source: aethyr/walk.coax ground -->
 ```jai
 floor_under :: (w: World, x: f32, z: f32, feet: f32) -> StandHit {
   g := query_ground(colliders(w), x, z, feet + w.collision.step_up, w.collision.radius);
@@ -560,7 +560,7 @@ box, the states are the same until you walk off. You drop off the floor
 first, because a floor holds you while your middle is within 0.15 m of its
 edge, and a box's top holds you while your capsule is over it.
 
-<!-- source: verse/player.coax course -->
+<!-- source: aethyr/walk.coax course -->
 ```jai
 #test "jumping onto, landing on and walking off a ledge is the same in every realm" {
   ledge := [6] f32.[-2, 0, 1.5, 2, 0.5, 3.5];
@@ -573,14 +573,14 @@ edge, and a box's top holds you while your capsule is over it.
   a: World; a.walls = ledge[..];
   b: World; b.walls = among[..]; b.bodies = bodies[..]; b.floors = floors[..];
   c: World; c.floors = as_floor[..];
-  pa := held(verse_player_place(0, 0, 0, 0), 0, 1, false);
+  pa := held(walk_place(0, 0, 0, 0), 0, 1, false);
   pb := pa; pc := pa;
   landed := -1; off_a := -1; off_c := -1;
   for i: 0..<220 {
     jump := i == 12;
-    pa = step(a, verse_player_input(pa, 0, 1, 0, 0, false, jump, 0, 0), STEP);
-    pb = step(b, verse_player_input(pb, 0, 1, 0, 0, false, jump, 0, 0), STEP);
-    pc = step(c, verse_player_input(pc, 0, 1, 0, 0, false, jump, 0, 0), STEP);
+    pa = step(a, walk_input(pa, 0, 1, 0, 0, false, jump, 0, 0), STEP);
+    pb = step(b, walk_input(pb, 0, 1, 0, 0, false, jump, 0, 0), STEP);
+    pc = step(c, walk_input(pc, 0, 1, 0, 0, false, jump, 0, 0), STEP);
     #assert same_step(pa, pb) && pa.pos.y == pb.pos.y && pa.pos.z == pb.pos.z;
     if landed < 0 && i > 12 && pa.on_ground { landed = i; #assert pa.pos.y == 0.5 && pa.pos.z > 2; }
     if off_a < 0 && landed >= 0 && !pa.on_ground { off_a = i; }

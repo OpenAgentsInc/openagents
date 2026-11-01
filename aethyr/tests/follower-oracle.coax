@@ -1,0 +1,203 @@
+// Independent state-machine reference: the pre-existing variable-time fetch kernel,
+// fed exactly one fixed tick. Its follower uses the legacy exp implementation;
+// comparisons allow its final few rounding bits, while modes and ownership are exact.
+ff_test_close :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.00001; }
+ff_test_point :: (a: Point, b: Point) -> bool {
+  return ff_test_close(a.x,b.x) && ff_test_close(a.y,b.y) && ff_test_close(a.z,b.z);
+}
+ff_test_same_fetch :: (a: Fetch, b: Fetch) -> bool {
+  return a.mode == b.mode && ff_test_point(a.dog.pos,b.dog.pos) && ff_test_point(a.dog.vel,b.dog.vel)
+    && ff_test_close(a.dog.face,b.dog.face) && a.dog.walking == b.dog.walking
+    && ff_test_point(a.ball.pos,b.ball.pos) && ff_test_point(a.ball.vel,b.ball.vel)
+    && ff_test_close(a.ball.spin,b.ball.spin) && a.ball.radius == b.ball.radius
+    && a.ball.held == b.ball.held && a.ball.thrown == b.ball.thrown && a.ball.resting == b.ball.resting;
+}
+
+#test "a follower cursor admits only canonical paid history before subtracting counters" {
+  ff_saved := FrameCursor.{started = true, frames = 1, ticks = 0, carry_ns = 0};
+  #assert follower_cursor_ok(ff_saved);
+  ff_copy := ff_saved; ff_copy.frames = 0; #assert !follower_cursor_ok(ff_copy);
+  ff_copy = ff_saved; ff_copy.frames = -9223372036854775807; #assert !follower_cursor_ok(ff_copy);
+  ff_copy = ff_saved; ff_copy.ticks = -1; #assert !follower_cursor_ok(ff_copy);
+  ff_copy = ff_saved; ff_copy.carry_ns = -1; #assert !follower_cursor_ok(ff_copy);
+  ff_copy.carry_ns = 15624999; #assert follower_cursor_ok(ff_copy);
+  ff_copy.carry_ns = 15625000; #assert !follower_cursor_ok(ff_copy);
+  ff_copy.started = false; #assert follower_cursor_ok(ff_copy);
+  ff_clock: tick.FrameClock; ff_clock.frames = 2; ff_clock.counted_ns = 1;
+  ff_cursor := ff_saved; ff_cursor.carry_ns = -1;
+  ff_empty: [1] trace.StepTarget;
+  ff_refusal := follower_frame(ff_cursor, ff_clock, ff_empty[0..<0]);
+  #assert !ff_refusal.accepted && ff_refusal.cursor.frames == 1 && ff_refusal.cursor.carry_ns == -1;
+}
+
+#test "follower clock admission includes exact one and zero boundaries without redundant fallback guards" {
+  ff_clock: tick.FrameClock; ff_clock.frames = 1; ff_clock.max_steps = 1;
+  ff_clock.max_frame_ns = 1; ff_clock.counted_ns = 1; ff_clock.carry_ns = 1;
+  ff_empty: [1] trace.StepTarget; ff_cursor: FrameCursor;
+  #assert follower_frame(ff_cursor, ff_clock, ff_empty[0..<0]).accepted;
+  ff_clock.max_frame_ns = 0; ff_clock.counted_ns = 0; ff_clock.carry_ns = 0;
+  #assert !follower_frame(ff_cursor, ff_clock, ff_empty[0..<0]).accepted;
+  ff_clock.max_frame_ns = 1; ff_clock.max_steps = 0;
+  #assert !follower_frame(ff_cursor, ff_clock, ff_empty[0..<0]).accepted;
+  ff_clock.max_steps = 1; ff_clock.step_ns = 1; ff_clock.ran = 1; ff_clock.ticks = 1; ff_clock.counted_ns = 1;
+  #assert !follower_frame(ff_cursor, ff_clock, ff_empty[..]).accepted;
+  ff_clock.step_ns = 15625000; ff_clock.max_frame_ns = 15625000; ff_clock.counted_ns = 15625000;
+  #assert follower_frame(ff_cursor, ff_clock, ff_empty[..]).accepted;
+  ff_clock.max_frame_ns = 31250000; ff_clock.counted_ns = 31250000; ff_clock.carry_ns = 15625000;
+  #assert !follower_frame(ff_cursor, ff_clock, ff_empty[..]).accepted;
+  ff_clock.carry_ns = 0; ff_clock.counted_ns = 0;
+  #assert !follower_frame(ff_cursor, ff_clock, ff_empty[..]).accepted;
+}
+
+#forall "grounded follower refuses each malformed input atomically" ff_bad_field: 0..<12 {
+  ff_g := mesh.Ground.{n = 1, cell = 100, west = -50, south = -50}; ff_h: [4] f32;
+  ff_empty: [1] f32; ff_links: [1] int; ff_start: Follower; ff_goal := v3(2,0,0);
+  ff_stop := 0.0f32; ff_radius := 0.0f32; ff_nan := 0.0f32; ff_nan = ff_nan / ff_nan;
+  if ff_bad_field == 0 { ff_start.pos.x = ff_nan; }
+  if ff_bad_field == 1 { ff_start.pos.y = ff_nan; }
+  if ff_bad_field == 2 { ff_start.vel.x = ff_nan; }
+  if ff_bad_field == 3 { ff_start.vel.y = ff_nan; }
+  if ff_bad_field == 4 { ff_start.face = ff_nan; }
+  if ff_bad_field == 5 { ff_goal.z = ff_nan; }
+  if ff_bad_field == 6 { ff_stop = ff_nan; }
+  if ff_bad_field == 7 { ff_stop = -1; }
+  if ff_bad_field == 8 { ff_radius = ff_nan; }
+  if ff_bad_field == 9 { ff_radius = -1; }
+  if ff_bad_field == 10 { ff_start.pos.z = 1000000; }
+  if ff_bad_field == 11 { ff_goal.x = 1000000; }
+  ff_q := follower_step(ff_start,follower_profile(),ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,ff_goal,ff_stop,ff_empty[0..<0],ff_radius);
+  #assert ff_q.status == FollowerStatus.bad_state && ff_q.follower.walking == ff_start.walking;
+  #assert f32_bits(ff_q.follower.pos.x) == f32_bits(ff_start.pos.x) && f32_bits(ff_q.follower.vel.x) == f32_bits(ff_start.vel.x);
+}
+
+#test "grounded motion exposes stop speed flattening turning and walking thresholds" {
+  ff_g := mesh.Ground.{n = 1,cell = 100,west = -50,south = -50}; ff_h := [4] f32.[2.5,2.5,2.5,2.5];
+  ff_empty: [1] f32; ff_links: [1] int; ff_start: Follower; ff_start.pos.y = 2.5;
+  ff_p := follower_profile(); ff_p.acceleration = 200;
+  ff_start.vel.y = 100; ff_start.face = 0.4;
+  ff_q := follower_step(ff_start,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(1,102.5,0),0,ff_empty[0..<0],0);
+  #assert ff_q.status == FollowerStatus.ok && ff_q.follower.vel.x == 2.6 && ff_q.follower.vel.y == 0 && ff_q.follower.pos.y == 2.5;
+  ff_expected := f32(f64(0.4f32)+(1.5707963705062866-f64(0.4f32))*f64(1-exp(-9.0/64)));
+  #assert abs(ff_q.follower.face-ff_expected) < 0.000001;
+  ff_start.vel = v3(0,0,0);
+  ff_q = follower_step(ff_start,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(2.25,2.5,0),2,ff_empty[0..<0],0);
+  #assert abs(ff_q.follower.vel.x-1.025) < 0.000001;
+  ff_start.vel.x = 2.6;
+  ff_q = follower_step(ff_start,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(9,2.5,0),0,ff_empty[0..<0],0);
+  #assert ff_q.follower.vel.x == 2.6;
+  ff_start.vel.x = 0.2; ff_p.acceleration = 1.0e-45;
+  ff_q = follower_step(ff_start,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,ff_start.pos,0,ff_empty[0..<0],0);
+  #assert ff_q.follower.vel.x == 0.2 && !ff_q.follower.walking && ff_q.follower.face == ff_start.face;
+  ff_start.vel = v3(0,0,0); ff_p = follower_profile();
+  ff_q = follower_step(ff_start,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(2,2.5,0),2,ff_empty[0..<0],0);
+  #assert ff_q.follower.vel.x == 0 && ff_q.follower.pos.x == 0;
+}
+
+#test "grounded motion rechecks the destination cell and bounds travel among actual blocks" {
+  ff_g := mesh.Ground.{n = 2,rows = 1,cell = 1,west = 0,south = 0};
+  ff_h := [6] f32.[0,0,0,0,0,0]; ff_h[2] = 0 / 0.0f32;
+  ff_empty: [1] f32; ff_links: [1] int; ff_start: Follower;
+  ff_start.pos = v3(0.99,0,0.5); ff_start.vel.x = 5.2;
+  ff_q := follower_step(ff_start,follower_profile(),ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,0.5),0,ff_empty[0..<0],0.4);
+  #assert ff_q.status == FollowerStatus.bad_ground && ff_q.follower.pos.x == 0.99;
+  ff_g = mesh.Ground.{n = 1,cell = 100,west = -50,south = -50}; ff_h[2] = 0;
+  ff_start.pos = v3(0,0,0);
+  ff_block := [6] f32.[0.45,-1,-1,1,2,1];
+  ff_q = follower_step(ff_start,follower_profile(),ff_g,ff_h[0..<4],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,0),0,ff_block[..],0.4);
+  #assert ff_q.status == FollowerStatus.ok && abs(ff_q.follower.pos.x-0.05) < 0.000001;
+  ff_start.vel.x = 900;
+  ff_q = follower_step(ff_start,follower_profile(),ff_g,ff_h[0..<4],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,0),0,ff_block[..],0.4);
+  #assert ff_q.status == FollowerStatus.bad_state && ff_q.follower.pos.x == 0 && ff_q.follower.vel.x == 900;
+  ff_start.vel.x = 0;
+  #assert follower_step(ff_start,follower_profile(),ff_g,ff_h[0..<4],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,0),0,ff_block[..],0).status == FollowerStatus.bad_state;
+  #assert follower_step(ff_start,follower_profile(),ff_g,ff_h[0..<4],ff_empty[0..<0],ff_links[0..<0],0.9,ff_start.pos,0,ff_block[..],0).status == FollowerStatus.bad_state;
+}
+
+#test "blocked grounded travel admits exactly half a radius on either axis and retains the new slope height" {
+  ff_g := mesh.Ground.{n = 1,cell = 100,west = -50,south = -50}; ff_h: [4] f32;
+  ff_empty: [1] f32; ff_links: [1] int; ff_block := [6] f32.[-30,-1,-30,-29,2,-29];
+  ff_f: Follower; ff_f.pos = v3(10,0,10); ff_f.vel.z = 32;
+  ff_p := follower_profile(); ff_p.acceleration = 1.0e-45;
+  ff_q := follower_step(ff_f,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,20),0,ff_block[..],1);
+  #assert ff_q.status == FollowerStatus.ok && ff_q.follower.pos.x == 10 && ff_q.follower.pos.z == 10.5;
+  ff_f.vel.z = 40;
+  ff_q = follower_step(ff_f,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,20),0,ff_block[..],1);
+  #assert ff_q.status == FollowerStatus.bad_state && ff_q.follower.pos.z == 10;
+  ff_g = mesh.Ground.{n = 1,cell = 1,west = 0,south = 0}; ff_h = [4] f32.[0,1,0,1];
+  ff_f.pos = v3(0.25,0.25,0.5); ff_f.vel = v3(1,0,0);
+  ff_q = follower_step(ff_f,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(1,0,0.5),0,ff_empty[0..<0],0);
+  #assert ff_q.status == FollowerStatus.ok && ff_q.follower.pos.x == 0.265625 && ff_q.follower.pos.y == 0.265625;
+}
+
+#test "drawing mixes every pose component without losing held-ball ownership" {
+  ff_f: Fetch; ff_f.dog.pos = v3(8,6,5); ff_f.dog.face = 2;
+  ff_f.ball.pos = v3(5,6,7); ff_f.ball.spin = 10;
+  ff_prev := FetchPose.{ready = true,dog = v3(4,2,1),face = 1,ball = v3(1,2,3),spin = 2};
+  ff_q := fetch_draw(ff_f,ff_prev,0.25);
+  #assert ff_test_point(ff_q.dog.pos,v3(5,3,2)) && ff_q.dog.face == 1.25;
+  #assert ff_test_point(ff_q.ball.pos,v3(2,3,4)) && ff_q.ball.spin == 4;
+  ff_f.ball.held = 1; ff_q = fetch_draw(ff_f,ff_prev,0.25);
+  #assert ff_test_point(ff_q.ball.pos,v3(5+sin(1.25)*0.66,3.6,2+cos(1.25)*0.66));
+  ff_prev.ready = false; #assert ff_test_same_fetch(fetch_draw(ff_f,ff_prev,0.25),ff_f);
+  ff_hand := fixed_hand(v3(3,4,5),1.5707963705,0.42,1.25,0.3);
+  #assert ff_test_point(ff_hand,v3(3.42,5.25,5.3));
+}
+
+#forall "fixed fetch agrees with the independent legacy mode and ownership transition table" ff_thrown: bool, ff_mode: 0..<3, ff_owner: 0..<4, ff_spot: 0..<4 {
+  ff_g := mesh.Ground.{n = 1,cell = 100,west = -50,south = -50}; ff_h: [4] f32;
+  ff_empty: [1] f32; ff_nodes := [4] f32.[0,5,15,5]; ff_links := [2] int.[0,1];
+  ff_f: Fetch; ff_f.mode = ff_mode; ff_f.dog.face = 0.37; ff_f.dog.vel.x = 1;
+  ff_f.ball.held = ifx ff_owner == 0 then -1 else ifx ff_owner == 1 then 0 else ifx ff_owner == 2 then 1 else 99;
+  ff_f.ball.pos = v3(ifx ff_spot < 2 then 0.0f32 else 20.0f32,0.6,0.5);
+  ff_f.ball.vel.x = ifx ff_spot % 2 == 0 then 0.0f32 else 3.0f32;
+  ff_f.ball.thrown = ff_thrown; ff_f.ball.resting = true;
+  ff_you := v3(ifx ff_spot < 2 then 2.0f32 else 20.0f32,0,0); ff_hand := v3(3,1.25,2);
+  ff_before := ff_f;
+  if ff_before.ball.held == 0 { ff_before.ball = verse_ball_carry(ff_before.ball,ff_hand); }
+  ff_before.ball = verse_ball_step(ff_before.ball,ff_g,ff_h[..],ff_empty[0..<0],ff_empty[0..<0],1.0/64);
+  ff_expected := verse_fetch_step_among(ff_before,ff_g,ff_h[..],ff_nodes[..],ff_links[..],0.9,ff_you,1.0/64,ff_empty[0..<0]);
+  ff_actual := fetch_step(ff_f,follower_profile(),ff_g,ff_h[..],ff_nodes[..],ff_links[..],0.9,ff_you,ff_hand,
+    ff_empty[0..<0],ff_empty[0..<0],ff_empty[0..<0],true,false);
+  #assert ff_actual.status == FollowerStatus.ok && ff_test_same_fetch(ff_actual.fetch,ff_expected);
+}
+
+#test "fetch advances the flying ball while a disabled moving dog stops and publication remains atomic" {
+  ff_g := mesh.Ground.{n = 1,cell = 100,west = -50,south = -50}; ff_h: [4] f32; ff_empty: [1] f32; ff_links: [1] int;
+  ff_f: Fetch; ff_f.dog.vel = v3(1,0,2); ff_f.dog.walking = true;
+  ff_f.ball.pos = v3(1,5,2); ff_f.ball.vel = v3(2,1,3);
+  ff_q := fetch_step(ff_f,follower_profile(),ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,0),v3(0,1.25,0),
+    ff_empty[0..<0],ff_empty[0..<0],ff_empty[0..<0],false,false);
+  #assert ff_q.status == FollowerStatus.ok && ff_q.fetch.ball.pos.x > 1 && ff_q.fetch.ball.pos.y > 5;
+  #assert ff_q.fetch.dog.vel.x == 0 && ff_q.fetch.dog.vel.z == 0 && !ff_q.fetch.dog.walking;
+  ff_q.previous.dog.x = 99; ff_q.fetch.ball.pos.x = 77;
+  ff_ok := fetch_publish(ff_f,ff_q);
+  #assert ff_ok.fetch.ball.pos.x == 77 && ff_ok.previous.dog.x == ff_f.dog.pos.x;
+  ff_q.status = FollowerStatus.bad_profile; ff_bad := fetch_publish(ff_f,ff_q);
+  #assert ff_bad.status == FollowerStatus.bad_profile && ff_test_same_fetch(ff_bad.fetch,ff_f) && ff_bad.previous.ball.y == 5;
+}
+
+#test "fetch catch distance speed stopping and bring boundaries retain their distinct meanings" {
+  ff_g := mesh.Ground.{n = 1,cell = 100,west = -50,south = -50}; ff_h: [4] f32;
+  ff_empty: [1] f32; ff_links: [1] int; ff_f: Fetch; ff_f.mode = FETCH_CHASE;
+  ff_f.ball.thrown = true; ff_f.ball.resting = true; ff_f.ball.pos = v3(0,0.6,1);
+  ff_q := fetch_step(ff_f,follower_profile(),ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,0),v3(0,1.25,0),
+    ff_empty[0..<0],ff_empty[0..<0],ff_empty[0..<0],true,false);
+  #assert ff_q.fetch.dog.pos.z == 0.00341796875;
+  ff_p := follower_profile(); ff_p.acceleration = 1.0e-45;
+  ff_f.ball.radius = 0.125; ff_f.ball.pos = v3(0.625,0.6,0.66);
+  ff_q = fetch_step(ff_f,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,0),v3(0,1.25,0),
+    ff_empty[0..<0],ff_empty[0..<0],ff_empty[0..<0],true,false);
+  #assert ff_q.fetch.mode == FETCH_CHASE && ff_q.fetch.ball.held == -1;
+  ff_f.ball.pos.x = 0.5; ff_f.ball.vel.x = 1;
+  ff_q = fetch_step(ff_f,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(20,0,0),v3(0,1.25,0),
+    ff_empty[0..<0],ff_empty[0..<0],ff_empty[0..<0],true,false);
+  #assert ff_q.fetch.mode == FETCH_BRING && ff_q.fetch.ball.held == 1 && ff_q.fetch.ball.vel.x == 0;
+  ff_f = ff_q.fetch;
+  ff_q = fetch_step(ff_f,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(1.5999999046325684,0,0),v3(0,1.25,0),
+    ff_empty[0..<0],ff_empty[0..<0],ff_empty[0..<0],true,false);
+  #assert ff_q.fetch.mode == FETCH_FOLLOW && ff_q.fetch.ball.held == -1 && !ff_q.fetch.ball.thrown;
+  ff_f.dog.vel.x = 0.6;
+  ff_q = fetch_step(ff_f,ff_p,ff_g,ff_h[..],ff_empty[0..<0],ff_links[0..<0],0.9,v3(0,0,0),v3(0,1.25,0),
+    ff_empty[0..<0],ff_empty[0..<0],ff_empty[0..<0],true,false);
+  #assert ff_q.fetch.mode == FETCH_BRING && ff_q.fetch.ball.held == 1;
+}

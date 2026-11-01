@@ -1,0 +1,69 @@
+// Declared tuning for the fixed-step kinematic walking mode. Distances are
+// metres, speeds metres/second and rates per second. Collision shape and
+// travel admission remain CollideProfile's separate contract.
+#module "aethyr.locomotion";
+#authority;
+
+LOCOMOTION_LIMIT :: 1000.0;
+// book:begin profile
+LocomotionProfile :: struct {
+  walk_speed: f32 = 3.5; run_speed: f32 = 7.5;
+  gravity: f32 = 24; jump_speed: f32 = 7.5;
+  acceleration: f32 = 60; turn_rate: f32 = 10;
+  ride_height: f32 = 0.4; step_smooth: f32 = 10;
+  slide_grip: f32 = 0.1; sink_limit: f32 = 0.05;
+  run_animation_margin: f32 = 0.25;
+}
+// book:end profile
+
+#test "locomotion defaults retain the published walking numbers" {
+  p: LocomotionProfile;
+  #assert locomotion_profile_ok(p);
+  #assert p.walk_speed == 3.5 && p.run_speed == 7.5 && p.gravity == 24 && p.jump_speed == 7.5;
+  #assert p.acceleration == 60 && p.turn_rate == 10 && p.ride_height == 0.4 && p.step_smooth == 10;
+  #assert p.slide_grip == 0.1 && p.sink_limit == 0.05 && p.run_animation_margin == 0.25;
+  p.walk_speed = 2; p.run_speed = 4; p.gravity = 16; p.jump_speed = 6; p.acceleration = 16;
+  #assert locomotion_profile_ok(p);
+}
+
+#forall "locomotion refuses every nonfinite negative and unsupported field" field: 0..<11, invalid: 0..<4 {
+  p: LocomotionProfile; zero := 0.0f32;
+  value := ifx invalid == 0 then -0.01f32 else ifx invalid == 1 then 1000.0f32 else ifx invalid == 2 then zero / zero else 1 / zero;
+  if field == 0 { p.walk_speed = value; }
+  if field == 1 { p.run_speed = value; }
+  if field == 2 { p.gravity = value; }
+  if field == 3 { p.jump_speed = value; }
+  if field == 4 { p.acceleration = value; }
+  if field == 5 { p.turn_rate = value; }
+  if field == 6 { p.ride_height = value; }
+  if field == 7 { p.step_smooth = value; }
+  if field == 8 { p.slide_grip = value; }
+  if field == 9 { p.sink_limit = value; }
+  if field == 10 { p.run_animation_margin = value; }
+  #assert !locomotion_profile_ok(p);
+}
+
+#test "locomotion retains exact zero one speed ordering and finite boundaries" {
+  p: LocomotionProfile;
+  p.walk_speed = 0; p.run_speed = 0; p.jump_speed = 0; p.turn_rate = 0;
+  p.ride_height = 0; p.step_smooth = 0; p.slide_grip = 0; p.sink_limit = 0; p.run_animation_margin = 0;
+  #assert locomotion_profile_ok(p);
+  p.slide_grip = 1; #assert locomotion_profile_ok(p);
+  p.slide_grip = 1.01; #assert !locomotion_profile_ok(p); p.slide_grip = 1;
+  p.walk_speed = 2; p.run_speed = 2; #assert locomotion_profile_ok(p);
+  p.run_speed = 1; #assert !locomotion_profile_ok(p); p.run_speed = 2;
+  p.gravity = 0; #assert !locomotion_profile_ok(p); p.gravity = 24;
+  p.acceleration = 0; #assert !locomotion_profile_ok(p); p.acceleration = 60;
+  #assert locomotion_finite(999.99) && locomotion_finite(-999.99);
+  #assert !locomotion_finite(1000) && !locomotion_finite(-1000);
+}
+
+locomotion_finite :: (value: f32) -> bool {
+  return value == value && value > -f32(LOCOMOTION_LIMIT) && value < f32(LOCOMOTION_LIMIT);
+}
+locomotion_profile_ok :: (p: LocomotionProfile) -> bool {
+  values := [11] f32.[p.walk_speed, p.run_speed, p.gravity, p.jump_speed, p.acceleration, p.turn_rate,
+    p.ride_height, p.step_smooth, p.slide_grip, p.sink_limit, p.run_animation_margin];
+  for i: 0..<11 { if !locomotion_finite(values[i]) || values[i] < 0 { return false; } }
+  return p.run_speed >= p.walk_speed && p.gravity > 0 && p.acceleration > 0 && p.slide_grip <= 1;
+}

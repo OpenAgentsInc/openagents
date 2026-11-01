@@ -1,0 +1,76 @@
+#load "../walk.coax";
+#import "Basic";
+
+// The hand calculation is independent of the measured peak: gravity is
+// 16/64 = 0.25 m/s each step, so the last rising step is 23, at 69/64 m.
+#test "a declared slower walk has the calculated acceleration and jump" {
+  measured := tuned_walk_measure();
+  #assert measured.acceleration_steps == 16;
+  #assert measured.peak == 1.078125 && measured.peak_step == 23;
+  #assert measured.landing_step == 48 && measured.feet == 0 && measured.vertical_speed == 0;
+}
+
+WalkMeasurement :: struct {
+  acceleration_steps: int;
+  peak: f32;
+  peak_step: int;
+  landing_step: int;
+  feet: f32;
+  vertical_speed: f32;
+}
+
+// book:begin profile
+tuned_walk_world :: () -> World {
+  world: World;
+  world.locomotion.walk_speed = 2;
+  world.locomotion.run_speed = 4;
+  world.locomotion.acceleration = 16;
+  world.locomotion.gravity = 16;
+  world.locomotion.jump_speed = 6;
+  return world;
+}
+// book:end profile
+
+tuned_walk_measure :: () -> WalkMeasurement {
+  world := tuned_walk_world();
+  result: WalkMeasurement;
+  walker := held(walk_place(0, 0, 0, 0), 0, 1, true);
+  for i: 0..<64 {
+    if flat_speed(walker) >= world.locomotion.run_speed { break; }
+    walker = step(world, walker, STEP);
+    result.acceleration_steps += 1;
+  }
+  jumper := walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
+  for i: 1..<129 {
+    jumper = step(world, jumper, STEP);
+    if jumper.pos.y > result.peak { result.peak = jumper.pos.y; result.peak_step = i; }
+    if jumper.on_ground { result.landing_step = i; break; }
+  }
+  result.feet = jumper.pos.y;
+  result.vertical_speed = jumper.vel.y;
+  return result;
+}
+
+// book:begin trace
+main :: () {
+  measured := tuned_walk_measure();
+  print("declared run: % steps, % s to 4 m/s\n", measured.acceleration_steps, f32(measured.acceleration_steps) * f32(STEP));
+  print("declared jump: % m after % steps; landed after %\n", measured.peak, measured.peak_step, measured.landing_step);
+
+  world := tuned_walk_world();
+  walker := held(walk_place(0, 0, 0, 0), 0, 1, true);
+  first := advance_traced(world, walker, 0.010);
+  second := advance_traced(world, first.player, 0.006);
+  // A follower consumes the actual targets. Dividing this frame's 6 ms by
+  // 1/64 s would miss the step owed by the clock's earlier 10 ms carry.
+  print("10 ms then 6 ms: % then % targets, % paid tick\n", first.count, second.count, second.player.clock.ticks);
+  print("step target: z %, drawn z %\n", second.targets[0].feet.z, walk_feet(second.player).z);
+
+  invalid := world;
+  invalid.locomotion.gravity = 0;
+  waiting := walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
+  refused := advance_traced(invalid, waiting, STEP);
+  print("gravity 0: status % (bad_profile), jump waiting %, paid ticks %\n",
+        cast(int) cast(u8) refused.player.collision_status, refused.player.jumps.waiting, refused.player.clock.ticks);
+}
+// book:end trace

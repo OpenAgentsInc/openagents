@@ -176,28 +176,59 @@ The walking controller uses the clock as follows:
 
 No other code in the controller reads the frame's time.
 
-<!-- source: verse/player.coax advance -->
+<!-- source: aethyr/walk.coax advance -->
 ```jai
 // Advances by a frame's time in fixed steps, on the player's clock (aethyr/loop.coax):
 // the frame's time is clamped, at most LOOP_MAX_STEPS run, and a longer backlog is
 // dropped, so a stall never makes a frame slower.
 advance_in :: (w: World, p: Player, frame: f32) -> Player {
-  next := p;
-  next.clock = loop_accept(p.clock, cast(f64) frame);
-  next = steps_in(w, next, loop_due(next.clock));
-  next.clock = loop_ran(next.clock);
-  return next;
+  return advance_traced(w, p, frame).player;
+}
+
+AdvanceTrace :: struct { player: Player; count: int; targets: [LOOP_MAX_STEPS] StepTarget; }
+WalkSchedule :: struct { ok: bool; clock: FrameClock; count: int; }
+// A new walking frame starts from a paid fixed clock. Zeroed clock defaults
+// normalize through loop_accept, but a different positive period is refused.
+walk_schedule :: (clock: FrameClock, frame: f32) -> WalkSchedule {
+  if (clock.step_ns > 0 && clock.step_ns != LOOP_STEP_NS) || clock.max_steps > LOOP_MAX_STEPS || clock.carry_ns < 0 || clock.carry_ns >= LOOP_STEP_NS || clock.due != 0 {
+    return WalkSchedule.{};
+  }
+  accepted := loop_accept(clock, f64(frame));
+  count := loop_due(accepted);
+  // Canonical carry, the fixed positive period and the admitted step cap
+  // make loop_accept's count lie in0..8, including normalized clock defaults.
+  return WalkSchedule.{ok = true, clock = accepted, count = count};
+}
+walk_target :: (p: Player) -> StepTarget {
+  return StepTarget.{feet = wp(p.pos), velocity = StepVelocity.{x = p.vel.x, y = p.vel.y, z = p.vel.z},
+    face = p.face, act = cast(u8) p.act, collision_status = cast(u8) p.collision_status};
+}
+advance_traced :: (w: World, p: Player, frame: f32) -> AdvanceTrace {
+  out := AdvanceTrace.{player = p};
+  schedule := walk_schedule(p.clock, frame);
+  if !schedule.ok {
+    out.player = collision_report(p, CollideResult.{state = collision_state(p), status = CollideStatus.bad_profile});
+    return out;
+  }
+  next := p; next.clock = schedule.clock; out.count = schedule.count;
+  for i: 0..<schedule.count {
+    next = history_step(w, next);
+    out.targets[i] = walk_target(next);
+  }
+  next.clock = loop_ran(next.clock); out.player = next;
+  return out;
+}
+history_step :: (w: World, p: Player) -> Player {
+  next := p; next.prev_pos = p.pos; next.prev_target = p.target;
+  next.prev_face = p.face; next.prev_dist = p.dist;
+  return step_once(w, next, STEP);
 }
 // Runs n fixed steps (what a clock says are due), keeping where the last began, so the
 // frame interpolates between the last two.
 steps_in :: (w: World, p: Player, n: int) -> Player {
   next := p;
   for i: 0..<n {
-    next.prev_pos = next.pos;
-    next.prev_target = next.target;
-    next.prev_face = next.face;
-    next.prev_dist = next.dist;
-    next = step_once(w, next, STEP);
+    next = history_step(w, next);
   }
   return next;
 }
@@ -207,18 +238,18 @@ Drawing reads only the last two steps and `α`. This applies to the feet, the
 facing, and the camera, whose mix is `aethyr/follow.coax`'s `follow_shot`
 (chapter 10).
 
-<!-- source: verse/player.coax drawn -->
+<!-- source: aethyr/walk.coax drawn -->
 ```jai
 // The feet and facing to draw this frame.
-verse_player_feet :: (p: Player) -> Vec3 #export_c { return mix3(p.prev_pos, p.pos, alpha(p)); }
-verse_player_face :: (p: Player) -> f32 #export_c {
+walk_feet :: (p: Player) -> Vec3 { return mix3(p.prev_pos, p.pos, alpha(p)); }
+walk_face :: (p: Player) -> f32 {
   return wrap_angle(p.prev_face + wrap_angle(p.face - p.prev_face) * alpha(p));
 }
 // The camera this frame, Aethyr's third-person shot: what it looks at, and where it is. A wall
 // pulls the camera in at once, so it is never shown further out than the last step.
-verse_player_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
-verse_player_at :: (p: Player) -> Vec3 #export_c { return vp(verse_player_shot(p).at); }
-verse_player_eye :: (p: Player) -> Vec3 #export_c { return vp(verse_player_shot(p).eye); }
+walk_shot :: (p: Player) -> CameraShot { return follow_shot(follow_of(p), wp(p.prev_target), p.prev_dist, alpha(p)); }
+walk_at :: (p: Player) -> Vec3 { return vp(walk_shot(p).at); }
+walk_eye :: (p: Player) -> Vec3 { return vp(walk_shot(p).eye); }
 ```
 
 ## Steps are the same at any frame rate
@@ -319,7 +350,7 @@ The check measures, through the jump, how much each frame's change in height
 differs from the previous frame's. It requires that difference to stay under
 a bound:
 
-<!-- source: verse/player.coax stutter -->
+<!-- source: aethyr/walk.coax stutter -->
 ```jai
 // No stutter at 60 FPS: the 64 Hz steps do not land one to a frame (some frames run two),
 // yet what is drawn moves smoothly. Through a jump's flight the feet drawn each frame change
@@ -328,7 +359,7 @@ a bound:
 // last step instead lurches by 0.077 m (feet) and 0.062 m (camera) every few frames.
 #test "a jump drawn at 60 FPS has no stutter" {
   w: World;
-  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
+  p := walk_input(walk_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
   frame := cast(f32) (1.0 / 60.0);
   bound := f32(GRAVITY) * frame * frame + 0.004;   // 0.0107 m
   eye_bound := 0.016f32;
@@ -336,8 +367,8 @@ a bound:
   flying := 0;
   for k: 0..<90 {
     p = advance_in(w, p, frame);
-    y := verse_player_feet(p).y;
-    eye := verse_player_eye(p).y;
+    y := walk_feet(p).y;
+    eye := walk_eye(p).y;
     dy := y - was_y; deye := eye - was_eye;
     if k >= 2 && !p.on_ground && p.prev_pos.y > 0 && p.clock.ticks > 2 {
       #assert abs(dy - was_dy) <= bound;
@@ -348,7 +379,7 @@ a bound:
   }
   #assert flying > 30;   // most of a 0.6 s flight was checked
   // Drawing the last step instead (no interpolation) would fail the same bound.
-  q := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
+  q := walk_input(walk_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
   worst := 0.0f32; worst_eye := 0.0f32; was_y = 0; was_dy = 0; was_eye = 0; was_deye = 0;
   for k: 0..<40 {
     q = advance_in(w, q, frame);

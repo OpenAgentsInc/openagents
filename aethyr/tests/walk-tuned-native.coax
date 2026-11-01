@@ -1,0 +1,74 @@
+// Native assertions use hand-derived fixed-step values and exact nanosecond schedules.
+#load "../../verse/player.coax";
+#load "../walk.coax" as native_scheduler;
+
+walk_tuned_assertions :: () #export_c {
+  native_world: World;
+  native_world.locomotion.acceleration = 32;
+  native_world.locomotion.gravity = 8;
+  native_world.locomotion.jump_speed = 4;
+  native_person := verse_player_input(verse_player_place(0, 0, 0, 0), 1, 0, 0, 0, false, false, 0, 0);
+  native_person.theta = 0;
+  native_moved := advance_in(native_world, native_person, f32(STEP));
+  #assert native_moved.vel.x == 0.5 && native_moved.pos.x == 0.0078125;
+  native_person = verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
+  native_jumped := advance_in(native_world, native_person, f32(STEP));
+  #assert native_jumped.vel.y == 3.875 && native_jumped.pos.y == 0.060546875 && !native_jumped.on_ground;
+
+  native_default: World;
+  native_person = verse_player_input(verse_player_place(0, 0, 0, 0), 1, 0, 0, 0, true, false, 0, 0);
+  native_person.theta = 0; native_person.clock.carry_ns = 10000000;
+  native_trace := native_scheduler.advance_traced(native_default, native_person, 0.006);
+  #assert native_trace.count == 1 && native_trace.player.clock.ticks == 1 && native_trace.player.clock.ran == 1;
+  #assert native_trace.player.clock.carry_ns == 375000;
+  #assert native_trace.targets[0].feet.x == 0.0146484375 && native_trace.targets[0].feet.y == 0 && native_trace.targets[0].feet.z == 0;
+  #assert native_trace.targets[0].velocity.x == 0.9375 && native_trace.targets[0].act == 2 && native_trace.targets[0].collision_status == 0;
+  #assert native_trace.targets[0].face == native_trace.player.face && native_trace.targets[0].face > 0;
+  native_empty := native_scheduler.advance_traced(native_default, native_trace.player, 0);
+  #assert native_empty.count == 0 && native_empty.player.clock.ticks == 1 && native_empty.player.clock.carry_ns == 375000;
+  native_many := native_scheduler.advance_traced(native_default, native_empty.player, 0.125);
+  #assert native_many.count == 8 && native_many.player.clock.ticks == 9 && native_many.player.clock.carry_ns == 375000;
+  native_expected_x := 0.0146484375f32;
+  for native_slot: 0..<8 {
+    native_expected_speed := f32(native_slot + 2) * 0.9375;
+    if native_expected_speed > 7.5 { native_expected_speed = 7.5; }
+    native_expected_x += native_expected_speed / 64;
+    #assert native_many.targets[native_slot].feet.x == native_expected_x;
+    #assert native_many.targets[native_slot].feet.y == 0 && native_many.targets[native_slot].feet.z == 0;
+    #assert native_many.targets[native_slot].velocity.x == native_expected_speed && native_many.targets[native_slot].collision_status == 0;
+  }
+  #assert native_many.player.pos.x == native_expected_x;
+  native_stall := native_scheduler.advance_traced(native_default, native_many.player, 0.4);
+  #assert native_stall.count == 8 && native_stall.player.clock.ticks == 17;
+  #assert native_stall.player.clock.dropped_ns == 125000000 && native_stall.player.clock.carry_ns == 375000;
+  native_queued := native_stall.player; native_queued.jumps.waiting = 1;
+  native_zero := 0.0f32;
+  native_refused_frame := native_scheduler.advance_traced(native_default, native_queued, native_zero / native_zero);
+  #assert native_refused_frame.count == 0 && native_refused_frame.player.clock.ticks == 17;
+  #assert native_refused_frame.player.clock.refused == 1 && native_refused_frame.player.jumps.waiting == 1;
+
+  for native_invalid_clock: 0..<5 {
+    native_bad := native_queued;
+    if native_invalid_clock == 0 { native_bad.clock.step_ns = 1000000; }
+    if native_invalid_clock == 1 { native_bad.clock.carry_ns = -1; }
+    if native_invalid_clock == 2 { native_bad.clock.carry_ns = 15625000; }
+    if native_invalid_clock == 3 { native_bad.clock.due = 1; }
+    if native_invalid_clock == 4 { native_bad.clock.max_steps = 16; }
+    native_bad_trace := native_scheduler.advance_traced(native_default, native_bad, 0.25);
+    #assert native_bad_trace.count == 0 && native_bad_trace.player.clock.frames == native_bad.clock.frames;
+    #assert native_bad_trace.player.clock.ticks == native_bad.clock.ticks && native_bad_trace.player.clock.carry_ns == native_bad.clock.carry_ns;
+    #assert native_bad_trace.player.jumps.waiting == 1 && cast(u8) native_bad_trace.player.collision_status != 0;
+  }
+  native_bad_world := native_default; native_bad_world.locomotion.acceleration = 0;
+  native_bad_profile := native_scheduler.advance_traced(native_bad_world, native_queued, 0.125);
+  // A rejected physical step still consumes its scheduled time and supplies a repeated
+  // target to the other systems running on that realm step.
+  #assert native_bad_profile.count == 8 && native_bad_profile.player.clock.frames == native_queued.clock.frames + 1;
+  #assert native_bad_profile.player.clock.ticks == native_queued.clock.ticks + 8;
+  #assert native_bad_profile.player.jumps.waiting == 1;
+  for native_refusal_slot: 0..<8 {
+    #assert native_bad_profile.targets[native_refusal_slot].feet.x == native_queued.pos.x;
+    #assert native_bad_profile.targets[native_refusal_slot].feet.y == native_queued.pos.y && native_bad_profile.targets[native_refusal_slot].feet.z == native_queued.pos.z;
+    #assert native_bad_profile.targets[native_refusal_slot].collision_status != 0;
+  }
+}

@@ -46,7 +46,7 @@ The walking controller's state uses several defaults:
 - The clock from [chapter 1](ch001-a-frame-has-a-fixed-step.md) has its step,
   clamp, and step limit set.
 
-<!-- source: verse/player.coax state -->
+<!-- source: aethyr/walk.coax state -->
 ```jai
 Player :: struct {
   pos: Vec3;            // feet, after the last step

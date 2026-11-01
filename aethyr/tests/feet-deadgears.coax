@@ -5,7 +5,7 @@
 drawn_feet_probe :: (fx: f32, fy: f32, fz: f32, result: [] f32) #export_c {
   s: [1] DeadGears;
   dg_page_start(s[..]);
-  s[0].pl = pc.verse_player_place(fx, fy, fz, 0);
+  s[0].pl = pc.walk_place(fx, fy, fz, 0);
   s[0].pl.on_ground = false;
   walk(s[..], 0);
   at := s[0].feet;

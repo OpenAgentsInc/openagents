@@ -40,10 +40,11 @@ tasks) builds Part I and II's primitives first. Each task owns one chapter.
 | `ec-budget` | [16](ch016-budgets-that-refuse.md) | asset identity and budgets | — |
 | `ec-migrate` | [64](ch064-every-realm-runs-on-aethyr.md) | every realm on the core | all of the above |
 
-Chapters 8 and 9 (ground, collision and the walking controller) and Part III
-have no task yet; they consolidate code the realms already share
-(`verse/terrain.coax`, `verse/player.coax`, `verse/camera.coax`,
-`verse/gpu/`), and can start as soon as chapters 2 and 7 settle their types.
+Chapter 8 now owns the admitted ground sampler, mesh contacts and bounded
+capsule publication in `aethyr/ground*.coax` and `aethyr/collide.coax`.
+Chapter 9 consolidates the walking controller and its declared tuning;
+chapter 64 still owns the complete migration of realm adapters. Part III
+consolidates the existing Coax shader and host paths in `verse/gpu/`.
 
 ## Prerequisites, not a waiting list
 

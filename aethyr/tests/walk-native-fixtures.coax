@@ -1,0 +1,33 @@
+// The same adapter compiles against current Player and the git-pinned pre-extraction Player.
+// Its worlds are data; it does not reproduce either controller's arithmetic.
+#load "../../verse/player.coax";
+#load "../../verse/stand.coax";
+#load "../query.coax" as parity_query;
+#load "../ground.coax" as parity_ground;
+
+walk_parity_frame :: (kind: int, person: Player, frame: f32) -> Player #export_c {
+  parity_world: World;
+  parity_floors: [STAND_FLOATS] f32;
+  parity_bodies := [7] f32.[0, 0.3, 0, 0, 1.5, 0, 0.4];
+  parity_walls := [6] f32.[0.6, 0, -2, 2, 2, 2];
+  parity_heights := [4] f32.[2.5, 2.5, 2.5, 2.5];
+  parity_fields := [1] parity_query.QueryHeightfield.[parity_query.QueryHeightfield.{
+    ground = parity_ground.Ground.{n = 1, cell = 4, west = -2, south = -2}, heights = parity_heights[..]}];
+  if kind == 1 {
+    parity_world.ground = -100;
+    stand_put_quad(parity_floors[..], 0, -8, -8, 16, 0, 0, 16, -14, 12, 16);
+    parity_world.floors = parity_floors[..];
+  }
+  if kind == 2 {
+    parity_world.ground = -100;
+    stand_put_quad(parity_floors[..], 0, -8, -8, 16, 0, 0, 16, -56, 48, 64);
+    parity_world.floors = parity_floors[..];
+  }
+  if kind == 4 { parity_world.bodies = parity_bodies[..]; parity_world.walls = parity_walls[..]; }
+  if kind == 5 { parity_fields[0].heights = parity_heights[0..<3]; parity_world.heightfields = parity_fields[..]; }
+  if kind == 6 { parity_world.heightfields = parity_fields[..]; }
+  if kind == 7 { parity_world.collision.max_passes = 0; }
+  return advance_in(parity_world, person, frame);
+}
+
+walk_parity_assert_probe :: (admitted: bool) #export_c { #assert admitted; }

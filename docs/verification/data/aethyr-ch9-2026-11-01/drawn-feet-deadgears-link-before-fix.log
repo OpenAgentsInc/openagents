@@ -1,0 +1,8 @@
+{
+  "status": "failed",
+  "profiles": [],
+  "elapsed_seconds": 47.379245957999956,
+  "receipt": "docs/verification/data/aethyr-ch9-2026-11-01/drawn-feet-deadgears.json",
+  "source_changes": [],
+  "error": "RuntimeError(\"cc -std=c11 -O1 -ffp-contract=off -Wno-unused-function /tmp/aethyr-ch9-drawn-feet-artifacts/debug/deadgears.c /tmp/aethyr-ch9-drawn-feet-artifacts/debug/deadgears-main.c /tmp/aethyr-ch9-drawn-feet-artifacts/debug/input.c /tmp/aethyr-ch9-drawn-feet-artifacts/debug/Player.c -o /tmp/aethyr-ch9-drawn-feet-artifacts/debug/deadgears-native -lm -pthread -Wl,-undefined,dynamic_lookup\\nduplicate symbol '_input_runs' in:\\n    /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/Player-f5ce7e.o\\n    /private/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/deadgears-5e0249.o\\nld: 1 duplicate symbols\\nclang: error: linker command failed with exit code 1 (use -v to see invocation)\\n\")"
+}

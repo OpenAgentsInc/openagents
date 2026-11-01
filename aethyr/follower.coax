@@ -1,0 +1,331 @@
+// Grounded route followers. One realm clock assigns their steps; this file
+// owns no clock or time accumulator. The legacy terrain/throw APIs remain
+// trusted variable-time adapters. This mode projects onto sampled ground;
+// it does not implement the walking capsule's jump/gravity dynamics.
+#module "aethyr.follower";
+#authority;
+#load "loop.coax" as tick;
+#load "walk-frame.coax" as trace;
+#load "locomotion.coax" as tuning;
+#load "math.coax" as ff_math;
+#load "ground.coax" as mesh;
+#load "../coax/lib/quantity.coax" as units;
+#load "../verse/throw.coax";
+#load "tests/follower-oracle.coax";
+
+FrameCursor :: struct { started: bool; frames: int; ticks: int; carry_ns: int; }
+FrameReceipt :: struct {
+  accepted: bool; duplicate: bool; cursor: FrameCursor;
+  steps: int; counted: f32; alpha: f32;
+}
+FetchPose :: struct { ready: bool; dog: Point; face: f32; ball: Point; spin: f32; }
+FollowerStatus :: enum u8 { ok; bad_profile; bad_state; bad_ground; }
+FollowerStep :: struct { follower: Follower; status: FollowerStatus; }
+FetchStep :: struct { fetch: Fetch; previous: FetchPose; status: FollowerStatus; }
+
+// Checks are written before the fixed path below.
+#test "followers consume the realm's carried step once and draw without stepping" {
+  ff_c: tick.FrameClock; ff_cursor: FrameCursor; ff_targets: [8] trace.StepTarget;
+  ff_c = tick.loop_frame(ff_c, 0.010).clock;
+  ff_a := follower_frame(ff_cursor, ff_c, ff_targets[0..<0]);
+  #assert ff_a.accepted && ff_a.steps == 0 && ff_a.counted == 0.01 && ff_a.alpha == 0.64;
+  ff_c = tick.loop_frame(ff_c, 0.006).clock;
+  ff_targets[0].feet.y = 1.25; ff_targets[0].collision_status = 5;
+  ff_b := follower_frame(ff_a.cursor, ff_c, ff_targets[0..<1]);
+  #assert ff_b.accepted && ff_b.steps == 1 && ff_b.counted == 0.006 && ff_b.alpha == 0.024;
+  #assert ff_b.cursor.frames == 2 && ff_b.cursor.ticks == 1 && ff_b.cursor.carry_ns == 375000;
+  ff_again := follower_frame(ff_b.cursor, ff_c, ff_targets[0..<1]);
+  #assert !ff_again.accepted && ff_again.duplicate && ff_again.steps == 0 && ff_again.counted == 0;
+  ff_c = tick.loop_frame(ff_c, -1).clock;
+  ff_refused := follower_frame(ff_b.cursor, ff_c, ff_targets[0..<0]);
+  #assert ff_refused.accepted && ff_refused.steps == 0 && ff_refused.counted == 0 && ff_refused.alpha == 0.024;
+  ff_c = tick.loop_frame(ff_c, 1).clock;
+  ff_stall := follower_frame(ff_refused.cursor, ff_c, ff_targets[..]);
+  #assert ff_stall.accepted && ff_stall.steps == 8 && ff_stall.counted == 0.125 && ff_stall.alpha == 0.024;
+  #assert ff_c.overlong == 1 && ff_c.stalls == 1 && ff_c.dropped_ns == 125000000;
+}
+
+#forall "followers refuse corrupt clock or trace before consuming a frame" ff_case: 0..<19 {
+  ff_cursor: FrameCursor; ff_c: tick.FrameClock; ff_targets: [8] trace.StepTarget;
+  ff_c = tick.loop_frame(ff_c, 0.015625).clock;
+  ff_n := 1; ff_nan := 0.0f32; ff_nan = ff_nan / ff_nan;
+  if ff_case == 0 { ff_c.step_ns = 1; }
+  if ff_case == 1 { ff_c.max_steps = 9; }
+  if ff_case == 2 { ff_c.max_steps = 0; }
+  if ff_case == 3 { ff_c.max_frame_ns = 0; }
+  if ff_case == 4 { ff_c.max_frame_ns = 250000001; }
+  if ff_case == 5 { ff_c.due = 1; }
+  if ff_case == 6 { ff_c.ran = -1; }
+  if ff_case == 7 { ff_c.ran = 9; }
+  if ff_case == 8 { ff_c.carry_ns = -1; }
+  if ff_case == 9 { ff_c.carry_ns = 15625000; }
+  if ff_case == 10 { ff_c.counted_ns = -1; }
+  if ff_case == 11 { ff_c.counted_ns = 250000001; }
+  if ff_case == 12 { ff_c.frames = 0; }
+  if ff_case == 13 { ff_c.ticks = 0; }
+  if ff_case == 14 { ff_n = 0; }
+  if ff_case == 15 { ff_targets[0].feet.x = ff_nan; }
+  if ff_case == 16 { ff_targets[0].velocity.y = ff_nan; }
+  if ff_case == 17 { ff_targets[0].face = ff_nan; }
+  if ff_case == 18 { ff_c.counted_ns = 15625001; }
+  ff_r := follower_frame(ff_cursor, ff_c, ff_targets[0..<ff_n]);
+  #assert !ff_r.accepted && ff_r.steps == 0 && !ff_r.cursor.started;
+}
+
+#test "followers reject skipped frames ticks and altered carry atomically" {
+  ff_c: tick.FrameClock; ff_targets: [1] trace.StepTarget; ff_cursor: FrameCursor;
+  ff_c = tick.loop_frame(ff_c, 0.01).clock;
+  ff_first := follower_frame(ff_cursor, ff_c, ff_targets[0..<0]);
+  ff_c = tick.loop_frame(ff_c, 0.006).clock;
+  ff_bad := ff_c; ff_bad.frames += 1;
+  #assert !follower_frame(ff_first.cursor, ff_bad, ff_targets[..]).accepted;
+  ff_bad = ff_c; ff_bad.ticks += 1;
+  #assert !follower_frame(ff_first.cursor, ff_bad, ff_targets[..]).accepted;
+  ff_bad = ff_c; ff_bad.carry_ns += 1;
+  #assert !follower_frame(ff_first.cursor, ff_bad, ff_targets[..]).accepted;
+}
+
+#test "the grounded follower uses declared tuning checked triangles and previous-pose drawing" {
+  ff_g := mesh.Ground.{n = 1, cell = 100, west = -50, south = -50};
+  ff_h := [4] f32.[2.5, 2.5, 2.5, 2.5]; ff_empty: [1] f32; ff_links: [1] int;
+  ff_f := verse_follower_place(ff_g, ff_h[..], 0, 0, 0);
+  ff_p := follower_profile();
+  #assert ff_p.walk_speed == 2.6 && ff_p.run_speed == 5.2 && ff_p.acceleration == 14 && ff_p.turn_rate == 9;
+  ff_step := follower_step(ff_f, ff_p, ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 3.75, 0), 2.2, ff_empty[0..<0], 0.4);
+  #assert ff_step.status == FollowerStatus.ok && ff_step.follower.vel.x == 0.21875;
+  #assert ff_step.follower.pos.x == 0.00341796875 && ff_step.follower.pos.y == 2.5 && ff_step.follower.walking;
+  ff_fetch: Fetch; ff_fetch.dog = ff_f;
+  ff_pose := fetch_pose(ff_fetch); ff_fetch.dog = ff_step.follower;
+  ff_d := fetch_draw(ff_fetch, ff_pose, 0.25);
+  #assert ff_d.dog.pos.x == 0.0008544921875 && ff_d.dog.pos.y == 2.5;
+  #assert fetch_draw(ff_fetch, ff_pose, 0.25).dog.pos.x == ff_d.dog.pos.x;
+  #assert ff_fetch.dog.pos.x == 0.00341796875;
+  ff_p.acceleration = 7;
+  ff_slow := follower_step(ff_f, ff_p, ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 0, 0), 2.2, ff_empty[0..<0], 0.4);
+  #assert ff_slow.follower.pos.x == 0.001708984375;
+  ff_p.acceleration = 0;
+  #assert follower_step(ff_f, ff_p, ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 0, 0), 2.2, ff_empty[0..<0], 0.4).status == FollowerStatus.bad_profile;
+  ff_p = follower_profile(); ff_h[0] = 0 / 0.0f32;
+  ff_bad := follower_step(ff_f, ff_p, ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 0, 0), 2.2, ff_empty[0..<0], 0.4);
+  #assert ff_bad.status == FollowerStatus.bad_ground && ff_bad.follower.pos.x == ff_f.pos.x && ff_bad.follower.vel.x == ff_f.vel.x;
+}
+
+#test "fixed hands and throws use strict directions and retain throw ownership" {
+  ff_h := fixed_hand(v3(0, 0, 0), 0, 0.42, 1.25, 0.3);
+  #assert ff_h.x == -0.3 && ff_h.y == 1.25 && ff_h.z == 0.42;
+  ff_v := fixed_throw_velocity(0, 0, 10, v3(1, 50, 2));
+  #assert ff_v.x == 1 && ff_v.y == 0 && ff_v.z == 12;
+  ff_b: Ball; ff_b.held = 0;
+  ff_out := fixed_ball_throw(ff_b, v3(3, 4, 5), 0, 0, v3(1, 0, 2));
+  #assert ff_out.held == -1 && ff_out.thrown && !ff_out.resting;
+  #assert ff_out.pos.x == 3 && ff_out.pos.y == 4 && ff_out.pos.z == 5 && ff_out.vel.x == 1 && ff_out.vel.z == 12;
+  ff_b.held = -1; ff_b.pos.x = 7;
+  #assert fixed_ball_throw(ff_b, ff_h, 1, 0.5, v3(0, 0, 0)).pos.x == 7;
+}
+
+#test "fixed fetch follows chases brings stays and picks up on the assigned tick" {
+  ff_g := mesh.Ground.{n = 1, cell = 100, west = -50, south = -50};
+  ff_h: [4] f32; ff_empty: [1] f32; ff_links: [1] int; ff_f: Fetch;
+  ff_f.dog = verse_follower_place(ff_g, ff_h[..], 0, 0, 0); ff_f.ball.held = 99;
+  ff_r := fetch_step(ff_f, follower_profile(), ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 0, 0), v3(20, 1.25, 0), ff_empty[0..<0], ff_empty[0..<0], ff_empty[0..<0], true, false);
+  #assert ff_r.status == FollowerStatus.ok && ff_r.fetch.dog.pos.x == 0.00341796875 && ff_r.previous.dog.x == 0;
+  ff_r = fetch_step(ff_f, follower_profile(), ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 0, 0), v3(20, 1.25, 0), ff_empty[0..<0], ff_empty[0..<0], ff_empty[0..<0], false, false);
+  #assert ff_r.fetch.dog.pos.x == 0 && ff_r.fetch.dog.vel.x == 0 && !ff_r.fetch.dog.walking;
+  ff_f.ball.held = -1; ff_f.ball.thrown = true; ff_f.ball.resting = true; ff_f.ball.pos = v3(0, 0.6, 0.5);
+  ff_r = fetch_step(ff_f, follower_profile(), ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 0, 0), v3(20, 1.25, 0), ff_empty[0..<0], ff_empty[0..<0], ff_empty[0..<0], true, false);
+  #assert ff_r.fetch.mode == FETCH_BRING && ff_r.fetch.ball.held == 1 && !ff_r.fetch.ball.resting;
+  ff_f = ff_r.fetch;
+  ff_r = fetch_step(ff_f, follower_profile(), ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 0, 0), v3(20, 1.25, 0), ff_empty[0..<0], ff_empty[0..<0], ff_empty[0..<0], true, false);
+  #assert ff_r.fetch.mode == FETCH_BRING && ff_r.fetch.ball.held == 1 && ff_r.fetch.ball.pos.y == 0.6;
+  ff_f.dog.vel = v3(0, 0, 0);
+  ff_r = fetch_step(ff_f, follower_profile(), ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(0, 0, 0), v3(0, 1.25, 0), ff_empty[0..<0], ff_empty[0..<0], ff_empty[0..<0], true, false);
+  #assert ff_r.fetch.mode == FETCH_FOLLOW && ff_r.fetch.ball.held == -1 && !ff_r.fetch.ball.thrown;
+  ff_r = fetch_step(ff_f, follower_profile(), ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(0, 0, 0), v3(0, 1.25, 0), ff_empty[0..<0], ff_empty[0..<0], ff_empty[0..<0], true, true);
+  #assert ff_r.fetch.ball.held == 0 && ff_r.fetch.ball.pos.y == 1.25;
+  ff_p := follower_profile(); ff_p.acceleration = 0;
+  ff_r = fetch_step(ff_f, ff_p, ff_g, ff_h[..], ff_empty[0..<0], ff_links[0..<0], 0.9,
+    v3(20, 0, 0), v3(20, 1.25, 0), ff_empty[0..<0], ff_empty[0..<0], ff_empty[0..<0], true, false);
+  #assert ff_r.status == FollowerStatus.bad_profile && ff_r.fetch.dog.pos.x == ff_f.dog.pos.x && ff_r.fetch.ball.pos.z == ff_f.ball.pos.z;
+}
+
+// The receipt consumes an already-paid realm clock, never an approximation
+// made from frame seconds. Its cursor detects duplicate and skipped calls.
+follower_cursor_ok :: (ff_cursor: FrameCursor) -> bool {
+  if !ff_cursor.started { return true; }
+  return ff_cursor.frames > 0 && ff_cursor.ticks >= 0 && ff_cursor.carry_ns >= 0 && ff_cursor.carry_ns < tick.LOOP_STEP_NS;
+}
+follower_frame :: (ff_cursor: FrameCursor, ff_clock: tick.FrameClock, ff_targets: [] trace.StepTarget) -> FrameReceipt {
+  ff_out: FrameReceipt; ff_out.cursor = ff_cursor;
+  if !follower_cursor_ok(ff_cursor) { return ff_out; }
+  if ff_clock.step_ns != tick.LOOP_STEP_NS || ff_clock.max_steps < 1 || ff_clock.max_steps > tick.LOOP_MAX_STEPS
+      || ff_clock.max_frame_ns < 1 || ff_clock.max_frame_ns > tick.LOOP_MAX_FRAME_NS
+      || ff_clock.due != 0 || ff_clock.ran < 0 || ff_clock.ran > ff_clock.max_steps
+      || ff_clock.carry_ns < 0 || ff_clock.carry_ns >= ff_clock.step_ns
+      || ff_clock.counted_ns < 0 || ff_clock.counted_ns > ff_clock.max_frame_ns
+      || ff_clock.frames < 1 || ff_clock.ticks < ff_clock.ran || ff_targets.count != ff_clock.ran { return ff_out; }
+  if ff_cursor.started {
+    if ff_clock.frames == ff_cursor.frames && ff_clock.ticks == ff_cursor.ticks { ff_out.duplicate = true; return ff_out; }
+    if ff_clock.frames - ff_cursor.frames != 1 || ff_clock.ticks - ff_cursor.ticks != ff_clock.ran
+        || ff_clock.counted_ns != ff_clock.ran * ff_clock.step_ns + ff_clock.carry_ns - ff_cursor.carry_ns { return ff_out; }
+  } else {
+    ff_old_carry := ff_clock.ran * ff_clock.step_ns + ff_clock.carry_ns - ff_clock.counted_ns;
+    if ff_old_carry < 0 || ff_old_carry >= ff_clock.step_ns { return ff_out; }
+  }
+  for ff_i: 0..<ff_targets.count {
+    ff_p := ff_targets[ff_i];
+    if !finite(ff_p.feet.x) || !finite(ff_p.feet.y) || !finite(ff_p.feet.z)
+        || !finite(ff_p.velocity.x) || !finite(ff_p.velocity.y) || !finite(ff_p.velocity.z)
+        || !finite(ff_p.face) { return ff_out; }
+  }
+  ff_out.accepted = true; ff_out.steps = ff_clock.ran;
+  ff_out.counted = cast(f32) tick.loop_counted(ff_clock);
+  ff_out.alpha = cast(f32) tick.loop_alpha(ff_clock);
+  ff_out.cursor = FrameCursor.{started = true, frames = ff_clock.frames, ticks = ff_clock.ticks, carry_ns = ff_clock.carry_ns};
+  return ff_out;
+}
+
+// Only these four fields participate in grounded route motion. The
+// remaining fields retain their declared walking defaults and are not
+// claims that this route follower jumps, slides or owns a capsule.
+follower_profile :: () -> tuning.LocomotionProfile {
+  ff_p: tuning.LocomotionProfile;
+  ff_p.walk_speed = 2.6; ff_p.run_speed = 5.2; ff_p.acceleration = 14; ff_p.turn_rate = 9;
+  return ff_p;
+}
+follower_step_seconds :: () -> f32 { return f32(tick.LOOP_STEP_NS) / f32(tick.LOOP_SECOND); }
+
+follower_step :: (ff_f: Follower, ff_p: tuning.LocomotionProfile,
+    ff_g: mesh.Ground, ff_heights: [] f32, ff_nodes: [] f32, ff_links: [] int, ff_half: f32,
+    ff_to: Point, ff_stop: f32, ff_blocks: [] f32, ff_radius: f32) -> FollowerStep {
+  ff_out := FollowerStep.{follower = ff_f};
+  if !tuning.locomotion_profile_ok(ff_p) { ff_out.status = FollowerStatus.bad_profile; return ff_out; }
+  if !finite3(ff_f.pos) || !finite3(ff_f.vel) || !finite(ff_f.face) || !finite3(ff_to)
+      || !finite(ff_stop) || ff_stop < 0 || !finite(ff_radius) || ff_radius < 0 { ff_out.status = FollowerStatus.bad_state; return ff_out; }
+  if ff_blocks.count >= FOLLOW_BLOCK && !(ff_radius > 0) { ff_out.status = FollowerStatus.bad_state; return ff_out; }
+  ff_before := mesh.ground_sample(ff_g, ff_heights, units.Quantity.{value = ff_f.pos.x}, units.Quantity.{value = ff_f.pos.z});
+  if !ff_before.ok { ff_out.status = FollowerStatus.bad_ground; return ff_out; }
+  ff_dt := follower_step_seconds(); ff_next := ff_f;
+  ff_away := flat_gap(ff_f.pos, ff_to); ff_want := v3(0, 0, 0);
+  if ff_away > ff_stop {
+    ff_aim := past_blocks(ff_f.pos, verse_route_next(ff_nodes, ff_links, ff_half, ff_f.pos, ff_to), ff_blocks, ff_radius);
+    ff_dir := sub(ff_aim, ff_f.pos); ff_dir.y = 0; ff_dir = unit_or(ff_dir, v3(0, 0, 0));
+    ff_speed := ifx ff_away > f32(FOLLOW_FAR) then ff_p.run_speed else ff_p.walk_speed;
+    ff_speed = lo(ff_speed, (ff_away - ff_stop) * 2.5 + 0.4);
+    ff_want = times(ff_dir, ff_speed);
+  }
+  ff_dv := sub(ff_want, ff_f.vel); ff_dv.y = 0;
+  ff_change := length(ff_dv); ff_most := ff_p.acceleration * ff_dt;
+  if ff_change != 0 { ff_dv = times(ff_dv, lo(1, ff_most / ff_change)); }
+  ff_next.vel = add(ff_f.vel, ff_dv); ff_next.vel.y = 0;
+  ff_next.pos = add(ff_f.pos, times(ff_next.vel, ff_dt));
+  ff_next = around_blocks(ff_next, ff_to, ff_blocks, ff_radius);
+  if ff_blocks.count >= FOLLOW_BLOCK {
+    ff_dx := f64(ff_next.pos.x)-f64(ff_f.pos.x); ff_dz := f64(ff_next.pos.z)-f64(ff_f.pos.z);
+    if ff_dx*ff_dx+ff_dz*ff_dz > f64(ff_radius)*f64(ff_radius)/4 { ff_out.status = FollowerStatus.bad_state; return ff_out; }
+  }
+  ff_ground := mesh.ground_sample(ff_g, ff_heights, units.Quantity.{value = ff_next.pos.x}, units.Quantity.{value = ff_next.pos.z});
+  if !ff_ground.ok { ff_out.status = FollowerStatus.bad_ground; return ff_out; }
+  ff_next.pos.y = ff_ground.height.value;
+  ff_speed_now := flat_length(ff_next.vel); ff_next.walking = ff_speed_now > 0.2;
+  if ff_next.walking {
+    ff_turn := cast(f32) (1 - ff_math.math_exp_f64(-f64(ff_p.turn_rate) * f64(ff_dt)));
+    ff_next.face = wrap_angle(ff_f.face + wrap_angle(yaw_of(ff_next.vel.x, ff_next.vel.z) - ff_f.face) * ff_turn);
+  }
+  ff_out.follower = ff_next;
+  return ff_out;
+}
+
+fixed_hand :: (ff_feet: Point, ff_face: f32, ff_ahead: f32, ff_up: f32, ff_right: f32) -> Point {
+  ff_s := ff_math.math_sin(ff_face); ff_c := ff_math.math_cos(ff_face);
+  return add(ff_feet, v3(ff_s * ff_ahead - ff_c * ff_right, ff_up, ff_c * ff_ahead + ff_s * ff_right));
+}
+fixed_throw_velocity :: (ff_yaw: f32, ff_lift: f32, ff_speed: f32, ff_carrier: Point) -> Point {
+  ff_dir := v3(ff_math.math_sin(ff_yaw) * ff_math.math_cos(ff_lift), ff_math.math_sin(ff_lift), ff_math.math_cos(ff_yaw) * ff_math.math_cos(ff_lift));
+  ff_v := times(ff_dir, ff_speed);
+  if finite3(ff_carrier) { ff_v = add(ff_v, v3(ff_carrier.x, 0, ff_carrier.z)); }
+  return ff_v;
+}
+fixed_ball_throw :: (ff_b: Ball, ff_hand: Point, ff_yaw: f32, ff_lift: f32, ff_carrier: Point) -> Ball {
+  if ff_b.held < 0 { return ff_b; }
+  ff_next := verse_ball_release(ff_b, ff_hand, fixed_throw_velocity(ff_yaw, ff_lift, f32(THROW_SPEED), ff_carrier));
+  ff_next.thrown = true; return ff_next;
+}
+fixed_mouth :: (ff_d: Follower) -> Point { return fixed_hand(ff_d.pos, ff_d.face, f32(MOUTH_AHEAD), f32(MOUTH_UP), 0); }
+
+fetch_pose :: (ff_f: Fetch) -> FetchPose {
+  return FetchPose.{ready = true, dog = ff_f.dog.pos, face = ff_f.dog.face, ball = ff_f.ball.pos, spin = ff_f.ball.spin};
+}
+// A pure drawing copy. No simulation state or cursor is written.
+fetch_draw :: (ff_f: Fetch, ff_previous: FetchPose, ff_alpha: f32) -> Fetch {
+  if !ff_previous.ready { return ff_f; }
+  ff_a := ifx finite(ff_alpha) then clamp(ff_alpha, 0, 1) else 0.0f32;
+  ff_draw := ff_f;
+  ff_draw.dog.pos = mix(ff_previous.dog, ff_f.dog.pos, ff_a);
+  ff_draw.dog.face = wrap_angle(ff_previous.face + wrap_angle(ff_f.dog.face - ff_previous.face) * ff_a);
+  ff_draw.ball.pos = mix(ff_previous.ball, ff_f.ball.pos, ff_a);
+  ff_draw.ball.spin = ff_previous.spin + (ff_f.ball.spin - ff_previous.spin) * ff_a;
+  if ff_draw.ball.held == 1 { ff_draw.ball.pos = fixed_mouth(ff_draw.dog); }
+  return ff_draw;
+}
+
+// One assigned realm tick, ball then fetch. The legacy ball kernel retains
+// its existing bounce/roll contract and internal substeps, now always fed
+// exactly the shared 1/64-second step. It owns no independent frame clock.
+fetch_step :: (ff_f: Fetch, ff_p: tuning.LocomotionProfile, ff_g: mesh.Ground, ff_heights: [] f32,
+    ff_nodes: [] f32, ff_links: [] int, ff_half: f32, ff_you: Point, ff_hand: Point,
+    ff_spheres: [] f32, ff_boxes: [] f32, ff_blocks: [] f32, ff_enabled: bool, ff_auto_pick: bool) -> FetchStep {
+  ff_out := FetchStep.{fetch = ff_f, previous = fetch_pose(ff_f)};
+  ff_next := ff_f; ff_b := ff_f.ball;
+  if ff_b.held == 0 { ff_b = verse_ball_carry(ff_b, ff_hand); }
+  ff_b = verse_ball_step(ff_b, ff_g, ff_heights, ff_spheres, ff_boxes, follower_step_seconds());
+  ff_next.ball = ff_b;
+  if ff_next.mode == FETCH_FOLLOW {
+    if ff_b.held < 0 && ff_b.thrown { ff_next.mode = FETCH_CHASE; }
+  } else if ff_next.mode == FETCH_CHASE {
+    if ff_b.held == 0 || !ff_b.thrown { ff_next.mode = FETCH_FOLLOW; }
+  } else if ff_next.mode == FETCH_BRING && ff_b.held != 1 { ff_next.mode = FETCH_FOLLOW; }
+  ff_to := ff_you; ff_stop := f32(FOLLOW_STOP); ff_route := ff_links;
+  if ff_next.mode == FETCH_CHASE {
+    ff_back := sub(ff_f.dog.pos, ff_b.pos); ff_back.y = 0;
+    ff_to = add(ff_b.pos, times(unit_or(ff_back, v3(0, 0, -1)), f32(MOUTH_AHEAD) - 0.2));
+    ff_stop = 0.05; ff_route = ff_links[ff_links.count..<ff_links.count];
+  } else if ff_next.mode == FETCH_BRING { ff_stop = f32(BRING_STOP); }
+  ff_motion := follower_step(ff_f.dog, ff_p, ff_g, ff_heights, ff_nodes, ff_route, ff_half, ff_to, ff_stop, ff_blocks, f32(DOG_BODY));
+  if ff_motion.status != FollowerStatus.ok { ff_out.status = ff_motion.status; return ff_out; }
+  if ff_enabled { ff_next.dog = ff_motion.follower; }
+  else { ff_next.dog.vel = v3(0, 0, 0); ff_next.dog.walking = false; }
+  ff_mouth := fixed_mouth(ff_next.dog);
+  if ff_next.mode == FETCH_CHASE && ff_enabled {
+    if length(sub(ff_mouth, ff_b.pos)) < 0.5 + ff_b.radius && length(ff_b.vel) < f32(CATCH_SPEED) {
+      ff_next.ball.held = 1; ff_next.ball.resting = false; ff_next.ball.vel = v3(0, 0, 0); ff_next.mode = FETCH_BRING;
+    }
+  } else if ff_next.mode == FETCH_BRING {
+    ff_next.ball = verse_ball_carry(ff_b, ff_mouth);
+    if ff_enabled && flat_length(sub(ff_next.dog.pos, ff_you)) <= f32(BRING_STOP) + 0.3 && flat_length(ff_next.dog.vel) < 0.6 {
+      ff_next.ball = verse_ball_release(ff_next.ball, ff_mouth, v3(0, 0, 0));
+      ff_next.ball.thrown = false; ff_next.mode = FETCH_FOLLOW;
+    }
+  }
+  if ff_auto_pick && !ff_next.ball.thrown && ff_next.mode == FETCH_FOLLOW && verse_ball_can_pick(ff_next.ball, ff_you) {
+    ff_next.ball = verse_ball_pick(ff_next.ball, 0, ff_you, ff_hand);
+  }
+  ff_out.fetch = ff_next; return ff_out;
+}
+
+// A scene may apply one queued input command before stepping. Refusal restores the complete
+// pre-command state, while drawing always starts from that original published pose.
+fetch_publish :: (ff_before: Fetch, ff_stepped: FetchStep) -> FetchStep {
+  ff_out := ff_stepped; ff_out.previous = fetch_pose(ff_before);
+  if ff_stepped.status != FollowerStatus.ok { ff_out.fetch = ff_before; }
+  return ff_out;
+}

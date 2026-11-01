@@ -3,17 +3,17 @@
 
 #test "the checked fixed step admits the normal walking contact" {
   boxes := [6] f32.[-2, 0, 1, 2, 2, 1.01]; w: World; w.walls = boxes[..];
-  p := held(verse_player_place(0, 0, 0.65, 0), 0, 1, true); p.vel.z = RUN;
+  p := held(walk_place(0, 0, 0.65, 0), 0, 1, true); p.vel.z = RUN;
   q := step(w, p, STEP);
   #assert abs(q.pos.z - 0.7) < 0.000001 && q.vel.z == 0;
-  #assert verse_player_collision_status(q) == cast(int) cast(u8) CollideStatus.ok;
-  #assert verse_player_collision_refusals(q) == 0 && verse_player_collision_residual(q) <= f32(COLLIDE_EPS);
-  #assert verse_player_collision_passes(q) >= 1 && !verse_player_collision_floor_cut(q);
+  #assert walk_collision_status(q) == cast(int) cast(u8) CollideStatus.ok;
+  #assert walk_collision_refusals(q) == 0 && walk_collision_residual(q) <= f32(COLLIDE_EPS);
+  #assert walk_collision_passes(q) >= 1 && !walk_collision_floor_cut(q);
 }
 
 #test "a refused fixed step preserves its queued jump and recovers visibly" {
   w: World;
-  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
+  p := walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0);
   p.vel.z = 20;
   q := step_once(w, p, STEP);
   #assert q.collision_status == CollideStatus.travel_limit && q.collision_refusals == 1;
@@ -29,7 +29,7 @@
 
 #test "crowded fixed-step contacts refuse atomically and expose their residual" {
   boxes := [12] f32.[-2, 0, -2, -0.2, 2, 2, 0.2, 0, -2, 2, 2, 2];
-  w: World; w.walls = boxes[..]; p := verse_player_place(0, 0, 0, 0);
+  w: World; w.walls = boxes[..]; p := walk_place(0, 0, 0, 0);
   q := step(w, p, STEP);
   #assert q.collision_status == CollideStatus.unresolved && q.collision_refusals == 1 && q.collision_residual > 0.1;
   #assert same_step(p, q) && q.collision_passes == 1 && !q.collision_floor_cut;
@@ -37,7 +37,7 @@
 
 #test "collision capacity and an unknown profile refuse before the step publishes" {
   boxes: [(COLLIDE_MAX_SHAPES + 1) * QUERY_BOX] f32;
-  w: World; w.walls = boxes[..]; p := held(verse_player_place(0, 0, 0, 0), 0, 1, true);
+  w: World; w.walls = boxes[..]; p := held(walk_place(0, 0, 0, 0), 0, 1, true);
   q := step(w, p, STEP);
   #assert q.collision_status == CollideStatus.capacity && q.collision_refusals == 1 && same_step(p, q);
   w.walls = boxes[0..<0]; w.collision.max_passes = 0;
@@ -49,7 +49,7 @@
 
 #test "a rejected physics step still consumes its scheduler time" {
   w: World; w.collision.max_passes = 0;
-  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
+  p := walk_input(walk_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
   q := advance_in(w, p, STEP);
   #assert q.clock.ticks == 1 && q.collision_status == CollideStatus.bad_profile && q.collision_refusals == 1;
   #assert q.pos.x == p.pos.x && q.pos.y == p.pos.y && q.pos.z == p.pos.z;
@@ -57,17 +57,17 @@
 }
 
 #test "trusted large-move adapters retain their legacy contract through shared helpers" {
-  w: World; p := verse_player_place(0, 0, 0, 0);
+  w: World; p := walk_place(0, 0, 0, 0);
   q := move_across(w, p, 1.5, -2);
   #assert q.pos.x == 1.5 && q.pos.z == -2 && q.collision_refusals == 0;
 }
 
 #test "named realm admission uses its declared collision profile and unknown names preserve input" {
-  p := verse_player_input(verse_player_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
+  p := walk_input(walk_place(0, 0, 0, 0), 0, 1, 0, 0, true, true, 0, 0);
   empty: [1] f32;
-  known := verse_player_advance_in_realm(p, STEP, empty[0..<0], empty[0..<0], empty[0..<0], "the-grid");
-  #assert same_step(known, verse_player_advance(p, STEP)) && known.collision_status == CollideStatus.ok;
-  unknown := verse_player_advance_in_realm(p, STEP, empty[0..<0], empty[0..<0], empty[0..<0], "not-a-realm");
+  known := walk_advance_in_realm(p, STEP, empty[0..<0], empty[0..<0], empty[0..<0], "the-grid");
+  #assert same_step(known, walk_advance(p, STEP)) && known.collision_status == CollideStatus.ok;
+  unknown := walk_advance_in_realm(p, STEP, empty[0..<0], empty[0..<0], empty[0..<0], "not-a-realm");
   #assert unknown.collision_status == CollideStatus.bad_profile && unknown.collision_refusals == 1;
   #assert same_step(p, unknown) && unknown.jumps.waiting == p.jumps.waiting && unknown.jumps.taken == p.jumps.taken;
   #assert unknown.clock.ticks == p.clock.ticks && unknown.clock.carry_ns == p.clock.carry_ns;
@@ -77,23 +77,23 @@
   heights := [4] f32.[2.5, 2.5, 2.5, 2.5]; fields: [1] QueryHeightfield;
   fields[0].ground.n = 1; fields[0].ground.cell = 4; fields[0].ground.west = -2; fields[0].ground.south = -2;
   fields[0].heights = heights[..]; w: World; w.heightfields = fields[..];
-  p := held(verse_player_place(0, 2.5, 0, 0), 0, 1, false);
+  p := held(walk_place(0, 2.5, 0, 0), 0, 1, false);
   q := step(w, p, STEP);
   #assert q.pos.z > 0 && q.pos.y == 2.5 && q.on_ground;
   #assert q.collision_status == CollideStatus.ok && q.query_status == QueryStatus.ok;
-  q = verse_player_input(q, 0, 1, 0, 0, false, true, 0, 0);
+  q = walk_input(q, 0, 1, 0, 0, false, true, 0, 0);
   q = step(w, q, STEP);
   #assert !q.on_ground && q.pos.y > 2.5 && q.vel.y > 0 && q.jumps.taken == 1;
   for k: 0..<48 { q = step(w, q, STEP); }
   #assert q.on_ground && q.pos.y == 2.5 && q.vel.y == 0;
-  #assert verse_player_query_status(q) == cast(int) cast(u8) QueryStatus.ok;
+  #assert walk_query_status(q) == cast(int) cast(u8) QueryStatus.ok;
 }
 
 #test "heightfield Player uses the drawn triangle slope for sliding" {
   heights := [4] f32.[0, 2, 0, 2]; fields: [1] QueryHeightfield;
   fields[0].ground.n = 1; fields[0].ground.cell = 1; fields[0].ground.west = 0; fields[0].ground.south = 0;
   fields[0].heights = heights[..]; w: World; w.heightfields = fields[..];
-  p := verse_player_place(0.5, 1, 0.5, 0);
+  p := walk_place(0.5, 1, 0.5, 0);
   q := step(w, p, STEP);
   #assert q.sliding && !q.on_ground && q.vel.x < 0 && q.vel.z == 0;
   #assert q.pos.y == 1 && q.query_status == QueryStatus.ok && q.collision_status == CollideStatus.ok;
@@ -103,7 +103,7 @@
   heights := [4] f32.[2.5, 2.5, 2.5, 2.5]; fields: [1] QueryHeightfield;
   fields[0].ground.n = 1; fields[0].ground.cell = 1; fields[0].ground.west = 0; fields[0].ground.south = 0;
   fields[0].heights = heights[..]; w: World; w.heightfields = fields[..];
-  p := verse_player_input(place_in(w, 0.5, 2.5, 0.5, 0), 0, 1, 0, 0, false, true, 0, 0);
+  p := walk_input(place_in(w, 0.5, 2.5, 0.5, 0), 0, 1, 0, 0, false, true, 0, 0);
   fields[0].heights = heights[0..<3];
   q := step_once(w, p, STEP);
   #assert q.collision_status == CollideStatus.bad_state && q.query_status == QueryStatus.terrain && q.collision_refusals == 1;
@@ -120,16 +120,16 @@
   expected := QueryStatus.capacity;
   if which == 0 { w.heightfields = fields[..]; }
   else { nan := 0.0f32; w.ground = nan / nan; expected = QueryStatus.invalid; }
-  p := verse_player_place(0, 0, 0, 0); q := step(w, p, STEP);
+  p := walk_place(0, 0, 0, 0); q := step(w, p, STEP);
   #assert same_step(p, q) && q.collision_status == CollideStatus.bad_state && q.query_status == expected;
-  #assert q.collision_refusals == 1 && verse_player_query_status(q) == cast(int) cast(u8) expected;
+  #assert q.collision_refusals == 1 && walk_query_status(q) == cast(int) cast(u8) expected;
 }
 
 #test "heightfield Player camera stops above terrain and exposes an independent refusal" {
   heights := [4] f32.[2.5, 2.5, 2.5, 2.5]; fields: [1] QueryHeightfield;
   fields[0].ground.n = 1; fields[0].ground.cell = 4; fields[0].ground.west = -2; fields[0].ground.south = -2;
   fields[0].heights = heights[..]; w: World; w.heightfields = fields[..];
-  p := verse_player_place(0, 2.5, 0, 0); p.phi = PI;
+  p := walk_place(0, 2.5, 0, 0); p.phi = PI;
   q := camera_step(w, p, STEP);
   #assert q.dist < p.dist && abs(q.dist - (f32(LOOK_AT_HEIGHT) - f32(CAM_CLEAR))) < 0.0001;
   #assert q.pos.y == 2.5 && q.camera_query_status == QueryStatus.ok;
@@ -138,12 +138,12 @@
   #assert refused.target.x == q.target.x && refused.target.y == q.target.y && refused.target.z == q.target.z;
   #assert refused.spring_vel.x == q.spring_vel.x && refused.spring_vel.y == q.spring_vel.y && refused.spring_vel.z == q.spring_vel.z;
   #assert refused.dist == q.dist && refused.pos.y == q.pos.y && refused.collision_status == q.collision_status;
-  #assert verse_player_camera_query_status(refused) == cast(int) cast(u8) QueryStatus.terrain;
+  #assert walk_camera_query_status(refused) == cast(int) cast(u8) QueryStatus.terrain;
 }
 
 #test "trusted Player contact adapters preserve floor sides and wall response" {
   floors: [STAND_FLOATS] f32; stand_put_box(floors[..], 0, 1, -1, 3, 1, 1);
-  w: World; w.floors = floors[..]; p := verse_player_place(0, 0, 0, 0);
+  w: World; w.floors = floors[..]; p := walk_place(0, 0, 0, 0);
   #assert !floor_cuts(w, 0, 0, 0) && floor_cuts(w, 2, 0, 0);
   candidate := p; candidate.pos.x = 2; candidate.vel.x = 3;
   stopped := off_floors(w, p, candidate);
@@ -156,18 +156,18 @@
 
 #test "the legacy exported floor advance still eases onto its supplied surface" {
   floors: [STAND_FLOATS] f32; stand_put_box(floors[..], 0, -2, -2, 2, 2, 0.04);
-  empty: [1] f32; p := verse_player_place(0, 0, 0, 0);
-  q := verse_player_advance_on(p, STEP, empty[0..<0], empty[0..<0], floors[..]);
+  empty: [1] f32; p := walk_place(0, 0, 0, 0);
+  q := walk_advance_on(p, STEP, empty[0..<0], empty[0..<0], floors[..]);
   #assert abs(q.pos.y - 0.00625) < 0.00000001 && q.on_ground && q.clock.ticks == 1;
-  #assert q.collision_status == CollideStatus.ok && verse_player_advance(p, STEP).pos.y == 0;
+  #assert q.collision_status == CollideStatus.ok && walk_advance(p, STEP).pos.y == 0;
 }
 
 #test "an external Player constraint translates camera history only on the constrained axes" {
-  p := verse_player_place(1, 0.5, 2, 0); p.vel = v3(3, 4, 5);
-  q := verse_player_constrain(p, 8, 2);
+  p := walk_place(1, 0.5, 2, 0); p.vel = v3(3, 4, 5);
+  q := walk_constrain(p, 8, 2);
   #assert q.pos.x == 8 && q.prev_pos.x == 8 && q.target.x == p.target.x + 7 && q.prev_target.x == p.prev_target.x + 7;
   #assert q.vel.x == 0 && q.vel.y == 4 && q.vel.z == 5 && q.pos.y == 0.5 && q.pos.z == 2;
-  r := verse_player_constrain(q, 8, -4);
+  r := walk_constrain(q, 8, -4);
   #assert r.pos.z == -4 && r.prev_pos.z == -4 && r.target.z == q.target.z - 6 && r.prev_target.z == q.prev_target.z - 6;
   #assert r.vel.x == 0 && r.vel.z == 0 && r.target.x == q.target.x;
 }
@@ -181,14 +181,14 @@
   // The fitted diagonal is below pi/4; taking the reciprocal branch gives
   // a different f32 word. These are the published scalar profile's words.
   #assert f32_bits(atan2(1, 1)) == 1061752766;
-  #assert f32_bits(verse_player_place(0, 0, 0, 1).theta) == 3221819354;
+  #assert f32_bits(walk_place(0, 0, 0, 1).theta) == 3221819354;
 }
 
 #test "Player contact diagnostics retain a floor cut and the last counter increment" {
-  p := verse_player_place(0, 0, 0, 0); p.collision_refusals = 18446744073709551614;
+  p := walk_place(0, 0, 0, 0); p.collision_refusals = 18446744073709551614;
   r := CollideResult.{status = CollideStatus.unresolved, passes = 7, residual = 0.125, floor_cut = true};
   q := collision_report(p, r);
-  #assert verse_player_collision_floor_cut(q) && verse_player_collision_passes(q) == 7 && verse_player_collision_residual(q) == 0.125;
+  #assert walk_collision_floor_cut(q) && walk_collision_passes(q) == 7 && walk_collision_residual(q) == 0.125;
   #assert q.collision_refusals == 18446744073709551615 && collision_report(q, r).collision_refusals == q.collision_refusals;
 }
 
@@ -197,12 +197,12 @@
   #assert pair.s == 0.5 && pair.t == 0.5;
   #assert pair.p.y == 2 && pair.q.x == 0 && pair.q.y == 2 && pair.q.z == 1;
   bodies := [BODY] f32.[0, 0, 1, 0, 1, 1, 0.4]; w: World; w.bodies = bodies[..]; w.collision.max_passes = 1;
-  q := move_across(w, verse_player_place(0, 0, 1.4, 0), 0, 0);
+  q := move_across(w, walk_place(0, 0, 1.4, 0), 0, 0);
   #assert q.pos.z > 1.69 && q.pos.z < 1.71;
 }
 
 #forall "Player grip preserves the published finite and airborne fallbacks" which: 0..<8 {
-  w: World; p := held(verse_player_place(0, 0, 0, 0), 1, 0, false); p.theta = 0;
+  w: World; p := held(walk_place(0, 0, 0, 0), 1, 0, false); p.theta = 0;
   zero := 0.0f32; expected := 0.9375f32;
   if which == 0 { p.grip = 0; }
   if which == 1 { p.grip = -zero; }
@@ -225,25 +225,25 @@
   p.pos.y = 0.5;
   airborne := step(w, p, STEP);
   #assert !airborne.sliding && airborne.vel.x == 0 && airborne.vel.z == 0 && airborne.vel.y < -0.4;
-  p = held(verse_player_place(0, 0, 0, 0), 0, 1, true); p.pace = 0.5;
+  p = held(walk_place(0, 0, 0, 0), 0, 1, true); p.pace = 0.5;
   #assert step(World.{}, p, STEP).act == Act.walking; // speed is exactly WALK + 0.25
 }
 
 #test "the exported Player floor advance retains bodies and walls as well as floors" {
   empty: [1] f32; bodies := [BODY] f32.[0, 0, 1, 0, 1, 1, 0.4];
-  p := verse_player_place(0, 0, 1.4, 0);
-  body_stop := verse_player_advance_on(p, STEP, bodies[..], empty[0..<0], empty[0..<0]);
+  p := walk_place(0, 0, 1.4, 0);
+  body_stop := walk_advance_on(p, STEP, bodies[..], empty[0..<0], empty[0..<0]);
   #assert body_stop.pos.z > 1.69 && body_stop.pos.z < 1.71;
-  boxes := [6] f32.[-2, 0, 1, 2, 2, 1.1]; p = verse_player_place(0, 0, 0.8, 0);
-  wall_stop := verse_player_advance_on(p, STEP, empty[0..<0], boxes[..], empty[0..<0]);
+  boxes := [6] f32.[-2, 0, 1, 2, 2, 1.1]; p = walk_place(0, 0, 0.8, 0);
+  wall_stop := walk_advance_on(p, STEP, empty[0..<0], boxes[..], empty[0..<0]);
   #assert abs(wall_stop.pos.z - 0.7) < 0.000001;
 }
 
 #test "the desk screen admits feet below it and blocks the right hand side above the desk" {
   walls: [12] f32; desk(walls[..]); w: World; w.walls = walls[6..<12];
-  below := out_of_walls(w, verse_player_place(0, -1, 4, 0));
+  below := out_of_walls(w, walk_place(0, -1, 4, 0));
   #assert below.pos.x == 0 && below.pos.z == 4;
-  beside := out_of_walls(w, verse_player_place(0.5, 1.3, 4, 0));
+  beside := out_of_walls(w, walk_place(0.5, 1.3, 4, 0));
   #assert abs(beside.pos.z - 4) > 0.39;
   roof: [2 * STAND_FLOATS] f32; gable(roof[..], 4); w = World.{floors = roof[..]};
   under := floor_under(w, 2, 0, 6);
@@ -251,25 +251,25 @@
 }
 
 #test "Player zoom keeps invalid inputs and exact view crossing boundaries" {
-  p := verse_player_place(7, 0, 2, 0); p.phi = 0.5; p.dist = 4; p.prev_dist = 3;
-  unchanged := verse_player_zoom_view(p, 42, 0);
+  p := walk_place(7, 0, 2, 0); p.phi = 0.5; p.dist = 4; p.prev_dist = 3;
+  unchanged := walk_zoom_view(p, 42, 0);
   #assert unchanged.mode == 42 && unchanged.player.pos.x == 7 && unchanged.player.dist == 4;
   p.zoom_push = 0.2; zero := 0.0f32;
-  invalid := verse_player_zoom_view(p, 0, zero / zero);
+  invalid := walk_zoom_view(p, 0, zero / zero);
   #assert invalid.mode == 0 && invalid.player.zoom_push == 0.2;
-  top := verse_player_zoom_view(p, 2, -100);
+  top := walk_zoom_view(p, 2, -100);
   #assert top.mode == 2 && top.player.max_dist == 1 && top.player.phi == 0.5;
-  cleared := verse_player_zoom_view(p, 0, -0.1); #assert cleared.player.zoom_push == 0;
+  cleared := walk_zoom_view(p, 0, -0.1); #assert cleared.player.zoom_push == 0;
   p.zoom_push = 0;
-  outward := verse_player_zoom_view(p, 0, ZOOM_OUT);
+  outward := walk_zoom_view(p, 0, ZOOM_OUT);
   #assert outward.mode == 1 && outward.player.max_dist == 1 && outward.player.dist == 1 && outward.player.prev_dist == 1;
   #assert outward.player.phi == f32(BEHIND_PHI) && outward.player.zoom_push == 0;
   p.zoom_push = 0.2; p.max_dist = 1.5;
-  exact_closest := verse_player_zoom_view(p, 1, -0.5);
+  exact_closest := walk_zoom_view(p, 1, -0.5);
   #assert exact_closest.mode == 1 && exact_closest.player.max_dist == 1 && exact_closest.player.zoom_push == 0;
-  positive := verse_player_zoom_view(p, 1, 0.1); #assert positive.player.zoom_push == 0;
+  positive := walk_zoom_view(p, 1, 0.1); #assert positive.player.zoom_push == 0;
   p.max_dist = 1; p.zoom_push = 0;
-  inward := verse_player_zoom_view(p, 1, -ZOOM_IN);
+  inward := walk_zoom_view(p, 1, -ZOOM_IN);
   #assert inward.mode == 0 && inward.player.phi == f32(PI / 2) && inward.player.zoom_push == 0;
 }
 

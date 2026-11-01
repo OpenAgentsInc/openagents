@@ -98,6 +98,7 @@ static void start(uint32_t state) {
   placed = true;
   verse_place_golden(place_k(), golden);
   villa_walls(at(state));   // the page started: its orbit is where you start
+  villa_on_realm_clock(at(state));
   place_seen(state);
 }
 
@@ -219,7 +220,7 @@ static void pose(uint32_t state, float dt) {
   vf_step(fv(), 0, villa_you_speed(at(state)), dt);
   int64_t n = vf_place(fv(), 0, feet.x, feet.y, feet.z, v->face, (coax_v_f32){v->bones.e, per}, (coax_v_f32){v->bound.e, 4});
   villa_set_bones(at(state), 0, n);
-  coax_t_Follower dog = villa_dog(at(state));
+  coax_t_Follower dog = villa_draw_dog(at(state));
   float speed = sqrtf(dog.vel.x * dog.vel.x + dog.vel.z * dog.vel.z);
   vf_step(fv(), 1, speed, dt);
   n = vf_place(fv(), 1, dog.pos.x, dog.pos.y, dog.pos.z, dog.face, (coax_v_f32){v->bones.e + per, per}, (coax_v_f32){v->bound.e + 4, 4});
@@ -246,10 +247,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (sticks.zoom != 0) villa_wheel(at(state), sticks.zoom);   /* a pinch zooms as the wheel does (verse/grid.coax) */
   sticks = verse_sticks_used(sticks);
   int64_t walls = villa_walls(at(state));
-  player = verse_player_advance_in_realm(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6},
+  coax_t_AdvanceTrace walked = verse_player_advance_in_realm_traced(player, frame, (coax_v_f32){0, 0}, (coax_v_f32){v->walls.e, walls * 6},
                                          (coax_v_f32){0, 0}, (coax_string){"hecates-cemetery", sizeof "hecates-cemetery" - 1});
+  player = walked.player;
   coax_t_Vec3 feet = verse_player_feet(player);
-  villa_step(at(state), dt, feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.vel.x, player.vel.z);
+  villa_step_on_clock(at(state), player.clock, (coax_v_t_StepTarget){walked.targets.e, walked.count},
+                      feet.x, feet.y, feet.z, verse_player_face(player), verse_player_act(player), player.vel.x, player.vel.z);
   {   // metres walked and each 20 m square of the cemetery visited once (analytics.coax track_walk, track_area)
     static float last_x, last_z; static bool placed;
     if (placed) { float dx = feet.x - last_x, dz = feet.z - last_z; track_walk(tr(), __builtin_sqrt((double)(dx * dx + dz * dz))); }

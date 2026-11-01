@@ -309,7 +309,7 @@ step 1 doesn't. The two steps of frame 1 split the 0.3 rad look.
 `verse_player_input` is the controller's entry point for one frame's
 controls. It records a jump as a press with `input_level`:
 
-<!-- source: verse/player.coax input -->
+<!-- source: aethyr/walk.coax input -->
 ```jai
 // This frame's controls, as InputIntent carries them: keyboard axes (-1, 0,
 // 1), stick axes in [-1, 1] (x right, y forward), run and jump held, and look
@@ -318,8 +318,8 @@ controls. It records a jump as a press with `input_level`:
 // frame that runs no step keeps it and a frame that runs two jumps once. The look turns the
 // camera at once (the realms' cameras read theta and phi each frame); the Grid's session splits
 // it over the steps (verse/gridwalk.coax), and the other realms follow with ec-migrate.
-verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
-                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player #export_c {
+walk_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32,
+                          run: bool, jump: bool, dyaw: f32, dpitch: f32) -> Player {
   next := p;
   next.key_x = clamp(key_x, -1, 1);
   next.key_y = clamp(key_y, -1, 1);
@@ -340,15 +340,18 @@ verse_player_input :: (p: Player, key_x: f32, key_y: f32, pad_x: f32, pad_y: f32
 Each fixed step first takes a waiting press. If you are on the ground, you
 jump:
 
-<!-- source: verse/player.coax take -->
+<!-- source: aethyr/walk.coax take -->
 ```jai
 // One fixed step. It first takes a waiting jump press: from the ground, it jumps.
 step :: (w: World, given: Player, dt: f32) -> Player {
+  if !locomotion_profile_ok(w.locomotion) || w.locomotion.run_speed * f32(STEP) > w.collision.max_travel {
+    return collision_report(given, CollideResult.{state = collision_state(given), status = CollideStatus.bad_profile});
+  }
   p := given;
   t := input_take(given.jumps);
   p.jumps = t.edge;
   if t.pressed && p.on_ground {
-    p.vel.y = JUMP;
+    p.vel.y = w.locomotion.jump_speed;
     p.on_ground = false;
   }
 ```
@@ -417,31 +420,31 @@ The controller's checks cover these cases:
 - A session on the keyboard and the same session on the touch stick give the
   same `Intent` every frame, and the player passes through the same states.
 
-<!-- source: verse/player.coax presses -->
+<!-- source: aethyr/walk.coax presses -->
 ```jai
 // The input contract (aethyr/input.coax, #12609): a press is taken by exactly one step. At
 // 144 FPS most frames run no step: a press in one of them jumps on the next step, not never.
 // A frame that runs two steps jumps once, not twice.
 #test "a press in a frame with no step jumps on the next one, and a frame of two jumps once" {
   w: World;
-  p := verse_player_place(0, 0, 0, 0);
-  p = verse_player_input(p, 0, 0, 0, 0, false, true, 0, 0);
+  p := walk_place(0, 0, 0, 0);
+  p = walk_input(p, 0, 0, 0, 0, false, true, 0, 0);
   p = advance_in(w, p, 0.001);                    // runs no step
   #assert p.clock.ticks == 0 && p.on_ground && p.jumps.waiting == 1;
-  p = verse_player_input(p, 0, 0, 0, 0, false, false, 0, 0);   // let go before the step
+  p = walk_input(p, 0, 0, 0, 0, false, false, 0, 0);   // let go before the step
   p = advance_in(w, p, 0.015);
   #assert p.clock.ticks == 1 && !p.on_ground && p.jumps.taken == 1;
-  q := verse_player_place(0, 0, 0, 0);
-  q = verse_player_input(q, 0, 0, 0, 0, false, true, 0, 0);
+  q := walk_place(0, 0, 0, 0);
+  q = walk_input(q, 0, 0, 0, 0, false, true, 0, 0);
   q = advance_in(w, q, 0.032);                    // two steps
   #assert q.clock.ticks == 2 && q.jumps.taken == 1 && q.jumps.waiting == 0;
-  one := step_once(w, step_once(w, verse_player_input(verse_player_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
-  #assert same_step(q, one) && !same_step(q, step_once(w, q, STEP)) && !same_step(q, verse_player_place(0, 0, 0, 0));
+  one := step_once(w, step_once(w, walk_input(walk_place(0, 0, 0, 0), 0, 0, 0, 0, false, true, 0, 0), STEP), STEP);
+  #assert same_step(q, one) && !same_step(q, step_once(w, q, STEP)) && !same_step(q, walk_place(0, 0, 0, 0));
   // The step that jumps already counts as in the air: on ice, it pushes you with full grip.
-  ice := verse_player_place(0, 0, 0, 0); ice.grip = 0.5;
-  dry := verse_player_place(0, 0, 0, 0);
-  a := step(w, verse_player_input(ice, 0, 1, 0, 0, true, true, 0, 0), STEP);
-  b := step(w, verse_player_input(dry, 0, 1, 0, 0, true, true, 0, 0), STEP);
+  ice := walk_place(0, 0, 0, 0); ice.grip = 0.5;
+  dry := walk_place(0, 0, 0, 0);
+  a := step(w, walk_input(ice, 0, 1, 0, 0, true, true, 0, 0), STEP);
+  b := step(w, walk_input(dry, 0, 1, 0, 0, true, true, 0, 0), STEP);
   #assert !a.on_ground && same_step(a, b);
 }
 
@@ -450,15 +453,15 @@ The controller's checks cover these cases:
 // Intent each frame, and the player passes through the same states.
 #test "the keyboard and the touch stick drive the same session to the same states" {
   w: World;
-  k := verse_player_place(0, 0, 0, 0);
-  t := verse_player_place(0, 0, 0, 0);
+  k := walk_place(0, 0, 0, 0);
+  t := walk_place(0, 0, 0, 0);
   for f: 0..<120 {
     jump := f == 10 || f == 70;
     x := ifx f >= 40 && f < 60 then -1.0f32 else 0.0f32;
     keys := input_keys(x, 1, false, jump, false, 0, 0, 0);
     touch := input_stick(x, 1, true, jump, false, 0, 0, 0);
-    k = advance_in(w, verse_player_intent(k, keys), 1.0 / 60.0);
-    t = advance_in(w, verse_player_intent(t, touch), 1.0 / 60.0);
+    k = advance_in(w, walk_intent(k, keys), 1.0 / 60.0);
+    t = advance_in(w, walk_intent(t, touch), 1.0 / 60.0);
     #assert same_step(k, t) && k.pos.x == t.pos.x;
   }
   #assert k.jumps.taken == 2 && abs(k.pos.z) > 5 && abs(k.pos.x) > 0.5;   // it ran, turned and jumped twice

@@ -26,6 +26,10 @@ behaviour, zero surviving mutants. One short section per primitive is in
 | `ground-contact.coax` | Sphere overlap and continuous sphere contact against triangle faces, edges, vertices and constant edge continuation |
 | `collide.coax` | Checked kinematic capsule resolution, declared passes/travel and atomic refusal diagnostics |
 | `collision-profiles.coax` | Explicit supported realm identities and their collision profiles; unknown identities refuse |
+| `walk.coax` | The fixed-step walking controller and camera-state adapters; declared locomotion tuning; an ephemeral trace of the actual paid steps; `verse/player.coax` retains its C facade |
+| `locomotion.coax` | Finite, bounded walking and grounded-route tuning, separate from capsule collision profiles |
+| `walk-frame.coax` | Shared post-step targets and velocity records, with no C exports or persistent clock |
+| `follower.coax` | Grounded route followers and fetch on the realm's paid steps: checked terrain, declared tuning, strict directions, atomic refusal and previous-pose drawing, with no second clock |
 | `follow.coax` | The follow camera: look and zoom, a spring on the point it looks at, room from the colliders (pulled in at once, backed out gently), the eye drawn between steps, and its third- and first-person shots; it steps after the player and only reads it |
 | `shot.coax` | The `CameraShot` every camera makes (an eye and the point it looks at): top down, the free orbit and the dive from a far shot down to a live one |
 | `budget.coax` | Frame budgets: what one frame may use (steps, vertices, draw records, bytes), taken whole or refused and counted; every realm declares one and its check fails on any frame past it |
@@ -56,7 +60,7 @@ coax/bin/coax mutate aethyr/audio/score.coax --library --root-only
 coax/web/tool.sh aethyr/tools/score.coax promo-epic OUT.wav [--seconds S] [--home S] ...
 ```
 
-The older engine modules (`verse/player.coax`, the overview, dolly and orbit easing in `camera.coax`, `figure.coax`,
+The older engine modules (the overview, dolly and orbit easing in `verse/camera.coax`, `figure.coax`,
 `contact.coax`, `terrain.coax` and the rest) move here with the realm
 migration (ec-migrate).
 

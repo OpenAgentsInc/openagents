@@ -1,0 +1,16 @@
+// Shared frame output, independent of Player state and C exports. A target
+// is the actual post-step controller pose, before drawing interpolation or
+// a realm's floor-to-world adapter. Followers consume these in order.
+#module "aethyr.walk.frame";
+#load "space.coax" as space;
+
+// Metres/second; distinct from a spatial point. This legacy scalar carrier
+// does not claim the language's unit-typed affine-vector qualification.
+StepVelocity :: struct { x: f32; y: f32; z: f32; }
+StepTarget :: struct {
+  feet: space.WorldPoint;
+  velocity: StepVelocity;
+  face: f32;
+  act: u8;
+  collision_status: u8;
+}

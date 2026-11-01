@@ -1,0 +1,45 @@
+deadgears (debug): native rendered root agrees; dropped height, double height, last-step and spurious floor offset controls detected
+deadgears (debug+ASan/UBSan): native rendered root agrees; dropped height, double height, last-step and spurious floor offset controls detected
+deadgears (release): native rendered root agrees; dropped height, double height, last-step and spurious floor offset controls detected
+{
+  "status": "passed",
+  "profiles": [
+    {
+      "profile": "debug",
+      "status": "passed",
+      "positive_actual_root": true,
+      "negative_controls_detected": [
+        "dropped-height",
+        "double-height",
+        "last-step-pose",
+        "spurious-floor-offset"
+      ]
+    },
+    {
+      "profile": "debug+ASan/UBSan",
+      "status": "passed",
+      "positive_actual_root": true,
+      "negative_controls_detected": [
+        "dropped-height",
+        "double-height",
+        "last-step-pose",
+        "spurious-floor-offset"
+      ]
+    },
+    {
+      "profile": "release",
+      "status": "passed",
+      "positive_actual_root": true,
+      "negative_controls_detected": [
+        "dropped-height",
+        "double-height",
+        "last-step-pose",
+        "spurious-floor-offset"
+      ]
+    }
+  ],
+  "elapsed_seconds": 55.7096380420262,
+  "receipt": "docs/verification/data/aethyr-ch9-2026-11-01/drawn-feet-deadgears.json",
+  "source_changes": [],
+  "error": null
+}

@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "source": "aethyr/tests/walk-tuning-checks.coax",
+  "previous_sha256": "ea80f4c7b1ba99da1d90e5b6e9b285c9d011914663f139f9aa167cc5ea580087",
+  "current_sha256": "6dfc14aeadde94c4f650c54bf98808ece32c9fe626f7ff9db4312656cca48f39",
+  "unchanged_prefix_bytes": 5481,
+  "appended_bytes": 684,
+  "appended_text": "\n#test \"walk schedule rejects the first unsupported period and step cap even on a zero frame\" {\n  p := walk_place(2, 0, 3, 0); p.clock.step_ns = 1;\n  period := advance_traced(World.{}, p, 0);\n  #assert period.count == 0 && period.player.collision_status == CollideStatus.bad_profile;\n  #assert period.player.clock.frames == p.clock.frames && period.player.clock.step_ns == 1;\n  p.clock.step_ns = LOOP_STEP_NS; p.clock.max_steps = LOOP_MAX_STEPS + 1;\n  cap := advance_traced(World.{}, p, 0);\n  #assert cap.count == 0 && cap.player.collision_status == CollideStatus.bad_profile;\n  #assert cap.player.clock.frames == p.clock.frames && cap.player.clock.max_steps == LOOP_MAX_STEPS + 1;\n}\n",
+  "scope": "One appended #test with two scheduler-boundary witnesses; the full previous file prefix and all production declarations are unchanged. Earlier native parity/Grid receipts retain their exact source snapshots; later composed checks use the appended cases. This is not a claim that the earlier commands ran those added cases."
+}

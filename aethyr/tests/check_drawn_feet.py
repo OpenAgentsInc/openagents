@@ -71,7 +71,15 @@ void probe_input(int mode, float result[3]) {{
   result[0] = feet.x; result[1] = feet.y; result[2] = feet.z;
 }}
 ''')
-    libraries = [str(input_c)] + ([] if case == "deadgears" else [str(player_c)])
+    # Every realm links the facade for probe_input. Dead Gears imports the
+    # shared Walk core directly; that core intentionally exports no C symbols.
+    libraries = [str(input_c), str(player_c)]
+    if case == "deadgears":
+        # Both libraries also emit Input's C helper. Give the facade's copy
+        # a private test-link name without changing either generated body.
+        player_unit = directory / "Player-link.c"
+        player_unit.write_text('#define input_runs drawn_feet_player_input_runs\n#include "Player.c"\n')
+        libraries[-1] = str(player_unit)
     extra_headers = ""
     figure_check = ""
     if case == "villa":

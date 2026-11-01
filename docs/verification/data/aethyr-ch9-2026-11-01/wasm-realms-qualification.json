@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "recorded_at_utc": "2026-11-01T12:57:02.698103+00:00",
+  "scope": "Seven complete production page Wasm links with normal mandatory Coax authority evaluation. These links alone do not qualify raster images, sound, iOS or GPU performance. Garden/Villa preserve the exact admitted generated C+headers for separate native/Wasm scene-runtime qualification.",
+  "records": [
+    {
+      "realm": "garden",
+      "exit_status": 0,
+      "seconds": 4.735814374987967,
+      "record": "wasm-garden.json",
+      "artifact_sha256": "97b8534f3d5571fd55f84a832dfff70a507ae81e0e500fc931184ab0a1331335",
+      "artifact_bytes": 213330,
+      "current_inputs_match": true,
+      "admitted_c_files": 6
+    },
+    {
+      "realm": "villa",
+      "exit_status": 0,
+      "seconds": 10.07288500003051,
+      "record": "wasm-villa.json",
+      "artifact_sha256": "1fd2a42d2892b8a7e2097e24b9d0efdf066ceb2da608098c18f5a77c3d08cd9e",
+      "artifact_bytes": 520465,
+      "current_inputs_match": true,
+      "admitted_c_files": 8
+    },
+    {
+      "realm": "fairy",
+      "exit_status": 0,
+      "seconds": 70.78266616701148,
+      "record": "wasm-fairy.json",
+      "artifact_sha256": "640eaa6a4cb15754272bf8b148f27321bbb392ac0d701b5ed14a8735d7315dc8",
+      "artifact_bytes": 730171,
+      "current_inputs_match": true,
+      "admitted_c_files": 0
+    },
+    {
+      "realm": "everglade",
+      "exit_status": 0,
+      "seconds": 356.8403534159879,
+      "record": "wasm-everglade.json",
+      "artifact_sha256": "48b0917f982e43bec0119cdc4e6fd9af544da6ab71904b062428f6a8ff3aad03",
+      "artifact_bytes": 1986524,
+      "current_inputs_match": true,
+      "admitted_c_files": 0
+    },
+    {
+      "realm": "realm",
+      "exit_status": 0,
+      "seconds": 6.404626832983922,
+      "record": "wasm-realm.json",
+      "artifact_sha256": "f68b7fcddccd363dc1a9618ee1ad1af9b75667ad94a06578f8c5b8ba94e31084",
+      "artifact_bytes": 537643,
+      "current_inputs_match": true,
+      "admitted_c_files": 0
+    },
+    {
+      "realm": "grid",
+      "exit_status": 0,
+      "seconds": 14.831186291994527,
+      "record": "wasm-grid.json",
+      "artifact_sha256": "c24b09a3b45b3e197f8e2c2e62e7d163fbbd7f110663b0970b001435223dd494",
+      "artifact_bytes": 820203,
+      "current_inputs_match": true,
+      "admitted_c_files": 0
+    },
+    {
+      "realm": "deadgears",
+      "exit_status": 0,
+      "seconds": 50.886871583003085,
+      "record": "wasm-deadgears.json",
+      "artifact_sha256": "4857d4f2d287b2fa09a598f6c07ad02ef00be232798e1796e00a9c2c96af25f7",
+      "artifact_bytes": 374864,
+      "current_inputs_match": true,
+      "admitted_c_files": 0
+    }
+  ]
+}

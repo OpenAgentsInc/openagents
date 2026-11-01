@@ -1,0 +1,239 @@
+{
+  "schema": 1,
+  "chapter": 9,
+  "base_commit": "47acfa1409",
+  "status": "qualified",
+  "requirements": [
+    {
+      "id": "core",
+      "requirement": "The actual fixed-step controller lives in aethyr/walk.coax; verse/player.coax preserves its published C facade.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "aethyr/walk.coax",
+          "sha256": "a85f3e5de807a9e81f0b743080799cee9a8ee9d43d65b8eb0ed056ed10808608"
+        },
+        {
+          "path": "verse/player.coax",
+          "sha256": "14706eb476d9dfa6ae7a16cf7998800e2148eb70700b6c9d0499359c99e1d4a9"
+        },
+        {
+          "path": "aethyr/tests/walk-qualification.json",
+          "sha256": "663ae18faf2749ff5b108b6e974cfae2bcda490e4a305c6e9ac1a098cd006779"
+        }
+      ]
+    },
+    {
+      "id": "profile",
+      "requirement": "A realm can declare finite, bounded locomotion tuning; invalid tuning refuses before consuming physical state or queued input.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "aethyr/locomotion.coax",
+          "sha256": "4245bb9350993720d1e9c4f60713a661cac205449c75fcd32c4bedf8f3b3166a"
+        },
+        {
+          "path": "aethyr/tests/locomotion-qualification.json",
+          "sha256": "99ffcf8348bde8cfa7197cbc53dce62bf5de9997f6d78e584429f6ad4a9df207"
+        },
+        {
+          "path": "aethyr/examples/tune-a-walk.coax",
+          "sha256": "cb55f961417506ddd653d12346ce8d94d4a66bd9b480aed6f9681449eda45e9a"
+        },
+        {
+          "path": "aethyr/fixtures/tune-a-walk.out",
+          "sha256": "d96a2d585db5a566f55d8f96a968dc3a7bc45f1b7e6766317ee13098d16fa963"
+        }
+      ]
+    },
+    {
+      "id": "default-parity",
+      "requirement": "The declared default preserves every previously observable Player field across run, jump, turn, terrain, input, clock and refusal scenarios.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "aethyr/tests/walk-parity-debug.json",
+          "sha256": "2bacc4a37c0b4868b25136836597568533b5f5f985a4c2704c8bd410597b12d6"
+        },
+        {
+          "path": "aethyr/tests/walk-parity-release.json",
+          "sha256": "f235331d09d8d7bab3fbdc1719c96b5616ebdccac0129c18aaa6e16868e5cde4"
+        },
+        {
+          "path": "aethyr/tests/walk-parity-sanitized.json",
+          "sha256": "befa2bcba87e1f4e5626a2edd473461c23971b0fadd0a2f52684c1b77d7b55ff"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/additive-scheduler-checks.json",
+          "sha256": "4151b7f9405b75f4e5026cba7d254a50b5dbb61af8a0d720bec185ae464c8ae6"
+        }
+      ]
+    },
+    {
+      "id": "trace",
+      "requirement": "An ephemeral bounded trace contains actual per-step poses, including repeated poses on refused physical steps; it adds no persistent replay state.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "aethyr/walk-frame.coax",
+          "sha256": "19694947b923308e4deaf80662670a1935a7ec08d05ef8d45e2f615991d78028"
+        },
+        {
+          "path": "aethyr/tests/walk-tuning-checks.coax",
+          "sha256": "6dfc14aeadde94c4f650c54bf98808ece32c9fe626f7ff9db4312656cca48f39"
+        },
+        {
+          "path": "aethyr/tests/grid-walk-adoption-qualification.json",
+          "sha256": "f4247d7f26598dc21eca61e79b88759c42c06b41508e17b4545371d9f2a985c5"
+        }
+      ]
+    },
+    {
+      "id": "followers",
+      "requirement": "Every current terrain.Follower consumer uses the player clock's actual due steps, contemporaneous targets, previous poses and drawing alpha.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "aethyr/follower.coax",
+          "sha256": "edcb6cb71ba432293885d6dbf4712026bad54a16af8f4820ab5787426b05a8d4"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/qualification.json",
+          "sha256": "12f9424de862d6b475bd1f1c829a9c423cdf1d2452496a14ee779b8ce694aea9"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/archive.json",
+          "sha256": "c68d5350c92a8ec6982e3fba7b45569fe634ea1bfcdd541e512642781a43c2e2"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/garden-full.log",
+          "sha256": "0ae8a08bcb789715e4b8794b09bda6059b52f7816c2bbff274c04eb84aad264b"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/villa-full.log",
+          "sha256": "15357ddf4f41223c616d505793c14fd6919b2fc429d1ea2c248f864d1c03fae6"
+        }
+      ]
+    },
+    {
+      "id": "animation",
+      "requirement": "Realm animation remains on the same clock's counted frame time, without a second follower clock or frame clamp.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "apps/openagents-web/garden.coax",
+          "sha256": "7396206a6c48e8f442d7e152d4761f6ee90c15a9e4763fe1b457fdaa61ca173f"
+        },
+        {
+          "path": "apps/openagents-web/villa.coax",
+          "sha256": "39dacf5bf4fa9ba3612265a18092ed7a3b1be7e54df32ffaa58b3c050833faec"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/archive.json",
+          "sha256": "c68d5350c92a8ec6982e3fba7b45569fe634ea1bfcdd541e512642781a43c2e2"
+        }
+      ]
+    },
+    {
+      "id": "adoption",
+      "requirement": "Garden/Villa use the scheduled follower entry points; the existing other Player consumers compile against the compatible facade.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "apps/openagents-web/garden-face.c",
+          "sha256": "b5ea9b671a73921e583980c1b92d67f304f3383fe68ea9e077067886ec332e2a"
+        },
+        {
+          "path": "apps/openagents-web/villa-face.c",
+          "sha256": "0a0c5e6521d15b2c7388755f5fc3b534169f2aa36c2cb8ae1af907ef4300aa2d"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/wasm-realms-qualification.json",
+          "sha256": "bea5dac3519075234233a43c2dd14cabef7ad30f9a57634f6646102d6862c1c3"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/drawn-feet-deadgears.json",
+          "sha256": "6cf6bd6bd7c707c6456c67937cf40b1bf42b385247705df0564c7a05f31bd095"
+        }
+      ]
+    },
+    {
+      "id": "mutation",
+      "requirement": "Every changed policy/admission Coax unit has a root mutation gate with zero survivors, with dependency scopes stated.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "aethyr/tests/locomotion-qualification.json",
+          "sha256": "99ffcf8348bde8cfa7197cbc53dce62bf5de9997f6d78e584429f6ad4a9df207"
+        },
+        {
+          "path": "aethyr/tests/walk-qualification.json",
+          "sha256": "663ae18faf2749ff5b108b6e974cfae2bcda490e4a305c6e9ac1a098cd006779"
+        },
+        {
+          "path": "aethyr/tests/follower-qualification.json",
+          "sha256": "c484fd67e2aab38da1a8a8bcf4a6bdcc9341ba848c20011a1667eef4372186b3"
+        },
+        {
+          "path": "aethyr/tests/grid-walk-adoption-qualification.json",
+          "sha256": "f4247d7f26598dc21eca61e79b88759c42c06b41508e17b4545371d9f2a985c5"
+        }
+      ]
+    },
+    {
+      "id": "book",
+      "requirement": "Worked examples match debug/release fixtures; source listings, chapter status, registry, plan and README agree.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "aethyr/tests/book-chapter9-qualification.json",
+          "sha256": "a8e19b7cb5680d532774a314ea34705afc96170add33bc1c2c63615e7356bd73"
+        },
+        {
+          "path": "aethyr/book/ch009-a-character-moves.md",
+          "sha256": "6f177fd62bde9a30ccfaa4d28e106beaff48b5d30128d3420d0749545ed9135d"
+        },
+        {
+          "path": "aethyr/book/chapters.json",
+          "sha256": "7e6b7486c199f40dd9ac6f98efe7db1ddb2e4c8ec32a14ea0e55bc8324048d5a"
+        },
+        {
+          "path": "aethyr/book/README.md",
+          "sha256": "d144f95cc92c55194d1f45014fec67806de06483ba5a9b5dce2f0db981dc50b9"
+        },
+        {
+          "path": "aethyr/book/SUMMARY.md",
+          "sha256": "6ab75ba28928a25f9d25616ed49c1db0a579a412a2125954665dfb2e2c4d60d1"
+        }
+      ]
+    },
+    {
+      "id": "limits",
+      "requirement": "Chapter64 continues to own all-realm coordinate, flight, boat and other adapters; qualification claims match the actual changed paths.",
+      "status": "supported",
+      "evidence": [
+        {
+          "path": "aethyr/book/ch009-a-character-moves.md",
+          "sha256": "6f177fd62bde9a30ccfaa4d28e106beaff48b5d30128d3420d0749545ed9135d"
+        },
+        {
+          "path": "aethyr/book/ch064-every-realm-runs-on-aethyr.md",
+          "sha256": "ab8461da567597f8006d0f2fd274aa39481b9b6bf0a08a6eaa53d70d21897285"
+        },
+        {
+          "path": "docs/verification/data/aethyr-ch9-2026-11-01/follower-hosts/archive.json",
+          "sha256": "c68d5350c92a8ec6982e3fba7b45569fe634ea1bfcdd541e512642781a43c2e2"
+        }
+      ]
+    }
+  ],
+  "profile": "native and Wasm fixed-step walking",
+  "recorded_at_utc": "2026-11-01T13:07:34.408403+00:00",
+  "limits": [
+    "Supplied identical terrain for cross-host scene traces; procedural terrain generation and rasterization are separate.",
+    "Actual native scene modes use normal admitted Coax C at O0/O2 and ASan/UBSan; book programs also qualify Coax debug/release.",
+    "Earlier native/Grid proofs retain their exact snapshots before two appended scheduler-boundary cases; final mutation, book runs and complete page links include those cases.",
+    "The legacy transitive input_runs C export remains; the coupled DG probe prefixes only its duplicate test copy.",
+    "All-realm special movement and coordinate adapters remain chapter64."
+  ]
+}

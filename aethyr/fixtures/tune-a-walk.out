@@ -1,0 +1,5 @@
+declared run: 16 steps, 0.25 s to 4 m/s
+declared jump: 1.078125 m after 23 steps; landed after 48
+10 ms then 6 ms: 0 then 1 targets, 1 paid tick
+step target: z 0.00390625, drawn z 0.00009375
+gravity 0: status 1 (bad_profile), jump waiting 1, paid ticks 1
