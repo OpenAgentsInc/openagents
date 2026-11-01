@@ -1,0 +1,44 @@
+// Chapter 118's check helpers: a line model for rows mode, a token model
+// for stream mode, and the caller's loop that drives either through the
+// trainer. Loaded by psionic/lib/trainer.coax and owned by its checks.
+
+// The checks' model is a line, y = w * x + b, with loss half the
+// squared error, averaged over the rows of a micro-batch.
+TR_X :: [6]f64.[1,2,-1,0.5,-2,0.25];
+TR_Y :: [6]f64.[1,-1,2,0,0.5,-0.75];
+tr_test_line :: (p:[]f64,rows:[]int,g:[]f64)->f64 {
+    g[0]=0;g[1]=0;loss:=0.0;
+    for r:rows {e:=p[0]*TR_X[r]+p[1]-TR_Y[r];g[0]+=e*TR_X[r];g[1]+=e;loss+=e*e/2;}
+    k:=f64(rows.count);g[0]/=k;g[1]/=k;return loss/k;
+}
+tr_test_all :: (p:[]f64)->f64 {all:=[6]int.[0,1,2,3,4,5];g:[2]f64;return tr_test_line(p,all[..],g[..]);}
+// For packed rows: pull p toward each row's mean token and last token.
+tr_test_tokens :: (p:[]f64,row:[]u8,g:[]f64)->f64 {
+    mean:=0.0;for t:row {mean+=f64(t);}mean/=f64(row.count)*16;
+    g[0]=p[0]-mean;g[1]=p[1]-f64(row[row.count-1])/16;return (g[0]*g[0]+g[1]*g[1])/2;
+}
+tr_test_inf :: ()->f64 {x:=1e308;return x*10;}
+tr_test_rows :: ()->TrConfig {return TrConfig.{rate=0.5,bound=100,examples=4,batch=1,accumulate=2,epochs=1};}
+TrTestRun :: struct {status:TrStatus;run:TrRun;steps:int;evals:int;losses:[64]f64;}
+// Drives a model through c until the run ends, a refusal, or revision stop,
+// evaluating whenever the trainer asks: the line on all six rows in rows
+// mode, the token model on each step's packed rows in stream mode.
+tr_test_drive :: (c:TrConfig,run:TrRun,docs:[]PkDoc,tokens:[]u8,p:[]f64,m:[]f64,v:[]f64,order:[]int,stop:int)->TrTestRun {
+    out:TrTestRun;out.run=run;stage:[6]f64;total:[2]f64;g:[2]f64;rows:[64]u8;n:=c.accumulate*c.batch*c.length;
+    while out.run.revision<stop {
+        b:=tr_next(c,out.run,docs,tokens,rows[0..<n]);
+        if b.status==TrStatus.evaluate {e:=tr_eval(c,out.run,tr_test_all(p));if e.status!=TrStatus.ok {out.status=e.status;return out;}out.run=e.run;out.evals+=1;continue;}
+        if b.status!=TrStatus.ok {out.status=b.status;return out;}
+        s:TrSum;
+        for k:0..<b.micro {
+            r:=tr_rows(c,b,k);loss:=0.0;
+            if c.source==TrSource.rows {loss=tr_test_line(p,order[r.first..<r.first+r.count],g[..]);}
+            else {loss=tr_test_tokens(p,rows[r.first*c.length..<(r.first+r.count)*c.length],g[..]);}
+            s=tr_add(b,s,loss,g[..],total[..]);
+        }
+        a:=tr_apply(c,out.run,b,s,p,m,v,total[..],stage[..],order);if a.status!=TrStatus.ok {out.status=a.status;return out;}
+        out.run=a.run;out.losses[out.steps]=a.loss;out.steps+=1;
+    }
+    return out;
+}
+

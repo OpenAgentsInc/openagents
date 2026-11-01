@@ -1,0 +1,645 @@
+// Chapter 118: one trainer for every model (psionic-trainer-v1).
+// The trainer never calls a model. It names the next batch (tr_next), takes
+// each micro-batch's loss and gradient from the caller (tr_add), and makes
+// the step (tr_apply): clipping, the learning-rate schedule, SGD or chapter
+// 124's AdamW, and a bound on every new parameter, all staged and written
+// only when the whole step is admitted. It also owns the batch order (rows
+// shuffled per epoch, or chapter 121's feed over chapter 122's packed
+// stream), the evaluation cadence and early stopping (tr_eval), and the
+// checkpoint: chapter 122's record followed by an 80-byte trainer tail
+// (tr_save, tr_resume). Binary64 on the CPU, every sum in a fixed order.
+#load "data/feed.coax";
+#load "../tests/trainer-checks.coax";  // the checks' models and driving loop
+#authority;
+
+TrStatus :: enum u8 {ok;config;shape;data;number;bound;optimizer;order;evaluate;done;stopped;}
+TrOptimizer :: enum u8 {sgd;adamw;}
+TrSchedule :: enum u8 {constant;linear;}
+TrStorage :: enum u8 {binary64;binary32;}
+TrSource :: enum u8 {rows;stream;}
+// book:begin types
+TrSpan :: struct {first:int;count:int;}
+// Everything the trainer decides. The optimizer: SGD (rate at most 16) or
+// AdamW (rate at most 1); weight decay on the parameters in spans only. The
+// schedule: constant, or linear from rate down by drop over the run. Storage
+// binary32 rounds every SGD result to f32. clip caps the gradient's global
+// norm (0: off); bound refuses any step that would write a parameter larger
+// in magnitude. Batches: rows mode walks examples positions in batches,
+// shuffled each epoch when shuffle is set; stream mode reads batch packed
+// rows of length tokens from chapter 122's stream. A step adds accumulate
+// micro-batches. every and patience set evaluation and early stopping.
+TrConfig :: struct {
+    optimizer:TrOptimizer;schedule:TrSchedule;storage:TrStorage;source:TrSource;
+    rate:f64;drop:f64;beta1:f64;beta2:f64;eps:f64;decay:f64;spans:[4]TrSpan;span_count:int;
+    clip:f64;accumulate:int=1;bound:f64;
+    examples:int;batch:int=1;epochs:int;shuffle:bool;seed:u64;length:int;steps:int;
+    every:int;patience:int;
+}
+// The whole run: data cursor, optimizer counters, steps taken, and the
+// evaluation record (best loss, evaluations since it improved, the revision
+// last evaluated, and whether early stopping fired).
+TrRun :: struct {cursor:PkCursor;state:AwState;revision:int;evals:int;best:f64;stale:int;last:int=-1;stopped:bool;}
+TrBatch :: struct {status:TrStatus;revision:int;micro:int;start:int;after:PkCursor;}
+TrSum :: struct {status:TrStatus;micro:int;loss:f64;}
+TrStep :: struct {status:TrStatus;run:TrRun;loss:f64;rate:f64;norm:f64;}
+// book:end types
+TrState :: struct {status:TrStatus;run:TrRun;}
+TrResume :: struct {status:CkStatus;run:TrRun;}
+// What a caller's loop reports: why it stopped, the run, steps and evaluations made.
+TrDrive :: struct {status:TrStatus;run:TrRun;steps:int;evals:int;}
+// Same length and the same bits (so -0 differs from 0).
+tr_same :: (a:[]f64,b:[]f64)->bool {if a.count!=b.count {return false;}for i:0..<a.count {if f64_bits(a[i])!=f64_bits(b[i]) {return false;}}return true;}
+TR_EXAMPLES :: 4096;
+TR_EPOCHS :: 512;
+TR_ACCUMULATE :: 64;
+TR_SPANS :: 4;
+TR_STEPS :: 1048576;
+TR_TAIL :: 80;
+// Pinned bytes the checks compare against.
+TR_TAIL_FIELDS :: [16]u8.[3,0,0,0,0,0,0,0,0,0,0,0,0,0,224,191];
+TR_TAIL_PIN :: [4]u8.[11,242,79,254];
+TR_ID_PIN :: [4]u8.[83,175,62,130];
+
+// Checks first; their helpers (a line model, a token model and a driving
+// loop) are in psionic/tests/trainer-checks.coax.
+
+#test "admission refuses each field just outside its range" {
+    none:[1]PkDoc;nothing:[1]u8;order:[8]int;
+    ok:=tr_test_rows();#assert tr_begin(ok,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.ok;
+    bad:=[22]TrConfig.[ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok,ok];
+    bad[0].rate=0;bad[1].rate=16.0000001;bad[2].drop=-0.0001;bad[3].drop=1.0001;bad[4].decay=-0.0001;bad[5].decay=1.0001;
+    bad[6].clip=-0.0001;bad[7].clip=tr_test_inf();bad[8].bound=0;bad[9].bound=tr_test_inf();bad[10].accumulate=0;bad[11].accumulate=65;
+    bad[12].every=-1;bad[13].patience=-1;bad[14].examples=0;bad[15].examples=4097;bad[16].batch=0;bad[17].batch=5;
+    bad[18].epochs=0;bad[19].epochs=513;bad[20].optimizer=TrOptimizer.adamw;bad[21].rate=0.0/0.0;
+    for k:0..<22 {#assert tr_begin(bad[k],2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.config;}
+    // The edges themselves are admitted.
+    edge:=[10]TrConfig.[ok,ok,ok,ok,ok,ok,ok,ok,ok,ok];
+    edge[0].rate=16;edge[1].drop=1;edge[2].decay=1;edge[3].accumulate=64;edge[4].examples=4096;edge[5].batch=4;edge[6].epochs=512;
+    edge[7].clip=0;edge[8].bound=1e300;edge[9].optimizer=TrOptimizer.adamw;edge[9].rate=1;edge[9].beta1=0.5;edge[9].beta2=0.5;edge[9].eps=1;
+    big:[4096]int;for k:0..<10 {#assert tr_begin(edge[k],2,none[0..<0],nothing[0..<0],big[..]).status==TrStatus.ok;}
+    // AdamW takes its hyperparameters from chapter 124's admission.
+    a:=edge[9];a.rate=1.0000001;#assert tr_begin(a,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.config;
+    a=edge[9];a.beta2=1;#assert tr_begin(a,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.config;
+    a=edge[9];a.storage=TrStorage.binary32;#assert tr_begin(a,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.config;
+    f:=ok;f.storage=TrStorage.binary32;#assert tr_begin(f,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.ok;
+    // Parameters, spans and the order buffer.
+    #assert tr_begin(ok,0,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.shape && tr_begin(ok,4097,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.shape;
+    #assert tr_begin(ok,4096,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.ok && tr_begin(ok,2,none[0..<0],nothing[0..<0],order[0..<3]).status==TrStatus.shape;
+    #assert tr_begin(ok,2,none[0..<0],nothing[0..<0],order[0..<4]).status==TrStatus.ok && tr_begin(ok,1,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.ok;
+    lone:=ok;lone.examples=1;#assert tr_begin(lone,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.ok;
+    sp:=ok;sp.span_count=2;sp.spans[0]=TrSpan.{first=0,count=1};sp.spans[1]=TrSpan.{first=1,count=1};#assert tr_begin(sp,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.ok;
+    q:=sp;q.spans[1].count=2;#assert tr_begin(q,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.shape;
+    q=sp;q.spans[1].first=0;#assert tr_begin(q,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.shape;
+    q=sp;q.spans[0].count=0;#assert tr_begin(q,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.shape;
+    q=sp;q.span_count=4;q.spans[2]=TrSpan.{first=2,count=1};q.spans[3]=TrSpan.{first=3,count=1};q.span_count=5;#assert tr_begin(q,5,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.shape;
+    q=sp;q.span_count=-1;#assert tr_begin(q,2,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.shape;
+    q=sp;q.span_count=4;q.spans[2]=TrSpan.{first=2,count=1};q.spans[3]=TrSpan.{first=3,count=1};#assert tr_begin(q,4,none[0..<0],nothing[0..<0],order[..]).status==TrStatus.ok;
+    #assert tr_decayed(sp,0) && tr_decayed(sp,1) && !tr_decayed(sp,2) && !tr_decayed(sp,-1);
+    one:=sp;one.span_count=1;one.spans[0]=TrSpan.{first=1,count=2};#assert !tr_decayed(one,0) && tr_decayed(one,1) && tr_decayed(one,2) && !tr_decayed(one,3);
+    #assert tr_min(3,5)==3 && tr_min(5,3)==3 && tr_min(-2,4)==-2 && tr_min(4,4)==4;
+    // Stream mode needs a plan chapter 121 admits and a dataset chapter 122 admits.
+    docs:[64]PkDoc;tokens:[4096]u8;nt:=fd_synthetic(docs[..],tokens[..]);
+    st:=TrConfig.{source=TrSource.stream,rate=0.5,bound=1,batch=2,accumulate=3,length=8,steps=2};
+    #assert tr_begin(st,2,docs[..],tokens[0..<nt],order[0..<0]).status==TrStatus.ok;
+    sb:=st;sb.steps=0;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.config;
+    sb=st;sb.steps=1048577;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.config;
+    sb=st;sb.steps=1048576;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.ok;
+    sb=st;sb.length=1;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.config;
+    sb=st;sb.batch=0;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.config;
+    sb=st;sb.batch=21;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.ok;
+    sb=st;sb.batch=22;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.config;
+    sb=st;sb.batch=1;sb.steps=1;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.ok;
+    sb=st;sb.accumulate=1;sb.batch=64;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.ok;
+    sb.batch=65;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.config;
+    sb=st;sb.length=2;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.ok;
+    sb=st;sb.accumulate=1;sb.batch=1;sb.length=256;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.ok;
+    sb.length=257;#assert tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]).status==TrStatus.config;
+    #assert tr_begin(st,2,docs[..],tokens[0..<nt-1],order[..]).status==TrStatus.data;
+    sb=st;sb.seed=5;r:=tr_begin(sb,2,docs[..],tokens[0..<nt],order[..]);#assert r.run.cursor.seed==5 && r.run.cursor.epoch==0 && r.run.cursor.order==0 && r.run.revision==0 && r.run.last==-1;
+}
+#test "the order is a permutation, the same for the same seed, and shuffled again each epoch" {
+    c:=TrConfig.{rate=1,bound=1,examples=7,epochs=3,shuffle=true,seed=11};none:[1]PkDoc;nothing:[1]u8;
+    o0:[7]int;o1:[7]int;o2:[7]int;tr_order(c,0,o0[..]);tr_order(c,1,o1[..]);tr_order(c,2,o2[..]);
+    seen:[21]int;for i:0..<7 {seen[o0[i]]+=1;seen[7+o1[i]]+=1;seen[14+o2[i]]+=1;}for i:0..<21 {#assert seen[i]==1;}
+    same01:=true;same12:=true;for i:0..<7 {same01=same01 && o0[i]==o1[i];same12=same12 && o1[i]==o2[i];}#assert !same01 && !same12;
+    // Epoch e is epoch e-1 shuffled once more from counter e*(n-1).
+    s:=o0;#assert tr_shuffle(s[..],11,6)==12;for i:0..<7 {#assert s[i]==o1[i];}
+    // Two positions by hand: draw j = bits(11, 0) mod 2 swaps position 1 with j.
+    t:=[2]int.[5,6];#assert tr_shuffle(t[..],11,0)==1;
+    j:=cast(int)(cr_bits(11,0)%2);#assert (j==0 && t[0]==6 && t[1]==5) || (j==1 && t[0]==5 && t[1]==6);
+    one:=[1]int.[3];#assert tr_shuffle(one[..],11,4)==4 && one[0]==3;
+    b:=tr_begin(c,2,none[0..<0],nothing[0..<0],s[..]);#assert b.status==TrStatus.ok;for i:0..<7 {#assert s[i]==o0[i];}
+    plain:=c;plain.shuffle=false;#assert tr_begin(plain,2,none[0..<0],nothing[0..<0],s[..]).status==TrStatus.ok;for i:0..<7 {#assert s[i]==i;}
+    tr_order(plain,2,s[..]);for i:0..<7 {#assert s[i]==i;}
+    // Without shuffling the order stays put across epochs.
+    fixed:=tr_test_rows();fixed.epochs=3;o:[4]int;p:[2]f64;m:[2]f64;v:[2]f64;run:=tr_begin(fixed,2,none[0..<0],nothing[0..<0],o[..]).run;
+    d:=tr_test_drive(fixed,run,none[0..<0],nothing[0..<0],p[..],m[..],v[..],o[..],100);#assert d.status==TrStatus.done && d.run.cursor.epoch==3;for i:0..<4 {#assert o[i]==i;}
+}
+#test "rows batches walk each epoch in micro-batches and steps" {
+    none:[1]PkDoc;nothing:[1]u8;order:[8]int;
+    // 5 rows, micro-batches of 2: sizes 2, 2, 1; two per step: 2 steps an epoch.
+    c:=TrConfig.{rate=1,bound=1,examples=5,batch=2,accumulate=2,epochs=3};#assert tr_steps(c)==6;
+    run:=tr_begin(c,2,none[0..<0],nothing[0..<0],order[..]).run;
+    b:=tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]);
+    #assert b.status==TrStatus.ok && b.micro==2 && b.start==0 && b.after.order==4 && b.after.epoch==0 && b.revision==0;
+    r0:=tr_rows(c,b,0);r1:=tr_rows(c,b,1);#assert r0.first==0 && r0.count==2 && r1.first==2 && r1.count==2;
+    run.cursor=b.after;run.revision=1;b=tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]);
+    #assert b.micro==1 && b.start==4 && b.after.order==0 && b.after.epoch==1 && b.revision==1 && tr_rows(c,b,0).first==4 && tr_rows(c,b,0).count==1;
+    c.accumulate=1;#assert tr_steps(c)==9;c.batch=5;#assert tr_steps(c)==3;c.batch=1;c.accumulate=5;#assert tr_steps(c)==3;c.accumulate=4;#assert tr_steps(c)==6;
+    // The cursor a revision implies.
+    d:=TrConfig.{rate=1,bound=1,examples=5,batch=2,accumulate=2,epochs=3,seed=9};
+    k:=tr_cursor(d,3);#assert k.epoch==1 && k.order==4 && k.seed==9 && k.offset==0;k=tr_cursor(d,6);#assert k.epoch==3 && k.order==0;k=tr_cursor(d,0);#assert k.epoch==0 && k.order==0;
+}
+#test "accumulation and clipping match hand calculations" {
+    // Rows 0 and 1 at w = b = 0: residuals -1 and 1, gradients (-1, -1) and
+    // (2, 1). Their mean is (0.5, 0); each loss is 1/2, so the step's is 1/2.
+    c:=tr_test_rows();none:[1]PkDoc;nothing:[1]u8;order:[4]int;p:[2]f64;m:[2]f64;v:[2]f64;total:[2]f64;stage:[6]f64;g:[2]f64;
+    run:=tr_begin(c,2,none[0..<0],nothing[0..<0],order[..]).run;b:=tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]);
+    total[0]=7;total[1]=7;s:TrSum;
+    l0:=tr_test_line(p[..],order[0..<1],g[..]);#assert l0==0.5 && g[0]==-1 && g[1]==-1;s=tr_add(b,s,l0,g[..],total[..]);#assert s.micro==1 && total[0]==-0.5 && total[1]==-0.5 && s.loss==0.25;
+    l1:=tr_test_line(p[..],order[1..<2],g[..]);#assert l1==0.5 && g[0]==2 && g[1]==1;s=tr_add(b,s,l1,g[..],total[..]);#assert s.micro==2 && total[0]==0.5 && total[1]==0 && s.loss==0.5;
+    #assert tr_add(b,s,l1,g[..],total[..]).status==TrStatus.order && tr_add(b,TrSum.{},l1,g[..],total[0..<1]).status==TrStatus.shape;
+    bad:=TrSum.{status=TrStatus.number};#assert tr_add(b,bad,l1,g[..],total[..]).status==TrStatus.order;
+    keep:=total;a:=tr_apply(c,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]);
+    #assert a.status==TrStatus.ok && a.loss==0.5 && a.norm==0.5 && a.rate==0.5 && p[0]==-0.25 && p[1]==0 && a.run.revision==1 && a.run.state.step==1 && a.run.state.skipped==0 && a.run.cursor.order==2;
+    // The same step with the norm capped at 1/4 halves the gradient.
+    p[0]=0;cl:=c;cl.clip=0.25;total=keep;a=tr_apply(cl,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]);#assert a.status==TrStatus.ok && a.norm==0.5 && p[0]==-0.125 && p[1]==0;
+    // A 3-4-5 gradient capped at 2.5 becomes (1.5, 2).
+    p[0]=0;cl.clip=2.5;total[0]=3;total[1]=4;a=tr_apply(cl,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]);#assert a.norm==5 && p[0]==-0.75 && p[1]==-1;
+    // At the cap nothing is scaled, even where g * cap / norm would round.
+    found:=false;
+    for k:1..<40 {
+        x:=f64(k)/10;y:=0.3;n:=sqrt(x*x+y*y);
+        if found || (x*n/n==x && y*n/n==y) {continue;}
+        found=true;p[0]=0;p[1]=0;cl.clip=n;total[0]=x;total[1]=y;a=tr_apply(cl,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]);
+        #assert a.norm==n && p[0]==-0.5*x && p[1]==-0.5*y;
+    }
+    #assert found;
+    // Decay on the weight only: step = g + decay * p.
+    p[0]=1;p[1]=1;dc:=c;dc.decay=0.5;dc.span_count=1;dc.spans[0]=TrSpan.{first=0,count=1};total=keep;
+    a=tr_apply(dc,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]);#assert a.status==TrStatus.ok && p[0]==1-0.5*(0.5+0.5) && p[1]==1;
+    // binary32 storage rounds each result to f32.
+    p[0]=0.1;p[1]=0;f:=c;f.storage=TrStorage.binary32;total=keep;a=tr_apply(f,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]);
+    #assert p[0]==f64(f32(0.1-0.25)) && p[0]!=0.1-0.25;
+    for i:0..<2 {#assert m[i]==0 && v[i]==0;}
+}
+#test "the schedule is the rate, or a straight line down by drop over the run" {
+    c:=TrConfig.{rate=0.5,drop=0.75,bound=1,examples=4,batch=1,epochs=2};
+    #assert tr_rate(c,0)==0.5 && tr_rate(c,4)==0.5;
+    c.schedule=TrSchedule.linear;#assert tr_steps(c)==8 && tr_rate(c,0)==0.5 && tr_rate(c,4)==0.5*(1-0.375) && tr_rate(c,8)==0.125 && tr_rate(c,2)==0.5*(1-0.1875);
+    // Chapter 115's schedule: 0.01, down by 0.9 over the run.
+    d:=TrConfig.{schedule=TrSchedule.linear,source=TrSource.stream,rate=0.01,drop=0.9,steps=400};
+    for k:[4]int.[0,1,200,399] {#assert tr_rate(d,k)==0.01*(1-0.9*f64(k)/f64(400));}
+}
+#test "AdamW steps equal chapter 124's step, with decay only on the spans" {
+    c:=TrConfig.{optimizer=TrOptimizer.adamw,rate=0.25,beta1=0.5,beta2=0.75,eps=0.5,decay=0.5,bound=100,examples=4,batch=1,epochs=1,span_count=1};c.spans[0]=TrSpan.{first=1,count=1};
+    none:[1]PkDoc;nothing:[1]u8;order:[4]int;p:=[3]f64.[1,2,3];m:[3]f64;v:[3]f64;total:[3]f64;stage:[9]f64;g:=[3]f64.[2,-1,0.5];
+    run:=tr_begin(c,3,none[0..<0],nothing[0..<0],order[..]).run;b:=tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]);
+    s:=tr_add(b,TrSum.{},1,g[..],total[..]);a:=tr_apply(c,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]);
+    #assert a.status==TrStatus.ok && a.run.state.step==1 && a.run.state.skipped==0;
+    // The reference: three groups, decay 0, 0.5, 0.
+    rp:=[3]f64.[1,2,3];rm:[3]f64;rv:[3]f64;none32:[1]f32;
+    groups:=[3]AwGroup.[AwGroup.{first=0,count=1,lr=0.25,beta1=0.5,beta2=0.75,eps=0.5},AwGroup.{first=1,count=1,lr=0.25,beta1=0.5,beta2=0.75,eps=0.5,decay=0.5},AwGroup.{first=2,count=1,lr=0.25,beta1=0.5,beta2=0.75,eps=0.5}];
+    #assert aw_step(groups[..],AwPolicy.{},AwState.{},rp[..],g[..],rm[..],rv[..],none32[0..<0],false).status==AwStatus.ok;
+    #assert tr_same(p[..],rp[..]) && tr_same(m[..],rm[..]) && tr_same(v[..],rv[..]);
+    // By hand: decay first, 2 * (1 - 0.25 * 0.5), then m = -0.5, v = 0.25,
+    // corrected to -1 and 1: a move of 0.25 / (1 + 0.5).
+    #assert abs(p[1]-(1.75+0.25/1.5))<1e-15 && m[1]==-0.5 && v[1]==0.25;
+    // A step AdamW refuses (lr * decay of 1) changes nothing.
+    k:=p;km:=m;kv:=v;bad:=c;bad.rate=1;bad.decay=1;run.state=a.run.state;
+    s=tr_add(b,TrSum.{},1,g[..],total[..]);#assert tr_apply(bad,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.optimizer;
+    #assert tr_same(p[..],k[..]) && tr_same(m[..],km[..]) && tr_same(v[..],kv[..]);
+    // A bound AdamW would cross: nothing is written.
+    tight:=c;tight.bound=2;s=tr_add(b,TrSum.{},1,g[..],total[..]);#assert tr_apply(tight,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.bound;
+    #assert tr_same(p[..],k[..]) && tr_same(m[..],km[..]) && tr_same(v[..],kv[..]);
+    // Two spans with a gap between: decay, none, decay. No spans: decay 0 throughout.
+    two:=c;two.span_count=2;two.spans[0]=TrSpan.{first=0,count=1};two.spans[1]=TrSpan.{first=2,count=1};q:=[3]f64.[1,2,3];qm:[3]f64;qv:[3]f64;r0:=run;r0.state=AwState.{};
+    s=tr_add(b,TrSum.{},1,g[..],total[..]);#assert tr_apply(two,r0,b,s,q[..],qm[..],qv[..],total[..],stage[..],order[..]).status==TrStatus.ok;
+    #assert q[0]==aw_cell(groups[1],1,1,2,0,0).p && q[1]==aw_cell(groups[0],1,2,-1,0,0).p && q[2]==aw_cell(groups[1],1,3,0.5,0,0).p;
+    nd:=c;nd.span_count=0;q=[3]f64.[1,2,3];qm=[3]f64.[0,0,0];qv=qm;s=tr_add(b,TrSum.{},1,g[..],total[..]);#assert tr_apply(nd,r0,b,s,q[..],qm[..],qv[..],total[..],stage[..],order[..]).status==TrStatus.ok;
+    for i:0..<3 {#assert q[i]==aw_cell(groups[0],1,f64(i+1),g[i],0,0).p;}
+}
+#test "a refused step changes nothing" {
+    c:=tr_test_rows();none:[1]PkDoc;nothing:[1]u8;order:[4]int;p:=[2]f64.[0.5,-0.5];m:[2]f64;v:[2]f64;total:[2]f64;stage:[6]f64;g:=[2]f64.[1,1];
+    run:=tr_begin(c,2,none[0..<0],nothing[0..<0],order[..]).run;b:=tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]);
+    one:=tr_add(b,TrSum.{},1,g[..],total[..]);s:=tr_add(b,one,1,g[..],total[..]);
+    // An incomplete sum, a batch for another revision or refused, short buffers.
+    #assert tr_apply(c,run,b,one,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.order;
+    old:=b;old.revision=1;#assert tr_apply(c,run,old,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.order;
+    bb:=b;bb.status=TrStatus.data;#assert tr_apply(c,run,bb,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.order;
+    bs:=s;bs.status=TrStatus.shape;#assert tr_apply(c,run,b,bs,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.order;
+    zero:=b;zero.micro=0;#assert tr_apply(c,run,zero,TrSum.{},p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.order;
+    #assert tr_apply(c,run,b,s,p[..],m[..],v[..],total[0..<1],stage[..],order[..]).status==TrStatus.shape;
+    #assert tr_apply(c,run,b,s,p[..],m[0..<1],v[..],total[..],stage[..],order[..]).status==TrStatus.shape;
+    #assert tr_apply(c,run,b,s,p[..],m[..],v[0..<1],total[..],stage[..],order[..]).status==TrStatus.shape;
+    #assert tr_apply(c,run,b,s,p[..],m[..],v[..],total[..],stage[0..<5],order[..]).status==TrStatus.shape;
+    #assert tr_apply(c,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[0..<3]).status==TrStatus.shape;
+    // A loss or gradient that is not finite, or a norm that overflows.
+    nl:=s;nl.loss=tr_test_inf();#assert tr_apply(c,run,b,nl,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.number;
+    total[1]=0.0/0.0;#assert tr_apply(c,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.number;
+    total[0]=1e300;total[1]=1e300;#assert tr_apply(c,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.number;
+    // A step that would leave the bound: the first parameter lands on it, the second crosses.
+    tb:=c;tb.bound=0.75;total[0]=-0.5;total[1]=0.6;#assert tr_apply(tb,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.bound;
+    total[0]=-0.6;total[1]=0;#assert tr_apply(tb,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.bound;
+    total[0]=-0.5;total[1]=0.5;q:=p;#assert tr_apply(tb,run,b,s,q[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.ok && q[0]==0.75 && q[1]==-0.75;
+    // binary32 storage: a result past f32's range is infinite, so out of bounds.
+    f:=c;f.storage=TrStorage.binary32;f.bound=1e300;total[0]=-1e100;total[1]=0;#assert tr_apply(f,run,b,s,p[..],m[..],v[..],total[..],stage[..],order[..]).status==TrStatus.bound;
+    #assert p[0]==0.5 && p[1]==-0.5 && m[0]==0 && v[0]==0 && m[1]==0 && v[1]==0;
+    // A finished run, and a stopped one.
+    end:=run;end.revision=2;#assert tr_next(c,end,none[0..<0],nothing[0..<0],nothing[0..<0]).status==TrStatus.done;
+    end.revision=1;#assert tr_next(c,end,none[0..<0],nothing[0..<0],nothing[0..<0]).status==TrStatus.ok;
+    end.stopped=true;#assert tr_next(c,end,none[0..<0],nothing[0..<0],nothing[0..<0]).status==TrStatus.stopped;
+}
+#test "evaluation runs on its cadence and early stopping waits patience evaluations" {
+    c:=tr_test_rows();c.every=2;c.patience=2;none:[1]PkDoc;nothing:[1]u8;
+    order:[4]int;run:=tr_begin(c,2,none[0..<0],nothing[0..<0],order[..]).run;
+    // Revision 0 is due: no batch until it is evaluated, and only once.
+    #assert tr_next(c,run,none[0..<0],nothing[0..<0],nothing[0..<0]).status==TrStatus.evaluate;
+    #assert tr_eval(c,run,tr_test_inf()).status==TrStatus.number;
+    e:=tr_eval(c,run,3);#assert e.status==TrStatus.ok && e.run.best==3 && e.run.evals==1 && e.run.stale==0 && e.run.last==0 && !e.run.stopped;
+    #assert tr_eval(c,e.run,1).status==TrStatus.order && tr_next(c,e.run,none[0..<0],nothing[0..<0],nothing[0..<0]).status==TrStatus.ok;
+    r:=e.run;r.revision=1;#assert tr_eval(c,r,1).status==TrStatus.order;
+    r.revision=2;e=tr_eval(c,r,3);#assert e.run.best==3 && e.run.stale==1 && !e.run.stopped && e.run.last==2;
+    r=e.run;r.revision=4;e=tr_eval(c,r,2);#assert e.run.best==2 && e.run.stale==0 && e.run.evals==3;
+    r=e.run;r.revision=6;e=tr_eval(c,r,2);#assert e.run.stale==1 && !e.run.stopped;
+    r=e.run;r.revision=8;e=tr_eval(c,r,5);#assert e.run.stale==2 && e.run.stopped && e.run.best==2;
+    // Without patience the run never stops; without a cadence nothing is due.
+    np:=c;np.patience=0;e=tr_eval(np,r,5);#assert e.run.stale==2 && !e.run.stopped;
+    off:=c;off.every=0;#assert tr_eval(off,run,1).status==TrStatus.order && tr_next(off,run,none[0..<0],nothing[0..<0],nothing[0..<0]).status==TrStatus.ok;
+    // Every revision is due at a cadence of 1; a patience of 1 stops at the first miss.
+    each:=c;each.every=1;each.patience=1;r=e.run;r.revision=9;r.stopped=false;r.stale=0;
+    #assert tr_next(each,r,none[0..<0],nothing[0..<0],nothing[0..<0]).status==TrStatus.evaluate;e=tr_eval(each,r,1);#assert e.status==TrStatus.ok && e.run.best==1 && !e.run.stopped;
+    r=e.run;r.revision=10;e=tr_eval(each,r,1);#assert e.run.stale==1 && e.run.stopped;
+}
+#test "stream batches are chapter 122's rows, read through chapter 121's feed" {
+    docs:[64]PkDoc;tokens:[4096]u8;nt:=fd_synthetic(docs[..],tokens[..]);order:[1]int;
+    c:=TrConfig.{source=TrSource.stream,rate=0.5,bound=1,batch=2,accumulate=3,length=8,steps=2,seed=3};
+    run:=tr_begin(c,2,docs[..],tokens[0..<nt],order[0..<0]).run;rows:[48]u8;
+    b:=tr_next(c,run,docs[..],tokens[0..<nt],rows[..]);#assert b.status==TrStatus.ok && b.micro==3 && b.start==0 && b.revision==0;
+    cur:=PkCursor.{seed=3};row:[8]u8;
+    for r:0..<6 {n:=pk_next(docs[..],tokens[0..<nt],cur,row[..],false);#assert n.status==PkStatus.ok;cur=n.cursor;for t:0..<8 {#assert rows[r*8+t]==row[t];}}
+    #assert fd_same(b.after,cur) && rows[0]==PK_BOS;
+    k:=tr_rows(c,b,2);#assert k.first==4 && k.count==2;
+    #assert tr_next(c,run,docs[..],tokens[0..<nt],rows[0..<47]).status==TrStatus.shape;
+    far:=run;far.cursor.order=48;#assert tr_next(c,far,docs[..],tokens[0..<nt],rows[..]).status==TrStatus.data;
+    // The last epoch's end is outside the stream.
+    last:=run;last.cursor.epoch=PK_EPOCHS-1;last.cursor.order=pk_trains(docs[..])-1;ord:[64]int;pk_order(docs[..],3,PK_EPOCHS-1,ord[..]);last.cursor.offset=docs[ord[last.cursor.order]].count;
+    #assert tr_next(c,last,docs[..],tokens[0..<nt],rows[..]).status==TrStatus.data;
+}
+#test "rows runs resume exactly, and refuse another run" {
+    c:=TrConfig.{schedule=TrSchedule.linear,rate=0.25,drop=0.5,bound=100,examples=6,batch=2,accumulate=2,epochs=4,shuffle=true,seed=5,every=3,patience=4,clip=1};
+    none:[1]PkDoc;nothing:[1]u8;#assert tr_steps(c)==8;
+    p:[2]f64;m:[2]f64;v:[2]f64;order:[6]int;run:=tr_begin(c,2,none[0..<0],nothing[0..<0],order[..]).run;
+    whole:=tr_test_drive(c,run,none[0..<0],nothing[0..<0],p[..],m[..],v[..],order[..],100);
+    #assert whole.status==TrStatus.done && whole.steps==8 && whole.evals==3 && whole.run.revision==8 && whole.run.cursor.epoch==4;
+    zero:=[2]f64.[0,0];#assert tr_test_all(p[..])<tr_test_all(zero[..]);
+    // The order the trainer kept is epoch 4's.
+    want:[6]int;tr_order(c,4,want[..]);for i:0..<6 {#assert order[i]==want[i];}
+    // Interrupted after step 5 (mid-epoch, an evaluation behind it).
+    q:[2]f64;qm:[2]f64;qv:[2]f64;qo:[6]int;r:=tr_begin(c,2,none[0..<0],nothing[0..<0],qo[..]).run;
+    part:=tr_test_drive(c,r,none[0..<0],nothing[0..<0],q[..],qm[..],qv[..],qo[..],5);#assert part.status==TrStatus.ok && part.run.revision==5 && part.run.cursor.order==4 && part.run.evals==2;
+    tr_order(c,2,want[..]);for i:0..<6 {#assert qo[i]==want[i];}
+    ids:=tr_ids(c,ck_fill(1),ck_fill(2),ck_fill(3));bytes:[388]u8;pointer:[80]u8;#assert tr_size(2)==388;
+    #assert tr_save(ids,part.run,q[..],qm[..],qv[..],bytes[..],pointer[..])==CkStatus.ok;
+    // A fresh process: zeroed buffers and a scrambled order are restored.
+    f:[2]f64;fm:[2]f64;fv:[2]f64;fo:=[6]int.[9,9,9,9,9,9];
+    back:=tr_resume(c,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],f[..],fm[..],fv[..],fo[..]);
+    #assert back.status==CkStatus.ok && back.run.revision==5 && back.run.evals==2 && back.run.last==3 && back.run.best==part.run.best && back.run.stale==part.run.stale && !back.run.stopped && tr_same(f[..],q[..]);
+    #assert fd_same(back.run.cursor,part.run.cursor) && back.run.state.step==5;for i:0..<6 {#assert fo[i]==qo[i];}
+    rest:=tr_test_drive(c,back.run,none[0..<0],nothing[0..<0],f[..],fm[..],fv[..],fo[..],100);#assert rest.status==TrStatus.done && rest.steps==3 && tr_same(f[..],p[..]);
+    for k:0..<3 {#assert f64_bits(rest.losses[k])==f64_bits(whole.losses[5+k]);}
+    // Refusals write nothing.
+    keep:=[2]f64.[7,7];w:=keep;wm:=keep;wv:=keep;
+    other:=c;other.seed=6;#assert tr_resume(other,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.optimizer;
+    other=c;other.every=2;#assert tr_resume(other,tr_ids(other,ck_fill(1),ck_fill(2),ck_fill(3)),pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.optimizer;
+    #assert tr_resume(c,tr_ids(c,ck_fill(9),ck_fill(2),ck_fill(3)),pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.model;
+    bc:=c;bc.rate=0;#assert tr_resume(bc,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.shape;
+    #assert tr_resume(c,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[0..<5]).status==CkStatus.shape;
+    #assert tr_resume(c,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[0..<1],wv[..],fo[..]).status==CkStatus.shape;
+    #assert tr_resume(c,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[0..<1],fo[..]).status==CkStatus.shape;
+    #assert tr_resume(c,ids,pointer[..],bytes[0..<387],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.truncated;
+    long:[389]u8;for i:0..<388 {long[i]=bytes[i];}#assert tr_resume(c,ids,pointer[..],long[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.corrupt;
+    #assert tr_resume(c,ids,pointer[0..<79],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.truncated;
+    for at:[5]int.[250,300,316,340,387] {d:=bytes;d[at]^=1;#assert tr_resume(c,ids,pointer[..],d[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.corrupt;}
+    d:=bytes;d[0]^=1;#assert tr_resume(c,ids,pointer[..],d[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.magic;
+    d=bytes;d[308]^=1;#assert tr_resume(c,ids,pointer[..],d[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.magic;
+    #assert w[0]==7 && wm[1]==7 && wv[0]==7 && fo[0]==qo[0];
+    // A pointer to another checkpoint of the same run is stale.
+    later:[388]u8;lp:[80]u8;#assert tr_save(ids,rest.run,f[..],fm[..],fv[..],later[..],lp[..])==CkStatus.ok;
+    #assert tr_resume(c,ids,lp[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.stale;
+    // The finished run resumes as finished.
+    fin:=tr_resume(c,ids,lp[..],later[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]);#assert fin.status==CkStatus.ok && tr_next(c,fin.run,none[0..<0],nothing[0..<0],nothing[0..<0]).status==TrStatus.done;
+    // Saves refuse short buffers and a run record that cannot be true.
+    #assert tr_save(ids,part.run,q[..],qm[..],qv[..],bytes[0..<387],pointer[..])==CkStatus.shape && tr_save(ids,part.run,q[..],qm[..],qv[..],bytes[..],pointer[0..<79])==CkStatus.shape;
+    lies:=[7]TrRun.[part.run,part.run,part.run,part.run,part.run,part.run,part.run];
+    lies[0].stale=3;lies[1].last=6;lies[2].best=tr_test_inf();lies[3].evals=-1;lies[4].last=-2;lies[5].stale=-1;lies[6].evals=7;lies[6].stale=0;
+    for k:0..<7 {#assert tr_save(ids,lies[k],q[..],qm[..],qv[..],bytes[..],pointer[..])==CkStatus.corrupt;}
+    edges:=[2]TrRun.[part.run,part.run];edges[0].evals=0;edges[0].stale=0;edges[0].last=-1;edges[1].evals=6;edges[1].stale=6;edges[1].last=5;
+    for k:0..<2 {#assert tr_save(ids,edges[k],q[..],qm[..],qv[..],bytes[..],pointer[..])==CkStatus.ok;e:=tr_resume(c,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]);
+        #assert e.status==CkStatus.ok && e.run.evals==edges[k].evals && e.run.last==edges[k].last && e.run.stale==edges[k].stale;}
+    // Records a resume cannot believe: optimizer steps that are not the run's, a cursor the revision does not give, a run past its end.
+    w=keep;bent:=[4]TrRun.[part.run,part.run,part.run,part.run];bent[0].state.step=4;bent[1].state.skipped=1;bent[2].cursor.order=2;bent[3].revision=9;bent[3].cursor=tr_cursor(c,9);
+    for k:0..<4 {#assert tr_save(ids,bent[k],q[..],qm[..],qv[..],bytes[..],pointer[..])==CkStatus.ok;
+        #assert tr_resume(c,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],w[..],wm[..],wv[..],fo[..]).status==CkStatus.corrupt;}
+    #assert w[0]==7 && w[1]==7;
+}
+#test "stream runs with AdamW resume exactly, and refuse a cursor outside the stream" {
+    docs:[64]PkDoc;tokens:[4096]u8;nt:=fd_synthetic(docs[..],tokens[..]);order:[1]int;
+    c:=TrConfig.{optimizer=TrOptimizer.adamw,source=TrSource.stream,rate=0.125,beta1=0.5,beta2=0.75,eps=0.001,bound=4,batch=2,accumulate=2,length=8,steps=4,seed=3};
+    p:[2]f64;m:[2]f64;v:[2]f64;run:=tr_begin(c,2,docs[..],tokens[0..<nt],order[0..<0]).run;
+    whole:=tr_test_drive(c,run,docs[..],tokens[0..<nt],p[..],m[..],v[..],order[0..<0],100);#assert whole.status==TrStatus.done && whole.steps==4 && p[0]>0;
+    q:[2]f64;qm:[2]f64;qv:[2]f64;part:=tr_test_drive(c,run,docs[..],tokens[0..<nt],q[..],qm[..],qv[..],order[0..<0],2);#assert part.run.revision==2 && part.run.state.step==2;
+    ids:=tr_ids(c,ck_fill(1),ck_fill(2),ck_fill(3));bytes:[388]u8;pointer:[80]u8;#assert tr_save(ids,part.run,q[..],qm[..],qv[..],bytes[..],pointer[..])==CkStatus.ok;
+    f:[2]f64;fm:[2]f64;fv:[2]f64;back:=tr_resume(c,ids,pointer[..],bytes[..],docs[..],tokens[0..<nt],f[..],fm[..],fv[..],order[0..<0]);
+    #assert back.status==CkStatus.ok && fd_same(back.run.cursor,part.run.cursor) && tr_same(fm[..],qm[..]) && tr_same(fv[..],qv[..]);
+    rest:=tr_test_drive(c,back.run,docs[..],tokens[0..<nt],f[..],fm[..],fv[..],order[0..<0],100);
+    #assert rest.steps==2 && tr_same(f[..],p[..]) && tr_same(fm[..],m[..]) && tr_same(fv[..],v[..]) && f64_bits(rest.losses[1])==f64_bits(whole.losses[3]);
+    // Another order seed (another identity), a cursor of another seed, and one no document holds.
+    w:=[2]f64.[7,7];wm:=w;wv:=w;other:=c;other.seed=4;
+    #assert tr_resume(other,ids,pointer[..],bytes[..],docs[..],tokens[0..<nt],w[..],wm[..],wv[..],order[0..<0]).status==CkStatus.optimizer;
+    seeded:=part.run;seeded.cursor.seed=4;#assert tr_save(ids,seeded,q[..],qm[..],qv[..],bytes[..],pointer[..])==CkStatus.ok;
+    #assert tr_resume(c,ids,pointer[..],bytes[..],docs[..],tokens[0..<nt],w[..],wm[..],wv[..],order[0..<0]).status==CkStatus.corrupt;
+    bent:=part.run;bent.cursor.order=48;#assert tr_save(ids,bent,q[..],qm[..],qv[..],bytes[..],pointer[..])==CkStatus.ok;
+    #assert tr_resume(c,ids,pointer[..],bytes[..],docs[..],tokens[0..<nt],w[..],wm[..],wv[..],order[0..<0]).status==CkStatus.corrupt && w[0]==7 && wm[0]==7;
+    #assert tr_resume(c,ids,pointer[..],bytes[..],docs[..],tokens[0..<nt-1],w[..],wm[..],wv[..],order[0..<0]).status==CkStatus.shape;
+}
+#test "the trainer tail is checked field by field" {
+    d:=ck_fill(4);t:[80]u8;for i:0..<80 {t[i]=255;}run:=TrRun.{revision=6,evals=3,best=-0.5,stale=1,last=6,stopped=true};
+    tr_tail_write(d,run,t[..]);#assert t[0]==80 && t[1]==83 && t[2]==84 && t[3]==82 && t[4]==1 && t[5]==0 && t[6]==0 && t[7]==0;
+    for i:0..<8 {#assert t[8+i]==TR_TAIL_FIELDS[i] && t[40+i]==TR_TAIL_FIELDS[8+i];}
+    r:=tr_tail(t[..],d,6);#assert r.status==CkStatus.ok && r.run.best==-0.5 && r.run.evals==3 && r.run.stale==1 && r.run.last==6 && r.run.stopped && r.run.revision==6;
+    for at:0..<80 {
+        u:=t;u[at]^=1;s:=tr_tail(u[..],d,6).status;
+        if at<4 {#assert s==CkStatus.magic;} else if at<8 {#assert s==CkStatus.version;} else {#assert s==CkStatus.corrupt;}
+    }
+    e:=d;e[31]^=1;#assert tr_tail(t[..],e,6).status==CkStatus.corrupt;e=d;e[0]^=1;#assert tr_tail(t[..],e,6).status==CkStatus.corrupt;
+    #assert tr_tail(t[..],d,5).status==CkStatus.corrupt;
+    // The digest, by its first bytes.
+    for i:0..<4 {#assert t[48+i]==TR_TAIL_PIN[i];}
+    // Fields signed with values a run cannot hold are refused.
+    bad:=[6]TrRun.[run,run,run,run,run,run];bad[0].evals=8;bad[1].stale=4;bad[2].last=7;bad[3].best=0.0/0.0;bad[4].evals=-1;bad[5].last=-2;
+    for k:0..<6 {u:[80]u8;tr_tail_write(d,bad[k],u[..]);#assert tr_tail(u[..],d,6).status==CkStatus.corrupt;}
+    edge:=run;edge.evals=7;edge.stale=7;edge.last=-1;edge.stopped=false;u:[80]u8;tr_tail_write(d,edge,u[..]);w:=tr_tail(u[..],d,6);
+    #assert w.status==CkStatus.ok && w.run.evals==7 && w.run.stale==7 && w.run.last==-1 && !w.run.stopped;
+    u[32]=2;k:=ck_put(u[..],48,tr_tail_digest(d,u[..]));#assert k==80 && tr_tail(u[..],d,6).status==CkStatus.corrupt;
+}
+#test "bit comparison sees every difference" {
+    a:=[3]f64.[1,-0.0,2];b:=a;#assert tr_same(a[..],b[..]) && tr_same(a[0..<0],b[0..<0]);
+    for i:0..<3 {c:=a;c[i]=3;#assert !tr_same(a[..],c[..]);}
+    z:=a;z[1]=0;#assert !tr_same(a[..],z[..]) && !tr_same(a[0..<2],b[..]) && !tr_same(a[..],b[0..<2]);
+}
+#test "every configuration field is part of the optimizer identity" {
+    c:=TrConfig.{optimizer=TrOptimizer.adamw,rate=0.5,drop=0.25,beta1=0.5,beta2=0.75,eps=0.125,decay=0.0625,span_count=1,clip=2,accumulate=2,bound=8,examples=6,batch=2,epochs=3,shuffle=true,seed=4,length=8,steps=5,every=2,patience=3};
+    c.spans[0]=TrSpan.{first=1,count=2};id:=tr_identity(c);#assert ck_equal(id,tr_identity(c));
+    for k:0..<31 {d:=c;
+        if k==0 {d.optimizer=TrOptimizer.sgd;}if k==1 {d.schedule=TrSchedule.linear;}if k==2 {d.storage=TrStorage.binary32;}if k==3 {d.source=TrSource.stream;}
+        if k==4 {d.rate=0.25;}if k==5 {d.drop=0.5;}if k==6 {d.beta1=0.25;}if k==7 {d.beta2=0.5;}if k==8 {d.eps=0.25;}if k==9 {d.decay=0.125;}
+        if k==10 {d.spans[0].first=2;}if k==11 {d.spans[0].count=1;}if k==12 {d.span_count=0;}if k==13 {d.clip=1;}if k==14 {d.accumulate=1;}if k==15 {d.bound=4;}
+        if k==16 {d.examples=5;}if k==17 {d.batch=1;}if k==18 {d.epochs=2;}if k==19 {d.shuffle=false;}if k==20 {d.seed=5;}if k==21 {d.length=7;}
+        if k==22 {d.steps=4;}if k==23 {d.every=1;}if k==24 {d.patience=2;}if k==25 {d.spans[3].first=1;}if k==26 {d.spans[3].count=1;}if k==27 {d.spans[1].first=1;}
+        if k==28 {d.spans[1].count=1;}if k==29 {d.spans[2].first=1;}if k==30 {d.spans[2].count=1;}
+        #assert !ck_equal(id,tr_identity(d));}
+    // The identity of this configuration, by its first bytes.
+    for j:0..<4 {#assert id[j]==TR_ID_PIN[j];}
+    i:=tr_ids(c,ck_fill(1),ck_fill(2),ck_fill(3));#assert ck_equal(i.model,ck_fill(1)) && ck_equal(i.tokenizer,ck_fill(2)) && ck_equal(i.dataset,ck_fill(3)) && ck_equal(i.optimizer,id);
+}
+
+// book:begin admit
+tr_finite :: (x:f64)->bool {return aw_finite(x);}
+tr_ceil :: (a:int,b:int)->int {return (a+b-1)/b;}
+tr_min :: (a:int,b:int)->int {return (a+b-cast(int)abs(f64(a-b)))/2;}
+// Optimizer steps in the whole run.
+tr_steps :: (c:TrConfig)->int {
+    if c.source==TrSource.stream {return c.steps;}
+    return c.epochs*tr_ceil(tr_ceil(c.examples,c.batch),c.accumulate);
+}
+// Decay spans are in order, disjoint, non-empty and inside the parameters.
+tr_spans :: (c:TrConfig,n:int)->bool {
+    if c.span_count<0 || c.span_count>TR_SPANS {return false;}
+    end:=0;
+    for k:0..<c.span_count {s:=c.spans[k];if s.first<end || s.count<1 || s.count>n-s.first {return false;}end=s.first+s.count;}
+    return true;
+}
+tr_decayed :: (c:TrConfig,i:int)->bool {for k:0..<c.span_count {s:=c.spans[k];if i>=s.first && i<s.first+s.count {return true;}}return false;}
+// Every refusal of a configuration, before any work.
+tr_admit :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8)->TrStatus {
+    if n<1 || n>CK_VALUES || !tr_spans(c,n) {return TrStatus.shape;}
+    if c.optimizer==TrOptimizer.sgd {
+        if !(c.rate>0 && c.rate<=16) || !(c.decay>=0 && c.decay<=1) {return TrStatus.config;}
+    } else {
+        if c.storage!=TrStorage.binary64 || !aw_hyper(AwGroup.{lr=c.rate,beta1=c.beta1,beta2=c.beta2,eps=c.eps,decay=c.decay}) {return TrStatus.config;}
+    }
+    if !(c.drop>=0 && c.drop<=1) || !(c.clip>=0) || !tr_finite(c.clip) || !(c.bound>0) || !tr_finite(c.bound) {return TrStatus.config;}
+    if c.accumulate<1 || c.accumulate>TR_ACCUMULATE || c.every<0 || c.patience<0 {return TrStatus.config;}
+    if c.source==TrSource.rows {
+        if c.examples<1 || c.examples>TR_EXAMPLES || c.batch<1 || c.batch>c.examples || c.epochs<1 || c.epochs>TR_EPOCHS {return TrStatus.config;}
+        return TrStatus.ok;
+    }
+    // A step's rows must fit one chapter 121 batch: at most FD_ROWS rows.
+    if c.steps<1 || c.steps>TR_STEPS || c.batch<1 || c.batch>FD_ROWS/c.accumulate || c.length<2 || c.length>PK_ROW {return TrStatus.config;}
+    if pk_dataset(docs,tokens)!=PkStatus.ok {return TrStatus.data;}
+    return TrStatus.ok;
+}
+// book:end admit
+
+// book:begin order
+// Fisher-Yates from the last position down, one counter per draw; returns
+// the next unused counter. Chapter 103's shuffle, the same draws.
+tr_shuffle :: (order:[]int,seed:u64,counter:u64)->u64 {
+    c:=counter;i:=order.count-1;
+    while i>0 {
+        j:=cast(int)(cr_bits(seed,c)%cast(u64)(i+1));c+=1;
+        t:=order[i];order[i]=order[j];order[j]=t;i-=1;
+    }
+    return c;
+}
+// Epoch e's order: the positions, shuffled once per epoch through e.
+tr_order :: (c:TrConfig,epoch:int,order:[]int) {
+    for i:0..<c.examples {order[i]=i;}
+    if !c.shuffle {return;}
+    counter:=cast(u64)0;for e:0..<epoch+1 {counter=tr_shuffle(order[0..<c.examples],c.seed,counter);}
+}
+// In rows mode the cursor follows from the steps taken.
+tr_cursor :: (c:TrConfig,revision:int)->PkCursor {
+    per:=tr_ceil(tr_ceil(c.examples,c.batch),c.accumulate);
+    return PkCursor.{seed=c.seed,epoch=revision/per,order=(revision%per)*c.accumulate*c.batch};
+}
+tr_begin :: (c:TrConfig,n:int,docs:[]PkDoc,tokens:[]u8,order:[]int)->TrState {
+    s:=tr_admit(c,n,docs,tokens);if s!=TrStatus.ok {return TrState.{status=s};}
+    if c.source==TrSource.rows {if order.count<c.examples {return TrState.{status=TrStatus.shape};}tr_order(c,0,order);}
+    return TrState.{run=TrRun.{cursor=PkCursor.{seed=c.seed}}};
+}
+// book:end order
+
+// book:begin next
+tr_due :: (c:TrConfig,run:TrRun)->bool {return c.every>0 && run.revision%c.every==0 && run.last!=run.revision;}
+// The next step's batch. Rows mode names positions in the epoch's order;
+// stream mode fills rows with the step's packed rows through chapter 121's
+// feed. A due evaluation comes first.
+tr_next :: (c:TrConfig,run:TrRun,docs:[]PkDoc,tokens:[]u8,rows:[]u8)->TrBatch {
+    if run.stopped {return TrBatch.{status=TrStatus.stopped};}
+    if tr_due(c,run) {return TrBatch.{status=TrStatus.evaluate};}
+    if run.revision>=tr_steps(c) {return TrBatch.{status=TrStatus.done};}
+    if c.source==TrSource.rows {
+        k:=tr_min(c.accumulate,tr_ceil(c.examples-run.cursor.order,c.batch));
+        after:=run.cursor;after.order+=k*c.batch;if after.order>=c.examples {after.order=0;after.epoch+=1;}
+        return TrBatch.{revision=run.revision,micro=k,start=run.cursor.order,after=after};
+    }
+    n:=c.accumulate*c.batch;p:=fd_plan(n,c.length,1,1,n*c.length);
+    if rows.count!=n*c.length {return TrBatch.{status=TrStatus.shape};}
+    // One worker owns every row, so its success is the whole batch.
+    cursors:[65]PkCursor;done:[64]u8;f:=fd_cursors(docs,tokens,p,run.cursor,cursors[0..<n+1]);
+    if f.status!=FdStatus.ok {return TrBatch.{status=TrStatus.data};}
+    if fd_worker(docs,tokens,p,0,cursors[0..<n+1],rows,done[0..<n])!=FdStatus.ok {return TrBatch.{status=TrStatus.data};}
+    return TrBatch.{revision=run.revision,micro=c.accumulate,after=f.cursor};
+}
+// Micro-batch k: positions order[first..<first+count] in rows mode, packed
+// rows first..<first+count of the batch in stream mode.
+tr_rows :: (c:TrConfig,b:TrBatch,k:int)->TrSpan {
+    first:=b.start+k*c.batch;count:=c.batch;if c.source==TrSource.rows {count=tr_min(count,c.examples-first);}
+    return TrSpan.{first=first,count=count};
+}
+// Adds one micro-batch's loss and mean gradient, each divided by the step's
+// micro-batch count, in order. The first clears the sum.
+tr_add :: (b:TrBatch,s:TrSum,loss:f64,g:[]f64,total:[]f64)->TrSum {
+    if s.status!=TrStatus.ok || s.micro>=b.micro {return TrSum.{status=TrStatus.order};}
+    if g.count!=total.count {return TrSum.{status=TrStatus.shape};}
+    if s.micro==0 {for i:0..<total.count {total[i]=0;}}
+    k:=f64(b.micro);for i:0..<total.count {total[i]+=g[i]/k;}
+    return TrSum.{micro=s.micro+1,loss=s.loss+loss/k};
+}
+// book:end next
+
+// book:begin apply
+tr_rate :: (c:TrConfig,step:int)->f64 {
+    if c.schedule==TrSchedule.constant {return c.rate;}
+    return c.rate*(1-c.drop*f64(step)/f64(tr_steps(c)));
+}
+// One step from a complete sum. total is the trainer's scratch: clipping
+// scales it in place. New values go to stage first; p, m and v change only
+// when every one is admitted.
+tr_apply :: (c:TrConfig,run:TrRun,b:TrBatch,s:TrSum,p:[]f64,m:[]f64,v:[]f64,total:[]f64,stage:[]f64,order:[]int)->TrStep {
+    n:=p.count;fail:=TrStep.{run=run};
+    if b.status!=TrStatus.ok || s.status!=TrStatus.ok || b.revision!=run.revision || b.micro<1 || s.micro!=b.micro {fail.status=TrStatus.order;return fail;}
+    if total.count!=n || m.count!=n || v.count!=n || stage.count<3*n || (c.source==TrSource.rows && order.count<c.examples) {fail.status=TrStatus.shape;return fail;}
+    // A non-finite gradient, or one whose squares overflow, makes the sum non-finite.
+    sum:=0.0;for x:total {sum+=x*x;}
+    if !tr_finite(s.loss) || !tr_finite(sum) {fail.status=TrStatus.number;return fail;}
+    norm:=sqrt(sum);
+    if c.clip>0 && norm>c.clip {for i:0..<n {total[i]=total[i]*c.clip/norm;}}
+    rate:=tr_rate(c,run.state.step);sp:=stage[0..<n];sm:=stage[n..<2*n];sv:=stage[2*n..<3*n];state:=run.state;
+    for i:0..<n {sp[i]=p[i];sm[i]=m[i];sv[i]=v[i];}
+    if c.optimizer==TrOptimizer.sgd {
+        for i:0..<n {
+            step:=total[i];if tr_decayed(c,i) {step+=c.decay*p[i];}
+            next:=p[i]-rate*step;
+            if c.storage==TrStorage.binary32 {if !aw_narrow(next) {fail.status=TrStatus.bound;return fail;}next=f64(f32(next));}
+            sp[i]=next;
+        }
+        state.step+=1;
+    } else {
+        groups:[9]AwGroup;g:=0;at:=0;none:[1]f32;
+        for k:0..<c.span_count {
+            sk:=c.spans[k];
+            if sk.first>at {groups[g]=AwGroup.{first=at,count=sk.first-at,lr=rate,beta1=c.beta1,beta2=c.beta2,eps=c.eps};g+=1;}
+            groups[g]=AwGroup.{first=sk.first,count=sk.count,lr=rate,beta1=c.beta1,beta2=c.beta2,eps=c.eps,decay=c.decay};g+=1;at=sk.first+sk.count;
+        }
+        if at<n {groups[g]=AwGroup.{first=at,count=n-at,lr=rate,beta1=c.beta1,beta2=c.beta2,eps=c.eps};g+=1;}
+        a:=aw_step(groups[0..<g],AwPolicy.{},run.state,sp,total,sm,sv,none[0..<0],false);
+        if a.status!=AwStatus.ok {fail.status=TrStatus.optimizer;return fail;}
+        state=a.state;
+    }
+    for i:0..<n {if !(abs(sp[i])<=c.bound) {fail.status=TrStatus.bound;return fail;}}
+    for i:0..<n {p[i]=sp[i];m[i]=sm[i];v[i]=sv[i];}
+    r:=run;r.state=state;r.revision+=1;r.cursor=b.after;
+    if c.source==TrSource.rows && c.shuffle && b.after.epoch>run.cursor.epoch {next:=tr_shuffle(order[0..<c.examples],c.seed,cast(u64)(b.after.epoch*(c.examples-1)));}
+    return TrStep.{run=r,loss=s.loss,rate=rate,norm=norm};
+}
+// book:end apply
+
+// book:begin eval
+// Records a due evaluation's loss. patience evaluations in a row that do not
+// improve on the best stop the run.
+tr_eval :: (c:TrConfig,run:TrRun,loss:f64)->TrState {
+    if !tr_due(c,run) {return TrState.{status=TrStatus.order,run=run};}
+    if !tr_finite(loss) {return TrState.{status=TrStatus.number,run=run};}
+    r:=run;r.last=run.revision;r.evals+=1;
+    if run.evals==0 || loss<run.best {r.best=loss;r.stale=0;} else {r.stale+=1;}
+    if c.patience>0 && r.stale>=c.patience {r.stopped=true;}
+    return TrState.{run=r};
+}
+// book:end eval
+
+// book:begin save
+// The optimizer identity a checkpoint must match: every configuration field.
+tr_identity :: (c:TrConfig)->[32]u8 {
+    w:=[31]u64.[cast(u64)cast(int)c.optimizer,cast(u64)cast(int)c.schedule,cast(u64)cast(int)c.storage,cast(u64)cast(int)c.source,
+        f64_bits(c.rate),f64_bits(c.drop),f64_bits(c.beta1),f64_bits(c.beta2),f64_bits(c.eps),f64_bits(c.decay),
+        cast,trunc(u64)c.spans[0].first,cast,trunc(u64)c.spans[0].count,cast,trunc(u64)c.spans[1].first,cast,trunc(u64)c.spans[1].count,
+        cast,trunc(u64)c.spans[2].first,cast,trunc(u64)c.spans[2].count,cast,trunc(u64)c.spans[3].first,cast,trunc(u64)c.spans[3].count,cast,trunc(u64)c.span_count,
+        f64_bits(c.clip),cast,trunc(u64)c.accumulate,f64_bits(c.bound),cast,trunc(u64)c.examples,cast,trunc(u64)c.batch,cast,trunc(u64)c.epochs,
+        cast(u64)(ifx c.shuffle then 1 else 0),c.seed,cast,trunc(u64)c.length,cast,trunc(u64)c.steps,cast,trunc(u64)c.every,cast,trunc(u64)c.patience];
+    b:[248]u8;at:=0;for x:w {at=ck_put64(b[..],at,x);}
+    return ck_digest("psionic.trainer-config.v1",b[0..<at]);
+}
+tr_ids :: (c:TrConfig,model:[32]u8,tokenizer:[32]u8,dataset:[32]u8)->CkIds {return CkIds.{model=model,tokenizer=tokenizer,dataset=dataset,optimizer=tr_identity(c)};}
+tr_size :: (n:int)->int {return ck_size(n)+TR_TAIL;}
+// The evaluation record a run can hold: a finite best, at most one
+// evaluation per revision, no more stale evaluations than evaluations.
+tr_record :: (r:TrRun)->bool {return tr_finite(r.best) && r.evals>=0 && r.evals<=r.revision+1 && r.stale>=0 && r.stale<=r.evals && r.last>=-1 && r.last<=r.revision;}
+// The 80-byte tail: "PSTR" u16 version=1 u16 0; evaluations, evaluations
+// since the best, last evaluated revision + 1, stopped (u64 each); the best
+// loss (binary64); SHA-256 (tag psionic.trainer.v1) of the record's digest
+// followed by the five fields (bytes 8 to 47).
+tr_tail_digest :: (d:[32]u8,t:[]u8)->[32]u8 {
+    b:[72]u8;for i:0..<32 {b[i]=d[i];}for i:8..<48 {b[24+i]=t[i];}
+    return ck_digest("psionic.trainer.v1",b[..]);
+}
+tr_tail_write :: (d:[32]u8,run:TrRun,t:[]u8) {
+    t[0]=80;t[1]=83;t[2]=84;t[3]=82;t[4]=1;t[5]=0;t[6]=0;t[7]=0;
+    at:=ck_put64(t,8,cast,trunc(u64)run.evals);at=ck_put64(t,at,cast,trunc(u64)run.stale);
+    at=ck_put64(t,at,cast,trunc(u64)(run.last+1));at=ck_put64(t,at,cast(u64)(ifx run.stopped then 1 else 0));at=ck_put64(t,at,f64_bits(run.best));
+    at=ck_put(t,at,tr_tail_digest(d,t));
+}
+// Reads an 80-byte tail signed over digest d into the evaluation record of
+// a run at revision.
+tr_tail :: (t:[]u8,d:[32]u8,revision:int)->TrResume {
+    if !ck_magic(t,84,82) {return TrResume.{status=CkStatus.magic};}
+    if t[4]!=1 || t[5]!=0 || t[6]!=0 || t[7]!=0 {return TrResume.{status=CkStatus.version};}
+    if !ck_equal(tr_tail_digest(d,t),ck_get(t,48)) {return TrResume.{status=CkStatus.corrupt};}
+    evals:=ck_get64(t,8);stale:=ck_get64(t,16);last:=ck_get64(t,24);stopped:=ck_get64(t,32);best:=ck_get64(t,40);top:=cast(u64)(revision+1);
+    if evals>top || stale>evals || last>top || stopped>1 || !ck_bits(best,false) {return TrResume.{status=CkStatus.corrupt};}
+    return TrResume.{run=TrRun.{revision=revision,evals=cast(int)evals,stale=cast(int)stale,last=cast(int)last-1,stopped=stopped==1,best=f64_from_bits(best)}};
+}
+// Writes the run as chapter 122's record, the tail, and the pointer naming
+// the record. Nothing is written for a run record that cannot be true.
+tr_save :: (ids:CkIds,run:TrRun,p:[]f64,m:[]f64,v:[]f64,bytes:[]u8,pointer:[]u8)->CkStatus {
+    n:=p.count;if bytes.count!=tr_size(n) || pointer.count!=CK_POINTER {return CkStatus.shape;}
+    if !tr_record(run) {return CkStatus.corrupt;}
+    body:=ck_size(n);s:=ck_write(CkMeta.{ids=ids,revision=run.revision,cursor=run.cursor,state=run.state},p,m,v,bytes[0..<body],false);if s!=CkStatus.ok {return s;}
+    d:=ck_get(bytes,body-32);tr_tail_write(d,run,bytes[body..<bytes.count]);
+    return ck_pointer_write(run.revision,d,pointer);
+}
+// Restores p, m, v, the batch order and the run from a record whose pointer
+// is current, for the same configuration. Every check passes before
+// anything is written.
+tr_resume :: (c:TrConfig,ids:CkIds,pointer:[]u8,bytes:[]u8,docs:[]PkDoc,tokens:[]u8,p:[]f64,m:[]f64,v:[]f64,order:[]int)->TrResume {
+    n:=p.count;rows:=c.source==TrSource.rows;
+    if tr_admit(c,n,docs,tokens)!=TrStatus.ok || m.count!=n || v.count!=n || (rows && order.count<c.examples) {return TrResume.{status=CkStatus.shape};}
+    if bytes.count<tr_size(n) {return TrResume.{status=CkStatus.truncated};}
+    if bytes.count>tr_size(n) {return TrResume.{status=CkStatus.corrupt};}
+    q:=ck_pointer_read(pointer);if q.status!=CkStatus.ok {return TrResume.{status=q.status};}
+    body:=ck_size(n);sp:[4096]f64;sm:[4096]f64;sv:[4096]f64;
+    // The optimizer identity is this configuration's, whatever ids says.
+    want:=ids;want.optimizer=tr_identity(c);
+    r:=ck_read(bytes[0..<body],want,sp[0..<n],sm[0..<n],sv[0..<n],false);s:=ck_current(q,r);if s!=CkStatus.ok {return TrResume.{status=s};}
+    t:=tr_tail(bytes[body..<bytes.count],r.digest,r.meta.revision);if t.status!=CkStatus.ok {return t;}
+    run:=t.run;run.cursor=r.meta.cursor;run.state=r.meta.state;
+    if run.revision>tr_steps(c) || run.state.step!=run.revision || run.state.skipped!=0 {return TrResume.{status=CkStatus.corrupt};}
+    if rows && !fd_same(run.cursor,tr_cursor(c,run.revision)) {return TrResume.{status=CkStatus.corrupt};}
+    if !rows && (!pk_cursor(docs,run.cursor) || run.cursor.seed!=c.seed) {return TrResume.{status=CkStatus.corrupt};}
+    for i:0..<n {p[i]=sp[i];m[i]=sm[i];v[i]=sv[i];}
+    if rows {tr_order(c,run.cursor.epoch,order);}
+    return TrResume.{run=run};
+}
+// book:end save

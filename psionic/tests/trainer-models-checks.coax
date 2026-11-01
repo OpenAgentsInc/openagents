@@ -1,0 +1,58 @@
+// Chapter 118's check fixtures and the caller's loop for each model.
+// Loaded by psionic/lib/trainer-models.coax and owned by its checks; the
+// example one-trainer.coax uses the same loops.
+
+// book:begin drive
+// The caller's loop, the same shape for every model: ask for a batch,
+// evaluate when asked, add each micro-batch, apply. Only the model calls
+// differ. Stops when the trainer says so or at revision stop. Evaluation
+// is the loss on the held rows.
+tm_tabular_drive :: (m:TbModel,c:TrConfig,x:[]f64,y:[]f64,rows:[]int,held:[]int,run:TrRun,p:[]f64,mo:[]f64,vo:[]f64,order:[]int,stop:int,losses:[]f64)->TrDrive {
+    out:=TrDrive.{run=run};n:=p.count;g:[161]f64;total:[161]f64;stage:[483]f64;none:[1]PkDoc;nothing:[1]u8;
+    while out.run.revision<stop {
+        b:=tr_next(c,out.run,none[..],nothing[..],nothing[..]);
+        if b.status==TrStatus.evaluate {e:=tr_eval(c,out.run,tb_loss(m,p,x,y,held));if e.status!=TrStatus.ok {out.status=e.status;return out;}out.run=e.run;out.evals+=1;continue;}
+        if b.status!=TrStatus.ok {out.status=b.status;return out;}
+        s:TrSum;
+        for k:0..<b.micro {r:=tr_rows(c,b,k);s=tr_add(b,s,tm_tabular_step(m,p,x,y,rows,order[r.first..<r.first+r.count],g[0..<n]),g[0..<n],total[0..<n]);}
+        a:=tr_apply(c,out.run,b,s,p,mo,vo,total[0..<n],stage[0..<3*n],order);if a.status!=TrStatus.ok {out.status=a.status;return out;}
+        losses[out.steps]=a.loss;out.run=a.run;out.steps+=1;
+    }
+    return out;
+}
+// book:end drive
+
+// Evaluation is the held-out loss; a model refusal stops the loop as data.
+tm_decoder_drive :: (s:TdShape,c:TrConfig,docs:[]PkDoc,tokens:[]u8,held:[]int,run:TrRun,p:[]f64,m:[]f64,v:[]f64,stop:int,losses:[]f64)->TrDrive {
+    out:=TrDrive.{run=run};n:=p.count;w:[13984]f64;dw:[13984]f64;g:[3152]f64;total:[3152]f64;stage:[9456]f64;rows:[256]u8;none:[1]int;
+    nr:=c.accumulate*c.batch*c.length;work:=td_work_count(s);
+    while out.run.revision<stop {
+        b:=tr_next(c,out.run,docs,tokens,rows[0..<nr]);
+        if b.status==TrStatus.evaluate {e:=tr_eval(c,out.run,tt_held_loss(s,p,held,w[0..<work]));if e.status!=TrStatus.ok {out.status=e.status;return out;}out.run=e.run;out.evals+=1;continue;}
+        if b.status!=TrStatus.ok {out.status=b.status;return out;}
+        sum:TrSum;
+        for k:0..<b.micro {
+            r:=tr_rows(c,b,k);d:=tm_decoder_step(s,p,rows[r.first*c.length..<(r.first+r.count)*c.length],w[0..<work],dw[0..<work],g[0..<n]);
+            if d.status!=TdStatus.ok {out.status=TrStatus.number;return out;}
+            sum=tr_add(b,sum,d.loss,g[0..<n],total[0..<n]);
+        }
+        a:=tr_apply(c,out.run,b,sum,p,m,v,total[0..<n],stage[0..<3*n],none[0..<0]);if a.status!=TrStatus.ok {out.status=a.status;return out;}
+        losses[out.steps]=a.loss;out.run=a.run;out.steps+=1;
+    }
+    return out;
+}
+
+TM_SESSIONS :: 24;
+TmTable :: struct {x:[768]f64;xs:[768]f64;y:[192]f64;lat:[192]f64;g:[192]int;rows:[192]int;n:int;all:int;}
+tm_table :: ()->TmTable {
+    t:TmTable;s:=tb_simulate(70,TM_SESSIONS,t.x[..],t.y[..],t.lat[..],t.g[..],false);#assert s.status==TbStatus.ok;
+    t.all=s.rows;t.n=tb_rows(t.g[0..<s.rows],0,t.rows[..],false);mean:[4]f64;sd:[4]f64;
+    #assert tb_fit_scale(t.x[0..<4*s.rows],4,t.rows[0..<t.n],mean[..],sd[..],false)==TbStatus.ok && tb_apply_scale(t.x[0..<4*s.rows],4,mean[..],sd[..],t.xs[0..<4*s.rows],false)==TbStatus.ok;
+    return t;
+}
+// Trains m through the trainer from chapter 103's initialization; the parameters land in p.
+tm_tabular_run :: (m:TbModel,c:TbConfig,x:[]f64,y:[]f64,rows:[]int,p:[]f64)->TrDrive {
+    tc:=tm_tabular(m,c,rows.count);n:=tb_param_count(m);order:[4096]int;mo:[161]f64;vo:[161]f64;losses:[8192]f64;none:[1]PkDoc;nothing:[1]u8;
+    tb_initialize(m,c.init_seed,p);st:=tr_begin(tc,n,none[0..<0],nothing[0..<0],order[..]);#assert st.status==TrStatus.ok;
+    return tm_tabular_drive(m,tc,x,y,rows,rows,st.run,p[0..<n],mo[0..<n],vo[0..<n],order[..],1048576,losses[..]);
+}

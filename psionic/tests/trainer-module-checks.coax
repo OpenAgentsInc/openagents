@@ -1,0 +1,33 @@
+// Chapter 118's check helpers for chapter 117's block: its example inputs,
+// its eval-mode loss, and the caller's loop. Loaded by
+// psionic/lib/trainer-module.coax and owned by its checks; the example
+// one-trainer-module.coax uses the same loop.
+
+// The loss of one forward run in eval mode (dropout off), as chapter 117's example measures it.
+tm_module_eval :: (f:MdlModel,p:[]f64,inputs:[]f32)->f32 {
+    tm_module_move(f,p,inputs,true);e:=mdl_train(f,false);#assert mdl_refresh(e,0,inputs)==MdlStatus.ok;
+    off:AdMode;off.enabled=false;t:=ad_tape(e.program,off,OrRegistry.{});
+    values:[1024]f32;grads:[8]f64;flags:[64]u8;out:[1]f32;
+    run:=ad_run(t,AdCursor.{},inputs,values[..],grads[..],flags[..]);
+    #assert ad_value(t,run.cursor,e.program.output,inputs,values[..],out[..])==AdStatus.ok;
+    return out[0];
+}
+tm_module_drive :: (f:MdlModel,c:TrConfig,run:TrRun,p:[]f64,m:[]f64,v:[]f64,inputs:[]f32,order:[]int,stop:int,losses:[]f64,evals:[]f32)->TrDrive {
+    out:=TrDrive.{run=run};n:=p.count;t:=ad_tape(f.program,mdl_mode(f),OrRegistry.{});g:[128]f64;total:[128]f64;stage:[384]f64;none:[1]PkDoc;nothing:[1]u8;
+    while out.run.revision<stop {
+        b:=tr_next(c,out.run,none[..],nothing[..],nothing[..]);
+        if b.status==TrStatus.evaluate {l:=tm_module_eval(f,p,inputs);e:=tr_eval(c,out.run,f64(l));if e.status!=TrStatus.ok {out.status=e.status;return out;}evals[out.evals]=l;out.run=e.run;out.evals+=1;continue;}
+        if b.status!=TrStatus.ok {out.status=b.status;return out;}
+        s:=tr_add(b,TrSum.{},tm_module_step(f,t,out.run.revision,p,inputs,g[0..<n]),g[0..<n],total[0..<n]);
+        a:=tr_apply(c,out.run,b,s,p,m,v,total[0..<n],stage[0..<3*n],order);if a.status!=TrStatus.ok {out.status=a.status;return out;}
+        losses[out.steps]=a.loss;out.run=a.run;out.steps+=1;
+    }
+    tm_module_move(f,p,inputs,true);
+    return out;
+}
+// Chapter 117's example inputs: parameters by their rules at seed 7, data by formula.
+tm_module_inputs :: (m:MdlModel,inputs:[]f32) {
+    #assert mdl_init(m,7,inputs)==MdlStatus.ok;
+    for j:0..<16 {inputs[j]=f32(f64((j*5)%16-8)/8);inputs[16+j]=f32(f64((((j/4)*4+(j+1)%4)*5)%16-8)/16);}
+}
+

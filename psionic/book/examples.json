@@ -1920,6 +1920,28 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/one-trainer.coax",
+      "chapter": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "stdout": "psionic/fixtures/one-trainer.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180
+    },
+    {
+      "source": "psionic/examples/one-trainer-module.coax",
+      "chapter": "psionic/book/ch118-one-trainer-for-every-model.md",
+      "stdout": "psionic/fixtures/one-trainer-module.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "timeout": 180
     }
   ]
 }

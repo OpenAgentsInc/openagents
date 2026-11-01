@@ -1,0 +1,95 @@
+// Chapter 118: existing models trained through the one trainer. Each model
+// keeps its own gradient code and supplies only a micro-batch's loss and mean
+// gradient: here chapter 103's tabular models (tb_gradient) and chapter 115's
+// tiny decoder (td_gradients over packed rows); trainer-module.coax drives
+// chapter 117's module block. The checks run each model's own trainer beside
+// the shared one and compare losses, weights and moments bit for bit.
+#load "trainer.coax";
+#load "tabular.coax";
+#load "transformer/train.coax";
+#load "../tests/trainer-models-checks.coax";  // the checks' fixtures and the caller's loops
+
+
+// book:begin tabular
+// Chapter 103's SGD as a trainer configuration: weight decay on the weight
+// spans (W1 and w2, or w), never a bias; parameters bounded by its domain.
+tm_tabular :: (m:TbModel,c:TbConfig,rows:int)->TrConfig {
+    t:=TrConfig.{rate=c.rate,decay=c.decay,bound=TB_DOMAIN,examples=rows,batch=tr_min(c.batch,rows),epochs=c.epochs,shuffle=true,seed=c.shuffle_seed};
+    hd:=m.hidden*m.features;t.span_count=1;t.spans[0]=TrSpan.{first=0,count=m.features};
+    if m.hidden>0 {t.span_count=2;t.spans[0].count=hd;t.spans[1]=TrSpan.{first=hd+m.hidden,count=m.hidden};}
+    return t;
+}
+// One micro-batch: the positions name rows of the training set.
+tm_tabular_step :: (m:TbModel,p:[]f64,x:[]f64,y:[]f64,rows:[]int,pick:[]int,g:[]f64)->f64 {
+    idx:[256]int;for k:0..<pick.count {idx[k]=rows[pick[k]];}
+    tb_gradient(m,p,x,y,idx[0..<pick.count],g);return tb_loss(m,p,x,y,idx[0..<pick.count]);
+}
+// book:end tabular
+// book:begin decoder
+// Chapter 115's step as a trainer configuration: AdamW on a linear
+// schedule, each step four packed rows of the context length, one row a
+// micro-batch, read from the stream at seed TT_ORDER.
+tm_decoder :: (s:TdShape,steps:int)->TrConfig {
+    return TrConfig.{optimizer=TrOptimizer.adamw,schedule=TrSchedule.linear,source=TrSource.stream,rate=TT_RATE,drop=0.9,beta1=0.9,beta2=0.99,eps=0.00000001,
+        bound=TD_NUMBER,batch=1,accumulate=TT_BATCH,length=s.context,steps=steps,seed=TT_ORDER};
+}
+tm_decoder_step :: (s:TdShape,p:[]f64,row:[]u8,w:[]f64,dw:[]f64,g:[]f64)->TdResult {
+    ints:[256]int;for t:0..<row.count {ints[t]=cast(int)row[t];}return td_gradients(s,p,ints[0..<row.count],w,dw,g,false);
+}
+// book:end decoder
+// Checks. The fixtures and the caller's loop for each model are in
+// psionic/tests/trainer-models-checks.coax.
+#test "chapter 103's models train to the same bits through the trainer" #steps 4000000000 {
+    t:=tm_table();#assert t.n>40;x:=t.xs[0..<4*t.all];y:=t.y[0..<t.all];lat:=t.lat[0..<t.all];rows:=t.rows[0..<t.n];
+    models:=[3]TbModel.[TbModel.{features=4,logistic=true},TbModel.{features=4,hidden=3,logistic=true},TbModel.{features=4}];
+    configs:=[3]TbConfig.[TbConfig.{epochs=6,batch=8,rate=0.5,init_seed=1,shuffle_seed=2},TbConfig.{epochs=4,batch=5,rate=0.25,decay=0.01,init_seed=3,shuffle_seed=4},TbConfig.{epochs=3,batch=200,rate=0.05,decay=0.5,init_seed=1,shuffle_seed=9}];
+    for k:0..<3 {
+        m:=models[k];c:=configs[k];n:=tb_param_count(m);ref:[161]f64;order:[192]int;p:[161]f64;
+        target:=y;if k==2 {target=lat;}
+        want:=tb_train(m,c,x,target,rows,ref[0..<n],order[..],false);#assert want.status==TbStatus.ok;
+        got:=tm_tabular_run(m,c,x,target,rows,p[0..<n]);
+        #assert got.status==TrStatus.done && got.steps==want.steps && tr_same(p[0..<n],ref[0..<n]);
+        #assert f64_bits(tb_loss(m,p[0..<n],x,target,rows))==f64_bits(want.loss);
+    }
+    // Both refuse the same diverging run: unscaled features at rate 16.
+    m:=models[2];c:=TbConfig.{epochs=2,batch=4,rate=16,init_seed=1,shuffle_seed=2};ref:[5]f64;order:[192]int;p:[5]f64;
+    #assert tb_train(m,c,t.x[0..<4*t.all],lat,rows,ref[..],order[..],false).status==TbStatus.update;
+    #assert tm_tabular_run(m,c,t.x[0..<4*t.all],lat,rows,p[..]).status==TrStatus.bound;
+    #assert tm_tabular(m,c,9).spans[0].count==4 && tm_tabular(m,c,9).span_count==1 && tm_tabular(m,c,9).batch==4 && tm_tabular(m,c,3).batch==3;
+    one:=tm_tabular(TbModel.{features=4,hidden=1},c,9);#assert one.span_count==2 && one.spans[0].count==4 && one.spans[1].first==5 && one.spans[1].count==1;
+    h:=tm_tabular(models[1],c,9);#assert h.span_count==2 && h.spans[0].first==0 && h.spans[0].count==12 && h.spans[1].first==15 && h.spans[1].count==3 && h.rate==16 && h.seed==2 && h.epochs==2 && h.shuffle && h.bound==TB_DOMAIN;
+}
+#test "a tabular run cut mid-epoch resumes to chapter 103's bits" #steps 4000000000 {
+    t:=tm_table();x:=t.xs[0..<4*t.all];y:=t.y[0..<t.all];rows:=t.rows[0..<t.n];none:[1]PkDoc;nothing:[1]u8;
+    m:=TbModel.{features=4,hidden=3,logistic=true};c:=TbConfig.{epochs=3,batch=7,rate=0.5,decay=0.01,init_seed=3,shuffle_seed=4};
+    ref:[19]f64;order:[192]int;#assert tb_train(m,c,x,y,rows,ref[..],order[..],false).status==TbStatus.ok;
+    tc:=tm_tabular(m,c,t.n);tc.every=5;p:[19]f64;mo:[19]f64;vo:[19]f64;o:[192]int;losses:[512]f64;tb_initialize(m,c.init_seed,p[..]);
+    run:=tr_begin(tc,19,none[0..<0],nothing[0..<0],o[..]).run;cut:=tr_steps(tc)/2+1;
+    part:=tm_tabular_drive(m,tc,x,y,rows,rows,run,p[..],mo[..],vo[..],o[..],cut,losses[..]);#assert part.status==TrStatus.ok && part.run.revision==cut && part.run.cursor.order>0;
+    ids:=tr_ids(tc,ck_fill(1),ck_fill(2),ck_fill(3));bytes:[796]u8;pointer:[80]u8;#assert tr_size(19)==796 && tr_save(ids,part.run,p[..],mo[..],vo[..],bytes[..],pointer[..])==CkStatus.ok;
+    q:[19]f64;qm:[19]f64;qv:[19]f64;qo:[192]int;back:=tr_resume(tc,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],q[..],qm[..],qv[..],qo[..]);#assert back.status==CkStatus.ok;
+    rest:=tm_tabular_drive(m,tc,x,y,rows,rows,back.run,q[..],qm[..],qv[..],qo[..],1048576,losses[..]);#assert rest.status==TrStatus.done && tr_same(q[..],ref[..]);
+    // The evaluation cadence does not touch the weights.
+    #assert part.evals+rest.evals==tr_steps(tc)/5+1;
+}
+TM_STEPS :: 4;
+#test "chapter 115's decoder trains to the same bits through the trainer, and resumes" #steps 4000000000 {
+    f:=tt_fix();s:=TT_SMALL;docs:=f.docs[..];tokens:=f.tokens[0..<f.n];held:[1]int;
+    // The reference: chapter 115's own step.
+    p:[220]f64;m:[220]f64;v:[220]f64;w:[600]f64;dw:[600]f64;g:[220]f64;total:[220]f64;want:[4]f64;
+    run:=tt_start(p[..]);for k:0..<TM_STEPS {r:=tt_step(s,docs,tokens,run,TM_STEPS,p[..],m[..],v[..],w[..],dw[..],g[..],total[..]);#assert r.status==TtStatus.ok;run=r.run;want[k]=r.loss;}
+    c:=tm_decoder(s,TM_STEPS);q:[220]f64;qm:[220]f64;qv:[220]f64;got:[4]f64;none:[1]int;
+    seed:=td_init(s,CrSeed.{seed=TT_INIT},q[..]);st:=tr_begin(c,220,docs,tokens,none[0..<0]);#assert st.status==TrStatus.ok;
+    out:=tm_decoder_drive(s,c,docs,tokens,held[0..<0],st.run,q[..],qm[..],qv[..],2,got[..]);
+    ids:=tr_ids(c,tt_model(s),ck_fill(2),ck_fill(3));bytes:[5620]u8;pointer:[80]u8;#assert tr_size(220)==5620 && tr_save(ids,out.run,q[..],qm[..],qv[..],bytes[..],pointer[..])==CkStatus.ok;
+    out=tm_decoder_drive(s,c,docs,tokens,held[0..<0],out.run,q[..],qm[..],qv[..],TM_STEPS,got[2..<4]);
+    #assert out.status==TrStatus.ok && out.run.revision==TM_STEPS && fd_same(out.run.cursor,run.cursor) && out.run.state.step==run.state.step;
+    for k:0..<TM_STEPS {#assert f64_bits(got[k])==f64_bits(want[k]);}
+    #assert tr_same(q[..],p[..]) && tr_same(qm[..],m[..]) && tr_same(qv[..],v[..]);
+    // Resumed in fresh buffers from the record after step 2.
+    r:[220]f64;rm:[220]f64;rv:[220]f64;back:=tr_resume(c,ids,pointer[..],bytes[..],docs,tokens,r[..],rm[..],rv[..],none[0..<0]);#assert back.status==CkStatus.ok;
+    again:[2]f64;out=tm_decoder_drive(s,c,docs,tokens,held[0..<0],back.run,r[..],rm[..],rv[..],TM_STEPS,again[..]);
+    #assert out.steps==2 && f64_bits(again[1])==f64_bits(want[3]) && tr_same(r[..],p[..]) && tr_same(rm[..],m[..]) && tr_same(rv[..],v[..]);
+    // A record of a run of another length is refused.
+    #assert tr_resume(tm_decoder(s,TM_STEPS+1),ids,pointer[..],bytes[..],docs,tokens,r[..],rm[..],rv[..],none[0..<0]).status==CkStatus.optimizer;
+}

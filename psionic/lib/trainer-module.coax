@@ -1,0 +1,79 @@
+// Chapter 118: chapter 117's module block trained through the one trainer.
+// Its own file because chapter 117's tensor stack and chapter 113's decoder
+// declare different types under one name (TdStatus) and cannot load together.
+// The checks run chapter 117's loop (mdl_sgd) beside the shared trainer and
+// compare losses and weights bit for bit.
+#load "trainer.coax";
+#load "module.coax";
+#load "../tests/trainer-module-checks.coax";  // the checks' inputs, evaluation and the caller's loop
+
+// book:begin module
+// Chapter 117's block: the trained values are the parameters the tape
+// differentiates, in entry order, held as f32 in the model's input buffer.
+// The trainer keeps them in binary64 and rounds each update to f32 (binary32
+// storage), at chapter 117's f32 rate, so it makes mdl_sgd's update exactly.
+tm_module :: (steps:int,every:int)->TrConfig {
+    return TrConfig.{storage=TrStorage.binary32,rate=f64(f32(0.02)),bound=AW_F32_MAX,examples=1,epochs=steps,every=every};
+}
+tm_module_floats :: (f:MdlModel)->int {mode:=mdl_mode(f);n:=0;for i:0..<f.count {if mode.grad[f.entries[i].node] {n+=f.entries[i].size;}}return n;}
+// Copies trained values between the trainer's vector and the input buffer.
+tm_module_move :: (f:MdlModel,p:[]f64,inputs:[]f32,into:bool) {
+    mode:=mdl_mode(f);at:=0;
+    for i:0..<f.count {e:=f.entries[i];if !mode.grad[e.node] {continue;}
+        for j:0..<e.size {if into {inputs[e.base+j]=f32(p[at+j]);} else {p[at+j]=f64(inputs[e.base+j]);}}at+=e.size;}
+}
+// One micro-batch: refresh the dropout mask for this step, run the tape,
+// read the loss and every trained entry's gradient.
+tm_module_step :: (f:MdlModel,t:AdTape,step:int,p:[]f64,inputs:[]f32,g:[]f64)->f64 {
+    tm_module_move(f,p,inputs,true);#assert mdl_refresh(f,cast(u64)step+100,inputs)==MdlStatus.ok;
+    values:[1024]f32;grads:[1024]f64;flags:[64]u8;out:[1]f32;g32:[64]f32;mode:=mdl_mode(f);
+    run:=ad_run(t,AdCursor.{},inputs,values[..],grads[..],flags[..]);#assert run.status==AdStatus.ok;
+    #assert ad_value(t,run.cursor,f.program.output,inputs,values[..],out[..])==AdStatus.ok;
+    at:=0;
+    for i:0..<f.count {e:=f.entries[i];if !mode.grad[e.node] {continue;}
+        #assert ad_gradient(t,run.cursor,e.node,grads[..],g32[0..<e.size])==AdStatus.ok;for j:0..<e.size {g[at+j]=f64(g32[j]);}at+=e.size;}
+    return f64(out[0]);
+}
+// book:end module
+// Checks. The inputs, the evaluation and the caller's loop are in
+// psionic/tests/trainer-module-checks.coax.
+#test "a parameter-first model maps its entries in order" #steps 4000000000 {
+    // loss = sum(x * w): the gradient of w is x.
+    q:=mdl_test_first();#assert tm_module_floats(q)==4 && tm_module_floats(mdl_freeze(mdl_test_block(0),"norm",true))==76 && tm_module_floats(mdl_test_block(0))==84;
+    inputs:[8]f32;for j:0..<8 {inputs[j]=f32(f64(j+1)/8);}p:[4]f64;tm_module_move(q,p[..],inputs[..],false);
+    for j:0..<4 {#assert p[j]==f64(j+1)/8;}
+    for j:0..<4 {p[j]=f64(j)-1.5;}tm_module_move(q,p[..],inputs[..],true);for j:0..<4 {#assert inputs[j]==f32(f64(j)-1.5) && inputs[4+j]==f32(f64(j+5)/8);}
+    g:[4]f64;t:=ad_tape(q.program,mdl_mode(q),OrRegistry.{});for j:0..<4 {p[j]=0.5;}
+    l:=tm_module_step(q,t,0,p[..],inputs[..],g[..]);#assert l==0.5*(0.625+0.75+0.875+1);
+    for j:0..<4 {#assert g[j]==f64(j+5)/8 && inputs[j]==0.5;}
+    #assert tm_module(400,100).epochs==400 && tm_module(400,100).every==100 && tm_module(400,100).rate==f64(f32(0.02)) && tm_module(4,2).storage==TrStorage.binary32 && tm_module(4,2).examples==1;
+}
+TM_MODULE_STEPS :: 4;
+#test "chapter 117's block trains to the same bits through the trainer, and resumes" #steps 4000000000 {
+    m:=mdl_test_block(128);f:=mdl_freeze(m,"norm",true);n:=tm_module_floats(f);#assert n==76;
+    // The reference: chapter 117's loop, mdl_sgd at rate 0.02.
+    ref:[256]f32;tm_module_inputs(m,ref[..]);t:=ad_tape(f.program,mdl_mode(f),OrRegistry.{});want:[8]f64;
+    values:[1024]f32;grads:[1024]f64;flags:[64]u8;g84:[84]f32;out:[1]f32;
+    for step:0..<TM_MODULE_STEPS {
+        #assert mdl_refresh(f,cast(u64)step+100,ref[..])==MdlStatus.ok;run:=ad_run(t,AdCursor.{},ref[..],values[..],grads[..],flags[..]);
+        #assert ad_value(t,run.cursor,26,ref[..],values[..],out[..])==AdStatus.ok;want[step]=f64(out[0]);
+        #assert mdl_sgd(f,t,run.cursor,grads[..],g84[..],ref[..],0.02)==MdlStatus.ok;
+    }
+    // The trainer, with an evaluation every 2 steps.
+    inputs:[256]f32;tm_module_inputs(m,inputs[..]);c:=tm_module(TM_MODULE_STEPS,2);p:[76]f64;pm:[76]f64;pv:[76]f64;order:[1]int;got:[8]f64;evals:[4]f32;none:[1]PkDoc;nothing:[1]u8;
+    tm_module_move(f,p[..],inputs[..],false);st:=tr_begin(c,n,none[0..<0],nothing[0..<0],order[..]);#assert st.status==TrStatus.ok;
+    o:=tm_module_drive(f,c,st.run,p[..],pm[..],pv[..],inputs[..],order[..],3,got[..],evals[..]);
+    ids:=tr_ids(c,ck_fill(1),ck_fill(2),ck_fill(3));bytes:[2164]u8;pointer:[80]u8;#assert tr_size(76)==2164 && tr_save(ids,o.run,p[..],pm[..],pv[..],bytes[..],pointer[..])==CkStatus.ok;
+    o=tm_module_drive(f,c,o.run,p[..],pm[..],pv[..],inputs[..],order[..],1048576,got[3..<4],evals[2..<4]);
+    #assert o.status==TrStatus.done && o.evals==1;
+    for k:0..<TM_MODULE_STEPS {#assert f64_bits(got[k])==f64_bits(want[k]);}
+    for i:0..<f.count {e:=f.entries[i];if mdl_saved(e) {for j:0..<e.size {#assert f32_bits(inputs[e.base+j])==f32_bits(ref[e.base+j]);}}}
+    // The norm stayed frozen; evaluation losses fell.
+    for j:32..<40 {#assert inputs[j]==ref[j];}#assert evals[2]<evals[0];
+    // A fresh process rebuilds the fixed entries from the model's own init, then resumes.
+    fresh:[256]f32;tm_module_inputs(m,fresh[..]);r:[76]f64;rm:[76]f64;rv:[76]f64;
+    back:=tr_resume(c,ids,pointer[..],bytes[..],none[0..<0],nothing[0..<0],r[..],rm[..],rv[..],order[..]);#assert back.status==CkStatus.ok && back.run.evals==2;
+    again:[8]f64;more:[4]f32;o=tm_module_drive(f,c,back.run,r[..],rm[..],rv[..],fresh[..],order[..],1048576,again[..],more[..]);
+    #assert o.steps==1 && tr_same(r[..],p[..]) && f64_bits(again[0])==f64_bits(want[3]) && more[0]==evals[2];
+    for j:0..<256 {#assert f32_bits(fresh[j])==f32_bits(inputs[j]);}
+}

@@ -1,0 +1,64 @@
+#import "Basic";
+#load "../lib/trainer-models.coax";
+
+r6 :: (v:f64)->f64 {return floor(v*1000000+0.5)/1000000;}
+OT_HEX :: [16]string.["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+hex8 :: (d:[32]u8) {for i:0..<8 {print("%",OT_HEX[cast(int)d[i]/16]);print("%",OT_HEX[cast(int)d[i]%16]);}}
+
+// book:begin example
+main :: () {
+    // Chapter 103's deadline data, features scaled on the training rows.
+    x:[9600]f64;xs:[9600]f64;y:[2400]f64;lat:[2400]f64;g:[2400]int;tr:[2400]int;va:[2400]int;mean:[4]f64;sd:[4]f64;none:[1]PkDoc;nothing:[1]u8;
+    sim:=tb_simulate(70,300,x[..],y[..],lat[..],g[..],false);
+    rows:=tr[0..<tb_rows(g[..],0,tr[..],false)];held:=va[0..<tb_rows(g[..],1,va[..],false)];
+    #assert tb_fit_scale(x[..],4,rows,mean[..],sd[..],false)==TbStatus.ok && tb_apply_scale(x[..],4,mean[..],sd[..],xs[..],false)==TbStatus.ok;
+    print("chapter 103: % requests, % training rows, % validation rows\n",sim.rows,rows.count,held.count);
+    names:=[2]string.["logistic","MLP (8 hidden, decay 0.01)"];
+    models:=[2]TbModel.[TbModel.{features=4,logistic=true},TbModel.{features=4,hidden=8,logistic=true}];
+    configs:=[2]TbConfig.[TbConfig.{epochs=40,batch=16,rate=0.5,init_seed=1,shuffle_seed=2},TbConfig.{epochs=40,batch=16,rate=0.5,decay=0.01,init_seed=1,shuffle_seed=2}];
+    for k:0..<2 {
+        m:=models[k];c:=configs[k];n:=tb_param_count(m);ref:[161]f64;order:[2400]int;
+        want:=tb_train(m,c,xs[..],y[..],rows,ref[0..<n],order[..],false);
+        tc:=tm_tabular(m,c,rows.count);tc.every=500;p:[161]f64;mo:[161]f64;vo:[161]f64;o:[2400]int;losses:[8192]f64;
+        tb_initialize(m,c.init_seed,p[0..<n]);run:=tr_begin(tc,n,none[..],nothing[..],o[..]).run;
+        d:=tm_tabular_drive(m,tc,xs[..],y[..],rows,held,run,p[0..<n],mo[0..<n],vo[0..<n],o[..],1048576,losses[..]);
+        print("  %: %, % steps, training loss %; % evaluations, best validation loss %\n",names[k],d.status,d.steps,r6(tb_loss(m,p[0..<n],xs[..],y[..],rows)),d.evals,r6(d.run.best));
+        print("    tb_train: % steps; weights and loss the same bits: %\n",want.steps,tr_same(p[0..<n],ref[0..<n]) && tb_loss(m,p[0..<n],xs[..],y[..],rows)==want.loss);
+    }
+    // The MLP cut after step 1000, saved, and resumed in fresh buffers.
+    m:=models[1];c:=configs[1];tc:=tm_tabular(m,c,rows.count);tc.every=500;n:=tb_param_count(m);
+    p:[161]f64;mo:[161]f64;vo:[161]f64;o:[2400]int;losses:[8192]f64;tb_initialize(m,c.init_seed,p[0..<n]);
+    part:=tm_tabular_drive(m,tc,xs[..],y[..],rows,held,tr_begin(tc,n,none[..],nothing[..],o[..]).run,p[0..<n],mo[0..<n],vo[0..<n],o[..],1000,losses[..]);
+    ids:=tr_ids(tc,ck_fill(1),ck_fill(2),ck_fill(3));bytes:[4196]u8;pointer:[80]u8;
+    #assert tr_save(ids,part.run,p[0..<n],mo[0..<n],vo[0..<n],bytes[0..<tr_size(n)],pointer[..])==CkStatus.ok;
+    q:[161]f64;qm:[161]f64;qv:[161]f64;qo:[2400]int;
+    back:=tr_resume(tc,ids,pointer[..],bytes[0..<tr_size(n)],none[..],nothing[..],q[0..<n],qm[0..<n],qv[0..<n],qo[..]);
+    rest:=tm_tabular_drive(m,tc,xs[..],y[..],rows,held,back.run,q[0..<n],qm[0..<n],qv[0..<n],qo[..],1048576,losses[..]);
+    whole:=tm_tabular_drive(m,tc,xs[..],y[..],rows,held,part.run,p[0..<n],mo[0..<n],vo[0..<n],o[..],1048576,losses[..]);
+    print("  MLP resumed at step % (epoch %, row %) from % bytes: %; same weights as the whole run: %\n",back.run.revision,back.run.cursor.epoch,back.run.cursor.order,tr_size(n),back.status,tr_same(q[0..<n],p[0..<n]) && rest.steps==whole.steps);
+    other:=tc;other.batch=8;print("  resumed as a run with batch 8: %\n",tr_resume(other,ids,pointer[..],bytes[0..<tr_size(n)],none[..],nothing[..],q[0..<n],qm[0..<n],qv[0..<n],qo[..]).status);
+    // Unscaled features at rate 16 diverge: both trainers refuse.
+    line:=TbModel.{features=4};wild:=TbConfig.{epochs=2,batch=16,rate=16,init_seed=1,shuffle_seed=2};ref:[5]f64;order:[2400]int;
+    print("  unscaled latency line at rate 16: tb_train %, trainer %\n",tb_train(line,wild,x[..],lat[..],rows,ref[..],order[..],false).status,
+        tm_tabular_run(line,wild,x[..],lat[..],rows,p[0..<5]).status);
+
+    // Chapter 115's decoder, the small shape, 60 steps.
+    f:=tt_fix();s:=TT_SMALL;docs:=f.docs[..];tokens:=f.tokens[0..<f.n];hb:[4096]int;nh:=tt_stream(docs,tokens,PkSplit.validation,hb[..]);
+    rp:[220]f64;rm:[220]f64;rv:[220]f64;w:[600]f64;dw:[600]f64;gr:[220]f64;total:[220]f64;want:[60]f64;
+    rr:=tt_start(rp[..]);for k:0..<60 {r:=tt_step(s,docs,tokens,rr,60,rp[..],rm[..],rv[..],w[..],dw[..],gr[..],total[..]);rr=r.run;want[k]=r.loss;}
+    dc:=tm_decoder(s,60);dc.every=20;dp:[220]f64;dm:[220]f64;dv:[220]f64;got:[60]f64;one:[1]int;seed:=td_init(s,CrSeed.{seed=TT_INIT},dp[..]);
+    d:=tm_decoder_drive(s,dc,docs,tokens,hb[0..<nh],tr_begin(dc,220,docs,tokens,one[..]).run,dp[..],dm[..],dv[..],30,got[..]);
+    did:=tr_ids(dc,tt_model(s),ck_fill(2),ck_fill(3));db:[5620]u8;dpt:[80]u8;#assert tr_save(did,d.run,dp[..],dm[..],dv[..],db[..],dpt[..])==CkStatus.ok;
+    e:=tm_decoder_drive(s,dc,docs,tokens,hb[0..<nh],d.run,dp[..],dm[..],dv[..],1048576,got[30..<60]);
+    same:=0;for k:0..<60 {if f64_bits(got[k])==f64_bits(want[k]) {same+=1;}}
+    print("\nchapter 115: % parameters, AdamW on a linear schedule, 4 rows of 8 a step: %, % steps, % evaluations\n",td_parameter_count(s),e.status,d.steps+e.steps,d.evals+e.evals);
+    print("  loss at step 1 %, at step 60 %; best held-out loss %\n",r6(got[0]),r6(got[59]),r6(e.run.best));
+    print("  tt_step: % of 60 losses the same bits; weights and moments the same bits: %\n",same,tr_same(dp[..],rp[..]) && tr_same(dm[..],rm[..]) && tr_same(dv[..],rv[..]));
+    print("  weights: sha256 ");hex8(tt_digest(dp[..]));print("...\n");
+    q2:[220]f64;qm2:[220]f64;qv2:[220]f64;b2:=tr_resume(dc,did,dpt[..],db[..],docs,tokens,q2[..],qm2[..],qv2[..],one[..]);again:[30]f64;
+    a2:=tm_decoder_drive(s,dc,docs,tokens,hb[0..<nh],b2.run,q2[..],qm2[..],qv2[..],1048576,again[..]);
+    print("  resumed at step % from % bytes: %; % steps, weights and moments the same bits: %\n",b2.run.revision,db.count,b2.status,a2.steps,tr_same(q2[..],dp[..]) && tr_same(qm2[..],dm[..]) && tr_same(qv2[..],dv[..]));
+    bad:=db;bad[5600]^=1;print("  resume with one tail byte changed: %\n",tr_resume(dc,did,dpt[..],bad[..],docs,tokens,q2[..],qm2[..],qv2[..],one[..]).status);
+    print("  resume as a 61-step run: %\n",tr_resume(tm_decoder(s,61),did,dpt[..],db[..],docs,tokens,q2[..],qm2[..],qv2[..],one[..]).status);
+}
+// book:end example

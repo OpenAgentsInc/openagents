@@ -1,0 +1,40 @@
+#import "Basic";
+#load "../lib/trainer-module.coax";
+
+r6 :: (v:f64)->f64 {return floor(v*1000000+0.5)/1000000;}
+
+// book:begin example
+main :: () {
+    // Chapter 117's block with norm frozen, dropout 128/256, its example's inputs.
+    m:=mdl_test_block(128);f:=mdl_freeze(m,"norm",true);n:=tm_module_floats(f);none:[1]PkDoc;nothing:[1]u8;
+    // The reference: chapter 117's own loop, mdl_sgd at rate 0.02.
+    ref:[256]f32;tm_module_inputs(m,ref[..]);t:=ad_tape(f.program,mdl_mode(f),OrRegistry.{});
+    values:[1024]f32;grads:[1024]f64;flags:[64]u8;g84:[84]f32;out:[1]f32;want:[400]f64;
+    for step:0..<400 {
+        #assert mdl_refresh(f,cast(u64)step+100,ref[..])==MdlStatus.ok;run:=ad_run(t,AdCursor.{},ref[..],values[..],grads[..],flags[..]);
+        #assert ad_value(t,run.cursor,26,ref[..],values[..],out[..])==AdStatus.ok;want[step]=f64(out[0]);
+        #assert mdl_sgd(f,t,run.cursor,grads[..],g84[..],ref[..],0.02)==MdlStatus.ok;
+    }
+    // The trainer: the same block, an evaluation every 100 steps, cut after step 200.
+    c:=tm_module(400,100);inputs:[256]f32;tm_module_inputs(m,inputs[..]);p:[76]f64;pm:[76]f64;pv:[76]f64;order:[1]int;got:[400]f64;evals:[5]f32;
+    tm_module_move(f,p[..],inputs[..],false);
+    print("chapter 117: % trained floats (norm frozen), SGD at rate %, binary32 storage\n",n,c.rate);
+    d:=tm_module_drive(f,c,tr_begin(c,n,none[..],nothing[..],order[..]).run,p[..],pm[..],pv[..],inputs[..],order[..],200,got[..],evals[..]);
+    ids:=tr_ids(c,ck_fill(1),ck_fill(2),ck_fill(3));bytes:[2164]u8;pointer:[80]u8;#assert tr_save(ids,d.run,p[..],pm[..],pv[..],bytes[..],pointer[..])==CkStatus.ok;
+    e:=tm_module_drive(f,c,d.run,p[..],pm[..],pv[..],inputs[..],order[..],1048576,got[200..<400],evals[2..<5]);
+    for k:0..<5 {print("  step %: eval loss %\n",100*k,r6(f64(evals[k])));}
+    same:=0;for k:0..<400 {if f64_bits(got[k])==f64_bits(want[k]) {same+=1;}}
+    weights:=true;for i:0..<f.count {x:=f.entries[i];if mdl_saved(x) {for j:0..<x.size {weights=weights && f32_bits(inputs[x.base+j])==f32_bits(ref[x.base+j]);}}}
+    print("  %, % steps; mdl_sgd's loop: % of 400 losses and every saved float the same bits: %\n",e.status,d.steps+e.steps,same,weights);
+    // A fresh buffer: the model's own init rebuilds the fixed entries, the record the rest.
+    fresh:[256]f32;tm_module_inputs(m,fresh[..]);r:[76]f64;rm:[76]f64;rv:[76]f64;more:[5]f32;again:[400]f64;
+    back:=tr_resume(c,ids,pointer[..],bytes[..],none[..],nothing[..],r[..],rm[..],rv[..],order[..]);
+    a:=tm_module_drive(f,c,back.run,r[..],rm[..],rv[..],fresh[..],order[..],1048576,again[..],more[..]);
+    print("  resumed at step % from % bytes: %; % steps, weights the same bits: %\n",back.run.revision,bytes.count,back.status,a.steps,tr_same(r[..],p[..]));
+    // Refusals.
+    print("  resume as a 399-step run: %\n",tr_resume(tm_module(399,100),ids,pointer[..],bytes[..],none[..],nothing[..],r[..],rm[..],rv[..],order[..]).status);
+    later:[2164]u8;lp:[80]u8;#assert tr_save(ids,a.run,r[..],rm[..],rv[..],later[..],lp[..])==CkStatus.ok;
+    print("  the step-200 record with the finished run's pointer: %\n",tr_resume(c,ids,lp[..],bytes[..],none[..],nothing[..],r[..],rm[..],rv[..],order[..]).status);
+    zero:=c;zero.rate=0;print("  a run at rate 0: %\n",tr_begin(zero,n,none[..],nothing[..],order[..]).status);
+}
+// book:end example

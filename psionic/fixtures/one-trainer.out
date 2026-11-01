@@ -1,0 +1,16 @@
+chapter 103: 2400 requests, 1440 training rows, 480 validation rows
+  logistic: done, 3600 steps, training loss 0.10144; 8 evaluations, best validation loss 0.107442
+    tb_train: 3600 steps; weights and loss the same bits: true
+  MLP (8 hidden, decay 0.01): done, 3600 steps, training loss 0.112608; 8 evaluations, best validation loss 0.115894
+    tb_train: 3600 steps; weights and loss the same bits: true
+  MLP resumed at step 1000 (epoch 11, row 160) from 1516 bytes: ok; same weights as the whole run: true
+  resumed as a run with batch 8: optimizer
+  unscaled latency line at rate 16: tb_train update, trainer bound
+
+chapter 115: 220 parameters, AdamW on a linear schedule, 4 rows of 8 a step: done, 60 steps, 4 evaluations
+  loss at step 1 2.936081, at step 60 2.580775; best held-out loss 2.562791
+  tt_step: 60 of 60 losses the same bits; weights and moments the same bits: true
+  weights: sha256 938b9a3e2363dc1f...
+  resumed at step 30 from 5620 bytes: ok; 30 steps, weights and moments the same bits: true
+  resume with one tail byte changed: corrupt
+  resume as a 61-step run: optimizer
