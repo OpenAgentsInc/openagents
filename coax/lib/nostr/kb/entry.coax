@@ -1,0 +1,459 @@
+// NIP-KB records: one signed entry version (3190), head (30190) or
+// withdrawal (3191) read and checked. NIP-KB "Kinds", "Entry identity",
+// "Entry versions", "Heads", "Withdrawals" and "Validation".
+//
+// kb_read admits an event only when every check holds, in this order: the
+// NIP-01 id and BIP-340 signature; a KB kind; the body (a JSON object with
+// v 1, an empty requires, the type the kind names, an ID matching
+// ^[a-z][a-z0-9.-]{0,127}$, a version from 1 to 2^53 - 1, and exactly the
+// fields of that type: unknown keys refuse); the tags (exactly one d equal
+// to the ID, exactly one marker oa:kb:<type>:v1, every t lowercase; an entry
+// has exactly one x and one oa:kb:kind:<kind>, a head or withdrawal exactly
+// one e naming entry.id); for an entry, x equal to the SHA-256 of the exact
+// document bytes and a front matter whose id, version and kind equal the
+// body's; for a head or withdrawal, a signer equal to entry.pubkey.
+//
+// KB_OK says the record is well formed and signed by its author. It is no
+// trust decision (kb/current.coax decides what is current and what status
+// a reader shows), and an entry is reference text: it never runs and never
+// grants anything.
+//
+// Strings (the event id, the author, the ID, the digest, the document, the
+// referenced event and the reason) are written into the caller's arena.
+// The front matter's status is read (missing is candidate); its topics are
+// not compared with the t tags.
+//
+// Not here: evidence (3189), snapshots, private entries in 3188 envelopes,
+// and the reader's own content lint.
+//   coax/bin/coax test coax/lib/nostr/kb/entry.coax --library --run-steps 250000000
+#load "../event.coax";
+#load "../json.coax";
+#load "../../../tests/nostr/kb_vectors.coax";
+#load "../../../tests/nostr/kb_entry_fixtures.coax";
+#authority;
+
+// book:begin codes
+KB_OK :: cast(u32)0;
+KB_EVENT :: cast(u32)1;      // not a NIP-01 event with its own id
+KB_SIGNATURE :: cast(u32)2;
+KB_KIND :: cast(u32)3;       // not 3190, 30190 or 3191
+KB_SHAPE :: cast(u32)4;      // the body: a missing, repeated, unknown or mistyped key; v, requires or type
+KB_FIELD :: cast(u32)5;      // a field breaks its rule: ID grammar, version, entry kind, hex, reason length
+KB_TAGS :: cast(u32)6;       // the d, x, e or t tags disagree with the body or miscount
+KB_DIGEST :: cast(u32)7;     // x is not the SHA-256 of the document
+KB_DOCUMENT :: cast(u32)8;   // the front matter is missing or disagrees with the body
+KB_SIGNER :: cast(u32)9;     // a head or withdrawal not signed by the entry's author
+KB_LIMIT :: cast(u32)10;     // the caller's arena is full
+
+KB_ENTRY :: 0; KB_HEAD :: 1; KB_WITHDRAWAL :: 2;
+KB_EVENT_KINDS :: [3]int.[3190,30190,3191];
+KB_TYPES :: [3]string.["entry","head","withdrawal"];
+KB_MARKERS :: [3]string.["oa:kb:entry:v1","oa:kb:head:v1","oa:kb:withdrawal:v1"];
+KB_KINDS :: [5]string.["method","edge-case","slip","environment","tool"];
+KS_WITHDRAWN :: 0; KS_CANDIDATE :: 1; KS_ADMITTED :: 2;   // the document's status, lowest first
+KB_STATUS :: [3]string.["withdrawn","candidate","admitted"];
+KB_MAX_VERSION :: 9007199254740991;
+KB_MAX_REASON :: 1000;   // characters (code points)
+// book:end codes
+
+// book:begin record
+KbText :: struct {buf:[]u8;at:int;}
+KbRecord :: struct {
+  error:u32=KB_EVENT; type:int;
+  event:string; author:string; created_at:int;   // the signed event
+  id:string; version:int;                        // the entry this names
+  kind:int; digest:string; document:string; status:int=KS_CANDIDATE;  // an entry: x, the document
+  computed:string;                               // the SHA-256 of the document, as read
+  entry:string; entry_author:string; reason:string;  // a head or withdrawal: the 3190 it binds
+}
+// book:end record
+
+kb_keep :: (a:[]KbText,s:string)->string {
+  from:=a[0].at;if from+s.count>a[0].buf.count {return "";}
+  for i:0..<s.count {a[0].buf[from+i]=s[i];}a[0].at+=s.count;return cast(string)a[0].buf[from..<a[0].at];
+}
+kb_hex :: (a:[]KbText,bytes:[]u8)->string {
+  h:[64]u8;r:=hex_encode_checked(cast(string)bytes,h[..],false);return kb_keep(a,cast(string)h[0..<r.written]);
+}
+kb_hex64 :: (s:string)->bool {
+  if s.count!=64 {return false;}
+  for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+  return true;
+}
+// book:begin id
+// ^[a-z][a-z0-9.-]{0,127}$: no '_', so the qualified slug mapping reverses.
+kb_id_ok :: (s:string)->bool {
+  if s.count<1 || s.count>128 || s[0]<'a' {return false;}  // digits, '.' and '-' sort below 'a'
+  for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='.' || c=='-') {return false;}}
+  return true;
+}
+// book:end id
+// A JSON string token unescaped into the arena; ok false when it doesn't fit.
+KbString :: struct {ok:bool;s:string;}
+kb_string :: (j:[]Json,a:[]KbText)->KbString {
+  r:KbString;n:=json_unescape(json_text(j),a[0].buf[a[0].at..<a[0].buf.count]);
+  if n<0 {return r;}
+  r.s=cast(string)a[0].buf[a[0].at..<a[0].at+n];a[0].at+=n;r.ok=true;return r;
+}
+kb_chars :: (s:string)->int {n:=0;for c:s {if (c&0xc0)!=0x80 {n+=1;}}return n;}
+
+// book:begin body
+// The fields each type has, as bits of KB_FIELDS' order.
+KB_FIELDS :: [9]string.["v","requires","type","id","version","kind","document","entry","reason"];
+KB_MASKS :: [3]int.[0x7f,0x9f,0x19f];
+kb_body :: (body:string,t:int,r:[]KbRecord,a:[]KbText)->u32 {
+  j:[1]Json;json_start(j[..],body);
+  if json_next(j[..])!=JSON_OBJECT {return KB_SHAPE;}
+  seen:=0;k:=json_next(j[..]);
+  while k==JSON_STRING {
+    f:=-1;key:=json_text(j[..]);for i:0..<9 {if key==KB_FIELDS[i] {f=i;}}
+    if f<0 || (seen&(1<<f))!=0 {return KB_SHAPE;}  // a field of another type fails seen==mask below
+    seen|=1<<f;v:=json_next(j[..]);
+    if f==0 {if v!=JSON_NUMBER || json_text(j[..])!="1" {return KB_SHAPE;}}
+    else if f==1 {if v!=JSON_ARRAY || json_next(j[..])!=JSON_ARRAY_END {return KB_SHAPE;}}
+    else if f==7 {if v!=JSON_OBJECT {return KB_SHAPE;}e:=kb_ref(j[..],r,a);if e!=KB_OK {return e;}}
+    else if f==4 {
+      if v!=JSON_NUMBER {return KB_SHAPE;}
+      n:=json_int(json_text(j[..]));if !n.ok || n.value<1 || n.value>KB_MAX_VERSION {return KB_FIELD;}
+      r[0].version=n.value;
+    } else {
+      if v!=JSON_STRING {return KB_SHAPE;}
+      s:=kb_string(j[..],a);if !s.ok {return KB_LIMIT;}
+      if f==2 {if s.s!=KB_TYPES[t] {return KB_SHAPE;}}
+      else if f==3 {if !kb_id_ok(s.s) {return KB_FIELD;}r[0].id=s.s;}
+      else if f==5 {
+        r[0].kind=-1;for i:0..<5 {if s.s==KB_KINDS[i] {r[0].kind=i;}}
+        if r[0].kind<0 {return KB_FIELD;}
+      }
+      else if f==6 {
+        r[0].document=s.s;d:[32]u8;
+        if sha256_hash_checked(a[0].buf[a[0].at-s.s.count..<a[0].at],d[..],false)!=SHA_OK {return KB_LIMIT;}
+        r[0].computed=kb_hex(a,d[..]);if r[0].computed=="" {return KB_LIMIT;}
+      }
+      else {if kb_chars(s.s)>KB_MAX_REASON {return KB_FIELD;}r[0].reason=s.s;}
+    }
+    k=json_next(j[..]);
+  }
+  if k!=JSON_OBJECT_END || seen!=KB_MASKS[t] || json_next(j[..])!=JSON_END {return KB_SHAPE;}
+  return KB_OK;
+}
+// entry: exactly {id, pubkey, kind: 3190}.
+kb_ref :: (j:[]Json,r:[]KbRecord,a:[]KbText)->u32 {
+  seen:=0;k:=json_next(j);
+  while k==JSON_STRING {
+    key:=json_text(j);f:=ifx key=="id" then 0 else ifx key=="pubkey" then 1 else ifx key=="kind" then 2 else -1;
+    if f<0 || (seen&(1<<f))!=0 {return KB_SHAPE;}
+    seen|=1<<f;v:=json_next(j);
+    if f==2 {if v!=JSON_NUMBER {return KB_SHAPE;}if json_text(j)!="3190" {return KB_FIELD;}}
+    else {
+      if v!=JSON_STRING {return KB_SHAPE;}
+      s:=kb_string(j,a);if !s.ok {return KB_LIMIT;}
+      if !kb_hex64(s.s) {return KB_FIELD;}
+      if f==0 {r[0].entry=s.s;} else {r[0].entry_author=s.s;}
+    }
+    k=json_next(j);
+  }
+  if k!=JSON_OBJECT_END || seen!=7 {return KB_SHAPE;}
+  return KB_OK;
+}
+// book:end body
+
+// book:begin tags
+kb_prefix :: (s:string,p:string)->bool {return s.count>=p.count && s[0..<p.count]==p;}
+kb_find :: (s:string,from:int,c:u8)->int {for i:from..<s.count {if s[i]==c {return i;}}return -1;}
+kb_lower :: (s:string)->bool {for c:s {if c>='A' && c<='Z' {return false;}}return true;}
+kb_tags :: (tags:string,t:int,r:[]KbRecord,a:[]KbText)->u32 {
+  value:[256]u8;j:[1]Json;json_start(j[..],tags);
+  if json_next(j[..])!=JSON_ARRAY {return KB_TAGS;}
+  ds:=0;xs:=0;es:=0;markers:=0;kinds:=0;
+  g:=json_next(j[..]);
+  while g==JSON_ARRAY {
+    i:=0;name:="";v:=json_next(j[..]);
+    while v==JSON_STRING {
+      if i<2 {
+        n:=json_unescape(json_text(j[..]),value[..]);if n<0 {return KB_TAGS;}
+        s:=cast(string)value[0..<n];
+        if i==0 {name=ifx s=="d" then "d" else ifx s=="x" then "x" else ifx s=="e" then "e" else ifx s=="t" then "t" else "-";}
+        else if name=="d" {ds+=1;if s!=r[0].id {return KB_TAGS;}}
+        else if name=="x" && t==KB_ENTRY {xs+=1;if !kb_hex64(s) {return KB_TAGS;}r[0].digest=kb_keep(a,s);if r[0].digest=="" {return KB_LIMIT;}}
+        else if name=="e" && t!=KB_ENTRY {es+=1;if s!=r[0].entry {return KB_TAGS;}}
+        else if name=="t" {
+          if !kb_lower(s) {return KB_TAGS;}
+          if s==KB_MARKERS[t] {markers+=1;}
+          else if t==KB_ENTRY && kb_prefix(s,"oa:kb:kind:") {kinds+=1;if s[11..<s.count]!=KB_KINDS[r[0].kind] {return KB_TAGS;}}
+          else if kb_prefix(s,"oa:kb:") {return KB_TAGS;}
+        }
+      }
+      i+=1;v=json_next(j[..]);
+    }
+    if v!=JSON_ARRAY_END {return KB_TAGS;}
+    g=json_next(j[..]);
+  }
+  if g!=JSON_ARRAY_END || ds!=1 || markers!=1 {return KB_TAGS;}
+  if t==KB_ENTRY {if xs!=1 || kinds!=1 {return KB_TAGS;}}
+  else if es!=1 {return KB_TAGS;}
+  return KB_OK;
+}
+// book:end tags
+
+// book:begin front
+// The document's YAML front matter: "---" alone on the first line, then
+// lines up to "---" alone again. A line that starts with "id:",
+// "version:", "kind:" or "status:" sets that key; every other line
+// (titles, indented text, lists, comments) is skipped. A value stops at
+// " #" and is trimmed. id, version and kind must each appear once and equal
+// the body's; status, when present, is one of three words.
+KB_FRONT_KEYS :: [4]string.["id:","version:","kind:","status:"];
+kb_value :: (line:string,from:int)->string {
+  to:=line.count;
+  for i:from..<line.count-1 {if to==line.count && line[i]==' ' && line[i+1]=='#' {to=i;}}
+  at:=from;
+  while at<to && line[at]==' ' {at+=1;}
+  while to>at && line[to-1]==' ' {to-=1;}
+  return line[at..<to];
+}
+kb_front :: (doc:string,r:[]KbRecord)->u32 {
+  if !kb_prefix(doc,"---\n") {return KB_DOCUMENT;}
+  at:=4;seen:=0;
+  while true {
+    nl:=kb_find(doc,at,'\n');
+    if nl== -1 {return KB_DOCUMENT;}
+    line:=doc[at..<nl];at=nl+1;
+    if line=="---" {break;}
+    f:=-1;for i:0..<4 {if kb_prefix(line,KB_FRONT_KEYS[i]) {f=i;}}
+    if f<0 {continue;}
+    if (seen&(1<<f))!=0 {return KB_DOCUMENT;}
+    seen|=1<<f;value:=kb_value(line,KB_FRONT_KEYS[f].count);
+    if f==0 {if value!=r[0].id {return KB_DOCUMENT;}}
+    else if f==1 {n:=json_int(value);if !n.ok || n.value!=r[0].version {return KB_DOCUMENT;}}
+    else if f==2 {if value!=KB_KINDS[r[0].kind] {return KB_DOCUMENT;}}
+    else {
+      v:=-1;for i:0..<3 {if value==KB_STATUS[i] {v=i;}}
+      if v<0 {return KB_DOCUMENT;}
+      r[0].status=v;
+    }
+  }
+  if (seen&7)!=7 {return KB_DOCUMENT;}
+  return KB_OK;
+}
+// book:end front
+
+// book:begin read
+kb_fail :: (r:KbRecord,error:u32)->KbRecord {out:=r;out.error=error;return out;}
+// out is the event reader's scratch (at least the event's serialized size);
+// a holds every string the record returns.
+kb_read :: (text:string,out:[]u8,a:[]KbText)->KbRecord {
+  r:KbRecord;
+  e:=nostr_event_verify_vartime(text,out,false);
+  if e.error==NE_SIGNATURE {return kb_fail(r,KB_SIGNATURE);}
+  if e.error!=NE_OK {return kb_fail(r,KB_EVENT);}
+  return kb_admit(e,a);
+}
+// The KB checks on an event whose id (and, from kb_read, signature) verified.
+kb_admit :: (e:NostrEvent,a:[]KbText)->KbRecord {
+  r:=[1]KbRecord.[KbRecord.{}];text:=e.original;id:=e.id;key:=e.public_key;
+  t:=-1;for i:0..<3 {if e.kind==KB_EVENT_KINDS[i] {t=i;}}
+  if t<0 {return kb_fail(r[0],KB_KIND);}
+  r[0].type=t;r[0].created_at=e.created_at;
+  r[0].event=kb_hex(a,id[..]);r[0].author=kb_hex(a,key[..]);
+  if r[0].author=="" {return kb_fail(r[0],KB_LIMIT);}
+  bn:=json_unescape(text[e.content_from..<e.content_to],a[0].buf[a[0].at..<a[0].buf.count]);
+  if bn<0 {return kb_fail(r[0],KB_LIMIT);}
+  body:=cast(string)a[0].buf[a[0].at..<a[0].at+bn];a[0].at+=bn;
+  b:=kb_body(body,t,r[..],a);if b!=KB_OK {return kb_fail(r[0],b);}
+  g:=kb_tags(text[e.tags_from..<e.tags_to],t,r[..],a);if g!=KB_OK {return kb_fail(r[0],g);}
+  if t==KB_ENTRY {
+    if r[0].computed!=r[0].digest {return kb_fail(r[0],KB_DIGEST);}
+    f:=kb_front(r[0].document,r[..]);if f!=KB_OK {return kb_fail(r[0],f);}
+  }
+  // Only the author binds a head or withdrawal to a version.
+  else if r[0].entry_author!=r[0].author {return kb_fail(r[0],KB_SIGNER);}
+  return kb_fail(r[0],KB_OK);
+}
+// book:end read
+
+#test "the codes and tables" {
+  #assert KB_OK==0 && KB_EVENT==1 && KB_SIGNATURE==2 && KB_KIND==3 && KB_SHAPE==4 && KB_FIELD==5;
+  #assert KB_TAGS==6 && KB_DIGEST==7 && KB_DOCUMENT==8 && KB_SIGNER==9 && KB_LIMIT==10;
+  #assert KB_MASKS[0]==0x7f && KB_MASKS[1]==0x9f && KB_MASKS[2]==0x19f && KB_MAX_VERSION==9007199254740991;
+  #assert KS_WITHDRAWN<KS_CANDIDATE && KS_CANDIDATE<KS_ADMITTED && KB_MAX_REASON==1000;
+}
+#test "the ID grammar, hex and characters" {
+  b:[300]u8;
+  #assert kb_id_ok("statistics.mmd-estimators") && kb_id_ok("a") && kb_id_ok("a0.-") && kb_id_ok("z9");
+  #assert !kb_id_ok("") && !kb_id_ok("0a") && !kb_id_ok(".a") && !kb_id_ok("-a") && !kb_id_ok("Stats") && !kb_id_ok("a_b") && !kb_id_ok("a b");
+  #assert !kb_id_ok("{a") && !kb_id_ok("`a") && !kb_id_ok("a{") && !kb_id_ok("a`") && !kb_id_ok("a:") && !kb_id_ok("a,") && !kb_id_ok("a/");
+  #assert kb_id_ok(kbt_repeat("a",128,b[..])) && !kb_id_ok(kbt_repeat("a",129,b[..]));
+  #assert kb_hex64(KBV_AUTHOR) && !kb_hex64(KBV_AUTHOR[0..<63]) && !kb_hex64(kbt_repeat("A",64,b[..])) && !kb_hex64(kbt_repeat("g",64,b[..]));
+  #assert kb_hex64(kbt_repeat("9",64,b[..])) && kb_hex64(kbt_repeat("0",64,b[..])) && !kb_hex64(kbt_repeat("/",64,b[..]));
+  #assert !kb_hex64(kbt_repeat(":",64,b[..])) && !kb_hex64(kbt_repeat("`",64,b[..]));
+  #assert kb_chars("é")==1 && kb_chars("ab")==2 && kb_lower("oa:kb:x") && !kb_lower("Oa") && !kb_lower("aZ") && kb_lower("@[") && !kb_lower("A") && !kb_lower("Z");
+}
+#test "kb_read verifies the signature first" #steps 1000000000 {
+  s:[16384]u8;
+  r:=kbt_read(KBV_E1,s[..]);
+  #assert r.error==KB_OK && r.event==KBV_E1_ID && r.author==KBV_AUTHOR && r.version==1 && r.digest==KBV_DOC1_SHA;
+  #assert kbt_read(KBV_TAMPERED_SIGNATURE,s[..]).error==KB_SIGNATURE;
+  c:[4096]u8;#assert kbt_read(kbt_bump_created(KBV_E1,c[..]),s[..]).error==KB_EVENT;
+  #assert kbt_read(KBV_HEAD_BY_OTHER,s[..]).error==KB_SIGNER;
+}
+#test "the published versions, head and withdrawal read" {
+  s:[16384]u8;
+  r:=kbt_admit(KBV_E1,s[..]);
+  #assert r.error==KB_OK && r.type==KB_ENTRY && r.event==KBV_E1_ID && r.author==KBV_AUTHOR && r.id=="statistics.mmd-estimators";
+  #assert r.version==1 && r.kind==0 && r.digest==KBV_DOC1_SHA && r.computed==KBV_DOC1_SHA && r.document==KBV_DOC1 && r.status==KS_ADMITTED && r.created_at==1790000000;
+  r=kbt_admit(KBV_E2,s[..]);#assert r.error==KB_OK && r.version==2 && r.digest==KBV_DOC2_SHA && r.event==KBV_E2_ID;
+  h:=kbt_admit(KBV_HEAD2,s[..]);
+  #assert h.error==KB_OK && h.type==KB_HEAD && h.version==2 && h.entry==KBV_E2_ID && h.event==KBV_HEAD2_ID && h.created_at==1790000110;
+  w:=kbt_admit(KBV_WITHDRAW2,s[..]);
+  #assert w.error==KB_OK && w.type==KB_WITHDRAWAL && w.version==2 && w.entry==KBV_E2_ID && w.reason=="The check section's claim needs a citation.";
+  q:=kbt_admit(KBV_EQUIVOCATION,s[..]);#assert q.error==KB_OK && q.version==2 && q.digest!=KBV_DOC2_SHA;
+}
+#test "NIP-KB's client fixtures refuse" {
+  s:[16384]u8;
+  #assert kbt_admit(KBV_TAMPERED_DOCUMENT,s[..]).error==KB_DIGEST;
+  #assert kbt_admit(KBV_TAG_DISAGREES,s[..]).error==KB_TAGS;
+  #assert kbt_admit(KBV_FRONT_DISAGREES,s[..]).error==KB_DOCUMENT;
+  #assert kbt_admit(KBV_HEAD_BY_OTHER,s[..]).error==KB_SIGNER;
+  #assert kbt_admit(KBV_WITHDRAWAL_BY_OTHER,s[..]).error==KB_SIGNER;
+  #assert kbt_admit(KBV_VECTOR_FIELD,s[..]).error==KB_SHAPE;
+  #assert kbt_admit(KBV_KIND1,s[..]).error==KB_KIND;
+  #assert kbt_admit(KBV_EMPTY,s[..]).error==KB_SHAPE;
+  o:[8192]u8;e:=nostr_event_read(KBV_E1,o[..],false);
+  t:[64]u8;a:=[1]KbText.[KbText.{buf=t[..]}];#assert kb_admit(e,a[..]).error==KB_LIMIT;
+  u:[200]u8;b:=[1]KbText.[KbText.{buf=u[..]}];#assert kb_admit(e,b[..]).error==KB_LIMIT;
+  v:[600]u8;d:=[1]KbText.[KbText.{buf=v[..]}];#assert kb_admit(e,d[..]).error==KB_LIMIT;
+  // 128 bytes of hex, a 314-byte body, 36 bytes of type, id and kind, a
+  // 194-byte document, then two 64-byte digests: 800 bytes.
+  w:[700]u8;f:=[1]KbText.[KbText.{buf=w[..]}];#assert kb_admit(e,f[..]).error==KB_LIMIT;
+  x:[799]u8;g:=[1]KbText.[KbText.{buf=x[..]}];#assert kb_admit(e,g[..]).error==KB_LIMIT;
+  y:[800]u8;h:=[1]KbText.[KbText.{buf=y[..]}];#assert kb_admit(e,h[..]).error==KB_OK;
+}
+#test "the body: fields, types and unknown keys" {
+  #assert kbt_body_entry("")==KB_OK;
+  #assert kbt_body("[]",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"x\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":\"\"}",KB_ENTRY)==KB_OK;
+  #assert kbt_body_entry(",\"requires\":[]")==KB_SHAPE && kbt_body_entry(",\"document\":\"x\"")==KB_SHAPE;
+  #assert kbt_body_entry(",\"x\":1")==KB_SHAPE && kbt_body_entry(",\"v\":1")==KB_SHAPE && kbt_body_entry(" x")==KB_SHAPE;
+  #assert kbt_body_entry(",\"entry\":{}")==KB_SHAPE && kbt_body_entry(",\"reason\":\"r\"")==KB_SHAPE;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":2,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":\"1\",\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":1,\"requires\":[\"x\"],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":1,\"requires\":{},\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"head\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":1,\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"A\",\"version\":1,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_FIELD;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":0,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_FIELD;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1.5,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_FIELD;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":\"1\",\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_SHAPE;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":9007199254740991,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_OK;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":9007199254740992,\"kind\":\"tool\",\"document\":\"d\"}",KB_ENTRY)==KB_FIELD;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"recipe\",\"document\":\"d\"}",KB_ENTRY)==KB_FIELD;
+  #assert kbt_body("{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"tool\",\"document\":7}",KB_ENTRY)==KB_SHAPE;
+  for i:0..<5 {#assert kbt_body_kind(KB_KINDS[i])==i;}
+  #assert kbt_body_kind("Tool")==-1-cast(int)KB_FIELD;
+  r:=kbt_rec(KB_ENTRY);s:[4096]u8;a:=[1]KbText.[KbText.{buf=s[..]}];b:[1024]u8;
+  #assert kb_body(kbt_entry_body("",b[..]),KB_ENTRY,r[..],a[..])==KB_OK && r[0].id=="statistics.mmd-estimators" && r[0].version==3 && r[0].kind==1 && r[0].document=="---";
+  u:[30]u8;tiny:=[1]KbText.[KbText.{buf=u[..]}];
+  #assert kb_body(kbt_entry_body("",b[..]),KB_ENTRY,r[..],tiny[..])==KB_LIMIT;
+}
+#test "the body of a head and a withdrawal" {
+  #assert kbt_body_ref("head","",KB_HEAD)==KB_OK;
+  #assert kbt_body_ref("withdrawal",",\"reason\":\"r\"",KB_WITHDRAWAL)==KB_OK;
+  #assert kbt_body_ref("withdrawal","",KB_WITHDRAWAL)==KB_SHAPE;
+  #assert kbt_body_ref("head",",\"reason\":\"r\"",KB_HEAD)==KB_SHAPE;
+  #assert kbt_body_ref("head",",\"document\":\"d\"",KB_HEAD)==KB_SHAPE;
+  #assert kbt_body_ref("withdrawal",",\"reason\":7",KB_WITHDRAWAL)==KB_SHAPE;
+  #assert kbt_body_ref("head","",KB_WITHDRAWAL)==KB_SHAPE;
+  #assert kbt_body_reason(1000)==KB_OK && kbt_body_reason(1001)==KB_FIELD;
+  // entry: exactly id, pubkey and kind 3190, both lowercase hex.
+  #assert kbt_body_refobj("{\"id\":\"%\",\"pubkey\":\"%\",\"kind\":3190}",KBV_E2_ID,KBV_OTHER)==KB_OK;
+  #assert kbt_body_refobj("{\"id\":\"%\",\"pubkey\":\"%\"}",KBV_E2_ID,KBV_AUTHOR)==KB_SHAPE;
+  #assert kbt_body_refobj("{\"id\":\"%\",\"pubkey\":\"%\",\"kind\":3191}",KBV_E2_ID,KBV_AUTHOR)==KB_FIELD;
+  #assert kbt_body_refobj("{\"id\":\"%\",\"pubkey\":\"%\",\"kind\":\"3190\"}",KBV_E2_ID,KBV_AUTHOR)==KB_SHAPE;
+  #assert kbt_body_refobj("{\"id\":\"%\",\"pubkey\":\"%\",\"kind\":3190,\"x\":1}",KBV_E2_ID,KBV_AUTHOR)==KB_SHAPE;
+  #assert kbt_body_refobj("{\"id\":\"%\",\"id\":\"%\",\"kind\":3190}",KBV_E2_ID,KBV_E2_ID)==KB_SHAPE;
+  #assert kbt_body_refobj("{\"id\":\"%\",\"pubkey\":\"%\",\"kind\":3190}",KBV_E2_ID[0..<63],KBV_AUTHOR)==KB_FIELD;
+  #assert kbt_body_refobj("{\"id\":\"%\",\"pubkey\":%,\"kind\":3190}",KBV_E2_ID,"1")==KB_SHAPE;
+  #assert kbt_body_refobj("[\"%\",\"%\"]",KBV_E2_ID,KBV_AUTHOR)==KB_SHAPE;
+  #assert kbt_body_refobj("{\"x\":\"%\",\"pubkey\":\"%\",\"kind\":3190}",KBV_E2_ID,KBV_AUTHOR)==KB_SHAPE;
+  #assert kbt_body_refobj("{\"id\":\"%\",\"pubkey\":\"%\",\"pubkey\":\"%\",\"kind\":3190}",KBV_E2_ID,KBV_AUTHOR)==KB_SHAPE;
+  r:=kbt_rec(KB_HEAD);s:[4096]u8;a:=[1]KbText.[KbText.{buf=s[..]}];b:[1024]u8;
+  #assert kb_body(kbt_ref_body("head","",b[..]),KB_HEAD,r[..],a[..])==KB_OK && r[0].entry==KBV_E2_ID && r[0].entry_author==KBV_AUTHOR && r[0].version==2;
+  t:[96]u8;small:=[1]KbText.[KbText.{buf=t[..]}];
+  #assert kb_body(kbt_ref_body("head","",b[..]),KB_HEAD,r[..],small[..])==KB_LIMIT;
+}
+#test "the tags agree with the body" {
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"stats\"],[\"p\",\"q\"]]",KB_ENTRY)==KB_OK;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"d\",\"a\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"b\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"ABC\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:kind:tool\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:slip\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"oa:kb:kind:tool\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"Stats\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"oa:kb:head:v1\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"oa:kb:\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"oa:kb\"]]",KB_ENTRY)==KB_OK;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:\"]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",1]]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("{}",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"\"]]",KB_ENTRY)==KB_OK;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],{}]",KB_ENTRY)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"stats\",\"Extra\"]]",KB_ENTRY)==KB_OK;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"],[\"e\",\"zz\"]]",KB_ENTRY)==KB_OK;
+  // A head: one e naming entry.id; x is not its tag.
+  #assert kbt_tags("[[\"d\",\"a\"],[\"e\",\"%\"],[\"t\",\"oa:kb:head:v1\"],[\"x\",\"zz\"]]",KB_HEAD)==KB_OK;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"t\",\"oa:kb:head:v1\"]]",KB_HEAD)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"e\",\"%\"],[\"e\",\"%\"],[\"t\",\"oa:kb:head:v1\"]]",KB_HEAD)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"e\",\"%\"],[\"t\",\"oa:kb:entry:v1\"]]",KB_HEAD)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"e\",\"%\"],[\"t\",\"oa:kb:withdrawal:v1\"]]",KB_WITHDRAWAL)==KB_OK;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"e\",\"%\"],[\"t\",\"oa:kb:head:v1\"]]",KB_WITHDRAWAL)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"e\",\"%\"],[\"t\",\"oa:kb:kind:tool\"],[\"t\",\"oa:kb:withdrawal:v1\"]]",KB_WITHDRAWAL)==KB_TAGS;
+  #assert kbt_tags_e("[[\"d\",\"a\"],[\"e\",\"%\"],[\"t\",\"oa:kb:head:v1\"]]",KBV_E1_ID,KB_HEAD)==KB_TAGS;
+  #assert kbt_tags("[[\"d\",\"a\"],[\"e\",\"%\"],[\"t\",\"oa:kb:head:v1\"],[\"t\",\"",KB_HEAD)==KB_TAGS;
+  l:[512]u8;#assert kbt_tags(kbt_long_tag(l[..]),KB_HEAD)==KB_TAGS;
+  r:=kbt_rec(KB_ENTRY);r[0].id="a";r[0].kind=4;s:[512]u8;a:=[1]KbText.[KbText.{buf=s[..]}];f:[512]u8;
+  #assert kb_tags(kbt_fill2("[[\"d\",\"a\"],[\"x\",\"%\"],[\"t\",\"oa:kb:entry:v1\"],[\"t\",\"oa:kb:kind:tool\"]]",KBV_DOC1_SHA,"",f[..]),KB_ENTRY,r[..],a[..])==KB_OK && r[0].digest==KBV_DOC1_SHA;
+}
+#test "the front matter agrees with the body" {
+  #assert kbt_front("---\nid: a\nversion: 3\nkind: edge-case\n---\nbody")==KB_OK;
+  #assert kbt_front_status("---\nid: a\nversion: 3\nkind: edge-case\n---\n")==KS_CANDIDATE;
+  #assert kbt_front_status("---\nid: a\nversion: 3\nkind: edge-case\nstatus: admitted\n---\n")==KS_ADMITTED;
+  #assert kbt_front_status("---\nid: a\nversion: 3\nkind: edge-case\nstatus: withdrawn # gone\n---\n")==KS_WITHDRAWN;
+  #assert kbt_front("---\nid: a\nversion: 3\nkind: edge-case\nstatus: draft\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: 3\nkind: edge-case\nstatus: admitted\nstatus: admitted\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid:   a  \nversion: 3 # raised\nkind: edge-case # one of five\n---\n")==KB_OK;
+  #assert kbt_front("---\ntitle: T\nsummary: >-\n  id: b\n  more\ntags: [x]\n- id: c\n# id: d\n\nnote\nid: a\nversion: 3\nkind: edge-case\n---\n")==KB_OK;
+  #assert kbt_front("--\nid: a\nversion: 3\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: 3\nkind: edge-case\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: 3\nkind: edge-case\n--- \n")==KB_DOCUMENT;
+  #assert kbt_front("---\nversion: 3\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: 3\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: b\nversion: 3\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: 2\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: three\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: -3\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: 3\nkind: method\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nid: a\nversion: 3\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: 3\nversion: 3\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a\nversion: 3\nkind: edge-case\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid: a#b\nversion: 3\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kb_value("k: v #c",2)=="v" && kb_value("k:   ",2)=="" && kb_value("k: a # b # c",2)=="a" && kb_value("k:#",2)=="#";
+  #assert kb_value("k: v #",2)=="v" && kb_value("k: a   ",2)=="a" && kb_value("k:a",2)=="a";
+  #assert kbt_front("---\nid: a\nversion: 3\nkind: edge-case\nstatus: admitted: yes\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid:\nid: a\nversion: 3\nkind: edge-case\n---\n")==KB_DOCUMENT;
+  #assert kbt_front("---\nid\nversion: 3\nkind: edge-case\nid: a\n---\n")==KB_OK;
+  #assert kbt_front("---\nidentity: b\nid: a\nversion: 3\nkind: edge-case\n---\n")==KB_OK;
+  #assert kbt_front("---\n")==KB_DOCUMENT && kb_prefix("ab","ab") && !kb_prefix("a","ab") && !kb_prefix("ac","ab");
+  #assert kb_find("a\nb\n",0,'\n')==1 && kb_find("a\nb\n",2,'\n')==3 && kb_find("ab",0,'\n')==-1;
+}

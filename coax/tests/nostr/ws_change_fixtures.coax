@@ -1,0 +1,30 @@
+// The workspace for the checks of coax/lib/nostr/ws/change.coax, kept apart
+// so root-only mutation mutates the decision, not these builders.
+WST_T0 :: 1790000000;
+WST_HOST :: "host";
+WST_ALICE :: "alice";
+WST_BOB :: "bob";
+WST_CAROL :: "carol";
+WST_D0 :: "d0";
+WST_D4 :: "d4";
+WST_DA :: "da";
+WST_DB :: "db";
+WST_DM :: "dm";
+wst_binding :: ()->WsBinding {return WsBinding.{authority=WST_HOST,workspace="ws-1",generation=2,revision=7};}
+wst_docs :: ()->[2]WsResource {
+  return [2]WsResource.[WsResource.{resource="doc-1",lifecycle=WS_AVAILABLE,editable=true,version=4,digest=WST_D4},
+                        WsResource.{resource="doc-2",lifecycle=WS_AVAILABLE,editable=true,version=1,digest=WST_D0}];
+}
+wst_grants :: ()->[3]WsGrant {
+  return [3]WsGrant.[WsGrant.{authorization="g-alice",actor=WST_ALICE,resource="doc-1",write=true,expires_at=WST_T0+86400},
+                     WsGrant.{authorization="g-bob",actor=WST_BOB,resource="doc-1",write=true,expires_at=WST_T0+86400},
+                     WsGrant.{authorization="g-bob-read",actor=WST_BOB,resource="doc-1",write=false,expires_at=WST_T0+86400}];
+}
+// A replacement of doc-1 read at version 4, by actor, with new bytes digest.
+wst_change :: (actor:string,command:string,digest:string)->WsChange {
+  c:WsChange;c.command=command;c.actor=actor;c.signer=actor;c.authority=WST_HOST;c.workspace="ws-1";c.resource="doc-1";
+  c.generation=2;c.revision=7;c.expected_version=4;c.expected_digest=WST_D4;c.snapshot_version=4;c.snapshot_digest=WST_D4;
+  c.content=digest;c.authorization=ifx actor==WST_ALICE then "g-alice" else "g-bob";c.issued_at=WST_T0;c.expires_at=WST_T0+300;
+  fp:=ifx command=="c1" then "f-c1" else ifx command=="c2" then "f-c2" else ifx command=="c3" then "f-c3" else "f-cx";
+  c.fingerprint=fp;return c;
+}

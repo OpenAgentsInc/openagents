@@ -1,0 +1,188 @@
+// NIP-KB: which version of one entry a reader shows, and with what status.
+// NIP-KB "Equivocation", "Heads", "Withdrawals" and "Trust".
+//
+// kb_current takes every record kb_read admitted (versions, heads and
+// withdrawals, in any order, from any relays) and one entry, named by the
+// pair (author, ID). A version is withdrawn when a withdrawal by the same
+// author binds its exact event, ID and version; withdrawal is irreversible,
+// and a head naming a withdrawn version does not bring it back. A version is
+// in conflict when the same author published the same ID and version with
+// another digest (equivocation): both are reported and neither is shown,
+// whatever their timestamps. The newest head (NIP-01's addressable rule:
+// the greatest created_at, then the lowest event id) is followed when its
+// exact version is held and is neither withdrawn nor in conflict. Otherwise
+// the reader takes the highest version that is neither. KC_NONE means
+// nothing may be shown.
+//
+// kb_status is the reader's trust decision: entries by the reader's own key
+// or an author it trusts keep the status their document states; any other
+// author's are at most candidate.
+//
+// It trusts its inputs to be kb_read's admitted records: records with any
+// other error are ignored.
+//   coax/bin/coax test coax/lib/nostr/kb/current.coax --library
+#load "entry.coax";
+#load "../../../tests/nostr/kb_current_fixtures.coax";
+#authority;
+
+// book:begin codes
+KC_CURRENT :: cast(u32)0;  // event and version are the one to show
+KC_NONE :: cast(u32)1;     // none held, or every version withdrawn or in conflict
+KbCurrent :: struct {
+  error:u32=KC_NONE;
+  event:string; version:int; digest:string; via_head:bool;
+  withdrawn:int; conflicts:int;   // version events of this entry withdrawn, and in conflict
+}
+// book:end codes
+
+// book:begin rules
+kb_less :: (a:string,b:string)->bool {
+  for i:0..<a.count {if i>=b.count {return false;}if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}
+  return a.count<b.count;
+}
+kb_mine :: (r:KbRecord,type:int,author:string,id:string)->bool {
+  return r.error==KB_OK && r.type==type && r.author==author && r.id==id;
+}
+// A withdrawal by the version's own author, bound to its exact event.
+kb_withdrawn :: (rs:[]KbRecord,v:KbRecord)->bool {
+  for w:rs {if kb_mine(w,KB_WITHDRAWAL,v.author,v.id) && w.entry==v.event && w.version==v.version {return true;}}
+  return false;
+}
+// The same author, ID and version under another digest.
+kb_conflict :: (rs:[]KbRecord,v:KbRecord)->bool {
+  for u:rs {if kb_mine(u,KB_ENTRY,v.author,v.id) && u.version==v.version && u.digest!=v.digest {return true;}}
+  return false;
+}
+// book:end rules
+
+// book:begin current
+kb_current :: (rs:[]KbRecord,author:string,id:string)->KbCurrent {
+  c:KbCurrent;
+  head:=-1;
+  for i:0..<rs.count {
+    h:=rs[i];
+    if kb_mine(h,KB_HEAD,author,id) {
+      if head== -1 || h.created_at>rs[head].created_at || (h.created_at==rs[head].created_at && kb_less(h.event,rs[head].event)) {head=i;}
+    }
+  }
+  best:=-1;
+  for i:0..<rs.count {
+    v:=rs[i];
+    if !kb_mine(v,KB_ENTRY,author,id) {continue;}
+    out:=kb_withdrawn(rs,v);split:=kb_conflict(rs,v);
+    if out {c.withdrawn+=1;}
+    if split {c.conflicts+=1;}
+    if out || split {continue;}
+    if head>=0 && v.event==rs[head].entry && v.version==rs[head].version {c.via_head=true;best=i;}
+    if c.via_head {continue;}
+    if best== -1 || v.version>rs[best].version || (v.version==rs[best].version && kb_less(v.event,rs[best].event)) {best=i;}
+  }
+  if best== -1 {return c;}
+  c.error=KC_CURRENT;c.event=rs[best].event;c.version=rs[best].version;c.digest=rs[best].digest;
+  return c;
+}
+// book:end current
+
+// book:begin status
+kb_status :: (r:KbRecord,reader:string,trusted:[]string)->int {
+  if r.author==reader {return r.status;}
+  for t:trusted {if r.author==t {return r.status;}}
+  if r.status==KS_ADMITTED {return KS_CANDIDATE;}
+  return r.status;
+}
+// book:end status
+
+#test "the codes" {#assert KC_CURRENT==0 && KC_NONE==1;}
+#test "byte order of event ids" {
+  #assert kb_less("a","b") && !kb_less("b","a") && !kb_less("a","a") && kb_less("a","ab") && !kb_less("ab","a") && kb_less("","a") && !kb_less("","");
+  #assert kb_less("ab","b") && !kb_less("b","ab") && kb_less("ab","ac") && !kb_less("ac","ab");
+}
+#test "no head: the highest version" {
+  rs:=[3]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(3,"e3","d3"),kbc_v(2,"e2","d2")];
+  c:=kb_current(rs[..],KBC_A,KBC_ID);
+  #assert c.error==KC_CURRENT && c.event=="e3" && c.version==3 && c.digest=="d3" && !c.via_head && c.withdrawn==0 && c.conflicts==0;
+  // Another author's records, another ID and refused records never count.
+  o:=kbc_v(9,"e9","d9");o.author=KBC_B;p:=kbc_v(8,"e8","d8");p.id="other";q:=kbc_v(7,"e7","d7");q.error=KB_DIGEST;
+  rs2:=[4]KbRecord.[kbc_v(1,"e1","d1"),o,p,q];
+  c=kb_current(rs2[..],KBC_A,KBC_ID);#assert c.error==KC_CURRENT && c.event=="e1" && c.version==1;
+  #assert kb_current(rs2[0..<0],KBC_A,KBC_ID).error==KC_NONE;
+  // The same version published twice: the same version, the lower event id.
+  rs3:=[3]KbRecord.[kbc_v(2,"eb","d2"),kbc_v(2,"ea","d2"),kbc_v(2,"ec","d2")];
+  c=kb_current(rs3[..],KBC_A,KBC_ID);#assert c.event=="ea" && c.conflicts==0;
+  // The highest first: a lower version after it never replaces it.
+  rs4:=[3]KbRecord.[kbc_v(3,"e3","d3"),kbc_v(2,"e2","d2"),kbc_v(1,"e1","d1")];
+  c=kb_current(rs4[..],KBC_A,KBC_ID);#assert c.error==KC_CURRENT && c.event=="e3";
+  rs5:=[2]KbRecord.[kbc_v(2,"ea","d2"),kbc_v(2,"eb","d2")];
+  #assert kb_current(rs5[..],KBC_A,KBC_ID).event=="ea";
+}
+#test "a withdrawn version is never current" {
+  rs:=[3]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2"),kbc_w(2,"e2")];
+  c:=kb_current(rs[..],KBC_A,KBC_ID);
+  #assert c.error==KC_CURRENT && c.event=="e1" && c.version==1 && c.withdrawn==1;
+  // A withdrawal must bind the exact event, version and author.
+  w:=kbc_w(2,"e9");rs[2]=w;#assert kb_current(rs[..],KBC_A,KBC_ID).event=="e2";
+  w=kbc_w(1,"e2");rs[2]=w;#assert kb_current(rs[..],KBC_A,KBC_ID).event=="e2";
+  w=kbc_w(2,"e2");w.author=KBC_B;rs[2]=w;#assert kb_current(rs[..],KBC_A,KBC_ID).event=="e2";
+  w=kbc_w(2,"e2");w.id="other";rs[2]=w;#assert kb_current(rs[..],KBC_A,KBC_ID).event=="e2";
+  w=kbc_w(2,"e2");w.error=KB_SIGNER;rs[2]=w;#assert kb_current(rs[..],KBC_A,KBC_ID).event=="e2";
+  // Both withdrawn: nothing to show.
+  all:=[4]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2"),kbc_w(2,"e2"),kbc_w(1,"e1")];
+  c=kb_current(all[..],KBC_A,KBC_ID);#assert c.error==KC_NONE && c.withdrawn==2 && c.event=="";
+}
+#test "heads: followed when held, never past a withdrawal" {
+  rs:=[4]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2"),kbc_v(3,"e3","d3"),kbc_h(2,"e2",100,"h1")];
+  c:=kb_current(rs[..],KBC_A,KBC_ID);#assert c.error==KC_CURRENT && c.event=="e2" && c.via_head;
+  // The head names a version not held, or the wrong version for its event: the highest instead.
+  rs[3]=kbc_h(4,"e4",100,"h1");c=kb_current(rs[..],KBC_A,KBC_ID);#assert c.event=="e3" && !c.via_head;
+  rs[3]=kbc_h(1,"e2",100,"h1");c=kb_current(rs[..],KBC_A,KBC_ID);#assert c.event=="e3" && !c.via_head;
+  h:=kbc_h(2,"e2",100,"h1");h.author=KBC_B;rs[3]=h;#assert kb_current(rs[..],KBC_A,KBC_ID).event=="e3";
+  h=kbc_h(2,"e2",100,"h1");h.id="other";rs[3]=h;#assert kb_current(rs[..],KBC_A,KBC_ID).event=="e3";
+  h=kbc_h(2,"e2",100,"h1");h.error=KB_TAGS;rs[3]=h;#assert kb_current(rs[..],KBC_A,KBC_ID).event=="e3";
+  // The head's version withdrawn: the head is passed over.
+  ws:=[5]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2"),kbc_h(2,"e2",100,"h1"),kbc_w(2,"e2"),kbc_v(3,"e3","d3")];
+  c=kb_current(ws[0..<4],KBC_A,KBC_ID);#assert c.event=="e1" && !c.via_head && c.withdrawn==1;
+  c=kb_current(ws[..],KBC_A,KBC_ID);#assert c.event=="e3" && !c.via_head;
+}
+#test "the newest head wins, then the lowest id" {
+  rs:=[5]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2"),kbc_h(2,"e2",100,"h1"),kbc_h(1,"e1",200,"h2"),kbc_h(2,"e2",150,"h0")];
+  c:=kb_current(rs[..],KBC_A,KBC_ID);#assert c.event=="e1" && c.via_head;
+  // The newest head first, an older one after it.
+  ns:=[4]KbRecord.[kbc_h(1,"e1",200,"h2"),kbc_h(2,"e2",100,"h1"),kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2")];
+  c=kb_current(ns[..],KBC_A,KBC_ID);#assert c.event=="e1" && c.via_head;
+  // Another author's head first in the list is no head of this entry.
+  oh:=kbc_h(1,"e1",100,"h1");oh.author=KBC_B;
+  xs:=[3]KbRecord.[oh,kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2")];
+  c=kb_current(xs[..],KBC_A,KBC_ID);#assert c.event=="e2" && !c.via_head;
+  ts:=[4]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2"),kbc_h(1,"e1",100,"hb"),kbc_h(2,"e2",100,"ha")];
+  c=kb_current(ts[..],KBC_A,KBC_ID);#assert c.event=="e2" && c.via_head;
+  ts[3]=kbc_h(2,"e2",100,"hc");c=kb_current(ts[..],KBC_A,KBC_ID);#assert c.event=="e1" && c.via_head;
+  // A head before the version it names in the list.
+  os:=[3]KbRecord.[kbc_h(1,"e1",100,"h1"),kbc_v(2,"e2","d2"),kbc_v(1,"e1","d1")];
+  c=kb_current(os[..],KBC_A,KBC_ID);#assert c.event=="e1" && c.via_head;
+  os2:=[3]KbRecord.[kbc_h(1,"e1",100,"h1"),kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2")];
+  c=kb_current(os2[..],KBC_A,KBC_ID);#assert c.event=="e1" && c.via_head;
+}
+#test "equivocation: reported, neither shown, whatever the timestamps or head" {
+  rs:=[4]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2"),kbc_v(2,"ex","dx"),kbc_h(2,"e2",100,"h1")];
+  c:=kb_current(rs[..],KBC_A,KBC_ID);
+  #assert c.error==KC_CURRENT && c.event=="e1" && c.version==1 && c.conflicts==2 && !c.via_head;
+  rs[0].digest="dz";rs[0].version=2;c=kb_current(rs[..],KBC_A,KBC_ID);#assert c.error==KC_NONE && c.conflicts==3;
+  // Another author's version 2 is no conflict.
+  o:=kbc_v(2,"ex","dx");o.author=KBC_B;
+  ok:=[3]KbRecord.[kbc_v(1,"e1","d1"),kbc_v(2,"e2","d2"),o];
+  c=kb_current(ok[..],KBC_A,KBC_ID);#assert c.event=="e2" && c.conflicts==0;
+  o.author=KBC_A;o.id="other";ok[2]=o;#assert kb_current(ok[..],KBC_A,KBC_ID).event=="e2";
+  o.id=KBC_ID;o.error=KB_DIGEST;ok[2]=o;#assert kb_current(ok[..],KBC_A,KBC_ID).event=="e2";
+  // A higher version ends it.
+  up:=[4]KbRecord.[kbc_v(2,"e2","d2"),kbc_v(2,"ex","dx"),kbc_v(3,"e3","d3"),kbc_w(2,"e2")];
+  c=kb_current(up[..],KBC_A,KBC_ID);#assert c.event=="e3" && c.conflicts==2 && c.withdrawn==1;
+}
+#test "trust: another author's entry is at most candidate" {
+  t:=[2]string.[KBC_B,"x"];
+  v:=kbc_v(1,"e1","d1");v.status=KS_ADMITTED;
+  #assert kb_status(v,KBC_A,t[0..<0])==KS_ADMITTED;
+  v.author=KBC_B;#assert kb_status(v,KBC_A,t[0..<0])==KS_CANDIDATE && kb_status(v,KBC_A,t[..])==KS_ADMITTED;
+  #assert kb_status(v,KBC_A,t[1..<2])==KS_CANDIDATE;
+  v.status=KS_WITHDRAWN;#assert kb_status(v,KBC_A,t[0..<0])==KS_WITHDRAWN;
+  v.status=KS_CANDIDATE;#assert kb_status(v,KBC_A,t[0..<0])==KS_CANDIDATE;
+}

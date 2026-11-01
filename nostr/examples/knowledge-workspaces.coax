@@ -1,0 +1,129 @@
+// Chapter 84: one knowledge entry, edited in a workspace and published.
+// Alice and Bob both edit the entry's file at version 4 (NIP-WS): Alice's
+// conditional replacement completes, Bob's is stale, and Bob merges the
+// two by hand against version 5. The merged file is published as version 2
+// of the entry (NIP-KB); the reader follows the head, a withdrawal takes
+// version 2 out of service, and version 3 replaces it. The events were
+// signed by an independent BIP-340 in Python
+// (coax/tests/nostr/kb_vectors.coax). Keys are the scalars 1 (the author)
+// and 2 (another author): TEST ONLY.
+#load "../../coax/lib/nostr/kb/current.coax";
+#load "../../coax/lib/nostr/ws/change.coax";
+#import "Basic";
+
+T0 :: 1790000000;
+HOST :: "host";
+ALICE :: "alice";
+BOB :: "bob";
+CAROL :: "carol";
+
+KB_WORDS :: [11]string.["ok","event id","signature","kind","shape","field","tags","digest","document","signer","limit"];
+WS_WORDS :: [13]string.["completed","duplicate","malformed","identity_mismatch","not_admitted","revoked","expired",
+  "unavailable","unsupported_feature","conflict","stale","idempotency_conflict","limit_exceeded"];
+TYPE_WORDS :: [3]string.["entry","head","withdrawal"];
+
+// book:begin digest
+// The SHA-256 of a text, as lowercase hex: the observation's digest and the x tag.
+digest_of :: (text:string,out:[]u8)->string {
+  b:[1024]u8;for i:0..<text.count {b[i]=text[i];}
+  d:[32]u8;s:=sha256_hash_checked(b[0..<text.count],d[..],false);
+  r:=hex_encode_checked(cast(string)d[..],out,false);return cast(string)out[0..<r.written];
+}
+// book:end digest
+
+// book:begin workspace
+// The host's workspace: one binding, the entry's file at version 4, and
+// the grants it established. Carol is in the room with no grant; Bob also
+// holds a read-only grant.
+binding :: ()->WsBinding {return WsBinding.{authority=HOST,workspace="team-kb",generation=1,revision=3};}
+host_grants :: ()->[3]WsGrant {
+  return [3]WsGrant.[WsGrant.{authorization="g-alice",actor=ALICE,resource="mmd.md",write=true,expires_at=T0+86400},
+                     WsGrant.{authorization="g-bob",actor=BOB,resource="mmd.md",write=true,expires_at=T0+86400},
+                     WsGrant.{authorization="g-bob-read",actor=BOB,resource="mmd.md",write=false,expires_at=T0+86400}];
+}
+// A replacement of mmd.md read at (version, digest), with the new bytes' digest.
+change :: (actor:string,command:string,version:int,read:string,content:string)->WsChange {
+  c:WsChange;c.command=command;c.fingerprint=command;c.actor=actor;c.signer=actor;
+  c.authority=HOST;c.workspace="team-kb";c.resource="mmd.md";c.generation=1;c.revision=3;
+  c.expected_version=version;c.expected_digest=read;c.snapshot_version=version;c.snapshot_digest=read;
+  c.content=content;c.authorization=ifx actor==ALICE then "g-alice" else "g-bob";c.issued_at=T0;c.expires_at=T0+600;
+  return c;
+}
+show_change :: (label:string,r:WsResult) {
+  if r.code==WS_COMPLETED || r.code==WS_DUPLICATE {print("%: %, version % -> % (%…)\n",label,WS_WORDS[r.code],r.before_version,r.after_version,r.after_digest[0..<16]);}
+  else {print("%: %\n",label,WS_WORDS[r.code]);}
+}
+// book:end workspace
+
+// book:begin knowledge
+show_current :: (label:string,rs:[]KbRecord) {
+  c:=kb_current(rs,KBV_AUTHOR,"statistics.mmd-estimators");
+  if c.error==KC_NONE {print("%: none (withdrawn %, in conflict %)\n",label,c.withdrawn,c.conflicts);return;}
+  via:=ifx c.via_head then "the head" else "the highest version";
+  print("%: version % (event %…, by %), withdrawn %, in conflict %\n",label,c.version,c.event[0..<16],via,c.withdrawn,c.conflicts);
+}
+show_read :: (label:string,text:string,out:[]u8,store:[]u8) {
+  a:=[1]KbText.[KbText.{buf=store}];r:=kb_read(text,out,a[..]);
+  print("%: %\n",label,KB_WORDS[r.error]);
+}
+// book:end knowledge
+
+// book:begin main
+main :: () {
+  h:[64]u8;
+  print("WS: mmd.md is at version 4; Alice and Bob both read it\n");
+  docs:=[1]WsResource.[WsResource.{resource="mmd.md",lifecycle=WS_AVAILABLE,editable=true,version=4,digest=digest_of(KBV_DOC1,h[..])}];
+  ha:[64]u8;hb:[64]u8;hm:[64]u8;
+  d4:=docs[0].digest;da:=digest_of(KBV_TEXT_A,ha[..]);db:=digest_of(KBV_TEXT_B,hb[..]);dm:=digest_of(KBV_DOC2,hm[..]);
+  print("version 4 %…; Alice's text %…; Bob's text %…\n",d4[0..<16],da[0..<16],db[0..<16]);
+  g:=host_grants();kept:[8]WsRetained;n:[1]int;b:=binding();
+  show_change("Alice replaces version 4",ws_change(b,docs[..],g[..],kept[..],n[..],change(ALICE,"a-1",4,d4,da),T0+10));
+  show_change("Bob replaces version 4",ws_change(b,docs[..],g[..],kept[..],n[..],change(BOB,"b-1",4,d4,db),T0+11));
+  show_change("Alice's request again",ws_change(b,docs[..],g[..],kept[..],n[..],change(ALICE,"a-1",4,d4,da),T0+12));
+  print("Bob reads version 5 and merges both edits by hand (%…)\n",dm[0..<16]);
+  show_change("Bob replaces version 5",ws_change(b,docs[..],g[..],kept[..],n[..],change(BOB,"b-2",5,da,dm),T0+20));
+  print("mmd.md: version %, digest %…, % commands retained\n",docs[0].version,docs[0].digest[0..<16],n[0]);
+
+  print("KB: the author publishes the merged file as version 2\n");
+  out:[16384]u8;store:[16384]u8;a:=[1]KbText.[KbText.{buf=store[..]}];
+  rs:[8]KbRecord;
+  events:=[6]string.[KBV_E1,KBV_E2,KBV_HEAD2,KBV_WITHDRAW2,KBV_E3,KBV_EQUIVOCATION];
+  for i:0..<6 {rs[i]=kb_read(events[i],out[..],a[..]);}
+  for i:0..<3 {
+    r:=rs[i];what:=ifx r.type==KB_ENTRY then "digest" else "names event";
+    print("% v%: %, event %…, % %…\n",TYPE_WORDS[r.type],r.version,KB_WORDS[r.error],r.event[0..<16],what,ifx r.type==KB_ENTRY then r.digest[0..<16] else r.entry[0..<16]);
+  }
+  print("version 2's document is the workspace's version 6: %\n",rs[1].digest==docs[0].digest);
+  show_current("current",rs[0..<3]);
+  trusted:=[1]string.[KBV_AUTHOR];
+  print("status shown: % to the author's own reader, % to a stranger, % to one who trusts the author\n",
+    KB_STATUS[kb_status(rs[1],KBV_AUTHOR,trusted[0..<0])],KB_STATUS[kb_status(rs[1],KBV_OTHER,trusted[0..<0])],KB_STATUS[kb_status(rs[1],KBV_OTHER,trusted[..])]);
+  print("KB: the author withdraws version 2 (\"%\")\n",rs[3].reason);
+  print("withdrawal: %, binds event %…\n",KB_WORDS[rs[3].error],rs[3].entry[0..<16]);
+  show_current("current",rs[0..<4]);
+  show_current("current, with version 3",rs[0..<5]);
+  print("KB: a second version 2 from the same author\n");
+  print("entry v2: %, digest %…\n",KB_WORDS[rs[5].error],rs[5].digest[0..<16]);
+  eq:=[4]KbRecord.[rs[0],rs[1],rs[2],rs[5]];
+  show_current("current",eq[..]);
+
+  print("broken inputs\n");
+  show_read("version 2 with a changed document",KBV_TAMPERED_DOCUMENT,out[..],store[..]);
+  show_read("version 1 with a changed signature",KBV_TAMPERED_SIGNATURE,out[..],store[..]);
+  show_read("version 1 whose d tag names another entry",KBV_TAG_DISAGREES,out[..],store[..]);
+  show_read("version 3 whose front matter says version 2",KBV_FRONT_DISAGREES,out[..],store[..]);
+  show_read("a head signed by another author",KBV_HEAD_BY_OTHER,out[..],store[..]);
+  show_read("a withdrawal signed by another author",KBV_WITHDRAWAL_BY_OTHER,out[..],store[..]);
+  show_read("version 1 with an embedding field",KBV_VECTOR_FIELD,out[..],store[..]);
+  c:=change(CAROL,"c-1",6,dm,da);c.authorization="g-carol";
+  show_change("Carol, in the room with no grant",ws_change(b,docs[..],g[..],kept[..],n[..],c,T0+30));
+  c=change(BOB,"b-3",6,dm,da);c.authorization="g-bob-read";
+  show_change("Bob under his read-only grant",ws_change(b,docs[..],g[..],kept[..],n[..],c,T0+30));
+  c=change(ALICE,"a-1",6,dm,db);c.fingerprint="a-1, other bytes";
+  show_change("Alice's command a-1 with other bytes",ws_change(b,docs[..],g[..],kept[..],n[..],c,T0+30));
+  b2:=b;b2.generation=2;
+  show_change("after the workspace's roots were remapped",ws_change(b2,docs[..],g[..],kept[..],n[..],change(ALICE,"a-2",6,dm,da),T0+30));
+  show_change("a request issued at T0, at T0 + 600",ws_change(b,docs[..],g[..],kept[..],n[..],change(ALICE,"a-3",6,dm,da),T0+600));
+  print("mmd.md: version %, % commands retained\n",docs[0].version,n[0]);
+}
+// book:end main

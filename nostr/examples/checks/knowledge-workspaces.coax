@@ -1,0 +1,60 @@
+// The checks of knowledge-workspaces.coax. They live apart so that running
+// the example doesn't also run them.
+// Checks: coax test nostr/examples/checks/knowledge-workspaces.coax --run-steps 250000000
+#load "../knowledge-workspaces.coax";
+
+// book:begin check
+// From coax/tests/nostr/kb_vectors.py, which signs with nip59_reference.py's
+// integer secp256k1 and BIP-340 (no code shared with Coax): each event id as
+// hashlib.sha256 of json.dumps([0, pubkey, created_at, kind, tags, content],
+// separators=(",", ":")), and each document digest as hashlib.sha256 of its
+// UTF-8 bytes.
+PY_E1_ID :: "52ac5361940b3f613adb25e50901bd1d3366ecf71b1f22a82da66ecebe465963";
+PY_E2_ID :: "59f409e9f04cba6c7c4395c41871d7ea8bfa16c565fde24695455cd309d0c3e5";
+PY_DOC1_SHA :: "19952efa5bd4a152bec6f05fb32966c874f877c62075df3592e246447c600277";
+PY_DOC2_SHA :: "92b7aeb9a48bdc3aa9bc5f778a3642ad9adc881886b78250ce7e671b58ead52e";
+
+#test "the event ids and digests are the Python reference's" #steps 1000000000 {
+  out:[16384]u8;store:[16384]u8;a:=[1]KbText.[KbText.{buf=store[..]}];
+  r1:=kb_read(KBV_E1,out[..],a[..]);r2:=kb_read(KBV_E2,out[..],a[..]);
+  #assert r1.error==KB_OK && r1.event==PY_E1_ID && r1.digest==PY_DOC1_SHA && r1.computed==PY_DOC1_SHA;
+  #assert r2.error==KB_OK && r2.event==PY_E2_ID && r2.digest==PY_DOC2_SHA && r2.computed==PY_DOC2_SHA;
+  h:[64]u8;#assert digest_of(KBV_DOC2,h[..])==PY_DOC2_SHA && KBV_E1_ID==PY_E1_ID && KBV_DOC1_SHA==PY_DOC1_SHA;
+}
+
+// NIP-KB's own body examples are illustrative: the entry's document is cut
+// off ("...") before its kind and closing line, and the head and withdrawal
+// carry the placeholder "<3190 event id>" where a 64-hex id belongs. Read as
+// published, the bodies refuse at exactly those points.
+NIP_ENTRY :: "{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"statistics.mmd-estimators\",\"version\":1,\"kind\":\"method\",\"document\":\"---\\nid: statistics.mmd-estimators\\nversion: 1\\n...\"}";
+NIP_HEAD :: "{\"v\":1,\"requires\":[],\"type\":\"head\",\"id\":\"statistics.mmd-estimators\",\"version\":2,\"entry\":{\"id\":\"<3190 event id>\",\"pubkey\":\"<author>\",\"kind\":3190}}";
+#test "NIP-KB's published examples, as printed" {
+  s:[4096]u8;a:=[1]KbText.[KbText.{buf=s[..]}];r:=[1]KbRecord.[KbRecord.{}];
+  #assert kb_body(NIP_ENTRY,KB_ENTRY,r[..],a[..])==KB_OK && kb_front(r[0].document,r[..])==KB_DOCUMENT;
+  b:=[1]KbText.[KbText.{buf=s[..]}];q:=[1]KbRecord.[KbRecord.{}];
+  #assert kb_body(NIP_HEAD,KB_HEAD,q[..],b[..])==KB_FIELD;
+}
+
+// By hand: both read version 4. Alice's compare-and-swap finds 4 = 4 and
+// moves the file to 5; Bob's finds 4 != 5 and is stale; Bob's merge, read
+// at 5, finds 5 = 5 and moves it to 6. The KB reader follows the head to
+// version 2; after the withdrawal of version 2 the highest version left is
+// 1; with version 3 published it is 3.
+#test "the worked example's values, by hand" {
+  docs:=[1]WsResource.[WsResource.{resource="mmd.md",lifecycle=WS_AVAILABLE,editable=true,version=4,digest=PY_DOC1_SHA}];
+  g:=host_grants();k:[4]WsRetained;n:[1]int;b:=binding();
+  #assert ws_change(b,docs[..],g[..],k[..],n[..],change(ALICE,"a-1",4,PY_DOC1_SHA,KBV_TEXT_A_SHA),T0+10).code==WS_COMPLETED && docs[0].version==5;
+  #assert ws_change(b,docs[..],g[..],k[..],n[..],change(BOB,"b-1",4,PY_DOC1_SHA,KBV_TEXT_B_SHA),T0+11).code==WS_STALE && docs[0].version==5;
+  #assert ws_change(b,docs[..],g[..],k[..],n[..],change(BOB,"b-2",5,KBV_TEXT_A_SHA,PY_DOC2_SHA),T0+20).code==WS_COMPLETED;
+  #assert docs[0].version==6 && docs[0].digest==PY_DOC2_SHA && n[0]==2;
+  rs:=[5]KbRecord.[kbh_v(1,PY_E1_ID,PY_DOC1_SHA),kbh_v(2,PY_E2_ID,PY_DOC2_SHA),kbh_h(),kbh_w(),kbh_v(3,KBV_E3_ID,"d3")];
+  c:=kb_current(rs[0..<3],KBV_AUTHOR,"statistics.mmd-estimators");#assert c.version==2 && c.via_head;
+  c=kb_current(rs[0..<4],KBV_AUTHOR,"statistics.mmd-estimators");#assert c.version==1 && !c.via_head && c.withdrawn==1;
+  c=kb_current(rs[..],KBV_AUTHOR,"statistics.mmd-estimators");#assert c.version==3 && c.event==KBV_E3_ID;
+}
+kbh_v :: (version:int,event:string,digest:string)->KbRecord {
+  r:KbRecord;r.error=KB_OK;r.type=KB_ENTRY;r.author=KBV_AUTHOR;r.id="statistics.mmd-estimators";r.version=version;r.event=event;r.digest=digest;return r;
+}
+kbh_h :: ()->KbRecord {r:=kbh_v(2,KBV_HEAD2_ID,"");r.type=KB_HEAD;r.entry=PY_E2_ID;return r;}
+kbh_w :: ()->KbRecord {r:=kbh_v(2,KBV_WITHDRAW2_ID,"");r.type=KB_WITHDRAWAL;r.entry=PY_E2_ID;return r;}
+// book:end check

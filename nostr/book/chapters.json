@@ -1810,13 +1810,25 @@
    "number": 84,
    "title": "Knowledge and workspaces",
    "file": "ch084-knowledge-and-workspaces.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     76
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/kb/entry.coax",
+    "coax/lib/nostr/kb/current.coax",
+    "coax/lib/nostr/ws/change.coax",
+    "coax/tests/nostr/kb_vectors.coax",
+    "coax/tests/nostr/kb_entry_fixtures.coax",
+    "coax/tests/nostr/kb_current_fixtures.coax",
+    "coax/tests/nostr/ws_change_fixtures.coax",
+    "nostr/examples/knowledge-workspaces.coax",
+    "nostr/examples/checks/knowledge-workspaces.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

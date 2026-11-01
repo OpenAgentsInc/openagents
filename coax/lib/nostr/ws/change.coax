@@ -1,0 +1,194 @@
+// NIP-WS conditional document changes: the host's decision on one
+// openagents.resource-change.v1 text replacement. NIP-WS "Documents, ranges,
+// and conditional changes" and "Workspace and resource identity".
+//
+// The host is the document's single authority. It keeps the workspace
+// binding (authority, workspace, generation, revision), each resource's
+// current observation, reduced here to (version, SHA-256 of the exact
+// bytes), the grants it established independently, and the commands it
+// retained. A change is admitted in this order: the signer is the actor;
+// the request's own window by the host's clock; the authority and
+// workspace are the binding's; a grant named by the request's
+// authorization, for this actor, this resource and writing, unrevoked and
+// unexpired; idempotency by (authority, actor, command) with the
+// fingerprint the caller computed (an identical retransmission returns the
+// retained result, different bytes refuse); the resource exists and is
+// available; the binding's generation and revision are current (else
+// conflict); the replacement's snapshot is the expected observation; the
+// snapshot is editable (complete exact bytes); and last, at the mutation
+// boundary, the expected observation is the current one (else stale).
+// There is no overwrite fallback and no implicit merge: a stale writer
+// reads the current version and submits a new change.
+//
+// Room membership and a shared cursor grant nothing: only a grant does.
+// The new version is the host's own confirmation; a remote source would
+// confirm with its own observation (not modelled).
+//
+// Not here: create, move and delete operations, ranges, Git and external
+// sources, POL approvals, checkpoints, restoration, worktrees and
+// projections.
+//   coax/bin/coax test coax/lib/nostr/ws/change.coax --library
+#load "../../../tests/nostr/ws_change_fixtures.coax";
+#authority;
+
+// book:begin codes
+WS_COMPLETED :: cast(u32)0;    // the version moved: before and after are returned
+WS_DUPLICATE :: cast(u32)1;    // an identical retransmission: the retained result, no new effect
+WS_MALFORMED :: cast(u32)2;    // a bad window, or the snapshot is not the expected observation
+WS_IDENTITY :: cast(u32)3;     // identity_mismatch: the signer is not the actor, or another authority or workspace
+WS_NOT_ADMITTED :: cast(u32)4; // no grant for this actor, resource and write
+WS_REVOKED :: cast(u32)5;
+WS_EXPIRED :: cast(u32)6;      // the request or its grant has expired by the host's clock
+WS_UNAVAILABLE :: cast(u32)7;  // no such resource, or not available
+WS_UNSUPPORTED :: cast(u32)8;  // unsupported_feature: the snapshot is not editable
+WS_CONFLICT :: cast(u32)9;     // the workspace binding moved
+WS_STALE :: cast(u32)10;       // the expected observation is not the current one
+WS_IDEMPOTENCY :: cast(u32)11; // idempotency_conflict: other bytes under a retained command
+WS_LIMIT :: cast(u32)12;       // limit_exceeded: no room to retain the command
+
+WS_AVAILABLE :: 0; WS_UNAVAILABLE_NOW :: 1; WS_REMOVED :: 2; WS_UNKNOWN :: 3;  // lifecycle
+WS_WINDOW :: 3600;  // this host's longest request window, seconds
+WS_SKEW :: 60;      // how far ahead of the host's clock a request may be dated
+// book:end codes
+
+// book:begin record
+WsBinding :: struct {authority:string;workspace:string;generation:int;revision:int;}
+WsResource :: struct {resource:string;lifecycle:int;editable:bool;version:int;digest:string;}
+WsGrant :: struct {authorization:string;actor:string;resource:string;write:bool;expires_at:int;revoked:bool;}
+WsChange :: struct {
+  command:string; fingerprint:string; actor:string; signer:string;
+  authority:string; workspace:string; resource:string; generation:int; revision:int;
+  expected_version:int; expected_digest:string;   // the observation the actor read
+  snapshot_version:int; snapshot_digest:string;   // the replacement's snapshot
+  content:string;                                 // the SHA-256 of the new bytes
+  authorization:string; issued_at:int; expires_at:int;
+}
+WsRetained :: struct {authority:string;actor:string;command:string;fingerprint:string;before_version:int;after_version:int;after_digest:string;}
+WsResult :: struct {code:u32;before_version:int;after_version:int;after_digest:string;}
+// book:end record
+
+// book:begin admit
+ws_out :: (code:u32)->WsResult {r:WsResult;r.code=code;return r;}
+ws_change :: (b:WsBinding,res:[]WsResource,grants:[]WsGrant,kept:[]WsRetained,n:[]int,c:WsChange,now:int)->WsResult {
+  if c.signer!=c.actor {return ws_out(WS_IDENTITY);}
+  if c.expires_at<=c.issued_at || c.expires_at-c.issued_at>WS_WINDOW || c.issued_at>now+WS_SKEW {return ws_out(WS_MALFORMED);}
+  if now>=c.expires_at {return ws_out(WS_EXPIRED);}
+  if c.authority!=b.authority || c.workspace!=b.workspace {return ws_out(WS_IDENTITY);}
+  g:=-1;for i:0..<grants.count {if grants[i].authorization==c.authorization {g=i;}}
+  if g<0 || grants[g].actor!=c.actor || grants[g].resource!=c.resource || !grants[g].write {return ws_out(WS_NOT_ADMITTED);}
+  if grants[g].revoked {return ws_out(WS_REVOKED);}
+  if now>=grants[g].expires_at {return ws_out(WS_EXPIRED);}
+  for i:0..<n[0] {
+    k:=kept[i];
+    if k.authority==c.authority && k.actor==c.actor && k.command==c.command {
+      if k.fingerprint!=c.fingerprint {return ws_out(WS_IDEMPOTENCY);}
+      r:=ws_out(WS_DUPLICATE);r.before_version=k.before_version;r.after_version=k.after_version;r.after_digest=k.after_digest;return r;
+    }
+  }
+  t:=-1;for i:0..<res.count {if res[i].resource==c.resource {t=i;}}
+  if t<0 || res[t].lifecycle!=WS_AVAILABLE {return ws_out(WS_UNAVAILABLE);}
+  if c.generation!=b.generation || c.revision!=b.revision {return ws_out(WS_CONFLICT);}
+  if c.snapshot_version!=c.expected_version || c.snapshot_digest!=c.expected_digest {return ws_out(WS_MALFORMED);}
+  if !res[t].editable {return ws_out(WS_UNSUPPORTED);}
+  // The mutation boundary: compare and swap against the current observation.
+  if c.expected_version!=res[t].version || c.expected_digest!=res[t].digest {return ws_out(WS_STALE);}
+  if n[0]>=kept.count {return ws_out(WS_LIMIT);}
+  r:=ws_out(WS_COMPLETED);r.before_version=res[t].version;
+  res[t].version+=1;res[t].digest=c.content;
+  r.after_version=res[t].version;r.after_digest=c.content;
+  kept[n[0]]=WsRetained.{authority=c.authority,actor=c.actor,command=c.command,fingerprint=c.fingerprint,before_version=r.before_version,after_version=r.after_version,after_digest=r.after_digest};
+  n[0]+=1;
+  return r;
+}
+// book:end admit
+
+#test "the codes" {
+  #assert WS_COMPLETED==0 && WS_DUPLICATE==1 && WS_MALFORMED==2 && WS_IDENTITY==3 && WS_NOT_ADMITTED==4 && WS_REVOKED==5 && WS_EXPIRED==6;
+  #assert WS_UNAVAILABLE==7 && WS_UNSUPPORTED==8 && WS_CONFLICT==9 && WS_STALE==10 && WS_IDEMPOTENCY==11 && WS_LIMIT==12;
+  #assert WS_AVAILABLE==0 && WS_WINDOW==3600 && WS_SKEW==60;
+}
+#test "a change against the current version completes and is retained" {
+  res:=wst_docs();g:=wst_grants();k:[4]WsRetained;n:[1]int;
+  r:=ws_change(wst_binding(),res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10);
+  #assert r.code==WS_COMPLETED && r.before_version==4 && r.after_version==5 && r.after_digest==WST_DA;
+  #assert res[0].version==5 && res[0].digest==WST_DA && res[1].version==1 && res[1].digest==WST_D0 && n[0]==1;
+  #assert k[0].authority==WST_HOST && k[0].actor==WST_ALICE && k[0].command=="c1" && k[0].fingerprint=="f-c1";
+  #assert k[0].before_version==4 && k[0].after_version==5 && k[0].after_digest==WST_DA;
+}
+#test "two concurrent edits: the second is stale, never merged" {
+  res:=wst_docs();g:=wst_grants();k:[4]WsRetained;n:[1]int;b:=wst_binding();
+  #assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_COMPLETED;
+  #assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_BOB,"c2",WST_DB),WST_T0+11).code==WS_STALE;
+  #assert res[0].version==5 && res[0].digest==WST_DA && n[0]==1;
+  // Bob reads version 5 and resubmits under a new command.
+  c:=wst_change(WST_BOB,"c3",WST_DM);c.expected_version=5;c.expected_digest=WST_DA;c.snapshot_version=5;c.snapshot_digest=WST_DA;
+  r:=ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+20);
+  #assert r.code==WS_COMPLETED && r.before_version==5 && r.after_version==6 && res[0].digest==WST_DM && n[0]==2;
+  // A matching version with another digest is stale too.
+  d:=wst_change(WST_ALICE,"c4",WST_DA);d.expected_version=6;d.snapshot_version=6;
+  #assert ws_change(b,res[..],g[..],k[..],n[..],d,WST_T0+21).code==WS_STALE;
+}
+#test "retransmission: the retained result, or idempotency_conflict" {
+  res:=wst_docs();g:=wst_grants();k:[4]WsRetained;n:[1]int;b:=wst_binding();
+  #assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_COMPLETED;
+  r:=ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+12);
+  #assert r.code==WS_DUPLICATE && r.before_version==4 && r.after_version==5 && r.after_digest==WST_DA && res[0].version==5 && n[0]==1;
+  c:=wst_change(WST_ALICE,"c1",WST_DB);c.fingerprint="f-other";
+  #assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+12).code==WS_IDEMPOTENCY && n[0]==1;
+  // The same command ID from another actor or authority is its own command.
+  c=wst_change(WST_BOB,"c1",WST_DB);#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+12).code==WS_STALE;
+  k[0].authority="other";
+  #assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+12).code==WS_STALE;
+  k[0].authority=WST_HOST;k[0].command="c9";
+  #assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+12).code==WS_STALE;
+  // Only the n retained count; a full table refuses.
+  k[0].command="c1";n[0]=0;
+  #assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+12).code==WS_STALE;
+  c=wst_change(WST_ALICE,"c5",WST_DB);c.expected_version=5;c.expected_digest=WST_DA;c.snapshot_version=5;c.snapshot_digest=WST_DA;
+  #assert ws_change(b,res[..],g[..],k[0..<0],n[..],c,WST_T0+12).code==WS_LIMIT && res[0].version==5;
+}
+#test "identity, window and workspace" {
+  res:=wst_docs();g:=wst_grants();k:[4]WsRetained;n:[1]int;b:=wst_binding();
+  c:=wst_change(WST_ALICE,"c1",WST_DA);c.signer=WST_BOB;#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_IDENTITY;
+  c=wst_change(WST_ALICE,"c1",WST_DA);c.authority=WST_ALICE;#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_IDENTITY;
+  c=wst_change(WST_ALICE,"c1",WST_DA);c.workspace="ws-2";#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_IDENTITY;
+  c=wst_change(WST_ALICE,"c1",WST_DA);c.expires_at=c.issued_at;#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_MALFORMED;
+  c.expires_at=c.issued_at+3601;#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_MALFORMED;
+  c.expires_at=c.issued_at+3600;#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+3599).code==WS_COMPLETED;
+  res=wst_docs();n[0]=0;
+  c=wst_change(WST_ALICE,"c1",WST_DA);
+  #assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+300).code==WS_EXPIRED;
+  #assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0-60).code==WS_COMPLETED;
+  res=wst_docs();n[0]=0;
+  #assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0-61).code==WS_MALFORMED && n[0]==0;
+  #assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+299).code==WS_COMPLETED;
+}
+#test "membership is not a grant: write needs this actor, resource and right" {
+  res:=wst_docs();g:=wst_grants();k:[4]WsRetained;n:[1]int;b:=wst_binding();
+  // Carol is in the room and has no grant; Bob's read grant does not write.
+  c:=wst_change(WST_CAROL,"c1",WST_DA);c.authorization="g-carol";#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_NOT_ADMITTED;
+  c=wst_change(WST_BOB,"c1",WST_DA);c.authorization="g-bob-read";#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_NOT_ADMITTED;
+  // Alice's grant presented by Bob, or for another resource.
+  c=wst_change(WST_BOB,"c1",WST_DA);c.authorization="g-alice";#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_NOT_ADMITTED;
+  c=wst_change(WST_ALICE,"c1",WST_DA);c.resource="doc-2";#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_NOT_ADMITTED;
+  #assert ws_change(b,res[..],g[0..<0],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_NOT_ADMITTED;
+  g[0].revoked=true;#assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_REVOKED;
+  g[0].revoked=false;g[0].expires_at=WST_T0+10;#assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_EXPIRED;
+  #assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+9).code==WS_COMPLETED;
+  // A revoked actor's retransmission refuses; it never reads the retained result.
+  g[0].revoked=true;#assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+9).code==WS_REVOKED;
+  #assert res[0].version==5 && n[0]==1;
+}
+#test "resource, binding, snapshot and editability" {
+  res:=wst_docs();g:=wst_grants();k:[4]WsRetained;n:[1]int;b:=wst_binding();
+  res[0].lifecycle=WS_REMOVED;#assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_UNAVAILABLE;
+  res[0].lifecycle=WS_UNKNOWN;#assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_UNAVAILABLE;
+  res[0].lifecycle=WS_AVAILABLE;
+  #assert ws_change(b,res[1..<2],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_UNAVAILABLE;
+  b2:=b;b2.generation=3;#assert ws_change(b2,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_CONFLICT;
+  b2=b;b2.revision=8;#assert ws_change(b2,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_CONFLICT;
+  c:=wst_change(WST_ALICE,"c1",WST_DA);c.snapshot_version=3;#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_MALFORMED;
+  c=wst_change(WST_ALICE,"c1",WST_DA);c.snapshot_digest=WST_DB;#assert ws_change(b,res[..],g[..],k[..],n[..],c,WST_T0+10).code==WS_MALFORMED;
+  res[0].editable=false;#assert ws_change(b,res[..],g[..],k[..],n[..],wst_change(WST_ALICE,"c1",WST_DA),WST_T0+10).code==WS_UNSUPPORTED;
+  #assert n[0]==0 && res[0].version==4;
+}

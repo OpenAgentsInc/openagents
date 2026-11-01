@@ -1,0 +1,36 @@
+WS: mmd.md is at version 4; Alice and Bob both read it
+version 4 19952efa5bd4a152…; Alice's text b36739956f4d7586…; Bob's text f6b5ef98863f56a9…
+Alice replaces version 4: completed, version 4 -> 5 (b36739956f4d7586…)
+Bob replaces version 4: stale
+Alice's request again: duplicate, version 4 -> 5 (b36739956f4d7586…)
+Bob reads version 5 and merges both edits by hand (92b7aeb9a48bdc3a…)
+Bob replaces version 5: completed, version 5 -> 6 (92b7aeb9a48bdc3a…)
+mmd.md: version 6, digest 92b7aeb9a48bdc3a…, 2 commands retained
+KB: the author publishes the merged file as version 2
+entry v1: ok, event 52ac5361940b3f61…, digest 19952efa5bd4a152…
+entry v2: ok, event 59f409e9f04cba6c…, digest 92b7aeb9a48bdc3a…
+head v2: ok, event 673448e56b2faccd…, names event 59f409e9f04cba6c…
+version 2's document is the workspace's version 6: true
+current: version 2 (event 59f409e9f04cba6c…, by the head), withdrawn 0, in conflict 0
+status shown: admitted to the author's own reader, candidate to a stranger, admitted to one who trusts the author
+KB: the author withdraws version 2 ("The check section's claim needs a citation.")
+withdrawal: ok, binds event 59f409e9f04cba6c…
+current: version 1 (event 52ac5361940b3f61…, by the highest version), withdrawn 1, in conflict 0
+current, with version 3: version 3 (event b8e1e59a16a42b55…, by the highest version), withdrawn 1, in conflict 0
+KB: a second version 2 from the same author
+entry v2: ok, digest eea50d64059008ba…
+current: version 1 (event 52ac5361940b3f61…, by the highest version), withdrawn 0, in conflict 2
+broken inputs
+version 2 with a changed document: digest
+version 1 with a changed signature: signature
+version 1 whose d tag names another entry: tags
+version 3 whose front matter says version 2: document
+a head signed by another author: signer
+a withdrawal signed by another author: signer
+version 1 with an embedding field: shape
+Carol, in the room with no grant: not_admitted
+Bob under his read-only grant: not_admitted
+Alice's command a-1 with other bytes: idempotency_conflict
+after the workspace's roots were remapped: conflict
+a request issued at T0, at T0 + 600: expired
+mmd.md: version 6, 2 commands retained

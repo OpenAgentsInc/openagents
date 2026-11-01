@@ -1,0 +1,75 @@
+// Test helpers for coax/lib/nostr/kb/entry.coax: bodies, tags and front
+// matter built around one field. Kept apart so root-only mutation of the
+// library mutates the reader, not these builders.
+kbt_repeat :: (c:string,n:int,out:[]u8)->string {for i:0..<n {out[i]=c[0];}return cast(string)out[0..<n];}
+// The event reader's scratch is the first half of s, the arena the second.
+kbt_read :: (text:string,s:[]u8)->KbRecord {
+  half:=s.count/2;a:=[1]KbText.[KbText.{buf=s[half..<s.count]}];return kb_read(text,s[0..<half],a[..]);
+}
+kbt_admit :: (text:string,s:[]u8)->KbRecord {
+  half:=s.count/2;a:=[1]KbText.[KbText.{buf=s[half..<s.count]}];e:=nostr_event_read(text,s[0..<half],false);return kb_admit(e,a[..]);
+}
+// The event with the first digit of created_at changed: the id no longer matches.
+kbt_bump_created :: (text:string,out:[]u8)->string {
+  at:=-1;for i:0..<text.count-12 {if at<0 && text[i..<i+12]=="\"created_at\"" {at=i+13;}}
+  for i:0..<text.count {out[i]=text[i];}
+  out[at]=ifx text[at]=='2' then cast(u8)'3' else cast(u8)'2';return cast(string)out[0..<text.count];
+}
+kbt_rec :: (t:int)->[1]KbRecord {r:=[1]KbRecord.[KbRecord.{}];r[0].type=t;r[0].author=KBV_AUTHOR;return r;}
+// Each % in fmt replaced by the next of a, b.
+kbt_fill2 :: (fmt:string,a:string,b:string,out:[]u8)->string {
+  n:=0;k:=0;
+  for c:fmt {
+    if c=='%' {v:=ifx k==0 then a else b;k+=1;n=json_raw(out,n,v);}
+    else {out[n]=c;n+=1;}
+  }
+  return cast(string)out[0..<n];
+}
+KBT_ENTRY_HEAD :: "{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"statistics.mmd-estimators\",\"version\":3,\"kind\":\"edge-case\",\"document\":\"---\"";
+kbt_entry_body :: (extra:string,out:[]u8)->string {
+  n:=json_raw(out,0,KBT_ENTRY_HEAD);n=json_raw(out,n,extra);n=json_raw(out,n,"}");return cast(string)out[0..<n];
+}
+kbt_ref_body :: (t:string,extra:string,out:[]u8)->string {
+  n:=json_raw(out,0,"{\"v\":1,\"requires\":[],\"type\":\"");n=json_raw(out,n,t);
+  n=json_raw(out,n,"\",\"id\":\"statistics.mmd-estimators\",\"version\":2,\"entry\":{\"id\":\"");n=json_raw(out,n,KBV_E2_ID);
+  n=json_raw(out,n,"\",\"pubkey\":\"");n=json_raw(out,n,KBV_AUTHOR);n=json_raw(out,n,"\",\"kind\":3190}");
+  n=json_raw(out,n,extra);n=json_raw(out,n,"}");return cast(string)out[0..<n];
+}
+kbt_body :: (body:string,t:int)->u32 {
+  r:=kbt_rec(t);s:[4096]u8;a:=[1]KbText.[KbText.{buf=s[..]}];return kb_body(body,t,r[..],a[..]);
+}
+kbt_body_entry :: (extra:string)->u32 {b:[1024]u8;return kbt_body(kbt_entry_body(extra,b[..]),KB_ENTRY);}
+kbt_body_ref :: (t:string,extra:string,as:int)->u32 {b:[2048]u8;return kbt_body(kbt_ref_body(t,extra,b[..]),as);}
+kbt_body_reason :: (n:int)->u32 {
+  e:[1200]u8;m:=json_raw(e[..],0,",\"reason\":\"");for i:0..<n {e[m+i]='r';}m+=n;m=json_raw(e[..],m,"\"");
+  return kbt_body_ref("withdrawal",cast(string)e[0..<m],KB_WITHDRAWAL);
+}
+// The head body with entry given by fmt filled with a and b.
+kbt_body_refobj :: (fmt:string,a:string,b:string)->u32 {
+  f:[512]u8;o:[1024]u8;
+  n:=json_raw(o[..],0,"{\"v\":1,\"requires\":[],\"type\":\"head\",\"id\":\"statistics.mmd-estimators\",\"version\":2,\"entry\":");
+  n=json_raw(o[..],n,kbt_fill2(fmt,a,b,f[..]));n=json_raw(o[..],n,"}");return kbt_body(cast(string)o[0..<n],KB_HEAD);
+}
+// The entry kind read from a body naming kind k, or -1 - error.
+kbt_body_kind :: (k:string)->int {
+  o:[512]u8;n:=json_raw(o[..],0,"{\"v\":1,\"requires\":[],\"type\":\"entry\",\"id\":\"a\",\"version\":1,\"kind\":\"");
+  n=json_raw(o[..],n,k);n=json_raw(o[..],n,"\",\"document\":\"d\"}");
+  r:=kbt_rec(KB_ENTRY);s:[1024]u8;a:=[1]KbText.[KbText.{buf=s[..]}];
+  e:=kb_body(cast(string)o[0..<n],KB_ENTRY,r[..],a[..]);if e!=KB_OK {return -1-cast(int)e;}
+  return r[0].kind;
+}
+// Tags read against a record with id "a", kind tool and entry E2; % is the
+// document digest for an entry and E2's id for a head or withdrawal.
+kbt_tags_e :: (fmt:string,value:string,t:int)->u32 {
+  f:[1024]u8;r:=kbt_rec(t);r[0].id="a";r[0].kind=4;r[0].entry=KBV_E2_ID;s:[1024]u8;a:=[1]KbText.[KbText.{buf=s[..]}];
+  return kb_tags(kbt_fill2(fmt,value,value,f[..]),t,r[..],a[..]);
+}
+kbt_tags :: (fmt:string,t:int)->u32 {return kbt_tags_e(fmt,ifx t==KB_ENTRY then KBV_DOC1_SHA else KBV_E2_ID,t);}
+kbt_long_tag :: (out:[]u8)->string {
+  n:=json_raw(out,0,"[[\"d\",\"a\"],[\"e\",\"");n=json_raw(out,n,KBV_E2_ID);n=json_raw(out,n,"\"],[\"t\",\"oa:kb:head:v1\"],[\"t\",\"");
+  for i:0..<300 {out[n+i]='a';}n+=300;n=json_raw(out,n,"\"]]");return cast(string)out[0..<n];
+}
+// Front matter read against id "a", version 3, kind edge-case.
+kbt_front_rec :: (doc:string,r:[]KbRecord)->u32 {r[0].id="a";r[0].version=3;r[0].kind=1;return kb_front(doc,r);}
+kbt_front :: (doc:string)->u32 {r:=kbt_rec(KB_ENTRY);return kbt_front_rec(doc,r[..]);}
+kbt_front_status :: (doc:string)->int {r:=kbt_rec(KB_ENTRY);if kbt_front_rec(doc,r[..])!=KB_OK {return -1;}return r[0].status;}

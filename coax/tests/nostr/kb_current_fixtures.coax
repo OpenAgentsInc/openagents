@@ -1,0 +1,15 @@
+// Records for the checks of coax/lib/nostr/kb/current.coax, built directly
+// (as kb_read would admit them), kept apart so root-only mutation mutates
+// the resolution, not these.
+KBC_A :: "aa";
+KBC_B :: "bb";
+KBC_ID :: "statistics.mmd-estimators";
+kbc_v :: (version:int,event:string,digest:string)->KbRecord {
+  r:KbRecord;r.error=KB_OK;r.type=KB_ENTRY;r.author=KBC_A;r.id=KBC_ID;r.version=version;r.event=event;r.digest=digest;return r;
+}
+kbc_w :: (version:int,entry:string)->KbRecord {
+  r:KbRecord;r.error=KB_OK;r.type=KB_WITHDRAWAL;r.author=KBC_A;r.id=KBC_ID;r.version=version;r.entry=entry;r.event="w";return r;
+}
+kbc_h :: (version:int,entry:string,at:int,event:string)->KbRecord {
+  r:KbRecord;r.error=KB_OK;r.type=KB_HEAD;r.author=KBC_A;r.id=KBC_ID;r.version=version;r.entry=entry;r.created_at=at;r.event=event;return r;
+}
