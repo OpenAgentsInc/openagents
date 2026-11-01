@@ -41,7 +41,7 @@ teaches, with the kinds, tags and messages from the NIP text, what exists
 today, its dependencies, what "done" means and its spec files. It has no
 source-linked listings or examples.
 
-Of the 104 chapters, 59 are implemented and 45 are design drafts.
+Of the 104 chapters, 60 are implemented and 44 are design drafts.
 
 The [chapter registry](chapters.json) records each chapter's status (one of
 *implemented*, *partly implemented*, *design draft* or *planned*), its
@@ -222,7 +222,7 @@ negentropy, and limits.
 | [37. NIP-11 relay information](ch037-nip-11-relay-information.md) | Runnable: native C | The relay information document served on `Accept: application/nostr+json`: name, pubkey, `supported_nips`, software, version and `limitation` fields that match what the relay enforces. |
 | [38. NIP-42 authentication](ch038-nip-42-authentication.md) | Runnable: native C | Challenges bound to one connection and one relay URL, kind 22242 events with `relay` and `challenge` tags checked within a time window, and AUTH on both the client and the relay. |
 | [39. Delete, expire and vanish](ch039-delete-expire-and-vanish.md) | Runnable: native C | NIP-40 `expiration` tags enforced at admission and query, NIP-09 kind-5 deletion requests from the same author with durable tombstones, and NIP-62 kind-62 requests to vanish. |
-| [40. Count events](ch040-count-events.md) | Unimplemented: design draft | NIP-45 `COUNT` requests and responses, `approximate` counts, and HyperLogLog with 256 registers whose offset comes from the filter. |
+| [40. Count events](ch040-count-events.md) | Runnable: native C | NIP-45 `COUNT` requests and responses, `approximate` counts, and HyperLogLog with 256 registers whose offset comes from the filter. |
 | [41. Search](ch041-search.md) | Unimplemented: design draft | NIP-50's `search` filter field, results ordered by relevance, and the `key:value` extensions (`include:spam`, `domain:`, `language:`, `sentiment:`, `nsfw:`). |
 | [42. Protected events](ch042-protected-events.md) | Unimplemented: design draft | Events tagged `["-"]` accepted only from their authenticated author, so a third party cannot republish them to this relay. |
 | [43. Negentropy sync](ch043-negentropy-sync.md) | Unimplemented: design draft | NIP-77's `NEG-OPEN`, `NEG-MSG`, `NEG-CLOSE` and `NEG-ERR`, and Negentropy protocol V1: range-based set reconciliation over `(created_at, id)` with fingerprints. |

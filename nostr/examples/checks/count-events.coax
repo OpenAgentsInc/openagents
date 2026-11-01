@@ -1,0 +1,94 @@
+// The checks of count-events.coax. They live apart so that running the
+// example doesn't also run them.
+// Checks: coax test nostr/examples/checks/count-events.coax --run-steps 250000000
+#load "../count-events.coax";
+
+// book:begin check
+// Values from a Python transcription of NIP-45's text (register update and
+// offset) and of go-nostr's estimate, written for this chapter. It shares no
+// code with nip45.coax:
+//
+//   def offset(v):   # 64 lowercase hex, else an address's pubkey, else sha256
+//       h = v if re.fullmatch('[0-9a-f]{64}', v) else ... hashlib.sha256(v).hexdigest()
+//       return int(h[32], 16) + 8
+//   def add(regs, pk, off):
+//       b = bytes.fromhex(pk); bits = ''.join(f'{x:08b}' for x in b[off+1:])
+//       regs[b[off]] = max(regs[b[off]], len(bits) - len(bits.lstrip('0')) + 1)
+//   def est(regs):   # linear counting below 220 or while raw <= 768
+//       ...
+//
+// It gave, for pubkey i = sha256("follower i") under B's offset 8: relay X
+// (0..599) 616, relay Y (400..999) 566, the union 1095, max(X, Y) == union,
+// and sha256 of the union's registers below; and for NIP-45's two example
+// sketches, 15070 and 13075.
+U_REGISTERS_SHA256 :: "e36391be961d85e585019ffa4f26d5c765392b80bb7e4d33b81b01891747c505";
+
+#test "the follower sketches against the Python transcription" #steps 2000000000 {
+  // The pubkeys straight into the sketches; the example builds the same
+  // three through 1,000-record stores and n45_answer, and its transcript
+  // holds the same estimates.
+  x: [256] u8; y: [256] u8; u: [256] u8; k: [32] u8;
+  for i: 0..<1000 {
+    follower(i, k[..]);
+    if i < 600 { n45_hll_add(x[..], k[..], 8); }
+    if i >= 400 { n45_hll_add(y[..], k[..], 8); }
+    n45_hll_add(u[..], k[..], 8);
+  }
+  #assert n45_hll_estimate(x[..]) == 616 && n45_hll_estimate(y[..]) == 566 && n45_hll_estimate(u[..]) == 1095;
+  n45_hll_merge(x[..], y[..]);
+  for i: 0..<256 { #assert x[i] == u[i]; }
+  d: [32] u8; h: [64] u8;
+  #assert sha256_hash_checked(u[..], d[..], false) == SHA_OK && to_hex(d[..], h[..]) == U_REGISTERS_SHA256;
+  // merging is order-free and idempotent
+  n45_hll_merge(y[..], u[..]); for i: 0..<256 { #assert y[i] == u[i]; }
+}
+#test "NIP-45's example sketches against the Python transcription" {
+  f := n45_read_response(NIP45_FOLLOWERS); r := n45_read_response(NIP45_REACTIONS);
+  #assert f.error == N45_OK && f.count == 16578 && n45_hll_estimate(f.hll[..]) == 15070;
+  #assert r.error == N45_OK && r.count == 2044 && n45_hll_estimate(r.hll[..]) == 13075;
+  // the two differ only in their first two registers
+  for i: 2..<256 { #assert f.hll[i] == r.hll[i]; }
+}
+#test "registers worked by hand from the BIP-340 public keys" {
+  // offset 8 (B's character 32 is '0'):
+  //   A dff1d77f2a671c5f 36 18...: register 0x36 = 54, 0x18 = 00011000 -> 4
+  //   C f9308a019258c310 49 34...: register 0x49 = 73, 0x34 = 00110100 -> 3
+  //   D 25d1dff95105f525 3c 40...: register 0x3c = 60, 0x40 = 01000000 -> 2
+  regs: [256] u8; k: [32] u8;
+  n45_t_hex32(PUB_A, k[..]); n45_hll_add(regs[..], k[..], 8);
+  n45_t_hex32(PUB_C, k[..]); n45_hll_add(regs[..], k[..], 8);
+  n45_t_hex32(PUB_D, k[..]); n45_hll_add(regs[..], k[..], 8);
+  for i: 0..<256 { #assert regs[i] == ifx i == 54 then cast(u8) 4 else ifx i == 73 then cast(u8) 3 else ifx i == 60 then cast(u8) 2 else cast(u8) 0; }
+  // three registers set, 253 empty: 256 ln(256/253) = 3.02
+  #assert n45_hll_estimate(regs[..]) == 3;
+  // the hand merge in the example: max per register
+  y: [256] u8; y[54] = 1; y[73] = 5; y[9] = 2;
+  n45_hll_merge(regs[..], y[..]);
+  #assert regs[9] == 2 && regs[54] == 4 && regs[60] == 2 && regs[73] == 5 && n45_hll_estimate(regs[..]) == 4;
+  // where NIP-45's text and go-nostr part: 64 zero bits after the index byte.
+  // NIP-45 counts on to the end of the pubkey (65); go-nostr reads 56 bits
+  // and would store 57.
+  z: [32] u8; z[8] = 1; z[17] = 0x80; r2: [256] u8;
+  n45_hll_add(r2[..], z[..], 8); #assert r2[1] == 65;
+  z[17] = 0; z[16] = 1; n45_hll_add(r2[..], z[..], 8); #assert r2[1] == 65;   // 63 zeros: 64 is smaller
+}
+#test "exact counts worked by hand from the example's nine events" #steps 2000000000 {
+  // q1 B's kinds 1 and 7: e2 e3. reactions to e1: e3 e4 e5. followers of B:
+  // e6 e7 e8. kinds 7 OR authors B: {e3 e4 e5} + {e2 e3 e9} = 5, e3 once.
+  r: [1] Relay; relay_init(r[..]);
+  b1: [1024] u8; e1 := sign(KEY_A, AUX_A, NOW - 300, 1, "[]", "hello nostr", b1[..]);
+  b2: [1024] u8; e2 := sign(KEY_B, AUX_B, NOW - 200, 7, "[]", "+", b2[..]);
+  b3: [1024] u8; e3 := sign(KEY_B, AUX_B, NOW - 100, 1, "[]", "hi", b3[..]);
+  b4: [1024] u8; e4 := sign(KEY_C, AUX_C, NOW - 90, 7, "[]", "+", b4[..]);
+  #assert admit(r[..], e1) == RS_ACCEPT && admit(r[..], e2) == RS_ACCEPT && admit(r[..], e3) == RS_ACCEPT && admit(r[..], e4) == RS_ACCEPT;
+  #assert nsi_build(r[0].s[..], r[0].ix[..]);
+  out: [256] u8; q: [256] u8;
+  n := json_raw(q[..], 0, "[\"COUNT\",\"q\",{\"kinds\":[7]},{\"authors\":[\""); n = json_raw(q[..], n, PUB_B); n = json_raw(q[..], n, "\"]}]");
+  k := n45_answer(cast(string) q[0..<n], r[0].s[..], r[0].ix[..], NOW, r[0].w[..], out[..]);
+  #assert cast(string) out[0..<k] == "[\"COUNT\",\"q\",{\"count\":3}]";   // e2 e4 and e3
+  k = n45_answer("[\"COUNT\",\"q\",{\"kinds\":[1,7]}]", r[0].s[..], r[0].ix[..], NOW, r[0].w[..], out[..]);
+  #assert cast(string) out[0..<k] == "[\"COUNT\",\"q\",{\"count\":4}]";
+  k = n45_answer("[\"COUNT\",\"q\",{\"kinds\":[1]},{\"kinds\":[1]},{\"kinds\":[1]}]", r[0].s[..], r[0].ix[..], NOW, r[0].w[..], out[..]);
+  #assert cast(string) out[0..<k] == "[\"COUNT\",\"q\",{\"count\":2}]";
+}
+// book:end check

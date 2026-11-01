@@ -170,10 +170,14 @@ nsi_tags :: (s: [] RsdStore, x: NsiIndex, f: NostrFilter, t: NostrTagFilter, now
 // Up to rs_limit(f) (and out.count) visible records matching f, newest
 // first, then lowest id, exactly as rsd_query, read through one index.
 nsi_query :: (s: [] RsdStore, ix: [] NsiIndex, f: NostrFilter, now: int, out: [] int) -> NsiResult {
+  return nsi_query_limit(s, ix, f, now, rs_limit(f), out);
+}
+// The same with the caller's limit in place of the filter's: a NIP-45 count
+// (chapter 40) passes out.count to read every match.
+nsi_query_limit :: (s: [] RsdStore, ix: [] NsiIndex, f: NostrFilter, now: int, limit: int, out: [] int) -> NsiResult {
   x := ix[0];
   if !x.ok || x.n != s[0].n || x.used != s[0].used { return NsiResult.{n = -1, plan = NSI_REFUSED}; }
   later := ns_store_seen(s, now);
-  limit := rs_limit(f);
   if !nf_valid(f) || limit == 0 || out.count == 0 || (f.has_since && f.has_until && f.since > f.until) { return NsiResult.{}; }
   n: [1] int; tag: int;
   res := NsiResult.{plan = NSI_TIME};

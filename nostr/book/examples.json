@@ -494,6 +494,18 @@
       "timeout": 240
     },
     {
+      "source": "nostr/examples/count-events.coax",
+      "chapter": "nostr/book/ch040-count-events.md",
+      "stdout": "nostr/fixtures/count-events.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ],
+      "run_steps": 250000000,
+      "timeout": 240
+    },
+    {
       "source": "nostr/examples/relay-limits.coax",
       "chapter": "nostr/book/ch044-limits-policy-and-floods.md",
       "stdout": "nostr/fixtures/relay-limits.out",

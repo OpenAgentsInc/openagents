@@ -847,13 +847,21 @@
    "number": 40,
    "title": "Count events",
    "file": "ch040-count-events.md",
-   "status": "design draft",
-   "profile": null,
+   "status": "implemented",
+   "profile": "native C",
    "depends_on": [
     36
    ],
-   "source": [],
-   "qualified_targets": [],
+   "source": [
+    "coax/lib/nostr/nip45.coax",
+    "coax/lib/nostr/store_index.coax",
+    "coax/lib/nostr/message_server.coax",
+    "nostr/examples/count-events.coax",
+    "nostr/examples/checks/count-events.coax"
+   ],
+   "qualified_targets": [
+    "cpu"
+   ],
    "adopted_by": []
   },
   {

@@ -1,0 +1,512 @@
+// NIP-45 event counts (Nostr From Scratch, chapter 40): the COUNT request a
+// client sends, the COUNT answer a relay writes from its store through the
+// chapter 36 index, and the HyperLogLog (HLL) sketch NIP-45 lets a relay add
+// so that a client can merge counts from several relays.
+//
+// - The relay reads ["COUNT", id, filter...] with message_server.coax's
+//   ms_read (the same reader as REQ) and checks each filter with
+//   relay_server.coax's REQ rules (rs_req). n45_answer writes
+//   ["COUNT", id, {"count": n, "hll": "..."}], or CLOSED when it refuses,
+//   or NOTICE when the subscription id is bad (no id to close).
+// - The count is exact: the distinct visible records that match any filter,
+//   read with store_index.coax's nsi_query_limit. A record that matches two
+//   filters counts once. A filter's "limit" does not cap a count.
+// - The HLL follows NIP-45's text: 256 one-byte registers; the offset is the
+//   hex digit at position 32 of the first tag filter's first value (an id or
+//   pubkey as it is, an address's pubkey, otherwise its sha256) plus 8; the
+//   register index is the pubkey's byte at offset; the value is one more
+//   than the leading zero bits from bit (offset + 1) * 8 to the end of the
+//   pubkey. go-nostr's nip45/hyperloglog reads only 56 of those bits, so the
+//   two differ only when 56 zero bits follow the index byte.
+// - n45_hll_estimate is go-nostr's estimate: linear counting while it is at
+//   most 220 or while the raw estimate is at most 3 * 256, otherwise
+//   0.7182725932495458 * 256^2 / sum(2^-register).
+//
+// The HLL is written only for a COUNT with one filter that has a tag
+// filter: NIP-45 defines no offset otherwise, and the offset belongs to a
+// filter, not to an OR of several. Not built: wiring COUNT into
+// coax/relay/relay.coax (relay_route.coax still answers COUNT with CLOSED
+// "COUNT is not supported"), cached or precomputed sketches, and
+// approximate counts on the relay side (the reader accepts "approximate").
+//
+// Not #authority, like store_index.coax: loading the store brings the
+// relay's whole graph under every mutation run. Its checks are below and in
+// nostr/examples/checks/count-events.coax.
+#load "store_index.coax";
+
+N45_REGISTERS :: 256; N45_HLL_HEX :: 512;
+// What n45_read_response refuses.
+N45_OK :: 0; N45_JSON :: 1; N45_SHAPE :: 2; N45_VERB :: 3; N45_SUB :: 4;
+N45_COUNT :: 5; N45_HLL :: 6; N45_FIELD :: 7;
+
+// n distinct events (-1: the index is out of date or an array is short),
+// the records the index read, and whether regs holds a sketch.
+N45Count :: struct { n: int; scanned: int; hll: bool; }
+N45Response :: struct {
+  error: int = N45_SHAPE;
+  sub: [256] u8; sub_n: int;
+  count: int; approximate: bool;
+  has_hll: bool; hll: [256] u8;
+}
+// What n45_answer needs besides the store: the request's filters and their
+// storage, one slot per record for the query and the distinct marks, and
+// the registers.
+N45Work :: struct {
+  strs: [1024] string; ints: [256] int; tags: [64] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
+  filters: [16] NostrFilter;
+  out: [RSD_MAX] int; seen: [RSD_MAX] u8;
+  regs: [256] u8;
+}
+
+// ---- test helpers ------------------------------------------------------------
+n45_t_hex32 :: (s: string, out: [] u8) { for i: 0..<32 { out[i] = cast(u8) (json_hex(s[2 * i]) * 16 + json_hex(s[2 * i + 1])); } }
+N45_T_A :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+N45_T_B :: "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8";
+n45_t_filter :: (text: string, f: [] NostrFilter, sp: [] FrSpace) -> NostrFilter {
+  #assert filter_read(text, f, sp) == FR_OK;
+  return f[0];
+}
+
+#test "the offset: an id or pubkey as it is, an address's pubkey, anything else hashed" {
+  strs: [64] string; ints: [8] int; tags: [16] NostrTagFilter; bytes: [2048] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  // B's character 32 is '0': offset 8
+  #assert n45_offset(n45_t_filter("{\"kinds\":[3],\"#p\":[\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]}", f[..], sp[..])) == 8;
+  // A's character 32 is '5': offset 13
+  #assert n45_offset(n45_t_filter("{\"#q\":[\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\",\"00\"]}", f[..], sp[..])) == 13;
+  #assert n45_offset(n45_t_filter("{\"#a\":[\"30023:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:intro\"]}", f[..], sp[..])) == 13;
+  // sha256("coax") = f8b1a90c80dcd6580bc45b36e63ef4eb 28f1...: '2' gives 10
+  #assert n45_offset(n45_t_filter("{\"#t\":[\"coax\"]}", f[..], sp[..])) == 10;
+  // uppercase hex is not an id: hashed
+  #assert n45_offset(n45_t_filter("{\"#t\":[\"DD308AFEC5777E13121FA72B9CC1B7CC0139715309B086C960E18FD969774EB8\"]}", f[..], sp[..])) != 8;
+  // the first tag filter decides, whatever comes after it
+  #assert n45_offset(n45_t_filter("{\"#t\":[\"coax\"],\"#p\":[\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]}", f[..], sp[..])) == 10;
+  #assert n45_offset(n45_t_filter("{\"kinds\":[1]}", f[..], sp[..])) == 0;
+  #assert n45_offset(n45_t_filter("{\"#t\":[]}", f[..], sp[..])) == 0;
+  // a value of 256 bytes is hashed; filter_read refuses longer ones, and so does n45_offset
+  long: [257] u8; for i: 0..<257 { long[i] = 'a'; }
+  values := [1] string.[cast(string) long[0..<256]]; tf := [1] NostrTagFilter.[NostrTagFilter.{name = 't', values = values[..]}];
+  g: NostrFilter; g.tags = tf[..];
+  #assert n45_offset(g) == 12;   // sha256 of 256 'a's: hex character 32 is '4'
+  values[0] = cast(string) long[..]; #assert n45_offset(g) == 0;
+  // addresses: a kind of digits and a 64-hex pubkey between two colons
+  #assert n45_address("1:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:") == 2;
+  #assert n45_address("9:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:") == 2;
+  #assert n45_address(":dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:x") == 0;
+  #assert n45_address("x1:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:x") == 0;
+  #assert n45_address("1x:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:x") == 0;
+  #assert n45_address("1:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659") == 0;
+  #assert n45_address("1:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659x") == 0;
+  #assert n45_address("12:Dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:x") == 0;
+  #assert n45_address("12:dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659:x") == 3;
+  #assert n45_address("") == 0 && n45_address("1") == 0;
+}
+#test "one register by hand, the zero-run cases and the merge" {
+  regs: [256] u8; pk: [32] u8;
+  n45_t_hex32(N45_T_A, pk[..]);
+  // offset 8: byte 8 is 0x36 = 54; byte 9 is 0x18 = 00011000, 3 zeros + 1
+  n45_hll_add(regs[..], pk[..], 8);
+  for i: 0..<256 { #assert regs[i] == ifx i == 54 then cast(u8) 4 else cast(u8) 0; }
+  // a smaller value never lowers a register; a larger one raises it
+  q: [32] u8; q[8] = 54; q[9] = 0x40; n45_hll_add(regs[..], q[..], 8); #assert regs[54] == 4;
+  q[9] = 0x01; n45_hll_add(regs[..], q[..], 8); #assert regs[54] == 8;
+  q[9] = 0x00; q[10] = 0x80; n45_hll_add(regs[..], q[..], 8); #assert regs[54] == 9;
+  // all zero after the index byte: 23 bytes at offset 8, 184 bits, value 185
+  z: [32] u8; z[8] = 7; n45_hll_add(regs[..], z[..], 8); #assert regs[7] == 185;
+  // offset 23, the largest: 8 bytes follow
+  z[23] = 9; z[31] = 1; n45_hll_add(regs[..], z[..], 23); #assert regs[9] == 64;
+  z[31] = 0; z[23] = 10; n45_hll_add(regs[..], z[..], 23); #assert regs[10] == 65;
+  a: [256] u8; b: [256] u8; a[0] = 3; a[1] = 1; b[1] = 2; b[2] = 5; a[255] = 9; b[255] = 9; a[3] = 4; b[4] = 255;
+  n45_hll_merge(a[..], b[..]);
+  #assert a[0] == 3 && a[1] == 2 && a[2] == 5 && a[3] == 4 && a[4] == 255 && a[255] == 9 && b[0] == 0;
+  b[0] = 4; n45_hll_merge(a[..], b[..]); #assert a[0] == 4;
+}
+#test "estimates: empty, one register, linear counting and the raw estimate" {
+  r: [256] u8;
+  #assert n45_hll_estimate(r[..]) == 0;
+  r[54] = 4; #assert n45_hll_estimate(r[..]) == 1;                  // 256 ln(256/255) = 1.002
+  for i: 0..<128 { r[i] = 1; } #assert n45_hll_estimate(r[..]) == 177;   // 256 ln 2 = 177.4
+  // 230 set: linear counting gives 256 ln(256/26) = 585 > 220; raw = 0.71827 * 65536 / (230/2 + 26) = 333 <= 768: 585
+  for i: 0..<230 { r[i] = 1; } #assert n45_hll_estimate(r[..]) == 585;
+  // all 4: raw = 0.71827 * 65536 / 16 = 2942, no empty register
+  for i: 0..<256 { r[i] = 4; } #assert n45_hll_estimate(r[..]) == 2942;
+  // all 2: raw = 0.71827 * 65536 / 64 = 735 <= 768 but none empty: 735
+  for i: 0..<256 { r[i] = 2; } #assert n45_hll_estimate(r[..]) == 735;
+  // one empty among 3s: lc = 256 ln 256 = 1419 > 220; raw = 0.71827 * 65536 / (255/8 + 1) = 1431 > 768
+  for i: 0..<256 { r[i] = 3; } r[0] = 0; #assert n45_hll_estimate(r[..]) == 1431;
+  // one empty among 2s: raw = 0.71827 * 65536 / (255/4 + 1) = 727 <= 768, so 256 ln 256 = 1419
+  for i: 0..<256 { r[i] = 2; } r[0] = 0; #assert n45_hll_estimate(r[..]) == 1419;
+  // the 768 boundary: 1 empty, 227 twos and 28 threes give raw 768; one three made a four, 769
+  for i: 0..<256 { r[i] = ifx i < 228 then cast(u8) 2 else cast(u8) 3; } r[0] = 0; #assert n45_hll_estimate(r[..]) == 1419;
+  r[255] = 4; #assert n45_hll_estimate(r[..]) == 769;
+  // registers count at most 44: 0.71827 * 256 * 2^44 = 3234812183309094, below 2^53
+  for i: 0..<256 { r[i] = 40; } #assert n45_hll_estimate(r[..]) == 202175761456818;
+  for i: 0..<256 { r[i] = 44; } #assert n45_hll_estimate(r[..]) == 3234812183309094;
+  for i: 0..<256 { r[i] = 45; } #assert n45_hll_estimate(r[..]) == 3234812183309094;
+  for i: 0..<256 { r[i] = 185; } #assert n45_hll_estimate(r[..]) == 3234812183309094;
+}
+#test "hll hex: 512 lowercase digits, both ways" {
+  r: [256] u8; r[0] = 0xab; r[255] = 0x0f; out: [600] u8;
+  n := n45_hll_write(r[..], out[..], 0);
+  #assert n == 512 && out[0] == 'a' && out[1] == 'b' && out[2] == '0' && out[510] == '0' && out[511] == 'f';
+  back: [256] u8;
+  #assert n45_hll_read(cast(string) out[0..<512], back[..]) && back[0] == 0xab && back[255] == 0x0f && back[1] == 0;
+  #assert !n45_hll_read(cast(string) out[0..<510], back[..]) && !n45_hll_read(cast(string) out[0..<514], back[..]);
+  out[3] = 'A'; #assert !n45_hll_read(cast(string) out[0..<512], back[..]);
+  out[3] = 'g'; #assert !n45_hll_read(cast(string) out[0..<512], back[..]);
+  out[3] = '0'; #assert !n45_hll_read(cast(string) out[0..<512], back[0..<255]) && !n45_hll_read(cast(string) out[0..<510], back[0..<255]);
+  #assert n45_hll_write(r[..], out[0..<511], 0) == -1 && n45_hll_write(r[0..<255], out[..], 0) == -1;
+  #assert n45_hll_write(r[..], out[..], -1) == -1 && n45_hll_write(r[..], out[..], 88) == 600;
+}
+#test "the response frame: written, read back, and refused" {
+  out: [700] u8; r: [256] u8; r[1] = 2;
+  n := n45_write_response("q", 5, false, r[0..<0], out[..]);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"q\",{\"count\":5}]";
+  n = n45_write_response("q\"", 0, true, r[0..<0], out[..]);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"q\\\"\",{\"count\":0,\"approximate\":true}]";
+  n = n45_write_response("f", 16578, false, r[..], out[..]);
+  #assert n == 550 && cast(string) out[0..<29] == "[\"COUNT\",\"f\",{\"count\":16578,\"" && cast(string) out[29..<39] == "hll\":\"0002";
+  m := n45_read_response(cast(string) out[0..<n]);
+  #assert m.error == N45_OK && m.count == 16578 && m.has_hll && m.hll[1] == 2 && m.hll[0] == 0 && !m.approximate && m.sub_n == 1 && m.sub[0] == 'f';
+  #assert n45_write_response("q", -1, false, r[0..<0], out[..]) == -1 && n45_write_response("", 1, false, r[0..<0], out[..]) == -1;
+  #assert n45_write_response("q", 1, false, r[0..<255], out[..]) == -1 && n45_write_response("q", 1, false, r[0..<0], out[0..<10]) == -1;
+  m = n45_read_response(" [ \"COUNT\" , \"s\\u0031\" , {\"approximate\":true,\"count\":93412452} ] ");
+  #assert m.error == N45_OK && m.count == 93412452 && m.approximate && !m.has_hll && m.sub_n == 2 && m.sub[1] == '1';
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1,\"approximate\":false}]").error == N45_OK;
+  m = n45_read_response("[\"COUNT\",\"s\",{\"count\":0}]"); #assert m.error == N45_OK && m.count == 0;
+  #assert n45_read_response("[\"COUNT\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",{\"count\":0}]").error == N45_OK;
+  #assert n45_read_response("[\"COUNT\",\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",{\"count\":0}]").error == N45_SUB;
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1,\"other\":[1,{}]}]").error == N45_OK;
+  #assert n45_read_response("").error == N45_JSON && n45_read_response("[\"COUNT\",\"s\",{\"count\":1}").error == N45_JSON;
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1}] x").error == N45_JSON;
+  #assert n45_read_response("{}").error == N45_SHAPE && n45_read_response("[1]").error == N45_SHAPE && n45_read_response("[]").error == N45_SHAPE;
+  #assert n45_read_response("[\"EOSE\",\"s\"]").error == N45_VERB;
+  #assert n45_read_response("[\"COUNT\",\"\",{\"count\":1}]").error == N45_SUB && n45_read_response("[\"COUNT\",1,{\"count\":1}]").error == N45_SHAPE;
+  #assert n45_read_response("[\"COUNT\",\"s\"]").error == N45_SHAPE && n45_read_response("[\"COUNT\",\"s\",[]]").error == N45_SHAPE;
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1},{}]").error == N45_SHAPE;
+  #assert n45_read_response("[\"COUNT\",\"s\",{}]").error == N45_COUNT && n45_read_response("[\"COUNT\",\"s\",{\"count\":-1}]").error == N45_COUNT;
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1.5}]").error == N45_COUNT && n45_read_response("[\"COUNT\",\"s\",{\"count\":\"1\"}]").error == N45_COUNT;
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1,\"count\":2}]").error == N45_FIELD;
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1,\"approximate\":1}]").error == N45_FIELD;
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1,\"approximate\":true,\"approximate\":true}]").error == N45_FIELD;
+  #assert n45_read_response("[\"COUNT\",\"s\",{\"count\":1,\"hll\":\"00\"}]").error == N45_HLL && n45_read_response("[\"COUNT\",\"s\",{\"count\":1,\"hll\":0}]").error == N45_HLL;
+  // an hll twice
+  h: [1200] u8; k := json_raw(h[..], 0, "[\"COUNT\",\"s\",{\"count\":1,\"hll\":\""); k = n45_hll_write(r[..], h[..], k);
+  k = json_raw(h[..], k, "\",\"hll\":\""); k = n45_hll_write(r[..], h[..], k); k = json_raw(h[..], k, "\"}]");
+  #assert n45_read_response(cast(string) h[0..<k]).error == N45_FIELD;
+}
+#test "the request frame: written and read with the relay's reader" {
+  strs: [16] string; ints: [8] int; tags: [4] NostrTagFilter; bytes: [512] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [2] NostrFilter;
+  #assert filter_read("{\"kinds\":[1,7]}", f[0..<1], sp[..]) == FR_OK && filter_read("{\"#t\":[\"x\"]}", f[1..<2], sp[..]) == FR_OK;
+  out: [200] u8;
+  n := n45_write_request("q", f[..], out[..], false);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"q\",{\"kinds\":[1,7]},{\"#t\":[\"x\"]}]";
+  m := ms_read(cast(string) out[0..<n]);
+  #assert m.error == MS_OK && m.type == MS_COUNT && m.filters == 2;
+  #assert n45_write_request("q", f[0..<0], out[..], false) == -1 && n45_write_request("", f[..], out[..], false) == -1;
+  #assert n45_write_request("q", f[..], out[..], true) == -1 && n45_write_request("q", f[..], out[0..<20], false) == -1;
+  #assert n45_write_request("q", f[..], out[0..<n - 1], false) == -1 && n45_write_request("q", f[..], out[0..<n], false) == n;
+  #assert n45_write_request("q", f[..], out[0..<12], false) == -1 && n45_write_request("q", f[0..<1], out[..], false) == 29;
+  many: [17] NostrFilter; #assert n45_write_request("q", many[..], out[..], false) == -1 && n45_write_request("q", many[0..<16], out[..], false) == 13 + 16 * 3;
+}
+
+// The test store: records without signatures, as store_index.coax's NsiT.
+n45_t_rec :: (t: [] NsiT, id: u8, author: string, kind: int, tags: string) {
+  c: RsdRec; n45_t_hex32(author, c.author[..]); c.id[31] = id; c.kind = kind; c.expiry = -1; c.tags_to = tags.count;
+  #assert ns_store_admit(t[0].s[..], c, tags, true) == NSS_ACCEPT;
+}
+#test "exact counts: OR across filters counts each record once, limit is ignored" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  p := "[[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]]";
+  n45_t_rec(t[..], 1, N45_T_A, 3, p);       // A follows B
+  n45_t_rec(t[..], 2, N45_T_A, 1, "[]");    // A's note
+  n45_t_rec(t[..], 3, N45_T_B, 1, "[]");    // B's note
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  strs: [16] string; ints: [8] int; tags: [4] NostrTagFilter; bytes: [512] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [3] NostrFilter;
+  #assert filter_read("{\"kinds\":[1],\"limit\":1}", f[0..<1], sp[..]) == FR_OK;
+  #assert filter_read("{\"authors\":[\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]}", f[1..<2], sp[..]) == FR_OK;
+  #assert filter_read("{\"#p\":[\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]}", f[2..<3], sp[..]) == FR_OK;
+  out: [16] int; seen: [16] u8; regs: [256] u8;
+  regs[0] = 9;
+  c := n45_count(t[0].s[..], t[0].ix[..], f[0..<1], 1000, out[..], seen[..], regs[..]);
+  #assert c.n == 2 && !c.hll && regs[0] == 9;                      // limit 1 does not cap it
+  c = n45_count(t[0].s[..], t[0].ix[..], f[0..<2], 1000, out[..], seen[..], regs[..]);
+  #assert c.n == 3 && !c.hll;                                      // 2 + 2, one shared
+  c = n45_count(t[0].s[..], t[0].ix[..], f[2..<3], 1000, out[..], seen[..], regs[..]);
+  #assert c.n == 1 && c.hll && c.scanned == 1 && regs[54] == 4;    // A's register, offset 8
+  for i: 0..<256 { #assert i == 54 || regs[i] == 0; }
+  // a filter that matches nothing counts 0, with an empty sketch
+  #assert filter_read("{\"#p\":[\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]}", f[0..<1], sp[..]) == FR_OK;
+  regs[54] = 1; regs[0] = 1;
+  c = n45_count(t[0].s[..], t[0].ix[..], f[0..<1], 1000, out[..], seen[..], regs[..]);
+  #assert c.n == 0 && c.hll && regs[54] == 0 && regs[0] == 0;
+  c = n45_count(t[0].s[..], t[0].ix[..], f[0..<2], 1000, out[..], seen[..], regs[..]);
+  #assert c.n == 2 && !c.hll;
+  c = n45_count(t[0].s[..], t[0].ix[..], f[1..<3], 1000, out[..], seen[..], regs[..]);
+  #assert c.n == 2 && !c.hll;
+  // every array needs one slot per record; a stale index is refused
+  #assert filter_read("{\"kinds\":[1]}", f[0..<1], sp[..]) == FR_OK;
+  #assert n45_count(t[0].s[..], t[0].ix[..], f[0..<1], 1000, out[0..<2], seen[..], regs[..]).n == -1;
+  #assert n45_count(t[0].s[..], t[0].ix[..], f[0..<1], 1000, out[..], seen[0..<2], regs[..]).n == -1;
+  #assert n45_count(t[0].s[..], t[0].ix[..], f[0..<1], 1000, out[0..<3], seen[0..<3], regs[0..<0]).n == 2;
+  #assert n45_count(t[0].s[..], t[0].ix[..], f[2..<3], 1000, out[..], seen[..], regs[0..<255]).hll == false;
+  n45_t_rec(t[..], 4, N45_T_B, 1, "[]");
+  #assert n45_count(t[0].s[..], t[0].ix[..], f[0..<1], 1000, out[..], seen[..], regs[..]).n == -1;
+}
+
+// ---- the offset ------------------------------------------------------------
+
+// v as an address <kind>:<pubkey>:<d>: where its pubkey starts, or 0
+// when it is not one.
+n45_address :: (v: string) -> int {
+  at := 0;
+  while at < v.count && v[at] >= '0' && v[at] <= '9' { at += 1; }
+  if at == 0 || at + 66 > v.count || v[at] != ':' || v[at + 65] != ':' { return 0; }
+  if !nf_hex(v[at + 1..<at + 65]) { return 0; }
+  return at + 1;
+}
+// book:begin offset
+// NIP-45's offset for f: from the first tag filter's first value, 8 to 23;
+// 0 when f has no tag filter (NIP-45 defines none then).
+n45_offset :: (f: NostrFilter) -> int {
+  if f.tags.count == 0 || f.tags[0].values.count == 0 { return 0; }
+  v := f.tags[0].values[0];
+  if nf_hex(v) { return json_hex(v[32]) + 8; }
+  pubkey := n45_address(v);
+  if pubkey != 0 { return json_hex(v[pubkey + 32]) + 8; }
+  // filter_read keeps tag values to 256 bytes (filter.coax's nf_utf8)
+  b: [256] u8; h: [32] u8;
+  if v.count > b.count { return 0; }
+  for i: 0..<v.count { b[i] = v[i]; }
+  #assert sha256_hash_checked(b[0..<v.count], h[..], false) == SHA_OK;
+  return cast(int) (h[16] >> 4) + 8;   // hex character 32 is byte 16's high half
+}
+// book:end offset
+
+// ---- the sketch ------------------------------------------------------------
+
+// book:begin hll
+// One pubkey into the 256 registers: its byte at offset picks the register;
+// the value is 1 + the zero bits that follow, up to the end of the pubkey.
+n45_hll_add :: (regs: [] u8, pubkey: [] u8, offset: int) {
+  ri := cast(int) pubkey[offset];
+  value := 1;
+  at := offset + 1;
+  while at < 32 && pubkey[at] == 0 { value += 8; at += 1; }
+  if at < 32 { b := pubkey[at]; while (b & 0x80) == 0 { value += 1; b = b << 1; } }
+  while cast(int) regs[ri] < value { regs[ri] += 1; }
+}
+// Another relay's sketch into into: the larger value in each register.
+n45_hll_merge :: (into: [] u8, from: [] u8) {
+  for i: 0..<N45_REGISTERS { while into[i] < from[i] { into[i] += 1; } }
+}
+// go-nostr's estimate of how many distinct pubkeys made the registers:
+// linear counting, 256 ln(256 / empty registers), while the raw estimate
+// is at most 768 and a register is empty; otherwise the raw estimate. (Its
+// first test, linear counting at most 220, always agrees: then 108 or more
+// registers are empty and the raw estimate is below 47072 / 108 = 436.)
+// A register counts at most 44, so the estimate stays below 2^53.
+n45_hll_estimate :: (regs: [] u8) -> int {
+  m := 256.0; empty := 0; sum := 0.0;
+  for i: 0..<N45_REGISTERS {
+    if regs[i] == 0 { empty += 1; }
+    p := 1.0; for k: 0..<cast(int) regs[i] { if k < 44 { p = p * 0.5; } }
+    sum += p;
+  }
+  raw := cast(int) (0.7182725932495458 * m * m / sum);
+  if raw <= 768 && empty > 0 { return cast(int) (m * log(m / cast(f64) empty)); }
+  return raw;
+}
+// book:end hll
+
+// The registers as 512 lowercase hex digits from at: the new length or -1.
+n45_hll_write :: (regs: [] u8, out: [] u8, at: int) -> int {
+  if regs.count != N45_REGISTERS || at < 0 || at + N45_HLL_HEX > out.count { return -1; }
+  digits := "0123456789abcdef";
+  for i: 0..<N45_REGISTERS { out[at + 2 * i] = digits[cast(int) (regs[i] >> 4)]; out[at + 2 * i + 1] = digits[cast(int) (regs[i] & 15)]; }
+  return at + N45_HLL_HEX;
+}
+// 512 lowercase hex digits into the registers; false for anything else.
+n45_hll_read :: (hex: string, regs: [] u8) -> bool {
+  // ne_lower_hex wants exactly two digits a byte
+  return regs.count == N45_REGISTERS && ne_lower_hex(hex, regs);
+}
+
+// ---- counting ----------------------------------------------------------------
+
+// book:begin count
+// The distinct visible records matching any filter, read through the index.
+// out and seen need one slot per record. With 256 registers and one filter
+// that has an offset, regs is that filter's sketch.
+n45_count :: (s: [] RsdStore, ix: [] NsiIndex, filters: [] NostrFilter, now: int, out: [] int, seen: [] u8, regs: [] u8) -> N45Count {
+  n := s[0].n;
+  if out.count < n || seen.count < n { return N45Count.{n = -1}; }
+  for i: 0..<n { seen[i] = 0; }
+  c: N45Count;
+  for f: filters {
+    q := nsi_query_limit(s, ix, f, now, n, out[0..<n]);
+    if q.n < 0 { return N45Count.{n = -1}; }
+    c.scanned += q.scanned;
+    for k: 0..<q.n { if seen[out[k]] == 0 { seen[out[k]] = 1; c.n += 1; } }
+  }
+  offset := 0;
+  if filters.count == 1 { offset = n45_offset(filters[0]); }
+  if offset == 0 || regs.count != N45_REGISTERS { return c; }
+  for i: 0..<N45_REGISTERS { regs[i] = 0; }
+  for i: 0..<n { if seen[i] == 1 { a := s[0].recs[i].author; n45_hll_add(regs, a[..], offset); } }
+  c.hll = true;
+  return c;
+}
+// book:end count
+
+// ---- frames ------------------------------------------------------------------
+
+// ["COUNT", sub, filter...]: the frame's length, or -1.
+n45_write_request :: (sub: string, filters: [] NostrFilter, out: [] u8, overlap: bool) -> int {
+  if overlap || !ms_sub_ok(sub) || filters.count < 1 || filters.count > MS_MAX_FILTERS { return -1; }
+  n := json_raw(out, 0, "[\"COUNT\","); n = json_write_string(out, n, sub);
+  for f: filters {
+    n = json_raw(out, n, ","); if n == -1 { return -1; }
+    w := nf_write(f, out[n..<out.count], false); if w == -1 { return -1; }
+    n += w;
+  }
+  return json_raw(out, n, "]");
+}
+// ["COUNT", sub, {"count": n[, "approximate": true][, "hll": "..."]}]:
+// regs is empty or the 256 registers.
+n45_write_response :: (sub: string, count: int, approximate: bool, regs: [] u8, out: [] u8) -> int {
+  if count < 0 || !ms_sub_ok(sub) || (regs.count != 0 && regs.count != N45_REGISTERS) { return -1; }
+  n := json_raw(out, 0, "[\"COUNT\","); n = json_write_string(out, n, sub);
+  n = json_raw(out, n, ",{\"count\":"); n = json_write_int(out, n, count);
+  if approximate { n = json_raw(out, n, ",\"approximate\":true"); }
+  if regs.count == N45_REGISTERS { n = json_raw(out, n, ",\"hll\":\""); n = n45_hll_write(regs, out, n); n = json_raw(out, n, "\""); }
+  return json_raw(out, n, "}]");
+}
+n45_fail :: (r: N45Response, error: int) -> N45Response { m := r; m.error = error; return m; }
+// book:begin read
+// A relay's COUNT answer, as a client reads it. Unknown keys are skipped.
+n45_read_response :: (text: string) -> N45Response {
+  r: N45Response;
+  if !json_valid(text) { return n45_fail(r, N45_JSON); }
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_ARRAY || json_next(j[..]) != JSON_STRING { return r; }
+  if !json_is(json_text(j[..]), "COUNT") { return n45_fail(r, N45_VERB); }
+  if json_next(j[..]) != JSON_STRING { return r; }
+  r.sub_n = json_unescape(json_text(j[..]), r.sub[..]);
+  if r.sub_n < 1 || !ms_sub_ok(cast(string) r.sub[0..<r.sub_n]) { return n45_fail(r, N45_SUB); }
+  if json_next(j[..]) != JSON_OBJECT { return r; }
+  has_count := false; has_approximate := false;
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_OBJECT_END { break; }
+    key := json_text(j[..]);
+    v := json_next(j[..]);
+    if json_is(key, "count") {
+      if has_count { return n45_fail(r, N45_FIELD); }
+      n := json_int(json_text(j[..]));
+      if v != JSON_NUMBER || !n.ok || n.value < 0 { return n45_fail(r, N45_COUNT); }
+      has_count = true; r.count = n.value;
+    } else if json_is(key, "approximate") {
+      if has_approximate || (v != JSON_TRUE && v != JSON_FALSE) { return n45_fail(r, N45_FIELD); }
+      has_approximate = true; r.approximate = v == JSON_TRUE;
+    } else if json_is(key, "hll") {
+      if r.has_hll { return n45_fail(r, N45_FIELD); }
+      buf: [N45_HLL_HEX] u8;
+      if v != JSON_STRING || json_unescape(json_text(j[..]), buf[..]) != N45_HLL_HEX || !n45_hll_read(cast(string) buf[..], r.hll[..]) { return n45_fail(r, N45_HLL); }
+      r.has_hll = true;
+    } else { skipped := json_skip(j[..]); }
+  }
+  if !has_count { return n45_fail(r, N45_COUNT); }
+  if json_next(j[..]) != JSON_ARRAY_END { return r; }
+  return n45_fail(r, N45_OK);
+}
+// book:end read
+
+// ---- the relay's answer ----------------------------------------------------------
+
+N45_NO_FILTER :: "COUNT needs at least one filter";
+N45_STALE :: "the store index is out of date";
+// book:begin answer
+// The relay's reply to one COUNT frame into out: COUNT with the exact count
+// (and the sketch when the filter has an offset), CLOSED when it refuses,
+// NOTICE when there is no subscription id to close. The length, or -1.
+n45_answer :: (text: string, s: [] RsdStore, ix: [] NsiIndex, now: int, w: [] N45Work, out: [] u8) -> int {
+  m := ms_read(text);
+  if m.type != MS_COUNT && m.error == MS_OK { return -1; }
+  why := RS_FRAME;
+  if !m.has_sub {
+    if m.error == MS_SUB { why = RS_SUBID; }
+    return ms_write_notice(rs_prefix(why), rs_text(why), out);
+  }
+  sub := cast(string) m.sub[0..<m.sub_n];
+  if m.error == MS_TOO_MANY { why = RS_FILTERS; }
+  else if m.error == MS_OK { why = rs_req(m, text); }
+  if why != RS_ACCEPT { return ms_write_closed(sub, rs_prefix(why), rs_text(why), out); }
+  if m.filters == 0 { return ms_write_closed(sub, "invalid", N45_NO_FILTER, out); }
+  // together the filters must fit the work space (RS_SUB_TEXT bytes)
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = w[0].strs[..], ints = w[0].ints[..], tags = w[0].tags[..], bytes = w[0].bytes[..]};
+  why = RS_SUB_SPACE;
+  for k: 0..<m.filters {
+    if rs_filter(text, m, k, w[0].filters[k..<m.filters], sp[..]) != FR_OK { return ms_write_closed(sub, rs_prefix(why), rs_text(why), out); }
+  }
+  c := n45_count(s, ix, w[0].filters[0..<m.filters], now, w[0].out[..], w[0].seen[..], w[0].regs[..]);
+  if c.n < 0 { return ms_write_closed(sub, "error", N45_STALE, out); }
+  regs := w[0].regs[0..<0]; if c.hll { regs = w[0].regs[..]; }
+  return n45_write_response(sub, c.n, false, regs, out);
+}
+// book:end answer
+
+#test "the relay's answers and refusals" {
+  t: [1] NsiT; nsi_t_init(t[..]);
+  p := "[[\"p\",\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]]";
+  n45_t_rec(t[..], 1, N45_T_A, 3, p);
+  n45_t_rec(t[..], 2, N45_T_A, 1, "[]");
+  #assert nsi_build(t[0].s[..], t[0].ix[..]);
+  w: [1] N45Work; out: [1024] u8;
+  n := n45_answer("[\"COUNT\",\"q\",{\"kinds\":[1]},{\"authors\":[\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"]}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"q\",{\"count\":2}]";
+  n = n45_answer("[\"COUNT\",\"f\",{\"kinds\":[3],\"#p\":[\"dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8\"]}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  r := n45_read_response(cast(string) out[0..<n]);
+  #assert r.error == N45_OK && r.count == 1 && r.has_hll && r.hll[54] == 4 && n45_hll_estimate(r.hll[..]) == 1;
+  n = n45_answer("[\"COUNT\",\"\",{}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"NOTICE\",\"invalid: subscription id must contain 1 to 64 characters\"]";
+  n = n45_answer("[\"COUNT\"]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"NOTICE\",\"invalid: malformed message\"]";
+  n = n45_answer("[\"COUNT\",\"q\"]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"invalid: COUNT needs at least one filter\"]";
+  n = n45_answer("[\"COUNT\",\"q\",1]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"invalid: malformed message\"]";
+  n = n45_answer("[\"COUNT\",\"q\",{\"#p\":[\"xyz\"]}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"invalid: #p values must be 64 lowercase hexadecimal characters\"]";
+  n = n45_answer("[\"COUNT\",\"q\",{},{},{},{},{},{},{},{}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"restricted: query cost exceeds the configured limit\"]";
+  many: [256] u8; k := json_raw(many[..], 0, "[\"COUNT\",\"q\"");
+  for i: 0..<17 { k = json_raw(many[..], k, ",{\"limit\":1}"); }
+  k = json_raw(many[..], k, "]");
+  n = n45_answer(cast(string) many[0..<k], t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"restricted: too many filters\"]";
+  #assert n45_answer("[\"REQ\",\"q\",{}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]) == -1;
+  n = n45_answer("[\"COUNT\",\"q\",{\"kinds\":[7]}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"COUNT\",\"q\",{\"count\":0}]";
+  // three filters of 64 authors each: 3 x 64 x 64 bytes of hex, over the 8192 the work space holds
+  big: [16384] u8; k = json_raw(big[..], 0, "[\"COUNT\",\"q\"");
+  for j: 0..<3 {
+    k = json_raw(big[..], k, ",{\"limit\":1,\"authors\":[");
+    for a: 0..<64 {
+      if a > 0 { k = json_raw(big[..], k, ","); }
+      k = json_raw(big[..], k, "\"0000000000000000000000000000000000000000000000000000000000000"); k = json_write_int(big[..], k, 100 + a); k = json_raw(big[..], k, "\"");
+    }
+    k = json_raw(big[..], k, "]}");
+  }
+  k = json_raw(big[..], k, "]");
+  n = n45_answer(cast(string) big[0..<k], t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"restricted: subscription filters exceed 8192 bytes\"]";
+  n45_t_rec(t[..], 3, N45_T_B, 1, "[]");
+  n = n45_answer("[\"COUNT\",\"q\",{\"kinds\":[1]}]", t[0].s[..], t[0].ix[..], 1000, w[..], out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSED\",\"q\",\"error: the store index is out of date\"]";
+}

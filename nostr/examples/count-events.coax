@@ -1,0 +1,255 @@
+// book:begin example
+#load "../../coax/lib/nostr/nip45.coax";
+#load "../../coax/lib/nostr/event_sign.coax";
+#import "Basic";
+
+// The relay's clock for the whole run: 2026-11-01T00:00:00Z.
+NOW :: 1793491200;
+// BIP-340 vectors 0 to 3's published test keys and aux. Never sign with a
+// real key in an example.
+KEY_A :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+AUX_A :: "0000000000000000000000000000000000000000000000000000000000000001";
+KEY_B :: "c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9";
+AUX_B :: "c87aa53824b4d7ae2eb035a2b5bbbccc080e76cdc6d1692c4b0b62d798e6d906";
+KEY_C :: "0000000000000000000000000000000000000000000000000000000000000003";
+AUX_C :: "0000000000000000000000000000000000000000000000000000000000000000";
+KEY_D :: "0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710";
+AUX_D :: "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+// Their x-only public keys (BIP-340 test-vectors.csv).
+PUB_A :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+PUB_B :: "dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8";
+PUB_C :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+PUB_D :: "25d1dff95105f5253c4022f628a996ad3a0d95fbf21d468a1b33f8c160d8f517";
+
+// A store of up to 1024 records, its index and the COUNT work space.
+Relay :: struct {
+  arena: [131072] u8; recs: [1024] RsdRec; s: [1] RsdStore;
+  by_id: [1024] int; by_ak: [1024] int; by_time: [1024] int; tag_key: [2048] int; tag_rec: [2048] int;
+  ix: [1] NsiIndex;
+  w: [1] N45Work;
+  scratch: [4096] u8;
+}
+relay_init :: (r: [] Relay) {
+  r[0].s[0] = RsdStore.{}; r[0].s[0].arena = r[0].arena[..]; r[0].s[0].recs = r[0].recs[..];
+  r[0].ix[0] = NsiIndex.{by_id = r[0].by_id[..], by_ak = r[0].by_ak[..], by_time = r[0].by_time[..], tag_key = r[0].tag_key[..], tag_rec = r[0].tag_rec[..]};
+}
+// One EVENT through the relay's admission: read, signature, store.
+admit :: (r: [] Relay, text: string) -> int {
+  a := rs_admit_read(text, NOW, false, false, r[0].scratch[..]);
+  if a.reason == RS_ACCEPT { a = rs_admit_verified(a, nostr_event_verify_vartime(text, r[0].scratch[..], false)); }
+  if a.reason != RS_ACCEPT { return a.reason; }
+  return rsd_admit(r[0].s[..], a, text);
+}
+sign :: (key_hex: string, aux_hex: string, created_at: int, kind: int, tags: string, content: string, out: [] u8) -> string {
+  key: [32] u8; aux: [32] u8;
+  #assert hex_decode_checked(key_hex, key[..], false).error == NC_OK;
+  #assert hex_decode_checked(aux_hex, aux[..], false).error == NC_OK;
+  work: [1] NostrSignWork; scratch: [8192] u8;
+  n := EVENT_MORE;
+  while n == EVENT_MORE { n = nostr_event_sign_step(key[..], aux[..], created_at, kind, tags, content, work[..], scratch[..], out, false); }
+  #assert n > 0;
+  return cast(string) out[0..<n];
+}
+to_hex :: (b: [] u8, out: [] u8) -> string {
+  digits := "0123456789abcdef";
+  for i: 0..<b.count { out[2 * i] = digits[b[i] >> 4]; out[2 * i + 1] = digits[b[i] & 15]; }
+  return cast(string) out[0..<2 * b.count];
+}
+who :: (author: [32] u8) -> string {
+  if author[0] == 0xdf { return "A"; } if author[0] == 0xdd { return "B"; } if author[0] == 0xf9 { return "C"; }
+  return "D";
+}
+// The records a full scan finds: visible and matching any filter.
+scan :: (s: [] RsdStore, filters: [] NostrFilter) -> int {
+  n := 0;
+  for i: 0..<s[0].n {
+    hit := false;
+    for f: filters { if !hit && ns_store_visible(s, i, NOW) && nf_match(f, rsd_event(s, i)) { hit = true; } }
+    if hit { n += 1; }
+  }
+  return n;
+}
+// A reply, with an hll shown as its non-zero registers.
+show :: (frame: string) {
+  at := 0;
+  while at + 7 <= frame.count && frame[at..<at + 7] != "\"hll\":\"" { at += 1; }
+  if at + 7 > frame.count { print("    <- %\n", frame); return; }
+  print("    <- %\"hll\":\"<512 hex digits>\"}]\n", frame[0..<at]);
+  r := n45_read_response(frame);
+  print("       non-zero registers (index=value):");
+  for i: 0..<256 { if r.hll[i] != 0 { print(" %=%", i, r.hll[i]); } }
+  print("; estimate %\n", n45_hll_estimate(r.hll[..]));
+}
+
+// book:begin ask
+// One COUNT frame through the relay, and the same filters by full scan.
+ask :: (r: [] Relay, text: string) {
+  out: [1024] u8;
+  n := n45_answer(text, r[0].s[..], r[0].ix[..], NOW, r[0].w[..], out[..]);
+  print("-> %\n", text);
+  show(cast(string) out[0..<n]);
+  m := ms_read(text);
+  if m.error != MS_OK || m.filters == 0 || rs_req(m, text) != RS_ACCEPT { return; }
+  // n45_answer read the filters into the work space
+  print("    full scan of % records: %\n", r[0].s[0].n, scan(r[0].s[..], r[0].w[0].filters[0..<m.filters]));
+}
+// book:end ask
+
+// book:begin relays
+// 1,000 followers of B: pubkey i is sha256("follower i"). Records without
+// signatures, admitted as verified, so that the sketches have enough
+// pubkeys to estimate. Relay X holds followers 0..599, relay Y 400..999.
+follower :: (i: int, out: [] u8) {
+  b: [32] u8; t := "follower "; n := 0;
+  for c: t { b[n] = c; n += 1; }
+  d: [24] u8; k := 0; x := i;
+  while true { d[k] = cast(u8) ('0' + x % 10); k += 1; x /= 10; if x == 0 { break; } }
+  while k > 0 { k -= 1; b[n] = d[k]; n += 1; }
+  #assert sha256_hash_checked(b[0..<n], out, false) == SHA_OK;
+}
+fill_followers :: (r: [] Relay, from: int, to: int) {
+  relay_init(r[..]);
+  tags: [96] u8; t := json_raw(tags[..], 0, "[[\"p\",\""); t = json_raw(tags[..], t, PUB_B); t = json_raw(tags[..], t, "\"]]");
+  for i: from..<to {
+    c: RsdRec; c.id[0] = cast(u8) (i & 255); c.id[1] = cast(u8) (i >> 8); follower(i, c.author[..]);
+    c.kind = 3; c.created = NOW - i; c.expiry = -1; c.tags_to = t;
+    #assert ns_store_admit(r[0].s[..], c, cast(string) tags[0..<t], true) == NSS_ACCEPT;
+  }
+  #assert nsi_build(r[0].s[..], r[0].ix[..]);
+}
+// The follower COUNT on one relay: its count and its sketch into regs.
+followers :: (r: [] Relay, name: string, regs: [] u8) -> int {
+  q: [256] u8; n := json_raw(q[..], 0, "[\"COUNT\",\"f\",{\"kinds\":[3],\"#p\":[\""); n = json_raw(q[..], n, PUB_B); n = json_raw(q[..], n, "\"]}]");
+  out: [1024] u8;
+  k := n45_answer(cast(string) q[0..<n], r[0].s[..], r[0].ix[..], NOW, r[0].w[..], out[..]);
+  a := n45_read_response(cast(string) out[0..<k]);
+  #assert a.error == N45_OK && a.has_hll;
+  for i: 0..<256 { regs[i] = a.hll[i]; }
+  print("  relay %: count %, sketch estimate %\n", name, a.count, n45_hll_estimate(regs));
+  return a.count;
+}
+// book:end relays
+
+main :: () {
+  r: [1] Relay; relay_init(r[..]);
+  h: [64] u8; h2: [64] u8; scratch: [4096] u8;
+
+  print("hand-worked register: pubkey A under the follower filter for B\n");
+  b: [32] u8; n45_t_hex32(PUB_B, b[..]);
+  print("  B's hex character 32 is '%': offset % + 8 = %\n", cast(string) PUB_B[32..<33], json_hex(PUB_B[32]), json_hex(PUB_B[32]) + 8);
+  a: [32] u8; n45_t_hex32(PUB_A, a[..]); regs: [256] u8;
+  print("  A's byte 8 is 0x% = %: the register; byte 9 is 0x%\n", to_hex(a[8..<9], h[..]), a[8], to_hex(a[9..<10], h2[..]));
+  n45_hll_add(regs[..], a[..], 8);
+  print("  register 54 = % (3 leading zero bits + 1)\n\n", regs[54]);
+
+  print("the store: nine events from four test keys, A B C D (BIP-340 vectors 1, 2, 0, 3)\n");
+  b1: [1024] u8; e1 := sign(KEY_A, AUX_A, NOW - 300, 1, "[]", "hello nostr", b1[..]);
+  id1 := nostr_event_read(e1, scratch[..], false).id;
+  hex1 := to_hex(id1[..], h[..]);
+  react: [256] u8; t := json_raw(react[..], 0, "[[\"e\",\""); t = json_raw(react[..], t, hex1); t = json_raw(react[..], t, "\"],[\"p\",\""); t = json_raw(react[..], t, PUB_A); t = json_raw(react[..], t, "\"]]");
+  fb: [96] u8; f := json_raw(fb[..], 0, "[[\"p\",\""); f = json_raw(fb[..], f, PUB_B); f = json_raw(fb[..], f, "\"]]");
+  fa: [96] u8; g := json_raw(fa[..], 0, "[[\"p\",\""); g = json_raw(fa[..], g, PUB_A); g = json_raw(fa[..], g, "\"]]");
+  fba: [192] u8; k := json_raw(fba[..], 0, "[[\"p\",\""); k = json_raw(fba[..], k, PUB_B); k = json_raw(fba[..], k, "\"],[\"p\",\""); k = json_raw(fba[..], k, PUB_A); k = json_raw(fba[..], k, "\"]]");
+  rt := cast(string) react[0..<t];
+  b2: [1024] u8; e2 := sign(KEY_B, AUX_B, NOW - 200, 1, "[]", "hi", b2[..]);
+  b3: [1024] u8; e3 := sign(KEY_B, AUX_B, NOW - 100, 7, rt, "+", b3[..]);
+  b4: [1024] u8; e4 := sign(KEY_C, AUX_C, NOW - 90, 7, rt, "+", b4[..]);
+  b5: [1024] u8; e5 := sign(KEY_D, AUX_D, NOW - 80, 7, rt, "+", b5[..]);
+  b6: [1024] u8; e6 := sign(KEY_A, AUX_A, NOW - 50, 3, cast(string) fb[0..<f], "", b6[..]);
+  b7: [1024] u8; e7 := sign(KEY_C, AUX_C, NOW - 40, 3, cast(string) fba[0..<k], "", b7[..]);
+  b8: [1024] u8; e8 := sign(KEY_D, AUX_D, NOW - 30, 3, cast(string) fb[0..<f], "", b8[..]);
+  b9: [1024] u8; e9 := sign(KEY_B, AUX_B, NOW - 20, 3, cast(string) fa[0..<g], "", b9[..]);
+  texts := [9] string.[e1, e2, e3, e4, e5, e6, e7, e8, e9];
+  what := [9] string.["a note", "a note", "+ to e1", "+ to e1", "+ to e1", "follows B", "follows B and A", "follows B", "follows A"];
+  for i: 0..<9 {
+    result := admit(r[..], texts[i]);
+    rec := r[0].recs[i]; id := rec.id;
+    print("  e% % kind % id %: % -> %\n", i + 1, who(rec.author), rec.kind, to_hex(id[0..<4], h2[..]), what[i], ifx result == RS_ACCEPT then "accepted" else "refused");
+  }
+  #assert nsi_build(r[0].s[..], r[0].ix[..]);
+  print("  e1's id is %\n  its hex character 32 is '%': the reaction filter's offset is %\n\n", hex1, cast(string) hex1[32..<33], json_hex(hex1[32]) + 8);
+
+  print("COUNT requests\n");
+  q: [512] u8; n := 0;
+  n = json_raw(q[..], 0, "[\"COUNT\",\"q1\",{\"kinds\":[1,7],\"authors\":[\""); n = json_raw(q[..], n, PUB_B); n = json_raw(q[..], n, "\"]}]");
+  ask(r[..], cast(string) q[0..<n]);
+  n = json_raw(q[..], 0, "[\"COUNT\",\"reactions\",{\"kinds\":[7],\"#e\":[\""); n = json_raw(q[..], n, hex1); n = json_raw(q[..], n, "\"]}]");
+  ask(r[..], cast(string) q[0..<n]);
+  n = json_raw(q[..], 0, "[\"COUNT\",\"followers\",{\"kinds\":[3],\"#p\":[\""); n = json_raw(q[..], n, PUB_B); n = json_raw(q[..], n, "\"]}]");
+  ask(r[..], cast(string) q[0..<n]);
+  n = json_raw(q[..], 0, "[\"COUNT\",\"q4\",{\"kinds\":[7]}]"); ask(r[..], cast(string) q[0..<n]);
+  n = json_raw(q[..], 0, "[\"COUNT\",\"q5\",{\"authors\":[\""); n = json_raw(q[..], n, PUB_B); n = json_raw(q[..], n, "\"]}]");
+  ask(r[..], cast(string) q[0..<n]);
+  n = json_raw(q[..], 0, "[\"COUNT\",\"q6\",{\"kinds\":[7]},{\"authors\":[\""); n = json_raw(q[..], n, PUB_B); n = json_raw(q[..], n, "\"]}]");
+  ask(r[..], cast(string) q[0..<n]);
+  ask(r[..], "[\"COUNT\",\"q7\",{\"kinds\":[1],\"limit\":1}]");
+
+  print("\nmerging two small sketches by hand\n");
+  x: [256] u8; y: [256] u8;
+  x[54] = 4; x[73] = 3; x[60] = 2;          // A, C, D above
+  y[54] = 1; y[73] = 5; y[9] = 2;           // three other pubkeys
+  print("  x: 54=% 73=% 60=%, estimate %; y: 54=% 73=% 9=%, estimate %\n", x[54], x[73], x[60], n45_hll_estimate(x[..]), y[54], y[73], y[9], n45_hll_estimate(y[..]));
+  n45_hll_merge(x[..], y[..]);
+  print("  merged:"); for i: 0..<256 { if x[i] != 0 { print(" %=%", i, x[i]); } }
+  print(", estimate %\n", n45_hll_estimate(x[..]));
+
+  print("\ntwo relays, 1000 followers of B, 200 on both\n");
+  rx: [256] u8; ry: [256] u8; ru: [256] u8;
+  fill_followers(r[..], 0, 600); cx := followers(r[..], "X (0..599)", rx[..]);
+  fill_followers(r[..], 400, 1000); cy := followers(r[..], "Y (400..999)", ry[..]);
+  fill_followers(r[..], 0, 1000); cu := followers(r[..], "U (0..999, the union)", ru[..]);
+  print("  X + Y counts % (200 twice); merged sketch estimate ", cx + cy);
+  n45_hll_merge(rx[..], ry[..]);
+  same := true; for i: 0..<256 { if rx[i] != ru[i] { same = false; } }
+  print("%; the merged sketch equals U's register for register: %\n", n45_hll_estimate(rx[..]), same);
+  hu: [600] u8; m := n45_hll_write(ru[..], hu[..], 0); hd: [32] u8;
+  #assert sha256_hash_checked(ru[..], hd[..], false) == SHA_OK;
+  print("  sha256 of U's 256 registers: %\n", to_hex(hd[..], h[..]));
+
+  print("\nNIP-45's two example answers\n");
+  nf := n45_read_response(NIP45_FOLLOWERS);
+  nr := n45_read_response(NIP45_REACTIONS);
+  print("  followers: count %, the sketch estimates %\n", nf.count, n45_hll_estimate(nf.hll[..]));
+  print("  reactions: count %, the sketch estimates % (register 1 is %: 2^-239 adds nothing)\n", nr.count, n45_hll_estimate(nr.hll[..]), nr.hll[1]);
+
+  print("\nrefusals, relay side\n");
+  relay_init(r[..]);
+  for i: 0..<9 { #assert admit(r[..], texts[i]) == RS_ACCEPT; }
+  #assert nsi_build(r[0].s[..], r[0].ix[..]);
+  ask(r[..], "[\"COUNT\",\"\",{\"kinds\":[1]}]");
+  long: [128] u8; n = json_raw(long[..], 0, "[\"COUNT\",\"");
+  for i: 0..<65 { n = json_raw(long[..], n, "x"); }
+  n = json_raw(long[..], n, "\",{}]");
+  ask(r[..], cast(string) long[0..<n]);
+  ask(r[..], "[\"COUNT\",\"q\"]");
+  ask(r[..], "[\"COUNT\",\"q\",{\"kinds\":[1]},2]");
+  ask(r[..], "[\"COUNT\",\"q\",{\"#p\":[\"B\"]}]");
+  ask(r[..], "[\"COUNT\",\"q\",{},{},{},{},{},{},{},{}]");
+  bx: [1024] u8; ex := sign(KEY_C, AUX_C, NOW, 1, "[]", "after the index", bx[..]);
+  print("a tenth event admitted, index not rebuilt: %\n", ifx admit(r[..], ex) == RS_ACCEPT then "accepted" else "refused");
+  ask(r[..], "[\"COUNT\",\"q\",{\"kinds\":[1]}]");
+
+  print("\nrefusals, client side\n");
+  good: [700] u8; w := n45_write_response("f", 3, false, ru[..], good[..]);
+  frame := cast(string) good[0..<w];
+  print("  the relay's answer as written: %\n", N45_NAMES[n45_read_response(frame).error]);
+  bad: [700] u8;
+  for i: 0..<w { bad[i] = good[i]; }
+  bad[30 + 511] = '"'; bad[30 + 512] = '}'; bad[30 + 513] = ']';   // two digits short
+  print("  hll of 510 digits: %\n", N45_NAMES[n45_read_response(cast(string) bad[0..<w - 2]).error]);
+  for i: 0..<w { bad[i] = good[i]; }
+  bad[40] = 'g'; print("  hll with a 'g': %\n", N45_NAMES[n45_read_response(cast(string) bad[0..<w]).error]);
+  bad[40] = 'A'; print("  hll with an uppercase 'A': %\n", N45_NAMES[n45_read_response(cast(string) bad[0..<w]).error]);
+  print("  count -1: %\n", N45_NAMES[n45_read_response("[\"COUNT\",\"f\",{\"count\":-1}]").error]);
+  print("  no count: %\n", N45_NAMES[n45_read_response("[\"COUNT\",\"f\",{\"approximate\":true}]").error]);
+  print("  count twice: %\n", N45_NAMES[n45_read_response("[\"COUNT\",\"f\",{\"count\":1,\"count\":2}]").error]);
+  print("  empty id: %\n", N45_NAMES[n45_read_response("[\"COUNT\",\"\",{\"count\":1}]").error]);
+  print("  an EOSE: %\n", N45_NAMES[n45_read_response("[\"EOSE\",\"f\"]").error]);
+}
+N45_NAMES :: [8] string.["N45_OK", "N45_JSON", "N45_SHAPE", "N45_VERB", "N45_SUB", "N45_COUNT", "N45_HLL", "N45_FIELD"];
+
+// NIP-45's "Followers count" and "Reaction counts" answers, with the
+// subscription id filled in.
+NIP45_FOLLOWERS :: "[\"COUNT\",\"s\",{\"count\": 16578, \"hll\": \"0607070505060806050508060707070706090d080b0605090607070b07090606060b0705070709050807080805080407060906080707080507070805060509040a0b06060704060405070706080607050907070b08060808080b080607090a06060805060604070908050607060805050d05060906090809080807050e0705070507060907060606070708080b0807070708080706060609080705060604060409070a0808050a0506050b0810060a0908070709080b0a07050806060508060607080606080707050806080c0a0707070a080808050608080f070506070706070a0908090c080708080806090508060606090906060d07050708080405070708\"}]";
+NIP45_REACTIONS :: "[\"COUNT\",\"s\",{\"count\": 2044, \"hll\": \"01ef070505060806050508060707070706090d080b0605090607070b07090606060b0705070709050807080805080407060906080707080507070805060509040a0b06060704060405070706080607050907070b08060808080b080607090a06060805060604070908050607060805050d05060906090809080807050e0705070507060907060606070708080b0807070708080706060609080705060604060409070a0808050a0506050b0810060a0908070709080b0a07050806060508060607080606080707050806080c0a0707070a080808050608080f070506070706070a0908090c080708080806090508060606090906060d07050708080405070708\"}]";
+// book:end example

@@ -1,0 +1,86 @@
+hand-worked register: pubkey A under the follower filter for B
+  B's hex character 32 is '0': offset 0 + 8 = 8
+  A's byte 8 is 0x36 = 54: the register; byte 9 is 0x18
+  register 54 = 4 (3 leading zero bits + 1)
+
+the store: nine events from four test keys, A B C D (BIP-340 vectors 1, 2, 0, 3)
+  e1 A kind 1 id e0a22dd6: a note -> accepted
+  e2 B kind 1 id 196dcd16: a note -> accepted
+  e3 B kind 7 id 36d3b8f1: + to e1 -> accepted
+  e4 C kind 7 id 42f87548: + to e1 -> accepted
+  e5 D kind 7 id 73c145f4: + to e1 -> accepted
+  e6 A kind 3 id e7a52e91: follows B -> accepted
+  e7 C kind 3 id 4c7c47b0: follows B and A -> accepted
+  e8 D kind 3 id e23fdf8b: follows B -> accepted
+  e9 B kind 3 id 94f481ac: follows A -> accepted
+  e1's id is e0a22dd632697fba4e68de652382d84f634b135da42311e8887476b8238c2d58
+  its hex character 32 is '6': the reaction filter's offset is 14
+
+COUNT requests
+-> ["COUNT","q1",{"kinds":[1,7],"authors":["dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"]}]
+    <- ["COUNT","q1",{"count":2}]
+    full scan of 9 records: 2
+-> ["COUNT","reactions",{"kinds":[7],"#e":["e0a22dd632697fba4e68de652382d84f634b135da42311e8887476b8238c2d58"]}]
+    <- ["COUNT","reactions",{"count":3,"hll":"<512 hex digits>"}]
+       non-zero registers (index=value): 82=3 150=1 183=1; estimate 3
+    full scan of 9 records: 3
+-> ["COUNT","followers",{"kinds":[3],"#p":["dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"]}]
+    <- ["COUNT","followers",{"count":3,"hll":"<512 hex digits>"}]
+       non-zero registers (index=value): 54=4 60=2 73=3; estimate 3
+    full scan of 9 records: 3
+-> ["COUNT","q4",{"kinds":[7]}]
+    <- ["COUNT","q4",{"count":3}]
+    full scan of 9 records: 3
+-> ["COUNT","q5",{"authors":["dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"]}]
+    <- ["COUNT","q5",{"count":3}]
+    full scan of 9 records: 3
+-> ["COUNT","q6",{"kinds":[7]},{"authors":["dd308afec5777e13121fa72b9cc1b7cc0139715309b086c960e18fd969774eb8"]}]
+    <- ["COUNT","q6",{"count":5}]
+    full scan of 9 records: 5
+-> ["COUNT","q7",{"kinds":[1],"limit":1}]
+    <- ["COUNT","q7",{"count":2}]
+    full scan of 9 records: 2
+
+merging two small sketches by hand
+  x: 54=4 73=3 60=2, estimate 3; y: 54=1 73=5 9=2, estimate 3
+  merged: 9=2 54=4 60=2 73=5, estimate 4
+
+two relays, 1000 followers of B, 200 on both
+  relay X (0..599): count 600, sketch estimate 616
+  relay Y (400..999): count 600, sketch estimate 566
+  relay U (0..999, the union): count 1000, sketch estimate 1095
+  X + Y counts 1200 (200 twice); merged sketch estimate 1095; the merged sketch equals U's register for register: true
+  sha256 of U's 256 registers: e36391be961d85e585019ffa4f26d5c765392b80bb7e4d33b81b01891747c505
+
+NIP-45's two example answers
+  followers: count 16578, the sketch estimates 15070
+  reactions: count 2044, the sketch estimates 13075 (register 1 is 239: 2^-239 adds nothing)
+
+refusals, relay side
+-> ["COUNT","",{"kinds":[1]}]
+    <- ["NOTICE","invalid: subscription id must contain 1 to 64 characters"]
+-> ["COUNT","xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",{}]
+    <- ["NOTICE","invalid: subscription id must contain 1 to 64 characters"]
+-> ["COUNT","q"]
+    <- ["CLOSED","q","invalid: COUNT needs at least one filter"]
+-> ["COUNT","q",{"kinds":[1]},2]
+    <- ["CLOSED","q","invalid: malformed message"]
+-> ["COUNT","q",{"#p":["B"]}]
+    <- ["CLOSED","q","invalid: #p values must be 64 lowercase hexadecimal characters"]
+-> ["COUNT","q",{},{},{},{},{},{},{},{}]
+    <- ["CLOSED","q","restricted: query cost exceeds the configured limit"]
+a tenth event admitted, index not rebuilt: accepted
+-> ["COUNT","q",{"kinds":[1]}]
+    <- ["CLOSED","q","error: the store index is out of date"]
+    full scan of 10 records: 3
+
+refusals, client side
+  the relay's answer as written: N45_OK
+  hll of 510 digits: N45_HLL
+  hll with a 'g': N45_HLL
+  hll with an uppercase 'A': N45_HLL
+  count -1: N45_COUNT
+  no count: N45_COUNT
+  count twice: N45_FIELD
+  empty id: N45_SUB
+  an EOSE: N45_VERB
